@@ -63,7 +63,8 @@ PROGRAMS = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge count   
            dicom_hdr 3dDespike dicom_to_raw file_tool rotcom 1ddot 1dsvd        \
            3dDeconvolve_f 3dAnhist 3dAFNIto3D 3dUniformize 3dWarp nicat         \
            3dSpatNorm Imon fftest serial_helper 3dDTeig 3dDWItoDT 3dWarpDrive   \
-           nifti_tool nifti_stats nifti1_test whereami                          \
+           nifti_tool nifti_stats nifti1_test whereami plugout_drive            \
+           3dMedianFilter 3dretroicor                                           \
            $(EXTRAS)
 
 PROGRAMS_NOPLUG = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge count \
@@ -84,8 +85,8 @@ PROGRAMS_NOPLUG = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge c
                   Vecwarp 3dMINCtoAFNI 3dAFNItoANALYZE siemens_vision ge_header         \
                   mayo_analyze 3dAutoTcorrelate 3dFDR 3dAutomask 3dAFNItoMINC          \
                   3dThreetoRGB Ifile 3dresample 3dAutobox 3dLRflip 3dANALYZEtoAFNI    \
-                  dicom_hdr 3dDespike dicom_to_raw file_tool rotcom 3dUniformize    \
-                  3dWarp nicat 3dSpatNorm 3dWarpDrive \
+                  dicom_hdr 3dDespike dicom_to_raw file_tool rotcom 3dUniformize     \
+                  3dWarp nicat 3dSpatNorm 3dWarpDrive 3dretroicor                   \
                   $(EXTRAS) Imon nifti_tool nifti_stats nifti1_test
 
 # For CYGWIN (look for "exe" to find various places below)
@@ -102,7 +103,7 @@ PROGRAMS_EXE = afni.exe to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge 
                3drotate 3dvolreg 3dpc 3dfractionize 1dplot adwarp imupsam         \
                3dIntracranial 24swap 3dTsmooth RSFgen float_scan 1dtranspose      \
                3dFourier 3dNotes 3dROIstats 1deval 3dStatClust                    \
-	       3dDWItoDT 3dTstat 3dDTeig 3dmaskdump                               \
+	       3dDWItoDT 3dTstat 3dDTeig 3dmaskdump 3dretroicor                        \
                3dTshift 3dDetrend 1dfft 1dcat 3drename 1dnorm afni_vcheck 3ddot   \
                3dWavelets 3dfim+ imcutup 3dWinsor 3dZeropad 3dTagalign 3dUndump   \
                3dMean 3dAttribute cat_matvec 3dOverlap 3dClipLevel 3dZregrid      \
@@ -618,6 +619,10 @@ strblast:strblast.o
 	$(RM) $@
 	$(CC) -o 3dWinsor 3dWinsor.o $(LFLAGS) $(LLIBS)
 
+3dMedianFilter:3dMedianFilter.o
+	$(RM) $@
+	$(CC) -o 3dMedianFilter 3dMedianFilter.o $(LFLAGS) $(LLIBS)
+
 3drotate:3drotate.o
 	$(RM) $@
 	$(CC) -o 3drotate 3drotate.o $(LFLAGS) -lmri -lf2c $(LLIBS)
@@ -981,6 +986,12 @@ iochan_relay:iochan_relay.o
 	$(RM) $@
 	$(CC) -o 3dSpatNorm 3dSpatNorm.o $(LFLAGS) $(LLIBS)
 
+### These programs are from Fred Tam
+
+3dretroicor:3dretroicor.o retroicor.o
+	$(RM) $@
+	$(CC) -o 3dretroicor 3dretroicor.o retroicor.o $(LFLAGS) $(LLIBS)
+
 ### Sort of clean
 
 clean:
@@ -1169,7 +1180,8 @@ MRI_OBJS = mri_cfft.o mri_complex_arith.o mri_fft_complex.o mri_free.o    \
            mri_rgba_compose.o mri_blur3d.o mri_dicom_hdr.o mri_read_dicom.o    \
            mri_read_stuff.o mri_flip3D.o mri_warp3D.o mri_fromstring.o         \
            ge4_header.o mri_equal.o mri_scalize.o mri_isgray.o mri_read_mpeg.o \
-           mri_entropy16.o mri_symbolize.o mri_colorsetup.o mri_warp3D_align.o
+           mri_entropy16.o mri_symbolize.o mri_colorsetup.o mri_warp3D_align.o \
+           mri_medianfilter.o
 
 CDF_OBJS = cdf_00.o cdf_01.o cdf_02.o cdf_03.o cdf_04.o cdf_05.o \
            cdf_06.o cdf_07.o cdf_08.o cdf_09.o cdf_10.o cdf_11.o \
@@ -1216,10 +1228,11 @@ THD_OBJS = thd_atr.o thd_dsetto1D.o thd_initalldir.o thd_reconpar.o \
 
 UNUSED_OBSJ = thd_md5.o thd_base64.o
 
-NIML_OBJS = niml_b64.o        niml_element.o  niml_elemio.o                  niml_util.o  \
-            niml_byteorder.o  niml_header.o   niml_malloc.o  niml_rowtype.o  niml_uuid.o   \
-            niml_do.o         niml_htable.o   niml_md5.o     niml_url.o      niml_stream.o  \
-            niml_struct.o     niml_dataset.o  niml_vector.o  niml_stat.o     niml_dtable.o
+NIML_OBJS = niml_b64.o     niml_element.o   niml_elemio.o niml_registry.o \
+            niml_util.o    niml_byteorder.o niml_header.o niml_malloc.o   \
+            niml_rowtype.o niml_uuid.o      niml_do.o     niml_htable.o   \
+            niml_md5.o     niml_url.o       niml_stream.o niml_struct.o   \
+            niml_dataset.o niml_vector.o    niml_stat.o   niml_dtable.o
 
 EDT_OBJS = edt_addbrick.o edt_blur.o edt_buildmask.o edt_checkargv.o \
            edt_clust.o edt_clustarr.o edt_coerce.o edt_dsetitems.o   \
@@ -1310,10 +1323,12 @@ models: model_constant.$(SO) model_linear.$(SO) model_quadratic.$(SO) \
 # Contributed plugins go last, since they might not compile well
 
 contrib_plugins: ziad_plugins birn_plugins kummer_plugins \
-                 rickr_plugins tross_plugins belmonte_plugins
+                 rickr_plugins tross_plugins belmonte_plugins fredtam_plugins
 
 ziad_plugins: plug_3Ddump_V2.$(SO) plug_4Ddump.$(SO) \
               plug_delay_V2.$(SO)  plug_extract.$(SO)
+
+fredtam_plugins: plug_retroicor.$(SO)
 
 birn_plugins: plug_stavg.$(SO)
 
@@ -1352,6 +1367,14 @@ plug_crender.$(SO):plug_crender.c librickr.a
 	$(RM) $@
 	$(PLUGIN_CC) -c plug_crender.c $(IFLAGS)
 	$(LD) $(PLUGIN_LFLAGS) -o plug_crender.$(SO) plug_crender.o -L. -lrickr
+
+### From Fred Tam
+
+plug_retroicor.$(SO):plug_retroicor.c retroicor.o
+	$(RM) $@
+	$(PLUGIN_CC) -c plug_retroicor.c $(IFLAGS)
+	$(LD) $(PLUGIN_LFLAGS) -o plug_retroicor.$(SO) plug_retroicor.o \
+      retroicor.o
 
 plug_render.$(SO):mri_render.h
 
@@ -1552,7 +1575,7 @@ qhull.exe:
 # Eispack and CDF library files - make them and move them up here
 
 eis_bakvec.o:
-	( cd eispack/ ; $(MAKE) all 'CC=$(CC)' 'CCEIS=$(CCMIN)' ; $(MV) *.o .. ; )
+	( cd eispack/ ; $(MAKE) all 'CC=$(CCFAST)' 'CCSVD=$(CCSVD)' ; $(MV) *.o .. ; )
 
 cdf_00.o:
 	( cd cdflib/ ; $(MAKE) all 'CC=$(CC)' ; $(MV) *.o .. ; )
@@ -1819,33 +1842,41 @@ asnap:asnap.o
 	$(CC) -o asnap asnap.o $(LFLAGS) -lmrix -lcoxplot $(LLIBS) -lf2c
 
 # specifics for the nifti library files
-nifti1_io.o:nifti/nifti1_io.c nifti/nifti1_io.h
+thd_analyzeread.o:thd_analyzeread.c
 	$(RM) $@
-	$(CC) -c nifti/nifti1_io.c $(IFLAGS) $(USE_ZLIB)
+	$(CC) -c thd_analyzeread.c -Inifti/niftilib -Inifti/znzlib $(IFLAGS) $(USE_ZLIB)
 
-znzlib.o:nifti/znzlib.c nifti/znzlib.h
+thd_niftiread.o:thd_niftiread.c
 	$(RM) $@
-	$(CC) -c nifti/znzlib.c $(IFLAGS) $(USE_ZLIB)
+	$(CC) -c thd_niftiread.c -Inifti/niftilib -Inifti/znzlib $(IFLAGS) $(USE_ZLIB)
 
-nifti_stats.o:nifti/nifti_stats.c
+nifti1_io.o:nifti/niftilib/nifti1_io.c nifti/niftilib/nifti1_io.h
 	$(RM) $@
-	$(CC) -c nifti/nifti_stats.c $(IFLAGS)
+	$(CC) -c nifti/niftilib/nifti1_io.c -Inifti/znzlib $(IFLAGS) $(USE_ZLIB)
+
+znzlib.o:nifti/znzlib/znzlib.c nifti/znzlib/znzlib.h
+	$(RM) $@
+	$(CC) -c nifti/znzlib/znzlib.c $(IFLAGS) $(USE_ZLIB)
+
+nifti_stats.o:nifti/utils/nifti_stats.c
+	$(RM) $@
+	$(CC) -c nifti/utils/nifti_stats.c -Inifti/niftilib $(IFLAGS)
 
 nifti_stats:nifti_stats.o
 	$(RM) $@
 	$(CC) -o nifti_stats nifti_stats.o -lm
 
-nifti1_test.o:nifti/nifti1_test.c 
+nifti1_test.o:nifti/utils/nifti1_test.c
 	$(RM) $@
-	$(CC) -c nifti/nifti1_test.c $(IFLAGS)
+	$(CC) -c nifti/utils/nifti1_test.c -Inifti/niftilib -Inifti/znzlib $(IFLAGS)
 
 nifti1_test:nifti1_test.o nifti1_io.o znzlib.o
 	$(RM) $@
 	$(CC) -o nifti1_test nifti1_test.o nifti1_io.o znzlib.o $(LZLIB) -lm
 
-nifti_tool.o:nifti/nifti_tool.c 
+nifti_tool.o:nifti/utils/nifti_tool.c
 	$(RM) $@
-	$(CC) -c nifti/nifti_tool.c $(IFLAGS)
+	$(CC) -c nifti/utils/nifti_tool.c -Inifti/niftilib -Inifti/znzlib $(IFLAGS)
 
 nifti_tool:nifti_tool.o nifti1_io.o znzlib.o
 	$(RM) $@
@@ -1907,7 +1938,7 @@ suma_exec:libSUMA.a libmri.a librickr.a xutil.o LiteClue.o parser.o parser_int.o
 	( cd SUMA ;	\
 	$(MAKE) -f $(SUMA_MAKEFILE_NAME) testGL suma ScaleToMap CompareSurfaces MakeColorMap ROI2dataset 3dVol2Surf \
 	3dSurf2Vol SurfMeasures ConvertSurface ConvertDset SurfClust IsoSurface ConvexHull MapIcosahedron CreateIcosahedron SurfaceMetrics \
-   SurfSmooth inspec quickspec FSread_annot SurfPatch SurfQual SampBias packbins 'INSTALLDIR=$(INSTALLDIR)' \
+   SurfSmooth inspec quickspec FSread_annot SurfPatch SurfQual SampBias 3dSkullStrip packbins 'INSTALLDIR=$(INSTALLDIR)' \
 	'SUMA_INCLUDE_PATH=$(SUMA_INCLUDE_PATH)' \
 	'SUMA_LINK_PATH=$(SUMA_LINK_PATH)' \
 	'SUMA_LINK_LIB=$(SUMA_LINK_LIB)' \
@@ -2017,6 +2048,8 @@ suma_clean:
 	if [ -f SUMA/SurfMesh ]; then $(RM) SUMA/SurfMesh; fi;
 	if [ -f SampBias ]; then $(RM) SampBias; fi;
 	if [ -f SUMA/SampBias ]; then $(RM) SUMA/SampBias; fi;
+	if [ -f 3dSkullStrip  ]; then $(RM) 3dSkullStrip ; fi;
+	if [ -f SUMA/3dSkullStrip  ]; then $(RM) SUMA/3dSkullStrip ; fi;
 
 ###
 #Use precompiled libraries present in SUMA/$(SUMA_BIN_ARCHIVE) and just link SUMA
@@ -2027,10 +2060,10 @@ suma_link:
 	$(CP) libmri.a librickr.a libmrix.a libcoxplot.a libf2c.a ../	;\
 	$(RM) suma MakeColorMap ROI2dataset 3dVol2Surf 3dSurf2Vol SurfMeasures ScaleToMap MapIcosahedron \
    CreateIcosahedron CompareSurfaces ConvertSurface ConvertDset SurfClust IsoSurface ConvexHull SurfaceMetrics SurfSmooth inspec \
-   quickspec FSread_annot SurfPatch SurfQual SampBias;\
+   quickspec FSread_annot SurfPatch SurfQual SampBias 3dSkullStrip;\
 	$(MAKE) -f $(SUMA_MAKEFILE_NAME) testGL suma MakeColorMap ROI2dataset 3dVol2Surf 3dSurf2Vol ScaleToMap SurfMeasures \
 	MapIcosahedron CreateIcosahedron CompareSurfaces ConvertSurface ConvertDset SurfClust IsoSurface ConvexHull SurfaceMetrics SurfSmooth inspec \
-   quickspec FSread_annot SurfPatch SurfQual SampBias\
+   quickspec FSread_annot SurfPatch SurfQual SampBias 3dSkullStrip\
 	'INSTALLDIR=$(INSTALLDIR)' \
 	'SUMA_INCLUDE_PATH=$(SUMA_INCLUDE_PATH)' \
 	'SUMA_LINK_PATH=$(SUMA_LINK_PATH)' \
@@ -2050,7 +2083,7 @@ suma_install:
 	SUMA/ScaleToMap SUMA/MapIcosahedron SUMA/CreateIcosahedron SUMA/CompareSurfaces \
 	SUMA/ConvertSurface SUMA/ConvertDset SUMA/SurfClust SUMA/IsoSurface SUMA/ConvexHull SUMA/SUMA_glxdino SUMA/SUMA_pixmap2eps SUMA/SurfaceMetrics \
    SUMA/inspec SUMA/quickspec SUMA/FSread_annot SUMA/SurfPatch SUMA/SurfQual SUMA/SurfSmooth \
-   SUMA/SampBias \
+   SUMA/SampBias SUMA/3dSkullStrip\
    ${INSTALLDIR} ; \
    if [ -f SUMA/SurfMesh ]; then $(CP) SUMA/SurfMesh ${INSTALLDIR} ; fi; \
 	$(CP) @SUMA_* ${INSTALLDIR} ;)

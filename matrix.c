@@ -55,12 +55,75 @@
 
   Mod:      'ipr' added to matrix_print() function.
   Date:     03 Aug 2004 - RWCox
+
+  Mod:      Added USE_SCSLBLAS stuff for SGI Altix, and USE_SUNPERF for Solaris.
+  Date:     01 Mar 2005
 */
 
+/*---------------------------------------------------------------------*/
+/** Vectorization macros:
+   - DOTP(n,x,y,z) computes the n-long dot product of vectors
+       x and y and puts the result into the place pointed to by z.
+   - VSUB(n,x,y,z) computes vector x-y into vector z.
+   - These are intended to be the fast method for doing these things. **/
+/*---------------------------------------------------------------------*/
 
-static double flops=0.0l ;
+#undef SETUP_BLAS1  /* define this to use BLAS-1 functions */
+#undef SETUP_BLAS2  /* define this to use BLAS-2 functions */
+#undef DOTP
+#undef VSUB
+#undef MATVEC
+#undef SUBMATVEC
+
+#if defined(USE_SCSLBLAS)                            /** SGI Altix **/
+#  include <scsl_blas.h>
+#  define SETUP_BLAS1
+#  undef  SETUP_BLAS2     /* don't use this */
+#  define TRANSA "T"
+#elif defined(USE_SUNPERF)                           /** Sun Solaris **/
+#  include <sunperf.h>
+#  define SETUP_BLAS1
+#  define SETUP_BLAS2
+#  define TRANSA 'T'
+#endif
+
+/* double precision BLAS-1 functions */
+
+#ifdef SETUP_BLAS1
+# define DOTP(n,x,y,z) *(z)=ddot(n,x,1,y,1)
+# define VSUB(n,x,y,z) (memcpy(z,x,sizeof(double)*n),daxpy(n,-1.0,y,1,z,1))
+#endif
+
+/*.......................................................................
+   BLAS-2 function operate on matrix-vector structs defined in matrix.h:
+
+   MATVEC(m,v,z):    [z] = [m][v] where m=matrix, z,v = matrices
+   SUBMATVEC(m,v,z): [z] = [z] - [m][v]
+.........................................................................*/
+
+#ifdef DONT_USE_MATRIX_MAT
+# undef SETUP_BLAS2
+#endif
+
+#ifdef SETUP_BLAS2  /* doesn't seem to help much */
+
+# define MATVEC(m,v,z) dgemv( TRANSA , (m).cols , (m).rows ,       \
+                              1.0 , (m).mat , (m).cols ,           \
+                              (v).elts , 1 , 0.0 , (z).elts , 1 )
+
+# define SUBMATVEC(m,v,z) dgemv( TRANSA , (m).cols , (m).rows ,      \
+                                 -1.0 , (m).mat , (m).cols ,         \
+                                 (v).elts , 1 , 1.0 , (z).elts , 1 )
+#endif
+
+/*---------------------------------------------------------------------------*/
+static double flops=0.0 ;
 double get_matrix_flops(void){ return flops; }
 
+static double dotnum=0.0 , dotsum=0.0 ;
+double get_matrix_dotlen(void){ return (dotnum > 0.0) ? dotsum/dotnum : 0.0 ; }
+
+#define ENABLE_FLOPS
 /*---------------------------------------------------------------------------*/
 /*!
   Routine to print and error message and stop.
@@ -83,6 +146,9 @@ void matrix_initialize (matrix * m)
   m->rows = 0;
   m->cols = 0;
   m->elts = NULL;
+#ifndef DONT_USE_MATRIX_MAT
+  m->mat  = NULL ;  /* 04 Mar 2005 */
+#endif
 }
 
 
@@ -93,21 +159,19 @@ void matrix_initialize (matrix * m)
 
 void matrix_destroy (matrix * m)
 {
-  int i, rows;
-
-
-  if (m->elts != NULL)
-    {
-      rows = m->rows;
-      for (i = 0;  i < rows;  i++)
-	if (m->elts[i] != NULL)
-	  {  free (m->elts[i]);   m->elts[i] = NULL; }
-      free (m->elts);
-    }
-
+  if (m->elts != NULL){
+#ifdef DONT_USE_MATRIX_MAT
+    int i ;
+    for( i=0 ; i < m->rows ; i++ )
+      if( m->elts[i] != NULL ) free(m->elts[i]) ;
+#endif
+    free(m->elts) ;
+  }
+#ifndef DONT_USE_MATRIX_MAT
+  if( m->mat  != NULL) free (m->mat ) ;
+#endif
   matrix_initialize (m);
 }
-
 
 /*---------------------------------------------------------------------------*/
 /*!
@@ -116,7 +180,7 @@ void matrix_destroy (matrix * m)
 
 void matrix_create (int rows, int cols, matrix * m)
 {
-  register int i, j;
+  register int i ;
 
   matrix_destroy (m);
 
@@ -131,16 +195,18 @@ void matrix_create (int rows, int cols, matrix * m)
   if (m->elts == NULL)
     matrix_error ("Memory allocation error");
 
+#ifdef DONT_USE_MATRIX_MAT
+  for (i = 0;  i < rows;  i++){
+    m->elts[i] = (double *) calloc (sizeof(double) , cols);
+    if (m->elts[i] == NULL) matrix_error ("Memory allocation error");
+  }
+#else
+  m->mat  = (double *) calloc( sizeof(double) , rows*cols ) ;
+  if( m->mat == NULL )
+    matrix_error ("Memory allocation error");
   for (i = 0;  i < rows;  i++)
-    {
-      m->elts[i] = (double *) malloc (sizeof(double) * cols);
-      if (m->elts[i] == NULL)
-	matrix_error ("Memory allocation error");
-    }
-
-  for (i = 0;  i < rows;  i++)
-    for (j = 0;  j < cols;  j++)
-      m->elts[i][j] = 0.0;
+     m->elts[i] = m->mat + (i*cols) ;   /* 04 Mar 2005: offsets into mat */
+#endif
 }
 
 
@@ -455,7 +521,9 @@ void matrix_add (matrix a, matrix b, matrix * c)
     for (j = 0;  j < cols;  j++)
       c->elts[i][j] = a.elts[i][j] + b.elts[i][j];
 
+#ifdef ENABLE_FLOPS
   flops += rows*cols ;
+#endif
 }
 
 
@@ -481,7 +549,9 @@ void matrix_subtract (matrix a, matrix b, matrix * c)
     for (j = 0;  j < cols;  j++)
       c->elts[i][j] = a.elts[i][j] - b.elts[i][j];
 
+#ifdef ENABLE_FLOPS
   flops += rows*cols ;
+#endif
 }
 
 
@@ -513,7 +583,9 @@ void matrix_multiply (matrix a, matrix b, matrix * c)
         c->elts[i][j] = sum;
       }
 
+#ifdef ENABLE_FLOPS
   flops += 2.0l*rows*cols*cols ;
+#endif
 }
 
 
@@ -536,7 +608,9 @@ void matrix_scale (double k, matrix a, matrix * c)
     for (j = 0;  j < cols;  j++)
       c->elts[i][j] = k * a.elts[i][j];
 
+#ifdef ENABLE_FLOPS
   flops += rows*cols ;
+#endif
 }
 
 
@@ -629,7 +703,9 @@ matrix_sprint("matrix_inverse:",a) ;
 	
     }
   matrix_destroy (&tmp);
+#ifdef ENABLE_FLOPS
   flops += 3.0l*n*n*n ;
+#endif
   return (1);
 }
 
@@ -672,7 +748,9 @@ int matrix_inverse_dsc (matrix a, matrix * ainv)  /* 15 Jul 2004 - RWCox */
     ainv->elts[i][j] *= diag[i]*diag[j] ;
 
   matrix_destroy (&atmp); free((void *)diag) ;
+#ifdef ENABLE_FLOPS
   flops += 4.0l*n*n + 4.0l*n ;
+#endif
   return (mir);
 }
 
@@ -783,16 +861,10 @@ void vector_create (int dim, vector * v)
   v->dim = dim;
   if (dim < 1)  return;
 
-  v->elts = (double *) malloc (sizeof(double) * dim);
+  v->elts = (double *) calloc (sizeof(double) , dim);
   if (v->elts == NULL)
     matrix_error ("Memory allocation error");
 
-#if 0
-  for (i = 0;  i < dim;  i++)
-     v->elts[i] = 0.0;
-#else
-  memset( v->elts , 0 , sizeof(double)*dim ) ;
-#endif
 }
 
 /*---------------------------------------------------------------------------*/
@@ -933,7 +1005,9 @@ void vector_add (vector a, vector b, vector * c)
   for (i = 0;  i < dim;  i++)
     c->elts[i] = a.elts[i] + b.elts[i];
 
+#ifdef ENABLE_FLOPS
   flops += dim ;
+#endif
 }
 
 
@@ -962,8 +1036,12 @@ void vector_subtract (vector a, vector b, vector * c)
     cc[i] = aa[i] - bb[i] ;
 #endif
 
+#ifdef ENABLE_FLOPS
   flops += dim ;
+#endif
 }
+
+/*** for vector-matrix multiply routines below ***/
 
 #define UNROLL_VECMUL  /* RWCox */
 
@@ -975,8 +1053,14 @@ void vector_multiply (matrix a, vector b, vector * c)
 {
   register int rows, cols;
   register int i, j;
-  register double *bb , *aa ;
+  register double *bb ;
   register double sum ;
+#ifdef DOTP
+  register double **aa , *cc ;
+#else
+  register double *aa ;
+#endif
+
 
   if (a.cols != b.dim){
     char str[444] ;
@@ -997,6 +1081,19 @@ void vector_multiply (matrix a, vector b, vector * c)
   }
 
   bb = b.elts ;
+
+#ifdef MATVEC
+  MATVEC( a , b , *c ) ;          /* 04 Mar 2005 */
+
+#elif defined(DOTP)               /* vectorized */
+  aa = a.elts ; cc = c->elts ;
+  i = rows%2 ;
+  if( i == 1 ) DOTP(cols,aa[0],bb,cc) ;
+  for( ; i < rows ; i+=2 ){
+    DOTP(cols,aa[i]  ,bb,cc+i    ) ;
+    DOTP(cols,aa[i+1],bb,cc+(i+1)) ;
+  }
+#else
 
 #ifdef UNROLL_VECMUL
   if( cols%2 == 0 ){              /* even number of cols */
@@ -1022,7 +1119,13 @@ void vector_multiply (matrix a, vector b, vector * c)
     }
 #endif /* UNROLL_VECMUL */
 
+#endif /* MATVEC, DOTP */
+
+#ifdef ENABLE_FLOPS
     flops += 2.0l*rows*cols ;
+    dotsum += rows*cols ; dotnum += rows ;
+#endif
+    return ;
 }
 
 /*---------------------------------------------------------------------------*/
@@ -1035,9 +1138,13 @@ double vector_multiply_subtract (matrix a, vector b, vector c, vector * d)
 {
   register int rows, cols;
   register int i, j;
-  register double qsum ;
-  register double *aa,*bb ;
-  register double sum ;
+  register double *bb ;
+#ifdef DOTP
+  double qsum,sum , **aa , *dd,*cc,*ee ;
+#else
+  register double qsum,sum, *aa ;
+#endif
+
 
   if (a.cols != b.dim || a.rows != c.dim )
     matrix_error ("Incompatible dimensions for vector multiplication-subtraction");
@@ -1057,6 +1164,20 @@ double vector_multiply_subtract (matrix a, vector b, vector c, vector * d)
   }
 
   qsum = 0.0 ; bb = b.elts ;
+
+#ifdef DOTP                                      /* vectorized */
+  aa = a.elts ; dd = d->elts ; cc = c.elts ;
+  ee = (double *)malloc(sizeof(double)*rows) ;
+  i  = rows%2 ;
+  if( i == 1 ) DOTP(cols,aa[0],bb,ee) ;
+  for( ; i < rows ; i+=2 ){
+    DOTP(cols,aa[i]  ,bb,ee+i    ) ;
+    DOTP(cols,aa[i+1],bb,ee+(i+1)) ;
+  }
+  VSUB(rows,cc,ee,dd) ;
+  DOTP(rows,dd,dd,&qsum) ;
+  free((void *)ee) ;
+#else
 
 #ifdef UNROLL_VECMUL
   if( cols%2 == 0 ){                   /* even number */
@@ -1082,7 +1203,12 @@ double vector_multiply_subtract (matrix a, vector b, vector c, vector * d)
   }
 #endif /* UNROLL_VECMUL */
 
+#endif /* DOTP */
+
+#ifdef ENABLE_FLOPS
   flops += 2.0l*rows*(cols+1) ;
+  dotsum += rows*cols ; dotnum += rows ;
+#endif
 
   return qsum ;  /* 26 Feb 2003 */
 }
@@ -1112,7 +1238,9 @@ double vector_dot (vector a, vector b)
     sum += aa[i] * bb[i] ;
 #endif
 
+#ifdef ENABLE_FLOPS
   flops += 2.0l*dim ;
+#endif
   return (sum);
 }
 
@@ -1137,7 +1265,9 @@ double vector_dotself( vector a )
     sum += aa[i] * aa[i] ;
 #endif
 
+#ifdef ENABLE_FLOPS
   flops += 2.0l*dim ;
+#endif
   return (sum);
 }
 
@@ -1156,7 +1286,9 @@ double matrix_norm( matrix a )
      for (j = 0;  j < cols;  j++) sum += fabs(a.elts[i][j]) ;
      if( sum > smax ) smax = sum ;
    }
+#ifdef ENABLE_FLOPS
    flops += 2.0l*rows*cols ;
+#endif
    return smax ;
 }
 
@@ -1248,7 +1380,9 @@ double * matrix_singvals( matrix X )   /* 14 Jul 2004 */
 
    symeigval_double( N , a , e ) ;
    free( (void *)a ) ;
+#ifdef ENABLE_FLOPS
    flops += (M+N+2.0l)*N*N ;
+#endif
    return e ;
 }
 
@@ -1297,7 +1431,7 @@ void matrix_psinv( matrix X , matrix *XtXinv , matrix *XtXinvXt )
 
    /* compute SVD of scaled matrix */
 
-   svd_double( m , n , amat , sval , umat , vmat ) ; 
+   svd_double( m , n , amat , sval , umat , vmat ) ;
 
    free((void *)amat) ;  /* done with this */
 
@@ -1355,7 +1489,9 @@ void matrix_psinv( matrix X , matrix *XtXinv , matrix *XtXinvXt )
      }
    }
 
+#ifdef ENABLE_FLOPS
    flops += n*n*(n+2.0l*m+2.0l) ;
+#endif
    free((void *)xfac); free((void *)sval);
    free((void *)vmat); free((void *)umat); return;
 }

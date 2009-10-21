@@ -1,27 +1,34 @@
-# This Makefile works on Linux 2.0.39
+# For Altix Itanium based system, using Intel's icc compiler
+
+# CPROF = -pg -g
 
 CCDEBS = -DAFNI_DEBUG -DIMSEQ_DEBUG -DDISPLAY_DEBUG -DTHD_DEBUG
-CEXTRA = -Wcomment -Wformat -DUSE_TRACING -DHAVE_XDBE
-CC     = gcc -O2 -m486 -ffast-math -DLINUX2 -DNO_GAMMA $(CEXTRA)
-CCVOL  = gcc -O2 -m486 -ffast-math -DLINUX2 -DNO_GAMMA $(CEXTRA)
-CCFAST = gcc -O3 -m486 -ffast-math -DLINUX2 -DNO_GAMMA $(CEXTRA)
-CCMIN  = gcc
+CEXTRA = -w -DUSE_TRACING -DHAVE_XDBE $(CPROF)
+
+CC     = /opt/intel_cc_80/bin/icc -O3 -ip -fPIC -DREAD_WRITE_64 -DLINUX2 -DNO_GAMMA $(CEXTRA)
+CCVOL  = /opt/intel_cc_80/bin/icc -O3 -ip -fPIC -DREAD_WRITE_64 -DLINUX2 -DNO_GAMMA $(CEXTRA)
+CCFAST = /opt/intel_cc_80/bin/icc -O3 -ip -fPIC -DREAD_WRITE_64 -DLINUX2 -DNO_GAMMA $(CEXTRA)
+
+CCMIN  = /opt/intel_cc_80/bin/icc $(CPROF) -DINTEL_CC
 CCD    = $(CC) $(CCDEBS)
 IFLAGS = -I. -I/usr/X11R6/include
-LFLAGS = -s -L. -L/usr/X11R6/lib
+LFLAGS = -L. -L/usr/X11R6/lib
+
+CCSVD = $(CCFAST)
 
 PLUGIN_SUFFIX = so
 PLUGIN_LFLAGS = -shared
 PLUGIN_CC     = $(CC)
-PLFLAGS       = -s -rdynamic -L. -L/usr/X11R6/lib
+PLFLAGS       = -rdynamic -L. -L/usr/X11R6/lib
+
+SHOWOFF = -DSHOWOFF=altix_icc
 
 AR     = /usr/bin/ar
 RANLIB = /usr/bin/ranlib
 TAR    = /bin/tar
 MKDIR  = /bin/mkdir
-TAPE   = /dev/st0
 GZIP   = /bin/gzip
-LD     = gcc
+LD     = /opt/intel_cc_80/bin/icc $(CPROF)
 
 RM = /bin/rm -f
 MV = /bin/mv -f
@@ -29,8 +36,11 @@ CP = /bin/cp -f
 
 LINT = /usr/bin/lint -a -b -u -v -x $(IFLAGS) $(CCDEFS)
 
-INSTALLDIR = ./linux2
+# INSTALDIR should match the extension on the Makefile name
+INSTALLDIR = ./altix_icc
 LIBDIR = $(INSTALLDIR)
+
+INSTALL_PREREQ = suma
 
 # for dynamic linking
 
@@ -38,7 +48,7 @@ LIBDIR = $(INSTALLDIR)
 
 # for static linking to Motif, dynamic to all else
 
-LLIBS  = -lmri /usr/X11R6/lib/libXm.a -lXp -lXpm -lXext -lXmu -lXt -lX11 -lm  -ldl -lc
+LLIBS  = -lmri /usr/X11R6/lib/libXm.a -lXp -lXpm -lXext -lXmu -lXt -lSM -lICE -lX11 -lm  -ldl -lc
 
 # for static linking, as far as possible
 
@@ -53,14 +63,14 @@ LLIBS  = -lmri /usr/X11R6/lib/libXm.a -lXp -lXpm -lXext -lXmu -lXt -lX11 -lm  -l
 #        /usr/X11R6/lib/libX11.a  \
 #        /usr/lib/libm.a          \
 #        /usr/lib/libc.a
- 
+
 # vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 # For suma (NO STATIC LINKING OF GL libs)
-SUMA_INCLUDE_PATH = -I/usr/X11R6/include -I./ -I../ -I../niml/ -Igts/src -I/usr/include/glib-2.0 -I/usr/lib/glib-2.0/include/ 
+SUMA_INCLUDE_PATH = -I/usr/X11R6/include -I./ -I../ -I../niml/ -Igts/src
 SUMA_LINK_PATH = -L/usr/lib -L/usr/X11R6/lib -L../
 #use -lGLw if you have libGLw.a or libGLw.so* or 
 #  -lMesaGLw if you have Mesa's version (libMesaGLw*) of libGLw
-SUMA_LINK_LIB = -lGLw -lGLU -lGL -lXmu -lXm -lXp -lXt -lXext -lX11 -lm -lglib
+SUMA_LINK_LIB = -lGLw -lGLU -lGL -lXmu -lXm -lXp -lXt -lXext -lX11 -lm 
 SUMA_MAKEFILE_NAME = SUMA_Makefile
 SUMA_BIN_ARCHIVE = SUMA_Linux.tar
 # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -69,3 +79,4 @@ SUMA_BIN_ARCHIVE = SUMA_Linux.tar
 
 MAKE = make
 include Makefile.INCLUDE
+

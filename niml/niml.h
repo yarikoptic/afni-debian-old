@@ -49,6 +49,10 @@ typedef struct { byte r,g,b ; } rgb ;
 typedef struct { byte r,g,b,a ; } rgba ;
 #endif
 
+#ifdef _SUNPERF_COMPLEX
+# define TYPEDEF_complex
+#endif
+
 #ifndef TYPEDEF_complex
 #define TYPEDEF_complex
 typedef struct { float r,i ; } complex ;
@@ -410,6 +414,7 @@ extern void     removefrom_Htable( char *, Htable * ) ;
 extern void     profile_Htable( char *, Htable * ) ;
 extern void     subsume_Htable( Htable *, Htable * ) ;
 extern void     Htable_set_vtkill( int ) ;
+extern void     resize_Htable( int , Htable * ) ;
 
 #define         sizeof_Htable(ht) ((ht)->ntot)
 
@@ -1111,6 +1116,25 @@ typedef struct { int num; char **str;} NI_str_array ;
 
 extern NI_str_array * NI_decode_string_list( char *ss , char *sep ) ;
 #define NI_decode_str_array NI_decode_string_list
+
+/*-------------------------------------------------------------------------*/
+/* Registry stuff -- niml_registry.c [25 Feb 2005] */
+
+extern void * NI_registry_malloc          ( char *, char *, size_t ) ;
+extern void * NI_registry_realloc         ( void *, size_t ) ;
+extern void   NI_registry_free            ( void * ) ;
+extern void * NI_registry_idcode_to_ptr   ( char * ) ;
+extern char * NI_registry_idcode_to_name  ( char * ) ;
+extern char * NI_registry_ptr_to_idcode   ( void * ) ;
+extern char * NI_registry_ptr_to_name     ( void * ) ;
+extern void   NI_registry_idcode_altername( char *, char * ) ;
+extern void   NI_registry_ptr_altername   ( void *, char * ) ;
+extern size_t NI_registry_idcode_to_len   ( char * ) ;
+extern size_t NI_registry_ptr_to_len      ( void * ) ;
+extern void * NI_registry_add             ( char *, char *, void * ) ;
+extern void * NI_registry_replace         ( void *, void * ) ;
+
+
 /*-------------------------------------------------------------------------*/
 
 #endif /* _NIML_HEADER_FILE */

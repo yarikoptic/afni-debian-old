@@ -6,9 +6,31 @@
 
 #include "mrilib.h"
 
-/*-----------
-  A quickie.
--------------*/
+/*------------------------------------------------------------------------*/
+
+static float min_float( int n , float *x )   /* 25 Feb 2005 */
+{
+   float m=0.0 ; int i ;
+   if( n < 1 || x == NULL ) return m ;
+   m = x[0] ;
+   for( i=1 ; i < n ; i++ ) if( m > x[i] ) m = x[i] ;
+   return m ;
+}
+
+/*------------------------------------------------------------------------*/
+
+static float max_float( int n , float *x )   /* 24 Feb 2005 */
+{
+   float m=0.0 ; int i ;
+   if( n < 1 || x == NULL ) return m ;
+   m = x[0] ;
+   for( i=1 ; i < n ; i++ ) if( m < x[i] ) m = x[i] ;
+   return m ;
+}
+
+/*-----------------------------------------------------------------------
+  A quickie.  (Not so quick any more, with all the options added.)
+-------------------------------------------------------------------------*/
 
 int main( int argc , char * argv[] )
 {
@@ -25,6 +47,8 @@ int main( int argc , char * argv[] )
    int quiet=0 ;                              /* 23 Nov 1999 */
 
    int medianit = 0 ;                         /* 06 Jul 2003 */
+   int maxit    = 0 ;                         /* 24 Feb 2005 */
+   int minit    = 0 ;                         /* 25 Feb 2005 */
    float *exar ;                              /* 06 Jul 2003 */
    char *sname = "Average" ;                  /* 06 Jul 2003 */
    int self_mask = 0 ;                        /* 06 Dec 2004 */
@@ -73,7 +97,9 @@ int main( int argc , char * argv[] )
              "  -sigma       Means to compute the standard deviation as well\n"
              "                 as the mean.\n"
              "  -median      Means to compute the median instead of the mean.\n"
-             "                 ('-sigma' is meaningless if you use '-median'.)\n"
+             "  -max         Means to compute the max instead of the mean.\n"
+             "  -min         Means to compute the min instead of the mean.\n"
+             "                 (-sigma is ignored with -median, -max, or -min)\n"
              "  -dump        Means to print out all the voxel values that\n"
              "                 go into the average.\n"
              "  -udump       Means to print out all the voxel values that\n"
@@ -229,7 +255,17 @@ int main( int argc , char * argv[] )
       }
 
       if( strncmp(argv[narg],"-median",5) == 0 ){
-         medianit = 1 ;
+         medianit = 1 ; maxit = 0 ; minit = 0 ;
+         narg++ ; continue ;
+      }
+
+      if( strncmp(argv[narg],"-max",4) == 0 ){  /* 24 Feb 2005 */
+         maxit = 1 ; medianit = 0 ; minit = 0 ;
+         narg++ ; continue ;
+      }
+
+      if( strncmp(argv[narg],"-min",4) == 0 ){  /* 25 Feb 2005 */
+         maxit = 0 ; medianit = 0 ; minit = 1 ;
          narg++ ; continue ;
       }
 
@@ -237,6 +273,8 @@ int main( int argc , char * argv[] )
    }
 
    if( medianit ){ sigmait = 0; sname = "Median"; }
+   if( maxit    ){ sigmait = 0; sname = "Max"   ; } /* 24 Feb 2005 */
+   if( minit    ){ sigmait = 0; sname = "Min"   ; } /* 25 Feb 2005 */
 
    /* should have one more argument */
 
@@ -466,7 +504,9 @@ int main( int argc , char * argv[] )
                for( ii=0 ; ii < nvox ; ii++ ) if( GOOD(ii) ) sigma += SQR(bar[ii]-sum) ;
                sigma = mfac * sqrt( sigma/(mc-1) ) ;
             }
-            if( medianit ) sum = qmed_float( mc , exar ) ;
+                 if( medianit ) sum = qmed_float( mc , exar ) ;
+            else if( maxit    ) sum = max_float ( mc , exar ) ;
+            else if( minit    ) sum = min_float ( mc , exar ) ;
             sum = mfac * sum ;
 
             if( dumpit ) printf("+++ %s = %g",sname,sum) ;
@@ -511,7 +551,9 @@ int main( int argc , char * argv[] )
                for( ii=0 ; ii < nvox ; ii++ ) if( GOOD(ii) ) sigma += SQR(bar[ii]-sum) ;
                sigma = mfac * sqrt( sigma/(mc-1) ) ;
             }
-            if( medianit ) sum = qmed_float( mc , exar ) ;
+                 if( medianit ) sum = qmed_float( mc , exar ) ;
+            else if( maxit    ) sum = max_float ( mc , exar ) ;
+            else if( minit    ) sum = min_float ( mc , exar ) ;
             sum = mfac * sum ;
 
             if( dumpit ) printf("+++ %s = %g",sname,sum) ;
@@ -556,7 +598,9 @@ int main( int argc , char * argv[] )
                for( ii=0 ; ii < nvox ; ii++ ) if( GOOD(ii) ) sigma += SQR(bar[ii]-sum) ;
                sigma = mfac * sqrt( sigma/(mc-1) ) ;
             }
-            if( medianit ) sum = qmed_float( mc , exar ) ;
+                 if( medianit ) sum = qmed_float( mc , exar ) ;
+            else if( maxit    ) sum = max_float ( mc , exar ) ;
+            else if( minit    ) sum = min_float ( mc , exar ) ;
             sum = mfac * sum ;
 
             if( dumpit ) printf("+++ %s = %g",sname,sum) ;

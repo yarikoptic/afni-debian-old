@@ -32,6 +32,9 @@
   Mod:      Added functions vector_dotself() and vector_multiply_subtract() -- RWCox.
   Date:     28 Dec 2002
 
+  Mod:      Use one array instead of array of arrays for matrix -- RWCox.
+  Date:     04 Mar 2005
+
 */
 
 /*---------------------------------------------------------------------------*/
@@ -39,12 +42,16 @@
   Define matrix and vector data structures.
 */
 
+#include "machdep.h"  /* 07 Mar 2005: to get DONT_USE_MATRIX_MAT */
 
 typedef struct matrix
 {
   int      rows;
   int      cols;
   double ** elts;
+#ifndef DONT_USE_MATRIX_MAT
+  double  * mat ;  /* 04 Mar 2005 */
+#endif
 }  matrix;
 
 
@@ -353,3 +360,4 @@ double * matrix_singvals( matrix X ) ; /* 14 Jul 2004 */
 void matrix_psinv( matrix X , matrix *XtXinv , matrix *XtXinvXt ) ;  /* 19 Jul 2004 */
 
 double get_matrix_flops(void) ;
+double get_matrix_dotlen(void) ;

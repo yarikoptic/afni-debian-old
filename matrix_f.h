@@ -35,6 +35,9 @@
   Mod:      Used "register" pointers in some places for speed -- RWCox.
   Date:     27 Feb 2003
 
+  Mod:      Use one array instead of array of arrays for matrix -- RWCox.
+  Date:     04 Mar 2005
+
 */
 
 /*---------------------------------------------------------------------------*/
@@ -42,12 +45,16 @@
   Define matrix and vector data structures.
 */
 
+#include "machdep.h"  /* 07 Mar 2005: to get DONT_USE_MATRIX_MAT */
 
 typedef struct matrix
 {
   int      rows;
   int      cols;
   float  ** elts;
+#ifndef DONT_USE_MATRIX_MAT
+  float   * mat ;  /* 04 Mar 2005 */
+#endif
 }  matrix;
 
 

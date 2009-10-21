@@ -991,3 +991,23 @@
   * modified plug_maxima.[ch]:
       - added 'Sphere Values' and 'Dicom Coords' interface options
 
+16 Feb 2005:
+  * modified 3dROIstats, added the -mask_f2short option
+
+23 Feb 2005:
+  * merged Kate's, Mark's and my own nifti code, and made other revisions
+  * removed contents of nifti directory, and re-created it with the source
+    tree from sourceforge.net
+  * modified Makefile.INCLUDE to deal with the new nifti directories
+  * modifed thd_analyzeread.c and thd_niftiread.c not to use include directories
+      - they now have explicit targets in Makefile.INCLUDE
+
+07 Mar 2005:
+  * modified thd_coords.c: added THD_3dind_to_3dmm_no_wod()
+  * modified 3ddata.h: added THD_3dind_to_3dmm_no_wod declaration
+  * modified plug_maxima.[ch]:
+      - output appropriate coords via new THD_3dind_to_3dmm_no_wod()
+      - added new debug output
+      - changed default separation to 4 voxels
+      - added gr_fac for printing data values in debug mode
+

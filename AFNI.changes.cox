@@ -5312,3 +5312,54 @@
 
 07 Feb 2005
  * Fixed bug in Deconvolve.c with removing mean of -stim_base columns.
+
+16 Feb 2005
+ * Modified 3dhistog.c to remove -thr stuff and add -doall stuff.
+
+18 Feb 2005
+ * Modified afni_driver.c, imseq.c, and afni_graph.c to add "keypress="
+     modifiers to the OPEN_WINDOW commands for driving AFNI.
+
+22 Feb 2005
+ * Modified 3dTshift.c and to3d.c to have new 'alt+z2' option.
+ * New program 3dMedianFilter.
+ * Added I:*.1D stuff to 3dcalc.c.
+
+23 Feb 2005
+ * Modified to3d.c to accept -Torg option.  Also to thd_info.c to print
+     out the ttorg field.
+
+24 Feb 2005
+ * Modified 3dmaskave.c to have -max option.
+ * Modified niml/ functions to generalize NI_group elements so that any
+     element name is OK, provided attribute ni_form="group" is present.
+
+25 Feb 2005
+ * Add -min option to 3dmaskave.c.
+ * Fixed memory leak in niml_dtable.c (forgot to free second copies of strings).
+ * New niml_registry.c stuff, for allocating 'registered' structs.
+
+26 Feb 2005
+ * Modified thd_ctfread.c to seek backwards from end rather than forwards; this
+     makes it work with the new CTF svl format.
+
+28 Feb 2005
+ * Oops -- used '&&' instead of '||' in byte swap test in new thd_ctfread.c.
+ * More surgery on NIML registry and Htables.
+
+01 Mar 2005
+ * Modified matrix.c and matrix_f.c to use BLAS-1 on the SGI Altix.
+
+02 Mar 2005
+ * Further matrix.c changes for BLAS-1 on Solaris.
+
+04 Mar 2005
+ * Further matrix.c changes: store as one array, not an array-of-arrays,
+     except on Solaris, where the array-of-array approach is faster(!?).
+
+07 Mar 2005
+ * Ooops.  Have to '#include <machdep.h>' into matrix_f.h to make sure
+     DONT_USE_MATRIX_MAT is defined.
+
+08 Mar 2005
+ * Including retroicor stuff from Fred Tam.

@@ -54,14 +54,49 @@
             Added 'ipr' to matrix_print().
             Added USE_ALTIVEC stuff for Macs.
   Date:     03 Aug 2004
+
+  Mod:      Added USE_SCSLBLAS stuff for SGI Altix.
+  Date:     01 Mar 2005
 */
 
 #include <math.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include "matrix_f.h"
-#ifdef USE_ALTIVEC
+
+/*---------------------------------------------------------------------*/
+/** Vectorization macros:
+   - DOTP(n,x,y,z) computes the n-long dot product of vectors
+       x and y and puts the result into the place pointed to by z.
+   - VSUB(n,x,y,z) computes vector x-y into vector z.
+   - These are intended to be the fast method for doing these things. **/
+/*---------------------------------------------------------------------*/
+
+/* Solaris BLAS isn't used here because it is slower than
+   inline code for single precision, but faster for double. */
+
+#undef SETUP_BLAS  /* define this to use BLAS-1 functions */
+#undef DOTP
+#undef VSUB
+
+#if defined(USE_ALTIVEC)                             /** Apple **/
+
 # include <Accelerate/Accelerate.h>
+# define DOTP(n,x,y,z) dotpr( x,1 , y,1 , z , n )
+# define VSUB(n,x,y,z) vsub( x,1 , y,1 , z,1 , n )
+
+#elif defined(USE_SCSLBLAS)                          /** SGI Altix **/
+
+# include <scsl_blas.h>
+# define SETUP_BLAS
+
+#endif  /* vectorization special cases */
+
+/* single precision BLAS-1 functions */
+
+#ifdef SETUP_BLAS
+# define DOTP(n,x,y,z) *(z)=sdot(n,x,1,y,1)
+# define VSUB(n,x,y,z) (memcpy(z,x,sizeof(float)*n),saxpy(n,-1.0f,y,1,z,1))
 #endif
 
 /*---------------------------------------------------------------------------*/
@@ -86,6 +121,9 @@ void matrix_initialize (matrix * m)
   m->rows = 0;
   m->cols = 0;
   m->elts = NULL;
+#ifndef DONT_USE_MATRIX_MAT
+  m->mat  = NULL;
+#endif
 }
 
 
@@ -96,21 +134,19 @@ void matrix_initialize (matrix * m)
 
 void matrix_destroy (matrix * m)
 {
-  int i, rows;
-
-
-  if (m->elts != NULL)
-    {
-      rows = m->rows;
-      for (i = 0;  i < rows;  i++)
-	if (m->elts[i] != NULL)
-	  {  free (m->elts[i]);   m->elts[i] = NULL; }
-      free (m->elts);
-    }
-
+  if (m->elts != NULL){
+#ifdef DONT_USE_MATRIX_MAT
+    int i ;
+    for( i=0 ; i < m->rows ; i++ )
+      if( m->elts[i] != NULL ) free(m->elts[i]) ;
+#endif
+    free(m->elts) ;
+  }
+#ifndef DONT_USE_MATRIX_MAT
+  if( m->mat  != NULL) free (m->mat) ;
+#endif
   matrix_initialize (m);
 }
-
 
 /*---------------------------------------------------------------------------*/
 /*!
@@ -134,16 +170,18 @@ void matrix_create (int rows, int cols, matrix * m)
   if (m->elts == NULL)
     matrix_error ("Memory allocation error");
 
+#ifdef DONT_USE_MATRIX_MAT
+  for (i = 0;  i < rows;  i++){
+    m->elts[i] = (float *) calloc (sizeof(float) , cols);
+    if (m->elts[i] == NULL) matrix_error ("Memory allocation error");
+  }
+#else
+  m->mat  = (float *) calloc( sizeof(float) , rows*cols ) ;
+  if( m->mat == NULL )
+    matrix_error ("Memory allocation error");
   for (i = 0;  i < rows;  i++)
-    {
-      m->elts[i] = (float  *) malloc (sizeof(float ) * cols);
-      if (m->elts[i] == NULL)
-	matrix_error ("Memory allocation error");
-    }
-
-  for (i = 0;  i < rows;  i++)
-    for (j = 0;  j < cols;  j++)
-      m->elts[i][j] = 0.0;
+     m->elts[i] = m->mat + (i*cols) ;   /* 04 Mar 2005: offsets into mat */
+#endif
 }
 
 
@@ -776,16 +814,9 @@ void vector_create (int dim, vector * v)
   v->dim = dim;
   if (dim < 1)  return;
 
-  v->elts = (float  *) malloc (sizeof(float ) * dim);
+  v->elts = (float  *) calloc (sizeof(float) , dim);
   if (v->elts == NULL)
     matrix_error ("Memory allocation error");
-
-#if 0
-  for (i = 0;  i < dim;  i++)
-     v->elts[i] = 0.0;
-#else
-  memset( v->elts , 0 , sizeof(float )*dim ) ;
-#endif
 }
 
 /*---------------------------------------------------------------------------*/
@@ -966,7 +997,7 @@ void vector_multiply (matrix a, vector b, vector * c)
   register int i, j;
   register float  sum ;
   register float  *bb ;
-#ifdef USE_ALTIVEC
+#ifdef DOTP
   register float **aa , *cc ;
 #else
   register float *aa ;
@@ -987,13 +1018,13 @@ void vector_multiply (matrix a, vector b, vector * c)
 
   bb = b.elts ;
 
-#ifdef USE_ALTIVEC
+#ifdef DOTP
   aa = a.elts ; cc = c->elts ;
   i = rows%2 ;
-  if( i == 1 ) dotpr( aa[0],1 , bb,1 , cc , cols ) ;
+  if( i == 1 ) DOTP(cols,aa[0],bb,cc) ;
   for( ; i < rows ; i+=2 ){
-    dotpr( aa[i]  ,1 , bb,1 , cc+i     , cols ) ;
-    dotpr( aa[i+1],1 , bb,1 , cc+(i+1) , cols ) ;
+    DOTP(cols,aa[i]  ,bb,cc+i    ) ;
+    DOTP(cols,aa[i+1],bb,cc+(i+1)) ;
   }
 #else
 
@@ -1021,7 +1052,7 @@ void vector_multiply (matrix a, vector b, vector * c)
     }
 #endif /* UNROLL_VECMUL */
 
-#endif /* USE_ALTIVEC */
+#endif /* DOTP */
 
 }
 
@@ -1036,7 +1067,7 @@ float  vector_multiply_subtract (matrix a, vector b, vector c, vector * d)
   register int rows, cols;
   register int i, j;
   register float  *bb ;
-#ifdef USE_ALTIVEC
+#ifdef DOTP
   float qsum,sum , **aa , *dd,*cc,*ee ;
 #else
   register float qsum,sum, *aa ;
@@ -1061,17 +1092,17 @@ float  vector_multiply_subtract (matrix a, vector b, vector c, vector * d)
 
   qsum = 0.0f ; bb = b.elts ;
 
-#ifdef USE_ALTIVEC
+#ifdef DOTP
   aa = a.elts ; dd = d->elts ; cc = c.elts ;
   ee = (float *)malloc(sizeof(float)*rows) ;
   i  = rows%2 ;
-  if( i == 1 ) dotpr( aa[0],1 , bb,1 , ee , cols ) ;
+  if( i == 1 ) DOTP(cols,aa[0],bb,ee) ;
   for( ; i < rows ; i+=2 ){
-    dotpr( aa[i]  ,1 , bb,1 , ee+i     , cols ) ;
-    dotpr( aa[i+1],1 , bb,1 , ee+(i+1) , cols ) ;
+    DOTP(cols,aa[i]  ,bb,ee+i    ) ;
+    DOTP(cols,aa[i+1],bb,ee+(i+1)) ;
   }
-  vsub( cc,1 , ee,1 , dd,1 , rows ) ;
-  dotpr( dd,1 , dd,1 , &qsum , rows ) ;
+  VSUB(rows,cc,ee,dd) ;
+  DOTP(rows,dd,dd,&qsum) ;
   free((void *)ee) ;
 #else
 
@@ -1099,7 +1130,7 @@ float  vector_multiply_subtract (matrix a, vector b, vector c, vector * d)
   }
 #endif /* UNROLL_VECMUL */
 
-#endif /* USE_ALTIVEC */
+#endif /* DOTP */
 
   return qsum ;  /* 26 Feb 2003 */
 }

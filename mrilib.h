@@ -151,6 +151,10 @@ static float MRI_TYPE_maxval[7] =
 
 /*! I suppose that the next C makes this pleonastic. */
 
+#ifdef _SUNPERF_COMPLEX
+# define TYPEDEF_complex
+#endif
+
 #ifndef TYPEDEF_complex
 #define TYPEDEF_complex
 typedef struct complex { float r , i ; } complex ;
@@ -800,6 +804,8 @@ extern MRI_IMAGE * mri_transpose( MRI_IMAGE * ) ;
 #define FILT_FFT_WRAPAROUND  1
 
 extern MRI_IMAGE * mri_filt_fft( MRI_IMAGE * im , float,int,int,int ) ;
+
+extern MRI_IMAGE *mri_medianfilter( MRI_IMAGE *, float, byte *, int ) ;  /* 22 Feb 2005 */
 
 extern MRI_IMAGE * mri_cat2D( int,int,int,void *,MRI_IMARR *) ;
 extern MRI_IMARR * mri_uncat2D( int , int , MRI_IMAGE * im ) ; /* 09 May 2000 */
