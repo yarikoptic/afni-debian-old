@@ -65,7 +65,7 @@ PROGRAMS = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge count   
            3dSpatNorm Imon fftest serial_helper 3dDTeig 3dDWItoDT 3dWarpDrive   \
            nifti_tool nifti_stats nifti1_test whereami plugout_drive            \
            3dMedianFilter 3dretroicor 3dAFNItoNIML 3dAFNItoRaw im2niml          \
-           DTIStudioFibertoSegments Dimon                                       \
+           DTIStudioFibertoSegments Dimon 3dLocalstat                           \
            $(EXTRAS)
 
 PROGRAMS_NOPLUG = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge      \
@@ -88,7 +88,7 @@ PROGRAMS_NOPLUG = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge  
                   3dThreetoRGB Ifile 3dresample 3dAutobox 3dLRflip 3dANALYZEtoAFNI  \
                   dicom_hdr 3dDespike dicom_to_raw file_tool rotcom 3dUniformize    \
                   3dWarp nicat 3dSpatNorm 3dWarpDrive 3dretroicor ge_header         \
-                  3dAFNItoRaw DTIStudioFibertoSegments im2niml                      \
+                  3dAFNItoRaw DTIStudioFibertoSegments im2niml 3dLocalstat          \
                   $(EXTRAS) Imon nifti_tool nifti_stats nifti1_test Dimon
 
 # For CYGWIN (look for "exe" to find various places below)
@@ -105,7 +105,7 @@ PROGRAMS_EXE = afni.exe to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge 
                3drotate 3dvolreg 3dpc 3dfractionize 1dplot adwarp imupsam         \
                3dIntracranial 24swap 3dTsmooth RSFgen float_scan 1dtranspose      \
                3dFourier 3dNotes 3dROIstats 1deval 3dStatClust 1ddot 3dMax        \
-	       3dDWItoDT 3dTstat 3dDTeig 3dmaskdump 3dretroicor 3daxialize        \
+               3dDWItoDT 3dTstat 3dDTeig 3dmaskdump 3dretroicor 3daxialize        \
                3dTshift 3dDetrend 1dfft 1dcat 3drename 1dnorm afni_vcheck 3ddot   \
                3dWavelets 3dfim+ imcutup 3dWinsor 3dZeropad 3dTagalign 3dUndump   \
                3dMean 3dAttribute cat_matvec 3dOverlap 3dClipLevel 3dZregrid      \
@@ -122,7 +122,7 @@ PROGRAMS_EXE = afni.exe to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge 
 SCRIPTS = @4Daverage @CommandGlobb @GetAfniOrient @DTI_studio_reposition @GetAfniPrefix @NoExt @UpdateAfni @RenamePanga \
           @GetAfniView @SUMA_AlignToExperiment @SUMA_Make_Spec_FS @Purify_1D      \
           @SUMA_Make_Spec_SF @make_stim_file @Align_Centers suma_change_spec      \
-          @CheckForAfniDset @auto_tlrc
+          @CheckForAfniDset @clip_volume @parse_afni_name @auto_tlrc
 
 LIBHEADERS = mrilib.h cdflib.h mcw_glob.h 3ddata.h thd_maker.h thd_iochan.h       \
              editvol.h cs.h eispack.h killer.h vecmat.h machdep.h tagset.h        \
@@ -411,6 +411,10 @@ dsetdup:dsetdup.o
 3dTstat:3dTstat.o
 	$(RM) $@
 	$(CC) -o 3dTstat 3dTstat.o $(LFLAGS) $(LLIBS)
+
+3dLocalstat:3dLocalstat.o
+	$(RM) $@
+	$(CC) -o 3dLocalstat 3dLocalstat.o $(LFLAGS) $(LLIBS)
 
 3dDTeig:3dDTeig.o libmri.a
 	$(RM) $@
@@ -1036,6 +1040,12 @@ cleann:
 cleaner:clean
 	$(RM) *.a $(PROGRAMS)
 
+cleanest:
+	$(RM) `find . -name \*.o -print`
+	$(RM) `find . -name \*.so -print`
+	$(RM) `find . -name \*.a -print`
+	$(RM) $(PROGRAMS)
+
 # CYGWIN: remove the fixed plugins as well
 
 clean_exe:
@@ -1215,7 +1225,7 @@ MRI_OBJS = mri_cfft.o mri_complex_arith.o mri_fft_complex.o mri_free.o    \
            mri_read_stuff.o mri_flip3D.o mri_warp3D.o mri_fromstring.o         \
            ge4_header.o mri_equal.o mri_scalize.o mri_isgray.o mri_read_mpeg.o \
            mri_entropy16.o mri_symbolize.o mri_colorsetup.o mri_warp3D_align.o \
-           mri_medianfilter.o
+           mri_medianfilter.o mri_nstats.o
 
 CDF_OBJS = cdf_00.o cdf_01.o cdf_02.o cdf_03.o cdf_04.o cdf_05.o \
            cdf_06.o cdf_07.o cdf_08.o cdf_09.o cdf_10.o cdf_11.o \
@@ -1257,7 +1267,7 @@ THD_OBJS = thd_atr.o thd_dsetto1D.o thd_initalldir.o thd_reconpar.o \
            thd_analyzeread.o thd_ctfread.o thd_1Ddset.o thd_getorient.o   \
            thd_3Ddset.o thd_mattor.o thd_niftiread.o thd_mpegread.o       \
            thd_brainormalize.o thd_opentcat.o thd_nimlatr.o thd_dsetatr.o \
-           thd_logafni.o
+           thd_logafni.o thd_dset_nbhd.o
 
 # these are now included in NIML
 

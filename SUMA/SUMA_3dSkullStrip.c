@@ -98,11 +98,19 @@ void usage_SUMA_BrainWrap (SUMA_GENERIC_ARGV_PARSE *ps)
                "     -mask_vol: Output a mask volume instead of a skull-stripped\n"
                "                volume.\n"
                "                The mask volume containes:\n"
-               "                0 : outside the brain\n"
-               "                1 : voxels near brain surface on the outside.\n"
-               "                2 : voxels containing a node of the brain surface.\n"
-               "                3 : voxels near brain surface on the inside.\n"
-               "                4 : voxels inside the brain.\n"
+               "                 0: Voxel outside surface\n"
+               "                 1: Voxel just outside the surface. This means the voxel\n"
+               "                    center is outside the surface but inside the \n"
+               "                    bounding box of a triangle in the mesh. \n"
+               "                 2: Voxel intersects the surface (a triangle), but center\n"
+               "                    lies outside.\n"
+               "                 3: Voxel contains a surface node.\n"
+               "                 4: Voxel intersects the surface (a triangle), center lies\n"
+               "                    inside surface. \n"
+               "                 5: Voxel just inside the surface. This means the voxel\n"
+               "                    center is inside the surface and inside the \n"
+               "                    bounding box of a triangle in the mesh. \n"
+               "                 6: Voxel inside the surface. \n"
                "     -spat_norm: (Default) Perform spatial normalization first.\n"
                "                 This is a necessary step unless the volume has\n"
                "                 been 'spatnormed' already.\n"
@@ -1270,7 +1278,7 @@ int main (int argc,char *argv[])
       if (Opt->PercInt >= 0) {
          if (Opt->debug) fprintf(SUMA_STDERR,"%s: Checking for self intersection...\n", FuncName);
          nseg = 30 * Opt->Icold * Opt->Icold; /* number of segments in Ico */
-         nint = SUMA_isSelfIntersect(SO, (int)(Opt->PercInt * nseg / 100.0));
+         nint = SUMA_isSelfIntersect(SO, (int)(Opt->PercInt * nseg / 100.0), NULL);
          if (nint < 0) {
             SUMA_SL_Err("Error in SUMA_isSelfIntersect. Ignoring self intersection test.");
             nint = 0;

@@ -173,8 +173,10 @@ extern void MCW_scale_to_max( int,int,int, int,void * );
 extern float MCW_vol_amax( int,int,int , int,void *) ;
 
 /* 11 Sept 1996 */
-extern MCW_cluster * MCW_build_mask (int, int, int,
-                                     float, float, float, float);
+extern MCW_cluster * MCW_build_mask(float, float, float, float);
+
+extern MCW_cluster * MCW_spheremask( float,float,float,float ) ;
+extern MCW_cluster * MCW_rectmask  ( float,float,float,float,float,float ) ;
 
 /* 16 June 1998 */
 extern void MCW_erode_clusters (int, int, int, float, float, float, int,
@@ -527,5 +529,17 @@ extern void EDIT_filter_volume (int, int, int, float, float, float,
      EDIT_dset_items( (ds), ADN_brick_keywords_append_one+(iv), (str), ADN_none )
 
 /*------------------------------------------------------------------*/
+/* 22 Aug 2005: neighborhood/local operations. */
+
+extern MRI_IMAGE * THD_get_dset_nbhd( THD_3dim_dataset *, int, byte *,
+                                      int, int, int, MCW_cluster *    ) ;
+
+extern MRI_IMAGE * mri_get_nbhd( MRI_IMAGE *, byte *,
+                                 int, int, int, MCW_cluster * ) ;
+
+extern MRI_IMAGE * mri_localstat( MRI_IMAGE *, byte *, MCW_cluster *, int ) ;
+
+extern THD_3dim_dataset * THD_localstat( THD_3dim_dataset *, byte *,
+                                         MCW_cluster *, int, int *) ;
 
 #endif /* _MCW_EDITVOL_ */

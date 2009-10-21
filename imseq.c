@@ -3443,7 +3443,7 @@ ENTRY("ISQ_saver_CB") ;
             }
             if( dbg ) fprintf(stderr,"  flip overlay?\n") ;
             if( tim != NULL )
-               ovim = mri_flippo( ISQ_TO_MRI_ROT(seq->opt.rot), seq->opt.mirror, tim );
+              ovim = mri_flippo( ISQ_TO_MRI_ROT(seq->opt.rot), seq->opt.mirror, tim );
             if( tim != ovim ) KILL_1MRI(tim) ;
          }
 
@@ -3468,9 +3468,9 @@ ENTRY("ISQ_saver_CB") ;
          /* if needed, convert from indices to RGB */
 
          if( flim->kind == MRI_short ){
-            if( dbg ) fprintf(stderr,"  convert to RGB\n") ;
-            tim = ISQ_index_to_rgb( seq->dc , 0 , flim ) ;
-            mri_free(flim) ; flim = tim ;
+           if( dbg ) fprintf(stderr,"  convert to RGB\n") ;
+           tim = ISQ_index_to_rgb( seq->dc , 0 , flim ) ;
+           mri_free(flim) ; flim = tim ;
          }
 
          /* 26 Mar 2002: zoom out, and geometry overlay, maybe */
@@ -3765,7 +3765,7 @@ ENTRY("ISQ_saver_CB") ;
                KILL_1MRI(tim) ;
             }
             if( tim != NULL )
-               ovim = mri_flippo( ISQ_TO_MRI_ROT(seq->opt.rot) , seq->opt.mirror , tim ) ;
+              ovim = mri_flippo( ISQ_TO_MRI_ROT(seq->opt.rot), seq->opt.mirror, tim ) ;
             if( tim != ovim ) KILL_1MRI(tim) ;
          }
 
@@ -5412,9 +5412,9 @@ ENTRY("ISQ_but_disp_CB") ;
 
    if( ! ISQ_REALZ(seq) || seq->dialog != NULL ) EXRETURN ;
 
-   for( ib=0 ; ib < NBUTTON_BOT-1 ; ib++ )        /* turn off buttons  */
-      if( ISQ_but_bot_dial[ib] == True )          /* that also want to */
-        SENSITIZE( seq->wbut_bot[ib] , False ) ;  /* use seq->dialog   */
+   for( ib=0 ; ib < NBUTTON_BOT-1 ; ib++ )       /* turn off buttons  */
+     if( ISQ_but_bot_dial[ib] == True )          /* that also want to */
+       SENSITIZE( seq->wbut_bot[ib] , False ) ;  /* use seq->dialog   */
 
    seq->dialog = XtVaCreatePopupShell(
                     "menu" , xmDialogShellWidgetClass , seq->wtop ,
@@ -7727,7 +7727,7 @@ ENTRY("ISQ_wbar_menu_CB") ;
 
    else if( w == seq->wbar_sharp_but ){
       MCW_choose_integer( seq->wimage , "Sharpen Factor" ,
-                          1 , 9 , (int)(10*seq->sharp_fac) ,
+                          1 , 9 , (int)(10.01*seq->sharp_fac) ,
                           ISQ_set_sharp_CB , seq ) ;
    }
 
@@ -11083,7 +11083,7 @@ ENTRY("ISQ_handle_keypress") ;
        int nn=seq->im_nr , nt=seq->status->num_total ;
        if( nt > 1 ){
          if( key == '<' ){ nn--; if( nn <  0 ) nn = nt-1; }
-         else               { nn++; if( nn >= nt) nn = 0   ; }
+         else            { nn++; if( nn >= nt) nn = 0   ; }
 #if 1
          ISQ_redisplay( seq , nn , isqDR_display ) ;
 #else
@@ -11133,7 +11133,7 @@ ENTRY("ISQ_handle_keypress") ;
      }
      break ;
 
-           /* 17 May 2002: do image fraction */
+     /* 17 May 2002: do image fraction */
 
      case 'i':
      case 'I':{
@@ -11145,6 +11145,75 @@ ENTRY("ISQ_handle_keypress") ;
        ISQ_arrow_CB( seq->arrow[NARR_FRAC] , seq ) ;
        busy=0; RETURN(1) ;
      }
+     break ;
+
+     /* 22 Aug 2005: 'm' == Min-to-Max toggle */
+
+     case 'm':{
+       if( seq->dialog_starter==NBUT_DISP ){XBell(seq->dc->display,100); break;}
+       if( seq->opt.scale_range != ISQ_RNG_MINTOMAX )
+         seq->opt.scale_range = ISQ_RNG_MINTOMAX ;
+       else
+         seq->opt.scale_range = ISQ_RNG_02TO98 ;
+
+       ISQ_redisplay( seq , -1 , isqDR_display ) ;
+       busy=0 ; RETURN(1) ;
+     }
+     break ;
+
+     /* 22 Aug 2005: 'l' == LR mirror toggle */
+
+     case 'l':{
+       if( seq->dialog_starter==NBUT_DISP ){XBell(seq->dc->display,100); break;}
+       seq->opt.mirror = ! seq->opt.mirror ;
+       ISQ_redisplay( seq , -1 , isqDR_display ) ;
+       busy=0 ; RETURN(1) ;
+     }
+     break ;
+
+     /* 22 Aug 2005: 'a' = fix aspect ratio */
+
+     case 'a':{
+       int bx = seq->opt.free_aspect ; seq->opt.free_aspect = 0 ;
+       ISQ_reset_dimen( seq, seq->last_width_mm, seq->last_height_mm ) ;
+       seq->opt.free_aspect = bx ;
+       busy=0 ; RETURN(1) ;
+     }
+     break ;
+
+     /* 23 Aug 2005: 's' = sharpen */
+
+     case 's':{
+       if( seq->dialog_starter==NBUT_DISP ){XBell(seq->dc->display,100); break;}
+       if( !(seq->opt.improc_code & ISQ_IMPROC_SHARP) ){
+         seq->opt.improc_code |= ISQ_IMPROC_SHARP ;
+       } else {
+         int ss = (int)(10.01*seq->sharp_fac)+1 ;
+         if( ss > 9 ) ss = 1 ;
+         seq->sharp_fac = 0.1 * ss ;
+       }
+       ISQ_redisplay( seq , -1 , isqDR_display ) ;
+       busy=0 ; RETURN(1) ;
+     }
+     break ;
+
+     /* 23 Aug 2005: open some windows */
+
+     case 'D':
+       ISQ_but_disp_CB( seq->wbut_bot[NBUT_DISP] , seq , NULL ) ;
+       busy=0 ; RETURN(1) ;
+     break ;
+
+     case 'M':
+       if( seq->status->num_total > 1 )
+         ISQ_montage_CB( seq->wbut_bot[NBUT_MONT] , seq , NULL ) ;
+       busy=0 ; RETURN(1) ;
+     break ;
+
+     case 'S':
+       if( (seq->opt.save_one || seq->status->num_total > 1) )
+         ISQ_but_save_CB( seq->wbut_bot[NBUT_SAVE] , seq , NULL ) ;
+       busy=0 ; RETURN(1) ;
      break ;
 
    } /* end of switch on character typed */

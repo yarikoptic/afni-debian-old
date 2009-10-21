@@ -10,7 +10,7 @@
  */
 
 /*----------------------------------------------------------------------
-  $Id: plug_crender.c,v 1.28 2005/06/20 14:56:27 rwcox Exp $
+  $Id: plug_crender.c,v 1.29 2005/08/19 21:18:47 rwcox Exp $
   ----------------------------------------------------------------------
 */
 
@@ -4712,7 +4712,7 @@ ENTRY( "RCREND_cutout_blobs" );
 
             } else {                                     /* dilation */
 
-              MCW_cluster * mask = MCW_build_mask( nx,ny,nz, adx,ady,adz, par ) ;
+              MCW_cluster * mask = MCW_build_mask( adx,ady,adz, par ) ;
               int mnum = mask->num_pt , pp,ip,jp,kp ;
               short * mi = mask->i , * mj = mask->j , * mk = mask->k ;
               byte * keep = calloc(nxyz,sizeof(byte)) ;
