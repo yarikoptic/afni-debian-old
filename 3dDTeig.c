@@ -36,6 +36,7 @@ int main( int argc , char * argv[] )
    }
 
    mainENTRY("3dDTeig main"); machdep(); AFNI_logger("3dDTeig",argc,argv);
+   PRINT_VERSION("3dDTeig") ;
 
    nopt = 1 ;
    nbriks = 14 ;
@@ -133,7 +134,7 @@ int main( int argc , char * argv[] )
 
       tross_Make_History( "3dDTeig" , argc,argv , new_dset ) ;
       DSET_write( new_dset ) ;
-      printf("--- Output dataset: %s\n",DSET_BRIKNAME(new_dset)) ;
+      fprintf(stderr,"--- Output dataset: %s\n",DSET_BRIKNAME(new_dset)) ;
    } else {
       fprintf(stderr,"*** Unable to compute output dataset!\n") ;
       exit(1) ;

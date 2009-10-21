@@ -288,7 +288,6 @@ void get_options
 
 
   /*-- addto the arglist, if user wants to --*/
-  machdep() ;
   { int new_argc ; char ** new_argv ;
     addto_args( argc , argv , &new_argc , &new_argv ) ;
     if( new_argv != NULL ){ argc = new_argc ; argv = new_argv ; }
@@ -300,6 +299,7 @@ void get_options
 
   
   /*----- add to program log -----*/
+  mainENTRY("3dConvolve"); machdep(); PRINT_VERSION("3dConvolve");
   AFNI_logger (PROGRAM_NAME,argc,argv); 
 
   
@@ -1853,12 +1853,12 @@ void write_ts_array
 
 
   /*----- write afni data set -----*/
-  printf ("--- Writing 3d+time dataset into %s\n",DSET_BRIKNAME(new_dset)) ;
 
   (void) EDIT_dset_items( new_dset , ADN_brick_fac , fbuf , ADN_none ) ;
 
   THD_load_statistics (new_dset);
   THD_write_3dim_dataset (NULL, NULL, new_dset, True);
+  fprintf (stderr,"-- Output 3D+time dataset into %s\n",DSET_BRIKNAME(new_dset)) ;
 
   /*----- deallocate memory -----*/   
   THD_delete_3dim_dataset (new_dset, False);   new_dset = NULL ;

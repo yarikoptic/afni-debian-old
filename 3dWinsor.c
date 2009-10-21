@@ -51,6 +51,7 @@ int main( int argc , char * argv[] )
    }
 
    mainENTRY("3dWinsor main"); machdep(); AFNI_logger("3dWinsor",argc,argv);
+   PRINT_VERSION("3dWinsor") ;
 
    /*-- scan command line --*/
 
@@ -165,7 +166,7 @@ int main( int argc , char * argv[] )
 
    tross_Copy_History( inset , outset ) ;
    tross_Make_History( "3dWinsor" , argc,argv , outset ) ;
-   fprintf(stderr,"++ output dataset: %s\n",DSET_BRIKNAME(outset)) ;
    DSET_write(outset) ;
+   fprintf(stderr,"++ output dataset: %s\n",DSET_BRIKNAME(outset)) ;
    exit(0) ;
 }

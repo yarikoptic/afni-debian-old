@@ -112,6 +112,7 @@ int main( int argc , char *argv[] )
    if( argc < 2 || strncmp(argv[1],"-help",5) == 0 ){ VL_syntax() ; exit(0); }
 
    mainENTRY("3dvolreg main") ; machdep() ; AFNI_logger("3dvolreg",argc,argv) ;
+   PRINT_VERSION("3dvolreg") ;
 
    /*-- 20 Apr 2001: addto the arglist, if user wants to [RWCox] --*/
 
@@ -987,9 +988,9 @@ int main( int argc , char *argv[] )
 
    /*-- save new dataset to disk --*/
 
-   if( VL_verbose )
-     fprintf(stderr,"++ Writing dataset to disk in %s",DSET_BRIKNAME(new_dset));
    DSET_write(new_dset) ;
+   if( VL_verbose )
+     fprintf(stderr,"++ Wrote dataset to disk in %s",DSET_BRIKNAME(new_dset));
    if( VL_verbose ) fprintf(stderr,"\n") ;
 
    /*-- save movement parameters to disk --*/

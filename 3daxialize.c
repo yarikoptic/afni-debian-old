@@ -75,6 +75,7 @@ int main( int argc , char * argv[] )
    }
 
    mainENTRY("3daxialize main"); machdep(); AFNI_logger("3daxialize",argc,argv);
+   PRINT_VERSION("3daxialize") ;
 
    /*- scan options -*/
 
@@ -270,9 +271,9 @@ int main( int argc , char * argv[] )
 
    /*- do the output header -*/
 
-   if( verbose ) printf("++ Writing new dataset .HEAD\n") ;
-
    DSET_load( new_dset ) ; THD_load_statistics( new_dset ) ;
    THD_write_3dim_dataset( NULL,NULL , new_dset , False ) ;
+   if( verbose ) fprintf(stderr,"++ Wrote new dataset: %s\n",DSET_BRIKNAME(new_dset)) ;
+
    exit(0) ;
 }

@@ -99,6 +99,7 @@ int main( int argc , char * argv[] )
    }
 
    mainENTRY("3dTstat main"); machdep(); AFNI_logger("3dTstat",argc,argv);
+   PRINT_VERSION("3dTstat");
 
    nopt = 1 ;
    nbriks = 0 ;
@@ -271,8 +272,8 @@ int main( int argc , char * argv[] )
    }
 
    if( DSET_NUM_TIMES(old_dset) < 2 ){
-      printf("--- Input dataset is not 3D+time!\n"
-             "--- Adding an artificial time axis with dt=1.0\n" ) ;
+      fprintf(stderr,"--- Input dataset is not 3D+time!\n"
+                     "--- Adding an artificial time axis with dt=1.0\n" ) ;
       EDIT_dset_items( old_dset ,
                           ADN_ntt    , DSET_NVALS(old_dset) ,
                           ADN_ttorg  , 0.0 ,
@@ -322,7 +323,7 @@ int main( int argc , char * argv[] )
         }
       }
       DSET_write( new_dset ) ;
-      printf("--- Output dataset %s\n",DSET_BRIKNAME(new_dset)) ;
+      fprintf(stderr,"--- Output dataset %s\n",DSET_BRIKNAME(new_dset)) ;
    } else {
       fprintf(stderr,"*** Unable to compute output dataset!\n") ;
       exit(1) ;

@@ -464,7 +464,7 @@ int main( int argc , char * argv[] )
 
    if( argc < 2 || strncmp(argv[1],"-help",4) == 0 ) BUCK_Syntax() ;
 
-   mainENTRY("3dbucket main"); machdep();
+   mainENTRY("3dbucket main"); machdep(); PRINT_VERSION("3dbucket") ;
 
    /*-- 20 Apr 2001: addto the arglist, if user wants to [RWCox] --*/
 
@@ -652,10 +652,10 @@ int main( int argc , char * argv[] )
    } /* end of loop over input datasets */
 
    if( ! BUCK_dry ){
-      if( BUCK_verb ) printf("-verb: loading statistics\n") ;
+      if( BUCK_verb ) fprintf(stderr,"-verb: loading statistics\n") ;
       THD_load_statistics( new_dset ) ;
-      if( BUCK_verb ) printf("-verb: writing output: %s\n",DSET_BRIKNAME(new_dset)) ;
       THD_write_3dim_dataset( NULL,NULL , new_dset , True ) ;
+      if( BUCK_verb ) fprintf(stderr,"-verb: wrote output: %s\n",DSET_BRIKNAME(new_dset)) ;
    }
 
    exit(0) ;

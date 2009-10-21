@@ -177,7 +177,7 @@ int main( int argc , char * argv[] )
       exit(0) ;
    }
 
-   mainENTRY("3dZregrid main"); machdep();
+   mainENTRY("3dZregrid main"); machdep(); PRINT_VERSION("3dZregrid") ;
    AFNI_logger("3dZregrid",argc,argv) ;
 
    /*-- scan options --*/
@@ -434,8 +434,7 @@ int main( int argc , char * argv[] )
 
    DSET_delete(dset) ; INTERP_destroy(imap) ; free(nfz) ; free(ofz) ;
 
-   if( verb ) fprintf(stderr,"\n++ Writing to dataset %s\n",DSET_BRIKNAME(nset)) ;
-
    DSET_write(nset) ;
+   if( verb ) fprintf(stderr,"\n++ Output dataset = %s\n",DSET_BRIKNAME(nset)) ;
    exit(0) ;
 }

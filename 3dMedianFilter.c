@@ -32,6 +32,7 @@ int main( int argc , char * argv[] )
    }
 
    mainENTRY("3dMedianFilter main"); machdep(); AFNI_logger("3dMedianFilter",argc,argv);
+   PRINT_VERSION("3dMedianFilter") ;
 
    /*-- scan command line --*/
 
@@ -101,7 +102,7 @@ int main( int argc , char * argv[] )
    EDIT_substitute_brick( outset , 0 , MRI_float , MRI_FLOAT_PTR(imout) ) ;
    tross_Copy_History( inset , outset ) ;
    tross_Make_History( "3dMedianFilter" , argc,argv , outset ) ;
-   fprintf(stderr,"++ output dataset: %s\n",DSET_BRIKNAME(outset)) ;
    DSET_write(outset) ;
+   fprintf(stderr,"++ output dataset: %s\n",DSET_BRIKNAME(outset)) ;
    exit(0) ;
 }

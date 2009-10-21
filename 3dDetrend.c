@@ -371,7 +371,7 @@ int main( int argc , char * argv[] )
 
    /*-- 20 Apr 2001: addto the arglist, if user wants to [RWCox] --*/
 
-   machdep() ; 
+   mainENTRY("3dDetrend main"); machdep() ; PRINT_VERSION("3dDetrend");
    { int new_argc ; char ** new_argv ;
      addto_args( argc , argv , &new_argc , &new_argv ) ;
      if( new_argv != NULL ){ argc = new_argc ; argv = new_argv ; }
@@ -559,7 +559,7 @@ int main( int argc , char * argv[] )
 
    /*-- done done done done --*/
 
-   if( DT_verb ) fprintf(stderr,"+++ Writing output dataset: %s\n",DSET_BRIKNAME(new_dset)) ;
    DSET_write(new_dset) ;
+   if( DT_verb ) fprintf(stderr,"+++ Wrote output dataset: %s\n",DSET_BRIKNAME(new_dset)) ;
    exit(0) ;
 }

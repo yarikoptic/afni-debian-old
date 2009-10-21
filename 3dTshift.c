@@ -291,6 +291,7 @@ int main( int argc , char *argv[] )
    if( argc < 2 || strcmp(argv[1],"-help") == 0 ) TS_syntax(NULL) ;
 
    mainENTRY("3dTshift main"); machdep(); AFNI_logger("3dTshift",argc,argv);
+   PRINT_VERSION("3dTshift");
 
    SHIFT_set_method( MRI_FOURIER ) ;
 
@@ -598,7 +599,7 @@ int main( int argc , char *argv[] )
       }
    }
 
-   if( TS_verbose ) printf("++ writing output: %s\n",DSET_BRIKNAME(TS_oset)) ;
    DSET_write( TS_oset ) ;
+   if( TS_verbose ) fprintf(stderr,"++ Wrote output: %s\n",DSET_BRIKNAME(TS_oset)) ;
    exit(0) ;
 }

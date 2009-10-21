@@ -827,7 +827,7 @@ int main( int argc , char * argv[] )
 
    /*-- 20 Apr 2001: addto the arglist, if user wants to [RWCox] --*/
 
-   mainENTRY("3dmerge main") ; machdep() ;
+   mainENTRY("3dmerge main") ; machdep() ; PRINT_VERSION("3dmerge") ;
 
    { int new_argc ; char ** new_argv ;
      addto_args( argc , argv , &new_argc , &new_argv ) ;
@@ -1233,11 +1233,11 @@ int main( int argc , char * argv[] )
 
     }  /* iv    End of iteration over sub-bricks */
 
-      if( ! MRG_be_quiet )
-         printf("-- Writing edited dataset: %s\n" , DSET_BRIKNAME(new_dset) ) ;
 
       THD_load_statistics( new_dset ) ;
       THD_write_3dim_dataset( NULL,NULL , new_dset , True ) ;
+      if( ! MRG_be_quiet )
+        fprintf(stderr,"-- Wrote edited dataset: %s\n" , DSET_BRIKNAME(new_dset) ) ;
       exit(0) ;
    }
 
@@ -1757,11 +1757,10 @@ int main( int argc , char * argv[] )
 
    /*** write to disk!!! ***/
 
-   if( ! MRG_be_quiet )
-      printf("-- Writing merged dataset: %s\n" , DSET_BRIKNAME(new_dset) ) ;
-
    tross_Make_History( "3dmerge" , argc , argv , new_dset ) ;
    THD_load_statistics( new_dset ) ;
    THD_write_3dim_dataset( NULL,NULL , new_dset , True ) ;
+   if( ! MRG_be_quiet )
+     fprintf(stderr,"-- Wrote merged dataset: %s\n" , DSET_BRIKNAME(new_dset) ) ;
    exit(0) ;
 }

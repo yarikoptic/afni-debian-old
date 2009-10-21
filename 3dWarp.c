@@ -167,6 +167,7 @@ int main( int argc , char * argv[] )
    /*-- startup mechanics --*/
 
    mainENTRY("3dWarp main"); machdep(); AFNI_logger("3dWarp",argc,argv);
+   PRINT_VERSION("3dWarp") ;
 
    THD_coorder_fill( my_getenv("AFNI_ORIENT") , &cord ) ;  /* 12 Mar 2004 */
 
@@ -520,8 +521,8 @@ int main( int argc , char * argv[] )
      THD_set_string_atr( outset->dblk , "TLRC_SPACE" , "MNI-152" ) ;
    }
 
-   if( verb ) fprintf(stderr,"\n++ Writing dataset: %s\n",DSET_BRIKNAME(inset));
    DSET_delete( inset ) ;
    DSET_write( outset ) ;
+   if( verb ) fprintf(stderr,"\n++ Wrote dataset: %s\n",DSET_BRIKNAME(outset));
    exit(0) ;
 }

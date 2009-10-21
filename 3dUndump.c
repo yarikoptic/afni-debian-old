@@ -159,7 +159,7 @@ int main( int argc , char * argv[] )
 
    /*-- 20 Apr 2001: addto the arglist, if user wants to [RWCox] --*/
 
-   mainENTRY("3dUndump main") ; machdep() ;
+   mainENTRY("3dUndump main") ; machdep() ; PRINT_VERSION("3dUndump");
 
    machdep() ;
    { int new_argc ; char ** new_argv ;
@@ -658,8 +658,8 @@ int main( int argc , char * argv[] )
 
    } /* end of loop over input files */
 
-   fprintf(stderr,"+++ Writing results to dataset %s\n",DSET_BRIKNAME(dset)) ;
    tross_Make_History( "3dUndump" , argc,argv , dset ) ;
    DSET_write(dset) ;
+   fprintf(stderr,"+++ Wrote results to dataset %s\n",DSET_BRIKNAME(dset)) ;
    exit(0) ;
 }

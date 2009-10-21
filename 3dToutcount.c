@@ -72,6 +72,7 @@ int main( int argc , char * argv[] )
    }
 
    mainENTRY("3dToutcount main"); machdep(); AFNI_logger("3dToutcount",argc,argv);
+   PRINT_VERSION("3dToutcount");
 
    iarg = 1 ;
    while( iarg < argc && argv[iarg][0] == '-' ){
@@ -293,8 +294,8 @@ int main( int argc , char * argv[] )
    }
 
    if( saveit && cc > 0 ){
-     fprintf(stderr,"++ output dataset: %s\n",DSET_BRIKNAME(oset)) ;
      DSET_write( oset ) ;
+     fprintf(stderr,"++ output dataset: %s\n",DSET_BRIKNAME(oset)) ;
    }
 
    if( do_range ){

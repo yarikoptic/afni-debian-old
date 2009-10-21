@@ -137,7 +137,7 @@ int main(int argc, char * argv[])
        exit(-1);
    }
 
-   mainENTRY("3dretroicor main");
+   mainENTRY("3dretroicor main"); PRINT_VERSION("3dretroicor") ;
    machdep();
    AFNI_logger("3dretroicor", argc, argv);
 
@@ -470,8 +470,8 @@ int main(int argc, char * argv[])
 
    /*-- write out new dataset --*/
 
-   fprintf(stderr,"++ output dataset: %s\n",DSET_BRIKNAME(new_dset)) ;
    DSET_write(new_dset);
+   fprintf(stderr,"++ output dataset: %s\n",DSET_BRIKNAME(new_dset)) ;
 
    /*-- done successfully!!! --*/
 

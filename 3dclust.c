@@ -214,6 +214,7 @@ int main( int argc , char * argv[] )
    }
 
    mainENTRY("3dclust main"); machdep(); AFNI_logger("3dclust",argc,argv);
+   PRINT_VERSION("3dclust") ;
 
    THD_coorder_fill( my_getenv("AFNI_ORIENT") , &CL_cord ) ; /* July 1997 */
    CL_read_opts( argc , argv ) ;
@@ -487,8 +488,9 @@ int main( int argc , char * argv[] )
 
         /* write dataset out */
 
-        fprintf(stderr,"++ Writing dataset %s\n",DSET_BRIKNAME(dset)) ;
-        DSET_write(dset) ; PURGE_DSET(dset) ; free(mmm) ;
+        DSET_write(dset) ;
+        fprintf(stderr,"++ Wrote dataset %s\n",DSET_BRIKNAME(dset)) ;
+        PURGE_DSET(dset) ; free(mmm) ;
       }
 
       /** sort clusters by size, to make a nice report **/

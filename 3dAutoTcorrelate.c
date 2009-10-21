@@ -63,7 +63,7 @@ int main( int argc , char *argv[] )
       exit(0) ;
    }
 
-   mainENTRY("3dAutoTcorrelate main"); machdep();
+   mainENTRY("3dAutoTcorrelate main"); machdep(); PRINT_VERSION("3dAutoTcorrelate");
    AFNI_logger("3dAutoTcorrelate",argc,argv);
 
    /*-- option processing --*/
@@ -256,7 +256,8 @@ int main( int argc , char *argv[] )
 
    /* finito */
 
-   fprintf(stderr,"++ writing output: %s",DSET_BRIKNAME(cset)) ;
 
-   DSET_write(cset) ; fprintf(stderr,"\n") ; exit(0) ;
+   DSET_write(cset) ;
+   fprintf(stderr,"++ Wrote output: %s\n",DSET_BRIKNAME(cset)) ;
+   exit(0) ;
 }

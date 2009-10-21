@@ -72,6 +72,7 @@ int main( int argc , char * argv[] )
    }
 
    mainENTRY("3dZcutup main") ; machdep() ; AFNI_logger("3dZcutup",argc,argv) ;
+   PRINT_VERSION("3dZcutup") ;
 
    /*-- read command line options --*/
 
@@ -176,7 +177,7 @@ STATUS("making history") ;
 
 STATUS("writing output") ;
 
-   fprintf(stderr,"++ output dataset: %s\n",DSET_BRIKNAME(outset)) ;
    DSET_write(outset) ;
+   fprintf(stderr,"++ output dataset: %s\n",DSET_BRIKNAME(outset)) ;
    exit(0) ;
 }

@@ -63,6 +63,7 @@ int main( int argc , char *argv[] )
    }
 
    mainENTRY("3dTCorrelate main"); machdep(); AFNI_logger("3dTcorrelate",argc,argv);
+   PRINT_VERSION("3dTcorrelate") ;
 
    /*-- option processing --*/
 
@@ -245,6 +246,7 @@ int main( int argc , char *argv[] )
 
    /* finito */
 
-   fprintf(stderr,"++ output dataset: %s\n",DSET_BRIKNAME(cset)) ;
-   DSET_write(cset) ; exit(0) ;
+   DSET_write(cset) ;
+   fprintf(stderr,"++ Wrote dataset: %s\n",DSET_BRIKNAME(cset)) ;
+   exit(0) ;
 }

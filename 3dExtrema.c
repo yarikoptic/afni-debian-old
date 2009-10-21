@@ -1594,11 +1594,11 @@ void write_bucket ()
 
 
   /*----- Output the extrema dataset -----*/
-  if( !EX_quiet ) printf("Computing sub-brick statistics\n") ;
+  if( !EX_quiet ) fprintf(stderr,"Computing sub-brick statistics\n") ;
   THD_load_statistics( new_dset ) ;
 
-  if( !EX_quiet ) printf("Writing output dataset: %s\n", DSET_BRIKNAME(new_dset) );
   THD_write_3dim_dataset( NULL,NULL , new_dset , True ) ;
+  if( !EX_quiet ) fprintf(stderr,"Wrote output dataset: %s\n", DSET_BRIKNAME(new_dset) );
   
 
   /*----- Deallocate memory for extrema dataset -----*/   
@@ -1658,12 +1658,16 @@ int main( int argc , char * argv[] )
   
 
   /*----- Identify software -----*/
+#if 0
   printf ("\n\n");
   printf ("Program:          %s \n", PROGRAM_NAME);
   printf ("Author:           %s \n", PROGRAM_AUTHOR); 
   printf ("Initial Release:  %s \n", PROGRAM_INITIAL);
   printf ("Latest Revision:  %s \n", PROGRAM_LATEST);
   printf ("\n");
+#else
+  PRINT_VERSION("3dExtrema") ; mainENTRY("3dExtrema main") ;
+#endif
 
 
   /*-- 20 Apr 2001: addto the arglist, if user wants to [RWCox] --*/

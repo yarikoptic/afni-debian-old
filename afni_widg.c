@@ -841,7 +841,13 @@ STATUS("making imag->rowcol") ;
                         AFNI_imag_pop_CB , im3d ) ;
 
       } else {
+         static int first=1 ;
          imag->pop_ttren_pb = imag->pop_whereami_pb = NULL ;
+         if( first ){
+           first = 0 ;
+           fprintf(stderr,
+             "\n** WARNING: Can't find TTatlas+tlrc dataset for 'whereami'!\n");
+         }
       }
       imag->pop_whereami_twin = NULL ;
    } else {
@@ -1411,6 +1417,25 @@ STATUS("imag->view_frame") ;
    MCW_reghint_children( imag->xyz_rowcol , "Open/raise viewing window" ) ;
    MCW_reghint_children( imag->yzx_rowcol , "Open/raise viewing window" ) ;
    MCW_reghint_children( imag->zxy_rowcol , "Open/raise viewing window" ) ;
+
+   XtInsertEventHandler( imag->image_xyz_pb ,
+                           ButtonPressMask , FALSE ,
+                           AFNI_viewbut_EV , (XtPointer)im3d , XtListTail ) ;
+   XtInsertEventHandler( imag->graph_xyz_pb ,
+                           ButtonPressMask , FALSE ,
+                           AFNI_viewbut_EV , (XtPointer)im3d , XtListTail ) ;
+   XtInsertEventHandler( imag->image_yzx_pb ,
+                           ButtonPressMask , FALSE ,
+                           AFNI_viewbut_EV , (XtPointer)im3d , XtListTail ) ;
+   XtInsertEventHandler( imag->graph_yzx_pb ,
+                           ButtonPressMask , FALSE ,
+                           AFNI_viewbut_EV , (XtPointer)im3d , XtListTail ) ;
+   XtInsertEventHandler( imag->image_zxy_pb ,
+                           ButtonPressMask , FALSE ,
+                           AFNI_viewbut_EV , (XtPointer)im3d , XtListTail ) ;
+   XtInsertEventHandler( imag->graph_zxy_pb ,
+                           ButtonPressMask , FALSE ,
+                           AFNI_viewbut_EV , (XtPointer)im3d , XtListTail ) ;
 
    /* imaging column finished, so manage its pieces */
 

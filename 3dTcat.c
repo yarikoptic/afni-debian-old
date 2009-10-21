@@ -525,7 +525,7 @@ int main( int argc , char * argv[] )
 
    /*-- 20 Apr 2001: addto the arglist, if user wants to [RWCox] --*/
 
-   mainENTRY("3dTcat main"); machdep() ;
+   mainENTRY("3dTcat main"); machdep() ; PRINT_VERSION("3dTcat") ;
 
    { int new_argc ; char ** new_argv ;
      addto_args( argc , argv , &new_argc , &new_argv ) ;
@@ -952,12 +952,12 @@ fprintf(stderr,"kk=%d iv=%d bar=%g rlt0=%g rlt1=%g qq=%g qmid=%g val=%g\n",
    if( TCAT_rlt ){ free(rlt0); free(rlt1); if(rltsum!=NULL)free(rltsum); }
 
    if( ! TCAT_dry ){
-      if( TCAT_verb ) printf("-verb: computing sub-brick statistics\n") ;
+      if( TCAT_verb ) fprintf(stderr,"-verb: computing sub-brick statistics\n") ;
       THD_load_statistics( new_dset ) ;
 
-      if( TCAT_verb ) printf("-verb: writing output to %s\n",
-                              DSET_BRIKNAME(new_dset) ) ;
       THD_write_3dim_dataset( NULL,NULL , new_dset , True ) ;
+      if( TCAT_verb ) fprintf(stderr,"-verb: Wrote output to %s\n",
+                              DSET_BRIKNAME(new_dset) ) ;
    }
 
    exit(0) ;

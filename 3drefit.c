@@ -51,9 +51,9 @@ void Syntax(char * str)
     "               ** SPECIAL CASE: you can use the string 'cen' in place of\n"
     "                  a distance to force that axis to be re-centered.\n"
     "\n"
-    " -xorigin_raw xx  Puts the center of the edge voxel at the given COORDINATE\n"
-    " -yorigin_raw yy  rather than the given DISTANCE.  That is, these values\n"
-    " -zorigin_raw zz  directly replace the offsets in the dataset header,\n"
+    "  -xorigin_raw xx Puts the center of the edge voxel at the given COORDINATE\n"
+    "  -yorigin_raw yy rather than the given DISTANCE.  That is, these values\n"
+    "  -zorigin_raw zz directly replace the offsets in the dataset header,\n"
     "                  without any possible sign changes.\n"
     "\n"
     "  -duporigin cset Copies the xorigin, yorigin, and zorigin values from\n"
@@ -122,6 +122,10 @@ void Syntax(char * str)
     "\n"
     "  -label2 llll    Set the 'label2' field in a dataset .HEAD file to the\n"
     "                  string 'llll'.  (Can be used as in AFNI window titlebars.)\n"
+    "\n"
+    "  -denote         Means to remove all possibly-identifying notes from\n"
+    "                  the header.  This includes the History Note, other text\n"
+    "                  Notes, keywords, and labels.\n"
     "\n"
     "  -byteorder bbb  Sets the byte order string in the header.\n"
     "                  Allowable values for 'bbb' are:\n"
@@ -197,7 +201,7 @@ void Syntax(char * str)
     "\n"
    );
 
-   printf("\t\tLast modified: Oct 04/02.\n");
+   printf("++ Last program update: 08 Jul 2005\n");
 
    exit(0) ;
 }
@@ -235,6 +239,7 @@ int main( int argc , char * argv[] )
    int copyaux        = 0 ;          /* 08 Jun 2004 */
    THD_3dim_dataset *auxset=NULL ;   /* 08 Jun 2004 */
    char *new_label2   = NULL ;       /* 21 Dec 2004 */
+   int denote         = 0 ;          /* 08 Jul 2005 */
 
    char str[256] ;
    int  iarg , ii ;
@@ -262,7 +267,7 @@ int main( int argc , char * argv[] )
 
    /*-- 20 Apr 2001: addto the arglist, if user wants to [RWCox] --*/
 
-   mainENTRY("3drefit main"); machdep() ;
+   mainENTRY("3drefit main"); machdep() ; PRINT_VERSION("3drefit") ;
 
    { int new_argc ; char ** new_argv ;
      addto_args( argc , argv , &new_argc , &new_argv ) ;
@@ -277,20 +282,26 @@ int main( int argc , char * argv[] )
       if( strncmp(argv[iarg],"-v",5) == 0 ){ verbose = 1 ; iarg++ ; continue ; }
 #endif
 
+      /*----- -denote [08 Jul 2005] -----*/
+
+      if( strcmp(argv[iarg],"-denote") == 0 ){
+        denote = 1 ; new_stuff++ ; iarg++ ; continue ;
+      }
+
       /*----- -copyaux auxset [08 Jun 2004] -----*/
 
       if( strcmp(argv[iarg],"-copyaux") == 0 ){
 
          if( iarg+1 >= argc ) Syntax("need 1 argument after -copyaux!") ;
 
-         if( auxset != NULL ) Syntax("can't have more than one -copyaux option!") ;
+         if( auxset != NULL ) Syntax("Can't have more than one -copyaux option!") ;
 
          iarg++ ; copyaux = 1 ;
          if( strcmp(argv[iarg],"NULL") == 0 ){  /* special case */
             auxset = NULL ;
          } else {
             auxset = THD_open_one_dataset( argv[iarg] ) ;
-            if( auxset == NULL ) Syntax("can't open -copyaux dataset!") ;
+            if( auxset == NULL ) Syntax("Can't open -copyaux dataset!") ;
          }
 
          new_stuff++ ; iarg++ ; continue ;  /* go to next arg */
@@ -306,7 +317,7 @@ int main( int argc , char * argv[] )
             Syntax("need 1 argument after -apar!") ;
 
          if( aset != NULL || aset_code != 0 )                 /* 13-14 Dec 1999 */
-            Syntax("can't have more than one -apar option!");
+            Syntax("Can't have more than one -apar option!");
 
          iarg++ ;
          if( strcmp(argv[iarg],"NULL") == 0 ){    /* 14 Dec 1999: special cases */
@@ -316,7 +327,7 @@ int main( int argc , char * argv[] )
          } else {
             aset = THD_open_one_dataset( argv[iarg] ) ;
             if( aset == NULL )
-               Syntax("can't open -apar dataset!") ;
+               Syntax("Can't open -apar dataset!") ;
          }
 
          new_stuff++ ; iarg++ ; continue ;  /* go to next arg */
@@ -685,7 +696,7 @@ int main( int argc , char * argv[] )
         if( iarg+1 >= argc ) Syntax("need an argument after -Torg!");
         Torg = strtod( argv[++iarg]  , &eptr ) ;
         if( *eptr != '\0' )
-          fprintf(stderr,"** -Torg %s ends in unexpected character\n",argv[iarg]) ;
+          WARNING_message("-Torg %s ends in unexpected character\n",argv[iarg]) ;
         new_Torg = 1 ; new_stuff++ ;
         iarg++ ; continue ;  /* go to next arg */
       }
@@ -803,34 +814,34 @@ int main( int argc , char * argv[] )
    for( ; iarg < argc ; iarg++ ){
       dset = THD_open_one_dataset( argv[iarg] ) ;
       if( dset == NULL ){
-         fprintf(stderr,"** 3drefit: Can't open dataset %s\n",argv[iarg]) ;
+         ERROR_message("Can't open dataset %s\n",argv[iarg]) ;
          continue ;
       }
       if( DSET_IS_MINC(dset) ){
-         fprintf(stderr,"** 3drefit: Can't process MINC dataset %s\n",argv[iarg]);
+         ERROR_message("Can't process MINC dataset %s\n",argv[iarg]);
          continue ;
       }
       if( DSET_IS_ANALYZE(dset) ){
-         fprintf(stderr,"** 3drefit: Can't process ANALYZE dataset %s\n",argv[iarg]);
+         ERROR_message("Can't process ANALYZE dataset %s\n",argv[iarg]);
          continue ;
       }
       if( DSET_IS_1D(dset) ){
-         fprintf(stderr,"** 3drefit: Can't process 1D dataset %s\n",argv[iarg]);
+         ERROR_message("Can't process 1D dataset %s\n",argv[iarg]);
          continue ;
       }
       if( DSET_IS_CTFMRI(dset) || DSET_IS_CTFSAM(dset) ){
-         fprintf(stderr,"** 3drefit: Can't process CTF dataset %s\n",argv[iarg]);
+         ERROR_message("Can't process CTF dataset %s\n",argv[iarg]);
          continue ;
       }
       if( DSET_IS_NIFTI(dset) ){
-         fprintf(stderr,"** 3drefit: Can't process NIFTI dataset %s\n",argv[iarg]);
+         ERROR_message("Can't process NIFTI dataset %s\n",argv[iarg]);
          continue ;
       }
       if( DSET_IS_MPEG(dset) ){
-         fprintf(stderr,"** 3drefit: Can't process MPEG dataset %s\n",argv[iarg]);
+         ERROR_message("Can't process MPEG dataset %s\n",argv[iarg]);
          continue ;
       }
-      fprintf(stderr,"++ 3drefit: Processing AFNI dataset %s\n",argv[iarg]) ;
+      INFO_message("Processing AFNI dataset %s\n",argv[iarg]) ;
 
       tross_Make_History( "3drefit" , argc,argv, dset ) ;
 
@@ -854,17 +865,17 @@ int main( int argc , char * argv[] )
       /* Oct 04/02: zmodify volreg fields */
       if (Do_volreg_mat) {
          sprintf(str,"VOLREG_MATVEC_%06d", volreg_matind) ;
-         fprintf (stderr," Modifying %s ...\n", str);
+         INFO_message("Modifying %s ...\n", str);
          THD_set_float_atr( dset->dblk , str , 12 , volreg_mat ) ;
       }
 
       if (Do_center_old) {
-         fprintf (stderr," Modifying VOLREG_CENTER_OLD ...\n");
+         INFO_message("Modifying VOLREG_CENTER_OLD ...\n");
          THD_set_float_atr( dset->dblk , "VOLREG_CENTER_OLD" , 3 , center_old ) ;
       }
 
       if (Do_center_base) {
-        fprintf (stderr," Modifying VOLREG_CENTER_BASE ...\n");
+        INFO_message("Modifying VOLREG_CENTER_BASE ...\n");
         THD_set_float_atr( dset->dblk , "VOLREG_CENTER_BASE" , 3 , center_base ) ;
       }
 
@@ -872,7 +883,7 @@ int main( int argc , char * argv[] )
 
       if( clear_bstat ){
         if( !ISVALID_STATISTIC(dset->stats) ){
-          fprintf(stderr,"++   -clear_bstat: dataset has no brick statistics\n") ;
+          WARNING_message("-clear_bstat: dataset has no brick statistics\n") ;
         } else {
           KILL_STATISTIC(dset->stats) ;
           REMOVEFROM_KILL( dset->kl , dset->stats ) ;
@@ -942,7 +953,7 @@ int main( int argc , char * argv[] )
 
       if( new_TR ){
          if( dset->taxis == NULL ){
-            fprintf(stderr,"  ** can't process -TR for this dataset!\n") ;
+            WARNING_message("Can't process -TR for this dataset!\n") ;
          } else {
             float frac = TR / dset->taxis->ttdel ;
             int ii ;
@@ -958,7 +969,7 @@ int main( int argc , char * argv[] )
 
       if( new_Torg ){                   /* 29 Jan 2003 */
         if( dset->taxis == NULL ){
-          fprintf(stderr,"  ** can't process -Torg for this dataset!\n") ;
+          WARNING_message("Can't process -Torg for this dataset!\n") ;
         } else {
           dset->taxis->ttorg = Torg ;
         }
@@ -966,9 +977,9 @@ int main( int argc , char * argv[] )
 
       if( new_toff_sl ){              /* 12 Feb 2001 */
          if( dset->taxis == NULL ){
-            fprintf(stderr,"  ** -notoff: dataset has no time axis to clear!\n") ;
+            WARNING_message("-notoff: dataset has no time axis to clear!\n") ;
          } else if( dset->taxis->nsl <= 0 ){
-            fprintf(stderr,"  ** -notoff: dataset has no time-offsets to clear!\n") ;
+            WARNING_message("-notoff: dataset has no time-offsets to clear!\n") ;
          } else {
             EDIT_dset_items( dset , ADN_nsl,0 , ADN_none ) ;
          }
@@ -992,21 +1003,21 @@ int main( int argc , char * argv[] )
 
       if( new_type ){
          if( nvals > 1 && dset->taxis != NULL ){
-            fprintf(stderr,"  ** can't change 3D+time dataset to new type:\n") ;
-            fprintf(stderr,"     new type has more than one value per voxel!\n") ;
+            ERROR_message("Can't change 3D+time dataset to new type:\n"
+                          " *    new type has more than one value per voxel!\n") ;
          } else if( dset->taxis == NULL && nvals != dset->dblk->nvals &&
                     ((dtype==HEAD_FUNC_TYPE && ftype!=FUNC_BUCK_TYPE)||
                      (dtype==HEAD_ANAT_TYPE && ftype!=ANAT_BUCK_TYPE)  ) ){
 
-            fprintf(stderr,"  ** can't change dataset to new type:\n") ;
-            fprintf(stderr,"     mismatch in number of sub-bricks!\n") ;
+            ERROR_message("Can't change dataset to new type:\n"
+                          " *     mismatch in number of sub-bricks!\n") ;
          } else {
             dset->type      = dtype ;
             dset->func_type = ftype ;
 
             if( ISBUCKET(dset) && dset->taxis != NULL ){   /* 29 April 1998 */
-               fprintf(stderr,"  ** Warning: changing 3D+time dataset to bucket\n") ;
-               EDIT_dset_items( dset , ADN_ntt , 0 , ADN_none ) ;
+              WARNING_message("changing 3D+time dataset to bucket\n") ;
+              EDIT_dset_items( dset , ADN_ntt , 0 , ADN_none ) ;
             }
 
          }
@@ -1038,8 +1049,7 @@ int main( int argc , char * argv[] )
             dset->view_type = old_vtype ;
             THD_init_diskptr_names( dset->dblk->diskptr ,
                                     NULL , NULL , NULL , old_vtype , True ) ;
-            fprintf(stderr,
-                    "  ** Can't change view: would overwrite existing files!\n") ;
+            ERROR_message("Can't change view: would overwrite existing files!\n") ;
          } else {
             rename( old_head , new_head ) ;
             { char * fff = COMPRESS_filename(old_brik) ;
@@ -1051,7 +1061,7 @@ int main( int argc , char * argv[] )
                  free(fff) ; free(ggg) ;
               }
             }
-            fprintf(stderr,"  -- Changed dataset view type and filenames.\n") ;
+            INFO_message("Changed dataset view type and filenames.\n") ;
          }
       }
 
@@ -1085,7 +1095,7 @@ int main( int argc , char * argv[] )
             markers->aflags[ii] = THD_align_aflags[ii] ;
 
       } else if( new_markers ){
-            fprintf(stderr,"  ** can't add markers to this dataset\n") ;
+            WARNING_message("Can't add markers to this dataset\n") ;
       } /* end of markers */
 
       /*-- 08 Jun 2004: copyaux? --*/
@@ -1105,7 +1115,7 @@ int main( int argc , char * argv[] )
          for( ii=0 ; ii < nsublab ; ii++ ){
             iv = sublab[ii].iv ;
             if( iv < 0 || iv >= DSET_NVALS(dset) ){
-               fprintf(stderr,"  ** can't put label on sub-brick %d\n",iv) ;
+               WARNING_message("Can't put label on sub-brick %d\n",iv) ;
             } else {
                EDIT_dset_items( dset ,
                                    ADN_brick_label_one + iv , sublab[ii].lab ,
@@ -1119,7 +1129,7 @@ int main( int argc , char * argv[] )
          for( ii=0 ; ii < nsubkeyword ; ii++ ){
             iv = subkeyword[ii].iv ; code = subkeyword[ii].code ;
             if( iv < 0 || iv >= DSET_NVALS(dset) ){
-               fprintf(stderr,"  ** can't put keyword on sub-brick %d\n",iv) ;
+               WARNING_message("Can't put keyword on sub-brick %d\n",iv) ;
             } else if( code == 1 ){
                EDIT_dset_items( dset ,
                                    ADN_brick_keywords_append_one + iv ,
@@ -1149,7 +1159,7 @@ int main( int argc , char * argv[] )
          for( ii=0 ; ii < nsubstatpar ; ii++ ){
             iv = substatpar[ii].iv ;
             if( iv < 0 || iv >= DSET_NVALS(dset) ){
-               fprintf(stderr,"  ** can't put statpar on sub-brick %d\n",iv) ;
+               WARNING_message("Can't put statpar on sub-brick %d\n",iv) ;
             } else {
                EDIT_dset_items( dset ,
                                    ADN_brick_stataux_one + iv , substatpar[ii].par ,
@@ -1157,6 +1167,8 @@ int main( int argc , char * argv[] )
             }
          }
       }
+
+      if( denote ) THD_anonymize_write(1) ;   /* 08 Jul 2005 */
 
       THD_write_3dim_dataset( NULL,NULL , dset , False ) ;
       THD_delete_3dim_dataset( dset , False ) ;
