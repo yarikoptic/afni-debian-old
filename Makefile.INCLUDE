@@ -3,12 +3,12 @@
 ##   -- goes at end of each platform specific Makefile.
 ##
 
-F2C = ./f2c -A
+F2C = f2c -A
 
 ## 07 Dec 2005: modify the include flags here
 
 INFLAGS  = $(IFLAGS) -Inifti/niftilib -Inifti/nifticdf -Inifti/znzlib -I3DEdge/src $(USE_ZLIB)
-ISFLAGS  = $(IFLAGS) -I../nifti/niftilib -I../nifti/znzlib -I../3DEdge/src $(USE_ZLIB)
+ISFLAGS  = $(IFLAGS) -I../nifti/niftilib -I../nifti/nifticdf -I../nifti/znzlib -I../3DEdge/src $(USE_ZLIB)
 
 DOCS     = ../doc/ps/*.ps ../doc/README/README* AFNI.changes.cox   \
            rickr/AFNI.changes.rickr rhammett/AFNI.changes.rhammett \
@@ -35,7 +35,7 @@ AFWARPOBJS = afni_warp.o afni_slice_byte.o afni_slice_short.o      \
 
 T3OBJS  = to3d.o
 
-MISC    = AFNI.Xdefaults AFNI.afnirc 3d*.lib gmovie*
+MISC    = AFNI.Xdefaults AFNI.afnirc AFNI.sumarc 3d*.lib gmovie*
 
 ## The following programs are "extras" not really part of the
 ## AFNI package, but included because they are useful.  Some of
@@ -75,7 +75,7 @@ PROGRAMS = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge count   
            3dMedianFilter 3dretroicor 3dAFNItoNIML 3dAFNItoRaw im2niml 3dedge3  \
            DTIStudioFibertoSegments Dimon 3dLocalstat 3danisosmooth 3dmaxima    \
            3dTwotoComplex 3dInvFMRI 3dmatcalc 3dAcost 3dLocalBistat 3dFWHMx     \
-           3dBlurToFWHM 1dSEM 3dDFT                                             \
+           3dBlurToFWHM 1dSEM 3dDFT 3dSynthesize 1dMarry 3dEmpty                \
            $(EXTRAS)
 
 PROGRAMS_NOPLUG = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge      \
@@ -101,7 +101,8 @@ PROGRAMS_NOPLUG = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge  
                   3dAFNItoRaw DTIStudioFibertoSegments im2niml 3dLocalstat 3dGetrow \
                   Imon nifti_tool 3dAllineate nifti1_test Dimon 3danisosmooth       \
                   3dmaxima 3dTwotoComplex 3dInvFMRI 1dmatcalc 3dmatcalc 3dAcost     \
-                  3dLocalBistat 3dFWHMx 3dBlurToFWHM 1dSEM 3dDFT                    \
+                  3dLocalBistat 3dFWHMx 3dBlurToFWHM 1dSEM 3dDFT 3dSynthesize       \
+                  1dMarry 3dEmpty                                                   \
                   $(EXTRAS)
 
 # For CYGWIN (look for "exe" to find various places below)
@@ -132,7 +133,7 @@ PROGRAMS_EXE = afni.exe to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge 
                file_tool.exe Imon.exe 3dresample.exe serial_helper.exe im2niml    \
                nifti_tool.exe 3dAFNItoRaw DTIStudioFibertoSegments Dimon.exe      \
                3danisosmooth 3dTwotoComplex 3dInvFMRI 3dmatcalc 3dAllineate       \
-               3dFWHMx 3dBlurToFWHM 1dSEM 3dDFT
+               3dFWHMx 3dBlurToFWHM 1dSEM 3dDFT 3dSynthesize 1dMarry 3dEmpty
 
 SCRIPTS = @4Daverage @CommandGlobb @GetAfniOrient @DTI_studio_reposition          \
           @GetAfniPrefix @NoExt @UpdateAfni @RenamePanga @2dwarper                \
@@ -142,12 +143,12 @@ SCRIPTS = @4Daverage @CommandGlobb @GetAfniOrient @DTI_studio_reposition        
           @auto_align @auto_tlrc @FromRAI @ToRAI @AfniOrientSign @VolCenter       \
           @Center_Distance @fix_FSsphere @parse_name @align_partial_oblique       \
           @np 3dMax @IsoMasks @SUMA_Make_Spec_Caret @FindAfniDsetPath @GetAfniID  \
-          @float_fix @escape-  
+          @float_fix @escape- 3dPAR2AFNI.pl
 
 PY_DIR = python_scripts
 PY_SCRIPTS = afni_base.py @DoPerRoi.py
 
-LIBHEADERS = mrilib.h cdflib.h mcw_glob.h 3ddata.h thd_maker.h thd_iochan.h       \
+LIBHEADERS = mrilib.h mcw_glob.h 3ddata.h thd_maker.h thd_iochan.h                \
              editvol.h cs.h eispack.h killer.h vecmat.h machdep.h tagset.h        \
              thd_compress.h afni_warp.h coxplot.h f2c.h volpack.h mcw_malloc.h    \
              multivector.h afni_environ.h niml.h cs_sort_template.h vol2surf.h
@@ -432,6 +433,10 @@ dsetdup:dsetdup.o
 3dTcat:3dTcat.o
 	$(RM) $@
 	$(CC) -o 3dTcat 3dTcat.o $(LFLAGS) $(LLIBS)
+
+3dSynthesize:3dSynthesize.o
+	$(RM) $@
+	$(CC) -o 3dSynthesize 3dSynthesize.o $(LFLAGS) $(LLIBS)
 
 3dTcorrelate:3dTcorrelate.o
 	$(RM) $@
@@ -745,7 +750,7 @@ qm:qm.o
 	$(RM) $@
 	$(CC) -o qm qm.o $(LFLAGS) -lmri -lf2c $(LLIBS)
 
-3dAllineate:3dAllineate.o
+3dAllineate:3dAllineate.o mri_genalign.o thd_correlate.o
 	$(RM) $@
 	$(CCFAST) -o 3dAllineate 3dAllineate.o $(LFLAGS) -lmri -lf2c $(LLIBS)
 
@@ -1045,6 +1050,14 @@ afni_vcheck:afni_vcheck.o
 	$(RM) $@
 	$(CC) -o 1dcat 1dcat.o $(LFLAGS) $(LLIBS)
 
+1dMarry:1dMarry.o
+	$(RM) $@
+	$(CC) -o 1dMarry 1dMarry.o $(LFLAGS) $(LLIBS)
+
+3dEmpty:3dEmpty.o
+	$(RM) $@
+	$(CC) -o 3dEmpty 3dEmpty.o $(LFLAGS) $(LLIBS)
+
 1ddot:1ddot.o
 	$(RM) $@
 	$(CC) -o 1ddot 1ddot.o $(LFLAGS) -lmri -lf2c $(LLIBS)
@@ -1174,7 +1187,7 @@ cleanest:
 	$(RM) `find . -name \*.o -print`
 	$(RM) `find . -name \*.so -print`
 	$(RM) `find . -name \*.a -print`
-	$(RM) $(PROGRAMS)
+	$(RM) $(PROGRAMS) SUMA/SUMA_MacOSX.tar
 
 # CYGWIN: remove the fixed plugins as well
 
@@ -1229,7 +1242,9 @@ install: $(INSTALLDIR) $(INSTALL_PREREQ)
 	$(MV) $(PROGRAMS) $(INSTALLDIR)
 	$(CP) $(SCRIPTS)  $(INSTALLDIR)
 	$(CP) $(PY_DIR)/*.py  $(INSTALLDIR)
-	if [ -f README.environment ]; then $(CP) README.* $(INSTALLDIR); fi;
+	if [ -f README.environment ]; then $(CP) README.*    $(INSTALLDIR); fi;
+	if [ -f AFNI.afnirc        ]; then $(CP) AFNI.afnirc $(INSTALLDIR); fi;
+	if [ -f AFNI.sumarc        ]; then $(CP) AFNI.sumarc $(INSTALLDIR); fi;
 
 install_noplug: $(INSTALLDIR)
 	$(MV) $(PROGRAMS_NOPLUG) $(INSTALLDIR)
@@ -1439,21 +1454,6 @@ MRI_OBJS = mri_cfft.o mri_complex_arith.o mri_fft_complex.o mri_free.o    \
            mri_genalign.o mri_clusterize.o mri_nbistats.o mri_fwhm.o           \
            mri_blur3d_variable.o mri_purger.o
 
-CDF_OBJS = cdf_00.o cdf_01.o cdf_02.o cdf_03.o cdf_04.o cdf_05.o \
-           cdf_06.o cdf_07.o cdf_08.o cdf_09.o cdf_10.o cdf_11.o \
-           cdf_12.o cdf_13.o cdf_14.o cdf_15.o cdf_16.o cdf_17.o \
-           cdf_18.o cdf_19.o cdf_20.o cdf_21.o cdf_22.o cdf_23.o \
-           cdf_24.o cdf_25.o cdf_26.o cdf_27.o cdf_28.o cdf_29.o \
-           cdf_30.o cdf_31.o cdf_32.o cdf_33.o cdf_34.o cdf_35.o \
-           cdf_36.o cdf_37.o cdf_38.o cdf_39.o cdf_40.o cdf_41.o \
-           cdf_42.o cdf_43.o cdf_44.o cdf_45.o cdf_46.o cdf_47.o \
-           cdf_48.o cdf_49.o cdf_50.o cdf_51.o cdf_52.o cdf_53.o \
-           cdf_54.o cdf_55.o cdf_56.o cdf_57.o cdf_58.o cdf_59.o \
-           cdf_60.o cdf_61.o cdf_62.o cdf_63.o cdf_64.o cdf_65.o \
-           cdf_66.o cdf_67.o cdf_68.o cdf_69.o cdf_70.o cdf_71.o \
-           cdf_72.o cdf_73.o cdf_74.o cdf_75.o cdf_76.o cdf_77.o \
-           cdf_78.o cdf_79.o cdf_80.o
-
 THD_OBJS = thd_atr.o thd_dsetto1D.o thd_initalldir.o thd_reconpar.o \
            thd_auxdata.o thd_editdaxes.o thd_initdblk.o thd_sarr.o  \
            thd_bstats.o thd_fdbrick.o thd_initdkptr.o thd_statpval.o \
@@ -1531,11 +1531,11 @@ NETCDF_OBJS =  netcdf_attr.o   netcdf_dim.o   netcdf_error.o netcdf_libvers.o \
 
 SUMA_OBJS = suma_datasets.o suma_algorithms.o
 
-libmri.a:$(NIML_OBJS) $(MRI_OBJS) $(CDF_OBJS) $(THD_OBJS)                \
-         $(EDT_OBJS)  $(CS_OBJS)  $(EIS_OBJS) $(NETCDF_OBJS)             \
+libmri.a:$(NIML_OBJS) $(MRI_OBJS) $(THD_OBJS)                \
+         $(EDT_OBJS)  $(CS_OBJS)  $(EIS_OBJS) $(NETCDF_OBJS) \
          $(SUMA_OBJS) niml.h mrilib.h 3ddata.h
 	$(RM) $@
-	$(AR) q libmri.a $(MRI_OBJS) $(CDF_OBJS) $(THD_OBJS) $(EDT_OBJS) \
+	$(AR) q libmri.a $(MRI_OBJS) $(THD_OBJS) $(EDT_OBJS) \
 		$(NIML_OBJS) $(CS_OBJS) $(EIS_OBJS) $(NETCDF_OBJS) $(SUMA_OBJS)
 	$(RANLIB) libmri.a
 
@@ -1872,9 +1872,6 @@ lib3DEdge.a:
 eis_bakvec.o:
 	( cd eispack/ ; $(MAKE) all 'CC=$(CCFAST)' 'CCSVD=$(CCSVD)' ; $(MV) *.o .. ; )
 
-cdf_00.o:
-	( cd cdflib/ ; $(MAKE) all 'CC=$(CC)' ; $(MV) *.o .. ; )
-
 #######
 # Ditto for NIML objects
 
@@ -2184,7 +2181,7 @@ nifti_stats.o:nifti/utils/nifti_stats.c
 
 nifticdf.o:nifti/nifticdf/nifticdf.c
 	$(RM) $@
-	$(CC) -c nifti/nifticdf/nifticdf.c $(INFLAGS)
+	$(CC) -D__COMPILE_UNUSED_FUNCTIONS__ -c nifti/nifticdf/nifticdf.c $(INFLAGS)
 
 nifti_statlib.o:nifti/utils/nifti_stats.c nifti_statlib.c
 	$(RM) $@

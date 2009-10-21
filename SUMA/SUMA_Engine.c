@@ -2134,6 +2134,17 @@ SUMA_Boolean SUMA_Engine (DList **listp)
                /* inefficient implementation, but avoids duplicate code... */
                SUMA_SetScaleThr(EngineData->vp); 
             }
+            if (NI_get_attribute(EngineData->ngr, "Dim")) {
+               char stmp[50];
+               NI_GET_FLOAT(EngineData->ngr, "Dim", ftmp);
+               if (SO->SurfCont && SO->SurfCont->ColPlaneDimFact) {
+                  SO->SurfCont->ColPlaneDimFact->value = ftmp;
+                  sprintf(stmp,"%.1f", ftmp);
+                  SUMA_SET_TEXT_FIELD(SO->SurfCont->ColPlaneDimFact->textfield, stmp); 
+               }
+               /* inefficient implementation, but avoids duplicate code... */
+               SUMA_ColPlane_NewDimFact((void*)SO);
+            }
             if (NI_get_attribute(EngineData->ngr, "view_dset")) {
                if (NI_IS_STR_ATTR_EQUAL(EngineData->ngr, "view_dset", "y")) SO->SurfCont->curColPlane->Show = YUP;
                else if (NI_IS_STR_ATTR_EQUAL(EngineData->ngr, "view_dset", "n"))SO->SurfCont->curColPlane->Show = NOPE;
@@ -2205,6 +2216,12 @@ SUMA_Boolean SUMA_Engine (DList **listp)
                         SUMA_LHv(".............rep %d\n", rep);
                         SUMA_etime(&tt, 0);
                         switch (k) {
+                           case XK_b:
+                           case XK_B:
+                              if (!SUMA_B_Key(sv, stmp, "drivesuma")) {
+                                 SUMA_S_Err("Failed in Key function.");
+                              }
+                              break; 
                            case XK_n:
                            case XK_N:
                               if (!SUMA_N_Key(sv, stmp, "drivesuma")) {
@@ -2226,6 +2243,18 @@ SUMA_Boolean SUMA_Engine (DList **listp)
                            case XK_r:
                            case XK_R:
                               if (!SUMA_R_Key(sv, stmp, "drivesuma")) {
+                                 SUMA_S_Err("Failed in Key function.");
+                              }
+                              break;
+                           case XK_t:
+                           case XK_T:
+                              if (!SUMA_T_Key(sv, stmp, "drivesuma")) {
+                                 SUMA_S_Err("Failed in Key function.");
+                              }
+                              break;
+                           case XK_z:
+                           case XK_Z:
+                              if (!SUMA_Z_Key(sv, stmp, "drivesuma")) {
                                  SUMA_S_Err("Failed in Key function.");
                               }
                               break;
@@ -2256,6 +2285,36 @@ SUMA_Boolean SUMA_Engine (DList **listp)
                               break;
                            case XK_F2:
                               if (!SUMA_F2_Key(sv, stmp, "drivesuma")) {
+                                 SUMA_S_Err("Failed in Key function.");
+                              }
+                              break;
+                           case XK_F3:
+                              if (!SUMA_F3_Key(sv, stmp, "drivesuma")) {
+                                 SUMA_S_Err("Failed in Key function.");
+                              }
+                              break;
+                           case XK_F4:
+                              if (!SUMA_F4_Key(sv, stmp, "drivesuma")) {
+                                 SUMA_S_Err("Failed in Key function.");
+                              }
+                              break;
+                           case XK_F5:
+                              if (!SUMA_F5_Key(sv, stmp, "drivesuma")) {
+                                 SUMA_S_Err("Failed in Key function.");
+                              }
+                              break;
+                           case XK_F6:
+                              if (!SUMA_F6_Key(sv, stmp, "drivesuma")) {
+                                 SUMA_S_Err("Failed in Key function.");
+                              }
+                              break;
+                           case XK_F7:
+                              if (!SUMA_F7_Key(sv, stmp, "drivesuma")) {
+                                 SUMA_S_Err("Failed in Key function.");
+                              }
+                              break;
+                           case XK_F8:
+                              if (!SUMA_F8_Key(sv, stmp, "drivesuma")) {
                                  SUMA_S_Err("Failed in Key function.");
                               }
                               break;
@@ -2538,6 +2597,10 @@ void *SUMA_nimlEngine2Engine(NI_group *ngr)
    /* OK, now, switch on that command and create the Engine structure */
    switch (cc) {
        case SE_niSetSurfCont:
+         if (!SO->SurfCont) {
+            SUMA_S_Err("Unexpected NULL SurfCont\nPlease report error to author.");
+            SUMA_RETURN(Ret);
+         }
          if (!SO->SurfCont->TopLevelShell) { /* better have a controller before going crazy */
             ED = SUMA_InitializeEngineListData (SE_OpenSurfCont);
             if (!SUMA_RegisterEngineListCommand (  list, ED,

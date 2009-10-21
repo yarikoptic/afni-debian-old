@@ -1991,3 +1991,33 @@
           (moving 7 protos to nifticdf.h, and all but main to nifticdf.c)
           (keep all static and __COMPILE_UNUSED_FUNCTIONS__ use)
 
+15 Mar 2007: mod afni_proc.py, db_mod.py: use x1D suffix, removed -full_first
+19 Mar 2007: modified afni_proc.py: allow dataset TR stored in depreciated ms
+25 Mar 2007: afni_proc.py: added -help for long-existing -regress_no_stim_times
+19 Apr 2007: afni_proc.py (v1.21): apply +orig in 1-run mean using 3dcopy
+01 May 2007: included Hans' updates: CMakeLists.txt, nifticdf/CMakeLists.txt
+03 May 2007:
+  * added 3dPAR2AFNI.pl, from Colm G. Connolly
+  * modified Makefile.INCLUDE: added 3dPAR2AFNI.pl to SCRIPTS
+  * modified afni_proc.py: added BLOCK(5) to the examples
+08 May 2007:
+  * w/dglen, mod 3dcalc.c, thd_mastery.c to handle long sub-brick lists
+  * modified afni_proc.py, db_mod.py, option_list.py (v 1.22)
+        - change read_options() to be compatible with python version 2.2
+        - '-basis_normall 1' is no longer used by default
+        - rename -regress_no_stim_times to -regress_use_stim_files
+
+10 May 2007:
+  * modified nifticdf.[ch], mrilib.h, Makefile.INCLUDE, SUMA_Makefile_NoDev
+        - use cdflib functions from nifticdf, not from cdflib directory
+  * removed cdflib directory and cdflib.h
+
+16 May 2007:
+  * modified nifti/Updates.txt in preparation of nifticlib-0.5 release
+  * modified nifti1_read_write.c for Kate, to fix comment typo
+
+17 May 2007: nifti update for release 0.5
+  * modified Clibs/CMakeLists.txt, set MINOR to 5
+  * modified Makefile, examples/Makefile, utils/Makefile to apply ARCH
+      variable for easier building
+

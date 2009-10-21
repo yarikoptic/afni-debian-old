@@ -1372,3 +1372,47 @@ NI_dpr("NI_write_element: write socket now connected\n") ;
 
    return -1 ; /* should never be reachable */
 }
+
+/*------------------------------------------------------------------------*/
+/*! Write an element (data or group) to a file.  [07 Mar 2007]
+--------------------------------------------------------------------------*/
+
+int NI_write_element_tofile( char *fname , void *nini , int tmode )
+{
+   NI_stream_type *ns ; char *nsname ; int vv ;
+
+   if( fname == NULL || *fname == '\0' || nini == NULL ) return -1 ;
+
+   nsname = (char *)malloc(strlen(fname)+9) ;
+   if( strncmp(fname,"stdout:",7) == 0 || strcmp(fname,"-") == 0 ){
+     strcpy(nsname,"stdout:") ;
+   } else if( strncmp(fname,"stderr:",7) == 0 ){
+     strcpy(nsname,"stderr:") ;
+   } else {
+     strcpy(nsname,"file:") ; strcat(nsname,fname) ;
+   }
+   ns = NI_stream_open( nsname , "w" ) ; free((void *)nsname) ;
+   if( ns == NULL ) return -1 ;
+   vv = NI_write_element( ns , nini , tmode ) ;
+   NI_stream_close( ns ) ;
+   return vv ;
+}
+
+/*------------------------------------------------------------------------*/
+/*! Read one element from a file.  [12 Mar 2007]
+--------------------------------------------------------------------------*/
+
+void * NI_read_element_fromfile( char *fname )
+{
+   NI_stream_type *ns ; char *nsname ; void *nini ;
+
+   if( fname == NULL || *fname == '\0' ) return NULL ;
+
+   nsname = (char *)malloc(strlen(fname)+9) ;
+   strcpy(nsname,"file:") ; strcat(nsname,fname) ;
+   ns = NI_stream_open( nsname , "r" ) ; free((void *)nsname) ;
+   if( ns == NULL ) return NULL ;
+   nini = NI_read_element( ns , 999 ) ;
+   NI_stream_close( ns ) ;
+   return nini ;
+}

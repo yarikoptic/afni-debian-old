@@ -113,6 +113,8 @@ static void GA_interp_NN( MRI_IMAGE *fim ,
    float nxh=nx-0.501f , nyh=ny-0.501f , nzh=nz-0.501f , xx,yy,zz ;
    float *far = MRI_FLOAT_PTR(fim) ;
 
+ENTRY("GA_interp_NN") ;
+
    for( pp=0 ; pp < npp ; pp++ ){
      xx = ip[pp] ; if( xx < -0.499f || xx > nxh ){ vv[pp]=outval; continue; }
      yy = jp[pp] ; if( yy < -0.499f || yy > nyh ){ vv[pp]=outval; continue; }
@@ -121,7 +123,7 @@ static void GA_interp_NN( MRI_IMAGE *fim ,
      ii = (int)(xx+0.5f) ; jj = (int)(yy+0.5f) ; kk = (int)(zz+0.5f) ;
      vv[pp] = FAR(ii,jj,kk) ;
    }
-   return ;
+   EXRETURN ;
 }
 
 /*---------------------------------------------------------------------------*/
@@ -141,6 +143,8 @@ static void GA_interp_linear( MRI_IMAGE *fim ,
    int kz_00,kz_p1 ;
    float wt_00,wt_p1 ;       /* interpolation weights */
    float f_j00_k00, f_jp1_k00, f_j00_kp1, f_jp1_kp1, f_k00, f_kp1 ;
+
+ENTRY("GA_interp_linear") ;
 
    for( pp=0 ; pp < npp ; pp++ ){
      xx = ip[pp] ; if( xx < -0.499f || xx > nxh ){ vv[pp]=outval; continue; }
@@ -175,7 +179,7 @@ static void GA_interp_linear( MRI_IMAGE *fim ,
 
      vv[pp] = (1.0f-fz) * f_k00 + fz * f_kp1 ;
    }
-   return ;
+   EXRETURN ;
 }
 
 /*---------------------------------------------------------------------------*/
@@ -214,6 +218,8 @@ static void GA_interp_cubic( MRI_IMAGE *fim ,
          f_jm1_kp1, f_j00_kp1, f_jp1_kp1, f_jp2_kp1,
          f_jm1_kp2, f_j00_kp2, f_jp1_kp2, f_jp2_kp2,
          f_km1    , f_k00    , f_kp1    , f_kp2     ;
+
+ENTRY("GA_interp_cubic") ;
 
    for( pp=0 ; pp < npp ; pp++ ){
      xx = ip[pp] ; if( xx < -0.499f || xx > nxh ){ vv[pp]=outval; continue; }
@@ -273,7 +279,7 @@ static void GA_interp_cubic( MRI_IMAGE *fim ,
      vv[pp] = P_FACTOR * (  wt_m1 * f_km1 + wt_00 * f_k00
                           + wt_p1 * f_kp1 + wt_p2 * f_kp2 ) ;
    }
-   return ;
+   EXRETURN ;
 }
 
 /*---------------------------------------------------------------------------*/
@@ -317,6 +323,8 @@ static void GA_interp_quintic( MRI_IMAGE *fim ,
          f_jm2_kp2, f_jm1_kp2, f_j00_kp2, f_jp1_kp2, f_jp2_kp2, f_jp3_kp2,
          f_jm2_kp3, f_jm1_kp3, f_j00_kp3, f_jp1_kp3, f_jp2_kp3, f_jp3_kp3,
          f_km2    , f_km1    , f_k00    , f_kp1    , f_kp2    , f_kp3     ;
+
+ENTRY("GA_interp_quintic") ;
 
    for( pp=0 ; pp < npp ; pp++ ){
      xx = ip[pp] ; if( xx < -0.499f || xx > nxh ){ vv[pp]=outval; continue; }
@@ -411,7 +419,7 @@ static void GA_interp_quintic( MRI_IMAGE *fim ,
      vv[pp] =  wt_m2 * f_km2 + wt_m1 * f_km1 + wt_00 * f_k00
              + wt_p1 * f_kp1 + wt_p2 * f_kp2 + wt_p3 * f_kp3 ;
    }
-   return ;
+   EXRETURN ;
 }
 
 /*---------------------------------------------------------------------------*/
@@ -450,6 +458,8 @@ static void GA_get_warped_values( int nmpar , double *mpar , float *avm )
    float *imf , *jmf , *kmf ;
    float *imw , *jmw , *kmw ;
    MRI_IMAGE *aim ;
+
+ENTRY("GA_get_warped_values") ;
 
    npar = gstup->wfunc_numpar ;
    wpar = (float *)calloc(sizeof(float),npar) ;
@@ -565,7 +575,7 @@ static void GA_get_warped_values( int nmpar , double *mpar , float *avm )
        else if( avm[pp] > tt ) avm[pp] = tt ;
    }
 
-   return ;
+   EXRETURN ;
 }
 
 /*---------------------------------------------------------------------------*/
@@ -590,8 +600,88 @@ void GA_do_dots(int x){ GA_reset_fit_callback( (x)?GA_fitter_dotter:NULL ); }
 void GA_fitter_coster(int n, double *mpar){
   printf(" + Cost=%g\r",fit_vbest); fflush(stdout);
 }
+void GA_fitter_coster_tab(int n, double *mpar){
+  printf(" + Cost=%g\t",fit_vbest); fflush(stdout);
+}
+void GA_do_cost(int x, byte use_tab){
+   if (use_tab) {
+      GA_reset_fit_callback( (x)?GA_fitter_coster_tab:NULL );
+   } else {
+      GA_reset_fit_callback( (x)?GA_fitter_coster:NULL );
+   }
+}
 
-void GA_do_cost(int x){ GA_reset_fit_callback( (x)?GA_fitter_coster:NULL ); }
+/*---------------------------------------------------------------------------*/
+
+static void GA_setup_2Dhistogram( float *xar , float *yar )  /* 08 May 2007 */
+{
+ENTRY("GA_setup_2Dhistogram") ;
+
+   switch( gstup->hist_mode ){
+
+     default:
+     case GA_HIST_EQWIDE:
+       set_2Dhist_xybin( 0,NULL,NULL ) ;
+     break ;
+
+     case GA_HIST_CLEQWD:{
+       int nbin=(int)gstup->hist_param , npt=gstup->npt_match ;
+       float xbc,xtc , ybc,ytc ;
+
+       if( nbin < 3 ) nbin = 0 ;
+       set_2Dhist_hbin( nbin ) ;
+       set_2Dhist_xyclip( npt , xar , yar ) ;
+
+       if( verb > 1 ){
+         (void)get_2Dhist_xyclip( &xbc,&xtc , &ybc,&ytc ) ;
+         ININFO_message(" - histogram: source clip %g .. %g; base clip %g .. %g",
+                        xbc,xtc , ybc,ytc ) ;
+         ININFO_message(" - versus source range %g .. %g; base range %g .. %g",
+                        gstup->ajbot, gstup->ajclip, gstup->bsbot, gstup->bsclip ) ;
+       }
+     }
+     break ;
+
+     case GA_HIST_EQHIGH:{
+       int nbin=(int)gstup->hist_param , npt=gstup->npt_match , ii,dm,mm,nnew ;
+       float *xx , *yy ;
+
+       if( npt > 666*nbin ){                /* subsample data to save CPU time */
+         dm = find_relprime_fixed( npt ) ;
+         mm = 1 ; nnew = (int)(314.1593*nbin) ;
+         xx = (float *)malloc(sizeof(float)*nnew) ;
+         yy = (float *)malloc(sizeof(float)*nnew) ;
+         for( ii=0 ; ii < nnew ; ii++,mm=(mm+dm)%npt ){
+           xx[ii] = xar[mm] ; yy[ii] = yar[mm] ;
+         }
+         npt = nnew ;
+       } else {                             /* just use all the data */
+         xx = xar ; yy = yar ;
+       }
+
+       if( verb > 1 )
+         ININFO_message("- setting up equalized histogram bins with %d pts",npt) ;
+
+       set_2Dhist_xybin_eqhigh( nbin , npt , xx , yy ) ;
+       if( xx != xar ){ free(yy); free(xx); }
+
+       if( verb > 1 ){
+         nbin = get_2Dhist_xybin( &xx , &yy ) ;
+         ININFO_message("-- %d equalized histogram bins for source follow:",nbin) ;
+         fprintf(stderr,"    ") ;
+         for( ii=0 ; ii <= nbin ; ii++ ) fprintf(stderr," %g",xx[ii]) ;
+         fprintf(stderr,"\n") ;
+         ININFO_message("-- %d equalized histogram bins for base follow:",nbin) ;
+         fprintf(stderr,"    ") ;
+         for( ii=0 ; ii <= nbin ; ii++ ) fprintf(stderr," %g",yy[ii]) ;
+         fprintf(stderr,"\n") ;
+       }
+     }
+     break ;
+   }
+
+   gstup->need_hist_setup = 0 ; EXRETURN ;
+}
 
 /*---------------------------------------------------------------------------*/
 /*! Fit metric for matching base and target image value pairs.
@@ -603,11 +693,15 @@ static double GA_scalar_fitter( int npar , double *mpar )
   float val=0.0f ;
   float *avm , *bvm , *wvm ;
 
+ENTRY("GA_scalar_fitter") ;
+
   avm = (float *)calloc(gstup->npt_match,sizeof(float)) ; /* target points at */
   GA_get_warped_values( npar , mpar , avm ) ;             /* warped locations */
 
   bvm = gstup->bvm->ar ;                                  /* base points */
   wvm = (gstup->wvm != NULL) ? gstup->wvm->ar : NULL ;    /* weights */
+
+  if( gstup->need_hist_setup ) GA_setup_2Dhistogram( avm , bvm ) ;
 
   /* compare the avm and bvm arrays in some way */
 
@@ -677,19 +771,21 @@ static double GA_scalar_fitter( int npar , double *mpar )
     fit_vbest = val ; fit_callback(npar,mpar) ;   /* function if cost shrinks */
   }
 
-  return (double)val ;
+  RETURN( (double)val );
 }
 
 /*---------------------------------------------------------------------------*/
 
 void mri_genalign_scalar_clrwght( GA_setup *stup )  /* 18 Oct 2006 */
 {
+ENTRY("mri_genalign_scalar_clrwght") ;
   if( stup != NULL ){
     if( stup->bwght != NULL ) mri_free(stup->bwght) ;
     if( stup->bmask != NULL ) free((void *)stup->bmask) ;
     stup->nmask = stup->nvox_mask = 0 ;
     stup->bwght = NULL ; stup->bmask = NULL ;
   }
+  EXRETURN ;
 }
 
 /*---------------------------------------------------------------------------*/
@@ -1042,6 +1138,8 @@ ENTRY("mri_genalign_scalar_setup") ;
 
    } /* end of if(need_pts) */
 
+   stup->need_hist_setup = 1 ;   /* 08 May 2007 */
+
    if( verb > 1 ) ININFO_message("* Exit alignment setup routine") ;
    stup->setup = SMAGIC ;
    EXRETURN ;
@@ -1165,13 +1263,15 @@ float mri_genalign_scalar_cost( GA_setup *stup )
    double *wpar , val ;
    int ii , qq ;
 
+ENTRY("mri_genalign_scalar_cost") ;
+
    if( stup == NULL || stup->setup != SMAGIC ){
      ERROR_message("Illegal call to mri_genalign_scalar_cost()") ;
-     return BIGVAL ;
+     RETURN( BIGVAL );
    }
 
    GA_param_setup(stup) ;
-   if( stup->wfunc_numfree <= 0 ) return BIGVAL ;
+   if( stup->wfunc_numfree <= 0 ) RETURN( BIGVAL );
 
    /* copy initial warp parameters into local array wpar,
       scaling to the range 0..1                          */
@@ -1190,7 +1290,7 @@ float mri_genalign_scalar_cost( GA_setup *stup )
 
    val = GA_scalar_fitter( stup->wfunc_numfree , wpar ) ;
 
-   free((void *)wpar) ; return (float)val ;
+   free((void *)wpar) ; RETURN( (float)val );
 }
 
 /*---------------------------------------------------------------------------*/
@@ -1574,7 +1674,7 @@ void mri_genalign_affine_setup( int mmmm , int dddd , int ssss )
 /*--------------------------------------------------------------------------*/
 
 static int   aff_use_before=0 , aff_use_after=0 ;
-static mat44 aff_before       , aff_after       , aff_gam ;
+static mat44 aff_before       , aff_after       , aff_gamijk , aff_gamxyz ;
 
 void mri_genalign_affine_set_befafter( mat44 *ab , mat44 *af )
 {
@@ -1596,6 +1696,16 @@ void mri_genalign_affine_get_befafter( mat44 *ab , mat44 *af )
 {
    if( ab != NULL ) *ab = aff_before ;
    if( af != NULL ) *af = aff_after  ;
+}
+
+void mri_genalign_affine_get_gammaijk( mat44 *gg )
+{
+  if( gg != NULL ) *gg = aff_gamijk ;
+}
+
+void mri_genalign_affine_get_gammaxyz( mat44 *gg )
+{
+  if( gg != NULL ) *gg = aff_gamxyz ;
 }
 
 /*--------------------------------------------------------------------------*/
@@ -1709,8 +1819,12 @@ static mat44 GA_setup_affine( int npar , float *parvec )
 
    /* before and after transformations? */
 
+   aff_gamxyz = gam ;
+
    if( aff_use_before ) gam = MAT44_MUL( gam , aff_before ) ;
    if( aff_use_after  ) gam = MAT44_MUL( aff_after , gam  ) ;
+
+   aff_gamijk = gam ;
 
 #if 0
    if( verb > 1 ){
@@ -1737,9 +1851,7 @@ void mri_genalign_affine( int npar, float *wpar ,
 
    /** new parameters ==> setup matrix */
 
-   if( npar > 0 && wpar != NULL ){
-     gam = GA_setup_affine( npar , wpar ) ; aff_gam = gam ;
-   }
+   if( npar > 0 && wpar != NULL ) gam = GA_setup_affine( npar , wpar ) ;
 
    /* nothing to transform? */
 

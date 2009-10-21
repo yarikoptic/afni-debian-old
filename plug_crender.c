@@ -10,7 +10,7 @@
  */
 
 /*----------------------------------------------------------------------
-  $Id: plug_crender.c,v 1.36 2007/02/27 19:29:38 rwcox Exp $
+  $Id: plug_crender.c,v 1.37 2007/03/20 16:43:04 rwcox Exp $
   ----------------------------------------------------------------------
 */
 
@@ -6301,6 +6301,7 @@ ENTRY( "RCREND_thr_scale_CB" );
    fff = THR_FACTOR * cbs->value ;  /* between 0 and 1 now */
    if( fff >= 0.0 && fff <= 1.0 ) func_threshold = fff ; else EXRETURN ;
    RCREND_set_thr_pval() ;
+   MCW_discard_events_all( w , ButtonPressMask ) ;  /* 20 Mar 2007 */
 
    INVALIDATE_OVERLAY ;
    FIX_SCALE_SIZE ;     /* 09 May 2001 */

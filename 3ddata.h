@@ -73,6 +73,10 @@ extern "C" {
    (strlen(ss) >= strlen(suf))   &&            \
    (strcasecmp(ss+strlen(ss)-strlen(suf),suf) == 0))
 
+#define PREFIX_IS_NIFTI(ss) ( STRING_HAS_SUFFIX(ss,".nii")    ||  \
+                              STRING_HAS_SUFFIX(ss,".nii.gz") ||  \
+                              STRING_HAS_SUFFIX(ss,".hdr")      )
+
 /***************************** dimensions ***************************/
 
 /*! Max length of a dataset label. */
@@ -1472,6 +1476,11 @@ extern mat44 THD_mat44_mul( mat44 A , mat44 B ) ;      /* matrix multiply */
     a21=AA.m[1][0] , a22=AA.m[1][1] , a23=AA.m[1][2] , a24=AA.m[1][3] ,   \
     a31=AA.m[2][0] , a32=AA.m[2][1] , a33=AA.m[2][2] , a34=AA.m[2][3]  )
 
+#undef  UNLOAD_MAT44_AR
+#define UNLOAD_MAT44_AR(AA,vv)                           \
+ UNLOAD_MAT44(AA,vv[0],vv[1],vv[2],vv[3],vv[4 ],vv[5 ],  \
+                 vv[6],vv[7],vv[8],vv[9],vv[10],vv[11] )
+
 /* negate the top 2 rows of a mat44 matrix
    (for transforming between NIfTI-1 and DICOM coord systems) */
 
@@ -2614,6 +2623,7 @@ extern int THD_need_brick_factor( THD_3dim_dataset * ) ;
 
 extern char * THD_newprefix(THD_3dim_dataset * dset, char * suffix); /* 16 Feb 2001 */
 extern char * THD_deplus_prefix( char *prefix ) ;                    /* 22 Nov 2002 */
+extern int    THD_deconflict_prefix( THD_3dim_dataset * ) ;          /* 23 Mar 2007 */
 
 /*! Return a pointer to the filecode of dataset ds (prefix+view) */
 
@@ -3413,7 +3423,7 @@ extern int THD_is_ondisk   ( char * ) ;  /* 19 Dec 2002 */
 extern int THD_mkdir       ( char * ) ;  /* 19 Dec 2002 */
 extern int THD_cwd         ( char * ) ;  /* 19 Dec 2002 */
 extern int THD_equiv_files ( char * , char * ) ;
-extern unsigned long THD_filesize( char * pathname ) ;
+extern long long THD_filesize( char * pathname ) ;
 extern THD_string_array * THD_get_all_subdirs( int , char * ) ;
 extern THD_string_array * THD_normalize_flist( THD_string_array * ) ;
 extern THD_string_array * THD_get_wildcard_filenames( char * ) ;
@@ -3614,9 +3624,9 @@ extern THD_3dim_dataset * THD_copy_dset_subs( THD_3dim_dataset * , int * ) ;
    "  'fred.1D[5,9,17]'       ==> use columns #5, #9, and #12\n"              \
    "  'fred.1D[5..8]'         ==> use columns #5, #6, #7, and #8\n"           \
    "  'fred.1D[5..13(2)]'     ==> use columns #5, #7, #9, #11, and #13\n"     \
-   "Sub-brick indexes start at 0.  You can use the character '$'\n"           \
-   "to indicate the last sub-brick in a dataset; for example, you\n"          \
-   "can select every third sub-brick by using the selection list\n"           \
+   "Column indices start at 0.  You can use the character '$'\n"           \
+   "to indicate the last column in a 1D file; for example, you\n"          \
+   "can select every third column in a 1D file by using the selection list\n"           \
    "  'fred.1D[0..$(3)]'      ==> use columns #0, #3, #6, #9, ....\n"         \
    "\n"                                                                       \
    "** ROW SELECTION WITH {} **\n"                                            \
@@ -3827,6 +3837,8 @@ extern MRI_IMAGE * THD_extract_float_brick( int , THD_3dim_dataset * ) ;
 
 extern void THD_insert_series( int, THD_3dim_dataset *, int, int, void *, int );
 
+extern int THD_voxel_is_constant( int ind , THD_3dim_dataset *dset ) ;
+
 /*--------------- routines that are in thd_detrend.c ---------------*/
 
 extern void get_linear_trend     ( int, float *, float *, float * ) ;
@@ -3839,7 +3851,25 @@ extern void THD_cubic_detrend    ( int, float * ) ;  /* 15 Nov 1999 */
 extern void THD_const_detrend    ( int, float *, float * ); /* 24 Aug 2001 */
 void THD_linear_detrend_complex  ( int, complex * ); /* 05 Mar 2007 */
 
-extern void THD_generic_detrend( int, float *, int, int, float ** ) ;
+extern void THD_generic_detrend_LSQ( int, float *, int, int, float **, float *) ;
+extern void THD_generic_detrend_L1 ( int, float *, int, int, float **, float *) ;
+extern void THD_generic_retrend    ( int, float *, int, int, float **, float *) ;
+
+extern MRI_IMARR * THD_time_fit_dataset( THD_3dim_dataset *, int, float **, int , byte *);
+extern void THD_extract_detrended_array( THD_3dim_dataset * ,
+                                         int, float **, MRI_IMARR *,
+                                         int, int, float * ) ;
+
+extern THD_3dim_dataset * THD_detrend_dataset( THD_3dim_dataset *dset ,
+                                               int nref , float **ref ,
+                                               int meth , int scl ,
+                                               byte *mask , MRI_IMARR **imar ) ;
+
+extern int THD_retrend_dataset( THD_3dim_dataset *dset ,
+                                int nref , float **ref ,
+                                int scl , byte *mask , MRI_IMARR *imar ) ;
+
+extern float ** THD_build_trigref( int corder , int nvals ) ;
 
 #define DETREND_linear(n,f)    THD_linear_detrend(n,f,NULL,NULL)
 #define DETREND_quadratic(n,f) THD_quadratic_detrend(n,f,NULL,NULL,NULL)
@@ -4319,6 +4349,8 @@ extern float THD_mutual_info_scl( int, float,float,float *,    /* 16 Aug 2006 */
                                        float,float,float *, float * ) ;
 extern float THD_mutual_info( int , float *, float * ) ;
 
+extern void THD_correlate_ignore_zerozero(int) ;
+
 extern float THD_corr_ratio_scl( int, float,float,float *,     /* 23 Aug 2006 */
                                       float,float,float *, float * ) ;
 extern float THD_corr_ratio( int , float *, float * ) ;
@@ -4339,12 +4371,22 @@ extern float THD_hellinger_scl( int, float,float,float *,      /* 26 Sep 2006 */
                                      float,float,float *, float * ) ;
 extern float THD_hellinger( int , float *, float * ) ;
 
-extern int retrieve_2Dhist   ( float **xyhist ) ; /* 28 Sep 2006 */
-extern void set_2Dhist_hpower( double ) ;         /* 03 Oct 2006 */
+extern int retrieve_2Dhist   ( float **xyhist ) ;     /* 28 Sep 2006 */
+extern int retrieve_2Dhist1  ( float **, float ** ) ; /* 07 May 2007 */
+extern void set_2Dhist_hpower( double ) ;             /* 03 Oct 2006 */
 extern void set_2Dhist_hbin  ( int  ) ;
+extern int  get_2Dhist_hbin  ( void ) ;
 extern void clear_2Dhist     ( void ) ;
 extern void build_2Dhist( int n , float xbot,float xtop,float *x ,
                           float ybot,float ytop,float *y , float *w ) ;
+
+extern void set_2Dhist_xybin( int nb , float *xb , float *yb ) ;  /* 07 May 2007 */
+extern int get_2Dhist_xybin( float **xb , float **yb ) ;
+extern void set_2Dhist_xybin_eqwide( int,float,float,float,float ) ;
+extern void set_2Dhist_xybin_eqhigh( int,int,float *,float * ) ;
+extern void set_2Dhist_xyclip      ( int, float *, float * ) ;
+extern int  get_2Dhist_xyclip      ( float *, float *, float *, float * ) ;
+
 
 /*------------------------------------------------------------------------*/
 

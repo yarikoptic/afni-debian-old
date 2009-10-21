@@ -226,8 +226,13 @@ end
    sBRIK = sprintf('%s.BRIK', BrikName);
    if (~filexist(sHead)), 
       ErrMessage = sprintf ('%s: %s not found', FuncName, sHead);
-      err = ErrEval(FuncName,'Err_HEAD file not found');
+      err = ErrEval(FuncName,sprintf ('Err_HEAD file %s not found', sHead));
       return;
+   end
+   sBRIK_gz = sprintf('%s.BRIK.gz', BrikName);
+   if (filexist(sBRIK_gz)),
+      fprintf(2,'Unzipping %s...\n', sBRIK_gz);
+      unix(sprintf('gzip -d %s', sBRIK_gz)); %matlab gunzip version requires Java
    end
    if (~filexist(sBRIK)), 
       ErrMessage = sprintf ('%s: %s not found', FuncName, sBRIK);

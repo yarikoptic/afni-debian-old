@@ -137,19 +137,30 @@ float SUMA_LoadPrepInVol (SUMA_GENERIC_PROG_OPTIONS_STRUCT *Opt, SUMA_SurfaceObj
    vol *= fabs(DSET_DX(Opt->in_vol) * DSET_DY(Opt->in_vol) * DSET_DZ(Opt->in_vol) );
    
    /* find the radius */
-   Opt->r = pow(vol*3.0/(3.14159*4.0), 1/3.0);
-   if (Opt->debug) {
-         fprintf (SUMA_STDERR,"%s: Volume %f, radius %f\n", FuncName, vol, Opt->r);
-   }
-   if (Opt->specie == MONKEY) {
-      Opt->r  = Opt->r/THD_BN_rat();
+   if (Opt->r < 0.0f) {
+      Opt->r = pow(vol*3.0/(3.14159*4.0), 1/3.0);
       if (Opt->debug) {
-         fprintf (SUMA_STDERR,"%s: Radius reduced to %f, less brain, more muscle.\n",  FuncName, Opt->r);
+            fprintf (SUMA_STDERR,"%s: Volume %f, radius %f\n", FuncName, vol, Opt->r);
       }
-   } else if (Opt->specie == RAT) {
-      Opt->r  = SUMA_MAX_PAIR(Opt->r/THD_BN_rat(), 6.0);       
+      if (Opt->specie == MONKEY) {
+         Opt->r  = Opt->r/THD_BN_rat();
+         if (Opt->debug) {
+            fprintf (SUMA_STDERR,"%s: Radius reduced to %f, less brain, more muscle.\n",  FuncName, Opt->r);
+         }
+      } else if (Opt->specie == RAT) {
+         Opt->r  = SUMA_MAX_PAIR(Opt->r/THD_BN_rat(), 6.0);       
+         if (Opt->debug) {
+            fprintf (SUMA_STDERR,"%s: Radius at %f. RATS!.\n",  FuncName, Opt->r);
+         }
+      } else if (Opt->specie == HUMAN) {
+         if (Opt->r > 100) {
+            SUMA_S_Notev("Radius estimated at %f is large. Setting back to 100.0\n", Opt->r);
+            Opt->r = 100;
+         }
+      }
+   } else {
       if (Opt->debug) {
-         fprintf (SUMA_STDERR,"%s: Radius at %f. RATS!.\n",  FuncName, Opt->r);
+            fprintf (SUMA_STDERR,"%s: User set radius at %f.\n",  FuncName, Opt->r);
       }
    }
    
@@ -1546,35 +1557,44 @@ short *SUMA_SurfGridIntersect (SUMA_SurfaceObject *SO, float *NodeIJKlist, SUMA_
       SOCenter[0] /= SO->N_Node;  SOCenter[1] /= SO->N_Node;   SOCenter[2] /= SO->N_Node;
       {
          float u[3], un, p0[3], p1[3];
-         int Found = 0, cnt;
+         int Found = 0, cnt, itry = 0;
          SUMA_MT_INTERSECT_TRIANGLE *mti = NULL; 
 
          /* Ray from a node on the surface to the center */
-         p0[0] = NodeIJKlist[0]; p1[0] = SOCenter[0]; 
-         p0[1] = NodeIJKlist[1]; p1[1] = SOCenter[1]; 
-         p0[2] = NodeIJKlist[2]; p1[2] = SOCenter[2]; 
-         SUMA_UNIT_VEC(p0, p1, u, un);
-         /* travel along that ray until you find a point inside the surface AND not on the mask */
-         Found = 0; cnt = 1;
-         while (!Found && cnt <= un) {
-            p1[0] = p0[0] + cnt * u[0];
-            p1[1] = p0[1] + cnt * u[1];
-            p1[2] = p0[2] + cnt * u[2];
-            if (LocalHead) {
-               fprintf(SUMA_STDERR,"%s:\nTrying seed ijk is %d %d %d\n", FuncName, (int)p1[0], (int)p1[1], (int)p1[2]); 
+         p1[0] = SOCenter[0];    
+         p1[1] = SOCenter[1];    
+         p1[2] = SOCenter[2];    
+         while (!Found && itry < SO->N_Node/100) {
+            p0[0] = NodeIJKlist[3*itry+0]; 
+            p0[1] = NodeIJKlist[3*itry+1]; 
+            p0[2] = NodeIJKlist[3*itry+2]; 
+
+            SUMA_UNIT_VEC(p0, p1, u, un);
+            SUMA_LHv("Try %d, un=%f...\nP0[%f %f %f] P1[%f %f %f]\n", 
+                  itry, un, p0[0], p0[1], p0[2], p1[0], p1[1], p1[2]);
+            /* travel along that ray until you find a point inside the surface AND not on the mask */
+            Found = 0; cnt = 1;
+            while (!Found && cnt <= un) {
+               p1[0] = p0[0] + cnt * u[0];
+               p1[1] = p0[1] + cnt * u[1];
+               p1[2] = p0[2] + cnt * u[2];
+               if (LocalHead) {
+                  fprintf(SUMA_STDERR,"%s:\nTrying seed ijk is %d %d %d\n", FuncName, (int)p1[0], (int)p1[1], (int)p1[2]); 
+               }
+               ijkseed = SUMA_3D_2_1D_index(p1[0], p1[1], p1[2], nx , nxy);
+               mti = SUMA_MT_intersect_triangle(p1, SOCenter, NodeIJKlist, SO->N_Node, SO->FaceSetList, SO->N_FaceSet, mti);
+               if (!(mti->N_poshits % 2)) { /* number of positive direction hits is a multiple of 2 */
+                  /* seed is outside */
+                  SUMA_LH("Seed outside");
+               } else {
+                  SUMA_LH("Seed inside");
+                  /* seed is inside, is it on the mask ? */
+                  if (!ijkmask[ijkseed]) { SUMA_LH("Seed Accepted");Found = YUP; }
+                  else SUMA_LH("Seed on mask");
+               }
+               ++cnt;   
             }
-            ijkseed = SUMA_3D_2_1D_index(p1[0], p1[1], p1[2], nx , nxy);
-            mti = SUMA_MT_intersect_triangle(p1, SOCenter, NodeIJKlist, SO->N_Node, SO->FaceSetList, SO->N_FaceSet, mti);
-            if (!(mti->N_poshits % 2)) { /* number of positive direction hits is a multiple of 2 */
-               /* seed is outside */
-               SUMA_LH("Seed outside");
-            } else {
-               SUMA_LH("Seed inside");
-               /* seed is inside, is it on the mask ? */
-               if (!ijkmask[ijkseed]) { SUMA_LH("Seed Accepted");Found = YUP; }
-               else SUMA_LH("Seed on mask");
-            }
-            ++cnt;   
+            ++itry;
          }
          if (!Found) {
             SUMA_SL_Err("Failed to find seed!");

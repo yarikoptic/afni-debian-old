@@ -1121,9 +1121,15 @@ static char *FALLback[] =
       "AFNI*XmText.translations: #augment"
            "<Btn4Down>: previous-line() scroll-one-line-down()\\n"
            "<Btn5Down>: next-line() scroll-one-line-up()"          ,
+#if 0
+      "AFNI*XmScrollBar.translations: #augment"
+           "<Btn4Down>: IncrementUpOrLeft(0)\\n"
+           "<Btn5Down>: IncrementDownOrRight(0)" ,
+#else
       "AFNI*XmScrollBar.translations: #augment"
            "<Btn4Down>: IncrementUpOrLeft(0) IncrementUpOrLeft(1)\\n"
            "<Btn5Down>: IncrementDownOrRight(1) IncrementDownOrRight(0)" ,
+#endif
 
    NULL } ;
 
@@ -1704,21 +1710,21 @@ STATUS("call 14") ;
         if( !GLOBAL_library.hints_on ) MCW_hint_toggle() ;
 
         if( MAIN_im3d->vwid->dmode->misc_hints_pb != NULL )
-           MCW_set_bbox( MAIN_im3d->vwid->dmode->misc_hints_bbox ,
-                         GLOBAL_library.hints_on ) ;
+          MCW_set_bbox( MAIN_im3d->vwid->dmode->misc_hints_bbox ,
+                        GLOBAL_library.hints_on ) ;
 
         /* Feb 1998: setup write compression from environment */
         /*           (read de-compression always works)       */
 
         ii = THD_enviro_write_compression() ;
         if( ii >= 0 && ii <= COMPRESS_LASTCODE ){
-           char str[64] ;
-           sprintf(str,"\n write compress= %s", COMPRESS_enviro[ii]) ;
-           REPORT_PROGRESS(str) ;
+          char str[64] ;
+          sprintf(str,"\n write compress= %s", COMPRESS_enviro[ii]) ;
+          REPORT_PROGRESS(str) ;
         }
 
         if( ALLOW_real_time > 0 )
-           REPORT_PROGRESS("\nRT: realtime plugin is active") ;
+          REPORT_PROGRESS("\nRT: realtime plugin is active") ;
 
         /* 23 Sep 2000: this function will be called 0.123 seconds
                         from now to initialize the window layouts  */
@@ -1764,6 +1770,14 @@ STATUS("call 14") ;
             AFNI_fimmer_setref( MAIN_im3d , tsim ) ;
           }
         }
+
+        /* 05 Mar 2007: auto-threshold? */
+
+        if( AFNI_yesenv("AFNI_THRESH_AUTO") ){
+          float new_thresh = AFNI_get_autothresh(MAIN_im3d) ;
+          if( new_thresh > 0.0f ) AFNI_set_threshold(MAIN_im3d,new_thresh) ;
+        }
+
 
         REPORT_PROGRESS("\n") ;
       }
@@ -3246,9 +3260,9 @@ ENTRY("AFNI_read_images") ;
    respond to events that one of the MCW_imseq's sends to us
 ------------------------------------------------------------------------*/
 
-void AFNI_seq_send_CB( MCW_imseq * seq , FD_brick * br , ISQ_cbs * cbs )
+void AFNI_seq_send_CB( MCW_imseq *seq , FD_brick *br , ISQ_cbs *cbs )
 {
-   Three_D_View * im3d = (Three_D_View *) seq->parent ;
+   Three_D_View *im3d = (Three_D_View *) seq->parent ;
 
 ENTRY("AFNI_seq_send_CB") ;
 
@@ -3264,9 +3278,9 @@ if(PRINT_TRACING)
       default: break ;
 
       case isqCR_destroy:{
-         MCW_imseq * sxyz = im3d->s123 ,
-                   * syzx = im3d->s231 ,
-                   * szxy = im3d->s312  ;
+         MCW_imseq *sxyz = im3d->s123 ,
+                   *syzx = im3d->s231 ,
+                   *szxy = im3d->s312  ;
          Widget w ;
          int a3 = br->a123.ijk[2] ,   /* z axis of the brick?    */
              az = abs(a3) - 1       ; /* 0,1,2 for dataset x,y,z */
@@ -3504,10 +3518,10 @@ if(PRINT_TRACING)
 
       case isqCR_keypress:{
 #if 1
-        switch( cbs->key ){  /* 05 Mar 2007 */
-
+        switch( cbs->key ){  /* 05 Mar 2007: keys that AFNI needs */
+                                       /* to process, not imseq.c */
           case 'u':{
-            int uu = im3d->vinfo->underlay_type ;
+            int uu = im3d->vinfo->underlay_type ; /* toggle Overlay as Underlay */
             uu = (uu+1) % (LAST_UNDERLAY_TYPE+1) ;
             MCW_set_bbox( im3d->vwid->func->underlay_bbox , 1<<uu ) ;
             AFNI_underlay_CB( im3d->vwid->func->underlay_bbox->wbut[0] ,
@@ -3515,24 +3529,24 @@ if(PRINT_TRACING)
           }
           break ;
 
-          case 'o':{
+          case 'o':{                              /* turn overlay on or off */
             int ov = MCW_val_bbox( im3d->vwid->view->see_func_bbox ) ;
             MCW_set_bbox( im3d->vwid->view->see_func_bbox , !ov ) ;
             AFNI_see_func_CB( NULL , im3d , NULL ) ;
           }
           break ;
 
-          case '{':
-          case '}':{
-            int stt=(int)THR_TOP_VALUE , dss , scl , osc ;
-            XmScaleGetValue( im3d->vwid->func->thr_scale , &scl ) ; osc = scl ;
-            dss = (stt+1)/100 ; if( cbs->key == '{' ) dss = -dss ;
-            scl += dss ;
-            if( scl <= 0 ) scl = 0 ; else if( scl >= stt ) scl = stt ;
-            if( scl != osc ){
-              XmScaleSetValue( im3d->vwid->func->thr_scale , scl ) ;
-              AFNI_thr_scale_CB( im3d->vwid->func->thr_scale, (XtPointer)im3d, NULL ) ;
-            }
+          case '{':    /* Actually: Mod+Button4/5 = Mod+ScrollWheel */
+          case '}':{   /* Change the threshold slider up or down */
+            int scl ; float fff,dff,nff ;
+            XmScaleGetValue( im3d->vwid->func->thr_scale , &scl ) ;
+            fff = scl * im3d->vinfo->func_thresh_top * THR_FACTOR ;
+            dff = im3d->vinfo->func_thresh_top * 0.01f ;
+            if( cbs->key == '{' ) dff = -dff ;
+            nff = fff+dff ;
+                 if( nff < 0.0f          ) nff = 0.0f ;
+            else if( nff > THR_TOP_VALUE ) nff = THR_TOP_VALUE ;
+            if( nff != fff ) AFNI_set_threshold( im3d , nff ) ;
           }
           break ;
 
@@ -3627,6 +3641,25 @@ if(PRINT_TRACING)
          PLUTO_force_rebar() ;      /* ditto [23 Aug 1998] */
       }
       break ; /* end of forced redisplay */
+
+      /*--- 26 Apr 2007: time indexing ---*/
+
+      case isqCR_setindex:{
+         MCW_arrowval *tav = im3d->vwid->imag->time_index_av ;
+         MCW_arrowval *aav = im3d->vwid->func->anat_buck_av ;
+         int new_index = im3d->vinfo->anat_index + cbs->key ;
+
+         if( new_index != im3d->vinfo->anat_index ){
+           if( im3d->vinfo->time_on ){
+             AV_assign_ival( tav , new_index ) ;               /* set time_index */
+             AFNI_time_index_CB( tav, (XtPointer) im3d ); /* will set anat_index */
+           } else {
+             AV_assign_ival( aav, new_index ) ;       /* set anat index directly */
+             AFNI_bucket_CB( aav, im3d ) ;
+           }
+         }
+      }
+      break ;
 
    }  /* end of switch on reason for call */
 
@@ -4839,6 +4872,7 @@ ENTRY("AFNI_closedown_3dview") ;
 /*-------------------------------------------------------------------------
   Open or close the viewing controls panel
 ---------------------------------------------------------------------------*/
+
 void AFNI_controller_panel_CB( Widget wcall , XtPointer cd , XtPointer cbs )
 {
    Three_D_View * im3d = (Three_D_View *) cd ;
@@ -5114,8 +5148,9 @@ static char * AFNI_image_help =
  "s = sharpen image        m = toggle Min-to-Max\n"
  "D = open Disp panel      M = open Montage panel\n"
  "S = Save image           l = left-right mirror\n"
- "> = Page Up   = forward  1 image\n"
- "< = Page Down = backward 1 image\n"
+ "[ = time index down 1    ] = time index up 1\n"
+ "> = Page Up   = forward  1 image (e.g., slice)\n"
+ "< = Page Down = backward 1 image (e.g., slice)\n"
  "v/V = Video image sequence up/down\n"
  "r/R = Ricochet image sequence up/down\n"
  "i/I = image fraction down/up\n"
@@ -5170,28 +5205,52 @@ ENTRY("AFNI_view_xyz_CB") ;
        open window by bringing that window to the top */
 
     if( w == pb_xyz && sxyz != NULL ){
-       if( ISQ_REALZ(sxyz) )
-          XMapRaised( XtDisplay(sxyz->wtop) , XtWindow(sxyz->wtop) ) ;
+       if( ISQ_REALZ(sxyz) ){
+          if( AFNI_yesenv("AFNI_IMAGRA_CLOSER") )
+            drive_MCW_imseq( sxyz , isqDR_destroy , NULL ) ;
+          else
+            XMapRaised( XtDisplay(sxyz->wtop) , XtWindow(sxyz->wtop) ) ;
+       }
        EXRETURN ;
     } else if( w == pb_yzx && syzx != NULL ){
-       if( ISQ_REALZ(syzx) )
-          XMapRaised( XtDisplay(syzx->wtop) , XtWindow(syzx->wtop) ) ;
+       if( ISQ_REALZ(syzx) ){
+          if( AFNI_yesenv("AFNI_IMAGRA_CLOSER") )
+            drive_MCW_imseq( syzx , isqDR_destroy , NULL ) ;
+          else
+            XMapRaised( XtDisplay(syzx->wtop) , XtWindow(syzx->wtop) ) ;
+       }
        EXRETURN ;
     } else if( w == pb_zxy && szxy != NULL ){
-       if( ISQ_REALZ(szxy) )
-          XMapRaised( XtDisplay(szxy->wtop) , XtWindow(szxy->wtop) ) ;
+       if( ISQ_REALZ(szxy) ){
+          if( AFNI_yesenv("AFNI_IMAGRA_CLOSER") )
+            drive_MCW_imseq( szxy , isqDR_destroy , NULL ) ;
+          else
+            XMapRaised( XtDisplay(szxy->wtop) , XtWindow(szxy->wtop) ) ;
+       }
        EXRETURN ;
     } else if( w == gr_xyz && gxyz != NULL ){
-       if( GRA_REALZ(gxyz) )
-          XMapRaised( XtDisplay(gxyz->fdw_graph) , XtWindow(gxyz->fdw_graph) ) ;
+       if( GRA_REALZ(gxyz) ){
+          if( AFNI_yesenv("AFNI_IMAGRA_CLOSER") )
+            drive_MCW_grapher( gxyz , graDR_destroy , NULL ) ;
+          else
+            XMapRaised( XtDisplay(gxyz->fdw_graph) , XtWindow(gxyz->fdw_graph) ) ;
+       }
        EXRETURN ;
     } else if( w == gr_yzx && gyzx != NULL ){
-       if( GRA_REALZ(gyzx) )
-          XMapRaised( XtDisplay(gyzx->fdw_graph) , XtWindow(gyzx->fdw_graph) ) ;
+       if( GRA_REALZ(gyzx) ){
+          if( AFNI_yesenv("AFNI_IMAGRA_CLOSER") )
+            drive_MCW_grapher( gyzx , graDR_destroy , NULL ) ;
+          else
+            XMapRaised( XtDisplay(gyzx->fdw_graph) , XtWindow(gyzx->fdw_graph) ) ;
+       }
        EXRETURN ;
     } else if( w == gr_zxy && gzxy != NULL ){
-       if( GRA_REALZ(gzxy) )
-          XMapRaised( XtDisplay(gzxy->fdw_graph) , XtWindow(gzxy->fdw_graph) ) ;
+       if( GRA_REALZ(gzxy) ){
+          if( AFNI_yesenv("AFNI_IMAGRA_CLOSER") )
+            drive_MCW_grapher( gzxy , graDR_destroy , NULL ) ;
+          else
+            XMapRaised( XtDisplay(gzxy->fdw_graph) , XtWindow(gzxy->fdw_graph) ) ;
+       }
        EXRETURN ;
     }
 
@@ -5665,8 +5724,10 @@ DUMP_IVEC3("  new_id",new_id) ;
          break ;
        }
        AFNI_vedit( im3d->fim_now , im3d->vedset ) ;
+       if( !DSET_VEDIT_good(im3d->fim_now) ) VEDIT_clear_label(im3d) ;
+       else                                  VEDIT_helpize(im3d) ;
      } else {
-       AFNI_vedit_clear( im3d->fim_now ) ;
+       AFNI_vedit_clear( im3d->fim_now ) ; VEDIT_clear_label(im3d) ;
      }
      AFNI_set_thr_pval(im3d) ;  /* for the * marker */
    }
@@ -6339,9 +6400,8 @@ STATUS("voxel coordinates") ;
 void AFNI_marktog_CB( Widget w ,
                       XtPointer client_data , XtPointer call_data )
 {
-   Three_D_View * im3d = (Three_D_View *) client_data ;
-   XmToggleButtonCallbackStruct * cbs =
-         (XmToggleButtonCallbackStruct *) call_data ;
+   Three_D_View *im3d                = (Three_D_View *)client_data ;
+   XmToggleButtonCallbackStruct *cbs = (XmToggleButtonCallbackStruct *)call_data;
 
    int bval , ip , xx=-1 , yy=-1 , zz=-1 ;
    Widget * other_tog ;
@@ -6354,6 +6414,7 @@ ENTRY("AFNI_marktog_CB") ;
 
       default:  XBell(XtDisplay(w),100) ; EXRETURN ;  /* error */
 
+      /** case XmCR_ACTIVATE: **/
       case XmCR_DISARM:   /* button on the control panel */
          bval      = AFNI_first_tog( MARKS_MAXNUM ,
                                      im3d->vwid->marks->tog ) ;
@@ -6851,6 +6912,7 @@ if(PRINT_TRACING)
    new_func = GLOBAL_library.sslist->ssar[sss]->dsset[fff][vvv] ;
 
    AFNI_vedit_clear( im3d->fim_now ) ;  /* 05 Sep 2006 */
+   VEDIT_clear_label( im3d ) ;
 
    /*----------------------------------------------*/
    /*--- if the old dataset has markers and the
@@ -6887,6 +6949,8 @@ STATUS("purging old datasets from memory (maybe)") ;
    im3d->anat_now = im3d->anat_dset[vvv] ;
    im3d->fim_now  = im3d->fim_dset[vvv] ;
    im3d->ss_now   = GLOBAL_library.sslist->ssar[sss] ;
+
+   SENSITIZE( im3d->vwid->func->clu_rowcol , DSET_INMEMORY(im3d->fim_now) ) ;
 
    /*------------------------------------------------*/
    /*--- if markers are defined, then set them up ---*/
@@ -7057,9 +7121,9 @@ THD_warp * AFNI_find_warp( THD_3dim_dataset *dset_to , THD_3dim_dataset *dset_fr
    30 Nov 1997: add bucket stuff
 ------------------------------------------------------------------------*/
 
-void AFNI_setup_viewing( Three_D_View * im3d , Boolean rescaled )
+void AFNI_setup_viewing( Three_D_View *im3d , Boolean rescaled )
 {
-   FD_brick ** fbr ;
+   FD_brick **fbr ;
    XmString xstr ;
    Boolean  same , dont_fix_pts , writer ,
             anat_brick_possible , func_brick_possible ;
@@ -9114,10 +9178,30 @@ ENTRY("AFNI_make_warp") ;
          /* load bot & top with largest possible excursions from
             origin (the ALIGNBOX dimensions were added 3/25/95)  */
 
-         LOAD_FVEC3(awarp->warp.bot,
-                    -ATLAS_ALIGNBOX_LAT,-ATLAS_ALIGNBOX_ANT,-ATLAS_ALIGNBOX_INF);
-         LOAD_FVEC3(awarp->warp.top,
-                     ATLAS_ALIGNBOX_LAT, ATLAS_ALIGNBOX_POS, ATLAS_ALIGNBOX_SUP);
+         {
+            float zbot = ATLAS_ALIGNBOX_INF;
+            float ztop = ATLAS_ALIGNBOX_SUP;
+            float xtop = ATLAS_ALIGNBOX_LAT;
+            float ytop = ATLAS_ALIGNBOX_POS;
+            float ybot = ATLAS_ALIGNBOX_ANT;
+            #define GETVAL(vvv,nnn) do{ char *eee = getenv(nnn) ;                            \
+                            if( eee != NULL ){                                   \
+                              float val=strtod(eee,NULL); if(val>0.0) vvv = val; \
+                            } } while(0)
+
+                     GETVAL(xtop,"AFNI_ACPC_BBOX_LAT") ;  /* ZSS: Apr 2007: get new bounding box */
+                     GETVAL(ybot,"AFNI_ACPC_BBOX_ANT") ;  /* from environment variables, maybe */
+                     GETVAL(ytop,"AFNI_ACPC_BBOX_POS") ;
+                     GETVAL(zbot,"AFNI_ACPC_BBOX_INF") ;
+                     GETVAL(ztop,"AFNI_ACPC_BBOX_SUP") ;
+
+            #undef GETVAL
+
+            LOAD_FVEC3(awarp->warp.bot,
+                       -xtop, -ybot, -zbot);
+            LOAD_FVEC3(awarp->warp.top,
+                        xtop, ytop, ztop);
+         }
 
 #ifdef AFNI_DEBUG
 STATUS("Original -> Aligned Map::") ;

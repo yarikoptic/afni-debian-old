@@ -29,7 +29,7 @@ typedef struct { int np,code; float vb,vt ; } param_opt ;
 static float wt_medsmooth = 2.25f ;   /* for mri_weightize() */
 static float wt_gausmooth = 4.50f ;
 
-static int verb           = 1 ;       /* somewhat on by default */
+static int verb           = 1 ;       /* somewhat on by default (please keep this the default: ZSS) */
 
 MRI_IMAGE * mri_weightize( MRI_IMAGE *, int , int ) ;  /* prototype */
 
@@ -134,6 +134,7 @@ int main( int argc , char *argv[] )
    float powell_mm             = 0.0f ;
    float powell_aa             = 0.0f ;
    float conv_mm               = 0.05 ;         /* millimeters */
+   float nmask_frac            = -1.0;          /* default settings for fraction of voxels to use */
    int matorder                = MATORDER_SDU ; /* matrix mult order */
    int smat                    = SMAT_LOWER ;   /* shear matrix triangle */
    int dcode                   = DELTA_AFTER ;  /* shift after */
@@ -143,15 +144,17 @@ int main( int argc , char *argv[] )
    int XYZ_warp                = 0 ;            /* off by default */
    double hist_pow             = 0.0 ;
    int hist_nbin               = 0 ;
-   int epi_fe                  = -1 ;            /* off by default */
+   int epi_fe                  = -1 ;           /* off by default */
    int epi_pe                  = -1 ;
    int epi_se                  = -1 ;
    int epi_targ                = -1 ;
-   int replace_base            = 0 ;             /* off by default */
-   int replace_meth            = 0 ;             /* off by default */
-   int usetemp                 = 0 ;             /* off by default */
+   int replace_base            = 0 ;            /* off by default */
+   int replace_meth            = 0 ;            /* off by default */
+   int usetemp                 = 0 ;            /* off by default */
    int nmatch_setup            = 23456 ;
-   int ignout                  = 0 ;             /* 28 Feb 2007 */
+   int ignout                  = 0 ;            /* 28 Feb 2007 */
+   int    hist_mode            = 0 ;            /* 08 May 2007 */
+   float  hist_param           = 0.0f ;
 
    /**----------------------------------------------------------------------*/
    /**----------------- Help the pitifully ignorant user? -----------------**/
@@ -547,6 +550,8 @@ int main( int argc , char *argv[] )
         "===========================================\n"
         "TOP SECRET HIDDEN OPTIONS (-HELP or -POMOC)\n"
         "===========================================\n"
+        "** N.B.: Some of these are experimental ***\n"
+        "===========================================\n"
         " -savehist sss = Save start and final 2D histograms as PGM\n"
         "                 files, with prefix 'sss' (cost: cr mi nmi hel).\n"
         " -seed iii     = Set random number seed (for coarse startup search)\n"
@@ -576,6 +581,8 @@ int main( int argc , char *argv[] )
         "                 the number of data points.  You can change that exponent\n"
         "                 to 'pp' with this option.\n"
         " -histbin nn   = Or you can just set the number of bins directly to 'nn'.\n"
+        " -eqbin   nn   = Use equalized marginal histograms with 'nn' bins.\n"
+        " -clbin   nn   = Use 'nn' equal-spaced bins except for the bot and top.\n"
         " -wtmrad  mm   = Set autoweight/mask median filter radius to 'mm' voxels.\n"
         " -wtgrad  gg   = Set autoweight/mask Gaussian filter radius to 'gg' voxels.\n"
         " -nmsetup nn   = Use 'nn' points for the setup matching [default=23456]\n"
@@ -583,7 +590,7 @@ int main( int argc , char *argv[] )
        ) ;
      } else {
        printf("\n"
-              "[[[[[ To see a few super-advanced options, use '-HELP'. ]]]]]\n") ;
+              "[[[[[ To see a few super-advanced or experimental options, use '-HELP'. ]]]]]\n") ;
      }
 
      printf("\n"); exit(0);
@@ -680,7 +687,17 @@ int main( int argc , char *argv[] )
        continue ;
      }
 
-    /*-----*/
+     /*-----*/
+
+     if( strncmp(argv[iarg],"-weight_frac",11) == 0 ){
+       if( ++iarg >= argc ) ERROR_exit("no argument after '%s'!",argv[iarg-1]) ;
+       nmask_frac = atof( argv[iarg] ) ;
+       if( nmask_frac < 0.0f || nmask_frac > 1.0f )
+         ERROR_exit("-weight_frac must be between 0.0 and 1.0 (have '%s')",argv[iarg]);
+       iarg++ ; continue ;
+     }
+
+     /*-----*/
 
      if( strncmp(argv[iarg],"-weight",6) == 0 ){
        auto_weight = 0 ;
@@ -692,7 +709,6 @@ int main( int argc , char *argv[] )
      }
 
      /*-----*/
-
      if( strncmp(argv[iarg],"-autoweight",8) == 0 ){
        if( dset_weig != NULL ) ERROR_exit("Can't use -autoweight AND -weight!") ;
        auto_weight = 1 ; auto_string = "-autoweight" ; iarg++ ; continue ;
@@ -745,7 +761,30 @@ int main( int argc , char *argv[] )
      if( strcmp(argv[iarg],"-histbin") == 0 ){   /* SECRET OPTION */
        if( ++iarg >= argc ) ERROR_exit("no argument after '%s'!",argv[iarg-1]) ;
        hist_nbin = (int)strtod(argv[iarg],NULL) ;
+       hist_mode = 0 ; hist_param = 0.0f ;
        set_2Dhist_hbin( hist_nbin ) ;
+       iarg++ ; continue ;
+     }
+
+     if( strcmp(argv[iarg],"-clbin") == 0 ){   /* SECRET OPTION - 08 May 2007 */
+       if( ++iarg >= argc ) ERROR_exit("no argument after '%s'!",argv[iarg-1]) ;
+       hist_mode  = GA_HIST_CLEQWD ;
+       hist_param = (float)strtod(argv[iarg],NULL) ;
+       iarg++ ; continue ;
+     }
+
+     if( strcmp(argv[iarg],"-izz") == 0 ){    /* EXPERIMENTAL!! */
+       THD_correlate_ignore_zerozero(1) ; iarg++ ; continue ;
+     }
+
+     if( strcmp(argv[iarg],"-eqbin") == 0 ){   /* SECRET OPTION - 08 May 2007 */
+       if( ++iarg >= argc ) ERROR_exit("no argument after '%s'!",argv[iarg-1]) ;
+       hist_mode  = GA_HIST_EQHIGH ;
+       hist_param = (float)strtod(argv[iarg],NULL) ;
+       if( hist_param < 3.0f || hist_param > 255.0f ){
+         WARNING_message("'-eqbin %f' is illegal -- ignoring",hist_param) ;
+         hist_mode = 0 ; hist_param = 0.0f ;
+       }
        iarg++ ; continue ;
      }
 
@@ -1645,11 +1684,14 @@ int main( int argc , char *argv[] )
    }
 
    /* number of points to use for matching */
-
-   ntask = DSET_NVOX(dset_targ) ;
-   ntask = (ntask < nmask) ? (int)sqrt(ntask*(double)nmask) : nmask ;
-   if( npt_match < 0 )   npt_match = (int)(-0.01f*npt_match*ntask) ;
-   if( npt_match < 666 ) npt_match = 666 ;
+   if (nmask_frac < 0) {
+      ntask = DSET_NVOX(dset_targ) ;
+      ntask = (ntask < nmask) ? (int)sqrt(ntask*(double)nmask) : nmask ;
+      if( npt_match < 0 )   npt_match = (int)(-0.01f*npt_match*ntask) ;
+      if( npt_match < 666 ) npt_match = 666 ;
+   } else {
+      npt_match = (int)(nmask_frac*(double)nmask);
+   }
    if( verb ) INFO_message("Number of points for matching = %d",npt_match) ;
 
    /*------ setup alignment structure parameters ------*/
@@ -1657,7 +1699,10 @@ int main( int argc , char *argv[] )
    memset(&stup,0,sizeof(GA_setup)) ;  /* NULL out */
 
    stup.match_code = meth_code ;
-   stup.usetemp    = usetemp ;   /* 20 Dec 2006 */
+   stup.usetemp    = usetemp ;     /* 20 Dec 2006 */
+
+   stup.hist_mode  = hist_mode ;   /* 08 May 2007 */
+   stup.hist_param = hist_param ;
 
    /* spatial coordinates: 'cmat' transforms from ijk to xyz */
 
@@ -2207,12 +2252,12 @@ int main( int argc , char *argv[] )
 
      /* now do the final final optimization, with the correct interp mode */
 
-     if( verb > 2 ) GA_do_cost(1);
+     if( verb > 2 ) GA_do_cost(1, (byte)(verb-2));
 
      nfunc += mri_genalign_scalar_optim( &stup , rad, conv_rad,6666 );
 
      if( powell_mm > 0.0f ) powell_set_mfac( 0.0f , 0.0f ) ;
-     if( verb > 2 ) GA_do_cost(0);
+     if( verb > 2 ) GA_do_cost(0, (byte)(verb-2));
      if( verb > 1 ) ININFO_message("- Fine CPU time = %.1f s",
                                    COX_cpu_time()-ctim) ;
      if( verb ) ININFO_message("- Fine Optimization took %d trials; final cost=%f",
@@ -2358,6 +2403,21 @@ int main( int argc , char *argv[] )
                              stup.wfunc_numpar , parsave[kk] , stup.wfunc ,
                              stup.ajim ,
                              nxout , nyout , nzout , final_interp ) ;
+
+       /* 04 Apr 2007: save matrix into dataset header */
+
+       { static mat44 gam , gami ; char anam[64] ; float matar[12] ;
+         mri_genalign_affine_get_gammaxyz( &gam ) ;
+         if( ISVALID_MAT44(gam) ){
+           sprintf(anam,"ALLINEATE_MATVEC_B2S_%06d",kk) ;
+           UNLOAD_MAT44_AR(gam,matar) ;
+           THD_set_float_atr( dset_out->dblk , anam , 12 , matar ) ;
+           gami = MAT44_INV(gam) ;
+           sprintf(anam,"ALLINEATE_MATVEC_S2B_%06d",kk) ;
+           UNLOAD_MAT44_AR(gami,matar) ;
+           THD_set_float_atr( dset_out->dblk , anam , 12 , matar ) ;
+         }
+       }
 
        /* save without scaling factor */
 

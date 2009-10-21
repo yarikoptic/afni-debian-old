@@ -1389,6 +1389,29 @@ the Talairach Daemon database onto odd-sized +tlrc datasets.  Therefore, I
 recommend that these variables be used only when strictly needed, and with
 caution.
 
+Lastly, try hard not to mix TLRC datasets created with various box sizes in
+the same session. Strange things may happen.
+
+---------------------------
+Variables: AFNI_ACPC_BBOX_*
+---------------------------
+The variables let you choose the size of the "ACPC Box", into which 
++acpc datasets are transformed. If defined, they should be positive values,
+in mm.  The 6 variables (any or all of which may be used) are:
+
+  AFNI_ACPC_BBOX_LAT = distance from midline to maximum left/right position
+                        [default=95]
+  AFNI_ACPC_BBOX_ANT = distance from AC to most anterior point in box
+                        [default=95]
+  AFNI_ACPC_BBOX_POS = distance from AC to most posterior point in box
+                        [default=140]
+  AFNI_ACPC_BBOX_INF = distance from AC-PC line to most inferior point in box
+                        [default=70]
+  AFNI_ACPC_BBOX_SUP = distance from AC-PC line to most superior point in box
+                        [default=100]
+
+Check example and heed ALL warnings for variables AFNI_TLRC_BBOX_* above.
+
 -------------------------
 Variable: AFNI_TTRR_SETUP
 -------------------------
@@ -2145,9 +2168,9 @@ from within AFNI, a 'Rescan: This' operation should probably be performed,
 which will force a re-reading of the datasets and so force an elicitation
 of the NIfTI debug messages (for .nii files, that is).
 
--------------------------
-Variable AFNI_NIFTI_NOEXT
--------------------------
+--------------------------
+Variable: AFNI_NIFTI_NOEXT
+--------------------------
 When writing a '.nii' (or '.nii.gz') file from an AFNI program, normally
 a NIfTI-1.1 extension field with some extra AFNI header information is
 written into the output file.  If you set this variable to YES, then
@@ -2302,6 +2325,17 @@ image window will be interpreted as a separation distance, in mm, as
 opposed to the number of tick divisions along each edge.  In that case,
 a larger value would produce fewer ticks, as they would be farther apart.
 
+----------------------------
+Variable: AFNI_IMAGRA_CLOSER
+----------------------------
+If this YES/NO variable is set to YES, then when you click in an 'Image'
+or 'Graph' button for a viewer window that is already open (so the button
+is displayed in inverted colors), then the corresponding viewer window
+will close.  The default action is to try to raise the viewer window to
+the front, but some window managers (I'm looking at you, FC5) don't allow
+this action.  So this provides a way to kill the window, at least, if you've
+lost it in desktop hell somewhere.
+
 ----------------------------------------------------------------------
 --- variables specific to NIML I/O
 ----------------------------------------------------------------------
@@ -2332,6 +2366,16 @@ Variable: AFNI_NIML_TEXT_DATA
 If this YES/NO variable is set to YES, then NI_SURF_DSET datasets will be
 written with data in text format.  Otherwise, data will be in binary.
 
+-----------------------------
+Variable: AFNI_SIMPLE_HISTORY
+-----------------------------
+A few programs (particularly 3dcalc) create a complicated history note
+in the output dataset header, by including the history of all inputs.
+This history can become inordinately long and pointless when 3calc is
+run in a long chain of calculations.  Setting this variable to YES will
+turn off this cumulation of all histories, and may make your dataset
+headers more manageable.
+
 ----------------------------------------------------------------------
 --- END: variables specific to NIML I/O
 ----------------------------------------------------------------------
@@ -2349,6 +2393,21 @@ written with data in text format.  Otherwise, data will be in binary.
 ############################################################################
 ##### Variables that Specifically Affect the Operation of 3dDeconvolve #####
 ############################################################################
+
+-----------------------------------
+Variable: AFNI_3dDeconvolve_GOFORIT
+-----------------------------------
+If this variable is set to YES, then 3dDeconvolve behaves as if you used the
+'-GOFORIT' option on the command line -- that is, it will continue to run
+even if it detects serious non-fatal problems with the problem setup.
+
+--------------------------------
+Variable: AFNI_3dDeconvolve_NIML
+--------------------------------
+3dDeconvolve outputs the regression matrix 'X' into a file formatted in
+the 'NIML' .1D format -- with an XML-style header in '#' comments at the
+start of the file.  If you DON'T want this format, just plain numbers,
+set this variable to NO.
 
 ----------------------------------
 Variable: AFNI_3dDeconvolve_extend

@@ -187,19 +187,9 @@ static float MRI_TYPE_maxval[7] =
 typedef struct complex { float r , i ; } complex ;
 #endif
 
-#ifndef TYPEDEF_floatpair
-#define TYPEDEF_floatpair
-typedef struct { float a,b ; } floatpair ;
-#endif
-
-#ifndef TYPEDEF_intpair
-#define TYPEDEF_intpair
-typedef struct { int i,j ; } intpair ;
-#endif
-
-#ifndef TYPEDEF_inttriple
-#define TYPEDEF_inttriple
-typedef struct { int a,b,c ; } inttriple ;
+#ifndef TYPEDEF_float_pair
+#define TYPEDEF_float_pair
+typedef struct { float a,b ; } float_pair ;
 #endif
 
 /*-------*/
@@ -314,7 +304,7 @@ typedef struct MRI_IMAGE {
 #endif
 
          char *fname ;   /*!< to read actual image data after delay */
-         int foffset ;   /*!< offset into fname of image data */
+         unsigned int foffset ;   /*!< offset into fname of image data */
          int fondisk ;   /*!< flag to indicate if is on disk (?) */
 
          int was_swapped ; /* 07 Mar 2002 */
@@ -741,6 +731,9 @@ extern int mri_write_ascii( char * , MRI_IMAGE * ) ;
 extern int mri_write_raw( char * , MRI_IMAGE * ) ;       /* 05 Jan 2000 */
 extern void mri_write_analyze( char * , MRI_IMAGE * ) ;  /* 29 Nov 2001 */
 
+extern MRI_IMAGE * mri_read_ascii_ragged_complex(char *,float); /* 08 Mar 2007 */
+
+
 extern MRI_IMAGE * mri_read_ragged_fromstring( char *, float); /* 05 Jan 2007 */
 
 extern MRI_IMAGE * mri_read_1D( char * ) ;               /* 16 Nov 1999 */
@@ -794,8 +787,9 @@ MRI_IMARR *mri_read_many_nsize( int nf , char * fn[] ) ;
 
 void init_MCW_sizes(void) ;
 char * imsized_fname( char * fname ) ;
-long mri_filesize( char * pathname ) ;
 char * my_strdup( char * str ) ;
+
+#define mri_filesize THD_filesize  /* 22 Mar 2007 */
 
 extern void mri_overlay_2D( MRI_IMAGE *, MRI_IMAGE *, int,int ) ;
 
@@ -901,7 +895,7 @@ extern void mri_percents( MRI_IMAGE * , int nper , float per[] ) ;
 extern MRI_IMAGE * mri_flatten( MRI_IMAGE * ) ;
 extern float mri_quantile( MRI_IMAGE * im , float alpha ) ;
 
-extern floatpair mri_twoquantiles( MRI_IMAGE * im, float alpha, float beta ) ;
+extern float_pair mri_twoquantiles( MRI_IMAGE * im, float alpha, float beta ) ;
 
 extern void qsort_short( int , short * ) ;
 extern void qsort_float( int , float * ) ;
@@ -926,6 +920,7 @@ extern MRI_IMAGE * mri_sharpen( float , int , MRI_IMAGE * ) ;
 extern MRI_IMAGE * mri_transpose( MRI_IMAGE * ) ;
 
 extern MRI_IMAGE * mri_clusterize( float,float, MRI_IMAGE *, float, MRI_IMAGE * );
+extern char * mri_clusterize_report(void) ;
 
 #define FILT_FFT_WRAPAROUND  1
 
@@ -1175,10 +1170,15 @@ typedef struct {
   char name[64] ;
 } SYM_irange ;
 
-floatvecvec * SYM_expand_ranges( int nlast, int nrang, SYM_irange *rang, char *str );
+extern floatvecvec * SYM_expand_ranges( int, int, SYM_irange *, char * );
+extern int SYM_expand_errcount(void) ; /* 03 May 2007 */
 
 /*-----------------  30 Oct 1996: incorporation of cdflib ----------------*/
-#include "cdflib.h"
+/*-----------------  09 May 2007: get them from nifticdf  ----------------*/
+#ifndef __COMPILE_UNUSED_FUNCTIONS__
+#define __COMPILE_UNUSED_FUNCTIONS__
+#endif
+#include "nifticdf.h"    /* was cdflib.h */
 /*------------------------------------------------------------------------*/
 
 /*-----------------  01 Feb 1998: incoroporation of mcw_glob -------------*/
@@ -1285,7 +1285,7 @@ extern float mri_scaled_diff( MRI_IMAGE *bim, MRI_IMAGE *nim, MRI_IMAGE *msk ) ;
 #include "AFNI_label.h"
 #undef  PRINT_VERSION
 #define PRINT_VERSION(pp)                                       \
-  INFO_message("Program %s: AFNI version=%s [%d-bit]",          \
+  INFO_message("%s: AFNI version=%s (" __DATE__ ") [%d-bit]",   \
                (pp),AFNI_VERSION_LABEL,(int)(sizeof(void *)*8))
 
 #undef  AUTHOR
@@ -1359,6 +1359,10 @@ typedef void GA_warpfunc( int, float *,
 
 typedef MRI_warp3D_param_def GA_param ;  /* cf. 3ddata.h */
 
+#define GA_HIST_EQWIDE 1
+#define GA_HIST_EQHIGH 2
+#define GA_HIST_CLEQWD 3
+
  /* struct to control mri_genalign.c optimization */
 
 typedef struct {
@@ -1388,13 +1392,16 @@ typedef struct {
   int npt_match   ;            /* set by user */
   floatvec *im, *jm, *km , *bvm , *wvm ;
   float bvstat ;
+  int hist_mode ;              /* set by user */
+  float hist_param ;           /* set by user */
+  int need_hist_setup ;
 
                              /*** NOT USED YET ***/
   int kernel_code ;            /* set by user */
   float kernel_radius ;        /* set by user */
   int npt_sum ;                /* set by user */
   intvec *is, *js, *ks ;
-  floatvec *bvs ;
+  floatvec *bvs ;            /********************/
 
   int          wfunc_numpar ;  /* set by user */
   GA_param    *wfunc_param ;   /* set by user */
@@ -1433,7 +1440,7 @@ extern void mri_genalign_verbose(int) ;
 
 extern void GA_reset_fit_callback( void (*fc)(int,double*) ) ;
 extern void GA_do_dots(int) ;
-extern void GA_do_cost(int) ;
+extern void GA_do_cost(int, byte) ;
 extern float mri_genalign_scalar_cost( GA_setup * ) ;
 extern void GA_set_outval( float ) ;   /* 28 Feb 2007 */
 
@@ -1453,6 +1460,8 @@ extern void GA_set_outval( float ) ;   /* 28 Feb 2007 */
 extern void mri_genalign_affine_setup( int,int,int ) ;
 extern void mri_genalign_affine_set_befafter( mat44 *, mat44 * ) ;
 extern void mri_genalign_affine_get_befafter( mat44 *, mat44 * ) ;
+extern void mri_genalign_affine_get_gammaijk( mat44 * ) ; /* 04 Apr 2007 */
+extern void mri_genalign_affine_get_gammaxyz( mat44 * ) ;
 
 extern MRI_IMAGE * mri_genalign_scalar_warpone(      /* 26 Sep 2006 */
                     int npar, float *wpar, GA_warpfunc *wfunc,

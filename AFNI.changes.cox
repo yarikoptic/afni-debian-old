@@ -6141,3 +6141,109 @@
  * Added 'u' and 'o' image viewer keypress handling to afni.c.
  * Added Mod+Button4+5 threshold slider changing to imseq.c and afni.c.
  * Added AFNI_THRESH_AUTO to afni_func.c.
+
+06 Mar 2007
+ * Fixed pairmin() bug in parser.f.
+ * Store column_metadata in 3dDeconvolve.c, and write it to -x1D file
+     if AFNI_3dDeconvolve_NIML is YES.
+
+07 Mar 2007
+ * 3dDeconvolve.c: -GOFORIT, check_matrix_condition(), report -stim_times
+     values outside of run intervals, condition numbers with and without
+     baseline regressors.
+
+08 Mar 2007
+ * Add mri_read_ascii_ragged_complex() to mri_read.c.
+ * And modify mri_write_ascii() in mri_write.c to write complex numbers
+     with ';' as a real/imag separator, instead of ' '.
+
+09 Mar 2007
+ * First test of -stim_times_AM? looks good.
+ * MCW_discard_events() for Button4/5 ScrollWheel actions.
+
+12 Mar 2007
+ * New program 3dSynthesize.c.
+
+13 Mar 2007
+ * Minor changes to 3dSynthesize.
+ * Change PRINT_VERSION() macro in mrilib.h to include compilation __DATE__
+     in output.
+ * '-float' option to 3dDeconvolve.  Also a few little other fixes.
+
+14 Mar 2007
+ * New program 1dMarry.c.
+
+15 Mar 2007
+ * Added CTENT() to 3dDeconvolve.c, for experimental purposes.
+ * Modified bucket labels in 3dDeconvolve.c to be clearer (to me, anyhoo).
+
+16 Mar 2007
+ * -polort A and polort degree warning message.
+ * Change CTENT() to CSPLIN().
+
+20 Mar 2007
+ * MCW_discard_events_all() in xutil.c, and its application to stop
+     over-scrolling in imseq.c, et cetera.
+ * -nox1D in 3dDeconvolve.c.
+ * Make -bout be always on for 3dDeconvolve -input1D.
+
+21 Mar 2007
+ * New program 3dEmpty.c.
+ * Fix 3dinfo.c to allow empty datasets (duh).
+
+22 Mar 2007
+ * Make THD_filesize() return a 'long long', and change mri_read_3D() to
+     match.  (This is Colm Connolly's fault.)
+
+23 Mar 2007
+ * New function THD_deconflict_prefix() in thd_opendset.c.
+ * Modify 3dDeconvolve.c to deconflict output prefixes (instead of failing),
+     and to compute Full F by default, unless -nofullf_atall is given.
+ * AFNI_IMAGRA_CLOSER, for the FC5 abusers out there.
+
+26 Mar 2007
+ * Moved on-the-fly cluster editing to Define Overlay panel, from popup menu.
+
+27 Mar 2007
+ * Help for cluster editing, and some rationalization (e.g., reset it when
+     changing datasets, turn widgets off if it's not avaiable, et cetera).
+
+03 Apr 2007
+ * Modify edt_blur.c to compute FIR Gaussian weights as a local sum across
+     each cell, rather than just the weight at the center of the cell.
+
+04 Apr 2007
+ * Modify 3dDespike.c to add -localedit option.
+ * Modify 3dAllineate.c to save matrices into header of output.
+
+26 Apr 2007
+ * Modify imseq.[ch], afni.c, and afni_graph.c to use '[' and ']' keys for
+     time index incrementing, per John Butman.
+
+27 Apr 2007
+ * Modified thd_niftiread.c to always do floatscan on datasets.
+ * Modified 3dDeconvolve.c to make 0.0 ABI paired values not require -GOFORIT.
+
+30 Apr 2007
+ * Included 3dinfo.c patch from Colm Connolly with -label2index option.
+
+03 May 2007
+ * Added 'crop=' to afni_driver.c image window opening, and also to afni_splash.c
+     when saving .afni.startup_script file.  [Per John Butman]
+ * Modified 3dDeconvolve.c to print clearer messages when -gltsym errors
+     occur, and also to allow the Decon -bucket dataset to be overwritten,
+     and also to add the -nobucket option.  [Per Mike Beauchamp]
+
+04 May 2007
+ * 'amongst' function in parser.f and so in 3dcalc.c.
+ * Added more warnings to 3dDeconvolve.c, including a parametrized -GOFORIT.
+
+09 May 2007
+ * New advanced histogram options '-clbin' and '-eqbin' for 3dAllineate.
+
+10 May 2007
+ * -izz option to 3dAllineate.
+ * L1 detrending in thd_detrend.c (and retrending).
+
+29 May 2007
+ * Enforce RadioAlwaysOne behaviour on marks toggles.
