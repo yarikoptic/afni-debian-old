@@ -47,7 +47,7 @@ ENTRY("AFNI_init_plugouts") ;
 
    for( cc=0 ; cc < NUM_TCP_CONTROL ; cc++ ){       /* 21 Nov 2001: */
       ioc_control[cc] = NULL ;                      /* initialize control */
-      ioc_conname[cc] = malloc(32) ;                /* sockets and names  */
+      ioc_conname[cc] = AFMALL(char, 32) ;          /* sockets and names  */
       sprintf(ioc_conname[cc],"tcp:*:%d",BASE_TCP_CONTROL+cc) ;
    }
 
@@ -445,12 +445,10 @@ int AFNI_process_plugout( PLUGOUT_spec * pp )
                                       : "PO: did not receive acknowledgment\n" ) ;
         }
 
-#ifdef ALLOW_AGNI
-
       /* set surface node ID */
 
       } else if( strncmp(str[ss],"SURFID",6) == 0 ){
-        if( AGNI_ENABLED && im3d->anat_now->ag_surf != NULL ){
+        if( SUMA_ENABLED && SESSION_HAS_SUMA(im3d->ss_now) ){
            int id ;
 
            ii = sscanf( str[ss] , "SURFID %d" , &id ) ;
@@ -464,20 +462,19 @@ int AFNI_process_plugout( PLUGOUT_spec * pp )
               if( verbose )
                  fprintf(stderr,"PO: command SURFID %d\n",id) ;
 
-              ii = AGNI_find_node_id( im3d->anat_now->ag_surf , id ) ;
+              ii = SUMA_find_node_id( im3d->ss_now->su_surf[0] , id ) ;
               if( ii < 0 ){
                  fprintf(stderr,"PO: unknown SURFID node number %d\n",id) ;
                  if( pp->do_ack ) PO_ACK_BAD( pp->ioc ) ;
               } else {
                  AFNI_jumpto_dicom( im3d ,
-                                    im3d->anat_now->ag_surf->nod[ii].x ,
-                                    im3d->anat_now->ag_surf->nod[ii].y ,
-                                    im3d->anat_now->ag_surf->nod[ii].z  ) ;
+                                    im3d->ss_now->su_surf[0]->ixyz[ii].x ,
+                                    im3d->ss_now->su_surf[0]->ixyz[ii].y ,
+                                    im3d->ss_now->su_surf[0]->ixyz[ii].z  ) ;
                  if( pp->do_ack ) PO_ACK_OK ( pp->ioc ) ;
               }
            }
         }
-#endif
 
       /*-- 07 Nov 2001: drive various AFNI user interface widgets --*/
 
@@ -558,35 +555,28 @@ int AFNI_process_plugout( PLUGOUT_spec * pp )
             }
             break ;
 
-#ifdef ALLOW_AGNI
-            case POMODE_SURFID_DELTA:{          /* 05 Sep 2001 */
-               int ix , jy , kz , new_xyz ;
-               ix = im3d->vinfo->i1 ;
-               jy = im3d->vinfo->j2 ;
-               kz = im3d->vinfo->k3 ;
-               new_xyz = (ix != pp->ix || jy != pp->jy || kz != pp->kz) ;
+            /* 11 Sep 2002 */
 
-               if( new_xyz                         &&
-                   AGNI_ENABLED                    &&
-                   im3d->anat_now->ag_surf != NULL &&
-                   im3d->anat_now->ag_vmap != NULL   ){
+            case POMODE_UNDERLAY_DELTA:{
+               if( !EQUIV_DSETS(pp->dset_underlay,im3d->anat_now) &&
+                   ISVALID_DSET(im3d->anat_now)                     ){
 
-                   int nx = DSET_NX(im3d->anat_now) ;
-                   int ny = DSET_NY(im3d->anat_now) ;
-                   int qq = im3d->anat_now->ag_vmap[ix + jy*nx + kz*nx*ny] ;
-
-                   if( qq > 0 ){
-                     qq = AGNI_VMAP_UNMASK(qq) ;
-                     if( qq != pp->surfindex ){
-                       sprintf( pobuf + npobuf , "SURFID %d\n" ,
-                                im3d->anat_now->ag_surf->nod[qq].id ) ;
-                       pp->surfindex = qq ;
-                     }
-                   }
+                   sprintf( pobuf + npobuf , "UNDERLAY %s\n" ,
+                            DSET_HEADNAME(im3d->anat_now) ) ;
                }
             }
             break ;
-#endif
+
+            case POMODE_OVERLAY_DELTA:{
+               if( !EQUIV_DSETS(pp->dset_overlay,im3d->fim_now) &&
+                   ISVALID_DSET(im3d->fim_now)                     ){
+
+                   sprintf( pobuf + npobuf , "OVERLAY %s\n" ,
+                            DSET_HEADNAME(im3d->fim_now) ) ;
+               }
+            }
+            break ;
+
          } /* end of switch on modes */
 
          npobuf = strlen( pobuf ) ;
@@ -629,6 +619,9 @@ Proust:
    pp->anat_num       = im3d->vinfo->anat_num ;
    pp->func_num       = im3d->vinfo->func_num ;
    pp->func_threshold = im3d->vinfo->func_threshold ;
+
+   pp->dset_underlay  = im3d->anat_now ;
+   pp->dset_overlay   = im3d->fim_now  ;
 
    return(retval) ;
 }
@@ -730,6 +723,16 @@ ENTRY("new_PLUGOUT_spec") ;
          pp->pomode[ pp->npomode ] = POMODE_SURFID_DELTA ;
          pp->npomode ++ ;
 
+      } else if( STARTER("UNDERLAY_DELTA") ){  /* 11 Jan 2002 */
+
+         pp->pomode[ pp->npomode ] = POMODE_UNDERLAY_DELTA ;
+         pp->npomode ++ ;
+
+      } else if( STARTER("OVERLAY_DELTA") ){
+
+         pp->pomode[ pp->npomode ] = POMODE_OVERLAY_DELTA ;
+         pp->npomode ++ ;
+
       } else if( STARTER("NO_ACK") ){        /* 06 Sep 2001 */
 
          pp->do_ack = 0 ;
@@ -777,6 +780,8 @@ ENTRY("new_PLUGOUT_spec") ;
    pp->view_type  = -1 ;
    pp->sess_num   = pp->anat_num = pp->func_num = -1 ;
    pp->func_threshold = -0.987654 ;
+
+   pp->dset_underlay = pp->dset_overlay = NULL ; /* 11 Jan 2002 */
 
    if( verbose )
       fprintf(stderr,"PO: initialization completed successfully.\n") ;

@@ -62,8 +62,18 @@ ENTRY("mri_to_float") ;
       }
       break ;
 
+      case MRI_rgba:{                         /* 15 Apr 2002 */
+         byte  * rgb = (byte *) MRI_RGBA_PTR(oldim) ;
+         float * far = MRI_FLOAT_PTR(newim) ;
+         for( ii=0 ; ii < npix ; ii++ )       /* scale to brightness */
+            far[ii] =  0.299 * rgb[4*ii]      /* between 0 and 255     */
+                     + 0.587 * rgb[4*ii+1]
+                     + 0.114 * rgb[4*ii+2] ;
+      }
+      break ;
+
       default:
-         fprintf( stderr , "mri_to_float:  unrecognized image kind\n" ) ;
+         fprintf( stderr , "mri_to_float:  unrecognized image kind %d\n",oldim->kind ) ;
          MRI_FATAL_ERROR ;
    }
 
@@ -77,11 +87,11 @@ MRI_IMAGE *mri_scale_to_float( float scl , MRI_IMAGE *oldim )
    register int ii , npix ;
    register float fac ;
 
-WHOAMI ; IMHEADER(oldim) ;
+ENTRY("mri_scale_to_float") ;
 
-   if( oldim == NULL ) return NULL ;  /* 09 Feb 1999 */
+   if( oldim == NULL ) RETURN( NULL );  /* 09 Feb 1999 */
 
-   fac   = scl ;
+   fac   = scl ; if( fac == 0.0 ) fac = 1.0 ;
    newim = mri_new_conforming( oldim , MRI_float ) ;
    npix  = oldim->nvox ;
 
@@ -117,13 +127,33 @@ WHOAMI ; IMHEADER(oldim) ;
             newim->im.float_data[ii] = fac * CABS(oldim->im.complex_data[ii]) ;
          break ;
 
+      case MRI_rgb:{
+         byte  * rgb = MRI_RGB_PTR(oldim) ;
+         float * far = MRI_FLOAT_PTR(newim) ;
+         for( ii=0 ; ii < npix ; ii++ )
+            far[ii] =  fac*(  0.299 * rgb[3*ii]
+                            + 0.587 * rgb[3*ii+1]
+                            + 0.114 * rgb[3*ii+2] ) ;
+      }
+      break ;
+
+      case MRI_rgba:{
+         byte  * rgb = (byte *) MRI_RGBA_PTR(oldim) ;
+         float * far = MRI_FLOAT_PTR(newim) ;
+         for( ii=0 ; ii < npix ; ii++ )
+            far[ii] = fac *(  0.299 * rgb[4*ii]
+                            + 0.587 * rgb[4*ii+1]
+                            + 0.114 * rgb[4*ii+2] ) ;
+      }
+      break ;
+
       default:
-         fprintf( stderr , "mri_to_float:  unrecognized image kind\n" ) ;
+         fprintf( stderr , "mri_to_float:  unrecognized image kind %d\n",oldim->kind ) ;
          MRI_FATAL_ERROR ;
    }
 
    MRI_COPY_AUX(newim,oldim) ;
-   return newim ;
+   RETURN( newim );
 }
 
 /* 13 Dec 1998 */
@@ -135,7 +165,7 @@ MRI_IMAGE * mri_mult_to_float( float * fac , MRI_IMAGE * oldim )
    MRI_IMAGE *newim ;
    register int ii , npix ;
 
-WHOAMI ; IMHEADER(oldim) ;
+ENTRY("mri_mult_to_float") ;
 
    newim = mri_new_conforming( oldim , MRI_float ) ;
    npix  = oldim->nvox ;
@@ -178,5 +208,5 @@ WHOAMI ; IMHEADER(oldim) ;
    }
 
    MRI_COPY_AUX(newim,oldim) ;
-   return newim ;
+   RETURN( newim );
 }

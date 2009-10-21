@@ -35,6 +35,9 @@ static char helpstring[] =
    Set up the interface to the user
 ************************************************************************/
 
+
+DEFINE_PLUGIN_PROTOTYPE
+
 PLUGIN_interface * PLUGIN_init( int ncall )
 {
    PLUGIN_interface * plint ;
@@ -51,6 +54,8 @@ PLUGIN_interface * PLUGIN_init( int ncall )
    PLUTO_add_hint( plint , "Copy and Zero-Pad a Dataset" ) ;
 
    PLUTO_set_sequence( plint , "A:newdset:copy" ) ;
+
+   PLUTO_set_runlabels( plint , "Copy+Keep" , "Copy+Close" ) ;  /* 04 Nov 2003 */
 
    /*-- first line of input: Dataset --*/
 

@@ -116,6 +116,7 @@ NLFIT_MODEL_array * NLFIT_get_all_MODELs( char * dname )
 NLFIT_MODEL * NLFIT_read_MODEL( char * fname )
 {
    NLFIT_MODEL * model ;
+   static int firsterr=1 ;
 
    /*----- sanity checks -----*/
 
@@ -135,14 +136,12 @@ NLFIT_MODEL * NLFIT_read_MODEL( char * fname )
 
    DYNAMIC_OPEN( fname , model->libhandle ) ;
    if( ! ISVALID_DYNAMIC_handle( model->libhandle ) ){
-
-     if (NL_DEBUG)
-       { 
-	 char str[256]; 
-	 sprintf (str,"failed to open library %s \n",fname); 
-	 printf (str); 
-       }
-
+      char *er ;
+      if( firsterr ){ fprintf(stderr,"\n"); firsterr=0; }
+      fprintf (stderr,"failed to open library %s ",fname); 
+      er = (char *)DYNAMIC_ERROR_STRING ;
+      if( er != NULL ) fprintf(stderr," -- %s\n",er) ;
+      else             fprintf(stderr,"\n") ;
       myXtFree(model) ;
       return (NULL) ;
    }
@@ -158,8 +157,9 @@ NLFIT_MODEL * NLFIT_read_MODEL( char * fname )
 
    /*----- find the required symbols -----*/
    /*..... 13 Sep 2001: add _ for Mac OS X [RWCox] .....*/
+   /*..... 30 Oct 2003: remove it for OS X 10.3    .....*/
 
-#ifndef DARWIN
+#ifndef NEED_UNDERSCORE
    DYNAMIC_SYMBOL(model->libhandle, "initialize_model" , 
 		  model->libinit_func );
 #else
@@ -170,14 +170,10 @@ NLFIT_MODEL * NLFIT_read_MODEL( char * fname )
    /*----- if symbols not found, complain and kill this MODEL -----*/
 
    if( model->libinit_func == (vptr_func *) NULL ){
-
-     if (NL_DEBUG)
-       { 
-	 char str[256] ;
-	 sprintf (str,"library %s lacks required global symbol \n",fname) ; 
-	 printf (str) ; 
-       }
-
+      char *er = (char *)DYNAMIC_ERROR_STRING ;
+      if( firsterr ){ fprintf(stderr,"\n"); firsterr=0; }
+      fprintf(stderr,"model %s lacks initialize_model() function\n",fname) ;
+      if( er != NULL ) fprintf(stderr," -- %s\n",er) ;
       DYNAMIC_CLOSE( model->libhandle ) ;
       myXtFree(model) ;
       return (NULL) ;
@@ -218,6 +214,7 @@ NLFIT_MODEL_array * NLFIT_get_many_MODELs(void)
    char ename[THD_MAX_NAME] , efake[]="/usr/local/lib/afni:./" ;
    NLFIT_MODEL_array * outar , * tmpar ;
    int epos , ll , ii , id ;
+   THD_string_array *qlist ;  /* 02 Feb 2002 */
 
    /*----- sanity checks -----*/
 
@@ -253,6 +250,8 @@ NLFIT_MODEL_array * NLFIT_get_many_MODELs(void)
      }
 
 
+   INIT_SARR(qlist) ; /* 02 Feb 2002: list of searched directories */
+
    /*----- extract blank delimited strings;
            use as directory names to get libraries -----*/
 
@@ -261,16 +260,19 @@ NLFIT_MODEL_array * NLFIT_get_many_MODELs(void)
 
    do{
       ii = sscanf( elocal+epos , "%s%n" , ename , &id ) ; /* next substring */
-      if( ii < 1 ) break ;                          /* none --> end of work */
-
-      /** check if ename occurs earlier in elocal **/
-
-      eee = strstr( elocal , ename ) ;
-      if( eee != NULL && (eee-elocal) < epos ){ epos += id ; continue ; }
-
+      if( ii < 1 || id < 1 ) break ;                     /* none --> end of work */
       epos += id ;                               /* char after last scanned */
 
-      ii = strlen(ename) ;                            /* make sure name has */
+      if( !THD_is_directory(ename) ) continue ;  /* 21 May 2002 - rcr */
+
+      /* 02 Feb 2002: check if ename has already been checked */
+
+      for( ii=0 ; ii < qlist->num ; ii++ )
+         if( THD_equiv_files(qlist->ar[ii],ename) ) break ;
+      if( ii < qlist->num ) continue ;
+      ADDTO_SARR(qlist,ename) ;
+
+      ii = strlen(ename) ;                           /* make sure name has */
       if( ename[ii-1] != '/' ){                     /* a trailing '/' on it */
 	ename[ii]  = '/' ; ename[ii+1] = '\0' ; 
       }
@@ -294,6 +296,8 @@ NLFIT_MODEL_array * NLFIT_get_many_MODELs(void)
      }
 
    if( outar->num == 0 ) DESTROY_MODEL_ARRAY(outar) ;
+
+   DESTROY_SARR(qlist) ; /* 02 Feb 2002 */
    return (outar) ;
 }
 

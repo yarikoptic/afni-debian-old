@@ -36,18 +36,26 @@
   Mod:     Added changes for incorporating History notes.
   Date:    10 September 1999
 
+  Mod:     Set MAX_NAME_LENGTH equal to THD_MAX_NAME.
+  Date:    02 December 2002
+
+  Mod:     If nsl == 0, set num_slices equal to nz.   [4 occurrences]
+  Date:    06 October 2003  [rickr]
 */
 
 /*---------------------------------------------------------------------------*/
 
-#define PROGRAM_NAME "2dImReg"                       /* name of this program */
-#define PROGRAM_DATE "10 September 1999"         /* date of last program mod */
+#define PROGRAM_NAME    "2dImReg"                   /* name of this program */
+#define PROGRAM_INITIAL "04 Feb 1998"     /* date of initial program release */
+#define PROGRAM_LATEST  "02 Dec 2002"     /* date of latest program revision */
 
-#define MAX_NAME_LENGTH 80          /* max. strength length for file names */ 
-#define STATE_DIM 4                 /* number of registration parameters */   
+/*---------------------------------------------------------------------------*/
 
 #include "mrilib.h"
 #include "matrix.h"
+
+#define MAX_NAME_LENGTH THD_MAX_NAME  /* max. string length for file names */ 
+#define STATE_DIM 4                   /* number of registration parameters */ 
 
 
 /*----- Global variables -----*/ 
@@ -406,6 +414,8 @@ void initialize_slice_sequence
   num_slices = dset->taxis->nsl;
   ivolume = 0;
 
+  if ( num_slices <= 0 )            /* 06 Oct 2003 [rickr] */
+      num_slices = dset->daxes->nzz;
 
   /*----- Allocate memory for arrays -----*/
   t_to_z = (int *) malloc (sizeof(int) * num_slices);
@@ -477,6 +487,10 @@ void initialize_state_history
 
   /*----- Initialize local variables -----*/
   num_slices = dset->taxis->nsl;
+
+  if ( num_slices <= 0 )              /* 06 Oct 2003 [rickr] */
+      num_slices = dset->daxes->nzz;
+
   ts_length = DSET_NUM_TIMES(dset);
   num_vectors = ts_length * num_slices;
 
@@ -1337,6 +1351,9 @@ void output_state_history
   num_slices = dset->taxis->nsl;
   ts_length = DSET_NUM_TIMES(dset);
 
+  if ( num_slices <= 0 )            /* 06 Oct 2003 [rickr] */
+      num_slices = dset->daxes->nzz;
+
 
   /*----- Calculate total number of state vectors -----*/
   num_vectors = ts_length * num_slices;
@@ -1434,6 +1451,10 @@ void terminate_program
   /*----- Initialize local variables -----*/
   read_dataset ((*option_data)->input_filename, &dset);
   num_slices = dset->taxis->nsl;
+
+  if ( num_slices <= 0 )            /* 06 Oct 2003 [rickr] */
+      num_slices = dset->daxes->nzz;
+
   ts_length = DSET_NUM_TIMES(dset);
   num_vectors = ts_length * num_slices;
   THD_delete_3dim_dataset (dset, False);   dset = NULL;
@@ -1478,10 +1499,12 @@ int main
   float * new_rms_array = NULL;        /* registered data volume RMS error */
 
 
+   
   /*----- Identify software -----*/
   printf ("\n\n");
-  printf ("Program: %s \n", PROGRAM_NAME);
-  printf ("Date:    %s \n", PROGRAM_DATE);
+  printf ("Program:          %s \n", PROGRAM_NAME);
+  printf ("Initial Release:  %s \n", PROGRAM_INITIAL);
+  printf ("Latest Revision:  %s \n", PROGRAM_LATEST);
   printf ("\n");
 
   

@@ -26,9 +26,9 @@ double norm_3shear( MCW_3shear sh )
    if( ! ISVALID_3SHEAR(sh) ) return BIG_NORM ;
 
    for( ii=0 ; ii < 3 ; ii++ ){
-      jj  = sh.ax[ii] ;
-      val = fabs( sh.scl[ii][(jj+1)%3] ) ; if( val > top ) top = val ;
-      val = fabs( sh.scl[ii][(jj+2)%3] ) ; if( val > top ) top = val ;
+     jj  = sh.ax[ii] ;
+     val = fabs( sh.scl[ii][(jj+1)%3] ) ; if( val > top ) top = val ;
+     val = fabs( sh.scl[ii][(jj+2)%3] ) ; if( val > top ) top = val ;
    }
 
    return top ;
@@ -438,14 +438,37 @@ MCW_3shear shear_arb( THD_dmat33 *q , THD_dfvec3 *xyzdel , int ox1,int ox2,int o
 }
 
 /*-----------------------------------------------------------------------------------
-   Find the "best" shear decomposition (smallest stretching factors)
+   Find the "best" shear decomposition (smallest stretching factors).
+   Input matrix q should have det(q)=1.
 -------------------------------------------------------------------------------------*/
 
-MCW_3shear shear_best( THD_dmat33 * q , THD_dfvec3 * xyzdel )
+MCW_3shear shear_best( THD_dmat33 *q , THD_dfvec3 *xyzdel )
 {
    MCW_3shear sh[6] ;
    int ii , jbest ;
    double val , best ;
+
+   double dsum,esum ;   /* 29 Feb 2004 */
+
+   dsum = DMAT_TRACE(*q) ;
+   esum = fabs(q->mat[0][1]) + fabs(q->mat[0][2])
+         +fabs(q->mat[1][0]) + fabs(q->mat[1][2])
+         +fabs(q->mat[2][0]) + fabs(q->mat[2][1]) ;
+
+   if( dsum >= 2.99999 && esum/dsum < 1.e-6 ){
+     MCW_3shear shr ; double dx=xyzdel->xyz[0], dy=xyzdel->xyz[1], dz=xyzdel->xyz[2] ;
+#if 0
+     if( MRILIB_verbose ){
+       fprintf(stderr,"shear_best: matrix=I?\n"); DUMP_DMAT33("matrix",*q);
+     }
+#endif
+     shr.ax[3]=0; shr.scl[3][0]=1.0; shr.scl[3][1]=0.0; shr.scl[3][2]=0.0; shr.sft[3]=dx;
+     shr.ax[2]=2; shr.scl[2][2]=1.0; shr.scl[2][0]=0.0; shr.scl[2][1]=0.0; shr.sft[2]=dz;
+     shr.ax[1]=1; shr.scl[1][1]=1.0; shr.scl[1][0]=0.0; shr.scl[1][2]=0.0; shr.sft[1]=dy;
+     shr.ax[0]=0; shr.scl[0][0]=1.0; shr.scl[0][1]=0.0; shr.scl[0][2]=0.0; shr.sft[0]=0.0;
+     shr.flip0 = shr.flip1 = -1 ;  /* no flips */
+     return shr ;
+   }
 
    /* compute all 6 possible factorizations (the brute force approach) */
 
@@ -456,26 +479,13 @@ MCW_3shear shear_best( THD_dmat33 * q , THD_dfvec3 * xyzdel )
    sh[4] = shear_arb( q , xyzdel , 2,0,1 ) ;
    sh[5] = shear_arb( q , xyzdel , 2,1,0 ) ;
 
-   if( DEBUGTHISFILE ){
-      DUMP_DMAT33("sbest-q",*q) ; DUMP_DFVEC3("sbest-v",*xyzdel) ;
-      DUMP_3SHEAR("sbest-[0]",sh[0]) ;
-      DUMP_3SHEAR("sbest-[1]",sh[1]) ;
-      DUMP_3SHEAR("sbest-[2]",sh[2]) ;
-      DUMP_3SHEAR("sbest-[3]",sh[3]) ;
-      DUMP_3SHEAR("sbest-[4]",sh[4]) ;
-      DUMP_3SHEAR("sbest-[5]",sh[5]) ;
-   }
-
    /* find the one with the smallest "norm" */
 
    jbest = 0 ; best = BIG_NORM ;
    for( ii=0 ; ii < 6 ; ii++ ){
-      val = norm_3shear( sh[ii] ) ;
-      if( DEBUGTHISFILE ) fprintf(stderr,"sbest-val[%d] = %g\n",ii,val) ;
-      if( val < best ){ best = val ; jbest = ii ; }
+     val = norm_3shear( sh[ii] ) ;
+     if( val < best ){ best = val ; jbest = ii ; }
    }
-
-   if( DEBUGTHISFILE ) fprintf(stderr,"sbest-jbest = %d\n",jbest) ;
 
    return sh[jbest] ;
 }
@@ -534,12 +544,6 @@ MCW_3shear rot_to_shear( int ax1 , double th1 ,
 
    q = rot_to_matrix( ax1,th1 , ax2,th2 , ax3,th3 ) ;
 
-   if( DEBUGTHISFILE ){
-      fprintf(stderr,"rot_to_shear: ax1=%d th1=%g ax2=%d th2=%g ax3=%d th3=%g\n",
-              ax1,th1,ax2,th2,ax3,th3 ) ;
-      DUMP_DMAT33("Rotation",q) ;
-   }
-
    /* if trace too small, maybe we should flip a couple axes */
 
    if( DMAT_TRACE(q) < 1.0 ){
@@ -554,7 +558,6 @@ MCW_3shear rot_to_shear( int ax1 , double th1 ,
       if( q.mat[i1][i1] + q.mat[i2][i2] < -0.02 ){
          q = DMAT_MUL( q , p ) ;
          flip0 = i1 ; flip1 = i2 ;  /* yes flips */
-         if( DEBUGTHISFILE ) fprintf(stderr,"flip0=%d flip1=%d\n",flip0,flip1) ;
       }
    }
 
@@ -570,9 +573,6 @@ MCW_3shear rot_to_shear( int ax1 , double th1 ,
          c = DMATVEC(q,d) ; d = SUB_DFVEC3(d,c) ; break ;
    }
 
-   if( DEBUGTHISFILE )fprintf(stderr,"dcode=%d  dx=%g  dy=%g  dz=%g\n",
-                              dcode , d.xyz[0] , d.xyz[1] , d.xyz[2] ) ;
-
    /* scale q and d by the voxel dimensions */
 
    d.xyz[0] = d.xyz[0] / xdel ;  /* d <- inv[D] d, where D = diag[xdel,ydel,zdel] */
@@ -582,7 +582,7 @@ MCW_3shear rot_to_shear( int ax1 , double th1 ,
    q.mat[0][1] *= (ydel/xdel) ;  /* q <- inv[D] q D */
    q.mat[0][2] *= (zdel/xdel) ;
    q.mat[1][0] *= (xdel/ydel) ;  /* q still has det[q]=1 after this */
-   q.mat[1][2] *= (zdel/ydel) ;
+   q.mat[1][2] *= (zdel/ydel) ;  /* and the diagonal is unaffected */
    q.mat[2][0] *= (xdel/zdel) ;
    q.mat[2][1] *= (ydel/zdel) ;
 
@@ -612,7 +612,9 @@ MCW_3shear rot_to_shear( int ax1 , double th1 ,
 
    shr.flip0 = flip0 ; shr.flip1 = flip1 ;
 
-   if( DEBUGTHISFILE ){ DUMP_3SHEAR("matvec",shr) ; }
+#if 0
+   if( MRILIB_verbose ) DUMP_3SHEAR("rot_to_shear",shr) ;
+#endif
 
    return shr ;
 }
@@ -638,14 +640,8 @@ MCW_3shear rot_to_shear_matvec( THD_dmat33 rmat , THD_dfvec3 tvec ,
    /* 13 Feb 2001: make sure it is orthogonal;
                    even slightly off produces bad shears */
 
-   p = DMAT_svdrot( rmat ) ;
+   p = DMAT_svdrot_old( rmat ) ;
    q = TRANSPOSE_DMAT( p ) ;
-
-   if( DEBUGTHISFILE ){
-      DUMP_DMAT33("r2smv-in",rmat) ;
-      DUMP_DMAT33("r2smv-out",q) ;
-      p = SUB_DMAT(rmat,q) ; DUMP_DMAT33("r2smv-dif",p) ;
-   }
 #endif
 
    /* if trace too small, maybe we should flip a couple axes */
@@ -699,7 +695,9 @@ MCW_3shear rot_to_shear_matvec( THD_dmat33 rmat , THD_dfvec3 tvec ,
 
    shr.flip0 = flip0 ; shr.flip1 = flip1 ;
 
-   if( DEBUGTHISFILE ){ DUMP_3SHEAR("matvec",shr) ; }
+#if 0
+   if( MRILIB_verbose ) DUMP_3SHEAR("rot_to_shear",shr) ;
+#endif
 
    return shr ;
 }
@@ -719,6 +717,16 @@ THD_dmat33 DMAT_xt_x( THD_dmat33 inmat )
    THD_dmat33 tt,mm ;
    tt = TRANSPOSE_DMAT(inmat) ;
    mm = DMAT_MUL(tt,inmat) ;
+   return mm ;
+}
+
+/*--------------------------------------------------------------------*/
+                                           /*                T  */
+THD_dmat33 DMAT_x_xt( THD_dmat33 inmat )   /* [inmat] [inmat]   */
+{                                          /* 09 Apr 2003 - RWC */
+   THD_dmat33 tt,mm ;
+   tt = TRANSPOSE_DMAT(inmat) ;
+   mm = DMAT_MUL(inmat,tt) ;
    return mm ;
 }
 
@@ -748,6 +756,38 @@ THD_dvecmat DMAT_symeig( THD_dmat33 inmat )
       out.vv.xyz[jj] = e[jj] ;                 /* eigenvalues */
       for( ii=0 ; ii < 3 ; ii++ )
          out.mm.mat[ii][jj] = a[ii+3*jj] ;     /* eigenvectors */
+   }
+
+   return out ;
+}
+
+/*---------------------------------------------------------------------
+   Compute the SVD of matrix inmat.
+-----------------------------------------------------------------------*/
+
+typedef struct { THD_dmat33 u,v ; THD_dfvec3 d ; } THD_udv33 ;
+
+THD_udv33 DMAT_svd( THD_dmat33 inmat )
+{
+   THD_udv33 out ;
+   double a[9] , e[3] , u[9] , v[9] ;
+   int ii , jj ;
+
+   /* load matrix from inmat into simple array */
+
+   for( jj=0 ; jj < 3 ; jj++ )
+      for( ii=0 ; ii < 3 ; ii++ ) a[ii+3*jj] = inmat.mat[ii][jj] ;
+
+   svd_double( 3,3 , a , e,u,v ) ;
+
+   /* load eigenvectors and eigenvalues into output */
+
+   for( jj=0 ; jj < 3 ; jj++ ){
+      out.d.xyz[jj] = e[jj] ;                 /* eigenvalues */
+      for( ii=0 ; ii < 3 ; ii++ ){
+         out.u.mat[ii][jj] = u[ii+3*jj] ;     /* eigenvectors */
+         out.v.mat[ii][jj] = v[ii+3*jj] ;     /* eigenvectors */
+      }
    }
 
    return out ;
@@ -803,7 +843,7 @@ THD_dmat33 DMAT_pow( THD_dmat33 inmat , double pp )
    which is the same thing (do your linear algebra, dude).
 -----------------------------------------------------------------------*/
 
-THD_dmat33 DMAT_svdrot( THD_dmat33 inmat )
+THD_dmat33 DMAT_svdrot_old( THD_dmat33 inmat )
 {
    THD_dmat33 sq , out , tt ;
 
@@ -813,8 +853,46 @@ THD_dmat33 DMAT_svdrot( THD_dmat33 inmat )
    return out ;
 }
 
+/*---------------------------------------------------------------------*/
+/*  Alternative calculation to above, computing U and V directly.
+    This avoids a problem that arises when inmat is singular.
+-----------------------------------------------------------------------*/
+
+THD_dmat33 DMAT_svdrot_new( THD_dmat33 inmat )
+{
+   THD_dmat33 mm , nn ;
+   THD_dvecmat vm , um ;
+
+   mm = DMAT_xt_x( inmat ) ;
+   vm = DMAT_symeig( mm ) ;  /* vm.mm matrix is now V */
+
+   mm = DMAT_x_xt( inmat ) ;
+   um = DMAT_symeig( mm ) ;  /* um.mm matrix is now U */
+
+   mm = TRANSPOSE_DMAT(um.mm) ;
+   nn = DMAT_MUL( vm.mm , mm ) ;
+   return nn ;
+}
+
+/*---------------------------------------------------------------------*/
+/*  Yet another alternative calculation to above, computing U and V
+    even more directly.  [22 Oct 2004]
+-----------------------------------------------------------------------*/
+
+THD_dmat33 DMAT_svdrot_newer( THD_dmat33 inmat )
+{
+   THD_udv33 udv ;
+   THD_dmat33 vm , um , nn ;
+
+   udv = DMAT_svd( inmat ) ;
+   vm = udv.v ;
+   um = TRANSPOSE_DMAT( udv.u );
+   nn = DMAT_MUL( vm , um ) ;
+   return nn ;
+}
+
 /*---------------------------------------------------------------------
-  Compute matrix R and vector V to make
+  Compute proper orthgonal matrix R and vector V to make
 
      yy = [R] xx + V   (k=0..n-1)
        k        k
@@ -825,12 +903,12 @@ THD_dmat33 DMAT_svdrot( THD_dmat33 inmat )
   and uses the routines above to compute the matrix [R].
 -----------------------------------------------------------------------*/
 
-THD_dvecmat DLSQ_rot_trans( int n, THD_dfvec3 * xx, THD_dfvec3 * yy, double * ww )
+THD_dvecmat DLSQ_rot_trans( int n, THD_dfvec3 *xx, THD_dfvec3 *yy, double *ww )
 {
    THD_dvecmat out ;
    THD_dfvec3  cx,cy , tx,ty ;
    THD_dmat33  cov ;
-   double * wt , wsum ;
+   double *wt , wsum , dd ;
    int ii,jj,kk ;
 
    /*- check for bad inputs -*/
@@ -852,7 +930,7 @@ THD_dvecmat DLSQ_rot_trans( int n, THD_dfvec3 * xx, THD_dfvec3 * yy, double * ww
    for( kk=0 ; kk < n ; kk++ ){
       cx = SCLADD_DFVEC3(1,cx,wt[kk],xx[kk]) ;  /* weighted sums of vectors */
       cy = SCLADD_DFVEC3(1,cy,wt[kk],yy[kk]) ;
-      wsum += wt[kk] ;                         /* sum of weights */
+      wsum += wt[kk] ;                          /* sum of weights */
    }
    wsum = 1.0 / wsum ;
    cx.xyz[0] *= wsum ; cx.xyz[1] *= wsum ; cx.xyz[2] *= wsum ;  /* centroids */
@@ -860,7 +938,7 @@ THD_dvecmat DLSQ_rot_trans( int n, THD_dfvec3 * xx, THD_dfvec3 * yy, double * ww
 
    /*- compute covariance matrix -*/
 
-   LOAD_ZERO_DMAT(cov) ;
+   LOAD_DIAG_DMAT(cov,1.e-10,1.e-10,1.e-10) ;
    for( kk=0 ; kk < n ; kk++ ){
       tx = SUB_DFVEC3( xx[kk] , cx ) ;  /* remove centroids */
       ty = SUB_DFVEC3( yy[kk] , cy ) ;
@@ -868,13 +946,151 @@ THD_dvecmat DLSQ_rot_trans( int n, THD_dfvec3 * xx, THD_dfvec3 * yy, double * ww
          for( ii=0 ; ii < 3 ; ii++ )
             cov.mat[ii][jj] += wt[kk]*tx.xyz[ii]*ty.xyz[jj] ;
    }
+   dd = ( fabs(cov.mat[0][0]) + fabs(cov.mat[1][1]) + fabs(cov.mat[2][2]) ) / 3.0 ;
+#if 0
+fprintf(stderr,"dd=%g  diag=%g %g %g\n",dd,cov.mat[0][0],cov.mat[1][1],cov.mat[2][2] ) ;
+#endif
+   dd = dd / 1.e9 ;
+#if 0
+fprintf(stderr,"dd=%g\n",dd) ;
+#endif
+   if( cov.mat[0][0] < dd ) cov.mat[0][0] = dd ;
+   if( cov.mat[1][1] < dd ) cov.mat[1][1] = dd ;
+   if( cov.mat[2][2] < dd ) cov.mat[2][2] = dd ;
 
-   out.mm = DMAT_svdrot( cov ) ;    /* compute rotation matrix [R] */
+#if 0
+DUMP_DMAT33( "cov" , cov ) ;
+#endif
 
-   tx = DMATVEC( out.mm , cx ) ;    /* compute translation vector V */
+   out.mm = DMAT_svdrot_newer( cov ) ;  /* compute rotation matrix [R] */
+
+#if 0
+DUMP_DMAT33( "out.mm" , out.mm ) ;
+#endif
+
+   tx = DMATVEC( out.mm , cx ) ;     /* compute translation vector V */
    out.vv = SUB_DFVEC3( cy , tx ) ;
 
-   if( wt != ww ) free(wt) ;       /* toss the trash, if any */
+   if( wt != ww ) free(wt) ;               /* toss the trash, if any */
 
+   return out ;
+}
+
+/*--------------------------------------------------------------------------*/
+/*! Compute an affine transformation to take one set of vectors into another.
+    That is, find general matrix R and vector B so that
+
+     yy = [R] xx + V   (k=0..n-1)
+       k        k
+
+    is true in the unweighted least squares sense.
+----------------------------------------------------------------------------*/
+
+THD_dvecmat DLSQ_affine( int n, THD_dfvec3 *xx, THD_dfvec3 *yy )
+{
+   THD_dvecmat out ;
+   THD_dfvec3  cx,cy , tx,ty ;
+   THD_dmat33  yxt , xtx , xtxinv ;
+   int ii,jj,kk ;
+   double wsum ;
+
+   /*- check for bad inputs -*/
+
+   if( n < 3 || xx == NULL || yy == NULL ){ LOAD_ZERO_DMAT(out.mm); return out; }
+
+   /*- compute centroids of each set of vectors -*/
+
+   LOAD_DFVEC3(cx,0,0,0) ; LOAD_DFVEC3(cy,0,0,0) ; wsum = 0.0 ;
+   for( kk=0 ; kk < n ; kk++ ){
+     cx = ADD_DFVEC3(cx,xx[kk]) ;  /* sums of vectors */
+     cy = ADD_DFVEC3(cy,yy[kk]) ;
+   }
+   wsum = 1.0 / n ;
+   cx.xyz[0] *= wsum ; cx.xyz[1] *= wsum ; cx.xyz[2] *= wsum ;  /* centroids */
+   cy.xyz[0] *= wsum ; cy.xyz[1] *= wsum ; cy.xyz[2] *= wsum ;
+
+   /*- compute products of data matrices -*/
+
+   LOAD_DIAG_DMAT(yxt,1.e-9,1.e-9,1.e-9) ;
+   LOAD_DIAG_DMAT(xtx,1.e-9,1.e-9,1.e-9) ;
+   for( kk=0 ; kk < n ; kk++ ){
+     tx = SUB_DFVEC3( xx[kk] , cx ) ;  /* remove centroids */
+     ty = SUB_DFVEC3( yy[kk] , cy ) ;
+     for( jj=0 ; jj < 3 ; jj++ ){
+       for( ii=0 ; ii < 3 ; ii++ ){
+         yxt.mat[ii][jj] += ty.xyz[ii]*tx.xyz[jj] ;
+         xtx.mat[ii][jj] += tx.xyz[ii]*tx.xyz[jj] ;
+       }
+     }
+   }
+   xtxinv = DMAT_INV( xtx ) ;
+   out.mm = DMAT_MUL( yxt , xtxinv ) ;
+   tx = DMATVEC( out.mm , cx ) ;
+   out.vv = SUB_DFVEC3( cy , tx ) ;
+   return out ;
+}
+
+/*--------------------------------------------------------------------------*/
+/*! Compute a transformation to take one set of vectors into another.
+    That is, find matrix R and vector B so that
+
+     yy = [R] xx + V   (k=0..n-1)
+       k        k
+
+    is true in the unweighted least squares sense.  Here, we restrict R
+    to be a scalar multiple of an orthgonal matrix.
+----------------------------------------------------------------------------*/
+
+THD_dvecmat DLSQ_rotscl( int n, THD_dfvec3 *xx, THD_dfvec3 *yy , int ndim )
+{
+   THD_dvecmat out ;
+   THD_dfvec3  cx,cy , tx,ty ;
+   THD_dmat33  yxt , xtx , xtxinv , aa,bb,cc ;
+   int ii,jj,kk ;
+   double wsum ;
+
+   /*- check for bad inputs -*/
+
+   if( n < 3 || xx == NULL || yy == NULL ){ LOAD_ZERO_DMAT(out.mm); return out; }
+
+   /*- compute centroids of each set of vectors -*/
+
+   LOAD_DFVEC3(cx,0,0,0) ; LOAD_DFVEC3(cy,0,0,0) ; wsum = 0.0 ;
+   for( kk=0 ; kk < n ; kk++ ){
+     cx = ADD_DFVEC3(cx,xx[kk]) ;  /* sums of vectors */
+     cy = ADD_DFVEC3(cy,yy[kk]) ;
+   }
+   wsum = 1.0 / n ;
+   cx.xyz[0] *= wsum ; cx.xyz[1] *= wsum ; cx.xyz[2] *= wsum ;  /* centroids */
+   cy.xyz[0] *= wsum ; cy.xyz[1] *= wsum ; cy.xyz[2] *= wsum ;
+
+   /*- compute products of data matrices -*/
+
+   LOAD_DIAG_DMAT(yxt,1.e-9,1.e-9,1.e-9) ;
+   LOAD_DIAG_DMAT(xtx,1.e-9,1.e-9,1.e-9) ;
+   for( kk=0 ; kk < n ; kk++ ){
+     tx = SUB_DFVEC3( xx[kk] , cx ) ;  /* remove centroids */
+     ty = SUB_DFVEC3( yy[kk] , cy ) ;
+     for( jj=0 ; jj < 3 ; jj++ ){
+       for( ii=0 ; ii < 3 ; ii++ ){
+         yxt.mat[ii][jj] += ty.xyz[ii]*tx.xyz[jj] ;
+         xtx.mat[ii][jj] += tx.xyz[ii]*tx.xyz[jj] ;
+       }
+     }
+   }
+   xtxinv = DMAT_INV( xtx ) ;
+   aa = DMAT_MUL( yxt , xtxinv ) ;
+   bb = DMAT_pow( aa , -0.5 ) ;
+   cc = DMAT_MUL( aa , bb) ;
+   wsum = DMAT_DET(aa); wsum = fabs(wsum);
+   switch( ndim ){
+     default:
+     case 3: wsum = pow(wsum,0.333333333333) ; break ;  /* 3D rotation */
+     case 2: wsum = sqrt(wsum)               ; break ;  /* 2D rotation */
+   }
+   out.mm = DMAT_SCALAR( cc , wsum ) ;
+
+   tx = DMATVEC( out.mm , cx ) ;
+   out.vv = SUB_DFVEC3( cy , tx ) ;
    return out ;
 }

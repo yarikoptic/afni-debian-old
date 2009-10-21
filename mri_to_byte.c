@@ -20,9 +20,9 @@ MRI_IMAGE *mri_to_byte( MRI_IMAGE *oldim )
    double dbbot ;
    byte *ar ;
 
-WHOAMI ; IMHEADER(oldim) ;
+ENTRY("mri_to_byte") ;
 
-   if( oldim == NULL ) return NULL ;  /* 09 Feb 1999 */
+   if( oldim == NULL ) RETURN( NULL );  /* 09 Feb 1999 */
 
    newim = mri_new_conforming( oldim , MRI_byte ) ;
    npix  = oldim->nvox ;
@@ -62,6 +62,16 @@ WHOAMI ; IMHEADER(oldim) ;
 #endif
          break ;
 
+      case MRI_rgb:{                           /* 13 Nov 2002 */
+         byte *rgb = oldim->im.rgb_data ;
+         float rfac=0.299*scale , gfac=0.587*scale , bfac=0.114*scale , val ;
+         for( ii=0 ; ii < npix ; ii++ ){
+           val = rfac * rgb[3*ii] + gfac * rgb[3*ii+1] + bfac * rgb[3*ii+2] ;
+           ar[ii] = BYTEIZE(val) ;
+         }
+      }
+      break ;
+
       case MRI_short:
          for( ii=0 ; ii < npix ; ii++ )
             ar[ii] = scale * (oldim->im.short_data[ii]-shbot) ;
@@ -93,7 +103,7 @@ WHOAMI ; IMHEADER(oldim) ;
    }
 
    MRI_COPY_AUX(newim,oldim) ;
-   return newim ;
+   RETURN( newim );
 }
 
 /*----------------------------------------------------------------------------*/
@@ -104,12 +114,12 @@ MRI_IMAGE *mri_to_byte_scl( double scl , double lev , MRI_IMAGE *oldim )
    register int ii , npix ;
    double   imin,imax ;
    register double dscale , dbbot ;
-   register float  scale  , flbot ;
+   register float  scale  , flbot , val ;
    register byte *ar ;
 
-WHOAMI ; IMHEADER(oldim) ;
+ENTRY("mri_to_byte_scl") ;
 
-   if( oldim == NULL ) return NULL ;  /* 09 Feb 1999 */
+   if( oldim == NULL ) RETURN( NULL );  /* 09 Feb 1999 */
 
    newim = mri_new_conforming( oldim , MRI_byte ) ;
    npix  = oldim->nvox ;
@@ -133,23 +143,31 @@ WHOAMI ; IMHEADER(oldim) ;
    switch( oldim->kind ){
 
       case MRI_byte:
-         for( ii=0 ; ii < npix ; ii++ )
-            ar[ii] = scale * (oldim->im.byte_data[ii]-flbot) ;
+         for( ii=0 ; ii < npix ; ii++ ){
+            val = scale * (oldim->im.byte_data[ii]-flbot) ;
+            ar[ii] = BYTEIZE(val) ;
+         }
          break ;
 
       case MRI_short:
-         for( ii=0 ; ii < npix ; ii++ )
-            ar[ii] = scale * (oldim->im.short_data[ii]-flbot) ;
+         for( ii=0 ; ii < npix ; ii++ ){
+            val = scale * (oldim->im.short_data[ii]-flbot) ;
+            ar[ii] = BYTEIZE(val) ;
+         }
          break ;
 
       case MRI_int:
-         for( ii=0 ; ii < npix ; ii++ )
-            ar[ii] = scale * (oldim->im.int_data[ii]-flbot) ;
+         for( ii=0 ; ii < npix ; ii++ ){
+            val = scale * (oldim->im.int_data[ii]-flbot) ;
+            ar[ii] = BYTEIZE(val) ;
+         }
          break ;
 
       case MRI_float:
-         for( ii=0 ; ii < npix ; ii++ )
-            ar[ii] = scale * (oldim->im.float_data[ii]-flbot) ;
+         for( ii=0 ; ii < npix ; ii++ ){
+            val = scale * (oldim->im.float_data[ii]-flbot) ;
+            ar[ii] = BYTEIZE(val) ;
+         }
          break ;
 
       case MRI_double:
@@ -168,5 +186,5 @@ WHOAMI ; IMHEADER(oldim) ;
    }
 
    MRI_COPY_AUX(newim,oldim) ;
-   return newim ;
+   RETURN( newim );
 }

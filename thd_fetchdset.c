@@ -15,18 +15,21 @@ ENTRY("THD_fetch_dset") ;
 
    if( url == NULL || url[0] == '\0' ) RETURN(NULL) ;
 
+   if( STRING_HAS_SUFFIX(url,".hdr") ) RETURN(NULL) ;  /* 27 Aug 2002 */
+
    /*** do we have to add .HEAD? ***/
 
-   hp = malloc(sizeof(char)*(strlen(url)+32)) ; strcpy(hp,url) ;
+   hp = AFMALL(char, sizeof(char)*(strlen(url)+32)) ; strcpy(hp,url) ;
    cp = strstr(hp,".HEAD") ;
    if( cp == NULL                       &&
+       !STRING_HAS_SUFFIX(hp,".nii")    &&  /* 28 Aug 2003 */
        !STRING_HAS_SUFFIX(hp,".mnc")    &&
        !STRING_HAS_SUFFIX(hp,".mnc.gz")   ) strcat(hp,".HEAD") ;
 
    /*** read the .HEAD file to a temporary file ***/
 
    fprintf(stderr,"\n+++ Trying to fetch %s",hp) ;
-   nhp = read_URL_tmpdir( hp , &thp ) ;
+   nhp = NI_read_URL_tmpdir( hp , &thp ) ;
    if( nhp <= 0 ){ fprintf(stderr," **FAILED\n"); free(hp); RETURN(NULL); }
 
    /*** try to open it as a dataset header ***/
@@ -34,23 +37,29 @@ ENTRY("THD_fetch_dset") ;
    fprintf(stderr,": %d bytes read\n ++ Trying to initialize dataset %s\n",nhp,thp) ;
    THD_allow_empty_dataset(1) ;
    dset = THD_open_one_dataset(thp) ;
-   if( DSET_IS_MINC(dset) ) DSET_load(dset) ;  /* 29 Oct 2001 */
+   if( DSET_IS_MINC(dset) || DSET_IS_NIFTI(dset) ) DSET_load(dset) ;  /* 29 Oct 2001 */
    THD_allow_empty_dataset(0) ;
    unlink(thp) ; free(thp) ;
    if( dset == NULL ){ fprintf(stderr," ** Can't decode %s\n",hp); free(hp); RETURN(NULL); }
+
+   if( DSET_IS_VOLUMES(dset) ){  /* 20 Jun 2002 */
+     fprintf(stderr," ** Can't load %s by volumes!\n",hp); free(hp);
+     DSET_delete(dset); RETURN(NULL);
+   }
+
    DSET_superlock(dset) ;  /* don't let be deleted from memory */
-   if( DSET_IS_MINC(dset) ) RETURN(dset) ;  /* 29 Oct 2001 */
+   if( DSET_IS_MINC(dset) || DSET_IS_NIFTI(dset) ) RETURN(dset) ;  /* 29 Oct 2001 */
    DSET_mallocize(dset) ;
 
    /*** try to read the .BRIK or .BRIK.gz file into memory ***/
 
    strcpy( hp+(strlen(hp)-5) , ".BRIK.gz" ) ;
    fprintf(stderr," ++ Trying to fetch %s",hp) ; iochan_sleep(100) ;
-   nbp = read_URL( hp , &bp ) ;
+   nbp = NI_read_URL( hp , &bp ) ;
    if( nbp <= 0 ){
       iv = strlen(hp) ; hp[iv-3] = '\0' ; /* remove the .gz and try again */
       fprintf(stderr," ** FAILED!\n ++ Trying to fetch %s",hp) ; iochan_sleep(100) ;
-      nbp = read_URL( hp , &bp ) ;
+      nbp = NI_read_URL( hp , &bp ) ;
       if( nbp <= 0 ){
          fprintf(stderr," ** FAILED\n");
          free(hp); DSET_delete(dset); RETURN(NULL);
@@ -115,7 +124,7 @@ ENTRY("THD_fetch_1D") ;
    if( url == NULL || url[0] == '\0' ) RETURN(NULL) ;
 
    fprintf(stderr,"\n+++ Trying to fetch %s",url) ;
-   nhp = read_URL_tmpdir( url , &fname ) ;
+   nhp = NI_read_URL_tmpdir( url , &fname ) ;
    if( nhp <= 0 ){ fprintf(stderr," **FAILED\n"); RETURN(NULL); }
    fprintf(stderr,": %d bytes read",nhp) ;
    flim = mri_read_1D(fname) ; unlink(fname) ; free(fname) ;
@@ -158,7 +167,7 @@ ENTRY("THD_fetch_many_datasets") ;
    /* get the list of filenames */
 
    fprintf(stderr,"\n+++ Trying to fetch %s",url) ;
-   nlist = read_URL( url , &list ) ;
+   nlist = NI_read_URL( url , &list ) ;
    if( nlist <= 0 ){
       fprintf(stderr," **FAILED\n"); free(hnam); RETURN(NULL);
    }

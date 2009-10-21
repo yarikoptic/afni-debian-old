@@ -46,9 +46,7 @@ typedef struct {
 
    int  nimage , nvals , nosave ;
 
-#ifndef OMIT_DATASET_IDCODES
    MCW_idcode anatomy_parent_idcode ;
-#endif
 
    int   need_stat_aux ;
    float stat_aux[MAX_STAT_AUX] ;
@@ -117,6 +115,8 @@ typedef struct {
 
    MCW_DC    * dc ;
    MCW_imseq * seq ;
+
+   int good ;
 } to3d_widget_set ;
 
 #define T3D_NAME_WIDTH   25

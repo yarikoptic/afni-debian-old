@@ -17,6 +17,14 @@
 
 #ifdef ALLOW_PLUGINS
 
+#if defined(__cplusplus) || defined(c_plusplus)
+# define DEFINE_PLUGIN_PROTOTYPE \
+  extern "C" { PLUGIN_interface * PLUGIN_init( int ncall ) ; }
+#else
+# define DEFINE_PLUGIN_PROTOTYPE
+#endif
+
+
 #include <sys/types.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -47,7 +55,13 @@ typedef char * cptr_func() ; /* generic function returning char *  */
 /***************** The dlfcn.h and dl library ****************/
 
 #ifdef DYNAMIC_LOADING_VIA_DL
+
+#ifndef DARWIN
 #  include <dlfcn.h>
+#else
+#  include "dlcompat/dlfcn.h"
+#endif
+
    typedef void * DYNAMIC_handle ;
 
 #  define ISVALID_DYNAMIC_handle(handle) ((handle) != (DYNAMIC_handle) 0)
@@ -92,6 +106,11 @@ typedef char * cptr_func() ; /* generic function returning char *  */
 #  define DYNAMIC_suffix ".sl"
 #endif
 
+#ifdef NO_DYNAMIC_LOADING             /* this stuff is not actually used,  */
+#  define DYNAMIC_suffix ".fixed"     /* but is needed to make things cool */
+   typedef int DYNAMIC_handle ;       /* with the C compiler               */
+#endif
+
 #ifndef DYNAMIC_suffix
 #  error "Plugins not properly set up -- see machdep.h"
 #endif
@@ -111,7 +130,8 @@ typedef char * cptr_func() ; /* generic function returning char *  */
 #define PLUGIN_MAX_STRING_RANGE     34  /* isn't this enough? */
 #endif
 
-#define PLUGIN_MAX_SUBVALUES         6  /* isn't this enough? */
+#define PLUGIN_MAX_SUBVALUES         7  /* isn't this enough? */
+                                        /*  -- Nope --  03 May 2002 [BDWard] */
 
 /* data type codes (not all are implemented yet!) */
 
@@ -285,7 +305,18 @@ typedef struct PLUGIN_interface {
 
    char seqcode[PLUGIN_STRING_SIZE] ;  /* 06 Aug 1999 */
    char butcolor[PLUGIN_STRING_SIZE] ; /* 01 Nov 1999 */
+
+   int  flags ;                        /* 29 Mar 2002 */
+
+   char run_label [PLUGIN_LABEL_SIZE] ; /* 04 Nov 2003 */
+   char doit_label[PLUGIN_LABEL_SIZE] ;
 } PLUGIN_interface ;
+
+#define SHORT_CHOOSE_FLAG 1
+#define SHORT_NUMBER_FLAG 2
+
+#define PLUTO_short_choose(pl) (pl->flags |= SHORT_CHOOSE_FLAG)
+#define PLUTO_short_number(pl) (pl->flags |= SHORT_NUMBER_FLAG)
 
 /*************** Prototypes for creation of the above structures ***************/
 
@@ -304,10 +335,12 @@ typedef struct PLUGIN_interface {
 #define BRICK_SHORT_MASK      (1<<9)
 #define BRICK_FLOAT_MASK      (1<<10)
 #define BRICK_COMPLEX_MASK    (1<<11)
-#define BRICK_ALLTYPE_MASK    ( BRICK_BYTE_MASK  | BRICK_SHORT_MASK |   \
-                                BRICK_FLOAT_MASK | BRICK_COMPLEX_MASK )
+#define BRICK_RGB_MASK        (1<<12)
+#define BRICK_ALLTYPE_MASK    ( BRICK_BYTE_MASK  | BRICK_SHORT_MASK   |  \
+                                BRICK_FLOAT_MASK | BRICK_COMPLEX_MASK |  \
+                                BRICK_RGB_MASK                         )
 
-#define BRICK_ALLREAL_MASK    ( BRICK_BYTE_MASK  | BRICK_SHORT_MASK |   \
+#define BRICK_ALLREAL_MASK    ( BRICK_BYTE_MASK  | BRICK_SHORT_MASK |    \
                                 BRICK_FLOAT_MASK )
 
 extern int PLUGIN_dset_check( int,int    , THD_3dim_dataset * ) ;
@@ -339,6 +372,8 @@ extern PLUGIN_interface * new_PLUGIN_interface( char *, char *, char *,
 
 extern PLUGIN_interface * new_PLUGIN_interface_1999( char *, char *, char *,
                                                      int, cptr_func * , char * ) ;
+
+void PLUTO_set_runlabels( PLUGIN_interface *, char *, char * ) ; /* 04 Nov 2003 */
 
 extern void add_option_to_PLUGIN_interface( PLUGIN_interface *,
                                             char *, char *, int ) ;
@@ -404,8 +439,6 @@ extern char * peek_optiontag_from_PLUGIN_interface     ( PLUGIN_interface * ) ;
 #define BAD_NUMBER        (-31416.666)
 #define PLUTO_BAD_NUMBER  BAD_NUMBER
 
-#define PLUTO_cursorize(w)  NORMAL_cursorize(w)
-
 /**************************************************************************/
 /***** Define data structures to hold control information for plugins *****/
 
@@ -457,7 +490,8 @@ typedef struct AFNI_plugin_array {
    do{ int nn , iq ;                                                                  \
        if( (name)->num == (name)->nall ){                                             \
           nn = (name)->nall = 1.1*(name)->nall + INC_PLUGIN_ARRAY ;                   \
-          (name)->plar      = realloc( (name)->plar,sizeof(AFNI_plugin *)*nn ) ;      \
+          (name)->plar      = (AFNI_plugin **)                                        \
+                               realloc( (name)->plar,sizeof(AFNI_plugin *)*nn ) ;     \
           for( iq=(name)->num ; iq < (name)->nall ; iq++ ) (name)->plar[iq] = NULL ;} \
        nn = (name)->num ; ((name)->num)++ ;                                           \
        (name)->plar[nn] = (plug) ;                                                    \
@@ -579,6 +613,7 @@ extern void   PLUTO_imseq_addto( void * , MRI_IMAGE * ) ;
 extern void   PLUTO_imseq_destroy( void * ) ;
 extern void   PLUTO_imseq_retitle( void * , char * ) ;
 extern void   PLUTO_imseq_rekill( void *, generic_func *, void * ) ;
+extern void   PLUTO_imseq_setim( void * , int ) ;  /* 17 Dec 2004 */
 
 extern XtPointer PLUTO_imseq_getim( int , int , XtPointer ) ;
 extern void PLUTO_imseq_send_CB( MCW_imseq * , XtPointer , ISQ_cbs * ) ;
@@ -623,6 +658,10 @@ extern void alter_PLUGIN_strval_width( PLUGIN_strval * , int ) ;
 extern void set_PLUGIN_strval( PLUGIN_strval * , char * ) ;
 extern char * get_PLUGIN_strval( PLUGIN_strval * ) ;
 
+/* for vol2surf plugin                                09 Sep 2004 [rickr] */
+extern int PLUTO_set_v2s_addrs(void ** vopt, char *** maps, char ** hist);
+
+
 #endif /* ALLOW_PLUGINS */
 
 /*--------------------------------------------------------------------
@@ -638,9 +677,13 @@ extern char * get_PLUGIN_strval( PLUGIN_strval * ) ;
 
 #define PLUTO_register_1D_funcstr   AFNI_register_1D_funcstr
 
+#define PLUTO_cursorize(w)  NORMAL_cursorize(w)
+
 extern void PLUTO_register_timeseries( char * , MRI_IMAGE * ) ;
 
 extern THD_3dim_dataset * PLUTO_find_dset( MCW_idcode * ) ;
+extern THD_3dim_dataset * PLUTO_find_dset_idc( char * ) ;
+extern THD_slist_find     PLUTO_dset_finder( char * ) ;
 
 extern void PLUTO_histoplot( int, float, float, int *,
                              char *, char *, char * , int,int ** ) ;

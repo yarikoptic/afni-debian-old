@@ -43,19 +43,20 @@ char * AFNI_suck_file( char * fname )
 
 #define EOLSKIP                                                          \
   do{ for( ; fptr[0] != '\n' && fptr[0] != '\0' ; fptr++ ) ; /* nada */  \
-      if( fptr[0] == '\0' ){ free(fbuf) ; return ; }                     \
+      if( fptr[0] == '\0' ) goto done ;                                  \
       fptr++ ; } while(0)
 
 #define GETSSS                                                            \
   do{ int nu=0,qq;                                                        \
-      if( fptr-fbuf >= nbuf || fptr[0] == '\0' ){ free(fbuf); return; }   \
+      if( fptr-fbuf >= nbuf || fptr[0] == '\0' ) goto done ;              \
       str[0]='\0'; qq=sscanf(fptr,"%127s%n",str,&nu); nused+=nu;fptr+=nu; \
-      if( str[0]=='\0' || qq==0 || nu==0 ){ free(fbuf); return; }         \
+      if( str[0]=='\0' || qq==0 || nu==0 ) goto done ;                    \
     } while(0)
 
-#define GETSTR                                                             \
-  do{ GETSSS ;                                                             \
-      while(str[0]=='!' || (str[0]=='/' && str[1]=='/')){EOLSKIP; GETSSS;} \
+#define GETSTR                                                            \
+  do{ GETSSS ;                                                            \
+      while(str[0]=='!' || (str[0]=='/' && str[1]=='/') ||                \
+            (str[0]=='#' && str[1]=='\0') ){EOLSKIP; GETSSS;}             \
     } while(0)
 
 #define GETEQN                                      \
@@ -84,23 +85,24 @@ char * my_getenv( char * ename )
 
 void AFNI_process_environ( char * fname )
 {
-   int    nbuf , nused , ii ;
-   char * fbuf , * fptr ;
+   int   nbuf , nused , ii ;
+   char *fbuf , *fptr ;
    char str[NSBUF] , left[NSBUF] , middle[NSBUF] , right[NSBUF] ;
 
+ENTRY("AFNI_process_environ") ;
    if( fname != NULL ){
       strcpy(str,fname) ;
    } else {
-      char * home ;
-      if( afni_env_done ) return ;
+      char *home ;
+      if( afni_env_done ) EXRETURN ;
       home = getenv("HOME") ;
       if( home != NULL ){ strcpy(str,home) ; strcat(str,"/.afnirc") ; }
       else              { strcpy(str,".afnirc") ; }
       afni_env_done = 1 ;
    }
 
-   fbuf = AFNI_suck_file( str ) ; if( fbuf == NULL ) return ;
-   nbuf = strlen(fbuf) ;          if( nbuf == 0    ) return ;
+   fbuf = AFNI_suck_file( str ) ; if( fbuf == NULL ) EXRETURN ;
+   nbuf = strlen(fbuf) ;          if( nbuf == 0    ) EXRETURN ;
 
    fptr = fbuf ; nused = 0 ;
 
@@ -125,7 +127,7 @@ void AFNI_process_environ( char * fname )
       /**-- ENVIRONMENT section [04 Jun 1999] --**/
 
       if( strcmp(str,"***ENVIRONMENT") == 0 ){  /* loop, looking for environment settings */
-         char * enveqn ; int nl , nr ;
+         char *enveqn ; int nl , nr ;
 
          while(1){                          /* loop, looking for 'name = value' */
             GETEQN ;
@@ -143,14 +145,15 @@ void AFNI_process_environ( char * fname )
 
    }  /* end of while loop */
 
-   free(fbuf) ; return ;
+ done:
+   free(fbuf) ; EXRETURN ;
 }
 
 /*-----------------------------------------------------------------*/
 
 int AFNI_yesenv( char * ename )     /* 21 Jun 2000 */
 {
-   char * ept ;
+   char *ept ;
    if( ename == NULL ) return 0 ;
    ept = my_getenv(ename) ;
    return YESSISH(ept) ;
@@ -158,8 +161,21 @@ int AFNI_yesenv( char * ename )     /* 21 Jun 2000 */
 
 int AFNI_noenv( char * ename )     /* 21 Jun 2000 */
 {
-   char * ept ;
+   char *ept ;
    if( ename == NULL ) return 0 ;
    ept = my_getenv(ename) ;
    return NOISH(ept) ;
+}
+
+double AFNI_numenv( char *ename )  /* 23 Aug 2003 */
+{
+   char *ept,*ccc ; double val ;
+   if( ename == NULL ) return 0.0l ;
+   ept = my_getenv(ename) ;
+   if( ept   == NULL ) return 0.0l ;
+   val = strtod(ept,&ccc) ;
+        if( *ccc == 'k' || *ccc == 'K' ) val *= 1024.0l ;
+   else if( *ccc == 'm' || *ccc == 'M' ) val *= 1024.0l*1024.0l ;
+   else if( *ccc == 'g' || *ccc == 'G' ) val *= 1024.0l*1024.0l*1024.0l ;
+   return val ;
 }

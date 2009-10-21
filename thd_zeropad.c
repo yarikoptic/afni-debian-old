@@ -1,9 +1,3 @@
-/*****************************************************************************
-   Major portions of this software are copyrighted by the Medical College
-   of Wisconsin, 1994-2000, and are released under the Gnu General Public
-   License, Version 2.  See the file README.Copyright for details.
-******************************************************************************/
-
 #include "mrilib.h"
 
 /*-------------------------------------------------------------------
@@ -17,6 +11,8 @@
     ZPAD_PURGE = purge input dataset bricks after they are copied
     ZPAD_MM    = increments are mm instead of slice counts
                  (at least 'add_?' mm will be added/subtracted)
+
+  14 May 2002: if inputs crops are all zero, return something anyway
 ---------------------------------------------------------------------*/
 
 THD_3dim_dataset * THD_zeropad( THD_3dim_dataset * inset ,
@@ -43,12 +39,15 @@ ENTRY("THD_zeropad") ;
 
    /*-- check inputs --*/
 
-   if( !ISVALID_DSET(inset)                ||
-       (add_I==0 && add_S==0 && add_P==0 &&
-        add_A==0 && add_L==0 && add_R==0   ) ){
+   if( !ISVALID_DSET(inset) ) RETURN( NULL ) ;
 
-      fprintf(stderr,"*** THD_zeropad: all pad values are zero!\n") ;
-      RETURN( NULL );
+   if( add_I==0 && add_S==0 && add_P==0 &&
+       add_A==0 && add_L==0 && add_R==0    ){
+
+      fprintf(stderr,"++ THD_zeropad: all pad values are zero!\n") ;
+
+      outset = EDIT_full_copy( inset , prefix ) ;  /* 14 May 2002 */
+      RETURN( outset );
    }
 
    if( !THD_filename_ok(prefix) ) prefix = "zeropad" ;
@@ -133,6 +132,7 @@ ENTRY("THD_zeropad") ;
       RETURN( NULL );
    }
 
+#if 0
    if( nxnew < 2 || iibot >= iitop ||   /* check for reasonable sizes */
        nynew < 2 || jjbot >= jjtop ||   /* and ranges of dataset     */
        nznew < 2 || kkbot >= kktop   ){
@@ -140,6 +140,7 @@ ENTRY("THD_zeropad") ;
       fprintf(stderr,"*** WARNING - THD_zeropad: dataset cut down to %dx%dx%d\n",
                       nxnew,nynew,nznew) ;
    }
+#endif
 
    /*-- create the shell of the new dataset --*/
 
@@ -243,7 +244,8 @@ STATUS("padding") ;
 
       oldim = DSET_BRICK(inset,iv) ;  /* image structure of old brick */
 
-      vnew  = calloc( nxnew*nynew*nznew , oldim->pixel_size ) ; /* new brick */
+      vnew  = (void*)calloc( nxnew*nynew*nznew , 
+			     oldim->pixel_size ) ; /* new brick */
       if( vnew == NULL ){
          fprintf(stderr,
                  "*** THD_zeropad: Can't malloc space for new sub-brick %d\n",
@@ -289,6 +291,24 @@ STATUS("padding") ;
 
          case MRI_complex:{
             complex * bnew = (complex *) vnew, * bold = mri_data_pointer(oldim) ;
+            for( kk=kkbot ; kk < kktop ; kk++ )
+               for( jj=jjbot ; jj < jjtop ; jj++ )
+                  for( ii=iibot ; ii < iitop ; ii++ )
+                     bnew[SNEW(ii,jj,kk)] = bold[SOLD(ii,jj,kk)] ;
+         }
+         break ;
+
+         case MRI_int:{
+            int * bnew = (int *) vnew, * bold = mri_data_pointer(oldim) ;
+            for( kk=kkbot ; kk < kktop ; kk++ )
+               for( jj=jjbot ; jj < jjtop ; jj++ )
+                  for( ii=iibot ; ii < iitop ; ii++ )
+                     bnew[SNEW(ii,jj,kk)] = bold[SOLD(ii,jj,kk)] ;
+         }
+         break ;
+
+         case MRI_rgb:{
+            rgbyte * bnew = (rgbyte *) vnew, * bold = mri_data_pointer(oldim) ;
             for( kk=kkbot ; kk < kktop ; kk++ )
                for( jj=jjbot ; jj < jjtop ; jj++ )
                   for( ii=iibot ; ii < iitop ; ii++ )

@@ -14,11 +14,11 @@ MRI_IMAGE *mri_to_rgb( MRI_IMAGE *oldim )  /* 11 Feb 1999 */
    register int ii , npix ;
    register byte * rgb ;
 
-WHOAMI ; IMHEADER(oldim) ;
+ENTRY("mri_to_rgb") ;
 
-   if( oldim == NULL ) return NULL ;
+   if( oldim == NULL ) RETURN( NULL );
 
-   newim = mri_new_conforming( oldim , MRI_rgb ) ; rgb = MRI_BYTE_PTR(newim) ;
+   newim = mri_new_conforming( oldim , MRI_rgb ) ; rgb = MRI_RGB_PTR(newim) ;
    npix  = oldim->nvox ;
 
    switch( oldim->kind ){
@@ -42,13 +42,21 @@ WHOAMI ; IMHEADER(oldim) ;
          memcpy( rgb , MRI_RGB_PTR(oldim) , 3*npix ) ;
       break ;
 
+      case MRI_rgba:
+         for( ii=0 ; ii < npix ; ii++ ){
+            rgb[3*ii]   = oldim->im.rgba_data[ii].r ;
+            rgb[3*ii+1] = oldim->im.rgba_data[ii].g ;
+            rgb[3*ii+2] = oldim->im.rgba_data[ii].b ;
+         }
+      break ;
+
       default:
          fprintf(stderr,"mri_to_rgb:  unrecognized image conversion %d\n",oldim->kind) ;
-         return NULL ;
+         RETURN( NULL );
    }
 
    MRI_COPY_AUX(newim,oldim) ;
-   return newim ;
+   RETURN( newim );
 }
 
 /*---------------------------------------------------------------------------
@@ -61,7 +69,9 @@ MRI_IMAGE * mri_3to_rgb( MRI_IMAGE * rim , MRI_IMAGE * gim , MRI_IMAGE * bim )
    register int ii , npix ;
    register byte * rgb ;
 
-   if( rim == NULL || bim == NULL || gim == NULL ) return NULL ;
+ENTRY("mri_3to_rgb") ;
+
+   if( rim == NULL || bim == NULL || gim == NULL ) RETURN( NULL );
 
    newim = mri_new_conforming( rim , MRI_rgb ) ; rgb = MRI_BYTE_PTR(newim) ;
    npix  = rim->nvox ;
@@ -94,7 +104,7 @@ MRI_IMAGE * mri_3to_rgb( MRI_IMAGE * rim , MRI_IMAGE * gim , MRI_IMAGE * bim )
    }
 
    MRI_COPY_AUX(newim,rim) ;
-   return newim ;
+   RETURN( newim );
 }
 
 /*-------------------------------------------------------------------------------*/
@@ -107,7 +117,9 @@ MRI_IMARR * mri_rgb_to_3float( MRI_IMAGE * oldim )
    byte      * rgb ;
    int ii , npix ;
 
-   if( oldim == NULL || oldim->kind != MRI_rgb ) return NULL ;
+ENTRY("mri_rgb_to_3float") ;
+
+   if( oldim == NULL || oldim->kind != MRI_rgb ) RETURN( NULL );
 
    rim = mri_new_conforming( oldim , MRI_float ) ; rr = MRI_FLOAT_PTR(rim) ;
    gim = mri_new_conforming( oldim , MRI_float ) ; gg = MRI_FLOAT_PTR(gim) ;
@@ -124,7 +136,7 @@ MRI_IMARR * mri_rgb_to_3float( MRI_IMAGE * oldim )
    INIT_IMARR(imar) ;
    ADDTO_IMARR(imar,rim) ; ADDTO_IMARR(imar,gim) ; ADDTO_IMARR(imar,bim) ;
 
-   return imar ;
+   RETURN( imar );
 }
 
 /*-------------------------------------------------------------------------------*/
@@ -136,7 +148,8 @@ MRI_IMARR * mri_rgb_to_3byte( MRI_IMAGE * oldim )  /* 15 Apr 1999 */
    byte      * rr  , * gg  , * bb  , * rgb ;
    int ii , npix ;
 
-   if( oldim == NULL || oldim->kind != MRI_rgb ) return NULL ;
+ENTRY("mri_rgb_to_3byte") ;
+   if( oldim == NULL || oldim->kind != MRI_rgb ) RETURN( NULL );
 
    rim = mri_new_conforming( oldim , MRI_byte ) ; rr = MRI_BYTE_PTR(rim) ;
    gim = mri_new_conforming( oldim , MRI_byte ) ; gg = MRI_BYTE_PTR(gim) ;
@@ -153,7 +166,7 @@ MRI_IMARR * mri_rgb_to_3byte( MRI_IMAGE * oldim )  /* 15 Apr 1999 */
    INIT_IMARR(imar) ;
    ADDTO_IMARR(imar,rim) ; ADDTO_IMARR(imar,gim) ; ADDTO_IMARR(imar,bim) ;
 
-   return imar ;
+   RETURN( imar );
 }
 
 /*-----------------------------------------------------------------------------*/
@@ -166,9 +179,11 @@ MRI_IMAGE * mri_sharpen_rgb( float phi , MRI_IMAGE * im )
    int ii , nvox , rr,gg,bb ;
    float fac ;
 
-   if( im == NULL ) return NULL ;
+ENTRY("mri_sharpen_rgb") ;
 
-   if( im->kind != MRI_rgb ) return mri_sharpen( phi , 0 , im ) ;
+   if( im == NULL ) RETURN( NULL );
+
+   if( im->kind != MRI_rgb ) RETURN( mri_sharpen(phi,0,im) );
 
    flim  = mri_to_float( im ) ;                  /* intensity of input */
    shim  = mri_sharpen( phi , 0 , flim ) ;       /* sharpen intensity */
@@ -195,7 +210,7 @@ MRI_IMAGE * mri_sharpen_rgb( float phi , MRI_IMAGE * im )
    mri_free(flim) ; mri_free(shim) ;
 
    MRI_COPY_AUX(newim,im) ;
-   return newim ;
+   RETURN( newim );
 }
 
 /*-----------------------------------------------------------------------------*/
@@ -208,9 +223,11 @@ MRI_IMAGE * mri_flatten_rgb( MRI_IMAGE * im )
    int ii , nvox , rr,gg,bb ;
    float fac ;
 
-   if( im == NULL ) return NULL ;
+ENTRY("mri_flatten_rgb") ;
 
-   if( im->kind != MRI_rgb ) return mri_flatten( im ) ;
+   if( im == NULL ) RETURN( NULL );
+
+   if( im->kind != MRI_rgb ) RETURN( mri_flatten(im) );
 
    flim  = mri_to_float( im ) ;                  /* intensity of input */
    shim  = mri_flatten( flim ) ;                 /* flatten intensity  */
@@ -237,5 +254,24 @@ MRI_IMAGE * mri_flatten_rgb( MRI_IMAGE * im )
    mri_free(flim) ; mri_free(shim) ;
 
    MRI_COPY_AUX(newim,im) ;
-   return newim ;
+   RETURN( newim );
+}
+
+/*-----------------------------------------------------------------------------*/
+
+void mri_invert_inplace( MRI_IMAGE *im )
+{
+   register byte *bar ;
+   register int ii , nbar ;
+
+ENTRY("mri_invert_inplace") ;
+
+   if( im == NULL ) EXRETURN ;
+   switch( im->kind ){
+     default: EXRETURN ;
+     case MRI_byte:  nbar =   im->nvox ; bar = MRI_BYTE_PTR(im) ; break ;
+     case MRI_rgb:   nbar = 3*im->nvox ; bar = MRI_RGB_PTR(im)  ; break ;
+   }
+   for( ii=0 ; ii < nbar ; ii++ ) bar[ii] = 255 - bar[ii] ;
+   EXRETURN ;
 }

@@ -3,7 +3,7 @@
    of Wisconsin, 1994-2000, and are released under the Gnu General Public
    License, Version 2.  See the file README.Copyright for details.
 ******************************************************************************/
-   
+
 #ifndef _MCW_PBAR_H_
 #define _MCW_PBAR_H_
 
@@ -35,7 +35,7 @@ static char check_bits[] = {
 
 static Pixmap check_pixmap = XmUNSPECIFIED_PIXMAP ;
 
-#define NPANE_MIN       2
+#define NPANE_MIN        2
 #define NPANE_MAX       20
 #define PANE_WIDTH      15
 #define PANE_MIN_HEIGHT  5
@@ -52,6 +52,8 @@ static Pixmap check_pixmap = XmUNSPECIFIED_PIXMAP ;
 
 #define pbCR_COLOR       (1<<0)
 #define pbCR_VALUE       (1<<1)
+
+#define NPANE_BIG      128    /* 30 Jan 2003: # colors in "big" mode */
 
 typedef struct {
   Widget top , panew , panes[NPANE_MAX]   , labels[NPANE_MAX+1] ;
@@ -71,6 +73,18 @@ typedef struct {
   XtPointer  pb_data ;
 
   XtPointer parent ;
+
+  int    bigmode , bigset ;     /* 30 Jan 2003 */
+  float  bigtop , bigbot ;
+  rgbyte bigcolor[NPANE_BIG] ;
+  char * bigname ;              /* 22 Oct 2003 */
+  XImage * bigxim ;
+  int    bigmap_index ;         /* 31 Jan 2003 */
+  float  bigfac ;               /* 11 Feb 2003 */
+  int    bigflip ;              /* 07 Feb 2004 */
+  int    bigrota ;              /* 07 Feb 2004 */
+
+  Widget big_menu , big_label , big_choose_pb ;
 } MCW_pbar ;
 
 MCW_pbar * new_MCW_pbar( Widget , MCW_DC * ,
@@ -82,5 +96,19 @@ void update_MCW_pbar( MCW_pbar * ) ;
 MRI_IMAGE * MCW_pbar_to_mri( MCW_pbar *,int,int ) ; /* 15 Jun 2000 */
 
 void rotate_MCW_pbar( MCW_pbar * , int ) ; /* 30 Mar 2001 */
+
+void PBAR_set_panecolor( MCW_pbar *, int , int ) ;  /* 17 Jan 2003 */
+
+void PBAR_set_bigmode( MCW_pbar *, int, float,float ) ;     /* 30 Jan 2003 */
+void PBAR_bigexpose_CB( Widget , XtPointer , XtPointer ) ;  /* 30 Jan 2003 */
+void PBAR_add_bigmap( char * , rgbyte * ) ;                 /* 31 Jan 2003 */
+void PBAR_read_bigmap( char *, MCW_DC * ) ;                 /* 01 Feb 2003 */
+void PBAR_make_bigmap( char *,
+                       int, float *, rgbyte *, MCW_DC * );  /* 02 Feb 2003 */
+
+void PBAR_set_bigmap( MCW_pbar * , char * ) ;               /* 03 Feb 2003 */
+char * PBAR_get_bigmap( MCW_pbar * ) ;                      /* 03 Feb 2003 */
+int PBAR_define_bigmap( char *cmd ) ;                       /* 07 Feb 2003 */
+void PBAR_flip( MCW_pbar * ) ;                              /* 07 Feb 2004 */
 
 #endif

@@ -53,9 +53,14 @@ typedef struct {
 
       MCW_function_list * transforms0D ;
       MCW_function_list * transforms2D ;
+      MCW_function_list * slice_proj   ;  /* 31 Jan 2002 */
 
       XtPointer parent , aux ;
 } MCW_imseq_status ;
+
+#define ISQ_DOING_SLICE_PROJ(ss)      \
+ ( (ss)->slice_proj_range >  0   &&   \
+   (ss)->slice_proj_func  != NULL   )
 
 #define IM_WIDTH(im) \
   ( ((im)->dx > 0) ? ((im)->nx * (im)->dx) : ((im)->nx) )
@@ -138,6 +143,7 @@ typedef struct {
 
 #define ISQ_RNG_MINTOMAX  1
 #define ISQ_RNG_02TO98    2
+#define ISQ_RNG_USER      4  /* 04 Nov 2003 */
 
 #define ISQ_ASPECT 1
 
@@ -205,6 +211,7 @@ typedef struct {
       Boolean one_done , glob_done ;
       float   min,max , per02,per98 ,
               scl_mm,lev_mm , scl_per,lev_per ;
+      float   entropy ;
 
       XtPointer parent , aux ;
 } ISQ_indiv_statistics ;
@@ -262,6 +269,7 @@ typedef struct {
 #define isqCR_appress     309
 
 #define isqCR_button2_points 501  /* Feb 1998 */
+#define isqCR_button2_key    502  /* 20 Feb 2003 */
 
 #define isqCR_force_redisplay 601 /* 22 Aug 1998 */
 
@@ -270,7 +278,10 @@ typedef struct {
          if( (sq)->status->send_CB != NULL ){                        \
             ISQ_cbs cbs ;                                            \
             cbs.reason = isqCR_force_redisplay ;                     \
-            (sq)->status->send_CB( (sq) , (sq)->getaux , &cbs ) ;    \
+            AFNI_CALL_VOID_3ARG( (sq)->status->send_CB      ,        \
+                                 MCW_imseq * , (sq)         ,        \
+                                 XtPointer   , (sq)->getaux ,        \
+                                 ISQ_cbs *   , &cbs          ) ;     \
          } else {                                                    \
             KILL_2XIM( (sq)->given_xbar , (sq)->sized_xbar ) ;       \
             ISQ_redisplay( (sq) , -1 , isqDR_display ) ;             \
@@ -376,6 +387,12 @@ typedef struct MCW_imseq {
      generic_func * transform2D_func ;
      int            transform2D_index ;
 
+     MCW_arrowval * slice_proj_av ;       /* 31 Jan 2002 */
+     float_func   * slice_proj_func ;
+     int            slice_proj_index ;
+     MCW_arrowval * slice_proj_range_av ;
+     int            slice_proj_range ;
+
      MCW_arrowval *      rowgraph_av  ;   /* 30 Dec 1998 */
      int                 rowgraph_num ;
      MEM_topshell_data * rowgraph_mtd ;
@@ -447,7 +464,63 @@ typedef struct MCW_imseq {
      MCW_arrowval * wbar_label_av ;      /* 20 Sep 2001 */
      MCW_arrowval * wbar_labsz_av ;      /* 21 Sep 2001 */
 
+     Widget        zoom_sep              /* 11 Mar 2002 */;
+     MCW_arrowval *zoom_val_av ;
+     Widget        zoom_drag_pb ;
+     int    zoom_fac ;
+     float  zoom_hor_off, zoom_ver_off ;
+     int    zoom_pw , zoom_ph ;
+     Pixmap zoom_pixmap  ;
+     XImage *zoom_xim  ;
+     int    zoom_button1 , zoom_xp,zoom_yp ; /* 15 Mar 2002 */
+
+     int cropit , crop_xa,crop_xb , crop_ya,crop_yb ; /* 11 Jun 2002 */
+     int crop_nxorg , crop_nyorg , crop_allowed ;
+     Widget        crop_drag_pb ;                     /* 17 Jun 2002 */
+     int           crop_drag ;
+
+     int button2_width ;                              /* 08 Oct 2002 */
+
+     int cursor_state ;                               /* 10 Mar 2003 */
+
+     MCW_bbox *pen_bbox ;                             /* 18 Jul 2003 */
+
+     int last_bx,last_by ;                            /* 23 Oct 2003 */
+     int cmap_changed ;
+
+     int do_graymap ;                                 /* 24 Oct 2003 */
+     MEM_topshell_data * graymap_mtd ;
+     Widget wbar_graymap_pb ;
+
+     XtIntervalId timer_id ;                          /* 03 Dec 2003 */
+     int          timer_func, timer_param, timer_delay ;
+
+     int dont_place_dialog ;                          /* 23 Jan 2004 */
+
+     MCW_arrowval *wbar_ticnum_av, *wbar_ticsiz_av ;  /* 23 Feb 2004 */
+
+     float last_dx , last_dy ;                        /* 08 Jun 2004 */
 } MCW_imseq ;
+
+#define ISQ_TIMERFUNC_INDEX  701
+#define ISQ_TIMERFUNC_BOUNCE 702
+
+extern void ISQ_timer_CB( XtPointer , XtIntervalId * ) ; /* 03 Dec 2003 */
+extern void ISQ_timer_stop( MCW_imseq * ) ;
+
+extern void ISQ_zoom_av_CB( MCW_arrowval *, XtPointer ) ;
+extern void ISQ_zoom_pb_CB( Widget, XtPointer, XtPointer ) ;
+extern void ISQ_crop_pb_CB( Widget, XtPointer, XtPointer ) ;
+extern void ISQ_actually_pan( MCW_imseq * , int , int ) ;
+extern int ISQ_show_zoom( MCW_imseq *seq )  ;
+
+#define CURSOR_NORMAL    0                            /* 10 Mar 2003 */
+#define CURSOR_PENCIL    1
+#define CURSOR_CROSSHAIR 2                            /* 18 Jul 2003 */
+
+extern void ISQ_set_cursor_state( MCW_imseq * , int ) ;
+
+extern void ISQ_pen_bbox_CB( Widget, XtPointer, XtPointer ) ; /* 18 Jul 2003 */
 
 /*--------------------------------------------------------------------*/
 
@@ -472,44 +545,49 @@ extern MCW_imseq * open_MCW_imseq( MCW_DC * , get_ptr , XtPointer ) ;
 
 /* Drive Reasons for the next routine */
 
-#define isqDR_imhelptext   101
-#define isqDR_options      102
-#define isqDR_numtotal     103
-#define isqDR_cursor       104
-#define isqDR_unrealize    105
-#define isqDR_realize      106
-#define isqDR_display      107
-#define isqDR_overlay      108
-#define isqDR_arrowpadon   109
-#define isqDR_reimage      110
-#define isqDR_reshow       111
-#define isqDR_newseq       112
-#define isqDR_arrowpadoff  113
-#define isqDR_title        114
-#define isqDR_clearstat    115
-#define isqDR_onoffwid     116
-#define isqDR_getimnr      117
-#define isqDR_icon         118
-#define isqDR_sendmontage  119
-#define isqDR_periodicmont 120
-#define isqDR_setmontage   121
-#define isqDR_setifrac     130
+#define isqDR_imhelptext    101
+#define isqDR_options       102
+#define isqDR_numtotal      103
+#define isqDR_cursor        104
+#define isqDR_unrealize     105
+#define isqDR_realize       106
+#define isqDR_display       107
+#define isqDR_overlay       108
+#define isqDR_arrowpadon    109
+#define isqDR_reimage       110
+#define isqDR_reshow        111
+#define isqDR_newseq        112
+#define isqDR_arrowpadoff   113
+#define isqDR_title         114
+#define isqDR_clearstat     115
+#define isqDR_onoffwid      116
+#define isqDR_getimnr       117
+#define isqDR_icon          118
+#define isqDR_sendmontage   119
+#define isqDR_periodicmont  120
+#define isqDR_setmontage    121
+#define isqDR_setifrac      130
+#define isqDR_setrange      131
+#define isqDR_bgicon        132
 
-#define isqDR_arrowpadhint 201
-#define isqDR_winfotext    202
-#define isqDR_getoptions   203
-#define isqDR_winfosides   204
+#define isqDR_arrowpadhint  201
+#define isqDR_winfotext     202
+#define isqDR_getoptions    203
+#define isqDR_winfosides    204
 
-#define isqDR_destroy      666
+#define isqDR_destroy       666
 
-#define isqDR_offwid         0
-#define isqDR_onwid          1
-#define isqDR_togwid         2
+#define isqDR_offwid          0
+#define isqDR_onwid           1
+#define isqDR_togwid          2
 
 #define isqDR_button2_enable  501
 #define isqDR_button2_disable 502
 #define isqDR_button2_pixel   503
 #define isqDR_button2_mode    504
+#define isqDR_button2_width   505
+
+#define isqDR_ignore_redraws  521
 
 #define BUTTON2_OPENPOLY        0
 #define BUTTON2_CLOSEDPOLY      1
@@ -520,6 +598,11 @@ extern MCW_imseq * open_MCW_imseq( MCW_DC * , get_ptr , XtPointer ) ;
 #define isqDR_opacitybut      603  /* 07 Mar 2001 */
 #define isqDR_record_mode     604  /* 24 Apr 2001 */
 #define isqDR_record_disable  605  /* 24 Apr 2001 */
+#define isqDR_zoombut         606  /* 11 Mar 2002 */
+#define isqDR_getopacity      607  /* 21 Jan 2003 */
+#define isqDR_setopacity      608  /* 21 Jan 2003 */
+#define isqDR_setimsave       609  /* 23 Jan 2003 */
+#define isqDR_penbbox         610  /* 18 Jul 2003 */
 
 #define isqDR_plot_label      701  /* 20 Sep 2001 */
 #define isqDR_plot_plot       702  /* 20 Sep 2001 */
@@ -555,6 +638,7 @@ extern void ISQ_but_cswap_CB( Widget , XtPointer , XtPointer ) ;
 extern void ISQ_but_cnorm_CB( Widget , XtPointer , XtPointer ) ;
 
 extern void ISQ_place_dialog( MCW_imseq * ) ;  /* 05 Jan 1999 */
+extern void ISQ_place_widget( Widget, Widget ) ;  /* 27 Oct 2003 */
 
 #undef REQUIRE_TWO_DONES
 #ifdef REQUIRE_TWO_DONES
@@ -591,6 +675,11 @@ extern void ISQ_set_barhint( MCW_imseq * , char * ) ; /* 29 Jul 2001 */
 
 extern MRI_IMAGE * ISQ_process_mri( int , MCW_imseq * , MRI_IMAGE * ) ;
 
+extern MRI_IMAGE    * ISQ_getimage  ( int , MCW_imseq * ) ; /* 31 Jan 2002 */
+extern MRI_IMAGE    * ISQ_getoverlay( int , MCW_imseq * ) ; /* 11 Jun 2002 */
+extern MEM_plotdata * ISQ_getmemplot( int , MCW_imseq * ) ;
+extern char         * ISQ_getlabel  ( int , MCW_imseq * ) ;
+
 extern void ISQ_free_alldata( MCW_imseq * ) ;
 
 extern int ISQ_set_image_number( MCW_imseq * , int ) ;
@@ -624,16 +713,22 @@ void ISQ_arrowpad_CB( MCW_arrowpad * , XtPointer ) ;
 extern void ISQ_transform_CB     ( MCW_arrowval * , XtPointer ) ;
 extern char * ISQ_transform_label( MCW_arrowval * , XtPointer ) ;
 
+extern void ISQ_slice_proj_CB    ( MCW_arrowval * , XtPointer ) ;
+
 #define ROWGRAPH_MAX  9
 #define SURFGRAPH_MAX 2
 
 #define ROWGRAPH_MASK  1
 #define SURFGRAPH_MASK 2
+#define GRAYMAP_MASK   4  /* 24 Oct 2003 */
 
 extern void ISQ_rowgraph_CB     ( MCW_arrowval * , XtPointer ) ;
 extern char * ISQ_rowgraph_label( MCW_arrowval * , XtPointer ) ;
 extern void ISQ_rowgraph_draw( MCW_imseq * seq ) ;
 extern void ISQ_rowgraph_mtdkill( MEM_topshell_data * mp ) ;
+
+extern void ISQ_graymap_draw( MCW_imseq * seq ) ;           /* 24 Oct 2003 */
+extern void ISQ_graymap_mtdkill( MEM_topshell_data * mp ) ;
 
 extern void ISQ_surfgraph_CB     ( MCW_arrowval * , XtPointer ) ;
 extern char * ISQ_surfgraph_label( MCW_arrowval * , XtPointer ) ;
@@ -642,15 +737,7 @@ extern void ISQ_surfgraph_mtdkill( MEM_topshell_data * mp ) ;
 extern MEM_plotdata * plot_image_surface( MRI_IMAGE * , float,float,float,int,int ) ;
 extern void ISQ_surfgraph_arrowpad_CB( MCW_arrowpad * , XtPointer ) ;
 
-extern void median9_box_func( int nx , int ny , double,double , float * ar ) ;
-extern void winsor9_box_func( int nx , int ny , double,double , float * ar ) ;
-extern void osfilt9_box_func( int nx , int ny , double,double , float * ar ) ;
-extern void fft2D_func      ( int nx , int ny , double,double , float * ar ) ;
-
-extern void median21_box_func( int nx , int ny , double,double , float * ar ) ;
-extern void winsor21_box_func( int nx , int ny , double,double , float * ar ) ;
-
-/*---- temporary, I hope (yeah, sure, right) ----*/
+/*---- temporary, I hope (yeah, sure, right, uh huh) ----*/
 
 extern void ISQ_saver_CB( Widget , XtPointer , MCW_choose_cbs * ) ;
 
@@ -684,5 +771,9 @@ extern void ISQ_record_send_CB( MCW_imseq * , XtPointer , ISQ_cbs * ) ;
 extern void ISQ_record_kill_CB( Widget , XtPointer , XtPointer ) ;
 
 extern void ISQ_remove_widget( MCW_imseq * , Widget ) ;
+extern void ISQ_cropper( MCW_imseq *, XButtonEvent *) ; /* 17 Jun 2002 */
+
+extern void ISQ_snapshot( Widget w ) ;                 /* 18 Jun 2003 */
+extern void ISQ_snapsave( int,int, byte *, Widget ) ;  /* 03 Jul 2003 */
 
 #endif /* _MCW_IMSEQ_HEADER_ */

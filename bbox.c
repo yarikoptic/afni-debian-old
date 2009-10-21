@@ -31,6 +31,8 @@ MCW_bbox * new_MCW_bbox( Widget parent ,
    Arg wa[30] ;  int na ;
    Pixel  fg_pix ;
 
+ENTRY("new_MCW_bbox") ;
+
    if( num_but <= 0 || num_but >= 32 ){
       fprintf(stderr,"\n*** illegal new_MCW_bbox has %d buttons\n",num_but) ;
       EXIT(1) ;
@@ -124,7 +126,7 @@ MCW_bbox * new_MCW_bbox( Widget parent ,
    XtManageChild( bb->wrowcol ) ;
 
    bb->parent = bb->aux = NULL ;
-   return bb ;
+   RETURN(bb) ;
 }
 
 /*------------------------------------------------------------------------*/
@@ -136,44 +138,45 @@ void MCW_bbox_hints( MCW_bbox * bb , int nh , char ** hh )
    if( bb == NULL || nh == 0 || hh == NULL ) return ;
    if( nh > bb->nbut ) nh = bb->nbut ;
    for( ib=0 ; ib < nh ; ib++ )
-      MCW_register_hint( bb->wbut[ib] , hh[ib] ) ;
+     MCW_register_hint( bb->wbut[ib] , hh[ib] ) ;
    return ;
 }
 
 /*------------------------------------------------------------------------*/
 
-void MCW_set_bbox( MCW_bbox * bb , int val )
+void MCW_set_bbox( MCW_bbox *bb , int val )
 {
    int     ib ;
-   Boolean set ;
+   Boolean nset , oset ;
 
-   if( bb == NULL ) return ;  /* 01 Feb 2000 */
+ENTRY("MCW_set_bbox") ;
 
+   if( bb == NULL ) EXRETURN ;  /* 01 Feb 2000 */
    bb->value = val ;
-
    for( ib=0 ; ib < bb->nbut ; ib++ ){
-      set = ( val & (1<<ib) ) ? (True) : (False) ;
-      XmToggleButtonSetState( bb->wbut[ib] , set , False ) ;
+     nset = ( val & (1<<ib) ) ? (True) : (False) ;
+     oset = XmToggleButtonGetState( bb->wbut[ib] ) ;
+     if( nset != oset ){
+       XmToggleButtonSetState( bb->wbut[ib] , nset , False ) ;
+       XmUpdateDisplay( bb->wbut[ib] ) ;
+     }
    }
-   return ;
+   EXRETURN ;
 }
 
 /*------------------------------------------------------------------------*/
 
-int MCW_val_bbox( MCW_bbox * bb )
+int MCW_val_bbox( MCW_bbox *bb )
 {
    int ib , val ;
    Boolean set ;
 
    if( bb == NULL ) return 0 ;  /* 01 Feb 2000 */
-
    val = 0 ;
-
    for( ib=0 ; ib < bb->nbut ; ib++ ){
-      set = XmToggleButtonGetState( bb->wbut[ib] ) ;
-      if( set ) val |= (1<<ib) ;
+     set = XmToggleButtonGetState( bb->wbut[ib] ) ;
+     if( set ) val |= (1<<ib) ;
    }
-
    bb->value = val ;
    return val ;
 }
@@ -214,23 +217,25 @@ int MCW_val_bbox( MCW_bbox * bb )
 ---------------------------------------------------------------------------*/
 
 MCW_arrowval * new_MCW_arrowval( Widget parent ,
-                                 char * label ,
+                                 char *label ,
                                  int    direc ,
                                  int    minval , int maxval , int inival ,
                                  int    textype ,  int decim ,
-                                 gen_func * delta_value, XtPointer delta_data,
-                                 str_func * text_proc  , XtPointer text_data
+                                 gen_func *delta_value, XtPointer delta_data,
+                                 str_func *text_proc  , XtPointer text_data
                                )
 {
    MCW_arrowval * av = NULL ;
    int asizx = 20 , asizy = 15 ;  /* arrow sizes */
+
+ENTRY("new_MCW_arrowval") ;
 
    /** July 1996: optmenu capability as a dropin for arrowval **/
 
    if( direc == MCW_AV_optmenu ){
       av = new_MCW_optmenu( parent , label , minval,maxval,inival , decim ,
                             delta_value , delta_data , text_proc , text_data ) ;
-      return av ;
+      RETURN(av) ;
    }
 
    av = myXtNew( MCW_arrowval ) ;
@@ -447,7 +452,7 @@ MCW_arrowval * new_MCW_arrowval( Widget parent ,
 
    av->parent = av->aux = NULL ;
    av->fstep = 0.0 ;  /* 16 Feb 1999 */
-   return av ;
+   RETURN(av) ;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -475,9 +480,14 @@ int AV_colsize()                      /* 11 Dec 2001 */
 
 static void optmenu_EV( Widget,XtPointer,XEvent *,Boolean *) ; /* prototype */
 
-static int allow_optmenu_EV = 1 ;
+static volatile int allow_optmenu_EV = 1 ;
 
 void allow_MCW_optmenu_popup( int ii ){ allow_optmenu_EV = ii ; }
+
+#undef  USE_FIXUP
+#ifdef  USE_FIXUP
+static void optmenu_EV_fixup( Widget ww ) ;
+#endif
 
 MCW_arrowval * new_MCW_optmenu( Widget parent ,
                                 char * label ,
@@ -492,6 +502,8 @@ MCW_arrowval * new_MCW_optmenu( Widget parent ,
    int nargs , ival ;
    XmString xstr ;
    char * butlabel , * blab ;
+
+ENTRY("new_MCW_optmenu") ;
 
    /** create the menu window **/
 
@@ -610,15 +622,19 @@ MCW_arrowval * new_MCW_optmenu( Widget parent ,
 
    /* 11 Dec 2001: allow user to choose via Button-3 popup */
 
-   if( allow_optmenu_EV )
+   if( allow_optmenu_EV ){
      XtInsertEventHandler( av->wrowcol ,      /* handle events in optmenu */
                            ButtonPressMask ,  /* button presses */
                            FALSE ,            /* nonmaskable events? */
                            optmenu_EV ,       /* handler */
                            (XtPointer) av ,   /* client data */
                            XtListTail ) ;     /* last in queue */
+#ifdef USE_FIXUP
+     optmenu_EV_fixup( av->wrowcol ) ;
+#endif
+   }
 
-   return av ;
+   RETURN(av) ;
 }
 
 /*----------------------------------------------------------------------------
@@ -634,6 +650,7 @@ void refit_MCW_optmenu( MCW_arrowval * av ,
    int  num_children , ic , ival ;
    char * butlabel , * blab ;
    XmString xstr ;
+   int maxbut ;   /* 23 Aug 2003 */
 
 ENTRY("refit_MCW_optmenu") ;
 
@@ -652,6 +669,14 @@ ENTRY("refit_MCW_optmenu") ;
                      XmNchildren    , &children ,
                      XmNnumChildren , &num_children ,
                   NULL ) ;
+
+   /* 23 Aug 2003: replace hard limit of 255 buttons
+                   with maxbut from environment variable */
+
+   maxbut = AFNI_numenv( "AFNI_MAX_OPTMENU" ) ;
+        if( maxbut <= 0 ) maxbut = 255 ;
+   else if( maxbut < 99 ) maxbut = 99 ;
+   if( maxval > minval+maxbut ) maxval = minval+maxbut ;  /* 23 Mar 2003 */
 
    /** reset some internal parameters **/
 
@@ -743,7 +768,7 @@ ENTRY("refit_MCW_optmenu") ;
 #endif
 
 #if 0
-   XtPopdown( XtParent(wmenu) ) ;  /* 28 Apr 1997 */
+   RWC_XtPopdown( XtParent(wmenu) ) ;  /* 28 Apr 1997 */
 #endif
 
    av->block_assign_actions = 0 ;   /* unblock these actions */
@@ -771,10 +796,96 @@ ENTRY("optmenu_finalize") ;
    /* call user callback, if present */
 
    if( av->dval_CB != NULL && av->fval != av->old_fval )
+#if 0
       av->dval_CB( av , av->dval_data ) ;
+#else
+      AFNI_CALL_VOID_2ARG( av->dval_CB ,
+                           MCW_arrowval * , av ,
+                           XtPointer      , av->dval_data ) ;
+#endif
 
    EXRETURN ;
 }
+
+/*--------------------------------------------------------------------------*/
+/* 15 Mar 2004: fix the cursors on the optmenus with popups */
+
+#ifdef USE_FIXUP
+static volatile int    nwid = 0    ;
+static volatile Widget *wid = NULL ;
+
+/*- called if an optmenu is destroyed, to remove it from the fixup list -*/
+
+static void optmenu_EV_fixup_CB( Widget ww , XtPointer xp, XtPointer cd )
+{
+   int ii ;
+ENTRY("optmenu_EV_fixup_CB") ;
+   for( ii=0 ; ii < nwid ; ii++ )
+     if( wid[ii] == ww ) wid[ii] = (Widget)NULL ;
+   EXRETURN ; ;
+}
+
+/*- called occasionally to see if anyone can be fixed yet -*/
+
+static volatile XtIntervalId timer_id = (XtIntervalId)0 ;
+static volatile XtAppContext timer_cx = (XtAppContext)NULL ;
+
+static void optmenu_EV_fixup_timer_CB( XtPointer cd , XtIntervalId *id )
+{
+ENTRY("optmenu_EV_fixup_timer_CB") ;
+   optmenu_EV_fixup((Widget)NULL) ;
+   timer_id = XtAppAddTimeOut( timer_cx, 3033, optmenu_EV_fixup_timer_CB, NULL ) ;
+   EXRETURN ;
+}
+
+/*- called with NULL to fix anything on the current list;
+    called with a Widget to put it on the to-be-fixed-up list -*/
+
+static void optmenu_EV_fixup( Widget ww )   /* 15 Mar 2004 - RWCox */
+{
+   int ii , jj ;
+   Widget *qwid ;
+
+ENTRY("optmenu_EV_fixup") ;
+
+   if( ww == (Widget)NULL ){                   /* try to fix what's on the list */
+     if( nwid == 0 ) EXRETURN ;  /* that was easy */
+if(PRINT_TRACING){ char str[256]; sprintf(str,"scanning %d widgets for fixing",nwid); STATUS(str); }
+     for( ii=jj=0 ; ii < nwid ; ii++ ){
+       if( wid[ii] != (Widget)NULL && XtIsRealized(wid[ii])      &&
+           XtIsManaged(wid[ii])    && MCW_widget_visible(wid[ii])  ){
+if(PRINT_TRACING){ char str[256]; sprintf(str,"  about to fix ii=%d",ii); STATUS(str); }
+         POPUP_cursorize(wid[ii]) ;
+         XtRemoveCallback( wid[ii], XmNdestroyCallback, optmenu_EV_fixup_CB, NULL ) ;
+         wid[ii] = NULL ; jj++ ;
+if(PRINT_TRACING){ char str[256]; sprintf(str,"  #%d cursor fixed",ii); STATUS(str); }
+       }
+else if(PRINT_TRACING){ char str[256]; sprintf(str,"  #%d not fixable",ii); STATUS(str); }
+     }
+     if( jj == 0 ){ STATUS("nothing to fix"); EXRETURN; }
+     if( jj >= nwid ){ STATUS("fixed them all"); free(wid); wid = NULL; nwid = 0; EXRETURN; }
+     qwid = (Widget *) calloc( nwid , sizeof(Widget) ) ;
+     for( ii=jj=0 ; ii < nwid ; ii++ )
+       if( wid[ii] != (Widget)NULL ) qwid[jj++] = wid[ii] ;
+     nwid = jj ;
+     for( ii=0 ; ii < nwid ; ii++ ) wid[ii] = qwid[ii] ;
+     free(qwid) ;
+if(PRINT_TRACING){ char str[256]; sprintf(str,"  %d left to fix later",nwid); STATUS(str); }
+
+   } else {                               /* add to the list */
+     wid = (Widget *)realloc( (void *)wid , sizeof(Widget)*(nwid+1) ) ;
+     wid[nwid++] = ww ;
+     XtAddCallback( ww, XmNdestroyCallback, optmenu_EV_fixup_CB, NULL ) ;
+     if( timer_cx == (XtAppContext)NULL ){
+STATUS("  starting first timer callback") ;
+       timer_cx = XtWidgetToApplicationContext(ww) ;
+       timer_id = XtAppAddTimeOut( timer_cx, 5055, optmenu_EV_fixup_timer_CB, NULL ) ;
+     }
+if(PRINT_TRACING){ char str[256]; sprintf(str," now have %d to fix",nwid); STATUS(str); }
+   }
+   EXRETURN ;
+}
+#endif  /* USE_FIXUP */
 
 /*--------------------------------------------------------------------------*/
 
@@ -786,6 +897,7 @@ static void optmenu_EV( Widget w , XtPointer cd ,
    XButtonEvent * bev = (XButtonEvent *) ev ;
    Dimension lw ;
    static char **strlist=NULL ;
+   static  int  nstrlist=0 ;    /* 06 Aug 2002 */
    char *slab=NULL ;
    XmString xstr ;
 
@@ -799,9 +911,13 @@ static void optmenu_EV( Widget w , XtPointer cd ,
         popping down the popup menu.  If the optmenu
         is NOT in a popup menu, it has no side effect. --*/
 
+#ifdef USE_FIXUP
+   optmenu_EV_fixup(NULL) ;
+#endif
+
    if( bev->button == Button2 ){
-      XUngrabPointer( bev->display , CurrentTime ) ;
-      return ;
+     XUngrabPointer( bev->display , CurrentTime ) ;
+     return ;
    }
 
    /*-- start of actual work --*/
@@ -824,9 +940,13 @@ ENTRY("optmenu_EV") ;
    av->block_assign_actions = 1 ;         /* temporarily block actions */
    sval = av->ival ;
 
+   /* 06 Aug 2002: free old strings, if any */
+
+   for( ic=0 ; ic < nstrlist ; ic++ ) free(strlist[ic]) ;
+
    /** make a list of strings **/
 
-   nstr = av->imax - av->imin + 1 ;
+   nstrlist = nstr = av->imax - av->imin + 1 ;
    strlist = (char **) realloc( strlist , sizeof(char *)*nstr ) ;
 
    for( ival=av->imin ; ival <= av->imax ; ival++ ){
@@ -863,6 +983,8 @@ MCW_arrowval * new_MCW_colormenu( Widget parent , char * label , MCW_DC * dc ,
    Widget * children ;
    int  num_children , ic , icol ;
 
+ENTRY("new_MCW_colormenu") ;
+
    av = new_MCW_optmenu( parent , label ,
                          min_col , max_col , ini_col , 0 ,
                          delta_value , delta_data ,
@@ -879,7 +1001,7 @@ MCW_arrowval * new_MCW_colormenu( Widget parent , char * label , MCW_DC * dc ,
 
    if( max_col > COLSIZE ) AVOPT_columnize( av , 1+(max_col-1)/COLSIZE ) ;
 
-   return av ;
+   RETURN(av) ;
 }
 
 char * MCW_av_substring_CB( MCW_arrowval * av , XtPointer cd )
@@ -904,7 +1026,13 @@ void AVOPT_press_CB( Widget wbut, XtPointer client_data, XtPointer call_data )
    /* call user callback, if present */
 
    if( av->dval_CB != NULL && av->fval != av->old_fval )
+#if 0
       av->dval_CB( av , av->dval_data ) ;
+#else
+      AFNI_CALL_VOID_2ARG( av->dval_CB ,
+                           MCW_arrowval * , av ,
+                           XtPointer      , av->dval_data ) ;
+#endif
 
    return ;
 }
@@ -992,7 +1120,13 @@ void AV_timer_CB( XtPointer client_data , XtIntervalId * id )
    /* call user callback, if present */
 
    if( av->dval_CB != NULL && av->fval != av->old_fval )
+#if 0
       av->dval_CB( av , av->dval_data ) ;
+#else
+      AFNI_CALL_VOID_2ARG( av->dval_CB ,
+                           MCW_arrowval * , av ,
+                           XtPointer      , av->dval_data ) ;
+#endif
 
    /* delay and then call again, if desired */
 
@@ -1037,7 +1171,13 @@ ENTRY("AV_assign_ival") ;
    /* change text display, if present */
 
    if( av->text_CB != NULL ){
+#if 0
       cval = av->text_CB( av , av->text_data ) ;            /* save   */
+#else
+      AFNI_CALL_VALU_2ARG( av->text_CB , char * , cval ,
+                           MCW_arrowval * , av ,
+                           XtPointer      , av->text_data ) ;
+#endif
       myXtFree( av->old_sval ) ; av->old_sval = av->sval ;  /* string */
       av->sval = XtNewString( cval ) ;                      /* values */
 
@@ -1080,6 +1220,8 @@ char * AV_default_text_CB( MCW_arrowval * av , XtPointer junk )
    else             AV_fval_to_char( av->fval , buf ) ;
    return &(buf[0]) ;
 }
+
+/*------------------------------------------------------------------------*/
 
 void AV_fval_to_char( float qval , char * buf )
 {
@@ -1151,10 +1293,22 @@ void AV_fval_to_char( float qval , char * buf )
    return ;
 }
 
+/*------------------------------------------------------------------------*/
+
 char * AV_format_fval( float fval )
 {
    static char buf[32] ;
    AV_fval_to_char( fval , buf ) ;
+   return buf ;
+}
+
+/*------------------------------------------------------------------------*/
+
+char * AV_uformat_fval( float fval )
+{
+   static char buf[32] ;
+   AV_fval_to_char( fval , buf ) ;
+   if( buf[0] == ' ' ) return (buf+1) ;
    return buf ;
 }
 
@@ -1186,7 +1340,13 @@ void AV_assign_fval( MCW_arrowval * av , float qval )
    /* change text display, if present */
 
    if( av->text_CB != NULL ){
+#if 0
       cval = av->text_CB( av , av->text_data ) ;            /* save   */
+#else
+      AFNI_CALL_VALU_2ARG( av->text_CB , char * , cval ,
+                           MCW_arrowval * , av ,
+                           XtPointer      , av->text_data ) ;
+#endif
       myXtFree( av->old_sval ) ; av->old_sval = av->sval ;  /* string */
       av->sval = XtNewString( cval ) ;                      /* values */
 
@@ -1223,17 +1383,21 @@ void AV_textact_CB( Widget wtex, XtPointer client_data, XtPointer call_data )
    int   ii ;
    char * str ;
 
+ENTRY("AV_textact_CB") ;
+
    if( (cbs->reason != XmCR_ACTIVATE && cbs->reason != XmCR_LOSING_FOCUS )
        || wtex != av->wtext ){
       fprintf(stderr,"\n*** Illegal call to AV_textact_CB ***\n") ;
-      return ;
+      EXRETURN ;
    }
 
    str = TEXT_GET( wtex ) ;  /* get the new text */
 
    /* check if new text is any different from last value */
 
-   if( av->sval != NULL && strcmp( av->sval , str ) == 0 ) return ;
+   if( av->sval != NULL && strcmp( av->sval , str ) == 0 ){
+     myXtFree(str) ; EXRETURN ;
+   }
 
    MCW_invert_widget( wtex ) ;  /* start flash */
 
@@ -1244,12 +1408,18 @@ void AV_textact_CB( Widget wtex, XtPointer client_data, XtPointer call_data )
    AV_assign_fval( av , sval ) ;  /* will alter ival,fval,sval in av */
 
    if( av->dval_CB != NULL && av->fval != av->old_fval )  /* value changed */
+#if 0
       av->dval_CB( av , av->dval_data ) ;
+#else
+      AFNI_CALL_VOID_2ARG( av->dval_CB ,
+                           MCW_arrowval * , av ,
+                           XtPointer      , av->dval_data ) ;
+#endif
 
    myXtFree(str) ;  /* give it back */
 
    MCW_invert_widget( wtex ) ;  /* end flash */
-   return ;
+   EXRETURN ;
 }
 
 /*----------------------------------------------------------------------
@@ -1259,15 +1429,19 @@ void AV_textact_CB( Widget wtex, XtPointer client_data, XtPointer call_data )
 void MCW_destroy_chooser_CB( Widget wpop ,
                              XtPointer client_data, XtPointer call_data )
 {
-   Widget * wpointer = (Widget *) client_data ;
+   Widget *wpointer = (Widget *) client_data ;
+ENTRY("MCW_destroy_chooser_CB") ;
    *wpointer = NULL ;
+   EXRETURN ;
 }
 
 void MCW_kill_chooser_CB( Widget w ,
                           XtPointer client_data, XtPointer call_data )
 {
    Widget wpop = (Widget) client_data ;
+ENTRY("MCW_kill_chooser_CB") ;
    XtDestroyWidget(wpop) ;
+EXRETURN ;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -1387,6 +1561,8 @@ void MCW_choose_ovcolor( Widget wpar , MCW_DC * dc , int ovc_init ,
    Position xx,yy ;
    int ib ;
 
+ENTRY("MCW_choose_ovcolor") ;
+
    /** destructor callback **/
 
    if( wpar == NULL ){
@@ -1395,13 +1571,13 @@ void MCW_choose_ovcolor( Widget wpar , MCW_DC * dc , int ovc_init ,
          XtRemoveCallback( wpop, XmNdestroyCallback, MCW_destroy_chooser_CB, &wpop ) ;
          XtDestroyWidget( wpop ) ;
       }
-      wpop = NULL ; return ;
+      wpop = NULL ; EXRETURN ;
    }
 
    if( ! XtIsRealized(wpar) || dc->ovc->ncol_ov < 2 ){  /* illegal call */
       fprintf(stderr,"\n*** illegal call to MCW_choose_ovcolor: %s %d\n",
              XtName(wpar) , dc->ovc->ncol_ov ) ;
-      return ;
+      EXRETURN ;
    }
 
    if( ovc_init < 0 || ovc_init >= dc->ovc->ncol_ov ) ovc_init = 1 ;
@@ -1420,7 +1596,7 @@ void MCW_choose_ovcolor( Widget wpar , MCW_DC * dc , int ovc_init ,
    /*--- create popup widget ---*/
 
    wpop = XtVaCreatePopupShell(                        /* Popup Shell */
-             "AFNI" , xmDialogShellWidgetClass , wpar ,
+             "menu" , xmDialogShellWidgetClass , wpar ,
                 XmNtraversalOn , False ,
                 XmNinitialResourcesPersistent , False ,
              NULL ) ;
@@ -1476,7 +1652,131 @@ void MCW_choose_ovcolor( Widget wpar , MCW_DC * dc , int ovc_init ,
    RWC_visibilize_widget( wpop ) ;   /* 09 Nov 1999 */
    NORMAL_cursorize( wpop ) ;
 
-   return ;
+   EXRETURN ;
+}
+
+/*-------------------------------------------------------------------------*/
+/*! Get a bunch of values [19 Mar 2004].
+---------------------------------------------------------------------------*/
+
+void MCW_choose_vector( Widget wpar , char *label ,
+                        int nvec , char **labvec , int *initvec ,
+                        gen_func *func , XtPointer func_data )
+{
+   static Widget wpop = NULL , wrc ;
+   static MCW_arrowval **av = NULL ;
+   static int           nav = 0 ;
+   static MCW_choose_data cd ;
+   Position xx,yy ;
+   int ib , iv ;
+
+ENTRY("MCW_choose_vector") ;
+
+   /** destructor callback **/
+
+   if( wpar == NULL || nvec <= 0 ){
+      if( wpop != NULL ){
+         XtUnmapWidget( wpop ) ;
+         XtRemoveCallback( wpop, XmNdestroyCallback, MCW_destroy_chooser_CB, &wpop ) ;
+         XtDestroyWidget( wpop ) ;
+      }
+      wpop = NULL ; EXRETURN ;
+   }
+
+   if( ! XtIsRealized(wpar) ){  /* illegal call */
+      fprintf(stderr,"\n*** illegal call to MCW_choose_vector: %s\n",
+              XtName(wpar) ) ;
+      EXRETURN ;
+   }
+
+   /*--- if popup widget already exists, destroy it ---*/
+
+   if( wpop != NULL ){
+      XtRemoveCallback( wpop, XmNdestroyCallback, MCW_destroy_chooser_CB, &wpop ) ;
+      XtDestroyWidget( wpop ) ;
+   }
+
+   if( nav > 0 && av != NULL ){
+     for( iv=0 ; iv < nav ; iv++ ) myXtFree( av[iv] ) ;
+     myXtFree(av) ; av = NULL ; nav = 0 ;
+   }
+
+   /*--- create popup widget ---*/
+
+   wpop = XtVaCreatePopupShell(                           /* Popup Shell */
+             "menu" , xmDialogShellWidgetClass , wpar ,
+                XmNtraversalOn , False ,
+                XmNinitialResourcesPersistent , False ,
+             NULL ) ;
+
+   if( MCW_isitmwm(wpar) ){
+      XtVaSetValues( wpop ,
+                        XmNmwmDecorations , MWM_DECOR_BORDER ,
+                        XmNmwmFunctions   ,  MWM_FUNC_MOVE ,
+                     NULL ) ;
+   }
+
+   XtAddCallback( wpop , XmNdestroyCallback , MCW_destroy_chooser_CB , &wpop ) ;
+
+   XmAddWMProtocolCallback(
+        wpop ,
+        XmInternAtom( XtDisplay(wpop) , "WM_DELETE_WINDOW" , False ) ,
+        MCW_kill_chooser_CB , wpop ) ;
+
+   wrc  = XtVaCreateWidget(                 /* RowColumn to hold all */
+             "menu" , xmRowColumnWidgetClass , wpop ,
+                XmNpacking      , XmPACK_TIGHT ,
+                XmNorientation  , XmVERTICAL ,
+                XmNtraversalOn , False ,
+                XmNinitialResourcesPersistent , False ,
+             NULL ) ;
+
+   if( label != NULL ){
+     (void) XtVaCreateManagedWidget(
+                  "menu" , xmLabelWidgetClass , wrc ,
+                     LABEL_ARG(label) ,
+                     XmNinitialResourcesPersistent , False ,
+                  NULL ) ;
+     (void) XtVaCreateManagedWidget(
+              "menu" , xmSeparatorWidgetClass , wrc ,
+                  XmNseparatorType , XmSHADOW_ETCHED_IN ,
+                  XmNinitialResourcesPersistent , False ,
+              NULL ) ;
+   }
+
+   av = (MCW_arrowval **) XtMalloc( sizeof(MCW_arrowval *) * nvec ) ;
+   for( iv=0 ; iv < nvec ; iv++ ){
+     av[iv] = new_MCW_arrowval( wrc ,
+                                (labvec!=NULL) ? labvec[iv] : NULL ,
+                                MCW_AV_downup ,
+                                -99999,99999,
+                                (initvec!=NULL) ? initvec[iv] : 0 ,
+                                MCW_AV_edittext , 0 ,
+                                NULL , NULL , NULL , NULL ) ;
+   }
+
+   cd.wpop    = wpop ;  /* data to be passed to pushbutton callback */
+   cd.wcaller = wpar ;
+   cd.av      = (MCW_arrowval *)av ;  /* hack hack hack */
+   cd.sel_CB  = func ;
+   cd.sel_cd  = func_data ;
+   cd.ctype   = mcwCT_vector ;
+   cd.nvec    = nvec ;
+
+   for( ib=0 ; ib < NUM_OVC_ACT ; ib++ ) OVC_act[ib].data = &cd ;
+
+   (void) MCW_action_area( wrc , OVC_act , NUM_OVC_ACT ) ;
+
+   XtTranslateCoords( wpar , 15,15 , &xx , &yy ) ;
+   XtVaSetValues( wpop , XmNx , (int) xx , XmNy , (int) yy , NULL ) ;
+
+   XtManageChild( wrc ) ;
+   XtPopup( wpop , XtGrabNone ) ;
+
+   RWC_visibilize_widget( wpop ) ;
+   NORMAL_cursorize( wpop ) ;
+
+   EXRETURN ;
 }
 
 /*-------------------------------------------------------------------------
@@ -1496,15 +1796,17 @@ void MCW_choose_ovcolor( Widget wpar , MCW_DC * dc , int ovc_init ,
    active at a time (per application).  This is a deliberate choice.
 ---------------------------------------------------------------------------*/
 
-void MCW_choose_integer( Widget wpar , char * label ,
+void MCW_choose_integer( Widget wpar , char *label ,
                          int bot , int top , int init ,
-                         gen_func * func , XtPointer func_data )
+                         gen_func *func , XtPointer func_data )
 {
    static Widget wpop = NULL , wrc ;
    static MCW_arrowval *  av = NULL ;
    static MCW_choose_data cd ;
    Position xx,yy ;
    int ib ;
+
+ENTRY("MCW_choose_integer") ;
 
    /** destructor callback **/
 
@@ -1514,13 +1816,13 @@ void MCW_choose_integer( Widget wpar , char * label ,
          XtRemoveCallback( wpop, XmNdestroyCallback, MCW_destroy_chooser_CB, &wpop ) ;
          XtDestroyWidget( wpop ) ;
       }
-      wpop = NULL ; return ;
+      wpop = NULL ; EXRETURN ;
    }
 
    if( ! XtIsRealized(wpar) ){  /* illegal call */
       fprintf(stderr,"\n*** illegal call to MCW_choose_integer: %s\n",
               XtName(wpar) ) ;
-      return ;
+      EXRETURN ;
    }
 
    /*--- if popup widget already exists, destroy it ---*/
@@ -1537,7 +1839,7 @@ void MCW_choose_integer( Widget wpar , char * label ,
    /*--- create popup widget ---*/
 
    wpop = XtVaCreatePopupShell(                           /* Popup Shell */
-             "AFNI" , xmDialogShellWidgetClass , wpar ,
+             "menu" , xmDialogShellWidgetClass , wpar ,
                 XmNtraversalOn , False ,
                 XmNinitialResourcesPersistent , False ,
              NULL ) ;
@@ -1595,7 +1897,7 @@ void MCW_choose_integer( Widget wpar , char * label ,
    RWC_visibilize_widget( wpop ) ;   /* 09 Nov 1999 */
    NORMAL_cursorize( wpop ) ;
 
-   return ;
+   EXRETURN ;
 }
 
 /*-------------------------------------------------------------------------
@@ -1621,6 +1923,8 @@ MCW_arrowpad * new_MCW_arrowpad( Widget parent ,
    MCW_arrowpad * apad ;
    int asizx = 20 , asizy = 20 ;  /* arrow sizes */
    int iar ;
+
+ENTRY("new_MCW_arrowpad") ;
 
    apad = myXtNew( MCW_arrowpad ) ;
 
@@ -1700,7 +2004,7 @@ MCW_arrowpad * new_MCW_arrowpad( Widget parent ,
    apad->count       = 0 ;
 
    apad->parent = apad->aux = NULL ;
-   return apad ;
+   RETURN(apad) ;
 }
 
 /*-------------------------------------------------------------------------*/
@@ -1758,7 +2062,13 @@ void AP_timer_CB( XtPointer client_data , XtIntervalId * id )
    /* call user callback */
 
    if( apad->action_CB != NULL )
+#if 0
       apad->action_CB( apad , apad->action_data ) ;
+#else
+      AFNI_CALL_VOID_2ARG( apad->action_CB ,
+                           MCW_arrowpad * , apad ,
+                           XtPointer      , apad->action_data ) ;
+#endif
 
    /* delay and then call again, if desired */
 
@@ -1807,6 +2117,8 @@ void MCW_choose_string( Widget wpar , char * label ,
    Position xx,yy ;
    int ib , ncol=0 ;
 
+ENTRY("MCW_choose_string") ;
+
    /** destructor callback **/
 
    if( wpar == NULL ){
@@ -1815,15 +2127,15 @@ void MCW_choose_string( Widget wpar , char * label ,
          XtRemoveCallback( wpop, XmNdestroyCallback, MCW_destroy_chooser_CB, &wpop ) ;
          XtDestroyWidget( wpop ) ;
       }
-      wpop = NULL ; return ;
+      wpop = NULL ; EXRETURN ;
    }
 
-   if( ! XtIsWidget(wpar) ) return ;
+   if( ! XtIsWidget(wpar) ) EXRETURN ;
 
    if( ! XtIsRealized(wpar) ){  /* illegal call */
       fprintf(stderr,"\n*** illegal call to MCW_choose_string: %s\n",
               XtName(wpar) ) ;
-      return ;
+      EXRETURN ;
    }
 
    /*--- if popup widget already exists, destroy it ---*/
@@ -1836,7 +2148,7 @@ void MCW_choose_string( Widget wpar , char * label ,
    /*--- create popup widget ---*/
 
    wpop = XtVaCreatePopupShell(                           /* Popup Shell */
-             "AFNI" , xmDialogShellWidgetClass , wpar ,
+             "menu" , xmDialogShellWidgetClass , wpar ,
                 XmNtraversalOn , False ,
                 XmNinitialResourcesPersistent , False ,
              NULL ) ;
@@ -1928,7 +2240,7 @@ void MCW_choose_string( Widget wpar , char * label ,
    RWC_visibilize_widget( wpop ) ;   /* 09 Nov 1999 */
    NORMAL_cursorize( wpop ) ;
 
-   return ;
+   EXRETURN ;
 }
 
 /*-------------------------------------------------------------------------*/
@@ -2033,7 +2345,7 @@ ENTRY("MCW_choose_multi_strlist") ;
    /*--- create popup widget ---*/
 
    wpop = XtVaCreatePopupShell(                           /* Popup Shell */
-             "AFNI" , xmDialogShellWidgetClass , wpar ,
+             "menu" , xmDialogShellWidgetClass , wpar ,
                 XmNtraversalOn , False ,
                 XmNinitialResourcesPersistent , False ,
              NULL ) ;
@@ -2062,11 +2374,11 @@ ENTRY("MCW_choose_multi_strlist") ;
              NULL ) ;
 
    if( label != NULL && label[0] != '\0' ){
-      lbuf = XtMalloc( strlen(label) + 32 ) ;
+      lbuf = (char*)XtMalloc( strlen(label) + 32 ) ;
       sprintf( lbuf , "----Choose %s----\n%s" ,
                (mode == mcwCT_single_mode) ? "One" : "One or More" , label ) ;
    } else {
-      lbuf = XtMalloc( 32 ) ;
+      lbuf = (char*)XtMalloc( 32 ) ;
       sprintf( lbuf , "----Choose %s----",
                (mode == mcwCT_single_mode) ? "One" : "One or More" ) ;
    }
@@ -2236,9 +2548,9 @@ static MCW_action_item TSC_act[] = {
    active at a time (per application).  This is a deliberate choice.
 ---------------------------------------------------------------------------*/
 
-void MCW_choose_timeseries( Widget wpar , char * label ,
-                            MRI_IMARR * tsarr , int init ,
-                            gen_func * func , XtPointer func_data )
+void MCW_choose_timeseries( Widget wpar , char *label ,
+                            MRI_IMARR *tsarr , int init ,
+                            gen_func *func , XtPointer func_data )
 {
    static Widget wpop = NULL , wrc ;
    static MCW_choose_data cd ;
@@ -2247,25 +2559,28 @@ void MCW_choose_timeseries( Widget wpar , char * label ,
    Widget wlist = NULL , wlab ;
    XmStringTable xmstr ;
    XmString xms ;
-   char * lbuf ;
-   char pbuf[256] , qbuf[256] ;
-   MRI_IMAGE * tsim ;
+   char *lbuf ;
+   char pbuf[256] , qbuf[512] ;
+   MRI_IMAGE *tsim ;
+
+ENTRY("MCW_choose_timeseries") ;
 
    /** destructor callback **/
 
    if( wpar == NULL ){
-      if( wpop != NULL ){
-         XtUnmapWidget( wpop ) ;
-         XtRemoveCallback( wpop, XmNdestroyCallback, MCW_destroy_chooser_CB, &wpop ) ;
-         XtDestroyWidget( wpop ) ;
-      }
-      wpop = NULL ; return ;
+     if( wpop != NULL ){
+STATUS("popdown call") ;
+       XtUnmapWidget( wpop ) ;
+       XtRemoveCallback( wpop, XmNdestroyCallback, MCW_destroy_chooser_CB, &wpop ) ;
+       XtDestroyWidget( wpop ) ;
+     }
+     wpop = NULL ; EXRETURN ;
    }
 
    if( ! XtIsRealized(wpar) ){  /* illegal call */
-      fprintf(stderr,"\n*** illegal call to MCW_choose_timeseries %s\n",
-              XtName(wpar) ) ;
-      return ;
+     fprintf(stderr,"\n*** illegal call to MCW_choose_timeseries %s\n",
+             XtName(wpar) ) ;
+     EXRETURN ;
    }
 
    MCW_set_listmax( wpar ) ;
@@ -2273,35 +2588,36 @@ void MCW_choose_timeseries( Widget wpar , char * label ,
    /*--- if popup widget already exists, destroy it ---*/
 
    if( wpop != NULL ){
-      XtRemoveCallback( wpop, XmNdestroyCallback, MCW_destroy_chooser_CB, &wpop ) ;
-      XtDestroyWidget( wpop ) ;
+STATUS("destroying old widget") ;
+     XtRemoveCallback( wpop, XmNdestroyCallback, MCW_destroy_chooser_CB, &wpop ) ;
+     XtDestroyWidget( wpop ) ;
    }
 
    wlist = NULL ;
 
    /*--- sanity checks ---*/
 
-   if( tsarr == NULL || tsarr->num == 0 ) return ;
+   if( tsarr == NULL || tsarr->num == 0 ) EXRETURN ;
    num_ts = tsarr->num ;
 
-#ifdef AFNI_DEBUG
-printf("MCW_choose_timeseries: creation with %d choices\n",num_ts) ;
-#endif
+if(PRINT_TRACING){
+ char str[256]; sprintf(str,"creation with %d choices",num_ts); STATUS(str);
+}
 
    /*--- create popup widget ---*/
 
    wpop = XtVaCreatePopupShell(                           /* Popup Shell */
-             "AFNI" , xmDialogShellWidgetClass , wpar ,
+             "menu" , xmDialogShellWidgetClass , wpar ,
                 XmNtraversalOn , False ,
                 XmNinitialResourcesPersistent , False ,
              NULL ) ;
 
    if( MCW_isitmwm(wpar) ){
-      XtVaSetValues( wpop ,
-                        XmNmwmDecorations ,  MWM_DECOR_BORDER ,
-                        XmNmwmFunctions   ,  MWM_FUNC_MOVE
-                                           | MWM_FUNC_CLOSE ,
-                     NULL ) ;
+     XtVaSetValues( wpop ,
+                      XmNmwmDecorations ,  MWM_DECOR_BORDER ,
+                      XmNmwmFunctions   ,  MWM_FUNC_MOVE
+                                         | MWM_FUNC_CLOSE ,
+                    NULL ) ;
    }
 
    XtAddCallback( wpop , XmNdestroyCallback , MCW_destroy_chooser_CB , &wpop ) ;
@@ -2320,11 +2636,11 @@ printf("MCW_choose_timeseries: creation with %d choices\n",num_ts) ;
              NULL ) ;
 
    if( label != NULL ){
-      lbuf = XtMalloc( strlen(label) + 24 ) ;
-      sprintf( lbuf , "----Choose One----\n%s" , label ) ;
+     lbuf = (char*)XtMalloc( strlen(label) + 32 ) ;
+     sprintf( lbuf , "----Choose One----\n%s" , label ) ;
    } else {
-      lbuf = XtMalloc( 24 ) ;
-      sprintf( lbuf , "----Choose One----" ) ;
+     lbuf = (char*)XtMalloc( 32 ) ;
+     sprintf( lbuf , "----Choose One----" ) ;
    }
    xms = XmStringCreateLtoR( lbuf , XmFONTLIST_DEFAULT_TAG ) ;
    wlab = XtVaCreateManagedWidget(
@@ -2345,32 +2661,32 @@ printf("MCW_choose_timeseries: creation with %d choices\n",num_ts) ;
 
    xd = yd = ltop = 1 ;
    for( ib=0 ; ib < num_ts ; ib++ ){
-      tsim = IMARR_SUBIMAGE(tsarr,ib) ;
-      if( tsim == NULL ){
-         strcpy(pbuf,"** NULL series **") ;
-      } else {
-         if( tsim->name != NULL )
-            strcpy(pbuf,IMARR_SUBIMAGE(tsarr,ib)->name) ;
-         else
-            strcpy(pbuf,"** NO NAME **") ;
+     tsim = IMARR_SUBIMAGE(tsarr,ib) ;
+     if( tsim == NULL ){
+       strcpy(pbuf,"** NULL series ??") ;
+     } else {
+       if( tsim->name != NULL )
+         MCW_strncpy(pbuf,IMARR_SUBIMAGE(tsarr,ib)->name,254) ;
+       else
+         strcpy(pbuf,"** NO NAME ??") ;
 
-         sprintf(qbuf,"%d",tsim->nx) ; ll = strlen(qbuf) ; xd = MAX(xd,ll) ;
-         sprintf(qbuf,"%d",tsim->ny) ; ll = strlen(qbuf) ; yd = MAX(yd,ll) ;
-      }
-      ll = strlen(pbuf) ; ltop = MAX(ltop,ll) ;
+       sprintf(qbuf,"%d",tsim->nx) ; ll = strlen(qbuf) ; xd = MAX(xd,ll) ;
+       sprintf(qbuf,"%d",tsim->ny) ; ll = strlen(qbuf) ; yd = MAX(yd,ll) ;
+     }
+     ll = strlen(pbuf) ; ltop = MAX(ltop,ll) ;
    }
 
    for( ib=0 ; ib < num_ts ; ib++ ){
-      tsim = IMARR_SUBIMAGE(tsarr,ib) ;
-      if( tsim == NULL ){
-         strcpy(qbuf,"** NULL series **") ;
-      } else {
-         if( tsim->name != NULL )
-            strcpy(pbuf,IMARR_SUBIMAGE(tsarr,ib)->name) ;
-         else
-            strcpy(pbuf,"** NO NAME **") ;
+     tsim = IMARR_SUBIMAGE(tsarr,ib) ;
+     if( tsim == NULL ){
+       strcpy(qbuf,"** NULL series ??") ;
+     } else {
+       if( tsim->name != NULL )
+         MCW_strncpy(pbuf,IMARR_SUBIMAGE(tsarr,ib)->name,254) ;
+       else
+         strcpy(pbuf,"** NO NAME ??") ;
 
-         sprintf(qbuf,"%-*s [%*d x %*d]", ltop,pbuf , xd,tsim->nx , yd,tsim->ny ) ;
+        sprintf(qbuf,"%-*s [%*d x %*d]", ltop,pbuf , xd,tsim->nx , yd,tsim->ny ) ;
       }
       xmstr[ib] = XmStringCreateSimple( qbuf ) ;
    }
@@ -2386,8 +2702,8 @@ printf("MCW_choose_timeseries: creation with %d choices\n",num_ts) ;
                     XmNselectionPolicy  , XmSINGLE_SELECT ,
                   NULL ) ;
    if( init >= 0 && init < num_ts ){
-      XmListSelectPos( wlist , init+1 , False ) ;
-      if( init+1 > nvisible ) XmListSetBottomPos( wlist , init+1 ) ;
+     XmListSelectPos( wlist , init+1 , False ) ;
+     if( init+1 > nvisible ) XmListSetBottomPos( wlist , init+1 ) ;
    }
    XtManageChild(wlist) ;
 
@@ -2400,8 +2716,10 @@ printf("MCW_choose_timeseries: creation with %d choices\n",num_ts) ;
    cd.wchoice = wlist ;
    cd.av      = NULL ;
 
+#if 1
    for( ib=0 ; ib < num_ts ; ib++ ) XmStringFree(xmstr[ib]) ;
    myXtFree(xmstr) ;
+#endif
 
    cd.wpop    = wpop ;  /* data to be passed to pushbutton callback */
    cd.wcaller = wpar ;
@@ -2422,7 +2740,7 @@ printf("MCW_choose_timeseries: creation with %d choices\n",num_ts) ;
    RWC_visibilize_widget( wpop ) ;   /* 09 Nov 1999 */
    NORMAL_cursorize( wpop ) ;
 
-   return ;
+   EXRETURN ;
 }
 
 /*-------------------------------------------------------------------------
@@ -2474,6 +2792,8 @@ void MCW_choose_multi_editable_strlist( Widget wpar , char * label , int mode ,
    char * lbuf ;
    int nvisible ;
 
+ENTRY("MCW_choose_multi_editable_strlist") ;
+
    /** destructor callback **/
 
    if( wpar == NULL ){
@@ -2482,13 +2802,13 @@ void MCW_choose_multi_editable_strlist( Widget wpar , char * label , int mode ,
          XtRemoveCallback( wpop, XmNdestroyCallback, MCW_destroy_chooser_CB, &wpop ) ;
          XtDestroyWidget( wpop ) ;
       }
-      wpop = NULL ; return ;
+      wpop = NULL ; EXRETURN ;
    }
 
    if( ! XtIsRealized(wpar) ){  /* illegal call */
       fprintf(stderr,"\n*** illegal call to MCW_choose_strlist %s\n",
               XtName(wpar) ) ;
-      return ;
+      EXRETURN ;
    }
 
    MCW_set_listmax( wpar ) ;
@@ -2505,7 +2825,7 @@ void MCW_choose_multi_editable_strlist( Widget wpar , char * label , int mode ,
    /*--- create popup widget ---*/
 
    wpop = XtVaCreatePopupShell(                           /* Popup Shell */
-             "AFNI" , xmDialogShellWidgetClass , wpar ,
+             "menu" , xmDialogShellWidgetClass , wpar ,
                 XmNallowShellResize , True ,
                 XmNtraversalOn , False ,
                 XmNinitialResourcesPersistent , False ,
@@ -2539,11 +2859,11 @@ void MCW_choose_multi_editable_strlist( Widget wpar , char * label , int mode ,
    /* Label at the top */
 
    if( label != NULL ){
-      lbuf = XtMalloc( strlen(label) + 32 ) ;
+      lbuf = (char*)XtMalloc( strlen(label) + 32 ) ;
       sprintf( lbuf , "----Choose %s----\n%s" ,
                (mode == mcwCT_single_mode) ? "One" : "One or More" , label ) ;
    } else {
-      lbuf = XtMalloc( 32 ) ;
+      lbuf = (char*)XtMalloc( 32 ) ;
       sprintf( lbuf , "----Choose %s----",
                (mode == mcwCT_single_mode) ? "One" : "One or More" ) ;
    }
@@ -2720,7 +3040,7 @@ void MCW_choose_multi_editable_strlist( Widget wpar , char * label , int mode ,
    RWC_visibilize_widget( wpop ) ;   /* 09 Nov 1999 */
    NORMAL_cursorize( wpop ) ;
 
-   return ;
+   EXRETURN ;
 }
 
 /*--------------------------------------------------------------------------*/
@@ -2728,11 +3048,15 @@ void MCW_choose_multi_editable_strlist( Widget wpar , char * label , int mode ,
 void MCW_stradd_CB( Widget w, XtPointer client_data, XtPointer call_data )
 {
    MCW_choose_data * cd = (MCW_choose_data *) client_data ;
-   char * nstr = TEXT_GET( cd->wtf ) ;
+   char *nstr = TEXT_GET( cd->wtf ) ;
    int id , nvisible , num_str ;
    XmString xms ;
 
-   if( nstr == NULL || strlen(nstr) == 0 ){ XBell(XtDisplay(w),100); return; }
+ENTRY("MCW_stradd_CB") ;
+
+   if( nstr == NULL || strlen(nstr) == 0 ){
+     myXtFree(nstr); XBell(XtDisplay(w),100); EXRETURN;
+   }
 
    /* see if new string is already in the list */
 
@@ -2762,7 +3086,7 @@ void MCW_stradd_CB( Widget w, XtPointer client_data, XtPointer call_data )
       XmListSelectPos( cd->wchoice , 0 , False ) ; /* select it */
    }
 
-   myXtFree(nstr) ; return ;
+   myXtFree(nstr) ; EXRETURN ;
 }
 
 /*--------------------------------------------------------------------------*/
@@ -2773,21 +3097,23 @@ void MCW_stradd_CB( Widget w, XtPointer client_data, XtPointer call_data )
 
 void MCW_choose_CB( Widget w , XtPointer client_data , XtPointer call_data )
 {
-   MCW_choose_data * cd       = (MCW_choose_data *) client_data ;
-   char * wname               = XtName(w) ;
-   XmAnyCallbackStruct * icbs = (XmAnyCallbackStruct *) call_data ;
+   MCW_choose_data *cd       = (MCW_choose_data *) client_data ;
+   char *wname               = XtName(w) ;
+   XmAnyCallbackStruct *icbs = (XmAnyCallbackStruct *) call_data ;
 
    static MCW_choose_cbs cbs ;  /* to be passed back to user */
    static int list_dbclick_use = LIST_DBCLICK_UNKNOWN ;
    Boolean clear ;
 
+ENTRY("MCW_choose_CB") ;
+
    /*--- set up what to do for list double clicks ---*/
 
    if( list_dbclick_use == LIST_DBCLICK_UNKNOWN ){
 #if 0
-      char * xdef = XGetDefault( XtDisplay(w) , "AFNI" , "chooser_doubleclick" ) ;
+      char *xdef = XGetDefault( XtDisplay(w) , "AFNI" , "chooser_doubleclick" ) ;
 #else
-      char * xdef = RWC_getname( XtDisplay(w) , "chooser_doubleclick" ) ;
+      char *xdef = RWC_getname( XtDisplay(w) , "chooser_doubleclick" ) ;
 #endif
       if( xdef != NULL && strcmp(xdef,OVC_apply_label) == 0 )
          list_dbclick_use = LIST_DBCLICK_APPLY ;
@@ -2801,8 +3127,8 @@ void MCW_choose_CB( Widget w , XtPointer client_data , XtPointer call_data )
 
    if( clear && cd->ctype != mcwCT_string ){
       XBell( XtDisplay(cd->wpop) , 100 ) ;
-      XtPopdown( cd->wpop ) ;
-      return ;
+      RWC_XtPopdown( cd->wpop ) ;
+      EXRETURN ;
    }
 
    switch( cd->ctype ){
@@ -2810,8 +3136,45 @@ void MCW_choose_CB( Widget w , XtPointer client_data , XtPointer call_data )
       default:                                   /* error! */
          XBell( XtDisplay(w) , 100 ) ;
          fprintf(stderr,
-                 "\n*** unknown choose type=%d from %s\n" , cd->ctype , wname ) ;
-         return ;
+                 "\n*** unknown choose type=%d from %s\n", cd->ctype, wname ) ;
+         EXRETURN ;
+
+      /*.....................*/
+
+      case mcwCT_vector:{                    /* vector chooser [19 Mar 2004] */
+         Boolean done,call ;
+         int iv ; float *vec ;
+         MCW_arrowval **aav = (MCW_arrowval **)cd->av ;
+
+         done = strcmp(wname,OVC_apply_label) != 0 ;
+         call = strcmp(wname,OVC_quit_label)  != 0 ;
+
+         if( done ) RWC_XtPopdown( cd->wpop ) ;
+
+         if( call ){
+            cbs.reason = mcwCR_vector ;  /* set structure for call to user */
+            cbs.event  = icbs->event ;
+            cbs.ival   = cd->nvec ;
+            vec        = (float *)malloc(sizeof(float)*cd->nvec) ;
+            cbs.cval   = (char *)vec ;
+            for( iv=0 ; iv < cd->nvec ; iv++ ) vec[iv] = aav[iv]->fval ;
+
+            if( !done ) MCW_invert_widget(w) ;              /* flash */
+#if 0
+            cd->sel_CB( cd->wcaller , cd->sel_cd , &cbs ) ; /* call user */
+#else
+            AFNI_CALL_VOID_3ARG( cd->sel_CB ,
+                                 Widget           , cd->wcaller ,
+                                 XtPointer        , cd->sel_cd  ,
+                                 MCW_choose_cbs * , &cbs         ) ;
+#endif
+            free((void *)vec) ; cbs.cval = NULL ;
+            if( !done ) MCW_invert_widget(w) ;              /* flash */
+         }
+         EXRETURN ;
+      }
+
+      /*.....................*/
 
       case mcwCT_ovcolor:{                       /* color chooser */
          Boolean done , call ;
@@ -2819,7 +3182,7 @@ void MCW_choose_CB( Widget w , XtPointer client_data , XtPointer call_data )
          done = strcmp(wname,OVC_apply_label) != 0 ;
          call = strcmp(wname,OVC_quit_label)  != 0 ;
 
-         if( done ) XtPopdown( cd->wpop ) ;
+         if( done ) RWC_XtPopdown( cd->wpop ) ;
 
          if( call ){
             cbs.reason = mcwCR_ovcolor ;  /* set structure for call to user */
@@ -2827,11 +3190,20 @@ void MCW_choose_CB( Widget w , XtPointer client_data , XtPointer call_data )
             cbs.ival   = cd->av->ival ;
 
             if( !done ) MCW_invert_widget(w) ;              /* flash */
+#if 0
             cd->sel_CB( cd->wcaller , cd->sel_cd , &cbs ) ; /* call user */
+#else
+            AFNI_CALL_VOID_3ARG( cd->sel_CB ,
+                                 Widget           , cd->wcaller ,
+                                 XtPointer        , cd->sel_cd  ,
+                                 MCW_choose_cbs * , &cbs         ) ;
+#endif
             if( !done ) MCW_invert_widget(w) ;              /* flash */
          }
-         return ;
+         EXRETURN ;
       }
+
+      /*.....................*/
 
       case mcwCT_integer:{                       /* integer chooser */
          Boolean done , call , flash ;
@@ -2845,7 +3217,7 @@ void MCW_choose_CB( Widget w , XtPointer client_data , XtPointer call_data )
             call  = True ;
          }
 
-         if( done ) XtPopdown( cd->wpop ) ;
+         if( done ) RWC_XtPopdown( cd->wpop ) ;
 
          if( call ){
             int pos_count=0 , * pos_list=NULL , ib ;
@@ -2871,25 +3243,34 @@ void MCW_choose_CB( Widget w , XtPointer client_data , XtPointer call_data )
                   cbs.nilist = pos_count ;             /* number of choices */
                   cbs.ilist  = pos_list ;              /* holds all choices */
                } else {
-                  return ;  /* no choice made */
+                  EXRETURN ;  /* no choice made */
                }
             }
 
             if( flash ) MCW_invert_widget(w) ;              /* flash */
+#if 0
             cd->sel_CB( cd->wcaller , cd->sel_cd , &cbs ) ; /* call user */
+#else
+            AFNI_CALL_VOID_3ARG( cd->sel_CB ,
+                                 Widget           , cd->wcaller ,
+                                 XtPointer        , cd->sel_cd  ,
+                                 MCW_choose_cbs * , &cbs         ) ;
+#endif
             if( flash ) MCW_invert_widget(w) ;              /* flash */
 
             myXtFree(pos_list) ;
          }
-         return ;
+         EXRETURN ;
       }
+
+      /*.....................*/
 
       case mcwCT_string:{                 /* string chooser */
          Boolean done , call , istextf ;
 
          /* special action: "Clear" button */
 
-         if( clear ){ TEXT_SET( cd->wchoice , "" ) ; return ; }
+         if( clear ){ TEXT_SET( cd->wchoice , "" ) ; EXRETURN ; }
 
          /* find out if called by the text field itself */
 
@@ -2903,7 +3284,7 @@ void MCW_choose_CB( Widget w , XtPointer client_data , XtPointer call_data )
             call = True ;
          }
 
-         if( done ) XtPopdown( cd->wpop ) ;
+         if( done ) RWC_XtPopdown( cd->wpop ) ;
 
          if( call ){
             cbs.reason = mcwCR_string ;  /* set structure for call to user */
@@ -2911,13 +3292,22 @@ void MCW_choose_CB( Widget w , XtPointer client_data , XtPointer call_data )
             cbs.cval   = TEXT_GET( cd->wchoice ) ;
 
             if( !done ) MCW_invert_widget(w) ;              /* flash */
+#if 0
             cd->sel_CB( cd->wcaller , cd->sel_cd , &cbs ) ; /* call user */
+#else
+            AFNI_CALL_VOID_3ARG( cd->sel_CB ,
+                                 Widget           , cd->wcaller ,
+                                 XtPointer        , cd->sel_cd  ,
+                                 MCW_choose_cbs * , &cbs         ) ;
+#endif
             if( !done ) MCW_invert_widget(w) ;              /* flash */
 
             myXtFree( cbs.cval ) ; cbs.cval = NULL ;
          }
-         return ;
+         EXRETURN ;
       }
+
+      /*.....................*/
 
       case mcwCT_timeseries:{                       /* timeseries chooser */
          Boolean done , call , flash , any , plot ;
@@ -2950,7 +3340,7 @@ printf("MCW_choose_CB: done=%d  call=%d  plot=%d  flash=%d\n",
        (int)done , (int)call , (int)plot , (int)flash ) ;
 #endif
 
-         if( done ) XtPopdown( cd->wpop ) ;
+         if( done ) RWC_XtPopdown( cd->wpop ) ;
 
          if( call || plot ){  /* must find out what is selected */
             int pos_count , * pos_list , first ;
@@ -2972,7 +3362,7 @@ printf("MCW_choose_CB: queryed list for choice\n") ;
                 myXtFree(pos_list) ;
             } else {  /* no choice made --> nothing to do! */
                 if( plot ) XBell( XtDisplay(w) , 100 ) ;
-                return ;
+                EXRETURN ;
             }
 
 #ifdef BBOX_DEBUG
@@ -2990,9 +3380,16 @@ printf("MCW_choose_CB: calling user supplied routine\n") ;
 #endif
 
                if( flash ) MCW_invert_widget(w) ;              /* flash */
+#if 0
                cd->sel_CB( cd->wcaller , cd->sel_cd , &cbs ) ; /* call user */
+#else
+               AFNI_CALL_VOID_3ARG( cd->sel_CB ,
+                                    Widget           , cd->wcaller ,
+                                    XtPointer        , cd->sel_cd  ,
+                                    MCW_choose_cbs * , &cbs         ) ;
+#endif
                if( flash ) MCW_invert_widget(w) ;              /* flash */
-               return ;
+               EXRETURN ;
             }
 
             if( plot ){
@@ -3006,12 +3403,12 @@ printf("MCW_choose_CB: plotting selected timeseries\n") ;
 #ifdef DONT_USE_COXPLOT
                (void) MCW_popup_message( w , "Plot not yet\nimplemented." ,
                                          MCW_USER_KILL | MCW_TIMER_KILL ) ;
-               return ;
+               EXRETURN ;
 #else
                if( fim->kind != MRI_float ){
                   (void) MCW_popup_message( w , "Can't plot\nnon-float data!" ,
                                             MCW_USER_KILL | MCW_TIMER_KILL ) ;
-                  return ;
+                  EXRETURN ;
                } else {
                   float ** yar , * far = MRI_FLOAT_PTR(fim) ;
                   char ** nar=NULL ;
@@ -3039,14 +3436,16 @@ printf("MCW_choose_CB: plotting selected timeseries\n") ;
                      free(nar) ;
                   }
                   free(yar) ;
-                  return ;
+                  EXRETURN ;
                }
 #endif /* DONT_USE_COXPLOT */
             }
 
          }
-         return ;
+         EXRETURN ;
       }
 
    }  /* end of switch on ctype */
+
+   EXRETURN ;  /* unreachable */
 }

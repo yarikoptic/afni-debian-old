@@ -90,7 +90,9 @@ int EDIT_dset_items( THD_3dim_dataset * dset , ... )
 
    /****---------------------- Sanity Check ----------------------****/
 
-   if( ! ISVALID_3DIM_DATASET(dset) ) return 1 ;  /* bad data */
+ENTRY("EDIT_dset_items") ;
+
+   if( ! ISVALID_3DIM_DATASET(dset) ) RETURN(1) ;  /* bad data */
 
    /****----------- Scan input argument list;
                   - Load data into locals (va_arg);
@@ -161,7 +163,7 @@ fprintf(stderr,"EDIT_dset_items: iarg=%d flag_arg=%d\n",iarg,flag_arg) ;
             /** not a special case? error! **/
 
             sprintf(str,"illegal opcode = %d at arg #%d",flag_arg,iarg) ;
-            EDERR(str) ; if( errnum > 9 ) return errnum ;
+            EDERR(str) ; if( errnum > 9 ) RETURN(errnum) ;
             dummy = va_arg( vararg_ptr , void * ) ;  /* skip next arg */
          }
          break ;
@@ -394,9 +396,7 @@ fprintf(stderr,"EDIT_dset_items: iarg=%d flag_arg=%d\n",iarg,flag_arg) ;
                new_warp_parent = 1 ;
                dset->warp_parent = warp_parent ;
                MCW_strncpy(dset->warp_parent_name,warp_parent->self_name,THD_MAX_NAME) ;
-#ifndef OMIT_DATASET_IDCODES
                dset->warp_parent_idcode = warp_parent->idcode ;
-#endif
             }
             else EDERR("illegal new warp_parent") ;
          break ;
@@ -416,9 +416,7 @@ fprintf(stderr,"EDIT_dset_items: iarg=%d flag_arg=%d\n",iarg,flag_arg) ;
                new_anat_parent = 1 ;
                dset->anat_parent = anat_parent ;
                MCW_strncpy(dset->anat_parent_name,anat_parent->self_name,THD_MAX_NAME) ;
-#ifndef OMIT_DATASET_IDCODES
                dset->anat_parent_idcode = anat_parent->idcode ;
-#endif
             }
             else EDERR("illegal new anat_parent") ;
          break ;
@@ -438,16 +436,32 @@ fprintf(stderr,"EDIT_dset_items: iarg=%d flag_arg=%d\n",iarg,flag_arg) ;
       iarg++ ;
    } while( 1 ) ;  /* end of loop over arguments */
    va_end( vararg_ptr ) ;
-   if( errnum > 0 ) return errnum ;
+   if( errnum > 0 ) RETURN(errnum) ;
 
    /**** carry out edits that were flagged above ****/
 
-   /**---------- Need to reset the disk filename? ----------**/
+   /**---------- Need to reset the disk filename? ------------**/
+   /** 22 Nov 2002: remove +orig etc. from prefix, if present **/
 
-   if( new_prefix || new_directory_name || new_view_type )
+   if( new_prefix || new_directory_name || new_view_type ){
+      char *nprefix = THD_deplus_prefix( prefix ) ;
+
       THD_init_diskptr_names( dset->dblk->diskptr ,
                               directory_name , NULL ,
-                              prefix , view_type , True ) ;
+                              nprefix , view_type , True ) ;
+
+      if( DSET_IS_1D(dset) || DSET_IS_3D(dset) ){         /* 21 Mar 2003 */
+        char *fname = dset->dblk->diskptr->brick_name ;
+        int  ll = strlen(fname) ;
+        fname[ll-10] = '\0' ;
+        if( DSET_IS_1D(dset) || (DSET_NY(dset)==1 && DSET_NZ(dset)==1) )
+          strcat(fname,".1D");
+        else
+          strcat(fname,".3D");
+      }
+
+      if( nprefix != NULL ) free(nprefix) ;
+   }
 
    /**----------- Need to reconfigure the spatial axes? -----------**/
    /**    Most of this code is from routine THD_3dim_from_block    **/
@@ -556,7 +570,7 @@ fprintf(stderr,"EDIT_dset_items: iarg=%d flag_arg=%d\n",iarg,flag_arg) ;
 
    if( new_datum_all && new_datum_array ){
        EDERR("datum_all and datum_array can't be used together") ;
-       return errnum ;
+       RETURN(errnum) ;
    }
 
    redo_bricks = ( new_datum_all || new_datum_array ||
@@ -564,7 +578,7 @@ fprintf(stderr,"EDIT_dset_items: iarg=%d flag_arg=%d\n",iarg,flag_arg) ;
 
    if( redo_bricks && THD_count_databricks(dset->dblk) > 0 ){
       EDERR("cannot reconfigure bricks that already are full") ;
-      return errnum ;
+      RETURN(errnum) ;
    }
 
    if( redo_bricks ){
@@ -620,7 +634,7 @@ fprintf(stderr,"EDIT_dset_items: about to make datum_array\n") ;
    if( new_brick_fac_one ){
       if( brick_fac_one_iv < 0 || brick_fac_one_iv >= dset->dblk->nvals ){
          EDERR("illegal index for ADN_brick_fac_one") ;
-         return errnum ;
+         RETURN(errnum) ;
       }
       dset->dblk->brick_fac[ brick_fac_one_iv ] = brick_fac_one ;
    }
@@ -630,7 +644,7 @@ fprintf(stderr,"EDIT_dset_items: about to make datum_array\n") ;
    if( new_brick_label_one ){
       if( brick_label_one_iv < 0 || brick_label_one_iv >= dset->dblk->nvals ){
          EDERR("illegal index for ADN_brick_label_one") ;
-         return errnum ;
+         RETURN(errnum) ;
       }
 
       THD_store_datablock_label( dset->dblk, brick_label_one_iv, brick_label_one ) ;
@@ -641,7 +655,7 @@ fprintf(stderr,"EDIT_dset_items: about to make datum_array\n") ;
    if( new_brick_keywords_one ){
       if( brick_keywords_one_iv < 0 || brick_keywords_one_iv >= dset->dblk->nvals ){
          EDERR("illegal index for ADN_brick_keywords_one") ;
-         return errnum ;
+         RETURN(errnum) ;
       }
 
       if( new_brick_keywords_one == 1 )
@@ -668,7 +682,7 @@ fprintf(stderr,"EDIT_dset_items: about to make datum_array\n") ;
 
       if( iv < 0 || iv >= dset->dblk->nvals ){
          EDERR("illegal index for ADN_brick_stataux_one") ;
-         return errnum ;
+         RETURN(errnum) ;
       }
 
       jv = brick_stataux_one[0] ;  /* statcode */
@@ -676,7 +690,7 @@ fprintf(stderr,"EDIT_dset_items: about to make datum_array\n") ;
       npar = brick_stataux_one[1] ;  /* # of values present */
       if( npar < 0 ){
          EDERR("illegal npar for ADN_brick_stataux_one") ;
-         return errnum ;
+         RETURN(errnum) ;
       }
 
       kv = FUNC_need_stat_aux[jv] ;  /* # of values needed */
@@ -703,7 +717,7 @@ fprintf(stderr,"EDIT_dset_items: about to make datum_array\n") ;
 
    if( (new_nsl && nsl > 0) && !new_toff_sl ){    /* if we have new slice count */
       EDERR("have new_nsl but not new_toff_sl") ; /* but no new slice offsets */
-      return errnum ;
+      RETURN(errnum) ;
    }
 
    if( redo_taxis ){
@@ -743,7 +757,7 @@ fprintf(stderr,"EDIT_dset_items: about to make datum_array\n") ;
 
       if( taxis == NULL ){
          EDERR("have new_tunits but have no time axis") ;
-         return errnum ;
+         RETURN(errnum) ;
       }
 
       taxis->units_type = tunits ;
@@ -763,11 +777,43 @@ fprintf(stderr,"EDIT_dset_items: about to make datum_array\n") ;
          dset->func_type = func_type ;
 
       } else{
-         EDERR("illegal new_func type combination") ; return errnum ;
+         EDERR("illegal new_func type combination") ; RETURN(errnum) ;
       }
    }
 
    /****--------------- hopefully, we are done! ---------------****/
 
-   return errnum ;
+   RETURN(errnum) ;
+}
+
+
+/*-------------------------------------------------------------------*/
+/*! Remove any +???? suffix from a prefix, returning a new one.
+    -- 22 Nov 2002 - RWCox
+---------------------------------------------------------------------*/
+
+char * THD_deplus_prefix( char *prefix )
+{
+   char *newprefix ;
+   int nn ;
+
+   if( prefix == NULL ) return NULL ;
+
+   nn = strlen(prefix); newprefix = strdup(prefix);
+
+   /* only remove the basic 3: +orig, +acpc +tlrc   17 May 2004 [rickr] */
+   /* (blame Shruti) */
+   if( nn > 4 &&   ( (strcmp(newprefix+nn-5,"+orig") == 0) ||
+                     (strcmp(newprefix+nn-5,"+acpc") == 0) ||
+                     (strcmp(newprefix+nn-5,"+tlrc") == 0)   ) )
+      newprefix[nn-5] = '\0' ;
+
+/* old check
+       isalpha(newprefix[nn-4]) &&
+       isalpha(newprefix[nn-3]) &&
+       isalpha(newprefix[nn-2]) &&
+       isalpha(newprefix[nn-1])   ) newprefix[nn-5] = '\0' ;
+*/
+
+   return newprefix ;
 }

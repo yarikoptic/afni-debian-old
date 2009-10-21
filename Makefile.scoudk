@@ -52,6 +52,8 @@ LLIBS  = -lmri -lXm -lXpm -lXext -lXmu -lXt -lX11 -lm  -ldl -lsocket -lSM -lICE
 	/usr/lib/libm.a          \
 	/usr/lib/libc.a
 
+
 ###############################################################
 
+MAKE = make
 include Makefile.INCLUDE

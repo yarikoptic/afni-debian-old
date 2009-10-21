@@ -3,7 +3,7 @@
    of Wisconsin, 1994-2000, and are released under the Gnu General Public
    License, Version 2.  See the file README.Copyright for details.
 ******************************************************************************/
-   
+
 #include "mrilib.h"
 #include "thd.h"
 
@@ -17,6 +17,9 @@ MRI_IMARR * THD_get_many_timeseries( THD_string_array * dlist )
    MRI_IMARR * outar , * tmpar ;
    char * epath , * eee ;
    char   efake[] = "./" ;
+   THD_string_array *qlist ; /* 02 Feb 2002 */
+
+ENTRY("THD_get_many_timeseries") ;
 
    /*----- sanity check and initialize -----*/
 
@@ -26,13 +29,16 @@ MRI_IMARR * THD_get_many_timeseries( THD_string_array * dlist )
 
    ndir = (dlist != NULL) ? dlist->num : 0 ;
 
-   if( ndir == 0 && epath == NULL ) return NULL ;
+   if( ndir == 0 && epath == NULL ) RETURN( NULL ) ;
 
    INIT_IMARR( outar ) ;
+   INIT_SARR( qlist ) ;
 
    /*----- for each input directory, find all *.1D files -----*/
 
    for( id=0 ; id < ndir ; id++ ){
+
+      ADDTO_SARR(qlist,dlist->ar[id]) ;
 
       tmpar = THD_get_all_timeseries( dlist->ar[id] ) ;
       if( tmpar == NULL ) continue ;
@@ -78,20 +84,14 @@ MRI_IMARR * THD_get_many_timeseries( THD_string_array * dlist )
             ename[ii]  = '/' ; ename[ii+1] = '\0' ;
          }
 
-         ii = SARR_find_string( dlist , ename ) ;  /* skip this directory */
-         if( ii >= 0 ) continue ;                  /* if already was scanned */
+         if( !THD_is_directory(ename) ) continue ;  /* 21 May 2002 - rcr */
 
-         /* 09 Sep 1998: check for file equivalence as well */
+         /* 02 Feb 2002: check if scanned this directory before */
 
-         if( dlist != NULL ){
-            for( ii=0 ; ii < dlist->num ; ii++ )
-               if( THD_equiv_files(dlist->ar[ii],ename) ) break ;
-
-            if( ii < dlist->num ) continue ;  /* skip to end of do loop */
-         }
-
-         eee = strstr( elocal , ename ) ;
-         if( eee != NULL && (eee-elocal) < epos-id ) continue ;
+         for( ii=0 ; ii < qlist->num ; ii++ )
+            if( THD_equiv_files(qlist->ar[ii],ename) ) break ;
+         if( ii < qlist->num ) continue ;  /* skip to end of do loop */
+         ADDTO_SARR(qlist,ename) ;
 
          tmpar = THD_get_all_timeseries( ename ) ; /* read this directory */
          if( tmpar != NULL ){
@@ -107,7 +107,8 @@ MRI_IMARR * THD_get_many_timeseries( THD_string_array * dlist )
 
    if( IMARR_COUNT(outar) == 0 ) DESTROY_IMARR(outar) ;
 
-   return outar ;
+   DESTROY_SARR(qlist) ;
+   RETURN( outar ) ;
 }
 
 /*---------------------------------------------------*/
@@ -128,6 +129,11 @@ MRI_IMARR * THD_get_all_timeseries( char * dname )
 #ifdef NEWWAY
    char * pat ;
 #endif
+
+   unsigned long max_fsize ;  /* 20 Jul 2004: max 1D file size to load */
+
+   max_fsize = (unsigned long) AFNI_numenv( "AFNI_MAX_1DSIZE" ) ;
+   if( max_fsize == 0 ) max_fsize = 123*1024 ;
 
    /*----- sanity check and initialize -----*/
 
@@ -171,13 +177,10 @@ MRI_IMARR * THD_get_all_timeseries( char * dname )
           strcmp(fname+ll,"1Dx")==0 ||
           strcmp(fname+ll,"1Dv")==0   ){
 
-         outim = mri_read_ascii( fname ) ;
-         if( outim != NULL ){
-            if( outim->kind != MRI_float ){
-               flim = mri_to_float(outim) ;
-               mri_free(outim) ; outim = flim ;
-            }
-            flim = mri_transpose(outim) ; mri_free(outim) ;
+         if( THD_filesize(fname) > max_fsize ) continue ;  /* 20 Jul 2004 */
+
+         flim = mri_read_1D( fname ) ;
+         if( flim != NULL ){
             far = MRI_FLOAT_PTR(flim) ;
             for( ii=0 ; ii < flim->nvox ; ii++ )
                if( fabs(far[ii]) >= 33333.0 ) far[ii] = WAY_BIG ;
@@ -185,7 +188,6 @@ MRI_IMARR * THD_get_all_timeseries( char * dname )
             tname = THD_trailname(fname,1) ;
             mri_add_name( tname , flim ) ;
             ADDTO_IMARR( outar , flim ) ;
-
          }
       }
    }

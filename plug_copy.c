@@ -14,7 +14,7 @@
   Simple plugin to copy a dataset and make a new one.
 ************************************************************************/
 
-char * COPY_main( PLUGIN_interface * ) ;
+static char * COPY_main( PLUGIN_interface * ) ;
 
 static char helpstring[] =
    " Purpose: Creating a copy of a dataset.\n"
@@ -50,6 +50,9 @@ static int    dtype_kinds[NDTYPE] = {
    Set up the interface to the user
 ************************************************************************/
 
+
+DEFINE_PLUGIN_PROTOTYPE
+
 PLUGIN_interface * PLUGIN_init( int ncall )
 {
    PLUGIN_interface * plint ;
@@ -64,6 +67,8 @@ PLUGIN_interface * PLUGIN_init( int ncall )
    PLUTO_add_hint( plint , "Make a Copy of a Dataset" ) ;
 
    PLUTO_set_sequence( plint , "A:newdset:copy" ) ;
+
+   PLUTO_set_runlabels( plint , "Copy+Keep" , "Copy+Close" ) ;  /* 04 Nov 2003 */
 
    /*-- first line of input: Dataset --*/
 
@@ -99,7 +104,7 @@ PLUGIN_interface * PLUGIN_init( int ncall )
   Main routine for this plugin (will be called from AFNI).
 ****************************************************************************/
 
-char * COPY_main( PLUGIN_interface * plint )
+static char * COPY_main( PLUGIN_interface * plint )
 {
    char * tag , * new_prefix , * cpt ;
    MCW_idcode * idc ;

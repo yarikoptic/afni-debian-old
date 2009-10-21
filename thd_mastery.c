@@ -8,28 +8,32 @@
 
 /* prototypes */
 
-static void THD_setup_mastery( THD_3dim_dataset * , int * ) ;
+static int THD_setup_mastery( THD_3dim_dataset * , int * ) ;
 static THD_3dim_dataset * THD_open_3dcalc( char * ) ;
 
 /*-----------------------------------------------------------------
    11 Jan 1999: Open a dataset, allowing for possible mastering.
    21 Feb 2001: Allow for <a..b> sub-ranging as well.
+   26 Jul 2004: Change THD_setup_mastery to return int.    [rickr]
+                Add THD_copy_dset_subs() function.
 -------------------------------------------------------------------*/
 
-THD_3dim_dataset * THD_open_dataset( char * pathname )
+THD_3dim_dataset * THD_open_dataset( char *pathname )
 {
-   THD_3dim_dataset * dset ;
+   THD_3dim_dataset *dset ;
    char dname[THD_MAX_NAME] , subv[THD_MAX_NAME] ;
-   char * cpt , * bpt ;
-   int  * ivlist=NULL ;
+   char *cpt , *bpt ;
+   int  *ivlist=NULL ;
    int    ii , jj , kk ;
    float  bot=1.0 , top=0.0 ;
+
+ENTRY("THD_open_dataset") ;
 
    /*-- sanity check --*/
 
    if( pathname == NULL            ||
        (ii=strlen(pathname)) == 0  ||
-       pathname[ii-1]        == '/'  ) return NULL ;
+       pathname[ii-1]        == '/'  ) RETURN(NULL) ;
 
    /*-- 23 Mar 2001: perhaps get from across the Web --*/
 
@@ -37,14 +41,29 @@ THD_3dim_dataset * THD_open_dataset( char * pathname )
        strncmp(pathname,"ftp://" ,6) == 0   ){
 
       dset = THD_fetch_dataset( pathname ) ;
-      return dset ;
+      RETURN(dset) ;
    }
 
    /*-- 17 Mar 2000: check if this is a 3dcalc() run --*/
 
    if( strncmp(pathname,"3dcalc(",7)  == 0 ){
-      dset = THD_open_3dcalc( pathname ) ;
-      return dset ;
+     dset = THD_open_3dcalc( pathname ) ;
+     RETURN(dset) ;
+   }
+
+   /*-- 04 Mar 2003: allow input of .1D files   --*/
+   /*--              which deals with [] itself --*/
+
+   if( strstr(pathname,".1D") != NULL ){
+     dset = THD_open_1D( pathname ) ;
+     if( dset != NULL ) RETURN(dset) ;
+   }
+
+   /*-- 04 Aug 2004: allow input of a list of dataset, separated by spaces --*/
+
+   if( strchr(pathname,' ') != NULL ){
+     dset = THD_open_tcat( pathname ) ;
+     RETURN(dset) ;
    }
 
    /*-- find the opening "[" and/or "<" --*/
@@ -52,12 +71,12 @@ THD_3dim_dataset * THD_open_dataset( char * pathname )
    cpt = strstr(pathname,"[") ;
    bpt = strstr(pathname,"<") ;  /* 21 Feb 2001 */
 
-   if( cpt == NULL && bpt == NULL ){             /* no "[" or "<"  */
-      dset = THD_open_one_dataset( pathname ) ;  /* ==> open      */
-      return dset ;                              /*     normally */
+   if( cpt == NULL && bpt == NULL ){            /* no "[" or "<"  */
+     dset = THD_open_one_dataset( pathname ) ;  /* ==> open      */
+     RETURN(dset) ;                             /*     normally */
    }
 
-   if( cpt == pathname || bpt == pathname ) return NULL ;  /* error */
+   if( cpt == pathname || bpt == pathname ) RETURN(NULL);  /* error */
 
    /* copy dataset filename to dname and selector string to subv */
 
@@ -66,36 +85,43 @@ THD_3dim_dataset * THD_open_dataset( char * pathname )
    kk = MIN(ii,jj) ;
    memcpy(dname,pathname,kk) ; dname[kk] = '\0' ;
 
-#ifdef ALLOW_MINC
-   if( kk > 4 && strcmp(pathname+kk-4,".mnc") == 0 ){
-      fprintf(stderr,"** Can't use selectors on MINC dataset: %s\n",pathname) ;
-      return NULL ;
+   if( STRING_HAS_SUFFIX(dname,".mnc") ||
+       STRING_HAS_SUFFIX(dname,".hdr") ||
+       STRING_HAS_SUFFIX(dname,".nia") ||
+       STRING_HAS_SUFFIX(dname,".nii") ||
+       STRING_HAS_SUFFIX(dname,".mri") ||
+       STRING_HAS_SUFFIX(dname,".svl")   ){
+
+     fprintf(stderr,"** Can't use selectors on dataset: %s\n",pathname) ;
+     RETURN(NULL) ;
    }
-#endif
 
    /* open the dataset */
 
    dset = THD_open_one_dataset( dname ) ;
-   if( dset == NULL ) return NULL ;
+   if( dset == NULL ) RETURN(NULL) ;
 
    /* parse the sub-brick selector string (if any) */
 
    if( cpt != NULL ){
-      char * qpt ;
-      strcpy(subv,cpt) ;
-      qpt = strstr(subv,"<") ; if( qpt != NULL ) *qpt = '\0' ;
-      ivlist = MCW_get_intlist( DSET_NVALS(dset) , subv ) ;
+     char *qpt ;
+     strcpy(subv,cpt) ;
+     qpt = strstr(subv,"<") ; if( qpt != NULL ) *qpt = '\0' ;
+     ivlist = MCW_get_intlist( DSET_NVALS(dset) , subv ) ;
    }
    if( ivlist == NULL ){
-      ivlist = (int *) malloc(sizeof(int)*(DSET_NVALS(dset)+1)) ;
-      ivlist[0] = DSET_NVALS(dset) ;
-      for( kk=0 ; kk < ivlist[0] ; kk++ ) ivlist[kk+1] = kk ;
+     if( cpt != NULL )
+       fprintf(stderr,"** WARNING: bad sub-brick selector => using [0..%d]\n",
+               DSET_NVALS(dset)-1) ;
+     ivlist = (int *) malloc(sizeof(int)*(DSET_NVALS(dset)+1)) ;
+     ivlist[0] = DSET_NVALS(dset) ;
+     for( kk=0 ; kk < ivlist[0] ; kk++ ) ivlist[kk+1] = kk ;
    }
 
    /* 21 Feb 2001: if present, load the sub-range data */
 
    if( bpt != NULL ){
-      char * dpt = strstr(bpt,"..") ;
+      char *dpt = strstr(bpt,"..") ;
 #if 0
 fprintf(stderr,"bpt=%s\n",bpt) ;
 #endif
@@ -120,7 +146,7 @@ fprintf(stderr,"dpt=%s\n",dpt) ;
    THD_setup_mastery( dset , ivlist ) ;
    free(ivlist) ;
 
-   return dset ;
+   RETURN(dset) ;
 }
 
 /*-----------------------------------------------------------------
@@ -128,32 +154,34 @@ fprintf(stderr,"dpt=%s\n",dpt) ;
    a subset of sub-bricks from the master .BRIK file.
 -------------------------------------------------------------------*/
 
-static void THD_setup_mastery( THD_3dim_dataset * dset , int * ivlist )
+static int THD_setup_mastery( THD_3dim_dataset *dset , int *ivlist )
 {
    int ibr , old_nvals , new_nvals ;
-   THD_datablock * dblk ;
-   int * btype , * ivl ;
+   THD_datablock *dblk ;
+   int *btype , *ivl ;
 
-   float *  old_brick_fac  ;
-   int *    old_brick_bytes ;
-   char **  old_brick_lab  ;
-   char **  old_brick_keywords ;
-   int *    old_brick_statcode ;
-   float ** old_brick_stataux ;
+   float * old_brick_fac  ;
+   int *   old_brick_bytes ;
+   char ** old_brick_lab  ;
+   char ** old_brick_keywords ;
+   int *   old_brick_statcode ;
+   float **old_brick_stataux ;
+
+ENTRY("THD_setup_mastery") ;
 
    /** sanity checks **/
 
-   if( ! ISVALID_DSET(dset) || ivlist == NULL || ivlist[0] <= 0 ) return ;
+   if( ! ISVALID_DSET(dset) || ivlist == NULL || ivlist[0] <= 0 ) RETURN(1) ;
 
    new_nvals = ivlist[0] ;
    ivl       = ivlist + 1 ;
    dblk      = dset->dblk ;
    old_nvals = dblk->nvals ;
 
-   ibr = THD_count_databricks(dblk) ; if( ibr > 0 ) return ;
+   ibr = THD_count_databricks(dblk) ; if( ibr > 0 ) RETURN(2) ;
 
    for( ibr=0 ; ibr < new_nvals ; ibr++ )
-      if( ivl[ibr] < 0 || ivl[ibr] >= old_nvals ) return ;
+      if( ivl[ibr] < 0 || ivl[ibr] >= old_nvals ) RETURN(3) ;
 
    /** save pointers to old datablock stuff **/
 
@@ -202,15 +230,15 @@ static void THD_setup_mastery( THD_3dim_dataset * dset , int * ivlist )
    /* redo brick_lab */
 
    if( old_brick_lab != NULL ){
-      for( ibr=0 ; ibr < new_nvals ; ibr++ )
-         THD_store_datablock_label( dblk , ibr , old_brick_lab[ivl[ibr]] ) ;
+     for( ibr=0 ; ibr < new_nvals ; ibr++ )
+       THD_store_datablock_label( dblk , ibr , old_brick_lab[ivl[ibr]] ) ;
    }
 
    /* redo brick_keywords */
 
    if( old_brick_keywords != NULL ){
-      for( ibr=0 ; ibr < new_nvals ; ibr++ )
-         THD_store_datablock_keywords( dblk , ibr , old_brick_keywords[ivl[ibr]] ) ;
+     for( ibr=0 ; ibr < new_nvals ; ibr++ )
+       THD_store_datablock_keywords( dblk , ibr , old_brick_keywords[ivl[ibr]] ) ;
    }
 
    /* redo brick_statcode and brick_stataux */
@@ -233,13 +261,13 @@ static void THD_setup_mastery( THD_3dim_dataset * dset , int * ivlist )
    myXtFree( old_brick_fac ) ;
 
    if( old_brick_lab != NULL ){
-      for( ibr=0 ; ibr < old_nvals ; ibr++ ) myXtFree( old_brick_lab[ibr] ) ;
-      myXtFree( old_brick_lab ) ;
+     for( ibr=0 ; ibr < old_nvals ; ibr++ ) myXtFree( old_brick_lab[ibr] ) ;
+     myXtFree( old_brick_lab ) ;
    }
 
    if( old_brick_keywords != NULL ){
-      for( ibr=0 ; ibr < old_nvals ; ibr++ ) myXtFree( old_brick_keywords[ibr] ) ;
-      myXtFree( old_brick_keywords ) ;
+     for( ibr=0 ; ibr < old_nvals ; ibr++ ) myXtFree( old_brick_keywords[ibr] ) ;
+     myXtFree( old_brick_keywords ) ;
    }
 
    if( old_brick_statcode != NULL ) myXtFree( old_brick_statcode ) ;
@@ -294,7 +322,7 @@ static void THD_setup_mastery( THD_3dim_dataset * dset , int * ivlist )
       }
    }
 
-   return ;
+   RETURN(0) ;
 }
 
 /*----------------------------------------------------------------------
@@ -314,13 +342,15 @@ static THD_3dim_dataset * THD_open_3dcalc( char * pname )
    THD_3dim_dataset * dset ;
    static int ibase=1 ;
 
+ENTRY("THD_open_3dcalc") ;
+
    /*-- remove the "3dcalc(" and the ")" from the input string --*/
 
    qname = (char *) malloc(sizeof(char)*(strlen(pname)+1024)) ;
    strcpy(qname,pname+7) ;
    ll = strlen(qname) ;
    for( ii=ll-1 ; ii > 0 && qname[ii] != ')' ; ii++ ) ; /* nada */
-   if( ii == 0 ){ free(qname) ; return NULL ; }
+   if( ii == 0 ){ free(qname) ; RETURN(NULL) ; }
    qname[ii] = '\0' ;
 
    /*-- add -session to command string --*/
@@ -336,8 +366,8 @@ static THD_3dim_dataset * THD_open_3dcalc( char * pname )
       if( THD_is_dataset(tdir,prefix,-1) == -1 ) break ;
    }
    if( ii > 9999 ){
-      fprintf(stderr,"*** Can't find unused 3dcalc# dataset name in %s!\n",tdir) ;
-      free(qname) ; return NULL ;
+     fprintf(stderr,"*** Can't find unused 3dcalc# dataset name in %s!\n",tdir) ;
+     free(qname) ; RETURN(NULL) ;
    }
    ibase = ii+1 ;
 
@@ -357,11 +387,11 @@ static THD_3dim_dataset * THD_open_3dcalc( char * pname )
 
    /*-- check if arg list was created OK --*/
 
-   if( newArgv == NULL ) return NULL ;  /* something bad? */
+   if( newArgv == NULL ) RETURN(NULL) ;  /* something bad? */
 
    if( newArgc < 3 ){                   /* too few args to 3dcalc */
-      for( ii=0 ; ii < newArgc ; ii++ ) free(newArgv[ii]) ;
-      free(newArgv) ; return NULL ;
+     for( ii=0 ; ii < newArgc ; ii++ ) free(newArgv[ii]) ;
+     free(newArgv) ; RETURN(NULL) ;
    }
 
    /*-- replace placeholder in arg list with NULL pointer --*/
@@ -377,27 +407,27 @@ for(ii=0; ii< newArgc-1; ii++) fprintf(stderr," argv[%d]=%s\n",ii,newArgv[ii]);
    child_pid = fork() ;
 
    if( child_pid == (pid_t)(-1) ){
-      perror("*** Can't fork 3dcalc()") ;
-      for( ii=0 ; ii < newArgc-1 ; ii++ ) free(newArgv[ii]) ;
-      free(newArgv) ; return NULL ;
+     perror("*** Can't fork 3dcalc()") ;
+     for( ii=0 ; ii < newArgc-1 ; ii++ ) free(newArgv[ii]) ;
+     free(newArgv) ; RETURN(NULL) ;
    }
 
    if( child_pid == 0 ){  /*-- I'm the child --*/
 
-      execvp( "3dcalc" , newArgv ) ;        /* should not return */
-      perror("*** Can't execvp 3dcalc()") ;
-      _exit(1) ;
+     execvp( "3dcalc" , newArgv ) ;        /* should not return */
+     perror("*** Can't execvp 3dcalc()") ;
+     _exit(1) ;
 
    }
 
    /*-- I'm the parent --*/
 
-   (void) wait(NULL) ;  /* wait for child to exit */
+   (void) waitpid( child_pid , NULL , 0 ) ; /* wait for child to exit */
 
    ii = THD_is_dataset( tdir , prefix , -1 ) ;
    if( ii == -1 ){
-      fprintf(stderr,"*** 3dcalc() failed - no dataset created\n") ;
-      return NULL ;
+     fprintf(stderr,"*** 3dcalc() failed - no dataset created\n") ;
+     RETURN(NULL) ;
    }
    qname = THD_dataset_headname( tdir , prefix , ii ) ;
    dset = THD_open_one_dataset( qname ) ;  /* try to read result */
@@ -406,17 +436,17 @@ for(ii=0; ii< newArgc-1; ii++) fprintf(stderr," argv[%d]=%s\n",ii,newArgv[ii]);
    free(newArgv) ; free(qname) ;
 
    if( dset == NULL ){                          /* read failed */
-      fprintf(stderr,"*** 3dcalc() failed - can't read dataset\n") ;
-      return NULL ;
+     fprintf(stderr,"*** 3dcalc() failed - can't read dataset\n") ;
+     RETURN(NULL) ;
    }
 
    /* read dataset into memory */
 
    DSET_mallocize(dset) ; DSET_load(dset) ;
    if( !DSET_LOADED(dset) ){                   /* can't read it? */
-      THD_delete_3dim_dataset( dset , True ) ; /* kill it dead */
-      fprintf(stderr,"*** 3dcalc() failed - can't load dataset\n") ;
-      return NULL ;
+     THD_delete_3dim_dataset( dset , True ) ; /* kill it dead */
+     fprintf(stderr,"*** 3dcalc() failed - can't load dataset\n") ;
+     RETURN(NULL) ;
    }
 
    /* lock dataset into memory, delete its files */
@@ -425,5 +455,88 @@ for(ii=0; ii< newArgc-1; ii++) fprintf(stderr," argv[%d]=%s\n",ii,newArgv[ii]);
    unlink( dset->dblk->diskptr->header_name ) ;
    COMPRESS_unlink( dset->dblk->diskptr->brick_name ) ;
 
-   return dset ;
+   /* 30 Jul 2003: changes its directory to cwd */
+
+   EDIT_dset_items( dset , ADN_directory_name , "./" , ADN_none ) ;
+
+   RETURN(dset) ;
+}
+
+/*-----------------------------------------------------------------
+   Copy a list of sub-bricks from a dataset.    26 Jul 2004 [rickr]
+   The first element of dlist is the number of sub-bricks to copy.
+-------------------------------------------------------------------*/
+
+THD_3dim_dataset * THD_copy_dset_subs( THD_3dim_dataset * din, int * dlist )
+{
+    THD_3dim_dataset * dout;
+    MRI_TYPE           kind;
+    char             * newdata;
+    int                sub, subs;
+    int                dsize, nxyz, rv;
+
+ENTRY("THD_copy_dset_subs");
+
+    /* validate inputs */
+    if ( !din || !dlist )
+    {
+	fprintf(stderr, "** THD_copy_dset_subs: bad input (%p,%p)\n",
+		din,dlist);
+	RETURN(NULL);
+    }
+
+    if ( dlist[0] <= 0 )
+    {
+	fprintf(stderr,"** THD_copy_dset_subs: invalid dlist length %d\n",
+		dlist[0]);
+	RETURN(NULL);
+    }
+
+    dout = EDIT_empty_copy(din);
+    rv = THD_setup_mastery(dout, dlist);
+    if ( rv != 0 )
+    {
+	fprintf(stderr, "** failure: THD_setup_mastery() returned %d\n", rv);
+	RETURN(NULL);
+    }
+
+    /* be sure that we have some data to copy */
+    DSET_load(din);
+    if ( ! DSET_LOADED(din) )
+    {
+	fprintf(stderr,"** THD_copy_dset_subs: cannot load input dataset\n");
+	RETURN(NULL);
+    }
+
+    /* a basic warp is needed if header is written out - PLUTO_add_dset() */
+    dout->warp  = myXtNew( THD_warp );
+    *dout->warp = IDENTITY_WARP;
+    ADDTO_KILL( dout->kl, dout->warp );
+
+    dout->dblk->diskptr->byte_order   = mri_short_order();
+    dout->dblk->diskptr->storage_mode = STORAGE_BY_BRICK;
+
+    /* now copy all of the sub-bricks */
+    nxyz = dout->daxes->nxx * dout->daxes->nyy * dout->daxes->nzz;
+    subs = dlist[0];
+    for ( sub = 0; sub < subs; sub++ )
+    {
+	kind = DSET_BRICK_TYPE(dout, sub);
+	dsize = mri_datum_size( kind );
+	if ( (newdata = (char *)malloc( nxyz * dsize )) == NULL )
+        {
+            fprintf( stderr, "r frdb: alloc failure: %d bytes!\n",
+                     nxyz * dsize );
+	    DSET_delete(dout);
+            RETURN(NULL);
+        }
+
+	memcpy(newdata,DSET_ARRAY(din,dlist[sub+1]), nxyz*dsize);
+	EDIT_substitute_brick(dout, sub, kind, (void *)newdata);
+    }
+
+    dout->dblk->malloc_type = DATABLOCK_MEM_MALLOC;
+    dout->wod_flag = False;             /* since data is now in memory */
+
+    RETURN(dout);
 }

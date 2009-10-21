@@ -16,30 +16,49 @@
 
 /*-------------------------------------------------------------------*/
 /*-----             3-vector and matrix structures              -----*/
+/*----- Double precision versions exist at bottom of this file. -----*/
+
+/*! 3-vector of integers. */
 
 typedef struct { int ijk[3] ;      } THD_ivec3 ;
-typedef struct { float xyz[3] ;    } THD_fvec3 ;  /* see below for   */
-typedef struct { float mat[3][3] ; } THD_mat33 ;  /* double versions */
 
-typedef struct {    /* 3x3 matrix + 3-vector [16 Jul 2000] */
-   THD_fvec3 vv ;
-   THD_mat33 mm ;
+/*! 3-vector of floats. */
+
+typedef struct { float xyz[3] ;    } THD_fvec3 ;
+
+/*! 3x3 matrix of floats. */
+
+typedef struct { float mat[3][3] ; } THD_mat33 ;
+
+/*! 3x3 matrix and a 3-vector (basically an affine transform). */
+
+typedef struct {
+   THD_fvec3 vv ; /*< the vector */
+   THD_mat33 mm ; /*< the matrix */
 } THD_vecmat ;
 
 /*-------------------------------------------------------------------*/
 /*-----       macros that operate on 3 vectors and matrices     -----*/
 
+/*! Load THD_ivec3 iv with 3 integers. */
+
 #define LOAD_IVEC3(iv,i,j,k) ( (iv).ijk[0]=(i), \
                                (iv).ijk[1]=(j), \
                                (iv).ijk[2]=(k)    )
+
+/*! Take 3 integers out of THD_ivec3 iv. */
 
 #define UNLOAD_IVEC3(iv,i,j,k) ( (i)=(iv).ijk[0], \
                                  (j)=(iv).ijk[1], \
                                  (k)=(iv).ijk[2]   )
 
+/*! Load THD_fvec3 fv with 3 floats. */
+
 #define LOAD_FVEC3(fv,x,y,z) ( (fv).xyz[0]=(x), \
                                (fv).xyz[1]=(y), \
                                (fv).xyz[2]=(z)   )
+
+/*! Take 3 floats out of THD_fvec3 fv. */
 
 #define UNLOAD_FVEC3(fv,x,y,z) ( (x)=(fv).xyz[0], \
                                  (y)=(fv).xyz[1], \
@@ -50,19 +69,29 @@ static THD_fvec3 tempA_fvec3 , tempB_fvec3 ;
 static THD_mat33 tempA_mat33 , tempB_mat33 ;
 static float tempRWC ;
 
+/*! Return a temporary THD_ivec3 from 3 integers. */
+
 #define TEMP_IVEC3(i,j,k) ( tempB_ivec3.ijk[0]=(i), \
                             tempB_ivec3.ijk[1]=(j), \
                             tempB_ivec3.ijk[2]=(k), tempB_ivec3 )
+
+/*! Return a temporary THD_fvec3 from 3 floats. */
 
 #define TEMP_FVEC3(x,y,z) ( tempB_fvec3.xyz[0]=(x), \
                             tempB_fvec3.xyz[1]=(y), \
                             tempB_fvec3.xyz[2]=(z), tempB_fvec3 )
 
+/*! Debug printout of a THD_ivec3. */
+
 #define DUMP_IVEC3(str,iv) \
    fprintf(stderr,"%s: %d %d %d\n",(str),(iv).ijk[0],(iv).ijk[1],(iv).ijk[2])
 
+/*! Debug printout of a THD_fvec3. */
+
 #define DUMP_FVEC3(str,fv) \
    fprintf(stderr,"%s: %13.6g %13.6g %13.6g\n",(str),(fv).xyz[0],(fv).xyz[1],(fv).xyz[2])
+
+/*! Debug printout of a THD_mat33. */
 
 #define DUMP_MAT33(str,A)                                  \
    fprintf(stderr,                                         \
@@ -73,32 +102,34 @@ static float tempRWC ;
            (A).mat[1][0] , (A).mat[1][1] , (A).mat[1][2] , \
            (A).mat[2][0] , (A).mat[2][1] , (A).mat[2][2]  )
 
+/*! Debug printout of a THD_vecmat. */
+
 #define DUMP_VECMAT(str,vvmm) ( DUMP_MAT33(str,vvmm.mm) , DUMP_FVEC3(str,vvmm.vv) )
 
 /*--- macros for operations on floating 3 vectors,
       with heavy use of the comma operator and structure assignment! ---*/
 
-  /* negation */
+  /*! Return negation of THD_fvec3 a. */
 
 #define NEGATE_FVEC3(a) ( (a).xyz[0] = -(a).xyz[0] , \
                           (a).xyz[1] = -(a).xyz[1] , \
                           (a).xyz[2] = -(a).xyz[2]    )
 
-  /* subtraction */
+  /*! Return THD_fvec3 a-b. */
 
 #define SUB_FVEC3(a,b) \
    ( tempA_fvec3.xyz[0] = (a).xyz[0] - (b).xyz[0] , \
      tempA_fvec3.xyz[1] = (a).xyz[1] - (b).xyz[1] , \
      tempA_fvec3.xyz[2] = (a).xyz[2] - (b).xyz[2] , tempA_fvec3 )
 
-  /* addition */
+  /*! Return THD_fvec3 a+b. */
 
 #define ADD_FVEC3(a,b) \
    ( tempA_fvec3.xyz[0] = (a).xyz[0] + (b).xyz[0] , \
      tempA_fvec3.xyz[1] = (a).xyz[1] + (b).xyz[1] , \
      tempA_fvec3.xyz[2] = (a).xyz[2] + (b).xyz[2] , tempA_fvec3 )
 
-  /* make into a unit vector */
+  /*! Return THD_fvec3 a/|a| (unit vector). */
 
 #define NORMALIZE_FVEC3(a) \
    ( tempRWC =   (a).xyz[0] * (a).xyz[0]                 \
@@ -109,7 +140,7 @@ static float tempRWC ;
      tempA_fvec3.xyz[1] = (a).xyz[1] * tempRWC         , \
      tempA_fvec3.xyz[2] = (a).xyz[2] * tempRWC         , tempA_fvec3 )
 
-  /* cross product */
+  /*! Return THD_fvec3 a X b (cross product). */
 
 #define CROSS_FVEC3(a,b) \
   ( tempA_fvec3.xyz[0] = (a).xyz[1]*(b).xyz[2] - (a).xyz[2]*(b).xyz[1] , \
@@ -117,12 +148,12 @@ static float tempRWC ;
     tempA_fvec3.xyz[2] = (a).xyz[0]*(b).xyz[1] - (a).xyz[1]*(b).xyz[0] , \
     tempA_fvec3 )
 
-  /* L2 norm */
+  /*! Return float L2norm(a) from a THD_fvec3. */
 
 #define SIZE_FVEC3(a) \
    sqrt((a).xyz[0]*(a).xyz[0]+(a).xyz[1]*(a).xyz[1]+(a).xyz[2]*(a).xyz[2])
 
-  /* dot product */
+  /*! Return float a dot b from THD_fvec3 inputs. */
 
 #define DOT_FVEC3(a,b) \
    ((a).xyz[0]*(b).xyz[0] + (a).xyz[1]*(b).xyz[1] + (a).xyz[2]*(b).xyz[2])
@@ -187,13 +218,27 @@ static float tempRWC ;
                         +(A).mat[2][2] * (x).xyz[2] - (b).xyz[2] ,\
     tempA_fvec3 )
 
+   /* matrix vector multiply with add after: A x + b */
+
+#define MATVEC_ADD(A,x,b) \
+  ( tempA_fvec3.xyz[0] = (A).mat[0][0] * (x).xyz[0]               \
+                        +(A).mat[0][1] * (x).xyz[1]               \
+                        +(A).mat[0][2] * (x).xyz[2] + (b).xyz[0] ,\
+    tempA_fvec3.xyz[1] = (A).mat[1][0] * (x).xyz[0]               \
+                        +(A).mat[1][1] * (x).xyz[1]               \
+                        +(A).mat[1][2] * (x).xyz[2] + (b).xyz[1] ,\
+    tempA_fvec3.xyz[2] = (A).mat[2][0] * (x).xyz[0]               \
+                        +(A).mat[2][1] * (x).xyz[1]               \
+                        +(A).mat[2][2] * (x).xyz[2] + (b).xyz[2] ,\
+    tempA_fvec3 )
+
   /* matrix-matrix multiply */
 
 #define ROW_DOT_COL(A,B,i,j) (  (A).mat[i][0] * (B).mat[0][j] \
                               + (A).mat[i][1] * (B).mat[1][j] \
                               + (A).mat[i][2] * (B).mat[2][j]   )
 
-#define MAT_MUL(A,B) \
+#define MAT_MUL(A,B)                                   \
   ( tempA_mat33.mat[0][0] = ROW_DOT_COL((A),(B),0,0) , \
     tempA_mat33.mat[1][0] = ROW_DOT_COL((A),(B),1,0) , \
     tempA_mat33.mat[2][0] = ROW_DOT_COL((A),(B),2,0) , \
@@ -204,6 +249,17 @@ static float tempRWC ;
     tempA_mat33.mat[1][2] = ROW_DOT_COL((A),(B),1,2) , \
     tempA_mat33.mat[2][2] = ROW_DOT_COL((A),(B),2,2) , tempA_mat33 )
 
+#define MAT_SCALAR(A,c)                          \
+  ( tempA_mat33.mat[0][0] = (c)*(A).mat[0][0] ,  \
+    tempA_mat33.mat[1][0] = (c)*(A).mat[1][0] ,  \
+    tempA_mat33.mat[2][0] = (c)*(A).mat[2][0] ,  \
+    tempA_mat33.mat[0][1] = (c)*(A).mat[0][1] ,  \
+    tempA_mat33.mat[1][1] = (c)*(A).mat[1][1] ,  \
+    tempA_mat33.mat[2][1] = (c)*(A).mat[2][1] ,  \
+    tempA_mat33.mat[0][2] = (c)*(A).mat[0][2] ,  \
+    tempA_mat33.mat[1][2] = (c)*(A).mat[1][2] ,  \
+    tempA_mat33.mat[2][2] = (c)*(A).mat[2][2] , tempA_mat33 )
+
    /* matrix determinant */
 
 #define MAT_DET(A) \
@@ -213,6 +269,19 @@ static float tempRWC ;
   + (A).mat[1][0]*(A).mat[0][2]*(A).mat[2][1] \
   + (A).mat[2][0]*(A).mat[0][1]*(A).mat[1][2] \
   - (A).mat[2][0]*(A).mat[0][2]*(A).mat[1][1]   )
+
+   /* matrix norm [28 Aug 2002] */
+
+#define MAT_FNORM(A)                 \
+ sqrt( (A).mat[0][0]*(A).mat[0][0] + \
+       (A).mat[0][1]*(A).mat[0][1] + \
+       (A).mat[0][2]*(A).mat[0][2] + \
+       (A).mat[1][0]*(A).mat[1][0] + \
+       (A).mat[1][1]*(A).mat[1][1] + \
+       (A).mat[1][2]*(A).mat[1][2] + \
+       (A).mat[2][0]*(A).mat[2][0] + \
+       (A).mat[2][1]*(A).mat[2][1] + \
+       (A).mat[2][2]*(A).mat[2][2]  )
 
    /* matrix trace [5 Oct 1998] */
 
@@ -286,12 +355,12 @@ static float tempRWC ;
 #define LOAD_ROTY_MAT(A,th) LOAD_ROTGEN_MAT(A,th,1,2,0)
 #define LOAD_ROTZ_MAT(A,th) LOAD_ROTGEN_MAT(A,th,2,0,1)
 
-#define LOAD_ROT_MAT(A,th,i)                  \
-  do{ switch( (i) ){                          \
-        case 0: LOAD_ROTX_MAT(A,th) ; break ; \
-        case 1: LOAD_ROTY_MAT(A,th) ; break ; \
-        case 2: LOAD_ROTZ_MAT(A,th) ; break ; \
-       default: LOAD_ZERO_MAT(A)    ; break ; \
+#define LOAD_ROT_MAT(A,th,i)                    \
+  do{ switch( (i) ){                            \
+        case 0: LOAD_ROTX_MAT(A,th)   ; break ; \
+        case 1: LOAD_ROTY_MAT(A,th)   ; break ; \
+        case 2: LOAD_ROTZ_MAT(A,th)   ; break ; \
+       default: LOAD_DIAG_MAT(A,1,1,1); break ; \
       } } while(0)
 
    /* shear matrices [3 Oct 1998] */
@@ -400,6 +469,13 @@ static double dtempRWC ;
 
 #define DUMP_DVECMAT(str,vvmm) ( DUMP_DMAT33(str,vvmm.mm) , DUMP_DFVEC3(str,vvmm.vv) )
 
+  /*! Convert from dmat33 to mat33 (double to single precision) */
+
+#define DMAT_TO_MAT(D,M)                                    \
+ LOAD_MAT(M,(D).mat[0][0] , (D).mat[0][1] , (D).mat[0][2] , \
+            (D).mat[1][0] , (D).mat[1][1] , (D).mat[1][2] , \
+            (D).mat[2][0] , (D).mat[2][1] , (D).mat[2][2]  )
+
 /*--- macros for operations on floating 3 vectors,
       with heavy use of the comma operator and structure assignment! ---*/
 
@@ -488,28 +564,42 @@ static double dtempRWC ;
 
 #define VECSUB_DMAT(A,x,b) \
   ( tempA_dfvec3.xyz[0] = (A).mat[0][0] * ((x).xyz[0]-(b).xyz[0])  \
-                        +(A).mat[0][1] * ((x).xyz[1]-(b).xyz[1])  \
-                        +(A).mat[0][2] * ((x).xyz[2]-(b).xyz[2]) ,\
+                         +(A).mat[0][1] * ((x).xyz[1]-(b).xyz[1])  \
+                         +(A).mat[0][2] * ((x).xyz[2]-(b).xyz[2]) ,\
     tempA_dfvec3.xyz[1] = (A).mat[1][0] * ((x).xyz[0]-(b).xyz[0])  \
-                        +(A).mat[1][1] * ((x).xyz[1]-(b).xyz[1])  \
-                        +(A).mat[1][2] * ((x).xyz[2]-(b).xyz[2]) ,\
+                         +(A).mat[1][1] * ((x).xyz[1]-(b).xyz[1])  \
+                         +(A).mat[1][2] * ((x).xyz[2]-(b).xyz[2]) ,\
     tempA_dfvec3.xyz[2] = (A).mat[2][0] * ((x).xyz[0]-(b).xyz[0])  \
-                        +(A).mat[2][1] * ((x).xyz[1]-(b).xyz[1])  \
-                        +(A).mat[2][2] * ((x).xyz[2]-(b).xyz[2]) ,\
+                         +(A).mat[2][1] * ((x).xyz[1]-(b).xyz[1])  \
+                         +(A).mat[2][2] * ((x).xyz[2]-(b).xyz[2]) ,\
     tempA_dfvec3 )
 
    /* matrix vector multiply with subtract after: A x - b */
 
 #define DMATVEC_SUB(A,x,b) \
   ( tempA_dfvec3.xyz[0] = (A).mat[0][0] * (x).xyz[0]               \
-                        +(A).mat[0][1] * (x).xyz[1]               \
-                        +(A).mat[0][2] * (x).xyz[2] - (b).xyz[0] ,\
+                         +(A).mat[0][1] * (x).xyz[1]               \
+                         +(A).mat[0][2] * (x).xyz[2] - (b).xyz[0] ,\
     tempA_dfvec3.xyz[1] = (A).mat[1][0] * (x).xyz[0]               \
-                        +(A).mat[1][1] * (x).xyz[1]               \
-                        +(A).mat[1][2] * (x).xyz[2] - (b).xyz[1] ,\
+                         +(A).mat[1][1] * (x).xyz[1]               \
+                         +(A).mat[1][2] * (x).xyz[2] - (b).xyz[1] ,\
     tempA_dfvec3.xyz[2] = (A).mat[2][0] * (x).xyz[0]               \
-                        +(A).mat[2][1] * (x).xyz[1]               \
-                        +(A).mat[2][2] * (x).xyz[2] - (b).xyz[2] ,\
+                         +(A).mat[2][1] * (x).xyz[1]               \
+                         +(A).mat[2][2] * (x).xyz[2] - (b).xyz[2] ,\
+    tempA_dfvec3 )
+
+   /* matrix vector multiply with add after: A x + b */
+
+#define DMATVEC_ADD(A,x,b) \
+  ( tempA_dfvec3.xyz[0] = (A).mat[0][0] * (x).xyz[0]               \
+                         +(A).mat[0][1] * (x).xyz[1]               \
+                         +(A).mat[0][2] * (x).xyz[2] + (b).xyz[0] ,\
+    tempA_dfvec3.xyz[1] = (A).mat[1][0] * (x).xyz[0]               \
+                         +(A).mat[1][1] * (x).xyz[1]               \
+                         +(A).mat[1][2] * (x).xyz[2] + (b).xyz[1] ,\
+    tempA_dfvec3.xyz[2] = (A).mat[2][0] * (x).xyz[0]               \
+                         +(A).mat[2][1] * (x).xyz[1]               \
+                         +(A).mat[2][2] * (x).xyz[2] + (b).xyz[2] ,\
     tempA_dfvec3 )
 
   /* matrix-matrix multiply */
@@ -528,6 +618,17 @@ static double dtempRWC ;
     tempA_dmat33.mat[0][2] = ROW_DOT_COL((A),(B),0,2) , \
     tempA_dmat33.mat[1][2] = ROW_DOT_COL((A),(B),1,2) , \
     tempA_dmat33.mat[2][2] = ROW_DOT_COL((A),(B),2,2) , tempA_dmat33 )
+
+#define DMAT_SCALAR(A,c)                          \
+  ( tempA_dmat33.mat[0][0] = (c)*(A).mat[0][0] ,  \
+    tempA_dmat33.mat[1][0] = (c)*(A).mat[1][0] ,  \
+    tempA_dmat33.mat[2][0] = (c)*(A).mat[2][0] ,  \
+    tempA_dmat33.mat[0][1] = (c)*(A).mat[0][1] ,  \
+    tempA_dmat33.mat[1][1] = (c)*(A).mat[1][1] ,  \
+    tempA_dmat33.mat[2][1] = (c)*(A).mat[2][1] ,  \
+    tempA_dmat33.mat[0][2] = (c)*(A).mat[0][2] ,  \
+    tempA_dmat33.mat[1][2] = (c)*(A).mat[1][2] ,  \
+    tempA_dmat33.mat[2][2] = (c)*(A).mat[2][2] , tempA_dmat33 )
 
    /* matrix determinant */
 
@@ -694,8 +795,26 @@ static THD_dvecmat tempA_dvm33 ;
    /* [y] = [R][x] + [v]       is transformation, so     */
    /* [x] = inv[R] - inv[R][v] is inverse transformation */
 
-#define INV_DVECMAT(A) ( tempA_dvm33.mm = DMAT_INV((A).mm) ,               \
-                         tempA_dvm33.vv = DMATVEC(tempA_dvm33.mm,(A).vv) , \
-                         NEGATE_DFVEC3(tempA_dvm33.vv) , tempA_dvm33        )
+#define INV_DVECMAT(A) ( tempA_dvm33.mm = DMAT_INV((A).mm) ,                \
+                         tempA_dvm33.vv = DMATVEC(tempA_dvm33.mm,(A).vv) ,  \
+                         NEGATE_DFVEC3(tempA_dvm33.vv) , tempA_dvm33       )
+
+    /* same for single precision stuctures */
+
+static THD_vecmat  tempA_vm33 ;
+
+#define MUL_VECMAT(A,B)                                          \
+  ( tempA_vm33.mm = MAT_MUL((A).mm,(B).mm) ,                     \
+    tempB_fvec3   = MATVEC((A).mm,(B).vv) ,                      \
+    tempA_vm33.vv = ADD_FVEC3(tempB_fvec3,(A).vv) , tempA_vm33 )
+
+#define INV_VECMAT(A) ( tempA_vm33.mm = MAT_INV((A).mm) ,                \
+                        tempA_vm33.vv = MATVEC(tempA_vm33.mm,(A).vv) ,   \
+                        NEGATE_FVEC3(tempA_vm33.vv) , tempA_vm33       )
+
+    /* apply a vecmat to a vector */
+
+#define VECMAT_VEC(A,x)   MATVEC_ADD( (A).mm , (x) , (A).vv )
+#define DVECMAT_VEC(A,x) DMATVEC_ADD( (A).mm , (x) , (A).vv )
 
 #endif /* _MCW_3DVECMAT_ */

@@ -5,6 +5,7 @@
 ******************************************************************************/
 
 #include "xim.h"
+#include "xutil.h"
 
 /*********************************************************************/
 /***** 22 Aug 1998: modified to allow for 3 and 4 byte visuals,  *****/
@@ -14,6 +15,8 @@
 /*********************************************************************/
 
 /*------------------------------------------------------------------------*/
+/*! Free an XImage created by mri_to_XImage() or its kin.
+--------------------------------------------------------------------------*/
 
 void MCW_kill_XImage( XImage * image )
 {
@@ -27,10 +30,10 @@ ENTRY("MCW_kill_XImage") ;
    EXRETURN ;
 }
 
-/*-------------------------------------------------------------------------
-  Create an XImage from an MRI_IMAGE of shorts:
-    values >= 0 draw from the "image" palette
-    values <  0 draw from the "overlay" palette
+/*-------------------------------------------------------------------------*/
+/*! Create an XImage from an MRI_IMAGE of shorts or rgbs:
+    - values >= 0 draw from the "image" palette
+    - values <  0 draw from the "overlay" palette (stored in dc)
 ---------------------------------------------------------------------------*/
 
 XImage * mri_to_XImage( MCW_DC * dc , MRI_IMAGE * im )
@@ -188,10 +191,10 @@ ENTRY("mri_to_XImage") ;
    RETURN( ximage ) ;
 }
 
-/*--------------------------------------------------------------------------
-   Input:  an XImage of one size
-   Output: an XImage of another size
-   method: nearest neighbor resampling
+/*--------------------------------------------------------------------------*/
+/*! - Input:  an XImage of one size
+    - Output: an XImage of another size
+    - method: nearest neighbor resampling
 ----------------------------------------------------------------------------*/
 
 XImage * resize_XImage( MCW_DC * dc , XImage * image ,
@@ -332,15 +335,15 @@ ENTRY("resize_XImage") ;
    RETURN( emage ) ;
 }
 
-/*---------------------------------------------------------------------------
-   input  = XImage (with Pixel values from dc)
-   output = RGB or Grayscale image
-   code   = mask of values indicating optional processing:
+/*---------------------------------------------------------------------------*/
+/*! - input  = XImage (with Pixel values from dc)
+    - output = RGB or Grayscale image
+    - code   = mask of values indicating optional processing:
 
-            (code & X2M_USE_CMAP) != 0 means use the entire colormap
+          - (code & X2M_USE_CMAP) != 0 means use the entire colormap
                                   == 0 means use only Pixels in dc
 
-            (code & X2M_FORCE_RGB)!= 0 means output is always RGB format
+          - (code & X2M_FORCE_RGB)!= 0 means output is always RGB format
                                   == 0 means output might be byte format
                                        (grayscale) if all pixels are gray
 -----------------------------------------------------------------------------*/
@@ -493,12 +496,12 @@ fprintf(stderr,
    RETURN( outim ) ;
 }
 
-/*-----------------------------------------------------------------------
-   Convert an array of X11 Pixel values to an XImage for display.
-   Adapted from mri_to_XImage by RWCox -- 11 Feb 1999
+/*-----------------------------------------------------------------------*/
+/*  Convert an array of X11 Pixel values to an XImage for display.
+    Adapted from mri_to_XImage by RWCox -- 11 Feb 1999
 -------------------------------------------------------------------------*/
 
-extern XImage * pixar_to_XImage( MCW_DC * dc, int nx, int ny, Pixel * par )
+XImage * pixar_to_XImage( MCW_DC * dc, int nx, int ny, Pixel * par )
 {
    int  w2, width, height , border ;
    unsigned char * Image ;
@@ -594,20 +597,78 @@ ENTRY("pixar_to_XImage") ;
    RETURN( ximage ) ;
 }
 
-/*----------------------------------------------------------------------------
-   Convert an MRI_IMAGE of rgb bytes to an XImage
+/*-------------------------------------------------------------------*/
+#undef INLINE
+#ifdef __GNUC__
+# define INLINE inline
+#else
+# define INLINE /*nada*/
+#endif
+/*-------------------------------------------------------------------*/
+/*! Local copy of function from display.c, hopefully for speed.
+---------------------------------------------------------------------*/
+
+static INLINE Pixel tc_rgb_to_pixel( MCW_DC * dc, byte rr, byte gg, byte bb )
+{
+   static MCW_DC * dcold=NULL ;
+   DC_colordef * cd = dc->cdef ;
+   static unsigned long pold=0 ;
+   static byte rold=0 , gold=0 , bold=0 ;
+   unsigned long r , g , b ;
+
+   if( cd == NULL ){ reload_DC_colordef(dc) ; cd = dc->cdef ; }
+
+   if( rr == 0   && gg == 0   && bb == 0   ) return 0 ;          /* common */
+   if( rr == 255 && gg == 255 && bb == 255 ) return cd->whpix ;  /* cases  */
+
+   if( dc == dcold && rr == rold && gg == gold && bb == bold ) /* Remembrance of Things Past? */
+      return (Pixel) pold ;
+
+   rold = rr ; gold = gg ; bold = bb ; dcold = dc ;            /* OK, remember for next time */
+
+   r = (cd->rrshift<0) ? (rr<<(-cd->rrshift))
+                       : (rr>>cd->rrshift)   ; r = r & cd->rrmask ;
+
+   g = (cd->ggshift<0) ? (gg<<(-cd->ggshift))
+                       : (gg>>cd->ggshift)   ; g = g & cd->ggmask ;
+
+   b = (cd->bbshift<0) ? (bb<<(-cd->bbshift))
+                       : (bb>>cd->bbshift)   ; b = b & cd->bbmask ;
+
+   pold = r | g | b ;  /* assemble color from components */
+   return (Pixel) pold ;
+}
+
+/*----------------------------------------------------------------------------*/
+
+static XImage * rgb_to_XImage_simple( MCW_DC *, MRI_IMAGE * ) ;
+static XImage * rgb_to_XImage_clever( MCW_DC *, MRI_IMAGE * ) ;
+
+/*----------------------------------------------------------------------------*/
+/*! Convert an MRI_IMAGE of rgb values to an XImage for display.
 ------------------------------------------------------------------------------*/
 
-#undef BRUTE_FORCE
-#ifdef BRUTE_FORCE
 XImage * rgb_to_XImage( MCW_DC * dc , MRI_IMAGE * im )
+{
+   switch( dc->visual_class ){
+     case TrueColor:   return rgb_to_XImage_simple(dc,im) ;
+     case PseudoColor: return rgb_to_XImage_clever(dc,im) ;
+   }
+   return NULL ;
+}
+
+/*----------------------------------------------------------------------------*/
+/*! Convert an MRI_IMAGE of rgb bytes to an XImage (TrueColor visual only)
+------------------------------------------------------------------------------*/
+
+static XImage * rgb_to_XImage_simple( MCW_DC * dc , MRI_IMAGE * im )
 {
    int nxy , ii ;
    byte * rgb ;
    Pixel * par ;
    XImage * xim ;
 
-ENTRY("rgb_to_XImage") ;
+ENTRY("rgb_to_XImage_simple") ;
 
    /*-- sanity check --*/
 
@@ -616,27 +677,29 @@ ENTRY("rgb_to_XImage") ;
    nxy = im->nx * im->ny ;
    rgb = MRI_RGB_PTR(im) ;
 
-   par = (Pixel *) malloc( sizeof(Pixel) * nxy ) ; if( par == NULL ) RETURN( NULL ) ;
+   par = (Pixel *) malloc(sizeof(Pixel)*nxy); if( par == NULL ) RETURN(NULL) ;
 
    for( ii=0 ; ii < nxy ; ii++ )
-      par[ii] = DC_rgb_to_pixel( dc , rgb[3*ii], rgb[3*ii+1], rgb[3*ii+2] ) ;
+     par[ii] = tc_rgb_to_pixel( dc , rgb[3*ii], rgb[3*ii+1], rgb[3*ii+2] ) ;
 
    xim = pixar_to_XImage( dc , im->nx , im->ny , par ) ;
 
    free(par) ; RETURN( xim ) ;
 }
 
-#else /* not BRUTE_FORCE */
+/*-----------------------------------------------------------------------*/
+/*! Convert an MRI_IMAGE of rgb bytes to an XImage (general visual)
+-------------------------------------------------------------------------*/
 
-XImage * rgb_to_XImage( MCW_DC * dc , MRI_IMAGE * im )
+static XImage * rgb_to_XImage_clever( MCW_DC * dc , MRI_IMAGE * im )
 {
    int nxy , ii , c ;
    byte * rgb , r,g,b ;
-   Pixel * par , p ;
+   Pixel * par , p=0 ;
    XImage * xim ;
    int * col_ar , * ii_ar ;
 
-ENTRY("rgb_to_XImage") ;
+ENTRY("rgb_to_XImage_clever") ;
 
    /*-- sanity check --*/
 
@@ -677,4 +740,120 @@ ENTRY("rgb_to_XImage") ;
 
    free(par) ; RETURN( xim ) ;
 }
-#endif /* BRUTE_FORCE */
+
+/**************************************************************************/
+/********** 26 Jun 2003: stuff for snapping a Widget to an image **********/
+
+static int     badsnap = 0 ;
+static MCW_DC *snap_dc = NULL ;
+
+/*! X11 error handler for when XGetImage fails. */
+
+static int SNAP_errhandler( Display *d , XErrorEvent *x )
+{
+  fprintf(stderr,"** X11 error trying to snapshot window!\n");
+  badsnap = 1 ; return 0 ;
+}
+
+/*--------------------------------------------------------------*/
+/*! Grab the image from a widget's window.  [20 Jun 2003]
+----------------------------------------------------------------*/
+
+MRI_IMAGE * SNAP_grab_image( Widget w , MCW_DC *dc )
+{
+   XImage * xim ;
+   MRI_IMAGE * tim ;
+   Window win ;
+   Widget wpar=w ;
+   XWindowAttributes wa ;
+   int (*old_handler)(Display *, XErrorEvent *) ;
+
+ENTRY("SNAP_grab_image") ;
+
+   if( dc == NULL )                          RETURN(NULL) ;
+
+   if( w == NULL ){
+     win = RootWindow( dc->display , dc->screen_num ) ;
+   } else {
+     if( !XtIsWidget(w)   ||
+         !XtIsRealized(w) ||
+         !XtIsManaged(w)    )                RETURN(NULL) ;
+     win = XtWindow(w) ;
+     if( win == (Window)0 )                  RETURN(NULL) ;
+
+     while( XtParent(wpar) != NULL ) wpar = XtParent(wpar) ;  /* find top */
+
+     /*** Raise the window and SUMA will redisplay
+          entering an infernal loop. ZSS Mon Jun 30/03 ***/
+#if 0
+     XRaiseWindow( dc->display , XtWindow(wpar) ) ;    /* make it visible */
+#endif
+     XFlush( dc->display ) ;
+     XmUpdateDisplay( w ) ;
+     if( !MCW_widget_visible(w) )            RETURN(NULL) ;
+   }
+
+   RWC_sleep(20) ;                                       /* allow refresh */
+   XGetWindowAttributes( dc->display , win , &wa ) ;      /* get win size */
+   xim = NULL ; badsnap = 0 ;
+   old_handler = XSetErrorHandler( SNAP_errhandler ) ;
+   xim = XGetImage( dc->display , win ,
+                    0,0 , wa.width,wa.height,
+                    (unsigned long)(-1), ZPixmap ) ;
+   (void) XSetErrorHandler( old_handler ) ;
+   if( badsnap ){
+     if( xim != NULL ) MCW_kill_XImage(xim) ;
+     RETURN(NULL) ;
+   }
+   if( xim == NULL ) RETURN(NULL) ;
+
+   tim = XImage_to_mri( dc , xim , X2M_USE_CMAP | X2M_FORCE_RGB ) ;
+   MCW_kill_XImage(xim) ;
+   RETURN(tim) ;
+}
+
+/*----------------------------------------------------------------------*/
+/*! Call this function to get a snapshot of a widget and save
+    it into a PPM file.
+------------------------------------------------------------------------*/
+
+void ISQ_snapfile( Widget w )
+{
+   MRI_IMAGE *tim ;
+   Window win ;
+   char fname[64] , *eee , prefix[32] ;
+   int ii ; static int last_ii=1 ;
+
+ENTRY("ISQ_snapfile") ;
+
+   if( w == NULL || !XtIsWidget(w) )         EXRETURN ;
+   if( !XtIsRealized(w) || !XtIsManaged(w) ) EXRETURN ;
+   win = XtWindow(w); if( win == (Window)0 ) EXRETURN ;
+
+   /* create display context if we don't have one */
+
+   if( snap_dc == NULL ){
+     if( first_dc != NULL ) snap_dc = first_dc ;
+     else                   snap_dc = MCW_new_DC( w, 4,0, NULL,NULL, 1.0,0 );
+   }
+
+   /* try to get image */
+
+   tim = SNAP_grab_image( w , snap_dc ) ;
+   if( tim == NULL )                         EXRETURN ;
+
+   eee = getenv("AFNI_SNAPFILE_PREFIX") ;
+   if( eee == NULL ){
+     strcpy(prefix,"S_") ;
+   } else {
+     strncpy(prefix,eee,30) ; prefix[30] = '\0' ; strcat(prefix,"_") ;
+     if( !THD_filename_ok(prefix) ) strcpy(prefix,"S_") ;
+   }
+   for( ii=last_ii ; ii <= 999999 ; ii++ ){
+     sprintf(fname,"%s%06d.ppm",prefix,ii) ;
+     if( ! THD_is_ondisk(fname) ) break ;
+   }
+   if( ii <= 999999 ) mri_write_pnm( fname , tim ) ;
+   mri_free(tim) ; last_ii = ii ;
+   EXRETURN ;
+}

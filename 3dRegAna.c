@@ -46,6 +46,12 @@
   Mod:     Added call to AFNI_logger.
   Date:    15 August 2001
 
+  Mod:     Modified routine write_afni_data so that all output
+           subbricks will now have the scaled short integer format.
+  Date:    14 March 2002
+
+  Mod:     Set MAX_NAME_LENGTH equal to THD_MAX_NAME.
+  Date:    02 December 2002
 */
 
 /*---------------------------------------------------------------------------*/
@@ -53,7 +59,7 @@
 #define PROGRAM_NAME    "3dRegAna"                   /* name of this program */
 #define PROGRAM_AUTHOR  "B. Douglas Ward"                  /* program author */
 #define PROGRAM_INITIAL "10 Oct 1997"     /* date of initial program release */
-#define PROGRAM_LATEST  "15 Aug 2001"     /* date of latest program revision */
+#define PROGRAM_LATEST  "02 Dec 2002"     /* date of latest program revision */
 
 /*---------------------------------------------------------------------------*/
 
@@ -108,7 +114,7 @@
 
 #define MAX_XVARS 101            /* max. number of independent variables */
 #define MAX_OBSERVATIONS 1000    /* max. number of input datasets */
-#define MAX_NAME_LENGTH 80       /* max. streng length for file names */ 
+#define MAX_NAME_LENGTH THD_MAX_NAME   /* max. string length for file names */ 
 #define MEGA  1048576            /* one megabyte */
 
 static char * commandline = NULL ;       /* command line for history notes */
@@ -2538,7 +2544,6 @@ void write_afni_data
   int ii;                             /* voxel index */
   THD_3dim_dataset * dset=NULL;       /* input afni data set pointer */
   THD_3dim_dataset * new_dset=NULL;   /* output afni data set pointer */
-  int iv;                             /* sub-brick index */ 
   int ierror;                         /* number of errors in editing data */
   int ibuf[32];                       /* integer buffer */
   float fbuf[MAX_STAT_AUX];           /* float buffer */
@@ -2574,15 +2579,8 @@ void write_afni_data
   else
      tross_Append_History ( new_dset, label);
   
-  iv = DSET_PRINCIPAL_VALUE(dset) ;
-  if( option_data->datum >= 0 ){
-    output_datum = option_data->datum ;
-  } else {
-    output_datum = DSET_BRICK_TYPE(dset,iv) ;
-    if( output_datum == MRI_byte ) output_datum = MRI_short ;
-  }
-  
-  
+
+  output_datum = MRI_short ;
   ibuf[0] = output_datum ; ibuf[1] = MRI_short ;
   
   

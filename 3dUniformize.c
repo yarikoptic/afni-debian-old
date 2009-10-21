@@ -22,7 +22,7 @@
 #define PROGRAM_NAME "3dUniformize"                  /* name of this program */
 #define PROGRAM_AUTHOR "B. D. Ward"                        /* program author */
 #define PROGRAM_INITIAL "28 January 2000" /* date of initial program release */
-#define PROGRAM_LATEST  "15 August 2001"  /* date of latest program revision */
+#define PROGRAM_LATEST  "16 April 2003"   /* date of latest program revision */
 
 /*---------------------------------------------------------------------------*/
 /*
@@ -42,6 +42,10 @@
 
 static THD_3dim_dataset * anat_dset = NULL;     /* input anatomical dataset  */
 char * commandline = NULL ;                /* command line for history notes */
+
+int input_datum = MRI_short ;              /* 16 Apr 2003 - RWCox */
+int quiet       = 0 ;                      /* ditto */
+#define USE_QUIET
  
 typedef struct UN_options
 { 
@@ -192,6 +196,31 @@ void get_options
 	      UN_error (message); 
 	    }
 
+          /** RWCox [16 Apr 2003]
+              If input is a byte dataset, make a short copy of it. **/
+
+          if( DSET_BRICK_TYPE(anat_dset,0) == MRI_byte ){
+
+            THD_3dim_dataset *qset ;
+            register byte *bar ; register short *sar ;
+            register int ii,nvox ;
+
+            fprintf(stderr,"++ WARNING: converting input dataset from byte to short\n") ;
+            qset = EDIT_empty_copy(anat_dset) ;
+            nvox = DSET_NVOX(anat_dset) ;
+            bar  = (byte *) DSET_ARRAY(anat_dset,0) ;
+            sar  = (short *)malloc(sizeof(short)*nvox) ;
+            for( ii=0 ; ii < nvox ; ii++ ) sar[ii] = (short) bar[ii] ;
+            EDIT_substitute_brick( qset , 0 , MRI_short , sar ) ;
+            DSET_delete(anat_dset) ; anat_dset = qset ; input_datum = MRI_byte ;
+
+          } else if ( DSET_BRICK_TYPE(anat_dset,0) != MRI_short ){
+
+            fprintf(stderr,"** ERROR: input dataset not short or byte type!\n") ;
+            exit(1) ;
+
+          }
+
 	  nopt++;
 	  continue;
 	}
@@ -201,6 +230,7 @@ void get_options
       if (strncmp(argv[nopt], "-quiet", 6) == 0)
 	{
 	  option_data->quiet = TRUE;
+          quiet = 1 ;                /* 16 Apr 2003 */
 	  nopt++;
 	  continue;
 	}
@@ -752,8 +782,11 @@ void estimate_field (UN_options * option_data,
   /*----- Estimate pdf for resampled data -----*/
   PDF_initialize (&p);
   PDF_float_to_pdf (rpts, vr, nbin, &p);
-  sprintf (filename, "p%d.1D", iter);
-  PDF_write_file (filename, p);
+
+  if( !quiet ){
+   sprintf (filename, "p%d.1D", iter);
+   PDF_write_file (filename, p);
+  }
 
 
   /*----- Estimate gross field distortion -----*/
@@ -772,13 +805,17 @@ void estimate_field (UN_options * option_data,
       /*----- Estimate pdf for perturbed image ur -----*/
       estpdf_float (rpts, ur, nbin, parameters);
       PDF_sprint ("p", p);
-      sprintf (filename, "p%d.1D", iter);
-      PDF_write_file (filename, p);
+      if( !quiet ){
+       sprintf (filename, "p%d.1D", iter);
+       PDF_write_file (filename, p);
+      }
 
       /*----- Sharpen the pdf and produce modified image wr -----*/
       create_map (p, parameters, vtou);
-      sprintf (filename, "vtou%d.1D", iter);
-      ts_write (filename, p.nbin, vtou);
+      if( !quiet ){
+       sprintf (filename, "vtou%d.1D", iter);
+       ts_write (filename, p.nbin, vtou);
+      }
       map_vtou (p, rpts, ur, vtou, wr);
 
       /*----- Estimate smooth distortion field fs -----*/
@@ -928,6 +965,7 @@ void write_afni_data
   float fimfac;                       /* scale factor for short data */
   int output_datum;                   /* data type for output data */
   char * filename;                    /* prefix filename for output */
+  byte *bfim = NULL ;                 /* 16 Apr 2003 */
 
 
   /*----- initialize local variables -----*/
@@ -948,9 +986,28 @@ void write_afni_data
   /*----- deallocate memory -----*/   
   THD_delete_3dim_dataset (anat_dset, False);   anat_dset = NULL ;
 
+  /*-- 16 Apr 2003 - RWCox:
+       see if we can convert output back to bytes, if input was bytes --*/
 
-  output_datum = MRI_short ;
-  
+  output_datum = MRI_short ;             /* default, in sfim */
+
+  if( input_datum == MRI_byte ){         /* if input was byte */
+    short stop = sfim[0] ;
+    for( ii=1 ; ii < nxyz ; ii++ )
+      if( sfim[ii] > stop ) stop = sfim[ii] ;
+    output_datum = MRI_byte ;
+    bfim = malloc(sizeof(byte)*nxyz) ;
+    if( stop <= 255 ){                   /* output fits into byte range */
+      for( ii=0 ; ii < nxyz ; ii++ ) bfim[ii] = (byte) sfim[ii] ;
+    } else {                             /* must scale output down */
+      float sfac = 255.9 / stop ;
+      fprintf(stderr,"++ WARNING: scaling by %g back down to byte data\n",sfac);
+      for( ii=0 ; ii < nxyz ; ii++ ) bfim[ii] = (byte)(sfim[ii]*sfac) ;
+    }
+    free(sfim) ;
+  }
+ 
+  /*-- we now return control to your regular programming --*/ 
   ibuf[0] = output_datum ;
   
   ierror = EDIT_dset_items( new_dset ,
@@ -979,15 +1036,20 @@ void write_afni_data
   
   
   /*----- attach bricks to new data set -----*/
-  mri_fix_data_pointer (sfim, DSET_BRICK(new_dset,0)); 
+
+  if( output_datum == MRI_short )
+    mri_fix_data_pointer (sfim, DSET_BRICK(new_dset,0)); 
+  else if( output_datum == MRI_byte )
+    mri_fix_data_pointer (bfim, DSET_BRICK(new_dset,0));    /* 16 Apr 2003 */
+
   fimfac = 1.0;
-  
 
   /*----- write afni data set -----*/
-  if (!0)
+  if (!quiet)
     {
       printf ("\nWriting anatomical dataset: ");
       printf("%s\n", new_dset->dblk->diskptr->header_name) ;
+      printf("data type = %s\n",MRI_TYPE_name[output_datum]) ;
     }
 
 
@@ -1021,13 +1083,21 @@ int main
   short * sfim = NULL;                 /* output uniformized image */
 
 
+  { int ii ;                           /* 16 Apr 2003 */
+    for( ii=1 ; ii < argc ; ii++ ){
+      if( strcmp(argv[ii],"-quiet") == 0 ){ quiet = 1; break; }
+    }
+  }
+
   /*----- Identify software -----*/
-  printf ("\n\n");
-  printf ("Program: %s \n", PROGRAM_NAME);
-  printf ("Author:  %s \n", PROGRAM_AUTHOR);
-  printf ("Initial Release:  %s \n", PROGRAM_INITIAL);
-  printf ("Latest Revision:  %s \n", PROGRAM_LATEST);
-  printf ("\n");
+  if( !quiet ){
+   printf ("\n\n");
+   printf ("Program: %s \n", PROGRAM_NAME);
+   printf ("Author:  %s \n", PROGRAM_AUTHOR);
+   printf ("Initial Release:  %s \n", PROGRAM_INITIAL);
+   printf ("Latest Revision:  %s \n", PROGRAM_LATEST);
+   printf ("\n");
+  }
 
   
   /*----- Program initialization -----*/

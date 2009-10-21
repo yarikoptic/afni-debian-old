@@ -7,6 +7,10 @@
 #include "mrilib.h"
 #include "thd.h"
 
+static int use_3D_format = 0 ;
+
+void THD_use_3D_format( int uu ){ use_3D_format = uu; }
+
 /*----------------------------------------------------------------
    this routine writes all the data from the dataset into the
    datablock attributes, then writes the datablock to disk
@@ -32,15 +36,32 @@ Boolean THD_write_3dim_dataset( char * new_sessname , char * new_prefixname ,
    int itemp[IFILL_DIM] , ii ;
    float ftemp[FFILL_DIM] ;
 
+ENTRY("THD_write_3dim_dataset") ;
+
    /*-- sanity checks --*/
 
    if( ! ISVALID_3DIM_DATASET(dset)    ||
        ! ISVALID_DATABLOCK(dset->dblk) ||
-       ! ISVALID_DISKPTR(dset->dblk->diskptr) ) return False ;
+       ! ISVALID_DISKPTR(dset->dblk->diskptr) ) RETURN(False) ;
 
-   if( DSET_IS_MINC(dset) ) return False ;      /* 29 Oct 2001 */
+   /* Can only write AFNI formatted datasets */
 
-   if( DSET_IS_MASTERED(dset) ) return False ;  /* 11 Jan 1999 */
+   if( DSET_IS_MINC(dset)     ) RETURN(False) ;  /* 29 Oct 2001 */
+   if( DSET_IS_MASTERED(dset) ) RETURN(False) ;  /* 11 Jan 1999 */
+   if( DSET_IS_ANALYZE(dset)  ) RETURN(False) ;  /* 27 Aug 2002 */
+   if( DSET_IS_NIFTI(dset)    ) RETURN(False) ;  /* 28 Aug 2003 */
+   if( DSET_IS_CTFMRI(dset)   ) RETURN(False) ;  /* 05 Dec 2002 */
+   if( DSET_IS_CTFSAM(dset)   ) RETURN(False) ;  /* 05 Dec 2002 */
+   if( DSET_IS_TCAT(dset)     ) RETURN(False) ;  /* 05 Aug 2004 */
+
+   if( DSET_IS_VOLUMES(dset) && write_brick ) RETURN(False) ;  /* 20 Jun 2002 */
+
+   if( DSET_IS_1D(dset) ||
+       ( DSET_NY(dset)==1 && DSET_NZ(dset)==1 ) ){            /* 04 Mar 2003 */
+
+     THD_write_1D( new_sessname , new_prefixname , dset ) ;
+     RETURN(True) ;
+   }
 
    blk = dset->dblk ; daxes = dset->daxes ;  /* always used fixed daxes */
 
@@ -56,7 +77,6 @@ Boolean THD_write_3dim_dataset( char * new_sessname , char * new_prefixname ,
    THD_set_string_atr( blk , ATRNAME_TYPESTRING ,
                        DATASET_typestr[dset->type] ) ;
 
-#ifndef OMIT_DATASET_IDCODES
    /*----- write IDCODE attributes -----*/
 
    THD_set_string_atr( blk , ATRNAME_IDSTRING , dset->idcode.str ) ;
@@ -71,7 +91,6 @@ Boolean THD_write_3dim_dataset( char * new_sessname , char * new_prefixname ,
       THD_set_string_atr( blk , ATRNAME_IDWARPPAR , dset->warp_parent_idcode.str ) ;
    else
       THD_erase_one_atr( blk , ATRNAME_IDWARPPAR ) ;
-#endif
 
    /*----- write SCENE_TYPE attribute -----*/
 
@@ -344,16 +363,11 @@ Boolean THD_write_3dim_dataset( char * new_sessname , char * new_prefixname ,
 #undef NFPER
 #undef TF
 
-#if 0
-   /*******************************************************/
-   /*----- all attributes now set; change filenames? -----*/
-
-   THD_init_diskptr_names( blk->diskptr ,
-                           new_sessname , NULL , new_prefixname ,
-                           dset->view_type , True ) ;
-#endif
+   if( DSET_IS_3D(dset) || use_3D_format ){                   /* 21 Mar 2003 */
+     THD_write_3D( NULL, NULL, dset ) ; RETURN(True) ;
+   }
 
    /*----- write datablock to disk -----*/
 
-   return THD_write_datablock( blk , write_brick ) ;
+   RETURN( THD_write_datablock(blk,write_brick) ) ;
 }

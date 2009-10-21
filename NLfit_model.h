@@ -29,6 +29,14 @@
 #include <math.h>
 #include "mrilib.h"
 
+#if defined(__cplusplus) || defined(c_plusplus)
+# define DEFINE_MODEL_PROTOTYPE \
+  extern "C" { MODEL_interface * initialize_model() ; }
+#else
+# define DEFINE_MODEL_PROTOTYPE
+#endif
+
+
 struct NLFIT_MODEL_array ; /* incomplete definition */
 
 /*******************************************************************
@@ -54,13 +62,20 @@ typedef char * cptr_func() ; /* generic function returning char *  */
 /***************** The dlfcn.h and dl library ****************/
 
 #ifdef DYNAMIC_LOADING_VIA_DL
+
+#ifndef DARWIN
 #  include <dlfcn.h>
+#else
+#  include "dlcompat/dlfcn.h"
+#endif
    typedef void * DYNAMIC_handle ;
 
 #  define ISVALID_DYNAMIC_handle(handle) ((handle) != (DYNAMIC_handle) 0)
 
 #  define DYNAMIC_OPEN(libname,handle) \
       (handle) = dlopen( (libname) , RTLD_LAZY )
+
+#  define DYNAMIC_ERROR_STRING  dlerror()  /* 18 May 2001 */
 
 #  define DYNAMIC_CLOSE(handle) \
       (void) dlclose( (handle) )
@@ -81,6 +96,8 @@ typedef char * cptr_func() ; /* generic function returning char *  */
 
 #  define DYNAMIC_OPEN(libname,handle) \
       (handle) = shl_load( (libname) , BIND_DEFERRED , 0L )
+
+#  define DYNAMIC_ERROR_STRING strerror(errno) /* 18 May 2001 */
 
 #  define DYNAMIC_CLOSE(handle) \
       (void) shl_unload( (handle) )

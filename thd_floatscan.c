@@ -3,30 +3,18 @@
    of Wisconsin, 1994-2000, and are released under the Gnu General Public
    License, Version 2.  See the file README.Copyright for details.
 ******************************************************************************/
-   
+
 #include <math.h>
 #include <stdlib.h>
 
-#if defined(SUN) || defined(SOLARIS) || defined(SGI)
-# include <ieeefp.h>
-# define USE_ISNANF
-#endif
-
-#if defined(HP) || defined(OSF1) || defined(LINUX)
-# define USE_ISNANF
-# define USE_FINITEF
-#endif
-
-#ifdef USE_ISNANF
-# define IS_NAN(x) isnanf(x)
+#ifdef isfinite
+# define IS_GOOD_FLOAT(x) isfinite(x) /* 28 Aug 2003: use C99 macro if exists */
 #else
-# define IS_NAN(x) isnan(x)
+# define IS_GOOD_FLOAT(x) finite(x)
 #endif
 
-#ifdef USE_FINITEF
-# define IS_FINITE(x) finitef(x)
-#else
-# define IS_FINITE(x) finite(x)
+#if 0
+# define IS_GOOD_FLOAT(x) isnan(x)
 #endif
 
 /*---------------------------------------------------------------------
@@ -41,7 +29,7 @@ int thd_floatscan( int nbuf , float * fbuf )
    if( nbuf <= 0 || fbuf == NULL ) return 0 ;
 
    for( nerr=ii=0 ; ii < nbuf ; ii++ ){
-      if( ! IS_FINITE(fbuf[ii]) ){ fbuf[ii] = 0.0 ; nerr++ ; }
+      if( !IS_GOOD_FLOAT(fbuf[ii]) ){ fbuf[ii] = 0.0 ; nerr++ ; }
    }
 
    return nerr ;
@@ -56,8 +44,8 @@ int thd_complexscan( int nbuf , complex * cbuf )
    if( nbuf <= 0 || cbuf == NULL ) return 0 ;
 
    for( nerr=ii=0 ; ii < nbuf ; ii++ ){
-      if( ! IS_FINITE(cbuf[ii].r) ){ cbuf[ii].r = 0.0 ; nerr++ ; }
-      if( ! IS_FINITE(cbuf[ii].i) ){ cbuf[ii].i = 0.0 ; nerr++ ; }
+      if( !IS_GOOD_FLOAT(cbuf[ii].r) ){ cbuf[ii].r = 0.0 ; nerr++ ; }
+      if( !IS_GOOD_FLOAT(cbuf[ii].i) ){ cbuf[ii].i = 0.0 ; nerr++ ; }
    }
 
    return nerr ;

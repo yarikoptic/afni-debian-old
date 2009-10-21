@@ -19,7 +19,15 @@
            to allow operator selection of individual sub-bricks for input.
   Date:    03 December 1999
 
+  Mod:     Added call to AFNI_logger.
+  Date:    14 March 2002
 
+  Mod:     Modified routine write_afni_fict of NPstats.c so that all output 
+           subbricks will now have the scaled short integer format.
+  Date:    14 March 2002
+
+  Mod:     Set MAX_NAME_LENGTH equal to THD_MAX_NAME.
+  Date:    02 December 2002
 */
 
 
@@ -27,18 +35,19 @@
 
 #define PROGRAM_NAME "3dFriedman"                    /* name of this program */
 #define PROGRAM_AUTHOR "B. Douglas Ward"                   /* program author */
-#define PROGRAM_DATE "03 December 1999"          /* date of last program mod */
+#define PROGRAM_INITIAL "23 July 1997"    /* date of initial program release */
+#define PROGRAM_LATEST "02 December 2002" /* date of latest program revision */
 
-
-#define MAX_TREATMENTS 100     /* max. number of treatments */
-#define MAX_OBSERVATIONS 100   /* max. number of observations per treatment */
-#define MAX_NAME_LENGTH 80     /* max. strength length for file names */ 
-#define MEGA  1048576          /* one megabyte */
-
+/*---------------------------------------------------------------------------*/
 
 #include <stdio.h>
 #include <math.h>
 #include "mrilib.h"
+
+#define MAX_TREATMENTS 100     /* max. number of treatments */
+#define MAX_OBSERVATIONS 100   /* max. number of observations per treatment */
+#define MAX_NAME_LENGTH THD_MAX_NAME   /* max. string length for file names */ 
+#define MEGA  1048576          /* one megabyte */
 
 
 typedef struct NP_options
@@ -170,6 +179,11 @@ void get_options (int argc, char ** argv, NP_options * option_data)
 
   /*----- does user request help menu? -----*/
   if (argc < 2 || strncmp(argv[1], "-help", 5) == 0)  display_help_menu();
+
+  
+  /*----- add to program log -----*/
+  AFNI_logger (PROGRAM_NAME,argc,argv); 
+
 
   /*----- initialize the input options -----*/
   initialize_options (option_data);
@@ -797,8 +811,10 @@ int main (int argc, char ** argv)
   printf ("\n\n");
   printf ("Program: %s \n", PROGRAM_NAME);
   printf ("Author:  %s \n", PROGRAM_AUTHOR); 
-  printf ("Date:    %s \n", PROGRAM_DATE);
+  printf ("Initial Release:  %s \n", PROGRAM_INITIAL);
+  printf ("Latest Revision:  %s \n", PROGRAM_LATEST);
   printf ("\n");
+
 
    /*-- 20 Apr 2001: addto the arglist, if user wants to [RWCox] --*/
 

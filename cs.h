@@ -34,6 +34,8 @@ extern void  qmedmad_float( int,float *,float *,float * ) ; /* 08 Mar 2001 */
 
 extern void symeig_double( int , double * , double * ) ;
 extern void symeigval_double( int , double * , double * ) ;
+extern void svd_double( int, int, double *, double *, double *, double * ) ;
+extern void svd_float ( int, int, float *, float *, float *, float * ) ;
 
 /***** Argument list mangling *****/
 
@@ -49,5 +51,9 @@ extern int qhull_wrap( int , float * , int ** ) ; /* 07 Jun 2001 */
 extern int sphere_voronoi_angles( int , float *, float *, float ** ) ;
 extern int sphere_voronoi_vectors( int , float *, float ** ) ;
 
+extern float cl1_solve    ( int, int, float *, float **, float *,int ) ; /* cl1.c */
+extern float cl1_solve_res( int, int, float *, float **, float *,int, float*,int ) ; /* cl1.c */
+
+extern char *approximate_number_string( double ) ;  /* 16 Jan 2004 */
 
 #endif

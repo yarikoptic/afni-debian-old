@@ -166,13 +166,13 @@ int main( int argc , char *argv[] )
              "Sub-bricks with index values much higher than others should be\n"
              "examined for problems.  How you determine what 'much higher' means\n"
              "is mostly up to you.  I suggest graphical inspection of the indexes\n"
-             "(cf. Example, infra).  As a guide, the program will print (stderr)\n"
-             "the median quality index and the range median-3.5*MAD .. median+3*MAD\n"
+             "(cf. EXAMPLE, infra).  As a guide, the program will print (stderr)\n"
+             "the median quality index and the range median-3.5*MAD .. median+3.5*MAD\n"
              "(MAD=Median Absolute Deviation).  Values well outside this range might\n"
              "be considered suspect; if the quality index were normally distributed,\n"
              "then values outside this range would occur only about 1%% of the time.\n"
              "\n"
-             "Options:\n"
+             "OPTIONS:\n"
              "  -spearman = Quality index is 1 minus the Spearman (rank)\n"
              "               correlation coefficient of each sub-brick\n"
              "               with the median sub-brick.\n"
@@ -182,13 +182,16 @@ int main( int argc , char *argv[] )
              "               quality index.\n"
              "\n"
              "  -autoclip = Clip off low-intensity regions in the median sub-brick,\n"
-             "               so that the correlation is only computed between\n"
+             "  -automask =  so that the correlation is only computed between\n"
              "               high-intensity (presumably brain) voxels.  The\n"
              "               intensity level is determined the same way that\n"
              "               3dClipLevel works.  This prevents the vast number\n"
              "               of nearly 0 voxels outside the brain from biasing\n"
              "               the correlation coefficient calculations.\n"
+#if 1
+             "\n"
              "  -clip val = Clip off values below 'val' in the median sub-brick.\n"
+#endif
              "\n"
              "  -range    = Print the median-3.5*MAD and median+3.5*MAD values\n"
              "               out with EACH quality index, so that they\n"
@@ -198,12 +201,12 @@ int main( int argc , char *argv[] )
              "            * The lower value median-3.5*MAD is never allowed\n"
              "                to go below 0.\n"
              "\n"
-             "Example:\n"
-             "   3dTqual -range -autoclip fred+orig | 1dplot -one -stdin\n"
+             "EXAMPLE:\n"
+             "   3dTqual -range -automask fred+orig | 1dplot -one -stdin\n"
              "will calculate the time series of quality indexes and plot them\n"
              "to an X11 window, along with the median+/-3.5*MAD bands.\n"
              "\n"
-             "NOTE: also see program 3dToutcount for a similar quality check.\n"
+             "NOTE: cf. program 3dToutcount for a somewhat different quality check.\n"
              "\n"
              "-- RWCox - Aug 2001\n"
             ) ;
@@ -216,10 +219,13 @@ int main( int argc , char *argv[] )
 
    while( nopt < argc && argv[nopt][0] == '-' ){
 
-      if( strcmp(argv[nopt],"-autoclip") == 0 ){
+      if( strcmp(argv[nopt],"-autoclip") == 0 ||
+          strcmp(argv[nopt],"-automask") == 0   ){
+
          do_autoclip = 1 ; nopt++ ; continue ;
       }
 
+#if 1
       if( strcmp(argv[nopt],"-clip") == 0 ){
          do_autoclip = 0 ;
          clip_val = strtod(argv[++nopt],NULL) ;
@@ -228,6 +234,7 @@ int main( int argc , char *argv[] )
          }
          nopt++ ;continue ;
       }
+#endif
 
       if( strcmp(argv[nopt],"-range") == 0 ){
          do_range = 1 ; nopt++ ; continue ;

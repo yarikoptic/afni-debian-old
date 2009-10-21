@@ -8,10 +8,13 @@
 
 /*** NOT 7D SAFE ***/
 
+/*! Return far[] if (i,j) is inside the image, otherwise return 0. */
+
 #define FINS(i,j) (  ( (i)<0 || (j)<0 || (i)>=nx || (j)>=ny ) \
                      ? 0.0 : far[(i)+(j)*nx] )
 
 /*-------------------------------------------------------------------*/
+/*! Invert a 2D matrix, dude. */
 
 static void invert2d( float  axx, float  axy, float  ayx, float  ayy ,
                       float *bxx, float *bxy, float *byx, float *byy  )
@@ -25,8 +28,8 @@ static void invert2d( float  axx, float  axy, float  ayx, float  ayy ,
    return ;
 }
 
-/*-------------------------------------------------------------------
-    Affine transform a 2D image, using bilinear interpolation:
+/*-------------------------------------------------------------------*/
+/*! Affine transform a 2D image, using bilinear interpolation:
     If flag == 0
        [ xout ] = [ axx axy ] [ xin ]
        [ yout ] = [ ayx ayy ] [ yin ]
@@ -42,12 +45,14 @@ MRI_IMAGE *mri_aff2d_byte( MRI_IMAGE *im, int flag ,
    float bxx,bxy,byx,byy , xbase,ybase , xx,yy , fx,fy ;
    float f_j00,f_jp1 , wt_00,wt_p1 ;
    int ii,jj , nx,ny , ix,jy ;
-   MRI_IMAGE *new ;
+   MRI_IMAGE *newImg ;
    byte *far , *nar ;
+
+ENTRY("mri_aff2d_byte") ;
 
    if( im == NULL || !MRI_IS_2D(im) || im->kind != MRI_byte ){
       fprintf(stderr,"*** mri_aff2d_byte only works on 2D byte images!\n");
-      return NULL ;
+      RETURN( NULL );
    }
 
    if( flag == 0 ){
@@ -57,7 +62,7 @@ MRI_IMAGE *mri_aff2d_byte( MRI_IMAGE *im, int flag ,
    }
    if( (bxx == 0.0 && bxy == 0.0) || (byx == 0.0 && byy == 0.0) ){
       fprintf(stderr,"*** mri_aff2d_byte: input matrix is singular!\n") ;
-      return NULL ;
+      RETURN( NULL );
    }
 
    nx = im->nx ; ny = im->ny ;
@@ -65,8 +70,8 @@ MRI_IMAGE *mri_aff2d_byte( MRI_IMAGE *im, int flag ,
    ybase = 0.5*ny*(1.0-byy) - 0.5*nx*byx ;
 
    far = MRI_BYTE_PTR(im) ;                /* input image data */
-   new = mri_new( nx , nx , MRI_byte ) ;   /* output image */
-   nar = MRI_BYTE_PTR(new) ;               /* output image data */
+   newImg = mri_new( nx , nx , MRI_byte ) ;   /* output image */
+   nar = MRI_BYTE_PTR(newImg) ;               /* output image data */
 
    /*** loop over output points and warp to them ***/
 
@@ -101,22 +106,30 @@ MRI_IMAGE *mri_aff2d_byte( MRI_IMAGE *im, int flag ,
       }
    }
 
-   MRI_COPY_AUX(new,im) ;
-   return new ;
+   MRI_COPY_AUX(newImg,im) ;
+   RETURN( newImg ) ;
 }
 
-/*----------------------------------------------------------------------
-  Same for RGB [11 Dec 2000]
-------------------------------------------------------------------------*/
+/*----------------------------------------------------------------------*/
+
+/*! Same as FINS(), but for the R component of an RGB image. */
 
 #define RINS(i,j) (  ( (i)<0 || (j)<0 || (i)>=nx || (j)>=ny ) \
                      ? 0.0 : far[3*((i)+(j)*nx)] )
 
+/*! Same as FINS(), but for the G component of an RGB image. */
+
 #define GINS(i,j) (  ( (i)<0 || (j)<0 || (i)>=nx || (j)>=ny ) \
                      ? 0.0 : far[3*((i)+(j)*nx)+1] )
 
+/*! Same as FINS(), but for the B component of an RGB image. */
+
 #define BINS(i,j) (  ( (i)<0 || (j)<0 || (i)>=nx || (j)>=ny ) \
                      ? 0.0 : far[3*((i)+(j)*nx)+2] )
+
+/*----------------------------------------------------------------------*/
+/*!  Same as mri_aff2d_byte(), but for RGB images [11 Dec 2000].
+------------------------------------------------------------------------*/
 
 MRI_IMAGE *mri_aff2d_rgb( MRI_IMAGE *im, int flag ,
                           float axx, float axy, float ayx, float ayy )
@@ -124,13 +137,15 @@ MRI_IMAGE *mri_aff2d_rgb( MRI_IMAGE *im, int flag ,
    float bxx,bxy,byx,byy , xbase,ybase , xx,yy , fx,fy ;
    float f_j00r,f_jp1r , f_j00g,f_jp1g , f_j00b,f_jp1b , wt_00,wt_p1 ;
    int jj , nx,ny , ix,jy ;
-   MRI_IMAGE *new ;
+   MRI_IMAGE *newImg ;
    byte *far , *nar ;
    register int ii ;
 
+ENTRY("mri_aff2d_rgb") ;
+
    if( im == NULL || !MRI_IS_2D(im) || im->kind != MRI_rgb ){
       fprintf(stderr,"*** mri_aff2d_rgb only works on 2D RGB images!\n");
-      return NULL ;
+      RETURN( NULL );
    }
 
    if( flag == 0 ){
@@ -140,7 +155,7 @@ MRI_IMAGE *mri_aff2d_rgb( MRI_IMAGE *im, int flag ,
    }
    if( (bxx == 0.0 && bxy == 0.0) || (byx == 0.0 && byy == 0.0) ){
       fprintf(stderr,"*** mri_aff2d_byte: input matrix is singular!\n") ;
-      return NULL ;
+      RETURN( NULL );
    }
 
    nx = im->nx ; ny = im->ny ;
@@ -148,8 +163,8 @@ MRI_IMAGE *mri_aff2d_rgb( MRI_IMAGE *im, int flag ,
    ybase = 0.5*ny*(1.0-byy) - 0.5*nx*byx ;
 
    far = MRI_RGB_PTR(im) ;                /* input image data */
-   new = mri_new( nx , nx , MRI_rgb ) ;   /* output image */
-   nar = MRI_RGB_PTR(new) ;               /* output image data */
+   newImg = mri_new( nx , nx , MRI_rgb ) ;   /* output image */
+   nar = MRI_RGB_PTR(newImg) ;               /* output image data */
 
    /*** loop over output points and warp to them ***/
 
@@ -197,6 +212,6 @@ MRI_IMAGE *mri_aff2d_rgb( MRI_IMAGE *im, int flag ,
       }
    }
 
-   MRI_COPY_AUX(new,im) ;
-   return new ;
+   MRI_COPY_AUX(newImg,im) ;
+   RETURN( newImg );
 }

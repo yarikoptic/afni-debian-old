@@ -21,9 +21,8 @@ int main( int argc , char * argv[] )
             "where each file a.1D, b.1D, etc. is an ASCII file of numbers\n"
             "arranged in rows and columns.\n"
             "The row-by-row catenation of these files is written to stdout.\n"
-            "You can use a column subvector selector list on the inputs,\n"
-            "as in\n"
-            "  1dcat 'fred.1D[0,3,7]' ethel.1D > ricky.1D\n"
+            "\n"
+            TS_HELP_STRING
            ) ;
       exit(0) ;
    }
@@ -35,6 +34,13 @@ int main( int argc , char * argv[] )
    nim = argc-1 ;
    inim = (MRI_IMAGE **) malloc( sizeof(MRI_IMAGE *) * nim ) ;
    for( jj=0 ; jj < nim ; jj++ ){
+#if 0                                   /** for testing only **/
+      if( AFNI_yesenv("ragged") ){
+        MRI_IMAGE *qim ;
+        qim      = mri_read_ascii_ragged( argv[jj+1] , 3.e+33 ) ;
+        inim[jj] = mri_transpose(qim) ; mri_free(qim) ;
+      } else
+#endif
       inim[jj] = mri_read_1D( argv[jj+1] ) ;
       if( inim[jj] == NULL ){
          fprintf(stderr,"** Can't read input file %s\n",argv[jj+1]) ;

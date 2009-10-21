@@ -18,6 +18,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
+#include <time.h>
 
 #include <Xm/Separator.h>
 #include <Xm/Display.h>
@@ -62,11 +63,14 @@ typedef struct {
 
       char * layout_fname ;   /* 23 Sep 2000 */
 
-#ifdef ALLOW_AGNI
-      int enable_agni ;       /* 29 Aug 2001 */
-#endif
+      int enable_suma ;       /* 29 Aug 2001 */
 
       int quiet ;             /* 25 Aug 2001 */
+
+      int yes_niml ;          /* 28 Feb 2002 */
+      int port_niml ;         /* 10 Dec 2002 */
+
+      char * script_fname ;   /* 21 Jan 2003 */
 } AF_options ;
 
 #ifdef MAIN
@@ -84,28 +88,18 @@ typedef struct {
 
 #define UNDERLAY_ANAT      0
 #define UNDERLAY_ALLFUNC   1
-#define UNDERLAY_THRFUNC   2
+#define UNDERLAY_THRFUNC   2   /* 29 Jul 2003: eliminated in all code! */
 
 #define UNDERLAY_ANAT_BVAL     (1 << UNDERLAY_ANAT   )
 #define UNDERLAY_ALLFUNC_BVAL  (1 << UNDERLAY_ALLFUNC)
 #define UNDERLAY_THRFUNC_BVAL  (1 << UNDERLAY_THRFUNC)
 
-#define LAST_UNDERLAY_TYPE 2
+#define LAST_UNDERLAY_TYPE 1  /* 29 Jul 2003: changed from 2 */
 #define ISFUNC_UNDERLAY(uu) \
    ((uu)==UNDERLAY_ALLFUNC||(uu)==UNDERLAY_THRFUNC)
 
 static char * UNDERLAY_typestr[] =
-   { "Anat underlay" , "Func underlay" , "Func @Thr underlay" } ;
-
-#define SHOWFUNC_FIM  0
-#define SHOWFUNC_THR  1
-
-#define SHOWFUNC_FIM_BVAL  (1 << SHOWFUNC_FIM)
-#define SHOWFUNC_THR_BVAL  (1 << SHOWFUNC_THR)
-
-#define LAST_SHOWFUNC_TYPE 1
-
-static char * SHOWFUNC_typestr[] = { "Func=Intensity" , "Func=Threshold" } ;
+   { "ULay underlay" , "OLay underlay" , "OLay@Thr underlay" } ;
 
 #define DEFAULT_FIM_SCALE 10000   /* change this and bad things will happen! */
 
@@ -128,21 +122,14 @@ static char * SHOWFUNC_typestr[] = { "Func=Intensity" , "Func=Threshold" } ;
 
 #define TOPSIZE 2048
 
-/** this should always be exactly 5 characters! **/
-/**             "12345" **/
-
-#define VERSION "2.33x"
-
-/** this should always be exactly 17 characters! **/
-/*              "12345678901234567" **/
-
-#define RELEASE "12 Dec 2001      "
+#include "AFNI_label.h"
+#define VERSION AFNI_VERSION_LABEL    /* 21 chars long */
 
 #ifdef MAIN
 #define AFNI_about \
      "************************************************\n"  \
      "* GPL AFNI: Analysis of Functional NeuroImages *\n"  \
-     "*           Version " VERSION " -- " RELEASE " *\n"  \
+     "*           Version " VERSION          "       *\n"  \
      "*                                              *\n"  \
      "* Major portions are Copyright 1994-2000,      *\n"  \
      "*   Medical College of Wisconsin               *\n"  \
@@ -215,6 +202,7 @@ typedef struct {                           /* 29 Mar 1999 */
       gen_func * receiver_func ;
       void *     receiver_data ;
       int        receiver_mask ;
+      char *     receiver_funcname ;       /* 20 Feb 2003 */
 } AFNI_receiver ;
 
 typedef struct {
@@ -225,7 +213,7 @@ typedef struct {
 
       Boolean   xhairs_show_montage , xhairs_periodic , xhairs_all ;
       THD_ivec3 xhairs_ndown , xhairs_nup , xhairs_nskip ; /* montage crosshairs */
-      int       time_index , top_index ;
+      int       time_index , top_index , time_on ;
 
       int xhairs_orimask ;    /* 31 Dec 1998 */
 
@@ -235,8 +223,7 @@ typedef struct {
       int     crosshair_gap , crosshair_ovcolor , crosshair_gap_old ;
 
       int view_type     ,  /* one of the VIEW_ constants in 3ddata.h */
-          underlay_type ,  /* one of the UNDERLAY_ constants above */
-          showfunc_type ;  /* one of the SHOWFUNC_ constants above */
+          underlay_type ;  /* one of the UNDERLAY_ constants above */
 
       int sess_num , anat_num , func_num ;  /* codes pointing to datasets */
 
@@ -272,7 +259,15 @@ typedef struct {
 
       int see_ttatlas ;  /* 25 Jul 2001 */
 
+      int view_setter ;  /* 20 Feb 2003 */
+
+      float func_pval ;  /* 06 Feb 2004 */
+
 } AFNI_view_info ;
+
+#define AXIAL    1       /* 20 Feb 2003: view_setter codes */
+#define SAGITTAL 2
+#define CORONAL  3
 
 #undef USE_WRITEOWNSIZE  /* 01 Aug 1999 */
 
@@ -296,23 +291,17 @@ typedef struct {
 /*-------------------------------------------------------------------*/
 /*--------------- define display control widgets --------------------*/
 
-#define ALLOW_BKGD_LAB
-
-#ifdef ALLOW_BKGD_LAB
 #define BKGD_COUNT 3
 #define INIT_BKGD_LAB(iq) \
    do{ int qq = ((iq)->s123!=NULL) + ((iq)->s231!=NULL) + ((iq)->s312!=NULL); \
-       if( qq >= BKGD_COUNT ){                              \
-          (iq)->vwid->imag->do_bkgd_lab = True ;            \
-       } else {                                             \
-          (iq)->vwid->imag->do_bkgd_lab = False ;           \
-          XtUnmanageChild(im3d->vwid->imag->pop_bkgd_lab) ; \
-          XtUnmanageChild(im3d->vwid->func->bkgd_lab) ;     \
-          FIX_SCALE_SIZE(im3d) ;                            \
+       if( qq >= BKGD_COUNT || (qq > 0 && !AFNI_noenv("AFNI_VALUE_LABEL")) ){ \
+          (iq)->vwid->imag->do_bkgd_lab = True ;                              \
+       } else {                                                               \
+          (iq)->vwid->imag->do_bkgd_lab = False ;                             \
+          XtUnmanageChild(im3d->vwid->imag->pop_bkgd_lab) ;                   \
+          XtUnmanageChild(im3d->vwid->func->bkgd_lab) ;                       \
+          FIX_SCALE_SIZE(im3d) ;                                              \
        } break ; } while(0)
-#else
-#define INIT_BKGD_LAB(iq)
-#endif
 
 #define AFNI_XHAIRS_OFF    0
 #define AFNI_XHAIRS_SINGLE 1
@@ -334,6 +323,8 @@ typedef struct {
       Widget pop_jumpto_ijk_pb ;
 
       Widget crosshair_frame , crosshair_rowcol , crosshair_label ;
+
+      Widget crosshair_menu, crosshair_dicom_pb, crosshair_spm_pb ; /* 12 Mar 2004 */
 
       Widget         xhair_rowcol ;
       MCW_arrowval * crosshair_av ;
@@ -357,7 +348,23 @@ typedef struct {
       Widget pop_whereami_pb , pop_ttren_pb ;
       MCW_textwin * pop_whereami_twin ;
 
+      Widget pop_sumato_pb ;
+      Widget pop_mnito_pb ;  /* 01 May 2002 */
+
+      Widget pop_environment_pb ; /* 05 Nov 2003 */
 } AFNI_imaging_widgets ;
+
+/*--- 19 Aug 2002: Switch Surface control box ---*/
+
+typedef struct {
+      Widget wtop , rowcol , top_lab , done_pb ;
+      int nrow , nall ;
+      Widget *surf_rc ;
+      MCW_bbox **surf_bbox ;                       /* 19 Feb 2003 */
+      MCW_arrowval **surf_node_av, **surf_line_av ;
+      MCW_arrowval **surf_ledg_av ;                /* 26 Feb 2003 */
+      MCW_arrowval *boxsize_av , *linewidth_av ;   /* 23 Feb 2003 */
+} AFNI_surface_widgets ;
 
 /*---*/
 
@@ -380,9 +387,12 @@ typedef struct {
              popchoose_sess_pb , popchoose_anat_pb , popchoose_func_pb ;
 
       Boolean marks_pb_inverted , func_pb_inverted , dmode_pb_inverted ;
+
+      Widget choose_surf_pb ;  /* 19 Aug 2002 */
+      AFNI_surface_widgets *swid ;
 } AFNI_viewing_widgets ;
 
-#define OPEN_PANEL(iq,panel)                                             \
+#define OPEN_PANEL(iq,panel)                                            \
    {  XtManageChild( (iq)->vwid->  panel  ->frame ) ;                    \
       if( ! (iq)->vwid->view->  panel ## _pb_inverted ){                  \
          MCW_invert_widget( (iq)->vwid->view->define_ ## panel ## _pb ) ;  \
@@ -443,6 +453,7 @@ typedef struct {
 
 #define THR_TOP_EXPON  4         /* 30 Nov 1997 */
 #define THR_FACTOR     0.0001    /* pow(10,-THR_TOP_EXPON) */
+#define THR_TOP_VALUE  9999.0    /* pow(10,THR_TOP_EXPON)-1 */
 
 #undef USE_FUNC_FIM              /* 09 Dec 1997 */
 
@@ -461,6 +472,7 @@ typedef struct {
              pbar_readin_pb , pbar_writeout_pb ;
       MCW_arrowval * pbar_palette_av ;
       Widget pbar_showtable_pb ;
+      Widget pbar_environment_pb ; /* 10 Feb 2004 */
 
       Widget pbar_saveim_pb  ;                  /* 15 Jun 2000 */
       MCW_arrowval * pbar_transform0D_av ;
@@ -472,7 +484,6 @@ typedef struct {
 
       Widget options_rowcol , options_label ;
       MCW_bbox     * underlay_bbox ;
-      MCW_bbox     * functype_bbox ;
 
       Widget         buck_frame , buck_rowcol ;
       MCW_arrowval * anat_buck_av , * fim_buck_av , * thr_buck_av ;  /* 30 Nov 1997 */
@@ -503,19 +514,19 @@ typedef struct {
     threshold scale to behave bizarrely.  This macro is a fixup **/
 
 #ifdef FIX_SCALE_SIZE_PROBLEM
-#  define FIX_SCALE_SIZE(iqqq)                                \
-     do{ int sel_height ;  XtPointer sel_ptr ;                \
-         XtVaGetValues( (iqqq)->vwid->func->thr_scale ,       \
-                           XmNuserData , &sel_ptr , NULL ) ;  \
-         sel_height = (int) sel_ptr ;                         \
-         XtVaSetValues( (iqqq)->vwid->func->thr_scale ,       \
-                           XmNheight , sel_height , NULL ) ;  \
-         XtManageChild((iqqq)->vwid->func->thr_scale) ;       \
+#  define FIX_SCALE_SIZE(iqqq)                                           \
+     do{ int sel_height ;  XtPointer sel_ptr ;                           \
+         XtVaGetValues( (iqqq)->vwid->func->thr_scale ,                  \
+                           XmNuserData , &sel_ptr , NULL ) ;             \
+         sel_height = (int) sel_ptr ;                                    \
+         XtVaSetValues( (iqqq)->vwid->func->thr_scale ,                  \
+                           XmNheight , sel_height , NULL ) ;             \
+         XtManageChild((iqqq)->vwid->func->thr_scale) ;                  \
        } while(0)
 #  define HIDE_SCALE(iqqq) XtUnmanageChild((iqqq)->vwid->func->thr_scale)
 #else
 #  define FIX_SCALE_SIZE(iqqq) /* nada */
-#  define HIDE_SCALE(iqqq)   /* nada */
+#  define HIDE_SCALE(iqqq)     /* nada */
 #endif
 
 #ifdef FIX_SCALE_VALUE_PROBLEM
@@ -574,6 +585,10 @@ typedef struct {
       Widget         misc_savelayout_pb ; /* 23 Sep 2000 */
       Widget         misc_license_pb ;    /* 03 Dec 2000 */
       Widget         misc_plugout_pb ;    /* 07 Nov 2001 */
+      Widget         misc_niml_pb    ;    /* 02 Mar 2002 */
+      Widget         misc_runscript_pb ;  /* 22 Jan 2003 */
+
+      Widget         misc_readme_env_pb ; /* 05 Aug 2004 */
 
 } AFNI_datamode_widgets ;
 
@@ -609,6 +624,12 @@ typedef struct {
    int    hidden_code ;
 
    Widget hidden_mission_pb ;  /* 06 Jun 2001 */
+   Widget hidden_gamberi_pb ;  /* 14 Oct 2003 */
+   Widget hidden_ranpoem_pb ;  /* 15 Oct 2003 */
+
+   Widget hidden_speech_pb  ;  /* 25 Nov 2003 */
+
+   Widget hidden_faces_pb   ;  /* 17 Dec 2004 */
 
 #endif  /* USE_HIDDEN */
 
@@ -814,6 +835,10 @@ typedef struct {
       XtPointer parent ;
 
       int brand_new ;                           /* 07 Dec 2001 */
+
+      THD_warp * fim_selfwarp ;                 /* 27 Aug 2002 */
+
+      int dummied ;                             /* 27 Jan 2004 */
 } Three_D_View ;
 
 /* 02 Nov 1996: macro to load current viewing data into current datasets */
@@ -829,6 +854,7 @@ typedef struct {
          (iq)->fim_now->wod_daxes = (iq)->wod_daxes ;    \
          (iq)->fim_now->wod_flag  = (iq)->fim_wod_flag ; \
          (iq)->fim_now->vox_warp  = (iq)->fim_voxwarp ;  \
+         (iq)->fim_now->self_warp = (iq)->fim_selfwarp ; \
       } } while(0)
 
 #define LOAD_DSET_VIEWS(iq) \
@@ -842,7 +868,15 @@ extern void AFNI_purge_dsets(int) ;
 extern void AFNI_purge_unused_dsets(void) ;
 extern int AFNI_controller_index( Three_D_View * ) ;
 
-extern char * AFNI_get_friend(void) ;  /* 26 Feb 2001 */
+extern Three_D_View * AFNI_find_open_controller(void) ; /* 05 Mar 2002 */
+extern void AFNI_popup_message( char * ) ;
+
+extern void   AFNI_start_version_check(void) ;   /* 21 Nov 2002 */
+extern int    AFNI_version_check      (void) ;
+extern char * AFNI_make_update_script (void) ;   /* 20 Nov 2003 */
+
+extern char * AFNI_get_friend(void) ;      /* 26 Feb 2001 */
+extern char * AFNI_get_date_trivia(void) ; /* 25 Nov 2002 */
 
 #define OPEN_CONTROLLER(iq)                                  \
  do{ XtRealizeWidget((iq)->vwid->top_shell) ;                \
@@ -902,7 +936,9 @@ typedef struct {                 /* windows and widgets */
    XtPointer_array * widgets ;   /* 'real-time' functions */
 } MCW_interruptables ;
 
-#define MAX_CONTROLLERS 5
+#ifndef MAX_CONTROLLERS
+#define MAX_CONTROLLERS 10  /* 12 Nov 2002: increased from 5, per MSB */
+#endif
 
 /*-------------- Here there be global variables.  So shoot me. --------------*/
 
@@ -941,6 +977,12 @@ typedef struct {
 
    int ijk_lock ;                                 /* 11 Sep 2000 */
 
+   THD_session *session ;                         /* 20 Dec 2001 */
+
+   MCW_function_list registered_slice_proj ;      /* 31 Jan 2002 */
+
+   Htable *warptable ;                            /* 28 Aug 2002 */
+
 } AFNI_library_type ;
 
 #ifdef MAIN
@@ -962,11 +1004,10 @@ typedef struct {
 #define SESSTRAIL       GLOBAL_library.sesstrail
 #define AFNI_VERBOSE    (!GLOBAL_argopt.quiet)  /* 25 Oct 2001 */
 
-#ifdef ALLOW_AGNI                               /* 29 Aug 2001 */
-# define AGNI_ENABLED GLOBAL_argopt.enable_agni
-#else
-# define AGNI_ENABLED 0
-#endif
+#define THE_DISPLAY     (GLOBAL_library.dc->display)  /* 02 Aug 2002 */
+#define THE_TOPSHELL    (GLOBAL_library.controllers[0]->vwid->top_shell)
+
+# define SUMA_ENABLED   GLOBAL_argopt.enable_suma
 
 #define DOING_REALTIME_WORK (GLOBAL_library.interruptables.windows != NULL)
 
@@ -978,20 +1019,30 @@ typedef struct {
 /*-----------------------------------------------------------*/
 /*------------------------ prototypes -----------------------*/
 
+extern int AFNI_vnlist_func_overlay( Three_D_View *,int, SUMA_irgba **,int * ) ;
+extern int AFNI_vol2surf_func_overlay( Three_D_View *, SUMA_irgba **,
+                                       int, int, int, float **, float * );
+
 extern void AFNI_parse_args( int argc , char * argv[] );
 extern void FatalError(char * str);
 
 extern void AFNI_splashup   (void) ;  /* 02 Aug 1999 */
 extern void AFNI_splashdown (void) ;
 extern void AFNI_splashraise(void) ;  /* 25 Sep 2000 */
+extern void AFNI_faceup     (void) ;  /* 17 Dec 2004 */
 
 extern void AFNI_quit_CB           ( Widget wcall , XtPointer cd , XtPointer cbs );
 extern void AFNI_quit_timeout_CB   ( XtPointer , XtIntervalId * ) ;
 extern void AFNI_startup_timeout_CB( XtPointer , XtIntervalId * ) ;
 
-extern void AFNI_startup_layout_CB  ( XtPointer, XtIntervalId * ) ; /* 23 Sep 2000 */
+extern void AFNI_startup_layout_CB  ( XtPointer, XtIntervalId * ) ;    /* 23 Sep 2000 */
 extern void AFNI_save_layout_CB     ( Widget, XtPointer, XtPointer ) ;
 extern void AFNI_finalsave_layout_CB( Widget, XtPointer, MCW_choose_cbs * ) ;
+extern void AFNI_startup_script_CB  ( XtPointer, XtIntervalId * ) ;    /* 21 Jan 2003 */
+extern void AFNI_run_script_CB      ( Widget, XtPointer, XtPointer ) ; /* 22 Jan 2003 */
+extern void AFNI_finalrun_script_CB ( Widget, XtPointer, MCW_choose_cbs * ) ;
+
+#define AFNI_run_script(ss) AFNI_startup_script_CB((XtPointer)(ss),NULL)
 
 extern void AFNI_decode_geom( char * , int *, int *, int *, int * ) ;
 
@@ -1008,6 +1059,12 @@ extern void AFNI_lock_carryout  ( Three_D_View * ) ;
 
 extern void AFNI_time_lock_carryout( Three_D_View * ) ;  /* 03 Nov 1998 */
 extern void AFNI_time_lock_change_CB( Widget , XtPointer , XtPointer ) ;
+
+extern void AFNI_thresh_lock_carryout( Three_D_View * ) ; /* 06 Feb 2004 */
+extern void AFNI_pbar_lock_carryout  ( Three_D_View * ) ; /* 07 Feb 2004 */
+extern void AFNI_equate_pbars        ( Three_D_View *, Three_D_View * ) ;
+extern void AFNI_thrdrag_lock_carryout( Three_D_View * ) ;
+extern void AFNI_range_lock_carryout( Three_D_View * ) ;  /* 23 Feb 2004 */
 
 extern void AFNI_ijk_lock_change_CB( Widget , XtPointer , XtPointer ) ;
 
@@ -1058,7 +1115,6 @@ extern void AFNI_marks_action_CB     ( Widget , XtPointer , XtPointer ) ;
 
 extern void AFNI_switchview_CB        ( Widget , XtPointer , XtPointer ) ;
 extern void AFNI_see_marks_CB         ( Widget , XtPointer , XtPointer ) ;
-extern void AFNI_functype_CB          ( Widget , XtPointer , XtPointer ) ;
 extern void AFNI_see_func_CB          ( Widget , XtPointer , XtPointer ) ;
 extern void AFNI_marks_edits_CB       ( Widget , XtPointer , XtPointer ) ;
 extern void AFNI_marks_transform_CB   ( Widget , XtPointer , XtPointer ) ;
@@ -1078,6 +1134,12 @@ extern void AFNI_jumpto_CB           ( Widget , XtPointer , MCW_choose_cbs * ) ;
 extern int  AFNI_jumpto_dicom        ( Three_D_View * , float, float, float  ) ;
 extern int  AFNI_jumpto_ijk          ( Three_D_View * , int, int, int  ) ;
 extern void AFNI_jumpto_ijk_CB       ( Widget , XtPointer , MCW_choose_cbs * ) ;
+extern void AFNI_sumato_CB           ( Widget , XtPointer , MCW_choose_cbs * ) ;
+extern void AFNI_mnito_CB            ( Widget , XtPointer , MCW_choose_cbs * ) ;
+
+extern void AFNI_crosshair_pop_CB    ( Widget , XtPointer , XtPointer ) ; /* 12 Mar 2004 */
+extern void AFNI_crosshair_EV        ( Widget , XtPointer , XEvent * , Boolean * ) ;
+extern void AFNI_crosshair_relabel   ( Three_D_View * ) ;
 
 extern void AFNI_fimmer_pickref_CB   ( Widget , XtPointer , MCW_choose_cbs * ) ;
 extern void AFNI_fimmer_pickort_CB   ( Widget , XtPointer , MCW_choose_cbs * ) ;
@@ -1112,7 +1174,7 @@ extern void AFNI_fimmer_setref( Three_D_View * , MRI_IMAGE * ) ;
 extern void AFNI_fimmer_setort( Three_D_View * , MRI_IMAGE * ) ;
 extern void AFNI_fimmer_setignore( Three_D_View * , int ) ;
 extern void AFNI_fimmer_setpolort( Three_D_View * , int ) ;
-extern void AFNI_rescan_session( int ) ;
+extern int  AFNI_rescan_session( int ) ;
 extern void AFNI_rescan_CB( Widget , XtPointer , XtPointer ) ;
 extern void AFNI_rescan_all_CB( Widget , XtPointer , XtPointer ) ;
 extern void AFNI_rescan_timeseries_CB( Widget , XtPointer , XtPointer ) ;
@@ -1123,6 +1185,9 @@ extern void AFNI_make_file_dialog( Three_D_View * ) ;
 extern void AFNI_close_file_dialog_CB( Widget , XtPointer , XtPointer ) ;
 extern void AFNI_read_1D_CB( Widget , XtPointer , XtPointer ) ;
 extern void AFNI_finalize_read_1D_CB( Widget , XtPointer , XtPointer ) ;
+
+extern int  DSET_in_global_session( THD_3dim_dataset * ) ;       /* 20 Dec 2001 */
+extern void AFNI_append_sessions( THD_session *, THD_session *); /* 20 Dec 2001 */
 
 extern void AFNI_read_Web_CB( Widget, XtPointer, XtPointer );    /* 26 Mar 2001 */
 extern void AFNI_finalize_read_Web_CB( Widget, XtPointer, MCW_choose_cbs * );
@@ -1160,6 +1225,9 @@ extern Boolean AFNI_refashion_dataset( Three_D_View * ,
 #define REDISPLAY_ALL      2
 
 extern void AFNI_set_viewpoint( Three_D_View * , int,int,int , int ) ;
+extern void AFNI_redisplay_func( Three_D_View * ) ; /* 05 Mar 2002 */
+extern void AFNI_view_setter( Three_D_View *, MCW_imseq *) ; /* 26 Feb 2003 */
+extern void AFNI_range_setter( Three_D_View *, MCW_imseq *); /* 04 Nov 2003 */
 
 extern XmString AFNI_crosshair_label( Three_D_View * ) ;
 extern XmString AFNI_range_label( Three_D_View * ) ;
@@ -1196,6 +1264,9 @@ extern void AFNI_initialize_view( THD_3dim_dataset * , Three_D_View * ) ;
 extern void AFNI_setup_viewing(  Three_D_View * , Boolean ) ;
 extern void AFNI_modify_viewing( Three_D_View * , Boolean ) ;
 
+extern THD_warp * AFNI_find_warp( THD_3dim_dataset * ,
+                                  THD_3dim_dataset *  ) ; /* 28 Aug 2002 */
+
 extern int AFNI_can_transform_vector( THD_3dim_dataset *, THD_3dim_dataset * );
 
 extern THD_fvec3 AFNI_transform_vector( THD_3dim_dataset * ,
@@ -1211,7 +1282,6 @@ extern THD_3dim_dataset * AFNI_init_warp( Three_D_View * ,
                                           THD_3dim_dataset * ,
                                           THD_warp * , float  ) ;
 
-extern AFNI_arrowpad_CB( MCW_arrowpad * , XtPointer ) ;
 extern void AFNI_handler( char * ) ;
 
 extern void AFNI_thr_scale_CB( Widget , XtPointer , XtPointer ) ;
@@ -1220,12 +1290,21 @@ extern void AFNI_thr_scale_drag_CB( Widget , XtPointer , XtPointer ) ;
 
 extern void AFNI_inten_pbar_CB( MCW_pbar * , XtPointer , int ) ;
 extern void AFNI_inten_av_CB( MCW_arrowval * , XtPointer ) ;
+extern char * AFNI_inten_av_texter ( MCW_arrowval *, XtPointer ) ; /* 30 Jan 2003 */
 
 extern void   AFNI_set_thresh_top( Three_D_View * , float ) ;
 extern char * AFNI_thresh_tlabel_CB( MCW_arrowval * , XtPointer ) ;
 extern void   AFNI_thresh_top_CB( MCW_arrowval * , XtPointer ) ;
 
 extern void AFNI_set_valabel( FD_brick *, int, MRI_IMAGE *, char * ) ;
+
+extern void AFNI_init_niml( void ) ; /* 28 Feb 2002 */
+
+extern void AFNI_choose_surface_CB( Widget , XtPointer , XtPointer ) ; /* 19 Aug 2002 */
+extern void AFNI_update_surface_widgets( Three_D_View * ) ;
+extern void AFNI_update_all_surface_widgets( THD_session * ) ;
+
+extern void AFNI_disable_suma_overlay( int ) ;  /* 16 Jun 2003 */
 
 /*-------------------------------------------------------------------
   Include prototypes for actual data warping and slicing here.
@@ -1244,6 +1323,10 @@ extern void AFNI_andersonville   ( THD_sessionlist * , Boolean ) ;
 extern void AFNI_force_adoption  ( THD_session * , Boolean ) ;
 
 extern MRI_IMAGE * AFNI_func_overlay( int , FD_brick * ) ;
+
+extern MRI_IMAGE * AFNI_newfunc_overlay( MRI_IMAGE *, float ,  /* 30 Jan 2003 */
+                                         MRI_IMAGE *,
+                                         float,float, rgbyte * ) ;
 
 extern void AFNI_syntax(void) ;
 
@@ -1284,14 +1367,17 @@ extern void AFNI_dicomm_to_xyz( THD_3dim_dataset * ,
 
 /* masks for input to AFNI_receive_init */
 
-#define RECEIVE_DRAWING_MASK    1
-#define RECEIVE_VIEWPOINT_MASK  2
-#define RECEIVE_OVERLAY_MASK    4    /* not implemented yet */
-#define RECEIVE_DRAWNOTICE_MASK 8    /* 30 Mar 1999 */
-#define RECEIVE_DSETCHANGE_MASK 16   /* 31 Mar 1999 */
-#define RECEIVE_TTATLAS_MASK    32   /* 12 Jul 2001 */
+#define RECEIVE_DRAWING_MASK     1
+#define RECEIVE_VIEWPOINT_MASK   2
+#define RECEIVE_OVERLAY_MASK     4    /* not implemented yet */
+#define RECEIVE_DRAWNOTICE_MASK  8    /* 30 Mar 1999 */
+#define RECEIVE_DSETCHANGE_MASK  16   /* 31 Mar 1999 */
+#define RECEIVE_TTATLAS_MASK     32   /* 12 Jul 2001 */
+#define RECEIVE_REDISPLAY_MASK   64   /* 04 Mar 2002 */
+#define RECEIVE_FUNCDISPLAY_MASK 128  /* 05 Mar 2002 */
+#define RECEIVE_TIMEINDEX_MASK   256  /* 29 Jan 2003 */
 
-#define RECEIVE_ALL_MASK       ( 1 | 2 | 4 | 8 | 16 | 32 )
+#define RECEIVE_ALL_MASK       ( 1 | 2 | 4 | 8 | 16 | 32 | 64 | 128 | 256 )
 
 /* codes for input to AFNI_receive_control */
 
@@ -1310,9 +1396,16 @@ extern void AFNI_dicomm_to_xyz( THD_3dim_dataset * ,
 #define DRAWING_X11PIXEL        12
 #define DRAWING_STARTUP         18
 #define DRAWING_SHUTDOWN        19
+#define DRAWING_LINEWIDTH       13   /* 08 Oct 2002 */
 
 #define VIEWPOINT_STARTUP       28
 #define VIEWPOINT_SHUTDOWN      29
+
+#define REDISPLAY_STARTUP       78   /* 04 Mar 2002 */
+#define REDISPLAY_SHUTDOWN      79
+
+#define FUNCDISPLAY_STARTUP     88   /* 05 Mar 2002 */
+#define FUNCDISPLAY_SHUTDOWN    89
 
 #define OVERLAY_STARTUP         38
 #define OVERLAY_SHUTDOWN        39
@@ -1326,6 +1419,9 @@ extern void AFNI_dicomm_to_xyz( THD_3dim_dataset * ,
 #define TTATLAS_STARTUP         68   /* 11 Jul 2001 */
 #define TTATLAS_SHUTDOWN        69
 
+#define TIMEINDEX_STARTUP       98   /* 29 Jan 2003 */
+#define TIMEINDEX_SHUTDOWN      99
+
 #define EVERYTHING_SHUTDOWN    666
 
 /* whys for input to the receiver routine */
@@ -1338,6 +1434,9 @@ extern void AFNI_dicomm_to_xyz( THD_3dim_dataset * ,
 #define RECEIVE_DRAWNOTICE     106  /* 30 Mar 1999 */
 #define RECEIVE_DSETCHANGE     107  /* 31 Mar 1999 */
 #define RECEIVE_TTATLAS        108  /* 12 Jul 2001 */
+#define RECEIVE_REDISPLAY      109  /* 04 Mar 2002 */
+#define RECEIVE_FUNCDISPLAY    110  /* 04 Mar 2002 */
+#define RECEIVE_TIMEINDEX      111  /* 29 Jan 2003 */
 
 /* modes for the process_drawing routine */
 
@@ -1345,18 +1444,24 @@ extern void AFNI_dicomm_to_xyz( THD_3dim_dataset * ,
 #define PLANAR_MODE           2000
 #define THREED_MODE           3000
 #define SPECIAL_MODE        100000
+#define UNDO_MODE           101000
 
 extern void AFNI_toggle_drawing ( Three_D_View * ) ;
-extern int AFNI_receive_init    ( Three_D_View *, int, gen_func * , void * ) ;
+extern int AFNI_receive_init    ( Three_D_View *, int, gen_func *, void *, char * ) ;
 extern void AFNI_receive_destroy( Three_D_View * ) ;
 extern int AFNI_receive_control ( Three_D_View *, int,int, void * ) ;
 
-extern void AFNI_process_viewpoint ( Three_D_View * ) ;
-extern void AFNI_process_drawnotice( Three_D_View * ) ;
-extern void AFNI_process_dsetchange( Three_D_View * ) ;
-extern void AFNI_process_alteration( Three_D_View * ) ;
-extern void AFNI_process_drawing   ( Three_D_View *, int,int, int *,int *,int * );
-extern void AFNI_process_ttatlas   ( Three_D_View * ) ;
+extern void AFNI_process_viewpoint  ( Three_D_View * ) ;
+extern void AFNI_process_drawnotice ( Three_D_View * ) ;
+extern void AFNI_process_dsetchange ( Three_D_View * ) ;
+extern void AFNI_process_alteration ( Three_D_View * ) ;
+extern void AFNI_process_drawing    ( Three_D_View *, int,int, int *,int *,int * );
+extern void AFNI_process_ttatlas    ( Three_D_View * ) ;
+extern void AFNI_process_redisplay  ( Three_D_View * ) ; /* 04 Mar 2002 */
+extern void AFNI_process_funcdisplay( Three_D_View * ) ; /* 05 Mar 2002 */
+extern void AFNI_process_timeindex  ( Three_D_View * ) ; /* 29 Jan 2003 */
+
+extern void AFNI_do_bkgd_lab( Three_D_View * ) ;         /* 08 Mar 2002 */
 
 extern MRI_IMAGE * AFNI_ttatlas_overlay(Three_D_View *, int,int,int,int, MRI_IMAGE *) ;
 
@@ -1489,7 +1594,7 @@ typedef struct {
       {-14, 12,  9,4,135,"Right Ventral Lateral Nucleus..........."} ,
       {  7, 18, 16,4,136,"Left  Midline Nucleus..................."} ,
       { -7, 18, 16,4,136,"Right Midline Nucleus..................."} ,
-      {  8,  8, 12,4,137,"Left  Anterior Nucleus.................."} ,
+      {  8,  8, 12,4,137,"Left  Anterior Nucleus.................."} ,   /* 04 Mar 2002 */
       { -8,  8, 12,4,137,"Right Anterior Nucleus.................."} ,
       { 11, 20,  2,4,138,"Left  Mammillary Body..................."} ,
       {-11, 20,  2,4,138,"Right Mammillary Body..................."} ,
@@ -1676,21 +1781,49 @@ extern int AFNI_controller_code_to_index( char *code ) ;
 /*-------------------------------------------------------*/
 /*--------------  registration of functions -------------*/
 
-extern void log10_func  ( int , float * ) ;  /* a sample 0D function */
-extern void ssqrt_func  ( int , float * ) ;  /* another */
+/* sample 0D transform functions */
 
-extern void osfilt3_func( int , double,double , float * ) ;  /* a sample 1D function */
-extern void median3_func( int , double,double , float * ) ;  /* another */
-extern void absfft_func ( int , double,double , float * ) ;  /* another */
+extern void log10_func( int, float * ) ;
+extern void ssqrt_func( int, float * ) ;
 
-extern void AFNI_register_nD_function( int , char * , generic_func * , int ) ;
+/* sample 1D transform functions */
 
-#define AFNI_register_0D_function(cc,ff) AFNI_register_nD_function(0,(cc),(ff),0)
-#define AFNI_register_1D_function(cc,ff) AFNI_register_nD_function(1,(cc),(ff),0)
-#define AFNI_register_2D_function(cc,ff) AFNI_register_nD_function(2,(cc),(ff),0)
+extern void osfilt3_func( int, double,double, float * ) ;
+extern void median3_func( int, double,double, float * ) ;
+extern void absfft_func ( int, double,double, float * ) ;
+
+/* 31 Jan 2002: sample slice_proj transform functions */
+
+extern float max_proj ( int, float * ) ;
+extern float min_proj ( int, float * ) ;
+extern float mean_proj( int, float * ) ;
+
+extern float extreme_proj( int, float * ) ;  /* 02 Feb 2002 */
+
+/* sample 2D transform functions */
+
+extern void median9_box_func ( int, int, double,double, float * ) ;
+extern void winsor9_box_func ( int, int, double,double, float * ) ;
+extern void osfilt9_box_func ( int, int, double,double, float * ) ;
+extern void fft2D_func       ( int, int, double,double, float * ) ;
+extern void median21_box_func( int, int, double,double, float * ) ;
+extern void winsor21_box_func( int, int, double,double, float * ) ;
+
+extern void AFNI_register_nD_function( int, char *, generic_func *, int ) ;
+extern void AFNI_register_nD_func_init( int nd , generic_func *fin ) ;
+
+#define AFNI_register_0D_function(cc,ff) \
+   AFNI_register_nD_function(0,(char *)(cc),(generic_func *)(ff),0)
+#define AFNI_register_1D_function(cc,ff) \
+   AFNI_register_nD_function(1,(char *)(cc),(generic_func *)(ff),0)
+#define AFNI_register_2D_function(cc,ff) \
+   AFNI_register_nD_function(2,(char *)(cc),(generic_func *)(ff),0)
+
+#define AFNI_register_slice_proj(cc,ff)  \
+   AFNI_register_nD_function(-1,(char *)(cc),(generic_func *)(ff),0)   /* 31 Jan 2002 */
 
 #define AFNI_register_1D_funcstr(cc,ff)  \
-   AFNI_register_nD_function(1,(cc),(ff),RETURNS_STRING)
+   AFNI_register_nD_function(1,(char *)(cc),(generic_func *)(ff),RETURNS_STRING)
 
 extern void AFNI_store_dset_index(int,int) ;  /* 18 May 2000 */
 extern int  AFNI_needs_dset_ijk(void) ;
@@ -1704,8 +1837,8 @@ extern int  AFNI_needs_dset_tin(void) ;
 #define DEFAULT_NGRAY   80
 #define DEFAULT_GAMMA   1.0
 
-#define DEFAULT_NCOLOVR 20
-#define MAX_NCOLOVR     99
+#define DEFAULT_NCOLOVR 40
+#define MAX_NCOLOVR     199
 
 /** color definitions and their labels (for 'choosers') **/
 
@@ -1729,14 +1862,29 @@ static char * INIT_def_colovr[DEFAULT_NCOLOVR] = {
    "#ffff00" , "#ffcc00"   , "#ff9900"  , "#ff6900" , "#ff4400" , "#ff0000" ,
    "#0000ff" , "#0044ff"   , "#0069ff"  , "#0099ff" , "#00ccff" , "#00ffff" ,
    "green"   , "limegreen" , "violet"   , "hotpink" ,
-   "white"   , "#dddddd"   , "#bbbbbb"  , "black"
+   "white"   , "#dddddd"   , "#bbbbbb"  , "black"   ,
+
+   "#cc1033" , "#992066"   , "#663199"  , "#3341cc" ,  /* RGB cycle */
+   "#0051ff" , "#0074cc"   , "#009799"  , "#00b966" ,  /* 10 Jun 2002 */
+   "#00dc33" , "#00ff00"   , "#33ff00"  , "#66ff00" ,
+   "#99ff00" , "#ccff00"   , "#ffff00"  , "#ffcc00" ,
+   "#ff9900" , "#ff6600"   , "#ff3300"  , "#ff0000"
 } ;
+
+#define RGBCYC_COUNT  20  /* 10 Jun 2002: number in RGB cycle */
+#define RGBCYC_FIRST  20  /*              index of first one */
 
 static char * INIT_def_labovr[DEFAULT_NCOLOVR] = {
    "yellow" , "yell-oran" , "oran-yell" , "orange"   , "oran-red" , "red"   ,
    "dk-blue", "blue"      , "lt-blue1"  , "lt-blue2" , "blue-cyan", "cyan"  ,
    "green"  , "limegreen" , "violet"    , "hotpink"  ,
-   "white"  , "gry-dd"    , "gry-bb"    , "black"
+   "white"  , "gry-dd"    , "gry-bb"    , "black"    ,
+
+   "rbgyr20_01" , "rbgyr20_02" , "rbgyr20_03" , "rbgyr20_04" , /* RBG cycle */
+   "rbgyr20_05" , "rbgyr20_06" , "rbgyr20_07" , "rbgyr20_08" , /* 10 Jun 2002 */
+   "rbgyr20_09" , "rbgyr20_10" , "rbgyr20_11" , "rbgyr20_12" ,
+   "rbgyr20_13" , "rbgyr20_14" , "rbgyr20_15" , "rbgyr20_16" ,
+   "rbgyr20_17" , "rbgyr20_18" , "rbgyr20_19" , "rbgyr20_20"
 } ;
 
 /** actual colors (from defaults above, or from X11 resources) **/

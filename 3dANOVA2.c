@@ -50,6 +50,12 @@
    Mod:     Added call to AFNI_logger.
    Date:    15 August 2001
 
+   Mod:     Modified routine write_afni_data of 3dANOVA.lib so that all output
+            subbricks will now have the scaled short integer format.
+   Date:    14 March 2002
+
+   Mod:     Set MAX_NAME_LENGTH equal to THD_MAX_NAME.
+   Date:    02 December 2002
 */
 
 /*---------------------------------------------------------------------------*/
@@ -57,7 +63,7 @@
 #define PROGRAM_NAME    "3dANOVA2"                   /* name of this program */
 #define PROGRAM_AUTHOR  "B. Douglas Ward"                  /* program author */
 #define PROGRAM_INITIAL "09 Dec 1996"     /* date of initial program release */
-#define PROGRAM_LATEST  "15 Aug 2001"     /* date of latest program revision */
+#define PROGRAM_LATEST  "02 Dec 2002"     /* date of latest program revision */
 
 /*---------------------------------------------------------------------------*/
 
@@ -2912,6 +2918,9 @@ void create_bucket (anova_options * option_data)
 	    option_data->first_dataset);
     exit(1) ;
   }
+
+       if( DSET_IS_1D(dset) ) USE_1D_filenames(1) ; /* 14 Mar 2003 */
+  else if( DSET_IS_3D(dset) ) USE_1D_filenames(3) ; /* 21 Mar 2003 */
   
 
   /*----- make an empty copy of this dataset -----*/
@@ -3167,11 +3176,14 @@ void create_bucket (anova_options * option_data)
           by concatenating previous output files -----*/
   printf("Writing `bucket' dataset ");
   printf("into %s\n", option_data->bucket_filename);
+
+  fprintf(stderr,"RUNNING COMMAND: %s\n",bucket_str) ;
   system (bucket_str);
 
 
   /*----- invoke program 3drefit to label individual sub-bricks -----*/
   add_file_name (new_dset, option_data->bucket_filename, refit_str);
+  fprintf(stderr,"RUNNING COMMAND: %s\n",refit_str) ;
   system (refit_str);
 
 

@@ -21,7 +21,7 @@ C
 C  Compilation, evaluation, and function stacks.
 C
       INTEGER     NUM_CSTACK , NUM_FSTACK
-      PARAMETER ( NUM_CSTACK = 1024 , NUM_FSTACK = 20 )
+      PARAMETER ( NUM_CSTACK = 2048 , NUM_FSTACK = 40 )
 C
       INTEGER   N_CODE(NUM_CSTACK) , NCODE , NEXTCODE ,
      X          N_FUNC(NUM_FSTACK) , NFUNC
@@ -30,7 +30,7 @@ C  Random local stuff
 C
       INTEGER       NLEN , NPOS , IPOS , NTOKEN , NUSED , NF , NARG ,
      X              NERR
-      CHARACTER*257 C_LOCAL
+      CHARACTER*10000 C_LOCAL
       CHARACTER*30  C_MESSAGE
       CHARACTER*1   C_CH
       REAL*8        VAL_TOKEN , R8_TOKEN
@@ -45,7 +45,7 @@ C
 C+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 C
       NLEN = LAST_NONBLANK( C_EXPR )
-      IF( NLEN .LE. 0 .OR. NLEN .GT. 256 )THEN
+      IF( NLEN .LE. 0 .OR. NLEN .GT. 9999 )THEN
 C!no input, or too much
          NUM_CODE = 0
          GOTO 8000
@@ -818,7 +818,8 @@ C  Internal library functions
 C
       REAL*8 QG , QGINV , BELL2 , RECT , STEP , BOOL ,
      X       LAND,LOR,LMOFN,MEDIAN , ZTONE , HMODE,LMODE,
-     X       GRAN,URAN,IRAN,ERAN,LRAN , ORSTAT , TENT
+     X       GRAN,URAN,IRAN,ERAN,LRAN , ORSTAT , TENT, MAD
+      REAL*8 ARGMAX,ARGNUM
 C
 C  External library functions
 C
@@ -1069,6 +1070,18 @@ C.......................................................................
          ELSEIF( CNCODE .EQ. 'ZTONE' )THEN
             R8_EVAL(NEVAL) = ZTONE( R8_EVAL(NEVAL) )
 C.......................................................................
+         ELSEIF( CNCODE .EQ. 'NOTZERO' )THEN
+            R8_EVAL(NEVAL) = BOOL( R8_EVAL(NEVAL) )
+         ELSEIF( CNCODE .EQ. 'ISZERO' )THEN
+            R8_EVAL(NEVAL) = 1.D+0 - BOOL( R8_EVAL(NEVAL) )
+         ELSEIF( CNCODE .EQ. 'EQUALS' )THEN
+            NEVAL = NEVAL - 1
+            R8_EVAL(NEVAL) = 1.D+0-BOOL(R8_EVAL(NEVAL)-R8_EVAL(NEVAL+1))
+         ELSEIF( CNCODE .EQ. 'ISPOSITI' )THEN
+            R8_EVAL(NEVAL) = STEP( R8_EVAL(NEVAL) )
+         ELSEIF( CNCODE .EQ. 'ISNEGATI' )THEN
+            R8_EVAL(NEVAL) = STEP( -R8_EVAL(NEVAL) )
+C.......................................................................
          ELSEIF( CNCODE .EQ. 'AND'  )THEN
             NTM   = R8_EVAL(NEVAL)
             NEVAL = NEVAL - NTM
@@ -1077,6 +1090,10 @@ C.......................................................................
             NTM   = R8_EVAL(NEVAL)
             NEVAL = NEVAL - NTM
             R8_EVAL(NEVAL) = MEDIAN( NTM , R8_EVAL(NEVAL) )
+         ELSEIF( CNCODE .EQ. 'MAD' )THEN
+            NTM   = R8_EVAL(NEVAL)
+            NEVAL = NEVAL - NTM
+            R8_EVAL(NEVAL) = MAD( NTM , R8_EVAL(NEVAL) )
          ELSEIF( CNCODE .EQ. 'ORSTAT' )THEN
             NTM   = R8_EVAL(NEVAL)
             NEVAL = NEVAL - NTM
@@ -1108,6 +1125,14 @@ C.......................................................................
             ELSE
                R8_EVAL(NEVAL) = 0.D+0
             ENDIF
+         ELSEIF( CNCODE .EQ. 'ARGMAX' )THEN
+            NTM   = R8_EVAL(NEVAL)
+            NEVAL = NEVAL - NTM
+            R8_EVAL(NEVAL) = ARGMAX( NTM , R8_EVAL(NEVAL) )
+         ELSEIF( CNCODE .EQ. 'ARGNUM' )THEN
+            NTM   = R8_EVAL(NEVAL)
+            NEVAL = NEVAL - NTM
+            R8_EVAL(NEVAL) = ARGNUM( NTM , R8_EVAL(NEVAL) )
 C.......................................................................
          ELSEIF( CNCODE .EQ. 'FICO_T2P' )THEN
             NEVAL = NEVAL - 3
@@ -1261,7 +1286,8 @@ C  Internal library functions
 C
       REAL*8 QG , QGINV , BELL2 , RECT , STEP , BOOL , LAND,
      X       LOR, LMOFN , MEDIAN , ZTONE , HMODE , LMODE ,
-     X       GRAN,URAN,IRAN,ERAN,LRAN , ORSTAT , TENT
+     X       GRAN,URAN,IRAN,ERAN,LRAN , ORSTAT , TENT, MAD
+      REAL*8 ARGMAX,ARGNUM
 C
 C  External library functions
 C
@@ -1299,34 +1325,84 @@ C
 ccc         WRITE(*,9802) IVBOT,IVTOP
 ccc9802     FORMAT('   .. PAREVEC: loop from',I5,' to',I5)
 C
-            DO 100 IV=IVBOT,IVTOP
-               R8VAL(IV-IBV, 1) = VA(IV)
-               R8VAL(IV-IBV, 2) = VB(IV)
-               R8VAL(IV-IBV, 3) = VC(IV)
-               R8VAL(IV-IBV, 4) = VD(IV)
-               R8VAL(IV-IBV, 5) = VE(IV)
-               R8VAL(IV-IBV, 6) = VF(IV)
-               R8VAL(IV-IBV, 7) = VG(IV)
-               R8VAL(IV-IBV, 8) = VH(IV)
-               R8VAL(IV-IBV, 9) = VI(IV)
-               R8VAL(IV-IBV,10) = VJ(IV)
-               R8VAL(IV-IBV,11) = VK(IV)
-               R8VAL(IV-IBV,12) = VL(IV)
-               R8VAL(IV-IBV,13) = VM(IV)
-               R8VAL(IV-IBV,14) = VN(IV)
-               R8VAL(IV-IBV,15) = VO(IV)
-               R8VAL(IV-IBV,16) = VP(IV)
-               R8VAL(IV-IBV,17) = VQ(IV)
-               R8VAL(IV-IBV,18) = VR(IV)
-               R8VAL(IV-IBV,19) = VS(IV)
-               R8VAL(IV-IBV,20) = VT(IV)
-               R8VAL(IV-IBV,21) = VU(IV)
-               R8VAL(IV-IBV,22) = VV(IV)
-               R8VAL(IV-IBV,23) = VW(IV)
-               R8VAL(IV-IBV,24) = VX(IV)
-               R8VAL(IV-IBV,25) = VY(IV)
-               R8VAL(IV-IBV,26) = VZ(IV)
+         DO 100 IV=IVBOT,IVTOP
+             R8VAL(IV-IBV, 1) = VA(IV)
 100      CONTINUE
+         DO 101 IV=IVBOT,IVTOP
+             R8VAL(IV-IBV, 2) = VB(IV)
+101      CONTINUE
+         DO 102 IV=IVBOT,IVTOP
+             R8VAL(IV-IBV, 3) = VC(IV)
+102      CONTINUE
+         DO 103 IV=IVBOT,IVTOP
+             R8VAL(IV-IBV, 4) = VD(IV)
+103      CONTINUE
+         DO 104 IV=IVBOT,IVTOP
+             R8VAL(IV-IBV, 5) = VE(IV)
+104      CONTINUE
+         DO 105 IV=IVBOT,IVTOP
+             R8VAL(IV-IBV, 6) = VF(IV)
+105      CONTINUE
+         DO 106 IV=IVBOT,IVTOP
+             R8VAL(IV-IBV, 7) = VG(IV)
+106      CONTINUE
+         DO 107 IV=IVBOT,IVTOP
+             R8VAL(IV-IBV, 8) = VH(IV)
+107      CONTINUE
+         DO 108 IV=IVBOT,IVTOP
+             R8VAL(IV-IBV, 9) = VI(IV)
+108      CONTINUE
+         DO 109 IV=IVBOT,IVTOP
+             R8VAL(IV-IBV,10) = VJ(IV)
+109      CONTINUE
+         DO 110 IV=IVBOT,IVTOP
+             R8VAL(IV-IBV,11) = VK(IV)
+110      CONTINUE
+         DO 111 IV=IVBOT,IVTOP
+             R8VAL(IV-IBV,12) = VL(IV)
+111      CONTINUE
+         DO 112 IV=IVBOT,IVTOP
+             R8VAL(IV-IBV,13) = VM(IV)
+112      CONTINUE
+         DO 113 IV=IVBOT,IVTOP
+             R8VAL(IV-IBV,14) = VN(IV)
+113      CONTINUE
+         DO 114 IV=IVBOT,IVTOP
+             R8VAL(IV-IBV,15) = VO(IV)
+114      CONTINUE
+         DO 115 IV=IVBOT,IVTOP
+             R8VAL(IV-IBV,16) = VP(IV)
+115      CONTINUE
+         DO 116 IV=IVBOT,IVTOP
+             R8VAL(IV-IBV,17) = VQ(IV)
+116      CONTINUE
+         DO 117 IV=IVBOT,IVTOP
+             R8VAL(IV-IBV,18) = VR(IV)
+117      CONTINUE
+         DO 118 IV=IVBOT,IVTOP
+             R8VAL(IV-IBV,19) = VS(IV)
+118      CONTINUE
+         DO 119 IV=IVBOT,IVTOP
+             R8VAL(IV-IBV,20) = VT(IV)
+119      CONTINUE
+         DO 120 IV=IVBOT,IVTOP
+             R8VAL(IV-IBV,21) = VU(IV)
+120      CONTINUE
+         DO 121 IV=IVBOT,IVTOP
+             R8VAL(IV-IBV,22) = VV(IV)
+121      CONTINUE
+         DO 122 IV=IVBOT,IVTOP
+             R8VAL(IV-IBV,23) = VW(IV)
+122      CONTINUE
+         DO 123 IV=IVBOT,IVTOP
+             R8VAL(IV-IBV,24) = VX(IV)
+123      CONTINUE
+         DO 124 IV=IVBOT,IVTOP
+             R8VAL(IV-IBV,25) = VY(IV)
+124      CONTINUE
+         DO 125 IV=IVBOT,IVTOP
+             R8VAL(IV-IBV,26) = VZ(IV)
+125      CONTINUE
 C
          NEVAL  = 0
          NCODE  = 0
@@ -1407,14 +1483,17 @@ C.......................................................................
                ENDDO
             ELSEIF( C2CODE .EQ. '/' )THEN
                NCODE = NCODE + 2
-               DO IV=IVBOT,IVTOP
-                  IF( R8_VAL .NE. 0.D+00 )THEN
+               IF( R8_VAL .NE. 0.D+00 )THEN
+                  R8_VAL = 1.D+00 / R8_VAL
+                  DO IV=IVBOT,IVTOP
                      R8_EVAL(IV-IBV,NEVAL) =  R8_EVAL(IV-IBV,NEVAL)
-     X                                      / R8_VAL
-                  ELSE
-                     R8_EVAL(IV-IBV,NEVAL) = 0.D+00
-                  ENDIF
-               ENDDO
+     X                                      * R8_VAL
+                  ENDDO
+               ELSE
+                  DO IV=IVBOT,IVTOP
+                     R8_EVAL(IV-IBV,NEVAL) =  0.D+00
+                  ENDDO
+               ENDIF
             ELSE
                NCODE  = NCODE + 1
                NEVAL  = NEVAL + 1
@@ -1750,6 +1829,29 @@ C.......................................................................
                R8_EVAL(IV-IBV,NEVAL) = ZTONE( R8_EVAL(IV-IBV,NEVAL) )
             ENDDO
 C.......................................................................
+         ELSEIF( CNCODE .EQ. 'NOTZERO' )THEN
+            DO IV=IVBOT,IVTOP
+              R8_EVAL(IV-IBV,NEVAL) = BOOL( R8_EVAL(IV-IBV,NEVAL) )
+            ENDDO
+         ELSEIF( CNCODE .EQ. 'ISZERO' )THEN
+            DO IV=IVBOT,IVTOP
+              R8_EVAL(IV-IBV,NEVAL) = 1.D+0-BOOL(R8_EVAL(IV-IBV,NEVAL))
+            ENDDO
+         ELSEIF( CNCODE .EQ. 'EQUALS' )THEN
+            NEVAL = NEVAL - 1
+            DO IV=IVBOT,IVTOP
+               R8_EVAL(IV-IBV,NEVAL) = 1.D+0
+     X              -BOOL(R8_EVAL(IV-IBV,NEVAL)-R8_EVAL(IV-IBV,NEVAL+1))
+            ENDDO
+         ELSEIF( CNCODE .EQ. 'ISPOSITI' )THEN
+            DO IV=IVBOT,IVTOP
+               R8_EVAL(IV-IBV,NEVAL) = STEP( R8_EVAL(IV-IBV,NEVAL) )
+            ENDDO
+         ELSEIF( CNCODE .EQ. 'ISNEGATI' )THEN
+            DO IV=IVBOT,IVTOP
+               R8_EVAL(IV-IBV,NEVAL) = STEP( -R8_EVAL(IV-IBV,NEVAL) )
+            ENDDO
+C.......................................................................
          ELSEIF( CNCODE .EQ. 'AND'  )THEN
             NTM   = R8_EVAL(1, NEVAL)
             NEVAL = NEVAL - NTM
@@ -1767,6 +1869,15 @@ C.......................................................................
                   SCOP(JTM) = R8_EVAL(IV-IBV,NEVAL+JTM-1)
                ENDDO
                R8_EVAL(IV-IBV,NEVAL) = MEDIAN( NTM, SCOP )
+	    ENDDO
+         ELSEIF( CNCODE .EQ. 'MAD'  )THEN
+            NTM   = R8_EVAL(1, NEVAL)
+            NEVAL = NEVAL - NTM
+            DO IV=IVBOT,IVTOP
+               DO JTM=1,NTM
+                  SCOP(JTM) = R8_EVAL(IV-IBV,NEVAL+JTM-1)
+               ENDDO
+               R8_EVAL(IV-IBV,NEVAL) = MAD( NTM, SCOP )
 	    ENDDO
          ELSEIF( CNCODE .EQ. 'ORSTAT' )THEN
             NTM   = R8_EVAL(1,NEVAL)
@@ -1825,6 +1936,24 @@ C.......................................................................
                ELSE
                   R8_EVAL(IV-IBV,NEVAL) = 0.D+0
                ENDIF
+	    ENDDO
+         ELSEIF( CNCODE .EQ. 'ARGMAX'  )THEN
+            NTM   = R8_EVAL(1, NEVAL)
+            NEVAL = NEVAL - NTM
+            DO IV=IVBOT,IVTOP
+               DO JTM=1,NTM
+                  SCOP(JTM) = R8_EVAL(IV-IBV,NEVAL+JTM-1)
+               ENDDO
+               R8_EVAL(IV-IBV,NEVAL) = ARGMAX( NTM, SCOP )
+	    ENDDO
+         ELSEIF( CNCODE .EQ. 'ARGNUM'  )THEN
+            NTM   = R8_EVAL(1, NEVAL)
+            NEVAL = NEVAL - NTM
+            DO IV=IVBOT,IVTOP
+               DO JTM=1,NTM
+                  SCOP(JTM) = R8_EVAL(IV-IBV,NEVAL+JTM-1)
+               ENDDO
+               R8_EVAL(IV-IBV,NEVAL) = ARGNUM( NTM, SCOP )
 	    ENDDO
 C.......................................................................
          ELSEIF( CNCODE .EQ. 'FICO_T2P' )THEN
@@ -2405,6 +2534,67 @@ C
       ELSE
          MEDIAN = X(IT+1)
       ENDIF
+      RETURN
+      END
+C
+C
+C
+      FUNCTION MAD(N,X)
+      REAL *8 MAD , X(N) , TMP , MEDIAN
+      INTEGER N , IT
+C
+      IF( N .EQ. 1 )THEN
+         MAD = 0.D+00
+         RETURN
+      ELSEIF( N .EQ. 2 )THEN
+         MAD = 0.5D+00*ABS(X(1)-X(2))
+         RETURN
+      ENDIF
+C
+      TMP = MEDIAN(N,X)
+      DO 100 IT=1,N
+         X(IT) = ABS(X(IT)-TMP)
+100   CONTINUE
+      MAD = MEDIAN(N,X)
+      RETURN
+      END
+C
+C
+C
+      FUNCTION ARGMAX(N,X)
+      REAL*8 ARGMAX , X(N) , TMP
+      INTEGER N, I , IT , NZ
+C
+      TMP = X(1)
+      IT  = 1
+      NZ  = 0
+      IF( TMP .EQ. 0.D+00 ) NZ = 1
+      DO 100 I=2,N
+        IF( X(I) .GT. TMP )THEN
+          IT  = I
+          TMP = X(I)
+        ENDIF
+        IF( X(I) .EQ. 0.D+00 ) NZ = NZ+1
+100   CONTINUE
+      IF( NZ .EQ. N )THEN
+        ARGMAX = 0.D+00
+      ELSE
+        ARGMAX = IT
+      ENDIF
+      RETURN
+      END
+C
+C
+C
+      FUNCTION ARGNUM(N,X)
+      REAL*8 ARGNUM , X(N)
+      INTEGER N, I, NZ
+C
+      NZ = 0
+      DO 100 I=1,N
+        IF( X(I) .NE. 0.D+00 ) NZ = NZ+1
+100   CONTINUE
+      ARGNUM = NZ
       RETURN
       END
 C

@@ -3399,3 +3399,1885 @@
       popup menu, Motif never does an XUngrabPointer, thus freezing the
       X server until afni is killed from outside.  This seems to avoid
       that problem.
+
+20 Dec 2001
+ * Modified ge_header.c to use -verb option to print out more stuff.
+ * Modified to3d.c to set default dataset type to ANAT_EPI_TYPE (-epan)
+      if user is creating a 3D+time dataset.
+ * Modified mri_read.c and to3d.c to correctly calculate and use
+      MRILIB_xoff and MRILIB_yoff for GEMS images.
+ * Modified afni.h, afni.c, afni_func.c to implement AFNI_GLOBAL_SESSION
+      environment variable.
+
+21 Dec 2001
+ * Fixed up some rescan session problems with AFNI_GLOBAL_SESSION datasets.
+      (We don't want to let them be destroyed or descendant-ized.)
+
+28 Dec 2001
+ * Modified matrix.[ch] and RegAna.c to speed up some of Doug Ward's
+      matrix-vector calculations, to make 3dDeconvolve faster.  Makes
+      it about 22% faster on an Athlon/Linux box.
+
+08 Jan 2002
+ * Modifications to make AFNI work under CYGWIN (www.cygwin.com):
+   - Removed shm stuff from thd_iochan.c
+   - Compile plugins directly into afni.exe (no dlopen)
+   - Changing Makefile.cygwin and Makefile.INCLUDE to make
+       PLUGIN_init() function have different names for each
+       plugin compiled on CYGWIN
+   - At this time, 3dNLfim, 3dTSgen, plug_nlfit, and plug_wavelets
+       are not compiled for CYGWIN since they present difficulties.
+
+28 Jan 2002
+ * Modified cs_qhull.c to use centroid instead of normal for midpoint.
+
+29 Jan 2002
+ * Modified afni.c function AFNI_setup_viewing() to correct problem when
+     viewing the same functional bucket in two controllers - the bucket
+     widgets might not get set up correctly due to false memories.
+
+30 Jan 2002
+ * New program 3dAutoTcorrelate.c for PAB.
+
+31 Jan 2002
+ * Modified imseq.c to allow scrollbars on the Disp button dialog, if
+      AFNI_DISP_SCROLLBARS is yessish.
+ * Modified imseq.[ch] and afni.[ch] to provide slice_proj projection
+      functionality.
+
+01 Feb 2002
+ * Put most transform functions from afni.c and imseq.c into new file
+       afni_transforms.c.
+ * Added 3dFDR.c from Doug Ward, and some changes to 3dDeconvolve.
+
+02 Feb 2002
+ * Added extreme_proj() to afni_transforms.c.
+
+04 Feb 2002
+ * Modified thd_getpathprogs.c to correctly skip searching the same
+     directory twice, rather than the cheap (strstr) way done before.
+     The old way caused problems when /usr/bin/ was ahead of /bin/,
+     for example.
+ * Similar changes to NLfit_model.c, afni_plugin.c, and thd_get1D.c.
+ * Removed the NULLIFY_ON_DESTROY() call for the whereami textwin in
+     afni.c, since the kill function for this window does the same
+     thing.  This may be the cause of the bug that Jill Weisberg
+     reported (that the whereami function stops working and then
+     crashes AFNI when the user presses the Quit button).
+
+05 Feb 2002
+ * Put #undef USE_TRACING in FD2.c, since it uses STATUS() for something
+      else.
+
+06 Feb 2002
+ * Adapted modified plug_histog.c from Vinai Roopchansingh (added the
+     "Output" option to write results to a file).
+
+19 Feb 2002
+ * Modified 3dAutoTcorrelate.c to add "-time" option.
+
+25 Feb 2002
+ * Adapted modified 3dDeconvolve.c from Doug Ward.
+ * Modified thd_getpathprogs.c to skip path elements that aren't directories
+     (some people have no clue, do they?).
+
+26 Feb 2002
+ * Modified afni.c to fix up the bucket widgets in AFNI_setup_viewing() again
+     (cf. 29 Jan 2002)
+
+27 Feb 2002
+ * Modified various files to replace "AGNI" with "SUMA" (SUrface MApper).
+     For example, we now have afni_suma.[ch] instead of agni.[ch].
+
+28 Feb 2002
+ * Fixed a small problem with thd_info.c (damn you, Jim Haxby).
+ * Incorporated a few more 3dDeconvolve changes from Doug Ward.
+ * First cut at putting niml.[ch] into AFNI, along with afni_niml.c.
+
+06 Mar 2002
+ * Many changes over the last few weeks to include NIML support for
+     talking to Ziad Saad's SUMA program.
+
+07 Mar 2002
+ * Modified afni_graph.c (and afni_pplug_env.c) to make Button3 popup
+     text info window be a scrollable textwin rather than a menu popup
+     if the number of lines is too long; "too long" is defined by new
+     environment variable AFNI_GRAPH_TEXTLIMIT.
+ * Modified mrilib.h to add field "was_swapped" to MRI_IMAGE struct.
+     Then modified mri_read.c to set this field if it auto-swaps the
+     image on input.  Then modified to3d.c to skip doing -2swap/-4swap
+     on such images.
+
+08 Mar 2002
+ * Modified afni_graph.c and afni.c to add 2 environment variables to
+     let user set the initial graph baseline parameters.
+ * Modified afni_func.c, afni.c, and afni.h to allow the Define Function
+     value label to be recomputed/redisplayed even if only 1 image
+     window is open.
+
+10 Mar 2002
+ * Modified coxplot/plot_cox.c, plot_x11.c, plot_ps2.c to allow circles.
+ * Modified afni.c, afni_pplug_env.c to use environment variables to set
+     SUMA overlay box size and color.
+ * Modified imseq.c so that 'q' keypress causes a window close (to make
+     this window like the various graph windows).
+ * Modified afni_niml.c to receive SUMA_ijk triangles.
+ * Modified afni.c to draw triangle/slice intersection lines.
+ * Modified afni.c to allow specification of AFNI_FIM_IDEAL on startup.
+ * Modified afni.c to set Dummy session directory to 1st argv directory.
+
+11 Mar 2002
+ * Modified afni.c to have SUMA overlay box and line color environment
+     strings set to "none" mean to skip that overlay step.  (The lines
+     look better without the boxes.)
+
+12 Mar 2002
+ * Implemented "zoom" feature in imseq.c (with a little help from bbox.h).
+ * Modified mri_dup.c to allow linear as well as heptic upsampling.
+     Use this for faster zooming in imseq.c.
+
+13 Mar 2002
+ * Modified imseq.c to not reload the zoomed Pixmap if the image isn't new.
+     This speeds up scrolling the zoomed image quite a lot.
+ * Modified coxplot/plot_x11.c to work properly if the first call to the
+     rendering function is into a Pixmap instead of a Window.
+ * Fixed a bug in niml.c that created NIML_TRUSTHOST_%2d environment variable
+     names - should have been NIML_TRUSTHOST_%02d (D'oh).
+ * Modified mri_dup.c to upsample byte-values images by 2/3/4 in special code.
+     This makes imseq.c zooming faster.
+
+14 Mar 2002
+ * Modified mri_dup.c to use 171/256, 85/256 as approximations to 2/3, 1/3 for
+     upsampling byte arrays by 3 - this avoids a division, and should be
+     faster.  Also a function to do upsample by 4 of 2D RGB images all at
+     once - this turns out to be worth the effort - speeds up nearly twice.
+ * Modified thd_loaddblk.c to check if sub-bricks are all the same datum; if
+     not, always uses malloc() and also prints a warning to stderr.
+ * Incorporated changes from Doug Ward:
+   * The group statistical analysis programs (3dANOVA, 3dANOVA2, 3dANOVA3,
+       3dRegAna, 3dMannWhitney, 3dWilcoxon, 3dKruskalWallis, 3dFriedman), when
+       creating an AFNI 2-subbrick dataset or a bucket-type dataset, previously
+       used the following format for the output datum types:
+          "intensity" sub-bricks -- same as input dataset
+          statistical sub-bricks -- scaled short integer
+       The above programs have been changed so that all output subbricks
+       will now have the scaled short integer format.
+   * Modified program 3dbucket, so that if there is more than one input
+     dataset, it will copy the command line history from the first input
+     to the output bucket dataset.
+
+15 Mar 2002
+ * Modified imseq.c ISQ_show_zoom() function to discard old zoomed image if
+     the pixmap had to be re-created.
+ * Modified mri_dup.c to do 3x RGB upsample in special function, too.
+ * Modified imseq.c to do panning with Button1 when the new 'pan' button
+     is on - the "old" arrowpad buttons have been excised.
+
+16 Mar 2002
+ * Modified afni.c to not start NIML until the startup timeout is called.
+     Otherwise, very early data might try to popup a window before that
+     is possible.  Also, made NIML be turned on by default.
+ * Modified afni_niml.c to have the popup messages include the I/O and
+     processing time for large data elements.
+ * Modified imseq.c (and afni_pplug_env.c) to keep panning mode on if
+     AFNI_KEEP_PANNING is yessish.
+ * Modified xim.c to speed up rgb_to_XImage(), by doing TrueColor and
+     PseudoColor in separate functions.
+
+17 Mar 2002
+ * Modified afni_niml.c to disable NIML listening if all potential sockets
+     are busy.  This is to prevent an endless series of error messages
+     when 2 AFNIs are running at once.
+ * Modified afni.c to add option "-noniml".
+
+18 Mar 2002
+ * Modified afni.c to make it necessary to use -niml or AFNI_NIML_START to
+     have NIML listening activated from the beginning.
+
+22 Mar 2002
+ * Modified mri_dup.c to correctly shift RGB images by 1/2 pixel.
+ * Modified afni.c to correctly draw coordinates for lines shifted by 1/2 pixel.
+ * Modified afni.c and afni_pplug_env.c to allow user to draw crosshairs with
+     lines instead of overlay pixels.
+
+23 Mar 2002
+ * Modified imseq.c to zoom and draw overlays on Save One images.
+
+25 Mar 2002
+ * Modified imseq.c to crop saved zoomed images if ordered by environment
+     variable AFNI_CROP_ZOOMSAVE.
+
+26 Mar 2002
+ * Modified imseq.c to save zoomed images in filtered Save many code as well
+     (including animations).  Also set "Save to .ppm" as the default save mode,
+     if possible.
+
+27 Mar 2002
+ * Modified 3dinfo.c, thd_info.c to have a -short option.
+ * Modified imseq.c to have isqDR_options save the output filter, rather than
+     reset it. (Otherwise, Left-is-Left loses the new default "Save to .ppm".)
+ * Modified parser.f and 3dcalc.c to include a mad() function.
+
+28 Mar 2002
+ * Added function mri_move_guts() to mri_free.c, in preparation for multi-
+     plotting in afni_graph.c.
+
+29 Mar 2002
+ * Modified afni_graph.c to accept multi-plot timeseries.
+ * Added plug_nth_dataset.c to generate multi-plot timeseries.
+ * Fixed bug in to3d.c that disabled -4swap option (from 07 Mar 2002).
+
+05 Apr 2002
+ * Added (x,y,z) coord printout to "Where Am I" window.
+ * Modified imseq.[ch] to remove ALLOW_ZOOM conditional, and to allow zoom/pan
+     from 'z', 'Z', and 'p' keystrokes.
+
+09 Apr 2002
+ * Some minor changes to machdep.[ch] to make AFNI work on Mac OS X 10.1.3.
+
+10 Apr 2002
+ * Remove malloc.h include from mpeg_encode files for OS X compatibility.
+ * Modify thd_automask.c to only keep largest connected component.
+ * New program 3dAutomask.
+ * Modified a few programs to use -automask as a synonym for -autoclip:
+     3dAutoTcorrelate.c, 3dTcorrelate.c, 3dToutcount.c, and 3dTqual.c.
+
+11 Apr 2002
+ * New program 3dAFNItoMINC.c, and new function thd_mincwrite.c.
+ * Fixed bug in thd_mincread.c: it formerly scaled float inputs, which
+     apparently is wrong.
+
+15 Apr 2002
+ * Changes to afni.c, afni_func.c, afni_slice.c, afni_warp.c, etc., to allow
+     MRI_rgb-valued datasets.  These can be created in to3d from ppm input
+     files.
+
+16 Apr 2002
+ * Modified thd_mincread.c to correctly use lower end of valid_range[].
+ * Modified thd_mincwrite.c to use "-range -scan_range" flags with
+     rawtominc program.
+ * Modified 3dvolreg.c and 3drotate.c to make -clipit the default.
+ * New program 3dThreetoRGB.c to create RGB datasets from 3 bricks.
+ * Modified mri_read.c to use new "3Dr:" input format for RGB files.
+ * Modified 3dAutomask.c to add history note.
+ * Modified afni_plugin.h and NLfit_model.h to read dlfcn.h from
+     dlcompat/ subdirectory on Darwin systems.
+ * Modified afni.c to allow environment variables to set +tlrc box size.
+
+17 Apr 2002
+ * Modified afni_sumafunc.c to allow for MRI_rgb fim overlays.
+
+18 Apr 2002
+ * Modified thd_automask.c to erode/dilate the result, so as to clip off
+     tenuously connected blobs.
+ * Modified edt_clust.c to make MCW_erode_clusters() return void, not
+     void *, since it doesn't actually return anything.
+
+19 Apr 2002
+ * Modified thd_automask.c to have fill in functions.
+ * Modified 3dAutomask.c to have -fillin option.
+ * Modified cox_render.c to remove memset() of new image to 0, since
+     mri_new() does this since 01 Nov 2001.
+
+22 Apr 2002
+ * Modified debugtrace.h to include "last_status" variable: keeps of copy of the
+     last STATUS() string, and prints it when the program crashes.
+ * Modified thd_dsetdblk.c to deal with NULL dataset at very end - the SUMA stuff
+     didn't check for that, which caused a crash if the dataset couldn't be
+     constructed.
+
+26 Apr 2002
+ * At last seem to have figured out how to make the orientations change
+     w.r.t. spatial axes - added these changes to plug_crender.c.
+
+28 Apr 2002
+ * Added the orientation changes to plug_render.c as well.
+
+29 Apr 2002
+ * New functions in thd_mnicoords.c to translate TT atlas coords to/from
+     MNI template coords.
+ * Used above in thd_ttatlas_query.c.
+ * Samia Saad was born today!
+
+30 Apr 2002
+ * Modified 3dclust.c to add -mni option.
+ * Modified 3dclust.c, edt_clust.c, edt_clustarr.c, edt_onedset.c to allow
+     cluster rmm=0 to imply 6 NN clustering, vmul=0 to mean no volume editing,
+     and vmul<0 to mean min volume = fabs(vmul) voxels.
+ * Modified plug_drawdset.c to add 'Flood->Val/Zer' option.  Also to turn
+     'See Function' on if the edited dataset is functional type.
+ * Added edt_clust2.c (NIH_find_clusters) to implement ISOVALUE_MODE and
+     ISOMERGE_MODE.
+ * Incorporated Ziad Saad's Ifile program into AFNI distribution.
+
+01 May 2002
+ * Added "Jump to (MNI)" button to image popup menu (afni_widg.c and afni.c).
+
+07 May 2002
+ Changes from Doug Ward:
+ * The -one_col option has been added to program RSFgen.  With this option,
+   the input stimulus functions are written as a single column of decimal integers
+   (rather than multiple columns of binary numbers).
+ * The -stim_base option was added to Program 3dDeconvolve.  This modification
+   allows the user to specify which input stimulus functions are to be included
+   as part of the baseline model.  By default, the input stimulus functions are
+   not included in the baseline model.  This option will effect the output values
+   for the Full Model R^2 and Full Model F-stat, since these statistics indicate
+   the significance of the full regression model relative to the baseline model.
+   This option might be useful, for example, when the estimated motion parameters
+   are included as input stimulus functions.  In most cases, the user would want
+   the motion parameters to be part of the baseline model.  By indicating that
+   the motion parameters are part of the baseline model, they will not contribute
+   to the full regression model sum of squares.
+ * The Deconvolution plugin was also modified to incorporate the above change.
+   On the far right of each stimulus function input line of the Deconvolution
+   plugin interface, there is a new option chooser labeled "Base", which allows
+   the user to specify that this stimulus function is to be considered as part of
+   the baseline model.
+ * The Deconvolution plugin was modified to allow a better graphical
+   representation of the estimated impulse response function when the user selects
+   option DC_IRF under Tran 1D of the graph options menu.  When using the DC_IRF
+   function, note that the Double Plot option should be set to "Off".
+ * The 3dDeconvolve documentation was updated to reflect the above changes.
+   In particular, see Examples 1.4.3.2 and 2.3.2 of the Deconvolution manual in
+   file 3dDeconvolve.ps.
+
+11 May 2002
+ * Modified afni.c to put global session datasets into sessions as they
+    are read, rather than later - this allows the anats in the global
+    session to allow a session to be used, even if there are no funcs
+    in the directory.
+
+14 May 2002
+ * Modified 3dZeropad.c to have -master option.
+ * Modified thd_zeropad.c to return full copy of dataset if input add/cut
+    values are all zero (used to return NULL).
+
+17 May 2002
+ * Modified imseq.c to allow image fraction change with 'i', 'I' keys.
+
+28 May 2002
+ * Modified 3drefit.c to add -clear_bstat option.
+ * Modified 3dAutomask.c to remove -fillin option.
+ * Modifed thd_automask.c to make fillin = brick size/60, and to make
+     final mask = complement of largest component of zeros.
+
+31 May 2002
+ * Adapted shm stuff from thd_iochan.c to niml.c.
+
+04 Jun 2002
+ * Modified 3dAutomask.c to print out how many planes are cut off in the
+     the mask.
+ * Modified thd_automask.c to be faster.
+
+06 Jun 2002
+ * New programs 3dAutobox.c and 3dLRflip.c.
+ * New function mri_cut_3D() in mri_cut.c.
+ * Modified mri_3dalign.c to do trimming to save memory.
+ * Modified 3dvolreg.c to add -wtrim and -wtinp options.
+
+07 Jun 2002
+ * Refined default threshold for termination of 3dvolreg.c.
+
+10 Jun 2002
+ * Modified afni.h and afni.c to incorporate RGBCYC cyclic color map from
+     Ziad Saad.
+
+12 Jun 2002
+ * Modified imseq.[ch] to add image cropping facility (Shift+Button2).
+ * Added function RWC_drag_rectangle() to xutil.c.
+ * Put MRI_COPY_AUX() into mri_cut.c (oops).
+
+14 Jun 2002
+ * Modified coxplot/plot_x11.c to remove offset of 0.5 pixels from
+     line drawing code.
+ * Modified imseq.c to fix scaling of memplot overlays when cropping.
+
+17 Jun 2002
+ * Added 'crop' pushbutton to imseq.[ch].
+ * Modified default font for imseq to 7x13 in afni.c, and
+     modified imseq.c to shrink button margins, to squish widgets together.
+
+19 Jun 2002
+ * Fixed clipping error in plot_cox.c (dangling else problem, d'oh).
+
+20 Jun 2002
+ * Modified mri_read_ascii() to catenate lines that end in '\', and do
+     some other minor stuff ('//' as a comment line, etc.).
+ * Modified thd_loaddblk.c (etc.) to support STORAGE_BY_VOLUMES.
+
+21 Jun 2002
+ * Modified thd_info.c to print out disk storage mode of dataset.
+ * Started work on 3dANALYZEtoAFNI.c.
+
+24 Jun 2002
+ * Modified mri_read_analyze75() in mri_read.c to store funused1 scale
+     factor into dv MRI_IMAGE header field, for use in 3dANALYZEtoAFNI.c.
+ * Modified thd_writedset.c to allow re-writing of a VOLUMES dataset
+     .HEAD file.
+ * Modified plug_realtime.c to allow single slice dataset input (nzz=1).
+
+25 Jun 2002
+ * Modified rtfeedme.c a little for debugging purposes.
+ * Modified thd_iochan.c to print better messages with PERROR().
+ * Modified plug_realtime.c to popup message when disk I/O is finished
+     after an acquisition ends.
+
+27 Jun 2002
+ * Modified niml.c to add debugging output option (NIML_DEBUG).
+ * Fixed scan_for_angles() in niml.c to disable timeouts in case (b).
+
+05 Jul 2002
+ * Modified 3dmerge.c to prevent use of -keepthr on fim and fbuc datasets.
+
+14 Jul 2002
+ * Removed the dicomm<->surefit functions from Vecwarp.c since they are now
+     in libmri.a via afni_suma.c, and the Sun compiler doesn't like this.
+
+15 Jul 2002
+ * Added mri_dicom_hdr.c and dicom_hdr.c - function and program to read/print
+     DICOM header info.  Adapted from dcm_dump_file.c from RSNA, per the
+     suggestion of Jack Lancaster.
+
+19 Jul 2002
+ * New function mri_read_dicom() to read images from DICOM files.
+
+23 Jul 2002
+ * Modified mri_read_dicom.c to get slice orientation and offsets.
+
+24 Jul 2002
+ * Modified UNIQ_idcode() in niml.c to get 4 extra bytes from /dev/urandom,
+     if it is readable.
+
+29 Jul 2002
+ * Modified AFNI_read_images() in afni.c to use im->dx,dy,dz in "-im" usage
+     of program, if images read have voxel spacing (e.g., Analyze).
+ * Modified imseq.c to NOT turn off widgets if only 1 slice to display.
+
+30 Jul 2002
+ * Modified plug_realtime.c to accept DRIVE_AFNI commands in the image prolog.
+ * Modified afni.c to allow plugouts during realtime.
+ * Modified rtfeedme.c to send DRIVE_AFNI commands with the -drive option.
+
+31 Jul 2002
+ * New function EDIT_wod_copy() to create a warp-on-demand copy, like 3ddup.
+ * Use this in afni.c when a directory has only functions, no anats.
+ * Modified afni.c to allow -TRACE to work in realtime mode.
+ * Modified afni.c, afni_widg.c to make plugouts not crash during realtime
+     mode (we hope).
+
+02 Aug 2002
+ * Modified plug_realtime.c to deal with multiple input channels.
+ * Modified rtfeedme.c to send multiple dataset channels.
+
+05 Aug 2002
+ * Removed DEBUGTHISFILE macro from all places that used it.
+ * Modified plug_realtime.c to deal with case when more channels than
+     controllers are in use.
+
+06 Aug 2002
+ * Modified afni_driver.c to allow "iconify" option on OPEN_WINDOW commands.
+ * Modified afni_driver.c to return controller index only if the input
+     string is only 1 character long or the 2nd character is a '.'.
+ * Modified afni_func.c and bbox.c to deal with potential strlist[] overflow
+     problems.
+
+07 Aug 2002
+ * Fixed cl1.c and incorporated into libmri.a.
+ * Added plugin plug_L1fit.c to provide a L1 analog to plug_lsqfit.c.
+ * Modified 3dToutcount.c to use cl1_solve to remove trends before
+     outlier-ing.
+
+08 Aug 2002
+ * Added color save/load to afni_ttren.c.
+
+13 Aug 2002
+ * Modified imseq.c to destroy dialog widget before imseq top widget.
+ * Fixed array overflow by 1 bug in mri_percents.c.
+ * Modified mri_read.c to check for .hdr files before DICOM.
+ * Modified 3dToutcount.c to save result as a FIM, and to save history.
+
+14 Aug 2002
+ * Modified various things (afni.h, afni.c, afni_niml.c, afni_suma.c)
+     to allow for multiple surfaces per dataset.
+ * Modified niml.h to disable shm stuff for Cygwin.
+
+16 Aug 2002
+ * Modified imseq.[ch] and afni.c to suppress multiple image redraws
+     when an image window is first opened.
+ * Modified plug_nudge.c to extend range of angle and shift choosers.
+ * Modified xutil.h WAIT_for_window() macro to wait a little longer.
+     This is in an attempt to get rid of random problems with graph
+     windows opening with bad Pixmap contents.
+
+19 Aug 2002
+ * Modified afni_sumafunc.c (afni.h, etc.) to have a control panel for
+     surface stuff.  At this time, lets user set colors.
+
+20 Aug 2002
+ * Modifications to surface controls: hints, help, comments.
+ * Added UUID functions to niml.[ch].
+
+21 Aug 2002
+ * Modified niml.c to add NI_mktemp(), and change use of /dev/urandom.
+ * Modified machdep.c to change use of mallopt() for Linux - seems to
+     make big malloc()'s work better (?).
+ * Modified thd_fetchdset.c to use niml.c functions, instead of the
+     older thd_http.c functions.
+
+23 Aug 2002
+ * Modified thd_loaddblk.c to print (stderr) a message when loading a
+     large dataset.
+ * Modified niml.[ch] to implement NI_reopen_stream() and make a first
+     cut at NI_do().
+
+26 Aug 2002
+ * Added Htable (string/pointer pair) hash table functions to niml.[ch].
+ * Added mri_read3D_analyze75() to mri_read.c, to read an ANALYZE file
+     as an array of 3D images, rather than 2D images.
+
+27 Aug 2002
+ * Modified mri_read*_analyze() functions to always floatize ANALYZE
+     data if the SPM funused1 scale factor is present.
+ * Added ANALYZE (thd_analyzeread.c) file input to datasets.
+
+28 Aug 2002
+ * Modified thd_initsess.c and thd_analyzeread.c to support FSL/FEAT
+     input .map files.
+
+01 Sep 2002
+ * Program 3dDespike.c, to patch a problem with the 3T-1 scanner.
+
+03 Sep 2002
+ * Modify 3dDespike.c to allow float datasets, print nicer messages, etc.
+ * Fix my_tanh() bug in 3dDespike.c, which was returning NaN for very
+     large inputs.
+
+04 Sep 2002
+ * More cosmetic changes to 3dDespike.c.
+
+09 Sep 2002
+ * ISHEADTYPE macro in 3ddata.h used "=" instead of "=="; this was bad.
+ * 'Q' and 'q' quits in afni_widg.c and afni_func.c (hidden_EV).
+
+10 Sep 2002
+ * Modified mri_read_dicom.c to print out at most 9 warning messages of
+     each type.
+ * Modified to3d.c to open X11 immediately when -nosave is used.  Also added
+     a bunch of ENTRY/RETURNs to ferret out a bug (it's still hidden).
+ * Oops.  Forgot to fclose() the fopen()-ed file in mri_read_dicom.c.  This
+     was causing the problems in to3d mentioned above.
+ * New program dicom_to_raw.c.
+
+30 Sep 2002
+ * Modified 3dAFNItoANALYZE.c (and mri_write_analyze.c) to allow output of
+     AFNI datasets into a 4D ANALYZE format file.
+
+01 Oct 2002
+ * Modified plug_realtime.c to allow input of notes via a NOTE command.
+     Also modified rtfeedme.c with -note option to test this out.
+
+03 Oct 2002
+ * Modified imseq.c to allow use of Shift+Button1 for drawing as well as
+     Button2.  Changes also to afni_graph.c and plug_drawdset.c (the
+     latter just to change the help text).
+ * Modified 3dTcat.c to use last '+' as marker for '+orig' (etc.)
+     rather than 1st.
+
+04 Oct 2002
+ * Took modified plug_deconvolve.c from Doug Ward, to fix bug when baseline
+     is disabled.
+ * Modified thd_analyzeread.c to add AFNI_ANALYZE_AUTOCENTER option.
+ * Modified 3drefit.c to add -xorigin_raw (etc.) options.
+ * Modified thd_intlist.c to skip blanks in the [] sub-brick selector string.
+
+07 Oct 2002
+ * Modified plug_drawdset.c to add "2D Nbhd" and "3D Nbhd" drawing modes.
+ * Also rearranged the Copy and Choose Dataset buttons.
+
+08 Oct 2002
+ * Modified plug_drawdset.c (and imseq.[ch], afni_receive.c, afni.h) to make
+     button2 drawing overlay have thicker lines, closer to what will actually
+     be filled.  Also added 1 larger "3D Nbhd" stencil.
+
+10 Oct 2002
+ * Modified thd_analyzeread.c to correct signs of origin when orientation has
+     some negative axes.
+
+16 Oct 2002
+ * Modified plug_drawdset.c to add '2D Circle' and '3D Sphere' drawing modes.
+
+17 Oct 2002
+ * Modified plug_drawdset.c sphere/circle insertion not to test for duplicate
+     insertions from the 1st input point - this speeds things up for large R.
+
+25 Oct 2002
+ * Modified plug_drawdset.c to use sorting to prevent vast numbers of duplicates
+     when inserting large R circles/spheres.
+
+28 Oct 2002
+ * Changes to mri_dicom_hdr.c and mri_read_dicom.c to deal with Siemens' stupid
+     mosaic format.
+
+01 Nov 2002
+ * More changes for mosaic input.
+
+04 Nov 2002
+ * Added MRI_rgb type to thd_zeropad.c and to BRICK_*_MASK macros in afni_plugin.h.
+ * Took changes from Rasmus Birn to add a "-gamd" delay option to waver.c.
+
+05 Nov 2002
+ * Added program rotcom.c, to print out matrix+vector from '-rotate ... -ashift ...'
+     options that would be input to 3drotate.
+ * Fixed mri_read.c, mri_read_dicom.c, mri_dicom_hdr.c to stop annoying printout of
+     messages about bad DICOM files when trying to read GE I.* files.
+
+12 Nov 2002
+ * Changed MAX_CONTROLLERS in afni.h for Mike Beauchamp.
+
+13 Nov 2002
+ * Modified afni_splash.[ch] to allow color top overlays.  Incorporated SSCC group
+     picture.
+
+18 Nov 2002
+ * Modified niml.[ch] to make the NI_malloc() package use tracking functions,
+     which I stole from mcw_malloc.c - of course, I wrote that, too, so "stole"
+     may be too strong a verb.
+
+21 Nov 2002
+ * Added some extra programs (gifsicle, mpeg_encode, cjpeg, etc.) to the PROGRAMS
+     macro in Makefile.INCLUDE.
+
+22 Nov 2002
+ * Added mri_read_stuff.c to filter input from JPEGs, TIFFs, BMPs, etc., into
+     mri_read.c.
+ * Added afni_version.c to check AFNI version at startup.
+ * Modified edt_dsetitems.c to strip "+orig" etc. from tail of new prefix.
+
+23 Nov 2002
+ * Modified afni_version.c to only do a check once every 12 hours.
+
+25 Nov 2002
+ * Modified afni_friends.c to add date-based trivia (also, afni.[ch]).
+
+27 Nov 2002
+ * Modified mri_read_dicom.c to allow for stupid GE case where slice spacing is
+    incorrectly set to slice gap instead.
+
+29 Nov 2002
+ * Modified mri_read_stuff.c to allow for case when initial 4096 byte buffer
+     contains all the image data (i.e., for tiny images).
+ * Modified coxplot/plot_ps.c to allow output to stdout.
+ * Modified 1dplot.c to allout PostScript output to stdout.
+
+30 Nov 2002
+ * Modified mcw_graf.[ch] to draw a coordinate label during drag of graf
+     handle with Button 3.
+ * Modified mri_read_dicom.c to deal with GE's incorrect use of Slice Spacing
+     as gap, rather than center-to-center distance.  Ugh.
+
+02 Dec 2002
+ * Modified plug_crender.c to use mcw_graf.c stuff of 30 Nov 2002.
+ * Modified mri_read_dicom.c to deal with Siemens Mosaic differently, to
+     accomodate variations from NYU's Allegra scanner (vs. NIDA's).
+ * Modified to3d.c to show NX x NY along with Datum in GUI.
+
+03 Dec 2002
+ * Modified niml.c to use setsockopt() to change socket buffer sizes only
+     if getsockopt() says they are too small.
+
+04 Dec 2002
+ * Added thd_ctfread.c to read CTF MRI files as datasets.
+ * Modified thd_initsess.s, thd_opendset.c, thd_loaddblk.c, 3ddata.h to
+     use the CTF functions.
+
+05 Dec 2002
+ * Added CTF SAM file input to thd_ctfread.c.
+ * Modified 3dIntracranial.c to convert input dataset to shorts if it is
+     stored as bytes.  The output will still be shorts.
+
+07 Dec 2002
+ * Modified imseq.c to change image number on '<' or '>' keys (like
+     the graph windows).
+
+09 Dec 2002
+ * Modified imseq.c to save temporary files for animated GIF or MPEG
+     output with a random suffix, to avoid collisions if 2 copies
+     of AFNI (or aiv) are running.
+ * Modified niml.[ch] to allow definiton of "NI_rowtypes" to make it easier
+     to deal with structs (with all fixed length elements, alas).
+ * Modified nids.[ch] to deal with vectors of arbitrary NI_rowtype.
+
+11 Dec 2002
+ * Modified plug_realtime.c to allow termination of a dataset without
+     closing the data IOCHAN.  Also added new XYZFIRST metadata command,
+     to allow setting of all 3 axis offsets.
+ * Modified rtfeedme.c to test the above features.
+
+12 Dec 2002
+ * Modified afni_niml.c and afni_sumafunc.c to create functional
+     colormaps for all surfaces on the anat dataset, not just the
+     first surface.  Also fixed it so that fim=0 is not overlaid.
+ * Modified thd_iochan.c to use IOCHAN_DELAY_RMID environment variable
+     to indicate that deletion of shm segments should only occur when
+     no one is attached to them.  This is to get around a problem on
+     some Unices.
+ * Modified Makefile.INCLUDE rule for cjpeg to remove old Makefile and
+     jconfig.h, since these are re-made by the configure script.
+ * Modified niml.c to shmdt() before shmctl(IPC_RMID) instead of after.
+ * Modified afni.c to skip version check if realtime is on.  Also modified
+     afni_version.c to add an atexit() handler to delete the child-parent
+     shared memory IOCHAN when the program exit()'s.
+ * Modified rtfeedme.c to add a signal handler to close the data IOCHAN
+     if the program crashes.
+
+16 Dec 2002
+ * Moved niml.[ch] into niml/ subdirectory, and modified Makefile.INCLUDE
+     accordingly.
+
+18 Dec 2002
+ * Modified plug_realtime.c to add ZGAP and XYZOFF features from Larry Frank.
+ * Fixed bug in niml/niml_util.c decode_string_list() function where
+     the sar->str array was allocated with sizeof(char)*num rather than
+     sizeof(char *)*num.  Not good in the long run.
+ * Modified niml/niml_rowtype.c to allow rowtypes to have 1D variable dimension
+     arrays.
+
+19 Dec 2002
+ * Added THD_mkdir(), THD_is_ondisk(), THD_cwd() to thd_filestuff.c.
+ * Modified afni_driver.c to add commands SYSTEM and CHDIR, which call
+     system() and chdir() [pretty clever names, huh?].  Also modified
+     afni_driver.c to trim trailing blanks from the input command
+     before passing it to the handler functions.
+
+20 Dec 2002
+ * Modified niml/niml_do.c to add verb "close_this" to close a stream.
+     This is to let a stream be closed from the other end.
+ * Modified niml/niml_stream.c to send a "close_this" message when
+     a tcp: or shm: stream is closed.
+ * Modified niml/niml_stream.c to mark NI_stream's for "death" in
+     NI_stream_close_keep(), and then avoid using such streams in
+     other functions.  This is to let a stream be closed without
+     freeing its struct.
+
+23 Dec 2002
+ * Modified mri_read_dicom.c to correct error in z-axis orientation from
+     multiple 1-slice datasets - code had been copied from mri_read.c, but
+     that was for GE LPI coords, and DICOM is RAI.
+ * Modified mri_read_dicom.c to use Rescale and Window tags, if turned on
+     by the relevant environment variables.
+ * Modified aiv.c to use globbing on input filenames.
+
+24 Dec 2002
+ * Modified mri_read_dicom.c to save Siemens extra info string even if
+     file isn't a mosaic.
+
+27 Dec 2002
+ * Modified 3dttest.c to save DOF dataset if -unpooled is used.
+
+28 Dec 2002
+ * Modified AFNI_rescan_session() in afni_func.c to NOT clobber existing
+     dataset pointers when adding datasets to a session.
+ * Removed all instances of OMIT_DATASET_IDCODES.
+
+29 Dec 2002
+ * Minor change to afni_version.c to print out "Latest News" web page
+     when version comparison fails.
+
+30 Dec 2002
+ * Minor change to AFNI_rescan_session() users to print out number of
+     new datasets rows.
+
+31 Dec 2002
+ * Modified niml/niml_rowtype.c to deal with String type and debugged
+     stuff with output of var dim arrays.
+
+02 Jan 2003
+ * Added a error message to mcw_malloc.c to note when an allocation fails.
+
+10 Jan 2003
+ * Modified edt_blur.c to clip output to input range.
+
+13 Jan 2002
+ * Modified Makefile.solaris28_gcc on hador system - plugins would no longer
+     load.  Use of GNU ld instead of UCB ld fixes this, but for unknown
+     reasons.  Evil spirits?
+
+15 Jan 2003
+ * Modified afni.c to let user set SUMA line thickness via environment
+     variable.  Also changed afni_pplug_env.c to match.
+ * Modified afni_func.c to purge all datasets in a session after rescan.
+
+16 Jan 2003
+ * Modified imseq.c to let user setenv AFNI_AGIF_DELAY to control speed
+     of animated GIF output.
+ * Modified afni_driver.c to allow remote changing of thresholds, the
+     addition of overlay colors, and the setting of pbar pane number.
+
+21 Jan 2003
+ * More additions to afni_driver.c.
+ * Changes to afni.[ch] to allow startup script to drive AFNI setup.
+
+22 Jan 2003
+ * Added "Run Script" button to Datamode->Misc menu.
+ * Made "Save Layout" button save setup script to .afni.startup_script
+     if no filename is entered.
+
+23 Jan 2003
+ * Made AFNI_VALUE_LABEL default be YES instead of NO.
+ * Added AFNI_DEFAULT_OPACITY environment variable, for image overlay opacity.
+ * Added AFNI_DEFAULT_IMSAVE environment variable, for .jpg, .tif, etc.
+ * Fixed bug in afni_driver.c SETENV function - space used for putenv() must
+     be permanent memory, not temporary!
+
+24 Jan 2003
+ * Added special function key stuff to imseq.c (arrows, PgUp/PgDn).
+
+27 Jan 2003
+ * Added messages to afni_version.c when version checking is disabled, fails,
+     or when the current version is different than the last version.
+
+28 Jan 2003
+ * Modified thd_ctfread.c to correct nx,ny,nz calculation for SAM images.
+ * Modified afni.c to do the time lock properly when the anat has no
+     time axis but the func does.
+ * Modified 3dcopy.c to work with copying non-AFNI datasets.
+
+29 Jan 2003
+ * Modified 3drefit.t to add -Torg option (for MEG guys).
+
+30 Jan 2003
+ * Modified pbar.c, afni_func.c, etc., to add a "big" mode to the pbar, with
+     128 colors.  More work is needed here for SUMA, rendering, scripting,
+     loading colormaps, etc.
+
+31 Jan 2003
+ * Modified afni.c to de-sensitize threshold slider when not needed, rather
+     than hide it.  This is to get around a problem with the size of the pbar
+     being adjusted slightly incorrectly, for reasonse I don't understand.
+ * Modified pbar.c to give choice of colormaps for "big" mode.  Programmed
+     a startup set of 4 colormaps.
+
+02 Feb 2003
+ * Modified afni_sumafunc.c to use "big" mode colorscales.
+ * Modified afni.c, pbar.c (etc.) to read in user-defined colorscales
+     from files.
+
+03 Feb 2003
+ * Changes to afni_driver.c to support colorscales.
+ * Saving .afni.startup_script now also saves the Autorange/funcrange setting.
+
+04 Feb 2003
+ * Moved user-defined colorscale setup to pbar.c from afni.c.
+ * In afni_widg.c, use AFNI_COLORSCALE_DEFAULT to setup initial colorscale.
+
+05 Feb 2003
+ * Added "OPEN_PANEL" command to afni_driver.c, and to afni_splash.c.
+
+06 Feb 2003
+ * This time, modified 3ddata.h, afni.c, afni_func.c to ALWAYS keep threshold
+     slider active, and when there is no threshold, use the function for the
+     threshold.  (However, RGB overlays are not thresholded, so this is the
+     only case in which the threshold slider is desensitized.  Also, the first
+     time the user switches to a fim dataset, the threshold slider is set to 0.)
+ * Modified to3d.c to deal with double input images (to be converted to floats).
+     Also changed mri_read.c, mcw_glob.c, mri_swapbytes.c, 3ddata.h to add
+     a "3Dd:" input format for reading doubles from arbitrary files.
+ * Added some new default colorscales to pbar.c.
+
+07 Feb 2002
+ * Modified afni_func.c to allow AFNI_RESCAN_METHOD environment variable to
+     choose old rescan method (cf. 28 Dec 2002).
+
+10 Feb 2003
+ * Modified afni_graph.[ch] and afni.c to allow initializing graph matrix size
+     to value other than 3, through AFNI_graph_matrix environment variable.
+ * Modified 3dcalc.c to allow RGB dataset input.
+
+11 Feb 2003
+ * Modified 3dfractionize.c to set default clip value to a very tiny positive
+     value, rather than 0.
+ * Modified pbar.[ch] to use a popup menu to deal with Button-3 events, rather
+     than directly do stuff.  Included a value+color label on this menu.
+
+12 Feb 2003
+ * Modified niml/ to read/write full type names rather than just abbreviations
+     to the "ni_type" attribute of data elements.
+ * Modified niml/niml_do.c to add a "typedef" verb, and to let the user program
+     define its own verb/callback pairs.
+ * Modified afni_niml.c to define a "ni_do" verb "DRIVE_AFNI", to let external
+     program (hint: SUMA) access this stuff.
+
+18 Feb 2003
+ * Modified afni_func.c to add a hint to the colorscale.
+ * Modified NIML stuff to use rowtypes more properly (niml_element.c, etc.).
+ * Modified various Makefile.* to define SHOWOFF macro (once again).
+ * Modified afni_version.c to print out appropriate wget command for update.
+ * Modified afni.c to printout precompiled version, if present.
+
+19 Feb 2003
+ * Fixed a couple little points in niml_rowtype.c.
+ * Modified afni_sumafunc.c (afni.h, etc.) to change "Control Surface"
+     label for each surface into a toggle button, to make it easier to
+     turn surface on and off quickly.
+
+20 Feb 2003
+ * Changes to imseq.c, afni.[ch], afni_receive.c, and plug_drawdset.c to make
+     the keypad "Delete" key(s) operate like the Undo button in the drawing
+     plugin.
+ * Modified afni_receive.c to have a string name debug output for each
+     receive callback (and all the functions that call this).  Also fixed a
+     bug that would have functions registered for different receive cases
+     get inappropriate calls (forgot to enclose the call in {..} in an if).
+ * Modified afni_suma*.c to send closest surface node ID to SUMA when viewpoint
+     change callback is invoked.
+
+21 Feb 2003
+ * Modified imseq.c to use "-bpp 24" in ppmtobmp output to BMP files, avoiding
+     quantization problems.
+ * Modified afni.c to add a "#NodeID" string to the Button-3 image viewer popup,
+     when a surface is present.
+
+23 Feb 2003
+ * Modified afni.[ch] and afni_sumafunc.c to create boxsize and linewidth
+     controls on the "Control Surface" popup.
+ * Modified coxplot/plot_x11.c to flip line segments if that will make
+     them join. Also, initialize thickness of plots to 0, to allow for
+     special case (circle, box, ...) that is first item plotted.
+
+24 Feb 2003
+ * Modified afni.c to draw a * in the box of the closest surface node.
+ * Modified 3dhistog.c to print "#" at start of header lines, so that
+     result can be read by mri_read_1D(), etc.
+ * Incorporated changes from KRH to fix mri_read_dicom.c for Siemens
+     mosaics with incomplete slice coordinates.
+ * Modified afni_graph.c to fix problem with double plot introduced
+     when multiple timeseries graphing was introduced - forgot to
+     reset tsar pointer to original data when graphing double plot
+     in plus/minus mode.
+
+26 Feb 2003
+ * Modified afni_graph.c and afni_sumafunc.c to allow drawing of triangle
+     intersections at edges of slice plane, as well as at center.
+ * Modified "view_setter" code to work more intuitively when only one
+     image viewer is open, etc.
+
+27 Feb 2003
+ * Modified 3dDeconvolve.c to get multiple timeseries at once, to reduce
+     cache thrashing.
+ * Modified thd_notes.c to add function to append one dataset's history
+     to another's.  Used this in 3dcalc.c as a starter.
+
+28 Feb 2003
+ * Per Lukas Pezawas of CBDB, modified 1dgrayplot.c to have -ps option,
+     like 1dplot.c.  While doing so, also fixed a bug in coxplot/plot_ps2.c
+     where the rectangle case didn't have a "break", so fell through and
+     drew a circle as well.
+ * Modified mritopgm.c to have a clipping option.
+
+03 Mar 2003
+ * Created matrix_f.[ch] as float alternatives to matrix.[ch].  Then used this
+     in 3dDeconvolve.c and RegAna.c to create a program 3dDeconvolve_f compiled
+     from 3dDeconvolve.c when the FLOATIZE C macro is defined.  Speedup on a
+     Linux box is about 40% (due to less memory fetch).
+ * Modified mri_read_dicom.c to allow user to skip stupid GE fixup entirely.
+
+04 Mar 2003
+ * Modified afni.c to get rid of bug when de-sensitizing thr_rowcol for RGB
+     images.  Now it is always sensitized.  Also, afni_func.c now will deal
+     with RGB images as thresholds (just converts them to floats, though).
+ * Added thd_1Dtodset.c, functions to read and write 1D files as AFNI datasets.
+ * Added niml/niml_stat.c to be a place to store statistics code for NIML.
+
+05 Mar 2003
+ * Fixed a bug in AFNI_setup_viewing() that crept in - assumed existence
+     of fim_now, which might not be true.
+ * Incorporated fix of mri_read_dicom.c from Rich Hammett, to skip false
+     targets in the Siemens extra info.  (Will no one rid me of this
+     troublesome mosaic format?)
+ * Modified 1dplot.c to accept multiple timeseries file inputs.
+ * Modified thd_automask.c to have a mri_automask() function as well.
+ * Modified 3dAutomask.c to do fillin and exterior-clipping if -dilate
+     option is used.
+
+06 Mar 2003
+ * Modified 3dWinsor.c to use -mask option.
+
+07 Mar 2003
+ * New program 3dAnhist.c.
+
+10 Mar 2003
+ * Modified imseq.[ch] to make F2 button have Button1 operate as Button2,
+     and to show cursor as a pencil shape for drawing when this mode is on.
+
+11 Mar 2003
+ * Modified tagset.h to increase number of allowed tags.
+
+13 Mar 2003
+ * Changes to 3dAnhist to regress histogram and plot it.
+ * Changes to coxplot/plot_ts.c to have it avoid "pushing" data limits out.
+ * Changes to 1dplot.c: -xzero and -nopush options.
+ * Added THD_generic_detrend() to thd_detrend.c, and used this to add a
+     -ort option to 3dTcorrelate.
+ * Modified thd_notes.c and 3dNotes.c to avoid escaping the '\' character
+     for notes input from the command line.
+
+14 Mar 2003
+ * A few more changes to 3dAnhist.c.
+ * Modified thd_opendset.c to also deal with .1D inputs.
+
+18 Mar 2003
+ * Fixed 1dplot.c -stdin option to work again (oops).
+
+19 Mar 2003
+ * Modified 3dAFNItoANALYZE.c to add -orient option.
+ * Added mri_flip3D.c to flip 3D images around.
+ * Added thd_getorient.c to get axis direction in a dataset for
+     a given orientation code.
+ * Modified mri_copy.c to work if input image doesn't have data array.
+ * Added environment variable AFNI_MINC_SLICESCALE to thd_mincread.c.
+ * Fixed bug in thd_mincread.c in slice-scaling when datum is floats
+     (subtracted intop instead of inbot in scaling formula).
+ * Modified thd_mincread.c to downscale short or byte datasets if
+     slice scaling would push them past the maxval for that data type.
+     Also, use calloc() on im_min and im_max arrays to avoid problems
+     when those arrays in the MINC file are incomplete.
+ * Modified 3drefit.c, and thd_delete.c to skip CTF and 1D files.
+ * Modified 3drotate.c to skip rotation if rotation matrix is identity.
+     Also modified 3dvolreg.c and 3drotate.c to use "%.4f" format when
+     writing command string to THD_rotcom_to_matvec().
+
+20 Mar 2003
+ * Modified afni_func.c, 3ddata.h, afni_graph.c to allow graphing of
+     datasets with only 1 point along a spatial dimension (i.e., ".1D"
+     files).
+ * Modified niml/elemio.c to allow writing and reading of elements
+     with the "# ..." line format for header/trailer fields.  Also
+     modified thd_1Ddset.c to write .1D dataset files out in this
+     format.
+
+21 Mar 2003
+ * Added thd_3Ddset.c to read AFNI datasets from NIML-formatted
+     .3D files.  Corresponding changes to 3ddata.h, etc.
+ * Changes from Doug Ward:
+   1) Program 3dDeconvolve:  Added -quiet option to suppress screen output.
+   2) Plugin Deconvolve:  Additional input error protection for -censor and
+      -concat options.  These options could cause afni to crash if the input
+      files were not set up correctly.
+   3) Program RSFgen:  Added -table option, to generate random permutations of
+      the rows of an input column or table of numbers.  Useful for randomization
+      studies of statistical thresholds, about which more later.
+   4) Libraries matrix.c and matrix_f.c:  The recently added/modified matrix
+      routines vector_multiply and vector_multiply_subtract would produce a
+      segmentation fault for certain input matrices (e.g., null baseline model).
+      This has now been corrected (hopefully).
+
+23 Mar 2003
+ * Added -xyz option to 3dmaskdump.c.
+
+27 Mar 2003
+ * Modified NIML to allow ni_dimen=0 on input, and then infer length of vectors
+     from input data.
+
+28 Mar 2003
+ * Changes to afni_splash.[ch] to include faces!
+
+29 Mar 2003
+ * Modified mri_resize() [in mri_warp.c] to properly deal with images of
+     MRI_byte, MRI_short, and MRI_rgb types.
+
+09 Apr 2003
+ * Fixed thd_shear3d.h function DMAT_svdrot() to work properly when input matrix
+     is singular.
+
+11 Apr 2003
+ * Modified coxplot/plot_ts.c to allow setting of line colors using
+     AFNI_1DPLOT_COLOR_xx environment variables.
+
+12 Apr 2003
+ * Modified waver.c -tstim option to skip argv[]'s that start with whitespace
+     -- this is to deal with evil Microsoft CR-LF line breaks.
+
+15 Apr 2003
+ * Fixed bug in mri_overlay.c (using data from imover instead of imov!).
+
+16 Apr 2003
+ * Modified 3dUniformize.c to allow byte-valued datasets, and added to standard
+     distributions.  Also modified estpdf3.c and pdf.c to obey the global
+     "quiet" variable, if the USE_QUIET macro is defined.
+
+18 Apr 2003
+ * New program 3dWarp.c (along with mri_warp3D.c).
+ * Minor changes to 3dAnhist.c for Lukas Pezawas.
+
+22 Apr 2003
+ * Modified 3dTagalign.c (and thd_shear3d.c) heavily to use THD_warp3D() instead
+     of rotation-only functions, and to allow different kinds of transformation
+     matrices to be used.
+
+24 Apr 2003
+ * Modified 3dTshift.c and thd_tshift.c to negate time shift, since it seems have
+     been wrong all these years.
+
+28 Apr 2003
+ * Modified 3dcalc to add -taxis option.
+ * Added mri_fromstring.c, to input 1D data in the form '1D:5@0,10@1,5@0', etc.
+
+29 Apr 2003
+ * Modified imseq.c and machdep.h to add ENFORCE_ASPECT #define (for Mac OS X).
+
+30 Apr 2003
+ * Modified thd_intlist.c to let "{}" bound the list as well as "[]".
+ * Modifed mri_read_1D() to use intlist of the form "{..}" to do row sub-selection,
+     as well as the older "[..]" for column sub-selection.
+ * Modified most programs that used mri_read_ascii() to read timeseries files to
+     use mri_read_1D() instead, so that the "{..}" feature can be supported.
+
+01 May 2003
+ * Modified NLfit.c and plug_nlfit.c to have NLfit_error() be able to use longjmp()
+     to deal with errors, rather than exit().
+ * Modified afni_func.c to rotate color bar in steps of 4 if Shift key is pressed.
+
+04 May 2003
+ * Parallel computation (-jobs option) addtions to 3dDeconvolve.c.
+
+06 May 2003
+ * Minor changes to 3dDeconvolve.c.
+ * From Rich Hammett, AFNI_TRY_DICOM_LAST environment variable.
+
+07 May 2003
+ * Parallel computation (-jobs option) addtions to 3dNLfim.c.
+ * Mods to mri_dicom_hdr.c to subtract 1 from rwc_err for each error message.
+     This way, will normally only print 1 such message per to3d run, which will
+     make the users happier, I hope.
+ * Add mri_possibly_dicom() function to mri_read_dicom.c, and use it to censor
+     which files get the full DICOM reading treatment.
+
+09 May 2003
+ * AFNI_THRESH_BIGSTEP environment variable.
+ * Boxes in 3dmaskdump.c.
+
+12 May 2003
+ * Modified thd_initdkptr.c to have prefixes that start with '/' override any
+     input directory name.
+ * Modified waver to allow 'a:b' and 'a%c' durations for '-tstim' input.
+
+13 May 2003
+ * Added "-Fourier_nopad" option to 3drotate.c, plug_nudge.c, and thd_rot3d.c.
+ * Modified afni.c to have arrowpad keys do wraparound when they hit the edge.
+
+14 May 2003
+ * Fixed bug in thd_intlist.c, where ']' or '}' might not stop the scanning of
+     the string.  This was a problem when dealing with inputs that have both
+     types of selectors -- one might run over another in the parsing.
+
+29 May 2003
+ * Modified 3dttest.c to output t-statistic brick in floats if diff brick is
+     stored as floats.
+ * Modified 3dcalc.c to floatize datasets that don't have constant sub-brick
+     datum.
+ * Per the request of Ziad Saad, added function NI_add_column_stride() to
+     niml/niml_element.c.
+
+06 Jun 2003
+ * Modified niml/niml_stream.c to disable reopen of tcp: stream as shm: if
+     AFNI_NOSHM environment is set to YES.
+
+11 Jun 2003
+ * Modified afni.c NOT to call AFNI_set_thresh_top() in AFNI_setup_viewing()
+     when changing functional datasets.
+
+13 Jun 2003
+ * Modified imseq.c to prevent resized windows from getting bigger than
+     AFNI_IMAGE_MAXFRAC (default=0.9) times the screen dimensions.
+ * Modified niml/niml_elemio.c to make attribute string buffer size expand
+     when Ziad writes huge attributes, the fiend.  Also put a newline before
+     each attribute, whether we want it or not.
+
+16 Jun 2003
+ * SUMA+AFNI ROI stuff.
+
+20 Jun 2003
+ * Modified imseq.c to add ISQ_snapshot(Widget) functionality.  Tested
+     in Xphace program.
+ * Modified Makefile.INCLUDE to make libmrix.a that includes all the
+     X11 utilities (imseq.c, xutil.c, xim.c, etc.).
+
+25 Jun 2003
+ * ISQ_snapfile(Widget) added to imseq.c; other tweaks to ISQ_snapshot().
+
+26 Jun 2003
+ * Moved some snapshot stuff to xim.c rather than imseq.c.
+ * Modified afni.c to have it continue after fatal X11 errors.
+ * New program 1ddot.c.
+
+01 Jul 2003
+ * Modified afni_func.c to change pbar hints when "Func=Threshold" is pressed.
+ * Added RWC_XtPopdown() to xutil.[ch], and modified most code to use this
+     rather than XtPopdown().
+ * Added empty XtErrorHandler to afni.c to try to avoid crashes when an Xt
+     error occurs.
+ * Added mri_equal.c, which checks if 2 images are equal.  Used in ISQ_snapshot()
+     to avoid saving duplicate images in succession.
+
+03 Jul 2003
+ * Added ISQ_snapsave() to imseq.c, which lets the user supply the image to be
+     saved in a snapshot, rather than acquire it from a widget like ISQ_snapshot().
+
+06 Jul 2003
+ * Modified 3dmaskave.c to add -median option.
+
+10 Jul 2003
+ * Fixed bug in afni_graph.c of colors in dplots from Dataset#N plugin.
+
+15 Jul 2003
+ * Included FreeBSD patches from Jason Bacon.
+
+18 Jul 2003
+ * Modifed imseq.[ch] (etc.) to include a "pen" box to turn on the "pen drawing"
+     Button-1 mode (only available when drawing has been enabled).
+
+21 Jul 2003
+ * Modified all uses of XmCreatePopupMenu() to make parent widget different than
+     the Button-3 popup widget when using Solaris -- some bug in Solaris seems to
+     cause a popup problem when the parent of the menu is also the one getting
+     the ButtonPress event.
+ * Modified afni_graph.c, imseq.c, afni.c, plug_nth_dataset.c, etc., to have
+     the Dataset#N, Dataset#2, and Expr0D plugin windows open when these
+     transformations are selected from menus.
+ * Modified the parser to take longer expressions.
+
+22 Jul 2003
+ * More expansion in parser.f, etc.
+ * Modified coxplot/plot_ts.c and 1dplot.c to let user control x- and y-axes
+     in more detail.
+
+23 Jul 2003
+ * Changes to thd_info.c to print more than 8000 characters from the History.
+ * Changes to thd_notes.c to make Addto_History work right.
+ * Changes to 3dcalc.c to use Addto_History correctly.
+
+28 Jul 2003
+ * Modified 3dcalc.c to force scaling for short and byte output datum when
+     non-integer values are found in the dataset.
+
+29 Jul 2003
+ * Many many changes to make func and anat datasets work interchangeably in
+     the interactive AFNI.
+ * 3dmerge.c now has -verb option.
+
+30 Jul 2003
+ * Modified plug_nudge.c to add NN interpolation option.
+ * Modified THD_open_3dcalc() to make dataset directory "./" after it is input,
+     so that EDIT_empty_copy() of it will not put new dataset into /tmp.
+ * Modified afni_func.c and afni_sumafunc.c to threshold byte and short
+     overlays in float rather than int.
+ * Modified FUNC_IS_STAT() and FUNC_HAVE_PVAL() macros in 3ddata.h to return 1
+     only if the code supplied corresponds to a valid statistic code.
+ * Various fixes to the anat/func interchangeability stuff.
+
+05 Aug 2003
+ * Modified thd_1Ddset.c to read a multi-column .1D file as a 3D+time dataset
+     rather than a bucket, if AFNI_1D_TIME is set to YES.
+ * Modified mri_write_ascii() to write the stdout if the filename is "-".
+ * Modified various *.c files to avoid warning messages on OS X compiles.
+
+06 Aug 2003
+ * Somehow, a bug crept into the Read Session function (in afni_func.c) that
+     rejected new sessions with # datasets > 0 rather than # datasets == 0.
+ * Added quintic interpolation to mri_warp3D.c, and 3dWarp.c.
+ * Added -fsl_matvec option to 3dWarp.c.
+ * plug_3ddup.c created (but not part of the binaries, yet).
+
+07 Aug 2003
+ * Fixed small typo in index in mri_warp3D.c quintic code.
+ * Fixed CYGWIN bracket placement at end of thd_loaddblk.c.
+
+08 Aug 2003
+ * Problem: when anat_now == fim_now, and fim_now got set to
+     "Warp Func on Demand", then trouble.  Solutions:
+     - make AFNI_VIEW_FUNC_BRICK and AFNI_VIEW_ANAT_BRICK default to YES.
+     - make sure if anat_now == fim_now, Func WOD is turned off.
+
+11 Aug 2003
+ * Fixed bug in afni_sumafunc.c, where func threshold image is bytes -- was
+     using index ar_thr[ii] instead of ar_thr[jj] -- not good.
+
+15 Aug 2003
+ * Added -version option to afni.c, per Rick Reynolds.
+
+23 Aug 2003
+ * Added AFNI_MAX_OPTMENU environment variable (bbox.c, etc.).
+ * Modified Makefile.INCLUDE to chmog ugo+x the ./configure files
+     in a couple of subdirectories.
+
+24 Aug 2003
+ * Modified 3dLRflip.c to give output dataset a new prefix (oops).
+
+26 Aug 2003
+ * Modified afni_func.c to skip printing adoption warnings unless user
+     explicitly requests them with an environment variable.
+
+28 Aug 2003
+ * Widespread changes, including addition of thd_niftiread.c, to read
+     NIFTI-1 formatted files as datasets.
+ * Modified afni.c to read datasets individually from command line argv's
+     if they can't be read as sessions.
+
+15 Oct 2003
+ * Added poetry.
+ * Removed 'points'.
+ * Added Dtables to niml.
+
+20 Oct 2003
+ * Fixed scaling bug in mri_warp3D.c -- datasets with scaling factors were
+     being scaled before warp, but not unscaled after warp, so that the
+     surviving scale factor would be applied twice.
+ * Added labelizing to Draw Dataset plugin.
+
+21 Oct 2003
+ * Added label popup menu to Draw Dataset plugin.
+ * Added Button1 click in intensity bar to re-aspect image window.
+     Also, skip attempt to reconfigure if happened before within last 33 ms.
+     This is to avoid getting into fights with the window manager.
+
+22 Oct 2003
+ * Inten->Save Palette with colorscales now saves a colorscale file.
+ * Inten->Read Palette with colorscales now reads a colorscale file.
+ * AFNI_MPEG_FRAMERATE in imseq.c.
+ * Extend short input time series in 3dDeconvolve.c.
+
+23 Oct 2003
+ * Modified Button1 in intensity bar to always do re-aspect, even if free
+     aspect is on.
+ * Added Button1 stroke right/left in image window to change contrast and
+     brightness together; changes to imseq.[ch], display.[ch], and
+     afni_pplug_env.c.
+
+24 Oct 2003
+ * Added 'Graymap Plot' to imseq.c.
+
+27 Oct 2003
+ * Auto-popup and auto-place graymap plot.
+ * Change plug_drawdset.c to disable auto-popup of graymap plot when plugin
+     is open, and re-enable it when plugin closes.
+
+28 Oct 2003
+ * Changes to thd_automask.c and 3dAutomask.c to implement -eclip option.
+
+29 Oct 2003
+ * Allow "# " as a comment in .afnirc -- changes to afni_setup.c GETSTR macro.
+
+30 Oct 2003
+ * Some changes (f2cdir/ and afni_plugin.c) for Mac OS X 10.3 compilation.
+
+04 Nov 2003
+ * Modified imseq.c to move crosshair focus on Button1 release, rather than
+     press.  This makes the graylevel change via Button1 motion not have
+     the annoying focus change side effect.
+ * Modified afni.c, etc., to implement new environment variables
+     AFNI_IMAGE_MINTOMAX and AFNI_IMAGE_GLOBALRANGE.
+ * Modified afni_plugin.[ch] to allow plugins to change the "Run" button
+     labels to something else.
+
+05 Nov 2003
+ * Modified imseq.c to auto-popdown graymap plot if it was auto-popupped
+     in the first place.
+ * Also added "Edit Environment" button to image window popup menu.
+
+13 Nov 2003
+ * Added argmax() and argnum() functions to parser.f and 3dcalc.c.
+ * Modified Makefile.solaris28_suncc per Vince Hradil's experience.
+ * Split up load vector loops in PAREVEC() in parser.c, for speed.
+
+14 Nov 2003
+ * More minor changes to 3dcalc.c and parser.f for slight speedups.
+
+18 Nov 2003
+ * Modified imseq.c to prevent beep when user tries to zoom when Mont
+     is on, or vice-versa.
+
+19 Nov 2003
+ * Multiple level undo/redo in plug_drawdset.c.
+
+20 Nov 2003
+ * Fixed bug in arrowpad movement, in afni.c: must do LOAD_DSET_VIEWS(im3d).
+ * Modified afni.c and afni_version.c to write UPDATER script, if possible.
+
+21 Nov 2003
+ * Added ability to undo Linear Fillin to plug_drawdset.c.
+
+24 Nov 2003
+ * Fun with Apple's speech synthesis.
+
+01 Dec 2003
+ * Modified imseq.c to add AFNI_IMAGE_ZEROCOLOR environment variable.
+ * Modified mcw_glob.[ch] to add simple-to-use function MCW_wildcards().
+     Used this in afni_splash.c as a test.
+
+03 Dec 2003
+ * Program mpegtoppm -- in mpegtoppm_dir/.
+ * Read images and datasets from MPEG files, via mpegtoppm.
+ * 'm' and 'M' keys in imseq.c.
+
+04 Dec 2003
+ * Change 'm/M' to 'v/V', and also add to afni_graph.c.
+
+05 Dec 2003
+ * Some tweaks to mpegtoppm and mri_read_mpeg.
+ * Fixed bug in niml/niml_element.c -- NI_free_element() would fail if
+     nel->vec was NULL.
+ * Similar problem in thd_3Ddset.c.
+
+07 Dec 2003
+ * Modified ts.c to allow '#' comments in RWC_read_time_series().
+
+16 Dec 2003
+ * Changes to niml/ functions to make them g++ compatible.
+ * Added 'r/R' to imseq.[ch] and afni_graph.[ch].
+
+17 Dec 2003
+ * Fixed Amalloc.h bug.
+
+23 Dec 2003
+ * Checked in many changes to deal with compilation of afni with g++
+     (version 3.2 or later).
+
+30 Dec 2003
+ * Fixed annoying bugs in NIML stream I/O.
+ * Modified niml/niml_do.c to allow user to register callbacks that
+     supplement builtin verbs.
+
+02 Jan 2004
+ * More annoying bugs in NIML stream I/O.  Also, when a socket is
+     closed, send 1 byte of OOB data so that the receiving process
+     will receive SIGURG.  The new SIGURG handler will then shut
+     the socket down on the other end, without the user having to
+     read the "close_this" element.
+
+07 Jan 2004
+ * Modifications to plugins and models to make them work with g++.
+
+08 Jan 2004
+ * Modifications to mcw_malloc.c to print out traceback chain when
+     corruption is detected.
+ * Added ENTRY()/RETURN() to a number of mri_*.c functions.
+ * Modified afni.c to display surface overlay from other datasets in
+     the same directory, if the current underlay datasets doesn't have
+     any surfaces.
+
+10 Jan 2004
+ * Modified mrilib.h, mri_read.c, and to3d.c to allow use of inter-slice
+     spacing to override slice thickness, at least for GE I.* files.
+
+12 Jan 2004
+ * Modified imseq.c to draw graymap in histogram style.  Also added
+     "ent=" entropy value to numerical range display.
+
+13 Jan 2004
+ * Modified mri_read_dicom.c to alter operation of AFNI_SLICE_SPACING_IS_GAP
+     so that "NO" means use the Spacing attribute even if it is smaller than
+     the Thickness attribute.  Seems to be needed for Phillips.
+
+14 Jan 2004
+ * Modified coxplot/pwritf.f to allow color changes in the text, and to
+     allow disabling of the escape mechanism (so filenames with "_" are OK).
+ * Modified 3drotate.c, 3AnatNudge.c, 3dLRflip.c, 3dTagalign.c, 3copy.c to
+     allow processing of non-AFNI (e.g., MINC) datasets.  The problem was
+     that these program open/load a dataset, modify it in-place, rename it,
+     then write it out.  That won't quite work for non-AFNI datasets, since
+     the dataset is still marked as being MINC (say), and we can't write
+     those directly.  Solution: mark the dataset as AFNI-format, after
+     loading it and before changing its name.
+ * Modified Makefile.* to use a "MAKE" macro instead of the fixed "make"
+     command.
+
+15 Jan 2004
+ * Modified afni.c so that -skip_afnirc option works again (was being screwed
+     up in machdep() function).  Also added a couple friends.
+ * When re-f2c-ing a .f file, must remove declarations of built-in functions
+     from the C code, since they cause the g++ compilation to fail to link.
+     Also, in coxplot/*.c functions, must manually change the COMMON struct
+     definitions to extern.
+ * Added SHORTIZE() and BYTEIZE() to mri_to_short.c and mri_to_byte.c to
+     avoid integer overflow problems when scaling and/or changing data types.
+
+16 Jan 2004
+ * Modified 3dFDR.c to produce some output when -input1D option is used!
+
+23 Jan 2004
+ * Modifications to put surfaces into sessions rather than directories.
+ * Modified ISQ_show_zoom() in imseq.c to avoid infinite recursion that
+     seems to happen when user zooms, crops, then changes image fraction
+     (with the "i" arrows). WTF?
+ * Modified imseq.[ch] to NOT place dialog near changed window when closing
+     the Montage control dialog, since that hangs up for a while on the Mac.
+ * Modified afni.c to make sure surface boxes are plotted with line
+     thickness zero.
+
+27 Jan 2004
+ * Added "WinAver" feature to afni_graph.[ch] and afni.c.  This shows the
+     "ideal" waveform as the average of all the timeseries in a graphing
+     window.
+ * Modified afni.[ch] and afni_widg.c to set a flag in each im3d, so that
+     if it is created when the dummy dataset is present, then when a real
+     dataset becomes available, the controller will get set to the middle
+     of THAT dataset's coordinates, rather than the dummy's middle.  This
+     is useful for realtime imaging (which is why the dummy is there).
+
+28 Jan 2004
+ * Added hints to various menu items that were lacking them in afni_graph.c.
+
+29 Jan 2004
+ * Added the cute little diagonal 'AFNI' to various windows.
+ * Modified rtfeedme.c to add the '-gyr' option to test GRAPH_[XY]RANGE.
+
+06 Feb 2004
+ * Added threshold locking (via environment variable AFNI_THRESH_LOCK).
+     Also, moved lock code from afni.c to new file afni_lock.c.
+
+07 Feb 2004
+ * Added pbar locking (via environment variable AFNI_PBAR_LOCK), and
+     threshold p-value locking.
+ * Added AFNI_DISP_SCROLLBARS to afni_pplug_env.c, to control if Disp
+     menu in image viewer gets scrollbars.
+
+10 Feb 2004
+ * Made threshold locking move sliders during drag, not just end of drag.
+     Also change pval at bottom of locked sliders during drag.  Also put
+     Edit Environment button on top-of-pbar popup menu.
+
+11 Feb 2004
+ * Fixed bug in afni_graph.c about average time series, when graph is
+     too short.  I think.  [cf. 27 Jan 2004]
+
+12 Feb 2004
+ * Oooops.  "\noesc" should be "\\noesc" in several places.  My bad.
+ * Modified mri_read.c to allow GE "IMGF" flag to be anywhere in 1st 4K
+     of file, if file starts with "GEMS" instead of "IMGF".
+
+19 Feb 2004
+ * Added -mask and -srad and 5th-value=radius features to 3dUndump.c.
+
+23 Feb 2004
+ * Added range locking to afni_lock.c and afni_func.c.
+ * Added tick marks to imseq.c.
+ * Rick Reynolds added NN interpolation option for zooming to mri_dup.c.
+
+24 Feb 2004
+ * Fixed bug in thd_sheard3d.c, when input matrix to rot_to_shear_matvec()
+     is identity, could get a bad shear.  In this case, just manually put
+     the correct shear into place.
+
+29 Feb 2004
+ * Re-fixed the thd_shear3d.c bug of 24 Feb 2004, since it was wrong.
+
+09 Mar 2004
+ * Added 'ms' time unit selection to 3dcalc.c -dt/-taxis options.
+
+11 Mar 2004
+ * Modified use of SPM originator field in thd_analyzeread.c to subtract
+     1 from indexes.
+ * Modified mri_warp3D.c and 3dWarp.c to do MNI<->TTA transforms.
+ * Don't need "-eval" option on ccalc command line anymore.
+
+12 Mar 2004
+ * Modified afni.[ch], afni_widg.c, to put popup DICOM/SPM coordinate menu
+     on crosshair coordinate label.
+ * "Anatomy" -> "Underlay" and "Function" -> "Overlay" in several places.
+
+15 Mar 2004
+ * More "Anatomy" -> "Underlay" and "Function" -> "Overlay" stuff.
+ * Added optmenu_EV_fixup() to bbox.c - change cursor arrow on optmenu popups.
+
+17 Mar 2004
+ * AFNI_GRAPH_AUTOGRID variable in afni_graph.c.
+ * Fixed memory estimate in 3dAutoTcorrelate.c.
+
+18 Mar 2004
+ * Fixed plug_nth_dataset.c to right fill short time series with WAY_BIG,
+     and then afni_graph.c to not plot these tails in the dplot overlay.
+ * Modified afni_graph.[ch] to allow pin_bot as well as pin_top (ugh).
+
+19 Mar 2004
+ * Added vector chooser to bbox.[ch] and used in afni_graph.[ch] for choosing
+     graph pin top and bottom together.
+
+21 Mar 2004
+ * AFNI_DISABLE_CURSORS in xutil.c.
+
+22 Mar 2004
+ * AFNI_SLAVE_FUNCTIME in afni.c.
+ * Modified 3dvolreg.c to make -wtrim always be on, and to scale init
+     for the twopass iteration.
+
+23 Mar 2004
+ * 3dZeropad.c gets new -RL, -AP, -SI options.
+
+24 Mar 2004
+ * Modify Intracranial.c to deal with an optimizing bug on Mac OS X
+     -- doesn't work well with large auto arrays.
+
+31 Mar 2004
+ * Weird Mac problem: afni_graph.c crashes when destroying graph viewer
+     Widgets, but only after the timeseries chooser is popped up.  Stupid
+     solution is to only unrealize widgets if this chooser was opened by
+     the user.  WTF?
+
+02 Apr 2004
+ * Mods to fix auto_grid()-ing in afni_graph.[ch].
+
+05 Apr 2004 (?)
+ * Fixes to afni_graph.c to spackle over unexplainable crashes on Mac when
+     a timeseries chooser is opened and later the graph window is closed.
+
+08 Apr 2004
+ * AFNI_X11_REDECORATE in xutil.h and afni_pplug_env.c, to replace MCW_isitmwm().
+
+09 Apr 2004
+ * Fixed lack of fclose() in ts.c (a 10 year old bug!).
+
+11 May 2004
+ * Modified imseq.c to apply Zero Color to RGB images.
+
+12 May 2004
+ * Modified 3dvolreg.c to make -sinit turn scale init off for -twopass.
+
+08 Jun 2004
+ * Added call to THD_copy_auxdata() to mri_warp3D.c, and -copyaux option to
+     3drefit.c
+ * Added AFNI_IMAGE_SAVESQUARE environment variable to imseq.c; added
+     functions to mri_warp.c to implement re-aspectizationing.
+
+21 Jun 2004
+ * Modified 3dclust -help to print out info about coordinate systems.
+ * Modified afni_func.c to add environment variable AFNI_BUCKET_LABELSIZE
+     to modify bucket label sizes.
+
+22 Jun 2004
+ * Modified afni.c to set various environment variables to new defaults:
+    - crosshair lines are on instead of off
+    - controllers are locked instead of unlocked
+    - save square is on instead of off
+
+23 Jun 2004
+ * Modified AFNI_leave_EV in bbox.c to avoid memory leak (must free up the
+     retrieved textfield string if an early exit is taken).
+
+08 Jul 2004
+ * Modified mri_read.c to allow line lengths of up to 512K in *.1D files.
+ * Modified coxplot/plot_ts.c to correctly remove labels from separate plot
+     boxes if input nnayy==0.
+ * Modified 1dgrayplot.c to have new '-sep' option.
+
+14 Jul 2004
+ * Modified 3dDeconvolve.c to make some basic checks:
+     - equal filenames for -stim_file options
+     - zero columns in X matrix
+     - collinear column pairs in X matrix
+     - compute matrix condition number
+ * Modified matrix.[ch] and matrix_f.[ch] to support this stuff.
+ * Disabled 3dDeconvolve_f binary, sort of.
+
+15 Jul 2004
+ * Modified 3dDeconvolve.c and Deconvolve.c to have -legendre option, for
+     use of better polynomials for the baseline estimation.
+ * Modified matrix.c and matrix_f.c to have matrix_inverse_dsc() function,
+     to use diagonal scaling before/after the matrix inversion.  Modified
+     RegAna.c to use this function, to avoid stupid scaling issues.
+     Also modified condition number calculation to take this into account.
+
+16 Jul 2004
+ * Modified Deconvolve.c to use correctly normalized Legendre polynomials,
+     for potential ease-of-use for people who want to know what the
+     baseline functions are.
+
+19 Jul 2004
+ * Modified matrix.c and RegAna.c to do matrix solutions with pseudo-inverse
+     from SVD, rather than normal equations.
+ * Adapted svd.f into eis_svd.c a little more, and also wrote a wrapper
+     function into cs_symeig.c, and a test program 1dsvd.
+
+20 Jul 2004
+ * Modified thd_get1D.c to limit loading of 1D files in AFNI to a max size
+     set by environment variable AFNI_MAX_1DSIZE (default 123K).
+ * Modified mri_read_ascii() in mri_read.c to use the "n@val" method for
+     value duplication.  Also modified my_fgets() to return a duplicate
+     of the previous line if the first two nonblank characters on the line
+     are "".
+
+21 Jul 2004
+ * Modifed MCM_get_intlist() to print error messages when the user inputs
+     values off the top end of the range, instead of silently turning them
+     into the top (stupid users).
+ * Modified afni_fimmer.c to correctly use scaling factors if present in
+     the time series data (oops, for about 8 years).
+ * Added printout of pseudo-inverse to 1dsvd.c.
+ * Added -svd option to 3dDeconvolve.  Also, if SVD is on, then DON'T
+     remove all zero stimuli from the list.
+ * Added -xjpeg option to 3dDeconvolve: grayplot of X matrix.
+
+22 Jul 2004
+ * Modified mri_drawing.c and coxplot/plot_cox.c to allow for opacity.
+     Used this in -xjpeg option in 3dDeconvolve.c.
+
+28 Jul 2004
+ * Finished (I hope) addition of -xsave and -xrestore options to 3dDeconvolve.
+ * Fixed (I hope) bug in AFNI_setup_viewing() in afni.c, where the ULay
+     sub-brick chooser optmenu wouldn't be configured correctly in controller
+     [B] (etc.) due to anat_old check not also checking im3d_old.
+ * Modified mri_read_ascii() and my_fgets() in mri_read.c to not malloc/free
+     line buffer for each line read.  Also, removed the "" feature.
+ * Added mri_read_ascii_ragged() to mri_read.c.
+
+29 Jul 2004
+ * Added mri_symbolize.c, and -gltsym option to 3dDeconvolve.
+
+02 Aug 2004
+ * Modified matrix_f.c to include loop unrolling found in matrix.c.
+ * Modified mri_symbolize.c and 3dDeconvolve.c to use '[[...]]' subscripting
+     for -gltsym multi-row expansion.
+
+03 Aug 2004
+ * Modified matrix_print() in matrix.c and matrix_f.c to print shorter strings
+     when the matrix comprises all 1 digit integers.
+ * Modified 3dDeconvolve.c to print -gltsym matrices when AFNI_GLTSYM_PRINT
+     environment variable is YES.
+ * Modified matrix_f.c to use Altivec on Mac for matrix-vector multiplies.
+     Adds about 10% to speed on G5, over the loop unrolling from yesterday.
+
+04 Aug 2004
+ * At long last, removed the ill-fated "merger" stuff from 3ddata.h and
+     all AFNI functions.
+ * Added THD_open_tcat() in thd_opentcat.c, to open a list of datasets as
+     on long 3D+time dataset.  Also modified 3ddata.h, THD_open_dataset(),
+     and so forth.
+ * Modified 3dDeconvolve.c to use this feature to allow input catenation
+     (if the input_filename field has blanks in it).
+
+05 Aug 2004
+ * Polished up the 3dDeconvolve.c changes.
+ * Added "README.environment" text to Datamode->Misc menu in AFNI.
+
+06 Aug 2004
+ * Fixed bug in 3dDeconvolve.c where -cbucket bricks were colliding with
+     -bucket bricks, vi bar[] and attach_sub_brick().
+
+10 Aug 2004
+ * Started work on 3dDeconvolve.c to add -stim_times option for direct
+     input of models to fit.
+ * Modified mri_read_ascii_ragged() to read a '*' character as a fill,
+     thus allowing lines with no entries or intermediate missing entries.
+
+11 Aug 2004
+ * Added environment variable AFNI_3dDeconvolve_nodup to 3dDeconvolve.c,
+     to stop processing if duplicate columns are discovered.
+
+12 Aug 2004
+ * Modified Deconvolve.c and 3dDeconvolve.c to remove mean from baseline
+     timeseries if polort>0, and -nodmbase option is not given.
+ * 3dDeconvolve saga: Generate response vectors from stimulus timing and
+     user-specified model.
+
+19 Aug 2004
+ * eis_svd.c sometimes works wrong with "gcc -O", so modified Makefile.INCLUDE
+     and eispack/Makefile to turn optimization off for this file.
+
+23 Aug 2004
+ * Fixed bug with polort=-1; program creates a baseline model matrix with
+     0 columns, and matrix_psinv() didn't like that.
+ * Add basis_write_response() to 3dDeconvolve.c to actually write out the
+     computed IRF for symbolic models.
+
+29 Aug 2004
+ * Added EXPR(bot,top) basis function to 3dDeconvolve.c.
+
+30 Aug 2004
+ * Modified 3dDeconvolve.c basis_write_response() to be more efficient (don't
+     evaluate basis expressions so often).
+ * Added basis_write_sresp() to 3dDeconvolve.c to write standard deviation
+     of the IRFs.
+
+02 Sep 2004 (from San Francisco)
+ * Modified mri_symbolize.c to correctly use the intlist() function.
+ * Patched thd_auxdata.c and thd_initdblk.c not to create brick labels
+     over 32 characters in length.  (Someone who shall remain nameless
+     created one several thousand characters long, and thd_info.c didn't
+     like that much.)
+
+07 Sep 2004
+ * Fixed some stuff in the -help output of afni.c.
+
+09 Sep 2004
+ * Modified afni_version.c to use TCP/IP to communicate with version
+     sub-process rather than shared memory.
+
+15 Sep 2004
+ * New function THD_get_voxel() in thd_loaddblk.c, returns a float for a
+     single voxel (not very efficient to use this in mass).
+ * Used the above in thd_fdto1D.c to deal with returning time series from
+     datasets with mismatched sub-brick types.
+ * Also, print a warning for such datasets in thd_initdblk.c.
+
+05 Oct 2004
+ * Modified imseq.c to write animated GIF files with a fixed colormap,
+     to avoid color flashing when (e.g.) rotating a volume rendering.
+
+06 Oct 2004
+ * Modified afni_graph.[ch] to add a chooser to set the thickness of
+     'Thick' lines in the graph viewers (on the "Opt->Colors, Etc." menu).
+     Also, afni.c to add AFNI_graph_gthick to initialize this value.
+
+20 Oct 2004
+ * Modified parser.f to add NOTZERO, ISZERO, and EQUALS functions.
+
+21 Oct 2004
+ * Also added ISPOSITIVE and ISNEGATIVE functions to parser.f
+
+22 Oct 2004
+ * Modifed thd_shear3d.c to use true SVD in computing the rotation for
+     3dTagalign, rather than the symmetric eigensolution method.
+
+29 Oct 2004
+ * Modified 3dfim+.c to make Spearman and Quadrant CC bricks fico.
+ * Modified niml/niml_rowtype.c to auto-define VEC_basictype_len types
+     when first referenced.
+
+03 Nov 2004
+ * Some changes to 3dAnhist.c for Lukas and Katie.
+
+16 Nov 2004
+ * Modified imseq.c to print warnings when it can't find Save filter programs.
+
+30 Nov 2004
+ * First version of 3dWarpDrive released.
+ * 3dcalc now prints a warning if outputing a byte-valued dataset when the
+     calculated results had some negative values.
+
+01 Dec 2004
+ * Added -twopass option to 3dWarpDrive, etc.
+
+06 Dec 2004
+ * Fixed '<a..b>' dataset input without '[...]' input to not print a warning
+     message about the lack of sub-brick subscripts.
+ * Modified 3dmaskave.c to add '-mask SELF' option.
+
+09 Dec 2004
+ * PURGE_MEMORY addition to afni_driver.c.
+
+17 Dec 2004
+ * AFNI_faceup() in afni_splash.c and on the hidden popup menu.
+
+20 Dec 2004
+ * Modified afni_func.c to allow user to threshold RGB-valued overlays.
+
+21 Dec 2004
+ * Modified afni_func.c to allow dataset 'label2' field to be displayed in
+    window titlebars, instead of filenames.  Also affected: afni_pplug_env.c
+    and 3drefit.c (to let user change label2 field).
+ * Replaced VERSION with AFNI_label.h header, generated by script Ctag.
+
+22 Dec 2004
+ * Incorporated 3dMean.c changes from Mike Beauchamp to add standard deviation
+    option.
+ * Fixed stupid scale_thr bug in afni_func.c.

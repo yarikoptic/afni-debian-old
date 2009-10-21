@@ -43,7 +43,11 @@
             and contrasts.
    Date:    31 January 2000
 
+   Mod:     Set MAX_NAME_LENGTH equal to THD_MAX_NAME.
+   Date:    02 December 2002
 */
+
+/*---------------------------------------------------------------------------*/
 
 #include "mrilib.h"
 
@@ -85,12 +89,12 @@ static char * commandline = NULL ;         /* command line for history notes */
 #endif
 
 
-#define MAX_LEVELS 100           /* max. number of factor levels */  
+#define MAX_LEVELS 300           /* max. number of factor levels */  
 #define MAX_OBSERVATIONS 100     /* max. number of observations per cell */
 #define MAX_MEANS 20             /* max. number of user requested means */
 #define MAX_DIFFS 20             /* max. number of user requested diffs. */
-#define MAX_CONTR 20             /* max. number of user requested contrasts */
-#define MAX_NAME_LENGTH 80       /* max. strength length for file names */ 
+#define MAX_CONTR 40             /* max. number of user requested contrasts */
+#define MAX_NAME_LENGTH THD_MAX_NAME  /* max. string length for file names */
 
 
 typedef struct anova_options

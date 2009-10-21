@@ -31,5 +31,7 @@ INSTALLDIR = ./sparky
 LIBDIR = $(INSTALLDIR)
 
 LLIBS  = -lmri -lXm -lXt -lX11 -lm
+
 ######################################################################
+MAKE = make
 include Makefile.INCLUDE

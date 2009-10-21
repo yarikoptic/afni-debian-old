@@ -27,7 +27,7 @@
 
 
 /*--------------------- strings for output format --------------------*/
-
+/* do not change the order in this string*/
 static char * method_strings[] = { "Seconds" , "Degrees" , "Radians"} ;
 static char * yn_strings[] = { "n" , "y" }; 
 
@@ -41,10 +41,12 @@ static char * yn_strings[] = { "n" , "y" };
 #define NUM_METHOD_STRINGS (sizeof(method_strings)/sizeof(char *))
 #define NUM_YN_STRINGS (sizeof(yn_strings)/sizeof(char *))
 
+/* do not change these three*/
 #define METH_SECONDS 0
-#define METH_RADIANS 1
-#define METH_DEGREES 2
+#define METH_DEGREES 1
+#define METH_RADIANS 2
 
+#undef  DELAY
 #define DELAY    0
 #define XCOR     1
 #define XCORCOEF 2
@@ -228,6 +230,9 @@ void display_help_menu()
 	"                   at which the slice containing that voxel was acquired.\n\n"
 	"[-co CCT]          Cross Correlation Coefficient threshold value.\n"
 	"                   This is only used to limit the ascii output (see below).\n"
+   "[-nodtrnd]         Do not remove the linear trend from the data time series.\n"
+   "                   Only the mean is removed. Regardless of this option, \n"
+   "                   No detrending is done to the reference time series.\n"
 	"[-asc [out]]       Write the results to an ascii file for voxels with \n"
 	"[-ascts [out]]     cross correlation coefficients larger than CCT.\n"
 	"                   If 'out' is not specified, a default name similar \n"
@@ -275,6 +280,11 @@ void display_help_menu()
 	"          Bruel and Kjaer Instruments Inc.\n"
 	"   [2] : Bendat, J. S. and G. A. Piersol (1986). Random Data analysis and measurement procedures, \n"
 	"          John Wiley & Sons.\n"
+   "   Author's publications on delay estimation using the Hilbert Transform:\n"
+   "   [3] : Saad, Z.S., et al., Analysis and use of FMRI response delays. \n"
+   "         Hum Brain Mapp, 2001. 13(2): p. 74-93.\n"
+   "   [4] : Saad, Z.S., E.A. DeYoe, and K.M. Ropella, Estimation of FMRI Response Delays. \n"
+   "         Neuroimage, 2003. 18(2): p. 494-504.\n\n"   
     );
 
   exit(0);
@@ -297,11 +307,13 @@ typedef struct {
 
 /* function prototypes for dft and inverse dft functions */
 
+    /* prototypes in plug_delay_V2.h  ZSS Oct 05 04
     extern void fft(COMPLEX *,int);
     extern void ifft(COMPLEX *,int);
+    extern void rfft(float *,COMPLEX *,int);
+    */
     extern void dft(COMPLEX *,COMPLEX *,int);
     extern void idft(COMPLEX *,COMPLEX *,int);
-    extern void rfft(float *,COMPLEX *,int);
     extern void ham(COMPLEX *,int);
     extern void han(COMPLEX *,int);
     extern void triang(COMPLEX *,int);
@@ -598,6 +610,14 @@ void get_options
 		  nopt++;
 		  continue;
 		}
+
+       /*-----   -nodtrnd  -----*/
+      if (strcmp(argv[nopt], "-nodtrnd") == 0)
+		{
+		  option_data->dtrnd = 0;
+		  nopt++;
+		  continue;
+		}
      
        /*-----   -co num -----*/
       if (strcmp(argv[nopt], "-co") == 0)
@@ -711,70 +731,23 @@ float * read_one_time_series
   float * ts_data;         /* input time series data */
 
 
-  /*----- First, check file name for column index -----*/
-  cpt = strstr (ts_filename, "[");
-  if (cpt == NULL)
-    {
-      strcpy (filename, ts_filename);
-      subv[0] = '\0';
-    }
-  else
-    if (cpt == ts_filename)
-      FIM_error ("Illegal time series filename on command line");
-    else
-      {
-	int ii;
-	ii = cpt - ts_filename;
-	memcpy (filename, ts_filename, ii);
-	filename[ii] = '\0';
-	strcpy (subv, cpt);
-      }
-
-  
   /*----- Read the time series file -----*/
-  im = mri_read_ascii (filename); 
-  if (im == NULL)
+  flim = mri_read_1D( ts_filename ) ;
+  if (flim == NULL)
     {
-      sprintf (message,  "Unable to read time series file: %s",  filename);
+      sprintf (message,  "Unable to read time series file: %s",  ts_filename);
       FIM_error (message);
     }
 
   
   /*----- Set pointer to data, and set dimensions -----*/
-  flim = mri_transpose (im);   MTEST (flim);
-  mri_free(im);   im = NULL;
-  far = MRI_FLOAT_PTR(flim);
   nx = flim->nx;
-  ny = flim->ny;
+  ny = flim->ny; iy = 0 ;
+  if( ny > 1 ){
+    fprintf(stderr,"WARNING: time series %s has %d columns\n",ts_filename,ny);
+  }
+
   
-
-  /*----- Get the column index -----*/
-  if (subv[0] == '\0')  /* no column index */
-    {
-      if (ny != 1)
-	{
-	  sprintf (message,
-		   "Must specify column index for time series file: %s",
-		   ts_filename);
-	  FIM_error (message);
-	}
-      iy = 0;
-    }
-  else  /* process column index */
-    {
-      int * ivlist;
-      
-      ivlist = MCW_get_intlist (ny, subv);
-      if ((ivlist == NULL) || (ivlist[0] != 1))
-	{
-	  sprintf (message,
-		   "Illegal column selector for time series file: %s",
-		   ts_filename);
-	  FIM_error (message);
-	}
-      iy = ivlist[1];
-    }
-
 
   /*----- Save the time series data -----*/
   *ts_length = nx;
@@ -814,63 +787,20 @@ MRI_IMAGE * read_time_series
   int ny;                  /* number of columns in time series file */
 
 
-  /*----- First, check file name for column index -----*/
-  cpt = strstr (ts_filename, "[");
-  if (cpt == NULL)
-    {
-      strcpy (filename, ts_filename);
-      subv[0] = '\0';
-    }
-  else
-    if (cpt == ts_filename)
-      FIM_error ("Illegal time series filename on command line");
-    else
-      {
-	int ii;
-	ii = cpt - ts_filename;
-	memcpy (filename, ts_filename, ii);
-	filename[ii] = '\0';
-	strcpy (subv, cpt);
-      }
-
-  
   /*----- Read the time series file -----*/
-  im = mri_read_ascii (filename); 
-  if (im == NULL)
+
+  flim = mri_read_1D(ts_filename) ;
+  if (flim == NULL)
     {
-      sprintf (message,  "Unable to read time series file: %s",  filename);
+      sprintf (message,  "Unable to read time series file: %s",  ts_filename);
       FIM_error (message);
     }
 
   
-  /*----- Set pointer to data, and set dimensions -----*/
-  flim = mri_transpose (im);   MTEST (flim);
-  mri_free(im);   im = NULL;
   far = MRI_FLOAT_PTR(flim);
   nx = flim->nx;
   ny = flim->ny;
-  
-
-  /*----- Get the column indices -----*/
-  if (subv[0] == '\0')  /* no column indices */
-    {
-      *column_list = NULL;
-    }
-  else  /* process column indices */
-    {
-      int * ivlist;
-      
-      ivlist = MCW_get_intlist (ny, subv);
-      if ((ivlist == NULL) || (ivlist[0] < 1))
-	{
-	  sprintf (message,
-		   "Illegal column selector for time series file: %s",
-		   ts_filename);
-	  FIM_error (message);
-	}
-      *column_list = ivlist;
-    }
-
+  *column_list = NULL;  /* mri_read_1D does column selection */
 
   return (flim);
 }
@@ -1652,11 +1582,13 @@ void calculate_results
 
       if( option_data->dtrnd )
          for( kk=0 ; kk < nuse ; kk++ ) vox_vect[kk] -= (x0 + x1 * dtr[kk]) ;
-
+      else
+         for( kk=0 ; kk < nuse ; kk++ ) vox_vect[kk] -= x0;
+         
 		#ifdef ZDBG
 		if (ixyz == iposdbg)
 			{
-				printf("After Detrending\n");
+				printf("After Detrending (or just zero-meaning)\n");
 				printf("TS: %f\t%f\t%f\t%f\t%f\n", vox_vect[0], vox_vect[1],  vox_vect[2], vox_vect[3], vox_vect[4]);
 				/*getchar ();*/
 			}

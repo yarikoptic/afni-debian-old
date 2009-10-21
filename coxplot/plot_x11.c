@@ -77,6 +77,26 @@ void set_memplot_X11_box( int xbot, int ybot, int xtop, int ytop )
    }
 }
 
+/*------------------------------------------------------------------------*/
+
+/*------------------------------------------------------------------------*/
+/*! Get the layout of a window/pixmap.  [12 Mar 2002]
+--------------------------------------------------------------------------*/
+
+static void drawable_geom( Display *dpy , Drawable ddd ,
+                           int *width , int *height , int *depth )
+{
+   int xx,yy ;
+   unsigned int ww,hh,bb,dd ;
+   Window rr ;
+
+   XGetGeometry( dpy,ddd , &rr,&xx,&yy,&ww,&hh,&bb,&dd ) ;
+
+   if( width  != NULL ) *width  = ww ;
+   if( height != NULL ) *height = hh ;
+   if( depth  != NULL ) *depth  = dd ;
+}
+
 /*--------------------------------------------------------------------------
   Actually do the rendering.
   Plotting will start with line #start and go to #end-1.
@@ -101,12 +121,13 @@ static void draw_xseg(void) ; /* prototype for function below */
 void memplot_to_X11_sef( Display * dpy , Window w , MEM_plotdata * mp ,
                          int start , int end , int mask                )
 {
-   XWindowAttributes xwat ;
    int ii , nline , same ;
    float old_thick , old_color , new_color , new_thick ;
    float scal,xscal,yscal , xoff,yoff ;
    short x1,y1 , x2,y2 ;  /* X11 screen coords are shorts */
    int skip ;
+   int w_width, w_height, w_depth ;  /* 12 Mar 2002 */
+   XGCValues gcv ;
 
    int freee = (mask & MEMPLOT_FREE_ASPECT) != 0 ;  /* 16 Nov 2001 */
    int erase = (mask & MEMPLOT_ERASE      ) != 0 ;
@@ -121,33 +142,33 @@ void memplot_to_X11_sef( Display * dpy , Window w , MEM_plotdata * mp ,
 
    if( end <= start || end > nline ) end = nline ;
 
-   /*--- if we have a new X11 Display, get its coloring
-         (note the tacit assumption that all windows on the same
-          display in the same program will use the same visual and colormap!) ---*/
+   /*-- if we have a new X11 Display, get its coloring
+        (note the tacit assumption that all windows on the same
+         display in the same program will use the same visual and colormap!) --*/
 
    setup_X11_plotting( dpy , w ) ;
 
-   /*--- get all window attributes ---*/
+   /*-- 12 Mar 2002: replace use of XGetWindowAttributes with XGetGeometry --*/
 
-   ii = XGetWindowAttributes( dpy , getwin_from_XDBE(dpy,w) , &xwat ) ;
-   if( ii == 0 ) return ;
-   if( xwat.depth != old_cd->depth ) return ;  /* this is bad */
+   drawable_geom( dpy, getwin_from_XDBE(dpy,w), &w_width,&w_height,&w_depth ) ;
+
+   if( w_depth != old_cd->depth ) return ;  /* this is bad */
 
    /*--- compute scaling from memplot objective
          coordinates to X11 window coordinates, maintaining aspect ---*/
 
    if( box_xbot >= box_xtop || box_ybot >= box_ytop ){
 
-      xscal = xwat.width / mp->aspect ; /* aspect = x-axis objective size */
-      yscal = xwat.height / 1.0 ;       /* 1.0    = y-axis objective size */
-      xoff  = yoff = 0.499 ;
+      xscal = (w_width -0.001) / mp->aspect ; /* aspect = x-axis objective size */
+      yscal = (w_height-0.001) / 1.0 ;        /* 1.0    = y-axis objective size */
+      xoff  = yoff = 0.0 ;
 
    } else {  /* 26 Feb 2001: scale to a given sub-box in the window */
 
       xscal = box_xtop - box_xbot ;
       yscal = box_ytop - box_ybot ;
-      xoff  = box_xbot + 0.499    ;
-      yoff  = box_ybot + 0.499    ;
+      xoff  = box_xbot + 0.0      ;
+      yoff  = box_ybot + 0.0      ;
    }
 
    if( !freee ){                           /* no aspect freedom ==> */
@@ -165,6 +186,13 @@ void memplot_to_X11_sef( Display * dpy , Window w , MEM_plotdata * mp ,
       pix = rgb_to_pixel( ZO_TO_TFS(rr), ZO_TO_TFS(gg), ZO_TO_TFS(bb), old_cd ) ;
       XSetForeground( old_dpy , old_GC , pix ) ;
    }
+
+   /* 23 Feb 2003: initialize line width to 0 for each entry
+                   (in case a special case [box,circle, ...] comes first */
+
+   gcv.line_width = 0 ;
+   gcv.join_style = JoinBevel ;
+   XChangeGC( old_dpy , old_GC , GCLineWidth | GCJoinStyle , &gcv ) ;
 
    /*--- loop over lines, scale and plot ---*/
 
@@ -207,16 +235,36 @@ fprintf(stderr,"Changing color to %f %f %f\n",rr,gg,bb) ;
                if( y1 < y2 ){ yb=y1; yt=y2; } else { yb=y2; yt=y1; }
                w = xt-xb ; h = yt-yb ;
                if( w || h )
+#if 0
                  XFillRectangle( old_dpy,old_w,old_GC , xb,yb,w,h ) ;
+#else
+                 XDrawRectangle( old_dpy,old_w,old_GC , xb,yb,w,h ) ;
+#endif
                else
                  XDrawPoint( old_dpy,old_w,old_GC , xb,yb ) ;
+               skip = 1 ;
+            }
+            break ;
+
+            case THCODE_CIRC:{        /* circle */
+               int xcor,ycor , xcen,ycen , xrad,yrad ;
+               unsigned int ww, hh ;
+               xcen = (int)(xoff + xscal * MEMPLOT_X1(mp,ii)         );
+               ycen = (int)(yoff + yscal * (1.0 - MEMPLOT_Y1(mp,ii)) );
+               xrad = (int)(       xscal * MEMPLOT_X2(mp,ii)         );
+               yrad = (int)(       yscal * MEMPLOT_X2(mp,ii)         );
+               xcor = xcen - xrad ; ww = 2*xrad ;
+               ycor = ycen - yrad ; hh = 2*yrad ;
+               if( ww || hh )
+                 XDrawArc( old_dpy,old_w,old_GC , xcor,ycor,ww,hh , 0,360*64 ) ;
+               else
+                 XDrawPoint( old_dpy,old_w,old_GC , xcor,ycor ) ;
                skip = 1 ;
             }
             break ;
          }
 
       } else if( new_thick != old_thick ){ /* normal case: change line thickness */
-         XGCValues gcv ;
          int lw = scal * new_thick ;
          if( lw < 0 ) lw = 0 ;
 #if 0
@@ -278,8 +326,21 @@ for( ii=0 ; ii < nseg ; ii++ )
       /* scan forward to find a set of connected lines */
 
       jtop = jbot+1 ;
-      while( jtop < nseg && xseg[jtop-1].x2 == xseg[jtop].x1
-                         && xseg[jtop-1].y2 == xseg[jtop].y1 ) jtop++ ;
+      while( jtop < nseg ){    /* 23 Feb 2003: more complex connection tests */
+
+        if(    xseg[jtop-1].x2 == xseg[jtop].x1
+            && xseg[jtop-1].y2 == xseg[jtop].y1 ){ jtop++; continue; } /* OK */
+
+        if(    xseg[jtop-1].x2 == xseg[jtop].x2
+            && xseg[jtop-1].y2 == xseg[jtop].y2 ){          /* OK if flipped */
+
+          ii = xseg[jtop].x2; xseg[jtop].x2 = xseg[jtop].x1; xseg[jtop].x1 = ii;
+          ii = xseg[jtop].y2; xseg[jtop].y2 = xseg[jtop].y1; xseg[jtop].y1 = ii;
+          jtop++; continue;
+        }
+
+        break ;    /* get to here ==> jtop-1 and jtop segments not connected */
+      }
 
       /* jbot .. jtop-1 are connected;
          if this is more than one line, draw them together
@@ -303,9 +364,11 @@ fprintf(stderr,"draw_xseg: XDrawLines for %d\n",nj) ;
       /* jbot is not connected to jbot+1;
          scan forward to find a set of disconnected lines */
 
-      while( jtop < nseg &&
+      while( jtop < nseg                            &&
              ( xseg[jtop-1].x2 != xseg[jtop].x1 ||
-               xseg[jtop-1].y2 != xseg[jtop].y1   ) ) jtop++ ;
+               xseg[jtop-1].y2 != xseg[jtop].y1   ) &&
+             ( xseg[jtop-1].x2 != xseg[jtop].x2 ||
+               xseg[jtop-1].y2 != xseg[jtop].y2   )    ) jtop++ ;
 
       /* jbot .. jtop-1 are disconnected, so draw them as such */
 
@@ -348,7 +411,7 @@ unsigned long rgb_to_pixel( unsigned char rr , unsigned char gg ,
 {
    /*--- TrueColor case: make color by appropriate bit twiddling ---*/
 
-   if( cd->class == TrueColor ){
+   if( cd->classKRH == TrueColor ){
       unsigned long r , g , b , rgb ;
 
       r = (cd->rrshift<0) ? (rr<<(-cd->rrshift))
@@ -372,7 +435,7 @@ unsigned long rgb_to_pixel( unsigned char rr , unsigned char gg ,
 #define GW 4
 #define BW 1
 
-   if( cd->class == PseudoColor ){
+   if( cd->classKRH == PseudoColor ){
       int ii , rdif,gdif,bdif,dif , ibest,dbest ;
 
       rdif = cd->rr[0] - rr ;
@@ -396,6 +459,17 @@ unsigned long rgb_to_pixel( unsigned char rr , unsigned char gg ,
    return 0 ;  /* always valid */
 }
 
+/*-------------------------------------------------------------------------*/
+
+static volatile int xwasbad ;  /* 13 Mar 2002 */
+
+typedef int (*xhandler)(Display *, XErrorEvent *) ;
+
+static int qhandler( Display *dpy , XErrorEvent *xev )
+{
+   xwasbad = 1 ; return 0 ;
+}
+
 /*-------------------------------------------------------------------------
    Return a structure that defines the colors available for the given
    window.  This only works for PseudoColor and TrueColor visuals.
@@ -410,6 +484,7 @@ X11_colordef * get_X11_colordef( Display * display , Window w )
    XVisualInfo vinfo , * vin ;
    X11_colordef * cd ;          /* will be the output */
    int count , ii ;
+   xhandler old_handler ;       /* 13 Mar 2002 */
 
    /*--- sanity check ---*/
 
@@ -417,8 +492,22 @@ X11_colordef * get_X11_colordef( Display * display , Window w )
 
    /*--- get window attributes ---*/
 
-   sss = XGetWindowAttributes( display, getwin_from_XDBE(display,w), &xwat ) ;
-   if( sss == 0 ) return NULL ;
+   /* 13 Mar 2002: deal with the error that occurs
+                   when the Window is really a Pixmap */
+
+   xwat.depth = 0 ;
+   old_handler = XSetErrorHandler(qhandler) ; xwasbad = 0 ;
+
+   XGetWindowAttributes( display, getwin_from_XDBE(display,w), &xwat ) ;
+
+   (void) XSetErrorHandler(old_handler) ;
+
+   if( xwasbad ){
+      int xx,yy ; unsigned int ww,hh,bb,dd ; Window rr ;
+      XGetGeometry( display,w , &rr,&xx,&yy,&ww,&hh,&bb,&dd ) ;
+      XGetWindowAttributes( display, rr , &xwat ) ;
+   }
+   if( xwat.depth == 0 ) return NULL ;   /* bad news */
 
    /*--- get information about the window's Visual ---*/
 
@@ -427,14 +516,17 @@ X11_colordef * get_X11_colordef( Display * display , Window w )
    if( count == 0 || vin == NULL ) return NULL ;
 
    /*--- PseudoColor case ---*/
-
+#if defined(__cplusplus) || defined(c_plusplus)
+   if( vin->c_class == PseudoColor ){
+#else
    if( vin->class == PseudoColor ){
+#endif
       int iz ;
 
       /* create output */
 
       cd = (X11_colordef *) malloc( sizeof(X11_colordef) ) ;
-      cd->class = PseudoColor ;
+      cd->classKRH = PseudoColor ;
       cd->depth = vin->depth ;
 
       /* get all the colors in the colormap */
@@ -481,13 +573,16 @@ X11_colordef * get_X11_colordef( Display * display , Window w )
    }
 
    /*--- TrueColor case ---*/
-
+#if defined(__cplusplus) || defined(c_plusplus)
+   if( vin->c_class == TrueColor ){
+#else
    if( vin->class == TrueColor ){
+#endif
 
       /* create output */
 
       cd = (X11_colordef *) malloc( sizeof(X11_colordef) ) ;
-      cd->class = TrueColor ;
+      cd->classKRH = TrueColor ;
       cd->depth = vin->depth ;
 
       cd->rrmask  = vin->red_mask ;            /* bit masks for color  */

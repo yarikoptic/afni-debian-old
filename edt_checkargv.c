@@ -13,16 +13,19 @@
    a fatal error!
 -----------------------------------------------------------------------**/
 
-#define CHECK_DONE return (nopt-nopt_in)
+#define CHECK_DONE RETURN(nopt-nopt_in)
 
 int EDIT_check_argv( int argc , char * argv[] , int nopt , EDIT_options * edopt )
 {
    float val ;
    int  ival , nopt_in=nopt ;
 
+ENTRY("EDIT_check_argv") ;
+
    /**** -1clip val ****/
 
-   if( strncmp(argv[nopt],"-1clip",6) == 0 || strncmp(argv[nopt],"-1uclip",6) == 0 ){
+   if( strncmp(argv[nopt],"-1clip" ,6) == 0 ||
+       strncmp(argv[nopt],"-1uclip",6) == 0 ){
       nopt++ ;
       if( nopt >= argc ){
          fprintf(stderr,"no argument after %s?\n",argv[nopt-1]) ;
@@ -40,7 +43,8 @@ int EDIT_check_argv( int argc , char * argv[] , int nopt , EDIT_options * edopt 
 
    /**** -2clip val1 val2 ****/
 
-   if( strncmp(argv[nopt],"-2clip",6) == 0 || strncmp(argv[nopt],"-2uclip",6) == 0 ){
+   if( strncmp(argv[nopt],"-2clip" ,6) == 0 ||
+       strncmp(argv[nopt],"-2uclip",6) == 0   ){
       nopt++ ;
       if( nopt+1 >= argc ){
          fprintf(stderr,"no arguments after %s?\n",argv[nopt-1]) ;
@@ -130,7 +134,7 @@ int EDIT_check_argv( int argc , char * argv[] , int nopt , EDIT_options * edopt 
       edopt->edit_clust = ECFLAG_SAME;
       edopt->clust_rmm  = strtod( argv[nopt++] , NULL ) ;
       edopt->clust_vmul = strtod( argv[nopt++] , NULL ) ;
-      if( edopt->clust_rmm <= 0 || edopt->clust_vmul <= 0 ){
+      if( edopt->clust_rmm < 0 ){
          fprintf(stderr,"illegal value after -1clust\n") ;
          EXIT(1) ;
       }
@@ -149,7 +153,7 @@ int EDIT_check_argv( int argc , char * argv[] , int nopt , EDIT_options * edopt 
       edopt->edit_clust = ECFLAG_MEAN;
       edopt->clust_rmm  = strtod( argv[nopt++] , NULL ) ;
       edopt->clust_vmul = strtod( argv[nopt++] , NULL ) ;
-      if( edopt->clust_rmm <= 0 || edopt->clust_vmul <= 0 ){
+      if( edopt->clust_rmm < 0 ){
          fprintf(stderr,"illegal value after -1clust_mean\n") ;
          EXIT(1) ;
       }
@@ -167,7 +171,7 @@ int EDIT_check_argv( int argc , char * argv[] , int nopt , EDIT_options * edopt 
       edopt->edit_clust = ECFLAG_MAX;
       edopt->clust_rmm  = strtod( argv[nopt++] , NULL ) ;
       edopt->clust_vmul = strtod( argv[nopt++] , NULL ) ;
-      if( edopt->clust_rmm <= 0 || edopt->clust_vmul <= 0 ){
+      if( edopt->clust_rmm < 0 ){
          fprintf(stderr,"illegal value after -1clust_max\n") ;
          EXIT(1) ;
       }
@@ -185,7 +189,7 @@ int EDIT_check_argv( int argc , char * argv[] , int nopt , EDIT_options * edopt 
       edopt->edit_clust = ECFLAG_AMAX;
       edopt->clust_rmm  = strtod( argv[nopt++] , NULL ) ;
       edopt->clust_vmul = strtod( argv[nopt++] , NULL ) ;
-      if( edopt->clust_rmm <= 0 || edopt->clust_vmul <= 0 ){
+      if( edopt->clust_rmm < 0 ){
          fprintf(stderr,"illegal value after -1clust_amax\n") ;
          EXIT(1) ;
       }
@@ -203,7 +207,7 @@ int EDIT_check_argv( int argc , char * argv[] , int nopt , EDIT_options * edopt 
       edopt->edit_clust = ECFLAG_SMAX;
       edopt->clust_rmm  = strtod( argv[nopt++] , NULL ) ;
       edopt->clust_vmul = strtod( argv[nopt++] , NULL ) ;
-      if( edopt->clust_rmm <= 0 || edopt->clust_vmul <= 0 ){
+      if( edopt->clust_rmm < 0 ){
          fprintf(stderr,"illegal value after -1clust_smax\n") ;
          EXIT(1) ;
       }
@@ -221,7 +225,7 @@ int EDIT_check_argv( int argc , char * argv[] , int nopt , EDIT_options * edopt 
       edopt->edit_clust = ECFLAG_SIZE;
       edopt->clust_rmm  = strtod( argv[nopt++] , NULL ) ;
       edopt->clust_vmul = strtod( argv[nopt++] , NULL ) ;
-      if( edopt->clust_rmm <= 0 || edopt->clust_vmul <= 0 ){
+      if( edopt->clust_rmm < 0 ){
          fprintf(stderr,"illegal value after -1clust_size\n") ;
          EXIT(1) ;
       }
@@ -239,7 +243,7 @@ int EDIT_check_argv( int argc , char * argv[] , int nopt , EDIT_options * edopt 
       edopt->edit_clust = ECFLAG_ORDER;
       edopt->clust_rmm  = strtod( argv[nopt++] , NULL ) ;
       edopt->clust_vmul = strtod( argv[nopt++] , NULL ) ;
-      if( edopt->clust_rmm <= 0 || edopt->clust_vmul <= 0 ){
+      if( edopt->clust_rmm < 0 ){
          fprintf(stderr,"illegal value after -1clust_order\n") ;
          EXIT(1) ;
       }
@@ -676,5 +680,5 @@ int EDIT_check_argv( int argc , char * argv[] , int nopt , EDIT_options * edopt 
       nopt += 7 ; CHECK_DONE ;
    }
 
-   return 0 ;
+   RETURN( 0 );
 }

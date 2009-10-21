@@ -3,7 +3,7 @@
    of Wisconsin, 1994-2000, and are released under the Gnu General Public
    License, Version 2.  See the file README.Copyright for details.
 ******************************************************************************/
-   
+
 #ifndef _MCW_BBOX_HEADER_
 #define _MCW_BBOX_HEADER_
 
@@ -174,7 +174,8 @@ extern void AV_leave_EV( Widget , XtPointer , XEvent * , Boolean * ) ;
 char * AV_default_text_CB( MCW_arrowval * , XtPointer ) ;
 
 extern void AV_fval_to_char( float , char * ) ;
-extern char * AV_format_fval( float ) ;   /* 12 July 01999 */
+extern char * AV_format_fval( float ) ;   /* 12 Jul 1999 */
+extern char * AV_uformat_fval( float ) ;  /* 22 Jan 2003 */
 
 extern char * MCW_av_substring_CB( MCW_arrowval * , XtPointer ) ;
 
@@ -204,6 +205,16 @@ extern char * MCW_av_substring_CB( MCW_arrowval * , XtPointer ) ;
       if( exp ) MCW_expose_widget(av->wrowcol) ;                \
    } } while(0)
 
+/* following 2 macros added 12 Mar 2002 */
+
+#define AV_SENSITIZE_UP(av,sss)                                 \
+   do{ if( av != NULL && av->wup != NULL )                      \
+         XtSetSensitive(av->wup,sss); } while(0)
+
+#define AV_SENSITIZE_DOWN(av,sss)                               \
+   do{ if( av != NULL && av->wdown != NULL )                    \
+         XtSetSensitive(av->wdown,sss); } while(0)
+
 /*---------------------------------------------------------------------------------*/
 
 #define POPDOWN_ovcolor_chooser    MCW_choose_ovcolor(NULL,NULL,0,NULL,NULL)
@@ -211,6 +222,7 @@ extern char * MCW_av_substring_CB( MCW_arrowval * , XtPointer ) ;
 #define POPDOWN_strlist_chooser    MCW_choose_strlist(NULL,NULL,0,0,NULL,NULL,NULL)
 #define POPDOWN_integer_chooser    MCW_choose_integer(NULL,NULL,0,0,0,NULL,NULL)
 #define POPDOWN_timeseries_chooser MCW_choose_timeseries(NULL,NULL,NULL,0,NULL,NULL)
+#define POPDOWN_vector_chooser     MCW_choose_vector(NULL,NULL,0,NULL,NULL,NULL,NULL)
 
 #define POPDOWN_editable_strlist_chooser \
                                    MCW_choose_editable_strlist(NULL,NULL,NULL,0,NULL,NULL)
@@ -227,7 +239,11 @@ extern void   MCW_kill_chooser_CB   ( Widget , XtPointer , XtPointer ) ;
 extern void   MCW_choose_integer( Widget , char * ,
                                   int,int,int , gen_func *, XtPointer );
 
-extern void   MCW_choose_string( Widget, char *, char *, gen_func *, XtPointer );
+extern void   MCW_choose_vector ( Widget, char *,
+                                  int, char **, int *, gen_func *, XtPointer ) ;
+
+extern void   MCW_choose_string ( Widget, char *,
+                                  char *, gen_func *, XtPointer );
 
 extern void   MCW_choose_strlist( Widget, char *, int, int,
                                   char * strlist[], gen_func *, XtPointer );
@@ -257,22 +273,29 @@ typedef struct {
       MCW_arrowval * av ;      /* arrowval making the choices */
       Widget         wchoice ; /* widget making the choice */
       gen_func     * sel_CB ;  /* user callback */
-      XtPointer    * sel_cd ;  /* user callback data */
+      XtPointer      sel_cd ;  /* user callback data */
       MRI_IMARR    * tsarr ;   /* array of timeseries to choose from */
 
       XtPointer parent , aux ;
 
       THD_string_array * sar ; /* array of strings, for editable_strlist */
       Widget             wtf ; /* text field, for editable_strlist */
+
+      int nvec ;               /* 19 Mar 2004: for vector chooser */
 } MCW_choose_data ;
 
 #define mcwCT_ovcolor    701
 #define mcwCT_integer    702
 #define mcwCT_string     703
 #define mcwCT_timeseries 707
+#define mcwCT_vector     708  /* 19 Mar 2004 */
 
 #define mcwCT_single_mode 222
 #define mcwCT_multi_mode  223
+
+/* for vector callbacks:
+     ival = number of vector values
+     (float *)cval = vector array   */
 
 typedef struct {
       int         reason ;  /* reason for callback */
@@ -280,7 +303,8 @@ typedef struct {
       int         ival ;    /* chosen value */
       float       fval ;    /* chosen value */
       char *      cval ;    /* chosen value */
-      int         nilist , * ilist ;  /* many chosen values */
+      int         nilist ,
+                  *ilist ;  /* many chosen values */
       MRI_IMAGE * imval ;   /* chosen value for timeseries */
 
       XtPointer parent , aux ;
@@ -290,6 +314,7 @@ typedef struct {
 #define mcwCR_integer    202
 #define mcwCR_string     203
 #define mcwCR_timeseries 207
+#define mcwCR_vector     208  /* 19 Mar 2004 */
 
 /*---------------------------------------------------------------------------------*/
 /*---- arrowpad stuff ----*/
@@ -339,5 +364,51 @@ extern MCW_arrowpad * new_MCW_arrowpad( Widget , gen_func * , XtPointer ) ;
 
 extern void AP_press_CB( Widget , XtPointer , XtPointer ) ;
 extern void AP_timer_CB( XtPointer , XtIntervalId * ) ;
+
+/*! toggle sensitivity of an arrowpad */
+
+#define AP_SENSITIZE(ap,sss)                            \
+   do{ Boolean sen = (Boolean) sss ;                    \
+       if( ap != NULL ) {                               \
+        int exp = (XtIsSensitive(ap->wform) != sen) ;   \
+        XtSetSensitive(ap->wbut[0],sen);                \
+        XtSetSensitive(ap->wbut[1],sen);                \
+        XtSetSensitive(ap->wbut[2],sen);                \
+        XtSetSensitive(ap->wbut[3],sen);                \
+        XtSetSensitive(ap->wbut[4],sen);                \
+        XtSetSensitive(ap->wform,sen);                  \
+        if( exp ) MCW_expose_widget(ap->wform) ;        \
+   } } while(0)
+
+#if 0
+#define AP_MANGLIZE(ap)                                   \
+  do{ if( ap != NULL ){                                   \
+         XtUnmanageChild( ap->wbut[4] ) ;                 \
+         XtUnmanageChild( ap->wform ) ;                   \
+         XtVaSetValues( ap->wform ,                       \
+                        XmNfractionBase , 6 , NULL ) ;    \
+         XtVaSetValues( ap->wbut[0] ,                     \
+                        XmNtopPosition    , 4 ,           \
+                        XmNbottomPosition , 6 ,           \
+                        XmNleftPosition   , 3 ,           \
+                        XmNrightPosition  , 5 , NULL ) ;  \
+         XtVaSetValues( ap->wbut[1] ,                     \
+                        XmNtopPosition    , 0 ,           \
+                        XmNbottomPosition , 2 ,           \
+                        XmNleftPosition   , 3 ,           \
+                        XmNrightPosition  , 5 , NULL ) ;  \
+         XtVaSetValues( ap->wbut[2] ,                     \
+                        XmNtopPosition    , 2 ,           \
+                        XmNbottomPosition , 4 ,           \
+                        XmNleftPosition   , 2 ,           \
+                        XmNrightPosition  , 4 , NULL ) ;  \
+         XtVaSetValues( ap->wbut[3] ,                     \
+                        XmNtopPosition    , 2 ,           \
+                        XmNbottomPosition , 4 ,           \
+                        XmNleftPosition   , 4 ,           \
+                        XmNrightPosition  , 6 , NULL ) ;  \
+         XtManageChild( ap->wform ) ;                     \
+  } } while(0)
+#endif
 
 #endif /* _MCW_BBOX_HEADER_ */

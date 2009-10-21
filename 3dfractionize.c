@@ -14,8 +14,8 @@ THD_fvec3 AFNI_backward_warp_vector( THD_warp * warp , THD_fvec3 old_fv ) ;
 
 int main( int argc , char * argv[] )
 {
-   char * prefix = "fractionize" ;
-   THD_3dim_dataset * tset=NULL , * iset=NULL , * dset=NULL , *wset=NULL ;
+   char *prefix = "fractionize" ;
+   THD_3dim_dataset *tset=NULL , *iset=NULL , *dset=NULL , *wset=NULL ;
    int iarg=1 ;
    int nxin,nyin,nzin , nxyin ;
    float dxin,dyin,dzin , xorgin,yorgin,zorgin , clip=0.0 ;
@@ -24,21 +24,21 @@ int main( int argc , char * argv[] )
    float f1,f2,f , g1,g2,g , h1,h2,h , sx,sy,sz , tx,ty,tz ;
    float x1,x2 , y1,y2 , z1,z2 , xx1,xx2 , yy1,yy2 , zz1,zz2 ;
    int i,ip , j,jp , k,kp , iv,jv,kv , vtype , ijk ;
-   float * voxout ;
-   byte  * bin   = NULL ;
-   short * sin   = NULL , sclip=0   ;
-   float * fin   = NULL , fclip=0.0 ;
-   void  * voxin = NULL ;
+   float *voxout ;
+   byte  *bin   = NULL ;
+   short *sin   = NULL , sclip=0   ;
+   float *fin   = NULL , fclip=0.00001 ;
+   void  *voxin = NULL ;
    THD_fvec3 vv ;
 
-   THD_warp * warp=NULL ;  /* 14 Oct 1999 */
+   THD_warp *warp=NULL ;  /* 14 Oct 1999 */
 
    int do_vote=0 ;          /* 18 Oct 1999 */
-   int * vote_val = NULL ;
+   int *vote_val = NULL ;
    int  nvote_val , ivote , voter , vote_print=0 ;
-   byte  * vote_bout = NULL ;
-   short * vote_sout = NULL ;
-   float * vote_best = NULL ;
+   byte  *vote_bout = NULL ;
+   short *vote_sout = NULL ;
+   float *vote_best = NULL ;
 
    /*-- help? --*/
 
@@ -63,7 +63,7 @@ int main( int argc , char * argv[] )
              "fraction aren't used.  This can be done in 3dmaskave, by using\n"
              "3calc, or with the '-clip' option below.\n"
              "\n"
-             "Options are [the first 2 are 'required options']:\n"
+             "Options are [the first 2 are 'mandatory options']:\n"
              "  -template tset  = Use dataset 'tset' as a template for the output.\n"
              "                      The output dataset will be on the same grid as\n"
              "                      this dataset.\n"
@@ -247,11 +247,11 @@ int main( int argc , char * argv[] )
    /*- 18 Oct 1999: check input for legality if we are voting --*/
 
    if( do_vote ){
-      vtype = DSET_BRICK_TYPE(iset,0) ;
-      if( vtype != MRI_short ){
-         fprintf(stderr,"** -preserve option requires short-valued input dataset!\n");
-         exit(1);
-      }
+     vtype = DSET_BRICK_TYPE(iset,0) ;
+     if( vtype != MRI_short && vtype != MRI_byte ){
+       fprintf(stderr,"** -preserve option requires short- or byte-valued input dataset!\n");
+       exit(1);
+     }
    }
 
    /*-- start to create output dataset --*/
@@ -326,9 +326,9 @@ int main( int argc , char * argv[] )
       for( iv=0 ; iv < nvoxin ; iv++ ){
          kv = (vtype == MRI_short) ? sin[iv] : bin[iv] ;   /* voxel value */
          if( kv == 0 ) continue ;                          /* skip zeroes */
-         for( jv=0 ; jv < nvote_val ; jv++ )               /* find in list */
+         for( jv=0 ; jv < nvote_val ; jv++ )              /* find in list */
             if( vote_val[jv] == kv ) break ;
-         if( jv < nvote_val ) continue ;                   /* skip if in list */
+         if( jv < nvote_val ) continue ;       /* skip if already in list */
 
          vote_val = (int *) realloc( vote_val , sizeof(int)*(nvote_val+1) ) ;
          vote_val[nvote_val++] = kv ;
@@ -361,7 +361,7 @@ int main( int argc , char * argv[] )
       f = DSET_BRICK_FACTOR(iset,0) ;
       if( f != 0.0 && f != 1.0 ) EDIT_BRICK_FACTOR(dset,0,f) ;
 
-      /* 5: if input if bytes, make the output be that too */
+      /* 5: if input is bytes, make the output be that too */
 
       if( vtype == MRI_byte )
          EDIT_dset_items( dset , ADN_datum_all , MRI_byte , ADN_none ) ;

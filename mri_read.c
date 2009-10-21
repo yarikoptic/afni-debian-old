@@ -4,6 +4,12 @@
    License, Version 2.  See the file README.Copyright for details.
 ******************************************************************************/
 
+/*! \file
+    This file contains all the functions for reading image files.
+    It is primarily used by to3d.c.  It reads 2D images (into MRI_IMAGE struct)
+    and arrays of 2D images (into MRI_IMARR struct).
+*/
+
 #include <stdio.h>
 #include <ctype.h>
 #include <string.h>
@@ -20,44 +26,115 @@
 #endif
 
 #include "mrilib.h"
+#include "ge4_header.h"
 
-char MRILIB_orients[8] = "\0" ;  /* 12 Mar 2001 */
+/* prototype for local function */
+short check_dicom_magic_num( char * );
+
+/*! Global variable to signal image orientation, if possible. */
+
+char MRILIB_orients[8] = "\0\0\0\0\0\0\0\0" ;  /* 12 Mar 2001 */
+
+/*! Global variable to signal image slice offset, if possible. */
+
 float MRILIB_zoff      = 0.0 ;
+
+/*! Global variable to signal image TR, if possible. */
+
 float MRILIB_tr        = 0.0 ;   /* 03 Dec 2001 */
+
+/*! Global variable to signal image x offset, if possible. */
+
 float MRILIB_xoff      = 0.0 ;   /* 07 Dec 2001 */
+
+/*! Global variable to signal image y offset, if possible. */
+
 float MRILIB_yoff      = 0.0 ;
+
+/*! Global variable saying whether to use MRILIB_xoff. */
+
+int use_MRILIB_xoff    = 0 ;
+
+/*! Global variable saying whether to use MRILIB_yoff. */
+
+int use_MRILIB_yoff    = 0 ;
+
+/*! Global variable saying whether to use MRILIB_zoff. */
+
+int use_MRILIB_zoff    = 0 ;
+
+/*! Global variable saying whether to use MRILIB_xcos. */
+
+int use_MRILIB_xcos    = 0 ;
+
+/*! Global vector pointing in direction of x-axis. */
+
+float MRILIB_xcos[3]   = { 1.0 , 0.0 , 0.0 } ;
+
+/*! Global variable saying whether to use MRILIB_ycos. */
+
+int use_MRILIB_ycos    = 0 ;
+
+/*! Global vector pointing in direction of y-axis. */
+
+float MRILIB_ycos[3]   = { 0.0 , 1.0 , 0.0 } ;
+
+/*! Global variable saying whether to use MRILIB_zcos. */
+
+int use_MRILIB_zcos    = 0 ;
+
+/*! Global vector pointing in direction of y-axis. */
+
+float MRILIB_zcos[3]   = { 0.0 , 0.0 , 1.0 } ;
+
+/*! Global variable saying whether to use MRILIB_slicespacing. */
+
+int use_MRILIB_slicespacing = 0 ;
+
+/*! Global variable giving the spacing between slice centers. */
+
+float MRILIB_slicespacing = 0.0 ;
 
 /*** 7D SAFE (but most routines only return 2D images!) ***/
 
-MRI_IMAGE *mri_try_mri( FILE * , int * ) ;
+MRI_IMAGE *mri_try_mri( FILE * , int * ) ;  /* prototypes */
 MRI_IMAGE *mri_try_7D ( FILE * , int * ) ;
 MRI_IMAGE *mri_try_pgm( FILE * , int * ) ;
 
-/*-----------------------------------------------------------------
-  database of preset sizes to get formatting
-  information for reading with 3D prefixes:
-    size   = file size in bytes if head < 0
-               image size in bytes if head >= 0
-    head   = global header size if >=0
-    prefix = character string to prefix to filename
+/*-----------------------------------------------------------------*/
 
-  if( head < 0 ) then file length must match size
+/*! Database of preset file sizes for auto-use of 3D.
+
+  If( head < 0 ) then file length must match size
   else file length must == n*size + head for some
        integer n, which will be the number of slices
        to read from the file.
--------------------------------------------------------------------*/
+*/
 
 typedef struct {
-   int size , head ;
-   char * prefix ;
+   int size ;       /*!< file size in bytes if head < 0; image size in bytes if head >= 0 */
+   int head ;       /*!< global header size if >= 0 */
+   char * prefix ;  /*!< character string to prefix to filename */
 } MCW_imsize ;
+
+/*! Max number of preset file sizes to allow. */
 
 #define MAX_MCW_IMSIZE 99
 
+/*! Array of preset file sizes to use when reading image files. */
+
 static MCW_imsize imsize[MAX_MCW_IMSIZE] ;
-static int MCW_imsize_good = -1 ;           /* < 0 ==> must initialize */
+
+/*! If this < 0 ==> must initialize array of preset file sizes. */
+
+static int MCW_imsize_good = -1 ;
 
 /*---------------------------------------------------------------*/
+
+#undef swap_4
+#undef swap_2
+
+/*! Swap the 4 bytes pointed to by ppp: abcd -> dcba. */
 
 static void swap_4(void *ppp)
 {
@@ -69,6 +146,8 @@ static void swap_4(void *ppp)
 }
 
 /*---------------------------------------------------------------*/
+
+/*! Swap the 8 bytes pointed to by ppp: abcdefgh -> hgfedcba. */
 
 static void swap_8(void *ppp)
 {
@@ -85,6 +164,8 @@ static void swap_8(void *ppp)
 
 /*---------------------------------------------------------------*/
 
+/*! Swap the 2 bytes pointed to by ppp: ab -> ba. */
+
 static void swap_2(void *ppp)
 {
    unsigned char *pntr = (unsigned char *) ppp ;
@@ -96,6 +177,14 @@ static void swap_2(void *ppp)
 
 /******************************************************************/
 
+/*! Earliest image reading function in the AFNI package.
+    Reads a single 2D image.
+
+    \param  fname is the name of the file to try to read
+    \return NULL if an image couldn't be read, otherwise
+            a pointer to an MRI_IMAGE with data, dimensions, etc.
+*/
+
 MRI_IMAGE *mri_read( char *fname )
 {
    FILE      *imfile ;
@@ -103,12 +192,12 @@ MRI_IMAGE *mri_read( char *fname )
    int       length , skip=0 , swap=0 ;
    void      *data ;
 
-WHOAMI ;
+ENTRY("mri_read") ;
 
    imfile = fopen( fname , "r" ) ;
    if( imfile == NULL ){
       fprintf( stderr , "couldn't open image file %s\n" , fname ) ;
-      return NULL ;
+      RETURN( NULL );
    }
 
    fseek( imfile , 0L , SEEK_END ) ;  /* get the length of the file */
@@ -118,8 +207,21 @@ WHOAMI ;
    /*[[[ Information herein from Medical Image Format FAQ ]]]*/
 
    { char str[5]="AFNI" ;
-     int nx , ny , bpp , cflag , hdroff ;
-     rewind(imfile) ; fread(str,1,4,imfile) ;      /* check for "IMGF" */
+     int nx , ny , bpp , cflag , hdroff , extraskip=0 ;
+     rewind(imfile) ; fread(str,1,4,imfile) ;   /* check for "IMGF" or "GEMS" */
+
+     if( str[0]=='G' && str[1]=='E' && str[2]=='M' && str[3]=='S' ){ /* 12 Feb 2004 */
+       char buf[4096]; int bb,cc;                /* search for IMGF in 1st 4K */
+       rewind(imfile); cc=fread(buf,1,4096,imfile); cc-=4 ;
+       for( bb=4; bb < cc ; bb++ )
+        if( buf[bb]=='I' && buf[bb+1]=='M' && buf[bb+2]=='G' && buf[bb+3]=='F' ) break ;
+       if( bb < cc ){
+         fseek( imfile , (long)bb , SEEK_SET ) ; extraskip = bb ;
+         fread(str,1,4,imfile) ;
+       }
+     }
+
+     /* 12 Feb 2004: modified to allow for starting at extraskip */
 
      if( str[0]=='I' && str[1]=='M' && str[2]=='G' && str[3]=='F' ){
 
@@ -134,6 +236,7 @@ WHOAMI ;
          swap_4(&skip); swap_4(&nx) ;
          swap_4(&ny)  ; swap_4(&bpp); swap_4(&cflag);
        }
+       skip += extraskip ;             /* location of image data in file */
        if( nx < 0 || nx > 8192 || ny < 0 || ny > 8192 ) goto The_Old_Way ;
        if( skip < 0  || skip  >= length )               goto The_Old_Way ;
        if( bpp != 16 || cflag != 1      )               goto The_Old_Way ;
@@ -144,40 +247,41 @@ WHOAMI ;
 
        /* try to read image auxiliary data as well (not mandatory) */
 
-       length = fseek( imfile , 148L , SEEK_SET ) ; /* magic GEMS offset */
+       length = fseek( imfile , 148L+extraskip , SEEK_SET ) ; /* magic GEMS offset */
        if( length == 0 ){
           fread( &hdroff , 4,1 , imfile ) ;  /* location of image header */
           if( swap ) swap_4(&hdroff) ;
           if( hdroff > 0 ){                  /* read from image header */
-             float dx,dy,dz , xyz[9] , zz ; int itr , ii,jj,kk ;
+             float dx,dy,dz, dxx,dyy,dzz, xyz[9], zz ; int itr, ii,jj,kk, qq ;
              static int nzoff=0 ;
              static float zoff ;
 
              /* get voxel grid sizes */
 
-             fseek( imfile , hdroff+26 , SEEK_SET ) ;
-             fread( &dz , 4,1 , imfile ) ;
+             fseek( imfile , hdroff+26+extraskip , SEEK_SET ) ;
+             fread( &dzz , 4,1 , imfile ) ;
 
-             fseek( imfile , hdroff+50 , SEEK_SET ) ;
-             fread( &dx , 4,1 , imfile ) ;
-             fread( &dy , 4,1 , imfile ) ;
+             fseek( imfile , hdroff+50+extraskip , SEEK_SET ) ;
+             fread( &dxx , 4,1 , imfile ) ;
+             fread( &dyy , 4,1 , imfile ) ;
 
-             if( swap ){ swap_4(&dx); swap_4(&dy); swap_4(&dz); }
+             if( swap ){ swap_4(&dxx); swap_4(&dyy); swap_4(&dzz); }
 
-             /* save into image header */
+             /* save into image header [dw > 0 is signal that dx,dy,dz are OK] */
 
-             if( dx > 0.0 && dy > 0.0 && dz > 0.0 ){
-               im->dx = dx; im->dy = dy; im->dz = dz; im->dw = 1.0;
+             if( dxx > 0.01 && dyy > 0.01 && dzz > 0.01 ){
+               im->dx = dxx; im->dy = dyy; im->dz = dzz; im->dw = 1.0;
              }
 
              /* grid orientation: from 3 sets of LPI corner coordinates: */
              /*   xyz[0..2] = top left hand corner of image     (TLHC)   */
              /*   xyz[3..5] = top right hand corner of image    (TRHC)   */
              /*   xyz[6..8] = bottom right hand corner of image (BRHC)   */
-             /* GEMS coordinate orientation here is LPI                  */
-             /* Orientation is saved into global string MRILIB_orients   */
+             /* GEMS coordinate orientation here is LPI.                 */
+             /* Orientation is saved into global string MRILIB_orients.  */
+             /* N.B.: AFNI coordinates are RAI orientation.              */
 
-             fseek( imfile , hdroff+154 , SEEK_SET ) ;
+             fseek( imfile , hdroff+154+extraskip , SEEK_SET ) ;
              fread( xyz , 4,9 , imfile ) ;
              if( swap ) swap_fourbytes(9,xyz) ;
 
@@ -223,7 +327,9 @@ WHOAMI ;
 
              kk = 6 - abs(ii)-abs(jj) ;   /* which spatial direction is z-axis */
                                           /* where 1=L-R, 2=P-A, 3=I-S */
-             zz = xyz[kk-1] ;             /* z-coordinate of this slice */
+             zz = xyz[kk-1] ;             /* z-coordinate of this slice (from TLHC) */
+
+             im->zo = zz ;                /* 07 Aug 2002: save slice offset */
 
              /* getting orientation of z-axis requires 2 images in a row -*/
 
@@ -241,6 +347,12 @@ WHOAMI ;
 
                float qoff = zz - zoff ;  /* vive la difference */
                if( qoff < 0 ) kk = -kk ; /* kk determines z-axis orientation */
+
+               if( !use_MRILIB_slicespacing && qoff != 0.0 ){ /* 10 Jan 2004 */
+                 use_MRILIB_slicespacing = 1 ;
+                     MRILIB_slicespacing = fabs(qoff) ;
+               }
+
                switch( kk ){
                 case  1: MRILIB_orients[4] = 'L'; MRILIB_orients[5] = 'R'; break;
                 case -1: MRILIB_orients[4] = 'R'; MRILIB_orients[5] = 'L'; break;
@@ -251,24 +363,42 @@ WHOAMI ;
                 default: MRILIB_orients[4] ='\0'; MRILIB_orients[5] ='\0'; break;
                }
 
-               /* save spatial offset of first slice         */
-               /* [this is positive in the direction of the] */
-               /* [-z axis, so may need to change its sign ] */
+               /* save spatial offset of first slice              */
+               /* [this needs to be positive in the direction of] */
+               /* [the -z axis, so may need to change its sign  ] */
 
-               MRILIB_zoff = zoff ;
+               MRILIB_zoff = zoff ; use_MRILIB_zoff = 1 ;
                if( kk == 1 || kk == 2 || kk == 3 ) MRILIB_zoff = -MRILIB_zoff ;
 
-               MRILIB_xoff = xyz[abs(ii)-1] ;  /* 07 Dec 2001 */
-               MRILIB_yoff = xyz[abs(jj)-1] ;
+               /* Same for x offset; [20 Dec 2001]
+                  This must be at the middle of the TLHC voxel,
+                    so we must move a little bit towards the TRHC edge;
+                  We only use the result if the x-coordinate doesn't
+                    change significantly between the TRHC and BRHC,
+                    to avoid problems with oblique slices.         */
+
+               qq = abs(ii) ;
+               MRILIB_xoff = ( xyz[qq-1]*(nx-0.5) + xyz[qq+2]*0.5 ) / nx ;
                if( ii == 1 || ii == 2 || ii == 3 ) MRILIB_xoff = -MRILIB_xoff ;
+               use_MRILIB_xoff = ( fabs(xyz[qq+2]-xyz[qq+5]) < 0.01*dxx ) ;
+
+               /* Same for y offset;
+                  This must be at the middle of the TLHC voxel,
+                    so we must move a little bit towards the BRHC edge;
+                  We only use the result if the y-coordinate doesn't
+                    change significantly between the TLHC and TRHC. */
+
+               qq = abs(jj) ;
+               MRILIB_yoff = ( xyz[qq-1]*(ny-0.5) + xyz[qq+5]*0.5 ) / ny ;
                if( jj == 1 || jj == 2 || jj == 3 ) MRILIB_yoff = -MRILIB_yoff ;
+               use_MRILIB_yoff = ( fabs(xyz[qq-1]-xyz[qq+2]) < 0.01*dyy ) ;
              }
              nzoff++ ;  /* 3rd and later images don't count for z-orientation */
 
              /* get TR, save into global variable */
 
              if( MRILIB_tr <= 0.0 ){
-               fseek( imfile , hdroff+194 , SEEK_SET ) ;
+               fseek( imfile , hdroff+194+extraskip , SEEK_SET ) ;
                fread( &itr , 4,1 , imfile ) ;
                if( swap ) swap_4(&itr) ;
                MRILIB_tr = im->dt = 1.0e-6 * itr ;
@@ -369,14 +499,17 @@ The_Old_Way:
          fclose( imfile ) ; /* close it, since we failed (so far) */
 
          im = mri_read_ascii( fname ) ;    /* list of ASCII numbers */
-         if( im != NULL ) return im ;
+         if( im != NULL ) RETURN( im );
 
          im = mri_read_ppm( fname ) ;      /* 15 Apr 1999 */
-         if( im != NULL ) return im ;
+         if( im != NULL ) RETURN( im );
+
+         im = mri_read_stuff( fname ) ;    /* 22 Nov 2002 */
+         if( im != NULL ) RETURN( im );
 
          fprintf( stderr , "do not recognize image file %s\n" , fname );
          fprintf( stderr , "length seen as %d\n" , length ) ;
-         return NULL ;
+         RETURN( NULL );
    }
 
    /*-- Actually read the data from disk --*/
@@ -389,7 +522,7 @@ Ready_To_Roll:
    if( length != 0 ){
       fprintf( stderr , "mri_read error in skipping in file %s\n" , fname ) ;
       mri_free( im ) ;
-      return NULL ;
+      RETURN( NULL );
    }
 
    length = fread( data , im->pixel_size , im->nvox , imfile ) ;
@@ -398,7 +531,7 @@ Ready_To_Roll:
    if( length != im->nvox ){
       mri_free( im ) ;
       fprintf( stderr , "couldn't read image data from file %s\n" , fname ) ;
-      return NULL ;
+      RETURN( NULL );
    }
 
    mri_add_name( fname , im ) ;
@@ -412,10 +545,78 @@ Ready_To_Roll:
        case 4:  swap_fourbytes(   im->nvox, data ) ; break ;  /* int, float */
        case 8:  swap_fourbytes( 2*im->nvox, data ) ; break ;  /* complex */
      }
+
+     im->was_swapped = 1 ;  /* 07 Mar 2002 */
    }
 
-   return im ;
+   RETURN( im );
 }
+
+
+/******************************************************************/
+
+/* GEMS 4.x image reading   - rickr  03 Jun 2003 */
+
+/*! Read a single 2D GEMS 4.x image.
+
+    \param  filename is the name of the file to try to read
+    \return NULL if an image could not be read, otherwise
+            the address of a new MRI_IMAGE structure
+*/
+
+MRI_IMAGE * mri_read_ge4( char * filename )
+{
+    MRI_IMAGE * im;
+    ge4_header  H;
+
+ENTRY( "mri_read_ge4" );
+
+    if ( filename == NULL )
+    {
+        fprintf( stderr, "** mri_read_ge4 - missing filename\n" );
+        RETURN( NULL );
+    }
+
+    /* try to read image file - return with image */
+    if ( ge4_read_header( &H, filename, True ) != 0 )
+        RETURN( NULL );
+
+    /* these dimensions are fixed */
+    if ( (im = mri_new(256, 256, MRI_short)) == NULL )
+    {
+        free(H.image);
+        RETURN( NULL );
+    }
+
+    /* fill im struct with data from H */
+    im->zo = H.im_h.im_loc;        /* this may well be incorrect */
+    im->dt = H.im_h.tr;
+    im->was_swapped = H.swap;
+
+    if ( ( H.ser_h.fov >    1.0      ) &&
+         ( H.ser_h.fov < 1000.0      ) &&
+         ( H.ser_h.scan_mat_x >    0 ) &&
+         ( H.ser_h.scan_mat_x < 1000 ) &&
+         ( H.ser_h.scan_mat_y >    0 ) &&
+         ( H.ser_h.scan_mat_y < 1000 ) )
+    {
+        /* attempt to set dx, dy and dz from these */
+
+        im->dx = 2 * H.ser_h.fov / H.ser_h.scan_mat_x;
+        im->dy = im->dx;
+        im->dz = 2 * H.ser_h.fov / H.ser_h.scan_mat_y;
+        im->dw = 1;
+    }
+
+    memcpy( mri_data_pointer(im), H.image, H.im_bytes );
+
+    mri_add_name( filename, im );
+
+    free(H.image);        /* your services are no longer required */
+
+    RETURN( im );
+}
+
 
 /*********************************************************************/
 
@@ -428,8 +629,13 @@ Ready_To_Roll:
      buf[nch]='\0';                                                        \
      var = strtol( buf , NULL , 10 ) ; }
 #else
+
+/*! Skip comments in a PPM file. */
+
 #define SKIPCOM                                                            \
     {if(ch == '#') do{ch = getc(imfile) ;}while(ch != '\n' && ch != EOF);}
+
+/*! Scan for a number in the imfile stream. */
 
 #define NUMSCAN(var)                                                       \
    { SKIPCOM ;                                                             \
@@ -439,34 +645,48 @@ Ready_To_Roll:
      var = strtol( buf , NULL , 10 ) ; }
 #endif
 
+/*! Try to read an file in the "Cox MRI" format.
+
+    \param imfile is a pointer to an open FILE.
+    \param skip is a pointer to an int that will be set to the number
+           of bytes to skip from the file start to find the image data
+    \return NULL if the file doesn't work for "Cox MRI" format;
+            otherwise, the return is a pointer to an MRI_IMAGE ready
+            to have its data read from imfile.
+*/
+
 MRI_IMAGE *mri_try_mri( FILE *imfile , int *skip )
 {
    int ch , nch , nx,ny,imcode ;
    char buf[64] ;
    MRI_IMAGE *im ;
 
+ENTRY("mri_try_mri") ;
+
    fseek( imfile , 0 , SEEK_SET ) ;  /* rewind file */
 
-   ch = getc( imfile ) ; if( ch != 'M' ) return NULL ;  /* check for MRI */
-   ch = getc( imfile ) ; if( ch != 'R' ) return NULL ;
-   ch = getc( imfile ) ; if( ch != 'I' ) return NULL ;
+   ch = getc( imfile ) ; if( ch != 'M' ) RETURN( NULL );  /* check for MRI */
+   ch = getc( imfile ) ; if( ch != 'R' ) RETURN( NULL );
+   ch = getc( imfile ) ; if( ch != 'I' ) RETURN( NULL );
 
    /* magic MRI found, so read numbers */
 
    ch = getc(imfile) ;
 
    NUMSCAN(imcode) ;
-   NUMSCAN(nx) ;  if( nx <= 0 ) return NULL ;
-   NUMSCAN(ny) ;  if( ny <= 0 ) return NULL ;
+   NUMSCAN(nx) ;  if( nx <= 0 ) RETURN( NULL );
+   NUMSCAN(ny) ;  if( ny <= 0 ) RETURN( NULL );
 
    *skip = ftell(imfile) ;
    im    = mri_new( nx , ny , imcode ) ;
-   return im ;
+   RETURN( im );
 }
 
 /**************************************************************************
    7D format: MRn kind n-dimensions data, where 'n' = 1-7.
 ***************************************************************************/
+
+/*! Try to read a "Cox nD MRI" image file (fat chance). */
 
 MRI_IMAGE *mri_try_7D( FILE *imfile , int *skip )
 {
@@ -474,13 +694,15 @@ MRI_IMAGE *mri_try_7D( FILE *imfile , int *skip )
    char buf[64] ;
    MRI_IMAGE *im ;
 
+ENTRY("mri_try_7D") ;
+
    fseek( imfile , 0 , SEEK_SET ) ;  /* rewind file */
 
-   ch = getc( imfile ) ; if( ch != 'M' ) return NULL ;  /* check for MR[1-7] */
-   ch = getc( imfile ) ; if( ch != 'R' ) return NULL ;
+   ch = getc( imfile ) ; if( ch != 'M' ) RETURN( NULL );  /* check for MR[1-7] */
+   ch = getc( imfile ) ; if( ch != 'R' ) RETURN( NULL );
    ch = getc( imfile ) ;
    switch( ch ){
-      default:  return NULL ;   /* not what I expected */
+      default:  RETURN( NULL );   /* not what I expected */
 
       case '1': ndim = 1 ; break ;
       case '2': ndim = 2 ; break ;
@@ -497,21 +719,30 @@ MRI_IMAGE *mri_try_7D( FILE *imfile , int *skip )
 
    nx = ny = nz = nt = nu = nv = nw = 1 ;
 
-                   NUMSCAN(nx) ;  if( nx <= 0 ) return NULL ;
-   if( ndim > 1 ){ NUMSCAN(ny) ;  if( ny <= 0 ) return NULL ; }
-   if( ndim > 2 ){ NUMSCAN(nz) ;  if( nz <= 0 ) return NULL ; }
-   if( ndim > 3 ){ NUMSCAN(nt) ;  if( nt <= 0 ) return NULL ; }
-   if( ndim > 4 ){ NUMSCAN(nu) ;  if( nu <= 0 ) return NULL ; }
-   if( ndim > 5 ){ NUMSCAN(nv) ;  if( nv <= 0 ) return NULL ; }
-   if( ndim > 6 ){ NUMSCAN(nw) ;  if( nw <= 0 ) return NULL ; }
+                   NUMSCAN(nx) ;  if( nx <= 0 ) RETURN( NULL );
+   if( ndim > 1 ){ NUMSCAN(ny) ;  if( ny <= 0 ) RETURN( NULL ); }
+   if( ndim > 2 ){ NUMSCAN(nz) ;  if( nz <= 0 ) RETURN( NULL ); }
+   if( ndim > 3 ){ NUMSCAN(nt) ;  if( nt <= 0 ) RETURN( NULL ); }
+   if( ndim > 4 ){ NUMSCAN(nu) ;  if( nu <= 0 ) RETURN( NULL ); }
+   if( ndim > 5 ){ NUMSCAN(nv) ;  if( nv <= 0 ) RETURN( NULL ); }
+   if( ndim > 6 ){ NUMSCAN(nw) ;  if( nw <= 0 ) RETURN( NULL ); }
 
    *skip = ftell(imfile) ;
    im    = mri_new_7D_generic( nx,ny,nz,nt,nu,nv,nw , imcode , TRUE ) ;
-   return im ;
+   RETURN( im );
 }
 
 
 /*********************************************************************/
+
+/*! Try to read a raw PGM format image file.
+
+    \param imfile is a pointer to an open FILE
+    \param skip is a pointer to an int; *skip will be set to the
+           byte offset at which to start reading data
+    \return A pointer to an MRI_IMAGE ready to have its data read in
+            (if the file is a PGM file), or NULL.
+*/
 
 MRI_IMAGE *mri_try_pgm( FILE *imfile , int *skip )
 {
@@ -519,22 +750,24 @@ MRI_IMAGE *mri_try_pgm( FILE *imfile , int *skip )
    char buf[64] ;
    MRI_IMAGE *im ;
 
+ENTRY("mri_try_pgm") ;
+
    fseek( imfile , 0 , SEEK_SET ) ;  /* rewind file */
 
-   ch = getc( imfile ) ; if( ch != 'P' ) return NULL ;  /* check for magic */
-   ch = getc( imfile ) ; if( ch != '5' ) return NULL ;
+   ch = getc( imfile ) ; if( ch != 'P' ) RETURN(NULL);  /* check for magic */
+   ch = getc( imfile ) ; if( ch != '5' ) RETURN(NULL);
 
    /* magic P5 found, so read numbers */
 
    ch = getc(imfile) ;
 
-   NUMSCAN(nx)     ; if( nx     <= 0 ) return NULL ;
-   NUMSCAN(ny)     ; if( ny     <= 0 ) return NULL ;
-   NUMSCAN(maxval) ; if( maxval <= 0 || maxval >  255 ) return NULL ;
+   NUMSCAN(nx)     ; if( nx     <= 0 ) RETURN(NULL);
+   NUMSCAN(ny)     ; if( ny     <= 0 ) RETURN(NULL);
+   NUMSCAN(maxval) ; if( maxval <= 0 || maxval >  255 ) RETURN(NULL);
 
    *skip = ftell(imfile) ;
    im    = mri_new( nx , ny , MRI_byte ) ;
-   return im ;
+   RETURN(im);
 }
 
 /*--------------------------------------------------------------
@@ -544,9 +777,12 @@ MRI_IMAGE *mri_try_pgm( FILE *imfile , int *skip )
    Modified 11/06/95 to allow float images with 3Df:
                  and to allow int images with 3Di:
                  and to allow complex images with 3Dc:
+   Modified 16 Apr 2002 to allow RGB input with 3Dr:
 
    [N.B.: if this routine is altered, don't forget mri_imcount!]
 ----------------------------------------------------------------*/
+
+/*! Read one or more 2D slices from a "3D:" formatted image file. */
 
 MRI_IMARR * mri_read_3D( char * tname )
 {
@@ -558,11 +794,13 @@ MRI_IMARR * mri_read_3D( char * tname )
    void      * imar ;
    FILE      * imfile ;
 
+ENTRY("mri_read_3D") ;
+
    /*** get info from 3D tname ***/
 
-   if( tname == NULL || strlen(tname) < 10 ) return NULL ;
+   if( tname == NULL || strlen(tname) < 10 ) RETURN(NULL) ;
 
-   switch( tname[2] ){  /* allow for 3D: or 3Ds: or 3Db: */
+   switch( tname[2] ){  /* allow for 3D: or 3Ds: or 3Db:, etc */
 
       default:
       case ':':
@@ -601,6 +839,15 @@ MRI_IMARR * mri_read_3D( char * tname )
          datum_len  = sizeof(float) ;  /* better be 4 */
          break ;
 
+      case 'd':                                            /* 06 Feb 2003 */
+         ngood = sscanf( tname , "3Dd:%d:%d:%d:%d:%d:%s" ,
+                         &hglobal , &himage , &nx , &ny , &nz , fname ) ;
+
+         swap       = 0 ;
+         datum_type = MRI_double ;
+         datum_len  = sizeof(double) ;  /* better be 8 */
+         break ;
+
       case 'i':
          ngood = sscanf( tname , "3Di:%d:%d:%d:%d:%d:%s" ,
                          &hglobal , &himage , &nx , &ny , &nz , fname ) ;
@@ -618,11 +865,20 @@ MRI_IMARR * mri_read_3D( char * tname )
          datum_type = MRI_complex ;
          datum_len  = sizeof(complex) ;  /* better be 8 */
          break ;
+
+      case 'r':
+         ngood = sscanf( tname , "3Dr:%d:%d:%d:%d:%d:%s" ,
+                         &hglobal , &himage , &nx , &ny , &nz , fname ) ;
+
+         swap       = 0 ;
+         datum_type = MRI_rgb ;
+         datum_len  = 3*sizeof(byte) ;  /* better be 3 */
+         break ;
    }
 
    if( ngood < 6 || himage < 0 ||
        nx <= 0   || ny <= 0    || nz <= 0 ||
-       strlen(fname) <= 0                   ) return NULL ;   /* bad info */
+       strlen(fname) <= 0                   ) RETURN(NULL);   /* bad info */
 
    /*** 06 Mar 2001: special case of fname ***/
 
@@ -636,7 +892,7 @@ MRI_IMARR * mri_read_3D( char * tname )
          mri_add_name( buf , newim ) ;
          ADDTO_IMARR(newar,newim) ;
       }
-      return newar ;
+      RETURN(newar);
    }
 
    /*** open the input file and position it ***/
@@ -644,7 +900,7 @@ MRI_IMARR * mri_read_3D( char * tname )
    imfile = fopen( fname , "r" ) ;
    if( imfile == NULL ){
       fprintf( stderr , "couldn't open image file %s\n" , fname ) ;
-      return NULL ;
+      RETURN(NULL);
    }
 
    fseek( imfile , 0L , SEEK_END ) ;  /* get the length of the file */
@@ -672,7 +928,7 @@ MRI_IMARR * mri_read_3D( char * tname )
         "for hglobal=%d himage=%d nx=%d ny=%d nz=%d and voxel=%d bytes\n",
         fname,length,ngood,hglobal,himage,nx,ny,nz,datum_len ) ;
       fclose( imfile ) ;
-      return NULL ;
+      RETURN(NULL);
    }
 
    /*** read images from the file ***/
@@ -686,7 +942,10 @@ MRI_IMARR * mri_read_3D( char * tname )
       newim  = mri_new( nx , ny , datum_type ) ;
       imar   = mri_data_pointer( newim ) ;
       length = fread( imar , datum_len , nx * ny , imfile ) ;
-      if( swap ) mri_swapbytes( newim ) ;
+      if( swap ){
+         mri_swapbytes( newim ) ;
+         newim->was_swapped = 1 ;  /* 07 Mar 2002 */
+      }
 
       if( nz == 1 ) mri_add_name( fname , newim ) ;
       else {
@@ -698,48 +957,179 @@ MRI_IMARR * mri_read_3D( char * tname )
    }
 
    fclose(imfile) ;
-   return newar ;
+   RETURN(newar);
 }
 
-/*--------------------------------------------------------------*/
+/*------------------------------------------------------------------------------*/
+
+/*! Read one or more 2D images from a file.
+
+   This function is the main point of input for to3d.c.
+   \param fname is the name of the file to read.  This file
+          might be in one of these formats:
+           - "3D:" format (implicitly or explicitly)
+           - "3A:" format
+           - *.hdr (ANALYZE 2D-4D) format
+           - *.ima (Siemens 2D array) format
+           - I.*   (GEMS) format
+           - PGM format
+           - PPM format
+           - GIF, TIFF, JPEG, BMP, PNG formats (thru filters)
+           - List of ASCII numbers
+           - pre-defined 2D file size in mri_read()
+           - "Cox MRI" (if this is what you have, God help you, no one else can)
+
+   \return A pointer to an array of 2D images.  If nothing
+           could be read, NULL is returned.
+*/
 
 MRI_IMARR * mri_read_file( char * fname )
 {
-   MRI_IMARR * newar ;
+   MRI_IMARR * newar=NULL ;
    MRI_IMAGE * newim ;
    char * new_fname ;
 
+ENTRY("mri_read_file") ;
+
+   /* convert fname to new_fname, based on environment */
+
    new_fname = imsized_fname( fname ) ;
-   if( new_fname == NULL ) return NULL ;
+   if( new_fname == NULL ) RETURN( NULL );
 
-   if( strlen(new_fname) > 9 && new_fname[0] == '3' && new_fname[1] == 'D' ){
+   /* input method is based on filename */
 
-      newar = mri_read_3D( new_fname ) ;   /* read from a 3D file */
+   if( strlen(new_fname) > 9 &&
+       new_fname[0] == '3'   &&
+       new_fname[1] == 'D'   &&
+      (new_fname[2] == ':' || new_fname[3] == ':') ){
+
+      newar = mri_read_3D( new_fname ) ;   /* read from a 3D: file */
 
    } else if( strlen(new_fname) > 9 &&
               new_fname[0] == '3' && new_fname[1] == 'A' && new_fname[3] == ':' ){
 
-      newar = mri_read_3A( new_fname ) ;
+      newar = mri_read_3A( new_fname ) ;   /* from a 3A: file */
+
+   } else if( check_dicom_magic_num( new_fname ) ) { /* 10 Aug 2004 */
+
+     newar = mri_read_dicom( new_fname );
 
    } else if( strstr(new_fname,".hdr") != NULL ||
               strstr(new_fname,".HDR") != NULL   ){  /* 05 Feb 2001 */
 
-      newar = mri_read_analyze75( new_fname ) ;
+      newar = mri_read_analyze75( new_fname ) ;      /* ANALYZE .hdr/.img filepair */
 
    } else if( strstr(new_fname,".ima") != NULL ||
               strstr(new_fname,".IMA") != NULL   ){  /* 12 Mar 2001 */
 
-      newar = mri_read_siemens( new_fname ) ;
+      newar = mri_read_siemens( new_fname ) ;        /* Siemens file */
 
-   } else {
-      newim = mri_read( new_fname ) ;      /* read from a 2D file */
-      if( newim == NULL ){ free(new_fname) ; return NULL ; }
-      INIT_IMARR(newar) ;
-      ADDTO_IMARR(newar,newim) ;
+   } else if( strncmp(new_fname,"I.",2) == 0    ||  /* GE I.* files */
+              strstr(new_fname,"/I.")   != NULL ||
+              strstr(new_fname,".ppm")  != NULL ||  /* raw PPM or PGM files */
+              strstr(new_fname,".pgm")  != NULL ||
+              strstr(new_fname,".pnm")  != NULL ||
+              strstr(new_fname,".PPM")  != NULL ||
+              strstr(new_fname,".PNM")  != NULL ||
+              strstr(new_fname,".PGM")  != NULL   ){ /* 05 Nov 2002 */
+
+      newim = mri_read( new_fname ) ;      /* read from a 2D file with 1 slice */
+
+      if ( newim == NULL )                 /* GEMS 4.x - 03 Jun 2003 [rickr] */
+         newim = mri_read_ge4( new_fname ) ;
+
+      if( newim != NULL ){
+        INIT_IMARR(newar) ;
+        ADDTO_IMARR(newar,newim) ;
+      }
+
+   } else if( strncmp(new_fname,"i.",2) == 0    ||  /* GEMS 4.x i.* files  */
+              strstr(new_fname,"/i.")   != NULL ){  /* 03 Jun 2003 [rickr] */
+
+      newim = mri_read_ge4( new_fname ) ;          /* 2D file with 1 slice */
+
+      if( newim != NULL ){
+        INIT_IMARR(newar) ;
+        ADDTO_IMARR(newar,newim) ;
+      }
+
+   } else if( strstr(new_fname,".jpg" ) != NULL ||  /* various formats  */
+              strstr(new_fname,".JPG" ) != NULL ||  /* that we convert  */
+              strstr(new_fname,".jpeg") != NULL ||  /* to PPG/PGM using */
+              strstr(new_fname,".JPEG") != NULL ||  /* external filters */
+              strstr(new_fname,".gif" ) != NULL ||
+              strstr(new_fname,".GIF" ) != NULL ||
+              strstr(new_fname,".tif" ) != NULL ||
+              strstr(new_fname,".TIF" ) != NULL ||
+              strstr(new_fname,".tiff") != NULL ||
+              strstr(new_fname,".TIFF") != NULL ||
+              strstr(new_fname,".bmp" ) != NULL ||
+              strstr(new_fname,".BMP" ) != NULL ||
+              strstr(new_fname,".pbm" ) != NULL ||
+              strstr(new_fname,".PBM" ) != NULL ||
+              strstr(new_fname,".png" ) != NULL ||
+              strstr(new_fname,".PNG" ) != NULL   ){ /* 22 Nov 2002 */
+
+      newim = mri_read_stuff( new_fname ) ;
+      if( newim != NULL ){
+        INIT_IMARR(newar) ;
+        ADDTO_IMARR(newar,newim) ;
+      }
+
+   } else if( strstr(new_fname,".mpg" ) != NULL ||  /* 03 Dec 2003 */
+              strstr(new_fname,".MPG" ) != NULL ||  /* read MPEGs  */
+              strstr(new_fname,".mpeg") != NULL ||
+              strstr(new_fname,".MPEG") != NULL   ){
+
+      newar = mri_read_mpeg( new_fname ) ;  /* cf. mri_read_mpeg.c */
    }
-   free(new_fname) ;
-   return newar ;
+
+   /** failed to read anything?  try DICOM format (doesn't have a fixed suffix) **/
+   /* 05 May 2003 added option to try DICOM last                    KRH          */
+
+   if( newar == NULL ){
+
+      if ( !AFNI_yesenv("AFNI_TRY_DICOM_LAST")) {
+        newar = mri_read_dicom( new_fname ) ;  /* cf. mri_read_dicom.c */
+      }
+
+      /** if DICOM failed, try a 2D slice file, hope for the best **/
+
+      if( newar == NULL ){
+        newim = mri_read( new_fname ) ;
+        if( newim == NULL ){ free(new_fname); RETURN( NULL ); }  /* give up */
+        INIT_IMARR(newar) ;
+        ADDTO_IMARR(newar,newim) ;
+      }
+
+      if ( (newar == NULL) && AFNI_yesenv("AFNI_TRY_DICOM_LAST")) {
+        newar = mri_read_dicom( new_fname ) ;  /* cf. mri_read_dicom.c */
+      }
+   }
+
+   free(new_fname) ;  /* done with the mangled filename */
+
+   /* 07 Mar 2002: add fname to the images, if needed */
+
+   if( newar != NULL && newar->num > 0 ){
+     int ii ;
+     for( ii=0 ; ii < newar->num ; ii++ ){
+       newim = IMARR_SUBIM(newar,ii) ;
+       if( newim != NULL && newim->fname == NULL )
+          newim->fname = strdup(fname) ;
+     }
+   }
+
+   RETURN( newar );
 }
+
+/*-----------------------------------------------------------------*/
+
+/*! Like mri_read_file(), but will only return 1 2D image.
+
+    If the input file has more than 1 slice, or cannot be read,
+    then NULL is returned.
+*/
 
 MRI_IMAGE * mri_read_just_one( char * fname )
 {
@@ -747,20 +1137,30 @@ MRI_IMAGE * mri_read_just_one( char * fname )
    MRI_IMAGE * im ;
    char * new_fname ;
 
+ENTRY("mri_read_just_one") ;
+
    new_fname = imsized_fname( fname ) ;
-   if( new_fname == NULL ) return NULL ;
+   if( new_fname == NULL ) RETURN( NULL );
 
    imar = mri_read_file( new_fname ) ; free(new_fname) ;
-   if( imar == NULL ) return NULL ;
-   if( imar->num != 1 ){ DESTROY_IMARR(imar) ; return NULL ; }
+   if( imar == NULL ) RETURN( NULL );
+   if( imar->num != 1 ){ DESTROY_IMARR(imar) ; RETURN( NULL ); }
    im = IMAGE_IN_IMARR(imar,0) ;
    FREE_IMARR(imar) ;
-   return im ;
+   RETURN( im );
 }
 
 /*-----------------------------------------------------------------
   return a count of how many 2D images will be read from this file
 -------------------------------------------------------------------*/
+
+/*! Return a count of how many 2D images are in a file.
+
+    Used by to3d.c to figure out how many slices will be read
+    later using mri_read_file().  Return value is 0 if the images
+    can't be counted.  If you add a new file type to mri_read_file(),
+    then you need to modify this function as well!
+*/
 
 static int mri_imcount_analyze75( char * ) ;  /* prototype */
 static int mri_imcount_siemens( char * ) ;
@@ -771,9 +1171,11 @@ int mri_imcount( char * tname )
    char fname[256]="\0" ;
    char * new_fname ;
 
-   if( tname == NULL ) return 0 ;
+ENTRY("mri_imcount") ;
+
+   if( tname == NULL ) RETURN( 0 );
    new_fname = imsized_fname( tname ) ;
-   if( new_fname == NULL ) return 0 ;
+   if( new_fname == NULL ) RETURN( 0 );
 
    /*** a 3D filename ***/
 
@@ -802,6 +1204,11 @@ int mri_imcount( char * tname )
                             &hglobal , &himage , &nx , &ny , &nz , fname ) ;
             break ;
 
+         case 'd':                                            /* 06 Feb 2003 */
+            ngood = sscanf( new_fname , "3Dd:%d:%d:%d:%d:%d:%s" ,
+                            &hglobal , &himage , &nx , &ny , &nz , fname ) ;
+            break ;
+
          case 'i':
             ngood = sscanf( new_fname , "3Di:%d:%d:%d:%d:%d:%s" ,
                             &hglobal , &himage , &nx , &ny , &nz , fname ) ;
@@ -811,13 +1218,18 @@ int mri_imcount( char * tname )
             ngood = sscanf( new_fname , "3Dc:%d:%d:%d:%d:%d:%s" ,
                             &hglobal , &himage , &nx , &ny , &nz , fname ) ;
             break ;
+
+         case 'r':
+            ngood = sscanf( new_fname , "3Dr:%d:%d:%d:%d:%d:%s" ,
+                            &hglobal , &himage , &nx , &ny , &nz , fname ) ;
+            break ;
       }
 
       free( new_fname ) ;
       if( ngood < 6 || himage < 0 ||
           nx <= 0   || ny <= 0    || nz <= 0 ||
-          strlen(fname) <= 0                       ) return 0 ;
-      else                                           return nz ;
+          strlen(fname) <= 0                       ) RETURN( 0 );
+      else                                           RETURN( nz );
    }
 
    /*** a 3A filename ***/
@@ -843,8 +1255,8 @@ int mri_imcount( char * tname )
       }
 
       free( new_fname ) ;
-      if( ngood < 4 || nx <= 0 || ny <= 0 || nz <= 0 || strlen(fname) <= 0 ) return 0 ;
-      else                                                                   return nz ;
+      if( ngood < 4 || nx <= 0 || ny <= 0 || nz <= 0 || strlen(fname) <= 0 ) RETURN( 0 );
+      else                                                                   RETURN( nz );
    }
 
    /*** 05 Feb 2001: deal with ANALYZE .hdr files ***/
@@ -852,30 +1264,57 @@ int mri_imcount( char * tname )
    if( strstr(new_fname,".hdr") != NULL ||
        strstr(new_fname,".HDR") != NULL   ){
 
-      return mri_imcount_analyze75( new_fname ) ;
+      nz = mri_imcount_analyze75( new_fname ) ;
+      if( nz > 0 ){ free(new_fname); RETURN(nz); }
    }
 
    if( strstr(new_fname,".ima") != NULL ||
        strstr(new_fname,".IMA") != NULL   ){        /* 12 Mar 2001 */
 
-      return mri_imcount_siemens( new_fname ) ;
+      nz = mri_imcount_siemens( new_fname ) ;
+      if( nz > 0 ){ free(new_fname); RETURN(nz); }
    }
 
-   /*** not a 3D filename ***/
+   if( strstr(new_fname,".mpg" ) != NULL ||  /* 03 Dec 2003 */
+       strstr(new_fname,".MPG" ) != NULL ||
+       strstr(new_fname,".mpeg") != NULL ||
+       strstr(new_fname,".MPEG") != NULL   ){
 
-   free( new_fname ) ;
-   return 1 ;
+      nz = mri_imcount_mpeg( new_fname ) ;
+      if( nz > 0 ){ free(new_fname); RETURN(nz); }
+   }
+
+   /*** 19 Jul 2002: see if it is a DICOM file ***/
+
+   mri_dicom_seterr(0) ;
+   nz = mri_imcount_dicom( new_fname ) ;  /* cf. mri_read_dicom.c */
+   mri_dicom_seterr(1) ;
+   if( nz > 0 ){ free(new_fname); RETURN(nz); }
+
+   /*** not recognized ***/
+
+   free(new_fname) ; RETURN(1) ;    /* assume it has 1 image in it, somewhere */
 }
 
 /*--------------------------------------------------------------*/
-/* added 07 Mar 1995 */
+
+/*! Like mri_read_file(), but returns images from many files.
+
+    \param nf = Number of file names
+    \param fn = Array of file name strings
+    \return An array of 2D images (NULL if nothing was found)
+
+    Added 07 Mar 1995
+*/
 
 MRI_IMARR * mri_read_many_files( int nf , char * fn[] )
 {
    MRI_IMARR * newar , * outar ;
    int kf , ii ;
 
-   if( nf <= 0 ) return NULL ;  /* no inputs! */
+ENTRY("mri_read_many_files") ;
+
+   if( nf <= 0 ) RETURN( NULL );  /* no inputs! */
    INIT_IMARR(outar) ;          /* initialize output array */
 
    for( kf=0 ; kf < nf ; kf++ ){
@@ -885,7 +1324,7 @@ MRI_IMARR * mri_read_many_files( int nf , char * fn[] )
          fprintf(stderr,"cannot read images from file %s\n",fn[kf]) ;
          for( ii=0 ; ii < outar->num ; ii++ ) mri_free(outar->imarr[ii]) ;
          FREE_IMARR(outar) ;
-         return NULL ;
+         RETURN( NULL );
       }
 
       for( ii=0 ; ii < newar->num ; ii++ )  /* move images to output array */
@@ -893,12 +1332,15 @@ MRI_IMARR * mri_read_many_files( int nf , char * fn[] )
 
       FREE_IMARR(newar) ;  /* don't need this no more */
    }
-   return outar ;
+   RETURN( outar );
 }
 
-/*---------------------------------------------------------------
-  May 16, 1995: reads a raw PPM file into 3 images in RGB order
------------------------------------------------------------------*/
+/*---------------------------------------------------------------*/
+
+/*! Read a raw PPM file into 3 byte-valued MRI_IMAGEs.
+
+    \date 16 May 1995
+*/
 
 MRI_IMARR * mri_read_ppm3( char * fname )
 {
@@ -909,28 +1351,28 @@ MRI_IMARR * mri_read_ppm3( char * fname )
    FILE * imfile ;
    byte * rby , * gby , * bby , * rgby ;
 
-WHOAMI ;
+ENTRY("mri_read_ppm3") ;
 
    /*** open input file ***/
 
    imfile = fopen( fname , "r" ) ;
    if( imfile == NULL ){
-      fprintf(stderr,"couldn't open file %s in mri_read_ppm3\n",fname); return NULL ;
+      fprintf(stderr,"couldn't open file %s in mri_read_ppm3\n",fname); RETURN(NULL) ;
    }
 
    /*** check if a raw PPM file ***/
 
-   ch = getc( imfile ) ; if( ch != 'P' ) { fclose(imfile) ; return NULL ; }
-   ch = getc( imfile ) ; if( ch != '6' ) { fclose(imfile) ; return NULL ; }
+   ch = getc( imfile ) ; if( ch != 'P' ) { fclose(imfile) ; RETURN(NULL); }
+   ch = getc( imfile ) ; if( ch != '6' ) { fclose(imfile) ; RETURN(NULL); }
 
    /* magic P6 found, so read numbers in header */
 
    ch = getc(imfile) ;
 
-   NUMSCAN(nx)     ; if( nx     <= 0 )   { fclose(imfile) ; return NULL ; }
-   NUMSCAN(ny)     ; if( ny     <= 0 )   { fclose(imfile) ; return NULL ; }
+   NUMSCAN(nx)     ; if( nx     <= 0 )   { fclose(imfile) ; RETURN(NULL); }
+   NUMSCAN(ny)     ; if( ny     <= 0 )   { fclose(imfile) ; RETURN(NULL); }
    NUMSCAN(maxval) ; if( maxval <= 0 ||
-                         maxval >  255 ) { fclose(imfile) ; return NULL ; }
+                         maxval >  255 ) { fclose(imfile) ; RETURN(NULL); }
 
    /*** create output images and workspace array ***/
 
@@ -955,7 +1397,7 @@ WHOAMI ;
    if( length != 3*nx*ny ){
       free(rgby) ; mri_free(rim) ; mri_free(gim) ; mri_free(bim) ;
       fprintf(stderr,"couldn't read data from file %s in mri_read_ppm3\n",fname) ;
-      return NULL ;
+      RETURN(NULL);
    }
 
    /*** put data from workspace array into output images ***/
@@ -974,12 +1416,20 @@ WHOAMI ;
    ADDTO_IMARR( outar , rim ) ;
    ADDTO_IMARR( outar , gim ) ;
    ADDTO_IMARR( outar , bim ) ;
-   return outar ;
+   RETURN(outar);
 }
 
 /*-----------------------------------------------------------------
    routines added 1 Oct 1995
 -------------------------------------------------------------------*/
+
+/*! Read 1 2D image, then "nsize" it - make it a power of 2 in sizes.
+
+    This was developed in the days when FD/FD2/fim ruled the world, and
+    those programs (AJ's legacy) only deal with square images that are
+    a power of 2 in size.
+    \date 01 Oct 1995
+*/
 
 MRI_IMAGE *mri_read_nsize( char * fname )
 {
@@ -996,6 +1446,8 @@ MRI_IMAGE *mri_read_nsize( char * fname )
    DESTROY_IMARR(imar) ;
    return imout ;
 }
+
+/*! Read many 2D images from many files. */
 
 MRI_IMARR *mri_read_many_nsize( int nf , char * fn[] )
 {
@@ -1017,9 +1469,16 @@ MRI_IMARR *mri_read_many_nsize( int nf , char * fn[] )
    return outar ;
 }
 
-/*------------------------------------------------------------------------
-  Set up MCW_SIZE_# database for input (added 07-Nov-95)
---------------------------------------------------------------------------*/
+/*------------------------------------------------------------------------*/
+
+/*! Set up MCW_SIZE_# database for input.
+
+    This implements the facility for the user to define MCW_IMSIZE_1
+    (or AFNI_IMSIZE_1) et cetera, for pre-defining a relationship between
+    a file size in bytes and a 3D: prefix.  This function is only called
+    once to setup the table.
+    \date 07 Nov 95
+*/
 
 void init_MCW_sizes(void)
 {
@@ -1082,12 +1541,8 @@ void init_MCW_sizes(void)
    return ;
 }
 
-/*------------------------------------------------------------------------------
-  Check if a filesize fits an MCW_IMSIZE setup.
-  Return new "filename" with 3D header attached if so.
-  If not, return a copy of the filename.  In any case the
-  returned string should be free-d when it is no longer needed.
---------------------------------------------------------------------------------*/
+/*------------------------------------------------------------------------------*/
+/*! My version of strdup(), which won't fail if the input is NULL. */
 
 char * my_strdup( char * str )
 {
@@ -1097,6 +1552,16 @@ char * my_strdup( char * str )
    if( new_str != NULL ) strcpy( new_str , str ) ;
    return new_str ;
 }
+
+/*------------------------------------------------------------------------------*/
+
+/*! Check if a filesize fits an MCW_IMSIZE setup.
+
+    \param fname = Filename
+    \return A new "filename" with 3D header attached if it fits.
+            If not, return a copy of the filename.  In any case the
+            returned string should be free()-d when it is no longer needed.
+*/
 
 char * imsized_fname( char * fname )
 {
@@ -1152,6 +1617,14 @@ char * imsized_fname( char * fname )
    return new_name ;
 }
 
+/*------------------------------------------------------------------------*/
+/*! Return the size of a file in bytes.
+
+  \param pathname = input filename
+  \return File length if file exists; -1 if it doesn't.
+  \see THD_filesize() in thd_filestuff.c.
+*/
+
 long mri_filesize( char * pathname )
 {
    static struct stat buf ;
@@ -1162,10 +1635,16 @@ long mri_filesize( char * pathname )
    return buf.st_size ;
 }
 
-/*---------------------------------------------------------------
-  17 Sep 2001: read only the PPM header, and return its info
-               *nx = *ny = 0 means an error transpirificated
------------------------------------------------------------------*/
+/*---------------------------------------------------------------*/
+
+/*! Read the header from PPM file and return its info.
+
+  \param fname = file name
+  \return *nx and *ny are set to the image dimensions;
+          if they are set to 0, something bad happened
+          (e.g., the file isn't a PPM file, or doesn't exist).
+  \date 17 Sep 2001
+*/
 
 void mri_read_ppm_header( char *fname , int *nx, int *ny )
 {
@@ -1200,9 +1679,14 @@ ENTRY("mri_read_ppm_header") ;
    fclose(imfile) ; *nx = nxx ; *ny = nyy ; EXRETURN ;
 }
 
-/*---------------------------------------------------------------
-  May 13, 1996: reads a raw PPM file into 1 image
------------------------------------------------------------------*/
+/*---------------------------------------------------------------*/
+
+/*! Reads a raw PPM file into 1 2D MRI_rgb-valued image.
+
+   \param fname = Image filename
+   \return An MRI_IMAGE if things worked OK; NULL if not
+   \date 13 May 1996
+*/
 
 MRI_IMAGE * mri_read_ppm( char * fname )
 {
@@ -1212,26 +1696,26 @@ MRI_IMAGE * mri_read_ppm( char * fname )
    byte      * rgby ;
    char        buf[256] ;
 
-WHOAMI ;
+ENTRY("mri_read_ppm") ;
 
    /*** open input file ***/
 
    imfile = fopen( fname , "r" ) ;
-   if( imfile == NULL ) return NULL ;
+   if( imfile == NULL ) RETURN(NULL);
 
    /*** check if a raw PPM file ***/
 
-   ch = getc( imfile ) ; if( ch != 'P' ) { fclose(imfile) ; return NULL ; }
-   ch = getc( imfile ) ; if( ch != '6' ) { fclose(imfile) ; return NULL ; }
+   ch = getc( imfile ) ; if( ch != 'P' ) { fclose(imfile) ; RETURN(NULL); }
+   ch = getc( imfile ) ; if( ch != '6' ) { fclose(imfile) ; RETURN(NULL); }
 
    /* magic P6 found, so read numbers in header */
 
    ch = getc(imfile) ;
 
-   NUMSCAN(nx)    ; if( nx     <= 0 )  { fclose(imfile); return NULL; }
-   NUMSCAN(ny)    ; if( ny     <= 0 )  { fclose(imfile); return NULL; }
+   NUMSCAN(nx)    ; if( nx     <= 0 )  { fclose(imfile); RETURN(NULL); }
+   NUMSCAN(ny)    ; if( ny     <= 0 )  { fclose(imfile); RETURN(NULL); }
    NUMSCAN(maxval); if( maxval <= 0 ||
-                        maxval >  255 ){ fclose(imfile); return NULL; }
+                        maxval >  255 ){ fclose(imfile); RETURN(NULL); }
 
    /*** create output image ***/
 
@@ -1243,7 +1727,7 @@ WHOAMI ;
    length = fread( rgby , sizeof(byte) , 3*nx*ny , imfile ) ;
    fclose( imfile ) ;
 
-   if( length != 3*nx*ny ){ mri_free(rgbim) ; return NULL ; }
+   if( length != 3*nx*ny ){ mri_free(rgbim) ; RETURN(NULL) ; }
 
    /* 17 Sep 2001: scale to maxval=255, if needed */
 
@@ -1252,16 +1736,199 @@ WHOAMI ;
       for( ii=0 ; ii < 3*nx*ny ; ii++ ) rgby[ii] = (byte)( rgby[ii]*fac ) ;
    }
 
-   return rgbim ;
+   RETURN(rgbim) ;
 }
+/*---------------------------------------------------------------*/
 
-/*---------------------------------------------------------------
-  June 1996: read a 1D or 2D file formatted in ASCII;
-             will always return in MRI_float format.
+/*! Length of line buffer for mri_read_ascii() */
+#define LBUF 524288  /* 08 Jul 2004: increased to 512K from 64K */
+
+/*! Free a buffer and set it to NULL */
+#define FRB(b) do{ if( (b)!=NULL ){free((b)); (b)=NULL;} }while(0)
+
+#undef USE_LASTBUF
+
+/*---------------------------------------------------------------*/
+/*! [20 Jun 2002] Like fgets, but also
+     - skips blank or comment lines
+     - skips leading and trailing whitespace
+     - catenates lines that end in '\' (replacing '\' with ' ')
+     - returns duplicate of last line if first 2
+        nonblank input characters are "" [20 Jul 2004]
 -----------------------------------------------------------------*/
 
+static char * my_fgets( char *buf , int size , FILE *fts )
+{
+   char *ptr ;
+   int nbuf , ll,ii , cflag ;
+   static char *qbuf=NULL ;
+
+#ifdef USE_LASTBUF
+   static char *lastbuf = NULL ;   /* 20 Jul 2004 */
+   static int  nlastbuf = 0 ;
+
+   if( buf == NULL && lastbuf != NULL ){    /* 20 Jul 2004 */
+     free((void *)lastbuf); lastbuf = NULL; nlastbuf = 0 ;
+   }
+#endif
+
+   if( buf == NULL && qbuf != NULL ){ free((void *)qbuf); qbuf = NULL; }
+
+   if( buf == NULL || size < 1 || fts == NULL ) return NULL ;
+
+   if( qbuf == NULL ) qbuf = AFMALL(char, LBUF) ;  /* 1st time in */
+
+   nbuf  = 0 ;  /* num bytes stored in buf so far */
+   cflag = 0 ;  /* flag if we're catenating lines */
+
+   while(1){   /* loop and read lines, creating a logical line */
+
+     ptr = fgets( qbuf , LBUF , fts ) ; /* read next whole line */
+
+     if( ptr == NULL ) break ;          /* must be end-of-file */
+
+     /* skip leading whitespace */
+
+     for( ; *ptr != '\0' && isspace(*ptr) ; ptr++ ) ; /* nada */
+
+     /* skip entirely blank lines, unless we are catenating */
+
+     if( *ptr == '\0' ){ if(cflag) break; else continue; }
+
+#ifdef USE_LASTBUF
+     /* if a duplicate is requested, return it now [20 Jul 2004] */
+
+     if( *ptr == '"' && *(ptr+1) == '"' && nlastbuf > 0 && nbuf == 0 ){
+       ll = strlen(lastbuf) ; if( ll >= size ) ll = size-1 ;
+       memcpy(buf,lastbuf,ll-1) ; buf[ll] = '\0' ;
+       return buf ;
+     }
+#endif
+
+     /* skip comment lines (even if we are catenating) */
+
+     if( *ptr == '#' || (*ptr == '/' && *(ptr+1) == '/') ) continue ;
+
+     /* strip trailing whitespace */
+
+     ll = strlen(ptr) ;                                  /* will be > 0 */
+     for( ii=ll-1 ; isspace(ptr[ii]) && ii > 0 ; ii-- )  /* blank => NUL */
+       ptr[ii] = '\0' ;
+
+     ll = strlen(ptr) ;                 /* number of chars left */
+     if( ll == 0 ) continue ;           /* should not happen */
+
+     cflag = (ptr[ll-1] == '\\') ;      /* catenate next line? */
+     if( cflag ) ptr[ll-1] = ' ' ;      /* replace '\' with ' ' */
+
+     /* now copy what's left (ll+1 bytes) at tail of output buffer */
+
+     if( nbuf+ll+1 > size ){   /* too much for output buffer? */
+       ll = size - (nbuf+1) ;
+       if( ll <= 0 ) break ;   /* should not happen */
+     }
+
+     memcpy(buf+nbuf,ptr,ll+1) ; nbuf += ll ;
+     if( !cflag ) break ;
+
+   } /* loop to get next line if catenation is turned on */
+
+#ifdef LASTBUF
+   /* make a copy of result in lastbuf [20 Jul 2004] */
+
+   ll = strlen(buf) ;
+   if( ll+1 > nlastbuf ){
+     nlastbuf = ll+2 ; lastbuf = (char *)realloc((void *)lastbuf,nlastbuf) ;
+   }
+   memcpy(lastbuf,buf,ll+1) ;
+#endif
+
+   /* and we is done */
+
+   if( nbuf > 0 ) return buf ;      /* return what we read already */
+   return NULL ;                    /* signal of failure get data  */
+}
+
+/*--------------------------------------------------------------*/
+static float lbfill = 0.0 ;  /* 10 Aug 2004 */
+
+/*--------------------------------------------------------------*/
+/*! Decode a line buffer into an array of floats.               */
+
+static floatvec * decode_linebuf( char *buf )  /* 20 Jul 2004 */
+{
+   floatvec *fv=NULL ;
+   int blen, bpos, ncol, ii, count ;
+   char sep, vbuf[64] , *cpt ;
+   float val ;
+
+   if( buf == NULL || *buf == '\0' ) return fv ;
+
+   blen = strlen(buf) ;
+   ncol = 0 ;
+
+   /* convert commas to blanks */
+
+   for( ii=0 ; ii < blen ; ii++ ) if( buf[ii] == ',' ) buf[ii] = ' ' ;
+
+   fv = (floatvec *)malloc(sizeof(floatvec)) ;
+   fv->nar = 0 ;
+   fv->ar  = (float *)NULL ;
+
+   for( bpos=0 ; bpos < blen ; ){
+     /* skip to next nonblank character */
+
+     for( ; bpos < blen && (isspace(buf[bpos])||buf[bpos]==',') ; bpos++ ) ; /* nada */
+     if( bpos == blen ) break ;    /* end of line */
+
+     sscanf( buf+bpos , "%63s" , vbuf ) ;
+
+     val = 0.0 ; count = 1 ;
+     if( vbuf[0] == '*' ){    /* 10 Aug 2004 */
+       val = lbfill ;
+     } else if( (cpt=strchr(vbuf,'@')) != NULL ){
+       sscanf( vbuf , "%d%c%f" , &count , &sep , &val ) ;
+       if( count < 1 ) count = 1 ;
+       if( *(cpt+1) == '*' ) val = lbfill ;  /* 10 Aug 2004 */
+     } else {
+       sscanf( vbuf , "%f" , &val ) ;
+     }
+
+     fv->ar = (float *)realloc( (void *)fv->ar , sizeof(float)*(fv->nar+count) ) ;
+     for( ii=0 ; ii < count ; ii++ ) fv->ar[ii+fv->nar] = val ;
+     fv->nar += count ;
+     bpos += strlen(vbuf) ;
+   }
+
+   if( fv->nar == 0 ){ KILL_floatvec(fv); fv = NULL; }
+   return fv ;
+}
+
+/*---------------------------------------------------------------*/
+
+/*! Increment for time series array size for mri_read_ascii() */
 #define INC_TSARSIZE 128
-#define LBUF         32768
+
+/*! Read an array of ASCII numbers into a 1D or 2D image.
+
+  \param fname = input filename
+  \return Pointer to MRI_IMAGE (in MRI_float) format if things
+          are cool; NULL if not.
+  \date Jun 1996
+
+  Example input:
+     - Line 1:  3 4 6
+     - Line 2:  2 2 2
+     - Line 3:  7 2 1
+     - Line 4:  9 9 6
+  This produces an image with nx=3 and ny=4.  The first row
+  is read to determine nx; all subsequent rows must have nx
+  values.  A line whose very first character is a '#' will
+  be skipped as a comment.  A line with no characters (just
+  the '\n') will also be skipped.
+
+  20 Jun 2002: modified to use my_fgets() instead of fgets().
+*/
 
 MRI_IMAGE * mri_read_ascii( char * fname )
 {
@@ -1270,161 +1937,271 @@ MRI_IMAGE * mri_read_ascii( char * fname )
    float * tsar ;
    float ftemp ;
    FILE * fts ;
-   char buf[LBUF] ;
    char * ptr ;
    int  ncol , bpos , blen , nrow ;
+   static char *buf=NULL ;            /* 20 Jun 2002: make a ptr */
 
-   if( fname == NULL || fname[0] == '\0' ) return NULL ;
+   floatvec *fvec ;                   /* 20 Jul 2004 */
+   int incts ;
 
-   fts = fopen( fname , "r" ) ; if( fts == NULL ) return NULL ;
+ENTRY("mri_read_ascii") ;
 
-   /** step 1: read in the first line and see how many numbers are in it **/
+   if( fname == NULL || fname[0] == '\0' ) RETURN(NULL) ;
 
-   do{
-     ptr = fgets( buf , LBUF , fts ) ;
-     if( ptr == NULL ){ fclose( fts ) ; return NULL ; }  /* bad read? */
-   } while( *ptr == '\0' || *ptr == '\n' || *ptr == '#' ) ;
+   if( strncmp(fname,"1D:",3) == 0 ){         /* 28 Apr 2003 */
+     MRI_IMAGE *qim = mri_1D_fromstring( fname+3 ) ;
+     if( qim != NULL ){
+       outim = mri_transpose(qim); mri_free(qim); RETURN(outim);
+     }
+   }
 
-   blen = strlen(buf) ;
-   bpos = 0 ;
-   ncol = 0 ;
-   do{
-       for( ; bpos < blen && (isspace(buf[bpos])||buf[bpos]==',') ; bpos++ ) ; /* nada */
-       if( bpos == blen ) break ;
-       ii = sscanf( buf+bpos , "%f%n" , &ftemp , &jj ) ;
-       if( ii < 1 ){ ncol = 0 ; break ; }           /* bad scan? */
-       ncol++ ; bpos += jj ;
-   } while( bpos < blen ) ;
-   if( ncol == 0 ){ fclose( fts ) ; return NULL ; } /* couldn't read? */
+   fts = fopen( fname , "r" ); if( fts == NULL ) RETURN(NULL);
+
+   if( buf == NULL ) buf = AFMALL(char, LBUF) ; /* create buffer */
+
+   /** step 1: read in the first line and see how many numbers are in it
+               (skipping lines that are comments or entirely blank)     */
+
+   (void) my_fgets( NULL , 0 , NULL ) ;  /* reset [20 Jul 2004] */
+   ptr = my_fgets( buf , LBUF , fts ) ;
+   if( ptr==NULL || *ptr=='\0' ){ FRB(buf); fclose(fts); RETURN(NULL); }  /* bad read? */
+
+   lbfill = 0.0f ;                          /* 10 Aug 2004 */
+
+   fvec = decode_linebuf( buf ) ;           /* 20 Jul 2004 */
+   if( fvec == NULL || fvec->nar == 0 ){
+     if( fvec != NULL ) KILL_floatvec(fvec) ;
+     FRB(buf); fclose(fts); RETURN(NULL);
+   }
+   ncol = fvec->nar ; KILL_floatvec(fvec) ;
 
    /** At this point, ncol is the number of floats to be read from each line **/
 
    rewind( fts ) ;  /* will start over */
 
+   incts      = MAX(INC_TSARSIZE,ncol) ;
    used_tsar  = 0 ;
-   alloc_tsar = INC_TSARSIZE ;
+   alloc_tsar = incts ;
    tsar       = (float *) malloc( sizeof(float) * alloc_tsar ) ;
    if( tsar == NULL ){
-      fprintf(stderr,"\n*** malloc error in mri_read_ascii ***\n") ; EXIT(1) ;
+      fprintf(stderr,"\n*** malloc error in mri_read_ascii ***\n"); EXIT(1);
    }
 
    /** read lines, convert to floats, store **/
 
    nrow = 0 ;
    while( 1 ){
-      ptr = fgets( buf , LBUF , fts ) ;  /* read */
-      if( ptr == NULL ) break ;          /* failure --> end of data */
+     ptr = my_fgets( buf , LBUF , fts ) ;  /* read */
+     if( ptr==NULL || *ptr=='\0' ) break ; /* failure --> end of data */
 
-      if( *ptr == '\0' || *ptr == '\n' || *ptr == '#' ) continue ; /* skip line */
-      blen = strlen(buf) ;
+     fvec = decode_linebuf( buf ) ;
+     if( fvec == NULL ) break ;
+     if( fvec->nar == 0 ){ KILL_floatvec(fvec); break; }
 
-      /* convert commas to blanks */
+     if( used_tsar + ncol >= alloc_tsar ){
+        alloc_tsar += incts ;
+        tsar        = (float *)realloc( (void *)tsar,sizeof(float)*alloc_tsar );
+        if( tsar == NULL ){
+          fprintf(stderr,"\n*** realloc error in mri_read_ascii ***\n"); EXIT(1);
+        }
+     }
+     for( ii=0 ; ii < fvec->nar && ii < ncol ; ii++ )
+       tsar[used_tsar+ii] = fvec->ar[ii] ;
+     for( ; ii < ncol ; ii++ )
+       tsar[used_tsar+ii] = 0.0 ;
+     used_tsar += ncol ;
+     KILL_floatvec(fvec) ;
 
-      for( ii=0 ; ii < blen ; ii++ ) if( buf[ii] == ',' ) buf[ii] = ' ' ;
-
-      for( ii=0,bpos=0 ; ii < ncol && bpos < blen ; ii++ ){
-         val = sscanf( buf+bpos , "%f%n" , &ftemp , &jj ) ;  /* read from string */
-         if( val < 1 ) break ;                               /* bad read? */
-         bpos += jj ;                                        /* start of next read */
-
-         if( used_tsar == alloc_tsar ){
-            alloc_tsar += INC_TSARSIZE ;
-            tsar        = (float *)realloc( tsar,sizeof(float)*alloc_tsar );
-            if( tsar == NULL ){
-               fprintf(stderr,"\n*** realloc error in mri_read_ascii ***\n") ; EXIT(1) ;
-            }
-         }
-
-         tsar[used_tsar++] = ftemp ;  /* store input */
-      }
-
-      if( ii != ncol ) break ;  /* didn't get all of them? */
-
-      nrow++ ;                  /* got one more complete row! */
+     nrow++ ;                  /* got one more complete row! */
    }
    fclose( fts ) ; /* finished with this file! */
+   (void) my_fgets( NULL , 0 , NULL ) ;  /* reset [20 Jul 2004] */
 
-   if( used_tsar <= 1 ){ free(tsar) ; return NULL ; }
+   if( used_tsar <= 1 ){ FRB(buf); free(tsar); RETURN(NULL); }
 
    tsar = (float *) realloc( tsar , sizeof(float) * used_tsar ) ;
    if( tsar == NULL ){
-      fprintf(stderr,"\n*** final realloc error in mri_read_ascii ***\n") ; EXIT(1) ;
+      fprintf(stderr,"\n*** final realloc error in mri_read_ascii ***\n"); EXIT(1);
    }
 
    outim = mri_new_vol_empty( ncol , nrow , 1 , MRI_float ) ;
    mri_fix_data_pointer( tsar , outim ) ;
    mri_add_name( fname , outim ) ;
 
-   return outim ;
+   FRB(buf) ; RETURN(outim) ;
 }
 
-/*---------------------------------------------------------------------------
-  16 Nov 1999: read an ASCII file as columns, transpose to rows,
-               and allow column selectors.
------------------------------------------------------------------------------*/
+/*---------------------------------------------------------------------------*/
+
+/*! Read an ASCII file as columns, transpose to rows, allow column selectors.
+
+  \param fname = Input filename (max of 255 characters)
+  \return Pointer to MRI_IMAGE if all went well; NULL if not.
+  \date 16 Nov 1999
+
+  This function builds on mri_read_ascii() in two ways:
+    - the input is transposed to rows (so that a 1x100 file becomes a 100x1 image)
+    - column selectors are allowed in fname
+*/
 
 MRI_IMAGE * mri_read_1D( char * fname )
 {
-   MRI_IMAGE * inim , * outim , * flim ;
-   char dname[256] , subv[256] , *cpt ;
-   int ii,nx,ny,nts , *ivlist , *ivl ;
-   float * far , * oar ;
+   MRI_IMAGE *inim , *outim , *flim ;
+   char dname[512] , *cpt , *dpt ;
+   int ii,jj,nx,ny,nts , *ivlist , *ivl , *sslist ;
+   float *far , *oar ;
 
-   if( fname == NULL || fname[0] == '\0' || strlen(fname) > 255 ) return NULL ;
+ENTRY("mri_read_1D") ;
+
+   if( fname == NULL || fname[0] == '\0' || strlen(fname) > 511 ) RETURN(NULL) ;
+
+   if( strncmp(fname,"1D:",3) == 0 ){       /* 28 Apr 2003 */
+     return mri_1D_fromstring( fname+3 ) ;
+   }
 
    /*-- split filename and subvector list --*/
 
    cpt = strstr(fname,"[") ;
+   dpt = strstr(fname,"{") ;            /* 30 Apr 2003: subsampling list */
 
-   if( cpt == NULL ){                   /* no subvector list */
-      strcpy( dname , fname ) ;
-      subv[0] = '\0' ;
-   } else if( cpt == fname ){           /* can't be at start of filename! */
+   if( cpt == fname || dpt == fname ){  /* can't be at start of filename! */
       fprintf(stderr,"*** Illegal filename in mri_read_1D: %s\n",fname) ;
-      return NULL ;
+      RETURN(NULL) ;
    } else {                             /* got a subvector list */
-      ii = cpt - fname ;
-      memcpy(dname,fname,ii) ; dname[ii] = '\0' ;
-      strcpy(subv,cpt) ;
+      strcpy( dname , fname ) ;
+      if( cpt != NULL ){ ii = cpt-fname; dname[ii] = '\0'; }
+      if( dpt != NULL ){ ii = dpt-fname; dname[ii] = '\0'; }
    }
 
    /*-- read file in --*/
 
    inim = mri_read_ascii(dname) ;
-   if( inim == NULL ) return NULL ;
+   if( inim == NULL ) RETURN(NULL) ;
    flim = mri_transpose(inim) ; mri_free(inim) ;
-   if( subv[0] == '\0' ) return flim ;             /* no subvector => am done */
 
-   /*-- get the subvector list --*/
+   /*-- get the subvector and subsampling lists, if any --*/
 
-   nx = flim->nx ;
-   ny = flim->ny ;
+   nx = flim->nx ; ny = flim->ny ;
 
-   ivlist = MCW_get_intlist( ny , subv ) ;         /* in thd_intlist.c */
-   if( ivlist == NULL || ivlist[0] < 1 ){
-      fprintf(stderr,"*** Illegal subvector list in mri_read_1D: %s\n",fname) ;
-      if( ivlist != NULL ) free(ivlist) ;
-      mri_free(flim) ; return NULL ;
+   ivlist = MCW_get_intlist( ny , cpt ) ;   /* subvector list */
+   sslist = MCW_get_intlist( nx , dpt ) ;   /* subsampling list */
+
+   /* if have subvector list, extract those rows into a new image */
+
+   if( ivlist != NULL && ivlist[0] > 0 ){
+     nts = ivlist[0] ;                         /* number of subvectors */
+     ivl = ivlist + 1 ;                        /* start of array of subvectors */
+
+     for( ii=0 ; ii < nts ; ii++ ){            /* check them out */
+       if( ivl[ii] < 0 || ivl[ii] >= ny ){
+         fprintf(stderr,"*** Out-of-range subvector [list] in mri_read_1D: %s\n",fname) ;
+         mri_free(flim) ; free(ivlist) ; RETURN(NULL) ;
+       }
+     }
+
+     outim = mri_new( nx , nts , MRI_float ) ; /* make output image */
+     far   = MRI_FLOAT_PTR( flim ) ;
+     oar   = MRI_FLOAT_PTR( outim ) ;
+
+     for( ii=0 ; ii < nts ; ii++ )             /* copy desired rows */
+       memcpy( oar + ii*nx , far + ivl[ii]*nx , sizeof(float)*nx ) ;
+
+     mri_free(flim); free(ivlist); flim = outim; ny = nts;
    }
 
-   nts = ivlist[0] ;                          /* number of subvectors */
-   ivl = ivlist + 1 ;                         /* start of array of subvectors */
+   /* if have subsampling list, extract those columns into a new image */
 
-   for( ii=0 ; ii < nts ; ii++ ){            /* check them out */
-      if( ivl[ii] < 0 || ivl[ii] >= ny ){
-         fprintf(stderr,"*** Out-of-range subvector list in mri_read_1D: %s\n",fname) ;
-         mri_free(flim) ; free(ivlist) ; return NULL ;
-      }
+   if( sslist != NULL && sslist[0] > 0 ){
+     nts = sslist[0] ;                         /* number of columns to get */
+     ivl = sslist + 1 ;                        /* start of array of column indexes */
+
+     for( ii=0 ; ii < nts ; ii++ ){            /* check them out */
+       if( ivl[ii] < 0 || ivl[ii] >= nx ){
+         fprintf(stderr,"*** Out-of-range subsampling {list} in mri_read_1D: %s\n",fname) ;
+         mri_free(flim) ; free(sslist) ; RETURN(NULL) ;
+       }
+     }
+
+     outim = mri_new( nts , ny , MRI_float ) ; /* make output image */
+     far   = MRI_FLOAT_PTR( flim ) ;
+     oar   = MRI_FLOAT_PTR( outim ) ;
+
+     for( ii=0 ; ii < nts ; ii++ )             /* copy desired columns */
+       for( jj=0 ; jj < ny ; jj++ )
+         oar[ii+jj*nts] = far[ivl[ii]+jj*nx] ;
+
+     mri_free(flim); free(sslist); flim = outim;
    }
 
-   outim = mri_new( nx , nts , MRI_float ) ;   /* make output image */
-   far   = MRI_FLOAT_PTR( flim ) ;
-   oar   = MRI_FLOAT_PTR( outim ) ;
+   RETURN(flim) ;
+}
 
-   for( ii=0 ; ii < nts ; ii++ )               /* copy desired rows */
-      memcpy( oar + ii*nx , far + ivl[ii]*nx , sizeof(float)*nx ) ;
+/*-----------------------------------------------------------------------------------*/
 
-   mri_free(flim) ; free(ivlist) ; return outim ;
+MRI_IMAGE * mri_read_ascii_ragged( char *fname , float filler )  /* 28 Jul 2004 - ragged rows */
+{
+   MRI_IMAGE *outim ;
+   int ii,jj , ncol,nrow ;
+   float *tsar ;
+   FILE *fts ;
+   char *ptr ;
+   static char *buf=NULL ;
+   floatvec *fvec ;
+
+ENTRY("mri_read_ascii_ragged") ;
+
+   if( fname == NULL || *fname == '\0' ){ FRB(buf); RETURN(NULL); }
+
+   fts = fopen( fname , "r" ); if( fts == NULL ){ FRB(buf); RETURN(NULL); }
+
+   if( buf == NULL ) buf = AFMALL(char, LBUF) ;
+
+   /** step 1: read in ALL lines, see how many numbers are in each,
+               in order to get the maximum row length and # of rows **/
+
+   lbfill = filler ; /* 10 Aug 2004 */
+
+   (void) my_fgets( NULL , 0 , NULL ) ;  /* reset */
+   ncol = nrow = 0 ;
+   while(1){
+     ptr = my_fgets( buf , LBUF , fts ) ;
+     if( ptr==NULL || *ptr=='\0' ) break ;
+     fvec = decode_linebuf( buf ) ;
+     if( fvec != NULL && fvec->nar > 0 ){ nrow++; ncol = MAX(ncol,fvec->nar); }
+     if( fvec != NULL ) KILL_floatvec(fvec) ; else break ;
+   }
+   if( nrow == 0 || ncol == 0 ){ fclose(fts); FRB(buf); lbfill=0.0f; RETURN(NULL); }
+
+   /** At this point, ncol is the number of floats to be read from each line **/
+
+   rewind( fts ) ;  /* will start over */
+
+   outim = mri_new( ncol , nrow , MRI_float ) ;
+   tsar  = MRI_FLOAT_PTR(outim) ;
+
+   /** read lines, convert to floats, store **/
+
+   nrow = 0 ;
+   while( 1 ){
+     ptr = my_fgets( buf , LBUF , fts ) ;  /* read */
+     if( ptr==NULL || *ptr=='\0' ) break ; /* failure --> end of data */
+
+     fvec = decode_linebuf( buf ) ;
+     if( fvec == NULL ) break ;
+     if( fvec->nar == 0 ){ KILL_floatvec(fvec); break; }
+
+     for( ii=0 ; ii < fvec->nar && ii < ncol ; ii++ )
+       tsar[nrow*ncol+ii] = fvec->ar[ii] ;
+     for( ; ii < ncol ; ii++ )
+       tsar[nrow*ncol+ii] = filler ;   /* fill for incomplete lines */
+     KILL_floatvec(fvec) ;
+     nrow++ ;                  /* got one more complete row! */
+   }
+   fclose( fts ) ; /* finished with this file! */
+   (void) my_fgets( NULL , 0 , NULL ) ;  /* reset */
+
+   mri_add_name( fname , outim ) ;
+   FRB(buf) ; lbfill = 0.0f ; RETURN(outim) ;
 }
 
 /*---------------------------------------------------------------------------
@@ -1434,11 +2211,11 @@ MRI_IMAGE * mri_read_1D( char * fname )
 static void read_ascii_floats( char * fname, int * nff , float ** ff )
 {
    int ii,jj,val , used_tsar , alloc_tsar ;
-   float * tsar ;
+   float *tsar ;
    float ftemp ;
-   FILE * fts ;
-   char buf[LBUF] ;
-   char * ptr ;
+   FILE *fts ;
+   char *buf ;  /* 08 Jul 2004: malloc this now, instead of auto */
+   char *ptr ;
    int  bpos , blen , nrow ;
 
    /* check inputs */
@@ -1455,12 +2232,13 @@ static void read_ascii_floats( char * fname, int * nff , float ** ff )
    alloc_tsar = INC_TSARSIZE ;
    tsar       = (float *) malloc( sizeof(float) * alloc_tsar ) ;
    if( tsar == NULL ){
-      fprintf(stderr,"\n*** malloc fails: read_ascii_floats ***\n"); EXIT(1);
+     fprintf(stderr,"\n*** malloc fails: read_ascii_floats ***\n"); EXIT(1);
    }
 
    /** read lines, convert to floats, store **/
 
    nrow = 0 ;
+   buf = (char *)malloc(LBUF) ;
    while( 1 ){
       ptr = fgets( buf , LBUF , fts ) ;  /* read */
       if( ptr == NULL ) break ;          /* failure --> end of data */
@@ -1496,15 +2274,16 @@ static void read_ascii_floats( char * fname, int * nff , float ** ff )
       nrow++ ;                  /* got one more complete row! */
    }
    fclose( fts ) ; /* finished with this file! */
+   free( buf ) ;
 
-   if( used_tsar <= 1 ){ free(tsar) ; *nff=0 ; *ff=NULL ; return ; }
+   if( used_tsar <= 1 ){ free(tsar); *nff=0; *ff=NULL; return; }
 
    tsar = (float *) realloc( tsar , sizeof(float) * used_tsar ) ;
    if( tsar == NULL ){
       fprintf(stderr,"\n*** final realloc fails: read_ascii_floats ***\n"); EXIT(1);
    }
 
-   *nff = used_tsar ; *ff  = tsar ; return ;
+   *nff = used_tsar; *ff  = tsar; return;
 }
 
 /*--------------------------------------------------------------
@@ -1522,9 +2301,11 @@ MRI_IMARR * mri_read_3A( char * tname )
    MRI_IMAGE * newim , * flim ;
    float * ff ;
 
+ENTRY("mri_read_3A") ;
+
    /*** get info from 3A tname ***/
 
-   if( tname == NULL || strlen(tname) < 10 ) return NULL ;
+   if( tname == NULL || strlen(tname) < 10 ) RETURN(NULL) ;
 
    switch( tname[2] ){  /* allow for 3As:, 3Ab:, 3Af: */
 
@@ -1546,13 +2327,13 @@ MRI_IMARR * mri_read_3A( char * tname )
          break ;
    }
 
-   if( ngood < 4 || nx <= 0 || ny <= 0 || nz <= 0 || strlen(fname) <= 0 ) return NULL ;
+   if( ngood < 4 || nx <= 0 || ny <= 0 || nz <= 0 || strlen(fname) <= 0 ) RETURN(NULL) ;
 
    /* read the input file */
 
    read_ascii_floats( fname , &nff , &ff ) ;
 
-   if( nff <= 0 || ff == NULL ) return NULL ;
+   if( nff <= 0 || ff == NULL ) RETURN(NULL) ;
 
    nxy = nx*ny ; nxyz = nxy*nz ;
 
@@ -1591,7 +2372,7 @@ MRI_IMARR * mri_read_3A( char * tname )
       ADDTO_IMARR(newar,newim) ;
    }
 
-   free(ff) ; return newar ;
+   free(ff) ; RETURN(newar) ;
 }
 
 /*---------------------------------------------------------------------------
@@ -1603,9 +2384,11 @@ MRI_IMARR * mri_read_3A( char * tname )
 #include "mayo_analyze.h"
 
 /*---------------------------------------------------------------*/
+/*! Byte swap ANALYZE file header in various places */
 
 static void swap_analyze_hdr( struct dsr *pntr )
 {
+ENTRY("swap_analyze_hdr") ;
    swap_4(&pntr->hk.sizeof_hdr) ;
    swap_4(&pntr->hk.extents) ;
    swap_2(&pntr->hk.session_error) ;
@@ -1640,10 +2423,14 @@ static void swap_analyze_hdr( struct dsr *pntr )
    swap_2(&pntr->dime.dim_un0) ;
    swap_4(&pntr->dime.glmax) ;
    swap_4(&pntr->dime.glmin) ;
-   return ;
+   EXRETURN ;
 }
 
 /*---------------------------------------------------------------*/
+/*! Count how many 2D slices are in an ANALYZE file.
+
+   \param hname = the "hdr" file of the hdr/img file pair.
+*/
 
 static int mri_imcount_analyze75( char * hname )
 {
@@ -1651,12 +2438,14 @@ static int mri_imcount_analyze75( char * hname )
    struct dsr hdr ;    /* ANALYZE .hdr format */
    int doswap , nz ;
 
+ENTRY("mri_imcount_analyze75") ;
+
    fp = fopen( hname , "rb" ) ;
-   if( fp == NULL ) return 0 ;
+   if( fp == NULL ) RETURN(0) ;
    hdr.dime.dim[0] = 0 ;
    fread( &hdr , 1 , sizeof(struct dsr) , fp ) ;
    fclose(fp) ;
-   if( hdr.dime.dim[0] == 0 ) return 0 ;
+   if( hdr.dime.dim[0] == 0 ) RETURN(0) ;
    doswap = (hdr.dime.dim[0] < 0 || hdr.dime.dim[0] > 15) ;
    if( doswap ) swap_analyze_hdr( &hdr ) ;
 
@@ -1667,13 +2456,16 @@ static int mri_imcount_analyze75( char * hname )
       default:
       case 4:  nz = hdr.dime.dim[3] * hdr.dime.dim[4] ; break ;
    }
-   if( nz < 1 ) nz == 1 ;
+   if( nz < 1 ) nz = 1 ;
 
-   /** fprintf(stderr,"mri_imcount_analyze75: %s %d\n",hname,nz) ; **/
-   return nz ;
+   RETURN(nz) ;
 }
 
 /*---------------------------------------------------------------*/
+/*! Read an ANALYZE file into an ARRAY of 2D images.
+
+   \param hname = the "hdr" file for the hdr/img pair
+*/
 
 MRI_IMARR * mri_read_analyze75( char * hname )
 {
@@ -1691,22 +2483,24 @@ MRI_IMARR * mri_read_analyze75( char * hname )
    int floatize ;     /* 28 Nov 2001 */
    int spmorg=0 ;     /* 28 Nov 2001 */
 
+ENTRY("mri_read_analyze75") ;
+
    /* check & prepare filenames */
 
-   if( hname == NULL ) return NULL ;
+   if( hname == NULL ) RETURN(NULL) ;
    jj = strlen(hname) ;
-   if( jj < 5 ) return NULL ;
-   if( strcmp(hname+jj-3,"hdr") != 0 ) return NULL ;
+   if( jj < 5 ) RETURN(NULL) ;
+   if( strcmp(hname+jj-3,"hdr") != 0 ) RETURN(NULL) ;
    strcpy(iname,hname) ; strcpy(iname+jj-3,"img") ;
 
    /* read header file into struct */
 
    fp = fopen( hname , "rb" ) ;
-   if( fp == NULL ) return NULL ;
+   if( fp == NULL ) RETURN(NULL) ;
    hdr.dime.dim[0] = 0 ;
    fread( &hdr , 1 , sizeof(struct dsr) , fp ) ;
    fclose(fp) ;
-   if( hdr.dime.dim[0] == 0 ) return NULL ;
+   if( hdr.dime.dim[0] == 0 ) RETURN(NULL) ;
 
    /* check for swap-age */
 
@@ -1735,15 +2529,15 @@ MRI_IMARR * mri_read_analyze75( char * hname )
       if( fac < 0.0 || fac == 1.0 ) fac = 0.0 ;
    }
 
-   floatize = AFNI_yesenv("AFNI_ANALYZE_FLOATIZE") ; /* 28 Nov 2001 */
+   floatize = (fac != 0.0 || AFNI_yesenv("AFNI_ANALYZE_FLOATIZE")) ; /* 28 Nov 2001 */
 
    /* get data type into mrilib MRI_* form */
 
    switch( hdr.dime.datatype ){
       default:
-         fprintf(stderr,"*** %s: Unknown ANALYZE datatype=%d\n",
-                 hname,hdr.dime.datatype) ;
-      return NULL ;
+         fprintf(stderr,"*** %s: Unknown ANALYZE datatype=%d (%s)\n",
+                 hname,hdr.dime.datatype,ANDT_string(hdr.dime.datatype) ) ;
+      RETURN(NULL) ;
 
       case ANDT_UNSIGNED_CHAR: datum_type = MRI_byte   ;               break;
       case ANDT_SIGNED_SHORT:  datum_type = MRI_short  ;               break;
@@ -1759,7 +2553,7 @@ MRI_IMARR * mri_read_analyze75( char * hname )
 
    nx = hdr.dime.dim[1] ;
    ny = hdr.dime.dim[2] ;
-   if( nx < 2 || ny < 2 ) return NULL ;
+   if( nx < 2 || ny < 2 ) RETURN(NULL) ;
 
    switch( hdr.dime.dim[0] ){
       case 2:  nz = 1                                 ; break ;
@@ -1768,7 +2562,7 @@ MRI_IMARR * mri_read_analyze75( char * hname )
       default:
       case 4:  nz = hdr.dime.dim[3] * hdr.dime.dim[4] ; break ;
    }
-   if( nz < 1 ) nz == 1 ;
+   if( nz < 1 ) nz = 1 ;
 
    dx = hdr.dime.pixdim[1] ;
    dy = hdr.dime.pixdim[2] ;
@@ -1782,13 +2576,13 @@ MRI_IMARR * mri_read_analyze75( char * hname )
    length = THD_filesize(iname) ;
    if( length <= 0 ){
       fprintf(stderr,"*** Can't find ANALYZE file %s\n",iname) ;
-      return NULL ;
+      RETURN(NULL) ;
    }
 
    fp = fopen( iname , "rb" ) ;
    if( fp == NULL ){
       fprintf(stderr,"*** Can't open ANALYZE file %s\n",iname) ;
-      return NULL ;
+      RETURN(NULL) ;
    }
 
    ngood = datum_len*nx*ny*nz ;
@@ -1797,7 +2591,7 @@ MRI_IMARR * mri_read_analyze75( char * hname )
         "*** ANALYZE file %s is %d bytes long but must be at least %d bytes long\n"
         "*** for nx=%d ny=%d nz=%d and voxel=%d bytes\n",
         iname,length,ngood,nx,ny,nz,datum_len ) ;
-      return NULL ;
+      fclose(fp) ; RETURN(NULL) ;
    }
 
    /*** read images from the file ***/
@@ -1814,12 +2608,13 @@ MRI_IMARR * mri_read_analyze75( char * hname )
       length = fread( imar , datum_len , nx * ny , fp ) ;
 
       if( doswap ){
-         switch( datum_len ){
-            default: break ;
-            case 2:  swap_twobytes (   nx*ny , imar ) ; break ;  /* short */
-            case 4:  swap_fourbytes(   nx*ny , imar ) ; break ;  /* int, float */
-            case 8:  swap_fourbytes( 2*nx*ny , imar ) ; break ;  /* complex */
-         }
+        switch( datum_len ){
+          default: break ;
+          case 2:  swap_twobytes (   nx*ny , imar ) ; break ;  /* short */
+          case 4:  swap_fourbytes(   nx*ny , imar ) ; break ;  /* int, float */
+          case 8:  swap_fourbytes( 2*nx*ny , imar ) ; break ;  /* complex */
+        }
+        newim->was_swapped = 1 ;  /* 07 Mar 2002 */
       }
 
       /* 28 Nov 2001: convert to floats? */
@@ -1843,7 +2638,188 @@ MRI_IMARR * mri_read_analyze75( char * hname )
       if( fac != 0.0 ) mri_scale_inplace( fac , newim ) ;
    }
 
-   fclose(fp) ; return newar ;
+   fclose(fp) ; RETURN(newar) ;
+}
+
+/*-----------------------------------------------------------------*/
+/*! Read an ANALYZE file into an ARRAY of 3D images [26 Aug 2002].
+
+   \param hname = the "hdr" file for the hdr/img pair
+*/
+
+MRI_IMARR * mri_read3D_analyze75( char * hname )
+{
+   FILE * fp ;
+   char iname[1024] , buf[1024] ;
+   int ii , jj , doswap ;
+   struct dsr hdr ;    /* ANALYZE .hdr format */
+   int ngood , length , kim , koff , datum_type , datum_len , swap ;
+   int   nx,ny,nz , hglobal=0 , himage=0 ;
+   float dx,dy,dz ;
+   MRI_IMARR * newar ;
+   MRI_IMAGE * newim ;
+   void      * imar ;
+   float fac=0.0 ;    /* 27 Nov 2001 */
+   int floatize ;     /* 28 Nov 2001 */
+   int spmorg=0 ;     /* 28 Nov 2001 */
+
+   int   nt , nxyz ;  /* 26 Aug 2002 */
+   float dt ;
+
+ENTRY("mri_read3D_analyze75") ;
+
+   /* check & prepare filenames */
+
+   if( hname == NULL ) RETURN(NULL) ;
+   jj = strlen(hname) ;
+   if( jj < 5 ) RETURN(NULL) ;
+   if( strcmp(hname+jj-3,"hdr") != 0 ) RETURN(NULL) ;
+   strcpy(iname,hname) ; strcpy(iname+jj-3,"img") ;
+
+   /* read header file into struct */
+
+   fp = fopen( hname , "rb" ) ;
+   if( fp == NULL ) RETURN(NULL) ;
+   hdr.dime.dim[0] = 0 ;
+   fread( &hdr , 1 , sizeof(struct dsr) , fp ) ;
+   fclose(fp) ;
+   if( hdr.dime.dim[0] == 0 ) RETURN(NULL) ;
+
+   /* check for swap-age */
+
+   doswap = (hdr.dime.dim[0] < 0 || hdr.dime.dim[0] > 15) ;
+   if( doswap ) swap_analyze_hdr( &hdr ) ;
+
+   /* 28 Nov 2001: attempt to decode originator a la SPM */
+
+   { short xyzuv[5] , xx,yy,zz ;
+     memcpy( xyzuv , hdr.hist.originator , 10 ) ;
+     if( xyzuv[3] == 0 && xyzuv[4] == 0 ){
+        xx = xyzuv[0] ; yy = xyzuv[1] ; zz = xyzuv[2] ;
+        if( doswap ){ swap_2(&xx); swap_2(&yy); swap_2(&zz); }
+        if( xx > 0 && xx < hdr.dime.dim[1] &&
+            yy > 0 && yy < hdr.dime.dim[2] &&
+            zz > 0 && zz < hdr.dime.dim[3]   ) spmorg = 1 ;
+     }
+   }
+   if( spmorg ) strcpy( MRILIB_orients , "LRPAIS" ) ;
+
+   /* 27 Nov 2001: get a scale factor for images */
+
+   if( !AFNI_noenv("AFNI_ANALYZE_SCALE") ){
+      fac = hdr.dime.funused1 ;
+      (void) thd_floatscan( 1 , &fac ) ;
+      if( fac < 0.0 || fac == 1.0 ) fac = 0.0 ;
+   }
+
+   floatize = (fac != 0.0 || AFNI_yesenv("AFNI_ANALYZE_FLOATIZE")) ; /* 28 Nov 2001 */
+
+   /* get data type into mrilib MRI_* form */
+
+   switch( hdr.dime.datatype ){
+      default:
+         fprintf(stderr,"*** %s: Unknown ANALYZE datatype=%d (%s)\n",
+                 hname,hdr.dime.datatype,ANDT_string(hdr.dime.datatype) ) ;
+      RETURN(NULL) ;
+
+      case ANDT_UNSIGNED_CHAR: datum_type = MRI_byte   ;               break;
+      case ANDT_SIGNED_SHORT:  datum_type = MRI_short  ;               break;
+      case ANDT_SIGNED_INT:    datum_type = MRI_int    ;               break;
+      case ANDT_FLOAT:         datum_type = MRI_float  ; floatize = 0; break;
+      case ANDT_COMPLEX:       datum_type = MRI_complex; floatize = 0; break;
+      case ANDT_RGB:           datum_type = MRI_rgb    ; floatize = 0; break;
+   }
+
+   datum_len = mri_datum_size(datum_type) ;
+
+   /* compute dimensions of images, and number of images */
+
+   nx = hdr.dime.dim[1] ;
+   ny = hdr.dime.dim[2] ;
+   if( nx < 2 || ny < 2 ) RETURN(NULL) ;
+
+   switch( hdr.dime.dim[0] ){
+      case 2:  nz = 1 ; nt = 1 ;                           ; break ;
+      case 3:  nz = hdr.dime.dim[3] ; nt = 1 ;             ; break ;
+
+      default:
+      case 4:  nz = hdr.dime.dim[3] ; nt = hdr.dime.dim[4] ; break ;
+   }
+   if( nz < 1 ) nz = 1 ;
+   if( nt < 1 ) nt = 1 ;
+
+   dx = hdr.dime.pixdim[1] ;
+   dy = hdr.dime.pixdim[2] ;
+   dz = hdr.dime.pixdim[3] ;
+   dt = hdr.dime.pixdim[4] ; if( dt <= 0.0 ) dt = 1.0 ;
+
+   /* open .img file and read images from it */
+
+   length = THD_filesize(iname) ;
+   if( length <= 0 ){
+      fprintf(stderr,"*** Can't find ANALYZE file %s\n",iname) ;
+      RETURN(NULL) ;
+   }
+
+   fp = fopen( iname , "rb" ) ;
+   if( fp == NULL ){
+      fprintf(stderr,"*** Can't open ANALYZE file %s\n",iname) ;
+      RETURN(NULL) ;
+   }
+
+   ngood = datum_len*nx*ny*nz*nt ;
+   if( length < ngood ){
+      fprintf( stderr,
+        "*** ANALYZE file %s is %d bytes long but must be at least %d bytes long\n"
+        "*** for nx=%d ny=%d nz=%d nt=%d and voxel=%d bytes\n",
+        iname,length,ngood,nx,ny,nz,nt,datum_len ) ;
+      fclose(fp) ; RETURN(NULL) ;
+   }
+
+   /*** read images from the file ***/
+
+   INIT_IMARR(newar) ;
+
+   for( kim=0 ; kim < nt ; kim++ ){
+      koff = hglobal + (kim+1)*himage + datum_len*nxyz*kim ;
+      fseek( fp , koff , SEEK_SET ) ;
+
+      newim  = mri_new_vol( nx,ny,nz , datum_type ) ;
+      imar   = mri_data_pointer( newim ) ;
+      length = fread( imar , datum_len , nxyz , fp ) ;
+
+      if( doswap ){
+        switch( datum_len ){
+          default: break ;
+          case 2:  swap_twobytes (   nxyz , imar ) ; break ;  /* short */
+          case 4:  swap_fourbytes(   nxyz , imar ) ; break ;  /* int, float */
+          case 8:  swap_fourbytes( 2*nxyz , imar ) ; break ;  /* complex */
+        }
+        newim->was_swapped = 1 ;  /* 07 Mar 2002 */
+      }
+
+      /* 28 Nov 2001: convert to floats? */
+
+      if( floatize ){
+         MRI_IMAGE *qim = mri_to_float(newim) ;
+         mri_free(newim) ; newim = qim ;
+      }
+
+      if( nt == 1 ) mri_add_name( iname , newim ) ;
+      else {
+         sprintf( buf , "%s#%d" , iname,kim ) ;
+         mri_add_name( buf , newim ) ;
+      }
+
+      newim->dx = dx ; newim->dy = dy ; newim->dz = dz ; newim->dt = dt ; newim->dw = 1.0 ;
+      ADDTO_IMARR(newar,newim) ;
+
+      /* 27 Nov 2001: scale image? */
+
+      if( fac != 0.0 ) mri_scale_inplace( fac , newim ) ;
+   }
+
+   fclose(fp) ; RETURN(newar) ;
 }
 
 /*---------------------------------------------------------------------------
@@ -1851,6 +2827,14 @@ MRI_IMARR * mri_read_analyze75( char * hname )
 -----------------------------------------------------------------------------*/
 
 #include "siemens_vision.h"
+
+/*! Count the number of 2D images in a Siemens Vision .ima file.
+
+   Unfortunately, this requires reading the image data and checking
+   for all-zero images.  This is because Siemens stores their data
+   in a fixed size file, and so just fills out the empty space with
+   blank images if need be.
+*/
 
 static int mri_imcount_siemens( char * hname )
 {
@@ -1929,6 +2913,11 @@ static int mri_imcount_siemens( char * hname )
 }
 
 /*---------------------------------------------------------------------------*/
+/*! Read an array of 2D images from Siemens Vision .ima file.
+
+   The images are stored in a 2D array, which requires untangling the
+   data rows to put them into separate MRI_IMAGE structs.
+*/
 
 MRI_IMARR * mri_read_siemens( char * hname )
 {
@@ -1944,17 +2933,19 @@ MRI_IMARR * mri_read_siemens( char * hname )
    float dx,dy,dz ;
    char *eee ; int ileave=0 ;  /* 25 Sep 2001 */
 
+ENTRY("mri_read_siemens") ;
+
    /*--- check file size ---*/
 
-   if( hname == NULL ) return NULL ;
+   if( hname == NULL ) RETURN(NULL) ;
 
    i = stat( hname , &file_stat ) ;
-   if( i < 0 ) return NULL ;
+   if( i < 0 ) RETURN(NULL) ;
 
    /*--- read header data ---*/
 
    fp = fopen( hname , "rb" ) ;
-   if( fp == NULL ) return NULL ;
+   if( fp == NULL ) RETURN(NULL) ;
    fread( &head , sizeof(struct Siemens_vision_header) , 1 , fp ) ;
 
    /*-- check some integer in header to determine if we need to byteswap --*/
@@ -1982,7 +2973,7 @@ MRI_IMARR * mri_read_siemens( char * hname )
      if( file_stat.st_size == i*matrix*matrix + SIEMENS_HEADERSIZE ) break ;
 
    if( matrix == MATRIX_MAX ){
-     fclose(fp) ; return NULL ; /* didn't recognize file format */
+     fclose(fp) ; RETURN(NULL) ; /* didn't recognize file format */
    }
 #undef MATRIX_MAX
 
@@ -2011,14 +3002,14 @@ MRI_IMARR * mri_read_siemens( char * hname )
       }
    }
 
-   if( slices == 0 ){ free(imar) ; return NULL ; }  /* bad news */
+   if( slices == 0 ){ free(imar) ; RETURN(NULL) ; }  /* bad news */
 
    /*-- get image dimensions, etc --*/
 
    if( swap ){
-      swap_8(&(head.FOVRow));
-      swap_8(&(head.FOVColumn));
-      swap_8(&(head.SliceThickness));
+     swap_8(&(head.FOVRow));
+     swap_8(&(head.FOVColumn));
+     swap_8(&(head.SliceThickness));
    }
    dx = head.FOVRow    / imagesize ;
    dy = head.FOVColumn / imagesize ;
@@ -2033,11 +3024,11 @@ MRI_IMARR * mri_read_siemens( char * hname )
    MRILIB_orients[4] = head.OrientationSet1Back[0] ;
    MRILIB_orients[5] = head.OrientationSet2Front[0];
    for (i=0; i<6; i++) {
-      if (MRILIB_orients[i]=='H') MRILIB_orients[i]='S';
-      if (MRILIB_orients[i]=='F') MRILIB_orients[i]='I';
+     if (MRILIB_orients[i]=='H') MRILIB_orients[i]='S';
+     if (MRILIB_orients[i]=='F') MRILIB_orients[i]='I';
    }
    MRILIB_orients[6] = '\0' ;
-   MRILIB_zoff = fabs(strtod(head.TextSlicePosition,NULL)) ;
+   MRILIB_zoff = fabs(strtod(head.TextSlicePosition,NULL)) ; use_MRILIB_zoff = 1 ;
 
    /*-- create output --*/
 
@@ -2048,6 +3039,8 @@ MRI_IMARR * mri_read_siemens( char * hname )
 
          newim = mri_new( imagesize , imagesize , MRI_short ) ;
          nar   = MRI_SHORT_PTR( newim ) ;
+
+         if( swap ) newim->was_swapped = 1 ; /* 07 Mar 2002 */
 
          for( j=0 ; j < imagesize ; j++ )    /* row in sub-image */
            memcpy( nar+j*imagesize ,
@@ -2080,7 +3073,29 @@ Done:
       FREE_IMARR(newar) ; newar = qar ;
    }
 
-   free(imar) ; return newar ;
+   free(imar) ; RETURN(newar) ;
+}
+
+/*---------------------------------------------------------------------------*/
+/*! Check for dicom magic number (string) in file
+    Bytes 128-131 should be "DICM" in a Dicom Part 10 file
+*/
+
+short check_dicom_magic_num( char * fname )
+{
+  FILE * fp;
+  char test_string[5] ;
+
+  fp = fopen( fname, "rb" ) ;
+  if(fp == NULL ) return 0 ;
+  fseek( fp, 128 , SEEK_SET ) ;
+  fread( test_string , 1 , 4 , fp ) ; test_string[4] = '\0' ;
+  fclose( fp ) ;
+  if( strcmp(test_string,"DICM") == 0 ) {
+    return 1 ;
+  } else {
+    return 0 ;
+  }
 }
 
 /*---------------------------------------------------------------------------
@@ -2158,7 +3173,10 @@ void mri_input_delay( MRI_IMAGE * im )
 
    /** swap bytes, if so marked **/
 
-   if( (im->fondisk & BSWAP_DELAY) ) mri_swapbytes( im ) ;
+   if( (im->fondisk & BSWAP_DELAY) ){
+      mri_swapbytes( im ) ;
+      im->was_swapped = 1 ;  /* 07 Mar 2002 */
+   }
 
    /** mark as already read from disk **/
 
@@ -2176,7 +3194,7 @@ fprintf(stderr,"delayed input from file %s at offset %d\n",im->fname,im->foffset
 
 MRI_IMARR * mri_read_file_delay( char * fname )
 {
-   MRI_IMARR * newar ;
+   MRI_IMARR * newar=NULL ;
    MRI_IMAGE * newim ;
    char * new_fname ;
 
@@ -2202,12 +3220,34 @@ MRI_IMARR * mri_read_file_delay( char * fname )
 
       newar = mri_read_siemens( new_fname ) ;
 
-   } else {
+   } else if( strstr(new_fname,".mpg" ) != NULL ||  /* 03 Dec 2003 */
+              strstr(new_fname,".MPG" ) != NULL ||  /* read MPEGs  */
+              strstr(new_fname,".mpeg") != NULL ||
+              strstr(new_fname,".MPEG") != NULL   ){
+
+      newar = mri_read_mpeg( new_fname ) ;  /* cf. mri_read_mpeg.c */
+   }
+
+   /* failed thus far?  try DICOM, unless user has requested DICOM last */
+   /* 05 May 2003 added option to try DICOM last         KRH          */
+
+   if ((newar == NULL) && !AFNI_yesenv("AFNI_TRY_DICOM_LAST")) {
+     newar = mri_read_dicom( new_fname ) ;  /* cf. mri_read_dicom.c */
+   }
+
+   /* failed again?  try mri_read() for 1 image */
+
+   if( newar == NULL ){
       newim = mri_read( new_fname ) ;      /* read from a 2D file */
       if( newim == NULL ){ free(new_fname) ; return NULL ; }
       INIT_IMARR(newar) ;
       ADDTO_IMARR(newar,newim) ;
    }
+
+   if ( (newar == NULL) && AFNI_yesenv("AFNI_TRY_DICOM_LAST")) {
+     newar = mri_read_dicom( new_fname ) ;  /* cf. mri_read_dicom.c */
+   }
+
    free(new_fname) ;
    return newar ;
 }
@@ -2266,6 +3306,15 @@ MRI_IMARR * mri_read_3D_delay( char * tname )
          datum_len  = sizeof(float) ;  /* better be 4 */
          break ;
 
+      case 'd':                                            /* 06 Feb 2003 */
+         ngood = sscanf( tname , "3Dd:%d:%d:%d:%d:%d:%s" ,
+                         &hglobal , &himage , &nx , &ny , &nz , fname ) ;
+
+         swap       = 0 ;
+         datum_type = MRI_float ;
+         datum_len  = sizeof(double) ;  /* better be 8 */
+         break ;
+
       case 'i':
          ngood = sscanf( tname , "3Di:%d:%d:%d:%d:%d:%s" ,
                          &hglobal , &himage , &nx , &ny , &nz , fname ) ;
@@ -2282,6 +3331,15 @@ MRI_IMARR * mri_read_3D_delay( char * tname )
          swap       = 0 ;
          datum_type = MRI_complex ;
          datum_len  = sizeof(complex) ;  /* better be 8 */
+         break ;
+
+      case 'r':
+         ngood = sscanf( tname , "3Dr:%d:%d:%d:%d:%d:%s" ,
+                         &hglobal , &himage , &nx , &ny , &nz , fname ) ;
+
+         swap       = 0 ;
+         datum_type = MRI_rgb ;
+         datum_len  = 3*sizeof(byte) ;  /* better be 3 */
          break ;
    }
 

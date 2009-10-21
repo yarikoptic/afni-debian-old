@@ -5,6 +5,7 @@
 ******************************************************************************/
 
 #include "afni.h"
+#include "parser.h"
 
 #if 0
 # define VMCHECK do{ if(verbose == 2) MCHECK; } while(0)
@@ -13,8 +14,8 @@
 #endif
 
 #define TCP_CONTROL "tcp:*:7954"      /* control channel specification */
-#define INFO_SIZE  (16*1024)          /* change this ==> change SHM_CHILD below */
-#define SHM_CHILD  "shm:afnibahn:16K" /* for data from the child */
+#define INFO_SIZE  (32*1024)          /* change this ==> change SHM_CHILD below */
+#define SHM_CHILD  "shm:afnibahn:32K" /* for data from the child */
 
 #define SHORT_DELAY      1            /* msec */
 #define LONG_DELAY      10
@@ -35,6 +36,40 @@
   system at the Medical College of Wisconsin.
 ************************************************************************/
 
+/** 24 Jun 2002: modified to allow nzz=1 for UCSD trolls                     **/
+/** 27 Jun 2003: added BYTEORDER command for automatic byte swapping [rickr] **/
+/** 30 Jun 2003: allow MRI_complex data type when using BYTEORDER    [rickr] **/
+/** 30 Oct 2003: if possible, compute function on registered data    [rickr] **/
+/** 29 Jan 2004: allow 100 chars in root_prefix via PREFIX (from 31) [rickr]
+               * x-axis of 3-D motion graphs changed from time to reps
+	       * plot_ts_... functions now use reg_rep for x-axis values
+	       * reg_graph_xr is no longer scaled by TR
+               * added (float *)reg_rep, for graphing with x == rep num
+	       * added RT_set_grapher_pinnums(), to call more than once
+	       * added GRAPH_XRANGE and GRAPH_YRANGE command strings for
+	             control over the scales of the motion graph
+	       * if GRAPH_XRANGE and GRAPH_YRANGE commands are both passed,
+	             do not display the final (scaled) motion graph          **/
+/** 13 Feb 2004: added RT_MAX_PREFIX for incoming PREFIX command     [rickr]
+	       * if GRAPH_?RANGE is given, disable 'pushing'
+	             (see plot_ts_xypush())
+	       * added GRAPH_EXPR command, to compute and display a single
+	             motion curve, instead of the normal six
+	             (see p_code, etc., reg_eval, and RT_parser_init())      **/
+/** 31 Mar 2004: added ability to send registration parameters       [rickr]
+	       * If the AFNI_REALTIME_MP_HOST_PORT environment variable is 
+	             set (as HOST:PORT, e.g. localhost:53214), then the six
+	             registration correction parameters will be sent to that
+	             host/port via a tcp socket.  This is done only in the
+	             case of graphing the 3D registration parameters.
+	       * added RT_input variables to manage the new socket 
+	       * added RT_mp_comm_...() functions
+	       * modified yar[] logic in RT_registration_3D_realtime() to
+	             pass the registration parameters before adjusting the
+	             base pointers for plot_ts_addto()                       **/
+/** 02 Apr 2004: move RT_mp_comm_close() from last plot check  [tross/rickr] **/
+
+
 /**************************************************************************/
 /*********************** struct for reading data **************************/
 
@@ -54,6 +89,11 @@
 #define ZORDER_EXP  39
 #define NZMAX       1024
 
+#define RT_MAX_EXPR     1024    /* max size for parser expression  */
+#define RT_MAX_PREFIX    100    /* max size for output file prefix */
+
+#define RT_MP_DEF_PORT 53214    /* default port for sending motion params */
+
 #define DEFAULT_XYFOV    240.0
 #define DEFAULT_XYMATRIX  64
 #define DEFAULT_ZDELTA     5.0
@@ -67,6 +107,12 @@
   ( (aa)=='R' ? ORI_R2L_TYPE : (aa)=='L' ? ORI_L2R_TYPE : \
     (aa)=='P' ? ORI_P2A_TYPE : (aa)=='A' ? ORI_A2P_TYPE : \
     (aa)=='I' ? ORI_I2S_TYPE : (aa)=='S' ? ORI_S2I_TYPE : ILLEGAL_TYPE )
+
+#define MAX_CHAN 32    /* 30 Jul 2002 */
+
+static int        num_open_controllers ;                       /* 02 Aug 2002 */
+static int            open_controller_index[MAX_CONTROLLERS] ;
+static Three_D_View * open_controller      [MAX_CONTROLLERS] ;
 
 typedef struct {
 
@@ -84,15 +130,18 @@ typedef struct {
    pid_t    child_info ;          /* pid of child that will give me control information */
    double   child_start_time ;    /* 10 Dec 1998: elapsed time when child process was forked */
 
-   char prefix[THD_MAX_PREFIX] ;  /* name of dataset */
-
    int   nxx  ,nyy  ,nzz  ,       /* matrix */
          orcxx,orcyy,orczz ;      /* orientations */
 
    float xxfov , yyfov , zzfov ;  /* field of view */
-   float dxx  ,dyy  ,dzz ,        /* voxel size */
-         xxorg,yyorg,zzorg ;      /* offsets */
-   int   zzdcode ;                /* direction code for z offset */
+   float dxx   , dyy   , dzz ,    /* voxel sizes */
+         xxorg,yyorg,zzorg ;      /* grid origins */
+   int   xxdcode,yydcode,zzdcode; /* direction code for x,y,z offsets */
+
+   float xxoff , yyoff , zzoff ;  /* offsets (instead of xxorg, etc.) [18 Dec 2002] */
+
+   float zgap ;                   /* extra gap between slices [18 Dec 2002] */
+                                  /* (only used if zzfov is used instead of dzz) */
 
    int   xcen ,ycen ,zcen  ;      /* centering of axes? */
 
@@ -104,19 +153,30 @@ typedef struct {
    int   zorder_lock ;            /* 22 Feb 1999: lock zorder value */
    int   nzseq , zseq[NZMAX] ;    /* slice input order */
    int   datum ;                  /* a MRI_type code from mrilib.h */
+   int   swap_on_read ;           /* flag: swap bytes?   26 Jun 2003 [rickr] */
 
    int   nbuf ;                   /* current buffer size */
    char  buf[RT_NBUF] ;           /* buffer for reading command strings */
 
-   int afni_status ;              /* does AFNI know about this dataset yet? */
-   THD_3dim_dataset * dset ;      /* AFNI dataset under construction */
-   Three_D_View * im3d ;          /* AFNI controller which gets it */
-   THD_session * sess ;           /* AFNI session which gets it */
-   char * sbr ;                   /* sub-brick under construction */
-   char * im ;                    /* place for next slice to be read */
+   char root_prefix[THD_MAX_PREFIX] ;  /* name of dataset (sort of) */
+
+   /* 01 Aug 2002: these items are now indexed by MAX_CHAN
+                   to allow for multiple channel acquisitions */
+
+   int num_chan ;                               /* number of dataset channels */
+   int cur_chan ;                               /* current channel index */
+
+   int afni_status[MAX_CHAN] ;                  /* does AFNI know about this dataset yet? */
+   THD_3dim_dataset * dset[MAX_CHAN] ;          /* AFNI dataset under construction */
+   Three_D_View * im3d[MAX_CHAN] ;              /* AFNI controller which gets it */
+   THD_session * sess[MAX_CHAN] ;               /* AFNI session which gets it */
+   int           sess_num[MAX_CHAN] ;           /* AFNI session index */
+   char * sbr[MAX_CHAN] ;                       /* sub-brick under construction */
+   char * im[MAX_CHAN] ;                        /* place for next slice to be read */
+   int nvol[MAX_CHAN] ;                         /* # volumes read so far */
+   int nsl[MAX_CHAN] ;                          /* # slices read so far */
+
    int sbr_size ;                 /* # bytes per sub-brick */
-   int nvol ;                     /* # volumes read so far */
-   int nsl ;                      /* # slices read so far */
    int imsize ;                   /* # bytes per image */
    MRI_IMARR * bufar ;            /* buffer for input images */
 
@@ -142,18 +202,40 @@ typedef struct {
 
    /*--  Oct 1998: more stuff for 3D registration --*/
 
-   float * reg_dz , * reg_theta , * reg_psi ;
+   float * reg_dz , * reg_theta , * reg_psi , * reg_rep ;
    MRI_3dalign_basis * reg_3dbasis ;
    int iha , ax1,hax1 , ax2,hax2 , ax3,hax3 ;
    MEM_topshell_data * mp ;
 
-   int reg_resam , reg_final_resam ;
+   int   reg_resam , reg_final_resam ;
+   int   reg_graph_xnew, reg_graph_ynew ;
    float reg_graph_xr , reg_graph_yr ;
+
+   /*-- Feb 2004 [rickr]: parser fields for GRAPH_EXPR command --*/
+   PARSER_code * p_code ; 			/* parser expression code    */
+   char          p_expr   [RT_MAX_EXPR+1] ;     /* user's parser expression  */
+   double        p_atoz   [26] ;                /* source values to evaluate */
+   int           p_has_sym[26] ;		/* symbol indices            */
+   int           p_max_sym ;			/* max index+1 of p_has_sym  */
+   float       * reg_eval ;			/* EXPR evaluation results   */
+
+   /*-- Mar 2004 [rickr]: tcp comm fields for motion params (for Tom Ross) --*/
+   int           mp_tcp_use ;     /* are we using tcp comm for motion params */
+   int           mp_tcp_sd ;      /* socket descriptor                       */
+   int           mp_port ;        /* destination port for motion params      */
+   char          mp_host[128] ;   /* destination host for motion params      */
+   int           mp_nmsg ;        /* count the number of sent messages       */
+   int           mp_npsets ;      /* count the number of sent data lists     */
 #endif
 
    double elapsed , cpu ;         /* times */
    double last_elapsed ;
    int    last_nvol ;
+
+   int    num_note ;              /* 01 Oct 2002 */
+   char **note ;
+
+   int    marked_for_death ;      /* 10 Dec 2002 */
 
 } RT_input ;
 
@@ -168,7 +250,7 @@ static char helpstring[] =
    "\n"
    " USAGE:\n"
    " Set the controls to the state you want BEFORE realtime image input\n"
-   " begins, then press one of the 'Run' buttons to send the control\n"
+   " begins, then press one of the 'Set' buttons to send the control\n"
    " information to AFNI.\n"
    "\n"
    " INPUTS:\n"
@@ -234,6 +316,18 @@ static char helpstring[] =
    " YR [y-axis]  = If a realtime graph is generated, this entry specifies\n"
    "                  the vertical range for each motion parameter.\n"
 #endif
+   "\n"
+   "MULTICHANNEL ACQUISITION [Aug 2002]:\n"
+   " Multiple image channels can be acquired (e.g., from multi-coil and/or\n"
+   " multi-echo sequences).  Each image channel goes into a separate dataset.\n"
+   "  * These datasets will have names like Root#007_03 (for the 3rd channel\n"
+   "    in the 7th acquisition).\n"
+   "  * Functional activation cannot be computed with multichannel acquisition.\n"
+   "  * Registration cannot be computed with multichannel acquisition.\n"
+   "\n"
+   "HOW TO SEND DATA:\n"
+   " See file README.realtime for details; see program rtfeedme.c for an example.\n"
+   "\n"
 ;
 
 /** variables encoding the state of options from the plugin interface **/
@@ -311,10 +405,11 @@ static PLUGIN_interface * plint = NULL ; /* AFNI plugin structure */
 
 /************ prototypes ***********/
 
-PLUGIN_interface * PLUGIN_init( int ) ;
+DEFINE_PLUGIN_PROTOTYPE
+
 char * RT_main( PLUGIN_interface * ) ;
 Boolean RT_worker( XtPointer ) ;
-RT_input * new_RT_input(void) ;
+RT_input * new_RT_input( IOCHAN * ) ;
 int RT_check_listen(void) ;
 int RT_acquire_info( char * ) ;
 int RT_process_info( int , char * , RT_input * ) ;
@@ -328,6 +423,8 @@ void RT_start_child( RT_input * ) ;
 void RT_check_info( RT_input * , int ) ;
 void RT_process_xevents( RT_input * ) ;  /* 13 Oct 2000 */
 
+void RT_tell_afni_one( RT_input * , int , int ) ;  /* 01 Aug 2002 */
+
 #ifdef ALLOW_REGISTRATION
   void RT_registration_2D_atend( RT_input * rtin ) ;
   void RT_registration_2D_setup( RT_input * rtin ) ;
@@ -340,6 +437,13 @@ void RT_process_xevents( RT_input * ) ;  /* 13 Oct 2000 */
   void RT_registration_3D_close( RT_input * rtin ) ;
   void RT_registration_3D_onevol( RT_input * rtin , int tt ) ;
   void RT_registration_3D_realtime( RT_input * rtin ) ;
+
+  int  RT_mp_comm_close       ( RT_input * rtin );
+  int  RT_mp_comm_init        ( RT_input * rtin );
+  int  RT_mp_comm_init_vars   ( RT_input * rtin );
+  int  RT_mp_comm_send_data   ( RT_input * rtin, float * mp[6], int nt );
+  int  RT_parser_init         ( RT_input * rtin );
+  void RT_set_grapher_pinnums ( int pinnum );
 #endif
 
 #define TELL_NORMAL  0
@@ -387,6 +491,8 @@ PLUGIN_interface * PLUGIN_init( int ncall )
 
    PLUTO_set_sequence( plint , "A:AArealtime" ) ;
    PLUTO_set_butcolor( plint , "hot" ) ;
+
+   PLUTO_set_runlabels( plint , "Set+Keep" , "Set+Close" ) ;  /* 04 Nov 2003 */
 
    /*-- 28 Apr 2000: Images Only mode --*/
 
@@ -505,7 +611,7 @@ PLUGIN_interface * PLUGIN_init( int ncall )
 
    ept = getenv("AFNI_REALTIME_volreg_graphgeom") ;
    if( ept != NULL ){
-      char * str = malloc(strlen(ept)+20) ;
+      char *str = malloc(strlen(ept)+20) ;
       sprintf(str,"AFNI_tsplotgeom=%s",ept) ;
       putenv(str) ;
    }
@@ -596,17 +702,8 @@ char * RT_main( PLUGIN_interface * plint )
 
          /* 12 Oct 2000: set pin_num on all graphs now open */
 
-         if( reg_nr >= MIN_PIN && reg_nr <= MAX_PIN && IM3D_OPEN(plint->im3d) ){
-
-            drive_MCW_grapher( plint->im3d->g123 ,
-                               graDR_setpinnum , (XtPointer) reg_nr ) ;
-
-            drive_MCW_grapher( plint->im3d->g231 ,
-                               graDR_setpinnum , (XtPointer) reg_nr ) ;
-
-            drive_MCW_grapher( plint->im3d->g312 ,
-                               graDR_setpinnum , (XtPointer) reg_nr ) ;
-         }
+         if( reg_nr >= MIN_PIN && reg_nr <= MAX_PIN && IM3D_OPEN(plint->im3d) )
+	     RT_set_grapher_pinnums(reg_nr);
 
          continue ;
       }
@@ -649,11 +746,11 @@ int RT_check_listen(void)
 
    if( ioc_control == NULL ){
       if( verbose )
-         fprintf(stderr,"RT: starting to listen for control channel.\n") ;
+         fprintf(stderr,"RT: starting to listen for control stream.\n") ;
       ioc_control = iochan_init( TCP_CONTROL , "accept" ) ;
       newcon      = 1 ;
       if( ioc_control == NULL ){
-         fprintf(stderr,"RT: can't listen for control channel\a\n") ;
+         fprintf(stderr,"RT: can't listen for control stream\a\n") ;
          return -1 ;
       }
    }
@@ -666,7 +763,7 @@ int RT_check_listen(void)
 
       if( newcon ){
          fprintf(stderr,"RT:---------------------------------------\n") ;
-         fprintf(stderr,"RT: connected to control channel %s\n",ioc_control->name) ;
+         fprintf(stderr,"RT: connected to control stream %s\n",ioc_control->name) ;
          newcon = 0 ;
       } else {
 /**
@@ -676,7 +773,7 @@ int RT_check_listen(void)
       }
 
       if( ! TRUST_host(ioc_control->name) ){
-         fprintf(stderr,"RT: illegal host connection!\a\n") ;
+         fprintf(stderr,"RT: untrusted host connection - closing!\a\n") ;
          IOCHAN_CLOSE(ioc_control) ;
          return 0 ;
       }
@@ -689,7 +786,7 @@ int RT_check_listen(void)
 
    } else if( jj == -1 ){  /* something bad! */
 
-      fprintf(stderr,"RT: failure while listening for control channel!\a\n") ;
+      fprintf(stderr,"RT: failure while listening for control stream!\a\n") ;
       IOCHAN_CLOSE(ioc_control) ;
       return 0 ;
    }
@@ -700,27 +797,38 @@ int RT_check_listen(void)
 /***************************************************************************/
 /**             macro to close down the realtime input stream             **/
 
-#define CLEANUP cleanup_rtinp()
+#define CLEANUP(n) cleanup_rtinp(n)
 
 /**------------ 01 Aug 1998: replace the macro with a function -----------**/
 
 #undef  FREEUP
 #define FREEUP(x) do{ if( (x) != NULL ){free((x)); (x)=NULL;} } while(0)
 
-void cleanup_rtinp(void)
+/* 10 Dec 2002: add keep_ioc_data flag,
+                so as not to close the data channel;
+                note that the pointer to it will be lost when rtinp is freed */
+
+void cleanup_rtinp( int keep_ioc_data )
 {
-   IOCHAN_CLOSE(rtinp->ioc_data) ;         /* close any open I/O channels */
+   int cc ;
+
+   if( !keep_ioc_data )
+     IOCHAN_CLOSE(rtinp->ioc_data) ;       /* close open I/O channels */
+
    IOCHAN_CLOSE(rtinp->ioc_info) ;
 
-   if( rtinp->child_info > 0 )                   /* destroy child process */
+   if( rtinp->child_info > 0 )             /* destroy child process */
       kill( rtinp->child_info , SIGTERM ) ;
 
    DESTROY_IMARR(rtinp->bufar) ;           /* destroy any buffered images */
 
-   if( rtinp->sbr != NULL ) free( rtinp->sbr ) ; /* destroy buffered data */
+   for( cc=0 ; cc < MAX_CHAN ; cc++ ){     /* 01 Aug 2002: loop over channels */
+     if( rtinp->sbr[cc] != NULL )
+       free( rtinp->sbr[cc] ) ;            /* destroy buffered data */
+   }
 
 #ifdef ALLOW_REGISTRATION
-   if( rtinp->reg_2dbasis != NULL ){        /* destroy registration setup */
+   if( rtinp->reg_2dbasis != NULL ){       /* destroy registration setup */
       int kk ;
       for( kk=0 ; kk < rtinp->nzz ; kk++ )
          mri_2dalign_cleanup( rtinp->reg_2dbasis[kk] ) ;
@@ -734,7 +842,8 @@ void cleanup_rtinp(void)
    FREEUP( rtinp->reg_tim   ) ; FREEUP( rtinp->reg_dx    ) ;
    FREEUP( rtinp->reg_dy    ) ; FREEUP( rtinp->reg_dz    ) ;
    FREEUP( rtinp->reg_phi   ) ; FREEUP( rtinp->reg_psi   ) ;
-   FREEUP( rtinp->reg_theta ) ;
+   FREEUP( rtinp->reg_theta ) ; FREEUP( rtinp->reg_rep   ) ;
+   FREEUP( rtinp->reg_eval  ) ;
 #endif
 
    if( rtinp->image_handle != NULL )
@@ -744,9 +853,17 @@ void cleanup_rtinp(void)
       mri_clear_data_pointer(rtinp->image_space) ; mri_free(rtinp->image_space) ;
    }
 
-   free(rtinp) ; rtinp = NULL ;                 /* destroy data structure */
-   ioc_control = NULL ;                         /* ready to listen again */
-   GRIM_REAPER ;                               /* reap dead child, if any */
+   /* 01 Oct 2002: free stored notes */
+
+   if( rtinp->num_note > 0 && rtinp->note != NULL ){
+     int kk ;
+     for( kk=0 ; kk < rtinp->num_note ; kk++ ) FREEUP( rtinp->note[kk] ) ;
+     FREEUP(rtinp->note) ;
+   }
+
+   free(rtinp) ; rtinp = NULL ;            /* destroy data structure */
+   ioc_control = NULL ;                    /* ready to listen again */
+   GRIM_REAPER ;                           /* reap dead child, if any */
 }
 
 /*********************************************************************
@@ -756,13 +873,12 @@ void cleanup_rtinp(void)
 
   This is a work process -- it returns False if it wants to be
   called again, and return True if it is done.  For real-time
-  AFNIfying, this should always return False.
+  AFNI-izing, this should always return False.
 **********************************************************************/
 
 Boolean RT_worker( XtPointer elvis )
 {
    int jj ;
-
    static int first=1 ;
 
 #if 0
@@ -784,7 +900,7 @@ Boolean RT_worker( XtPointer elvis )
       }
       nerr = 0 ;                           /* reset error count */
       if( jj == 0 ) return False ;         /* try later if no connection now */
-      rtinp = new_RT_input() ;             /* try to make a new input struct */
+      rtinp = new_RT_input(NULL) ;         /* try to make a new input struct */
       IOCHAN_CLOSE( ioc_control ) ;        /* not needed any more */
       if( rtinp == NULL ) return False ;   /* try later (?) */
    }
@@ -799,23 +915,23 @@ Boolean RT_worker( XtPointer elvis )
 
    if( iochan_goodcheck(rtinp->ioc_data,0) != 1 ){
 
-      if( rtinp->sbr != NULL ){       /* if we started acquisition */
+      if( rtinp->sbr[0] != NULL ){     /* if we started acquisition */
          if( verbose == 2 )
-            fprintf(stderr,"RT: data channel closed down.\n") ;
+            fprintf(stderr,"RT: data stream closed down.\n") ;
          VMCHECK ;
          RT_finish_dataset( rtinp ) ;  /* then we can finish it */
       } else {
-         fprintf(stderr,"RT: data channel closed before dataset was fully defined!\a\n") ;
+         fprintf(stderr,"RT: data stream closed before dataset was fully defined!\a\n") ;
       }
 
-      CLEANUP ; return False ;
+      CLEANUP(0) ; return False ;
    }
 
    /**-----------------------------------------------------------------**/
    /**---- See if any data is waiting to be read from the child   ----**/
    /**---- process that is supposed to supply control information ----**/
 
-#define CHILD_MAX_WAIT 33.333  /* seconds */
+#define CHILD_MAX_WAIT 66.6  /* seconds */
 
    if( rtinp->child_info > 0 ){
 
@@ -823,17 +939,22 @@ Boolean RT_worker( XtPointer elvis )
 
       if( jj == 0 ){       /** 10 Dec 1998: child not sending data? **/
          double et = PLUTO_elapsed_time() - rtinp->child_start_time ;
+         double mw = CHILD_MAX_WAIT ;
+         char *eee = getenv("AFNI_REALTIME_CHILDWAIT") ;
+         if( eee != NULL ){
+            double val=strtod(eee,NULL); if(val >= 1.0) mw = val;
+         }
 
-         if( et > CHILD_MAX_WAIT ){  /* don't wait any more, give up */
+         if( et > mw ){  /* don't wait any more, give up */
             fprintf(stderr,
                     "RT: no data from child after %f seconds!  Giving up.\a\n",et) ;
-            CLEANUP ; return False ;
+            CLEANUP(0) ; return False ;
          }
 
       } else if( jj < 0 ){   /** something bad happened? **/
 
-         fprintf(stderr,"RT: child info channel closed prematurely!\a\n") ;
-         CLEANUP ; return False ;
+         fprintf(stderr,"RT: child info stream closed prematurely!\a\n") ;
+         CLEANUP(0) ; return False ;
 
       } else if( jj > 0 ){   /** something good happened? **/
 
@@ -861,12 +982,12 @@ Boolean RT_worker( XtPointer elvis )
          IOCHAN_CLOSE( rtinp->ioc_info ) ; rtinp->child_info = 0 ;
 
          if( ninfo <= 0 ){
-            fprintf(stderr,"RT: child info channel returned no data!\a\n") ;
-            CLEANUP ; return False ;
+            fprintf(stderr,"RT: child info stream returned no data!\a\n") ;
+            CLEANUP(0) ; return False ;
          }
 
          if( verbose == 2 )
-            fprintf(stderr,"RT: child info channel returned %d bytes.\n",ninfo) ;
+            fprintf(stderr,"RT: child info stream returned %d bytes.\n",ninfo) ;
          VMCHECK ;
 
          /* process the info and store it in the real-time struct */
@@ -877,7 +998,7 @@ Boolean RT_worker( XtPointer elvis )
 
          if( jj <= 0 ){
             fprintf(stderr,"RT: child info was badly formatted!\a\n") ;
-            CLEANUP ; return False ;
+            CLEANUP(0) ; return False ;
          }
 
          /* if we already received the first image data,
@@ -890,12 +1011,12 @@ Boolean RT_worker( XtPointer elvis )
             PLUTO_popup_transient( plint , " \n"
                                            "      Heads down!\n"
                                            "Realtime header was bad!\n" ) ;
-            CLEANUP ; return FALSE ;
+            CLEANUP(0) ; return FALSE ;
          }
 
          /* if all the setup info is OK, we can create the dataset now */
 
-         if( rtinp->sbr == NULL && rtinp->info_ok ){
+         if( rtinp->sbr[0] == NULL && rtinp->info_ok ){
             if( verbose == 2 )
                fprintf(stderr,"RT: info complete --> creating dataset.\n") ;
             VMCHECK ;
@@ -912,27 +1033,32 @@ Boolean RT_worker( XtPointer elvis )
 
    jj = iochan_readcheck( rtinp->ioc_data , SHORT_DELAY ) ;
 
-   if( jj == 0 ){     /** no data **/
+   if( jj == 0 ){     /** no data available now **/
 
 #ifdef WRITE_INTERVAL
       double delt ;
+      double mw = WRITE_INTERVAL ;
+      char *eee = getenv("AFNI_REALTIME_WRITEWAIT") ;
+      if( eee != NULL ){
+         double val=strtod(eee,NULL); if(val >= 1.0) mw = val;
+      }
 
       /** if there is no image data for a long time,
           and there is something new to write out,
           then write the datasets out again.         **/
 
-      if( !rtinp->no_data                 &&
-          rtinp->nvol > rtinp->last_nvol  &&
-          !rtinp->image_mode              &&  /* 28 Apr 2000 */
-          (delt=PLUTO_elapsed_time()-rtinp->last_elapsed) > WRITE_INTERVAL  ){
+      if( !rtinp->no_data                    &&
+          rtinp->nvol[0] > rtinp->last_nvol  &&
+          !rtinp->image_mode                 &&  /* 28 Apr 2000 */
+          (delt=PLUTO_elapsed_time()-rtinp->last_elapsed) > mw  ){
 
-         int cmode ;
+         int cmode , cc ;
 
          fprintf(stderr,"RT: no image data for %g seconds --> saving to disk.\n",delt) ;
 
          PLUTO_popup_transient( plint , " \n"
                                         " Pause in input data stream:\n"
-                                        " Saving current dataset to disk.\n" ) ;
+                                        " Saving current dataset(s) to disk.\n" ) ;
 
          RT_tell_afni(rtinp,TELL_NORMAL) ;
 
@@ -940,14 +1066,16 @@ Boolean RT_worker( XtPointer elvis )
          THD_set_write_compression(COMPRESS_NONE) ;
          SHOW_AFNI_PAUSE ;
 
-         THD_write_3dim_dataset( NULL,NULL , rtinp->dset , True ) ;
+         for( cc=0 ; cc < rtinp->num_chan ; cc++ )
+           THD_write_3dim_dataset( NULL,NULL , rtinp->dset[cc] , True ) ;
+
          if( rtinp->func_dset != NULL )
             THD_write_3dim_dataset( NULL,NULL , rtinp->func_dset , True ) ;
 
          THD_set_write_compression(cmode) ;  sync() ; /* 08 Mar 2000: sync disk */
          SHOW_AFNI_READY ;
 
-         rtinp->last_nvol    = rtinp->nvol ;
+         rtinp->last_nvol    = rtinp->nvol[0] ;
          rtinp->last_elapsed = PLUTO_elapsed_time() ;
       }
 #endif
@@ -955,13 +1083,16 @@ Boolean RT_worker( XtPointer elvis )
       return False ;
    }
 
-   if( jj < 0 ){                 /* something bad happened to data channel */
+   if( jj < 0 ){               /** something bad happened to data channel **/
       if( verbose == 2 )
-         fprintf(stderr,"RT: data channel closed down.\n") ;
+         fprintf(stderr,"RT: data stream closed down.\n") ;
       VMCHECK ;
-      if( rtinp->sbr != NULL ) RT_finish_dataset( rtinp ) ;
-      CLEANUP ; return False ;
+      if( rtinp->sbr[0] != NULL ) RT_finish_dataset( rtinp ) ;
+      CLEANUP(0) ; return False ;
    }
+
+   /************************************************/
+   /** If here, data is ready on the data channel **/
 
    /**-----------------------------------------------------**/
    /** If this is the first time reading the data channel, **/
@@ -969,28 +1100,42 @@ Boolean RT_worker( XtPointer elvis )
    /** (Will read the image data a little farther below.)  **/
 
    if( rtinp->no_data ){
+      int ii , nb ;
 
       /** if so ordered, start a child process to get header info **/
 
       if( strlen(rtinp->name_info) > 0 ) RT_start_child( rtinp ) ;
 
-      /** read some stuff from the data channel **/
+      /** read initial stuff from the data channel **/
 
-      fprintf(stderr,"RT: receiving first data=") ; fflush(stderr) ;
+      fprintf(stderr,"RT: receiving image metadata") ; fflush(stderr) ;
 
-      rtinp->nbuf = iochan_recv( rtinp->ioc_data , rtinp->buf , RT_NBUF ) ;
+      nb = iochan_recv( rtinp->ioc_data , rtinp->buf , RT_NBUF ) ;
 
-      fprintf(stderr,"%d bytes\n",rtinp->nbuf) ;
-
-      if( rtinp->nbuf <= 0 ){
-         fprintf(stderr,"RT: recv on data channel fails on first try!\a\n") ;
-         CLEANUP ; return False ;
+      if( nb <= 0 ){
+         fprintf(stderr,"\nRT: recv on data stream fails on first try!\a\n") ;
+         CLEANUP(0) ; return False ;
       }
+
+      /* read any more that comes available very quickly [06 Aug 2002] */
+
+      while( nb < RT_NBUF-1 ){
+        ii = iochan_readcheck( rtinp->ioc_data , SHORT_DELAY ) ;
+        if( ii <= 0 ) break ;
+        ii = iochan_recv( rtinp->ioc_data , rtinp->buf+nb , RT_NBUF-nb ) ;
+        if( ii <= 0 ) break ;
+        nb += ii ;
+      }
+      rtinp->nbuf = nb ;
+
+      fprintf(stderr,"=%d bytes\n",rtinp->nbuf) ;
 
       PLUTO_beep() ;
       PLUTO_popup_transient( plint , " \n"
-                                     "       Heads Up!\n"
-                                     "Incoming realtime data!\n" ) ;
+                                     "***************************\n"
+                                     "*       Heads Up!         *\n"
+                                     "* Incoming realtime data! *\n"
+                                     "***************************\n" ) ;
 
       /** process header info in the data channel;
           note that there must be SOME header info this first time **/
@@ -999,8 +1144,8 @@ Boolean RT_worker( XtPointer elvis )
 
       if( jj <= 0 ){                  /* header info not OK */
 
-         fprintf(stderr,"RT: initial image data is badly formatted!\a\n") ;
-         CLEANUP ; return False ;
+         fprintf(stderr,"RT: initial image metadata is badly formatted!\a\n") ;
+         CLEANUP(0) ; return False ;
 
       } else if( jj < rtinp->nbuf ){  /* data bytes left after header info */
 
@@ -1013,7 +1158,7 @@ Boolean RT_worker( XtPointer elvis )
 
       if( verbose == 2 )
          fprintf(stderr,
-                 "RT: processed %d bytes of header info from data channel\n",jj) ;
+                 "RT: processed %d bytes of header info from data stream\n",jj) ;
       VMCHECK ;
 
       rtinp->no_data = 0 ;  /* can't say we never received data */
@@ -1028,7 +1173,7 @@ Boolean RT_worker( XtPointer elvis )
          PLUTO_popup_transient( plint , " \n"
                                         "      Heads down!\n"
                                         "Realtime header was bad!\n" ) ;
-         CLEANUP ; return FALSE ;
+         CLEANUP(0) ; return FALSE ;
       }
    }
 
@@ -1038,10 +1183,29 @@ Boolean RT_worker( XtPointer elvis )
    jj = RT_process_data( rtinp ) ;
 
    if( jj < 0 ){
-      fprintf(stderr,"RT: data channel aborted during image read!\n") ;
-      if( rtinp->sbr != NULL ) RT_finish_dataset( rtinp ) ;
-      CLEANUP ; return False ;
+      fprintf(stderr,"RT: data stream aborted during image read!\n") ;
+      if( rtinp->sbr[0] != NULL ) RT_finish_dataset( rtinp ) ;
+      CLEANUP(0) ; return False ;
    }
+
+   /* 10 Dec 2002: if data stream marked itself for death,
+                   then close down the dataset,
+                   but don't close down the data stream itself;
+                   instead, create a new RT_input context for
+                   reading new metadata+image data from the
+                   same data stream                          */
+
+   if( rtinp->marked_for_death ){
+      RT_input *new_rtinp ;
+      fprintf(stderr,"RT: data stream says to close dataset.\n") ;
+      if( rtinp->sbr[0] != NULL ) RT_finish_dataset( rtinp ) ;
+      fprintf(stderr,"RT: starting to read from existing data stream.\n") ;
+      new_rtinp = new_RT_input( rtinp->ioc_data ) ; /* new RT_input context */
+      CLEANUP(1) ;                                 /* will delete old rtinp */
+      rtinp = new_rtinp ; return False ;
+   }
+
+   /*** continue normally! ***/
 
    rtinp->last_elapsed = PLUTO_elapsed_time() ;  /* record this time */
    return False ;
@@ -1055,7 +1219,7 @@ Boolean RT_worker( XtPointer elvis )
 #if MAX_NEV > 0
 void RT_process_xevents( RT_input * rtin )
 {
-   Display * dis = XtDisplay(rtin->im3d->vwid->top_shell) ;
+   Display * dis = THE_DISPLAY ;
    XEvent ev ; int nev=0 ;
 
    XSync( dis , False ) ;
@@ -1068,7 +1232,7 @@ void RT_process_xevents( RT_input * rtin )
 
           XtDispatchEvent( &ev ) ;  /* do the actual work for this event */
    }
-   XmUpdateDisplay(rtin->im3d->vwid->top_shell) ;
+   XmUpdateDisplay(THE_TOPSHELL) ;
    if( verbose == 2 && nev > 1 )
       fprintf(stderr,"RT: processed %d events\n",nev-1);
    return ;
@@ -1082,115 +1246,144 @@ void RT_process_xevents( RT_input * rtin ){}  /* doesn't do much */
    Will read from the control channel, which will tell it what data
    channel to open, and if it needs to fork a child process to gather
    header info.
+
+   10 Dec 2002: new input ioc_data is a pointer to an IOCHAN that
+                should be used for data acquisition:
+                  - if this is not NULL, then the control channel is NOT used
+                  - instead, the RT_input struct is setup to read
+                     directly from ioc_data (which should already be good)
+                  - in this case, you can't use an info_command; all the
+                     metadata must come from the ioc_data channel
 ----------------------------------------------------------------------------*/
 
-RT_input * new_RT_input(void)
+RT_input * new_RT_input( IOCHAN *ioc_data )
 {
-   RT_input * rtin ;
-   int ncon , ii ;
-   char * con , * ptr ;
-   Three_D_View * im3d ;
+   RT_input *rtin ;
+   int ii , cc ;
+   Three_D_View *im3d ;
 
-   /** wait until data can be read, or something terrible happens **/
+   if( ioc_data == NULL ){ /*** THE OLD WAY: get info from control channel ***/
 
-   if( iochan_readcheck(ioc_control,-1) <= 0 ){
-      fprintf(stderr,"RT: control channel fails readcheck!\a\n") ;
-      return NULL ;
-   }
+     int ncon ;
+     char *con , *ptr ;
 
-   /** make new structure **/
+     /** wait until data can be read, or something terrible happens **/
 
-   rtin = (RT_input *) malloc( sizeof(RT_input) ) ;
-   con  = (char *)     malloc( INFO_SIZE ) ;
+     if( iochan_readcheck(ioc_control,-1) <= 0 ){
+        fprintf(stderr,"RT: control stream fails readcheck!\a\n") ;
+        return NULL ;
+     }
 
-   if( rtin == NULL || con == NULL ){
-      fprintf(stderr,"RT: malloc fails in new_RT_input!\a\n") ; EXIT(1) ;
-   }
+     /** make new structure **/
 
-   /** read all data possible from control channel **/
+     rtin = (RT_input *) calloc( 1 , sizeof(RT_input) ) ;
+     con  = (char *)     malloc( INFO_SIZE ) ;
 
-   ncon = 0 ;  /* read all data possible from the control channel */
-   while(1){
-      ii = iochan_recv( ioc_control , con+ncon , INFO_SIZE-ncon ) ;
-      if( ii < 1 ) break ;
-      ncon += ii ;
-      if( ncon >= INFO_SIZE ){
-         fprintf(stderr,"RT: control channel buffer overflow!\a\n") ;
-         break ;
-      }
-      iochan_sleep( SHORT_DELAY ) ;
-   }
+     if( rtin == NULL || con == NULL ){
+        fprintf(stderr,"RT: malloc fails in new_RT_input!\a\n") ; EXIT(1) ;
+     }
 
-   if( ncon < 1 ){
-      fprintf(stderr,"RT: control channel sends no data!\a\n") ;
-      free(rtin) ; free(con) ; return NULL ;
-   }
+     /** read all data possible from control channel **/
 
-   /** The data we now have in 'con' should be of the form
-          image_channel_spec\n
-          info_command\n\0
-       where 'image_channel_spec' is an IOCHAN specifier saying
-         how AFNI should read the image data
-       and 'info_command' is the name of a command to run that
-         will write the dataset control info to stdout (where
-         a child of AFNI will get it using the 'popen' routine).
-         If no 'info_command' is needed (all the dataset info will
-         come thru on the image channel), then the info_command
-         should just be skipped.
-       Each string should be less than NNAME characters long!
-   **/
+     ncon = 0 ;  /* read all data possible from the control channel */
+     while(1){
+        ii = iochan_recv( ioc_control , con+ncon , INFO_SIZE-ncon ) ;
+        if( ii < 1 ) break ;
+        ncon += ii ;
+        if( ncon >= INFO_SIZE ){
+           fprintf(stderr,"RT: control stream buffer overflow!\a\n") ;
+           break ;
+        }
+        iochan_sleep( SHORT_DELAY ) ;
+     }
 
-   ncon = MIN( ncon , INFO_SIZE-2 ) ;
-   con[ncon+1] = '\0' ;               /* make sure it is NUL terminated */
+     if( ncon < 1 ){
+        fprintf(stderr,"RT: control stream sends no data!\a\n") ;
+        free(rtin) ; free(con) ; return NULL ;
+     }
 
-   /** copy first string -- this is image_channel_spec **/
+     /** The data we now have in 'con' should be of the form
+            image_channel_spec\n
+            info_command\n\0
+         where 'image_channel_spec' is an IOCHAN specifier saying
+           how AFNI should read the image data
+         and 'info_command' is the name of a command to run that
+           will write the dataset control info to stdout (where
+           a child of AFNI will get it using the 'popen' routine).
+           If no 'info_command' is needed (all the dataset info will
+           come thru on the image channel), then the info_command
+           should just be skipped.
+         Each string should be less than NNAME characters long!
+     **/
 
-   ii = 0 ;
-   for( ptr=con ; ii < NNAME && *ptr != '\0' && *ptr != '\n' ; ptr++ ){
-      rtin->name_data[ii++] = *ptr ;
-   }
-   if( ii >= NNAME ){
-      fprintf(stderr,"RT: control image_channel_spec buffer overflow!\a\n") ;
-      ii = NNAME - 1 ;
-   }
-   rtin->name_data[ii] = '\0' ;
+     ncon = MIN( ncon , INFO_SIZE-2 ) ;
+     con[ncon+1] = '\0' ;               /* make sure it is NUL terminated */
 
-   /** open data channel **/
+     /** copy first string -- this is image_channel_spec **/
 
-   rtin->ioc_data = iochan_init( rtin->name_data , "accept" ) ;
-   if( rtin->ioc_data == NULL ){
-      fprintf(stderr,"RT: failure to open data IOCHAN %s\a\n",rtin->name_data) ;
-      free(rtin) ; free(con) ; return NULL ;
-   }
+     ii = 0 ;
+     for( ptr=con ; ii < NNAME && *ptr != '\0' && *ptr != '\n' ; ptr++ ){
+        rtin->name_data[ii++] = *ptr ;
+     }
+     if( ii >= NNAME ){
+        fprintf(stderr,"RT: control image_channel_spec buffer overflow!\a\n") ;
+        ii = NNAME - 1 ;
+     }
+     rtin->name_data[ii] = '\0' ;
 
-   if( verbose == 2 )
-      fprintf(stderr,"RT: opened data channel %s\n",rtin->name_data) ;
-   VMCHECK ;
+     /** open data channel **/
 
-   /** if more follows, that is a command for a child process
-       (which will not be started until the first image data arrives) **/
+     rtin->ioc_data = iochan_init( rtin->name_data , "accept" ) ;
+     if( rtin->ioc_data == NULL ){
+        fprintf(stderr,"RT: failure to open data IOCHAN %s\a\n",rtin->name_data) ;
+        free(rtin) ; free(con) ; return NULL ;
+     }
 
-   ii = 0 ;
-   if( *ptr != '\0' ){
-      for( ptr++ ; ii < NNAME && *ptr != '\0' && *ptr != '\n' ; ptr++ ){
-         rtin->name_info[ii++] = *ptr ;
-      }
-      if( ii >= NNAME ){
-         fprintf(stderr,"RT: control info_command buffer overflow!\a\n") ;
-         ii = NNAME - 1 ;
-      }
-   }
-   rtin->name_info[ii] = '\0' ;
+     if( verbose == 2 )
+        fprintf(stderr,"RT: opened data stream %s\n",rtin->name_data) ;
+     VMCHECK ;
 
-   if( verbose == 2 ){
-      if( strlen(rtin->name_info) > 0 )
-         fprintf(stderr,"RT: info command for child will be '%s'\n",rtin->name_info) ;
-      else
-         fprintf(stderr,"RT: no info command given.\n") ;
-   }
-   VMCHECK ;
+     /** if more follows, that is a command for a child process
+         (which will not be started until the first image data arrives) **/
 
-   /** the command (if any) will be run later **/
+     ii = 0 ;
+     if( *ptr != '\0' ){
+        for( ptr++ ; ii < NNAME && *ptr != '\0' && *ptr != '\n' ; ptr++ ){
+           rtin->name_info[ii++] = *ptr ;
+        }
+        if( ii >= NNAME ){
+           fprintf(stderr,"RT: control info_command buffer overflow!\a\n") ;
+           ii = NNAME - 1 ;
+        }
+     }
+     rtin->name_info[ii] = '\0' ;
+
+     if( verbose == 2 ){
+        if( strlen(rtin->name_info) > 0 )
+           fprintf(stderr,"RT: info command for child will be '%s'\n",rtin->name_info) ;
+        else
+           fprintf(stderr,"RT: no info command given.\n") ;
+     }
+
+     free(con) ;
+     VMCHECK ;
+
+     /** the command (if any) will be run later **/
+
+   } else {  /*** THE NEW WAY: directly connect to ioc_data channel [10 DEC 2002] ***/
+
+     /** make new structure **/
+
+     rtin = (RT_input *) calloc( 1 , sizeof(RT_input) ) ;
+     if( rtin == NULL ){
+        fprintf(stderr,"RT: malloc fails in new_RT_input!\a\n") ; EXIT(1) ;
+     }
+
+     MCW_strncpy( rtin->name_data , ioc_data->name , NNAME ) ;  /* not really needed */
+     rtin->ioc_data     = ioc_data ;
+     rtin->name_info[0] = '\0' ;                                /* no child */
+
+   } /*** end of THE NEW WAY of starting up ***/
 
    rtin->ioc_info   = NULL ;
    rtin->child_info = 0 ;
@@ -1198,7 +1391,7 @@ RT_input * new_RT_input(void)
    /** wait until the data channel is good **/
 
    if( verbose )
-      fprintf(stderr,"RT: waiting for data channel to open.\n") ;
+      fprintf(stderr,"RT: waiting for data stream to become good.\n") ;
    VMCHECK ;
 
    while(1){
@@ -1206,14 +1399,14 @@ RT_input * new_RT_input(void)
            if( ii >  0 )                 break ;               /* is good! */
       else if( ii == 0 && verbose == 2 ) fprintf(stderr,".") ; /* not good yet */
       else {                                                   /* is bad! */
-         fprintf(stderr,"RT: data channel fails to become good!\a\n") ;
-         IOCHAN_CLOSE(rtin->ioc_data) ; free(rtin) ; free(con) ;
+         fprintf(stderr,"RT: data stream fails to become good!\a\n") ;
+         IOCHAN_CLOSE(rtin->ioc_data) ; free(rtin) ;
          return NULL ;
       }
    }
 
    if( verbose == 2 )
-      fprintf(stderr,"RT: data channel is opened.\n") ;
+      fprintf(stderr,"RT: data stream is now bodaciously good.\n") ;
    VMCHECK ;
 
    /** initialize internal constants in the struct **/
@@ -1224,9 +1417,7 @@ RT_input * new_RT_input(void)
    rtin->image_handle = NULL ;
    rtin->image_space  = NULL ;
 
-   strcpy(rtin->prefix,root) ;
-
-#if 0
+#if 0                               /*** THE VERY OLD WAY to set things up ***/
    rtin->nxx = DEFAULT_XYMATRIX ;
    rtin->nyy = DEFAULT_XYMATRIX ;
    rtin->nzz = DEFAULT_ZNUM ;
@@ -1242,9 +1433,14 @@ RT_input * new_RT_input(void)
    rtin->dyy   = DEFAULT_XYFOV / DEFAULT_XYMATRIX ;
    rtin->dzz   = DEFAULT_ZDELTA ;
 
+   rtin->zgap  = 0.0 ;                  /* 18 Dec 2002 */
+   rtin->xxoff = rtin->yyoff = rtin->zzoff = 0.0 ;
+
    rtin->xxorg = 0.5 * (rtin->nxx - 1) * rtin->dxx ; rtin->xcen = 1 ;
    rtin->yyorg = 0.5 * (rtin->nyy - 1) * rtin->dyy ; rtin->ycen = 1 ;
    rtin->zzorg = 0.5 * (rtin->nzz - 1) * rtin->dzz ; rtin->zcen = 1 ;
+   rtin->xxdcode = ILLEGAL_TYPE ;
+   rtin->yydcode = ILLEGAL_TYPE ;
    rtin->zzdcode = ILLEGAL_TYPE ;
 
    rtin->tr     = DEFAULT_TR ;
@@ -1270,8 +1466,11 @@ RT_input * new_RT_input(void)
    rtin->dyy   = 0.0 ;
    rtin->dzz   = 0.0 ;
 
-   rtin->xxorg = 0.0 ; rtin->xcen = 1 ;
-   rtin->yyorg = 0.0 ; rtin->ycen = 1 ;
+   rtin->zgap  = 0.0 ;                  /* 18 Dec 2002 */
+   rtin->xxoff = rtin->yyoff = rtin->zzoff = 0.0 ;
+
+   rtin->xxorg = 0.0 ; rtin->xcen = 1 ; rtin->xxdcode = ILLEGAL_TYPE ;
+   rtin->yyorg = 0.0 ; rtin->ycen = 1 ; rtin->yydcode = ILLEGAL_TYPE ;
    rtin->zzorg = 0.0 ; rtin->zcen = 1 ; rtin->zzdcode = ILLEGAL_TYPE ;
 
    rtin->tr     = DEFAULT_TR ;
@@ -1284,30 +1483,34 @@ RT_input * new_RT_input(void)
    rtin->zorder_lock = 0 ;              /* 22 Feb 1999 */
 #endif
 
+   rtin->swap_on_read = 0 ;  /* wait for BYTEORDER     26 Jun 2003 [rickr] */
+
    rtin->nbuf   = 0    ;     /* no input buffer data yet */
-   rtin->dset   = NULL ;     /* no dataset yet */
-   rtin->sbr    = NULL ;     /* no brick space yet */
-   rtin->im     = NULL ;
    rtin->imsize = 0 ;        /* don't know how many bytes/image yet */
    rtin->bufar  = NULL ;     /* no input image buffer yet */
 
-   /** define connection to AFNI **/
-
-   rtin->afni_status = 0 ;   /* AFNI is ignorant of the dataset */
-
    im3d = plint->im3d ;                           /* default controller */
-   if( !IM3D_OPEN(im3d) ){                        /* may not be open */
-      for( ii=0 ; ii < MAX_CONTROLLERS ; ii++ ){  /* so find an open one */
-         im3d = GLOBAL_library.controllers[ii] ;
-         if( IM3D_OPEN(im3d) ) break ;
-      }
-      if( ii == MAX_CONTROLLERS ){                /* should not be possible */
-         fprintf(stderr,"RT: no open controllers in AFNI!?\a\n") ;
-         EXIT(1) ;
-      }
+   if( !IM3D_OPEN(im3d) )                         /* may not be open */
+      im3d = AFNI_find_open_controller() ;
+
+   /** 01 Aug 2002: initialize dataset dependent items */
+
+   for( cc=0 ; cc < MAX_CHAN ; cc++ ){
+      rtin->afni_status[cc] = 0 ;      /* AFNI is ignorant of the dataset */
+      rtin->dset[cc]        = NULL ;   /* no dataset yet */
+      rtin->sbr[cc]         = NULL ;   /* no brick space yet */
+      rtin->im[cc]          = NULL ;
+      rtin->nvol[cc]        = 0 ;
+      rtin->nsl[cc]         = 0 ;
+      rtin->im3d[cc]        = im3d ;
+      rtin->sess[cc]        = GLOBAL_library.sslist->ssar[im3d->vinfo->sess_num] ;
+      rtin->sess_num[cc]    = im3d->vinfo->sess_num ;
    }
-   rtin->im3d = im3d ;
-   rtin->sess = GLOBAL_library.sslist->ssar[im3d->vinfo->sess_num] ;
+
+   rtin->num_chan = 1 ;   /* default number of channels */
+   rtin->cur_chan = 0 ;   /* current channel index */
+
+   strcpy( rtin->root_prefix , root ) ;
 
    /** setup realtime function evaluation **/
 
@@ -1339,11 +1542,24 @@ RT_input * new_RT_input(void)
    rtin->reg_dz       = (float *) malloc( sizeof(float) ) ;
    rtin->reg_theta    = (float *) malloc( sizeof(float) ) ;
    rtin->reg_psi      = (float *) malloc( sizeof(float) ) ;
+   rtin->reg_rep      = (float *) malloc( sizeof(float) ) ;
+   rtin->reg_eval     = (float *) malloc( sizeof(float) ) ;
    rtin->reg_3dbasis  = NULL ;
    rtin->mp           = NULL ;    /* no plot yet */
 
+   rtin->reg_graph_xnew = 0 ;     /* did the user update reg_graph_xr */
+   rtin->reg_graph_ynew = 0 ;     /* did the user update reg_graph_yr */
    rtin->reg_graph_xr = reg_nr ;  /* will scale by TR when we know it */
    rtin->reg_graph_yr = reg_yr ;
+
+   rtin->p_code = NULL ;          /* init parser code    12 Feb 2004 [rickr] */
+
+   rtin->mp_tcp_use = 0 ;         /* tcp motion param    30 Mar 2004 [rickr] */
+   rtin->mp_tcp_sd  = 0 ;
+   rtin->mp_port    = RT_MP_DEF_PORT ;
+   rtin->mp_nmsg    = 0 ;
+   rtin->mp_npsets  = 0 ;
+   strcpy(rtin->mp_host, "localhost") ;
 
    rtin->reg_resam = REG_resam_ints[reg_resam] ;
    if( rtin->reg_resam < 0 ){                    /* 20 Nov 1998: */
@@ -1359,10 +1575,15 @@ RT_input * new_RT_input(void)
 
    /** record the times for later reportage **/
 
-   rtin->elapsed = PLUTO_elapsed_time() ;  rtin->last_elapsed = rtin->elapsed ;
-   rtin->cpu     = PLUTO_cpu_time() ;      rtin->nvol = rtin->last_nvol = 0 ;
+   rtin->elapsed = PLUTO_elapsed_time() ; rtin->last_elapsed = rtin->elapsed ;
+   rtin->cpu     = PLUTO_cpu_time() ;     rtin->last_nvol = 0 ;
 
-   free(con) ; return rtin ;
+   rtin->num_note = 0 ;      /* 01 Oct 2002: notes list */
+   rtin->note     = NULL ;
+
+   rtin->marked_for_death = 0 ;  /* 10 Dec 2002 */
+
+   return rtin ;
 }
 
 /*-------------------------------------------------------------------------
@@ -1394,7 +1615,7 @@ void RT_start_child( RT_input * rtin )
       rtin->ioc_info   = iochan_init( SHM_CHILD , "accept" ) ;
       if( rtinp->ioc_info == NULL ){
          kill( child_pid , SIGTERM ) ;
-         fprintf(stderr,"RT: can't create read channel from child!\a\n") ;
+         fprintf(stderr,"RT: can't create read stream from child!\a\n") ;
          EXIT(1) ;
       }
 
@@ -1430,7 +1651,7 @@ int RT_acquire_info( char * command )
 
    ioc = iochan_init( SHM_CHILD , "create" ) ;
    if( ioc == NULL ){
-      fprintf(stderr,"RT: child fails to open channel back to parent!\a\n") ;
+      fprintf(stderr,"RT: child fails to open stream back to parent!\a\n") ;
       _exit(1) ;
    }
 
@@ -1500,15 +1721,15 @@ void RT_check_info( RT_input * rtin , int prt )
    /*-- below here: must construct dataset, so do all necessary checks --*/
 
    rtin->info_ok = ( rtin->dtype > 0 )                            &&
-                   ( THD_filename_pure(rtin->prefix) )            &&
-                   ( strlen(rtin->prefix) < THD_MAX_PREFIX )      &&
+                   ( THD_filename_pure(rtin->root_prefix) )       &&
+                   ( strlen(rtin->root_prefix) < THD_MAX_PREFIX ) &&
                    ( rtin->tr > 0 )                               &&
                    ( rtin->dzz > 0 || rtin->zzfov > 0 )           &&
                    ( rtin->xxfov > 0 )                            &&
                    ( rtin->yyfov > 0 )                            &&
                    ( rtin->nxx > 1 )                              &&
                    ( rtin->nyy > 1 )                              &&
-                   ( rtin->nzz > 1 )                              &&
+                   ( rtin->nzz >= 1 )                             &&
                    ( AFNI_GOOD_DTYPE(rtin->datum) )               &&
                    ( rtin->zorder > 0 )                           &&
                    ( rtin->orcxx >= 0 )                           &&
@@ -1521,15 +1742,15 @@ void RT_check_info( RT_input * rtin , int prt )
    /* print error messages */
 
    if( !(rtin->dtype > 0)                            ) EPR("Bad acquisition type") ;
-   if( !(THD_filename_pure(rtin->prefix))            ) EPR("Bad prefix") ;
-   if( !(strlen(rtin->prefix) < THD_MAX_PREFIX)      ) EPR("Overlong prefix") ;
+   if( !(THD_filename_pure(rtin->root_prefix))       ) EPR("Bad prefix") ;
+   if( !(strlen(rtin->root_prefix) < THD_MAX_PREFIX) ) EPR("Overlong prefix") ;
    if( !(rtin->tr > 0)                               ) EPR("TR is not positive") ;
    if( !(rtin->dzz > 0 || rtin->zzfov > 0)           ) EPR("Slice thickness not positive") ;
    if( !(rtin->xxfov > 0)                            ) EPR("x-FOV not positive") ;
    if( !(rtin->yyfov > 0)                            ) EPR("y-FOV not positive") ;
    if( !(rtin->nxx > 1)                              ) EPR("Image x-dimen not > 1") ;
    if( !(rtin->nyy > 1)                              ) EPR("Image y-dimen not > 1") ;
-   if( !(rtin->nzz > 1)                              ) EPR("Slice count (z-dimen) not > 1") ;
+   if( !(rtin->nzz >= 1)                             ) EPR("Slice count (z-dimen) not >= 1") ;
    if( !(AFNI_GOOD_DTYPE(rtin->datum))               ) EPR("Bad datum") ;
    if( !(rtin->zorder > 0)                           ) EPR("Slice ordering illegal") ;
    if( !(rtin->orcxx >= 0)                           ) EPR("x-orientation illegal") ;
@@ -1540,6 +1761,247 @@ void RT_check_info( RT_input * rtin , int prt )
    return ;
 }
 
+#ifdef ALLOW_REGISTRATION
+/*---------------------------------------------------------------------------
+   Close the socket connection.                        30 Mar 2004 [rickr]
+
+   return   0 : on success
+          < 0 : on error
+-----------------------------------------------------------------------------*/
+int RT_mp_comm_close( RT_input * rtin )
+{
+    char magic_bye[] = { 0xde, 0xad, 0xde, 0xad, 0 };
+
+    if ( rtin->mp_tcp_use != 1 || rtin->mp_tcp_sd <= 0 )
+	return 0;
+
+    if ( (tcp_writecheck(rtin->mp_tcp_sd, 1)   == -1) ||
+         (send(rtin->mp_tcp_sd, magic_bye, 4, 0) == -1 ) )
+	fprintf(stderr,"** closing: our MP socket has gone bad?\n");
+
+    fprintf(stderr,"RT: MP: closing motion param socket, "
+	           "sent %d param sets over %d messages\n",
+		   rtin->mp_npsets, rtin->mp_nmsg);
+
+    /* in any case, close the socket */
+    close(rtin->mp_tcp_sd);
+    rtin->mp_tcp_sd  = 0;
+    rtin->mp_tcp_use = 0;
+    rtin->mp_npsets  = 0;
+    rtin->mp_nmsg    = 0;
+
+    return 0;
+}
+
+
+/*---------------------------------------------------------------------------
+   Send the current motion params.                        30 Mar 2004 [rickr]
+
+   return   0 : on success
+          < 0 : on error
+-----------------------------------------------------------------------------*/
+int RT_mp_comm_send_data( RT_input * rtin, float * mp[6], int nt )
+{
+    float data[600];		/* max transfer is nt == 100 */
+    int   rv, nvals, remain;
+    int   c, c2;
+
+    if ( rtin->mp_tcp_use != 1 || nt <= 0 )
+	return 0;
+
+    if ( rtin->mp_tcp_sd <= 0 )
+	return -1;
+
+    /* hmmmm, Bob has a good function to test the socket... */
+    if ( (rv = tcp_writecheck(rtin->mp_tcp_sd, 1)) == -1 )
+    {
+	fprintf(stderr,"** our MP socket has gone bad?\n");
+	close(rtin->mp_tcp_sd);
+	rtin->mp_tcp_sd  = 0;
+	rtin->mp_tcp_use = 0;	/* allow a later re-try... */
+	return -1;
+    }
+
+    remain = nt;
+    while ( remain > 0 )
+    {
+	nvals = MIN(remain, 100);
+
+	/* copy floats to 'data' */
+	for ( c = 0; c < nvals; c++ )
+	    for ( c2 = 0; c2 < 6; c2++ )
+		data[6*c+c2] = mp[c2][c];
+
+	if ( send(rtin->mp_tcp_sd, data, 6*nvals*sizeof(float), 0) == -1 )
+	{
+	    fprintf(stderr,"** failed to send %d floats, closing socket...\n",
+		    6*nvals);
+	    close(rtin->mp_tcp_sd);
+	    rtin->mp_tcp_sd  = 0;
+	    rtin->mp_tcp_use = 0;  /* allow a later re-try... */
+	    return -1;
+	}
+
+	/* keep track of num messages and num param sets */
+	rtin->mp_nmsg++;
+	rtin->mp_npsets += nvals;
+
+	remain -= nvals;
+    }
+
+    return 0;
+}
+
+
+/*---------------------------------------------------------------------------
+   Initialize the motion parameter communications.        30 Mar 2004 [rickr]
+
+   return   0 : on success
+          < 0 : on error
+-----------------------------------------------------------------------------*/
+int RT_mp_comm_init( RT_input * rtin )
+{
+    struct sockaddr_in   sin;
+    struct hostent     * hostp;
+    char                 magic_hi[] = { 0xab, 0xcd, 0xef, 0xab };
+    int                  sd;
+
+    if ( rtin->mp_tcp_sd != 0 )
+	fprintf(stderr,"** warning, did we not close the MP socket?\n");
+
+    if ( (hostp = gethostbyname(rtin->mp_host)) == NULL )
+    {
+	fprintf(stderr,"** cannot lookup host '%s'\n", rtin->mp_host);
+	rtin->mp_tcp_use = -1;
+	return -1;
+    }
+
+    /* fill the sockaddr_in struct */
+    memset(&sin, 0, sizeof(sin));
+    sin.sin_family      = AF_INET;
+    sin.sin_addr.s_addr = ((struct in_addr *)(hostp->h_addr))->s_addr;
+    sin.sin_port        = htons(rtin->mp_port);
+
+    /* get a socket */
+    if ( (sd = socket(AF_INET, SOCK_STREAM, 0)) == -1 )
+    {
+	perror("pe: socket");
+	rtin->mp_tcp_use = -1;   /* let us not try, try again */
+	return -1;
+    }
+
+    if ( connect(sd, (struct sockaddr *)&sin, sizeof(sin)) == -1 )
+    {
+	perror("pe: connect");
+	rtin->mp_tcp_use = -1;
+	return -1;
+    }
+
+    /* send the hello message */
+    if ( send(sd, magic_hi, 4*sizeof(char), 0) == -1 )
+    {
+	perror("pe: send hello");
+	rtin->mp_tcp_use = -1;
+	return -1;
+    }
+
+    fprintf(stderr,"RT: MP: opened motion param socket to %s:%d\n",
+	    rtin->mp_host, rtin->mp_port);
+
+    /* everything worked out, we're good to van Gogh */
+
+    rtin->mp_tcp_sd = sd;
+
+    return 0;
+}
+
+
+/*---------------------------------------------------------------------------
+   Initialize the motion parameter communication variables. 30 Mar 2004 [rickr]
+
+   We are expecting AFNI_REALTIME_MP_HOST_PORT to read "hostname:port".
+
+   return   0 : on success
+          < 0 : on error
+-----------------------------------------------------------------------------*/
+int RT_mp_comm_init_vars( RT_input * rtin )
+{
+    char * ept, * cp;
+    int    len;
+
+    if ( rtin->mp_tcp_use < 0 )	    /* we've failed out, do not try again */
+	return 0;
+
+    if ( rtin->mp_tcp_sd != 0 )
+	fprintf(stderr,"** warning, did we not close the MP socket?\n");
+    rtin->mp_tcp_sd   = 0;
+
+    /* for now, we will only init this if the HOST:PORT env var exists */
+    ept = getenv("AFNI_REALTIME_MP_HOST_PORT") ;  /* 09 Oct 2000 */
+    if( ept == NULL )
+	return 0;
+
+    cp = strchr(ept, ':');	/* find ':' seperator */
+
+    if ( cp == NULL || !isdigit(*(cp+1)) )
+    {
+	fprintf(stderr,"** env var AFNI_REALTIME_MP_HOST_PORT must be in the "
+		       "form hostname:port_num\n   (var is '%s')\n", ept);
+	return -1;
+    }
+
+    len = cp - ept;	/* length of hostname */
+    if ( len > 127 )
+    {
+        fprintf(stderr,"** motion param hostname restricted to 127 bytes,\n"
+	               "   found %d from host in %s\n", len, ept);
+	return -1;
+    }
+
+    fprintf(stderr,"RT: MP: found motion param env var '%s'\n", ept);
+
+    rtin->mp_port = atoi(cp+1);
+    strncpy(rtin->mp_host, ept, len);
+    rtin->mp_host[len] = '\0';
+    rtin->mp_tcp_use = 1;
+
+    return 0;
+}
+
+
+/*---------------------------------------------------------------------------
+   Initialize the parser fields from the user expression.  12 Feb 2004 [rickr]
+
+   return   0 : on success
+          < 0 : on error
+-----------------------------------------------------------------------------*/
+int RT_parser_init( RT_input * rtin )
+{
+    PARSER_set_printout(1);
+    rtin->p_code = PARSER_generate_code( rtin->p_expr );
+
+    if ( ! rtin->p_code )
+    {
+	fprintf(stderr,"** cannot parse expression '%s'\n", rtin->p_expr);
+	return -1;
+    }
+
+    /* p_max_sym will be 0 if nothing is marked, 26 if z is, etc. */
+    PARSER_mark_symbols( rtin->p_code, rtin->p_has_sym );
+    for ( rtin->p_max_sym = 26; rtin->p_max_sym > 0; rtin->p_max_sym-- )
+	if ( rtin->p_has_sym[rtin->p_max_sym - 1] )
+	    break;
+
+    if ( rtin->p_max_sym > 6 )
+    {
+	fprintf(stderr,"** parser expression may only contain symbols a-f\n");
+	return -2;
+    }
+
+    return 0;
+}
+#endif
+
 /*---------------------------------------------------------------------------
    Process command strings in the buffer, up to the first '\0' character.
    Returns the number of characters processed, which will be one more than
@@ -1548,7 +2010,7 @@ void RT_check_info( RT_input * rtin , int prt )
 
 #define BADNEWS     fprintf(stderr,"RT: illegal header info=%s\a\n",buf)
 #define STARTER(st) (strncmp(buf,st,strlen(st)) == 0)
-#define NBUF        256
+#define NBUF        1024
 
 int RT_process_info( int ninfo , char * info , RT_input * rtin )
 {
@@ -1604,12 +2066,81 @@ int RT_process_info( int ninfo , char * info , RT_input * rtin )
          else
               BADNEWS ;
 
+#ifdef ALLOW_REGISTRATION
+
+      /* Some troublesome physicist, let's just call him "Tom" (possibly
+       * named by his mother, Mrs. Ross), wants control over the ranges
+       * in the motion correction graph window.
+       *                                                29 Jan 2004 [rickr] */
+
+      } else if( STARTER("GRAPH_XRANGE") ){
+         float fval = 0.0 ;
+         sscanf( buf , "GRAPH_XRANGE %f" , &fval ) ;
+         if( fval >= MIN_PIN && fval <= MAX_PIN ) {
+	     rtin->reg_graph_xnew = 1;
+	     rtin->reg_graph_xr   = fval;
+
+             if( rtin->reg_graph && REG_IS_3D(rtin->reg_mode) &&
+		 IM3D_OPEN(plint->im3d) )
+	     {
+		 plot_ts_xypush(1-rtin->reg_graph_xnew, 1-rtin->reg_graph_ynew);
+		 RT_set_grapher_pinnums((int)(fval+0.5));
+	     }
+
+	 } else
+              BADNEWS ;
+
+      } else if( STARTER("GRAPH_YRANGE") ){
+         float fval = 0.0 ;
+         sscanf( buf , "GRAPH_YRANGE %f" , &fval ) ;
+         if( fval > 0.0 ) {
+	    rtin->reg_graph_ynew = 1;
+	    rtin->reg_graph_yr   = fval ;
+
+	    /* if the user sets scales, don't 'push'    11 Feb 2004 [rickr] */
+            if( rtin->reg_graph && REG_IS_3D(rtin->reg_mode) )
+		plot_ts_xypush(1-rtin->reg_graph_xnew, 1-rtin->reg_graph_ynew);
+	 } else
+            BADNEWS ;
+
+      /* Allow the user to specify an expression, to evalue the six motion
+       * parameters into one.
+       *                                                12 Feb 2004 [rickr] */
+      } else if( STARTER("GRAPH_EXPR") ){
+         sscanf( buf , "GRAPH_EXPR %1024s" , rtin->p_expr ) ;
+	 rtin->p_expr[RT_MAX_EXPR] = '\0';
+	 if ( RT_parser_init(rtin) != 0 )
+            BADNEWS ;
+#endif
+
       } else if( STARTER("NAME") ){
          char npr[THD_MAX_PREFIX] = "\0" ;
-         sscanf( buf , "NAME %31s" , npr ) ;
-         if( THD_filename_pure(npr) ) strcpy( rtin->prefix , npr ) ;
+	 /* RT_MAX_PREFIX is used here, currently 100 */
+         sscanf( buf , "NAME %100s" , npr ) ; /* 31->100  29 Jan 2004 [rickr] */
+         if( THD_filename_pure(npr) ) strcpy( rtin->root_prefix , npr ) ;
          else
               BADNEWS ;
+
+      } else if( STARTER("PREFIX") ){           /* 01 Aug 2002 */
+         char npr[THD_MAX_PREFIX] = "\0" ;
+	 /* RT_MAX_PREFIX is used here, currently 100 */
+         sscanf( buf , "PREFIX %100s" , npr ) ;
+         if( THD_filename_pure(npr) ) strcpy( rtin->root_prefix , npr ) ;
+         else
+              BADNEWS ;
+
+      } else if( STARTER("NOTE") ) {            /* 01 Oct 2002: notes list */
+         int nn = rtin->num_note ;
+         if( nbuf > 6 ){
+           int ii ;
+           rtin->note = realloc( rtin->note , sizeof(char *)*(nn+1) ); /* extend array */
+           rtin->note[nn] = strdup(buf+5) ;                            /* skip "NOTE "  */
+           for( ii=0 ; rtin->note[nn][ii] != '\0' ; ii++ )             /* '\n' insertion */
+             if( rtin->note[nn][ii] == '\a' || rtin->note[nn][ii] == '\f' )
+               rtin->note[nn][ii] = '\n';
+           rtin->num_note ++ ;
+         } else
+           BADNEWS ;
 
       } else if( STARTER("NUMVOL") ){
          int val = 0 ;
@@ -1635,7 +2166,27 @@ int RT_process_info( int ninfo , char * info , RT_input * rtin )
             fprintf(stderr,"RT: dzz = %g\n",rtin->dzz) ;
          VMCHECK ;
 
-      } else if( STARTER("ZFIRST") ){
+      } else if( STARTER("ZGAP") ){               /* 18 Dec 2002 */
+         float val = 0.0 ;
+         sscanf( buf , "ZGAP %f" , &val ) ;
+         if( val >= 0.0 ) rtin->zgap = val ;
+         else
+              BADNEWS ;
+         if( verbose == 2 )
+            fprintf(stderr,"RT: zgap = %g\n",rtin->zgap) ;
+         VMCHECK ;
+
+      } else if( STARTER("XYZOFF") ){             /* 18 Dec 2002 */
+         float xval = 0.0 , yval = 0.0 , zval = 0.0 ;
+         sscanf( buf , "XYZOFF %f %f %f" , &xval , &yval , &zval ) ;
+         rtin->xxoff = xval ; rtin->xcen = 1 ;
+         rtin->yyoff = yval ; rtin->ycen = 1 ;
+         rtin->zzoff = zval ; rtin->zcen = 1 ;
+         if( verbose == 2 )
+            fprintf(stderr,"RT: offset = %g %g %g\n",rtin->xxoff,rtin->yyoff,rtin->zzoff) ;
+         VMCHECK ;
+
+      } else if( STARTER("ZFIRST") ){   /* set z origin */
          float val = 0.0 ;
          char dcode = ' ' ;
          sscanf( buf , "ZFIRST %f%c" , &val,&dcode ) ;
@@ -1644,8 +2195,26 @@ int RT_process_info( int ninfo , char * info , RT_input * rtin )
          rtin->zzdcode = ORCODE(dcode) ;
          if( verbose == 2 )
             fprintf(stderr,"RT: zzorg = %g%c\n" ,
-                    rtin->zzorg , (rtin->zzdcode < 0) ? ' '
-                                                      : ORIENT_first[rtin->zzdcode] ) ;
+                    rtin->zzorg ,
+                    (rtin->zzdcode < 0) ? ' ' : ORIENT_first[rtin->zzdcode] ) ;
+         VMCHECK ;
+
+      } else if( STARTER("XYZFIRST") ){  /* 10 Dec 2002: set all origins */
+         float xf=0.0,yf=0.0,zf=0.0 ;
+         char  xc=' ',yc=' ',zc=' ' ;
+         sscanf( buf , "XYZFIRST %f%c%f%c%f%c" , &xf,&xc,&yf,&yc,&zf,&zc ) ;
+         rtin->xxorg = xf ; rtin->xcen = 0 ; rtin->xxdcode = ORCODE(xc) ;
+         rtin->yyorg = yf ; rtin->ycen = 0 ; rtin->yydcode = ORCODE(yc) ;
+         rtin->zzorg = zf ; rtin->zcen = 0 ; rtin->zzdcode = ORCODE(zc) ;
+         if( verbose == 2 )
+            fprintf(stderr,"RT: xxorg=%g%c yyorg=%g%c zzorg=%g%c\n" ,
+                    rtin->xxorg ,
+                    (rtin->xxdcode < 0) ? ' ' : ORIENT_first[rtin->xxdcode] ,
+                    rtin->yyorg ,
+                    (rtin->yydcode < 0) ? ' ' : ORIENT_first[rtin->yydcode] ,
+                    rtin->zzorg ,
+                    (rtin->zzdcode < 0) ? ' ' : ORIENT_first[rtin->zzdcode]
+                   ) ;
          VMCHECK ;
 
       } else if( STARTER("XYFOV") ){
@@ -1664,12 +2233,12 @@ int RT_process_info( int ninfo , char * info , RT_input * rtin )
       } else if( STARTER("XYMATRIX") ){
          int xval = 0 , yval = 0 , zval = 0 ;
          sscanf( buf , "XYMATRIX %d %d %d" , &xval , &yval , &zval ) ;
-         if( xval > 0 ){
+         if( xval > 1 ){
             rtin->nxx = xval ;
-            rtin->nyy = (yval > 0) ? yval : xval ;
+            rtin->nyy = (yval > 1) ? yval : xval ;
             if( zval > 0 ){
                rtin->nzz = zval ;
-               if( rtin->nzz < 2 ) fprintf(stderr,"RT: # slices = 1!\a\n") ;
+               if( rtin->nzz < 1 ) fprintf(stderr,"RT: # slices = %d!\a\n",zval) ;
             }
          } else
                 BADNEWS ;
@@ -1682,11 +2251,11 @@ int RT_process_info( int ninfo , char * info , RT_input * rtin )
          sscanf( buf , "ZNUM %d" , &zval ) ;
          if( zval > 0 ){
              rtin->nzz = zval ;
-             if( rtin->nzz < 2 ) fprintf(stderr,"RT: # slices = 1!\a\n") ;
+             if( rtin->nzz < 1 ) fprintf(stderr,"RT: # slices = %d!\a\n",zval) ;
          }
          else
               BADNEWS ;
-         if( verbose == 2 && rtin->nzz > 1 )
+         if( verbose == 2 && rtin->nzz >= 1 )
             fprintf(stderr,"RT: # slices = %d\n",rtin->nzz) ;
          VMCHECK ;
 
@@ -1704,6 +2273,30 @@ int RT_process_info( int ninfo , char * info , RT_input * rtin )
             fprintf(stderr,"RT: datum code = %d\n",rtin->datum) ;
          VMCHECK ;
 
+      } else if( STARTER("BYTEORDER") ){    /* 27 Jun 2003:           [rickr] */
+         int bo = 0 ;
+	 char tstr[10] = "\0" ;
+	 sscanf( buf, "BYTEORDER %9s", tstr ) ;
+
+	 /* first, note the incoming endian */
+	 if      ( strncmp(tstr,"LSB_FIRST",9) == 0 ) bo = LSB_FIRST ;
+	 else if ( strncmp(tstr,"MSB_FIRST",9) == 0 ) bo = MSB_FIRST ;
+	 else
+	     BADNEWS ;
+
+	 /* if different from the local endian, we will swap bytes */
+	 if ( bo != 0 ) {
+	    int local_bo, one = 1;
+	    local_bo = (*(char *)&one == 1) ? LSB_FIRST : MSB_FIRST ;
+
+	    /* if we are informed, and the orders differ, we will swap */
+	    if ( bo != local_bo )
+		rtin->swap_on_read = 1 ;
+	 }
+
+	 if( verbose > 1 )
+	    fprintf(stderr,"RT: BYTEORDER string = '%s', swap_on_read = %d\n",
+		    BYTE_ORDER_STRING(bo), rtin->swap_on_read) ;
       } else if( STARTER("LOCK_ZORDER") ){  /* 22 Feb 1999:                    */
          rtin->zorder_lock = 1 ;            /* allow program to 'lock' zorder, */
                                             /* so that later changes are       */
@@ -1755,14 +2348,63 @@ int RT_process_info( int ninfo , char * info , RT_input * rtin )
          } else
                 BADNEWS ;
 
-      } else {
+      } else if( STARTER("NUM_CHAN") ){     /* 01 Aug 2002 */
+         int nn=0 ;
+         sscanf( buf , "NUM_CHAN %d",&nn) ;
+         if( nn >= 1 && nn <= MAX_CHAN )
+           rtin->num_chan = nn ;
+         else
+                BADNEWS ;
+
+      } else if( STARTER("DRIVE_AFNI") ){   /* 30 Jul 2002 */
+         char cmd[256]="\0" ;
+         int ii ;
+         if( strlen(buf) < 11 ){
+            fprintf(stderr,"RT: DRIVE_AFNI lacks command\n") ;
+         } else {  /* the command is everything after "DRIVE_AFNI " */
+            MCW_strncpy(cmd,buf+11,256) ;
+            if( verbose == 2 )
+               fprintf(stderr,"RT: command DRIVE_AFNI %s\n",cmd) ;
+            ii = AFNI_driver( cmd ) ;  /* just do it */
+            if( ii < 0 )
+               fprintf(stderr,"RT: command DRIVE_AFNI %s **FAILS**\n",cmd) ;
+         }
+
+      } else {                              /* this is bad news */
          BADNEWS ;
       }
    }  /* end of loop over command buffers */
 
    /** now, determine if enough information exists to create a dataset **/
 
-   if( rtin->image_mode ) rtin->nzz = 1 ;  /* 28 Apr 2000 */
+   if( rtin->image_mode ){
+      rtin->nzz      = 1 ;  /* 28 Apr 2000 */
+      rtin->num_chan = 1 ;  /* 01 Aug 2002 */
+   }
+
+   /** 01 Aug 2002: turn some things off in multi-channel mode **/
+
+   if( rtin->num_chan > 1 ){
+
+     if( rtin->reg_mode > 0 && verbose )
+       fprintf(stderr,"RT: %d channel acquisition => no registration!\n",rtin->num_chan) ;
+
+     if( rtin->func_code > 0 && verbose )
+       fprintf(stderr,"RT: %d channel acquisition => no function!\n"    ,rtin->num_chan) ;
+
+     rtin->reg_mode  = REGMODE_NONE ;  /* no registration */
+     rtin->func_code = FUNC_NONE ;     /* no function */
+     rtin->func_func = NULL ;
+     rtin->reg_graph = 0 ;
+   }
+
+   if( rtin->nzz == 1 ){                   /* 24 Jun 2002: 1 slice only? */
+     rtin->zorder = ZORDER_SEQ ;
+     if( REG_IS_3D(rtin->reg_mode) ){
+       rtin->reg_mode = REGMODE_NONE ;
+       fprintf(stderr,"RT: can't do 3D registration on 2D dataset!\n") ;
+     }
+   }
 
    RT_check_info( rtin , 0 ) ;
 
@@ -1775,6 +2417,21 @@ int RT_process_info( int ninfo , char * info , RT_input * rtin )
          rtin->imsize = rtin->nxx * rtin->nyy * n1 ;
       else if( rtin->nzz > 0 )
          rtin->imsize = rtin->nxx * rtin->nyy * rtin->nzz * n1 ;
+   }
+
+   /* validate data type when swapping */
+   if ( rtin->swap_on_read == 1 ) {
+
+      if( (rtin->datum != MRI_short) &&		/* if the type is not okay, */
+	  (rtin->datum != MRI_int)   &&         /* then turn off swapping   */
+	  (rtin->datum != MRI_float) &&
+	  (rtin->datum != MRI_complex) )
+      {
+	 if( rtin->datum != MRI_byte )		/* don't complain about bytes */
+	     fprintf(stderr,"RT: BYTEORDER applies only to short, int, float "
+			    "or complex\n");
+         rtin->swap_on_read = 0;
+      }
    }
 
    /** return the number of characters processed **/
@@ -1792,8 +2449,8 @@ void RT_start_dataset( RT_input * rtin )
 {
    THD_ivec3 nxyz , orixyz ;
    THD_fvec3 dxyz , orgxyz ;
-   int nvox , npix , n1 , ii ;
-   char npr[THD_MAX_PREFIX] ;
+   int nvox , npix , n1 , ii , cc ;
+   char npr[THD_MAX_PREFIX] , ccpr[THD_MAX_PREFIX] ;
 
    /*********************************************/
    /** 28 Apr 2000: Image Only mode is simpler **/
@@ -1803,13 +2460,13 @@ void RT_start_dataset( RT_input * rtin )
       n1   = mri_datum_size( rtin->datum ) ;
 
       rtin->sbr_size = nvox * n1 ;                /* size of image space */
-      rtin->sbr      = malloc( rtin->sbr_size ) ; /* image space */
+      rtin->sbr[0]   = malloc( rtin->sbr_size ) ; /* image space */
       rtin->imsize   = rtin->sbr_size ;
-      rtin->im       = rtin->sbr ;                /* image space again */
+      rtin->im[0]    = rtin->sbr[0] ;             /* image space again */
       rtin->nzz      = 1 ;
 
       rtin->image_space = mri_new_vol_empty( rtin->nxx, rtin->nyy, 1, rtin->datum ) ;
-      mri_fix_data_pointer( rtin->sbr , rtin->image_space ) ;
+      mri_fix_data_pointer( rtin->sbr[0] , rtin->image_space ) ;
 
       return ;
    }
@@ -1817,18 +2474,99 @@ void RT_start_dataset( RT_input * rtin )
    /*******************************************/
    /** Must create a dataset and other stuff **/
 
-   /***************************/
-   /** Let there be dataset! **/
+   /*******************************************************************/
+   /** 02 Aug 2002: in multi-channel mode, need multiple controllers **/
 
-   rtin->dset = EDIT_empty_copy(NULL) ;
-   tross_Append_History( rtin->dset , "plug_realtime: creation" ) ;
+   if( rtin->num_chan > 1 ){
+     int ic , tc , nc=AFNI_count_controllers() , sn ;
+
+     Three_D_View *im3d = plint->im3d ;             /* default controller */
+     if( !IM3D_OPEN(im3d) )                         /* may not be open */
+       im3d = AFNI_find_open_controller() ;
+
+     sn = im3d->vinfo->sess_num ;                   /* session for all channels */
+
+     /* open new controllers if needed */
+
+     if( nc < rtin->num_chan && nc < MAX_CONTROLLERS ){
+       nc = MIN( rtin->num_chan , MAX_CONTROLLERS ) - nc ;  /* number to add */
+
+       fprintf(stderr,
+               "RT: %d channel data requires opening %d more AFNI controllers",
+               rtin->num_chan , nc ) ;
+
+       for( ic=0 ; ic < nc ; ic++ )                         /* add them */
+         AFNI_clone_controller_CB(NULL,NULL,NULL) ;
+     }
+
+     /* make list of open controllers */
+
+     num_open_controllers = AFNI_count_controllers() ;
+     for( ic=nc=0 ; ic < MAX_CONTROLLERS ; ic++ ){
+       if( IM3D_OPEN(GLOBAL_library.controllers[ic]) ){
+         open_controller[nc]       = GLOBAL_library.controllers[ic] ;
+         open_controller_index[nc] = ic ;
+         nc++ ;
+       }
+     }
+     nc = num_open_controllers ;  /* nugatory or moot */
+
+     /* now assign channels to controllers */
+
+     tc = MIN( nc , rtin->num_chan ) ;
+     for( cc=0 ; cc < rtin->num_chan ; cc++ ){
+       if( cc < tc ) rtin->im3d[cc] = open_controller[cc] ; /* next available */
+       else          rtin->im3d[cc] = NULL ;                /* none available */
+
+       /* all channels go to the 1st session directory */
+
+       rtin->sess_num[cc] = sn ;
+       rtin->sess[cc]     = GLOBAL_library.sslist->ssar[sn] ;
+     }
+
+   /* single channel mode: make sure calling controller is still open */
+
+   } else {
+     Three_D_View *im3d = plint->im3d ;             /* default controller */
+     if( !IM3D_OPEN(im3d) )                         /* may not be open */
+       im3d = AFNI_find_open_controller() ;
+
+     rtin->im3d[0]     = im3d ;
+     rtin->sess_num[0] = rtin->im3d[0]->vinfo->sess_num ;
+     rtin->sess[0]     = GLOBAL_library.sslist->ssar[rtin->sess_num[0]] ;
+   }
+
+   /***************************/
+   /** Let there be dataset! **/  /* 01 Aug 2002: or datasets */
+
+   for( cc=0 ; cc < rtin->num_chan ; cc++ ){
+     rtin->dset[cc] = EDIT_empty_copy(NULL) ;
+     tross_Append_History( rtin->dset[cc] , "plug_realtime: creation" ) ;
+
+     if( rtin->num_note > 0 && rtin->note != NULL ){  /* 01 Oct 2002 */
+       for( ii=0 ; ii < rtin->num_note ; ii++ )
+         tross_Add_Note( rtin->dset[cc] , rtin->note[ii] ) ;
+     }
+   }
 
    /********************************/
    /** make a good dataset prefix **/
 
    for( ii=1 ; ; ii++ ){
-      sprintf( npr , "%.31s#%03d" , rtin->prefix , ii ) ;
-      if( PLUTO_prefix_ok(npr) ) break ;
+      sprintf( npr , "%.*s#%03d" , RT_MAX_PREFIX, rtin->root_prefix , ii ) ;
+
+      if( rtin->num_chan == 1 ){                  /* the old way */
+
+         if( PLUTO_prefix_ok(npr) ) break ;
+
+      } else {                                    /* 02 Aug 2002: the multichannel way */
+
+        for( cc=0 ; cc < rtin->num_chan ; cc++ ){ /* check each channel prefix */
+          sprintf(ccpr, "%s_%02d", npr,cc+1 ) ;
+          if( !PLUTO_prefix_ok(ccpr) ) break ;    /* not good? quit cc loop */
+        }
+        if( cc == rtin->num_chan ) break ;        /* all were good? we are done */
+      }
    }
 
    /**********************************************************/
@@ -1837,11 +2575,15 @@ void RT_start_dataset( RT_input * rtin )
    rtin->dxx = rtin->xxfov / rtin->nxx ;
    rtin->dyy = rtin->yyfov / rtin->nyy ;
 
-   if( rtin->zzfov > 0 ) rtin->dzz = rtin->zzfov / rtin->nzz ;
+   /* 18 Dec 2002: add zgap here, per UCSD request */
 
-   if( rtin->xcen ) rtin->xxorg = 0.5 * (rtin->nxx - 1) * rtin->dxx ;
-   if( rtin->ycen ) rtin->yyorg = 0.5 * (rtin->nyy - 1) * rtin->dyy ;
-   if( rtin->zcen ) rtin->zzorg = 0.5 * (rtin->nzz - 1) * rtin->dzz ;
+   if( rtin->zzfov > 0 ) rtin->dzz = rtin->zzfov / rtin->nzz + rtin->zgap ;
+
+   /* 18 Dec 2002: add xxoff (etc.) here, per UCSD request */
+
+   if( rtin->xcen ) rtin->xxorg = 0.5 * (rtin->nxx - 1) * rtin->dxx + rtin->xxoff ;
+   if( rtin->ycen ) rtin->yyorg = 0.5 * (rtin->nyy - 1) * rtin->dyy + rtin->yyoff ;
+   if( rtin->zcen ) rtin->zzorg = 0.5 * (rtin->nzz - 1) * rtin->dzz + rtin->zzoff ;
 
    /* if axis direction is a 'minus', voxel increments are negative */
 
@@ -1849,12 +2591,20 @@ void RT_start_dataset( RT_input * rtin )
    if( ORIENT_sign[rtin->orcyy] == '-' ) rtin->dyy = - rtin->dyy ;
    if( ORIENT_sign[rtin->orczz] == '-' ) rtin->dzz = - rtin->dzz ;
 
+   /* 10 Dec 2002:
+      We now allow direction codes input for x and y as well,
+      so must duplicate the complicated zzorg logic for setting
+      the xxorg and yyorg signs.  This duplicated logic follows
+      the zzdcode stuff, below.                                 */
+
+#if 0
    /* if axis direction is a 'plus',
       then the origin is in a 'minus' direction,
-      so the origin offset must have its sign changed */
+      so the origin offset must have its sign changed */  /*** THE OLD WAY ***/
 
    if( ORIENT_sign[rtin->orcxx] == '+' ) rtin->xxorg = - rtin->xxorg ;
    if( ORIENT_sign[rtin->orcyy] == '+' ) rtin->yyorg = - rtin->yyorg ;
+#endif
 
    /* z-origin is complex, because the remote program might
       have given a direction code, or it might not have.
@@ -1886,8 +2636,38 @@ void RT_start_dataset( RT_input * rtin )
       }
    }
 
+   /* 10 Dec 2002: duplicate logic for xxorg */
+
+   if( rtin->xxdcode < 0 ){
+      if( ORIENT_sign[rtin->orcxx] == '+' ) rtin->xxorg = - rtin->xxorg ;
+   } else {
+      if( rtin->orcxx != rtin->xxdcode                 &&
+          rtin->orcxx != ORIENT_OPPOSITE(rtin->xxdcode)  ){
+         fprintf(stderr,"RT: XFIRST direction code = %c but X axis = %s!\a\n",
+                 ORIENT_first[rtin->xxdcode] , ORIENT_shortstr[rtin->orcxx] ) ;
+         if( ORIENT_sign[rtin->orcxx] == '+' ) rtin->xxorg = - rtin->xxorg ;
+      } else {  /* things are OK */
+         if( ORIENT_sign[rtin->xxdcode] == '+' ) rtin->xxorg = - rtin->xxorg ;
+      }
+   }
+
+   /* 10 Dec 2002: duplicate logic for yyorg */
+
+   if( rtin->yydcode < 0 ){
+      if( ORIENT_sign[rtin->orcyy] == '+' ) rtin->yyorg = - rtin->yyorg ;
+   } else {
+      if( rtin->orcyy != rtin->yydcode                 &&
+          rtin->orcyy != ORIENT_OPPOSITE(rtin->yydcode)  ){
+         fprintf(stderr,"RT: YFIRST direction code = %c but Y axis = %s!\a\n",
+                 ORIENT_first[rtin->yydcode] , ORIENT_shortstr[rtin->orcyy] ) ;
+         if( ORIENT_sign[rtin->orcyy] == '+' ) rtin->yyorg = - rtin->yyorg ;
+      } else {  /* things are OK */
+         if( ORIENT_sign[rtin->yydcode] == '+' ) rtin->yyorg = - rtin->yyorg ;
+      }
+   }
+
    /************************************************/
-   /** add the spatial information to the dataset **/
+   /** add the spatial information to the dataset **/  /* 01 Aug 2002: datasets */
 
    nxyz.ijk[0]   = rtin->nxx   ; dxyz.xyz[0]   = rtin->dxx ;
    nxyz.ijk[1]   = rtin->nyy   ; dxyz.xyz[1]   = rtin->dyy ;
@@ -1897,72 +2677,81 @@ void RT_start_dataset( RT_input * rtin )
    orixyz.ijk[1] = rtin->orcyy ; orgxyz.xyz[1] = rtin->yyorg ;
    orixyz.ijk[2] = rtin->orczz ; orgxyz.xyz[2] = rtin->zzorg ;
 
-   EDIT_dset_items( rtin->dset ,
-                       ADN_prefix      , npr ,
-                       ADN_datum_all   , rtin->datum ,
-                       ADN_nxyz        , nxyz ,
-                       ADN_xyzdel      , dxyz ,
-                       ADN_xyzorg      , orgxyz ,
-                       ADN_xyzorient   , orixyz ,
-                       ADN_malloc_type , DATABLOCK_MEM_MALLOC ,
-                       ADN_nvals       , 1 ,
-                       ADN_type        , HEAD_ANAT_TYPE ,
-                       ADN_view_type   , VIEW_ORIGINAL_TYPE ,
-                       ADN_func_type   , ANAT_EPI_TYPE ,
-                    ADN_none ) ;
+   for( cc=0 ; cc < rtin->num_chan ; cc++ ){  /* 01 Aug 2002: loop over datasets */
 
-   /******************************************/
-   /** add time axis information, if needed **/
+     if( rtin->num_chan == 1 )
+       strcpy( ccpr , npr ) ;                      /* 1 channel prefix */
+     else
+       sprintf( ccpr , "%s_%02d" , npr , cc+1 ) ;  /* new prefix for multi-channel */
 
-   if( rtin->dtype == DTYPE_3DT ){  /* all slices simultaneous */
+     EDIT_dset_items( rtin->dset[cc] ,
+                         ADN_prefix      , ccpr ,
+                         ADN_datum_all   , rtin->datum ,
+                         ADN_nxyz        , nxyz ,
+                         ADN_xyzdel      , dxyz ,
+                         ADN_xyzorg      , orgxyz ,
+                         ADN_xyzorient   , orixyz ,
+                         ADN_malloc_type , DATABLOCK_MEM_MALLOC ,
+                         ADN_nvals       , 1 ,
+                         ADN_type        , HEAD_ANAT_TYPE ,
+                         ADN_view_type   , VIEW_ORIGINAL_TYPE ,
+                         ADN_func_type   , ANAT_EPI_TYPE ,
+                      ADN_none ) ;
 
-      EDIT_dset_items( rtin->dset ,
-                          ADN_ntt      , 1 ,
-                          ADN_ttorg    , 0.0 ,
-                          ADN_ttdel    , rtin->tr ,
-                          ADN_ttdur    , 0.0 ,
-                          ADN_tunits   , UNITS_SEC_TYPE ,
-                       ADN_none ) ;
+      /******************************************/
+      /** add time axis information, if needed **/
 
-   } else if( rtin->dtype == DTYPE_2DZT ){  /* slices at different times */
+      if( rtin->dtype == DTYPE_3DT ||                      /* all slices   */
+         (rtin->dtype == DTYPE_2DZT && rtin->nzz == 1) ){  /* simultaneous */
 
-      float * tpattern  = (float *) malloc( sizeof(float) * rtin->nzz ) ;
-      float   tframe    = rtin->tr / rtin->nzz ;
-      float   tsl ;
-      int     ii ;
+         EDIT_dset_items( rtin->dset[cc] ,
+                             ADN_ntt      , 1 ,
+                             ADN_ttorg    , 0.0 ,
+                             ADN_ttdel    , rtin->tr ,
+                             ADN_ttdur    , 0.0 ,
+                             ADN_tunits   , UNITS_SEC_TYPE ,
+                          ADN_none ) ;
 
-      if( rtin->zorder == ZORDER_ALT ){        /* alternating +z direction */
-         tsl = 0.0 ;
-         for( ii=0 ; ii < rtin->nzz ; ii+=2 ){
-            tpattern[ii] = tsl ; tsl += tframe ;
+      } else if( rtin->dtype == DTYPE_2DZT ){  /* slices at different times */
+
+         float * tpattern  = (float *) malloc( sizeof(float) * rtin->nzz ) ;
+         float   tframe    = rtin->tr / rtin->nzz ;
+         float   tsl ;
+         int     ii ;
+
+         if( rtin->zorder == ZORDER_ALT ){        /* alternating +z direction */
+            tsl = 0.0 ;
+            for( ii=0 ; ii < rtin->nzz ; ii+=2 ){
+               tpattern[ii] = tsl ; tsl += tframe ;
+            }
+            for( ii=1 ; ii < rtin->nzz ; ii+=2 ){
+               tpattern[ii] = tsl ; tsl += tframe ;
+            }
+         } else if( rtin->zorder == ZORDER_SEQ ){ /* sequential +z direction */
+            tsl = 0.0 ;
+            for( ii=0 ; ii < rtin->nzz ; ii++ ){
+               tpattern[ii] = tsl ; tsl += tframe ;
+            }
          }
-         for( ii=1 ; ii < rtin->nzz ; ii+=2 ){
-            tpattern[ii] = tsl ; tsl += tframe ;
-         }
-      } else if( rtin->zorder == ZORDER_SEQ ){ /* sequential +z direction */
-         tsl = 0.0 ;
-         for( ii=0 ; ii < rtin->nzz ; ii++ ){
-            tpattern[ii] = tsl ; tsl += tframe ;
-         }
+
+         EDIT_dset_items( rtin->dset[cc] ,
+                             ADN_ntt      , 1 ,
+                             ADN_ttorg    , 0.0 ,
+                             ADN_ttdel    , rtin->tr ,
+                             ADN_ttdur    , 0.0 ,
+                             ADN_tunits   , UNITS_SEC_TYPE ,
+                             ADN_nsl      , rtin->nzz ,
+                             ADN_zorg_sl  , rtin->zzorg ,
+                             ADN_dz_sl    , rtin->dzz ,
+                             ADN_toff_sl  , tpattern ,
+                          ADN_none ) ;
+
+         free( tpattern ) ;
       }
 
-      EDIT_dset_items( rtin->dset ,
-                          ADN_ntt      , 1 ,
-                          ADN_ttorg    , 0.0 ,
-                          ADN_ttdel    , rtin->tr ,
-                          ADN_ttdur    , 0.0 ,
-                          ADN_tunits   , UNITS_SEC_TYPE ,
-                          ADN_nsl      , rtin->nzz ,
-                          ADN_zorg_sl  , rtin->zzorg ,
-                          ADN_dz_sl    , rtin->dzz ,
-                          ADN_toff_sl  , tpattern ,
-                       ADN_none ) ;
-
-      free( tpattern ) ;
+      rtin->afni_status[cc] = 0 ;  /* uninformed at this time */
+      DSET_lock(rtin->dset[cc]) ;  /* 20 Mar 1998 */
    }
-
-   rtin->afni_status = 0 ;  /* uninformed at this time */
-   DSET_lock(rtin->dset) ;  /* 20 Mar 1998 */
 
 #ifdef ALLOW_REGISTRATION
    /*---- Make a dataset for registration, if need be ----*/
@@ -1970,20 +2759,31 @@ void RT_start_dataset( RT_input * rtin )
    if( REG_MAKE_DSET(rtin->reg_mode) &&
        ((rtin->dtype==DTYPE_2DZT) || (rtin->dtype==DTYPE_3DT)) ){
 
-      rtin->reg_dset = EDIT_empty_copy( rtin->dset ) ;
+      rtin->reg_dset = EDIT_empty_copy( rtin->dset[0] ) ;
       tross_Append_History( rtin->reg_dset , "plug_realtime: registration" ) ;
 
-           if( REG_IS_2D(rtin->reg_mode) ) strcat(npr,"%reg2D") ;
-      else if( REG_IS_3D(rtin->reg_mode) ) strcat(npr,"%reg3D") ;
-      else                                 strcat(npr,"%reg"  ) ;
+      strcpy(ccpr,npr) ;
+           if( REG_IS_2D(rtin->reg_mode) ) strcat(ccpr,"%reg2D") ;
+      else if( REG_IS_3D(rtin->reg_mode) ) strcat(ccpr,"%reg3D") ;
+      else                                 strcat(ccpr,"%reg"  ) ;
 
-      EDIT_dset_items( rtin->reg_dset , ADN_prefix , npr , ADN_none ) ;
+      EDIT_dset_items( rtin->reg_dset , ADN_prefix , ccpr , ADN_none ) ;
       DSET_lock(rtin->reg_dset) ;
+
+      if( rtin->num_note > 0 && rtin->note != NULL ){  /* 01 Oct 2002 */
+        for( ii=0 ; ii < rtin->num_note ; ii++ )
+          tross_Add_Note( rtin->reg_dset , rtin->note[ii] ) ;
+      }
    }
 
    rtin->reg_status    = 0 ;
    rtin->reg_nvol      = 0 ;
-   rtin->reg_graph_xr *= rtin->tr ;  /* scale to time units */
+
+   /* No longer scale to time units as x-axis is now in terms of reps.
+    *                                      *** 29 Jan 2004 [rickr] ***
+    *  rtin->reg_graph_xr *= rtin->tr ;    *** scale to time units ***
+    */
+
 #endif
 
    /***********************************************/
@@ -1993,10 +2793,14 @@ void RT_start_dataset( RT_input * rtin )
    n1   = mri_datum_size( rtin->datum ) ;
 
    rtin->sbr_size = nvox * n1 ;                /* size of sub-brick */
-   rtin->sbr      = malloc( rtin->sbr_size ) ; /* space to hold sub-brick */
-   if( rtin->sbr == NULL ){
-      fprintf(stderr,"RT: can't malloc space for real-time dataset!\a\n") ;
-      EXIT(1) ;
+   for( cc=0 ; cc < rtin->num_chan ; cc++ ){
+     rtin->sbr[cc] = malloc( rtin->sbr_size ) ; /* space to hold sub-brick */
+     if( rtin->sbr[cc] == NULL ){
+       fprintf(stderr,
+               "RT: can't malloc data space for real-time channel %02d!\a\n",
+               cc+1) ;
+       EXIT(1) ;
+     }
    }
 
    if( rtin->dtype == DTYPE_2DZT || rtin->dtype == DTYPE_2DZ )
@@ -2004,9 +2808,11 @@ void RT_start_dataset( RT_input * rtin )
    else
       rtin->imsize = nvox * n1 ;
 
-   rtin->im   = rtin->sbr ;  /* place to put first image in sub-brick */
-   rtin->nsl  = 0 ;          /* number of slices gathered so far */
-   rtin->nvol = 0 ;          /* number of volumes gathered so far */
+   for( cc=0 ; cc < rtin->num_chan ; cc++ ){
+     rtin->im[cc]   = rtin->sbr[cc] ;  /* place to put first image in sub-brick */
+     rtin->nsl[cc]  = 0 ;              /* number of slices gathered so far */
+     rtin->nvol[cc] = 0 ;              /* number of volumes gathered so far */
+   }
 
    /** if there is already data stored in the temporary buffer
        (acquired before this routine was called), then we want
@@ -2026,11 +2832,11 @@ void RT_start_dataset( RT_input * rtin )
       update = 0 ;
 
       for( ii=0 ; ii < IMARR_COUNT(rtin->bufar) ; ii++ ){
-         ibb = IMARR_SUBIMAGE(rtin->bufar,ii) ;     /* next buffered image */
-         bbb = (char *) MRI_BYTE_PTR( ibb ) ;       /* pointer to its data */
-         memcpy( rtin->im , bbb , rtin->imsize ) ;  /* copy into sub-brick */
-         mri_free( ibb ) ;                          /* free buffered image */
-         RT_process_image( rtin ) ;                 /* send into dataset   */
+        ibb = IMARR_SUBIMAGE(rtin->bufar,ii) ;                    /* next buffered image */
+        bbb = (char *) MRI_BYTE_PTR( ibb ) ;                      /* pointer to its data */
+        memcpy( rtin->im[rtin->cur_chan] , bbb , rtin->imsize ) ; /* copy into sub-brick */
+        mri_free( ibb ) ;                                         /* free buffered image */
+        RT_process_image( rtin ) ;                                /* send into dataset   */
       }
       FREE_IMARR( rtin->bufar ) ;   /* throw this away like a used Kleenex */
 
@@ -2041,7 +2847,65 @@ void RT_start_dataset( RT_input * rtin )
       VMCHECK ;
    }
 
-   /** dataset now created and ready to boogie! **/
+   /** dataset(s) now created and ready to boogie! **/
+   /** popup a message to keep the user occupied.  **/
+
+   { char str[1024] ;
+     char acq[128] , *sli ;
+
+     switch( rtin->dtype ){
+       case DTYPE_2DZ:  strcpy(acq,"2D+z (1 volume, by slice")        ; break ;
+       case DTYPE_2DZT: strcpy(acq,"2D+zt (multivolume, by slice")    ; break ;
+       case DTYPE_3D:   strcpy(acq,"3D (1 volume, all at once)")      ; break ;
+       case DTYPE_3DT:  strcpy(acq,"3D+t (multivolume, by 3D array)") ; break ;
+       default:         strcpy(acq,"Bizarro world")                   ; break ;
+     }
+
+     if( rtin->dtype == DTYPE_2DZ || rtin->dtype == DTYPE_2DZT ){
+       switch( rtin->zorder ){
+         case ZORDER_ALT: strcat(acq," - interleaved order)") ; break ;
+         case ZORDER_SEQ: strcat(acq," - sequential order)")  ; break ;
+         case ZORDER_EXP: strcat(acq," - explicit order)")    ; break ;
+       }
+     }
+
+     switch( rtin->orczz ){
+       case ORI_I2S_TYPE:
+       case ORI_S2I_TYPE: sli = "(Axial)"    ; break ;
+
+       case ORI_R2L_TYPE:
+       case ORI_L2R_TYPE: sli = "(Sagittal)" ; break ;
+
+       case ORI_P2A_TYPE:
+       case ORI_A2P_TYPE: sli = "(Coronal)"  ; break ;
+
+       default:           sli = "\0"         ; break ;  /* say what? */
+     }
+
+     sprintf(str," \n"
+                 " ** Realtime Header Information **\n"
+                 "\n"
+                 " Dataset prefix  : %s\n"
+                 " Brick Dimensions: %d x %d x %d\n"
+                 " Voxel Grid Size : %.4f x %.4f x %.4f (mm)\n"
+                 " Grid Orientation: %s x %s x %s %s\n"
+                 " Grid Offset     : %.1f x %.1f x %.1f (mm)\n"
+                 " Datum Type      : %s\n"
+                 " Number Channels : %d\n"
+                 " Acquisition Type: %s\n" ,
+             npr ,
+             rtin->nxx , rtin->nyy , rtin->nzz ,
+             fabs(rtin->dxx) , fabs(rtin->dyy) , fabs(rtin->dzz) ,
+             ORIENT_shortstr[rtin->orcxx],ORIENT_shortstr[rtin->orcyy],
+               ORIENT_shortstr[rtin->orczz] , sli ,
+             rtin->xxorg , rtin->yyorg , rtin->zzorg ,
+             MRI_TYPE_name[rtin->datum] ,
+             rtin->num_chan ,
+             acq
+          ) ;
+
+     PLUTO_popup_transient(plint,str);
+   }
 
    return ;
 }
@@ -2049,6 +2913,9 @@ void RT_start_dataset( RT_input * rtin )
 /*--------------------------------------------------------------------
   Read one image (or volume) into the space pointed to by im.
 ----------------------------------------------------------------------*/
+
+#define COMMAND_MARKER        "Et Earello Endorenna utulien!!"
+#define COMMAND_MARKER_LENGTH 30
 
 void RT_read_image( RT_input * rtin , char * im )
 {
@@ -2077,7 +2944,7 @@ void RT_read_image( RT_input * rtin , char * im )
       nbuffed = MIN( have , rtin->imsize ) ;  /* how much to read from buffer */
       memcpy( im , rtin->buf , nbuffed ) ;    /* copy it into image */
 
-      if( nbuffed < have){                    /* didn't use up all of buffer */
+      if( nbuffed < have ){                   /* didn't use up all of buffer */
          memmove( rtin->buf , rtin->buf + nbuffed , rtin->nbuf - nbuffed ) ;
          rtin->nbuf = rtin->nbuf - nbuffed ;
       } else {                                /* used up all of buffer */
@@ -2092,8 +2959,27 @@ void RT_read_image( RT_input * rtin , char * im )
 
    need = rtin->imsize - nbuffed ;  /* number of bytes left to fill image */
 
+   /* read this many bytes for sure (waiting if need be) */
+
    if( need > 0 )
       iochan_recvall( rtin->ioc_data , im + nbuffed , need ) ;
+
+   /* 10 Dec 2002:
+      Check if the command string is present at the start of im.
+      If it is, then mark rtin for death.                       */
+
+   if( memcmp(im,COMMAND_MARKER,COMMAND_MARKER_LENGTH) == 0 )
+     rtin->marked_for_death = 1 ;
+   else {
+      /* we have a complete image, check for byte swapping */
+      if ( rtin->swap_on_read != 0 ) {
+         if( rtin->datum == MRI_short )
+            mri_swap2( rtin->imsize / 2, (short *)im );
+	 else
+            mri_swap4( rtin->imsize / 4, (int *)im );
+      }
+   }
+
 
    return ;
 }
@@ -2109,7 +2995,7 @@ int RT_process_data( RT_input * rtin )
 
    /** can we create a dataset yet? **/
 
-   if( rtin->sbr == NULL && rtin->info_ok ){
+   if( rtin->sbr[0] == NULL && rtin->info_ok ){
       if( verbose == 2 )
          fprintf(stderr,"RT: info complete --> creating dataset.\n") ;
       VMCHECK ;
@@ -2120,10 +3006,13 @@ int RT_process_data( RT_input * rtin )
 
    while( rtin->nbuf > 0 || iochan_readcheck(rtin->ioc_data,0) > 0 ){
 
-      if( rtin->im != NULL ){  /** process data into dataset directly **/
+      if( rtin->im[0] != NULL ){  /** process data into dataset directly **/
 
-         RT_read_image( rtin , rtin->im ) ;  /* read into dataset buffer */
-         RT_process_image( rtin ) ;          /* process it for the dataset */
+         RT_read_image( rtin , rtin->im[rtin->cur_chan] ) ; /* read into dataset buffer */
+
+         if( rtin->marked_for_death ) return 0 ;            /* 10 Dec 2002 */
+
+         RT_process_image( rtin ) ;                         /* process it for the dataset */
 
       } else {                 /** read data into temporary buffer space **/
                                /** (will have to process it later, dude) **/
@@ -2147,6 +3036,7 @@ int RT_process_data( RT_input * rtin )
          newbuf = (char *) MRI_BYTE_PTR(newim) ;           /* pointer to image data */
          ADDTO_IMARR( rtin->bufar , newim ) ;              /* add to saved image list */
          RT_read_image( rtin , newbuf ) ;                  /* read image data */
+         if( rtin->marked_for_death ) return 0 ;           /* 10 Dec 2002 */
       }
 
       RT_process_xevents( rtinp ) ;
@@ -2183,7 +3073,7 @@ static void RT_image_kfun(void * kdata)                /* 28 Apr 2000 */
 
 void RT_process_image( RT_input * rtin )
 {
-   int vdone ;
+   int vdone , cc = rtin->cur_chan ;
 
    /** 28 Apr 2000: Image Only mode stuff **/
 
@@ -2203,16 +3093,16 @@ void RT_process_image( RT_input * rtin )
 
       if( verbose == 2 )
          fprintf(stderr,"RT: read image into dataset brick %d slice %d.\n",
-                 rtin->nvol,rtin->nsl) ;
+                 rtin->nvol[cc],rtin->nsl[cc]) ;
 
-      rtin->nsl ++ ;                     /* 1 more slice */
-      vdone = (rtin->nsl == rtin->nzz) ; /* have all slices? */
+      rtin->nsl[cc] ++ ;                     /* 1 more slice */
+      vdone = (rtin->nsl[cc] == rtin->nzz) ; /* have all slices? */
 
    } else if( rtin->dtype == DTYPE_3DT || rtin->dtype == DTYPE_3D ){
 
 #if 0
       if( verbose == 2 )
-         fprintf(stderr,"RT: read image into dataset brick %d\n",rtin->nvol) ;
+        fprintf(stderr,"RT: read image into dataset brick %d\n",rtin->nvol[cc]) ;
 #endif
 
       vdone = 1 ;                        /* 3D gets all data at once */
@@ -2222,59 +3112,42 @@ void RT_process_image( RT_input * rtin )
 
    if( vdone ){
 
-      rtin->nvol ++ ;        /* 1 more volume is acquired! */
+      rtin->nvol[cc] ++ ;        /* 1 more volume is acquired! */
 
       if( verbose == 2 )
-         fprintf(stderr,"RT: now have %d complete sub-bricks.\n",rtin->nvol) ;
+         fprintf(stderr,"RT: now have %d complete sub-bricks in channel %02d.\n",
+                 rtin->nvol[cc],cc+1) ;
       VMCHECK ;
 
       /* first time: put this volume in as "substitute" for empty 1st brick
          later:      add new volume at end of chain                         */
 
-      if( rtin->nvol == 1 )
-         EDIT_substitute_brick( rtin->dset , 0 , rtin->datum , rtin->sbr ) ;
+      if( rtin->nvol[cc] == 1 )
+         EDIT_substitute_brick( rtin->dset[cc] , 0 , rtin->datum , rtin->sbr[cc] ) ;
       else
-         EDIT_add_brick( rtin->dset , rtin->datum , 0.0 , rtin->sbr ) ;
+         EDIT_add_brick( rtin->dset[cc] , rtin->datum , 0.0 , rtin->sbr[cc] ) ;
 
       VMCHECK ;
       if( verbose == 2 )
-         fprintf(stderr,"RT: added brick to dataset\n") ;
+         fprintf(stderr,"RT: added brick to dataset in channel %02d\n",cc+1) ;
       VMCHECK ;
 
       /* must also change the number of times recorded
          [EDIT_add_brick does 'nvals' correctly, but not 'ntt'] */
 
       if( rtin->dtype == DTYPE_3DT || rtin->dtype == DTYPE_2DZT ){
-         EDIT_dset_items( rtin->dset , ADN_ntt , rtin->nvol , ADN_none ) ;
+         EDIT_dset_items( rtin->dset[cc] , ADN_ntt , rtin->nvol[cc] , ADN_none ) ;
          if( verbose == 2 )
-            fprintf(stderr,"RT: altered ntt in dataset header\n") ;
+            fprintf(stderr,"RT: altered ntt in dataset header in channel %02d\n",cc+1) ;
          VMCHECK ;
-      } else if( rtin->nvol > 1 ){
+      } else if( rtin->nvol[cc] > 1 ){
          fprintf(stderr,"RT: have %d bricks for time-independent dataset!\a\n",
-                 rtin->nvol) ;
+                 rtin->nvol[cc]) ;
          VMCHECK ;
-      }
-
-      /** compute function, maybe? **/
-
-      if( rtin->func_code > 0 ){
-         int jj ;
-
-         /** if needed, initialize the function computations **/
-
-         if( rtin->func_condit == 0 ){
-            jj = rtin->func_func( rtin , INIT_MODE ) ;
-            if( jj < 0 ){ rtin->func_code = 0 ; rtin->func_func = NULL ; }
-            rtin->func_condit = 1 ;  /* initialized */
-         }
-
-         /** do the function computations for this volume **/
-
-         if( rtin->func_code > 0 )
-            rtin->func_func( rtin , rtin->nvol - 1 ) ;
       }
 
 #ifdef ALLOW_REGISTRATION
+      /* do registration before function computation   - 30 Oct 2003 [rickr] */
       switch( rtin->reg_mode ){
            case REGMODE_2D_RTIME: RT_registration_2D_realtime( rtin ) ;
            break ;
@@ -2285,23 +3158,54 @@ void RT_process_image( RT_input * rtin )
       }
 #endif /* ALLOW_REGISTRATION */
 
+      /** compute function, maybe? **/
+
+      if( rtin->func_code > 0 ){
+         int jj ;
+
+         /** if needed, initialize the function computations **/
+
+         if( rtin->func_condit == 0 ){
+#if 0
+            jj = rtin->func_func( rtin , INIT_MODE ) ;
+#else
+            AFNI_CALL_VALU_2ARG( rtin->func_func , int,jj ,
+                                 RT_input *,rtin , int,INIT_MODE ) ;
+#endif
+            if( jj < 0 ){ rtin->func_code = 0 ; rtin->func_func = NULL ; }
+            rtin->func_condit = 1 ;  /* initialized */
+         }
+
+         /** do the function computations for this volume **/
+
+         if( rtin->func_code > 0 )
+#if 0
+            jj = rtin->func_func( rtin , rtin->nvol[cc] - 1 ) ;
+#else
+            AFNI_CALL_VALU_2ARG( rtin->func_func , int,jj ,
+                                 RT_input *,rtin , int,rtin->nvol[cc]-1 ) ;
+#endif
+      }
+
       /** make space for next sub-brick to arrive **/
 
       if( verbose == 2 )
-         fprintf(stderr,"RT: malloc-ing %d bytes for next volume\n",rtin->sbr_size) ;
+         fprintf(stderr,"RT: malloc-ing %d bytes for next volume in channel %02d\n",
+                 rtin->sbr_size,cc+1) ;
       VMCHECK ;
 
-      rtin->sbr = malloc( rtin->sbr_size ) ;
-      if( rtin->sbr == NULL ){
-         fprintf(stderr,"RT: can't malloc real-time brick %d\a\n",rtin->nvol+1) ;
+      rtin->sbr[cc] = malloc( rtin->sbr_size ) ;
+      if( rtin->sbr[cc] == NULL ){
+         fprintf(stderr,"RT: can't malloc real-time brick %d for channel %02d\a\n",
+                 rtin->nvol[cc]+1,cc+1) ;
          EXIT(1) ;
       }
       if( verbose == 2 )
          fprintf(stderr,"RT: malloc succeeded\n") ;
       VMCHECK ;
 
-      rtin->im  = rtin->sbr ;  /* location of slice #0 within sub-brick */
-      rtin->nsl = 0 ;          /* number of slices gathered so far */
+      rtin->im[cc]  = rtin->sbr[cc] ;  /* location of slice #0 within sub-brick */
+      rtin->nsl[cc] = 0 ;              /* number of slices gathered so far */
 
       /** tell AFNI about this dataset, maybe **/
 
@@ -2313,12 +3217,13 @@ void RT_process_image( RT_input * rtin )
          VMCHECK ;
 
          doit = ( (rtin->dtype==DTYPE_3DT || rtin->dtype==DTYPE_2DZT) &&
-                  (rtin->nvol == MIN_TO_GRAPH ||
-                   (rtin->nvol > MIN_TO_GRAPH && rtin->nvol % update == 0)) ) ;
+                  (cc+1 == rtin->num_chan)                            && /* 01 Aug 2002 */
+                  (rtin->nvol[cc] == MIN_TO_GRAPH ||
+                   (rtin->nvol[cc] > MIN_TO_GRAPH && rtin->nvol[cc] % update == 0)) ) ;
 
          if( doit ){
             if( verbose == 2 )
-               fprintf(stderr,"RT: about to tell AFNI about this dataset.\n") ;
+               fprintf(stderr,"RT: about to tell AFNI about dataset.\n") ;
             VMCHECK ;
             RT_tell_afni(rtin,TELL_NORMAL) ;
          }
@@ -2330,131 +3235,184 @@ void RT_process_image( RT_input * rtin )
 
       if( rtin->zorder == ZORDER_SEQ ){  /* sequential:       */
                                          /* slice position is */
-         noff = rtin->nsl ;              /* just slice number */
+         noff = rtin->nsl[cc] ;          /* just slice number */
 
       } else if ( rtin->zorder == ZORDER_ALT ){  /* alternating: */
 
          int nhalf = (rtin->nzz + 1)/2 ;         /* number in first 1/2 */
 
-         if( rtin->nsl < nhalf )
-            noff = 2 * rtin->nsl ;               /* first half of slices */
+         if( rtin->nsl[cc] < nhalf )
+            noff = 2 * rtin->nsl[cc] ;               /* first half of slices */
          else
-            noff = 1 + 2 * (rtin->nsl - nhalf) ; /* second half of slices */
+            noff = 1 + 2 * (rtin->nsl[cc] - nhalf) ; /* second half of slices */
       }
 
-      rtin->im = rtin->sbr + (noff * rtin->imsize) ; /* where next slice goes */
+      rtin->im[cc] = rtin->sbr[cc] + (noff * rtin->imsize) ; /* where next slice goes */
 
+   }
+
+   /* 01 Aug 2002: update which channel gets the next image */
+
+   if( rtin->num_chan > 1 )
+     rtin->cur_chan = (cc+1) % rtin->num_chan ;
+
+   return ;
+}
+
+/*-------------------------------------------------------------------
+   Tell AFNI about all datasets we are building.
+---------------------------------------------------------------------*/
+
+void RT_tell_afni( RT_input *rtin , int mode )
+{
+   int cc ;
+
+   if( rtin == NULL ) return ;
+
+   /*** tell separately for each one ***/
+
+   for( cc=0 ; cc < rtin->num_chan ; cc++ )
+     RT_tell_afni_one( rtin , mode , cc ) ;
+
+   /*** at the end of acquisition, show messages ***/
+
+   if( mode == TELL_FINAL && ISVALID_DSET(rtin->dset[0]) ){
+     char qbuf[256*(MAX_CHAN+1)] , zbuf[256] ;
+     sprintf( qbuf ,
+                " \n"
+                " Acquisition Terminated\n\n"
+                " Brick Dimensions: %d x %d x %d  Datum: %s\n\n" ,
+               rtin->nxx,rtin->nyy,rtin->nzz , MRI_TYPE_name[rtin->datum] );
+
+     for( cc=0 ; cc < rtin->num_chan ; cc++ ){
+       if( ISVALID_DSET(rtin->dset[cc]) )
+         sprintf( zbuf ,
+                  " Channel %02d: dataset %s has %d sub-bricks\n",
+                  cc+1 , DSET_FILECODE(rtin->dset[cc]) , rtin->nvol[cc] ) ;
+       else
+         sprintf( zbuf ,
+                  " Channel %d: INVALID DATASET?!\n",cc) ;
+       strcat( qbuf , zbuf ) ;
+     }
+     strcat(qbuf,"\n") ;
+
+     PLUTO_beep(); PLUTO_popup_transient(plint,qbuf);
+
+     if( verbose == 2 ) SHOW_TIMES ;
+
+     sync() ;  /* 08 Mar 2000: sync disk */
    }
 
    return ;
 }
 
 /*-------------------------------------------------------------------
-   Tell AFNI about the dataset we are building.
+   Tell AFNI about one dataset we are building.
 ---------------------------------------------------------------------*/
 
-void RT_tell_afni( RT_input * rtin , int mode )
+void RT_tell_afni_one( RT_input *rtin , int mode , int cc )
 {
    Three_D_View * im3d ;
    THD_session * sess ;
    THD_3dim_dataset * old_anat ;
    int ii , id , afni_init=0 ;
-   static char clabel[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ" ;
-   char clll ;
+   char clll , *cstr ;
    MCW_arrowval * tav ;
 
    /** sanity check **/
 
-   if( rtin == NULL || ! ISVALID_3DIM_DATASET(rtin->dset) ) return ;
+   if( rtin == NULL || !ISVALID_DSET(rtin->dset[cc]) ) return ;
 
-   im3d = rtin->im3d ;                       /* AFNI controller */
-   sess = rtin->sess ;                       /* AFNI session */
-   tav  = im3d->vwid->imag->time_index_av ;  /* time index widget */
+   im3d = rtin->im3d[cc] ;                      /* AFNI controller */
+   sess = rtin->sess[cc] ;                      /* AFNI session */
 
-   ii   = AFNI_controller_index( im3d ) ;
-   clll = clabel[ii] ;          /* controller label */
+   if( im3d != NULL ){   /* 05 Aug 2002: allow for NULL im3d controller */
 
-   old_anat = im3d->anat_now ;  /* the default */
+     tav  = im3d->vwid->imag->time_index_av ;   /* time index widget */
+     ii   = AFNI_controller_index( im3d ) ;
+     cstr = AFNI_controller_label( im3d ) ; clll = cstr[1] ;
+
+     old_anat = im3d->anat_now ;  /* the default */
+   }
 
    /**--- deal with the input dataset ---**/
 
-   if( rtin->afni_status == 0 ){  /** first time for this dataset **/
+   if( rtin->afni_status[cc] == 0 ){  /** first time for this dataset **/
 
-      if( verbose )
-         fprintf(stderr , "RT: sending dataset %s with %d bricks\n"
-                          "    to AFNI controller [%c] session %s\n" ,
-                 DSET_FILECODE(rtin->dset) , rtin->nvol ,
-                 clll , sess->sessname ) ;
-      VMCHECK ;
+      EDIT_dset_items( rtin->dset[cc],
+                         ADN_directory_name,sess->sessname,
+                       ADN_none ) ;
 
-      EDIT_dset_items( rtin->dset, ADN_directory_name,sess->sessname, ADN_none ) ;
+      if( im3d != NULL ){
+        if( verbose )
+           fprintf(stderr , "RT: sending dataset %s with %d bricks\n"
+                            "    to AFNI[%c], session %s\n" ,
+                   DSET_FILECODE(rtin->dset[cc]) , rtin->nvol[cc] ,
+                   clll , sess->sessname ) ;
 
-      THD_load_statistics( rtin->dset ) ;
+      }
+      THD_load_statistics( rtin->dset[cc] ) ;
 
       /** put it into the current session in the current controller **/
 
-      if( ISANAT(rtin->dset) ){
+      if( GLOBAL_library.have_dummy_dataset ) UNDUMMYIZE ;
 
-         if( GLOBAL_library.have_dummy_dataset ) UNDUMMYIZE ;
+      id = sess->num_dsset ;
 
-         id = sess->num_anat ;
+      if( id >= THD_MAX_SESSION_SIZE ){
+        fprintf(stderr,"RT: max number of anat datasets exceeded!\a\n") ;
+        EXIT(1) ;
+      }
+      sess->dsset[id][VIEW_ORIGINAL_TYPE] = rtin->dset[cc] ;
+      sess->num_dsset = id+1 ;
+      POPDOWN_strlist_chooser ;
 
-         if( id >= THD_MAX_SESSION_ANAT ){
-            fprintf(stderr,"RT: max number of anat datasets exceeded!\a\n") ;
-            EXIT(1) ;
-         }
-         sess->anat[id][VIEW_ORIGINAL_TYPE] = rtin->dset ; sess->num_anat = id+1 ;
-         POPDOWN_strlist_chooser ;
+      if( ISFUNC(rtin->dset[cc]) )
+        AFNI_force_adoption( sess , False ) ;
 
-      } else if( ISFUNC(rtin->dset) ){
+      /** tell AFNI controller to jump to this dataset and session **/
 
-         if( GLOBAL_library.have_dummy_dataset )
-            fprintf(stderr,"RT: input of functional dataset into dummy session!\a\n") ;
+      if( im3d != NULL ){
+        if( ISANAT(rtin->dset[cc]) )
+           im3d->vinfo->anat_num = sess->num_dsset - 1 ;
+        else
+           im3d->vinfo->func_num = sess->num_dsset - 1 ;
 
-         id = sess->num_func ;
-         if( id >= THD_MAX_SESSION_FUNC ){
-            fprintf(stderr,"RT: max number of func datasets exceeded!\a\n") ;
-            EXIT(1) ;
-         }
-         sess->func[id][VIEW_ORIGINAL_TYPE] = rtin->dset ; (sess->num_func)++ ;
-         AFNI_force_adoption( sess , False ) ;
-         POPDOWN_strlist_chooser ;
+        im3d->vinfo->sess_num = rtin->sess_num[cc] ;
 
-      } else {
-         fprintf(stderr,"RT: bizarre dataset type error!\a\n") ;
-         EXIT(1) ;
+        im3d->vinfo->time_index = 0 ;
+        AV_assign_ival( tav , 0 ) ;
       }
 
-      /** tell AFNI to jump to this dataset **/
-
-      if( ISANAT(rtin->dset) )
-         im3d->vinfo->anat_num = sess->num_anat - 1 ;
-      else
-         im3d->vinfo->func_num = sess->num_func - 1 ;
-
-      im3d->vinfo->time_index = 0 ;
-      AV_assign_ival( tav , 0 ) ;
-
-      afni_init         = 1 ;   /* below: will initialize AFNI to see this dataset */
-      rtin->afni_status = 1 ;   /* AFNI knows now */
+      afni_init             = 1 ; /* below: will initialize AFNI to see this dataset */
+      rtin->afni_status[cc] = 1 ; /* mark dataset to show that AFNI knows about it now */
 
    } else {  /** 2nd or later call for this dataset **/
 
-      THD_update_statistics( rtin->dset ) ;
+      THD_update_statistics( rtin->dset[cc] ) ;
 
-      if( verbose )
-         fprintf(stderr,"RT: update with %d bricks to AFNI [%c]\n",rtin->nvol,clll) ;
-      VMCHECK ;
+      if( im3d != NULL ){
+        if( mode != TELL_FINAL && verbose )
+          fprintf(stderr,"RT: update with %d bricks in channel %02d to AFNI[%c]\n",
+                  rtin->nvol[cc],cc+1,clll) ;
 
-      tav->fmax = tav->imax = im3d->vinfo->time_index = rtin->nvol - 1  ;
-      AV_assign_ival( tav , tav->imax ) ;
+        tav->fmax = tav->imax = im3d->vinfo->time_index = rtin->nvol[cc] - 1  ;
+        AV_assign_ival( tav , tav->imax ) ;
+      }
+
    }
 
    /**--- Deal with the computed function, if any ---**/
 
    if( rtin->func_dset != NULL ){
+      int jj ;
 
-      rtin->func_func( rtin , UPDATE_MODE ) ;  /* put data into dataset */
+#if 0
+      jj = rtin->func_func( rtin , UPDATE_MODE ) ;  /* put data into dataset */
+#else
+      AFNI_CALL_VALU_2ARG( rtin->func_func , int,jj ,
+                           RT_input *,rtin , int,UPDATE_MODE ) ;
+#endif
 
       if( rtin->func_condit > 1 ){             /* data actually inside */
 
@@ -2462,26 +3420,27 @@ void RT_tell_afni( RT_input * rtin , int mode )
 
          if( rtin->func_status == 0 ){  /** first time for this dataset **/
 
-            if( verbose )
+            if( im3d != NULL && verbose )
                fprintf(stderr , "RT: sending dataset %s with %d bricks\n"
                                 "    to AFNI controller [%c] session %s\n" ,
                        DSET_FILECODE(rtin->func_dset) , DSET_NVALS(rtin->func_dset) ,
                        clll , sess->sessname ) ;
-            VMCHECK ;
 
             EDIT_dset_items( rtin->func_dset, ADN_directory_name,sess->sessname, ADN_none ) ;
-            id = sess->num_func ;
-            if( id >= THD_MAX_SESSION_FUNC ){
-               fprintf(stderr,"RT: max number of func datasets exceeded!\a\n") ;
-               EXIT(1) ;
+            id = sess->num_dsset ;
+            if( id >= THD_MAX_SESSION_SIZE ){
+              fprintf(stderr,"RT: max number of datasets exceeded!\a\n") ;
+              EXIT(1) ;
             }
-            sess->func[id][VIEW_ORIGINAL_TYPE] = rtin->func_dset ; (sess->num_func)++ ;
+            sess->dsset[id][VIEW_ORIGINAL_TYPE] = rtin->func_dset ; sess->num_dsset++ ;
             AFNI_force_adoption( sess , False ) ;
             POPDOWN_strlist_chooser ;
 
-            im3d->vinfo->func_num = sess->num_func - 1 ;
+            if( im3d != NULL ){
+              im3d->vinfo->func_num = sess->num_dsset - 1 ;
+              AFNI_SETUP_FUNC_ON(im3d) ;
+            }
 
-            AFNI_SETUP_FUNC_ON(im3d) ;
             rtin->func_status = 1 ;   /* AFNI knows now */
             afni_init = 1 ;           /* below: tell AFNI to look at this function */
 
@@ -2502,21 +3461,22 @@ void RT_tell_afni( RT_input * rtin , int mode )
 
          THD_load_statistics( rtin->reg_dset ) ;
 
-         if( verbose )
-               fprintf(stderr , "RT: sending dataset %s with %d bricks\n"
-                                "    to AFNI controller [%c] session %s\n" ,
-                       DSET_FILECODE(rtin->reg_dset) , DSET_NVALS(rtin->reg_dset) ,
-                       clll , sess->sessname ) ;
-         VMCHECK ;
+         if( im3d != NULL ){
+           if( verbose )
+                 fprintf(stderr , "RT: sending dataset %s with %d bricks\n"
+                                  "    to AFNI controller [%c] session %s\n" ,
+                         DSET_FILECODE(rtin->reg_dset) , DSET_NVALS(rtin->reg_dset) ,
+                         clll , sess->sessname ) ;
+         }
 
          EDIT_dset_items( rtin->reg_dset, ADN_directory_name,sess->sessname, ADN_none ) ;
 
-         id = sess->num_anat ;
-         if( id >= THD_MAX_SESSION_ANAT ){
-            fprintf(stderr,"RT: max number of anat datasets exceeded!\a\n") ;
-            EXIT(1) ;
+         id = sess->num_dsset ;
+         if( id >= THD_MAX_SESSION_SIZE ){
+           fprintf(stderr,"RT: max number of datasets exceeded!\a\n") ;
+           EXIT(1) ;
          }
-         sess->anat[id][VIEW_ORIGINAL_TYPE] = rtin->reg_dset ; sess->num_anat = id+1 ;
+         sess->dsset[id][VIEW_ORIGINAL_TYPE] = rtin->reg_dset ; sess->num_dsset = id+1 ;
          POPDOWN_strlist_chooser ;
 
          rtin->reg_status = 1 ;   /* AFNI knows about this dataset now */
@@ -2531,13 +3491,17 @@ void RT_tell_afni( RT_input * rtin , int mode )
    /**--- actually talk to AFNI now ---**/
 
    if( afni_init ){  /* tell AFNI to view new dataset(s) */
-      AFNI_SETUP_VIEW(im3d,VIEW_ORIGINAL_TYPE) ;
-      if( EQUIV_DSETS(rtin->dset,old_anat) ) THD_update_statistics( rtin->dset ) ;
-      else                                   THD_load_statistics  ( rtin->dset ) ;
 
-      AFNI_initialize_view( old_anat , im3d ) ;  /* Geronimo! */
+     if( im3d != NULL ){
+       AFNI_SETUP_VIEW(im3d,VIEW_ORIGINAL_TYPE) ;
+       if( EQUIV_DSETS(rtin->dset[cc],old_anat) ) THD_update_statistics( rtin->dset[cc] ) ;
+       else                                       THD_load_statistics  ( rtin->dset[cc] ) ;
+
+       AFNI_initialize_view( old_anat , im3d ) ;  /* Geronimo! */
+     }
 
    } else {          /* just tell AFNI to refresh the images/graphs */
+
       Three_D_View * qq3d ;
       int review ;
 
@@ -2547,9 +3511,9 @@ void RT_tell_afni( RT_input * rtin , int mode )
          qq3d = GLOBAL_library.controllers[ii] ;
          if( !IM3D_OPEN(qq3d) ) break ;  /* skip this one */
 
-         review = (qq3d == im3d)                         ||   /* same viewer?  */
-                  EQUIV_DSETS(rtin->dset,qq3d->anat_now) ||   /* or same anat? */
-                  ( rtin->func_dset != NULL   &&              /* or same func? */
+         review = (qq3d == im3d)                             ||   /* same viewer?  */
+                  EQUIV_DSETS(rtin->dset[cc],qq3d->anat_now) ||   /* or same anat? */
+                  ( rtin->func_dset != NULL   &&                  /* or same func? */
                     qq3d->vinfo->func_visible &&
                     EQUIV_DSETS(rtin->func_dset,qq3d->fim_now) ) ;
 
@@ -2560,15 +3524,12 @@ void RT_tell_afni( RT_input * rtin , int mode )
 #endif
 
          if( review ){
-            if( verbose == 2 )
-               fprintf(stderr,"RT: send redraw message to controller [%c]\n",
-                       clabel[ii] ) ;
-            VMCHECK ;
             AFNI_modify_viewing( qq3d , False ) ;  /* Crazy Horse! */
          }
       }
    }
-   XmUpdateDisplay( im3d->vwid->top_shell ) ;
+
+   if( im3d != NULL ) XmUpdateDisplay( THE_TOPSHELL ) ;
 
    /**--- if this is the final call, do some cleanup stuff ---**/
 
@@ -2578,39 +3539,36 @@ void RT_tell_afni( RT_input * rtin , int mode )
 
       if( verbose == 2 )
          fprintf(stderr,"RT: finalizing dataset to AFNI (including disk output).\n") ;
-      VMCHECK ;
 
-      fprintf(stderr , "RT: sending dataset %s with %d bricks\n"
-                       "    to AFNI controller [%c] session %s\n" ,
-              DSET_FILECODE(rtin->dset) , rtin->nvol ,
-              clll , sess->sessname ) ;
+#if 0
+      if( im3d != NULL )
+        fprintf(stderr , "RT: sending dataset %s with %d bricks\n"
+                         "    to AFNI controller [%c] session %s\n" ,
+                DSET_FILECODE(rtin->dset[cc]) , rtin->nvol[cc] ,
+                clll , sess->sessname ) ;
+#endif
 
-      { char qbuf[256] ;
-        sprintf( qbuf , " \n"
-                        " Acquisition Terminated\n\n"
-                        " Dataset saved as %s\n"
-                        " with %d bricks\n" ,
-                 DSET_FILECODE(rtin->dset) , rtin->nvol ) ;
+#if 0
+      THD_load_statistics( rtin->dset[cc] ) ;
+#endif
 
-        PLUTO_beep() ;
-        PLUTO_popup_transient( plint , qbuf ) ;
-      }
-
-/**
-      THD_load_statistics( rtin->dset ) ;
-**/
-
-      /* 20 Mar 1998: write in uncompressed mode */
+      /* 20 Mar 1998: write in uncompressed mode for speed */
 
       cmode = THD_get_write_compression() ;
       THD_set_write_compression(COMPRESS_NONE) ;
       SHOW_AFNI_PAUSE ;
 
-      THD_write_3dim_dataset( NULL,NULL , rtin->dset , True ) ;
-      DSET_unlock( rtin->dset ) ;  /* 20 Mar 1998 */
+      THD_write_3dim_dataset( NULL,NULL , rtin->dset[cc] , True ) ;
+      DSET_unlock( rtin->dset[cc] ) ;  /* 20 Mar 1998 */
 
       if( rtin->func_dset != NULL ){
-         rtin->func_func( rtin , FINAL_MODE ) ;
+         int jj ;
+#if 0
+         jj = rtin->func_func( rtin , FINAL_MODE ) ;
+#else
+         AFNI_CALL_VALU_2ARG( rtin->func_func , int,jj ,
+                              RT_input *,rtin , int,FINAL_MODE ) ;
+#endif
          THD_write_3dim_dataset( NULL,NULL , rtin->func_dset , True ) ;
          DSET_unlock( rtin->func_dset ) ;  /* 20 Mar 1998 */
          THD_force_malloc_type( rtin->func_dset->dblk , DATABLOCK_MEM_ANY ) ;
@@ -2628,55 +3586,60 @@ void RT_tell_afni( RT_input * rtin , int mode )
 
       AFNI_force_adoption( sess , GLOBAL_argopt.warp_4D ) ;
       AFNI_make_descendants( GLOBAL_library.sslist ) ;
-      THD_force_malloc_type( rtin->dset->dblk , DATABLOCK_MEM_ANY ) ;
+      THD_force_malloc_type( rtin->dset[cc]->dblk , DATABLOCK_MEM_ANY ) ;
 
-      AFNI_purge_unused_dsets() ; sync() ;  /* 08 Mar 2000: sync disk */
+      AFNI_purge_unused_dsets() ;
       SHOW_AFNI_READY ;
    }
-
-   if( verbose == 2 ) SHOW_TIMES ;
-   VMCHECK ;
 
    return ;
 }
 
 /*--------------------------------------------------------------------------
   This routine is called when no more data will be added to the
-  incoming dataset.
+  incoming dataset(s).
 ----------------------------------------------------------------------------*/
 
 void RT_finish_dataset( RT_input * rtin )
 {
-   int ii ;
+   int ii , cc , nbad=0 ;
 
    if( rtin->image_mode ){
       if( verbose == 2 ) SHOW_TIMES ;
       return ;
    }
 
-   if( ! ISVALID_3DIM_DATASET(rtin->dset) ) return ;
+   for( cc=0 ; cc < rtin->num_chan ; cc++ ){
 
-   if( rtin->nvol < 1 ){
-     fprintf(stderr,"RT: attempt to finish dataset with 0 completed bricks!\a\n") ;
-     DSET_delete( rtin->dset ) ; rtin->dset = NULL ;
-     if( rtin->func_dset != NULL ){
-        DSET_delete( rtin->func_dset ) ; rtin->func_dset = NULL ;
-     }
+      if( ! ISVALID_3DIM_DATASET(rtin->dset[cc]) ){
+        fprintf(stderr,"RT: attempt to finish channel %02d with incomplete dataset!\a\n",cc+1) ;
+        nbad++ ; continue ;
+      }
+
+      if( rtin->nvol[cc] < 1 ){
+        fprintf(stderr,"RT: attempt to finish channel %02d with 0 completed bricks!\a\n",cc+1) ;
+        DSET_delete( rtin->dset[cc] ) ; rtin->dset[cc] = NULL ;
+        if( rtin->func_dset != NULL ){
+           DSET_delete( rtin->func_dset ) ; rtin->func_dset = NULL ;
+        }
 #ifdef ALLOW_REGISTRATION
-     if( rtin->reg_dset != NULL ){
-        DSET_delete( rtin->reg_dset ) ; rtin->reg_dset = NULL ;
-     }
+        if( rtin->reg_dset != NULL ){
+           DSET_delete( rtin->reg_dset ) ; rtin->reg_dset = NULL ;
+        }
 #endif
-     return ;
+        nbad++ ;
+      }
+
+      if( rtin->nsl[cc] > 0 )
+         fprintf(stderr,"RT: finish channel %02d with %d slices unused!\a\n",
+                 cc+1,rtin->nsl[cc]);
+
+      fprintf(stderr,"RT: finish channel %02d with %d bricks completed.\n",
+              cc+1,rtin->nvol[cc]) ;
    }
 
-   if( rtin->nsl > 0 )
-      fprintf(stderr,"RT: finish dataset with %d slices unused!\a\n",rtin->nsl);
-
-   fprintf(stderr,"RT: finish dataset with %d bricks completed.\n",rtin->nvol) ;
-
    if( verbose ) SHOW_TIMES ;
-   VMCHECK ;
+   if( nbad    ) return ;
 
 #ifdef ALLOW_REGISTRATION
    /*--- Do the "at end" registration, if ordered and if possible ---*/
@@ -2716,24 +3679,28 @@ void RT_finish_dataset( RT_input * rtin )
          yar[3][ii] = rtin->reg_phi[ iar[ii] ] ;
       }
 
-      plot_ts_lab( XtDisplay(rtin->im3d->vwid->top_shell) ,
+      plot_ts_lab( THE_DISPLAY ,
                    nn , yar[0] , -3 , yar+1 ,
-                   "time" , NULL , DSET_FILECODE(rtin->dset) , nar , NULL ) ;
+                   "time" , NULL , DSET_FILECODE(rtin->dset[0]) , nar , NULL ) ;
 
       free(iar) ; free(yar[0]) ; free(yar[1]) ; free(yar[2]) ; free(yar[3]) ;
    }
 
    /*--- Oct 1998: do 3D graphing ---*/
+   /*--- Jan 2004: if both reg_graph_xnew and reg_graph_ynew, don't plot */
 
-   if( rtin->reg_graph && rtin->reg_nest > 1 && REG_IS_3D(rtin->reg_mode) ){
+   if( rtin->reg_graph && rtin->reg_nest > 1 && REG_IS_3D(rtin->reg_mode) &&
+       ( rtin->reg_graph_xnew == 0 || rtin->reg_graph_ynew == 0 ) ){
       float * yar[7] ;
-      int nn = rtin->reg_nest ;
+      int     ycount = -6 ;
+      int     nn = rtin->reg_nest ;
       static char * nar[6] = {
          "\\Delta I-S [mm]" , "\\Delta R-L [mm]" , "\\Delta A-P [mm]" ,
          "Roll [\\degree]" , "Pitch [\\degree]" , "Yaw [\\degree]"  } ;
 
-      char * ttl = malloc( strlen(DSET_FILECODE(rtin->dset)) + 32 ) ;
-      strcpy(ttl,DSET_FILECODE(rtin->dset)) ;
+      char *ttl = malloc( strlen(DSET_FILECODE(rtin->dset[0])) + 32 ) ;
+      strcpy(ttl,"\\noesc ") ;
+      strcat(ttl,DSET_FILECODE(rtin->dset[0])) ;
       if( rtin->reg_mode == REGMODE_3D_ESTIM ) strcat(ttl," [Estimate]") ;
 
       if( verbose == 2 )
@@ -2741,7 +3708,7 @@ void RT_finish_dataset( RT_input * rtin )
 
       /* arrays are already sorted by time */
 
-      yar[0] = rtin->reg_tim   ;  /* time  */
+      yar[0] = rtin->reg_rep   ;  /* repetition numbers */
       yar[1] = rtin->reg_dx    ;  /* dx    */
       yar[2] = rtin->reg_dy    ;  /* dy    */
       yar[3] = rtin->reg_dz    ;  /* dz    */
@@ -2749,11 +3716,28 @@ void RT_finish_dataset( RT_input * rtin )
       yar[5] = rtin->reg_psi   ;  /* pitch */
       yar[6] = rtin->reg_theta ;  /* yaw   */
 
-      plot_ts_lab( XtDisplay(rtin->im3d->vwid->top_shell) ,
-                   nn , yar[0] , -6 , yar+1 ,
-                   "time" , NULL , ttl , nar , NULL ) ;
+      if ( rtin->p_code )
+      {
+         ycount = 1;
+	 yar[1] = rtin->reg_eval;
+      }
+
+      plot_ts_lab( THE_DISPLAY ,
+                   nn , yar[0] , ycount , yar+1 ,
+                   "reps" , NULL , ttl , nar , NULL ) ;
 
       free(ttl) ;
+   }
+
+   /* close any open tcp connection */
+   if ( rtin->mp_tcp_use )
+      RT_mp_comm_close( rtin );
+
+   /* if we have a parser expression, free it */
+   if ( rtin->p_code )
+   {
+      free( rtin->p_code ) ;
+      rtin->p_code = NULL ;
    }
 #endif
 
@@ -2768,6 +3752,24 @@ void RT_finish_dataset( RT_input * rtin )
 /*****************************************************************************
   The collection of functions for handling slice registration in this plugin.
 ******************************************************************************/
+
+/*---------------------------------------------------------------------------
+  Set the sizes of any open graph windows.
+
+  Moved Bob's code to its own function.                  2004 Jan 28  [rickr]
+-----------------------------------------------------------------------------*/
+
+void RT_set_grapher_pinnums( int pinnum )
+{
+    /* 12 Oct 2000: set pin_num on all graphs now open */
+
+    if( pinnum < MIN_PIN || pinnum > MAX_PIN || !IM3D_OPEN(plint->im3d) )
+	return;
+
+    drive_MCW_grapher( plint->im3d->g123, graDR_setpinnum, (XtPointer) pinnum );
+    drive_MCW_grapher( plint->im3d->g231, graDR_setpinnum, (XtPointer) pinnum );
+    drive_MCW_grapher( plint->im3d->g312, graDR_setpinnum, (XtPointer) pinnum );
+}
 
 /*---------------------------------------------------------------------------
   Do pieces of 2D registration during realtime.
@@ -2785,7 +3787,7 @@ void RT_registration_2D_realtime( RT_input * rtin )
 
       /* check if enough data to setup */
 
-      if( rtin->reg_base_index >= rtin->nvol ) return ;  /* can't setup */
+      if( rtin->reg_base_index >= rtin->nvol[0] ) return ;  /* can't setup */
 
       /* setup the registration process */
 
@@ -2806,13 +3808,13 @@ void RT_registration_2D_realtime( RT_input * rtin )
 
    /*-- register all sub-bricks that aren't done yet --*/
 
-   ntt = DSET_NUM_TIMES( rtin->dset ) ;
+   ntt = DSET_NUM_TIMES( rtin->dset[0] ) ;
    for( tt=rtin->reg_nvol ; tt < ntt ; tt++ )
       RT_registration_2D_onevol( rtin , tt ) ;
 
    /*-- my work here is done --*/
 
-   XmUpdateDisplay( rtin->im3d->vwid->top_shell ) ;
+   XmUpdateDisplay( THE_TOPSHELL ) ;
    SHOW_AFNI_READY ; return ;
 }
 
@@ -2827,7 +3829,7 @@ void RT_registration_2D_atend( RT_input * rtin )
 
    /* check if have enough data to register as ordered */
 
-   if( rtin->reg_base_index >= rtin->nvol ){
+   if( rtin->reg_base_index >= rtin->nvol[0] ){
       fprintf(stderr,"RT: can't do %s registration: not enough 3D volumes!\a\n",
               REG_strings[REGMODE_2D_ATEND] ) ;
       DSET_delete( rtin->reg_dset ) ; rtin->reg_dset = NULL ;
@@ -2853,9 +3855,9 @@ void RT_registration_2D_atend( RT_input * rtin )
 
    /* register each volume into the new dataset */
 
-   ntt = DSET_NUM_TIMES( rtin->dset ) ;
+   ntt = DSET_NUM_TIMES( rtin->dset[0] ) ;
    for( tt=0 ; tt < ntt ; tt++ ){
-      XmUpdateDisplay( rtin->im3d->vwid->top_shell ) ;
+      XmUpdateDisplay( THE_TOPSHELL ) ;
       RT_registration_2D_onevol( rtin , tt ) ;
       if( verbose == 1 ) fprintf(stderr,"%d",tt%10) ;
    }
@@ -2879,18 +3881,18 @@ void RT_registration_2D_setup( RT_input * rtin )
    MRI_IMAGE * im ;
    char * bar ;
 
-   nx   = DSET_NX( rtin->dset ) ;
-   ny   = DSET_NY( rtin->dset ) ;
-   nz   = DSET_NZ( rtin->dset ) ;
-   kind = DSET_BRICK_TYPE( rtin->dset , ibase ) ;
+   nx   = DSET_NX( rtin->dset[0] ) ;
+   ny   = DSET_NY( rtin->dset[0] ) ;
+   nz   = DSET_NZ( rtin->dset[0] ) ;
+   kind = DSET_BRICK_TYPE( rtin->dset[0] , ibase ) ;
 
    rtin->reg_nvol  = 0 ;
 
    rtin->reg_2dbasis = (MRI_2dalign_basis **)
                          malloc( sizeof(MRI_2dalign_basis *) * nz ) ;
 
-   im   = mri_new_vol_empty( nx,ny,1 , kind ) ;     /* fake image for slices */
-   bar  = DSET_BRICK_ARRAY( rtin->dset , ibase ) ;  /* ptr to base volume    */
+   im   = mri_new_vol_empty( nx,ny,1 , kind ) ;        /* fake image for slices */
+   bar  = DSET_BRICK_ARRAY( rtin->dset[0] , ibase ) ;  /* ptr to base volume    */
    nbar = im->nvox * im->pixel_size ;               /* offset for each slice */
 
    for( kk=0 ; kk < nz ; kk++ ){                         /* loop over slices */
@@ -2916,7 +3918,7 @@ void RT_registration_2D_close( RT_input * rtin )
 {
    int kk , nz ;
 
-   nz = DSET_NZ( rtin->dset ) ;
+   nz = DSET_NZ( rtin->dset[0] ) ;
    for( kk=0 ; kk < nz ; kk++ )
       mri_2dalign_cleanup( rtin->reg_2dbasis[kk] ) ;
 
@@ -2943,15 +3945,15 @@ void RT_registration_2D_onevol( RT_input * rtin , int tt )
 
    /*-- sanity check --*/
 
-   if( rtin->dset == NULL || rtin->reg_dset == NULL ) return ;
+   if( rtin->dset[0] == NULL || rtin->reg_dset == NULL ) return ;
 
-   nx   = DSET_NX( rtin->dset ) ;
-   ny   = DSET_NY( rtin->dset ) ; nxy = nx * ny ;
-   nz   = DSET_NZ( rtin->dset ) ;
-   kind = DSET_BRICK_TYPE( rtin->dset , 0 ) ;
+   nx   = DSET_NX( rtin->dset[0] ) ;
+   ny   = DSET_NY( rtin->dset[0] ) ; nxy = nx * ny ;
+   nz   = DSET_NZ( rtin->dset[0] ) ;
+   kind = DSET_BRICK_TYPE( rtin->dset[0] , 0 ) ;
 
    im   = mri_new_vol_empty( nx,ny,1 , kind ) ;     /* fake image for slices */
-   bar  = DSET_BRICK_ARRAY( rtin->dset , tt ) ;     /* ptr to input volume   */
+   bar  = DSET_BRICK_ARRAY( rtin->dset[0] , tt ) ;  /* ptr to input volume   */
    nbar = im->nvox * im->pixel_size ;               /* offset for each slice */
 
    /* make space for new sub-brick in reg_dset */
@@ -2992,9 +3994,9 @@ void RT_registration_2D_onevol( RT_input * rtin , int tt )
       rtin->reg_phi = (float *) realloc( (void *) rtin->reg_phi ,
                                          sizeof(float) * (nest+1) ) ;
 
-      rtin->reg_tim[nest] = THD_timeof_vox( tt , kk*nxy , rtin->dset ) ;
-      rtin->reg_dx [nest] = dx * DSET_DX(rtin->dset) ;
-      rtin->reg_dy [nest] = dy * DSET_DY(rtin->dset) ;
+      rtin->reg_tim[nest] = THD_timeof_vox( tt , kk*nxy , rtin->dset[0] ) ;
+      rtin->reg_dx [nest] = dx * DSET_DX(rtin->dset[0]) ;
+      rtin->reg_dy [nest] = dy * DSET_DY(rtin->dset[0]) ;
       rtin->reg_phi[nest] = phi * R2DFAC             ; rtin->reg_nest ++ ;
 
       /* convert output image to desired type;
@@ -3091,7 +4093,7 @@ void RT_registration_3D_realtime( RT_input * rtin )
 
       /* check if enough data to setup */
 
-      if( rtin->reg_base_index >= rtin->nvol ) return ;  /* can't setup */
+      if( rtin->reg_base_index >= rtin->nvol[0] ) return ;  /* can't setup */
 
       /* setup the registration process */
 
@@ -3118,38 +4120,47 @@ void RT_registration_3D_realtime( RT_input * rtin )
       /* realtime graphing? */
 
       if( rtin->reg_graph == 2 ){
+	 int    ycount = -6 ;  /* default number of graphs */
          static char * nar[6] = {
             "\\Delta I-S [mm]" , "\\Delta R-L [mm]" , "\\Delta A-P [mm]" ,
             "Roll [\\degree]" , "Pitch [\\degree]" , "Yaw [\\degree]"  } ;
 
-         char * ttl = malloc( strlen(DSET_FILECODE(rtin->dset)) + 32 ) ;
-         strcpy(ttl,DSET_FILECODE(rtin->dset)) ;
+         char *ttl = malloc( strlen(DSET_FILECODE(rtin->dset[0])) + 32 ) ;
+         strcpy(ttl,"\\noesc ") ;
+         strcat(ttl,DSET_FILECODE(rtin->dset[0])) ;
          if( rtin->reg_mode == REGMODE_3D_ESTIM ) strcat(ttl," [Estimate]") ;
 
+         /* if p_code, only plot the reg_eval */
+	 if ( rtin->p_code )
+	    ycount = 1;
+
          rtin->mp = plot_ts_init( GLOBAL_library.dc->display ,
-                                  0.0,rtin->reg_graph_xr ,
-                                  -6 , -rtin->reg_graph_yr,rtin->reg_graph_yr ,
-                                  "time", NULL, ttl, nar , NULL ) ;
+                                  0.0,rtin->reg_graph_xr-1 ,
+                                  ycount,-rtin->reg_graph_yr,rtin->reg_graph_yr,
+                                  "reps", NULL, ttl, nar , NULL ) ;
 
          if( rtin->mp != NULL ) rtin->mp->killfunc = MTD_killfunc ;
 
          free(ttl) ;
+
+	 /* set up comm for motion params    30 Mar 2004 [rickr] */
+	 RT_mp_comm_init_vars( rtin ) ; 
+	 if ( rtin->mp_tcp_use ) RT_mp_comm_init( rtin ) ;
       }
    }
 
    /*-- register all sub-bricks that aren't done yet --*/
 
-   ntt   = DSET_NUM_TIMES( rtin->dset ) ;
+   ntt   = DSET_NUM_TIMES( rtin->dset[0] ) ;
    ttbot = rtin->reg_nvol ;
    for( tt=ttbot ; tt < ntt ; tt++ )
       RT_registration_3D_onevol( rtin , tt ) ;
 
    if( rtin->mp != NULL && ntt > ttbot ){
-      float * yar[7] ;
+      float        * yar[7] ;
+      int            ycount = -6 ;
 
-      if( ttbot > 0 ) ttbot-- ;
-
-      yar[0] = rtin->reg_tim   + ttbot ;
+      yar[0] = rtin->reg_rep   + ttbot ;
       yar[1] = rtin->reg_dx    + ttbot ;
       yar[2] = rtin->reg_dy    + ttbot ;
       yar[3] = rtin->reg_dz    + ttbot ;
@@ -3157,12 +4168,31 @@ void RT_registration_3D_realtime( RT_input * rtin )
       yar[5] = rtin->reg_psi   + ttbot ;
       yar[6] = rtin->reg_theta + ttbot ;
 
-      plot_ts_addto( rtin->mp , ntt-ttbot , yar[0] , -6 , yar+1 ) ;
+      /* send the data off over tcp connection          30 Mar 2004 [rickr] */
+      if ( rtin->mp_tcp_use )
+	  RT_mp_comm_send_data( rtin, yar+1, ntt-ttbot );
+
+      if( ttbot > 0 )  /* modify yar after send_data, when ttbot > 0 */
+      {
+	  int c;
+	  for ( c = 0; c < 7; c++ )  /* apply the old ttbot-- */
+	      yar[c]--;
+	  ttbot-- ;
+      }
+      
+      /* if p_code, only plot the reg_eval */
+      if ( rtin->p_code )
+      {
+         ycount = 1;
+	 yar[1] = rtin->reg_eval + ttbot;
+      }
+
+      plot_ts_addto( rtin->mp , ntt-ttbot , yar[0] , ycount , yar+1 ) ;
    }
 
    /*-- my work here is done --*/
 
-   XmUpdateDisplay( rtin->im3d->vwid->top_shell ) ;
+   XmUpdateDisplay( THE_TOPSHELL ) ;
    SHOW_AFNI_READY ; return ;
 }
 
@@ -3177,7 +4207,7 @@ void RT_registration_3D_atend( RT_input * rtin )
 
    /* check if have enough data to register as ordered */
 
-   if( rtin->reg_base_index >= rtin->nvol ){
+   if( rtin->reg_base_index >= rtin->nvol[0] ){
       fprintf(stderr,"RT: can't do %s registration: not enough 3D volumes!\a\n",
               REG_strings[rtin->reg_mode] ) ;
       DSET_delete( rtin->reg_dset ) ; rtin->reg_dset = NULL ;
@@ -3203,10 +4233,10 @@ void RT_registration_3D_atend( RT_input * rtin )
 
    /* register each volume into the new dataset */
 
-   ntt = DSET_NUM_TIMES( rtin->dset ) ;
+   ntt = DSET_NUM_TIMES( rtin->dset[0] ) ;
    if( verbose == 1 ) fprintf(stderr,"RT: ") ;
    for( tt=0 ; tt < ntt ; tt++ ){
-      XmUpdateDisplay( rtin->im3d->vwid->top_shell ) ;
+      XmUpdateDisplay( THE_TOPSHELL ) ;
       RT_registration_3D_onevol( rtin , tt ) ;
       if( verbose == 1 ) fprintf(stderr,"%d",tt%10) ;
    }
@@ -3237,21 +4267,21 @@ void RT_registration_3D_setup( RT_input * rtin )
 
    /*-- extract info about coordinate axes of dataset --*/
 
-   rtin->iha  = THD_handedness( rtin->dset )   ;  /* LH or RH? */
+   rtin->iha  = THD_handedness( rtin->dset[0] )   ;  /* LH or RH? */
 
-   rtin->ax1  = THD_axcode( rtin->dset , 'I' ) ;
+   rtin->ax1  = THD_axcode( rtin->dset[0] , 'I' ) ;
    rtin->hax1 = rtin->ax1 * rtin->iha      ;      /* roll */
 
-   rtin->ax2  = THD_axcode( rtin->dset , 'R' ) ;
+   rtin->ax2  = THD_axcode( rtin->dset[0] , 'R' ) ;
    rtin->hax2 = rtin->ax2 * rtin->iha      ;      /* pitch */
 
-   rtin->ax3  = THD_axcode( rtin->dset , 'A' ) ;
+   rtin->ax3  = THD_axcode( rtin->dset[0] , 'A' ) ;
    rtin->hax3 = rtin->ax3 * rtin->iha      ;      /* yaw */
 
-   im     = DSET_BRICK(rtin->dset,ibase) ;
-   im->dx = fabs( DSET_DX(rtin->dset) ) ;  /* must set voxel dimensions */
-   im->dy = fabs( DSET_DY(rtin->dset) ) ;
-   im->dz = fabs( DSET_DZ(rtin->dset) ) ;
+   im     = DSET_BRICK(rtin->dset[0],ibase) ;
+   im->dx = fabs( DSET_DX(rtin->dset[0]) ) ;  /* must set voxel dimensions */
+   im->dy = fabs( DSET_DY(rtin->dset[0]) ) ;
+   im->dz = fabs( DSET_DZ(rtin->dset[0]) ) ;
 
    switch( rtin->reg_mode ){
       default: rtin->reg_3dbasis = NULL ;   /* should not occur */
@@ -3329,17 +4359,17 @@ void RT_registration_3D_onevol( RT_input * rtin , int tt )
 
    /*-- sanity check --*/
 
-   if( rtin->dset == NULL ) return ;
+   if( rtin->dset[0] == NULL ) return ;
 
    /*-- actual registration --*/
 
    if( verbose == 2 )
       fprintf(stderr,"RT: 3D registering sub-brick %d\n",tt) ;
 
-   qim     = DSET_BRICK(rtin->dset,tt) ;
-   qim->dx = fabs( DSET_DX(rtin->dset) ) ;  /* must set voxel dimensions */
-   qim->dy = fabs( DSET_DY(rtin->dset) ) ;
-   qim->dz = fabs( DSET_DZ(rtin->dset) ) ;
+   qim     = DSET_BRICK(rtin->dset[0],tt) ;
+   qim->dx = fabs( DSET_DX(rtin->dset[0]) ) ;  /* must set voxel dimensions */
+   qim->dy = fabs( DSET_DY(rtin->dset[0]) ) ;
+   qim->dz = fabs( DSET_DZ(rtin->dset[0]) ) ;
 
    rim = mri_3dalign_one( rtin->reg_3dbasis , qim ,
                           &roll , &pitch , &yaw , &dx , &dy , &dz ) ;
@@ -3350,19 +4380,19 @@ void RT_registration_3D_onevol( RT_input * rtin , int tt )
    pitch *= R2DFAC ; if( rtin->hax2 < 0 ) pitch = -pitch ;
    yaw   *= R2DFAC ; if( rtin->hax3 < 0 ) yaw   = -yaw   ;
 
-   switch( rtin->dset->daxes->xxorient ){
+   switch( rtin->dset[0]->daxes->xxorient ){
       case ORI_R2L_TYPE: ddy =  dx; break ; case ORI_L2R_TYPE: ddy = -dx; break ;
       case ORI_P2A_TYPE: ddz = -dx; break ; case ORI_A2P_TYPE: ddz =  dx; break ;
       case ORI_I2S_TYPE: ddx =  dx; break ; case ORI_S2I_TYPE: ddx = -dx; break ;
    }
 
-   switch( rtin->dset->daxes->yyorient ){
+   switch( rtin->dset[0]->daxes->yyorient ){
       case ORI_R2L_TYPE: ddy =  dy; break ; case ORI_L2R_TYPE: ddy = -dy; break ;
       case ORI_P2A_TYPE: ddz = -dy; break ; case ORI_A2P_TYPE: ddz =  dy; break ;
       case ORI_I2S_TYPE: ddx =  dy; break ; case ORI_S2I_TYPE: ddx = -dy; break ;
    }
 
-   switch( rtin->dset->daxes->zzorient ){
+   switch( rtin->dset[0]->daxes->zzorient ){
       case ORI_R2L_TYPE: ddy =  dz; break ; case ORI_L2R_TYPE: ddy = -dz; break ;
       case ORI_P2A_TYPE: ddz = -dz; break ; case ORI_A2P_TYPE: ddz =  dz; break ;
       case ORI_I2S_TYPE: ddx =  dz; break ; case ORI_S2I_TYPE: ddx = -dz; break ;
@@ -3383,14 +4413,36 @@ void RT_registration_3D_onevol( RT_input * rtin , int tt )
                                       sizeof(float) * (nest+1) ) ;
    rtin->reg_theta = (float *) realloc( (void *) rtin->reg_theta ,
                                       sizeof(float) * (nest+1) ) ;
+   rtin->reg_rep   = (float *) realloc( (void *) rtin->reg_rep ,
+                                      sizeof(float) * (nest+1) ) ;
+   rtin->reg_eval   = (float *) realloc( (void *) rtin->reg_eval ,
+                                      sizeof(float) * (nest+1) ) ;
 
-   rtin->reg_tim[nest]   = THD_timeof_vox( tt , 0 , rtin->dset ) ;
+   rtin->reg_tim[nest]   = THD_timeof_vox( tt , 0 , rtin->dset[0] ) ;
    rtin->reg_dx [nest]   = ddx   ;
    rtin->reg_dy [nest]   = ddy   ;
    rtin->reg_dz [nest]   = ddz   ;
    rtin->reg_phi[nest]   = roll  ;
    rtin->reg_psi[nest]   = pitch ;
-   rtin->reg_theta[nest] = yaw   ; rtin->reg_nest ++ ; rtin->reg_nvol = tt+1 ;
+   rtin->reg_theta[nest] = yaw   ;
+   rtin->reg_rep[nest]   = tt    ;
+
+   /* evaluate parser expression, since all input values are assigned here */
+   if ( rtin->p_code )
+   {
+       int c ;
+       
+       /* clear extras, just to be safe */
+       for ( c = 6; c < 26; c++ ) rtin->p_atoz[c] = 0;
+
+       rtin->p_atoz[0] = ddx ; rtin->p_atoz[1] = ddy  ; rtin->p_atoz[2] = ddz;
+       rtin->p_atoz[3] = roll; rtin->p_atoz[4] = pitch; rtin->p_atoz[5] = yaw;
+       
+       /* actually set the value via parser evaluation */
+       rtin->reg_eval[nest] = PARSER_evaluate_one(rtin->p_code, rtin->p_atoz);
+   }
+
+   rtin->reg_nest ++ ; rtin->reg_nvol = tt+1 ;
 
    /*-- convert output image to desired type;
         set qar to point to data in the converted registered image --*/
@@ -3462,7 +4514,7 @@ void RT_registration_3D_onevol( RT_input * rtin , int tt )
 
 #define IFree(x) do{ if( (x)!=NULL ){ free(x) ; (x)=NULL ; } } while(0)
 
-int RT_fim_recurse( RT_input * rtin , int mode )
+int RT_fim_recurse( RT_input *rtin , int mode )
 {
    static Three_D_View * im3d ;
    static THD_3dim_dataset * dset_time ;
@@ -3487,6 +4539,9 @@ int RT_fim_recurse( RT_input * rtin , int mode )
    static char new_prefix[THD_MAX_PREFIX] ;
    static char old_prefix[THD_MAX_PREFIX] ;
 
+   static int first_pass = 1;     /* flag for first FIM computation   30 Oct 2003 [rickr] */
+   int        start_index;        /* in case of loop FIM computation  30 Oct 2003 [rickr] */
+
    int ifim, it, iv, ivec, nnow, itbot , ip ;
    float fthr , topval , stataux[MAX_STAT_AUX] ;
    float * tsar ;
@@ -3505,8 +4560,17 @@ int RT_fim_recurse( RT_input * rtin , int mode )
 
    if( mode == INIT_MODE ){
 
-      im3d      = rtin->im3d ;            if( im3d      == NULL ) return -1 ;
-      dset_time = rtin->dset ;            if( dset_time == NULL ) return -1 ;
+      dset_time = rtin->dset[0] ;       /* assign dset_time first   30 Oct 2003 [rickr] */
+
+#ifdef ALLOW_REGISTRATION
+      /* now check for use of registered dataset                    30 Oct 2003 [rickr] */
+      if( (rtin->reg_mode == REGMODE_2D_RTIME) || (rtin->reg_mode == REGMODE_3D_RTIME) )
+         dset_time = rtin->reg_dset;
+#endif /* ALLOW_REGISTRATION */
+
+      if( dset_time == NULL ) return -1 ;
+
+      im3d      = rtin->im3d[0] ;         if( im3d      == NULL ) return -1 ;
       ref_ts    = im3d->fimdata->fimref ; if( ref_ts    == NULL ) return -1 ;
       ort_ts    = im3d->fimdata->fimort ; /* NULL is legal here */
       nupdt     = 0 ;                     /* number of updates done yet */
@@ -3601,6 +4665,8 @@ int RT_fim_recurse( RT_input * rtin , int mode )
       }
       IFree(vval) ; IFree(indx)  ; IFree(pc_ref) ; IFree(pc_vc)  ;
       IFree(aval) ; IFree(rbest) ; IFree(abest)  ;
+
+      first_pass = 1;                /* reset for future datasets    30 Oct 2003 [rickr] */
 
       return 1 ;
    }
@@ -3755,7 +4821,16 @@ int RT_fim_recurse( RT_input * rtin , int mode )
             compute the threshold (fthr) from it,
             make indx[i] be the 3D index of the i-th voxel above threshold ----*/
 
-   if( mode == it1 ){  /* am exactly at the first time relevant to fim */
+   /* be sure dset_time has enough sub-bricks for this time point   30 Oct 2003 [rickr] */
+   if ( (DSET_NVALS(dset_time) <= mode) || (DSET_ARRAY(dset_time,mode) == NULL) )
+      return 1;
+
+#if 0				/* change to first_pass test */
+   if( mode == it1 )
+#endif
+
+   /* check for first fim computation with this dataset            30 Oct 2003 [rickr] */
+   if( first_pass == 1 ){
 
       switch( dtyp ){  /* process each datum type separately */
 
@@ -3897,58 +4972,70 @@ int RT_fim_recurse( RT_input * rtin , int mode )
 
    /*---- do recursive update for this time point ----*/
 
-   it   = mode ;  /* time index */
-   nnow = 0 ;     /* number of refs used this time */
-
-   if( it >= nx_ref ) return 1 ;  /* can't update without references! */
-
-   for( ivec=0 ; ivec < ny_ref ; ivec++ ){           /* for each ideal time series */
-      tsar = MRI_FLOAT_PTR(ref_ts) + (ivec*nx_ref) ;
-      if( tsar[it] >= WAY_BIG ) continue ;           /* skip this time series */
-
-      ref_vec[0] = 1.0 ;         /* we always supply ort for constant */
-      for( ip=1 ; ip <= polort ; ip++ )              /* 02 Jun 1999:    */
-         ref_vec[ip] = ref_vec[ip-1] * ((float)it) ; /* and polynomials */
-
-      if( internal_ort ){
-         ref_vec[ip] = tsar[it] ;                    /* ideal */
-      } else {
-         for( iv=0 ; iv < ny_ort ; iv++ )            /* any other orts? */
-            ref_vec[iv+ip] = (it < nx_ort) ? ortar[it+iv*nx_ort]
-                                           : 0.0 ;
-
-         ref_vec[ny_ort+ip] = tsar[it] ;             /* ideal */
-      }
-
-      update_PCOR_references( ref_vec , pc_ref[ivec] ) ;  /* Choleski refs */
-
-      /* load data from dataset into local float array vval */
-
-      switch( dtyp ){
-         case MRI_short:{
-            short * dar = (short *) DSET_ARRAY(dset_time,it) ;
-            for( iv=0 ; iv < nvox ; iv++ ) vval[iv] = (float) dar[indx[iv]] ;
-         }
-         break ;
-
-         case MRI_float:{
-            float * dar = (float *) DSET_ARRAY(dset_time,it) ;
-            for( iv=0 ; iv < nvox ; iv++ ) vval[iv] = (float) dar[indx[iv]] ;
-         }
-         break ;
-
-         case MRI_byte:{
-            byte * dar = (byte *) DSET_ARRAY(dset_time,it) ;
-            for( iv=0 ; iv < nvox ; iv++ ) vval[iv] = (float) dar[indx[iv]] ;
-         }
-         break ;
-      }
-
-      PCOR_update_float( vval , pc_ref[ivec] , pc_vc[ivec] ) ;  /* Choleski data */
-      nnow++ ;
-
+   /* process as loop, in case this is the first time (and we need to backtrack) */
+   /*                                                        30 Oct 2003 [rickr] */
+   if ( first_pass == 1 )
+   {
+      first_pass  = 0;
+      start_index = it1;      /* start from timepoint of first FIM computation */
    }
-   if( nnow > 0 ) nupdt++ ;  /* at least one ideal vector was used */
+   else
+      start_index = mode;     /* if not first pass, the "loop" will be this one iteration */
+
+   for ( it = start_index; it <= mode; it++ )
+   {
+      nnow = 0 ;     /* number of refs used this time */
+   
+      if( it >= nx_ref ) return 1 ;  /* can't update without references! */
+   
+      for( ivec=0 ; ivec < ny_ref ; ivec++ ){           /* for each ideal time series */
+         tsar = MRI_FLOAT_PTR(ref_ts) + (ivec*nx_ref) ;
+         if( tsar[it] >= WAY_BIG ) continue ;           /* skip this time series */
+   
+         ref_vec[0] = 1.0 ;         /* we always supply ort for constant */
+         for( ip=1 ; ip <= polort ; ip++ )              /* 02 Jun 1999:    */
+            ref_vec[ip] = ref_vec[ip-1] * ((float)it) ; /* and polynomials */
+   
+         if( internal_ort ){
+            ref_vec[ip] = tsar[it] ;                    /* ideal */
+         } else {
+            for( iv=0 ; iv < ny_ort ; iv++ )            /* any other orts? */
+               ref_vec[iv+ip] = (it < nx_ort) ? ortar[it+iv*nx_ort]
+                                              : 0.0 ;
+   
+            ref_vec[ny_ort+ip] = tsar[it] ;             /* ideal */
+         }
+   
+         update_PCOR_references( ref_vec , pc_ref[ivec] ) ;  /* Choleski refs */
+   
+         /* load data from dataset into local float array vval */
+   
+         switch( dtyp ){
+            case MRI_short:{
+               short * dar = (short *) DSET_ARRAY(dset_time,it) ;
+               for( iv=0 ; iv < nvox ; iv++ ) vval[iv] = (float) dar[indx[iv]] ;
+            }
+            break ;
+   
+            case MRI_float:{
+               float * dar = (float *) DSET_ARRAY(dset_time,it) ;
+               for( iv=0 ; iv < nvox ; iv++ ) vval[iv] = (float) dar[indx[iv]] ;
+            }
+            break ;
+   
+            case MRI_byte:{
+               byte * dar = (byte *) DSET_ARRAY(dset_time,it) ;
+               for( iv=0 ; iv < nvox ; iv++ ) vval[iv] = (float) dar[indx[iv]] ;
+            }
+            break ;
+         }
+   
+         PCOR_update_float( vval , pc_ref[ivec] , pc_vc[ivec] ) ;  /* Choleski data */
+         nnow++ ;
+   
+      }
+      if( nnow > 0 ) nupdt++ ;  /* at least one ideal vector was used */
+   }
 
    return 1 ;
 }

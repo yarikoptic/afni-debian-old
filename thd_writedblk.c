@@ -99,6 +99,8 @@ Boolean THD_write_datablock( THD_datablock * blk , Boolean write_brick )
    if( ! ISVALID_DATABLOCK(blk) ) return False ;
    if( DBLK_IS_MASTERED(blk) )    return False ;  /* 11 Jan 1999 */
    if( DBLK_IS_MINC(blk) )        return False ;  /* 29 Oct 2001 */
+   if( DBLK_IS_ANALYZE(blk) )     return False ;  /* 27 Aug 2002 */
+   if( DBLK_IS_NIFTI(blk) )       return False ;  /* 28 Aug 2003 */
 
    dkptr = blk->diskptr ;
    if( ! ISVALID_DISKPTR(dkptr) ) WRITE_ERR("illegal file type") ;
@@ -142,7 +144,7 @@ Boolean THD_write_datablock( THD_datablock * blk , Boolean write_brick )
                           ATRSIZE_DATASET_DIMENSIONS , atdims ) ;
 
    { int * datum_type ;
-     datum_type = malloc( sizeof(int) * blk->nvals ) ;
+     datum_type = AFMALL(int, sizeof(int) * blk->nvals ) ;
      for( id=0 ; id < blk->nvals ; id++ )
         datum_type[id] = DBLK_BRICK_TYPE(blk,id) ;
      THD_set_int_atr(   blk , ATRNAME_BRICK_TYPES  , blk->nvals , datum_type ) ;
@@ -282,6 +284,11 @@ fprintf(stderr,"THD_write_datablock: save_order=%d  dkptr->byte_order=%d\n",
 
    if( write_brick == False || blk->brick == NULL ||
        dkptr->storage_mode == STORAGE_UNDEFINED     ) return True ;
+
+   if( dkptr->storage_mode == STORAGE_BY_VOLUMES ){  /* 20 Jun 2002 */
+     fprintf(stderr,"** Writing dataset by VOLUMES not yet supported.\n") ;
+     return False ;
+   }
 
    /*-- check each brick for existence:
           if none exist, cannot write, but is OK

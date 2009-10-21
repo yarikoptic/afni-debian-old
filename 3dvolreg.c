@@ -23,9 +23,10 @@ static int         VL_nbase  = 0 ;
 static int         VL_intern = 1 ;
 static int         VL_resam  = MRI_FOURIER ;
 static int         VL_final  = -1 ;   /* 20 Nov 1998 */
-static int         VL_clipit = 0 ;    /* 23 Oct 1998 */
+static int         VL_clipit = 1 ;    /* 23 Oct 1998 and 16 Apr 2002 */
 static MRI_IMAGE * VL_imbase = NULL ;
 static MRI_IMAGE * VL_imwt   = NULL ;
+static int         VL_wtinp  = 0 ;    /* 06 Jun 2002 */
 
 static int         VL_zpad   = 0 ;    /* 05 Feb 2001 */
 
@@ -49,9 +50,9 @@ static int  VL_verbose     = 0 ;
 static char VL_dfile[256]  = "\0" ;
 static char VL_1Dfile[256] = "\0" ;  /* 14 Apr 2000 */
 
-static int VL_maxite = 9 ;
-static float VL_dxy  = 0.05 ;  /* voxels */
-static float VL_dph  = 0.07 ;  /* degrees */
+static int VL_maxite = 19 ;
+static float VL_dxy  = 0.02;  /* voxels */
+static float VL_dph  = 0.03 ;  /* degrees */
 static float VL_del  = 0.70 ;  /* voxels */
 
 static int VL_rotcom = 0 ;     /* 04 Sep 2000: print out 3drotate commands? */
@@ -61,6 +62,8 @@ static THD_3dim_dataset *VL_rotpar_dset =NULL ,  /* 14 Feb 2001 */
 
 static int VL_tshift        = 0 ,                /* 15 Feb 2001 */
            VL_tshift_ignore = 0  ;
+
+static int VL_sinit = 1 ;                        /* 22 Mar 2004 */
 
 /******* prototypes *******/
 
@@ -120,6 +123,8 @@ int main( int argc , char *argv[] )
 
    Argc = argc ; Argv = argv ; Iarg = 1 ;
    VL_command_line() ;
+
+   mri_3dalign_wtrimming(1) ;  /* 22 Mar 2004: always turn this on */
 
    /*-- setup the registration algorithm parameters --*/
 
@@ -412,8 +417,8 @@ int main( int argc , char *argv[] )
       int sx=66666,sy,sz ;
 
       if( VL_verbose ){
-         fprintf(stderr,"++ Start of first pass alignment on all sub-bricks\n") ;
-         cputim = COX_cpu_time();
+        fprintf(stderr,"++ Start of first pass alignment on all sub-bricks\n") ;
+        cputim = COX_cpu_time();
       }
 
       tp_base = mri_to_float(VL_imbase) ;  /* make a copy, blur it */
@@ -439,7 +444,7 @@ int main( int argc , char *argv[] )
 
       } else {
 
-         float *far , *bar=MRI_FLOAT_PTR(tp_base) , *qar ;
+         float *far , *bar=MRI_FLOAT_PTR(tp_base) , *qar , clip ;
          int ii,jj,kk , nxy=nx*ny , nxyz=nxy*nz ;
          int nxbot,nxtop,nybot,nytop,nzbot,nztop , ee,fade,ff ;
 
@@ -455,18 +460,16 @@ int main( int argc , char *argv[] )
          /* find shift of 1st data brick that best overlaps with base brick */
 
          if( VL_coarse_del > 0 && VL_coarse_num > 0 ){
-            if( VL_verbose ) fprintf(stderr,"++ Getting best coarse shift:") ;
-            get_best_shift( nx,ny,nz , bar,far , &sx,&sy,&sz ) ;
-            if( VL_verbose ) fprintf(stderr," %d %d %d\n",sx,sy,sz) ;
+           if( VL_verbose ) fprintf(stderr,"++ Getting best coarse shift [0]:") ;
+           get_best_shift( nx,ny,nz , bar,far , &sx,&sy,&sz ) ;
+           if( VL_verbose ) fprintf(stderr," %d %d %d\n",sx,sy,sz) ;
          } else {
-            sx = sy = sz = 0 ;
+           sx = sy = sz = 0 ;
          }
 
 #define BAR(i,j,k) bar[(i)+(j)*nx+(k)*nxy]
 #define QAR(i,j,k) qar[(i)+(j)*nx+(k)*nxy]
 #define FAR(i,j,k) far[(i)+(j)*nx+(k)*nxy]
-
-         /* add the blurred+shifted data brick to the blurred base brick */
 
          qim = mri_copy(tp_base) ; qar = MRI_FLOAT_PTR(qim) ;
 
@@ -474,10 +477,28 @@ int main( int argc , char *argv[] )
          ee = abs(sy) ; nybot = ee ; nytop = ny-ee ;
          ee = abs(sz) ; nzbot = ee ; nztop = nz-ee ;
 
-         for( kk=nzbot ; kk < nztop ; kk++ )
+         if( VL_sinit ){        /* 22 Mar 2004: initialize scale factor */
+           float sf=0.0,sq=0.0 ;
+           for( kk=nzbot ; kk < nztop ; kk++ )
             for( jj=nybot ; jj < nytop ; jj++ )
-               for( ii=nxbot ; ii < nxtop ; ii++ )
-                  QAR(ii,jj,kk) += FAR(ii-sx,jj-sy,kk-sz) ;
+             for( ii=nxbot ; ii < nxtop ; ii++ ){
+              sf += FAR(ii-sx,jj-sy,kk-sz) ; sq += QAR(ii,jj,kk) ;
+             }
+           if( sq > 0.0 ){
+             sf = sf / sq ;
+             if( sf > 0.05 && sf < 20.0 ){
+               mri_3dalign_scaleinit(sf) ;
+               if( VL_verbose ) fprintf(stderr,"++ Scale init = %g\n",sf) ;
+             }
+           }
+         }
+
+         /* add the blurred+shifted data brick to the blurred base brick */
+
+         for( kk=nzbot ; kk < nztop ; kk++ )
+          for( jj=nybot ; jj < nytop ; jj++ )
+           for( ii=nxbot ; ii < nxtop ; ii++ )
+            QAR(ii,jj,kk) += FAR(ii-sx,jj-sy,kk-sz) ;
 
          mri_free(fim) ;
 
@@ -486,9 +507,17 @@ int main( int argc , char *argv[] )
          if( VL_verbose )
            fprintf(stderr,"++ Blurring first pass weight\n") ;
 
+#if 1
          EDIT_blur_volume_3d( nx,ny,nz , 1.0,1.0,1.0 ,
                               MRI_float , qar ,
                               VL_twoblur,VL_twoblur,VL_twoblur ) ;
+#else
+         MRI_5blur_inplace_3D( qim ) ;              /* 07 Jun 2002 */
+#endif
+
+         clip = 0.025 * mri_max(qim) ;              /* 06 Jun 2002 */
+         for( ii=0 ; ii < nxyz ; ii++ )
+           if( qar[ii] < clip ) qar[ii] = 0.0 ;
 
          mri_3dalign_force_edging( 1 ) ;
          albase = mri_3dalign_setup( tp_base , qim ) ;
@@ -531,7 +560,7 @@ int main( int argc , char *argv[] )
             if( kim > 0 || sx == 66666 ){  /* if didn't already get best shift */
                if( VL_coarse_del > 0 && VL_coarse_num > 0 ){
                   if( VL_verbose )
-                     fprintf(stderr,"++ Getting best coarse shift:") ;
+                     fprintf(stderr,"++ Getting best coarse shift [%d]:",kim) ;
                   get_best_shift( nx,ny,nz , MRI_FLOAT_PTR(tp_base),MRI_FLOAT_PTR(fim) ,
                                   &sx,&sy,&sz ) ;
                   if( VL_verbose )
@@ -589,6 +618,13 @@ int main( int argc , char *argv[] )
 
    if( VL_final < 0 ) VL_final = VL_resam ;  /* 20 Nov 1998 */
    mri_3dalign_final_regmode( VL_final ) ;
+
+   /* 06 Jun 2002: create -wtinp weight now */
+
+   if( VL_wtinp ){
+     VL_imwt = mri_to_float( DSET_BRICK(VL_dset,0) ) ;
+     mri_3dalign_wproccing( 1 ) ;
+   }
 
    albase = mri_3dalign_setup( VL_imbase , VL_imwt ) ;
    if( albase == NULL ){
@@ -684,7 +720,7 @@ int main( int argc , char *argv[] )
 
          vm2.mm = rmat ; vm2.vv = tvec ;  /* second transform */
 
-         sprintf(sbuf,"-rotate %.3fI %.3fR %.3fA -ashift %.3fS %.3fL %.3fP" ,
+         sprintf(sbuf,"-rotate %.4fI %.4fR %.4fA -ashift %.4fS %.4fL %.4fP" ,
                  roll[kim],pitch[kim],yaw[kim], dx[kim],dy[kim],dz[kim]  ) ;
          vm1 = THD_rotcom_to_matvec( new_dset , sbuf ) ;
 
@@ -833,9 +869,10 @@ int main( int argc , char *argv[] )
       char * str = NULL ;
       str = THD_zzprintf( str , "3dvolreg did: %s" , modes[VL_final] ) ;
       if( VL_clipit ) str = THD_zzprintf( str , " -clipit" ) ;
+      else            str = THD_zzprintf( str , " -noclip" ) ;
       if( VL_zpad )   str = THD_zzprintf( str , " -zpad %d" , VL_zpad ) ;
       str = THD_zzprintf(str,
-                      " -rotate %.3fI %.3fR %.3fA -ashift %.3fS %.3fL %.3fP\n" ,
+                      " -rotate %.4fI %.4fR %.4fA -ashift %.4fS %.4fL %.4fP\n" ,
                       roll[0],pitch[0],yaw[0], dx[0],dy[0],dz[0]  ) ;
       tross_Append_History( new_dset , str ) ;
       free(str) ;
@@ -887,7 +924,7 @@ int main( int argc , char *argv[] )
 
      for( kim=0 ; kim < imcount ; kim++ ){
         sprintf(anam,"VOLREG_ROTCOM_%06d",kim) ;
-        sprintf(sbuf,"-rotate %.3fI %.3fR %.3fA -ashift %.3fS %.3fL %.3fP" ,
+        sprintf(sbuf,"-rotate %.4fI %.4fR %.4fA -ashift %.4fS %.4fL %.4fP" ,
                 roll[kim],pitch[kim],yaw[kim], dx[kim],dy[kim],dz[kim]  ) ;
         THD_set_string_atr( new_dset->dblk , anam , sbuf ) ;
 
@@ -942,7 +979,7 @@ int main( int argc , char *argv[] )
 
       fp = fopen( VL_dfile , "w" ) ;
       for( kim=0 ; kim < imcount ; kim++ )
-         fprintf(fp , "%4d %7.3f %7.3f %7.3f %7.3f %7.3f %7.3f  %11.4g %11.4g\n" ,
+         fprintf(fp , "%4d %8.4f %8.4f %8.4f %8.4f %8.4f %8.4f  %11.4g %11.4g\n" ,
                  kim , roll[kim], pitch[kim], yaw[kim],
                        dx[kim], dy[kim], dz[kim],
                        rmsold[kim] , rmsnew[kim]  ) ;
@@ -957,7 +994,7 @@ int main( int argc , char *argv[] )
 
       fp = fopen( VL_1Dfile , "w" ) ;
       for( kim=0 ; kim < imcount ; kim++ )
-         fprintf(fp , "%7.3f %7.3f %7.3f %7.3f %7.3f %7.3f\n" ,
+         fprintf(fp , "%8.4f %8.4f %8.4f %8.4f %8.4f %8.4f\n" ,
                  roll[kim], pitch[kim], yaw[kim],
                  dx[kim]  , dy[kim]   , dz[kim]  ) ;
       fclose(fp) ;
@@ -969,8 +1006,9 @@ int main( int argc , char *argv[] )
       for( kim=0 ; kim < imcount ; kim++ ){
          printf("3drotate %s" , modes[VL_final] ) ;
          if( VL_clipit ) printf(" -clipit" ) ;
+         else            printf(" -noclip" ) ;
          if( VL_zpad )   printf(" -zpad %d" , VL_zpad ) ;
-         printf(" -rotate %.3fI %.3fR %.3fA -ashift %.3fS %.3fL %.3fP\n" ,
+         printf(" -rotate %.4fI %.4fR %.4fA -ashift %.4fS %.4fL %.4fP\n" ,
                  roll[kim],pitch[kim],yaw[kim], dx[kim],dy[kim],dz[kim]  ) ;
       }
       printf("\n") ;  /* 11 Dec 2000 */
@@ -999,6 +1037,8 @@ void VL_syntax(void)
     "                    range as the corresponding input volume.\n"
     "                    The interpolation schemes can produce values outside\n"
     "                    the input range, which is sometimes annoying.\n"
+    "                    [16 Apr 2002: -clipit is now the default]\n"
+    "  -noclip         Turns off -clipit\n"
     "  -zpad n         Zeropad around the edges by 'n' voxels during rotations\n"
     "                    (these edge values will be stripped off in the output)\n"
     "              N.B.: Unlike to3d, in this program '-zpad' adds zeros in\n"
@@ -1084,16 +1124,16 @@ void VL_syntax(void)
     "  * These options are intended to be used to align datasets between sessions:\n"
     "     S1 = SPGR from session 1    E1 = EPI from session 1\n"
     "     S2 = SPGR from session 2    E2 = EPI from session 2\n"
-    " 3dvolreg -twopass -twodup -clipit -base S1+orig -prefix S2reg S2+orig\n"
-    " 3dvolreg -clipit -rotparent S2reg+orig -gridparent E1+orig -prefix E2reg \\\n"
+    " 3dvolreg -twopass -twodup -base S1+orig -prefix S2reg S2+orig\n"
+    " 3dvolreg -rotparent S2reg+orig -gridparent E1+orig -prefix E2reg \\\n"
     "          -base 4 E2+orig\n"
     "     Each sub-brick in E2 is registered to sub-brick E2+orig[4], then the\n"
     "     rotation from S2 to S2reg is also applied, which shifting+padding\n"
     "     applied to properly overlap with E1.\n"
     "  * A similar effect could be done by using commands\n"
-    " 3dvolreg -twopass -twodup -clipit -base S1+orig -prefix S2reg S2+orig\n"
-    " 3dvolreg -clipit -prefix E2tmp -base 4 E2+orig\n"
-    " 3drotate -clipit -rotparent S2reg+orig -gridparent E1+orig -prefix E2reg E2tmp+orig\n"
+    " 3dvolreg -twopass -twodup -base S1+orig -prefix S2reg S2+orig\n"
+    " 3dvolreg -prefix E2tmp -base 4 E2+orig\n"
+    " 3drotate -rotparent S2reg+orig -gridparent E1+orig -prefix E2reg E2tmp+orig\n"
     "    The principal difference is that the latter method results in E2\n"
     "    being interpolated twice to make E2reg: once in the 3dvolreg run to\n"
     "    produce E2tmp, then again when E2tmp is rotated to make E2reg.  Using\n"
@@ -1163,7 +1203,7 @@ void VL_syntax(void)
     "                                  iterative progress of the passes.\n"
     "                                N.B.: when using -twopass, and you expect the\n"
     "                                  data bricks to move a long ways, you might\n"
-    "                                  want to use '-heptic -clipit' rather than\n"
+    "                                  want to use '-heptic' rather than\n"
     "                                  the default '-Fourier', since you can get\n"
     "                                  wraparound from Fourier interpolation.\n"
     "                      -twodup = If this option is set, along with -twopass,\n"
@@ -1171,6 +1211,12 @@ void VL_syntax(void)
     "                                  xyz-axes origins reset to those of the\n"
     "                                  base dataset.  This is equivalent to using\n"
     "                                  '3drefit -duporigin' on the output dataset.\n"
+    "                       -sinit = When using -twopass registration on volumes\n"
+    "                                  whose magnitude differs significantly, the\n"
+    "                                  least squares fitting procedure is started\n"
+    "                                  by doing a zero-th pass estimate of the\n"
+    "                                  scale difference between the bricks.\n"
+    "                                  Use this option to turn this feature OFF.\n"
     "              -coarse del num = When doing the first pass, the first step is\n"
     "                                  to do a number of coarse shifts in order to\n"
     "                                  find a starting point for the iterations.\n"
@@ -1185,6 +1231,17 @@ void VL_syntax(void)
     "                             N.B.: The 'del' parameter cannot be larger than\n"
     "                                   10%% of the smallest dimension of the input\n"
     "                                   dataset.\n"
+#if 0
+    "              -wtrim          = Attempt to trim the intermediate volumes to\n"
+    "                                  a smaller region (determined by the weight\n"
+    "                                  volume).  The purpose of this is to save\n"
+    "                                  memory.  The use of '-verbose -verbose'\n"
+    "                                  will report on the trimming usage.\n"
+    "                             N.B.: At some point in the future, -wtrim will\n"
+    "                                   become the default.\n"
+#endif
+    "              -wtinp          = Use sub-brick[0] of the input dataset as the\n"
+    "                                  weight brick in the final registration pass.\n"
     "\n"
     " N.B.: * This program can consume VERY large quantities of memory.\n"
     "          (Rule of thumb: 40 bytes per input voxel.)\n"
@@ -1196,7 +1253,7 @@ void VL_syntax(void)
     "          You may want to decrease it proportionally for larger datasets.\n"
     "       * -twopass resets the -maxite parameter to 66; if you want to use\n"
     "          a different value, use -maxite AFTER the -twopass option.\n"
-    "       * The -twopass option can be slow - several CPU minutes for a\n"
+    "       * The -twopass option can be slow; several CPU minutes for a\n"
     "          256x256x124 volume is a typical run time.\n"
     "       * After registering high-resolution anatomicals, you may need to\n"
     "          set their origins in 3D space to match.  This can be done using\n"
@@ -1220,6 +1277,12 @@ void VL_command_line(void)
    /***========= look for options on command line =========***/
 
    while( Iarg < Argc && Argv[Iarg][0] == '-' ){
+
+      /** -sinit [22 Mar 2004] **/
+
+      if( strcmp(Argv[Iarg],"-sinit") == 0 ){
+        VL_sinit = 0 ; Iarg++ ; continue ;
+      }
 
       /** -params [not in the help list] **/
 
@@ -1262,6 +1325,7 @@ void VL_command_line(void)
          else if( strcmp(str,"quintic") == 0 ) VL_final = MRI_QUINTIC ;
          else if( strcmp(str,"heptic")  == 0 ) VL_final = MRI_HEPTIC ;
          else if( strcmp(str,"Fourier") == 0 ) VL_final = MRI_FOURIER ;
+         else if( strcmp(str,"NN") == 0 ) VL_final = MRI_NN ; /** Added by ZSS: Wed Apr  2 2003 **/
          else {
             fprintf(stderr,"** Illegal mode after -final\n"); exit(1);
          }
@@ -1298,7 +1362,13 @@ void VL_command_line(void)
       /** -clipit **/
 
       if( strncmp(Argv[Iarg],"-clipit",4) == 0 ){
-         VL_clipit++ ;
+         fprintf(stderr,"++ Notice: -clipit is now the default\n") ;
+         VL_clipit = 1 ;
+         Iarg++ ; continue ;
+      }
+
+      if( strncmp(Argv[Iarg],"-noclip",4) == 0 ){
+         VL_clipit = 0 ;
          Iarg++ ; continue ;
       }
 
@@ -1360,6 +1430,7 @@ void VL_command_line(void)
          VL_resam = MRI_HEPTIC ;
          Iarg++ ; continue ;
       }
+
 
       /** -prefix **/
 
@@ -1455,6 +1526,24 @@ void VL_command_line(void)
       if( strcmp(Argv[Iarg],"-coarse") == 0 ){
          VL_coarse_del = strtol(Argv[++Iarg],NULL,10) ;
          VL_coarse_num = strtol(Argv[++Iarg],NULL,10) ;
+         Iarg++ ; continue ;
+      }
+
+      /** 06 Jun 2002: -wtrim **/
+
+      if( strcmp(Argv[Iarg],"-wtrim") == 0 ){
+#if 0
+         mri_3dalign_wtrimming(1) ;
+#else
+         fprintf(stderr,"++ Notice: -wtrim is now always enabled\n"); /* 22 Mar 2004 */
+#endif
+         Iarg++ ; continue ;
+      }
+
+      /** 06 Jun 2002: -wtinp **/
+
+      if( strcmp(Argv[Iarg],"-wtinp") == 0 ){
+         VL_wtinp = 1 ;
          Iarg++ ; continue ;
       }
 
@@ -1620,9 +1709,9 @@ void VL_command_line(void)
    /*** Open the dataset to be registered ***/
 
    if( Iarg > Argc ){
-      fprintf(stderr,"** Too few arguments!?\n") ; exit(1) ;
+      fprintf(stderr,"** Too few arguments!?  Last=%s\n",Argv[Argc-1]) ; exit(1) ;
    } else if( Iarg < Argc-1 ){
-      fprintf(stderr,"** Too many arguments?!\n") ; exit(1) ;
+      fprintf(stderr,"** Too many arguments?!  Dataset=%s?\n",Argv[Iarg]) ; exit(1) ;
    }
 
    VL_dset = THD_open_dataset( Argv[Iarg] ) ;
@@ -1760,6 +1849,13 @@ void VL_command_line(void)
         fprintf(stderr,"++ Coarse del was %d, replaced with %d\n",VL_coarse_del,mm) ;
         VL_coarse_del = mm ;
      }
+   }
+
+   /* 06 Jun 2002 */
+
+   if( VL_imwt != NULL && VL_wtinp ){
+     fprintf(stderr,"++ Input weight file overrides -wtinp option!\n") ;
+     VL_wtinp = 0 ;
    }
 
    /*** done (we hope) ***/

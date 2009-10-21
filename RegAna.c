@@ -27,11 +27,30 @@
            GLT linear constraints).
   Date:    11 August 2000
 
+  Mod:     Modified use of vector_multiply() followed by vector_subtract()
+           to use new function vector_multiply_subtract(), and to use
+           new function vector_dotself() when possible -- RWCox.
+  Date:    28 Dec 2001
+
+  Mod:     Modification to calc_tcoef to calculate t-statistics for individual
+           GLT linear constraints.
+  Date:    29 January 2002
+
+  Mod:     If FLOATIZE is defined, uses floats instead of doubles -- RWCox.
+  Date:    03 Mar 2003
+
+  Mod:     If use_psinv is 1, use matrix_psinv() instead of inversion.
+  Date     19 Jul 2004 -- RWCox
+
 */
+
+static int use_psinv = 1 ;  /* 19 Jul 2004 */
 
 /*---------------------------------------------------------------------------*/
 
-#include "matrix.c"
+#ifndef FLOATIZE
+# include "matrix.c"
+#endif
 
 void RA_error (char * message);
 
@@ -64,31 +83,26 @@ int calc_matrices
   matrix xt, xtx;               /* temporary matrix calculation results */
   int ok;                       /* flag for successful matrix inversion */
 
-
-  /*----- initialize matrices -----*/
-  matrix_initialize (&xt);
-  matrix_initialize (&xtx);
-
-
   /*----- extract the independent variable matrix X -----*/
   matrix_extract (xdata, p, plist, x);
 
 
   /*----- calculate various matrices which will be needed later -----*/
-  matrix_transpose (*x, &xt);
-  matrix_multiply (xt, *x, &xtx);
-  ok = matrix_inverse (xtx, xtxinv);
-
-  if (ok)
-    matrix_multiply (*xtxinv, xt, xtxinvxt);
-  else
-    RA_error ("Improper X matrix  (cannot invert X'X) ");
-
-
-  /*----- dispose of matrices -----*/
-  matrix_destroy (&xtx);
-  matrix_destroy (&xt);
-
+  if( p <= 1 || !use_psinv ){
+    matrix_initialize (&xt);
+    matrix_initialize (&xtx);
+    matrix_transpose (*x, &xt);
+    matrix_multiply (xt, *x, &xtx);
+    ok = matrix_inverse_dsc (xtx, xtxinv);
+    if (ok)
+      matrix_multiply (*xtxinv, xt, xtxinvxt);
+    else
+      RA_error ("Improper X matrix  (cannot invert X'X) ");
+    matrix_destroy (&xtx);
+    matrix_destroy (&xt);
+  } else {
+    matrix_psinv  (*x, xtxinv , xtxinvxt ); ok = 1 ;  /* 19 Jul 2004 */
+  }
 
   return (ok);
 }
@@ -120,10 +134,10 @@ int calc_glt_matrix
 
 
   /*----- calculate the constant matrix which will be needed later -----*/
-  matrix_transpose (c, &ct); 
-  matrix_multiply (xtxinv, ct, &xtxinvct);
-  matrix_multiply (c, xtxinvct, cxtxinvct);
-  ok = matrix_inverse (*cxtxinvct, &t2);
+  matrix_transpose (c, &ct);                 /* [c]' */
+  matrix_multiply (xtxinv, ct, &xtxinvct);   /* inv{[x]'[x]} [c]' */
+  matrix_multiply (c, xtxinvct, cxtxinvct);  /* [c] inv{[x]'[x]} [c]' */
+  ok = matrix_inverse_dsc (*cxtxinvct, &t2); /* inv{ [c] inv{[x]'[x]} [c]' } */
   if (ok)
     {
       matrix_multiply (xtxinvct, t2, &t1);
@@ -140,7 +154,6 @@ int calc_glt_matrix
   matrix_destroy (&xtxinvct);
   matrix_destroy (&t1);
   matrix_destroy (&t2);
-
 
   return (ok);
 }
@@ -159,25 +172,35 @@ float  calc_sse
 )
 
 {
+#if 0
   vector yhat;               /* product Xb */
+#endif
   vector e;                  /* vector of residuals */
   float sse;                 /* error sum of squares */
 
 
   /*----- initialize vectors -----*/
+#if 0
   vector_initialize (&yhat);
+#endif
   vector_initialize (&e);
 
 
   /*----- calculate the error sum of squares -----*/
+#if 0
   vector_multiply (x, b, &yhat);
   vector_subtract (y, yhat, &e);
   sse = vector_dot (e, e);
+#else
+  sse = vector_multiply_subtract( x , b , y , &e ) ;
+#endif
 
 
   /*----- dispose of vectors -----*/
   vector_destroy (&e);
+#if 0
   vector_destroy (&yhat);
+#endif
 
 
   /*----- return SSE -----*/
@@ -200,22 +223,32 @@ float  calc_resids
 )
 
 {
+#if 0
   vector yhat;               /* product Xb */
+#endif
   float sse;                 /* error sum of squares */
 
 
   /*----- initialize vectors -----*/
+#if 0
   vector_initialize (&yhat);
+#endif
 
 
   /*----- calculate the error sum of squares -----*/
+#if 0
   vector_multiply (x, b, &yhat);
   vector_subtract (y, yhat, e);
   sse = vector_dot (*e, *e);
+#else
+  sse = vector_multiply_subtract( x , b , y , e ) ;
+#endif
 
 
   /*----- dispose of vectors -----*/
+#if 0
   vector_destroy (&yhat);
+#endif
 
 
   /*----- return SSE -----*/
@@ -254,8 +287,7 @@ float  calc_sse_fit
   /*----- calculate the error sum of squares -----*/
   vector_multiply (x, b, &yhat);
   vector_subtract (y, yhat, &e);
-  sse = vector_dot (e, e);
-
+  sse = vector_dotself( e );
 
   /*----- save the fitted time series and residual errors -----*/
   for (it = 0;  it < x.rows;  it++)
@@ -290,10 +322,10 @@ float  calc_sspe
 )
 
 {
-  int i, j;                  /* indices */
-  float * sum = NULL;        /* sum of observations at each level */
-  float diff;                /* difference between observation and average */
-  float sspe;                /* pure error sum of squares */
+  register int i, j;                  /* indices */
+  register float * sum = NULL;        /* sum of observations at each level */
+  register float diff;                /* difference between observation and average */
+  register float sspe;                /* pure error sum of squares */
 
 
   /*----- initialize sum -----*/
@@ -457,7 +489,7 @@ void calc_tcoef
   const float EPSILON = 1.0e-5;      /* protection against divide by zero */
   int df;                     /* error degrees of freedom */
   float mse;                  /* mean square error */
-  int i;                      /* parameter index */
+  register int i;             /* parameter index */
   float stddev;               /* standard deviation for parameter estimate */
   float tstat;                /* t-statistic for parameter estimate */
   float num;                  /* numerator of t-statistic */
@@ -474,7 +506,7 @@ void calc_tcoef
   mse = sse / df;
 
 
-  for (i = 0;  i < p;  i++)
+  for (i = 0;  i < xtxinv.rows;  i++)
     {
       /*----- Calculate standard deviation for regression parameters -----*/
       var = mse * xtxinv.elts[i][i];
@@ -547,8 +579,8 @@ float calc_freg
 
 
   /*----- Limit range of values for F-statistic -----*/
-  if (freg < 0.0)   freg = 0.0;
-  if (freg > MAXF)  freg = MAXF;
+       if (freg < 0.0)   freg = 0.0;
+  else if (freg > MAXF)  freg = MAXF;
 
 
   /*----- Return F-statistic for significance of the regression -----*/
@@ -581,8 +613,8 @@ float calc_rsqr
 
 
   /*----- Limit range of values for R^2 -----*/
-  if (rsqr < 0.0)   rsqr = 0.0;
-  if (rsqr > 1.0)   rsqr = 1.0;
+       if (rsqr < 0.0)   rsqr = 0.0;
+  else if (rsqr > 1.0)   rsqr = 1.0;
 
 
   /*----- Return coefficient of multiple determination R^2 -----*/

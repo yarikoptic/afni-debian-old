@@ -28,6 +28,11 @@
   Mod:     Added option to suppress spatial smoothing of segmentation mask.
   Date:    03 December 2001
 
+  Mod:     Set MAX_STRING_LENGTH equal to THD_MAX_NAME.
+  Date:    02 December 2002
+
+  Mod:     Convert input from MRI_byte to MRI_short if needed.
+  Date:    05 December 2002
 */
 
 /*---------------------------------------------------------------------------*/
@@ -35,7 +40,7 @@
 #define PROGRAM_NAME "3dIntracranial"                /* name of this program */
 #define PROGRAM_AUTHOR "B. D. Ward"                        /* program author */
 #define PROGRAM_INITIAL "04 June 1999"    /* date of initial program release */
-#define PROGRAM_LATEST "03 December 2001" /* date of latest program revision */
+#define PROGRAM_LATEST "02 December 2002" /* date of latest program revision */
 
 /*---------------------------------------------------------------------------*/
 /*
@@ -51,6 +56,8 @@
 /*
   Global variables and constants.
 */
+
+#define USE_QUIET
 
 static char * anat_filename = NULL;      /* file name for input anat dataset */
 static char * prefix_filename = NULL;    /* prefix name for output dataset */
@@ -155,7 +162,7 @@ void get_options
 	  MTEST (anat_filename);
 	  strcpy (anat_filename, argv[nopt]);
 
-	  anat = THD_open_one_dataset (anat_filename);
+	  anat = THD_open_dataset (anat_filename);
 	  if (!ISVALID_3DIM_DATASET (anat))
 	    {
 	      sprintf (message, "Can't open dataset: %s\n", anat_filename); 
@@ -167,6 +174,23 @@ void get_options
 	      sprintf (message, "Can't access data: %s\n", anat_filename); 
 	      SI_error (message); 
 	    }
+
+          /** RWCox [05 Dec 2002]
+              If input is a byte dataset, make a short copy of it. **/
+
+          if( DSET_BRICK_TYPE(anat,0) == MRI_byte ){
+            THD_3dim_dataset *qset ;
+            register byte *bar ; register short *sar ;
+            register int ii,nvox ;
+            fprintf(stderr,"++ WARNING: converting input dataset from byte to short\n") ;
+            qset = EDIT_empty_copy(anat) ;
+            nvox = DSET_NVOX(anat) ;
+            bar  = (byte *) DSET_ARRAY(anat,0) ;
+            sar  = (short *)malloc(sizeof(short)*nvox) ;
+            for( ii=0 ; ii < nvox ; ii++ ) sar[ii] = (short) bar[ii] ;
+            EDIT_substitute_brick( qset , 0 , MRI_short , sar ) ;
+            DSET_delete(anat) ; anat = qset ;
+          }
 
 	  nopt++;
 	  continue;
@@ -379,7 +403,8 @@ void initialize_program
 	rfim[icount] = sfim[ixyz];
 	icount++;
       }
-  printf ("%d voxels above lower cutoff = %d \n", icount, lower_cutoff);
+  if (! quiet)
+    printf ("%d voxels above lower cutoff = %d \n", icount, lower_cutoff);
 
 
   /*----- Get PDF estimate and set voxel intensity limits -----*/
@@ -504,7 +529,7 @@ void write_afni_data
 
   /*----- initialize local variables -----*/
   filename = prefix_filename;
-  dset = THD_open_one_dataset (anat_filename);
+  dset = THD_open_dataset (anat_filename);
   nxyz = DSET_NX(dset) * DSET_NY(dset) * DSET_NZ(dset);
 
   
@@ -620,18 +645,14 @@ void SEGMENT_auto ()
   /*----- Segment intracranial voxels -----*/
   segment_volume (cv);
 
-
   /*----- Perform voxel connectivity tests -----*/
   connectivity_tests (cv);
-
 
   /*----- Put estimated target structure into output dataset -----*/
   target_into_dataset (cv);
 
-
   /*----- Write out the segmented dataset -----*/
   write_afni_data (cv);
-
 
   return ;
 
@@ -650,16 +671,22 @@ int main
 )
 
 {
+  int ii ;
 
   /*----- Identify software -----*/
-  printf ("\n\n");
-  printf ("Program: %s \n", PROGRAM_NAME);
-  printf ("Author:  %s \n", PROGRAM_AUTHOR);
-  printf ("Initial Release:  %s \n", PROGRAM_INITIAL);
-  printf ("Latest Revision:  %s \n", PROGRAM_LATEST);
-  printf ("\n");
+  
+  for( ii=1 ; ii < argc ; ii++ )
+    if( strncmp(argv[ii],"-quiet",6) == NULL ) break ;
+  if( ii == argc ){
+    printf ("\n\n");
+    printf ("Program: %s \n", PROGRAM_NAME);
+    printf ("Author:  %s \n", PROGRAM_AUTHOR);
+    printf ("Initial Release:  %s \n", PROGRAM_INITIAL);
+    printf ("Latest Revision:  %s \n", PROGRAM_LATEST);
+    printf ("\n");
+  }
 
-  machdep() ;
+  mainENTRY("3dIntracranial:main") ; machdep() ;
 
   
   /*----- Program initialization -----*/

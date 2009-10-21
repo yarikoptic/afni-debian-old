@@ -4,12 +4,40 @@
    License, Version 2.  See the file README.Copyright for details.
 ******************************************************************************/
 
+#include "afni.h"
+#include "afni_plugout.h"
+
+/*---------------------------------------------------------------*/
+/*------------ Stuff for logos and pixmap definitions -----------*/
 #undef MAIN
 #define WANT_LOGO_BITMAP
 #define WANT_AFNI_BITMAP
 #undef  USE_IMPIX
 
-#include "afni.h"
+#include "logo.h"              /* declares global pixmap variables */
+
+#ifdef WANT_AFNI_BITMAP        /* used for various icons          */
+#  include "afni48.xbm"        /* iconified controller window     */
+#  include "afni48cor.xbm"     /* iconified coronal image window  */
+#  include "afni48axi.xbm"     /* iconified axial image window    */
+#  include "afni48sag.xbm"     /* iconified sagittal image window */
+#  include "afni48gra.xbm"     /* no longer used                  */
+#  include "afni48gracor.xbm"  /* iconified coronal graph window  */
+#  include "afni48grasag.xbm"  /* iconified sagittal graph window */
+#  include "afni48graaxi.xbm"  /* iconified axial graph window    */
+#  include "afni16.xbm"        /* used for 'AFNI' form background */
+#endif /* WANT_AFNI_BITMAP */
+
+#ifdef WANT_LOGO_BITMAP        /* now only used for PseudoColor */
+#ifdef USE_MCWLOGO             /* for TrueColor, the color logo */
+#  include "mcw.xbm"           /* in "lll.h" is used instead.   */
+#elif defined(USE_RWCLOGO)
+#  include "rwc.xbm"
+#else
+#  include "nih.xbm"
+#endif
+#endif /* WANT_LOGO_BITMAP */
+/*---------------------------------------------------------------*/
 
 /** if USE_OPTMENUS is defined, then option menus will
     be used in place of MCW_arrowvals wherever possible **/
@@ -54,7 +82,7 @@ static char * AFNI_crosshair_av_label[9] = {  /* modified 31 Dec 1998 */
 
 static char * AFNI_see_marks_bbox_label[1] = { "See Markers" } ;
 
-static char * AFNI_see_func_bbox_label[1] = { "See Function" } ;
+static char * AFNI_see_func_bbox_label[1] = { "See OverLay" } ;
 
 static char * AFNI_wrap_bbox_label[1] = {"Wrap"} ;
 static char * AFNI_xhall_bbox_label[1] = {"X+"} ;
@@ -83,10 +111,10 @@ static char * AFNI_tlrc_big_bbox_label[1] = { "Big Talairach Box?" } ;
    "             Talairach view."
 
 static char * AFNI_anatmode_bbox_label[2] =
-   { "View Anat Data Brick" , "Warp Anat on Demand" } ;
+   { "View ULay Data Brick" , "Warp ULay on Demand" } ;
 
 static char * AFNI_funcmode_bbox_label[2] =
-   { "View Func Data Brick" , "Warp Func on Demand" } ;
+   { "View OLay Data Brick" , "Warp OLay on Demand" } ;
 
 #define AFNI_see_marks_bbox_help                       \
    "pressed IN:  markers for this view will display\n" \
@@ -98,12 +126,12 @@ static char * AFNI_funcmode_bbox_label[2] =
    "Oct 1998: Also controls the display of dataset\n"  \
    "          'tags' -- see the 'Edit Tagset' plugin."
 
-#define AFNI_see_func_bbox_help \
-   "pressed IN:  functional overlay will display\n" \
-   "pressed OUT: functional overlay won't display"  \
-   "\n"                                             \
-   "This is useful for seeing what anatomical\n"    \
-   "features are 'under' a particular function."
+#define AFNI_see_func_bbox_help                        \
+   "pressed IN:  overlay dataset will display\n"       \
+   "pressed OUT: overlay dataset won't display"        \
+   "\n"                                                \
+   "This is useful for seeing what anatomical\n"       \
+   "features are 'under' a particular overlay color."
 
 #define AFNI_marks_edits_bbox_help                            \
    "pressed IN:  you are allowed to change the markers\n"     \
@@ -123,12 +151,16 @@ static char * AFNI_funcmode_bbox_label[2] =
    "LR+AP:  display crosshairs only parallel\n"  \
    "         to the L-R and A-P axes [etc.]\n\n" \
    "N.B.: When a slice has an image viewer\n"    \
-   "  and a grapher open at the same time,\n"    \
-   "  then a 'frame' will be drawn around\n"     \
-   "  the voxels being graphed.  In Single\n"    \
-   "  crosshair mode, only this frame will\n"    \
-   "  be drawn.  In Multi mode, the actual\n"    \
-   "  crosshairs will also be drawn."
+   " and a grapher open at the same time,\n"     \
+   " then a 'frame' will be drawn around\n"      \
+   " the voxels being graphed.  In Single\n"     \
+   " crosshair mode, only this frame will\n"     \
+   " be drawn.  In Multi mode, the actual\n"     \
+   " crosshairs will also be drawn.\n"           \
+   "N.B.: You can set AFNI_CROSSHAIR_LINES\n"    \
+   " in Datamode->Misc->Edit Environment\n"      \
+   " to have crosshairs drawn as thin lines\n"   \
+   " rather than as overlaid voxels."
 
 #define AFNI_crosshair_color_help \
    "Controls the\n"               \
@@ -147,23 +179,26 @@ static char * AFNI_funcmode_bbox_label[2] =
    "  frame drawn around the\n"  \
    "  voxels being graphed."
 
-#define AFNI_crosshair_label_help   \
-   "Displays coordinates of\n"      \
-   "the crosshair point in the\n"   \
-   "DICOM coordinates (3D input)\n" \
-   "or voxel indices (image input)"
+#define AFNI_crosshair_label_help      \
+   "Displays coordinates of\n"         \
+   "the crosshair point in the\n"      \
+   "DICOM coordinates (3D input)\n"    \
+   "or voxel indices (image input)\n"  \
+   "\n"                                \
+   "A Button-3 popup menu lets you\n"  \
+   "change coordinate display order."
 
-#define AFNI_view_help                       \
-   "Normal:   button opens viewing window\n"  \
-   "Inverted: button raises opened window\n\n" \
-   "N.B.: AFNI does not read datasets from\n"  \
-   "      disk until a window is opened.\n"   \
-   "      This can make opening the first\n" \
-   "      viewing window be quite slow."    \
-   "\n"                                      \
-   "The Graph buttons are only enabled for\n" \
-   "3D+time datasets that are viewing their\n" \
-   ".BRIK files (not warping on demand --\n"  \
+#define AFNI_view_help                          \
+   "Normal:   button opens viewing window\n"    \
+   "Inverted: button raises opened window\n\n"  \
+   "N.B.: AFNI does not read datasets from\n"   \
+   "      disk until a window is opened.\n"     \
+   "      This can make opening the first\n"    \
+   "      viewing window be quite slow."        \
+   "\n"                                         \
+   "The Graph buttons are only enabled for\n"   \
+   "3D+time datasets that are viewing their\n"  \
+   ".BRIK files (not warping on demand --\n"    \
    "see the 'Define Datamode' control panel)"
 
 #define AFNI_disp_pcolor_help  \
@@ -272,7 +307,7 @@ void AFNI_make_wid3 (Three_D_View *) ;
 
 /*--------------------------------------------------------------------*/
 
-void AFNI_make_widgets( Three_D_View * im3d )
+void AFNI_make_widgets( Three_D_View *im3d )
 {
 
 ENTRY("AFNI_make_widgets") ;
@@ -280,7 +315,7 @@ ENTRY("AFNI_make_widgets") ;
    /*---- initialize -----*/
 
    if( ! IM3D_VALID(im3d) )
-      FatalError("illegal call to AFNI_make_widgets") ;
+     FatalError("illegal call to AFNI_make_widgets") ;
 
    num_entry++ ;
 
@@ -314,10 +349,10 @@ STATUS("creating top_form") ;
       Pixel bot_pix , top_pix ;  /* colors: from image windows  */
 
 #ifdef USE_IMPIX              /** which colors to use for program icons **/
-#  define ICON_bg bot_pix
+#  define ICON_bg bot_pix     /* use image display pixels */
 #  define ICON_fg top_pix
 #else
-#  define ICON_bg bg_pix
+#  define ICON_bg bg_pix      /* use widget pixels (e.g., FALLback in afni.h) */
 #  define ICON_fg fg_pix
 #endif
 
@@ -428,9 +463,70 @@ STATUS("WANT_AFNI_BITMAP") ;
                          afni48gracor_bits , afni48gracor_width , afni48gracor_height ,
                          ICON_fg , ICON_bg ,
                          DefaultDepthOfScreen(XtScreen(vwid->top_shell)) ) ;
+
+      /* 28 Jan 2004: just for fun, background pixmaps for top forms */
+
+      if( im3d->dc->visual_class == TrueColor &&
+          AFNI_yesenv("AFNI_LOGO16")          &&
+          afni16_pixmap[num_entry-1] == XmUNSPECIFIED_PIXMAP ){
+
+        MRI_IMAGE *bim ; XImage *xim ; char ename[32], *ept ;
+        sprintf(ename,"AFNI_LOGO16_IMAGE_%c" , 'A'+num_entry-1 ) ;
+        ept = getenv(ename) ;
+        if( ept == NULL ) ept = getenv( "AFNI_LOGO16_IMAGE" ) ;
+        if( ept != NULL ){
+          bim = mri_read_just_one( ept ) ;
+          if( bim != NULL ){
+            if( bim->kind == MRI_rgb ){
+              xim = rgb_to_XImage( im3d->dc , bim ) ;
+              if( xim != NULL ){
+                afni16_pixmap[num_entry-1] = XCreatePixmap( im3d->dc->display ,
+                                                 RootWindowOfScreen(im3d->dc->screen) ,
+                                                 bim->nx , bim->ny , im3d->dc->planes ) ;
+                XPutImage( im3d->dc->display , afni16_pixmap[num_entry-1] ,
+                           im3d->dc->origGC , xim , 0,0 , 0,0 , bim->nx , bim->ny ) ;
+                MCW_kill_XImage( xim ) ;
+              }
+            }
+            mri_free(bim) ;
+          }
+        }
+      }
+
+#if 0
+      if( afni16_pixmap[num_entry-1] == XmUNSPECIFIED_PIXMAP && AFNI_yesenv("AFNI_LOGO16") ){
+        Pixel fg16=ICON_bg, bg16=ICON_fg ; int ic ; char ename[32] ;
+        char *fgn[7] = { "red", "blue-cyan", "green", "violet", "orange", "gray70", "yellow" };
+
+        sprintf(ename,"AFNI_LOGO16_FOREGROUND_%c" , 'A'+num_entry-1 ) ;
+                     ic = DC_find_closest_overlay_color(im3d->dc, getenv(ename) ) ;
+        if( ic < 0 ) ic = DC_find_closest_overlay_color(im3d->dc, getenv("AFNI_LOGO16_FOREGROUND")) ;
+        if( ic < 0 ) ic = DC_find_closest_overlay_color(im3d->dc, fgn[(num_entry-1)%7] ) ;
+        if( ic >= 0 ) fg16 = im3d->dc->ovc->pix_ov[ic] ;
+
+        sprintf(ename,"AFNI_LOGO16_BACKGROUND_%c" , 'A'+num_entry-1 ) ;
+                     ic = DC_find_closest_overlay_color(im3d->dc, getenv(ename) ) ;
+        if( ic < 0 ) ic = DC_find_closest_overlay_color(im3d->dc, getenv("AFNI_LOGO16_BACKGROUND")) ;
+#if 0
+        if( ic < 0 ) ic = im3d->dc->ovc->ov_darkest ;
+#endif
+        if( ic >= 0 ) bg16 = im3d->dc->ovc->pix_ov[ic] ;
+
+        afni16_pixmap[num_entry-1] = XCreatePixmapFromBitmapData(
+                                      XtDisplay(vwid->top_shell) ,
+                                      RootWindowOfScreen(XtScreen(vwid->top_shell)) ,
+                                      afni16_bits , afni16_width , afni16_height ,
+                                      fg16 , bg16 ,
+                                      DefaultDepthOfScreen(XtScreen(vwid->top_shell)) ) ;
+      }
+#endif
+
 #endif  /* WANT_AFNI_BITMAP */
    }
 #endif  /* if WANT any of the BITMAPs */
+
+   if( afni16_pixmap[num_entry-1] != XmUNSPECIFIED_PIXMAP )
+     XtVaSetValues( vwid->top_form , XmNbackgroundPixmap,afni16_pixmap[num_entry-1] , NULL ) ;
 
    /* create each control panel, and a container frame for each */
 
@@ -593,8 +689,13 @@ STATUS("making imag->rowcol") ;
             XmNseparatorType , XmNO_LINE ,
          NULL ) ;
 
+#ifdef BAD_BUTTON3_POPUPS   /* 21 Jul 2003 */
    imag->popmenu =
-      XmCreatePopupMenu( imag->topper , "menu" , NULL , 0 ) ;
+      XmCreatePopupMenu( vwid->top_form, "menu" , NULL , 0 ) ;
+#else
+   imag->popmenu =
+      XmCreatePopupMenu( imag->topper  , "menu" , NULL , 0 ) ;
+#endif
 
    SAVEUNDERIZE(XtParent(imag->popmenu)) ; /* 27 Feb 2001 */
 
@@ -661,6 +762,42 @@ STATUS("making imag->rowcol") ;
       imag->pop_jumpto_ijk_pb = NULL ;
    }
 
+   /*--- mnito button in menu [01 May 2002] ---*/
+
+   if( im3d->type == AFNI_3DDATA_VIEW ){
+      imag->pop_mnito_pb =
+         XtVaCreateManagedWidget(
+            "dialog" , xmPushButtonWidgetClass , imag->popmenu ,
+               LABEL_ARG("Jump to (MNI)") ,
+               XmNmarginHeight , 0 ,
+               XmNtraversalOn , False ,
+               XmNinitialResourcesPersistent , False ,
+            NULL ) ;
+
+      XtAddCallback( imag->pop_mnito_pb , XmNactivateCallback ,
+                     AFNI_imag_pop_CB , im3d ) ;
+   } else {
+      imag->pop_mnito_pb = NULL ;
+   }
+
+   /*--- sumato button in menu ---*/
+
+   if( im3d->type == AFNI_3DDATA_VIEW ){
+      imag->pop_sumato_pb =
+         XtVaCreateManagedWidget(
+            "dialog" , xmPushButtonWidgetClass , imag->popmenu ,
+               LABEL_ARG("SUMA to (node)") ,
+               XmNmarginHeight , 0 ,
+               XmNtraversalOn , False ,
+               XmNinitialResourcesPersistent , False ,
+            NULL ) ;
+
+      XtAddCallback( imag->pop_sumato_pb , XmNactivateCallback ,
+                     AFNI_imag_pop_CB , im3d ) ;
+   } else {
+      imag->pop_sumato_pb = NULL ;
+   }
+
    /*--- Talairach To button in menu ---*/
 
    if( im3d->type == AFNI_3DDATA_VIEW ){
@@ -725,6 +862,24 @@ STATUS("making imag->rowcol") ;
    XtAddCallback( imag->pop_imageonly_pb , XmNactivateCallback ,
                   AFNI_imag_pop_CB , im3d ) ;
 
+   /*--- environment button in menu [05 Nov 2003] ---*/
+
+#ifdef ALLOW_PLUGINS
+   imag->pop_environment_pb =
+      XtVaCreateManagedWidget(
+         "dialog" , xmPushButtonWidgetClass , imag->popmenu ,
+            LABEL_ARG("Edit Environment") ,
+            XmNmarginHeight , 0 ,
+            XmNtraversalOn , False ,
+            XmNinitialResourcesPersistent , False ,
+         NULL ) ;
+
+   XtAddCallback( imag->pop_environment_pb , XmNactivateCallback ,
+                  AFNI_imag_pop_CB , im3d ) ;
+#else
+   imag->pop_environment_pb = NULL ;
+#endif
+
    /*--- frame to hold all crosshair stuff ---*/
 
    imag->crosshair_frame =
@@ -751,6 +906,8 @@ STATUS("making imag->rowcol") ;
 
    im3d->vinfo->old_crosshair_label = xstr = AFNI_crosshair_label( im3d ) ;
 
+   im3d->vinfo->view_setter = -1 ;  /* 20 Feb 2003 */
+
    imag->crosshair_label =
       XtVaCreateManagedWidget(
          "dialog" , xmLabelWidgetClass , imag->crosshair_rowcol ,
@@ -762,6 +919,58 @@ STATUS("making imag->rowcol") ;
 
    MCW_register_help( imag->crosshair_label , AFNI_crosshair_label_help ) ;
    MCW_register_hint( imag->crosshair_label , "Coordinates of crosshair point" ) ;
+
+   /*--- 12 Mar 2004: coordinate order popup menu ---*/
+
+   if( im3d->type == AFNI_3DDATA_VIEW ){
+    imag->crosshair_menu =
+      XmCreatePopupMenu( imag->crosshair_label  , "menu" , NULL , 0 ) ;
+
+    SAVEUNDERIZE(XtParent(imag->crosshair_menu)) ;
+    VISIBILIZE_WHEN_MAPPED(imag->crosshair_menu) ;
+
+    XtInsertEventHandler( imag->crosshair_label , /* handle events in label */
+                             ButtonPressMask ,    /* button presses */
+                             FALSE ,              /* nonmaskable events? */
+                             AFNI_crosshair_EV ,  /* handler */
+                             (XtPointer) im3d ,   /* client data */
+                             XtListTail           /* last in queue */
+                         ) ;
+
+    (void) XtVaCreateManagedWidget(
+             "menu" , xmLabelWidgetClass , imag->crosshair_menu ,
+                LABEL_ARG("-Set Coord Order-") ,
+                XmNrecomputeSize , False ,
+                XmNinitialResourcesPersistent , False ,
+             NULL ) ;
+
+    (void) XtVaCreateManagedWidget(
+             "menu" , xmSeparatorWidgetClass , imag->crosshair_menu ,
+              XmNseparatorType , XmSINGLE_LINE , NULL ) ;
+
+    imag->crosshair_dicom_pb =
+       XtVaCreateManagedWidget(
+          "menu" , xmPushButtonWidgetClass , imag->crosshair_menu ,
+             LABEL_ARG(" RAI=DICOM order") ,
+             XmNmarginHeight , 0 ,
+             XmNtraversalOn , False ,
+             XmNinitialResourcesPersistent , False ,
+          NULL ) ;
+    XtAddCallback( imag->crosshair_dicom_pb , XmNactivateCallback ,
+                   AFNI_crosshair_pop_CB , im3d ) ;
+
+    imag->crosshair_spm_pb =
+       XtVaCreateManagedWidget(
+          "menu" , xmPushButtonWidgetClass , imag->crosshair_menu ,
+             LABEL_ARG(" LPI=SPM order") ,
+             XmNmarginHeight , 0 ,
+             XmNtraversalOn , False ,
+             XmNinitialResourcesPersistent , False ,
+          NULL ) ;
+    XtAddCallback( imag->crosshair_spm_pb , XmNactivateCallback ,
+                   AFNI_crosshair_pop_CB , im3d ) ;
+
+   } /*- end of crosshair_label popup menu -*/
 
    /*--- 01 Jan 1997: horizontal rowcol for crosshair stuff ---*/
 
@@ -1274,6 +1483,7 @@ STATUS("making view->rowcol") ;
       XtVaCreateManagedWidget(
          "dialog" , xmPushButtonWidgetClass , view->marks_rowcol ,
             LABEL_ARG("Define Markers") ,
+            XmNmarginHeight , 1 ,
             XmNtraversalOn , False ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
@@ -1340,7 +1550,8 @@ STATUS("making view->rowcol") ;
    view->define_func_pb =
       XtVaCreateManagedWidget(
          "dialog" , xmPushButtonWidgetClass , view->func_rowcol ,
-            LABEL_ARG("Define Function") ,
+            LABEL_ARG("Define OverLay") ,
+            XmNmarginHeight , 1 ,
             XmNtraversalOn , False ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
@@ -1352,9 +1563,9 @@ STATUS("making view->rowcol") ;
 
    MCW_register_help( view->define_func_pb ,
      "Use this to control the thresholds,\n"
-      "colors, etc. for functional overlays" ) ;
+      "colors, etc. for overlays" ) ;
    MCW_register_hint( view->define_func_pb ,
-                      "Open/close functional overlay control panel" ) ;
+                      "Open/close overlay control panel" ) ;
 
    view_count ++ ;
 
@@ -1374,7 +1585,7 @@ STATUS("making view->rowcol") ;
    MCW_reghelp_children( view->see_func_bbox->wrowcol ,
                          AFNI_see_func_bbox_help ) ;
    MCW_reghint_children( view->see_func_bbox->wrowcol ,
-                         "Visibility of functional overlay" ) ;
+                         "Visibility of color overlay" ) ;
 
    ADDTO_KILL(im3d->kl,view->see_func_bbox) ;
 
@@ -1386,6 +1597,7 @@ STATUS("making view->rowcol") ;
       XtVaCreateManagedWidget(
          "dialog" , xmPushButtonWidgetClass , view->rowcol ,
             LABEL_ARG("Define Datamode") ,
+            XmNmarginHeight , 1 ,
             XmNtraversalOn , False ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
@@ -1430,6 +1642,7 @@ STATUS("making view->rowcol") ;
       XtVaCreateManagedWidget(
          "dialog" , xmPushButtonWidgetClass , view->dataset_rowcol ,
             LABEL_ARG("Switch Session") ,
+            XmNmarginHeight , 1 ,
             XmNtraversalOn , False ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
@@ -1448,7 +1661,8 @@ STATUS("making view->rowcol") ;
    view->choose_anat_pb =
       XtVaCreateManagedWidget(
          "dialog" , xmPushButtonWidgetClass , view->dataset_rowcol ,
-            LABEL_ARG("Switch Anatomy") ,
+            LABEL_ARG("Switch UnderLay") ,
+            XmNmarginHeight , 1 ,
             XmNtraversalOn , False ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
@@ -1457,8 +1671,8 @@ STATUS("making view->rowcol") ;
                   AFNI_choose_dataset_CB , im3d ) ;
 
    MCW_register_help( view->choose_anat_pb ,
-        "Use this to choose which\n"
-        "anatomical 3D dataset to view\n"
+        "Use this to choose which 3D\n"
+        "dataset to view as the underlay\n"
         "(from the current session).\n\n"
         "N.B.: Datasets which can be\n"
         "  graphed are marked with a\n"
@@ -1467,14 +1681,15 @@ STATUS("making view->rowcol") ;
         "  have 'z' after their names."
    ) ;
    MCW_register_hint( view->choose_anat_pb ,
-                      "Switch between anatomical datasets" ) ;
+                      "Switch datasets for underlay/graphs" ) ;
 
    view_count ++ ;
 
    view->choose_func_pb =
       XtVaCreateManagedWidget(
          "dialog" , xmPushButtonWidgetClass , view->dataset_rowcol ,
-            LABEL_ARG("Switch Function") ,
+            LABEL_ARG("Switch OverLay") ,
+            XmNmarginHeight , 1 ,
             XmNtraversalOn , False ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
@@ -1484,13 +1699,44 @@ STATUS("making view->rowcol") ;
 
    MCW_register_help( view->choose_func_pb ,
      "Use this to choose which\n"
-     "functional 3D dataset to view\n"
+     "overlay 3D dataset to view\n"
      "(from the current session).\n"
      "N.B.: Datasets that are compressed\n"
      "  have 'z' after their names."
     ) ;
    MCW_register_hint( view->choose_func_pb ,
-                      "Switch between functional datasets" ) ;
+                      "Switch datasets for color overlay" ) ;
+
+   view_count ++ ;
+
+   /* 19 Aug 2002: Surface chooser! */
+
+   view->choose_surf_pb =
+      XtVaCreateManagedWidget(
+         "dialog" , xmPushButtonWidgetClass , view->dataset_rowcol ,
+            LABEL_ARG("Control Surface") ,
+            XmNmarginHeight , 1 ,
+            XmNtraversalOn , False ,
+            XmNinitialResourcesPersistent , False ,
+         NULL ) ;
+
+   XtAddCallback( view->choose_surf_pb , XmNactivateCallback ,
+                  AFNI_choose_surface_CB , im3d ) ;
+
+   MCW_register_help( view->choose_surf_pb ,
+                       "Use this to control the display of\n"
+                       "overlaid surfaces in image viewers:\n"
+                       "\n"
+                       "Surface nodes will have little boxes\n"
+                       "  drawn, when they appear inside a slice.\n"
+                       "Surface triangles will have line segments\n"
+                       "  drawn, where they intersect a slice\n"
+                       "  center-plane."
+                    ) ;
+   MCW_register_hint( view->choose_surf_pb ,
+                      "Control surface overlay" ) ;
+
+   view->swid = NULL ;   /* no widgets for surface yet */
 
    view_count ++ ;
 
@@ -1515,7 +1761,7 @@ STATUS("making view->rowcol") ;
    view->popchoose_anat_pb =
       XtVaCreateManagedWidget(
          "dialog" , xmPushButtonWidgetClass , imag->popmenu ,
-            LABEL_ARG("Switch Anatomy") ,
+            LABEL_ARG("Switch UnderLay") ,
             XmNmarginHeight , 0 ,
             XmNtraversalOn , False ,
             XmNinitialResourcesPersistent , False ,
@@ -1527,7 +1773,7 @@ STATUS("making view->rowcol") ;
    view->popchoose_func_pb =
       XtVaCreateManagedWidget(
          "dialog" , xmPushButtonWidgetClass , imag->popmenu ,
-            LABEL_ARG("Switch Function") ,
+            LABEL_ARG("Switch OverLay") ,
             XmNmarginHeight , 0 ,
             XmNtraversalOn , False ,
             XmNinitialResourcesPersistent , False ,
@@ -1561,7 +1807,7 @@ STATUS("making view->rowcol") ;
 
    xstr = XmStringCreateLtoR("(y[M",XmFONTLIST_DEFAULT_TAG );
    XtVaGetValues( view->choose_func_pb , XmNfontList , &xflist , NULL ) ;
-   view_height = (12 + XmStringHeight(xflist,xstr)) * view_count ;
+   view_height = (10 + XmStringHeight(xflist,xstr)) * view_count ;
    XmStringFree( xstr ) ;
 
    EXRETURN ;
@@ -2121,7 +2367,11 @@ STATUS("making func->rowcol") ;
    decim = THR_TOP_EXPON ;                            /* compute parameters */
    smax  = (int)( pow(10.0,decim) + 0.001 ) ;         /* for scale display. */
    stop  = smax - 1 ;
-   sstep = smax / 1000 ;  if( sstep < 1 ) sstep = 1 ;
+   sstep = smax / 1000 ;
+   { char *eee = getenv("AFNI_THRESH_BIGSTEP") ;      /* 09 May 2003 */
+     if( eee != NULL ){ iqqq=strtol(eee,NULL,10); if(iqqq > 0) sstep=iqqq; }
+   }
+   if( sstep < 1 ) sstep = 1 ; else if( sstep > (smax/10) ) sstep = (smax/10) ;
 
 #ifdef BOXUP_SCALE
    qqq = XtVaCreateManagedWidget(
@@ -2160,6 +2410,10 @@ STATUS("making func->rowcol") ;
                   NULL ) ;
 #endif
 
+#ifdef USING_LESSTIF
+   XtVaSetValues( func->thr_scale , XmNscaleWidth,24 , NULL ) ;
+#endif
+
 #ifdef FIX_SCALE_VALUE_PROBLEM
    for( iqqq=0 ; iqqq < strlen(thr_str) ; iqqq++ ){
       zork[0] = thr_str[iqqq] ; zork[1] = '\0' ;
@@ -2177,14 +2431,14 @@ STATUS("making func->rowcol") ;
    MCW_reghelp_children( func->thr_scale ,
       "Drag the slider bar to\n"
       "adjust the threshold\n"
-      "for function display.\n\n"
-      "N.B.: this is the only\n"
-      "  widget that is usable\n"
-      "  during 'real-time'\n"
-      "  FIM calculations!"
+      "for overlay display.\n\n"
+      "* Threshold doesn't apply\n"
+      "  if dataset is RGB-format.\n"
+      "* Threshold applies to 'Thr'\n"
+      "  sub-brick.\n"
     ) ;
 #if 0
-   MCW_register_hint( func->thr_scale , "Threshold for functional overlay" ) ;
+   MCW_register_hint( func->thr_scale , "Threshold for color overlay" ) ;
 #endif
 
    /** Mar 1996: label for computed p-value, under scale **/
@@ -2206,7 +2460,7 @@ STATUS("making func->rowcol") ;
          "* p's that display as 1.2-7 should\n"
          "   be interpreted as 1.2 x 10^(-7).\n"
          "* This is the significance PER VOXEL." ) ;
-   MCW_register_hint( func->thr_pval_label , "Estimated p-value per voxel" ) ;
+   MCW_register_hint( func->thr_pval_label , "Nominal p-value per voxel" ) ;
 
    /** Jul 1997: optmenu to choose top value for scale **/
 
@@ -2253,7 +2507,11 @@ STATUS("making func->rowcol") ;
 
    /**-- 17 Dec 1997: pbar menu hidden on the inten_label --**/
 
-   func->pbar_menu = XmCreatePopupMenu( func->inten_label , "menu" , NULL , 0 ) ;
+#ifdef BAD_BUTTON3_POPUPS   /* 21 Jul 2003 */
+   func->pbar_menu = XmCreatePopupMenu( func->inten_rowcol, "menu", NULL, 0 ) ;
+#else
+   func->pbar_menu = XmCreatePopupMenu( func->inten_label , "menu", NULL, 0 ) ;
+#endif
 
    SAVEUNDERIZE(XtParent(func->pbar_menu)) ; /* 27 Feb 2001 */
 
@@ -2284,6 +2542,23 @@ STATUS("making func->rowcol") ;
    (void) XtVaCreateManagedWidget(
             "dialog" , xmSeparatorWidgetClass , func->pbar_menu ,
              XmNseparatorType , XmSINGLE_LINE , NULL ) ;
+
+   /*--- environment button in menu [10 Feb 2004] ---*/
+
+#ifdef ALLOW_PLUGINS
+   func->pbar_environment_pb =
+      XtVaCreateManagedWidget(
+         "dialog" , xmPushButtonWidgetClass , func->pbar_menu ,
+            LABEL_ARG("Edit Environment") ,
+            XmNmarginHeight , 0 ,
+            XmNtraversalOn , False ,
+            XmNinitialResourcesPersistent , False ,
+         NULL ) ;
+   XtAddCallback( func->pbar_environment_pb , XmNactivateCallback ,
+                  AFNI_pbar_CB , im3d ) ;
+#else
+   func->pbar_environment_pb = NULL ;
+#endif
 
    func->pbar_equalize_pb =
       XtVaCreateManagedWidget(
@@ -2492,6 +2767,17 @@ STATUS("making func->rowcol") ;
                           pmin , pmax ,               /* value range */
                           AFNI_inten_pbar_CB ,        /* callback */
                           (XtPointer) im3d    );      /* callback data */
+
+     /* 04 Feb 2002: colorscale-ize? */
+
+     if( im3d->dc->visual_class == TrueColor ){
+       char *eee = getenv("AFNI_COLORSCALE_DEFAULT") ;
+       if( eee == NULL ) eee = getenv("AFNI_COLOR_SCALE_DEFAULT") ;
+       if( eee == NULL || strcmp(eee,"NO") != 0 ){
+         PBAR_set_bigmode( func->inten_pbar , 1 , pmin,pmax ) ;
+         PBAR_set_bigmap( func->inten_pbar , eee ) ;
+       }
+     }
    }
 
    func->inten_pbar->parent       = (XtPointer) im3d ;
@@ -2505,28 +2791,36 @@ STATUS("making func->rowcol") ;
    MCW_reghelp_children( func->inten_pbar->panew ,
       "Drag the separator bars to alter the thresholds.\n"
       "Click in a pane to alter the color for that range.\n\n"
-      "The functional dataset value that maps to 1.0 is\n"
-      "determined by the 'autoRange' controls to the right."
+      "The overlay dataset value that maps to 1.0 is\n"
+      "determined by the 'autoRange' controls to the right.\n"
+      "\n"
+      "In 'continuous' colorscale mode, Button-1 click flips\n"
+      "colors top-to-bottom;  Button-3 click shows a menu of\n"
+      "available colorscales.\n"
    ) ;
 
    MCW_reghelp_children( func->inten_pbar->top ,
       "Drag the separator bars to alter the thresholds.\n"
       "Click in a pane to alter the color for that range.\n\n"
-      "The functional dataset value that maps to 1.0 is\n"
-      "determined by the 'autoRange' controls to the right."
+      "The overlay dataset value that maps to 1.0 is\n"
+      "determined by the 'autoRange' controls to the right.\n"
+      "\n"
+      "In 'continuous' colorscale mode, Button-1 click flips\n"
+      "colors top-to-bottom;  Button-3 click shows a menu of\n"
+      "available colorscales.\n"
    ) ;
 
    MCW_register_help( func->inten_label ,
       "Drag the separator bars to alter the thresholds.\n"
       "Click in a pane to alter the color for that range.\n\n"
-      "The functional dataset value that maps to 1.0 is\n"
+      "The overlay dataset value that maps to 1.0 is\n"
       "determined by the 'autoRange' controls to the right.\n\n"
       "N.B.: A popup menu to control the palette\n"
       "      setup is 'hidden' under this label."
    ) ;
 
    MCW_register_hint( func->inten_label ,
-                      "Control functional overlay colors" ) ;
+                      "Control overlay colors" ) ;
 
    (void) XtVaCreateManagedWidget(
             "dialog" , xmSeparatorWidgetClass , func->inten_rowcol ,
@@ -2537,13 +2831,14 @@ STATUS("making func->rowcol") ;
                        func->inten_rowcol ,
                         "#" ,
                         AVOPT_STYLE ,
-                        NPANE_MIN , NPANE_MAX , npane ,
+                        NPANE_MIN , NPANE_MAX+1 ,
+                        (func->inten_pbar->bigmode) ? NPANE_MAX+1 : npane ,
                         MCW_AV_notext , 0 ,
                         AFNI_inten_av_CB , func->inten_pbar ,
-                        NULL,NULL ) ;
+                        AFNI_inten_av_texter,NULL ) ;
 
-   if( AVOPT_STYLE == MCW_AV_optmenu && NPANE_MAX >= COLSIZE )
-      AVOPT_columnize( func->inten_av , 1+(NPANE_MAX+1)/COLSIZE ) ;
+   if( AVOPT_STYLE == MCW_AV_optmenu )
+      AVOPT_columnize( func->inten_av , 2 ) ;
 
    func->inten_av->fastdelay  = 4000 ;  /* slow down repeat action */
    func->inten_av->parent     = im3d ;  /* Daddy! */
@@ -2572,14 +2867,14 @@ STATUS("making func->rowcol") ;
                  (im3d->vinfo->use_posfunc) ? (1) : (0) ) ;
 
    MCW_reghelp_children( func->inten_bbox->wrowcol ,
-                         "Pressed In: Displays only positive function\n"
+                         "Pressed In: Displays only positive overlay\n"
                          "            values in the 'pbar' above and\n"
                          "            in the color overlays.\n"
                          "       Out: Displays positive and negative\n"
-                         "            function values.\n\n"
-                         "N.B.: Zero function values are never overlaid." ) ;
+                         "            overlay values.\n\n"
+                         "N.B.: Zero overlay values are never overlaid." ) ;
    MCW_reghint_children( func->inten_bbox->wrowcol ,
-                         "Use positive-only or signed functional values" ) ;
+                         "Use positive-only or signed overlay values" ) ;
 
    ADDTO_KILL(im3d->kl,func->inten_bbox) ;
 
@@ -2618,13 +2913,13 @@ STATUS("making func->rowcol") ;
 
    MCW_reghelp_children( func->underlay_bbox->wrowcol ,
       "Use these buttons to choose\n"
-      "whether the anatomical or\n"
-      "functional images appear\n"
+      "whether the underlay or\n"
+      "overlay images appear\n"
       "as the background display" ) ;
 
-   { char * hh[] = { "Use anatomical dataset for background" ,
-                     "Use functional dataset for background" ,
-                     "Use thresholded functional dataset for background" } ;
+   { char * hh[] = { "Use underlay dataset for background" ,
+                     "Use overlay dataset for background" ,
+                     "Use thresholded overlay dataset for background" } ;
      MCW_bbox_hints( func->underlay_bbox , 3 , hh ) ;
    }
 
@@ -2655,7 +2950,7 @@ STATUS("making func->rowcol") ;
 
    func->anat_buck_av = new_MCW_arrowval(
                           func->buck_rowcol    ,  /* parent Widget */
-                          "Anat" ,                /* label */
+                          "ULay" ,                /* label */
                           MCW_AV_optmenu ,        /* option menu style */
                           0 ,                     /* first option */
                           1 ,                     /* last option */
@@ -2673,8 +2968,8 @@ STATUS("making func->rowcol") ;
 
    MCW_reghelp_children( func->anat_buck_av->wrowcol ,
                          "Use this to choose which\n"
-                         "sub-brick of the anatomical\n"
-                         "dataset to display (='Anat').\n"
+                         "sub-brick of the overlay\n"
+                         "dataset to display (='ULay').\n"
                          "(The sub-brick labels are\n"
                          " assigned when the dataset\n"
                          " is created.  The [index]\n"
@@ -2682,7 +2977,7 @@ STATUS("making func->rowcol") ;
                          " location of the sub-brick\n"
                          " in the dataset.)"           ) ;
    MCW_reghint_children( func->anat_buck_av->wrowcol ,
-                         "Choose Anat sub-brick" ) ;
+                         "Choose UnderLay sub-brick" ) ;
 
    ADDTO_KILL(im3d->kl,func->anat_buck_av) ;
 
@@ -2692,7 +2987,7 @@ STATUS("making func->rowcol") ;
 
    func->fim_buck_av = new_MCW_arrowval(
                           func->buck_rowcol    ,  /* parent Widget */
-                          "Func" ,                /* label */
+                          "OLay" ,                /* label */
                           MCW_AV_optmenu ,        /* option menu style */
                           0 ,                     /* first option */
                           1 ,                     /* last option */
@@ -2710,8 +3005,8 @@ STATUS("making func->rowcol") ;
 
    MCW_reghelp_children( func->fim_buck_av->wrowcol ,
                          "Use this to choose which\n"
-                         "sub-brick of the functional\n"
-                         "dataset to display (='Func').\n"
+                         "sub-brick of the overlay\n"
+                         "dataset to display (='OLay').\n"
                          "(The sub-brick labels are\n"
                          " assigned when the dataset\n"
                          " is created.  The [index]\n"
@@ -2719,7 +3014,7 @@ STATUS("making func->rowcol") ;
                          " location of the sub-brick\n"
                          " in the dataset.)"           ) ;
    MCW_reghint_children( func->fim_buck_av->wrowcol ,
-                         "Choose Func sub-brick" ) ;
+                         "Choose overlay sub-brick" ) ;
 
    ADDTO_KILL(im3d->kl,func->fim_buck_av) ;
 
@@ -2747,9 +3042,9 @@ STATUS("making func->rowcol") ;
 
    MCW_reghelp_children( func->thr_buck_av->wrowcol ,
                          "Use this to choose which\n"
-                         "sub-brick of the functional\n"
+                         "sub-brick of the overlay\n"
                          "dataset with which to threshold\n"
-                         "the Func sub-brick (='Thr').\n"
+                         "the OLay sub-brick (='Thr').\n"
                          "(The sub-brick labels are\n"
                          " assigned when the dataset\n"
                          " is created.  The [index]\n"
@@ -2762,30 +3057,6 @@ STATUS("making func->rowcol") ;
    ADDTO_KILL(im3d->kl,func->thr_buck_av) ;
 
    XtUnmanageChild( func->thr_buck_av->wrowcol ) ;
-
-   /*--- radio box to control which function we see ---*/
-
-   func->functype_bbox =
-      new_MCW_bbox( func->options_rowcol ,
-                    LAST_SHOWFUNC_TYPE+1 , SHOWFUNC_typestr ,
-                    MCW_BB_radio_one ,
-                    MCW_BB_frame ,
-                    AFNI_functype_CB , (XtPointer) im3d ) ;
-
-   func->functype_bbox->parent = (XtPointer) im3d ;
-
-   MCW_set_bbox( func->functype_bbox , 1 << im3d->vinfo->showfunc_type ) ;
-
-   MCW_reghelp_children( func->functype_bbox->wrowcol ,
-     "Use these to choose the type of\n"
-      "function that will be displayed" ) ;
-
-   { char * hh[] = { "Use intensity brick for color overlay" ,
-                     "Use threshold brick for color overlay"  } ;
-     MCW_bbox_hints( func->functype_bbox , 2 , hh ) ;
-   }
-
-   ADDTO_KILL(im3d->kl,func->functype_bbox) ;
 
    /*--- range controls ---*/
 
@@ -2822,8 +3093,8 @@ STATUS("making func->rowcol") ;
 
    MCW_register_help( func->range_label ,
                         "These are the range of values in the\n"
-                        "Anatomy and Functional 3D datasets.\n"
-                        "The functional values may be useful\n"
+                        "UnderLay and OverLay 3D datasets.\n"
+                        "The overlay values may be useful\n"
                         "for choosing the Range for the pbar.\n"
                         "[If a dataset is warped from a\n"
                         " 'parent', these statistics are\n"
@@ -2850,7 +3121,7 @@ STATUS("making func->rowcol") ;
 
    MCW_reghelp_children( func->range_bbox->wrowcol ,
                          "This button determines whether the program\n"
-                         "or the user sets the Func value that maps\n"
+                         "or the user sets the OLay value that maps\n"
                          "to the color pbar level 1.0:\n\n"
                          "Pressed In: use 'autoRange' value for pbar 1.0\n"
                          "       Out: user controls Range value (below)"
@@ -2891,11 +3162,11 @@ STATUS("making func->rowcol") ;
 
    MCW_reghelp_children( func->range_av->wrowcol ,
                          "When the autoRange button above is Out, this\n"
-                         "selector is used to set the Func level which\n"
+                         "selector is used to set the OLay level which\n"
                          "maps to 1.0 on the color pbar."
                        ) ;
    MCW_reghint_children( func->range_av->wrowcol ,
-                         "Func value that maps to 1.0 for color overlay" ) ;
+                         "OLay value that maps to 1.0 for color overlay" ) ;
 
    ADDTO_KILL(im3d->kl,func->range_av) ;
 
@@ -2914,7 +3185,9 @@ STATUS("making func->rowcol") ;
 
    MCW_reghelp_children( func->range_rotate_av->wrowcol ,
                          "Rotate the colors on\n"
-                         "the 'pbar' up or down." ) ;
+                         "the 'pbar' up or down.\n"
+                         "[Press with Shift  to]\n"
+                         "[rotate in steps of 4]"  ) ;
    MCW_reghint_children( func->range_rotate_av->wrowcol ,
                          "Rotate pbar colors" ) ;
 
@@ -3002,9 +3275,8 @@ STATUS("making func->rowcol") ;
      ADDTO_KILL(im3d->kl,func->see_ttatlas_bbox) ;
    }
 
-#ifdef ALLOW_BKGD_LAB
-   xstr = XmStringCreateLtoR( "Anat = xxxxxxxxxxxxxxxx\n"
-                              "Func = xxxxxxxxxxxxxxxx\n"
+   xstr = XmStringCreateLtoR( "ULay = xxxxxxxxxxxxxxxx\n"
+                              "OLay = xxxxxxxxxxxxxxxx\n"
                               "Thr  = xxxxxxxxxxxxxxxx" ,
                             XmFONTLIST_DEFAULT_TAG ) ;
 
@@ -3032,9 +3304,6 @@ STATUS("making func->rowcol") ;
                       " open!"
                     ) ;
    MCW_register_hint( func->bkgd_lab , "Values at crosshairs voxel" ) ;
-#else
-   func->bkgd_lab = NULL ;
-#endif
 
    /*-- manage the managers --*/
 
@@ -3084,9 +3353,9 @@ STATUS("making dmode->rowcol") ;
    dmode->anatmode_bbox->parent = (XtPointer) im3d ;
 
    MCW_reghelp_children( dmode->anatmode_bbox->wrowcol ,
-     "View Anat Data Brick ==> data from anatomy file is displayed\n"
+     "View ULay Data Brick ==> data from underlay file is displayed\n"
      "                   (will be grayed-out if data is not available)\n"
-     "Warp Anat on Demand  ==> data is resampled as needed for display" ) ;
+     "Warp ULay on Demand  ==> data is resampled as needed for display" ) ;
 
    { char * hh[] = { "View data direct from brick" ,
                      "View data resampled to new grid" } ;
@@ -3099,7 +3368,7 @@ STATUS("making dmode->rowcol") ;
 
    dmode->anat_resam_av = new_MCW_arrowval(
                              dmode->rowcol ,
-                             "Anat resam mode" ,
+                             "ULay resam mode" ,
                              AVOPT_STYLE ,
                              FIRST_RESAM_TYPE ,
                              LAST_RESAM_TYPE ,
@@ -3121,7 +3390,7 @@ STATUS("making dmode->rowcol") ;
 
    MCW_reghelp_children( dmode->anat_resam_av->wrowcol ,
      "This controls the resampling mode for\n"
-     "anatomical data (for display and writing):\n\n"
+     "underlay data (for display and writing):\n\n"
      "NN = nearest neighbor resampling [fastest]\n"
      "Li = linear interpolation        [OK]\n"
      "Cu = cubic interpolation         [nice but slow]\n"
@@ -3177,15 +3446,15 @@ STATUS("making dmode->rowcol") ;
    dmode->funcmode_bbox->parent = (XtPointer) im3d ;
 
    MCW_reghelp_children( dmode->funcmode_bbox->wrowcol ,
-     "View Func Data Brick ==> data from functional file is displayed\n"
+     "View OLay Data Brick ==> data from overlay file is displayed\n"
      "                   (will be grayed-out if data is not available)\n"
-     "Warp Func on Demand  ==> data is resampled as needed for display\n\n"
-     "N.B.: Functional data is always overlaid on anatomical data.\n"
-     "  To be displayed directly from the functional data brick,\n"
-     "  this brick must conform in dimensions to the anatomical\n"
-     "  data being displayed.  Even if the functional brick exists,\n"
-     "  if its dimensions do not correspond to the anatomical brick\n"
-     "  or the resampling dimension (below), then the functional data\n"
+     "Warp OLay on Demand  ==> data is resampled as needed for display\n\n"
+     "N.B.: Overlay data is always on top of underlay data.\n"
+     "  To be displayed directly from the overlay data brick,\n"
+     "  this brick must conform in dimensions to the underlay\n"
+     "  data being displayed.  Even if the overlay brick exists,\n"
+     "  if its dimensions do not correspond to the underlay brick\n"
+     "  or the resampling dimension (below), then the overlay data\n"
      "  being displayed will be 'warped-on-demand'.  Such warping\n"
      "  always occurs from the 'most original' source.  For example,\n"
      "  if a Talairach view brick is altered (via a plugin, or another\n"
@@ -3207,9 +3476,9 @@ STATUS("making dmode->rowcol") ;
    dmode->func_resam_av = new_MCW_arrowval(
                              dmode->rowcol ,
 #ifdef USE_OPTMENUS
-                             "Func resam mode" ,
+                             "OLay resam mode" ,
 #else
-                             "Func mode " ,
+                             "OLay mode " ,
 #endif
                              AVOPT_STYLE ,
                              FIRST_RESAM_TYPE ,
@@ -3232,7 +3501,7 @@ STATUS("making dmode->rowcol") ;
 
    MCW_reghelp_children( dmode->func_resam_av->wrowcol ,
      "This controls the resampling mode for\n"
-     "functional data (display and writing):\n\n"
+     "overlay data (display and writing):\n\n"
      "NN = nearest neighbor resampling [fastest]\n"
      "Li = linear interpolation        [OK]\n"
      "Cu = cubic interpolation         [nice but slow]\n"
@@ -3249,9 +3518,9 @@ STATUS("making dmode->rowcol") ;
    dmode->thr_resam_av = new_MCW_arrowval(
                              dmode->rowcol ,
 #ifdef USE_OPTMENUS
-                             "Thr  resam mode" ,
+                             "Stat resam mode" ,
 #else
-                             "Thr mode  " ,
+                             "Stat mode " ,
 #endif
                              AVOPT_STYLE ,
                              FIRST_RESAM_TYPE ,
@@ -3274,7 +3543,7 @@ STATUS("making dmode->rowcol") ;
 
    MCW_reghelp_children( dmode->thr_resam_av->wrowcol ,
      "This controls the resampling mode for\n"
-     "functional data (threshold only):\n\n"
+     "overlay data (threshold only):\n\n"
      "NN = nearest neighbor resampling [fastest]\n"
      "Li = linear interpolation        [OK]\n"
      "Cu = cubic interpolation         [nice but slow]\n"
@@ -3323,7 +3592,7 @@ STATUS("making dmode->rowcol") ;
    dmode->write_anat_pb =
       XtVaCreateManagedWidget(
          "dialog" , xmPushButtonWidgetClass , dmode->write_rowcol ,
-            LABEL_ARG("Anat") ,
+            LABEL_ARG("ULay") ,
             XmNtraversalOn , False ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
@@ -3337,7 +3606,7 @@ STATUS("making dmode->rowcol") ;
    dmode->write_func_pb =
       XtVaCreateManagedWidget(
          "dialog" , xmPushButtonWidgetClass , dmode->write_rowcol ,
-            LABEL_ARG("Func") ,
+            LABEL_ARG("OLay") ,
             XmNtraversalOn , False ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
@@ -3346,7 +3615,7 @@ STATUS("making dmode->rowcol") ;
                   AFNI_write_dataset_CB , im3d ) ;
 
    MCW_register_hint( dmode->write_func_pb ,
-                      "Write current function to disk" ) ;
+                      "Write current overlay dataset to disk" ) ;
 
    dmode->write_many_pb =
       XtVaCreateManagedWidget(
@@ -3370,8 +3639,8 @@ STATUS("making dmode->rowcol") ;
         "The `Resam' controls determine the resolution and\n"
         "interpolation used in creating the new bricks.\n"
         "\n"
-        "Anat --> current anatomical dataset brick.\n"
-        "Func --> current functional dataset brick.\n"
+        "ULay --> current overlay dataset brick.\n"
+        "OLay --> current underlay dataset brick.\n"
         "Many --> select one or more datasets from a list.\n"
         "\n"
         "N.B.:\n"
@@ -3754,19 +4023,15 @@ STATUS("making prog->rowcol") ;
 
    /*--- label for background pixel ---*/
 
-#ifdef ALLOW_BKGD_LAB
    imag->pop_bkgd_lab =
       XtVaCreateWidget(
          "dialog" , xmLabelWidgetClass , imag->popmenu ,
             LABEL_ARG("   bkgd =xxxxxx") ,
             XmNalignment , XmALIGNMENT_BEGINNING ,
-            XmNrecomputeSize , False ,
+            XmNrecomputeSize , True ,
             XmNtraversalOn , False ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
-#else
-   imag->pop_bkgd_lab = NULL ;
-#endif
 
    imag->do_bkgd_lab = False ;
 
@@ -3840,11 +4105,17 @@ STATUS("making prog->rowcol") ;
 #ifdef USE_HIDDEN
    if( vwid->picture != NULL ){
 
-      /** popup on picture widget (right of Quit button) **/
+     /** popup on picture widget (right of Quit button) **/
 
-      prog->hidden_menu =
-         XmCreatePopupMenu( vwid->picture , "menu" , NULL , 0 ) ;
+#ifdef BAD_BUTTON3_POPUPS   /* 21 Jul 2003 */
+     prog->hidden_menu =
+        XmCreatePopupMenu( prog->quit_pb , "menu" , NULL , 0 ) ;
+#else
+     prog->hidden_menu =
+        XmCreatePopupMenu( vwid->picture , "menu" , NULL , 0 ) ;
+#endif
 
+     if( prog->hidden_menu != NULL ){
       SAVEUNDERIZE(XtParent(prog->hidden_menu)) ; /* 27 Feb 2001 */
 
       VISIBILIZE_WHEN_MAPPED(prog->hidden_menu) ;
@@ -3866,6 +4137,7 @@ STATUS("making prog->rowcol") ;
 
                                0
                              | ButtonPressMask   /* button presses */
+                             | KeyPressMask      /* get keystrokes */
                             ,
                             FALSE ,              /* nonmaskable events? */
                             AFNI_hidden_EV ,     /* handler */
@@ -3873,6 +4145,7 @@ STATUS("making prog->rowcol") ;
                             XtListTail           /* last in queue */
                           ) ;
 
+#ifdef ALLOW_DATASET_VLIST
       /**--- pullright menu for points ---**/
 
       prog->hidden_pts_menu =
@@ -3962,17 +4235,45 @@ STATUS("making prog->rowcol") ;
                      AFNI_hidden_CB , im3d ) ;
 
       /*---- END OF PTS STUFF ----*/
+#endif
 
-      /*-----------------------------------*/
-      /*-- pushbutton for sonnet display --*/
-      /*-----------------------------------*/
+      /*---- Various Poetry Options ----*/
+
+      xstr = XmStringCreateLtoR( "---- Poetry ----" , XmFONTLIST_DEFAULT_TAG ) ;
+      (void) XtVaCreateManagedWidget(
+               "dialog" , xmLabelWidgetClass , prog->hidden_menu ,
+                  XmNlabelString , xstr ,
+                  XmNrecomputeSize , False ,
+                  XmNinitialResourcesPersistent , False ,
+               NULL ) ;
+      XmStringFree(xstr) ;
+
+      (void) XtVaCreateManagedWidget(
+               "dialog" , xmSeparatorWidgetClass , prog->hidden_menu ,
+                  XmNseparatorType , XmSINGLE_LINE ,
+            NULL ) ;
+
+      /*----------*/
+
+      prog->hidden_mission_pb =
+            XtVaCreateManagedWidget(
+               "dialog" , xmPushButtonWidgetClass , prog->hidden_menu ,
+                  LABEL_ARG("Mission Statement") ,
+                  XmNmarginHeight , 0 ,
+                  XmNtraversalOn , False ,
+                  XmNinitialResourcesPersistent , False ,
+               NULL ) ;
+      XtAddCallback( prog->hidden_mission_pb , XmNactivateCallback ,
+                     AFNI_hidden_CB , im3d ) ;
+
+      /*----------*/
 
 #ifdef USE_SONNETS
       if( ! NO_frivolities ){
          prog->hidden_sonnet_pb =
             XtVaCreateManagedWidget(
                "dialog" , xmPushButtonWidgetClass , prog->hidden_menu ,
-                  LABEL_ARG("Sonnet") ,
+                  LABEL_ARG("Shakespeare") ,
                   XmNmarginHeight , 0 ,
                   XmNtraversalOn , False ,
                   XmNinitialResourcesPersistent , False ,
@@ -3983,17 +4284,77 @@ STATUS("making prog->rowcol") ;
       }
 #endif
 
-      prog->hidden_mission_pb =
+      /*----------*/
+
+      prog->hidden_gamberi_pb =
             XtVaCreateManagedWidget(
                "dialog" , xmPushButtonWidgetClass , prog->hidden_menu ,
-                  LABEL_ARG("Mission") ,
+                  LABEL_ARG("Gamberi Cattivi") ,
                   XmNmarginHeight , 0 ,
                   XmNtraversalOn , False ,
                   XmNinitialResourcesPersistent , False ,
                NULL ) ;
-      XtAddCallback( prog->hidden_mission_pb , XmNactivateCallback ,
+      XtAddCallback( prog->hidden_gamberi_pb , XmNactivateCallback ,
                      AFNI_hidden_CB , im3d ) ;
 
+      /*----------*/
+
+      (void) XtVaCreateManagedWidget(
+               "dialog" , xmSeparatorWidgetClass , prog->hidden_menu ,
+                  XmNseparatorType , XmSINGLE_LINE ,
+            NULL ) ;
+
+      prog->hidden_ranpoem_pb =
+            XtVaCreateManagedWidget(
+               "dialog" , xmPushButtonWidgetClass , prog->hidden_menu ,
+                  LABEL_ARG("Random Poem") ,
+                  XmNmarginHeight , 0 ,
+                  XmNtraversalOn , False ,
+                  XmNinitialResourcesPersistent , False ,
+               NULL ) ;
+      XtAddCallback( prog->hidden_ranpoem_pb , XmNactivateCallback ,
+                     AFNI_hidden_CB , im3d ) ;
+
+      /*----------*/
+
+#if !defined(NO_FRIVOLITIES)
+      prog->hidden_faces_pb =
+            XtVaCreateManagedWidget(
+               "dialog" , xmPushButtonWidgetClass , prog->hidden_menu ,
+                  LABEL_ARG("All AFNI Faces") ,
+                  XmNmarginHeight , 0 ,
+                  XmNtraversalOn , False ,
+                  XmNinitialResourcesPersistent , False ,
+               NULL ) ;
+      XtAddCallback( prog->hidden_faces_pb , XmNactivateCallback ,
+                     AFNI_hidden_CB , im3d ) ;
+#else
+      prog->hidden_faces_pb = NULL ;
+#endif
+
+      /*----------*/
+
+#if !defined(NO_FRIVOLITIES) && defined(DARWIN)
+      (void) XtVaCreateManagedWidget(
+               "dialog" , xmSeparatorWidgetClass , prog->hidden_menu ,
+                  XmNseparatorType , XmSINGLE_LINE ,
+            NULL ) ;
+
+      prog->hidden_speech_pb =
+            XtVaCreateManagedWidget(
+               "dialog" , xmPushButtonWidgetClass , prog->hidden_menu ,
+                  LABEL_ARG("Say Something") ,
+                  XmNmarginHeight , 0 ,
+                  XmNtraversalOn , False ,
+                  XmNinitialResourcesPersistent , False ,
+               NULL ) ;
+      XtAddCallback( prog->hidden_speech_pb , XmNactivateCallback ,
+                     AFNI_hidden_CB , im3d ) ;
+#else
+      prog->hidden_speech_pb = NULL ;
+#endif
+
+    } /* if prog->hidden_menu isn't NULL */
    }
 #endif  /* USE_HIDDEN */
 
@@ -4016,11 +4377,39 @@ ENTRY("AFNI_count_controllers") ;
    RETURN(cnt) ;
 }
 
+/*-------------------------------------------------------------------*/
+/*! Find first open controller [05 Mar 2002].
+---------------------------------------------------------------------*/
+
+Three_D_View * AFNI_find_open_controller(void)
+{
+   int ii ;
+   for( ii=0 ; ii < MAX_CONTROLLERS ; ii++ )
+     if( IM3D_OPEN(GLOBAL_library.controllers[ii]) )
+       return GLOBAL_library.controllers[ii] ;
+
+   return NULL ;  /* should be impossible */
+}
+
+/*-------------------------------------------------------------------*/
+/*! Popup a message, somewhere, anywhere [05 Mar 2002].
+---------------------------------------------------------------------*/
+
+void AFNI_popup_message( char *str )
+{
+   Three_D_View *im3d ;
+   if( str == NULL || str[0] == '\0' ) return ;
+   im3d = AFNI_find_open_controller() ;
+   (void) MCW_popup_message( im3d->vwid->prog->clone_pb ,
+                             str, MCW_USER_KILL|MCW_TIMER_KILL ) ;
+   return ;
+}
+
 /*-------------------------------------------------------------------
   Find out which controller this is.  Return -1 if there is an error.
 ---------------------------------------------------------------------*/
 
-int AFNI_controller_index( Three_D_View * im3d )
+int AFNI_controller_index( Three_D_View *im3d )
 {
    int ii ;
 
@@ -4029,7 +4418,7 @@ ENTRY("AFNI_controller_index") ;
    if( ! IM3D_VALID(im3d) ) RETURN(-1) ;
 
    for( ii=0 ; ii < MAX_CONTROLLERS ; ii++ )
-      if( GLOBAL_library.controllers[ii] == im3d ) RETURN(ii) ;
+     if( GLOBAL_library.controllers[ii] == im3d ) RETURN(ii) ;
 
    RETURN(-1) ;
 }
@@ -4046,12 +4435,12 @@ ENTRY("AFNI_controller_index") ;
       all the information pertaining to the X11 display.
    "im3d_type" is one of AFNI_3DDATA_VIEW or AFNI_IMAGES_VIEW.  The former
       is for viewing 3D datasets; the latter is a restricted version for
-      viewing images only.
+      viewing images only (mostly obsolete now -- use program aiv instead).
 -----------------------------------------------------------------------------*/
 
-Three_D_View * new_AFNI_controller( Widget shell , MCW_DC * dc , int im3d_type )
+Three_D_View * new_AFNI_controller( Widget shell , MCW_DC *dc , int im3d_type )
 {
-   Three_D_View * im3d ;
+   Three_D_View *im3d ;
    int ii , last_color ;
 
 ENTRY("new_AFNI_controller") ;
@@ -4067,6 +4456,10 @@ ENTRY("new_AFNI_controller") ;
    im3d->vinfo  = myXtNew( AFNI_view_info ); ADDTO_KILL(im3d->kl,im3d->vinfo);
 
    im3d->brand_new = 1 ; /* 07 Dec 2001 */
+
+   /* 27 Jan 2004: mark if this currently looking at dummy dataset */
+
+   im3d->dummied = GLOBAL_library.have_dummy_dataset ;
 
    im3d->fimdata = myXtNew( AFNI_fimmer_type ); ADDTO_KILL(im3d->kl,im3d->fimdata);
    CLEAR_FIMDATA(im3d) ;
@@ -4120,15 +4513,17 @@ ENTRY("new_AFNI_controller") ;
    im3d->vinfo->crosshair_ovcolor = MIN(last_color,INIT_crosshair_color) ;
    im3d->vinfo->time_index        = 0 ;
    im3d->vinfo->top_index         = 9 ;
+   im3d->vinfo->time_on           = 0 ;                   /* 29 Jul 2003 */
    im3d->vinfo->view_type         = VIEW_ORIGINAL_TYPE ;  /* show +orig data */
    im3d->vinfo->underlay_type     = UNDERLAY_ANAT ;       /* show anatomy */
-   im3d->vinfo->showfunc_type     = SHOWFUNC_FIM ;
    im3d->vinfo->force_anat_wod    = False ;   /* don't force warp-on-demand */
    im3d->vinfo->force_func_wod    = False ;   /* don't force warp-on-demand */
    im3d->vinfo->func_visible      = False ;   /* don't show function */
+#ifdef ALLOW_DATASET_VLIST
    im3d->vinfo->pts_visible       = False ;   /* don't show points */
-   im3d->vinfo->show_voxind       = False ;
    im3d->vinfo->pts_color         = 0 ;
+#endif
+   im3d->vinfo->show_voxind       = False ;
    im3d->vinfo->resam_vox         = INIT_resam_vox ;
    im3d->vinfo->anat_resam_mode   = INIT_resam_anat ;
    im3d->vinfo->func_resam_mode   = INIT_resam_func ;
@@ -4151,7 +4546,8 @@ ENTRY("new_AFNI_controller") ;
    /* Feb 1998: receive stuff, including drawing */
    /* Mar 1999: modified to allow for multiple receivers */
 
-   im3d->vinfo->receiver          = malloc(sizeof(AFNI_receiver *)) ;
+   im3d->vinfo->receiver          = AFMALL( AFNI_receiver*,
+					    sizeof(AFNI_receiver *));
    im3d->vinfo->receiver[0]       = NULL ;
    im3d->vinfo->num_receiver      = 0 ;
    im3d->vinfo->drawing_enabled   = 0 ;
@@ -4176,8 +4572,6 @@ ENTRY("new_AFNI_controller") ;
     im3d->b123_fim  = im3d->b231_fim  = im3d->b312_fim  =
      im3d->b123_ulay = im3d->b231_ulay = im3d->b312_ulay = NULL ;
 
-   im3d->vinfo->showfunc_type = SHOWFUNC_FIM ;
-
    im3d->ignore_seq_callbacks = AFNI_IGNORE_NOTHING ;   /* don't ignore these now */
 
    /* set up which datasets to deal with (defaults) */
@@ -4198,6 +4592,8 @@ ENTRY("new_AFNI_controller") ;
 
    im3d->fim_voxwarp        = myXtNew(THD_warp) ;
    im3d->fim_voxwarp->type  = ILLEGAL_TYPE ;
+
+   im3d->fim_selfwarp       = NULL ;  /* 27 Aug 2002 */
 
    RETURN(im3d) ;
 }
@@ -4256,33 +4652,47 @@ ENTRY("AFNI_initialize_controller") ;
       im3d->ss_now = GLOBAL_library.sslist->ssar[ im3d->vinfo->sess_num ] ;
 
       if( im3d->ss_now == NULL ){  /* still no data? */
-         fprintf(stderr,
-                 "\n*** AFNI_initialize_controller: illegal initial session ***\n") ;
-         EXIT(1) ;
+        fprintf(stderr,
+                "\n*** AFNI_initialize_controller: illegal initial session ***\n") ;
+        EXIT(1) ;
       }
    }
 
    /* 07 Dec 2001: find "smallest" datasets */
 
    if( im3d->brand_new && AFNI_yesenv("AFNI_START_SMALL") ){
-      int jj,jb=0 ; float bb,mm ;
-      for( mm=1.e+33,jb=jj=0 ; jj < im3d->ss_now->num_anat ; jj++ ){
-         bb = DSET_bigness(im3d->ss_now->anat[jj][0]) ;
+     int jj,jb=0,qb ; float bb,mm ;
+     for( mm=1.e+33,jb=jj=0 ; jj < im3d->ss_now->num_dsset ; jj++ ){
+       if( ISANAT(im3d->ss_now->dsset[jj][0]) ){
+         bb = DSET_bigness(im3d->ss_now->dsset[jj][0]) ;
          if( bb > 0 && bb < mm ){ mm = bb; jb = jj; }
-      }
-      im3d->vinfo->anat_num = jb ;
+       }
+     }
+     if( mm < 1.e+33 ) im3d->vinfo->anat_num = qb = jb ;
 
-      for( mm=1.e+33,jb=jj=0 ; jj < im3d->ss_now->num_func ; jj++ ){
-         bb = DSET_bigness(im3d->ss_now->func[jj][0]) ;
-         if( bb > 0 && bb < mm ){ mm = bb; jb = jj; }
-      }
-      im3d->vinfo->func_num = jb ;
+     for( mm=1.e+33,jb=jj=0 ; jj < im3d->ss_now->num_dsset ; jj++ ){
+       if( ISFUNC(im3d->ss_now->dsset[jj][0]) ){
+         bb = DSET_bigness(im3d->ss_now->dsset[jj][0]) ;
+         if( jj != qb && bb > 0 && bb < mm ){ mm = bb; jb = jj; }
+       }
+     }
+     if( mm < 1.e+33 ) im3d->vinfo->func_num = jb ;
+
+   } else if( im3d->brand_new ){  /* 29 Jul 2003 */
+     int jj ;
+     for( jj=0 ; jj < im3d->ss_now->num_dsset ; jj++ )
+       if( ISANAT(im3d->ss_now->dsset[jj][0]) ) break ;
+     if( jj < im3d->ss_now->num_dsset ) im3d->vinfo->anat_num = jj ;
+
+     for( jj=0 ; jj < im3d->ss_now->num_dsset ; jj++ )
+       if( ISFUNC(im3d->ss_now->dsset[jj][0]) ) break ;
+     if( jj < im3d->ss_now->num_dsset ) im3d->vinfo->func_num = jj ;
    }
 
    /* copy pointers from this session into the controller for fast access */
 
    for( ii=0 ; ii <= LAST_VIEW_TYPE ; ii++ )
-      im3d->anat_dset[ii] = im3d->ss_now->anat[im3d->vinfo->anat_num][ii] ;
+      im3d->anat_dset[ii] = im3d->ss_now->dsset[im3d->vinfo->anat_num][ii] ;
 
    /*--- 11/23/94 addition: scan for a good view in the
         initial setup (to allow for input of datasets w/o +orig view) */
@@ -4298,15 +4708,15 @@ ENTRY("AFNI_initialize_controller") ;
 
    /* now find a function that can be viewed here */
 
-   if( !ISVALID_3DIM_DATASET(im3d->ss_now->func[im3d->vinfo->func_num][ii]) ){
-      for( ii=0 ; ii < im3d->ss_now->num_func ; ii++ )
-         if(ISVALID_3DIM_DATASET(im3d->ss_now->func[ii][im3d->vinfo->view_type])){
+   if( !ISVALID_3DIM_DATASET(im3d->ss_now->dsset[im3d->vinfo->func_num][ii]) ){
+      for( ii=0 ; ii < im3d->ss_now->num_dsset ; ii++ )
+         if(ISVALID_3DIM_DATASET(im3d->ss_now->dsset[ii][im3d->vinfo->view_type])){
             im3d->vinfo->func_num = ii ; break ;
          }
    }
 
    for( ii=0 ; ii <= LAST_VIEW_TYPE ; ii++ )
-      im3d->fim_dset[ii] = im3d->ss_now->func[im3d->vinfo->func_num][ii] ;
+      im3d->fim_dset[ii] = im3d->ss_now->dsset[im3d->vinfo->func_num][ii] ;
 
    /*--- 11/23/94 addition end */
 
@@ -4361,9 +4771,10 @@ ENTRY("AFNI_initialize_controller") ;
 
    /* 06 Dec 2001: cool cursor stuff */
 
-   WAIT_for_window(im3d->vwid->top_shell) ;
+   WAIT_for_window( im3d->vwid->top_shell ) ;
    POPUP_cursorize( im3d->vwid->func->inten_label ) ;
    POPUP_cursorize( im3d->vwid->picture ) ;
+   POPUP_cursorize( imag->crosshair_label ) ;
 
    RESET_AFNI_QUIT(im3d) ;
    EXRETURN ;
@@ -4757,13 +5168,14 @@ ENTRY("AFNI_misc_button") ;
                              " Show Hints?       = Turn popup hints\n"
                              "                      off or on\n"
 #endif
-                             " Anat Info         = Show 3dinfo output\n"
-                             " Func Info         = for current datasets\n"
+                             " ULay Info         = Show 3dinfo output\n"
+                             " OLay Info         = for current datasets\n"
 #ifdef ALLOW_PLUGINS
                              " Edit Environment  = Control environment vars\n"
                              " Edit 2DChain      = Control 2DChain function\n"
 #endif
-                             " Save Layout       = Save windows layout\n"
+                             " Save Layout       = Save windows layout/setup\n"
+                             " Run Script        = Run an AFNI script file\n"
                              " License Info      = GPL & Copyright notice\n"
                              " Version Check     = Check AFNI version\n"
                              " Purge Memory      = Of dataset BRIKs\n"
@@ -4860,7 +5272,7 @@ ENTRY("AFNI_misc_button") ;
    dmode->misc_anat_info_pb =
          XtVaCreateManagedWidget(
             "dialog" , xmPushButtonWidgetClass , menu ,
-               LABEL_ARG("Anat Info") ,
+               LABEL_ARG("ULay Info") ,
                XmNmarginHeight , 0 ,
                XmNtraversalOn , False ,
                XmNinitialResourcesPersistent , False ,
@@ -4872,7 +5284,7 @@ ENTRY("AFNI_misc_button") ;
    dmode->misc_func_info_pb =
          XtVaCreateManagedWidget(
             "dialog" , xmPushButtonWidgetClass , menu ,
-               LABEL_ARG("Func Info") ,
+               LABEL_ARG("OLay Info") ,
                XmNmarginHeight , 0 ,
                XmNtraversalOn , False ,
                XmNinitialResourcesPersistent , False ,
@@ -4942,10 +5354,24 @@ ENTRY("AFNI_misc_button") ;
                   AFNI_save_layout_CB , im3d ) ;
    MCW_register_hint( dmode->misc_savelayout_pb , "Save windows layout to file" ) ;
 
+   /*--- 22 Jan 2003: Run Script [see afni_splash.c] ---*/
+
+   dmode->misc_runscript_pb =
+         XtVaCreateManagedWidget(
+            "dialog" , xmPushButtonWidgetClass , menu ,
+               LABEL_ARG("Run Script") ,
+               XmNmarginHeight , 0 ,
+               XmNtraversalOn , False ,
+               XmNinitialResourcesPersistent , False ,
+            NULL ) ;
+   XtAddCallback( dmode->misc_runscript_pb , XmNactivateCallback ,
+                  AFNI_run_script_CB , im3d ) ;
+   MCW_register_hint( dmode->misc_runscript_pb , "Run an AFNI script file" ) ;
+
    /*--- 07 Nov 2001: start plugouts [see afni_plugout.c] ---*/
 
 #ifdef ALLOW_PLUGINS
-   if( !ALLOW_real_time && !AFNI_have_plugouts() ){
+   if( !AFNI_have_plugouts() ){
       dmode->misc_plugout_pb =
             XtVaCreateManagedWidget(
                "dialog" , xmPushButtonWidgetClass , menu ,
@@ -4965,12 +5391,39 @@ ENTRY("AFNI_misc_button") ;
    dmode->misc_plugout_pb = NULL ;
 #endif
 
+   /*-- 02 Mar 2002: button to start NIML --*/
+
+   dmode->misc_niml_pb =
+         XtVaCreateManagedWidget(
+            "dialog" , xmPushButtonWidgetClass , menu ,
+               LABEL_ARG("Start NIML") ,
+               XmNmarginHeight , 0 ,
+               XmNtraversalOn , False ,
+               XmNinitialResourcesPersistent , False ,
+            NULL ) ;
+   XtAddCallback( dmode->misc_niml_pb , XmNactivateCallback ,
+                  AFNI_misc_CB , im3d ) ;
+   MCW_register_hint( dmode->misc_niml_pb ,
+                      "Start listening for NIML connections" ) ;
+
    /*--- Utility buttons ---*/
 
    (void) XtVaCreateManagedWidget(
             "dialog" , xmSeparatorWidgetClass , menu ,
                XmNseparatorType , XmSINGLE_LINE ,
             NULL ) ;
+
+   dmode->misc_readme_env_pb =
+         XtVaCreateManagedWidget(
+            "dialog" , xmPushButtonWidgetClass , menu ,
+               LABEL_ARG("README.environment") ,
+               XmNmarginHeight , 0 ,
+               XmNtraversalOn , False ,
+               XmNinitialResourcesPersistent , False ,
+            NULL ) ;
+   XtAddCallback( dmode->misc_readme_env_pb , XmNactivateCallback ,
+                  AFNI_misc_CB , im3d ) ;
+   MCW_register_hint( dmode->misc_readme_env_pb,"Display README.environment file" );
 
    dmode->misc_license_pb =
          XtVaCreateManagedWidget(

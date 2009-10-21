@@ -50,6 +50,9 @@ static void NUD_update_base( Widget ) ;
    Set up the interface to the user
 ************************************************************************/
 
+
+DEFINE_PLUGIN_PROTOTYPE
+
 PLUGIN_interface * PLUGIN_init( int ncall )
 {
    if( ncall > 0 ) return NULL ;  /* only one interface */
@@ -129,16 +132,16 @@ static THD_dfvec3 * undo_svec=NULL ;
 static THD_dmat33 rmat ; /* current rotation matrix = undo_rmat[undo_nuse-1] */
 static THD_dfvec3 svec ; /* current shift vector    = undo_svec[undo_nuse-1] */
 
-#define NRESAM 5
+#define NRESAM 7
 #define NYESNO 2
 static char * REG_resam_strings[NRESAM] = {
-             "Linear" , "Cubic" , "Quintic" , "Heptic" , "Fourier" } ;
+  "NN" ,  "Linear" ,  "Cubic" ,  "Quintic" ,  "Heptic" ,  "Fourier" ,  "Fourier_nopad" } ;
 
 static char * REG_resam_options[NRESAM] = {
-             "-linear" , "-cubic" , "-quintic" , "-heptic" , "-Fourier" } ;
+ "-NN" , "-linear" , "-cubic" , "-quintic" , "-heptic" , "-Fourier" , "-Fourier_nopad" } ;
 
 static int REG_resam_ints[NRESAM] = {
-             MRI_LINEAR , MRI_CUBIC , MRI_QUINTIC , MRI_HEPTIC , MRI_FOURIER } ;
+  MRI_NN, MRI_LINEAR, MRI_CUBIC, MRI_QUINTIC, MRI_HEPTIC, MRI_FOURIER, MRI_FOURIER_NOPAD } ;
 
 static char * YESNO_strings[NYESNO] = { "No" , "Yes" } ;
 
@@ -475,7 +478,7 @@ static void NUD_make_widgets(void)
    /** the actual angles **/
 
    roll_av = new_MCW_arrowval( hrc, "I" ,
-                                MCW_AV_downup , -90,90,0 ,
+                                MCW_AV_downup , -300,300,0 ,
                                 MCW_AV_editext , 1 ,
                                 NULL , NULL , NULL,NULL ) ;
    MCW_reghint_children( roll_av->wrowcol , "Roll angle [I-axis]" ) ;
@@ -483,7 +486,7 @@ static void NUD_make_widgets(void)
    SEP_VER(hrc) ;
 
    pitch_av = new_MCW_arrowval( hrc, "R" ,
-                                MCW_AV_downup , -90,90,0 ,
+                                MCW_AV_downup , -300,300,0 ,
                                 MCW_AV_editext , 1 ,
                                 NULL , NULL , NULL,NULL ) ;
    MCW_reghint_children( pitch_av->wrowcol , "Pitch angle [R-axis]" ) ;
@@ -491,7 +494,7 @@ static void NUD_make_widgets(void)
    SEP_VER(hrc) ;
 
    yaw_av = new_MCW_arrowval( hrc, "A" ,
-                                MCW_AV_downup , -90,90,0 ,
+                                MCW_AV_downup , -300,300,0 ,
                                 MCW_AV_editext , 1 ,
                                 NULL , NULL , NULL,NULL ) ;
    MCW_reghint_children( yaw_av->wrowcol , "Yaw angle [A-axis]" ) ;
@@ -550,7 +553,7 @@ static void NUD_make_widgets(void)
    /** the actual shifts **/
 
    dS_av = new_MCW_arrowval( hrc, "S" ,
-                                MCW_AV_downup , -90,90,0 ,
+                                MCW_AV_downup , -999,999,0 ,
                                 MCW_AV_editext , 1 ,
                                 NULL , NULL , NULL,NULL ) ;
    MCW_reghint_children( dS_av->wrowcol , "Delta Superior" ) ;
@@ -558,7 +561,7 @@ static void NUD_make_widgets(void)
    SEP_VER(hrc) ;
 
    dL_av = new_MCW_arrowval( hrc, "L" ,
-                                MCW_AV_downup , -90,90,0 ,
+                                MCW_AV_downup , -999,999,0 ,
                                 MCW_AV_editext , 1 ,
                                 NULL , NULL , NULL,NULL ) ;
    MCW_reghint_children( dL_av->wrowcol , "Delta Left" ) ;
@@ -566,7 +569,7 @@ static void NUD_make_widgets(void)
    SEP_VER(hrc) ;
 
    dP_av = new_MCW_arrowval( hrc, "P" ,
-                                MCW_AV_downup , -90,90,0 ,
+                                MCW_AV_downup , -999,999,0 ,
                                 MCW_AV_editext , 1 ,
                                 NULL , NULL , NULL,NULL ) ;
    MCW_reghint_children( dP_av->wrowcol , "Delta Posterior" ) ;
@@ -1088,26 +1091,10 @@ static void NUD_choose_CB( Widget w, XtPointer client_data, XtPointer call_data 
 
    ndsl = 0 ;
 
-   /* scan anats */
+   /* scan datasets */
 
-   for( id=0 ; id < ss->num_anat ; id++ ){
-      qset = ss->anat[id][vv] ;
-
-      if( ! ISVALID_DSET (qset) ) continue ;  /* skip */
-      if( ! DSET_INMEMORY(qset) ) continue ;
-      if( DSET_BRICK_TYPE(qset,0) == MRI_complex ) continue ;
-
-      ndsl++ ;
-      dsl = (PLUGIN_dataset_link *)
-              XtRealloc( (char *) dsl , sizeof(PLUGIN_dataset_link)*ndsl ) ;
-
-      make_PLUGIN_dataset_link( qset , dsl + (ndsl-1) ) ;
-   }
-
-   /* scan funcs */
-
-   for( id=0 ; id < ss->num_func ; id++ ){
-      qset = ss->func[id][vv] ;
+   for( id=0 ; id < ss->num_dsset ; id++ ){
+      qset = ss->dsset[id][vv] ;
 
       if( ! ISVALID_DSET (qset) ) continue ;  /* skip */
       if( ! DSET_INMEMORY(qset) ) continue ;
@@ -1366,7 +1353,7 @@ fprintf(stderr,"th1=%g th2=%g th3=%g\n",th1,th2,th3) ;
        fabs(dx)  < EPS && fabs(dy)  < EPS && fabs(dz)  < EPS   ) return ;
 
 #if 0
-   if( clipit && mode == MRI_LINEAR ) clipit = 0 ;
+   if( clipit && (mode == MRI_LINEAR || mode == MRI_NN) ) clipit = 0 ;
 #endif
 
    /* need a copy? */

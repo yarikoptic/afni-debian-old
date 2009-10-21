@@ -9,8 +9,8 @@
 
 /***** Header for TCP/IP and shared memory "I/O channels" *****/
 
-#ifdef SPARKY
-#undef _POSIX_SOURCE
+#if defined(CYGWIN) && !defined(DONT_USE_SHM)
+# define DONT_USE_SHM
 #endif
 
 #include <sys/types.h>
@@ -21,18 +21,23 @@
 #include <stdlib.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#ifndef TCP_NODELAY
 #include <netinet/tcp.h>
+#endif
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <sys/time.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
-#include <sys/ipc.h>
-#include <sys/shm.h>
 #include <sys/times.h>
 #include <limits.h>
 #include <ctype.h>
+
+#ifndef DONT_USE_SHM
+# include <sys/ipc.h>
+# include <sys/shm.h>
+#endif
 
 #ifndef MIN
 #  define MIN(a,b) (((a)<(b)) ? (a) : (b))
@@ -104,6 +109,7 @@ extern int  tcp_alivecheck( int ) ;
 extern void tcp_set_cutoff( int ) ;
 
 extern char *iochan_error_string(void) ;  /* 21 Nov 2001 */
+extern void iochan_enable_perror( int ) ; /* 22 Nov 2002 */
 
 #undef USE_TCP_RECV
 #ifdef USE_TCP_RECV
@@ -163,5 +169,6 @@ extern int      read_URL_http( char * url, int msec, char ** data ) ;
 extern int      read_URL_ftp ( char * url, char ** data ) ;
 extern int      read_URL     ( char * url, char ** data ) ;
 extern void     set_URL_ftp_ident( char * name , char * pwd ) ;
+extern void     set_URL_progress( int ) ;
 
 #endif

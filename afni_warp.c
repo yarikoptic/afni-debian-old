@@ -186,6 +186,12 @@ STATUS("scaling slice to floats") ;
                                 (complex *) bar , (complex *) sar         ) ;
             RETURN(newim) ;
          }
+
+         case MRI_rgb:{
+            AFNI_br2sl_rgbyte( nxx,nyy,nzz , fixed_axis,fixed_index ,
+                                (rgbyte *) bar , (rgbyte *) sar         ) ;
+            RETURN(newim) ;
+         }
       }
    } /* end of if on dataset brick existing */
 
@@ -209,7 +215,11 @@ if(PRINT_TRACING)
    } else {
 STATUS("setting parent_dset to self, and parent_to_child_warp to identity") ;
       parent_dset = dset ;                    /* self-parenting */
-      parent_to_child_warp = IDENTITY_WARP ;  /* use identity warp */
+
+      if( dset->self_warp != NULL )
+        parent_to_child_warp = *(dset->self_warp) ;  /* 26 Aug 2002 */
+      else
+        parent_to_child_warp = IDENTITY_WARP ;  /* use identity warp */
    }
 
    /*----- make the voxel-to-voxel warp, if needed -----*/
@@ -777,6 +787,97 @@ STATUS("scaling slice to floats") ;
          }
          break ;
       }
+
+      /**************************** rgb ****************************/
+#undef  DTYPE
+#undef  LMAP_XNAME
+#undef  LMAP_YNAME
+#undef  LMAP_ZNAME
+#undef  CUBIC_CLIP
+#define DTYPE      rgbyte
+#define LMAP_XNAME TWO_TWO(AFNI_lmap_to_xslice_,DTYPE)
+#define LMAP_YNAME TWO_TWO(AFNI_lmap_to_yslice_,DTYPE)
+#define LMAP_ZNAME TWO_TWO(AFNI_lmap_to_zslice_,DTYPE)
+
+      case TWO_TWO(MRI_,DTYPE):
+      switch( fixed_axis ){
+
+         case 1:{
+
+            switch( dset->vox_warp->type ){
+
+               case WARP_AFFINE_TYPE:{
+                  LMAP_XNAME( &(dset->vox_warp->rig_bod.warp) ,
+                              resam_mode ,
+                              parent_dset->daxes ,
+                              (DTYPE *)bar , daxes , fixed_index , (DTYPE *)sar ) ;
+               }
+               RETURN(newim) ;
+
+               case WARP_TALAIRACH_12_TYPE:{
+                  int iw ;
+                  for( iw=0 ; iw < 12 ; iw++ )
+                     LMAP_XNAME( &(dset->vox_warp->tal_12.warp[iw]) ,
+                                 resam_mode ,
+                                 parent_dset->daxes ,
+                                 (DTYPE *)bar , daxes , fixed_index , (DTYPE *)sar ) ;
+                  }
+               }
+               RETURN(newim) ;
+         }
+         break ;
+
+         case 2:{
+
+            switch( dset->vox_warp->type ){
+
+               case WARP_AFFINE_TYPE:{
+                  LMAP_YNAME( &(dset->vox_warp->rig_bod.warp) ,
+                              resam_mode ,
+                              parent_dset->daxes ,
+                              (DTYPE *)bar , daxes , fixed_index , (DTYPE *)sar ) ;
+               }
+               RETURN(newim) ;
+
+               case WARP_TALAIRACH_12_TYPE:{
+                  int iw ;
+                  for( iw=0 ; iw < 12 ; iw++ )
+                     LMAP_YNAME( &(dset->vox_warp->tal_12.warp[iw]) ,
+                                 resam_mode ,
+                                 parent_dset->daxes ,
+                                 (DTYPE *)bar , daxes , fixed_index , (DTYPE *)sar ) ;
+                  }
+               }
+               RETURN(newim) ;
+         }
+         break ;
+
+         case 3:{
+
+            switch( dset->vox_warp->type ){
+
+               case WARP_AFFINE_TYPE:{
+                  LMAP_ZNAME( &(dset->vox_warp->rig_bod.warp) ,
+                              resam_mode ,
+                              parent_dset->daxes ,
+                              (DTYPE *)bar , daxes , fixed_index , (DTYPE *)sar ) ;
+               }
+               RETURN(newim) ;
+
+               case WARP_TALAIRACH_12_TYPE:{
+                  int iw ;
+                  for( iw=0 ; iw < 12 ; iw++ )
+                     LMAP_ZNAME( &(dset->vox_warp->tal_12.warp[iw]) ,
+                                 resam_mode ,
+                                 parent_dset->daxes ,
+                                 (DTYPE *)bar , daxes , fixed_index , (DTYPE *)sar ) ;
+                  }
+               }
+               RETURN(newim) ;
+         }
+         break ;
+      }
+
       /**************************** DONE ****************************/
 #undef  DTYPE
 #undef  LMAP_XNAME
@@ -816,6 +917,12 @@ ENTRY("FD_warp_to_mri") ;
                 ? br->thr_resam_code
                 : br->resam_code ;
 
+if(PRINT_TRACING){
+ char str[256] ;
+ sprintf(str,"thr_resam_code=%d fim_resam_code=%d resam_code=%d",
+         br->thr_resam_code,br->resam_code,resam_code) ;
+ STATUS(str); }
+
    flim = AFNI_slice_flip( kslice , ival , resam_code ,
                            ax_1 , ax_2 , ax_3 , br->dset ) ;
 
@@ -835,7 +942,6 @@ MRI_IMAGE * AFNI_slice_flip( int kslice , int ival , int resam ,
    int fixed_axis , fixed_index , dsl_1 , dsl_2 , rot,mir;
    MRI_IMAGE * dsim , * flim ;
    THD_dataxes * daxes ;
-   int resam_code ;
 
 ENTRY("AFNI_slice_flip") ;
 

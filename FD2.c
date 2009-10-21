@@ -24,6 +24,8 @@
 
 /***---------------- additions for use of array of MRI_IMAGE --------------***/
 
+#undef USE_TRACING  /* not for use in this old program */
+
 #include "mrilib.h"
 #include "overfim.h"
 #include "pcor.h"
@@ -59,7 +61,10 @@ int RWC_framehide = 0 ;  /* to hide frame in image */
 int RWC_checker   = 0 ;  /* to checkerboard or not to checkerboard */
 int RWC_groupbase = 0 ;  /* to use a group baseline or not */
 int AJ_base = 0;         /* to set base to zero when group baseline is on */
+int RCR_swap = 0;        /* default is no swap, even for LINUX */
 
+/***-----------------------------------------------------------------------***/
+/*  int discard(int, XEvent*) ; */
 /***-----------------------------------------------------------------------***/
 
 /* additions for use of MCW logo */
@@ -580,7 +585,7 @@ struct _undo_buf *undo_buf = NULL;
 struct _undo_buf *undo_ref = NULL; /* for reference line */
 int           act_undo = -1, ref_undo = -1;
 char          FT_name[100];
-int           im_f, phase = 0; 
+int           im_f, phase = 0;
 #define FFT_MAG .2
 float         fft_mag = FFT_MAG; /* fft amplitude magnify factor AJJ */
 float         *T_ref; /* tmp pointer of LSQ_ref[0]->ts when FFT done AJJ */
@@ -806,6 +811,8 @@ STATUS("begin X event loop") ;
   fprintf (stderr, "\n    -grid val        - initial grid separation ");
   fprintf (stderr, "\n    -phase           - image has negative values (for FFT)");
   fprintf (stderr, "\n    -cf              - center image to the frame");
+  fprintf (stderr, "\n    -swap            - byte-swap data (default is no)");
+  fprintf (stderr, "\n                       *** this is a new default!");
   fprintf (stderr, "\n");
 }
 
@@ -1018,6 +1025,13 @@ STATUS("begin X event loop") ;
          continue;
       }
 
+      /* allow the user to specify swapping bytes */
+      if (strncmp(argv [i], "-swap", 5) == 0) {
+         RCR_swap = 1;
+         nopt++; nopt++;
+         continue;
+      }
+
 /***************************************************************************/
 
      if( strncmp(argv[i],"-grwind",6) == 0 ){
@@ -1193,14 +1207,16 @@ STATUS("begin X event loop") ;
    /* read and check the length of the first file for validity */
 
    imtemp = mri_read_nsize( f_name[0] ) ;
-#ifdef LINUX
-   if ( imtemp->kind == MRI_short ) {
+
+   /* swap based on command-line now                   27 Aug 2004 [rickr] */
+
+   if ( RCR_swap && imtemp->kind == MRI_short ) {
      swap_2(MRI_SHORT_PTR(imtemp), imtemp->nx*imtemp->ny*2);
    }
-   else if ( imtemp->kind == MRI_float ) {
+   else if ( RCR_swap && imtemp->kind == MRI_float ) {
      swap_4(MRI_FLOAT_PTR(imtemp), imtemp->nx*imtemp->ny*4);
    }
-#endif
+
    if( imtemp == NULL ) exit(-1) ;
    if( imtemp->kind == MRI_short ){
       allim[0] = imtemp ;
@@ -1237,14 +1253,15 @@ STATUS("begin X event loop") ;
 #endif
 
       imtemp = mri_read_nsize( f_name[i] ) ;
-#ifdef LINUX
-   if ( imtemp->kind == MRI_short ) {
-     swap_2(MRI_SHORT_PTR(imtemp), imtemp->nx*imtemp->ny*2);
-   }
-   else if ( imtemp->kind == MRI_float ) {
-     swap_4(MRI_FLOAT_PTR(imtemp), imtemp->nx*imtemp->ny*4);
-   }
-#endif
+
+      /* we already know whether to swap     26 Aug 2004 [rickr] */
+      if ( RCR_swap && imtemp->kind == MRI_short ) {
+        swap_2(MRI_SHORT_PTR(imtemp), imtemp->nx*imtemp->ny*2);
+      }
+      else if ( RCR_swap && imtemp->kind == MRI_float ) {
+        swap_4(MRI_FLOAT_PTR(imtemp), imtemp->nx*imtemp->ny*4);
+      }
+
       if( imtemp == NULL ){
          fprintf(stderr,"\n*** %s does not have exactly one image!\a\n",
                  f_name[i]) ;
@@ -1330,12 +1347,23 @@ STATUS("creating image window") ;
    CMap      = DefaultColormap(theDisp, theScreen);
    Planes    = DisplayPlanes(theDisp, theScreen);
 
+#if defined(__cplusplus) || defined(c_plusplus)
+
+   if ( (theVisual->c_class != PseudoColor) &&
+        (theVisual->c_class != TrueColor) &&
+        (theVisual->c_class != DirectColor) )
+      FatalError("This program requires PseudoColor or TrueColor or DirectColor modes only. AJ");
+
+   if ( theVisual->c_class != PseudoColor ) AJ_PseudoColor = 0;
+#else
+
    if ( (theVisual->class != PseudoColor) &&
         (theVisual->class != TrueColor) &&
         (theVisual->class != DirectColor) )
       FatalError("This program requires PseudoColor or TrueColor or DirectColor modes only. AJ");
 
    if ( theVisual->class != PseudoColor ) AJ_PseudoColor = 0;
+#endif
 
    if (!(XAllocNamedColor(theDisp, CMap, "black", &any_col, &rgb_col)))
       FatalError ("XAllocNamedColor problem. AJ");
@@ -1604,7 +1632,8 @@ STATUS("-KeyPress event") ;
             if ( key_event->state & ControlMask ) fff = 2.3;
             nn = act_undo + 1;
             act_undo += ar_size;
-            undo_buf = realloc(undo_buf, (act_undo+1)*sizeof(struct _undo_buf));
+	    undo_buf = AFREALL(undo_buf, struct _undo_buf,
+			      (act_undo+1)*sizeof(struct _undo_buf) ); 
             if ( undo_buf != NULL ) {
                for ( i=0, j=nn; i < ar_size; j++, i++) {
                   undo_buf[j].im  = Im_Nr;
@@ -1633,8 +1662,8 @@ STATUS("-KeyPress event") ;
 
             if ( RWC_ideal != NULL  && RWC_ideal->len >= npoints ) {
                ref_undo += 1;
-               undo_ref =
-                    realloc(undo_ref, (ref_undo+1)*sizeof(struct _undo_buf));
+	       undo_ref = AFREALL(undo_ref, struct _undo_buf,
+			         (ref_undo+1)*sizeof(struct _undo_buf) ); 
                if ( undo_ref != NULL ) {
                   j = ref_undo;
                   undo_ref[j].im  = Im_Nr;
@@ -1669,7 +1698,8 @@ STATUS("-KeyPress event") ;
             if ( key_event->state & ControlMask ) fff = 1./2.3;
             nn = act_undo + 1;
             act_undo += ar_size;
-            undo_buf = realloc(undo_buf, (act_undo+1)*sizeof(struct _undo_buf));
+	    undo_buf = AFREALL(undo_buf, struct _undo_buf,
+		              (act_undo+1)*sizeof(struct _undo_buf) ); 
             if ( undo_buf != NULL ) {
                for ( i=0, j=nn; i < ar_size; j++, i++) {
                   undo_buf[j].im  = Im_Nr;
@@ -1698,8 +1728,8 @@ STATUS("-KeyPress event") ;
 
             if ( RWC_ideal != NULL  && RWC_ideal->len >= npoints ) {
                ref_undo += 1;
-               undo_ref =
-                  realloc(undo_ref, (ref_undo+1)*sizeof(struct _undo_buf));
+	       undo_ref = AFREALL(undo_ref, struct _undo_buf,
+		              (ref_undo+1)*sizeof(struct _undo_buf) ); 
                if ( undo_ref != NULL ) {
                   j = ref_undo;
                   undo_ref[j].im  = Im_Nr;
@@ -1742,8 +1772,8 @@ STATUS("-KeyPress event") ;
                   if ( f3 > 32767. ) f3 = 32767.;
                   RWC_ideal->ts[k] = f3;
                   ref_undo -= 1;
-                  undo_ref = 
-                     realloc(undo_ref,(ref_undo+1)*sizeof(struct _undo_buf));
+	          undo_ref = AFREALL(undo_ref, struct _undo_buf,
+		              (ref_undo+1)*sizeof(struct _undo_buf) ); 
                   if ( undo_ref == NULL ) {
                      ref_undo = -1;
                      fprintf(stderr, "\n*** cannot realloc undo_ref\a\n") ;
@@ -1767,7 +1797,8 @@ STATUS("-KeyPress event") ;
                }
 
                act_undo -= ar_size;
-               undo_buf=realloc(undo_buf,(act_undo+1)*sizeof(struct _undo_buf));
+	       undo_buf = AFREALL(undo_buf, struct _undo_buf,
+		              (act_undo+1)*sizeof(struct _undo_buf) ); 
 
                if ( undo_buf != NULL ) {
                   redraw_graph() ;
@@ -2605,7 +2636,7 @@ STATUS("ENTER Allow_smaller_im") ;
    char *argv[];
 /* ---------------------------------- */
 {
-   XClassHint           class;
+   XClassHint           classKRH;
    XSetWindowAttributes attr;
    unsigned int         attrmask;
    XSizeHints           hints;
@@ -2635,8 +2666,8 @@ STATUS("ENTER CreateMainWindow") ;
    if (mask & YValue && mask & YNegative)
         y = XDisplayHeight(theDisp, theScreen)-eHIGH-abs(y);
 
-   class.res_name  = "ImageX";
-   class.res_class = "ImageX";
+   classKRH.res_name  = "ImageX";
+   classKRH.res_class = "ImageX";
 
    hints.min_aspect.x = IM_HEIGHT + BELT_W;
    hints.max_aspect.x = IM_HEIGHT + BELT_W;
@@ -2662,7 +2693,7 @@ STATUS("ENTER CreateMainWindow") ;
    if (!theWindow)
       FatalError("Can't open window (are X11 windows running ?). AJ");
 
-   XSetClassHint(theDisp, theWindow, &class);
+   XSetClassHint(theDisp, theWindow, &classKRH);
    XSetStandardProperties(theDisp, theWindow, T_name, T_name, None,
                           argv, argc, &hints);
 }
@@ -4917,7 +4948,7 @@ STATUS("   finished drawing T_name") ;
       Put_image(Im_Nr);
       DrawSubWindow();
       DrawTopWindow();
-      discard(KeyPressMask, event);
+      discard(KeyPressMask, &event);
    }
 
    if( FFT_pressed ) {                /* second press - back to normal graph */
@@ -5220,7 +5251,8 @@ STATUS("   finished drawing T_name") ;
             }
             mm = act_undo + 1;
             act_undo += (z_imL - z_im1) * ar_size;
-            undo_buf = realloc(undo_buf, (act_undo+1)*sizeof(struct _undo_buf));
+	    undo_buf = AFREALL(undo_buf, struct _undo_buf,
+		              (act_undo+1)*sizeof(struct _undo_buf) ); 
             if ( undo_buf != NULL ) {
                for ( k=z_im1, nn=mm; k < z_imL; k++, nn+=ar_size) { 
                   for ( i=0, j=nn; i < ar_size; j++, i++) {
@@ -5241,8 +5273,8 @@ STATUS("   finished drawing T_name") ;
             if ( RWC_ideal != NULL  && RWC_ideal->len >= npoints ) {
                mm = ref_undo + 1;
                ref_undo += (z_imL - z_im1);
-               undo_ref =
-                      realloc(undo_ref, (ref_undo+1)*sizeof(struct _undo_buf));
+	       undo_ref = AFREALL(undo_ref, struct _undo_buf,
+		              (ref_undo+1)*sizeof(struct _undo_buf) ); 
                if ( undo_ref != NULL ) {
                   for ( k=z_im1, j=mm; k < z_imL; k++, j++) { 
                      undo_ref[j].im  = k;
@@ -5373,11 +5405,12 @@ STATUS("   finished drawing T_name") ;
          else if ( FT1_pressed == 1 ) {
             nn = act_undo + 1;
             act_undo += ar_size;
-            undo_buf = realloc(undo_buf, (act_undo+1)*sizeof(struct _undo_buf));
+	    undo_buf = AFREALL(undo_buf, struct _undo_buf,
+		              (act_undo+1)*sizeof(struct _undo_buf) ); 
             if ( RWC_ideal != NULL  && RWC_ideal->len >= npoints ) {
                ref_undo += 1;
-               undo_ref =
-                      realloc(undo_ref, (ref_undo+1)*sizeof(struct _undo_buf));
+	       undo_ref = AFREALL(undo_ref, struct _undo_buf,
+		              (ref_undo+1)*sizeof(struct _undo_buf) ); 
                if ( undo_ref != NULL ) {
                   j = ref_undo;
                   undo_ref[j].im  = Im_Nr;
@@ -5714,15 +5747,15 @@ STATUS("   finished drawing T_name") ;
    char *argv[];
 /* ----------------------------------- */
 {
-   XClassHint		class;
+   XClassHint		classKRH;
    XSetWindowAttributes attr;
    unsigned int		attrmask;
    XSizeHints		hints;
    int 			x = 0, y = 0;
 
 
-   class.res_name  = "Graph";
-   class.res_class = "Graph";
+   classKRH.res_name  = "Graph";
+   classKRH.res_class = "Graph";
 
    hints.width = iWIDE;         hints.height = iHIGH;
    hints.max_width = iWIDE;     hints.max_height = iHIGH;
@@ -5741,7 +5774,7 @@ STATUS("   finished drawing T_name") ;
    if (!GWindow)
       FatalError("Can't open window (are X11 windows running ?). AJ");
 
-   XSetClassHint(theDisp, GWindow, &class);
+   XSetClassHint(theDisp, GWindow, &classKRH);
    XSetStandardProperties(theDisp, GWindow, G_name, I_name, None,
 			  argv, argc, &hints);
 }
@@ -6027,23 +6060,23 @@ try_again:
       }
       for (i=0; i < npoints; i++) {
          sprintf(strF, formt[0][im_f], strp, i+1);
-#ifdef LINUX
-   if ( allim[i]->kind == MRI_short ) {
-     swap_2(MRI_SHORT_PTR(allim[i]), allim[i]->nx*allim[i]->ny*2);
-   }
-   else if ( allim[i]->kind == MRI_float ) {
-     swap_4(MRI_FLOAT_PTR(allim[i]), allim[i]->nx*allim[i]->ny*4);
-   }
-#endif
+
+         /* we have already decided whether to swap */
+         if ( RCR_swap && allim[i]->kind == MRI_short ) {
+           swap_2(MRI_SHORT_PTR(allim[i]), allim[i]->nx*allim[i]->ny*2);
+         }
+         else if ( RCR_swap && allim[i]->kind == MRI_float ) {
+           swap_4(MRI_FLOAT_PTR(allim[i]), allim[i]->nx*allim[i]->ny*4);
+         }
+
          mri_write(strF, allim[i]) ;
-#ifdef LINUX
-   if ( allim[i]->kind == MRI_short ) {
-     swap_2(MRI_SHORT_PTR(allim[i]), allim[i]->nx*allim[i]->ny*2);
-   }
-   else if ( allim[i]->kind == MRI_float ) {
-     swap_4(MRI_FLOAT_PTR(allim[i]), allim[i]->nx*allim[i]->ny*4);
-   }
-#endif
+
+         if ( RCR_swap && allim[i]->kind == MRI_short ) {
+           swap_2(MRI_SHORT_PTR(allim[i]), allim[i]->nx*allim[i]->ny*2);
+         }
+         else if ( RCR_swap && allim[i]->kind == MRI_float ) {
+           swap_4(MRI_FLOAT_PTR(allim[i]), allim[i]->nx*allim[i]->ny*4);
+         }
       }
    }
 
@@ -6113,23 +6146,23 @@ try_again:
    take_file_name(theDisp, GWindow , CMap, txtGC, mfinfo, x, y, strp, 41,
                   "Enter output image name:" , 1 );
    if ( strp[0] != ASC_NUL ) {
-#ifdef LINUX
-   if ( im_tmp_ar->kind == MRI_short ) {
-     swap_2(MRI_SHORT_PTR(im_tmp_ar), im_tmp_ar->nx*im_tmp_ar->ny*2);
-   }
-   else if ( im_tmp_ar->kind == MRI_float ) {
-     swap_4(MRI_FLOAT_PTR(im_tmp_ar), im_tmp_ar->nx*im_tmp_ar->ny*4);
-   }
-#endif
+      /* we have already decided on swapping     27 Aug 2004 [rickr] */
+
+      if ( RCR_swap && im_tmp_ar->kind == MRI_short ) {
+        swap_2(MRI_SHORT_PTR(im_tmp_ar), im_tmp_ar->nx*im_tmp_ar->ny*2);
+      }
+      else if ( RCR_swap && im_tmp_ar->kind == MRI_float ) {
+        swap_4(MRI_FLOAT_PTR(im_tmp_ar), im_tmp_ar->nx*im_tmp_ar->ny*4);
+      }
+
       mri_write( strp , im_tmp_ar ) ;
-#ifdef LINUX
-   if ( im_tmp_ar->kind == MRI_short ) {
-     swap_2(MRI_SHORT_PTR(im_tmp_ar), im_tmp_ar->nx*im_tmp_ar->ny*2);
-   }
-   else if ( im_tmp_ar->kind == MRI_float ) {
-     swap_4(MRI_FLOAT_PTR(im_tmp_ar), im_tmp_ar->nx*im_tmp_ar->ny*4);
-   }
-#endif
+
+      if ( RCR_swap && im_tmp_ar->kind == MRI_short ) {
+        swap_2(MRI_SHORT_PTR(im_tmp_ar), im_tmp_ar->nx*im_tmp_ar->ny*2);
+      }
+      else if ( RCR_swap && im_tmp_ar->kind == MRI_float ) {
+        swap_4(MRI_FLOAT_PTR(im_tmp_ar), im_tmp_ar->nx*im_tmp_ar->ny*4);
+      }
    }
 
    txtW_ON = 0;
@@ -7236,7 +7269,7 @@ void add_extra_image(newim)
 {
    if( N_im >= dim_allim ){
       dim_allim += INC_ALLIM ;
-      allim      = realloc( allim , sizeof(MRI_IMAGE *) * dim_allim ) ;
+      allim = AFREALL( allim, MRI_IMAGE*, sizeof(MRI_IMAGE *) * dim_allim ); 
       if( allim == NULL ){
          fprintf(stderr,"\n*** cannot allocate space for new image!\a\n") ;
          exit(-1) ;
@@ -7278,14 +7311,16 @@ void add_extra_image(newim)
    if( strp[0] == '\0' ) return(1) ;
 
    im = mri_read_nsize( strp ) ;
-#ifdef LINUX
-   if ( im->kind == MRI_short ) {
+
+   /* we have already decided on swapping     27 Aug 2004 [rickr] */
+
+   if ( RCR_swap && im->kind == MRI_short ) {
      swap_2(MRI_SHORT_PTR(im), im->nx*im->ny*2);
    }
-   else if ( im->kind == MRI_float ) {
+   else if ( RCR_swap && im->kind == MRI_float ) {
      swap_4(MRI_FLOAT_PTR(im), im->nx*im->ny*4);
    }
-#endif
+
    if( im == NULL ) return(3) ;
 
    if( (im->nx != im->ny) ||

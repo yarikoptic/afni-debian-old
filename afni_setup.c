@@ -3,7 +3,7 @@
    of Wisconsin, 1994-2000, and are released under the Gnu General Public
    License, Version 2.  See the file README.Copyright for details.
 ******************************************************************************/
-   
+
 #undef MAIN
 #include "afni.h"
 
@@ -39,17 +39,18 @@ int label_in_PALTAB( PBAR_palette_table * pt , char * lab )
       if( str[0]=='\0' || qq==0 || nu==0 ){ free(fbuf); EXRETURN; }       \
     } while(0)
 
-#define GETSTR                                                             \
-  do{ GETSSS ;                                                             \
-      while(str[0]=='!' || (str[0]=='/' && str[1]=='/')){EOLSKIP; GETSSS;} \
+#define GETSTR                                                            \
+  do{ GETSSS ;                                                            \
+      while(str[0]=='!' || (str[0]=='/' && str[1]=='/') ||                \
+            (str[0]=='#' && str[1]=='\0') ){EOLSKIP; GETSSS;}             \
     } while(0)
 
-#define GETEQN                                         \
-  do{ GETSTR ; if(ISTARRED(str)) goto SkipSection ;    \
-      strcpy(left,str) ;                               \
-      GETSTR ; if(ISTARRED(str)) goto SkipSection ;    \
-      strcpy(middle,str) ;                             \
-      GETSTR ; if(ISTARRED(str)) goto SkipSection ;    \
+#define GETEQN                                                            \
+  do{ GETSTR ; if(ISTARRED(str)) goto SkipSection ;                       \
+      strcpy(left,str) ;                                                  \
+      GETSTR ; if(ISTARRED(str)) goto SkipSection ;                       \
+      strcpy(middle,str) ;                                                \
+      GETSTR ; if(ISTARRED(str)) goto SkipSection ;                       \
       strcpy(right,str) ; } while(0)
 
 #define NSBUF 256
@@ -145,10 +146,10 @@ if(PRINT_TRACING)
 
       if( strcmp(str,"***PALETTES") == 0 ){  /* loop, looking for palettes */
          char label[NSBUF] = "NoThing" , ccc , * cpt ;
-         PBAR_palette_array * ppar ;
+         PBAR_palette_array * ppar=NULL ;
          PBAR_palette ** ppp ;
          PBAR_palette  * ppnew ;
-         int npane , pmode , icol , jj ;
+         int npane , pmode , icol=0 , jj ;
          float val ;
 
 STATUS("enter ***PALETTES") ;
@@ -168,7 +169,7 @@ STATUS("create initial palettes") ;
 
             if( str[0] != '[' ){                     /* found a palette label */
                strcpy(label,str) ;
-               if( !THD_filename_pure(label) ){
+               if( !THD_filename_ok(label) ){
                   fprintf(stderr,"\nIn setup file %s, bad palette label: %s.\n",
                           fname,label) ;
                   free(fbuf) ; EXRETURN ;
@@ -177,7 +178,7 @@ STATUS("create initial palettes") ;
 if(PRINT_TRACING)
 { char str[256] ;
   sprintf(str,"found palette label=%s. [len=%d label[0]=%d]",
-          label,strlen(label),(int)label[0]); STATUS(str);
+          label,(int)strlen(label),(int)label[0]); STATUS(str);
   sprintf(str,"nbuf=%d fptr-fbuf=%d",nbuf,fptr-fbuf); STATUS(str);}
 
                ii = label_in_PALTAB( GPT , label ) ; /* an old one? */
@@ -293,7 +294,7 @@ STATUS("stored new palette") ;
       /**-- ENVIRONMENT section [04 Jun 1999] --**/
 
       if( strcmp(str,"***ENVIRONMENT") == 0 ){  /* loop, looking for environment settings */
-         char * enveqn ; int nl , nr ;
+         char *enveqn ; int nl , nr ;
 
          if( mode != SETUP_ENVIRON_MODE ){ GETSTR ; goto SkipSection ; }
 
@@ -470,10 +471,10 @@ ENTRY("dump_PBAR_palette_table") ;
 
 /*------------------------------------------------------------------------------*/
 
-void load_PBAR_palette_array( MCW_pbar * pbar , PBAR_palette_array * par , int fixim )
+void load_PBAR_palette_array( MCW_pbar *pbar, PBAR_palette_array *par, int fixim )
 {
    int ii , jj , jm , nn ;
-   PBAR_palette * pp ;
+   PBAR_palette *pp ;
 
 ENTRY("load_PBAR_palette_array") ;
 
@@ -512,7 +513,7 @@ ENTRY("load_PBAR_palette_array") ;
       }
    }
 
-   if( nn > 0 ){
+   if( nn > 0 && !pbar->bigmode ){
       Three_D_View * im3d = (Three_D_View *) pbar->parent ;
       if( fixim ){ HIDE_SCALE(im3d) ; }
       alter_MCW_pbar( pbar , 0 , NULL ) ;
@@ -586,6 +587,9 @@ ENTRY("AFNI_pbar_CB") ;
    /*--- Equalize spacings ---*/
 
    if( w == im3d->vwid->func->pbar_equalize_pb ){
+
+      if( pbar->bigmode ){ BEEPIT; EXRETURN; } /* 30 Jan 2003 */
+
       for( ii=0 ; ii <= npane ; ii++ )
          pval[ii] = pmax - ii * (pmax-pmin)/npane ;
 
@@ -617,7 +621,9 @@ ENTRY("AFNI_pbar_CB") ;
       im3d->vwid->file_cb = AFNI_finalize_read_palette_CB ;
       im3d->vwid->file_cd = cd ;
       XtVaSetValues( im3d->vwid->file_dialog,
-                        XmNtitle, "AFNI: Read Palette",
+                        XmNtitle,
+                        (pbar->bigmode) ? "AFNI: Read colorscale"
+                                        : "AFNI: Read Palette" ,
                      NULL ) ;
 
       xstr = XmStringCreateLtoR( "*.pal"  , XmFONTLIST_DEFAULT_TAG ) ;
@@ -632,8 +638,8 @@ ENTRY("AFNI_pbar_CB") ;
 
    else if( w == im3d->vwid->func->pbar_writeout_pb ){
       MCW_choose_string( im3d->vwid->func->options_label ,
-                         "Palette Name" , NULL ,
-                         AFNI_finalize_write_palette_CB , cd ) ;
+                         (pbar->bigmode) ? "Colorscale Name" : "Palette Name" ,
+                         NULL , AFNI_finalize_write_palette_CB , cd ) ;
    }
 
    /*--- Display the palette table ---*/
@@ -651,6 +657,16 @@ ENTRY("AFNI_pbar_CB") ;
                          "PPM file prefix" , NULL ,
                          AFNI_finalize_saveim_CB , cd ) ;
    }
+
+   /*---- 10 Feb 2004: start the Edit Environment pseudo-plugin ----*/
+
+   else if( w == im3d->vwid->func->pbar_environment_pb &&
+            w != NULL                                    ){
+
+     AFNI_misc_CB( im3d->vwid->dmode->misc_environ_pb ,
+                   (XtPointer) im3d , (XtPointer) NULL ) ;
+   }
+
 
    /*** done ***/
 
@@ -672,7 +688,7 @@ ENTRY("AFNI_palette_av_CB") ;
                             PALTAB_ARR(GPT,av->ival) , 1  ) ;
 
    if( im3d->vinfo->func_visible )
-      AFNI_set_viewpoint( im3d , -1,-1,-1 , REDISPLAY_OVERLAY ) ;  /* redraw */
+      AFNI_redisplay_func( im3d ) ;
 
    EXRETURN ;
 }
@@ -692,7 +708,7 @@ ENTRY("AFNI_finalize_read_palette_CB") ;
       /** close the file selection dialog **/
 
       case XmCR_CANCEL:
-         XtPopdown( im3d->vwid->file_dialog ) ;
+         RWC_XtPopdown( im3d->vwid->file_dialog ) ;
       break ;
 
       /** try to read a new palette **/
@@ -703,7 +719,21 @@ ENTRY("AFNI_finalize_read_palette_CB") ;
          Three_D_View * qq3d ;
          XmStringGetLtoR( cbs->value , XmFONTLIST_DEFAULT_TAG , &text ) ;
          if( text != NULL ){
-            if( THD_is_file(text) && !THD_is_directory(text) ){ /* read in file */
+           if( THD_is_file(text) && !THD_is_directory(text) ){ /* read in file */
+
+             if( im3d->vwid->func->inten_pbar->bigmode ){  /* 22 Oct 2003 */
+               char *cmd = AFNI_suck_file( text ) ;
+               ii = PBAR_define_bigmap(cmd); free(cmd);
+               if( ii == 0 )
+                 RWC_XtPopdown( im3d->vwid->file_dialog ) ;
+               else
+                 (void) MCW_popup_message( w ,
+                                           "******************************\n"
+                                           "** Can't use the colorscale **\n"
+                                           "** file you selected!       **\n"
+                                           "******************************"
+                                         , MCW_USER_KILL | MCW_TIMER_KILL ) ;
+             } else {
 
                npal1 = (GPT == NULL) ? 0 : PALTAB_NUM(GPT) ;  /* how many before */
 
@@ -742,18 +772,18 @@ ENTRY("AFNI_finalize_read_palette_CB") ;
                                          dum , MCW_USER_KILL | MCW_TIMER_KILL ) ;
                free(dum) ;
 
-               XtPopdown( im3d->vwid->file_dialog ) ;  /* done with dialog */
-
-            } else {                                            /* bad filename */
-               (void) MCW_popup_message( w ,
-                                           "****************************\n"
-                                           "** Can't read the palette **\n"
-                                           "** file you selected!     **\n"
-                                           "****************************"
-                                       , MCW_USER_KILL | MCW_TIMER_KILL ) ;
-               BEEPIT ;
-            }
-            XtFree(text) ;
+               RWC_XtPopdown( im3d->vwid->file_dialog ) ;  /* done with dialog */
+             }
+           } else {                                            /* bad filename */
+              (void) MCW_popup_message( w ,
+                                          "****************************\n"
+                                          "** Can't open the palette **\n"
+                                          "** file you selected!     **\n"
+                                          "****************************"
+                                      , MCW_USER_KILL | MCW_TIMER_KILL ) ;
+              BEEPIT ;
+           }
+           XtFree(text) ;
          }
       }
       break ;
@@ -782,22 +812,28 @@ void AFNI_set_pbar_top_CB( Widget wcaller , XtPointer cd , MCW_choose_cbs * cbs 
    Three_D_View * im3d = (Three_D_View *) cd ;
    MCW_pbar * pbar ;
    float pval[NPANE_MAX+1] ;
-   double pmax , fac ;
+   double pmin,pmax , fac ;
    int ii ;
 
 ENTRY("AFNI_set_pbar_top_CB") ;
 
    if( ! IM3D_OPEN(im3d) ) EXRETURN ;
 
-   pmax  = cbs->fval ; if( pmax <= 0.0 ){ BEEPIT ; EXRETURN ; }
+   pmax  = cbs->fval ; if( pmax <= 0.0 ){ BEEPIT; EXRETURN; }
    pbar  = im3d->vwid->func->inten_pbar ;
-   fac   = pmax / pbar->pval[0] ;
-
-   for( ii=0 ; ii <= pbar->num_panes ; ii++ )
-      pval[ii] = fac * pbar->pval[ii] ;
 
    HIDE_SCALE(im3d) ;
-   alter_MCW_pbar( pbar , 0 , pval ) ;
+   if( pbar->bigmode ){              /* 30 Jan 2003 */
+     pbar->bigset = 0 ;
+     pmin = (pbar->mode) ? 0.0 : -pmax ;
+     PBAR_set_bigmode( pbar , 1 , pmin,pmax ) ;
+     AFNI_inten_pbar_CB( pbar , im3d , 0 ) ;
+   } else {
+     fac = pmax / pbar->pval[0] ;
+     for( ii=0 ; ii <= pbar->num_panes ; ii++ )
+       pval[ii] = fac * pbar->pval[ii] ;
+     alter_MCW_pbar( pbar , 0 , pval ) ;
+   }
    FIX_SCALE_SIZE(im3d) ;
 
    EXRETURN ;
@@ -848,34 +884,46 @@ ENTRY("AFNI_finalize_write_palette_CB") ;
    ovin  = pbar->ov_index ;
    pval  = pbar->pval ;
 
-   /* make list of all colors used, pruning redundancies */
+   /* 22 Oct 2003: Colorscale? */
 
-   novu = 1 ; ovu[0] = ovin[0] ;
-   for( ii=1 ; ii < npane ; ii++ ){        /* check each pane */
-      for( jj=0 ; jj < novu ; jj++ )       /* for match with current list */
+   if( pbar->bigmode ){
+     fprintf(fp,"%s\n",pbar->bigname) ;
+     for( ii=0 ; ii < NPANE_BIG ; ii++ )
+       fprintf(fp,"#%02x%02x%02x\n",
+               (unsigned int)pbar->bigcolor[ii].r ,
+               (unsigned int)pbar->bigcolor[ii].g ,
+               (unsigned int)pbar->bigcolor[ii].b  ) ;
+   } else {
+
+     /* make list of all discrete colors used, pruning redundancies */
+
+     novu = 1 ; ovu[0] = ovin[0] ;
+     for( ii=1 ; ii < npane ; ii++ ){        /* check each pane */
+       for( jj=0 ; jj < novu ; jj++ )       /* for match with current list */
          if( ovin[ii] == ovu[jj] ) break ;
 
-      if( jj == novu )                     /* didn't find a match */
+       if( jj == novu )                     /* didn't find a match */
          ovu[novu++] = ovin[ii] ;
-   }
+     }
 
-   /* write colors to file */
+     /* write colors to file */
 
-   fprintf( fp , "\n***COLORS\n" ) ;
-   for( ii=0 ; ii < novu ; ii++ ){
-      if( ovu[ii] > 0 )                                   /* don't write 'none' */
+     fprintf( fp , "\n***COLORS\n" ) ;
+     for( ii=0 ; ii < novu ; ii++ ){
+       if( ovu[ii] > 0 )                                   /* don't write 'none' */
          fprintf( fp , "  %s = %s\n" ,
                   im3d->dc->ovc->label_ov[ovu[ii]] ,
                   im3d->dc->ovc->name_ov[ovu[ii]]   ) ;
+     }
+
+     fname[ll-4] = '\0' ;
+     fprintf( fp , "\n***PALETTES %s [%d%s\n" ,
+              fname , npane , (jm==0) ? "]" : "+]" ) ;
+
+     for( ii=0 ; ii < npane ; ii++ )
+       fprintf( fp , "  %f -> %s\n" ,
+                pval[ii] , im3d->dc->ovc->label_ov[ovin[ii]] ) ;
    }
-
-   fname[ll-4] = '\0' ;
-   fprintf( fp , "\n***PALETTES %s [%d%s\n" ,
-            fname , npane , (jm==0) ? "]" : "+]" ) ;
-
-   for( ii=0 ; ii < npane ; ii++ )
-      fprintf( fp , "  %f -> %s\n" ,
-               pval[ii] , im3d->dc->ovc->label_ov[ovin[ii]] ) ;
 
    POPDOWN_string_chooser; fclose(fp); free(fname); EXRETURN;
 }
@@ -932,22 +980,28 @@ ENTRY("AFNI_palette_tran_CB") ;
       im3d->vwid->func->pbar_transform0D_index = av->ival ;
       if( av->ival == 0 )
          im3d->vwid->func->pbar_transform0D_func = NULL ;
-      else
+      else {
          im3d->vwid->func->pbar_transform0D_func =
             GLOBAL_library.registered_0D.funcs[av->ival-1];
+         if( GLOBAL_library.registered_0D.func_init[av->ival-1] != NULL )
+           GLOBAL_library.registered_0D.func_init[av->ival-1]() ;
+      }
 
    } else if( av == im3d->vwid->func->pbar_transform2D_av ){  /* 16 Jun 2000 */
 
       im3d->vwid->func->pbar_transform2D_index = av->ival ;
       if( av->ival == 0 )
          im3d->vwid->func->pbar_transform2D_func = NULL ;
-      else
+      else{
          im3d->vwid->func->pbar_transform2D_func =
             GLOBAL_library.registered_2D.funcs[av->ival-1];
+         if( GLOBAL_library.registered_2D.func_init[av->ival-1] != NULL )
+           GLOBAL_library.registered_2D.func_init[av->ival-1]() ;
+      }
    }
 
    if( im3d->vinfo->func_visible )
-      AFNI_set_viewpoint( im3d , -1,-1,-1 , REDISPLAY_OVERLAY ) ;  /* redraw */
+      AFNI_redisplay_func( im3d ) ;
 
    EXRETURN ;
 }

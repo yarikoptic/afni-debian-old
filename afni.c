@@ -5,14 +5,13 @@
 ******************************************************************************/
 
 /**********************************************************************/
-/* GPL AFNI:                                                          */
+/* GPL/NIH AFNI:                                                      */
 /*    Analysis of Functional NeuroImages                              */
 /*                                                                    */
 /* Author: Robert W. Cox, PhD                                         */
-/*         Biophysics Research Institute                              */
-/*         Medical College of Wisconsin                               */
-/*         8701 Watertown Plank Road                                  */
-/*         Milwaukee, WI 53226                                        */
+/*         Scientific and Statistical Computing Core                  */
+/*         National Institute of Mental Health                        */
+/*         Bethesda, MD 20892  USA                                    */
 /*                                                                    */
 /* Acknowledgments:                                                   */
 /*   + This program would have been much more difficult had           */
@@ -24,19 +23,26 @@
 /*     sophisticated user of AFNI that I've met, and who has found    */
 /*     many bugs or gotchas in this code.                             */
 /*   + Doug Ward of MCW has contributed much to the overall package.  */
+/*   + Ziad Saad of NIH has also contributed many useful suggestions. */
+/*   + Peter Bandettini of NIH has asked many many "quick" questions. */
+/*   + Sean and Alex Bellgowan have contributed in their own way.     */
 /**********************************************************************/
 
 #define MAIN
 
 #include "afni.h"
+#include <X11/keysym.h>  /* 20 Feb 2003 */
+#include "afni_plugout.h"
 
 #define ANNOUNCEMENT                                                           \
- " GPL AFNI: Analysis of Functional NeuroImages, by RW Cox (" COXEMAIL ")\n"   \
- " This is Version " VERSION " of " RELEASE"\n"                                \
- "  ** This software was designed to be used only for research purposes. **\n" \
- "  ** Clinical uses are not recommended, and have never been evaluated. **\n" \
- "  ** This software comes with no warranties of any kind whatsoever,    **\n" \
- "  ** and may not be useful for anything.  Use it at your own risk!     **\n\n"
+ "GPL AFNI: Analysis of Functional NeuroImages, by RW Cox (" COXEMAIL ")\n"    \
+ "This is Version " VERSION               "\n\n"                               \
+ " ** This software was designed to be used only for research purposes. **\n"  \
+ " ** Clinical uses are not recommended, and have never been evaluated. **\n"  \
+ " ** This software comes with no warranties of any kind whatsoever,    **\n"  \
+ " ** and may not be useful for anything.  Use it at your own risk!     **\n"  \
+ " ** If these terms are not acceptable, you aren't allowed to use AFNI.**\n"  \
+ " ** See 'Define Datamode->Misc->License Info' for more details.       **\n\n"
 
 #define USE_FRIENDS
 
@@ -58,7 +64,7 @@
 ------------------------------------------------------------------*/
 
 static XtAppContext   MAIN_app ;
-static XtErrorHandler MAIN_old_handler ;
+static XtErrorHandler MAIN_old_handler ;   /* no longer used */
 static Three_D_View * MAIN_im3d ;
 static MCW_DC *       MAIN_dc ;
 static Widget         MAIN_shell=NULL ;
@@ -67,7 +73,7 @@ static char **        MAIN_argv ;
 static Boolean        MAIN_workprocess( XtPointer ) ;
 
 #define USE_SIDES  /* 01 Dec 1999: replace "left is xxx" */
-                   /* labels with "sides" labels         */
+                   /* labels with "sides" labels.        */
 
 /********************************************************************
    Print out some help information and then quit quit quit
@@ -77,9 +83,10 @@ void AFNI_syntax(void)
 {
    printf(
      ANNOUNCEMENT
-     "\n"
-     "Usage 1: read in sessions of 3D datasets (created by to3d)\n"
-     "\n"
+
+     "----------------------------------------------------------------\n"
+     "USAGE 1: read in sessions of 3D datasets (created by to3d, etc.)\n"
+     "----------------------------------------------------------------\n"
      "   afni [options] [session_directory ...]\n"
      "\n"
 #if MMAP_THRESHOLD > 0
@@ -155,20 +162,30 @@ void AFNI_syntax(void)
      "                  If neither is present, then AFNI will do whatever\n"
      "                  it feels like.\n"
      "\n"
-     " If no session_directories are given, then the program will use\n"
-     "   the current working directory (i.e., './').\n"
-     " The maximum number of sessions is now set to   %d.\n"
-     " The maximum number of anatomies per session is %d.\n"
-     " The maximum number of functions per session is %d.\n"
-     " A session must have at least one anatomical dataset in it.\n"
+     "   -niml        If present, turns on listening for NIML-formatted\n"
+     "                  data from SUMA.  Can also be turned on by setting\n"
+     "                  environment variable AFNI_NIML_START to YES.\n"
+     "   -np port     If present, sets the NIML socket port number to 'port'.\n"
+     "                  This must be an integer between 1024 and 65535,\n"
+     "                  and must be the same as the '-np port' number given\n"
+     "                  to SUMA.  [default = 53211]\n"
+     "\n"
+     " * If no session_directories are given, then the program will use\n"
+     "    the current working directory (i.e., './').\n"
+     " * The maximum number of sessions is now set to  %d.\n"
+     " * The maximum number of datasets per session is %d.\n"
+     " * To change these maximums, you must edit file '3ddata.h' and then\n"
+     "    recompile this program.\n"
 
-     , THD_MAX_NUM_SESSION , THD_MAX_SESSION_ANAT , THD_MAX_SESSION_FUNC
+     , THD_MAX_NUM_SESSION , THD_MAX_SESSION_SIZE
    ) ;
 
    printf(
      "\n"
-     "Usage 2: read in images for 'quick and dirty' viewing\n"
-     "(Many advanced features of AFNI will be disabled.)\n"
+     "-----------------------------------------------------\n"
+     "USAGE 2: read in images for 'quick and dirty' viewing\n"
+     "-----------------------------------------------------\n"
+     "(Most advanced features of AFNI will be disabled.)\n"
      "\n"
      "   afni -im [options] im1 im2 im3 ...\n"
      "\n"
@@ -211,14 +228,18 @@ void AFNI_syntax(void)
      "                  slice order first (like -time:zt in to3d).\n"
      "\n"
      " N.B.: You may wish to use the -ignore option to set the number of\n"
-     "       initial points to ignore in the time series graph if you use\n"
-     "       -tim or -zim, since there is no way to change this from\n"
-     "       within an AFNI run (the FIM menus are disabled).\n"
+     "        initial points to ignore in the time series graph if you use\n"
+     "        -tim or -zim, since there is no way to change this from\n"
+     "        within an AFNI run (the FIM menus are disabled).\n"
+     " N.B.: The program 'aiv' (AFNI image viewer) can also be used to\n"
+     "        look at images.\n"
    ) ;
 
    printf(
      "\n"
-     "Usage 3: read in datasets specified on the command line\n"
+     "-------------------------------------------------------\n"
+     "USAGE 3: read in datasets specified on the command line\n"
+     "-------------------------------------------------------\n"
      "\n"
      "  afni -dset [options] dname1 dname2 ...\n"
      "\n"
@@ -233,7 +254,9 @@ void AFNI_syntax(void)
 
    printf(
      "\n"
-     "General options (for any Usage):\n"
+     "-------------------------------\n"
+     "GENERAL OPTIONS (for any usage)\n"
+     "-------------------------------\n"
      "\n"
      "   -q           Tells afni to be 'quiet' on startup\n"
      "   -gamma gg    Tells afni that the gamma correction factor for the\n"
@@ -270,7 +293,44 @@ void AFNI_syntax(void)
      , DEFAULT_NGRAY
    ) ;
 
-   exit(0) ;
+   printf(
+    "\n"
+    "----------\n"
+    "REFERENCES\n"
+    "----------\n"
+    "The following papers describe some of the components of the AFNI package.\n"
+    "\n"
+    "RW Cox.  AFNI: Software for analysis and visualization of functional\n"
+    "  magnetic resonance neuroimages.  Computers and Biomedical Research,\n"
+    "  29: 162-173, 1996.\n"
+    "\n"
+    "  * The first AFNI paper, and the one I prefer you cite if you want to\n"
+    "    refer to the AFNI package as a whole.\n"
+    "\n"
+    "RW Cox, A Jesmanowicz, and JS Hyde.  Real-time functional magnetic\n"
+    "  resonance imaging.  Magnetic Resonance in Medicine, 33: 230-236, 1995.\n"
+    "\n"
+    "  * The first paper on realtime FMRI; describes the algorithm used in\n"
+    "    3dfim+, the interactive FIM calculations, and in the realtime plugin.\n"
+    "\n"
+    "RW Cox and JS Hyde.  Software tools for analysis and visualization of\n"
+    "  FMRI Data.  NMR in Biomedicine, 10: 171-178, 1997.\n"
+    "\n"
+    "  * A second paper about AFNI and design issues for FMRI software tools.\n"
+    "\n"
+    "RW Cox and A Jesmanowicz.  Real-time 3D image registration for\n"
+    "  functional MRI.  Magnetic Resonance in Medicine, 42: 1014-1018, 1999.\n"
+    "\n"
+    "  * Describes the algorithm used for image registration in 3dvolreg\n"
+    "    and in the realtime plugin.\n"
+    "\n"
+    "ZS Saad, KM Ropella, RW Cox, and EA DeYoe.  Analysis and use of FMRI\n"
+    "  response delays.  Human Brain Mapping, 13: 74-93, 2001.\n"
+    "\n"
+    "  * Describes the algorithm used in 3ddelay (cf. '3ddelay -help').\n"
+   ) ;
+
+   printf("\n") ; exit(0) ;
 }
 
 /*----------------------------------------------------------------------
@@ -292,14 +352,14 @@ ENTRY("AFNI_parse_args") ;
    GLOBAL_argopt.dy       = 1.0 ;
    GLOBAL_argopt.ignore   = INIT_ignore ;
    GLOBAL_argopt.elide_quality  = 0 ;      /* Dec 1997 */
-   GLOBAL_argopt.skip_afnirc    = 0 ;      /* 14 Jul 1998 */
    GLOBAL_argopt.no_frivolities = 0 ;      /* 01 Aug 1998 */
    GLOBAL_argopt.install_cmap   = 0 ;      /* 14 Sep 1998 */
    GLOBAL_argopt.read_1D        = 1 ;      /* 27 Jan 2000 */
 
-#ifdef ALLOW_AGNI
-   GLOBAL_argopt.enable_agni    = 0 ;      /* 29 Aug 2001 */
-#endif
+   GLOBAL_argopt.enable_suma    = 1 ;      /* 29 Aug 2001 */
+
+   GLOBAL_argopt.yes_niml       = AFNI_yesenv("AFNI_NIML_START") ;
+   GLOBAL_argopt.port_niml      = 0 ;      /* 10 Dec 2002 */
 
 #if 0
    GLOBAL_argopt.allow_rt = 0 ;            /* April 1997 */
@@ -311,8 +371,8 @@ ENTRY("AFNI_parse_args") ;
    SESSTRAIL = 1 ;
    env = getenv( "AFNI_SESSTRAIL" ) ;
    if( env != NULL ){
-      SESSTRAIL = strtol(env,NULL,10) ;
-      if( SESSTRAIL < 0 ) SESSTRAIL = 0 ;  /* 24 Aug 2000 */
+     SESSTRAIL = strtol(env,NULL,10) ;
+     if( SESSTRAIL < 0 ) SESSTRAIL = 0 ;  /* 24 Aug 2000 */
    }
 
    GLOBAL_argopt.elide_quality = AFNI_yesenv("AFNI_MARKERS_NOQUAL") ;
@@ -324,11 +384,28 @@ ENTRY("AFNI_parse_args") ;
         char * eh = getenv("HOME") , * ff ;
         int ll = strlen(lf) + 8 ;
         if( eh != NULL ) ll += strlen(eh) ;
-        ff = malloc(ll) ;
+        ff = AFMALL(char, ll) ;
         if( eh != NULL && lf[0] != '/' ){ strcpy(ff,eh) ; strcat(ff,"/") ; }
         else                            { ff[0] = '\0' ; }
         strcat(ff,lf) ;
         GLOBAL_argopt.layout_fname = ff ;
+     }
+   }
+
+   /* 21 Jan 2003: get the startup script name */
+
+   { char *lf = getenv("AFNI_STARTUP_SCRIPT") ;
+     if( lf == NULL ) lf = ".afni.startup_script" ;
+     if( lf != NULL ){
+       char *eh = NULL , *ff ;
+       int ll = strlen(lf) + 8 ;
+       if( !THD_is_file(lf) && lf[0] != '/' ) eh = getenv("HOME") ;
+       if( eh != NULL ) ll += strlen(eh) ;
+       ff = AFMALL(char, ll) ;
+       if( eh != NULL ){ strcpy(ff,eh) ; strcat(ff,"/") ; }
+       else            { ff[0] = '\0' ; }
+       strcat(ff,lf) ;
+       GLOBAL_argopt.script_fname = ff ;
      }
    }
 
@@ -382,11 +459,7 @@ ENTRY("AFNI_parse_args") ;
 
    strcpy(GLOBAL_argopt.orient_code,"---") ;
 
-   strcpy(GLOBAL_argopt.title_name,"AFNI " VERSION) ;   /* default title bar name */
-   { int ll = strlen(GLOBAL_argopt.title_name) ;
-     if( GLOBAL_argopt.title_name[ll-1] == ' ' )
-        GLOBAL_argopt.title_name[ll-1] = '\0' ;
-   }
+   strcpy(GLOBAL_argopt.title_name,"AFNI") ;           /* default title bar name */
 
    GLOBAL_argopt.left_is_left = AFNI_yesenv( "AFNI_LEFT_IS_LEFT" ) ;
 
@@ -397,11 +470,11 @@ ENTRY("AFNI_parse_args") ;
       if( argv[narg][0] != '-' ) break ;   /* no - ==> quit */
 
 #ifdef USE_TRACING
-      if( strncmp(argv[narg],"-trace",5) == 0 && !ALLOW_real_time ){
+      if( strncmp(argv[narg],"-trace",5) == 0 ){
          DBG_trace = 1 ;
          narg++ ; continue ;
       }
-      if( strncmp(argv[narg],"-TRACE",5) == 0 && !ALLOW_real_time ){  /* 23 Aug 1998 */
+      if( strncmp(argv[narg],"-TRACE",5) == 0 ){  /* 23 Aug 1998 */
          DBG_trace = 2 ;
          if( MAIN_shell != NULL )
             XSynchronize(XtDisplay(MAIN_shell),TRUE) ; /* 01 Dec 1999 */
@@ -436,8 +509,10 @@ ENTRY("AFNI_parse_args") ;
       if( strncmp(argv[narg],"-rt",3) == 0 ){
          GLOBAL_argopt.allow_rt       = -1 ;
          GLOBAL_argopt.no_frivolities =  1 ;
+#if 0
 #ifdef USE_TRACING
          DBG_trace                    =  0 ;  /* 26 Jan 2001 */
+#endif
 #endif
          narg++ ; continue ;  /* go to next arg */
       }
@@ -455,14 +530,41 @@ ENTRY("AFNI_parse_args") ;
          narg++ ; continue ;  /* go to next arg */
       }
 
-#ifdef ALLOW_AGNI
-      /*---- -agni [29 Aug 2001] -----*/
+      /*---- -agni [29 Aug 2001] or -suma -----*/
 
-      if( strcmp(argv[narg],"-agni") == 0 ){
-         GLOBAL_argopt.enable_agni = 1 ;
+      if( strcmp(argv[narg],"-agni")==0 || strcmp(argv[narg],"-suma")==0 ){
+         fprintf(stderr,"\n-agni/-suma are now turned on by default\n") ;
+         GLOBAL_argopt.enable_suma = 1 ;
          narg++ ; continue ;  /* go to next arg */
       }
-#endif
+
+      /*---- -niml [28 Feb 2002] -----*/
+
+      if( strcmp(argv[narg],"-niml") == 0 ){
+         if( GLOBAL_argopt.yes_niml )
+           fprintf(stderr,"\n-niml is already turned on\n") ;
+         GLOBAL_argopt.yes_niml++ ;
+         narg++ ; continue ;  /* go to next arg */
+      }
+
+      /*---- -np port [10 Dec 2002] ----*/
+
+      if( strcmp(argv[narg],"-np") == 0 ){
+         float val ;
+         if( narg+1 >= argc ) FatalError("need an argument after -np!");
+
+         val = strtod( argv[++narg] , NULL ) ;
+         if( val >= 1024 && val <= 65535 ) GLOBAL_argopt.port_niml = (int)val ;
+         else fprintf(stderr,
+                "\n*** WARNING: -np %s is illegal!\n", argv[narg]);
+         narg++ ; continue ;  /* go to next arg */
+      }
+
+      if( strcmp(argv[narg],"-noniml") == 0 ){
+         GLOBAL_argopt.yes_niml-- ;
+         if( GLOBAL_argopt.yes_niml < 0 ) GLOBAL_argopt.yes_niml = 0 ;
+         narg++ ; continue ;  /* go to next arg */
+      }
 
       /*----- -tbar 'name' option -----*/
 
@@ -629,7 +731,7 @@ ENTRY("AFNI_parse_args") ;
          val = strtod( argv[++narg] , NULL ) ;
          if( val >= 0 ) GLOBAL_argopt.ignore = (int) val ;
          else fprintf(stderr,
-                "\n*** warning: -ignore value %s illegal\n", argv[narg]);
+                "\n*** WARNING: -ignore value %s illegal\n", argv[narg]);
 
          narg++ ; continue ;  /* go to next arg */
       }
@@ -643,7 +745,7 @@ ENTRY("AFNI_parse_args") ;
          val = strtod( argv[++narg] , NULL ) ;
          if( val >= 1 ) GLOBAL_argopt.ignore = (int) (val-1.0) ;
          else fprintf(stderr,
-                "\n*** warning: -ignore value %s illegal\n", argv[narg]);
+                "\n*** WARNING: -ignore value %s illegal\n", argv[narg]);
 
          narg++ ; continue ;  /* go to next arg */
       }
@@ -658,7 +760,7 @@ ENTRY("AFNI_parse_args") ;
          val = strtod( argv[++narg] , NULL ) ;
          if( val > 0 ) GLOBAL_argopt.dy = val ;
          else fprintf(stderr,
-                "\n*** warning: -dy value %s illegal\n", argv[narg]);
+                "\n*** WARNING: -dy value %s illegal\n", argv[narg]);
 
          narg++ ; continue ;  /* go to next arg */
       }
@@ -672,7 +774,7 @@ ENTRY("AFNI_parse_args") ;
          val = strtod( argv[++narg] , NULL ) ;
          if( val > 0 ) GLOBAL_argopt.dz = val ;
          else fprintf(stderr,
-                "\n*** warning: -dz value %s illegal\n", argv[narg]);
+                "\n*** WARNING: -dz value %s illegal\n", argv[narg]);
 
          narg++ ; continue ;  /* go to next arg */
       }
@@ -686,7 +788,7 @@ ENTRY("AFNI_parse_args") ;
          val = strtod( argv[++narg] , NULL ) ;
          if( val > 0 ) GLOBAL_argopt.gamma = val ;
          else fprintf(stderr,
-                "\n*** warning: -gamma value %s illegal\n", argv[narg]);
+                "\n*** WARNING: -gamma value %s illegal\n", argv[narg]);
 
          narg++ ; continue ;  /* go to next arg */
       }
@@ -701,7 +803,7 @@ ENTRY("AFNI_parse_args") ;
          val = strtod( argv[++narg] , NULL ) ;
          if( val != 0 ) GLOBAL_argopt.gsfac = val ;
          else fprintf(stderr,
-                "\n*** warning: -gsfac value %s illegal\n", argv[narg]);
+                "\n*** WARNING: -gsfac value %s illegal\n", argv[narg]);
 
          narg++ ; continue ;  /* go to next arg */
       }
@@ -738,7 +840,7 @@ ENTRY("AFNI_parse_args") ;
          val = strtod( argv[++narg] , NULL ) ;
          if( val > 2 ) GLOBAL_argopt.ncolor = val ;
          else fprintf(stderr,
-                "\n*** warning: -ncolor value %s illegal\n", argv[narg]);
+                "\n*** WARNING: -ncolor value %s illegal\n", argv[narg]);
 
          narg++ ; continue ;  /* go to next arg */
       }
@@ -815,8 +917,10 @@ ENTRY("AFNI_parse_args") ;
 
    } /* end of loop over argv's starting with '-' */
 
+#if 0
 #ifdef USE_TRACING
    if( ALLOW_real_time ) DBG_trace = 0 ; /* 26 Jan 2001 */
+#endif
 #endif
 
    /** 16 July 1997: orientation code change **/
@@ -854,6 +958,10 @@ fprintf(stderr,"\ncoorder: signs = %d %d %d  order = %d %d %d\n" ,
 
 void AFNI_handler(char * msg){ return ; }
 
+/*! Avoid fatal X11 errors. */
+
+int AFNI_xerrhandler( Display *d , XErrorEvent *x ){ return 0; }
+
 /*-----------------------------------------------------------------------
    Fallback resources for AFNI.  May be overridden by the user's
    .Xdefaults file, or other resource sources.  AFNI does not come
@@ -861,20 +969,23 @@ void AFNI_handler(char * msg){ return ; }
 -------------------------------------------------------------------------*/
 
 static char * FALLback[] =
-  {   "AFNI*fontList:             9x15bold=charset1"    ,
-      "AFNI*pbar*fontList:        6x10=charset1"        ,
-      "AFNI*background:           gray40"               ,
-      "AFNI*menu*background:      gray40"               ,
-      "AFNI*borderColor:          gray40"               ,
-      "AFNI*foreground:           yellow"               ,
-      "AFNI*borderWidth:          0"                    ,
-      "AFNI*troughColor:          green"                ,
-      "AFNI*XmLabel.translations: #override<Btn2Down>:" , /* Motif 2.0 bug */
-      "AFNI*help*background:      black"                ,
-      "AFNI*help*foreground:      yellow"               ,
-      "AFNI*cluefont:             9x15bold"             ,
-      "AFNI*help*waitPeriod:      1066"                 ,
-      "AFNI*help*cancelWaitPeriod: 50"                  ,
+  {   "AFNI*fontList:              9x15bold=charset1"    ,
+      "AFNI*pbar*fontList:         6x10=charset1"        ,
+      "AFNI*imseq*fontList:        7x13=charset1"        ,
+      "AFNI*background:            gray25"               ,
+      "AFNI*menu*background:       gray15"               ,
+      "AFNI*borderColor:           gray25"               ,
+      "AFNI*foreground:            yellow"               ,
+      "AFNI*borderWidth:           0"                    ,
+      "AFNI*troughColor:           blue3"                ,
+      "AFNI*XmLabel.translations:  #override<Btn2Down>:" , /* Motif 2.0 bug */
+      "AFNI*help*background:       black"                ,
+      "AFNI*help*foreground:       #ffff88"              ,
+      "AFNI*help*helpborder:       False"                ,
+      "AFNI*help*waitPeriod:       1066"                 ,
+      "AFNI*help*fontList:         9x15bold=charset1"    ,
+      "AFNI*cluefont:              9x15bold"             ,
+      "AFNI*help*cancelWaitPeriod: 333"                  ,
    NULL } ;
 
 /*-----------------------------------------------------------------------*/
@@ -895,11 +1006,26 @@ void AFNI_sigfunc(int sig)   /** signal handler for fatal errors **/
       case SIGBUS:  sname = "SIGBUS"  ; break ;
       case SIGTERM: sname = "SIGTERM" ; break ;
    }
-   fprintf(stderr,"\nFatal Signal %d (%s) received\n",sig,sname) ;
+   fprintf(stderr,"\nFatal Signal %d (%s) received\n",sig,sname); fflush(stderr);
+   TRACEBACK ;
    fprintf(stderr,"*** Program Abort ***\n") ; fflush(stderr) ;
    exit(1) ;
 }
 #endif
+
+/*-------------------------------------------------------------------------*/
+/*! Check if a particular option is present; 1=yes, 0=no.  [15 Jan 2004]
+---------------------------------------------------------------------------*/
+
+static int check_string( char *targ , int ns , char *ss[] )
+{
+   int ii , lt ;
+   if( targ == NULL || *targ == '\0' || ns <= 0 || ss == NULL ) return 0 ;
+   lt = strlen(targ) ;
+   for( ii=0 ; ii < ns ; ii++ )
+     if( ss[ii] != NULL && strncmp(ss[ii],targ,lt) == 0 ) return 1 ;
+   return 0 ;
+}
 
 /*=========================================================================
   The new AFNI main program.
@@ -910,46 +1036,124 @@ int main( int argc , char * argv[] )
 {
    int ii ;
 
-   machdep() ; /* RWCox: 20 Apr 2001 */
+   /*--- help the pitiful user? ---*/
+
+   if( argc > 1 && strncmp(argv[1],"-help",2) == 0 ) AFNI_syntax() ;
+
+   /** 15 Jan 2004: check for -skip_afnirc right away **/
+
+   GLOBAL_argopt.skip_afnirc = check_string("-skip_afnirc",argc,argv) ;
+   if( GLOBAL_argopt.skip_afnirc ) AFNI_mark_environ_done() ;
+
+   /*--- Initialize some stuff ---*/
+
+   machdep() ;                      /* RWCox: 20 Apr 2001 */
+   THD_load_datablock_verbose(1) ;  /* 21 Aug 2002 */
 
 #ifdef CATCH_SIGNALS
-   signal(SIGINT ,AFNI_sigfunc) ;   /* may be superseded by DBG_SIGNALS below */
+   signal(SIGINT ,AFNI_sigfunc) ;   /* may be superseded by mainENTRY below */
    signal(SIGBUS ,AFNI_sigfunc) ;
    signal(SIGSEGV,AFNI_sigfunc) ;
    signal(SIGTERM,AFNI_sigfunc) ;
 #endif
 
+   /** Check for -version [15 Aug 2003] **/
+
+   if( check_string("-ver",argc,argv) || check_string("--ver",argc,argv) ){
+     printf("Version " VERSION  "\n") ;
+#ifdef SHOWOFF
+#undef SHSH
+#undef SHSHSH
+#define SHSH(x)   #x
+#define SHSHSH(x) SHSH(x)
+       printf( "[[Precompiled binary " SHSHSH(SHOWOFF) ": " __DATE__ "]]\n" ) ;
+#undef SHSH
+#undef SHSHSH
+#endif /* SHOWOFF */
+     exit(0) ;
+   }
+
+   /** just print the SHOWOFF string [26 Oct 2004] **/
+
+   if( check_string("-show",argc,argv) || check_string("--show",argc,argv) ){
+#ifdef SHOWOFF
+#undef SHSH
+#undef SHSHSH
+#define SHSH(x)   #x
+#define SHSHSH(x) SHSH(x)
+      printf(SHSHSH(SHOWOFF) "\n" ) ;
+#undef SHSH
+#undef SHSHSH
+#else
+      printf("UNKNOWN\n") ;
+#endif /* SHOWOFF */
+      exit(0) ;
+   }
+
    /** debug stuff **/
 
 #ifdef USING_MCW_MALLOC
-   for( ii=1 ; ii < argc ; ii++ )
-      if( strncmp(argv[ii],"-nomall",5) == 0 || strncmp(argv[ii],"-rt",3) == 0 ) break ;
-
-   if( ii == argc ) enable_mcw_malloc() ; /* 06 Mar 1999 */
+   if( !check_string("-nomall",argc,argv) && !check_string("-rt",argc,argv) )
+     enable_mcw_malloc() ;
 #endif
 
 #ifdef USE_TRACING
-   if( argc > 1 && strncmp(argv[1],"-trace",5) == 0 ) DBG_trace = 1 ;
-   if( argc > 1 && strncmp(argv[1],"-TRACE",5) == 0 ) DBG_trace = 2 ; /* 23 Aug 1998 */
+   if( check_string("-trace",argc,argv) ) DBG_trace = 1 ;
+   if( check_string("-TRACE",argc,argv) ) DBG_trace = 2 ;
 #endif
 
+#if 0
 #ifdef USE_TRACING
    if( ALLOW_real_time ) DBG_trace = 0 ; /* 26 Jan 2001 */
+#endif
 #endif
 
    /** 25 Oct 2001: check for -q (quiet) option right away **/
 
    GLOBAL_argopt.quiet = AFNI_yesenv("AFNI_QUIET") ;
-   if( AFNI_VERBOSE ){
-     for( ii=1 ; ii < argc ; ii++ )
-       if( strcmp(argv[ii],"-q") == 0 ){ GLOBAL_argopt.quiet = 1 ; break ; }
+   if( AFNI_VERBOSE && check_string("-q",argc,argv) ) GLOBAL_argopt.quiet = 1;
+
+   /** 12 Dec 2002: scan for "-rt" now,
+                    to see if we want to start the version check **/
+
+   GLOBAL_argopt.allow_rt = check_string("-rt",argc,argv) ;
+
+   if( !GLOBAL_argopt.quiet && !ALLOW_real_time )
+     AFNI_start_version_check() ;               /* 21 Nov 2002 */
+
+   /** set default values of some environment variables [22 Jun 2004] **/
+
+   { char **ed , *eqn ;
+     static char *edef[] = {
+         "AFNI_SUMA_LINECOLOR"       , "blue3"  ,
+         "AFNI_CROSSHAIR_LINES"      , "YES"    ,
+         "AFNI_ALWAYS_LOCK"          , "YES"    ,
+         "AFNI_IMAGE_SAVESQUARE"     , "YES"    ,
+#ifdef DARWIN
+         "AFNI_X11_REDECORATE"       , "NO"     ,  /* 27 Dec 2004 */
+#endif
+
+#if 0
+         "AFNI_IMAGE_LABEL_MODE"     , "1"      ,
+         "AFNI_IMAGE_LABEL_SIZE"     , "2"      ,
+         "AFNI_IMAGE_LABEL_SETBACK"  , "01"     ,
+         "AFNI_IMAGE_LABEL_COLOR"    , "yellow" ,
+#endif
+       NULL } ;
+
+     for( ed=edef ; *ed != NULL && *(ed+1) != NULL ; ed+=2 ){
+       if( getenv(*ed) == NULL ){
+         eqn = (char *)malloc(128) ;
+         sprintf(eqn,"%s=%s",*ed,*(ed+1)) ; putenv(eqn) ;
+       }
+     }
    }
 
-   /*--- help? ---*/
-
-   if( argc > 1 && strncmp(argv[1],"-help",2) == 0 ) AFNI_syntax() ;
+   /** Start the debug traceback stuff **/
 
    mainENTRY("AFNI:main") ; /* 26 Jan 2001: replace ENTRY w/ mainENTRY */
+
+   /** set the function to call if run out of memory when creating datasets **/
 
    THD_set_freeup( AFNI_purge_unused_dsets ) ;  /* 18 Oct 2001 */
 
@@ -957,40 +1161,33 @@ int main( int argc , char * argv[] )
    if( argc > 1 ) AFNI_logger("afni",argc,argv) ; /* 14 Aug 2001 */
 #endif
 
-   /*--- with a little help from my FRIENDS --*/
-
    srand48((long)time(NULL)) ;  /* initialize random number generator */
 
    REPORT_PROGRESS( "\n" ) ;         /* 02 Dec 2000 */
    REPORT_PROGRESS( ANNOUNCEMENT ) ;
 
-   /*------------ 29 Nov 1999: print out precompiled version -----------*/
+   /*------- 29 Nov 1999: print out precompiled version, if defined --------*/
 #ifdef SHOWOFF
 #undef SHSH
 #undef SHSHSH
 #define SHSH(x)   #x
 #define SHSHSH(x) SHSH(x)
-   if( DBG_trace ){                             /* 01 Dec 1999 */
-      if( strcmp("NO",SHSHSH(SHOWOFF)) != 0 ){  /* 29 Nov 1999 */
-         REPORT_PROGRESS( "[[Precompiled binary "
-                          SHSHSH(SHOWOFF)
-                          ": "
-                          __DATE__
-                          "]]\n" ) ;
-      } else {
-         REPORT_PROGRESS( "[[Compilation date: "
-                          __DATE__
-                          "]]\n" ) ;
-      }
-   }
+   REPORT_PROGRESS( "[[Precompiled binary "
+                    SHSHSH(SHOWOFF)
+                    ": "
+                    __DATE__
+                    "]]\n" ) ;
 #undef SHSH
 #undef SHSHSH
-#endif
+#endif /* SHOWOFF */
+
+   /*-- Be friendly --*/
 
 #ifdef USE_FRIENDS
    { char * sf = AFNI_get_friend() ;
-     REPORT_PROGRESS( sf ) ; REPORT_PROGRESS( "\n\n" ) ;
-     if( argc > 1 && strcmp(argv[1],"-friend") == 0 ) exit(0) ;  /* 19 Sep 1998 */
+     REPORT_PROGRESS( sf ) ;
+     REPORT_PROGRESS( "\n\n" ) ;
+     if( check_string("-friend",argc,argv) ) exit(0) ;
    }
 #endif
 
@@ -998,18 +1195,22 @@ int main( int argc , char * argv[] )
    /*------------ initialize the controllers list ----------------*/
 
    for( ii=0 ; ii < MAX_CONTROLLERS ; ii++ )
-      GLOBAL_library.controllers[ii] = NULL ;
+     GLOBAL_library.controllers[ii] = NULL ;
+   GLOBAL_library.dc = NULL ;
 
    GLOBAL_library.controller_lock = 0 ; ENABLE_LOCK ;
    GLOBAL_library.time_lock = 0 ;                      /* 03 Nov 1998 */
    GLOBAL_library.ijk_lock  = 0 ;                      /* 11 Sep 2000 */
    SET_FIM_bkthr(10.0) ;                               /* 02 Jun 1999 */
 
-   GLOBAL_library.hints_on = 0 ;                       /* 07 Aug 1999 */
+   GLOBAL_library.hints_on  = 0 ;                      /* 07 Aug 1999 */
 
 #ifdef ALLOW_PLUGINS
-   GLOBAL_library.plugins  = NULL ;
+   GLOBAL_library.plugins   = NULL ;
 #endif
+
+   GLOBAL_library.session   = NULL ;                   /* 20 Dec 2001 */
+   GLOBAL_library.warptable = NULL ;                   /* 28 Aug 2002 */
 
    /*--------------------------------------------------------------------*/
    /*--- initialize X, toplevel window, defaults, and display context ---*/
@@ -1020,11 +1221,11 @@ int main( int argc , char * argv[] )
                                    &argc , argv , FALLback , NULL ) ;
 
    if( MAIN_shell == NULL ){
-      fprintf(stderr,"\n*** Cannot initialize X11 ***\n") ; exit(1) ;
+     fprintf(stderr,"\n*** Cannot initialize X11 ***\n") ; exit(1) ;
    }
    if( DBG_trace == 2 ){                           /* 01 Dec 1999 */
-      XSynchronize(XtDisplay(MAIN_shell),TRUE) ;
-      STATUS("XSynchronize is enabled") ;
+     XSynchronize(XtDisplay(MAIN_shell),TRUE) ;
+     STATUS("XSynchronize is enabled") ;
    }
 
    MAIN_argc = argc ; MAIN_argv = argv ;  /* what's left after XtVaAppInit */
@@ -1033,16 +1234,13 @@ int main( int argc , char * argv[] )
 
    /*-- 04 Jun 1999: modify order of loading arguments and defaults --*/
 
-   for( ii=1 ; ii < argc ; ii++ )
-      if( strncmp(argv[ii],"-skip_afnirc",12) == 0 ){ GLOBAL_argopt.skip_afnirc = 1; break; }
-
    if( ! GLOBAL_argopt.skip_afnirc ){
-       char * sysenv = getenv("AFNI_SYSTEM_AFNIRC") ;       /* 12 Apr 2000 */
-       if( sysenv != NULL ) AFNI_process_environ(sysenv) ;  /* 12 Apr 2000 */
+      char * sysenv = getenv("AFNI_SYSTEM_AFNIRC") ;       /* 12 Apr 2000 */
+      if( sysenv != NULL ) AFNI_process_environ(sysenv) ;  /* 12 Apr 2000 */
 
-       AFNI_process_environ(NULL) ;                         /* 07 Jun 1999 */
+      AFNI_process_environ(NULL) ;                         /* 07 Jun 1999 */
    } else {
-       AFNI_mark_environ_done() ;                           /* 16 Apr 2000 */
+      AFNI_mark_environ_done() ;                           /* 16 Apr 2000 */
    }
 
    AFNI_load_defaults( MAIN_shell ) ;
@@ -1071,20 +1269,28 @@ int main( int argc , char * argv[] )
 
    AFNI_parse_args( argc , argv ) ;  /* after Xt init above, only my args left */
 
-   if( GLOBAL_argopt.xtwarns == False ){
-      MAIN_old_handler = XtAppSetWarningHandler(MAIN_app,AFNI_handler) ;  /* turn off */
-   }
+   /* disable X11 and Xt error messages and crashes (we hope) */
+
+   (void) XSetErrorHandler( AFNI_xerrhandler ) ;      /* 26 Jun 2003 */
+   (void) XtAppSetErrorHandler(MAIN_app,AFNI_handler) ;
+
+   if( GLOBAL_argopt.xtwarns == False )
+     (void) XtAppSetWarningHandler(MAIN_app,AFNI_handler) ;  /* turn off */
+
+   /* FIM background threshold */
 
    { char * lenv = getenv("AFNI_FIM_BKTHR") ;          /* 04 Jun 1999 */
      if( lenv != NULL ){
-        float bk = strtod(lenv,NULL) ;
-        if( bk >= 0.0 && bk < 100.0 ) SET_FIM_bkthr(bk) ;
+       float bk = strtod(lenv,NULL) ;
+       if( bk >= 0.0 && bk < 100.0 ) SET_FIM_bkthr(bk) ;
      }
    }
 
+   /* locking? */
+
    if( AFNI_yesenv("AFNI_ALWAYS_LOCK") ){
-      for( ii=0 ; ii < MAX_CONTROLLERS ; ii++ )
-         GLOBAL_library.controller_lock |= (1<<ii) ;
+     for( ii=0 ; ii < MAX_CONTROLLERS ; ii++ )
+       GLOBAL_library.controller_lock |= (1<<ii) ;
    }
 
    /*-- now create first display context: MAIN_dc --*/
@@ -1095,8 +1301,8 @@ int main( int argc , char * argv[] )
                     GLOBAL_argopt.gamma , GLOBAL_argopt.install_cmap ) ;
 
    if( MAIN_dc->depth < 9 && MAIN_dc->visual_class != TrueColor && GLOBAL_argopt.unique_dcs ){
-      GLOBAL_argopt.unique_dcs = False ;
-      REPORT_PROGRESS("[-unique off]") ;
+     GLOBAL_argopt.unique_dcs = False ;
+     REPORT_PROGRESS("[-unique off]") ;
    }
 
    /*------------------------------------*/
@@ -1111,6 +1317,8 @@ int main( int argc , char * argv[] )
 
    MCW_disable_help() ;
 
+STATUS("start XtAppMainLoop") ;
+
    XtAppMainLoop(MAIN_app) ;
    exit(0) ;
 }
@@ -1122,6 +1330,7 @@ int main( int argc , char * argv[] )
 
 /*---------------------------------------------------------------------------------
    Xt work process to do most of the initialization stuff.
+   (So we can so a splash screen to pacify and amuse the user.)
 -----------------------------------------------------------------------------------*/
 
 #define REFRESH XmUpdateDisplay(MAIN_im3d->vwid->top_shell)
@@ -1130,7 +1339,7 @@ static Boolean MAIN_workprocess( XtPointer fred )
 {
    static int MAIN_calls = 0 ;  /* controls what happens */
    static int nosplash = 0 , nodown = 0 ;
-   static double eltime=0.0 , max_splash=1.0 ;
+   static double eltime=0.0 , max_splash=2.0 ;
    int ii ;
 
 ENTRY("MAIN_workprocess") ;  /* 23 Jan 2001: added ENTRY/RETURN to this routine */
@@ -1144,6 +1353,8 @@ if(PRINT_TRACING){ char str[256]; sprintf(str,"MAIN_calls=%d",MAIN_calls); STATU
         ============================================================================*/
 
       default:{
+STATUS("default call") ;
+
          if( nosplash || nodown ) RETURN(True) ;
          if( !nodown &&
              COX_clock_time()-eltime >= max_splash ){ AFNI_splashdown(); RETURN(True); }
@@ -1155,6 +1366,7 @@ if(PRINT_TRACING){ char str[256]; sprintf(str,"MAIN_calls=%d",MAIN_calls); STATU
         ============================================================================*/
 
       case 0:{
+STATUS("call 0") ;
 
 #ifdef NO_FRIVOLITIES
         nosplash = 1 ;
@@ -1162,15 +1374,19 @@ if(PRINT_TRACING){ char str[256]; sprintf(str,"MAIN_calls=%d",MAIN_calls); STATU
         nosplash = AFNI_yesenv("AFNI_NOSPLASH") ;
 #endif
         if( !nosplash ){
-           char * hh ;
-           AFNI_splashup() ; eltime = COX_clock_time() ;
-           hh = getenv("AFNI_SPLASHTIME") ;
-           if( hh != NULL ) max_splash = strtod(hh,NULL) ;
+          char * hh ;
+          AFNI_splashup() ; eltime = COX_clock_time() ;
+          hh = getenv("AFNI_SPLASHTIME") ;
+          if( hh != NULL ) max_splash = strtod(hh,NULL) ;
         }
       }
       break ;
 
+      /*** For the Mac users! ***/
+
       case 1:
+        AFNI_speak("[[volm 0.65; inpt PHON; rate -10; pbas +5]]1AEf=nnnIY",0) ;  /* fall thru */
+
       case 2:
       case 3:
       case 4:
@@ -1179,7 +1395,9 @@ if(PRINT_TRACING){ char str[256]; sprintf(str,"MAIN_calls=%d",MAIN_calls); STATU
       case 7:
       case 8:
       case 9:
-      case 10: if( !nosplash) iochan_sleep(1) ; /* waste time to let splash popup */
+      case 10:
+STATUS("sleep call") ;
+        if( !nosplash) iochan_sleep(1) ; /* waste time to let splash popup */
       break ;
 
       /*============================================================================
@@ -1189,6 +1407,8 @@ if(PRINT_TRACING){ char str[256]; sprintf(str,"MAIN_calls=%d",MAIN_calls); STATU
       case 11:{
 
         int do_images ;                           /* 19 Oct 1999 */
+
+STATUS("call 11") ;
 
         REPORT_PROGRESS(". Widgets") ;
 
@@ -1219,12 +1439,16 @@ if(PRINT_TRACING){ char str[256]; sprintf(str,"MAIN_calls=%d",MAIN_calls); STATU
 
       case 12:{
 
+STATUS("call 12") ;
+
         REPORT_PROGRESS(". Input files:") ;
 
         AFNI_read_inputs( MAIN_argc , MAIN_argv ) ;
 
-        if( GLOBAL_library.have_dummy_dataset && MAIN_im3d->type == AFNI_3DDATA_VIEW )
-           XtSetSensitive( MAIN_im3d->vwid->prog->clone_pb , False ) ;
+        if( GLOBAL_library.have_dummy_dataset && MAIN_im3d->type == AFNI_3DDATA_VIEW ){
+          XtSetSensitive( MAIN_im3d->vwid->prog->clone_pb , False ) ;
+          MAIN_im3d->dummied = 1 ;  /* 27 Jan 2004 */
+        }
       }
       break ;
 
@@ -1234,32 +1458,48 @@ if(PRINT_TRACING){ char str[256]; sprintf(str,"MAIN_calls=%d",MAIN_calls); STATU
 
       case 13:{
 
+STATUS("call 13") ;
+
         GLOBAL_library.registered_0D.num = 0 ;               /* initialize registry */
         GLOBAL_library.registered_1D.num = 0 ;               /* initialize registry */
         GLOBAL_library.registered_2D.num = 0 ;               /* initialize registry */
 
         GLOBAL_library.registered_fim.num = 0 ;              /* 30 Jan 2000 */
 
-        AFNI_register_0D_function( "Log10" , log10_func ) ;  /* afni.c */
-        AFNI_register_0D_function( "SSqrt" , ssqrt_func ) ;  /* afni.c */
+        GLOBAL_library.registered_slice_proj.num = 0 ;       /* 31 Jan 2002 */
 
-        AFNI_register_1D_function( "Median3" , median3_func) ;  /* afni.c */
-        AFNI_register_1D_function( "OSfilt3" , osfilt3_func) ;  /* afni.c */
-        AFNI_register_1D_function( "|FFT()|" , absfft_func ) ;  /* afni.c */
+        /* these functions are now in afni_transforms.c [01 Feb 2002] */
 
-        AFNI_register_2D_function( "Median9" , median9_box_func ) ;  /* imseq.c */
-        AFNI_register_2D_function( "Winsor9" , winsor9_box_func ) ;  /* imseq.c */
-        AFNI_register_2D_function( "OSfilt9" , osfilt9_box_func ) ;  /* imseq.c */
+        AFNI_register_0D_function( "Log10" , log10_func ) ;
+        AFNI_register_0D_function( "SSqrt" , ssqrt_func ) ;
 
-        AFNI_register_2D_function( "Median21" , median21_box_func ); /* imseq.c */
-        AFNI_register_2D_function( "Winsor21" , winsor21_box_func ); /* imseq.c */
+        AFNI_register_1D_function( "Median3" , median3_func) ;
+        AFNI_register_1D_function( "OSfilt3" , osfilt3_func) ;
+        AFNI_register_1D_function( "|FFT()|" , absfft_func ) ;
 
-        AFNI_register_2D_function( "|FFT2D|"     , fft2D_func ) ;       /* imseq.c */
+        AFNI_register_2D_function( "Median9" , median9_box_func ) ;
+        AFNI_register_2D_function( "Winsor9" , winsor9_box_func ) ;
+        AFNI_register_2D_function( "OSfilt9" , osfilt9_box_func ) ;
+
+        AFNI_register_2D_function( "Median21", median21_box_func );
+        AFNI_register_2D_function( "Winsor21", winsor21_box_func );
+
+        AFNI_register_2D_function( "|FFT2D|" , fft2D_func ) ;
 
         /* 01 Feb 2000: see afni_fimfunc.c */
 
-        AFNI_register_fimfunc("Spearman CC",1,spearman_fimfunc,NULL);
-        AFNI_register_fimfunc("Quadrant CC",1,quadrant_fimfunc,NULL);
+        AFNI_register_fimfunc("Spearman CC",1,(generic_func *)spearman_fimfunc,NULL);
+        AFNI_register_fimfunc("Quadrant CC",1,(generic_func *)quadrant_fimfunc,NULL);
+
+        /* 31 Jan 2002 */
+
+        AFNI_register_slice_proj( "Minimum" , min_proj   ) ;
+        AFNI_register_slice_proj( "Maximum" , max_proj   ) ;
+        AFNI_register_slice_proj( "Mean"    , mean_proj  ) ;
+
+        AFNI_register_slice_proj( "Median"  , qmed_float ) ; /* in cs_qmed.c */
+
+        AFNI_register_slice_proj( "Extreme" , extreme_proj ) ; /* 02 Feb 2002 */
 
 #ifdef HUBERIZE
         AFNI_register_1D_funcstr( "Huber Fit" , huber_func ) ;
@@ -1271,6 +1511,7 @@ if(PRINT_TRACING){ char str[256]; sprintf(str,"MAIN_calls=%d",MAIN_calls); STATU
            char str[128] ;
 
            if( ! GLOBAL_argopt.noplugins ){
+STATUS("initialize plugins") ;
               GLOBAL_library.plugins = PLUG_get_many_plugins( MAIN_argv[0] ) ;
               AFNI_plugin_button( MAIN_im3d ) ;
            }
@@ -1279,13 +1520,15 @@ if(PRINT_TRACING){ char str[256]; sprintf(str,"MAIN_calls=%d",MAIN_calls); STATU
            sprintf(str,"\n Plugins       = %d libraries read",nplug) ;
            REPORT_PROGRESS(str) ;
 
-           if( !GLOBAL_argopt.noplugouts && !ALLOW_real_time ){  /* June 1997 */
+           if( !GLOBAL_argopt.noplugouts ){  /* June 1997 */
                AFNI_init_plugouts() ;
-               XtSetSensitive(MAIN_im3d->vwid->dmode->misc_plugout_pb,False) ; /* 07 Nov 2001 */
+               if( MAIN_im3d->vwid->dmode->misc_plugout_pb != NULL )
+                 XtSetSensitive(MAIN_im3d->vwid->dmode->misc_plugout_pb,False) ; /* 07 Nov 2001 */
                REPORT_PROGRESS("\n Plugouts      = listening for connections") ;
            }
         }
 #endif
+
       }
       break ;
 
@@ -1295,15 +1538,12 @@ if(PRINT_TRACING){ char str[256]; sprintf(str,"MAIN_calls=%d",MAIN_calls); STATU
 
       case 14:{
 
+STATUS("call 14") ;
+
         OPEN_CONTROLLER( MAIN_im3d ) ;
 
         AFNI_initialize_controller( MAIN_im3d ) ;  /* decide what to see */
         AFNI_initialize_view( NULL , MAIN_im3d ) ; /* set up to see it */
-
-#if 0
-        if( GLOBAL_argopt.xtwarns == False )
-           (void) XtAppSetWarningHandler(MAIN_app,MAIN_old_handler) ;  /* turn back on */
-#endif
 
         /*--- Other small and quick startup stuff before AFNI can go ---*/
 
@@ -1348,13 +1588,38 @@ if(PRINT_TRACING){ char str[256]; sprintf(str,"MAIN_calls=%d",MAIN_calls); STATU
           nodown = 1 ;  /* splashdown will be done in AFNI_startup_layout_CB */
         }
 
+        /* 21 Jan 2003: this function will be called 0.246 seconds
+                        from now to run the startup script, if any */
+
+        if( GLOBAL_argopt.script_fname != NULL &&
+            MAIN_im3d->type == AFNI_3DDATA_VIEW   ){
+
+          (void) XtAppAddTimeOut( MAIN_app , 246 ,
+                                  AFNI_startup_script_CB , GLOBAL_argopt.script_fname ) ;
+        }
+
         /* this function will be called 1.234 seconds from now to finalize
            anything else that needs fixing up once AFNI is fully started   */
 
         PICTURE_ON(MAIN_im3d) ;
-        (void) XtAppAddTimeOut( MAIN_app , 1234 , AFNI_startup_timeout_CB , MAIN_im3d ) ;
+        (void) XtAppAddTimeOut( MAIN_app, 1234, AFNI_startup_timeout_CB, MAIN_im3d ) ;
 
         (void) TRUST_host(NULL) ; /* 21 Feb 2001: initialize trust mechanism */
+
+        /* see if there is an initial FIM ideal timeseries */
+
+        { char *eee = getenv( "AFNI_FIM_IDEAL" ) ;
+          static MRI_IMAGE *tsim ;
+          tsim = mri_read_1D( eee ) ;
+          if( tsim != NULL ){
+            float *far = MRI_FLOAT_PTR(tsim) ; int ii ; char *tname ;
+            for( ii=0 ; ii < tsim->nvox ; ii++ )
+               if( fabs(far[ii]) >= 33333.0 ) far[ii] = WAY_BIG ;
+            tname = THD_trailname(eee,1) ;
+            mri_add_name( tname , tsim ) ;
+            AFNI_fimmer_setref( MAIN_im3d , tsim ) ;
+          }
+        }
 
         REPORT_PROGRESS("\n") ;
       }
@@ -1363,6 +1628,7 @@ if(PRINT_TRACING){ char str[256]; sprintf(str,"MAIN_calls=%d",MAIN_calls); STATU
       /*============================================================================*/
 #if 0
       case 15:{  /* not used at present, but ready to be added when needed */
+STATUS("call 15") ;
       }
       break ;
 #endif
@@ -1378,6 +1644,17 @@ void FatalError(char * str)
    fprintf(stderr,"\n**** Fatal Error ****\n %s\n",str) ;
    sleep(1) ;
    exit(1) ;
+}
+
+/*-------------------------------------------------------------------------*/
+
+static char * random_goodbye(void)
+{
+   static char *bye[] = { "[[volm 0.64]] Farewell",
+                          "[[volm 0.64]] Goodbye" ,
+                          "[[volm 0.64]] Until next time" } ;
+   int nn = sizeof(bye)/sizeof(char *) ;
+   return bye[ lrand48() % nn ] ;
 }
 
 /*-------------------------------------------------------------------------
@@ -1415,7 +1692,7 @@ ENTRY("AFNI_quit_CB") ;
        (ShiftMask|ControlMask|Button2Mask|Button3Mask) ){
 
       XtCloseDisplay( XtDisplay(im3d->vwid->top_shell) ) ;
-      /* MCHECK ; */
+      AFNI_speak(random_goodbye(),0) ;
       exit(0) ;
    }
 
@@ -1441,7 +1718,7 @@ ENTRY("AFNI_quit_CB") ;
 
    if( AFNI_count_controllers() <= 1 ){
       XtCloseDisplay( XtDisplay(im3d->vwid->top_shell) ) ;
-      /* MCHECK ; */
+      AFNI_speak(random_goodbye(),0) ;
       exit(0) ;
 
    } else {  /* otherwise, patch up the other windows and continue */
@@ -1476,10 +1753,89 @@ ENTRY("AFNI_quit_timeout_CB") ;
 void AFNI_startup_timeout_CB( XtPointer client_data , XtIntervalId * id )
 {
    Three_D_View * im3d = (Three_D_View *) client_data ;
+   int vv ;
 
 ENTRY("AFNI_startup_timeout_CB") ;
 
-   MCW_help_CB(NULL,NULL,NULL) ;  /* make sure help window is popped down */
+   /* make sure help window is popped down */
+
+   MCW_help_CB(NULL,NULL,NULL) ;
+
+   /* NIML listening on [moved here 17 Mar 2002] */
+
+   if( MAIN_im3d->type == AFNI_3DDATA_VIEW && GLOBAL_argopt.yes_niml ){
+     AFNI_init_niml() ;
+     XtSetSensitive(MAIN_im3d->vwid->dmode->misc_niml_pb,False) ;
+   } else if( GLOBAL_argopt.port_niml > 0 ){  /* 10 Dec 2002 */
+     fprintf(stderr,"*** WARNING: -np was given, but NIML is turned off.\n") ;
+   }
+
+   if( !AFNI_noenv("AFNI_STARTUP_WARNINGS") ){  /* 22 Jul 2003 */
+
+#ifdef LESSTIF_VERSION /* 13 Jan 2003: If LessTif was used for this AFNI */
+
+    (void) MCW_popup_message( MAIN_im3d->vwid->picture ,
+                                 " \n"
+                                 "*** WARNING:                ***\n"
+                                 "*** This  copy of AFNI  was ***\n"
+                                 "*** built using the LessTif ***\n"
+                                 "*** library.  You will find ***\n"
+                                 "*** problems;  AFNI is best ***\n"
+                                 "*** when built using  Motif ***\n"
+                                 "*** or OpenMotif!           ***\n" ,
+                              MCW_USER_KILL | MCW_TIMER_KILL ) ;
+#endif
+
+#ifdef BAD_BUTTON3_POPUPS /* 21 Jul 2003: If this is a stupid system */
+
+    (void) MCW_popup_message( MAIN_im3d->vwid->imag->topper,
+                              " \n"
+                              "*** WARNING:                  ***\n"
+                              "*** This computer system has  ***\n"
+                              "*** a bug with Button-3 popup ***\n"
+                              "*** menus -- to use a button  ***\n"
+                              "*** on such a menu, you have  ***\n"
+                              "*** to keep Button-3 pressed  ***\n"
+                              "*** down and then click the   ***\n"
+                              "*** menu button with Button-1 ***\n"
+                              "*** at the same time.         ***\n" ,
+                              MCW_USER_KILL | MCW_TIMER_KILL ) ;
+#endif
+   }
+
+   /* 21 Nov 2002: check the AFNI version */
+
+   vv = AFNI_version_check() ; /* nada if AFNI_start_version_check() inactive */
+
+#ifdef SHOWOFF
+   if( vv ){  /* 20 Nov 2003: if version check shows a mismatch */
+     char *sname = AFNI_make_update_script() ;
+     if( sname != NULL ){
+       char *cpt , *ddd ;
+       ddd = strdup(sname) ; cpt = THD_trailname(ddd,0) ; *cpt = '\0' ;
+       cpt = THD_trailname(sname,0) ;
+       fprintf(stderr,
+               "\n"
+               "*===================================================\n"
+               "* A script to update AFNI binaries has been created.\n"
+               "* To use it, quit AFNI now, then try the commands\n"
+               "cd %s\n"
+               "source %s\n"
+               "*===================================================\n" ,
+               ddd , cpt ) ;
+     } else {
+       fprintf(stderr,
+               "\n"
+               "*======================================\n"
+               "* Can't create script for updating AFNI\n"
+               "* binaries in your AFNI directory.\n"
+               "*======================================\n" ) ;
+     }
+   }
+#endif
+
+   /* finish up getting AFNI ready to be presented to the world */
+
    SHOW_AFNI_READY ;
    RESET_AFNI_QUIT(im3d) ;
    PICTURE_OFF(im3d) ;
@@ -1538,10 +1894,12 @@ if(PRINT_TRACING){ char str[256] ; sprintf(str,"n=%d type=%d",n,type) ; STATUS(s
    /*--- overlay # n ---*/
 
    if( type == isqCR_getoverlay  ){
+      Three_D_View * im3d = (Three_D_View *) br->parent ;
 
 STATUS("get overlay") ;
 
       im = AFNI_overlay( n , br ) ;
+      if( !AFNI_noenv("AFNI_VALUE_LABEL") ) AFNI_do_bkgd_lab( im3d ) ;
       RETURN( (XtPointer) im ) ;
    }
 
@@ -1561,95 +1919,586 @@ STATUS("get status") ;
 
       stat->transforms0D = & (GLOBAL_library.registered_0D) ;
       stat->transforms2D = & (GLOBAL_library.registered_2D) ;
+      stat->slice_proj   = & (GLOBAL_library.registered_slice_proj) ;
 
       RETURN( (XtPointer) stat ) ;
    }
 
    /*--- 26 Feb 2001: return a memplot drawing struct ---*/
+   /*--- 22 Mar 2002: add crosshairs to surface stuff ---*/
 
+#define RX 0.2
    if( type == isqCR_getmemplot ){
-#ifndef ALLOW_AGNI
-     RETURN(NULL) ;
-#else
-# define RX 0.25
-     if( !AGNI_ENABLED || br->dset->ag_surf == NULL ) RETURN(NULL) ;
-     {
-      Three_D_View * im3d = (Three_D_View *) br->parent ;
-      int nn=br->dset->ag_surf->num_nod , ii,jj ;
-      AGNI_nod *nod = br->dset->ag_surf->nod ;
-      MEM_plotdata * mp ;
+     Three_D_View *im3d = (Three_D_View *) br->parent ;
+     int do_xhar=(im3d->vinfo->crosshair_visible && AFNI_yesenv("AFNI_CROSSHAIR_LINES"));
+     int do_surf;
+     MEM_plotdata *mp ;
+     AFNI_surface_widgets *swid = im3d->vwid->view->swid ;  /* 19 Aug 2002 */
+     THD_session *suss=im3d->ss_now ;                       /* 20 Jan 2004 */
+     THD_dataxes *daxes=CURRENT_DAXES(br->dset) ;
+
+     if( !IM3D_OPEN(im3d) )     RETURN(NULL) ;
+
+     /* 20 Jan 2004: surfaces are now in the session, not on the dataset! */
+
+     do_surf = SUMA_ENABLED && SESSION_HAS_SUMA(suss) ;
+     if( !do_surf && !do_xhar ) RETURN(NULL) ;  /* nothing to do */
+
+     /* get ready to plot */
+
+STATUS("creating memplot for image overlay") ;
+     create_memplot_surely( "SUMA_plot" , 1.0 ) ;
+     mp = get_active_memplot() ;
+
+     /* plot surface stuff, if any */
+
+    if( do_surf ){
+     int ks ;
+     int kbest=-1 , ibest=-1 ;          /* 24 Feb 2003 */
+
+     AFNI_get_xhair_node( im3d , &kbest , &ibest ) ;   /* 24 Feb 2003 */
+
+     for( ks=0 ; ks < suss->su_num ; ks++ ){  /* 14 Aug 2002: loop over surfaces */
+      SUMA_surface *ag = suss->su_surf[ks] ;
+      int nn , ii,jj ;
+      SUMA_ixyz *nod ;
       THD_ivec3 iv,ivp,ivm ;
       THD_fvec3 fv,fvp,fvm ;
-      float s1=1.0/br->n1 , s2=1.0/br->n2 , dxyz , rr=1.0,gg=0.8,bb=0.0 ;
+      float s1=1.0/br->n1 , s2=1.0/br->n2 , dxyz ;
+      float rr_box=1.0,gg_box=0.0,bb_box=0.0 ;   /* white */
+      float rr_lin=0.4,gg_lin=0.0,bb_lin=0.7 ;   /* dark blue */
+      float rr_led=1.0,gg_led=0.0,bb_led=0.0 ;
       char str[32] , *eee ;
+      float rx=RX ;         /* default rectangle halfsize */
+      int   kkk=0 ;
+      float xyz=0.0,xyzp,xyzm , rxm,rxp ;
+      int skip_boxes=1 , skip_lines=0 , skip_lcen=0, skip_ledg=1 ;
+      float boxsize=RX , linewidth=0.0 ;      /* 23 Feb 2003 */
+      int firstb ;                            /* 23 Jan 2004 */
 
-      LOAD_IVEC3(iv,0,0,n+1) ;
+      if( ag == NULL ) continue ;             /* skip this non-existent one */
+      nn = ag->num_ixyz ; nod = ag->ixyz ;
+      if( nn < 1 || nod == NULL ) continue ;  /* nothing to do */
+
+      /* define parameters for node boxes and triangle lines */
+
+STATUS("defining surface drawing parameters") ;
+      if( swid != NULL && ks < swid->nrow ){     /* 19 Aug 2002: the new way */
+        int cc, dd ;                             /*           to set colors: */
+                                                 /* from the surface widgets */
+
+        cc = MCW_val_bbox(swid->surf_bbox[ks]) ; /* 19 Feb 2003: skip it all? */
+        if( cc == 0 ){
+          skip_boxes = skip_lines = 1 ;
+        } else {                                 /* see what is turned on */
+          cc = swid->surf_node_av[ks]->ival ;
+          skip_boxes = (cc == 0) ;
+          if( !skip_boxes ){
+            rr_box = DCOV_REDBYTE(im3d->dc,cc)   / 255.0 ;
+            gg_box = DCOV_GREENBYTE(im3d->dc,cc) / 255.0 ;
+            bb_box = DCOV_BLUEBYTE(im3d->dc,cc)  / 255.0 ;
+          }
+          cc = swid->surf_line_av[ks]->ival ;
+          dd = swid->surf_ledg_av[ks]->ival ;             /* 26 Feb 2003 */
+          skip_lcen  = (cc == 0) ;
+          skip_ledg  = (dd == 0) ;
+          skip_lines = (skip_lcen && skip_ledg) ;
+          if( cc > 0 ){
+            rr_lin = DCOV_REDBYTE(im3d->dc,cc)   / 255.0 ;
+            gg_lin = DCOV_GREENBYTE(im3d->dc,cc) / 255.0 ;
+            bb_lin = DCOV_BLUEBYTE(im3d->dc,cc)  / 255.0 ;
+          }
+          if( dd > 0 ){                                   /* 26 Feb 2003 */
+            rr_led = DCOV_REDBYTE(im3d->dc,dd)   / 255.0 ;
+            gg_led = DCOV_GREENBYTE(im3d->dc,dd) / 255.0 ;
+            bb_led = DCOV_BLUEBYTE(im3d->dc,dd)  / 255.0 ;
+          }
+          boxsize   = swid->boxsize_av->ival   * 0.1   ;  /* 23 Feb 2003 */
+          linewidth = swid->linewidth_av->ival * 0.002 ;
+        }
+
+      } else {                                   /* the old way    */
+                                                 /* to set colors:  */
+        eee = getenv("AFNI_SUMA_BOXCOLOR") ;     /* from environment */
+        if( eee != NULL ){
+          if( strcmp(eee,"none") == 0 || strcmp(eee,"skip") == 0 )
+            skip_boxes = 1 ;                  /* don't do boxes */
+          else
+            DC_parse_color( im3d->dc , eee , &rr_box,&gg_box,&bb_box ) ;
+        }
+
+        eee = getenv("AFNI_SUMA_LINECOLOR") ;
+        if( eee != NULL ){
+          if( (strcmp(eee,"none")==0 || strcmp(eee,"skip")==0) )
+            skip_lines = 1 ;
+          else
+            DC_parse_color( im3d->dc , eee , &rr_lin,&gg_lin,&bb_lin ) ;
+        }
+
+        eee = getenv("AFNI_SUMA_BOXSIZE") ;  /* maybe set boxsize? */
+        if( eee != NULL ){
+          float val=strtod(eee,NULL) ;
+          if( val > 0.0 ) boxsize = val ;
+        } else if( swid != NULL ){
+          boxsize = swid->boxsize_av->ival * 0.1 ;
+        }
+
+        eee = getenv( "AFNI_SUMA_LINESIZE" ) ; /* maybe set linewidth? */
+        if( eee != NULL ){
+          float val = strtod(eee,NULL) ;
+          if( val < 0.0 || val > 0.1 ) val = 0.0 ;
+          linewidth = val ;
+        } else if( swid != NULL ){
+          linewidth = swid->linewidth_av->ival * 0.002 ;
+        }
+      }
+
+      if( skip_boxes && skip_lines ) continue ; /* nothing to do? */
+
+      /** 21 Mar 2002:
+          We calculate plotting coordinates in "fdfind" coordinates,
+          which are floating point indexes into the FD_brick.  However,
+          these run from 0..n1-1 (in x), which are the centers of the
+          voxels.  In turn these must be mapped to screen locations.
+          For example, with n1=5, we have these voxels
+
+              0   1   2   3   4    = index of voxel
+            ---------------------
+            |   |   |   |   |   |
+            ---------------------
+           0.0                 1.0 = screen coordinate (for memplot)
+
+          Thus voxel index i maps to screen location (i+0.5)/n1.
+          Previously, I forgot the +0.5, which didn't matter much,
+          until the introduction of the image zoom feature last week. **/
+
+      rx  = boxsize ;                /* 23 Feb 2003 */
+      rxm = rx-0.5 ; rxp = rx+0.5 ;  /* The 0.5 voxel shift */
+
+      /* find DICOM coordinates of next slice and previous slice */
+
+      LOAD_IVEC3(iv,0,0,n+1) ;                     /* next */
       ivp = THD_fdind_to_3dind( br , iv ) ;
       fvp = THD_3dind_to_3dmm ( br->dset , ivp ) ;
       fvp = THD_3dmm_to_dicomm( br->dset , fvp ) ;
-      LOAD_IVEC3(iv,0,0,n-1) ;
+      LOAD_IVEC3(iv,0,0,n-1) ;                     /* previous */
       ivm = THD_fdind_to_3dind( br , iv ) ;
       fvm = THD_3dind_to_3dmm ( br->dset , ivm ) ;
       fvm = THD_3dmm_to_dicomm( br->dset , fvm ) ;
 
-      create_memplot_surely( "AGNI_plot" , 1.0 ) ;
-      mp = get_active_memplot() ;
-
-      eee = getenv("AGNI_OVERLAY_COLOR") ;  /* 21 Sep 2001 */
-      if( eee != NULL )
-         DC_parse_color( im3d->dc , eee , &rr,&gg,&bb ) ;
-      set_color_memplot(rr,gg,bb) ;
+      /* threshold for determining which axis this slice is along */
 
       dxyz = MIN(br->del1,br->del2) ;
       dxyz = MIN(dxyz    ,br->del3) ; dxyz *= 0.1 ;
 
-      if( fabs(fvm.xyz[0]-fvp.xyz[0]) > dxyz ){ /* search x */
-         float xb=fvm.xyz[0] , xt=fvp.xyz[0] , xm,xw ;
-         if( xb > xt ){ float t=xb ; xb=xt ; xt=t ; }
+      set_color_memplot(rr_box,gg_box,bb_box) ;  /* box drawing colors */
+      set_thick_memplot(0.0) ;
+      firstb = 1 ;                               /* 23 Jan 2004 */
+
+      /* find nodes inside this slice */
+
+      if( skip_boxes ) STATUS("finding slice planes") ;
+      else             STATUS("drawing node boxes") ;
+
+      if( fabs(fvm.xyz[0]-fvp.xyz[0]) > dxyz ){               /* search x */
+         float xb=fvm.xyz[0] , xt=fvp.xyz[0] , xm,xw ;        /* range of  */
+         if( xb > xt ){ float t=xb ; xb=xt ; xt=t ; }         /* x in slice */
          xm = 0.5*(xb+xt); xw = 0.25*(xt-xb); xb = xm-xw; xt = xm+xw;
-         for( ii=0 ; ii < nn ; ii++ ){
-            if( nod[ii].x > xb && nod[ii].x < xt ){
-               LOAD_FVEC3(fv,nod[ii].x,nod[ii].y,nod[ii].z) ;
-               fv = THD_dicomm_to_3dmm( br->dset , fv ) ;
-               fv = THD_3dmm_to_3dfind( br->dset , fv ) ;
-               fv = THD_3dfind_to_fdfind( br , fv ) ;
-               plotrect_memplot( s1*(fv.xyz[0]-RX), 1.0-s2*(fv.xyz[1]-RX),
-                                 s1*(fv.xyz[0]+RX), 1.0-s2*(fv.xyz[1]+RX)  ) ;
+STATUS(" - x plane") ;
+         if( !skip_boxes ){
+          for( ii=0 ; ii < nn ; ii++ ){
+            if( nod[ii].x >= xb && nod[ii].x <= xt ){         /* inside?  */
+               LOAD_FVEC3(fv,nod[ii].x,nod[ii].y,nod[ii].z) ; /* convert  */
+               fv = THD_dicomm_to_3dmm( br->dset , fv ) ;     /* coords   */
+               fv = THD_3dmm_to_3dfind( br->dset , fv ) ;     /* to slice */
+               fv = THD_3dfind_to_fdfind( br , fv ) ;         /* indexes  */
+
+               if( firstb ){
+                 plotline_memplot( s1*(fv.xyz[0]-rxm), 1.0-s2*(fv.xyz[1]-rxm),
+                                   s1*(fv.xyz[0]+rxp), 1.0-s2*(fv.xyz[1]+rxp)  );
+                 firstb = 0 ;
+               }
+
+               plotrect_memplot( s1*(fv.xyz[0]-rxm), 1.0-s2*(fv.xyz[1]-rxm),
+                                 s1*(fv.xyz[0]+rxp), 1.0-s2*(fv.xyz[1]+rxp)  ) ;
+
+               if( ks == kbest && nod[ii].id == ibest ){   /* 24 Feb 2003 */
+                 plotline_memplot( s1*(fv.xyz[0]-rxm), 1.0-s2*(fv.xyz[1]-rxm),
+                                   s1*(fv.xyz[0]+rxp), 1.0-s2*(fv.xyz[1]+rxp)  );
+                 plotline_memplot( s1*(fv.xyz[0]-rxm), 1.0-s2*(fv.xyz[1]+rxp),
+                                   s1*(fv.xyz[0]+rxp), 1.0-s2*(fv.xyz[1]-rxm)  );
+                 plotline_memplot( s1*(fv.xyz[0]-rxm), 1.0-s2*(fv.xyz[1]+0.5),
+                                   s1*(fv.xyz[0]+rxp), 1.0-s2*(fv.xyz[1]+0.5)  );
+                 plotline_memplot( s1*(fv.xyz[0]+0.5), 1.0-s2*(fv.xyz[1]-rxm),
+                                   s1*(fv.xyz[0]+0.5), 1.0-s2*(fv.xyz[1]+rxp)  );
+               }
             }
+          }
          }
-      } else if( fabs(fvm.xyz[1]-fvp.xyz[1]) > dxyz ){ /* search y */
+         kkk = 0; xyz = xm; xyzp = xt; xyzm = xb;  /* for the triangles/lines below */
+      }
+      else if( fabs(fvm.xyz[1]-fvp.xyz[1]) > dxyz ){          /* search y */
          float yb=fvm.xyz[1] , yt=fvp.xyz[1] , ym,yw ;
          if( yb > yt ){ float t=yb ; yb=yt ; yt=t ; }
          ym = 0.5*(yb+yt); yw = 0.25*(yt-yb); yb = ym-yw; yt = ym+yw;
-         for( ii=0 ; ii < nn ; ii++ ){
-            if( nod[ii].y > yb && nod[ii].y < yt ){
+STATUS(" - y plane") ;
+         if( !skip_boxes ){
+          for( ii=0 ; ii < nn ; ii++ ){
+            if( nod[ii].y >= yb && nod[ii].y <= yt ){
                LOAD_FVEC3(fv,nod[ii].x,nod[ii].y,nod[ii].z) ;
                fv = THD_dicomm_to_3dmm( br->dset , fv ) ;
                fv = THD_3dmm_to_3dfind( br->dset , fv ) ;
                fv = THD_3dfind_to_fdfind( br , fv ) ;
-               plotrect_memplot( s1*(fv.xyz[0]-RX), 1.0-s2*(fv.xyz[1]-RX),
-                                 s1*(fv.xyz[0]+RX), 1.0-s2*(fv.xyz[1]+RX)  ) ;
+
+               if( firstb ){
+                 plotline_memplot( s1*(fv.xyz[0]-rxm), 1.0-s2*(fv.xyz[1]-rxm),
+                                   s1*(fv.xyz[0]+rxp), 1.0-s2*(fv.xyz[1]+rxp)  );
+                 firstb = 0 ;
+               }
+
+               plotrect_memplot( s1*(fv.xyz[0]-rxm), 1.0-s2*(fv.xyz[1]-rxm),
+                                 s1*(fv.xyz[0]+rxp), 1.0-s2*(fv.xyz[1]+rxp)  ) ;
+
+               if( ks == kbest && nod[ii].id == ibest ){   /* 24 Feb 2003 */
+                 plotline_memplot( s1*(fv.xyz[0]-rxm), 1.0-s2*(fv.xyz[1]-rxm),
+                                   s1*(fv.xyz[0]+rxp), 1.0-s2*(fv.xyz[1]+rxp)  );
+                 plotline_memplot( s1*(fv.xyz[0]-rxm), 1.0-s2*(fv.xyz[1]+rxp),
+                                   s1*(fv.xyz[0]+rxp), 1.0-s2*(fv.xyz[1]-rxm)  );
+                 plotline_memplot( s1*(fv.xyz[0]-rxm), 1.0-s2*(fv.xyz[1]+0.5),
+                                   s1*(fv.xyz[0]+rxp), 1.0-s2*(fv.xyz[1]+0.5)  );
+                 plotline_memplot( s1*(fv.xyz[0]+0.5), 1.0-s2*(fv.xyz[1]-rxm),
+                                   s1*(fv.xyz[0]+0.5), 1.0-s2*(fv.xyz[1]+rxp)  );
+               }
             }
+          }
          }
-      } else if( fabs(fvm.xyz[2]-fvp.xyz[2]) > dxyz ){ /* search z */
+         kkk = 1; xyz = ym; xyzp = yt; xyzm = yb;  /* for the triangles/lines below */
+      }
+      else if( fabs(fvm.xyz[2]-fvp.xyz[2]) > dxyz ){          /* search z */
          float zb=fvm.xyz[2] , zt=fvp.xyz[2] , zm,zw ;
          if( zb > zt ){ float t=zb ; zb=zt ; zt=t ; }
          zm = 0.5*(zb+zt); zw = 0.25*(zt-zb); zb = zm-zw; zt = zm+zw;
-         for( ii=0 ; ii < nn ; ii++ ){
-            if( nod[ii].z > zb && nod[ii].z < zt ){
+STATUS(" - z plane") ;
+         if( !skip_boxes ){
+          for( ii=0 ; ii < nn ; ii++ ){
+            if( nod[ii].z >= zb && nod[ii].z <= zt ){
                LOAD_FVEC3(fv,nod[ii].x,nod[ii].y,nod[ii].z) ;
                fv = THD_dicomm_to_3dmm( br->dset , fv ) ;
                fv = THD_3dmm_to_3dfind( br->dset , fv ) ;
                fv = THD_3dfind_to_fdfind( br , fv ) ;
-               plotrect_memplot( s1*(fv.xyz[0]-RX), 1.0-s2*(fv.xyz[1]-RX),
-                                 s1*(fv.xyz[0]+RX), 1.0-s2*(fv.xyz[1]+RX)  ) ;
+
+               if( firstb ){
+                 plotline_memplot( s1*(fv.xyz[0]-rxm), 1.0-s2*(fv.xyz[1]-rxm),
+                                   s1*(fv.xyz[0]+rxp), 1.0-s2*(fv.xyz[1]+rxp)  );
+                 firstb = 0 ;
+               }
+
+               plotrect_memplot( s1*(fv.xyz[0]-rxm), 1.0-s2*(fv.xyz[1]-rxm),
+                                 s1*(fv.xyz[0]+rxp), 1.0-s2*(fv.xyz[1]+rxp)  ) ;
+
+               if( ks == kbest && nod[ii].id == ibest ){   /* 24 Feb 2003 */
+                 plotline_memplot( s1*(fv.xyz[0]-rxm), 1.0-s2*(fv.xyz[1]-rxm),
+                                   s1*(fv.xyz[0]+rxp), 1.0-s2*(fv.xyz[1]+rxp)  );
+                 plotline_memplot( s1*(fv.xyz[0]-rxm), 1.0-s2*(fv.xyz[1]+rxp),
+                                   s1*(fv.xyz[0]+rxp), 1.0-s2*(fv.xyz[1]-rxm)  );
+                 plotline_memplot( s1*(fv.xyz[0]-rxm), 1.0-s2*(fv.xyz[1]+0.5),
+                                   s1*(fv.xyz[0]+rxp), 1.0-s2*(fv.xyz[1]+0.5)  );
+                 plotline_memplot( s1*(fv.xyz[0]+0.5), 1.0-s2*(fv.xyz[1]-rxm),
+                                   s1*(fv.xyz[0]+0.5), 1.0-s2*(fv.xyz[1]+rxp)  );
+               }
             }
+          }
          }
+         kkk = 2; xyz = zm; xyzp = zt; xyzm = zb;  /* for the triangles/lines below */
       }
-      if( MEMPLOT_NLINE(mp) < 1 ){ delete_memplot(mp) ; mp = NULL ; }
-      RETURN(mp) ; /* will be destroyed in imseq */
-     }
-#endif
+
+      /* 10 Mar 2002:
+         For each triangle that crosses the plane of the slice,
+         plot a line segment at the intersection of the plane and triangle.
+         The plane is along DICOM axis #kkk at coordinate xyz;
+         these variables were set just above in the node display code. */
+
+      if( !skip_lines && ag->num_ijk > 0 && ag->ijk != NULL ){
+        SUMA_ijk *tr = ag->ijk ;        /* triangle list  */
+        int      ntr = ag->num_ijk ;    /* number of triangles */
+        int id,jd,kd ;
+        THD_fvec3 fvijk[3] ;
+        float ci,cj,ck , xlev ;
+        int ilev ;
+
+        for( ilev=0 ; ilev <= 2 ; ilev++ ){  /* 26 Feb 2003: loop over levels: */
+                                             /* slice center, top & bot edges  */
+          if( ilev == 0 ){
+            if( skip_lcen ) continue ;  /* don't do center plane */
+            xlev = xyz ;
+            set_color_memplot(rr_lin,gg_lin,bb_lin) ;  /* line drawing colors */
+            set_thick_memplot(linewidth) ;
+          } else {
+            if( skip_ledg ) continue ;  /* don't do edge planes */
+            xlev = (ilev == 1) ? xyzp : xyzm ;
+            set_color_memplot(rr_led,gg_led,bb_led) ;
+            set_thick_memplot(0.0) ;
+          }
+
+STATUS("drawing triangle lines") ;
+
+          /* loop over triangles */
+
+          for( ii=0 ; ii < ntr ; ii++ ){
+
+            /* get indexes of triangle's nodes (from their id's) */
+
+            id = SUMA_find_node_id(ag,tr[ii].id); if( id < 0 ) continue;
+            jd = SUMA_find_node_id(ag,tr[ii].jd); if( jd < 0 ) continue;
+            kd = SUMA_find_node_id(ag,tr[ii].kd); if( kd < 0 ) continue;
+
+            /* load DICOM coords of triangle's nodes */
+
+            LOAD_FVEC3(fvijk[0], nod[id].x, nod[id].y, nod[id].z) ;
+            LOAD_FVEC3(fvijk[1], nod[jd].x, nod[jd].y, nod[jd].z) ;
+            LOAD_FVEC3(fvijk[2], nod[kd].x, nod[kd].y, nod[kd].z) ;
+
+            /* want 1 node on one size of plane, and 2 on the other */
+
+            ci = fvijk[0].xyz[kkk] - xlev;      /* differences from center */
+            cj = fvijk[1].xyz[kkk] - xlev;      /* of current slice plane */
+            ck = fvijk[2].xyz[kkk] - xlev;
+            jj = 4*(ci > 0.0) + 2*(cj > 0.0) + (ck > 0.0) ;
+            if( jj == 0 || jj == 7 ) continue ; /* all have same sign */
+
+            /* setup id,jd,kd so fvijk[id] is on one side of plane,
+               and so that fvijk[jd] and fvijk[kd] are on other side */
+
+            switch( jj ){
+               case 6:
+               case 1: id = 2 ; jd = 0 ; kd = 1 ; break ;  /* kd is the 1 */
+               case 5:
+               case 2: id = 1 ; jd = 0 ; kd = 2 ; break ;  /* jd is the 1 */
+               case 4:
+               case 3: id = 0 ; jd = 1 ; kd = 2 ; break ;  /* id is the 1 */
+            }
+
+            /* linearly interpolate between fvijk[id] and fvijk[jd]
+               to find the point where this line hits the slice plane */
+
+            ci = fvijk[id].xyz[kkk] - xlev;
+            cj = fvijk[id].xyz[kkk] - fvijk[jd].xyz[kkk] ;
+            if( cj == 0.0 ) continue ;            /* should not happen */
+            ck = ci / cj ;
+            if( ck < 0.0 || ck > 1.0 ) continue ; /* should not happen */
+            cj = 1.0 - ck ;
+            fvp = SCLADD_FVEC3(cj,fvijk[id],ck,fvijk[jd]) ;
+
+            /* linearly interpolate between fvijk[id] and fvijk[kd] */
+
+            cj = fvijk[id].xyz[kkk] - fvijk[kd].xyz[kkk] ;
+            if( cj == 0.0 ) continue ;
+            ck = ci / cj ;
+            if( ck < 0.0 || ck > 1.0 ) continue ;
+            cj = 1.0 - ck ;
+            fvm = SCLADD_FVEC3(cj,fvijk[id],ck,fvijk[kd]) ;
+
+            /* transform interpolated points to FD_brick coords */
+
+            fvp = THD_dicomm_to_3dmm( br->dset , fvp ) ;
+            if( fvp.xyz[0] < daxes->xxmin ||
+                fvp.xyz[0] > daxes->xxmax ||
+                fvp.xyz[1] < daxes->yymin ||
+                fvp.xyz[1] > daxes->yymax ||
+                fvp.xyz[2] < daxes->zzmin ||
+                fvp.xyz[2] > daxes->zzmax   ) continue ;  /* 08 Jan 2004 */
+            fvp = THD_3dmm_to_3dfind( br->dset , fvp ) ;
+            fvp = THD_3dfind_to_fdfind( br , fvp ) ;
+
+            fvm = THD_dicomm_to_3dmm( br->dset , fvm ) ;
+            if( fvm.xyz[0] < daxes->xxmin ||
+                fvm.xyz[0] > daxes->xxmax ||
+                fvm.xyz[1] < daxes->yymin ||
+                fvm.xyz[1] > daxes->yymax ||
+                fvm.xyz[2] < daxes->zzmin ||
+                fvm.xyz[2] > daxes->zzmax   ) continue ;  /* 08 Jan 2004 */
+            fvm = THD_3dmm_to_3dfind( br->dset , fvm ) ;
+            fvm = THD_3dfind_to_fdfind( br , fvm ) ;
+
+            /* plot a line segment between them, in the plane of the slice */
+            /* [21 Mar 2002: include the 0.5 shift mentioned way up above] */
+
+            plotline_memplot( s1*(fvp.xyz[0]+0.5) , 1.0-s2*(fvp.xyz[1]+0.5) ,
+                              s1*(fvm.xyz[0]+0.5) , 1.0-s2*(fvm.xyz[1]+0.5)  ) ;
+
+          } /* end of loop over triangles */
+          set_thick_memplot(0.0) ;              /* 15 Jan 2003 */
+        } /* end of loop over levels: 26 Feb 2003 */
+      } /* end of if over doing lines */
+     } /* end of loop over surface index ks */
+    } /* end of plotting surface stuff */
+
+     /*----- put crosshairs on with lines, if desired -----*/
+     /****** 22 Mar 2002: adapted from pixel overlay  ******/
+
+     if( do_xhar ){
+      MCW_grapher * grapher = UNDERLAY_TO_GRAPHER(im3d,br) ;
+
+      THD_ivec3 ib = THD_3dind_to_fdind( br ,
+                                         TEMP_IVEC3( im3d->vinfo->i1 ,
+                                                     im3d->vinfo->j2 ,
+                                                     im3d->vinfo->k3  ) ) ;
+STATUS("drawing crosshairs") ;
+      set_thick_memplot(0.0) ;
+
+      if( n == ib.ijk[2] || im3d->vinfo->xhairs_all ){
+         int jp,ip , jcen,icen , gappp , jj,ii ;
+         int idown,iup,iskip , jdown,jup,jskip , imon,jmon ;
+         int a1 = br->a123.ijk[0] ,   /* x axis of the brick?    */
+             ax = abs(a1) - 1       ; /* 0,1,2 for dataset x,y,z */
+         int a2 = br->a123.ijk[1] ,   /* y axis of the brick?    */
+             ay = abs(a2) - 1       ; /* 0,1,2 for dataset x,y,z */
+         int a3 = br->a123.ijk[2] ,   /* z axis of the brick?    */
+             az = abs(a3) - 1       ; /* 0,1,2 for dataset x,y,z */
+
+         int gap,icr,jcr , nx=br->n1 , ny=br->n2 ;
+
+         float rr,gg,bb ;             /* colors */
+         float s1=1.0/br->n1 , s2=1.0/br->n2 ;  /* scale pixels to plot coords */
+#define PSX(i) (s1*((i)+0.5))
+#define PSY(j) (1.0-s2*((j)+0.5))
+
+         /* spatial orientations of image axes */
+
+         int ox = (ax==0) ? br->dset->daxes->xxorient :
+                  (ax==1) ? br->dset->daxes->yyorient : br->dset->daxes->zzorient ;
+
+         int oy = (ay==0) ? br->dset->daxes->xxorient :
+                  (ay==1) ? br->dset->daxes->yyorient : br->dset->daxes->zzorient ;
+
+         jp = im3d->vinfo->crosshair_ovcolor ;
+         rr = DCOV_REDBYTE  (im3d->dc,jp) / 255.0 ;
+         gg = DCOV_GREENBYTE(im3d->dc,jp) / 255.0 ;
+         bb = DCOV_BLUEBYTE (im3d->dc,jp) / 255.0 ;
+         set_color_memplot(rr,gg,bb) ;
+
+         gap  = (grapher==NULL) ? im3d->vinfo->crosshair_gap : (grapher->mat+1)/2 ;
+
+         icen = ib.ijk[0] ;  /* x-index of image pixel at focus */
+         jcen = ib.ijk[1] ;  /* y-index */
+
+         /** initialize montage steps **/
+
+         if( im3d->vinfo->xhairs_show_montage ){           /* in "Multi" mode */
+            iskip = im3d->vinfo->xhairs_nskip.ijk[ax] + 1 ;
+            jskip = im3d->vinfo->xhairs_nskip.ijk[ay] + 1 ;
+            if( a1 > 0 ){
+               idown = im3d->vinfo->xhairs_ndown.ijk[ax] ;
+               iup   = im3d->vinfo->xhairs_nup.ijk[ax] ;
+            } else {
+               iup   = im3d->vinfo->xhairs_ndown.ijk[ax] ;
+               idown = im3d->vinfo->xhairs_nup.ijk[ax] ;
+            }
+            if( a2 > 0 ){
+               jdown = im3d->vinfo->xhairs_ndown.ijk[ay] ;
+               jup   = im3d->vinfo->xhairs_nup.ijk[ay] ;
+            } else {
+               jup   = im3d->vinfo->xhairs_ndown.ijk[ay] ;
+               jdown = im3d->vinfo->xhairs_nup.ijk[ay] ;
+            }
+
+         } else {                                          /* in "Single" Mode */
+           idown = iup = jdown = jup = iskip = jskip = 0 ;
+           if( grapher != NULL ){ idown=-(iup+1); jdown=-(jup+1); } /* skip lines? */
+         }
+
+         /* draw vertical lines first */
+
+         if( (im3d->vinfo->xhairs_orimask & (1<<oy)) != 0 ){
+           for( imon=-idown ; imon <= iup ; imon++ ){
+             icr = icen + imon * iskip ;
+
+             if( im3d->vinfo->xhairs_periodic ){
+                while( icr < 0 )   icr += nx ;
+                while( icr >= nx ) icr -= nx ;
+             } else {
+                if( icr < 0 || icr >= nx ) continue ;
+             }
+
+             gappp = (abs(icr-icen) <= gap) ? gap : -1 ; /* no gap if far from center */
+
+             if( gappp < 0 ){  /* no gap => 1 vertical line */
+
+                plotline_memplot( PSX(icr) , 0.0 , PSX(icr) , 1.0 ) ;
+
+             } else {          /* gap => 2 vertical lines */
+
+                jj = jcen-gappp-1 ;
+                if( jj >= 0 )
+                  plotline_memplot( PSX(icr) , 1.0 , PSX(icr) , PSY(jj+0.5) ) ;
+
+                jj = jcen+gappp+1 ;
+                if( jj < ny )
+                  plotline_memplot( PSX(icr) , PSY(jj-0.5) , PSX(icr) , 0.0 ) ;
+             }
+
+           }
+         }
+
+         /* draw horizontal lines */
+
+         if( (im3d->vinfo->xhairs_orimask & (1<<ox)) != 0 ){  /* 31 Dec 1998 */
+           for( jmon=-jdown ; jmon <= jup ; jmon++ ){
+             jcr = jcen + jmon * jskip ;
+             if( im3d->vinfo->xhairs_periodic ){
+                while( jcr < 0 )   jcr += ny ;
+                while( jcr >= ny ) jcr -= ny ;
+             } else {
+                if( jcr < 0 || jcr >= ny ) continue ;
+             }
+
+             gappp = (abs(jcr-jcen) <= gap) ? gap : -1 ; /* no gap if far from center */
+
+             if( gappp < 0 ){  /* no gap => 1 horizontal line */
+
+                plotline_memplot( 0.0 , PSY(jcr) , 1.0 , PSY(jcr) ) ;
+
+             } else {          /* gap => 2 horizontal lines */
+
+                ii = icen-gappp-1 ;
+                if( ii >= 0 )
+                  plotline_memplot( 0.0 , PSY(jcr) , PSX(ii+0.5) , PSY(jcr) ) ;
+
+                ii = icen+gappp+1 ;
+                if( ii < nx )
+                  plotline_memplot( PSX(ii-0.5) , PSY(jcr) , 1.0 , PSY(jcr) ) ;
+             }
+           }
+         }
+
+         /* draw grapher frame, if needed */
+
+         if( grapher != NULL ){
+            int gs = gap , gb = (grapher->mat +2)/2 ;
+
+            jcr = jcen ; icr = icen ;
+
+            ip = icr - gb ; if( ip < 0   ) ip = 0 ;
+            ii = icr + gs ; if( ii >= nx ) ii = nx-1 ;
+
+            jp = jcr - gb ; if( jp <  0  ) jp = 0 ;
+            jj = jcr + gs ; if( jj >= ny ) jj = ny-1 ;
+
+            plotline_memplot( PSX(ip+0.5),PSY(jp+0.5) , PSX(ii-0.5),PSY(jp+0.5) ) ;
+            plotline_memplot( PSX(ii-0.5),PSY(jp+0.5) , PSX(ii-0.5),PSY(jj-0.5) ) ;
+            plotline_memplot( PSX(ii-0.5),PSY(jj-0.5) , PSX(ip+0.5),PSY(jj-0.5) ) ;
+            plotline_memplot( PSX(ip+0.5),PSY(jj-0.5) , PSX(ip+0.5),PSY(jp+0.5) ) ;
+
+         } /* end if "if grapher exists" */
+
+      } /* end of "if correct slice" (or do all slices) */
+     } /* end of crosshairs */
+
+     /*----- return the completed plot -----*/
+
+     if( MEMPLOT_NLINE(mp) < 1 ) DESTROY_MEMPLOT(mp) ;
+
+     RETURN(mp) ; /* will be destroyed in imseq */
    }
 
    /*--- 20 Sep 2001: image label ---*/
@@ -1701,39 +2550,19 @@ STATUS("get status") ;
 
    if( type == isqCR_getimage || type == isqCR_getqimage ){
       Three_D_View * im3d = (Three_D_View *) br->parent ;
-      int ival = 0 ;
+      int ival ;
 
       /*** decide which 3D brick to extract data from (ival) ***/
 
-      if( DSET_NUM_TIMES(br->dset) > 1 ){     /* a time-dependent brick */
-         ival = im3d->vinfo->time_index ;
-         if( ival >= br->dset->dblk->nvals ) ival = br->dset->dblk->nvals -1 ;
+      if( EQUIV_DSETS(br->dset,im3d->anat_now) )      /* underlay dataset */
+        ival = im3d->vinfo->anat_index ;
+      else if( EQUIV_DSETS(br->dset,im3d->fim_now) )  /* overlay dataset */
+        ival = im3d->vinfo->fim_index ;
+      else
+        ival = 0 ;                                    /* shouldn't happen */
 
-      } else if( ISANAT(br->dset) ){          /* an anatomy brick */
-
-         if( ISANATBUCKET(br->dset) )                     /* 30 Nov 1997 */
-            ival = im3d->vinfo->anat_index ;
-         else
-            ival = ANAT_ival_zero[br->dset->func_type] ;  /* get default data */
-
-      } else if( ISFUNC(br->dset) ){   /* a functional brick */
-
-        if( ISFUNCBUCKET(br->dset) ){                     /* 30 Nov 1997 */
-           ival = im3d->vinfo->fim_index ;
-        }
-        else {
-           if( im3d->vinfo->showfunc_type == SHOWFUNC_THR  &&  /* showing thr */
-               ISFUNC_UNDERLAY(im3d->vinfo->underlay_type) &&  /* as underlay? */
-               FUNC_HAVE_THR(br->dset->func_type) ){
-
-              ival = FUNC_ival_thr[br->dset->func_type] ; /* get thresh data */
-           } else {
-              ival = FUNC_ival_fim[br->dset->func_type] ; /* get fim data */
-           }
-        }
-     }
-
-      if( type == isqCR_getqimage ) ival = -1 ; /* get empty image */
+           if( type == isqCR_getqimage      ) ival = -1 ; /* get empty image */
+      else if( ival >= DSET_NVALS(br->dset) ) ival = br->dset->dblk->nvals -1 ;
 
 if(PRINT_TRACING)
 { char str[256] ;
@@ -1742,74 +2571,35 @@ if(PRINT_TRACING)
 
       LOAD_DSET_VIEWS(im3d) ;  /* 02 Nov 1996 */
 
-      if( ival > 0 && GLOBAL_library.have_dummy_dataset && lrand48()%2 == 1 ){
-         RETURN(NULL) ;  /* 23 Apr 2001: test of imseq.c NULL image handler */
-      }
-
       im = FD_warp_to_mri( n , ival , br ) ; /* actually get image from dataset */
 
       if( ival < 0 ) RETURN( (XtPointer) im ) ;  /* return fake image */
 
-      /* allow for thresholding of underlay image */
-
-      if( im != NULL && im3d->vinfo->underlay_type == UNDERLAY_THRFUNC &&
-          ISFUNC(br->dset) && FUNC_HAVE_THR(br->dset->func_type) &&
-          im3d->vinfo->func_threshold > 0.0 ){
-
-         MRI_IMAGE * im_thr , * qim ;
-         double thresh ;
-         int jval ;
-
-         if( ISFUNCBUCKET(br->dset) )          /* 30 Nov 1997 */
-            jval = im3d->vinfo->thr_index ;
-         else
-            jval = FUNC_ival_thr[br->dset->func_type] ;
-
-         if( jval != ival ){
-            im_thr = FD_warp_to_mri( n , jval ,  br ) ;
-            if( im_thr == NULL ) im_thr = im ;
-         } else {
-            im_thr = im ;  /* if already have threshold data */
-         }
-
-         if( ! AFNI_GOOD_FUNC_DTYPE(im_thr->kind) ){ /* should not occur */
-            qim = mri_to_float( im_thr ) ;           /* but if it does,  */
-            if( im_thr != im ) mri_free( im_thr ) ;  /* make an OK type  */
-            im_thr = qim ;
-         }
-
-         thresh = im3d->vinfo->func_threshold * im3d->vinfo->func_thresh_top ;
-
-         if( im_thr->kind == MRI_short )
-            thresh *= FUNC_scale_short[br->dset->func_type];
-         else if( im_thr->kind == MRI_byte )
-            thresh *= FUNC_scale_byte[br->dset->func_type];
-
-         mri_threshold( -thresh , thresh , im_thr , im ) ;
-         if( im_thr != im ) mri_free( im_thr ) ;
-      }
-
       /* Load value of current pixel into display label */
       /* April 1996: only if image is at current slice  */
 
-#ifdef ALLOW_BKGD_LAB
-      { char buf[32] = "\0" ;
+      { char buf[64] = "\0" ; int ibest=-1 ;
         AFNI_set_valabel( br , n , im , buf ) ;
         if( buf[0] != '\0' ){
-           if( im3d->vinfo->underlay_type == UNDERLAY_ANAT )
-              strcpy( im3d->vinfo->anat_val , buf ) ;
-           else
-              im3d->vinfo->anat_val[0] = '\0' ;
+          if( im3d->vinfo->underlay_type == UNDERLAY_ANAT )
+            strcpy( im3d->vinfo->anat_val , buf ) ;
+          else
+            im3d->vinfo->anat_val[0] = '\0' ;
 
-           if( im->kind != MRI_complex ){
-              char qbuf[32] = "bg =" ;
-              strcat(qbuf,buf) ; strcpy(buf,qbuf) ;
-           }
-           MCW_set_widget_label( im3d->vwid->imag->pop_bkgd_lab , buf ) ;
-           XtManageChild( im3d->vwid->imag->pop_bkgd_lab ) ;
+          if( !AFNI_noenv("AFNI_VALUE_LABEL") ) AFNI_do_bkgd_lab( im3d ) ;
+
+          if( im->kind != MRI_complex && im->kind != MRI_rgb ){
+            char qbuf[64] = "bg =" ;
+            strcat(qbuf,buf) ; strcpy(buf,qbuf) ;
+          }
+          AFNI_get_xhair_node( im3d , NULL , &ibest ) ;   /* 21 Feb 2003 */
+          if( ibest >= 0 ){
+            char qbuf[64]; sprintf(qbuf,"\nxh = #%d",ibest); strcat(buf,qbuf);
+          }
+          MCW_set_widget_label( im3d->vwid->imag->pop_bkgd_lab , buf ) ;
+          XtManageChild( im3d->vwid->imag->pop_bkgd_lab ) ;
         }
       }
-#endif
 
       RETURN( (XtPointer) im ) ;
    }
@@ -1819,8 +2609,8 @@ STATUS("get something else, but I don't care!") ;
    RETURN( NULL ) ;
 }
 
-/*-----------------------------------------------------------------------------
-   Set a value label when the nsl-th image is in "im".
+/*-----------------------------------------------------------------------------*/
+/*! Set a value label when the nsl-th image is in "im".
 -------------------------------------------------------------------------------*/
 
 void AFNI_set_valabel( FD_brick * br , int nsl , MRI_IMAGE * im , char * blab )
@@ -1833,11 +2623,18 @@ ENTRY("AFNI_set_valabel") ;
    if( ! IM3D_VALID(im3d) || ! im3d->vwid->imag->do_bkgd_lab ||
        im == NULL         || blab == NULL                      ) EXRETURN ;
 
+   /* convert current voxel index location to FD_brick indexes */
+
    ib = THD_3dind_to_fdind( br , TEMP_IVEC3( im3d->vinfo->i1 ,
                                              im3d->vinfo->j2 ,
                                              im3d->vinfo->k3  ) ) ;
 
+   /* if the input image slice index (nsl) doesn't match the current
+      location of the crosshairs, then we don't care about this image */
+
    if( nsl != ib.ijk[2] ) EXRETURN ;
+
+   /* otherwise, extract a value from the image and put into blab */
 
    switch( im->kind ){
 
@@ -1875,6 +2672,14 @@ ENTRY("AFNI_set_valabel") ;
          blab[iblab++] = 'I' ; blab[iblab++] = '\0' ;
       }
       break ;
+
+      case MRI_rgb:{
+         byte *rgb = MRI_RGB_PTR(im) ;
+         int ii = ib.ijk[0] + im->nx * ib.ijk[1] ;
+         sprintf(blab,"(%d,%d,%d)",(int)rgb[3*ii],(int)rgb[3*ii+1],(int)rgb[3*ii+2]) ;
+      }
+      break ;
+
    }
    EXRETURN ;
 }
@@ -1895,7 +2700,8 @@ THD_3dim_dataset * AFNI_read_images( int nf , char * fname[] )
    THD_3dim_dataset * dset ;
    int datum = GLOBAL_argopt.datum , dsize ;
 
-   int nvals , nzz , nzin ;  /* 19 Oct 1999 */
+   int nvals , nzz , nzin=0 ;  /* 19 Oct 1999 */
+   float dx=0.0, dy=0.0 , dz=0.0 ;  /* 29 Jul 2002 */
 
 ENTRY("AFNI_read_images") ;
 
@@ -1927,6 +2733,10 @@ ENTRY("AFNI_read_images") ;
    im = arr->imarr[0] ;
    nx = im->nx ;
    ny = im->ny ; npix = nx * ny ;
+
+   if( im->dw > 0.0 ){
+     dx = fabs(im->dx); dy = fabs(im->dy); dz = fabs(im->dz);  /* 29 Jul 2002 */
+   }
 
    if( datum < 0 ) datum = im->kind ;
    if( ! AFNI_GOOD_DTYPE(datum) )
@@ -2055,15 +2865,20 @@ ENTRY("AFNI_read_images") ;
    dset->markers       = NULL ;
    dset->warp          = NULL ;
    dset->vox_warp      = NULL ;
+   dset->self_warp     = NULL ;  /* 26 Aug 2002 */
    dset->warp_parent   = NULL ;
    dset->anat_parent   = NULL ;
    dset->stats         = NULL ;
-   dset->pts           = NULL ;
-   dset->merger_list   = NULL ;
    dset->death_mark    = 0 ;
+   dset->tcat_list     = NULL ;  /* 04 Aug 2004 */
+   dset->tcat_num      = 0 ;
+   dset->tcat_len      = NULL ;
    dset->taxis         = NULL ;
    dset->tagset        = NULL ;  /* Oct 1998 */
    ZERO_STAT_AUX( dset ) ;
+#ifdef ALLOW_DATASET_VLIST
+   dset->pts           = NULL ;
+#endif
 
    INIT_KILL(dset->kl) ;
    INIT_KILL(dset->dblk->kl) ;
@@ -2153,11 +2968,13 @@ ENTRY("AFNI_read_images") ;
    dset->daxes->xxorg = dset->daxes->yyorg = dset->daxes->zzorg = 0.0 ;
    dset->daxes->parent= (XtPointer) dset ;
 
-#ifndef OMIT_DATASET_IDCODES
+   if( dx > 0.0 ) dset->daxes->xxdel = dx ;  /* 29 Jul 2002 */
+   if( dy > 0.0 ) dset->daxes->yydel = dy ;
+   if( dz > 0.0 ) dset->daxes->zzdel = dz ;
+
    dset->idcode = MCW_new_idcode() ;
    ZERO_IDCODE(dset->anat_parent_idcode) ;
    ZERO_IDCODE(dset->warp_parent_idcode) ;
-#endif
 
    /* set the daxes orientation codes from the command line argument */
 
@@ -2175,7 +2992,7 @@ ENTRY("AFNI_read_images") ;
      acod = toupper(GLOBAL_argopt.orient_code[1]) ; yy = ORCODE(acod) ;
      acod = toupper(GLOBAL_argopt.orient_code[2]) ; zz = ORCODE(acod) ;
 
-     if( xx<0 || yy<0 || zz<0 || ! OR3OK(xx,yy,zz) )
+     if( xx < 0 || yy < 0 || zz < 0 || ! OR3OK(xx,yy,zz) )
         FatalError("Unusable -orient code!") ;
 
      dset->daxes->xxorient = xx ;
@@ -2242,6 +3059,7 @@ if(PRINT_TRACING)
          myXtFree( seq ) ;
          MCW_invert_widget(w) ;  /* back to normal */
          INIT_BKGD_LAB(im3d) ;
+         AFNI_view_setter(im3d,NULL) ;
 
          /* July 1996: redraw if we just lost a crosshair montage
             (it would have been in the z direction of the brick) */
@@ -2312,11 +3130,16 @@ if(PRINT_TRACING)
 
                   SAVE_VPT(im3d) ;  /* save current location as jumpback */
 
-                  if( im3d->ignore_seq_callbacks == AFNI_IGNORE_NOTHING )
-                     AFNI_set_viewpoint(
-                        im3d , id.ijk[0] , id.ijk[1] , id.ijk[2] ,
-                        (im3d->vinfo->crosshair_visible==True) ?
-                        REDISPLAY_OVERLAY : REDISPLAY_OPTIONAL ) ;
+                  if( im3d->ignore_seq_callbacks == AFNI_IGNORE_NOTHING ){
+
+                    /* 20 Feb 2003: set plane from which viewpoint is controlled */
+
+                    AFNI_view_setter(im3d,seq) ;
+                    AFNI_set_viewpoint(
+                       im3d , id.ijk[0] , id.ijk[1] , id.ijk[2] ,
+                       (im3d->vinfo->crosshair_visible==True) ?
+                       REDISPLAY_OVERLAY : REDISPLAY_OPTIONAL ) ;
+                  }
                }
             } /* end of button 1 */
             break ;
@@ -2335,11 +3158,16 @@ if(PRINT_TRACING)
           cbs->nim , id.ijk[0],id.ijk[1],id.ijk[2] ) ;
   STATUS(str) ; }
 
-         if( im3d->ignore_seq_callbacks == AFNI_IGNORE_NOTHING )
+         if( im3d->ignore_seq_callbacks == AFNI_IGNORE_NOTHING ){
+
+            /* 20 Feb 2003: set plane from which viewpoint is controlled */
+
+            AFNI_view_setter(im3d,seq) ;
             AFNI_set_viewpoint(
                im3d , id.ijk[0] , id.ijk[1] , id.ijk[2] ,
                (im3d->vinfo->crosshair_visible==True) ?
                REDISPLAY_OVERLAY : REDISPLAY_OPTIONAL ) ;
+         }
       }
       break ;  /* end of new image */
 
@@ -2387,8 +3215,10 @@ if(PRINT_TRACING)
       /* Arrowpad stuff */
 
       case isqCR_appress:{
-         if( im3d->ignore_seq_callbacks == AFNI_IGNORE_NOTHING )
+         if( im3d->ignore_seq_callbacks == AFNI_IGNORE_NOTHING ){
+            AFNI_view_setter(im3d,seq) ;
             AFNI_crosshair_gap_CB( NULL , (XtPointer) im3d ) ;
+         }
       }
       break ;  /* end of arrowpad center key press */
 
@@ -2399,15 +3229,16 @@ if(PRINT_TRACING)
          THD_ivec3 ib , id ;
          XButtonEvent * xev = (XButtonEvent *) cbs->event ;
          int step = 1 ;
+         THD_dataxes *daxes ;
 
-         if( ( xev->type == ButtonPress ||
+         if( xev != NULL &&
+             ( xev->type == ButtonPress ||
                xev->type == ButtonRelease ) &&
              (xev->state & (ShiftMask | ControlMask)) ) step = INIT_bigscroll ;
 
          ib = THD_3dind_to_fdind( br , TEMP_IVEC3( im3d->vinfo->i1 ,
                                                    im3d->vinfo->j2 ,
                                                    im3d->vinfo->k3  ) ) ;
-
          switch( cbs->reason ){
             case isqCR_dxplus:   ib.ijk[0] += step ; break ;
             case isqCR_dxminus:  ib.ijk[0] -= step ; break ;
@@ -2417,11 +3248,27 @@ if(PRINT_TRACING)
 
          id = THD_fdind_to_3dind( br , ib ) ;
 
-         if( im3d->ignore_seq_callbacks == AFNI_IGNORE_NOTHING )
+         /* 13 May 2003: allow for wraparound */
+
+         LOAD_DSET_VIEWS(im3d) ;  /* 20 Nov 2003 */
+         daxes = CURRENT_DAXES(im3d->anat_now) ;
+              if( id.ijk[0] <  0          ) id.ijk[0] += daxes->nxx ;
+         else if( id.ijk[0] >= daxes->nxx ) id.ijk[0] -= daxes->nxx ;
+              if( id.ijk[1] <  0          ) id.ijk[1] += daxes->nyy ;
+         else if( id.ijk[1] >= daxes->nyy ) id.ijk[1] -= daxes->nyy ;
+              if( id.ijk[2] <  0          ) id.ijk[2] += daxes->nzz ;
+         else if( id.ijk[2] >= daxes->nzz ) id.ijk[2] -= daxes->nzz ;
+
+         if( im3d->ignore_seq_callbacks == AFNI_IGNORE_NOTHING ){
+
+            /* 20 Feb 2003: set plane from which viewpoint is controlled */
+
+            AFNI_view_setter(im3d,seq) ;
             AFNI_set_viewpoint(
                im3d , id.ijk[0] , id.ijk[1] , id.ijk[2] ,
                (im3d->vinfo->crosshair_visible==True) ?
                REDISPLAY_OVERLAY : REDISPLAY_OPTIONAL ) ;
+         }
       }
       break ;  /* end of arrowpad arrow press */
 
@@ -2436,6 +3283,19 @@ if(PRINT_TRACING)
 #endif
       }
       break ; /* end of keyboard press */
+
+      /*--- 20 Feb 2003: keypress while in button2 mode ---*/
+
+      case isqCR_button2_key:{
+        KeySym ks = (KeySym) cbs->key ;
+
+        switch( ks ){
+          case XK_Delete:
+            AFNI_process_drawing( im3d , UNDO_MODE , 0,NULL,NULL,NULL ) ;
+          break ;
+        }
+      }
+      break ; /* end of button2 mode keypress */
 
       /*--- Feb 1998: list of coordinates from button2 drawing ---*/
 
@@ -2497,6 +3357,7 @@ if(PRINT_TRACING)
       /*--- 22 Aug 1998: redraw everything ---*/
 
       case isqCR_force_redisplay:{
+         AFNI_view_setter(im3d,seq) ;
          PLUTO_force_redisplay() ;  /* see afni_plugin.c */
          PLUTO_force_rebar() ;      /* ditto [23 Aug 1998] */
       }
@@ -2511,9 +3372,9 @@ if(PRINT_TRACING)
    respond to events that one of the MCW_grapher's sends to us
 ------------------------------------------------------------------------*/
 
-void AFNI_gra_send_CB( MCW_grapher * grapher , FD_brick * br , GRA_cbs * cbs )
+void AFNI_gra_send_CB( MCW_grapher *grapher , FD_brick *br , GRA_cbs *cbs )
 {
-   Three_D_View * im3d = (Three_D_View *) grapher->parent ;
+   Three_D_View *im3d = (Three_D_View *)grapher->parent ;
 
 ENTRY("AFNI_gra_send_CB") ;
 
@@ -2582,12 +3443,14 @@ if(PRINT_TRACING)
   sprintf(str," 3D dataset coordinates %d %d %d",
           id.ijk[0],id.ijk[1],id.ijk[2] ) ; STATUS(str) ; }
 
-            if( im3d->ignore_seq_callbacks == AFNI_IGNORE_NOTHING )
+            if( im3d->ignore_seq_callbacks == AFNI_IGNORE_NOTHING ){
+               AFNI_view_setter(im3d,NULL) ;
                AFNI_set_viewpoint(
                   im3d ,
                   id.ijk[0] , id.ijk[1] , id.ijk[2] ,
                   (im3d->vinfo->crosshair_visible==True) ?
                   REDISPLAY_OVERLAY : REDISPLAY_OPTIONAL ) ;
+            }
          }
       }
       break ; /* end of newxyzm */
@@ -2649,6 +3512,20 @@ STATUS("graCR_pickort") ;
          AFNI_fimmer_setort( im3d , NULL ) ;
       }
       break ; /* end of clearfim */
+
+      /*** 27 Jan 2004:
+           User toggled WinAver on in one graph window,
+           so we toggle it off in the other windows.    ***/
+
+      case graCR_winaver:{
+        if( im3d->g123 != NULL && im3d->g123 != grapher )
+          drive_MCW_grapher( im3d->g123 , graDR_winaver , 0 ) ;
+        if( im3d->g231 != NULL && im3d->g231 != grapher )
+          drive_MCW_grapher( im3d->g231 , graDR_winaver , 0 ) ;
+        if( im3d->g312 != NULL && im3d->g312 != grapher )
+          drive_MCW_grapher( im3d->g312 , graDR_winaver , 0 ) ;
+      }
+      break ; /* end of winaver */
 
       /*** 12 Nov 1996:
            User supplies a timeseries to add to the global library ***/
@@ -2756,24 +3633,24 @@ STATUS("graCR_pickort") ;
       }
       break ;
 
-      /*** User sets time_index ***/
-      /*** 24 Jan 2001: or bucket index ***/
+      /*** User sets time_index (from graph) ***/
+      /*** 24 Jan 2001: or bucket index      ***/
+      /*** 29 Jul 2003: time_index and
+            anat_index are almost merged now ***/
 
       case graCR_setindex:{
-         MCW_arrowval * tav = im3d->vwid->imag->time_index_av ;
-         MCW_arrowval * aav = im3d->vwid->func->anat_buck_av ;
+         MCW_arrowval *tav = im3d->vwid->imag->time_index_av ;
+         MCW_arrowval *aav = im3d->vwid->func->anat_buck_av ;
          int new_index = cbs->key ;
 
-         if( DSET_NUM_TIMES(im3d->anat_now) > 1 ){       /* 24 Jan 2001: check type */
-            if( new_index != im3d->vinfo->time_index ){
-               AV_assign_ival( tav , new_index ) ;
-               AFNI_time_index_CB( tav , (XtPointer) im3d ) ;
-            }
-         } else if( ISANATBUCKET(im3d->anat_now) ){      /* 24 Jan 2001: new case */
-            if( new_index != im3d->vinfo->anat_index ){
-               AV_assign_ival( aav , new_index ) ;
-               AFNI_bucket_CB( aav , im3d ) ;
-            }
+         if( new_index != im3d->vinfo->anat_index ){
+           if( im3d->vinfo->time_on ){
+             AV_assign_ival( tav , new_index ) ;               /* set time_index */
+             AFNI_time_index_CB( tav, (XtPointer) im3d ); /* will set anat_index */
+           } else {
+             AV_assign_ival( aav, new_index ) ;       /* set anat index directly */
+             AFNI_bucket_CB( aav, im3d ) ;
+           }
          }
       }
       break ;
@@ -2862,17 +3739,17 @@ ENTRY("AFNI_read_inputs") ;
 
       /* set up minuscule session and session list */
 
-      new_ss             = myXtNew( THD_session ) ;
-      new_ss->type       = SESSION_TYPE ;
+      new_ss              = myXtNew( THD_session ) ;
+      new_ss->type        = SESSION_TYPE ;
       BLANK_SESSION(new_ss) ;
-      new_ss->num_anat   = 1 ;
-      new_ss->anat[0][0] = dset ;
-      new_ss->parent     = NULL ;
+      new_ss->num_dsset   = 1 ;
+      new_ss->dsset[0][0] = dset ;
+      new_ss->parent      = NULL ;
 
       MCW_strncpy( new_ss->sessname ,
                    argv[GLOBAL_argopt.first_file_arg] , THD_MAX_NAME ) ;
       MCW_strncpy( new_ss->lastname ,
-                   argv[GLOBAL_argopt.first_file_arg] , THD_MAX_LABEL ) ;
+                   argv[GLOBAL_argopt.first_file_arg] , THD_MAX_NAME ) ;
 
       GLOBAL_library.sslist->num_sess   = 1 ;
       GLOBAL_library.sslist->ssar[0]    = new_ss ;
@@ -2880,17 +3757,52 @@ ENTRY("AFNI_read_inputs") ;
 
    } /** end of images input **/
 
-   else if( GLOBAL_argopt.read_sessions ){
+   /*--- sessions of 3D datasets (from to3d or other AFNI programs) ---*/
 
-   /*--- sessions of 3D datasets (from to3d or from afni itself) ---*/
+   else if( GLOBAL_argopt.read_sessions ){
 
       char str[256] ;
       Boolean good ;
-      int num_ss , qd , qs , vv , no_args , jj , nskip_noanat=0 ;
+      int num_ss , qd , qs , vv=0 , no_args , jj , nskip_noanat=0 ;
       THD_string_array * flist , * dlist=NULL ;
-      char * dname ;
+      char * dname , *eee ;
       THD_session * new_ss ;
-      int num_dsets=0 ;      /* 04 Jan 2000 */
+      int num_dsets=0 ;       /* 04 Jan 2000 */
+      THD_session *gss=NULL ; /* 11 May 2002: global session */
+      THD_session *dss ;      /* 28 Aug 2003: session for command-line datasets */
+
+      /*-- 20 Dec 2001: Try to read a "global" session --*/
+      /*-- 11 May 2002: Move read global session up here --*/
+
+      eee = getenv( "AFNI_GLOBAL_SESSION" ) ;   /* where it's supposed to be */
+      if( eee != NULL ){
+         gss =
+          GLOBAL_library.session = THD_init_session( eee ); /* try to read datasets */
+
+         if( gss != NULL ){                               /* got at least one */
+            gss->parent = NULL ;                          /* parentize them */
+            for( qd=0 ; qd < gss->num_dsset ; qd++ )
+              for( vv=0 ; vv <= LAST_VIEW_TYPE ; vv++ ){
+                PARENTIZE( gss->dsset[qd][vv] , NULL ) ;
+                DSET_MARK_FOR_IMMORTALITY( gss->dsset[qd][vv] ) ;
+              }
+         } else {
+           sprintf(str,"\n*** No datasets in AFNI_GLOBAL_SESSION=%s",eee) ;
+           REPORT_PROGRESS(str) ;
+         }
+      }
+
+      /* 28 Aug 2003:
+         set up session for datasets from command line (vs. directories) */
+
+      dss         = myXtNew( THD_session ) ;
+      dss->type   = SESSION_TYPE ;
+      dss->parent = NULL ;
+      BLANK_SESSION(dss) ;
+      MCW_strncpy( dss->sessname , "from CLI" , THD_MAX_NAME ) ;
+      MCW_strncpy( dss->lastname , "from CLI" , THD_MAX_NAME ) ;
+
+      /* now get the list of strings to read as directories */
 
       num_ss  = argc - GLOBAL_argopt.first_file_arg ;
       no_args = (num_ss < 1) ;
@@ -2902,13 +3814,13 @@ STATUS("no args: recursion on ./") ;
             flist = THD_get_all_subdirs( GLOBAL_argopt.recurse , "./" ) ;
             if( flist != NULL ){
                for( jj=0 ; jj < flist->num ; jj++ ){
-                  ADDTO_SARR(dlist,flist->ar[jj]) ;
+                 ADDTO_SARR(dlist,flist->ar[jj]) ;
                }
                DESTROY_SARR(flist) ;
             }
          } else {
 STATUS("no args: using ./") ;
-            ADDTO_SARR(dlist,"./") ;
+           ADDTO_SARR(dlist,"./") ;
          }
       } else {
          for( id=0 ; id < num_ss ; id++ ){
@@ -2917,15 +3829,17 @@ STATUS("no args: using ./") ;
                                             argv[GLOBAL_argopt.first_file_arg+id] ) ;
                if( flist != NULL ){
                   for( jj=0 ; jj < flist->num ; jj++ ){
-                     ADDTO_SARR(dlist,flist->ar[jj]) ;
+                    ADDTO_SARR(dlist,flist->ar[jj]) ;
                   }
                   DESTROY_SARR(flist) ;
                }
             } else {
-               ADDTO_SARR(dlist,argv[GLOBAL_argopt.first_file_arg+id]) ;
+              ADDTO_SARR(dlist,argv[GLOBAL_argopt.first_file_arg+id]) ;
             }
          }
       }
+
+      if( dlist->num < 1 ) ADDTO_SARR(dlist,"./") ;  /* just in case */
 
       /** 09 Sep 1998: eliminate duplicates from the directory list **/
 
@@ -2951,34 +3865,59 @@ if(PRINT_TRACING)
 
          REFRESH ;
 
-         if( new_ss != NULL && new_ss->num_anat > 0 ){  /* got something? */
+         if( new_ss == NULL ){ /* 28 Aug 2003 */
+           qd = dss->num_dsset ;
+           if( qd < THD_MAX_SESSION_SIZE ){
+             THD_3dim_dataset *dset = THD_open_dataset( dname ) ;
+             if( dset != NULL ){
+               dss->dsset[qd][dset->view_type] = dset ;
+               dss->num_dsset ++ ;
+             } else {
+               fprintf(stderr,
+                       "\n** Couldn't open %s as session OR as dataset!" ,
+                       dname ) ;
+             }
+           }
+         }
 
-            /* for anats, just set parent pointers */
+         if( new_ss != NULL && new_ss->num_dsset > 0 ){ /* got something? */
+
+            /* set parent pointers */
 
             new_ss->parent = NULL ;
-            for( qd=0 ; qd < new_ss->num_anat ; qd++ )
-               for( vv=0 ; vv <= LAST_VIEW_TYPE ; vv++ )
-                  PARENTIZE( new_ss->anat[qd][vv] , NULL ) ;
-
-            /* for funcs, just set parent pointers */
-
-            for( qd=0 ; qd < new_ss->num_func ; qd++ )
-               for( vv=0 ; vv <= LAST_VIEW_TYPE ; vv++ )
-                  PARENTIZE( new_ss->func[qd][vv] , NULL ) ;
+            for( qd=0 ; qd < new_ss->num_dsset ; qd++ )
+              for( vv=0 ; vv <= LAST_VIEW_TYPE ; vv++ )
+                PARENTIZE( new_ss->dsset[qd][vv] , NULL ) ;
 
             /* put the new session into place in the list of sessions */
 
             GLOBAL_library.sslist->ssar[(GLOBAL_library.sslist->num_sess)++] = new_ss ;
 
-            sprintf(str,"\n session #%3d  = %s %d anatomical datasets,"
-                        " %d functional datasets",
-                GLOBAL_library.sslist->num_sess ,
-                new_ss->sessname ,
-                new_ss->num_anat , new_ss->num_func ) ;
-
-            num_dsets += (new_ss->num_anat + new_ss->num_func) ;  /* 04 Jan 2000 */
-
+            sprintf(str,"\n session #%3d  = %s ==> %d dataset%s" ,
+                    GLOBAL_library.sslist->num_sess ,
+                    new_ss->sessname , new_ss->num_dsset ,
+                    (new_ss->num_dsset > 1) ? "s" : " " ) ;
             REPORT_PROGRESS(str) ;
+
+            num_dsets += new_ss->num_dsset ;
+
+            /* 28 Aug 2002: add any inter-dataset warps to global warptable */
+
+            if( new_ss->warptable != NULL ){
+              if( GLOBAL_library.warptable == NULL ) /* create global warptable */
+                GLOBAL_library.warptable = new_Htable(101) ;
+              subsume_Htable( new_ss->warptable , GLOBAL_library.warptable ) ;
+              destroy_Htable( new_ss->warptable ) ;
+              new_ss->warptable = NULL ;
+            }
+
+            /* 11 May 2002: put global datasets into session now */
+
+            if( new_ss != NULL && gss != NULL )
+              AFNI_append_sessions( new_ss , gss ) ;
+
+            /* if we've maxed out on sessions AND
+               if this isn't the last command line argument ... */
 
             if( GLOBAL_library.sslist->num_sess == THD_MAX_NUM_SESSION &&
                 id < num_ss-1 ){
@@ -2987,31 +3926,41 @@ if(PRINT_TRACING)
                REPORT_PROGRESS(str) ;
                break ;                            /* exit the loop over id */
             }
-         } else {
-
-            if( new_ss != NULL && new_ss->num_anat <= 0 ){  /* not enough */
-               sprintf(str,"\n*** session      %s has no anatomies!  Skipping.",dname) ;
-               REPORT_PROGRESS(str) ;
-               nskip_noanat ++ ;
-            } else {
-               STATUS("no datasets found!") ;
-            }
-#if 0
-            REMOVEFROM_SARR( dlist , id ) ;  /* no datasets --> don't keep in list */
-#endif
          }
-      }  /* end of id loop */
 
-      /** did we get anything?? **/
+      }  /* end of id loop (over input directory names) */
 
-      if( nskip_noanat > 0 ){
-         REPORT_PROGRESS(
-               "\n\n*** Hint: a session directory without anatomical datasets can"
-                 "\n***   have an anatomical warp-on-demand copy of a functional"
-                 "\n***   dataset made using a command of the form"
-                 "\n***   '3ddup -spgr func+orig.HEAD'.\n" ) ;
+      /* 28 Aug 2003: if have dataset in session dss, use it */
 
-         if( GLOBAL_library.sslist->num_sess <= 0 ) exit(1) ;
+      if( dss->num_dsset > 0 ){
+        if( GLOBAL_library.sslist->num_sess < THD_MAX_NUM_SESSION ){
+          GLOBAL_library.sslist->ssar[(GLOBAL_library.sslist->num_sess)++] = dss ;
+          num_dsets += dss->num_dsset ;
+          sprintf(str,"\n session #%3d  = %s ==> %d dataset%s" ,
+                  GLOBAL_library.sslist->num_sess, dss->sessname, dss->num_dsset,
+                  (dss->num_dsset > 1) ? "s" : " " ) ;
+          REPORT_PROGRESS(str) ;
+          if( gss != NULL ) AFNI_append_sessions( dss , gss ) ;
+        } else {
+          fprintf(stderr,"\n** Can't use command line datasets: session overflow!\n") ;
+          free(dss) ;
+        }
+      } else {
+        free(dss) ;
+      }
+
+      /* 11 May 2002: if have global session but no others, use it */
+
+      if( gss != NULL && GLOBAL_library.sslist->num_sess == 0 ){
+
+        GLOBAL_library.sslist->ssar[(GLOBAL_library.sslist->num_sess)++] = gss ;
+
+        sprintf(str,"\n AFNI_GLOBAL_SESSION = %s %d datasets" ,
+            gss->sessname , gss->num_dsset ) ;
+
+        num_dsets += gss->num_dsset ;
+
+        REPORT_PROGRESS(str) ;
       }
 
       /** if nothing read at all, make up a dummy **/
@@ -3027,6 +3976,9 @@ if(PRINT_TRACING)
          int ii , nbar , jj ;
          THD_ivec3 nxyz ;
          THD_fvec3 fxyz , oxyz ;
+         char *snam = dlist->ar[0] ; /* 10 Mar 2002 */
+
+         if( !THD_is_directory(snam) ) snam = "./" ;
 
          REPORT_PROGRESS("\n*** No datasets or sessions input -- Dummy dataset created.") ;
 
@@ -3036,31 +3988,31 @@ if(PRINT_TRACING)
          new_ss->type   = SESSION_TYPE ;
          new_ss->parent = NULL ;
          BLANK_SESSION(new_ss) ;
-         strcpy( new_ss->sessname , "./" ) ;    /* pretend the dummy session */
-         strcpy( new_ss->lastname , "./" ) ;    /* is the current directory */
+         MCW_strncpy( new_ss->sessname , snam , THD_MAX_NAME ) ; /* pretend dummy session */
+         MCW_strncpy( new_ss->lastname , snam , THD_MAX_NAME ) ; /* is first argv directory */
          GLOBAL_library.sslist->num_sess   = 1 ;
          GLOBAL_library.sslist->ssar[0]    = new_ss ;
          GLOBAL_library.have_dummy_dataset = 1 ;
 
          /** manufacture a minimal dataset **/
 
-         new_ss->num_anat   = 1 ;
-         new_ss->anat[0][0] = EDIT_empty_copy(NULL) ;
+         new_ss->num_dsset   = 1 ;
+         new_ss->dsset[0][0] = EDIT_empty_copy(NULL) ;
          nxyz.ijk[0] = nxyz.ijk[1] = nxyz.ijk[2] = QQ_NXYZ ;
          fxyz.xyz[0] = fxyz.xyz[1] = fxyz.xyz[2] = QQ_FOV / QQ_NXYZ ;
          oxyz.xyz[0] = oxyz.xyz[1] = oxyz.xyz[2] = -0.5 * QQ_FOV ;
-         ii = EDIT_dset_items( new_ss->anat[0][0] ,
-                                 ADN_datum_all      , MRI_byte             ,
-                                 ADN_nxyz           , nxyz                 ,
-                                 ADN_xyzdel         , fxyz                 ,
-                                 ADN_xyzorg         , oxyz                 ,
-                                 ADN_directory_name , "./"                 ,
-                                 ADN_prefix         , "Dummy"              ,
-                                 ADN_nvals          , QQ_NT                ,
-                                 ADN_malloc_type    , DATABLOCK_MEM_MALLOC ,
-                                 ADN_type           , HEAD_ANAT_TYPE       ,
-                                 ADN_view_type      , VIEW_ORIGINAL_TYPE   ,
-                                 ADN_func_type      , ANAT_EPI_TYPE        ,
+         ii = EDIT_dset_items( new_ss->dsset[0][0] ,
+                                 ADN_datum_all     , MRI_byte            ,
+                                 ADN_nxyz          , nxyz                ,
+                                 ADN_xyzdel        , fxyz                ,
+                                 ADN_xyzorg        , oxyz                ,
+                                 ADN_directory_name, snam                ,
+                                 ADN_prefix        , "Dummy"             ,
+                                 ADN_nvals         , QQ_NT               ,
+                                 ADN_malloc_type   , DATABLOCK_MEM_MALLOC,
+                                 ADN_type          , HEAD_ANAT_TYPE      ,
+                                 ADN_view_type     , VIEW_ORIGINAL_TYPE  ,
+                                 ADN_func_type     , ANAT_EPI_TYPE       ,
 #if QQ_NT > 1
                                  ADN_ntt            , QQ_NT                ,
                                  ADN_ttdel          , 1.0                  ,
@@ -3070,12 +4022,12 @@ if(PRINT_TRACING)
 #endif
                               ADN_none ) ;
          if( ii > 0 ){
-            fprintf(stderr,"\n%d errors creating dummy dataset!\a\n",ii) ;
-            exit(1) ;
+           fprintf(stderr,"\n%d errors creating dummy dataset!\a\n",ii) ;
+           exit(1) ;
          }
-         DSET_lock(new_ss->anat[0][0]) ; /* lock into memory */
+         DSET_lock(new_ss->dsset[0][0]) ; /* lock into memory */
 
-         nbar = DSET_BRICK_BYTES(new_ss->anat[0][0],0) ;
+         nbar = DSET_BRICK_BYTES(new_ss->dsset[0][0],0) ;
 
 #ifdef NO_FRIVOLITIES
          for( jj=0 ; jj < QQ_NT ; jj++ ){
@@ -3083,7 +4035,7 @@ if(PRINT_TRACING)
             bar[0] = (byte) (lrand48()%127) ;
             for( ii=1 ; ii < nbar ; ii++ )
                bar[ii] = bar[ii-1] + lrand48()%(jj+2) ;
-            EDIT_substitute_brick( new_ss->anat[0][0] , jj , MRI_byte , bar ) ;
+            EDIT_substitute_brick( new_ss->dsset[0][0] , jj , MRI_byte , bar ) ;
          }
 #else
         { /* 11 Jun 1999: start of loading RWCOX images into dummy dataset */
@@ -3202,12 +4154,12 @@ if(PRINT_TRACING)
                bar = (byte *) malloc( nbar ) ;
                for( kk=0 ; kk < QQ_NXYZ ; kk++ )
                   memcpy( bar + kk*QQ_NXYZ*QQ_NXYZ , rwcox[jj%6] , QQ_NXYZ*QQ_NXYZ ) ;
-               EDIT_substitute_brick( new_ss->anat[0][0] , jj , MRI_byte , bar ) ;
+               EDIT_substitute_brick( new_ss->dsset[0][0] , jj , MRI_byte , bar ) ;
             }
           } /* end of loading RWCOX */
 #endif
 
-         PARENTIZE( new_ss->anat[0][0] , NULL ) ;
+         PARENTIZE( new_ss->dsset[0][0] , NULL ) ;
 
       } else {  /* 04 Jan 2000: show total number of datasets */
 
@@ -3241,20 +4193,24 @@ STATUS("reading timeseries files") ;
          then, make any datasets that don't exist but logically
          descend from the warp and anatomy parents just assigned */
 
-STATUS("checking idcodes for duplicates") ;
+      if( !GLOBAL_library.have_dummy_dataset ){
 
-      THD_check_idcodes( GLOBAL_library.sslist ) ;     /* 08 Jun 1999 */
+        STATUS("checking idcodes for duplicates") ;
+        THD_check_idcodes( GLOBAL_library.sslist ) ;     /* 08 Jun 1999 */
 
-STATUS("reconciling parent pointers") ;
+        STATUS("reconciling parent pointers") ;
+        THD_reconcile_parents( GLOBAL_library.sslist ) ;
 
-      THD_reconcile_parents( GLOBAL_library.sslist ) ; /* parents from .HEAD files */
+        STATUS("forcible adoption of unparented datasets") ;
+        for( id=0 ; id < GLOBAL_library.sslist->num_sess ; id++ ){ /* functions w/o parents, */
+          new_ss = GLOBAL_library.sslist->ssar[id] ;               /* forcibly get one */
+          AFNI_force_adoption( new_ss , GLOBAL_argopt.warp_4D ) ;
+       }
 
-STATUS("forcible adoption of unparented datasets") ;
+      } /* end of if don't have dummy dataset */
 
-      for( id=0 ; id < GLOBAL_library.sslist->num_sess ; id++ ){  /* functions w/o parents, */
-         new_ss = GLOBAL_library.sslist->ssar[id] ;               /* forcibly get one */
-         AFNI_force_adoption( new_ss , GLOBAL_argopt.warp_4D ) ;
-      }
+      if( GLOBAL_library.session != NULL )
+         AFNI_force_adoption( GLOBAL_library.session , GLOBAL_argopt.warp_4D ) ;
 
 STATUS("making descendant datasets") ;
 
@@ -3342,27 +4298,13 @@ STATUS("reading commandline dsets") ;
             nds++ ;   /* increment count of dataset */
             REFRESH ;
             vv = dset->view_type ;
-            if( ISANAT(dset) ){
-               nn = new_ss->num_anat ;
-               if( nn >= THD_MAX_SESSION_ANAT ){
-                  fprintf(stderr,"\a\n*** too many anatomical datasets!\n") ;
-                  nerr++ ;
-               } else {
-                  new_ss->anat[nn][vv] = dset ;
-                  new_ss->num_anat++ ;
-               }
-            } else if( ISFUNC(dset) ){
-               nn = new_ss->num_func ;
-               if( nn >= THD_MAX_SESSION_FUNC ){
-                  fprintf(stderr,"\a\n*** too many functional datasets!\n") ;
-                  nerr++ ;
-               } else {
-                  new_ss->func[nn][vv] = dset ;
-                  new_ss->num_func++ ;
-               }
+            nn = new_ss->num_dsset ;
+            if( nn >= THD_MAX_SESSION_SIZE ){
+              fprintf(stderr,"\a\n*** too many datasets!\n") ;
+              nerr++ ;
             } else {
-               fprintf(stderr,"\a\n*** Unrecognized dataset type: %s\n",argv[ii]);
-               nerr++ ;
+              new_ss->dsset[nn][vv] = dset ;
+              new_ss->num_dsset ++ ;
             }
          } /* end of loop over dd=datasets in dsar */
 
@@ -3375,9 +4317,8 @@ STATUS("reading commandline dsets") ;
       }
 
       sprintf(str,"\n dataset count = %d" , nds ) ;
-      if( nds == 0 ) exit(1) ;
-      if( new_ss->num_anat == 0 ){
-         fprintf(stderr,"\n*** No anatomical datasets in the list!\n") ;
+      if( new_ss->num_dsset == 0 ){
+         fprintf(stderr,"\n*** No datasets read from the list!\n") ;
          exit(1) ;
       }
       REPORT_PROGRESS(str) ;
@@ -3547,6 +4488,11 @@ ENTRY("AFNI_closedown_3dview") ;
    im3d->anat_now = im3d->fim_now = NULL ;
 
    AFNI_purge_unused_dsets() ;
+
+   /* 19 Aug 2002: close surface widgets, too */
+
+   if( im3d->vwid->view->swid != NULL )
+     XtUnmapWidget( im3d->vwid->view->swid->wtop ) ;
 
    MPROBE ;
    EXRETURN ;
@@ -3761,103 +4707,6 @@ ENTRY("AFNI_crosshair_gap_CB") ;
    EXRETURN ;
 }
 
-/*-----------------------------------------------------------------------
-    03 Nov 1998: allow locking of time index
--------------------------------------------------------------------------*/
-
-void AFNI_time_lock_change_CB( Widget w , XtPointer cd , XtPointer calld )
-{
-   Three_D_View * im3d = (Three_D_View *) cd ;
-   Three_D_View * qq3d ;
-   int            bval , ii , bold ;
-
-ENTRY("AFNI_time_lock_change_CB") ;
-
-   if( ! IM3D_VALID(im3d) ) EXRETURN ;
-
-   /* get current global setting and compare to changed lock box */
-
-   bold = GLOBAL_library.time_lock ;
-   bval = MCW_val_bbox( im3d->vwid->dmode->time_lock_bbox ) ;
-   if( bval == bold ) EXRETURN ;                     /* same --> nothing to do */
-
-   /* new value --> save in global setting */
-
-   GLOBAL_library.time_lock = bval ;
-
-   /* set all other controller lock boxes to the same value */
-
-   for( ii=0 ; ii < MAX_CONTROLLERS ; ii++ ){
-      qq3d = GLOBAL_library.controllers[ii] ;
-      if( qq3d == im3d || ! IM3D_VALID(qq3d) ) continue ;
-
-      MCW_set_bbox( qq3d->vwid->dmode->time_lock_bbox , bval ) ;
-   }
-   RESET_AFNI_QUIT(im3d) ;
-   EXRETURN ;
-}
-
-/*------------------------------------------------------------------------*/
-
-void AFNI_time_lock_carryout( Three_D_View * im3d )
-{
-   Three_D_View * qq3d ;
-   MCW_arrowval * tav ;
-   int new_index , qq_index , qq_top , cc , glock , ii ;
-   static int busy = 0 ;  /* !=0 if this routine is "busy" */
-
-ENTRY("AFNI_time_lock_carryout") ;
-
-   /* first, determine if there is anything to do */
-
-   glock = GLOBAL_library.controller_lock ;
-
-   if( busy )                       EXRETURN ;  /* routine already busy */
-   if( glock == 0 )                 EXRETURN ;  /* nothing to do */
-   if( !IM3D_OPEN(im3d) )           EXRETURN ;  /* bad input */
-   if( GLOBAL_library.ignore_lock ) EXRETURN ;  /* ordered not to do anything */
-   if( ! GLOBAL_library.time_lock ) EXRETURN ;  /* don't lock time */
-
-   ii = AFNI_controller_index(im3d) ;           /* which one am I? */
-
-   if( ii < 0 ) EXRETURN ;                      /* nobody? bad input! */
-   if( ((1<<ii) & glock) == 0 ) EXRETURN ;      /* input not locked */
-
-   /* something to do? */
-
-   busy = 1 ;  /* don't let this routine be called recursively */
-
-   /* load time index of this controller => all others get this value, too*/
-
-   new_index = im3d->vinfo->time_index ;
-
-   /* loop through other controllers:
-        for those that ARE open, ARE NOT the current
-        one, and ARE locked, jump to the new time index */
-
-   for( cc=0 ; cc < MAX_CONTROLLERS ; cc++ ){
-
-      qq3d = GLOBAL_library.controllers[cc] ; /* controller */
-
-      if( IM3D_OPEN(qq3d) && qq3d != im3d && ((1<<cc) & glock) != 0 ){
-
-         qq_index = qq3d->vinfo->time_index ;                /* old index */
-         qq_top   = DSET_NUM_TIMES(qq3d->anat_now) ;         /* range allowed */
-
-         if( qq_top > 1 && qq_index != new_index ){
-            tav = qq3d->vwid->imag->time_index_av ;
-            AV_assign_ival( tav , new_index ) ;              /* will check range */
-            if( tav->ival != qq_index )
-               AFNI_time_index_CB( tav , (XtPointer) qq3d ) ;
-         }
-
-      }
-   }
-
-   busy = 0 ;  /* OK, let this routine be activated again */
-   EXRETURN ;
-}
-
 /*------------------------------------------------------------------------*/
 
 void AFNI_time_index_CB( MCW_arrowval * av ,  XtPointer client_data )
@@ -3870,17 +4719,36 @@ ENTRY("AFNI_time_index_CB") ;
    if( ! IM3D_VALID(im3d) ) EXRETURN ;
 
    ipx = av->ival ;
-   if( ipx >= im3d->vinfo->top_index )
+   if( ipx >= im3d->vinfo->top_index )    /* don't let index be too big */
       ipx = im3d->vinfo->top_index - 1 ;
 
-   if( im3d->vinfo->time_index != ipx ){
-      im3d->vinfo->time_index = ipx ;
+   im3d->vinfo->time_index = ipx ;        /* change time index */
+
+   /* 29 Jul 2003: slave underlay and overlay to time_index (maybe) */
+
+   im3d->vinfo->anat_index = ipx ;
+   if( im3d->vinfo->anat_index >= DSET_NVALS(im3d->anat_now) )
+     im3d->vinfo->anat_index = DSET_NVALS(im3d->anat_now) - 1 ;
+   AV_assign_ival( im3d->vwid->func->anat_buck_av , im3d->vinfo->anat_index ) ;
+
+   if( ISVALID_DSET(im3d->fim_now) &&
+       HAS_TIMEAXIS(im3d->fim_now) && !AFNI_noenv("AFNI_SLAVE_FUNCTIME") ){
+     im3d->vinfo->fim_index = ipx ;
+     if( im3d->vinfo->fim_index >= DSET_NVALS(im3d->fim_now) )
+       im3d->vinfo->fim_index = DSET_NVALS(im3d->fim_now) - 1 ;
+     AV_assign_ival( im3d->vwid->func->fim_buck_av , im3d->vinfo->fim_index ) ;
    }
 
    im3d->vinfo->tempflag = 1 ;
-   AFNI_modify_viewing( im3d , False ) ;
+   AFNI_modify_viewing( im3d , False ) ;  /* setup new bricks to view */
+
+   if( ISVALID_DSET(im3d->fim_now)       &&   /* if time index on */
+       DSET_NUM_TIMES(im3d->fim_now) > 1   )  /* function changed */
+     AFNI_process_funcdisplay( im3d ) ;       /* notify receivers */
 
    AFNI_time_lock_carryout( im3d ) ;  /* 03 Nov 1998 */
+   AFNI_process_timeindex ( im3d ) ;  /* 29 Jan 2003 */
+
    RESET_AFNI_QUIT(im3d) ;
    EXRETURN ;
 }
@@ -3894,7 +4762,17 @@ static char * AFNI_image_help =
  "Button 3: Pop up image menu\n\n"
  "Shift/Ctrl/Alt + Button 3\n"
  "will open up the Disp/Mont/Save\n"
- "control panels, respectively." ;
+ "control panels, respectively.\n\n"
+ "Shift+Button2: drag crop region\n\n"
+ "q = close window (=Done)\n"
+ "z = zoom out  Z = zoom in\n"
+ "p = panning mode on & off\n"
+ "> = Page Up   = forward 1 image\n"
+ "< = Page Down = backward 1 image\n"
+ "v/V = Video up/down\n"
+ "r/R = Ricochet up/down\n"
+ "Left/Right/Up/Down arrow keys\n"
+ "  move crosshairs OR pan image\n" ;
 
 static char * AFNI_arrowpad_help =
    "Click arrows to scroll crosshair position\n"
@@ -3920,6 +4798,7 @@ void AFNI_view_xyz_CB( Widget w ,
    Widget        groff , gr_xyz , gr_yzx , gr_zxy ;
    FD_brick    * brnew ;
    int mirror=0 ;
+   int m2m=0 ;     /* 04 Nov 2003 */
 
 ENTRY("AFNI_view_xyz_CB") ;
 
@@ -3968,6 +4847,8 @@ ENTRY("AFNI_view_xyz_CB") ;
 
     /* button pressed and window not open, so prepare to open it */
 
+    m2m = AFNI_yesenv("AFNI_IMAGE_MINTOMAX") ;
+
     if( w == pb_xyz && sxyz == NULL ){
        snew  = &(im3d->s123) ;
        brnew = im3d->b123_ulay ;
@@ -4007,7 +4888,7 @@ ENTRY("AFNI_view_xyz_CB") ;
 
     /** Mar 1997: don't open if x or y dimension is 1 **/
 
-    if( brnew->n1 < 2 || brnew->n2 < 2 ) EXRETURN  ;
+    if( snew != NULL && (brnew->n1 < 2 || brnew->n2 < 2) ) EXRETURN  ;
 
     SHOW_AFNI_PAUSE ;
 
@@ -4022,27 +4903,44 @@ STATUS("opening an image window") ;
 
       drive_MCW_imseq( *snew, isqDR_imhelptext, (XtPointer) AFNI_image_help ) ;
       drive_MCW_imseq( *snew, isqDR_arrowpadon, (XtPointer) AFNI_arrowpad_help ) ;
-      drive_MCW_imseq( *snew, isqDR_arrowpadhint , (XtPointer) AFNI_arrowpad_hint ) ;
+      drive_MCW_imseq( *snew, isqDR_arrowpadhint , (XtPointer) AFNI_arrowpad_hint );
+STATUS("realizing new image viewer") ;
+      drive_MCW_imseq( *snew, isqDR_ignore_redraws, (XtPointer) 1 ) ; /* 16 Aug 2002 */
       drive_MCW_imseq( *snew, isqDR_realize, NULL ) ;
       drive_MCW_imseq( *snew, isqDR_title, (XtPointer) im3d->window_title ) ;
       drive_MCW_imseq( *snew, isqDR_periodicmont,
                       (XtPointer)(int) im3d->vinfo->xhairs_periodic );
 
-STATUS("realizing new image viewer") ;
-
-      drive_MCW_imseq( *snew, isqDR_realize, NULL ) ;
-
       /* 09 Oct 1998: force L-R mirroring on axial and coronal images? */
+      /* 04 Nov 2003: or min-to-max on grayscaling? */
 
-      if( mirror ){
+      if( mirror | m2m ){
          ISQ_options opt ;
 
 STATUS("setting image view to be L-R mirrored") ;
 
          ISQ_DEFAULT_OPT(opt) ;
-         opt.mirror = TRUE ;
+         if( mirror ) opt.mirror = TRUE ;
+         if( m2m    ) opt.scale_range = ISQ_RNG_MINTOMAX ;
          drive_MCW_imseq( *snew,isqDR_options  ,(XtPointer) &opt ) ;
       }
+
+#if 0
+      /* 23 Jan 2003: set opacity? */
+
+      { char *eee = getenv("AFNI_DEFAULT_OPACITY") ;
+        if( eee != NULL ){
+          int opval = (int) strtod( eee , NULL ) ;
+          if( opval > 0 && opval <= 9 )
+            drive_MCW_imseq( *snew , isqDR_setopacity , (XtPointer)opval ) ;
+        }
+      }
+
+      /* 23 Jan 2003: set default save? */
+
+      drive_MCW_imseq( *snew , isqDR_setimsave ,
+                       (XtPointer)getenv("AFNI_DEFAULT_IMSAVE") ) ;
+#endif
 
 #ifdef USE_SIDES
 #define LL 0
@@ -4070,7 +4968,6 @@ STATUS("setting image view to be L-R mirrored") ;
 STATUS("setting image viewer 'sides'") ;
 
          drive_MCW_imseq( *snew,isqDR_winfosides,(XtPointer)ws ) ;
-
       }
 #undef LL
 #undef RR
@@ -4090,10 +4987,20 @@ STATUS("setting image viewer 'sides'") ;
          else if( w == pb_yzx ) pm = afni48sag_pixmap ;
          else if( w == pb_zxy ) pm = afni48cor_pixmap ;
 
-         drive_MCW_imseq( *snew,isqDR_icon , (XtPointer) pm ) ;
+         drive_MCW_imseq( *snew, isqDR_icon , (XtPointer) pm ) ;
       }
 #endif
-    }
+      { int ii=AFNI_controller_index(im3d) ;
+        if( ii >= 0 )
+         drive_MCW_imseq( *snew, isqDR_bgicon, (XtPointer)afni16_pixmap[ii] ) ;
+      }
+
+      drive_MCW_imseq( *snew, isqDR_ignore_redraws, (XtPointer) 0 ) ; /* 16 Aug 2002 */
+
+      AFNI_view_setter ( im3d , *snew ) ;
+      AFNI_range_setter( im3d , *snew ) ;  /* 04 Nov 2003 */
+
+    } /* end of creating a new image viewer */
 
     /** Don't forget to send information like the reference timeseries ... **/
 
@@ -4116,21 +5023,24 @@ STATUS("opening a graph window") ;
        if( mirror )                                            /* 12 Jul 2000 */
           drive_MCW_grapher( gr , graDR_mirror , (XtPointer) 1 ) ;
 
-STATUS("realizing new grapher") ;
-
-       drive_MCW_grapher( gr , graDR_realize , NULL ) ;
-
        /* 07 Aug 2001: set global baseline level, if possible */
 
        if( ISVALID_STATISTIC(brnew->dset->stats) ){
-          float vbot=WAY_BIG ; int ii ;
-          for( ii=0 ; ii < brnew->dset->stats->nbstat ; ii++ )
+         char *eee = getenv( "AFNI_GRAPH_GLOBALBASE" ) ;  /* 08 Mar 2002 */
+         if( eee == NULL ){                               /* skip this? */
+           float vbot=WAY_BIG ; int ii ;
+           for( ii=0 ; ii < brnew->dset->stats->nbstat ; ii++ )
              if( ISVALID_BSTAT(brnew->dset->stats->bstat[ii]) )
-                vbot = MIN( vbot , brnew->dset->stats->bstat[ii].min ) ;
+               vbot = MIN( vbot , brnew->dset->stats->bstat[ii].min ) ;
 
-          if( vbot < WAY_BIG )
-            drive_MCW_grapher( gr, graDR_setglobalbaseline, (XtPointer)&vbot );
+           if( vbot < WAY_BIG )
+             drive_MCW_grapher( gr, graDR_setglobalbaseline, (XtPointer)&vbot );
+         }
        }
+
+STATUS("realizing new grapher") ;
+
+       drive_MCW_grapher( gr , graDR_realize , NULL ) ;
 
        *gnew = gr ;
        (*gnew)->parent = (XtPointer) im3d ;
@@ -4146,11 +5056,11 @@ STATUS("realizing new grapher") ;
          drive_MCW_grapher( gr , graDR_icon , (XtPointer) pm ) ;
       }
 #endif
-    }
+    } /* end of creating a new graph viewer */
 
    /*-- force a jump to the viewpoint of the current location --*/
 
-   AFNI_set_viewpoint( im3d , -1,-1,-1 , REDISPLAY_OVERLAY ) ;
+   AFNI_set_viewpoint( im3d , -1,-1,-1 , REDISPLAY_ALL ) ;
 
    SHOW_AFNI_READY ;
    RESET_AFNI_QUIT(im3d) ;
@@ -4159,202 +5069,100 @@ STATUS("realizing new grapher") ;
    EXRETURN ;
 }
 
-/*-----------------------------------------------------------------------
-   The following routines for "locks" were added 04 Nov 1996
--------------------------------------------------------------------------*/
+/*------------------------------------------------------------------------*/
 
-void AFNI_lock_enforce_CB( Widget w , XtPointer cd , XtPointer calld )
+void AFNI_redisplay_func( Three_D_View * im3d )  /* 05 Mar 2002 */
 {
-   Three_D_View * im3d = (Three_D_View *) cd ;
-
-ENTRY("AFNI_lock_enforce_CB") ;
-   AFNI_lock_carryout( im3d ) ;
-   AFNI_time_lock_carryout( im3d ) ;  /* 03 Nov 1998 */
-   RESET_AFNI_QUIT(im3d) ;
-   EXRETURN ;
+   AFNI_set_viewpoint( im3d , -1,-1,-1 , REDISPLAY_OVERLAY ) ;
+   AFNI_process_funcdisplay( im3d ) ;
 }
 
-void AFNI_lock_change_CB( Widget w , XtPointer cd , XtPointer calld )
+/*------------------------------------------------------------------------*/
+
+void AFNI_do_bkgd_lab( Three_D_View * im3d )
 {
-   Three_D_View * im3d = (Three_D_View *) cd ;
-   Three_D_View * qq3d ;
-   int            bval , ii , bold ;
+   char str[256] ;
 
-ENTRY("AFNI_lock_change_CB") ;
+   if( !IM3D_OPEN(im3d) || !im3d->vwid->imag->do_bkgd_lab ) return ;
 
-   if( ! IM3D_VALID(im3d) ) EXRETURN ;
+#define VSTR(x) ( ((x)[0] == '\0') ? ("?") : (x) )
 
-   /* get current global setting and compare to changed lock box */
+   sprintf(str,"ULay = %s\n"
+               "OLay = %s\n"
+               "Thr  = %s" ,
+           VSTR(im3d->vinfo->anat_val),
+           VSTR(im3d->vinfo->func_val),
+           VSTR(im3d->vinfo->thr_val ) ) ;
 
-   bold = GLOBAL_library.controller_lock ;
-   bval = MCW_val_bbox( im3d->vwid->dmode->lock_bbox ) ;
-   if( bval == bold ) EXRETURN ;                     /* same --> nothing to do */
+#undef VSTR
 
-   /* new value --> save in global setting */
-
-   GLOBAL_library.controller_lock = bval ;
-
-   /* set all other controller lock boxes to the same value */
-
-   for( ii=0 ; ii < MAX_CONTROLLERS ; ii++ ){
-      qq3d = GLOBAL_library.controllers[ii] ;
-      if( qq3d == im3d || ! IM3D_VALID(qq3d) ) continue ;
-
-      MCW_set_bbox( qq3d->vwid->dmode->lock_bbox , bval ) ;
-   }
-   RESET_AFNI_QUIT(im3d) ;
-   EXRETURN ;
+   MCW_set_widget_label( im3d->vwid->func->bkgd_lab , str ) ;
+   XtManageChild( im3d->vwid->func->bkgd_lab ) ;
+   FIX_SCALE_SIZE(im3d) ;
 }
 
-void AFNI_lock_clear_CB( Widget w , XtPointer cd , XtPointer calld )
+/*------------------------------------------------------------------------*/
+/*! Set the grayscale range in the image window, maybe.  [04 Nov 2003]
+--------------------------------------------------------------------------*/
+
+void AFNI_range_setter( Three_D_View *im3d , MCW_imseq *seq )
 {
-   Three_D_View * qq3d ;
-   int ii ;
+   float rng[3] = { 0.0f, 0.0f, 0.0f } ;
+   int ival ;
+   FD_brick *br ;
+   THD_3dim_dataset *ds ;
 
-ENTRY("AFNI_lock_clear_CB") ;
+   if( !IM3D_OPEN(im3d) || !ISQ_VALID(seq)    ) return ;
+   if( !AFNI_yesenv("AFNI_IMAGE_GLOBALRANGE") ) return ;
 
-   GLOBAL_library.controller_lock = 0 ;
-   for( ii=0 ; ii < MAX_CONTROLLERS ; ii++ ){
-      qq3d = GLOBAL_library.controllers[ii] ;
-      if( IM3D_VALID(qq3d) )
-         MCW_set_bbox( qq3d->vwid->dmode->lock_bbox , 0 ) ;
+   br = (FD_brick *)im3d->b123_ulay ; if( br == NULL ) return ;
+   ds = br->dset ;                    if( ds == NULL ) return ;
+
+   if( EQUIV_DSETS(ds,im3d->anat_now) )      /* underlay dataset */
+     ival = im3d->vinfo->anat_index ;
+   else if( EQUIV_DSETS(ds,im3d->fim_now) )  /* overlay dataset */
+     ival = im3d->vinfo->fim_index ;
+   else
+     ival = 0 ;                              /* shouldn't happen */
+
+   if( ISVALID_STATISTIC(ds->stats) && ISVALID_BSTAT(ds->stats->bstat[ival]) ){
+     rng[0] = ds->stats->bstat[ival].min ;
+     rng[1] = ds->stats->bstat[ival].max ;
    }
-   EXRETURN ;
+
+   drive_MCW_imseq( seq , isqDR_setrange , (XtPointer) rng ) ;
+   return ;
 }
 
-void AFNI_lock_setall_CB( Widget w , XtPointer cd , XtPointer calld )
+/*------------------------------------------------------------------------*/
+/*! Define the view_setter code, which says which image viewer plane
+    was used to set the current viewpoint.  [26 Feb 2003]
+--------------------------------------------------------------------------*/
+
+void AFNI_view_setter( Three_D_View *im3d , MCW_imseq *seq )
 {
-   Three_D_View * qq3d ;
-   int ii ;
+   MCW_imseq *sxyz, *syzx, *szxy ;
+   int val=-1 ;
 
-ENTRY("AFNI_lock_setall_CB") ;
+   if( !IM3D_OPEN(im3d) ) return ;
 
-   GLOBAL_library.controller_lock = 0 ;
-   for( ii=0 ; ii < MAX_CONTROLLERS ; ii++ )
-      GLOBAL_library.controller_lock |= (1<<ii) ;
+   sxyz = im3d->s123 ; syzx = im3d->s231 ; szxy = im3d->s312 ;
 
-   for( ii=0 ; ii < MAX_CONTROLLERS ; ii++ ){
-      qq3d = GLOBAL_library.controllers[ii] ;
-      if( IM3D_VALID(qq3d) )
-         MCW_set_bbox( qq3d->vwid->dmode->lock_bbox ,
-                       GLOBAL_library.controller_lock ) ;
-   }
-   EXRETURN ;
-}
-
-void AFNI_lock_carryout( Three_D_View * im3d )
-{
-   Three_D_View * qq3d ;
-   int ii,jj,kk , cc , glock ;
-   THD_fvec3 old_fv , fv ;
-   THD_ivec3 iv ;
-   THD_dataxes * qaxes , * daxes ;
-   static int busy = 0 ;  /* !=0 if this routine is "busy" */
-
-ENTRY("AFNI_lock_carryout") ;
-
-   /* first, determine if there is anything to do */
-
-   glock = GLOBAL_library.controller_lock ;
-
-   if( busy )                       EXRETURN ;  /* routine already busy */
-   if( glock == 0 )                 EXRETURN ;  /* nothing to do */
-   if( !IM3D_OPEN(im3d) )           EXRETURN ;  /* bad input */
-   if( GLOBAL_library.ignore_lock ) EXRETURN ;  /* ordered not to do anything */
-
-   ii = AFNI_controller_index(im3d) ;           /* which one am I? */
-
-   if( ii < 0 ) EXRETURN ;                      /* nobody? bad input! */
-   if( ((1<<ii) & glock) == 0 ) EXRETURN ;      /* input not locked */
-
-   /* something to do? */
-
-   busy = 1 ;  /* don't let this routine be called recursively */
-
-   /* load Dicom location of current point of view in this controller */
-
-   LOAD_FVEC3( old_fv , im3d->vinfo->xi, im3d->vinfo->yj, im3d->vinfo->zk ) ;
-
-   LOAD_ANAT_VIEW(im3d) ;  /* prepare coordinates */
-   daxes = CURRENT_DAXES(im3d->anat_now) ;
-
-   /* loop through other controllers:
-        for those that ARE open, ARE NOT the current one,
-        and ARE locked, transform the above vector to the
-        controller's dataset, and then jump to that point */
-
-   for( cc=0 ; cc < MAX_CONTROLLERS ; cc++ ){
-
-      qq3d = GLOBAL_library.controllers[cc] ; /* controller */
-
-      if( IM3D_OPEN(qq3d) && qq3d != im3d && ((1<<cc) & glock) != 0 ){
-
-         LOAD_ANAT_VIEW(qq3d) ;  /* prepare coordinates */
-         qaxes = CURRENT_DAXES(qq3d->anat_now) ;
-
-         if( !GLOBAL_library.ijk_lock ){  /* xyz coord lock */
-
-            fv = AFNI_transform_vector( im3d->anat_now, old_fv, qq3d->anat_now ) ;
-            fv = THD_dicomm_to_3dmm( qq3d->anat_now , fv ) ;
-            iv = THD_3dmm_to_3dind ( qq3d->anat_now , fv ) ;
-            ii = iv.ijk[0] ; jj = iv.ijk[1] ; kk = iv.ijk[2] ;
-
-         } else {   /* 11 Sep 2000: ijk index lock */
-
-            ii = im3d->vinfo->i1 * qaxes->nxx / daxes->nxx ;
-            jj = im3d->vinfo->j2 * qaxes->nyy / daxes->nyy ;
-            kk = im3d->vinfo->k3 * qaxes->nzz / daxes->nzz ;
-         }
-
-         /* if have good new ijk coords, jump to them */
-
-         if( ii >= 0 && ii < qaxes->nxx &&
-             jj >= 0 && jj < qaxes->nyy && kk >= 0 && kk < qaxes->nzz   ){
-
-            SAVE_VPT(qq3d) ;
-            AFNI_set_viewpoint( qq3d , ii,jj,kk , REDISPLAY_ALL ) ; /* jump */
-         }
-      }
+   if( !ISQ_REALZ(seq) ){
+     int code = 4*(sxyz!=NULL) + 2*(syzx!=NULL) + (szxy!=NULL) ;
+     switch(code){
+       case 4: val = AXIAL   ; break ;
+       case 2: val = SAGITTAL; break ;
+       case 1: val = CORONAL ; break ;
+     }
+   } else {
+          if( seq == sxyz ) val = AXIAL   ;
+     else if( seq == syzx ) val = SAGITTAL;
+     else if( seq == szxy ) val = CORONAL ;
    }
 
-   busy = 0 ;  /* OK, let this routine be activated again */
-   EXRETURN ;
-}
-
-/*-----------------------------------------------------------------------
-    11 Sep 2000: allow locking using ijk instead of xyz
--------------------------------------------------------------------------*/
-
-void AFNI_ijk_lock_change_CB( Widget w , XtPointer cd , XtPointer calld )
-{
-   Three_D_View * im3d = (Three_D_View *) cd ;
-   Three_D_View * qq3d ;
-   int            bval , ii , bold ;
-
-ENTRY("AFNI_ijk_lock_change_CB") ;
-
-   if( ! IM3D_VALID(im3d) ) EXRETURN ;
-
-   /* get current global setting and compare to changed lock box */
-
-   bold = GLOBAL_library.ijk_lock ;
-   bval = MCW_val_bbox( im3d->vwid->dmode->ijk_lock_bbox ) ;
-   if( bval == bold ) EXRETURN ;                     /* same --> nothing to do */
-
-   /* new value --> save in global setting */
-
-   GLOBAL_library.ijk_lock = bval ;
-
-   /* set all other controller lock boxes to the same value */
-
-   for( ii=0 ; ii < MAX_CONTROLLERS ; ii++ ){
-      qq3d = GLOBAL_library.controllers[ii] ;
-      if( qq3d == im3d || ! IM3D_VALID(qq3d) ) continue ;
-
-      MCW_set_bbox( qq3d->vwid->dmode->ijk_lock_bbox , bval ) ;
-   }
-   RESET_AFNI_QUIT(im3d) ;
-   EXRETURN ;
+   im3d->vinfo->view_setter = val ;
+   return ;
 }
 
 /*------------------------------------------------------------------------*/
@@ -4402,10 +5210,14 @@ if(PRINT_TRACING)
    new_xyz =
     do_lock = !( i1 == old_i1 && j2 == old_j2 && k3 == old_k3 ) ;  /* 11 Nov 1996 */
 
-   if( !redisplay_option && !new_xyz ) EXRETURN ;
+   if( !redisplay_option && !new_xyz ) EXRETURN;
 
    isq_driver = (redisplay_option == REDISPLAY_ALL) ? isqDR_display
                                                     : isqDR_overlay ;
+
+   if( !AFNI_noenv("AFNI_VALUE_LABEL") && new_xyz &&
+       (im3d->s123 == NULL || im3d->s231 == NULL || im3d->s312 == NULL) )
+     isq_driver = isqDR_display ;         /* 08 Mar 2002 */
 
    LOAD_IVEC3(old_id,old_i1,old_j2,old_k3) ;
    LOAD_IVEC3(new_id,    i1,    j2,    k3) ;
@@ -4424,10 +5236,12 @@ DUMP_IVEC3("  new_id",new_id) ;
       im3d->vinfo->zk = fv.xyz[2] ;
    }
 
-#ifdef ALLOW_BKGD_LAB
+   /* clear labels */
+
    im3d->vinfo->func_val[0] = im3d->vinfo->thr_val[0] = '\0' ;
-   if( do_lock || isq_driver==isqDR_display ) im3d->vinfo->anat_val[0] = '\0' ;
-#endif
+   if( do_lock || isq_driver==isqDR_display )
+      im3d->vinfo->anat_val[0] = '\0';
+   if( !AFNI_noenv( "AFNI_VALUE_LABEL") ) AFNI_do_bkgd_lab( im3d ) ;
 
    /*--- redraw images now ---*/
 
@@ -4510,56 +5324,24 @@ DUMP_IVEC3("             new_ib",new_ib) ;
 
    /*--- redraw coordinate display now ---*/
 
-   if( redisplay_option || i1 != old_i1 || j2 != old_j2 || k3 != old_k3 ){
-      XmString xstr ;
-      Boolean same ;
-
-      xstr = AFNI_crosshair_label( im3d ) ;
-      same = XmStringCompare( xstr , im3d->vinfo->old_crosshair_label ) ;
-
-      if( same == False ){
-         XtVaSetValues( im3d->vwid->imag->crosshair_label ,       /* redisplay */
-                           XmNlabelString , xstr ,                /* if changed */
-                        NULL ) ;
-         MCW_expose_widget( im3d->vwid->imag->crosshair_label ) ; /* redraw now! */
-         XmStringFree(im3d->vinfo->old_crosshair_label) ;         /* toss old */
-         im3d->vinfo->old_crosshair_label = xstr ;                /* new old */
-      } else {
-         XmStringFree( xstr ) ;  /* was same --> don't need this copy */
-      }
-
-#ifdef ALLOW_BKGD_LAB
-#define VSTR(x) ( ((x)[0] == '\0') ? ("?") : (x) )
-      if( im3d->vwid->imag->do_bkgd_lab ){
-         char str[256] ;
-         sprintf(str,"Anat = %s\n"
-                     "Func = %s\n"
-                     "Thr  = %s" ,
-                 VSTR(im3d->vinfo->anat_val),
-                 VSTR(im3d->vinfo->func_val), VSTR(im3d->vinfo->thr_val) ) ;
-
-         MCW_set_widget_label( im3d->vwid->func->bkgd_lab , str ) ;
-         XtManageChild( im3d->vwid->func->bkgd_lab ) ;
-         FIX_SCALE_SIZE(im3d) ;
-      }
-#undef VSTR
-#endif
+   if( redisplay_option || new_xyz ){
+      AFNI_crosshair_relabel( im3d ) ;  /* 12 Mar 2004: moved this to a function, too */
+      AFNI_do_bkgd_lab( im3d ) ;        /* 08 Mar 2002: moved labelizing to function */
    }
 
    /* 24 Jan 2001: set grapher index based on type of dataset */
 
-   if( DSET_NUM_TIMES(im3d->anat_now) > 1 ){
+#if 0
+   if( DSET_NUM_TIMES(im3d->anat_now) > 1 )
       newti = im3d->vinfo->time_index ;
-   } else if( ISANATBUCKET(im3d->anat_now) ){
+   else
+#endif
       newti = im3d->vinfo->anat_index ;
-   } else {
-      newti = -1 ;
-   }
 
    if( newti >= 0 ){
-      drive_MCW_grapher( im3d->g123, graDR_setindex, (XtPointer)newti );
-      drive_MCW_grapher( im3d->g231, graDR_setindex, (XtPointer)newti );
-      drive_MCW_grapher( im3d->g312, graDR_setindex, (XtPointer)newti );
+     drive_MCW_grapher( im3d->g123, graDR_setindex, (XtPointer)newti );
+     drive_MCW_grapher( im3d->g231, graDR_setindex, (XtPointer)newti );
+     drive_MCW_grapher( im3d->g312, graDR_setindex, (XtPointer)newti );
    }
 
    if( do_lock )                    /* 11 Nov 1996 */
@@ -4569,6 +5351,7 @@ DUMP_IVEC3("             new_ib",new_ib) ;
    /** Mar 1999: do it in an external routine, not here.  **/
 
    if( new_xyz ) AFNI_process_viewpoint( im3d ) ;
+   else          AFNI_process_redisplay( im3d ) ;
 
    if( new_xyz && im3d->vwid->imag->pop_whereami_twin != NULL ){
 
@@ -4582,25 +5365,6 @@ DUMP_IVEC3("             new_ib",new_ib) ;
          free(tlab) ;
       }
    }
-
-#ifdef ALLOW_AGNI                              /* 05 Sep 2001 */
-   if( new_xyz                         &&
-       AGNI_ENABLED                    &&
-       im3d->anat_now->ag_surf != NULL &&
-       im3d->anat_now->ag_vmap != NULL &&
-      !im3d->anat_wod_flag               ){
-
-      int pp = im3d->anat_now->ag_vmap[ i1 + j2*dim1 + k3*dim1*dim2 ] ;
-
-      if( pp >= 0 ){
-        int ll = AGNI_VMAP_LEVEL(pp) ;
-        pp = AGNI_VMAP_UNMASK(pp) ;
-        pp = im3d->anat_now->ag_surf->nod[pp].id ;
-
-        fprintf(stderr,"surface node ID = %d (level %d)\n" , pp,ll ) ;
-      }
-   }
-#endif
 
    EXRETURN ;
 }
@@ -4620,6 +5384,8 @@ MRI_IMAGE * AFNI_overlay( int n , FD_brick * br )
    THD_ivec3 ib ;
    THD_3dim_dataset * dset ;
    FD_brick * br_fim ;
+   int do_xhar ;              /* 22 Mar 2002 */
+   MRI_IMAGE *rgbov = NULL ;  /* 30 Jan 2003 */
 
 ENTRY("AFNI_overlay") ;
 
@@ -4627,9 +5393,11 @@ ENTRY("AFNI_overlay") ;
 
    /*--- check if crosshairs, markers, or functions are visible ---*/
 
+   do_xhar = (im3d->vinfo->crosshair_visible && !AFNI_yesenv("AFNI_CROSSHAIR_LINES")) ;
+
    dset = im3d->anat_now ;
 
-   ovgood = (im3d->vinfo->crosshair_visible == True)                  ||
+   ovgood =  do_xhar                                                  ||
 
             (  dset->markers != NULL       &&
               (dset->markers->numset > 0)  &&
@@ -4639,7 +5407,9 @@ ENTRY("AFNI_overlay") ;
                dset->tagset->num > 0 &&
                (im3d->vwid->marks->tag_visible == True) )             ||
 
+#ifdef ALLOW_DATASET_VLIST
             ( dset->pts != NULL && im3d->vinfo->pts_visible == True ) ||
+#endif
 
             ( im3d->vinfo->func_visible == True )                     ||
 
@@ -4660,6 +5430,9 @@ if(PRINT_TRACING)
    if( im3d->vinfo->func_visible ){
       br_fim = UNDERLAY_TO_OVERLAY(im3d,br) ;
       fov    = AFNI_func_overlay( n , br_fim ) ;
+      if( fov != NULL && fov->kind == MRI_rgb ){ /* 30 Jan 2003: */
+        rgbov = fov ; fov = NULL ;               /* save RGB overlay for later */
+      }
    }
 
    /*----- 25 Jul 2001: get TT atlas overlay, if desired and possible -----*/
@@ -4696,11 +5469,6 @@ STATUS(str) ; }
 STATUS("new overlay is created de novo") ;
       im  = mri_new( br->n1 , br->n2 , MRI_short ) ; ovgood = False ;
       oar = MRI_SHORT_PTR(im) ;
-#ifdef DONT_USE_MEMCPY
-      for( ii=0 ; ii < im->nvox ; ii++ ) oar[ii] = 0 ;  /* blank overlay */
-#else
-      (void) memset( oar , 0 , sizeof(short)*im->nvox ) ;
-#endif
    }
 
    nx     = im->nx ;
@@ -4712,7 +5480,7 @@ STATUS("new overlay is created de novo") ;
 
    /*----- put crosshairs on, if desired -----*/
 
-   if( im3d->vinfo->crosshair_visible ){
+   if( do_xhar ){
       MCW_grapher * grapher = UNDERLAY_TO_GRAPHER(im3d,br) ;
 
       ib = THD_3dind_to_fdind( br ,
@@ -4995,6 +5763,7 @@ if(PRINT_TRACING)
       }
    } /* end if tags to be shown */
 
+#ifdef ALLOW_DATASET_VLIST
    /*----- May 1995: additional points (single pixels) -----*/
 
    if( im3d->vinfo->pts_visible   &&
@@ -5014,10 +5783,24 @@ if(PRINT_TRACING)
          }
       }
    }
+#endif
 
    /*----- return overlay (kill it if nothing happened) -----*/
 
    if( !ovgood ) KILL_1MRI(im) ;
+
+   /* 30 Jan 2003:
+      If the functional overlay is in RGB format,
+      then must meld that with the short color index image */
+
+   if( rgbov != NULL ){
+     if( im != NULL ){
+       MRI_IMAGE *qim ;
+       qim = ISQ_overlay( im3d->dc , rgbov , im , 1.0 ) ;
+       mri_free(rgbov); mri_free(im); rgbov = qim;
+     }
+     im = rgbov ;
+   }
 
    RETURN( im ) ;
 }
@@ -5026,7 +5809,7 @@ if(PRINT_TRACING)
 
 XmString AFNI_crosshair_label( Three_D_View * im3d )
 {
-   char buf[64] ;
+   char buf[128] ;
    XmString xstr ;
    static char * RR="[R]" , * LL="[L]" ,
                * PP="[P]" , * AA="[A]" ,
@@ -5039,7 +5822,12 @@ ENTRY("AFNI_crosshair_label") ;
    if( ! IM3D_VALID(im3d) ) RETURN( NULL );
 
    if( ! IM3D_OPEN(im3d) ){
-      sprintf(buf,"1234567890123456789\n1234567890123456789\n1234567890123456789") ;
+
+      buf[0] = '\0' ;
+      if( im3d->type != AFNI_IMAGES_VIEW ) strcat(buf," \n") ;
+      strcat(buf, "1234567890123456789\n"
+                  "1234567890123456789\n"
+                  "1234567890123456789"  ) ;
 
    } else if( im3d->type == AFNI_IMAGES_VIEW || im3d->vinfo->show_voxind ){
 
@@ -5069,7 +5857,7 @@ STATUS("voxel indexes") ;
                   im3d->vinfo->i1 , im3d->vinfo->j2 , im3d->vinfo->k3  ) ;
       }
    } else {
-      char bxyz[3][32] ;
+      char bxyz[3][32] , *cname ;
 
 STATUS("voxel coordinates") ;
 
@@ -5092,7 +5880,15 @@ STATUS("voxel coordinates") ;
       sprintf( bxyz[2] , "=%9.3f mm %s" ,
                GLOBAL_library.cord.zzsign * zval , zz ) ;
 
-      sprintf( buf , "x %17s\ny %17s\nz %17s"   ,
+      if( strcmp(GLOBAL_library.cord.orcode,"RAI") == 0 )
+        cname = "=DICOM" ;
+      else if( strcmp(GLOBAL_library.cord.orcode,"LPI") == 0 )
+        cname = "=SPM  " ;
+      else
+        cname = "      " ;
+
+      sprintf( buf , "[order: %s%s]\nx %17s\ny %17s\nz %17s"   ,
+               GLOBAL_library.cord.orcode       , cname ,
                bxyz[GLOBAL_library.cord.first]  ,
                bxyz[GLOBAL_library.cord.second] ,
                bxyz[GLOBAL_library.cord.third]   ) ;
@@ -5172,8 +5968,9 @@ ENTRY("AFNI_marktog_CB") ;
       }
    }
 
-   if( im3d->anat_now->markers->numset > 0 )
+   if( im3d->anat_now->markers->numset > 0 ){
       AFNI_set_viewpoint( im3d , xx,yy,zz , REDISPLAY_OVERLAY ) ;  /* redraw */
+   }
 
    RESET_AFNI_QUIT(im3d) ;
    EXRETURN ;
@@ -5567,10 +6364,10 @@ ENTRY("AFNI_purge_dsets") ;
 
       /*-- for each anat dataset in the session --*/
 
-      for( idd=0 ; idd < sess->num_anat ; idd++ ){
+      for( idd=0 ; idd < sess->num_dsset ; idd++ ){
          for( ivv=FIRST_VIEW_TYPE ; ivv <= LAST_VIEW_TYPE ; ivv++ ){
 
-            dset = sess->anat[idd][ivv] ;
+            dset = sess->dsset[idd][ivv] ;
             if( dset == NULL ) continue ;
             if( doall ){ PURGE_DSET(dset) ; continue ; }
 
@@ -5579,29 +6376,9 @@ ENTRY("AFNI_purge_dsets") ;
             for( icc=0 ; icc < MAX_CONTROLLERS ; icc++ ){
                im3d = GLOBAL_library.controllers[icc] ;
                if( IM3D_VALID(im3d) &&
-                   ((dset==im3d->anat_now) || (dset==im3d->fimdata->fimdset)) ) break ;
-            }
-
-            /*-- if didn't find it, purge it --*/
-            if( icc == MAX_CONTROLLERS ){ PURGE_DSET(dset) ; }
-         }
-      }
-
-      /*-- for each func dataset in the session --*/
-
-      for( idd=0 ; idd < sess->num_func ; idd++ ){
-         for( ivv=FIRST_VIEW_TYPE ; ivv <= LAST_VIEW_TYPE ; ivv++ ){
-
-            dset = sess->func[idd][ivv] ;
-            if( dset == NULL ) continue ;
-            if( doall ){ PURGE_DSET(dset) ; continue ; }
-
-            /*-- for each controller now running --*/
-
-            for( icc=0 ; icc < MAX_CONTROLLERS ; icc++ ){
-               im3d = GLOBAL_library.controllers[icc] ;
-               if( IM3D_VALID(im3d) &&
-                   ((dset==im3d->fim_now) || (dset==im3d->fimdata->fimdset)) ) break ;
+                   ((dset==im3d->anat_now) ||
+                    (dset==im3d->fim_now)  ||
+                    (dset==im3d->fimdata->fimdset)) ) break ;
             }
 
             /*-- if didn't find it, purge it --*/
@@ -5618,7 +6395,7 @@ ENTRY("AFNI_purge_dsets") ;
    (the indexes of the desired session and datasets, that is)
 -----------------------------------------------------------------------*/
 
-void AFNI_initialize_view( THD_3dim_dataset * old_anat, Three_D_View * im3d )
+void AFNI_initialize_view( THD_3dim_dataset *old_anat, Three_D_View *im3d )
 {
    int vvv , itog , lll , sss , aaa , fff , id ;
    THD_3dim_dataset     * dset , * new_anat , * new_func ;
@@ -5642,8 +6419,8 @@ if(PRINT_TRACING)
   sprintf(str,"view=%d session=%d anat=%d func=%d",vvv,sss,aaa,fff);
   STATUS(str) ; }
 
-   new_anat = GLOBAL_library.sslist->ssar[sss]->anat[aaa][vvv] ;
-   new_func = GLOBAL_library.sslist->ssar[sss]->func[fff][vvv] ;
+   new_anat = GLOBAL_library.sslist->ssar[sss]->dsset[aaa][vvv] ;
+   new_func = GLOBAL_library.sslist->ssar[sss]->dsset[fff][vvv] ;
 
    /*----------------------------------------------*/
    /*--- if the old dataset has markers and the
@@ -5663,19 +6440,13 @@ STATUS("purging old datasets from memory (maybe)") ;
       im3d->fim_now  = new_func ;
       AFNI_purge_unused_dsets() ;
    }
-#ifdef ALLOW_AGNI
-   if( AGNI_ENABLED ){                                    /* 29 Aug 2001 */
-      if( old_anat != new_anat ) AGNI_unload( old_anat ) ;
-      AGNI_load( new_anat ) ;
-   }
-#endif
 
    /*---------------------------------------------------------*/
    /* set the new datasets that we will deal with from now on */
 
    for( id=0 ; id <= LAST_VIEW_TYPE ; id++ ){
-      im3d->anat_dset[id] = GLOBAL_library.sslist->ssar[sss]->anat[aaa][id] ;
-      im3d->fim_dset[id]  = GLOBAL_library.sslist->ssar[sss]->func[fff][id] ;
+      im3d->anat_dset[id] = GLOBAL_library.sslist->ssar[sss]->dsset[aaa][id] ;
+      im3d->fim_dset[id]  = GLOBAL_library.sslist->ssar[sss]->dsset[fff][id] ;
 
       if( ISVALID_3DIM_DATASET(im3d->anat_dset[id]) )
          SENSITIZE( im3d->vwid->view->view_bbox->wbut[id], True ) ;
@@ -5797,11 +6568,22 @@ STATUS("turning markers on") ;
       fv = THD_dicomm_to_3dmm( dset , fv ) ;
       iv = THD_3dmm_to_3dind( dset , fv ) ;
    } else {
-      LOAD_IVEC3( iv,  im3d->vinfo->i1, im3d->vinfo->j2, im3d->vinfo->k3 ) ;
+      LOAD_IVEC3( iv, im3d->vinfo->i1, im3d->vinfo->j2, im3d->vinfo->k3 ) ;
+   }
+
+   /* 27 Jan 2004: set coordinate to center of dataset
+                   if we were formerly looking at the dummy dataset */
+
+   if( im3d->dummied && !GLOBAL_library.have_dummy_dataset ){
+     im3d->dummied = 0 ;
+     LOAD_IVEC3( iv , im3d->anat_now->daxes->nxx/2 ,
+                      im3d->anat_now->daxes->nyy/2 ,
+                      im3d->anat_now->daxes->nzz/2  ) ;
    }
 
    DISABLE_LOCK ;  /* 11 Nov 1996 */
 
+   AFNI_view_setter(im3d,NULL) ;
    AFNI_set_viewpoint( im3d, iv.ijk[0],iv.ijk[1],iv.ijk[2] , REDISPLAY_ALL ) ;
 
    ENABLE_LOCK ;   /* 11 Nov 1996 */
@@ -5809,6 +6591,25 @@ STATUS("turning markers on") ;
    SAVE_VPT(im3d) ;  /* save current location as jumpback */
 
    EXRETURN ;
+}
+
+/*----------------------------------------------------------------------*/
+/*! Find the warp that takes one dataset to another, if it exists.
+    [28 Aug 2002]
+------------------------------------------------------------------------*/
+
+THD_warp * AFNI_find_warp( THD_3dim_dataset *dset_to , THD_3dim_dataset *dset_from )
+{
+   THD_warp *swarp = NULL ;
+   char idkey[256] ;
+
+   if( GLOBAL_library.warptable == NULL ||
+       dset_to   == NULL                ||
+       dset_from == NULL                  ) return NULL ;
+
+   sprintf(idkey,"%s,%s",dset_to->idcode.str,dset_from->idcode.str) ;
+   swarp = (THD_warp *) findin_Htable( idkey , GLOBAL_library.warptable ) ;
+   return swarp ;
 }
 
 /*----------------------------------------------------------------------
@@ -5834,6 +6635,10 @@ void AFNI_setup_viewing( Three_D_View * im3d , Boolean rescaled )
             anat_brick_possible , func_brick_possible ;
    int      val , top ;
 
+   static THD_3dim_dataset *old_fim  = NULL ; /* 12 Dec 2001 */
+   static Three_D_View     *old_im3d = NULL ; /* 29 Jan 2002 */
+   static THD_3dim_dataset *old_anat = NULL ; /* 12 Dec 2001 */
+
 ENTRY("AFNI_setup_viewing") ;
 
    if( ! IM3D_VALID(im3d) ) EXRETURN ;
@@ -5848,8 +6653,9 @@ ENTRY("AFNI_setup_viewing") ;
    if( anat_brick_possible         &&
        im3d->vinfo->force_anat_wod &&
        im3d->vinfo->tempflag == 0  &&
-       AFNI_yesenv("AFNI_VIEW_ANAT_BRICK") ){
+       !AFNI_noenv("AFNI_VIEW_ANAT_BRICK") ){
 
+STATUS("setting anatmode_bbox back to 'View ULay Data Brick'") ;
       im3d->vinfo->force_anat_wod = 0 ;
       MCW_set_bbox( im3d->vwid->dmode->anatmode_bbox , DMODE_BRICK_BVAL ) ;
    }
@@ -5885,23 +6691,28 @@ ENTRY("AFNI_setup_viewing") ;
      im3d->b231_anat->resam_code =
        im3d->b312_anat->resam_code = im3d->vinfo->anat_resam_mode ;
 
-   /* 30 Nov 1997: don't go past end of bucket */
+   im3d->b123_anat->thr_resam_code =     /* 30 Jul 2003 */
+     im3d->b231_anat->thr_resam_code =
+       im3d->b312_anat->thr_resam_code = im3d->vinfo->anat_resam_mode ;
 
-   if( ISANATBUCKET(im3d->anat_now) &&
-       im3d->vinfo->anat_index >= DSET_NVALS(im3d->anat_now) )
-      im3d->vinfo->anat_index = DSET_NVALS(im3d->anat_now) - 1 ;
+   /* 30 Nov 1997: don't go past end of dataset */
+
+   if( im3d->vinfo->anat_index >= DSET_NVALS(im3d->anat_now) )
+     im3d->vinfo->anat_index = DSET_NVALS(im3d->anat_now) - 1 ;
 
    /*-----------------------------------------------------*/
    /*--- set up the func w-o-d axes and viewing bricks ---*/
 
-   if( ISVALID_3DIM_DATASET( im3d->fim_now ) ){
+   if( ISVALID_3DIM_DATASET(im3d->fim_now) ){  /* that is, if we have func */
 
-STATUS("function") ;
+STATUS("function brick setup") ;
 
       /*-- access data in dataset im3d->fim_now IF AND ONLY IF
              1) its actual data axes are the same as the wod_daxes
              2) it has actual data
-             3) the user hasn't officially declared for warp-on-demand --*/
+             3) the user hasn't officially declared for warp-on-demand
+             4) the dataset doesn't have a warp to bring it into
+                alignment with the current anat dataset (self_warp)    --*/
 
 STATUS("deciding whether to use function WOD") ;
 
@@ -5909,23 +6720,37 @@ STATUS("deciding whether to use function WOD") ;
          EQUIV_DATAXES( im3d->fim_now->daxes , im3d->wod_daxes ) &&   /* 02 Nov 1996 */
          DSET_INMEMORY( im3d->fim_now ) ;
 
+      /*- 27 Aug 2002: see if there is a self_warp from
+                       fim_now back to anat_now; if so, install it;
+                       this is a coordinate-to-coordinate tranformation,
+                       and requires warp-on-demand viewing              -*/
+
+      { THD_warp *swarp = AFNI_find_warp( im3d->anat_now , im3d->fim_now ) ;
+        im3d->fim_selfwarp = swarp ;  /* transform from fim to anat coords */
+        if( swarp != NULL ) func_brick_possible = 0 ;   /* require warp-on-demand */
+      }
+
       /*- The Ides of March, 2000: allow switching back to "view brick" -*/
 
-      if( func_brick_possible          &&
-          im3d->vinfo->force_func_wod  &&
-          im3d->vinfo->tempflag == 0   &&
-          AFNI_yesenv("AFNI_VIEW_FUNC_BRICK") ){
 
+      if( func_brick_possible                          &&
+          ( ( im3d->vinfo->force_func_wod  &&
+              im3d->vinfo->tempflag == 0   &&
+              !AFNI_noenv("AFNI_VIEW_FUNC_BRICK") ) ||
+            ( !im3d->anat_wod_flag         &&              /* 08 Aug 2003 */
+              im3d->anat_now == im3d->fim_now     )   ) ){
+
+STATUS("setting funcmode_bbox back to 'View Func Data Brick'") ;
          im3d->vinfo->force_func_wod = 0 ;
          MCW_set_bbox( im3d->vwid->dmode->funcmode_bbox , DMODE_BRICK_BVAL ) ;
       }
 
       if( func_brick_possible && ! im3d->vinfo->force_func_wod ){
 STATUS("not forcing function WOD") ;
-         im3d->fim_wod_flag = False ;   /* 02 Nov 1996 */
+        im3d->fim_wod_flag = False ;   /* 02 Nov 1996 */
       } else {
 STATUS("forcing function WOD") ;
-         im3d->fim_wod_flag = True ;   /* 02 Nov 1996 */
+        im3d->fim_wod_flag = True ;    /* 02 Nov 1996 */
       }
 
       LOAD_FUNC_VIEW(im3d) ;  /* 02 Nov 1996 */
@@ -5953,18 +6778,28 @@ STATUS("forcing function WOD") ;
 
       /* 30 Nov 1997: don't go past end of bucket */
 
-      if( ISFUNCBUCKET(im3d->fim_now) ){
+      if( im3d->vinfo->fim_index >= DSET_NVALS(im3d->fim_now) )
+          im3d->vinfo->fim_index = DSET_NVALS(im3d->fim_now) - 1 ;
 
-          if( im3d->vinfo->fim_index >= DSET_NVALS(im3d->fim_now) )
-             im3d->vinfo->fim_index = DSET_NVALS(im3d->fim_now) - 1 ;
+      if( im3d->vinfo->thr_index >= DSET_NVALS(im3d->fim_now) )
+          im3d->vinfo->thr_index = DSET_NVALS(im3d->fim_now) - 1 ;
 
-          if( im3d->vinfo->thr_index >= DSET_NVALS(im3d->fim_now) )
-             im3d->vinfo->thr_index = DSET_NVALS(im3d->fim_now) - 1 ;
+      /* first time in for this controller,
+         set thr_index to 1 if have sub-brick #1 [29 Jul 2003] */
+
+      { static int first=1, ffim[MAX_CONTROLLERS] ; int qq ;
+        if( first ){
+          first=0; for( qq=0; qq < MAX_CONTROLLERS; qq++ ) ffim[qq]=1;
+        }
+        qq = AFNI_controller_index(im3d) ;
+        if( ffim[qq] && im3d->vinfo->thr_index == 0 && DSET_NVALS(im3d->fim_now) > 1 ){
+          im3d->vinfo->thr_index = 1 ; ffim[qq] = 0 ;
+        }
       }
 
-   } else {
+   } else {   /* 29 Jul 2003: no longer possible */
 
-STATUS("no function") ;
+STATUS("no function dataset") ;
 
       myXtFree(im3d->b123_fim) ; im3d->b123_fim = NULL ;
       myXtFree(im3d->b231_fim) ; im3d->b231_fim = NULL ;
@@ -5983,19 +6818,19 @@ STATUS("turning widgets on and/or off:") ;
 STATUS(" -- datamode widgets") ;
 
    if( anat_brick_possible ){
-      SENSITIZE( im3d->vwid->dmode->anatmode_bbox->wbut[DMODE_BRICK] , True ) ;
+     SENSITIZE( im3d->vwid->dmode->anatmode_bbox->wbut[DMODE_BRICK] , True ) ;
    } else {
-      SENSITIZE( im3d->vwid->dmode->anatmode_bbox->wbut[DMODE_BRICK] , False ) ;
-      MCW_set_bbox( im3d->vwid->dmode->anatmode_bbox , DMODE_WOD_BVAL ) ;
-      im3d->vinfo->force_anat_wod = True ;
+     SENSITIZE( im3d->vwid->dmode->anatmode_bbox->wbut[DMODE_BRICK] , False ) ;
+     MCW_set_bbox( im3d->vwid->dmode->anatmode_bbox , DMODE_WOD_BVAL ) ;
+     im3d->vinfo->force_anat_wod = 1 ;
    }
 
    if( func_brick_possible ){
-      SENSITIZE( im3d->vwid->dmode->funcmode_bbox->wbut[DMODE_BRICK] , True ) ;
+     SENSITIZE( im3d->vwid->dmode->funcmode_bbox->wbut[DMODE_BRICK] , True ) ;
    } else {
-      SENSITIZE( im3d->vwid->dmode->funcmode_bbox->wbut[DMODE_BRICK] , False ) ;
-      MCW_set_bbox( im3d->vwid->dmode->funcmode_bbox , DMODE_WOD_BVAL ) ;
-      im3d->vinfo->force_func_wod = True ;
+     SENSITIZE( im3d->vwid->dmode->funcmode_bbox->wbut[DMODE_BRICK] , False ) ;
+     MCW_set_bbox( im3d->vwid->dmode->funcmode_bbox , DMODE_WOD_BVAL ) ;
+     im3d->vinfo->force_func_wod = 1 ;
    }
 
    AV_SENSITIZE( im3d->vwid->dmode->anat_resam_av , im3d->anat_wod_flag ) ;
@@ -6006,109 +6841,55 @@ STATUS(" -- datamode widgets") ;
    /* Jun 22, 1995: allow it if destruct mode is actuated!              */
 
    if( GLOBAL_argopt.destruct ){  /* not currently implemented */
-      writer = True ;
+     writer = True ;
    } else {
-      writer = (Boolean) DSET_WRITEABLE(im3d->anat_now) ;  /* mod 26 Mar 2001 */
+     writer = (Boolean) DSET_WRITEABLE(im3d->anat_now) ;  /* mod 26 Mar 2001 */
    }
 
    SENSITIZE( im3d->vwid->dmode->write_anat_pb , writer ) ;
 
    if( GLOBAL_argopt.destruct ){  /* not currently implemented */
-      writer = (Boolean) ISVALID_3DIM_DATASET(im3d->fim_now) ;
+     writer = (Boolean) ISVALID_3DIM_DATASET(im3d->fim_now) ;
    } else {
-      writer = (Boolean) DSET_WRITEABLE(im3d->fim_now) ;  /* mod 26 Mar 2001 */
+     writer = (Boolean) DSET_WRITEABLE(im3d->fim_now) ;  /* mod 26 Mar 2001 */
    }
 
    SENSITIZE( im3d->vwid->dmode->write_func_pb , writer ) ;
 
-   /*--- dataset chooser controls (01 Nov 1996: always allow) ---*/
+   /*--- function controls (always see them) ---*/
 
-#if 0
-STATUS(" -- dataset chooser widgets") ;
+   {  Boolean have_fim = ISVALID_3DIM_DATASET(im3d->fim_now) ;
+      Boolean have_thr = have_fim ;
 
-   SENSITIZE( im3d->vwid->view->choose_sess_pb ,
-                     (Boolean) (GLOBAL_library.sslist->num_sess > 1) ) ;
-
-   SENSITIZE( im3d->vwid->view->choose_anat_pb ,
-                     (Boolean) (im3d->ss_now->num_anat > 1) ) ;
-
-   SENSITIZE( im3d->vwid->view->choose_func_pb ,
-                     (Boolean) (im3d->ss_now->num_func > 1) ) ;
-
-#ifdef POPUP_CHOOSERS
-   XtSetSensitive( im3d->vwid->view->popchoose_sess_pb ,
-                     (Boolean) (GLOBAL_library.sslist->num_sess > 1) ) ;
-
-   XtSetSensitive( im3d->vwid->view->popchoose_anat_pb ,
-                     (Boolean) (im3d->ss_now->num_anat > 1) ) ;
-
-   XtSetSensitive( im3d->vwid->view->popchoose_func_pb ,
-                     (Boolean) (im3d->ss_now->num_func > 1) ) ;
-#endif
-#endif
-
-   /*--- function controls ---*/
-
-#undef CLOSE_FUNC_PANEL
-#ifdef CLOSE_FUNC_PANEL
-   if( ! ISVALID_3DIM_DATASET(im3d->fim_now) ){
-
-STATUS(" -- function widgets OFF") ;
-
-      CLOSE_PANEL(im3d,func) ;  /* close the panel */
-
-      SENSITIZE( im3d->vwid->view->define_func_pb      , False ) ;
-      SENSITIZE( im3d->vwid->view->see_func_bbox->wtop , False ) ;
-      im3d->vinfo->underlay_type = UNDERLAY_ANAT ;
-   } else
-#endif
-   {
-      Boolean have_fim = ISVALID_3DIM_DATASET(im3d->fim_now) ;
-      Boolean have_thr = have_fim && FUNC_HAVE_THR(im3d->fim_now->func_type) ;
-      int do_buck ;
+      static int first=1, zfim[MAX_CONTROLLERS] ; int qq ;
+      if( first ){
+        first=0; for( qq=0; qq < MAX_CONTROLLERS; qq++ ) zfim[qq]=1;
+      }
 
 STATUS(" -- function widgets ON") ;
 
-      SENSITIZE( im3d->vwid->view->define_func_pb      , True ) ;
+      SENSITIZE( im3d->vwid->view->define_func_pb      , True ) ;  /* always on */
       SENSITIZE( im3d->vwid->view->see_func_bbox->wtop , True ) ;
 
-      /* make some widgets sensitive if we have the threshold available */
+      /* setup threshold slider to be always on */
 
-      if( ! have_thr ){
-STATUS(" ---- threshold scale OFF") ;
-         XtUnmanageChild( im3d->vwid->func->thr_rowcol ) ;
-      } else {
-STATUS(" ---- threshold scale ON") ;
-         XtManageChild  ( im3d->vwid->func->thr_rowcol ) ;
-         FIX_SCALE_SIZE(im3d) ; FIX_SCALE_VALUE(im3d) ;
+      XtManageChild( im3d->vwid->func->thr_rowcol ) ;
+      qq = AFNI_controller_index(im3d) ;
+      if( zfim[qq] && im3d->fim_now != NULL && im3d->fim_now->func_type == FUNC_FIM_TYPE ){
+STATUS(" -- set threshold to zero for FIM (once only)") ;
+        XmScaleSetValue( im3d->vwid->func->thr_scale , 0 ) ;
+        im3d->vinfo->func_threshold = 0.0 ; zfim[qq] = 0 ;
       }
+      FIX_SCALE_SIZE(im3d) ; FIX_SCALE_VALUE(im3d) ;
+
+      /* turn on various ways of making function into underlay */
 
       SENSITIZE( im3d->vwid->func->underlay_bbox->wbut[UNDERLAY_ALLFUNC],
                       have_fim ) ;
-      SENSITIZE( im3d->vwid->func->underlay_bbox->wbut[UNDERLAY_THRFUNC],
-                      have_thr ) ;
 
-      SENSITIZE( im3d->vwid->func->functype_bbox->wbut[SHOWFUNC_FIM],
-                      have_thr ) ;
-      SENSITIZE( im3d->vwid->func->functype_bbox->wbut[SHOWFUNC_THR],
-                      have_thr ) ;
+      /* set underlay type back to anat if no function */
 
-           if( ! have_fim )
-              im3d->vinfo->underlay_type = UNDERLAY_ANAT ;
-      else if( ! have_thr && im3d->vinfo->underlay_type == UNDERLAY_THRFUNC )
-              im3d->vinfo->underlay_type = UNDERLAY_ALLFUNC ;
-
-      if( ! have_thr ) im3d->vinfo->showfunc_type = SHOWFUNC_FIM ;
-
-      if( have_fim && ISFUNCBUCKET(im3d->fim_now) )    /* 30 Nov 1997 */
-         im3d->vinfo->showfunc_type = SHOWFUNC_FIM ;
-
-#if 0
-      /* 12 Aug 1996: fix range control sensitivity and settings */
-
-      SENSITIZE( im3d->vwid->func->range_bbox->wrowcol ,
-                 (im3d->vinfo->showfunc_type == SHOWFUNC_FIM) ) ;
-#endif
+      if( ! have_fim ) im3d->vinfo->underlay_type = UNDERLAY_ANAT ;
 
       /* allow resample control only if we are using w-o-d */
 
@@ -6125,122 +6906,61 @@ STATUS(" ---- threshold scale ON") ;
                     and its settings are done in routine AFNI_set_thresh_top **/
 
       if( have_thr ){
+        int iv = im3d->vinfo->thr_index , jj ;
 
-         if( ! ISFUNCBUCKET(im3d->fim_now) ){  /* 30 Nov 1997 */
-
-
-#if 1
-            /* set number of decimal places to shift for thr_scale */
-
-STATUS(" ---- set threshold decim OLD") ;
-            AFNI_set_thresh_top( im3d , FUNC_topval[im3d->fim_now->func_type] ) ;
-#endif
-
-            /* set the label at the top of the scale */
-
-            MCW_set_widget_label( im3d->vwid->func->thr_label ,
-                                  FUNC_label[im3d->fim_now->func_type] ) ;
-         } else {
-            int iv = im3d->vinfo->thr_index , jj ;
-
-#if 0
-STATUS(" ---- set threshold decim NEW") ;
-            if( DSET_VALID_BSTAT(im3d->fim_now,iv) ){
-               float bb = fabs(im3d->fim_now->stats->bstat[iv].min) ;
-               float tt = fabs(im3d->fim_now->stats->bstat[iv].max) ;
-               float xx = (bb<tt) ? tt : bb ;
-
-               if( xx > 0.0 ){
-                  jj = (int)( 0.999 + log10(xx) ) ;
-                       if( jj < 0             ) jj = 0 ;
-                  else if( jj > THR_TOP_EXPON ) jj = THR_TOP_EXPON ;
-                  xx = pow(10.0,jj) ;
-                  AFNI_set_thresh_top( im3d, xx ) ;
-               }
-            }
-#endif
-
-            jj = DSET_BRICK_STATCODE(im3d->fim_now,iv) ;
-            if( jj > 0 )
-               MCW_set_widget_label( im3d->vwid->func->thr_label ,
-                                     FUNC_label[jj] ) ;
-            else
-               MCW_set_widget_label( im3d->vwid->func->thr_label ,
-                                     DSET_BRICK_LABEL(im3d->fim_now,iv) ) ;
-         }
-
-         /* set the pval label at the bottom of the scale */
-
-         AFNI_set_thr_pval( im3d ) ;
+        jj = DSET_BRICK_STATCODE(im3d->fim_now,iv) ;
+        if( jj > 0 )
+          MCW_set_widget_label( im3d->vwid->func->thr_label ,
+                                FUNC_label[jj] ) ;
+        else
+          MCW_set_widget_label( im3d->vwid->func->thr_label ,
+                                DSET_BRICK_LABEL(im3d->fim_now,iv) ) ;
       }
 
-      /*** 30 Nov 1997:
-           Open/close widgets depending on if we have function buckets ***/
+      /* set the pval label at the bottom of the scale */
 
-      do_buck = 0 ;
+      AFNI_set_thr_pval( im3d ) ;
+
+      /*** 29 Jul 2003: always do buckets now ***/
+
+      XtManageChild( im3d->vwid->func->anat_buck_av->wrowcol ) ;
+      XtManageChild  ( im3d->vwid->func->fim_buck_av->wrowcol ) ;
+      XtManageChild  ( im3d->vwid->func->thr_buck_av->wrowcol ) ;
 
       /* 12 Dec 2001: only refit menus if dataset has changed */
 
-      if( ISFUNCBUCKET(im3d->fim_now) ){
-         static THD_3dim_dataset *old_fim = NULL ;  /* 12 Dec 2001 */
-         if( im3d->fim_now != old_fim ){
-STATUS(" ---- func bucket widgets ON") ;
-          XtUnmanageChild( im3d->vwid->func->functype_bbox->wtop )  ;
-          refit_MCW_optmenu( im3d->vwid->func->fim_buck_av ,
-                             0 ,                            /* new minval */
-                             DSET_NVALS(im3d->fim_now)-1 ,  /* new maxval */
-                             im3d->vinfo->fim_index ,       /* new inival */
-                             0 ,                            /* new decim? */
-                             AFNI_bucket_label_CB ,         /* text routine */
-                             im3d->fim_now                  /* text data */
-                           ) ;
-          refit_MCW_optmenu( im3d->vwid->func->thr_buck_av ,
-                             0 ,                            /* new minval */
-                             DSET_NVALS(im3d->fim_now)-1 ,  /* new maxval */
-                             im3d->vinfo->thr_index ,       /* new inival */
-                             0 ,                            /* new decim? */
-                             AFNI_bucket_label_CB ,         /* text routine */
-                             im3d->fim_now                  /* text data */
-                           ) ;
-          XtManageChild  ( im3d->vwid->func->fim_buck_av->wrowcol ) ;
-          XtManageChild  ( im3d->vwid->func->thr_buck_av->wrowcol ) ;
-          old_fim = im3d->fim_now ;
-         }
-         do_buck = 1 ;
-      } else {
-STATUS(" ---- func bucket widgets OFF") ;
-         XtManageChild  ( im3d->vwid->func->functype_bbox->wtop )  ;
-         XtUnmanageChild( im3d->vwid->func->fim_buck_av->wrowcol ) ;
-         XtUnmanageChild( im3d->vwid->func->thr_buck_av->wrowcol ) ;
+      if( have_fim && (im3d->fim_now != old_fim || im3d != old_im3d) ){
+        refit_MCW_optmenu( im3d->vwid->func->fim_buck_av ,
+                           0 ,                            /* new minval */
+                           DSET_NVALS(im3d->fim_now)-1 ,  /* new maxval */
+                           im3d->vinfo->fim_index ,       /* new inival */
+                           0 ,                            /* new decim? */
+                           AFNI_bucket_label_CB ,         /* text routine */
+                           im3d->fim_now                  /* text data */
+                         ) ;
+        refit_MCW_optmenu( im3d->vwid->func->thr_buck_av ,
+                           0 ,                            /* new minval */
+                           DSET_NVALS(im3d->fim_now)-1 ,  /* new maxval */
+                           im3d->vinfo->thr_index ,       /* new inival */
+                           0 ,                            /* new decim? */
+                           AFNI_bucket_label_CB ,         /* text routine */
+                           im3d->fim_now                  /* text data */
+                         ) ;
       }
 
-      if( ISANATBUCKET(im3d->anat_now) ){
-         static THD_3dim_dataset *old_anat = NULL ;  /* 12 Dec 2001 */
-         if( im3d->anat_now != old_anat ){
-STATUS(" ---- anat bucket widgets ON") ;
-          refit_MCW_optmenu( im3d->vwid->func->anat_buck_av ,
-                             0 ,                             /* new minval */
-                             DSET_NVALS(im3d->anat_now)-1 ,  /* new maxval */
-                             im3d->vinfo->anat_index ,       /* new inival */
-                             0 ,                             /* new decim? */
-                             AFNI_bucket_label_CB ,          /* text routine */
-                             im3d->anat_now                  /* text data */
-                           ) ;
-          XtManageChild( im3d->vwid->func->anat_buck_av->wrowcol ) ;
-          old_anat = im3d->anat_now ;
-         }
-         do_buck = 1 ;
-      } else {
-STATUS(" ---- anat bucket widgets OFF") ;
-         XtUnmanageChild( im3d->vwid->func->anat_buck_av->wrowcol ) ;
+      if( im3d->anat_now != old_anat || im3d != old_im3d ){
+        refit_MCW_optmenu( im3d->vwid->func->anat_buck_av ,
+                           0 ,                             /* new minval */
+                           DSET_NVALS(im3d->anat_now)-1 ,  /* new maxval */
+                           im3d->vinfo->anat_index ,       /* new inival */
+                           0 ,                             /* new decim? */
+                           AFNI_bucket_label_CB ,          /* text routine */
+                           im3d->anat_now                  /* text data */
+                         ) ;
       }
 
-      if( do_buck ){
-         XtManageChild( im3d->vwid->func->buck_rowcol ) ;
-         XtManageChild( im3d->vwid->func->buck_frame ) ;
-      } else {
-         XtUnmanageChild( im3d->vwid->func->buck_frame ) ;
-      }
+      XtManageChild( im3d->vwid->func->buck_rowcol ) ;
+      XtManageChild( im3d->vwid->func->buck_frame ) ;
    }
 
    /*--- set the function type bboxes based on the current
@@ -6251,14 +6971,12 @@ STATUS(" -- function underlay widgets") ;
    MCW_set_bbox( im3d->vwid->func->underlay_bbox ,
                  1 << im3d->vinfo->underlay_type ) ;
 
-   MCW_set_bbox( im3d->vwid->func->functype_bbox ,
-                 1 << im3d->vinfo->showfunc_type ) ;
-
    /*--------------------------------------------------------*/
    /*--- 3/24/95: deal with the new range widgets in func ---*/
 
    AFNI_reset_func_range( im3d ) ;
 
+#ifdef ALLOW_DATASET_VLIST
    /*---------------------------------------------------------*/
    /*--- May 1995: if points exist in some other dataset   ---*/
    /*---           associated with this one, but not here, ---*/
@@ -6310,6 +7028,25 @@ STATUS(" -- processing points in this dataset") ;
          im3d->anat_now->pts->ijk[ii] =
             THD_3dmm_to_3dind( im3d->anat_now , im3d->anat_now->pts->xyz[ii] ) ;
    }
+#endif /* ALLOW_DATASET_VLIST */
+
+   /*------ 06 Mar 2002: turn "SUMA to" on image popup on or off ------*/
+
+   if( im3d->vwid->imag->pop_sumato_pb != NULL ){
+     if( SESSION_HAS_SUMA(im3d->ss_now) )
+       XtManageChild( im3d->vwid->imag->pop_sumato_pb ) ;
+     else
+       XtUnmanageChild( im3d->vwid->imag->pop_sumato_pb ) ;
+   }
+
+   /*------ 01 May 2002: turn "Jump to (MNI)" on or off ------*/
+
+   if( im3d->vwid->imag->pop_mnito_pb != NULL ){
+     if( CAN_TALTO(im3d) )
+       XtManageChild( im3d->vwid->imag->pop_mnito_pb ) ;
+     else
+       XtUnmanageChild( im3d->vwid->imag->pop_mnito_pb ) ;
+   }
 
    /*-------------------------------------------------------------------*/
    /*--- Sep 1995: turn Talairach to button on image popup on or off ---*/
@@ -6317,20 +7054,20 @@ STATUS(" -- processing points in this dataset") ;
 STATUS(" -- managing talairach_to button") ;
 
    if( im3d->vwid->imag->pop_talto_pb != NULL ){
-      if( CAN_TALTO(im3d) ){
-         XtSetSensitive( im3d->vwid->imag->pop_talto_pb , True ) ;
-         if( im3d->vwid->imag->pop_whereami_pb != NULL )
-          XtSetSensitive( im3d->vwid->imag->pop_whereami_pb , True ); /* 10 Jul 2001 */
-         if( im3d->vwid->imag->pop_ttren_pb != NULL )
-          XtSetSensitive( im3d->vwid->imag->pop_ttren_pb ,              /* 12 Jul 2001 */
-                          im3d->vinfo->view_type==VIEW_TALAIRACH_TYPE); /* 01 Aug 2001 */
-      } else {
-         XtSetSensitive( im3d->vwid->imag->pop_talto_pb, False ) ;
-         if( im3d->vwid->imag->pop_whereami_pb != NULL )
-          XtSetSensitive( im3d->vwid->imag->pop_whereami_pb, False ); /* 10 Jul 2001 */
-         if( im3d->vwid->imag->pop_ttren_pb != NULL )
-          XtSetSensitive( im3d->vwid->imag->pop_ttren_pb , False ); /* 12 Jul 2001 */
-      }
+     if( CAN_TALTO(im3d) ){
+       XtSetSensitive( im3d->vwid->imag->pop_talto_pb , True ) ;
+       if( im3d->vwid->imag->pop_whereami_pb != NULL )
+         XtSetSensitive( im3d->vwid->imag->pop_whereami_pb , True ); /* 10 Jul 2001 */
+       if( im3d->vwid->imag->pop_ttren_pb != NULL )
+         XtSetSensitive( im3d->vwid->imag->pop_ttren_pb ,              /* 12 Jul 2001 */
+                         im3d->vinfo->view_type==VIEW_TALAIRACH_TYPE); /* 01 Aug 2001 */
+     } else {
+       XtSetSensitive( im3d->vwid->imag->pop_talto_pb, False ) ;
+       if( im3d->vwid->imag->pop_whereami_pb != NULL )
+         XtSetSensitive( im3d->vwid->imag->pop_whereami_pb, False ); /* 10 Jul 2001 */
+       if( im3d->vwid->imag->pop_ttren_pb != NULL )
+         XtSetSensitive( im3d->vwid->imag->pop_ttren_pb , False ); /* 12 Jul 2001 */
+     }
    }
 
    /*--- 25 Jul 2001: sensitize 'See TT Atlas Regions' button ---*/
@@ -6352,34 +7089,52 @@ STATUS(" -- managing talairach_to button") ;
       top = MAX( top , DSET_NUM_TIMES(im3d->fim_now) ) ;
 
    if( top > 1 ){
-      MCW_arrowval * tav = im3d->vwid->imag->time_index_av ;
+     MCW_arrowval * tav = im3d->vwid->imag->time_index_av ;
 STATUS(" -- turning time index control on") ;
 
-      AV_SENSITIZE( tav , True ) ;
-      tav->fmax = tav->imax = top - 1 ; im3d->vinfo->top_index = top ;
-      if( im3d->vinfo->time_index > tav->imax ){
-         im3d->vinfo->time_index = tav->imax ;
-         AV_assign_ival( tav , tav->imax ) ;
-      }
+     AV_SENSITIZE( tav , True ) ; im3d->vinfo->time_on = 1 ;
+     tav->fmax = tav->imax = top - 1 ; im3d->vinfo->top_index = top ;
+     if( im3d->vinfo->time_index > tav->imax ){
+       im3d->vinfo->time_index = tav->imax ;
+       AV_assign_ival( tav , tav->imax ) ;
+       AFNI_process_timeindex(im3d) ;       /* 29 Jan 2003 */
+     }
    } else {
 STATUS(" -- turning time index control off") ;
-      AV_SENSITIZE( im3d->vwid->imag->time_index_av , False ) ;
+     AV_SENSITIZE( im3d->vwid->imag->time_index_av , False ) ;
+     im3d->vinfo->time_on = 0 ;
    }
 
    /*--------------------------------------------------------------*/
    /*--- 19 Nov 1996: Set FIM-able dataset to this, if possible ---*/
 
    if( DSET_GRAPHABLE(im3d->anat_now) )
-      im3d->fimdata->fimdset = im3d->anat_now ;
+     im3d->fimdata->fimdset = im3d->anat_now ;
 
    ALLOW_COMPUTE_FIM(im3d) ;
+
+   /*----------------------------------------------------------------*/
+   /*--- 19 Aug 2002: enable/disable surface chooser button, etc. ---*/
+
+   AFNI_update_surface_widgets( im3d ) ;
 
    /*------------------------------------------*/
    /*--- attach to viewing windows (if any) ---*/
 
    AFNI_underlay_CB( NULL , (XtPointer) im3d , NULL ) ;
 
+   /* 04 Nov 2003: set range for image grayscaling? */
+
+   AFNI_range_setter( im3d , im3d->s123 ) ;
+   AFNI_range_setter( im3d , im3d->s231 ) ;
+   AFNI_range_setter( im3d , im3d->s312 ) ;
+
    im3d->vinfo->tempflag = 0 ;
+
+   old_im3d = im3d ;
+   old_fim  = im3d->fim_now ;   /* remembrance */
+   old_anat = im3d->anat_now ;
+
    EXRETURN ;
 }
 
@@ -6459,6 +7214,14 @@ THD_fvec3 AFNI_transform_vector( THD_3dim_dataset * old_dset ,
        new_dset->anat_parent->warp_parent != NULL      ){
 
       return AFNI_forward_warp_vector( new_dset->anat_parent->warp , old_fv ) ;
+   }
+
+   /*-- 28 Aug 2002: see if there is a special warp between datasets --*/
+
+   { THD_warp *swarp = AFNI_find_warp(new_dset,old_dset) ;
+     if( swarp != NULL ) return AFNI_forward_warp_vector( swarp , old_fv ) ;
+     swarp = AFNI_find_warp(old_dset,new_dset) ;
+     if( swarp != NULL ) return AFNI_backward_warp_vector( swarp, old_fv ) ;
    }
 
    /*-- default is no change --*/
@@ -6560,11 +7323,15 @@ THD_fvec3 AFNI_backward_warp_vector( THD_warp * warp , THD_fvec3 old_fv )
                improperly when the Define Function panel is opened!
 --------------------------------------------------------------------------*/
 
-#if defined(SOLARIS) && defined(FIX_SCALE_SIZE_PROBLEM)
+#ifdef FIX_SCALE_SIZE_LATER
 static void fixscale( XtPointer client_data , XtIntervalId * id )
 {
    Three_D_View * im3d = (Three_D_View *) client_data ;
    FIX_SCALE_SIZE(im3d) ;
+
+#if 0
+   XtVaSetValues( im3d->vwid->func->thr_scale , XmNscaleWidth,24 , NULL ) ;
+#endif
 }
 #endif
 
@@ -6632,18 +7399,31 @@ STATUS("opening marks") ;
    /*** I don't know why this is needed, but it prevents the
         marks panels geometry from getting screwed up, so it's here ***/
 
-#define REMANAGE_MARKS
-#ifdef REMANAGE_MARKS
-         XtUnmanageChild( marks->rowcol ) ;
-         XtUnmanageChild( marks->tog_rowcol ) ;
-         XtUnmanageChild( marks->control_rowcol ) ;
-         XtUnmanageChild( marks->control_frame ) ;
-         XtUnmanageChild( marks->tog_frame ) ;
+#ifndef USING_LESSTIF
+#define REMANAGE_MARKS 1
+#else
+#define REMANAGE_MARKS 0
+#endif
+
+#if 1
+       { static int first=1 ;
+         if( REMANAGE_MARKS || first ){               /* CYGWIN: must do 1st time in */
+           XtUnmanageChild( marks->rowcol ) ;         /* but not on later times --   */
+           XtUnmanageChild( marks->tog_rowcol ) ;     /* probably a LessTif bug      */
+           XtUnmanageChild( marks->control_rowcol ) ;
+           XtUnmanageChild( marks->control_frame ) ;
+           XtUnmanageChild( marks->tog_frame ) ;
+           first = 0 ;
+         }
+       }
 #endif
 
          OPEN_PANEL(im3d,marks) ;
 
-#ifdef REMANAGE_MARKS
+#if 1
+#if 0
+         XFlush( XtDisplay(marks->rowcol) ) ; XSync( XtDisplay(marks->rowcol),False ) ;
+#endif
          if( im3d->anat_now->markers != NULL ){  /* Oct 1998 */
             XtManageChild( marks->tog_rowcol ) ;
             XtManageChild( marks->tog_frame ) ;
@@ -6677,23 +7457,27 @@ STATUS("closing function") ;
 
          CLOSE_PANEL(im3d,func) ;
       } else {
-         Boolean have_fim = ISVALID_3DIM_DATASET(im3d->fim_now) ;
-         Boolean have_thr = have_fim && FUNC_HAVE_THR(im3d->fim_now->func_type) ;
 
 STATUS("opening function" ) ;
 
+#ifndef USING_LESSTIF
 #define REMANAGE_FUNC
+#endif
+
 #ifdef REMANAGE_FUNC
+STATUS("unmanaging children") ;
          XtUnmanageChild( im3d->vwid->func->rowcol ) ;
          XtUnmanageChild( im3d->vwid->func->thr_rowcol ) ;
          XtUnmanageChild( im3d->vwid->func->inten_rowcol ) ;
          XtUnmanageChild( im3d->vwid->func->options_rowcol ) ;
 #endif
 
+STATUS("opening panel") ;
          OPEN_PANEL(im3d,func) ;
 
 #ifdef REMANAGE_FUNC
-         if( have_thr ) XtManageChild( im3d->vwid->func->thr_rowcol ) ;
+STATUS("remanaging children") ;
+         XtManageChild( im3d->vwid->func->thr_rowcol ) ;
          XtManageChild( im3d->vwid->func->inten_rowcol ) ;
          XtManageChild( im3d->vwid->func->options_rowcol ) ;
          XtManageChild( im3d->vwid->func->rowcol ) ;
@@ -6702,7 +7486,7 @@ STATUS("opening function" ) ;
          update_MCW_pbar( im3d->vwid->func->inten_pbar ) ;
          FIX_SCALE_SIZE(im3d) ; FIX_SCALE_VALUE(im3d) ;
 
-#if defined(SOLARIS) && defined(FIX_SCALE_SIZE_PROBLEM)
+#ifdef FIX_SCALE_SIZE_LATER
         (void) XtAppAddTimeOut( MAIN_app,50,fixscale,im3d ) ; /* 09 May 2001 */
 #endif
 
@@ -6810,11 +7594,140 @@ ENTRY("AFNI_see_marks_CB") ;
 
    marks->tag_visible = marks->ov_visible = (bval == 0) ? (False) : (True) ;
 
-   if( w != NULL ){
+   if( w != NULL )
       AFNI_set_viewpoint( im3d , -1,-1,-1 , REDISPLAY_OVERLAY ) ;
-   }
 
    RESET_AFNI_QUIT(im3d) ;
+   EXRETURN ;
+}
+
+/*------------------------------------------------------------------------
+  Event handler to find #3 button press for crosshair label [12 Mar 2004]
+--------------------------------------------------------------------------*/
+
+void AFNI_crosshair_EV( Widget w , XtPointer cd ,
+                        XEvent *ev , Boolean *continue_to_dispatch )
+{
+   Three_D_View *im3d = (Three_D_View *)cd ;
+
+ENTRY("AFNI_crosshair_EV") ;
+
+   if( ! IM3D_OPEN(im3d) ) EXRETURN ;
+
+   /*** handle events ***/
+
+   switch( ev->type ){
+
+     /*----- take button press -----*/
+
+     case ButtonPress:{
+       XButtonEvent *event = (XButtonEvent *)ev ;
+
+       if( event->button == Button3 ||
+           (event->button == Button1 &&
+            (event->state & (ShiftMask|ControlMask))) ){
+
+         event->button = Button3 ;                                   /* fake  */
+         XmMenuPosition( im3d->vwid->imag->crosshair_menu , event ); /* where */
+         XtManageChild ( im3d->vwid->imag->crosshair_menu ) ;        /* popup */
+       }
+
+       else {
+         (void) MCW_popup_message( im3d->vwid->imag->crosshair_label ,
+                                   " The road goes ever on and on\n"
+                                   " Out from the door from where it began.\n"
+                                   " Now, far ahead the road has gone\n"
+                                   " And I must follow if I can.\n"
+                                   " Pursuing it with eager feet\n"
+                                   " Until it meets some other way\n"
+                                   " Where many paths and errands meet\n"
+                                   " And whither then I cannot say." ,
+                                MCW_USER_KILL | MCW_TIMER_KILL ) ;
+       }
+     }
+     break ;
+
+     /*----- take key press -----*/
+
+#if 0
+     case KeyPress:{
+       XKeyEvent * event = (XKeyEvent *) ev ;
+       char           buf[32] ;
+       KeySym         ks ;
+       int            nbuf ;
+
+       buf[0] = '\0' ;
+       nbuf = XLookupString( event , buf , 32 , &ks , NULL ) ;
+
+       switch( buf[0] ){
+         default: break ;
+       }
+     }
+     break ;
+#endif
+   }
+
+   EXRETURN ;
+}
+
+/*------------------------------------------------------------------*/
+/* Redraw the crosshair label in this controller [12 Mar 2004]
+--------------------------------------------------------------------*/
+
+void AFNI_crosshair_relabel( Three_D_View *im3d )
+{
+   XmString xstr ;
+   Boolean same ;
+
+ENTRY("AFNI_crosshair_relabel") ;
+
+   if( !IM3D_OPEN(im3d) ) EXRETURN ;
+   xstr = AFNI_crosshair_label( im3d ) ; if( xstr == NULL ) EXRETURN ;
+   if( im3d->vinfo->old_crosshair_label == (XmString)NULL ) /* shouldn't */
+     same = False ;                                         /* happen   */
+   else
+     same = XmStringCompare( xstr , im3d->vinfo->old_crosshair_label ) ;
+
+   if( same == False ){
+      XtVaSetValues( im3d->vwid->imag->crosshair_label ,       /* redisplay */
+                        XmNlabelString , xstr ,                /* if changed */
+                     NULL ) ;
+      MCW_expose_widget( im3d->vwid->imag->crosshair_label ) ; /* redraw now! */
+      if( im3d->vinfo->old_crosshair_label != (XmString)NULL )
+        XmStringFree(im3d->vinfo->old_crosshair_label) ;       /* toss old */
+      im3d->vinfo->old_crosshair_label = xstr ;                /* new old */
+   } else {
+      XmStringFree( xstr ) ;  /* was same --> don't need this copy */
+   }
+
+   EXRETURN ;
+}
+
+
+/*------------------------------------------------------------------
+  callback for crosshair label popup menu [12 Mar 2004]
+--------------------------------------------------------------------*/
+
+void AFNI_crosshair_pop_CB( Widget w ,
+                            XtPointer client_data , XtPointer call_data )
+{
+   Three_D_View *im3d = (Three_D_View *)client_data ;
+   static char *cord_dicom="RAI" , *cord_spm="LPI" ;
+   char *val=NULL ;
+   int ii ;
+
+ENTRY("AFNI_crosshair_pop_CB") ;
+
+        if( w == im3d->vwid->imag->crosshair_dicom_pb ) val = cord_dicom ;
+   else if ( w == im3d->vwid->imag->crosshair_spm_pb  ) val = cord_spm   ;
+
+   if( val != NULL && strcmp(GLOBAL_argopt.orient_code,val) != 0 ){
+     POPDOWN_string_chooser ;   /* in case "Jumpto xyz" is open */
+     MCW_strncpy(GLOBAL_argopt.orient_code,val,4) ;
+     THD_coorder_fill( GLOBAL_argopt.orient_code , &GLOBAL_library.cord ) ;
+     for( ii=0 ; ii < MAX_CONTROLLERS ; ii++ )
+       AFNI_crosshair_relabel( GLOBAL_library.controllers[ii] ) ;
+   }
    EXRETURN ;
 }
 
@@ -6826,10 +7739,14 @@ void AFNI_imag_pop_CB( Widget w ,
                        XtPointer client_data , XtPointer call_data )
 {
    Three_D_View * im3d = (Three_D_View *) client_data ;
+   MCW_imseq * seq ;
 
 ENTRY("AFNI_imag_pop_CB") ;
 
    if( ! IM3D_VALID(im3d) ) EXRETURN ;
+
+   XtVaGetValues( im3d->vwid->imag->popmenu, XmNuserData, &seq, NULL ) ;
+   AFNI_view_setter(im3d,seq) ;
 
    /*-- jump back to old location --*/
 
@@ -6846,49 +7763,64 @@ ENTRY("AFNI_imag_pop_CB") ;
 
    /*-- switch window display mode --*/
 
-   if( w == im3d->vwid->imag->pop_imageonly_pb ){
-      MCW_imseq * seq ;
-      XtVaGetValues( im3d->vwid->imag->popmenu, XmNuserData, &seq, NULL ) ;
+   else if( w == im3d->vwid->imag->pop_imageonly_pb ){
       if( ISQ_REALZ(seq) )
          drive_MCW_imseq( seq , isqDR_onoffwid , (XtPointer) isqDR_togwid ) ;
    }
 
    /*-- jump to a point --*/
 
-   if( w == im3d->vwid->imag->pop_jumpto_pb &&
-       im3d->type == AFNI_3DDATA_VIEW         ){
+   else if( w == im3d->vwid->imag->pop_jumpto_pb &&
+            im3d->type == AFNI_3DDATA_VIEW         ){
 
-      MCW_imseq * seq ;
       char tbuf[128] ;
 
-      XtVaGetValues( im3d->vwid->imag->popmenu, XmNuserData, &seq, NULL ) ;
       if( ISQ_REALZ(seq) ){
-         sprintf(tbuf , "Enter new x y z (%s mm):" , GLOBAL_library.cord.orcode ) ;
-         MCW_choose_string( seq->wbar , tbuf , NULL ,
-                            AFNI_jumpto_CB , (XtPointer) im3d ) ;
+        sprintf(tbuf , "Enter new x y z (%s mm):" , GLOBAL_library.cord.orcode ) ;
+        MCW_choose_string( seq->wbar , tbuf , NULL ,
+                           AFNI_jumpto_CB , (XtPointer) im3d ) ;
       }
    }
 
-   if( w == im3d->vwid->imag->pop_jumpto_ijk_pb &&
-       im3d->type == AFNI_3DDATA_VIEW             ){
+   else if( w == im3d->vwid->imag->pop_jumpto_ijk_pb &&
+            im3d->type == AFNI_3DDATA_VIEW             ){
 
-      MCW_imseq * seq ;
-
-      XtVaGetValues( im3d->vwid->imag->popmenu, XmNuserData, &seq, NULL ) ;
       if( ISQ_REALZ(seq) ){
          MCW_choose_string( seq->wbar , "Enter new i j k:" , NULL ,
                             AFNI_jumpto_ijk_CB , (XtPointer) im3d ) ;
       }
    }
 
+   /*-- 01 May 2002: jump to MNI coordinates --*/
+
+   else if( w == im3d->vwid->imag->pop_mnito_pb &&
+            im3d->type == AFNI_3DDATA_VIEW        ){
+
+      if( ISQ_REALZ(seq) && CAN_TALTO(im3d) ){
+         MCW_choose_string( seq->wbar , "Enter MNI x,y,z:" , NULL ,
+                            AFNI_mnito_CB , (XtPointer) im3d ) ;
+      } else {
+         XBell(XtDisplay(w),100) ; /* should never happen */
+      }
+   }
+
+   /*-- 06 Mar 2002: jump to a node in a surface --*/
+
+   else if( w == im3d->vwid->imag->pop_sumato_pb &&
+            SESSION_HAS_SUMA(im3d->ss_now)       &&
+            im3d->type == AFNI_3DDATA_VIEW         ){
+
+      if( ISQ_REALZ(seq) ){
+         MCW_choose_string( seq->wbar , "Enter SUMA node ID:" , NULL ,
+                            AFNI_sumato_CB , (XtPointer) im3d ) ;
+      }
+   }
+
    /*-- jump to a predetermined Talairach anatomical reference point --*/
 
-   if( w == im3d->vwid->imag->pop_talto_pb &&
-       im3d->type == AFNI_3DDATA_VIEW      &&
-       CAN_TALTO(im3d)                       ){
-
-      MCW_imseq * seq ;
-      XtVaGetValues( im3d->vwid->imag->popmenu, XmNuserData, &seq, NULL ) ;
+   else if( w == im3d->vwid->imag->pop_talto_pb &&
+            im3d->type == AFNI_3DDATA_VIEW      &&
+            CAN_TALTO(im3d)                       ){
 
       if( ! TTO_labeled ){  /* initialize labels */
          int ii ;
@@ -6899,11 +7831,12 @@ ENTRY("AFNI_imag_pop_CB") ;
          }
          TTO_labeled = 1 ;
       }
-      if( ISQ_REALZ(seq) )
+      if( ISQ_REALZ(seq) ){
          MCW_choose_strlist( seq->wbar ,
                              "Brain Structure (from San Antonio Talairach Daemon)" ,
                              TTO_COUNT , TTO_current , TTO_labels ,
                              AFNI_talto_CB , (XtPointer) im3d ) ;
+      }
    }
 
    /*---- 10 Jul 2001: Talairach "Where Am I?" ----*/
@@ -6913,7 +7846,7 @@ ENTRY("AFNI_imag_pop_CB") ;
             im3d->type == AFNI_3DDATA_VIEW         &&
             CAN_TALTO(im3d)                          ){
 
-      MCW_imseq *seq ; char *tlab ;
+      char *tlab ;
 
       /*- if one is already open, kill it -*/
 
@@ -6930,16 +7863,17 @@ ENTRY("AFNI_imag_pop_CB") ;
       /*- open a window to show it -*/
 
       if( tlab != NULL ){
-         XtVaGetValues( im3d->vwid->imag->popmenu, XmNuserData, &seq, NULL ) ;
 
          im3d->vwid->imag->pop_whereami_twin =
            new_MCW_textwin_2001( seq->wbar , tlab , TEXT_READONLY ,
                                  AFNI_pop_whereami_kill , im3d     ) ;
 
+#if 0
          /* 31 Jul 2001: NULL out the pointer when the window is destroyed */
 
          NULLIFY_ON_DESTROY( im3d->vwid->imag->pop_whereami_twin ,
                              im3d->vwid->imag->pop_whereami_twin->wshell ) ;
+#endif
 
          XtVaSetValues( im3d->vwid->imag->pop_whereami_twin->wtext ,
                           XmNresizeHeight , True ,
@@ -6998,7 +7932,16 @@ ENTRY("AFNI_imag_pop_CB") ;
       TTRR_popup( im3d ) ;
    }
 
-   /*--- unmap of the popup itself ---*/
+   /*---- 05 Nov 2003: start the Edit Environment pseudo-plugin ----*/
+
+   else if( w == im3d->vwid->imag->pop_environment_pb &&
+            w != NULL                                   ){
+
+     AFNI_misc_CB( im3d->vwid->dmode->misc_environ_pb ,
+                   (XtPointer) im3d , (XtPointer) NULL ) ;
+   }
+
+   /*--- unmap of the popup itself [elided] ---*/
 
    /*--- exit ---*/
 
@@ -7139,6 +8082,49 @@ void AFNI_see_ttatlas_CB( Widget w, XtPointer cd, XtPointer cb)
 }
 
 /*---------------------------------------------------------------------
+   called when the mnito chooser is set - 01 May 2002
+-----------------------------------------------------------------------*/
+
+void AFNI_mnito_CB( Widget w , XtPointer cd , MCW_choose_cbs * cbs )
+{
+   Three_D_View * im3d = (Three_D_View *) cd ;
+   float xx,yy,zz ;
+   char dum1[32],dum2[32];
+   int nn ;
+   THD_fvec3 tv ;
+
+ENTRY("AFNI_mnito_CB") ;
+
+   if( ! IM3D_VALID(im3d) || im3d->type != AFNI_3DDATA_VIEW ) EXRETURN ;
+
+   if( !CAN_TALTO(im3d) || cbs->reason != mcwCR_string  ){   /* error */
+      POPDOWN_string_chooser ;
+      XBell( im3d->dc->display , 100 ) ;
+      EXRETURN ;
+   }
+
+   nn = sscanf( cbs->cval , "%f%[ ,]%f%[ ,]%f" , &xx,dum1,&yy,dum2,&zz ) ;
+   if( nn != 5 ){ XBell( im3d->dc->display , 100 ) ; EXRETURN ; }
+
+   LOAD_ANAT_VIEW(im3d) ;
+
+   LOAD_FVEC3(tv,xx,yy,zz) ;    /* MNI coords */
+   tv = THD_mni_to_tta( tv ) ;  /* Talairach coords */
+
+   /* transform from Talairach to current view, if needed */
+
+   if( im3d->anat_now->view_type != VIEW_TALAIRACH_TYPE )
+      tv = AFNI_transform_vector( im3d->anat_dset[VIEW_TALAIRACH_TYPE] ,
+                                  tv , im3d->anat_now ) ;
+
+   nn = AFNI_jumpto_dicom( im3d , tv.xyz[0], tv.xyz[1], tv.xyz[2] ) ;
+   if( nn < 0 ) XBell( im3d->dc->display , 100 ) ;
+
+   RESET_AFNI_QUIT(im3d) ;
+   EXRETURN ;
+}
+
+/*---------------------------------------------------------------------
    called when the jumpto chooser is set
 -----------------------------------------------------------------------*/
 
@@ -7165,6 +8151,8 @@ ENTRY("AFNI_jumpto_CB") ;
    RESET_AFNI_QUIT(im3d) ;
    EXRETURN ;
 }
+
+/*---------------------------------------------------------------------*/
 
 int AFNI_jumpto_dicom( Three_D_View * im3d , float xx, float yy, float zz )
 {
@@ -7193,7 +8181,7 @@ ENTRY("AFNI_jumpto_dicom") ;
    }
 }
 
-/*-- the two functions below date to 19 Aug 1999 --*/
+/*----------- the two functions below date to 19 Aug 1999 -------------*/
 
 int AFNI_jumpto_ijk( Three_D_View * im3d , int ii, int jj, int kk )
 {
@@ -7216,6 +8204,8 @@ ENTRY("AFNI_jumpto_ijk") ;
    }
 }
 
+/*---------------------------------------------------------------------*/
+
 void AFNI_jumpto_ijk_CB( Widget w , XtPointer cd , MCW_choose_cbs * cbs )
 {
    Three_D_View * im3d = (Three_D_View *) cd ;
@@ -7233,6 +8223,35 @@ ENTRY("AFNI_jumpto_CB") ;
 
    nn = AFNI_jumpto_ijk( im3d , ii,jj,kk ) ;
    if( nn < 0 ) XBell( im3d->dc->display , 100 ) ;
+
+   RESET_AFNI_QUIT(im3d) ;
+   EXRETURN ;
+}
+
+/*---------------------------------------------------------------------
+   called when the sumato chooser is set
+-----------------------------------------------------------------------*/
+
+void AFNI_sumato_CB( Widget w , XtPointer cd , MCW_choose_cbs * cbs )
+{
+   Three_D_View * im3d = (Three_D_View *) cd ;
+   int nn , ii ;
+
+ENTRY("AFNI_sumato_CB") ;
+
+   if( !IM3D_VALID(im3d) || im3d->type != AFNI_3DDATA_VIEW ) EXRETURN ;
+   if( cbs->reason != mcwCR_string )                         EXRETURN ;
+   if( !SESSION_HAS_SUMA(im3d->ss_now) )                     EXRETURN ;
+
+   nn = -1 ;
+   sscanf( cbs->cval , "%d" , &nn ) ;
+   ii = SUMA_find_node_id( im3d->ss_now->su_surf[0] , nn ) ;
+   if( ii < 0 ){ XBell(im3d->dc->display,100); EXRETURN; }
+
+   (void) AFNI_jumpto_dicom( im3d ,
+                             im3d->ss_now->su_surf[0]->ixyz[ii].x ,
+                             im3d->ss_now->su_surf[0]->ixyz[ii].y ,
+                             im3d->ss_now->su_surf[0]->ixyz[ii].z  ) ;
 
    RESET_AFNI_QUIT(im3d) ;
    EXRETURN ;
@@ -7292,7 +8311,7 @@ ENTRY("AFNI_marks_transform_CB") ;
 
    vvv = vnew ;
    while( ISVALID_VIEW(vvv) && ISVALID_3DIM_DATASET(im3d->anat_dset[vvv]) ){
-      im3d->anat_dset[vvv]->death_mark = DOOMED ;
+      DSET_MARK_FOR_DEATH( im3d->anat_dset[vvv] ) ;
       vvv = WARPED_VIEW(vvv) ;
    }
 
@@ -7304,19 +8323,19 @@ ENTRY("AFNI_marks_transform_CB") ;
    sss = im3d->vinfo->sess_num ;
    aaa = im3d->vinfo->anat_num ;
    fff = im3d->vinfo->func_num ;
-   GLOBAL_library.sslist->ssar[sss]->anat[aaa][vnew] = new_dset ;
+   GLOBAL_library.sslist->ssar[sss]->dsset[aaa][vnew] = new_dset ;
 
    /* reload active datasets, to allow for destruction that may
       have occured (this code is copied from AFNI_initialize_view) */
 
    for( id=0 ; id <= LAST_VIEW_TYPE ; id++ ){
-      im3d->anat_dset[id] = GLOBAL_library.sslist->ssar[sss]->anat[aaa][id] ;
-      im3d->fim_dset[id]  = GLOBAL_library.sslist->ssar[sss]->func[fff][id] ;
+      im3d->anat_dset[id] = GLOBAL_library.sslist->ssar[sss]->dsset[aaa][id] ;
+      im3d->fim_dset[id]  = GLOBAL_library.sslist->ssar[sss]->dsset[fff][id] ;
 
       if( ISVALID_3DIM_DATASET(im3d->anat_dset[id]) )
-         SENSITIZE( im3d->vwid->view->view_bbox->wbut[id], True ) ;
+        SENSITIZE( im3d->vwid->view->view_bbox->wbut[id], True ) ;
       else
-         SENSITIZE( im3d->vwid->view->view_bbox->wbut[id], False) ;
+        SENSITIZE( im3d->vwid->view->view_bbox->wbut[id], False) ;
    }
 
 STATUS("writing new dataset") ;
@@ -7336,8 +8355,8 @@ STATUS("writing new dataset") ;
 
 STATUS("re-anat_parenting anatomical datasets in this session") ;
 
-      for( id=0 ; id < im3d->ss_now->num_anat ; id++ ){
-         dss = im3d->ss_now->anat[id][0] ;
+      for( id=0 ; id < im3d->ss_now->num_dsset ; id++ ){
+         dss = im3d->ss_now->dsset[id][0] ;
 
          if( ! ISVALID_3DIM_DATASET(dss) || dss == im3d->anat_now ) continue ;
 
@@ -7345,30 +8364,10 @@ STATUS("re-anat_parenting anatomical datasets in this session") ;
          dss->markers = NULL ;
 
          if( dss->anat_parent == NULL ){
-            dss->anat_parent = im3d->anat_now ;
-            MCW_strncpy( dss->anat_parent_name ,
-                         im3d->anat_now->self_name , THD_MAX_NAME ) ;
-#ifndef OMIT_DATASET_IDCODES
-            dss->anat_parent_idcode = im3d->anat_now->idcode ;
-#endif
-         }
-      }
-
-      /* and on the functional datasets */
-
-STATUS("re-anat_parenting functional datasets in this session") ;
-
-      for( id=0 ; id < im3d->ss_now->num_func ; id++ ){
-         dss = im3d->ss_now->func[id][0] ;
-
-         if( ! ISVALID_3DIM_DATASET(dss) ) continue ;
-         if( dss->anat_parent == NULL ){
-            dss->anat_parent = im3d->anat_now ;
-            MCW_strncpy( dss->anat_parent_name ,
-                         im3d->anat_now->self_name , THD_MAX_NAME ) ;
-#ifndef OMIT_DATASET_IDCODES
-            dss->anat_parent_idcode = im3d->anat_now->idcode ;
-#endif
+           dss->anat_parent = im3d->anat_now ;
+           MCW_strncpy( dss->anat_parent_name ,
+                        im3d->anat_now->self_name , THD_MAX_NAME ) ;
+           dss->anat_parent_idcode = im3d->anat_now->idcode ;
          }
       }
    }
@@ -7658,17 +8657,11 @@ ENTRY("AFNI_make_warp") ;
 
          /* load bot & top with largest possible excursions from
             origin (the ALIGNBOX dimensions were added 3/25/95)  */
-#if 1
+
          LOAD_FVEC3(awarp->warp.bot,
                     -ATLAS_ALIGNBOX_LAT,-ATLAS_ALIGNBOX_ANT,-ATLAS_ALIGNBOX_INF);
          LOAD_FVEC3(awarp->warp.top,
                      ATLAS_ALIGNBOX_LAT, ATLAS_ALIGNBOX_POS, ATLAS_ALIGNBOX_SUP);
-#else
-         LOAD_FVEC3(awarp->warp.bot,
-                     -ATLAS_BBOX_LAT,-ATLAS_BBOX_ANT,-ATLAS_BBOX_INF);
-         LOAD_FVEC3(awarp->warp.top,
-                      ATLAS_BBOX_LAT, ATLAS_BBOX_POS, ATLAS_BBOX_SUP);
-#endif
 
 #ifdef AFNI_DEBUG
 STATUS("Original -> Aligned Map::") ;
@@ -7688,14 +8681,14 @@ DUMP_LMAP(awarp->warp) ;
 #define ADD_ERROR(str)                                \
    { int ll = strlen(str) + strlen(error_list) + 16 ; \
      STATUS(str) ;                                    \
-     error_list = XtRealloc( error_list , ll ) ;      \
+     error_list = (char*) XtRealloc( error_list , ll ) ;      \
      strcat( error_list , "*** ERROR:  ") ;           \
      strcat( error_list , str ) ; num_error++ ; }
 
 #define ADD_REPORT(str)                               \
    { int ll = strlen(str) + strlen(error_list) + 16 ; \
      STATUS(str) ;                                    \
-     error_list = XtRealloc( error_list , ll ) ;      \
+     error_list = (char*)XtRealloc( error_list , ll ) ;      \
      strcat( error_list , str ) ; num_report++ ; }
 
 Boolean AFNI_marks_quality_check( Boolean make_report, Three_D_View * im3d )
@@ -8067,14 +9060,28 @@ ENTRY("AFNI_init_warp") ;
             (sizes chosen to include borders of Atlas figures) ---*/
 
       case WARP_TALAIRACH_12_TYPE:{
-         float zbottom ;
-         int   use_tlrc_big ;
+         int   use_tlrc_big=MCW_val_bbox( im3d->vwid->marks->tlrc_big_bbox ) ;
+         float xtop=ATLAS_BBOX_LAT ,
+               ybot=ATLAS_BBOX_ANT ,
+               ytop=ATLAS_BBOX_POS ,
+               zbot=(use_tlrc_big) ? ATLAS_BBOX_INF_NEW : ATLAS_BBOX_INF ,
+               ztop=ATLAS_BBOX_SUP ;
 
-         use_tlrc_big = MCW_val_bbox( im3d->vwid->marks->tlrc_big_bbox ) ;
-         zbottom      = (use_tlrc_big != 0) ? ATLAS_BBOX_INF_NEW : ATLAS_BBOX_INF ;
+#define GETVAL(vvv,nnn) do{ char *eee = getenv(nnn) ;                            \
+                            if( eee != NULL ){                                   \
+                              float val=strtod(eee,NULL); if(val>0.0) vvv = val; \
+                            } } while(0)
 
-         LOAD_FVEC3(xnew_bot,-ATLAS_BBOX_LAT,-ATLAS_BBOX_ANT,-zbottom       );
-         LOAD_FVEC3(xnew_top, ATLAS_BBOX_LAT, ATLAS_BBOX_POS, ATLAS_BBOX_SUP);
+         GETVAL(xtop,"AFNI_TLRC_BBOX_LAT") ;  /* 16 Apr 2002: get new bounding box */
+         GETVAL(ybot,"AFNI_TLRC_BBOX_ANT") ;  /* from environment variables, maybe */
+         GETVAL(ytop,"AFNI_TLRC_BBOX_POS") ;
+         GETVAL(zbot,"AFNI_TLRC_BBOX_INF") ;
+         GETVAL(ztop,"AFNI_TLRC_BBOX_SUP") ;
+
+#undef GETVAL
+
+         LOAD_FVEC3( xnew_bot ,-xtop,-ybot,-zbot ) ;
+         LOAD_FVEC3( xnew_top , xtop, ytop, ztop ) ;
       }
       break ;
 
@@ -8259,6 +9266,7 @@ STATUS("init new_dset") ;
 
    new_dset->warp      = warp_total ;                          /* warp info */
    new_dset->vox_warp  = NULL ;
+   new_dset->self_warp = NULL ;    /* 26 Aug 2002 */
 
    new_dset->warp_parent = adam_dset ;
    MCW_strncpy( new_dset->warp_parent_name ,
@@ -8275,8 +9283,10 @@ STATUS("init new_dset") ;
                 VIEW_typestr[new_dset->view_type] ,
                 THD_MAX_NAME-ii ) ;
 
-   new_dset->merger_list = NULL ;
    new_dset->death_mark  = 0 ;
+   new_dset->tcat_list   = 0 ;
+   new_dset->tcat_num    = 0 ;
+   new_dset->tcat_len    = NULL ;
 
    /*--- initialize disk pointer fields ---*/
 
@@ -8404,7 +9414,9 @@ STATUS("init new_markers") ;
    new_dset->stats = NULL ;
    AFNI_copy_statistics( adam_dset , new_dset ) ;
 
+#ifdef ALLOW_DATASET_VLIST
    new_dset->pts = NULL ;
+#endif
 
    /*----- dataset ready for warping -----*/
 
@@ -8656,6 +9668,8 @@ ENTRY("AFNI_load_defaults") ;
 
    NAME2INT("graph_ggap"        ,INIT_GR_ggap        ,0,19);         /* 27 May 1999 */
    NAME2INT("fim_polort"        ,INIT_fim_polort     ,0,MAX_POLORT); /* 30 May 1999 */
+   NAME2INT("graph_matrix"      ,INIT_GR_gmat        ,1,MAT_MAX);    /* 10 Feb 2003 */
+   NAME2INT("graph_gthick"      ,INIT_GR_gthick      ,2,10);         /* 06 Oct 2004 */
 
    /** initialize other junk **/
 
@@ -8702,7 +9716,7 @@ ENTRY("AFNI_load_defaults") ;
          if( strcmp(cpt,RESAM_shortstr[ii]) == 0 ) break ;
       }
       if( ii <= LAST_RESAM_TYPE ) INIT_resam_func = ii ;
-      myXtFree(cpt) ;
+      (char*)myXtFree(cpt) ;
    }
 
    cpt = NULL ;
@@ -8733,6 +9747,8 @@ ENTRY("AFNI_load_defaults") ;
 
    NAME2INT("pbar_pos_pane_count" , INIT_panes_pos , NPANE_MIN , NPANE_MAX ) ;
    NAME2INT("pbar_sgn_pane_count" , INIT_panes_sgn , NPANE_MIN , NPANE_MAX ) ;
+
+   /* start with positive panes */
 
    for( ii=NPANE_INIT+1 ; ii <= NPANE_MAX ; ii++ ){
       fval     = 1.0 / ii ;
@@ -8826,6 +9842,14 @@ ENTRY("AFNI_load_defaults") ;
 
    }
 
+   /* 10 Jun 2002: put RGB cyclic maps in place */
+
+#if defined(RGBCYC_COUNT) && RGBCYC_COUNT <= NPANE_MAX
+   ii = RGBCYC_COUNT ;
+   for( jj=0 ; jj < ii ; jj++ ) INIT_ovin_pos[ii][jj] = RGBCYC_FIRST+jj+1 ;
+   for( jj=0 ; jj < ii ; jj++ ) INIT_ovin_sgn[ii][jj] = RGBCYC_FIRST+jj+1 ;
+#endif
+
    EXRETURN ;
 }
 
@@ -8880,10 +9904,12 @@ void AFNI_sonnet_CB( Widget w , XtPointer client_data , XtPointer call_data )
 #endif /* USE_SONNETS */
 /********************************************************************/
 
-/*----------------------------------------------------------------------
-   Put a function on the list of n-dimensional transformations
-   (modified 03 Nov 1996 from just 0D transforms)
-   (modified 22 Apr 1997 to add int flags to each function)
+/*----------------------------------------------------------------------*/
+/*! Put a function on the list of n-dimensional transformations
+     - modified 03 Nov 1996 from just 0D transforms
+     - modified 22 Apr 1997 to add int flags to each function
+     - modified 31 Jan 2002 to add slice_proj for nd=-1
+     - modified 21 Jul 2003 to add func_init
 ------------------------------------------------------------------------*/
 
 void AFNI_register_nD_function( int nd, char * name,
@@ -8900,12 +9926,16 @@ void AFNI_register_nD_function( int nd, char * name,
       case 0: rlist = &(GLOBAL_library.registered_0D) ; break ;
       case 1: rlist = &(GLOBAL_library.registered_1D) ; break ;
       case 2: rlist = &(GLOBAL_library.registered_2D) ; break ;
+
+      case -1: rlist= &(GLOBAL_library.registered_slice_proj) ; break ;
    }
 
    num = rlist->num ;
 
-   if( num == 0 ){ rlist->flags=NULL; rlist->labels=NULL; rlist->funcs=NULL;
-                   rlist->func_data=NULL; rlist->func_code=NULL;             }
+   if( num == 0 ){
+     rlist->flags=NULL; rlist->labels=NULL; rlist->funcs=NULL;
+     rlist->func_data=NULL; rlist->func_code=NULL; rlist->func_init=NULL;
+   }
 
    rlist->flags = (int *) XtRealloc( (char *)rlist->flags, sizeof(int)*(num+1) ) ;
 
@@ -8920,14 +9950,43 @@ void AFNI_register_nD_function( int nd, char * name,
 
    rlist->func_code = (int *) XtRealloc( (char *)rlist->func_code, sizeof(int)*(num+1) ) ;
 
-   rlist->flags[num]  = flags ;
-   rlist->labels[num] = XtNewString(name) ;
-   rlist->funcs[num]  = func ;
+   rlist->func_init = (generic_func **) XtRealloc( (char *)rlist->func_init ,
+                                                   sizeof(generic_func *)*(num+1) ) ;
 
+   rlist->flags[num]     = flags ;
+   rlist->labels[num]    = XtNewString(name) ;
+   rlist->funcs[num]     = func ;
    rlist->func_data[num] = NULL ;
    rlist->func_code[num] = nd ;
+   rlist->func_init[num] = NULL ;
 
    rlist->num = num+1 ;
+   return ;
+}
+
+/*-------------------------------------------------------------------------*/
+/*! Add init function to last registered function. This function
+    should be called just after AFNI_register_nD_function(). [21 Jul 2003] */
+
+void AFNI_register_nD_func_init( int nd , generic_func *fin )
+{
+   MCW_function_list * rlist ;
+   int num ;
+
+   if( fin == NULL ) return ;
+
+   switch( nd ){
+      default: return ;
+
+      case 0: rlist = &(GLOBAL_library.registered_0D) ; break ;
+      case 1: rlist = &(GLOBAL_library.registered_1D) ; break ;
+      case 2: rlist = &(GLOBAL_library.registered_2D) ; break ;
+
+      case -1: rlist= &(GLOBAL_library.registered_slice_proj) ; break ;
+   }
+
+   num = rlist->num ; if( num <= 0 ) return ;
+   rlist->func_init[num-1] = fin ;
    return ;
 }
 
@@ -8942,122 +10001,6 @@ void AFNI_store_dset_index( int ijk , int tin )
 
 int AFNI_needs_dset_ijk(void){ return dset_ijk ; }
 int AFNI_needs_dset_tin(void){ return dset_tin ; }
-
-/*--------------- Sample function: log10 of each input point ---------------*/
-
-void log10_func( int num , float * vec )
-{
-   int ii ;
-   float vmax , vmin ;
-
-   if( num <= 0 || vec == NULL ) return ;
-
-   /* find largest element */
-
-   vmax = vec[0] ;
-   for( ii=1 ; ii < num ; ii++ ) vmax = MAX( vmax , vec[ii] ) ;
-
-   /* if all are nonpositive, return all zeros */
-
-   if( vmax <= 0.0 ){
-      for( ii=0 ; ii < num ; ii++ ) vec[ii] = 0.0 ;
-      return ;
-   }
-
-   /* find smallest positive element */
-
-   vmin = vmax ;
-   for( ii=0 ; ii < num ; ii++ )
-      if( vec[ii] > 0.0 ) vmin = MIN( vmin , vec[ii] ) ;
-
-   /* take log10 of each positive element;
-      nonpositive elements get the log10 of vmin instead */
-
-   vmin = log10(vmin) ;
-   for( ii=0 ; ii < num ; ii++ )
-      vec[ii] = (vec[ii] > 0.0) ? log10(vec[ii]) : vmin ;
-
-   return ;
-}
-
-/*------------ Sample function: Signed sqrt of each input point ------------*/
-
-void ssqrt_func( int num , float * vec )
-{
-   int ii ;
-   double val ;
-
-   if( num <= 0 || vec == NULL ) return ;
-
-   for( ii=0 ; ii < num ; ii++ ){
-      val = sqrt(fabs(vec[ii])) ;                /* will be positive */
-      vec[ii] = (vec[ii] >= 0.0) ? val : -val ;  /* output sign = input sign */
-   }
-
-   return ;
-}
-
-/*--------------- Sample function: Order Statistics Filter ----------------*/
-
-void osfilt3_func( int num , double to,double dt, float * vec )
-{
-   int ii ;
-   float aa,bb,cc ;
-
-   bb = vec[0] ; cc = vec[1] ;
-   for( ii=1 ; ii < num-1 ; ii++ ){
-      aa = bb ; bb = cc ; cc = vec[ii+1] ;
-      vec[ii] = OSFILT(aa,bb,cc) ;         /* see mrilib.h */
-   }
-
-   return ;
-}
-
-/*--------------- Sample function: Median of 3 Filter ----------------*/
-
-void median3_func( int num , double to,double dt, float * vec )
-{
-   int ii ;
-   float aa,bb,cc ;
-
-   bb = vec[0] ; cc = vec[1] ;
-   for( ii=1 ; ii < num-1 ; ii++ ){
-      aa = bb ; bb = cc ; cc = vec[ii+1] ;
-      vec[ii] = MEDIAN(aa,bb,cc) ;         /* see mrilib.h */
-   }
-
-   return ;
-}
-
-/*---------------- Sample function: abs(FFT) [30 Jun 2000] --------------*/
-
-void absfft_func( int num , double to,double dt, float * vec )
-{
-   static complex * cx=NULL ;
-   static int      ncx=0 , numold=0 ;
-   float f0,f1 ;
-   int ii ;
-
-   if( num < 2 ) return ;
-   if( num > numold ){
-      numold = num ;
-      ncx    = csfft_nextup(numold) ;
-      if( cx != NULL ) free(cx) ;
-      cx = (complex *) malloc(sizeof(complex)*ncx) ;
-   }
-
-   get_linear_trend( num , vec , &f0,&f1 ) ;  /* thd_detrend.c */
-
-   for( ii=0 ; ii < num ; ii++ ){ cx[ii].r = vec[ii]-(f0+f1*ii); cx[ii].i = 0.0; }
-   for(      ; ii < ncx ; ii++ ){ cx[ii].r = cx[ii].i = 0.0 ; }
-
-   csfft_cox( -1 , ncx , cx ) ;               /* csfft.c */
-
-   vec[0] = 0.0 ;
-   for( ii=1 ; ii < num ; ii++ ) vec[ii] = CABS(cx[ii]) ;
-
-   return ;
-}
 
 /*-----------------------------------------------------------------------
    Add a timeseries to the global list

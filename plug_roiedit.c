@@ -11,6 +11,11 @@
  * Rick Reynolds
  * Medical College of WI
  *
+ *************
+ * history:
+ *
+ * October 7, 2003  [rickr]
+ *   - renamed old and new fields of r_alg_s to Bold and Bnew
  ***********************************************************************
  */
 
@@ -58,6 +63,9 @@ static PLUGIN_interface * plint = NULL ;
    directly call the main function, which will create a custom
    set of interface widgets.
 ************************************************************************/
+
+
+DEFINE_PLUGIN_PROTOTYPE
 
 PLUGIN_interface * PLUGIN_init( int ncall )
 {
@@ -1910,25 +1918,25 @@ r_init_Alg_values( r_alg_s * A )
     /*
     ** Create boundary memory and check for malloc success.
     */
-    A->old.used   = 0;
-    A->old.M      = 1000;
-    A->old.points = (int *)malloc( A->old.M * sizeof( int ) );
+    A->Bold.used   = 0;
+    A->Bold.M      = 1000;
+    A->Bold.points = (int *)malloc( A->Bold.M * sizeof( int ) );
 
-    if ( A->old.points == NULL )
+    if ( A->Bold.points == NULL )
     {
 	fprintf( stderr, "Error: riAv10\n"
-		 "Failed to allocate %d ints for boundary.\n", A->old.M );
+		 "Failed to allocate %d ints for boundary.\n", A->Bold.M );
 	return 0;
     }
 
-    A->new.used   = 0;
-    A->new.M      = 1000;
-    A->new.points = (int *)malloc( A->new.M * sizeof( int ) );
+    A->Bnew.used   = 0;
+    A->Bnew.M      = 1000;
+    A->Bnew.points = (int *)malloc( A->Bnew.M * sizeof( int ) );
 
-    if ( A->new.points == NULL )
+    if ( A->Bnew.points == NULL )
     {
 	fprintf( stderr, "\nError: riAv20\n"
-		 "Failed to allocate %d ints for boundary.\n\n", A->new.M );
+		 "Failed to allocate %d ints for boundary.\n\n", A->Bnew.M );
 	return 0;
     }
 
@@ -3061,7 +3069,7 @@ r_wt_check_insert( r_alg_s * A, int current )
 		if ( ( ! A->strong_borders ) ||
 		     ! r_wt_bad_ngbr_exists( A, current, A->wt_fill_val ) )
 		{
-		    if ( ! r_add_to_boundary( &A->new, current ) )
+		    if ( ! r_add_to_boundary( &A->Bnew, current ) )
 			return -1;
 		    else
 			added = 1;
@@ -3111,11 +3119,12 @@ r_wt_cb_fill(
 	return;
     }
 
-    if ( !gRA.old.points || !gRA.new.points || !gRA.neighbors || !gRA.undo_data)
+    if ( !gRA.Bold.points || !gRA.Bnew.points ||
+	   !gRA.neighbors || !gRA.undo_data)
     {
 	fprintf( stderr, "Error: rcfr10\n"
 		 "Memory failure, addresses are %x, %x, %x and %x.\n",
-		 (int)gRA.old.points, (int)gRA.new.points,
+		 (int)gRA.Bold.points, (int)gRA.Bnew.points,
 		 (int)gRA.neighbors, (int)gRA.undo_data );
 	return;
     }
@@ -3137,24 +3146,24 @@ r_wt_cb_fill(
     r_wt_set_neighbors( &gRA );
 
     /* set borders to nothing */
-    gRA.old.used     = 0;
-    gRA.new.used     = 0;
+    gRA.Bold.used    = 0;
+    gRA.Bnew.used    = 0;
     gRA.border.used  = 0;
 
     if ( r_wt_check_insert( &gRA, gRA.point_coord ) != 1 )
 	return;
 
-    while ( gRA.new.used > 0 )  /* while boundary exists */
+    while ( gRA.Bnew.used > 0 )  /* while boundary exists */
     {
-	B            = gRA.old;    /* swap memory and reset new.used to zero */
-	gRA.old      = gRA.new;    /*    - this simply preserves the memory  */
-	gRA.new      = B;
-	gRA.new.used = 0;
+	B             = gRA.Bold; /* swap memory and reset Bnew.used to zero */
+	gRA.Bold      = gRA.Bnew; /*    - this simply preserves the memory  */
+	gRA.Bnew      = B;
+	gRA.Bnew.used = 0;
 	fputs( ".", stderr );
 
-	for ( count = 0; count < gRA.old.used; count++ )
+	for ( count = 0; count < gRA.Bold.used; count++ )
 	{
-	    current = gRA.old.points[count];
+	    current = gRA.Bold.points[count];
 
 	    /* 6 'face sharing' points */
 	    r_wt_check_insert( &gRA, current - 1 );
@@ -3247,10 +3256,11 @@ r_gr_cb_fill(
     if ( gRA.gr_max_dist <= 0 )
 	return;
 
-    if ( !gRA.old.points || !gRA.new.points || !gRA.neighbors || !gRA.undo_data)    {
+    if ( !gRA.Bold.points || !gRA.Bnew.points ||
+	   !gRA.neighbors || !gRA.undo_data)    {
 	fprintf( stderr, "Error: rcfg10\n"
 		 "Memory failure, addresses are %x, %x, %x and %x.\n",
-		 (int)gRA.old.points, (int)gRA.new.points,
+		 (int)gRA.Bold.points, (int)gRA.Bnew.points,
 		 (int)gRA.neighbors, (int)gRA.undo_data );
 	return;
     }
@@ -3270,15 +3280,15 @@ r_gr_cb_fill(
 	    *fnptr = 0;
 
     /* set old and new borders to nothing */
-    gRA.old.used     = 0;
-    gRA.new.used     = 0;
+    gRA.Bold.used     = 0;
+    gRA.Bnew.used     = 0;
 
     gRH.gr_edge.used = 0;               /* trash the old gray edge */
 
     iptr = gRA.border.points;
     for ( count = 0; count < gRA.border.used; count++ )
     {
-	if ( ( added = r_gr_check_insert( &gRA, &gRA.old, *iptr ) ) == -1 )
+	if ( ( added = r_gr_check_insert( &gRA, &gRA.Bold, *iptr ) ) == -1 )
 	    return;
 	iptr++;
     }
@@ -3286,27 +3296,27 @@ r_gr_cb_fill(
 
     dist = 1;
     fputc( '.', stdout );
-    while ( ( gRA.old.used > 0 ) && ( dist < gRA.gr_max_dist ) )
+    while ( ( gRA.Bold.used > 0 ) && ( dist < gRA.gr_max_dist ) )
     {
-	iptr = gRA.old.points;
-	for ( count = 0; count < gRA.old.used; count++ )
+	iptr = gRA.Bold.points;
+	for ( count = 0; count < gRA.Bold.used; count++ )
 	{
 	    current = *iptr;
 
-	    ( void )r_gr_check_insert( &gRA, &gRA.new, current - 1 );
-	    ( void )r_gr_check_insert( &gRA, &gRA.new, current + 1 );
-	    ( void )r_gr_check_insert( &gRA, &gRA.new, current - nx );
-	    ( void )r_gr_check_insert( &gRA, &gRA.new, current + nx );
-	    ( void )r_gr_check_insert( &gRA, &gRA.new, current - nxy );
-	    ( void )r_gr_check_insert( &gRA, &gRA.new, current + nxy );
+	    ( void )r_gr_check_insert( &gRA, &gRA.Bnew, current - 1 );
+	    ( void )r_gr_check_insert( &gRA, &gRA.Bnew, current + 1 );
+	    ( void )r_gr_check_insert( &gRA, &gRA.Bnew, current - nx );
+	    ( void )r_gr_check_insert( &gRA, &gRA.Bnew, current + nx );
+	    ( void )r_gr_check_insert( &gRA, &gRA.Bnew, current - nxy );
+	    ( void )r_gr_check_insert( &gRA, &gRA.Bnew, current + nxy );
 
 	    iptr++;
 	}
 
-	B            = gRA.old;
-	gRA.old      = gRA.new;
-	gRA.new      = B;
-	gRA.new.used = 0;
+	B             = gRA.Bold;
+	gRA.Bold      = gRA.Bnew;
+	gRA.Bnew      = B;
+	gRA.Bnew.used = 0;
 
 	dist++;
 	fputc( '.', stdout );
@@ -4090,7 +4100,7 @@ r_afni_set_fill_point(
 	DSET_load(A->anat);*/
 	fputs("r_afni_set_fill_point(): Error: No anatomical data. ( A->adata = NULL )\n",stderr);
 	fputs("This may have been caused by selecting Talairach\n",stderr);
-	fputs("view before Switch Anatomy or Switch Function.\n",stderr);
+	fputs("view before Switch Underlay or Switch Overlay.\n",stderr);
 	fputs("Try setting the environment variable AFNI_VIEW_ANAT_BRICK\n",stderr);
 	fputs("(The value is irrelevant) and run afni again.\n",stderr);
 	exit(1);
@@ -4219,8 +4229,8 @@ r_main_show_alg_vals( r_alg_s * A )
 	(int)A->anat, (int)A->func,
 	(int)A->adata, (int)A->fdata,
 	A->factor, A->nx, A->ny, A->nz, A->nvox,
-	A->old.M, A->old.used, (int)A->old.points,
-	A->new.M, A->new.used, (int)A->new.points,
+	A->Bold.M, A->Bold.used, (int)A->Bold.points,
+	A->Bnew.M, A->Bnew.used, (int)A->Bnew.points,
 	A->border.M, A->border.used, (int)A->border.points,
 	(int)A->neighbors, (int)A->undo_data,
 	A->min_nbrs, A->strong_borders
@@ -4752,6 +4762,7 @@ static void DRAW_help_CB( Widget w, XtPointer client_data, XtPointer call_data )
     - only datasets with nvals=1 can be edited
     - bricks must be on same grid (dataxes) as AFNI controller
   Much of this code is adapted from PLUG_choose_dataset_CB.
+  [28 Jul 2003] Modified for new THD_session struct.
 ---------------------------------------------------------------------*/
 
 static int                  ndsl = 0 ;
@@ -4803,29 +4814,12 @@ static void DRAW_choose_CB( Widget w, XtPointer client_data, XtPointer call_data
 
    /* scan anats */
 
-   for( id=0 ; id < ss->num_anat ; id++ ){
-      qset = ss->anat[id][vv] ;
+   for( id=0 ; id < ss->num_dsset ; id++ ){
+      qset = ss->dsset[id][vv] ;
 
       if( ! ISVALID_DSET (qset)                        ) continue ;  /* skip */
       if( ! DSET_INMEMORY(qset)                        ) continue ;
       if(   DSET_NVALS(qset) > 1                       ) continue ;
-      if( ! EQUIV_DATAXES(qset->daxes,im3d->wod_daxes) ) continue ;
-
-      ndsl++ ;
-      dsl = (PLUGIN_dataset_link *)
-	      XtRealloc( (char *) dsl , sizeof(PLUGIN_dataset_link)*ndsl ) ;
-
-      make_PLUGIN_dataset_link( qset , dsl + (ndsl-1) ) ;
-   }
-
-   /* scan funcs */
-
-   for( id=0 ; id < ss->num_func ; id++ ){
-      qset = ss->func[id][vv] ;
-
-      if( ! ISVALID_DSET (qset)                        ) continue ;  /* skip */
-      if( ! DSET_INMEMORY(qset)                        ) continue ;
-      if( DSET_NVALS(qset) > 1                         ) continue ;
       if( ! EQUIV_DATAXES(qset->daxes,im3d->wod_daxes) ) continue ;
 
       ndsl++ ;
@@ -4957,7 +4951,8 @@ static void DRAW_finalize_dset_CB( Widget w, XtPointer fd, MCW_choose_cbs * cbs 
    /* setup AFNI for drawing */
 
    if( ! recv_open ){
-      recv_key = AFNI_receive_init( im3d, RECEIVE_DRAWING_MASK, DRAW_receiver,NULL ) ;
+      recv_key = AFNI_receive_init( im3d, RECEIVE_DRAWING_MASK,
+                                    DRAW_receiver,NULL,"DRAW_receiver" ) ;
 
       if( recv_key < 0 ){
 	 (void) MCW_popup_message( im3d->vwid->top_shell ,

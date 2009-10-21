@@ -29,6 +29,9 @@
   Mod:      Added functions column_to_vector and matrix_extract_rows.
   Date:     21 April 2000
 
+  Mod:      Added functions vector_dotself() and vector_multiply_subtract() -- RWCox.
+  Date:     28 Dec 2002
+
 */
 
 /*---------------------------------------------------------------------------*/
@@ -50,7 +53,6 @@ typedef struct vector
   int  dim;
   double * elts;
 } vector;
-
 
 /*---------------------------------------------------------------------------*/
 /*
@@ -216,6 +218,8 @@ void matrix_transpose (matrix a, matrix * t);
 
 int matrix_inverse (matrix a, matrix * ainv);
 
+int matrix_inverse_dsc (matrix a, matrix * ainv);  /* 15 Jul 2004 */
+
 
 /*---------------------------------------------------------------------------*/
 /*
@@ -321,6 +325,13 @@ void vector_subtract (vector a, vector b, vector * c);
 
 void vector_multiply (matrix a, vector b, vector * c);
 
+/*---------------------------------------------------------------------------*/
+/*
+  Right multiply matrix a by vector b, then subtract c.  Result is vector d.
+  Also returns sum of squares of elements of d.
+*/
+
+double vector_multiply_subtract (matrix a, vector b, vector c, vector * d) ;
 
 /*---------------------------------------------------------------------------*/
 /*
@@ -329,7 +340,16 @@ void vector_multiply (matrix a, vector b, vector * c);
 
 double vector_dot (vector a, vector b);
 
+double vector_dotself (vector a);  /* 28 Dec 2002: RWCox */
 
 /*---------------------------------------------------------------------------*/
 
+double matrix_norm( matrix a ) ;   /* 03 Mar 2003: RWCox */
 
+int * matrix_check_columns( matrix a , double eps ) ; /* 14 Jul 2004: RWCox */
+
+double * matrix_singvals( matrix X ) ; /* 14 Jul 2004 */
+
+void matrix_psinv( matrix X , matrix *XtXinv , matrix *XtXinvXt ) ;  /* 19 Jul 2004 */
+
+double get_matrix_flops(void) ;

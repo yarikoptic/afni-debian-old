@@ -28,9 +28,7 @@ THD_3dim_dataset * THD_3dim_from_block( THD_datablock * blk )
    ATR_string * atr_str ;
    ATR_float  * atr_flo ;
 
-#ifndef OMIT_DATASET_IDCODES
    int new_idcode = 0 ;
-#endif
 
 ENTRY("THD_3dim_from_block") ; /* 29 Aug 2001 */
 
@@ -57,14 +55,17 @@ ENTRY("THD_3dim_from_block") ; /* 29 Aug 2001 */
    dset->wod_daxes = NULL ;  /* 02 Nov 1996 */
 
    dset->wod_flag    = False ;  /* set special flags */
-   dset->merger_list = NULL ;
-   dset->merger_func = NULL ;
    dset->death_mark  = 0 ;
+   dset->tcat_list   = NULL ;
+   dset->tcat_num    = 0 ;
+   dset->tcat_len    = NULL ;
 
    ADDTO_KILL(dset->kl,daxes) ;
 
    dset->stats  = NULL ;
+#ifdef ALLOW_DATASET_VLIST
    dset->pts    = NULL ;
+#endif
    dset->taxis  = NULL ;
    dset->tagset = NULL ;   /* 23 Oct 1998 */
 
@@ -107,7 +108,6 @@ ENTRY("THD_3dim_from_block") ; /* 29 Aug 2001 */
       }
    }
 
-#ifndef OMIT_DATASET_IDCODES
    /*-------------------------------------------------------*/
    /*--               find identifier codes               --*/
    /*-------------------------------------------------------*/
@@ -136,7 +136,6 @@ ENTRY("THD_3dim_from_block") ; /* 29 Aug 2001 */
    atr_str = THD_find_string_atr( blk , ATRNAME_IDWARPPAR ) ;
    if( atr_str != NULL )
       MCW_strncpy( dset->warp_parent_idcode.str , atr_str->ch , MCW_IDSIZE ) ;
-#endif
 
    /*--------------------------------*/
    /*-- get data labels (optional) --*/
@@ -263,12 +262,12 @@ ENTRY("THD_3dim_from_block") ; /* 29 Aug 2001 */
    }
 
 #ifdef EXTEND_BBOX
-   daxes->xxmin -= 0.5 * daxes->xxdel ;  /* pushes edges back by 1/2  */
-   daxes->xxmax += 0.5 * daxes->xxdel ;  /* voxel dimensions (the box */
-   daxes->yymin -= 0.5 * daxes->yydel ;  /* defined above is based on */
-   daxes->yymax += 0.5 * daxes->yydel ;  /* voxel centers, not edges) */
-   daxes->zzmin -= 0.5 * daxes->zzdel ;
-   daxes->zzmax += 0.5 * daxes->zzdel ;
+   daxes->xxmin -= 0.5 * fabs(daxes->xxdel) ;  /* pushes edges back by 1/2  */
+   daxes->xxmax += 0.5 * fabs(daxes->xxdel) ;  /* voxel dimensions (the box */
+   daxes->yymin -= 0.5 * fabs(daxes->yydel) ;  /* defined above is based on */
+   daxes->yymax += 0.5 * fabs(daxes->yydel) ;  /* voxel centers, not edges) */
+   daxes->zzmin -= 0.5 * fabs(daxes->zzdel) ;
+   daxes->zzmax += 0.5 * fabs(daxes->zzdel) ;
 #endif
 
    /*----------------------------------------------------------------*/
@@ -437,7 +436,8 @@ ENTRY("THD_3dim_from_block") ; /* 29 Aug 2001 */
 
    atr_int = THD_find_int_atr( blk , ATRNAME_WARP_TYPE ) ;
 
-   dset->vox_warp = NULL ;  /* 02 Nov 1996 */
+   dset->vox_warp  = NULL ;  /* 02 Nov 1996 */
+   dset->self_warp = NULL ;  /* 26 Aug 2002 */
 
    if( atr_int == NULL ){  /* no warp */
       dset->warp = NULL ;
@@ -688,12 +688,11 @@ ENTRY("THD_3dim_from_block") ; /* 29 Aug 2001 */
          if any error was flagged, kill this dataset and return nothing ---*/
 
    if( dset_ok == False ){
-      fprintf(stderr,"PURGING dataset %s from memory\n",dset->self_name) ;
+      fprintf(stderr,"PURGING dataset %s from memory\n",DSET_HEADNAME(dset)) ;
       THD_delete_3dim_dataset( dset , False ) ;
-      dset = NULL ;
+      RETURN(NULL) ;
    }
 
-#ifndef OMIT_DATASET_IDCODES
    /*--- If we assigned a new dataset idcode, write it back to disk ---*/
 
    if( dset != NULL && new_idcode ){
@@ -701,11 +700,6 @@ ENTRY("THD_3dim_from_block") ; /* 29 Aug 2001 */
               dset->dblk->diskptr->header_name ) ;
       THD_write_3dim_dataset( NULL , NULL , dset , False ) ;
    }
-#endif
-
-#ifdef ALLOW_AGNI
-   AGNI_get_sname(dset) ;
-#endif
 
    RETURN( dset );
 }

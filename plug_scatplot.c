@@ -49,6 +49,9 @@ static char helpstring[] =
    Set up the interface to the user
 ************************************************************************/
 
+
+DEFINE_PLUGIN_PROTOTYPE
+
 PLUGIN_interface * PLUGIN_init( int ncall )
 {
    PLUGIN_interface * plint ;
@@ -65,6 +68,8 @@ PLUGIN_interface * PLUGIN_init( int ncall )
    PLUTO_add_hint( plint , "Of 2 Bricks" ) ;
 
    PLUTO_set_sequence( plint , "A:afniinfo:dset" ) ;
+
+   PLUTO_set_runlabels( plint , "Plot+Keep" , "Plot+Close" ) ;  /* 04 Nov 2003 */
 
    /*-- first line of input --*/
 
@@ -374,12 +379,12 @@ char * SCAT_main( PLUGIN_interface * plint )
    /* compute the labels for the plot */
 
    if( xbot >= xtop ){
-      sprintf( xlab , "%s[%d]" , DSET_FILECODE(xdset),ivx ) ;
+      sprintf( xlab , "\\noesc %s[%d]" , DSET_FILECODE(xdset),ivx ) ;
    } else {
       AV_fval_to_char(xbot,ab) ; AV_fval_to_char(xtop,bb) ;
       pab = ab ; if( *pab == ' ' ) pab++ ;
       pbb = bb ; if( *pbb == ' ' ) pbb++ ;
-      sprintf( xlab , "%s[%d]<%s..%s>" , DSET_FILECODE(xdset),ivx,pab,pbb ) ;
+      sprintf( xlab , "\\noesc %s[%d]<%s..%s>" , DSET_FILECODE(xdset),ivx,pab,pbb ) ;
    }
 
    if( ybot >= ytop ){
@@ -388,7 +393,7 @@ char * SCAT_main( PLUGIN_interface * plint )
       AV_fval_to_char(ybot,ab) ; AV_fval_to_char(ytop,bb) ;
       pab = ab ; if( *pab == ' ' ) pab++ ;
       pbb = bb ; if( *pbb == ' ' ) pbb++ ;
-      sprintf( ylab , "%s[%d]<%s..%s>" , DSET_FILECODE(ydset),ivy,pab,pbb ) ;
+      sprintf( ylab , "\\noesc %s[%d]<%s..%s>" , DSET_FILECODE(ydset),ivy,pab,pbb ) ;
    }
 
    /*- 11 Aug 2001: compute correlation coefficient -*/
@@ -408,7 +413,7 @@ char * SCAT_main( PLUGIN_interface * plint )
    if( mask_dset == NULL ){
       sprintf(tlab,"Scatter Plot: %d Voxels",mcount) ;
    } else {
-      sprintf(tlab,"Scatter Plot: %d Voxels (%s)",
+      sprintf(tlab,"\\noesc Scatter Plot: %d Voxels (%s)",
               mcount , DSET_FILECODE(mask_dset)   ) ;
    }
    if( pcor != 0.0 )

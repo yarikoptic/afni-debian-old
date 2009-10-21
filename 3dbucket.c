@@ -18,11 +18,21 @@
   Author:  B. D. Ward
   Date:    04 February 1998
 
+  Mod:     If more than one input dataset, copy command line history from the
+           first input dataset to the output bucket dataset.
+  Date:    14 March 2002
+
+  Mod:     When verifying view type extension for -glueto dataset, scan
+           from the end (in case there are extra '+' characters).
+  Author:  R. C. Reynolds
+  Date:    30 October 2003
+
 */
+/*---------------------------------------------------------------------------*/
 
 
 #define PROGRAM_NAME "3dbucket"                      /* name of this program */
-#define LAST_MOD_DATE "04 February 1998"         /* date of last program mod */
+#define LAST_MOD_DATE "30 October 2003"          /* date of last program mod */
 
 #include "mrilib.h"
 
@@ -148,12 +158,24 @@ void BUCK_read_opts( int argc , char * argv[] )
 
 	 if (ok)
 	   {
+#if 0                              /* old code - scan from end, instead */
+
 	     for (ilen = 0;  ilen < nlen;  ilen++)
 	       {
 		 str = argv[nopt] + ilen;
 		 if (str[0] == '+') break;
 	       }
 	     if (ilen == nlen)  ok = 0;
+#endif
+
+	     /* scan from end for view type extension, require one char */
+	     /*                                     30 Oct 2003 [rickr] */
+	     for (ilen = nlen - 1; ilen > 0; ilen--)
+	       {
+		 str = argv[nopt] + ilen;
+		 if (str[0] == '+') break;
+	       }
+	     if (ilen == 0)  ok = 0;
 	   }
 
 	 if (ok)
@@ -419,7 +441,7 @@ void BUCK_Syntax(void)
     "WARNING: using this program, it is possible to create a dataset that\n"
     "         has different basic datum types for different sub-bricks\n"
     "         (e.g., shorts for brick 0, floats for brick 1).\n"
-    "         Do NOT do this!  Very few AFNI program will work correctly\n"
+    "         Do NOT do this!  Very few AFNI programs will work correctly\n"
     "         with such datasets!\n"
    ) ;
 
@@ -468,7 +490,7 @@ int main( int argc , char * argv[] )
 
    new_dset = EDIT_empty_copy( DSUB(0) ) ;
 
-   if( ninp == 1 ) tross_Copy_History( DSUB(0) , new_dset ) ;
+   /*  if( ninp == 1 ) */   tross_Copy_History( DSUB(0) , new_dset ) ;
    tross_Make_History( "3dbucket" , argc,argv , new_dset ) ;
 
    EDIT_dset_items( new_dset ,

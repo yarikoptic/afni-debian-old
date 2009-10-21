@@ -15,6 +15,8 @@
   Mod:     Added call to AFNI_logger.
   Date:    15 August 2001
 
+  Mod:     Set MAX_NAME_LENGTH equal to THD_MAX_NAME.
+  Date:    02 December 2002
 */
 
 /*---------------------------------------------------------------------------*/
@@ -25,16 +27,7 @@
 #define PROGRAM_NAME "3dWavelets"                    /* name of this program */
 #define PROGRAM_AUTHOR "B. Douglas Ward"                   /* program author */
 #define PROGRAM_INITIAL "28 March 2000"   /* date of initial program release */
-#define PROGRAM_LATEST "15 August 2001"     /* date of last program revision */
-
-/*---------------------------------------------------------------------------*/
-/*
-  Global constants. 
-*/
-
-#define MAX_NAME_LENGTH 80              /* max. streng length for file names */
-#define MAX_FILTERS 20               /* max. number of filter specifications */
-
+#define PROGRAM_LATEST "02 December 2002"   /* date of last program revision */
 
 /*---------------------------------------------------------------------------*/
 /*
@@ -44,6 +37,15 @@
 #include "mrilib.h"
 #include "Wavelets.h"
 #include "Wavelets.c"
+
+
+/*---------------------------------------------------------------------------*/
+/*
+  Global constants. 
+*/
+
+#define MAX_NAME_LENGTH THD_MAX_NAME    /* max. string length for file names */
+#define MAX_FILTERS 20               /* max. number of filter specifications */
 
 
 /*---------------------------------------------------------------------------*/
@@ -624,71 +626,24 @@ float * read_time_series
   float * ts_data = NULL;  /* input time series data */
 
 
-  /*----- First, check file name for column index -----*/
-  cpt = strstr (ts_filename, "[");
-  if (cpt == NULL)
-    {
-      strcpy (filename, ts_filename);
-      subv[0] = '\0';
-    }
-  else
-    if (cpt == ts_filename)
-      WA_error ("Illegal time series filename on command line");
-    else
-      {
-	int ii;
-	ii = cpt - ts_filename;
-	memcpy (filename, ts_filename, ii);
-	filename[ii] = '\0';
-	strcpy (subv, cpt);
-      }
-
-  
   /*----- Read the time series file -----*/
-  im = mri_read_ascii (filename); 
-  if (im == NULL)
+  flim = mri_read_1D(ts_filename) ;
+  if (flim == NULL)
     {
-      sprintf (message,  "Unable to read time series file: %s",  filename);
+      sprintf (message,  "Unable to read time series file: %s",  ts_filename);
       WA_error (message);
     }
 
   
   /*----- Set pointer to data, and set dimensions -----*/
-  flim = mri_transpose (im);  mri_free(im);
-  MTEST (flim);
   far = MRI_FLOAT_PTR(flim);
   nx = flim->nx;
-  ny = flim->ny;
+  ny = flim->ny; iy = 0 ;
+  if( ny > 1 ){
+    fprintf(stderr,"WARNING: time series %s has %d columns\n",ts_filename,ny);
+  }
+
   
-
-  /*----- Get the column index -----*/
-  if (subv[0] == '\0')  /* no column index */
-    {
-      if (ny != 1)
-	{
-	  sprintf (message,
-		   "Must specify column index for time series file: %s",
-		   ts_filename);
-	  WA_error (message);
-	}
-      iy = 0;
-    }
-  else  /* process column index */
-    {
-      int * ivlist;
-      
-      ivlist = MCW_get_intlist (ny, subv);
-      if ((ivlist == NULL) || (ivlist[0] != 1))
-	{
-	  sprintf (message,
-		   "Illegal column selector for time series file: %s",
-		   ts_filename);
-	  WA_error (message);
-	}
-      iy = ivlist[1];
-    }
-
-
   /*----- Save the time series data -----*/
   *ts_length = nx;
   ts_data = (float *) malloc (sizeof(float) * nx);

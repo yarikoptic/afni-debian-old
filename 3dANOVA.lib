@@ -44,6 +44,12 @@
             deallocation for option_data->first_dataset.
    Date:    01 August 2001
 
+   Mod:     Modified routine write_afni_data so that all output subbricks 
+            will now have the scaled short integer format.
+   Date:    14 March 2002
+
+   Mod:     Modify add_file_name() to use .1D filenames if so ordered.
+   Date:    14 March 2003 - RWCox.
 */
 
 /*---------------------------------------------------------------------------*/
@@ -538,7 +544,6 @@ void write_afni_data (anova_options * option_data,  char * filename,
   int ii;                             /* voxel index */
   THD_3dim_dataset * dset=NULL;       /* input afni data set pointer */
   THD_3dim_dataset * new_dset=NULL;   /* output afni data set pointer */
-  int iv;                             /* sub-brick index */ 
   int ierror;                         /* number of errors in editing data */
   int ibuf[32];                       /* integer buffer */
   float fbuf[MAX_STAT_AUX];           /* float buffer */
@@ -575,15 +580,7 @@ void write_afni_data (anova_options * option_data,  char * filename,
      tross_Append_History ( new_dset, label);
 
   
-  iv = DSET_PRINCIPAL_VALUE(dset) ;
-  if( option_data->datum >= 0 ){
-    output_datum = option_data->datum ;
-  } else {
-    output_datum = DSET_BRICK_TYPE(dset,iv) ;
-    if( output_datum == MRI_byte ) output_datum = MRI_short ;
-  }
-  
-  
+  output_datum = MRI_short ;
   ibuf[0] = output_datum ; ibuf[1] = MRI_short ;
   
   if (dendof == 0) func_type = FUNC_TT_TYPE;
@@ -682,6 +679,10 @@ void write_afni_data (anova_options * option_data,  char * filename,
   
 }
 
+/*---------------------------------------------------------------------------*/
+
+static int use_1D_filenames = 0 ;                             /* 14 Mar 2003 */
+static void USE_1D_filenames( int uu ){ use_1D_filenames=uu; }
 
 /*---------------------------------------------------------------------------*/
 /*
@@ -705,6 +706,19 @@ void add_file_name (THD_3dim_dataset * new_dset, char * filename,
 
       strcat (command_str, " ");
       strcat (command_str, DSET_HEADNAME(new_dset));
+
+      switch( use_1D_filenames ){  /* 14 Mar 2003 - RWCox */
+        default: break ;
+
+        case 1:
+        case 3:{ int ll = strlen(command_str) ;
+                 command_str[ll-10] = '\0' ;  strcat(command_str,".") ;
+                 if( use_1D_filenames == 1 )  strcat(command_str,"1") ;
+                 else                         strcat(command_str,"3") ;
+                                              strcat(command_str,"D") ;
+        }
+        break ;
+      }
 }
 
 
@@ -720,11 +734,37 @@ void remove_dataset (THD_3dim_dataset * new_dset, char * filename)
 		   ADN_prefix, filename,
 		   ADN_none);
 
-  if (ISVALID_3DIM_DATASET(new_dset))
-    { 
-      remove (DSET_HEADNAME(new_dset));
-      remove (DSET_BRIKNAME(new_dset));
-    }
+  if( !ISVALID_DSET(new_dset) ) return ;
+
+#if 0
+  fprintf(stderr,"remove_dataset(%s): ",filename) ;
+#endif
+
+   switch( use_1D_filenames ){  /* 14 Mar 2003 - RWCox */
+     default:
+       remove (DSET_HEADNAME(new_dset));
+       remove (DSET_BRIKNAME(new_dset));
+#if 0
+       fprintf(stderr,"%s ",DSET_HEADNAME(new_dset)) ;
+       fprintf(stderr,"%s\n",DSET_BRIKNAME(new_dset)) ;
+#endif
+
+     case 1:
+     case 3:{
+       char *fname=strdup(DSET_BRIKNAME(new_dset)); int ll=strlen(fname);
+       if( ll > 10 && strstr(fname,".BRIK") != NULL ){
+         fname[ll-10] = '\0' ;        strcat(fname,".") ;
+         if( use_1D_filenames == 1 )  strcat(fname,"1") ;
+         else                         strcat(fname,"3") ;
+                                      strcat(fname,"D") ;
+       }
+#if 0
+       fprintf(stderr,"%s\n",fname);
+#endif
+       remove(fname) ; free(fname) ;
+     }
+     break ;
+   }
 
 }
 

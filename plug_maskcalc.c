@@ -9,6 +9,15 @@
  * plug_maskcalc.c		- plugin to do mask-based computations
  *
  * $Log: plug_maskcalc.c,v $
+ * Revision 1.6  2004/01/07 19:50:37  rwcox
+ * Cput
+ *
+ * Revision 1.5  2003/07/15 13:28:30  rwcox
+ * Cput
+ *
+ * Revision 1.4  2003/06/25 20:45:07  rwcox
+ * Cput
+ *
  * Revision 1.3  2000/12/21 16:10:54  cox
  * AFNI
  *
@@ -23,7 +32,9 @@
 #include <stdio.h>
 #include <math.h>
 #include <stdlib.h>
-#include <malloc.h>
+#if !(defined(DARWIN) || defined(FreeBSD))
+#  include <malloc.h>
+#endif
 #include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -42,6 +53,9 @@ static char   grMessage[ R_MESSAGE_L ];
 
 static char * gr_help_message = 
        "maskcalc plugin - rickr";
+
+
+DEFINE_PLUGIN_PROTOTYPE
 
 PLUGIN_interface * PLUGIN_init( int ncall )
 {

@@ -5,11 +5,14 @@
 ******************************************************************************/
 
 #include "thd_iochan.h"
+#include "Amalloc.h"
 #include <sys/stat.h>
 
 static int debug = 0 ;
 #define FAILED     if(debug)fprintf(stderr," **FAILED\n")
 #define DMESS(s,t) if(debug)fprintf(stderr,s,t)
+
+extern unsigned long THD_filesize( char * pathname ) ;
 
 /*---------------------------------------------------------------------*/
 static char tmpdir[256] = "\0" ;
@@ -115,6 +118,11 @@ IOCHAN * open_URL_http( char * url , int msec )
   return ioc ;
 }
 
+/*--------------------------------------------------------------*/
+
+static int prog=0 ;
+void set_URL_progress( int p ){ prog=p; }  /* 20 Mar 2003 */
+
 /*---------------------------------------------------------------
   Read an "http://" URL, with network waits of up to msec
   milliseconds allowed.  Returns number of bytes read -- if this
@@ -134,7 +142,7 @@ int read_URL_http( char * url , int msec , char ** data )
 {
    IOCHAN * ioc ;
    char * buf=NULL , * cpt , qbuf[QBUF] , qname[256] ;
-   int ii,jj , nall , nuse ;
+   int ii,jj , nall , nuse , nget=0, nmeg=0 ;
    int cflag , first ;
    FILE * cfile ;
 
@@ -175,7 +183,7 @@ int read_URL_http( char * url , int msec , char ** data )
 
    /* read all of url */
 
-   if( !cflag ){ buf = malloc( QBUF ) ; nall = QBUF ; }
+   if( !cflag ){ buf = AFMALL(char, QBUF ) ; nall = QBUF ; }
    nuse = 0 ; first = 1 ;
 
    do{
@@ -185,8 +193,13 @@ int read_URL_http( char * url , int msec , char ** data )
       ii = iochan_recv( ioc , qbuf , QBUF ) ;
       if( ii <= 0 ) break ;                  /* quit if no data */
 
+      if( prog ){
+        nget += ii ; jj = nget/(1024*1024) ;
+        if( jj > nmeg ){ nmeg=jj; fprintf(stderr,"."); }
+      }
+
       if( first ){                           /* check for "not found" */
-         if( buf == NULL ){ buf = malloc(ii) ; }
+         if( buf == NULL ){ buf = AFMALL(char, ii) ; }
          memcpy( buf , qbuf , ii ) ;
          for( jj=0 ; jj < ii ; jj++ ) buf[jj] = toupper(buf[jj]) ;
          buf[ii-1] = '\0' ;
@@ -210,13 +223,15 @@ int read_URL_http( char * url , int msec , char ** data )
       } else {                               /* save to buffer */
          if( nuse+ii > nall ){               /* enlarge buffer? */
             nall += QBUF ;
-            buf   = realloc( buf , nall ) ;
+            buf   = AFREALL(buf, char, nall) ;
          }
          memcpy( buf+nuse , qbuf , ii ) ;    /* copy data into buffer */
       }
       nuse += ii ;                           /* how many bytes so far */
    } while(1) ;
    IOCHAN_CLOSE(ioc) ;
+
+   if( prog && nmeg > 0 ) fprintf(stderr,"!\n") ;
 
    /* didn't get anything? */
 
@@ -243,7 +258,7 @@ int read_URL_http( char * url , int msec , char ** data )
       cfile = fopen( qname , "rb" ) ;
       if( cfile == NULL ){ DMESS("%s"," **gzip failed!\n");
                            unlink(qname) ; return( -1 );   }
-      buf = malloc(nuse) ;
+      buf = AFMALL(char, nuse) ;
       fread( buf , 1 , nuse , cfile ) ;             /* read file in */
       fclose(cfile) ; unlink(qname) ;
    }
@@ -368,7 +383,7 @@ int read_URL_ftp( char * url , char ** data )
 
    sp = fopen( qname , "rb" ) ;
    if( sp == NULL ){ unlink(qname) ; return( -1 ); }
-   buf = malloc(nuse) ; if( buf == NULL ){ unlink(qname) ; return( -1 ); }
+   buf = AFMALL(char,nuse) ; if( buf == NULL ){ unlink(qname) ; return( -1 ); }
 
    fread( buf , 1 , nuse , sp ) ;  /* AT LAST! */
    fclose(sp) ; unlink(qname) ;
@@ -425,7 +440,7 @@ int read_URL_tmpdir( char * url , char ** tname )
    /* make the output filename */
 
    setup_tmpdir() ;
-   fname = malloc(strlen(url)+strlen(tmpdir)+1) ;
+   fname = AFMALL(char, strlen(url)+strlen(tmpdir)+1) ;
    tt    = THD_trailname(url,0) ;
    strcpy(fname,tmpdir) ; strcat(fname,tt) ; ll = strlen(fname) ;
    if( ll > 3 && strcmp(fname+(ll-3),".gz") == 0 ) fname[ll-3] = '\0' ;

@@ -30,6 +30,15 @@ J Satchell, Eric Marttila
 */
 /* Revision History:
 $Log: LiteClue.c,v $
+Revision 1.16  2003/12/19 22:39:00  rwcox
+Cput
+
+Revision 1.15  2003/12/16 16:13:12  rhammett
+Cput
+
+Revision 1.14  2003/08/05 17:20:46  rwcox
+Cput
+
 Revision 1.13  2000/12/21 16:10:54  cox
 AFNI
 
@@ -104,6 +113,7 @@ $log
 /* #include <Xm/XmP.h> */
 #include <X11/IntrinsicP.h> 
 #include <X11/StringDefs.h>
+extern void RWC_xineramize( Display *,int,int,int,int,int *,int *) ;
 
 #include "LiteClueP.h"
 
@@ -120,7 +130,7 @@ $log
 		return BADVALUE
 #endif
 
-/* extern _XmSelectColorDefault();	/* cgi */
+/* extern _XmSelectColorDefault(); */ /* cgi */
 static Boolean setValues( Widget _current, Widget _request, Widget _new, ArgList args, Cardinal * num_args);
 static void Initialize(Widget treq, Widget tnew, ArgList args, Cardinal *num_args);
 struct liteClue_context_str * alloc_liteClue_context(void);
@@ -177,8 +187,8 @@ LiteClueClassRec xcgLiteClueClassRec =
 	(WidgetClass)&overrideShellClassRec,	/* superclass */
 	"XcgLiteClue",				/* class_name */
 	(Cardinal)sizeof(LiteClueRec),		/* widget size */
-	NULL,	/* classInit,			/* class_init */
-	(XtWidgetClassProc)NULL,	/* classPartInit,	/* class_part_init */
+	NULL,	/* classInit, */		/* class_init */
+	(XtWidgetClassProc)NULL, /* classPartInit, */	/* class_part_init */
 	(XtEnum)FALSE,				/* class_inited */
 	(XtInitProc)Initialize,			/* initialize */
 	(XtArgsProc)NULL,			/* init_hook */
@@ -192,7 +202,7 @@ LiteClueClassRec xcgLiteClueClassRec =
 	(XtEnum)FALSE,				/* compress_exposur */
 	TRUE,					/* compress enterleave */
 	FALSE,					/* visibility_interest */
-	(XtWidgetProc)NULL,	/* destroy,			/* destroy */
+	(XtWidgetProc)NULL,	/* destroy, */			/* destroy */
 	XtInheritResize,
 	XtInheritExpose,	/* expose, */
 	(XtSetValuesFunc)setValues,		/* set_values */
@@ -653,7 +663,7 @@ void XcgLiteClueAddWidget(Widget w, Widget watch,  char * text, int size, int op
 	{
 		if (!size)
 			size = strlen(text);
-		obj->text = XtMalloc(size+1);
+		obj->text = (char*) XtMalloc(size+1);
 		memcpy(obj->text, text, size);
 		obj->text[size] = 0;
 		obj->text_size = size;

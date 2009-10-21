@@ -12,6 +12,8 @@
     from a previously set up FD_brick structure.
   ixyz = spatial index of desired voxel (in brick coordinates)
        = ix + jy * n1 + kz * n1*n2
+  Return value is an image of the type of the dataset (assumed
+  uniform).
 -----------------------------------------------------------------*/
 
 MRI_IMAGE * FD_brick_to_series( int ixyz , FD_brick * br )
@@ -44,9 +46,24 @@ MRI_IMAGE * FD_brick_to_series( int ixyz , FD_brick * br )
       iar = DSET_ARRAY(br->dset,0) ;
       if( iar == NULL ) return NULL ;
    }
+
+   /* 15 Sep 2004: allow for nonconstant datum */
+
+   if( !DSET_datum_constant(br->dset) ){  /* only for stupid users */
+     float *ar ;
+     im = mri_new( nv , 1 , MRI_float ) ; ar = MRI_FLOAT_PTR(im) ;
+     for( ival = 0 ; ival < nv ; ival++ )
+       ar[ival] = THD_get_voxel( br->dset , ind , ival ) ;
+     goto image_done ;
+   }
+
+   /* the older (more efficient) way */
+
    typ = DSET_BRICK_TYPE(br->dset,0) ;
    im  = mri_new( nv , 1 , typ ) ;
+#if 0
    mri_zero_image(im) ;             /* 18 Oct 2001 */
+#endif
 
    switch( typ ){
 
@@ -108,6 +125,26 @@ MRI_IMAGE * FD_brick_to_series( int ixyz , FD_brick * br )
       }
       break ;
 
+      /* 15 Apr 2002: RGB types */
+
+      case MRI_rgb:{
+         rgbyte *ar  = (rgbyte *) MRI_RGB_PTR(im) , *bar ;
+         for( ival=0 ; ival < nv ; ival++ ){
+            bar = (rgbyte *) DSET_ARRAY(br->dset,ival) ;
+            if( bar != NULL ) ar[ival] = bar[ind] ;
+         }
+      }
+      break ;
+
+      case MRI_rgba:{
+         rgba *ar  = (rgba *) MRI_RGBA_PTR(im) , *bar ;
+         for( ival=0 ; ival < nv ; ival++ ){
+            bar = (rgba *) DSET_ARRAY(br->dset,ival) ;
+            if( bar != NULL ) ar[ival] = bar[ind] ;
+         }
+      }
+      break ;
+
    }
 
    if( THD_need_brick_factor(br->dset) ){
@@ -116,6 +153,10 @@ MRI_IMAGE * FD_brick_to_series( int ixyz , FD_brick * br )
       mri_free(im) ; im = qim ;
    }
 
+   /* at this point, the image is ready to ship out;
+      but first, maybe attach a time origin and spacing */
+
+image_done:
    if( br->dset->taxis != NULL ){  /* 21 Oct 1996 */
       float zz , tt ;
 

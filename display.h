@@ -51,6 +51,7 @@
 #define XCOL_REDNESS(xc)    (0.299*(xc).red   - MAX(0.587*(xc).green,0.114*(xc).blue ))
 #define XCOL_GREENNESS(xc)  (0.587*(xc).green - MAX(0.299*(xc).red  ,0.114*(xc).blue ))
 #define XCOL_BLUENESS(xc)   (0.114*(xc).blue  - MAX(0.299*(xc).red  ,0.587*(xc).green))
+#define XCOL_YELLOWNESS(xc) (0.299*(xc).red+0.587*(xc).green-0.114*(xc).blue)
 
 /* given x in [0..wx-1], map proportionally to [0..wn-1] */
 
@@ -77,7 +78,7 @@
 /*--- 11 Feb 1999: stuff for mapping colors to pixels ------------------*/
 
 typedef struct {
-   int class ;    /* type of colormap: PseudoColor and TrueColor are OK */
+   int classKRH ;    /* type of colormap: PseudoColor and TrueColor are OK */
    int depth ;
 
    int ncolors , nblack,nwhite ;  /* This stuff for PseudoColor */
@@ -107,8 +108,8 @@ typedef struct {
    char * name_ov[MAX_COLORS] ;  /* names of overlay colors */
    char * label_ov[MAX_COLORS] ; /* labels for overlay colors */
 
-   Pixel  pixov_brightest,pixov_darkest,pixov_reddest,pixov_greenest,pixov_bluest;
-   int    ov_brightest,   ov_darkest,   ov_reddest,   ov_greenest,   ov_bluest;
+   Pixel  pixov_brightest,pixov_darkest,pixov_reddest,pixov_greenest,pixov_bluest,pixov_yellowest;
+   int    ov_brightest   ,   ov_darkest,   ov_reddest,   ov_greenest,   ov_bluest,   ov_yellowest;
 
    float  bright_ov[MAX_COLORS] ; /* brightness of overlay colors [20 Dec 1999] */
 
@@ -176,6 +177,8 @@ typedef struct {
 #endif
 } MCW_DC ;
 
+extern MCW_DC *first_dc ;                     /* 26 Jun 2003 */
+
 #define DC_REDBYTE(dc,i)     ((dc)->r_im[i])  /* 06 Mar 2001 */
 #define DC_GREENBYTE(dc,i)   ((dc)->g_im[i])
 #define DC_BLUEBYTE(dc,i)    ((dc)->b_im[i])
@@ -214,6 +217,7 @@ extern Pixel Name_to_color( MCW_DC * , char * ) ;
 
 extern int DC_add_overlay_color( MCW_DC * , char * , char * ) ;
 extern int DC_find_overlay_color( MCW_DC * , char * ) ;
+extern int DC_find_closest_overlay_color( MCW_DC * , char * ) ;
 
 extern void load_tmp_colors( int , XColor c[] ) ;
 
@@ -230,6 +234,8 @@ extern void DC_color_bright( MCW_DC * , int ) ;
 
 extern void DC_gray_contrast( MCW_DC * , int ) ;
 extern void DC_color_squeeze( MCW_DC * , int ) ;
+
+extern void DC_gray_conbrio( MCW_DC * , int ) ;  /* 23 Oct 2003 */
 
 extern void DC_palette_setgray( MCW_DC * ) ;
 extern void DC_palette_setcolor( MCW_DC * ) ;
@@ -260,5 +266,8 @@ extern Pixel DC_rgb_to_ovpix( MCW_DC *, byte,byte,byte ) ; /* 20 Dec 1999 */
 extern void DC_rgb_to_ovrgb( MCW_DC *, int,int *,int,byte *, byte *, byte *) ;
 
 extern int DC_parse_color( MCW_DC *, char *, float *,float *,float *) ; /* 21 Sep 2001 */
+
+extern rgbyte DC_spectrum_AJJ( double, double ) ;
+extern rgbyte DC_spectrum_ZSS( double, double ) ;
 
 #endif /* _MCW_DISPLAY_HEADER_ */

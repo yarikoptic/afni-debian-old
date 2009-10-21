@@ -72,7 +72,7 @@ ENTRY("TT_load_atlas") ;
    /*----- copy path list into local memory -----*/
 
    ll = strlen(epath) ;
-   elocal = malloc( sizeof(char) * (ll+2) ) ;
+   elocal = AFMALL(char, sizeof(char) * (ll+2) ) ;
 
    /*----- put a blank at the end -----*/
 
@@ -91,11 +91,6 @@ ENTRY("TT_load_atlas") ;
    do{
       ii = sscanf( elocal+epos , "%s%n" , ename , &id ); /* next substring */
       if( ii < 1 ) break ;                               /* none -> done   */
-
-      /** check if ename occurs earlier in elocal **/
-
-      eee = strstr( elocal , ename ) ;
-      if( eee != NULL && (eee-elocal) < epos ){ epos += id ; continue ; }
 
       epos += id ;                                 /* char after last scanned */
 
@@ -238,14 +233,33 @@ else                    fprintf(stderr,"TT_whereami using dseTT\n") ;
    /*-- assemble output string(s) --*/
 
 #define WAMI_HEAD "+++++++ nearby Talairach Daemon structures +++++++\n"
-#define WAMI_TAIL "\n******* Please use results with caution! *******"   \
-                  "\n******* Brain anatomy is quite variable! *******"   \
-                  "\n******* The database may contain errors! *******"
+#define WAMI_TAIL "\n******** Please use results with caution! ********"  \
+                  "\n******** Brain anatomy is quite variable! ********"  \
+                  "\n******** The database may contain errors! ********"
 
    if( nfind == 0 ){
-      rbuf = strdup( WAMI_HEAD
-                     "\n"
-                     "***** Not near any region stored in database *****\n") ;
+      char xlab[24], ylab[24] , zlab[24] ;
+      THD_fvec3 tv , mv ;
+      float mx,my,mz ;
+      char mxlab[24], mylab[24] , mzlab[24] ;
+
+      sprintf(xlab,"%4.0f mm [%c]",-xx,(xx<0.0)?'R':'L') ;
+      sprintf(ylab,"%4.0f mm [%c]",-yy,(yy<0.0)?'A':'P') ;
+      sprintf(zlab,"%4.0f mm [%c]", zz,(zz<0.0)?'I':'S') ;
+
+      LOAD_FVEC3(tv,xx,yy,zz);
+      mv = THD_tta_to_mni(tv); UNLOAD_FVEC3(mv,mx,my,mz);
+      sprintf(mxlab,"%4.0f mm [%c]",mx,(mx>=0.0)?'R':'L') ;
+      sprintf(mylab,"%4.0f mm [%c]",my,(my>=0.0)?'A':'P') ;
+      sprintf(mzlab,"%4.0f mm [%c]",mz,(mz< 0.0)?'I':'S') ;
+
+      rbuf = AFMALL(char, 500) ;
+      sprintf(rbuf,"%s\n"
+                   "Focus point=%s,%s,%s {T-T Atlas}\n"
+                   "           =%s,%s,%s {MNI Brain}\n"
+                   "\n"
+                   "***** Not near any region stored in database *****\n" ,
+              WAMI_HEAD , xlab,ylab,zlab , mxlab,mylab,mzlab ) ;
       RETURN(rbuf) ;
    }
 
@@ -269,6 +283,30 @@ else                    fprintf(stderr,"TT_whereami using dseTT\n") ;
    /*-- find anatomical label for each found marker, make result string --*/
 
    INIT_SARR(sar) ; ADDTO_SARR(sar,WAMI_HEAD) ;
+
+   /* 04 Apr 2002: print coordinates (LPI) as well (the HH-PB addition) */
+
+   { char lbuf[128], xlab[24], ylab[24] , zlab[24] ;
+     sprintf(xlab,"%4.0f mm [%c]",-xx,(xx<0.0)?'R':'L') ;
+     sprintf(ylab,"%4.0f mm [%c]",-yy,(yy<0.0)?'A':'P') ;
+     sprintf(zlab,"%4.0f mm [%c]", zz,(zz<0.0)?'I':'S') ;
+     sprintf(lbuf,"Focus point=%s,%s,%s {T-T Atlas}",xlab,ylab,zlab) ;
+     ADDTO_SARR(sar,lbuf) ;
+   }
+
+   /* 29 Apr 2002: print MNI coords as well */
+
+   { THD_fvec3 tv , mv ;
+     float mx,my,mz ;
+     char mxlab[24], mylab[24] , mzlab[24] , lbuf[128] ;
+     LOAD_FVEC3(tv,xx,yy,zz);
+     mv = THD_tta_to_mni(tv); UNLOAD_FVEC3(mv,mx,my,mz);
+     sprintf(mxlab,"%4.0f mm [%c]",mx,(mx>=0.0)?'R':'L') ;
+     sprintf(mylab,"%4.0f mm [%c]",my,(my>=0.0)?'A':'P') ;
+     sprintf(mzlab,"%4.0f mm [%c]",mz,(mz< 0.0)?'I':'S') ;
+     sprintf(lbuf,"Focus point=%s,%s,%s {MNI Brain}\n",mxlab,mylab,mzlab) ;
+     ADDTO_SARR(sar,lbuf) ;
+   }
 
    rff = -1 ;  /* rff = radius of last found label */
 
@@ -347,7 +385,7 @@ else                    fprintf(stderr,"TT_whereami using dseTT\n") ;
    /*- convert list of labels into one big multi-line string -*/
 
    for( nfind=ii=0 ; ii < sar->num ; ii++ ) nfind += strlen(sar->ar[ii]) ;
-   rbuf = malloc( nfind + 2*sar->num + 32 ) ; rbuf[0] = '\0' ;
+   rbuf = AFMALL(char, nfind + 2*sar->num + 32 ) ; rbuf[0] = '\0' ;
    for( ii=0 ; ii < sar->num ; ii++ ){
       strcat(rbuf,sar->ar[ii]) ; strcat(rbuf,"\n") ;
    }

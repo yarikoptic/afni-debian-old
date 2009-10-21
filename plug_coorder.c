@@ -32,8 +32,8 @@ static char helpstring[] =
   "The 'flipped' order is 'LPI', which is used in many journals.\n"
   "See the output of 'afni -help' for more information.\n"
   "\n"
-  "As usual, after you make your choice, you must press one of the\n"
-  "'Run' buttons for the plugin to be executed.\n"
+  "After you make your choice, you must press one of the\n"
+  "'Set' buttons for the plugin to send its data to AFNI.\n"
   "Author -- RW Cox"
 ;
 
@@ -53,7 +53,7 @@ static char * cord_strings[] = {
 
 /*----------------- prototypes for internal routines -----------------*/
 
-char * CORD_main( PLUGIN_interface * ) ;  /* the entry point */
+static char * CORD_main( PLUGIN_interface * ) ;  /* the entry point */
 
 /***********************************************************************
    Set up the interface to the user:
@@ -67,6 +67,9 @@ char * CORD_main( PLUGIN_interface * ) ;  /* the entry point */
         "PLUTO_add_string"  for a string chooser,
         "PLUTO_add_number"  for a number chooser.
 ************************************************************************/
+
+
+DEFINE_PLUGIN_PROTOTYPE
 
 PLUGIN_interface * PLUGIN_init( int ncall )
 {
@@ -85,6 +88,8 @@ PLUGIN_interface * PLUGIN_init( int ncall )
    PLUTO_add_hint( plint , "Coordinate Order Display" ) ;
 
    PLUTO_set_sequence( plint , "A:afnicontrol:display" ) ;
+
+   PLUTO_set_runlabels( plint , "Set+Keep" , "Set+Close" ) ;  /* 04 Nov 2003 */
 
    /*---------- 2nd line: other inputs ----------*/
 
@@ -117,7 +122,7 @@ PLUGIN_interface * PLUGIN_init( int ncall )
   AFNI will popup the return string in a message box.
 ****************************************************************************/
 
-char * CORD_main( PLUGIN_interface * plint )
+static char * CORD_main( PLUGIN_interface * plint )
 {
    char * str ;                 /* strings from user */
 

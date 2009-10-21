@@ -8,12 +8,16 @@
 
 /*** 7D SAFE ***/
 
+/** int hist[256] **/
+
 void mri_histobyte( MRI_IMAGE * im , int * hist )
 {
    register int ih , npix , ii ;
    byte * bar ;
 
-   if( im == NULL || im->kind != MRI_byte || hist == NULL ) return ;
+ENTRY("mri_histobyte") ;
+
+   if( im == NULL || im->kind != MRI_byte || hist == NULL ) EXRETURN ;
 
    npix = im->nvox ;
    bar  = MRI_BYTE_PTR(im) ;
@@ -23,5 +27,5 @@ void mri_histobyte( MRI_IMAGE * im , int * hist )
    for( ii=0 ; ii < npix ; ii++ )
       hist[ bar[ii] ] ++ ;
 
-   return ;
+   EXRETURN ;
 }

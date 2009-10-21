@@ -21,6 +21,20 @@
 
 #define MCW_MALLOC_enabled 0
 
+#define MCW_MALLOC_status  NULL
+
+#undef  mcw_malloc
+#define mcw_malloc  malloc
+
+#undef  mcw_realloc
+#define mcw_realloc realloc
+
+#undef  mcw_calloc
+#define mcw_calloc  calloc
+
+#undef  mcw_free
+#define mcw_free    free
+
 /*---------------------------------------------------------------------------*/
 #else
 
@@ -46,13 +60,18 @@ extern void * mcw_realloc( void * , size_t , char * , int ) ;
 extern void * mcw_calloc( size_t , size_t , char * , int ) ;
 extern void   mcw_free( void * ) ;
 
-extern char * mcw_malloc_status(void) ;
+extern char * mcw_malloc_status(const char *,int) ;
 extern void   mcw_malloc_dump(void) ;
 extern int    mcw_malloc_enabled(void) ;
+extern void   pause_mcw_malloc(void);
+extern void   resume_mcw_malloc(void);
+extern int    mcw_malloc_paused(void);
 
 /*-- how to check if the tracking routines are working --*/
 
 #define MCW_MALLOC_enabled mcw_malloc_enabled()
+
+#define MCW_MALLOC_status  mcw_malloc_status(__FILE__,__LINE__)
 
 /*-- do the same macro thing for the Xt library functions --*/
 
@@ -62,9 +81,9 @@ extern int    mcw_malloc_enabled(void) ;
 #undef XtCalloc
 
 #define XtMalloc(a)     mcw_XtMalloc((a),__FILE__,__LINE__)
-#define XtRealloc(a,b)  mcw_XtRealloc((a),(b),__FILE__,__LINE__)
+#define XtRealloc(a,b)  mcw_XtRealloc((char *)(a),(b),__FILE__,__LINE__)
 #define XtCalloc(a,b)   mcw_XtCalloc((a),(b),__FILE__,__LINE__)
-#define XtFree          mcw_XtFree
+#define XtFree(a)       mcw_XtFree((char *)(a))
 
 extern char * mcw_XtMalloc( Cardinal , char * ,  int ) ;
 extern char * mcw_XtRealloc( char * , Cardinal , char * ,  int ) ;

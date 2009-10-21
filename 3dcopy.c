@@ -1,6 +1,6 @@
 #include "mrilib.h"
 
-int THD_copy_file( char *old , char *new ) ; /* prototype */
+int THD_copy_file( char *old , char *newFile ) ; /* prototype */
 
 /*---------------------------------------------------------------------*/
 
@@ -32,6 +32,10 @@ int main( int argc , char * argv[] )
        "\n"
        "Usage 2: 3dcopy old_prefix+view new_prefix\n"
        "  Will copy only the dataset with the given view (orig, acpc, tlrc).\n"
+       "\n"
+       "Usage 3: 3dcopy old_dataset new_prefix\n"
+       "  Will copy the non-AFNI formatted dataset (e.g., MINC, ANALYZE, CTF)\n"
+       "  to the AFNI formatted dataset with the given new prefix.\n"
        "\n"
        "Notes:\n"
        "* The new datasets have new ID codes.  If you are renaming\n"
@@ -72,15 +76,6 @@ int main( int argc , char * argv[] )
    if( new_len < 1 || new_len > THD_MAX_PREFIX || !THD_filename_ok(new_name) ){
       fprintf(stderr,"** Illegal new dataset name! - EXIT\n") ; exit(1) ;
    }
-
-#ifdef ALLOW_MINC
-   if( STRING_HAS_SUFFIX(old_name,".mnc") ){
-      fprintf(stderr,"** Old dataset name can't be a MINC file\n"); exit(1);
-   }
-   if( STRING_HAS_SUFFIX(new_name,".mnc") ){
-      fprintf(stderr,"** New dataset name can't be a MINC file\n"); exit(1);
-   }
-#endif
 
    if( strstr(new_name,"/") == NULL ){        /* put cwd on new name, if no */
      char *str = malloc(new_len+16) ;         /* directory present at all   */
@@ -127,18 +122,83 @@ int main( int argc , char * argv[] )
          new_prefix[ (qq-new_name)-1 ] = '\0' ;  /* truncate prefix */
       }
    }
+   if( !THD_filename_ok( new_prefix ) ){  /* 28 Jan 2003 */
+     fprintf(stderr,"** Illegal new prefix: %s\n",new_prefix) ;
+     exit(1) ;
+   }
+
+   /* 28 Jan 2003:
+      to allow for non-AFNI datasets input,
+      we now check if we can read the input dataset without a view */
+
+   if( old_view == ILLEGAL_TYPE ){
+     THD_3dim_dataset *qset , *cset ;
+     qset = THD_open_one_dataset( old_prefix ) ;
+     if( qset != NULL ){
+       if( verb ) fprintf(stderr,"++ Opened dataset %s\n",old_prefix) ;
+       cset = EDIT_empty_copy( qset ) ;
+       if( new_view < 0 ) new_view = qset->view_type ;
+       EDIT_dset_items( cset ,
+                          ADN_prefix    , new_prefix ,
+                          ADN_view_type , new_view   ,
+                        ADN_none ) ;
+       tross_Make_History( "3dcopy" , argc,argv , cset ) ;
+       DSET_mallocize(qset); DSET_load(qset);
+       if( !DSET_LOADED(qset) ){
+         fprintf(stderr,"** Can't load dataset %s\n",old_prefix) ;
+         exit(1) ;
+       }
+       for( ii=0 ; ii < DSET_NVALS(qset) ; ii++ )
+         EDIT_substitute_brick( cset , ii ,
+                                DSET_BRICK_TYPE(qset,ii) ,
+                                DSET_BRICK_ARRAY(qset,ii) ) ;
+       if( verb ) fprintf(stderr,"++ Writing %s and %s\n",
+                          DSET_HEADNAME(cset) , DSET_BRIKNAME(cset) ) ;
+
+       if( cset->type      == HEAD_ANAT_TYPE     &&
+           cset->view_type == VIEW_ORIGINAL_TYPE &&
+           DSET_NUM_TIMES(cset) == 1               ){  /* add markers? */
+
+         THD_marker_set * markers ;
+         int ii , jj ;
+
+         markers = cset->markers = myXtNew( THD_marker_set ) ;
+         markers->numdef = 0 ;
+
+         for( ii=0 ; ii < MARKS_MAXNUM ; ii++ ){       /* null all data out */
+           markers->valid[ii] = 0 ;
+           for( jj=0 ; jj < MARKS_MAXLAB  ; jj++ )
+             markers->label[ii][jj] = '\0';
+           for( jj=0 ; jj < MARKS_MAXHELP ; jj++ )
+             markers->help[ii][jj]  = '\0';
+         }
+
+         for( ii=0 ; ii < NMARK_ALIGN ; ii++ ){       /* copy strings in */
+           MCW_strncpy( &(markers->label[ii][0]) ,
+                        THD_align_label[ii] , MARKS_MAXLAB ) ;
+           MCW_strncpy( &(markers->help[ii][0]) ,
+                        THD_align_help[ii] , MARKS_MAXHELP ) ;
+         }
+
+         for( ii=0 ; ii < MARKS_MAXFLAG ; ii++ )     /* copy flags in */
+           markers->aflags[ii] = THD_align_aflags[ii] ;
+       }
+
+       DSET_write(cset) ; exit(0) ;
+     }
+   }
 
    /* of course, we don't actually use the +view suffix on the output */
 
    if( new_view >= 0 ){
-      fprintf(stderr,"++ WARNING: ignoring +view on new_prefix.\n") ;
-      new_view = ILLEGAL_TYPE ;
+     if( verb ) fprintf(stderr,"++ WARNING: ignoring +view on new_prefix.\n") ;
+     new_view = ILLEGAL_TYPE ;
    }
 
    if( old_view >= 0 ){
-      vbot = vtop = old_view ;
+     vbot = vtop = old_view ;
    } else {
-      vbot = 0 ; vtop = LAST_VIEW_TYPE ;
+     vbot = 0 ; vtop = LAST_VIEW_TYPE ;
    }
 
    /*-- loop over views, open and rename datasets internally --*/
@@ -149,8 +209,7 @@ int main( int argc , char * argv[] )
 
       sprintf(dname,"%s+%s" , old_prefix , VIEW_codestr[ii] ) ;
 
-      if( verb )
-        fprintf(stderr,"++ Opening dataset %s\n",dname) ;
+      if( verb ) fprintf(stderr,"++ Opening dataset %s\n",dname) ;
 
       dset[ii] = THD_open_one_dataset( dname ) ;
       if( dset[ii] == NULL ){
@@ -160,8 +219,9 @@ int main( int argc , char * argv[] )
 
       /*-- rename it (but don't save to disk yet) --*/
 
-      EDIT_dset_items( dset[ii] , ADN_prefix,new_prefix , ADN_none ) ;
       dset[ii]->idcode = MCW_new_idcode() ;
+      dset[ii]->dblk->diskptr->storage_mode = STORAGE_BY_BRICK ; /* 14 Jan 2004 */
+      EDIT_dset_items( dset[ii] , ADN_prefix,new_prefix , ADN_none ) ;
 
       /*-- check if new header already exists --*/
 
@@ -255,19 +315,19 @@ int main( int argc , char * argv[] )
 #undef NBUF
 #define NBUF 1048576  /* 2^20 */
 
-int THD_copy_file( char *old , char *new )
+int THD_copy_file( char *old , char *newFile )
 {
    FILE *fold , *fnew ;
    char *buf ;
    int ii,jj ;
 
    if( old == NULL || old[0] == '\0' ||
-       new == NULL || new[0] == '\0'   ) return 1 ;
+       newFile == NULL || newFile[0] == '\0'   ) return 1 ;
 
    fold = fopen( old , "rb" ) ;
    if( fold == NULL ){ perror("Old open fails"); return 1; }
 
-   fnew = fopen( new , "wb" ) ;
+   fnew = fopen( newFile , "wb" ) ;
    if( fnew == NULL ){ perror("New open fails"); fclose(fold); return 1; }
 
    buf = malloc(NBUF) ;

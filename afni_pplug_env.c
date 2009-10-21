@@ -41,7 +41,7 @@ static char help_mid[] =
 static char help_end[] =
   "\n"
   "The variables shown above may be set using the plugin interface.\n"
-  "As usual, one of the 'Run' buttons must be used for any changes\n"
+  "As usual, one of the 'Send' buttons must be used for any changes\n"
   "you make to be communicated to AFNI.  Depending on the variables\n"
   "that are altered, there may be no immediate effects visible in the\n"
   "AFNI interface, until you take some action that is dependent on\n"
@@ -52,21 +52,45 @@ static char help_end[] =
 
 /*----------- list of variables that CANNOT be edited ---------------------*/
 
-static char * env_fixed[] = {
+static char *env_fixed[] = {
     "AFNI_PLUGINPATH"    , "AFNI_NOPLUGINS"  , "AFNI_YESPLUGOUTS"   ,
     "AFNI_TSPATH"        , "AFNI_MODELPATH"  , "AFNI_HINTS"         ,
     "AFNI_NO_MCW_MALLOC" , "AFNI_NOREALPATH" , "AFNI_NOSPLASH"      ,
+    "AFNI_SPLASH_XY"     , "AFNI_SPLASHTIME" ,
     "AFNI_NOTES_DLINES"  , "AFNI_OPTIONS"    , "AFNI_SYSTEM_AFNIRC" ,
     "AFNI_ALWAYS_LOCK"   , "AFNI_FIM_BKTHR"  , "AFNI_NO_XDBE"       ,
     "AFNI_GRAYSCALE_BOT" , "AFNI_NOMMAP"     ,
 #ifndef USE_SESSTRAIL
     "AFNI_SESSTRAIL" ,
 #endif
-    "AFNI_RENDER_PRECALC_MODE"     ,
-    "AFNI_NO_ADOPTION_WARNING"     ,
-    "AFNI_BYTEORDER"               ,
-    "AFNI_BYTEORDER_INPUT"         ,
-    "AFNI_NO_BYTEORDER_WARNING"
+    "AFNI_RENDER_PRECALC_MODE"  ,
+    "AFNI_NO_ADOPTION_WARNING"  ,
+    "AFNI_BYTEORDER"            ,
+    "AFNI_BYTEORDER_INPUT"      ,
+    "AFNI_NO_BYTEORDER_WARNING" ,
+    "AFNI_COLORSCALE_DEFAULT"   ,
+    "AFNI_RESCAN_METHOD"        ,
+    "AFNI_THRESH_BIGSTEP"       ,
+    "AFNI_PCOR_DENEPS"          , "AFNI_FIM_MASK"   , "AFNI_FIM_IDEAL" ,
+    "AFNI_LAYOUT_FILE"          , "AFNI_tsplotgeom" ,
+    "AFNI_IMAGE_MAXFRAC"        , "AFNI_DEFAULT_OPACITY"  ,
+    "AFNI_DEFAULT_IMSAVE"       , "AFNI_IMAGE_ZEROCOLOR"  ,
+    "AFNI_IMAGE_LABEL_MODE"     , "AFNI_IMAGE_LABEL_SIZE" ,
+    "AFNI_GRAPH_BASELINE"       , "AFNI_GRAPH_GLOBALBASE" ,
+    "AFNI_MINC_DATASETS"        , "AFNI_MINC_FLOATIZE"    , "AFNI_MINC_SLICESCALE"  ,
+    "AFNI_ANALYZE_DATASETS"     , "AFNI_ANALYZE_SCALE"    , "AFNI_ANALYZE_FLOATIZE" ,
+    "AFNI_ANALYZE_ORIENT"       , "AFNI_ANALYZE_AUTOCENTER" ,
+    "AFNI_MPEG_DATASETS"        , "AFNI_MPEG_GRAYIZE"     ,
+    "AFNI_1D_TIME"              , "AFNI_1D_TIME_TR"       ,
+    "AFNI_START_SMALL"          , "AFNI_MENU_COLSIZE"     ,
+    "AFNI_GLOBAL_SESSION"       , "AFNI_NIML_START"       ,
+    "AFNI_TTRR_SETUP"           , "AFNI_LOAD_PRINTSIZE"   ,
+    "AFNI_VALUE_LABEL_DTABLE"   ,
+    "AFNI_VERSION_CHECK"        ,
+    "AFNI_AGIF_DELAY"           , "AFNI_MPEG_FRAMERATE"   ,
+    "AFNI_STARTUP_SCRIPT"       , "AFNI_STARTUP_WARNINGS" ,
+    "AFNI_VERSION_CHECK"        , "AFNI_LOGO16"           ,
+    "IDCODE_PREFIX"             , "TMPDIR"
 } ;
 
 #define NUM_env_fixed (sizeof(env_fixed)/sizeof(char *))
@@ -86,11 +110,13 @@ static char * cord_strings[NUM_cord_strings] = {
 } ;
 
 static void ENV_coorder( char * ) ;
+static void ENV_globalrange( char * ) ;
 static void ENV_compressor( char * ) ;
 static void ENV_leftisleft( char * ) ;
 static void ENV_marksquality( char * ) ;
 static void ENV_trusthost( char * ) ;     /* 21 Feb 2001 */
 static void ENV_cwd( char * ) ;           /* 22 Feb 2001 */
+static void ENV_redraw_titles( char * );  /* 21 Dec 2004 */
 
 #ifdef USE_SESSTRAIL
 static void ENV_sesstrail( char * ) ;
@@ -107,6 +133,9 @@ static void ENV_byteorder( char * ) ;
 
 #define NUM_yesno_list 2
 static char *yesno_list[] = { "YES" , "NO" } ;
+
+#define NUM_threshlock_list 3
+static char *threshlock_list[] = { "NO" , "VALUE" , "P-VALUE" } ;
 
 /*--------- variables that can be edited ----------------------------------*/
 
@@ -142,7 +171,7 @@ static char * ENV_main( PLUGIN_interface * ) ;  /* the entry point */
 
 PLUGIN_interface * ENV_init(void)
 {
-   PLUGIN_interface * plint ;     /* will be the output of this routine */
+   PLUGIN_interface *plint ;     /* will be the output of this routine */
 
    char *helpstring=NULL , *ept , *eval ;
    int ii ;
@@ -180,11 +209,11 @@ PLUGIN_interface * ENV_init(void)
                    NUM_yesno_list , yesno_list , NULL  ) ;
 
    ENV_add_string( "AFNI_VIEW_ANAT_BRICK" ,
-                   "Show Anat brick whenever possible" ,
+                   "Show OverLay brick whenever possible" ,
                    NUM_yesno_list , yesno_list , NULL  ) ;
 
    ENV_add_string( "AFNI_VIEW_FUNC_BRICK" ,
-                   "Show Func brick whenever possible" ,
+                   "Show UnderLay brick whenever possible" ,
                    NUM_yesno_list , yesno_list , NULL  ) ;
 
    ENV_add_string( "AFNI_ORIENT" ,
@@ -245,10 +274,23 @@ PLUGIN_interface * ENV_init(void)
                     "Size of setback for image overlay labels" ,
                     0 , 40 , 3 , 3 , NULL ) ;
 
-   if( AGNI_ENABLED )
-     ENV_add_string( "AGNI_OVERLAY_COLOR" ,
-                     "Name of color for surface overlays" ,   /* 21 Sep 2001 */
+   if( SUMA_ENABLED ){
+     ENV_add_string( "AFNI_SUMA_BOXCOLOR" ,                   /* 21 Sep 2001 */
+                     "Color name for surface node overlays [or none]" ,
                      0,NULL , NULL ) ;
+
+     ENV_add_numeric( "AFNI_SUMA_BOXSIZE" ,                   /* 10 Mar 2002 */
+                      "Box size for surface node overlays" ,
+                      1 , 10 , 1 , 2 , NULL ) ;
+
+     ENV_add_string( "AFNI_SUMA_LINECOLOR" ,                  /* 10 Mar 2002 */
+                     "Color name for surface line overlays [or none]" ,
+                     0,NULL , NULL ) ;
+
+     ENV_add_numeric( "AFNI_SUMA_LINESIZE" ,                  /* 15 Jan 2003 */
+                      "Line thickness for surface intersection overlay" ,
+                      0 , 30 , 3 , 0 , NULL ) ;
+   }
 
 #ifndef NO_FRIVOLITIES
    ENV_add_string( "AFNI_IMAGE_PGMFILE" ,
@@ -260,6 +302,108 @@ PLUGIN_interface * ENV_init(void)
 
    ENV_add_yesno( "AFNI_DONT_MOVE_MENUS" ,
                   "Move popup menus to enhance visibility?" ) ;
+
+   /* 07 Mar 2002 */
+
+   ENV_add_numeric( "AFNI_GRAPH_TEXTLIMIT" ,
+                    "Max rows in Graph Button-3 popup" ,
+                    1 , 99 , 0 , 40 , NULL ) ;
+
+   /* 16 Mar 2002 */
+
+   ENV_add_string( "AFNI_KEEP_PANNING" ,
+                   "Keep 'pan' turned on in image viewers?" ,
+                   NUM_yesno_list , yesno_list , NULL  ) ;
+
+   /* 18 Mar 2002 */
+
+   ENV_add_string( "AFNI_VALUE_LABEL" ,
+                   "Turn on the Define Overlay dataset value label?" ,
+                   NUM_yesno_list , yesno_list , NULL  ) ;
+
+   /* 22 Mar 2002 */
+
+   ENV_add_string( "AFNI_CROSSHAIR_LINES" ,
+                   "Draw crosshairs with lines, not overlay voxels?" ,
+                   NUM_yesno_list , yesno_list , NULL  ) ;
+
+   /* 25 Mar 2002 */
+
+   ENV_add_string( "AFNI_CROP_ZOOMSAVE" ,
+                   "Crop zoomed images when saving to disk?" ,
+                   NUM_yesno_list , yesno_list , NULL  ) ;
+
+   /* 23 Aug 2003 */
+
+   ENV_add_numeric( "AFNI_MAX_OPTMENU" ,
+                    "Max buttons in an Option Menu" ,
+                    100 , 100000 , 0 , 255 , NULL ) ;
+
+   /* 23 Oct 2003 */
+
+   ENV_add_numeric( "AFNI_STROKE_THRESHOLD" ,
+                    "Coarseness of grayscale stroking" ,
+                    8 , 99 , 0 , 32 , NULL ) ;
+
+   ENV_add_string( "AFNI_STROKE_AUTOPLOT" ,
+                   "To automatically draw grayscale-data value plot?" ,
+                   NUM_yesno_list , yesno_list , NULL  ) ;
+
+   /* 04 Nov 2003 */
+
+   ENV_add_string( "AFNI_IMAGE_MINTOMAX" ,
+                   "Set image viewers to do min-to-max grayscaling?" ,
+                   NUM_yesno_list , yesno_list , NULL  ) ;
+
+   ENV_add_string( "AFNI_IMAGE_GLOBALRANGE" ,
+                   "Set image viewers to use 3D global data range min-to-max?" ,
+                   NUM_yesno_list , yesno_list , ENV_globalrange  ) ;
+
+   /* 19 Nov 2003 */
+
+   ENV_add_numeric( "AFNI_DRAW_UNDOSIZE" ,
+                    "Megabytes allowed for Drawing Undo" ,
+                    1 , 999 , 0 , 6 , NULL ) ;
+
+#if !defined(NO_FRIVOLITIES) && defined(DARWIN)
+   ENV_add_yesno( "AFNI_SPEECH" , "Allow speech synthesis?" ) ; /* 03 Dec 2003 */
+#endif
+
+   ENV_add_numeric( "AFNI_VIDEO_DELAY" ,                        /* 04 Dec 2003 */
+                    "Image redraw interval for 'V' or 'v' (ms)." ,
+                    1,9000,0,1 , NULL              ) ;
+
+   ENV_add_numeric( "AFNI_IMAGE_ENTROPY" ,
+                    "Entropy threshold: below this, 2%-98% is off." ,
+                    0,10,1,0 , NULL ) ;
+
+   ENV_add_string( "AFNI_THRESH_LOCK" ,                            /* 06 Feb 2004 */
+                   "Lock Threshold slider values together?" ,
+                   NUM_threshlock_list , threshlock_list , NULL  ) ;
+
+   ENV_add_yesno( "AFNI_PBAR_LOCK" , "Lock Color Pbars together?" ) ; /* 07 Feb 2004 */
+   ENV_add_yesno( "AFNI_RANGE_LOCK", "Lock OLay Ranges together?" ) ; /* 23 Feb 2004 */
+
+   ENV_add_yesno( "AFNI_DISP_SCROLLBARS" , "Image Disp menu get scrollbars?" ) ;
+
+   /* 23 Feb 2004 [rickr] */
+   ENV_add_yesno( "AFNI_IMAGE_ZOOM_NN" ,
+	           "Use Nearest Neighbor interpolation for image Zoom?" ) ;
+
+   /* 22 Mar 2004 [RWCox] */
+   ENV_add_yesno( "AFNI_SLAVE_FUNCTIME" , "Time Index affects functional overlay?" ) ;
+
+   ENV_add_string( "AFNI_REALTIME_MP_HOST_PORT" ,     /* 31 Mar 2004 [rickr] */
+                   "Supply host:port string for realtime motion parameters." ,
+                   0,NULL , NULL ) ;
+
+   /* 07 Apr 2004 [RWCox] */
+   ENV_add_yesno( "AFNI_X11_REDECORATE" , "Try to set X11 window 'decorations'?" ) ;
+
+   /* 21 Dec 2004 [RWCox] */
+   ENV_add_string( "AFNI_TITLE_LABEL2" ,
+                   "Use 'label2' field for window titles?" ,
+                   NUM_yesno_list , yesno_list , ENV_redraw_titles ) ;
 
    /*---------------- compute helpstring -----------------------*/
 
@@ -295,6 +439,8 @@ PLUGIN_interface * ENV_init(void)
    free(helpstring) ;
 
    PLUTO_add_hint( plint , "Environment variables control" ) ;
+
+   PLUTO_set_runlabels( plint , "Set+Keep" , "Set+Close" ) ;  /* 04 Nov 2003 */
 
    /*--------- make interface lines: 1 for each variable -----------*/
 
@@ -408,8 +554,8 @@ void ENV_add_yesno( char * vname , char * vhint ) /* 08 Aug 2001 */
                    NUM_yesno_list , yesno_list , NULL  ) ;
 }
 
-void ENV_add_string( char * vname , char * vhint ,
-                     int vcount , char ** vlist , generic_func * cbfunc )
+void ENV_add_string( char *vname , char *vhint ,
+                     int vcount , char **vlist , generic_func *cbfunc )
 {
    int ii ;
 
@@ -504,7 +650,12 @@ static char * ENV_main( PLUGIN_interface * plint )
 
       /* call callback, if there is one */
 
+#if 0
       if( env_var[ii].vfunc != NULL ) env_var[ii].vfunc( env_var[ii].vname ) ;
+#else
+      if( env_var[ii].vfunc != NULL )
+        AFNI_CALL_VOID_1ARG( env_var[ii].vfunc , char *, env_var[ii].vname ) ;
+#endif
 
       /* turn this option off (for the user's convenience) */
 
@@ -523,6 +674,29 @@ static char * ENV_main( PLUGIN_interface * plint )
    if( ndone == 0 ) return " \n*** Don't you want to do anything? ***\n " ;
 
    return NULL ;
+}
+
+/*-----------------------------------------------------------------------*/
+
+static void ENV_globalrange( char *vname )
+{
+   Three_D_View *im3d ;
+   int ii , gbr=AFNI_yesenv("AFNI_IMAGE_GLOBALRANGE") ;
+
+   for( ii=0 ; ii < MAX_CONTROLLERS ; ii++ ){
+     im3d = GLOBAL_library.controllers[ii] ;
+     if( ! IM3D_OPEN(im3d) ) continue ;
+     if( gbr ){
+       AFNI_range_setter( im3d , im3d->s123 ) ;
+       AFNI_range_setter( im3d , im3d->s231 ) ;
+       AFNI_range_setter( im3d , im3d->s312 ) ;
+     } else {
+       drive_MCW_imseq( im3d->s123 , isqDR_setrange , (XtPointer)NULL ) ;
+       drive_MCW_imseq( im3d->s231 , isqDR_setrange , (XtPointer)NULL ) ;
+       drive_MCW_imseq( im3d->s312 , isqDR_setrange , (XtPointer)NULL ) ;
+     }
+   }
+   return ;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -573,7 +747,7 @@ static void ENV_sesstrail( char * vname )
    for( ii=0 ; ii < GLOBAL_library.sslist->num_sess ; ii++ ){
      sess = GLOBAL_library.sslist->ssar[ii] ;
      str  = THD_trailname(sess->sessname,SESSTRAIL) ;
-     tt   = 1+strlen(str) - THD_MAX_LABEL ; if( tt < 0 ) tt = 0 ;
+     tt   = 1+strlen(str) - THD_MAX_NAME ; if( tt < 0 ) tt = 0 ;
      strcpy( sess->lastname , str+tt ) ;
    }
 }
@@ -604,6 +778,15 @@ static void ENV_trusthost( char * vname )  /* 21 Feb 2001 */
 {
    char * str = getenv(vname) ;
    TRUST_addhost(str) ;
+}
+
+/*-----------------------------------------------------------------------*/
+
+static void ENV_redraw_titles( char *vname ) /* 21 Dec 2004 */
+{
+   int ii ;
+   for( ii=0 ; ii < MAX_CONTROLLERS ; ii++ )
+     AFNI_set_window_titles( GLOBAL_library.controllers[ii] ) ;
 }
 
 /*-----------------------------------------------------------------------*/

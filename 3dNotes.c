@@ -23,7 +23,7 @@ void Show_Help(void) {
    "(c)1999 Medical College of Wisconsin\nby - T. Ross\n\n"
    "Usage: 3dNotes [-a \"string\"] [-h \"string\"][-d num] [-help] dataset\n\n"
    "Where:\n"
-   "dataset   Afni compatible dataset [required].\n"
+   "dataset   AFNI compatible dataset [required].\n"
    "-a   \"str\"   Add the string \"str\" to the list of notes.\n"
    "      Note that you can use the standard C escape codes,\n"
    "      \\n for newline \\t for tab, etc.\n"
@@ -145,12 +145,15 @@ int main (int argc, char * argv[]) {
    if( narg >= argc )
       Error_Exit("No input dataset!?\n") ;
 
-        dset = THD_open_one_dataset( argv[narg] ) ;
-        if( dset == NULL )
-           Error_Exit("Cannot open dataset") ; 
-        if( DSET_IS_MINC(dset) )
-           Error_Exit("Cannot use MINC dataset") ;
-
+   dset = THD_open_one_dataset( argv[narg] ) ;
+   if( dset == NULL          ) Error_Exit("Cannot open dataset") ; 
+   if( DSET_IS_MINC(dset)    ) Error_Exit("Cannot use MINC dataset") ;
+   if( DSET_IS_ANALYZE(dset) ) Error_Exit("Cannot use ANALYZE dataset") ;
+   if( DSET_IS_1D(dset)      ) Error_Exit("Cannot use .1D dataset") ;
+   if( DSET_IS_3D(dset)      ) Error_Exit("Cannot use .3D dataset") ;
+   if( DSET_IS_CTFMRI(dset)  ) Error_Exit("Cannot use CTF dataset") ;
+   if( DSET_IS_CTFSAM(dset)  ) Error_Exit("Cannot use CTF dataset") ;
+   if( DSET_IS_NIFTI(dset)   ) Error_Exit("Cannot use NIFTI dataset") ;
 
    /* First, delete notes */
    do {
@@ -169,6 +172,7 @@ int main (int argc, char * argv[]) {
    } while (delnum);  /* loop ends when no more to delete */
 
    /* Next, add notes */
+   tross_Dont_Encode_Slash( 1 ) ;   /* 13 Mar 2003 */
    for (i=0; i<curr_note; i++)
       tross_Add_Note(dset, notes[i]);
    

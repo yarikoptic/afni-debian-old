@@ -3,11 +3,16 @@
    of Wisconsin, 1994-2000, and are released under the Gnu General Public
    License, Version 2.  See the file README.Copyright for details.
 ******************************************************************************/
-   
+
 #define  NEED_PARSER_INTERNALS
 #include "parser.h"
+#include "Amalloc.h"
 
 /***** C routines to interface to the f2c generated parser code *****/
+
+static int printout = 0 ;
+
+void PARSER_set_printout( int p ){ printout = p ; }
 
 /*------------------------------------------------------------------
    Input  = expression string
@@ -18,19 +23,33 @@
 
 PARSER_code * PARSER_generate_code( char * expression )
 {
-   logical false = FALSE_ ;
+   logical pr ;
    integer num_code ;
    int nexp ;
    PARSER_code * pc ;
+   char *exp,cc ; int ii,jj ;  /* 22 Jul 2003 */
 
    if( expression == NULL ) return NULL ;
    nexp = strlen( expression ) ;
    if( nexp == 0 ) return NULL ;
 
+   /* 22 Jul 2003: copy into local string, tossing bad stuff */
+
+   exp = AFMALL(char, nexp+4) ;
+   for( ii=jj=0 ; ii < nexp ; ii++ ){
+     cc = expression[ii] ;
+     if( !isspace(cc) && !iscntrl(cc) ) exp[jj++] = cc ;
+   }
+   exp[jj] = '\0' ;
+   nexp = strlen(exp) ; if( nexp == 0 ) return NULL ;
+
    pc = (PARSER_code *) malloc( sizeof(PARSER_code) ) ;
 
-   parser_( expression , &false , &num_code , pc->c_code ,
-            (ftnlen) nexp , (ftnlen) 8 ) ;
+   pr = (printout) ? TRUE_ : FALSE_ ;
+
+   parser_( exp, &pr, &num_code, pc->c_code, (ftnlen) nexp, (ftnlen) 8 ) ;
+
+   free(exp) ;  /* 22 Jul 2003 */
 
    if( num_code <= 0 ){ free(pc) ; return NULL ; }
 
@@ -61,6 +80,9 @@ double PARSER_evaluate_one( PARSER_code * pc , double atoz[] )
    Return 1 if the given code uses the symbol given by the
    first character of sym, otherwise return 0 - 15 Sep 1999 - RWCox.
 ------------------------------------------------------------------------*/
+
+extern integer hassym_(char *sym, integer *num_code__, char *c_code__, ftnlen
+        sym_len, ftnlen c_code_len) ;
 
 int PARSER_has_symbol( char * sym , PARSER_code * pc )
 {
@@ -178,7 +200,30 @@ int PARSER_1deval( char * expr, int nt, float tz, float dt, float * vec )
    free(pcode) ; return 1 ;
 }
 
-/*** use the math library to provide Bessel and error functions ***/
+/*------------------------------------------------------------------------*/
+/*! Sort of like strtod(), but with arithmetic -- 03 Sep 2002 - RWCox.
+--------------------------------------------------------------------------*/
+
+double PARSER_strtod( char *expr )
+{
+   PARSER_code * pcode = NULL ;
+   double atoz[26] , val ;
+   int ii ;
+
+   if( expr == NULL ) return 0 ;                 /* bad */
+
+   pcode = PARSER_generate_code( expr ) ;        /* compile */
+   if( pcode == NULL ) return 0 ;                /* bad news */
+
+   for( ii=0 ; ii < 26 ; ii++ ) atoz[ii] = 0.0 ; /* initialize */
+
+   val = PARSER_evaluate_one( pcode , atoz ) ;
+
+   free(pcode) ; return val ;
+}
+
+/********************************************************************/
+/*** use the C math library to provide Bessel and error functions ***/
 
 doublereal dbesj0_( doublereal * x )
 { return (doublereal) j0( (double) *x ) ; }
@@ -197,6 +242,8 @@ doublereal derf_ ( doublereal * x )
 
 doublereal derfc_( doublereal * x )
 { return (doublereal) erfc( (double) *x ) ; }
+
+#include <time.h>
 
 doublereal unif_( doublereal * x )  /* 04 Feb 2000 */
 {

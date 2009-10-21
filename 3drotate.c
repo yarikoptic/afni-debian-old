@@ -36,7 +36,7 @@ int main( int argc , char * argv[] )
    int iopt , nvox , rotarg=-1 , dcode=-1 , ival,nval , ihand ;
    float * fvol ;
    double cputim ;
-   int clipit=0 ;  /* 11 Apr 2000 */
+   int clipit=1 ;  /* 11 Apr 2000 and 16 Apr 2002 */
    float cbot,ctop ;
 
    int matvec=0 ;    /* 19 July 2000 */
@@ -124,8 +124,8 @@ int main( int argc , char * argv[] )
        "  * These options are intended to be used to align datasets between sessions:\n"
        "     S1 = SPGR from session 1    E1 = EPI from session 1\n"
        "     S2 = SPGR from session 2    E2 = EPI from session 2\n"
-       " 3dvolreg -twopass -twodup -clipit -base S1+orig -prefix S2reg S2+orig\n"
-       " 3drotate -clipit -rotparent S2reg+orig -gridparent E1+orig -prefix E2reg E2+orig\n"
+       " 3dvolreg -twopass -twodup -base S1+orig -prefix S2reg S2+orig\n"
+       " 3drotate -rotparent S2reg+orig -gridparent E1+orig -prefix E2reg E2+orig\n"
        "     The result will have E2reg rotated from E2 in the same way that S2reg\n"
        "     was from S2, and also shifted/padded (as needed) to overlap with E1.\n"
        "\n"
@@ -222,13 +222,26 @@ int main( int argc , char * argv[] )
        "           (a 3D generalization of Paeth's algorithm).  The interpolation\n"
        "           (i.e., resampling) method used for these shears can be controlled\n"
        "           by the following options:\n"
+       "\n"
        " -Fourier = Use a Fourier method (the default: most accurate; slowest).\n"
+       " -NN      = Use the nearest neighbor method.\n"
        " -linear  = Use linear (1st order polynomial) interpolation (least accurate).\n"
        " -cubic   = Use the cubic (3rd order) Lagrange polynomial method.\n"
        " -quintic = Use the quintic (5th order) Lagrange polynomial method.\n"
        " -heptic  = Use the heptic (7th order) Lagrange polynomial method.\n"
        "\n"
-       " -clipit  = Clip results to input brick range\n"
+       " -Fourier_nopad = Use the Fourier method WITHOUT padding\n"
+       "                * If you don't mind - or even want - the wraparound effect\n"
+       "                * Works best if dataset grid size is a power of 2, possibly\n"
+       "                  times powers of 3 and 5, in all directions being altered.\n"
+       "                * The main use would seem to be to un-wraparound poorly\n"
+       "                  reconstructed images, by using a shift; for example:\n"
+       "                   3drotate -ashift 30A 0 0 -Fourier_nopad -prefix Anew A+orig\n"
+       "                * This option is also available in the Nudge Dataset plugin.\n"
+       "\n"
+       " -clipit  = Clip results to input brick range [now the default].\n"
+       " -noclip  = Don't clip results to input brick range.\n"
+       "\n"
        " -zpad n  = Zeropad around the edges by 'n' voxels during rotations\n"
        "              (these edge values will be stripped off in the output)\n"
        "        N.B.: Unlike to3d, in this program '-zpad' adds zeros in\n"
@@ -362,10 +375,6 @@ int main( int argc , char * argv[] )
             mri_free(matim) ;
          }
 
-         if( DEBUGTHISFILE ){
-            DUMP_DMAT33("matvec-mat",rmat) ; DUMP_DFVEC3("matvec-vec",tvec) ;
-         }
-
          /* check if matrix is approximately orthogonal */
          /* [will be orthogonalized in rot_to_shear_matvec() in thd_shear3d.c] */
 
@@ -379,7 +388,13 @@ int main( int argc , char * argv[] )
       }
 
       if( strncmp(argv[iopt],"-clipit",4) == 0 ){  /* 11 Apr 2000 */
+         fprintf(stderr,"++ Notice: -clipit is now the default\n") ;
          clipit = 1 ;
+         iopt++ ; continue ;
+      }
+
+      if( strncmp(argv[iopt],"-noclip",4) == 0 ){  /* 16 Apr 2002 */
+         clipit = 0 ;
          iopt++ ; continue ;
       }
 
@@ -393,6 +408,10 @@ int main( int argc , char * argv[] )
          iopt++ ; continue ;
       }
 
+      if( strcmp(argv[iopt],"-Fourier_nopad") == 0 ){   /* 13 May 2003 */
+         THD_rota_method( MRI_FOURIER_NOPAD ) ;
+         iopt++ ; continue ;
+      }
       if( strncmp(argv[iopt],"-Fourier",4) == 0 || strncmp(argv[iopt],"-fourier",4) == 0 ){
          THD_rota_method( MRI_FOURIER ) ;
          iopt++ ; continue ;
@@ -790,8 +809,6 @@ fprintf(stderr,"ax1=%d ax2=%d ax3=%d\n",ax1,ax2,ax3) ;
                      matar[8],matar[9],matar[10] ) ;
       LOAD_DFVEC3(tvec,matar[3],matar[7],matar[11]) ;
 
-      if( DEBUGTHISFILE ){ DUMP_DMAT33("rmat",rmat) ; DUMP_DFVEC3("tvec",tvec) ; }
-
       /* check if matrix is orthogonal */
 
       pp = TRANSPOSE_DMAT(rmat) ; pp = DMAT_MUL(pp,rmat) ;
@@ -808,8 +825,6 @@ fprintf(stderr,"ax1=%d ax2=%d ax3=%d\n",ax1,ax2,ax3) ;
       fv = THD_dataset_center( dset ) ;       /* dataset coords  */
       FVEC3_TO_DFVEC3( fv , cv_e2 ) ;         /* convert to double */
 
-      if( DEBUGTHISFILE ){ DUMP_DFVEC3("cv_e2",cv_e2) ; }
-
       /* cv_e1 = center of gridparent */
 
       if( gridpar_dset != NULL ){
@@ -819,21 +834,15 @@ fprintf(stderr,"ax1=%d ax2=%d ax3=%d\n",ax1,ax2,ax3) ;
          cv_e1 = cv_e2 ;  /* what else to do? */
       }
 
-      if( DEBUGTHISFILE ){ DUMP_DFVEC3("cv_e1",cv_e1) ; }
-
       /* cv_s2 = center of rotation in rotparent */
 
       atr = THD_find_float_atr( rotpar_dset->dblk , "VOLREG_CENTER_OLD" ) ;
       LOAD_DFVEC3( cv_s2 , atr->fl[0] , atr->fl[1] , atr->fl[2] ) ;
 
-      if( DEBUGTHISFILE ){ DUMP_DFVEC3("cv_s2",cv_s2) ; }
-
       /* cv_s1 = center of base dataset for rotparent */
 
       atr = THD_find_float_atr( rotpar_dset->dblk , "VOLREG_CENTER_BASE" ) ;
       LOAD_DFVEC3( cv_s1 , atr->fl[0] , atr->fl[1] , atr->fl[2] ) ;
-
-      if( DEBUGTHISFILE ){ DUMP_DFVEC3("cv_s1",cv_s1) ; }
 
       /* compute extra shift due to difference in
          center of rotation between rotparent and input dataset,
@@ -842,29 +851,19 @@ fprintf(stderr,"ax1=%d ax2=%d ax3=%d\n",ax1,ax2,ax3) ;
       dv = SUB_DFVEC3( cv_e2 , cv_s2 ) ;
       ev = DMATVEC( rmat , dv ) ;         /* R[E2-S2]         */
 
-      if( DEBUGTHISFILE ){ DUMP_DFVEC3("R[E2-S2]",ev) ; }
-
       dv = ev ;  /* vestige of a stupid bug, since fixed */
 
       ev = SUB_DFVEC3( cv_e1 , cv_s1 ) ;  /* E1-S1            */
 
-      if( DEBUGTHISFILE ){ DUMP_DFVEC3("E1-S1",ev) ; }
-
       qv = SUB_DFVEC3( dv , ev ) ;        /* R[E2-S2] + S1-E1 */
 
-      if( DEBUGTHISFILE ){ DUMP_DFVEC3("net Dicom",ev) ; }
-
       tvec = ADD_DFVEC3( tvec , qv ) ;    /* shifted translation vector */
-
-      if( DEBUGTHISFILE ){ DUMP_DFVEC3("total Dicom",tvec) ; }
 
       /* convert transformation from Dicom to dataset coords */
 
       pp   = DBLE_mat_to_dicomm( dset ) ;
       ppt  = TRANSPOSE_DMAT(pp);
       rmat = DMAT_MUL(ppt,rmat); rmat = DMAT_MUL(rmat,pp); tvec = DMATVEC(ppt,tvec);
-
-      if( DEBUGTHISFILE ){ DUMP_DFVEC3("total xyz",tvec) ; }
 
       /* modify origin of output dataset to match -gridparent */
 
@@ -923,6 +922,8 @@ fprintf(stderr,"ax1=%d ax2=%d ax3=%d\n",ax1,ax2,ax3) ;
 
    DSET_mallocize(dset) ;
    DSET_load(dset) ;
+
+   dset->dblk->diskptr->storage_mode = STORAGE_BY_BRICK ; /* 14 Jan 2004 */
 
    dset->idcode = MCW_new_idcode() ;  /* 08 Jun 1999 - is a new dataset */
    EDIT_dset_items( dset ,
@@ -1003,7 +1004,7 @@ fprintf(stderr,"ax1=%d ax2=%d ax3=%d\n",ax1,ax2,ax3) ;
               ndar_over++ ;
            }
 
-           sprintf(rotcom,"-rotate %.2fI %.2fR %.2fA -ashift %.2fS %.2fL %.2fP",
+           sprintf(rotcom,"-rotate %.4fI %.4fR %.4fA -ashift %.4fS %.4fL %.4fP",
                    dar[0+6*jj] , dar[1+6*jj] , dar[2+6*jj] ,
                    dar[3+6*jj] , dar[4+6*jj] , dar[5+6*jj]  ) ;
 
@@ -1017,6 +1018,17 @@ fprintf(stderr,"ax1=%d ax2=%d ax3=%d\n",ax1,ax2,ax3) ;
 
            skipit = (dar[0+6*jj]==0.0 && dar[1+6*jj]==0.0 && dar[2+6*jj]==0.0 &&
                      dar[3+6*jj]==0.0 && dar[4+6*jj]==0.0 && dar[5+6*jj]==0.0  );
+
+           if( !skipit ){
+             skipit = ( fabs(rmat.mat[0][0]-1.0) < 0.00001 ) &&
+                      ( fabs(rmat.mat[1][1]-1.0) < 0.00001 ) &&
+                      ( fabs(rmat.mat[2][2]-1.0) < 0.00001 ) &&
+                      ( fabs(tvec.xyz[0])        < 0.001   ) &&
+                      ( fabs(tvec.xyz[1])        < 0.001   ) &&
+                      ( fabs(tvec.xyz[2])        < 0.001   )    ;
+           }
+
+           if( verb && skipit ) fprintf(stderr,"[skip]");
         }
 
         if( !skipit ){

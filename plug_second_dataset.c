@@ -10,12 +10,24 @@
 #  error "Plugins not properly set up -- see machdep.h"
 #endif
 
+#define DSET2_VERSION   "Version 1.1 <October, 2002>"
+
 /***********************************************************************
   Plugin to provide a 2nd dataset's timeseries in place of first
 ************************************************************************/
 
+/*----------------------------------------------------------------------
+ * history:
+ *
+ * 1.1  October 25, 2002  - rickr
+ * - register for RECEIVE_DSETCHANGE messages
+ * - update global dset from global g_id (upon message reception)
+ *----------------------------------------------------------------------
+*/
+
 char * DSET2_main( PLUGIN_interface *) ;
 void   DSET2_func( int num , double to,double dt, float * vec ) ;
+void   DSET2_dset_recv( int why, int np, int * ijk, void * aux ) ;
 
 static char helpstring[] =
    " Purpose: Control the 'Dataset#2' 1D timeseries function\n"
@@ -48,8 +60,10 @@ static char helpstring[] =
 ;
 
 static THD_3dim_dataset * dset = NULL ;
-static int justify = 0 ;
-static int fill    = 0 ;
+static MCW_idcode         g_id;
+static int		  g_dset_recv = -1 ;
+static int		  justify     =  0 ;
+static int		  fill        =  0 ;
 
 /***********************************************************************
    Set up the interface to the user
@@ -58,18 +72,33 @@ static int fill    = 0 ;
 static char *lr[2] = { "Left" , "Right" } ;
 static char *ez[2] = { "Extend" , "Zero" } ;
 
+static PLUGIN_interface * plint=NULL ;
+
+static void DSET2_func_init(void)   /* 21 Jul 2003 */
+{
+   PLUG_startup_plugin_CB( NULL , (XtPointer)plint , NULL ) ;
+}
+
+
+DEFINE_PLUGIN_PROTOTYPE
+
 PLUGIN_interface * PLUGIN_init( int ncall )
 {
-   PLUGIN_interface * plint ;
 
-   if( ncall > 0 ) return NULL ;  /* only one interface */
+ENTRY("PLUGIN_init - Dataset#2") ;
 
-   AFNI_register_nD_function( 1 , "Dataset#2" , DSET2_func , NEEDS_DSET_INDEX ) ;
+   if( ncall > 0 ) RETURN( NULL ) ;  /* only one interface */
+
+   AFNI_register_nD_function ( 1 , "Dataset#2" , (generic_func *)DSET2_func ,
+                               NEEDS_DSET_INDEX ) ;
+   AFNI_register_nD_func_init( 1 , (generic_func *)DSET2_func_init ) ;  /* 21 Jul 2003 */
 
    plint = PLUTO_new_interface( "Dataset#2" , "Controls 1D function Dataset#2" , helpstring ,
                                  PLUGIN_CALL_VIA_MENU , DSET2_main  ) ;
 
    PLUTO_add_hint( plint , "Controls 1D function Dataset#2" ) ;
+
+   PLUTO_set_runlabels( plint , "Set+Keep" , "Set+Close" ) ;  /* 04 Nov 2003 */
 
    PLUTO_set_sequence( plint , "A:funcs:dataset#2" ) ;
 
@@ -84,7 +113,7 @@ PLUGIN_interface * PLUGIN_init( int ncall )
    PLUTO_add_option( plint , "How" , "How" , TRUE ) ;
    PLUTO_add_string( plint, "Fill", 2, ez, fill ) ;
 
-   return plint ;
+   RETURN( plint ) ;
 }
 
 /***************************************************************************
@@ -94,20 +123,24 @@ PLUGIN_interface * PLUGIN_init( int ncall )
 char * DSET2_main( PLUGIN_interface * plint )
 {
    MCW_idcode * idc ;
-   char * str ;
+   char       * str ;
+
+ENTRY("DSET2_main") ;
 
    if( plint == NULL )
-      return "***********************\n"
+      RETURN("***********************\n"
              "DSET2_main:  NULL input\n"
-             "***********************"  ;
+             "***********************") ;
 
    PLUTO_next_option(plint) ;
    idc  = PLUTO_get_idcode(plint) ;
    dset = PLUTO_find_dset(idc) ;
    if( dset == NULL )
-      return "********************************\n"
+      RETURN("******************************\n"
              "DSET2_main:  bad input dataset\n"
-             "********************************"  ;
+             "******************************") ;
+
+   g_id = *idc ;			/* make a copy of the MCW_idcode */
 
    PLUTO_next_option(plint) ;
    str = PLUTO_get_string(plint) ;
@@ -117,7 +150,69 @@ char * DSET2_main( PLUGIN_interface * plint )
    str = PLUTO_get_string(plint) ;
    fill = (strcmp(str,ez[0]) != 0) ;
 
-   return NULL ;
+   if ( g_dset_recv < 0 )	/* only initialize once */
+       g_dset_recv = AFNI_receive_init( plint->im3d, RECEIVE_DSETCHANGE_MASK,
+					DSET2_dset_recv, (void *)plint ,
+                                       "DSET2_dset_recv" ) ;
+
+   if ( g_dset_recv < 0 )
+      RETURN("*************************************\n"
+	     "DSET2_main:  failed AFNI_receive_init\n"
+	     "*************************************") ;
+
+   RETURN(NULL) ;
+}
+
+/*----------------------------------------------------------------------------*/
+
+void DSET2_dset_recv( int why, int np, int * ijk, void * aux )
+{
+    PLUGIN_interface * plint = (PLUGIN_interface *)aux;
+
+ENTRY( "DSET2_dset_recv" );
+
+    switch ( why )
+    {
+	default:
+	{
+	    fprintf( stderr, "warning: DSET2_dset_recv() called with invalid "
+			     "why code, %d\n", why );
+	    EXRETURN;
+	}
+
+	case RECEIVE_ALTERATION:    /* may take effect before DSETCHANGE */
+	case RECEIVE_DSETCHANGE:
+	{
+	    /* update global dset with idcode */
+	    if ( ! ISZERO_IDCODE( g_id ) )
+	    {
+		dset = PLUTO_find_dset( &g_id );
+
+		if( !ISVALID_DSET(dset) )	/* dset has disappeared */
+		{
+		    ZERO_IDCODE( g_id );
+		    dset = NULL;
+		}
+	    }
+	    else
+		dset = NULL;
+
+	    if ( dset == NULL )	/* shutdown messaging, must re-run plugin */
+	    {
+		AFNI_receive_control( plint->im3d, g_dset_recv,
+				      EVERYTHING_SHUTDOWN, NULL );
+		g_dset_recv = -1;
+		PLUTO_popup_worker( plint,
+					"Warning: plugin 'Dataset#2'\n"
+					"has lost its dataset link.\n"
+					"To plot a 1-D overlay, please\n"
+					"re-run the plugin.",
+				    MCW_USER_KILL | MCW_TIMER_KILL ) ;
+	    }
+	}
+    }
+
+    EXRETURN;
 }
 
 /*----------------------------------------------------------------------------*/
@@ -128,7 +223,9 @@ void DSET2_func( int num , double to,double dt, float * vec )
    MRI_IMAGE * tsim ;
    float val ;
 
-   if( !ISVALID_DSET(dset) ) return ;                /* nothing to do */
+ENTRY("DSET2_func") ;
+
+   if( !ISVALID_DSET(dset) ) EXRETURN ;              /* nothing to do */
 
    DSET_load(dset) ;                                 /* if needed */
 
@@ -136,7 +233,7 @@ void DSET2_func( int num , double to,double dt, float * vec )
 
    tsim = THD_extract_series( ijk , dset , 0 ) ;     /* get data */
 
-   if( tsim == NULL ) return ;                       /* bad news */
+   if( tsim == NULL ) EXRETURN ;                     /* bad news */
 
    if( tsim->nx == num ){                            /* exact fit */
 
@@ -173,5 +270,5 @@ void DSET2_func( int num , double to,double dt, float * vec )
    }
 
    mri_free(tsim) ;                                  /* toss the trash */
-   return ;
+   EXRETURN ;
 }

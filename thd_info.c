@@ -7,15 +7,18 @@
 #include "mrilib.h"
 #include "thd.h"
 
-/*--------------------------------------------------------------------
-   Inline version of 3dinfo.  You must free() the output string
-   when done with it.
+/*--------------------------------------------------------------------*/
+/*! Inline version of 3dinfo.
+    - You must free() the output string when done with it.
+    - verbose is -1 (shortest output), 0, or 1 (longest output)
 ----------------------------------------------------------------------*/
 
 #include <stdarg.h>
 
-#undef ZMAX
-#define ZMAX 8000
+#undef  ZMAX
+#undef  SZMAX
+#define ZMAX  8000
+#define SZMAX "%.8000s"   /* same as ZMAX */
 
 char * THD_zzprintf( char * sss , char * fmt , ... ) ;
 
@@ -42,12 +45,13 @@ ENTRY("THD_dataset_info") ;
 
    daxes = dset->daxes ;
 
-   outbuf = THD_zzprintf(outbuf,"Dataset File:    %s\n" , DSET_FILECODE(dset) ) ;
+   if( DSET_IS_BRIK(dset) )
+     outbuf = THD_zzprintf(outbuf,"Dataset File:    %s\n" , DSET_FILECODE(dset) ) ;
+   else
+     outbuf = THD_zzprintf(outbuf,"Dataset File:    %s\n" , DSET_BRIKNAME(dset) ) ;
 
-#ifndef OMIT_DATASET_IDCODES
-    outbuf = THD_zzprintf(outbuf,"Identifier Code: %s  Creation Date: %s\n" ,
+   outbuf = THD_zzprintf(outbuf,"Identifier Code: %s  Creation Date: %s\n" ,
              dset->idcode.str , dset->idcode.date ) ;
-#endif
 
    if( ISANAT(dset) ){
       outbuf = THD_zzprintf(outbuf,"Dataset Type:    %s (-%s)\n",
@@ -81,21 +85,54 @@ ENTRY("THD_dataset_info") ;
       break ;
    }
 
+   /*-- 21 Jun 2002: print storage mode --*/
+
+   switch( dset->dblk->diskptr->storage_mode ){
+     default: 
+       outbuf = THD_zzprintf(outbuf,"Storage Mode:    Undefined\n") ; break ;
+
+     case STORAGE_BY_BRICK:
+       outbuf = THD_zzprintf(outbuf,"Storage Mode:    BRIK file\n") ; break ;
+
+     case STORAGE_BY_MINC:
+       outbuf = THD_zzprintf(outbuf,"Storage Mode:    MINC file\n") ; break ;
+
+     case STORAGE_BY_VOLUMES:
+       outbuf = THD_zzprintf(outbuf,"Storage Mode:    Volume file(s)\n") ; break ;
+
+     case STORAGE_BY_ANALYZE:
+       outbuf = THD_zzprintf(outbuf,"Storage Mode:    ANALYZE files\n") ; break ;
+
+     case STORAGE_BY_CTFMRI:
+       outbuf = THD_zzprintf(outbuf,"Storage Mode:    CTF MRI file\n") ; break ;
+
+     case STORAGE_BY_CTFSAM:
+       outbuf = THD_zzprintf(outbuf,"Storage Mode:    CTF SAM file\n") ; break ;
+
+     case STORAGE_BY_1D:
+       outbuf = THD_zzprintf(outbuf,"Storage Mode:    AFNI .1D file\n") ; break ;
+
+     case STORAGE_BY_3D:
+       outbuf = THD_zzprintf(outbuf,"Storage Mode:    AFNI .3D file\n") ; break ;
+
+     case STORAGE_BY_NIFTI:
+       outbuf = THD_zzprintf(outbuf,"Storage Mode:    NIFTI file\n") ; break ;
+
+     case STORAGE_BY_MPEG:
+       outbuf = THD_zzprintf(outbuf,"Storage Mode:    MPEG file\n") ; break ;
+   }
+
    /*-- keywords --*/
 
-   cpt = DSET_KEYWORDS(dset) ;
-   if( cpt != NULL && cpt[0] != '\0' )
-      outbuf = THD_zzprintf(outbuf,"Keywords:        %s\n" , cpt ) ;
+   if( verbose >= 0 ){
+    cpt = DSET_KEYWORDS(dset) ;
+    if( cpt != NULL && cpt[0] != '\0' )
+       outbuf = THD_zzprintf(outbuf,"Keywords:        %s\n" , cpt ) ;
+   }
 
    /*-- idcodes --*/
 
-#ifdef OMIT_DATASET_IDCODES
-   if( strlen(dset->anat_parent_name) > 0 )
-      outbuf = THD_zzprintf(outbuf,"Anatomy Parent:  %s\n" , dset->anat_parent_name ) ;
-
-   if( strlen(dset->warp_parent_name) > 0 )
-      outbuf = THD_zzprintf(outbuf,"Warp Parent:     %s\n" , dset->warp_parent_name ) ;
-#else
+  if( verbose >= 0 ){
    if( ! ISZERO_IDCODE(dset->anat_parent_idcode) )
       outbuf = THD_zzprintf(outbuf,"Anatomy Parent:  %s [%s]\n" ,
                 dset->anat_parent_name , dset->anat_parent_idcode.str ) ;
@@ -107,11 +144,11 @@ ENTRY("THD_dataset_info") ;
                  dset->warp_parent_name , dset->warp_parent_idcode.str) ;
    else if( strlen(dset->warp_parent_name) > 0 )
       outbuf = THD_zzprintf(outbuf,"Warp Parent:     %s\n" , dset->warp_parent_name ) ;
-#endif
+  }
 
    /*-- tagset --*/
 
-   if( dset->tagset != NULL && dset->tagset->num > 0 ){
+   if( verbose > 0 && dset->tagset != NULL && dset->tagset->num > 0 ){
       int ii , ns=0 ;
       for( ii=0 ; ii < dset->tagset->num ; ii++ )
          if( dset->tagset->tag[ii].set ) ns++ ;
@@ -164,17 +201,19 @@ ENTRY("THD_dataset_info") ;
 
    /*-- 01 Feb 2001: print the center of the dataset as well --*/
 
-   fv1.xyz[0] = 0.5*(fv1.xyz[0]+fv2.xyz[0]) ; XLAB(xlbot,fv1.xyz[0]) ;
-   fv1.xyz[1] = 0.5*(fv1.xyz[1]+fv2.xyz[1]) ; YLAB(ylbot,fv1.xyz[1]) ;
-   fv1.xyz[2] = 0.5*(fv1.xyz[2]+fv2.xyz[2]) ; ZLAB(zlbot,fv1.xyz[2]) ;
+   if( verbose > 0 ){
+    fv1.xyz[0] = 0.5*(fv1.xyz[0]+fv2.xyz[0]) ; XLAB(xlbot,fv1.xyz[0]) ;
+    fv1.xyz[1] = 0.5*(fv1.xyz[1]+fv2.xyz[1]) ; YLAB(ylbot,fv1.xyz[1]) ;
+    fv1.xyz[2] = 0.5*(fv1.xyz[2]+fv2.xyz[2]) ; ZLAB(zlbot,fv1.xyz[2]) ;
 
-   outbuf = THD_zzprintf(outbuf,
-                           "R-to-L center: %9.3f %s\n"
-                           "A-to-P center: %9.3f %s\n"
-                           "I-to-S center: %9.3f %s\n" ,
-                         fv1.xyz[0],xlbot ,
-                         fv1.xyz[1],ylbot ,
-                         fv1.xyz[2],zlbot  ) ;
+    outbuf = THD_zzprintf(outbuf,
+                            "R-to-L center: %9.3f %s\n"
+                            "A-to-P center: %9.3f %s\n"
+                            "I-to-S center: %9.3f %s\n" ,
+                          fv1.xyz[0],xlbot ,
+                          fv1.xyz[1],ylbot ,
+                          fv1.xyz[2],zlbot  ) ;
+   }
 
    ntimes   = DSET_NUM_TIMES(dset) ;
    nval_per = DSET_NVALS_PER_TIME(dset) ;
@@ -191,7 +230,7 @@ ENTRY("THD_dataset_info") ;
                   dset->taxis->nsl , fabs(dset->taxis->dz_sl) ) ;
       outbuf = THD_zzprintf(outbuf,"\n") ;
 
-      if( verbose && dset->taxis->nsl > 0 ){
+      if( verbose > 0 && dset->taxis->nsl > 0 ){
          outbuf = THD_zzprintf(outbuf,"Time-offsets per slice:") ;
          for( ival=0 ; ival < dset->taxis->nsl ; ival++ )
            outbuf = THD_zzprintf(outbuf, " %.3f" , dset->taxis->toff_sl[ival] ) ;
@@ -202,7 +241,15 @@ ENTRY("THD_dataset_info") ;
            "Number of values stored at each pixel = %d\n" , nval_per ) ;
    }
 
-   if( verbose && ntimes > 1 ) nval_per = dset->dblk->nvals ;
+#if 0
+   if( verbose > 0 && ntimes > 1 ) nval_per = dset->dblk->nvals ;
+   else                            nval_per = 1 ;                 /* 12 Feb 2002 */
+#else
+   nval_per = dset->dblk->nvals ;
+   if( verbose < 0 ) nval_per = 1 ;                               /* 27 Mar 2002 */
+#endif
+
+   /* print out stuff for each sub-brick */
 
    for( ival=0 ; ival < nval_per ; ival++ ){
 
@@ -266,18 +313,22 @@ ENTRY("THD_dataset_info") ;
 
    /** If present, print out History **/
 
-   { char * chn ; int j ;
+   { char * chn ; int j,k ;
      chn = tross_Get_History(dset) ;
      if( chn != NULL ){
-        j = strlen(chn) ; if( j > ZMAX ) chn[ZMAX] = '\0' ;
-        outbuf = THD_zzprintf(outbuf,"\n----- HISTORY -----\n%s\n",chn) ;
-        free(chn) ;
+       j = strlen(chn) ;
+       outbuf = THD_zzprintf(outbuf,"\n----- HISTORY -----\n") ;
+       for( k=0 ; k < j ; k += ZMAX )
+         outbuf = THD_zzprintf(outbuf,SZMAX,chn+k) ;
+       free(chn) ;
+       outbuf = THD_zzprintf(outbuf,"\n") ;
      }
    }
 
    /** If present, print out Notes **/
 
-   { ATR_int *notecount;
+   if( verbose >= 0 ){
+     ATR_int *notecount;
      ATR_string *note;
      int num_notes, i, j, num_char , mmm ;
      char note_name[20], *chn , *chd ;
@@ -285,14 +336,14 @@ ENTRY("THD_dataset_info") ;
      notecount = THD_find_int_atr(dset->dblk, "NOTES_COUNT");
      if( notecount != NULL ){
         num_notes = notecount->in[0] ;
-        if( !verbose && num_notes > 5 ) num_notes = 5 ;
-        mmm = (verbose) ? ZMAX : 400 ;
+        if( verbose == 0 && num_notes > 5 ) num_notes = 5 ;
+        mmm = (verbose > 0) ? ZMAX : 400 ;
         for (i=1; i<= num_notes; i++) {
            chn = tross_Get_Note( dset , i ) ;
            if( chn != NULL ){
               j = strlen(chn) ; if( j > mmm ) chn[mmm] = '\0' ;
               chd = tross_Get_Notedate(dset,i) ;
-              if( chd == NULL ){ chd = malloc(16) ; strcpy(chd,"no date") ; }
+              if( chd == NULL ){ chd = AFMALL(char,16) ; strcpy(chd,"no date") ; }
               outbuf = THD_zzprintf(outbuf,"\n----- NOTE %d [%s] -----\n%s\n",i,chd,chn) ;
               free(chn) ; free(chd) ;
            }
@@ -303,6 +354,8 @@ ENTRY("THD_dataset_info") ;
    RETURN(outbuf) ;
 }
 
+/*-----------------------------------------------------------*/
+
 char * THD_zzprintf( char * sss , char * fmt , ... )
 {
    static char * sbuf = NULL ;
@@ -312,7 +365,7 @@ char * THD_zzprintf( char * sss , char * fmt , ... )
 
    va_start( vararg_ptr , fmt ) ;
 
-   if( sbuf == NULL ) sbuf = malloc( ZMAX+90 ) ;
+   if( sbuf == NULL ) sbuf = AFMALL(char, ZMAX+90) ;
 
    sbuf[0] = '\0' ;
    vsprintf( sbuf , fmt , vararg_ptr ) ;

@@ -114,6 +114,8 @@ typedef struct {
  /*-- thickness codes < 0 are special instructions --*/
 
 #define THCODE_RECT       1  /* 21 Mar 2001: rectangle from (x1,y1)..(x2,y2) */
+#define THCODE_CIRC       2  /* 10 Mar 2002: circle at (x1,y1), radius x2 */
+#define THCODE_OPAC       3  /* 22 Jul 2004: set opacity of further drawing to x1 */
 #define THCODE_INVALID  666
 
 /* convert (r,g,b) in [0,1]**3 into a single number, and vice-versa */
@@ -131,7 +133,7 @@ typedef struct {
 /*----- stuff for plotting into an X11 window -----*/
 
 typedef struct {
-   int class ;    /* type of colormap: PseudoColor and TrueColor are OK */
+   int classKRH ;    /* type of colormap: PseudoColor and TrueColor are OK */
    int depth ;
 
    int ncolors ;  /* This stuff for PseudoColor */
@@ -161,11 +163,15 @@ extern void           set_thick_memplot( float ) ;
 extern float          get_thick_memplot(void) ;
 extern int            nline_active_memplot(void) ;
 extern void           plotrect_memplot( float,float,float,float ) ; /* 21 Mar 2001 */
+extern void           plotcirc_memplot( float,float,float ) ;       /* 10 Mar 2002 */
 extern int            create_memplot_surely( char *, float ) ;      /* 20 Sep 2001 */
+extern void           set_opacity_memplot( float ) ;                /* 22 Jul 2004 */
+extern float          get_opacity_memplot(void) ;
 
 extern MEM_plotdata * copy_memplot( MEM_plotdata * ) ; /*-- 26 Feb 2001 --*/
 extern void           append_to_memplot( MEM_plotdata *,MEM_plotdata * ) ;
 extern void           scale_memplot( float,float,float,float,float,MEM_plotdata * );
+extern MEM_plotdata * clip_memplot( float,float,float,float , MEM_plotdata * ) ;
 
 extern void           cutlines_memplot( int,int,MEM_plotdata * ) ; /* 15 Nov 2001 */
 extern void           insert_at_memplot( int , MEM_plotdata * ) ;
@@ -242,6 +248,10 @@ extern void redraw_topshell( MEM_topshell_data * ) ;
 #define TSP_SEPARATE_YBOX    1
 #define TSP_SEPARATE_YSCALE  2
 
+extern void plot_ts_xypush( int , int ) ;
+extern void plot_ts_xfix( int,int , float,float ) ;  /* 22 Jul 2003 */
+extern void plot_ts_yfix( int,int , float,float ) ;
+
 extern void plot_ts_lab( Display *,
                          int,float *, int,float **,
                          char *,char *,char *,char ** , void_func * ) ;
@@ -297,6 +307,7 @@ extern void ps_rect( int,int,int,int) ;                    /* filled rectangle *
 #undef complex
 
 extern int color_(integer *ncol);
+extern int fcolor_( real *cr, real *cg, real *cb );
 extern int curve_(real *x, real *y, integer *n);
 extern int frame_(void);
 extern int frstpt_(real *x, real *y);

@@ -20,6 +20,7 @@
 #include "machdep.h"
 
 #include "mcw_malloc.h"
+#include "afni_environ.h"
 
 #ifndef MAX
 #   define MAX(a,b) (((a)<(b)) ? (b) : (a))
@@ -55,8 +56,13 @@ extern Visual * MCW_get_visual( Widget ) ;
 extern void MCW_set_widget_cursor( Widget,int ) ;
 extern void MCW_alter_widget_cursor( Widget,int , char * , char * ) ;
 
-#define WAIT_for_window(w)                                           \
-   while( XtWindow(w) == (Window) NULL )
+extern void RWC_sleep( int ) ;  /* 16 Aug 2002 */
+
+#define WAIT_for_window(w)                                  \
+ do{ XSync( XtDisplay(w) , False ) ;                         \
+     while( XtWindow(w) == (Window) NULL ) ; /* spin */       \
+     RWC_sleep(1) ;                                            \
+ } while(0)
 
 #define POPUP_cursorize(w)                                        \
  do{ if( (w) != (Widget)NULL && XtWindow(w) != (Window)NULL )      \
@@ -76,6 +82,16 @@ extern void MCW_alter_widget_cursor( Widget,int , char * , char * ) ;
 #define HAND_cursorize(w)                                      \
  do{ if( (w) != (Widget)NULL && XtWindow(w) != (Window)NULL )  \
       MCW_set_widget_cursor( (w) , -XC_hand2 ) ;               \
+ } while(0)
+
+#define PENCIL_cursorize(w)                                    \
+ do{ if( (w) != (Widget)NULL && XtWindow(w) != (Window)NULL )  \
+      MCW_set_widget_cursor( (w) , -XC_pencil ) ;              \
+ } while(0)
+
+#define CROSSHAIR_cursorize(w)                                 \
+ do{ if( (w) != (Widget)NULL && XtWindow(w) != (Window)NULL )  \
+      MCW_set_widget_cursor( (w) , -XC_crosshair ) ;           \
  } while(0)
 
 extern void MCW_register_hint( Widget , char * ) ;
@@ -129,10 +145,10 @@ extern void MCW_message_alter( Widget , char * ) ;  /* 10 Jul 2001 */
 
 extern int MCW_filetype( char * ) ;
 
-#ifndef DONT_CHECK_FOR_MWM
+#if 0
 extern Boolean MCW_isitmwm( Widget ) ;
 #else
-#define MCW_isitmwm(ww) True
+#define MCW_isitmwm(ww) (!AFNI_noenv("AFNI_X11_REDECORATE"))
 #endif
 
 #define METER_TOP       1
@@ -198,5 +214,13 @@ void RWC_destroy_nullify_cancel( Widget, void ** ) ;
 #define INVERT_manage(w)                                 \
  do{ if( XtIsManaged(w) ) XtUnmanageChild(w);            \
      else                 XtManageChild(w); } while(0) /* 21 Sep 2001 */
+
+extern void RWC_drag_rectangle( Widget, int,int, int *,int * ) ; /* 12 Jun 2002 */
+
+extern void RWC_XtPopdown( Widget ) ; /* 30 Jun 2003 */
+
+extern void AFNI_speak( char *string , int nofork ) ;   /* 24 Nov 2003 */
+extern void AFNI_speak_setvoice( char *vvv ) ;
+
 
 #endif /* _MCW_XUTIL_HEADER_ */

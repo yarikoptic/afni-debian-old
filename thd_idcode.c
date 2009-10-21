@@ -59,7 +59,7 @@ MCW_idcode MCW_new_idcode(void)
       nbuf = strlen(ubuf.nodename)+strlen(ubuf.sysname)
             +strlen(ubuf.release )+strlen(ubuf.version)+strlen(ubuf.machine) ;
 
-      buf = malloc(nbuf+1) ;        /* buf = amalgam of system ID stuff */
+      buf = AFMALL(char, nbuf+1) ;     /* buf = amalgam of system ID stuff */
       strcpy(buf,ubuf.nodename) ;
       strcat(buf,ubuf.sysname ) ;
       strcat(buf,ubuf.release ) ;
@@ -92,6 +92,8 @@ MCW_idcode MCW_new_idcode(void)
 
 /*---------------------------------------------------------------------*/
 #else  /* use new code */
+
+#include <time.h>
 
 MCW_idcode MCW_new_idcode(void)
 {

@@ -10,6 +10,8 @@
 static char * x11_vcl[] =  { "StaticGray"  , "GrayScale" , "StaticColor" ,
                              "PseudoColor" , "TrueColor" , "DirectColor"  } ;
 
+MCW_DC *first_dc = NULL ;              /* 26 Jun 2003 */
+
 /*------------------------------------------------------------------------
   Returns position of highest set bit in 'ul' as an integer (0-31),
   or returns -1 if no bit is set.
@@ -84,9 +86,11 @@ MCW_DC * MCW_new_DC( Widget wid , int ncol ,
    unsigned int nplmsk = 0 ;  /* dummy arguments for XAllocColorCells */
    unsigned long plane_masks[1] ;
 
+ENTRY("MCW_new_DC") ;
+
    if( ncol < 4 || novr < 0 || ncol > MAX_COLORS || novr > MAX_COLORS ){
       fprintf(stderr,"\n*** MCW_new_DC: ILLEGAL number of colors: %d %d\n",ncol,novr) ;
-      exit(1) ;
+      ncol = 4 ; novr = 0 ;
    }
 
    dc = myXtNew(MCW_DC) ;
@@ -129,8 +133,11 @@ MCW_DC * MCW_new_DC( Widget wid , int ncol ,
         dc->visual_redshift   = 7 - highbit(dc->visual_redmask) ;
         dc->visual_greenshift = 7 - highbit(dc->visual_greenmask) ;
         dc->visual_blueshift  = 7 - highbit(dc->visual_bluemask) ;
-        dc->visual_class      = dc->visual_info->class ;
-
+#if defined(__cplusplus) || defined(c_plusplus)
+        dc->visual_class      = dc->visual_info->c_class ;
+#else
+	dc->visual_class      = dc->visual_info->class ;
+#endif
         if( dc->visual_class != PseudoColor &&
             dc->visual_class != TrueColor      ){
 
@@ -262,6 +269,10 @@ MCW_DC * MCW_new_DC( Widget wid , int ncol ,
       only_ovc->ncol_ov     = 1 ;
 
       only_ovc->bright_ov[0] = 0.0 ;  /* 20 Dec 1999 */
+
+      dc->ovc->r_ov[0] = 0 ;          /* 04 Mar 2002 */
+      dc->ovc->g_ov[0] = 0 ;
+      dc->ovc->b_ov[0] = 0 ;
    }
 
    for( ii=0 ; ii < novr ; ii++ ){
@@ -326,7 +337,9 @@ MCW_DC * MCW_new_DC( Widget wid , int ncol ,
    dc->cdef = NULL ;
 #endif
 
-   return dc ;
+   if( first_dc == NULL ) first_dc = dc ;  /* 26 Jun 2003 */
+
+   RETURN(dc) ;
 }
 
 /*-----------------------------------------------------------------------
@@ -368,7 +381,7 @@ void DC_palette_restore( MCW_DC * dc , double new_gamma )
    Modified 22 Aug 1998 for TrueColor support.
 -------------------------------------------------------------------------*/
 
-double mypow( double x , double y )  /* replaces the math library pow */
+static double mypow( double x , double y )  /* replaces the math library pow */
 {
    double b ;
    if( x <= 0.0 ) return 0.0 ;
@@ -421,6 +434,97 @@ void DC_init_im_gry( MCW_DC * dc )
    }
 
    return ;
+}
+
+/*----------------------------------------------------------------------*/
+/*! Return a color from the spectrum.  Input "an" is between 0 and 360.
+    Adapted from Ziad Saad. -- 01 Feb 2003 - RWCox.
+------------------------------------------------------------------------*/
+
+rgbyte DC_spectrum_ZSS( double an , double gamm )
+{
+   int r,g,b , m ;
+   rgbyte color ;
+
+   if( gamm <= 0.0 ) gamm = 1.0 ;
+
+   while( an <   0.0 ) an += 360.0 ;
+   while( an > 360.0 ) an -= 360.0 ;
+
+   an = an / 90.0 ;
+
+   if( an <= 1.0 ){
+     r = 255.*mypow(1.0-an,gamm)+0.5 ;
+     g = 255.*mypow(0.5*an,gamm)+0.5 ;
+     b = 255.*mypow(an    ,gamm)+0.5 ;
+   } else if( an <= 2.0 ){
+     r = 0 ;
+     g = 255.*mypow(0.5*an,gamm)+0.5 ;
+     b = 255.*mypow(2.0-an,gamm)+0.5 ;
+   } else if( an <= 3.0 ){
+     r = 255.*mypow(an-2.0,gamm)+0.5 ;
+     g = 255 ;
+     b = 0   ;
+   } else {
+     r = 255 ;
+     g = 255.*mypow(4.0-an,gamm)+0.5 ;
+     b = 0   ;
+   }
+
+#if 0
+   m = MAX(r,g) ; m = MAX(m,b) ;
+   if( m < 255 ){ float s=255.0/m; r *= s; g *= s; b *= s; }
+#endif
+
+   color.r = r ; color.g = g ; color.b = b ; return color ;
+}
+
+/*----------------------------------------------------------------------*/
+/*! Return a color from the spectrum.  Input "an" is between 0 and 360.
+    Adapted from Andrzej Jesmanowicz. -- 30 Jan 2003 - RWCox.
+------------------------------------------------------------------------*/
+
+rgbyte DC_spectrum_AJJ( double an , double gamm )
+{
+   int r,g,b , m ;
+   double ak,ab,s,c,sb,cb ;
+   rgbyte color ;
+
+   if( gamm <= 0.0 ) gamm = 1.0 ;
+
+#if 0
+   ak = 105.; s  = 255.0-ak; c  = s /60.;     /* AJ's choices */
+   ab =  65.; sb = 255.0-ab; cb = sb/60.;
+#else
+   ak =   5.; s  = 255.0-ak; c  = s /60.;     /* RWC's choices */
+   ab =   5.; sb = 255.0-ab; cb = sb/60.;
+#endif
+
+   while( an <   0.0 ) an += 360.0 ;
+   while( an > 360.0 ) an -= 360.0 ;
+
+   if( an < 120. ){
+     r = 255.*mypow((ak + MIN(s,(120. - an)*c))/255., gamm) +.5;
+     g = 255.*mypow((ak + MIN(s,an*c))/255., gamm) +.5;
+     m = MAX(r,g) ;
+     b = 0;
+   } else if( an < 240. ){
+     r = 0;
+     g = 255.*mypow((ak + MIN(s ,(240. - an)*c ))/255., gamm) +.5;
+     b = 255.*mypow((ab + MIN(sb,(an - 120.)*cb))/255., gamm) +.5;
+     m = MAX(g,b) ;
+   } else {
+     r = 255.*mypow((ak + MIN(s,(an - 240.)*c ))/255., gamm) +.5;
+     g = 0;
+     b = 255.*mypow((ab + MIN(s,(360. - an)*cb))/255., gamm) +.5;
+     m = MAX(r,b) ;
+   }
+
+#if 0
+   if( m < 255 ){ s = 255.0/m ; r *= s ; g *= s ; b *= s ; }
+#endif
+
+   color.r = r ; color.g = g ; color.b = b ; return color ;
 }
 
 /*-----------------------------------------------------------------------
@@ -519,7 +623,9 @@ int DC_add_overlay_color( MCW_DC * dc , char * name , char * label )
    Pixel newpix ;
    XColor cell ;
 
-   if( name == NULL || strlen(name) == 0 ) return -1 ;  /* error */
+ENTRY("DC_add_overlay_color") ;
+
+   if( name == NULL || strlen(name) == 0 ) RETURN(-1) ;  /* error */
    if( label == NULL ) label = name ;
 
    /** see if label is already in the table **/
@@ -532,18 +638,18 @@ int DC_add_overlay_color( MCW_DC * dc , char * name , char * label )
       unsigned int nplmsk = 0 ;
       unsigned long plane_masks[1] ;
 
-      if( ii >= MAX_COLORS ) return -1 ;   /* too many overlay colors! */
+      if( ii >= MAX_COLORS ) RETURN(-1) ;   /* too many overlay colors! */
 
       if( dc->visual_class == PseudoColor ){  /* 22 Aug 1998 */
          ok = XAllocColorCells( dc->display , dc->colormap ,
                                 True , plane_masks , nplmsk , &newpix , 1 ) ;
-         if( !ok ) return -1 ;                /* couldn't get a new cell */
+         if( !ok ) RETURN(-1) ;                /* couldn't get a new cell */
          cell.pixel = newpix ;
       }
 
    } else {                                /** Reusing an old cell **/
 
-      if( strcmp(name,dc->ovc->name_ov[ii]) == 0 ) return ii ; /* no change! */
+      if( strcmp(name,dc->ovc->name_ov[ii]) == 0 ) RETURN(ii) ; /* no change! */
 
       if( dc->visual_class == PseudoColor )  /* 22 Aug 1998 */
          cell.pixel = dc->ovc->pix_ov[ii] ;
@@ -552,7 +658,7 @@ int DC_add_overlay_color( MCW_DC * dc , char * name , char * label )
    }
 
    ok = XParseColor( dc->display , dc->colormap , name, &cell ) ;
-   if( !ok ) return -1 ;
+   if( !ok ) RETURN(-1) ;
 
    if( newcol ){                      /** made a new cell **/
       dc->ovc->ncol_ov++ ;
@@ -581,16 +687,48 @@ int DC_add_overlay_color( MCW_DC * dc , char * name , char * label )
    dc->ovc->bright_ov[ii] = BRIGHTNESS( DCOV_REDBYTE(dc,ii) ,       /* 20 Dec 1999 */
                                         DCOV_GREENBYTE(dc,ii) ,
                                         DCOV_BLUEBYTE(dc,ii)   ) ;
-   return ii ;
+   RETURN(ii) ;
 }
 
-int DC_find_overlay_color( MCW_DC * dc , char * label )
+/*-------------------------------------------------------------------------*/
+
+int DC_find_overlay_color( MCW_DC *dc , char *label )
 {
    int ii ;
    if( dc == NULL || label == NULL ) return -1 ;
    for( ii=0 ; ii < dc->ovc->ncol_ov ; ii++ )
-      if( strcmp(label,dc->ovc->label_ov[ii]) == 0 ) return ii ;
+     if( strcasecmp(label,dc->ovc->label_ov[ii]) == 0 ) return ii ;
    return -1 ;
+}
+
+/*-------------------------------------------------------------------------*/
+
+int DC_find_closest_overlay_color( MCW_DC *dc , char *cname )
+{
+   float rr,gg,bb ; int b_rr,b_gg,b_bb ;
+   int ii , jj;
+
+   if( dc == NULL || cname == NULL || *cname == '\0' ) return -1 ;
+
+   ii = DC_find_overlay_color( dc , cname ) ;
+   if( ii >= 0 ) return ii ;
+
+   ii = DC_parse_color( dc, cname, &rr,&gg,&bb ) ;
+   if( ii ) return -1 ;
+
+   b_rr = (int)(255.9*rr) ;
+   b_gg = (int)(255.9*gg) ;
+   b_bb = (int)(255.9*bb) ;
+
+   jj = 0 ; rr = 9999999.9 ;
+   for( ii=0 ; ii < dc->ovc->ncol_ov ; ii++ ){
+     gg = abs(b_rr-(int)dc->ovc->r_ov[ii])
+         +abs(b_gg-(int)dc->ovc->g_ov[ii])
+         +abs(b_bb-(int)dc->ovc->b_ov[ii]) ;
+     if( gg < rr ){ jj = ii ; rr = gg ; }
+   }
+
+   return jj ;
 }
 
 /*-------------------------------------------------------------------------
@@ -601,7 +739,7 @@ int DC_find_overlay_color( MCW_DC * dc , char * label )
 static unsigned short tmp1[MAX_COLORS] , tmp2[MAX_COLORS] , tmp3[MAX_COLORS] ;
 static int            tmpi[MAX_COLORS] ;
 
-void load_tmp_colors( int nc , XColor * ccc )
+void load_tmp_colors( int nc , XColor *ccc )
 {
    register int i ;
 
@@ -722,6 +860,8 @@ void DC_gray_change( MCW_DC * dc , int dlev )
    XColor * xc = dc->xgry_im ;
    int    * in = dc->xint_im ;
 
+   if( dc->use_xcol_im ) return ;
+
    delta = dlev * abs( (in[nc-1] - in[0]) / nc ) ;
 
    for( i=0 ; i < nc ; i++ ){
@@ -748,7 +888,6 @@ void DC_color_squeeze( MCW_DC * dc , int dlev )
    return ;  /* not implemented */
 }
 
-
 /*------------------------------------------------------------------------*/
 
 void DC_gray_contrast( MCW_DC * dc , int dlev )
@@ -758,6 +897,8 @@ void DC_gray_contrast( MCW_DC * dc , int dlev )
    XColor * xc = dc->xgry_im ;
    int    * in = dc->xint_im ;
 
+   if( dc->use_xcol_im ) return ;
+
    delta = dlev * (abs(in[nc-1] - in[0]) >> 6) / nc ;
    if( delta == 0 ) delta = dlev ;
 
@@ -766,6 +907,29 @@ void DC_gray_contrast( MCW_DC * dc , int dlev )
       xc[i].red = xc[i].green = xc[i].blue = CLIP_INTEN(k) ;
    }
    DC_set_image_colors( dc ) ;  /* 22 Aug 1998 */
+   return ;
+}
+
+/*------------------------------------------------------------------------*/
+
+void DC_gray_conbrio( MCW_DC *dc , int dlev )  /* 23 Oct 2003 */
+{
+   register int i, k, bdelta,cdelta ;
+   int      nc = dc->ncol_im ;
+   XColor * xc = dc->xgry_im ;
+   int    * in = dc->xint_im ;
+
+   if( dc->use_xcol_im ) return ;
+
+   bdelta = dlev *  abs(in[nc-1] - in[0])       / nc ;
+   cdelta = dlev * (abs(in[nc-1] - in[0]) >> 6) / nc ;
+   if( cdelta == 0 ) cdelta = dlev ;
+
+   for( i=0 ; i < nc ; i++ ){
+     k = in[i] += i * cdelta - bdelta ;
+     xc[i].red = xc[i].green = xc[i].blue = CLIP_INTEN(k) ;
+   }
+   DC_set_image_colors( dc ) ;
    return ;
 }
 
@@ -898,6 +1062,8 @@ void OVC_mostest( MCW_DCOV * ovc )
 {
    float bright_inten , dark_inten , red_inten , green_inten , blue_inten , inten ;
    int   bright_ii    , dark_ii    , red_ii    , green_ii    , blue_ii ;
+   float yellow_inten ;
+   int   yellow_ii    ;
    int   ii ;
 
    if( ovc == NULL || ovc->ncol_ov < 2 ) return ;
@@ -909,6 +1075,9 @@ void OVC_mostest( MCW_DCOV * ovc )
    green_inten = XCOL_GREENNESS( ovc->xcol_ov[1] ) ;
    blue_inten  = XCOL_BLUENESS ( ovc->xcol_ov[1] ) ;
    red_ii = green_ii = blue_ii = 1 ;
+
+   yellow_ii = 1 ;
+   yellow_inten = XCOL_YELLOWNESS( ovc->xcol_ov[1] ) ;  /* 28 Jan 2004 */
 
    for( ii=2 ; ii < ovc->ncol_ov ; ii++ ){
       inten = XCOL_BRIGHTNESS( ovc->xcol_ov[ii] ) ;
@@ -932,12 +1101,18 @@ void OVC_mostest( MCW_DCOV * ovc )
       if( inten > blue_inten ){
          blue_inten = inten ; blue_ii = ii ;
       }
+
+      inten = XCOL_YELLOWNESS( ovc->xcol_ov[ii] ) ;
+      if( inten > yellow_inten ){
+         yellow_inten = inten ; yellow_ii = ii ;
+      }
    }
    ovc->ov_brightest = bright_ii ; ovc->pixov_brightest = ovc->pix_ov[bright_ii] ;
    ovc->ov_darkest   = dark_ii   ; ovc->pixov_darkest   = ovc->pix_ov[dark_ii] ;
    ovc->ov_reddest   = red_ii    ; ovc->pixov_reddest   = ovc->pix_ov[red_ii] ;
    ovc->ov_greenest  = green_ii  ; ovc->pixov_greenest  = ovc->pix_ov[green_ii] ;
    ovc->ov_bluest    = blue_ii   ; ovc->pixov_bluest    = ovc->pix_ov[blue_ii] ;
+   ovc->ov_yellowest = yellow_ii ; ovc->pixov_yellowest = ovc->pix_ov[yellow_ii] ;
 }
 
 /*-------------------------------------------------------------------------------
@@ -1020,25 +1195,32 @@ void reload_DC_colordef( MCW_DC * dc )
    XVisualInfo * vin ;
    DC_colordef * cd ;   /* will be the output */
 
+ENTRY("reload_DC_colordef") ;
+
    /*--- sanity check ---*/
 
    if( dc == NULL || dc->visual_info == NULL ){
       fprintf(stderr,"reload_DC_colordef: entry values are NULL\n") ;
-      return ;
+      EXRETURN ;
    }
 
    vin = dc->visual_info ;
 
    /*--- PseudoColor case ---*/
 
+#if defined(__cplusplus) || defined(c_plusplus)
+   if( vin->c_class == PseudoColor ){
+#else
    if( vin->class == PseudoColor ){
+#endif
+
       int iz , count , ii ;
       XColor * xcol ;
 
       /* create output */
 
       cd = (DC_colordef *) malloc( sizeof(DC_colordef) ) ;
-      cd->class = PseudoColor ;
+      cd->classKRH = PseudoColor ;
       cd->depth = vin->depth ;
 
       /* get all the colors in the colormap */
@@ -1086,7 +1268,7 @@ void reload_DC_colordef( MCW_DC * dc )
          if( count == 1 ){ /* colormap is all black?! */
             free(xcol) ; FREE_DC_colordef(cd) ;
             fprintf(stderr,"reload_DC_colordef: colormap is all black?\n") ;
-            return ;
+            EXRETURN ;
          }
 
          cd->ncolors = count ;
@@ -1094,19 +1276,24 @@ void reload_DC_colordef( MCW_DC * dc )
 
       FREE_DC_colordef(dc->cdef) ;  /* if already present, kill it */
 
-      free(xcol) ; dc->cdef = cd ; return ;
+      free(xcol) ; dc->cdef = cd ; EXRETURN ;
    }
 
    /*--- TrueColor case ---*/
 
+#if defined(__cplusplus) || defined(c_plusplus)
+   if( vin->c_class == TrueColor ){
+#else
    if( vin->class == TrueColor ){
+#endif
+
       unsigned long r , g , b ;
       byte          rr, gg, bb ;
 
       /* create output */
 
       cd = (DC_colordef *) malloc( sizeof(DC_colordef) ) ;
-      cd->class = TrueColor ;
+      cd->classKRH = TrueColor ;
       cd->depth = vin->depth ;
 
       cd->rrmask  = vin->red_mask ;            /* bit masks for color  */
@@ -1135,14 +1322,19 @@ void reload_DC_colordef( MCW_DC * dc )
 
       FREE_DC_colordef(dc->cdef) ;  /* if already present, kill it */
 
-      dc->cdef = cd ; return ;
+      dc->cdef = cd ; EXRETURN ;
    }
 
    /*--- Illegal Visual class! [do nothing]---*/
 
+#if defined(__cplusplus) || defined(c_plusplus)
+   fprintf(stderr,"reload_DC_colordef: illegal Visual class %s\n",
+                  x11_vcl[vin->c_class] ) ;
+#else
    fprintf(stderr,"reload_DC_colordef: illegal Visual class %s\n",
                   x11_vcl[vin->class] ) ;
-   return ;
+#endif
+   EXRETURN ;
 }
 
 /*---------------------------------------------------------------------
@@ -1156,7 +1348,7 @@ Pixel DC_rgb_to_pixel( MCW_DC * dc, byte rr, byte gg, byte bb )
 
    if( cd == NULL ){ reload_DC_colordef(dc) ; cd = dc->cdef ; }
 
-   switch( cd->class ){
+   switch( cd->classKRH ){
 
       /*--- TrueColor case: make color by appropriate bit twiddling ---*/
 
@@ -1343,7 +1535,7 @@ void DC_pixel_to_rgb( MCW_DC * dc , Pixel ppp ,
 
    if( cd == NULL ){ reload_DC_colordef(dc) ; cd = dc->cdef ; }
 
-   switch( cd->class ){
+   switch( cd->classKRH ){
 
       /*--- TrueColor case: unmake color by appropriate bit twiddling ---*/
 
@@ -1386,11 +1578,27 @@ void DC_pixel_to_rgb( MCW_DC * dc , Pixel ppp ,
 int DC_parse_color( MCW_DC *dc, char *str, float *rr, float *gg, float *bb )
 {
    XColor cell ; int ok ;
+
+   if( str == NULL || *str == '\0' ) return 1 ;
+
+   if( strncmp(str,"AJJ:",4) == 0 ){   /* 07 Feb 2003 */
+     float ang=-6666.0 ;
+     sscanf(str+4,"%f",&ang) ;
+     if( ang != -6666.0 ){
+       rgbyte col = DC_spectrum_AJJ( ang , 0.8 ) ;
+       *rr = col.r / 255.0 ;
+       *gg = col.g / 255.0 ;
+       *bb = col.b / 255.0 ;
+       return 0 ;
+     }
+     return 1 ;
+   }
+
    ok = XParseColor( dc->display , dc->colormap , str, &cell ) ;
    if( ok ){
-      *rr = cell.red   / 65536.0 ;
-      *gg = cell.green / 65536.0 ;
-      *bb = cell.blue  / 65536.0 ;
+      *rr = cell.red   / 65535.0 ;
+      *gg = cell.green / 65535.0 ;
+      *bb = cell.blue  / 65535.0 ;
       return 0 ;
    }
    return 1 ;

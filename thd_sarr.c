@@ -82,10 +82,12 @@ THD_string_array * THD_get_all_filenames( char * dirname )
    char * total_dirname , * total_fname ;
    char ** gname=NULL ;
 
-   if( dirname == NULL || (dlen=strlen(dirname)) == 0 ) return NULL ;
-   if( ! THD_is_directory(dirname) )                    return NULL ;
+ENTRY("THD_get_all_filenames") ;
 
-   total_dirname = XtMalloc( dlen+4 ) ;
+   if( dirname == NULL || (dlen=strlen(dirname)) == 0 ) RETURN( NULL );
+   if( ! THD_is_directory(dirname) )                    RETURN( NULL );
+
+   total_dirname = (char*)XtMalloc( dlen+4 ) ;
    strcpy( total_dirname , dirname ) ;
    if( total_dirname[dlen-1] != '/' ){
       total_dirname[dlen]   = '/' ;     /* add a slash */
@@ -96,6 +98,9 @@ THD_string_array * THD_get_all_filenames( char * dirname )
    total_dirname[dlen]   = '*' ;                            /* add wildcard */
    total_dirname[++dlen] = '\0' ;
    MCW_warn_expand(0) ;
+if(PRINT_TRACING){
+ char str[256]; sprintf(str,"MCW_file_expand(%s)",total_dirname); STATUS(str);
+}
    MCW_file_expand( 1, &total_dirname, &nfiles, &gname ) ;  /* find files */
 #else
    nfiles = scandir( dirname ,
@@ -111,14 +116,14 @@ THD_string_array * THD_get_all_filenames( char * dirname )
 #else
        if( dplist != NULL ) free(dplist) ;
 #endif
-       return NULL ;
+       RETURN( NULL );
    }
 
    INIT_SARR( star ) ;
 
 #ifndef DONT_USE_SCANDIR
    max_fname   = dlen+64 ;
-   total_fname = XtMalloc( max_fname ) ;
+   total_fname = (char*)XtMalloc( max_fname ) ;
 #endif
 
    for( ii=0 ; ii < nfiles ; ii++ ){
@@ -127,7 +132,7 @@ THD_string_array * THD_get_all_filenames( char * dirname )
 #else
       n_fname = dlen + strlen( dplist[ii]->d_name ) + 4 ;
       if( n_fname > max_fname ){
-         total_fname = XtRealloc( total_fname , n_fname ) ;
+         total_fname = AFREALL(total_fname, char, n_fname ) ;
          max_fname   = n_fname ;
       }
       strcpy( total_fname , total_dirname ) ;
@@ -144,7 +149,7 @@ THD_string_array * THD_get_all_filenames( char * dirname )
    myXtFree( total_fname ) ;
    free( dplist ) ;
 #endif
-   return star ;
+   RETURN( star );
 }
 
 /*------------------------------------------------------------------
@@ -160,7 +165,7 @@ THD_string_array * THD_get_all_subdirs( int lev , char * dirname )
 
    if( dirname == NULL || (dlen=strlen(dirname)) == 0 ) return NULL ;
 
-   total_dirname = XtMalloc( dlen+2 ) ;
+   total_dirname = (char*)XtMalloc( dlen+2 ) ;
    strcpy( total_dirname , dirname ) ;
    if( total_dirname[dlen-1] != '/' ){
       total_dirname[dlen]   = '/' ;

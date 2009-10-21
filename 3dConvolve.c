@@ -25,6 +25,10 @@
   Mod:     Added call to AFNI_logger.
   Date:    15 August 2001
 
+  Mod:     Allow user to specify no baseline parameters in the model with
+           command "-polort -1".
+  Date:    28 February 2002
+
 */
 
 /*---------------------------------------------------------------------------*/
@@ -32,7 +36,7 @@
 #define PROGRAM_NAME    "3dConvolve"                 /* name of this program */
 #define PROGRAM_AUTHOR  "B. Douglas Ward"                  /* program author */
 #define PROGRAM_INITIAL "28 June 2001"    /* date of initial program release */
-#define PROGRAM_LATEST  "15 August 2001"  /* date of latest program revision */
+#define PROGRAM_LATEST  "28 Feb  2002"    /* date of latest program revision */
 
 /*---------------------------------------------------------------------------*/
 
@@ -403,7 +407,7 @@ void get_options
 	  nopt++;
 	  if (nopt >= argc)  DC_error ("need argument after -polort ");
 	  sscanf (argv[nopt], "%d", &ival);
-	  if (ival < 0)
+	  if (ival < -1)
 	    DC_error ("illegal argument after -polort ");
 	  option_data->polort = ival;
 	  nopt++;
@@ -656,70 +660,23 @@ float * read_time_series
     DC_error ("Missing input time series file name");
 
 
-  /*----- Check file name for column index -----*/
-  cpt = strstr (ts_filename, "[");
-  if (cpt == NULL)
-    {
-      strcpy (filename, ts_filename);
-      subv[0] = '\0';
-    }
-  else
-    if (cpt == ts_filename)
-      DC_error ("Illegal time series filename on command line");
-    else
-      {
-	int ii;
-	ii = cpt - ts_filename;
-	memcpy (filename, ts_filename, ii);
-	filename[ii] = '\0';
-	strcpy (subv, cpt);
-      }
-
-  
   /*----- Read the time series file -----*/
-  im = mri_read_ascii (filename); 
-  if (im == NULL)
+
+  flim = mri_read_1D(ts_filename) ;
+  if( flim == NULL )
     {
-      sprintf (message,  "Unable to read time series file: %s",  filename);
+      sprintf (message,  "Unable to read time series file: %s",  ts_filename);
       DC_error (message);
     }
 
   
   /*----- Set pointer to data, and set dimensions -----*/
-  flim = mri_transpose (im);  mri_free(im);
-  MTEST (flim);
   far = MRI_FLOAT_PTR(flim);
   nx = flim->nx;
-  ny = flim->ny;
-  
-
-  /*----- Get the column index -----*/
-  if (subv[0] == '\0')  /* no column index */
-    {
-      if (ny != 1)
-	{
-	  sprintf (message,
-		   "Must specify column index for time series file: %s",
-		   ts_filename);
-	  DC_error (message);
-	}
-      iy = 0;
-    }
-  else  /* process column index */
-    {
-      int * ivlist;
-      
-      ivlist = MCW_get_intlist (ny, subv);
-      if ((ivlist == NULL) || (ivlist[0] != 1))
-	{
-	  sprintf (message,
-		   "Illegal column selector for time series file: %s",
-		   ts_filename);
-	  DC_error (message);
-	}
-      iy = ivlist[1];
-    }
-
+  ny = flim->ny; iy = 0 ;
+  if( ny > 1 ){
+    fprintf(stderr,"WARNING: time series %s has %d columns\n",ts_filename,ny);
+  }
 
   /*----- Save the time series data -----*/
   *ts_length = nx;
@@ -1655,7 +1612,7 @@ void calculate_results
   /*----- Initialize the independent variable matrix -----*/
   init_indep_var_matrix (p, q, polort, nt, N, good_list, block_list, 
 			 num_blocks, num_stimts, stimulus, stim_length, 
-			 min_lag, max_lag, nptr, &xdata);
+			 min_lag, max_lag, nptr, NULL, &xdata);
   if (option_data->xout)  matrix_sprint ("X matrix:", xdata);
 
 
@@ -1676,8 +1633,12 @@ void calculate_results
       /*----- Extract model parameters for this voxel -----*/
       if (option_data->input1D)
 	{
-	  for (ip = 0;  ip < q;  ip++)
-	    coef.elts[ip] = base_data[ip];
+	  if (q > 0)
+	    {
+	      for (ip = 0;  ip < q;  ip++)
+		coef.elts[ip] = base_data[ip];
+	    }
+	  ip = q;
 	  for (is = 0;  is < num_stimts;  is++)
 	    for (ilag = min_lag[is];  ilag <= max_lag[is];  ilag++)
 	      {
@@ -1687,10 +1648,13 @@ void calculate_results
 	}
       else
 	{
-	  extract_ts_array (base_dset, ixyz, coefts);
-	  for (ip = 0;  ip < q;  ip++)
-	    coef.elts[ip] = coefts[ip];
-
+	  if (q > 0)
+	    {
+	      extract_ts_array (base_dset, ixyz, coefts);
+	      for (ip = 0;  ip < q;  ip++)
+		coef.elts[ip] = coefts[ip];
+	    }
+	  ip = q;
 	  for (is = 0;  is < num_stimts;  is++)
 	    {
 	      extract_ts_array (irf_dset[is], ixyz, coefts);

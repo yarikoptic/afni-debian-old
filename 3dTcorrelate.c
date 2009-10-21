@@ -13,6 +13,8 @@ int main( int argc , char *argv[] )
    float     *xsar , *ysar , *car ;
    char * prefix = "Tcorr" ;
    byte * mmm=NULL ;
+   MRI_IMAGE *im_ort=NULL ;            /* 13 Mar 2003 */
+   int nort=0 ; float **fort=NULL ;
 
    /*----*/
 
@@ -34,8 +36,12 @@ int main( int argc , char *argv[] )
              "                Using m=-1 means no detrending; this is only useful\n"
              "                for data/information that has been pre-processed.\n"
              "\n"
+             "  -ort r.1D = Also detrend using the columns of the 1D file 'r.1D'.\n"
+             "                Only one -ort option can be given.  If you want to use\n"
+             "                more than one, create a temporary file using 1dcat.\n"
+             "\n"
              "  -autoclip = Clip off low-intensity regions in the two datasets,\n"
-             "               so that the correlation is only computed between\n"
+             "  -automask =  so that the correlation is only computed between\n"
              "               high-intensity (presumably brain) voxels.  The\n"
              "               intensity level is determined the same way that\n"
              "               3dClipLevel works.\n"
@@ -62,7 +68,25 @@ int main( int argc , char *argv[] )
 
    while( nopt < argc && argv[nopt][0] == '-' ){
 
-      if( strcmp(argv[nopt],"-autoclip") == 0 ){
+      if( strcmp(argv[nopt],"-ort") == 0 ){           /* 13 Mar 2003 */
+        if( im_ort != NULL ){
+          fprintf(stderr,"** Can't have multiple -ort options!\n"); exit(1);
+        }
+        im_ort = mri_read_1D( argv[++nopt] ) ;
+        if( im_ort == NULL ){
+          fprintf(stderr,"** Can't read 1D file %s\n",argv[nopt]); exit(1);
+        }
+        nort = im_ort->ny ;
+        fort = (float **) malloc( sizeof(float *)*nort ) ;
+        for( ii=0 ; ii < nort ; ii++ )
+          fort[ii] = MRI_FLOAT_PTR(im_ort) + (ii*im_ort->nx) ;
+
+        nopt++ ; continue ;
+      }
+
+      if( strcmp(argv[nopt],"-autoclip") == 0 ||
+          strcmp(argv[nopt],"-automask") == 0   ){
+
          do_autoclip = 1 ; nopt++ ; continue ;
       }
 
@@ -125,6 +149,9 @@ int main( int argc , char *argv[] )
               argv[nopt],argv[nopt-1]) ;
       exit(1) ;
    }
+   if( im_ort != NULL && im_ort->nx < DSET_NUM_TIMES(xset) ){
+      fprintf(stderr,"** Input datsets are longer than -ort file!\n"); exit(1);
+   }
    DSET_load(xset) ;
    if( !DSET_LOADED(xset) ){
       fprintf(stderr,"*** Can't read dataset bricks from %s\n",argv[nopt-1]);
@@ -170,7 +197,7 @@ int main( int argc , char *argv[] )
       exit(1) ;
    }
 
-   EDIT_BRICK_TO_FICO(cset,0,nvals,1,polort+1) ;       /* stat params */
+   EDIT_BRICK_TO_FICO(cset,0,nvals,1,polort+1+nort) ;  /* stat params */
    EDIT_BRICK_FACTOR(cset,0,0.0) ;                     /* to be safe  */
 
    switch( method ){                                   /* looks nice  */
@@ -186,7 +213,7 @@ int main( int argc , char *argv[] )
    tross_Make_History( "3dTcorrelate" , argc,argv , cset ) ;
 
    /* loop over voxels, correlate */
-
+   /* fprintf(stderr,"have %d voxels to work with, %d values/time series.\n", nvox, nvals);*/
    for( ii=0 ; ii < nvox ; ii++ ){
 
       if( mmm != NULL && mmm[ii] == 0 ){  /* the easy case */
@@ -198,8 +225,8 @@ int main( int argc , char *argv[] )
       xsim = THD_extract_series(ii,xset,0) ; xsar = MRI_FLOAT_PTR(xsim) ;
       ysim = THD_extract_series(ii,yset,0) ; ysar = MRI_FLOAT_PTR(ysim) ;
 
-      DETREND_polort(polort,nvals,xsar) ;  /* remove polynomial trend */
-      DETREND_polort(polort,nvals,ysar) ;
+      THD_generic_detrend( nvals,xsar, polort, nort,fort ) ;  /* 13 Mar 2003 */
+      THD_generic_detrend( nvals,ysar, polort, nort,fort ) ;
 
       switch( method ){                    /* correlate */
          default:

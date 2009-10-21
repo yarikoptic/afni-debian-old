@@ -207,6 +207,7 @@ XtPointer PLUGIN_imseq_getim( int n , int type , XtPointer handle )
 
       stat->transforms0D = NULL ;
       stat->transforms2D = NULL ;
+      stat->slice_proj   = NULL ;
 
       return((XtPointer) stat) ;
    }
@@ -315,6 +316,8 @@ int main( int argc , char * argv[] )
              "Image files are in PGM format.\n") ; exit(0) ;
    }
 
+   mainENTRY("Xphace main") ; machdep() ;
+
    ww = PH_loadim( argv[1] ) ;
    if( ww < 0 ) exit(1) ;
    if( argc > 2 ){
@@ -364,7 +367,7 @@ int main( int argc , char * argv[] )
                                             XmNvalue         , 0 ,
                                             XmNwidth         , P_swide ,
                                             XmNshowValue     , True ,
-                                            XmNscaleMultiple , 5 ,
+                                            XmNscaleMultiple , 10 ,
                                             XmNorientation   , XmHORIZONTAL ,
                                             XmNtraversalOn , False ,
                                          NULL ) ;
@@ -392,7 +395,7 @@ int main( int argc , char * argv[] )
                                             XmNvalue         , 0 ,
                                             XmNwidth         , P_swide ,
                                             XmNshowValue     , True ,
-                                            XmNscaleMultiple , 5 ,
+                                            XmNscaleMultiple , 10 ,
                                             XmNorientation   , XmHORIZONTAL ,
                                             XmNtraversalOn , False ,
                                          NULL ) ;
@@ -540,6 +543,15 @@ void PH_scale_CB( Widget w , XtPointer cd , XtPointer cb )
    else if( w == PHASE_scale ) P_beta  = val ;
 
    PH_redraw() ;
+
+   { char *eee = getenv("XPHACE_SNAP") ;
+     if( eee != NULL && toupper(*eee) == 'Y' ){
+      PLUGIN_impopper *imp = (PLUGIN_impopper *) P_handle ;
+#if 0
+      fprintf(stderr,"XID = %x\n",(unsigned int)XtWindow(imp->seq->wimage)) ;
+#endif
+      ISQ_snapshot( imp->seq->wimage ) ;
+   }}
 }
 
 void PH_redraw(void)

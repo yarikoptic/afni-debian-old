@@ -10,6 +10,7 @@
 /*----------------------------------------------------------------
     Check to see if there are any duplicate ID codes in the
     datasets stored herein.
+    [28 Jul 2003] Modified for new THD_session struct.
 ------------------------------------------------------------------*/
 
 void THD_check_idcodes( THD_sessionlist * ssl )
@@ -18,23 +19,19 @@ void THD_check_idcodes( THD_sessionlist * ssl )
    THD_session * sess ;
    THD_3dim_dataset * dset , ** dsl ;
 
+ENTRY("THD_check_idcodes") ;
+
    /*-- sanity check --*/
 
-   if( ! ISVALID_SESSIONLIST(ssl) || ssl->num_sess <= 0 ) return ;
+   if( ! ISVALID_SESSIONLIST(ssl) || ssl->num_sess <= 0 ) EXRETURN ;
 
    /*-- count number of datasets --*/
 
    for( dsnum=iss=0 ; iss < ssl->num_sess ; iss++ ){
       sess = ssl->ssar[iss] ;
-      for( idd=0 ; idd < sess->num_anat ; idd++ ){
+      for( idd=0 ; idd < sess->num_dsset ; idd++ ){
          for( ivv=FIRST_VIEW_TYPE ; ivv <= LAST_VIEW_TYPE ; ivv++ ){
-            dset = sess->anat[idd][ivv] ;
-            if( ISVALID_DSET(dset) ) dsnum++ ;
-         }
-      }
-      for( idd=0 ; idd < sess->num_func ; idd++ ){
-         for( ivv=FIRST_VIEW_TYPE ; ivv <= LAST_VIEW_TYPE ; ivv++ ){
-            dset = sess->func[idd][ivv] ;
+            dset = sess->dsset[idd][ivv] ;
             if( ISVALID_DSET(dset) ) dsnum++ ;
          }
       }
@@ -46,15 +43,9 @@ void THD_check_idcodes( THD_sessionlist * ssl )
 
    for( nd=iss=0 ; iss < ssl->num_sess ; iss++ ){
       sess = ssl->ssar[iss] ;
-      for( idd=0 ; idd < sess->num_anat ; idd++ ){
+      for( idd=0 ; idd < sess->num_dsset ; idd++ ){
          for( ivv=FIRST_VIEW_TYPE ; ivv <= LAST_VIEW_TYPE ; ivv++ ){
-            dset = sess->anat[idd][ivv] ;
-            if( ISVALID_DSET(dset) ) dsl[nd++] = dset ;
-         }
-      }
-      for( idd=0 ; idd < sess->num_func ; idd++ ){
-         for( ivv=FIRST_VIEW_TYPE ; ivv <= LAST_VIEW_TYPE ; ivv++ ){
-            dset = sess->func[idd][ivv] ;
+            dset = sess->dsset[idd][ivv] ;
             if( ISVALID_DSET(dset) ) dsl[nd++] = dset ;
          }
       }
@@ -63,18 +54,18 @@ void THD_check_idcodes( THD_sessionlist * ssl )
    /*-- check list for duplicates --*/
 
    for( iss=idd=0 ; idd < dsnum-1 ; idd++ ){
-      nd = 0 ;
-      for( jdd=idd+1 ; jdd < dsnum ; jdd++ ){
-         if( EQUIV_IDCODES( dsl[idd]->idcode , dsl[jdd]->idcode ) ){
-            fprintf(stderr,
-                    "\n*** WARNING: Identical ID codes in %s and %s",
-                    DSET_HEADNAME(dsl[idd]) , DSET_HEADNAME(dsl[jdd]) ) ;
-            iss++ ;
-         }
-      }
+     nd = 0 ;
+     for( jdd=idd+1 ; jdd < dsnum ; jdd++ ){
+       if( DUPLICATE_DSETS(dsl[idd],dsl[jdd]) ){ /* 20 Dec 2001: change EQUIV_IDCODES() to DUPLICATE_DSETS() */
+         fprintf(stderr,
+                 "\n*** WARNING: Identical ID codes in %s and %s",
+                 DSET_HEADNAME(dsl[idd]) , DSET_HEADNAME(dsl[jdd]) ) ;
+         iss++ ;
+       }
+     }
    }
 
    if( iss > 0 ) fprintf(stderr,"\n") ;
 
-   free(dsl) ; return ;
+   free(dsl) ; EXRETURN ;
 }

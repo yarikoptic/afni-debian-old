@@ -30,8 +30,8 @@ static char helpstring[] =
   "Compressed datasets will save disk space.  The principal cost is\n"
   "the CPU time it takes to read and write compressed files."
   "\n"
-  "As usual, after you make your choice, you must press one of the\n"
-  "'Run' buttons for the plugin to be executed.\n"
+  "After you make your choice, you must press one of the\n"
+  "'Set' buttons for the plugin to send its data to AFNI.\n"
   "Author -- RW Cox"
 ;
 
@@ -45,7 +45,7 @@ static char * comp_strings[] = {
 
 /*----------------- prototypes for internal routines -----------------*/
 
-char * COMP_main( PLUGIN_interface * ) ;  /* the entry point */
+static char * COMP_main( PLUGIN_interface * ) ;  /* the entry point */
 
 /***********************************************************************
    Set up the interface to the user:
@@ -59,6 +59,9 @@ char * COMP_main( PLUGIN_interface * ) ;  /* the entry point */
         "PLUTO_add_string"  for a string chooser,
         "PLUTO_add_number"  for a number chooser.
 ************************************************************************/
+
+
+DEFINE_PLUGIN_PROTOTYPE
 
 PLUGIN_interface * PLUGIN_init( int ncall )
 {
@@ -77,6 +80,8 @@ PLUGIN_interface * PLUGIN_init( int ncall )
    PLUTO_add_hint( plint , "Control .BRIK compression" ) ;
 
    PLUTO_set_sequence( plint , "A:afnicontrol:dset" ) ;
+
+   PLUTO_set_runlabels( plint , "Set+Keep" , "Set+Close" ) ;  /* 04 Nov 2003 */
 
    /*---------- 2nd line: other inputs ----------*/
 
@@ -107,7 +112,7 @@ PLUGIN_interface * PLUGIN_init( int ncall )
   AFNI will popup the return string in a message box.
 ****************************************************************************/
 
-char * COMP_main( PLUGIN_interface * plint )
+static char * COMP_main( PLUGIN_interface * plint )
 {
    char * str ;
    int meth ;

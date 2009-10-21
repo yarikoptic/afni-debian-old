@@ -38,6 +38,7 @@ typedef struct
     short             * simage  [ R_MAX_AFNI_DSETS ];
     float               factor  [ R_MAX_AFNI_DSETS ];
     int                 subs    [ R_MAX_AFNI_DSETS ]; /* number of subbricks  */
+    int                 sub_brick;                    /* user chosen index    */
 
     int                 nx, ny, nz, nvox;
 
@@ -99,6 +100,7 @@ typedef struct
     int			overwrite;		/* do we allow overwrite      */
     int			quiet;			/* no text output of results  */
     int			true_max;		/* no neighbor equality       */
+    int			debug;  		/* debug level                */
 } maxima_s;
 
 
@@ -110,7 +112,6 @@ static int	create_point_list  ( maxima_s * );
 static int	display_coords     ( r_afni_s *, maxima_s * );
 static int	find_local_maxima  ( maxima_s * );
 static void	free_memory        ( r_afni_s *, maxima_s * );
-static void	full_usage         ( char * );
 static int	init_maxima_s	   ( maxima_s *, r_afni_s *, char * );
 static int 	init_afni_s	   ( r_afni_s * );
 static char *	process_args	   ( r_afni_s *, maxima_s *,PLUGIN_interface *);
@@ -119,7 +120,8 @@ static int	radial_fill	   ( int, int, int, maxima_s * );
 static int	weighted_index     ( point_list_s *, maxima_s * );
 static int	write_results      ( r_afni_s *, maxima_s *,PLUGIN_interface *);
 
-static void	show_maxima_s      ( maxima_s * );
+static void	show_point_list_s  ( char * mesg, point_list_s *, int );
+static void	show_maxima_s      ( char * mesg, maxima_s * );
 
 int 		point_comp_neg     ( const void *, const void * );
 int 		point_comp_pos     ( const void *, const void * );

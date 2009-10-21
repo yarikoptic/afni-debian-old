@@ -2,11 +2,13 @@
 #include "coxplot.h"
 
 /*--------------------------------------------------------------------------
-  Routines to render a memplot into an MRI_rgb image
+  Routines to render a memplot into an MRI_rgb image.
+  The assumption is that the plot is over the region [0,1]x[0,1],
+  which is rendered into the image [0..nx-1]x[0..ny-1].
 ----------------------------------------------------------------------------*/
 
-/*--------------------------------------------------------------------------
-   Set a sub-box within a window into which the next RGB plot should
+/*--------------------------------------------------------------------------*/
+/*! Set a sub-box within a window into which the next RGB plot should
    be scaled.  (0,0,0,0) args means use the whole window.  After
    each drawing (memplot_to_RGB_sef), will be reset to the whole window
    anyway.
@@ -18,21 +20,22 @@ static int box_xbot=0 , box_xtop=0 ,
 void set_memplot_RGB_box( int xbot, int ybot, int xtop, int ytop )
 {
    if( xbot < xtop && ybot < ytop ){
-      box_xbot = xbot ; box_ybot = ybot ;
-      box_xtop = xtop ; box_ytop = ytop ;
+     box_xbot = xbot ; box_ybot = ybot ;
+     box_xtop = xtop ; box_ytop = ytop ;
    } else {
-      box_xbot = box_ybot = box_xtop = box_ytop = 0 ;
+     box_xbot = box_ybot = box_xtop = box_ytop = 0 ;
    }
 }
 
-/*--------------------------------------------------------------------------
-  Actually do the rendering.
-  Plotting will start with line #start and go to #end-1.
-  If end <= start, will do from #start to the last one in the plot.
-  To do all lines, set start=end=0.
-  "freee" controls whether the aspect ratio will be free to vary (!= 0),
-  or will be fixed (==0).
-  18 Sep 2001: adapted from X11 routines in coxplot/plot_x11.c
+/*--------------------------------------------------------------------------*/
+/*! Actually do the rendering of a memplot into an RGB image.
+  - Plotting will start with line #start and go to #end-1.
+  - If end <= start, will do from #start to the last one in the plot.
+  - To do all lines, set start=end=0.
+  - "freee" controls whether the aspect ratio will be free to vary (!= 0),
+    or will be fixed (==0).
+  - 18 Sep 2001: adapted from X11 routines in coxplot/plot_x11.c
+  - 23 Mar 2002: actually tested for the first time
 ----------------------------------------------------------------------------*/
 
 void memplot_to_RGB_sef( MRI_IMAGE *im , MEM_plotdata * mp ,
@@ -45,14 +48,16 @@ void memplot_to_RGB_sef( MRI_IMAGE *im , MEM_plotdata * mp ,
    int x1,y1 , x2,y2 ;
    int skip ;
 
+ENTRY("memplot_to_RGB_sef") ;
+
    /*--- check for madness ---*/
 
-   if( im == NULL || im->kind != MRI_rgb || mp == NULL ) return ;
+   if( im == NULL || im->kind != MRI_rgb || mp == NULL ) EXRETURN ;
 
    if( start < 0 ) start = 0 ;
 
    nline = MEMPLOT_NLINE(mp) ;
-   if( nline < 1 || start >= nline ) return ;
+   if( nline < 1 || start >= nline ) EXRETURN ;
 
    if( end <= start || end > nline ) end = nline ;
 
@@ -84,6 +89,8 @@ void memplot_to_RGB_sef( MRI_IMAGE *im , MEM_plotdata * mp ,
 
    /*--- loop over lines, scale and plot ---*/
 
+   mri_draw_opacity( 1.0 ) ;
+
    for( ii=start ; ii < end ; ii++ ){
 
       skip = 0 ;
@@ -110,14 +117,20 @@ fprintf(stderr,"Changing color to %f %f %f\n",rr,gg,bb) ;
             case THCODE_RECT:{        /* rectangle */
                int xb,yb , xt,yt ;
                int w,h ;
-               x1 = (int)( xoff + xscal * MEMPLOT_X1(mp,ii)         ) ;
-               x2 = (int)( xoff + xscal * MEMPLOT_X2(mp,ii)         ) ;
-               y1 = (int)( yoff + yscal * (1.0 - MEMPLOT_Y1(mp,ii)) ) ;
-               y2 = (int)( yoff + yscal * (1.0 - MEMPLOT_Y2(mp,ii)) ) ;
+               x1 = rint( xoff + xscal * MEMPLOT_X1(mp,ii)         ) ;
+               x2 = rint( xoff + xscal * MEMPLOT_X2(mp,ii)         ) ;
+               y1 = rint( yoff + yscal * (1.0 - MEMPLOT_Y1(mp,ii)) ) ;
+               y2 = rint( yoff + yscal * (1.0 - MEMPLOT_Y2(mp,ii)) ) ;
                if( x1 < x2 ){ xb=x1; xt=x2; } else { xb=x2; xt=x1; }
                if( y1 < y2 ){ yb=y1; yt=y2; } else { yb=y2; yt=y1; }
-               w = xt-xb ; h = yt-yb ;
-               mri_drawemptyrectangle( im , xb,yb , w,h , rrr,ggg,bbb ) ;
+               w = xt-xb+1 ; h = yt-yb+1 ;
+               mri_drawfilledrectangle( im , xb,yb , w,h , rrr,ggg,bbb ) ;
+               skip = 1 ;
+            }
+            break ;
+
+            case THCODE_OPAC:{        /* opacity [22 Jul 2004] */
+               mri_draw_opacity( MEMPLOT_X1(mp,ii) ) ;
                skip = 1 ;
             }
             break ;
@@ -143,6 +156,6 @@ fprintf(stderr,"Changing color to %f %f %f\n",rr,gg,bb) ;
       }
    }
 
-   set_memplot_X11_box(0,0,0,0) ; /* clear box */
-   return ;
+   set_memplot_RGB_box(0,0,0,0) ; /* clear box */
+   EXRETURN ;
 }

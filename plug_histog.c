@@ -16,9 +16,9 @@
   01 Mar 2001 -- Modified to include Max Count -- RWCox
 ************************************************************************/
 
-char * HISTO_main( PLUGIN_interface * ) ;
+static char * HISTO_main( PLUGIN_interface * ) ;
 
-PLUGIN_interface * CORREL_init(void) ;
+static PLUGIN_interface * CORREL_init(void) ;
 
 static char helpstring[] =
    " Purpose: Plot a histogram of data from a dataset brick.\n"
@@ -29,6 +29,7 @@ static char helpstring[] =
    "          Top       = maximum value from dataset to include\n\n"
    " Bins:    Number    = number of bins to use\n"
    "          Max Count = maximum count per bin\n\n"
+   "          Smooth    = +/- bin range to smooth histogram\n"
    " Mask:    Dataset   = masking dataset\n"
    "          Sub-brick = which one to use\n\n"
    " Range:   Bottom    = min value from mask dataset to use\n"
@@ -38,13 +39,18 @@ static char helpstring[] =
    "          [                  will be used in computing the statistics.  ]\n"
    " Aboot:   If activated, then only voxels within a distance of Radius mm\n"
    "          of the current crosshairs will be used in the histogram.\n"
+   " Output:  Name of the ascii file to which histogram values are written.\n"
    "\n"
    " Author -- RW Cox - 30 September 1999\n"
+   " Output feature added by V Roopchansingh, Feb 2002\n"
 ;
 
 /***********************************************************************
    Set up the interface to the user
 ************************************************************************/
+
+
+DEFINE_PLUGIN_PROTOTYPE
 
 PLUGIN_interface * PLUGIN_init( int ncall )
 {
@@ -68,6 +74,8 @@ PLUGIN_interface * PLUGIN_init( int ncall )
 
    PLUTO_set_sequence( plint , "A:afniinfo:dsethistog" ) ;
 
+   PLUTO_set_runlabels( plint , "Plot+Keep" , "Plot+Close" ) ;  /* 04 Nov 2003 */
+
    /*-- first line of input --*/
 
    PLUTO_add_option( plint , "Source" , "Source" , TRUE ) ;
@@ -86,8 +94,9 @@ PLUGIN_interface * PLUGIN_init( int ncall )
    /*-- third line of input --*/
 
    PLUTO_add_option( plint , "Bins" , "Bins" , FALSE ) ;
-   PLUTO_add_number( plint , "Number" , 10,512,0, 100,1 ) ;
+   PLUTO_add_number( plint , "Number" , 10,1000,0, 100,1 ) ;
    PLUTO_add_number( plint , "Max Count" , 0,999999999,0 , 0,1 ) ;
+   PLUTO_add_number( plint , "Smooth"    , 0,99,0 , 0,1 ) ;  /* 03 Dec 2004 */
 
    /*-- fourth line of input --*/
 
@@ -108,6 +117,11 @@ PLUGIN_interface * PLUGIN_init( int ncall )
    PLUTO_add_option( plint , "Aboot" , "Aboot" , FALSE ) ;
    PLUTO_add_number( plint , "Radius" , 2,100,0,10,1 ) ;
 
+   /*-- seventh line of input [05 Feb 2002 - VR] --*/
+
+   PLUTO_add_option( plint , "Output", "Output", FALSE ) ;
+   PLUTO_add_string( plint , "Filename", 0 , NULL , 20 ) ;
+
    return plint ;
 }
 
@@ -115,7 +129,7 @@ PLUGIN_interface * PLUGIN_init( int ncall )
   Main routine for this plugin (will be called from AFNI).
 ****************************************************************************/
 
-char * HISTO_main( PLUGIN_interface * plint )
+static char * HISTO_main( PLUGIN_interface * plint )
 {
    MCW_idcode * idc ;
    THD_3dim_dataset * input_dset , * mask_dset=NULL ;
@@ -127,12 +141,17 @@ char * HISTO_main( PLUGIN_interface * plint )
    MRI_IMAGE * flim ;
    float     * flar ;
    int       * hbin ;
+   int smooth=0 ;      /* 03 Dec 2004 */
 
-   char * cname=NULL ;  /* 06 Aug 1998 */
    int miv=0 ;
 
    int maxcount=0 ; /* 01 Mar 2001 */
    float hrad=0.0 ; /* 20 Mar 2001 */
+
+   char * histout=NULL ; /* 05 Feb 2002 - VR */
+   FILE * HISTOUT=NULL ; /* 05 Feb 2002 - VR */
+   int writehist=0     ; /* 05 Feb 2002 - VR */
+   float dx            ; /* 05 Feb 2002 - VR */
 
    /*--------------------------------------------------------------------*/
    /*----- Check inputs from AFNI to see if they are reasonable-ish -----*/
@@ -181,8 +200,9 @@ char * HISTO_main( PLUGIN_interface * plint )
       /*-- Number of bins --*/
 
       if( strcmp(tag,"Bins") == 0 ){
-         nbin = PLUTO_get_number(plint) ;
+         nbin     = PLUTO_get_number(plint) ;
          maxcount = PLUTO_get_number(plint) ;
+         smooth   = PLUTO_get_number(plint) ;  /* 03 Dec 2004 */
          continue ;
       }
 
@@ -234,6 +254,14 @@ char * HISTO_main( PLUGIN_interface * plint )
 
       if( strcmp(tag,"Aboot") == 0 ){
          hrad = PLUTO_get_number(plint) ;
+         continue ;
+      }
+
+      /*-- 05 Feb 2002: Output - VR --*/
+
+      if( strcmp(tag,"Output") == 0 ){
+         histout = PLUTO_get_string(plint) ;
+	 writehist = 1 ;
          continue ;
       }
    }
@@ -309,6 +337,38 @@ char * HISTO_main( PLUGIN_interface * plint )
                      " %d voxels in the mask+radius\n"
                      " out of %d dataset voxels\n ",mcount,nvox) ;
          PLUTO_popup_transient(plint,buf) ;
+      }
+   }
+
+   /*-- check for text output of histogram - 05 Feb 2002 - VR --*/
+
+   if ( writehist )
+   {
+      static char hbuf[1024] ;
+      if ( ( histout == NULL ) || ( strlen (histout) == 0 ) ){
+         sprintf( hbuf , "%s.histog" , DSET_PREFIX(input_dset) ) ;
+      } else {
+         strcpy( hbuf , histout ) ;
+         if( strstr(hbuf,".hist") == NULL ) strcat( hbuf , ".histog" ) ;
+      }
+      histout = hbuf ;
+
+      if (THD_is_file(histout))
+      {
+         free(mmm) ;
+
+         return "*******************************\n"
+                "Outfile exists, won't overwrite\n"
+                "*******************************\n" ;
+      }
+      else {
+         HISTOUT = fopen (histout, "w") ;
+         if( HISTOUT == NULL ){
+            free(mmm) ;
+            return "**********************************\n"
+                   "Can't open Outfile for some reason\n"
+                   "**********************************\n" ;
+         }
       }
    }
 
@@ -407,7 +467,7 @@ char * HISTO_main( PLUGIN_interface * plint )
       hbot = val_bot ; htop = val_top ;
    }
 
-   if( nbin < 10 || nbin > 512 ){
+   if( nbin < 10 || nbin > 1000 ){
       switch( DSET_BRICK_TYPE(input_dset,iv) ){
          case MRI_float:
             nbin = (int) sqrt((double)mcount) ;
@@ -424,7 +484,7 @@ char * HISTO_main( PLUGIN_interface * plint )
          break ;
 
       }
-      if( nbin < 10 ) nbin = 10 ; else if( nbin > 512 ) nbin = 512 ;
+      if( nbin < 10 ) nbin = 10 ; else if( nbin > 1000 ) nbin = 1000 ;
    }
 
    /*-- actually compute and plot histogram --*/
@@ -432,11 +492,53 @@ char * HISTO_main( PLUGIN_interface * plint )
    hbin = (int *) calloc((nbin+1),sizeof(int)) ;
 
    mri_histogram( flim , hbot,htop , TRUE , nbin,hbin ) ;
+
+   if( smooth > 0 ){  /* 03 Dec 2004 */
+     int nwid=smooth , *gbin=(int *)calloc((nbin+1),sizeof(int)) , ibot,itop ;
+     float ws,wss , *wt ;
+
+     ws = 0.0 ;
+     wt = (float *)malloc(sizeof(float)*(2*nwid+1)) ;
+     for( ii=0 ; ii <= 2*nwid ; ii++ ){
+       wt[ii] = nwid-abs(nwid-ii) + 0.5f ;
+       ws += wt[ii] ;
+     }
+     for( ii=0 ; ii <= 2*nwid ; ii++ ) wt[ii] /= ws ;
+
+     for( jj=0 ; jj <= nbin ; jj++ ){
+       ibot = jj-nwid ; if( ibot < 0    ) ibot = 0 ;
+       itop = jj+nwid ; if( itop > nbin ) itop = nbin ;
+       ws = wss = 0.0 ;
+       for( ii=ibot ; ii <= itop ; ii++ ){
+         ws += wt[nwid-jj+ii] * hbin[ii] ; wss += wt[nwid-jj+ii] ;
+       }
+       gbin[jj] = rint(ws/wss) ;
+     }
+     memcpy(hbin,gbin,sizeof(int)*(nbin+1)) ;
+     free((void *)wt) ; free((void *)gbin) ;
+   }
+
    if( maxcount > 0 ){
       for( ii=0 ; ii <= nbin ; ii++ ) hbin[ii] = MIN( hbin[ii] , maxcount ) ;
    }
-   sprintf(buf,"%s[%d] %d voxels",DSET_FILECODE(input_dset),iv,mcount) ;
+   sprintf(buf,"\\noesc %s[%d] %d voxels",DSET_FILECODE(input_dset),iv,mcount);
    PLUTO_histoplot( nbin,hbot,htop,hbin , NULL , NULL ,  buf , 0,NULL ) ;
+
+   /*-- 05 Feb 2002: Output - VR --*/
+
+   if ( HISTOUT != NULL )
+   {
+      if( hbot >= htop ){ hbot = 0.0 ; htop = nbin ;}
+
+      dx = (htop-hbot)/nbin ;
+
+      for( ii=0 ; ii <= nbin ; ii++ )
+         fprintf (HISTOUT, "%12.6f %13d \n", hbot+ii*dx, hbin[ii]) ;
+
+      fclose (HISTOUT) ;
+
+      fprintf (stderr, "%s written to disk \n", histout) ;
+   }
 
    /*-- go home to mama --*/
 
@@ -482,9 +584,9 @@ static char c_helpstring[] =
  "-- Bob Cox - October 1999\n"
 ;
 
-char * CORREL_main( PLUGIN_interface * ) ;
+static char * CORREL_main( PLUGIN_interface * ) ;
 
-PLUGIN_interface * CORREL_init(void)
+static PLUGIN_interface * CORREL_init(void)
 {
    PLUGIN_interface * plint ;
 
@@ -550,7 +652,7 @@ PLUGIN_interface * CORREL_init(void)
 
 #include "uuu.c"
 
-char *  CORREL_main( PLUGIN_interface * plint )
+static char *  CORREL_main( PLUGIN_interface * plint )
 {
    MCW_idcode * idc ;
    THD_3dim_dataset * input_dset , * mask_dset = NULL ;

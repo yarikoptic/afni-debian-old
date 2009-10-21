@@ -34,6 +34,15 @@
    Mod:     Added call to AFNI_logger.
    Date:    15 August 2001
 
+   Mod:     Modified routine write_afni_data of 3dANOVA.lib so that all output
+            subbricks will now have the scaled short integer format.
+   Date:    14 March 2002
+
+   Mod:     Set MAX_NAME_LENGTH equal to THD_MAX_NAME.
+   Date:    02 December 2002
+
+   Mod:     In get_options(), calloc and free n (stack space is limited).
+   Date:    19 July 2004 [rickr]
 */
 
 /*---------------------------------------------------------------------------*/
@@ -41,7 +50,7 @@
 #define PROGRAM_NAME    "3dANOVA3"                   /* name of this program */
 #define PROGRAM_AUTHOR  "B. Douglas Ward"                  /* program author */
 #define PROGRAM_INITIAL "29 Jan 1997"     /* date of initial program release */
-#define PROGRAM_LATEST  "15 Aug 2001"     /* date of latest program revision */
+#define PROGRAM_LATEST  "19 Jul 2004"     /* date of latest program revision */
 
 /*---------------------------------------------------------------------------*/
 
@@ -143,6 +152,8 @@ void display_help_menu()
   exit(0);
 }
 
+/* define index into n[MAX_LEVELS][MAX_LEVELS][MAX_LEVELS] 19 Jul 2004 [rickr]*/
+#define N_INDEX(i,j,k) n[(k) + MAX_LEVELS * ((j) + MAX_LEVELS * (i))]
 
 /*---------------------------------------------------------------------------*/
 /*
@@ -158,7 +169,8 @@ void get_options (int argc, char ** argv, anova_options * option_data)
   float fval;                    /* float input */
   THD_3dim_dataset * dset=NULL;             /* test whether data set exists */
   char message[MAX_NAME_LENGTH];            /* error message */
-  int n[MAX_LEVELS][MAX_LEVELS][MAX_LEVELS];         /* data file counters */
+  /* int n[MAX_LEVELS][MAX_LEVELS][MAX_LEVELS];    data file counters       */
+  int * n;                       /* save stack space    19 Jul 2004 [rickr] */
 
     
   /*----- does user request help menu? -----*/
@@ -171,10 +183,20 @@ void get_options (int argc, char ** argv, anova_options * option_data)
   initialize_options (option_data);
   
   /*----- initialize data file counters -----*/
+  n = (int *)calloc(MAX_LEVELS*MAX_LEVELS*MAX_LEVELS, sizeof(int));
+  if ( !n )
+  {
+    sprintf(message, "failed to allocate %d bytes for file counters\n",
+            MAX_LEVELS*MAX_LEVELS*MAX_LEVELS * sizeof(int));
+    ANOVA_error(message);
+  }
+
+#if 0  /* replaced array and init with pointer and calloc() */
   for (i = 0;  i < MAX_LEVELS;  i++)
     for (j = 0;  j < MAX_LEVELS;  j++)
       for (k = 0;  k < MAX_LEVELS;  k++)
 	n[i][j][k] = 0;
+#endif
   
 
   /*----- main loop over input options -----*/
@@ -329,8 +351,8 @@ void get_options (int argc, char ** argv, anova_options * option_data)
 	  if ((kval <= 0) || (kval > option_data->c))
 	    ANOVA_error ("illegal argument after -dset ");
 
-	  n[ival-1][jval-1][kval-1] += 1;
-	  nijk = n[ival-1][jval-1][kval-1];
+	  N_INDEX(ival-1, jval-1, kval-1) += 1;
+	  nijk = N_INDEX(ival-1, jval-1, kval-1);
 	  if (nijk > MAX_OBSERVATIONS)
 	    ANOVA_error ("too many data files");
 	  
@@ -804,12 +826,14 @@ void get_options (int argc, char ** argv, anova_options * option_data)
 
   
   /*----- check that all treatment sample sizes are equal -----*/
-  option_data->n = n[0][0][0];
+  option_data->n = N_INDEX(0, 0, 0);
   for (i = 0;  i < option_data->a;  i++)
     for (j = 0;  j < option_data->b;  j++)
       for (k = 0;  k < option_data->c;  k++)
-	if (n[i][j][k] != option_data->n)
+	if (N_INDEX(i, j, k) != option_data->n)
 	  ANOVA_error ("must have equal sample sizes for 3dANOVA3");
+
+  free(n);
 }
 
 
@@ -1133,7 +1157,7 @@ void initialize (int argc,  char ** argv,  anova_options ** option_data)
   *option_data = (anova_options *) malloc(sizeof(anova_options));
   if (*option_data == NULL)
     ANOVA_error ("memory allocation error");
-  
+
   /*----- get command line inputs -----*/
   get_options(argc, argv, *option_data);
   
@@ -4495,6 +4519,9 @@ void create_bucket (anova_options * option_data)
 	    option_data->first_dataset);
     exit(1) ;
   }
+
+       if( DSET_IS_1D(dset) ) USE_1D_filenames(1) ; /* 14 Mar 2003 */
+  else if( DSET_IS_3D(dset) ) USE_1D_filenames(3) ; /* 21 Mar 2003 */
   
 
   /*----- make an empty copy of this dataset -----*/
@@ -4837,11 +4864,13 @@ void create_bucket (anova_options * option_data)
           by concatenating previous output files -----*/
   printf("Writing `bucket' dataset ");
   printf("into %s\n", option_data->bucket_filename);
+  fprintf(stderr,"RUNNING COMMAND: %s\n",bucket_str) ;
   system (bucket_str);
 
 
   /*----- invoke program 3drefit to label individual sub-bricks -----*/
   add_file_name (new_dset, option_data->bucket_filename, refit_str);
+  fprintf(stderr,"RUNNING COMMAND: %s\n",refit_str) ;
   system (refit_str);
 
 
@@ -5019,10 +5048,13 @@ int main (int argc, char ** argv)
   printf ("Initial Release:  %s \n", PROGRAM_INITIAL);
   printf ("Latest Revision:  %s \n", PROGRAM_LATEST);
   printf ("\n");
+    
+  /*----- does user request help menu? -----*/
+  if (argc < 2 || strncmp(argv[1], "-help", 5) == 0)  display_help_menu();  
   
   /*-- 20 Apr 2001: addto the arglist, if user wants to [RWCox] --*/
 
-  machdep() ;
+  mainENTRY("3dANOVA3 main") ; machdep() ;
    { int new_argc ; char ** new_argv ;
      addto_args( argc , argv , &new_argc , &new_argv ) ;
      if( new_argv != NULL ){ argc = new_argc ; argv = new_argv ; }

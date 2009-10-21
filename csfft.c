@@ -14,6 +14,7 @@
 #  include <math.h>
    typedef struct complex { float r,i ; } complex ;  /* need this! */
 #  undef USE_FFTW
+#  define EXIT exit
 #else
 #  include "mrilib.h"   /* AFNI package library header */
 
@@ -230,7 +231,7 @@ void csfft_cox( int mode , int idim , complex * xc )
            if( nw > 0 ){
               int fd = open( env , O_RDONLY ) ;
               if( fd >= 0 ){
-                 char * w = malloc(nw+4) ;
+                 char * w = AFMALL( char, nw+4 ) ;
                  int ii = read( fd , w , nw ) ;
                  close(fd) ;
                  if( ii > 0 ){
@@ -268,7 +269,7 @@ void csfft_cox( int mode , int idim , complex * xc )
       case    1:                           return;  /* routines will  */
       case    2: fft2   (mode,xc); SCLINV; return;  /* call csfft_cox */
       case    4: fft4   (mode,xc); SCLINV; return;  /* so don't need  */
-      case    8: fft8   (mode,xc); SCLINV; return;  /* to do rec++    */
+      case    8: fft8   (mode,xc); SCLINV; return;  /* to do rec++/-- */
       case   16: fft16  (mode,xc); SCLINV; return;
       case   32: fft32  (mode,xc); SCLINV; return;
       case   64: fft64  (mode,xc); SCLINV; return;
@@ -2231,12 +2232,25 @@ int csfft_nextup( int idim )
 int csfft_nextup_one35( int idim )
 {
    int jj = idim ;
-
    do{
       jj = csfft_nextup(jj) ;
       if( jj%9 == 0 || jj%25 == 0 || jj%2 == 1 ) jj++ ;
       else                                       return jj ;
    } while(1) ;
+   return 0 ; /* cannot be reached */
+}
 
+/*----------------------------------------------------------------------
+   return the next legal value that is even [13 May 2003 - RWCox]
+------------------------------------------------------------------------*/
+
+int csfft_nextup_even( int idim )
+{
+   int jj = idim ;
+   do{
+      jj = csfft_nextup(jj) ;
+      if( jj%2 == 1 ) jj++ ;
+      else            return jj ;
+   } while(1) ;
    return 0 ; /* cannot be reached */
 }

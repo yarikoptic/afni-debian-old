@@ -55,16 +55,16 @@ static char * baseline_strings[NBASE] = { "Constant" , "Linear" , "Quadratic" } 
 
 char * LSQ_main( PLUGIN_interface * ) ;  /* the entry point */
 
-void LSQ_fitter() ;
-void LSQ_detrend() ;
-void LSQ_worker() ;
+void LSQ_fitter( int nt, double to, double dt, float * vec, char ** label ) ;
+void LSQ_detrend( int nt, double to, double dt, float * vec, char ** label ) ;
+void LSQ_worker( int nt, double dt, float * vec, int dofit, char ** label ) ;
 
 PLUGIN_interface * TSGEN_init(void) ;
 char * TSGEN_main( PLUGIN_interface * ) ;
 
 PLUGIN_interface * EXP0D_init(void) ;
 char * EXP0D_main( PLUGIN_interface * ) ;
-void EXP0D_worker() ;
+void EXP0D_worker( int num , float * vec ) ;
 
 #ifdef ALLOW_LOMO
 PLUGIN_interface * LOMOR_init(void) ;
@@ -78,7 +78,7 @@ static PLUGIN_interface * global_plint = NULL ;
 
 #define NRMAX_SIN 2
 #define NRMAX_TS  2
-#define HARM_MAX  11
+#define HARM_MAX  22
 
 static int polort=1 , ignore=3 , nrsin=0 , nrts=0 , initialize=1 ;
 static float sinper[NRMAX_SIN] ;
@@ -98,6 +98,9 @@ static MRI_IMAGE * tsim[NRMAX_TS] ;
         "PLUTO_add_number"     for a number chooser,
         "PLUTO_add_timeseries" for a timeseries chooser.
 ************************************************************************/
+
+
+DEFINE_PLUGIN_PROTOTYPE
 
 PLUGIN_interface * PLUGIN_init( int ncall )
 {
@@ -128,6 +131,8 @@ PLUGIN_interface * PLUGIN_init( int ncall )
    PLUTO_set_sequence( plint , "A:funcs:fitting" ) ;
 
    PLUTO_add_hint( plint , "Control LSqFit and LSqDtr Functions" ) ;
+
+   PLUTO_set_runlabels( plint , "Set+Keep" , "Set+Close" ) ;  /* 04 Nov 2003 */
 
    /*----- Parameters -----*/
 
@@ -581,6 +586,14 @@ static int exp0d_var = 23 ;
 
 static PARSER_code * exp0d_pc = NULL ;
 
+static PLUGIN_interface *plint_EXP0D=NULL ;
+
+static void EXP0D_func_init(void)   /* 21 Jul 2003 */
+{
+   PLUG_startup_plugin_CB( NULL , (XtPointer)plint_EXP0D , NULL ) ;
+}
+
+
 PLUGIN_interface * EXP0D_init(void)
 {
    PLUGIN_interface * plint ;
@@ -599,6 +612,9 @@ PLUGIN_interface * EXP0D_init(void)
    PLUTO_add_string( plint , NULL , 0,NULL , 50 ) ;
 
    PLUTO_register_0D_function( "Expr 0D" , EXP0D_worker ) ;
+
+   plint_EXP0D = plint ;
+   AFNI_register_nD_func_init( 0 , (generic_func *)EXP0D_func_init ) ;  /* 21 Jul 2003 */
 
    return plint ;
 }

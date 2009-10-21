@@ -22,23 +22,33 @@
 
 static int num_renderers = 0 ;  /* global count of how many are open */
 
-static THD_mat33 rotmatrix( int ax1,float th1 ,
-                            int ax2,float th2 , int ax3,float th3  ) ;
+THD_mat33 rotmatrix( int ax1,float th1 ,
+                     int ax2,float th2 , int ax3,float th3  ) ;
 
-static void extract_byte_nn( int nx , int ny , int nz , byte * vol ,
-                             Tmask * tm ,
-                             int fixdir , int fixijk , float da , float db ,
-                             int ma , int mb , byte * im ) ;
+void extract_byte_nn( int nx , int ny , int nz , byte * vol ,
+                      Tmask * tm ,
+                      int fixdir , int fixijk , float da , float db ,
+                      int ma , int mb , byte * im ) ;
 
-static void extract_byte_tsx( int nx , int ny , int nz , byte * vol ,
-                              Tmask * tm ,
-                              int fixdir , int fixijk , float da , float db ,
-                              int ma , int mb , byte * im ) ;
+void extract_rgba_nn( int nx , int ny , int nz , rgba * vol ,
+                      Tmask * tm ,
+                      int fixdir , int fixijk , float da , float db ,
+                      int ma , int mb , rgba * im ) ;
 
-static void extract_byte_lix( int nx , int ny , int nz , byte * vol ,
-                              Tmask * tm ,
-                              int fixdir , int fixijk , float da , float db ,
-                              int ma , int mb , byte * im ) ;
+void extract_byte_tsx( int nx , int ny , int nz , byte * vol ,
+                       Tmask * tm ,
+                       int fixdir , int fixijk , float da , float db ,
+                       int ma , int mb , byte * im ) ;
+
+void extract_byte_lix( int nx , int ny , int nz , byte * vol ,
+                       Tmask * tm ,
+                       int fixdir , int fixijk , float da , float db ,
+                       int ma , int mb , byte * im ) ;
+
+void extract_byte_lixx( int nx , int ny , int nz , byte * vol ,
+                        Tmask * tm ,
+                        int fixdir , int fixijk , float da , float db ,
+                        int ma , int mb , byte * im ) ;
 
 typedef void exfunc(int,int,int,byte*,Tmask*,int,int,float,float,int,int,byte*);
 
@@ -76,6 +86,8 @@ void * new_CREN_renderer( void )
 
    ar->vox = NULL ;  /* no data yet */
    ar->vtm = NULL ;  /* no Tmask yet */
+
+   ar->vox_is_gray = 0 ;
 
    ar->newopa = 0 ;
    ar->opargb = 1.0 ;             /* colored voxels are opaque */
@@ -309,7 +321,7 @@ DUMP_MAT33("skewmat",ar->skewmat) ;
 void CREN_dset_axes( void * ah , THD_3dim_dataset * dset )
 {
    CREN_stuff * ar = (CREN_stuff *) ah ;
-   int aii , ajj , akk ;
+   int aii=1 , ajj=2 , akk=3 ;
    float dx , dy , dz ;
 
    if( !ISVALID_CREN(ar) || !ISVALID_DSET(dset) ) return ;
@@ -321,6 +333,8 @@ void CREN_dset_axes( void * ah , THD_3dim_dataset * dset )
       case ORI_P2A_TYPE: aii = -2 ; break ;
       case ORI_I2S_TYPE: aii =  3 ; break ;
       case ORI_S2I_TYPE: aii = -3 ; break ;
+      default:
+        fprintf(stderr,"** CREN_dset_axes: illegal xxorient code!\n") ;
    }
    switch( dset->daxes->yyorient ){
       case ORI_R2L_TYPE: ajj =  1 ; break ;
@@ -329,6 +343,8 @@ void CREN_dset_axes( void * ah , THD_3dim_dataset * dset )
       case ORI_P2A_TYPE: ajj = -2 ; break ;
       case ORI_I2S_TYPE: ajj =  3 ; break ;
       case ORI_S2I_TYPE: ajj = -3 ; break ;
+      default:
+        fprintf(stderr,"** CREN_dset_axes: illegal yyorient code!\n") ;
    }
    switch( dset->daxes->zzorient ){
       case ORI_R2L_TYPE: akk =  1 ; break ;
@@ -337,6 +353,8 @@ void CREN_dset_axes( void * ah , THD_3dim_dataset * dset )
       case ORI_P2A_TYPE: akk = -2 ; break ;
       case ORI_I2S_TYPE: akk =  3 ; break ;
       case ORI_S2I_TYPE: akk = -3 ; break ;
+      default:
+        fprintf(stderr,"** CREN_dset_axes: illegal zzorient code!\n") ;
    }
 
    dx = fabs(dset->daxes->xxdel) ;
@@ -359,7 +377,7 @@ void CREN_dset_axes( void * ah , THD_3dim_dataset * dset )
 void CREN_set_databytes( void * ah , int ni,int nj,int nk, byte * grim )
 {
    CREN_stuff * ar = (CREN_stuff *) ah ;
-   int nvox ;
+   int nvox , ii ;
 
    /*-- sanity checks --*/
 
@@ -384,6 +402,9 @@ void CREN_set_databytes( void * ah , int ni,int nj,int nk, byte * grim )
    nvox = ni * nj * nk ;
    ar->vox = (byte *) malloc(nvox) ;
    memcpy( ar->vox , grim , nvox ) ;
+
+   for( ii=0 ; ii < nvox && grim[ii] < 128 ; ii++ ) ; /* nada */
+   ar->vox_is_gray = (ii == nvox) ;
 
    return ;
 }
@@ -438,9 +459,11 @@ void CREN_set_angles( void * ah , float th1 , float th2 , float th3 )
 /*-----------------------------------------------------------------------------
    Actually render an image.  Returns NULL if an error occurs.
    The image is always in MRI_rgb format.
+
+   If rotm is valid, copy the rotation matrix.     2002.08.28 - rickr
 -------------------------------------------------------------------------------*/
 
-MRI_IMAGE * CREN_render( void * ah )
+MRI_IMAGE * CREN_render( void * ah, THD_mat33 * rotm )
 {
    CREN_stuff * ar = (CREN_stuff *) ah ;
    MRI_IMAGE * bim , * qim ;
@@ -496,6 +519,9 @@ fprintf(stderr,"CREN_render: nx=%d ny=%d nz=%d\n",ar->nx,ar->ny,ar->nz);
    /*-- compute rotation matrix uu --*/
 
    uu = rotmatrix( ar->ax1,ar->th1 , ar->ax2,ar->th2 , ar->ax3,ar->th3 ) ;
+
+   if ( rotm != NULL ) /* if requested, copy the rotation matrix, angles only */
+      *rotm = uu;
 
    dab = MIN(ar->dx,ar->dy) ; dab = MIN(dab,ar->dz) ;  /* output grid spacing */
 
@@ -568,9 +594,9 @@ fprintf(stderr,"warp: aii=%g  aij=%g\n"
 
    sl = (byte *) malloc(mab) ;  /* will hold extracted sheared slice */
 
-   /* create all zero output image */
+   /* create all zero output image (now done by mri_new) */
 
-   bim = mri_new(ma,mb,MRI_rgb); rgb = MRI_RGB_PTR(bim); memset(rgb,0,3*mab);
+   bim = mri_new(ma,mb,MRI_rgb); rgb = MRI_RGB_PTR(bim);
 
    /* prepare for projections of different types */
 
@@ -594,7 +620,9 @@ fprintf(stderr,"warp: aii=%g  aij=%g\n"
       default:
       case CREN_TWOSTEP: ifunc = extract_byte_tsx ; break ;
       case CREN_NN:      ifunc = extract_byte_nn  ; break ;
-      case CREN_LINEAR:  ifunc = extract_byte_lix ; break ;
+      case CREN_LINEAR:  ifunc = (ar->vox_is_gray) ? extract_byte_lixx
+                                                   : extract_byte_lix ;
+                         break ;
    }
 
    for( pk=0 ; pk < nk ; pk++ ){  /* loop over slices */
@@ -752,9 +780,9 @@ fprintf(stderr,"warp: aii=%g  aij=%g\n"
 
 /*-----------------------------------------------------------------------*/
 
-static void extract_assign_directions( int nx, int ny, int nz, int fixdir ,
-                                       int *Astep, int *Bstep, int *Cstep ,
-                                       int *Na   , int *Nb   , int *Nc     )
+void extract_assign_directions( int nx, int ny, int nz, int fixdir ,
+                                int *Astep, int *Bstep, int *Cstep ,
+                                int *Na   , int *Nb   , int *Nc     )
 {
    int astep,bstep,cstep , na,nb,nc , nxy=nx*ny ;
 
@@ -768,10 +796,10 @@ static void extract_assign_directions( int nx, int ny, int nz, int fixdir ,
    NN "interpolation"
 -------------------------------------------------------------------------*/
 
-static void extract_byte_nn( int nx , int ny , int nz , byte * vol ,
-                             Tmask * tm ,
-                             int fixdir , int fixijk , float da , float db ,
-                             int ma , int mb , byte * im )
+void extract_byte_nn( int nx , int ny , int nz , byte * vol ,
+                      Tmask * tm ,
+                      int fixdir , int fixijk , float da , float db ,
+                      int ma , int mb , byte * im )
 {
    int adel,bdel , abot,atop , bb,bbot,btop , nxy=nx*ny ;
    register int aa , ijkoff , aoff,boff ;
@@ -798,16 +826,72 @@ static void extract_byte_nn( int nx , int ny , int nz , byte * vol ,
    ijkoff = fixijk*cstep + (abot-adel)*astep + (bbot-bdel)*bstep ;
    boff   = bbot * ma ;
 
+   if( atop <= abot || btop <= bbot ) return ;  /* nothing to do */
+
+   mask = (tm == NULL) ? NULL
+                       : tm->mask[fixdir%3] + (fixijk*nb - bdel) ;
+
+   if( astep != 1 ){
+    for( bb=bbot ; bb < btop ; bb++,boff+=ma,ijkoff+=bstep )
+     if( mask == NULL || mask[bb] )
+      for( aa=abot,aoff=0 ; aa < atop ; aa++,aoff+=astep )
+       im[aa+boff] = vol[aoff+ijkoff]; /* im(aa,bb)=vol(aa-adel,bb-bdel,fixijk) */
+                                       /*          =vol[ (aa-adel)*astep +
+                                                         (bb-bdel)*bstep +
+                                                         fixijk   *cstep   ]    */
+   } else { /* 05 Nov 2003 */
+     for( bb=bbot ; bb < btop ; bb++,boff+=ma,ijkoff+=bstep )
+      if( mask == NULL || mask[bb] )
+        memcpy( im+(abot+boff) , vol+ijkoff , atop-abot ) ;
+   }
+
+   return ;
+}
+
+/*-----------------------------------------------------------------------
+   NN "interpolation" of rgba data - 30 Jan 2003
+-------------------------------------------------------------------------*/
+
+void extract_rgba_nn( int nx , int ny , int nz , rgba * vol ,
+                      Tmask * tm ,
+                      int fixdir , int fixijk , float da , float db ,
+                      int ma , int mb , rgba * im )
+{
+   int adel,bdel , abot,atop , bb,bbot,btop , nxy=nx*ny ;
+   register int aa , ijkoff , aoff,boff ;
+   int astep,bstep,cstep , na,nb,nc ;
+   byte * mask ;
+
+   memset( im , 0 , sizeof(rgba)*ma*mb ) ;  /* initialize output to zero */
+
+   if( fixijk < 0 ) return ;
+
+   ASSIGN_DIRECTIONS ;
+
+   if( fixijk >= nc ) return ;
+
+   da += 0.5 ; adel = (int) da ; if( da < 0.0 ) adel-- ;  /* floor(da+0.5) */
+   db += 0.5 ; bdel = (int) db ; if( db < 0.0 ) bdel-- ;  /* floor(db+0.5) */
+
+   abot = 0       ; if( abot < adel ) abot = adel ;       /* range in im[] */
+   atop = na+adel ; if( atop > ma   ) atop = ma ;
+
+   bbot = 0       ; if( bbot < bdel ) bbot = bdel ;
+   btop = nb+bdel ; if( btop > mb   ) btop = mb ;
+
+   ijkoff = fixijk*cstep + (abot-adel)*astep + (bbot-bdel)*bstep ;
+   boff   = bbot * ma ;
+
    mask = (tm == NULL) ? NULL
                        : tm->mask[fixdir%3] + (fixijk*nb - bdel) ;
 
    for( bb=bbot ; bb < btop ; bb++,boff+=ma,ijkoff+=bstep )
-      if( mask == NULL || mask[bb] )
-         for( aa=abot,aoff=0 ; aa < atop ; aa++,aoff+=astep )
-            im[aa+boff] = vol[aoff+ijkoff] ;  /* im(aa,bb) = vol(aa-adel,bb-bdel,fixijk) */
-                                              /*           = vol[ (aa-adel)*astep +
-                                                                  (bb-bdel)*bstep +
-                                                                  fixijk   *cstep   ]    */
+    if( mask == NULL || mask[bb] )
+     for( aa=abot,aoff=0 ; aa < atop ; aa++,aoff+=astep )
+      im[aa+boff] = vol[aoff+ijkoff]; /* im(aa,bb)=vol(aa-adel,bb-bdel,fixijk) */
+                                      /*          =vol[ (aa-adel)*astep +
+                                                        (bb-bdel)*bstep +
+                                                        fixijk   *cstep   ]    */
 
    return ;
 }
@@ -836,7 +920,7 @@ static void extract_byte_ts( int nx , int ny , int nz , byte * vol ,
 {
    int adel,bdel , abot,atop , bb,bbot,btop , nxy=nx*ny ;
    register int aa , ijkoff , aoff,boff ;
-   int astep,bstep,cstep , na,nb,nc , nts,dts1,dts2 ;
+   int astep,bstep,cstep , na,nb,nc , nts,dts1=0,dts2=0 ;
    float fa , fb ;
    byte * mask ;
 
@@ -929,14 +1013,14 @@ static void extract_byte_ts( int nx , int ny , int nz , byte * vol ,
 
 /*---------------------------------------------------------------------------*/
 
-static void extract_byte_tsx( int nx , int ny , int nz , byte * vol ,
-                              Tmask * tm ,
-                              int fixdir , int fixijk , float da , float db ,
-                              int ma , int mb , byte * im )
+void extract_byte_tsx( int nx , int ny , int nz , byte * vol ,
+                       Tmask * tm ,
+                       int fixdir , int fixijk , float da , float db ,
+                       int ma , int mb , byte * im )
 {
    int adel,bdel , abot,atop , bb,bbot,btop , nxy=nx*ny ;
    register int aa , ijkoff , aoff,boff ;
-   int astep,bstep,cstep , na,nb,nc , nts,dts1,dts2 , nn ;
+   int astep,bstep,cstep , na,nb,nc , nts,dts1=0,dts2=0 , nn ;
    float fa , fb ;
    byte *mask , v1,v2,v3,v4 ;
 
@@ -1061,10 +1145,10 @@ static void extract_byte_tsx( int nx , int ny , int nz , byte * vol ,
 
 /*---------------------------------------------------------------------------*/
 
-static void extract_byte_lix( int nx , int ny , int nz , byte * vol ,
-                              Tmask * tm ,
-                              int fixdir , int fixijk , float da , float db ,
-                              int ma , int mb , byte * im )
+void extract_byte_lix( int nx , int ny , int nz , byte * vol ,
+                       Tmask * tm ,
+                       int fixdir , int fixijk , float da , float db ,
+                       int ma , int mb , byte *im )
 {
    int adel,bdel , abot,atop , bb,bbot,btop , nxy=nx*ny ;
    register int aa , ijkoff , aoff,boff ;
@@ -1088,7 +1172,7 @@ static void extract_byte_lix( int nx , int ny , int nz , byte * vol ,
    fa = da - adel ;               /* fractional part of da */
    fb = db - bdel ;               /* fractional part of db */
 
-   f_a_b   = fa      * fb      ;  /* bilinear interploation */
+   f_a_b   = fa      * fb      ;  /* bilinear interpolation */
    f_ap_b  = (1.0-fa)* fb      ;  /* coefficients */
    f_a_bp  = fa      *(1.0-fb) ;
    f_ap_bp = (1.0-fa)*(1.0-fb) ;
@@ -1129,7 +1213,12 @@ static void extract_byte_lix( int nx , int ny , int nz , byte * vol ,
          v2 = vol[aoff+(ijkoff+LR)] ;
          v3 = vol[aoff+(ijkoff+UL)] ;
          v4 = vol[aoff+(ijkoff+UR)] ;
-         if( v1 < 128 && v2 < 128 && v3 < 128 && v4 < 128 ) /* gray */
+#ifdef BECLEVER
+         if( (v1|v2|v3|v4) & 128 != 0 )
+#else
+         if( v1 < 128 && v2 < 128 && v3 < 128 && v4 < 128 )  /* gray */
+#endif
+
 #if 0
            im[aa+boff] = (byte)(  f_a_b  * v1 + f_ap_b  * v2
                                 + f_a_bp * v3 + f_ap_bp * v4 ) ;
@@ -1144,10 +1233,103 @@ static void extract_byte_lix( int nx , int ny , int nz , byte * vol ,
    return ;
 }
 
+/*---------------------------------------------------------------------------*/
+
+void extract_byte_lixx( int nx , int ny , int nz , byte * vol ,
+                        Tmask * tm ,
+                        int fixdir , int fixijk , float da , float db ,
+                        int ma , int mb , byte * im )
+{
+   int adel,bdel , abot,atop , bb,bbot,btop , nxy=nx*ny ;
+   register int aa , ijkoff , aoff,boff ;
+   int astep,bstep,cstep , na,nb,nc , nn ;
+   float fa , fb ;
+   float f_a_b , f_ap_b , f_a_bp , f_ap_bp ;
+   byte  b_a_b , b_ap_b , b_a_bp , b_ap_bp ;
+   byte *mask , v1,v2,v3,v4 ;
+
+   memset( im , 0 , ma*mb ) ; /* initialize output to zero */
+
+   if( fixijk < 0 ) return ;
+
+   ASSIGN_DIRECTIONS ;
+
+   if( fixijk >= nc ) return ;
+
+   adel = (int) da ; if( da < 0.0 ) adel-- ;  /* floor(da) */
+   bdel = (int) db ; if( db < 0.0 ) bdel-- ;  /* floor(db) */
+
+   fa = da - adel ;               /* fractional part of da */
+   fb = db - bdel ;               /* fractional part of db */
+
+   f_a_b   = fa      * fb      ;  /* bilinear interpolation */
+   f_ap_b  = (1.0-fa)* fb      ;  /* coefficients */
+   f_a_bp  = fa      *(1.0-fb) ;
+   f_ap_bp = (1.0-fa)*(1.0-fb) ;
+
+   bb = (int)(256*f_a_b  + 0.499); if( bb == 256 ) bb--; b_a_b  = (byte) bb;
+   bb = (int)(256*f_ap_b + 0.499); if( bb == 256 ) bb--; b_ap_b = (byte) bb;
+   bb = (int)(256*f_a_bp + 0.499); if( bb == 256 ) bb--; b_a_bp = (byte) bb;
+   bb = (int)(256*f_ap_bp+ 0.499); if( bb == 256 ) bb--; b_ap_bp= (byte) bb;
+
+   nn = (fa > 0.5) ? ( (fb > 0.5) ? LL : UL )   /* NN index point */
+                   : ( (fb > 0.5) ? LR : UR ) ;
+
+   adel++ ; bdel++ ;
+
+   abot = 0         ; if( abot < adel ) abot = adel ;       /* range in im[] */
+   atop = na+adel-1 ; if( atop > ma   ) atop = ma ;
+
+   bbot = 0         ; if( bbot < bdel ) bbot = bdel ;
+   btop = nb+bdel-1 ; if( btop > mb   ) btop = mb ;
+
+   if( atop <= abot || btop <= bbot ) return ;  /* nothing to do */
+
+   ijkoff = fixijk*cstep + (abot-adel)*astep + (bbot-bdel)*bstep ;
+   boff   = bbot * ma ;
+
+   mask = (tm == NULL) ? NULL
+                       : tm->mask[fixdir%3] + (fixijk*nb - bdel) ;
+
+   /*-- the following is intended to implement
+
+         im(aa,bb) = vol(aa-adel,bb-bdel,fixijk)
+                   = vol[ (aa-adel)*astep +
+                          (bb-bdel)*bstep +
+                          fixijk   *cstep   ]    --*/
+
+   if( astep != 1 ){
+    for( bb=bbot ; bb < btop ; bb++,boff+=ma,ijkoff+=bstep )
+      if( mask == NULL || mask[bb] || mask[bb+1] )
+        for( aa=abot,aoff=0 ; aa < atop ; aa++,aoff+=astep ){
+          v1 = vol[aoff+ijkoff]      ;
+          v2 = vol[aoff+(ijkoff+LR)] ;
+          v3 = vol[aoff+(ijkoff+UL)] ;
+          v4 = vol[aoff+(ijkoff+UR)] ;
+          im[aa+boff] = (byte)((  b_a_b  * v1 + b_ap_b  * v2
+                                + b_a_bp * v3 + b_ap_bp * v4 ) >> 8) ;
+        }
+   } else {
+    ijkoff -= abot ;  /* aoff==aa-abot when astep==1 */
+    for( bb=bbot ; bb < btop ; bb++,boff+=ma,ijkoff+=bstep )
+      if( mask == NULL || mask[bb] || mask[bb+1] )
+        for( aa=abot ; aa < atop ; aa++ ){
+          v1 = vol[aa+ijkoff]      ;
+          v2 = vol[aa+(ijkoff+LR)] ;
+          v3 = vol[aa+(ijkoff+UL)] ;
+          v4 = vol[aa+(ijkoff+UR)] ;
+          im[aa+boff] = (byte)((  b_a_b  * v1 + b_ap_b  * v2
+                                + b_a_bp * v3 + b_ap_bp * v4 ) >> 8) ;
+        }
+   }
+
+   return ;
+}
+
 /*------------------------------------------------------------------------------*/
 
-static THD_mat33 rotmatrix( int ax1,float th1 ,
-                            int ax2,float th2 , int ax3,float th3  )
+THD_mat33 rotmatrix( int ax1,float th1 ,
+                     int ax2,float th2 , int ax3,float th3  )
 {
    THD_mat33 q , p ;
 

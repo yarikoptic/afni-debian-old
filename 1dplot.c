@@ -8,6 +8,7 @@
 #include "coxplot.h"
 #include "display.h"
 
+/*-------------------------------------------------------------------*/
 /*---- quickie program to look at some graphs - RWCox - Feb 1999 ----*/
 
 #define DEFAULT_NCOLOVR 20
@@ -41,22 +42,27 @@ static char ** yname = NULL ;
 
 void startup_timeout_CB( XtPointer client_data , XtIntervalId * id ) ;
 
+/*-----------------------------------------------------------------*/
+
 int main( int argc , char * argv[] )
 {
    int iarg , ii , ny , ignore=0 , use=0 , install=0 ;
-   float dx=1.0 ;
-   char * tsfile , * cpt ;
-   char dname[THD_MAX_NAME] , subv[THD_MAX_NAME] ;
+   float dx=1.0 , xzero=0.0 ;
+   char *cpt ;
    MRI_IMAGE * inim , * flim ;
    float * far ;
    XtAppContext app ;
    Widget shell ;
    int use_stdin=0 ; /* 01 Aug 2001 */
+   int out_ps   =0 ; /* 29 Nov 2002 */
+   int nopush   =0 ;
+   int nnax=0,mmax=0 , nnay=0,mmay=0 ;
+   float xbot,xtop   , ybot,ytop ;
 
    /*-- help? --*/
 
    if( argc < 2 || strcmp(argv[1],"-help") == 0 ){
-     printf("Usage: 1dplot [options] tsfile\n"
+     printf("Usage: 1dplot [options] tsfile ...\n"
             "Graphs the columns of a *.1D type time series file to the screen.\n"
             "\n"
             "Options:\n"
@@ -66,6 +72,8 @@ int main( int argc , char * argv[] )
             "                [default = -sep]\n"
             " -dx xx     = Spacing between points on the x-axis is 'xx'\n"
             "                [default = 1]\n"
+            " -xzero zz  = Initial x coordinate is 'zz' [default = 0]\n"
+            " -nopush    = Don't 'push' axes ranges outwards.\n"
             " -ignore nn = Skip first 'nn' rows in the input file\n"
             "                [default = 0]\n"
             " -use mm    = Plot 'mm' points [default = all of them]\n"
@@ -75,7 +83,26 @@ int main( int argc , char * argv[] )
             "                [default = no axis label]\n"
             "\n"
             " -stdin     = Don't read from tsfile; instead, read from\n"
-            "              stdin and plot it.\n"
+            "              stdin and plot it. You cannot combine input\n"
+            "              from stdin and tsfile(s).  If you want to do\n"
+            "              so, see program 1dcat.\n"
+            "\n"
+            " -ps        = Don't draw plot in a window; instead, write it\n"
+            "              to stdout in PostScript format.\n"
+            "              N.B.: If you view this result in 'gv', you should\n"
+            "                    turn 'anti-alias' off, and switch to\n"
+            "                    landscape mode.\n"
+            "\n"
+            " -xaxis b:t:n:m    = Set the x-axis to run from value 'b' to\n"
+            "                     value 't', with 'n' major divisions and\n"
+            "                     'm' minor tic marks per major division.\n"
+            "                     For example:\n"
+            "                       -xaxis 0:100:5:20\n"
+            "                     Setting 'n' to 0 means no tic marks or labels.\n"
+            "\n"
+            " -yaxis b:t:n:m    = Similar to above, for the y-axis.  These\n"
+            "                     options override the normal autoscaling\n"
+            "                     of their respective axes.\n"
             "\n"
             " -ynames aa bb ... = Use the strings 'aa', 'bb', etc., as\n"
             "                     labels to the right of the graphs,\n"
@@ -97,18 +124,38 @@ int main( int argc , char * argv[] )
             "Example: graphing a 'dfile' output by 3dvolreg, when TR=5:\n"
             "   1dplot -volreg -dx 5 -xlabel Time 'dfile[1..6]'\n"
             "\n"
+            "You can also input more than one tsfile, in which case the files\n"
+            "will all be plotted.  However, if the files have different column\n"
+            "lengths, the shortest one will rule.\n"
+            "\n"
+            "The colors for the line graphs cycle between black, red, green, and\n"
+            "blue.  You can alter these colors by setting Unix environment\n"
+            "variables of the form AFNI_1DPLOT_COLOR_xx -- cf. README.environment.\n"
+            "You can alter the thickness of the lines by setting the variable\n"
+            "AFNI_1DPLOT_THIK to a value between 0.00 and 0.05 -- the units are\n"
+            "fractions of the page size.\n"
+
+            "\n"
+            TS_HELP_STRING
            ) ;
       exit(0) ;
    }
 
    mainENTRY("1dplot main"); machdep();
 
+   /* 29 Nov 2002: scan for -ps */
+
+   for( ii=1 ; ii < argc ; ii++ )
+     if( strcmp(argv[ii],"-ps") == 0 ){ out_ps = 1; break; }
+
    /* open X11 */
 
-   shell = XtVaAppInitialize(
-              &app , "AFNI" , NULL , 0 , &argc , argv , NULL , NULL ) ;
-   if( shell == NULL ){
-      fprintf(stderr,"** Cannot initialize X11!\n") ; exit(1) ;
+   if( !out_ps ){
+     shell = XtVaAppInitialize(
+                &app , "AFNI" , NULL , 0 , &argc , argv , NULL , NULL ) ;
+     if( shell == NULL ){
+        fprintf(stderr,"** Cannot initialize X11!\n") ; exit(1) ;
+     }
    }
 
    cpt = my_getenv("TMPDIR") ;  /* just for fun */
@@ -117,6 +164,33 @@ int main( int argc , char * argv[] )
 
    iarg = 1 ;
    while( iarg < argc && argv[iarg][0] == '-' ){
+
+     if( strcmp(argv[iarg],"-xaxis") == 0 ){   /* 22 Jul 2003 */
+       sscanf(argv[++iarg],"%f:%f:%d:%d",&xbot,&xtop,&nnax,&mmax) ;
+       if( xbot >= xtop || nnax < 0 || mmax < 1 ){
+         fprintf(stderr,"** String after -xaxis is illegal!\n"); exit(1);
+       }
+       plot_ts_xfix( nnax,mmax , xbot,xtop ) ;
+       iarg++ ; continue ;
+     }
+
+     if( strcmp(argv[iarg],"-yaxis") == 0 ){   /* 22 Jul 2003 */
+       sscanf(argv[++iarg],"%f:%f:%d:%d",&ybot,&ytop,&nnay,&mmay) ;
+       if( ybot >= ytop || nnay < 0 || mmay < 1 ){
+         fprintf(stderr,"** String after -yaxis is illegal!\n"); exit(1);
+       }
+       plot_ts_yfix( nnay,mmay , ybot,ytop ) ;
+       iarg++ ; continue ;
+     }
+
+     if( strcmp(argv[iarg],"-nopush") == 0 ){  /* 12 Mar 2003 */
+       plot_ts_xypush( 0 , 0 ) ;
+       iarg++ ; continue ;
+     }
+
+     if( strcmp(argv[iarg],"-ps") == 0 ){   /* 29 Nov 2002: already handled above */
+        iarg++ ; continue ;
+     }
 
      if( strcmp(argv[iarg],"-install") == 0 ){
         install++ ; iarg++ ; continue ;
@@ -177,6 +251,11 @@ int main( int argc , char * argv[] )
         iarg++ ; continue ;
      }
 
+     if( strcmp(argv[iarg],"-xzero") == 0 ){
+        xzero = strtod( argv[++iarg] , NULL ) ;
+        iarg++ ; continue ;
+     }
+
      if( strcmp(argv[iarg],"-sep") == 0 ){
         sep = 1 ; iarg++ ; continue ;
      }
@@ -192,9 +271,10 @@ int main( int argc , char * argv[] )
       fprintf(stderr,"** No tsfile on command line!\n") ; exit(1) ;
    }
 
-   dc = MCW_new_DC( shell , 16 ,
-                    DEFAULT_NCOLOVR , INIT_colovr , INIT_labovr ,
-                    1.0 , install ) ;
+   if( !out_ps )
+     dc = MCW_new_DC( shell , 16 ,
+                      DEFAULT_NCOLOVR , INIT_colovr , INIT_labovr ,
+                      1.0 , install ) ;
 
    if( nyar > 0 ) yname = ynar ;
 
@@ -205,22 +285,26 @@ int main( int argc , char * argv[] )
      int nval ;
      float val[9] ;
 
-     cpt = fgets(lbuf,2560,stdin) ;
-     if( cpt == NULL ){
-        fprintf(stderr,"*** Can't read from stdin!\n"); exit(1);
-     }
+     do{                  /* read lines until 1st char is non-blank and non-# */
+       cpt = fgets(lbuf,2560,stdin) ;
+       if( cpt==NULL ){ fprintf(stderr,"** Can't read from stdin!\n"); exit(1); }
+       for( ii=0 ; cpt[ii] != '\0' && !isspace(cpt[ii]) ; ii++ ) ; /* nada */
+     } while( cpt[ii] == '\0' || cpt[ii] == '#' ) ;
      nval = sscanf(lbuf,"%f%f%f%f%f%f%f%f%f",
                    val+0,val+1,val+2,val+3,val+4,val+5,val+6,val+7,val+8) ;
      if( nval < 1 ){
-        fprintf(stderr,"*** Can't read numbers from stdin!\n"); exit(1);
+       fprintf(stderr,"** Can't read numbers from stdin!\n"); exit(1);
      }
 
-     subv[0] = '\0' ; nx = nval ; ny = 1 ;
+     nx = nval ; ny = 1 ;
      far = (float *) malloc(sizeof(float)*nval) ;
      memcpy(far,val,sizeof(float)*nx) ;
      while(1){  /* read from stdin */
         cpt = fgets(lbuf,2560,stdin) ;
-        if( cpt == NULL ) break ;
+        if( cpt == NULL ) break ;            /* done */
+        for( ii=0 ; cpt[ii] != '\0' && !isspace(cpt[ii]) ; ii++ ) ; /* nada */
+        if( cpt[ii] == '\0' || cpt[ii] == '#' ) continue ;          /* skip */
+        memset(val,0,sizeof(float)*nx) ;
         nval = sscanf(lbuf,"%f%f%f%f%f%f%f%f%f",
                       val+0,val+1,val+2,val+3,val+4,val+5,val+6,val+7,val+8) ;
         if( nval < 1 ) break ;
@@ -229,42 +313,51 @@ int main( int argc , char * argv[] )
         ny++ ;
      }
      if( ny < 2 ){
-        fprintf(stderr,"** Can't read enough data from stdin\n"); exit(1);
+       fprintf(stderr,"** Can't read at least 2 lines from stdin\n"); exit(1);
      }
-     inim = mri_new_vol_empty( nx,ny,1 , MRI_float ) ;
-     mri_fix_data_pointer( far , inim ) ;
+     flim = mri_new_vol_empty( nx,ny,1 , MRI_float ) ;
+     mri_fix_data_pointer( far , flim ) ;
+     inim = mri_transpose(flim) ; mri_free(flim) ;
 
    } else {  /*-- old code: read from a file --*/
+             /*-- 05 Mar 2003: or more than 1 file --*/
 
-     /* check input filename for index strings */
-
-     tsfile = argv[iarg] ;
-     cpt    = strstr(tsfile,"[") ;
-
-     if( cpt == NULL ){
-        strcpy( dname , tsfile ) ;
-        subv[0] = '\0' ;
-     } else if( cpt == tsfile ){
-        fprintf(stderr,"** Illegal filename on command line!\n");exit(1);
-     } else {
-        ii = cpt - tsfile ;
-        memcpy(dname,tsfile,ii) ; dname[ii] = '\0' ;
-        strcpy(subv,cpt) ;
+     if( iarg >= argc ){
+       fprintf(stderr,"** No input files on command line?!\n"); exit(1);
      }
 
-     /* read input file */
+     if( iarg == argc-1 ){                 /* only 1 input file */
+       inim = mri_read_1D( argv[iarg] ) ;
+       if( inim == NULL ){
+         fprintf(stderr,"** Can't read input file %s\n",argv[iarg]) ; exit(1);
+       }
+     } else {                              /* multiple inputs [05 Mar 2003] */
+       MRI_IMARR *imar ;                   /* read them & glue into 1 image */
+       int iarg_first=iarg, nysum=0, ii,jj,nx ;
+       float *far,*iar ;
 
-     inim = mri_read_ascii( dname ) ;
-     if( inim == NULL ){
-        fprintf(stderr,"** Can't read input file %s\n",dname) ;
-        exit(1);
+       INIT_IMARR(imar) ;
+       for( ; iarg < argc ; iarg++ ){
+         inim = mri_read_1D( argv[iarg] ) ;
+         if( inim == NULL ){
+           fprintf(stderr,"** Can't read input file %s\n",argv[iarg]) ; exit(1);
+         }
+         if( iarg == iarg_first || inim->nx < nx ) nx = inim->nx ;
+         ADDTO_IMARR(imar,inim) ; nysum += inim->ny ;
+       }
+       flim = mri_new( nx,nysum, MRI_float ); far = MRI_FLOAT_PTR(flim);
+       for( nysum=ii=0 ; ii < imar->num ; ii++ ){
+         inim = IMARR_SUBIM(imar,ii) ; iar = MRI_FLOAT_PTR(inim) ;
+         for( jj=0 ; jj < inim->ny ; jj++,nysum++ ){
+           memcpy( far + nx*nysum , iar + jj*inim->nx , sizeof(float)*nx ) ;
+         }
+       }
+       DESTROY_IMARR(imar) ; inim = flim ;
      }
+
    } /* end of file input */
 
-   if( inim->kind != MRI_float ){  /* should not happen */
-      flim = mri_to_float(inim) ; mri_free(inim) ; inim = flim ;
-   }
-   flim = mri_transpose(inim) ; mri_free(inim) ;
+   flim = inim ;
    far  = MRI_FLOAT_PTR(flim) ;
    nx   = flim->nx ;
    ny   = flim->ny ;
@@ -272,36 +365,13 @@ int main( int argc , char * argv[] )
    /* make x axis */
 
    xar = (float *) malloc( sizeof(float) * nx ) ;
-   for( ii=0 ; ii < nx ; ii++ ) xar[ii] = dx * ii ;
+   for( ii=0 ; ii < nx ; ii++ ) xar[ii] = xzero + dx*ii ;
 
    /* select data to plot */
 
-   if( subv[0] == '\0' ){  /* no sub-list */
-
-      nts = ny ;
-      yar = (float **) malloc(sizeof(float *)*nts) ;
-      for( ii=0 ; ii < ny ; ii++ ) yar[ii] = far + (ii*nx+ignore) ;
-
-   } else {                /* process sub-list */
-      int  * ivlist , * ivl ;
-
-      ivlist = MCW_get_intlist( ny , subv ) ;
-      if( ivlist == NULL || ivlist[0] < 1 ){
-         fprintf(stderr,"** Illegal column selectors on command line!\n");
-         exit(1);
-      }
-      nts = ivlist[0] ;
-      ivl = ivlist + 1 ;
-      for( ii=0 ; ii < nts ; ii++ ){
-         if( ivl[ii] < 0 || ivl[ii] >= ny ){
-            fprintf(stderr,"** Illegal selector on command line!\n");
-            exit(1) ;
-         }
-      }
-      yar = (float **) malloc(sizeof(float *)*nts) ;
-      for( ii=0 ; ii < nts ; ii++ ) yar[ii] = far + (ivl[ii]*nx+ignore) ;
-      free(ivlist) ;
-   }
+   nts = ny ;
+   yar = (float **) malloc(sizeof(float *)*nts) ;
+   for( ii=0 ; ii < ny ; ii++ ) yar[ii] = far + (ii*nx+ignore) ;
 
    nx = nx - ignore ;  /* cut off the ignored points */
 
@@ -309,9 +379,22 @@ int main( int argc , char * argv[] )
 
    /* start X11 */
 
-   (void) XtAppAddTimeOut( app , 123 , startup_timeout_CB , NULL ) ;
+   if( !out_ps ){
+     (void) XtAppAddTimeOut( app , 123 , startup_timeout_CB , NULL ) ;
+     XtAppMainLoop(app) ;   /* never returns */
+   }
 
-   XtAppMainLoop(app) ;
+   /* 29 Nov 2002: if here, output PostScript to stdout */
+
+   { MEM_plotdata *mp ;
+     int ymask = (sep) ? TSP_SEPARATE_YBOX : 0 ;
+
+     mp = plot_ts_mem( nx,xar , nts,ymask,yar ,
+                       xlabel , ylabel , title , yname ) ;
+
+     memplot_to_postscript( "-" , mp ) ;
+   }
+
    exit(0) ;
 }
 
@@ -326,7 +409,7 @@ void startup_timeout_CB( XtPointer client_data , XtIntervalId * id )
    /* make graph */
 
    ng = (sep) ? (-nts) : (nts) ;
-   
+
    plot_ts_lab( dc->display , nx , xar , ng , yar ,
                 xlabel , ylabel , title , yname , killfunc ) ;
 

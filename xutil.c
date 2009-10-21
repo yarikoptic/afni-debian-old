@@ -8,6 +8,9 @@
 #include "afni_environ.h"
 #include "debugtrace.h"    /* 12 Mar 2001 */
 
+#include "Amalloc.h"
+extern char * THD_find_executable( char * ) ;
+
 /*--------------------------------------------------------------------
   force an immediate expose for the widget
 ----------------------------------------------------------------------*/
@@ -222,6 +225,7 @@ void MCW_discard_events( Widget w , int ev_mask )
 
    if( w == NULL || XtWindow(w) == (Window) NULL ) return ;
 
+   XSync( XtDisplay(w) , False ) ;
    while( XCheckWindowEvent( XtDisplay(w), XtWindow(w) , ev_mask , &evjunk ) ) ;
    return ;
 }
@@ -230,12 +234,12 @@ void MCW_discard_events( Widget w , int ev_mask )
 
 char * MCW_hotcolor(Widget w)
 {
-   static char * redcolor = NULL ;
+   static char *redcolor = NULL ;
 
    if( redcolor == NULL ){
-     char * xdef = RWC_getname( (w!=NULL) ? XtDisplay(w) : NULL, "hotcolor" ) ;
+     char *xdef = RWC_getname( (w!=NULL) ? XtDisplay(w) : NULL, "hotcolor" ) ;
 
-     redcolor = (xdef != NULL) ? (xdef) : ("red3") ;
+     redcolor = (xdef != NULL) ? (xdef) : ("red4") ;
    }
    return redcolor ;
 }
@@ -332,15 +336,17 @@ Widget MCW_action_area( Widget parent, MCW_action_item * action, int num_act )
       message automatically killed after 30 seconds.
 --------------------------------------------------------------------*/
 
-Widget MCW_popup_message( Widget wparent , char * msg , int msg_type )
+Widget MCW_popup_message( Widget wparent , char *msg , int msg_type )
 {
    Widget wmsg , wlab ;
    int wx,hy,xx,yy , xp,yp , scr_width,scr_height , xr,yr , xpr,ypr ;
-   Screen * scr ;
+   Screen *scr ;
    XEvent ev ;
 
+ENTRY("MCW_popup_message") ;
+
    if( ! XtIsRealized( wparent ) ||
-       msg == NULL               || strlen(msg) == 0 ) return NULL ;
+       msg == NULL               || strlen(msg) == 0 ) RETURN(NULL) ;
 
    /* set position for message box based on parent and screen geometry */
 
@@ -370,7 +376,7 @@ Widget MCW_popup_message( Widget wparent , char * msg , int msg_type )
    /* create a popup shell with a label */
 
    wmsg = XtVaCreatePopupShell(
-             "menu" , xmDialogShellWidgetClass , wparent ,
+             "help" , xmDialogShellWidgetClass , wparent ,
                 XmNx , xpr ,
                 XmNy , ypr ,
                 XmNinitialResourcesPersistent , False ,
@@ -388,7 +394,7 @@ Widget MCW_popup_message( Widget wparent , char * msg , int msg_type )
       case MCW_CALLER_KILL:
 
          wlab = XtVaCreateManagedWidget(
-                  "menu" , xmLabelWidgetClass , wmsg ,
+                  "help" , xmLabelWidgetClass , wmsg ,
                      XtVaTypedArg,XmNlabelString,XmRString,msg,strlen(msg)+1,
                      XmNalignment , XmALIGNMENT_BEGINNING ,
                      XmNinitialResourcesPersistent , False ,
@@ -396,16 +402,29 @@ Widget MCW_popup_message( Widget wparent , char * msg , int msg_type )
       break ;
 
       default:
-      case MCW_USER_KILL:
+      case MCW_USER_KILL:{
+         static int first=1 ; char *mmsg = msg ;     /* 'first' stuff  */
+         if( first ){                                /* on 06 Apr 2004 */
+           if( !AFNI_noenv("AFNI_CLICK_MESSAGE") ){
+             mmsg = (char *) malloc(strlen(msg)+99) ;
+             strcpy(mmsg,msg) ;
+             strcat(mmsg,"\n [---------------] "
+                         "\n [ Click in Text ] "
+                         "\n [ to Pop Down!! ]\n" ) ;
+           }
+         }
 
          wlab = XtVaCreateManagedWidget(
-                  "menu" , xmPushButtonWidgetClass , wmsg ,
-                     XtVaTypedArg,XmNlabelString,XmRString,msg,strlen(msg)+1,
+                  "help" , xmPushButtonWidgetClass , wmsg ,
+                     XtVaTypedArg,XmNlabelString,XmRString,mmsg,strlen(msg)+1,
                      XmNalignment , XmALIGNMENT_BEGINNING ,
                      XmNinitialResourcesPersistent , False ,
                   NULL ) ;
 
+         if( mmsg != msg ){ free((void *)mmsg); first = 0; }
+
          XtAddCallback( wlab , XmNactivateCallback , MCW_message_CB , NULL ) ;
+      }
       break ;
    }
 
@@ -435,7 +454,7 @@ Widget MCW_popup_message( Widget wparent , char * msg , int msg_type )
       XtIntervalId tid ;
 
       tid = XtAppAddTimeOut( XtWidgetToApplicationContext( wmsg ) ,
-	                     30000 , MCW_message_timer_CB , wmsg   ) ;
+	                     33333 , MCW_message_timer_CB , wmsg   ) ;
 
       XtVaSetValues( wlab , XmNuserData ,  tid , NULL );/* put tid on wlab; */
    } else {                                             /* shells don't */
@@ -445,7 +464,7 @@ Widget MCW_popup_message( Widget wparent , char * msg , int msg_type )
 
    RWC_visibilize(wmsg) ;  /* 27 Sep 2000 */
    NORMAL_cursorize(wmsg) ;
-   return wmsg ;
+   RETURN(wmsg) ;
 }
 
 /*-------------------------------------------------------------------------
@@ -523,6 +542,8 @@ void MCW_alter_widget_cursor( Widget w, int cur, char * fgname, char * bgname )
 
    static Cursor  cur_font[XC_num_glyphs] ;
    static Boolean first = True ;
+
+   if( AFNI_yesenv("AFNI_DISABLE_CURSORS") ) return ; /* 21 Mar 2004 */
 
    if( first ){
       for( ii=0 ; ii < XC_num_glyphs ; ii++ ) cur_font[ii] = None ;
@@ -792,7 +813,7 @@ void MCW_help_CB( Widget w , XtPointer client_data , XtPointer call_data )
       while( XtParent(wpar) != NULL ) wpar = XtParent(wpar) ;  /* find top */
 
       wpop = XtVaCreatePopupShell(
-              "AFNI" , xmDialogShellWidgetClass , wpar ,
+              "help" , xmDialogShellWidgetClass , wpar ,
                  XmNmappedWhenManaged , False ,
                  XmNallowShellResize , True ,
                  XmNdeleteResponse , XmDO_NOTHING ,
@@ -824,7 +845,7 @@ void MCW_help_CB( Widget w , XtPointer client_data , XtPointer call_data )
       XtAddCallback( wbut , XmNactivateCallback , MCW_unhelp_CB , wpop ) ;
 
       XmUpdateDisplay( wpar ) ;
-      XtPopdown( wpop ) ;
+      RWC_XtPopdown( wpop ) ;
 
       XmAddWMProtocolCallback(
            wpop ,
@@ -870,7 +891,7 @@ void MCW_unhelp_CB( Widget w , XtPointer client_data , XtPointer call_data )
 {
    Widget wpop = (Widget) client_data ;
 
-   XtPopdown(wpop) ;
+   RWC_XtPopdown(wpop) ;
    return ;
 }
 
@@ -897,7 +918,7 @@ int MCW_filetype( char * fname )
 
 /*-------------------------------------------------------------------*/
 
-#ifndef DONT_CHECK_FOR_MWM
+#if 0
 Boolean MCW_isitmwm( Widget w )
 {
    Widget wsh ;
@@ -921,7 +942,7 @@ Boolean MCW_isitmwm( Widget w )
    }
 #endif
 }
-#endif /* DONT_CHECK_FOR_MWM */
+#endif
 
 /*------------------------------------------------------------------
    Popup a scale that will serve as a progress meter.
@@ -947,7 +968,9 @@ Widget MCW_popup_meter( Widget wparent , int position )
    XEvent ev ;
    Position xroot , yroot ;
 
-   if( wparent == NULL || ! XtIsRealized( wparent ) ) return NULL ;
+ENTRY("MCW_popup_meter") ;
+
+   if( wparent == NULL || ! XtIsRealized( wparent ) ) RETURN(NULL) ;
 
    /* set position parent and screen geometry */
 
@@ -1017,7 +1040,7 @@ Widget MCW_popup_meter( Widget wparent , int position )
 
    XtPopup( wmsg , XtGrabNone ) ;
 
-   return wscal ;
+   RETURN(wscal) ;
 }
 
 /*--------------------------------------------------------------------*/
@@ -1035,15 +1058,38 @@ void MCW_set_meter( Widget wscal , int percent )
 {
    int val , old ;
 
+#undef  NCOL
+#define NCOL 30
+#ifdef NCOL
+   static int icol=0 ;
+   static char *cname[] = {
+      "#0000ff", "#3300ff", "#6600ff", "#9900ff", "#cc00ff",
+      "#ff00ff", "#ff00cc", "#ff0099", "#ff0066", "#ff0033",
+      "#ff0000", "#ff3300", "#ff6600", "#ff9900", "#ffcc00",
+      "#ffff00", "#ccff00", "#99ff00", "#66ff00", "#33ff00",
+      "#00ff00", "#00ff33", "#00ff66", "#00ff99", "#00ffcc",
+      "#00ffff", "#00ccff", "#0099ff", "#0066ff", "#0033ff"
+    } ;
+#endif
+
    val = percent ;
    if( wscal == NULL || val < 0 || val > 100 ) return ;
 
    XmScaleGetValue( wscal , &old ) ; if( val == old ) return ;
 
    XtVaSetValues( wscal , XmNvalue , val , NULL ) ;
-#if 0
-   XFlush( XtDisplay(wscal) ) ;
+
+#ifdef NCOL
+   { Widget ws = XtNameToWidget(wscal,"Scrollbar") ;
+     if( ws != NULL )
+     XtVaSetValues( ws ,
+                     XtVaTypedArg , XmNtroughColor , XmRString ,
+                                    cname[icol] , strlen(cname[icol])+1 ,
+                   NULL ) ;
+     icol = (icol+1) % NCOL ;
+   }
 #endif
+
    XmUpdateDisplay(wscal) ;
    return ;
 }
@@ -1078,9 +1124,11 @@ MCW_textwin * new_MCW_textwin_2001( Widget wpar, char * msg, int type,
    Boolean editable ;
    Arg wa[64] ; int na ;
 
+ENTRY("new_MCW_textwin_2001") ;
+
    /*-- sanity check --*/
 
-   if( ! XtIsRealized(wpar) ) return NULL ;
+   if( ! XtIsRealized(wpar) ) RETURN(NULL) ;
 
    /* set position based on parent and screen geometry */
 
@@ -1108,7 +1156,7 @@ MCW_textwin * new_MCW_textwin_2001( Widget wpar, char * msg, int type,
    tw->kill_data = kill_data ;
 
    tw->wshell = XtVaCreatePopupShell(
-                 "dialog" , xmDialogShellWidgetClass , wpar ,
+                 "menu" , xmDialogShellWidgetClass , wpar ,
                     XmNx , xpr ,
                     XmNy , ypr ,
                     XmNborderWidth , 0 ,
@@ -1124,7 +1172,7 @@ MCW_textwin * new_MCW_textwin_2001( Widget wpar, char * msg, int type,
    /* create a form to hold everything else */
 
    tw->wtop = XtVaCreateWidget(
-                "dialog" , xmFormWidgetClass , tw->wshell ,
+                "menu" , xmFormWidgetClass , tw->wshell ,
                   XmNborderWidth , 0 ,
                   XmNborderColor , 0 ,
                   XmNtraversalOn , False ,
@@ -1147,7 +1195,7 @@ MCW_textwin * new_MCW_textwin_2001( Widget wpar, char * msg, int type,
    /* create text area */
 
    tw->wscroll = XtVaCreateManagedWidget(
-                    "dialog" , xmScrolledWindowWidgetClass , tw->wtop ,
+                    "menu" , xmScrolledWindowWidgetClass , tw->wtop ,
                        XmNscrollingPolicy        , XmAUTOMATIC ,
                        XmNvisualPolicy           , XmVARIABLE ,
                        XmNscrollBarDisplayPolicy , XmAS_NEEDED ,
@@ -1170,7 +1218,7 @@ MCW_textwin * new_MCW_textwin_2001( Widget wpar, char * msg, int type,
                   NULL ) ;
 
    tw->wtext = XtVaCreateManagedWidget(
-                    "dialog" , xmTextWidgetClass , tw->wscroll ,
+                    "menu" , xmTextWidgetClass , tw->wscroll ,
                        XmNeditMode               , XmMULTI_LINE_EDIT ,
                        XmNautoShowCursorPosition , editable ,
                        XmNeditable               , editable ,
@@ -1231,7 +1279,7 @@ MCW_textwin * new_MCW_textwin_2001( Widget wpar, char * msg, int type,
    tw->shell_width = swid ; tw->shell_height = shi ; /* 10 Jul 2001 */
 
    NORMAL_cursorize( tw->wshell ) ;
-   return tw ;
+   RETURN(tw) ;
 }
 
 /*--------------------------------------------------------------------*/
@@ -1321,7 +1369,12 @@ void MCW_textwin_CB( Widget w , XtPointer client_data , XtPointer call_data )
    if( client_data == NULL ) return ;
 
    if( strcmp(wname,"Quit") == 0 ){
-      if( tw->kill_func != NULL ) tw->kill_func(tw->kill_data); /* 10 Jul 2001 */
+      if( tw->kill_func != NULL )
+#if 0
+        tw->kill_func(tw->kill_data); /* 10 Jul 2001 */
+#else
+        AFNI_CALL_VOID_1ARG( tw->kill_func , XtPointer , tw->kill_data ) ;
+#endif
       XtDestroyWidget( tw->wshell ) ;
       myXtFree( tw ) ;
       return ;
@@ -1337,7 +1390,12 @@ void MCW_textwinkill_CB( Widget w , XtPointer client_data , XtPointer call_data 
 {
    MCW_textwin * tw = (MCW_textwin *) client_data ;
 
-   if( tw->kill_func != NULL ) tw->kill_func(tw->kill_data); /* 10 Jul 2001 */
+   if( tw->kill_func != NULL )
+#if 0
+     tw->kill_func(tw->kill_data); /* 10 Jul 2001 */
+#else
+     AFNI_CALL_VOID_1ARG( tw->kill_func , XtPointer , tw->kill_data ) ;
+#endif
    XtDestroyWidget( tw->wshell ) ;
    myXtFree( tw ) ;
    return ;
@@ -1380,8 +1438,8 @@ char * RWC_getname( Display * display , char * name )
    /* try X11 */
 
    if( display != NULL ){
-      cval = XGetDefault(display,"AFNI",name) ;
-      if( cval != NULL ) return cval ;
+     cval = XGetDefault(display,"AFNI",name) ;
+     if( cval != NULL ) return cval ;
    }
 
    /* try AFNI_name */
@@ -1390,11 +1448,11 @@ char * RWC_getname( Display * display , char * name )
    cval = my_getenv(qqq) ;
    if( cval != NULL ) return cval ;
 
-   /* try AFNI_NAME */
+   /* try AFNI_NAME (uppercase it) */
 
    strcpy(qqq,"AFNI_") ; nn = strlen(name) ;
-   for( ii=0 ; ii < nn ; ii++ ) qqq[ii+5] = toupper(name[ii]) ;
-   qqq[nn+5] = '\0' ;
+   for( ii=0 ; ii < nn && ii < 250 ; ii++ ) qqq[ii+5] = toupper(name[ii]) ;
+   qqq[ii+5] = '\0' ;
    cval = my_getenv(qqq) ;
    return cval ;
 }
@@ -1497,11 +1555,14 @@ ENTRY("RWC_xineramize") ;
          nxsi = 0 ;
          STATUS("AFNI_XINERAMA is NO") ;
       } else {
-         xdef  = XGetDefault(dpy,"AFNI","xinerama") ; /* get resource */
+         xdef = XGetDefault(dpy,"AFNI","xinerama") ; /* get resource */
+         if( xdef == NULL ) xdef = getenv("AFNI_xinerama") ;  /* 27 Oct 2003 */
          if( xdef != NULL ){
-            STATUS("Initializing from AFNI.xinerama:") ;
-            STATUS(xdef) ;
-            nn = 0 ; sscanf(xdef,"%d%n",&nxsi,&nn) ;  /* number of sub-screens */
+            char *qdef = strdup(xdef) ;
+            for( nn=0 ; qdef[nn] != '\0' ; nn++ )
+              if( qdef[nn] == '_' || qdef[nn] == ':' ) qdef[nn] = ' ' ;
+
+            nn = 0 ; sscanf(qdef,"%d%n",&nxsi,&nn) ;  /* number of sub-screens */
             if( nn <= 0 || nxsi <= 1 ){               /* ERROR */
                nxsi = 0 ;
             } else {
@@ -1509,7 +1570,7 @@ ENTRY("RWC_xineramize") ;
                ybot = (int *) malloc(sizeof(int)*nxsi) ; /* store sub-screen */
                xtop = (int *) malloc(sizeof(int)*nxsi) ; /* coordinate ranges */
                ytop = (int *) malloc(sizeof(int)*nxsi) ;
-               xp = xdef + nn ;
+               xp = qdef + nn ;
                for( ii=0 ; ii < nxsi ; ii++ ){    /* scan for sub-screen info */
                   nn = 0 ;
                   sscanf(xp,"%d%d%d%d%d%n",&ss,&xorg,&yorg,&wide,&high,&nn) ;
@@ -1618,8 +1679,9 @@ ENTRY("RWC_xineramize") ;
 void RWC_destroy_nullify_CB( Widget w, XtPointer xp, XtPointer cd )
 {
    void ** p = (void **) xp ;
+ENTRY("RWC_destroy_nullify_CB") ;
    if( p != NULL ) *p = NULL ;
-   return ;
+   EXRETURN ;
 }
 
 void RWC_destroy_nullify( Widget w, void **p )
@@ -1635,3 +1697,228 @@ void RWC_destroy_nullify_cancel( Widget w, void **p )
      XtRemoveCallback( w, XmNdestroyCallback, RWC_destroy_nullify_CB, p ) ;
    return ;
 }
+
+/*---------------------------------------------------------------------------*/
+
+static RWC_draw_rect( Display *dis, Window win, GC gc, int x1,int y1,int x2,int y2 )
+{
+  int xb,yb , xt,yt ;
+  unsigned int short w,h ;
+
+  if( x1 < x2 ){ xb=x1; xt=x2; } else { xb=x2; xt=x1; }
+  if( y1 < y2 ){ yb=y1; yt=y2; } else { yb=y2; yt=y1; }
+  w = xt-xb ; h = yt-yb ;
+  if( w || h )
+    XDrawRectangle( dis,win,gc , xb,yb,w,h ) ;
+  else
+    XDrawPoint( dis,win,gc , xb,yb ) ;
+}
+
+#define RWC_draw_line XDrawLine
+
+/*---------------------------------------------------------------------------*/
+
+void RWC_drag_rectangle( Widget w, int x1, int y1, int *x2, int *y2 )
+{
+   Display *dis ;
+   Window win , rW,cW ;
+   int grab , xold,yold , x,y, rx,ry , first=1 ;
+   unsigned int mask ;                                      /* which buttons */
+   unsigned int bmask=Button1Mask|Button2Mask|Button3Mask ; /* all buttons  */
+   XGCValues  gcv;
+   GC         myGC ;
+
+   static Cursor cur = None ;  /* 17 Jun 2002 */
+   XColor fg , bg ;
+   Colormap cmap ;
+   Boolean  good ;
+
+ENTRY("RWC_drag_rectangle") ;
+
+   /** make a GC for invert drawing **/
+
+   gcv.function = GXinvert ;
+   myGC         = XtGetGC( w , GCFunction , &gcv ) ;
+
+   /** grab the pointer (so no one else gets events from it),
+       and confine it to the window in question              **/
+
+   dis = XtDisplay(w) ; win = XtWindow(w) ;
+
+   if( cur == None ){  /* 17 Jun 2002: make a special cursor */
+     cur  = XCreateFontCursor( dis , XC_diamond_cross ) ;
+     cmap = DefaultColormap( dis , DefaultScreen(dis) ) ;
+     good =   XParseColor( dis, cmap, "yellow" , &fg )
+           && XParseColor( dis, cmap, "red"    , &bg )  ;
+     if( good ) XRecolorCursor( dis , cur , &fg , &bg ) ;
+   }
+
+   grab = !XGrabPointer(dis, win, False, 0, GrabModeAsync,
+                        GrabModeAsync, win, cur , (Time)CurrentTime);
+
+   /* grab fails => exit */
+
+   if( !grab ){ XBell(dis,100); *x2=x1; *y2=y1; EXRETURN; }
+
+   xold = x1 ; yold = y1 ;  /* current location of pointer */
+
+   /** loop and find out where the pointer is (while button is down) **/
+
+   while( XQueryPointer(dis,win,&rW,&cW,&rx,&ry,&x,&y,&mask) ){
+
+     /* check if all buttons are released */
+
+     if( !(mask & bmask) ) break ;  /* no button down => done! */
+
+     /* pointer now at (x,y) in the window */
+
+     /* if it has moved, redraw rectangle */
+
+     if( x != xold || y != yold ){
+
+       if( !first )  /* undraw old rectangle */
+         RWC_draw_rect( dis,win,myGC , x1,y1 , xold,yold ) ;
+
+       /* draw new rectangle */
+
+       xold = x ; yold = y ; first = 0 ;
+       RWC_draw_rect( dis,win,myGC , x1,y1 , xold,yold ) ;
+
+     } /* end of new (x,y) position */
+
+   } /* end of loop while button is pressed */
+
+   if( !first )  /* undraw old rectangle */
+     RWC_draw_rect( dis,win,myGC , x1,y1 , xold,yold ) ;
+
+   /* clean up */
+
+   XtReleaseGC( w , myGC ) ;
+   if (grab) XUngrabPointer(dis, (Time)CurrentTime) ;
+
+   *x2 = xold ; *y2 = yold ;  /* output values */
+   EXRETURN ;
+}
+
+/*-------------------------------------------------------------------*/
+/*!  Sleep a given # of milliseconds (uses the Unix select routine).
+---------------------------------------------------------------------*/
+
+#include <sys/time.h>
+#include <sys/types.h>
+#include <unistd.h>
+
+void RWC_sleep( int msec )
+{
+   struct timeval tv ;
+   if( msec <= 0 ) return ;             /* can't wait into the past */
+   tv.tv_sec  = msec/1000 ;
+   tv.tv_usec = (msec%1000)*1000 ;
+   select( 1 , NULL,NULL,NULL , &tv ) ;
+   return ;
+}
+
+/*-----------------------------------------------------------------*/
+/*! Popdown a widget that may not be a shell. [30 Jun 2003]
+-------------------------------------------------------------------*/
+
+void RWC_XtPopdown( Widget w )
+{
+   Widget wpar = w ;
+
+   if( wpar == NULL ) return ;
+   while( XtIsShell(wpar) == 0 && XtParent(wpar) != NULL ) wpar = XtParent(wpar);
+   XtPopdown(wpar) ;
+   return ;
+}
+
+/*-----------------------------------------------------------------*/
+/******************** Speech stuff (for Mac OS X) ******************/
+
+#if !defined(NO_FRIVOLITIES) && defined(DARWIN)
+
+#include <unistd.h>
+#include <string.h>
+#include <stdlib.h>
+#include <ctype.h>
+#include <sys/wait.h>
+#include <sys/types.h>
+
+static int have_say = -1 ;
+static char voice[128] = "Cellos" ;
+
+/*-----------------------------------------------------------------*/
+/*! Set the voice for the Apple speech synthesizer. */
+
+void AFNI_speak_setvoice( char *vvv )
+{
+   int ll ;
+   if( vvv == NULL || *vvv == '\0' ) return ;
+   ll = strlen(vvv) ; if( ll > 100 ) return ;
+   strcpy(voice,vvv) ;               return ;
+}
+
+
+/*-----------------------------------------------------------------*/
+/*! Speak a string using Apple's say command:
+    - string = Apple text-to-speech code
+    - nofork = 1 if you want to wait for the speech to finish;
+             = 0 if you want the function to return immediately,
+                 before speech finishes (or perhaps even starts). */
+
+void AFNI_speak( char *string , int nofork )
+{
+   char *buf ; pid_t ppp ;
+
+   /* bad input ==> quit */
+
+   if( string == NULL || *string == '\0' ) return ;
+
+   /* user says "don't talk" ==> quit */
+
+   buf = getenv("AFNI_SPEECH") ;
+#if 1
+   if( buf == NULL || toupper(*buf) != 'Y' ) return ;   /* 02 Apr 2004 */
+#else
+   if( buf != NULL && toupper(*buf) == 'N' ) return ;
+#endif
+
+   /* don't have "say" program ==> quit */
+
+   if( have_say == -1 ) have_say = (THD_find_executable("say") != NULL) ;
+   if( have_say == 0 ) return ;
+
+   /* if want speech to run in a separate process ... */
+
+   if( !nofork ){
+     ppp = fork() ;
+     if( ppp < 0 ) return ; /* fork failed */
+
+     /* parent: wait for child to exit (happens almost instantly) */
+
+     if( ppp > 0 ){ waitpid(ppp,NULL,0); return; }
+
+     /* child: fork again immediately, then this child exits;
+        this is to prevent zombie processes from hanging around */
+
+     ppp = fork() ; if( ppp != 0 ) _exit(0) ; /* child exits now */
+
+     /* grandchild continues on to actually do something */
+   }
+
+   /* Run the say program using system() */
+
+   buf = (char *)malloc(strlen(string)+32) ;
+   sprintf(buf,"say -v%s '%s'",voice,string) ;
+   system(buf) ; free(buf) ;
+
+   if( !nofork ) _exit(0) ;  /* grandchild exits */
+   return ;                  /* no forking ==> return to caller */
+}
+
+#else
+
+void AFNI_speak( char *string , int nofork ){ return; }  /* dummy function */
+void AFNI_speak_setvoice( char *vvv ){ return; }
+
+#endif

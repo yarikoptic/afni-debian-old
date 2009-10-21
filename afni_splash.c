@@ -15,6 +15,7 @@
 void AFNI_splashdown (void){ return; }  /* for party poopers */
 void AFNI_splashup   (void){ return; }
 void AFNI_splashraise(void){ return; }
+void AFNI_faceup     (void){ return; }
 
 #else  /*=============================== for party animals !!!!!!!!!!!!!!!!!!*/
 
@@ -22,6 +23,8 @@ void AFNI_splashraise(void){ return; }
 
 static void * SPLASH_popup_image( void * , MRI_IMAGE * ) ;
 static MRI_IMAGE * SPLASH_decode26( int , int , int , char ** ) ;
+static MRI_IMAGE * SPLASH_decodexx( int , int , int , int ,
+                                    byte *, byte *, byte * , char ** ) ;
 
 static MRI_IMAGE * imspl = NULL ;
 static void * handle = NULL ;
@@ -29,11 +32,9 @@ static void * handle = NULL ;
 #define USE_FADING
 
 #define USE_WRITING     /* 26 Feb 2001 */
-static int do_write=0 ;
+static int do_write=2 ;
 
-static int    num_ppms  =0 ;     /* 17 Sep 2001 */
-static char **fname_ppms=NULL ;
-static void AFNI_find_splash_ppms(void) ;
+static int AFNI_find_jpegs( char *, char ***) ;  /* 26 Nov 2003 */
 
 /*----------------------------------------------------------------------------*/
 
@@ -71,22 +72,30 @@ ENTRY("AFNI_splashdown") ;
 #if 0
                for( ii=0 ; ii < nv ; ii++ ) bspl[ii] *= 0.92 ;
 #else
-               for( ii=0 ; ii < nv ; ii++ ) bspl[ii] = (15*bspl[ii])>>4 ;
+               for( ii=0 ; ii < nv ; ii++ ) bspl[ii] = (15*bspl[ii]) >> 4 ;
 #endif
                SPLASH_popup_image(handle,imspl) ;
                drive_MCW_imseq( ppp->seq , isqDR_reimage , (XtPointer) 0 ) ;
-               if( COX_clock_time()-et > 1.1 ) break ;
+               if( COX_clock_time()-et > 2.1 ) break ;
             }
          }
       }
 #endif
       SPLASH_popup_image(handle,NULL); myXtFree(handle) ; /* get rid of window */
    }
-   mri_free(imspl) ; imspl = NULL ; do_write = 1 ;
+   mri_free(imspl) ; imspl = NULL ;
+   do_write = ( (lrand48() >> 8) % 3 == 0 ) ? 2 : 1 ;
    EXRETURN ;
 }
 
 /*----------------------------------------------------------------------------*/
+
+static int    num_splash   =  0 ;   /* 26 Nov 2003 */
+static int    first_splash = -1 ;
+static char **fname_splash = NULL ;
+
+static int    num_face     =  0 ;   /* 28 Mar 2003 */
+static char **fname_face   = NULL ;
 
 void AFNI_splashup(void)
 {
@@ -97,101 +106,121 @@ void AFNI_splashup(void)
    byte * bspl ;
    int   sxx,syy ;
    char * sen ;
-   static int first=1 , nov , dnov , nm=-1 ;
+   static int ncall=0 , nov , dnov , nm=-1 ;
 
 ENTRY("AFNI_splashup") ;
 
    /*--- create splash image ---*/
 
    if( ! PLUTO_popup_open(handle) ){
-      mri_free(imspl) ;
-      imspl = SPLASH_decode26( NX_blank, NY_blank, NLINE_blank, BAR_blank ) ;
 
-      if( first ){
-         nov  =    (lrand48() >> 8) % NOVER  ;
-         dnov = 2*((lrand48() >> 8) % 2) - 1 ;
+      int nxov,nyov,ff ;
+
+      /* get some fun stuff, first time in */
+
+      if( ncall == 0 ){
+        num_face   = AFNI_find_jpegs( "face_"   , &fname_face   ) ;
+        num_splash = AFNI_find_jpegs( "splash_" , &fname_splash ) ;
+        if( num_splash > 0 ){
+          int np ;
+          for( np=0 ; np < num_splash ; np++ )
+            if( strstr(fname_splash[np],"sscc") != NULL ) break ;
+          if( np < num_splash ) first_splash = np ;
+        }
       }
-      nov  = (nov+dnov+NOVER) % NOVER ;
-      imov = SPLASH_decode26( xover[nov], yover[nov], lover[nov], bover[nov] ) ;
 
-      mri_overlay_2D( imspl, imov, IXOVER, JYOVER ) ; mri_free(imov) ;
+      /* create basic splash image */
 
-      if( first ) AFNI_find_splash_ppms() ; /* 17 Sep 2001 */
+      mri_free(imspl) ;
+      imspl = SPLASH_decodexx( NX_blank, NY_blank, NLINE_blank, NC_blank,
+                               RMAP_blank,GMAP_blank,BMAP_blank, BAR_blank ) ;
 
-#ifdef NMAIN
-      /* possibly replace the splash image */
+      if( ncall==0 ){                           /* initialize random */
+        nov  =    (lrand48() >> 8) % NOVER  ;   /* sub-image overlay */
+        dnov = 2*((lrand48() >> 8) % 2) - 1 ;   /* index & direction */
+      }
 
-      if( !first || AFNI_yesenv("AFNI_SPLASH_OVERRIDE") || num_ppms > 0 ){ /* 07 Jun 2000 */
-         int good=0 , qq,nq=0 ;
-         char * ufname , * qname[10] , str[32] ;
+      /* Facial overlay: */
+      /*  if have face jpegs, use them; else, use builtin faces [28 Mar 2003] */
 
-         /* select a user specified main image name, if any */
+      imov = NULL ; ff = 0 ;
+      if( num_face > 0 ){                       /* external face_*.jpg files */
+        static int *dold=NULL, ndold=0 ; int qq ;
+        if( ndold == 0 && num_face > 1 ){
+          ndold = num_face/2 ;
+          dold  = (int *) malloc(sizeof(int)*ndold) ;
+          for( qq=0 ; qq < ndold ; qq++ ) dold[qq] = -1 ;
+        }
+     Retry_dd:
+        dd = (lrand48() >> 8) % num_face ;              /* pick random file */
+        if( num_face > 1 ){                       /* check if used recently */
+          for( qq=0 ; qq < ndold && dold[qq] != dd ; qq++ ) ;       /* nada */
+          if( qq < ndold ) goto Retry_dd ;                    /* was recent */
+          for( qq=1 ; qq < ndold ; qq++ )        /* wasn't, so save in list */
+            dold[qq-1] = dold[qq] ;
+          dold[ndold-1] = dd ;
+        }
+        imov = mri_read_stuff( fname_face[dd] ) ;              /* read file */
+        if( imov != NULL && (imov->nx > MAX_XOVER || imov->ny > MAX_YOVER) ){
+          float xfac=MAX_XOVER/(float)(imov->nx),
+                yfac=MAX_YOVER/(float)(imov->ny) ;    /* rescale if too big */
+          int nxnew,nynew ; MRI_IMAGE *imq ;
+          if( xfac > yfac ) xfac = yfac ;
+          nxnew = (int)(xfac*imov->nx) ; nynew = (int)(xfac*imov->ny) ;
+          imq = mri_resize( imov , nxnew,nynew ) ;          /* kind of slow */
+          mri_free(imov); imov = imq;        /* replace with rescaled image */
+        }
+        if( imov != NULL ){           /* ff = 2 for me, 1 for everyone else */
+          ff = (strstr(fname_face[dd],"_rwcox") != NULL) ? 2 : 1 ;
+        }
+      }
+      if( imov == NULL ){                  /* if didn't get face jpeg above */
+        nov  = (nov+dnov+NOVER) % NOVER ;
+        imov = SPLASH_decode26( xover[nov], yover[nov], lover[nov], bover[nov] ) ;
+      }
+      nxov = imov->nx ; nyov = imov->ny ;          /* size of overlay image */
+      dd = IXOVER + (MAX_XOVER-nxov)/2 ;          /* and location to put it */
+      ee = JYOVER + (MAX_YOVER-nyov)/2 ;
+      mri_overlay_2D( imspl, imov, dd,ee ); mri_free(imov);
+      if( ff ){                                 /* overlay title under face */
+        imov = SPLASH_decodexx( NX_facetitle,NY_facetitle,NLINE_facetitle,
+                                NC_facetitle,RMAP_facetitle,
+                                RMAP_facetitle,RMAP_facetitle ,
+                                BAR_facetitle ) ;
+        if( ff == 2 ) mri_invert_inplace( imov ) ;           /* for me only */
+        dd = IXOVER + (MAX_XOVER-imov->nx)/2 ; ee += nyov+1 ;
+        mri_overlay_2D( imspl, imov, dd,ee ) ; mri_free(imov) ;
+      }
 
-         if( AFNI_yesenv("AFNI_SPLASH_OVERRIDE") ){
-            ufname = getenv("AFNI_IMAGE_PGMFILE") ;
-            if( ufname != NULL ) qname[nq++] = ufname ;
-            for( qq=1 ; qq < 10 ; qq++ ){
-               sprintf(str,"AFNI_IMAGE_PGMFILE_%d",qq) ;
-               ufname = getenv(str); if( ufname != NULL) qname[nq++] = ufname;
-            }
-         }
+      /* possibly replace the splash image at the top [26 Nov 2003] */
 
-         switch( nq ){
-            case 0:  ufname = NULL                           ; break ;
-            case 1:  ufname = qname[0]                       ; break ;
-            default: ufname = qname[ (lrand48() >> 8) % nq ] ; break ;
-         }
+      if( (ncall > 0 || first_splash >= 0) && num_splash > 0 &&
+          (ncall <= num_splash  || ((lrand48() >> 8 ) % 7) != 0) ){
 
-         /* popup user specified main image, if any */
-
-         if( ufname != NULL ){         /* 08 & 20 Jun 2000 */
-            imov = mri_read(ufname) ;  /* popup user-supplied image */
-            if( imov != NULL ){
-               if( imov->nx != xmain[0] || imov->ny != ymain[0] ){
-                  MRI_IMAGE * imq = mri_resize(imov,xmain[0],ymain[0]) ;
-                  mri_free(imov) ; imov = imq ;
-               }
-               if( imov->kind == MRI_rgb ){             /* color */
-                  MRI_IMAGE * imq = mri_to_rgb(imspl) ;
-                  mri_free(imspl) ; imspl = imq ;
-                  reload_DC_colordef( GLOBAL_library.dc ) ;
-               } else if( imov->kind != MRI_byte ){     /* gray */
-                  MRI_IMAGE * imq = mri_to_byte(imov) ;
-                  mri_free(imov) ; imov = imq ;
-               }
-               mri_overlay_2D( imspl , imov , 0,0 ) ;
-               mri_free(imov) ; good = 1 ;
-            }
-         }
-
-         if( !good ){    /* no user specified image ==> use my own */
-
-            int nrr = lrand48()&3584 ;
-            if( num_ppms > 0 && nrr != 0 ){  /* 17 Sep 2001: external image */
-              static int np=-1 ;
-              if( np < 0 ) np = (lrand48() >> 8) % num_ppms ;
-              else         np = (np+1)%(num_ppms) ;
-              imov = mri_read_ppm(fname_ppms[np]) ;
-              if( imov != NULL ){
-                MRI_IMAGE * imq = mri_to_rgb(imspl) ;
-                mri_free(imspl) ; imspl = imq ;
-                reload_DC_colordef( GLOBAL_library.dc ) ;
-                mri_overlay_2D( imspl , imov , 0,0 ) ;
-                mri_free(imov) ; good = 1 ;
-              }
-            }
-
-            if( !good ){                            /* internal image */
-              nm = (nm+1)%(NMAIN) ;
-              imov = SPLASH_decode26( xmain[nm],ymain[nm],lmain[nm],bmain[nm] ) ;
-              mri_overlay_2D( imspl , imov , 0,0 ) ;
-              mri_free(imov) ;
-            }
-
-         } /* end of "my own" image */
+        static int np=-1 , dp ;
+        if( np < 0 ){
+          np = (first_splash >= 0) ? first_splash
+                                   : (lrand48() >> 8) % num_splash ;
+          dp = 2*((lrand48() >> 8)%2)-1 ;  /* -1 or +1 */
+        } else
+          np = (np+dp+num_splash)%(num_splash) ;
+        imov = mri_read( fname_splash[np] ) ;
+        if( imov != NULL ){
+          reload_DC_colordef( GLOBAL_library.dc ) ;
+#if 0
+          if( imov->nx != NX_TOPOVER || imov->ny != NY_TOPOVER ){
+            MRI_IMAGE *imq ;
+            imq = mri_resize( imov , NX_TOPOVER,NY_TOPOVER ) ; /* kind of slow */
+            if( imq != NULL ){ mri_free(imov); imov = imq; }
+          }
+#endif
+          mri_overlay_2D( imspl , imov , 0,0 ) ;
+          mri_free(imov) ;
+        }
 
       } /* end of replacing splash image */
-#endif
+
+      /*-- show the image at last! --*/
 
       handle = SPLASH_popup_image( handle, imspl ) ;
 #ifndef USE_FADING
@@ -202,10 +231,10 @@ ENTRY("AFNI_splashup") ;
 
       ppp = (PLUGIN_impopper *) handle ;
 
-      if( first ){ dd = MWM_DECOR_BORDER ;
-                   ee = 0 ;
-      } else     { dd = MWM_DECOR_BORDER | MWM_DECOR_TITLE | MWM_DECOR_MENU ;
-                   ee = MWM_FUNC_MOVE | MWM_FUNC_CLOSE ;
+      if( ncall==0 ){ dd = MWM_DECOR_BORDER ;
+                      ee = 0 ;
+      } else        { dd = MWM_DECOR_BORDER | MWM_DECOR_TITLE | MWM_DECOR_MENU ;
+                      ee = MWM_FUNC_MOVE | MWM_FUNC_CLOSE ;
       }
 
       /* 21 Sep 2000 -- allow user to control splash position */
@@ -244,7 +273,7 @@ ENTRY("AFNI_splashup") ;
 
       /* some super-frivolities */
 
-      if( !first ){
+      if( ncall==0 ){
          drive_MCW_imseq( ppp->seq , isqDR_title , (XtPointer) "AFNI!" ) ;
          drive_MCW_imseq( ppp->seq , isqDR_imhelptext,
                           (XtPointer)
@@ -288,7 +317,7 @@ ENTRY("AFNI_splashup") ;
       AFNI_splashdown() ;  /* off with their heads */
    }
 
-   first = 0 ; EXRETURN ;
+   ncall++ ; EXRETURN ;
 }
 
 /*------------------------------------------------------------------
@@ -314,8 +343,9 @@ ENTRY("SPLASH_imseq_getim") ;
       stat->parent     = (XtPointer) imp  ;
       stat->aux        = NULL ;
 
-      stat->transforms0D = & (GLOBAL_library.registered_0D) ;
-      stat->transforms2D = & (GLOBAL_library.registered_2D) ;
+      stat->transforms0D = NULL ;  /* 31 Jan 2002: remove all functions */
+      stat->transforms2D = NULL ;
+      stat->slice_proj   = NULL ;
 
       RETURN((XtPointer) stat) ;
    }
@@ -333,8 +363,8 @@ ENTRY("SPLASH_imseq_getim") ;
       if( imp->im != NULL ) im = mri_copy( imp->im ) ;
 #else
       if( imp->im != NULL ){
-         if( do_write ) im = mri_zeropad_2D( 0,0,0,50 , imp->im ) ; /* 26 Feb 2001 */
-         else           im = mri_copy( imp->im ) ;
+        if( do_write ) im = mri_zeropad_2D( 0,0,0,50 , imp->im ) ; /* 26 Feb 2001 */
+        else           im = mri_copy( imp->im ) ;
       }
 #endif
       RETURN((XtPointer) im) ;
@@ -348,20 +378,31 @@ ENTRY("SPLASH_imseq_getim") ;
       ii = create_memplot_surely("SPLASH memplot",1.0) ;
       if( ii == 0 ){
          MEM_plotdata * mp = get_active_memplot() ;
-         char * sf = AFNI_get_friend() ;
-         int nn = strlen(sf) ;
-         char * mf = strstr(sf," for ") ;
 
-         set_color_memplot(1.0,1.0,1.0) ;
-         set_thick_memplot(0.0) ;
+         set_thick_memplot(0.003) ;    /* slightly thick lines */
 
-         if( nn < 36 || mf == NULL ){
-            plotpak_pwritf( 0.5,0.060 , sf , 28 , 0 , 0 ) ;
+         if( do_write == 2 || 1 ){
+           char *sf = AFNI_get_date_trivia() ;
+           int   nn = strlen(sf) , ss=28 ;
+           if( nn > 37 ) ss = (int)(28.0*37.0/nn) ;
+           set_color_memplot(1.0,1.0,0.7) ;           /* whitish */
+           plotpak_pwritf( 0.5,0.089 , "Today is:"  , 30 , 0 , 0 ) ;
+           set_color_memplot(1.0,1.0,0.1) ;           /* yellow */
+           plotpak_pwritf( 0.5,0.033 , sf           , ss , 0 , 0 ) ;
          } else {
-            *mf = '\0' ;
-            plotpak_pwritf( 0.5,0.089 , sf  , 28 , 0 , 0 ) ;
-            plotpak_pwritf( 0.5,0.033 , mf+1, 28 , 0 , 0 ) ;
+           char * sf = AFNI_get_friend() ;
+           char * mf = strstr(sf," for ") ;
+           int    nn = strlen(sf) ;
+           set_color_memplot(1.0,1.0,0.5) ;         /* orangish */
+           if( nn < 36 || mf == NULL ){
+              plotpak_pwritf( 0.5,0.060 , sf , 28 , 0 , 0 ) ;
+           } else {
+              *mf = '\0' ;
+              plotpak_pwritf( 0.5,0.089 , sf  , 28 , 0 , 0 ) ;
+              plotpak_pwritf( 0.5,0.033 , mf+1, 28 , 0 , 0 ) ;
+           }
          }
+         set_thick_memplot(0.0) ;
          RETURN((XtPointer)mp) ;  /* will be deleted by imseq */
       }
    }
@@ -416,121 +457,258 @@ ENTRY("SPLASH_popup_image") ;
   Decode the 26 data into an image
 ----------------------------------------------------------------------------*/
 
+static byte map26[26] =
+  {  30,  50,  70,  90, 106, 118, 130, 140, 146, 152, 158, 164, 170,
+    176, 182, 190, 198, 206, 212, 218, 224, 230, 236, 242, 248, 254 } ;
+
 static MRI_IMAGE * SPLASH_decode26( int nx, int ny , int nl , char ** im26 )
 {
-   MRI_IMAGE * im ;
-   byte * bim ;
-   int ii , jj , cc,rr , dd,ee ;
+   return SPLASH_decodexx( nx, ny, nl, 26,map26,map26,map26,im26 ) ;
+}
+
+/*--------------------------------------------------------------------------
+  Decode the 'xx' data into an image
+----------------------------------------------------------------------------*/
+
+#define MMAX 82                                               /* max num colors */
+static char alpha[MMAX] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"        /* codes for colors */
+                          "abcdefghijklmnopqrstuvwxyz"        /* [0] .. [MMAX-1] */
+                          ",<.>/?;:'[{]}|=+-_)(*&^%$#@!`~" ;
+
+static MRI_IMAGE * SPLASH_decodexx( int nx, int ny, int nl, int nmap,
+                                    byte *rmap, byte *gmap, byte *bmap ,
+                                    char ** imxx )
+{
+   MRI_IMAGE *im ;
+   byte *bim ;
+   int ii,jj , cc,qq , dd,ee , kk ;
    char bb ;
+   static int first=1 , ainv[256] ;
 
-ENTRY("SPLASH_decode26") ;
+ENTRY("SPLASH_decodexx") ;
 
-   if( nx < 3 || ny < 3 || nl < 3 || im26 == NULL ) RETURN(NULL) ;
+   if( nmap == 0 ){                /* defaults from old to26.c program */
+     nmap = 26 ;
+     rmap = bmap = gmap = map26 ;
+   }
 
-   im  = mri_new( nx , ny , MRI_byte ) ;
-   bim = MRI_BYTE_PTR(im) ;
+   if( nx < 3       || ny < 3       || nl < 3 ||
+       rmap == NULL || gmap == NULL ||
+       bmap == NULL || imxx == NULL             ) RETURN(NULL) ;
+
+   if( first ){
+     for( ii=0 ; ii < 256 ; ii++ ) ainv[ii] = -1 ;
+     for( ii=0 ; ii < MMAX ; ii++ ){
+       bb = alpha[ii] ; ainv[bb] = ii ;
+     }
+     first = 0 ;
+   }
+
+   im  = mri_new( nx , ny , MRI_rgb ) ;
+   bim = MRI_RGB_PTR(im) ;
 
    /* decode the RLE image data into a real image array */
 
-   cc = rr = 0 ;
-   for( ii=0 ; ii < im->nvox && rr < nl ; ){
-      bb = im26[rr][cc++] ; if( bb == '\0' ) break ;
-      if( bb >= 'A' && bb <= 'Z' ){
-         jj = bb - 'A' ; bim[ii++] = map26[jj] ;
-      } else {
-         dd = bb - '0' ; bb = im26[rr][cc++] ; if( bb == '\0' ) break ;
-         jj = bb - 'A' ;
-         for( ee=0 ; ee < dd && ii < im->nvox ; ee++ )
-            bim[ii++] = map26[jj] ;
-      }
-      if( im26[rr][cc] == '\0' ){ cc = 0 ; rr++ ; }
+   cc = qq = 0 ;
+   for( ii=0 ; ii < 3*im->nvox && qq < nl ; ){
+     bb = imxx[qq][cc++] ; if( bb == '\0' ) break ;
+     jj = ainv[bb] ;
+     if( jj >= 0 ){
+       bim[ii++] = rmap[jj]; bim[ii++] = gmap[jj]; bim[ii++] = bmap[jj];
+     } else {
+       dd = bb - '0' ;
+       bb = imxx[qq][cc++] ; if( bb == '\0' ) break ;
+       jj = ainv[bb] ;
+       for( ee=0 ; ee < dd && ii < 3*im->nvox ; ee++ ){
+         bim[ii++] = rmap[jj]; bim[ii++] = gmap[jj]; bim[ii++] = bmap[jj];
+       }
+     }
+     if( imxx[qq][cc] == '\0' ){ cc = 0 ; qq++ ; }
    }
 
    RETURN(im) ;
 }
 
-/*--------------------------------------------------------------------------*/
+/*----------------------------------------------------------------------------*/
+/*! Find all files of form 'prefix*.jpg' and 'prefix*.JPG' files in the path. */
 
-void AFNI_find_splash_ppms(void)  /* 17 Sep 2001 */
+int AFNI_find_jpegs( char *prefix , char ***fname )  /* 26 Nov 2003 */
 {
-   char *epath , *elocal , ename[THD_MAX_NAME] , *eee ;
-   int epos , ll , ii , id , nppm , nx,ny ;
-   char **fppm ;
+   char *epath , *elocal , *eee ;
+   char edir[THD_MAX_NAME] , *ename ;
+   int epos , ll , ii , id , nfile , nx,ny , num_file=0 ;
+   char **ffile , **fflist=NULL ;
 
-ENTRY("AFNI_find_splash_ppms") ;
+ENTRY("AFNI_find_jpegs") ;
 
-   if( num_ppms > 0 ) EXRETURN ; /* should never happen */
+   if( prefix == NULL || *prefix == '\0' || fname == NULL ) RETURN(-1) ;
 
    /*----- get path to search -----*/
 
                        epath = getenv("AFNI_PLUGINPATH") ;
    if( epath == NULL ) epath = getenv("AFNI_PLUGIN_PATH") ;
    if( epath == NULL ) epath = getenv("PATH") ;
-   if( epath == NULL ) EXRETURN ;                          /* bad */
+   if( epath == NULL ) epath = getenv("HOME") ;
+   if( epath == NULL ){ RETURN(-1) ; }
 
    /*----- copy path list into local memory -----*/
 
    ll = strlen(epath) ;
-   elocal = malloc( sizeof(char) * (ll+2) ) ;
+   elocal = AFMALL( char,  sizeof(char) * (ll+2) ) ;
 
    /*----- put a blank at the end -----*/
 
    strcpy( elocal , epath ) ; elocal[ll] = ' ' ; elocal[ll+1] = '\0' ;
 
-   /*----- replace colons with blanks -----*/
+   /*----- replace colons (if any) with blanks -----*/
 
    for( ii=0 ; ii < ll ; ii++ )
-      if( elocal[ii] == ':' ) elocal[ii] = ' ' ;
+     if( elocal[ii] == ':' ) elocal[ii] = ' ' ;
 
-   /*----- extract blank delimited strings;
-           use as directory names to look for files -----*/
+   /*----- extract blank delimited strings from elocal;
+           use as directory names to look for matching files -----*/
 
-   epos = 0 ;
+   ename = (char *) malloc( 2*THD_MAX_NAME+32 ) ;  /* string for wildcards */
+   epos  = 0 ;                              /* scanning position in elocal */
 
    do{
-      ii = sscanf( elocal+epos , "%s%n" , ename , &id ); /* next substring */
-      if( ii < 1 ) break ;                               /* none -> done   */
+     ii = sscanf( elocal+epos , "%s%n" , edir , &id ); /* next substring */
+     if( ii < 1 ) break ;                              /* none -> done   */
 
-      /** check if ename occurs earlier in elocal **/
+     /** check if edir occurs earlier in elocal **/
 
-      eee = strstr( elocal , ename ) ;
-      if( eee != NULL && (eee-elocal) < epos ){ epos += id ; continue ; }
+     eee = strstr( elocal , edir ) ;
+     if( eee != NULL && (eee-elocal) < epos ){ epos += id ; continue ; }
 
-      epos += id ;                                 /* char after last scanned */
+     epos += id ;                                 /* char after last scanned */
 
-      ii = strlen(ename) ;                         /* make sure name has   */
-      if( ename[ii-1] != '/' ){                    /* a trailing '/' on it */
-          ename[ii]  = '/' ; ename[ii+1] = '\0' ;
-      }
-      strcat(ename,".afnisplash*.ppm") ;           /* add filenname pattern */
+     ii = strlen(edir) ;                          /* make sure dirname has */
+     if( edir[ii-1] != '/' ){                     /* a trailing '/' on it */
+       edir[ii]  = '/' ; edir[ii+1] = '\0' ;
+     }
 
-STATUS(ename) ;
+     /* create wildcard for JPEG files in this directory */
 
-      eee = ename ;
-      MCW_file_expand( 1,&eee , &nppm , &fppm );   /* find files that match */
-      if( nppm <= 0 ) continue ;                   /* no files found */
+     sprintf(ename,"%s%s*.jpg %s%s*.JPG" , edir,prefix,edir,prefix ) ;
 
-      /** add files we found to list, if they are good **/
+     MCW_wildcards( ename , &nfile , &ffile ) ;  /* find matching files */
+     if( nfile <= 0 ) continue ;                 /* no files found */
 
-      for( ii=0 ; ii < nppm ; ii++ ){
-         mri_read_ppm_header( fppm[ii] , &nx , &ny ) ;
-         if( nx == xmain[0] || ny == ymain[0] ){      /* PPM file of good size? */
-            if( fname_ppms == NULL )
-               fname_ppms = (char **)malloc(sizeof(char *)) ;
-            else
-               fname_ppms = (char **)realloc(fname_ppms,sizeof(char *)*(num_ppms+1));
+      /** add files we found to list **/
 
-            STATUS(fppm[ii]) ;
+     fflist = (char **)realloc(fflist,sizeof(char *)*(num_file+nfile));
+     for( ii=0 ; ii < nfile ; ii++ )
+       fflist[num_file++] = strdup(ffile[ii]) ;
 
-            fname_ppms[num_ppms++] = strdup(fppm[ii]) ;
-         }
-      }
-
-      MCW_free_expand( nppm , fppm ) ;
+     MCW_free_wildcards( nfile , ffile ) ;  /* toss the junk */
 
    } while( epos < ll ) ;  /* scan until 'epos' is after end of epath */
 
-   free(elocal) ; EXRETURN ;
+   free(elocal) ; free(ename) ;             /* toss more junk */
+
+   if( num_file == 0 ) num_file = -1 ;      /* flag that nothing was found */
+   *fname = fflist ;                        /* list of found files */
+   RETURN(num_file) ;                       /* return number of files found */
+}
+
+/*---------------------------------------------------------------------------*/
+
+static void *face_phan=NULL ;
+
+void AFNI_facedown( void *kd ){ face_phan = NULL; }
+
+#undef  NXY
+#define NXY 128  /* expected size of face images; trim or pad, as needed */
+
+static int gcd( int m , int n ){
+  while( m > 0 ){
+    if( n > m ){ int t=m; m=n; n=t; } /* swap */
+    m -= n;
+  }
+  return n;
+}
+
+void AFNI_faceup(void)   /* 17 Dec 2004 */
+{
+   MRI_IMAGE *im , *fim ;
+   int ii , nx,ny , nxdown,nxup , nydown,nyup ;
+   int ctold,ctnew,mmss , ddss ;
+   int jj , j0,dj=1 ;
+
+ENTRY("AFNI_faceup") ;
+
+   if( num_face <  0 ){ BEEPIT; EXRETURN; }
+   if( num_face == 0 ){
+     num_face = AFNI_find_jpegs( "face_" , &fname_face ) ;
+     if( num_face <= 0 ){ BEEPIT; EXRETURN; }
+   }
+   if( face_phan != NULL ){
+     PLUGIN_imseq *ph = (PLUGIN_imseq *)face_phan ;
+     XMapRaised( XtDisplay(ph->seq->wtop) , XtWindow(ph->seq->wtop) ) ;
+     EXRETURN ;
+   }
+
+   ctold = NI_clock_time() ;
+
+   ddss = num_face + 16449/num_face ; if( ddss > 222 ) ddss = 222 ;
+
+   if( num_face > 4 ){
+     ii = num_face / 2 ;
+     do{ dj = 1 + lrand48() % ii ; } while( gcd(num_face,dj) > 1 ) ;
+   }
+   j0 = lrand48() % num_face ;
+
+   for( ii=0 ; ii < num_face ; ii++ ){
+     jj = (j0 + ii*dj) % num_face ;
+     im = mri_read_stuff( fname_face[jj] ) ;
+     if( im == NULL ) continue ;
+     nx = im->nx ; ny = im->ny ;
+
+     nxdown = (NXY-nx) / 2 ; nxup = NXY - nx - nxdown ;
+     nydown = (NXY-ny) / 2 ; nyup = NXY - ny - nydown ;
+     if( nxdown != 0 || nydown != 0 || nxup != 0 || nyup != 0 ){
+       fim = mri_zeropad_2D( nxdown,nxup , nydown,nyup , im ) ;
+       if( fim != NULL ){ mri_free(im) ; im = fim ; }
+     }
+     fim = mri_dup2D(2,im) ; mri_free(im) ;  /* double size for fun */
+     if( face_phan == NULL ){
+       int sxx,syy ; char *sen ; PLUGIN_imseq *ph ;
+
+       face_phan = PLUTO_imseq_popim( fim,(generic_func *)AFNI_facedown,NULL );
+       sxx = (GLOBAL_library.dc->width-4*NXY)/2 ; if( sxx < 1 ) sxx = 1 ;
+       syy = 100 ;
+       sen = getenv("AFNI_SPLASH_XY") ;
+       if( sen != NULL ){
+         int n,x,y ;
+         n = sscanf(sen,"%d:%d",&x,&y) ;
+         if( n == 2 && x >= 0 && x < GLOBAL_library.dc->width &&
+                       y >= 0 && y < GLOBAL_library.dc->height  ){
+            sxx = x ; syy = y ;
+         }
+       }
+       ph = (PLUGIN_imseq *)face_phan ;
+       XtVaSetValues( ph->seq->wtop , XmNx,sxx , XmNy,syy , NULL ) ;
+       drive_MCW_imseq( ph->seq , isqDR_record_disable , (XtPointer)0 ) ;
+       drive_MCW_imseq( ph->seq , isqDR_periodicmont   , (XtPointer)1 ) ;
+
+     } else {
+       PLUTO_imseq_addto( face_phan , fim ) ;
+     }
+     mri_free(fim) ;
+
+     ctnew = NI_clock_time() ;      /* show 1 image every ddss ms [27 Dec 2004] */
+     mmss  = ddss - (ctnew-ctold) ;
+     ctold = ctnew ; ddss-- ;
+     NI_sleep(mmss) ;
+   }
+   if( face_phan != NULL ){
+     PLUTO_imseq_retitle( face_phan , "Faces of AFNI" ) ;
+     PLUTO_imseq_setim( face_phan , 0 ) ;
+   } else {
+     BEEPIT ;
+   }
+
+   EXRETURN ;
 }
 
 #endif /* NO_FRIVOLITIES */
@@ -543,7 +721,7 @@ STATUS(ename) ;
 
 /*---------------------------------------------------------------------------*/
 
-#define NLBUF 512
+#define NLBUF 4096
 static char * linbuf ;  /* must be malloc()-ed before use */
 
 static int get_linbuf( char * str )
@@ -566,7 +744,8 @@ static int get_linbuf( char * str )
 
    /* copy into linbuf */
 
-   for( jj=0 ; str[ii] != '\0' &&
+   for( jj=0 ; jj < NLBUF      &&
+               str[ii] != '\0' &&
                str[ii] != '\n' &&
                str[ii] != '!'  &&
                !(str[ii]=='/' && str[ii+1]=='/')
@@ -656,7 +835,7 @@ ENTRY("AFNI_startup_layout_CB") ;
    fbuf = AFNI_suck_file(fname); if( fbuf == NULL ){ AFNI_splashdown(); EXRETURN; }
    nbuf = strlen(fbuf) ;         if( nbuf == 0    ){ AFNI_splashdown(); EXRETURN; }
 
-   fptr = fbuf ; linbuf = (char *) malloc(sizeof(char)*NLBUF) ;
+   fptr = fbuf ; linbuf = (char *) malloc(sizeof(char)*(NLBUF+1)) ;
 
 if(PRINT_TRACING)
 { char str[256] ;
@@ -893,8 +1072,8 @@ STATUS("no ***LAYOUT found") ;
 
    e_asp = my_getenv("AFNI_ENFORCE_ASPECT") ;
    if( !YESSISH(e_asp) ){
-      putenv("AFNI_ENFORCE_ASPECT=YES") ;
-      e_turnoff = 1 ;
+     putenv("AFNI_ENFORCE_ASPECT=YES") ;
+     e_turnoff = 1 ;
    }
 
    /*-- now do the commanded work --*/
@@ -1041,8 +1220,8 @@ STATUS("no ***LAYOUT found") ;
          /* make the graph length pinned? */
 
          if( graph_pinnum[cc][ww] > 1 ){
-            drive_MCW_grapher( gra , graDR_setpinnum , (XtPointer) graph_pinnum[cc][ww] ) ;
-            if(goslow || PRINT_TRACING) sleep(1);
+           drive_MCW_grapher( gra, graDR_setpinnum, (XtPointer)graph_pinnum[cc][ww] );
+           if(goslow || PRINT_TRACING) sleep(1);
          }
 
          /* change the graph window geometry? */
@@ -1138,7 +1317,7 @@ void AFNI_save_layout_CB( Widget w , XtPointer cd , XtPointer cbs )
 ENTRY("AFNI_save_layout_CB") ;
 
    MCW_choose_string( im3d->vwid->picture ,
-                      "Enter layout save filename:" ,
+                      "Layout filename [blank => .afni.startup_script]:" ,
                       NULL , AFNI_finalsave_layout_CB , cd ) ;
    EXRETURN ;
 }
@@ -1149,7 +1328,7 @@ void AFNI_finalsave_layout_CB( Widget w , XtPointer cd , MCW_choose_cbs * cbs )
 {
    Three_D_View * im3d = (Three_D_View *) cd ;
    int cc,ww , gww,ghh,gxx,gyy ;
-   FILE * fp ;
+   FILE * fp , * gp ;
    MCW_imseq   * isq ;
    MCW_grapher * gra ;
    float ifrac ;
@@ -1170,16 +1349,44 @@ void AFNI_finalsave_layout_CB( Widget w , XtPointer cd , MCW_choose_cbs * cbs )
    PLUGIN_interface ** plugint = qm3d->vwid->plugint;       /* their interfaces */
 #endif
 
+   MCW_DCOV     * ovc          = GLOBAL_library.dc->ovc ;   /* 22 Jan 2003 */
+   Three_D_View * zm3d ;
+
 ENTRY("AFNI_finalsave_layout_CB") ;
 
-   if( !THD_filename_ok(cbs->cval) ){ BEEPIT; EXRETURN; }
 
    if( strcmp(cbs->cval,".afnirc") == 0 ){ BEEPIT; EXRETURN; } /* 12 Oct 2000 */
 
-   fp = fopen( cbs->cval , "w" ) ;
-   if( fp == NULL ){ BEEPIT; EXRETURN; }
+   /*-- 23 Jan 2003: open layout file if name is "OK", else don't use it --*/
 
-   fprintf(fp,"\n***LAYOUT\n") ;
+   if( THD_filename_ok(cbs->cval) ){
+     fp = fopen( cbs->cval , "w" ) ;
+     if( fp == NULL ){ BEEPIT; EXRETURN; }
+   } else {
+     fp = NULL ;
+   }
+
+   if( fp != NULL ) fprintf(fp,"\n***LAYOUT\n") ;
+
+   /*-- 22 Jan 2002: maybe write a startup script to do same things --*/
+
+   if( fp == NULL )
+     gp = fopen( ".afni.startup_script" , "w" ) ;
+   else
+     gp = NULL ;
+
+   if( gp != NULL ){
+
+     fprintf(gp,"// AFNI startup script, from Datamode->Misc->Save Layout\n") ;
+
+     /* put in any extra overlay colors */
+
+     for( qq=DEFAULT_NCOLOVR+1 ; qq < ovc->ncol_ov ; qq++ )
+       fprintf(gp,"ADD_OVERLAY_COLOR %s %s\n",
+               ovc->name_ov[qq] , ovc->label_ov[qq] ) ;
+   } else {
+     if( fp == NULL ){ BEEPIT; EXRETURN; }
+   }
 
    /*-- loop over controllers --*/
 
@@ -1187,22 +1394,67 @@ ENTRY("AFNI_finalsave_layout_CB") ;
 
       /*-- controller open? */
 
-      if( !IM3D_OPEN(GLOBAL_library.controllers[cc]) ) continue ; /* skip */
+      zm3d = GLOBAL_library.controllers[cc] ;
+
+      if( !IM3D_OPEN(zm3d) ) continue ; /* skip */
 
       /* print controller info */
 
-      MCW_widget_geom( GLOBAL_library.controllers[cc]->vwid->top_shell ,
+      MCW_widget_geom( zm3d->vwid->top_shell ,
                        NULL,NULL , &gxx,&gyy ) ;
 
-      fprintf(fp,"  %c geom=+%d+%d\n" , abet[cc] , gxx,gyy ) ;
+      if( fp != NULL ) fprintf(fp,"  %c geom=+%d+%d\n" , abet[cc] , gxx,gyy ) ;
 
-      /*-- loop over image viewers --*/
+      /*-- 22 Jan 2003: parallel output for startup script --*/
+
+      if( gp != NULL ){
+        MCW_pbar *pbar = zm3d->vwid->func->inten_pbar ;
+
+        fprintf(gp,"OPEN_WINDOW %c geom=+%d+%d\n" , abet[cc] , gxx,gyy ) ;
+
+        if( XtIsManaged(zm3d->vwid->func->frame) )
+          fprintf(gp,"OPEN_PANEL %c.Define_Overlay\n" , abet[cc] ) ;
+
+        fprintf(gp,"SET_THRESHOLD %c.%04d %d\n" , abet[cc] ,
+                    (int)(zm3d->vinfo->func_threshold/THR_FACTOR) ,
+                    (int)(log10(zm3d->vinfo->func_thresh_top)+.01) ) ;
+
+        if( !pbar->bigmode ){
+          fprintf(gp,"SET_PBAR_ALL %c.%c%d" , abet[cc] ,
+                     (pbar->mode) ? '+' : '-' , pbar->num_panes ) ;
+          for( qq=0 ; qq < pbar->num_panes ; qq++ )
+            fprintf(gp," %s=%s",
+                       AV_uformat_fval(pbar->pval[qq]) ,
+                       ovc->label_ov[pbar->ov_index[qq]] ) ;
+          fprintf(gp,"\n") ;
+        } else {
+          fprintf(gp,"SET_PBAR_ALL %c.%c%d %f %s\n" , abet[cc] ,
+                     (pbar->mode) ? '+' : '-' , 99 ,
+                     pbar->bigtop , PBAR_get_bigmap(pbar) ) ;
+        }
+
+        fprintf(gp,"SET_FUNC_VISIBLE %c.%c\n" , abet[cc] ,
+                (zm3d->vinfo->func_visible) ? '+' : '-'   ) ;
+
+        fprintf(gp,"SET_FUNC_RESAM %c.%s.%s\n" , abet[cc] ,
+                RESAM_shortstr[zm3d->vinfo->func_resam_mode] ,
+                RESAM_shortstr[zm3d->vinfo->thr_resam_mode]   ) ;
+
+        if( im3d->vinfo->use_autorange )
+          fprintf(gp,"SET_FUNC_AUTORANGE %c.+\n" , abet[cc] ) ;
+        else
+          fprintf(gp,"SET_FUNC_RANGE %c.%f\n" , abet[cc] ,
+                  im3d->vwid->func->range_av->fval        ) ;
+
+      } /* end of startup script stuff */
+
+      /*-- loop over image viewers in this controller --*/
 
       for( ww=0 ; ww < 3 ; ww++ ){
 
-         isq = (ww == 0) ? GLOBAL_library.controllers[cc]->s123     /* get the image */
-              :(ww == 1) ? GLOBAL_library.controllers[cc]->s231     /* viewer struct */
-              :            GLOBAL_library.controllers[cc]->s312 ;
+         isq = (ww == 0) ? zm3d->s123     /* get the image */
+              :(ww == 1) ? zm3d->s231     /* viewer struct */
+              :            zm3d->s312 ;
 
          if( isq == NULL ) continue ;   /* skip */
 
@@ -1215,41 +1467,71 @@ ENTRY("AFNI_finalsave_layout_CB") ;
          if( isq->mont_nx > 1 || isq->mont_ny > 1 ){
             sprintf(mont,"%dx%d:%d:%d:%s" ,
                     isq->mont_nx , isq->mont_ny , isq->mont_skip+1 , isq->mont_gap ,
-                    GLOBAL_library.controllers[cc]->dc->ovc->label_ov[isq->mont_gapcolor]);
+                    zm3d->dc->ovc->label_ov[isq->mont_gapcolor]);
          } else {
             mont[0] = '\0' ;
          }
 
-         if( mont[0] == '\0' ){
-            fprintf(fp, "  %c.%simage geom=%dx%d+%d+%d ifrac=%f\n" ,
-                        abet[cc] , wnam[ww] , gww,ghh,gxx,gyy , ifrac ) ;
-         } else {
-            fprintf(fp, "  %c.%simage geom=%dx%d+%d+%d ifrac=%f mont=%s\n" ,
-                        abet[cc] , wnam[ww] , gww,ghh,gxx,gyy , ifrac , mont ) ;
+         if( fp != NULL ){
+           if( mont[0] == '\0' ){
+              fprintf(fp, "  %c.%simage geom=%dx%d+%d+%d ifrac=%s\n" ,
+                          abet[cc] , wnam[ww] , gww,ghh,gxx,gyy , AV_uformat_fval(ifrac) ) ;
+           } else {
+              fprintf(fp, "  %c.%simage geom=%dx%d+%d+%d ifrac=%s mont=%s\n" ,
+                          abet[cc] , wnam[ww] , gww,ghh,gxx,gyy , AV_uformat_fval(ifrac) , mont ) ;
+           }
          }
+
+         /*-- 22 Jan 2003: startup script stuff for image viewers --*/
+
+         if( gp != NULL ){
+           int opval=9 ;
+           drive_MCW_imseq( isq , isqDR_getopacity , &opval ) ;
+           if( mont[0] == '\0' ){
+              fprintf(gp, "OPEN_WINDOW %c.%simage geom=+%d+%d ifrac=%s opacity=%d\n" ,
+                          abet[cc] , wnam[ww] , gxx,gyy , AV_uformat_fval(ifrac) , opval ) ;
+           } else {
+              fprintf(gp, "OPEN_WINDOW %c.%simage geom=+%d+%d ifrac=%s mont=%s opacity=%d\n" ,
+                          abet[cc] , wnam[ww] , gxx,gyy , AV_uformat_fval(ifrac) , mont , opval ) ;
+           }
+        }
       }
 
       /*-- loop over graph viewers --*/
 
       for( ww=0 ; ww < 3 ; ww++ ){
 
-         gra = (ww == 0) ? GLOBAL_library.controllers[cc]->g123    /* get the graph */
-              :(ww == 1) ? GLOBAL_library.controllers[cc]->g231    /* viewer struct */
-              :            GLOBAL_library.controllers[cc]->g312 ;
+         gra = (ww == 0) ? zm3d->g123    /* get the graph */
+              :(ww == 1) ? zm3d->g231    /* viewer struct */
+              :            zm3d->g312 ;
 
          if( gra == NULL ) continue ;   /* ERROR */
 
          MCW_widget_geom( gra->fdw_graph , &gww,&ghh , &gxx,&gyy ) ;
 
-         pinnum = (gra->pin_num < MIN_PIN) ? 0 : gra->pin_num ;
+         pinnum = (gra->pin_top < MIN_PIN) ? 0 : gra->pin_top ;
          matrix = gra->mat ;
 
-         if( pinnum > 0 ){
-            fprintf(fp , "  %c.%sgraph geom=%dx%d+%d+%d matrix=%d pinnum=%d\n" ,
-                         abet[cc] , wnam[ww] , gww,ghh,gxx,gyy , matrix,pinnum ) ;
-         } else {
-            fprintf(fp , "  %c.%sgraph geom=%dx%d+%d+%d matrix=%d\n" ,
-                         abet[cc] , wnam[ww] , gww,ghh,gxx,gyy , matrix ) ;
+         if( fp != NULL ){
+           if( pinnum > 0 ){
+              fprintf(fp , "  %c.%sgraph geom=%dx%d+%d+%d matrix=%d pinnum=%d\n" ,
+                           abet[cc] , wnam[ww] , gww,ghh,gxx,gyy , matrix,pinnum ) ;
+           } else {
+              fprintf(fp , "  %c.%sgraph geom=%dx%d+%d+%d matrix=%d\n" ,
+                           abet[cc] , wnam[ww] , gww,ghh,gxx,gyy , matrix ) ;
+           }
+         }
+
+         /*-- 22 Jan 2003: startup script stuff for graph viewers --*/
+
+         if( gp != NULL ){
+           if( pinnum > 0 ){
+              fprintf(gp , "OPEN_WINDOW %c.%sgraph geom=%dx%d+%d+%d matrix=%d pinnum=%d\n" ,
+                           abet[cc] , wnam[ww] , gww,ghh,gxx,gyy , matrix,pinnum ) ;
+           } else {
+              fprintf(gp , "OPEN_WINDOW %c.%sgraph geom=%dx%d+%d+%d matrix=%d\n" ,
+                           abet[cc] , wnam[ww] , gww,ghh,gxx,gyy , matrix ) ;
+           }
          }
       }
 
@@ -1282,12 +1564,76 @@ ENTRY("AFNI_finalsave_layout_CB") ;
       ll++ ;
       for( qq=0 ; qq < ll ; qq++ ) if( isspace(plab[qq]) ) plab[qq] = '_' ;
 
-      fprintf(fp , "  %c.plugin.%s geom=+%d+%d\n" ,
-                   abet[cc] , plab , gxx,gyy ) ;
+      if( fp != NULL ) fprintf(fp , "  %c.plugin.%s geom=+%d+%d\n" ,
+                                    abet[cc] , plab , gxx,gyy ) ;
    }
 #endif
 
    /*-- finito! --*/
 
-   fclose(fp) ; EXRETURN ;
+   if( fp != NULL ) fclose(fp) ;
+   if( gp != NULL ) fclose(gp) ;
+   EXRETURN ;
+}
+
+/*--------------------------------------------------------------------------*/
+/*! Run the startup script [21 Jan 2003]. */
+
+void AFNI_startup_script_CB( XtPointer client_data , XtIntervalId * id )
+{
+   char *fname = (char *)client_data ;
+   char *fbuf , *fptr ;
+   int ii , nbuf ;
+
+ENTRY("AFNI_startup_script_CB") ;
+
+   if( fname == NULL ) EXRETURN ;
+
+   if( strchr(fname,' ') != NULL ){  /* if contains a blank, */
+     AFNI_driver(fname) ;            /* execute a single command */
+     EXRETURN ;
+   }
+
+   fbuf = AFNI_suck_file(fname); if( fbuf == NULL ) EXRETURN ;
+   nbuf = strlen(fbuf) ;         if( nbuf == 0    ) EXRETURN ;
+
+   fptr = fbuf ; linbuf = (char *) malloc(sizeof(char)*(NLBUF+1)) ;
+
+   GLOBAL_library.ignore_lock = 1 ;  /* 06 Feb 2004 */
+
+   while(1){
+     ii = get_linbuf( fptr ) ; fptr += ii ;
+     if( linbuf[0] == '\0' || fptr-fbuf >= nbuf ){ free(linbuf); break; }
+     AFNI_driver( linbuf ) ;
+   }
+
+   GLOBAL_library.ignore_lock = 0 ; EXRETURN ;
+}
+
+/*---------------------------------------------------------------------------*/
+/*! Get a filename to run as an AFNI script.  22 Jan 2003 - RWCox.
+-----------------------------------------------------------------------------*/
+
+void AFNI_run_script_CB( Widget w , XtPointer cd , XtPointer cbs )
+{
+   Three_D_View * im3d = (Three_D_View *) cd ;
+
+ENTRY("AFNI_run_script_CB") ;
+
+   MCW_choose_string( im3d->vwid->picture ,
+                      "Enter AFNI script filename:" ,
+                      NULL , AFNI_finalrun_script_CB , cd ) ;
+   EXRETURN ;
+}
+
+/*---------------------------------------------------------------------------*/
+
+void AFNI_finalrun_script_CB( Widget w , XtPointer cd , MCW_choose_cbs * cbs )
+{
+   Three_D_View * im3d = (Three_D_View *) cd ;
+
+ENTRY("AFNI_finalrun_script_CB") ;
+
+   AFNI_startup_script_CB( (XtPointer) cbs->cval , NULL ) ;
+   EXRETURN ;
 }

@@ -51,6 +51,11 @@ void Syntax(char * str)
     "               ** SPECIAL CASE: you can use the string 'cen' in place of\n"
     "                  a distance to force that axis to be re-centered.\n"
     "\n"
+    " -xorigin_raw xx  Puts the center of the edge voxel at the given COORDINATE\n"
+    " -yorigin_raw yy  rather than the given DISTANCE.  That is, these values\n"
+    " -zorigin_raw zz  directly replace the offsets in the dataset header,\n"
+    "                  without any possible sign changes.\n"
+    "\n"
     "  -duporigin cset Copies the xorigin, yorigin, and zorigin values from\n"
     "                  the header of dataset 'cset'.\n"
     "\n"
@@ -67,7 +72,9 @@ void Syntax(char * str)
     "\n"
     "  -TR time        Changes the TR time to a new value (see 'to3d -help').\n"
     "  -notoff         Removes the slice-dependent time-offsets.\n"
-    "               ** WARNING: these 2 options apply only to 3D+time datasets.\n"
+    "  -Torg ttt       Set the time origin of the dataset to value 'ttt'.\n"
+    "                  (Time origins are set to 0 in to3d.)\n"
+    "               ** WARNING: these 3 options apply only to 3D+time datasets.\n"
     "\n"
     "  -newid          Changes the ID code of this dataset as well.\n"
     "\n"
@@ -87,6 +94,11 @@ void Syntax(char * str)
     "                   aset = NULL --> remove the anat parent info from the dataset\n"
     "                   aset = SELF --> set the anat parent to be the dataset itself\n"
     "\n"
+    "  -clear_bstat    Clears the statistics (min and max) stored for each sub-brick\n"
+    "                  in the dataset.  This is useful if you have done something to\n"
+    "                  modify the contents of the .BRIK file associated with this\n"
+    "                  dataset.\n"
+    "\n"
     "  -statpar v ...  Changes the statistical parameters stored in this\n"
     "                  dataset.  See 'to3d -help' for more details.\n"
     "\n"
@@ -103,6 +115,9 @@ void Syntax(char * str)
     "                  You will have to rename the dataset files before trying\n"
     "                  to use '-view'.  If you COPY the files and then use\n"
     "                  '-view', don't forget to use '-newid' as well!\n"
+    "\n"
+    "  -label2 llll    Set the 'label2' field in a dataset .HEAD file to the\n"
+    "                  string 'llll'.  (Can be used as in AFNI window titlebars.)\n"
     "\n"
     "  -byteorder bbb  Sets the byte order string in the header.\n"
     "                  Allowable values for 'bbb' are:\n"
@@ -135,6 +150,16 @@ void Syntax(char * str)
    }
    if( (ii-FIRST_ANAT_TYPE)%2 == 1 ) printf("\n") ;
 
+   printf(           /* 08 Jun 2004 */
+    "-copyaux auxset   Copies the 'auxiliary' data from dataset 'auxset'\n"
+    "                  over the auxiliary data for the dataset being\n"
+    "                  modified.  Auxiliary data comprises sub-brick labels,\n"
+    "                  keywords, and statistics codes.\n"
+    "                  '-copyaux' occurs BEFORE the '-sub' operations below,\n"
+    "                  so you can use those to alter the auxiliary data\n"
+    "                  that is copied from auxset.\n"
+    "\n" ) ;
+
    printf(
     "The options below allow you to attach auxiliary data to sub-bricks\n"
     "in the dataset.  Each option may be used more than once so that\n"
@@ -153,10 +178,22 @@ void Syntax(char * str)
    printf("         type  Description  PARAMETERS\n"
           "         ----  -----------  ----------------------------------------\n" ) ;
    for( ii=FIRST_FUNC_TYPE ; ii <= LAST_FUNC_TYPE ; ii++ ){
-      if( FUNC_IS_STAT(ii) )
-         printf("         %4s  %-11.11s  %s\n",
-                FUNC_prefixstr[ii] , FUNC_typestr[ii]+6 , FUNC_label_stat_aux[ii] ) ;
+     if( FUNC_IS_STAT(ii) )
+       printf("         %4s  %-11.11s  %s\n",
+              FUNC_prefixstr[ii] , FUNC_typestr[ii]+6 , FUNC_label_stat_aux[ii] ) ;
    }
+   printf(
+    "\n"
+    "The following options allow you to modify VOLREG fields:\n"
+    "  -vr_mat <val1> ... <val12>   Use these twelve values for VOLREG_MATVEC_index.\n"
+    "  [-vr_mat_ind <index>]        Index of VOLREG_MATVEC_index field to be modified. Optional, default index is 0.\n"
+    "                               Note: You can only modify one VOLREG_MATVEC_index at a time.\n"
+    "  -vr_center_old <x> <y> <z>   Use these 3 values for VOLREG_CENTER_OLD.\n"
+    "  -vr_center_base <x> <y> <z>  Use these 3 values for VOLREG_CENTER_BASE.\n"
+    "\n"
+   );
+
+   printf("\t\tLast modified: Oct 04/02.\n");
 
    exit(0) ;
 }
@@ -178,6 +215,7 @@ int main( int argc , char * argv[] )
    int new_ydel   = 0 ; float ydel ;
    int new_zdel   = 0 ; float zdel ;
    int new_TR     = 0 ; float TR ;
+   int new_Torg   = 0 ; float Torg ; /* 29 Jan 2003 */
    int new_tunits = 0 ; int tunits ;
    int new_idcode = 0 ;
    int new_nowarp = 0 ;
@@ -188,6 +226,11 @@ int main( int argc , char * argv[] )
    int new_key    = 0 ; char * key ;
    int new_byte_order = 0 ;          /* 25 Apr 1998 */
    int new_toff_sl    = 0 ;          /* 12 Feb 2001 */
+   int clear_bstat    = 0 ;          /* 28 May 2002 */
+   int copyaux        = 0 ;          /* 08 Jun 2004 */
+   THD_3dim_dataset *auxset=NULL ;   /* 08 Jun 2004 */
+   char *new_label2   = NULL ;       /* 21 Dec 2004 */
+
    char str[256] ;
    int  iarg , ii ;
 
@@ -199,6 +242,14 @@ int main( int argc , char * argv[] )
    int nsubkeyword = 0 ; SUBkeyword * subkeyword = NULL ;
    char * cpt ;
    int iv ;
+
+   float volreg_mat[12];
+   float center_old[3];
+   float center_base[3];
+   int Do_volreg_mat = 0, Do_center_old = 0, Do_center_base = 0, volreg_matind = 0, icnt = 0;
+   char *lcpt=NULL;
+
+   /*--- help me if you can? ---*/
 
    if( argc < 2 || strncmp(argv[1],"-help",4) == 0 ) Syntax(NULL) ;
 
@@ -220,6 +271,25 @@ int main( int argc , char * argv[] )
 #if 0
       if( strncmp(argv[iarg],"-v",5) == 0 ){ verbose = 1 ; iarg++ ; continue ; }
 #endif
+
+      /*----- -copyaux auxset [08 Jun 2004] -----*/
+
+      if( strcmp(argv[iarg],"-copyaux") == 0 ){
+
+         if( iarg+1 >= argc ) Syntax("need 1 argument after -copyaux!") ;
+
+         if( auxset != NULL ) Syntax("can't have more than one -copyaux option!") ;
+
+         iarg++ ; copyaux = 1 ;
+         if( strcmp(argv[iarg],"NULL") == 0 ){  /* special case */
+            auxset = NULL ;
+         } else {
+            auxset = THD_open_one_dataset( argv[iarg] ) ;
+            if( auxset == NULL ) Syntax("can't open -copyaux dataset!") ;
+         }
+
+         new_stuff++ ; iarg++ ; continue ;  /* go to next arg */
+      }
 
       /*----- -apar aset [14 Oct 1999] -----*/
 
@@ -244,6 +314,13 @@ int main( int argc , char * argv[] )
                Syntax("can't open -apar dataset!") ;
          }
 
+         new_stuff++ ; iarg++ ; continue ;  /* go to next arg */
+      }
+
+      /*----- -clear_bstat option [28 May 2002] -----*/
+
+      if( strcmp(argv[iarg],"-clear_bstat") == 0 ){
+         clear_bstat = 1 ;
          new_stuff++ ; iarg++ ; continue ;  /* go to next arg */
       }
 
@@ -410,27 +487,27 @@ int main( int argc , char * argv[] )
 
       /** -?origin dist **/
 
-      if( strncmp(argv[iarg],"-xorigin",4) == 0 ){
+      if( strcmp(argv[iarg],"-xorigin") == 0 ){
          if( ++iarg >= argc ) Syntax("need an argument after -xorigin!");
          if( strncmp(argv[iarg],"cen",3) == 0 ) cxorg = 1 ;
          else                                   xorg  = strtod(argv[iarg],NULL) ;
-         new_xorg = 1 ; new_stuff++ ;
+         dxorg = 0 ; new_xorg = 1 ; new_stuff++ ;
          iarg++ ; continue ;  /* go to next arg */
       }
 
-      if( strncmp(argv[iarg],"-yorigin",4) == 0 ){
+      if( strcmp(argv[iarg],"-yorigin") == 0 ){
          if( ++iarg >= argc ) Syntax("need an argument after -yorigin!");
          if( strncmp(argv[iarg],"cen",3) == 0 ) cyorg = 1 ;
          else                                   yorg  = strtod(argv[iarg],NULL) ;
-         new_yorg = 1 ; new_stuff++ ;
+         dyorg = 0 ; new_yorg = 1 ; new_stuff++ ;
          iarg++ ; continue ;  /* go to next arg */
       }
 
-      if( strncmp(argv[iarg],"-zorigin",4) == 0 ){
+      if( strcmp(argv[iarg],"-zorigin") == 0 ){
          if( ++iarg >= argc ) Syntax("need an argument after -zorigin!");
          if( strncmp(argv[iarg],"cen",3) == 0 ) czorg = 1 ;
          else                                   zorg  = strtod(argv[iarg],NULL) ;
-         new_zorg = 1 ; new_stuff++ ;
+         dzorg = 0 ; new_zorg = 1 ; new_stuff++ ;
          iarg++ ; continue ;  /* go to next arg */
       }
 
@@ -470,6 +547,72 @@ int main( int argc , char * argv[] )
          zorg = strtod(argv[iarg],NULL) ; dzorg = 1 ; czorg = 0 ;
          new_zorg = 1 ; new_stuff++ ;
          iarg++ ; continue ;  /* go to next arg */
+      }
+
+      /** 04 Oct 2002: _raw origins **/
+
+      if( strcmp(argv[iarg],"-xorigin_raw") == 0 ){
+         if( ++iarg >= argc ) Syntax("need an argument after -xorigin_raw!");
+         xorg     = strtod(argv[iarg],NULL) ; cxorg = dxorg = 0 ;
+         new_xorg = 2 ; new_stuff++ ;
+         iarg++ ; continue ;  /* go to next arg */
+      }
+
+      if( strcmp(argv[iarg],"-yorigin_raw") == 0 ){
+         if( ++iarg >= argc ) Syntax("need an argument after -yorigin_raw!");
+         yorg     = strtod(argv[iarg],NULL) ; cyorg = dyorg = 0 ;
+         new_yorg = 2 ; new_stuff++ ;
+         iarg++ ; continue ;  /* go to next arg */
+      }
+
+      if( strcmp(argv[iarg],"-zorigin_raw") == 0 ){
+         if( ++iarg >= argc ) Syntax("need an argument after -zorigin_raw!");
+         zorg     = strtod(argv[iarg],NULL) ; czorg = dzorg = 0 ;
+         new_zorg = 2 ; new_stuff++ ;
+         iarg++ ; continue ;  /* go to next arg */
+      }
+
+      /** 04 Oct 2002: zadd VOLREG fields **/
+      if( strcmp(argv[iarg],"-vr_mat") == 0 ){
+         if( iarg+12 >= argc ) Syntax("need 12 arguments after -vr_mat!");
+         icnt = 0;
+         while (icnt < 12) {
+            ++iarg;
+            volreg_mat[icnt] = strtod(argv[iarg], &lcpt) ; if (*lcpt != '\0') Syntax("Bad syntax in list of numbers!");
+            ++icnt;
+         }
+         Do_volreg_mat = 1; new_stuff++ ;
+         ++iarg;
+         continue ;  /* go to next arg */
+      }
+
+      if( strcmp(argv[iarg],"-vr_mat_ind") == 0) {
+         if (++iarg >= argc) Syntax("need 1 argument after -vr_mat_ind!");
+         volreg_matind = (int)strtol(argv[iarg], &lcpt, 10); if (*lcpt != '\0') Syntax("Bad syntax in number argument!");
+         ++iarg;
+         continue ;  /* go to next arg */
+      }
+
+      if( strcmp(argv[iarg],"-vr_cen_old") == 0) {
+         if (iarg+3 >= argc) Syntax("need 3 arguments after -vr_cen_old");
+         ++iarg;
+         center_old[0] = strtod(argv[iarg],&lcpt) ; ++iarg; if (*lcpt != '\0') Syntax("Bad syntax in list of numbers!");
+         center_old[1] = strtod(argv[iarg],&lcpt) ; ++iarg; if (*lcpt != '\0') Syntax("Bad syntax in list of numbers!");
+         center_old[2] = strtod(argv[iarg],&lcpt) ;  if (*lcpt != '\0') Syntax("Bad syntax in list of numbers!");
+         Do_center_old = 1; new_stuff++ ;
+         ++iarg;
+         continue ;  /* go to next arg */
+      }
+
+      if( strcmp(argv[iarg],"-vr_cen_base") == 0) {
+         if (iarg+3 >= argc) Syntax("need 3 arguments after -vr_cen_base");
+         ++iarg;
+         center_base[0] = strtod(argv[iarg],&lcpt) ; ++iarg; if (*lcpt != '\0') Syntax("Bad syntax in list of numbers!");
+         center_base[1] = strtod(argv[iarg],&lcpt) ; ++iarg; if (*lcpt != '\0') Syntax("Bad syntax in list of numbers!");
+         center_base[2] = strtod(argv[iarg],&lcpt) ;  if (*lcpt != '\0') Syntax("Bad syntax in list of numbers!");
+         Do_center_base = 1; new_stuff++ ;
+         ++iarg;
+         continue ;  /* go to next arg */
       }
 
       /** -?del dim **/
@@ -525,6 +668,18 @@ int main( int argc , char * argv[] )
          iarg++ ; continue ;  /* go to next arg */
       }
 
+      /** -Torg (29 Jan 2003) **/
+
+      if( strncmp(argv[iarg],"-Torg",5) == 0 ){
+        char *eptr ;
+        if( iarg+1 >= argc ) Syntax("need an argument after -Torg!");
+        Torg = strtod( argv[++iarg]  , &eptr ) ;
+        if( *eptr != '\0' )
+          fprintf(stderr,"** -Torg %s ends in unexpected character\n",argv[iarg]) ;
+        new_Torg = 1 ; new_stuff++ ;
+        iarg++ ; continue ;  /* go to next arg */
+      }
+
       /** -newid **/
 
       if( strncmp(argv[iarg],"-newid",4) == 0 ){
@@ -567,6 +722,13 @@ int main( int argc , char * argv[] )
       if( strncmp(argv[iarg],"-markers",4) == 0 ){
          new_markers = 1 ; new_stuff++ ;
          iarg++ ; continue ;  /* go to next arg */
+      }
+
+      /** -label2 [21 Dec 2004] **/
+
+      if( strcmp(argv[iarg],"-label2") == 0 ){
+        new_label2 = argv[++iarg] ; new_stuff++ ;
+        iarg++ ; continue ;  /* go to next arg */
       }
 
       /** -view code **/
@@ -631,12 +793,41 @@ int main( int argc , char * argv[] )
    for( ; iarg < argc ; iarg++ ){
       dset = THD_open_one_dataset( argv[iarg] ) ;
       if( dset == NULL ){
-         fprintf(stderr,"** Can't open dataset %s\n",argv[iarg]) ;
+         fprintf(stderr,"** 3drefit: Can't open dataset %s\n",argv[iarg]) ;
          continue ;
       }
-      fprintf(stderr,"Processing dataset %s\n",argv[iarg]) ;
+      if( DSET_IS_MINC(dset) ){
+         fprintf(stderr,"** 3drefit: Can't process MINC dataset %s\n",argv[iarg]);
+         continue ;
+      }
+      if( DSET_IS_ANALYZE(dset) ){
+         fprintf(stderr,"** 3drefit: Can't process ANALYZE dataset %s\n",argv[iarg]);
+         continue ;
+      }
+      if( DSET_IS_1D(dset) ){
+         fprintf(stderr,"** 3drefit: Can't process 1D dataset %s\n",argv[iarg]);
+         continue ;
+      }
+      if( DSET_IS_CTFMRI(dset) || DSET_IS_CTFSAM(dset) ){
+         fprintf(stderr,"** 3drefit: Can't process CTF dataset %s\n",argv[iarg]);
+         continue ;
+      }
+      if( DSET_IS_NIFTI(dset) ){
+         fprintf(stderr,"** 3drefit: Can't process NIFTI dataset %s\n",argv[iarg]);
+         continue ;
+      }
+      if( DSET_IS_MPEG(dset) ){
+         fprintf(stderr,"** 3drefit: Can't process MPEG dataset %s\n",argv[iarg]);
+         continue ;
+      }
+      fprintf(stderr,"++ 3drefit: Processing AFNI dataset %s\n",argv[iarg]) ;
 
       tross_Make_History( "3drefit" , argc,argv, dset ) ;
+
+      /* 21 Dec 2004: -label2 option */
+
+      if( new_label2 != NULL )
+        EDIT_dset_items( dset , ADN_label2 , new_label2 , ADN_none ) ;
 
       /* 14 Oct 1999: change anat parent */
       /* 14 Dec 1999: allow special cases: SELF and NULL */
@@ -648,6 +839,36 @@ int main( int argc , char * argv[] )
       } else if( aset_code == ASET_NULL ){
          EDIT_ZERO_ANATOMY_PARENT_ID( dset ) ;
          dset->anat_parent_name[0] = '\0' ;
+      }
+
+      /* Oct 04/02: zmodify volreg fields */
+      if (Do_volreg_mat) {
+         sprintf(str,"VOLREG_MATVEC_%06d", volreg_matind) ;
+         fprintf (stderr," Modifying %s ...\n", str);
+         THD_set_float_atr( dset->dblk , str , 12 , volreg_mat ) ;
+      }
+
+      if (Do_center_old) {
+         fprintf (stderr," Modifying VOLREG_CENTER_OLD ...\n");
+         THD_set_float_atr( dset->dblk , "VOLREG_CENTER_OLD" , 3 , center_old ) ;
+      }
+
+      if (Do_center_base) {
+        fprintf (stderr," Modifying VOLREG_CENTER_BASE ...\n");
+        THD_set_float_atr( dset->dblk , "VOLREG_CENTER_BASE" , 3 , center_base ) ;
+      }
+
+      /* 28 May 2002: clear brick stats */
+
+      if( clear_bstat ){
+        if( !ISVALID_STATISTIC(dset->stats) ){
+          fprintf(stderr,"++   -clear_bstat: dataset has no brick statistics\n") ;
+        } else {
+          KILL_STATISTIC(dset->stats) ;
+          REMOVEFROM_KILL( dset->kl , dset->stats ) ;
+          REMOVEFROM_KILL( dset->kl , dset->stats->bstat ) ;
+          dset->stats = NULL ;
+        }
       }
 
       /* 25 April 1998 */
@@ -677,23 +898,23 @@ int main( int argc , char * argv[] )
 
       if( dxorg )
          daxes->xxorg += xorg ;
-      else if( duporg )
+      else if( duporg || new_xorg==2 )
          daxes->xxorg = xorg ;
-      else if( new_xorg || new_orient )
+      else if( new_xorg==1 || new_orient )
          daxes->xxorg = (ORIENT_sign[daxes->xxorient] == '+') ? (-xorg) : (xorg) ;
 
       if( dyorg )
          daxes->yyorg += yorg ;
-      else if( duporg )
+      else if( duporg || new_yorg==2 )
          daxes->yyorg = yorg ;
-      else if( new_yorg || new_orient )
+      else if( new_yorg==1 || new_orient )
          daxes->yyorg = (ORIENT_sign[daxes->yyorient] == '+') ? (-yorg) : (yorg) ;
 
       if( dzorg )
          daxes->zzorg += zorg ;
-      else if( duporg )
+      else if( duporg || new_zorg==2 )
          daxes->zzorg = zorg ;
-      else if( new_zorg || new_orient )
+      else if( new_zorg==1 || new_orient )
          daxes->zzorg = (ORIENT_sign[daxes->zzorient] == '+') ? (-zorg) : (zorg) ;
 
       if( new_xdel || new_orient )
@@ -719,6 +940,14 @@ int main( int argc , char * argv[] )
                   dset->taxis->toff_sl[ii] *= frac ;
             }
          }
+      }
+
+      if( new_Torg ){                   /* 29 Jan 2003 */
+        if( dset->taxis == NULL ){
+          fprintf(stderr,"  ** can't process -Torg for this dataset!\n") ;
+        } else {
+          dset->taxis->ttorg = Torg ;
+        }
       }
 
       if( new_toff_sl ){              /* 12 Feb 2001 */
@@ -844,6 +1073,19 @@ int main( int argc , char * argv[] )
       } else if( new_markers ){
             fprintf(stderr,"  ** can't add markers to this dataset\n") ;
       } /* end of markers */
+
+      /*-- 08 Jun 2004: copyaux? --*/
+
+      if( copyaux ){
+        if( auxset != NULL ){
+          THD_copy_datablock_auxdata( auxset->dblk , dset->dblk );
+          INIT_STAT_AUX( dset , MAX_STAT_AUX , auxset->stat_aux ) ;
+        } else {
+          THD_copy_datablock_auxdata( NULL , dset->dblk );
+        }
+      }
+
+      /*-- new aux data? --*/
 
       if( nsublab > 0 ){
          for( ii=0 ; ii < nsublab ; ii++ ){

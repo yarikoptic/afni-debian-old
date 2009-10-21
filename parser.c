@@ -9,29 +9,29 @@
 
 static integer c__3 = 3;
 static integer c__1 = 1;
-static doublereal c_b335 = 0.;
-static doublereal c_b349 = 1.;
-static doublereal c_b350 = 2.;
-static doublereal c_b351 = 3.;
-static doublereal c_b352 = 4.;
-static doublereal c_b353 = 5.;
-static doublereal c_b354 = 6.;
-static doublereal c_b355 = 7.;
-static doublereal c_b356 = 8.;
-static doublereal c_b357 = 9.;
-static doublereal c_b358 = 10.;
-static doublereal c_b359 = 11.;
-static doublereal c_b360 = 12.;
+static doublereal c_b376 = 0.;
+static doublereal c_b390 = 1.;
+static doublereal c_b391 = 2.;
+static doublereal c_b392 = 3.;
+static doublereal c_b393 = 4.;
+static doublereal c_b394 = 5.;
+static doublereal c_b395 = 6.;
+static doublereal c_b396 = 7.;
+static doublereal c_b397 = 8.;
+static doublereal c_b398 = 9.;
+static doublereal c_b399 = 10.;
+static doublereal c_b400 = 11.;
+static doublereal c_b401 = 12.;
 
 /* Subroutine */ int parser_(char *c_expr__, logical *l_print__, integer *
 	num_code__, char *c_code__, ftnlen c_expr_len, ftnlen c_code_len)
 {
     /* Initialized data */
 
-    static integer n_funcargs__[87] = { 1,1,1,1,1,1,2,1,1,1,1,1,1,1,1,1,1,1,1,
+    static integer n_funcargs__[95] = { 1,1,1,1,1,1,2,1,1,1,1,1,1,1,1,1,1,1,1,
 	    2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,-1,-1,-1,2,1,1,1,-1,
 	    4,4,4,2,2,2,3,3,3,1,1,1,2,2,2,3,3,3,3,3,3,3,3,3,2,2,2,1,-1,-1,2,1,
-	    1,1,1,-1,1 };
+	    1,1,1,-1,1,-1,-1,-1,1,1,2,1,1 };
 
     /* Format strings */
     static char fmt_9001[] = "(\002 PARSER error\002,i4,\002: \002,a/1x,a/80"
@@ -56,8 +56,8 @@ static doublereal c_b360 = 12.;
 	    integer *, ftnlen);
     static doublereal val_token__;
     extern integer last_nonblank__(char *, ftnlen);
-    static integer nf, n_code__[1024], n_func__[20], ntoken;
-    static char c_local__[257];
+    static integer nf, n_code__[2048], n_func__[40], ntoken;
+    static char c_local__[10000];
     extern /* Subroutine */ int execute_(integer *, char *, ftnlen);
 #define c8_token__ ((char *)equiv_0)
     static char c_ch__[1];
@@ -130,7 +130,7 @@ static doublereal c_b360 = 12.;
 /* -----------------------------------------------------------------------
  */
     nlen = last_nonblank__(c_expr__, c_expr_len);
-    if (nlen <= 0 || nlen > 256) {
+    if (nlen <= 0 || nlen > 9999) {
 /* !no input, or too much */
 	*num_code__ = 0;
 	goto L8000;
@@ -615,7 +615,7 @@ L9000:
 {
     /* Initialized data */
 
-    static char c_funcname__[32*88] = "SIN                             " 
+    static char c_funcname__[32*96] = "SIN                             " 
 	    "COS                             " "TAN                         "
 	    "    " "ASIN                            " "ACOS                  "
 	    "          " "ATAN                            " "ATAN2           "
@@ -662,8 +662,12 @@ L9000:
 	    "    " "GRAN                            " "URAN                  "
 	    "          " "IRAN                            " "ERAN            "
 	    "                " "LRAN                            " "ORSTAT    "
-	    "                      " "TENT                            " "DUMM"
-	    "Y                           ";
+	    "                      " "TENT                            " "MAD "
+	    "                            " "ARGMAX                          " 
+	    "ARGNUM                          " "NOTZERO                     "
+	    "    " "ISZERO                          " "EQUALS                "
+	    "          " "ISPOSITIVE                      " "ISNEGATIVE      "
+	    "                " "DUMMY                           ";
 
     /* Builtin functions */
     /* Subroutine */ int s_copy(char *, char *, ftnlen, ftnlen);
@@ -758,7 +762,7 @@ L8000:
 {
     /* Initialized data */
 
-    static char c_funcname__[32*88] = "SIN                             " 
+    static char c_funcname__[32*96] = "SIN                             " 
 	    "COS                             " "TAN                         "
 	    "    " "ASIN                            " "ACOS                  "
 	    "          " "ATAN                            " "ATAN2           "
@@ -805,8 +809,12 @@ L8000:
 	    "    " "GRAN                            " "URAN                  "
 	    "          " "IRAN                            " "ERAN            "
 	    "                " "LRAN                            " "ORSTAT    "
-	    "                      " "TENT                            " "DUMM"
-	    "Y                           ";
+	    "                      " "TENT                            " "MAD "
+	    "                            " "ARGMAX                          " 
+	    "ARGNUM                          " "NOTZERO                     "
+	    "    " "ISZERO                          " "EQUALS                "
+	    "          " "ISPOSITIVE                      " "ISNEGATIVE      "
+	    "                " "DUMMY                           ";
 
     /* Format strings */
     static char fmt_5501[] = "(\002(F\002,i1,\002.0)\002)";
@@ -960,7 +968,7 @@ L120:
 */
 
 	ifunc = 1;
-	s_copy(c_funcname__ + 2784, c_id__, 32L, 32L);
+	s_copy(c_funcname__ + 3040, c_id__, 32L, 32L);
 L210:
 	if (! (s_cmp(c_id__, c_funcname__ + (ifunc - 1 << 5), 32L, 32L) != 0))
 		 {
@@ -969,7 +977,7 @@ L210:
 	++ifunc;
 	goto L210;
 L220:
-	if (ifunc <= 87) {
+	if (ifunc <= 95) {
 /* !it is a function */
 	    *ntype = 1008;
 	    *value = (doublereal) ifunc;
@@ -1248,19 +1256,20 @@ doublereal pareval_(integer *num_code__, char *c_code__, doublereal *r8val,
     static char cncode[8];
     extern doublereal median_(integer *, doublereal *);
     static integer ialpha;
-    extern doublereal fibntp_(doublereal *, doublereal *, doublereal *), 
-	    fibnpt_(doublereal *, doublereal *, doublereal *), ficotp_(
-	    doublereal *, doublereal *, doublereal *, doublereal *), ficopt_(
-	    doublereal *, doublereal *, doublereal *, doublereal *), fibttp_(
-	    doublereal *, doublereal *, doublereal *), ficttp_(doublereal *, 
-	    doublereal *), fictpt_(doublereal *, doublereal *), fibtpt_(
-	    doublereal *, doublereal *, doublereal *), fifttp_(doublereal *, 
-	    doublereal *, doublereal *), fiftpt_(doublereal *, doublereal *, 
-	    doublereal *), ficotz_(doublereal *, doublereal *, doublereal *, 
+    extern doublereal argmax_(integer *, doublereal *), fibntp_(doublereal *, 
+	    doublereal *, doublereal *), fibnpt_(doublereal *, doublereal *, 
+	    doublereal *), ficotp_(doublereal *, doublereal *, doublereal *, 
+	    doublereal *), ficopt_(doublereal *, doublereal *, doublereal *, 
+	    doublereal *), fibttp_(doublereal *, doublereal *, doublereal *), 
+	    argnum_(integer *, doublereal *), ficttp_(doublereal *, 
+	    doublereal *), fictpt_(doublereal *, doublereal *), fifttp_(
+	    doublereal *, doublereal *, doublereal *), fiftpt_(doublereal *, 
+	    doublereal *, doublereal *), ficotz_(doublereal *, doublereal *, 
+	    doublereal *, doublereal *), fibtpt_(doublereal *, doublereal *, 
 	    doublereal *), fibntz_(doublereal *, doublereal *, doublereal *), 
-	    figttp_(doublereal *, doublereal *, doublereal *), figtpt_(
-	    doublereal *, doublereal *, doublereal *), fibttz_(doublereal *, 
-	    doublereal *, doublereal *), ficttz_(doublereal *, doublereal *), 
+	    figttp_(doublereal *, doublereal *, doublereal *), fibttz_(
+	    doublereal *, doublereal *, doublereal *), ficttz_(doublereal *, 
+	    doublereal *), figtpt_(doublereal *, doublereal *, doublereal *), 
 	    fifttz_(doublereal *, doublereal *, doublereal *), figttz_(
 	    doublereal *, doublereal *, doublereal *), fipttp_(doublereal *, 
 	    doublereal *), fitttp_(doublereal *, doublereal *), fittpt_(
@@ -1270,7 +1279,8 @@ doublereal pareval_(integer *num_code__, char *c_code__, doublereal *r8val,
 	    doublereal *), fitttz_(doublereal *, doublereal *), fizttz_(
 	    doublereal *);
     static doublereal r8_eval__[128];
-    extern doublereal dai_(doublereal *), dbi_(doublereal *, integer *);
+    extern doublereal dai_(doublereal *), dbi_(doublereal *, integer *), mad_(
+	    integer *, doublereal *);
     static integer itm;
     extern doublereal lor_(integer *, doublereal *);
     static integer ntm;
@@ -1596,6 +1606,21 @@ L1000:
 	r8_eval__[neval - 1] = ztone_(&r8_eval__[neval - 1]);
 /* ...................................................................
 .... */
+    } else if (s_cmp(cncode, "NOTZERO", 8L, 7L) == 0) {
+	r8_eval__[neval - 1] = bool_(&r8_eval__[neval - 1]);
+    } else if (s_cmp(cncode, "ISZERO", 8L, 6L) == 0) {
+	r8_eval__[neval - 1] = 1. - bool_(&r8_eval__[neval - 1]);
+    } else if (s_cmp(cncode, "EQUALS", 8L, 6L) == 0) {
+	--neval;
+	d__1 = r8_eval__[neval - 1] - r8_eval__[neval];
+	r8_eval__[neval - 1] = 1. - bool_(&d__1);
+    } else if (s_cmp(cncode, "ISPOSITI", 8L, 8L) == 0) {
+	r8_eval__[neval - 1] = step_(&r8_eval__[neval - 1]);
+    } else if (s_cmp(cncode, "ISNEGATI", 8L, 8L) == 0) {
+	d__1 = -r8_eval__[neval - 1];
+	r8_eval__[neval - 1] = step_(&d__1);
+/* ...................................................................
+.... */
     } else if (s_cmp(cncode, "AND", 8L, 3L) == 0) {
 	ntm = (integer) r8_eval__[neval - 1];
 	neval -= ntm;
@@ -1604,6 +1629,10 @@ L1000:
 	ntm = (integer) r8_eval__[neval - 1];
 	neval -= ntm;
 	r8_eval__[neval - 1] = median_(&ntm, &r8_eval__[neval - 1]);
+    } else if (s_cmp(cncode, "MAD", 8L, 3L) == 0) {
+	ntm = (integer) r8_eval__[neval - 1];
+	neval -= ntm;
+	r8_eval__[neval - 1] = mad_(&ntm, &r8_eval__[neval - 1]);
     } else if (s_cmp(cncode, "ORSTAT", 8L, 6L) == 0) {
 	ntm = (integer) r8_eval__[neval - 1];
 	neval -= ntm;
@@ -1635,6 +1664,14 @@ L1000:
 	} else {
 	    r8_eval__[neval - 1] = 0.;
 	}
+    } else if (s_cmp(cncode, "ARGMAX", 8L, 6L) == 0) {
+	ntm = (integer) r8_eval__[neval - 1];
+	neval -= ntm;
+	r8_eval__[neval - 1] = argmax_(&ntm, &r8_eval__[neval - 1]);
+    } else if (s_cmp(cncode, "ARGNUM", 8L, 6L) == 0) {
+	ntm = (integer) r8_eval__[neval - 1];
+	neval -= ntm;
+	r8_eval__[neval - 1] = argnum_(&ntm, &r8_eval__[neval - 1]);
 /* ...................................................................
 .... */
     } else if (s_cmp(cncode, "FICO_T2P", 8L, 8L) == 0) {
@@ -1835,28 +1872,30 @@ L8000:
     static integer ialpha, iv;
     static char cncode[8];
     extern doublereal qg_(doublereal *), median_(integer *, doublereal *), 
-	    ficotp_(doublereal *, doublereal *, doublereal *, doublereal *), 
-	    ficopt_(doublereal *, doublereal *, doublereal *, doublereal *), 
-	    fibttp_(doublereal *, doublereal *, doublereal *), ficttp_(
-	    doublereal *, doublereal *), fictpt_(doublereal *, doublereal *), 
-	    fibtpt_(doublereal *, doublereal *, doublereal *), fifttp_(
-	    doublereal *, doublereal *, doublereal *), fiftpt_(doublereal *, 
-	    doublereal *, doublereal *), ficotz_(doublereal *, doublereal *, 
-	    doublereal *, doublereal *), fibntp_(doublereal *, doublereal *, 
-	    doublereal *), fibnpt_(doublereal *, doublereal *, doublereal *), 
-	    fibntz_(doublereal *, doublereal *, doublereal *), fibttz_(
-	    doublereal *, doublereal *, doublereal *), ficttz_(doublereal *, 
+	    argmax_(integer *, doublereal *), ficotp_(doublereal *, 
+	    doublereal *, doublereal *, doublereal *), ficopt_(doublereal *, 
+	    doublereal *, doublereal *, doublereal *), argnum_(integer *, 
+	    doublereal *), ficttp_(doublereal *, doublereal *), fictpt_(
+	    doublereal *, doublereal *), fifttp_(doublereal *, doublereal *, 
+	    doublereal *), fiftpt_(doublereal *, doublereal *, doublereal *), 
+	    ficotz_(doublereal *, doublereal *, doublereal *, doublereal *), 
+	    fibttp_(doublereal *, doublereal *, doublereal *), fibtpt_(
+	    doublereal *, doublereal *, doublereal *), fibntp_(doublereal *, 
+	    doublereal *, doublereal *), fibttz_(doublereal *, doublereal *, 
+	    doublereal *), ficttz_(doublereal *, doublereal *), fibnpt_(
+	    doublereal *, doublereal *, doublereal *), fibntz_(doublereal *, 
+	    doublereal *, doublereal *), fifttz_(doublereal *, doublereal *, 
 	    doublereal *), figttp_(doublereal *, doublereal *, doublereal *), 
-	    figtpt_(doublereal *, doublereal *, doublereal *), fifttz_(
-	    doublereal *, doublereal *, doublereal *), figttz_(doublereal *, 
-	    doublereal *, doublereal *), fipttp_(doublereal *, doublereal *), 
-	    fitttp_(doublereal *, doublereal *), fittpt_(doublereal *, 
-	    doublereal *), orstat_(integer *, integer *, doublereal *), 
-	    fiptpt_(doublereal *, doublereal *), fizttp_(doublereal *), 
+	    figtpt_(doublereal *, doublereal *, doublereal *), fitttp_(
+	    doublereal *, doublereal *), fittpt_(doublereal *, doublereal *), 
+	    orstat_(integer *, integer *, doublereal *), figttz_(doublereal *,
+	     doublereal *, doublereal *), fipttp_(doublereal *, doublereal *),
+	     fiptpt_(doublereal *, doublereal *), fizttp_(doublereal *), 
 	    fiztpt_(doublereal *), fipttz_(doublereal *, doublereal *), 
 	    fitttz_(doublereal *, doublereal *), fizttz_(doublereal *);
     static doublereal r8_eval__[6464]	/* was [64][101] */;
-    extern doublereal dai_(doublereal *), dbi_(doublereal *, integer *);
+    extern doublereal dai_(doublereal *), dbi_(doublereal *, integer *), mad_(
+	    integer *, doublereal *);
     static integer ibv, itm, jtm;
     extern doublereal lor_(integer *, doublereal *);
     static integer ntm;
@@ -1936,32 +1975,132 @@ L8000:
 	i__2 = ivtop;
 	for (iv = ivbot; iv <= i__2; ++iv) {
 	    r8val[iv - ibv - 1] = va[iv];
-	    r8val[iv - ibv + 63] = vb[iv];
-	    r8val[iv - ibv + 127] = vc[iv];
-	    r8val[iv - ibv + 191] = vd[iv];
-	    r8val[iv - ibv + 255] = ve[iv];
-	    r8val[iv - ibv + 319] = vf[iv];
-	    r8val[iv - ibv + 383] = vg[iv];
-	    r8val[iv - ibv + 447] = vh[iv];
-	    r8val[iv - ibv + 511] = vi[iv];
-	    r8val[iv - ibv + 575] = vj[iv];
-	    r8val[iv - ibv + 639] = vk[iv];
-	    r8val[iv - ibv + 703] = vl[iv];
-	    r8val[iv - ibv + 767] = vm[iv];
-	    r8val[iv - ibv + 831] = vn[iv];
-	    r8val[iv - ibv + 895] = vo[iv];
-	    r8val[iv - ibv + 959] = vp[iv];
-	    r8val[iv - ibv + 1023] = vq[iv];
-	    r8val[iv - ibv + 1087] = vr[iv];
-	    r8val[iv - ibv + 1151] = vs[iv];
-	    r8val[iv - ibv + 1215] = vt[iv];
-	    r8val[iv - ibv + 1279] = vu[iv];
-	    r8val[iv - ibv + 1343] = vv[iv];
-	    r8val[iv - ibv + 1407] = vw[iv];
-	    r8val[iv - ibv + 1471] = vx[iv];
-	    r8val[iv - ibv + 1535] = vy[iv];
-	    r8val[iv - ibv + 1599] = vz[iv];
 /* L100: */
+	}
+	i__2 = ivtop;
+	for (iv = ivbot; iv <= i__2; ++iv) {
+	    r8val[iv - ibv + 63] = vb[iv];
+/* L101: */
+	}
+	i__2 = ivtop;
+	for (iv = ivbot; iv <= i__2; ++iv) {
+	    r8val[iv - ibv + 127] = vc[iv];
+/* L102: */
+	}
+	i__2 = ivtop;
+	for (iv = ivbot; iv <= i__2; ++iv) {
+	    r8val[iv - ibv + 191] = vd[iv];
+/* L103: */
+	}
+	i__2 = ivtop;
+	for (iv = ivbot; iv <= i__2; ++iv) {
+	    r8val[iv - ibv + 255] = ve[iv];
+/* L104: */
+	}
+	i__2 = ivtop;
+	for (iv = ivbot; iv <= i__2; ++iv) {
+	    r8val[iv - ibv + 319] = vf[iv];
+/* L105: */
+	}
+	i__2 = ivtop;
+	for (iv = ivbot; iv <= i__2; ++iv) {
+	    r8val[iv - ibv + 383] = vg[iv];
+/* L106: */
+	}
+	i__2 = ivtop;
+	for (iv = ivbot; iv <= i__2; ++iv) {
+	    r8val[iv - ibv + 447] = vh[iv];
+/* L107: */
+	}
+	i__2 = ivtop;
+	for (iv = ivbot; iv <= i__2; ++iv) {
+	    r8val[iv - ibv + 511] = vi[iv];
+/* L108: */
+	}
+	i__2 = ivtop;
+	for (iv = ivbot; iv <= i__2; ++iv) {
+	    r8val[iv - ibv + 575] = vj[iv];
+/* L109: */
+	}
+	i__2 = ivtop;
+	for (iv = ivbot; iv <= i__2; ++iv) {
+	    r8val[iv - ibv + 639] = vk[iv];
+/* L110: */
+	}
+	i__2 = ivtop;
+	for (iv = ivbot; iv <= i__2; ++iv) {
+	    r8val[iv - ibv + 703] = vl[iv];
+/* L111: */
+	}
+	i__2 = ivtop;
+	for (iv = ivbot; iv <= i__2; ++iv) {
+	    r8val[iv - ibv + 767] = vm[iv];
+/* L112: */
+	}
+	i__2 = ivtop;
+	for (iv = ivbot; iv <= i__2; ++iv) {
+	    r8val[iv - ibv + 831] = vn[iv];
+/* L113: */
+	}
+	i__2 = ivtop;
+	for (iv = ivbot; iv <= i__2; ++iv) {
+	    r8val[iv - ibv + 895] = vo[iv];
+/* L114: */
+	}
+	i__2 = ivtop;
+	for (iv = ivbot; iv <= i__2; ++iv) {
+	    r8val[iv - ibv + 959] = vp[iv];
+/* L115: */
+	}
+	i__2 = ivtop;
+	for (iv = ivbot; iv <= i__2; ++iv) {
+	    r8val[iv - ibv + 1023] = vq[iv];
+/* L116: */
+	}
+	i__2 = ivtop;
+	for (iv = ivbot; iv <= i__2; ++iv) {
+	    r8val[iv - ibv + 1087] = vr[iv];
+/* L117: */
+	}
+	i__2 = ivtop;
+	for (iv = ivbot; iv <= i__2; ++iv) {
+	    r8val[iv - ibv + 1151] = vs[iv];
+/* L118: */
+	}
+	i__2 = ivtop;
+	for (iv = ivbot; iv <= i__2; ++iv) {
+	    r8val[iv - ibv + 1215] = vt[iv];
+/* L119: */
+	}
+	i__2 = ivtop;
+	for (iv = ivbot; iv <= i__2; ++iv) {
+	    r8val[iv - ibv + 1279] = vu[iv];
+/* L120: */
+	}
+	i__2 = ivtop;
+	for (iv = ivbot; iv <= i__2; ++iv) {
+	    r8val[iv - ibv + 1343] = vv[iv];
+/* L121: */
+	}
+	i__2 = ivtop;
+	for (iv = ivbot; iv <= i__2; ++iv) {
+	    r8val[iv - ibv + 1407] = vw[iv];
+/* L122: */
+	}
+	i__2 = ivtop;
+	for (iv = ivbot; iv <= i__2; ++iv) {
+	    r8val[iv - ibv + 1471] = vx[iv];
+/* L123: */
+	}
+	i__2 = ivtop;
+	for (iv = ivbot; iv <= i__2; ++iv) {
+	    r8val[iv - ibv + 1535] = vy[iv];
+/* L124: */
+	}
+	i__2 = ivtop;
+	for (iv = ivbot; iv <= i__2; ++iv) {
+	    r8val[iv - ibv + 1599] = vz[iv];
+/* L125: */
 	}
 
 	neval = 0;
@@ -2051,11 +2190,15 @@ L1000:
 		}
 	    } else if (s_cmp(c2code, "/", 8L, 1L) == 0) {
 		ncode += 2;
-		i__2 = ivtop;
-		for (iv = ivbot; iv <= i__2; ++iv) {
-		    if (*r8_val__ != 0.) {
-			r8_eval__[iv - ibv + (neval << 6) - 65] /= *r8_val__;
-		    } else {
+		if (*r8_val__ != 0.) {
+		    *r8_val__ = 1. / *r8_val__;
+		    i__2 = ivtop;
+		    for (iv = ivbot; iv <= i__2; ++iv) {
+			r8_eval__[iv - ibv + (neval << 6) - 65] *= *r8_val__;
+		    }
+		} else {
+		    i__2 = ivtop;
+		    for (iv = ivbot; iv <= i__2; ++iv) {
 			r8_eval__[iv - ibv + (neval << 6) - 65] = 0.;
 		    }
 		}
@@ -2572,6 +2715,40 @@ L1000:
 	    }
 /* ...............................................................
 ........ */
+	} else if (s_cmp(cncode, "NOTZERO", 8L, 7L) == 0) {
+	    i__2 = ivtop;
+	    for (iv = ivbot; iv <= i__2; ++iv) {
+		r8_eval__[iv - ibv + (neval << 6) - 65] = bool_(&r8_eval__[iv 
+			- ibv + (neval << 6) - 65]);
+	    }
+	} else if (s_cmp(cncode, "ISZERO", 8L, 6L) == 0) {
+	    i__2 = ivtop;
+	    for (iv = ivbot; iv <= i__2; ++iv) {
+		r8_eval__[iv - ibv + (neval << 6) - 65] = 1. - bool_(&
+			r8_eval__[iv - ibv + (neval << 6) - 65]);
+	    }
+	} else if (s_cmp(cncode, "EQUALS", 8L, 6L) == 0) {
+	    --neval;
+	    i__2 = ivtop;
+	    for (iv = ivbot; iv <= i__2; ++iv) {
+		d__1 = r8_eval__[iv - ibv + (neval << 6) - 65] - r8_eval__[iv 
+			- ibv + (neval + 1 << 6) - 65];
+		r8_eval__[iv - ibv + (neval << 6) - 65] = 1. - bool_(&d__1);
+	    }
+	} else if (s_cmp(cncode, "ISPOSITI", 8L, 8L) == 0) {
+	    i__2 = ivtop;
+	    for (iv = ivbot; iv <= i__2; ++iv) {
+		r8_eval__[iv - ibv + (neval << 6) - 65] = step_(&r8_eval__[iv 
+			- ibv + (neval << 6) - 65]);
+	    }
+	} else if (s_cmp(cncode, "ISNEGATI", 8L, 8L) == 0) {
+	    i__2 = ivtop;
+	    for (iv = ivbot; iv <= i__2; ++iv) {
+		d__1 = -r8_eval__[iv - ibv + (neval << 6) - 65];
+		r8_eval__[iv - ibv + (neval << 6) - 65] = step_(&d__1);
+	    }
+/* ...............................................................
+........ */
 	} else if (s_cmp(cncode, "AND", 8L, 3L) == 0) {
 	    ntm = (integer) r8_eval__[(neval << 6) - 64];
 	    neval -= ntm;
@@ -2595,6 +2772,18 @@ L1000:
 			    6) - 65];
 		}
 		r8_eval__[iv - ibv + (neval << 6) - 65] = median_(&ntm, scop);
+	    }
+	} else if (s_cmp(cncode, "MAD", 8L, 3L) == 0) {
+	    ntm = (integer) r8_eval__[(neval << 6) - 64];
+	    neval -= ntm;
+	    i__2 = ivtop;
+	    for (iv = ivbot; iv <= i__2; ++iv) {
+		i__3 = ntm;
+		for (jtm = 1; jtm <= i__3; ++jtm) {
+		    scop[jtm - 1] = r8_eval__[iv - ibv + (neval + jtm - 1 << 
+			    6) - 65];
+		}
+		r8_eval__[iv - ibv + (neval << 6) - 65] = mad_(&ntm, scop);
 	    }
 	} else if (s_cmp(cncode, "ORSTAT", 8L, 6L) == 0) {
 	    ntm = (integer) r8_eval__[(neval << 6) - 64];
@@ -2672,6 +2861,30 @@ L1000:
 		} else {
 		    r8_eval__[iv - ibv + (neval << 6) - 65] = 0.;
 		}
+	    }
+	} else if (s_cmp(cncode, "ARGMAX", 8L, 6L) == 0) {
+	    ntm = (integer) r8_eval__[(neval << 6) - 64];
+	    neval -= ntm;
+	    i__2 = ivtop;
+	    for (iv = ivbot; iv <= i__2; ++iv) {
+		i__3 = ntm;
+		for (jtm = 1; jtm <= i__3; ++jtm) {
+		    scop[jtm - 1] = r8_eval__[iv - ibv + (neval + jtm - 1 << 
+			    6) - 65];
+		}
+		r8_eval__[iv - ibv + (neval << 6) - 65] = argmax_(&ntm, scop);
+	    }
+	} else if (s_cmp(cncode, "ARGNUM", 8L, 6L) == 0) {
+	    ntm = (integer) r8_eval__[(neval << 6) - 64];
+	    neval -= ntm;
+	    i__2 = ivtop;
+	    for (iv = ivbot; iv <= i__2; ++iv) {
+		i__3 = ntm;
+		for (jtm = 1; jtm <= i__3; ++jtm) {
+		    scop[jtm - 1] = r8_eval__[iv - ibv + (neval + jtm - 1 << 
+			    6) - 65];
+		}
+		r8_eval__[iv - ibv + (neval << 6) - 65] = argnum_(&ntm, scop);
 	    }
 /* ...............................................................
 ........ */
@@ -3062,7 +3275,7 @@ doublereal iran_(doublereal *top)
 /*  Return an integer uniformly distributed among 0..TOP */
 /* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
  */
-    d__1 = (*top + 1.) * unif_(&c_b335);
+    d__1 = (*top + 1.) * unif_(&c_b376);
     ret_val = d_int(&d__1);
     return ret_val;
 } /* iran_ */
@@ -3087,7 +3300,7 @@ doublereal eran_(doublereal *top)
 /* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
  */
 L100:
-    u1 = unif_(&c_b335);
+    u1 = unif_(&c_b376);
     if (u1 <= 0.) {
 	goto L100;
     }
@@ -3115,7 +3328,7 @@ doublereal lran_(doublereal *top)
 /* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
  */
 L100:
-    u1 = unif_(&c_b335);
+    u1 = unif_(&c_b376);
     if (u1 <= 0. || u1 >= 1.) {
 	goto L100;
     }
@@ -3139,7 +3352,7 @@ doublereal uran_(doublereal *x)
 /* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
  */
 
-    ret_val = *x * unif_(&c_b335);
+    ret_val = *x * unif_(&c_b376);
     return ret_val;
 } /* uran_ */
 
@@ -3171,11 +3384,11 @@ doublereal gran2_(doublereal *b, doublereal *s)
 
     if (ip == 0) {
 L100:
-	u1 = unif_(&c_b335);
+	u1 = unif_(&c_b376);
 	if (u1 <= 0.) {
 	    goto L100;
 	}
-	u2 = unif_(&c_b335);
+	u2 = unif_(&c_b376);
 	ret_val = *b + *s * sqrt(log(u1) * -2.) * sin(u2 * 6.2831853);
 	ip = 1;
     } else {
@@ -3200,10 +3413,10 @@ doublereal gran1_(doublereal *b, doublereal *s)
 /* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
  */
 
-    g = unif_(&c_b349) - 6. + unif_(&c_b350) + unif_(&c_b351) + unif_(&c_b352)
-	     + unif_(&c_b353) + unif_(&c_b354) + unif_(&c_b355) + unif_(&
-	    c_b356) + unif_(&c_b357) + unif_(&c_b358) + unif_(&c_b359) + 
-	    unif_(&c_b360);
+    g = unif_(&c_b390) - 6. + unif_(&c_b391) + unif_(&c_b392) + unif_(&c_b393)
+	     + unif_(&c_b394) + unif_(&c_b395) + unif_(&c_b396) + unif_(&
+	    c_b397) + unif_(&c_b398) + unif_(&c_b399) + unif_(&c_b400) + 
+	    unif_(&c_b401);
     ret_val = *b + *s * g;
     return ret_val;
 } /* gran1_ */
@@ -3224,7 +3437,7 @@ doublereal gran_(doublereal *b, doublereal *s)
 /* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
  */
 
-    uu = unif_(&c_b335);
+    uu = unif_(&c_b376);
     if (uu <= .5) {
 	ret_val = gran1_(b, s);
     } else {
@@ -3542,6 +3755,115 @@ doublereal median_(integer *n, doublereal *x)
 
 
 
+doublereal mad_(integer *n, doublereal *x)
+{
+    /* System generated locals */
+    integer i__1;
+    doublereal ret_val, d__1;
+
+    /* Local variables */
+    extern doublereal median_(integer *, doublereal *);
+    static integer it;
+    static doublereal tmp;
+
+
+    /* Parameter adjustments */
+    --x;
+
+    /* Function Body */
+    if (*n == 1) {
+	ret_val = 0.;
+	return ret_val;
+    } else if (*n == 2) {
+	ret_val = (d__1 = x[1] - x[2], abs(d__1)) * .5;
+	return ret_val;
+    }
+
+    tmp = median_(n, &x[1]);
+    i__1 = *n;
+    for (it = 1; it <= i__1; ++it) {
+	x[it] = (d__1 = x[it] - tmp, abs(d__1));
+/* L100: */
+    }
+    ret_val = median_(n, &x[1]);
+    return ret_val;
+} /* mad_ */
+
+
+
+
+doublereal argmax_(integer *n, doublereal *x)
+{
+    /* System generated locals */
+    integer i__1;
+    doublereal ret_val;
+
+    /* Local variables */
+    static integer i__, it, nz;
+    static doublereal tmp;
+
+
+    /* Parameter adjustments */
+    --x;
+
+    /* Function Body */
+    tmp = x[1];
+    it = 1;
+    nz = 0;
+    if (tmp == 0.) {
+	nz = 1;
+    }
+    i__1 = *n;
+    for (i__ = 2; i__ <= i__1; ++i__) {
+	if (x[i__] > tmp) {
+	    it = i__;
+	    tmp = x[i__];
+	}
+	if (x[i__] == 0.) {
+	    ++nz;
+	}
+/* L100: */
+    }
+    if (nz == *n) {
+	ret_val = 0.;
+    } else {
+	ret_val = (doublereal) it;
+    }
+    return ret_val;
+} /* argmax_ */
+
+
+
+
+doublereal argnum_(integer *n, doublereal *x)
+{
+    /* System generated locals */
+    integer i__1;
+    doublereal ret_val;
+
+    /* Local variables */
+    static integer i__, nz;
+
+
+    /* Parameter adjustments */
+    --x;
+
+    /* Function Body */
+    nz = 0;
+    i__1 = *n;
+    for (i__ = 1; i__ <= i__1; ++i__) {
+	if (x[i__] != 0.) {
+	    ++nz;
+	}
+/* L100: */
+    }
+    ret_val = (doublereal) nz;
+    return ret_val;
+} /* argnum_ */
+
+
+
+
 doublereal hmode_(integer *n, doublereal *x)
 {
     /* System generated locals */
@@ -3834,10 +4156,10 @@ doublereal dbesk1_(doublereal *x)
     integer s_wsfe(cilist *), e_wsfe(void);
 
     /* Fortran I/O blocks */
-    static cilist io___110 = { 0, 6, 0, fmt_999, 0 };
+    static cilist io___118 = { 0, 6, 0, fmt_999, 0 };
 
 
-    s_wsfe(&io___110);
+    s_wsfe(&io___118);
     e_wsfe();
     return 0;
 } /* qqqerr_ */

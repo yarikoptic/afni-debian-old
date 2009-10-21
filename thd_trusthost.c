@@ -11,12 +11,14 @@
 #include <stdio.h>
 
 #include "afni_environ.h"
+#include "Amalloc.h"
 
 static int     host_num  = 0 ;
 static char ** host_list = NULL ;
 
 static char * init_hosts[] = { /* Initial list of OK computers */
     "141.106.106." ,           /* MCW computers (we're so trustworthy) */
+    "128.231."     ,           /* NIH computers (also very trustworthy) */
     "127.0.0.1"    ,           /* localhost is always OK */
     "192.168."                 /* private class B networks */
 } ;
@@ -48,7 +50,7 @@ static char * xxx_name_to_inet( char * host )
    str = inet_ntoa(*((struct in_addr *)(hostp->h_addr))) ;
    if( str == NULL || str[0] == '\0' ) return NULL ;
 
-   ll = strlen(str) ; iname = malloc(ll+1) ; strcpy(iname,str) ;
+   ll = strlen(str) ; iname = AFMALL(char, ll+1) ; strcpy(iname,str) ;
    return iname ;
 }
 

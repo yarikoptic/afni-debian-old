@@ -22,66 +22,72 @@
 	#define NOWAYXCORCOEF 0					/* A flag value indicating that something lethal went on */
 #endif
 
-int Read_file (float *x,char *f_name,int n_points);
+/* do not change these three*/
+#define METH_SECONDS 0
+#define METH_DEGREES 1
+#define METH_RADIANS 2
 
-void linear_reg (float *x,float *y,int size,float *a,float *b,int *err);
 
-int equal_strings (char *s1,char *s2);
+static int Read_file (float *x,char *f_name,int n_points);
 
-int float_file_size (char *f_name);
+static void linear_reg (float *x,float *y,int size,float *a,float *b,int *err);
 
-void error_message (char *origin,char *cause,int ext);
+static int equal_strings (char *s1,char *s2);
 
-char **allocate2D (int rows,int cols,int element_size);
+static int float_file_size (char *f_name);
 
-void free2D(char **a,int rows);
+static void error_message (char *origin,char *cause,int ext);
 
-void linear_interp (float *x1,float *y1,float *x2,float *y2,float *x,float *y,int ln);
+static char **allocate2D (int rows,int cols,int element_size);
 
-void float_to_complex (float *x,COMPLEX *xc,int ln);
+static void free2D(char **a,int rows);
 
-void c_conj (COMPLEX *x,COMPLEX *y,int ln);
+static void linear_interp (float *x1,float *y1,float *x2,float *y2,float *x,float *y,int ln);
 
-void c_get (COMPLEX *x,float *y,int p,int ln);
+static void float_to_complex (float *x,COMPLEX *xc,int ln);
 
-void c_scale (COMPLEX *x,COMPLEX *y,float scl,int ln);
+static void c_conj (COMPLEX *x,COMPLEX *y,int ln);
 
-void c_padd (COMPLEX *x,COMPLEX *y,COMPLEX pad_val,int ix,int lnx,int lny);
+static void c_get (COMPLEX *x,float *y,int p,int ln);
 
-void c_mult (COMPLEX *x,COMPLEX *y,COMPLEX *z,int ln);
+static void c_scale (COMPLEX *x,COMPLEX *y,float scl,int ln);
 
-void detrend (float *y,float *yd,int lny,float *a,float *b);
+static void c_padd (COMPLEX *x,COMPLEX *y,COMPLEX pad_val,int ix,int lnx,int lny);
 
-void padd (float *x,float *y,float pad_val,int ix,int lnx,int lny);
+static void c_mult (COMPLEX *x,COMPLEX *y,COMPLEX *z,int ln);
 
-void hanning (float *x,int l,int opt);
+static void detrend (float *y,float *yd,int lny,float *a,float *b);
 
-float punwrap (float p,int opt );
+static void padd (float *x,float *y,float pad_val,int ix,int lnx,int lny);
 
-float Lagrange_interp (float *x,float *y,float xi,int ln);
+static void hanning (float *x,int l,int opt);
 
-void f_mult (float *x,float *y,float *z,int ln);	
+static float punwrap (float p,int opt );
+
+static float Lagrange_interp (float *x,float *y,float xi,int ln);
+
+static void f_mult (float *x,float *y,float *z,int ln);	
 	
-int hilbertdelay_V2 (float *x,float *y,int lng_full,int Nseg,int Pover,\
+static int hilbertdelay_V2 (float *x,float *y,int lng_full,int Nseg,int Pover,\
                        int opt,int dtrnd, float Dtx, int biasrem,\
                        float *del,float *slp,float *xcor,float *xcorCoef,\
                        float *vx, float *vy);
                        
-void hunwrap (float del, float fs, float T, float slp, int wrp, int unt, float *delu );
+static void hunwrap (float del, float fs, float T, float slp, int wrp, int unt, float *delu );
 
-int isarg (int argc, char *argv[], char *probe);
+static int isarg (int argc, char *argv[], char *probe);
 
-float mean_array (float *ar,int size);
+static float mean_array (float *ar,int size);
 
-void zeromean (float *x, float *y, int ln );
+static void zeromean (float *x, float *y, int ln );
 
-void disp_comp_vect (COMPLEX *v,int l);
+static void disp_comp_vect (COMPLEX *v,int l);
 
-void disp_vect (float *v,int l);
+static void disp_vect (float *v,int l);
 
-int is_vect_null ( float * v , int npts );
+static int is_vect_null ( float * v , int npts );
 
-int write_float (float *x,char *f_name,int n_points);
+static int write_float (float *x,char *f_name,int n_points);
 
 
 /* definition and declaration part to suport the main algorithm */
@@ -92,7 +98,7 @@ int write_float (float *x,char *f_name,int n_points);
 /* support functions declaration for main algorithm             */
 /* -----------------------START---------------------------------*/
 
-void error_message (char *s1,char *s2,int ext)
+static void error_message (char *s1,char *s2,int ext)
  
  {
  
@@ -123,7 +129,7 @@ This function was adapted from DSP_in_C library functions
                                 Ziad Saad       Oct_21_96
 *************************************************************************/
 
-char **allocate2D (int rows,int cols,int element_size)
+static char **allocate2D (int rows,int cols,int element_size)
 
 {
     int i;
@@ -213,7 +219,7 @@ This function was adapted from DSP_in_C library functions
                                 Ziad Saad                              Oct_22_96
 *************************************************************************/
 
-void free2D(char **a,int rows)
+static void free2D(char **a,int rows)
     
 {
     int i;
@@ -230,7 +236,7 @@ void free2D(char **a,int rows)
 
 /*-----------------------------------------------------------------------------------*/	
 
-void hanning (float *x,int l,int opt)
+static void hanning (float *x,int l,int opt)
         {
                 int i;
                 float arg;
@@ -250,7 +256,7 @@ void hanning (float *x,int l,int opt)
 
 /*-----------------------------------------------------------------------------------*/	
 
-void detrend (float *y,float *yd,int lny,float *a,float *b)
+static void detrend (float *y,float *yd,int lny,float *a,float *b)
 
         {
          int i;
@@ -281,7 +287,7 @@ void detrend (float *y,float *yd,int lny,float *a,float *b)
 
 /*-----------------------------------------------------------------------------------*/	
 
-void padd (float *x,float *y,float pad_val,int ix,int lnx,int lny)
+static void padd (float *x,float *y,float pad_val,int ix,int lnx,int lny)
         {
                 int i,di;
                 float *tmp;
@@ -343,9 +349,7 @@ void fft(COMPLEX *x, int m)
 
 *************************************************************************/
 
-void fft(x,m)
-    COMPLEX *x;
-    int m;
+static void fft(COMPLEX *x,int m)
 {
     static COMPLEX *w;           /* used to store the w complex array */
     static int mstore = 0;       /* stores m for future reference */
@@ -470,9 +474,7 @@ void ifft(COMPLEX *x, int m)
 
 *************************************************************************/
 
-void ifft(x,m)
-    COMPLEX *x;
-    int m;
+static void ifft(COMPLEX *x,int m)
 {
     static COMPLEX *w;           /* used to store the w complex array */
     static int mstore = 0;       /* stores m for future reference */
@@ -605,10 +607,7 @@ void rfft(float *x, COMPLEX *y, int m)
 
 ***************************************************************/
 
-void rfft(x,y,m)
-    float      *x;
-    COMPLEX    *y;
-    int        m;
+static void rfft(float *x,COMPLEX *y,int m)
 {
     static    COMPLEX  *cf;
     static    int      mstore = 0;
@@ -671,7 +670,7 @@ void rfft(x,y,m)
 
 /*-----------------------------------------------------------------------------------*/	
 
-void float_to_complex (float *x,COMPLEX *xc,int ln)
+static void float_to_complex (float *x,COMPLEX *xc,int ln)
 
         {
          int i;
@@ -694,7 +693,7 @@ void float_to_complex (float *x,COMPLEX *xc,int ln)
 
 /*-----------------------------------------------------------------------------------*/	
 
-void c_conj (COMPLEX *x,COMPLEX *y,int ln)
+static void c_conj (COMPLEX *x,COMPLEX *y,int ln)
         {
                 int i;
                 if ((ln-1) == 0)
@@ -716,7 +715,7 @@ void c_conj (COMPLEX *x,COMPLEX *y,int ln)
 
 /*-----------------------------------------------------------------------------------*/	
 
-void c_mult (COMPLEX *x,COMPLEX *y,COMPLEX *z,int ln)
+static void c_mult (COMPLEX *x,COMPLEX *y,COMPLEX *z,int ln)
         {
                 int i;
                 COMPLEX t;
@@ -744,7 +743,7 @@ void c_mult (COMPLEX *x,COMPLEX *y,COMPLEX *z,int ln)
 
 /*-----------------------------------------------------------------------------------*/	
 
-void c_padd (COMPLEX *x,COMPLEX *y,COMPLEX pad_val,int ix,int lnx,int lny)
+static void c_padd (COMPLEX *x,COMPLEX *y,COMPLEX pad_val,int ix,int lnx,int lny)
         {
                 int i,di;
                 COMPLEX *tmp;
@@ -798,7 +797,7 @@ void c_padd (COMPLEX *x,COMPLEX *y,COMPLEX pad_val,int ix,int lnx,int lny)
 
 /*-----------------------------------------------------------------------------------*/	
 
-void c_scale (COMPLEX *x,COMPLEX *y,float scl,int ln)   
+static void c_scale (COMPLEX *x,COMPLEX *y,float scl,int ln)   
         {
                 int i;
                 if ((ln-1) == 0)
@@ -820,7 +819,7 @@ void c_scale (COMPLEX *x,COMPLEX *y,float scl,int ln)
 
 /*-----------------------------------------------------------------------------------*/	
 
-void c_get (COMPLEX *x,float *y,int p,int ln)
+static void c_get (COMPLEX *x,float *y,int p,int ln)
 
         {
                         int i;
@@ -843,7 +842,7 @@ void c_get (COMPLEX *x,float *y,int p,int ln)
 
 /*-----------------------------------------------------------------------------------*/	
 
-void linear_interp (float *x1,float *y1,float *x2,float *y2,float *x,float *y,int ln)
+static void linear_interp (float *x1,float *y1,float *x2,float *y2,float *x,float *y,int ln)
 
    {int i;
         
@@ -873,7 +872,7 @@ void linear_interp (float *x1,float *y1,float *x2,float *y2,float *x,float *y,in
 
 /*-----------------------------------------------------------------------------------*/	
 
-int equal_strings (char *s1,char *s2)
+static int equal_strings (char *s1,char *s2)
 
  {
    int i=0;
@@ -892,7 +891,7 @@ int equal_strings (char *s1,char *s2)
 
 /*-----------------------------------------------------------------------------------*/	
 
-int float_file_size (char *f_name)
+static int float_file_size (char *f_name)
    
     { 
       
@@ -922,7 +921,7 @@ int float_file_size (char *f_name)
 
 /*-----------------------------------------------------------------------------------*/	
 
-int Read_file (float *x,char *f_name,int n_points)
+static int Read_file (float *x,char *f_name,int n_points)
    
     { /* pass a 0 to n_points if you want to read till EOF */
      int cnt=0,ex,dec;
@@ -977,7 +976,7 @@ int Read_file (float *x,char *f_name,int n_points)
 
 /*-----------------------------------------------------------------------------------*/	
 
-void linear_reg (float *x,float *y,int size,float *a,float *b,int *err)
+static void linear_reg (float *x,float *y,int size,float *a,float *b,int *err)
 
         {/* linear_reg*/
           int i;
@@ -1014,7 +1013,7 @@ void linear_reg (float *x,float *y,int size,float *a,float *b,int *err)
 
 /*-----------------------------------------------------------------------------------*/	
 
-float punwrap (float p,int opt )
+static float punwrap (float p,int opt )
 {/*punwrap*/
  float topi,alf;
  
@@ -1034,7 +1033,7 @@ float punwrap (float p,int opt )
 
 /*-----------------------------------------------------------------------------------*/	
 
-float Lagrange_interp (float *x,float *y,float xi,int ln)
+static float Lagrange_interp (float *x,float *y,float xi,int ln)
  
  	{
  		int i,j;
@@ -1058,7 +1057,7 @@ float Lagrange_interp (float *x,float *y,float xi,int ln)
  	}
  
 /*-----------------------------------------------------------------------------------*/	
-int isarg (int argc, char *argv[], char *probe)
+static int isarg (int argc, char *argv[], char *probe)
 {/*isarg*/
  	int i=1;
  		
@@ -1076,7 +1075,7 @@ int isarg (int argc, char *argv[], char *probe)
 }/*isarg*/
 
 /*-----------------------------------------------------------------------------------*/	
-float mean_array (float *ar,int size)
+static float mean_array (float *ar,int size)
 	 
 	{/*Mean_array ()*/
 	 
@@ -1098,7 +1097,7 @@ float mean_array (float *ar,int size)
 	}/*Mean_array ()*/
 
 /*-----------------------------------------------------------------------------------*/	
-void zeromean (float *x, float *y, int ln )
+static void zeromean (float *x, float *y, int ln )
 {/*zeromean*/
  	int i;
  	float meanx;
@@ -1113,7 +1112,7 @@ void zeromean (float *x, float *y, int ln )
 }/*zeromean*/
 
 /*-----------------------------------------------------------------------------------*/	
-void f_mult (float *x,float *y,float *z,int ln)	
+static void f_mult (float *x,float *y,float *z,int ln)	
 	{
 		int i;
 		if ((ln-1) == 0)
@@ -1141,7 +1140,7 @@ void f_mult (float *x,float *y,float *z,int ln)
 	larger than one 1/2 a segment length*/
 
 /* The difference between 	hilbertdelay_V2 and hilbertdelay is that the parameter negslp is not used anymore in V2 version */
-int hilbertdelay_V2 (float *x,float *y,int lng_full,int Nseg,int Pover,int opt,int dtrnd, float Dtx, int biasrem, float *del,float *slp,float *xcor,float *xcorCoef, float *vx, float *vy)
+static int hilbertdelay_V2 (float *x,float *y,int lng_full,int Nseg,int Pover,int opt,int dtrnd, float Dtx, int biasrem, float *del,float *slp,float *xcor,float *xcorCoef, float *vx, float *vy)
 	{	
 	 static int i_call=0,olng,m,lng_use,lng,strt,nd,sg,cnt,maxdel = 0;
 	 static COMPLEX *fftx,*ffty,*Pxy,*fftyc,*fftxc,*Pxx,*Pyy,*Rxx,*Ryy,**fftyca,**Pxya,**Rxxa,**Ryya;
@@ -1572,7 +1571,7 @@ else if (opt == 0)
 
 /*-----------------------------------------------------------------------------------*/	
 
-void hunwrap (float del, float fs, float T, float slp, int wrp, int unt, float *delu )
+static void hunwrap (float del, float fs, float T, float slp, int wrp, int unt, float *delu )
 {/*hunwrap*/
 
 	float pi = 3.1416, tmp;
@@ -1617,8 +1616,8 @@ void hunwrap (float del, float fs, float T, float slp, int wrp, int unt, float *
 									del = tmp * T / 360.0;		/* from polar to time */
 								}/* map of (0-pi) to (0-pi) and (pi-2pi) to (pi-0) */
 
- 			if (unt == 1) del = del * 360.0 / T;		/* from time to polar angle in degrees*/
-			if (unt == 2) del = del * 2 * pi / T;		/* from time to polar angle in degrees*/	
+ 			if (unt == METH_DEGREES) del = del * 360.0 / T;		/* from time to polar angle in degrees*/
+			if (unt == METH_RADIANS) del = del * 2 * pi / T;		/* from time to polar angle in degrees*/	
 	}/* Period unwrapping possible */
 	
 	*delu = del;
@@ -1628,7 +1627,7 @@ void hunwrap (float del, float fs, float T, float slp, int wrp, int unt, float *
  
 /*-----------------------------------------------------------------------------------*/	
 
-void disp_comp_vect (COMPLEX *v,int l)
+static void disp_comp_vect (COMPLEX *v,int l)
         {
                 int i;
 
@@ -1652,7 +1651,7 @@ void disp_comp_vect (COMPLEX *v,int l)
 
 /*-----------------------------------------------------------------------------------*/	
 
-void disp_vect (float *v,int l)
+static void disp_vect (float *v,int l)
         {
                 int i;
 
@@ -1675,7 +1674,7 @@ void disp_vect (float *v,int l)
 
 /*-----------------------------------------------------------------------------------*/	
 
-int is_vect_null ( float * v , int npts )
+static int is_vect_null ( float * v , int npts )
         {/*is_vect_null*/
         
         int i , is_ts_null;
@@ -1698,7 +1697,7 @@ int is_vect_null ( float * v , int npts )
 /*-----------------------------------------------------------------------------------*/	
 
 
-int write_float (float *x,char *f_name,int n_points)
+static int write_float (float *x,char *f_name,int n_points)
 	
    
     { /*  */

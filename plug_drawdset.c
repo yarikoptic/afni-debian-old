@@ -23,6 +23,7 @@ void DRAW_make_widgets(void) ;
 
 void DRAW_done_CB  ( Widget , XtPointer , XtPointer ) ;
 void DRAW_undo_CB  ( Widget , XtPointer , XtPointer ) ;
+void DRAW_redo_CB  ( Widget , XtPointer , XtPointer ) ;  /* 19 Nov 2003 */
 void DRAW_help_CB  ( Widget , XtPointer , XtPointer ) ;
 void DRAW_quit_CB  ( Widget , XtPointer , XtPointer ) ;
 void DRAW_save_CB  ( Widget , XtPointer , XtPointer ) ;
@@ -35,6 +36,10 @@ void DRAW_fillin_CB( Widget , XtPointer , XtPointer ) ; /* 19 Mar 2001 */
 
 void DRAW_ttatlas_CB( Widget , XtPointer , XtPointer ) ; /* 22 Aug 2001 */
 
+void DRAW_label_CB( Widget , XtPointer , XtPointer ) ; /* 15 Oct 2003 */
+void DRAW_label_EV( Widget , XtPointer , XEvent * , Boolean * ) ;
+void DRAW_attach_dtable( Dtable *, char *, THD_3dim_dataset * ) ;
+
 void DRAW_receiver( int , int , void * , void * ) ;
 int  DRAW_into_dataset( int , int * , int * , int * , void * ) ;
 void DRAW_finalize_dset_CB( Widget , XtPointer , MCW_choose_cbs * ) ;
@@ -42,9 +47,23 @@ void DRAW_2dfiller( int nx , int ny , int ix , int jy , byte * ar ) ;
 
 void DRAW_saveas_finalize_CB( Widget , XtPointer , MCW_choose_cbs * ) ;
 
+static void DRAW_2D_expand( int, int *, int *, int *, int, int *, int ** ) ;  /* 07 Oct 2002 */
+static void DRAW_3D_expand( int, int *, int *, int *, int, int *, int ** ) ;  /* 07 Oct 2002 */
+
+static void DRAW_2D_circle( int, int *, int *, int *, int, int *, int ** ) ;  /* 16 Oct 2002 */
+static void DRAW_3D_sphere( int, int *, int *, int *, int, int *, int ** ) ;  /* 16 Oct 2002 */
+
+#define USE_COLLAPSAR
+#ifdef  USE_COLLAPSAR
+static void DRAW_collapsar( int * , int * ) ;                                 /* 21 Oct 2002 */
+#endif
+
 static PLUGIN_interface * plint = NULL ;
 
 static int infill_mode = 0 ;
+
+void DRAW_set_value_label(void) ;
+char * DRAW_value_string( float val ) ;
 
 /***********************************************************************
    Set up the interface to the user.  Note that we bypass the
@@ -52,6 +71,8 @@ static int infill_mode = 0 ;
    directly call the main function, which will create a custom
    set of interface widgets.
 ************************************************************************/
+
+DEFINE_PLUGIN_PROTOTYPE
 
 PLUGIN_interface * PLUGIN_init( int ncall )
 {
@@ -75,8 +96,22 @@ PLUGIN_interface * PLUGIN_init( int ncall )
 /* Interface widgets */
 
 static Widget shell=NULL , rowcol , info_lab , choose_pb ;
-static Widget done_pb , undo_pb , help_pb , quit_pb , save_pb , saveas_pb ;
-static MCW_arrowval * value_av , * color_av , * mode_av ;
+static Widget done_pb, undo_pb,redo_pb, help_pb, quit_pb, save_pb, saveas_pb ;
+static MCW_arrowval *value_av , *color_av , *mode_av ;
+static MCW_arrowval *rad_av ;                         /* 16 Oct 2002 */
+static Widget label_textf , label_label ;             /* 15 Oct 2003 */
+
+#if 0
+# define ENABLE_rad_av \
+   AV_SENSITIZE( rad_av , (mode_ival >= FIRST_RAD_MODE && mode_ival <= LAST_RAD_MODE) )
+#else
+# define ENABLE_rad_av                                                   \
+   do{ if( mode_ival >= FIRST_RAD_MODE && mode_ival <= LAST_RAD_MODE )  \
+         XtManageChild( rad_av->wrowcol ) ;                             \
+       else                                                             \
+         XtUnmanageChild( rad_av->wrowcol ) ;                           \
+   } while(0)
+#endif
 
 static MCW_arrowval * fillin_dir_av , * fillin_gap_av ; /* 19 Mar 2001 */
 static Widget fillin_doit_pb ;
@@ -130,18 +165,80 @@ THD_3dim_dataset * DRAW_copy_dset( THD_3dim_dataset *, int,int,int ) ;
 #define MODE_FLOOD_NZ    4
 #define MODE_FLOOD_ZERO  5   /* 30 Jan 1999 */
 #define MODE_ZERO_VAL    6   /* 31 Jan 1999 */
-#define MODE_FILLED      7   /* 25 Sep 2001 */
+#define MODE_FLOOD_VZ    7   /* 30 Apr 2002 */
+#define MODE_FILLED      8   /* 25 Sep 2001 */
+
+#define MODE_2D_NN1      9   /* 07 Oct 2002 */
+#define MODE_2D_NN2     10
+#define MODE_2D_NN3     11
+#define MODE_2D_NN4     12
+#define MODE_2D_NN5     13
+
+#define MODE_3D_NN1     14
+#define MODE_3D_NN2     15
+#define MODE_3D_NN3     16
+#define MODE_3D_NN4     17
+#define MODE_3D_NN5     18
+#define MODE_3D_NN6     19
+#define MODE_3D_5x5     20   /* 08 Oct 2002 */
+
+#define MODE_2D_CIRC    21   /* 16 Oct 2002 */
+#define MODE_3D_SPHR    22   /* 16 Oct 2002 */
+
+#define FIRST_2D_MODE   MODE_2D_NN1
+#define LAST_2D_MODE    MODE_2D_NN5
+
+#define FIRST_3D_MODE   MODE_3D_NN1
+#define LAST_3D_MODE    MODE_3D_5x5
+
+#define FIRST_RAD_MODE  MODE_2D_CIRC
+#define LAST_RAD_MODE   MODE_3D_SPHR
 
 static char * mode_strings[] = {
-  "Open Curve"   , "Closed Curve"   , "Points"      ,
-  "Flood->Value" , "Flood->Nonzero" , "Flood->Zero" , "Zero->Value" ,
-  "Filled Curve"
+  "Open Curve"       ,                 /* MODE_CURVE      */
+  "Closed Curve"     ,                 /* MODE_CLOSED     */
+  "Points"           ,                 /* MODE_POINTS     */
+  "Flood->Value"     ,                 /* MODE_FLOOD_VAL  */
+  "Flood->Nonzero"   ,                 /* MODE_FLOOD_NZ   */
+  "Flood->Zero"      ,                 /* MODE_FLOOD_ZERO */
+  "Zero->Value"      ,                 /* MODE_ZERO_VAL   */
+  "Flood->Val/Zero"  ,                 /* MODE_FLOOD_VZ   */
+  "Filled Curve"     ,                 /* MODE_FILLED     */
+
+  " 2D Nbhd: 1st NN" ,                 /* 07 Oct 2002 */
+  " 2D Nbhd: 2nd NN" ,
+  " 2D Nbhd: 3rd NN" ,
+  " 2D Nbhd: 4th NN" ,
+  " 2D Nbhd: 5th NN" ,
+
+  "*3D Nbhd: 1st NN" ,
+  "*3D Nbhd: 2nd NN" ,
+  "*3D Nbhd: 3rd NN" ,
+  "*3D Nbhd: 4th NN" ,
+  "*3D Nbhd: 5th NN" ,
+  "*3D Nbhd: 6th NN" ,
+  "*3D Nbhd: 5x5x5"  ,
+
+  " 2D Circle"       ,                 /* 16 Oct 2002 */
+  " 3D Sphere"
+} ;
+
+static int  mode_width[] = {    /* 08 Oct 2002: line width for button2 drawing */
+  2,2 , 0,0,0,0,0,0 , 2 ,
+  3,3,5,5,7 ,
+  3,3,3,5,5,5,5 ,
+  2,2
 } ;
 
 static int    mode_ints[] = {
   DRAWING_LINES  , DRAWING_FILL   , DRAWING_POINTS ,
   DRAWING_POINTS , DRAWING_POINTS , DRAWING_POINTS , DRAWING_POINTS ,
-  DRAWING_FILL
+  DRAWING_POINTS ,
+  DRAWING_FILL   ,
+  DRAWING_LINES  , DRAWING_LINES  , DRAWING_LINES  , DRAWING_LINES  , DRAWING_LINES  ,
+  DRAWING_LINES  , DRAWING_LINES  , DRAWING_LINES  , DRAWING_LINES  , DRAWING_LINES  ,
+  DRAWING_LINES  , DRAWING_LINES  ,
+  DRAWING_LINES  , DRAWING_LINES
 } ;
 
 #define NUM_modes (sizeof(mode_ints)/sizeof(int))
@@ -155,9 +252,11 @@ static Three_D_View * im3d ;         /* AFNI controller */
 static THD_3dim_dataset * dset ;     /* The dataset!    */
 static MCW_idcode         dset_idc ; /* 31 Mar 1999     */
 
+static Dtable *vl_dtable=NULL ;      /* 17 Oct 2003     */
+
 static int   color_index = 1 ;               /* from color_av */
-static int   mode_ival   = MODE_CURVE ;
-static int   mode_index  = DRAWING_LINES ;   /* from mode_av  */
+static int   mode_ival   = MODE_FILLED ;
+static int   mode_index  = DRAWING_FILL ;    /* from mode_av  */
 static int   value_int   = 1 ;               /* from value_av */
 static float value_float = 1.0 ;             /* ditto         */
 
@@ -166,13 +265,85 @@ static int dset_changed = 0 ;
 static int recv_open    = 0 ;
 static int recv_key     = -1;
 
-static int undo_bufsiz = 0 ;     /* size of undo_buf in bytes */
-static int undo_bufnum = 0 ;     /* size of undo_xyz in ints */
-static int undo_bufuse = 0 ;     /* number of entries in undo buffer */
-static void * undo_buf = NULL ;  /* stores data to be copied back to dataset */
-static int  * undo_xyz = NULL ;  /* stores voxel indices for copying */
+/****** 19 Nov 2003: new stuff for multiple undo/redo ******/
+
+typedef struct {   /* structure holds one drawing operation */
+  int npt , btyp ; /* number of data points, type of data */
+  int *xyz ;       /* 1D index into dataset array */
+  void *buf ;      /* data from dataset array */
+} dobuf ;
+
+  /* macro to create an empty buffer */
+
+#define CREATE_DOBUF(db,np,ip)                                       \
+ do{ db      = (dobuf *)calloc(1 ,sizeof(dobuf)) ;                   \
+     db->xyz = (int *)  calloc(np,sizeof(int)) ;                     \
+     db->buf = (void *) calloc(np,mri_datum_size(ip)) ;              \
+     db->npt = np ; db->btyp = ip ;                                  \
+ } while(0)
+
+  /* macro to delete a buffer from the Macrocosmic All */
+
+#define DESTROY_DOBUF(db)  do{ if( db != NULL ){                     \
+                                if( db->xyz != NULL ) free(db->xyz); \
+                                if( db->buf != NULL ) free(db->buf); \
+                                free(db) ;                           \
+                           }} while(0)
+
+  /* amount of memory used by a buffer */
+
+#define SIZEOF_DOBUF(db)                                             \
+  ( db->npt * ( sizeof(int) + mri_datum_size(db->btyp) ) )
+
+static int undo_num       = 0 ;     /* depth of undo stack */
+static int redo_num       = 0 ;     /* depth of redo stack */
+static dobuf **undo_stack = NULL ;  /* undo stack */
+static dobuf **redo_stack = NULL ;  /* redo stack */
+static int undo_how       = 0 ;     /* where to save undo info */
+
+static void DRAW_undo_sizecheck(void) ;  /* check/limit undo stack size */
+
+static void DRAW_undo_butlab( Widget w , int ) ;  /* label undo/redo button */
+
+#define UNDO_button_labelize DRAW_undo_butlab(undo_pb,undo_num)
+#define REDO_button_labelize DRAW_undo_butlab(redo_pb,redo_num)
+
+  /* this macro erases the undo stack */
+
+#define CLEAR_UNDOBUF                                                \
+   do{ if( undo_num > 0 || undo_stack != NULL ){                     \
+        int ii ;                                                     \
+        for( ii=0 ; ii < undo_num ; ii++ )                           \
+          DESTROY_DOBUF( undo_stack[ii] ) ;                          \
+        if( undo_stack != NULL ) free( undo_stack ) ;                \
+        undo_num = 0 ; undo_stack = NULL ;                           \
+       }                                                             \
+       UNDO_button_labelize ;                                        \
+   } while(0)
+
+  /* this macro erases the redo stack */
+
+#define CLEAR_REDOBUF                                                \
+   do{ if( redo_num > 0 || redo_stack != NULL ){                     \
+        int ii ;                                                     \
+        for( ii=0 ; ii < redo_num ; ii++ )                           \
+          DESTROY_DOBUF( redo_stack[ii] ) ;                          \
+        if( redo_stack != NULL )free( redo_stack ) ;                 \
+        redo_num = 0 ; redo_stack = NULL ;                           \
+       }                                                             \
+       REDO_button_labelize ;                                        \
+   } while(0)
+
+  /* this macro erases both stacks */
+
+#define CLEAR_UNREDOBUF                                              \
+   do{ CLEAR_UNDOBUF ; CLEAR_REDOBUF ; undo_how = 0 ; } while(0)
+
+/******/
 
 static THD_dataxes dax_save ;    /* save this for later reference */
+
+static int old_stroke_autoplot = 0 ;  /* 27 Oct 2003 */
 
 char * DRAW_main( PLUGIN_interface * plint )
 {
@@ -232,9 +403,21 @@ char * DRAW_main( PLUGIN_interface * plint )
    recv_open    = 0 ;      /* receiver is not yet open */
    recv_key     = -1;      /* and has no identifier key */
 
-   SENSITIZE(undo_pb,0) ;  undo_bufuse = 0 ;
+   if( vl_dtable != NULL ){   /* 20 Oct 2003 */
+     destroy_Dtable(vl_dtable) ; vl_dtable = NULL ;
+   }
+
    SENSITIZE(save_pb,0) ; SENSITIZE(saveas_pb,0) ;
    SENSITIZE(choose_pb,1) ;
+
+   /* 19 Nov 2003: new undo/redo stuff */
+
+   undo_num = redo_num = undo_how = 0 ;
+   undo_stack = redo_stack = NULL ;
+   UNDO_button_labelize ; REDO_button_labelize ;
+
+   old_stroke_autoplot = AFNI_yesenv("AFNI_STROKE_AUTOPLOT") ;
+   if( old_stroke_autoplot ) putenv("AFNI_STROKE_AUTOPLOT=NO") ;
 
    return NULL ;
 }
@@ -245,11 +428,14 @@ char * DRAW_main( PLUGIN_interface * plint )
 
 /*-- structures defining action buttons (at bottom of popup) --*/
 
-#define NACT 6  /* number of action buttons */
+#define NACT 7  /* number of action buttons */
 
 static MCW_action_item DRAW_actor[NACT] = {
- {"Undo",DRAW_undo_CB,NULL,
+ {"Undo[0]",DRAW_undo_CB,NULL,
   "Undoes previous draw\naction, if possible","Undo last change",0} ,
+
+ {"Redo[0]",DRAW_redo_CB,NULL,
+  "Redoes previous undone\naction, if possible","Redo last undo",0} ,
 
  {"Help",DRAW_help_CB,NULL,
   "Displays more help" , "Displays more help",0} ,
@@ -336,29 +522,10 @@ void DRAW_make_widgets(void)
                 XmNinitialResourcesPersistent , False ,
              NULL ) ;
 
-   /*** button to let user choose dataset to edit ***/
-
-   xstr = XmStringCreateLtoR( "Choose Dataset" , XmFONTLIST_DEFAULT_TAG ) ;
-   choose_pb = XtVaCreateManagedWidget(
-                  "AFNI" , xmPushButtonWidgetClass , rowcol ,
-                     XmNlabelString , xstr ,
-                     XmNtraversalOn , False ,
-                     XmNinitialResourcesPersistent , False ,
-                  NULL ) ;
-   XmStringFree(xstr) ;
-   XtAddCallback( choose_pb, XmNactivateCallback, DRAW_choose_CB, NULL ) ;
-   MCW_register_help( choose_pb ,
-                      "Use this to popup a\n"
-                      "'chooser' that lets\n"
-                      "you select which\n"
-                      "dataset to edit."
-                    ) ;
-   MCW_register_hint( choose_pb , "Popup a dataset chooser" ) ;
-
-   /*-- 24 Sep 2001: Copy mode stuff --*/
+   /*-- 24 Sep 2001: Copy mode stuff [moved up 06 Oct 2002] --*/
 
    { Widget rc ;
-     static char *cbox_label[1]   = { "Copy" } ;
+     static char *cbox_label[1]   = { "Copy Dataset" } ;
      static char *cmode_label[2]  = { "Data"  , "Zero" } ;
      static char *ctype_label[3]  = { "As Is" , "Func" , "Anat" } ;
      static char *cdatum_label[4] = { "As Is" , "Byte" , "Short" , "Float" } ;
@@ -382,6 +549,8 @@ void DRAW_make_widgets(void)
 
      MCW_reghint_children( copy_bbox->wrowcol ,
                            "Make copy of dataset on input" ) ;
+     MCW_reghelp_children( copy_bbox->wrowcol ,
+                           "Make copy of dataset on input?" ) ;
 
      /*** arrowvals to let user choose Copy method ***/
 
@@ -391,6 +560,10 @@ void DRAW_make_widgets(void)
 
      MCW_reghint_children( copy_mode_av->wrowcol ,
                            "How to copy values from dataset" ) ;
+     MCW_reghelp_children( copy_mode_av->wrowcol ,
+                           "How to copy values from dataset:\n"
+                           "Data => use input dataset values\n"
+                           "Zero => fill dataset with zeros" ) ;
 
      copy_type_av = new_MCW_optmenu( rc , NULL ,
                                      0 , 2 , 1 , 0 , NULL,NULL ,
@@ -398,6 +571,9 @@ void DRAW_make_widgets(void)
 
      MCW_reghint_children( copy_type_av->wrowcol ,
                            "Copy is Functional overlay or Anatomical underlay" ) ;
+     MCW_reghelp_children( copy_type_av->wrowcol ,
+                           "Copy will be Functional overlay\n"
+                           "or will be Anatomical underlay" ) ;
 
      copy_datum_av= new_MCW_optmenu( rc , NULL ,
                                      0 , 3 , 0 , 0 , NULL,NULL ,
@@ -405,6 +581,12 @@ void DRAW_make_widgets(void)
 
      MCW_reghint_children( copy_datum_av->wrowcol ,
                            "Data storage type for copy" ) ;
+     MCW_reghelp_children( copy_datum_av->wrowcol ,
+                           "Data storage type for copy:\n"
+                           "As Is => use data type in input dataset\n"
+                           "Byte  => store new dataset as bytes\n"
+                           "Short => store new dataset as shorts\n"
+                           "Float => store new dataset as floats"   ) ;
 
      AV_SENSITIZE( copy_mode_av , False ) ;
      AV_SENSITIZE( copy_type_av , False ) ;
@@ -413,6 +595,25 @@ void DRAW_make_widgets(void)
      XtManageChild(rc) ;
 
    } /* end of Copy mode stuff */
+
+   /*** button to let user choose dataset to edit ***/
+
+   xstr = XmStringCreateLtoR( "Choose Dataset on Which to Draw" , XmFONTLIST_DEFAULT_TAG ) ;
+   choose_pb = XtVaCreateManagedWidget(
+                  "AFNI" , xmPushButtonWidgetClass , rowcol ,
+                     XmNlabelString , xstr ,
+                     XmNtraversalOn , False ,
+                     XmNinitialResourcesPersistent , False ,
+                  NULL ) ;
+   XmStringFree(xstr) ;
+   XtAddCallback( choose_pb, XmNactivateCallback, DRAW_choose_CB, NULL ) ;
+   MCW_register_help( choose_pb ,
+                      "Use this to popup a\n"
+                      "'chooser' that lets\n"
+                      "you select which\n"
+                      "dataset to edit."
+                    ) ;
+   MCW_register_hint( choose_pb , "Popup a dataset chooser" ) ;
 
    /*** separator for visual neatness ***/
 
@@ -424,21 +625,86 @@ void DRAW_make_widgets(void)
 
    /***  arrowval to choose value that is drawn into dataset voxels  ***/
 
-   value_av = new_MCW_arrowval( rowcol , "Drawing Value " ,
-                                MCW_AV_downup , -32767,32767,value_int ,
-                                MCW_AV_editext , 0 ,
-                                DRAW_value_CB , NULL , NULL,NULL ) ;
+   { Widget rc ;
 
-   MCW_reghelp_children( value_av->wrowcol ,
-                         "Use this to set the value that\n"
-                         "will be drawn into the dataset\n"
-                         "using mouse button 2."
-                       ) ;
-   MCW_reghint_children( value_av->wrowcol , "Goes into dataset voxels" ) ;
+     rc = XtVaCreateWidget( "AFNI" , xmRowColumnWidgetClass , rowcol ,
+                       XmNpacking      , XmPACK_TIGHT ,
+                       XmNorientation  , XmHORIZONTAL ,
+                       XmNmarginHeight , 0 ,
+                       XmNmarginWidth  , 0 ,
+                       XmNspacing      , 0 ,
+                       XmNinitialResourcesPersistent , False ,
+                       XmNtraversalOn , False ,
+                    NULL ) ;
+
+     value_av = new_MCW_arrowval( rc , "Value " ,
+                                  MCW_AV_downup , -32767,32767,value_int ,
+                                  MCW_AV_editext , 0 ,
+                                  DRAW_value_CB , NULL , NULL,NULL ) ;
+
+     MCW_reghelp_children( value_av->wrowcol ,
+                           "Use this to set the value that\n"
+                           "will be drawn into the dataset\n"
+                           "using mouse button 2."
+                         ) ;
+     MCW_reghint_children( value_av->wrowcol , "Goes into dataset voxels" ) ;
+
+     /*-- 15 Oct 2003: Label for the value --*/
+
+     xstr = XmStringCreateLtoR( " Label" , XmFONTLIST_DEFAULT_TAG ) ;
+     label_label = XtVaCreateManagedWidget(
+                     "dialog" , xmLabelWidgetClass , rc ,
+                       XmNlabelString   , xstr  ,
+                       XmNrecomputeSize , False ,
+                       XmNmarginWidth   , 0     ,
+                       XmNinitialResourcesPersistent , False ,
+                     NULL ) ;
+     XmStringFree(xstr) ;
+
+     label_textf = XtVaCreateManagedWidget(
+                       "dialog" , xmTextFieldWidgetClass , rc ,
+                           XmNcolumns      , 19 ,
+                           XmNeditable     , True ,
+                           XmNmaxLength    , 128 ,
+                           XmNresizeWidth  , False ,
+                           XmNmarginHeight , 1 ,
+                           XmNmarginWidth  , 1 ,
+                           XmNcursorPositionVisible , True ,
+                           XmNblinkRate , 0 ,
+                           XmNautoShowCursorPosition , True ,
+                           XmNtraversalOn , False ,
+                           XmNinitialResourcesPersistent , False ,
+                        NULL ) ;
+     XtSetSensitive( label_label , (Boolean)(value_int != 0) ) ;
+     XtSetSensitive( label_textf , (Boolean)(value_int != 0) ) ;
+
+     XtAddCallback( label_textf, XmNactivateCallback    ,
+                                 DRAW_label_CB , NULL ) ; /* return key */
+
+     XtAddCallback( label_textf, XmNlosingFocusCallback ,
+                                 DRAW_label_CB , NULL ) ; /* tab key */
+
+     XtInsertEventHandler( label_textf ,      /* notify when */
+                           LeaveWindowMask ,  /* pointer leaves */
+                           FALSE ,            /* this window */
+                           DRAW_label_EV ,
+                           (XtPointer) NULL ,
+                           XtListTail ) ;     /* last in queue */
+
+     XtInsertEventHandler( label_label ,      /* button press in label */
+                           ButtonPressMask ,
+                           FALSE ,
+                           DRAW_label_EV ,
+                           (XtPointer) NULL ,
+                           XtListTail ) ;
+     POPUP_cursorize( label_label ) ;
+
+     XtManageChild(rc) ;
+   }
 
    /*** option menu to choose drawing color ***/
 
-   color_av = new_MCW_colormenu( rowcol , "Drawing Color " , dc ,
+   color_av = new_MCW_colormenu( rowcol , "Color " , dc ,
                                  1 , dc->ovc->ncol_ov - 1 , color_index ,
                                  DRAW_color_CB , NULL ) ;
 
@@ -455,31 +721,92 @@ void DRAW_make_widgets(void)
    MCW_reghint_children( color_av->wrowcol , "Used when button 2 is drawing" ) ;
 
    /*** arrowval to choose drawing mode ***/
+   /*-- 16 Oct 2002: put in a horiz rowcol, and add rad_av button --*/
 
-   mode_av = new_MCW_optmenu( rowcol , "Drawing Mode  " ,
-                              0 , NUM_modes-1 , 0,0 ,
+   { Widget rc ;
+
+     rc = XtVaCreateWidget( "AFNI" , xmRowColumnWidgetClass , rowcol ,
+                       XmNpacking      , XmPACK_TIGHT ,
+                       XmNorientation  , XmHORIZONTAL ,
+                       XmNmarginHeight , 0 ,
+                       XmNmarginWidth  , 0 ,
+                       XmNspacing      , 0 ,
+                       XmNinitialResourcesPersistent , False ,
+                       XmNtraversalOn , False ,
+                    NULL ) ;
+
+     mode_av = new_MCW_optmenu( rc , "Mode  " ,
+                              0 , NUM_modes-1 , mode_ival,0 ,
                               DRAW_mode_CB , NULL ,
                               MCW_av_substring_CB , mode_strings ) ;
 
-   MCW_reghelp_children( mode_av->wrowcol ,
-                         "Use this to set the way in which\n"
-                         "drawing pixels on the screen is\n"
-                         "used to select dataset voxels:\n"
-                         "Open Curve     = voxels picked along lines drawn;\n"
-                         "Closed Curve   = voxels forming a closed curve\n"
-                         "Points         = only voxels at X11 notify pixels;\n"
-                         "Flood->Value   = flood fill from the chosen point\n"
-                         "                 out to points = Drawing Value\n"
-                         "Flood->Nonzero = flood fill from chosen point out\n"
-                         "                 to any nonzero point\n"
-                         "Flood->Zero    = flood fill from chosen point out\n"
-                         "                 to any zero point\n"
-                         "Zero->Value    = fill with zeros until the Drawing\n"
-                         "                 Value is hit"
-                         "Filled Curve   = fill inside of closed curve with\n"
-                         "                 Drawing Value\n"
-                       ) ;
-   MCW_reghint_children( mode_av->wrowcol , "How voxels are chosen") ;
+     AVOPT_columnize( mode_av , 2 ) ;
+
+     MCW_reghelp_children( mode_av->wrowcol ,
+                           "Use this to set the way in which\n"
+                           "drawing pixels on the screen is\n"
+                           "used to select dataset voxels:\n"
+                           "Open Curve      = voxels picked along lines drawn;\n"
+                           "Closed Curve    = voxels forming a closed curve\n"
+                           "Points          = only voxels at X11 notify pixels;\n"
+                           "Flood->Value    = flood fill from the chosen point\n"
+                           "                   out to points = Value\n"
+                           "Flood->Nonzero  = flood fill from chosen point out\n"
+                           "                   to any nonzero point\n"
+                           "Flood->Zero     = flood fill from chosen point out\n"
+                           "                   to any zero point\n"
+                           "Zero->Value     = flood fill with zeros until the\n"
+                           "                   Value is hit\n"
+                           "Flood->Val/Zero = flood fill from the chosen point\n"
+                           "                   until the Value OR zero is hit\n"
+                           "Filled Curve    = fill inside of closed curve with\n"
+                           "                   Value\n"
+                           "\n"
+                           "2D Nbhd         = like Open Curve, but fills in around\n"
+                           "                   the in-plane neighborhood of each\n"
+                           "                   drawn point 'x' with the patterns:\n"
+                           "                        5 4 3 4 5\n"
+                           "                        4 2 1 2 4\n"
+                           "                        3 1 x 1 3\n"
+                           "                        4 2 1 2 4\n"
+                           "                        5 4 3 4 5\n"
+                           "                   where the number indicates the\n"
+                           "                   Nearest Neighbor order of the\n"
+                           "                   points nearby 'x'.\n"
+                           "3D Nbhd         = Similar, but in 3D (out-of-plane)\n"
+                           "\n"
+                           "2D Circle       = Draw a circle of given Radius\n"
+                           "3D Sphere       = Draw a sphere of given Radius\n"
+                         ) ;
+     MCW_reghint_children( mode_av->wrowcol , "How voxels are chosen") ;
+
+     /** 16 Oct 2002: radius chooser **/
+
+     rad_av = new_MCW_arrowval( rc             ,    /* parent */
+                                "R"            ,    /* label */
+                                MCW_AV_downup  ,    /* arrow directions */
+                                1              ,    /* min value (0.1 mm from decim) */
+                                999            ,    /* max value (99.9 mm) */
+                                40             ,    /* init value */
+                                MCW_AV_editext ,    /* input/output text display */
+                                1              ,    /* decimal shift */
+                                NULL           ,    /* routine to call when button */
+                                NULL           ,    /* is pressed, and its data */
+                                NULL,NULL           /* no special display */
+                              ) ;
+     XtVaSetValues( rad_av->wtext   , XmNcolumns , 5 , NULL ) ;
+     MCW_reghint_children( rad_av->wrowcol , "Radius of Circles and Spheres" ) ;
+     MCW_reghelp_children( rad_av->wrowcol ,
+                            " \n"
+                            "Sets the radius (in mm) of the 2D Circle\n"
+                            "or 3D Sphere drawing modes.  Voxels whose\n"
+                            "center-to-center distance is <= this value\n"
+                            "will be filled in.\n"
+                          ) ;
+     ENABLE_rad_av ;   /* turn it on or off */
+
+     XtManageChild(rc) ;
+   }
 
    /*** 19 Mar 2001: stuff for linear fillin ***/
 
@@ -508,11 +835,11 @@ void DRAW_make_widgets(void)
                                       NULL , NULL ,
                                       MCW_av_substring_CB , fillin_dir_strings ) ;
 
-     fillin_gap_av = new_MCW_optmenu( rc , "Gap" ,
+     fillin_gap_av = new_MCW_optmenu( rc , " Gap" ,
                                       1 , NFILLIN_GAP , 4 , 0 ,
                                       NULL,NULL,NULL,NULL ) ;
 
-     xstr = XmStringCreateLtoR( "Fill" , XmFONTLIST_DEFAULT_TAG ) ;
+     xstr = XmStringCreateLtoR( "*Do the Fill*" , XmFONTLIST_DEFAULT_TAG ) ;
      fillin_doit_pb = XtVaCreateManagedWidget( "AFNI" , xmPushButtonWidgetClass , rc ,
                                                 XmNlabelString , xstr ,
                                                 XmNtraversalOn , False ,
@@ -633,11 +960,12 @@ void DRAW_make_widgets(void)
    (void) MCW_action_area( rowcol , DRAW_actor , NACT ) ;
 
    undo_pb   = (Widget) DRAW_actor[0].data ;
-   help_pb   = (Widget) DRAW_actor[1].data ;
-   quit_pb   = (Widget) DRAW_actor[2].data ;
-   save_pb   = (Widget) DRAW_actor[3].data ;
-   saveas_pb = (Widget) DRAW_actor[4].data ;  /* 24 Sep 2001 */
-   done_pb   = (Widget) DRAW_actor[5].data ;
+   redo_pb   = (Widget) DRAW_actor[1].data ;  /* 19 Nov 2003 */
+   help_pb   = (Widget) DRAW_actor[2].data ;
+   quit_pb   = (Widget) DRAW_actor[3].data ;
+   save_pb   = (Widget) DRAW_actor[4].data ;
+   saveas_pb = (Widget) DRAW_actor[5].data ;  /* 24 Sep 2001 */
+   done_pb   = (Widget) DRAW_actor[6].data ;
 
    /*** that's all ***/
 
@@ -670,6 +998,7 @@ void DRAW_done_CB( Widget w, XtPointer client_data, XtPointer call_data )
          AFNI_receive_control( im3d, recv_key,EVERYTHING_SHUTDOWN, NULL ) ;
       if( dset_changed ){
          MCW_invert_widget( done_pb ) ;
+         DRAW_attach_dtable( vl_dtable, "VALUE_LABEL_DTABLE",  dset ) ;
          DSET_write(dset) ;
          MCW_invert_widget( done_pb ) ;
       }
@@ -677,43 +1006,62 @@ void DRAW_done_CB( Widget w, XtPointer client_data, XtPointer call_data )
       dset = NULL ; dset_changed = 0 ;
    }
 
-   if( undo_buf != NULL ){
-      free(undo_buf) ; free(undo_xyz) ;
-      undo_buf = NULL; undo_xyz = NULL;
-      undo_bufsiz = undo_bufnum = undo_bufuse = 0 ;
-   }
+   CLEAR_UNREDOBUF ;  /* 19 Nov 2003 */
 
-   XtUnmapWidget( shell ) ; editor_open = 0 ; recv_open = 0 ; recv_key = -1 ;
+   XtUnmapWidget( shell ); editor_open = 0; recv_open = 0; recv_key = -1;
+   if( old_stroke_autoplot ) putenv("AFNI_STROKE_AUTOPLOT=YES") ;
    return ;
 }
 
 /*-------------------------------------------------------------------
-  Callback for undo button
+  Callback for undo button [heavily modified 19 Nov 2003]
 ---------------------------------------------------------------------*/
 
 void DRAW_undo_CB( Widget w, XtPointer client_data, XtPointer call_data )
 {
-   void * ub ; int * ux, * uy, * uz ;
-   int ubs = undo_bufsiz , uis = sizeof(int)*undo_bufuse ;
+   dobuf *sb ;  /* saved drawing buffer that will be redrawn */
 
-   if( undo_bufuse <= 0 ){ XBell(dc->display,100) ; return ; }
+   if( undo_num <= 0 || undo_stack == NULL ){ XBell(dc->display,100); return; }
 
-   /* since the undo_stuff will be modified by the
-      drawing function, we must make temporary copies */
+   undo_how = 1 ;  /* the next drawing save will be onto redo stack */
 
-#if 0
-fprintf(stderr,"Undo: %d voxels\n",undo_bufuse) ;
-#endif
+   sb = undo_stack[undo_num-1] ;  /* saved buffer */
 
-   ub =         malloc(ubs) ; memcpy(ub,undo_buf,ubs) ;
-   ux = (int *) malloc(uis) ; memcpy(ux,undo_xyz,uis) ;
+   DRAW_into_dataset( sb->npt , sb->xyz,NULL,NULL , sb->buf ) ;
 
-   DRAW_into_dataset( undo_bufuse , ux,NULL,NULL , ub ) ;
-
-   free(ub) ; free(ux) ;
+   DESTROY_DOBUF(sb) ;  /* purge and pop top of undo stack */
+   undo_num-- ;
+   UNDO_button_labelize ;
 
    AFNI_process_drawnotice( im3d ) ;  /* 30 Mar 1999 */
 
+   undo_how = 0 ; /* further draws go onto undo stack */
+   return ;
+}
+
+/*-------------------------------------------------------------------
+  Callback for redo button [from DRAW_undo_CB(), 19 Nov 2003]
+---------------------------------------------------------------------*/
+
+void DRAW_redo_CB( Widget w, XtPointer client_data, XtPointer call_data )
+{
+   dobuf *sb ;
+
+   if( redo_num <= 0 || redo_stack == NULL ){ XBell(dc->display,100); return; }
+
+   undo_how = 2 ;  /* drawing save will be onto undo stack */
+
+   sb = redo_stack[redo_num-1] ;  /* saved buffer */
+
+   DRAW_into_dataset( sb->npt , sb->xyz,NULL,NULL , sb->buf ) ;
+
+   DESTROY_DOBUF(sb) ;  /* purge and pop top of redo stack */
+   redo_num-- ;
+   REDO_button_labelize ;
+
+   AFNI_process_drawnotice( im3d ) ;  /* 30 Mar 1999 */
+
+   undo_how = 0 ; /* further draws go onto undo stack */
    return ;
 }
 
@@ -724,29 +1072,26 @@ fprintf(stderr,"Undo: %d voxels\n",undo_bufuse) ;
 void DRAW_quit_CB( Widget w, XtPointer client_data, XtPointer call_data )
 {
    if( dset != NULL ){
-      if( recv_open ) AFNI_receive_control( im3d, recv_key,DRAWING_SHUTDOWN, NULL ) ;
-      DSET_unlock(dset) ;
-      DSET_unload(dset) ; DSET_anyize(dset) ;
-      if( dset_changed ){
-         if( recv_open ){
-            AFNI_process_drawnotice( im3d ) ;  /* 30 Mar 1999 */
-            AFNI_receive_control( im3d, recv_key,EVERYTHING_SHUTDOWN, NULL ) ; /* 25 Sep 2001 */
-         }
-         MCW_invert_widget(quit_pb) ;
-         THD_load_statistics( dset ) ;
-         PLUTO_dset_redisplay( dset ) ;
-         MCW_invert_widget(quit_pb) ;
-      }
-      dset = NULL ; dset_changed = 0 ;
+     if( recv_open ) AFNI_receive_control( im3d,recv_key,DRAWING_SHUTDOWN,NULL );
+     DSET_unlock(dset) ;
+     DSET_unload(dset) ; DSET_anyize(dset) ;
+     if( dset_changed ){
+       if( recv_open ){
+         AFNI_process_drawnotice( im3d ) ;  /* 30 Mar 1999 */
+         AFNI_receive_control( im3d, recv_key,EVERYTHING_SHUTDOWN, NULL ) ; /* 25 Sep 2001 */
+       }
+       MCW_invert_widget(quit_pb) ;
+       THD_load_statistics( dset ) ;
+       PLUTO_dset_redisplay( dset ) ;
+       MCW_invert_widget(quit_pb) ;
+     }
+     dset = NULL ; dset_changed = 0 ;
    }
 
-   if( undo_buf != NULL ){
-      free(undo_buf) ; free(undo_xyz) ;
-      undo_buf = NULL; undo_xyz = NULL;
-      undo_bufsiz = undo_bufnum = undo_bufuse = 0 ;
-   }
+   CLEAR_UNREDOBUF ;  /* 19 Nov 2003 */
 
-   XtUnmapWidget( shell ) ; editor_open = 0 ; recv_open = 0 ; recv_key = -1 ;
+   XtUnmapWidget( shell ); editor_open = 0; recv_open = 0; recv_key = -1;
+   if( old_stroke_autoplot ) putenv("AFNI_STROKE_AUTOPLOT=YES") ;
    return ;
 }
 
@@ -760,6 +1105,7 @@ void DRAW_save_CB( Widget w, XtPointer client_data, XtPointer call_data )
 
    MCW_invert_widget(save_pb) ;
 
+   DRAW_attach_dtable( vl_dtable, "VALUE_LABEL_DTABLE",  dset ) ;
    DSET_write(dset) ; dset_changed = 0 ; SENSITIZE(choose_pb,1) ;
 
    MCW_invert_widget(save_pb) ;
@@ -790,7 +1136,7 @@ void DRAW_saveas_finalize_CB( Widget w, XtPointer fd, MCW_choose_cbs * cbs )
    /*-- check for craziness --*/
 
    if( !editor_open || dset == NULL ){
-      POPDOWN_strlist_chooser; XBell(dc->display,100); return;
+     POPDOWN_strlist_chooser; XBell(dc->display,100); return;
    }
 
    if( !PLUTO_prefix_ok(cbs->cval) ){ XBell(dc->display,100); return; }
@@ -833,6 +1179,7 @@ void DRAW_saveas_finalize_CB( Widget w, XtPointer fd, MCW_choose_cbs * cbs )
    /*-- switch current dataset to be the copy just made --*/
 
    dset = cset ; dset_idc = dset->idcode ;
+   DRAW_attach_dtable( vl_dtable, "VALUE_LABEL_DTABLE",  dset ) ;
    DSET_write(dset) ; DSET_mallocize(dset) ; DSET_load(dset) ; DSET_lock(dset) ;
 
    /*-- re-write the informational label --*/
@@ -914,6 +1261,20 @@ void DRAW_help_CB( Widget w, XtPointer client_data, XtPointer call_data )
   "            voxels that are chosen.\n"
   "        * Integer valued datasets can only receive integer values;\n"
   "            float datasets can take floating point values.\n"
+  "        * You can attach a label string to each drawing value.\n"
+  "            The value-label table will be saved with in the dataset\n"
+  "            .HEAD file when you use 'Save', 'SaveAs' or 'Done'.\n"
+  "        * You can also setup a standard value-label table in a file,\n"
+  "            whose name is specified by setting environment variable\n"
+  "            AFNI_VALUE_LABEL_DTABLE -- cf. file README.environment.\n"
+  "        * Button-3-clicking in the 'Label' next to the text-entry field\n"
+  "            will bring up a menu of all current value-label pairs.\n"
+  "            You can choose from them to set a new drawing value.\n"
+  "        * Button-1-clicking in the 'Label' will ask for a filename\n"
+  "            to read that loads the value-label pairs.  The format\n"
+  "            of this file is described in README.environment.\n"
+  "            Reading in a file like this will erase any existing\n"
+  "            value-label associations in the plugin.\n"
   "\n"
   "Step 3) Choose a drawing color.\n"
   "        * This is the color that will be shown in the image windows\n"
@@ -940,13 +1301,48 @@ void DRAW_help_CB( Widget w, XtPointer client_data, XtPointer call_data )
   "            zero voxel value is reached.\n"
   "        * 'Zero->Value' means to flood fill the slice with zeros,\n"
   "            stopping when a voxel with the drawing value is reached.\n"
+  "        * 'Flood->Val/Zero' means to flood fill the slice with the\n"
+  "            Value until voxels whose values are either zero or the\n"
+  "            Value are hit\n"
   "        * 'Filled Curve' means to draw a closed curve and then fill\n"
   "            its interior with the drawing value.  It is similar to\n"
   "            doing 'Closed Curve' followed by 'Flood->Value', but\n"
   "            more convenient.\n"
+  "        * '2D Nbhd: Kth NN' is like 'Open Curve', but each the 2D in-slice\n"
+  "            neighborhood of a point 'x' is filled in with the following\n"
+  "            pattern of points, for K=1..5:\n"
+  "                                              5 4 3 4 5\n"
+  "                                              4 2 1 2 4\n"
+  "                                              3 1 x 1 3\n"
+  "                                              4 2 1 2 4\n"
+  "                                              5 4 3 4 5\n"
+  "            In a cubical lattice with voxel edge length=1, the 2D Kth NN\n"
+  "            volume is a 'circle' out to radius:\n"
+  "                  K=1  r=sqrt(1)  [e.g., (+1, 0)]\n"
+  "                  K=2  r=sqrt(2)  [e.g., (+1,+1) => 3x3 square]\n"
+  "                  K=3  r=sqrt(4)  [e.g., (+2, 0)]\n"
+  "                  K=4  r=sqrt(5)  [e.g., (+2,+1)]\n"
+  "                  K=5  r=sqrt(8)  [the whole 5x5 square about 'x']\n"
+  "        * '3D Nbhd: Kth NN' is similar, but with the 3D neighborhood\n"
+  "            of each point (so you are drawing out-of-slice).  In this\n"
+  "            case, the 3D Kth NN volume is a 'sphere' out to radius\n"
+  "                  K=1  r=sqrt(1)  [e.g., (+1, 0, 0)]\n"
+  "                  K=2  r=sqrt(2)  [e.g., (+1,+1, 0)]\n"
+  "                  K=3  r=sqrt(3)  [e.g., (+1,+1,+1) => 3x3x3 cube]\n"
+  "                  K=4  r=sqrt(4)  [e.g., (+2, 0, 0)]\n"
+  "                  K=5  r=sqrt(5)  [e.g., (+2,+1, 0)]\n"
+  "                  K=6  r=sqrt(6)  [e.g., (+2,+1,+1)]\n"
+  "                5x5x5  fills out the 5x5x5 cube about each drawn point.\n"
+  "        * '2D Circle' and '3D Sphere' draw in-plane circles and 3D spheres\n"
+  "            about each drawn point 'x'.  The radius (in mm) is set using\n"
+  "            the 'R' chooser that becomes active when one of these drawing\n"
+  "            modes is selected.  These drawing modes use the actual voxel\n"
+  "            sizes in the dataset, unlike the 'Nbhd' modes described above.\n"
   "\n"
   "Step 5) Draw something in an image window.\n"
   "        * Drawing is done using mouse button 2.\n"
+  "          [03 Oct 2002: You can also use mouse button 1 with the   ]\n"
+  "          [             keyboard Shift key held down simultaneously]\n"
   "        * In an image window, drawing a set of pixels is done\n"
   "            by pressing and holding button 2, and dragging\n"
   "            the cursor across the desired pixels.  The drawing\n"
@@ -972,13 +1368,13 @@ void DRAW_help_CB( Widget w, XtPointer client_data, XtPointer call_data )
   "            and then use Fill in the A-P direction with a maximum\n"
   "            gap setting of 3 to fill in the slices you didn't draw.\n"
   "            (Then you could manually fix up the intermediate slices.)\n"
-  "           N.B.: Linear Fillin cannot be undone!!!\n"
+  "        ** N.B.: Linear Fillin can now be undone [as of 21 Nov 2003]!\n"
   "        * TT Atlas Regions can be loaded into the edited volume.  The\n"
   "            chosen region+hemisphere(s) will be loaded with the current\n"
-  "            Drawing Value.  'OverWrite' loading means that all voxels\n"
-  "            from the TT region will be replaced with the Drawing Value.\n"
+  "            Value.  'OverWrite' loading means that all voxels from\n"
+  "            the TT region will be replaced with the Value.\n"
   "            'InFill' loading means that only voxels that are currently\n"
-  "            zero in the TT region will be replaced with the Drawing Value.\n"
+  "            zero in the TT region will be replaced with the Value.\n"
   "           N.B.: TT Atlas regions may not be good representations of\n"
   "                   any given subject's anatomy.  You will probably\n"
   "                   want to edit the mask after doing the loading.\n"
@@ -989,13 +1385,17 @@ void DRAW_help_CB( Widget w, XtPointer client_data, XtPointer call_data )
   "                   having already been established.\n"
   "                 Unlike Linear Fillin, TT Atlas drawing can be undone.\n"
   "\n"
-  "Step 6) Undo.\n"
+  "Step 6) Undo and Redo.\n"
   "        * The last drawing operation can be undone -- that is,\n"
   "            pressing 'Undo' will restore the voxel values before\n"
   "            the last button 2 press-release operation.\n"
-  "        * There is only one level of undo.  Undo-ing the undo\n"
-  "            will put things back the way they were.  Anyone who\n"
-  "            implements a better undo system will be appreciated.\n"
+  "        * 'Redo' will undo the previous 'Undo'.\n"
+  "        * Multiple levels of Undo/Redo are now available [19 Nov 2003].\n"
+  "        * The amount of memory set aside for Undo/Redo operations\n"
+  "            is controlled by environment variable AFNI_DRAW_UNDOSIZE,\n"
+  "            which is in megabytes; its value defaults to 6.\n"
+  "        * The numbers (as in '[3]') on the Undo and Redo buttons\n"
+  "            indicate how many levels are available at any moment.\n"
   "\n"
   "Step 7) Save dataset (maybe).\n"
   "        * While a dataset is being edited, it is locked into memory.\n"
@@ -1061,8 +1461,8 @@ void DRAW_help_CB( Widget w, XtPointer client_data, XtPointer call_data )
   "\n"
   "SUGGESTIONS?\n"
   "  * Please send them to " COXEMAIL "\n"
-  "  * Even better than suggestions are implementations.\n"
-  "  * Even better than implementations are pumpernickel bagels.\n"
+  "  * Better than suggestions are implementations.\n"
+  "  * Better than implementations are pumpernickel bagels.\n"
   "Author -- RW Cox"
 
     , TEXT_READONLY ) ;
@@ -1107,27 +1507,10 @@ void DRAW_choose_CB( Widget w, XtPointer client_data, XtPointer call_data )
 
    ndsl = 0 ;
 
-   /* scan anats */
+   /* scan datasets */
 
-   for( id=0 ; id < ss->num_anat ; id++ ){
-      qset = ss->anat[id][vv] ;
-
-      if( ! ISVALID_DSET (qset)                        ) continue ;  /* skip */
-      if( ! DSET_INMEMORY(qset)                        ) continue ;
-      if( DSET_NVALS(qset) > 1                         ) continue ;
-      if( ! EQUIV_DATAXES(qset->daxes,im3d->wod_daxes) ) continue ;
-
-      ndsl++ ;
-      dsl = (PLUGIN_dataset_link *)
-              XtRealloc( (char *) dsl , sizeof(PLUGIN_dataset_link)*ndsl ) ;
-
-      make_PLUGIN_dataset_link( qset , dsl + (ndsl-1) ) ;
-   }
-
-   /* scan funcs */
-
-   for( id=0 ; id < ss->num_func ; id++ ){
-      qset = ss->func[id][vv] ;
+   for( id=0 ; id < ss->num_dsset ; id++ ){
+      qset = ss->dsset[id][vv] ;
 
       if( ! ISVALID_DSET (qset)                        ) continue ;  /* skip */
       if( ! DSET_INMEMORY(qset)                        ) continue ;
@@ -1145,11 +1528,17 @@ void DRAW_choose_CB( Widget w, XtPointer client_data, XtPointer call_data )
 
    if( ndsl < 1 ){
       (void) MCW_popup_message( choose_pb ,
+                                   " \n"
                                    "Didn't find any datasets to edit!\n"
                                    "Check if:\n"
                                    " - you are in 'Warp-on-Demand' mode\n"
-                                   " - you are in the correct session" ,
-                                MCW_USER_KILL | MCW_TIMER_KILL ) ;
+                                   " - you are in the correct session\n"
+                                   "Also:\n"
+                                   " * Only datasets with 1 sub-brick can\n"
+                                   "    be edited.\n"
+                                   " * The dataset must match the resolution\n"
+                                   "    of the current anatomical view.\n"
+                               , MCW_USER_KILL | MCW_TIMER_KILL ) ;
       XBell(dc->display,100) ; return ;
    }
 
@@ -1220,16 +1609,18 @@ void DRAW_choose_CB( Widget w, XtPointer client_data, XtPointer call_data )
 
 /*-----------------------------------------------------------------------------*/
 
-void DRAW_finalize_dset_CB( Widget w, XtPointer fd, MCW_choose_cbs * cbs )
+void DRAW_finalize_dset_CB( Widget w, XtPointer fd, MCW_choose_cbs *cbs )
 {
    int id=cbs->ival , copied=0 ;
    THD_3dim_dataset * qset ;
    XmString xstr ;
    char str[256] , *dtit ;
+   THD_slist_find slf ;   /* 29 Jul 2003 */
+   MCW_choose_cbs cbss ;
 
    /*-- check for errors --*/
 
-   if( ! editor_open ){ POPDOWN_strlist_chooser; XBell(dc->display,100); return; }
+   if( !editor_open ){ POPDOWN_strlist_chooser; XBell(dc->display,100); return; }
 
    if( dset != NULL && dset_changed ){ XBell(dc->display,100) ; return ; }
 
@@ -1309,7 +1700,8 @@ void DRAW_finalize_dset_CB( Widget w, XtPointer fd, MCW_choose_cbs * cbs )
    if( ! recv_open ){
       recv_key = id = AFNI_receive_init( im3d, RECEIVE_DRAWING_MASK   |
                                                RECEIVE_DSETCHANGE_MASK ,  /* 31 Mar 1999 */
-                                         DRAW_receiver,NULL ) ;
+                                         DRAW_receiver,NULL ,
+                                        "DRAW_receiver" ) ;
 
       if( id < 0 ){
          (void) MCW_popup_message( im3d->vwid->top_shell ,
@@ -1328,7 +1720,37 @@ void DRAW_finalize_dset_CB( Widget w, XtPointer fd, MCW_choose_cbs * cbs )
    AFNI_receive_control( im3d, recv_key,DRAWING_OVCINDEX, (void *)color_index ) ;
    recv_open = 1 ;
 
-   undo_bufuse = 0 ; SENSITIZE(undo_pb,0) ;
+   CLEAR_UNREDOBUF ;  /* 19 Nov 2003 */
+
+   /* 29 Jul 2003: switch to this dataset */
+
+   slf = THD_dset_in_session( FIND_IDCODE , &(dset->idcode) , im3d->ss_now ) ;
+   if( slf.dset_index >= 0 ){
+     cbss.ival = slf.dset_index ;
+     if( ISFUNC(dset) ){
+       AFNI_finalize_dataset_CB( im3d->vwid->view->choose_func_pb ,
+                                 (XtPointer) im3d ,  &cbss         ) ;
+       AFNI_SEE_FUNC_ON(im3d) ; /* 30 Apr 2002 */
+     } else {
+       AFNI_finalize_dataset_CB( im3d->vwid->view->choose_anat_pb ,
+                                 (XtPointer) im3d ,  &cbss         ) ;
+     }
+   }
+
+   /* 20 Oct 2003: get VALUE_LABEL_DTABLE, if present */
+
+   if( vl_dtable != NULL ){ destroy_Dtable(vl_dtable); vl_dtable = NULL; }
+
+   { ATR_string *atr ;
+     atr = THD_find_string_atr( dset->dblk , "VALUE_LABEL_DTABLE" ) ;
+     if( atr != NULL && atr->nch > 5 )
+       vl_dtable = Dtable_from_nimlstring( atr->ch ) ;
+     if( vl_dtable == NULL ){
+       char *str = AFNI_suck_file( getenv("AFNI_VALUE_LABEL_DTABLE") ) ;
+       if( str != NULL ){ vl_dtable = Dtable_from_nimlstring(str); free(str); }
+     }
+     DRAW_set_value_label() ;
+   }
 
    return ;
 }
@@ -1356,8 +1778,18 @@ void DRAW_mode_CB( MCW_arrowval * av , XtPointer cd )
    mode_ival  = av->ival ;
    mode_index = mode_ints[mode_ival] ;
 
-   if( dset != NULL && recv_open )
+   if( dset != NULL && recv_open ){
       AFNI_receive_control( im3d, recv_key,mode_index , NULL ) ;
+
+      /* 08 Oct 2002: set drawing line width */
+
+      AFNI_receive_control( im3d, recv_key, DRAWING_LINEWIDTH ,
+                            (void *) mode_width[mode_ival]     ) ;
+   }
+
+   /* 16 Oct 2002: turn rad_av (radius) on if mode needs it */
+
+   ENABLE_rad_av ;
 
    return ;
 }
@@ -1370,7 +1802,264 @@ void DRAW_value_CB( MCW_arrowval * av , XtPointer cd )
 {
    value_int   = av->ival ;
    value_float = av->fval ;
+
+   if( value_float != 0.0 ){
+     XtSetSensitive( label_label , True ) ;
+     XtSetSensitive( label_textf , True ) ;
+   } else {
+     XtSetSensitive( label_label , False ) ;
+     XtSetSensitive( label_textf , False ) ;
+   }
+   DRAW_set_value_label() ;
    return ;
+}
+
+/*---------------------------------------------------------------------
+  Callbacks and functions for value label and text field [15 Oct 2003]
+-----------------------------------------------------------------------*/
+
+static void dump_vallab(void)
+{
+#if 0
+   char *str = Dtable_to_nimlstring( vl_dtable , "VALUE_LABEL_DTABLE" ) ;
+   if( str != NULL ){ printf("%s\n",str); free(str); }
+   return ;
+#endif
+}
+
+/*---------------------------------------------------------------------*/
+
+char * DRAW_value_string( float val )  /* returns a fixed pointer! */
+{
+   static char str[32] ;
+   sprintf(str,"%.5g",val) ;
+   return str ;
+}
+
+/*---------------------------------------------------------------------*/
+
+void DRAW_set_value_label(void)
+{
+   if( vl_dtable == NULL || value_float == 0.0 ){
+     XmTextFieldSetString( label_textf , "" ) ;
+   } else {
+     char *str_val = DRAW_value_string( value_float ) ;
+     char *str_lab = findin_Dtable_a( str_val , vl_dtable ) ;
+     XmTextFieldSetString( label_textf ,
+                           (str_lab != NULL) ? str_lab : "" ) ;
+   }
+   return ;
+}
+
+/*---------------------------------------------------------------------*/
+
+void DRAW_label_CB( Widget wtex , XtPointer cld, XtPointer cad )
+{
+   char *str_val , *str_lab , *str_old ;
+   int ll , ii ;
+
+   /* get string from text field, see if it is empty or ends in blanks */
+
+   str_lab = XmTextFieldGetString( label_textf ) ;
+   if( str_lab == NULL ){
+     if( vl_dtable == NULL ) return ;  /* do nothing */
+   } else {
+     ll = strlen(str_lab) ;
+     for( ii=ll-1 ; ii >= 0 && isspace(str_lab[ii]) ; ii-- ) ; /* nada */
+     if( ii < 0 ){                       /*-- all blanks */
+       if( vl_dtable == NULL ) return ;    /* do nothing */
+       free(str_lab) ; str_lab = NULL ;    /* otherwise, clobber entry */
+     } else if( ii < ll-1 ){             /*-- ends in blanks */
+       str_lab[ii+1] = '\0' ;              /* so truncate them */
+     }
+   }
+
+   /* create (value,label) pair Dtable -- NULL label ==> erase old label */
+
+   if( vl_dtable == NULL ) vl_dtable = new_Dtable(7) ;
+
+   str_val = DRAW_value_string( value_float ) ;   /* value string */
+
+   /* check if old label for this value is same as new label;
+      if it is, then don't need to do anything                */
+
+   str_old = findin_Dtable_a( str_val , vl_dtable ) ;
+   if( str_old != NULL ){
+     if( str_lab != NULL && strcmp(str_old,str_lab) == 0 ){  /* same as old */
+       free(str_lab) ; return ;
+     } else if( str_lab == NULL ){                     /* erase the old one */
+       removefrom_Dtable_a( str_val , vl_dtable ) ;
+       dump_vallab() ;
+       return ;
+     }
+   }
+   if( str_lab == NULL ) return ;  /* is NULL ==> nothing to do here */
+
+   /* check if new label is already in the table under a different value */
+
+   str_old = findin_Dtable_b( str_lab , vl_dtable ) ;
+   if( str_old != NULL && strcmp(str_old,str_val) != 0 ){
+     char msg[1024] ;
+     sprintf(msg," \n"
+                 " *********************************** \n"
+                 " ** ERROR * ERROR * ERROR * ERROR ** \n"
+                 " **\n"
+                 " ** Label = %s\n"
+                 " **   is already associated with\n"
+                 " ** Value = %s\n"
+                 " **\n"
+                 " ** Value,Label pairs must be unique \n"
+                 " *********************************** \n"
+             , str_lab , str_old ) ;
+     (void) MCW_popup_message( label_textf , msg , MCW_USER_KILL ) ;
+     PLUTO_beep() ;
+     free(str_lab) ; return ;
+   }
+
+   /* add new value,label pair to Dtable (will clobber old one, if present) */
+
+   addto_Dtable( str_val , str_lab , vl_dtable ) ;
+   free(str_lab) ;
+
+   dump_vallab() ;
+   return ;
+}
+
+/*--------------------------------------------------------------------------*/
+
+static char **vl_strlist=NULL ;
+static  int  vl_nstrlist=0 ;
+
+static void DRAW_label_finalize( Widget w, XtPointer cd, MCW_choose_cbs *cbs )
+{
+   int ival = cbs->ival , nn ;
+   float val=0.0 ;
+
+   if( !editor_open ){ PLUTO_beep(); POPDOWN_strlist_chooser; return; }
+
+   nn = sscanf( vl_strlist[ival] , "%f" , &val ) ;
+   if( nn == 0 || val == 0.0 ) return ;
+
+   AV_assign_fval( value_av ,  val ) ;
+   value_int   = value_av->ival ;
+   value_float = value_av->fval ;
+   DRAW_set_value_label() ;
+   return ;
+}
+
+/*---------------------------------------------------------------------*/
+
+static void DRAW_label_getfile( Widget w, XtPointer cd, MCW_choose_cbs *cbs )
+{
+   char *str ;
+
+   if( !editor_open ){ PLUTO_beep(); POPDOWN_string_chooser; return; }
+
+   str = AFNI_suck_file( cbs->cval ) ;
+   if( str != NULL ){
+     if( vl_dtable != NULL ) destroy_Dtable(vl_dtable) ;
+     vl_dtable = Dtable_from_nimlstring(str) ;
+     DRAW_set_value_label() ;
+   } else {
+     PLUTO_beep() ;
+   }
+   return ;
+}
+
+/*---------------------------------------------------------------------*/
+
+void DRAW_label_EV( Widget w , XtPointer cld ,
+                    XEvent *ev , Boolean *continue_to_dispatch )
+{
+
+   /* handle leave event in text field */
+
+   if( w == label_textf ){
+     XmAnyCallbackStruct cbs ;
+     XLeaveWindowEvent *lev = (XLeaveWindowEvent *) ev ;
+     if( lev->type != LeaveNotify ) return ;
+     cbs.reason = XmCR_ACTIVATE ;  /* simulate a return press */
+     DRAW_label_CB( w , NULL , &cbs ) ;
+   }
+
+   /* handle Button-3 press in label */
+
+   else if( w == label_label ){
+     XButtonEvent *bev = (XButtonEvent *) ev ;
+     int nn,ic,ll ; char **la, **lb ; float val ;
+
+     if( bev->button == Button1 ){
+       MCW_choose_string( w , "Enter Value-Label filename:" ,
+                          NULL , DRAW_label_getfile , NULL   ) ;
+       return ;
+     }
+     if( bev->button != Button3 ) return ;
+     nn = listize_Dtable( vl_dtable , &la , &lb ) ;
+     if( nn <= 0 || la == NULL || lb == NULL ) return ;
+
+     /** get ready to popup a new list chooser **/
+
+     POPDOWN_strlist_chooser ;
+
+     /** clear old strings **/
+
+     for( ic=0 ; ic < vl_nstrlist ; ic++ ) free(vl_strlist[ic]) ;
+
+     /** make a list of value-label strings **/
+
+     vl_nstrlist = nn ;
+     vl_strlist  = (char **) realloc( vl_strlist , sizeof(char *)*vl_nstrlist ) ;
+     for( nn=ic=0 ; ic < vl_nstrlist ; ic++ ){
+       if( la[ic] != NULL && lb[ic] != NULL ){  /* should always be true */
+         ll = strlen(la[ic])+strlen(lb[ic])+8 ;
+         vl_strlist[nn] = calloc(1,ll) ;
+         sprintf( vl_strlist[nn] , "%s = %s" , la[ic],lb[ic] ) ;
+         nn++ ;
+       }
+     }
+     free(la); free(lb); if( nn == 0 ) return ;
+
+     /* sort list for the user's convenience */
+
+     if( nn > 1 ){
+       int redo ; char *t ;
+      BSort:
+       for( redo=ic=0 ; ic < nn-1 ; ic++ ){
+         if( strcmp(vl_strlist[ic],vl_strlist[ic+1]) > 0 ){
+           t=vl_strlist[ic]; vl_strlist[ic]=vl_strlist[ic+1]; vl_strlist[ic+1]=t;
+           redo = 1 ;
+         }
+       }
+       if( redo ) goto BSort ;
+     }
+
+     /* find current value in list, if any */
+
+     for( ic=0 ; ic < nn ; ic++ ){
+       sscanf( vl_strlist[ic] , "%f" , &val ) ;
+       if( val == value_float ) break ;
+     }
+     if( ic == nn ) ic = -1 ;
+
+     /* let the user choose one */
+
+     MCW_choose_strlist( w , "Value = Label" , nn ,
+                         ic , vl_strlist , DRAW_label_finalize , NULL ) ;
+   }
+
+   return ;
+}
+
+/*---------------------------------------------------------------------*/
+
+void DRAW_attach_dtable( Dtable *dt, char *atname, THD_3dim_dataset *ds )
+{
+   char *str ;
+   if( dt == NULL || atname == NULL || ds == NULL ) return ;
+   str = Dtable_to_nimlstring( dt , atname ) ;
+   if( str == NULL ) return ;
+   THD_set_string_atr( ds->dblk , atname , str ) ;
+   free(str) ; return ;
 }
 
 /*******************************************************************
@@ -1393,7 +2082,17 @@ void DRAW_receiver( int why , int np , void * vp , void * cbd )
          int mode=ip[3][0] ;                     /* how pts are organized */
          int plane ;
 
-         if( np <= 0 ) return ;  /* some error? */
+         /*-- 20 Feb 2003: undo via keypress --*/
+
+         if( mode == UNDO_MODE ){
+           if( undo_num > 0 ) DRAW_undo_CB( undo_pb,NULL,NULL ) ;
+           else               XBell(dc->display,100) ;
+           return ;
+         }
+
+         /*-- Did we get points? --*/
+
+         if( np <= 0 ) return ;
 
          plane = mode - SINGLE_MODE ;
          if( plane < 1 || plane > 3 ) plane = mode - PLANAR_MODE ;
@@ -1406,9 +2105,53 @@ void DRAW_receiver( int why , int np , void * vp , void * cbd )
               (mode_ival != MODE_FLOOD_NZ  )  &&
               (mode_ival != MODE_FLOOD_ZERO)  &&
               (mode_ival != MODE_ZERO_VAL  )  &&
+              (mode_ival != MODE_FLOOD_VZ  )  &&
               (mode_ival != MODE_FILLED    ))   ){
 
-            DRAW_into_dataset( np , xd,yd,zd , NULL ) ;
+            /* 07 Oct 2002: expand set of points using a mask? */
+
+            if( plane != 0 && mode_ival >= FIRST_2D_MODE && mode_ival <= LAST_2D_MODE ){
+              int nfill=0, *xyzf=NULL ;
+
+              DRAW_2D_expand( np , xd,yd,zd , plane , &nfill , &xyzf ) ;
+              if( nfill > 0 && xyzf != NULL ){
+                DRAW_into_dataset( nfill , xyzf,NULL,NULL , NULL ) ;
+                free(xyzf) ;
+              }
+
+            } else if( plane != 0 && mode_ival >= FIRST_3D_MODE && mode_ival <= LAST_3D_MODE ){
+              int nfill=0, *xyzf=NULL ;
+
+              DRAW_3D_expand( np , xd,yd,zd , plane , &nfill , &xyzf ) ;
+              if( nfill > 0 && xyzf != NULL ){
+                DRAW_into_dataset( nfill , xyzf,NULL,NULL , NULL ) ;
+                free(xyzf) ;
+              }
+
+            /* 16 Oct 2002: expand geometrically (circle or sphere)? */
+
+            } else if( plane != 0 && mode_ival >= FIRST_RAD_MODE && mode_ival <= LAST_RAD_MODE ){
+              int nfill=0, *xyzf=NULL ;
+
+              switch( mode_ival ){
+                case MODE_2D_CIRC:
+                  DRAW_2D_circle( np , xd,yd,zd , plane , &nfill , &xyzf ) ;
+                break ;
+                case MODE_3D_SPHR:
+                  DRAW_3D_sphere( np , xd,yd,zd , plane , &nfill , &xyzf ) ;
+                break ;
+              }
+
+              if( nfill > 0 && xyzf != NULL ){
+                DRAW_into_dataset( nfill , xyzf,NULL,NULL , NULL ) ;
+                free(xyzf) ;
+              } else {
+                DRAW_into_dataset( np , xd,yd,zd , NULL ) ; /* should never happen */
+              }
+
+            } else {                                        /* the old way:     */
+              DRAW_into_dataset( np , xd,yd,zd , NULL ) ;   /* just draw points */
+            }
 
          } else {
 
@@ -1420,23 +2163,22 @@ void DRAW_receiver( int why , int np , void * vp , void * cbd )
                 nxy = nx*ny , nxyz = nxy*nz , ii,jj , ixyz ;
             int base , di,dj , itop,jtop,nij , xx=xd[0],yy=yd[0],zz=zd[0] , ix,jy ;
             byte * pl ;
-            int nfill , * xyzf , nf ;
+            int nfill , *xyzf , nf ;
 
             /* compute stuff for which plane we are in:
                 1 -> yz , 2 -> xz , 3 -> xy            */
 
             switch(plane){
-               case 1: base=xx    ; di=nx; dj=nxy; itop=ny; jtop=nz; ix=yy; jy=zz; break;
-               case 2: base=yy*nx ; di=1 ; dj=nxy; itop=nx; jtop=nz; ix=xx; jy=zz; break;
-               case 3: base=zz*nxy; di=1 ; dj=nx ; itop=nx; jtop=ny; ix=xx; jy=yy; break;
+              case 1: base=xx    ; di=nx; dj=nxy; itop=ny; jtop=nz; ix=yy; jy=zz; break;
+              case 2: base=yy*nx ; di=1 ; dj=nxy; itop=nx; jtop=nz; ix=xx; jy=zz; break;
+              case 3: base=zz*nxy; di=1 ; dj=nx ; itop=nx; jtop=ny; ix=xx; jy=yy; break;
             }
 
             /* create a 2D array with 0 where dataset != blocking value
                              and with 1 where dataset == blocking value */
 
             nij = itop*jtop ;
-            pl  = (byte *) malloc( sizeof(byte) * nij ) ;
-            memset( pl , 0 , sizeof(byte) * nij ) ;
+            pl  = (byte *) calloc( nij , sizeof(byte) ) ;
 
             if( mode_ival != MODE_FILLED ){  /* old code: flood to a dataset value */
 
@@ -1455,6 +2197,12 @@ void DRAW_receiver( int why , int np , void * vp , void * cbd )
                           for( ii=0 ; ii < itop ; ii++ ){
                              ixyz = base + ii*di + jj*dj ;
                              if( bp[ixyz] == val ) pl[ii+jj*itop] = 1 ;
+                          }
+                    } else if( mode_ival == MODE_FLOOD_VZ ){  /* 30 Apr 2002 */
+                       for( jj=0 ; jj < jtop ; jj++ )
+                          for( ii=0 ; ii < itop ; ii++ ){
+                             ixyz = base + ii*di + jj*dj ;
+                             if( bp[ixyz] == val || bp[ixyz] == 0 ) pl[ii+jj*itop] = 1 ;
                           }
                     } else {
                        for( jj=0 ; jj < jtop ; jj++ )
@@ -1479,6 +2227,12 @@ void DRAW_receiver( int why , int np , void * vp , void * cbd )
                              ixyz = base + ii*di + jj*dj ;
                              if( bp[ixyz] == val ) pl[ii+jj*itop] = 1 ;
                           }
+                    } else if( mode_ival == MODE_FLOOD_VZ ){  /* 30 Apr 2002 */
+                       for( jj=0 ; jj < jtop ; jj++ )
+                          for( ii=0 ; ii < itop ; ii++ ){
+                             ixyz = base + ii*di + jj*dj ;
+                             if( bp[ixyz] == val || bp[ixyz] == 0 ) pl[ii+jj*itop] = 1 ;
+                          }
                     } else {
                        for( jj=0 ; jj < jtop ; jj++ )
                           for( ii=0 ; ii < itop ; ii++ ){
@@ -1501,6 +2255,12 @@ void DRAW_receiver( int why , int np , void * vp , void * cbd )
                           for( ii=0 ; ii < itop ; ii++ ){
                              ixyz = base + ii*di + jj*dj ;
                              if( bp[ixyz] == val ) pl[ii+jj*itop] = 1 ;
+                          }
+                    } else if( mode_ival == MODE_FLOOD_VZ ){  /* 30 Apr 2002 */
+                       for( jj=0 ; jj < jtop ; jj++ )
+                          for( ii=0 ; ii < itop ; ii++ ){
+                             ixyz = base + ii*di + jj*dj ;
+                             if( bp[ixyz] == val || bp[ixyz] == 0 ) pl[ii+jj*itop] = 1 ;
                           }
                     } else {
                        for( jj=0 ; jj < jtop ; jj++ )
@@ -1688,42 +2448,35 @@ void DRAW_receiver( int why , int np , void * vp , void * cbd )
     will be the source of the data.
 ----------------------------------------------------------------------------*/
 
-int DRAW_into_dataset( int np , int * xd , int * yd , int * zd , void * var )
+int DRAW_into_dataset( int np , int *xd , int *yd , int *zd , void *var )
 {
    int   ityp = DSET_BRICK_TYPE(dset,0) ;
    float bfac = DSET_BRICK_FACTOR(dset,0) ;
    int nx=DSET_NX(dset) , ny=DSET_NY(dset) , nz=DSET_NZ(dset) ,
        nxy = nx*ny , nxyz = nxy*nz , ii , ixyz ;
-   int nbytes , ndrawn=0 ;
+   int ndrawn=0 ;
+   dobuf *sb ;  /* 19 Nov 2003: save buffer */
+   int *xyz ;
 
    /* sanity check */
 
    if( dset==NULL || np <= 0 || xd==NULL ) return 0 ;
 
-   /* make space for undo */
+   /* make space for undo/redo (save old state in buffer) [19 Nov 2003] */
 
-   nbytes = np * mri_datum_size(ityp) ;       /* bytes needed for save */
-   if( nbytes > undo_bufsiz ){
-      if( undo_buf != NULL ) free(undo_buf) ;
-      undo_buf    = malloc(nbytes) ;
-      undo_bufsiz = nbytes ;
-   }
-   if( np > undo_bufnum ){
-      if( undo_xyz != NULL ) free(undo_xyz);
-      undo_xyz    = (int *) malloc(sizeof(int)*np) ;
-      undo_bufnum = np ;
-   }
+   CREATE_DOBUF(sb,np,ityp) ;
+   xyz = sb->xyz ;             /* list of indexes to be altered */
 
-   /* compute (or copy) data index into undo_xyz */
+   /* compute (or copy) data index into save buffer */
 
-   if( yd == NULL ){                       /* direct supply of index */
-      memcpy(undo_xyz,xd,sizeof(int)*np) ;
+   if( yd == NULL ){                       /* direct supply of 1-index */
+     memcpy(xyz,xd,sizeof(int)*np) ;
    } else {                                /* collapse 3-index into 1 */
-      for( ii=0 ; ii < np ; ii++ )
-         undo_xyz[ii] = xd[ii] + yd[ii] * nx + zd[ii] * nxy ;
+     for( ii=0 ; ii < np ; ii++ )
+       xyz[ii] = xd[ii] + yd[ii] * nx + zd[ii] * nxy ;
    }
 
-   /* actually copy data, based on type */
+   /* copy data into save buffer, based on type */
 
    if( bfac == 0.0 ) bfac = 1.0 ;
 
@@ -1736,81 +2489,81 @@ int DRAW_into_dataset( int np , int * xd , int * yd , int * zd , void * var )
 #define DOIT (infill_mode==0 || bp[ixyz]==0)
 
       case MRI_short:{
-         short * bp  = (short *) DSET_BRICK_ARRAY(dset,0) ;
-         short * up  = (short *) undo_buf ;
-         short * vvv = (short *) var ;
-         short   val = (short)   (value_float/bfac) ;
+        short * bp  = (short *) DSET_BRICK_ARRAY(dset,0) ;
+        short * up  = (short *) sb->buf ;
+        short * vvv = (short *) var ;
+        short   val = (short)   (value_float/bfac) ;
 
-         for( ii=0 ; ii < np ; ii++ ){  /* save into undo buffer */
-            ixyz = undo_xyz[ii] ;
-            up[ii] = (ixyz >= 0 && ixyz < nxyz) ? bp[ixyz] : 0 ;
-         }
-         for( ii=0 ; ii < np ; ii++ ){  /* put into dataset */
-            ixyz = undo_xyz[ii] ;
-            if( ixyz >= 0 && ixyz < nxyz && DOIT ){
-               bp[ixyz] = (vvv==NULL) ? val : vvv[ii] ; ndrawn++ ;
-            }
-         }
+        for( ii=0 ; ii < np ; ii++ ){  /* save into buffer */
+          ixyz = xyz[ii] ;
+          up[ii] = (ixyz >= 0 && ixyz < nxyz) ? bp[ixyz] : 0 ;
+        }
+        for( ii=0 ; ii < np ; ii++ ){  /* put into dataset */
+          ixyz = xyz[ii] ;
+          if( ixyz >= 0 && ixyz < nxyz && DOIT ){
+            bp[ixyz] = (vvv==NULL) ? val : vvv[ii] ; ndrawn++ ;
+          }
+        }
       }
       break ;
 
       case MRI_byte:{
-         byte * bp  = (byte *) DSET_BRICK_ARRAY(dset,0) ;
-         byte * up  = (byte *) undo_buf ;
-         byte * vvv = (byte *) var ;
-         byte   val = (byte)   (value_float/bfac) ;
+        byte * bp  = (byte *) DSET_BRICK_ARRAY(dset,0) ;
+        byte * up  = (byte *) sb->buf ;
+        byte * vvv = (byte *) var ;
+        byte   val = (byte)   (value_float/bfac) ;
 
-         for( ii=0 ; ii < np ; ii++ ){
-            ixyz = undo_xyz[ii] ;
-            up[ii] = (ixyz >= 0 && ixyz < nxyz) ? bp[ixyz] : 0 ;
-         }
-         for( ii=0 ; ii < np ; ii++ ){
-            ixyz = undo_xyz[ii] ;
-            if( ixyz >= 0 && ixyz < nxyz && DOIT ){
-               bp[ixyz] = (vvv==NULL) ? val : vvv[ii] ; ndrawn++ ;
-            }
-         }
+        for( ii=0 ; ii < np ; ii++ ){
+          ixyz = xyz[ii] ;
+          up[ii] = (ixyz >= 0 && ixyz < nxyz) ? bp[ixyz] : 0 ;
+        }
+        for( ii=0 ; ii < np ; ii++ ){
+          ixyz = xyz[ii] ;
+          if( ixyz >= 0 && ixyz < nxyz && DOIT ){
+            bp[ixyz] = (vvv==NULL) ? val : vvv[ii] ; ndrawn++ ;
+          }
+        }
       }
       break ;
 
       case MRI_float:{
-         float * bp  = (float *) DSET_BRICK_ARRAY(dset,0) ;
-         float * up  = (float *) undo_buf ;
-         float * vvv = (float *) var ;
-         float   val = (value_float/bfac) ;
+        float * bp  = (float *) DSET_BRICK_ARRAY(dset,0) ;
+        float * up  = (float *) sb->buf ;
+        float * vvv = (float *) var ;
+        float   val = (value_float/bfac) ;
 
-         for( ii=0 ; ii < np ; ii++ ){
-            ixyz = undo_xyz[ii] ;
-            up[ii] = (ixyz >= 0 && ixyz < nxyz) ? bp[ixyz] : 0.0 ;
-         }
-         for( ii=0 ; ii < np ; ii++ ){
-            ixyz = undo_xyz[ii] ;
-            if( ixyz >= 0 && ixyz < nxyz && DOIT ){
-               bp[ixyz] = (vvv==NULL) ? val : vvv[ii] ; ndrawn++ ;
-            }
-         }
+        for( ii=0 ; ii < np ; ii++ ){
+          ixyz = xyz[ii] ;
+          up[ii] = (ixyz >= 0 && ixyz < nxyz) ? bp[ixyz] : 0.0 ;
+        }
+        for( ii=0 ; ii < np ; ii++ ){
+          ixyz = xyz[ii] ;
+          if( ixyz >= 0 && ixyz < nxyz && DOIT ){
+            bp[ixyz] = (vvv==NULL) ? val : vvv[ii] ; ndrawn++ ;
+          }
+        }
       }
       break ;
 
       case MRI_complex:{
-         complex * bp  = (complex *) DSET_BRICK_ARRAY(dset,0) ;
-         complex * up  = (complex *) undo_buf ;
-         complex * vvv = (complex *) var ;
-         complex   val ;
-         static complex cxzero = { 0.0 , 0.0 } ;
+        complex * bp  = (complex *) DSET_BRICK_ARRAY(dset,0) ;
+        complex * up  = (complex *) sb->buf ;
+        complex * vvv = (complex *) var ;
+        complex   val ;
+        static complex cxzero = { 0.0 , 0.0 } ;
 
-         val = CMPLX( (value_float/bfac) , 0.0 ) ;
+        val = CMPLX( (value_float/bfac) , 0.0 ) ;
 
-         for( ii=0 ; ii < np ; ii++ ){
-            ixyz = undo_xyz[ii] ;
-            up[ii] = (ixyz >= 0 && ixyz < nxyz) ? bp[ixyz] : cxzero ;
-         }
-         for( ii=0 ; ii < np ; ii++ ){
-            ixyz = undo_xyz[ii] ;
-            if( ixyz >= 0 && ixyz < nxyz && (infill_mode==0 || bp[ixyz].r==0) ){
-               bp[ixyz] = (vvv==NULL) ? val : vvv[ii] ; ndrawn++ ;
-            }
-         }
+        for( ii=0 ; ii < np ; ii++ ){
+          ixyz = xyz[ii] ;
+          up[ii] = (ixyz >= 0 && ixyz < nxyz) ? bp[ixyz] : cxzero ;
+        }
+        for( ii=0 ; ii < np ; ii++ ){
+          ixyz = xyz[ii] ;
+          if( ixyz >= 0 && ixyz < nxyz && (infill_mode==0 || bp[ixyz].r==0) ){
+            bp[ixyz] = (vvv==NULL) ? val : vvv[ii] ; ndrawn++ ;
+          }
+        }
       }
       break ;
 
@@ -1823,14 +2576,96 @@ int DRAW_into_dataset( int np , int * xd , int * yd , int * zd , void * var )
    /* now redisplay dataset, in case anyone is looking at it */
 
    PLUTO_dset_redisplay( dset ) ;
-
-   undo_bufuse  = np ;
    dset_changed = 1 ;
    SENSITIZE(save_pb,1) ; SENSITIZE(saveas_pb,1) ;
    SENSITIZE(choose_pb,0) ;
-   SENSITIZE(undo_pb,1) ;
+
+   /* save buffer pushed onto appropriate stack */
+
+   if( undo_how == 1 ){   /* save on redo stack */
+     redo_stack = realloc( (void *)redo_stack, sizeof(dobuf *)*(redo_num+1) );
+     redo_stack[redo_num++] = sb ;
+     REDO_button_labelize ;
+   } else {               /* save on undo stack */
+     undo_stack = realloc( (void *)undo_stack, sizeof(dobuf *)*(undo_num+1) );
+     undo_stack[undo_num++] = sb ;
+     UNDO_button_labelize ;
+     DRAW_undo_sizecheck() ;
+     if( undo_how == 0 ){  /* normal draw ==> can't redo */
+       CLEAR_REDOBUF ;
+     }
+   }
 
    return ndrawn ;
+}
+
+/*---------------------------------------------------------------------------*/
+/*!  Limit size of data allowed in undo buffers. [19 Nov 2003]
+-----------------------------------------------------------------------------*/
+
+static void DRAW_undo_sizecheck(void)
+{
+  int ii,jj , ss , lim=6 ;
+  char *eee ;
+
+  if( undo_num <= 1 ) return ;  /* will always keep 1 level of undo */
+
+  /* get the limit of allowed mem usage for the undo buffers */
+
+  eee = getenv("AFNI_DRAW_UNDOSIZE") ;
+  if( eee != NULL ){
+    ii = 0 ; sscanf(eee,"%d",&ii) ;
+    if( ii > 0 ) lim = ii ; if( lim > 1024 ) lim = 1024 ;
+  }
+  lim *= (1024*1024) ;  /* megabytes */
+
+  /* scan from top of stack,
+     stopping when total size goes over the limit */
+
+  for( ss=0,ii=undo_num-1 ; ii >= 0 && ss < lim ; ii-- )
+    ss += SIZEOF_DOBUF( undo_stack[ii] ) ;
+
+  if( ii <= 0 ) return ;  /* didn't go over limit before bottom */
+
+  /* if here, stack elements from 0..ii-1 should be removed
+              and the elements above them moved down to fill in */
+
+  for( jj=0 ; jj < ii ; jj++ )         /* removal */
+    DESTROY_DOBUF( undo_stack[jj] ) ;
+
+  for( jj=ii ; jj < undo_num ; jj++ )  /* move-al */
+    undo_stack[jj-ii] = undo_stack[jj] ;
+
+  undo_num = undo_num - ii ;
+  return ;
+}
+
+/*---------------------------------------------------------------------------*/
+/*! Set label of Undo or Redo button to reflect number of levels
+    available, and set sensitivity while we are at it.  [19 Nov 2003]
+-----------------------------------------------------------------------------*/
+
+static void DRAW_undo_butlab( Widget w , int n )
+{
+   XmString xstr ;
+   char label[32] ;
+   int nfmt ;
+   static char *fmt[3] = { "%s[%d]" , "%s:%d" , "%s%03d" } ;
+
+   if( w == (Widget)NULL ) return ;  /* oom-possible? */
+
+        if( n <  10  ) nfmt = 0 ;     /* choose format based */
+   else if( n < 100  ) nfmt = 1 ;     /* on number of digits */
+   else                nfmt = 2 ;
+
+   sprintf( label, fmt[nfmt], (w==undo_pb) ? "Undo" : "Redo" , n%1000 ) ;
+
+   xstr = XmStringCreateLtoR( label , XmFONTLIST_DEFAULT_TAG ) ;
+   XtVaSetValues( w , XmNlabelString , xstr , NULL ) ;
+   XmStringFree(xstr) ;
+
+   SENSITIZE( w , (n>0) ) ;
+   return ;
 }
 
 /*---------------------------------------------------------------------------
@@ -1884,10 +2719,11 @@ void DRAW_fillin_CB( Widget w , XtPointer cd , XtPointer cb )
 {
    int dcode=-1 , maxgap , nftot ;
    char dir ;
+   MRI_IMAGE *bim , *tbim ; /* 21 Nov 2003: to allow undo of fillin */
 
    /* check for errors */
 
-   if( !editor_open || dset == NULL ){ XBell(dc->display,100) ; return ; }
+   if( !editor_open || dset == NULL ){ XBell(dc->display,100); return; }
 
    dir = fillin_dir_strings[ fillin_dir_av->ival ][0] ;
 
@@ -1905,6 +2741,9 @@ void DRAW_fillin_CB( Widget w , XtPointer cd , XtPointer cb )
    maxgap = fillin_gap_av->ival ;
    if( maxgap < 1 ){ XBell(dc->display,100) ; return ; } /* should not happen! */
 
+   bim  = DSET_BRICK(dset,0) ;  /* 21 Nov 2003: for undo */
+   tbim = mri_copy( bim ) ;     /* copy brick before the change */
+
    nftot = THD_dataset_rowfillin( dset , 0 , dcode , maxgap ) ;
    if( nftot > 0 ){
      fprintf(stderr,"++ Fillin filled %d voxels\n",nftot) ;
@@ -1912,6 +2751,52 @@ void DRAW_fillin_CB( Widget w , XtPointer cd , XtPointer cb )
      dset_changed = 1 ;
      SENSITIZE(save_pb,1) ; SENSITIZE(saveas_pb,1) ;
      if( recv_open ) AFNI_process_drawnotice( im3d ) ;
+    
+     { void *bar , *tbar ;     /* 21 Nov 2003: compute the undo stuff */
+       int ityp=bim->kind, ii,jj, nvox=bim->nvox, ndel=0 ;
+       dobuf *sb=NULL ;
+       switch( ityp ){
+         case MRI_short:{
+           short *bar = MRI_SHORT_PTR(bim), *tbar = MRI_SHORT_PTR(tbim), *up ;
+           for( ii=0 ; ii < nvox ; ii++ ) if( bar[ii] != tbar[ii] ) ndel++ ;
+           if( ndel > 0 ){
+             CREATE_DOBUF(sb,ndel,MRI_short) ; up = (short *)sb->buf ;
+             for( ii=jj=0 ; ii < nvox ; ii++ )
+               if( bar[ii] != tbar[ii] ){ sb->xyz[jj]=ii; up[jj++]=tbar[ii]; }
+           }
+         }
+         break ;
+         case MRI_float:{
+           float *bar = MRI_FLOAT_PTR(bim), *tbar = MRI_FLOAT_PTR(tbim), *up ;
+           for( ii=0 ; ii < nvox ; ii++ ) if( bar[ii] != tbar[ii] ) ndel++ ;
+           if( ndel > 0 ){
+             CREATE_DOBUF(sb,ndel,MRI_float) ; up = (float *)sb->buf ;
+             for( ii=jj=0 ; ii < nvox ; ii++ )
+               if( bar[ii] != tbar[ii] ){ sb->xyz[jj]=ii; up[jj++]=tbar[ii]; }
+           }
+         }
+         break ;
+         case MRI_byte:{
+           byte *bar = MRI_BYTE_PTR(bim), *tbar = MRI_BYTE_PTR(tbim), *up ;
+           for( ii=0 ; ii < nvox ; ii++ ) if( bar[ii] != tbar[ii] ) ndel++ ;
+           if( ndel > 0 ){
+             CREATE_DOBUF(sb,ndel,MRI_byte) ; up = (byte *)sb->buf ;
+             for( ii=jj=0 ; ii < nvox ; ii++ )
+               if( bar[ii] != tbar[ii] ){ sb->xyz[jj]=ii; up[jj++]=tbar[ii]; }
+           }
+         }
+         break ;
+       } /* end of switch on brick type */
+
+       if( sb != NULL ){  /* if we created an undo buffer, push onto stack */
+         undo_stack = realloc( (void *)undo_stack, sizeof(dobuf *)*(undo_num+1) );
+         undo_stack[undo_num++] = sb ;
+         UNDO_button_labelize ;
+         DRAW_undo_sizecheck() ;
+         CLEAR_REDOBUF ;         /* can't redo after a drawing */
+       }
+     } /* 21 Nov 2003: end of allowing for undo stuff */
+
    } else if( nftot < 0 ) {
       fprintf(stderr,"** Fillin failed for some reason!\n") ;
       XBell(dc->display,100) ;
@@ -1919,6 +2804,7 @@ void DRAW_fillin_CB( Widget w , XtPointer cd , XtPointer cb )
       fprintf(stderr,"++ No Fillin voxels found\n") ;
    }
 
+   mri_free(tbim) ; /* 21 Nov 2003: toss old copy */
    return ;
 }
 
@@ -2118,11 +3004,11 @@ THD_3dim_dataset * DRAW_copy_dset( THD_3dim_dataset *dset ,
    /*-- make a new dataset, somehow --*/
 
    if( zfill == 0 ){
-      new_dset = PLUTO_copy_dset( dset , new_prefix ) ;  /* full copy */
-      dtype = -1 ;
+     new_dset = PLUTO_copy_dset( dset , new_prefix ) ;  /* full copy */
+     dtype = -1 ;
    } else {
-      new_dset = EDIT_empty_copy( dset ) ;               /* zero fill */
-      EDIT_dset_items( new_dset, ADN_prefix,new_prefix, ADN_none ) ;
+     new_dset = EDIT_empty_copy( dset ) ;               /* zero fill */
+     EDIT_dset_items( new_dset, ADN_prefix,new_prefix, ADN_none ) ;
    }
 
    if( new_dset == NULL ) return NULL ; /* bad, real bad */
@@ -2180,7 +3066,415 @@ THD_3dim_dataset * DRAW_copy_dset( THD_3dim_dataset *dset ,
       }
    }
 
+   /* 20 Oct 2003: copy VALUE_LABEL_DTABLE attribute, if present */
+
+   { ATR_string *atr ;
+     atr = THD_find_string_atr( dset->dblk , "VALUE_LABEL_DTABLE" ) ;
+     if( atr != NULL )
+       THD_set_char_atr( new_dset->dblk , "VALUE_LABEL_DTABLE" ,
+                         atr->nch , atr->ch                     ) ;
+   }
+
    /*-- done successfully!!! --*/
 
    return new_dset ;
 }
+
+/*-----------------------------------------------------------------------------*/
+/*! Expand set of points in 2D plane.  RWCox - 07 Oct 2002.
+-------------------------------------------------------------------------------*/
+
+static void DRAW_2D_expand( int np, int *xd, int *yd, int *zd, int plane ,
+                            int *nfill , int **xyzf )
+{
+   int base , di,dj , itop,jtop,nij , xx,yy,zz , ix,jy , *ip,*jp ;
+   int nx=DSET_NX(dset) , ny=DSET_NY(dset) , nz=DSET_NZ(dset) , nxy = nx*ny ;
+   int kadd , ii,jj,kk , ixn,jyn , mm,qq ;
+   int nnew , *xyzn ;
+
+   static int nadd[5] = { 4 , 8 , 12 , 20 , 24 } ;
+   static int nn[24][2] = { {-1, 0} , { 1, 0} , { 0, 1} , { 0,-1} ,
+                            {-1,-1} , {-1, 1} , { 1,-1} , { 1, 1} ,
+                            {-2, 0} , { 2, 0} , { 0, 2} , { 0,-2} ,
+                            {-2, 1} , {-2,-1} , {-1, 2} , {-1,-2} ,
+                            { 2, 1} , { 2,-1} , { 1, 2} , { 1,-2} ,
+                            {-2,-2} , {-2, 2} , { 2,-2} , { 2, 2}  } ;
+
+   /* check inputs */
+
+   if( np <= 0 || xd == NULL || yd == NULL || zd == NULL )     return ;
+   if( mode_ival < FIRST_2D_MODE && mode_ival > LAST_2D_MODE ) return ;
+   if( nfill == NULL || xyzf == NULL )                         return ;
+
+   /* compute stuff for which plane we are in:
+       1 -> yz , 2 -> xz , 3 -> xy            */
+
+   xx = xd[0] ; yy = yd[0] ; zz = zd[0] ;
+   switch(plane){
+     case 1: base=xx    ; di=nx; dj=nxy; itop=ny; jtop=nz; ip=yd; jp=zd; break;
+     case 2: base=yy*nx ; di=1 ; dj=nxy; itop=nx; jtop=nz; ip=xd; jp=zd; break;
+     case 3: base=zz*nxy; di=1 ; dj=nx ; itop=nx; jtop=ny; ip=xd; jp=yd; break;
+     default: return ;  /* bad input */
+   }
+
+   kadd = nadd[mode_ival-FIRST_2D_MODE] ;  /* how many pts around each input pt */
+
+   xyzn = (int *) malloc( sizeof(int)*np*(kadd+1) ) ;   /* output array */
+
+   /** add points around each input point, culling duplicates **/
+
+   for( ii=jj=0 ; ii < np ; ii++ ){
+     ix = ip[ii] ; jy = jp[ii] ;                                /* drawn point 2D index */
+     if( ix >= 0 && ix < itop && jy >= 0 && jy < jtop ){
+       xyzn[jj++] = base + ix*di + jy*dj ;                      /* load 3D index */
+       for( kk=0 ; kk < kadd ; kk++ ){
+         ixn = ix+nn[kk][0] ; jyn = jy+nn[kk][1] ;              /* nbhd pt 2D index */
+         if( ixn >= 0 && ixn < itop && jyn >= 0 && jyn < jtop ){
+           mm = base + ixn*di + jyn*dj ;                        /* 3D index */
+           if( ii > 0 )
+             for( qq=0 ; qq < jj && xyzn[qq] != mm ; qq++ ) ;   /* nada */
+           else
+             qq = jj ;
+           if( qq == jj ) xyzn[jj++] = mm ;                     /* save 3D index */
+         }
+       }
+     }
+   }
+
+   *nfill = jj ; *xyzf  = xyzn ; return ;
+}
+
+/*-----------------------------------------------------------------------------*/
+/*! Expand set of points in 3D space.  RWCox - 07 Oct 2002.
+-------------------------------------------------------------------------------*/
+
+static void DRAW_3D_expand( int np, int *xd, int *yd, int *zd, int plane ,
+                            int *nfill , int **xyzf )
+{
+   int ix,jy,kz ;
+   int nx=DSET_NX(dset) , ny=DSET_NY(dset) , nz=DSET_NZ(dset) , nxy = nx*ny ;
+   int kadd , ii,jj,kk , ixn,jyn,kzn , mm,qq ;
+   int nnew , *xyzn ;
+
+   static int nadd[7] = { 6 , 18 , 26 , 32 , 56 , 80 , 124 } ;
+
+   static int nn[124][3] ={ {-1, 0, 0} , { 1, 0, 0} ,  /* r**2 = 1 */
+                            { 0,-1, 0} , { 0, 1, 0} ,
+                            { 0, 0,-1} , { 0, 0, 1} ,
+
+                            {-1,-1, 0} , {-1, 1, 0} ,  /* r**2 = 2 */
+                            { 1,-1, 0} , { 1, 1, 0} ,
+                            { 0,-1,-1} , { 0,-1, 1} ,
+                            { 0, 1,-1} , { 0, 1, 1} ,
+                            {-1, 0,-1} , {-1, 0, 1} ,
+                            { 1, 0,-1} , { 1, 0, 1} ,
+
+                            {-1,-1,-1} , {-1,-1, 1} ,  /* r**2 = 3 */
+                            {-1, 1,-1} , {-1, 1, 1} ,
+                            { 1,-1,-1} , { 1,-1, 1} ,
+                            { 1, 1,-1} , { 1, 1, 1} ,
+
+                            {-2, 0, 0} , { 2, 0, 0} ,  /* r**2 = 4 */
+                            { 0,-2, 0} , { 0, 2, 0} ,
+                            { 0, 0,-2} , { 0, 0, 2} ,
+
+                            {-2,-1, 0} , {-2, 1, 0} ,  /* r**2 = 5 */
+                            { 2,-1, 0} , { 2, 1, 0} ,
+                            { 0,-2,-1} , { 0,-2, 1} ,
+                            { 0, 2,-1} , { 0, 2, 1} ,
+                            {-2, 0,-1} , {-2, 0, 1} ,
+                            { 2, 0,-1} , { 2, 0, 1} ,
+                            {-1,-2, 0} , {-1, 2, 0} ,
+                            { 1,-2, 0} , { 1, 2, 0} ,
+                            { 0,-1,-2} , { 0,-1, 2} ,
+                            { 0, 1,-2} , { 0, 1, 2} ,
+                            {-1, 0,-2} , {-1, 0, 2} ,
+                            { 1, 0,-2} , { 1, 0, 2} ,
+
+                            {-2,-1,-1} , {-2,-1, 1} ,  /* r**2 = 6 */
+                            {-2, 1,-1} , {-2, 1, 1} ,
+                            { 2,-1,-1} , { 2,-1, 1} ,
+                            { 2, 1,-1} , { 2, 1, 1} ,
+                            {-1,-2,-1} , {-1,-2, 1} ,
+                            {-1, 2,-1} , {-1, 2, 1} ,
+                            { 1,-2,-1} , { 1,-2, 1} ,
+                            { 1, 2,-1} , { 1, 2, 1} ,
+                            {-1,-1,-2} , {-1,-1, 2} ,
+                            {-1, 1,-2} , {-1, 1, 2} ,
+                            { 1,-1,-2} , { 1,-1, 2} ,
+                            { 1, 1,-2} , { 1, 1, 2} ,
+
+                            {-2,-2, 0} , {-2, 2, 0} ,  /* r**2 = 8 */
+                            { 2,-2, 0} , { 2, 2, 0} ,
+                            { 0,-2,-2} , { 0,-2, 2} ,
+                            { 0, 2,-2} , { 0, 2, 2} ,
+                            {-2, 0,-2} , {-2, 0, 2} ,
+                            { 2, 0,-2} , { 2, 0, 2} ,
+
+                            {-2,-2, 1} , {-2, 2, 1} ,  /* r**2 = 9 */
+                            { 2,-2, 1} , { 2, 2, 1} ,
+                            { 1,-2,-2} , { 1,-2, 2} ,
+                            { 1, 2,-2} , { 1, 2, 2} ,
+                            {-2, 1,-2} , {-2, 1, 2} ,
+                            { 2, 1,-2} , { 2, 1, 2} ,
+                            {-2,-2,-1} , {-2, 2,-1} ,
+                            { 2,-2,-1} , { 2, 2,-1} ,
+                            {-1,-2,-2} , {-1,-2, 2} ,
+                            {-1, 2,-2} , {-1, 2, 2} ,
+                            {-2,-1,-2} , {-2,-1, 2} ,
+                            { 2,-1,-2} , { 2,-1, 2} ,
+
+                            {-2,-2,-2} , {-2,-2, 2} ,  /* r**2 = 12          */
+                            {-2, 2,-2} , {-2, 2, 2} ,  /* [corners of 5x5x5] */
+                            { 2,-2,-2} , { 2,-2, 2} ,
+                            { 2, 2,-2} , { 2, 2, 2}
+                          } ;
+
+   /* check inputs */
+
+   if( np <= 0 || xd == NULL || yd == NULL || zd == NULL )     return ;
+   if( mode_ival < FIRST_3D_MODE && mode_ival > LAST_3D_MODE ) return ;
+   if( nfill == NULL || xyzf == NULL )                         return ;
+
+   kadd = nadd[mode_ival-FIRST_3D_MODE] ;  /* how many pts around each input pt */
+
+   xyzn = (int *) malloc( sizeof(int)*np*(kadd+1) ) ;   /* output array */
+
+   /** add points around each input point, culling duplicates **/
+
+   for( ii=jj=0 ; ii < np ; ii++ ){
+     ix = xd[ii] ; jy = yd[ii] ; kz = zd[ii] ;
+     if( ix >= 0 && ix < nx && jy >= 0 && jy < ny && kz >= 0 && kz <= nz ){
+       xyzn[jj++] = ix + jy*nx + kz*nxy ;                       /* load 3D index */
+       for( kk=0 ; kk < kadd ; kk++ ){
+         ixn = ix+nn[kk][0] ; jyn = jy+nn[kk][1] ; kzn = kz+nn[kk][2] ;
+         if( ixn >= 0 && ixn < nx && jyn >= 0 && jyn < ny && kzn >= 0 && kzn < nz ){
+           mm = ixn + jyn*nx + kzn*nxy ;                        /* 3D index */
+           if( ii > 0 )
+             for( qq=0 ; qq < jj && xyzn[qq] != mm ; qq++ ) ;   /* nada */
+           else
+             qq = jj ;
+           if( qq == jj ) xyzn[jj++] = mm ;                     /* save 3D index */
+         }
+       }
+     }
+   }
+
+   *nfill = jj ; *xyzf  = xyzn ; return ;
+}
+
+/*-----------------------------------------------------------------------------*/
+/*! Expand set of points in 2D plane, in a circle.  RWCox - 16 Oct 2002.
+-------------------------------------------------------------------------------*/
+
+static void DRAW_2D_circle( int np, int *xd, int *yd, int *zd, int plane ,
+                            int *nfill , int **xyzf )
+{
+   int base , di,dj , itop,jtop,nij , xx,yy,zz , ix,jy , *ip,*jp ;
+   int nx=DSET_NX(dset) , ny=DSET_NY(dset) , nz=DSET_NZ(dset) , nxy = nx*ny ;
+   int kadd , ii,jj,kk , ixn,jyn , mm,qq ;
+   int nnew , *xyzn ;
+
+   float dx = fabs(DSET_DX(dset)) ;
+   float dy = fabs(DSET_DY(dset)) ;
+   float dz = fabs(DSET_DZ(dset)) ;
+   float rad= rad_av->fval ;
+   float fdi,fdj , xq,yq,radq ;
+   int idx , jdy , *nn ;
+
+   /* check inputs */
+
+   if( np <= 0 || xd == NULL || yd == NULL || zd == NULL ) return ;
+   if( nfill == NULL || xyzf == NULL )                     return ;
+
+   /* compute stuff for which plane we are in:
+       1 -> yz , 2 -> xz , 3 -> xy            */
+
+   xx = xd[0] ; yy = yd[0] ; zz = zd[0] ;
+   switch(plane){
+     case 1: base=xx    ; di=nx; dj=nxy; itop=ny; jtop=nz; ip=yd; jp=zd; fdi=dy; fdj=dz; break;
+     case 2: base=yy*nx ; di=1 ; dj=nxy; itop=nx; jtop=nz; ip=xd; jp=zd; fdi=dx; fdj=dz; break;
+     case 3: base=zz*nxy; di=1 ; dj=nx ; itop=nx; jtop=ny; ip=xd; jp=yd; fdi=dx; fdj=dy; break;
+     default: return ;  /* bad input */
+   }
+
+   idx = rad / fdi ; jdy = rad / fdj ;
+   if( idx < 1 && jdy < 1 ) return ;       /* circle smaller than in-plane voxel */
+
+   /* make incremental mask */
+
+   radq = 1.001*rad*rad ;
+   nn   = (int *) malloc( sizeof(int)*(2*idx+1)*(2*jdy+1)*2 ) ;
+   kadd = 0 ;
+   for( jj=-jdy ; jj <= jdy ; jj++ ){
+     yq = (jj*fdj)*(jj*fdj) ;
+     for( ii=-idx ; ii <= idx ; ii++ ){
+       xq = (ii*fdi)*(ii*fdi) + yq ;
+       if( xq <= radq && xq > 0.0 ){
+         nn[2*kadd]   = ii ;
+         nn[2*kadd+1] = jj ;
+         kadd++ ;
+       }
+     }
+   }
+
+   xyzn = (int *) malloc( sizeof(int)*np*(kadd+1) ) ;   /* output array */
+
+   /** add points around each input point, culling duplicates **/
+
+   for( ii=jj=0 ; ii < np ; ii++ ){
+     ix = ip[ii] ; jy = jp[ii] ;                                /* drawn point 2D index */
+     if( ix >= 0 && ix < itop && jy >= 0 && jy < jtop ){
+       xyzn[jj++] = base + ix*di + jy*dj ;                      /* load 3D index */
+       for( kk=0 ; kk < kadd ; kk++ ){
+         ixn = ix+nn[2*kk] ; jyn = jy+nn[2*kk+1] ;              /* nbhd pt 2D index */
+         if( ixn >= 0 && ixn < itop && jyn >= 0 && jyn < jtop ){
+           mm = base + ixn*di + jyn*dj ;                        /* 3D index */
+#ifndef USE_COLLAPSAR
+           if( ii > 0 )
+             for( qq=0 ; qq < jj && xyzn[qq] != mm ; qq++ ) ;   /* nada */
+           else
+             qq = jj ;
+           if( qq == jj ) xyzn[jj++] = mm ;                     /* save 3D index */
+#else
+           xyzn[jj++] = mm ;                                    /* save 3D index */
+#endif
+         }
+       }
+
+#ifdef USE_COLLAPSAR
+       if( ii > 9 && (ii==np-1 || ii%20==0) ) DRAW_collapsar( &jj , xyzn ) ;
+#endif
+     }
+   }
+
+   *nfill = jj ; *xyzf = xyzn ; free(nn) ; return ;
+}
+
+/*-----------------------------------------------------------------------------*/
+/*! Expand set of points in 3D, in a sphere.  RWCox - 16 Oct 2002.
+-------------------------------------------------------------------------------*/
+
+static void DRAW_3D_sphere( int np, int *xd, int *yd, int *zd, int plane ,
+                            int *nfill , int **xyzf )
+{
+   int ix,jy,kz ;
+   int nx=DSET_NX(dset) , ny=DSET_NY(dset) , nz=DSET_NZ(dset) , nxy = nx*ny ;
+   int kadd , ii,jj,kk , ixn,jyn,kzn , mm,qq ;
+   int nnew , *xyzn ;
+
+   float dx = fabs(DSET_DX(dset)) ;
+   float dy = fabs(DSET_DY(dset)) ;
+   float dz = fabs(DSET_DZ(dset)) ;
+   float rad= rad_av->fval ;
+   float xq,yq,zq,radq ;
+   int idx , jdy , kdz , *nn ;
+   int www ;
+
+   /* check inputs */
+
+   if( np <= 0 || xd == NULL || yd == NULL || zd == NULL ) return ;
+   if( nfill == NULL || xyzf == NULL )                     return ;
+
+   idx = rad/dx ; jdy = rad/dy ; kdz = rad/dz ;
+   if( idx < 1 && jdy < 1 && kdz < 1 ) return ;   /* sphere smaller than voxel */
+
+#if 0
+fprintf(stderr,"DRAW_3D_sphere: rad=%g  dx=%g idx=%d  dy=%g jdy=%d  dz=%g kdz=%d\n",
+        rad,dx,idx,dy,jdy,dz,kdz ) ;
+#endif
+
+   /* make incremental mask */
+
+   radq = 1.001*rad*rad ;
+   nn   = (int *) malloc( sizeof(int)*(2*idx+1)*(2*jdy+1)*(2*kdz+1)*3 ) ;
+   kadd = 0 ;
+   for( kk=-kdz ; kk <= kdz ; kk++ ){
+     zq = (kk*dz)*(kk*dz) ;
+     for( jj=-jdy ; jj <= jdy ; jj++ ){
+       yq = zq + (jj*dy)*(jj*dy) ;
+       for( ii=-idx ; ii <= idx ; ii++ ){
+         xq = yq + (ii*dx)*(ii*dx) ;
+         if( xq <= radq && xq > 0.0 ){
+           nn[3*kadd]   = ii ;
+           nn[3*kadd+1] = jj ;
+           nn[3*kadd+2] = kk ;
+           kadd++ ;
+         }
+       }
+     }
+   }
+
+   xyzn = (int *) malloc( sizeof(int)*np*(kadd+1) ) ;   /* output array */
+
+   if( xyzn == NULL ){
+     fprintf(stderr,"\n** DRAW_3D_sphere ERROR: can't allocate memory!\n\a");
+     free(nn); return;
+   }
+
+   www = (np*(kadd+1) > 1234567) && (np > 1) ;          /* show waiting? */
+   if( www ) SHOW_AFNI_PAUSE ;
+
+   /** add points around each input point **/
+
+   for( ii=jj=0 ; ii < np ; ii++ ){
+     ix = xd[ii] ; jy = yd[ii] ; kz = zd[ii] ;
+     if( ix >= 0 && ix < nx && jy >= 0 && jy < ny && kz >= 0 && kz <= nz ){
+       xyzn[jj++] = ix + jy*nx + kz*nxy ;                       /* load 3D index */
+       for( kk=0 ; kk < kadd ; kk++ ){
+         ixn = ix+nn[3*kk] ; jyn = jy+nn[3*kk+1] ; kzn = kz+nn[3*kk+2] ;
+         if( ixn >= 0 && ixn < nx && jyn >= 0 && jyn < ny && kzn >= 0 && kzn < nz ){
+           mm = ixn + jyn*nx + kzn*nxy ;                        /* 3D index */
+#ifndef USE_COLLAPSAR
+           if( ii > 0 )
+             for( qq=0 ; qq < jj && xyzn[qq] != mm ; qq++ ) ;   /* nada */
+           else
+             qq = jj ;
+           if( qq == jj ) xyzn[jj++] = mm ;                     /* save 3D index */
+#else
+           xyzn[jj++] = mm ;                                    /* save 3D index */
+#endif
+         }
+       }
+
+#ifdef USE_COLLAPSAR
+       if( ii > 5 && (ii==np-1 || ii%16==0) ) DRAW_collapsar( &jj , xyzn ) ;
+#endif
+     }
+   }
+
+   if( www ) SHOW_AFNI_READY ;
+
+   *nfill = jj ; *xyzf = xyzn ; free(nn) ; return ;
+}
+
+/*--------------------------------------------------------------------------------*/
+
+#ifdef USE_COLLAPSAR
+
+/*! Collapses the input list of points to non-duplicates. */
+
+static void DRAW_collapsar( int *npt , int *xyzn )
+{
+   int ii , jj , np ;
+
+   if( npt == NULL || xyzn == NULL ) return ;
+   np = *npt ; if( np <= 1 ) return ;
+
+   qsort_int( np , xyzn ) ;                /* sort */
+
+   for( ii=1 ; ii < np ; ii++ )            /* find 1st duplicates */
+     if( xyzn[ii] == xyzn[ii-1] ) break ;
+   if( ii == np ) return ;                 /* no duplicate => done */
+
+   /* if [ii] is different from [jj],
+      then add 1 to jj, and copy [ii] into the new [jj] location;
+      otherwise, keep jj fixed (thus skipping [ii])               */
+
+   for( jj=ii-1 ; ii < np ; ii++ ){
+     if( xyzn[ii] != xyzn[jj] ) xyzn[++jj] = xyzn[ii] ;
+   }
+
+   *npt = jj+1 ; return ;
+}
+#endif  /* USE_COLLAPSAR */

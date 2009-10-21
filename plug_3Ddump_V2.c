@@ -14,7 +14,7 @@
 /***********************************************************************
   Plugin to extract 3D brick data 
 ************************************************************************/
-typedef struct extract_data
+typedef struct 
 	{
 		  int nxx;			/* number of voxels in the x direction */
 		  int nyy;			/* number of voxels in the y direction */
@@ -41,7 +41,7 @@ typedef struct extract_data
 		  FILE * outfile;
 		  FILE * outlogfile;
 		  char outname[PLUGIN_MAX_STRING_RANGE]; /* output data file name */
-	};
+	}extract_data;
 
 
 static char helpstring[] =
@@ -115,24 +115,26 @@ static char * yn_strings[] = { "n" , "y" };
 #define ERROR_OPTIONS		3
 
 /*---------- prototypes for internal routines ----------*/
-int filexists (char *);
+static int filexists (char *);
 
-char * DUMP_main( PLUGIN_interface * ) ;
+static char * DUMP_main( PLUGIN_interface * ) ;
 
-int Dumpit( struct extract_data* , THD_3dim_dataset * ) ;
+static int Dumpit( extract_data* , THD_3dim_dataset * ) ;
 
-void write_ud (struct extract_data*);
+static void write_ud (extract_data*);
 
-char **allocate2D (int rows,int cols,int element_size);
+static char **allocate2D (int rows,int cols,int element_size);
 
-void free2D(char **a,int rows);
+static void free2D(char **a,int rows);
 
-int equal_strings (char *s1,char *s2);
+static int equal_strings (char *s1,char *s2);
 
 
 /***********************************************************************
    Set up the interface to the user
 ************************************************************************/
+
+DEFINE_PLUGIN_PROTOTYPE
 
 PLUGIN_interface * PLUGIN_init( int ncall )
 {
@@ -144,6 +146,8 @@ PLUGIN_interface * PLUGIN_init( int ncall )
 
    plint = PLUTO_new_interface( "3D Dump98" , "Ascii dump of 3D Dataset" , helpstring ,
                                  PLUGIN_CALL_VIA_MENU , DUMP_main  ) ;
+
+   PLUTO_set_runlabels( plint , "Dump+Keep" , "Dump+Close" ) ;  /* 04 Nov 2003 */
 
    /*-- first line of input: Dataset --*/
 
@@ -251,9 +255,9 @@ PLUGIN_interface * PLUGIN_init( int ncall )
   Main routine for this plugin (will be called from AFNI).
 ****************************************************************************/
 
-char * DUMP_main( PLUGIN_interface * plint )
+static char * DUMP_main( PLUGIN_interface * plint )
 {
-   struct extract_data uda,*ud;
+   extract_data uda,*ud;
    MCW_idcode * idc ;
    THD_3dim_dataset * xset , * yset ;
    char * tag ;
@@ -483,7 +487,7 @@ char * DUMP_main( PLUGIN_interface * plint )
 }
 
 
-int Dumpit( struct extract_data* ud, THD_3dim_dataset * xset)
+static int Dumpit( extract_data* ud, THD_3dim_dataset * xset)
 {
    void  *  xar  ;
    void  * thar ;
@@ -597,7 +601,7 @@ int Dumpit( struct extract_data* ud, THD_3dim_dataset * xset)
 /* function to check for file existence       */
 /* ************************************************************ */ 
 	
-int filexists (char *f_name)
+static int filexists (char *f_name)
 {/*filexists*/
         FILE *outfile;
         
@@ -614,7 +618,7 @@ int filexists (char *f_name)
 /* function to create log file       */
 /* ************************************************************ */ 
 
-void write_ud (struct extract_data* ud)
+void write_ud (extract_data* ud)
 	{
 		fprintf (ud->outlogfile,"\n\nUser Data Values \n");
 		fprintf (ud->outlogfile,"Input data set file name= %s\n",ud->dsetname);
@@ -644,7 +648,7 @@ void write_ud (struct extract_data* ud)
 /* function to allocate 2D arrays       */
 /* ************************************************************ */ 
 
-char **allocate2D (int rows,int cols,int element_size)
+static char **allocate2D (int rows,int cols,int element_size)
 
 {
     int i;
@@ -719,7 +723,7 @@ char **allocate2D (int rows,int cols,int element_size)
 /* ************************************************************ */ 
 /* function to free 2D arrays       */
 /* ************************************************************ */ 
-void free2D(char **a,int rows)
+static void free2D(char **a,int rows)
     
 {
     int i;

@@ -15,7 +15,7 @@
      user_func = function to call for each data time series
      user_data = extra data to go to user_func
 
-   void user_func( int n, float * ts, void * user_data, int nbrik, void * v )
+   void user_func( int n, float *ts, void *user_data, int nbrik, void *v )
 
      n         = length of time series
      ts[]      = time series data
@@ -29,10 +29,10 @@
    if more than one fimfunc is used at a time.
 
    Before the first call with time series data, user_func will be called like so:
-     user_func( n,NULL,user_data,nbrik, FIMdata * fd ) ;
+     user_func( n,NULL,user_data,nbrik, FIMdata *fd ) ;
    where FIMdata is the type
      typedef struct {
-        MRI_IMAGE * ref_ts , * ort_ts ;
+        MRI_IMAGE *ref_ts , *ort_ts ;
         int nvox , ignore , polort ;
      } FIMdata ;
    and fd is used to pass in the parameters set by the user:
@@ -72,10 +72,10 @@
    is given at the end of this file.
 --------------------------------------------------------------------------------*/
 
-void AFNI_register_fimfunc( char * menu_name , int nbrik ,
-                            generic_func * user_func , void * user_data )
+void AFNI_register_fimfunc( char *menu_name , int nbrik ,
+                            generic_func *user_func , void *user_data )
 {
-   MCW_function_list * rlist = &(GLOBAL_library.registered_fim) ;
+   MCW_function_list *rlist = &(GLOBAL_library.registered_fim) ;
    int num = rlist->num ;
 
 ENTRY("AFNI_register_fimfunc") ;
@@ -85,8 +85,10 @@ ENTRY("AFNI_register_fimfunc") ;
 
    if( num == sizeof(int) ) EXRETURN ;  /* too many already! */
 
-   if( num == 0 ){ rlist->flags=NULL; rlist->labels=NULL; rlist->funcs=NULL;
-                   rlist->func_data=NULL; rlist->func_code=NULL;             }
+   if( num == 0 ){
+     rlist->flags=NULL; rlist->labels=NULL; rlist->funcs=NULL;
+     rlist->func_data=NULL; rlist->func_code=NULL; rlist->func_init=NULL;
+   }
 
    rlist->flags = (int *) XtRealloc( (char *)rlist->flags, sizeof(int)*(num+1) ) ;
 
@@ -101,12 +103,15 @@ ENTRY("AFNI_register_fimfunc") ;
 
    rlist->func_code = (int *) XtRealloc( (char *)rlist->func_code, sizeof(int)*(num+1) ) ;
 
-   rlist->flags[num]  = nbrik ;
-   rlist->labels[num] = XtNewString(menu_name) ;
-   rlist->funcs[num]  = user_func ;
+   rlist->func_init = (generic_func **) XtRealloc( (char *)rlist->func_init ,
+                                                   sizeof(generic_func *)*(num+1) ) ;
 
+   rlist->flags[num]     = nbrik ;
+   rlist->labels[num]    = XtNewString(menu_name) ;
+   rlist->funcs[num]     = user_func ;
    rlist->func_data[num] = user_data ;
    rlist->func_code[num] = FUNC_FIM  ;
+   rlist->func_init[num] = NULL ;
 
    rlist->num = num+1 ;
    EXRETURN ;
@@ -121,12 +126,12 @@ ENTRY("AFNI_register_fimfunc") ;
    The output overwrites the input.
 --------------------------------------------------------------------------------*/
 
-static void rank_order_float( int n , float * a )
+static void rank_order_float( int n , float *a )
 {
    register int ii , ns , n1 , ib ;
    static int    nb = 0 ;
-   static int *   b = NULL ;  /* workspaces */
-   static float * c = NULL ;
+   static int   *b  = NULL ;  /* workspaces */
+   static float *c  = NULL ;
    float cs ;
 
    /*- handle special cases -*/
@@ -174,7 +179,7 @@ static void rank_order_float( int n , float * a )
    Rank orders a[], subtracts the mean rank, and returns the sum-of-squares
 -----------------------------------------------------------------------------*/
 
-static float spearman_rank_prepare( int n , float * a )
+static float spearman_rank_prepare( int n , float *a )
 {
    register int ii ;
    register float rb , rs ;
@@ -190,7 +195,7 @@ static float spearman_rank_prepare( int n , float * a )
    return rs ;
 }
 
-static float quadrant_corr_prepare( int n , float * a )
+static float quadrant_corr_prepare( int n , float *a )
 {
    register int ii ;
    register float rb , rs ;
@@ -215,7 +220,7 @@ static float quadrant_corr_prepare( int n , float * a )
     Note that these 2 routines are destructive (r and x are replaced by ranks)
 -------------------------------------------------------------------------------*/
 
-static float spearman_rank_corr( int n , float * x , float rv , float * r )
+static float spearman_rank_corr( int n , float *x , float rv , float *r )
 {
    register int ii ;
    register float ss ; float xv ;
@@ -227,8 +232,8 @@ static float spearman_rank_corr( int n , float * x , float rv , float * r )
    return ( ss/sqrt(rv*xv) ) ;
 }
 
-static float spearman_rank_manycorr( int n , float * x ,
-                                     int nr, float * rv, float ** r )
+static float spearman_rank_manycorr( int n , float *x ,
+                                     int nr, float *rv, float **r )
 {
    register int ii ;
    register float ss ;
@@ -248,7 +253,7 @@ static float spearman_rank_manycorr( int n , float * x ,
    return bb ;
 }
 
-static float quadrant_corr( int n , float * x , float rv , float * r )
+static float quadrant_corr( int n , float *x , float rv , float *r )
 {
    register int ii ;
    register float ss ; float xv ;
@@ -260,8 +265,8 @@ static float quadrant_corr( int n , float * x , float rv , float * r )
    return ( ss/sqrt(rv*xv) ) ;
 }
 
-static float quadrant_manycorr( int n , float * x ,
-                                int nr, float * rv, float ** r )
+static float quadrant_manycorr( int n , float *x ,
+                                int nr, float *rv, float **r )
 {
    register int ii ;
    register float ss ;
@@ -285,14 +290,14 @@ static float quadrant_manycorr( int n , float * x ,
   A sample fimfunc to compute the Spearman rank correlation
 ----------------------------------------------------------------------------*/
 
-void spearman_fimfunc( int n, float * ts, void * ud, int nb, void * val )
+void spearman_fimfunc( int n, float *ts, void *ud, int nb, void *val )
 {
-   static float * tsc=NULL , * refc=NULL , * refv=NULL , ** rr ;
-   static int   * keep=NULL ;
+   static float *tsc=NULL , *refc=NULL , *refv=NULL , **rr ;
+   static int   *keep=NULL ;
    static int    ntsc , nref , nkeep , polort,ignore , ncall;
 
    int ii , kk ;
-   float * v ;
+   float *v ;
 
    /*--- handle special cases ---*/
 
@@ -302,7 +307,7 @@ void spearman_fimfunc( int n, float * ts, void * ud, int nb, void * val )
 
       if( n > 0 ){
 
-         FIMdata * fd = (FIMdata *) val ;
+         FIMdata *fd = (FIMdata *) val ;
 
          polort = fd->polort ;  /* not used here */
          ignore = fd->ignore ;
@@ -366,7 +371,7 @@ fprintf(stderr,"spearman_fimfunc: initialize ntsc=%d nkeep=%d nref=%d\n",
       /*--- the ending call ---*/
 
       } else {
-         THD_3dim_dataset * dset = (THD_3dim_dataset *) val ;
+         THD_3dim_dataset *dset = (THD_3dim_dataset *) val ;
          int kb = -n ;
 
          free(tsc)  ; tsc  = NULL ;  /* free workspaces */
@@ -415,14 +420,14 @@ if(ncall%1000==0) fprintf(stderr,"spearman_fimfunc: ncall=%d\n",ncall);
   A sample fimfunc to compute the quadrant correlation
 ----------------------------------------------------------------------------*/
 
-void quadrant_fimfunc( int n, float * ts, void * ud, int nb, void * val )
+void quadrant_fimfunc( int n, float *ts, void *ud, int nb, void *val )
 {
-   static float * tsc=NULL , * refc=NULL , * refv=NULL , ** rr ;
-   static int   * keep=NULL ;
+   static float *tsc=NULL , *refc=NULL , *refv=NULL , **rr ;
+   static int   *keep=NULL ;
    static int    ntsc , nref , nkeep , polort,ignore , ncall;
 
    int ii , kk ;
-   float * v ;
+   float *v ;
 
    /*--- handle special cases ---*/
 
@@ -432,7 +437,7 @@ void quadrant_fimfunc( int n, float * ts, void * ud, int nb, void * val )
 
       if( n > 0 ){
 
-         FIMdata * fd = (FIMdata *) val ;
+         FIMdata *fd = (FIMdata *) val ;
 
          polort = fd->polort ;  /* not used here */
          ignore = fd->ignore ;
@@ -496,7 +501,7 @@ fprintf(stderr,"quadrant_fimfunc: initialize ntsc=%d nkeep=%d nref=%d\n",
       /*--- the ending call ---*/
 
       } else {
-         THD_3dim_dataset * dset = (THD_3dim_dataset *) val ;
+         THD_3dim_dataset *dset = (THD_3dim_dataset *) val ;
          int kb = -n ;
 
          free(tsc)  ; tsc  = NULL ;  /* free workspaces */

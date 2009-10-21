@@ -74,7 +74,7 @@ ENTRY("EDIT_one_dataset") ;
       fprintf(stderr,
               "\n*** Cannot read data brick for dataset %s\a\n",
               DSET_BRIKNAME(dset) ) ;
-      EXIT(1) ;
+      EXRETURN ;
    }
 
    /** load the data sub-brick indexes (iv_*) and check types for legality **/
@@ -92,10 +92,11 @@ ENTRY("EDIT_one_dataset") ;
       iv_thr   = -1 ;
       thr_type = ILLEGAL_TYPE ;
 
-      if( ! AFNI_GOOD_DTYPE(fim_type) ){
-         fprintf(stderr,"\n*** Illegal anatomy data type in dataset %s\a\n" ,
+      if( !AFNI_GOOD_DTYPE(fim_type) || fim_type == MRI_rgb ){
+         fprintf(stderr,"\n*** Illegal anatomy data type %s in dataset %s\a\n" ,
+                    MRI_type_name[fim_type] ,
                     dset->dblk->diskptr->brick_name ) ;
-         EXIT(1) ;
+         EXRETURN ;
       }
 
 #ifdef AFNI_DEBUG
@@ -138,16 +139,16 @@ ENTRY("EDIT_one_dataset") ;
          }
       }
 
-      if( ! AFNI_GOOD_FUNC_DTYPE(fim_type) ){
-         fprintf(stderr,"\n*** Illegal functional data type in dataset %s\a\n" ,
-                    dset->dblk->diskptr->brick_name ) ;
-         EXIT(1) ;
+      if( !AFNI_GOOD_FUNC_DTYPE(fim_type) || fim_type == MRI_rgb ){
+         fprintf(stderr,"\n*** Illegal functional data type %s in dataset %s\a\n" ,
+                   MRI_type_name[fim_type], dset->dblk->diskptr->brick_name ) ;
+         EXRETURN ;
       }
 
-      if( thr_type >= 0 && ! AFNI_GOOD_FUNC_DTYPE(thr_type) ){
-         fprintf(stderr,"\n*** Illegal threshold data type in dataset %s\a\n" ,
-                    dset->dblk->diskptr->brick_name ) ;
-         EXIT(1) ;
+      if( thr_type >= 0 && (!AFNI_GOOD_FUNC_DTYPE(thr_type) || fim_type == MRI_rgb) ){
+         fprintf(stderr,"\n*** Illegal threshold data type %s in dataset %s\a\n" ,
+                    MRI_type_name[fim_type] , dset->dblk->diskptr->brick_name ) ;
+         EXRETURN ;
       }
 
 #ifdef AFNI_DEBUG
@@ -168,7 +169,7 @@ ENTRY("EDIT_one_dataset") ;
       default:
          fprintf(stderr,"\n*** Illegal data type in dataset %s\a\n",
                  dset->dblk->diskptr->brick_name ) ;
-      EXIT(1) ;
+      EXRETURN ;
 
       case MRI_short:   sfim = (short *)   vfim ; break ;
       case MRI_float:   ffim = (float *)   vfim ; break ;
@@ -182,7 +183,7 @@ ENTRY("EDIT_one_dataset") ;
          default:
             fprintf(stderr,"\n*** Illegal thresh data type in dataset %s\a\n",
                     dset->dblk->diskptr->brick_name ) ;
-         EXIT(1) ;
+         EXRETURN ;
 
          case MRI_short:   sthr = (short *) vthr ; break ;
          case MRI_float:   fthr = (float *) vthr ; break ;
@@ -677,10 +678,7 @@ STATUS("abs applied to meaningless type: will be ignored") ;
    rmm  = clust_rmm ;
    vmul = clust_vmul ;
 
-
-   if( (rmm >= dx || rmm >= dy || rmm >= dz) &&   /* cluster size big enough? */
-       vmul > (dx*dy*dz)                     &&
-       AFNI_GOOD_FUNC_DTYPE(fim_type) ){          /* data type OK? */
+   if( rmm >= 0.0 ){       /* do clustering? */
 
       MCW_cluster_array * clbig ;
       MCW_cluster * cl ;
@@ -696,7 +694,13 @@ STATUS("abs applied to meaningless type: will be ignored") ;
 
 STATUS("clustering") ;
 
-      ptmin = vmul / dxyz + 0.99 ;
+      if( vmul >= 0.0 )
+        ptmin = (int)( vmul / dxyz + 0.99 ) ;
+      else
+        ptmin = (int) fabs(vmul) ;  /* 30 Apr 2002 */
+
+      vmul = MAX(1,ptmin) * dxyz ;  /* for use below */
+
       clar  = MCW_find_clusters( nx,ny,nz , dx,dy,dz , fim_type,vfim , rmm ) ;
       nclu  = 0 ;
 

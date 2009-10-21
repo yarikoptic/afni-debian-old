@@ -113,9 +113,9 @@ static char helpstring[] =
 
 char * NL_main( PLUGIN_interface * ) ;  /* the entry point */
 
-void NL_fitter() ;
-void NL_error() ;
-void NL_worker() ;
+void NL_fitter( int nt, double to, double dt, float * vec, char ** label ) ;
+void NL_error ( int nt, double to, double dt, float * vec, char ** label ) ;
+void NL_worker( int nt, double dt, float * vec, int dofit, char ** label ) ;
 
 
 /*---------------- global data -------------------*/
@@ -316,7 +316,7 @@ void initialize_program
   /*----- initialize independent variable matrix -----*/
   if (!plug_timeref)
     {
-      static old_DELT = -1.0 ;
+      static float old_DELT = -1.0 ;
       DELT = (inTR && dsTR > 0.0) ? dsTR : 1.0 ;  /* 22 July 1998 */
       if( DELT != old_DELT ){
          old_DELT = DELT ;
@@ -332,10 +332,9 @@ void initialize_program
     }
   else 
     {
-        im = mri_read_ascii (*tfilename); 
-	if (im == NULL)
+        flim = mri_read_1D (*tfilename); 
+	if (flim == NULL)
 	  NLfit_error ("Unable to read time reference file \n");
-        flim = mri_transpose (im);  mri_free(im);
         nt = flim -> nx;
 	if (nt < ts_length)
 	    NLfit_error ("Time reference array is too short");  
@@ -538,6 +537,9 @@ float *  nlfit
         "PLUTO_add_timeseries" for a timeseries chooser.
 ************************************************************************/
 
+
+DEFINE_PLUGIN_PROTOTYPE
+
 PLUGIN_interface * PLUGIN_init( int ncall )
 {
    int ii ;
@@ -551,8 +553,14 @@ PLUGIN_interface * PLUGIN_init( int ncall )
    char message[MAX_NAME_LENGTH];    /* error message */
 
 
-
    if( ncall > 0 ) return NULL ;  /* generate interfaces for ncall 0 */
+
+   jump_on_NLfit_error = 1 ;                 /* 01 May 2003: */
+   if( setjmp(NLfit_error_jmpbuf) != 0 ){    /* NLfit_error() was invoked */
+     jump_on_NLfit_error = 0 ;               /* somewhere below here */
+     fprintf(stderr,"\n*** Can't load NLfit plugin! ***\n");
+     return NULL ;
+   }
 
    /***** otherwise, do interface # 0 *****/
 
@@ -569,12 +577,14 @@ PLUGIN_interface * PLUGIN_init( int ncall )
 
    PLUTO_set_sequence( plint , "A:funcs:fitting" ) ;
 
+   PLUTO_set_runlabels( plint , "Set+Keep" , "Set+Close" ) ;  /* 04 Nov 2003 */
+
    /*----- initialize the model array -----*/
    model_array = NLFIT_get_many_MODELs ();
    if ((model_array == NULL) || (model_array->num == 0))
 #if 1
      { PLUTO_report( plint , "Found no models!") ;
-       return NULL ; }
+       jump_on_NLfit_error = 0 ; return NULL ; }
 #else
      NLfit_error ("Unable to locate any models");
 #endif
@@ -741,7 +751,7 @@ PLUGIN_interface * PLUGIN_init( int ncall )
    DESTROY_MODEL_ARRAY (model_array);
 #endif
 
-   return plint ;
+   jump_on_NLfit_error = 0 ; return plint ;
 }
 
 /***************************************************************************
@@ -826,7 +836,7 @@ char * NL_main( PLUGIN_interface * plint )
 	   if (strcmp (str, "External") == 0){
 	       plug_timeref = 1;
 	       str = PLUTO_get_string(plint);
-	       im = mri_read_ascii (str); 
+	       im = mri_read_1D (str); 
 	       if (im == NULL)
 		 return "************************************\n"
 		        " Unable to read time reference file \n"

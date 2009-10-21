@@ -39,6 +39,9 @@
 	    Also, added screen display of p-values.
   Date:     10 May 2000
 
+  Mod:      Add stuff for longjmp() return from NLfit_error().
+  Date:     01 May 2003 - RWCox
+
 */
 
 /*---------------------------------------------------------------------------*/
@@ -50,6 +53,10 @@
    Routine to print error message and stop.
 */
 
+#include <setjmp.h>                    /* 01 May 2003 */
+static int jump_on_NLfit_error = 0 ;
+static jmp_buf NLfit_error_jmpbuf ;
+
 void NLfit_error
 (
   char * message         /* message to be displayed */
@@ -57,6 +64,7 @@ void NLfit_error
 
 {
    fprintf (stderr, "%s Error: %s \n", PROGRAM_NAME, message);
+   if( jump_on_NLfit_error ) longjmp( NLfit_error_jmpbuf , 1 ) ;  /* 01 May 2003 */
    exit(1);
 }
 
@@ -458,7 +466,9 @@ void RAN_setup
 
       /* save parameters of new signal model */
 
-      fprintf(stderr,"NLfit: initializing random signal models") ;
+#if 0
+      fprintf(stderr,"++ NLfit: initializing random signal models") ;
+#endif
 
       OLD_smodel    = smodel ;
       OLD_p         = p ;
@@ -490,10 +500,18 @@ void RAN_setup
          for( ip=0 ; ip < p ; ip++ )                 /* parameter vector */
             par[ip] = get_random_value(min_sconstr[ip], max_sconstr[ip]) ;
 
+#if 0
          smodel( par , ts_length , x_array , ts ) ;  /* time series vector */
+#else
+         AFNI_CALL_VOID_4ARG(smodel ,
+                             float *,par , int,ts_length,
+                             float **,x_array , float *,ts ) ;
+#endif
       }
 
-      fprintf(stderr,"\n") ;
+#if 0
+      fprintf(stderr," - done\n") ;
+#endif
    } /* end of signal model stowage */
 
    return ;
@@ -532,7 +550,13 @@ void full_model
      y_array = (float *) malloc (sizeof(float) * (ts_length));
      if (y_array == NULL)
        NLfit_error ("Unable to allocate memory for y_array");
+#if 0
      smodel (gs, ts_length, x_array, y_array);
+#else
+     AFNI_CALL_VOID_4ARG(smodel ,
+                         float *,gs , int,ts_length,
+                         float **,x_array , float *,y_array ) ;
+#endif
 
 #ifdef SAVE_RAN
   } else            /* recall a saved time series */
@@ -540,7 +564,13 @@ void full_model
 #endif
 
   /*----- generate time series corresponding to the noise model -----*/
+#if 0
   nmodel (gn, ts_length, x_array, yhat_array);
+#else
+  AFNI_CALL_VOID_4ARG(nmodel ,
+                      float *,gn , int,ts_length,
+                      float **,x_array , float *,yhat_array ) ;
+#endif
 
   /*----- add signal and noise model time series -----*/
   for (it = 0;  it < ts_length;  it++)
@@ -1098,13 +1128,25 @@ void analyze_results
   y_array = (float *) malloc (sizeof(float) * (ts_length));
   if (y_array == NULL)
     NLfit_error ("Unable to allocate memory for y_array");
+#if 0
   smodel (par_full+r, ts_length, x_array, y_array);
+#else
+  AFNI_CALL_VOID_4ARG(smodel ,
+                      float *,(par_full+r) , int,ts_length,
+                      float **,x_array , float *,y_array ) ;
+#endif
 
   /*----- generate time series corresponding to the noise model -----*/
   base_array = (float *) malloc (sizeof(float) * (ts_length));
   if (base_array == NULL)
     NLfit_error ("Unable to allocate memory for base_array");
+#if 0
   nmodel (par_full, ts_length, x_array, base_array);
+#else
+  AFNI_CALL_VOID_4ARG(nmodel ,
+                      float *,par_full , int,ts_length,
+                      float **,x_array , float *,base_array ) ;
+#endif
 
   /*----- initialize signal parameters -----*/
   *tmax = x_array[0][1];

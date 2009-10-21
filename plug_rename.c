@@ -32,6 +32,9 @@ static char helpstring[] =
    Set up the interface to the user
 ************************************************************************/
 
+
+DEFINE_PLUGIN_PROTOTYPE
+
 PLUGIN_interface * PLUGIN_init( int ncall )
 {
    PLUGIN_interface * plint ;
@@ -46,6 +49,8 @@ PLUGIN_interface * PLUGIN_init( int ncall )
    PLUTO_add_hint( plint , "Rename a Dataset" ) ;
 
    PLUTO_set_sequence( plint , "A:afnicontrol:dset" ) ;
+
+   PLUTO_set_runlabels( plint , "Rename+Keep" , "Rename+Close" ) ;  /* 04 Nov 2003 */
 
    /*-- first line of input: Dataset --*/
 
@@ -112,13 +117,8 @@ char * RENAME_main( PLUGIN_interface * plint )
 
    /*-- set up session_row to point to all the associated datasets --*/
 
-   if( ISANAT(dset) ){
-      id = find.anat_index ;
-      session_row = ss->anat[id] ;
-   } else {
-      id = find.func_index ;
-      session_row = ss->func[id] ;
-   }
+   id = find.dset_index ;
+   session_row = ss->dsset[id] ;
 
    /*-- for each element of this row,
         change its internal names and, if needed, filenames on disk --*/
@@ -151,10 +151,10 @@ char * RENAME_main( PLUGIN_interface * plint )
 #else
       mm = COMPRESS_filecode(old_brick_name) ;
       if( mm != COMPRESS_NOFILE ){
-         char * old_name = COMPRESS_add_suffix(old_brick_name,mm) ;
-         char * new_name = COMPRESS_add_suffix(dset->dblk->diskptr->brick_name,mm) ;
-         ierr += rename( old_name , new_name ) ;
-         free(old_name) ; free(new_name) ;
+        char * old_name = COMPRESS_add_suffix(old_brick_name,mm) ;
+        char * new_name = COMPRESS_add_suffix(dset->dblk->diskptr->brick_name,mm) ;
+        ierr += rename( old_name , new_name ) ;
+        free(old_name) ; free(new_name) ;
       }
 #endif
 

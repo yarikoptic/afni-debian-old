@@ -22,6 +22,9 @@
   Mod:     Added call to AFNI_logger.
   Date:    15 August 2001
 
+  Mod:     Add FICO-ness of sub-bricks for Spearman and Quadrant correlation.
+  Date     29 Oct 2004 - RWCox
+
 */
 
 /*---------------------------------------------------------------------------*/
@@ -29,7 +32,7 @@
 #define PROGRAM_NAME "3dfim+"                        /* name of this program */
 #define PROGRAM_AUTHOR "B. Douglas Ward"                   /* program author */
 #define PROGRAM_INITIAL "28 April 2000"   /* date of initial program release */
-#define PROGRAM_LATEST  "15 August 2001"  /* date of latest program revision */
+#define PROGRAM_LATEST  "29 October 2004"  /* date of latest program revision */
 
 /*---------------------------------------------------------------------------*/
 
@@ -501,7 +504,6 @@ float * read_one_time_series
 {
   char message[THD_MAX_NAME];    /* error message */
   char * cpt;                    /* pointer to column suffix */
-  char filename[THD_MAX_NAME];   /* time series file name w/o column index */
   char subv[THD_MAX_NAME];       /* string containing column index */
   MRI_IMAGE * im, * flim;  /* pointers to image structures 
 			      -- used to read 1D ASCII */
@@ -513,70 +515,23 @@ float * read_one_time_series
   float * ts_data;         /* input time series data */
 
 
-  /*----- First, check file name for column index -----*/
-  cpt = strstr (ts_filename, "[");
-  if (cpt == NULL)
-    {
-      strcpy (filename, ts_filename);
-      subv[0] = '\0';
-    }
-  else
-    if (cpt == ts_filename)
-      FIM_error ("Illegal time series filename on command line");
-    else
-      {
-	int ii;
-	ii = cpt - ts_filename;
-	memcpy (filename, ts_filename, ii);
-	filename[ii] = '\0';
-	strcpy (subv, cpt);
-      }
-
-  
   /*----- Read the time series file -----*/
-  im = mri_read_ascii (filename); 
-  if (im == NULL)
-    {
-      sprintf (message,  "Unable to read time series file: %s",  filename);
+  flim = mri_read_1D(ts_filename) ;
+  if (flim == NULL)
+    {                      /* filename -> ts_filename   11 Sep 2003 [rickr] */
+      sprintf (message,  "Unable to read time series file: %s",  ts_filename);
       FIM_error (message);
     }
 
   
   /*----- Set pointer to data, and set dimensions -----*/
-  flim = mri_transpose (im);   MTEST (flim);
-  mri_free(im);   im = NULL;
   far = MRI_FLOAT_PTR(flim);
   nx = flim->nx;
-  ny = flim->ny;
+  ny = flim->ny; iy = 0 ;
+  if( ny > 1 ){
+    fprintf(stderr,"WARNING: time series %s has %d columns\n",ts_filename,ny);
+  }
   
-
-  /*----- Get the column index -----*/
-  if (subv[0] == '\0')  /* no column index */
-    {
-      if (ny != 1)
-	{
-	  sprintf (message,
-		   "Must specify column index for time series file: %s",
-		   ts_filename);
-	  FIM_error (message);
-	}
-      iy = 0;
-    }
-  else  /* process column index */
-    {
-      int * ivlist;
-      
-      ivlist = MCW_get_intlist (ny, subv);
-      if ((ivlist == NULL) || (ivlist[0] != 1))
-	{
-	  sprintf (message,
-		   "Illegal column selector for time series file: %s",
-		   ts_filename);
-	  FIM_error (message);
-	}
-      iy = ivlist[1];
-    }
-
 
   /*----- Save the time series data -----*/
   *ts_length = nx;
@@ -616,63 +571,20 @@ MRI_IMAGE * read_time_series
   int ny;                  /* number of columns in time series file */
 
 
-  /*----- First, check file name for column index -----*/
-  cpt = strstr (ts_filename, "[");
-  if (cpt == NULL)
-    {
-      strcpy (filename, ts_filename);
-      subv[0] = '\0';
-    }
-  else
-    if (cpt == ts_filename)
-      FIM_error ("Illegal time series filename on command line");
-    else
-      {
-	int ii;
-	ii = cpt - ts_filename;
-	memcpy (filename, ts_filename, ii);
-	filename[ii] = '\0';
-	strcpy (subv, cpt);
-      }
-
-  
   /*----- Read the time series file -----*/
-  im = mri_read_ascii (filename); 
-  if (im == NULL)
+  flim = mri_read_1D(ts_filename) ;
+  if (flim == NULL)
     {
-      sprintf (message,  "Unable to read time series file: %s",  filename);
+      sprintf (message,  "Unable to read time series file: %s",  ts_filename);
       FIM_error (message);
     }
 
   
   /*----- Set pointer to data, and set dimensions -----*/
-  flim = mri_transpose (im);   MTEST (flim);
-  mri_free(im);   im = NULL;
   far = MRI_FLOAT_PTR(flim);
   nx = flim->nx;
   ny = flim->ny;
-  
-
-  /*----- Get the column indices -----*/
-  if (subv[0] == '\0')  /* no column indices */
-    {
-      *column_list = NULL;
-    }
-  else  /* process column indices */
-    {
-      int * ivlist;
-      
-      ivlist = MCW_get_intlist (ny, subv);
-      if ((ivlist == NULL) || (ivlist[0] < 1))
-	{
-	  sprintf (message,
-		   "Illegal column selector for time series file: %s",
-		   ts_filename);
-	  FIM_error (message);
-	}
-      *column_list = ivlist;
-    }
-
+  *column_list = NULL;   /* mri_read_1D does column selection */
 
   return (flim);
 }
@@ -1180,7 +1092,7 @@ float set_fim_thr_level
   ts_array = (float *) malloc (sizeof(float) * nt);
   MTEST (ts_array);
 
-
+  sum = 0.0;  /* Ides March 2004 [rickr] */
   /*----- Sum values of all voxels at initial time point -----*/
   for (ixyz = 0;  ixyz < nxyz;  ixyz++)
     {
@@ -1613,14 +1525,22 @@ void write_bucket_data
 	}
       else if (ip == FIM_SpearmanCC)
 	{
+#if 0
 	  brick_type = FUNC_THR_TYPE;
+#else
+	  brick_type = FUNC_COR_TYPE;
+#endif
 	  nsam = N;  nort = q;
 	  if (num_idealts > 1)  nfit = 2;
 	  else                  nfit = 1;
 	} 
       else if (ip == FIM_QuadrantCC)
 	{
+#if 0
 	  brick_type = FUNC_THR_TYPE;
+#else
+	  brick_type = FUNC_COR_TYPE;
+#endif
 	  nsam = N;  nort = q;
 	  if (num_idealts > 1)  nfit = 2;
 	  else                  nfit = 1;

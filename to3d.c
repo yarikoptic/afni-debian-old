@@ -44,11 +44,7 @@ static int     zpad_mm=0 ;
 static float   zoff ;                          /* 10 May 2001 */
 static int     use_zoff=0 ;
 
-#ifdef AFNI_DEBUG
-#  define QQQ(str) (printf("to3d: %s\n",str),fflush(stdout))
-#else
-#  define QQQ(str)
-#endif
+static int     af_type_set=0 ;                 /* 20 Dec 2001 */
 
 /*** additions of Mar 2, 1995 ***/
 
@@ -71,6 +67,8 @@ static struct {
    int swap_two , swap_four ;  /* 14 Sep 1998 */
 
    int nofloatscan ;           /* 14 Sep 1999 */
+
+   int swap_eight ;            /* 06 Feb 2003 */
 
 } argopt  ;
 
@@ -165,9 +163,15 @@ int main( int argc , char * argv[] )
    mainENTRY("to3d:main") ;
    machdep() ; /* RWCox: 20 Apr 2001 */
 
+   if( DBG_trace ){                              /* 10 Sep 2002 */
+     fprintf(stderr,"Enabling mcw_malloc()\n") ;
+     enable_mcw_malloc() ;
+   }
+
    /* read the user data from the command line, if any */
 
    wset.topshell = NULL ;  /* flag that X has yet to start */
+   wset.good     = 0 ;
 
    /* initialize defaults for command line arguments
       that aren't related to dataset construction    */
@@ -186,6 +190,7 @@ int main( int argc , char * argv[] )
    argopt.editing     = FALSE ;
 
    argopt.swap_two = argopt.swap_four = 0 ;  /* 14 Sep 1998 */
+   argopt.swap_eight = 0 ;                   /* 06 Feb 2003 */
 
    argopt.nofloatscan = 0 ;                  /* 14 Sep 1999 */
 
@@ -203,17 +208,23 @@ int main( int argc , char * argv[] )
    Argc = argc ; Argv = argv ;
 
    T3D_initialize_user_data() ;
+
+   if( user_inputs.nosave ){
+     printf("Opening X11 now") ; fflush(stdout) ;
+     wset.topshell = XtVaAppInitialize( &app , "AFNI" , NULL , 0 ,
+                                        &argc , argv , FALLback , NULL ) ;
+     printf("..opened\n") ;
+   }
+
    T3D_read_images() ;
 
    if( negative_shorts ){
       float perc = (100.0*negative_shorts)/nvox_total ;
       fprintf(stderr,
-             "to3d WARNING: %d negative voxels (%g%%) were read in images of shorts.\n"
-             "              It is possible the input images need byte-swapping.\n",
-             negative_shorts , perc ) ;
+       "to3d WARNING: %d negative voxels (%g%%) were read in images of shorts.\n"
+       "              It is possible the input images need byte-swapping.\n",
+       negative_shorts , perc ) ;
    }
-
-QQQ("main1");
 
    if( strlen(user_inputs.geometry_parent_filename) > 0 )
       T3D_geometry_parent_CB( NULL , NULL , NULL ) ;
@@ -227,10 +238,14 @@ QQQ("main1");
    if( ! (geomparent_loaded || geometry_loaded) ){
       if( imdx <= 0.0 || imdy <= 0.0 ){
 
+STATUS("setting default FOV") ;
+
          user_inputs.fov = INIT_fov ;    /* the old code */
 
       } else {                           /* the new code */
          float size ;
+
+STATUS("setting voxel size from imdx, etc.") ;
 
          user_inputs.xsize = imdx ;
          user_inputs.ysize = imdy ;
@@ -271,17 +286,35 @@ QQQ("main1");
 
          char acod ; int icod ;
 
+STATUS("setting orientation from MRILIB_orients") ;
+
          acod=toupper(MRILIB_orients[0]); icod=ORCODE(acod); if(icod >= 0) user_inputs.xorient=icod;
          acod=toupper(MRILIB_orients[2]); icod=ORCODE(acod); if(icod >= 0) user_inputs.yorient=icod;
          acod=toupper(MRILIB_orients[4]); icod=ORCODE(acod); if(icod >= 0) user_inputs.zorient=icod;
 
-         if( MRILIB_zoff != 0.0 ){
-            user_inputs.zorigin = MRILIB_zoff ;
-            user_inputs.xyz_centered &= ~ZCENTERED ;
+         if( use_MRILIB_zoff ){                     /* use offset to voxel center from mri_read() */
+            if( fabs(user_inputs.zorigin-MRILIB_zoff) > 0.01 ){
+              user_inputs.zorigin = MRILIB_zoff ;
+              user_inputs.xyz_centered &= ~ZCENTERED ;
+            }
+         }
+
+         if( use_MRILIB_xoff ){                     /* 20 Dec 2001 */
+            if( fabs(user_inputs.xorigin-MRILIB_xoff) > 0.01 ){
+              user_inputs.xorigin = MRILIB_xoff ;
+              user_inputs.xyz_centered &= ~XCENTERED ;
+            }
+         }
+
+         if( use_MRILIB_yoff ){                     /* 20 Dec 2001 */
+            if( fabs(user_inputs.yorigin-MRILIB_yoff) > 0.01 ){
+              user_inputs.yorigin = MRILIB_yoff ;
+              user_inputs.xyz_centered &= ~YCENTERED ;
+            }
          }
       }
 
-      /* 10 May 2001: use global zoff, if given */
+      /* 10 May 2001: use global zoff, if given [will override MRILIB_zoff] */
 
       if( use_zoff ){
          user_inputs.zorigin = zoff ;
@@ -335,8 +368,9 @@ QQQ("main1");
 
    printf("Making widgets") ; fflush(stdout) ;
 
-   wset.topshell = XtVaAppInitialize( &app , "AFNI" , NULL , 0 ,
-                                      &argc , argv , FALLback , NULL ) ;
+   if( wset.topshell == NULL )
+     wset.topshell = XtVaAppInitialize( &app , "AFNI" , NULL , 0 ,
+                                        &argc , argv , FALLback , NULL ) ;
 
    AFNI_load_defaults( wset.topshell ) ;
    if( argopt.ncolor <= 2   ) argopt.ncolor = INIT_ngray ;
@@ -366,8 +400,6 @@ QQQ("main1");
 
    printf("\n") ; fflush(stdout) ;
 
-QQQ("main2");
-
    if( AFNI_noenv("AFNI_HINTS") ) MCW_hint_toggle() ;
 
    /* let the user do the rest */
@@ -381,6 +413,7 @@ QQQ("main2");
 
 void T3D_create_widgets(void)
 {
+ENTRY("T3D_create_widgets") ;
    wset.dc  = MCW_new_DC( wset.topshell, argopt.ncolor,
                           NCOLOVR,FD_colovr,FD_colovr, argopt.gamma , 0 );
    wset.seq = NULL ;  /* no viewing open now */
@@ -517,7 +550,6 @@ void T3D_create_widgets(void)
    MCW_reghint_children( wset.zorient_av->wrowcol ,
                          "Anatomical orientation in slice direction" ) ;
 
-QQQ("orientations setup") ;
    printf(".");fflush(stdout);
 
    /*---- bbox and arrowvals for voxel sizes ----*/
@@ -527,7 +559,7 @@ QQQ("orientations setup") ;
                       "x voxel\nsize (mm)" ,        /* label */
                       MCW_AV_downup ,               /* arrows */
                       1 ,                           /* min */
-                      1000 ,                        /* max */
+                      9999 ,                        /* max */
                       (int)(100*user_inputs.xsize), /* init */
                       MCW_AV_editext ,              /* text */
                       2 ,                           /* decimals */
@@ -552,7 +584,7 @@ QQQ("orientations setup") ;
                       "y voxel\nsize (mm)" ,        /* label */
                       MCW_AV_downup ,               /* arrows */
                       1 ,                           /* min */
-                      4000 ,                        /* max */
+                      9999 ,                        /* max */
                       (int)(100*user_inputs.ysize), /* init */
                       MCW_AV_editext ,              /* text */
                       2 ,                           /* decimals */
@@ -574,7 +606,7 @@ QQQ("orientations setup") ;
                       "z voxel\nsize (mm)" ,        /* label */
                       MCW_AV_downup ,               /* arrows */
                       1 ,                           /* min */
-                      4000 ,                        /* max */
+                      9999 ,                        /* max */
                       (int)(100*user_inputs.zsize), /* init */
                       MCW_AV_editext ,              /* text */
                       2 ,                           /* decimals */
@@ -597,7 +629,7 @@ QQQ("orientations setup") ;
                         "z voxel\nspacing  " ,            /* label */
                         MCW_AV_downup ,                   /* arrows */
                         1 ,                               /* min */
-                        4000 ,                            /* max */
+                        9999 ,                            /* max */
                         (int)(100*user_inputs.zspacing),  /* init */
                         MCW_AV_editext ,                  /* text */
                         2 ,                               /* decimals */
@@ -620,7 +652,7 @@ QQQ("orientations setup") ;
                       "Field of\nview (mm)" ,    /* label */
                       MCW_AV_downup ,            /* arrows */
                       1 ,                        /* min */
-                      10000 ,                    /* max */
+                      99999 ,                    /* max */
                       (int)(10*user_inputs.fov), /* init */
                       MCW_AV_editext ,           /* text */
                       1 ,                        /* decimals */
@@ -751,7 +783,6 @@ QQQ("orientations setup") ;
       }
    }
 
-QQQ("voxshapes setup") ;
    printf(".");fflush(stdout);
 
    /*---- Label to show the TR (for 3D+time datasets) ----*/
@@ -799,8 +830,8 @@ QQQ("voxshapes setup") ;
                         wset.topform ,                  /* parent */
                         "x origin (mm)\n[left edge]" ,  /* label */
                         MCW_AV_downup ,                 /* arrows */
-                       -50000 ,                         /* min */
-                        50000 ,                         /* max */
+                       -99999 ,                         /* min */
+                        99999 ,                         /* max */
                         (int)(100*user_inputs.xorigin), /* init */
                         MCW_AV_editext ,                /* text */
                         2 ,                             /* decimals */
@@ -833,8 +864,8 @@ QQQ("voxshapes setup") ;
                         wset.topform ,                  /* parent */
                         "y origin (mm)\n[top edge]" ,   /* label */
                         MCW_AV_downup ,                 /* arrows */
-                       -50000 ,                         /* min */
-                        50000 ,                         /* max */
+                       -99999 ,                         /* min */
+                        99999 ,                         /* max */
                         (int)(100*user_inputs.yorigin), /* init */
                         MCW_AV_editext ,                /* text */
                         2 ,                             /* decimals */
@@ -868,8 +899,8 @@ QQQ("voxshapes setup") ;
                         wset.topform ,                  /* parent */
                         "z origin (mm)\n[slice 0]" ,    /* label */
                         MCW_AV_downup ,                 /* arrows */
-                       -50000 ,                         /* min */
-                        50000 ,                         /* max */
+                       -99999 ,                         /* min */
+                        99999 ,                         /* max */
                         (int)(100*user_inputs.zorigin), /* init */
                         MCW_AV_editext ,                /* text */
                         2 ,                             /* decimals */
@@ -976,7 +1007,6 @@ QQQ("voxshapes setup") ;
    MCW_register_hint( wset.zorigin_label ,
                       "Direction of z origin distance" ) ;
 
-QQQ("origins setup") ;
    printf(".");fflush(stdout);
 
    /*----- a separator to keep the geometry stuff separate -----*/
@@ -1048,7 +1078,8 @@ QQQ("origins setup") ;
    /*---- Label to show what kind of data is stored ----*/
 
    { char buf[32] ;
-     sprintf( buf , "Datum: %s\n" , MRI_TYPE_name[argopt.datum_all] ) ;
+     sprintf( buf , "Datum: %s [%dx%d]\n" ,
+              MRI_TYPE_name[argopt.datum_all], user_inputs.nx,user_inputs.ny ) ;
      wset.datum_label =
         XtVaCreateManagedWidget(
            "dialog" , xmLabelWidgetClass , wset.topform ,
@@ -1432,7 +1463,6 @@ QQQ("origins setup") ;
     "dataset name of the 'anatomy\n"
     "parent' you selected" ) ;
 
-QQQ("name fields setup") ;
    printf(".");fflush(stdout);
 #endif  /* NO_NAMES */
 
@@ -1761,7 +1791,6 @@ QQQ("name fields setup") ;
    MCW_register_hint( wset.session_file_label , "New dataset's directory" ) ;
    MCW_register_hint( wset.session_file_textfield , "New dataset's directory" ) ;
 
-QQQ("types and files setup") ;
    printf(".");fflush(stdout);
 
    /*----- action controls at lower right corner -----*/
@@ -1784,7 +1813,7 @@ QQQ("types and files setup") ;
             XmNpacking     , XmPACK_TIGHT ,
          NULL ) ;
 
-   /* 14 Sep 1998: add a button to swap bytes in the images */
+   /* 14 Sep 1998: add a button to swap bytes in the image data */
 
    { int    dd = mri_datum_size((MRI_TYPE)argopt.datum_all) ;
      char * tt = "Byte Swap[2]" ;
@@ -1866,20 +1895,21 @@ QQQ("types and files setup") ;
 
    XtManageChild( wset.action_rowcol ) ;
 
-QQQ("controls setup") ;
    printf(".");fflush(stdout);
 
    /*----- all done -----*/
 
    XtManageChild( wset.topform ) ;
-QQQ("XtManageChild( wset.topform ) done") ;
 
    XtRealizeWidget( wset.topshell ) ;
-QQQ("XtRealizeWidget( wset.topshell ) done") ;
+
+   WAIT_for_window( wset.topshell ) ;  /* 10 Sep 2002 */
+   wset.good = 1 ;
 
    T3D_data_to_widgets() ;
    T3D_set_dependent_geometries() ;
-   return ;
+
+   EXRETURN ;
 }
 
 /*---------------------------------------------------------------------
@@ -1912,6 +1942,8 @@ void T3D_initialize_user_data(void)
 {
    int nopt , ii ;
 
+ENTRY("T3D_initialize_user_data") ;
+
    user_inputs = default_user_inputs ;  /* copy defaults */
    user_inputs.nosave = 0 ;
 
@@ -1925,9 +1957,7 @@ void T3D_initialize_user_data(void)
    EMPTY_STRING( user_inputs.anatomy_dataname ) ;
    EMPTY_STRING( user_inputs.geometry_dataname ) ;
    EMPTY_STRING( user_inputs.output_filename ) ;
-#ifndef OMIT_DATASET_IDCODES
    ZERO_IDCODE( user_inputs.anatomy_parent_idcode ) ;
-#endif
 
    strcpy( user_inputs.session_filename , "./" ) ;
 
@@ -1984,7 +2014,7 @@ void T3D_initialize_user_data(void)
          strcpy( user_inputs.anatomy_type_string ,
                  ANAT_typestr[user_inputs.anatomy_type] ) ;
 
-         nopt++ ; continue ;
+         af_type_set = 1 ; nopt++ ; continue ;
       }
 
       /* -type from the function prefixes */
@@ -2001,7 +2031,7 @@ void T3D_initialize_user_data(void)
          strcpy( user_inputs.function_type_string ,
                  FUNC_typestr[user_inputs.function_type] ) ;
 
-         nopt++ ; continue ;
+         af_type_set = 1 ; nopt++ ; continue ;
       }
 
 #ifdef USE_MRI_DELAY
@@ -2760,6 +2790,8 @@ printf("decoded %s to give zincode=%d bot=%f top=%f\n",Argv[nopt],
             argopt.datum_all = MRI_complex ;
          } else if( strcmp(Argv[nopt],"byte") == 0 ){
             argopt.datum_all = MRI_byte ;
+         } else if( strcmp(Argv[nopt],"rgb") == 0 ){
+            argopt.datum_all = MRI_rgb ;
          } else {
             char buf[256] ;
             sprintf(buf,"-datum of type '%s' is not supported in AFNI!",
@@ -2803,6 +2835,11 @@ printf("decoded %s to give zincode=%d bot=%f top=%f\n",Argv[nopt],
          nopt++ ; continue ;  /* go to next arg */
       }
 
+      if( strncmp(Argv[nopt],"-8swap",4) == 0 ){    /* 06 Feb 2003 */
+         argopt.swap_eight = 1 ;
+         nopt++ ; continue ;  /* go to next arg */
+      }
+
       /*----- -nofloatscan -----*/
 
       if( strncmp(Argv[nopt],"-nofloatscan",6) == 0 ){
@@ -2815,6 +2852,10 @@ printf("decoded %s to give zincode=%d bot=%f top=%f\n",Argv[nopt],
       printf("*** ILLEGAL OPTION: %s\n\n",Argv[nopt]) ;
       FatalError("cannot continue") ;
 
+   }
+
+   if( user_inputs.ntt > 1 && !af_type_set ){
+      user_inputs.anatomy_type = ANAT_EPI_TYPE ; /* 20 Dec 2001 */
    }
 
    First_Image_Arg = nopt ;
@@ -2846,7 +2887,7 @@ printf("decoded %s to give zincode=%d bot=%f top=%f\n",Argv[nopt],
      if( qargv != Argv ) free(qargv) ;
    }
 
-   return ;
+   EXRETURN ;
 }
 
 /*--------------------------------------------------------------------*/
@@ -3005,7 +3046,7 @@ void Syntax()
      " Under most circumstance, -xFOV , -yFOV , and -zSLAB would be the\n"
      " correct combination of geometry specifiers to use.  For example,\n"
      " a common type of run at MCW would be entered as\n"
-     "    -xFOV 120I-S -yFOV 120A-P -zSLAB 60S-50I\n"
+     "    -xFOV 120L-R -yFOV 120A-P -zSLAB 60S-50I\n"
    ) ;
 
    printf(
@@ -3036,6 +3077,7 @@ void Syntax()
     "    3Di:hglobal:himage:nx:ny:nz:fname  [32 bit input]\n"
     "    3Df:hglobal:himage:nx:ny:nz:fname  [floating point input]\n"
     "    3Dc:hglobal:himage:nx:ny:nz:fname  [complex input]\n"
+    "    3Dd:hglobal:himage:nx:ny:nz:fname  [double input]\n"
     "\n"
     "  where '3D:' or '3Ds': signals this is a 3D input file of signed shorts\n"
     "        '3Db:'          signals this is a 3D input file of unsigned bytes\n"
@@ -3043,6 +3085,8 @@ void Syntax()
     "        '3Df:'          signals this is a 3D input file of floats\n"
     "        '3Dc:'          signals this is a 3D input file of complex numbers\n"
     "                         (real and imaginary pairs of floats)\n"
+    "        '3Dd:'          signals this is a 3D input file of double numbers\n"
+    "                         (will be converted to floats)\n"
     "        hglobal = number of bytes to skip at start of whole file\n"
     "        himage  = number of bytes to skip at start of each 2D image\n"
     "        nx      = x dimension of each 2D image in the file\n"
@@ -3063,6 +3107,8 @@ void Syntax()
     "  * The int, float, and complex formats presume that the data in\n"
     "      the image file are in the 'native' format for this CPU; that is,\n"
     "      there is no provision for data conversion (unlike the 3Ds: format).\n"
+    "  * Double input will be converted to floats (or whatever -datum is)\n"
+    "      since AFNI doesn't support double precision datasets.\n"
     "  * Whether the 2D image data is interpreted as a 3D block or a 3D+time\n"
     "      block depends on the rest of the command line parameters.  The\n"
     "      various 3D: input formats are just ways of inputting multiple 2D\n"
@@ -3094,14 +3140,14 @@ void Syntax()
     "  assume their order is '0 2 4 6 1 3 5' (here, the number refers\n"
     "  to the slice location in space).\n"
     "\n"
-    "* GE I.* (IMGF) 16-bit files can now be read.  The program will detect\n"
+    "* GEMS I.* (IMGF) 16-bit files can now be read. The program will detect\n"
     "  if byte-swapping is needed on these images, and can also set voxel\n"
     "  grid sizes and orientations.  It can also detect the TR in the\n"
     "  image header.  If you wish to rely on this TR, you can set TR=0\n"
     "  in the -time:zt or -time:tz option.\n"
     "* If you use the image header's TR and also use @filename for the\n"
     "  tpattern, then the values in the tpattern file should be fractions\n"
-    "  of the true TR; they will be  multiplied by the true TR once it is\n"
+    "  of the true TR; they will be multiplied by the true TR once it is\n"
     "  read from the image header.\n"
     "\n"
     " NOTES:\n"
@@ -3148,12 +3194,43 @@ void Syntax()
     "    University of California, Berkeley, and is copyrighted by the\n"
     "    Regents of the University of California (see file mcw_glob.c).\n"
     "\n"
+    "RGB datasets [Apr 2002]\n"
+    "-----------------------\n"
+    "You can now create RGB-valued datasets.  Each voxel contains 3 byte values\n"
+    "ranging from 0..255.  RGB values may be input to to3d in one of two ways:\n"
+    " * Using raw PPM formatted 2D image files.\n"
+    " * Using JPEG formatted 2D files.\n"
+    " * Using TIFF, BMP, GIF, PNG formatted 2D files [if netpbm is installed].\n"
+    " * Using the 3Dr: input format, analogous to 3Df:, etc., described above.\n"
+    "RGB datasets can be created as functional FIM datasets, or as anatomical\n"
+    "datasets:\n"
+    " * RGB fim overlays are transparent in AFNI only where all three\n"
+    "    bytes are zero - that is, you can't overlay solid black.\n"
+    " * At present, there is limited support for RGB datasets.\n"
+    "    About the only thing you can do is display them in 2D slice\n"
+    "    viewers in AFNI.\n"
+    "You can also create RGB-valued datasets using program 3dThreetoRGB.\n"
+    "\n"
+    "Other Data Options\n"
+    "------------------\n"
     "  -2swap\n"
     "     This option will force all input 2 byte images to be byte-swapped\n"
     "     after they are read in.\n"
     "  -4swap\n"
     "     This option will force all input 4 byte images to be byte-swapped\n"
     "     after they are read in.\n"
+    "  -8swap\n"
+    "     This option will force all input 8 byte images to be byte-swapped\n"
+    "     after they are read in.\n"
+    "  BUT PLEASE NOTE:\n"
+    "     Input images that are auto-detected to need byte-swapping\n"
+    "     (GEMS I.*, Siemens *.ima, ANALYZE *.img, and 3Ds: files)\n"
+    "     will NOT be swapped again by one of the above options.\n"
+    "     If you want to swap them again for some bizarre reason,\n"
+    "     you'll have to use the 'Byte Swap' button on the GUI.\n"
+    "     That is, -2swap/-4swap will swap bytes on input files only\n"
+    "     if they haven't already been swapped by the image input\n"
+    "     function.\n"
     "\n"
     "  -zpad N   OR\n"
     "  -zpad Nmm \n"
@@ -3286,6 +3363,8 @@ void T3D_centered_CB( Widget w ,
    int val ;
    Boolean sens ;
 
+ENTRY("T3D_centered_CB") ;
+
    user_inputs.xyz_centered = val = MCW_val_bbox( wset.centered_bbox ) ;
 
    sens = (val & XCENTERED) == 0 ;
@@ -3302,6 +3381,7 @@ void T3D_centered_CB( Widget w ,
 
    T3D_set_dependent_geometries() ;
    RESET_QUIT ;
+   EXRETURN ;
 }
 
 #ifdef ALLOW_NONCONTIG
@@ -3331,9 +3411,9 @@ void T3D_set_dependent_geometries(void)
 {
    float size ;
 
-QQQ("T3D_set_dependent_geometries: entry") ;
+ENTRY("T3D_set_dependent_geometries") ;
 
-   if( ! XtIsRealized( wset.topshell ) ) return ;
+   if( ! XtIsRealized( wset.topshell ) ) EXRETURN ;
 
    /* Voxel shapes not irregular?  Then set them appropriately. */
 
@@ -3357,8 +3437,6 @@ QQQ("T3D_set_dependent_geometries: entry") ;
          user_inputs.zsize = size ;
       }
    }
-
-QQQ(" -- voxshapes done") ;
 
 #ifdef ALLOW_NONCONTIG
    /* contiguous voxels turned on? Then set zspacing to zsize. */
@@ -3400,8 +3478,7 @@ QQQ(" -- voxshapes done") ;
       }
    }
 
-QQQ(" -- centers done") ;
-
+   EXRETURN ;
 }
 
 /*---------------------------------------------------------------------
@@ -3414,6 +3491,8 @@ void T3D_voxshape_CB( Widget w ,
 {
    int val ;
    Boolean fov_sens , xsize_sens , ysize_sens , zsize_sens ;
+
+ENTRY("T3D_voxshape_CB") ;
 
    user_inputs.voxshape = val = MCW_val_bbox( wset.voxshape_bbox ) ;
 
@@ -3445,6 +3524,7 @@ void T3D_voxshape_CB( Widget w ,
 
    T3D_set_dependent_geometries() ;
    RESET_QUIT ;
+   EXRETURN ;
 }
 
 /*-----------------------------------------------------------------------
@@ -3456,14 +3536,18 @@ char * T3D_text_display( MCW_arrowval * av , XtPointer cd )
    char ** tar = (char **) cd ;
    int  ii = av->ival ;
 
-   return tar[ii] ;
+ENTRY("T3D_text_display") ;
+
+   RETURN( tar[ii] ) ;
 }
 
 /*----------------------------------------------------------------------*/
 
 void T3D_quit_timeout_CB( XtPointer client_data , XtIntervalId * id )
 {
+   ENTRY("T3D_quit_timeout_CB") ;
    RESET_QUIT ;
+   EXRETURN ;
 }
 
 void T3D_quit_CB( Widget wcall ,
@@ -3472,11 +3556,13 @@ void T3D_quit_CB( Widget wcall ,
    static Boolean first = True ;
    static Widget wquit  = NULL ;
 
+ENTRY("T3D_quit_CB") ;
+
   if( wcall == NULL ){
     if( wquit == NULL ) return ;
     MCW_set_widget_label( wquit , "quit" ) ;
     first = True ;
-    return ;
+    EXRETURN ;
   }
 
   if( first ){
@@ -3487,8 +3573,9 @@ void T3D_quit_CB( Widget wcall ,
      (void) XtAppAddTimeOut( XtWidgetToApplicationContext(wcall) ,
                              5000 , T3D_quit_timeout_CB , NULL ) ;
 
-     return ;
+     EXRETURN ;
   }
+  AFNI_speak("Done",0) ;
   exit(0) ;
 }
 
@@ -3499,12 +3586,15 @@ void T3D_swap_CB( Widget w , XtPointer cd , XtPointer call_data )
    int dd = mri_datum_size((MRI_TYPE)argopt.datum_all) ;
    int nx , ny , nz , nv , nvox ;
 
+ENTRY("T3D_swap_CB") ;
+
    nx = dset->daxes->nxx ; ny = dset->daxes->nyy ;
    nz = dset->daxes->nzz ; nv = dblk->nvals      ; nvox = nx*ny*nz*nv ;
 
    switch( dd ){
-      case 2: swap_twobytes ( nvox , dbrick ) ; break ;
-      case 4: swap_fourbytes( nvox , dbrick ) ; break ;
+      case 2: swap_twobytes  ( nvox , dbrick ) ; break ;
+      case 4: swap_fourbytes ( nvox , dbrick ) ; break ;
+      case 8: swap_eightbytes( nvox , dbrick ) ; break ;
    }
 
    if( argopt.datum_all == MRI_short && !AFNI_yesenv("AFNI_NO_NEGATIVES_WARNING") ){ /* 24 Aug 2001 */
@@ -3537,7 +3627,7 @@ void T3D_swap_CB( Widget w , XtPointer cd , XtPointer call_data )
       myXtFree(dset->taxis) ;
    }
 
-   return ;
+   EXRETURN ;
 }
 
 /*---------------------------------------------------------------------*/
@@ -3678,10 +3768,6 @@ void T3D_type_av_CB( MCW_arrowval * av , XtPointer cd )
                     "multiple of # of data values" ) ;
       }
 
-#ifdef AFNI_DEBUG
-printf("T3D_type_av_CB: new nvals=%d  nz=%d\n",nvals_new,nz) ; fflush(stdout) ;
-#endif
-
       user_inputs.nz    = nz ;
       user_inputs.nvals = nvals_new ;
       T3D_set_dependent_geometries() ;
@@ -3701,7 +3787,7 @@ void T3D_fix_dataset_dimen(void)
 {
    int nx , ny , nz , nv , ibr , bsize , nvold ;
 
-QQQ("T3D_fix_dataset_dimen: entry") ;
+ENTRY("T3D_fix_dataset_dimen") ;
 
    nvold = dblk->nvals ;
 
@@ -3710,27 +3796,20 @@ QQQ("T3D_fix_dataset_dimen: entry") ;
    ny = user_inputs.ny ;
    nz = daxes->nzz = dkptr->dimsizes[2]  = user_inputs.nz ;
 
-QQQ("T3D_fix_dataset_dimen: about to clear bricks") ;
-
    for( ibr=0 ; ibr < nvold ; ibr++ )
       mri_clear_data_pointer( DBLK_BRICK(dblk,ibr) ) ;
 
    myXtFree(dblk->brick_bytes) ; dblk->brick_bytes = NULL ;
    myXtFree(dblk->brick_fac  ) ; dblk->brick_fac   = NULL ;
 
-QQQ("T3D_fix_dataset_dimen: about to recreate bricks") ;
-
    THD_init_datablock_brick( dblk , argopt.datum_all , NULL ) ;
-
-QQQ("T3D_fix_dataset_dimen: about to attach bricks") ;
 
    bsize = nx*ny*nz * mri_datum_size( argopt.datum_all ) ;
    for( ibr=0 ; ibr < nv ; ibr++ ){
       mri_fix_data_pointer( dbrick + ibr*bsize , DBLK_BRICK(dblk,ibr) ) ;
    }
 
-QQQ("T3D_fix_dataset_dimen: exit") ;
-  return ;
+   EXRETURN ;
 }
 
 /*------------------------------------------------------------------------
@@ -3752,10 +3831,9 @@ void T3D_read_images(void)
    int     gnim ;
    char ** gname ;
    int time_dep , ltt,kzz , ntt,nzz , nvoxt ;
+   int kzmod ;  /* 06 Nov 2002 */
 
-#ifdef AFNI_DEBUG
-printf("T3D_read_images: entry\n") ;
-#endif
+ENTRY("T3D_read_images") ;
 
    nim = Argc - First_Image_Arg ;  /* = number of files, not images! */
 
@@ -3772,6 +3850,10 @@ printf("T3D_read_images: input file count = %d; expanded = %d\n",nim,gnim) ;
 
    /**--- count up the actual number of images into nz ---**/
 
+#ifndef AFNI_DEBUG
+   printf("Counting images: ");fflush(stdout);
+#endif
+
    nz = 0 ;
    for( lf=0 ; lf < gnim ; lf++ ){
       ii = mri_imcount( gname[lf] ) ;
@@ -3782,7 +3864,9 @@ printf("T3D_read_images: input file count = %d; expanded = %d\n",nim,gnim) ;
       nz += ii ;
    }
 #ifdef AFNI_DEBUG
-printf("T3D_read_images: mri_imcount totals nz=%d\n",nz) ;
+   printf("T3D_read_images: mri_imcount totals nz=%d\n",nz) ;
+#else
+   printf(" total=%d 2D slices\n",nz) ;
 #endif
 
    if( nz < NZBOT ){
@@ -3853,26 +3937,28 @@ printf("T3D_read_images: mri_imcount totals nz=%d\n",nz) ;
 
    if( argopt.datum_all < 0 ){
       switch( im->kind ){
-         case MRI_byte:     argopt.datum_all = MRI_byte  ; break ;
+         case MRI_byte:     argopt.datum_all = MRI_byte    ; break ;
 
          default:
-         case MRI_short:    argopt.datum_all = MRI_short ; break ;
+         case MRI_short:    argopt.datum_all = MRI_short   ; break ;
 
          case MRI_int:
          case MRI_double:
-         case MRI_float:    argopt.datum_all = MRI_float ; break ;
+         case MRI_float:    argopt.datum_all = MRI_float   ; break ;
 
          case MRI_complex:  argopt.datum_all = MRI_complex ; break ;
+
+         case MRI_rgb:      argopt.datum_all = MRI_rgb     ; break ;
       }
    }
 
    /**--- allocate storage for all slices to be input ---**/
 
    dsize  = mri_datum_size( (MRI_TYPE) argopt.datum_all ) ;
-   dbrick = bar = XtMalloc( dsize * nx * ny * nz ) ;
+   dbrick = bar = (char*)XtMalloc( dsize * nx * ny * nz ) ;
    nvoxt  = nx * ny * nz ;
 
-#ifdef AFNI_DEBUG
+#if 0
 printf("T3D_read_images: first file (%s) has nx=%d ny=%d #im=%d\n",
        gname[0],nx,ny,arr->num) ;
 #endif
@@ -3881,6 +3967,7 @@ printf("T3D_read_images: first file (%s) has nx=%d ny=%d #im=%d\n",
 
 #ifndef AFNI_DEBUG
    printf("Reading images: ");fflush(stdout);
+   kzmod = (int)(0.0234567*nz)+1 ;                /* 06 Nov 2002 */
 #endif
 
    kz = 0 ; if( time_dep ){ ltt = kzz = 0 ; }
@@ -3921,8 +4008,8 @@ printf("T3D_read_images: file %d (%s) has #im=%d\n",lf,gname[lf],arr->num) ;
 
          im = arr->imarr[kim] ;
          if( im->nx != nx || im->ny != ny ){
-            fprintf(stderr,"*** file %s has nonconforming images!\n",
-                   gname[lf] ) ;
+            fprintf(stderr,"*** file %s has nonconforming images: first=%dx%d this=%dx%d\n",
+                   gname[lf] , nx,ny , im->nx,im->ny) ;
             exit(1) ;
          }
 
@@ -3932,11 +4019,59 @@ printf("T3D_read_images: file %d (%s) has #im=%d\n",lf,gname[lf],arr->num) ;
 #endif
 
          /* 14 Sep 1998: swap bytes if ordered */
+         /* 07 Mar 2002: but only if it wasn't already swapped */
 
          if( im->pixel_size == 2 && argopt.swap_two ){
-            swap_twobytes( im->nvox , mri_data_pointer(im) ) ;
-         } else if( im->pixel_size == 4 && argopt.swap_two ){
-            swap_fourbytes( im->nvox , mri_data_pointer(im) ) ;
+            if( im->was_swapped ){  /* don't swap me */
+              static int first=1 ;
+              if( first ){          /* but print a message */
+                fprintf(stderr,"++ Ignoring -2swap on input image [%s...]\n",
+                        (im->fname == NULL) ? "." : im->fname ) ;
+                first = 0 ;
+              }
+            } else {                /* swap me */
+              static int first=1 ;
+              if( first ){          /* and print a message */
+                fprintf(stderr,"++ Executing -2swap on input image [%s...]\n",
+                        (im->fname == NULL) ? "." : im->fname ) ;
+                first = 0 ;
+              }
+              swap_twobytes( im->nvox , mri_data_pointer(im) ) ;
+            }
+         } else if( im->pixel_size == 4 && argopt.swap_four ){
+            if( im->was_swapped ){  /* don't swap me again */
+              static int first=1 ;
+              if( first ){          /* but print a missive */
+                fprintf(stderr,"++ Ignoring -4swap on input image [%s...]\n",
+                        (im->fname == NULL) ? "" : im->fname ) ;
+                first = 0 ;
+              }
+            } else {                /* swap me, swap me */
+              static int first=1 ;
+              if( first ){          /* and print a message */
+                fprintf(stderr,"++ Executing -4swap on input image [%s...]\n",
+                        (im->fname == NULL) ? "." : im->fname ) ;
+                first = 0 ;
+              }
+              swap_fourbytes( im->nvox , mri_data_pointer(im) ) ;
+            }
+         } else if( im->pixel_size == 8 && argopt.swap_eight ){   /* 06 Feb 2003 */
+            if( im->was_swapped ){  /* don't swap me again */
+              static int first=1 ;
+              if( first ){          /* but print a missive */
+                fprintf(stderr,"++ Ignoring -8swap on input image [%s...]\n",
+                        (im->fname == NULL) ? "" : im->fname ) ;
+                first = 0 ;
+              }
+            } else {                /* swap me, swap me */
+              static int first=1 ;
+              if( first ){          /* and print a message */
+                fprintf(stderr,"++ Executing -8swap on input image [%s...]\n",
+                        (im->fname == NULL) ? "." : im->fname ) ;
+                first = 0 ;
+              }
+              swap_eightbytes( im->nvox , mri_data_pointer(im) ) ;
+            }
          }
 
          /* 14 Sep 1999: check float inputs for errors */
@@ -4037,6 +4172,12 @@ printf("T3D_read_images: file %d (%s) has #im=%d\n",lf,gname[lf],arr->num) ;
                }
                break ;  /* end of conversion to complexes */
 
+               case MRI_rgb:{             /** convert to RGB **/
+                  shim = mri_to_rgb( im ) ;
+                  KILL_1MRI(im) ;
+               }
+               break ;
+
             }
          }  /**-- end of conversion: desired image is in shim --**/
 
@@ -4070,7 +4211,7 @@ printf("T3D_read_images: putting data into slice %d\n",kz) ;
 
          KILL_1MRI(shim) ;
 #ifndef AFNI_DEBUG
-         if( kz%100 == 0 ){ printf("%d",(kz/100)%10) ; fflush(stdout); }
+         if( kz%kzmod == 0 ){ printf(".") ; fflush(stdout); }
 #endif
       }  /** end of loop over images from 1 file **/
 
@@ -4085,6 +4226,15 @@ printf("T3D_read_images: putting data into slice %d\n",kz) ;
              nfloat_err) ;
 
    MCW_free_expand( gnim , gname ) ;
+
+   /**-- 10 Jan 2004: set slice thickness to slice spacing, if given --**/
+
+   if( use_MRILIB_slicespacing && fabs(MRILIB_slicespacing-imdz) > 0.01l ){
+     fprintf(stderr,"Using slice spacing=%g",MRILIB_slicespacing) ;
+     if( imdz > 0.0 ) fprintf(stderr," instead of slice thickness=%g",imdz) ;
+     fprintf(stderr,"\n") ;
+     imdz = MRILIB_slicespacing ;
+   }
 
    /**-- 19 Jan 2000: check inputs shorts for negativity --**/
 
@@ -4226,8 +4376,13 @@ printf("T3D_read_images: nvals set to %d\n",nvals) ;
    dset->wod_daxes   = NULL ;
    dset->wod_flag    = 0 ;
    dset->stats       = NULL ;
+#ifdef ALLOW_DATASET_VLIST
    dset->pts         = NULL ;
+#endif
    dset->death_mark  = 0 ;
+   dset->tcat_list   = NULL ;
+   dset->tcat_num    = 0 ;
+   dset->tcat_len    = NULL ;
 
    ZERO_STAT_AUX( dset ) ;
 
@@ -4341,7 +4496,7 @@ printf("T3D_read_images: nvals set to %d\n",nvals) ;
 
    /*********** DONE **********/
 
-   return ;
+   EXRETURN ;
 }
 
 /*-------------------------------------------------------------*/
@@ -4386,6 +4541,8 @@ void T3D_open_view_CB( Widget w ,
 
    drive_MCW_imseq(wset.seq,isqDR_opacitybut    ,(XtPointer)0); /* 07 Mar 2001 */
    drive_MCW_imseq(wset.seq,isqDR_record_disable,(XtPointer)0); /* 24 Apr 2001 */
+   drive_MCW_imseq(wset.seq,isqDR_zoombut       ,(XtPointer)0); /* 12 Mar 2002 */
+   drive_MCW_imseq(wset.seq,isqDR_penbbox       ,(XtPointer)0); /* 12 Mar 2002 */
 
    /* 01 Dec 1999: add "sides" markers for image viewer */
 
@@ -4396,8 +4553,6 @@ void T3D_open_view_CB( Widget w ,
    drive_MCW_imseq( wset.seq , isqDR_display , (XtPointer)-1 ) ;
 
    MCW_invert_widget( wset.open_view_pb ) ;
-
-QQQ("open_view");
 
    RESET_QUIT ;
 }
@@ -4421,6 +4576,7 @@ XtPointer T3D_getim( int n , int type , FD_brick * br )
 
       stat->transforms0D = NULL ;
       stat->transforms2D = NULL ;
+      stat->slice_proj   = NULL ;
 
       return (XtPointer) stat ;
    }
@@ -4469,16 +4625,16 @@ void T3D_save_file_CB( Widget w ,
    Widget wmsg = NULL ;
    int npad ;
 
-QQQ("save_file1");
-
    /*-- store all control data in the user_inputs data struct --*/
 
-   if( wset.topshell != NULL ) T3D_widgets_to_data() ;
+   if( wset.topshell != NULL && wset.good ) T3D_widgets_to_data() ;
 
    /*-- check for legal values --*/
 
    good = T3D_check_data( True ) ;
    if( !good ) return ;
+
+   AFNI_speak("Saving",0) ;
 
    /*-- store values in dataset --*/
 
@@ -4524,21 +4680,15 @@ QQQ("save_file1");
    }
 
    EMPTY_STRING( dset->warp_parent_name ) ;
-#ifndef OMIT_DATASET_IDCODES
    ZERO_IDCODE(dset->warp_parent_idcode) ;
-#endif
 
    if( strlen(user_inputs.anatomy_dataname) > 0 ){
       MCW_strncpy( dset->anat_parent_name ,
                    user_inputs.anatomy_dataname , THD_MAX_NAME ) ;
-#ifndef OMIT_DATASET_IDCODES
       dset->anat_parent_idcode = user_inputs.anatomy_parent_idcode ;
-#endif
    } else {
       EMPTY_STRING( dset->anat_parent_name ) ;
-#ifndef OMIT_DATASET_IDCODES
       ZERO_IDCODE(dset->anat_parent_idcode) ;
-#endif
    }
 
    MCW_strncpy( dset->self_name, user_inputs.dataset_name, THD_MAX_NAME ) ;
@@ -4610,7 +4760,7 @@ QQQ("save_file1");
    else
       bigfile = (daxes->nxx * daxes->nyy * daxes->nzz * dset->taxis->ntt > 9999999) ;
 
-   if( wset.topshell != NULL && bigfile ){
+   if( wset.topshell != NULL && bigfile && wset.good ){
       wmsg = MCW_popup_message( wset.save_file_pb ,
                                    "***************\n"
                                    "*  Computing  *\n"
@@ -4661,11 +4811,9 @@ QQQ("save_file1");
 
    } /* end of markers (for HEAD_ANAT_TYPE) */
 
-QQQ("save_file9");
-
    /*----- actually write the dataset out! -----*/
 
-   if( wset.topshell != NULL && bigfile ){
+   if( wset.topshell != NULL && bigfile && wset.good ){
       wmsg = MCW_popup_message( wset.save_file_pb ,
                                    "********************\n"
                                    "*  Please wait for *\n"
@@ -4678,11 +4826,9 @@ QQQ("save_file9");
       wmsg = NULL ;
    }
 
-#ifndef OMIT_DATASET_IDCODES
    /** make up a new idcode for this new output dataset **/
 
    dset->idcode = MCW_new_idcode() ;
-#endif
 
    npad = (int) zpad ;
    if( npad == 0 ){   /* the old code */
@@ -4736,7 +4882,7 @@ QQQ("save_file9");
                           "Some error occurred\n"
                           "while trying to write file") ;
 
-   else if( wset.topshell != NULL )
+   else if( wset.topshell != NULL && wset.good )
       wmsg = MCW_popup_message( wset.save_file_pb ,
                                  "*********************\n"
                                  "*  Dataset written  *\n"
@@ -4755,7 +4901,7 @@ void T3D_widgets_to_data(void)
 {
    char * str ;
 
-   if( wset.topshell == NULL ) return ;
+   if( wset.topshell == NULL || !wset.good ) return ;
 
    user_inputs.xorient = wset.xorient_av->ival ;
    user_inputs.yorient = wset.yorient_av->ival ;
@@ -4869,23 +5015,17 @@ void T3D_widgets_to_data(void)
 
 void T3D_data_to_widgets(void)
 {
-   if( wset.topshell == NULL ) return ;  /* no widgets! */
-
-QQQ("T3D_data_to_widgets: entry") ;
+   if( wset.topshell == NULL || !wset.good ) return ;  /* no widgets! */
 
    AV_assign_ival( wset.xorient_av , user_inputs.xorient ) ;
    AV_assign_ival( wset.yorient_av , user_inputs.yorient ) ;
    AV_assign_ival( wset.zorient_av , user_inputs.zorient ) ;
-
-QQQ("  -- orient done") ;
 
    MCW_set_bbox( wset.voxshape_bbox  , user_inputs.voxshape     ) ;
 #ifdef ALLOW_NONCONTIG
    MCW_set_bbox( wset.voxcontig_bbox , user_inputs.voxcontig    ) ;
 #endif
    MCW_set_bbox( wset.centered_bbox  , user_inputs.xyz_centered ) ;
-
-QQQ("  -- bbox done") ;
 
    AV_assign_ival( wset.dataset_type_av  , user_inputs.dataset_type ) ;
    AV_assign_ival( wset.function_type_av , user_inputs.function_type ) ;
@@ -4906,8 +5046,6 @@ QQQ("  -- bbox done") ;
    SET_ORIGIN_LABEL(wset.yorigin_label,user_inputs.yorient) ;
    SET_ORIGIN_LABEL(wset.zorigin_label,user_inputs.zorient) ;
 
-QQQ("  -- aval done") ;
-
    T3D_voxshape_CB (NULL,NULL,NULL) ;  /* take actions based on */
 #ifdef ALLOW_NONCONTIG
    T3D_voxcontig_CB(NULL,NULL,NULL) ;  /* settings of these toggles */
@@ -4915,8 +5053,6 @@ QQQ("  -- aval done") ;
    T3D_centered_CB (NULL,NULL,NULL) ;
 
    T3D_type_av_CB( wset.dataset_type_av , NULL ) ;  /* set dataset type */
-
-QQQ("  -- CB done") ;
 
 #ifndef NO_NAMES
    XmTextFieldSetString( wset.dataset_name_textfield ,
@@ -4965,7 +5101,6 @@ QQQ("  -- CB done") ;
      }
    }
 
-QQQ("  -- textfield done") ;
    return ;
 }
 
@@ -4982,6 +5117,8 @@ Boolean T3D_check_data( Boolean perr )
    Boolean good = True , isfunc ;
    char new_name[THD_MAX_NAME] ;
 
+ENTRY("T3D_check_data") ;
+
    /*-- check that orientations are legal --*/
 
    xlab = ORIENT_xyz[user_inputs.xorient] ;
@@ -4994,6 +5131,8 @@ Boolean T3D_check_data( Boolean perr )
    }
 
    /*-- check that the output filename is acceptable --*/
+
+STATUS("check output filename") ;
 
    ll_out = ll = strlen( user_inputs.output_filename ) ;
    if( ll == 0 ){
@@ -5014,6 +5153,8 @@ Boolean T3D_check_data( Boolean perr )
 
    /*-- check that the session filename is acceptable --*/
 
+STATUS("check session name") ;
+
    ll_sess = ll = strlen( user_inputs.session_filename ) ;
    if( ll == 0 ){
       if(perr)T3D_poperr( OUTERR , "No session directory name provided!" ) ;
@@ -5031,6 +5172,8 @@ Boolean T3D_check_data( Boolean perr )
    }
 
    /* Check if the file already exists */
+
+STATUS("check if file exists") ;
 
    if( ll_sess > 0 && ll_out > 0 ){
       PATH_CONCAT( new_name , user_inputs.session_filename ,
@@ -5057,6 +5200,8 @@ Boolean T3D_check_data( Boolean perr )
 
    /*-- check for good data types in the bricks --*/
 
+STATUS("check data types") ;
+
    if( isfunc ){
       if( ! AFNI_GOOD_FUNC_DTYPE(argopt.datum_all) ){
          if(perr)T3D_poperr(OUTERR , "Illegal functional datum type!" ) ;
@@ -5080,6 +5225,8 @@ Boolean T3D_check_data( Boolean perr )
 
    /*-- check if the stat_aux parameters are good --*/
 
+STATUS("check stat aux") ;
+
    T3D_setup_stat_aux() ;
    if( user_inputs.need_stat_aux ){
 
@@ -5094,7 +5241,7 @@ Boolean T3D_check_data( Boolean perr )
 
    /*-- return the status we found --*/
 
-   return good ;
+   RETURN( good );
 }
 
 /*----------------------------------------------------------------*/
@@ -5105,15 +5252,17 @@ void T3D_poperr( char * prefix_msg , char * msg )
    static int    len_total = 0 ;
    int len_needed ;
 
+ENTRY("T3D_poperr") ;
+
    len_needed = strlen(prefix_msg) + strlen(msg) + 2 ;
    if( len_needed > len_total ){
-      total_msg = XtRealloc( total_msg , len_needed ) ;
+      total_msg = (char*)XtRealloc( total_msg , len_needed ) ;
       len_total = len_needed ;
    }
    strcpy( total_msg , prefix_msg ) ;
    strcat( total_msg , msg ) ;
 
-   if( wset.topshell != NULL ){
+   if( wset.topshell != NULL && wset.good ){
       (void) MCW_popup_message( wset.action_frame,
                                 total_msg, MCW_USER_KILL | MCW_TIMER_KILL ) ;
       XFlush( XtDisplay(wset.topshell) ) ;
@@ -5121,7 +5270,7 @@ void T3D_poperr( char * prefix_msg , char * msg )
    } else {
       fprintf(stderr,"%s\n",total_msg) ;
    }
-   return ;
+   EXRETURN ;
 }
 
 /*-----------------------------------------------------------------
@@ -5164,11 +5313,9 @@ void T3D_geometry_parent_CB( Widget w ,
 
    int xpad=0,ypad=0,zpad=0 ;  /* 05 Feb 2001 */
 
-   if( old_name == NULL ) old_name = XtNewString("Elvis Lives!!!") ;
+ENTRY("T3D_geometry_parent_CB") ;
 
-#ifdef AFNI_DEBUG
-printf("T3D_geometry_parent_CB: entry\n") ; fflush(stdout) ;
-#endif
+   if( old_name == NULL ) old_name = XtNewString("Elvis Lives!!!") ;
 
    if( w != NULL ){
       new_name = XmTextFieldGetString( w ) ;  /* get the new text */
@@ -5177,12 +5324,8 @@ printf("T3D_geometry_parent_CB: entry\n") ; fflush(stdout) ;
    }
    DEBLANK(new_name) ;
 
-#ifdef AFNI_DEBUG
-printf("T3D_geometry_parent_CB: got string\n") ; fflush(stdout) ;
-#endif
-
-   if( strlen(new_name) == 0 )         { old_name = new_name ; geomparent_loaded = 0 ; return ; }
-   if( strcmp(new_name,old_name) == 0 ){ myXtFree(new_name) ; geomparent_loaded = 0 ; return ; }
+   if( strlen(new_name) == 0 )         { old_name = new_name ; geomparent_loaded = 0 ; EXRETURN ; }
+   if( strcmp(new_name,old_name) == 0 ){ myXtFree(new_name) ; geomparent_loaded = 0 ; EXRETURN ; }
 
    /* have a new filename --> try to read dataset from it */
 
@@ -5214,12 +5357,8 @@ printf("T3D_geometry_parent_CB: got string\n") ; fflush(stdout) ;
    if( geom_dset == NULL ){
       T3D_poperr( INERR ,
                   "Cannot read 3D dataset\nin geometry parent file" ) ;
-      geomparent_loaded = 0 ; return ;
+      geomparent_loaded = 0 ; EXRETURN ;
    }
-
-#ifdef AFNI_DEBUG
-printf("T3D_geometry_parent_CB: got dataset\n") ; fflush(stdout) ;
-#endif
 
    /* 05 Feb 2001: set if this was a 'padded' dataset from an earlier to3d */
 
@@ -5249,22 +5388,15 @@ printf("T3D_geometry_parent_CB: got dataset\n") ; fflush(stdout) ;
 
        T3D_poperr( INERR , msg ) ;
        THD_delete_3dim_dataset( geom_dset , False ) ;
-       geomparent_loaded = 0 ; return ;
+       geomparent_loaded = 0 ; EXRETURN ;
    }
-
-#ifdef AFNI_DEBUG
-printf("T3D_geometry_parent_CB: checked shape\n") ; fflush(stdout) ;
-#endif
 
 #ifdef ALLOW_NONCONTIG
    if( geom_daxes->xxskip != 0.0 || geom_daxes->yyskip != 0.0 ){
       T3D_poperr( INERR , "Nonzero skip factors for x and y!" ) ;
       THD_delete_3dim_dataset( geom_dset , False ) ;
-      geomparent_loaded = 0 ; return ;
+      geomparent_loaded = 0 ; EXRETURN ;
    }
-#ifdef AFNI_DEBUG
-printf("T3D_geometry_parent_CB: checked skips\n") ; fflush(stdout) ;
-#endif
 #endif
 
    /* at this point, the geom dataset seems OK, so copy its axes data */
@@ -5275,17 +5407,11 @@ printf("T3D_geometry_parent_CB: checked skips\n") ; fflush(stdout) ;
 
    T3D_widgets_to_data() ;
 
-#ifdef AFNI_DEBUG
-printf("T3D_geometry_parent_CB: did T3D_widgets_to_data\n") ; fflush(stdout) ;
-#endif
-
 #ifdef REQUIRE_ANAT_PARENT
    if( strlen(geom_dset->anat_parent_name) > 0 ){
       MCW_strncpy( user_inputs.anatomy_dataname ,
                    geom_dset->anat_parent_name, THD_MAX_NAME ) ;
-#ifndef OMIT_DATASET_IDCODES
       user_inputs.anatomy_parent_idcode = geom_dset->anat_parent_idcode ;
-#endif
    }
 #endif
 
@@ -5294,10 +5420,6 @@ printf("T3D_geometry_parent_CB: did T3D_widgets_to_data\n") ; fflush(stdout) ;
 
    MCW_strncpy( user_inputs.geometry_parent_filename ,
                 new_name , THD_MAX_NAME ) ;
-
-#ifdef AFNI_DEBUG
-printf("T3D_geometry_parent_CB: copied strings\n") ; fflush(stdout) ;
-#endif
 
    user_inputs.xorient = geom_daxes->xxorient ;
    user_inputs.yorient = geom_daxes->yyorient ;
@@ -5365,28 +5487,14 @@ printf("T3D_geometry_parent_CB: copied strings\n") ; fflush(stdout) ;
    if( fabs(size - user_inputs.zorigin) < 0.01 )
       user_inputs.xyz_centered |= ZCENTERED ;
 
-#ifdef AFNI_DEBUG
-printf("T3D_geometry_parent_CB: copied geometry\n") ;
-printf("  ?orient = %d %d %d\n",
-       user_inputs.xorient,user_inputs.yorient,user_inputs.zorient) ;
-printf("  ?origin = %f %f %f\n",
-       user_inputs.xorigin,user_inputs.yorigin,user_inputs.zorigin) ;
-printf("  ?size = %f %f %f\n",
-       user_inputs.xsize,user_inputs.ysize,user_inputs.zsize) ;
-printf("  voxshape = %d  fov = %g\n",user_inputs.voxshape,user_inputs.fov) ;
-fflush(stdout) ;
-#endif
-
    T3D_data_to_widgets() ;
-
-#ifdef AFNI_DEBUG
-printf("T3D_geometry_parent_CB: did T3D_data_to_widgets\n") ; fflush(stdout) ;
-#endif
 
    THD_delete_3dim_dataset( geom_dset , False ) ;
 
    geometry_loaded   = 1 ;
-   geomparent_loaded = 1 ;  return ;/* flag that load was OK */
+   geomparent_loaded = 1 ;  /* flag that load was OK */
+
+   EXRETURN ;
 }
 
 /*---------------------------------------------------------------
@@ -5402,13 +5510,11 @@ void T3D_anatomy_parent_CB( Widget w ,
    Boolean isfunc ;
    THD_3dim_dataset * anat_dset ;
 
+ENTRY("T3D_anatomy_parent_CB") ;
+
    if( old_name == NULL ) old_name = XtNewString("Elvis Lives!!!") ;
 
    /* see if the new text is any different from the old one */
-
-#ifdef AFNI_DEBUG
-printf("T3D_anatomy_parent_CB: entry\n") ; fflush(stdout) ;
-#endif
 
    if( w != NULL ){
       new_name = XmTextFieldGetString( w ) ;  /* get the new text */
@@ -5417,8 +5523,8 @@ printf("T3D_anatomy_parent_CB: entry\n") ; fflush(stdout) ;
    }
    DEBLANK(new_name) ;
 
-   if( strlen(new_name) == 0 )         { old_name = new_name ; return ; }
-   if( strcmp(new_name,old_name) == 0 ){ myXtFree(new_name) ; return ; }
+   if( strlen(new_name) == 0 )         { old_name = new_name ; EXRETURN ; }
+   if( strcmp(new_name,old_name) == 0 ){ myXtFree(new_name) ; EXRETURN ; }
 
    /* have a new filename --> try to read dataset from it */
 
@@ -5448,28 +5554,22 @@ printf("T3D_anatomy_parent_CB: entry\n") ; fflush(stdout) ;
    if( anat_dset == NULL ){
       T3D_poperr( INERR ,
                   "Cannot read 3D dataset\nin anatomy parent file" ) ;
-      return ;
+      EXRETURN ;
    }
-
-#ifdef AFNI_DEBUG
-printf("T3D_anatomy_parent_CB: got dataset\n") ; fflush(stdout) ;
-#endif
 
    isfunc = ISFUNC(anat_dset) ;
    if( isfunc ){
       T3D_poperr( INERR ,
                   "Anatomy parent dataset\nis actually Function data!" ) ;
       THD_delete_3dim_dataset( anat_dset , False ) ;
-      return ;
+      EXRETURN ;
    }
 
    /* at this point, the anat dataset seems OK, so use it */
 
    MCW_strncpy( user_inputs.anatomy_dataname ,
                 anat_dset->self_name , THD_MAX_NAME ) ;
-#ifndef OMIT_DATASET_IDCODES
    user_inputs.anatomy_parent_idcode = anat_dset->idcode ;
-#endif
 
 #ifndef NO_NAMES
    if( w != NULL ) XmTextFieldSetString( wset.anatomy_dataname_textfield ,
@@ -5479,11 +5579,9 @@ printf("T3D_anatomy_parent_CB: got dataset\n") ; fflush(stdout) ;
    MCW_strncpy( user_inputs.anatomy_parent_filename ,
                 new_name , THD_MAX_NAME ) ;
 
-#ifdef AFNI_DEBUG
-printf("T3D_anatomy_parent_CB: set strings\n") ; fflush(stdout) ;
-#endif
-
    THD_delete_3dim_dataset( anat_dset , False ) ;
+
+   EXRETURN ;
 }
 
 /****************************************************************/
@@ -5533,7 +5631,9 @@ void AFNI_load_defaults( Widget w )
    float     fval ;
    char *    cpt ;
 
-   if( w == NULL ) return ;
+ENTRY("AFNI_load_defaults") ;
+
+   if( w == NULL ) EXRETURN ;
    display = XtDisplay( w ) ;
 
    /** initialize display and overlay colors **/
@@ -5545,7 +5645,7 @@ void AFNI_load_defaults( Widget w )
    NAME2FLOAT("init_fov",INIT_fov,1.0,1000.0) ;
    INIT_fov = 0.1 * ( (int)(10*INIT_fov) ) ;
 
-   return ;
+   EXRETURN ;
 }
 
 /*-------------------------------------------------------------*/
@@ -5561,11 +5661,13 @@ void T3D_setup_stat_aux(void)
    char lbuf[THD_MAX_NAME] ;
    Boolean needit ;
 
+ENTRY("T3D_setup_stat_aux") ;
+
    user_inputs.need_stat_aux =
        ( ISFUNCTYPE(user_inputs.dataset_type) &&
          FUNC_need_stat_aux[user_inputs.function_type] > 0 ) ;
 
-   if( wset.topshell != NULL ){
+   if( wset.topshell != NULL && wset.good ){
       needit = (Boolean) user_inputs.need_stat_aux ;
 
       if( needit ){
@@ -5580,7 +5682,7 @@ void T3D_setup_stat_aux(void)
       MCW_set_widget_label( wset.stat_aux_label , lbuf ) ;
    }
 
-   return ;
+   EXRETURN ;
 }
 
 #ifndef USE_OLD_DCODE
@@ -5637,6 +5739,8 @@ void T3D_check_outliers( int opcode )
    int skip = (eee != NULL && (*eee == 'N' || *eee == 'n')) ;
    int text = (eee != NULL && (*eee == 'T' || *eee == 't')) ;
 
+ENTRY("T3D_check_outliers") ;
+
    if( dset->taxis != NULL                  &&
        dset->taxis->ntt > 5                 &&
        !skip                                &&
@@ -5646,7 +5750,7 @@ void T3D_check_outliers( int opcode )
      int *out_count, out_ctop , cc=0 ;
      Widget wmsg ;
 
-     if( wset.topshell != NULL ){
+     if( wset.topshell != NULL && wset.good ){
         wmsg = MCW_popup_message( wset.save_file_pb ,
                                    "****************\n"
                                    "* Checking for *\n"
@@ -5662,7 +5766,7 @@ void T3D_check_outliers( int opcode )
      THD_outlier_count( dset , 0.01 , &out_count , &out_ctop ) ;
 
      if( out_count != NULL && out_ctop > 0 ){  /* compute the output message */
-        int iv,nvals=dset->taxis->ntt ; char *msg = malloc(2048+8*nvals) ;
+        int iv,nvals=dset->taxis->ntt ; char *msg = AFMALL(char,2048+8*nvals) ;
 
         strcpy(msg," \nto3d WARNING:\nSignificant outliers detected in these sub-bricks:\n") ;
 
@@ -5696,11 +5800,11 @@ void T3D_check_outliers( int opcode )
            strcat(msg," [can be used to make a dataset 'outnam' that marks   ]\n");
            strcat(msg," [outlier voxels; see 3dToutcount -help for details.  ]\n");
 
-           fprintf(stderr,"%s\n",msg) ;           /* print message        */
-           if( wset.topshell != NULL && !text ){  /* graph outlier count  */
+           fprintf(stderr,"%s\n",msg) ;                        /* print message        */
+           if( wset.topshell != NULL && !text && wset.good ){  /* graph outlier count  */
               float *y[2] ;
-              y[0] = malloc(sizeof(float)*nvals) ;
-              y[1] = malloc(sizeof(float)*nvals) ;
+              y[0] = AFMALL(float, sizeof(float)*nvals) ;
+              y[1] = AFMALL(float, sizeof(float)*nvals) ;
               for( iv=0 ; iv < nvals ; iv++ ){
                  y[0][iv] = out_count[iv] ; y[1][iv] = out_ctop ;
               }
@@ -5719,7 +5823,7 @@ void T3D_check_outliers( int opcode )
 
      if( out_count != NULL ) free(out_count) ;
 
-     if( wset.topshell != NULL ){
+     if( wset.topshell != NULL && wset.good ){
         XtDestroyWidget(wmsg); CURSOR_normalize;
         if( cc == 0 )
           (void) MCW_popup_message( wset.save_file_pb ,
@@ -5732,4 +5836,6 @@ void T3D_check_outliers( int opcode )
           fprintf(stderr,"No unusual outlier concentration found\n") ;
      }
    }
+
+   EXRETURN ;
 }

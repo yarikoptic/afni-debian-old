@@ -70,17 +70,8 @@
 #undef DONT_MANGLE_XYZ
 #endif
 
-#define GRAPHER_ALLOW_ONE  /* 22 Sep 2000: allow "graphing" of n=1 data */
-
-#ifdef GRAPHER_ALLOW_ONE
-#  define EXRONE(g) if( (g)->status->num_series < 2 ) EXRETURN
-#  define RONE(g,v) if( (g)->status->num_series < 2 ) RETURN(v)
-#  define ISONE(g)  ( (g)->status->num_series < 2 )
-#else
-#  define EXRONE(g) /* nada */
-#  define RONE(g,v) /* nada */
-#  define ISONE(g)  0
-#endif
+#define EXRONE(g) if( (g)->status->num_series < 2 ) EXRETURN
+#define RONE(g,v) if( (g)->status->num_series < 2 ) RETURN(v)
 
 /***-----------------------------------------------------------------------***/
 
@@ -91,15 +82,11 @@
 #define GL_DLX    54                   /* Horizontal delta to left edge */
 #define GB_DLY    52                   /* Vertical delta to bottom edge */
 #define MAT_MAX   21                   /* Maximum array size of graphs */
-#define GRID_MAX  12                   /* Maximum grid index */
 #define COL_NUM   5                    /* Number of colors */
 #define STR_L     256                  /* Max length of string */
 
 #define MIN_XSIZE 120
 #define MIN_YSIZE 120
-
-static int grid_ar[GRID_MAX] =
-   { 2 , 5 , 10 , 20 , 50 , 100 , 200 , 500 , 1000 , 2000 , 5000 , 10000 } ;
 
 #define XSPACE  8
 #define YSPACE  20
@@ -119,6 +106,7 @@ typedef struct {
           fim_editref_read_pb , fim_editref_write_pb , fim_editref_store_pb ,
           fim_editref_setshift_pb , fim_editort_clear_pb ,
           fim_polort_choose_pb , fim_bkthr_choose_pb ;
+   MCW_bbox *fim_editref_winaver_bbox ;  /* 26 Jan 2004 */
    Widget fim_ignore_menu   , fim_ignore_cbut ,
           fim_ignore_down_pb, fim_ignore_up_pb , fim_ignore_choose_pb ;
    Widget fim_pickref_pb , fim_pickort_pb , fim_execute_pb , fim_execfimp_pb ;
@@ -172,13 +160,33 @@ typedef struct {
 #define GRA_VALID(gr) ((gr)!=NULL && (gr)->type==MCW_GRAPHER_TYPE && (gr)->valid>0)
 #define GRA_REALZ(gr) ((gr)!=NULL && (gr)->type==MCW_GRAPHER_TYPE && (gr)->valid>1)
 
+/*--- stuff for changing the graph length: pinning ---*/
+
 #define MIN_PIN 5
 #define MAX_PIN 9999
-#define NPTS(gr) ( ((gr)->pin_num < MIN_PIN) ? (gr)->status->num_series \
-                                             : (gr)->pin_num )
 
-/** 22 Apr 1997:
-    user supplied strings (tuser) for each graph subwindow **/
+/* plotting range is from time index NBOT to NTOP-1 */
+
+#define NBOT(gr) ( ((gr)->pin_bot < (gr)->status->num_series) ? (gr)->pin_bot : 0 )
+
+#define NTOP(gr) ( ((gr)->pin_top >= MIN_PIN                ) ? (gr)->pin_top            \
+                                                              : (gr)->status->num_series )
+
+#define NPTS(gr) (NTOP(gr)-NBOT(gr))   /* number of points visible in graph */
+
+/* data plotting range is from time index TBOT to TTOP-1 */
+
+#define TBOT(gr) NBOT(gr)
+
+#define TTOP(gr) ( ((gr)->pin_top >= MIN_PIN && (gr)->pin_top < (gr)->status->num_series) \
+                  ? (gr)->pin_top : (gr)->status->num_series                              )
+
+#define TPTS(gr) (TTOP(gr)-TBOT(gr))   /* number of data points visible in graph */
+
+#define ISONE(g) ( TPTS(g) < 2 )       /* if only 1 data point is visible */
+
+/*-- 22 Apr 1997:
+     user supplied strings (tuser) for each graph subwindow --*/
 
 #define GRA_NULL_tuser(gr)                     \
    do{ int iq,jq ;                             \
@@ -229,6 +237,8 @@ int INIT_GR_boxes_thick  = 0 ,
     INIT_GR_dplot_thick  = 0  ;
 
 int INIT_GR_ggap         = 0 ;  /* 27 May 1999 */
+int INIT_GR_gthick       = 2 ;  /* 06 Oct 2004 */
+int INIT_GR_gmat         = 3 ;  /* 10 Feb 2003 */
 #else
 extern int INIT_GR_boxes_color  ,
            INIT_GR_backg_color  ,
@@ -248,6 +258,8 @@ extern int INIT_GR_boxes_thick ,
            INIT_GR_dplot_thick  ;
 
 extern int INIT_GR_ggap ;
+extern int INIT_GR_gthick ;  /* 06 Oct 2004 */
+extern int INIT_GR_gmat ;
 #endif /* MAIN */
 
 #define NUM_COLOR_ITEMS 9
@@ -262,9 +274,21 @@ extern int INIT_GR_ggap ;
 #define IGNORE_COLOR(gr) ((gr)->color_index[7])
 #define DPLOT_COLOR(gr)  ((gr)->color_index[8])
 
-static char * gr_color_label[NUM_COLOR_ITEMS] = {
+static char *gr_color_label[NUM_COLOR_ITEMS] = {
   "Boxes " , "BackG " , "Grid  " , "Text  " ,
   "Data  " , "Ideal " , "Ort   " , "Ignore" , "Dplot "
+} ;
+
+static char *gr_color_hint[NUM_COLOR_ITEMS] = {
+  "Color for boxes around graphs" ,
+  "Background color"              ,
+  "Vertical Grid color"           ,
+  "Color for Text"                ,
+  "Color for Data graphs"         ,
+  "Color for Ideal overplot graph",
+  "Color for Ort overplot graph"  ,
+  "Color for Ignored timepoints"  ,
+  "Color for Dplot overlay"
 } ;
 
 static int gr_setup_default = 1 ;
@@ -291,17 +315,15 @@ static int gr_unfim[NUM_COLOR_ITEMS] = { 0,0,0,0,0,1,1,1,0 } ;  /* Oct 1999 */
     :((cd) == BLUEST_COLOR  )   ? (grapher->dc->ovc->ov_bluest) \
     :(cd) )
 
-#define THICKKK  2
-
-#define FG_THICK(gr)     ((gr)->thick_index[0] * THICKKK)
-#define BG_THICK(gr)     ((gr)->thick_index[1] * THICKKK)
-#define GRID_THICK(gr)   ((gr)->thick_index[2] * THICKKK)
-#define TEXT_THICK(gr)   ((gr)->thick_index[3] * THICKKK)
-#define DATA_THICK(gr)   ((gr)->thick_index[4] * THICKKK)
-#define IDEAL_THICK(gr)  ((gr)->thick_index[5] * THICKKK)
-#define ORT_THICK(gr)    ((gr)->thick_index[6] * THICKKK)
-#define IGNORE_THICK(gr) ((gr)->thick_index[7] * THICKKK)
-#define DPLOT_THICK(gr)  ((gr)->thick_index[8] * THICKKK)
+#define FG_THICK(gr)     ((gr)->thick_index[0] * (gr)->gthick)
+#define BG_THICK(gr)     ((gr)->thick_index[1] * (gr)->gthick)
+#define GRID_THICK(gr)   ((gr)->thick_index[2] * (gr)->gthick)
+#define TEXT_THICK(gr)   ((gr)->thick_index[3] * (gr)->gthick)
+#define DATA_THICK(gr)   ((gr)->thick_index[4] * (gr)->gthick)
+#define IDEAL_THICK(gr)  ((gr)->thick_index[5] * (gr)->gthick)
+#define ORT_THICK(gr)    ((gr)->thick_index[6] * (gr)->gthick)
+#define IGNORE_THICK(gr) ((gr)->thick_index[7] * (gr)->gthick)
+#define DPLOT_THICK(gr)  ((gr)->thick_index[8] * (gr)->gthick)
 
 #define FG_IS_THICK(gr)     ((gr)->thick_index[0] != 0)
 #define BG_IS_THICK(gr)     ((gr)->thick_index[1] != 0)
@@ -362,11 +384,13 @@ typedef struct {
 
    char * tuser[MAT_MAX][MAT_MAX] ;                            /* user strings */
 
-   int mat,mat_max , xpoint,ypoint,zpoint , grid_index , grid_spacing ;
+   int mat,mat_max , xpoint,ypoint,zpoint ;
+   int grid_index , grid_spacing , grid_fixed ;
    int xFD , yFD , gx,gy , xc,yc ;
    int grid_color , common_base , init_ignore , polort ;
    float fscale ;
-   int pin_num ;      /* 27 Apr 1997 */
+   int pin_top ;      /* 27 Apr 1997 */
+   int pin_bot ;      /* 17 Mar 2004 */
    int HorZ ;         /* 05 Jan 1999 */
 
    int key_Nlock , key_lock_sum ;
@@ -376,8 +400,9 @@ typedef struct {
    XPoint    * cen_line ;
    MRI_IMAGE * cen_tsim ;
    MRI_IMAGE * xax_tsim ;  /* 09 Jan 1998 */
+   MRI_IMAGE * ave_tsim ;  /* 26 Jan 2004 */
 
-   int xx_text_1 , xx_text_2 ;
+   int xx_text_1 , xx_text_2 , xx_text_3 ;   /* 19 Dec 2003  [rickr] */
 
    /* external time-series stuff */
 
@@ -404,6 +429,7 @@ typedef struct {
    Widget opt_grid_menu     , opt_grid_cbut   ,
           opt_grid_down_pb  , opt_grid_up_pb  ,
           opt_grid_choose_pb , opt_pin_choose_pb ;
+   Widget opt_grid_auto_pb ;                      /* 02 Apr 2004 */
    Widget opt_grid_HorZ_pb ;                      /* 05 Jan 1999 */
    Widget opt_slice_menu    , opt_slice_cbut  ,
           opt_slice_down_pb , opt_slice_up_pb ;
@@ -416,8 +442,10 @@ typedef struct {
    int thick_index[NUM_COLOR_ITEMS] ;
    int points_index[NUM_COLOR_ITEMS] ;
 
-   MCW_arrowval * opt_ggap_av ; /* 12 Jan 1998 */
+   MCW_arrowval *opt_ggap_av ; /* 12 Jan 1998 */
    int ggap ;
+   MCW_arrowval *opt_gthick_av ; /* 06 Oct 2004 */
+   int gthick ;
 
    Widget opt_color_up_pb   , opt_save_pb ,
           opt_write_center_pb , opt_write_suffix_pb ;
@@ -470,7 +498,22 @@ typedef struct {
    XtPointer parent ;
 
    float tmed[MAT_MAX][MAT_MAX] , tmad[MAT_MAX][MAT_MAX] ;    /* 08 Mar 2001 */
+   int   sbot[MAT_MAX][MAT_MAX] , stop[MAT_MAX][MAT_MAX] ;    /* 19 Mar 2004 */
+
+   XtIntervalId timer_id ;                          /* 04 Dec 2003 */
+   int          timer_func, timer_param, timer_delay ;
+
+   int dont_setref ;                                /* 27 Jan 2004 */
+   int dont_redraw ;                                /* 27 Jan 2004 */
+   int tschosen ;                                   /* 31 Mar 2004 */
+
 } MCW_grapher ;
+
+#define GRA_TIMERFUNC_INDEX  701
+#define GRA_TIMERFUNC_BOUNCE 702
+
+extern void GRA_timer_CB( XtPointer , XtIntervalId * ) ; /* 04 Dec 2003 */
+extern void GRA_timer_stop( MCW_grapher * ) ;
 
 #define BASELINE_INDIVIDUAL  1  /* 07 Aug 2001 */
 #define BASELINE_COMMON      2
@@ -507,6 +550,7 @@ typedef struct {
 #define graCR_timeseries_library 7724
 #define graCR_clearort           7725
 #define graCR_polort             7726  /* 27 May 1999 */
+#define graCR_winaver            7727  /* 27 Jan 2004 */
 
 #define graCR_dofim       7731
 
@@ -540,10 +584,14 @@ typedef struct {
 #define graDR_setignore   123
 #define graDR_setindex    124
 #define graDR_polort      125  /* 27 May 1999 */
+#define graDR_winaver     126  /* 27 Jan 2004 */
 
 #define graDR_setmatrix   130  /* 22 Sep 2000 */
 #define graDR_setgrid     131
 #define graDR_setpinnum   graDR_newlength
+#define graDR_setpintop   graDR_newlength
+#define graDR_setpinbot   132  /* 17 Mar 2004 */
+#define graDR_setpins     133  /* 19 Mar 2004 */
 
 #define graDR_destroy     666
 
@@ -624,12 +672,16 @@ extern void GRA_transform_CB     ( MCW_arrowval * , XtPointer ) ;
 extern char * GRA_transform_label( MCW_arrowval * , XtPointer ) ;
 
 extern void GRA_ggap_CB( MCW_arrowval * , XtPointer ) ;
+extern void GRA_gthick_CB( MCW_arrowval * , XtPointer ) ;  /* 06 Oct 2004 */
 
 extern FIM_menu * AFNI_new_fim_menu( Widget , XtCallbackProc , int ) ;
 
 extern void GRA_redraw_overlay( MCW_grapher * ) ;
 
 extern void GRA_dplot_change_CB( Widget , XtPointer , XtPointer ) ;
+
+extern void GRA_winaver_CB     ( Widget , XtPointer , XtPointer ) ;  /* 27 Jan 2004 */
+extern void GRA_winaver_setref ( MCW_grapher * ) ;
 
 extern void GRA_saver_CB( Widget , XtPointer , MCW_choose_cbs * ) ;
 extern void GRA_file_pixmap( MCW_grapher * , char * ) ;

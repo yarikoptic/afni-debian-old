@@ -7,11 +7,11 @@ C
       INTEGER       NCH , ISIZ,IOR,ICENT
       CHARACTER*(*) CH
 C
-      PARAMETER ( NSAVE = 6666 )
+      PARAMETER ( NSAVE = 69999 )
       REAL    XSTR(NSAVE) , YSTR(NSAVE)
-      LOGICAL LSTR(NSAVE)
+      INTEGER LSTR(NSAVE)
 C
-      CHARACTER*666 CHLOC
+      CHARACTER*6666 CHLOC
 C.......................................................................
       PARAMETER ( DG2RAD = .017453292 )
 C
@@ -34,9 +34,9 @@ C
 C
 C  Rotation/scaling factors for digitization
 C
-      OR = DG2RAD * IOR
-      CT = SIZE * COS(OR)
-      ST = SIZE * SIN(OR)
+      ORR= DG2RAD * IOR
+      CT = SIZE * COS(ORR)
+      ST = SIZE * SIN(ORR)
 C
 C  Base location, in internal coordinates
 C
@@ -95,11 +95,15 @@ C
 C  Now draw the strokes
 C
       DO 200 I=1,NSTR
-         XR = XX + CT*(XSTR(I)-XORG) - ST*(YSTR(I)-YORG)
-         YR = YY + ST*(XSTR(I)-XORG) + CT*(YSTR(I)-YORG)
-         IF( LSTR(I) )CALL ZZLINE( XOLD,YOLD , XR,YR )
-         XOLD = XR
-         YOLD = YR
+         IF( LSTR(I) .LE. 1 )THEN
+           XR = XX + CT*(XSTR(I)-XORG) - ST*(YSTR(I)-YORG)
+           YR = YY + ST*(XSTR(I)-XORG) + CT*(YSTR(I)-YORG)
+           IF( LSTR(I) .EQ. 1 )CALL ZZLINE( XOLD,YOLD , XR,YR )
+           XOLD = XR
+           YOLD = YR
+         ELSE IF( LSTR(I) .GT. 100 .AND. LSTR(I) .LE. 107 )THEN
+           CALL COLOR( LSTR(I)-100 )
+         ENDIF
 200   CONTINUE
 C
       XPHOLD = XOLD
@@ -130,7 +134,7 @@ C
 C  quit if at the beginning
          IF( NPOS .LE. 1 )GOTO 200
 C  quit if not a blank or a null
-         IF( CLINE(NPOS:NPOS) .NE. ' '     .AND. 
+         IF( CLINE(NPOS:NPOS) .NE. ' '     .AND.
      .       CLINE(NPOS:NPOS) .NE. CHAR(0)       )GOTO 200
 C  move back one position and try again
          NPOS = NPOS - 1
@@ -143,7 +147,7 @@ C.......................................................................
 C
 C
 C
-      SUBROUTINE ZZSTRO( CH,NCH , NSTR,XSTR,YSTR,LBSTR )
+      SUBROUTINE ZZSTRO( CH,NCH , NSTR,XSTR,YSTR,LSTR )
       IMPLICIT NONE
 C
 C  Convert a string of generalized characters into a set of strokes,
@@ -153,7 +157,7 @@ C
       CHARACTER*(*) CH
       INTEGER       NCH , NSTR
       REAL          XSTR(*) , YSTR(*)
-      LOGICAL       LBSTR(*)
+      INTEGER       LSTR(*)
 C
       INTEGER IS , KST , ICH , IOFF , ISTR , INC
       REAL    XCUR , YCUR , SCALE
@@ -704,6 +708,7 @@ C     1 = start superscript
 C     2 = end superscript
 C     3 = start subscript
 C     4 = end subscript
+C     5,6,7,8,9,10,11 = change color
 C
          IF( IOFF .LE. 0 )THEN
             IF( ISTR .EQ. 1 )THEN
@@ -722,7 +727,18 @@ C
                SCALE = 1.5 * SCALE
                XCUR  = XCUR + 4.*SCALE
                YCUR  = YCUR + 12.*SCALE
+            ELSEIF( ISTR .GE. 5 .AND. ISTR .LE. 11 )THEN
+               NSTR = NSTR + 1
+               LSTR(NSTR) = 96+ISTR
+               XSTR(NSTR) = XCUR
+               YSTR(NSTR) = YCUR
             ENDIF
+C.....................................................................
+C  Check if this is a newline character
+C
+         ELSEIF( ICH .EQ. 10 )THEN
+            XCUR = 0.0
+            YCUR = YCUR - 1.1
 C.....................................................................
 C  Otherwise, this is a real character with real strokes
 C
@@ -731,8 +747,11 @@ C
                NSTR  = NSTR + 1
                KST   = NSTROK(IOFF+IS)
 C
-               LBSTR(NSTR) = KST .GE. 16384
-               IF( LBSTR(NSTR) )KST = KST - 16384
+               LSTR(NSTR) = 0
+               IF( KST .GE. 16384 )THEN
+                 LSTR(NSTR) = 1
+                 KST = KST - 16384
+               ENDIF
 C
                XCUR = XCUR + SCALE*FLOAT( KST/128 - 64 )
                YCUR = YCUR + SCALE*FLOAT( MOD(KST,128) - 64 )
@@ -758,9 +777,9 @@ C
       INTEGER       NCHIN , NCHOUT
 C.......................................................................
       INTEGER     NTABLE
-      PARAMETER ( NTABLE = 106 )
+      PARAMETER ( NTABLE = 113 )
       INTEGER      ICHEXT(NTABLE)
-      CHARACTER*15 CHTEX(NTABLE) , CHCONT
+      CHARACTER*15 CHTEX(NTABLE) , CHCONT , CHESC,CHNESC
 C
 C  super/subscript control characters
 C
@@ -779,30 +798,34 @@ C  LOUT   = .TRUE. if we just output something to CHOUT,
 C           otherwise .FALSE.
 C
       INTEGER INC , NUSED , NSUPB , NTSUPB(10) , ITOP,I
-      LOGICAL LOUT , LALPH
+      LOGICAL LOUT , LALPH , LESC
 C
 C  Table of Tex-like escapes
 C
-      DATA CHTEX /'\Plus' , '\Cross'  , '\Diamond', '\Box'    , 
-     X '\FDiamond','\FBox', '\FPlus', '\FCross', '\Burst'  , '\Octagon',
-     X '\alpha', '\beta'   , '\gamma'  ,  '\delta', '\epsilon','\zeta' ,
-     X '\eta'  , '\theta'  , '\iota'   ,  '\kappa', '\lambda' ,'\mu'   ,
-     X '\nu'   , '\xi'     , '\omicron',  '\pi'   , '\rho'    ,'\sigma',
-     X '\tau'  , '\upsilon', '\phi'    ,  '\chi'  , '\psi'    ,'\omega',
-     X '\Alpha', '\Beta'   , '\Gamma'  ,  '\Delta' , '\Epsilon','\Zeta',
-     X '\Eta'  , '\Theta'  , '\Iota'   ,  '\Kappa' , '\Lambda','\Mu'   ,
-     X '\Nu'   , '\Xi'     , '\Omicron',  '\Pi'    , '\Rho'   ,'\Sigma',
-     X '\Tau'  , '\Upsilon', '\Phi'    ,  '\Chi'   , '\Psi'   ,'\Omega',
-     X '\propto', '\int', '\times', '\div', '\approx', '\partial', 
-     X '\cap', '\?','\langle', '\rangle','\ddagger','\pm',
-     X '\leq'      , '\S'         , '\hbar'          , '\lambar'    ,
-     X '\cup'      , '\degree'    , '\nabla'         , '\downarrow' ,
-     X '\leftarrow', '\rightarrow', '\leftrightarrow', '\oint'      ,
-     X '\in'       , '\notin'     , '\surd'          , '\_'         ,
-     X '\bar'      , '\exists'    , '\geq'           , '\forall'    ,
-     X '\subset'   , '\oplus'     , '\otimes'        , '\dagger'    ,
-     X '\neq'      , '\supset'    , '\infty'         , '\uparrow'   ,
-     X '\#', '\$', '\%' , '\&'    ,  '\{', '\}', '\\', '\cents'   /
+      DATA CHESC  /'\\esc'/
+      DATA CHNESC /'\\noesc'/
+      DATA CHTEX /'\\Plus' , '\\Cross'  , '\\Diamond', '\\Box'         ,
+     X '\\FDiamond','\\FBox','\\FPlus','\\FCross','\\Burst','\\Octagon',
+     X '\\alpha','\\beta' ,'\\gamma' , '\\delta', '\\epsilon','\\zeta' ,
+     X '\\eta' ,'\\theta' ,'\\iota'  , '\\kappa', '\\lambda' ,'\\mu'   ,
+     X '\\nu'  ,'\\xi'    ,'\\omicron',  '\\pi'  ,'\\rho'    ,'\\sigma',
+     X '\\tau' ,'\\upsilon', '\\phi'   , '\\chi' ,'\\psi'    ,'\\omega',
+     X '\\Alpha', '\\Beta'  ,'\\Gamma' , '\\Delta','\\Epsilon','\\Zeta',
+     X '\\Eta' ,'\\Theta' ,'\\Iota'  , '\\Kappa','\\Lambda','\\Mu'     ,
+     X '\\Nu'  ,'\\Xi'    ,'\\Omicron',  '\\Pi'   ,'\\Rho'   ,'\\Sigma',
+     X '\\Tau' ,'\\Upsilon', '\\Phi'   , '\\Chi'  ,'\\Psi'   ,'\\Omega',
+     X '\\propto', '\\int', '\\times', '\\div', '\\approx', '\\partial',
+     X '\\cap', '\\?','\\langle', '\\rangle','\\ddagger','\\pm'        ,
+     X '\\leq'      , '\\S'         , '\\hbar'          , '\\lambar'   ,
+     X '\\cup'      , '\\degree'    , '\\nabla'         , '\\downarrow',
+     X '\\leftarrow', '\\rightarrow', '\\leftrightarrow', '\\oint'     ,
+     X '\\in'       , '\\notin'     , '\\surd'          , '\\_'        ,
+     X '\\bar'      , '\\exists'    , '\\geq'           , '\\forall'   ,
+     X '\\subset'   , '\\oplus'     , '\\otimes'        , '\\dagger'   ,
+     X '\\neq'      , '\\supset'    , '\\infty'         , '\\uparrow'  ,
+     X '\\#','\\$','\\%','\\&','\\{','\\}','\\\\','\\cents'            ,
+     X '\\black','\\red','\\blue','\\green','\\yellow','\\magenta'     ,
+     X '\\cyan' /
 C
 C  Corresponding extended character set bytes
 C
@@ -822,7 +845,8 @@ C
      X   16#a0 , 16#a1 ,16#a2 , 16#a3 ,16#a4 , 16#a5 ,16#a6 , 16#a7 ,
      X   16#a8 , 16#a9 ,16#aa , 16#ab ,16#ac , 16#ad ,16#ae , 16#af ,
      X   16#ba , 16#bb ,16#bc , 16#bd ,16#be , 16#bf ,16#ff , 16#60 ,
-     X   16#23 , 16#24 , 16#25 , 16#26 , 16#7b , 16#7d , 16#5c , 16#5e /
+     X   16#23 , 16#24 , 16#25 , 16#26 , 16#7b , 16#7d , 16#5c , 16#5e ,
+     X   16#94 , 16#95 , 16#96 , 16#97 , 16#98 , 16#99 , 16#9a /
 C+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 C  Test if a character is alphabetic
 C
@@ -835,6 +859,7 @@ C+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 C-----------------------------------------------------------------------
 C  Process input character no. INC
 C
+      LESC = .TRUE.
 100   CONTINUE
 C
 CCC      WRITE(*,666) 'ZZCONV at: ' // CHIN(INC:INC)
@@ -845,7 +870,7 @@ C
 C  Superscript:  ^{ starts a multi-character superscript, otherwise
 C                ^ starts a single-character superscript
 C
-         IF( CHIN(INC:INC).EQ.'^' .AND. INC.LT.NCHIN )THEN
+      IF( LESC .AND. CHIN(INC:INC).EQ.'^' .AND. INC.LT.NCHIN )THEN
             NSUPB = NSUPB + 1
             IF( CHIN(INC+1:INC+1) .EQ. '{' )THEN
                NTSUPB(NSUPB) = 2
@@ -860,7 +885,7 @@ CCC            WRITE(*,666) ' start superscript'
 C.......................................................................
 C  Subscript:  similar to above code
 C
-         ELSEIF( CHIN(INC:INC).EQ.'_' .AND. INC.LT.NCHIN )THEN
+      ELSEIF( LESC .AND. CHIN(INC:INC).EQ.'_' .AND. INC.LT.NCHIN )THEN
             NSUPB = NSUPB + 1
             IF( CHIN(INC+1:INC+1) .EQ. '{' )THEN
                NTSUPB(NSUPB) = -2
@@ -876,7 +901,7 @@ C.......................................................................
 C  If in super/subscript mode and we have a '}', then this terminates
 C  the current level of super/subscripts
 C
-         ELSEIF( CHIN(INC:INC).EQ.'}' .AND. NSUPB.GT.0 )THEN
+      ELSEIF( LESC .AND. CHIN(INC:INC).EQ.'}' .AND. NSUPB.GT.0 )THEN
             NUSED  = 1
             NCHOUT = NCHOUT + 1
             IF( NTSUPB(NSUPB) .GT. 0 )THEN
@@ -889,7 +914,7 @@ CCC            WRITE(*,666) ' end compound super/subscript'
 C.......................................................................
 C  Anything else that doesn't start with a \ is passed straight through
 C
-         ELSEIF( CHIN(INC:INC) .NE. '\' )THEN
+      ELSEIF( .NOT.LESC .OR. CHIN(INC:INC) .NE. '\\' )THEN
             LOUT   = .TRUE.
             NUSED  = 1
             NCHOUT = NCHOUT + 1
@@ -898,7 +923,7 @@ CCC            WRITE(*,666) ' passthru'
 C.......................................................................
 C  If it started with a \ but we are at the last character, quit
 C
-         ELSEIF( INC .EQ. NCHIN )THEN
+      ELSEIF( INC .EQ. NCHIN )THEN
 CCC            WRITE(*,666) ' end of input'
             GOTO 8000
 C.......................................................................
@@ -906,7 +931,7 @@ C  TeX-like escapes -- there are 2 possibilities:
 C   1)  \asciistring
 C   2)  \specialcharacter
 C
-         ELSE
+      ELSE
             ITOP = INC + 1
 C
 C  If the next character is alphabetic, then scan until end-of-input
@@ -950,8 +975,12 @@ C
 CCC               WRITE(*,666) ' TeX escape: ' // CHCONT
 CCC            ELSE
 CCC               WRITE(*,666) ' unknown TeX escape: ' // CHCONT
+            ELSEIF( CHCONT .EQ. CHNESC )THEN
+               LESC = .FALSE.
+            ELSEIF( CHCONT .EQ. CHESC )THEN
+               LESC = .TRUE.
             ENDIF
-         ENDIF
+      ENDIF
 C.......................................................................
 C  If we are in single-character super/subscript mode, we must drop
 C  out of it after outputting something

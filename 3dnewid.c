@@ -38,7 +38,7 @@ void Syntax(void)
     "   provided that the first character is alphabetic and the other\n"
     "   2 alphanumeric; otherwise, the default prefix 'NIH_' will be\n"
     "   used.\n"
-    "The source code is function UNIQ_idcode() in file thd_md5.c.\n"
+    "The source code is function UNIQ_idcode() in file niml.c.\n"
    ) ;
    exit(0) ;
 }
@@ -58,10 +58,17 @@ int main( int argc , char * argv[] )
 
    if( strcmp(argv[1],"-fun") == 0 ){         /* 22 May 2000: for fun */
       int nid=0 , ii ;
+      char *eee = getenv("UUID") ;
       if( argc > 2 ) nid = strtol(argv[2],NULL,10) ;
       if( nid <= 0 ) nid = 1 ;
-      for( ii=0 ; ii < nid ; ii++ ){
-        idc = MCW_new_idcode() ; printf("%s\n",idc.str) ;
+      if( eee == NULL ){
+        for( ii=0 ; ii < nid ; ii++ ){
+          idc = MCW_new_idcode() ; printf("%s\n",idc.str) ;
+        }
+      } else {                                /* 20 Aug 2002: test of niml.c */
+        for( ii=0 ; ii < nid ; ii++ ){
+          eee = UUID_idcode(); printf("%s\n",eee); free(eee);
+        }
       }
       exit(0) ;
    }

@@ -15,6 +15,8 @@
 #include <sys/mman.h>
 #include <fcntl.h>
 
+extern void machdep() ;
+
 /*----------------------------------------------------------------------------
   Flags that can be used to work around bugs on some systems
   (you could also use the -Dname command line switch in the Makefile
@@ -42,6 +44,10 @@
                               some versions of Motif where the
                               threshold scale resizes itself whenever
                               the pbar is touched
+
+    FIX_SCALE_SIZE_LATER   = if this is ALSO defined, then the
+                             FIX_SCALE_SIZE_PROBLEM is applied after a
+                             time delay
 
     SCANDIR_WANT_CONST = if #define-d, says that the "scandir" library
                           routine wants "const" arguments -- setting this
@@ -75,6 +81,9 @@
     NEED_XSETLOCALE = if this is set, then the routine _Xsetlocale
                       must be provided (needed for some Linux systems).
 
+    NEED_NL_LANGINFO = if this is set, then the routine nl_langinfo()
+                       must be provided (need on Mac OS X)
+
     DONT_UNROLL_FFTS = if this is set, then the unrolled FFT routines
                        (for lengths 32, 64, 128, 256) will NOT be used --
                        they are generally faster, but may have trouble
@@ -101,15 +110,22 @@
                               [God, I hope this is the end of this ]
                               [Solaris nightmare -- I'm sick of it!]
 
-    DONT_USE_DEBUGTHISFILE = if this is defined, then the DEBUGTHISFILE
-                             macro in debugtrace.h will be disabled;
-                             this macro has caused trouble on one system
-
     USE_FLOCK = There are two incompatible ways of 'locking' a file
     USE_LOCKF = on Unix: the flock() and lockf() functions.  Defining
                 one of these will enable the use of the corresponding
                 function.  If neither is defined, file locking will
                 not be used.
+
+    DONT_USE_SHM = Set this to disable use of shared memory.
+
+    DISCARD_EXCESS_EXPOSES = Set this if a ConfigureNotify event is
+                             followed by an Expose event on your
+                             systems - this will eliminate duplicate
+                             image redraws in imseq.c.
+
+    ENFORCE_ASPECT = Set this if you want image aspect ratio enforcement
+                     compiled into your system.  Can also be set at runtime
+                     using the AFNI_ENFORCE_ASPECT environment variable.
 
   Exactly one of the following flags must be set for AFNI plugins
   to work:
@@ -125,8 +141,13 @@
                               routines, such as "shl_load".  This is
                               only used on HP-UX, as far as I know.
 
-  Apparently some systems don't support either method (IBM AIX, so I've
-  been told).  In such a case, plugins won't work.
+    NO_DYNAMIC_LOADING = if this is set, then AFNI will load the plugins
+                         statically - this means that you can't add plugins
+                         without recompiling AFNI;  this option has only
+                         been tested on CYGWIN, and requires a special Makefile.
+
+    BAD_BUTTON3_POPUPS = if this is set, then Button-3 popup menus don't work
+                         and the program tries something else (i.e., Solaris).
 
   Flags that MUST be set appropriately for each system:
 
@@ -222,6 +243,7 @@ extern long   strtol() ;
 # define THD_MKDIR_MODE (S_IRUSR|S_IWUSR|S_IXUSR|S_IRGRP|S_IXGRP|S_IROTH|S_IXOTH)
 # define dirent direct
 # define FIX_SCALE_SIZE_PROBLEM
+# define FIX_SCALE_SIZE_LATER
 # define DONT_INSTALL_ICONS
 # define DYNAMIC_LOADING_VIA_DL
 # define USE_LOCKF
@@ -248,7 +270,7 @@ extern long   strtol() ;
 # endif
 #endif
 
-#if defined(LINUX) || defined(FreeBSD)
+#if defined(LINUX) || defined(FreeBSD) || defined(NetBSD) || defined(OpenBSD)
 # include <dirent.h>
 # define THD_MMAP_FLAG  MAP_SHARED
 # define THD_MKDIR_MODE (S_IRUSR|S_IWUSR|S_IXUSR|S_IRGRP|S_IXGRP|S_IROTH|S_IXOTH)
@@ -260,6 +282,23 @@ extern long   strtol() ;
 # define DYNAMIC_LOADING_VIA_DL
 # undef  DONT_UNROLL_FFTS         /* helps a lot */
 # define USE_FLOCK
+#endif
+
+#ifdef CYGWIN
+# include <dirent.h>
+# define THD_MMAP_FLAG  MAP_SHARED
+# define THD_MKDIR_MODE (S_IRUSR|S_IWUSR|S_IXUSR|S_IRGRP|S_IXGRP|S_IROTH|S_IXOTH)
+# define SCANDIR_WANTS_CONST
+# define FIX_SCALE_SIZE_PROBLEM   /* Motif 2.0 bug? */
+# define MMAP_THRESHOLD -1        /* no mmap-ing */
+# define DONT_CHECK_FOR_MWM       /* assume Motif WM functionality is present */
+/**# define BOXUP_SCALE**/              /* looks nicer */
+# define NO_DYNAMIC_LOADING
+# undef  DONT_UNROLL_FFTS         /* helps a lot */
+# define DONT_USE_STRPTIME
+# define NO_FRIVOLITIES
+# define USING_LESSTIF            /* try to avoid some bugs */
+# define FIX_SCALE_SIZE_PROBLEM
 #endif
 
 /* SCO UDK under Unixware 7 -- contributed by Jason Bacon */
@@ -283,23 +322,28 @@ extern long   strtol() ;
 # define THD_MKDIR_MODE (S_IRUSR|S_IWUSR|S_IXUSR|S_IRGRP|S_IXGRP|S_IROTH|S_IXOTH)
 # define SCANDIR_WANTS_CONST
 # define FIX_SCALE_SIZE_PROBLEM   /* Motif 2.0 bug? */
-/* # define MMAP_THRESHOLD -1 */       /* no mmap-ing */
+# define MMAP_THRESHOLD -1        /* no mmap-ing */
+#if 0
 # define DONT_CHECK_FOR_MWM       /* assume Motif WM functionality is present */
+#endif
 # define BOXUP_SCALE              /* looks nicer */
 # define DYNAMIC_LOADING_VIA_DL
-# undef  DONT_UNROLL_FFTS         /* helps a lot */
+# undef  DONT_UNROLL_FFTS
 # define USE_FLOCK
-# define DONT_USE_DEBUGTHISFILE
 # define USE_RANDOM
 # define DONT_USE_STRPTIME
 # define NEED_XSETLOCALE
+# define NEED_NL_LANGINFO
+# define ENFORCE_ASPECT           /* 29 Apr 2003 */
 #endif
 
 /************************************************************************
    Do NOT change anything below this line (unless your name is Cox)!
 *************************************************************************/
 
-#if defined(DYNAMIC_LOADING_VIA_DL) || defined(DYNAMIC_LOADING_VIA_SHL)
+# define DISCARD_EXCESS_EXPOSES   /* 15 Aug 2002 */
+
+#if defined(DYNAMIC_LOADING_VIA_DL) || defined(DYNAMIC_LOADING_VIA_SHL) || defined(NO_DYNAMIC_LOADING)
 #  define ALLOW_PLUGINS
 #else
 #  define DONT_ALLOW_PLUGINS

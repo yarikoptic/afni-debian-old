@@ -283,7 +283,7 @@ void get_options
 	{
 	  nopt++;
 	  if (nopt >= argc)  AW_error ("need argument after -prefix ");
-	  option_data->prefix = malloc (sizeof(char)*THD_MAX_PREFIX);
+	  option_data->prefix = AFMALL(char,sizeof(char)*THD_MAX_PREFIX);
 	  MTEST (option_data->prefix);
 	  MCW_strncpy (option_data->prefix, argv[nopt], THD_MAX_PREFIX);
 	  nopt++;
@@ -449,9 +449,7 @@ ENTRY("adwarp_follower_dataset") ;
   MCW_strncpy( new_dset->anat_parent_name ,
 	       anat_parent->self_name , THD_MAX_NAME ) ;
 
-#ifndef OMIT_DATASET_IDCODES
   new_dset->anat_parent_idcode = anat_parent->idcode ;
-#endif
 
    /* 11/09/94 addition: the data_parent may itself be a warp;
        in this case, we want the true warp parent to be the original data */
@@ -462,19 +460,17 @@ ENTRY("adwarp_follower_dataset") ;
   MCW_strncpy( new_dset->warp_parent_name ,
 	       new_dset->warp_parent->self_name , THD_MAX_NAME ) ;
 
-#ifndef OMIT_DATASET_IDCODES
   new_dset->warp_parent_idcode = new_dset->warp_parent->idcode ;
-#endif
 
-#ifndef OMIT_DATASET_IDCODES
   new_dset->idcode = MCW_new_idcode() ;
-#endif
 
   /* make the actual warp from the warp_parent to this dataset */
 
   new_dset->vox_warp       = NULL ;
   new_dset->warp           = myXtNew( THD_warp ) ;
   *(new_dset->warp)        = IDENTITY_WARP ;  /* start with (Dicom) identity */
+
+  new_dset->self_warp      = NULL ;           /* 26 Aug 2002 */
 
   /* follow the links backward from desired view to original view */
 
@@ -605,12 +601,17 @@ ENTRY("adwarp_follower_dataset") ;
   
   INIT_STAT_AUX( new_dset , MAX_STAT_AUX , data_parent->stat_aux ) ;
   
-  new_dset->merger_list = NULL ;  /* not a merger */
   new_dset->markers     = NULL ;  /* no markers */
   new_dset->death_mark  = 0 ;     /* don't kill me! */
+#ifdef ALLOW_DATASET_VLIST
   new_dset->pts         = NULL ;
+#endif
   
   PARENTIZE(new_dset,data_parent->parent) ;
+
+  new_dset->tcat_list   = NULL ;  /* 03 Aug 2004 */
+  new_dset->tcat_num    = 0 ;
+  new_dset->tcat_len    = NULL ;
   
   RETURN(new_dset) ;
 }
@@ -654,6 +655,8 @@ ENTRY("adwarp_refashion_dataset") ;
   dset->wod_daxes         = myXtNew(THD_dataxes) ; /* 02 Nov 1996 */
   dset->wod_daxes->type   = DATAXES_TYPE ;       /* 02 Nov 1996 */
   dset->vox_warp          = myXtNew(THD_warp) ;    /* 02 Nov 1996 */
+
+  dset->self_warp         = NULL ;                 /* 26 Aug 2002 */
   
   *(dset->wod_daxes)      = *daxes ;            /* copy insides of daxes */
   dset->wod_flag          = True ;              /* mark for warp-on-demand */
@@ -714,7 +717,10 @@ ENTRY("adwarp_refashion_dataset") ;
     STATUS("created subdirectory") ;
   }
 
-  /*-- open output file --*/
+  /*-- open output file --*/ 
+
+  if( option_data->verbose )
+    fprintf(stderr,"++ Opening output file %s\n",dkptr->brick_name) ;
   
   cmode = THD_get_write_compression() ;
   far = COMPRESS_fopen_write( dkptr->brick_name , cmode ) ;
@@ -744,9 +750,8 @@ ENTRY("adwarp_refashion_dataset") ;
   
   for( ival=0 ; ival < nv ; ival++ ){  /* for each sub-brick */
 
-    if( option_data->verbose ){
-       printf("-- Start sub-brick %d",ival) ; fflush(stdout) ;
-    }
+    if( option_data->verbose )
+       fprintf(stderr,"++ Start sub-brick %d",ival) ;
     
     dsiz = mri_datum_size( DSET_BRICK_TYPE(dset,ival) ) ;
     
@@ -765,7 +770,7 @@ ENTRY("adwarp_refashion_dataset") ;
       im = AFNI_dataset_slice( dset , 3 , kk , ival , resam_mode ) ;
 STATUS("have new image") ;
 
-      if( option_data->verbose && kk%7==0 ){ printf("."); fflush(stdout); }
+      if( option_data->verbose && kk%7==0 ) fprintf(stderr,".");
 
       if( im == NULL ){
 	fprintf(stderr,"\a\n*** failure to compute dataset slice %d\n",kk) ;
@@ -805,7 +810,7 @@ STATUS("have new image") ;
 	
     } /* end of loop over kk (z-direction) */
 
-    if( option_data->verbose ){ printf("\n"); fflush(stdout); }
+    if( option_data->verbose ) fprintf(stderr,"\n");
     
     /* restore the correct scaling of this sub-brick */
     
@@ -835,6 +840,7 @@ STATUS("have new image") ;
   
   STATUS("recomputing statistics") ;
   
+  if( option_data->verbose ) fprintf(stderr,"++ Computing statistics\n");
   THD_load_statistics( dset ) ;
   
   STATUS("rewriting header") ;

@@ -13,6 +13,8 @@ static int             active_plot = -1 ;
 static float           active_color = (float) RGB_TO_COL(1.0,1.0,1.0) ;
 static float           active_thick = 0.0 ;
 
+static float           active_opacity = 1.0 ;   /* 22 Jul 2004 */
+
 #define STATUS(str) fprintf(stderr,"** " str "\n")
 
 /*------------------------------------------------------------------------
@@ -64,6 +66,8 @@ int create_memplot( char * id , float aspect )
 
    active_plot = num_plotar ;
    plotar[num_plotar++] = pd ;
+
+   ADDTO_MEMPLOT( pd , 1.0,0.0,0.0,0.0 , 0.0 , -THCODE_OPAC ) ;  /* 22 Jul 2004 */
 
    if( aspect <= 0.0 ) aspect = 1.3 ;
    asp        = aspect ;
@@ -144,6 +148,9 @@ int nline_active_memplot(void)
 
 void set_color_memplot( float r , float g , float b )
 {
+   if( r > 1.0 || g > 1.0 || b > 1.0 ){        /* 22 Mar 2002:     */
+      r /= 255.0 ; g /= 255.0 ; b /= 255.0 ;   /* allow for 0..255 */
+   }
    if( r < 0.0 ) r = 0.0 ; else if ( r > 1.0 ) r = 1.0 ;
    if( g < 0.0 ) g = 0.0 ; else if ( g > 1.0 ) g = 1.0 ;
    if( b < 0.0 ) b = 0.0 ; else if ( b > 1.0 ) b = 1.0 ;
@@ -170,6 +177,30 @@ void set_thick_memplot( float th )
 float get_thick_memplot( void )
 {
    return active_thick ;
+}
+
+void set_opacity_memplot( float th )  /* 22 Jul 2004 */
+{
+   MEM_plotdata *mp ;
+
+        if( th < 0.0 ) th = 0.0 ;
+   else if( th > 1.0 ) th = 1.0 ;
+   active_opacity = th ;
+
+   /* Set opacity for further drawing [22 Jul 2004] */
+
+   if( active_plot < 0 || active_plot >= num_plotar ||
+       num_plotar == 0 || plotar == NULL            ||
+       plotar[active_plot] == NULL                    ) return ;
+
+   mp = plotar[active_plot] ;
+   ADDTO_MEMPLOT( mp , th,0.0,0.0,0.0 , 0.0 , -THCODE_OPAC ) ;
+   return ;
+}
+
+float get_opacity_memplot( void )
+{
+   return active_opacity ;
 }
 
 /*------------------------------------------------------------------
@@ -207,6 +238,20 @@ void plotrect_memplot( float x1 , float y1 , float x2 , float y2 ) /* 21 Mar 200
    mp = plotar[active_plot] ;
 
    ADDTO_MEMPLOT( mp , x1,y1,x2,y2 , active_color , -THCODE_RECT ) ;
+   return ;
+}
+
+void plotcirc_memplot( float x1 , float y1 , float rad ) /* 10 Mar 2002 */
+{
+   MEM_plotdata * mp ;
+
+   if( active_plot < 0 || active_plot >= num_plotar ||
+       num_plotar == 0 || plotar == NULL            ||
+       plotar[active_plot] == NULL                    ) return ;
+
+   mp = plotar[active_plot] ;
+
+   ADDTO_MEMPLOT( mp , x1,y1,rad,0.0 , active_color , -THCODE_CIRC ) ;
    return ;
 }
 
@@ -489,6 +534,176 @@ void cutlines_memplot( int nbot , int ntop , MEM_plotdata *mp )
    return ;
 }
 
+/*----------------------------------------------------------------------------*/
+
+#ifdef __GNUC__
+# define INLINE inline
+#else
+# define INLINE /*nada*/
+#endif
+
+/*----------------------------------------------------------------------------
+  Clip a line to a rectangle.  Return is -1 if the line is totally outside.
+  Otherwise, return is 0 and *x1in (etc.) is altered to the clipped line.
+------------------------------------------------------------------------------*/
+
+static INLINE int clip_line_to_rect( float xclbot , float yclbot ,
+                                     float xcltop , float ycltop ,
+                                     float *x1in  , float *y1in  ,
+                                     float *x2in  , float *y2in   )
+{
+   float x1=*x1in , y1=*y1in , x2=*x2in , y2=*y2in , dx,dy,slope,temp ;
+   int inter=0 ;
+
+   /* Make sure that x1 < x2 by interchanging the points if necessary */
+
+   if( x1 > x2 ){
+     temp=x1 ; x1=x2 ; x2=temp;
+     temp=y1 ; y1=y2 ; y2=temp; inter=1 ;
+   }
+
+   /* if outside entire region, throw line away */
+
+   if( x2 < xclbot || x1 > xcltop ) return -1;
+
+   if( y1 < y2 ){
+     if( y2 < yclbot || y1 > ycltop ) return -1;
+   } else {
+     if( y1 < yclbot || y2 > ycltop ) return -1;
+   }
+
+   /* if inside entire region, then do nothing */
+
+   if( x1 >= xclbot && x2 <= xcltop ){
+     if( y1 < y2 ){
+       if( y1 >= yclbot && y2 <= ycltop ) return 0 ;
+     } else {
+       if( y2 >= yclbot && y1 <= ycltop ) return 0 ;
+     }
+   }
+
+   /* Clip line in X direction */
+
+   dx = x2 - x1 ;
+   if( dx > 0.0 ){  /* only clip if line has some x range */
+     slope = (y2-y1)/dx ;
+     if( x1 < xclbot ){  /* intercept of line at left side */
+       y1 = y1 + slope*(xclbot-x1) ;
+       x1 = xclbot ;
+     }
+     if( x2 > xcltop ){  /* intercept at right */
+       y2 = y2 + slope*(xcltop-x2) ;
+       x2 = xcltop ;
+     }
+   }
+
+   /* Check line again to see if it falls outside of plot region */
+
+   if( y1 < y2 ){
+     if( y2 < yclbot || y1 > ycltop ) return -1;
+   } else {
+     if( y1 < yclbot || y2 > ycltop ) return -1;
+
+     temp=x1 ; x1=x2 ; x2=temp;                 /* make sure y1 <= y2 */
+     temp=y1 ; y1=y2 ; y2=temp; inter=!inter ;
+   }
+
+   /* Clip y-direction.  To do this, must have y1 <= y2 [supra] */
+
+   dy = y2 - y1 ;
+   if( dy > 0.0 ){  /* only clip if line has some Y range */
+     slope = (x2-x1)/dy ;
+     if( y1 < yclbot ){ /* intercept of line at bottom */
+       x1 = x1 + slope*(yclbot-y1) ;
+       y1 = yclbot ;
+     }
+     if( y2 > ycltop ){ /* intercept at top */
+       x2 = x2 + slope*(ycltop-y2) ;
+       y2 = ycltop ;
+     }
+   }
+
+   /* Line is now guaranteed to be totally inside the plot region.
+      Copy local clipped coordinates to output values and return.
+      Note that we must restore points to original input order,
+      if they were interchanged at some point above.              */
+
+   if( inter ){
+     *x1in = x2 ; *x2in = x1 ; *y1in = y2 ; *y2in = y1 ;
+   } else {
+     *x1in = x1 ; *y1in = y1 ; *x2in = x2 ; *y2in = y2 ;
+   }
+
+   return 0 ;
+}
+
+#undef INSIDE
+#define INSIDE(x,y)                                                    \
+  ( (x) >= xclbot && (x) <= xcltop && (y) >= yclbot && (y) <= ycltop )
+
+/*---------------------------------------------------------------------------
+  Clip a memplot to a rectangle, producing a new memplot.
+-----------------------------------------------------------------------------*/
+
+MEM_plotdata * clip_memplot( float xclbot, float yclbot,
+                             float xcltop, float ycltop , MEM_plotdata *mp )
+{
+   MEM_plotdata *np ;
+   char str[256] ;
+   int nn , ii , qq ;
+   float x1,y1 , x2,y2 , col,th ;
+
+   if( mp == NULL       ) return NULL ;  /* bad or meaningless stuff */
+   if( xclbot >= xcltop ) return NULL ;
+   if( yclbot >= ycltop ) return NULL ;
+
+   sprintf(str,"%.240sCopy",mp->ident) ;
+   nn = create_memplot_surely( str , mp->aspect ) ;
+   np = find_memplot(NULL) ;
+   if( np == NULL ) return NULL ; /* shouldn't happen */
+
+   for( nn=ii=0 ; ii < mp->nxyline ; ii++,nn+=NXY_MEMPLOT ){
+     x1 = mp->xyline[nn  ] ; y1 = mp->xyline[nn+1] ;
+     x2 = mp->xyline[nn+2] ; y2 = mp->xyline[nn+3] ;
+     col= mp->xyline[nn+4] ; th = mp->xyline[nn+5] ;
+
+     if( th < 0.0 ){               /** Not a line! */
+       int thc = (int)(-th) ;
+       switch( thc ){
+         case THCODE_RECT:         /* rectangle */
+                                   /* both corners inside */
+           if( INSIDE(x1,y1) && INSIDE(x2,y2) ){
+             ADDTO_MEMPLOT(np,x1,y1,x2,y2,col,th) ;
+           }
+         break ;
+
+         case THCODE_CIRC:{        /* circle */
+                                   /* +/- 1 radius inside */
+           float xx,yy , rr=x2 ;
+           xx = x1+rr ; if( !INSIDE(xx,y1) ) break ;
+           xx = x1-rr ; if( !INSIDE(xx,y1) ) break ;
+           yy = y1+rr ; if( !INSIDE(x1,yy) ) break ;
+           yy = y1-rr ; if( !INSIDE(x1,yy) ) break ;
+           ADDTO_MEMPLOT(np,x1,y1,x2,y2,col,th) ;
+         }
+         break ;
+       }
+
+     } else {                      /** Truly a line! **/
+
+       qq = clip_line_to_rect( xclbot,yclbot , xcltop,ycltop ,
+                               &x1,&y1       , &x2,&y2        ) ;
+       if( qq == 0 ){
+         ADDTO_MEMPLOT(np,x1,y1,x2,y2,col,th) ;
+       }
+     }
+   }
+
+   if( np->nxyline == 0 ) DESTROY_MEMPLOT(np) ;
+
+   return np ;
+}
+
 /****************************************************************************
   Functions to interface with PLOTPAK Fortran routines
 *****************************************************************************/
@@ -662,4 +877,5 @@ void plotpak_points( float *x , float *y , int n , int ipen )
    points_( (real *)x , (real *)y , &nn , &zero , &nipen ) ;
 }
 
+void ppak_garbage_routine(void) ;
 void this_is_real_junk(void){ ppak_garbage_routine(); }

@@ -7,6 +7,10 @@
 #undef MAIN
 #include "afni.h"
 
+#include "mri_render.h"
+#include "mcw_graf.h"
+#include "parser.h"
+
 /*========================================================================*/
 /*==== Compile this only if plugins are properly enabled in machdep.h ====*/
 
@@ -22,6 +26,9 @@
    will call each plugin's internal initializer function, which
    may make requests to get AFNI data structures.
 ****************************************************************************/
+
+/*================ dynamic loading of plugins is allowed ==================*/
+#ifndef NO_DYNAMIC_LOADING
 
 /*-------------------------------------------------------------------------
    Routine to read in all plugins found in a given directory
@@ -116,6 +123,7 @@ AFNI_plugin * PLUG_read_plugin( char * fname )
    AFNI_plugin * plin ;
    PLUGIN_interface * plint ;
    int nin ;
+   static int firsterr=1 ;
 
    /*----- sanity checks -----*/
 
@@ -141,13 +149,16 @@ if(PRINT_TRACING)
 
    DYNAMIC_OPEN( fname , plin->libhandle ) ;
 
+STATUS("returned from DYNAMIC_OPEN()") ;
+
    if( ! ISVALID_DYNAMIC_handle( plin->libhandle ) ){  /* open failed */
 
       /* 24 May 2001: always print if there is an error */
 
       char *er ;
+      if( firsterr ){fprintf(stderr,"\n"); firsterr=0; }
       fprintf(stderr,"Failed to open plugin %s",fname) ;
-      er = DYNAMIC_ERROR_STRING ;
+      er = (char *)DYNAMIC_ERROR_STRING ;
       if( er != NULL ) fprintf(stderr," -- %s\n",er) ;
       else             fprintf(stderr,"\n") ;
 
@@ -163,8 +174,9 @@ if(PRINT_TRACING)
 
    /*----- find the required symbol -----*/
    /*..... 13 Sep 2001: add _ for stupid Darwin .....*/
+   /*..... 30 Oct 2003: remove for OS X 10.3    .....*/
 
-#ifndef DARWIN
+#ifndef NEED_UNDERSCORE
    DYNAMIC_SYMBOL(plin->libhandle, "PLUGIN_init" , plin->libinit_func );
 #else
    DYNAMIC_SYMBOL(plin->libhandle,"_PLUGIN_init" , plin->libinit_func );
@@ -173,8 +185,9 @@ if(PRINT_TRACING)
    /*----- if symbol not found, complain and kill this plugin -----*/
 
    if( plin->libinit_func == (vptr_func *) NULL ){
-      char *er = DYNAMIC_ERROR_STRING ;
-      fprintf(stderr,"plugin %s lacks PLUGIN_init function\n",fname) ;
+      char *er = (char *)DYNAMIC_ERROR_STRING ;
+      if( firsterr ){fprintf(stderr,"\n"); firsterr=0; }
+      fprintf(stderr,"plugin %s lacks PLUGIN_init() function\n",fname) ;
       if( er != NULL ) fprintf(stderr," -- %s\n",er) ;
       DYNAMIC_CLOSE( plin->libhandle ) ;
       myXtFree(plin) ;
@@ -193,7 +206,12 @@ if(PRINT_TRACING)
 #endif
 
    do {
+#if 0
       plint = (PLUGIN_interface *) plin->libinit_func( nin ) ;
+#else
+      AFNI_CALL_VALU_1ARG(plin->libinit_func ,
+                          PLUGIN_interface *,plint , int,nin ) ;
+#endif
       if( plint == NULL ) break ;
 
       plin->interface = (PLUGIN_interface **)
@@ -240,17 +258,26 @@ if(PRINT_TRACING)
    29 Mar 2001: pname = argv[0] = potential program name
 ----------------------------------------------------------------------*/
 
+#ifdef DARWIN
+#include <mach-o/dyld.h>
+/* extern unsigned long _dyld_present(void); */
+#endif
+
 AFNI_plugin_array * PLUG_get_many_plugins(char *pname)
 {
    char * epath , * elocal , * eee ;
-   char ename[THD_MAX_NAME] , efake[]="./" ;
+   char ename[THD_MAX_NAME] ;
    AFNI_plugin_array * outar , * tmpar ;
    int epos , ll , ii , id ;
+   THD_string_array *qlist ; /* 02 Feb 2002 */
 
    /*----- sanity checks -----*/
 
 ENTRY("PLUG_get_many_plugins") ;
 
+/**
+#if defined(DARWIN) && !defined(c_plusplus) && !defined(__cplusplus)
+**/
 #ifdef DARWIN
    if( _dyld_present() == 0 ) RETURN(NULL) ;  /* 05 Sep 2001: Mac OSX */
 #endif
@@ -260,18 +287,24 @@ ENTRY("PLUG_get_many_plugins") ;
    if( epath == NULL )
       epath = getenv("AFNI_PLUGIN_PATH") ; /* try another name? */
 
-   if( epath == NULL )
-      epath = getenv("PATH") ;             /* try another name? */
-
-   if( epath == NULL && pname != NULL && pname[0] != '\0' ){ /* 29 Mar 2001: */
-      char *ep = strdup(pname) ;                             /* get the path  */
-      char *tp = THD_trailname(ep,0) ;                       /* to the program */
-      *tp = '\0' ;
-      if( strlen(ep) > 0 ) epath = ep ;    /* got some path */
-      else                 free(ep) ;      /* got zipperoni */
+   if( epath == NULL ){
+     epath = getenv("PATH") ;              /* try yet another name? */
+     if( epath != NULL )
+       fprintf(stderr,
+               "\n++ WARNING: AFNI_PLUGINPATH not set; searching PATH\n") ;
    }
 
-   if( epath == NULL ) epath = efake ;     /* put in a fake path instead? */
+   if( epath == NULL && pname != NULL && strchr(pname,'/') != NULL ){ /* 29 Mar 2001 */
+     char *ep = strdup(pname) ;                                       /* get path    */
+     char *tp = THD_trailname(ep,0) ;                                 /* to program  */
+     *tp = '\0' ;
+     if( strlen(ep) > 0 ) epath = ep ;    /* got some path */
+     else                 free(ep) ;      /* got zipperoni */
+   }
+
+   if( epath == NULL ) epath = "./:/usr/local/bin" ; /* put in a fake path instead? */
+
+   INIT_SARR(qlist) ; /* 02 Feb 2002: list of checked directories */
 
    /*----- copy path list into local memory -----*/
 
@@ -299,14 +332,17 @@ if(PRINT_TRACING)
 
    do{
       ii = sscanf( elocal+epos , "%s%n" , ename , &id ) ; /* next substring */
-      if( ii < 1 ) break ;                                /* none --> end of work */
-
-      /** check if ename occurs earlier in elocal **/
-
-      eee = strstr( elocal , ename ) ;
-      if( eee != NULL && (eee-elocal) < epos ){ epos += id ; continue ; }
-
+      if( ii < 1 || id < 1 ) break ;                      /* none --> end of work */
       epos += id ;                                        /* char after last scanned */
+
+      if( !THD_is_directory(ename) ) continue ;           /* 21 May 2002 -rcr */
+
+      /* 02 Feb 2002: did we check this one already? */
+
+      for( ii=0 ; ii < qlist->num ; ii++ )
+         if( THD_equiv_files(qlist->ar[ii],ename) ) break ;
+      if( ii < qlist->num ) continue ;
+      ADDTO_SARR(qlist,ename) ;
 
       ii = strlen(ename) ;                                /* make sure name has */
       if( ename[ii-1] != '/' ){                           /* a trailing '/' on it */
@@ -316,7 +352,7 @@ if(PRINT_TRACING)
       tmpar = PLUG_get_all_plugins( ename ) ;             /* read this directory */
       if( tmpar != NULL ){
          for( ii=0 ; ii < tmpar->num ; ii++ )             /* move results to output */
-            ADDTO_PLUGIN_ARRAY( outar , tmpar->plar[ii] ) ;
+           ADDTO_PLUGIN_ARRAY( outar , tmpar->plar[ii] ) ;
 
          FREE_PLUGIN_ARRAY(tmpar) ;                       /* toss temp array */
       }
@@ -328,8 +364,96 @@ if(PRINT_TRACING)
 { char str[256] ; sprintf(str,"found %d plugins",outar->num) ; STATUS(str) ; }
 
    if( outar->num == 0 ) DESTROY_PLUGIN_ARRAY(outar) ;
+   DESTROY_SARR(qlist) ; /* 02 Feb 2002 */
    RETURN(outar) ;
 }
+
+/*===================  Plugins are statically linked into AFNI ===================*/
+
+#else  /* NO_DYNAMIC_LOADING is defined (e.g., CYGWIN) */
+
+/* get the list of fixed (compiled-in) plugins */
+
+#include "fixed_plugins.h"
+
+/*-------------------------------------------------------------------------------*/
+/*! Function to load one fixed plugin (for CYGWIN) */
+
+AFNI_plugin * PLUG_load_fixed_plugin( FIXED_plugin pin )
+{
+   AFNI_plugin * plin ;
+   PLUGIN_interface * plint ;
+   int nin ;
+
+   /*----- sanity checks -----*/
+
+ENTRY("PLUG_load_plugin") ;
+
+   if( pin.pfunc == NULL ) RETURN(NULL) ;
+
+   /*----- make space for new plugin -----*/
+
+   plin = (AFNI_plugin *) XtMalloc( sizeof(AFNI_plugin) ) ;
+   plin->type = AFNI_PLUGIN_TYPE ;
+
+   /*----- copy name into plin structure -----*/
+
+   MCW_strncpy( plin->libname , pin.pname , MAX_PLUGIN_NAME ) ;
+   plin->libinit_func = pin.pfunc ;
+
+   /*----- create interface(s) by calling initialization function -----*/
+
+   plin->interface_count = nin = 0 ;
+   plin->interface       = NULL ;
+
+   do {
+      plint = (PLUGIN_interface *) plin->libinit_func( nin ) ;
+      if( plint == NULL ) break ;
+
+      plin->interface = (PLUGIN_interface **)
+                          XtRealloc( (char *) plin->interface ,
+                                     sizeof(PLUGIN_interface *) * (nin+1) ) ;
+
+      plin->interface[nin] = plint ;
+      if( nin == 0 ) strcpy( plin->seqcode , plint->seqcode ) ;  /* 06 Aug 1999 */
+      nin++ ;
+   } while( plint != NULL ) ;
+
+   plin->interface_count = nin ;
+
+   /*----- done -----*/
+
+   RETURN(plin) ;
+}
+
+/*------------------------------------------------------------------------*/
+/*! Function to load all fixed plugins (for CYGWIN).  pname is ignored. */
+
+AFNI_plugin_array * PLUG_get_many_plugins(char *pname)
+{
+   int ir ;
+   AFNI_plugin_array * outar ;
+   AFNI_plugin       * plin ;
+
+   /*----- sanity check and initialize -----*/
+
+ENTRY("PLUG_get_many_plugins") ;
+
+   INIT_PLUGIN_ARRAY( outar ) ;
+
+   /*----- scan thru and create plugins from the fixed list -----*/
+
+   for( ir=0 ; ir < NUM_FIXED_plugin_funcs ; ir++ ){
+      plin = PLUG_load_fixed_plugin( FIXED_plugin_funcs[ir] ) ;
+      if( plin != NULL ) ADDTO_PLUGIN_ARRAY( outar , plin ) ;
+   }
+
+   RETURN(outar) ;
+}
+
+#endif /* NO_DYNAMIC_LOADING */
+
+/*==============================================================================*/
 
 /****************************************************************************
   Routines to create interface descriptions for new plugins. Usage:
@@ -340,7 +464,7 @@ if(PRINT_TRACING)
     2(abcdef)
        Use "add_number_to_PLUGIN_interface"  , and
            "add_string_to_PLUGIN_interface"  , and
-           "add_dataset_to_PLUGIN_interface"
+           "add_dataset_to_PLUGIN_interface" , et cetera,
          to add control parameter choosers to the most recently created
          option line.  Up to 6 choosers may be added to an option line.
     3) When done, return the new "PLUGIN_interface *" to AFNI.
@@ -391,7 +515,6 @@ ENTRY("new_PLUGIN_interface") ;
 
    plint = new_PLUGIN_interface_1999( label , description , help ,
                                       call_type , call_func , NULL ) ;
-
    RETURN(plint) ;
 }
 
@@ -423,6 +546,8 @@ ENTRY("new_PLUGIN_interface_1999") ;
 
    plint = (PLUGIN_interface *) XtMalloc(sizeof(PLUGIN_interface)) ;
    if( plint == NULL ) RETURN(NULL) ;
+
+   plint->flags = 0 ;  /* 29 Mar 2002 */
 
    MCW_strncpy( plint->label , label , PLUGIN_LABEL_SIZE ) ;
 
@@ -488,7 +613,22 @@ ENTRY("new_PLUGIN_interface_1999") ;
    }
 #endif
 
+   plint->run_label[0]  = '\0' ;  /* 04 Nov 2003 */
+   plint->doit_label[0] = '\0' ;
+
    RETURN(plint) ;
+}
+
+/*------------------------------------------------------------------------*/
+/*! Set the "Run+Keep" and "Run+Close" labels for a plugin. [04 Nov 2003] */
+/*------------------------------------------------------------------------*/
+
+void PLUTO_set_runlabels( PLUGIN_interface *plint , char *rlab , char *dlab )
+{
+   if( plint == NULL ) return ;
+   if( rlab != NULL  ) MCW_strncpy( plint->run_label , rlab, PLUGIN_LABEL_SIZE );
+   if( dlab != NULL  ) MCW_strncpy( plint->doit_label, dlab, PLUGIN_LABEL_SIZE );
+   return ;
 }
 
 /*----------------------------------------------------------------------
@@ -745,7 +885,7 @@ ENTRY("add_string_to_PLUGIN_interface") ;
    if( num_str > 0 ){
       sv->string_range_count = num_str ;
       for( ii=0 ; ii < num_str ; ii++ ){
-         sv->string_range[ii] = XtMalloc( PLUGIN_STRING_SIZE ) ;
+         sv->string_range[ii] = (char*)XtMalloc( PLUGIN_STRING_SIZE ) ;
          MCW_strncpy( sv->string_range[ii] , strlist[ii] , PLUGIN_STRING_SIZE ) ;
       }
       sv->value_default   = defval ;
@@ -757,7 +897,7 @@ ENTRY("add_string_to_PLUGIN_interface") ;
 
       if( strlist != NULL && strlist[0] != NULL ){     /* 19 Jun 2000 */
          sv->string_range_count = -1 ;
-         sv->string_range[0] = XtMalloc( PLUGIN_STRING_SIZE ) ;
+         sv->string_range[0] = (char*)XtMalloc( PLUGIN_STRING_SIZE ) ;
          MCW_strncpy( sv->string_range[0], strlist[0], PLUGIN_STRING_SIZE ) ;
       }
    }
@@ -820,6 +960,7 @@ ENTRY("add_string_to_PLUGIN_interface") ;
                BRICK_SHORT_MASK      should be stored in the sub-bricks
                BRICK_FLOAT_MASK      of the allowable datasets.
                BRICK_COMPLEX_MASK
+               BRICK_RGB_MASK
                BRICK_ALLTYPE_MASK
                BRICK_ALLREAL_MASK
 
@@ -1068,10 +1209,10 @@ ENTRY("PLUTO_prefix_ok") ;
 #define NUM_PLUG_ACT 4
 
 static MCW_action_item PLUG_act[] = {
- { PLUG_quit_label , PLUG_action_CB , NULL , PLUG_quit_help ,"Close window"               , 0 } ,
- { PLUG_run_label  , PLUG_action_CB , NULL , PLUG_run_help  ,"Run plugin and keep window" , 0 } ,
- { PLUG_doit_label , PLUG_action_CB , NULL , PLUG_doit_help ,"Run plugin and close window", 1 } ,
- { PLUG_help_label , PLUG_action_CB , NULL , PLUG_help_help ,"Get help for plugin"        , 0 }
+ { PLUG_quit_label, PLUG_action_CB, NULL, PLUG_quit_help,"Close window"               , 0 },
+ { PLUG_run_label , PLUG_action_CB, NULL, PLUG_run_help ,"Run plugin and keep window" , 0 },
+ { PLUG_doit_label, PLUG_action_CB, NULL, PLUG_doit_help,"Run plugin and close window", 1 },
+ { PLUG_help_label, PLUG_action_CB, NULL, PLUG_help_help,"Get help for plugin"        , 0 }
 } ;
 
 void PLUG_setup_widgets( PLUGIN_interface * plint , MCW_DC * dc )
@@ -1172,7 +1313,14 @@ ENTRY("PLUG_setup_widgets") ;
    /**** create an action area beneath to hold user control buttons ****/
 
    for( ib=0 ; ib < NUM_PLUG_ACT ; ib++ )
-      PLUG_act[ib].data = (XtPointer) plint ;
+     PLUG_act[ib].data = (XtPointer) plint ;
+
+   /* 04 Nov 2003: allow for change of Run+Close and Run+Keep labels */
+
+   if( plint->run_label[0]  == '\0' ) strcpy(plint->run_label ,PLUG_run_label );
+   if( plint->doit_label[0] == '\0' ) strcpy(plint->doit_label,PLUG_doit_label);
+   PLUG_act[1].label = plint->run_label ;
+   PLUG_act[2].label = plint->doit_label;
 
    actar = MCW_action_area( wid->form , PLUG_act ,
                             (plint->helpstring!=NULL) ? NUM_PLUG_ACT
@@ -1264,10 +1412,12 @@ ENTRY("PLUG_setup_widgets") ;
       opt = plint->option[iopt] ;
       if( opt == NULL ) continue ; /* bad? */
 
-      opt->label[ opt_lwid+1 ] = '\0' ;
+#define LPAD 0   /* 29 Mar 2002: used to be 1 */
+
+      opt->label[ opt_lwid + LPAD ] = '\0' ;
       for( ib=0 ; ib < opt->subvalue_count ; ib++ ){
          sv = &(opt->subvalue[ib]) ;
-         sv->label[ sv_lwid[ib] + 1 ] = '\0' ;
+         sv->label[ sv_lwid[ib] + LPAD ] = '\0' ;
       }
    }
 
@@ -1458,6 +1608,9 @@ fprintf(stderr,"colormenu setup %s; opt->tag=%s.\n",sv->label,opt->tag) ;
 
                if( !use_optmenu ) av->allow_wrap = 1 ;
                if(  use_optmenu ) toff-- ;
+
+               if( !use_optmenu && (plint->flags & SHORT_NUMBER_FLAG) )
+                  XtVaSetValues( av->wtext , XmNcolumns , 6 , NULL ) ;
             }
             break ;
 
@@ -1614,10 +1767,16 @@ fprintf(stderr,"colormenu setup %s; opt->tag=%s.\n",sv->label,opt->tag) ;
                     NULL ) ;
                XmStringFree( xstr ) ;
 
-               xstr = XmStringCreateLtoR(
-                        (av->multi) ? "** Choose Datasets *"
-                                    : "-- Choose Dataset --" ,
-                        XmFONTLIST_DEFAULT_TAG ) ;
+               if( plint->flags & SHORT_CHOOSE_FLAG )
+                 xstr = XmStringCreateLtoR(
+                          (av->multi) ? "* Datasets *"
+                                      : "- Dataset -" ,
+                          XmFONTLIST_DEFAULT_TAG ) ;
+               else
+                 xstr = XmStringCreateLtoR(
+                          (av->multi) ? "** Choose Datasets *"
+                                      : "-- Choose Dataset --" ,
+                          XmFONTLIST_DEFAULT_TAG ) ;
 
                av->pb = XtVaCreateManagedWidget(
                            "AFNI" , xmPushButtonWidgetClass , av->rowcol ,
@@ -1675,7 +1834,10 @@ fprintf(stderr,"colormenu setup %s; opt->tag=%s.\n",sv->label,opt->tag) ;
                     NULL ) ;
                XmStringFree( xstr ) ;
 
-               xstr = XmStringCreateLtoR( "-Choose Timeseries- ",XmFONTLIST_DEFAULT_TAG ) ;
+               if( plint->flags & SHORT_CHOOSE_FLAG )
+                 xstr = XmStringCreateLtoR( "-Timeseries-",XmFONTLIST_DEFAULT_TAG ) ;
+               else
+                 xstr = XmStringCreateLtoR( "-Choose Timeseries- ",XmFONTLIST_DEFAULT_TAG ) ;
 
                av->pb = XtVaCreateManagedWidget(
                            "AFNI" , xmPushButtonWidgetClass , av->rowcol ,
@@ -1898,8 +2060,8 @@ void PLUG_action_CB( Widget w , XtPointer cd , XtPointer cbs )
 
 ENTRY("PLUG_action_CB") ;
 
-   run   = (strcmp(wname,PLUG_doit_label)==0) || (strcmp(wname,PLUG_run_label) ==0);
-   close = (strcmp(wname,PLUG_doit_label)==0) || (strcmp(wname,PLUG_quit_label)==0);
+   run   = (strcmp(wname,plint->doit_label)==0) || (strcmp(wname,plint->run_label)==0);
+   close = (strcmp(wname,plint->doit_label)==0) || (strcmp(wname,PLUG_quit_label) ==0);
    help  = (strcmp(wname,PLUG_help_label)==0) ;
 
    if( run ){
@@ -1911,7 +2073,12 @@ ENTRY("PLUG_action_CB") ;
       MPROBE ;
 
       SHOW_AFNI_PAUSE ;
+#if 0
       mesg = plint->call_func( plint ) ;
+#else
+      AFNI_CALL_VALU_1ARG( plint->call_func ,
+                           char *,mesg , PLUGIN_interface *,plint ) ;
+#endif
       SHOW_AFNI_READY ;
 
       PLUTO_popdown_meter( plint ) ;  /* if the user forgets */
@@ -2597,47 +2764,28 @@ ENTRY("PLUG_choose_dataset_CB") ;
    for( iss=iss_bot ; iss <= iss_top ; iss++ ){
       ss = GLOBAL_library.sslist->ssar[iss] ;
 
-      /* check anat datasets, if reasonable */
+      /* check datasets in this session */
 
-      if( sv->dset_anat_mask != 0 ){
-         for( id=0 ; id < ss->num_anat ; id++ ){
-            dset = ss->anat[id][vv] ;
+      for( id=0 ; id < ss->num_dsset ; id++ ){
+        dset = ss->dsset[id][vv] ;            if( dset == NULL ) continue ;
 
-            if( ! PLUGIN_dset_check( sv->dset_anat_mask ,
-                                     sv->dset_ctrl_mask , dset ) ) continue ;
+        if( sv->dset_anat_mask != 0 && ISANAT(dset) )
+          if( ! PLUGIN_dset_check( sv->dset_anat_mask ,
+                                   sv->dset_ctrl_mask , dset ) ) continue ;
 
-            /* if we get here, then this dataset is OK to choose! */
+        if( sv->dset_func_mask != 0 && ISFUNC(dset) )
+          if( ! PLUGIN_dset_check( sv->dset_func_mask ,
+                                   sv->dset_ctrl_mask , dset ) ) continue ;
 
-            num_dset++ ;
-            av->dset_link = (PLUGIN_dataset_link *)
-                             XtRealloc( (char *) av->dset_link ,
-                                        sizeof(PLUGIN_dataset_link)*num_dset ) ;
+        /* if we get here, then this dataset is OK to choose! */
 
-            make_PLUGIN_dataset_link( dset , av->dset_link + (num_dset-1) ) ;
+        num_dset++ ;
+        av->dset_link = (PLUGIN_dataset_link *)
+                         XtRealloc( (char *) av->dset_link ,
+                                    sizeof(PLUGIN_dataset_link)*num_dset ) ;
 
-         }
-      } /* end of loop over anat datasets */
-
-      /* do the same for func datasets */
-
-      if( sv->dset_func_mask != 0 ){
-         for( id=0 ; id < ss->num_func ; id++ ){
-            dset = ss->func[id][vv] ;
-
-            if( ! PLUGIN_dset_check( sv->dset_func_mask ,
-                                     sv->dset_ctrl_mask , dset ) ) continue ;
-
-            /* if we get here, then this dataset is OK to choose! */
-
-            num_dset++ ;
-            av->dset_link = (PLUGIN_dataset_link *)
-                             XtRealloc( (char *) av->dset_link ,
-                                        sizeof(PLUGIN_dataset_link)*num_dset ) ;
-
-            make_PLUGIN_dataset_link( dset , av->dset_link + (num_dset-1) ) ;
-
-         }
-      } /* end of loop over func datasets */
+        make_PLUGIN_dataset_link( dset , av->dset_link + (num_dset-1) ) ;
+      }
 
    } /* end of loop over sessions */
 
@@ -2878,6 +3026,7 @@ ENTRY("PLUGIN_dset_check") ;
    if( itmp == MRI_short   && (ctrl_mask & BRICK_SHORT_MASK)   == 0 ) RETURN(0) ;
    if( itmp == MRI_float   && (ctrl_mask & BRICK_FLOAT_MASK)   == 0 ) RETURN(0) ;
    if( itmp == MRI_complex && (ctrl_mask & BRICK_COMPLEX_MASK) == 0 ) RETURN(0) ;
+   if( itmp == MRI_rgb     && (ctrl_mask & BRICK_RGB_MASK)     == 0 ) RETURN(0) ;
 
    RETURN(1) ;
 }
@@ -3017,11 +3166,19 @@ ENTRY("PLUTO_popup_dset_chooser") ;
    for( iss=iss_bot ; iss <= iss_top ; iss++ ){
       ss = GLOBAL_library.sslist->ssar[iss] ;
 
-      /* check anat datasets */
+      /* check datasets from this session */
 
-      for( id=0 ; id < ss->num_anat ; id++ ){
-         dset = ss->anat[id][vv] ;
+      for( id=0 ; id < ss->num_dsset ; id++ ){
+         dset = ss->dsset[id][vv] ;    if( dset == NULL ) continue ;
+#if 0
          if( chk_func != NULL && chk_func(dset,cd) == 0 ) continue ; /* skip */
+#else
+         { int cval=1 ;
+           AFNI_CALL_VALU_2ARG( chk_func ,
+                                int,cval , THD_3dim_dataset *,dset, void *,cd ) ;
+           if( cval == 0 ) continue ;
+         }
+#endif
 
          num_user_dset++ ;
          user_dset_link = (PLUGIN_dataset_link *)
@@ -3030,22 +3187,7 @@ ENTRY("PLUTO_popup_dset_chooser") ;
 
          make_PLUGIN_dataset_link( dset , user_dset_link + (num_user_dset-1) ) ;
 
-      } /* end of loop over anat datasets */
-
-      /* do the same for func datasets */
-
-      for( id=0 ; id < ss->num_func ; id++ ){
-         dset = ss->func[id][vv] ;
-         if( chk_func != NULL && chk_func(dset,cd) == 0 ) continue ; /* skip */
-
-         num_user_dset++ ;
-         user_dset_link = (PLUGIN_dataset_link *)
-                         XtRealloc( (char *) user_dset_link ,
-                                    sizeof(PLUGIN_dataset_link)*num_user_dset ) ;
-
-        make_PLUGIN_dataset_link( dset , user_dset_link + (num_user_dset-1) ) ;
-
-      } /* end of loop over func datasets */
+      } /* end of loop over datasets */
 
    } /* end of loop over sessions */
 
@@ -3121,7 +3263,13 @@ ENTRY("PLUG_finalize_user_dset_CB") ;
       user_dset_dslist[id] = PLUTO_find_dset( &(user_dset_link[jd].idcode) ) ;
    }
 
+#if 0
    user_dset_cb_func( num , user_dset_dslist , user_dset_cb_data ) ;
+#else
+   AFNI_CALL_VOID_3ARG( user_dset_cb_func ,
+                        int,num , THD_3dim_dataset **,user_dset_dslist ,
+                        void *,user_dset_cb_data ) ;
+#endif
 
    EXRETURN ;
 }
@@ -3410,8 +3558,14 @@ ENTRY("PLUG_startup_plugin_CB") ;
 
    if( plint == NULL ) EXRETURN ;  /* error? */
 
-   XtVaGetValues( w , XmNuserData , &im3d , NULL ) ;  /* set controller from */
-   plint->im3d = im3d ;                               /* data on menu button */
+   if( w != NULL ){
+     XtVaGetValues( w , XmNuserData , &im3d , NULL ) ;  /* set controller from */
+     plint->im3d = im3d ;                               /* data on menu button */
+   } else if( cbs != NULL ){                            /* 21 Jul 2003 */
+     plint->im3d = (Three_D_View *) cbs ;
+     cbs = NULL ;
+   }
+   if( plint->im3d == NULL ) plint->im3d = AFNI_find_open_controller() ;
 
    /*-- if no interface is needed, just call it --*/
 
@@ -3422,7 +3576,12 @@ STATUS("calling plugin") ;
       MPROBE ;
 
       SHOW_AFNI_PAUSE ;
+#if 0
       mesg = plint->call_func( plint ) ;
+#else
+      AFNI_CALL_VALU_1ARG( plint->call_func ,
+                           char *,mesg , PLUGIN_interface *,plint ) ;
+#endif
       SHOW_AFNI_READY ;
 
       MPROBE ;
@@ -3448,7 +3607,7 @@ STATUS("calling plugin") ;
 
    { char ttl[PLUGIN_STRING_SIZE] ;
 
-     sprintf(ttl , "%s%s" , AFNI_controller_label(im3d) , plint->label ) ;
+     sprintf(ttl , "%s%s" , AFNI_controller_label(plint->im3d) , plint->label ) ;
 
      XtVaSetValues( plint->wid->shell ,
                        XmNtitle     , ttl , /* top of window */
@@ -3497,11 +3656,11 @@ STATUS("popping up interface") ;
       DSET_ACTION_MAKE_CURRENT == make this the currently viewed dataset
 -----------------------------------------------------------------------------*/
 
-int PLUTO_add_dset( PLUGIN_interface * plint ,
-                     THD_3dim_dataset * dset , int action_flag )
+int PLUTO_add_dset( PLUGIN_interface *plint ,
+                    THD_3dim_dataset *dset , int action_flag )
 {
-   Three_D_View * im3d ;
-   THD_session * sess ;
+   Three_D_View *im3d ;
+   THD_session *sess ;
    int iss , vv , id ;
    int make_current = (action_flag & DSET_ACTION_MAKE_CURRENT) ;
 
@@ -3520,26 +3679,13 @@ ENTRY("PLUTO_add_dset") ;
 
    /** add the dataset to the session **/
 
-   if( ISANAT(dset) ){
-      id = sess->num_anat ;
-      if( id >= THD_MAX_SESSION_ANAT ){
-         fprintf(stderr,"*** Overflow anat dataset limit ***\n") ;
-         RETURN(1) ;
-      }
-      sess->anat[id][vv] = dset ;
-      (sess->num_anat)++ ;
-   } else if( ISFUNC(dset) ){
-      id = sess->num_func ;
-      if( id >= THD_MAX_SESSION_FUNC ){
-         fprintf(stderr,"*** Overflow func dataset limit ***\n") ;
-         RETURN(1) ;
-      }
-      sess->func[id][vv] = dset ;
-      (sess->num_func)++ ;
-   } else {
-      fprintf(stderr,"*** Bizarre type error in PLUTO_add_dset!\n") ;
-      RETURN(1) ;
+   id = sess->num_dsset ;
+   if( id >= THD_MAX_SESSION_SIZE ){
+     fprintf(stderr,"*** Overflow session dataset limit ***\n") ;
+     RETURN(1) ;
    }
+   sess->dsset[id][vv] = dset ;
+   sess->num_dsset ++ ;
 
    /** make sure the dataset is properly fit into the situation **/
 
@@ -3549,19 +3695,19 @@ ENTRY("PLUTO_add_dset") ;
    THD_write_3dim_dataset( NULL,NULL , dset , True ) ;
 
    if( dset->anat_parent == NULL )                          /* if() added 14 Dec 1999 */
-      AFNI_force_adoption( sess , GLOBAL_argopt.warp_4D ) ;
+     AFNI_force_adoption( sess , GLOBAL_argopt.warp_4D ) ;
 
    AFNI_make_descendants( GLOBAL_library.sslist ) ;
 
    /** if desired, jump to this puppy in the viewer **/
 
    if( make_current && IM3D_VALID(im3d) ){
-      if( ISANAT(dset) )
-         im3d->vinfo->anat_num = sess->num_anat - 1 ;
-      else
-         im3d->vinfo->func_num = sess->num_func - 1 ;
+     if( ISANAT(dset) )
+       im3d->vinfo->anat_num = sess->num_dsset - 1 ;
+     else
+       im3d->vinfo->func_num = sess->num_dsset - 1 ;
 
-      AFNI_initialize_view( im3d->anat_now , im3d ) ;
+     AFNI_initialize_view( im3d->anat_now , im3d ) ;
    }
 
    THD_force_malloc_type( dset->dblk , DATABLOCK_MEM_ANY ) ;
@@ -3590,21 +3736,19 @@ ENTRY("PLUTO_copy_dset") ;
    to a given dataset.  (Feb 1998)
 ------------------------------------------------------------------------*/
 
-void PLUTO_dset_redisplay( THD_3dim_dataset * dset )
+void PLUTO_dset_redisplay( THD_3dim_dataset *dset )
 {
    PLUTO_dset_redisplay_mode( dset , REDISPLAY_OPTIONAL ) ;
 }
 
 /*---- 23 Oct 1998: superseded above routine with this one; RWCox -----*/
 
-void PLUTO_dset_redisplay_mode( THD_3dim_dataset * dset , int mode )
+void PLUTO_dset_redisplay_mode( THD_3dim_dataset *dset , int mode )
 {
    Three_D_View * im3d ;
    int ii , amode , fmode ;
 
 ENTRY("PLUTO_dset_redisplay_mode") ;
-
-   if( ! ISVALID_DSET(dset) ) EXRETURN ;
 
    if( mode == REDISPLAY_OPTIONAL ){
       amode = REDISPLAY_ALL ;
@@ -3617,7 +3761,12 @@ ENTRY("PLUTO_dset_redisplay_mode") ;
       im3d = GLOBAL_library.controllers[ii] ;
       if( ! IM3D_OPEN(im3d) ) continue ;
 
-      if( im3d->anat_now == dset ){
+      if( ! ISVALID_DSET(dset) ){
+         im3d->anat_voxwarp->type = ILLEGAL_TYPE ;
+         im3d->fim_voxwarp->type  = ILLEGAL_TYPE ;
+         AFNI_reset_func_range( im3d ) ;
+         AFNI_set_viewpoint( im3d , -1,-1,-1 , REDISPLAY_ALL ) ;
+      } else if( im3d->anat_now == dset ){
          im3d->anat_voxwarp->type = ILLEGAL_TYPE ;
          AFNI_reset_func_range( im3d ) ;
          AFNI_imseq_clearstat( im3d ) ;
@@ -3626,7 +3775,7 @@ ENTRY("PLUTO_dset_redisplay_mode") ;
          im3d->fim_voxwarp->type = ILLEGAL_TYPE ;
          AFNI_reset_func_range( im3d ) ;
          AFNI_imseq_clearstat( im3d ) ;
-         AFNI_set_viewpoint( im3d , -1,-1,-1 , fmode ) ;
+         AFNI_redisplay_func( im3d ) ;
       }
    }
    EXRETURN ;
@@ -3674,12 +3823,7 @@ ENTRY("PLUTO_popup_worker") ;
       w = plint->wid->label ;
    } else {
       im3d = plint->im3d ;
-      if( ! IM3D_VALID(im3d) ){
-         for( ii=0 ; ii < MAX_CONTROLLERS ; ii++ ){
-            im3d = GLOBAL_library.controllers[ii] ;
-            if( IM3D_OPEN(im3d) ) break ;
-         }
-      }
+      if( !IM3D_OPEN(im3d) ) im3d = AFNI_find_open_controller() ;
       w = im3d->vwid->top_shell ;
    }
 
@@ -3834,8 +3978,8 @@ ENTRY("PLUTO_popup_image") ;
 
    /*-- input = non-null image ==> replace image --*/
 
-   mri_free( imp->im ) ;                   /* toss old copy */
-   imp->im = mri_to_mri( im->kind , im ) ; /* make new copy */
+   mri_free( imp->im ) ;      /* toss old copy */
+   imp->im = mri_copy( im ) ; /* make new copy */
 
    /*-- input = inactive popper handle ==> activate it --*/
 
@@ -3847,6 +3991,8 @@ ENTRY("PLUTO_popup_image") ;
       drive_MCW_imseq( imp->seq , isqDR_onoffwid , (XtPointer) isqDR_offwid ) ;
 
       drive_MCW_imseq( imp->seq , isqDR_opacitybut , (XtPointer) 0 ) ; /* 07 Mar 2001 */
+      drive_MCW_imseq( imp->seq , isqDR_zoombut    , (XtPointer) 0 ) ; /* 12 Mar 2002 */
+      drive_MCW_imseq( imp->seq , isqDR_penbbox    , (XtPointer) 0 ) ; /* 18 Jul 2003 */
    }
 
    /*-- display image at last --*/
@@ -3885,6 +4031,7 @@ ENTRY("PLUGIN_imseq_getim") ;
 
       stat->transforms0D = & (GLOBAL_library.registered_0D) ;
       stat->transforms2D = & (GLOBAL_library.registered_2D) ;
+      stat->slice_proj   = NULL ;
 
       RETURN((XtPointer) stat) ;
    }
@@ -3898,7 +4045,7 @@ ENTRY("PLUGIN_imseq_getim") ;
 
    if( type == isqCR_getimage || type == isqCR_getqimage ){
       MRI_IMAGE * im = NULL ;
-      if( imp->im != NULL ) im = mri_to_mri( imp->im->kind , imp->im ) ;
+      if( imp->im != NULL ) im = mri_copy( imp->im ) ;
       RETURN((XtPointer) im) ;
    }
 
@@ -3930,29 +4077,185 @@ ENTRY("PLUGIN_seq_send_CB") ;
 
 #ifndef NO_FRIVOLITIES
       case isqCR_buttonpress:{
-#define NBIRN 9
-         static int nnew=-1 , nold=0 ;
+         XButtonEvent *xev = (XButtonEvent *) cbs->event ;
+#define NBIRN 10
+         static int nold=0 ;
          static char * birn[NBIRN] = { " \n** Don't DO That! **\n "                        ,
                                        " \n** Stop it, Rasmus! **\n "                      ,
+                                       " \n** Do NOT read this message! **\n "             ,
                                        " \n** Having fun yet? **\n "                       ,
                                        " \n** What do you want NOW? **\n "                 ,
                                        " \n** Too much time on your hands? **\n "          ,
-                                       " \n** Do NOT read this message! **\n "             ,
                                        " \n** Why are you bothering me? **\n "             ,
                                        " \n** Danger! Danger, Will Robinson! **\n "        ,
-                                       " \n** WARNING: Planetary meltdown imminent! **\n "
-                                     } ;
+                                       " \n** WARNING: Planetary meltdown imminent! **\n " ,
 
-         if( !NO_frivolities && nnew != nold ){
-            if( nnew < 0 ) nnew = nold = lrand48()%NBIRN ;
-            MCW_popup_message( seq->wimage , birn[nnew] , MCW_USER_KILL ) ;
-            nnew = (nnew+1)%NBIRN ;
-         } else {
-            PLUTO_beep() ;
+                                 " \n"
+                                 " God of our fathers, known of old,\n"
+                                 " Lord of our far-flung battle-line,\n"
+                                 " Beneath whose awful hand we hold\n"
+                                 " Dominion over palm and pine -\n"
+                                 " Lord God of Hosts, be with us yet,\n"
+                                 " Lest we forget - lest we forget!\n"
+                                 " \n"
+                                 " The tumult and the shouting dies;\n"
+                                 " The captains and the kings depart:\n"
+                                 " Still stands Thine ancient sacrifice,\n"
+                                 " An humble and a contrite heart.\n"
+                                 " Lord God of Hosts, be with us yet,\n"
+                                 " Lest we forget - lest we forget!\n"
+                                 " \n"
+                                 " Far-called, our navies melt away;\n"
+                                 " On dune and headland sinks the fire:\n"
+                                 " Lo, all our pomp of yesterday\n"
+                                 " Is one with Nineveh and Tyre!\n"
+                                 " Judge of the Nations, spare us yet.\n"
+                                 " Lest we forget - lest we forget!\n"
+                                 " \n"
+                                 " If, drunk with sight of power, we loose\n"
+                                 " Wild tongues that have not Thee in awe,\n"
+                                 " Such boastings as the Gentiles use,\n"
+                                 " Or lesser breeds without the Law -\n"
+                                 " Lord God of Hosts, be with us yet,\n"
+                                 " Lest we forget - lest we forget!\n"
+                                 " \n"
+                                 " For heathen heart that puts her trust\n"
+                                 " In reeking tube and iron shard,\n"
+                                 " All valiant dust that builds on dust,\n"
+                                 " And, guarding, calls not Thee to guard,\n"
+                                 " For frantic boast and foolish word -\n"
+                                 " The Mercy on Thy People, Lord!\n"
+                               } ;
+
+#define NKLING 5
+         static int nkl=0 ;
+         static char *kling[NKLING] = {
+                                 " \n What is this talk of 'release'?\n"
+                                 " Klingons do not make software 'releases'.\n"
+                                 " Our software 'escapes', leaving a bloody trail of\n"
+                                 " designers and 'Quality Assurance' people in its wake.\n"        ,
+
+                                 " \n Debugging? Klingons do not debug.\n"
+                                 " Our software does not coddle the weak.\n"                       ,
+
+                                 " \n Klingon software does NOT have BUGS.\n"
+                                 " It has FEATURES, and those features are too\n"
+                                 " sophisticated for a Romulan pig like you to understand.\n"      ,
+
+                                 " \n Our users will know fear and cower before our software!\n"
+                                 " Ship it! Ship it and let them flee like the dogs they are!\n"  ,
+
+                                 " \n You question the worthiness of my code?\n"
+                                 " I should kill you where you stand!\n"
+                               } ;
+
+         if( xev == NULL || xev->button == Button1 ){
+           if( !NO_frivolities && nold < NBIRN ){
+             if( strstr(birn[nold],"Rasmus") != NULL )
+               AFNI_speak("Stop it, Rasmus", 0 ) ;
+             MCW_popup_message( seq->wimage , birn[nold++] , MCW_USER_KILL ) ;
+           } else {
+             PLUTO_beep() ;
+             if( nold == NBIRN ){ AFNI_speak("Stop it",0); nold++; }
+           }
+         } else if( xev->button == Button3 ){
+           if( !NO_frivolities && nkl < NKLING ){
+             MCW_popup_message( seq->wimage , kling[nkl++] , MCW_USER_KILL ) ;
+           } else {
+             PLUTO_beep() ;
+             if( nkl == NKLING ){ AFNI_speak("Deesist at once",0); nkl++; }
+           }
          }
       }
       break ;
-#endif
+
+      /*--------------------------------------*/
+
+      case isqCR_keypress:{    /* 12 Sep 2002 */
+        static char *nash[] = {
+                   " \n"
+                   "The ant has made himself illustrious\n"
+                   "Through constant industry industrious.\n"
+                   "So what?\n"
+                   "Would you be calm and placid\n"
+                   "If you were full of formic acid?\n"
+                ,
+                   " \n"
+                   "Celery, raw\n"
+                   "Develops the jaw,\n"
+                   "But celery, stewed,\n"
+                   "Is more quietly chewed.\n"
+                ,
+                   " \n"
+                   "I objurgate the centipede,\n"
+                   "A bug we do not really need.\n"
+                   "At sleepy-time he beats a path\n"
+                   "Straight to the bedroom or the bath.\n"
+                   "You always wallop where he's not,\n"
+                   "Or, if he is, he makes a spot. \n"
+                ,
+                   " \n"
+                   "The cow is of the bovine ilk;\n"
+                   "One end is moo, the other, milk.\n"
+                ,
+                   " \n"
+                   "This is my dream,\n"
+                   "It is my own dream,\n"
+                   "I dreamt it.\n"
+                   "I dreamt that my hair was kempt.\n"
+                   "Then I dreamt that my true love unkempt it.\n"
+                ,
+                   " \n"
+                   "I find it very difficult to enthuse\n"
+                   "Over the current news.\n"
+                   "Just when you think that at least the outlook\n"
+                   "   is so black that it can grow no blacker, it worsens,\n"
+                   "And that is why I do not like the news, because there\n"
+                   "   has never been an era when so many things were going\n"
+                   "   so right for so many of the wrong persons. \n"
+                ,
+                   " \n"
+                   "I test my bath before I sit,\n"
+                   "And I'm always moved to wonderment\n"
+                   "That what chills the finger not a bit\n"
+                   "Is so frigid upon the fundament.\n"
+                ,
+                   " \n"
+                   "The turtle lives 'twixt plated decks\n"
+                   "Which practically conceal its sex.\n"
+                   "I think it clever of the turtle\n"
+                   "In such a fix to be so fertile.\n"
+                ,
+                   " \n"
+                   "Candy\n"
+                   "Is Dandy\n"
+                   "But liquor\n"
+                   "Is quicker.\n"
+                ,
+                   " \n"
+                   "I've never seen an abominable snowman,\n"
+                   "I'm hoping not to see one,\n"
+                   "I'm also hoping, if I do,\n"
+                   "That it will be a wee one. \n"
+                ,
+                   " \n"
+                   "Children aren't happy without\n"
+                   "something to ignore, and that's\n"
+                   "what parents were created for. \n"
+                ,
+                   " \n"
+                   "Middle age is when you've met so\n"
+                   "many people that every new person\n"
+                   "you meet reminds you of someone else.\n"
+                } ;
+#define NUM_NASH (sizeof(nash)/sizeof(char *)) ;
+
+        static int iold=-1 ; int ii ;
+        do{ ii=lrand48()%NUM_NASH; } while( ii==iold ) ; iold = ii ;
+        MCW_popup_message( seq->wimage , nash[ii] , MCW_USER_KILL ) ;
+      }
+      break ;
+#endif  /* NO_FRIVOLITIES */
 
    }
    EXRETURN ;
@@ -3976,6 +4279,8 @@ ENTRY("PLUGIN_seq_send_CB") ;
          changes the kill function/data to kfunc/kdata;
       PLUTO_imseq_addto(handle,im)
          adds the single image "im" to the display
+      PLUTO_imseq_setim(handle,n)
+         sets the image index to 'n'
       PLUTO_imseq_destroy(handle)
          pops down the image viewer;
          destroys the internal copies of the images;
@@ -3994,7 +4299,7 @@ void * PLUTO_imseq_popim( MRI_IMAGE * im, generic_func * kfunc, void * kdata )
    INIT_IMARR(imar) ;
    ADDTO_IMARR(imar,im) ;
    handle = PLUTO_imseq_popup( imar,kfunc,kdata ) ;
-   FREE_IMARR(imar) ;
+   FREE_IMARR(imar) ;  /* not DESTROY_IMARR: we don't 'own' im */
    return handle ;
 }
 
@@ -4033,7 +4338,6 @@ void * PLUTO_imseq_popup( MRI_IMARR * imar, generic_func * kfunc, void * kdata )
 
    drive_MCW_imseq( psq->seq , isqDR_clearstat , NULL ) ;
 
-
    { ISQ_options opt ;       /* change some options from the defaults */
 
      ISQ_DEFAULT_OPT(opt) ;
@@ -4053,6 +4357,8 @@ void * PLUTO_imseq_popup( MRI_IMARR * imar, generic_func * kfunc, void * kdata )
    else {
       drive_MCW_imseq( psq->seq , isqDR_onoffwid , (XtPointer) isqDR_onwid ) ;
       drive_MCW_imseq( psq->seq , isqDR_opacitybut , (XtPointer) 0 ) ; /* 07 Mar 2001 */
+      drive_MCW_imseq( psq->seq , isqDR_zoombut    , (XtPointer) 0 ) ; /* 12 Mar 2002 */
+      drive_MCW_imseq( psq->seq , isqDR_penbbox    , (XtPointer) 0 ) ; /* 18 Jul 2003 */
    }
 
    return (void *) psq ;
@@ -4103,10 +4409,24 @@ void PLUTO_imseq_addto( void * handle , MRI_IMAGE * im )
    else {
       drive_MCW_imseq( psq->seq , isqDR_onoffwid , (XtPointer) isqDR_onwid ) ;
       drive_MCW_imseq( psq->seq , isqDR_opacitybut , (XtPointer) 0 ) ; /* 07 Mar 2001 */
+      drive_MCW_imseq( psq->seq , isqDR_zoombut    , (XtPointer) 0 ) ; /* 12 Mar 2002 */
    }
 
    drive_MCW_imseq( psq->seq , isqDR_reimage , (XtPointer)(ntot) ) ;
 
+   return ;
+}
+
+/*-----------------------------------------------------------------------*/
+
+void PLUTO_imseq_setim( void *handle , int n )    /* 17 Dec 2004 */
+{
+   PLUGIN_imseq *psq = (PLUGIN_imseq *)handle ;
+
+   if( psq == NULL || psq->seq == NULL ||
+       n   <  0    || n        >= IMARR_COUNT(psq->imar) ) return ;
+
+   drive_MCW_imseq( psq->seq , isqDR_reimage , (XtPointer)(n) ) ;
    return ;
 }
 
@@ -4149,6 +4469,7 @@ XtPointer PLUTO_imseq_getim( int n , int type , XtPointer handle )
 
       stat->transforms0D = &(GLOBAL_library.registered_0D) ;
       stat->transforms2D = &(GLOBAL_library.registered_2D) ;
+      stat->slice_proj   = NULL ;
 
       return (XtPointer) stat ;
    }
@@ -4193,7 +4514,11 @@ void PLUTO_imseq_send_CB( MCW_imseq * seq , XtPointer handle , ISQ_cbs * cbs )
          DESTROY_IMARR( psq->imar ) ;
 
          if( psq->kill_func != NULL )
+#if 0
             psq->kill_func( psq->kill_data ) ;
+#else
+            AFNI_CALL_VOID_1ARG( psq->kill_func , void *,psq->kill_data ) ;
+#endif
 
          free(psq) ;
       }
@@ -4355,16 +4680,32 @@ char * get_PLUGIN_strval( PLUGIN_strval * av )   /* must be XtFree-d */
                     return XmTextFieldGetString( av->textf ) ;
 }
 
+/* Set the addresses of the main vol2surf globals.  Note that the
+ * plugin options pointer is stored as (void *) so that vol2surf.h
+ * will not need to percolate up to afni.h.	09 Sep 2004 [rickr]
+ */
+#include "vol2surf.h"
+int PLUTO_set_v2s_addrs(void ** vopt, char *** maps, char ** hist)
+{
+    if ( !vopt || !maps || !hist ) return -1;
+
+    *vopt = (void *)&gv2s_plug_opts;
+    *maps = gv2s_map_names;
+    *hist = gv2s_history;
+
+    return 0;
+}
+
 /**************************************************************************/
 /*========================================================================*/
 /*============ These must remain the last lines of this file! ============*/
 
 /** put library routines here that must be loaded **/
 
-#include "mri_render.h"
-#include "mcw_graf.h"
+#include "cox_render.h"  /* 14 Feb 2002 */
 
 static vptr_func * forced_loads[] = {
+#ifndef NO_DYNAMIC_LOADING
    (vptr_func *) startup_lsqfit ,
    (vptr_func *) delayed_lsqfit ,
    (vptr_func *) mri_align_dfspace ,
@@ -4375,7 +4716,9 @@ static vptr_func * forced_loads[] = {
    (vptr_func *) qsort_floatint ,
    (vptr_func *) qsort_floatfloat ,
    (vptr_func *) symeig_double ,
+#ifndef DONT_USE_VOLPACK
    (vptr_func *) MREN_render ,
+#endif
    (vptr_func *) new_MCW_graf ,
    (vptr_func *) THD_makemask ,
    (vptr_func *) mri_copy ,
@@ -4387,6 +4730,11 @@ static vptr_func * forced_loads[] = {
    (vptr_func *) THD_dataset_rowfillin ,
    (vptr_func *) mri_histobyte ,          /* 25 Jul 2001 */
    (vptr_func *) sphere_voronoi_vectors , /* 18 Oct 2001 */
+   (vptr_func *) new_CREN_renderer ,      /* 14 Feb 2002 */
+   (vptr_func *) THD_average_timeseries , /* 03 Apr 2002 */
+   (vptr_func *) cl1_solve ,              /* 07 Aug 2002 */
+   (vptr_func *) new_Dtable ,             /* 20 Oct 2003 */
+#endif
 NULL } ;
 
 vptr_func * MCW_onen_i_estel_edain(int n){
@@ -4419,6 +4767,18 @@ ENTRY("PLUTO_register_timeseries") ;
 }
 
 /*----------------------------------------------------------------------------
+  Find a dataset, given its idcode string. [02 Mar 2002]
+------------------------------------------------------------------------------*/
+
+THD_3dim_dataset * PLUTO_find_dset_idc( char * idc )
+{
+   MCW_idcode idcode ;
+   if( idc == NULL ) return NULL ;
+   MCW_strncpy( idcode.str , idc , MCW_IDSIZE ) ;
+   return PLUTO_find_dset( &idcode ) ;
+}
+
+/*----------------------------------------------------------------------------
   Routine to find a dataset in the global sessionlist, given its idcode.
   If this returns NULL, then you are SOL.
 ------------------------------------------------------------------------------*/
@@ -4435,6 +4795,21 @@ ENTRY("PLUTO_find_dset") ;
                                    GLOBAL_library.sslist , -1 ) ;
 
    RETURN(find.dset) ;
+}
+
+/*-----------------------------------------------------------------*/
+
+THD_slist_find PLUTO_dset_finder( char *idc )
+{
+   MCW_idcode idcode ;
+   THD_slist_find find ;
+
+   BADFIND(find) ;
+   if( idc == NULL ) return find ;
+   MCW_strncpy( idcode.str , idc , MCW_IDSIZE ) ;
+   find = THD_dset_in_sessionlist( FIND_IDCODE , &idcode ,
+                                   GLOBAL_library.sslist , -1 ) ;
+   return find ;
 }
 
 /*-----------------------------------------------------------------
@@ -4477,19 +4852,19 @@ ENTRY("PLUTO_histoplot") ;
    yzar = (float **) malloc(sizeof(float *)*ny) ;
    yzar[0] = yar ;
    for( jj=0 ; jj < njist ; jj++ )
-      yzar[jj+1] = (float *) malloc(sizeof(float)*nx) ;
+     yzar[jj+1] = (float *) malloc(sizeof(float)*nx) ;
 
    xar[0] = bot ; yar[0] = 0.0 ;
    for( ii=0 ; ii < nbin ; ii++ ){
-      xar[2*ii+1] = bot+ii*dx     ; yar[2*ii+1] = (float) hist[ii] ;
-      xar[2*ii+2] = bot+(ii+1)*dx ; yar[2*ii+2] = (float) hist[ii] ;
+     xar[2*ii+1] = bot+ii*dx     ; yar[2*ii+1] = (float) hist[ii] ;
+     xar[2*ii+2] = bot+(ii+1)*dx ; yar[2*ii+2] = (float) hist[ii] ;
 
-      for( jj=0 ; jj < njist ; jj++ )
-         yzar[jj+1][2*ii+1] = yzar[jj+1][2*ii+2] = (float) jist[jj][ii] ;
+     for( jj=0 ; jj < njist ; jj++ )
+       yzar[jj+1][2*ii+1] = yzar[jj+1][2*ii+2] = (float) jist[jj][ii] ;
    }
    xar[2*nbin+1] = top ; yar[2*nbin+1] = 0.0 ;
    for( jj=0 ; jj < njist ; jj++ )
-      yzar[jj+1][0] = yzar[jj+1][2*nbin+1] = 0.0 ;
+     yzar[jj+1][0] = yzar[jj+1][2*nbin+1] = 0.0 ;
 
    plot_ts_lab( GLOBAL_library.dc->display ,
                 nx , xar , ny , yzar ,
@@ -4602,7 +4977,6 @@ ENTRY("PLUTO_scatterplot") ;
    /*-- setup to plot --*/
 
    create_memplot_surely( "ScatPlot" , 1.3 ) ;
-   set_color_memplot( 0.0 , 0.0 , 0.0 ) ;
    set_thick_memplot( 0.0 ) ;
 
    /*-- plot labels, if any --*/
@@ -4614,21 +4988,25 @@ ENTRY("PLUTO_scatterplot") ;
 
    /* x-axis label? */
 
+   set_color_memplot( 0.0 , 0.0 , 0.0 ) ;
    if( STGOOD(xlab) )
       plotpak_pwritf( 0.5*(xobot+xotop) , yobot-0.06 , xlab , 16 , 0 , 0 ) ;
 
    /* y-axis label? */
 
+   set_color_memplot( 0.0 , 0.0 , 0.0 ) ;
    if( STGOOD(ylab) )
       plotpak_pwritf( xobot-0.12 , 0.5*(yobot+yotop) , ylab , 16 , 90 , 0 ) ;
 
    /* label at top? */
 
+   set_color_memplot( 0.0 , 0.0 , 0.0 ) ;
    if( STGOOD(tlab) )
       plotpak_pwritf( xobot+0.01 , yotop+0.01 , tlab , 18 , 0 , -2 ) ;
 
    /* plot axes */
 
+   set_color_memplot( 0.0 , 0.0 , 0.0 ) ;
    plotpak_set( xobot,xotop , yobot,yotop , xbot,xtop , ybot,ytop , 1 ) ;
    plotpak_periml( nnax,mmax , nnay,mmay ) ;
 
@@ -4830,7 +5208,11 @@ ENTRY("PLUTO_dotimeout_CB") ;
 
 STATUS("calling user timeout function") ;
 
+#if 0
    myt->func( myt->cd ) ;
+#else
+   AFNI_CALL_VOID_1ARG( myt->func , XtPointer,myt->cd ) ;
+#endif
 
    myXtFree(myt) ; EXRETURN ;
 }
@@ -4886,6 +5268,7 @@ double PLUTO_elapsed_time(void) /* in seconds */
 
 double PLUTO_cpu_time(void)  /* in seconds */
 {
+#ifdef CLK_TCK
    struct tms ttt ;
 
    (void) times( &ttt ) ;
@@ -4893,4 +5276,8 @@ double PLUTO_cpu_time(void)  /* in seconds */
                                      /* + ttt.tms_stime */
                       )
            / (double) CLK_TCK ) ;
+#else
+   return 0.0l ;
+#endif
 }
+
