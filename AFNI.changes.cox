@@ -5651,3 +5651,24 @@
 27 Jul 2005
  * Removed -ffast-math from Makefile.linux_gcc32, since it seems to cause
      problems in eis_svd.c (at the least).
+
+28 Jul 2005
+ * Added stuff to afni_driver.c (SAVE_JPEG, SET_DICOM_XYZ, SET_SPM_XYZ,
+   SET_IJK, SET_XHAIRS), and imseq.[ch].
+
+29 Jul 2005
+ * Added '-com' option to afni.c.
+ * Added grapher windows to SAVE_JPEG in afni_driver.c.
+
+03 Aug 2005
+ * Modified 3dWarp.c to save WARPDRIVE_MATVEC_ attributes into the header
+     of the output, assuming that they were used (with '-matparent') on input.
+ * Modified 3drefit.c to add '-atrcopy' and '-atrstring' options to copy and
+     set attributes.
+
+08 Aug 2005
+ * Added "AFNI Version Check!" logo to afni.c & afni_widg.c in case user is
+     out of date.
+
+10 Aug 2005
+ * Modified cat_matvec.c to allow ::WARP_DATA input, and MATRIX() output.

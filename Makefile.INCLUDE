@@ -35,7 +35,7 @@ MISC    = AFNI.Xdefaults AFNI.afnirc 3d*.lib gmovie*
 ## AFNI package, but included because they are useful.  Some of
 ## them are Open Source programs, not from the AFNI group at all.
 
-EXTRAS   = cjpeg djpeg whirlgif mpeg_encode mpegtoppm myget Xphace rmz aiv
+EXTRAS   = cjpeg djpeg whirlgif mpeg_encode mpegtoppm myget Xphace rmz aiv $(EXPROGS)
 
 ## This list is the core AFNI package:
 ## other programs are experimental and/or outsiders.
@@ -122,7 +122,7 @@ PROGRAMS_EXE = afni.exe to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge 
 SCRIPTS = @4Daverage @CommandGlobb @GetAfniOrient @DTI_studio_reposition @GetAfniPrefix @NoExt @UpdateAfni @RenamePanga \
           @GetAfniView @SUMA_AlignToExperiment @SUMA_Make_Spec_FS @Purify_1D      \
           @SUMA_Make_Spec_SF @make_stim_file @Align_Centers suma_change_spec      \
-          @CheckForAfniDset @TTxform_anat
+          @CheckForAfniDset @auto_tlrc
 
 LIBHEADERS = mrilib.h cdflib.h mcw_glob.h 3ddata.h thd_maker.h thd_iochan.h       \
              editvol.h cs.h eispack.h killer.h vecmat.h machdep.h tagset.h        \
@@ -755,6 +755,12 @@ AlphaSim:AlphaSim.o
 3dDeconvolve_f:3dDeconvolve.c Deconvolve.c RegAna.c matrix_f.c matrix_f.h parser.o parser_int.o
 	$(RM) $@
 	$(CCFAST) $(SPECIAL) -DFLOATIZE -o 3dDeconvolve_f 3dDeconvolve.c matrix_f.c parser.o parser_int.o $(IFLAGS) $(LFLAGS) -lcoxplot -lmri -lf2c $(LLIBS)
+
+# double precision version of 3dDeconvolve
+
+3dDeconvolve_n:3dDeconvolve.c Deconvolve.c RegAna.c matrix.c matrix.h parser.o parser_int.o
+	$(RM) $@
+	$(CC) -o 3dDeconvolve_n 3dDeconvolve.c parser.o parser_int.o $(IFLAGS) $(LFLAGS) -lcoxplot -lmri -lf2c $(LLIBS)
 
 3dConvolve:3dConvolve.o
 	$(RM) $@

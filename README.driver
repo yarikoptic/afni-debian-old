@@ -19,12 +19,25 @@ button from the AFNI controller.  Some of the current state of AFNI can
 be saved to ".afni.startup_script" using the "Datamode->Misc->Save Layout"
 button (by giving a blank as the filename).
 
+You can also give commands to AFNI on the 'afni' command line, using the
+'-com' option.  For example:
+
+  afni -com 'OPEN_WINDOW A.axialimage' \
+       -com 'SWITCH_UNDERLAY anat'     \
+       -com 'SAVE_JPEG sss.jpg'        \
+       -com 'QUIT'                     \
+       somedirectory
+
+could be used to create an image file 'sss.jpg' automatically.
+
+-----------------------------------------------------------------------------
+
 ADD_OVERLAY_COLOR colordef colorlab
   Adds the color defined by the string "colordef" to the list of overlay
   colors.  It will appear in the menus with the label "colordef".  Example:
     ADD_OVERLAY_COLOR #ff5599 pinkish
 
-SET_THRESHOLD [c].val [dec]
+SET_THRESHOLD [c.]val [dec]
   Sets the threshold slider for controller index 'c' (default='A') to level
   ".val" (a number between .0000 and .9999, inclusive).  If the optional
   'dec' parameter is set, this is a number between 0 and 4 (inclusive) setting
@@ -105,6 +118,8 @@ SET_FUNC_RANGE [c.]value
 SET_FUNC_VISIBLE [c.]{+|-}
   Turns the "See Overlay" toggle on or off:
     SET_FUNC_VISIBLE A.+
+  You can also use SEE_OVERLAY for this, which is closer to the label on
+  the GUI button.
 
 SET_FUNC_RESAM [c.]{NN|Li|Cu|Bk}[.{NN|Li|Cu|Bk}]
   Sets the functional resampling mode:
@@ -179,11 +194,31 @@ OPEN_WINDOW [c.]windowname [options]
   settings in the plugin interface (e.g., pre-set some fields).
   If the specified image or graph window is already open, you can still
   use this command to alter some of its properties.
-  ++ You can also use "ALTER_WINDOW" for the command name.
+  ++ You can also use "ALTER_WINDOW" for the command name, which makes
+     more sense if you are using this to apply some change to an already
+     open viewer window.
 
-CLOSE_WINDOW [c].windowname
+CLOSE_WINDOW [c.]windowname
   Closes a window from controller 'c'.  You can only close graph and image
   viewer windows this way, not plugin windows.
+
+SAVE_JPEG [c.]windowname filename
+  Save a JPEG dump of the given window to 'filename'.  The windowname can be
+  one of 'axialimage', 'sagittalimage', 'coronalimage', 'axialgraph',
+  'sagittalgraph', or 'coronalgraph'.  If the filename does not end in
+  the string ".jpg" or ".JPG", then ".jpg" will be appended.
+
+SET_DICOM_XYZ [c] x y z
+SET_SPM_XYZ   [c] x y z
+SET_IJK       [c] i j k
+  Set the controller coordinates to the given triple; DICOM_XYZ has the
+  coordinates in DICOM (RAI) order, SPM_XYZ has the coordinates in SPM
+  (LPI) order, and IJK has voxel indexes instead of spatial coordinates.
+
+SET_XHAIRS [c.]code
+  Set the crosshairs ('Xhairs') control to the specified value, where
+  'code' is one of the following strings:
+       OFF  SINGLE  MULTI   LR_AP   LR_IS  AP_IS  LR  AP  IS
 
 PURGE_MEMORY [dataset_prefix]
   If no prefix is given, the sub-bricks of all datasets will be purged from

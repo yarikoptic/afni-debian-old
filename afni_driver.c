@@ -16,6 +16,13 @@ static int AFNI_drive_open_window( char *cmd ) ;
 static int AFNI_drive_close_window( char *cmd ) ;
 static int AFNI_drive_quit( char *cmd ) ;
 
+static int AFNI_drive_save_jpeg( char *cmd ) ;      /* 28 Jul 2005 */
+static int AFNI_drive_set_view( char *cmd ) ;       /* 28 Jul 2005 */
+static int AFNI_drive_set_dicom_xyz( char *cmd ) ;  /* 28 Jul 2005 */
+static int AFNI_drive_set_spm_xyz( char *cmd ) ;    /* 28 Jul 2005 */
+static int AFNI_drive_set_ijk( char *cmd ) ;        /* 28 Jul 2005 */
+static int AFNI_drive_set_xhairs( char *cmd ) ;     /* 28 Jul 2005 */
+
 static int AFNI_drive_system( char *cmd ) ;         /* 19 Dec 2002 */
 static int AFNI_drive_chdir ( char *cmd ) ;         /* 19 Dec 2002 */
 
@@ -86,6 +93,14 @@ static AFNI_driver_pair dpair[] = {
  { "ALTER_WINDOW"     , AFNI_drive_open_window       } ,
  { "CLOSE_WINDOW"     , AFNI_drive_close_window      } ,
 
+ { "SAVE_JPEG"        , AFNI_drive_save_jpeg         } ,
+ { "SET_VIEW"         , AFNI_drive_set_view          } ,
+ { "SET_DICOM_XYZ"    , AFNI_drive_set_dicom_xyz     } ,
+ { "SET_SPM_XYZ"      , AFNI_drive_set_spm_xyz       } ,
+ { "SET_IJK"          , AFNI_drive_set_ijk           } ,
+ { "SET_XHAIRS"       , AFNI_drive_set_xhairs        } ,
+ { "SET_CROSSHAIRS"   , AFNI_drive_set_xhairs        } ,
+
  { "OPEN_GRAPH_XY"    , AFNI_drive_open_graph_xy     } ,
  { "CLOSE_GRAPH_XY"   , AFNI_drive_close_graph_xy    } ,
  { "CLEAR_GRAPH_XY"   , AFNI_drive_clear_graph_xy    } ,
@@ -114,6 +129,7 @@ static AFNI_driver_pair dpair[] = {
  { "SET_FUNC_AUTORANGE" , AFNI_set_func_autorange      } ,
  { "SET_FUNC_RANGE"     , AFNI_set_func_range          } ,
  { "SET_FUNC_VISIBLE"   , AFNI_set_func_visible        } ,
+ { "SEE_OVERLAY"        , AFNI_set_func_visible        } ,
  { "SET_FUNC_RESAM"     , AFNI_set_func_resam          } ,
  { "SLEEP"              , AFNI_sleeper                 } ,
  { "SETENV"             , AFNI_setenv                  } ,  /* external */
@@ -274,7 +290,7 @@ ENTRY("AFNI_rescan_controller") ;
 
    /* same callback as Rescan This */
 
-   AFNI_rescan_CB( NULL , (XtPointer) im3d , NULL ) ;
+   AFNI_rescan_CB( NULL , (XtPointer)im3d , NULL ) ;
    RETURN(0) ;
 }
 
@@ -322,7 +338,7 @@ ENTRY("AFNI_switch_session") ;
    cbs.ival = ic ;
 
    AFNI_finalize_dataset_CB( im3d->vwid->view->choose_sess_pb ,
-                             (XtPointer) im3d ,  &cbs          ) ;
+                             (XtPointer)im3d ,  &cbs          ) ;
 
    RETURN(0) ;
 }
@@ -376,7 +392,7 @@ ENTRY("AFNI_switch_anatomy") ;
    /* same callback as Switch Anatomy */
 
    AFNI_finalize_dataset_CB( im3d->vwid->view->choose_anat_pb ,
-                             (XtPointer) im3d ,  &cbs          ) ;
+                             (XtPointer)im3d ,  &cbs          ) ;
 
    RETURN(0) ;
 }
@@ -430,7 +446,7 @@ ENTRY("AFNI_switch_function") ;
    /* same callback as Switch Function */
 
    AFNI_finalize_dataset_CB( im3d->vwid->view->choose_func_pb ,
-                             (XtPointer) im3d ,  &cbs          ) ;
+                             (XtPointer)im3d ,  &cbs          ) ;
 
    RETURN(0) ;
 }
@@ -533,9 +549,9 @@ ENTRY("AFNI_drive_open_window") ;
       cpt = strstr(cmd,"ifrac=") ;
       if( cpt == NULL ) cpt = strstr(cmd,"ifrac:") ;
       if( cpt != NULL ){
-         float ifrac = strtod( cpt+6 , NULL ) ;
-         if( ifrac >= FRAC_MIN && ifrac <= 1.0 )
-           drive_MCW_imseq( isq, isqDR_setifrac, (XtPointer)(&ifrac) ) ;
+        float ifrac = strtod( cpt+6 , NULL ) ;
+        if( ifrac >= FRAC_MIN && ifrac <= 1.0 )
+          drive_MCW_imseq( isq, isqDR_setifrac, (XtPointer)(&ifrac) ) ;
       }
 
       /* montage */
@@ -543,17 +559,17 @@ ENTRY("AFNI_drive_open_window") ;
       cpt = strstr(cmd,"mont=") ;
       if( cpt == NULL ) cpt = strstr(cmd,"mont:") ;
       if( cpt != NULL ){
-         int mww=-1 , mhh=-1 , msp=-1 , mgap=-1 , nn ;
-         char mcol[128] = "\0" ;
+        int mww=-1 , mhh=-1 , msp=-1 , mgap=-1 , nn ;
+        char mcol[128] = "\0" ;
 
-         nn = sscanf( cpt+5 , "%dx%d:%d:%d:%s" , &mww,&mhh,&msp,&mgap,mcol );
+        nn = sscanf( cpt+5 , "%dx%d:%d:%d:%s" , &mww,&mhh,&msp,&mgap,mcol );
 
-         if( nn >= 2 && mww >= 1 && mww <= MONT_NMAX && mhh >= 1 && mhh <= MONT_NMAX ){
-            int mp[5] ;
-            mp[0] = mww ; mp[1] = mhh ; mp[2] = msp ; mp[3] = mgap ;
-            mp[4] = DC_find_overlay_color(im3d->dc,mcol);
-            drive_MCW_imseq( isq , isqDR_setmontage , (XtPointer) mp ) ;
-         }
+        if( nn >= 2 && mww >= 1 && mww <= MONT_NMAX && mhh >= 1 && mhh <= MONT_NMAX ){
+          int mp[5] ;
+          mp[0] = mww ; mp[1] = mhh ; mp[2] = msp ; mp[3] = mgap ;
+          mp[4] = DC_find_overlay_color(im3d->dc,mcol);
+          drive_MCW_imseq( isq , isqDR_setmontage , (XtPointer)mp ) ;
+        }
       }
 
       /* iconify [06 Aug 2002] */
@@ -572,7 +588,7 @@ ENTRY("AFNI_drive_open_window") ;
       if( cpt != NULL ){
         int opaval = -1 ;
         sscanf( cpt+8 , "%d" , &opaval ) ;
-        drive_MCW_imseq( isq , isqDR_setopacity , (XtPointer) opaval ) ;
+        drive_MCW_imseq( isq , isqDR_setopacity , (XtPointer)opaval ) ;
       }
 
       /* keypress [18 Feb 2005] */
@@ -624,7 +640,7 @@ ENTRY("AFNI_drive_open_window") ;
       if( cpt != NULL ){
         int mat = (int) strtod( cpt+7 , NULL ) ;
         if( mat > 0 )
-          drive_MCW_grapher( gra , graDR_setmatrix , (XtPointer) mat ) ;
+          drive_MCW_grapher( gra , graDR_setmatrix , (XtPointer)mat ) ;
       }
 
       /* pinnum OR pintop */
@@ -636,7 +652,7 @@ ENTRY("AFNI_drive_open_window") ;
       if( cpt != NULL ){
         int pn = (int) strtod( cpt+7 , NULL ) ;
         if( pn >= MIN_PIN )
-          drive_MCW_grapher( gra, graDR_setpinnum, (XtPointer) pn ) ;
+          drive_MCW_grapher( gra, graDR_setpinnum, (XtPointer)pn ) ;
       }
 
       /* pinbot [19 Mar 2004] */
@@ -646,7 +662,7 @@ ENTRY("AFNI_drive_open_window") ;
       if( cpt != NULL ){
         int pn = (int) strtod( cpt+7 , NULL ) ;
         if( pn > 0 )
-          drive_MCW_grapher( gra, graDR_setpinbot, (XtPointer) pn ) ;
+          drive_MCW_grapher( gra, graDR_setpinbot, (XtPointer)pn ) ;
       }
 
       /* iconify [06 Aug 2002] */
@@ -840,9 +856,9 @@ ENTRY("AFNI_drive_open_plugin") ;
 static int AFNI_drive_quit( char *cmd )
 {
   int ii ;
-  fprintf(stderr,"\n******* Plugout commanded AFNI to quit! ") ; fflush(stderr) ;
+  fprintf(stderr,"\n******* AFNI is commanded to quit! ") ; fflush(stderr) ;
   for( ii=0 ; ii < 7 ; ii++ ){ RWC_sleep(100); fprintf(stderr,"*"); fflush(stderr); }
-  fprintf(stderr,"\n") ;
+  fprintf(stderr,"\n\n") ;
   exit(0) ;
 }
 
@@ -1689,7 +1705,7 @@ ENTRY("AFNI_drive_set_pbar_sign") ;
    MCW_set_bbox( im3d->vwid->func->inten_bbox , val ) ;
 
    AFNI_inten_bbox_CB( im3d->vwid->func->inten_bbox->wbut[PBAR_MODEBUT] ,
-                       (XtPointer) im3d , NULL ) ;
+                       (XtPointer)im3d , NULL ) ;
    RETURN(0) ;
 }
 
@@ -2094,4 +2110,190 @@ ENTRY("AFNI_open_panel") ;
      RETURN(-1) ;
    }
    RETURN(0) ;
+}
+
+/*--------------------------------------------------------------------*/
+/*! SAVE_JPEG [c.]imagewindowname fname */
+
+static int AFNI_drive_save_jpeg( char *cmd )
+{
+   int ic , dadd=2 ;
+   Three_D_View *im3d ;
+   char junk[256] , fname[288] ;
+   MCW_imseq   *isq=NULL ;
+   MCW_grapher *gra=NULL ;
+
+ENTRY("AFNI_drive_save_jpeg") ;
+
+   /* make sure the controller itself is open */
+
+   if( strlen(cmd) < 3 ) RETURN(-1) ;
+
+   ic = AFNI_controller_code_to_index( cmd ) ;
+   if( ic < 0 ){ ic = 0 ; dadd = 0 ; }
+
+   im3d = GLOBAL_library.controllers[ic] ;
+   if( !IM3D_OPEN(im3d) ){
+     ERROR_message("SAVE_JPEG %s: controller not open",cmd); RETURN(-1);
+   }
+
+   /* extract the filename to save into */
+
+   junk[0] = fname[0] = '\0' ;
+   sscanf( cmd+dadd , "%255s%255s" , junk , fname ) ;
+   if( junk[0] == '\0' || fname[0] == '\0' ){
+     ERROR_message("SAVE_JPEG %s: something is missing",cmd); RETURN(-1);
+     RETURN(-1) ;
+   }
+
+   if( !STRING_HAS_SUFFIX(fname,".jpg") && !STRING_HAS_SUFFIX(fname,".JPG") )
+     strcat(fname,".jpg") ;
+
+   /* find graph or image window */
+
+        if( strstr(cmd+dadd,"axialimage")    != NULL ) isq = im3d->s123 ;
+   else if( strstr(cmd+dadd,"sagittalimage") != NULL ) isq = im3d->s231 ;
+   else if( strstr(cmd+dadd,"coronalimage")  != NULL ) isq = im3d->s312 ;
+   else if( strstr(cmd+dadd,"axialgraph")    != NULL ) gra = im3d->g123 ;
+   else if( strstr(cmd+dadd,"sagittalgraph") != NULL ) gra = im3d->g231 ;
+   else if( strstr(cmd+dadd,"coronalgraph")  != NULL ) gra = im3d->g312 ;
+
+   XmUpdateDisplay( im3d->vwid->top_shell ) ;
+
+   if( isq != NULL ){
+     drive_MCW_imseq( isq, isqDR_save_jpeg , (XtPointer)fname ) ;
+   } else if( gra != NULL ){
+     GRA_file_pixmap( gra , fname ) ;
+   } else {
+     ERROR_message("SAVE_JPEG %s: don't understand windowname",cmd) ;
+     RETURN(-1) ;
+   }
+
+   RETURN(0) ;
+}
+
+/*--------------------------------------------------------------------*/
+/*! SET_VIEW [c.]viewname */
+
+static int AFNI_drive_set_view( char *cmd )
+{
+   int ic , vv=-1 ;
+   Three_D_View *im3d ;
+
+   if( strlen(cmd) < 3 ) return -1;
+
+   ic = AFNI_controller_code_to_index( cmd ) ;
+   if( ic < 0 ) ic = 0 ;
+   im3d = GLOBAL_library.controllers[ic] ;
+   if( !IM3D_OPEN(im3d) ) return -1 ;
+
+        if( strstr(cmd,"orig") != NULL ) vv = VIEW_ORIGINAL_TYPE ;
+   else if( strstr(cmd,"acpc") != NULL ) vv = VIEW_ACPCALIGNED_TYPE ;
+   else if( strstr(cmd,"tlrc") != NULL ) vv = VIEW_TALAIRACH_TYPE ;
+   else                                  return -1 ;
+
+   if( vv == im3d->vinfo->view_type ) return 0 ;  /* nothing to do */
+   if( !XtIsSensitive(im3d->vwid->view->view_bbox->wbut[vv]) ) return -1 ;
+
+   MCW_set_bbox( im3d->vwid->view->view_bbox , 1 << vv ) ;
+   AFNI_switchview_CB( NULL , (XtPointer)im3d , NULL ) ;
+   return 0 ;
+}
+
+/*--------------------------------------------------------------------*/
+/*! SET_DICOM_XYZ [c.] x y z */
+
+static int AFNI_drive_set_dicom_xyz( char *cmd )
+{
+   int ic , dadd=2 ;
+   Three_D_View *im3d ;
+   float x,y,z ;
+
+   if( strlen(cmd) < 3 ) return -1;
+
+   ic = AFNI_controller_code_to_index( cmd ) ;
+   if( ic < 0 ){ ic = 0 ; dadd = 0 ; }
+   im3d = GLOBAL_library.controllers[ic] ;
+   if( !IM3D_OPEN(im3d) ) return -1 ;
+
+   ic = sscanf( cmd+dadd , "%f%f%f" , &x,&y,&z ) ;
+   if( ic < 3 ) return -1 ;
+   AFNI_jumpto_dicom( im3d , x,y,z ) ;
+   return 0 ;
+}
+
+/*--------------------------------------------------------------------*/
+/*! SET_SPM_XYZ [c.] x y z */
+
+static int AFNI_drive_set_spm_xyz( char *cmd )
+{
+   int ic , dadd=2 ;
+   Three_D_View *im3d ;
+   float x,y,z ;
+
+   if( strlen(cmd) < 3 ) return -1;
+
+   ic = AFNI_controller_code_to_index( cmd ) ;
+   if( ic < 0 ){ ic = 0 ; dadd = 0 ; }
+   im3d = GLOBAL_library.controllers[ic] ;
+   if( !IM3D_OPEN(im3d) ) return -1 ;
+
+   ic = sscanf( cmd+dadd , "%f%f%f" , &x,&y,&z ) ;
+   if( ic < 3 ) return -1 ;
+   AFNI_jumpto_dicom( im3d , -x,-y,z ) ;
+   return 0 ;
+}
+
+/*--------------------------------------------------------------------*/
+/*! SET_IJK [c.] i j k */
+
+static int AFNI_drive_set_ijk( char *cmd )
+{
+   int ic , dadd=2 ;
+   Three_D_View *im3d ;
+   int i,j,k ;
+
+   if( strlen(cmd) < 3 ) return -1;
+
+   ic = AFNI_controller_code_to_index( cmd ) ;
+   if( ic < 0 ){ ic = 0 ; dadd = 0 ; }
+   im3d = GLOBAL_library.controllers[ic] ;
+   if( !IM3D_OPEN(im3d) ) return -1 ;
+
+   ic = sscanf( cmd+dadd , "%d%d%d" , &i,&j,&k ) ;
+   if( ic < 3 ) return -1 ;
+   AFNI_set_viewpoint( im3d , i,j,k , REDISPLAY_ALL ) ;
+   return 0 ;
+}
+
+/*--------------------------------------------------------------------*/
+/*! SET_XHAIRS [c.]code */
+
+static int AFNI_drive_set_xhairs( char *cmd )
+{
+   int ic , dadd=2 , hh=-1 ;
+   Three_D_View *im3d ;
+   int i,j,k ;
+
+   if( strlen(cmd) < 3 ) return -1;
+
+   ic = AFNI_controller_code_to_index( cmd ) ;
+   if( ic < 0 ){ ic = 0 ; dadd = 0 ; }
+   im3d = GLOBAL_library.controllers[ic] ;
+   if( !IM3D_OPEN(im3d) ) return -1 ;
+
+        if( strstr(cmd,"OFF")    != NULL ) hh = 0 ;
+   else if( strstr(cmd,"SINGLE") != NULL ) hh = 1 ;
+   else if( strstr(cmd,"MULTI")  != NULL ) hh = 2 ;
+   else if( strstr(cmd,"LR_AP")  != NULL ) hh = 3 ;
+   else if( strstr(cmd,"LR_IS")  != NULL ) hh = 4 ;
+   else if( strstr(cmd,"AP_IS")  != NULL ) hh = 5 ;
+   else if( strstr(cmd,"LR")     != NULL ) hh = 6 ;
+   else if( strstr(cmd,"AP")     != NULL ) hh = 7 ;
+   else if( strstr(cmd,"IS")     != NULL ) hh = 8 ;
+   else                                    return -1 ;
+
+   AV_assign_ival( im3d->vwid->imag->crosshair_av, hh ) ;
+   AFNI_crosshair_visible_CB( im3d->vwid->imag->crosshair_av, (XtPointer)im3d );
+   return 0 ;
 }

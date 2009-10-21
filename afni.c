@@ -101,6 +101,11 @@ static Boolean        MAIN_workprocess( XtPointer ) ;
 #define USE_SIDES  /* 01 Dec 1999: replace "left is xxx" */
                    /* labels with "sides" labels.        */
 
+/*----- Stuff saved from the '-com' command line arguments [29 Jul 2005] -----*/
+
+static int   COM_num = 0 ;
+static char *COM_com[1024] ;  /* only 1024 commands allowed!!! */
+
 /********************************************************************
    Print out some help information and then quit quit quit
 *********************************************************************/
@@ -195,6 +200,15 @@ void AFNI_syntax(void)
      "                  This must be an integer between 1024 and 65535,\n"
      "                  and must be the same as the '-np port' number given\n"
      "                  to SUMA.  [default = 53211]\n"
+     "\n"
+     "   -com ccc     This option lets you specify 'command strings' to\n"
+     "                  drive AFNI after the program startup is completed.\n"
+     "                  Legal command strings are described in the file\n"
+     "                  README.driver.  More than one '-com' option can\n"
+     "                  be used, and the commands will be executed in\n"
+     "                  the order they are given on the command line.\n"
+     "            N.B.: Most commands to AFNI contain spaces, so the 'ccc'\n"
+     "                  command strings will need to be enclosed in quotes.\n"
      "\n"
      " * If no session_directories are given, then the program will use\n"
      "    the current working directory (i.e., './').\n"
@@ -571,6 +585,19 @@ ENTRY("AFNI_parse_args") ;
          fprintf(stderr,"\n-agni/-suma are now turned on by default\n") ;
          GLOBAL_argopt.enable_suma = 1 ;
          narg++ ; continue ;  /* go to next arg */
+      }
+
+      /*---- -com ccc [29 Jul 2005] ----*/
+
+      if( strcmp(argv[narg],"-com") == 0 ){
+        int ll ;
+        if( ++narg >= argc ) FatalError("need an argument after -com!");
+        ll = strlen(argv[narg]) ;
+             if( ll > 255 ) ERROR_message("argument after -com is too long!" );
+        else if( ll <   3 ) ERROR_message("argument after -com is too short!");
+        else                COM_com[ COM_num++ ] = argv[narg] ;
+
+        narg++ ; continue ;  /* go to next arg */
       }
 
       /*---- -niml [28 Feb 2002] -----*/
@@ -1658,8 +1685,7 @@ STATUS("call 15") ;
 void FatalError(char * str)
 {
    fprintf(stderr,"\n**** Fatal Error ****\n %s\n",str) ;
-   sleep(1) ;
-   exit(1) ;
+   sleep(1) ; exit(1) ;
 }
 
 /*-------------------------------------------------------------------------*/
@@ -1694,7 +1720,7 @@ ENTRY("AFNI_quit_CB") ;
          MCW_set_widget_label( im3d->vwid->prog->quit_pb , "done " ) ;
          im3d->vwid->prog->quit_first = True ;
          if( im3d->vwid->picture != NULL && !GLOBAL_argopt.keep_logo )
-            PICTURE_OFF( im3d ) ;
+           PICTURE_OFF( im3d ) ;
       }
       EXRETURN ;
    }
@@ -1824,9 +1850,21 @@ ENTRY("AFNI_startup_timeout_CB") ;
 
    vv = AFNI_version_check() ; /* nada if AFNI_start_version_check() inactive */
 
+   if( vv && vers_pixmap != XmUNSPECIFIED_PIXMAP ){     /* 08 Aug 2005 */
+     int pp ;
+     for( pp=0 ; pp < 19 ; pp++ ){   /* and flash it a few times */
+       PICTURE_SET(im3d,vers_pixmap) ;
+         XmUpdateDisplay(im3d->vwid->top_shell); iochan_sleep(166);
+       PICTURE_OFF(im3d) ;
+         XmUpdateDisplay(im3d->vwid->top_shell); iochan_sleep(166);
+     }
+     logo_pixmap = vers_pixmap ;     /* replace logo with version warning */
+   }
+
 #ifdef SHSTRING
    if( vv ){  /* 20 Nov 2003: if version check shows a mismatch */
      char *sname = AFNI_make_update_script() ;
+
      if( sname != NULL ){
        char *cpt , *ddd ; int nn ;
        ddd = strdup(sname) ; cpt = THD_trailname(ddd,0) ; *cpt = '\0' ;
@@ -1872,6 +1910,11 @@ ENTRY("AFNI_startup_timeout_CB") ;
    SHOW_AFNI_READY ;
    RESET_AFNI_QUIT(im3d) ;
    PICTURE_OFF(im3d) ;
+
+   /* 29 Jul 2005: run any driver commands from the command line */
+
+   for( vv=0 ; vv < COM_num ; vv++ ) AFNI_driver( COM_com[vv] ) ;
+
    MPROBE ;                       /* check mcw_malloc() for integrity */
    EXRETURN ;
 }
@@ -3764,12 +3807,12 @@ ENTRY("AFNI_read_inputs") ;
       MCW_warn_expand(0) ;  /* 13 Jul 2001 */
 
       if( gnim < 1 )
-         FatalError("No valid filenames on command line?!" ) ;
+        FatalError("No valid filenames on command line?!" ) ;
 
       dset = AFNI_read_images( gnim , gname ) ;
 
       if( dset == NULL )
-         FatalError("Could not form 3D dataset from images!" ) ;
+        FatalError("Could not form 3D dataset from images!" ) ;
 
       MCW_free_expand( gnim , gname ) ;
 
