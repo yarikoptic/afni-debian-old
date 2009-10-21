@@ -1037,7 +1037,7 @@
   * modified nifti/nifti1_io.[ch]
       - added nifti_read_collapsed_image(), an interface for reading partial
         datasets, specifying a subset of array indices
-      
+      - for read_collapsed_image, added static functions: rci_read_data(),
         rci_alloc_mem(), and make_pivot_list()
       - added nifti_nim_is_valid() to check for consistency (more to do)
       - added nifti_nim_has_valid_dims() to do many dimensions tests
@@ -1186,4 +1186,13 @@
 
 13 July 2005: Dimon (v 1.1)
   * modified rickr/Dimon.c to handle a run of only 1 or 2 slices, total
+
+22 July 2005:
+  * modified 3dANOVA2.c 3dANOVA.c 3dclust.c 3dIntracranial.c 3dNotes.c
+      - Peggy updated the -help output
+  * modified 3ddelay.c: check for NULL strings before printing
+  * modified realtime.c (and Dimon.c ->v1.2) to use IOCHAN_CLOSENOW()
+
+25 July 2005:
+  * modified Dimon.c (-> v1.3): explicit connection close on ctrl-c
 

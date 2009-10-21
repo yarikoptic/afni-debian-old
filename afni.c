@@ -34,6 +34,31 @@
 #include <X11/keysym.h>  /* 20 Feb 2003 */
 #include "afni_plugout.h"
 
+/*------------------------------------------------------*/
+#ifdef SHOWOFF
+# undef  SHSH
+# undef  SHSHSH
+# undef  SHSTRING
+# define SHSH(x)   #x
+# define SHSHSH(x) SHSH(x)
+# define SHSTRING  SHSHSH(SHOWOFF)   /* now in "quotes" */
+#else
+# undef  SHSTRING
+#endif
+/*------------------------------------------------------*/
+
+#ifdef SHSTRING
+#define ANNOUNCEMENT                                                           \
+ "GPL AFNI: Analysis of Functional NeuroImages, by RW Cox (" COXEMAIL ")\n"    \
+ "This is Version " VERSION               "\n"                                 \
+ "[[Precompiled binary " SHSTRING ": " __DATE__ "]]\n\n"                       \
+ " ** This software was designed to be used only for research purposes. **\n"  \
+ " ** Clinical uses are not recommended, and have never been evaluated. **\n"  \
+ " ** This software comes with no warranties of any kind whatsoever,    **\n"  \
+ " ** and may not be useful for anything.  Use it at your own risk!     **\n"  \
+ " ** If these terms are not acceptable, you aren't allowed to use AFNI.**\n"  \
+ " ** See 'Define Datamode->Misc->License Info' for more details.       **\n\n"
+#else
 #define ANNOUNCEMENT                                                           \
  "GPL AFNI: Analysis of Functional NeuroImages, by RW Cox (" COXEMAIL ")\n"    \
  "This is Version " VERSION               "\n\n"                               \
@@ -43,6 +68,7 @@
  " ** and may not be useful for anything.  Use it at your own risk!     **\n"  \
  " ** If these terms are not acceptable, you aren't allowed to use AFNI.**\n"  \
  " ** See 'Define Datamode->Misc->License Info' for more details.       **\n\n"
+#endif
 
 #define USE_FRIENDS
 
@@ -58,19 +84,6 @@
 #ifdef AFNI_DEBUG
 #  define USE_TRACING
 #endif
-
-/*------------------------------------------------------*/
-#ifdef SHOWOFF
-# undef  SHSH
-# undef  SHSHSH
-# undef  SHSTRING
-# define SHSH(x)   #x
-# define SHSHSH(x) SHSH(x)
-# define SHSTRING  SHSHSH(SHOWOFF)   /* now in "quotes" */
-#else
-# undef  SHSTRING
-#endif
-/*------------------------------------------------------*/
 
 /*----------------------------------------------------------------
    Global variables that used to be local variables in main()
@@ -1175,15 +1188,6 @@ int main( int argc , char * argv[] )
 
    REPORT_PROGRESS( "\n" ) ;         /* 02 Dec 2000 */
    REPORT_PROGRESS( ANNOUNCEMENT ) ;
-
-   /*------- 29 Nov 1999: print out precompiled version, if defined --------*/
-#ifdef SHSTRING
-   REPORT_PROGRESS( "[[Precompiled binary "
-                    SHSTRING
-                    ": "
-                    __DATE__
-                    "]]\n" ) ;
-#endif
 
    /*-- Be friendly --*/
 
@@ -3087,6 +3091,7 @@ if(PRINT_TRACING)
 #endif
          myXtFree( seq ) ;
          MCW_invert_widget(w) ;  /* back to normal */
+         NORMAL_cursorize(w) ;   /* 20 Jul 2005 */
          INIT_BKGD_LAB(im3d) ;
          AFNI_view_setter(im3d,NULL) ;
 
@@ -3446,6 +3451,7 @@ if(PRINT_TRACING)
          myXtFree( grapher->status ) ;  /* 08 Mar 1999: via mcw_malloc.c */
          myXtFree( grapher ) ;          /* free the data space */
          MCW_invert_widget(w) ;         /* back to normal */
+         NORMAL_cursorize(w) ;          /* 20 Jul 2005 */
 
          /* redisplay the crosshairs, if needed */
 
@@ -4940,6 +4946,7 @@ ENTRY("AFNI_view_xyz_CB") ;
     if( snew != NULL ){
 STATUS("opening an image window") ;
       MCW_invert_widget(pboff) ;
+      POPUP_cursorize(pboff) ;   /* 20 Jul 2005 */
       *snew = open_MCW_imseq( im3d->dc, AFNI_brick_to_mri, (XtPointer) brnew ) ;
 
       (*snew)->parent = (XtPointer) im3d ;
@@ -5055,6 +5062,7 @@ STATUS("setting image viewer 'sides'") ;
 STATUS("opening a graph window") ;
 
        MCW_invert_widget(pboff) ;
+       POPUP_cursorize(pboff) ;   /* 20 Jul 2005 */
        gr = new_MCW_grapher( im3d->dc , AFNI_brick_to_mri , (XtPointer) brnew ) ;
        drive_MCW_grapher( gr, graDR_title, (XtPointer) im3d->window_title );
        drive_MCW_grapher( gr, graDR_addref_ts, (XtPointer) im3d->fimdata->fimref );
