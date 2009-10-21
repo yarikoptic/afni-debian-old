@@ -3,6 +3,91 @@
 
 extern SUMA_CommonFields *SUMAg_CF; 
 
+/*! a copy of THD_handedness from ../thd_rotangles.c
+Dunno why the original was giving me pain linking ... */
+int SUMA_THD_handedness( THD_3dim_dataset * dset )
+{
+   THD_dataxes * dax ;
+   THD_mat33 q ;
+   int col ;
+   float val ;
+
+
+   if( !ISVALID_DSET(dset) ) SUMA_RETURN(1) ;
+
+   LOAD_ZERO_MAT(q) ;
+   dax = dset->daxes ;
+
+   col = 0 ;
+   switch( dax->xxorient ){
+      case 0: q.mat[0][col] =  1.0 ; break ;
+      case 1: q.mat[0][col] = -1.0 ; break ;
+      case 2: q.mat[1][col] = -1.0 ; break ;
+      case 3: q.mat[1][col] =  1.0 ; break ;
+      case 4: q.mat[2][col] =  1.0 ; break ;
+      case 5: q.mat[2][col] = -1.0 ; break ;
+   }
+
+   col = 1 ;
+   switch( dax->yyorient ){
+      case 0: q.mat[0][col] =  1.0 ; break ;
+      case 1: q.mat[0][col] = -1.0 ; break ;
+      case 2: q.mat[1][col] = -1.0 ; break ;
+      case 3: q.mat[1][col] =  1.0 ; break ;
+      case 4: q.mat[2][col] =  1.0 ; break ;
+      case 5: q.mat[2][col] = -1.0 ; break ;
+   }
+
+   col = 2 ;
+   switch( dax->zzorient ){
+      case 0: q.mat[0][col] =  1.0 ; break ;
+      case 1: q.mat[0][col] = -1.0 ; break ;
+      case 2: q.mat[1][col] = -1.0 ; break ;
+      case 3: q.mat[1][col] =  1.0 ; break ;
+      case 4: q.mat[2][col] =  1.0 ; break ;
+      case 5: q.mat[2][col] = -1.0 ; break ;
+   }
+
+   val = MAT_DET(q) ;
+   if( val > 0.0 ) SUMA_RETURN( 1) ;  /* right handed */
+   else            SUMA_RETURN(-1) ;  /* left handed */
+}
+
+/*!
+   \brief Return AFNI's prefix, also checks for its validity
+   \param name (char *) dset name
+   \param view (char[4]) array to return view in it
+   \return prefix (char *) dset prefix, free it with SUMA_free
+*/
+char *SUMA_AfniPrefix(char *name, char *view) 
+{
+   static char FuncName[]={"SUMA_AfniPrefix"};
+   char *tmp1 = NULL, *tmp2 = NULL, *prfx = NULL;
+   
+   SUMA_ENTRY;
+   
+   if (!name) SUMA_RETURN(prfx);
+   
+   tmp1 = SUMA_Extension(name, ".HEAD", YUP);
+   tmp2 = SUMA_Extension(tmp1, ".BRIK", YUP); SUMA_free(tmp1); tmp1 = NULL;
+   /* is there a dot ?*/
+   if (tmp2[strlen(tmp2)-1] == '.') tmp2[strlen(tmp2)-1] = '\0';
+   if (view) {
+      if (SUMA_isExtension(tmp2, "+orig")) sprintf(view, "+orig");
+      else if (SUMA_isExtension(tmp2, "+acpc")) sprintf(view, "+acpc");
+      else if (SUMA_isExtension(tmp2, "+tlrc")) sprintf(view, "+tlrc");
+   }
+   tmp1 = SUMA_Extension(tmp2, "+orig", YUP); SUMA_free(tmp2); tmp2 = NULL;
+   tmp2 = SUMA_Extension(tmp1, "+acpc", YUP); SUMA_free(tmp1); tmp1 = NULL;
+   prfx = SUMA_Extension(tmp2, "+tlrc", YUP); SUMA_free(tmp2); tmp2 = NULL;
+   if( !THD_filename_ok(prfx) ){
+      SUMA_SL_Err("prefix contains forbidden characters!\n") ;
+      SUMA_free(prfx); prfx = NULL;
+      SUMA_RETURN(prfx);
+   }
+   
+   SUMA_RETURN(prfx);
+}
 /*!
    \brief A function to find the skin of a volume
    \param dset (THD_3dim_dataset *) an AFNI volume
@@ -128,12 +213,11 @@ SUMA_Boolean SUMA_Free_VolPar (SUMA_VOLPAR *VP)
    SUMA_RETURN (YUP);
 }
 
-SUMA_VOLPAR *SUMA_VolPar_Attr (char *volparent_name)
+SUMA_VOLPAR *SUMA_VolParFromDset (THD_3dim_dataset *dset)
 {
    ATR_float *atr;
-   static char FuncName[]={"SUMA_VolPar_Attr"};
+   static char FuncName[]={"SUMA_VolParFromDset"};
    SUMA_VOLPAR *VP;
-   THD_3dim_dataset *dset;
    int ii;
    MCW_idcode idcode;
    SUMA_Boolean LocalHead = NOPE;
@@ -141,9 +225,8 @@ SUMA_VOLPAR *SUMA_VolPar_Attr (char *volparent_name)
    SUMA_ENTRY;
 
    /* read the header of the parent volume */
-   dset = THD_open_dataset(volparent_name);
    if (dset == NULL) {
-      fprintf (SUMA_STDERR,"Error %s: Could not read %s\n", FuncName, volparent_name);
+      fprintf (SUMA_STDERR,"Error %s:\nNULL dset\n", FuncName);
       SUMA_RETURN (NULL);
    }
    
@@ -260,6 +343,36 @@ SUMA_VOLPAR *SUMA_VolPar_Attr (char *volparent_name)
       }
    }
 
+   /* handedness */
+   VP->Hand = SUMA_THD_handedness( dset );
+   
+   SUMA_RETURN (VP);
+}
+
+SUMA_VOLPAR *SUMA_VolPar_Attr (char *volparent_name)
+{
+   ATR_float *atr;
+   static char FuncName[]={"SUMA_VolPar_Attr"};
+   SUMA_VOLPAR *VP;
+   THD_3dim_dataset *dset;
+   int ii;
+   MCW_idcode idcode;
+   SUMA_Boolean LocalHead = NOPE;
+      
+   SUMA_ENTRY;
+
+   /* read the header of the parent volume */
+   dset = THD_open_dataset(volparent_name);
+   if (dset == NULL) {
+      fprintf (SUMA_STDERR,"Error %s: Could not read %s\n", FuncName, volparent_name);
+      SUMA_RETURN (NULL);
+   }
+   
+   VP = SUMA_VolParFromDset(dset);
+   if (!VP) {
+      SUMA_SL_Err("Failed in SUMA_VolParFromDset");
+   }
+
    /* now free the dset pointer */
    THD_delete_3dim_dataset( dset , False ) ;
    
@@ -296,6 +409,10 @@ char *SUMA_VolPar_Info (SUMA_VOLPAR *VP)
       SS = SUMA_StringAppend (SS, stmp);
       sprintf (stmp,"Orientation: %d %d %d\n", \
          VP->xxorient, VP->yyorient, VP->zzorient);
+      if (VP->Hand == 1) SS = SUMA_StringAppend (SS, "Right Hand Coordinate System.\n");
+      else if (VP->Hand == -1) SS = SUMA_StringAppend (SS, "Left Hand Coordinate System.\n");
+      else SS = SUMA_StringAppend (SS, "No hand coordinate system!\n");
+      
       SS = SUMA_StringAppend (SS, stmp);
       sprintf (stmp,"Origin: %f %f %f\n", \
          VP->xorg, VP->yorg, VP->zorg);
@@ -774,6 +891,52 @@ THD_ivec3 SUMA_THD_3dmm_to_3dind( SUMA_SurfaceObject *SO  ,
    SUMA_RETURN(iv) ;
 }
 
+/*! 
+   \brief how many voxels in each of the RL AP IS directions
+*/
+void SUMA_VolDims(THD_3dim_dataset *dset, int *nRL, int *nAP, int *nIS)
+{
+   static char FuncName[]={"SUMA_VolDims"};
+   
+   SUMA_ENTRY;
+   
+   *nRL = *nAP = *nIS = -1;
+   
+   if (!dset) {
+      SUMA_SL_Err("NULL dset");
+      SUMA_RETURNe;
+   }
+   
+   switch( dset->daxes->xxorient ){
+      case ORI_R2L_TYPE:
+      case ORI_L2R_TYPE: *nRL = DSET_NX(dset) ; break ;
+      case ORI_P2A_TYPE:
+      case ORI_A2P_TYPE: *nAP = DSET_NX(dset) ; break ;
+      case ORI_I2S_TYPE:
+      case ORI_S2I_TYPE: *nIS = DSET_NX(dset) ; break ;
+   }
+
+   switch( dset->daxes->yyorient ){
+      case ORI_R2L_TYPE:
+      case ORI_L2R_TYPE: *nRL = DSET_NY(dset) ; break ;
+      case ORI_P2A_TYPE:
+      case ORI_A2P_TYPE: *nAP = DSET_NY(dset) ; break ;
+      case ORI_I2S_TYPE:
+      case ORI_S2I_TYPE: *nIS = DSET_NY(dset) ; break ;
+   }
+
+   switch( dset->daxes->zzorient ){
+      case ORI_R2L_TYPE:
+      case ORI_L2R_TYPE: *nRL = DSET_NZ(dset) ; break ;
+      case ORI_P2A_TYPE:
+      case ORI_A2P_TYPE: *nAP = DSET_NZ(dset) ; break ;
+      case ORI_I2S_TYPE:
+      case ORI_S2I_TYPE: *nIS = DSET_NZ(dset) ; break ;
+   }
+   
+   SUMA_RETURNe;
+}
+
 /*!---------------------------------------------------------------------
    convert from input image oriented x,y,z to Dicom x,y,z
      (x axis = R->L , y axis = A->P , z axis = I->S)
@@ -1013,7 +1176,6 @@ SUMA_Boolean SUMA_vec_3dmm_to_dicomm (float *NodeList, int N_Node, SUMA_VOLPAR *
 
    for (i=0; i < SO.N_Node; ++i) {
       id = i * SO.NodeDim;
-      /* change float indices to mm coords */
       iv.xyz[0] = SO.NodeList[id] ;
       iv.xyz[1] = SO.NodeList[id+1] ;
       iv.xyz[2] = SO.NodeList[id+2] ;
@@ -1043,7 +1205,7 @@ SUMA_Boolean SUMA_vec_dicomm_to_3dmm (float *NodeList, int N_Node, SUMA_VOLPAR *
 
    for (i=0; i < SO.N_Node; ++i) {
       id = i * SO.NodeDim;
-      /* change float indices to mm coords */
+
       iv.xyz[0] = SO.NodeList[id] ;
       iv.xyz[1] = SO.NodeList[id+1] ;
       iv.xyz[2] = SO.NodeList[id+2] ;

@@ -189,6 +189,7 @@ extern char * NI_type_name( int ) ;
 
 #define NI_ELEMENT_TYPE  17
 #define NI_GROUP_TYPE    18
+#define NI_PROCINS_TYPE  19
 
 /*! A data element. */
 
@@ -196,6 +197,7 @@ extern char * NI_type_name( int ) ;
 #define TYPEDEF_NI_element
 typedef struct {
    int    type ;       /*!< What type of struct is this? */
+   int    outmode ;    /*!< If >=0, output mode. */
    char  *name ;       /*!< Name of element. */
    int    attr_num ;   /*!< Number of attributes. */
    char **attr_lhs ;   /*!< Left-hand-sides of attributes. */
@@ -221,6 +223,7 @@ typedef struct {
 #define TYPEDEF_NI_group
 typedef struct {
    int    type ;       /*!< What type of struct is this? */
+   int    outmode ;    /*!< If >=0, output mode. */
    int    attr_num ;   /*!< Number of attributes. */
    char **attr_lhs ;   /*!< Left-hand-sides of attributes. */
    char **attr_rhs ;   /*!< Right-hand-sides of attributes. */
@@ -231,6 +234,19 @@ typedef struct {
 
    char  *name ;       /*!< Name (default="ni_group") - 03 Jun 2002 */
 } NI_group ;
+#endif
+
+/*! A processing instruction. */
+
+#ifndef TYPEDEF_NI_procins
+#define TYPEDEF_NI_procins
+typedef struct {
+   int    type ;       /*!< What type of struct is this? */
+   int    attr_num ;   /*!< Number of attributes. */
+   char **attr_lhs ;   /*!< Left-hand-sides of attributes. */
+   char **attr_rhs ;   /*!< Right-hand-sides of attributes. */
+   char  *name ;       /*!< The 'PItarget', as in '<?name ...?>' */
+} NI_procins ;
 #endif
 
 /*-----------------------------------------------------------------
@@ -543,6 +559,8 @@ extern NI_group * NI_new_group_element(void) ;
 extern void NI_add_to_group( NI_group *, void * ) ;
 extern void NI_rename_group( NI_group *, char * ) ;  /* 03 Jun 2002 */
 
+extern NI_procins * NI_new_processing_instruction( char * ) ;       /* 16 Mar 2005 */
+
 extern void NI_swap_vector( int, int, void * ) ;
 
 /** I/O functions **/
@@ -579,6 +597,7 @@ extern void NI_binary_threshold( NI_stream_type *, int ) ;
 
 extern void * NI_read_element ( NI_stream_type *, int ) ;
 extern int    NI_write_element( NI_stream_type *, void *, int ) ;
+extern int    NI_write_procins( NI_stream_type *, char * ) ; /* 17 Mar 2005 */
 extern int    NI_write_columns( NI_stream_type * ,
                                 int , int * , int , void ** , int ) ;
 extern int    NI_write_rowtype( NI_stream_type * ,
@@ -1134,7 +1153,30 @@ extern size_t NI_registry_ptr_to_len      ( void * ) ;
 extern void * NI_registry_add             ( char *, char *, void * ) ;
 extern void * NI_registry_replace         ( void *, void * ) ;
 
-
 /*-------------------------------------------------------------------------*/
+
+#define IDCODE_LEN 32
+#define LEN_IDCODE IDCODE_LEN
+
+#ifndef TYPEDEF_NI_datacontainer
+#define TYPEDEF_NI_datacontainer
+typedef struct {
+  char typename   [IDCODE_LEN] ; /* e.g., "NI_ELEMENT"   */
+  char self_name  [IDCODE_LEN] ; /* e.g., "AFNI_dataset" */
+  char self_idcode[IDCODE_LEN] ;
+  int  ival , jval ;
+  void *self_data ;              /* the actual data */
+} NI_objcontainer ;
+
+typedef int (*NI_objconverter_func)( NI_objcontainer * ) ;
+#endif
+
+extern char * NI_self_idcode( void * ) ;
+extern void   NI_suck_stream( char *, int, int *, NI_objcontainer *** ) ;
+extern void   NI_convert_elm_to_obj( NI_objcontainer * ) ;
+extern void   NI_convert_obj_to_elm( NI_objcontainer * ) ;
+extern void   NI_register_objconverters( char * ,
+                                         NI_objconverter_func ,
+                                         NI_objconverter_func  ) ;
 
 #endif /* _NIML_HEADER_FILE */

@@ -23,6 +23,55 @@ static int header_stuff_is_group( header_stuff *hs )  /* 24 Feb 2005 */
 }
 
 /*--------------------------------------------------------------------*/
+/*! Check if header_stuff marks NIML element as a processing instruction.
+----------------------------------------------------------------------*/
+
+static int header_stuff_is_procins( header_stuff *hs )
+{
+   if( hs == NULL ) return 0 ;
+   if( hs->name != NULL && hs->name[0] == '?' ) return 1 ;
+   return 0 ;
+}
+
+/*--------------------------------------------------------------------*/
+/*! Write a simple processing instruction to the stream:
+    - "<?str ?>\n" will be written
+    - Return value is the number of bytes written
+    - Return 0 means that the stream wasn't ready to write
+    - Return -1 means an error happened, and nothing was written
+    - 17 Mar 2005 - RWCox
+----------------------------------------------------------------------*/
+
+int NI_write_procins( NI_stream_type *ns , char *str )
+{
+   char *buf ; int jj ;
+
+   /* check inputs for good-ositifulness */
+
+   if( !NI_stream_writeable(ns)             ) return -1 ;  /* stupid user */
+   if( str == NULL || !IS_STRING_CHAR(*str) ) return -1 ;
+
+   /* check if stream is ready to take data */
+
+   if( ns->bad ){                       /* socket that hasn't connected yet */
+     jj = NI_stream_goodcheck(ns,666) ; /* try to connect it */
+     if( jj < 1 ) return jj ;           /* 0 is nothing yet, -1 is death */
+   } else {                             /* check if good ns has gone bad */
+     jj = NI_stream_writecheck(ns,666) ;
+     if( jj < 0 ) return jj ;
+   }
+
+   /* write the processing instruction: "<?str ?>\n" */
+
+   buf = (char *)malloc(strlen(str)+16) ;
+   sprintf( buf , "<?%s ?>\n" , str ) ;
+   jj = NI_stream_writestring( ns , buf ) ;
+
+   free((void *)buf) ; return jj ;
+}
+
+
+/*--------------------------------------------------------------------*/
 
 static int read_header_only = 0 ;
 void NI_read_header_only( int r ){ read_header_only=r ; } /* 23 Mar 2003 */
@@ -161,7 +210,28 @@ NI_dpr("NI_read_element: header parsed successfully\n") ;
 
    /*--------------- Now make an element of some kind ---------------*/
 
-   if( header_stuff_is_group(hs) ){         /*--- a group element ---*/
+   if( header_stuff_is_procins(hs) ){       /*--- a processing instruction ---*/
+
+     NI_procins *npi ;
+
+     npi       = NI_malloc(NI_procins,sizeof(NI_procins)) ;
+     npi->type = NI_PROCINS_TYPE ;
+     npi->name = NI_strdup( hs->name + 1 ) ; /* skip the '?' */
+
+     npi->attr_num = hs->nattr ;
+     if( npi->attr_num > 0 ){
+       npi->attr_lhs = hs->lhs ; hs->lhs = NULL ;
+       npi->attr_rhs = hs->rhs ; hs->rhs = NULL ;
+     } else {
+       npi->attr_lhs = npi->attr_rhs = NULL ;
+     }
+
+     destroy_header_stuff( hs ) ;
+     return npi ;
+
+   } /*--- end of reading a processing instruction ---*/
+
+   else if( header_stuff_is_group(hs) ){           /*---- a group element ----*/
 
       NI_group *ngr ;
       void *nini ;
@@ -226,7 +296,7 @@ NI_dpr("NI_read_element: ni_group scan_for_angles; num_restart=%d\n",
 
    } /* end of reading group element */
 
-   else { /*---------------------- a data element -------------------*/
+   else {      /*------------------------ a data element ---------------------*/
 
       NI_element *nel ;
       int form, swap, nbrow , row,col ;
@@ -816,9 +886,36 @@ int NI_write_element( NI_stream_type *ns , void *nini , int tmode )
    int   bb=0 ,  cc=0 ;
 
    char *att_prefix , *att_equals , *att_trail ;
+   int header_only , header_sharp , outmode ;
 
-   int header_only  = ((tmode & NI_HEADERONLY_FLAG ) != 0) ;  /* 20 Feb 2003 */
-   int header_sharp = ((tmode & NI_HEADERSHARP_FLAG) != 0) ;  /* 20 Mar 2003 */
+   /*--- 09 Mar 2005: outmode overrided tmode, if present ---*/
+
+   switch( tt ){
+     default: return -1 ;    /* bad input! */
+
+     case NI_GROUP_TYPE:{
+       NI_group *ngr = (NI_group *) nini ;
+       outmode = ngr->outmode ;
+     }
+     break ;
+
+     case NI_ELEMENT_TYPE:{
+       NI_element *nel = (NI_element *) nini ;
+       outmode = nel->outmode ;
+     }
+     break ;
+
+     case NI_PROCINS_TYPE:{       /* 16 Mar 2005 */
+       outmode = NI_TEXT_MODE ;
+     }
+     break ;
+   }
+   if( outmode >= 0 ) tmode = outmode ;
+
+   /*--- determine special cases from the flags above bit #7 ---*/
+
+   header_only  = ((tmode & NI_HEADERONLY_FLAG ) != 0) ;  /* 20 Feb 2003 */
+   header_sharp = ((tmode & NI_HEADERSHARP_FLAG) != 0) ;  /* 20 Mar 2003 */
 
    /* ADDOUT = after writing, add byte count if OK, else quit */
    /* AF     = thing to do if ADDOUT is quitting */
@@ -865,9 +962,44 @@ NI_dpr("NI_write_element: write socket now connected\n") ;
    att_trail  = (header_sharp) ? (char *)"\n# "  /* write this before closing ">" */
                                : (char *)" "    ;
 
+   /*------------------ write a processing instruction ------------------*/
+
+   if( tt == NI_PROCINS_TYPE ){
+
+     NI_procins *npi = (NI_procins *)nini ;
+
+     if( header_sharp ){ nout = NI_stream_writestring(ns,"# "); ADDOUT; }
+
+     nout = NI_stream_writestring( ns , "<?"   )    ; ADDOUT ;
+     nout = NI_stream_writestring( ns , npi->name ) ; ADDOUT ;
+
+     /*- attributes -*/
+
+     for( ii=0 ; ii < npi->attr_num ; ii++ ){
+
+       jj = NI_strlen( npi->attr_lhs[ii] ) ; if( jj == 0 ) continue ;
+       nout = NI_stream_writestring( ns , " " ) ; ADDOUT ;
+       if( NI_is_name(npi->attr_lhs[ii]) ){
+         nout = NI_stream_write( ns , npi->attr_lhs[ii] , jj ) ;
+       } else {
+         att = quotize_string( npi->attr_lhs[ii] ) ;
+         nout = NI_stream_writestring( ns , att ) ; NI_free(att) ;
+       }
+       ADDOUT ;
+
+       jj = NI_strlen( npi->attr_rhs[ii] ) ; if( jj == 0 ) continue ;
+       nout = NI_stream_writestring( ns , "=" ) ; ADDOUT ;
+       att = quotize_string( npi->attr_rhs[ii] ) ;
+       nout = NI_stream_writestring( ns , att ) ; NI_free(att) ; ADDOUT ;
+     }
+
+     nout = NI_stream_writestring( ns , " ?>\n" ) ; ADDOUT ;
+
+     return ntot ;   /*** done with processing instruction ***/
+
    /*------------------ write a group element ------------------*/
 
-   if( tt == NI_GROUP_TYPE ){
+   } else if( tt == NI_GROUP_TYPE ){
 
       NI_group *ngr = (NI_group *) nini ;
       char *gname ;
@@ -932,7 +1064,7 @@ NI_dpr("NI_write_element: write socket now connected\n") ;
       nout = NI_stream_writestring( ns , "</ni_group>\n" ) ; ADDOUT ;
 #endif
 
-      return ntot ;
+      return ntot ;   /*** done with group element ***/
 
    /*------------------ write a data element ------------------*/
 
@@ -1160,7 +1292,7 @@ NI_dpr("NI_write_element: write socket now connected\n") ;
 #ifdef NIML_DEBUG
   NI_dpr("NI_write_element: empty element '%s' had %d total bytes\n",nel->name,ntot) ;
 #endif
-        return ntot ;                 /* done with empty element */
+        return ntot ;                 /*** done with empty data element ***/
       }
 
       /*- if here, must write some data out -*/
@@ -1207,7 +1339,7 @@ NI_dpr("NI_write_element: write socket now connected\n") ;
 #ifdef NIML_DEBUG
   NI_dpr("NI_write_element: data element '%s' had %d total bytes\n",nel->name,ntot) ;
 #endif
-      return ntot ;
+      return ntot ;   /*** done with full data element ***/
 
    } /* end of write data element */
 

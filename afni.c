@@ -59,6 +59,19 @@
 #  define USE_TRACING
 #endif
 
+/*------------------------------------------------------*/
+#ifdef SHOWOFF
+# undef  SHSH
+# undef  SHSHSH
+# undef  SHSTRING
+# define SHSH(x)   #x
+# define SHSHSH(x) SHSH(x)
+# define SHSTRING  SHSHSH(SHOWOFF)   /* now in "quotes" */
+#else
+# undef  SHSTRING
+#endif
+/*------------------------------------------------------*/
+
 /*----------------------------------------------------------------
    Global variables that used to be local variables in main()
 ------------------------------------------------------------------*/
@@ -259,6 +272,8 @@ void AFNI_syntax(void)
      "-------------------------------\n"
      "\n"
      "   -q           Tells afni to be 'quiet' on startup\n"
+     "   -Dname=val   Sets environment variable 'name' to 'val' inside AFNI;\n"
+     "                  will supersede any value set in .afnirc.\n"
      "   -gamma gg    Tells afni that the gamma correction factor for the\n"
      "                  monitor is 'gg' (default gg is 1.0; greater than\n"
      "                  1.0 makes the image contrast larger -- this may\n"
@@ -481,6 +496,13 @@ ENTRY("AFNI_parse_args") ;
          narg++ ; continue ;
       }
 #endif
+
+      /*----- -Dname=val -- set environment variable [22 Mar 2005] -----*/
+
+      if( strncmp(argv[narg],"-D",2) == 0 && strchr(argv[narg],'=') != NULL ){
+        (void) AFNI_setenv( argv[narg]+2 ) ;
+        narg++ ; continue ;                 /* go to next arg */
+      }
 
       /*----- -layout (23 Sep 2000) -----*/
 
@@ -1061,32 +1083,20 @@ int main( int argc , char * argv[] )
 
    if( check_string("-ver",argc,argv) || check_string("--ver",argc,argv) ){
      printf("Version " VERSION  "\n") ;
-#ifdef SHOWOFF
-#undef SHSH
-#undef SHSHSH
-#define SHSH(x)   #x
-#define SHSHSH(x) SHSH(x)
-       printf( "[[Precompiled binary " SHSHSH(SHOWOFF) ": " __DATE__ "]]\n" ) ;
-#undef SHSH
-#undef SHSHSH
-#endif /* SHOWOFF */
+#ifdef SHSTRING
+       printf( "[[Precompiled binary " SHSTRING ": " __DATE__ "]]\n" ) ;
+#endif
      exit(0) ;
    }
 
    /** just print the SHOWOFF string [26 Oct 2004] **/
 
    if( check_string("-show",argc,argv) || check_string("--show",argc,argv) ){
-#ifdef SHOWOFF
-#undef SHSH
-#undef SHSHSH
-#define SHSH(x)   #x
-#define SHSHSH(x) SHSH(x)
-      printf(SHSHSH(SHOWOFF) "\n" ) ;
-#undef SHSH
-#undef SHSHSH
+#ifdef SHSTRING
+      printf( SHSTRING "\n" ) ;
 #else
-      printf("UNKNOWN\n") ;
-#endif /* SHOWOFF */
+      printf("Unknown\n") ;
+#endif
       exit(0) ;
    }
 
@@ -1167,19 +1177,13 @@ int main( int argc , char * argv[] )
    REPORT_PROGRESS( ANNOUNCEMENT ) ;
 
    /*------- 29 Nov 1999: print out precompiled version, if defined --------*/
-#ifdef SHOWOFF
-#undef SHSH
-#undef SHSHSH
-#define SHSH(x)   #x
-#define SHSHSH(x) SHSH(x)
+#ifdef SHSTRING
    REPORT_PROGRESS( "[[Precompiled binary "
-                    SHSHSH(SHOWOFF)
+                    SHSTRING
                     ": "
                     __DATE__
                     "]]\n" ) ;
-#undef SHSH
-#undef SHSHSH
-#endif /* SHOWOFF */
+#endif
 
    /*-- Be friendly --*/
 
@@ -1235,12 +1239,12 @@ int main( int argc , char * argv[] )
    /*-- 04 Jun 1999: modify order of loading arguments and defaults --*/
 
    if( ! GLOBAL_argopt.skip_afnirc ){
-      char * sysenv = getenv("AFNI_SYSTEM_AFNIRC") ;       /* 12 Apr 2000 */
-      if( sysenv != NULL ) AFNI_process_environ(sysenv) ;  /* 12 Apr 2000 */
+     char *sysenv = getenv("AFNI_SYSTEM_AFNIRC") ;        /* 12 Apr 2000 */
+     if( sysenv != NULL ) AFNI_process_environ(sysenv) ;  /* 12 Apr 2000 */
 
-      AFNI_process_environ(NULL) ;                         /* 07 Jun 1999 */
+     AFNI_process_environ(NULL) ;                         /* 07 Jun 1999 */
    } else {
-      AFNI_mark_environ_done() ;                           /* 16 Apr 2000 */
+     AFNI_mark_environ_done() ;                           /* 16 Apr 2000 */
    }
 
    AFNI_load_defaults( MAIN_shell ) ;
@@ -1252,7 +1256,7 @@ int main( int argc , char * argv[] )
       GPT = NULL ;  /* 19 Dec 1997 */
 
       if( sysenv != NULL )                                 /* 12 Apr 2000 */
-         AFNI_process_setup( sysenv , SETUP_INIT_MODE , NULL ) ;
+        AFNI_process_setup( sysenv , SETUP_INIT_MODE , NULL ) ;
 
       if( home != NULL ){ strcpy(fname,home) ; strcat(fname,"/.afnirc") ; }
       else              { strcpy(fname,".afnirc") ; }
@@ -1484,7 +1488,7 @@ STATUS("call 13") ;
         AFNI_register_2D_function( "Median21", median21_box_func );
         AFNI_register_2D_function( "Winsor21", winsor21_box_func );
 
-        AFNI_register_2D_function( "|FFT2D|" , fft2D_func ) ;
+        AFNI_register_2D_function( "|FFT2D|", fft2D_func );
 
         /* 01 Feb 2000: see afni_fimfunc.c */
 
@@ -1807,11 +1811,11 @@ ENTRY("AFNI_startup_timeout_CB") ;
 
    vv = AFNI_version_check() ; /* nada if AFNI_start_version_check() inactive */
 
-#ifdef SHOWOFF
+#ifdef SHSTRING
    if( vv ){  /* 20 Nov 2003: if version check shows a mismatch */
      char *sname = AFNI_make_update_script() ;
      if( sname != NULL ){
-       char *cpt , *ddd ;
+       char *cpt , *ddd ; int nn ;
        ddd = strdup(sname) ; cpt = THD_trailname(ddd,0) ; *cpt = '\0' ;
        cpt = THD_trailname(sname,0) ;
        fprintf(stderr,
@@ -1819,17 +1823,33 @@ ENTRY("AFNI_startup_timeout_CB") ;
                "*===================================================\n"
                "* A script to update AFNI binaries has been created.\n"
                "* To use it, quit AFNI now, then try the commands\n"
-               "cd %s\n"
+               "pushd %s\n"
                "source %s\n"
+               "popd\n"
                "*===================================================\n" ,
                ddd , cpt ) ;
+       free((void *)ddd) ;
+       nn = THD_freemegabytes(sname) ;
+       if( nn >= 0 && nn <= 300 ){
+         fprintf(stderr,
+               "* HOWEVER: you only have %d Mbytes free, which won't\n"
+               "*          won't be enough to download and install\n"
+               "*          the updated set of AFNI binaries!\n"
+               "*===================================================\n" ,
+               nn ) ;
+       }
      } else {
        fprintf(stderr,
                "\n"
-               "*======================================\n"
+               "*==================================================\n"
                "* Can't create script for updating AFNI\n"
-               "* binaries in your AFNI directory.\n"
-               "*======================================\n" ) ;
+               "*   binaries in your AFNI directory.\n"
+               "* You'll have to get your sysadmin to help, or\n"
+               "*   do it yourself.  AFNI can be downloaded from\n"
+               "*     http://afni.nimh.nih.gov/afni/download   *OR*\n"
+               "*     ftp://afni.nimh.nih.gov/tgz\n"
+               "*   You want file " SHSTRING ".tgz\n"
+               "*==================================================\n" ) ;
      }
    }
 #endif
@@ -4164,6 +4184,7 @@ if(PRINT_TRACING)
       } else {  /* 04 Jan 2000: show total number of datasets */
 
          sprintf(str,"\n dataset count = %d" , num_dsets ) ;
+         GLOBAL_num_dsets = num_dsets ;
          REPORT_PROGRESS(str) ;
       }
 
@@ -4282,7 +4303,7 @@ STATUS("reading commandline dsets") ;
             /* 26 Mar 2001: might get some 1D files, too */
 
             if( XTARR_IC(dsar,dd) == IC_FLIM ){  /* save 1D file for later */
-               MRI_IMAGE * im = (MRI_IMAGE *) XTARR_XT(dsar,dd) ;
+               MRI_IMAGE *im = (MRI_IMAGE *) XTARR_XT(dsar,dd) ;
                ADDTO_IMARR(webtsar,im) ;
                continue ;              /* next one */
             }

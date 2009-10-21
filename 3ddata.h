@@ -1044,9 +1044,9 @@ typedef struct {
       int *    brick_statcode ; /*!< a FUNC_*_TYPE ==> kind of statistic here  */
       float ** brick_stataux ;  /*!< stat_aux parameters for each sub-brick with brick_statcode[iv] > 0               */
 
-      int    total_bytes ;    /*!< totality of data storage needed */
-      int    malloc_type ;    /*!< memory allocation method */
-      int    locked ;         /*!< Feb 1998: locked in memory (un-purgeable) */
+      int64_t total_bytes ;   /*!< totality of data storage needed */
+      int     malloc_type ;   /*!< memory allocation method */
+      int     locked ;        /*!< Feb 1998: locked in memory (un-purgeable) */
 
                                 /* Jan 1999: for datasets that are extracted from a master dataset */
       int    master_nvals ;   /*!< Number of nvals in master dataset */
@@ -1129,6 +1129,7 @@ extern void THD_store_datablock_stataux  ( THD_datablock *,int,int,int,float * )
 extern void THD_store_datablock_label    ( THD_datablock * , int , char * ) ;
 extern void THD_store_datablock_keywords ( THD_datablock * , int , char * ) ;
 extern void THD_append_datablock_keywords( THD_datablock * , int , char * ) ;
+extern int  THD_datablock_from_atr       ( THD_datablock *, char *, char * ) ;
 
 /*! Initialize all sub-bricks auxiliary data to nothing. */
 
@@ -2330,6 +2331,10 @@ extern char * THD_deplus_prefix( char *prefix ) ;                    /* 22 Nov 2
 
 #define DSET_IDCODE(ds) (&((ds)->idcode))
 
+/*! Return the ID code string */
+
+#define DSET_IDCODE_STR(ds) ((ds)->idcode.str)
+
 /* 25 April 1998 */
 
 #define DBLK_BYTEORDER(db)  ((db)->diskptr->byte_order)
@@ -2587,9 +2592,7 @@ static char tmp_dblab[8] ;
      THD_load_statistics((dset)) ; }
 
 /*! Determine if the ii-th volume of dataset dset has a valid brick statistic.
-
-    Brick statistics are just the min and max values in the volume
-    (not scaled by the brick scaling factor).
+    Brick statistics are just the min and max values in the volume.
 */
 
 #define DSET_VALID_BSTAT(dset,ii)                 \
@@ -2735,6 +2738,14 @@ static char tmp_dblab[8] ;
     Mastered datasets are specified on the command line with the [a..b] syntax, etc.
 */
 #define DSET_IS_MASTERED(ds) DBLK_IS_MASTERED((ds)->dblk)
+
+/*-------------------------------------------------------------------*/
+#undef  TWOGIG
+#define TWOGIG 2147000000   /* 2 gigabytes, aboot */
+
+#define DBLK_mmapfix(db)                                                      \
+  do{ if( (db)->malloc_type==DATABLOCK_MEM_MMAP && (db)->total_bytes>TWOGIG ) \
+        (db)->malloc_type = DATABLOCK_MEM_MMAP ; } while(0)
 
 /*------------- a dynamic array type for 3D datasets ---------------*/
 
@@ -3304,6 +3315,8 @@ extern void    THD_load_nifti  ( THD_datablock * ) ;         /* 28 Aug 2003 */
 extern void    THD_load_mpeg   ( THD_datablock * ) ;         /* 03 Dec 2003 */
 extern void    THD_load_tcat   ( THD_datablock * ) ;         /* 04 Aug 2004 */
 
+extern void    THD_zerofill_dataset( THD_3dim_dataset * ) ;  /* 18 Mar 2005 */
+
 extern int THD_datum_constant( THD_datablock * ) ;           /* 30 Aug 2002 */
 #define DSET_datum_constant(ds) THD_datum_constant((ds)->dblk)
 
@@ -3701,6 +3714,7 @@ extern float THD_stat_to_zscore( float thr , int statcode , float * stataux ) ;
 
 extern int THD_filename_ok( char * ) ;   /* 24 Apr 1997 */
 extern int THD_filename_pure( char * ) ; /* 28 Feb 2001 */
+extern int THD_freemegabytes( char * ) ; /* 28 Mar 2005 */
 
 extern THD_warp * AFNI_make_voxwarp( THD_warp * , THD_3dim_dataset * ,
                                                   THD_3dim_dataset *  ) ;
@@ -3789,6 +3803,8 @@ extern int AFNI_logger( char * , int , char ** ) ; /* 13 Aug 2001 */
 extern void AFNI_sleep( int ) ;
 #define AFNI_log_string(ss) AFNI_logger(ss,0,NULL)
 
+extern void AFNI_serverlog( char * ) ;             /* 24 Mar 2005 */
+
 void THD_outlier_count( THD_3dim_dataset *, float, int **, int * ) ; /* 15 Aug 2001 */
 
 extern void   tross_Append_History ( THD_3dim_dataset * , char * ) ;
@@ -3855,9 +3871,32 @@ extern THD_fvec3 THD_autonudge( THD_3dim_dataset *dsepi, int ivepi,
                                 float step,
                                 int xstep, int ystep, int zstep, int code ) ;
 
-extern MRI_IMAGE * mri_brainormalize( MRI_IMAGE *, int,int,int ) ; /* 05 Apr 2004 */
+extern MRI_IMAGE * mri_brainormalize( MRI_IMAGE *, int,int,int , MRI_IMAGE **, MRI_IMAGE **) ; /* 05 Apr 2004 */
 extern void mri_brainormalize_verbose( int ) ;
-
+extern void brainnormalize_coord( float  ispat, float  jspat, float  kspat ,
+                           float *iorig, float *jorig, float *korig ,
+                           THD_3dim_dataset *origset,
+                           float *xrai_orig, float *yrai_orig, float *zrai_orig); /* ZSS */
 extern MRI_IMAGE * mri_watershedize( MRI_IMAGE * , float ) ;
+
+/*------------------------------------------------------------------------*/
+/* 09 May 2005: stuff for converting a dataset to from a NIML group.      */
+
+extern NI_group * THD_nimlize_dsetatr( THD_3dim_dataset *) ;
+extern void       THD_dblkatr_from_niml( NI_group *, THD_datablock * ) ;
+extern void       THD_set_dataset_attributes( THD_3dim_dataset * ) ;
+
+extern THD_3dim_dataset * THD_niml_to_dataset( NI_group * , int ) ;
+extern int THD_add_bricks( THD_3dim_dataset * , void * ) ;
+
+#define SBFLAG_INDEX    (1<<0)
+#define SBFLAG_FACTOR   (1<<1)
+#define SBFLAG_STATCODE (1<<2)
+
+extern NI_element * THD_subbrick_to_niml( THD_3dim_dataset *, int , int ) ;
+extern NI_group * THD_dataset_to_niml( THD_3dim_dataset * ) ;
+
+extern MRI_IMAGE  * niml_to_mri( NI_element * ) ;
+extern NI_element * mri_to_niml( MRI_IMAGE *  ) ;
 
 #endif /* _MCW_3DDATASET_ */

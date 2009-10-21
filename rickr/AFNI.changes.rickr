@@ -1011,3 +1011,25 @@
       - changed default separation to 4 voxels
       - added gr_fac for printing data values in debug mode
 
+08 Mar 2005:
+  * modified nifti1_io.[ch], adding global options struct, and optional
+    validation in nifti_read_header()
+  * modified nifti_tool.c to remove validation of nifti_1_header structs
+
+17 Mar 2005:
+  * modified 3dROIstats.c to properly check for failure to use -mask option
+
+21 Mar 2005:
+  * updated nifti tree with Kate's changes (to fsliolib, mostly)
+
+22 Mar 2005:
+  * removed all tabs from these files:
+      - vol2surf.[ch] rickr/3dresample.c rickr/file_tool.[ch]
+      - plug_crender.c plug_vol2surf.c
+      - rickr/Imon.[ch] rickr/realtime.[ch] rickr/r_idisp.[ch]
+      - rickr/r_misc.[ch] rickr/r_new_resam_dset.[ch] rickr/serial_helper.c
+      - SUMA/SUMA_3dSurf2Vol.[ch] SUMA/SUMA_3dVol2Surf.[ch]
+
+24 March 2005:
+  * modified strblast.c: added -help, -new_char, -new_string, -unescape options
+

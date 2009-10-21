@@ -856,6 +856,68 @@ if(aset >= 0 && PRINT_TRACING)
    EXRETURN ;
 }
 
+/*-----------------------------------------------------------------------*/
+/* Hollow out the the overlay in place -- 21 Mar 2005 - RWCox.
+   An interior pixel is defined as one whose 4 nearest neighbors are
+   all nonzero.
+-------------------------------------------------------------------------*/
+
+static void mri_edgize( MRI_IMAGE *im )
+{
+   int ii , jj , nx,ny,nxy , joff ;
+
+   if( im == NULL ) return ;
+
+   nx = im->nx ; ny = im->ny ; nxy = nx * ny ;
+   if( nx < 3 || ny < 3 ) return ;  /* no interior pixels at all?! */
+
+   switch( im->kind ){
+
+     case MRI_short:{
+       short *ajj , *ajm , *ajp , *atemp , *ar ;
+       ar    = MRI_SHORT_PTR(im) ;
+       atemp = (short *)malloc(sizeof(short)*nxy); if( atemp == NULL ) return;
+       memcpy(atemp,ar,sizeof(short)*nxy) ;
+       for( jj=1 ; jj < ny-1 ; jj++ ){
+         joff = jj * nx ;      /* offset into this row */
+         ajj  = atemp + joff ; /* pointer to this row */
+         ajm  = ajj-nx ;       /* pointer to last row */
+         ajp  = ajj+nx ;       /* pointer to next row */
+         for( ii=1 ; ii < nx-1 ; ii++ ){
+           if( ajj[ii]   != 0 &&
+               ajm[ii]   != 0 && ajp[ii]   != 0 &&
+               ajj[ii+1] != 0 && ajj[ii-1] != 0   ) ar[ii+joff] = 0 ;
+         }
+       }
+       free((void *)atemp) ;
+     }
+     return ;
+
+     case MRI_rgb:{
+       rgbyte *ajj , *ajm , *ajp , *atemp , *ar ;
+       ar    = (rgbyte *)MRI_RGB_PTR(im) ;
+       atemp = (rgbyte *)malloc(sizeof(rgbyte)*nxy); if( atemp == NULL ) return;
+       memcpy(atemp,ar,sizeof(rgbyte)*nxy) ;
+       for( jj=1 ; jj < ny-1 ; jj++ ){
+         joff = jj * nx ;
+         ajj  = atemp + joff ;
+         ajm  = ajj-nx ;
+         ajp  = ajj+nx ;
+         for( ii=1 ; ii < nx-1 ; ii++ ){
+           if( !RGBZEQ(ajj[ii])   &&
+               !RGBZEQ(ajm[ii])   && !RGBZEQ(ajp[ii])   &&
+               !RGBZEQ(ajj[ii+1]) && !RGBZEQ(ajj[ii-1])   ) RGBZAS(ar[ii+joff]) ;
+         }
+       }
+       free((void *)atemp) ;
+     }
+     return ;
+
+   }
+
+   return ; /* default im->kind case ==> do nothing */
+}
+
 /*-----------------------------------------------------------------------
   Make a functional overlay -- very simple routine at present;
    n = slice index , br_fim = data structure to extract slice from.
@@ -1207,6 +1269,11 @@ STATUS("bad im_fim->kind!") ;
 CLEANUP:
    if( im_thr != NULL && im_thr != im_fim ) mri_free( im_thr ) ;
    mri_free( im_fim ) ;
+
+   /* 21 Mar 2005: Hollow out overlay? */
+
+   if( AFNI_yesenv("AFNI_EDGIZE_OVERLAY") ) mri_edgize(im_ov) ;
+
    RETURN(im_ov) ;
 }
 
@@ -4060,6 +4127,7 @@ STATUS("have new image") ;
                          ? DATABLOCK_MEM_MMAP : DATABLOCK_MEM_MALLOC ;
 
    if( cmode >= 0 ) dblk->malloc_type = DATABLOCK_MEM_MALLOC ;
+   DBLK_mmapfix(dblk) ;  /* 28 Mar 2005 */
 #else
    dblk->malloc_type   = DATABLOCK_MEM_MALLOC ;
 #endif
@@ -4248,7 +4316,10 @@ ENTRY("AFNI_range_label") ;
 
    /*** anat statistics ***/
 
-   if( IM3D_OPEN(im3d) ){ RELOAD_STATS(im3d->anat_now) ; }
+   if( IM3D_OPEN(im3d) ){
+STATUS("RELOAD_STATS(anat_now)") ;
+     RELOAD_STATS(im3d->anat_now) ;
+   }
 
    if( IM3D_OPEN(im3d) &&
        ISVALID_3DIM_DATASET(im3d->anat_now) &&
@@ -4257,18 +4328,22 @@ ENTRY("AFNI_range_label") ;
       iv = im3d->vinfo->anat_index ;
 
       if( DSET_VALID_BSTAT(im3d->anat_now,iv) ){
+STATUS("anat_now statistics") ;
          AV_fval_to_char( im3d->anat_now->stats->bstat[iv].min , qbuf ) ;
          sprintf( anat_minch , "%9.9s" , qbuf ) ;
          AV_fval_to_char( im3d->anat_now->stats->bstat[iv].max , qbuf ) ;
          sprintf( anat_maxch , "%9.9s" , qbuf ) ;
       } else {
-STATUS("can't load anat bstat") ;
+STATUS("can't load anat_now bstat") ;
       }
    }
 
    /*** func statistics ***/
 
-   if( IM3D_OPEN(im3d) ){ RELOAD_STATS(im3d->fim_now) ; }
+   if( IM3D_OPEN(im3d) ){
+STATUS("RELOAD_STATS(fim_now)") ;
+     RELOAD_STATS(im3d->fim_now) ;
+   }
 
    if( IM3D_OPEN(im3d) &&
        ISVALID_3DIM_DATASET(im3d->fim_now) &&
@@ -4277,27 +4352,31 @@ STATUS("can't load anat bstat") ;
       iv = im3d->vinfo->fim_index ;
 
       if( DSET_VALID_BSTAT(im3d->fim_now,iv) ){
+STATUS("fim_now statistics") ;
          AV_fval_to_char( im3d->fim_now->stats->bstat[iv].min , qbuf ) ;
          sprintf( fim_minch , "%9.9s" , qbuf ) ;
          AV_fval_to_char( im3d->fim_now->stats->bstat[iv].max , qbuf ) ;
          sprintf( fim_maxch , "%9.9s" , qbuf ) ;
       } else {
-STATUS("can't load func bstat") ;
+STATUS("can't load fim_now bstat") ;
       }
 
       iv = im3d->vinfo->thr_index ;
 
       if( DSET_VALID_BSTAT(im3d->fim_now,iv) ){
+STATUS("thr_now statistics") ;
         AV_fval_to_char( im3d->fim_now->stats->bstat[iv].min , qbuf ) ;
         sprintf( thr_minch , "%9.9s" , qbuf ) ;
         AV_fval_to_char( im3d->fim_now->stats->bstat[iv].max , qbuf ) ;
         sprintf( thr_maxch , "%9.9s" , qbuf ) ;
       } else {
-STATUS("can't load thresh bstat") ;
+STATUS("can't load thr_now bstat") ;
       }
    }
 
    /*** make label ***/
+
+STATUS("make buf label") ;
 
    sprintf( buf , "ULay %s:%s\nOLay %s:%s\nThr  %s:%s" ,
             anat_minch,anat_maxch, fim_minch,fim_maxch, thr_minch,thr_maxch ) ;

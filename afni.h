@@ -987,8 +987,10 @@ typedef struct {
 
 #ifdef MAIN
    AFNI_library_type GLOBAL_library ;
+   int GLOBAL_num_dsets = 0 ;
 #else
    extern AFNI_library_type GLOBAL_library ;
+   extern GLOBAL_num_dsets ;
 #endif
 
 #define FIM_THR          (0.01*GLOBAL_library.fim_bkthr_perc)  /* 02 Jun 1999 */
@@ -1777,6 +1779,7 @@ extern TTRR_params * TTRR_get_params(void) ;
 
 extern int AFNI_driver( char *cmd ) ;                    /* 07 Nov 2001 */
 extern int AFNI_controller_code_to_index( char *code ) ;
+extern int AFNI_setenv( char *cmd ) ;                    /* 22 Jan 2003 */
 
 /*-------------------------------------------------------*/
 /*--------------  registration of functions -------------*/

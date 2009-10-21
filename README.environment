@@ -29,6 +29,12 @@ N.B.: Some variables below are described as being of "YES/NO" type.
       This means that they should either be set to the value "YES"
       or to the value "NO".
 
+N.B.: You can now set environment variables on the 'afni' command
+      line; for example:
+        afni -DAFNI_EDGIZE_OVERLAY=YES -DAFNI_SESSTRAIL=3
+      This may be useful for a 'one time' situation, or as an alias.
+      -- RWCox - 22 Mar 2005
+
 ********************************************************
 June 1999: Setting environment variables in file .afnirc
 ********************************************************
@@ -357,12 +363,12 @@ Setting this YES/NO variable to YES tells AFNI to display images with
 the left side of the subject on the left side of the window.  The default
 mode is to display the right side of the subject on the left side of
 the window - the radiology convention.  This "handedness" can also be
-controlled with the "-flipim" and "-noflipim" command line options to afni.
+controlled with the "-flipim" and "-noflipim" command line options to AFNI.
 
 --------------------------
 Variable: AFNI_ALWAYS_LOCK
 --------------------------
-Setting this YES/NO variable to YES tells afni to start up with all
+Setting this YES/NO variable to YES tells AFNI to start up with all
 the controller windows locked together.  If you mostly use multiple
 controllers to view datasets in unison, then this will be useful.
 Notice that the Time Lock feature is not automatically enabled
@@ -1901,7 +1907,7 @@ so that the individal images are displayed in an Axial image window.
 ---------------------------
 Variable: AFNI_MPEG_GRAYIZE
 ---------------------------
-If this YES/NO variable is set to YES, then MPEG files read into afni,
+If this YES/NO variable is set to YES, then MPEG files read into AFNI,
 to3d, or aiv will be converted to grayscale, even if the images in
 the movie are in color.
 
@@ -2117,9 +2123,28 @@ that is.  You can set the label2 field with the 3drefit command.
 -------------------------------
 Variable: AFNI_SHOW_SURF_POPUPS
 -------------------------------
-If this YES/NO variable is set to YES, then when afni receives surface
+If this YES/NO variable is set to YES, then when AFNI receives surface
 nodes, triangles or normals from suma, a popup message will be displayed.
 Otherwise, the message will be send to stderr (on the terminal window).
+
+-------------------------------
+Variable: AFNI_KILL_SURF_POPUPS
+-------------------------------
+If this YES/NO variable is set to YES, then when AFNI receives surface
+nodes, triangles or normals from suma, no messages will be displayed,
+either in a popup or stderr.  Note that if errors occur, popups will
+still be shown; this just turns off the normal information messages.
+N.B.: If AFNI_SHOW_SURF_POPUPS is YES, then it wins over
+      AFNI_KILL_SURF_POPUPS being YES.  If neither is set, then
+      messages are displayed to stderr.
+
+-----------------------------
+Variable: AFNI_EDGIZE_OVERLAY (editable)
+-----------------------------
+If set to YES, then the color overlays in the image windows will only
+have their edge pixels displayed.  That is, each 'blob' will be hollowed
+out, leaving only its edges.  If you do this, you probably want to make
+the color overlay opaque, so that the results are easily seen.
 
 =============================================
 | Robert W Cox, PhD                         |

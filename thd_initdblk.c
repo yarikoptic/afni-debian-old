@@ -18,36 +18,15 @@ static int no_ordwarn   = -1 ;
 
 THD_datablock * THD_init_one_datablock( char *dirname , char *headname )
 {
-   THD_datablock     *dblk ;
-   THD_diskptr       *dkptr ;
-   ATR_int           *atr_rank , *atr_dimen , *atr_scene , *atr_btype ;
-   ATR_float         *atr_flt ;
-   ATR_string        *atr_labs ;
-   int ii , view_type , func_type , dset_type , nx,ny,nz,nvox , nvals , ibr,typ ;
-   Boolean ok ;
-   char prefix[THD_MAX_NAME] ;
-   MRI_IMAGE * qim ;
-   int brick_ccode ;
+   THD_datablock *dblk ;
+   THD_diskptr   *dkptr ;
+   int ii ;
+   char prefix[THD_MAX_NAME] = "\0" ;
    int default_order ;   /* 21 Jun 2000 */
 
 ENTRY("THD_init_one_datablock") ;
 
-   if( native_order < 0 ) native_order = mri_short_order() ;
-
-   no_mmap    = AFNI_yesenv("AFNI_NOMMAP") ;
-   no_ordwarn = AFNI_yesenv("AFNI_NO_BYTEORDER_WARNING") ;
-
-   { char * hh = getenv("AFNI_BYTEORDER_INPUT") ;    /* 21 Jun 2000 */
-     default_order = native_order ;
-     if( hh != NULL ){
-        if( strncmp(hh,LSB_FIRST_STRING,ORDER_LEN) == 0 )
-           default_order = LSB_FIRST ;
-        else if( strncmp(hh,MSB_FIRST_STRING,ORDER_LEN) == 0 )
-           default_order = MSB_FIRST ;
-     }
-   }
-
-   /*-- sanity check --*/
+   /*-- sanity checks --*/
 
    if( dirname  == NULL || strlen(dirname)  == 0 ||
        headname == NULL || strlen(headname) == 0   ) RETURN( NULL ) ;
@@ -56,7 +35,30 @@ ENTRY("THD_init_one_datablock") ;
    if( strlen(prefix) == 0 ||
        strstr(headname,DATASET_HEADER_SUFFIX) == NULL ) RETURN( NULL ) ;
 
-   /*-- create output datablock --*/
+   /*-- byte ordering stuff --*/
+
+   if( native_order < 0 ) native_order = mri_short_order() ;
+
+   no_mmap    = AFNI_yesenv("AFNI_NOMMAP") ;
+   no_ordwarn = AFNI_yesenv("AFNI_NO_BYTEORDER_WARNING") ;
+
+   { char *hh = getenv("AFNI_BYTEORDER_INPUT") ;    /* 21 Jun 2000 */
+     default_order = native_order ;
+     if( hh != NULL ){
+       if( strncmp(hh,LSB_FIRST_STRING,ORDER_LEN) == 0 )
+         default_order = LSB_FIRST ;
+       else if( strncmp(hh,MSB_FIRST_STRING,ORDER_LEN) == 0 )
+         default_order = MSB_FIRST ;
+     }
+   }
+
+#if 1
+
+   dblk  = EDIT_empty_datablock() ;    /* 11 Mar 2005 -- the new way */
+   dkptr = dblk->diskptr ;
+
+#else
+   /*-- create output datablock (the old way) --*/
 
    dblk              = myXtNew( THD_datablock ) ;
    dblk->type        = DATABLOCK_TYPE ;
@@ -96,13 +98,60 @@ ENTRY("THD_init_one_datablock") ;
 
    ADDTO_KILL(dblk->kl,dkptr) ;
 
+#endif  /* end of initializing empty datablock and diskptr */
+
+   /*-- read attributes from disk, store in the datablock --*/
+
    THD_read_all_atr( headname , dblk ) ;
 
-   if( dblk->natr <= 0 ){
+   /*-- 09 Mar 2005: all the attribute processing is moved away --*/
+
+   ii = THD_datablock_from_atr( dblk, dirname, headname ) ;
+   if( ii == 0 ){
       THD_delete_datablock( dblk ) ;
       myXtFree(dblk) ;
       RETURN( NULL ) ;
    }
+
+#if 0
+   if( PRINT_TRACING ){
+     char str[256] ;
+     sprintf(str,"rank=%d nvals=%d dim[0]=%d dim[1]=%d dim[2]=%d",
+             dkptr->rank , dkptr->nvals ,
+             dkptr->dimsizes[0] , dkptr->dimsizes[1] , dkptr->dimsizes[2] ) ;
+     STATUS(str) ;
+   }
+#endif
+
+   RETURN( dblk ) ;
+}
+
+/*-----*/
+
+#undef  MYHEAD
+#define MYHEAD ((headname==NULL) ? "UNKNOWN" : headname)
+
+/*---------------------------------------------------------------------------*/
+/*! Take the internal attributes and load the datablock struct up.
+-----------------------------------------------------------------------------*/
+
+int THD_datablock_from_atr( THD_datablock *dblk, char *dirname, char *headname )
+{
+   THD_diskptr       *dkptr ;
+   ATR_int           *atr_rank , *atr_dimen , *atr_scene , *atr_btype ;
+   ATR_float         *atr_flt ;
+   ATR_string        *atr_labs ;
+   int ii , view_type , func_type , dset_type , nx,ny,nz,nvox , nvals , ibr,typ ;
+   Boolean ok ;
+   char prefix[THD_MAX_NAME]="Unknown" ;
+   MRI_IMAGE *qim ;
+   int brick_ccode ;
+
+ENTRY("THD_datablock_from_atr") ;
+
+   if( dblk == NULL || dblk->natr <= 0 ) RETURN(0) ; /* bad input */
+
+   dkptr = dblk->diskptr ;
 
    /*-- get relevant attributes: rank, dimensions, view_type & func_type --*/
 
@@ -112,13 +161,11 @@ ENTRY("THD_init_one_datablock") ;
 
    /*-- missing an attribute ==> quit now --*/
 
-   if( atr_rank == NULL || atr_dimen == NULL || atr_scene == NULL ){
-      THD_delete_datablock( dblk ) ;
-      myXtFree(dblk) ;
-      RETURN( NULL ) ;
-   }
+   if( atr_rank == NULL || atr_dimen == NULL || atr_scene == NULL ) RETURN(0) ;
 
    /*-- load type codes from SCENE attribute --*/
+
+   STATUS("loading *_type from SCENE") ;
 
    view_type = atr_scene->in[0] ;
    func_type = atr_scene->in[1] ;
@@ -129,42 +176,62 @@ ENTRY("THD_init_one_datablock") ;
    ok   = True ;
    nvox = 1 ;
 
+   STATUS("loading from RANK") ;
+
    dkptr->rank = atr_rank->in[0] ;                /* N.B.: rank isn't used much */
-   for( ii=0 ; ii < dkptr->rank ; ii++ ){
-      dkptr->dimsizes[ii] = atr_dimen->in[ii] ;
-      ok                  = ( ok && dkptr->dimsizes[ii] >= 1 ) ;
-      nvox               *= dkptr->dimsizes[ii] ;
-   }
    dkptr->nvals = dblk->nvals = nvals = atr_rank->in[1] ;  /* but nvals is used */
+
+   STATUS("loading from DIMENSIONS") ;
+
+   for( ii=0 ; ii < dkptr->rank ; ii++ ){
+     dkptr->dimsizes[ii] = atr_dimen->in[ii] ;
+     ok                  = ( ok && dkptr->dimsizes[ii] >= 1 ) ;
+     nvox               *= dkptr->dimsizes[ii] ;
+   }
+
+#if 0
+   if( PRINT_TRACING ){
+     char str[256] ;
+     sprintf(str,"rank=%d nvals=%d dim[0]=%d dim[1]=%d dim[2]=%d nvox=%d",
+             dkptr->rank , dkptr->nvals ,
+             dkptr->dimsizes[0] , dkptr->dimsizes[1] , dkptr->dimsizes[2] , nvox ) ;
+     STATUS(str) ;
+   }
+#endif
 
    if( !ok || nvals < 1 ||
        dkptr->rank < THD_MIN_RANK || dkptr->rank > THD_MAX_RANK ){
-
-      fprintf(stderr,"\n*** Illegal dataset rank or dimen in file %s ***\n",
-              headname ) ;
-      THD_delete_datablock( dblk ) ;
-      myXtFree(dblk) ;
-      RETURN( NULL ) ;
+     STATUS("bad rank!!??") ;
+     RETURN(0) ;
    }
 
    /*-- create the storage filenames --*/
 
-   THD_init_diskptr_names( dkptr, dirname,NULL,prefix , view_type , True ) ;
+   STATUS("creating storage filenames") ;
+
+   if( headname != NULL && strchr(headname,'+') != NULL ){
+     FILENAME_TO_PREFIX(headname,prefix) ;
+     THD_init_diskptr_names( dkptr, dirname,NULL,prefix , view_type , True ) ;
+   } else {
+     if( headname != NULL ) MCW_strncpy(prefix,headname,THD_MAX_NAME) ;
+     THD_init_diskptr_names( dkptr, dirname,NULL,prefix , view_type , True ) ;
+   }
 
    /*-- determine if the BRIK file exists --*/
 
+   STATUS("checking if .BRIK file exists") ;
+
    brick_ccode = COMPRESS_filecode(dkptr->brick_name) ;
-   if( brick_ccode != COMPRESS_NOFILE ){
-     dkptr->storage_mode = STORAGE_BY_BRICK ;
-   }
+   if( brick_ccode != COMPRESS_NOFILE )
+     dkptr->storage_mode = STORAGE_BY_BRICK ;  /* a .BRIK file */
 
    /*-- if VOLUME_FILENAMES attribute exists, make it so [20 Jun 2002] --*/
 
-   if( dkptr->storage_mode == STORAGE_UNDEFINED ){
+   if( headname != NULL && dkptr->storage_mode == STORAGE_UNDEFINED ){
      atr_labs = THD_find_string_atr(dblk,"VOLUME_FILENAMES") ;
      if( atr_labs != NULL ){
        dkptr->storage_mode = STORAGE_BY_VOLUMES ;
-       dblk->malloc_type = DATABLOCK_MEM_MALLOC ;
+       dblk->malloc_type   = DATABLOCK_MEM_MALLOC ;
      }
    }
 
@@ -201,7 +268,7 @@ ENTRY("THD_init_one_datablock") ;
 
    if( !THD_datum_constant(dblk) ){ /* 15 Sep 2004 */
      fprintf(stderr,
-             "\n** WARNING: File %s has mixed-type sub-bricks.",headname);
+             "\n** WARNING: File %s has mixed-type sub-bricks. ", MYHEAD ) ;
    }
 
    /* 25 April 1998: check if the byte order is stored inside */
@@ -209,25 +276,25 @@ ENTRY("THD_init_one_datablock") ;
    atr_labs = THD_find_string_atr( dblk , ATRNAME_BYTEORDER ) ;
    if( atr_labs != NULL && atr_labs->nch > 0 ){
 
-      if( strncmp(atr_labs->ch,LSB_FIRST_STRING,ORDER_LEN) == 0 )
-         dkptr->byte_order = LSB_FIRST ;
-      else if( strncmp(atr_labs->ch,MSB_FIRST_STRING,ORDER_LEN) == 0 )
-         dkptr->byte_order = MSB_FIRST ;
-      else
-         fprintf(stderr,"*** Unknown %s found in dataset %s\n",
-                 ATRNAME_BYTEORDER , headname ) ;
+     if( strncmp(atr_labs->ch,LSB_FIRST_STRING,ORDER_LEN) == 0 )
+       dkptr->byte_order = LSB_FIRST ;
+     else if( strncmp(atr_labs->ch,MSB_FIRST_STRING,ORDER_LEN) == 0 )
+       dkptr->byte_order = MSB_FIRST ;
+     else
+       fprintf(stderr,"*** Unknown %s found in dataset %s\n",
+               ATRNAME_BYTEORDER , MYHEAD ) ;
 
    } else if( !no_ordwarn &&
               DBLK_BRICK_TYPE(dblk,0) != MRI_byte ){ /* 20 Sep 1999 */
 
-      static int first=1 ;
-      if( first ){
-         fprintf(stderr,
-           "\n*** The situation below can be rectified with program '3drefit -byteorder':\n");
-         first = 0 ;
-      }
-      fprintf(stderr,"*** Dataset %s: assuming byteorder %s\n",
-              headname , BYTE_ORDER_STRING(dkptr->byte_order)  ) ;
+     static int first=1 ;
+     if( first ){
+       fprintf(stderr,
+         "\n*** The situation below can be rectified with program '3drefit -byteorder':\n");
+       first = 0 ;
+     }
+     fprintf(stderr," ** Dataset %s: assuming byteorder %s\n",
+             MYHEAD , BYTE_ORDER_STRING(dkptr->byte_order)  ) ;
    }
 
    /* if the data is not on disk, the flag remains at DATABLOCK_MEM_UNDEFINED,
@@ -235,19 +302,20 @@ ENTRY("THD_init_one_datablock") ;
 
    if( dkptr->storage_mode == STORAGE_BY_BRICK ){
 #if MMAP_THRESHOLD > 0
-      dblk->malloc_type = (dblk->total_bytes > MMAP_THRESHOLD)
-                          ? DATABLOCK_MEM_MMAP : DATABLOCK_MEM_MALLOC ;
+     dblk->malloc_type = (dblk->total_bytes > MMAP_THRESHOLD)
+                         ? DATABLOCK_MEM_MMAP : DATABLOCK_MEM_MALLOC ;
+     DBLK_mmapfix(dblk) ;  /* 18 Mar 2005 */
 #else
-      dblk->malloc_type = DATABLOCK_MEM_MALLOC ;
+     dblk->malloc_type = DATABLOCK_MEM_MALLOC ;
 #endif
 
-      /* must be malloc-ed if:
-            data is compressed,
-            data is not in native byte order, or
-            user explicity forbids use of mmap   */
+     /* must be malloc-ed if:
+           data is compressed,
+           data is not in native byte order, or
+           user explicity forbids use of mmap   */
 
-      if( brick_ccode >= 0 || dkptr->byte_order != native_order || no_mmap )
-         dblk->malloc_type = DATABLOCK_MEM_MALLOC ;
+     if( brick_ccode >= 0 || dkptr->byte_order != native_order || no_mmap )
+        dblk->malloc_type = DATABLOCK_MEM_MALLOC ;
    }
 
    /* 30 Nov 1997: create the labels for sub-bricks */
@@ -257,25 +325,25 @@ ENTRY("THD_init_one_datablock") ;
    atr_labs = THD_find_string_atr( dblk , ATRNAME_BRICK_LABS ) ;
 
    if( atr_labs != NULL && atr_labs->nch > 0 ){  /* create labels from attribute */
-      int ipos = -1 , ipold , ngood ;
+     int ipos = -1 , ipold , ngood ;
 
-      for( ibr=0 ; ibr < nvals ; ibr++ ){  /* loop over bricks */
+     for( ibr=0 ; ibr < nvals ; ibr++ ){  /* loop over bricks */
 
-         for( ipold = ipos++ ;                                     /* skip to */
-              ipos < atr_labs->nch && atr_labs->ch[ipos] != '\0' ; /* next \0 */
-              ipos++ ) /* nada */ ;                                /* or end. */
+       for( ipold = ipos++ ;                                     /* skip to */
+            ipos < atr_labs->nch && atr_labs->ch[ipos] != '\0' ; /* next \0 */
+            ipos++ ) /* nada */ ;                                /* or end. */
 
-         ngood = ipos - ipold - 1 ;                   /* number of good chars */
-         if( ngood > 0 ){
-            XtFree(dblk->brick_lab[ibr]) ;
-            if( ngood > 32 ) ngood = 32 ;      /* 02 Sep 2004 */
-            dblk->brick_lab[ibr] = (char *) XtMalloc(sizeof(char)*(ngood+2)) ;
-            memcpy( dblk->brick_lab[ibr] , atr_labs->ch+(ipold+1) , ngood ) ;
-            dblk->brick_lab[ibr][ngood] = '\0' ;
-         }
+       ngood = ipos - ipold - 1 ;                   /* number of good chars */
+       if( ngood > 0 ){
+         XtFree(dblk->brick_lab[ibr]) ;
+         if( ngood > 32 ) ngood = 32 ;      /* 02 Sep 2004 */
+         dblk->brick_lab[ibr] = (char *) XtMalloc(sizeof(char)*(ngood+2)) ;
+         memcpy( dblk->brick_lab[ibr] , atr_labs->ch+(ipold+1) , ngood ) ;
+         dblk->brick_lab[ibr][ngood] = '\0' ;
+       }
 
-         if( ipos >= atr_labs->nch ) break ;  /* nothing more to do */
-      } /* end of loop over sub-bricks */
+        if( ipos >= atr_labs->nch ) break ;  /* nothing more to do */
+     } /* end of loop over sub-bricks */
    }
 
    /* create the keywords for sub-bricks */
@@ -285,49 +353,59 @@ ENTRY("THD_init_one_datablock") ;
    atr_labs = THD_find_string_atr( dblk , ATRNAME_BRICK_KEYWORDS ) ;
 
    if( atr_labs != NULL && atr_labs->nch > 0 ){  /* create keywords from attribute */
-      int ipos = -1 , ipold , ngood ;
+     int ipos = -1 , ipold , ngood ;
 
-      for( ibr=0 ; ibr < nvals ; ibr++ ){  /* loop over bricks */
+     for( ibr=0 ; ibr < nvals ; ibr++ ){  /* loop over bricks */
 
-         for( ipold = ipos++ ;                                     /* skip to */
-              ipos < atr_labs->nch && atr_labs->ch[ipos] != '\0' ; /* next \0 */
-              ipos++ ) /* nada */ ;                                /* or end. */
+       for( ipold = ipos++ ;                                     /* skip to */
+            ipos < atr_labs->nch && atr_labs->ch[ipos] != '\0' ; /* next \0 */
+            ipos++ ) /* nada */ ;                                /* or end. */
 
-         ngood = ipos - ipold - 1 ;                   /* number of good chars */
-         if( ngood > 0 ){
-            XtFree(dblk->brick_keywords[ibr]) ;
-            dblk->brick_keywords[ibr] = (char *) XtMalloc(sizeof(char)*(ngood+2)) ;
-            memcpy( dblk->brick_keywords[ibr] , atr_labs->ch+(ipold+1) , ngood ) ;
-            dblk->brick_keywords[ibr][ngood] = '\0' ;
-         }
+       ngood = ipos - ipold - 1 ;                   /* number of good chars */
+       if( ngood > 0 ){
+         XtFree(dblk->brick_keywords[ibr]) ;
+         dblk->brick_keywords[ibr] = (char *) XtMalloc(sizeof(char)*(ngood+2)) ;
+         memcpy( dblk->brick_keywords[ibr] , atr_labs->ch+(ipold+1) , ngood ) ;
+         dblk->brick_keywords[ibr][ngood] = '\0' ;
+       }
 
-         if( ipos >= atr_labs->nch ) break ;  /* nothing more to do */
-      } /* end of loop over sub-bricks */
+       if( ipos >= atr_labs->nch ) break ;  /* nothing more to do */
+     } /* end of loop over sub-bricks */
    }
 
    /* create the auxiliary statistics stuff for each brick, if present */
 
    atr_flt = THD_find_float_atr( dblk , ATRNAME_BRICK_STATAUX ) ;
    if( atr_flt != NULL && atr_flt->nfl >= 3 ){
-      int ipos=0 , iv,nv,jv ;
+     int ipos=0 , iv,nv,jv ;
 
-      /* attribute stores all stataux stuff as follows:
-           sub-brick-index  statcode  no.-of-values value ... value
-           sub-brick-index  statcode  no.-of-values value ... value, etc. */
+     /* attribute stores all stataux stuff as follows:
+          sub-brick-index  statcode  no.-of-values value ... value
+          sub-brick-index  statcode  no.-of-values value ... value, etc. */
 
-      while( ipos <= atr_flt->nfl - 3 ){
-         iv = (int) ( atr_flt->fl[ipos++] ) ;  /* which sub-brick */
-         jv = (int) ( atr_flt->fl[ipos++] ) ;  /* statcode */
-         nv = (int) ( atr_flt->fl[ipos++] ) ;  /* # of values that follow */
+     while( ipos <= atr_flt->nfl - 3 ){
+       iv = (int) ( atr_flt->fl[ipos++] ) ;  /* which sub-brick */
+       jv = (int) ( atr_flt->fl[ipos++] ) ;  /* statcode */
+       nv = (int) ( atr_flt->fl[ipos++] ) ;  /* # of values that follow */
 
-         if( nv > atr_flt->nfl - ipos ) nv = atr_flt->nfl - ipos ;
+       if( nv > atr_flt->nfl - ipos ) nv = atr_flt->nfl - ipos ;
 
-         THD_store_datablock_stataux( dblk , iv , jv , nv , atr_flt->fl + ipos ) ;
-         ipos += nv ;
-      }
+       THD_store_datablock_stataux( dblk , iv , jv , nv , atr_flt->fl + ipos ) ;
+       ipos += nv ;
+     }
    }
 
-   RETURN( dblk ) ;
+#if 0
+   if( PRINT_TRACING ){
+     char str[256] ;
+     sprintf(str,"rank=%d nvals=%d dim[0]=%d dim[1]=%d dim[2]=%d",
+             dkptr->rank , dkptr->nvals ,
+             dkptr->dimsizes[0] , dkptr->dimsizes[1] , dkptr->dimsizes[2] ) ;
+     STATUS(str) ;
+   }
+#endif
+
+   RETURN(1) ;
 }
 
 /*----------------------------------------------------------------

@@ -122,7 +122,7 @@ int SUMA_isSelfIntersect(SUMA_SurfaceObject *SO, int StopAt)
    float *NodePos = NULL, *p1=NULL, *p2=NULL, *p3 = NULL, p[3], *ep1=NULL, *ep2=NULL;
    int hit = 0, k, t1, t2, it, it3, n1, n2, n3;
    SUMA_MT_INTERSECT_TRIANGLE *MTI = NULL;
-   SUMA_Boolean LocalHead = YUP;
+   SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
    
@@ -258,6 +258,7 @@ int SUMA_VoxelNeighbors (int ijk, int ni, int nj, int nk, SUMA_VOX_NEIGHB_TYPES 
    \param nk (int) number of voxels in the k direction
    \param N_in (int *) to contain the number of voxels inside the mask
    \parm usethisisin (byte *)store results in this mask vector rather than allocate for a new one.
+   \param fillhole (int) fills small holes, intended to correct for volume masks created from surfaces with minor intersections
    \return isin (byte *) a nvox x 1 vector containing:
       0: for voxels outside mask
       1: for voxels inside mask
@@ -271,7 +272,7 @@ byte *SUMA_FillToVoxelMask(byte *ijkmask, int ijkseed, int ni, int nj, int nk, i
    DListElmt *dothiselm=NULL;
    int dothisvoxel, itmp;
    int nl[50], N_n, in ,neighb, nijk, i, j, k, nij;
-   SUMA_Boolean LocalHead = YUP;
+   SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
    
@@ -340,6 +341,7 @@ byte *SUMA_FillToVoxelMask(byte *ijkmask, int ijkseed, int ni, int nj, int nk, i
    if (visited) SUMA_free(visited); visited = NULL;
    if (candlist) { dlist_destroy(candlist); SUMA_free(candlist); candlist  = NULL; }
 
+   
    SUMA_RETURN(isin);
 }
 
@@ -2124,6 +2126,8 @@ SUMA_Boolean SUMA_Taubin_Smooth_Coef (float k, float *l, float *m)
                         Either way, you are responsible for freeing memory pointed to by fout.
                         DO NOT PASS fout_user = fin 
    \param cs (SUMA_COMM_STRUCT *) See SUMA_Chung_Smooth
+   \param nmask (byte *) NULL == filter all nodes 
+                         else filter node n if nmask[n]
    \return fout (float *) A pointer to the smoothed data (vpn * SO->N_Node values). 
                         You will have to free the memory allocated for fout yourself.
                         
@@ -2133,12 +2137,13 @@ SUMA_Boolean SUMA_Taubin_Smooth_Coef (float k, float *l, float *m)
 float * SUMA_Taubin_Smooth (SUMA_SurfaceObject *SO, float **wgt, 
                             float lambda, float mu, float *fin_orig, 
                             int N_iter, int vpn, SUMA_INDEXING_ORDER d_order,
-                            float *fout_final_user, SUMA_COMM_STRUCT *cs)
+                            float *fout_final_user, SUMA_COMM_STRUCT *cs, 
+                            byte *nmask)
 {
    static char FuncName[]={"SUMA_Taubin_Smooth"};
    float *fout_final=NULL, *fbuf=NULL, *fin=NULL, *fout=NULL, *fin_next=NULL, *ftmp=NULL;
    float fp, dfp, fpj;
-   int i, n , k, j, niter, vnk, n_offset; 
+   int i, n , k, j, niter, vnk, n_offset, DoThis; 
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
@@ -2226,20 +2231,26 @@ float * SUMA_Taubin_Smooth (SUMA_SurfaceObject *SO, float **wgt,
             for (k=0; k < vpn; ++k) {
                n_offset = k * SO->N_Node;  /* offset of kth node value in fin */
                for (n=0; n < SO->N_Node; ++n) {
+                  DoThis = 1;
+                  if (nmask && !nmask[n]) DoThis = 0;
                   vnk = n+n_offset; 
-                  fp = fin[vnk]; /* kth value at node n */
-                  dfp = 0.0;
-                  for (j=0; j < SO->FN->N_Neighb[n]; ++j) { /* calculating the laplacian */
-                     fpj = fin[SO->FN->FirstNeighb[n][j]+n_offset]; /* value at jth neighbor of n */
-                     if (wgt) dfp += wgt[n][j] * (fpj - fp); 
-                     else dfp += (fpj - fp); /* will apply equal weight later */
-                  }/* for j*/
-                  if (niter%2) { /* odd */
-                     if (wgt) fout[vnk] = fin[vnk] + mu * dfp;
-                     else fout[vnk] = fin[vnk] + mu * dfp / (float)SO->FN->N_Neighb[n];   /* apply equal weight factor here */
-                  }else{ /* even */
-                    if (wgt) fout[vnk] = fin[vnk] + lambda * dfp;
-                    else fout[vnk] = fin[vnk] + lambda * dfp / (float)SO->FN->N_Neighb[n];  /* apply equal weight factor here */
+                  if (DoThis) {
+                     fp = fin[vnk]; /* kth value at node n */
+                     dfp = 0.0;
+                     for (j=0; j < SO->FN->N_Neighb[n]; ++j) { /* calculating the laplacian */
+                        fpj = fin[SO->FN->FirstNeighb[n][j]+n_offset]; /* value at jth neighbor of n */
+                        if (wgt) dfp += wgt[n][j] * (fpj - fp); 
+                        else dfp += (fpj - fp); /* will apply equal weight later */
+                     }/* for j*/
+                     if (niter%2) { /* odd */
+                        if (wgt) fout[vnk] = fin[vnk] + mu * dfp;
+                        else fout[vnk] = fin[vnk] + mu * dfp / (float)SO->FN->N_Neighb[n];   /* apply equal weight factor here */
+                     }else{ /* even */
+                       if (wgt) fout[vnk] = fin[vnk] + lambda * dfp;
+                       else fout[vnk] = fin[vnk] + lambda * dfp / (float)SO->FN->N_Neighb[n];  /* apply equal weight factor here */
+                     }
+                  } else {
+                     fout[vnk] = fin[vnk];
                   }      
                }/* for n */   
             }/* for k */
@@ -2275,22 +2286,28 @@ float * SUMA_Taubin_Smooth (SUMA_SurfaceObject *SO, float **wgt,
                fin_next = fbuf; /* in the next iteration, the input is from the buffer */
             }
             for (n=0; n < SO->N_Node; ++n) {
+               DoThis = 1;
+               if (nmask && !nmask[n]) DoThis = 0;
                vnk = n * vpn; /* index of 1st value at node n */
                for (k=0; k < vpn; ++k) {
-                  fp = fin[vnk]; /* kth value at node n */
-                  dfp = 0.0;
-                  for (j=0; j < SO->FN->N_Neighb[n]; ++j) { /* calculating the laplacian */
-                     fpj = fin[SO->FN->FirstNeighb[n][j]*vpn+k]; /* value at jth neighbor of n */
-                     if (wgt) dfp += wgt[n][j] * (fpj - fp); 
-                     else dfp += (fpj - fp); /* will apply equal weight later */
-                  }/* for j*/
-                  if (niter%2) { /* odd */
-                     if (wgt) fout[vnk] = fin[vnk] + mu * dfp;
-                     else fout[vnk] = fin[vnk] + mu * dfp / (float)SO->FN->N_Neighb[n];   /* apply equal weight factor here */
-                  }else{ /* even */
-                    if (wgt) fout[vnk] = fin[vnk] + lambda * dfp;
-                    else fout[vnk] = fin[vnk] + lambda * dfp / (float)SO->FN->N_Neighb[n];  /* apply equal weight factor here */
-                  }
+                  if (DoThis) {
+                     fp = fin[vnk]; /* kth value at node n */
+                     dfp = 0.0;
+                     for (j=0; j < SO->FN->N_Neighb[n]; ++j) { /* calculating the laplacian */
+                        fpj = fin[SO->FN->FirstNeighb[n][j]*vpn+k]; /* value at jth neighbor of n */
+                        if (wgt) dfp += wgt[n][j] * (fpj - fp); 
+                        else dfp += (fpj - fp); /* will apply equal weight later */
+                     }/* for j*/
+                     if (niter%2) { /* odd */
+                        if (wgt) fout[vnk] = fin[vnk] + mu * dfp;
+                        else fout[vnk] = fin[vnk] + mu * dfp / (float)SO->FN->N_Neighb[n];   /* apply equal weight factor here */
+                     }else{ /* even */
+                       if (wgt) fout[vnk] = fin[vnk] + lambda * dfp;
+                       else fout[vnk] = fin[vnk] + lambda * dfp / (float)SO->FN->N_Neighb[n];  /* apply equal weight factor here */
+                     }
+                  } else {
+                     fout[vnk] = fin[vnk];
+                  } 
                   ++vnk; /* index of next value at node n */
                } /* for k */
             }/* for n */
@@ -4737,7 +4754,7 @@ int main (int argc,char *argv[])
             dsmooth = SUMA_Taubin_Smooth (SO, NULL, 
                             Opt->l, Opt->m, SO->NodeList, 
                             Opt->N_iter, 3, d_order,
-                            NULL, cs); 
+                            NULL, cs, NULL); 
 
             if (LocalHead) {
                etime_GetOffset = SUMA_etime(&start_time,1);

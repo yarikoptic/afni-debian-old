@@ -5363,3 +5363,36 @@
 
 08 Mar 2005
  * Including retroicor stuff from Fred Tam.
+
+09 Mar 2005
+ * New functions to (a) write dataset struct stuff into attributes (moved
+     out of THD_write_dataset and THD_write_datablock); to (b) convert
+     dataset attributes to/from a NIML group; to (c) populate datablock
+     from attributes, rather than do so on-the-fly as they are read in.
+
+11 Mar 2005
+ * Fixed up the NIML-ization of datasets, and their transmission into
+     AFNI.
+
+18 Mar 2005
+ * Finished up NIML bulk transfer of datasets to AFNI, etc.
+
+21 Mar 2005
+ * Edgize the overlay.
+
+22 Mar 2005
+ * mean(), stdev(), and sem() for parser and 3dcalc.
+ * Modify Ziad's plugout_drive.c '-com' option to execute commands in
+     order given, rather than the reverse order.
+ * Fix REDISPLAY in afni_driver.c (oopsie).
+ * Added '<MRI_IMAGE ...>' input to afni_niml.c, to store as .1D files.
+ * Added '-Dname=val' option to afni.c (set environment variables).
+
+28 Mar 2005
+ * Changes to the AFNI update script written out in afni_version.c.
+ * Modified total_bytes field in datablock structure to be int64_t rather
+     than int, to better deal with huge datasets.  Modified a lot of places
+     that refer to this field, especially places dealing with reading and
+     writing datasets.
+ * Modified thd_loaddblk.c to auto-load brick statistics for non-AFNI
+     datasets.

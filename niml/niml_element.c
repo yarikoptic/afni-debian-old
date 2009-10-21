@@ -2,7 +2,6 @@
 
 /*-----------------------------------------------------------------------*/
 /*! Construct an empty data element from a header.
-
     - The data vectors will have space allocated, but they will be
       filled with all zero bytes.
     - If the header was "empty" (ended in "/>"), then no vectors will
@@ -188,7 +187,6 @@ NI_dpr("ENTER make_empty_data_element\n") ;
 
 /*-------------------------------------------------------------------------*/
 /*! Make an empty group element from parsed header info.
-
     The attributes in the header are assigned to the group, and the group
     parts are initialized to nothing.
 ---------------------------------------------------------------------------*/
@@ -244,19 +242,22 @@ int NI_type_size( int tval )
 /*-----------------------------------------------------------------------*/
 /*! Return the type of something that points to a NI element.
 
-    - The input should be a pointer to a NI_element or a NI_group.
-    - The return value is NI_ELEMENT_TYPE, NI_GROUP_TYPE, or -1.
+    - The input should be point to a NI_element, NI_group, or NI_procins.
+    - The return value is NI_ELEMENT_TYPE, NI_GROUP_TYPE, NI_PROCINS_TYPE,
+      or -1 if the type is anything else or unknowable.
 -------------------------------------------------------------------------*/
 
 int NI_element_type( void *nini )
 {
    NI_element *nel = (NI_element *) nini ;
    NI_group   *ngr = (NI_group *)   nini ;
+   NI_procins *npi = (NI_procins *) nini ;  /* 16 Mar 2005 */
 
    if( nini == NULL ) return -1 ;
 
    if( nel->type == NI_ELEMENT_TYPE ) return NI_ELEMENT_TYPE ;
    if( ngr->type == NI_GROUP_TYPE   ) return NI_GROUP_TYPE   ;
+   if( npi->type == NI_PROCINS_TYPE ) return NI_PROCINS_TYPE ;
 
    return -1 ;
 }
@@ -274,7 +275,7 @@ void NI_free_element( void *nini )
    /*-- erase contents of data element --*/
 
    if( tt == NI_ELEMENT_TYPE ){
-      NI_element *nel = (NI_element *) nini ;
+      NI_element *nel = (NI_element *)nini ;
 
       NI_free(nel->name) ;
       for( ii=0 ; ii < nel->attr_num ; ii++ ){
@@ -305,7 +306,7 @@ void NI_free_element( void *nini )
    /*-- erase contents of group element --*/
 
    } else if( tt == NI_GROUP_TYPE ){
-      NI_group *ngr = (NI_group *) nini ;
+      NI_group *ngr = (NI_group *)nini ;
 
       for( ii=0 ; ii < ngr->attr_num ; ii++ ){
         NI_free( ngr->attr_lhs[ii] ) ;
@@ -323,6 +324,21 @@ void NI_free_element( void *nini )
       NI_free( ngr->part ) ;
       NI_free( ngr->name ) ;    /* 03 Jun 2002 */
       NI_free( ngr ) ;
+
+   /*-- erase contents of processing instruction --*/
+
+   } else if( tt == NI_PROCINS_TYPE ){
+      NI_procins *npi = (NI_procins *)nini ;
+
+      for( ii=0 ; ii < npi->attr_num ; ii++ ){
+        NI_free( npi->attr_lhs[ii] ) ;
+        NI_free( npi->attr_rhs[ii] ) ;
+      }
+      NI_free( npi->attr_lhs ) ;
+      NI_free( npi->attr_rhs ) ;
+
+      NI_free( npi->name ) ;    /* 03 Jun 2002 */
+      NI_free( npi ) ;
    }
 
    return ;
@@ -606,6 +622,26 @@ void NI_set_attribute( void *nini , char *attname , char *attvalue )
 
       ngr->attr_lhs[nn] = NI_strdup(attname) ;
       ngr->attr_rhs[nn] = NI_strdup(attvalue);
+
+   /* input is a processing instruction */
+
+   } else if( tt == NI_PROCINS_TYPE ){
+      NI_procins *npi = (NI_procins *) nini ;
+
+      for( nn=0 ; nn < npi->attr_num ; nn++ )
+         if( strcmp(npi->attr_lhs[nn],attname) == 0 ) break ;
+
+      if( nn == npi->attr_num ){
+        npi->attr_lhs = NI_realloc( npi->attr_lhs , char*, sizeof(char *)*(nn+1) ) ;
+        npi->attr_rhs = NI_realloc( npi->attr_rhs , char*, sizeof(char *)*(nn+1) ) ;
+        npi->attr_num = nn+1 ;
+      } else {
+        NI_free(npi->attr_lhs[nn]) ;
+        NI_free(npi->attr_rhs[nn]) ;
+      }
+
+      npi->attr_lhs[nn] = NI_strdup(attname) ;
+      npi->attr_rhs[nn] = NI_strdup(attvalue);
    }
 
    return ;
@@ -654,6 +690,20 @@ char * NI_get_attribute( void *nini , char *attname )
       if( ngr->attr_rhs[nn] == NULL ) return zorkon ;
 
       return ngr->attr_rhs[nn] ;
+
+   /* input is a processing instruction */
+
+   } else if( tt == NI_PROCINS_TYPE ){
+      NI_procins *npi = (NI_procins *) nini ;
+
+      for( nn=0 ; nn < npi->attr_num ; nn++ )
+         if( strcmp(npi->attr_lhs[nn],attname) == 0 ) break ;
+
+      if( nn == npi->attr_num ) return NULL ;
+
+      if( npi->attr_rhs[nn] == NULL ) return zorkon ;
+
+      return npi->attr_rhs[nn] ;
    }
 
    return NULL ; /* should never be reached */
@@ -754,6 +804,26 @@ void NI_set_axes( NI_element *nel , char **ax )
    for( ii=0 ; ii < nel->vec_rank ; ii++ )
       nel->vec_axis_label[ii] = NI_strdup( ax[ii] ) ;
    return ;
+}
+
+/*-----------------------------------------------------------------------*/
+/*! Create a new processing instruction with a given 'target' name.
+-------------------------------------------------------------------------*/
+
+NI_procins * NI_new_processing_instruction( char *name )
+{
+   NI_procins *npi ;
+
+   if( name == NULL || name[0] == '\0' ) return NULL ;
+
+   npi = NI_malloc(NI_procins,sizeof(NI_procins)) ;
+
+   npi->type = NI_PROCINS_TYPE ;
+
+   npi->attr_num = 0 ;
+   npi->attr_lhs = npi->attr_rhs = NULL ;
+
+   return npi ;
 }
 
 /*-----------------------------------------------------------------------*/

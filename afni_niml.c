@@ -38,15 +38,15 @@
 
 /*---------------------------------------*/
 /*! Number of streams on which to listen */
-#define NUM_NIML   1
+#define NUM_NIML   2                        /* 09 Mar 2005: increased to 2 */
 
 /*--------------------------------------*/
 /*! Array of streams on which to listen */
 
 static NI_stream_type *ns_listen[NUM_NIML] ;
 
-/*------------------------*/
-/*! Array of stream names */
+/*--------------------------------*/
+/*! Array of stream names to open */
 
 static char ns_name[NUM_NIML][64] ;
 
@@ -91,13 +91,30 @@ static int dont_hear_suma = 0 ;
 
 static int g_show_as_popup = 0 ;     /* 04 Jan 2005 [rickr] */
 
+#undef  SHOW_MESSAGE
+
+/*! Show a string as popup or just to stderr. [10 May 2005] */
+
+#define SHOW_MESSAGE(mmm)                                      \
+ do{      if( g_show_as_popup == 1 ) AFNI_popup_message(mmm);  \
+     else if( g_show_as_popup == 0 ) fputs(mmm,stderr) ;      } while(0)
+
 /*-------------------------*/
 
 #ifndef SUMA_TCP_PORT
 #define SUMA_TCP_PORT 53211
 #endif
 
-#define EPS 0.01
+/*-----------------------------------------------------*/
+/* Stuff for an extra NIML port for non-SUMA programs. */
+
+#ifndef NIML_TCP_FIRST_PORT
+#define NIML_TCP_FIRST_PORT 53212
+#endif
+
+/*-----------------------------------------------------*/
+
+#define EPS 0.01  /* threshold for coordinate changes */
 
 /*--------------------------------------------------------*/
 /*! local structure types for organizing surfaces and LDPs */
@@ -162,6 +179,16 @@ static int     slist_check_user_surfs(ldp_surf_list * lsurf, int * surfs,
 static int     slist_surfs_for_ldp(ldp_surf_list * lsurf, int * surfs, int max,
                                    THD_session * sess, int debug);
 
+/*----------------------------------------------------------------------*/
+/* Functions for receiving an AFNI dataset from NIML elements.
+ * 10 Mar 2005 - RWCox
+------------------------------------------------------------------------*/
+
+static void    process_NIML_AFNI_dataset   ( NI_group *   , int ) ;
+static void    process_NIML_AFNI_volumedata( void *       , int ) ;
+static void    process_NIML_MRI_IMAGE      ( NI_element * , int ) ;
+
+/************************************************************************/
 
 /*-----------------------------------------------------------------------*/
 /*! Routine executed at AFNI exit: shutdown all open NI_stream.
@@ -182,7 +209,7 @@ STATUS("called AFNI_niml_atexit") ;
 
 void AFNI_init_niml( void )
 {
-   int cc ;
+   int cc , ii ;
 
 ENTRY("AFNI_init_niml") ;
 
@@ -203,6 +230,13 @@ ENTRY("AFNI_init_niml") ;
    cc = GLOBAL_argopt.port_niml ;
    if( cc < 1024 || cc > 65535 ) cc = SUMA_TCP_PORT ;
    sprintf( ns_name[0] , "tcp:host:%d" , cc ) ;
+
+   /* 09 Mar 2005: add extra ports */
+
+   cc = AFNI_numenv( "AFNI_NIML_FIRST_PORT" ) ;
+   if( cc < 1024 || cc > 65535 ) cc = NIML_TCP_FIRST_PORT ;
+   for( ii=1 ; ii < NUM_NIML ; ii++ )
+     sprintf( ns_name[ii] , "tcp:host:%d" , (cc+ii-1) ) ;
 
    /* initialize all receive keys (cf. afni_receive.c) */
 
@@ -239,7 +273,9 @@ ENTRY("AFNI_init_niml") ;
    NI_register_doer( "DRIVE_AFNI" , AFNI_niml_driver ) ;
 
    /* 04 Jan 2005 [rickr]: check for AFNI_SHOW_SURF_POPUPS */
-   if( AFNI_yesenv("AFNI_SHOW_SURF_POPUPS") ) g_show_as_popup = 1 ;
+
+        if( AFNI_yesenv("AFNI_SHOW_SURF_POPUPS") ) g_show_as_popup =  1 ;
+   else if( AFNI_yesenv("AFNI_KILL_SURF_POPUPS") ) g_show_as_popup = -1 ;
 
    /* and we're off to see the wizard */
 
@@ -288,6 +324,7 @@ static Boolean AFNI_niml_workproc( XtPointer elvis )
    int cc , nn , ct , ngood=0 ;
    void *nini ;
    char str[512] ;
+   int keep_reading , read_msec ; /* 17 Mar 2005 */
 
 ENTRY("AFNI_niml_workproc") ;
 
@@ -295,16 +332,20 @@ ENTRY("AFNI_niml_workproc") ;
 
    for( cc=0 ; cc < NUM_NIML ; cc++ ){
 
+     keep_reading = 0 ;  /* 17 Mar 2005 */
+
      /* open streams that aren't open */
 
      if( ns_listen[cc] == NULL && (ns_flags[cc]&FLAG_SKIP)==0 ){
-if(PRINT_TRACING){
-  sprintf(str,"call NI_stream_open('%s')",ns_name[cc]) ;
-  STATUS(str) ;
-}
+       if(PRINT_TRACING){
+         sprintf(str,"call NI_stream_open('%s')",ns_name[cc]) ;
+         STATUS(str) ;
+       }
+
        ns_listen[cc] = NI_stream_open( ns_name[cc] , "r" ) ;
+
        if( ns_listen[cc] == NULL ){
-STATUS("NI_stream_open failed") ;
+         STATUS("NI_stream_open failed") ;
          ns_flags[cc] = FLAG_SKIP ; continue ;
        }
        ns_flags[cc]  = FLAG_WAITING ;
@@ -315,29 +356,38 @@ STATUS("NI_stream_open failed") ;
 
      /* now check if stream has gone bad */
 
-if(PRINT_TRACING){
-  sprintf(str,"call NI_stream_goodcheck('%s')",ns_listen[cc]->orig_name) ;
-  STATUS(str) ;
-}
+     if(PRINT_TRACING){
+       sprintf(str,"call NI_stream_goodcheck('%s')",ns_listen[cc]->orig_name);
+       STATUS(str) ;
+     }
+
+     /* 17 Mar 2005: loopback point if instructed to keep reading */
+
+  Keep_Reading:
+     read_msec = (keep_reading) ? 222 : 1 ;  /* 1/3 of the Beast! */
+
      nn = NI_stream_goodcheck( ns_listen[cc] , 1 ) ;
 
      if( nn < 0 ){                          /* is bad */
-STATUS("NI_stream_goodcheck was unhappy") ;
+       STATUS("NI_stream_goodcheck was unhappy") ;
        fprintf(stderr,"++ NIML connection closed from %s\n",
                 NI_stream_name(ns_listen[cc])               ) ;
 
        NI_stream_closenow( ns_listen[cc] ) ;
-       ns_listen[cc] = NULL ;  /* will reopen next time */
+       ns_listen[cc] = NULL ;  /* will be reopened next time */
+       keep_reading  = 0 ;
        continue ;              /* skip to next stream  */
      }
 
      if( nn == 0 ){
-STATUS("NI_stream_goodcheck was neutral") ;
+       STATUS("NI_stream_goodcheck was neutral") ;
+       keep_reading = 0 ;
        continue ;  /* waiting: skip to next stream */
      }
 
      /* if here, stream is good */
-STATUS("NI_stream_goodcheck was good!") ;
+
+     STATUS("NI_stream_goodcheck was good!") ;
 
      /* if just became good, print a message */
 
@@ -349,30 +399,71 @@ STATUS("NI_stream_goodcheck was good!") ;
 
      /* see if there is any data to be read */
 
-     nn = NI_stream_hasinput( ns_listen[cc] , 1 ) ;
+     nn = NI_stream_hasinput( ns_listen[cc] , read_msec ) ;
 
-     if( nn > 0 ){                                   /* has data!*/
-       ct   = NI_clock_time() ;                      /* start timer */
-       nini = NI_read_element( ns_listen[cc] , 2 ) ; /* read data */
+     if( nn > 0 ){                                           /* has data!*/
+       STATUS("Reading data!") ;
+       ct   = NI_clock_time() ;                           /* start timer */
+       nini = NI_read_element( ns_listen[cc] , read_msec ) ;  /* read it */
 
-       if( nini != NULL ){                           /* handle it */
+       if( nini != NULL ){                                  /* handle it */
          if( serrit ) NIML_to_stderr(nini,0) ;
-         AFNI_process_NIML_data( cc , nini , ct ) ;
+
+         /*--- a processing instruction? ---*/
+
+         if( NI_element_type(nini) == NI_PROCINS_TYPE ){  /* 17 Mar 2005 */
+           NI_procins *npi = (NI_procins *)nini ;
+
+           /* deal with PI's we understand, skip the rest:
+                "keep_reading"  ==> loop back to read again immediately
+                "pause_reading" ==> turn "keep_reading" off
+                "drive_afni"    ==> execute a DRIVE_AFNI command right now */
+
+           if(PRINT_TRACING){
+             char sss[256]; sprintf("Processing instruction: '%s'",npi->name);
+             STATUS(sss) ;
+           }
+           if( strcasecmp(npi->name,"keep_reading") == 0 )
+             keep_reading = 1 ;
+           else if( strcasecmp(npi->name,"pause_reading") == 0 )
+             keep_reading = 0 ;
+           else if( strncasecmp(npi->name,"drive_afni ",11) == 0 ){
+             if( strlen(npi->name) > 13 ) (void) AFNI_driver( npi->name+11 ) ;
+           }
+
+         /*--- actual data (single element or group)? ---*/
+
+         } else {
+
+           STATUS("Actual NIML data!") ;
+           AFNI_process_NIML_data( cc , nini , ct ) ;    /* do something */
+
+         }
+
+         STATUS("Freeing NIML element") ;
+         NI_free_element( nini ) ;                           /* trash it */
        }
 
-       NI_free_element( nini ) ;                     /* trash it */
+     } else keep_reading = 0 ;  /* was no data in the read_msec interval */
+
+     if( keep_reading ){
+       STATUS("Loopback to Keep_Reading") ;
+       goto Keep_Reading ;              /* try to get another input now! */
      }
-   }
+
+   } /* end of loop over input NIML streams */
 
    dont_tell_suma = 0 ;                              /* talk to SUMA */
    dont_overlay_suma = 0 ;
+
+   /* hopefully the following will never happen */
 
    if( ngood == 0 ){
      fprintf(stderr,"++ NIML shutting down: no listening sockets\n") ;
      RETURN( True ) ;
    }
 
-   RETURN( False ) ;
+   RETURN( False ) ;   /* normal return: this function will be called again */
 }
 
 /*----------------------------------------------------------------------*/
@@ -390,13 +481,30 @@ ENTRY("AFNI_process_NIML_data") ;
 
    if( tt < 0 ) EXRETURN ;  /* should never happen */
 
-   /* process elements within a group separately */
+   if( tt == NI_PROCINS_TYPE ) EXRETURN ;   /* 16 Mar 2005 */
+
+   /* we got a group element, so process it */
 
    if( tt == NI_GROUP_TYPE ){
      NI_group *ngr = (NI_group *) nini ;
-     int ii ;
-     for( ii=0 ; ii < ngr->part_num ; ii++ )
-        AFNI_process_NIML_data( chan , ngr->part[ii] , -1 ) ; /* recursion */
+
+     /* 10 Mar 2005: add support for 2 types of groups [RWC] */
+
+     if( strcmp(ngr->name,"AFNI_dataset") == 0 ){
+
+       process_NIML_AFNI_dataset( ngr , ct_start ) ;   /* AFNI dataset header */
+
+     } else if( strcmp(ngr->name,"VOLUME_DATA") == 0 ){
+
+       process_NIML_AFNI_volumedata( ngr , ct_start ) ;    /* AFNI sub-bricks */
+
+     } else {                 /* the old way: we don't know about this group,
+                                 so process the elements within it separately */
+       int ii ;
+       for( ii=0 ; ii < ngr->part_num ; ii++ )
+          AFNI_process_NIML_data( chan , ngr->part[ii] , -1 ) ; /* recursion */
+     }
+
      EXRETURN ;
    }
 
@@ -412,6 +520,7 @@ ENTRY("AFNI_process_NIML_data") ;
 #endif
 
    /* broke out as functions, added node_normals         06 Oct 2004 [rickr] */
+
    if( strcmp(nel->name,"SUMA_ixyz") == 0 ){
 
      process_NIML_SUMA_ixyz(nel, ct_start) ;  /* surface nodes for a dataset */
@@ -432,11 +541,19 @@ ENTRY("AFNI_process_NIML_data") ;
 
      process_NIML_Node_ROI(nel, ct_start) ;         /* ROI drawing from SUMA */
 
+   } else if( strcmp(nel->name,"VOLUME_DATA") == 0 ){         /* 10 Mar 2005 */
+
+     process_NIML_AFNI_volumedata( nel , ct_start ) ;     /* AFNI sub-bricks */
+
+   } else if( strcmp(nel->name,"MRI_IMAGE") == 0 ){           /* 22 Mar 2005 */
+
+     process_NIML_MRI_IMAGE( nel , ct_start ) ;       /* store as a .1D file */
+
    } else {
      /*** If here, then name of element didn't match anything ***/
      sprintf(msg,"*** ERROR:\n\n"
                  " Unknown NIML input: \n"
-                 "  %.222s \n"
+                 "  <%.222s ...> \n"
                  " Ignoring it, and hoping it goes away.\n" ,
                  nel->name) ;
      AFNI_popup_message(msg) ;
@@ -1346,8 +1463,7 @@ ENTRY("process_NIML_SUMA_ixyz");
    }
 #endif
 
-   if( g_show_as_popup ) AFNI_popup_message( msg ) ;
-   else                  fputs(msg, stderr) ;
+   SHOW_MESSAGE(msg) ;
 
    /* need to make the "Control Surface"
       widgets know about this extra surface */
@@ -1508,8 +1624,7 @@ ENTRY("process_NIML_SUMA_ijk");
                             "  I/O time = %4d ms, Processing = %4d ms\n" ,
                             ct_read , ct_tot-ct_read ) ;
 
-   if( g_show_as_popup ) AFNI_popup_message( msg ) ;
-   else                  fputs(msg, stderr) ;
+   SHOW_MESSAGE(msg) ;
 
    dont_tell_suma = 1 ;
    PLUTO_dset_redisplay( dset ) ;  /* redisplay windows with this dataset */
@@ -1666,8 +1781,7 @@ ENTRY("process_NIML_SUMA_node_normals");
                             "  I/O time = %4d ms, Processing = %4d ms\n" ,
                             ct_read , ct_tot-ct_read ) ;
 
-   if( g_show_as_popup ) AFNI_popup_message( msg ) ;
-   else                  fputs(msg, stderr) ;
+   SHOW_MESSAGE(msg) ;
 
    dont_tell_suma = 1 ;
    PLUTO_dset_redisplay( dset ) ;  /* redisplay windows with this dataset */
@@ -1691,9 +1805,9 @@ ENTRY("process_NIML_SUMA_crosshair_xyz");
        nel->vec_num    <  1        ||
        nel->vec_typ[0] != NI_FLOAT   ){
 
-     AFNI_popup_message( "+++ WARNING:\n\n"
-                         " SUMA_crosshair_xyz input \n"
-                         " is badly formatted!\n" );
+     SHOW_MESSAGE( "+++ WARNING:\n\n"
+                   " SUMA_crosshair_xyz input \n"
+                   " is badly formatted!\n" );
      RETURN(1) ;
    }
 
@@ -1735,9 +1849,9 @@ STATUS("received Node_ROI element") ;
        nel->vec_typ[0] != NI_INT   ||
        nel->vec_typ[1] != NI_INT     ){
 
-     AFNI_popup_message( "+++ WARNING:\n\n"
-                         " Node_ROI input \n"
-                         " is badly formatted!\n" );
+     SHOW_MESSAGE( "+++ WARNING:\n\n"
+                   " Node_ROI input \n"
+                   " is badly formatted!\n" );
      RETURN(1) ;
    }
 
@@ -1894,7 +2008,7 @@ STATUS("searching for Node_ROI functional dataset") ;
        sprintf(msg,"+++ NOTICE:\n\n"
                    " Node_ROI command is using existing dataset\n"
                    "  %.222s\n" , DSET_FILECODE(dset_func) ) ;
-       AFNI_popup_message( msg ) ;
+       SHOW_MESSAGE( msg ) ;
      }
      if( find.dset_index >= 0 && find.dset_index != im3d->vinfo->func_num ){
        cbs.ival = find.dset_index ;
@@ -1941,7 +2055,7 @@ STATUS("popping up Node_ROI dataset creation notice") ;
                  " Node_ROI command is creating dataset\n"
                  "  %.222s\n" ,
             DSET_FILECODE(dset_func) ) ;
-     AFNI_popup_message( msg ) ;
+     SHOW_MESSAGE( msg ) ;
 
 STATUS("destroying any pre-existing Node_ROI vvlist") ;
      DESTROY_VVLIST(ag->vv) ; ag->vv = NULL ;
@@ -2008,4 +2122,170 @@ STATUS("redisplay Node_ROI function") ;
    AFNI_process_drawnotice( im3d ) ;
 
    RETURN(0) ;
+}
+
+/*--------------------------------------------------------------------*/
+/*! Construct an AFNI dataset from the group element, and insert it
+    into the current session in lowest open controller if it is a
+    new dataset.  If it has the same idcode as an old dataset, replace
+    that dataset with this one.
+----------------------------------------------------------------------*/
+
+static void process_NIML_AFNI_dataset( NI_group *ngr , int ct_start )
+{
+   Three_D_View *im3d = AFNI_find_open_controller() ;
+   THD_3dim_dataset *dset , *old_dset ;
+   THD_slist_find find ;
+   THD_session *ss ;
+   int ii , vv , ww ;
+
+   int ct_read = 0, ct_tot = 0 ;
+   char msg[1024] ;
+
+ENTRY("process_NIML_AFNI_dataset") ;
+
+   if( ct_start >= 0 ) ct_read = NI_clock_time() - ct_start ;
+
+   /* convert the group element contents into a dataset */
+
+   dset = THD_niml_to_dataset( ngr , 1 ) ;  /* 1 ==> don't load sub-bricks */
+   if( dset == NULL ){
+     AFNI_popup_message("\n*** ERROR:\n"
+                        " Received bad '<AFNI_dataset ...>'\n"
+                        " Discarding data and continuing.\n"  ) ;
+     EXRETURN ;
+   }
+
+   /* now see if this dataset idcode is already stored in AFNI somewhere */
+
+   find = PLUTO_dset_finder( dset->idcode.str ) ; old_dset = find.dset ;
+
+   if( old_dset == NULL ){     /********* this is a new dataset *************/
+
+     ss = GLOBAL_library.sslist->ssar[im3d->vinfo->sess_num] ;  /* session  */
+     ii = ss->num_dsset ;                                       /* row      */
+     vv = dset->view_type ;                                     /* and view */
+
+     if( ii >= THD_MAX_SESSION_SIZE ){                 /* session overflow! */
+       DSET_delete(dset) ;
+       AFNI_popup_message("\n*** ERROR:\n"
+                          " Received new dataset but am out of space!\n\n" ) ;
+       EXRETURN ;
+     }
+
+     ss->dsset[ii][vv] = dset ;     /*** insert dataset into session here ***/
+     ss->num_dsset++ ;
+     POPDOWN_strlist_chooser ;
+
+   } else {                  /************* have an old dataset *************/
+
+     DSET_delete(dset) ;                             /* delete the new copy */
+     dset = old_dset ;     /* instead, will replace contents of old dataset */
+   }
+
+   DSET_superlock(dset) ;  /*-- make sure will not be purged from memory! --*/
+
+   /* load any data bricks present in the group element */
+
+   (void)THD_add_bricks( dset , ngr ) ;
+   THD_update_statistics( dset ) ;
+
+   /** wrapup **/
+
+   if( ct_start >= 0 )                      /* keep track    */
+     ct_tot = NI_clock_time() - ct_start ;  /* of time spent */
+
+   if( old_dset == NULL )
+     sprintf(msg,"\n+++ NOTICE: New AFNI dataset received.\n\n") ;
+   else
+     sprintf(msg,"\n+++ NOTICE: Replacement AFNI dataset received.\n\n") ;
+
+   if( ct_tot > 0 ) sprintf(msg+strlen(msg),
+                            "  I/O time = %4d ms, Processing = %4d ms\n" ,
+                            ct_read , ct_tot-ct_read ) ;
+   SHOW_MESSAGE( msg ) ;
+   UNDUMMYIZE ;
+   EXRETURN ;
+}
+
+/*--------------------------------------------------------------------*/
+/*! Process a '<VOLUME_DATA ...>' element to add/replace sub-bricks
+    in an AFNI dataset already stored somewhere (identified by
+    the idcode).
+----------------------------------------------------------------------*/
+
+static void process_NIML_AFNI_volumedata( void *nini , int ct_start )
+{
+   char *idc ;
+   THD_slist_find find ;
+
+   int ct_read = 0, ct_tot = 0 ;
+   char msg[1024] ;
+
+ENTRY("process_NIML_AFNI_volumedata") ;
+
+   if( ct_start >= 0 ) ct_read = NI_clock_time() - ct_start ;
+
+                     idc = NI_get_attribute( nini , "AFNI_idcode" ) ;
+   if( idc == NULL ) idc = NI_get_attribute( nini , "self_idcode" ) ;
+   if( idc == NULL ) idc = NI_get_attribute( nini , "idcode"      ) ;
+   if( idc == NULL ) EXRETURN ;
+
+   find = PLUTO_dset_finder(idc) ;
+   if( find.dset == NULL ) EXRETURN ;
+
+   (void)THD_add_bricks( find.dset , nini ) ;
+   THD_update_statistics( find.dset ) ;
+
+   /** wrapup **/
+
+   if( ct_start >= 0 )                      /* keep track    */
+     ct_tot = NI_clock_time() - ct_start ;  /* of time spent */
+
+   sprintf(msg,"\n+++ NOTICE: Replacement AFNI sub-bricks received.\n\n") ;
+
+   if( ct_tot > 0 ) sprintf(msg+strlen(msg),
+                            "  I/O time = %4d ms, Processing = %4d ms\n" ,
+                            ct_read , ct_tot-ct_read ) ;
+   SHOW_MESSAGE( msg ) ;
+   EXRETURN ;
+}
+
+/*--------------------------------------------------------------------*/
+/*! Process a '<MRI_IMAGE ...>' element to add a .1D file to AFNI's
+    library of such things.
+----------------------------------------------------------------------*/
+
+static void process_NIML_MRI_IMAGE( NI_element *nel , int ct_start )
+{
+   MRI_IMAGE *im ;
+
+ENTRY("process_NIML_MRI_IMAGE") ;
+
+   im = niml_to_mri( nel ) ;   /* convert element to an image */
+
+   /* reject bad or overlarge images */
+
+   if( im == NULL ) EXRETURN ;
+   if( im->nx < 2 || im->nz > 1 || im->ny > 99 ){ mri_free(im); EXRETURN; }
+
+   /* convert to float, if needed */
+
+   if( im->kind != MRI_float ){
+     MRI_IMAGE *qim = mri_to_float(im) ;
+     if( qim != NULL ){ mri_free(im); im = qim; }
+   }
+
+   /* make up a name, if none provided */
+
+   if( im->name == NULL || im->name[0] == '\0' ){
+     static int nnn=1 ; char mmm[32] ;
+     sprintf(mmm,"niml_%03d",nnn) ;
+     mri_add_name(mmm,im) ;
+   }
+
+   /* store in AFNI's list, and vamoose */
+
+   AFNI_add_timeseries( im ) ;
+   EXRETURN ;
 }

@@ -47,10 +47,10 @@ static int AFNI_set_func_range         ( char *cmd ) ; /* 21 Jan 2003 */
 static int AFNI_set_func_visible       ( char *cmd ) ; /* 21 Jan 2003 */
 static int AFNI_set_func_resam         ( char *cmd ) ; /* 21 Jan 2003 */
 static int AFNI_sleeper                ( char *cmd ) ; /* 22 Jan 2003 */
-static int AFNI_setenv                 ( char *cmd ) ; /* 22 Jan 2003 */
 static int AFNI_define_colorscale      ( char *cmd ) ; /* 03 Feb 2003 */
 static int AFNI_open_panel             ( char *cmd ) ; /* 05 Feb 2003 */
 static int AFNI_drive_purge_memory     ( char *cmd ) ; /* 09 Dec 2004 */
+static int AFNI_redisplay              ( char *cmd ) ;
 
 /*-----------------------------------------------------------------
   Drive AFNI in various (incomplete) ways.
@@ -73,10 +73,12 @@ static AFNI_driver_pair dpair[] = {
  { "SET_ANATOMY"      , AFNI_drive_switch_anatomy    } ,
  { "SWITCH_ANATOMY"   , AFNI_drive_switch_anatomy    } ,
  { "SWITCH_UNDERLAY"  , AFNI_drive_switch_anatomy    } ,
+ { "SET_UNDERLAY"     , AFNI_drive_switch_anatomy    } ,
 
  { "SET_FUNCTION"     , AFNI_drive_switch_function   } ,
  { "SWITCH_FUNCTION"  , AFNI_drive_switch_function   } ,
  { "SWITCH_OVERLAY"   , AFNI_drive_switch_function   } ,
+ { "SET_OVERLAY"      , AFNI_drive_switch_function   } ,
 
  { "PURGE_MEMORY"     , AFNI_drive_purge_memory      } ,
 
@@ -118,6 +120,9 @@ static AFNI_driver_pair dpair[] = {
  { "DEFINE_COLORSCALE"  , AFNI_define_colorscale       } ,
  { "DEFINE_COLOR_SCALE" , AFNI_define_colorscale       } ,
  { "OPEN_PANEL"         , AFNI_open_panel              } ,
+
+ { "REDISPLAY"          , AFNI_redisplay               } ,
+ { "REDRAW"             , AFNI_redisplay               } ,
 
  { NULL , NULL } } ;
 
@@ -194,6 +199,13 @@ ENTRY("AFNI_drive_purge_memory") ;
    /* find this dataset in current session of this controller */
 
    slf = THD_dset_in_sessionlist( FIND_PREFIX, dname, GLOBAL_library.sslist,-1 );
+
+   if( slf.dset_index < 0 ){   /* 18 Mar 2005 */
+     MCW_idcode idcode ;
+     MCW_strncpy( idcode.str , dname , MCW_IDSIZE ) ;
+     slf = THD_dset_in_sessionlist( FIND_IDCODE, &idcode,
+                                    GLOBAL_library.sslist,-1 );
+   }
 
    if( slf.sess_index >= 0 && slf.dset_index >= 0 ){
      THD_3dim_dataset **dss =
@@ -351,6 +363,12 @@ ENTRY("AFNI_switch_anatomy") ;
 
    slf = THD_dset_in_session( FIND_PREFIX , dname , im3d->ss_now ) ;
 
+   if( slf.dset_index < 0 ){   /* 18 Mar 2005 */
+     MCW_idcode idcode ;
+     MCW_strncpy( idcode.str , dname , MCW_IDSIZE ) ;
+     slf = THD_dset_in_session( FIND_IDCODE , &idcode , im3d->ss_now ) ;
+   }
+
    if( slf.dset_index < 0 ) RETURN(-1) ;
 
    cbs.ival = slf.dset_index ;
@@ -398,6 +416,12 @@ ENTRY("AFNI_switch_function") ;
    /* find this dataset in current session of this controller */
 
    slf = THD_dset_in_session( FIND_PREFIX , dname , im3d->ss_now ) ;
+
+   if( slf.dset_index < 0 ){   /* 18 Mar 2005 */
+     MCW_idcode idcode ;
+     MCW_strncpy( idcode.str , dname , MCW_IDSIZE ) ;
+     slf = THD_dset_in_session( FIND_IDCODE , &idcode , im3d->ss_now ) ;
+   }
 
    if( slf.dset_index < 0 ) RETURN(-1) ;
 
@@ -1987,13 +2011,19 @@ static int AFNI_sleeper( char *cmd )
 /*------------------------------------------------------------------*/
 /*! SETENV name value */
 
-static int AFNI_setenv( char *cmd )
+int AFNI_setenv( char *cmd )
 {
    char nam[256]="\0" , val[1024]="\0" , eqn[1280] , *eee ;
 
    if( cmd == NULL || strlen(cmd) < 3 ) return(-1) ;
 
    sscanf( cmd , "%255s %1023s" , nam , val ) ;
+   if( nam[0] == '\0' || val[0] == '\0' && strchr(cmd,'=') != NULL ){
+     char *ccc = strdup(cmd) ;
+     eee = strchr(ccc,'=') ; *eee = ' ' ;
+     sscanf( ccc , "%255s %1023s" , nam , val ) ;
+     free((void *)ccc) ;
+   }
    if( nam[0] == '\0' || val[0] == '\0' ) return(-1) ;
 
    sprintf(eqn,"%s=%s",nam,val) ;
