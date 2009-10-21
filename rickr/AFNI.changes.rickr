@@ -1052,7 +1052,7 @@
       in the case where a type array is not provided
 
 08 April 2005:
-  * modifited nifti_tool.[ch]  (-> v1.6)
+  * modified nifti_tool.[ch]  (-> v1.6)
       - added -cbl: 'copy brick list' dataset copy functionality
       - added -ccd: 'copy collapsed dimensions' dataset copy functionality
       - added -disp_ts: 'disp time series' data display functionality
@@ -1245,4 +1245,49 @@
 01 September 2005:
   * modified 3dANOVA2.c (to properly handle multiple samples)
   * modified Dimon.c/Imon.h (Dimon -> v2.3): added option -tr
+
+13 September 2005:
+  * modified edt_emptycopy.c, editvol.h
+      - added functions okay_to_add_markers() and create_empty_marker_set()
+  * modified 3drefit.c
+      - moved marker test and creation to said functions in edt_emptycopy.c
+  * modified plug_realtime.c: add empty markers to appropriate datasets
+
+20 September 2005:
+  * modified 2dImReg.c to return 0 from main
+
+26 September 2005:
+  * modified 3dANOVA3.c: applied formulas provided by Gang for variance
+    computations of type 4 and 5, A and B contrasts (including means, diffs
+    and contrs)
+
+04 October 2005:
+  * checking in changes by Hans Johnson
+      - added new files Clibs/DartConfig.cmake
+      - updates to Testing/niftilib/niti_test.c (this is not all ANSI C - fix)
+      - znzlib.c: cast away const for call to gzwrite
+      - nifti1_io.c: comment nifti_valid_filename
+                     added nifti_is_complete_filename
+                     added 2 free()s in nifti_findhdrname
+                     cast away const in call to znzwrite
+                     fixed error in QSTR() defn (intent_name[ml]=0 -> nam[ml]=0)
+
+11 October 2005:
+  * added program 3dmaxima, with files 3dmaxima.c and maxima.[ch]
+  * plug_maxima.so is now built from plug_maxima.c and maxima.[ch]
+  * modified Makefile.INCLUDE, adding 3dmaxima to PROGRAMS, adding a
+        3dmaxima target, and a plug_maxima.so target (for maxima.o)
+
+17 October 2005:
+  * modified 3dANOVA3.c - added -aBcontr and -Abcontr as 2nd order contrasts
+  * modified 3dANOVA.h, 3dANOVA.lib - added and initialized appropriate fields
+
+27 October 2005:
+  * modified 3dANOVA3.c
+      - fixed -help typo, num_Abcontr assignment and df in calc_Abc()
+
+28 October 2005:
+  * niftilib update: merged updates by Hans Johnson
+      - nifti1_io.c:nifti_convert_nhdr2nim : use nifti_set_filenames()
+      - updated Testing/niftilib/nifti_test.c with more tests
 

@@ -318,7 +318,8 @@ SUMA_SurfaceViewer *SUMA_Alloc_SurfaceViewer_Struct (int N)
       SV->X->DOUBLEBUFFER = True;
       SV->X->WIDTH = SV->X->HEIGHT = 300; /* if you change this, make sure you do so for fallbackResources in SUMA_display */
       SV->X->ViewCont = SUMA_CreateViewContStruct();
-      
+      SV->X->DPY = NULL;
+      SV->X->FORM = SV->X->FRAME = SV->X->GLXAREA = NULL;
       SV->Focus_SO_ID = -1;
       SV->Focus_DO_ID = -1;
       
@@ -1936,6 +1937,9 @@ SUMA_X_SurfCont *SUMA_CreateSurfContStruct (char *idcode_str)
    SurfCont->SwitchIntMenu = NULL;
    SurfCont->SwitchBrtMenu = NULL;
    SurfCont->SwitchThrMenu = NULL;
+   SurfCont->SwitchIntLst = NULL;
+   SurfCont->SwitchThrLst = NULL;
+   SurfCont->SwitchBrtLst = NULL;
    SurfCont->SwitchCmapMenu = NULL;
    SurfCont->rc_CmapCont = NULL;
    SurfCont->N_CmapMenu = -1;

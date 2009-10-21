@@ -241,8 +241,9 @@ typedef enum { SW_CoordBias,
                SW_N_CoordBias } SUMA_WIDGET_INDEX_COORDBIAS;
 
 typedef enum { SW_CmapMode,
-                  SW_Interp, SW_NN, SW_Direct,
-                  SW_N_CmapMode } SUMA_WIDGET_CMAP_MODE;
+                  SW_Direct, SW_NN, SW_Interp,  
+                  SW_N_CmapMode } 
+               SUMA_WIDGET_CMAP_MODE;  /*keep parallel with enum of SUMA_COLORMAP_INTERP_MODE */
                                  
 typedef enum {
    SUMA_RDC_ERROR = -1,
@@ -379,7 +380,7 @@ typedef enum { SUMA_UNDEFINED_MODE,
                SUMA_NO_INTERP,   /*!< no interpolation on the colormap (like in afni with paned colormaps) but ranging
                                        is applied */  
                SUMA_INTERP       /*!< interpolation on the colormap, SUMA's default */
-            } SUMA_COLORMAP_INTERP_MODE;
+            } SUMA_COLORMAP_INTERP_MODE; /* keep parallel with enums of SUMA_WIDGET_CMAP_MODE */
                
 typedef enum {
                SUMA_LESS_THAN,   /*!< Mask if T[i] < Opt->ThreshRange[0] */
@@ -1012,8 +1013,11 @@ typedef struct {
    Widget cmaptit_lb;  /*! title of cmap */
    Widget cmapswtch_pb; /*! button for switching color map */
    Widget *SwitchIntMenu; /* vector of widgets controlling the switch intensity widgets */
-   Widget *SwitchThrMenu; /* vector of widgets controlling the switch brightness widgets */
+   Widget *SwitchThrMenu; /* vector of widgets controlling the switch threshold widgets */
    Widget *SwitchBrtMenu; /* vector of widgets controlling the switch brightness widgets */
+   SUMA_LIST_WIDGET *SwitchIntLst; /*!< list widget for switching intensity */
+   SUMA_LIST_WIDGET *SwitchThrLst; /*!< list widget for switching intensity */
+   SUMA_LIST_WIDGET *SwitchBrtLst; /*!< list widget for switching intensity */
    Widget *SwitchCmapMenu; /* vector of widgets controlling the switch cmap widgets */
    Widget rc_CmapCont; /* rc container to contain Cmap menu */
    int N_CmapMenu; /* Number of widgets in SwitchCmapMenu */

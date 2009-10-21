@@ -3814,7 +3814,8 @@ int SUMA_is_AllNumeric_nel(NI_element *nel)
 static char *ParentOfDsetToLoad = NULL;
 
 /*! Used to provide an identifier for the surface on which a dset will
-be attached. Remember to reset this pointer to NULL after loading the dset */
+be attached. Remember to reset this pointer to NULL after loading the dset 
+This is not used (yet) for assigning a SO parent to the dset*/
 void SUMA_SetParent_DsetToLoad(char *parent)
 {
    ParentOfDsetToLoad = parent;
@@ -6563,7 +6564,7 @@ void *SUMA_BinarySuck(char *fname, SUMA_VARTYPE data_type, int endian, int start
             SUMA_LH("Reading bytes");
             ex = fread((void*)vec, chnk, N_alloc, fp);
             if (ex != N_alloc) { SUMA_SL_Err("Failed to read all data!"); SUMA_free(vec); goto CLEAN_EXIT; }
-            if (bs) { SUMA_LH("swapping");  SUMA_SWAP_VEC(vec,N_alloc,chnk); }
+            if (bs) { SUMA_LH("swapping 1 byte numbers!? Nothing to do loco!");  }
             ans = (void*)vec;
          }
          break;

@@ -4,10 +4,10 @@ int THD_copy_file( char *old , char *newFile ) ; /* prototype */
 
 /*---------------------------------------------------------------------*/
 
-int main( int argc , char * argv[] )
+int main( int argc , char *argv[] )
 {
    int nopt=1 , old_view , new_view , vbot,vtop ;
-   char * old_name , * new_name ;
+   char *old_name , *new_name ;
    char old_prefix[THD_MAX_PREFIX] , new_prefix[THD_MAX_PREFIX] ;
    int ii,jj , old_len , new_len ;
    THD_3dim_dataset *dset[LAST_VIEW_TYPE+1] ;
@@ -95,7 +95,7 @@ int main( int argc , char * argv[] )
    if( strstr(old_name,"+") == NULL ){
       old_view = ILLEGAL_TYPE ;               /* no +view ==> do all views */
    } else {
-      char * qq ;
+      char *qq ;
       for( qq=old_name+old_len ; *qq != '+' ; qq-- ) ; /* find last '+' */
       qq++ ;                                           /* point to view */
       for( old_view=0 ; old_view <= LAST_VIEW_TYPE ; old_view++ )
@@ -115,7 +115,7 @@ int main( int argc , char * argv[] )
    if( strstr(new_name,"+") == NULL ){
       new_view = ILLEGAL_TYPE ;               /* no +view */
    } else {
-      char * qq ;
+      char *qq ;
       for( qq=new_name+new_len ; *qq != '+' ; qq-- ) ; /* find last '+' */
       qq++ ;                                           /* point to view */
       for( new_view=0 ; new_view <= LAST_VIEW_TYPE ; new_view++ )
@@ -130,8 +130,9 @@ int main( int argc , char * argv[] )
    }
    if( !THD_filename_ok( new_prefix ) )  /* 28 Jan 2003 */
      ERROR_exit("Illegal new prefix: %s\n",new_prefix) ;
-   if( strstr(new_prefix,".nii") != NULL )  /* 06 Apr 2005 */
-     ERROR_exit("You can't use 3dcopy to create a .nii file!\n"
+   if( strstr(new_prefix,".nii") != NULL ||   /* 06 Apr 2005 */
+       strstr(new_prefix,".hdr") != NULL   )  /* 11 Oct 2005 */
+     ERROR_exit("You can't use 3dcopy to create a NIfTI-1.1 file!\n"
                 " *        Use program 3dAFNItoNIFTI for that purpose.\n") ;
 
    /* 28 Jan 2003:

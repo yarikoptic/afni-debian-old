@@ -312,6 +312,9 @@ void AFNI_syntax(void)
      "                  displays (default is %d)\n"
      "   -xtwarns     Tells afni to show any Xt warning messages that may\n"
      "                  occur; the default is to suppress these messages.\n"
+#ifdef USE_TRACING
+     "   -XTWARNS     Trigger a debug trace when an Xt warning happens.\n"
+#endif
      "   -tbar name   Uses 'name' instead of 'AFNI' in window titlebars.\n"
      "   -flipim and  The '-flipim' option tells afni to display images in the\n"
      "   -noflipim      'flipped' radiology convention (left on the right).\n"
@@ -486,7 +489,7 @@ ENTRY("AFNI_parse_args") ;
    GLOBAL_argopt.keep_logo     = False ;       /* For making pretty pictures? */
    GLOBAL_argopt.pos_func      = INIT_posfunc ;/* Positive valued functions? */
    GLOBAL_argopt.recurse       = 0 ;           /* Recurse on session directories? */
-   GLOBAL_argopt.xtwarns       = False ;       /* True means keep Xt warnings turned on */
+   GLOBAL_argopt.xtwarns       = 0     ;       /* > 0 means keep Xt warnings turned on */
    GLOBAL_argopt.destruct      = False ;       /* True means allow overwrite of datasets */
                                                /* (Not yet properly implemented!) */
 
@@ -639,7 +642,12 @@ ENTRY("AFNI_parse_args") ;
       /*----- -xtwarns option -----*/
 
       if( strncmp(argv[narg],"-xtwarns",6) == 0 ){
-         GLOBAL_argopt.xtwarns = True ;
+         GLOBAL_argopt.xtwarns = 1 ;
+         narg++ ; continue ;  /* go to next arg */
+      }
+
+      if( strncmp(argv[narg],"-XTWARNS",6) == 0 ){
+         GLOBAL_argopt.xtwarns = 2 ;
          narg++ ; continue ;  /* go to next arg */
       }
 
@@ -1018,11 +1026,29 @@ fprintf(stderr,"\ncoorder: signs = %d %d %d  order = %d %d %d\n" ,
    It simply does nothing -- it replaces the default Xt warning handler.
 -------------------------------------------------------------------------*/
 
-void AFNI_handler(char * msg){ return ; }
+void AFNI_handler(char *msg){
+   if( GLOBAL_argopt.xtwarns > 0 &&
+       msg != NULL               &&
+       strstr(msg,"Attempt to add wrong") == NULL ){
+     ERROR_message("Xt message: %s", msg ) ;
+     TRACEBACK ;
+   }
+   return ;
+}
+
+/*-----------------------------------------------------------------------*/
 
 /*! Avoid fatal X11 errors. */
 
-int AFNI_xerrhandler( Display *d , XErrorEvent *x ){ return 0; }
+int AFNI_xerrhandler( Display *d , XErrorEvent *x ){
+  if( GLOBAL_argopt.xtwarns > 0 ){
+    char buf[256] = "(null)" ;
+    if( x != NULL && d != NULL ) XGetErrorText( d,x->error_code , buf,255 ) ;
+    ERROR_message( "Intercepted fatal X11 error: %s\n",buf) ;
+    TRACEBACK ;
+  }
+  return 0 ;
+}
 
 /*-----------------------------------------------------------------------
    Fallback resources for AFNI.  May be overridden by the user's
@@ -1317,7 +1343,7 @@ int main( int argc , char * argv[] )
    (void) XSetErrorHandler( AFNI_xerrhandler ) ;      /* 26 Jun 2003 */
    (void) XtAppSetErrorHandler(MAIN_app,AFNI_handler) ;
 
-   if( GLOBAL_argopt.xtwarns == False )
+   if( GLOBAL_argopt.xtwarns != 1 )
      (void) XtAppSetWarningHandler(MAIN_app,AFNI_handler) ;  /* turn off */
 
    /* FIM background threshold */
@@ -1382,7 +1408,7 @@ static Boolean MAIN_workprocess( XtPointer fred )
 {
    static int MAIN_calls = 0 ;  /* controls what happens */
    static int nosplash = 0 , nodown = 0 ;
-   static double eltime=0.0 , max_splash=2.0 ;
+   static double eltime=0.0 , max_splash=5.0 ;
    int ii ;
 
 ENTRY("MAIN_workprocess") ;  /* 23 Jan 2001: added ENTRY/RETURN to this routine */
@@ -4869,21 +4895,24 @@ ENTRY("AFNI_time_index_CB") ;
 ---------------------------------------------------------------------------*/
 
 static char * AFNI_image_help =
- "Button 1: Set crosshair location\n"
- "Button 3: Pop up image menu\n\n"
- "Shift/Ctrl/Alt + Button 3\n"
- "will open up the Disp/Mont/Save\n"
- "control panels, respectively.\n\n"
- "Shift+Button2: drag crop region\n\n"
- "q = close window (=Done)\n"
- "z = zoom out  Z = zoom in\n"
- "p = panning mode on & off\n"
- "> = Page Up   = forward 1 image\n"
+ "Button 1      = Set crosshair location\n"
+ "Button 3      = Pop up image menu\n"
+ "Shift+Button2 = drag crop region\n"
+ "\n"
+ "q = close window         a = fix aspect ratio\n"
+ "p = toggle panning mode  c = crop image mode\n"
+ "s = sharpen image        m = toggle Min-to-Max\n"
+ "D = open Disp panel      M = open Montage panel\n"
+ "S = Save image           l = left-right mirror\n"
+ "> = Page Up   = forward  1 image\n"
  "< = Page Down = backward 1 image\n"
- "v/V = Video up/down\n"
- "r/R = Ricochet up/down\n"
+ "v/V = Video image sequence up/down\n"
+ "r/R = Ricochet image sequence up/down\n"
+ "i/I = image fraction down/up\n"
+ "z/Z = zoom out/in\n"
+ "Del = drawing undo       F2= drawing pencil\n"
  "Left/Right/Up/Down arrow keys\n"
- "  move crosshairs OR pan image\n" ;
+ "    = move crosshairs OR pan image\n" ;
 
 static char * AFNI_arrowpad_help =
    "Click arrows to scroll crosshair position\n"
@@ -5019,6 +5048,7 @@ STATUS("opening an image window") ;
 STATUS("realizing new image viewer") ;
       drive_MCW_imseq( *snew, isqDR_ignore_redraws, (XtPointer) 1 ) ; /* 16 Aug 2002 */
       drive_MCW_imseq( *snew, isqDR_realize, NULL ) ;
+      iochan_sleep(17) ;                                              /* 17 Oct 2005 */
       drive_MCW_imseq( *snew, isqDR_title, (XtPointer) im3d->window_title ) ;
       drive_MCW_imseq( *snew, isqDR_periodicmont,
                       (XtPointer)(int) im3d->vinfo->xhairs_periodic );
@@ -5111,6 +5141,7 @@ STATUS("setting image viewer 'sides'") ;
 
       AFNI_view_setter ( im3d , *snew ) ;
       AFNI_range_setter( im3d , *snew ) ;  /* 04 Nov 2003 */
+      iochan_sleep(17) ;                   /* 17 Oct 2005 */
 
     } /* end of creating a new image viewer */
 
@@ -6841,7 +6872,7 @@ STATUS("setting anatmode_bbox back to 'View ULay Data Brick'") ;
 
    fbr = THD_setup_bricks( im3d->anat_now ) ;
    if( fbr == NULL ){
-      fprintf(stderr,"THD_setup_bricks of anat_now fails!\n") ; EXRETURN ;
+     fprintf(stderr,"THD_setup_bricks of anat_now fails!\n") ; EXRETURN ;
    }
    myXtFree(im3d->b123_anat) ; im3d->b123_anat = fbr[0] ;
    myXtFree(im3d->b231_anat) ; im3d->b231_anat = fbr[1] ;
@@ -6922,7 +6953,7 @@ STATUS("forcing function WOD") ;
 
       fbr = THD_setup_bricks( im3d->fim_now ) ;
       if( fbr == NULL ){
-         fprintf(stderr,"THD_setup_bricks of fim_now fails!\n") ; EXRETURN ;
+        fprintf(stderr,"THD_setup_bricks of fim_now fails!\n") ; EXRETURN ;
       }
       myXtFree(im3d->b123_fim) ; im3d->b123_fim = fbr[0] ;
       myXtFree(im3d->b231_fim) ; im3d->b231_fim = fbr[1] ;
@@ -7300,6 +7331,7 @@ STATUS(" -- turning time index control off") ;
    old_fim  = im3d->fim_now ;   /* remembrance */
    old_anat = im3d->anat_now ;
 
+   iochan_sleep(13) ;           /* 18 Oct 2005: for luck */
    EXRETURN ;
 }
 

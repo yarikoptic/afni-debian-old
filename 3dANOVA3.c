@@ -43,6 +43,20 @@
 
    Mod:     In get_options(), calloc and free n (stack space is limited).
    Date:    19 July 2004 [rickr]
+
+   Mod:     Update computation of sums of squares for a/bmean, a/bdiff
+            and a/bcontr, for type 4 ANOVAs.  See calc_mean_sum2_acontr().
+            Similar update for model type 5.  See calc_type5_acontr() and
+            calc_type5_bcontr().  Cleaned up compiler warnings.
+   Date:    23 Sep 2005 [rickr,gangc]
+
+   Mod:     Added options -aBcontr and -Abcontr for types 4 and 5.
+            The contrast and t-stat files will go at the end of any bucket.
+            Changed EPSILON values to 1e10-15 (from -10).
+   Date:    17 Oct 2005 [rickr,gangc]
+
+   Mod:     Fixed -help typo, num_Abcontr assignment and df in calc_Abc().
+   Date:    27 Oct 2005 [rickr,gangc]
 */
 
 /*---------------------------------------------------------------------------*/
@@ -50,11 +64,12 @@
 #define PROGRAM_NAME    "3dANOVA3"                   /* name of this program */
 #define PROGRAM_AUTHOR  "B. Douglas Ward"                  /* program author */
 #define PROGRAM_INITIAL "29 Jan 1997"     /* date of initial program release */
-#define PROGRAM_LATEST  "19 Jul 2004"     /* date of latest program revision */
+#define PROGRAM_LATEST  "23 Sep 2005"     /* date of latest program revision */
 
 /*---------------------------------------------------------------------------*/
 
 #define SUFFIX ".3danova3"                /* suffix for temporary data files */
+
 
 #include "3dANOVA.h"
 #include "3dANOVA.lib"
@@ -72,79 +87,89 @@ void display_help_menu()
      "This program performs three-factor ANOVA on 3D data sets.           \n\n"
      "Usage: \n"
      "3dANOVA3 \n"
-     "-type  k          type of ANOVA model to be used:                     \n"
-     "                         k = 1   A,B,C fixed;          AxBxC          \n"
-     "                         k = 2   A,B,C random;         AxBxC          \n"
-     "                         k = 3   A fixed; B,C random;  AxBxC          \n"
-     "                         k = 4   A,B fixed; C random;  AxBxC          \n"
-     "                         k = 5   A,B fixed; C random;  AxB,BxC,C(A)   \n"
-     "                                                                      \n"
-     "-alevels a                     a = number of levels of factor A       \n"
-     "-blevels b                     b = number of levels of factor B       \n"
-     "-clevels c                     c = number of levels of factor C       \n"
-     "-dset 1 1 1 filename           data set for level 1 of factor A       \n"
-     "                                        and level 1 of factor B       \n"
-     "                                        and level 1 of factor C       \n"
-     " . . .                           . . .                                \n"
-     "                                                                      \n"
-     "-dset i j k filename           data set for level i of factor A       \n"
-     "                                        and level j of factor B       \n"
-     "                                        and level k of factor C       \n"
-     " . . .                           . . .                                \n"
-     "                                                                      \n"
-     "-dset a b c filename           data set for level a of factor A       \n"
-     "                                        and level b of factor B       \n"
-     "                                        and level c of factor C       \n"
-     "                                                                      \n"
-     "[-voxel num]                   screen output for voxel # num          \n"
-     "[-diskspace]                   print out disk space required for      \n"
-     "                                  program execution                   \n"
-     "                                                                      \n"
-     "                                                                      \n"
-     "The following commands generate individual AFNI 2 sub-brick datasets: \n"
-     "  (In each case, output is written to the file with the specified     \n"
-     "   prefix file name.)                                                 \n"
-     "                                                                      \n"
-     "[-fa prefix]                F-statistic for factor A effect           \n"
-     "[-fb prefix]                F-statistic for factor B effect           \n"
-     "[-fc prefix]                F-statistic for factor C effect           \n"
-     "[-fab prefix]               F-statistic for A*B interaction           \n"
-     "[-fac prefix]               F-statistic for A*C interaction           \n"
-     "[-fbc prefix]               F-statistic for B*C interaction           \n"
-     "[-fabc prefix]              F-statistic for A*B*C interaction         \n"
-     "                                                                      \n"
-     "[-amean i prefix]           estimate of factor A level i mean         \n"
-     "[-bmean i prefix]           estimate of factor B level i mean         \n"
-     "[-cmean i prefix]           estimate of factor C level i mean         \n"
+     "-type  k          type of ANOVA model to be used:\n"
+     "                         k = 1   A,B,C fixed;          AxBxC\n"
+     "                         k = 2   A,B,C random;         AxBxC\n"
+     "                         k = 3   A fixed; B,C random;  AxBxC\n"
+     "                         k = 4   A,B fixed; C random;  AxBxC\n"
+     "                         k = 5   A,B fixed; C random;  AxB,BxC,C(A)\n"
+     "\n"
+     "-alevels a                     a = number of levels of factor A\n"
+     "-blevels b                     b = number of levels of factor B\n"
+     "-clevels c                     c = number of levels of factor C\n"
+     "-dset 1 1 1 filename           data set for level 1 of factor A\n"
+     "                                        and level 1 of factor B\n"
+     "                                        and level 1 of factor C\n"
+     " . . .                           . . .\n"
+     "\n"
+     "-dset i j k filename           data set for level i of factor A\n"
+     "                                        and level j of factor B\n"
+     "                                        and level k of factor C\n"
+     " . . .                           . . .\n"
+     "\n"
+     "-dset a b c filename           data set for level a of factor A\n"
+     "                                        and level b of factor B\n"
+     "                                        and level c of factor C\n"
+     "\n"
+     "[-voxel num]                   screen output for voxel # num\n"
+     "[-diskspace]                   print out disk space required for\n"
+     "                                  program execution\n"
+     "\n"
+     "\n"
+     "The following commands generate individual AFNI 2 sub-brick datasets:\n"
+     "  (In each case, output is written to the file with the specified\n"
+     "   prefix file name.)\n"
+     "\n"
+     "[-fa prefix]                F-statistic for factor A effect\n"
+     "[-fb prefix]                F-statistic for factor B effect\n"
+     "[-fc prefix]                F-statistic for factor C effect\n"
+     "[-fab prefix]               F-statistic for A*B interaction\n"
+     "[-fac prefix]               F-statistic for A*C interaction\n"
+     "[-fbc prefix]               F-statistic for B*C interaction\n"
+     "[-fabc prefix]              F-statistic for A*B*C interaction\n"
+     "\n"
+     "[-amean i prefix]           estimate of factor A level i mean\n"
+     "[-bmean i prefix]           estimate of factor B level i mean\n"
+     "[-cmean i prefix]           estimate of factor C level i mean\n"
      "[-xmean i j k prefix]       estimate mean of cell at factor A level i,\n"
-     "                               factor B level j, factor C level k     \n"
-     "                                                                      \n"
+     "                               factor B level j, factor C level k\n"
+     "\n"
      "[-adiff i j prefix]         difference between factor A levels i and j\n"
+     "                               (with factors B and C collapsed)\n"
      "[-bdiff i j prefix]         difference between factor B levels i and j\n"
+     "                               (with factors A and C collapsed)\n"
      "[-cdiff i j prefix]         difference between factor C levels i and j\n"
-     "[-xdiff i j k l m n prefix] difference between cell mean at A=i,B=j,  \n"
-     "                               C=k, and cell mean at A=l,B=m,C=n      \n"
-     "                                                                      \n"
-     "[-acontr c1...ca prefix]    contrast in factor A levels               \n"
-     "[-bcontr c1...cb prefix]    contrast in factor B levels               \n"
-     "[-ccontr c1...cc prefix]    contrast in factor C levels               \n"
-     "                                                                      \n"
-     "                                                                      \n"
-     "The following command generates one AFNI 'bucket' type dataset:       \n"
-     "                                                                      \n"
-     "[-bucket prefix]         create one AFNI 'bucket' dataset whose       \n"
-     "                           sub-bricks are obtained by concatenating   \n"
+     "                               (with factors A and B collapsed)\n"
+     "[-xdiff i j k l m n prefix] difference between cell mean at A=i,B=j,\n"
+     "                               C=k, and cell mean at A=l,B=m,C=n\n"
+     "\n"
+     "[-acontr c1...ca prefix]    contrast in factor A levels\n"
+     "                               (with factors B and C collapsed)\n"
+     "[-bcontr c1...cb prefix]    contrast in factor B levels\n"
+     "                               (with factors A and C collapsed)\n"
+     "[-ccontr c1...cc prefix]    contrast in factor C levels\n"
+     "                               (with factors A and B collapsed)\n"
+     "\n"
+     "[-aBcontr c1 ... ca : j prefix]   2nd order contrast in A, at fixed\n"
+     "                                     B level j (collapsed across C)\n"
+     "[-Abcontr i : c1 ... cb prefix]   2nd order contrast in B, at fixed\n"
+     "                                     A level i (collapsed across C)\n"
+     "\n"
+     "The following command generates one AFNI 'bucket' type dataset:\n"
+     "\n"
+     "[-bucket prefix]         create one AFNI 'bucket' dataset whose\n"
+     "                           sub-bricks are obtained by concatenating\n"
      "                           the above output files; the output 'bucket'\n"
-     "                           is written to file with prefix file name   \n"
+     "                           is written to file with prefix file name\n"
      "\n");
 
   printf
     (
      "\n"
-     "N.B.: For this program, the user must specify 1 and only 1 sub-brick  \n"
-     "      with each -dset command. That is, if an input dataset contains  \n"
-     "      more than 1 sub-brick, a sub-brick selector must be used, e.g.: \n"
-     "      -dset 2 4 5 'fred+orig[3]'                                      \n"
+     "N.B.: For this program, the user must specify 1 and only 1 sub-brick\n"
+     "      with each -dset command. That is, if an input dataset contains\n"
+     "      more than 1 sub-brick, a sub-brick selector must be used, e.g.:\n"
+     "      -dset 2 4 5 'fred+orig[3]'\n"
      );
 	  
   printf("\n" MASTER_SHORTHELP_STRING ) ;
@@ -807,6 +832,93 @@ void get_options (int argc, char ** argv, anova_options * option_data)
 	}
       
       
+      /*-----   -aBcontr c1 ... ca : j filename   -----*/
+      if (strncmp(argv[nopt], "-aBcontr", 6) == 0)
+	{
+	  nopt++;
+	  if (nopt + option_data->a + 2 >= argc)  
+            ANOVA_error ("need a+3 arguments after -aBcontr");
+	  
+	  option_data->num_aBcontr++;
+	  if (option_data->num_aBcontr > MAX_CONTR)
+	    ANOVA_error ("too many aB contrasts ");
+	  
+	  for (i = 0;  i < option_data->a;  i++)
+	    {
+	      sscanf (argv[nopt], "%f", &fval); 
+	      option_data->aBcontr[option_data->num_aBcontr - 1][i] = fval ;
+	      nopt++;
+	    }
+
+          /* skip ':' */
+          if (strcmp(argv[nopt],":") != 0)
+            {
+              fprintf(stderr,"** missing ':' parameter after -aBcontr\n");
+              fprintf(stderr,"** should look like '-aBcontr c1 ... ca : B'");
+              ANOVA_error ("failing...");
+            }
+          nopt++;
+          
+          /* get B level */
+	  sscanf (argv[nopt], "%d", &ival);
+	  option_data->aBclevel[option_data->num_aBcontr-1] = ival - 1;
+          if (ival <= 0 || ival > option_data->b)
+            ANOVA_error("invalid B level in -aBcontr");
+          nopt++;
+
+          /* and finally the label */
+	  option_data->aBcname[option_data->num_aBcontr-1] 
+	    =  malloc (sizeof(char) * MAX_NAME_LENGTH);
+	  strcpy (option_data->aBcname[option_data->num_aBcontr-1], argv[nopt]);
+	  nopt++;
+	  continue;
+	}
+      
+      
+      /*-----   -Abcontr i : c1 ... ca filename   -----*/
+      if (strncmp(argv[nopt], "-Abcontr", 6) == 0)
+	{
+	  nopt++;
+	  if (nopt + option_data->b + 2 >= argc)  
+            ANOVA_error ("need b+3 arguments after -Abcontr");
+
+	  option_data->num_Abcontr++;
+	  if (option_data->num_Abcontr > MAX_CONTR)
+	    ANOVA_error ("too many Ab contrasts ");
+
+          /* get A level */
+	  sscanf (argv[nopt], "%d", &ival);
+	  option_data->Abclevel[option_data->num_Abcontr-1] = ival - 1;
+          if (ival <= 0 || ival > option_data->a)
+            ANOVA_error("invalid A level in -Abcontr");
+          nopt++;
+
+          /* skip ':' */
+          if (strcmp(argv[nopt],":") != 0)
+            {
+              fprintf(stderr,"** missing ':' parameter after -Abcontr\n");
+              fprintf(stderr,"** should look like '-Abcontr A : c1 ... cb'");
+              ANOVA_error ("failing...");
+            }
+          nopt++;
+
+          /* read in B contrast */
+	  for (i = 0;  i < option_data->b;  i++)
+	    {
+	      sscanf (argv[nopt], "%f", &fval); 
+	      option_data->Abcontr[option_data->num_Abcontr - 1][i] = fval ;
+	      nopt++;
+	    }
+
+          /* and finally the label */
+	  option_data->Abcname[option_data->num_Abcontr-1] 
+	    =  malloc (sizeof(char) * MAX_NAME_LENGTH);
+	  strcpy (option_data->Abcname[option_data->num_Abcontr-1], argv[nopt]);
+	  nopt++;
+	  continue;
+	}
+
+
       /*-----   -bucket filename   -----*/
       if (strncmp(argv[nopt], "-bucket", 4) == 0)
 	{
@@ -944,6 +1056,14 @@ void check_output_files (anova_options * option_data)
     for (i = 0;  i < option_data->num_ccontr;  i++)
       check_one_output_file (option_data, option_data->ccname[i]);
 
+  if (option_data->num_aBcontr > 0)
+    for (i = 0;  i < option_data->num_aBcontr;  i++)
+      check_one_output_file (option_data, option_data->aBcname[i]);
+  
+  if (option_data->num_Abcontr > 0)
+    for (i = 0;  i < option_data->num_Abcontr;  i++)
+      check_one_output_file (option_data, option_data->Abcname[i]);
+
   if (option_data->bucket_filename != NULL)
     check_one_output_file (option_data, option_data->bucket_filename);
 
@@ -974,6 +1094,10 @@ void check_for_valid_inputs (anova_options * option_data)
     {
     case 1:
       if (n == 1)  ANOVA_error ("sample size is too small for Model 1");  
+      if (option_data->num_aBcontr > 0)   
+	ANOVA_error ("-aBcontr not allowed for Model 1");
+      if (option_data->num_Abcontr > 0)   
+	ANOVA_error ("-Abcontr not allowed for Model 1");
       break;
     case 2:
       if (option_data->nfa > 0) 
@@ -1006,6 +1130,10 @@ void check_for_valid_inputs (anova_options * option_data)
 	ANOVA_error ("-bcontr not allowed for Model 2");
       if (option_data->num_ccontr > 0)   
 	ANOVA_error ("-ccontr not allowed for Model 2");
+      if (option_data->num_aBcontr > 0)   
+	ANOVA_error ("-aBcontr not allowed for Model 2");
+      if (option_data->num_Abcontr > 0)   
+	ANOVA_error ("-Abcontr not allowed for Model 2");
       break;
     case 3:
       if (option_data->nfa > 0)   
@@ -1036,6 +1164,10 @@ void check_for_valid_inputs (anova_options * option_data)
 	ANOVA_error ("-bcontr not allowed for Model 3");
       if (option_data->num_ccontr > 0)  
 	ANOVA_error ("-ccontr not allowed for Model 3");
+      if (option_data->num_aBcontr > 0)   
+	ANOVA_error ("-aBcontr not allowed for Model 3");
+      if (option_data->num_Abcontr > 0)   
+	ANOVA_error ("-Abcontr not allowed for Model 3");
       break;
     case 4:
       if ((option_data->nfc > 0) && (n == 1))
@@ -1117,12 +1249,13 @@ int required_data_files (anova_options * option_data)
   nout = option_data->nfa + option_data->nfb + option_data->nfc 
     + option_data->nfab + option_data->nfac + option_data->nfbc 
     + option_data->nfabc 
-    + option_data->num_ameans + option_data->num_bmeans 
-    + option_data->num_cmeans + option_data->num_xmeans 
-    + option_data->num_adiffs + option_data->num_bdiffs 
-    + option_data->num_cdiffs + option_data->num_xdiffs
-    + option_data->num_acontr + option_data->num_bcontr
-    + option_data->num_ccontr;
+    + option_data->num_ameans  + option_data->num_bmeans 
+    + option_data->num_cmeans  + option_data->num_xmeans 
+    + option_data->num_adiffs  + option_data->num_bdiffs 
+    + option_data->num_cdiffs  + option_data->num_xdiffs
+    + option_data->num_acontr  + option_data->num_bcontr
+    + option_data->num_ccontr  +
+    + option_data->num_aBcontr + option_data->num_Abcontr;
 
   now = now + nout;
 
@@ -1142,17 +1275,14 @@ int required_data_files (anova_options * option_data)
 
 void initialize (int argc,  char ** argv,  anova_options ** option_data)
 {
-  int i, j, k;                         /* factor level indices */
   int a, b, c;                         /* number of factor levels */
   int n;                               /* number of observations per cell */
-  int nxyz;                            /* number of voxels */
-  char message[MAX_NAME_LENGTH];       /* error message */
-  
+
 
   /*----- save command line for history notes -----*/
   commandline = tross_commandline( PROGRAM_NAME , argc,argv ) ;
 
-  
+
   /*----- allocate memory space for input data -----*/   
   *option_data = (anova_options *) malloc(sizeof(anova_options));
   if (*option_data == NULL)
@@ -1307,7 +1437,442 @@ void calculate_sum (anova_options * option_data,
   free (y);     y = NULL;
   
 }
-  
+
+
+/*---------------------------------------------------------------------------*/
+/*                                                    8 Sep 2005 [rickr,gangc]
+  routine to compute the mean and sum of squares of a contrast
+
+  In the case of an A contrast, the mean is computed across B and any
+  multiple observations, first.  The contrast is then computed over the
+  result.  So this 4-D data is reduced to 2-D, with 1 for the contrast,
+  and one for the sum and sum of squares.
+
+      mean = sum_over_k[ (sum_over_i_in_contrast[c_i * y_i.k.])   ] / K
+      sum2 = sum_over_k[ (sum_over_i_in_contrast[c_i * y_i.k.])^2 ]
+
+  Note that y_i.j. is the mean over B and any multiple observations.
+  Note also that b may be 1 if bindex is in [0,B-1], else B is equal
+  to #blevels.
+
+  For accuracy, sums are computed using doubles, then copied to float.
+  The contrast is passed in to allow for more uses of this function.
+*/
+void calc_mean_sum2_acontr(anova_options *option_data, float *acontr,
+                           int bindex, float *mean, float * sum2)
+{
+  double * dsum, * dsum2;          /* cumulative sums, for accuracy */
+  double * dcontr;                 /* current contrast sum */
+  int i, k;                        /* indices for levels of factors A and C */
+  int a, b, c;                     /* number of levels factors A, B and C */
+  int n;                           /* number of observations per cell */
+  int nvals;                       /* B levels used times n (n or n*b) */
+  int ixyz, nxyz;                  /* voxel counters */
+  int nvoxel;                      /* output voxel # */
+
+  /*----- initialize local variables -----*/
+  a = option_data->a;
+  b = option_data->b;
+  c = option_data->c;
+  n = option_data->n;
+  nxyz = option_data->nxyz;
+  nvoxel = option_data->nvoxel;
+
+  if (bindex < 0) nvals = n*b;  /* collapse across B and n */
+  else            nvals = n;    /* collapse across n, at the given B level */
+ 
+  /*----- allocate memory space for calculations -----*/
+  dsum = (double *) malloc(sizeof(double)*nxyz);
+  dsum2 = (double *) malloc(sizeof(double)*nxyz);
+  dcontr = (double *) malloc(sizeof(double)*nxyz);
+  if (dsum == NULL || dsum2 == NULL || dcontr == NULL)
+      ANOVA_error ("calc_sum_sq_acontr: unable to allocate sufficient memory");
+
+  for (ixyz = 0; ixyz < nxyz; ixyz++)  /* init sums to zero */
+      dsum[ixyz] = dsum2[ixyz] = 0.0;
+
+  /*-----  loop over factor C levels -----*/
+  for ( k = 0; k < c; k++ )
+  {
+      for (ixyz = 0; ixyz < nxyz; ixyz++)
+          dcontr[ixyz] = 0.0;
+
+      /*-----  compute contrast for the current j -----*/
+      for (i = 0;  i < a;  i++)
+      {
+          if (acontr[i] == 0.0 ) continue;  /* then skip this index */
+
+          /* get sum over n (and B?) for mean (cheat, using mean for memory) */
+          calculate_sum(option_data, i, bindex, k, mean);
+          for (ixyz = 0; ixyz < nxyz; ixyz++)
+              dcontr[ixyz] += acontr[i] * (double)mean[ixyz] / nvals;
+      }
+
+      /*-----  tally sum of contrast and squares for the current k -----*/
+      for (ixyz = 0; ixyz < nxyz; ixyz++)
+      {
+          dsum[ixyz] += dcontr[ixyz];
+          dsum2[ixyz] += dcontr[ixyz] * dcontr[ixyz];
+      }
+  }
+
+  /*----- copy results to float output -----*/
+  for (ixyz = 0; ixyz < nxyz; ixyz++)
+  {
+      mean[ixyz] = dsum[ixyz] / c;    /* divide by k for the mean */
+      sum2[ixyz] = dsum2[ixyz];
+  }
+
+  /*----- release memory -----*/
+  free (dsum);  free (dsum2);  free (dcontr);
+}
+
+
+/*---------------------------------------------------------------------------*/
+/*                                                   20 Sep 2005 [rickr,gangc]
+  routine to compute the mean and tstat of a type-5 A contrast
+
+  t      = L / sqrt(1/c * SL2 * sum_c2)
+  L      = sum_i(contr[i] * Y_i...)
+  SL     = 1/w(c-1) * sum_i[ step(|contr[i]|) * sum_k(Y_i.k. - Y_i...)^2 ]
+  sum_c2 = sum_i(contr[i]^2)
+
+  note: Y_i.k. or Y_i... is considered the mean Y here
+
+  For accuracy, sums are computed using doubles, then copied to float.
+  The contrast is passed in to allow for more uses of this function.
+
+  If blevel is not -1, then results are computed for only that level.
+*/
+void calc_type5_acontr(anova_options * option_data, float * contr, int blevel,
+                       float * mean, float * tmean )
+{
+  const float EPSILON = 1.0e-15;   /* protect against divide by zero */
+  double * L, * SL;                /* final mean, and S_L^2 values */
+  double * S1, * S2;               /* cumulative sums, for accuracy */
+  double   dval;                   /* just for slight, useless speed gain */
+  int i, k;                        /* indices for levels of factors A and C */
+  int a, b, c;                     /* number of levels factors A, B and C */
+  int n;                           /* number of observations per cell */
+  int ixyz, nxyz;                  /* voxel counters */
+  int nvoxel;                      /* output voxel # */
+
+  /*----- initialize local variables -----*/
+  a = option_data->a;
+  b = option_data->b;
+  c = option_data->c;
+  n = option_data->n;
+  nxyz = option_data->nxyz;
+  nvoxel = option_data->nvoxel;
+
+  if (blevel >= 0) b = 1;
+
+  /*----- allocate memory space for calculations -----*/
+  L  = (double *) malloc(sizeof(double)*nxyz);
+  SL = (double *) malloc(sizeof(double)*nxyz);
+  S1 = (double *) malloc(sizeof(double)*nxyz);
+  S2 = (double *) malloc(sizeof(double)*nxyz);
+  if (!L || !SL || !S1 || !S2)
+      ANOVA_error ("calc_type5_acontr: unable to allocate sufficient memory");
+
+  for (ixyz = 0; ixyz < nxyz; ixyz++)   /* init cumulative L and SL sums */
+      L[ixyz] = SL[ixyz] = 0.0;
+
+  /*-----  loop over factor C levels -----*/
+  for ( i = 0; i < a; i++ )
+  {
+      if (contr[i] == 0.0 ) continue;  /* then skip this index */
+
+      for (ixyz = 0; ixyz < nxyz; ixyz++)
+          S1[ixyz] = S2[ixyz] = 0.0;
+
+      /*-----  compute contrast for the current j -----*/
+      for (k = 0;  k < c;  k++)
+      {
+          /* get mean over n and B (cheat, using input mean for memory) */
+          calculate_sum(option_data, i, blevel, k, mean);
+          for (ixyz = 0; ixyz < nxyz; ixyz++)
+          {
+              dval = mean[ixyz] / (b*n);  /* dislike repeated indexing */
+              mean[ixyz] = dval;
+              S1[ixyz] += dval;
+              S2[ixyz] += dval * dval;
+          }
+          
+      }
+
+      /*-----  tally sum of contrast and squares for the current k -----*/
+      for (ixyz = 0; ixyz < nxyz; ixyz++)
+      {
+          S1[ixyz] /= c;                         /* this is mean Y_i... */
+          L [ixyz] += contr[i]*S1[ixyz];
+          SL[ixyz] += S2[ixyz] - c * S1[ixyz] * S1[ixyz];
+      }
+  }
+
+  /*----- compute count and sum of squared contrast elements -----*/
+  for (i = 0, n = 0, dval = 0.0; i < a; i++)
+      if (contr[i])
+      {
+          n++;
+          dval += contr[i] * contr[i];
+      }
+  dval /= c;  /* for computing t = L/sqrt(SL * dval) */
+
+  /*----- copy final results to float output -----*/
+  for (ixyz = 0; ixyz < nxyz; ixyz++)
+  {
+      SL[ixyz] = (n == 0) ? 0.0 : SL[ixyz] / (n * (c-1));
+      mean [ixyz] = L[ixyz];
+      tmean[ixyz] = (SL[ixyz] < EPSILON) ? 0.0 : L[ixyz] / sqrt(SL[ixyz]*dval);
+  }
+
+  /*----- fly, be free! -----*/
+  free(L);  free(SL);  free (S1);  free (S2);
+}
+
+
+/*---------------------------------------------------------------------------*/
+/*                                                   23 Sep 2005 [rickr,gangc]
+  routine to compute the mean and tstat of a type-5 B contrast
+
+  t  = L / sqrt(1/ac * SL )
+  L  = sum_j(contr[j] * Y_.j..)
+  SL = 1/a(c-1) * sum_i[ sum_k[ (L_ik - L_i)^2 ] ]
+     = 1/a(c-1) * sum_i[ sum_k[ L_ik^2 ] - c * L_i^2 ]
+
+  note: Y_ijk., etc. are mean values here
+
+  For accuracy, sums are computed using doubles, then copied to float.
+  The contrast is passed in to allow for more uses of this function.
+
+  If alevel is not -1, then results are computed for only that level.
+*/
+void calc_type5_bcontr(anova_options * option_data, float * contr, int alevel,
+                       float * mean, float * tmean )
+{
+  const float EPSILON = 1.0e-15;   /* protect against divide by zero        */
+  double * L, * SL;                /* final L, S_L^2 values                 */
+  double * S1, * S2, * csum;       /* L_i, sum(L_ik^2), and contrast sum    */
+  double   dval;                   /* just for slight, useless speed gain   */
+  int i, j, k;                     /* indices for levels of factors A and C */
+  int a, b, c;                     /* number of levels factors A, B and C   */
+  int ibot, itop;                  /* loop bounds, in case A is fixed       */
+  int n;                           /* number of observations per cell       */
+  int ixyz, nxyz;                  /* voxel counters                        */
+  int nvoxel;                      /* output voxel #                        */
+
+  /*----- initialize local variables -----*/
+  a = option_data->a;
+  b = option_data->b;
+  c = option_data->c;
+  n = option_data->n;
+  nxyz = option_data->nxyz;
+  nvoxel = option_data->nvoxel;
+
+  if (alevel >= 0)
+  {
+      a = 1;
+      ibot = itop = alevel;
+  }
+  else
+  {
+      ibot = 0;
+      itop = a-1;
+  }
+
+  /*----- allocate memory space for calculations -----*/
+  L    = (double *) malloc(sizeof(double)*nxyz);  /* L                     */
+  SL   = (double *) malloc(sizeof(double)*nxyz);  /* sum_i(S2 - c * S1^2)  */
+  S1   = (double *) malloc(sizeof(double)*nxyz);  /* L_i                   */
+  S2   = (double *) malloc(sizeof(double)*nxyz);  /* sum_k( L_ik ^2 )      */
+  csum = (double *) malloc(sizeof(double)*nxyz);  /* sum_j( c_j * Y_ijk. ) */
+  if (!L || !SL || !S1 || !S2 || !csum)
+      ANOVA_error ("calc_type5_bcontr: unable to allocate sufficient memory");
+
+  for (ixyz = 0; ixyz < nxyz; ixyz++)   /* init cumulative L and SL sums */
+      L[ixyz] = SL[ixyz] = 0.0;
+
+  /*-----  loop over factor A levels -----*/
+  for ( i = ibot; i <= itop; i++ )
+  {
+      for (ixyz = 0; ixyz < nxyz; ixyz++)
+          S1[ixyz] = S2[ixyz] = 0.0;
+
+      /*-----  loop over factor C levels -----*/
+      for (k = 0; k < c; k++)
+      {
+          /*-----  compute contrast sum (csum) for the current i, k -----*/
+          for (ixyz = 0; ixyz < nxyz; ixyz++) csum[ixyz] = 0.0;
+          for (j = 0; j < b; j++)
+          {
+              calculate_sum(option_data, i, j, k, mean); /* memory from mean */
+              for (ixyz = 0; ixyz < nxyz; ixyz++)
+                  csum[ixyz] += (double)contr[j] * mean[ixyz] / n;
+          }
+
+          /*-----  tally sum and sum of squared contrasts -----*/
+          for (ixyz = 0; ixyz < nxyz; ixyz++)
+          {
+              S1[ixyz] += csum[ixyz];
+              S2[ixyz] += csum[ixyz] * csum[ixyz];
+          }
+          
+      }
+
+      /*-----  tally sum of contrast and squares for the current k -----*/
+      for (ixyz = 0; ixyz < nxyz; ixyz++)
+      {
+          dval = S1[ixyz] / c;   /* L_i */
+          L [ixyz] += dval;
+          SL[ixyz] += S2[ixyz] - c * dval * dval;
+      }
+  }
+
+  /*----- copy final results to float output -----*/
+  dval = 1.0/(a*c);
+  for (ixyz = 0; ixyz < nxyz; ixyz++)
+  {
+      L[ixyz]     /= a;            /* mean L_i */
+      SL[ixyz]    /= (a * (c-1));
+      mean [ixyz]  = L[ixyz];
+      tmean[ixyz]  = (SL[ixyz] < EPSILON) ? 0.0 : L[ixyz] / sqrt(SL[ixyz]*dval);
+  }
+
+  /*----- fly, be free! -----*/
+  free(L);  free(SL);  free(S1);  free(S2);  free(csum);
+}
+
+
+/*---------------------------------------------------------------------------*/
+/*                                                    8 Sep 2005 [rickr,gangc]
+  routine to compute the mean and sum of squares of a contrast
+
+  In the case of a B contrast, the mean is computed across A and any
+  multiple observations, first.  The contrast is then computed over the
+  result.  So this 4-D data is reduced to 2-D, with 1 for the contrast,
+  and one for the sum and sum of squares.
+
+      mean = sum_over_k[ (sum_over_i_in_contrast[c_j * y_.jk.])   ] / K
+      sum2 = sum_over_k[ (sum_over_i_in_contrast[c_j * y_.jk.])^2 ]
+
+  Note that y_.jk. is the mean over A and any multiple observations.
+  Note also that a may be 1 if aindex is in [0,A-1], else a is equal
+  to #alevels.
+
+  For accuracy, sums are computed using doubles, then copied to float.
+  The contrast is passed in to allow for more uses of this function.
+*/
+void calc_mean_sum2_bcontr(anova_options *option_data, float *acontr,
+                           int aindex, float *mean, float * sum2)
+{
+  double * dsum, * dsum2;          /* cumulative sums, for accuracy */
+  double * dcontr;                 /* current contrast sum */
+  int j, k;                        /* indices for levels of factors B and C */
+  int a, b, c;                     /* number of levels factors A, B and C */
+  int n;                           /* number of observations per cell */
+  int nvals;                       /* A levels used times n (n or n*a) */
+  int ixyz, nxyz;                  /* voxel counters */
+  int nvoxel;                      /* output voxel # */
+
+  /*----- initialize local variables -----*/
+  a = option_data->a;
+  b = option_data->b;
+  c = option_data->c;
+  n = option_data->n;
+  nxyz = option_data->nxyz;
+  nvoxel = option_data->nvoxel;
+
+  if (aindex < 0) nvals = n*a;  /* collapse across A and n */
+  else            nvals = n;    /* collapse across n, at the given A level */
+ 
+  /*----- allocate memory space for calculations -----*/
+  dsum = (double *) malloc(sizeof(double)*nxyz);
+  dsum2 = (double *) malloc(sizeof(double)*nxyz);
+  dcontr = (double *) malloc(sizeof(double)*nxyz);
+  if (dsum == NULL || dsum2 == NULL || dcontr == NULL)
+      ANOVA_error ("calc_sum_sq_acontr: unable to allocate sufficient memory");
+
+  for (ixyz = 0; ixyz < nxyz; ixyz++)  /* init sums to zero */
+      dsum[ixyz] = dsum2[ixyz] = 0.0;
+
+  /*-----  loop over factor C levels -----*/
+  for ( k = 0; k < c; k++ )
+  {
+      for (ixyz = 0; ixyz < nxyz; ixyz++)
+          dcontr[ixyz] = 0.0;
+
+      /*-----  compute contrast for the current j -----*/
+      for (j = 0;  j < b;  j++)
+      {
+          if (acontr[j] == 0.0 ) continue;  /* then skip this index */
+
+          /* get sum over n (and A?) for mean (cheat, using mean for memory) */
+          calculate_sum(option_data, aindex, j, k, mean);
+          for (ixyz = 0; ixyz < nxyz; ixyz++)
+              dcontr[ixyz] += acontr[j] * (double)mean[ixyz] / nvals;
+      }
+
+      /*-----  tally sum of contrast and squares for the current k -----*/
+      for (ixyz = 0; ixyz < nxyz; ixyz++)
+      {
+          dsum[ixyz] += dcontr[ixyz];
+          dsum2[ixyz] += dcontr[ixyz] * dcontr[ixyz];
+      }
+  }
+
+  /*----- copy results to float output -----*/
+  for (ixyz = 0; ixyz < nxyz; ixyz++)
+  {
+      mean[ixyz] = dsum[ixyz] / c;    /* divide by k for the mean */
+      sum2[ixyz] = dsum2[ixyz];
+  }
+
+  /*----- release memory -----*/
+  free (dsum);  free (dsum2);  free (dcontr);
+}
+
+
+/*---------------------------------------------------------------------------*/
+/*                                                    8 Sep 2005 [rickr,gangc]
+   Routine to calculate the t-statistic from its pieces.
+
+   Try to be efficient with the following formula, coming from the mean (sum),
+   the sum of squares, and df.
+
+       t = mean * sqrt[     df ( df + 1 )      ]
+                      [ ---------------------- ]
+                      [ sum_sq - (df+1)*mean^2 ]
+
+   Note that it is okay for result to be the same pointer as either of
+   the other two (for overwriting the data space).
+*/
+void calculate_t_from_sums(float * result, float * mean, float * sum_sq,
+                           int df, int nvox)
+{
+  const float  EPSILON = 1.0e-15;      /* protect against divide by zero */
+  double dval;
+  float  *res, *mp, *ssp, sval;
+  int    index, df_prod;
+
+  /* set df_prod and use pointers, for slight speed improvement */
+  df_prod = df * (df + 1);
+
+  res = result;
+  mp = mean;
+  ssp = sum_sq;
+  for (index = 0;  index < nvox;  index++)
+  {
+     sval = *mp;  /* for repeated use */
+     dval = *ssp - (df+1.0) * sval * sval;
+
+     if (dval < EPSILON) *res = 0.0;
+     else                *res = sval * sqrt( df_prod / dval );
+
+     res++;  mp++;  ssp++;
+  }
+}
+
 
 /*---------------------------------------------------------------------------*/
 /*
@@ -1856,7 +2421,6 @@ void calculate_ssijkm (anova_options * option_data)
   int n;                            /* number of observations per cell */
   int ixyz, nxyz;                   /* voxel counters */
   int nvoxel;                       /* output voxel # */
-  float yval;                       /* temporary float value */
   
   
   /*----- initialize local variables -----*/
@@ -2551,7 +3115,7 @@ void calculate_ssbca (anova_options * option_data)
 
 void calculate_fa (anova_options * option_data)
 {
-  const float  EPSILON = 1.0e-10;      /* protect against divide by zero */
+  const float  EPSILON = 1.0e-15;      /* protect against divide by zero */
   float * msa = NULL;                  /* pointer to MSA data */
   float * fa = NULL;                   /* pointer to F due to factor A */
   int a;                               /* number of levels for factor A */
@@ -2652,7 +3216,7 @@ void calculate_fa (anova_options * option_data)
 
 void calculate_fb (anova_options * option_data)
 {
-  const float  EPSILON = 1.0e-10;      /* protect against divide by zero */
+  const float  EPSILON = 1.0e-15;      /* protect against divide by zero */
   float * msb = NULL;                  /* pointer to MSB data */
   float * fb = NULL;                   /* pointer to F due to factor B */
   int a;                               /* number of levels for factor A */
@@ -2754,7 +3318,7 @@ void calculate_fb (anova_options * option_data)
 
 void calculate_fc (anova_options * option_data)
 {
-  const float  EPSILON = 1.0e-10;      /* protect against divide by zero */
+  const float  EPSILON = 1.0e-15;      /* protect against divide by zero */
   float * msc = NULL;                  /* pointer to MSC(A) data */
   float * fc = NULL;                   /* pointer to F due to factor C */
   int a;                               /* number of levels for factor A */
@@ -2800,11 +3364,12 @@ void calculate_fc (anova_options * option_data)
   /*----- calculate mean SS due to factor C -----*/
   for (ixyz = 0;  ixyz < nxyz;  ixyz++)
     msc[ixyz] = msc[ixyz] / numdf;       
-  if (nvoxel > 0)
+  if (nvoxel > 0){
     if (option_data->model != 5)
       printf ("MSC = %f \n", msc[nvoxel-1]);
     else
       printf ("MSC(A) = %f \n", msc[nvoxel-1]);
+  }
       
 
   /*----- set up denominator of F-statistic    -----*/
@@ -2832,11 +3397,12 @@ void calculate_fc (anova_options * option_data)
 	fc[ixyz] = msc[ixyz] / fval;          
     }
   
-  if (nvoxel > 0)
+  if (nvoxel > 0){
     if (option_data->model != 5)
       printf ("F(C) = %f \n", fc[nvoxel-1]);
     else
       printf ("F(C(A)) = %f \n", fc[nvoxel-1]);
+  }
      
   /*----- write out afni data file -----*/
   for (ixyz = 0;  ixyz < nxyz;  ixyz++)
@@ -2874,7 +3440,7 @@ void calculate_fc (anova_options * option_data)
 
 void calculate_fab (anova_options * option_data)
 {
-  const float  EPSILON = 1.0e-10;      /* protect against divide by zero */
+  const float  EPSILON = 1.0e-15;      /* protect against divide by zero */
   float * msab = NULL;                 /* pointer to MSAB data */
   float * fab = NULL;                  /* pointer to F due to interaction */
   int a;                               /* number of levels for factor A */
@@ -2979,7 +3545,7 @@ void calculate_fab (anova_options * option_data)
 
 void calculate_fbc (anova_options * option_data)
 {
-  const float  EPSILON = 1.0e-10;      /* protect against divide by zero */
+  const float  EPSILON = 1.0e-15;      /* protect against divide by zero */
   float * msbc = NULL;                 /* pointer to MSBC data */
   float * fbc = NULL;                  /* pointer to F for B*C interaction */
   int a;                               /* number of levels for factor A */
@@ -3026,11 +3592,12 @@ void calculate_fbc (anova_options * option_data)
   /*----- calculate mean SS due to B*C interaction -----*/
   for (ixyz = 0;  ixyz < nxyz;  ixyz++)
     msbc[ixyz] = msbc[ixyz] / numdf; 
-  if (nvoxel > 0)
+  if (nvoxel > 0){
     if (option_data->model != 5)
       printf ("MSBC = %f \n", msbc[nvoxel-1]);
     else
       printf ("MSBC(A) = %f \n", msbc[nvoxel-1]);
+  }
  
  /*----- set up denominator of F-statistic    -----*/
   switch (option_data->model)
@@ -3057,11 +3624,12 @@ void calculate_fbc (anova_options * option_data)
       else
 	fbc[ixyz] = msbc[ixyz] / fval;
     }
-  if (nvoxel > 0)
+  if (nvoxel > 0){
     if (option_data->model != 5)
       printf ("F(BC) = %f \n", fbc[nvoxel-1]);
     else
       printf ("F(BC(A)) = %f \n", fbc[nvoxel-1]);
+  }
   
   /*----- write out afni data file -----*/
   for (ixyz = 0;  ixyz < nxyz;  ixyz++)
@@ -3096,7 +3664,7 @@ void calculate_fbc (anova_options * option_data)
 
 void calculate_fac (anova_options * option_data)
 {
-  const float  EPSILON = 1.0e-10;      /* protect against divide by zero */
+  const float  EPSILON = 1.0e-15;      /* protect against divide by zero */
   float * msac = NULL;                 /* pointer to MSAC data */
   float * fac = NULL;                  /* pointer to F for A*C interaction */
   int a;                               /* number of levels for factor A */
@@ -3191,7 +3759,7 @@ void calculate_fac (anova_options * option_data)
 
 void calculate_fabc (anova_options * option_data)
 {
-  const float  EPSILON = 1.0e-10;      /* protect against divide by zero */
+  const float  EPSILON = 1.0e-15;      /* protect against divide by zero */
   float * msabc = NULL;                /* pointer to MSABC data */
   float * fabc = NULL;                 /* pointer to F for A*B*C interaction */
   int a;                               /* number of levels for factor A */
@@ -3274,14 +3842,16 @@ void calculate_fabc (anova_options * option_data)
 
 void calculate_ameans (anova_options * option_data)
 {
-  const float  EPSILON = 1.0e-10;    /* protect against divide by zero */
+  const float  EPSILON = 1.0e-15;    /* protect against divide by zero */
   float * mean = NULL;               /* pointer to treatment mean data */
   float * tmean = NULL;              /* pointer to t-statistic data */
+  float * contr;                     /* array for trivial A contrast */
   int a;                             /* number of levels for factor A */
   int b;                             /* number of levels for factor B */
   int c;                             /* number of levels for factor C */
   int n;                             /* number of observations per cell */
   int ixyz, nxyz;                    /* voxel counters */
+  int cindex;                        /* contrast index */
   int nvoxel;                        /* output voxel # */
   int num_means;                     /* number of user requested means */
   int imean;                         /* output mean option index */
@@ -3289,7 +3859,6 @@ void calculate_ameans (anova_options * option_data)
   int df;                            /* degrees of freedom for t-test */
   float fval;                        /* for calculating std. dev. */
   float stddev;                      /* est. std. dev. of factor mean */
-  char filename[MAX_NAME_LENGTH];    /* input data file name */
  
 
   /*----- initialize local variables -----*/
@@ -3304,62 +3873,56 @@ void calculate_ameans (anova_options * option_data)
   /*----- allocate memory space for calculations -----*/
   mean = (float *) malloc(sizeof(float)*nxyz);
   tmean = (float *) malloc(sizeof(float)*nxyz);
-  if ((mean == NULL) || (tmean == NULL))  
-    ANOVA_error ("unable to allocate sufficient memory");
+  contr = (float *) malloc(sizeof(float)*a);
+  if ((mean == NULL) || (tmean == NULL) || (contr == NULL))  
+    ANOVA_error ("ameans: unable to allocate sufficient memory");
    
   /*----- loop over user specified treatment means -----*/ 
   for (imean = 0;  imean < num_means;  imean++)
-    {
+  {
       level = option_data->ameans[imean];
       
-      /*----- estimate factor mean for this treatment level -----*/
-      calculate_sum (option_data, level, -1, -1, mean);
-      for (ixyz = 0;  ixyz < nxyz;  ixyz++)
-	mean[ixyz] = mean[ixyz] / (b*c*n);
-      if (nvoxel > 0)
-	printf ("Mean of factor A level %d = %f \n", level+1, mean[nvoxel-1]);
-      
-      /*----- standard deviation depends on model type -----*/
-      switch (option_data->model)
-	{
-	case 1:
-	  volume_read ("sse", tmean, nxyz); 
-	  df = a * b * c * (n-1);
-	  break;
-	case 4:
-	  volume_read ("ssac", tmean, nxyz); 
-	  df = (a-1) * (c-1);
-	  break;
-	case 5:
-	  volume_read ("ssca", tmean, nxyz); 
-	  df = a * (c-1);
-	  break;
-	}
+      if (option_data->model == 1)
+      {
+          /*----- estimate factor mean for this treatment level -----*/
+          calculate_sum (option_data, level, -1, -1, mean);
+          for (ixyz = 0; ixyz < nxyz; ixyz++) mean[ixyz] = mean[ixyz] / (b*c*n);
 
-      /*----- divide by estimated standard deviation of factor mean -----*/
-      fval = (1.0 / df) * (1.0 / (b*c*n));
-      for (ixyz = 0;  ixyz < nxyz;  ixyz++)
-	{
-	  stddev =  sqrt(tmean[ixyz] * fval);
-	  if (stddev < EPSILON)
-	    tmean[ixyz] = 0.0;
-	  else
-	    tmean[ixyz] = mean[ixyz] / stddev;
-	}
+          volume_read ("sse", tmean, nxyz); 
+          df = a * b * c * (n-1);
+          fval = (1.0 / df) * (1.0 / (b*c*n));
+
+          /*----- divide by estimated standard deviation of factor mean -----*/
+          for (ixyz = 0;  ixyz < nxyz;  ixyz++)
+          {
+              stddev =  sqrt(tmean[ixyz] * fval);
+              if (stddev < EPSILON) tmean[ixyz] = 0.0;
+              else                  tmean[ixyz] = mean[ixyz] / stddev;
+          }
+      } else if (option_data->model == 4 || option_data->model == 5) {
+                                                 /* 8 Sep 2005 [rickr,gangc] */
+        /* set mean as simple contrast */
+        for ( cindex = 0; cindex < a; cindex++ ) contr[cindex] = 0.0;
+        contr[level] = 1.0;
+
+        calc_mean_sum2_acontr( option_data, contr, -1, mean, tmean );
+        df = c - 1;  /* degrees of freedom from random variable only */
+        calculate_t_from_sums(tmean, mean, tmean, df, nxyz);
+      }
       
-      if (nvoxel > 0)
+      if (nvoxel > 0) {
+	printf ("Mean of factor A level %d = %f \n", level+1, mean[nvoxel-1]);
 	printf ("t for mean of factor A level %d = %f \n", 
 		level+1, tmean[nvoxel-1]);
+      }
       
       /*----- write out afni data file -----*/
       write_afni_data (option_data, option_data->amname[imean], 
                        mean, tmean, df, 0);
-      
-    }
+  }
   
   /*----- release memory -----*/
-  free (tmean);   tmean = NULL;
-  free (mean);    mean = NULL;
+  free (tmean);  free (mean);  free(contr);
 }
 
 /*---------------------------------------------------------------------------*/
@@ -3372,14 +3935,16 @@ void calculate_ameans (anova_options * option_data)
 
 void calculate_bmeans (anova_options * option_data)
 {
-  const float  EPSILON = 1.0e-10;    /* protect against divide by zero */
+  const float  EPSILON = 1.0e-15;    /* protect against divide by zero */
   float * mean = NULL;               /* pointer to treatment mean data */
   float * tmean = NULL;              /* pointer to t-statistic data */
+  float * contr;                     /* array for trivial B contrasts */
   int a;                             /* number of levels for factor A */
   int b;                             /* number of levels for factor B */
   int c;                             /* number of levels for factor C */
   int n;                             /* number of observations per cell */
   int ixyz, nxyz;                    /* voxel counters */
+  int cindex;                        /* contrast index */
   int nvoxel;                        /* output voxel # */
   int nt;                            /* total number of observations */
   int num_means;                     /* number of user requested means */
@@ -3388,7 +3953,6 @@ void calculate_bmeans (anova_options * option_data)
   int df;                            /* degrees of freedom for t-test */
   float fval;                        /* for calculating std. dev. */
   float stddev;                      /* est. std. dev. of factor mean */
-  char filename[MAX_NAME_LENGTH];    /* input data file name */
  
 
   /*----- initialize local variables -----*/
@@ -3404,7 +3968,8 @@ void calculate_bmeans (anova_options * option_data)
   /*----- allocate memory space for calculations -----*/
   mean = (float *) malloc(sizeof(float)*nxyz);
   tmean = (float *) malloc(sizeof(float)*nxyz);
-  if ((mean == NULL) || (tmean == NULL))  
+  contr = (float *) malloc(sizeof(float)*b);
+  if ((mean == NULL) || (tmean == NULL) || (contr == NULL))  
     ANOVA_error ("unable to allocate sufficient memory");
    
   /*----- loop over user specified treatment means -----*/ 
@@ -3412,53 +3977,55 @@ void calculate_bmeans (anova_options * option_data)
     {
       level = option_data->bmeans[imean];
       
-      /*----- estimate factor mean for this treatment level -----*/
-      calculate_sum (option_data, -1, level, -1, mean);
-      for (ixyz = 0;  ixyz < nxyz;  ixyz++)
-	mean[ixyz] = mean[ixyz] / (a*c*n);
-      if (nvoxel > 0)
-	printf ("Mean of factor B level %d = %f \n", level+1, mean[nvoxel-1]);
+      if (option_data->model == 1)
+      {
+          /*----- estimate factor mean for this treatment level -----*/
+          calculate_sum (option_data, -1, level, -1, mean);
+          for (ixyz = 0; ixyz < nxyz; ixyz++) mean[ixyz] = mean[ixyz] / (a*c*n);
       
-      /*----- standard deviation depends on model type -----*/
-      switch (option_data->model)
-	{
-	case 1:
-	  volume_read ("sse", tmean, nxyz); 
-	  df = a * b * c * (n-1);
-	  break;
-	case 4:
-	  volume_read ("ssbc", tmean, nxyz); 
-	  df = (b-1) * (c-1);
-	  break;
-	case 5:
-	  volume_read ("ssbca", tmean, nxyz); 
-	  df = a * (b-1) * (c-1);
-	  break;
-	}
+          volume_read ("sse", tmean, nxyz); 
+          df = a * b * c * (n-1);
 
-      /*----- divide by estimated standard deviation of factor mean -----*/
-      fval = (1.0 / df) * (1.0 / (a*c*n));
-      for (ixyz = 0;  ixyz < nxyz;  ixyz++)
-	{
-	  stddev =  sqrt(tmean[ixyz] * fval);
-	  if (stddev < EPSILON)
-	    tmean[ixyz] = 0.0;
-	  else
-	    tmean[ixyz] = mean[ixyz] / stddev;
-	}
-      if (nvoxel > 0)
+          /*----- divide by estimated standard deviation of factor mean -----*/
+          fval = (1.0 / df) * (1.0 / (a*c*n));
+          for (ixyz = 0;  ixyz < nxyz;  ixyz++)
+          {
+              stddev =  sqrt(tmean[ixyz] * fval);
+              if (stddev < EPSILON) tmean[ixyz] = 0.0;
+              else                  tmean[ixyz] = mean[ixyz] / stddev;
+          }
+      } else if (option_data->model == 4) {      /* 8 Sep 2005 [rickr,gangc] */
+
+        /* set mean as simple contrast */
+        for ( cindex = 0; cindex < b; cindex++ ) contr[cindex] = 0.0;
+        contr[level] = 1.0;
+                                                                                
+        calc_mean_sum2_bcontr( option_data, contr, -1, mean, tmean );
+        df = c - 1;  /* degrees of freedom from random variable only */
+        calculate_t_from_sums(tmean, mean, tmean, df, nxyz);
+
+      } else { /* option_data->model == 5 (set mean as simple contrast) */
+
+        for ( cindex = 0; cindex < b; cindex++ ) contr[cindex] = 0.0;
+        contr[level] = 1.0;
+                                                                                
+        calc_type5_bcontr(option_data, contr, -1, mean, tmean);
+        df = a * (c - 1);
+      }
+
+      if (nvoxel > 0){
+	printf ("Mean of factor B level %d = %f \n", level+1, mean[nvoxel-1]);
 	printf ("t for mean of factor B level %d = %f \n", 
 		level+1, tmean[nvoxel-1]);
+      }
       
       /*----- write out afni data file -----*/
       write_afni_data (option_data, option_data->bmname[imean], 
                        mean, tmean, df, 0);
-      
     }
   
   /*----- release memory -----*/
-  free (tmean);   tmean = NULL;
-  free (mean);    mean = NULL;
+  free (tmean);  free (mean);  free(contr);
 }
 
 
@@ -3472,7 +4039,7 @@ void calculate_bmeans (anova_options * option_data)
 
 void calculate_cmeans (anova_options * option_data)
 {
-  const float  EPSILON = 1.0e-10;    /* protect against divide by zero */
+  const float  EPSILON = 1.0e-15;    /* protect against divide by zero */
   float * mean = NULL;               /* pointer to treatment mean data */
   float * tmean = NULL;              /* pointer to t-statistic data */
   int a;                             /* number of levels for factor A */
@@ -3488,7 +4055,6 @@ void calculate_cmeans (anova_options * option_data)
   int df;                            /* degrees of freedom for t-test */
   float fval;                        /* for calculating std. dev. */
   float stddev;                      /* est. std. dev. of factor mean */
-  char filename[MAX_NAME_LENGTH];    /* input data file name */
  
 
   /*----- initialize local variables -----*/
@@ -3557,7 +4123,7 @@ void calculate_cmeans (anova_options * option_data)
 
 void calculate_xmeans (anova_options * option_data)
 {
-  const float  EPSILON = 1.0e-10;    /* protect against divide by zero */
+  const float  EPSILON = 1.0e-15;    /* protect against divide by zero */
   float * mean = NULL;               /* pointer to treatment mean data */
   float * tmean = NULL;              /* pointer to t-statistic data */
   int a;                             /* number of levels for factor A */
@@ -3573,7 +4139,6 @@ void calculate_xmeans (anova_options * option_data)
   int df;                            /* degrees of freedom for t-test */
   float fval;                        /* for calculating std. dev. */
   float stddev;                      /* est. std. dev. of cell mean */
-  char filename[MAX_NAME_LENGTH];    /* input data file name */
  
 
   /*----- initialize local variables -----*/
@@ -3645,14 +4210,16 @@ void calculate_xmeans (anova_options * option_data)
 
 void calculate_adifferences (anova_options * option_data)
 {
-  const float  EPSILON = 1.0e-10;     /* protect against divide by zero */
+  const float  EPSILON = 1.0e-15;     /* protect against divide by zero */
   float * diff = NULL;                /* pointer to est. diff. in means */
   float * tdiff = NULL;               /* pointer to t-statistic data */
+  float * contr;                      /* pointer to t-statistic data */
   int a;                              /* number of levels for factor A */
   int b;                              /* number of levels for factor B */
   int c;                              /* number of levels for factor C */
   int n;                              /* number of observations per cell */
   int ixyz, nxyz;                     /* voxel counters */
+  int cindex;                         /* contrast index */
   int nvoxel;                         /* output voxel # */
   int num_diffs;                      /* number of user requested diffs. */
   int idiff;                          /* index for requested differences */
@@ -3660,9 +4227,8 @@ void calculate_adifferences (anova_options * option_data)
   int df;                             /* degrees of freedom for t-test */
   float fval;                         /* for calculating std. dev. */
   float stddev;                       /* est. std. dev. of difference */
-  char filename[MAX_NAME_LENGTH];     /* input file name */
-  
-  
+
+
   /*----- initialize local variables -----*/
   a = option_data->a;
   b = option_data->b;
@@ -3671,74 +4237,76 @@ void calculate_adifferences (anova_options * option_data)
   num_diffs = option_data->num_adiffs;
   nxyz = option_data->nxyz;
   nvoxel = option_data->nvoxel;
-  
+
   /*----- allocate memory space for calculations -----*/
   diff = (float *) malloc(sizeof(float)*nxyz);
   tdiff = (float *) malloc(sizeof(float)*nxyz);
-  if ((diff == NULL) || (tdiff == NULL))
-    ANOVA_error ("unable to allocate sufficient memory");
-  
+  contr = (float *) malloc(sizeof(float)*a);
+  if ((diff == NULL) || (tdiff == NULL) || (contr == NULL))
+    ANOVA_error ("adiff: unable to allocate sufficient memory");
+
   /*----- loop over user specified treatment differences -----*/
   for (idiff = 0;  idiff < num_diffs;  idiff++)
-    {
-
-      /*----- read first treatment level mean -----*/
+  {
       i = option_data->adiffs[idiff][0];
-      calculate_sum (option_data, i, -1, -1, diff);
-      for (ixyz = 0;  ixyz < nxyz;  ixyz++)
-	diff[ixyz] = diff[ixyz] / (b*c*n);
-      
-      /*----- subtract second treatment level mean -----*/
       j = option_data->adiffs[idiff][1];
-      calculate_sum (option_data, j, -1, -1, tdiff);
-      for (ixyz = 0;  ixyz < nxyz;  ixyz++)
-	diff[ixyz] -= tdiff[ixyz] / (b*c*n);
-      if (nvoxel > 0)
+
+      if (option_data->model == 1)
+      {
+          /*----- read first treatment level mean -----*/
+          calculate_sum (option_data, i, -1, -1, diff);
+          for (ixyz = 0;  ixyz < nxyz;  ixyz++)
+            diff[ixyz] = diff[ixyz] / (b*c*n);
+
+          /*----- subtract second treatment level mean -----*/
+          calculate_sum (option_data, j, -1, -1, tdiff);
+          for (ixyz = 0;  ixyz < nxyz;  ixyz++)
+            diff[ixyz] -= tdiff[ixyz] / (b*c*n);
+
+          volume_read ("sse", tdiff, nxyz); 
+          df = a * b * c * (n-1);
+
+          /*----- divide by estimated standard deviation of difference -----*/  
+          fval = (1.0 / df) * (2.0 / (b*c*n));
+          for (ixyz = 0;  ixyz < nxyz;  ixyz++)
+          {
+              stddev = sqrt (tdiff[ixyz] * fval);
+              if (stddev < EPSILON) tdiff[ixyz] = 0.0;
+              else                  tdiff[ixyz] = diff[ixyz] / stddev;
+          } 
+      }
+      else if (option_data->model == 4)        /* 8 Sep 2005 [rickr,gangc] */
+      {
+          /* implement diff as a contrast */
+          for ( cindex = 0; cindex < a; cindex++ ) contr[cindex] = 0.0;
+          contr[i] = 1.0;  contr[j] = -1.0;
+
+          calc_mean_sum2_acontr( option_data, contr, -1, diff, tdiff );
+          df = c - 1;  /* degrees of freedom from random variable only */
+          calculate_t_from_sums(tdiff, diff, tdiff, df, nxyz);
+      }
+      else  /* model == 5 */
+      {
+          for ( cindex = 0; cindex < a; cindex++ ) contr[cindex] = 0.0;
+          contr[i] = 1.0;  contr[j] = -1.0;
+          calc_type5_acontr(option_data, contr, -1, diff, tdiff);
+          df = 2*(c-1);  /* weight of diff as contrast is 2 */
+      }
+
+      if (nvoxel > 0){
 	printf ("Difference of factor A level %d - level %d = %f \n", 
 		i+1, j+1, diff[nvoxel-1]);
-
-      /*----- standard deviation depends on model type -----*/
-      switch (option_data->model)
-	{
-	case 1:
-	  volume_read ("sse", tdiff, nxyz); 
-	  df = a * b * c * (n-1);
-	  break;
-	case 4:
-	  volume_read ("ssac", tdiff, nxyz); 
-	  df = (a-1) * (c-1);
-	  break;
-	case 5:
-	  volume_read ("ssca", tdiff, nxyz); 
-	  df = a * (c-1);
-	  break;
-	}
-      
-      /*----- divide by estimated standard deviation of difference -----*/  
-      fval = (1.0 / df) * (2.0 / (b*c*n));
-      for (ixyz = 0;  ixyz < nxyz;  ixyz++)
-	{
-	  stddev = sqrt (tdiff[ixyz] * fval);
-	  if (stddev < EPSILON)
-	    tdiff[ixyz] = 0.0;
-	  else
-	    tdiff[ixyz] = diff[ixyz] / stddev;
-	} 
-      
-      if (nvoxel > 0)
 	printf ("t for difference of factor A level %d - level %d = %f \n", 
 		i+1, j+1, tdiff[nvoxel-1]);
-      
+      }
+
       /*----- write out afni data file -----*/
       write_afni_data (option_data, option_data->adname[idiff], 
                        diff, tdiff, df, 0);
-      
     }
-  
+
   /*----- release memory -----*/
-  free (tdiff);   tdiff = NULL;
-  free (diff);    diff = NULL;
-  
+  free(tdiff);  free(diff);  free(contr);
 }
 
 
@@ -3752,14 +4320,16 @@ void calculate_adifferences (anova_options * option_data)
 
 void calculate_bdifferences (anova_options * option_data)
 {
-  const float  EPSILON = 1.0e-10;     /* protect against divide by zero */
+  const float  EPSILON = 1.0e-15;     /* protect against divide by zero */
   float * diff = NULL;                /* pointer to est. diff. in means */
   float * tdiff = NULL;               /* pointer to t-statistic data */
+  float * contr;                      /* pointer to t-statistic data */
   int a;                              /* number of levels for factor A */
   int b;                              /* number of levels for factor B */
   int c;                              /* number of levels for factor C */
   int n;                              /* number of observations per cell */
   int ixyz, nxyz;                     /* voxel counters */
+  int cindex;                         /* contrast index */
   int nvoxel;                         /* output voxel # */
   int num_diffs;                      /* number of user requested diffs. */
   int idiff;                          /* index for requested differences */
@@ -3767,9 +4337,8 @@ void calculate_bdifferences (anova_options * option_data)
   int df;                             /* degrees of freedom for t-test */
   float fval;                         /* for calculating std. dev. */
   float stddev;                       /* est. std. dev. of difference */
-  char filename[MAX_NAME_LENGTH];     /* input file name */
-  
-  
+
+
   /*----- initialize local variables -----*/
   a = option_data->a;
   b = option_data->b;
@@ -3778,74 +4347,77 @@ void calculate_bdifferences (anova_options * option_data)
   num_diffs = option_data->num_bdiffs;
   nxyz = option_data->nxyz;
   nvoxel = option_data->nvoxel;
-  
+
   /*----- allocate memory space for calculations -----*/
   diff = (float *) malloc(sizeof(float)*nxyz);
   tdiff = (float *) malloc(sizeof(float)*nxyz);
-  if ((diff == NULL) || (tdiff == NULL))
-    ANOVA_error ("unable to allocate sufficient memory");
-  
+  contr = (float *) malloc(sizeof(float)*b);
+  if ((diff == NULL) || (tdiff == NULL) || (contr == NULL))
+    ANOVA_error ("bdiff: unable to allocate sufficient memory");
+
   /*----- loop over user specified treatment differences -----*/
   for (idiff = 0;  idiff < num_diffs;  idiff++)
-    {
-
-      /*----- read first treatment level mean -----*/
+  {
       i = option_data->bdiffs[idiff][0];
-      calculate_sum (option_data, -1, i, -1, diff);
-      for (ixyz = 0;  ixyz < nxyz;  ixyz++)
-	diff[ixyz] = diff[ixyz] / (a*c*n);
-      
-      /*----- subtract second treatment level mean -----*/
       j = option_data->bdiffs[idiff][1];
-      calculate_sum (option_data, -1, j, -1, tdiff);
-      for (ixyz = 0;  ixyz < nxyz;  ixyz++)
-	diff[ixyz] -= tdiff[ixyz] / (a*c*n);
-      if (nvoxel > 0)
+
+      if (option_data->model == 1)
+      {
+          /*----- read first treatment level mean -----*/
+          calculate_sum (option_data, -1, i, -1, diff);
+          for (ixyz = 0;  ixyz < nxyz;  ixyz++)
+            diff[ixyz] = diff[ixyz] / (a*c*n);
+
+          /*----- subtract second treatment level mean -----*/
+          calculate_sum (option_data, -1, j, -1, tdiff);
+          for (ixyz = 0;  ixyz < nxyz;  ixyz++)
+            diff[ixyz] -= tdiff[ixyz] / (a*c*n);
+
+          volume_read ("sse", tdiff, nxyz); 
+          df = a * b * c * (n-1);
+
+          /*----- divide by estimated standard deviation of difference -----*/
+          fval = (1.0 / df) * (2.0 / (a*c*n));
+          for (ixyz = 0;  ixyz < nxyz;  ixyz++)
+          {
+              stddev = sqrt (tdiff[ixyz] * fval);
+              if (stddev < EPSILON) tdiff[ixyz] = 0.0;
+              else                  tdiff[ixyz] = diff[ixyz] / stddev;
+          } 
+      }
+      else if (option_data->model == 4)         /* 8 Sep 2005 [rickr,gangc] */
+      {
+          /* implement diff as a contrast */
+          for ( cindex = 0; cindex < b; cindex++ ) contr[cindex] = 0.0;
+          contr[i] = 1.0;  contr[j] = -1.0;
+
+          calc_mean_sum2_bcontr( option_data, contr, -1, diff, tdiff );
+          df = c - 1;  /* degrees of freedom from random variable only */
+          calculate_t_from_sums(tdiff, diff, tdiff, df, nxyz);
+      }
+      else  /* model == 5 (implement diff as a contrast) */
+      {
+          for ( cindex = 0; cindex < b; cindex++ ) contr[cindex] = 0.0;
+          contr[i] = 1.0;  contr[j] = -1.0;
+
+          calc_type5_bcontr(option_data, contr, -1, diff, tdiff);
+          df = a * (c - 1);
+      }
+
+      if (nvoxel > 0){
 	printf ("Difference of factor B level %d - level %d = %f \n", 
 		i+1, j+1, diff[nvoxel-1]);
-
-      /*----- standard deviation depends on model type -----*/
-      switch (option_data->model)
-	{
-	case 1:
-	  volume_read ("sse", tdiff, nxyz); 
-	  df = a * b * c * (n-1);
-	  break;
-	case 4:
-	  volume_read ("ssbc", tdiff, nxyz); 
-	  df = (b-1) * (c-1);
-	  break;
-	case 5:
-	  volume_read ("ssbca", tdiff, nxyz); 
-	  df = a * (b-1) * (c-1);
-	  break;
-	}
-
-      /*----- divide by estimated standard deviation of difference -----*/
-      fval = (1.0 / df) * (2.0 / (a*c*n));
-      for (ixyz = 0;  ixyz < nxyz;  ixyz++)
-	{
-	  stddev = sqrt (tdiff[ixyz] * fval);
-	  if (stddev < EPSILON)
-	    tdiff[ixyz] = 0.0;
-	  else
-	    tdiff[ixyz] = diff[ixyz] / stddev;
-	} 
-      
-      if (nvoxel > 0)
 	printf ("t for difference of factor B level %d - level %d = %f \n", 
 		i+1, j+1, tdiff[nvoxel-1]);
-      
+      }
+
       /*----- write out afni data file -----*/
       write_afni_data (option_data, option_data->bdname[idiff], 
                        diff, tdiff, df, 0);
-      
-    }
-  
+  }
+
   /*----- release memory -----*/
-  free (tdiff);   tdiff = NULL;
-  free (diff);    diff = NULL;
-  
+  free(tdiff);  free(diff);  free(contr);
 }
 
 
@@ -3859,7 +4431,7 @@ void calculate_bdifferences (anova_options * option_data)
 
 void calculate_cdifferences (anova_options * option_data)
 {
-  const float  EPSILON = 1.0e-10;     /* protect against divide by zero */
+  const float  EPSILON = 1.0e-15;     /* protect against divide by zero */
   float * diff = NULL;                /* pointer to est. diff. in means */
   float * tdiff = NULL;               /* pointer to t-statistic data */
   int a;                              /* number of levels for factor A */
@@ -3874,7 +4446,6 @@ void calculate_cdifferences (anova_options * option_data)
   int df;                             /* degrees of freedom for t-test */
   float fval;                         /* for calculating std. dev. */
   float stddev;                       /* est. std. dev. of difference */
-  char filename[MAX_NAME_LENGTH];     /* input file name */
   
   
   /*----- initialize local variables -----*/
@@ -3953,7 +4524,7 @@ void calculate_cdifferences (anova_options * option_data)
 
 void calculate_xdifferences (anova_options * option_data)
 {
-  const float  EPSILON = 1.0e-10;     /* protect against divide by zero */
+  const float  EPSILON = 1.0e-15;     /* protect against divide by zero */
   float * diff = NULL;                /* pointer to est. diff. in means */
   float * tdiff = NULL;               /* pointer to t-statistic data */
   int a;                              /* number of levels for factor A */
@@ -3968,7 +4539,6 @@ void calculate_xdifferences (anova_options * option_data)
   int df;                             /* degrees of freedom for t-test */
   float fval;                         /* for calculating std. dev. */
   float stddev;                       /* est. std. dev. of difference */
-  char filename[MAX_NAME_LENGTH];     /* input file name */
   
   
   /*----- initialize local variables -----*/
@@ -4049,10 +4619,10 @@ void calculate_xdifferences (anova_options * option_data)
 
 void calculate_acontrasts (anova_options * option_data)
 {
-  const float  EPSILON = 1.0e-10;     /* protect against divide by zero */
+  const float  EPSILON = 1.0e-15;     /* protect against divide by zero */
   float * contr = NULL;               /* pointer to contrast estimate */
   float * tcontr = NULL;              /* pointer to t-statistic data */
-  int a;                              /* number of levels for factor A */
+  int i, a;                           /* number of levels for factor A */
   int b;                              /* number of levels for factor B */
   int c;                              /* number of levels for factor C */
   int n;                              /* number of observations per cell */
@@ -4065,9 +4635,8 @@ void calculate_acontrasts (anova_options * option_data)
   float fval;                         /* for calculating std. dev. */
   float coef;                         /* contrast coefficient */
   float stddev;                       /* est. std. dev. of contrast */
-  char filename[MAX_NAME_LENGTH];     /* input data file name */
-  
-  
+
+
   /*----- initialize local variables -----*/
   a = option_data->a;
   b = option_data->b;
@@ -4076,77 +4645,74 @@ void calculate_acontrasts (anova_options * option_data)
   num_contr = option_data->num_acontr;
   nxyz = option_data->nxyz;
   nvoxel = option_data->nvoxel;
-  
+
   /*----- allocate memory space for calculations -----*/
   contr  = (float *) malloc(sizeof(float)*nxyz);
   tcontr = (float *) malloc(sizeof(float)*nxyz);
   if ((contr == NULL) || (tcontr == NULL))
     ANOVA_error ("unable to allocate sufficient memory");
-  
-  
+
   /*----- loop over user specified constrasts -----*/
   for (icontr = 0;  icontr < num_contr;  icontr++)
-    {
-      volume_zero (contr, nxyz);
-      fval = 0.0;
-      
-      for (level = 0;  level < a;  level++)
-	{
-	  coef = option_data->acontr[icontr][level]; 
-	  if (coef == 0.0) continue; 
-	  
-	  /*----- add coef * treatment level mean to contrast -----*/
-	  calculate_sum (option_data, level, -1, -1, tcontr);
-	  fval += coef * coef / (b*c*n);
-	  for (ixyz = 0;  ixyz < nxyz;  ixyz++)
-	    contr[ixyz] += coef * tcontr[ixyz] / (b*c*n);
-	}
+  {
+      if (option_data->model == 1)
+      {
+          volume_zero (contr, nxyz);
+          fval = 0.0;
 
-      if (nvoxel > 0)
+          for (level = 0;  level < a;  level++)
+	  {
+              coef = option_data->acontr[icontr][level]; 
+              if (coef == 0.0) continue; 
+              
+              /*----- add coef * treatment level mean to contrast -----*/
+              calculate_sum (option_data, level, -1, -1, tcontr);
+              fval += coef * coef / (b*c*n);
+              for (ixyz = 0;  ixyz < nxyz;  ixyz++)
+                  contr[ixyz] += coef * tcontr[ixyz] / (b*c*n);
+	  }
+
+          volume_read ("sse", tcontr, nxyz); 
+          df = a * b * c * (n-1);
+
+          /*----- divide by estimated standard deviation of the contrast -----*/
+          for (ixyz = 0;  ixyz < nxyz;  ixyz++)
+	  {
+              stddev = sqrt ((tcontr[ixyz] / df) * fval);
+              if (stddev < EPSILON) tcontr[ixyz] = 0.0;
+              else                  tcontr[ixyz] = contr[ixyz] / stddev;
+          }   
+      }
+      else if (option_data->model == 4)         /* 8 Sep 2005 [rickr,gangc] */
+      {
+          df = c - 1;
+          calc_mean_sum2_acontr(option_data, option_data->acontr[icontr], -1,
+                                contr, tcontr );
+          calculate_t_from_sums(tcontr, contr, tcontr, df, nxyz);
+      }
+      else   /* model == 5 */
+      {
+          calc_type5_acontr(option_data, option_data->acontr[icontr], -1,
+                            contr, tcontr);
+          /* compute df = weight*(c-1) */
+          for(i=0,df=0; i<a; i++) if(option_data->acontr[icontr][i]) df++;
+          df *= c - 1;
+      }
+
+      if (nvoxel > 0) {
 	printf ("No.%d contrast for factor A = %f \n", 
 		icontr+1, contr[nvoxel-1]);
-      
-      /*----- standard deviation depends on model type -----*/
-      switch (option_data->model)
-	{
-	case 1:
-	  volume_read ("sse", tcontr, nxyz); 
-	  df = a * b * c * (n-1);
-	  break;
-	case 4:
-	  volume_read ("ssac", tcontr, nxyz); 
-	  df = (a-1) * (c-1);
-	  break;
-	case 5:
-	  volume_read ("ssca", tcontr, nxyz); 
-	  df = a * (c-1);
-	  break;
-	}
-
-      /*----- divide by estimated standard deviation of the contrast -----*/
-      for (ixyz = 0;  ixyz < nxyz;  ixyz++)
-	{
-	  stddev = sqrt ((tcontr[ixyz] / df) * fval);
-	  if (stddev < EPSILON)
-	    tcontr[ixyz] = 0.0;
-	  else
-	    tcontr[ixyz] = contr[ixyz] / stddev;
-	}   
-      
-      if (nvoxel > 0)
 	printf ("t of No.%d contrast for factor A = %f \n", 
 		icontr+1, tcontr[nvoxel-1]);
-      
+      }
+
       /*----- write out afni data file -----*/
       write_afni_data (option_data, option_data->acname[icontr], 
                        contr, tcontr, df, 0);
-      
-    }
-  
+  }
+
   /*----- release memory -----*/
-  free (tcontr);   tcontr = NULL;
-  free (contr);    contr = NULL;
-  
+  free(tcontr);  free(contr);
 }
 
 /*---------------------------------------------------------------------------*/
@@ -4159,9 +4725,10 @@ void calculate_acontrasts (anova_options * option_data)
 
 void calculate_bcontrasts (anova_options * option_data)
 {
-  const float  EPSILON = 1.0e-10;     /* protect against divide by zero */
+  const float  EPSILON = 1.0e-15;     /* protect against divide by zero */
   float * contr = NULL;               /* pointer to contrast estimate */
   float * tcontr = NULL;              /* pointer to t-statistic data */
+  float * bcontr = NULL;              /* pointer to B contrast data */
   int a;                              /* number of levels for factor A */
   int b;                              /* number of levels for factor B */
   int c;                              /* number of levels for factor C */
@@ -4175,9 +4742,8 @@ void calculate_bcontrasts (anova_options * option_data)
   float fval;                         /* for calculating std. dev. */
   float coef;                         /* contrast coefficient */
   float stddev;                       /* est. std. dev. of contrast */
-  char filename[MAX_NAME_LENGTH];     /* input data file name */
-  
-  
+
+
   /*----- initialize local variables -----*/
   a = option_data->a;
   b = option_data->b;
@@ -4186,77 +4752,72 @@ void calculate_bcontrasts (anova_options * option_data)
   num_contr = option_data->num_bcontr;
   nxyz = option_data->nxyz;
   nvoxel = option_data->nvoxel;
-  
+
   /*----- allocate memory space for calculations -----*/
   contr  = (float *) malloc(sizeof(float)*nxyz);
   tcontr = (float *) malloc(sizeof(float)*nxyz);
   if ((contr == NULL) || (tcontr == NULL))
     ANOVA_error ("unable to allocate sufficient memory");
-  
-  
+
   /*----- loop over user specified constrasts -----*/
   for (icontr = 0;  icontr < num_contr;  icontr++)
-    {
-      volume_zero (contr, nxyz);
-      fval = 0.0;
-      
-      for (level = 0;  level < b;  level++)
-	{
-	  coef = option_data->bcontr[icontr][level]; 
-	  if (coef == 0.0) continue; 
-	  
-	  /*----- add coef * treatment level mean to contrast -----*/
-	  calculate_sum (option_data, -1, level, -1, tcontr);
-	  fval += coef * coef / (a*c*n);
-	  for (ixyz = 0;  ixyz < nxyz;  ixyz++)
-	    contr[ixyz] += coef * tcontr[ixyz] / (a*c*n);
-	}
+  {
+      bcontr = option_data->bcontr[icontr];  /* set a pointer to the contrast */
 
-      if (nvoxel > 0)
+      if (option_data->model == 1)
+      {
+          volume_zero (contr, nxyz);
+          fval = 0.0;
+
+          for (level = 0;  level < b;  level++)
+          {
+              coef = bcontr[level]; 
+              if (coef == 0.0) continue; 
+
+              /*----- add coef * treatment level mean to contrast -----*/
+              calculate_sum (option_data, -1, level, -1, tcontr);
+              fval += coef * coef / (a*c*n);
+              for (ixyz = 0;  ixyz < nxyz;  ixyz++)
+                  contr[ixyz] += coef * tcontr[ixyz] / (a*c*n);
+	  }
+
+          volume_read ("sse", tcontr, nxyz); 
+          df = a * b * c * (n-1);
+
+          /*----- divide by estimated standard deviation of the contrast -----*/
+          for (ixyz = 0;  ixyz < nxyz;  ixyz++)
+	  {
+              stddev = sqrt ((tcontr[ixyz] / df) * fval);
+              if (stddev < EPSILON) tcontr[ixyz] = 0.0;
+              else                  tcontr[ixyz] = contr[ixyz] / stddev;
+  	  }
+      }
+      else if (option_data->model == 4)         /* 8 Sep 2005 [rickr,gangc] */
+      {
+          df = c - 1;
+          calc_mean_sum2_bcontr(option_data, bcontr, -1, contr, tcontr);
+          calculate_t_from_sums(tcontr, contr, tcontr, df, nxyz);
+      }
+      else   /* model == 5                        23 Sep 2005 [rickr,gangc] */
+      {
+        calc_type5_bcontr(option_data, bcontr, -1, contr, tcontr);
+        df = a * (c - 1);
+      }
+
+      if (nvoxel > 0){
 	printf ("No.%d contrast for factor B = %f \n", 
 		icontr+1, contr[nvoxel-1]);
-      
-      /*----- standard deviation depends on model type -----*/
-      switch (option_data->model)
-	{
-	case 1:
-	  volume_read ("sse", tcontr, nxyz); 
-	  df = a * b * c * (n-1);
-	  break;
-	case 4:
-	  volume_read ("ssbc", tcontr, nxyz); 
-	  df = (b-1) * (c-1);
-	  break;
-	case 5:
-	  volume_read ("ssbca", tcontr, nxyz); 
-	  df = a * (b-1) * (c-1);
-	  break;
-	}
-
-      /*----- divide by estimated standard deviation of the contrast -----*/
-      for (ixyz = 0;  ixyz < nxyz;  ixyz++)
-	{
-	  stddev = sqrt ((tcontr[ixyz] / df) * fval);
-	  if (stddev < EPSILON)
-	    tcontr[ixyz] = 0.0;
-	  else
-	    tcontr[ixyz] = contr[ixyz] / stddev;
-	}   
-      
-      if (nvoxel > 0)
 	printf ("t of No.%d contrast for factor B = %f \n", 
 		icontr+1, tcontr[nvoxel-1]);
-      
+      }
+
       /*----- write out afni data file -----*/
       write_afni_data (option_data, option_data->bcname[icontr], 
                        contr, tcontr, df, 0);
-      
-    }
-  
+  }
+
   /*----- release memory -----*/
-  free (tcontr);   tcontr = NULL;
-  free (contr);    contr = NULL;
-  
+  free (tcontr);  free (contr);
 }
 
 /*---------------------------------------------------------------------------*/
@@ -4269,7 +4830,7 @@ void calculate_bcontrasts (anova_options * option_data)
 
 void calculate_ccontrasts (anova_options * option_data)
 {
-  const float  EPSILON = 1.0e-10;     /* protect against divide by zero */
+  const float  EPSILON = 1.0e-15;     /* protect against divide by zero */
   float * contr = NULL;               /* pointer to contrast estimate */
   float * tcontr = NULL;              /* pointer to t-statistic data */
   int a;                              /* number of levels for factor A */
@@ -4285,7 +4846,6 @@ void calculate_ccontrasts (anova_options * option_data)
   float fval;                         /* for calculating std. dev. */
   float coef;                         /* contrast coefficient */
   float stddev;                       /* est. std. dev. of contrast */
-  char filename[MAX_NAME_LENGTH];     /* input data file name */
   
   
   /*----- initialize local variables -----*/
@@ -4354,6 +4914,161 @@ void calculate_ccontrasts (anova_options * option_data)
   free (tcontr);   tcontr = NULL;
   free (contr);    contr = NULL;
   
+}
+
+
+/*---------------------------------------------------------------------------*/
+/* 
+  Routine to estimate a user specified 2nd order contrast in treatment levels
+  for factor A, at a fixed B level.  The output is stored as a 2 sub-brick
+  AFNI data set.  The first sub-brick contains the estimated contrast.  The
+  second sub-brick contains the corresponding t-statistic.
+*/
+
+void calculate_aBcontrasts (anova_options * option_data)
+{
+  float * contr = NULL;               /* pointer to contrast estimate */
+  float * tcontr = NULL;              /* pointer to t-statistic data */
+  float * acontr = NULL;              /* local pointer to A contrast */
+  int i, a;                           /* number of levels for factor A */
+  int c;                              /* number of levels for factor C */
+  int n;                              /* number of observations per cell */
+  int nxyz;                           /* number of voxels */
+  int nvoxel;                         /* output voxel # */
+  int num_contr;                      /* number of user requested contrasts */
+  int icontr;                         /* index of user requested contrast */
+  int Blevel;                         /* fixed B level for A contrast */
+  int df;                             /* degrees of freedom for t-test */
+
+
+  /*----- initialize local variables -----*/
+  a = option_data->a;
+  c = option_data->c;
+  n = option_data->n;
+  num_contr = option_data->num_aBcontr;
+  nxyz = option_data->nxyz;
+  nvoxel = option_data->nvoxel;
+
+  /*----- allocate memory space for calculations -----*/
+  contr  = (float *) malloc(sizeof(float)*nxyz);
+  tcontr = (float *) malloc(sizeof(float)*nxyz);
+  if ((contr == NULL) || (tcontr == NULL))
+    ANOVA_error ("unable to allocate sufficient memory");
+
+  /*----- loop over user specified constrasts -----*/
+  for (icontr = 0;  icontr < num_contr;  icontr++)
+  {
+      acontr = option_data->aBcontr[icontr];
+      Blevel = option_data->aBclevel[icontr];
+      if (option_data->model == 4)
+      {
+          df = c - 1;
+          calc_mean_sum2_acontr(option_data, acontr, Blevel, contr, tcontr );
+          calculate_t_from_sums(tcontr, contr, tcontr, df, nxyz);
+      }
+      else if (option_data->model == 5)
+      {
+          calc_type5_acontr(option_data, acontr, Blevel, contr, tcontr);
+          /* compute df = weight*(c-1) */
+          for(i=0,df=0; i<a; i++) if(acontr[i]) df++;
+          df *= c - 1;
+      }
+      else /* (option_data->model == 1) */
+      {
+          fprintf(stderr,"** error: calc_aBcontr() should not allow model %d\n",
+                         option_data->model);
+          exit(1);
+      }
+
+      if (nvoxel > 0) {
+	printf ("No.%d 2nd order contrast for factor A at B level %d = %f\n", 
+		icontr+1, Blevel+1, contr[nvoxel-1]);
+	printf ("t of No.%d 2nd order contrast for factor A = %f\n", 
+		icontr+1, tcontr[nvoxel-1]);
+      }
+
+      /*----- write out afni data file -----*/
+      write_afni_data (option_data, option_data->aBcname[icontr], 
+                       contr, tcontr, df, 0);
+  }
+
+  /*----- release memory -----*/
+  free(tcontr);  free(contr);
+}
+
+
+/*---------------------------------------------------------------------------*/
+/*
+  Routine to estimate a user specified contrast in treatment levels for
+  factor B, at a fixed A level.  The output is stored as a 2 sub-brick
+  AFNI data set.  The first sub-brick contains the estimated contrast.
+  The second sub-brick contains the corresponding t-statistic.
+*/
+
+void calculate_Abcontrasts (anova_options * option_data)
+{
+  float * contr = NULL;               /* pointer to contrast estimate */
+  float * tcontr = NULL;              /* pointer to t-statistic data */
+  float * bcontr = NULL;              /* pointer to B contrast data */
+  int a;                              /* number of levels for factor A */
+  int b;                              /* number of levels for factor B */
+  int c;                              /* number of levels for factor C */
+  int n;                              /* number of observations per cell */
+  int nxyz;                           /* number of voxels */
+  int nvoxel;                         /* output voxel # */
+  int num_contr;                      /* number of user requested contrasts */
+  int icontr;                         /* index of user requested contrast */
+  int Alevel;                         /* fixed A level for B contrast */
+  int df;                             /* degrees of freedom for t-test */
+
+
+  /*----- initialize local variables -----*/
+  a = option_data->a;
+  b = option_data->b;
+  c = option_data->c;
+  n = option_data->n;
+  num_contr = option_data->num_Abcontr;
+  nxyz = option_data->nxyz;
+  nvoxel = option_data->nvoxel;
+
+  /*----- allocate memory space for calculations -----*/
+  contr  = (float *) malloc(sizeof(float)*nxyz);
+  tcontr = (float *) malloc(sizeof(float)*nxyz);
+  if ((contr == NULL) || (tcontr == NULL))
+    ANOVA_error ("unable to allocate sufficient memory");
+
+  /*----- loop over user specified constrasts -----*/
+  for (icontr = 0;  icontr < num_contr;  icontr++)
+  {
+      Alevel = option_data->Abclevel[icontr];
+      bcontr = option_data->Abcontr[icontr]; /* set a pointer to the contrast */
+
+      if (option_data->model == 4 || option_data->model == 5)
+      {
+        calc_type5_bcontr(option_data, bcontr, Alevel, contr, tcontr);
+        df = c - 1;
+      }
+      else /* invalid */
+      {
+          fprintf(stderr,"** error: calc_Abcontr() should not allow model %d\n",
+                         option_data->model);
+          exit(1);
+      }
+
+      if (nvoxel > 0) {
+	printf ("No.%d 2nd order contrast for factor B at A level %d = %f\n", 
+		icontr+1, Alevel+1, contr[nvoxel-1]);
+	printf ("t of No.%d 2nd order contrast for factor B = %f\n", 
+		icontr+1, tcontr[nvoxel-1]);
+      }
+
+      /*----- write out afni data file -----*/
+      write_afni_data (option_data, option_data->Abcname[icontr], 
+                       contr, tcontr, df, 0);
+  }
+
+  /*----- release memory -----*/
+  free (tcontr);  free (contr);
 }
 
 /*---------------------------------------------------------------------------*/
@@ -4491,6 +5206,12 @@ void analyze_results (anova_options * option_data)
 
    /*-----  estimate level contrasts for factor C  -----*/
    if (option_data->num_ccontr)  calculate_ccontrasts (option_data);
+
+   /*-----  estimate level contrasts for factor A at fixed B level -----*/
+   if (option_data->num_aBcontr) calculate_aBcontrasts (option_data);
+
+   /*-----  estimate level contrasts for factor B at fixed A level -----*/
+   if (option_data->num_Abcontr) calculate_Abcontrasts (option_data);
 
 }
 
@@ -4860,6 +5581,42 @@ void create_bucket (anova_options * option_data)
       }
 
 
+  /*----- make contrast in factor A for fixed B level -----*/
+  if (option_data->num_aBcontr > 0)
+    for (i = 0; i < option_data->num_aBcontr; i++)
+      {
+	add_file_name (new_dset, option_data->aBcname[i], bucket_str);
+
+	ibrick++;
+	sprintf (str, " -sublabel %d %s:Contr ", 
+		 ibrick, option_data->aBcname[i]);
+	strcat (refit_str, str);
+
+	ibrick++;
+	sprintf (str, " -sublabel %d %s:t-stat ", 
+		 ibrick, option_data->aBcname[i]);
+	strcat (refit_str, str);
+      }
+
+
+  /*----- make contrast in factor B for fixed A level -----*/
+  if (option_data->num_Abcontr > 0)
+    for (i = 0; i < option_data->num_Abcontr; i++)
+      {
+	add_file_name (new_dset, option_data->Abcname[i], bucket_str);
+
+	ibrick++;
+	sprintf (str, " -sublabel %d %s:Contr ", 
+		 ibrick, option_data->Abcname[i]);
+	strcat (refit_str, str);
+
+	ibrick++;
+	sprintf (str, " -sublabel %d %s:t-stat ", 
+		 ibrick, option_data->Abcname[i]);
+	strcat (refit_str, str);
+      }
+
+
   /*----- invoke program 3dbucket to generate bucket type output dataset
           by concatenating previous output files -----*/
   printf("Writing `bucket' dataset ");
@@ -5021,6 +5778,16 @@ void terminate (anova_options * option_data)
 	for (i = 0; i < option_data->num_ccontr; i++)
 	  remove_dataset (new_dset, option_data->ccname[i]);
       
+      /*----- remove contrast in factor A for fixed B level -----*/
+      if (option_data->num_aBcontr > 0)
+	for (i = 0; i < option_data->num_aBcontr; i++)
+	  remove_dataset (new_dset, option_data->aBcname[i]);
+
+      /*----- remove contrast in factor B for fixed A level -----*/
+      if (option_data->num_Abcontr > 0)
+	for (i = 0; i < option_data->num_Abcontr; i++)
+	  remove_dataset (new_dset, option_data->Abcname[i]);
+
       THD_delete_3dim_dataset (new_dset , False);   new_dset = NULL;
     }
 
@@ -5077,20 +5844,3 @@ int main (int argc, char ** argv)
 
    exit(0);
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

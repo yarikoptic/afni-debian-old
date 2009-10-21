@@ -1071,11 +1071,16 @@ int SUMA_BuildMenu(Widget parent, int menu_type, char *menu_title,
      XtSetArg (args[n], XmNmarginHeight, 0); n++;
      XtSetArg (args[n], XmNmarginTop, 0 ); n++;
      XtSetArg (args[n], XmNmarginBottom, 0 ); n++;
+     /* Following three settings have no effect ...
+     XtSetArg (args[n], XmNpacking, XmPACK_COLUMN); n++;
+     XtSetArg (args[n], XmNnumColumns, 2); n++;
+     XtSetArg (args[n], XmNorientation, XmHORIZONTAL); n++;*/
      
      /* This really isn't a cascade, but this is the widget handle
       * we're going to return at the end of the function.
       */
      cascade = XmCreateOptionMenu (parent, menu_title, args, n);
+     
      XmStringFree (str);
    }
    
@@ -1401,8 +1406,12 @@ SUMA_Boolean SUMA_X_SurfaceViewer_Create (void)
    /* Step 1. */
    if (CallNum == 0) { /* first call, initialize App */
       SUMAg_CF->N_OpenSV = 0;
-      SUMAg_SVv[ic].X->TOPLEVEL = XtAppInitialize(&SUMAg_CF->X->App, "SUMA", NULL, 0, &cargc, vargv,
-       SUMA_get_fallbackResources(), NULL, 0);
+      /*
+         SUMAg_SVv[ic].X->TOPLEVEL = XtAppInitialize(&SUMAg_CF->X->App, "SUMA", NULL, 0, &cargc, vargv,
+       SUMA_get_fallbackResources(), NULL, 0); Superseded by XtOpenApplication
+      */
+      SUMAg_SVv[ic].X->TOPLEVEL = XtOpenApplication(&SUMAg_CF->X->App, "SUMA", NULL, 0, &cargc, vargv,
+       SUMA_get_fallbackResources(), topLevelShellWidgetClass, NULL, 0); 
       SUMAg_SVv[ic].X->DPY = XtDisplay(SUMAg_SVv[ic].X->TOPLEVEL);
       /* save DPY for first controller opened */
       SUMAg_CF->X->DPY_controller1 = SUMAg_SVv[ic].X->DPY;
@@ -1467,10 +1476,19 @@ SUMA_Boolean SUMA_X_SurfaceViewer_Create (void)
          SUMAg_SVv[ic].X->DOUBLEBUFFER = SUMAg_SVv[0].X->DOUBLEBUFFER;
       }
 		
+      #ifdef LESSTIF 
+         SUMA_S_Warn("Using LessTif Libraries. Bad idea.");
+      #else
+         SUMA_LH("Using Open Motif libraries");
+      #endif
+
       /* Step 3.5 Wed Dec 18 14:49:25 EST 2002 - The GUI*/
          /* see Kilgard's OpenGL Programming for the X window system */
          /* create main window */
-         mainw = XmCreateMainWindow (SUMAg_SVv[ic].X->TOPLEVEL, "mainw", NULL, 0);
+         SUMA_LH("Creating Main Window");
+	 /* Next call Causes Seg. fault on Fedora Core 4. Not much I can do. Same happens with demo code paperplane.c by Kilgard */
+         mainw = XmCreateMainWindow (SUMAg_SVv[ic].X->TOPLEVEL, "mainw", NULL, 0); 
+         SUMA_LH("Managing Main Window");
          XtManageChild (mainw);      
          /* create menu bar */
          menubar = XmCreateMenuBar (mainw, "menubar", NULL, 0);
@@ -3973,6 +3991,7 @@ SUMA_Boolean SUMA_InitializeColPlaneShell(SUMA_SurfaceObject *SO, SUMA_OVERLAYS 
    char sbuf[SUMA_MAX_LABEL_LENGTH];
    float range[2];
    int loc[2], i;
+   SUMA_SurfaceObject *SOpar=NULL;
    
    SUMA_Boolean LocalHead = NOPE;
    
@@ -3990,14 +4009,24 @@ SUMA_Boolean SUMA_InitializeColPlaneShell(SUMA_SurfaceObject *SO, SUMA_OVERLAYS 
       SUMA_SET_TEXT_FIELD(SO->SurfCont->ColPlaneDimFact->textfield,"-");
    }else {
       SUMA_LH("Initializing for real");
-      if (strlen(ColPlane->Label) + strlen(SO->Label) +25 > SUMA_MAX_LABEL_LENGTH) {
+      if (ColPlane->dset_link) { /* get the parent surface of the colorplane */
+         if (ColPlane->dset_link->ngr) {
+            SOpar = SUMA_findSOp_inDOv(NI_get_attribute(ColPlane->dset_link->ngr,"Parent_ID"), SUMAg_DOv, SUMAg_N_DOv);
+         }
+      }
+      if (!SOpar) {
+         SUMA_SL_Warn("No parent for dset found.\nProceeding with next best option.");
+         SOpar = SO;
+      }
+      
+      if (strlen(ColPlane->Label) + strlen(SOpar->Label) +25 > SUMA_MAX_LABEL_LENGTH) {
          SUMA_SL_Warn("Surface Labels too long!");
          SUMA_INSERT_CELL_STRING(SO->SurfCont->ColPlaneLabelTable, 0, 1, "Surface Labels too long!");
          SUMA_INSERT_CELL_STRING(SO->SurfCont->ColPlaneLabelTable, 1, 1, "Surface Labels too long!");
       } else {
-         if (strlen(SO->Label) > 40) {
+         if (strlen(SOpar->Label) > 40) {
             char *tmpstr=NULL;
-            tmpstr = SUMA_truncate_string(SO->Label, 40);
+            tmpstr = SUMA_truncate_string(SOpar->Label, 40);
             if (tmpstr) { 
                sprintf (sbuf, "Label: %s\nParent: %s", ColPlane->Label, tmpstr);
                free(tmpstr); tmpstr = NULL;
@@ -4005,10 +4034,10 @@ SUMA_Boolean SUMA_InitializeColPlaneShell(SUMA_SurfaceObject *SO, SUMA_OVERLAYS 
             SUMA_INSERT_CELL_STRING(SO->SurfCont->ColPlaneLabelTable, 0, 1, ColPlane->Label);
             SUMA_INSERT_CELL_STRING(SO->SurfCont->ColPlaneLabelTable, 1, 1, tmpstr);
          } else {
-            sprintf (sbuf, "Label: %s\nParent: %s", ColPlane->Label, SO->Label);
+            sprintf (sbuf, "Label: %s\nParent: %s", ColPlane->Label, SOpar->Label);
          }
          SUMA_INSERT_CELL_STRING(SO->SurfCont->ColPlaneLabelTable, 0, 1, ColPlane->Label);
-         SUMA_INSERT_CELL_STRING(SO->SurfCont->ColPlaneLabelTable, 1, 1, SO->Label);
+         SUMA_INSERT_CELL_STRING(SO->SurfCont->ColPlaneLabelTable, 1, 1, SOpar->Label);
       }
       
       SO->SurfCont->ColPlaneOrder->value = ColPlane->PlaneOrder;
@@ -5493,12 +5522,15 @@ void SUMA_cb_ColPlaneShow_toggled (Widget w, XtPointer data, XtPointer client_da
    
    SO = (SUMA_SurfaceObject *)data;
    
-   if (!SO->SurfCont->curColPlane) SUMA_RETURNe;
+   if (!SO || !SO->SurfCont) SUMA_RETURNe;
+   if (!SO->SurfCont->curColPlane || !SO->SurfCont->ColPlaneShow_tb) SUMA_RETURNe;
 
+   SUMA_LH("Getting State");
    SO->SurfCont->curColPlane->Show = XmToggleButtonGetState (SO->SurfCont->ColPlaneShow_tb);
    /* set the duplicate button next to int */
+   SUMA_LH("Setting State of duplicate button");
    XmToggleButtonSetState (SO->SurfCont->Int_tb, SO->SurfCont->curColPlane->Show, NOPE);
-   
+   SUMA_LH("Updating color plane shells");
    SUMA_UpdateColPlaneShellAsNeeded(SO); /* update other open ColPlaneShells */
 
    SUMA_RemixRedisplay(SO);
@@ -9617,7 +9649,7 @@ void SUMA_ShowAllVisuals (void)
 {
    static char FuncName[]={"SUMA_ShowAllVisuals"};
    Display *dpy;
-   XVisualInfo match, *visualList, *vi, *visualToTry;
+   XVisualInfo match, *visualList=NULL, *vi=NULL, *visualToTry=NULL;
    int errorBase, eventBase, major, minor, found, glxcapable;
    Widget TopLevel;
    XtAppContext App;
@@ -9677,11 +9709,13 @@ void SUMA_ShowAllVisuals (void)
          fprintf(SUMA_STDERR, "direct rendering: supported\n");
    } else fprintf(SUMA_STDERR, "No GLX-capable visuals!\n");
    
-   XFree(visualList);
+   if (visualList) XFree(visualList);
 
    /* which visual will be chosen by SUMA ? (based on Step 3 in SUMA_X_SurfaceViewer_Create) */
-   TopLevel = XtAppInitialize(&App, "SUMA", NULL, 0, &cargc, vargv,
-                              SUMA_get_fallbackResources(), NULL, 0);
+   /* TopLevel = XtAppInitialize(&App, "SUMA", NULL, 0, &cargc, vargv,
+                              SUMA_get_fallbackResources(), NULL, 0); Superseded by XtOpenApplication*/
+   TopLevel = XtOpenApplication(&App, "SUMA", NULL, 0, &cargc, vargv,
+                              SUMA_get_fallbackResources(), topLevelShellWidgetClass, NULL, 0); 
    dpy = XtDisplay(TopLevel);
 
    vi = glXChooseVisual(dpy, DefaultScreen(dpy), dblBuf);
@@ -9700,8 +9734,9 @@ void SUMA_ShowAllVisuals (void)
       fprintf (SUMA_STDERR,"%s: Visual is not TrueColor.\n", FuncName); 
       fprintf (SUMA_STDERR," SUMA NO LIKE.\n");
    }
+   /* Might cause trouble on Fedora Core 4. Don't know what to do with it */
    XtDestroyWidget(TopLevel);
-   
+   XtDestroyApplicationContext(App);
    SUMA_RETURNe;
 }
 

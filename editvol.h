@@ -312,6 +312,19 @@ extern void EDIT_one_dataset( THD_3dim_dataset * dset , EDIT_options * edopt ) ;
 extern void EDIT_blur_volume( int,int,int , float,float,float , int,void * , float ) ;
 extern void EDIT_blur_volume_3d( int,int,int , float,float,float , int,void * , float, float, float ) ;
 
+void EDIT_blur_allow_fir( int ) ;  /* 04 Oct 2005 */
+
+/* Gaussian blur in image space, not FFT space: 04 Oct 2005 */
+
+extern void FIR_blur_volume( int nx, int ny, int nz,
+                             float dx, float dy, float dz,
+                             float *ffim , float sigma ) ;
+
+extern void FIR_blur_volume_3d( int nx, int ny, int nz,
+                                float dx, float dy, float dz,
+                                float *ffim ,
+                                float sigmax, float sigmay, float sigmaz ) ;
+
 /*! Convert Gaussian blur RMS width to sigma [1/sqrt(3)] */
 #define RMS_TO_SIGMA(rms) (0.57735027*(rms))
 
@@ -363,6 +376,11 @@ extern void EDIT_cluster_array (MCW_cluster_array * , int, float, float);
 /* 11 Sept 1996 */
 extern void EDIT_filter_volume (int, int, int, float, float, float,
                                 int, void *, int, float , byte * , char * );
+
+/* 13 Sept 2005 [rickr] */
+extern THD_marker_set * create_empty_marker_set(void);
+extern int              okay_to_add_markers(THD_3dim_dataset * dset);
+
 
 /**---------------- AFNI Dataset item Names ----------------**/
 

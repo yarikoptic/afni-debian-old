@@ -2467,7 +2467,7 @@ SUMA_Boolean SUMA_ScaleToMap_alaAFNI ( float *V, int N_V,
       if (LocalHead) fprintf(SUMA_STDERR,"%s: [Vrange, Vmax, Vmin] = [%f, %f, %f]\nInterpMode=%d\n", 
                                           FuncName, Vrange, Vmax, Vmin, Opt->interpmode);
       if (Vrange < 0) {
-         fprintf (SUMA_STDERR,"Error %s: Vmax < Vmin.\n", FuncName);
+         fprintf (SUMA_STDERR,"Error %s: Vmax (%f)< Vmin(%f).\n", FuncName, Vmax, Vmin);
          SUMA_RETURN (NOPE);
       }
 
@@ -2786,7 +2786,7 @@ SUMA_Boolean SUMA_ScaleToMap (float *V, int N_V,
       MinCol = 0.0; MaxCol = (float)ColMap->N_Col; 
       Vrange = Vmax - Vmin; 
       if (Vrange < 0) {
-         fprintf (SUMA_STDERR,"Error %s: Vmax < Vmin.\n", FuncName);
+         fprintf (SUMA_STDERR,"Error %s: Vmax (%f)< Vmin(%f).\n", FuncName, Vmax, Vmin);
          SUMA_RETURN (NOPE);
       }
 
@@ -3062,6 +3062,35 @@ SUMA_SCALE_TO_MAP_OPT * SUMA_ScaleToMapOptInit(void)
    SUMA_RETURN (Opt);
 
 }
+
+/*!
+   \brief the interpmode value to a string.
+*/ 
+char *SUMA_CmapModeName (SUMA_COLORMAP_INTERP_MODE mapmode)
+{
+   static char FuncName[]={"SUMA_CmapModeName"};
+   
+   SUMA_ENTRY;
+   
+   switch (mapmode) {
+         case SUMA_UNDEFINED_MODE:
+            SUMA_RETURN("Undefined");
+            break;
+         case SUMA_DIRECT:
+            SUMA_RETURN("Direct");
+            break;
+         case SUMA_NO_INTERP:
+            SUMA_RETURN("NearestNeighbor");
+            break;
+         case SUMA_INTERP:
+            SUMA_RETURN("Interpolate");
+            break;
+         default:
+            SUMA_RETURN("Unexpected business");
+            break;
+   }
+}
+
 
 /*!
    \brief Returns the ascii name of a Suma standard map.
@@ -5122,7 +5151,10 @@ SUMA_Boolean SUMA_Overlays_2_GLCOLAR4(SUMA_SurfaceObject *SO, SUMA_SurfaceViewer
    
    \sa SUMA_Overlays_2_GLCOLAR4
 */
-SUMA_Boolean SUMA_MixOverlays (SUMA_OVERLAYS ** Overlays, int N_Overlays, int *ShowOverlays, int NshowOverlays, GLfloat *glcolar, int N_Node, SUMA_Boolean *isColored, SUMA_Boolean FILL)
+SUMA_Boolean SUMA_MixOverlays (  SUMA_OVERLAYS ** Overlays, int N_Overlays, 
+                                 int *ShowOverlays, int NshowOverlays, 
+                                 GLfloat *glcolar, int N_Node, 
+                                 SUMA_Boolean *isColored, SUMA_Boolean FILL)
 {    
    static char FuncName[] = {"SUMA_MixOverlays"};
    int i, j;
@@ -5184,6 +5216,10 @@ SUMA_Boolean SUMA_MixOverlays (SUMA_OVERLAYS ** Overlays, int N_Overlays, int *S
          if (Overlays[i]->GlobalOpacity < 0.0) {         Glob = NOPE;      }
 
          /* is this a Local Factor */
+         if (!Overlays[i]->LocalOpacity) {
+            fprintf(SUMA_STDERR,"Error %s:\nNULL Overlays[%d]->LocalOpacity\n", FuncName, i);
+            SUMA_RETURN (NOPE);
+         }
          if (Overlays[i]->LocalOpacity[0] < 0) {         Locl = NOPE;      }
       } else {
          Glob = NOPE; Locl = NOPE;
@@ -5453,7 +5489,7 @@ char *SUMA_ScaleToMapOpt_Info (SUMA_SCALE_TO_MAP_OPT *OptScl, int detail)
          OptScl->BrightMap[0], OptScl->BrightMap[1]);
       SS = SUMA_StringAppend_va (SS, "AutoBrtRange = %d\n", OptScl->AutoBrtRange);
       SS = SUMA_StringAppend_va (SS, "alaAFNI = %d\n", OptScl->alaAFNI);
-      SS = SUMA_StringAppend_va (SS, "interpmode = %d\n", OptScl->interpmode);
+      SS = SUMA_StringAppend_va (SS, "interpmode = %d (%s)\n", OptScl->interpmode, SUMA_CmapModeName(OptScl->interpmode));
       SS = SUMA_StringAppend_va (SS, "BiasMode = %d, Range=%f, %f \n", 
             OptScl->DoBias, OptScl->CoordBiasRange[0], OptScl->CoordBiasRange[1]);
       if (OptScl->BiasVect) SS = SUMA_StringAppend_va (SS, "BiasVect is NOT NULL\n");
@@ -6782,7 +6818,7 @@ void SUMA_LoadDsetFile (char *filename, void *data)
    
    /* load the dude */
    /* first, set the parent ID of the dset to be loaded,
-   This ID is only used when generating an ID for those dsets
+   This parent ID is only used when generating an ID for those dsets
    that have no ID attached, like the 1D ones */
    if (SO->LocalDomainParentID) SUMA_SetParent_DsetToLoad(SO->LocalDomainParentID);
    else if (SO->idcode_str) SUMA_SetParent_DsetToLoad(SO->idcode_str); 
@@ -6808,9 +6844,21 @@ void SUMA_LoadDsetFile (char *filename, void *data)
    if (!np || lnp == 0) { 
       SUMA_SL_Note("dset has no mesh parent, assigning SO");
       if (!SUMA_OKassign(dset, SO)) {
-         SUMA_SLP_Err("Cannot assign dset to SO.\n");
-         SUMA_FreeDset(dset); dset=NULL;
-         SUMA_RETURNe;
+         SUMA_SurfaceObject *SOldp = SUMA_findSOp_inDOv(SO->LocalDomainParentID,SUMAg_DOv, SUMAg_N_DOv);
+         if (SOldp) {
+            SUMA_SLP_Err("Cannot assign dset to SO.\nTrying to assign to domain parent.");
+            if (!SUMA_OKassign(dset, SOldp)) {
+               SUMA_SLP_Err("Cannot assign dset to SO \nor its local domain parent");
+               SUMA_FreeDset(dset); dset=NULL;
+               SUMA_RETURNe;
+            }
+            /* from that point on, treat dset as if being loaded onto SOpar*/
+            SO = SOldp;
+         } else {
+            SUMA_SLP_Err("Cannot assign dset to SO.");
+            SUMA_FreeDset(dset); dset=NULL;
+            SUMA_RETURNe;
+         }
       }
       NI_set_attribute(dset->ngr,"Parent_ID", SO->idcode_str);
       NI_set_attribute(dset->ngr,"GeomParent_idcode", SO->idcode_str);
@@ -7283,8 +7331,12 @@ SUMA_Boolean SUMA_Interpret_AFNIColor (char *Name, float RGB[3])
          /* XtAppInitialize (at least on mac osx) forces the application to quit if display cannot be opened
          So you must decide ahead of time whether to call it or not! */
          if (SUMAg_CF->isGraphical) {
-            tl = XtAppInitialize(NULL, "ScaleToMap", NULL, 0, &cargc, vargv,
-                  SUMA_get_fallbackResources(), NULL, 0);
+            /* tl = XtAppInitialize(&app, "ScaleToMap", NULL, 0, &cargc, vargv,
+                  SUMA_get_fallbackResources(), NULL, 0); Superseded by XtOpenApplication */
+                  
+            tl = XtOpenApplication(&app, "ScaleToMap", NULL, 0, &cargc, vargv,
+                  SUMA_get_fallbackResources(),topLevelShellWidgetClass,  NULL, 0);
+                  
             dpy = XtDisplay(tl);
             cmap = DefaultColormap(dpy, DefaultScreen(dpy));
 
@@ -7297,7 +7349,10 @@ SUMA_Boolean SUMA_Interpret_AFNIColor (char *Name, float RGB[3])
             RGB[2] = (float)color_exact.blue/255.0/257.0;
 
             XFreeColormap(dpy, cmap);
-            XtDestroyWidget(tl);
+            
+            /* These 2 lines cause a crash on Fedora Core 4, but Core 4 crashes at XmCreateMainWindow anyway so we're doomed.*/
+            XtDestroyWidget(tl); 
+            XtDestroyApplicationContext(app);
          } else {
             if (LocalHead) fprintf(SUMA_STDERR,"%s: \n"
                                           "Xcolor %s cannot be resolved without \n"

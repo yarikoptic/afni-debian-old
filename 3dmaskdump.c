@@ -52,8 +52,8 @@ int main( int argc , char * argv[] )
              "                 all nonzero values from 'mset' are used.\n"
              "                 Note that if a voxel is zero in 'mset', then\n"
              "                 it won't be included, even if a < 0 < b.\n"
-                             /*-- 09 May 2003: add -index option [rickr] */
-	     "  -index       Means to write out the dataset index values.\n"
+       /*-- 09 May 2003: add -index option [rickr] */
+             "  -index       Means to write out the dataset index values.\n"
              "  -noijk       Means not to write out the i,j,k values.\n"
              "  -xyz         Means to write the x,y,z coordinates from\n"
              "                 the 1st input dataset at the start of each\n"
@@ -207,8 +207,8 @@ int main( int argc , char * argv[] )
 
       /*-- 09 May 2003: option to output index value (for Mike B) [rickr] --*/
       if( strcmp(argv[narg],"-index") == 0 ){
-	 yes_index = 1 ;
-	 narg++ ; continue ;
+        yes_index = 1 ;
+        narg++ ; continue ;
       }
 
       if( strcmp(argv[narg],"-noijk") == 0 ){
@@ -415,14 +415,14 @@ int main( int argc , char * argv[] )
        if( kbot > ktop ){ btyp = kbot; kbot = ktop; ktop = btyp; }
 
        /* skip box if outside dataset */
-       if ( itop < 0 || ibot >= nx-1 ) continue;
-       if ( jtop < 0 || jbot >= ny-1 ) continue;
-       if ( ktop < 0 || kbot >= nz-1 ) continue;
+       if ( itop < 0 || ibot >= nx ) continue;
+       if ( jtop < 0 || jbot >= ny ) continue;
+       if ( ktop < 0 || kbot >= nz ) continue;
 
        /* constrain values to dataset dimensions */
-       if ( ibot < 0 ) ibot = 0;  if ( itop >= nx-1 ) itop = nx-1;
-       if ( jbot < 0 ) jbot = 0;  if ( jtop >= ny-1 ) jtop = ny-1;
-       if ( kbot < 0 ) kbot = 0;  if ( ktop >= nz-1 ) ktop = nz-1;
+       if ( ibot < 0 ) ibot = 0;  if ( itop >= nx ) itop = nx-1;
+       if ( jbot < 0 ) jbot = 0;  if ( jtop >= ny ) jtop = ny-1;
+       if ( kbot < 0 ) kbot = 0;  if ( ktop >= nz ) ktop = nz-1;
 
        for( kk=kbot ; kk <= ktop ; kk++ )
         for( jj=jbot ; jj <= jtop ; jj++ )
@@ -484,7 +484,7 @@ int main( int argc , char * argv[] )
       /*-- 09 May 2003: optionally display index    [rickr] --*/
       if ( yes_index ){
          otemp = MV_format_fval((float)ii);
-	 strcat(obuf,otemp); strcat(obuf," ");
+         strcat(obuf,otemp); strcat(obuf," ");
       }
 
       if( ! noijk ){

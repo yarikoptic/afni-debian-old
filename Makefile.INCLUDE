@@ -65,7 +65,7 @@ PROGRAMS = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge count   
            3dSpatNorm Imon fftest serial_helper 3dDTeig 3dDWItoDT 3dWarpDrive   \
            nifti_tool nifti_stats nifti1_test whereami plugout_drive            \
            3dMedianFilter 3dretroicor 3dAFNItoNIML 3dAFNItoRaw im2niml          \
-           DTIStudioFibertoSegments Dimon 3dLocalstat                           \
+           DTIStudioFibertoSegments Dimon 3dLocalstat 3danisosmooth 3dmaxima    \
            $(EXTRAS)
 
 PROGRAMS_NOPLUG = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge      \
@@ -89,7 +89,9 @@ PROGRAMS_NOPLUG = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge  
                   dicom_hdr 3dDespike dicom_to_raw file_tool rotcom 3dUniformize    \
                   3dWarp nicat 3dSpatNorm 3dWarpDrive 3dretroicor ge_header         \
                   3dAFNItoRaw DTIStudioFibertoSegments im2niml 3dLocalstat          \
-                  $(EXTRAS) Imon nifti_tool nifti_stats nifti1_test Dimon
+                  Imon nifti_tool nifti_stats nifti1_test Dimon 3danisosmooth       \
+                  3dmaxima                                                          \
+                  $(EXTRAS)
 
 # For CYGWIN (look for "exe" to find various places below)
 #  Note that 3dNLfim and 3dTSgen are missing for now
@@ -117,12 +119,14 @@ PROGRAMS_EXE = afni.exe to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge 
                3dAutobox 3dLRflip 3dANALYZEtoAFNI dicom_hdr 3dDespike nicat       \
                dicom_to_raw rotcom 3dDeconvolve_f 3dUniformize 3dWarp 3dWarpDrive \
                file_tool.exe Imon.exe 3dresample.exe serial_helper.exe im2niml    \
-               nifti_tool.exe 3dAFNItoRaw DTIStudioFibertoSegments Dimon
+               nifti_tool.exe 3dAFNItoRaw DTIStudioFibertoSegments Dimon          \
+               3danisosmooth
 
 SCRIPTS = @4Daverage @CommandGlobb @GetAfniOrient @DTI_studio_reposition @GetAfniPrefix @NoExt @UpdateAfni @RenamePanga \
           @GetAfniView @SUMA_AlignToExperiment @SUMA_Make_Spec_FS @Purify_1D      \
           @SUMA_Make_Spec_SF @make_stim_file @Align_Centers suma_change_spec      \
-          @CheckForAfniDset @clip_volume @AfniOrient2RAImap @parse_afni_name @auto_tlrc
+          @CheckForAfniDset @clip_volume @AfniOrient2RAImap @parse_afni_name      \
+          @auto_align @auto_tlrc
 
 LIBHEADERS = mrilib.h cdflib.h mcw_glob.h 3ddata.h thd_maker.h thd_iochan.h       \
              editvol.h cs.h eispack.h killer.h vecmat.h machdep.h tagset.h        \
@@ -427,6 +431,11 @@ dsetdup:dsetdup.o
 3dDTtoDWI:3dDTtoDWI.o libmri.a
 	$(RM) $@
 	$(CC) -o 3dDTtoDWI 3dDTtoDWI.o $(LFLAGS) $(LLIBS) -lf2c -lmri
+
+3danisosmooth:3danisosmooth.o DWIstructtensor.o libmri.a
+	$(RM) $@
+	$(CC) -o 3danisosmooth 3danisosmooth.o DWIstructtensor.o \
+          $(LFLAGS) $(LLIBS) -lf2c -lmri
 	
 3dToutcount:3dToutcount.o
 	$(RM) $@
@@ -562,7 +571,7 @@ d3dmerge:3dmerge.c
 	$(CC) -o 3dttest 3dttest.o parser.o parser_int.o \
               $(LFLAGS) -lmri -lf2c $(LLIBS)
 
-whereami:whereami.o
+whereami:whereami.c
 	$(RM) $@
 	$(CC) -o whereami whereami.c $(IFLAGS) $(LFLAGS) -lmri $(LLIBS)
 
@@ -1120,7 +1129,7 @@ debugtrace.o:debugtrace.h
 
 afni_vcheck.o:afni.h
 
-afni_splash.o:afni_splash.h imseq.h
+afni_splash.o:afni_splash.h imseq.h afni_splash.c
 
 afni_func.o:imseq.h 3ddata.h xutil.h pbar.h afni.h machdep.h
 afni_widg.o:imseq.h 3ddata.h xutil.h pbar.h afni.h logo.h machdep.h
@@ -1225,7 +1234,7 @@ MRI_OBJS = mri_cfft.o mri_complex_arith.o mri_fft_complex.o mri_free.o    \
            mri_read_stuff.o mri_flip3D.o mri_warp3D.o mri_fromstring.o         \
            ge4_header.o mri_equal.o mri_scalize.o mri_isgray.o mri_read_mpeg.o \
            mri_entropy16.o mri_symbolize.o mri_colorsetup.o mri_warp3D_align.o \
-           mri_medianfilter.o mri_nstats.o
+           mri_medianfilter.o mri_nstats.o mri_scaled_diff.o
 
 CDF_OBJS = cdf_00.o cdf_01.o cdf_02.o cdf_03.o cdf_04.o cdf_05.o \
            cdf_06.o cdf_07.o cdf_08.o cdf_09.o cdf_10.o cdf_11.o \
@@ -1414,6 +1423,11 @@ plug_crender.$(SO):plug_crender.c librickr.a
 	$(PLUGIN_CC) -c plug_crender.c $(IFLAGS)
 	$(LD) $(PLUGIN_LFLAGS) -o plug_crender.$(SO) plug_crender.o -L. -lrickr
 
+plug_maxima.$(SO):plug_maxima.c maxima.o
+	$(RM) $@
+	$(PLUGIN_CC) -c plug_maxima.c $(IFLAGS)
+	$(LD) $(PLUGIN_LFLAGS) -o plug_maxima.$(SO) plug_maxima.o maxima.o -L.
+
 ### From Fred Tam
 
 plug_retroicor.$(SO):plug_retroicor.c retroicor.o
@@ -1538,6 +1552,10 @@ librickr.a:
 
 #######
 # rickr programs
+
+3dmaxima: 3dmaxima.o maxima.o libmri.a
+	$(RM) $@
+	$(CC) -o 3dmaxima 3dmaxima.o maxima.o $(LFLAGS) $(LLIBS)
 
 3dresample: librickr.a libmri.a $(AFWARPOBJS)
 	( cd rickr ; 							\
@@ -2098,7 +2116,9 @@ suma_clean:
 	if [ -f ConvexHull ]; then $(RM) ConvexHull; fi;
 	if [ -f SUMA/ConvexHull ]; then $(RM) SUMA/ConvexHull; fi;
 	if [ -f SUMA_glxdino ]; then $(RM) SUMA_glxdino; fi;
+	if [ -f SUMA_paperplane ]; then $(RM) SUMA_paperplane; fi;
 	if [ -f SUMA/SUMA_glxdino ]; then $(RM) SUMA/SUMA_glxdino; fi;
+	if [ -f SUMA/SUMA_paperplane ]; then $(RM) SUMA/SUMA_paperplane; fi;
 	if [ -f SUMA_pixmap2eps ]; then $(RM) SUMA_pixmap2eps; fi;
 	if [ -f SUMA/SUMA_pixmap2eps ]; then $(RM) SUMA/SUMA_pixmap2eps; fi;
 	if [ -f SurfaceMetrics ]; then $(RM) SurfaceMetrics; fi;
@@ -2167,7 +2187,7 @@ suma_install:
 	$(CP) SUMA/suma SUMA/MakeColorMap SUMA/ROI2dataset SUMA/3dVol2Surf SUMA/3dSurf2Vol SUMA/SurfMeasures \
 	SUMA/ScaleToMap SUMA/MapIcosahedron SUMA/CreateIcosahedron SUMA/CompareSurfaces \
 	SUMA/ConvertSurface SUMA/ConvertDset SUMA/SurfClust SUMA/IsoSurface SUMA/ConvexHull SUMA/SUMA_glxdino SUMA/SUMA_pixmap2eps SUMA/SurfaceMetrics \
-   SUMA/inspec SUMA/quickspec SUMA/FSread_annot SUMA/SurfPatch SUMA/SurfQual SUMA/SurfSmooth \
+   SUMA/inspec SUMA/quickspec SUMA/FSread_annot SUMA/SurfPatch SUMA/SurfQual SUMA/SurfSmooth SUMA/SUMA_paperplane\
    SUMA/SampBias SUMA/3dSkullStrip SUMA/3dCRUISEtoAFNI SUMA/3dBRAIN_VOYAGERtoAFNI SUMA/3dSurfMask\
    SUMA/SurfToSurf   \
    ${INSTALLDIR} ; \

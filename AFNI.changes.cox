@@ -5700,3 +5700,53 @@
 
 01 Sep 2005
  * Fixed 3drotate.c so that "-rotate 0 0 0" doesn't fail.
+
+21 Sep 2005
+ * Modified thd_writedset.c and 3dAFNItoNIFTI.c so that if AFNI_AUTOGZIP is
+     YES, then .nii.gz files will be written instead of .nii files.
+
+28 Sep 2005
+ * Changes to 3dWarpDrive.c to summarize results (-summ) and to prevent steps
+     that make the RMS error much worse.
+
+30 Sep 2005
+ * 2x2 and 3x3 special cases for cs_symeig.c.
+
+04 Oct 2005
+ * Modified edt_blur.c to do small Gaussian blurs in real-space, with the
+     fir_blur?() functions.  Also added FIR_blur_volume() function to allow
+     user to invoke FIR explicitly, rather than implicitly.
+ * Add "TRACE" command to afni_driver.c.
+
+06 Oct 2005
+ * Modified edt_blur.c to skip min/max clip calculations when all directions
+     are done with FIR.
+ * Modified thd_dsetatr.c to write BRICK_STATSYM attribute not just for
+     func bucket datasets but for fitt, fift (etc.) legacy types.
+ * Fixed bug in 3dbucfim.c where the stat_aux array was possibly loaded
+     with illegal array access values.
+
+11 Oct 2005
+ * Modified thd_niftiwrite.c and 3dAFNItoNIFTI.c so that specifying a .hdr
+     output filename means you get a .hdr/.img NIfTI-1.1 file pair.  Note
+     that thd_analyzeread.c and thd_niftiread.c already allow for .hdr/.img
+     NIfTI-1.1 file pair inputs.
+
+18 Oct 2005
+ * Added -usetemp option to 3dcalc.c.
+ * Added some timing delays to popup/popdowns.
+
+21 Oct 2005
+ * Modified 3dToutcount.c to check for float_scan type errors.
+
+24 Oct 2005
+ * Modified 3dDeconvolve.c to use mmap() with MAP_ANON instead of shmem
+     for inter-process storage.  Can go beyond 2 GB barrier this way,
+     on 64-bit compiles.
+
+25 Oct 2005
+ * Makefiles for macosx_10.4_G5 and solaris29_suncc_64.
+
+26 Oct 2005
+ * Mod to symeig_3 (in cs_symeig.c) to avoid problems that are invisible.
+ * Mod to plot_x11.c (in coxplot/) and 1dgrayplot.c, to plot correctly.

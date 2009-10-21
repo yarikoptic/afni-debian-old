@@ -34,8 +34,8 @@ MCW_bbox * new_MCW_bbox( Widget parent ,
 ENTRY("new_MCW_bbox") ;
 
    if( num_but <= 0 || num_but >= 32 ){
-      fprintf(stderr,"\n*** illegal new_MCW_bbox has %d buttons\n",num_but) ;
-      EXIT(1) ;
+     fprintf(stderr,"\n*** illegal new_MCW_bbox has %d buttons\n",num_but) ;
+     EXIT(1) ;
    }
 
    bb = (MCW_bbox *) XtMalloc( sizeof(MCW_bbox) ) ;
@@ -48,6 +48,7 @@ ENTRY("new_MCW_bbox") ;
    switch( bb_frame ){
 
       case MCW_BB_frame:
+         STATUS("create frame") ;
          rc_parent = bb->wtop = bb->wframe =
             XtVaCreateManagedWidget(
                "frame" , xmFrameWidgetClass , parent ,
@@ -94,6 +95,7 @@ ENTRY("new_MCW_bbox") ;
       }
    }
 
+   STATUS("create rowcol") ;
    bb->wrowcol = XtCreateWidget(
                    "dialog" , xmRowColumnWidgetClass , rc_parent ,
                    wa , na ) ;
@@ -104,6 +106,7 @@ ENTRY("new_MCW_bbox") ;
 
    /***--- create the buttons ---***/
 
+   STATUS("create toggle buttons") ;
    for( ib=0 ; ib < num_but ; ib++ ){
       bb->wbut[ib] = XtVaCreateManagedWidget(
                         "dialog" , xmToggleButtonWidgetClass , bb->wrowcol ,
@@ -123,6 +126,7 @@ ENTRY("new_MCW_bbox") ;
    for( ib=num_but ; ib < MCW_MAX_BB ; ib++ ) bb->wbut[ib] = NULL ;
 
    MCW_set_bbox( bb , initial_value ) ;
+   STATUS("manage button box") ;
    XtManageChild( bb->wrowcol ) ;
 
    bb->parent = bb->aux = NULL ;
@@ -239,6 +243,7 @@ ENTRY("new_MCW_arrowval") ;
    }
 
    av = myXtNew( MCW_arrowval ) ;
+   STATUS("creating wrowcol") ;
    av->wrowcol = XtVaCreateWidget(
                     "dialog" , xmRowColumnWidgetClass , parent ,
 
@@ -259,6 +264,7 @@ ENTRY("new_MCW_arrowval") ;
       XmString   xstr = XmStringCreateLtoR( label , XmFONTLIST_DEFAULT_TAG );
       XmFontList xflist ;
 
+      STATUS("creating wlabel") ;
       av->wlabel = XtVaCreateManagedWidget(
                     "dialog" , xmLabelWidgetClass , av->wrowcol ,
 
@@ -271,7 +277,9 @@ ENTRY("new_MCW_arrowval") ;
 
       XtVaGetValues( av->wlabel , XmNfontList , &xflist , NULL ) ;
 
+      STATUS("getting label height") ;
       asizy = XmStringHeight( xflist , xstr ) ;
+      STATUS("freeing xstr") ;
       XmStringFree( xstr ) ;
 
    } else {
@@ -281,6 +289,7 @@ ENTRY("new_MCW_arrowval") ;
    if( asizx < asizy ) asizx = asizy ;
    else                asizy = asizx ;
 
+   STATUS("creating item labels") ;
    av->wdown = XtVaCreateManagedWidget(
                   "arrow" , xmArrowButtonWidgetClass , av->wrowcol ,
 
@@ -338,6 +347,7 @@ ENTRY("new_MCW_arrowval") ;
 #endif
 
       case MCW_AV_readtext:
+         STATUS("creating wtext1") ;
          av->wtext = XtVaCreateManagedWidget(
                        "dialog" , TEXT_CLASS , av->wrowcol ,
 
@@ -368,6 +378,7 @@ ENTRY("new_MCW_arrowval") ;
          Widget wf ; int maxlen ;
 
          if( textype == MCW_AV_noactext ){
+            STATUS("creating frame") ;
             wf = XtVaCreateWidget( "dialog" , xmFrameWidgetClass , av->wrowcol ,
                                       XmNshadowType , XmSHADOW_OUT ,
                                       XmNshadowThickness , 1 ,
@@ -380,6 +391,7 @@ ENTRY("new_MCW_arrowval") ;
             maxlen = AV_NCOL ;
          }
 
+         STATUS("creating wtext2") ;
          av->wtext = XtVaCreateManagedWidget(
                        "dialog" , TEXT_CLASS , wf ,
 
@@ -1590,7 +1602,7 @@ ENTRY("MCW_choose_ovcolor") ;
    }
 
    if( av != NULL ){
-       myXtFree( av ) ; av = NULL ;
+     myXtFree( av ) ; av = NULL ;
    }
 
    /*--- create popup widget ---*/
@@ -1644,7 +1656,7 @@ ENTRY("MCW_choose_ovcolor") ;
    XtVaSetValues( wpop , XmNx , (int) xx , XmNy , (int) yy , NULL ) ;
 
    XtManageChild( wrc ) ;
-   XtPopup( wpop , XtGrabNone ) ;
+   XtPopup( wpop , XtGrabNone ) ; RWC_sleep(1);
 
    if( av->wtext != NULL )
       MCW_set_widget_bg( av->wtext , NULL , dc->ovc->pix_ov[ovc_init] ) ; /* after popup */
@@ -1771,7 +1783,7 @@ ENTRY("MCW_choose_vector") ;
    XtVaSetValues( wpop , XmNx , (int) xx , XmNy , (int) yy , NULL ) ;
 
    XtManageChild( wrc ) ;
-   XtPopup( wpop , XtGrabNone ) ;
+   XtPopup( wpop , XtGrabNone ) ; RWC_sleep(1);
 
    RWC_visibilize_widget( wpop ) ;
    NORMAL_cursorize( wpop ) ;
@@ -1892,7 +1904,7 @@ ENTRY("MCW_choose_integer") ;
    XtVaSetValues( wpop , XmNx , (int) xx , XmNy , (int) yy , NULL ) ;
 
    XtManageChild( wrc ) ;
-   XtPopup( wpop , XtGrabNone ) ;
+   XtPopup( wpop , XtGrabNone ) ; RWC_sleep(1);
 
    RWC_visibilize_widget( wpop ) ;   /* 09 Nov 1999 */
    NORMAL_cursorize( wpop ) ;
@@ -2235,7 +2247,7 @@ ENTRY("MCW_choose_string") ;
    XtVaSetValues( wpop , XmNx , (int) xx , XmNy , (int) yy , NULL ) ;
 
    XtManageChild( wrc ) ;
-   XtPopup( wpop , XtGrabNone ) ;
+   XtPopup( wpop , XtGrabNone ) ; RWC_sleep(1);
 
    RWC_visibilize_widget( wpop ) ;   /* 09 Nov 1999 */
    NORMAL_cursorize( wpop ) ;
@@ -2469,7 +2481,7 @@ ENTRY("MCW_choose_multi_strlist") ;
    XtVaSetValues( wpop , XmNx , (int) xx , XmNy , (int) yy , NULL ) ;
 
    XtManageChild( wrc ) ;
-   XtPopup( wpop , XtGrabNone ) ;
+   XtPopup( wpop , XtGrabNone ) ; RWC_sleep(1);
 
    RWC_visibilize_widget( wpop ) ;   /* 09 Nov 1999 */
    NORMAL_cursorize( wpop ) ;
@@ -2735,7 +2747,7 @@ if(PRINT_TRACING){
    XtVaSetValues( wpop , XmNx , (int) xx , XmNy , (int) yy , NULL ) ;
 
    XtManageChild( wrc ) ;
-   XtPopup( wpop , XtGrabNone ) ;
+   XtPopup( wpop , XtGrabNone ) ; RWC_sleep(1);
 
    RWC_visibilize_widget( wpop ) ;   /* 09 Nov 1999 */
    NORMAL_cursorize( wpop ) ;
@@ -3035,7 +3047,7 @@ ENTRY("MCW_choose_multi_editable_strlist") ;
    XtVaSetValues( wpop , XmNx , (int) xx , XmNy , (int) yy , NULL ) ;
 
    XtManageChild( wrc ) ;
-   XtPopup( wpop , XtGrabNone ) ;
+   XtPopup( wpop , XtGrabNone ) ; RWC_sleep(1);
 
    RWC_visibilize_widget( wpop ) ;   /* 09 Nov 1999 */
    NORMAL_cursorize( wpop ) ;

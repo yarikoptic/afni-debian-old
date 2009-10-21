@@ -208,7 +208,7 @@ int main( int argc , char * argv[] )
    Argc = argc ; Argv = argv ;
 
    T3D_initialize_user_data() ;
-   THD_check_AFNI_version() ;
+   THD_check_AFNI_version("to3d") ;
 
    if( user_inputs.nosave ){
      printf("Opening X11 now") ; fflush(stdout) ;
@@ -2664,12 +2664,14 @@ printf("decoded %s to give zincode=%d bot=%f top=%f\n",Argv[nopt],
            user_inputs.tunits = UNITS_HZ_TYPE ;
          }
 
-         if( AFNI_yesenv("AFNI_ALLOW_MILLISECONDS") )
-           WARNING_message("TR expressed in milliseconds is deprecated.") ;
-         else
-           WARNING_message(
-             "TR expressed in milliseconds will be converted to TR=%.6fs",
-             0.001*TR) ;
+         if( user_inputs.tunits == UNITS_MSEC_TYPE ){
+           if( AFNI_yesenv("AFNI_ALLOW_MILLISECONDS") )
+             WARNING_message("TR expressed in milliseconds is deprecated.") ;
+           else
+             WARNING_message(
+               "TR expressed in milliseconds will be converted to TR=%.6fs",
+               0.001*TR) ;
+         }
 
          /** 31 July 1996: be more specific about errors **/
 

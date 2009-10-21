@@ -79,21 +79,39 @@ ENTRY("THD_write_3dim_dataset") ;
    THD_set_dataset_attributes( dset ) ;
 
    /*------ 06 Apr 2005: write a NIFTI-1 dataset??? -----*/
+   /*       11 Oct 2005: allow .hdr suffix also          */
 
    ppp = DSET_PREFIX(dset) ;
    if( STRING_HAS_SUFFIX(ppp,".nii")    ||
-       STRING_HAS_SUFFIX(ppp,".nii.gz") || use_NIFTI_format ){
+       STRING_HAS_SUFFIX(ppp,".nii.gz") ||
+       STRING_HAS_SUFFIX(ppp,".hdr")    || use_NIFTI_format ){
 
      niftiwr_opts_t options ;
 
-     ii = strlen(DSET_DIRNAME(dset)) + strlen(ppp) + 16 ;
+     ii = strlen(DSET_DIRNAME(dset)) + strlen(ppp) + 32 ;
      options.infile_name = calloc(1,ii) ;
      strcpy(options.infile_name,DSET_DIRNAME(dset)) ;
      strcat(options.infile_name,ppp) ;
 
      if( !STRING_HAS_SUFFIX(options.infile_name,".nii")    &&
-         !STRING_HAS_SUFFIX(options.infile_name,".nii.gz")   )
+         !STRING_HAS_SUFFIX(options.infile_name,".nii.gz") &&
+         !STRING_HAS_SUFFIX(options.infile_name,".hdr")      ) /* 11 Oct 2005 */
        strcat(options.infile_name,".nii") ;
+
+     /* allow user to order gzip-ed output via environment,
+        OR complain if the file is ordered to be gzip-ed but can't be */
+
+#ifdef HAVE_ZLIB                                            /* 21 Sep 2005 */
+     if( AFNI_yesenv("AFNI_AUTOGZIP")                  &&
+         STRING_HAS_SUFFIX(options.infile_name,".nii")   )
+       strcat(options.infile_name,".gz") ;
+#else
+     if( STRING_HAS_SUFFIX(options.infile_name,".nii.gz") ){
+       WARNING_message("Can't write compressed file '%s'; writing '.nii' instead") ;
+       ii = strlen(options.infile_name) ;
+       options.infile_name[ii-3] = '\0' ;
+     }
+#endif
 
      {  /* set the nifti_io debug level       8 Apr 2005 [rickr] */
         char * ept = my_getenv("AFNI_NIFTI_DEBUG");
@@ -102,9 +120,8 @@ ENTRY("THD_write_3dim_dataset") ;
      }
 
      if( !write_brick ){
-       fprintf(stderr,
-               "** ERROR: can't write HEADER only for NIfTI-1 file: %s\n",
-               options.infile_name ) ;
+       ERROR_message("Can't write HEADER only for NIfTI-1 file: %s\n",
+                     options.infile_name ) ;
        ii = 0 ;
      } else {
        ii = THD_write_nifti(dset,options) ;

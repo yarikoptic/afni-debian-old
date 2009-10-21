@@ -5788,7 +5788,7 @@ ENTRY("ISQ_but_disp_CB") ;
 
    ISQ_place_dialog( seq ) ;  /* 05 Jan 1999 */
 
-   XtPopup( seq->dialog , XtGrabNone ) ;
+   XtPopup( seq->dialog , XtGrabNone ) ; RWC_sleep(1);
 
    ISQ_disp_options( seq , False ) ;  /* set toggles from option list */
    seq->save_opt = seq->opt ;         /* for use with Reset button */
@@ -7239,7 +7239,7 @@ static unsigned char record_bits[] = {
       case isqDR_unrealize:{
          ISQ_timer_stop(seq) ;
          if( ISQ_REALZ(seq) ) XtUnrealizeWidget( seq->wtop ) ;
-         seq->valid = 1 ;
+         seq->valid = 1 ; RWC_sleep(1) ;
          RETURN( True );
       }
       break ;
@@ -7248,17 +7248,17 @@ static unsigned char record_bits[] = {
 
       case isqDR_realize:{
          if( ! ISQ_REALZ(seq) ){
-            XtRealizeWidget( seq->wtop ) ;
-            WAIT_for_window( seq->wtop ) ;
-            NORMAL_cursorize( seq->wtop ) ;
+            XtRealizeWidget( seq->wtop )   ; RWC_sleep(1) ;
+            WAIT_for_window( seq->wtop )   ; RWC_sleep(1) ;
+            NORMAL_cursorize( seq->wtop )  ;
             POPUP_cursorize( seq->wimage ) ;
-            POPUP_cursorize( seq->wbar ) ;
+            POPUP_cursorize( seq->wbar )   ;
             POPUP_cursorize( seq->wbut_bot[NBUT_SAVE] ) ;
-            XmUpdateDisplay( seq->wtop ) ;
+            XmUpdateDisplay( seq->wtop )   ; RWC_sleep(1) ;
          }
 #ifndef DONT_ONOFF_ONE
          if( seq->status->num_total == 1 )  /* 08 Aug 2001 */
-            drive_MCW_imseq( seq , isqDR_onoffwid , (XtPointer) isqDR_offwid ) ;
+           drive_MCW_imseq( seq , isqDR_onoffwid , (XtPointer) isqDR_offwid ) ;
 #endif
          seq->valid = 2 ;
          RETURN( True );
@@ -8040,7 +8040,7 @@ fprintf(stderr,"montage: zoom_fac = %d\n",seq->zoom_fac) ;
 
    XtManageChild( wrc ) ;
    ISQ_place_dialog( seq ) ;  /* 05 Jan 1999 */
-   XtPopup( seq->dialog , XtGrabNone ) ;
+   XtPopup( seq->dialog , XtGrabNone ) ; RWC_sleep(1);
    NORMAL_cursorize( seq->dialog ) ;
    ISQ_but_done_reset( seq ) ;
    EXRETURN ;
