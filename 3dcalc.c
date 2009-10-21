@@ -758,7 +758,8 @@ DSET_DONE: continue;  /*** target for various goto statements above ***/
          case 10: siz = DSET_NZ(CALC_dset[ids]) ; break ;
        }
        if( IJKAR_flim[ii]->nx != siz )
-         ERROR_message("dimension mismatch between '-%c' and '%-c'\n", 'a'+ii , 'a'+ids ) ;
+         ERROR_message("dimension mismatch between '-%c' and '%-c'\n",
+                       'a'+ii , 'a'+ids ) ;
      }
    }
 
@@ -912,7 +913,7 @@ void CALC_Syntax(void)
     "   about the point with coordinates (x,y,z)=(20,30,70):                 \n"
     "                                                                        \n"
     "     3dcalc -a anat+tlrc                                              \\\n"
-    "            -expr 'step((9-(x-20)*(x-20)-(y-30)*(y-30)-(z-70)*(z-70))'\\\n"
+    "            -expr 'step(9-(x-20)*(x-20)-(y-30)*(y-30)-(z-70)*(z-70))' \\\n"
     "            -prefix ball                                                \n"
     "                                                                        \n"
     " 8. Some datsets are 'short' (16 bit) integers with a scalar attached,  \n"
@@ -2078,7 +2079,9 @@ int main( int argc , char *argv[] )
 
            } else if( !CALC_nscale ){            /* maybe scale */
 
-             fimfac = (gtop > MRI_TYPE_maxval[CALC_datum] || (gtop > 0.0 && gtop <= 1.0) )
+             /* (gtop <= 1.0) to (gtop < 1.0)     23 Mar 2006 [rickr/dglen] */
+             fimfac = (gtop > MRI_TYPE_maxval[CALC_datum]
+                        || (gtop > 0.0 && gtop < 1.0) )
                       ? MRI_TYPE_maxval[CALC_datum]/ gtop : 0.0 ;
 
              if( fimfac == 0.0 && gtop > 0.0 ){  /* 28 Jul 2003: check for non-integers */

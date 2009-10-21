@@ -265,6 +265,7 @@ static mday holiday[] = {
    {APR, 4,"Hungary Liberation Day"                                  } ,
    {APR, 4,"Senegal Independence Day"                                } ,
    {APR, 4,"Yamamoto Isoroku's birthday"                             } ,
+   {APR, 6,"Birthday of the Twinkie"                                 } ,
    {APR, 8,"Siddhartha Gautama's birthday"                           } ,
    {APR, 9,"Anniversary of Lee's surrender at Appomattox"            } ,
    {APR,10,"Anniversary of loss of USS Thresher"                     } ,
@@ -302,6 +303,7 @@ static mday holiday[] = {
 
    {MAY, 1,"Emperor Claudius's birthday"                             } ,
    {MAY, 1,"Herman Melville's birthday"                              } ,
+   {MAY, 1,"Anniversary of Crab Nebula Supernova"                    } ,
    {MAY, 2,"Baron Von Richtofen's birthday"                          } ,
    {MAY, 3,"Anniversary of Polish Constitution"                      } ,
    {MAY, 3,"Nicolo Machiavelli's birthday"                           } ,

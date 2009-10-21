@@ -1081,6 +1081,25 @@ floatvecvec * SYM_expand_ranges( int nlast, int nrang, SYM_irange *rang, char *s
 
 #include "afni_environ.h"  /* 07 Jun 1999 addition */
 /*------------------------------------------------------------------------*/
+/*--- Functions in mri_matrix.c (matrix operations, stored as images) ----*/
+
+extern MRI_IMAGE * mri_matrix_mult     ( MRI_IMAGE *, MRI_IMAGE *);
+extern MRI_IMAGE * mri_matrix_multranA ( MRI_IMAGE *, MRI_IMAGE *);
+extern MRI_IMAGE * mri_matrix_multranB ( MRI_IMAGE *, MRI_IMAGE *);
+extern MRI_IMAGE * mri_matrix_psinv    ( MRI_IMAGE *, float * , float );
+extern void        mri_matrix_psinv_svd( int ) ;
+extern MRI_IMAGE * mri_matrix_ortproj  ( MRI_IMAGE * , int ) ;
+extern MRI_IMAGE * mri_matrix_sadd     ( float, MRI_IMAGE *, float, MRI_IMAGE * ) ;
+extern MRI_IMAGE * mri_matrix_scale    ( float, MRI_IMAGE * ) ;
+extern MRI_IMAGE * mri_matrix_evalrpn  ( char * ) ;
+extern char      * mri_matrix_evalrpn_help(void) ;
+extern void        mri_matrix_evalrpn_verb(int) ;
+
+#define            mri_matrix_transpose(x) mri_transpose(x)
+
+extern double Plegendre( double x , int m ) ;
+
+/*------------------------------------------------------------------------*/
 
 extern MRI_IMAGE * THD_average_timeseries( MCW_cluster_array *, THD_3dim_dataset *) ;
 extern MRI_IMAGE * THD_average_one_timeseries( MCW_cluster *, THD_3dim_dataset *) ;
@@ -1150,6 +1169,18 @@ extern float mri_scaled_diff( MRI_IMAGE *bim, MRI_IMAGE *nim, MRI_IMAGE *msk ) ;
 #undef  WROTE_DSET
 #define WROTE_DSET(dd) \
   INFO_message("Output dataset %s",DSET_BRIKNAME(dd))
+
+/*------------------------------------------------------------------*/
+
+#define METRIC_KULL  0
+#define METRIC_HELL  1
+#define METRIC_TRIA  2
+#define METRIC_JDIV  3
+#define METRIC_JSDV  4
+#define METRIC_XISQ  5
+#define METRIC_XXSQ  6
+#define METRIC_AGDV  7
+extern void mri_metrics( MRI_IMAGE *, MRI_IMAGE *, float * ) ;
 
 /*------------------------------------------------------------------*/
 

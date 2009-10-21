@@ -58,6 +58,28 @@ extern int sphere_voronoi_vectors( int , float *, float ** ) ;
 extern float cl1_solve    ( int, int, float *, float **, float *,int ) ; /* cl1.c */
 extern float cl1_solve_res( int, int, float *, float **, float *,int, float*,int ) ; /* cl1.c */
 
+extern int powell_newuoa( int ndim , double *x ,
+                          double rstart , double rend ,
+                          int maxcall , double (*ufunc)(int,double *) ) ;
+
 extern char *approximate_number_string( double ) ;  /* 16 Jan 2004 */
+
+typedef struct {
+      float x;
+      int Index;
+} Z_QSORT_FLOAT;
+
+typedef struct {
+      int x;
+      int Index;
+} Z_QSORT_INT;
+
+extern int compare_Z_IQSORT_FLOAT (Z_QSORT_FLOAT *a, Z_QSORT_FLOAT *b );
+extern int compare_Z_IQSORT_INT (Z_QSORT_INT *a, Z_QSORT_INT *b );
+extern int compare_double (double *a, double *b );
+extern int compare_float (float *a, float *b );
+extern int compare_int (int *a, int *b );
+extern int compare_short (short *a, short *b );
+extern int compare_char (char *a, char *b );
 
 #endif

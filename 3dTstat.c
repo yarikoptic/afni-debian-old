@@ -21,48 +21,57 @@
 
 #define METH_DW     8   /* KRH 3 Dec 2002 */
 
-#define METH_SIGMA_NOD     9   /* KRH 27 Dec 2002 */
-#define METH_CVAR_NOD     10   /* KRH 27 Dec 2002 */
+#define METH_SIGMA_NOD     9  /* KRH 27 Dec 2002 */
+#define METH_CVAR_NOD     10  /* KRH 27 Dec 2002 */
 
 #define METH_AUTOCORR     11  /* KRH 16 Jun 2004 */
 #define METH_AUTOREGP     12  /* KRH 16 Jun 2004 */
 
-#define METH_ABSMAX     13  /* KRH 15 Feb 2005 */
+#define METH_ABSMAX       13  /* KRH 15 Feb 2005 */
 
-#define METH_ARGMAX     14  /* KRH 4 Aug 2005 */
-#define METH_ARGMIN     15  /* KRH 4 Aug 2005 */
-#define METH_ARGABSMAX     16  /* KRH 4 Aug 2005 */
+#define METH_ARGMAX       14  /* KRH 4 Aug 2005 */
+#define METH_ARGMIN       15  /* KRH 4 Aug 2005 */
+#define METH_ARGABSMAX    16  /* KRH 4 Aug 2005 */
 
-#define MAX_NUM_OF_METHS 20
-static int meth[MAX_NUM_OF_METHS] = {METH_MEAN};
-static int nmeths = 0;
+#define METH_SUM          17  /* RWCox 24 Apr 2006 */
+
+#define MAX_NUM_OF_METHS  20
+static int meth[MAX_NUM_OF_METHS]  = {METH_MEAN};
+static int nmeths                  = 0;
 static char prefix[THD_MAX_PREFIX] = "stat" ;
 static int datum                   = MRI_float ;
-static char meth_names[][20] = {"Mean","Slope","Std Dev","Coef of Var","Median",
-	                    "Med Abs Dev", "Max", "Min", "Durbin-Watson", "Std Dev (NOD)",
-                            "Coef Var(NOD)","AutoCorr","AutoReg","Absolute Max",
-                            "ArgMax","ArgMin","ArgAbsMax"};
+static char *meth_names[] = {
+   "Mean"          , "Slope"        , "Std Dev"       , "Coef of Var" ,
+   "Median"        , "Med Abs Dev"  , "Max"           , "Min"         ,
+   "Durbin-Watson" , "Std Dev(NOD)" , "Coef Var(NOD)" , "AutoCorr"    ,
+   "AutoReg"       , "Absolute Max" , "ArgMax"        , "ArgMin"      ,
+   "ArgAbsMax"     , "Sum"
+};
 static void STATS_tsfunc( double tzero , double tdelta ,
                          int npts , float ts[] , double ts_mean ,
-                         double ts_slope , void * ud , int nbriks, float * val ) ;
+                         double ts_slope , void *ud , int nbriks, float *val ) ;
 
 static void autocorr( int npts, float ints[], int numVals, float outcoeff[] ) ;
 
-int main( int argc , char * argv[] )
+int main( int argc , char *argv[] )
 {
-   THD_3dim_dataset * old_dset , * new_dset ;  /* input and output datasets */
+   THD_3dim_dataset *old_dset , *new_dset ;  /* input and output datasets */
    int nopt, nbriks, ii ;
    int addBriks = 0;
    int numMultBriks,methIndex,brikIndex;
 
-   /*----- Read command line -----*/
+   /*----- Help the pitiful user? -----*/
+
    if( argc < 2 || strcmp(argv[1],"-help") == 0 ){
       printf("Usage: 3dTstat [options] dataset\n"
              "Computes one or more voxel-wise statistics for a 3D+time dataset\n"
-             "and stores them in a bucket dataset.\n"
+             "and stores them in a bucket dataset.  If no statistic option is\n"
+             "given, computes just the mean of each voxel time series.\n"
+             "Multiple statistics options may be given.\n"
              "\n"
-             "Options:\n"
-             " -mean   = compute mean of input voxels [DEFAULT]\n"
+             "Statistics Options:\n"
+             " -mean   = compute mean of input voxels\n"
+             " -sum    = compute sum of input voxels\n"
              " -slope  = compute mean slope of input voxels vs. time\n"
              " -stdev  = compute standard deviation of input voxels\n"
              "             [N.B.: this is computed after    ]\n"
@@ -70,44 +79,51 @@ int main( int argc , char * argv[] )
              " -cvar   = compute coefficient of variation of input\n"
              "             voxels = stdev/fabs(mean)\n"
              "   **N.B.: You can add NOD to the end of the above 2\n"
-             "           options to turn off detrending, as in\n"
-             "             -stdevNOD or -cvarNOD\n"
+             "           options only, to turn off detrending, as in\n"
+             "             -stdevNOD  and/or  -cvarNOD\n"
              "\n"
              " -MAD    = compute MAD (median absolute deviation) of\n"
              "             input voxels = median(|voxel-median(voxel)|)\n"
              "             [N.B.: the trend is NOT removed for this]\n"
-             " -DW    = compute Durbin-Watson Statistic of\n"
-             "             input voxels\n"
-             "             [N.B.: the trend is removed for this]\n"
+             " -DW    = compute Durbin-Watson Statistic of input voxels\n"
+             "             [N.B.: the trend IS removed for this]\n"
              " -median = compute median of input voxels  [undetrended]\n"
              " -min    = compute minimum of input voxels [undetrended]\n"
              " -max    = compute maximum of input voxels [undetrended]\n"
              " -absmax    = compute absolute maximum of input voxels [undetrended]\n"
              " -argmin    = index of minimum of input voxels [undetrended]\n"
              " -argmax    = index of maximum of input voxels [undetrended]\n"
-             " -argabsmax    = index of absolute maximum of input voxels [undetrended]\n"
+             " -argabsmax = index of absolute maximum of input voxels [undetrended]\n"
              "\n"
+             " -autocorr n = compute autocorrelation function and return\n"
+             "               first n coefficients\n"
+             " -autoreg n = compute autoregression coefficients and return\n"
+             "               first n coefficients\n"
+             "   [N.B.: -autocorr 0 and/or -autoreg 0 will return number\n"
+             "          coefficients equal to the length of the input data]\n"
+             "\n"
+             "Other Options:\n"
              " -prefix p = use string 'p' for the prefix of the\n"
              "               output dataset [DEFAULT = 'stat']\n"
              " -datum d  = use data type 'd' for the type of storage\n"
              "               of the output, where 'd' is one of\n"
              "               'byte', 'short', or 'float' [DEFAULT=float]\n"
-             " -autocorr n = compute autocorrelation function and return\n"
-             "               first n coefficients\n"
-             " -autoreg n = compute autoregression coefficients and return\n"
-             "               first n coefficients\n"
-             "    [N.B.: -autocorr 0 and/or -autoreg 0 will return coefficients\n"
-             "           equal to the length of the input data\n"
              "\n"
-             "The output is a bucket dataset.  The input dataset\n"
-             "may use a sub-brick selection list, as in program 3dcalc.\n"
+             "If you want statistics on a detrended dataset and the option\n"
+             "doesn't allow that, you can use program 3dDetrend first.\n"
+             "\n"
+             "The output is a bucket dataset.  The input dataset may\n"
+             "use a sub-brick selection list, as in program 3dcalc.\n"
            ) ;
-      printf("\n" MASTER_SHORTHELP_STRING ) ;
       exit(0) ;
    }
 
+   /* bureaucracy */
+
    mainENTRY("3dTstat main"); machdep(); AFNI_logger("3dTstat",argc,argv);
-   PRINT_VERSION("3dTstat");
+   PRINT_VERSION("3dTstat"); AUTHOR("KR Hammett & RW Cox");
+
+   /*--- scan command line for options ---*/
 
    nopt = 1 ;
    nbriks = 0 ;
@@ -136,6 +152,12 @@ int main( int argc , char * argv[] )
 
       if( strcmp(argv[nopt],"-mean") == 0 ){
          meth[nmeths++] = METH_MEAN ;
+         nbriks++ ;
+         nopt++ ; continue ;
+      }
+
+      if( strcmp(argv[nopt],"-sum") == 0 ){
+         meth[nmeths++] = METH_SUM ;
          nbriks++ ;
          nopt++ ; continue ;
       }
@@ -212,9 +234,7 @@ int main( int argc , char * argv[] )
 
       if( strcmp(argv[nopt],"-autocorr") == 0 ){
          meth[nmeths++] = METH_AUTOCORR ;
-         if( ++nopt >= argc ){
-            fprintf(stderr,"*** -autocorr needs an argument!\n"); exit(1);
-         }
+         if( ++nopt >= argc ) ERROR_exit("-autocorr needs an argument!\n");
          meth[nmeths++] = atoi(argv[nopt++]);
          if (meth[nmeths - 1] == 0) {
            addBriks++;
@@ -226,9 +246,7 @@ int main( int argc , char * argv[] )
 
       if( strcmp(argv[nopt],"-autoreg") == 0 ){
          meth[nmeths++] = METH_AUTOREGP ;
-         if( ++nopt >= argc ){
-            fprintf(stderr,"*** -autoreg needs an argument!\n"); exit(1);
-         }
+         if( ++nopt >= argc ) ERROR_exit("-autoreg needs an argument!\n");
          meth[nmeths++] = atoi(argv[nopt++]);
          if (meth[nmeths - 1] == 0) {
            addBriks++;
@@ -241,22 +259,17 @@ int main( int argc , char * argv[] )
       /*-- prefix --*/
 
       if( strcmp(argv[nopt],"-prefix") == 0 ){
-         if( ++nopt >= argc ){
-            fprintf(stderr,"*** -prefix needs an argument!\n"); exit(1);
-         }
+         if( ++nopt >= argc ) ERROR_exit("-prefix needs an argument!\n");
          MCW_strncpy(prefix,argv[nopt],THD_MAX_PREFIX) ;
-         if( !THD_filename_ok(prefix) ){
-            fprintf(stderr,"*** %s is not a valid prefix!\n",prefix); exit(1);
-         }
+         if( !THD_filename_ok(prefix) )
+           ERROR_exit("%s is not a valid prefix!\n",prefix);
          nopt++ ; continue ;
       }
 
       /*-- datum --*/
 
       if( strcmp(argv[nopt],"-datum") == 0 ){
-         if( ++nopt >= argc ){
-            fprintf(stderr,"*** -datum needs an argument!\n"); exit(1);
-         }
+         if( ++nopt >= argc ) ERROR_exit("-datum needs an argument!\n");
          if( strcmp(argv[nopt],"short") == 0 ){
             datum = MRI_short ;
          } else if( strcmp(argv[nopt],"float") == 0 ){
@@ -264,48 +277,41 @@ int main( int argc , char * argv[] )
          } else if( strcmp(argv[nopt],"byte") == 0 ){
             datum = MRI_byte ;
          } else {
-            fprintf(stderr,"-datum of type '%s' is not supported!\n",
-                    argv[nopt] ) ;
-            exit(1) ;
+            ERROR_exit("-datum of type '%s' is not supported!\n",
+                       argv[nopt] ) ;
          }
          nopt++ ; continue ;
       }
 
       /*-- Quien sabe'? --*/
 
-      fprintf(stderr,"*** Unknown option: %s\n",argv[nopt]) ; exit(1) ;
+      ERROR_exit("Unknown option: %s\n",argv[nopt]) ;
    }
 
-   /*--- If no options selected, default to single stat MEAN--KRH---*/
+   /*--- If no options selected, default to single stat MEAN -- KRH ---*/
 
    if (nmeths == 0) nmeths = 1;
    if (nbriks == 0 && addBriks == 0) nbriks = 1;
 
    /*----- read input dataset -----*/
 
-   if( nopt >= argc ){
-      fprintf(stderr,"*** No input dataset!?\n"); exit(1);
-   }
+   if( nopt >= argc ) ERROR_exit(" No input dataset!?") ;
 
    old_dset = THD_open_dataset( argv[nopt] ) ;
-   if( !ISVALID_DSET(old_dset) ){
-      fprintf(stderr,"*** Can't open dataset %s\n",argv[nopt]); exit(1);
-   }
+   if( !ISVALID_DSET(old_dset) )
+     ERROR_exit("Can't open dataset %s\n",argv[nopt]);
 
-   if( DSET_NVALS(old_dset) < 2 ){
-      fprintf(stderr,"*** Can't use dataset with < 2 values per voxel!\n") ;
-      exit(1) ;
-   }
+   if( DSET_NVALS(old_dset) < 2 )
+     ERROR_exit("Can't use dataset with < 2 values per voxel!\n") ;
 
    if( DSET_NUM_TIMES(old_dset) < 2 ){
-      fprintf(stderr,"--- Input dataset is not 3D+time!\n"
-                     "--- Adding an artificial time axis with dt=1.0\n" ) ;
-      EDIT_dset_items( old_dset ,
-                          ADN_ntt    , DSET_NVALS(old_dset) ,
-                          ADN_ttorg  , 0.0 ,
-                          ADN_ttdel  , 1.0 ,
-                          ADN_tunits , UNITS_SEC_TYPE ,
-                       NULL ) ;
+     WARNING_message("Input dataset is not 3D+time; assuming TR=1.0") ;
+     EDIT_dset_items( old_dset ,
+                        ADN_ntt    , DSET_NVALS(old_dset) ,
+                        ADN_ttorg  , 0.0 ,
+                        ADN_ttdel  , 1.0 ,
+                        ADN_tunits , UNITS_SEC_TYPE ,
+                      NULL ) ;
    }
 
    /* If one or more of the -autocorr/-autoreg options was called with */
@@ -349,10 +355,9 @@ int main( int argc , char * argv[] )
         }
       }
       DSET_write( new_dset ) ;
-      fprintf(stderr,"--- Output dataset %s\n",DSET_BRIKNAME(new_dset)) ;
+      WROTE_DSET( new_dset ) ;
    } else {
-      fprintf(stderr,"*** Unable to compute output dataset!\n") ;
-      exit(1) ;
+      ERROR_exit("Unable to compute output dataset!\n") ;
    }
 
    exit(0) ;
@@ -365,7 +370,7 @@ int main( int argc , char * argv[] )
 static void STATS_tsfunc( double tzero, double tdelta ,
                           int npts, float ts[],
                           double ts_mean, double ts_slope,
-                          void * ud, int nbriks, float * val          )
+                          void *ud, int nbriks, float *val          )
 {
    static int nvox , ncall ;
    int meth_index, ii , out_index;
@@ -393,25 +398,28 @@ static void STATS_tsfunc( double tzero, double tdelta ,
 
    ts_det = (float*)calloc(npts, sizeof(float));
    memcpy( ts_det, ts, npts * sizeof(float));
-   for( ii = 0; ii < npts; ii++) ts_det[ii] -= 
-           (ts_mean - (ts_slope * (npts - 1) * tdelta/2) + ts_slope * tdelta * ii) ;
-   
+   for( ii = 0; ii < npts; ii++)
+     ts_det[ii] -=
+       (ts_mean - (ts_slope * (npts - 1) * tdelta/2) + ts_slope * tdelta * ii) ;
+
    /** OK, actually do some work **/
 
-   /* This main loop now uses meth_index AND out_index as loop variables, mainly */
-   /* to avoid rewriting code that worked.                                       */
+   /* This main loop now uses meth_index AND out_index as loop variables,     */
+   /* mainly to avoid rewriting code that worked.                             */
 
-   /* meth_index is an index into the static method array, which contains the    */
-   /* list of methods to be executed (and will also contain an integer           */
-   /* parameter specifying the number of return values if -autocorr n and/or     */
-   /* -autoreg p have been requested).                                           */
+   /* meth_index is an index into the static method array, which contains the */
+   /* list of methods to be executed (and will also contain an integer        */
+   /* parameter specifying the number of return values if -autocorr n and/or  */
+   /* -autoreg p have been requested).                                        */
+   /* out_index is an index into the output array.                            */
 
-   /* out_index is an index into the output array.                               */
-   for (meth_index = 0, out_index = 0 ; meth_index < nmeths; meth_index++, out_index++) {
+   for(meth_index=out_index=0 ; meth_index < nmeths; meth_index++,out_index++){
    switch( meth[meth_index] ){
 
       default:
       case METH_MEAN:  val[out_index] = ts_mean  ; break ;
+
+      case METH_SUM:   val[out_index] = ts_mean * npts; break; /* 24 Apr 2006 */
 
       case METH_SLOPE: val[out_index] = ts_slope ; break ;
 
@@ -419,34 +427,37 @@ static void STATS_tsfunc( double tzero, double tdelta ,
       case METH_SIGMA_NOD:
       case METH_CVAR:
       case METH_SIGMA:{
-         register int ii ;
-         register double sum ;
+        register int ii ;
+        register double sum ;
 
-         sum = 0.0 ;
-         if((meth[meth_index] == METH_CVAR) || (meth[meth_index] == METH_SIGMA )){
-           for( ii=0 ; ii < npts ; ii++ ) sum += ts_det[ii] * ts_det[ii] ;
-         } else {
-           for( ii=0 ; ii < npts ; ii++ ) sum += (ts[ii]-ts_mean)
-                                                *(ts[ii]-ts_mean) ;
-         }
+        sum = 0.0 ;
+        if((meth[meth_index] == METH_CVAR) || (meth[meth_index] == METH_SIGMA )){
+          for( ii=0 ; ii < npts ; ii++ ) sum += ts_det[ii] * ts_det[ii] ;
+        } else {
+          for( ii=0 ; ii < npts ; ii++ ) sum += (ts[ii]-ts_mean)
+                                               *(ts[ii]-ts_mean) ;
+        }
 
-         sum = sqrt( sum/(npts-1) ) ;
+        sum = sqrt( sum/(npts-1) ) ;
 
-         if((meth[meth_index] == METH_SIGMA) || (meth[meth_index] == METH_SIGMA_NOD))  val[out_index] = sum ;
-         else if( ts_mean != 0.0 ) val[out_index] = sum / fabs(ts_mean) ;
-         else                      val[out_index] = 0.0 ;
+        if((meth[meth_index] == METH_SIGMA) || (meth[meth_index] == METH_SIGMA_NOD))
+          val[out_index] = sum ;
+        else if( ts_mean != 0.0 )
+          val[out_index] = sum / fabs(ts_mean) ;
+        else
+          val[out_index] = 0.0 ;
       }
       break ;
 
-      /* 14 Feb 2000: these 2 new methods disturb the array ts[] */
+      /* 14 Feb 2000: these 2 new methods disturb the array ts[]       */
       /* 18 Dec 2002: these 2 methods no longer disturb the array ts[] */
 
       case METH_MEDIAN:{
-         float* ts_copy;
-         ts_copy = (float*)calloc(npts, sizeof(float));
-         memcpy( ts_copy, ts, npts * sizeof(float));
-         val[out_index] = qmed_float( npts , ts_copy ) ;
-	 free(ts_copy);
+        float* ts_copy;
+        ts_copy = (float*)calloc(npts, sizeof(float));
+        memcpy( ts_copy, ts, npts * sizeof(float));
+        val[out_index] = qmed_float( npts , ts_copy ) ;
+        free(ts_copy);
       }
       break ;
 
@@ -459,7 +470,7 @@ static void STATS_tsfunc( double tzero, double tdelta ,
          vm = qmed_float( npts , ts_copy ) ;
          for( ii=0 ; ii < npts ; ii++ ) ts_copy[ii] = fabs(ts_copy[ii]-vm) ;
          val[out_index] = qmed_float( npts , ts_copy ) ;
-	 free(ts_copy);
+         free(ts_copy);
       }
       break ;
 
@@ -485,7 +496,7 @@ static void STATS_tsfunc( double tzero, double tdelta ,
          register float num=0 ;
          for( ii=1 ; ii < npts ; ii++ ) {
            num = num + (ts_det[ii] - ts_det[ii-1])
-		       *(ts_det[ii] - ts_det[ii-1]);
+                      *(ts_det[ii] - ts_det[ii-1]);
            den = den + ts_det[ii] * ts_det[ii];
          }
          if (den == 0) {
@@ -529,7 +540,7 @@ static void STATS_tsfunc( double tzero, double tdelta ,
 
       case METH_AUTOCORR:{
         int numVals;
-        float* ts_corr;
+        float *ts_corr;
         /* for these new methods, the extra, needed integer */
         /* parameter is stored in the static array "meth",  */
         /* in the element right after the indicator for     */
@@ -596,7 +607,7 @@ static void STATS_tsfunc( double tzero, double tdelta ,
         /* the autoregression coefficients.                           */
 
         /* In this implementation, 'y' is 'Phi' above and 'ts_corr' is 'r'    */
-        
+
         y[0] = -ts_corr[0];
         alpha = -ts_corr[0];
         beta = 1;
@@ -621,8 +632,9 @@ static void STATS_tsfunc( double tzero, double tdelta ,
         /* populate the appropriate BRIKs with the data.    */
         for( ii = 0; ii < numVals; ii++) {
           val[out_index + ii] = y[ii];
-          if (!finite(y[ii])) {
-            fprintf(stderr,"BAD NUMBER y[%d] = %f, Call# %d\n",ii,y[ii],ncall);
+          if (!finite(y[ii])){
+            WARNING_message("BAD FLOAT y[%d]=%f; Call#%d\n",ii,y[ii],ncall);
+            val[out_index + ii] = 0.0f ;
           }
         }
         /* Although meth_index will be incremented by the   */
@@ -654,7 +666,7 @@ static void autocorr( int npts, float in_ts[], int numVals, float outcoeff[] )
 
   int ii,nfft;
   double scaler;
-  complex * cxar = NULL;
+  complex *cxar = NULL;
 
   /* Calculate size for FFT, including padding for eliminating overlap  */
   /* from circular convolution */
@@ -678,8 +690,8 @@ static void autocorr( int npts, float in_ts[], int numVals, float outcoeff[] )
   csfft_cox( -1 , nfft , cxar ) ;
 
   /* Use macro to calculate absolute square of FFT */
-  for( ii=0 ; ii < nfft ; ii++ ){ 
-    cxar[ii].r = CSQR(cxar[ii]) ; cxar[ii].i = 0 ; 
+  for( ii=0 ; ii < nfft ; ii++ ){
+    cxar[ii].r = CSQR(cxar[ii]) ; cxar[ii].i = 0 ;
   }
 
   /* Take inverse FFT of result.  First function called */

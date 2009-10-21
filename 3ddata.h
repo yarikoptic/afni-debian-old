@@ -910,21 +910,25 @@ static THD_warp tempA_warp ;
 
   Later: OK, now we have more than one type.  However, type #1
          was never implemented (the ill-fated STORAGE_BY_SLICES).
+
+  see also: thd_opendset.c: storage_mode_from_filename()
 ***/
 
-#define STORAGE_UNDEFINED  0
-#define STORAGE_BY_BRICK   2
-#define STORAGE_BY_MINC    3
-#define STORAGE_BY_VOLUMES 4  /* 20 Jun 2002 */
-#define STORAGE_BY_ANALYZE 5
-#define STORAGE_BY_CTFMRI  6  /* 04 Dec 2002 */
-#define STORAGE_BY_CTFSAM  7
-#define STORAGE_BY_1D      8  /* 04 Mar 2003 */
-#define STORAGE_BY_3D      9  /* 21 Mar 2003 */
-#define STORAGE_BY_NIFTI  10  /* 28 Aug 2003 */
-#define STORAGE_BY_MPEG   11  /* 03 Dec 2003 */
+#define STORAGE_UNDEFINED         0
+#define STORAGE_BY_BRICK          2
+#define STORAGE_BY_MINC           3
+#define STORAGE_BY_VOLUMES        4  /* 20 Jun 2002 */
+#define STORAGE_BY_ANALYZE        5
+#define STORAGE_BY_CTFMRI         6  /* 04 Dec 2002 */
+#define STORAGE_BY_CTFSAM         7
+#define STORAGE_BY_1D             8  /* 04 Mar 2003 */
+#define STORAGE_BY_3D             9  /* 21 Mar 2003 */
+#define STORAGE_BY_NIFTI         10  /* 28 Aug 2003 */
+#define STORAGE_BY_MPEG          11  /* 03 Dec 2003 */
+#define STORAGE_BY_NIML          12  /* NIML AFNI dset   25 May 2006 [rickr] */
+#define STORAGE_BY_NI_SURF_DSET  13  /* NIML surface dset */
 
-#define LAST_STORAGE_MODE 11
+#define LAST_STORAGE_MODE        13
 
 /*! Contains information about where/how dataset is stored on disk.
 
@@ -1044,7 +1048,7 @@ typedef struct {
       char **  brick_lab  ;     /*!< labels for all sub-bricks                 */
       char **  brick_keywords ; /*!< keywords strings for all sub-bricks       */
       int *    brick_statcode ; /*!< a FUNC_*_TYPE ==> kind of statistic here  */
-      float ** brick_stataux ;  /*!< stat_aux parameters for each sub-brick with brick_statcode[iv] > 0               */
+      float ** brick_stataux ;  /*!< stat_aux parameters for each sub-brick with brick_statcode[iv] > 0 */
 
       int64_t total_bytes ;   /*!< totality of data storage needed */
       int     malloc_type ;   /*!< memory allocation method */
@@ -1063,6 +1067,9 @@ typedef struct {
       int       natr ;        /*!< number of attributes read from disk (or to write to disk) */
       int       natr_alloc ;  /*!< number of attributes allocated in atr below */
       ATR_any * atr ;         /*!< array of attributes (from the header) */
+
+      int       nnodes ;      /*!< number of node indices [25 May 2006 rickr] */
+      int     * node_list ;   /*!< index array for STORAGE_BY_NI_SURF_DSET    */
 
    /* pointers to other stuff */
 
@@ -1132,6 +1139,7 @@ extern void THD_store_datablock_label    ( THD_datablock * , int , char * ) ;
 extern void THD_store_datablock_keywords ( THD_datablock * , int , char * ) ;
 extern void THD_append_datablock_keywords( THD_datablock * , int , char * ) ;
 extern int  THD_datablock_from_atr       ( THD_datablock *, char *, char * ) ;
+extern void atr_print( ATR_any * atr, char *ssep , char *spsep, char quote, int do_name) ;
 
 /*! Initialize all sub-bricks auxiliary data to nothing. */
 
@@ -2288,6 +2296,18 @@ typedef struct THD_3dim_dataset {
 #define DBLK_IS_NIFTI(db) ( ISVALID_DBLK(db) && ISVALID_DISKPTR((db)->diskptr) &&  \
                            (db)->diskptr->storage_mode == STORAGE_BY_NIFTI )
 
+/*! Determine if datablock db is stored in a NIML file on disk  26 May 2006 */
+
+#define DBLK_IS_NIML(db) ( ISVALID_DBLK(db)               &&  \
+                           ISVALID_DISKPTR((db)->diskptr) &&  \
+                           (db)->diskptr->storage_mode == STORAGE_BY_NIML )
+
+/*! Determine if datablock db is stored in a NI_SURF_DSET file on disk */
+
+#define DBLK_IS_NI_SURF_DSET(db) ( ISVALID_DBLK(db)   &&  \
+                       ISVALID_DISKPTR((db)->diskptr) &&  \
+                       (db)->diskptr->storage_mode == STORAGE_BY_NI_SURF_DSET )
+
 /*! Determine if dataset ds is stored in a 1D file on disk */
 
 #define DSET_IS_1D(ds) ( ISVALID_DSET(ds) && ISVALID_DBLK((ds)->dblk) &&           \
@@ -2305,6 +2325,18 @@ typedef struct THD_3dim_dataset {
 #define DSET_IS_NIFTI(ds) ( ISVALID_DSET(ds) && ISVALID_DBLK((ds)->dblk) &&        \
                             ISVALID_DISKPTR((ds)->dblk->diskptr) &&                \
                             (ds)->dblk->diskptr->storage_mode == STORAGE_BY_NIFTI )
+
+/*! Determine if dataset ds is stored in a NIML file on disk  26 May 2006 */
+
+#define DSET_IS_NIML(ds) ( ISVALID_DSET(ds) && ISVALID_DBLK((ds)->dblk) &&  \
+                           ISVALID_DISKPTR((ds)->dblk->diskptr)         &&  \
+                         (ds)->dblk->diskptr->storage_mode == STORAGE_BY_NIML )
+
+/*! Determine if dataset ds is stored in a NI_SURF_DSET file on disk */
+
+#define DSET_IS_NI_SURF_DSET(ds) (ISVALID_DSET(ds) && ISVALID_DBLK((ds)->dblk) \
+                 && ISVALID_DISKPTR((ds)->dblk->diskptr) &&                    \
+                 (ds)->dblk->diskptr->storage_mode == STORAGE_BY_NI_SURF_DSET )
 
 /*! Determine if datablock db is stored by volume files rather than 1 big BRIK */
 
@@ -3124,6 +3156,10 @@ typedef struct {
 #define ATRTYPE_WARP_DATA  ATR_FLOAT_TYPE
 #define ATRSIZE_WARP_DATA  0
 
+#define ATRNAME_WARP_DATA_3DWD_AF  "WARPDRIVE_MATVEC_INV_000000"  /* Talairach warp via 3dWarpDrive */
+#define ATRTYPE_WARP_DATA_3DWD_AF  ATR_FLOAT_TYPE
+#define ATRSIZE_WARP_DATA_3DWD_AF  0         /* not using this one. Calv. Cool. June 24 */
+
 #define ATRNAME_WARP_PARENT "WARP_PARENTNAME"
 #define ATRTYPE_WARP_PARENT ATR_STRING_TYPE
 #define ATRSIZE_WARP_PARENT 0
@@ -3292,6 +3328,16 @@ extern THD_3dim_dataset * THD_open_3D( char * ) ;           /* 21 Mar 2003 */
 extern THD_3dim_dataset * THD_open_nifti( char * ) ;        /* 28 Aug 2003 */
 extern THD_3dim_dataset * THD_open_mpeg( char * ) ;         /* 03 Dec 2003 */
 extern THD_3dim_dataset * THD_open_tcat( char * ) ;         /* 04 Aug 2004 */
+extern THD_3dim_dataset * THD_open_niml( char * ) ;         /* 01 Jun 2006 */
+
+extern THD_3dim_dataset * THD_niml_3D_to_dataset( NI_element *, char * ) ;
+extern THD_3dim_dataset * THD_ni_surf_dset_to_afni( NI_group *, int ) ;
+extern void * read_niml_file( char *, int ) ;
+extern int    storage_mode_from_niml( void * ) ;
+
+
+extern int storage_mode_from_filename( char * fname );      /* 20 Apr 2006 */
+extern int has_known_non_afni_extension( char * fname ) ;   /*     [rickr] */
 
 extern void THD_datablock_apply_atr( THD_3dim_dataset * ) ; /* 09 May 2005 */
 
@@ -3315,7 +3361,7 @@ extern THD_3dim_dataset * THD_copy_dset_subs( THD_3dim_dataset * , int * ) ;
  "This program accepts datasets that are modified on input according to the\n"  \
  "following schemes:\n"                                                         \
  "  'r1+orig[3..5]'                                    {sub-brick selector}\n"  \
- "  'r1+orig<100.200>'                                 {sub-range selector}\n"  \
+ "  'r1+orig<100..200>'                                {sub-range selector}\n"  \
  "  'r1+orig[3..5]<100..200>'                          {both selectors}\n"      \
  "  '3dcalc( -a r1+orig -b r2+orig -expr 0.5*(a+b) )'  {calculation}\n"         \
  "For the gruesome details, see the output of 'afni -help'.\n"
@@ -3467,8 +3513,10 @@ extern void    THD_load_3D     ( THD_datablock * ) ;         /* 21 Mar 2003 */
 extern void    THD_load_nifti  ( THD_datablock * ) ;         /* 28 Aug 2003 */
 extern void    THD_load_mpeg   ( THD_datablock * ) ;         /* 03 Dec 2003 */
 extern void    THD_load_tcat   ( THD_datablock * ) ;         /* 04 Aug 2004 */
+extern int     THD_load_niml   ( THD_datablock * ) ;         /* 12 Jun 2006 */
 
 extern void    THD_zerofill_dataset( THD_3dim_dataset * ) ;  /* 18 Mar 2005 */
+extern int     THD_apply_master_subrange( THD_datablock * ); /* 14 Apr 2006 */
 
 extern int THD_datum_constant( THD_datablock * ) ;           /* 30 Aug 2002 */
 #define DSET_datum_constant(ds) THD_datum_constant((ds)->dblk)
@@ -3476,10 +3524,13 @@ extern int THD_datum_constant( THD_datablock * ) ;           /* 30 Aug 2002 */
 #define ALLOW_FSL_FEAT  /* 27 Aug 2002 */
 
 #define MINC_FLOATIZE_MASK 1
-extern int THD_write_minc( char *, THD_3dim_dataset * , int ) ; /* 11 Apr 2002 */
+extern int THD_write_minc( char *, THD_3dim_dataset * , int) ; /* 11 Apr 2002 */
 
-extern void THD_write_1D ( char *, char *, THD_3dim_dataset *); /* 04 Mar 2003 */
-extern void THD_write_3D ( char *, char *, THD_3dim_dataset *); /* 21 Mar 2003 */
+extern void THD_write_1D( char *, char *, THD_3dim_dataset *); /* 04 Mar 2003 */
+extern void THD_write_3D( char *, char *, THD_3dim_dataset *); /* 21 Mar 2003 */
+extern int  THD_write_niml( THD_3dim_dataset *, int);
+
+extern int  write_niml_file( char *, NI_group *);      /* 12 Jun 2006 [rickr] */
 
 extern void THD_reconcile_parents( THD_sessionlist * ) ;
 extern THD_slist_find THD_dset_in_sessionlist( int,void *, THD_sessionlist *, int ) ;
@@ -3495,6 +3546,7 @@ extern void THD_update_one_bstat( THD_3dim_dataset * , int ) ; /* 29 Mar 2005 */
 extern THD_fvec3 THD_3dind_to_3dmm( THD_3dim_dataset * , THD_ivec3 ) ;
 extern THD_fvec3 THD_3dind_to_3dmm_no_wod( THD_3dim_dataset * , THD_ivec3 ) ;
 extern THD_ivec3 THD_3dmm_to_3dind( THD_3dim_dataset * , THD_fvec3 ) ;
+extern THD_ivec3 THD_3dmm_to_3dind_warn( THD_3dim_dataset * , THD_fvec3, int * ) ;
 extern THD_ivec3 THD_3dmm_to_3dind_no_wod( THD_3dim_dataset * , THD_fvec3 ) ;
                                                    /* 28 Sep 2004  [rickr] */
 
@@ -3657,7 +3709,7 @@ extern int THD_mask_fillin_once      ( int,int,int, byte *, int ) ;
 extern int THD_mask_clip_neighbors( int,int,int, byte *, float,float,float *) ; /* 28 Oct 2003 */
 
 extern void THD_mask_clust( int nx, int ny, int nz, byte *mmm ) ;
-extern void THD_mask_erode( int nx, int ny, int nz, byte *mmm ) ;
+extern void THD_mask_erode( int nx, int ny, int nz, byte *mmm, int redilate ) ;
 
 extern int THD_peel_mask( int nx, int ny, int nz , byte *mmm, int pdepth ) ;
 
@@ -4015,6 +4067,8 @@ extern int  TT_load_atlas (void);
 extern void TT_purge_atlas(void);
 extern THD_3dim_dataset * TT_retrieve_atlas(void) ;
 
+extern void TT_setup_popup_func( void (*pf)(char *) ) ; /* 26 May 2006 */
+
 extern THD_3dim_dataset * TT_retrieve_atlas_big(void) ; /* 01 Aug 2001 */
 extern void TT_purge_atlas_big(void);
 
@@ -4059,6 +4113,7 @@ extern float THD_BN_zheight(void);
 extern float THD_BN_xcm (void);
 extern float THD_BN_ycm (void);
 extern float THD_BN_zcm (void);
+extern float THD_BN_rat (void);
 /*------------------------------------------------------------------------*/
 /* 09 May 2005: stuff for converting a dataset to from a NIML group.      */
 

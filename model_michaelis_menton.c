@@ -33,8 +33,11 @@ void signal_model
 /* computation of time series */
 int compute_ts( float * rtimes, float * rates, int nrates,
                 float * ts_cp, int ts_len,
-                float dt, float tr,
-                float v, float vmax, float k12, float k21, float km );
+                float dt, float ** ts_times,
+                float v, float vmax, float k12, float k21, float mag, float km);
+int get_init_data( float ** rtime, float ** rates, int * len, float * dt );
+
+static int debug = 0;
 /*----------------------------------------------------------------------
 
   Initialize MODEL_interface struct with default values and model name.
@@ -51,19 +54,21 @@ MODEL_interface * initialize_model ()
 
     strcpy(M->label, "michaelis_menton");  /* Michaelis/Menten model    */
     M->model_type = MODEL_SIGNAL_TYPE;     /* signal model (not noise)  */
-    M->params = 4;                         /* number of user parameters */
+    M->params = 5;                         /* number of user parameters */
 
     /* set param labels */
     strcpy(M->plabel[0], "v");
     strcpy(M->plabel[1], "vmax");
     strcpy(M->plabel[2], "k12");
     strcpy(M->plabel[3], "k21");
+    strcpy(M->plabel[4], "mag");
 
     /* min and max constraints will default to the expected mean +/- 20% */
     M->min_constr[0] = 120.000;  M->max_constr[0] = 180.000;  /* mean 150  */
     M->min_constr[1] =   0.880;  M->max_constr[1] =   1.320;  /* mean 1.1  */
     M->min_constr[2] =   0.056;  M->max_constr[2] =   0.084;  /* mean 0.07 */
     M->min_constr[3] =   0.040;  M->max_constr[3] =   0.060;  /* mean 0.05 */
+    M->min_constr[4] =   0.080;  M->max_constr[4] =   0.120;  /* mean 0.1  */
   
     M->call_func = &signal_model; /* set the signal model generator callback */
 
@@ -97,15 +102,22 @@ void signal_model (
     {
         if( get_init_data( &rtime, &rates, &rlen, &dt ) != 0 )
             exit(1); /* bad things, man, bad things */
+        if( debug )
+            fprintf(stderr,"+d init params (v, vmax, k12, k21, mag)\n"
+                           "             = (%f, %f, %f, %f, %f)\n",
+                    params[0], params[1], params[2], params[3], params[4]);
+        if( debug > 2 )
+        {
+            int c;
+            fprintf(stderr,"+d computation times (%d events): \n", ts_len);
+            for( c = 0; c < ts_len; c++ )
+                fprintf(stderr,"  %.1f", x_array[c][1]);
+            fputc('\n', stderr);
+        }
         first_call = 0;
     }
 
     TR = x_array[1][1] - x_array[0][1];  /* assume time delta is constant */
-    if( TR <= 0 )
-    {
-        fprintf(stderr,"** apparent TR of %f is illegal, exiting...\n", TR);
-        exit(1);
-    }
     if( dt > TR )
     {
         fprintf(stderr,"** dt > TR (%f > %f), this is unacceptable\n"
@@ -113,8 +125,8 @@ void signal_model (
         exit(1);
     }
 
-    compute_ts( rtime, rates, rlen, ts_array, ts_len, dt, TR,
-                params[0], params[1], params[2], params[3], km );
+    compute_ts( rtime, rates, rlen, ts_array, ts_len, dt, x_array,
+                params[0], params[1], params[2], params[3], params[4], km );
 }
 
 
@@ -134,8 +146,8 @@ void signal_model (
 */
 int compute_ts( float * rtimes, float * rates, int nrates,
                 float * ts_cp, int ts_len, /* result and length */
-                float dt, float tr,
-                float v, float vmax, float k12, float k21, float km )
+                float dt, float ** ts_times, /* times are in column 1 */
+                float v, float vmax, float k12, float k21, float mag, float km)
 {
     /* computation variables */
     double ct = 0.0, cp = 0.0;      /* cur values       */
@@ -158,7 +170,9 @@ int compute_ts( float * rtimes, float * rates, int nrates,
 
     for( itr = 0; itr < ts_len; itr++ ) /* loop over result time indices   */
     {
-        while( cur_time <= tr_time )    /* repeat until next tr time       */
+        tr_time = ts_times[itr][1];
+
+        while( cur_time <= tr_time )    /* repeat until next result time   */
         {
             cp0 = cp;                   /* set old values and get new ones */
             ct0 = ct;
@@ -181,8 +195,7 @@ int compute_ts( float * rtimes, float * rates, int nrates,
             }
         }
 
-        ts_cp[itr] = cp;
-        tr_time += tr;
+        ts_cp[itr] = cp * mag;
     }
 
     return 0;
@@ -193,10 +206,8 @@ int compute_ts( float * rtimes, float * rates, int nrates,
 int get_init_data( float ** rtime, float ** rates, int * len, float * dt )
 {
     MRI_IMAGE * im;
-    float       fval;
     char      * rate_file;
     char      * dt_text;
-    int         rv;
 
     if( !rtime || !rates || !len || !dt )
     {
@@ -227,6 +238,16 @@ int get_init_data( float ** rtime, float ** rates, int * len, float * dt )
     *rates = *rtime + im->nx;
     *len   = im->nx;
 
+    /* check to see if the rate times are in seconds */
+    dt_text = my_getenv("AFNI_MM_MODEL_RATE_IN_SECS");
+    if( dt_text && (*dt_text == 'y' || *dt_text == 'Y') )
+    {
+        int c;
+        fprintf(stderr,"NLfim: rate times are taken in seconds\n");
+        /* so convert to minutes */
+        for( c = 0; c < *len; c++ ) (*rtime)[c] /= 60.0;
+    }
+
     /* get dt from another env var */
     dt_text = my_getenv("AFNI_MM_MODEL_DT");
     if( dt_text )
@@ -236,6 +257,22 @@ int get_init_data( float ** rtime, float ** rates, int * len, float * dt )
         fprintf(stderr,"NLfim: MM: using default dt of %.3f s\n", NL_MM_DEF_DT);
         fprintf(stderr,"       (use env var AFNI_MM_MODEL_DT to override)\n");
         *dt = NL_MM_DEF_DT;
+    }
+
+    /* get debug level (abuse now unneeded dt_text variable) */
+    dt_text = my_getenv("AFNI_MM_MODEL_DEBUG");
+    if( dt_text ) debug = atoi( dt_text );
+    if( dt_text && debug )
+    {
+        int c;
+        fprintf(stderr,"+d NLfim: debug level set to %d\n", debug);
+        fprintf(stderr,"          dt = %f, rate file = %s\n", *dt, rate_file);
+        if( debug > 1 )
+        {
+            fprintf(stderr,"    time        rate\n    --------    --------\n");
+            for( c = 0; c < *len; c++ )
+                fprintf(stderr, "    %8f    %8f\n", (*rtime)[c], (*rates)[c]);
+        }
     }
 
     return 0;

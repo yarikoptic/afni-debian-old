@@ -31,6 +31,7 @@ int *SUMA_z_dqsort_nsc (int *x , int nx );
 int *SUMA_z_qsort (float *x , int nx );
 int *SUMA_reorder(int *y, int *isort, int N_isort);
 int SUMA_compare_int (int *a, int *b );
+int SUMA_compare_float (float *a, float *b );
 void SUMA_disp_dmat (int **v,int nr, int nc , int SpcOpt);
 void SUMA_disp_mat (float **v,int nr, int nc , int SpcOpt);
 void SUMA_disp_vecmat (float *v,int nr, int nc , int SpcOpt, 
@@ -72,7 +73,8 @@ float * SUMA_PolySurf3 (float *NodeList, int N_Node, int *FaceSetList, int N_Fac
 float SUMA_TriSurf3 (float *n0, float *n1, float *n2);
 float * SUMA_TriSurf3v (float *NodeList, int *FaceSets, int N_FaceSet);
 SUMA_Boolean SUMA_TriNorm (float *n0, float *n1, float *n2, float *norm);
-SUMA_SURFACE_CURVATURE * SUMA_Surface_Curvature (float *NodeList, int N_Node, float *NodeNormList, float *Face_A, int N_FaceSet, SUMA_NODE_FIRST_NEIGHB *FN, SUMA_EDGE_LIST *el);
+SUMA_SURFACE_CURVATURE * SUMA_Surface_Curvature (float *NodeList, int N_Node, float *NodeNormList, float *Face_A, 
+                                                   int N_FaceSet, SUMA_NODE_FIRST_NEIGHB *FN, SUMA_EDGE_LIST *el, char *out);
 SUMA_Boolean SUMA_Householder (float *Ni, float **Q);
 void SUMA_Free_SURFACE_CURVATURE (SUMA_SURFACE_CURVATURE *SC);
 float * SUMA_Convexity (float *NodeList, int N_Node, float *NodeNormList, SUMA_NODE_FIRST_NEIGHB *FN);
@@ -94,9 +96,6 @@ SUMA_Boolean SUMA_Get_NodeIncident(int n1, SUMA_SurfaceObject *SO, int *Incident
 SUMA_IRGB *SUMA_Free_IRGB(SUMA_IRGB *irgb);
 SUMA_IRGB *SUMA_Read_IRGB_file (char *f_name);
 SUMA_IRGB *SUMA_Create_IRGB(int n_el);
-int SUMA_suck_file( char *fname , char **fbuf );
-char * SUMA_file_suck( char *fname , int *nread );
-
 
 
 #endif

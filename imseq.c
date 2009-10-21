@@ -277,13 +277,13 @@ static char *  ppmto_jpg95_filter = NULL ;  /* 28 Jul 2005 */
  } while(0)
 
 /*---- setup programs as filters: ppm stdin to some output file ----*/
-
-static void ISQ_setup_ppmto_filters(void)
+void ISQ_setup_ppmto_filters(void)
 {
    char *pg , *pg2 , *str , *eee ;
    int bv ;
    int dbg ;
    int ncant=0 , need_netpbm=0 ;  /* 16 Nov 2004 */
+   int jpeg_compress;
 
    ppmto_num = 0 ; bv = ISQ_SAV_PNM ;
 
@@ -318,8 +318,20 @@ static void ISQ_setup_ppmto_filters(void)
 
    pg = THD_find_executable( "cjpeg" ) ;
    if( pg != NULL ){
+   /* user environment variable compression quality - mod 5/10/2006 drg */
+      eee = my_getenv("AFNI_JPEG_COMPRESS");
+      if(eee!=NULL) {
+         jpeg_compress = (int) strtod(eee, NULL);
+	 if((jpeg_compress<=0) || (jpeg_compress>100))
+            jpeg_compress = 95;
+      }
+      else jpeg_compress = 95;
+
+#if 0
+printf("\njpeg_compress %d\n", jpeg_compress);
+#endif
       str = AFMALL( char, strlen(pg)+32) ;
-      sprintf(str,"%s -quality 95 > %%s",pg) ;
+      sprintf(str,"%s -quality %d > %%s",pg,jpeg_compress);
       bv <<= 1 ; ADDTO_PPMTO(str,"jpg",bv) ;
       ppmto_jpg95_filter = strdup(str) ;  /* 28 Jul 2005 */
 
@@ -448,13 +460,21 @@ static void ISQ_setup_ppmto_filters(void)
    }
    else { CANT_FIND("pnmtopng","PNG"); need_netpbm; }
 
-   /*-- 16 Nov 2004: more warnings? --*/
+   /*----- 16 Nov 2004: more warnings? -----*/
 
    if( !AFNI_noenv("AFNI_IMSAVE_WARNINGS") && ncant > 0 ){
-     if( need_netpbm > 0 )
+     if( need_netpbm > 0 ){
        fprintf(stderr,
                "++ Some of the missing image Save programs are in\n"
                "++  the netpbm software package, which is freeware.\n" ) ;
+#ifdef DARWIN
+       fprintf(stderr,
+               "++  The 'fink' package at http://fink.sourceforge.net/\n"
+               "++  is a way to get the netpbm programs for OS X; *OR*\n");
+#endif
+       fprintf(stderr,
+               "++  Netpbm can be found at http://netpbm.sourceforge.net/\n");
+     }
 
      fprintf(stderr,
                "++ To disable these warnings, set environment\n"
@@ -3251,7 +3271,13 @@ ENTRY("ISQ_saver_CB") ;
 
                /* open a pipe to the filter function */
 
-               sprintf( fname, "%s%s", seq->saver_prefix, ppmto_suffix[ff] ) ;
+               sprintf(filt,".%s.",ppmto_suffix[ff]) ;
+               if( STRING_HAS_SUFFIX(seq->saver_prefix,filt) ){
+                 strcpy(fname,seq->saver_prefix) ;
+                 fname[sll-1] = '\0' ;
+               } else {
+                 sprintf( fname, "%s%s", seq->saver_prefix, ppmto_suffix[ff] ) ;
+               }
                sprintf( filt , ppmto_filter[ff] , fname ) ;
                printf("Writing one image to file %s\n",fname) ;
                signal( SIGPIPE , SIG_IGN ) ; errno = 0 ;

@@ -51,9 +51,9 @@
 **			of a file containing a DICOM stream.
 **   Usage:
 **			dcm_dump_file [-b] [-g] [-v] [-z] file [file ...]
-** Last Update:		$Author: rickr $, $Date: 2005/06/22 14:39:42 $
+** Last Update:		$Author: rickr $, $Date: 2006/05/18 15:42:00 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.21 $
+** Revision:		$Revision: 1.23 $
 ** Status:		$State: Exp $
 */
 
@@ -68,9 +68,21 @@
 
 #include "mri_dicom_hdr.h"
 
+/* Dimon needs to compile without libmri     18 May 2006 */
+/* (this allows removal of rickr/l_mri_dicom_hdr.c)      */
+#ifndef FOR_DIMON
+
 #include "mcw_malloc.h"
 #include "Amalloc.h"
 #include "debugtrace.h"    /* 10 Sep 2002 */
+
+#else
+
+#include "Amalloc.h"
+#include "dbtrace.h"
+
+#endif
+
 
 /****************************************************************/
 /***** Function and variables to set byte order of this CPU *****/
@@ -102,6 +114,10 @@ static void RWC_set_endianosity(void)
      }
    }
 }
+
+/******************************************************************/
+/*** decide in DCM_OpenFile whether we have a 128 byte preamble ***/
+g_readpreamble = FALSE;                    /* 18 May 2006 [rickr] */
 
 /****************************************************************/
 /***** Function and variables to replace printf() ***************/
@@ -330,9 +346,9 @@ STATUS("DCM_OpenFile failed") ;
 **			The stack is maintained as a simple stack array.  If
 **			it overflows, we dump the stack to stdout and reset it.
 **
-** Last Update:		$Author: rickr $, $Date: 2005/06/22 14:39:42 $
+** Last Update:		$Author: rickr $, $Date: 2006/05/18 15:42:00 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.21 $
+** Revision:		$Revision: 1.23 $
 ** Status:		$State: Exp $
 */
 
@@ -760,9 +776,9 @@ COND_WriteConditions(FILE * lfp)
 ** Author, Date:	Steve Moore, 30-Jun-96
 ** Intent:		Provide common abstractions needed for operations
 **			in a multi-threaded environment.
-** Last Update:		$Author: rickr $, $Date: 2005/06/22 14:39:42 $
+** Last Update:		$Author: rickr $, $Date: 2006/05/18 15:42:00 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.21 $
+** Revision:		$Revision: 1.23 $
 ** Status:		$State: Exp $
 */
 
@@ -854,9 +870,9 @@ COND_WriteConditions(FILE * lfp)
 **	and convert the object to and from its "stream" representation.
 **	In addition, the package can parse a file which contains a stream
 **	and create its internal object.
-** Last Update:		$Author: rickr $, $Date: 2005/06/22 14:39:42 $
+** Last Update:		$Author: rickr $, $Date: 2006/05/18 15:42:00 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.21 $
+** Revision:		$Revision: 1.23 $
 ** Status:		$State: Exp $
 */
 
@@ -1044,6 +1060,18 @@ ENTRY("DCM_OpenFile") ;
     size = fileSize(fd);
     if (size <= 0)
 	RETURN(DCM_FILEACCESSERROR);
+
+    /* check whether this file has a preamble   18 May 2006 */
+    {
+        char lbuf[132];             /* 128 preamble + 4 byte "DICM" label */
+        if (read(fd, lbuf, 132) != 132) {
+            (void) close(fd); rwc_fd = -1;
+            RETURN(COND_PushCondition(DCM_FILEOPENFAILED,
+                     DCM_Message(DCM_FILEOPENFAILED), name, "DCM_OpenFile"));
+        }
+        g_readpreamble = (strncmp(lbuf+128, "DICM", 4) == 0);
+        (void) lseek(fd, 0, SEEK_SET); /* either way, rewind */
+    }
 
     if ((opt & DCM_LENGTHTOENDMASK) == DCM_USELENGTHTOEND) {
 	cond = readLengthToEnd(fd, name,
@@ -6518,8 +6546,13 @@ ENTRY("readVRLength") ;
 	    (void) DCM_DumpElements((DCM_OBJECT **) object, 0);
 	(void) DCM_CloseObject((DCM_OBJECT **) object);
         if( rwc_err ){
+
+#if 0 /* do not report this (the NIMH GE scanners are producing such files)
+         17 May 2006 [rickr] */
+
          fprintf(stderr,"** DICOM ERROR: illegal odd length=%d in element (%04x,%04x)\n",  /* RWC */
                  e->length,DCM_TAG_GROUP(e->tag), DCM_TAG_ELEMENT(e->tag) ) ; rwc_err-- ;
+#endif
         }
 	RETURN( COND_PushCondition(DCM_UNEVENELEMENTLENGTH,
 				  DCM_Message(DCM_UNEVENELEMENTLENGTH),
@@ -7042,7 +7075,7 @@ ENTRY("readFile1") ;
     if (parentObject != NULL)
 	(*object)->pixelRepresentation = (*parentObject)->pixelRepresentation;
 
-    if (recursionLevel == 0 && part10Flag) {
+    if (recursionLevel == 0 && (part10Flag || g_readpreamble)) {
 	flag = readPreamble(name, &ptr, fd, &size, fileOffset, knownLength,
 			    object, scannedLength);
 	if (flag != DCM_NORMAL)
@@ -8229,9 +8262,9 @@ DCM_AddFragment(DCM_OBJECT** callerObject, void* fragment, U32 fragmentLength)
 ** Intent:		Define the ASCIZ messages that go with each DCM
 **			error number and provide a function for looking up
 **			the error message.
-** Last Update:		$Author: rickr $, $Date: 2005/06/22 14:39:42 $
+** Last Update:		$Author: rickr $, $Date: 2006/05/18 15:42:00 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.21 $
+** Revision:		$Revision: 1.23 $
 ** Status:		$State: Exp $
 */
 
@@ -8387,9 +8420,9 @@ DCM_DumpVector()
 **			static objects are maintained which define how
 **			elements in the DICOM V3.0 standard are to be
 **			interpreted.
-** Last Update:		$Author: rickr $, $Date: 2005/06/22 14:39:42 $
+** Last Update:		$Author: rickr $, $Date: 2006/05/18 15:42:00 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.21 $
+** Revision:		$Revision: 1.23 $
 ** Status:		$State: Exp $
 */
 
@@ -10503,9 +10536,9 @@ DCM_ElementDictionary(DCM_TAG tag, void *ctx,
 **			as support for the DCM facility and for applications.
 **			These routines help parse strings and other data
 **			values that are encoded in DICOM objects.
-** Last Update:		$Author: rickr $, $Date: 2005/06/22 14:39:42 $
+** Last Update:		$Author: rickr $, $Date: 2006/05/18 15:42:00 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.21 $
+** Revision:		$Revision: 1.23 $
 ** Status:		$State: Exp $
 */
 
@@ -10711,9 +10744,9 @@ DCM_IsString(DCM_VALUEREPRESENTATION representation)
 ** Author, Date:	Thomas R. Leith, 15-Apr-93
 ** Intent:		This package implements atomic functions on
 **			linked lists.
-** Last Update:		$Author: rickr $, $Date: 2005/06/22 14:39:42 $
+** Last Update:		$Author: rickr $, $Date: 2006/05/18 15:42:00 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.21 $
+** Revision:		$Revision: 1.23 $
 ** Status:		$State: Exp $
 */
 
@@ -11247,9 +11280,9 @@ LST_Index(LST_HEAD ** l, int index)
 ** Intent:		Miscellaneous functions that may be useful in
 **			a number of different areas.
 **
-** Last Update:		$Author: rickr $, $Date: 2005/06/22 14:39:42 $
+** Last Update:		$Author: rickr $, $Date: 2006/05/18 15:42:00 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.21 $
+** Revision:		$Revision: 1.23 $
 ** Status:		$State: Exp $
 */
 

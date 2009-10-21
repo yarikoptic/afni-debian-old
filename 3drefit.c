@@ -18,7 +18,10 @@ void Syntax(char *str)
            "using to3d.\n"
            "To see the current values stored in a .HEAD file, use the command\n"
            "'3dinfo dataset'.  Using 3dinfo both before and after 3drefit is\n"
-           "a good idea to make sure the changes have been made correctly!\n\n"
+           "a good idea to make sure the changes have been made correctly!\n"
+           "\n"
+           "20 Jun 2006: 3drefit will now work on NIfTI datasets (but it will\n"
+           "             write out the entire dataset)\n\n"
          ) ;
 
    printf(
@@ -61,6 +64,7 @@ void Syntax(char *str)
     "  -dzorigin dz    values input to the 'Nudge xyz' plugin.\n"
     "               ** WARNING: you can't use these options at the same\n"
     "                  time you use -orient.\n"
+    "               ** WARNING: consider -shift_tags if dataset has tags\n"
     "\n"
     "  -xdel dimx      Makes the size of the voxel the given dimension,\n"
     "  -ydel dimy      for the given axis (x,y,z); dimensions in mm.\n"
@@ -91,6 +95,10 @@ void Syntax(char *str)
     "                   aset = NULL --> remove the anat parent info from the dataset\n"
     "                   aset = SELF --> set the anat parent to be the dataset itself\n"
     "\n"
+    "  -wpar wset      Set the warp parent (the +orig version of a +tlrc dset).\n"
+    "                  This option is used by @auto_tlrc. Do not use it unless\n"
+    "                  you know what you're doing. \n"
+    "\n"
     "  -clear_bstat    Clears the statistics (min and max) stored for each sub-brick\n"
     "                  in the dataset.  This is useful if you have done something to\n"
     "                  modify the contents of the .BRIK file associated with this\n"
@@ -107,6 +115,12 @@ void Syntax(char *str)
     "                  if it can handle them (is anatomical, is in the +orig\n"
     "                  view, and isn't 3D+time).\n"
     "               ** WARNING: this will erase any markers that already exist!\n"
+    "\n"
+    "  -shift_tags     Apply -dxorigin (and y and z) changes to tags.\n"
+    "\n"
+    "  -dxtag dx       Add dx to the coordinates of all tags.\n"
+    "  -dytag dy       Add dy to the coordinates of all tags.\n"
+    "  -dztag dz       Add dz to the coordinates of all tags.\n"
     "\n"
     "  -view code      Changes the 'view' to be 'code', where the string 'code'\n"
     "                  is one of 'orig', 'acpc', or 'tlrc'.\n"
@@ -145,12 +159,24 @@ void Syntax(char *str)
     "                  documentation file README.attributes. More than one\n"
     "                  '-atrcopy' option can be used.\n"
     "          **N.B.: This option is for those who know what they are doing!\n"
-    "                  It can only be used to alter attributes that are NOT\n"
+    "                  Without the -saveatr option, this option is\n"
+    "                  meant to be used to alter attributes that are NOT\n"
     "                  directly mapped into dataset internal structures, since\n"
     "                  those structures are mapped back into attribute values\n"
     "                  as the dataset is being written to disk.  If you want\n"
     "                  to change such an attribute, you have to use the\n"
-    "                  corresponding 3drefit option directly.\n"
+    "                  corresponding 3drefit option directly or use the \n"
+    "                  -saveatr option.\n"
+    "                  If you are confused, try to understand this: \n"
+    "                  Option -atrcopy was never intended to modify AFNI-\n"
+    "                  specific attributes. Rather, it was meant to copy\n"
+    "                  user-specific attributes that had been added to some\n"
+    "                  dataset using -atrstring option. A cursed day came when\n"
+    "                  it was convenient to use -atrcopy to copy an AFNI-specific\n"
+    "                  attribute (BRICK_LABS to be exact) and for that to\n"
+    "                  take effect in the output, the option -saveatr was added.\n"
+    "                  Contact Daniel Glen and/or Rick Reynolds for further \n"
+    "                  clarification and any other needs you may have.\n"
     "\n"
     "  -atrstring n 'x' Copy the string 'x' into the dataset(s) being\n"
     "                   modified, giving it the attribute name 'n'.\n"
@@ -161,6 +187,17 @@ void Syntax(char *str)
     "                  communicating information between programs.  However,\n"
     "                  when most AFNI programs write a new dataset, they will\n"
     "                  not preserve any such non-standard attributes.\n"
+    "  -saveatr        (default) Copy the attributes that are known to AFNI into \n"
+    "                  the dset->dblk structure thereby forcing changes to known\n"
+    "                  attributes to be present in the output.\n"
+    "                  This option only makes sense with -atrcopy\n"
+    "          **N.B.: Don't do something like copy labels of a dataset with \n"
+    "                  30 sub-bricks to one that has only 10, or vice versa.\n"
+    "                  This option is for those who would deservedly earn a\n"
+    "                  hunting license.\n"
+    "  -nosaveatr      Opposite of -saveatr\n"
+    "     Example: \n"
+    "     3drefit -saveatr -atrcopy WithLabels+tlrc BRICK_LABS NeedsLabels+tlrc\n"
    ) ;
 
    printf(
@@ -234,14 +271,17 @@ void Syntax(char *str)
 
 int main( int argc , char * argv[] )
 {
-   THD_3dim_dataset * dset , * aset = NULL ;
+   THD_3dim_dataset * dset , * aset = NULL , *waset = NULL;
                       int aset_code = 0    ; /* 14 Dec 1999 */
+                      int waset_code = 0;
    THD_dataxes      * daxes ;
    int new_stuff = 0 ;
    int new_orient = 0 ; char orient_code[4] ; int xxor,yyor,zzor ;
    int new_xorg   = 0 ; float xorg ; int cxorg=0, dxorg=0 , duporg=0 ;
    int new_yorg   = 0 ; float yorg ; int cyorg=0, dyorg=0 ;
    int new_zorg   = 0 ; float zorg ; int czorg=0, dzorg=0 ;
+   int new_tags   = 0 ; int shift_tags = 0 ; /* 08 May 2006 [rickr] */
+                        float dxtag=0.0, dytag=0.0, dztag=0.0 ;
    int new_xdel   = 0 ; float xdel ;
    int new_ydel   = 0 ; float ydel ;
    int new_zdel   = 0 ; float zdel ;
@@ -263,6 +303,7 @@ int main( int argc , char * argv[] )
    THD_3dim_dataset *auxset=NULL ;   /* 08 Jun 2004 */
    char *new_label2   = NULL ;       /* 21 Dec 2004 */
    int denote         = 0 ;          /* 08 Jul 2005 */
+   Boolean write_output ;            /* 20 Jun 2006 [rickr] */
 
    char str[256] ;
    int  iarg , ii ;
@@ -285,7 +326,8 @@ int main( int argc , char * argv[] )
 
    int   num_atrcopy = 0 ;    /* 03 Aug 2005 */
    ATR_any **atrcopy = NULL ;
-
+   int saveatr = 1;
+   
    /*-------------------------- help me if you can? --------------------------*/
 
    if( argc < 2 || strncmp(argv[1],"-help",4) == 0 ) Syntax(NULL) ;
@@ -331,7 +373,7 @@ int main( int argc , char * argv[] )
         atrcopy = (ATR_any **)realloc( (void *)atrcopy ,
                                        sizeof(ATR_any *)*(num_atrcopy+1) ) ;
         atrcopy[num_atrcopy++] = THD_copy_atr( atr ) ;
-
+        /* atr_print( atr, NULL , NULL, '\0', 1) ;  */
         DSET_delete(qset) ; new_stuff++ ;
 
        atrcopy_done:
@@ -368,7 +410,14 @@ int main( int argc , char * argv[] )
         iarg++ ; continue ;
       }
 
-
+      if( strcmp(argv[iarg],"-saveatr") == 0 ){
+        saveatr = 1 ; iarg++ ; continue ;
+      }
+      
+      if( strcmp(argv[iarg],"-nosaveatr") == 0 ){
+        saveatr = 0 ; iarg++ ; continue ;
+      }
+      
       /*----- -denote [08 Jul 2005] -----*/
 
       if( strcmp(argv[iarg],"-denote") == 0 ){
@@ -415,6 +464,32 @@ int main( int argc , char * argv[] )
             aset = THD_open_one_dataset( argv[iarg] ) ;
             if( aset == NULL )
                Syntax("Can't open -apar dataset!") ;
+         }
+
+         new_stuff++ ; iarg++ ; continue ;  /* go to next arg */
+      }
+
+      /*----- -wpar wset [ZSS June 06] -----*/
+
+      if( strcmp(argv[iarg],"-wpar")       == 0 ||
+          strcmp(argv[iarg],"-warpparent") == 0 ||
+          strcmp(argv[iarg],"-wset")       == 0    ){
+
+         if( iarg+1 >= argc )
+            Syntax("need 1 argument after -wpar!") ;
+
+         if( waset != NULL || waset_code != 0 )                 
+            Syntax("Can't have more than one -wpar option!");
+
+         iarg++ ;
+         if( strcmp(argv[iarg],"NULL") == 0 ){    
+            waset_code = ASET_NULL ;
+         } else if( strcmp(argv[iarg],"SELF") == 0 ){
+            waset_code = ASET_SELF ;
+         } else {
+            waset = THD_open_one_dataset( argv[iarg] ) ;
+            if( waset == NULL )
+               Syntax("Can't open -wpar dataset!") ;
          }
 
          new_stuff++ ; iarg++ ; continue ;  /* go to next arg */
@@ -853,6 +928,35 @@ int main( int argc , char * argv[] )
          iarg++ ; continue ;  /* go to next arg */
       }
 
+      /* tag options    08 May 2006 [rickr] */
+
+      /* -shift_tags, apply -d?origin to tags */
+      if( strncmp(argv[iarg],"-shift_tags",11) == 0 ){
+         shift_tags = 1 ;
+         iarg++ ; continue ;  /* go to next arg */
+      }
+
+      if( strncmp(argv[iarg],"-dxtag",6) == 0 ){
+         if( ++iarg >= argc ) Syntax("need an argument after -dxtag!");
+         dxtag = strtod(argv[iarg],NULL) ;
+         new_tags = 1 ; new_stuff++ ;
+         iarg++ ; continue ;  /* go to next arg */
+      }
+
+      if( strncmp(argv[iarg],"-dytag",6) == 0 ){
+         if( ++iarg >= argc ) Syntax("need an argument after -dytag!");
+         dytag = strtod(argv[iarg],NULL) ;
+         new_tags = 1 ; new_stuff++ ;
+         iarg++ ; continue ;  /* go to next arg */
+      }
+
+      if( strncmp(argv[iarg],"-dztag",6) == 0 ){
+         if( ++iarg >= argc ) Syntax("need an argument after -dztag!");
+         dztag = strtod(argv[iarg],NULL) ;
+         new_tags = 1 ; new_stuff++ ;
+         iarg++ ; continue ;  /* go to next arg */
+      }
+
       /** anything else must be a -type **/
       /*  try the anatomy prefixes */
 
@@ -897,9 +1001,25 @@ int main( int argc , char * argv[] )
    if( new_orient && (dxorg || dyorg || dzorg) )     /* 02 Mar 2000 */
       Syntax("Can't use -orient with -d?origin!?") ;
 
-   /*--- process datasets ---*/
+   if( new_tags || shift_tags ){                     /* 08 May 2006 [rickr] */
+      if( new_tags && shift_tags )
+         Syntax("Cant' use -shift_tags with -d{xyz}tag") ;
+      if( new_orient )
+         Syntax("Can't use -orient with -shift_tags or -d{xyz}tags") ;
+      if( shift_tags && !dxorg && !dyorg && !dzorg )
+         Syntax("-shift_tags option requires a -d{xyz}origin option") ;
 
+      if( shift_tags ){    /* then copy shifts to tag vars */
+         if( dxorg ) dxtag = xorg ;
+         if( dyorg ) dytag = yorg ;
+         if( dzorg ) dztag = zorg ;
+      }
+   }
+
+   /*--- process datasets ---*/
    for( ; iarg < argc ; iarg++ ){
+      write_output = False ;   /* some datasets will be overwritten */
+
       dset = THD_open_one_dataset( argv[iarg] ) ;
       if( dset == NULL ){
          ERROR_message("Can't open dataset %s\n",argv[iarg]) ;
@@ -922,8 +1042,7 @@ int main( int argc , char * argv[] )
          continue ;
       }
       if( DSET_IS_NIFTI(dset) ){
-         ERROR_message("Can't process NIFTI dataset %s\n",argv[iarg]);
-         continue ;
+         write_output = True ;     /* 20 Jun 2006 [rickr] */
       }
       if( DSET_IS_MPEG(dset) ){
          ERROR_message("Can't process MPEG dataset %s\n",argv[iarg]);
@@ -950,6 +1069,15 @@ int main( int argc , char * argv[] )
          dset->anat_parent_name[0] = '\0' ;
       }
 
+      /* ZSS June 06, add a warp parent field please */
+      if( waset != NULL ){
+         EDIT_dset_items( dset , ADN_warp_parent , waset , ADN_none ) ;
+      } else if( waset_code == ASET_SELF ){
+         EDIT_dset_items( dset , ADN_warp_parent , dset , ADN_none ) ;
+      } else if( waset_code == ASET_NULL ){
+         EDIT_ZERO_ANATOMY_PARENT_ID( dset ) ;
+         dset->warp_parent_name[0] = '\0' ;
+      } 
       /* Oct 04/02: zmodify volreg fields */
       if (Do_volreg_mat) {
          sprintf(str,"VOLREG_MATVEC_%06d", volreg_matind) ;
@@ -1153,6 +1281,21 @@ int main( int argc , char * argv[] )
          }
       }
 
+      /* check for tag shifts                  08 May 2006 [rickr] */
+      if( new_tags || shift_tags ){
+         THD_usertag * tag;
+         if( !dset->tagset ) WARNING_message("No tags to shift\n") ;
+         else {
+            INFO_message("modifying tags") ;
+            for( ii = 0; ii < dset->tagset->num; ii++ ){
+               tag = dset->tagset->tag + ii ;
+               tag->x += dxtag;  tag->y += dytag;  tag->z += dztag;
+            }
+         }
+      } else if ( dset->tagset && ( new_xorg || new_yorg || new_zorg ||
+                                    new_xdel || new_ydel || new_zdel ) )
+         WARNING_message("modifying coordinates of dataset with tags") ;
+
       /* code moved to edt_emptycopy.c                   13 Sep 2005 [rickr] */
       if( new_markers && okay_to_add_markers(dset) ){
          dset->markers = create_empty_marker_set() ;
@@ -1233,12 +1376,18 @@ int main( int argc , char * argv[] )
 
       /* 03 Aug 2005: implement atrcopy */
 
-      for( ii=0 ; ii < num_atrcopy ; ii++ )
+      for( ii=0 ; ii < num_atrcopy ; ii++ ) {
         THD_insert_atr( dset->dblk , atrcopy[ii] ) ;
+      }
+      
+      /* Do we want to force new attributes into output ? ZSS Jun 06*/
+      if (saveatr) THD_datablock_from_atr(dset->dblk , DSET_DIRNAME(dset)  , dset->dblk->diskptr->header_name);
 
       if( denote ) THD_anonymize_write(1) ;   /* 08 Jul 2005 */
 
-      THD_write_3dim_dataset( NULL,NULL , dset , False ) ;
+      if( write_output ) DSET_load(dset) ;    /* 20 Jun 2006 */
+
+      THD_write_3dim_dataset( NULL,NULL , dset , write_output ) ;
       THD_delete_3dim_dataset( dset , False ) ;
    }
    exit(0) ;

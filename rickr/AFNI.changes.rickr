@@ -1239,8 +1239,7 @@
     strings below 509 bytes in length (-hist, -help strings)
   * modified nifti_stats.c: replaced strdup with malloc/strcpy for warning
 
-29 Auguest 2005: Dimon (-> v 2.2)
-  * added options -rev_org_dir and -rev_sort_dir
+29 Auguest 2005: Dimon (-> v 2.2): added options -rev_org_dir and -rev_sort_dir
 
 01 September 2005:
   * modified 3dANOVA2.c (to properly handle multiple samples)
@@ -1253,8 +1252,7 @@
       - moved marker test and creation to said functions in edt_emptycopy.c
   * modified plug_realtime.c: add empty markers to appropriate datasets
 
-20 September 2005:
-  * modified 2dImReg.c to return 0 from main
+20 September 2005: modified 2dImReg.c to return 0 from main
 
 26 September 2005:
   * modified 3dANOVA3.c: applied formulas provided by Gang for variance
@@ -1327,11 +1325,9 @@
 23 November 2005:
   * modified 3dANOVA2.c, added -old_method for type 3 ameans, adiff, acontr
 
-25 November 2005:
-  * modified 3dANOVA.c, added subject ethel to -help example
+25 November 2005: modified 3dANOVA.c, added subject ethel to -help example
 
-29 November 2005:
-  * modified 3dROIstats.c, added more help with examples
+29 November 2005: modified 3dROIstats.c, added more help with examples
 
 02 December 2005:
   * modified 3dANOVA3.c, 3dANOVA2.c, 3dANOVA.h, 3dANOVA.lib
@@ -1341,8 +1337,7 @@
       - Contrasts are verified via contrasts_are_valid().
   * fixed Makefile.INCLUDE (had extra '\' at end of PROGRAMS)
 
-08 December 2005:
-  * modified 3dRegAna.c, setting default workmem to 750 (MB)
+08 December 2005: modified 3dRegAna.c, setting default workmem to 750 (MB)
 
 09 December 2005:
   * modified 3dANOVA.c
@@ -1360,11 +1355,9 @@
       - added -voxel option (similar to the 3dANOVA progs)
       - replaced scaling work with EDIT_convert_dtype() call
 
-15 Dec 2005:
-  * modified 3dhistog.c: fixed use of sub-brick factors
+15 Dec 2005: modified 3dhistog.c: fixed use of sub-brick factors
 
-16 Dec 2005:
-  * modified 3dUniformize.c: fixed upper_limit==0 case in resample()
+16 Dec 2005: modified 3dUniformize.c: fixed upper_limit==0 case in resample()
 
 28 Dec 2005:
   * modified 3dANOVA3.c
@@ -1391,8 +1384,7 @@
   * modified 3dANOVA2.c, replaced calc_sum_sum2_acontr and calc_t_from_sums
         with calc_type3_acontr, to avoid intermediate storage of data as floats
 
-06 Jan 2006:
-  * modified waver.c: only output version info with new '-ver' option.
+06 Jan 2006: modified waver.c: only output version info with new '-ver' option
 
 25 Jan 2006:
   * added model_michaelis_menton.c model function for Jasmin Salloum
@@ -1413,14 +1405,11 @@
       override BASE_TCP_CONTROL with environment variable AFNI_PLUGOUT_TCP_BASE
   * modified README.environment for description of AFNI_PLUGOUT_TCP_BASE
 
-02 Feb 2006:
-  * submitted version 7 of plug_permtest.c for Matthew Belmonte
+02 Feb 2006: submitted version 7 of plug_permtest.c for Matthew Belmonte
 
-07 Feb 2006:
-  * added -datum option to 3dWavelets.c
+07 Feb 2006: added -datum option to 3dWavelets.c
 
-09 Feb 2006:
-  * added example to 3dANOVA3 -help
+09 Feb 2006: added example to 3dANOVA3 -help
 
 02 Mar 2006:
   * modified nifti_tool.c (v 1.12) to deal with nt = 0 in act_cbl(), due
@@ -1428,12 +1417,153 @@
   * modified nifti1_io.c (v 1.18) to deal with nt = 0 in nifti_alloc_NBL_mem()
   * modified thd_niftiread.c to be sure that ntt and nbuc are at least 1
 
-09 Mar 2006:
-  * modified waver.c not to show -help after command typo
+09 Mar 2006: modified waver.c not to show -help after command typo
 
 13 Mar 2006:
   * added examples to 3dmaskave.c
   * modified to3d.c, mri_read_dicom.c, mrilib.h: added option and global
     variable for assume_dicom_mosaic, to apply the liberal DICOM mosaic test
     only when set (via -assume_dicom_mosaic in to3d)
+
+23 Mar 2006: modified 3dcalc.c: do not scale shorts if values are {0,1}
+
+27 Mar 2006:
+  * modified model_michaelis_menton.c to handle '-time' option to 3dNLfim
+  * modified 3dmaskdump.c: to keep -quiet quiet
+
+28 Mar 2006: modified vol2surf.c, plug_vol2surf.c: fixed mode computation
+
+28 Mar 2006: modified model_michaelis_menton.c: added mag(nitude) parameter
+
+04 Apr 2006:
+  * modified cox_render.c
+      - CREN_set_rgbmap(): if ncol>128, still apply 128 colors
+      - in BECLEVER sections, enclose bitwise and operations in
+        parentheses, as '!=' has higher priority than '&'
+  * modified plug_crender.c
+      - RCREND_reload_func_dset(): use 128 instead of NPANE_BIG to set
+          bdelta, and to apply RANGE to bindex (127)
+      - rd_disp_color_info(), don't assume 128 colors, use NPANE_BIG
+
+06 Apr 2006:
+  * modified thd_writenifti.c
+      - in THD_write_nifti, catch populate_nifti_image() failure (crashed)
+      - in populate_nifti_image(), return NULL (not 0) on failure, and give
+          a hint for what to do in case of 'brick factors not consistent'
+
+11 Apr 2006: put 'd' in 3dANOVA* 'Changes have been made' warnings
+
+14 Apr 2006: applied mastery to NIFTI-1 datasets
+  * modified thd_mastery.c:
+      - allow NIfTI suffices in THD_open_dataset()
+      - if NIfTI, init master_bot and master_top
+  * modified thd_load_datablock.c: broke sub-ranging out to
+      THD_apply_master_subrange() for use in THD_load_nifti()
+  * modified 3ddata.h: added prototype for THD_apply_master_subrange()
+  * modified thd_niftiread.c: THD_load_nifti():
+      - if mastered, pass nvals and master_ival to nifti_image_read_bricks()
+      - at end, if mastered and bot <= top, THD_apply_master_subrange()
+
+18 Apr 2006:
+  * modified cs_addto_args.c: addto_args(), terminate empty sin before strcat
+  * modified mri_matrix.c: moved var defn to start of block in DECODE_VALUE
+  * modified SUMA_3dSkull_Strip.c: 'int code[3]' must be defined at block start
+
+19 Apr 2006: nifticlib-0.3 updates (from Kate Fissell)
+  * added Updates.txt
+  * modified Makefile, utils/Makefile: removed $(ARCH) and commented SGI lines
+  * modified real_easy/nifti1_read_write.c : corrected typos
+  * modified 3dcalc.c: fixed typo in 'step(9-(x-20)*...' example
+
+20 Apr 2006:
+  * modified thd_opendset.c: added functions storage_mode_from_filename()
+      and has_known_non_afni_extension() {for 3dcopy}
+  * modified 3ddata.h: added prototypes for those two functions
+
+21 Apr 2006: modified model_michaelis_menton.c: apply AFNI_MM_MODEL_RATE_IN_SECS
+
+24 Apr 2006: nifti_tool.c:act_disp_ci(): removed time series length check
+
+25 Apr 2006: changed ^M to newline in 3dcopy.c (stupid Macs)
+
+28 Apr 2006: 3dhistog.c: fixed min/max range setting kk outside array
+
+08 May 2006: 3drefit.c: added options -shift_tags, -dxtag, -dytag, -dztag
+
+17 May 2006:
+  * modified mri_dicom_hdr.c, rickr/l_mri_dicom_hdr.c
+      - make reading of preamble automatic
+      - do not print any 'illegal odd length' warnings
+
+18 May 2006: allowed for older DICOM files that do not have a preamble
+  * removed rickr/l_mri_dicom_hdr.c
+  * modified mri_dicom_hdr.c
+      - added FOR_DICOM test to compile for Dicom
+      - made g_readpreamble global, set in DCM_OpenFile, used in readFile1
+      - DCM_OpenFile reads 132 bytes to check for "DICM" at end
+  * modified rickr/Makefile to use ../mri_dicom_hdr.c aot l_mri_dicom_hdr.c
+
+23 May 2006: some nifti updates by Hans Johnson (lib ver 1.19)
+  * added Testing/Data, /Testing/niftilib/nifti_test2.c and
+          Testing/Data/ATestReferenceImageForReadingAndWriting.nii.gz
+  * modified CMakeLists.txt, niftilib/CMakeLists.txt, utils/CMakeLists.txt,
+             Testing/niftilib/nifti_test.c
+  * modified utils/nifti_stats.c: added switch for not building unused funcs
+  * modified nifti1_io.c:
+      - nifti_write_ascii_image(): free(hstr)
+      - nifti_copy_extensions(): clear num_ext, ext_list
+  * rickr: use NULL when clearing ext_list
+
+26 May 2006: .niml/.niml.dset preparations
+  * modified 3ddata.h
+      - #define STORAGE_BY_NIML,NI_SURF_DSET, and update LAST_STORAGE_MODE
+      - add nnodes, node_list to THD_datablock struct
+      - define DBLK_IS_NIML, DBLK_IS_NI_SURF_DSET, and similar DSET_*
+  * modified thd_open_dset.c:
+      - THD_open_one_dataset(): added (unfinished) .niml/.niml.dset cases
+      - storage_mode_from_filename(): added .niml/.nim.dset cases
+  * modified thd_info.c: THD_dataset_info(): added the 2 new STORAGE_MODEs
+  * modified thd_loadblk.c: added (unfinished) cases for the new storage modes
+
+30 May 2006:
+  * modified 3dclust.c: get a new ID for an output 3dclust dataset
+  * modified Imon.h, Dimon.c: added -save_file_list option
+
+15 Jun 2006:
+  * modified thd_niftiwrite.c:
+      - in populate_nifti_image(), check for including any adjacent zero offset
+        in the slice timing pattern
+      - added get_slice_timing_pattern() to test for NIFTI_SLICE_* patterns
+
+20 Jun 2006: modified 3drefit.c to handle NIfTI datasets
+
+21 Jun 2006:
+  * modified niml.h, niml_util.c: added NI_strdup_len()
+  * modified @make_stim_file, adding -zero_based option
+
+27 Jun 2006:
+  * modified nifti1_io.c: fixed assign of efirst to match stated logic in
+      nifti_findhdrname() (problem found by Atle Bjørnerud)
+
+28 Jun 2006: many changes to handle NIML and NI_SURF_DSET datasets (incomplete)
+  * added thd_niml.c
+      - top-level THD_open_niml(), THD_load_niml(), THD_write_niml() functions
+      - general read_niml_file(), write_niml_file() functions
+      - processing NI_SURF_DSET datasets, including THD_ni_surf_dset_to_afni()
+  * modified thd_opendset.c
+      - added file_extension_list array and find_filename_extension()
+      - apply THD_open_niml() to NIML and NI_SURF_DSET cases
+  * modified 3ddata.h - added prototypes
+  * modified edt_dset_items.c: added DSET_IS_NIML, DSET_IS_NI_SURF_DSET cases
+      for new_prefix editing
+  * modified thd_3Ddset.c
+      - broke THD_open_3D() into read_niml_file() and THD_niml_3D_to_dataset()
+  * modified thd_fetchdset.c
+      - added NIML and NI_SURF_DSET cases
+  * modified thd_loaddblk.c
+      - opened STORAGE_BY_NIML and BY_NI_SURF_DSET cases
+  * modified thd_nimlatr.c: just for unused variables
+  * modified thd_writedset.c:
+      - added NIML and NI_SURF_DSET write cases using THD_write_niml()
+  * modified Makefile.INCLUDE: to add thd_niml.o to THD_OBJS
 

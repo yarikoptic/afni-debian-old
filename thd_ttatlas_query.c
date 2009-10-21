@@ -15,7 +15,16 @@ static int           have_dseCA_EZ_LR = -1   ;
 static THD_3dim_dataset * dseCA_EZ_LR = NULL ;
 
 #define MAX_FIND_DEFAULT 9            /* max number to find within WAMIRAD  */
-#define WAMIRAD  7.5                  /* search radius: must not exceed 9.5 */
+#define WAMIRAD_DEFAULT  7.5           /* search radius: must not exceed 9.5 */
+
+#if 0
+# define POPUP_MESSAGE(sss)  /*nuthin fer now -- RWC quick fix*/
+#else
+  static void PMESS(char *sss){ return; }
+  static void (*POPUP_MESSAGE)(char *) = PMESS ;
+  void TT_setup_popup_func( void (*pf)(char *) )
+   { POPUP_MESSAGE = (pf==NULL) ? PMESS : pf; return; }
+#endif
 
 int Init_Whereami_Max_Find(void) {
    
@@ -25,14 +34,41 @@ int Init_Whereami_Max_Find(void) {
    }
    return(MAX_FIND_DEFAULT);
 }
+float Init_Whereami_Max_Rad(void) {
+   
+   char *eee = getenv("AFNI_WHEREAMI_MAX_SEARCH_RAD");
+   if (eee) {
+      if (atof(eee) > 9.5) {
+         WARNING_message(  "Maximum search radius cannot exceed 9.5. \n"
+                           "Complain to authors if you really need this changed.\n"
+                           "Clipping search radius to 9.5\n");
+         return(9.5);
+      }
+      return(atof(eee));
+   }
+   return(WAMIRAD_DEFAULT);
+}
 
 static int MAX_FIND = -1;
+static float WAMIRAD = -1.0;
 
 void Set_Whereami_Max_Find(int n) {
    if (n > 0) {
       MAX_FIND = n;
    } else {
       MAX_FIND = Init_Whereami_Max_Find();
+   }
+   return;
+}
+void Set_Whereami_Max_Rad(float n) {
+   if (n > 9.5) {
+      WARNING_message("Maximum search radius cannot exceed 9.5");
+      n = 9.5;
+   }
+   if (n > 0.0) {
+      WAMIRAD = n;
+   } else {
+      WAMIRAD = Init_Whereami_Max_Rad();
    }
    return;
 }
@@ -483,6 +519,26 @@ void TT_purge_atlas_big(void)
    return ;
 }
 
+void CA_EZ_MPM_purge_atlas(void)
+{
+   PURGE_DSET(dseCA_EZ_MPM); return;
+}
+
+void CA_EZ_PMaps_purge_atlas(void)
+{
+   PURGE_DSET(dseCA_EZ_PMaps); return;
+}
+
+void CA_EZ_ML_purge_atlas(void)
+{
+   PURGE_DSET(dseCA_EZ_ML); return;
+}
+
+void CA_EZ_LR_purge_atlas(void)
+{
+   PURGE_DSET(dseCA_EZ_LR); return;
+}
+
 /*----------------------------------------------------------------------
    Begin coordinate transformation functions
 ------------------------------------------------------------------------*/
@@ -697,6 +753,7 @@ char MNI_Anatomical_Side(ATLAS_COORD ac)
    THD_ivec3 ijk ;
    int  ix,jy,kz , nx,ny,nz,nxy, ii=0, kk=0;
    byte *ba=NULL;
+   static int n_warn = 0;
    byte LocalHead = 0;
    
    ENTRY("MNI_Anatomical_Side");
@@ -709,14 +766,18 @@ char MNI_Anatomical_Side(ATLAS_COORD ac)
    if (dseCA_EZ_LR == NULL) {
       if (LocalHead) fprintf(stderr,"Loading %s\n",  Atlas_Code_to_Atlas_Name(CA_EZ_N27_LR_ATLAS));
       ii = CA_EZ_LR_load_atlas(); 
-      if (ii == 0) {
+      if (ii == 0 && !n_warn) {
          WARNING_message("Could not read LR atlas (dset %s+tlrc)", 
             Atlas_Code_to_Atlas_Dset_Name(CA_EZ_N27_LR_ATLAS));
+         ++n_warn;
       }
    }
    
    if (dseCA_EZ_LR == NULL) {
-      WARNING_message("Relying on x coordinate to guess side");
+      if (n_warn < 2) {
+         WARNING_message("Relying on x coordinate to guess side");
+         ++n_warn;
+      }
       if (ac.x<0.0) { 
          RETURN('r'); 
       } else { 
@@ -1290,6 +1351,9 @@ else                    fprintf(stderr,"TT_whereami using dseTT\n") ;
    b2 = DSET_BRICK_ARRAY(dset,0) ; if( b2 == NULL ) RETURN(NULL) ;
    b4 = DSET_BRICK_ARRAY(dset,1) ; if( b4 == NULL ) RETURN(NULL) ;
 
+   if (WAMIRAD < 0.0) {
+      WAMIRAD = Init_Whereami_Max_Rad();
+   }
    if( wamiclust == NULL ){
       wamiclust = MCW_build_mask( 1.0,1.0,1.0 , WAMIRAD ) ;
       if( wamiclust == NULL ) RETURN(NULL) ;  /* should not happen! */
@@ -1515,62 +1579,6 @@ else                    fprintf(stderr,"TT_whereami using dseTT\n") ;
 /* Begin ZSS: Additions for Eickhoff and Zilles Cytoarchitectonic maps */
 
 
-int compare_Z_IQSORT_FLOAT (Z_QSORT_FLOAT *a, Z_QSORT_FLOAT *b )
-{
-   if (a->x < b->x)
-      return (1);
-   else if (a->x == b->x)
-      return (0);
-   else if (a->x > b->x)
-      return (-1);
-   /* this will never be reached but it will shut the compiler up */
-   return (0);
-}
-
-int compare_Z_IQSORT_INT (Z_QSORT_INT *a, Z_QSORT_INT *b )
-{
-   if (a->x < b->x)
-      return (1);
-   else if (a->x == b->x)
-      return (0);
-   else if (a->x > b->x)
-      return (-1);
-   /* this will never be reached but it will shut the compiler up */
-   return (0);
-}
-
-int compare_int (int *a, int *b )
-{/* compare_int*/
-    if (*a < *b)
-      return (-1);
-   else if (*a == *b)
-      return (0);
-   else
-      return (1);
-   
-}/* compare_short*/
-
-int compare_short (short *a, short *b )
-{/* compare_short*/
-    if (*a < *b)
-      return (-1);
-   else if (*a == *b)
-      return (0);
-   else
-      return (1);
-   
-}/* compare_short*/
-
-int compare_byte (byte *a, byte *b )
-{/* compare_byte*/
-    if (*a < *b)
-      return (-1);
-   else if (*a == *b)
-      return (0);
-   else
-      return (1);
-   
-}/* compare_byte*/
 
 /*!
     l left
@@ -1840,7 +1848,7 @@ byte * UniqueByte (byte *y, int ysz, int *kunq, int Sorted )
          }
       for (k=0; k < ysz; ++k)
          x[k] = y[k];
-      qsort(x,ysz,sizeof(byte), (int(*) (const void *, const void *)) compare_byte);
+      qsort(x,ysz,sizeof(byte), (int(*) (const void *, const void *)) compare_char);
    }
    else
       x = y;
@@ -3152,6 +3160,59 @@ ATLAS_QUERY *Free_Atlas_Query(ATLAS_QUERY *aq)
    RETURN(NULL);
 }
 
+int Check_Version_Match(THD_3dim_dataset * dset, AFNI_ATLAS_CODES ac)
+{
+   ATR_int *notecount;
+   ATR_string *note;
+   int num_notes, i, j, num_char , mmm ;
+   char note_name[20], *chn , *chd, *mt ;
+   int k = 0;
+   
+   ENTRY("Check_Version_Match");
+   if (!dset) RETURN(0); /* not good */
+   
+   if (ac == AFNI_TLRC_ATLAS) RETURN(1); /* no versions here */
+   if (ac >= CA_EZ_N27_MPM_ATLAS && ac <= CA_EZ_N27_LR_ATLAS) {   /* CA atlases, good */
+     notecount = THD_find_int_atr(dset->dblk, "NOTES_COUNT");
+     if( notecount != NULL ){
+        num_notes = notecount->in[0] ;
+        mmm = 4000 ;         
+        for (i=1; i<= num_notes; i++) {
+           chn = tross_Get_Note( dset , i ) ;
+           if( chn != NULL ){
+              j = strlen(chn) ; if( j > mmm ) chn[mmm] = '\0' ;
+              chd = tross_Get_Notedate(dset,i) ;
+              if( chd == NULL ){ chd = AFMALL(char,16) ; strcpy(chd,"no date") ; }
+              /* fprintf(stderr,"\n----- NOTE %d [%s] (searching for %s) -----\n%s\n",i,chd, CA_EZ_VERSION_STR, chn ) ; */
+              /* search for matching versions */
+              mt = strstr(chn, CA_EZ_VERSION_STR);
+              free(chn) ; free(chd) ;
+              if (mt) {
+               RETURN(1); /* excellent */
+              }
+           }
+        }
+     }
+
+   }
+   
+   RETURN(0); /* not good */
+}
+
+static int N_VersionMessage = 0;
+
+static char *VersionMessage(void)
+{
+   static char verr[1000];
+   ENTRY("VersionMessage");
+   sprintf( verr, "Mismatch of Anatomy Toolbox Versions.\n"
+                  "Version in AFNI is %s and appears\n"
+                  "different from version string in atlas' notes.\n"
+                  "See whereami -help for more info.\n", CA_EZ_VERSION_STR);
+   RETURN(verr);
+}
+
+
 int CA_EZ_ML_load_atlas(void)
 {
    char *epath ;
@@ -3173,6 +3234,15 @@ int CA_EZ_ML_load_atlas(void)
       dseCA_EZ_ML = get_altas( epath, atpref) ;
    }
    if( dseCA_EZ_ML != NULL ){                     /* got it!!! */
+      /* check on version */
+      if (!Check_Version_Match(dseCA_EZ_ML, CA_EZ_N27_ML_ATLAS)) {
+         if (!N_VersionMessage) { POPUP_MESSAGE( VersionMessage() ); ++N_VersionMessage; }
+         ERROR_message( VersionMessage() );
+         /* dump the load */
+         /* CA_EZ_ML_purge_atlas();, not good enough will get reloaded elsewhere */
+         DSET_delete(dseCA_EZ_ML) ;  dseCA_EZ_ML = NULL;
+         RETURN(0) ;               
+      }
       have_dseCA_EZ_ML = 1; RETURN(1);
    }
 
@@ -3200,6 +3270,15 @@ int CA_EZ_LR_load_atlas(void)
       dseCA_EZ_LR = get_altas( epath, atpref) ;
    }
    if( dseCA_EZ_LR != NULL ){                     /* got it!!! */
+      /* check on version */
+      if (!Check_Version_Match(dseCA_EZ_LR, CA_EZ_N27_LR_ATLAS)) {
+         if (!N_VersionMessage) { POPUP_MESSAGE( VersionMessage() ); ++N_VersionMessage; }
+         ERROR_message(  VersionMessage() );
+         /* dump the load */
+         /* CA_EZ_LR_purge_atlas();, not good enough will get reloaded elsewhere */
+         DSET_delete(dseCA_EZ_LR) ; dseCA_EZ_LR = NULL;
+         RETURN(0) ;               
+      }
       have_dseCA_EZ_LR = 1; RETURN(1);
    }
 
@@ -3227,11 +3306,21 @@ int CA_EZ_MPM_load_atlas(void)
       dseCA_EZ_MPM = get_altas( epath, atpref) ;
    }
    if( dseCA_EZ_MPM != NULL ){                     /* got it!!! */
+      /* check on version */
+      if (!Check_Version_Match(dseCA_EZ_MPM, CA_EZ_N27_MPM_ATLAS)) {
+         if (!N_VersionMessage) { POPUP_MESSAGE( VersionMessage() ); ++N_VersionMessage; }
+         ERROR_message( VersionMessage() );
+         /* dump the load */
+         /*CA_EZ_MPM_purge_atlas();, not good enough will get reloaded elsewhere */
+         DSET_delete(dseCA_EZ_MPM) ; dseCA_EZ_MPM = NULL;
+         RETURN(0) ;               
+      }
       have_dseCA_EZ_MPM = 1; RETURN(1);
    }
 
    RETURN(0) ; /* got here -> didn't find it */
 }
+
 
 int CA_EZ_PMaps_load_atlas(void)
 {
@@ -3254,31 +3343,21 @@ int CA_EZ_PMaps_load_atlas(void)
       dseCA_EZ_PMaps = get_altas( epath, atpref) ;
    }
    if( dseCA_EZ_PMaps != NULL ){                     /* got it!!! */
+      /* check on version */
+      if (!Check_Version_Match(dseCA_EZ_PMaps, CA_EZ_N27_PMAPS_ATLAS)) {
+         if (!N_VersionMessage) { POPUP_MESSAGE( VersionMessage() ); ++N_VersionMessage; }
+         ERROR_message(  VersionMessage() );
+         /* dump the load */
+         /* CA_EZ_PMaps_purge_atlas();, not good enough will get reloaded elsewhere */
+         DSET_delete(dseCA_EZ_PMaps) ; dseCA_EZ_PMaps = NULL;
+         RETURN(0) ;               
+      }
       have_dseCA_EZ_PMaps = 1; RETURN(1);
    }
 
    RETURN(0) ; /* got here -> didn't find it */
 }
 
-void CA_EZ_MPM_purge_atlas(void)
-{
-   PURGE_DSET(dseCA_EZ_MPM); return;
-}
-
-void CA_EZ_PMaps_purge_atlas(void)
-{
-   PURGE_DSET(dseCA_EZ_PMaps); return;
-}
-
-void CA_EZ_ML_purge_atlas(void)
-{
-   PURGE_DSET(dseCA_EZ_ML); return;
-}
-
-void CA_EZ_LR_purge_atlas(void)
-{
-   PURGE_DSET(dseCA_EZ_LR); return;
-}
 
 #define IS_BLANK(c) ( ((c) == ' ' || (c) == '\t' || (c) == '\n' || (c) == '\v' || (c) == '\f' || (c) == '\r') ? 1 : 0 )
 
@@ -3401,6 +3480,7 @@ ATLAS_DSET_HOLDER Atlas_With_Trimming (AFNI_ATLAS_CODES atcode, int LoadLRMask)
    int ii;
    byte build_lr = 1;
    byte LocalHead = 0;
+   static int n_warn[NUMBER_OF_ATLASES];
    
    ENTRY("Atlas_With_Trimming");
    
@@ -3422,8 +3502,11 @@ ATLAS_DSET_HOLDER Atlas_With_Trimming (AFNI_ATLAS_CODES atcode, int LoadLRMask)
                if (LocalHead) fprintf(stderr,"Loading %s\n", Atlas_Code_to_Atlas_Name(atcode));
                ii = CA_EZ_MPM_load_atlas(); 
                if (ii == 0) {
-                  WARNING_message("Could not read MPM atlas(dset %s+tlrc)", 
-                              Atlas_Code_to_Atlas_Dset_Name(atcode));
+                  if (!n_warn[atcode]) WARNING_message(  "Could not read MPM atlas(dset %s+tlrc)\n"
+                                                         "See whereami -help for help on installing\n"
+                                                         "atlases.\n", 
+                                    Atlas_Code_to_Atlas_Dset_Name(atcode));
+                  ++(n_warn[atcode]);
                   break;
                }
             }
@@ -3444,8 +3527,11 @@ ATLAS_DSET_HOLDER Atlas_With_Trimming (AFNI_ATLAS_CODES atcode, int LoadLRMask)
                if (LocalHead) fprintf(stderr,"Loading %s\n",  Atlas_Code_to_Atlas_Name(atcode));
                ii = CA_EZ_ML_load_atlas(); 
                if (ii == 0) {
-                  WARNING_message("Could not read ML atlas (dset %s+tlrc)", 
+                  if (!n_warn[atcode]) WARNING_message(  "Could not read ML atlas (dset %s+tlrc)\n"
+                                                         "See whereami -help for help on installing\n"
+                                                         "atlases.\n", 
                               Atlas_Code_to_Atlas_Dset_Name(atcode));
+                  ++(n_warn[atcode]);
                   break;
                }
             }
@@ -3466,8 +3552,11 @@ ATLAS_DSET_HOLDER Atlas_With_Trimming (AFNI_ATLAS_CODES atcode, int LoadLRMask)
                if (LocalHead) fprintf(stderr,"Loading %s\n",  Atlas_Code_to_Atlas_Name(atcode));
                ii = CA_EZ_LR_load_atlas(); 
                if (ii == 0) {
-                  WARNING_message("Could not read LR atlas (dset %s+tlrc)", 
+                  if (!n_warn[atcode]) WARNING_message(  "Could not read LR atlas (dset %s+tlrc)\n"
+                                                         "See whereami -help for help on installing\n"
+                                                         "atlases.\n", 
                               Atlas_Code_to_Atlas_Dset_Name(atcode));
+                  ++(n_warn[atcode]);
                   break;
                }
             }
@@ -3488,8 +3577,11 @@ ATLAS_DSET_HOLDER Atlas_With_Trimming (AFNI_ATLAS_CODES atcode, int LoadLRMask)
                if (LocalHead) fprintf(stderr,"Loading %s\n",  Atlas_Code_to_Atlas_Name(atcode));
                ii = CA_EZ_PMaps_load_atlas(); 
                if (ii == 0) {
-                  WARNING_message("Could not read PMAPS atlas (dset %s+tlrc)", 
+                  if (!n_warn[atcode]) WARNING_message(  "Could not read PMAPS atlas (dset %s+tlrc)\n"
+                                                         "See whereami -help for help on installing\n"
+                                                         "atlases.\n", 
                               Atlas_Code_to_Atlas_Dset_Name(atcode));
+                  ++(n_warn[atcode]);
                   break;
                }
             }
@@ -3503,19 +3595,23 @@ ATLAS_DSET_HOLDER Atlas_With_Trimming (AFNI_ATLAS_CODES atcode, int LoadLRMask)
             build_lr = 1;
             break;
          case AFNI_TLRC_ATLAS:
-            /* Load the AFNI_TLRC atlas */
-            if (dseTT == NULL && dseTT_big == NULL) {
+            /* Load the AFNI_TLRC atlas, work with big one only, need to match resolution of CA_ atlases 
+               (ZSS: April 24 06)*/
+            if (dseTT_big == NULL) {
                if (LocalHead) fprintf(stderr,"Loading %s\n", Atlas_Code_to_Atlas_Name(atcode));
-               ii = TT_load_atlas() ; 
-               if (ii == 0) {
-                  WARNING_message("Could not read TLRC atlas (dset %s+tlrc)", 
+               TT_retrieve_atlas_big(); 
+               if (dseTT_big == NULL) {
+                  if (!n_warn[atcode]) WARNING_message(  "Could not read TLRC atlas (dset %s+tlrc)\n"
+                                                         "See whereami -help for help on installing\n"
+                                                         "atlases.\n", 
                               Atlas_Code_to_Atlas_Dset_Name(atcode));
+                  ++(n_warn[atcode]);
                   break;
                }
 
             }
             /* 01 Aug 2001: maybe use big dataset (so don't need both in memory) */
-            adh.dset = (dseTT_big != NULL) ? dseTT_big : dseTT ;
+            adh.dset = (dseTT_big != NULL) ? dseTT_big : dseTT ; /* should always be the big one */
 
             #if 0
             if( adh.dset == dseTT_big ) fprintf(stderr,"TT_whereami using dseTT_big\n") ;
@@ -3553,9 +3649,10 @@ ATLAS_DSET_HOLDER Atlas_With_Trimming (AFNI_ATLAS_CODES atcode, int LoadLRMask)
             if (LocalHead) fprintf(stderr,"Loading %s\n",  Atlas_Code_to_Atlas_Name(atcode));
             ii = CA_EZ_LR_load_atlas(); 
             if (ii == 0) {
-               WARNING_message(  "Could not read LR atlas (dset %s+tlrc)\n"
-                                 "LR decision will be based on coordinates.",
+               if (!n_warn[atcode]) WARNING_message(  "Could not read LR atlas (dset %s+tlrc)\n"
+                                                      "LR decision will be based on coordinates.",
                                  Atlas_Code_to_Atlas_Dset_Name(atcode));
+               ++(n_warn[atcode]);
             } else {
                DSET_load(dseCA_EZ_LR);
                adh.lrmask = DSET_BRICK_ARRAY(dseCA_EZ_LR,0);
@@ -3648,7 +3745,9 @@ char *whereami_9yards(ATLAS_COORD aci, ATLAS_QUERY **wamip, AFNI_ATLAS_CODES *at
          for (sb=0; sb < DSET_NVALS(adh.dset); ++sb) {
             if (LocalHead)  fprintf(stderr,"Processing sub-brick %d with %s\n",sb,  Atlas_Code_to_Atlas_Name(atcode));  
             ba = DSET_BRICK_ARRAY(adh.dset,sb); if (!ba) { ERROR_message("Unexpected NULL array"); RETURN(s); }
-
+            if (WAMIRAD < 0.0) { 
+               WAMIRAD = Init_Whereami_Max_Rad();
+            }
             if( wamiclust_CA_EZ == NULL ){
                wamiclust_CA_EZ = MCW_build_mask( 1.0,1.0,1.0 , WAMIRAD ) ;
                if( wamiclust_CA_EZ == NULL ) RETURN(NULL) ;  /* should not happen! */
@@ -3714,9 +3813,13 @@ char *whereami_9yards(ATLAS_COORD aci, ATLAS_QUERY **wamip, AFNI_ATLAS_CODES *at
                nfind++ ;
 
                if( nfind == MAX_FIND ) {
-                 INFO_message("Potentially more regions could be found than the %d reported.\n"
+                 if (!getenv("AFNI_WHEREAMI_NO_WARN")) {
+                  INFO_message("Potentially more regions could be found than the %d reported.\n"
                               "Set the environment variable AFNI_WHEREAMI_MAX_FIND to higher\n"
-                              "than %d if you desire a larger report.\n", MAX_FIND, MAX_FIND); 
+                              "than %d if you desire a larger report.\n"
+                              "It behooves you to also checkout AFNI_WHEREAMI_MAX_SEARCH_RAD\n"
+                              "and AFNI_WHEREAMI_NO_WARN. See whereami -help for detail.\n", MAX_FIND, MAX_FIND); 
+                 }
                  break ;  /* don't find TOO much */
                }
             }

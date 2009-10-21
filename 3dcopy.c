@@ -9,7 +9,7 @@ int main( int argc , char *argv[] )
    int nopt=1 , old_view , new_view , vbot,vtop ;
    char *old_name , *new_name ;
    char old_prefix[THD_MAX_PREFIX] , new_prefix[THD_MAX_PREFIX] ;
-   int ii,jj , old_len , new_len ;
+   int ii,jj , old_len , new_len, non_afni_out ;
    THD_3dim_dataset *dset[LAST_VIEW_TYPE+1] ;
    MCW_idcode        idc [LAST_VIEW_TYPE+1] ;
    char dname[THD_MAX_NAME] ;
@@ -73,7 +73,7 @@ int main( int argc , char *argv[] )
      if( strcmp(argv[nopt],"-denote") == 0 ){ denote = 1; nopt++; continue; }
    }
    if( nopt+1 >= argc )
-     ERROR_exit("3copy needs input AND output filenames!\n") ;
+     ERROR_exit("3dcopy needs input AND output filenames!\n") ;
 
    old_name = argv[nopt++] ; old_len = strlen(old_name) ;
    new_name = argv[nopt++] ; new_len = strlen(new_name) ;
@@ -130,18 +130,22 @@ int main( int argc , char *argv[] )
    }
    if( !THD_filename_ok( new_prefix ) )  /* 28 Jan 2003 */
      ERROR_exit("Illegal new prefix: %s\n",new_prefix) ;
+#if 0
    if( strstr(new_prefix,".nii") != NULL ||   /* 06 Apr 2005 */
        strstr(new_prefix,".hdr") != NULL   )  /* 11 Oct 2005 */
      ERROR_exit("You can't use 3dcopy to create a NIfTI-1.1 file!\n"
                 " *        Use program 3dAFNItoNIFTI for that purpose.\n") ;
+#endif
 
    /* 28 Jan 2003:
       to allow for non-AFNI datasets input,
       we now check if we can read the input dataset without a view */
 
-   if( old_view == ILLEGAL_TYPE ){
+   non_afni_out = has_known_non_afni_extension( new_prefix );
+
+   if( old_view == ILLEGAL_TYPE || non_afni_out ){
      THD_3dim_dataset *qset , *cset ;
-     qset = THD_open_one_dataset( old_prefix ) ;
+     qset = THD_open_one_dataset( old_name ) ;
      if( qset != NULL ){
        if( verb ) INFO_message("Opened dataset %s\n",old_prefix) ;
        cset = EDIT_empty_copy( qset ) ;
@@ -193,6 +197,10 @@ int main( int argc , char *argv[] )
        if( denote ) THD_anonymize_write(1) ;  /* 08 Jul 2005 */
 
        DSET_write(cset) ; exit(0) ;
+     } else if ( non_afni_out ) { /* fail */
+       fprintf(stderr,"** failed to open input '%s' on non-AFNI write\n",
+               old_prefix);
+       exit(1);
      }
    }
 
@@ -351,3 +359,4 @@ int THD_copy_file( char *old , char *newFile )
    fsync(fileno(fnew)) ;
    free(buf); fclose(fnew); fclose(fold) ; return 0 ;
 }
+

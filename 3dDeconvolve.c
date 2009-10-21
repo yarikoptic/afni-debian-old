@@ -346,6 +346,7 @@
 /*------------ prototypes for routines far below (RWCox) ------------------*/
 
 void JPEG_matrix_gray( matrix X , char *fname ) ; /* save X matrix to a JPEG */
+void ONED_matrix_save( matrix X , char *fname ) ; /* save X matrix to a .1D  */
 
 void XSAVE_output( char * ) ;                     /* save X matrix into file */
 
@@ -528,6 +529,7 @@ typedef struct DC_options
   int nocond ;          /* flag to disable condition numbering [15 Jul 2004] */
 
   char *xjpeg_filename; /* plot file for -xjpeg option [21 Jul 2004] */
+  char *x1D_filename;   /* save filename for -x1D option [28 Mar 2006] */
 
   int automask ;        /* flag to do automasking [15 Apr 2005] */
 
@@ -747,6 +749,7 @@ void display_help_menu()
     "[-quiet]             Flag to suppress most screen output               \n"
     "[-xout]              Flag to write X and inv(X'X) matrices to screen   \n"
     "[-xjpeg filename]    Write a JPEG file graphing the X matrix           \n"
+    "[-x1D filename]      Save X matrix to a 1D (ASCII) file                \n"
     "[-progress n]        Write statistical results for every nth voxel     \n"
     "[-fdisp fval]        Write statistical results for those voxels        \n"
     "                       whose full model F-statistic is > fval          \n"
@@ -816,6 +819,7 @@ void initialize_options
   option_data->nodata_TR= 0.0;
 
   option_data->xjpeg_filename = NULL ;  /* 21 Jul 2004 */
+  option_data->x1D_filename   = NULL ;
 
   /*----- Initialize stimulus options -----*/
   option_data->num_stimts = 0;
@@ -1058,6 +1062,19 @@ void get_options
         nopt++; continue;
       }
 
+      /*-----   -x1D filename  ------*/
+      if (strcmp(argv[nopt], "-x1D") == 0)   /* 28 Mar 2006 */
+      {
+        nopt++;
+        if (nopt >= argc)  DC_error ("need argument after -x1D ");
+        option_data->x1D_filename = malloc (sizeof(char)*THD_MAX_NAME);
+        MTEST (option_data->x1D_filename);
+        strcpy (option_data->x1D_filename, argv[nopt]);
+          if( strstr(option_data->x1D_filename,".1D") == NULL )
+            strcat( option_data->x1D_filename , ".1D" ) ;
+        nopt++; continue;
+      }
+
 
       /*-----   -input filename   -----*/
       if (strcmp(argv[nopt], "-input") == 0)
@@ -1175,7 +1192,7 @@ void get_options
       {
         nopt++;
         if (nopt >= argc)  DC_error ("need argument after -nfirst ");
-        sscanf (argv[nopt], "%d", &ival);
+        ival = -1 ; sscanf (argv[nopt], "%d", &ival);
         if (ival < 0)
           DC_error ("illegal argument after -nfirst ");
         option_data->NFirst = ival;
@@ -1189,7 +1206,7 @@ void get_options
       {
         nopt++;
         if (nopt >= argc)  DC_error ("need argument after -nlast ");
-        sscanf (argv[nopt], "%d", &ival);
+        ival = -1 ; sscanf (argv[nopt], "%d", &ival);
         if (ival < 0)
           DC_error ("illegal argument after -nlast ");
         option_data->NLast = ival;
@@ -1203,7 +1220,7 @@ void get_options
       {
         nopt++;
         if (nopt >= argc)  DC_error ("need argument after -polort ");
-        sscanf (argv[nopt], "%d", &ival);
+        ival = -2 ; sscanf (argv[nopt], "%d", &ival);
         if (ival < -1)
           DC_error ("illegal argument after -polort ");
         option_data->polort = ival;
@@ -1263,7 +1280,7 @@ void get_options
       {
         nopt++;
         if (nopt >= argc)  DC_error ("need argument after -progress ");
-        sscanf (argv[nopt], "%d", &ival);
+        ival = -1 ; sscanf (argv[nopt], "%d", &ival);
         if (ival < 0)
           DC_error ("illegal argument after -progress ");
         option_data->progress = ival;
@@ -1277,7 +1294,7 @@ void get_options
       {
         nopt++;
         if (nopt >= argc)  DC_error ("need argument after -rmsmin ");
-        sscanf (argv[nopt], "%f", &fval);
+        fval = -666.0 ; sscanf (argv[nopt], "%f", &fval);
         if (fval < 0.0)
           DC_error ("illegal argument after -rmsmin ");
         option_data->rms_min = fval;
@@ -1303,7 +1320,7 @@ void get_options
       {
         nopt++;
         if (nopt >= argc)  DC_error ("need argument after -num_stimts ");
-        sscanf (argv[nopt], "%d", &ival);
+        ival = -1 ; sscanf (argv[nopt], "%d", &ival);
         if (ival < 0)
           {
             DC_error ("-num_stimts num   Require: num >= 0 ");
@@ -1319,7 +1336,7 @@ void get_options
       if( strcmp(argv[nopt],"-TR_times") == 0 ){
         nopt++ ;
         if( nopt >= argc ) DC_error("need argument after -TR_times") ;
-        sscanf( argv[nopt] , "%f" , &basis_dtout ) ;
+        basis_dtout = -1.0 ; sscanf( argv[nopt] , "%f" , &basis_dtout ) ;
         if( basis_dtout <= 0.0f ){
           fprintf(stderr,"** ERROR: -TR_times '%s' is illegal\n",argv[nopt]) ;
           exit(1) ;
@@ -1331,7 +1348,7 @@ void get_options
       if( strcmp(argv[nopt],"-TR_irc") == 0 ){
         nopt++ ;
         if( nopt >= argc ) DC_error("need argument after -TR_irc") ;
-        sscanf( argv[nopt] , "%f" , &irc_dt ) ;
+        irc_dt = -1.0 ; sscanf( argv[nopt] , "%f" , &irc_dt ) ;
         if( irc_dt <= 0.0f ){
           fprintf(stderr,"** ERROR: -TR_irc '%s' is illegal\n",argv[nopt]) ;
           exit(1) ;
@@ -1354,7 +1371,7 @@ void get_options
       if( strcmp(argv[nopt],"-stim_times") == 0 ){
         nopt++ ;
         if( nopt+2 >= argc ) DC_error("need 3 arguments after -stim_times");
-        sscanf( argv[nopt] , "%d" , &ival ) ;
+        ival = -1 ; sscanf( argv[nopt] , "%d" , &ival ) ;
         if( (ival < 1) || (ival > option_data->num_stimts) ){
           fprintf(stderr,
                   "** ERROR: '-stim_times %d' value out of range 1..%d\n",
@@ -1395,7 +1412,7 @@ void get_options
         nopt++;
         if (nopt+1 >= argc)  DC_error ("need 2 arguments after -slice_base");
 
-        sscanf (argv[nopt], "%d", &ival);
+        ival = -1 ; sscanf (argv[nopt], "%d", &ival);
         if ((ival < 1) || (ival > option_data->num_stimts))
           DC_error ("-slice_base k sname   Require: 1 <= k <= num_stimts");
         k = ival-1;
@@ -1419,7 +1436,7 @@ void get_options
         nopt++;
         if (nopt+1 >= argc)  DC_error ("need 2 arguments after -stim_file");
 
-        sscanf (argv[nopt], "%d", &ival);
+        ival = -1 ; sscanf (argv[nopt], "%d", &ival);
         if ((ival < 1) || (ival > option_data->num_stimts))
           DC_error ("-stim_file k sname   Require: 1 <= k <= num_stimts");
         k = ival-1;
@@ -1445,7 +1462,7 @@ void get_options
         nopt++;
         if (nopt+1 >= argc)  DC_error ("need 2 arguments after -stim_label");
 
-        sscanf (argv[nopt], "%d", &ival);
+        ival = -1 ; sscanf (argv[nopt], "%d", &ival);
         if ((ival < 1) || (ival > option_data->num_stimts))
           DC_error ("-stim_label k slabel   Require: 1 <= k <= num_stimts");
         k = ival-1;
@@ -1464,7 +1481,7 @@ void get_options
         if (nopt >= argc)
           DC_error ("need 1 argument after -stim_base");
 
-        sscanf (argv[nopt], "%d", &ival);
+        ival = -1 ; sscanf (argv[nopt], "%d", &ival);
         if ((ival < 1) || (ival > option_data->num_stimts))
           DC_error ("-stim_base k   Require: 1 <= k <= num_stimts");
         k = ival-1;
@@ -1481,13 +1498,13 @@ void get_options
         if (nopt+1 >= argc)
           DC_error ("need 2 arguments after -stim_minlag");
 
-        sscanf (argv[nopt], "%d", &ival);
+        ival = -1 ; sscanf (argv[nopt], "%d", &ival);
         if ((ival < 1) || (ival > option_data->num_stimts))
           DC_error ("-stim_minlag k lag   Require: 1 <= k <= num_stimts");
         k = ival-1;
         nopt++;
 
-        sscanf (argv[nopt], "%d", &ival);
+        ival = -1 ; sscanf (argv[nopt], "%d", &ival);
         if (ival < 0)
           DC_error ("-stim_minlag k lag   Require: 0 <= lag");
         option_data->stim_minlag[k] = ival;
@@ -1503,13 +1520,13 @@ void get_options
         if (nopt+1 >= argc)
           DC_error ("need 2 arguments after -stim_maxlag");
 
-        sscanf (argv[nopt], "%d", &ival);
+        ival = -1 ; sscanf (argv[nopt], "%d", &ival);
         if ((ival < 1) || (ival > option_data->num_stimts))
           DC_error ("-stim_maxlag k lag   Require: 1 <= k <= num_stimts");
         k = ival-1;
         nopt++;
 
-        sscanf (argv[nopt], "%d", &ival);
+        ival = -1 ; sscanf (argv[nopt], "%d", &ival);
         if (ival < 0)
           DC_error ("-stim_maxlag k lag   Require: 0 <= lag");
         option_data->stim_maxlag[k] = ival;
@@ -1525,13 +1542,13 @@ void get_options
         if (nopt+1 >= argc)
           DC_error ("need 2 arguments after -stim_nptr");
 
-        sscanf (argv[nopt], "%d", &ival);
+        ival = -1 ; sscanf (argv[nopt], "%d", &ival);
         if ((ival < 1) || (ival > option_data->num_stimts))
           DC_error ("-stim_nptr k p   Require: 1 <= k <= num_stimts");
         k = ival-1;
         nopt++;
 
-        sscanf (argv[nopt], "%d", &ival);
+        ival = -1 ; sscanf (argv[nopt], "%d", &ival);
         if (ival < 1)
           DC_error ("-stim_nptr k p   Require: 1 <= p");
         option_data->stim_nptr[k] = ival;
@@ -1545,7 +1562,7 @@ void get_options
       {
         nopt++;
         if (nopt >= argc)  DC_error ("need argument after -num_glt ");
-        sscanf (argv[nopt], "%d", &ival);
+        ival = -1 ; sscanf (argv[nopt], "%d", &ival);
         if (ival < 0)
           {
             DC_error ("-num_glt num   Require: num >= 0 ");
@@ -1567,7 +1584,7 @@ void get_options
         nopt++;
         if (nopt+1 >= argc)  DC_error ("need 2 arguments after -glt");
 
-        sscanf (argv[nopt], "%d", &ival);
+        ival = -1 ; sscanf (argv[nopt], "%d", &ival);
         if (ival < 1)
           {
             DC_error ("-glt s gltname  Require: s >= 1  (s = #rows in GLT)");
@@ -1619,7 +1636,7 @@ void get_options
         nopt++;
         if (nopt+1 >= argc)  DC_error ("need 2 arguments after -glt_label");
 
-        sscanf (argv[nopt], "%d", &ival);
+        ival = -1 ; sscanf (argv[nopt], "%d", &ival);
         if ((ival < 1) || (ival > option_data->num_glt))
           DC_error ("-stim_label k slabel   Require: 1 <= k <= num_glt");
         k = ival-1;
@@ -1637,7 +1654,7 @@ void get_options
         nopt++;
         if (nopt+1 >= argc)  DC_error ("need 2 arguments after -iresp");
 
-        sscanf (argv[nopt], "%d", &ival);
+        ival = -1 ; sscanf (argv[nopt], "%d", &ival);
         if ((ival < 1) || (ival > option_data->num_stimts))
           DC_error ("-iresp k iprefix   Require: 1 <= k <= num_stimts");
         k = ival-1;
@@ -1667,7 +1684,7 @@ void get_options
         nopt++;
         if (nopt+1 >= argc)  DC_error ("need 2 arguments after -sresp");
 
-        sscanf (argv[nopt], "%d", &ival);
+        ival = -1 ; sscanf (argv[nopt], "%d", &ival);
         if ((ival < 1) || (ival > option_data->num_stimts))
           DC_error ("-sresp k iprefix   Require: 1 <= k <= num_stimts");
         k = ival-1;
@@ -2886,6 +2903,9 @@ void check_for_valid_inputs
 #endif
 
 
+#undef  TMESS
+#define TMESS WARNING_message   /* WARNING_message or ERROR_exit */
+
   /*----- Check whether time lags are reasonable -----*/
   for (is = 0;  is < num_stimts;  is++)
     {
@@ -2896,16 +2916,14 @@ void check_for_valid_inputs
       {
         if (option_data->iresp_filename[is] != NULL)
           {
-            sprintf (message, "Only %d time point for output dataset %s ",
+            TMESS("Only %d time point for output dataset %s",
                    m, option_data->iresp_filename[is]);
-            DC_error (message);
           }
 
         if (option_data->sresp_filename[is] != NULL)
           {
-            sprintf (message, "Only %d time point for output dataset %s",
+            TMESS("Only %d time point for output dataset %s",
                    m, option_data->sresp_filename[is]);
-            DC_error (message);
           }
       }
       if ((m < 4) && (option_data->tshift))
@@ -4188,6 +4206,8 @@ ENTRY("calculate_results") ;
 
   if( option_data->xjpeg_filename != NULL )    /* 21 Jul 2004 */
     JPEG_matrix_gray( xdata , option_data->xjpeg_filename ) ;
+  if( option_data->x1D_filename   != NULL )    /* 28 Mar 2006 */
+    ONED_matrix_save( xdata , option_data->x1D_filename   ) ;
 
 
   /*-- 14 Jul 2004: check matrix for bad columns - RWCox --*/
@@ -4330,21 +4350,31 @@ ENTRY("calculate_results") ;
   }
 
   /*-- 19 Aug 2004: plot matrix pseudoinverse as well --*/
-  if( option_data->xjpeg_filename != NULL ){
-    char *jpt , *jsuf=".jpg" ;
-    char *fn = calloc( sizeof(char) , strlen(option_data->xjpeg_filename)+16 ) ;
+  if( option_data->xjpeg_filename != NULL || option_data->x1D_filename != NULL ){
+    char *jpt , *jsuf ;
+    char *fn = calloc( sizeof(char) , THD_MAX_NAME+16 ) ;
     matrix xpsinv ;
 
     matrix_initialize( &xpsinv ) ;
     matrix_transpose( xtxinvxt_full , &xpsinv ) ;
 
-    strcpy(fn,option_data->xjpeg_filename) ;
-                       jpt = strstr(fn,".jpg") ;
-    if( jpt == NULL ){ jpt = strstr(fn,".JPG") ; jsuf = ".JPG" ; }
-    if( jpt == NULL )  jpt = fn + strlen(fn) ;
-    strcpy(jpt,"_psinv") ; strcat(fn,jsuf) ;
+    if( option_data->xjpeg_filename != NULL ){
+      strcpy(fn,option_data->xjpeg_filename) ;
+                         jpt = strstr(fn,".jpg") ; jsuf = ".jpg" ;
+      if( jpt == NULL ){ jpt = strstr(fn,".JPG") ; jsuf = ".JPG" ; }
+      if( jpt == NULL )  jpt = fn + strlen(fn) ;
+      strcpy(jpt,"_psinv") ; strcat(fn,jsuf) ;
+      JPEG_matrix_gray( xpsinv , fn ) ;
+    }
 
-    JPEG_matrix_gray( xpsinv , fn ) ;
+    if( option_data->x1D_filename != NULL ){
+      strcpy(fn,option_data->x1D_filename) ;
+                         jpt = strstr(fn,".1D") ; jsuf = ".1D" ;
+      if( jpt == NULL )  jpt = fn + strlen(fn) ;
+      strcpy(jpt,"_psinv") ; strcat(fn,jsuf) ;
+      ONED_matrix_save( xpsinv , fn ) ;
+    }
+
     free((void *)fn) ; matrix_destroy( &xpsinv ) ;
   }
 
@@ -6161,9 +6191,10 @@ MRI_IMAGE * PLOT_matrix_gray( matrix X )
 
 void JPEG_matrix_gray( matrix X , char *fname )
 {
-   char *pg , *jpfilt ;
+   char *pg , *jpfilt, *eee ;
    MRI_IMAGE *im ;
    FILE *fp ;
+   int jpeg_compress;
 
    if( fname == NULL || *fname == '\0' ) return ;
 
@@ -6182,8 +6213,19 @@ void JPEG_matrix_gray( matrix X , char *fname )
      return ;
    }
 
+   eee = my_getenv("AFNI_JPEG_COMPRESS");
+   if(eee!=NULL) {
+      jpeg_compress = strtod(eee, NULL);
+      if((jpeg_compress<=0) || (jpeg_compress>100))
+         jpeg_compress = 95;
+    }
+   else jpeg_compress = 95;
+   
+      
    jpfilt = (char *)malloc( sizeof(char)*(strlen(pg)+strlen(fname)+32) ) ;
-   sprintf( jpfilt , "%s -quality 95 > %s" , pg , fname ) ;
+
+   sprintf( jpfilt , "%s -quality %d > %s" , pg , jpeg_compress, fname ) ;
+
 #ifndef CYGWIN
    signal( SIGPIPE , SIG_IGN ) ; errno = 0 ;
 #endif
@@ -6199,6 +6241,26 @@ void JPEG_matrix_gray( matrix X , char *fname )
    if( verb ) fprintf(stderr,"++ Wrote matrix image to file %s\n",fname) ;
 
    mri_free(im) ; free((void *)jpfilt) ; return ;
+}
+
+/*----------------------------------------------------------------------------*/
+
+void ONED_matrix_save( matrix X , char *fname )
+{
+   int nx=X.rows , ny=X.cols , ii,jj ;
+   MRI_IMAGE *xim ;
+   float     *xar ;
+
+   if( fname == NULL || *fname == '\0' ) return ;
+
+   xim = mri_new( nx , ny , MRI_float ) ;
+   xar = MRI_FLOAT_PTR(xim) ;
+   for( jj=0 ; jj < ny ; jj++ )
+     for( ii=0 ; ii < nx ; ii++ ) xar[ii+jj*nx] = X.elts[ii][jj] ;
+
+   mri_write_1D(fname,xim) ; mri_free(xim) ;
+   if( verb ) fprintf(stderr,"++ Wrote matrix values to file %s\n",fname) ;
+   return ;
 }
 
 /*----------------------------------------------------------------------------*/

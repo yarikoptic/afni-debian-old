@@ -71,16 +71,6 @@ typedef struct {
    AFNI_ATLAS_REGION **reg;
 } AFNI_ATLAS;
 
-typedef struct {
-      float x;
-      int Index;
-} Z_QSORT_FLOAT;
-
-typedef struct {
-      int x;
-      int Index;
-} Z_QSORT_INT;
-
 typedef enum { CLASSIC_WAMI_ATLAS_SORT = 1,  TAB1_WAMI_ATLAS_SORT = 2,     TAB2_WAMI_ATLAS_SORT = 3,
                CLASSIC_WAMI_ZONE_SORT,       TAB1_WAMI_ZONE_SORT,          TAB2_WAMI_ZONE_SORT } WAMI_SORT_MODES; 
 
@@ -146,9 +136,11 @@ typedef struct {
 } ATLAS_DSET_HOLDER;
 
 const char *Atlas_Val_to_Atlas_Name(ATLAS_DSET_HOLDER adh, int tdval);
+int Init_Whereami_Max_Find(void);
 void Set_Whereami_Max_Find(int n);
+float Init_Whereami_Max_Rad(void);
+void Set_Whereami_Max_Rad(float n);
 THD_3dim_dataset * get_altas(char *epath, char *aname) ;
-int compare_Z_IQSORT_FLOAT (Z_QSORT_FLOAT *a, Z_QSORT_FLOAT *b );
 char Is_Side_Label(char *str, char *opt);
 int *z_iqsort (float *x , int nx );
 int *z_idqsort (int *x , int nx );

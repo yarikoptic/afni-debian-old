@@ -2462,199 +2462,7 @@ SUMA_SO_File_Type SUMA_guess_surftype_argv(char *str)
    SUMA_RETURN(tp);
 }
 
-/*!
-   \brief Reads in a sequence of numbers of an undetermined length
-   Not for reading in large numbers of numbers!
-   \param op (char *) pointing to the beginning of a 
-                     blank delimited series of numbers
-   \param opend (char **) if not NULL, *opend will contain the value
-                           of op at the end of successful reads
-   \param tp (SUMA_VARTYPE) SUMA_int, SUMA_float, SUMA_double supported 
-                           at the moment
-   \return ans (void*) if  tp == SUMA_int then ans is (SUMA_IVEC *)
-                           tp == SUMA_float then ans is (SUMA_FVEC *)
-                           tp == SUMA_double then ans is (SUMA_DVEC *)
-   \sa SUMA_strtol_vec  
-   \sa SUMA_SringToNum
-*/
-void *SUMA_AdvancePastNumbers(char *op, char **opend, SUMA_VARTYPE tp)
-{
-   static char FuncName[]={"SUMA_AdvancePastNumbers"};
-   double *d=NULL, db;
-   int nrealloc = 0, Chunk = 100, nalloc = 0;
-   int Found = 0, i, nread;
-   void *ans;
-   SUMA_Boolean LocalHead = NOPE;
-   
-   SUMA_ENTRY;
-   
-   nread = 0;
-   Found = 1;
-   while (Found) {
-      SUMA_ADVANCE_PAST_NUM(op, db, Found);
-      if (Found) {
-         if (nread == nalloc) {
-            nalloc += Chunk; ++nrealloc;
-            d = (double*)SUMA_realloc(d, nalloc*sizeof(double));
-            if (!d) { SUMA_SL_Crit("Failed to allocate"); if (d) SUMA_free(d); d = NULL; SUMA_RETURN(NULL); }
-            if (!(nrealloc % 10)) { SUMA_SL_Warn("Too much reallocation, improper use of function?"); }
-         }
-         d[nread] = db;
-         ++(nread);
-      }
-   } 
-   
-   if (LocalHead) { 
-      fprintf(SUMA_STDERR,"%s: Found %d numbers:\n", FuncName, nread);
-      for (i=0; i<nread; ++i) fprintf(SUMA_STDERR,"%f\t", d[i]);
-      fprintf(SUMA_STDERR,"\n");
-   }
-   
-   if (opend) *opend = op;
-   
-   ans = NULL;
-   switch (tp) {
-      case SUMA_int:
-         {
-            SUMA_IVEC *ivec= (SUMA_IVEC *)SUMA_malloc(sizeof(SUMA_IVEC));
-            ivec->v = (int *)SUMA_calloc(nread,sizeof(int));
-            ivec->n = nread;
-            for (i=0; i<nread; ++i) ivec->v[i] = (int)d[i];
-            ans = (void *)ivec;
-         }
-         break;
-      case SUMA_float:
-         {
-            SUMA_FVEC *fvec= (SUMA_FVEC *)SUMA_malloc(sizeof(SUMA_FVEC));
-            fvec->v = (float *)SUMA_calloc(nread,sizeof(float));
-            fvec->n = nread;
-            for (i=0; i<nread; ++i) fvec->v[i] = (float)d[i];
-            ans = (void *)fvec;
-         }
-         break;
-      case SUMA_double:
-         {
-            SUMA_DVEC *dvec= (SUMA_DVEC *)SUMA_malloc(sizeof(SUMA_DVEC));
-            dvec->v = (double *)SUMA_calloc(nread,sizeof(double));
-            dvec->n = nread;
-            for (i=0; i<nread; ++i) dvec->v[i] = (double)d[i];
-            ans = (void *)dvec;
-         }
-         break;
-      case SUMA_notypeset:
-         SUMA_SL_Err("Type not set");
-         ans = NULL;
-         break;   
-      default:
-         SUMA_SL_Err("Type not supported by this function");
-         ans = NULL;
-         break;   
-         
-   }
-   if (d) SUMA_free(d); d = NULL;
-   
-   SUMA_RETURN(ans);
-   
-}   
 
-/*!
-   \brief change a character string of numbers to a vector of values.
-   op must be NULL terminated!
-   
-   \sa SUMA_AdvancePastNumbers
-   \sa SUMA_StringToNum
-*/
-void *SUMA_strtol_vec(char *op, int nvals, int *nread, SUMA_VARTYPE vtp)
-{
-   static char FuncName[]={"SUMA_strtol_vec"};
-   void *ans = NULL;
-   long lv;
-   double dv;
-   char *endptr=NULL;
-   SUMA_Boolean LocalHead = NOPE;
-   
-   SUMA_ENTRY;
-   *nread = 0;
-   if (!SUMA_OK_OPENDX_DATA_TYPE(vtp)) {
-      SUMA_SL_Err("Bad type");
-      SUMA_RETURN(ans);
-   }
-   
-   ans = NULL;
-   switch (vtp) {
-      case SUMA_byte:
-         {
-            byte *bvec=NULL;
-            bvec = (byte *)SUMA_calloc(nvals,sizeof(byte));
-            lv = strtol(op, &endptr, 10);
-            while (endptr && endptr != op && *nread < nvals) {
-               bvec[*nread] = (byte)lv;
-               /* if (LocalHead) fprintf(SUMA_STDERR,">>>%d<<<\t", bvec[*nread]);  */
-               ++(*nread);
-               op = endptr;
-               lv = strtol(op, &endptr, 10);
-            }
-            ans = (void *)bvec;
-         }
-         break;
-      case SUMA_int:
-         {
-            int *ivec=NULL;
-            ivec = (int *)SUMA_calloc(nvals,sizeof(int));
-            lv = strtol(op, &endptr, 10);
-            while (endptr && endptr != op && *nread < nvals) {
-               ivec[*nread] = (int)lv;
-               /* if (LocalHead) fprintf(SUMA_STDERR,">>>%d<<<\t", ivec[*nread]);  */
-               ++(*nread);
-               op = endptr;
-               lv = strtol(op, &endptr, 10);
-            }
-            ans = (void *)ivec;
-         }
-         break;
-      case SUMA_float:
-         {
-            float *fvec=NULL;
-            fvec = (float *)SUMA_calloc(nvals,sizeof(float));
-            dv = strtod(op, &endptr);
-            while (endptr && endptr != op && *nread < nvals) {
-               fvec[*nread] = (float)dv;
-               /* if (LocalHead) fprintf(SUMA_STDERR,">>>%f<<<\t", fvec[*nread]); */
-               ++(*nread);
-               op = endptr;
-               dv = strtod(op, &endptr);
-            }
-            ans = (void *)fvec;
-         }
-         break;
-      case SUMA_double:
-         {
-            double *dvec=NULL;
-            dvec = (double *)SUMA_calloc(nvals,sizeof(double));
-            dv = strtod(op, &endptr);
-            while (endptr && endptr != op && *nread < nvals) {
-               dvec[*nread] = (double)dv;
-               /* if (LocalHead) fprintf(SUMA_STDERR,">>>%f<<<\t", dvec[*nread]); */
-               ++(*nread);
-               op = endptr;
-               dv = strtod(op, &endptr);
-            }
-            ans = (void *)dvec;
-         }
-         break;
-      case SUMA_notypeset:
-         SUMA_SL_Err("Type not set");
-         ans = NULL;
-         break;   
-      default:
-         SUMA_SL_Err("Type not supported by this function");
-         ans = NULL;
-         break;   
-         
-   }
-   
-   SUMA_RETURN(ans);
-}
 
 /*!
    \brief a function to allocate and initialize the option structure 
@@ -2700,6 +2508,7 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT * SUMA_Alloc_Generic_Prog_Options_Struct(void)
    Opt->v0 = 0.0;
    Opt->v1 = 0.0;
    Opt->dvec = NULL;
+   Opt->fvec = NULL;
    Opt->SurfFileType = SUMA_PLY;
    Opt->SurfFileFormat = SUMA_ASCII;
    Opt->xform = SUMA_ISO_XFORM_UNDEFINED;
@@ -2764,8 +2573,25 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT * SUMA_Alloc_Generic_Prog_Options_Struct(void)
    
    Opt->popt = NULL;
    
+   Opt->emask = NULL;
+   Opt->fatemask = NULL;
+   Opt->Use_emask = 0;
+   Opt->PushToEdge = 0;
+   
+   Opt->nmask = NULL;
+   
+   Opt->Brain_Contour = NULL;
+   Opt->Brain_Hull = NULL;
+   Opt->Skull_Outer = NULL;
+   Opt->Skull_Inner = NULL;
+   
+   Opt->UseThisBrain = NULL; /* do not free, argv[.] copy */
+   Opt->UseThisBrainHull = NULL; /* do not free, argv[.] copy */
+   Opt->UseThisSkullOuter = NULL; /* do not free, argv[.] copy */
+   
    SUMA_RETURN(Opt);
-}   
+}
+   
 SUMA_GENERIC_PROG_OPTIONS_STRUCT * SUMA_Free_Generic_Prog_Options_Struct(SUMA_GENERIC_PROG_OPTIONS_STRUCT *Opt)
 {
    static char FuncName[]={"SUMA_Free_Generic_Prog_Options_Struct"};
@@ -2781,6 +2607,7 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT * SUMA_Free_Generic_Prog_Options_Struct(SUMA_GE
    if (Opt->k98mask) SUMA_free(Opt->k98mask); Opt->k98mask = NULL;
    if (Opt->Stop) SUMA_free(Opt->Stop); Opt->Stop = NULL;
    if (Opt->dvec) SUMA_free(Opt->dvec); Opt->dvec = NULL;
+   if (Opt->fvec) SUMA_free(Opt->fvec); Opt->fvec = NULL;
    if (Opt->mcdatav) {SUMA_free(Opt->mcdatav); Opt->mcdatav = NULL;} 
    if (Opt->in_vol) { DSET_delete( Opt->in_vol); Opt->in_vol = NULL;} 
    if (Opt->out_prefix) SUMA_free(Opt->out_prefix); Opt->out_prefix = NULL;
@@ -2792,6 +2619,13 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT * SUMA_Free_Generic_Prog_Options_Struct(SUMA_GE
    if (Opt->shrink_bias) SUMA_free(Opt->shrink_bias); Opt->shrink_bias = NULL;
    if (Opt->shrink_bias_name) SUMA_free(Opt->shrink_bias_name); Opt->shrink_bias_name = NULL;
    if (Opt->popt) Opt->popt = NULL; /* freeing, if needed for this structure should be done elsewhere*/
+   if (Opt->emask) SUMA_free(Opt->emask); Opt->emask = NULL;
+   if (Opt->fatemask) SUMA_free(Opt->fatemask); Opt->fatemask = NULL;
+   if (Opt->nmask) SUMA_free(Opt->nmask); Opt->nmask = NULL;
+   if (Opt->Brain_Contour)  SUMA_free(Opt->Brain_Contour);  Opt->Brain_Contour= NULL;
+   if (Opt->Brain_Hull)  SUMA_free(Opt->Brain_Hull); Opt->Brain_Hull= NULL;
+   if (Opt->Skull_Outer)  SUMA_free(Opt->Skull_Outer); Opt->Skull_Outer= NULL;
+   if (Opt->Skull_Inner)  SUMA_free(Opt->Skull_Inner); Opt->Skull_Inner= NULL;
    if (Opt) SUMA_free(Opt);
 
    SUMA_RETURN(NULL);

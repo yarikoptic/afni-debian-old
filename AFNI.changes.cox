@@ -5821,3 +5821,53 @@
 20 Mar 2006
  * Modify 3dAutomask.c and thd_automask.c to add new -clfrac option.
  * Modify matrix_f.c to use Solaris BLAS in single precision.
+
+24 Mar 2006
+ * Modify thd_niftiread.c to prioritize sform over qform (to match
+     other packages), but to allow user to set environment variable
+     NIFTI_FORM_PRIORITY to 'Q' or 'S' to signify the priority.
+ * Also, if both qform and sform are present, check to see if they
+     have the same handedness -- if not, print a warning message.
+
+25 Mar 2006
+ * Modify matrix.c and matrix_f.c to unroll matrix-vector multiply by
+     four rather than two, after profiling with Shark on the MacIntel
+     (which showed that loop overhead was a significant factor).
+
+28 Mar 2006
+ * Modify 3dDeconvolve.c to set ival=-1 on various inputs, before
+     sscanf()-ing it, so that bad values give error messages.
+ * Also add -x1D option to 3dDeconvolve.c, to save X matrix to a .1D file.
+
+29 Mar 2006
+ * First version of 3dInvFMRI.c.
+
+31 Mar 2006
+ * to3d.c: if first filename is 'something.img', check if 'something.hdr'
+     exists, and if so, suggest that the .hdr file is more likely to be
+     what they want to input.
+ * Added '-method' and smoothing options to 3dInvFMRI.c.
+
+04 Apr 2006
+ * Changes to 3dInvFMRI.c: -mapwt, better help, God knows what else.
+
+05 Apr 2006
+ * Add -frugal option to 3dZcat.c.
+
+10 Apr 2006
+ * Add -polort option to 3dDetrend.c.
+
+13 Apr 2006
+ * mri_matrix_evalrpn() ==> 1dmatcalc.c and 3dmatcalc.c.
+ * Modify mri_fromstring.c to allow 1D:... generation of multiple columns.
+
+24 Apr 2006
+ * Add -sum option to 3dTstat.c.
+
+01 Jun 2006
+ * New AFNI splash photograph.
+ * imseq.c now doesn't append ".jpg" if Save filename already ends in it.
+
+19 Jun 2006
+ * Fixed flip_memplot() error in coxplot/plot_cox.c, where non-line elements
+     were being flipped when they shouldn't be.

@@ -152,12 +152,13 @@ void CREN_set_min_opacity( void * ah , float opm )
    return ;
 }
 
-/*-----------------------------------------------------------------------------
+/*---------------------------------------------------------------------------
    Set the rendering mode
-     CREN_SUM_VOX = integral of voxel data times opacity
-     CREN_MIP_VOX = maximum voxel intensity
-     CREN_MIP_OPA = maximum opacity
--------------------------------------------------------------------------------*/
+     CREN_SUM_VOX   = integral of voxel data times opacity
+     CREN_MIP_VOX   = maximum voxel intensity
+     CREN_MIP_OPA   = maximum opacity
+     CREN_MINIP_VOX = minimum nonzero voxel intensity [09 May 2006] 
+-----------------------------------------------------------------------------*/
 
 void CREN_set_render_mode( void * ah , int mmm )
 {
@@ -197,25 +198,32 @@ void CREN_set_interp( void * ah , int mmm )
 void CREN_set_rgbmap( void *ah, int ncol, byte *rmap, byte *gmap, byte *bmap )
 {
    CREN_stuff * ar = (CREN_stuff *) ah ;
-   int ii ;
+   double dsrc, dfac = 1.0;
+   int    ii, isrc;
 
    if( !ISVALID_CREN(ar) ) return ;
-   if( ncol<1 || ncol>128 || rmap==NULL || gmap==NULL || bmap==NULL ) return ;
+   if( ncol<1 || rmap==NULL || gmap==NULL || bmap==NULL ) return ;
 
-   ar->nrgb = ncol ;
+   /* check big ncol separately, NPANE_BIG is now 256  28 Mar 2006 [rickr] */
+   if( ncol > 128 ){
+      dfac = ncol/128.0 ;
+      ar->nrgb = 128 ;
+   } else
+       ar->nrgb = ncol ;
 
    /* copy into rendering struct, and compute intensity of each color */
 
-   for( ii=0 ; ii < ncol ; ii++ ){
-      ar->rmap[ii] = rmap[ii] ;
-      ar->gmap[ii] = gmap[ii] ;
-      ar->bmap[ii] = bmap[ii] ;
-      ar->imap[ii] = (byte)(0.299*rmap[ii]+0.587*gmap[ii]+0.114*bmap[ii]) ;
+   for( ii=0 ; ii < ar->nrgb ; ii++ ){
+      isrc = (int)(dfac * ii);
+      ar->rmap[ii] = rmap[isrc] ;
+      ar->gmap[ii] = gmap[isrc] ;
+      ar->bmap[ii] = bmap[isrc] ;
+      ar->imap[ii] = (byte)(0.299*rmap[isrc]+0.587*gmap[isrc]+0.114*bmap[isrc]);
    }
 
    /* set leftovers to 0 */
 
-   for( ii=ncol ; ii < 128 ; ii++ )
+   for( ii=ar->nrgb ; ii < 128 ; ii++ )
       ar->rmap[ii] = ar->gmap[ii] = ar->bmap[ii] = ar->imap[ii] = 0 ;
 
    return ;
@@ -610,6 +618,10 @@ fprintf(stderr,"warp: aii=%g  aij=%g\n"
      case CREN_MIP_VOX:
      break ;
 
+     case CREN_MINIP_VOX:             /* 09 May 2006 */
+       memset( rgb , 255 , ma*mb ) ;
+     break ;
+
      case CREN_MIP_OPA:
      break ;
    }
@@ -687,6 +699,17 @@ fprintf(stderr,"warp: aii=%g  aij=%g\n"
           }
         break ;
 
+        case CREN_MINIP_VOX:   /* minIP on the signal intensity */
+          for( p3=pij=0 ; pij < mab ; pij++,p3+=3 ){
+             vv = sl[pij] ; if( vv == 0 ) continue ;      /* skip */
+                  if( vv < 128  ) vv = vv << 1 ;          /* gray  */
+             else if( vv < vtop ) vv = ar->imap[vv-128] ; /* color */
+             else                 continue ;              /* skip  */
+
+             if( vv < rgb[p3] ) rgb[p3] = vv ;      /* minIP   */
+          }
+        break ;
+
         case CREN_MIP_OPA:{  /* MIP on the opacity */
           float opa ;
           for( p3=pij=0 ; pij < mab ; pij++,p3+=3 ){
@@ -712,13 +735,20 @@ fprintf(stderr,"warp: aii=%g  aij=%g\n"
    switch( ar->renmode ){
      default:
      case CREN_SUM_VOX:
-        free(used) ;
+       free(used) ;
      break ;
 
      case CREN_MIP_VOX:  /* fill in missing GB values */
      case CREN_MIP_OPA:
-        for( p3=pij=0 ; pij < mab ; pij++,p3+=3 )
-           rgb[p3+1] = rgb[p3+2] = rgb[p3] ;
+       for( p3=pij=0 ; pij < mab ; pij++,p3+=3 )
+         rgb[p3+1] = rgb[p3+2] = rgb[p3] ;
+     break ;
+
+     case CREN_MINIP_VOX:  /* fill in missing GB values */
+       for( p3=pij=0 ; pij < mab ; pij++,p3+=3 ){
+         if( rgb[p3] == 255 ) rgb[p3] = 0 ;
+         rgb[p3+1] = rgb[p3+2] = rgb[p3] ;
+       }
      break ;
    }
 
@@ -1114,7 +1144,7 @@ void extract_byte_tsx( int nx , int ny , int nz , byte * vol ,
                v1 = vol[aoff+ijkoff] ;
                v2 = vol[aoff+(ijkoff+dts2)] ;
 #ifdef BECLEVER
-               if( (v1|v2) & 128 != 0 )
+               if( ((v1|v2) & 128) != 0 )
 #else
                if( v1 < 128 && v2 < 128 )
 #endif
@@ -1133,7 +1163,7 @@ void extract_byte_tsx( int nx , int ny , int nz , byte * vol ,
                v3 = vol[aoff+(ijkoff+UL)] ;
                v4 = vol[aoff+(ijkoff+UR)] ;
 #ifdef BECLEVER
-               if( (v1|v2|v3|v4) & 128 != 0 )
+               if( ((v1|v2|v3|v4) & 128) != 0 )
 #else
                if( v1 < 128 && v2 < 128 && v3 < 128 && v4 < 128 )
 #endif
@@ -1218,7 +1248,7 @@ void extract_byte_lix( int nx , int ny , int nz , byte * vol ,
          v3 = vol[aoff+(ijkoff+UL)] ;
          v4 = vol[aoff+(ijkoff+UR)] ;
 #ifdef BECLEVER
-         if( (v1|v2|v3|v4) & 128 != 0 )
+         if( ((v1|v2|v3|v4) & 128) != 0 )
 #else
          if( v1 < 128 && v2 < 128 && v3 < 128 && v4 < 128 )  /* gray */
 #endif
