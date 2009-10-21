@@ -77,8 +77,8 @@
 #define FOV_INITIAL 30
 #define FOV_MIN 0.01
 #define FOV_MAX 140
-#define FOV_IN_FACT 1.05
-#define FOV_OUT_FACT 0.95
+#define FOV_IN_FACT 1.05   /*!< Still used for colormap display, Obsolete for surface viewers, see sv->KeyZoomGain */
+#define FOV_OUT_FACT 0.95  /*!< Still used for colormap display, Obsolete for surface viewers, see sv->KeyZoomGain */
 #define MOUSE_ZOOM_FACT 30 /*!< The larger, the slower the gain on mouse movement */
 #define TRANSLATE_GAIN 50 /*!< between 40 and 80 */
 #define ARROW_TRANSLATE_DELTAX 30
@@ -1354,6 +1354,7 @@ typedef struct {
    float *FOV; /*!< Field of View (affects zoom level, there is a separate FOV for each ViewState)*/
    float ArrowRotationAngle; /*!< Angle to rotate surface by when arrows are used.
                                  Units are in radians */
+   float KeyZoomGain; /*!< gain for zooming in and out with the 'z' and 'Z' keys. Typical range from 0 to 0.5. Must be < 1*/
    SUMA_Boolean BF_Cull; /*!< flag for backface culling */
    SUMA_RENDER_MODES PolyMode; /*!< polygon viewing mode, SRM_Fill, SRM_Line, SRM_Points
                                     There is a similar field for each surface object to 
@@ -1561,7 +1562,8 @@ typedef struct {
    float *VOLREG_CENTER_BASE; /*!< pointer to the named attribute (3x1) in the .HEAD file of the experiment-aligned Parent Volume */
    float *VOLREG_MATVEC; /*!< pointer to the named attribute (12x1) in the .HEAD file of the experiment-aligned Parent Volume */
    float *TAGALIGN_MATVEC; /*!< pointer to the named attribute (12x1) in the .HEAD file of the tag aligned Parent Volume */
-   float *ROTATE_MATVEC; /*!< pointer to the named attribute (12x1) in the .HEAD file of the tag aligned Parent Volume */
+   float *WARPDRIVE_MATVEC; /*!< pointer to the named attribute (12x1) in the .HEAD file of the warpdrive aligned Parent Volume */
+   float *ROTATE_MATVEC; /*!< pointer to the named attribute (12x1) in the .HEAD file of the rotate aligned Parent Volume */
    float *ROTATE_CENTER_OLD; 
    float *ROTATE_CENTER_BASE; 
    int Hand; /*!< Handedness of axis 1 RH, -1 LH*/
@@ -1621,6 +1623,7 @@ typedef struct {
    SUMA_Boolean SUMA_VolPar_Aligned; /*!< Surface aligned to Parent Volume data sets ?*/
    SUMA_Boolean VOLREG_APPLIED; /*!< YUP if VP->VOLREG_CENTER_BASE, VP->VOLREG_CENTER_OLD, VP->VOLREG_MATVEC were successfully applied*/
    SUMA_Boolean TAGALIGN_APPLIED; /*!< YUP if VP->TAGALIGN_MATVEC was successfully applied */
+   SUMA_Boolean WARPDRIVE_APPLIED;
    SUMA_Boolean ROTATE_APPLIED; /*!< YUP if VP->ROTATE_MATVEC was successfully applied */
    SUMA_Boolean SentToAfni; /*!< YUP if the surface has been niml-sent to AFNI */
    SUMA_Boolean Show; /*!< YUP then the surface is visible in the viewer. Not used that much I'd say*/

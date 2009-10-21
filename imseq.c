@@ -426,6 +426,7 @@ static void ISQ_setup_ppmto_filters(void)
    }
    else { CANT_FIND("pnmtops","EPS"); need_netpbm++; }
 
+#if 0
    /*-- write a PDF file (God only knows why) --*/
 
    pg2 = THD_find_executable( "epstopdf" ) ;   /* 19 Oct 2001:  */
@@ -435,6 +436,7 @@ static void ISQ_setup_ppmto_filters(void)
       bv <<= 1 ; ADDTO_PPMTO(str,"pdf",bv) ;
    }
    else CANT_FIND("pnmtops AND/OR epstopdf","PDF") ;
+#endif
 
    /*-- Write a PNG file (again, query God) --*/
 
@@ -452,11 +454,11 @@ static void ISQ_setup_ppmto_filters(void)
      if( need_netpbm > 0 )
        fprintf(stderr,
                "++ Some of the missing image Save programs are in\n"
-               "    the netpbm software package, which is freeware.\n" ) ;
+               "++  the netpbm software package, which is freeware.\n" ) ;
 
      fprintf(stderr,
                "++ To disable these warnings, set environment\n"
-               "    variable AFNI_IMSAVE_WARNINGS to 'NO'.\n"
+               "++  variable AFNI_IMSAVE_WARNINGS to 'NO'.\n"
                "+++++++++++++++++++++++++++++++++++++++++++\n" ) ;
    }
 

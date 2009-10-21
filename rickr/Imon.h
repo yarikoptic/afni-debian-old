@@ -99,6 +99,7 @@ typedef struct  /* user options */
     char           * gert_outdir;   /* output directory for GERT_Reco2  */
     char          ** argv;          /* passed to the program            */
     int              argc;
+    float            tr;            /* user input TR, overrides files   */
     int              nt;            /* user input time points per run   */
     int              nice;          /* nice offset (must be >= 0)       */
     int              pause;         /* pause time between volumes (MS)  */
@@ -110,6 +111,8 @@ typedef struct  /* user options */
     /* DICOM organization options */
     int              dicom_org;     /* flag to organize dicom files     */
     int              sort_num_suff; /* flag to sort by numerical suffix */
+    int              rev_org_dir;   /* flag to reverse dicom_org dir    */
+    int              rev_sort_dir;  /* flag to reverse glob sort dir    */
 
     /* realtime options */
     int              rt;            /* run in real-time afni mode       */

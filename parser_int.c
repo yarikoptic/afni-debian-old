@@ -7,6 +7,9 @@
 #define  NEED_PARSER_INTERNALS
 #include "parser.h"
 #include "Amalloc.h"
+#include <time.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 /***** C routines to interface to the f2c generated parser code *****/
 
@@ -28,7 +31,9 @@ PARSER_code * PARSER_generate_code( char * expression )
    int nexp ;
    PARSER_code * pc ;
    char *exp,cc ; int ii,jj ;  /* 22 Jul 2003 */
+   static first=1 ;
 
+   if( first ){ srand48((long)time(NULL)+(long)getpid()); first=0; }
    if( expression == NULL ) return NULL ;
    nexp = strlen( expression ) ;
    if( nexp == 0 ) return NULL ;
@@ -243,13 +248,9 @@ doublereal derf_ ( doublereal * x )
 doublereal derfc_( doublereal * x )
 { return (doublereal) erfc( (double) *x ) ; }
 
-#include <time.h>
-
 doublereal unif_( doublereal * x )  /* 04 Feb 2000 */
 {
-   static first=1 ;
    doublereal val ;
-   if( first ){ srand48((long)time(NULL)); first=0; }
    val = (doublereal) drand48() ;
    return val ;
 }
