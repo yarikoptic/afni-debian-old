@@ -356,6 +356,7 @@ typedef struct {
       Widget pop_mnito_pb ;  /* 01 May 2002 */
 
       Widget pop_environment_pb ; /* 05 Nov 2003 */
+      Widget pop_drawdataset_pb ; /* 17 May 2005 */
 } AFNI_imaging_widgets ;
 
 /*--- 19 Aug 2002: Switch Surface control box ---*/
@@ -633,6 +634,7 @@ typedef struct {
    Widget hidden_speech_pb  ;  /* 25 Nov 2003 */
    Widget hidden_faces_pb   ;  /* 17 Dec 2004 */
    Widget hidden_browser_pb ;  /* 22 Apr 2005 */
+   Widget hidden_broutim_pb ;  /* 06 Jun 2005 */
 
 #endif  /* USE_HIDDEN */
 
@@ -683,6 +685,8 @@ typedef struct {
       /*--- Pointers to other data ---*/
 
       XtPointer parent ;
+
+      int butx , buty ;        /* 17 May 2005 */
 } AFNI_widget_set ;
 
 /** picture controls **/
@@ -1035,6 +1039,8 @@ extern void AFNI_splashup   (void) ;  /* 02 Aug 1999 */
 extern void AFNI_splashdown (void) ;
 extern void AFNI_splashraise(void) ;  /* 25 Sep 2000 */
 extern void AFNI_faceup     (void) ;  /* 17 Dec 2004 */
+extern void AFNI_broutim_CB (Widget,XtPointer,XtPointer) ; /* 06 Jun 2005 */
+
 
 extern void AFNI_quit_CB           ( Widget wcall , XtPointer cd , XtPointer cbs );
 extern void AFNI_quit_timeout_CB   ( XtPointer , XtIntervalId * ) ;
@@ -1782,7 +1788,6 @@ extern TTRR_params * TTRR_get_params(void) ;
 
 extern int AFNI_driver( char *cmd ) ;                    /* 07 Nov 2001 */
 extern int AFNI_controller_code_to_index( char *code ) ;
-extern int AFNI_setenv( char *cmd ) ;                    /* 22 Jan 2003 */
 
 /*-------------------------------------------------------*/
 /*--------------  registration of functions -------------*/

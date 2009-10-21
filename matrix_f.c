@@ -59,6 +59,9 @@
   Date:     01 Mar 2005
 */
 
+#include "mri_image.h"  /* moved here on 16 May 2005, for OS X Tiger */
+extern MRI_IMAGE *mri_read_1D(char *) ;
+
 #include <math.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -98,6 +101,8 @@
 # define DOTP(n,x,y,z) *(z)=sdot(n,x,1,y,1)
 # define VSUB(n,x,y,z) (memcpy(z,x,sizeof(float)*n),saxpy(n,-1.0f,y,1,z,1))
 #endif
+
+#include <string.h>
 
 /*---------------------------------------------------------------------------*/
 /*!
@@ -300,9 +305,6 @@ void matrix_enter (matrix * m)
      If error_exit flag is set, then print error message and exit.
      Otherwise, return null matrix.
 */
-
-#include "mri_image.h"
-extern MRI_IMAGE *mri_read_1D(char *) ;
 
 void matrix_file_read (char *filename, int rows, int cols,  matrix *m,
 		       int error_exit)

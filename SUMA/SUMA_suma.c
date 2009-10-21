@@ -239,7 +239,7 @@ int main (int argc,char *argv[])
    SUMA_EngineData *ED= NULL;
    DList *list = NULL;
    DListElmt *Element= NULL;
-   int iv15[15], N_iv15, ispec;
+   int iv15[15], N_iv15, ispec, nspec;
    struct stat stbuf;
    SUMA_Boolean Start_niml = NOPE, Domemtrace = YUP;
    SUMA_GENERIC_ARGV_PARSE *ps=NULL;
@@ -252,7 +252,8 @@ int main (int argc,char *argv[])
 	if (LocalHead) fprintf (SUMA_STDERR,"%s: Calling SUMA_Create_CommonFields ...\n", FuncName);
    SUMA_STANDALONE_INIT;
    if (LocalHead) fprintf (SUMA_STDERR,"%s: SUMA_Create_CommonFields Done.\n", FuncName);
-	
+	SUMAg_CF->isGraphical = YUP;
+
    ps = SUMA_Parse_IO_Args(argc, argv, "-i;-t;");
    #if 0
    if (argc < 2)
@@ -280,8 +281,13 @@ int main (int argc,char *argv[])
    if (LocalHead) SUMA_Show_IO_args(ps);
    if (ps->i_N_surfnames || ps->t_N_surfnames) {
       SUMA_LH("-i and/or -t surfaces on command line!");
-      Specp[ispec] = SUMA_IO_args_2_spec (ps); 
-      ++ispec;
+      Specp[ispec] = SUMA_IO_args_2_spec (ps, &nspec); 
+      if (Specp[ispec]) ++ispec;
+      if (nspec != 1) {
+         SUMA_S_Err("-spec is being parsed separately here, expecting one spec only from SUMA_IO_args_2_spec");
+         exit (1);
+      }
+      
    }
 	/* Work the options */
 	kar = 1;

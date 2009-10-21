@@ -5,7 +5,8 @@
 
 static int datum                   = MRI_float ;
 static void Print_Header_MinMax(int Minflag, int Maxflag, THD_3dim_dataset * dset);
-static void Max_func(int Minflag, int Maxflag, int Meanflag, THD_3dim_dataset * dset, byte *mmm, int mmvox);
+static void Max_func(int Minflag, int Maxflag, int Meanflag, int Countflag, int Posflag,\
+    int Negflag, int Zeroflag, THD_3dim_dataset * dset, byte *mmm, int mmvox);
 static void Max_tsfunc( double tzero , double tdelta ,
                          int npts , float ts[] , double ts_mean ,
                          double ts_slope , void * ud , int nbriks, float * val ) ;
@@ -15,7 +16,8 @@ int main( int argc , char * argv[] )
 {
    THD_3dim_dataset * old_dset , * new_dset ;  /* input and output datasets */
    int nopt, nbriks;
-   int slow_flag, quick_flag, min_flag, max_flag, mean_flag, automask;
+   int slow_flag, quick_flag, min_flag, max_flag, mean_flag, automask,count_flag;
+   int positive_flag, negative_flag, zero_flag;
    byte * mmm=NULL ;
    int    mmvox=0 ;
    int nxyz, i;
@@ -25,7 +27,7 @@ int main( int argc , char * argv[] )
    /*----- Read command line -----*/
    if( argc < 2 || strcmp(argv[1],"-help") == 0 ){
       printf("Usage: 3dMax [options] dataset\n"
-             "Compute maximum and/or the minimum voxeel values of an input dataset\n"
+             "Compute maximum and/or minimum voxel values of an input dataset\n"
              "\n"
              "The output is a number to the console.  The input dataset\n"
              "may use a sub-brick selection list, as in program 3dcalc.\n"
@@ -35,6 +37,13 @@ int main( int argc , char * argv[] )
              "  -min = print the minimum value in dataset\n"
              "  -max = print the minimum value in dataset (default)\n"
              "  -mean = print the mean value in dataset (implies slow)\n"
+             "  -count = print the number of voxels included (implies slow)\n"
+             "  -positive = include only positive voxel values (implies slow)\n"
+             "  -negative = include only negative voxel values (implies slow)\n"
+             "  -zero = include only zero voxel values (implies slow)\n"
+             "  -non-positive = include only voxel values 0 or negative (implies slow)\n"
+             "  -non-negative = include only voxel values 0 or greater (implies slow)\n"
+             "  -non-zero = include only voxel values not equal to 0 (implies slow)\n"
              "  -mask dset = use dset as mask to include/exclude voxels\n"
              "  -automask = automatically compute mask for dataset\n"
              "    Can not be combined with -mask\n"
@@ -54,6 +63,10 @@ int main( int argc , char * argv[] )
    slow_flag = 0;
    quick_flag = -1;
    automask = 0;
+   count_flag = 0;
+   positive_flag = -1;
+   negative_flag = -1;
+   zero_flag = -1;
 
    datum = MRI_float;
    while( nopt < argc && argv[nopt][0] == '-' ){
@@ -82,6 +95,77 @@ int main( int argc , char * argv[] )
         nopt++; continue;
       }
 
+      if( strcmp(argv[nopt],"-count") == 0 ){
+	count_flag = 1;
+        nopt++; continue;
+      }
+
+      if( strcmp(argv[nopt],"-positive") == 0 ){
+        if(positive_flag!=-1) {
+          fprintf(stderr, "***Can not use multiple +/-/0 options");
+          exit(1) ;
+        }
+        positive_flag = 1;
+	negative_flag = 0;
+        zero_flag = 0;
+        nopt++; continue;
+      }
+
+      if( strcmp(argv[nopt],"-negative") == 0 ){
+        if(positive_flag!=-1) {
+          fprintf(stderr, "***Can not use multiple +/-/0 options");
+          exit(1) ;
+        }
+        positive_flag = 0;
+	negative_flag = 1;
+        zero_flag = 0;
+        nopt++; continue;
+      }
+
+      if( strcmp(argv[nopt],"-zero") == 0 ){
+        if(positive_flag!=-1) {
+          fprintf(stderr, "***Can not use multiple +/-/0 options");
+          exit(1) ;
+        }
+        positive_flag = 0;
+        negative_flag = 0;
+	zero_flag = 1;
+        nopt++; continue;
+      }
+
+      if( strcmp(argv[nopt],"-non-positive") == 0 ){
+        if(positive_flag!=-1) {
+          fprintf(stderr, "***Can not use multiple +/-/0 options");
+          exit(1) ;
+        }
+        positive_flag = 0;
+	negative_flag = 1;
+        zero_flag = 1;
+        nopt++; continue;
+      }
+      if( strcmp(argv[nopt],"-non-negative") == 0 ){
+        if(positive_flag!=-1) {
+          fprintf(stderr, "***Can not use multiple +/-/0 options");
+          exit(1) ;
+        }
+        positive_flag = 1;
+	negative_flag = 0;
+        zero_flag = 1;
+        nopt++; continue;
+      }
+
+      if( strcmp(argv[nopt],"-non-zero") == 0 ){
+        if(positive_flag!=-1) {
+          fprintf(stderr, "***Can not use multiple +/-/0 options");
+          exit(1) ;
+        }
+        positive_flag = 1;
+	negative_flag = 1;
+        zero_flag = 0;
+        nopt++; continue;
+      }
+
+
       if( strcmp(argv[nopt],"-autoclip") == 0 ||
           strcmp(argv[nopt],"-automask") == 0   ){
 
@@ -93,7 +177,6 @@ int main( int argc , char * argv[] )
       }
 
       if( strcmp(argv[nopt],"-mask") == 0 ){
-         int mcount ;
          THD_3dim_dataset * mask_dset ;
          if( automask ){
            fprintf(stderr,"** ERROR: can't use -mask with -automask!\n");
@@ -124,13 +207,13 @@ int main( int argc , char * argv[] )
    }
 
    if(max_flag==-1) {                   /* if max_flag is not set by user,*/
-     if(min_flag || mean_flag)       /* check if other user options set */
+     if(min_flag || mean_flag ||count_flag)   /* check if other user options set */
          max_flag = 0;
       else
 	max_flag = 1;                  /* otherwise check only for max */
      }
 
-   if(mean_flag==1)                    /* mean flag implies slow */
+   if((mean_flag==1)||(count_flag==1)||(positive_flag!=-1))  /* mean flag or count_flag implies slow */
      slow_flag = 1;
 
    /* check slow and quick options */
@@ -141,6 +224,15 @@ int main( int argc , char * argv[] )
 
    if((max_flag==0)&&(min_flag==0))   /* if the user only asked for mean */
      quick_flag = 0;                  /*  no need to do quick way */
+
+   if((quick_flag) && ((positive_flag=1)||(negative_flag==1)||(zero_flag==1)))
+     fprintf(stderr, "+++ Warning - ignoring +/-/0 flags for quick computations\n");
+
+   if(positive_flag==-1) {   /* if no +/-/0 options set, allow all voxels */
+     positive_flag = 1;
+     negative_flag = 1;
+     zero_flag = 1;
+   }
 
    /*----- read input dataset -----*/
 
@@ -172,7 +264,9 @@ int main( int argc , char * argv[] )
    if(slow_flag!=1)
       exit(0);
 
-   Max_func(min_flag, max_flag, mean_flag, old_dset, mmm, mmvox);
+   Max_func(min_flag, max_flag, mean_flag,count_flag,positive_flag, negative_flag, zero_flag,\
+      old_dset, mmm, mmvox);
+
    if(mmm!=NULL)
      free(mmm);
    exit(0);
@@ -266,7 +360,7 @@ THD_3dim_dataset * dset;
 
 /*! search whole dataset for minimum and maximum */
 /* load all at one time */
-static void Max_func(Minflag, Maxflag, Meanflag, dset, mmm, mmvox)
+static void Max_func(Minflag, Maxflag, Meanflag, Countflag, Posflag, Negflag, Zeroflag, dset, mmm, mmvox)
 int Minflag, Maxflag;
 THD_3dim_dataset * dset;
 byte *mmm;  /* mask pointer */
@@ -287,6 +381,7 @@ int mmvox;
    npts = 0;
    DSET_mallocize (dset);
    DSET_load (dset);	                /* load dataset */
+   npts = 0;                            /* keep track of number of points */
    for(i=0;i<dset->dblk->nvals; i++) {  /* for each sub-brik in dataset */
       data_im = DSET_BRICK (dset, i);	/* set pointer to the 0th sub-brik of the dataset */
       fac = DSET_BRICK_FACTOR(dset, i); /* get scale factor for each sub-brik*/
@@ -296,7 +391,6 @@ int mmvox;
       else
         nvox = data_im->nvox;           /* number of voxels in the sub-brik */
 
-      npts += nvox;                     /* keep track of number of points */
       for(k=0;k<nvox;k++) {
              if( mmm != NULL && mmm[k] == 0 ) continue ;  /* masked out */
 
@@ -349,13 +443,18 @@ int mmvox;
                  fprintf(stderr,"Unknown type, %s, in sub-brik %d\n", MRI_TYPE_name[data_im->kind], i);
 	       break;
             }
+
+             if( mmm == NULL || ((mmm!=NULL) && mmm[k] != 0 )){   /* masked in voxel? */
 	      voxval = voxval * fac;             /* apply scale factor */
-	      sum += voxval;
-            
-            if(voxval<overallmin)
-	       overallmin = voxval;
-            if(voxval>overallmax)
-                overallmax = voxval;
+              if(((voxval<0)&&Negflag)||((voxval==0)&&Zeroflag)||((voxval>0)&&Posflag)) {
+	         sum += voxval;
+                 ++npts;            
+                 if(voxval<overallmin)
+	            overallmin = voxval;
+                 if(voxval>overallmax)
+                    overallmax = voxval;
+              }
+             }
       }
    }
    if(Minflag)
@@ -365,8 +464,11 @@ int mmvox;
    if(Meanflag)
      {
        overallmean = sum/npts;
-       printf("%-13.6g", overallmean);
+       printf("%-13.6g ", overallmean);
      }
+   if(Countflag)
+     printf("%-13d", npts);
+
    printf("\n");
 
     mri_free (data_im);

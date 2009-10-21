@@ -1457,7 +1457,7 @@ STATUS("call 12") ;
       break ;
 
       /*============================================================================
-         Next, setup the plugins, etc.
+         Next, setup the plugins, and things like that ...
         ============================================================================*/
 
       case 13:{
@@ -1509,27 +1509,35 @@ STATUS("call 13") ;
         AFNI_register_1D_funcstr( "Huber Fit" , huber_func ) ;
 #endif
 
+        /** plugins at last! **/
+
 #ifdef ALLOW_PLUGINS
         if( MAIN_im3d->type == AFNI_3DDATA_VIEW ){
-           int nplug = 0 ;
-           char str[128] ;
+          int nplug = 0 ;
+          char str[128] ;
 
-           if( ! GLOBAL_argopt.noplugins ){
+          if( ! GLOBAL_argopt.noplugins ){
 STATUS("initialize plugins") ;
-              GLOBAL_library.plugins = PLUG_get_many_plugins( MAIN_argv[0] ) ;
-              AFNI_plugin_button( MAIN_im3d ) ;
-           }
+            GLOBAL_library.plugins = PLUG_get_many_plugins( MAIN_argv[0] ) ;
+            AFNI_plugin_button( MAIN_im3d ) ;
+          }
 
-           if( GLOBAL_library.plugins != NULL ) nplug = GLOBAL_library.plugins->num ;
-           sprintf(str,"\n Plugins       = %d libraries read",nplug) ;
-           REPORT_PROGRESS(str) ;
+          if( GLOBAL_library.plugins != NULL ) nplug = GLOBAL_library.plugins->num ;
+          sprintf(str,"\n Plugins       = %d libraries read",nplug) ;
+          REPORT_PROGRESS(str) ;
+          if( nplug == 0 && ! GLOBAL_argopt.noplugins )  /* 18 May 2005 */
+            REPORT_PROGRESS(
+                      "\n ** Your Unix path must include the AFNI binary directory"
+                      "\n ** OR you must setenv AFNI_PLUGINPATH to that directory!");
 
-           if( !GLOBAL_argopt.noplugouts ){  /* June 1997 */
-               AFNI_init_plugouts() ;
-               if( MAIN_im3d->vwid->dmode->misc_plugout_pb != NULL )
-                 XtSetSensitive(MAIN_im3d->vwid->dmode->misc_plugout_pb,False) ; /* 07 Nov 2001 */
-               REPORT_PROGRESS("\n Plugouts      = listening for connections") ;
-           }
+          /** and plugouts! **/
+
+          if( !GLOBAL_argopt.noplugouts ){  /* June 1997 */
+            AFNI_init_plugouts() ;
+            if( MAIN_im3d->vwid->dmode->misc_plugout_pb != NULL ) /* 07 Nov 2001 */
+              XtSetSensitive(MAIN_im3d->vwid->dmode->misc_plugout_pb,False) ;
+            REPORT_PROGRESS("\n Plugouts      = listening for connections") ;
+          }
         }
 #endif
 
@@ -1723,6 +1731,7 @@ ENTRY("AFNI_quit_CB") ;
    if( AFNI_count_controllers() <= 1 ){
       XtCloseDisplay( XtDisplay(im3d->vwid->top_shell) ) ;
       AFNI_speak(random_goodbye(),0) ;
+      STATUS("calling exit(0) -- farewell cruel world!") ;
       exit(0) ;
 
    } else {  /* otherwise, patch up the other windows and continue */
@@ -3105,13 +3114,15 @@ if(PRINT_TRACING)
       break ;  /* end of destroy */
 
       case isqCR_buttonpress:{
-         XButtonEvent * xev = (XButtonEvent *) cbs->event ;
+         XButtonEvent *xev = (XButtonEvent *) cbs->event ;
 
 if(PRINT_TRACING){
  char str[256] ;
  sprintf(str,"isqCR_buttonpress: button=%d state=%x",xev->button,xev->state) ;
  STATUS(str) ; }
 
+         im3d->vwid->butx = xev->x_root ;  /* 17 May 2005 */
+         im3d->vwid->buty = xev->y_root ;
          switch( xev->button ){
 
             default: EXRETURN ;  /* unused button */
@@ -3655,8 +3666,7 @@ STATUS("graCR_pickort") ;
 
       /*** User sets time_index (from graph) ***/
       /*** 24 Jan 2001: or bucket index      ***/
-      /*** 29 Jul 2003: time_index and
-            anat_index are almost merged now ***/
+      /*** 29 Jul 2003: time_index and anat_index are almost merged now ***/
 
       case graCR_setindex:{
          MCW_arrowval *tav = im3d->vwid->imag->time_index_av ;
@@ -4736,9 +4746,9 @@ ENTRY("AFNI_crosshair_gap_CB") ;
 
 /*------------------------------------------------------------------------*/
 
-void AFNI_time_index_CB( MCW_arrowval * av ,  XtPointer client_data )
+void AFNI_time_index_CB( MCW_arrowval *av ,  XtPointer client_data )
 {
-   Three_D_View * im3d = (Three_D_View *) client_data ;
+   Three_D_View *im3d = (Three_D_View *) client_data ;
    int ipx ;
 
 ENTRY("AFNI_time_index_CB") ;
@@ -7124,7 +7134,7 @@ STATUS(" -- managing talairach_to button") ;
       top = MAX( top , DSET_NUM_TIMES(im3d->fim_now) ) ;
 
    if( top > 1 ){
-     MCW_arrowval * tav = im3d->vwid->imag->time_index_av ;
+     MCW_arrowval *tav = im3d->vwid->imag->time_index_av ;
 STATUS(" -- turning time index control on") ;
 
      AV_SENSITIZE( tav , True ) ; im3d->vinfo->time_on = 1 ;
@@ -7662,7 +7672,9 @@ ENTRY("AFNI_crosshair_EV") ;
            (event->button == Button1 &&
             (event->state & (ShiftMask|ControlMask))) ){
 
-         event->button = Button3 ;                                   /* fake  */
+         im3d->vwid->butx = event->x_root ;  /* 17 May 2005 */
+         im3d->vwid->buty = event->y_root ;
+         event->button    = Button3 ;                                /* fake  */
          XmMenuPosition( im3d->vwid->imag->crosshair_menu , event ); /* where */
          XtManageChild ( im3d->vwid->imag->crosshair_menu ) ;        /* popup */
        }
@@ -7773,8 +7785,8 @@ ENTRY("AFNI_crosshair_pop_CB") ;
 void AFNI_imag_pop_CB( Widget w ,
                        XtPointer client_data , XtPointer call_data )
 {
-   Three_D_View * im3d = (Three_D_View *) client_data ;
-   MCW_imseq * seq ;
+   Three_D_View *im3d = (Three_D_View *) client_data ;
+   MCW_imseq *seq ;
 
 ENTRY("AFNI_imag_pop_CB") ;
 
@@ -7974,6 +7986,23 @@ ENTRY("AFNI_imag_pop_CB") ;
 
      AFNI_misc_CB( im3d->vwid->dmode->misc_environ_pb ,
                    (XtPointer) im3d , (XtPointer) NULL ) ;
+   }
+
+   /*---- 17 May 2005: open Draw Dataset plugin ----*/
+
+   else if( w == im3d->vwid->imag->pop_drawdataset_pb &&
+            w != NULL                                   ){
+
+     char cmd[128] , cc='A'+AFNI_controller_index(im3d) ;
+     int xx,yy ;
+
+#if 0
+     MCW_widget_geom(im3d->vwid->top_shell,NULL,NULL,&xx,&yy); xx+=29; yy+=19;
+#else
+     xx = im3d->vwid->butx ; yy = im3d->vwid->buty ;
+#endif
+     sprintf(cmd,"OPEN_WINDOW %c.plugin.Draw_Dataset geom=+%d+%d",cc,xx,yy) ;
+     (void) AFNI_driver(cmd) ;
    }
 
    /*--- unmap of the popup itself [elided] ---*/

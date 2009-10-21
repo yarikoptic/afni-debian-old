@@ -3491,6 +3491,18 @@ ENTRY("ISQ_saver_CB") ;
            }
          }
 
+         if( seq->wbar_label_av->ival != 0 ){  /* 17 Jun 2005 */
+           char *lab = ISQ_getlabel( kf , seq ) ;
+           if( lab != NULL ){
+             MEM_plotdata *mp = ISQ_plot_label( seq , lab ) ;
+             if( mp != NULL ){
+               memplot_to_RGB_sef( flim, mp, 0,0,MEMPLOT_FREE_ASPECT ) ;
+               delete_memplot(mp) ;
+             }
+             free(lab) ;
+           }
+         }
+
          if( seq->zoom_fac > 1 &&                   /* crop zoomed image */
              seq->mont_nx == 1 &&                   /* to displayed part? */
              seq->mont_ny == 1 &&
@@ -5392,7 +5404,7 @@ ENTRY("ISQ_button2_EV") ;
 
 void ISQ_but_disp_CB( Widget w, XtPointer client_data, XtPointer call_data )
 {
-   MCW_imseq * seq = (MCW_imseq *) client_data ;
+   MCW_imseq *seq = (MCW_imseq *) client_data ;
    int ib ;
    Widget rctop , rcboxes , shtop ;
    Widget swtop=NULL ;
@@ -5435,16 +5447,14 @@ ENTRY("ISQ_but_disp_CB") ;
    for( ib=0 ; ib < NACT_DISP ; ib++ )
       ISQ_disp_act[ib].data = (XtPointer) seq ;
 
-   if( AFNI_yesenv("AFNI_DISP_SCROLLBARS") ){  /* 31 Jan 2002 */
+   if( seq->dc->height < 1024 ||               /* 21 Jun 2005 */
+       AFNI_yesenv("AFNI_DISP_SCROLLBARS") ){  /* 31 Jan 2002 */
+
       shtop = swtop = XtVaCreateManagedWidget(
                  "menu" , xmScrolledWindowWidgetClass , seq->dialog ,
                     XmNscrollingPolicy        , XmAUTOMATIC ,
                     XmNvisualPolicy           , XmVARIABLE ,
-#if 0
-                    XmNscrollBarDisplayPolicy , XmAS_NEEDED ,
-#else
                     XmNscrollBarDisplayPolicy , XmSTATIC ,
-#endif
                     XmNinitialResourcesPersistent , False ,
                  NULL ) ;
    } else {
@@ -6939,6 +6949,13 @@ static unsigned char record_bits[] = {
          }
          seq->im_label[0] = '\0' ;  /* will force redraw */
          ISQ_draw_winfo( seq ) ;
+
+         if( ws == NULL )                       /* 18 May 2005: add a hint */
+           MCW_unregister_hint( seq->winfo ) ;  /* for the clueless newbie */
+         else
+           MCW_register_hint( seq->winfo ,
+                    "setenv AFNI_LEFT_IS_LEFT YES disables 'radiology mode'" );
+
          RETURN( True );
       }
 

@@ -496,10 +496,14 @@ int main( int argc , char *argv[] )
              }
            if( sq > 0.0 ){
              sf = sf / sq ;
-             if( sf > 0.05 && sf < 20.0 ){
+             if( sf > 0.005 && sf < 200.0 ){
                mri_3dalign_scaleinit(sf) ;
                if( VL_verbose ) fprintf(stderr,"++ Scale init = %g\n",sf) ;
-             }
+             } else {
+               fprintf(stderr,"-- Large scale difference between datasets.\n"
+                              "   Scale init = %g\n"
+                              "   3dvolreg might not converge.",sf) ;
+            }
            }
          }
 
@@ -1178,8 +1182,8 @@ void VL_syntax(void)
     "                                  [default=%f].\n"
     "                -final   mode = Do the final interpolation using the method\n"
     "                                  defined by 'mode', which is one of the\n"
-    "                                  strings 'cubic', 'quintic', 'heptic', or\n"
-    "                                  'Fourier'\n"
+    "                                  strings 'NN', 'cubic', 'quintic', 'heptic',\n"
+    "                                  or 'Fourier'\n"
     "                                  [default=mode used to estimate parameters].\n"
     "            -weight 'wset[n]' = Set the weighting applied to each voxel\n"
     "                                  proportional to the brick specified here\n"

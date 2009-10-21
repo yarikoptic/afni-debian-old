@@ -13,6 +13,14 @@ typedef struct {
    char *surftype;
    char *out_prefix;   /* this one's dynamically allocated so you'll have to free it yourself */
    char *out_vol_prefix; /* this one's dynamically allocated so you'll have to free it yourself */
+   char out_vol_view[5];
+   int out_vol_exists;
+   char *out_grid_prefix; /* this one's dynamically allocated so you'll have to free it yourself */
+   char out_grid_view[5];
+   int out_grid_exists;
+   char *in_vol_prefix; /* this one's dynamically allocated so you'll have to free it yourself */
+   char in_vol_view[5];
+   int in_vol_exists;
    int MaskMode;
    char *cmask;
    THD_3dim_dataset *in_vol;
@@ -20,6 +28,7 @@ typedef struct {
    double *mcdatav; /* the dataset that is passed to the marching cube algorithm */
    int debug;
    int ninmask;
+   int fix_winding;
    float v0;
    float v1;
    int nvox;
@@ -69,6 +78,7 @@ typedef struct {
    int send_hull;
    int DemoPause;
    int DoSpatNorm;
+   float SpatNormDxyz;
    int WriteSpatNorm;
    int fillhole;
    THD_3dim_dataset *iset;
@@ -78,6 +88,14 @@ typedef struct {
    THD_3dim_dataset *in_edvol;
    float blur_fwhm;
    int iset_hand;
+   
+   int NearestNode;
+   int NearestTriangle;
+   int DistanceToMesh;
+   int ProjectionOnMesh;
+   int Data;
+   
+   char *in_nodeindices;
 } SUMA_GENERIC_PROG_OPTIONS_STRUCT;
 
 #define SUMA_MAX_SURF_ON_COMMAND 100
@@ -261,22 +279,22 @@ void *SUMA_AdvancePastNumbers(char *op, char **opend, SUMA_VARTYPE tp);
 
 */
 #define SUMA_S_Err(msg) {\
-   fprintf (SUMA_STDERR, "Error %s:\n %s\n", FuncName, msg);  \
+   fprintf (SUMA_STDERR, "Error %s (%s:%d):\n %s\n", FuncName, __FILE__ , __LINE__, msg);  \
 }
 /*!
    \brief Macro that reports an error to stderr and log 
 
 */
 #define SUMA_SL_Err(msg) {\
-   fprintf (SUMA_STDERR, "Error %s:\n %s\n", FuncName, msg);  \
-   SUMA_RegisterMessage (SUMAg_CF->MessageList, msg, FuncName, SMT_Error, SMA_Log); \
+   SUMA_S_Err(msg);  \
+   SUMA_L_Err(msg); \
 }
 /*!
    \brief Macro that reports an error to stderr and log and popup
 
 */
 #define SUMA_SLP_Err(msg) {\
-   fprintf (SUMA_STDERR, "Error %s:\n %s\n", FuncName, msg);  \
+   SUMA_S_Err(msg);  \
    SUMA_RegisterMessage (SUMAg_CF->MessageList, msg, FuncName, SMT_Error, SMA_LogAndPopup); \
 }
 
@@ -411,7 +429,7 @@ void *SUMA_AdvancePastNumbers(char *op, char **opend, SUMA_VARTYPE tp);
    \brief Macro that reports a message to SUMA_STDERR if LocalHead is set to YUP
 */
 #define SUMA_LH(msg) {\
-   if (LocalHead) fprintf (SUMA_STDERR, "%s:\n %s\n", FuncName, msg);  \
+   if (LocalHead) fprintf (SUMA_STDERR, "%s (%s:%d):\n %s\n", FuncName, __FILE__, __LINE__,msg);  \
 }
 
 /* >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> Begin string parsing macros <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< */

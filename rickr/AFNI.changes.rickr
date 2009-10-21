@@ -1135,9 +1135,48 @@
   * added Kate's real_easy/nifti1_read_write.c to AFNI CVS
   * modified znzlib.c, using gzseek() for the failing gzrewind()
   * modified nifti_io.c, opening in compressed mode only on '.gz'
-  * modifited to3d.c: fixed help on 'seqplus' and 'seqminus'
+  * modified to3d.c: fixed help on 'seqplus' and 'seqminus'
   * modified plug_realtime.c to handle TPATTERN command for slice timing
   * modified Dimon.c, Imon.h: added pause option to opts struct
   * modified realtime.c to set TPATTERN from opts.sp (for now)
   * modified Makefile.INCLUDE, rickr/Makefile: Dimon depends on Imon.h
+
+17 May 2005: Dimon update (v 0.3)
+  * modified Dimon.c:
+      - added -infile_pattern for glob option
+      - set ftype based on usage
+  * modified Imon.c, setting ftype
+  * modified Imon.h, adding IFM_IM_FTYPE_* codes
+  * modified rickr/realtime.c, base XYZFIRST on ftype, added orient_side_rai()
+  * modified plug_realtime.c, adding REG_strings_ENV (' ' -> '_')
+
+18 May 2005: Dimon (v 0.4)
+  * update complete_orients_str() for IFM_IM_FTYPE_DICOM
+
+02 June 2005: 3dVol2Surf (v 6.4)
+  * added -skip_col_non_results option
+
+08 June 2005: added 2 million to LBUF in mri_read.c (will revisit)
+
+10 June 2005: minor updates to plug_roiedit.[ch]
+
+22 June 2005: Dimon (v 0.5)
+  * modified Dimon.c: added -infile_prefix option and allowed single volume run
+  * modified mri_dicom_hdr.c, rickr/l_mri_dicom_hdr.c: fixed small memory leak
+
+23 June 2005:
+  * modified Makefile.linux_gcc32 and Makefile.linux_gcc33_64
+      - removed -DNO_GAMMA (was just a warning, but is an error on FC4)
+
+29 June 2005:
+  * modified nifti1_io.[ch]: changed NIFTI_ECODE_UNKNOWN to _IGNORE
+
+30 June 2005: Dimon (v 0.6)
+  * modified Dimon.c to process run of single-slice volumes
+  * modified afni_splash.c and afni_version.c to compile under cygwin
+
+05 July 2005: Dimon (v 1.0 initial release!), Imon (v 3.4)
+  * modified Dimon.c (-> v 0.7), Imon.[ch]: removed all tabs
+  * modified Dimon.c: updated -help
+  * modified Makefile.INCLUDE: include Dimon as part of automatic build
 

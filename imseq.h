@@ -68,8 +68,6 @@ typedef struct {
 #define IM_HEIGHT(im) \
   ( ((im)->dy > 0) ? ((im)->ny * (im)->dy) : ((im)->ny) )
 
-#define FLDIF(x,y) ( fabs(x-y) > 1.e-4 * (fabs(x)+fabs(y)) )
-
 /* define dimensions used in the window */
 
 #define FORM_FRAC_BASE  1000
@@ -295,7 +293,7 @@ typedef struct {
 #endif
 
 #ifndef MONT_SMAX
-#define MONT_SMAX 99
+#define MONT_SMAX 199
 #endif
 
 #ifndef MONT_GMAX

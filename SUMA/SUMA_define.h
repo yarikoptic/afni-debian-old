@@ -128,7 +128,7 @@
 #define SUMA_WORKPROC_IO_NOTIFY 0  /*!< Same as above but for SUMA_workprocess */
 
 typedef enum { SUMA_VOX_NEIGHB_FACE, SUMA_VOX_NEIGHB_EDGE, SUMA_VOX_NEIGHB_CORNER } SUMA_VOX_NEIGHB_TYPES;
-typedef enum { SUMA_DONT_KNOW = 0, SUMA_IN_TRIBOX_OUTSIDE = 1, SUMA_ON_NODE, SUMA_IN_TRIBOX_INSIDE, SUMA_INSIDE_SURFACE } SUMA_SURF_GRID_INTERSECT_OPTIONS;
+typedef enum { SUMA_DONT_KNOW = 0, SUMA_IN_TRIBOX_OUTSIDE = 1, SUMA_INTERSECTS_TRIANGLE_OUTSIDE, SUMA_ON_NODE, SUMA_INTERSECTS_TRIANGLE_INSIDE, SUMA_IN_TRIBOX_INSIDE, SUMA_INSIDE_SURFACE } SUMA_SURF_GRID_INTERSECT_OPTIONS;
                                     
 typedef enum { SUMA_SIDE_ERROR=-1, SUMA_NO_SIDE, SUMA_LEFT, SUMA_RIGHT } SUMA_SO_SIDE; 
 typedef enum  { SUMA_NO_ANSWER, SUMA_YES, SUMA_NO, SUMA_HELP, SUMA_CANCEL, SUMA_YES_ALL, SUMA_NO_ALL, SUMA_WHAT_THE_HELL } SUMA_QUESTION_DIALOG_ANSWER; /* DO NOT CHANGE THE ORDER OF THE FIRST 4 */
@@ -1235,8 +1235,8 @@ typedef struct {
    float ViewCamUp[3];   /*!< Camera Up direction vector */
    float ViewDistance; /*!< Viewing distance */
    
-   int translateBeginX; /*!< User Input (mouse) X axis current position for translation */
-   int translateBeginY; /*!< User Input (mouse) Y axis current position for translation */
+   float translateBeginX; /*!< User Input (mouse) X axis current position for translation */
+   float translateBeginY; /*!< User Input (mouse) Y axis current position for translation */
    float translateDeltaX;   /*!< User Input (mouse) X axis position increment for translation */
    float translateDeltaY;   /*!< User Input (mouse) Y axis position increment for translation */
    float TranslateGain;   /*!< gain applied to mouse movement */
@@ -1246,10 +1246,10 @@ typedef struct {
    GLfloat RotaCenter[3];   /*!<Center of Rotation */
    float zoomDelta;       /*!< Zoom increment */
    float zoomBegin;    /*!< Current zoom level*/
-   int spinDeltaX;            /*!< User Input (mouse) X axis position increment for spinning*/
-   int spinDeltaY;            /*!< User Input (mouse) Y axis position increment for spinning*/
-   int spinBeginX;            /*!< User Input (mouse) X axis current position for spinning */
-   int spinBeginY;            /*!< User Input (mouse) Y axis current position for spinning */
+   float spinDeltaX;            /*!< User Input (mouse) X axis position increment for spinning*/
+   float spinDeltaY;            /*!< User Input (mouse) Y axis position increment for spinning*/
+   float spinBeginX;            /*!< User Input (mouse) X axis current position for spinning */
+   float spinBeginY;            /*!< User Input (mouse) Y axis current position for spinning */
    int MinIdleDelta;       /*!< minimum spinDeltaX or spinDeltaY to initiate momentum rotation */
    float deltaQuat[4];   /*!< Quaternion increment */
    float currentQuat[4]; /*!< Current quaternion */
@@ -1346,9 +1346,11 @@ typedef struct {
 
    SUMA_X *X; /*!< structure containing X widget midgets */
 
+   int ortho; /*!< Orthographic (1) or perspective (0, default) projection */
    float Aspect;   /*!< Aspect ratio of the viewer*/
    int WindWidth;   /*!< Width of window */
    int WindHeight;   /*!< Height of window */
+   float ZoomCompensate; /*!< Compensate mouse movements by zoom factor */
    float *FOV; /*!< Field of View (affects zoom level, there is a separate FOV for each ViewState)*/
    float ArrowRotationAngle; /*!< Angle to rotate surface by when arrows are used.
                                  Units are in radians */
@@ -1412,7 +1414,6 @@ typedef struct {
    char *CurGroupName; /*!< current name of group */
    int iCurGroup; /*!< index into GroupList (stored in SUMAg_CF) of current group of Surface Viewer */
    SUMA_REDISPLAY_CAUSE rdc;  /*!< Why has a redisplay been requested */
-
 }SUMA_SurfaceViewer;
 
 /*! structure defining an EngineData structure */
@@ -2105,6 +2106,10 @@ typedef struct {
    
    int SUMA_ThrScalePowerBias; 
    SUMA_Boolean IgnoreVolreg; /*!< if YUP then ignore any Volreg or TagAlign transform in the header of the surface volume */
+   SUMA_Boolean isGraphical; /*!< if YUP then Named afni colors will get resolved when creating color maps. 
+                                  Otherwise they are set to gray. Only suma and ScaleToMap will need to set 
+                                  this variable to YUP, for the moment June 3 05 */
+                                    
 } SUMA_CommonFields;
 
 typedef enum { SUMA_NO_SORT, SUMA_BY_PLANE_DISTANCE, SUMA_BY_SEGMENT_DISTANCE, SUMA_SORT_BY_LLC_DISTANCE, SUMA_SORT_BY_LL_QUAD } SUMA_SORT_BOX_AXIS_OPTION;

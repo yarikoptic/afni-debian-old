@@ -333,7 +333,7 @@ extern long   strtol() ;
 # define USE_FLOCK
 # define USE_RANDOM
 # define DONT_USE_STRPTIME
-# define NEED_XSETLOCALE
+/** # define NEED_XSETLOCALE **/  /* removed on 16 May 2005, for Tiger */
 # define NEED_NL_LANGINFO
 # define ENFORCE_ASPECT           /* 29 Apr 2003 */
 #endif
@@ -354,10 +354,14 @@ extern long   strtol() ;
 extern double rint(double) ;  /* 12 Feb 2001 */
 #endif
 
-#ifdef USE_RANDOM             /* 04 Sep 2001 (cf. machdep.h) */
+#ifdef USE_RANDOM             /* 04 Sep 2001 (cf. machdep.c) */
 extern void srand48(long int);
 extern double drand48(void);
 extern long int lrand48(void);
+#endif
+
+#ifdef NO_GAMMA               /* 16 May 2005 (cf. machdep.c) */
+extern double lgamma(double) ;
 #endif
 
 #endif /* _MCW_MACHDEP_ */

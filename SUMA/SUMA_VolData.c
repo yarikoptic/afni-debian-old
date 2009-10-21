@@ -75,6 +75,55 @@ SUMA_Boolean SUMA_AfniExistsView(int exists, char *view)
 
 }
 
+SUMA_Boolean SUMA_AfniView (char *nameorig, char *cview)
+{
+   static char FuncName[]={"SUMA_AfniView"};
+   char *tmp1 = NULL, *tmp2 = NULL;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!nameorig) SUMA_RETURN(NOPE);
+   if (!cview) SUMA_RETURN(NOPE);
+
+   tmp1 = SUMA_Extension(nameorig, ".HEAD", YUP);
+   tmp2 = SUMA_Extension(tmp1, ".BRIK", YUP); SUMA_free(tmp1); tmp1 = NULL;
+   /* is there a dot ?*/
+   if (tmp2[strlen(tmp2)-1] == '.') tmp2[strlen(tmp2)-1] = '\0';
+   
+   if (LocalHead) fprintf(SUMA_STDERR,"%s: Searching for view of %s\n", FuncName, tmp2);
+   
+   /* view */
+   if (SUMA_isExtension(tmp2, "+orig")) { 
+      sprintf(cview, "+orig"); 
+   } else if (SUMA_isExtension(tmp2, "+acpc")) { 
+      sprintf(cview, "+acpc"); 
+   } else if (SUMA_isExtension(tmp2, "+tlrc")) { 
+      sprintf(cview, "+tlrc"); 
+   } else {
+      cview[0]='\0';
+   }
+   SUMA_free(tmp2); tmp2 = NULL;
+
+   SUMA_RETURN(YUP);
+}
+
+SUMA_Boolean SUMA_AfniExists(char *prefix, char *c2view) 
+{
+   static char FuncName[]={"SUMA_AfniExists"};
+   char *head=NULL;
+   SUMA_Boolean ans = NOPE;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   ans = NOPE;
+
+   head = SUMA_append_replace_string(prefix,".HEAD", c2view,0);
+   if (LocalHead) fprintf(SUMA_STDERR,"%s: Checking existence of %s\n", FuncName, head);
+   if (SUMA_filexists(head)) { ans = YUP; }
+   SUMA_free(head); head = NULL; 
+   
+   SUMA_RETURN(ans);
+}
 /*!
    \brief Return AFNI's prefix, from a file name also checks for its validity
    \param name (char *) dset name (can contain path)
@@ -93,6 +142,7 @@ SUMA_Boolean SUMA_AfniExistsView(int exists, char *view)
                         \sa SUMA_AfniExistsView   
                         
    \return prefix (char *) dset prefix, free it with SUMA_free
+   \sa SUMA_AfniView
 */
 char *SUMA_AfniPrefix(char *nameorig, char *view, char *path, int *exists) 
 {
@@ -1405,7 +1455,118 @@ void SUMA_orcode_to_orstring (int xxorient,int  yyorient,int zzorient, char *ors
    
    SUMA_RETURNe;
 }
+SUMA_Boolean SUMA_orstring_to_orcode (char *orstr, int *orient)
+{
+   static char FuncName[]={"SUMA_orstring_to_orcode"};
+   int i;
+   
+   SUMA_ENTRY;
+   
+   if (!orstr) { SUMA_SL_Err("NULL string"); SUMA_RETURN(NOPE); }
+   if (!SUMA_ok_orstring(orstr)) { SUMA_SL_Err("Bad orientation string"); SUMA_RETURN(NOPE); }
+   for (i=0; i<3; ++i) {
+      switch (orstr[i]) {
+         case 'R': orient[i] = ORI_R2L_TYPE; break;
+         case 'L': orient[i] = ORI_L2R_TYPE; break;
+         case 'A': orient[i] = ORI_A2P_TYPE; break;
+         case 'P': orient[i] = ORI_P2A_TYPE; break;
+         case 'I': orient[i] = ORI_I2S_TYPE; break;
+         case 'S': orient[i] = ORI_S2I_TYPE; break;
+         default: fprintf(SUMA_STDERR, " SUMA_orstring_to_orcode: Bad to the bones\n"); SUMA_RETURN(NOPE); 
+      }
+   }
+   
+   SUMA_RETURN(YUP);
+}
 
+int SUMA_ok_orstring (char *orstr)
+{
+   static char FuncName[]={"SUMA_ok_orstring"};
+   int i, d[3];
+   
+   SUMA_ENTRY;
+   
+   if (!orstr) { SUMA_RETURN(NOPE); }
+   d[0] = d[1] = d[2] = 0;
+   for (i=0; i<3; ++i) {
+      switch (orstr[i]) {
+         case 'R': ++(d[0]); break;
+         case 'L': ++(d[0]); break;
+         case 'A': ++(d[1]); break;
+         case 'P': ++(d[1]); break;
+         case 'I': ++(d[2]); break;
+         case 'S': ++(d[2]); break;
+         default: SUMA_RETURN(NOPE); 
+      }
+   }
+   if (d[0] != 1 || d[1] != 1 || d[2] != 1) SUMA_RETURN(NOPE);
+    
+   SUMA_RETURN(YUP);
+}
+int SUMA_flip_orient(int xxorient)
+{
+   static char FuncName[]={"SUMA_flip_orient"};
+   
+   SUMA_ENTRY;
+   
+   switch( xxorient ){
+      case ORI_R2L_TYPE: SUMA_RETURN(ORI_L2R_TYPE); break ;
+      case ORI_L2R_TYPE: SUMA_RETURN(ORI_R2L_TYPE); break ;
+      
+      case ORI_P2A_TYPE: SUMA_RETURN(ORI_A2P_TYPE); break ;
+      case ORI_A2P_TYPE: SUMA_RETURN(ORI_P2A_TYPE); break ;
+      
+      case ORI_I2S_TYPE: SUMA_RETURN(ORI_S2I_TYPE); break ;
+      case ORI_S2I_TYPE: SUMA_RETURN(ORI_I2S_TYPE); break ;
+
+      default: 
+         fprintf(SUMA_STDERR, "SUMA_opposite_orient: illegal zzorient code.\n ") ;
+         SUMA_RETURN(-1);
+   }
+   
+}
+
+SUMA_Boolean SUMA_CoordChange (char *orc_in, char *orc_out, float *XYZ, int N_xyz)
+{
+   static char FuncName[]={"SUMA_CoordChange"};
+   int i, or_in[3], or_out[3], j, map[3], sgn[3], i3;
+   float xyz[3];
+   
+   SUMA_ENTRY;
+   
+   if (!SUMA_orstring_to_orcode(orc_in, or_in)) {
+      SUMA_SL_Err("Bad in code");
+      SUMA_RETURN(NOPE);
+   }
+   if (!SUMA_orstring_to_orcode(orc_out, or_out)) {
+      SUMA_SL_Err("Bad out code");
+      SUMA_RETURN(NOPE);
+   }
+   
+   /* figure out the mapping */
+   for (j=0; j<3; ++j) { 
+      i = 0;
+      while (i<3) {
+         if (or_in[i] == or_out[j] || or_in[i] == SUMA_flip_orient(or_out[j])) {
+            map[j] = i;
+            if (or_in[i] == SUMA_flip_orient(or_out[j])) sgn[j] = -1;
+            else sgn[j] = 1;
+            i = 3; /* break */
+         }
+         ++i;
+      }
+   }
+
+   for (i=0; i<N_xyz; ++i) {
+      i3 = 3*i;
+      xyz[0] = XYZ[i3]; xyz[1] = XYZ[i3+1]; xyz[2] = XYZ[i3+2];
+      XYZ[i3  ] = sgn[0] * xyz[map[0]]; 
+      XYZ[i3+1] = sgn[1] * xyz[map[1]]; 
+      XYZ[i3+2] = sgn[2] * xyz[map[2]]; 
+   }
+   
+   SUMA_RETURN(YUP);
+}
 /*!
    \brief takes the origin as entered to to3d and 
    changes them to the origin field for AFNI header

@@ -24,6 +24,12 @@ extern int SUMAg_N_SVv;
 extern int SUMAg_N_DOv;  
 #endif
 
+static int InteractiveQuit;
+
+int SUMA_DidUserQuit(void)
+{
+   return(InteractiveQuit);
+}
 
 /* 
    volume returned is negative if failed to read volume. 
@@ -276,9 +282,13 @@ float SUMA_LoadPrepInVol (SUMA_GENERIC_PROG_OPTIONS_STRUCT *Opt, SUMA_SurfaceObj
                                  Means[1] mean value below node (only for vals > Opt->t),
                                  Means[2] mean value above node  (only for vals > Opt->t)
 */
-int SUMA_Find_IminImax (SUMA_SurfaceObject *SO, SUMA_GENERIC_PROG_OPTIONS_STRUCT *Opt, int ni, 
-                        float *MinMax, float *MinMax_dist , float *MinMax_over, float *MinMax_over_dist,
-                        float *Means, float *undershish, float *overshish, int *dvecind_under, int *dvecind_over, int ShishMax)
+int SUMA_Find_IminImax (SUMA_SurfaceObject *SO, SUMA_GENERIC_PROG_OPTIONS_STRUCT *Opt, 
+                        int ni, 
+                        float *MinMax, float *MinMax_dist , 
+                        float *MinMax_over, float *MinMax_over_dist,
+                        float *Means, 
+                        float *undershish, float *overshish, 
+                        int *dvecind_under, int *dvecind_over, int ShishMax)
 {
    static char FuncName[]={"SUMA_Find_IminImax"};
    float d1, d2, travdir[3], d1t, d2t, lmin, lmax, lmin_dist, lmax_dist;
@@ -303,6 +313,162 @@ int SUMA_Find_IminImax (SUMA_SurfaceObject *SO, SUMA_GENERIC_PROG_OPTIONS_STRUCT
    while (istep <= istepmax) {
       /* calculate offset */
       travdir[0] = - istep * Opt->travstp * SO->NodeNormList[3*ni]; travdir[1] = -istep * Opt->travstp * SO->NodeNormList[3*ni+1]; travdir[2] = -istep * Opt->travstp * SO->NodeNormList[3*ni+2]; 
+      
+      /* get 1d coord of point */
+      ndicom.xyz[0] = SO->NodeList[3*ni] + travdir[0] ; ndicom.xyz[1] = SO->NodeList[3*ni+1]+ travdir[1]; ndicom.xyz[2] = SO->NodeList[3*ni+2]+ travdir[2]; 
+      ncoord = THD_dicomm_to_3dmm(Opt->in_vol, ndicom);
+      nind3 = THD_3dmm_to_3dind(Opt->in_vol, ncoord);
+      nind = nind3.ijk[0] + nind3.ijk[1] * nxx + nind3.ijk[2] * nxy;
+      #if 0
+      if (ni == Opt->NodeDbg) {
+         fprintf(SUMA_STDERR, "%s: Node %d\n"
+                              " nind3 = [%d %d %d] voxVal = %.3f\n", 
+                              FuncName, Opt->NodeDbg, nind3.ijk[0], nind3.ijk[1], nind3.ijk[2],
+                              Opt->dvec[nind]);
+      }
+      #endif
+      if (undershish && istep < ShishMax) undershish[istep] = Opt->dvec[nind];   /* store values under node */
+      
+      /* track the brain mean, only if the value is above brain non-brain threshold
+      stop inegrating as soon as you hit nonbrain */
+      if (Opt->dvec[nind] > Opt->t && !stopint) { Means[1] += Opt->dvec[nind]; ++ nMeans[1]; }
+      else stopint = 1;
+      if (dvecind_under) dvecind_under[istep] = nind;
+        
+      /* find local min */ 
+      /* lmin = SUMA_MIN_PAIR(lmin, Opt->dvec[nind]); */
+      if (lmin > Opt->dvec[nind]) { lmin = Opt->dvec[nind]; SUMA_NORM_VEC(travdir, 3, lmin_dist); }
+      
+      if (istep <= istep2max) {
+         if (lmax < Opt->dvec[nind]) { lmax = Opt->dvec[nind]; SUMA_NORM_VEC(travdir, 3, lmax_dist); }  
+      }
+      
+      ++istep;
+   }
+   
+   if (istep < ShishMax) { undershish[istep] = -1; if (dvecind_under) dvecind_under[istep] = -1; }/* crown the shish */
+   
+   Means[1] /= (float)nMeans[1];
+   MinMax[0] = SUMA_MAX_PAIR(t2, lmin);
+   MinMax_dist[0] = lmin_dist;  
+   MinMax[1] = SUMA_MIN_PAIR(tm, lmax); 
+   MinMax_dist[1] = lmax_dist;
+   
+   /* search for a minimum overhead */
+   if (MinMax_over) {
+      lmin = Opt->tm;
+      lmin_dist = 0.0;
+      lmax_dist = 0.0;
+      lmax = Opt->t;
+      istep = 0; istepmax = (int)(ceil((double)Opt->d4/Opt->travstp));
+      stopint = 0;
+      while (istep <= istepmax) {
+         /* calculate offset */
+         travdir[0] =  istep * Opt->travstp * SO->NodeNormList[3*ni]; travdir[1] = istep * Opt->travstp * SO->NodeNormList[3*ni+1]; travdir[2] = istep * Opt->travstp * SO->NodeNormList[3*ni+2]; 
+
+         /* get 1d coord of point */
+         ndicom.xyz[0] = SO->NodeList[3*ni] + travdir[0] ; ndicom.xyz[1] = SO->NodeList[3*ni+1]+ travdir[1]; ndicom.xyz[2] = SO->NodeList[3*ni+2]+ travdir[2]; 
+         ncoord = THD_dicomm_to_3dmm(Opt->in_vol, ndicom);
+         nind3 = THD_3dmm_to_3dind(Opt->in_vol, ncoord);
+         nind = nind3.ijk[0] + nind3.ijk[1] * nxx + nind3.ijk[2] * nxy;
+         #if 0
+         if (ni == Opt->NodeDbg) {
+            fprintf(SUMA_STDERR, "%s: Node %d\n"
+                                 " nind3 = [%d %d %d] voxVal = %.3f\n", 
+                                 FuncName, Opt->NodeDbg, nind3.ijk[0], nind3.ijk[1], nind3.ijk[2],
+                                 Opt->dvec[nind]);
+         }
+         #endif
+         if (!istep) { /* get the value at the node */
+            Means[0] = Opt->dvec[nind];
+         }
+         
+         if (overshish && istep < ShishMax) overshish[istep] = Opt->dvec[nind];   /* store values under node */
+         
+         if (Opt->dvec[nind] > Opt->t && !stopint) { Means[2] += Opt->dvec[nind]; ++ nMeans[2]; } 
+         else stopint = 1;
+         if (dvecind_over) dvecind_over[istep] = nind;
+         
+         /* find local min and max*/ 
+         if (lmin > Opt->dvec[nind]) { lmin = Opt->dvec[nind]; SUMA_NORM_VEC(travdir, 3, lmin_dist); }
+         if (lmax < Opt->dvec[nind]) { lmax = Opt->dvec[nind]; SUMA_NORM_VEC(travdir, 3, lmax_dist); }  
+         
+         ++istep;
+      }
+      
+      if (istep < ShishMax) { overshish[istep] = -1; if (dvecind_over) dvecind_over[istep] = -1; }/* crown the shish */
+
+      Means[2] /= (float)nMeans[2];
+      MinMax_over[0] = lmin; 
+      MinMax_over_dist[0] = lmin_dist;  
+      MinMax_over[1] = lmax;
+      MinMax_over_dist[1] = lmax_dist;
+   }
+   
+   SUMA_RETURN(YUP);
+}
+
+/*!
+   \param MinMax (float) 2x1: MinMax[0] minimum under node
+                              MinMax_dist[1] maximum under node
+   \param MinMax_dist (float) 2x1: MinMax_dist[0] distance of minimum under node
+                                   MinMax_dist[1] distance of maximum under node
+   \param MinMax_over (float) 2x1: MinMax_over[0] minimum over node
+                                   MinMax_over[1] maximum over node
+                                   (set this one to NULL if you do not want to search over the node.
+                                   In that case all the _over (or above like Means[2]) values will
+                                   be undetermined.
+   \param MinMax_over_dist (float) 2x1: MinMax_over_dist[0] distance of minimum over node
+                                        MinMax_over_dist[1] distance of maximum over node
+   \param Means (float *) 3x1 :  Means[0] value at node, 
+                                 Means[1] mean value below node (only for vals > Opt->t),
+                                 Means[2] mean value above node  (only for vals > Opt->t)
+*/
+int SUMA_Find_IminImax_Avg (SUMA_SurfaceObject *SO, SUMA_GENERIC_PROG_OPTIONS_STRUCT *Opt, 
+                        int ni, 
+                        float *MinMax, float *MinMax_dist , 
+                        float *MinMax_over, float *MinMax_over_dist,
+                        float *Means, 
+                        float *undershish, float *overshish, 
+                        int *dvecind_under, int *dvecind_over, int ShishMax)
+{
+   static char FuncName[]={"SUMA_Find_IminImax_Avg"};
+   float d1, d2, travdir[3], d1t, d2t, lmin, lmax, lmin_dist, lmax_dist;
+   float t2 = Opt->t2, tm = Opt->tm, t = Opt->t; 
+   THD_fvec3 ncoord, ndicom;
+   THD_ivec3 nind3;
+   int nind, istep, istepmax, istep2max, nxx, nxy, nMeans[3], stopint;
+   int N_vtnmax = 500, N_vtn, vtn[N_vtnmax]; /* vector of triangles incident triangles to node ni */
+   
+   SUMA_ENTRY;
+   
+   d1 = Opt->d1; d2 = d1/2.0; 
+   
+   vtn[N_vtnmax-1] = -1; /* flag to check for overruns */
+   Means[0] = Means[1] = Means[2] = 0.0;
+   nMeans[0] = nMeans[1] = nMeans[2] = 0;
+   lmin = Opt->tm;
+   lmin_dist = 0.0;
+   lmax_dist = 0.0;
+   lmax = Opt->t;
+   nxx = DSET_NX(Opt->in_vol);
+   nxy = DSET_NX(Opt->in_vol) * DSET_NY(Opt->in_vol);
+   istep = 0; istepmax = (int)(ceil((double)d1/Opt->travstp)); istep2max = (int)(ceil((double)d2/Opt->travstp));
+   stopint = 0;
+   while (istep <= istepmax) {
+      /* calculate offset */
+      travdir[0] = - istep * Opt->travstp * SO->NodeNormList[3*ni]; travdir[1] = -istep * Opt->travstp * SO->NodeNormList[3*ni+1]; travdir[2] = -istep * Opt->travstp * SO->NodeNormList[3*ni+2]; 
+      
+      /* find the set of triangles incident to node ni */
+      if (!SUMA_Get_NodeIncident(ni, SO, vtn, &N_vtn)) {
+          SUMA_SL_Err("Failed to find incident triangles.\nDecidement, ca va tres mal.\n");
+          SUMA_RETURN(NOPE);
+      }
+      if (vtn[N_vtnmax-1] != -1) {
+         SUMA_SL_Err("Way too many incident triangles. Memory corruption likely.");
+         SUMA_RETURN(NOPE);
+      }
+      /* for each triangle, find the voxels that it intersects */
       
       /* get 1d coord of point */
       ndicom.xyz[0] = SO->NodeList[3*ni] + travdir[0] ; ndicom.xyz[1] = SO->NodeList[3*ni+1]+ travdir[1]; ndicom.xyz[2] = SO->NodeList[3*ni+2]+ travdir[2]; 
@@ -522,11 +688,14 @@ int SUMA_StretchToFitLeCerveau (SUMA_SurfaceObject *SO, SUMA_GENERIC_PROG_OPTION
    double MaxExp;
    int keepgoing=0, N_troub, past_N_troub;
    double pastarea, curarea, darea;
+   char cbuf;
    FILE *OutNodeFile = NULL;
    SUMA_Boolean DoDbg=NOPE;
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
+   
+   InteractiveQuit = 0;
    
    if (Opt->debug > 2) LocalHead = YUP;
 
@@ -751,8 +920,29 @@ int SUMA_StretchToFitLeCerveau (SUMA_SurfaceObject *SO, SUMA_GENERIC_PROG_OPTION
 
       } /* loop over number of iterations */
       ++Stage;
+      if (Opt->DemoPause == SUMA_3dSS_INTERACTIVE) {
+         fprintf (SUMA_STDERR,"3dSkullStrip Interactive: \n"
+                              "Increasing number of iterations to reach minimal expansion.\n"
+                              "Do you want to (C)ontinue, (P)ass or (S)ave this? [C] ");
+         cbuf = SUMA_ReadCharStdin ('c', 0,"csp");
+         fprintf (SUMA_STDERR,"%c\n", cbuf);
+         switch (cbuf) {
+            case 's':   
+               fprintf (SUMA_STDERR,"Will check surface, save mask and exit.\n");
+               InteractiveQuit = 1;
+               goto CLEAN_RETURN;
+               break;
+            case 'p':
+               fprintf (SUMA_STDERR,"Passing this stage \n");
+               goto CLEAN_RETURN;
+               break;
+            case 'c':
+               fprintf (SUMA_STDERR,"Continuing with stage.\n");
+               break;
+         }                 
+      }
       if (Stage == 1) { /* if the surface is still growing, keep going */
-         if (Opt->DemoPause) { SUMA_PAUSE_PROMPT("About to be in stage 1"); }
+         if (Opt->DemoPause == SUMA_3dSS_DEMO_PAUSE) { SUMA_PAUSE_PROMPT("About to be in stage 1"); }
          if (LocalHead) fprintf (SUMA_STDERR,"%s: \n In stage 1\n", FuncName);
          if (MaxExp > 0.5) {
             /* Now, if you still have expansion, continue */
@@ -784,8 +974,8 @@ int SUMA_StretchToFitLeCerveau (SUMA_SurfaceObject *SO, SUMA_GENERIC_PROG_OPTION
          }
       }
       if (Stage == 2) {
-         if (Opt->DemoPause) { SUMA_PAUSE_PROMPT("About to be in stage 2"); }
          if (0) {
+            if (Opt->DemoPause == SUMA_3dSS_DEMO_PAUSE) { SUMA_PAUSE_PROMPT("About to be in stage 2"); }
             touchup = SUMA_Suggest_Touchup_Grad(SO, Opt, 4.0, cs, &N_troub);
             if (!touchup) SUMA_SL_Warn("Failed in SUMA_Suggest_Touchup");
          } else {
@@ -804,7 +994,7 @@ int SUMA_StretchToFitLeCerveau (SUMA_SurfaceObject *SO, SUMA_GENERIC_PROG_OPTION
          }
       }
       if (Stage == 3) {
-         if (Opt->DemoPause) { SUMA_PAUSE_PROMPT("About to be in stage 3"); }
+         if (Opt->DemoPause == SUMA_3dSS_DEMO_PAUSE) { SUMA_PAUSE_PROMPT("About to be in stage 3"); }
          /* see if there is room for extension */
          touchup = SUMA_Suggest_Touchup(SO, Opt, 4.0, cs, &N_troub);
          if (!touchup) SUMA_SL_Warn("Failed in SUMA_Suggest_Touchup");
@@ -857,7 +1047,7 @@ int SUMA_StretchToFitLeCerveau (SUMA_SurfaceObject *SO, SUMA_GENERIC_PROG_OPTION
       }
    } while (!Done);
       
-   
+   CLEAN_RETURN:
    if (undershish) SUMA_free(undershish); undershish = NULL;
    if (overshish) SUMA_free(overshish); overshish = NULL;
    if (OrigNodeList) SUMA_free(OrigNodeList); OrigNodeList = NULL;
@@ -918,7 +1108,7 @@ byte *SUMA_FindVoxelsInSurface_SLOW (SUMA_SurfaceObject *SO, SUMA_VOLPAR *VolPar
    memcpy ((void*)tmpXYZ, (void *)SO->NodeList, SO->N_Node * 3 * sizeof(float));
    
    /* transform the surface's coordinates from RAI to 3dfind */
-   SUMA_vec_dicomm_to_3dfind (tmpXYZ, SO->N_Node, SO->VolPar);
+   SUMA_vec_dicomm_to_3dfind (tmpXYZ, SO->N_Node, VolPar);
    
    /* find the new center and bounding box for the surface in the new coordinate system*/
    SUMA_MIN_MAX_SUM_VECMAT_COL (tmpXYZ, SO->N_Node, 3, MinDims, MaxDims, SOCenter); 
@@ -1024,6 +1214,10 @@ byte *SUMA_FindVoxelsInSurface_SLOW (SUMA_SurfaceObject *SO, SUMA_VOLPAR *VolPar
                            2: voxel is in box containing triangle
                            3: voxel is in box containing triangle and is on the side opposite to the normal 
                            See SUMA_SURF_GRID_INTERSECT_OPTIONS for the various possible values
+
+   - The first part of this function is the source for function SUMA_GetVoxelsIntersectingTriangle
+   If you find bugs here, fix them there too. 
+
 */
 short *SUMA_SurfGridIntersect (SUMA_SurfaceObject *SO, float *NodeIJKlist, SUMA_VOLPAR *VolPar, int *N_inp, int fillhole, THD_3dim_dataset *fillmaskset)
 {
@@ -1031,9 +1225,9 @@ short *SUMA_SurfGridIntersect (SUMA_SurfaceObject *SO, float *NodeIJKlist, SUMA_
    short *isin=NULL;
    byte *ijkmask=NULL, *inmask = NULL, *ijkout = NULL;
    float *p1, *p2, *p3, min_v[3], max_v[3], p[3], dist;
-   float MaxDims[3], MinDims[3], SOCenter[3];
+   float MaxDims[3], MinDims[3], SOCenter[3], dxyz[3];
    int nn, nijk, nx, ny, nz, nxy, nxyz, nf, n1, n2, n3, nn3, *voxelsijk=NULL, N_alloc, en;
-   int N_inbox, nt, nt3, ijkseed, N_in, N_realloc;
+   int N_inbox, nt, nt3, ijkseed = -1, N_in, N_realloc;
    byte *fillmaskvec=NULL;
    SUMA_Boolean LocalHead = NOPE;
    
@@ -1044,12 +1238,12 @@ short *SUMA_SurfGridIntersect (SUMA_SurfaceObject *SO, float *NodeIJKlist, SUMA_
       SUMA_RETURN(NULL);
    }
    
-   nx = SO->VolPar->nx; ny = SO->VolPar->ny; nz = SO->VolPar->nz; nxy = nx * ny; nxyz = nx * ny * nz;
+   nx = VolPar->nx; ny = VolPar->ny; nz = VolPar->nz; nxy = nx * ny; nxyz = nx * ny * nz;
    
 
    isin = (short *)SUMA_calloc(nxyz, sizeof(short));
    if (!isin) {
-      SUMA_SL_Crit("Faile to allocate");
+      SUMA_SL_Crit("Failed to allocate");
       SUMA_RETURN(NULL);
    }
    
@@ -1067,11 +1261,12 @@ short *SUMA_SurfGridIntersect (SUMA_SurfaceObject *SO, float *NodeIJKlist, SUMA_
    N_realloc = 0;
    voxelsijk = (int *)SUMA_malloc(sizeof(int)*N_alloc*3);
    if (!voxelsijk) { SUMA_SL_Crit("Failed to Allocate!"); SUMA_RETURN(NULL);  }   
+   dxyz[0] = VolPar->dx; dxyz[1] = VolPar->dy; dxyz[2] = VolPar->dz;
    for (nf=0; nf<SO->N_FaceSet; ++nf) {
       n1 = SO->FaceSetList[SO->FaceSetDim*nf]; n2 = SO->FaceSetList[SO->FaceSetDim*nf+1]; n3 = SO->FaceSetList[SO->FaceSetDim*nf+2];
       /* find the bounding box of the triangle */
       p1 = &(NodeIJKlist[3*n1]); p2 = &(NodeIJKlist[3*n2]); p3 = &(NodeIJKlist[3*n3]); 
-      SUMA_TRIANGLE_BOUNDING_BOX(p1, p2, p3, min_v, max_v)
+      SUMA_TRIANGLE_BOUNDING_BOX(p1, p2, p3, min_v, max_v);
       
       /* quick check of preallocate size of voxelsijk */
       en =((int)(max_v[0] - min_v[0] + 2) * (int)(max_v[1] - min_v[1] + 2) * (int)(max_v[2] - min_v[2] + 2)); 
@@ -1088,7 +1283,7 @@ short *SUMA_SurfGridIntersect (SUMA_SurfaceObject *SO, float *NodeIJKlist, SUMA_
       }
       if (!N_inbox) { SUMA_SL_Err("Unexpected error, no voxels in box!"); SUMA_RETURN(NULL);  }
       
-      /* mark hese voxels as inside the business */
+      /* mark these voxels as inside the business */
       for (nt=0; nt < N_inbox; ++nt) {
          nt3 = 3*nt;
          if (voxelsijk[nt3] < nx &&  voxelsijk[nt3+1] < ny &&  voxelsijk[nt3+2] < nz) {
@@ -1101,6 +1296,13 @@ short *SUMA_SurfGridIntersect (SUMA_SurfaceObject *SO, float *NodeIJKlist, SUMA_
                if (dist) {
                   if (SUMA_IS_NEG(VolPar->Hand * dist)) isin[nijk] = SUMA_IN_TRIBOX_INSIDE;  /* ZSS Added handedness factor. who would have thought? Be damned 3D coord systems! */
                   else isin[nijk] = SUMA_IN_TRIBOX_OUTSIDE; 
+               }
+               
+               if (1) { /* does this triangle actually intersect this voxel ?*/
+                  if (SUMA_isVoxelIntersect_Triangle (p, dxyz, p1, p2, p3)) {
+                     if (isin[nijk] == SUMA_IN_TRIBOX_INSIDE) isin[nijk] = SUMA_INTERSECTS_TRIANGLE_INSIDE;
+                     else isin[nijk] = SUMA_INTERSECTS_TRIANGLE_OUTSIDE;
+                  } 
                }
                ++(*N_inp);    
             }
@@ -1126,15 +1328,50 @@ short *SUMA_SurfGridIntersect (SUMA_SurfaceObject *SO, float *NodeIJKlist, SUMA_
       /* seed: find the center the surface in the index coordinate system*/
       SUMA_MIN_MAX_SUM_VECMAT_COL (NodeIJKlist, SO->N_Node, 3, MinDims, MaxDims, SOCenter); 
       SOCenter[0] /= SO->N_Node;  SOCenter[1] /= SO->N_Node;   SOCenter[2] /= SO->N_Node;
-      if (LocalHead) {
-         fprintf(SUMA_STDERR,"%s:\nSeed is %d %d %d\n", FuncName, (int)SOCenter[0], (int)SOCenter[1], (int)SOCenter[2]); 
+      {
+         float u[3], un, p0[3], p1[3];
+         int Found = 0, cnt;
+         SUMA_MT_INTERSECT_TRIANGLE *mti = NULL; 
+
+         /* Ray from a node on the surface to the center */
+         p0[0] = NodeIJKlist[0]; p1[0] = SOCenter[0]; 
+         p0[1] = NodeIJKlist[1]; p1[1] = SOCenter[1]; 
+         p0[2] = NodeIJKlist[2]; p1[2] = SOCenter[2]; 
+         SUMA_UNIT_VEC(p0, p1, u, un);
+         /* travel along that ray until you find a point inside the surface AND not on the mask */
+         Found = 0; cnt = 1;
+         while (!Found && cnt <= un) {
+            p1[0] = p0[0] + cnt * u[0];
+            p1[1] = p0[1] + cnt * u[1];
+            p1[2] = p0[2] + cnt * u[2];
+            if (LocalHead) {
+               fprintf(SUMA_STDERR,"%s:\nTrying seed ijk is %d %d %d\n", FuncName, (int)p1[0], (int)p1[1], (int)p1[2]); 
+            }
+            ijkseed = SUMA_3D_2_1D_index(p1[0], p1[1], p1[2], nx , nxy);
+            mti = SUMA_MT_intersect_triangle(p1, SOCenter, NodeIJKlist, SO->N_Node, SO->FaceSetList, SO->N_FaceSet, mti);
+            if (!(mti->N_poshits % 2)) { /* number of positive direction hits is a multiple of 2 */
+               /* seed is outside */
+               SUMA_LH("Seed outside");
+            } else {
+               SUMA_LH("Seed inside");
+               /* seed is inside, is it on the mask ? */
+               if (!ijkmask[ijkseed]) { SUMA_LH("Seed Accepted");Found = YUP; }
+               else SUMA_LH("Seed on mask");
+            }
+            ++cnt;   
+         }
+         if (!Found) {
+            SUMA_SL_Err("Failed to find seed!");
+            if (isin) SUMA_free(isin); isin = NULL;
+            goto CLEAN_EXIT;
+         }
+         if (mti) mti = SUMA_Free_MT_intersect_triangle(mti);
       }
-      ijkseed = SUMA_3D_2_1D_index(SOCenter[0], SOCenter[1], SOCenter[2], nx , nxy);  
       
       /* hide the mask values that are outside the surface */
       for (nt=0; nt<nxyz; ++nt) { if (ijkout[nt]) isin[nt] = 0; }
       
-     if (fillmaskset) {
+      if (fillmaskset) {
                   fillmaskvec = (byte *)SUMA_malloc(nx*ny*nz*sizeof(byte));
                   if (!fillmaskvec) { SUMA_SL_Crit("Failed to allocate fillmaskvec"); }
                   /* is this value 0 in the fillmaskset */
@@ -1144,6 +1381,11 @@ short *SUMA_SurfGridIntersect (SUMA_SurfaceObject *SO, float *NodeIJKlist, SUMA_
       }
       
       /* get the mask */
+      if (ijkseed < 0) {
+         SUMA_SL_Err("Should not be here!");
+         if (isin) SUMA_free(isin); isin = NULL;
+         goto CLEAN_EXIT;
+      }
       inmask = SUMA_FillToVoxelMask(ijkmask, ijkseed, nx, ny, nz, &N_in, NULL); 
       if (!inmask) {
          SUMA_SL_Err("Failed to FillToVoxelMask!");
@@ -1181,6 +1423,7 @@ short *SUMA_SurfGridIntersect (SUMA_SurfaceObject *SO, float *NodeIJKlist, SUMA_
       /* now put back the values outside the surface but protect values in mask */
       for (nt=0; nt<nxyz; ++nt) { if (ijkout[nt] && !inmask[nt]) isin[nt] = SUMA_IN_TRIBOX_OUTSIDE; }
       
+   CLEAN_EXIT:   
    if (ijkout) SUMA_free(ijkout); ijkout = NULL;
    if (ijkmask) SUMA_free(ijkmask); ijkmask = NULL;
    if (inmask) SUMA_free(inmask); inmask = NULL;
@@ -1233,7 +1476,7 @@ short *SUMA_FindVoxelsInSurface (SUMA_SurfaceObject *SO, SUMA_VOLPAR *VolPar, in
    memcpy ((void*)tmpXYZ, (void *)SO->NodeList, SO->N_Node * 3 * sizeof(float));
    
    /* transform the surface's coordinates from RAI to 3dfind */
-   SUMA_vec_dicomm_to_3dfind (tmpXYZ, SO->N_Node, SO->VolPar);
+   SUMA_vec_dicomm_to_3dfind (tmpXYZ, SO->N_Node, VolPar);
    
    /* find the new center and bounding box for the surface in the new coordinate system*/
    SUMA_MIN_MAX_SUM_VECMAT_COL (tmpXYZ, SO->N_Node, 3, MinDims, MaxDims, SOCenter); 
@@ -1690,3 +1933,47 @@ int SUMA_Reposition_Touchup(SUMA_SurfaceObject *SO, SUMA_GENERIC_PROG_OPTIONS_ST
    
    SUMA_RETURN(YUP);
 }
+
+/*!
+   \brief Creates an empty AFNI EDIT_options structure.
+    All fields are initialized to do nothing.
+    The fields initialized are based on those used in EDIT_one_dataset in edt_onedset.c
+   Free returned pointer with SUMA_free
+*/
+EDIT_options *SUMA_BlankAfniEditOptions(void)
+{
+   static char FuncName[]={"SUMA_BlankAfniEditOptions"};
+   EDIT_options *edopt = NULL;
+
+   SUMA_ENTRY;
+
+   edopt = (EDIT_options *)SUMA_calloc(1, sizeof(EDIT_options));
+   /* set all fields to do nothing */
+   edopt->thtoin = 0; 
+   edopt->noneg = 0; 
+   edopt->abss = 0; 
+   edopt->clip_bot = 0; 
+   edopt->clip_top = 0; 
+   edopt->thresh = 0.0; 
+   edopt->edit_clust = ECFLAG_SAME - 1;
+   edopt->clust_rmm = 0.0;
+	edopt->clust_vmul = 0.0;
+   edopt->erode_pv  = 0.0;
+   edopt->dilate = 0;
+   edopt->filter_opt = FCFLAG_NONE;
+   edopt->filter_rmm = 0.0;
+   edopt->thrfilter_opt = FCFLAG_NONE;
+   edopt->thrfilter_rmm = 0.0;
+   edopt->blur = 0.0; 
+   edopt->thrblur = 0.0; 
+   edopt->scale = 0.0; 
+   edopt->mult = 0.0; 
+   edopt->do_zvol = 0; 
+   edopt->iv_fim = -1;
+   edopt->iv_thr = -1;
+   edopt->verbose = 0;
+   edopt->fake_dxyz = 0;
+   edopt->clip_unscaled = 0; 
+
+   SUMA_RETURN(edopt);
+}  

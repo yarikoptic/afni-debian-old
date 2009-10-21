@@ -878,7 +878,9 @@ if(PRINT_TRACING)
    grapher->xax_tsim    =  NULL ;  /* 09 Jan 1998 */
    grapher->ave_tsim    =  NULL ;  /* 27 Jan 2004 */
 
-   grapher->xx_text_1 = grapher->xx_text_2 = 1 ;
+   grapher->xx_text_1    =
+    grapher->xx_text_2   =
+     grapher->xx_text_2p = grapher->xx_text_3 = 1 ;
 
    grapher->ref_ts = NULL ;
    grapher->ort_ts = NULL ;
@@ -1128,11 +1130,11 @@ static XPoint xball[] = {
       {-3, 0}                   /* NBAX ends here */
  } ;
 
-/*--- draw into Pixmap (the graph itself) ---*/
+/*------------------ draw into Pixmap (the graph itself) -----------------------*/
 
-void GRA_small_circle( MCW_grapher * grapher , int xwin , int ywin , int filled )
+void GRA_small_circle( MCW_grapher *grapher, int xwin, int ywin, int filled )
 {
-   int  i , ncirc ;
+   int  i, ncirc ;
    XPoint a[NBTOP] ;
 
    switch( filled ){
@@ -1146,16 +1148,16 @@ void GRA_small_circle( MCW_grapher * grapher , int xwin , int ywin , int filled 
       a[i].y = xball[i].y + ywin ;
    }
 
-   XDrawPoints( grapher->dc->display , grapher->fd_pxWind ,
-                grapher->dc->myGC , a , ncirc , CoordModeOrigin ) ;
+   XDrawPoints( grapher->dc->display, grapher->fd_pxWind,
+                grapher->dc->myGC, a, ncirc, CoordModeOrigin ) ;
    return ;
 }
 
-/*--- draw into window (the graph overlay) ---*/
+/*------------------ draw into window (the graph overlay) -----------------------*/
 
-void GRA_overlay_circle( MCW_grapher *grapher , int xwin , int ywin , int filled )
+void GRA_overlay_circle( MCW_grapher *grapher, int xwin, int ywin, int filled )
 {
-   int  i , ncirc ;
+   int  i, ncirc ;
    XPoint a[NBTOP] ;
 
    switch( filled ){
@@ -1169,12 +1171,26 @@ void GRA_overlay_circle( MCW_grapher *grapher , int xwin , int ywin , int filled
       a[i].y = xball[i].y + ywin ;
    }
 
-   DC_linewidth( grapher->dc , 0 ) ;
+   DC_linewidth( grapher->dc, 0 ) ;
 
-   XDrawPoints( grapher->dc->display , XtWindow(grapher->draw_fd) ,
-                grapher->dc->myGC , a , ncirc , CoordModeOrigin ) ;
+   XDrawPoints( grapher->dc->display, XtWindow(grapher->draw_fd),
+                grapher->dc->myGC, a, ncirc, CoordModeOrigin ) ;
    return ;
 }
+
+/*---------------------------------------------------------------------------*/
+
+void GRA_draw_circle( MCW_grapher *grapher , int xc , int yc , int rad )
+{
+   int xb,yb ;
+   unsigned int ww ;
+
+   if( rad < 0 ) rad = 0 ;
+   xb = xc-rad ; yb = yc-rad ; ww = 2*rad ;
+   XDrawArc( grapher->dc->display , XtWindow(grapher->draw_fd) ,
+             grapher->dc->myGC , xb,yb , ww,ww , 0,360*64 ) ;
+}
+
 
 /*-----------------------------------------------
    redraw stuff that overlays the pixmap
@@ -1213,6 +1229,24 @@ ENTRY("GRA_redraw_overlay") ;
 
    EXRONE(grapher) ;  /* 22 Sep 2000 */
 
+   /* draw some circles over ignored data points [23 May 2005] */
+
+   if( grapher->init_ignore > 0 && !grapher->textgraph ){
+     DC_fg_color( grapher->dc , IGNORE_COLOR(grapher) ) ;
+     jj  = NBOT(grapher) ;                     /* first point to plot */
+     xxx = NTOP(grapher) ;                     /* last */
+     xxx = MIN (xxx , grapher->init_ignore) ;  /* point */
+     xxx = MIN (xxx , ii+grapher->nncen) ;     /* to plot */
+     for( ii=jj ; ii < xxx ; ii++ )
+#if 0
+       GRA_overlay_circle( grapher , grapher->cen_line[ii-jj].x ,
+                                     grapher->cen_line[ii-jj].y , 1 ) ;
+#else
+       GRA_draw_circle( grapher , grapher->cen_line[ii-jj].x ,
+                                  grapher->cen_line[ii-jj].y , 4 ) ;
+#endif
+   }
+
    /* 22 July 1996:
       draw a ball on the graph at the currently display time_index */
 
@@ -1221,8 +1255,8 @@ ENTRY("GRA_redraw_overlay") ;
        ii <  NTOP(grapher) && ii-jj < grapher->nncen && !grapher->textgraph ){
 
       DC_fg_color( grapher->dc , IDEAL_COLOR(grapher) ) ;
-      GRA_overlay_circle( grapher ,
-                          grapher->cen_line[ii-jj].x , grapher->cen_line[ii-jj].y , 2 ) ;
+      GRA_overlay_circle( grapher , grapher->cen_line[ii-jj].x ,
+                                    grapher->cen_line[ii-jj].y , 2 ) ;
    }
 
    /* draw text showing value at currently displayed time_index */
@@ -1252,6 +1286,8 @@ ENTRY("GRA_redraw_overlay") ;
 
       xxx = MAX( grapher->xx_text_2 ,
                  grapher->xorigin[grapher->xc][grapher->yc] ) ;
+
+      if( grapher->init_ignore > 0 ) xxx = MAX( xxx , grapher->xx_text_2p ) ;
 
       DC_fg_color( grapher->dc , IDEAL_COLOR(grapher) ) ;
       overlay_txt( grapher, xxx , GB_DLY-15 , strp ) ;
@@ -1360,6 +1396,11 @@ ENTRY("redraw_graph") ;
    DC_linewidth( grapher->dc , 0 ) ;
    fd_line( grapher , xxx-7 , 41 , xxx-7 , 5 ) ;
 
+   if( grapher->init_ignore > 0 ){                    /* 23 May 2005 */
+     sprintf(strp,"Ignore%4d",grapher->init_ignore) ;
+     fd_txt( grapher , xxx , 35, strp) ;
+   }
+
    sprintf(strp,"Grid:%5d", grapher->grid_spacing ) ;
    rrr = DC_text_width(grapher->dc,strp) ;
 
@@ -1385,7 +1426,11 @@ ENTRY("redraw_graph") ;
      else
        sprintf(strp,"Num%3d:%-3d" , bb,tt ) ;
    }
-   fd_line( grapher , grapher->xx_text_2+rrr+3 , 31 , grapher->xx_text_2+rrr+3 , 5 ) ;
+   fd_line( grapher ,
+            grapher->xx_text_2+rrr+3 , (grapher->init_ignore > 0) ? 41 : 31 ,
+            grapher->xx_text_2+rrr+3 , 5 ) ;
+
+   grapher->xx_text_2p = grapher->xx_text_2+rrr+7 ;  /* 23 May 2005 */
 
    if( !grapher->textgraph ){
      switch( grapher->common_base ){
@@ -3144,7 +3189,27 @@ STATUS(str); }
       break;
 
       case 'a':
-        redraw_graph( grapher , PLOTCODE_AUTOSCALE ) ;  /* 03 Feb 1998 */
+        redraw_graph( grapher , PLOTCODE_AUTOSCALE ) ;         /* 03 Feb 1998 */
+      break ;
+
+      case 'i':
+        if( !grapher->textgraph && grapher->init_ignore > 0 ){ /* 24 May 2005 */
+          GRA_cbs cbs ;
+          cbs.reason = graCR_setignore ; cbs.key = grapher->init_ignore - 1 ;
+          CALL_sendback( grapher , cbs ) ;
+        } else {
+          XBell(grapher->dc->display,100) ;
+        }
+      break ;
+
+      case 'I':
+        if( !grapher->textgraph ){                             /* 24 May 2005 */
+          GRA_cbs cbs ;
+          cbs.reason = graCR_setignore ; cbs.key = grapher->init_ignore + 1 ;
+          CALL_sendback( grapher , cbs ) ;
+        } else {
+          XBell(grapher->dc->display,100) ;
+        }
       break ;
 
       case 'm':
@@ -3243,6 +3308,8 @@ STATUS(str); }
           grapher->timer_id    =
            XtAppAddTimeOut( XtWidgetToApplicationContext(grapher->opt_quit_pb),
                             grapher->timer_delay , GRA_timer_CB , grapher ) ;
+        } else {
+          XBell(grapher->dc->display,100) ;
         }
       break ;
 
@@ -3256,6 +3323,8 @@ STATUS(str); }
           grapher->timer_id    =
            XtAppAddTimeOut( XtWidgetToApplicationContext(grapher->opt_quit_pb),
                             grapher->timer_delay , GRA_timer_CB , grapher ) ;
+        } else {
+          XBell(grapher->dc->display,100) ;
         }
       break ;
 
@@ -4246,7 +4315,7 @@ ENTRY("drive_MCW_grapher") ;
 
          if( new_ignore >= 0 && new_ignore < TTOP(grapher)-1 ){
            grapher->init_ignore = new_ignore ;
-           redraw_graph( grapher , 0 ) ;
+           redraw_graph( grapher , PLOTCODE_AUTOSCALE ) ;
            RETURN( True ) ;
          } else {
            RETURN( False ) ;

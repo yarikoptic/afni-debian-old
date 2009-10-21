@@ -2593,7 +2593,7 @@ int SUMA_GetNodeRow_FromNodeIndex(SUMA_DSET *dset, int node, int N_Node)
    
    if (NodeDef) {
       SUMA_LH("Col. Index found");
-      if (nel->vec_filled < node) {
+      if (nel->vec_filled > node) { /* bug here (used to be < !) discovered thanks to Rosanna and Shane */
          if (node == NodeDef[node]) {
             SUMA_LH("Got lucky");
             SUMA_RETURN(node);
@@ -2601,6 +2601,10 @@ int SUMA_GetNodeRow_FromNodeIndex(SUMA_DSET *dset, int node, int N_Node)
       }
       /* explicit search */
       SUMA_LH("Explicit");
+      if (nel->vec_filled > N_Node) {
+         SUMA_SL_Err("Unexpected error nel->vec_filled > N_Node");
+         SUMA_RETURN(-1);
+      }
       for (i=0; i<nel->vec_filled; ++i) {
          if (NodeDef[i] == node) SUMA_RETURN(i);
       }
@@ -3911,35 +3915,39 @@ SUMA_DSET *SUMA_LoadDXDset (char *Name, int verb)
    \return dset (SUMA_DSET *)
    
 */
-SUMA_DSET *SUMA_Load1DDset (char *Name, int verb)
+SUMA_DSET *SUMA_Load1DDset (char *oName, int verb)
 {
    static char FuncName[]={"SUMA_Load1DDset"};
    char *FullName = NULL;
    MRI_IMAGE *im = NULL;
    float *far=NULL;
    int i;
-   char *idcode = NULL, *name=NULL;
+   char *idcode = NULL, *name=NULL, *nstrip = NULL;
    SUMA_DSET *dset=NULL;
    
    SUMA_ENTRY;
    
-   if (!Name) { SUMA_SL_Err("Null Name"); SUMA_RETURN(dset); }
+   if (!oName) { SUMA_SL_Err("Null Name"); SUMA_RETURN(dset); }
+   
+   SUMA_S_Note(oName);
+   /* remove [] if existing */
+   nstrip = SUMA_copy_string(oName);
+   for (i=0; i<strlen(nstrip); ++i) if (nstrip[i] == '[') { nstrip[i] = '\0'; break; }
    
    /* work the name */
-   if (!SUMA_filexists(Name)) {
+   if (!SUMA_filexists(nstrip)) {
       /* try the extension game */
-      FullName = SUMA_Extension(Name, ".1D.dset", NOPE);
+      FullName = SUMA_Extension(nstrip, ".1D.dset", NOPE);
       if (!SUMA_filexists(FullName)) {
          if (verb)  { SUMA_SL_Err("Failed to find dset file."); }
          if (FullName) SUMA_free(FullName); FullName = NULL;
          SUMA_RETURN(dset);
       }
    }else {
-      FullName = SUMA_copy_string(Name);
+      FullName = SUMA_copy_string(nstrip);
    }
-   
    /* got the name, now read it */
-   im = mri_read_1D (Name);
+   im = mri_read_1D (oName);
    if (!im) {
       if (verb) SUMA_SLP_Err("Failed to read file");
       if (FullName) SUMA_free(FullName); FullName = NULL;
@@ -3965,6 +3973,7 @@ SUMA_DSET *SUMA_Load1DDset (char *Name, int verb)
    /* done, clean up and out you go */
    if (im) mri_free(im); im = NULL; 
    if (FullName) SUMA_free(FullName); FullName = NULL;
+   if (nstrip) SUMA_free(nstrip); nstrip = NULL;
    SUMA_RETURN(dset);
 }
 

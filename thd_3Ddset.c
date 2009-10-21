@@ -34,9 +34,9 @@ ENTRY("THD_open_3D") ;
 
 STATUS("reading header") ;
 
-   NI_read_header_only(1) ;
+   NI_skip_procins(1) ; NI_read_header_only(1) ;
    nel = NI_read_element(ns,333); NI_stream_close(ns);
-   NI_read_header_only(0) ;
+   NI_skip_procins(0) ; NI_read_header_only(0) ;
 
    /*-- check data element for reasonability --*/
 
@@ -137,7 +137,9 @@ STATUS("setting grid orientation") ;
 
 STATUS("setting idcode") ;
 
-   ppp = NI_get_attribute( nel , "ni_idcode" ) ;
+   ppp = NI_get_attribute( nel , "self_idcode" ) ;
+   if( ppp == NULL )
+     ppp = NI_get_attribute( nel , "ni_idcode" ) ;
    if( ppp != NULL && *ppp != '\0' ){
      NI_strncpy( dset->idcode.str , ppp , MCW_IDSIZE ) ;
    } else {
@@ -147,7 +149,7 @@ STATUS("setting idcode") ;
      dset->idcode.str[2] = 'D' ;
    }
 
-   /* now modify the default dataset */
+   /*-- now modify the default dataset --*/
 
 STATUS("Editing dataset") ;
 
@@ -166,6 +168,19 @@ STATUS("Editing dataset") ;
 
    dset->dblk->diskptr->storage_mode = STORAGE_BY_3D ;
    NI_strncpy( dset->dblk->diskptr->brick_name , pathname , THD_MAX_NAME ) ;
+
+   /*-- time axis? [03 Jun 2005] --*/
+
+   ppp = NI_get_attribute( nel , "ni_timestep" ) ;
+   if( ppp != NULL && nvals > 1 ){
+     float dt = strtod(ppp,NULL) ; if( dt <= 0.0 ) dt = 1.0 ;
+     EDIT_dset_items( dset ,
+                        ADN_func_type , ANAT_EPI_TYPE ,
+                        ADN_ntt       , nvals ,
+                        ADN_ttdel     , dt ,
+                        ADN_tunits    , UNITS_SEC_TYPE ,
+                      ADN_none ) ;
+   }
 
 STATUS("checking for statistics") ;
 
@@ -188,7 +203,7 @@ STATUS("checking for statistics") ;
            float parm[4]={1,1,1,1} ; int np,kk,mm , sp ;
            np = NI_stat_numparam(jj) ; sp = ll ;
            for( kk=0 ; kk < np ; kk++ ){
-             mm = 0 ; sscanf(sar->str[ii]+sp,"%f%n",parm+kk,&mm) ; sp += mm ;
+             mm = 0 ; sscanf(sar->str[ii]+sp,"%f%n",parm+kk,&mm) ; sp += mm+1 ;
            }
            EDIT_STATAUX4( dset , ii , jj , parm[0],parm[1],parm[2],parm[3] ) ;
          }
@@ -253,7 +268,9 @@ ENTRY("THD_load_3D") ;
    ns = NI_stream_open( ppp , "r" ) ; free(ppp) ;
    if( ns == NULL ) EXRETURN ;
 
+   NI_skip_procins(1) ;
    nel = NI_read_element(ns,333); NI_stream_close(ns);
+   NI_skip_procins(0) ;
    if( nel == NULL ) EXRETURN ;
 
    /*-- allocate space for data --*/
@@ -300,6 +317,8 @@ ENTRY("THD_load_3D") ;
 /*------------------------------------------------------------------*/
 /*! Write a dataset to disk as a 3D file.
     Called from THD_write_3dim_dataset().
+    This is kind of cheating, since we just call THD_write_1D()
+    instead.
 --------------------------------------------------------------------*/
 
 void THD_write_3D( char *sname, char *pname , THD_3dim_dataset *dset )

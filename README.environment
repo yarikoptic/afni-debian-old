@@ -1489,8 +1489,10 @@ functions (used in to3d) should apply the rescale and window tags.
 
 It is my impression from the laconic, terse, and opaque DICOM manual that
 window tags are intended for display purposes only, and that they aren't
-needed for signal processing.  But you'll have to decide.  I don't have
-much experience with DICOM data.
+needed for signal processing.  But you'll have to examine your own data to
+decide whether to use these options -- manufacturers seem to differ.
+Plus, I don't have that much experience with DICOM data from many different
+sources.
 
 -----------------------
 Variable: IDCODE_PREFIX
@@ -1500,11 +1502,15 @@ is "XYZ_MoNLqdNOwMNEYmKSBytfJg".  You can alter the first three characters of
 the idcode with this variable.  For example,
   setenv IDCODE_PREFIX RWC
 sets the first 3 characters of newly generated idcodes to be the initials of
-AFNI's author.  I find this a handy way to "brand" my datasets.
+AFNI's author.  I find this a handy way to "brand" my datasets.  Of course,
+there are only 17576 possible 3 letter combinations (140608 if you allow for
+case), so you should claim your prefix soon!!!
 
-Idcodes are used to store links between datasets.  In particular, when SUMA
+Idcodes are used to store links between datasets.  For example, when SUMA
 sends a surface to AFNI, it identifies the dataset to which the surface is
-to be attached with the dataset's idcode.
+to be associated with the dataset's idcode.  Similarly, when AFNI sends a
+color overlay to SUMA, it uses the surface idcode to indicate which surface
+family the overlay is to be mapped onto.
 
 -------------------------
 Variable: AFNI_AGIF_DELAY
@@ -1757,6 +1763,13 @@ Variable: AFNI_1D_TIME_TR
 -------------------------
 If this is set, and AFNI_1D_TIME is YES, then this determines the TR (in
 seconds) of a .1D file read in as an AFNI dataset.
+
+------------------------
+Variable: AFNI_3D_BINARY
+------------------------
+If this is set to YES, then .3D files are written by AFNI programs in
+binary, rather than the default text mode.  Binary files will be more
+compact (usually) and faster to read in.
 
 --------------------------
 Variable: AFNI_MAX_OPTMENU (editable)
@@ -2130,6 +2143,26 @@ necessary to use these if you are using AFNI and SUMA on different
 machines.  Connections from machines not on the trusted list will be
 rejected, for the sake of security.  The 'localhost' or 127.0.0.1 address
 and local class B network 192.168.0.* addresses are always trusted.
+
+---------------------------
+Variable: AFNI_DONT_LOGFILE
+---------------------------
+Most AFNI programs write a copy of their command line to a file in your
+home directory named ".afni.log".  If you do NOT want the log to be
+kept, set this environment variable to YES.  The purpose of the log
+is for you to be able to look back and see what AFNI commands you used
+in the past.  However, if you are doing a vast number of commands inside
+a script, the log file might eventually become gigantic (the Kevin Murphy
+effect).
+
+-------------------------
+Variable: AFNI_WRITE_NIML
+-------------------------
+If this variable is set to YES, then AFNI .HEAD files will be written in
+the new NIML (XML subset) format, rather than the 'classic' format.  The
+volumetric image data is still in the pure binary .BRIK file, not XML-ified
+in any way.  At present (Jun 2005) this format is experimental, but will
+someday soon become the default.
 
 =============================================
 | Robert W Cox, PhD                         |

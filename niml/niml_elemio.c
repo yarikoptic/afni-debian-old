@@ -76,6 +76,9 @@ int NI_write_procins( NI_stream_type *ns , char *str )
 static int read_header_only = 0 ;
 void NI_read_header_only( int r ){ read_header_only=r ; } /* 23 Mar 2003 */
 
+static int skip_procins = 0 ;
+void NI_skip_procins( int r ){ skip_procins = r ; }       /* 03 Jun 2005 */
+
 /*--------------------------------------------------------------------*/
 /*! Read only the header part of the next element.
 ----------------------------------------------------------------------*/
@@ -224,7 +227,13 @@ NI_dpr("NI_read_element: header parsed successfully\n") ;
        num_restart = 0 ; goto HeadRestart ;
      }
 
-     /* normal case: make a procins element */
+     /* 03 Jun 2005: if ordered to skip these things, do so */
+
+     if( skip_procins ){
+       destroy_header_stuff( hs ) ; num_restart = 0 ; goto HeadRestart ;
+     }
+
+     /* normal case: make a procins element and give it to the caller */
 
      npi       = NI_malloc(NI_procins,sizeof(NI_procins)) ;
      npi->type = NI_PROCINS_TYPE ;
@@ -732,6 +741,9 @@ void NI_reset_buffer( NI_stream_type *ns )
       - The '<...' part filled the entire buffer space.  In this case,
          all the input buffer is thrown away - we don't support
          headers or trailers this long!
+
+    01 Jun 2005: skip XML comments, which are of the form
+                 "<!-- arbitrary text -->".
 ------------------------------------------------------------------------*/
 
 static int scan_for_angles( NI_stream_type *ns, int msec )
@@ -759,29 +771,10 @@ Restart:                                       /* loop back here to retry */
 
    if( num_restart > 3 && mleft <= 0 && !caseb ){              /* failure */
       NI_reset_buffer(ns) ;                            /* and out of time */
-#ifdef NIML_DEBUG
-NI_dpr("  scan_for_angles: out of time!\n") ;
-#endif
       return -1 ;
    }
 
-#ifdef NIML_DEBUG
-if( ns->npos < ns->nbuf && dfp != NULL ){
-  int   nb = ns->nbuf - ns->npos ;
-  char *bf = ns->buf  + ns->npos ;
-  int   ii ;
-  fprintf(dfp,"  scan_for_angles: npos=%d epos=%d nbuf=%d buffer=\n",
-        ns->npos,epos,ns->nbuf ) ;
-  for( ii=0 ; ii < nb ; ii++ ){
-    fprintf(dfp," %02x:%c", (unsigned char)(bf[ii]) ,
-                            isprint(bf[ii]) ? bf[ii] : '.' ) ;
-    if( ii%10 == 9 ) fprintf(dfp,"\n") ;
-  }
-  fprintf(dfp,"\n") ;
-}
-#endif
-
-   /*-- scan ahead to find goal in the buffer --*/
+   /*-- scan ahead to find goal character in the buffer --*/
 
    while( epos < ns->nbuf && ns->buf[epos] != goal ) epos++ ;
 
@@ -789,13 +782,35 @@ if( ns->npos < ns->nbuf && dfp != NULL ){
 
    if( epos < ns->nbuf ){
 
-#ifdef NIML_DEBUG
-NI_dpr("  scan_for_angles: found goal=%c at epos=%d\n",goal,epos) ;
+     /*-- if our goal was the closing '>', we are done! (maybe) --*/
+
+     if( goal == '>' ){
+
+       /*- 01 Jun 2005: see if we are at a comment; if so, must start over -*/
+
+       if( epos - ns->npos >= 4 && strncmp(ns->buf+ns->npos,"<!--",4) == 0 ){
+
+         if( strncmp(ns->buf+epos-2,"-->",3) == 0 ){  /* got a full comment */
+
+#if 0
+{ int ncp = 1+epos-ns->npos ; char *cpt=malloc(10+ncp) ;
+  memcpy(cpt,ns->buf+ns->npos,ncp) ; cpt[ncp] = '\0' ;
+  fprintf(stderr, "\nSkipping NIML comment: '%s'\n",cpt); free(cpt);
+}
 #endif
+         
+           ns->npos = epos+1 ; NI_reset_buffer(ns) ;  /* skip it & try again */
+           epos = 0 ; goal = '<' ;
+         } else {                              /* '>' doesn't close comment! */
+           epos++ ;                            /* so look for another one!!! */
+         }
+         caseb = 1 ; goto Restart ;
+       }
 
-     /*-- if our goal was the closing '>', we are done! --*/
+       /*** not a comment, so we can exit triumphantly! ***/
 
-     if( goal == '>' ) return epos+1 ;  /* marks the character after '>' */
+       return epos+1 ;  /* marks the character after '>' */
+     }
 
      /*-- if here, our goal was the opening '<';
           set the buffer position to this location,
@@ -816,21 +831,15 @@ NI_dpr("  scan_for_angles: found goal=%c at epos=%d\n",goal,epos) ;
              - in this case, the universe ends right here and now --*/
 
    if( goal == '<' ){                    /* case (a) */
-#ifdef NIML_DEBUG
-NI_dpr("  scan_for_angles: case (a)\n") ;
-#endif
+
       ns->nbuf = ns->npos = epos = 0 ; caseb = 0 ;
 
    } else if( ns->nbuf < ns->bufsize || ns->npos > 0 ){  /* case (b) */
-#ifdef NIML_DEBUG
-NI_dpr("  scan_for_angles: case (b)\n") ;
-#endif
-      NI_reset_buffer(ns) ; epos = 0 ; caseb = 1 ;
+
+      NI_reset_buffer(ns) ; epos = ns->nbuf ; caseb = 1 ;
 
    } else {                              /* case (c) */
-#ifdef NIML_DEBUG
-NI_dpr("  scan_for_angles: case (c)\n") ;
-#endif
+
       ns->nbuf = 0 ; return -1 ;         /* death of Universe! */
    }
 
@@ -840,7 +849,7 @@ NI_dpr("  scan_for_angles: case (c)\n") ;
         waiting up to mleft ms (unless the data stream goes bad) --*/
 
    if( mleft <= 0 ) mleft = 1 ;
-   nbmin = (goal == '<') ? 3 : 1 ;
+   nbmin = (goal == '<') ? 4 : 1 ;
 
    nn = NI_stream_fillbuf( ns , nbmin , mleft ) ;
 
@@ -1185,6 +1194,7 @@ NI_dpr("NI_write_element: write socket now connected\n") ;
          }
          nout = NI_stream_writestring( ns , att ) ; ADDOUT ;
 
+#if 0
          /** 26 Mar 2003: write number of bytes of data contained herein **/
 
          for( jj=ii=0 ; ii < nel->vec_num ; ii++ )
@@ -1192,6 +1202,7 @@ NI_dpr("NI_write_element: write socket now connected\n") ;
                                   nel->vec_len , nel->vec[ii] ) ;
          sprintf(att,"%sni_datasize%s\"%d\"" , att_prefix , att_equals , jj ) ;
          nout = NI_stream_writestring( ns , att ) ; ADDOUT ;
+#endif
 
 #if 0
          /* extras: ni_veclen and ni_vecnum attributes */
@@ -1274,16 +1285,16 @@ NI_dpr("NI_write_element: write socket now connected\n") ;
 
          strcpy(att,att_prefix) ;
 
-         if( NI_is_name(nel->attr_lhs[ii]) ){
+         if( NI_is_name(nel->attr_lhs[ii]) ){           /* the 'normal' case */
            strcat(att,nel->attr_lhs[ii]) ;
-         } else {
+         } else {                                        /* not legal in XML */
            qtt = quotize_string( nel->attr_lhs[ii] ) ;
            strcat(att,qtt) ; NI_free(qtt) ;
          }
 
          if( kk > 0 ){
             strcat(att,att_equals) ;
-            qtt = quotize_string( nel->attr_rhs[ii] ) ;
+            qtt = quotize_string( nel->attr_rhs[ii] ) ; /* RHS always quoted */
             strcat(att,qtt) ; NI_free(qtt) ;
          }
          nout = NI_stream_writestring( ns , att ) ; ADDOUT ;
@@ -1302,7 +1313,7 @@ NI_dpr("NI_write_element: write socket now connected\n") ;
           nel->vec     == NULL   ){
 
         nout = NI_stream_writestring( ns , att_trail ) ; ADDOUT ;
-        nout = NI_stream_writestring( ns , "/>\n" ) ; ADDOUT ;
+        nout = NI_stream_writestring( ns , "/>\n" )    ; ADDOUT ;
 
 #ifdef NIML_DEBUG
   NI_dpr("NI_write_element: empty element '%s' had %d total bytes\n",nel->name,ntot) ;
@@ -1333,7 +1344,7 @@ NI_dpr("NI_write_element: write socket now connected\n") ;
       nout = NI_stream_writestring( ns , att_trail ) ; ADDOUT ;
       nout = NI_stream_writestring( ns , btt ) ; ADDOUT ;
 
-      /*-- 13 Feb 2003: output is now done elsewhere --*/
+      /*-- 13 Feb 2003: data output is now done elsewhere --*/
 
       if( !header_only ){
         nout = NI_write_columns( ns, nel->vec_num, nel->vec_typ,

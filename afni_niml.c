@@ -196,10 +196,12 @@ static void    process_NIML_MRI_IMAGE      ( NI_element * , int ) ;
 
 static void AFNI_niml_atexit( void )
 {
+#if 0              /*** this stuff now handled in niml/niml_stream.c ***/
    int cc ;
 STATUS("called AFNI_niml_atexit") ;
    for( cc=0 ; cc < NUM_NIML ; cc++ )        /* close any open sockets */
      NI_stream_closenow( ns_listen[cc] ) ;
+#endif
    return ;
 }
 
@@ -216,7 +218,9 @@ ENTRY("AFNI_init_niml") ;
    if( started ) EXRETURN ;
 
    PLUTO_register_workproc( AFNI_niml_workproc , NULL ) ;
+#if 0
    atexit( AFNI_niml_atexit ) ;
+#endif
 
    /* initialize status and names of all listening NI_streams */
 
@@ -346,11 +350,11 @@ ENTRY("AFNI_niml_workproc") ;
 
        if( ns_listen[cc] == NULL ){
          STATUS("NI_stream_open failed") ;
-         ns_flags[cc] = FLAG_SKIP ; continue ;
+         ns_flags[cc] = FLAG_SKIP ; continue ;  /* skip to next NIML stream */
        }
        ns_flags[cc]  = FLAG_WAITING ;
      }
-     if( ns_listen[cc] == NULL ) continue ; /* Ziad's fault */
+     if( ns_listen[cc] == NULL ) continue ; /* this is Ziad's fault! */
 
      ngood++ ;
 
@@ -375,6 +379,7 @@ ENTRY("AFNI_niml_workproc") ;
 
        NI_stream_closenow( ns_listen[cc] ) ;
        ns_listen[cc] = NULL ;  /* will be reopened next time */
+       ns_flags[cc]  = 0 ;
        keep_reading  = 0 ;
        continue ;              /* skip to next stream  */
      }
@@ -393,6 +398,7 @@ ENTRY("AFNI_niml_workproc") ;
 
      if( ns_flags[cc] & FLAG_WAITING ){
        ns_flags[cc] = FLAG_CONNECTED ;
+       NI_stream_setbufsize( ns_listen[cc] , 3*NI_BUFSIZE ) ; /* 02 Jun 2005 */
        fprintf(stderr,"++ NIML connection opened from %s\n",
                NI_stream_name(ns_listen[cc])                ) ;
      }
@@ -2227,13 +2233,23 @@ ENTRY("process_NIML_AFNI_volumedata") ;
 
    if( ct_start >= 0 ) ct_read = NI_clock_time() - ct_start ;
 
-                     idc = NI_get_attribute( nini , "AFNI_idcode" ) ;
-   if( idc == NULL ) idc = NI_get_attribute( nini , "self_idcode" ) ;
+   /** find out who owns this otherwise anonymous data **/
+
+                     idc = NI_get_attribute( nini , "domain_parent_idcode" ) ;
+   if( idc == NULL ) idc = NI_get_attribute( nini , "AFNI_idcode" ) ;
    if( idc == NULL ) idc = NI_get_attribute( nini , "idcode"      ) ;
-   if( idc == NULL ) EXRETURN ;
+   if( idc == NULL ){
+     fprintf(stderr,"\n** ERROR: anonymous VOLUME_DATA received via NIML\a\n");
+     EXRETURN ;
+   }
 
    find = PLUTO_dset_finder(idc) ;
-   if( find.dset == NULL ) EXRETURN ;
+   if( find.dset == NULL ){
+     fprintf(stderr,"\n** ERROR: orphan VOLUME_DATA received via NIML\a\n");
+     EXRETURN ;
+   }
+
+   /** put this data into the dataset **/
 
    (void)THD_add_bricks( find.dset , nini ) ;
    THD_update_statistics( find.dset ) ;

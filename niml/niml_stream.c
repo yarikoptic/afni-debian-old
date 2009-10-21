@@ -2073,7 +2073,7 @@ NI_dpr("NI_stream_reopen: sending message %s",msg) ;
 NI_dpr("NI_stream_reopen: waiting for new stream to be good\n") ;
 #endif
 
-   jj = NI_stream_goodcheck( nsnew , 5000 ) ;  /* wait 5 sec */
+   jj = NI_stream_goodcheck( nsnew , 5000 ) ;  /* wait up to 5 sec */
    if( jj <= 0 ){
      NI_stream_closenow(nsnew) ; return 0 ;  /* never got good */
    }
@@ -2086,9 +2086,16 @@ NI_dpr("NI_stream_reopen: waiting for new stream to be good\n") ;
 NI_dpr("NI_stream_reopen: closing old stream\n") ;
 #endif
 
-   NI_stream_close_keep(ns,0) ;
+   NI_stream_close_keep(ns,0) ;   /* will be removed from open streams list */
 
-   *ns = *nsnew ; NI_free(nsnew) ;
+   *ns = *nsnew ;
+
+   /* 10 Jun 2005: at this point, nsnew is in the open streams list,
+                   but the pointer nsnew is about to die, and so we
+                   must munge the open streams list around now to
+                   make sure that nsnew is removed and ns is re-added! */
+
+   remove_open_stream(nsnew) ; NI_free(nsnew) ; add_open_stream(ns) ;
 
    return 1 ; /* :-) */
 }
@@ -2178,6 +2185,7 @@ int NI_stream_setbufsize( NI_stream_type *ns , int bs )   /* 03 Jan 2003 */
 
 /*-----------------------------------------------------------------------*/
 /*! Get the input buffer size for a NI_stream.
+    Returns -1 if the stream is bad, or has been sentenced to death.
 -------------------------------------------------------------------------*/
 
 int NI_stream_getbufsize( NI_stream_type *ns )            /* 03 Jan 2003 */
@@ -2371,24 +2379,24 @@ int NI_stream_goodcheck( NI_stream_type *ns , int msec )
    return -1 ;  /* unreachable, I hope */
 }
 
-/*-----------------------------------------------------------------------*/
+/*---------------------------------------------------------------------------*/
 /*! Close a NI_stream, but don't free the insides.
     If (flag&1 != 0) send a "close_this" message to the other end.
     If (flag&2 != 0) use TCP OOB data to send a SIGURG to the other end.
-    If (flag&4 != 0) don't remove from open_stream list [from atexit()]
--------------------------------------------------------------------------*/
+    If (flag&4 != 0) don't remove from open_stream list [only from atexit()]
+-----------------------------------------------------------------------------*/
 
 void NI_stream_close_keep( NI_stream_type *ns , int flag )
 {
-   if( ns == NULL ) return ;
+   if( ns == NULL || !isgraph(ns->orig_name[0]) ) return ;
+
+   if( (flag & 4) == 0 )         /* 22 Apr 2005 */
+     remove_open_stream( ns ) ;  /* 02 Jan 2004 */
 
    if( ns->bad == MARKED_FOR_DEATH ){
      if( ns->buf != NULL ){ NI_free(ns->buf); ns->buf = NULL;}
      return ;
    }
-
-   if( (flag & 4) == 0 )         /* 22 Apr 2005 */
-     remove_open_stream( ns ) ;  /* 02 Jan 2004 */
 
    /*-- 20 Dec 2002: write a farewell message to the other end? --*/
 
@@ -2436,8 +2444,9 @@ void NI_stream_close_keep( NI_stream_type *ns , int flag )
    }
 
    ns->bad = MARKED_FOR_DEATH ; /* label this as unclean, not to be touched */
-   NI_free(ns->buf) ;           /* don't need internal buffer any more */
-   ns->buf = NULL ;
+   if( (flag & 4) == 0 ){       /* only free buf if program is NOT exiting */
+     NI_free(ns->buf) ; ns->buf = NULL ;
+   }
    return ;
 }
 
@@ -2904,7 +2913,7 @@ int NI_stream_fillbuf( NI_stream_type *ns, int minread, int msec )
 
       /* otherwise, sleep a little bit before trying again */
 
-      if( mwait < 99 ) mwait++ ;
+      if( mwait < 9 ) mwait++ ;
    }
 
    /* if didn't get any data, and

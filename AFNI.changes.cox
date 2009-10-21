@@ -5534,3 +5534,93 @@
 
 12 May 2005
  * Added "NIfTI_num" signature to thd_niftiwrite.c and thd_niftiread.c.
+
+13 May 2005
+ * Added 'xamplitude' option to waver -tstim option.
+ * Oops.  Fixed bug in 3dDeconvolve for -iresp/-sresp options: malloc-ed
+     the 'hout' float** array with sizeof(float) not sizeof(float*), which
+     doesn't work too good on 64 bit systems.
+ * Modified 1dplot.c to
+     (a) allow reading up to 10000 numbers on a line from stdin, and
+     (b) transpose input file if it has only 1 line, so that a long
+         single line of numbers becomes a decent plot.
+
+16 May 2005
+ * Some minor changes to help AFNI compile on Tiger, as reported by Frank
+     Haist of UCSD.
+
+17 May 2005
+ * Added "Draw ROI plugin" menu item to image viewer popup, in afni.[ch].
+
+18 May 2005
+ * Add '-dicom' and '-spm' options to 3dcalc.c.
+ * Add a couple of warnings for stupid new users.
+ * Fix parser.f so that acos(1) and asin(1) work (tested .LT., not .LE.).
+
+23 May 2005
+ * Add checks for data axes mismatch when inputting multiple datasets to
+     3dcalc.c, 3dTcat.c, 3dbucket.c, and thd_opentcat.c.  Because of
+     stoopid lusers.
+ * Add 'Ignore xxx' label to bottom of afni_graph.c window, for stupid
+     users like me.
+
+24 May 2005
+ * Add 'i' and 'I' keystrokes to afni_graph.c, to move init_ignore down/up.
+
+31 May 2005
+ * Modified various things (like thd_nimlatr.c) to change names of some
+     NIML attributes, in concordance with the treaty reached today with
+     Ziad Saad.
+
+01 Jun 2005
+ * Modifications to thd_atr.c, etc., to allow .HEAD files to be stored
+     using XML.
+ * Warn user when ~/.afni.log file goes over 100 MB (the Kevin Murphy bug).
+
+02 Jun 2005
+ * Modify thd_nimlatr.c to split large String attributes into multiple
+     substrings when using NIML, so as to avoid buffer size problems.
+ * Fixed bug in niml/niml_stat.c decoding of strings such as "Ftest(3,7)"
+     (forgot to skip the comma!).
+ * Remove AFNI_niml_atexit() from afni_niml.c since it is now redundant
+     with the atexit stuff in niml/niml_stream.c (oopsie).
+
+03 Jun 2005
+ * Fixed bug in 3dAFNIto3D; if input is a .1D file and no -prefix was given,
+     the output file would overwrite the input!
+ * Modified the .3D I/O functions to
+     (a) allow binary format for the data;
+     (b) allow a time step to indicate 3D+time status;
+     (c) if the output prefix ends in ".3D", automatically write this format.
+   Binary vs text format is setup by environment variable AFNI_3D_BINARY.
+   prefix
+ * Moved AFNI_setenv() function to afni_environ.c for librariness.
+
+06 Jun 2005
+ * Added 'Brodmann Areas' image popup to the 'Hidden' popup menu.
+
+08 Jun 2005
+ * A number of small changes to get AFNI to compile on Tiger.
+
+09 Jun 2005
+ * Warnings when adwarp.c or afni_func.c is about to write a .BRIK file
+     over 500 MB in size.
+
+10 Jun 2005
+ * Changes to niml/niml_stream.c to make atexit() stuff work properly
+     when NI_stream_reopen() is used (this is Ziad's fault, of course).
+
+17 Jun 2005
+ * Add overlay labels (accum_lab stuff) to plug_crender.c.  Added by the
+     right-click popup on the 'Accumulate' label.
+
+05 Jul 2005
+ * Modified 3dAFNItoANALYZE.c to scale TR by 0.001 if units are msec.
+ * Modified thd_writeatr.c and thd_writedset.c to correctly write NIML-style
+     .HEAD file from to3d.c (the blk->parent pointer wasn't set correctly).
+
+07 Jul 2005
+ * Modified 3dWarpDrive.c to save affine matrix to output file header attributes
+     (named WARPDRIVE_MATVEC_*), and also to base the coordinates on the actual
+     dataset rather than the center of the volume.
+ * Modified 3dWarp.c to read matrix from header attribute WARPDRIVE_MATVEC_*.

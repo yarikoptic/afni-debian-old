@@ -2049,6 +2049,15 @@ ENTRY("read_input_data") ;
         DC_error (message);
       }
       THD_load_datablock ((*dset_time)->dblk);
+      if( !DSET_LOADED(*dset_time) ){
+        sprintf (message,  "Unable to load dataset '%s'",
+        option_data->input_filename);
+        DC_error (message);
+      }
+      if( (*dset_time)->taxis == NULL ){
+        fprintf(stderr,"** WARNING: dataset '%s' has no time axis!!\n",
+                       option_data->input_filename) ;
+      }
       nt = DSET_NUM_TIMES (*dset_time);
       nxyz = DSET_NVOX (*dset_time);
 
@@ -7571,7 +7580,7 @@ void basis_write_iresp( int argc , char *argv[] ,
 
    /* create output bricks (float for now, will scale to shorts later) */
 
-   hout = (float **) malloc( sizeof(float) * ts_length ) ;
+   hout = (float **) malloc( sizeof(float *) * ts_length ) ;
    for( ib=0 ; ib < ts_length ; ib++ )
      hout[ib] = (float *)calloc(sizeof(float),nvox) ;
 
@@ -7708,7 +7717,7 @@ void basis_write_sresp( int argc , char *argv[] ,
 
    /* create output bricks (float for now, will scale to shorts later) */
 
-   hout = (float **) malloc( sizeof(float) * ts_length ) ;
+   hout = (float **) malloc( sizeof(float *) * ts_length ) ;
    for( ib=0 ; ib < ts_length ; ib++ )
      hout[ib] = (float *)calloc(sizeof(float),nvox) ;
 
@@ -7720,7 +7729,7 @@ void basis_write_sresp( int argc , char *argv[] ,
 
    /* evaluate basis vectors for output on dt time grid */
 
-   bb = (float ** ) malloc( sizeof(float * ) * nf ) ;
+   bb = (float ** ) malloc( sizeof(float *) * nf ) ;
    for( pp=0 ; pp < nf ; pp++ ){
      bb[pp] = (float * ) malloc( sizeof(float  ) * ts_length ) ;
      for( ib=0 ; ib < ts_length ; ib++ )

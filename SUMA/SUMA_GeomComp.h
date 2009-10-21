@@ -7,6 +7,23 @@ typedef struct {
    float off; 
 }  SUMA_OFFSET_LL_DATUM;
 
+typedef struct {
+   int N_TriIndex;            /*!< Number of triangles considered */
+   int *TriIndex;             /*!< vector (N_TriIndex x 1) of 1D indices of triangles considered */
+   int **IntersectedVoxels;   /*!< sparse matrix (N_TriIndex x N_InteresectedVoxels[i]) containing
+                              1D indices of voxels intersected by the triangle. For example,
+                              triangle of index TriIndex[i] intesects N_InteresectedVoxels[i]
+                              whose 1D indices are stored in IntersectedVoxels[i] */
+                              
+   int *N_IntersectedVoxels;  /*!< Number of voxels intersected by some triangle */
+} SUMA_VTI; /*!< Voxel Triangle Intersection Structure. Create with SUMA_CreateVTI, Destroy with SUMA_FreeVTI*/
+SUMA_VTI *SUMA_CreateVTI(int N_TriIndex, int *TriIndex);
+SUMA_VTI * SUMA_FreeVTI(SUMA_VTI *vti);
+SUMA_VTI *SUMA_GetVoxelsIntersectingTriangle( SUMA_SurfaceObject *SO, SUMA_VOLPAR *VolPar, float *NodeIJKlist,
+                                                SUMA_VTI *vti);
+
+
+
 int SUMA_isSelfIntersect(SUMA_SurfaceObject *SO, int FullCount);
 int SUMA_VoxelNeighbors (int ijk, int ni, int nj, int nk, SUMA_VOX_NEIGHB_TYPES ntype, int *nl);
 byte *SUMA_FillToVoxelMask(byte *ijkmask, int ijkseed, int ni, int nj, int nk, int *N_in, byte *usethisisin); 
@@ -96,6 +113,10 @@ SUMA_Boolean SUMA_vec_dicomm_to_3dfind (float *NodeList, int N_Node, SUMA_VOLPAR
 SUMA_Boolean SUMA_vec_3dfind_to_dicomm (float *NodeList, int N_Node, SUMA_VOLPAR *VolPar);
 SUMA_Boolean SUMA_vec_3dmm_to_dicomm (float *NodeList, int N_Node, SUMA_VOLPAR *VolPar);
 SUMA_Boolean SUMA_vec_dicomm_to_3dmm (float *NodeList, int N_Node, SUMA_VOLPAR *VolPar);
+SUMA_Boolean SUMA_CoordChange (char *orc_in, char *orc_out, float *XYZ, int N_xyz);
+int SUMA_flip_orient(int xxorient);
+int SUMA_ok_orstring (char *orstr);
+SUMA_Boolean SUMA_orstring_to_orcode (char *orstr, int *orient);
 int SUMA_Subdivide_Mesh(float **NodeListp, int *N_Node, int **FaceSetListp, int *N_FaceSet, float maxarea);
 int SUMA_OrientTriangles (float *NodeList, int N_Node, int *FaceSetList, int N_FaceSet, int orient, int Force);
 

@@ -52,7 +52,14 @@ function [err, V, Info, ErrMessage] = BrikLoad (BrikName, param1, param2)
 %
 %   .Slices: vector of slices, 1 based. Default is all slices. 
 %            Read the set of slices specified in .Slices (added for FMRISTAT)
-%
+%   .SliceSize_1D: If you are reading 1D files in chunks, specify the 
+%                  number of rows you want read in at any one time.
+%                  If chunk is 1000 and .Slices = 1 then you would 
+%                  get values from rows 1 (the first row) to row 1000.
+%                  When .Slices = 2, you would get rows 1001 ... 2000 .
+%                  If the number of rows in your dataset is not an 
+%                  integer multiple of SliceSize_1D the last read
+%                  will return the left over rows.
 %   .Frames: vector of frames, 1 based. Default is all frames. 
 %            Read the sub-bricks specified in .Frames (added for FMRISTAT)
 %   .method: method option for Read_1D if you are using 1D files.
@@ -155,6 +162,22 @@ if (is1D), % 1D land
    V = []; Info = []; ErrMessage = '';
    Opt.verb = 1;
    if (~isfield(Opt, 'method') | isempty(Opt.method)), Opt.method = 0; end
+   if (isfield(Opt,'Slices') & ~isempty(Opt.Slices)),
+      if (length(Opt.Slices) ~= 1),
+         ErrMessage = sprintf ('%s: Opt.Slices can only be used to specify one slice at a time for 1D format', FuncName, BrikName);
+         err = ErrEval(FuncName,'Err_1D Bad .Slices option');
+         return;
+      end
+      if (~isfield(Opt, 'SliceSize_1D') | isempty(Opt.SliceSize_1D)),
+         ErrMessage = sprintf ('%s: SliceSize_1D must be specified with Slices option for 1D files', FuncName);
+         err = ErrEval(FuncName,'Err_1D Bad .SliceSize_1D option');
+         return;
+      end
+      Opt.chunk_size = Opt.SliceSize_1D;
+      Opt.chunk_index = Opt.Slices - 1;
+      if (isfield(Opt,'Frames') & ~isempty(Opt.Frames)), Opt.col_index = Opt.Frames - 1; end
+   end
+   
    [err, V, Info] = Read_1D(BrikName, Opt);
    if (err), 
       ErrMessage = sprintf ('%s: Failed to read %s file', FuncName, BrikName);
