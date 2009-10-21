@@ -1,6 +1,13 @@
 #ifndef SUMA_SVMANIP_INCLUDED
 #define SUMA_SVMANIP_INCLUDED
 
+#define UPDATE_NO_VIEWING_PARAMS_MASK (1<<1)
+#define UPDATE_ROT_MASK (1<<2)
+#define UPDATE_VIEW_POINT_MASK (1<<3)
+#define UPDATE_EYE_AXIS_STD_MASK (1<<4)
+#define UPDATE_STANDARD_VIEW_MASK (1<<5)
+#define UPDATE_ALL_VIEWING_PARAMS_MASK ( UPDATE_ROT_MASK | UPDATE_VIEW_POINT_MASK | UPDATE_EYE_AXIS_STD_MASK | UPDATE_STANDARD_VIEW_MASK )
+
 /*! functions defined in SUMA_SVmanip.c */
 SUMA_Boolean SUMA_LockEnum_LockType (SUMA_LINK_TYPES i, char *Name);
 SUMA_SurfaceViewer *SUMA_Alloc_SurfaceViewer_Struct (int N);
@@ -19,14 +26,14 @@ SUMA_ViewState_Hist *SUMA_Alloc_ViewState_Hist (void);
 SUMA_Boolean SUMA_Show_ViewState(SUMA_ViewState *VS, FILE *Out, int detail); 
 char *SUMA_ViewStateInfo(SUMA_ViewState *VS, int detail);
 SUMA_Boolean SUMA_AdoptSurfGroup(SUMA_SurfaceViewer *csv, SUMA_SurfaceObject *SO);
-SUMA_Boolean SUMA_RegisterSpecSO (SUMA_SurfSpecFile *Spec, SUMA_SurfaceViewer *csv, SUMA_DO* dov, int N_dov);
+SUMA_Boolean SUMA_RegisterSpecSO (SUMA_SurfSpecFile *Spec, SUMA_SurfaceViewer *csv, SUMA_DO* dov, int N_dov, int viewopt);
 int SUMA_WhichState (char *state, SUMA_SurfaceViewer *csv, char *ForceGroup);
 SUMA_Boolean SUMA_Free_CommonFields (SUMA_CommonFields *cf);
 SUMA_CommonFields * SUMA_Create_CommonFields (void);
 void SUMA_Show_CommonFields (SUMA_CommonFields *cf, FILE *out);
 char * SUMA_CommonFieldsInfo (SUMA_CommonFields *cf, int detail);
 SUMA_STANDARD_VIEWS SUMA_BestStandardView (SUMA_SurfaceViewer *sv, SUMA_DO *dov, int N_dov);
-SUMA_Boolean SUMA_SetupSVforDOs (SUMA_SurfSpecFile Spec, SUMA_DO *DOv, int N_DOv, SUMA_SurfaceViewer *cSV);
+SUMA_Boolean SUMA_SetupSVforDOs (SUMA_SurfSpecFile Spec, SUMA_DO *DOv, int N_DOv, SUMA_SurfaceViewer *cSV, int viewopt);
 SUMA_Boolean SUMA_FillColorList (SUMA_SurfaceViewer *sv, SUMA_SurfaceObject *SO);
 SUMA_Boolean SUMA_EmptyColorList (SUMA_SurfaceViewer *sv, char *DO_idstr);
 GLfloat * SUMA_GetColorList (SUMA_SurfaceViewer *sv, char *DO_idstr);
@@ -54,6 +61,11 @@ SUMA_Boolean SUMA_RegisterGroup (SUMA_CommonFields *cf, SUMA_SurfSpecFile *spec)
 SUMA_ASSEMBLE_LIST_STRUCT * SUMA_AssembleGroupList (SUMA_SurfaceViewer *sv); 
 SUMA_Boolean SUMA_SwitchGroups (SUMA_SurfaceViewer *sv, char *group);
 SUMA_Boolean SUMA_AdoptGroup(SUMA_SurfaceViewer *csv, char *group);
+const char * SUMA_Clip_Type_to_Clip_Name (SUMA_CLIP_PLANE_TYPES tp);
+char * SUMA_Show_Clip_Planes_Info (SUMA_CommonFields *cf);
+void SUMA_Show_Clip_Planes (SUMA_CommonFields *cf, FILE *out);
+
+
 
 
 #endif

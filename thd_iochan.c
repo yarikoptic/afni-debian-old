@@ -69,7 +69,19 @@ void iochan_enable_perror( int q ){ pron = q; }   /* ditto */
 #  define PERROR(x) perror(x)
 #  define STATUS(x) fprintf(stderr,"%s\n",x)
 #else
-#  define PERROR(x) do{ if(pron) perror(x); } while(0)
+   static char *pqlast = NULL  ;
+   static double pqtim = -6.66 ;
+#  define PERROR(x)                                                    \
+     do{ if( (x) != NULL && pron ){                                    \
+           double qtim = COX_clock_time() ;                            \
+           int skip = ( qtim-pqtim < 0.666 &&                          \
+                        pqlast     != NULL && strcmp(pqlast,x) == 0 ); \
+           if( !skip ){                                                \
+             perror(x); pqtim = qtim;                                  \
+             if( pqlast != NULL ) free(pqlast) ;                       \
+             pqlast = strdup(x) ;                                      \
+           }                                                           \
+        }} while(0)
 #  define STATUS(x) /* nada */
 #endif
 /*---------------------------------------------------------------*/
@@ -306,7 +318,7 @@ int tcp_listen( int port )
    if( bind(sd , (struct sockaddr *)&sin , sizeof(sin)) == -1 ){
       if (!(nobindmsg % 10000)) { /* slow message printing down! ZSS */
          PERROR("\nCan't bind? tcp_listen[bind]");
-         nobindmsg = 0; 
+         nobindmsg = 0;
       }
       ++nobindmsg;
       CLOSEDOWN(sd); return -1;

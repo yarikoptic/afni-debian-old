@@ -278,6 +278,8 @@ void SUMA_LoadSegDO (char *s, void *csvp)
    static char FuncName[]={"SUMA_LoadSegDO"};
    SUMA_SegmentDO *SDO = NULL;
    SUMA_SurfaceViewer *sv;
+   SUMA_DO_Types dotp=no_type;
+   void *VDO = NULL;
    
    SUMA_ENTRY;
    
@@ -285,13 +287,42 @@ void SUMA_LoadSegDO (char *s, void *csvp)
    
    if (!s) { SUMA_RETURNe; }
    
-   if (!(SDO = SUMA_ReadSegDO(s))) {
-      SUMA_SL_Err("Failed to read segment file.\n");
-      SUMA_RETURNe;
+   /* what type are we dealing with ? */
+   dotp = SUMA_Guess_DO_Type(s);
+   if (dotp == no_type) {
+      /* assume segments */
+      dotp = LS_type;
+   }
+   
+   switch (dotp) {
+      case OLS_type:
+         if (!(SDO = SUMA_ReadSegDO(s, 1))) {
+            SUMA_SL_Err("Failed to read segments file.\n");
+            SUMA_RETURNe;
+         }
+         VDO = (void *)SDO;
+         break;
+      case LS_type:
+         if (!(SDO = SUMA_ReadSegDO(s, 0))) {
+            SUMA_SL_Err("Failed to read segments file.\n");
+            SUMA_RETURNe;
+         }
+         VDO = (void *)SDO;
+         break;
+      case SP_type:
+         if (!(VDO = (void *)SUMA_ReadSphDO(s))) {
+            SUMA_SL_Err("Failed to read spheres file.\n");
+            SUMA_RETURNe;
+         }
+         break;
+      default:
+         SUMA_SL_Err("Should not get here");
+         SUMA_RETURNe;
+         break;
    }
    
    /* addDO */
-   if (!SUMA_AddDO(SUMAg_DOv, &SUMAg_N_DOv, (void *)SDO, LS_type, SUMA_LOCAL)) {
+   if (!SUMA_AddDO(SUMAg_DOv, &SUMAg_N_DOv, VDO, dotp, SUMA_LOCAL)) {
       fprintf(SUMA_STDERR,"Error %s: Failed in SUMA_AddDO.\n", FuncName);
       SUMA_RETURNe;
    }
@@ -538,6 +569,35 @@ void SUMA_LoadVisualState(char *fname, void *csvp)
    SUMA_RETURNe;
 }
 
+GLenum SUMA_index_to_clip_plane(int iplane) 
+{
+   static char FuncName[]={"SUMA_index_to_clip_plane"};
+   
+   switch(iplane) {
+      case 0:
+         return(GL_CLIP_PLANE0);
+         break;
+      case 1:
+         return(GL_CLIP_PLANE1);
+         break;
+      case 2:
+         return(GL_CLIP_PLANE2);
+         break;
+      case 3:
+         return(GL_CLIP_PLANE3);
+         break;
+      case 4:
+         return(GL_CLIP_PLANE4);
+         break;
+      case 5:
+         return(GL_CLIP_PLANE5);
+         break;
+      default:
+         SUMA_SLP_Err("You are not to have more than 6 planes!!!");
+         return(GL_CLIP_PLANE0);
+         break;
+   }
+}
 void SUMA_display(SUMA_SurfaceViewer *csv, SUMA_DO *dov)
 {   
    int i;
@@ -593,6 +653,14 @@ void SUMA_display(SUMA_SurfaceViewer *csv, SUMA_DO *dov)
    
    SUMA_SET_GL_PROJECTION(csv);
    
+   if (SUMAg_CF->N_ClipPlanes) { /* clipping parts in fixed (screen)  coordinate space */
+      for (i=0; i<SUMAg_CF->N_ClipPlanes; ++i) {
+         if (SUMAg_CF->ClipPlaneType[i] == SUMA_SCREEN_CLIP) {
+            glClipPlane(SUMA_index_to_clip_plane(i), &(SUMAg_CF->ClipPlanes[4*i]));
+            glEnable(SUMA_index_to_clip_plane(i));
+         }
+      }
+   }
 
    /* cycle through csv->RegisteredDO and display those things that have a fixed CoordType*/
    if (LocalHead) fprintf (SUMA_STDOUT,"%s: Creating objects with fixed coordinates ...\n", FuncName);
@@ -600,6 +668,12 @@ void SUMA_display(SUMA_SurfaceViewer *csv, SUMA_DO *dov)
    while (i < csv->N_DO) {
       if (dov[csv->RegisteredDO[i]].CoordType == SUMA_SCREEN) {
          switch (dov[csv->RegisteredDO[i]].ObjectType) {
+            case no_type:
+               SUMA_SL_Err("Should not be doing this buidness");
+               break;
+            case SP_type:
+               SUMA_SL_Warn("Not ready yet!");
+               break;
             case SO_type:
                break;
             case AO_type:
@@ -617,8 +691,9 @@ void SUMA_display(SUMA_SurfaceViewer *csv, SUMA_DO *dov)
             case ROIO_type:
                /* those are drawn by SUMA_DrawMesh */
                break;
+            case OLS_type:
             case LS_type:
-               if (!SUMA_DrawSegmentDO ((SUMA_SegmentDO *)dov[csv->RegisteredDO[i]].OP)) {
+               if (!SUMA_DrawSegmentDO ((SUMA_SegmentDO *)dov[csv->RegisteredDO[i]].OP, csv)) {
                   fprintf(SUMA_STDERR, "Error %s: Failed in SUMA_DrawSegmentDO.\n", FuncName);
                }
                break;
@@ -632,6 +707,16 @@ void SUMA_display(SUMA_SurfaceViewer *csv, SUMA_DO *dov)
    /* cycle through csv->RegisteredDO and display those things that have a Local CoordType*/
    if (LocalHead) fprintf (SUMA_STDOUT,"%s: Creating objects with local coordinates ...\n", FuncName);
 
+   /* cuting plane for all? */
+   if (SUMAg_CF->N_ClipPlanes) { /* clipping parts in object coordinate space */
+      for (i=0; i<SUMAg_CF->N_ClipPlanes; ++i) {
+         if (SUMAg_CF->ClipPlaneType[i] == SUMA_ALL_OBJECT_CLIP) {
+            glClipPlane(SUMA_index_to_clip_plane(i), &(SUMAg_CF->ClipPlanes[4*i]));
+            glEnable(SUMA_index_to_clip_plane(i));
+         }
+      }
+   }
+   
    i = 0;
    while (i < csv->N_DO) {
       if (dov[csv->RegisteredDO[i]].CoordType == SUMA_LOCAL) {
@@ -661,10 +746,19 @@ void SUMA_display(SUMA_SurfaceViewer *csv, SUMA_DO *dov)
             case ROIO_type:
                /* those are drawn by SUMA_DrawMesh */
                break;
+            case OLS_type:
             case LS_type:
-               if (!SUMA_DrawSegmentDO ((SUMA_SegmentDO *)dov[csv->RegisteredDO[i]].OP)) {
+               if (!SUMA_DrawSegmentDO ((SUMA_SegmentDO *)dov[csv->RegisteredDO[i]].OP, csv)) {
                   fprintf(SUMA_STDERR, "Error %s: Failed in SUMA_DrawSegmentDO.\n", FuncName);
                }
+               break;
+            case SP_type:
+               if (!SUMA_DrawSphereDO ((SUMA_SphereDO *)dov[csv->RegisteredDO[i]].OP)) {
+                  fprintf(SUMA_STDERR, "Error %s: Failed in SUMA_DrawSphereDO.\n", FuncName);
+               }
+               break;
+            case no_type:
+               SUMA_SL_Err("What's cracking?");
                break;
          }
       }
@@ -674,7 +768,7 @@ void SUMA_display(SUMA_SurfaceViewer *csv, SUMA_DO *dov)
    /* Show the Cross Hair, if required */
    if (csv->ShowCrossHair) {
       /*fprintf(SUMA_STDOUT,"Showing Cross Hair \n");*/
-      if (!SUMA_DrawCrossHair (csv->Ch)) {
+      if (!SUMA_DrawCrossHair (csv)) {
          fprintf(stderr,"display error: Failed to Create Cross Hair\n");
       }
    }

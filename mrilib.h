@@ -31,7 +31,18 @@ extern float MRILIB_zcos[3] ;
 extern int   use_MRILIB_slicespacing ;  /* 10 Jan 2004 */
 extern float MRILIB_slicespacing ;
 
-/*! Clear the MRILIB globals (which are designed to transmit info from image files to to3d.c). */
+extern int   assume_dicom_mosaic ;   /* mri_read_dicom.c  13 Mar 2006 [rickr] */
+
+#include "nifti1_io.h"
+extern int use_MRILIB_dicom_matrix ;    /* 26 Jan 2006 */
+extern mat44   MRILIB_dicom_matrix ;
+
+#include "mri_dicom_stuff.h"
+extern int                MRILIB_dicom_count ;  /* 15 Mar 2006 */
+extern AFD_dicom_header **MRILIB_dicom_header ;
+
+/*! Clear the MRILIB globals
+    (which transmit info from image files to to3d.c). */
 
 #define CLEAR_MRILIB_globals                              \
  do{ MRILIB_orients[0]='\0';                              \
@@ -39,6 +50,8 @@ extern float MRILIB_slicespacing ;
      use_MRILIB_xoff=use_MRILIB_yoff=use_MRILIB_zoff=0;   \
      use_MRILIB_xcos=use_MRILIB_ycos=use_MRILIB_zcos=0;   \
      use_MRILIB_slicespacing=0;                           \
+     use_MRILIB_dicom_matrix=0;                           \
+     MRILIB_dicom_count=0; MRILIB_dicom_header=NULL;      \
  } while(0)
 
 #include <stdio.h>
@@ -583,7 +596,7 @@ extern int         mri_isgray( MRI_IMAGE * ) ;
 extern int         mri_imcount_mpeg( char * ) ;
 
 extern void cfft( int , int , float * , float * ) ;
-extern void cfft2d( int , int , int , float * , float * ) ;
+extern void cfft2d_cox( int , int , int , float * , float * ) ;
 extern void csfft_cox( int,int , complex * ) ;
 extern void csfft_many( int,int,int , complex * ) ;
 extern int  csfft_nextup(int) ;
@@ -608,7 +621,8 @@ extern void   mri_dicom_seterr( int ) ;     /* 05 Nov 2002 */
 extern MRI_IMARR * mri_read_dicom( char * )  ;
 extern int         mri_imcount_dicom( char * ) ;
 extern char *      mri_dicom_sexinfo( void ) ;   /* 23 Dec 2002 */
-extern int mri_possibly_dicom( char * ) ;        /* 07 May 2003 */
+extern char *      mri_dicom_sex1010( void ) ;
+extern int         mri_possibly_dicom( char * ) ;        /* 07 May 2003 */
 
 
 /*! Set the data pointer in an MRI_IMAGE to NULL. */
@@ -865,6 +879,8 @@ extern void mri_align_method( int,int,int ) ;  /* 01 Oct 1998 */
 
 extern void mri_get_cmass_2D( MRI_IMAGE *, float *, float * ); /* 12 Nov 2001 */
 extern void mri_get_cmass_3D( MRI_IMAGE *, float *, float * , float *);
+
+extern float mri_spearman_corr( MRI_IMAGE *, MRI_IMAGE * ) ;  /* 08 Mar 2006 */
 
 /*---------------------------------------------------------------------*/
 /* 07 April 1998: routines for one-at-a-time alignment (mri_2dalign.c) */

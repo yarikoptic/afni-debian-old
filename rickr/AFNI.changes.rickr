@@ -1387,3 +1387,53 @@
       - added Dimon.exe target
   * modified fixed_plugins.h: removed plugin_maxima from file
 
+04 Jan 2006:
+  * modified 3dANOVA2.c, replaced calc_sum_sum2_acontr and calc_t_from_sums
+        with calc_type3_acontr, to avoid intermediate storage of data as floats
+
+06 Jan 2006:
+  * modified waver.c: only output version info with new '-ver' option.
+
+25 Jan 2006:
+  * added model_michaelis_menton.c model function for Jasmin Salloum
+  * modified NLfit_model.h, added NL_get_aux_filename and NL_get_aux_val protos
+  * modified 3dNLfim.c, added options -aux_name, -aux_fval and -voxel_count.
+  * modified Makefile.INCLUDE, added model_michaelis_menton to models target
+  * modified mri_read.1D: mri_read_ascii to allow 1x1 image file
+
+30 Jan 2006:
+  * modified model_michaelis_menton.c to get aux info via environment vars
+    (AFNI_MM_MODEL_RATE_FILE and AFNI_MM_MODEL_DT)
+  * modified NLfit_model.h and 3dNLfim.c, removing -aux_ options and code
+
+31 Jan 2006:
+  * modified 3dANOVA3.c, actually assign df_prod, and fix label for aBdiff
+  * modified nifti_tool.c, check for new vox_offset in act_mod_hdrs
+  * modified afni_plugout.c, applied (modified) changes by Judd Storrs to
+      override BASE_TCP_CONTROL with environment variable AFNI_PLUGOUT_TCP_BASE
+  * modified README.environment for description of AFNI_PLUGOUT_TCP_BASE
+
+02 Feb 2006:
+  * submitted version 7 of plug_permtest.c for Matthew Belmonte
+
+07 Feb 2006:
+  * added -datum option to 3dWavelets.c
+
+09 Feb 2006:
+  * added example to 3dANOVA3 -help
+
+02 Mar 2006:
+  * modified nifti_tool.c (v 1.12) to deal with nt = 0 in act_cbl(), due
+    to change of leaving nt..nw as 0 (potentially) in nifti1_io.c
+  * modified nifti1_io.c (v 1.18) to deal with nt = 0 in nifti_alloc_NBL_mem()
+  * modified thd_niftiread.c to be sure that ntt and nbuc are at least 1
+
+09 Mar 2006:
+  * modified waver.c not to show -help after command typo
+
+13 Mar 2006:
+  * added examples to 3dmaskave.c
+  * modified to3d.c, mri_read_dicom.c, mrilib.h: added option and global
+    variable for assume_dicom_mosaic, to apply the liberal DICOM mosaic test
+    only when set (via -assume_dicom_mosaic in to3d)
+

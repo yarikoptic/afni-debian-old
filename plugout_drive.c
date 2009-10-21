@@ -30,8 +30,8 @@
 
 /***** Header file for communication routines *****/
 
+#include "afni_plugout.h"
 #include "thd_iochan.h"
-#define COM_LENGTH 1000   /* max length of command (to allow for ziad's filenames) */
 
 /***** Global variable determining on which system AFNI runs.  *****/
 /***** [default is the current system, can be changed by user] *****/
@@ -159,8 +159,11 @@ int main( int argc , char *argv[] )
             fprintf(stderr,"** -com needs a following argument!\a\n"); exit(1);
          }
 
-         if (argv[narg] && strlen(argv[narg]) >= COM_LENGTH) {
-            fprintf(stderr,"** Command length must be smaller than %d characters.\n", COM_LENGTH);
+         if (argv[narg] && strlen(argv[narg]) >= PLUGOUT_COM_LENGTH) {
+            fprintf(stderr,"** Command length must be smaller than %d characters.\n"
+                           "   If you really need a longer command let us know.\n"
+                           "   Your command is %d characters long.\n" , PLUGOUT_COM_LENGTH, (int)strlen(argv[narg]));
+            exit(1);
          }
 
          if (N_com < 1024) {
@@ -307,7 +310,8 @@ int afni_io(void)
    if( afni_mode == AFNI_OPEN_DATA_MODE ){
       char afni_iocname[128] ;
       char afni_buf[256] ;
-
+      char shmstr[256];
+      
       /** decide name of data channel:
             use shared memory (shm:) on ".",
             use TCP/IP (tcp:) on other computer systems;
@@ -317,9 +321,10 @@ int afni_io(void)
            is a string that will be converted to an IPC
            key (in function string_to_key in iochan.c).       **/
 
-      if( strcmp(afni_host,".") == 0 )
-         strcpy( afni_iocname , "shm:test_plugout:1K+1K" ) ;
-      else
+      if( strcmp(afni_host,".") == 0 ) {
+         sprintf( shmstr, "shm:test_plugout:%dK+%dK", PLUGOUT_SHM_SIZE_K, PLUGOUT_SHM_SIZE_K);
+         strcpy( afni_iocname , shmstr ) ;
+      } else
          sprintf( afni_iocname , "tcp:%s:%d" , afni_host , afni_port ) ;
 
       /** write the command to AFNI into the buffer:
@@ -405,17 +410,20 @@ int afni_io(void)
    /***** See if the user wants to drive AFNI.               *****/
 
    if( afni_mode == AFNI_CONTINUE_MODE ){
-      char cmd_buf[COM_LENGTH] , afni_buf[COM_LENGTH+56];
+      char cmd_buf[PLUGOUT_COM_LENGTH] , afni_buf[PLUGOUT_COM_LENGTH+56];
 
       if( I_com < N_com ){                   /* send the I_com'th command */
          strcpy(afni_buf, "DRIVE_AFNI ") ;
          strcat(afni_buf, com[I_com]   ) ; strcpy(cmd_buf,com[I_com]) ;
+         if (afni_verbose) {
+            fprintf(stderr,"Command String %d Echo: '%s'\n", I_com, afni_buf); fflush(stderr) ; 
+         }
          I_com++ ;
       } else {
          if (DontWait) exit(0);
          /* get user input */
 
-         printf("Enter command: ") ; fflush(stdout) ; fgets(cmd_buf,COM_LENGTH,stdin) ;
+         printf("Enter command: ") ; fflush(stdout) ; fgets(cmd_buf,PLUGOUT_COM_LENGTH,stdin) ;
 
          /* make command to AFNI */
 
@@ -424,7 +432,7 @@ int afni_io(void)
       }
 
       /* send command to AFNI */
-
+      
       ii = iochan_sendall( afni_ioc , afni_buf , strlen(afni_buf)+1 ) ;
 
       if( strcmp(cmd_buf,"QUIT") == 0 ){  /* 28 Jul 2005 */

@@ -38,8 +38,8 @@
 DBG = 1;
 
 %get the directory
-%dirname = uigetdir(cd,'Select directory that has AFNI''s matlab demo data');
-dirname = '/Users/ziad/DownLoad/Demo_Bricks'
+dirname = uigetdir(cd,'Select directory that has AFNI''s matlab demo data');
+%dirname = '/Users/ziad/DownLoad/Demo_Bricks'
 
 %check for dsets
 if (exist(sprintf('%s%cARzsspgrax+orig.HEAD',dirname, filesep),'file') ~= 2),
@@ -86,6 +86,7 @@ end
 fprintf(1,'Sleeping for a few seconds...\n'); pause(4);
 i = 1;
 cs(i) = NewCs('open_window', 'B', 'coronalgraph', 'geom=500x500+50+550'); i = i+1;
+cs(i) = NewCs('Set_Anatomy', 'B', 'ARzs_CW_avvr+orig'); i = i+1;
 cs(i) = NewCs('SET_DICOM_XYZ', 'B', '-6 86 -3'); i = i+1;
 err = TellAfni(cs); clear cs
 if (err),

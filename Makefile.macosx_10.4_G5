@@ -30,7 +30,7 @@ PLUGIN_LFLAGS = -flat_namespace -bundle -undefined suppress
 PLUGIN_CC     = $(CC) -dynamic -fno-common
 PLFLAGS       = -dynamic -L. -L/usr/X11R6/lib -L/sw/lib -Wl,-multiply_defined -Wl,suppress
 
-SPECIAL = -faltivec -framework Accelerate -DUSE_ALTIVEC
+SPECIAL = -faltivec -framework Accelerate -DUSE_ACCELERATE
 
 AR     = /usr/bin/ar
 RANLIB = /usr/bin/ranlib
@@ -50,6 +50,7 @@ INSTALLDIR = ./macosx_10.4_G5
 LIBDIR = $(INSTALLDIR)
 
 INSTALL_PREREQ = suma_gts
+#INSTALL_PREREQ = suma
 
 LIBDL = libdl.a
 

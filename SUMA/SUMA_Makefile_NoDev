@@ -180,9 +180,9 @@ ROI2dataset: SUMA_Surface_IO.c
 	$(RM) $@
 	${CC} -DSUMA_COMPILED -DSUMA_ROI2dataset_STAND_ALONE ${CCOPT} ${WARNOPT} -o $@ ${AFNI_OBJS} SUMA_Surface_IO.c ${SUMA_INPATH} ${SUMA_LINK_PATH} ${SUMALIBLIST} ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB}
 
-SurfSmooth: SUMA_GeomComp.c
+SurfSmooth: SUMA_GeomComp.c SUMA_SurfSmooth.c
 	$(RM) $@
-	${CC} -DSUMA_COMPILED -DSUMA_SurfSmooth_STAND_ALONE ${CCOPT} ${WARNOPT} -o $@ ${AFNI_OBJS} SUMA_GeomComp.c ${SUMA_INPATH} ${SUMA_LINK_PATH} ${SUMALIBLIST} ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB}
+	${CC} -DSUMA_COMPILED -DSUMA_SurfSmooth_STAND_ALONE ${CCOPT} ${WARNOPT} -o $@ ${AFNI_OBJS} SUMA_SurfSmooth.c ${SUMA_INPATH} ${SUMA_LINK_PATH} ${SUMALIBLIST} ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB}
 
 SurfPatch: SUMA_GeomComp.c
 	$(RM) $@
@@ -360,12 +360,18 @@ libply.a:
 	  $(RANLIB) $@ ;	\
 	  $(CP) -p $@ .. ; )
 
+# used to have block below for building libgts.a, but skipping aclocal, autoheader, automake -a and autoconf seems to cause less headaches.
+# perhaps current aclocal.m4 works fine in cases I tested. Including the whole block should also work on machines where autoconf, automake
+# are properly installed.
+#    cd gts ;	\ 
+#	  aclocal ;	\
+#	  autoheader ;	\
+#	  automake -a ;	\
+#	  autoconf ;	\
+#	  ./configure	;	\
+
 libgts.a:
 	( cd gts ;	\
-	  aclocal ;	\
-	  autoheader ;	\
-	  automake -a ;	\
-	  autoconf ;	\
 	  ./configure	;	\
 	  $(MAKE) clean ; \
 	  $(MAKE) ; \

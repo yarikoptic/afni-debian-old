@@ -16,6 +16,10 @@
             of models.
   Date:     08 August 2001
 
+  Mod:      Added NL_get_aux_filename and NL_get_aux_val.
+  Date:     23 Jan 2006 [rickr]
+  Mod:      ...and removed them.
+  Date:     30 Jan 2006 [rickr]
 */
 
 /*---------------------------------------------------------------------------*/

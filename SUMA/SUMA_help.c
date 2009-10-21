@@ -169,6 +169,7 @@ char * SUMA_New_Additions_perver (int ver, SUMA_Boolean StampOnly)
             "    smoothing mode can be used to inflate surfaces.\n"
             "    o New weighting for Taubin geometry filtering.\n"
             "    o Option for masking nodes to be filtered.\n"
+            "    o New HEAT method for filtering data.\n"
             "  + SurfaceMetrics:\n"
             "    o Option -vol calculates the volume of the closed surface.\n"
             "  + SurfPatch:\n"
@@ -590,9 +591,26 @@ char * SUMA_help_message_Info(void)
    SS = SUMA_StringAppend (SS, 
       "     a: attenuation by background, toggle.\n\n");
    SS = SUMA_StringAppend (SS, 
-      "     B: Backface culling, toggle.\n");
+      "     B: Backface/Frontface/Noface culling, toggle.\n");
    SS = SUMA_StringAppend (SS, 
       "     b: background color, toggle.\n\n");
+   if (SUMAg_CF->Dev) SS = SUMA_StringAppend_va (SS, 
+      "     Ctrl+C: Set screen-coordinate-based clipping planes\n"
+      "      Alt+C: Set object-coordinate-based clipping planes\n"
+      "           o Planes are defined by a string of the format:\n"
+      "             NAME: a, b, c, d\n"
+      "             Where NAME is a user-given short name,\n"
+      "             a, b, c, and d define the plane's equation\n"
+      "             aX + bY + cZ + d = 0\n"
+      "                Example: A: 0, 0, 1, 0\n"
+      "           o To delete a plane, just enter its name followed\n"
+      "             by the ':' (e.g. 'A:')\n"
+      "           o If you enter only two parameters after the name, \n"
+      "             they are assumed to be the c and d parameters,\n"
+      "             a and b are set to 0.\n"
+      "           o You are allowed a maximum of %d planes\n"
+      "\n",
+      SUMA_MAX_N_CLIP_PLANES);
    SS = SUMA_StringAppend (SS, 
       "     c: load a node color file.\n\n");
    SS = SUMA_StringAppend (SS, 
@@ -661,6 +679,10 @@ char * SUMA_help_message_Info(void)
    SS = SUMA_StringAppend (SS, 
       "     p: Viewer rendering mode  \n"
       "        (Fill, Line, Points), switch.\n\n");
+   if (SUMAg_CF->Dev) SS = SUMA_StringAppend (SS, 
+      "     Alt+r: Set new center of rotation.\n"
+      "            Enter nothing to go back to default.\n"
+      "\n");
    SS = SUMA_StringAppend (SS, 
       "     r: record current image\n"
       "        in an a la AFNI image viewer.\n"
@@ -676,10 +698,46 @@ char * SUMA_help_message_Info(void)
    SS = SUMA_StringAppend (SS, 
       "     Ctrl+s: Open controller for \n"
       "             surface in Focus.\n");
-   if (SUMAg_CF->Dev) SS = SUMA_StringAppend (SS, 
-      "     Ctrl+Alt+s: Input filename with coordinates\n"
-      "                 forming a segment (6 values) on \n"
-      "                 each line.\n");
+   SS = SUMA_StringAppend (SS, 
+      "     Ctrl+Alt+s: Input filename containing displayable objects.\n"
+      "                 Files are of 1D format with a necessary comment\n"
+      "                 at the top to indicate the type of objects in \n"
+      "                 the file.\n"
+      "          Type 1:Segments between (x0,y0,z0) and (x1,y1,z1) \n"
+      "                 1st line must be '#segments' (without quotes),\n"
+      "                 or '#oriented_segments'.\n"
+      "                 Remainder of file is N rows, each defining a \n"
+      "                 segment (or a vector) between two points.\n"
+      "                 Column content depends on the number of columns\n"
+      "                 in the file:\n"
+      "                 6  cols: x0 y0 z0 x1 y1 z1\n"
+      "                 7  cols: x0 y0 z0 x1 y1 z1 th\n"
+      "                          with th being line thickness\n"
+      "                 10 cols: x0 y0 z0 x1 y1 z1 c0 c1 c2 c3\n"
+      "                          with c0..3 being the RGBA values\n"
+      "                          between 0 and 1.0\n"
+      "                 11 cols: x0 y0 z0 x1 y1 z1 c0 c1 c2 c3 th\n"
+      "          Type 2:Spheres centered at (ox, oy, oz) \n"
+      "                 1st line must be '#spheres' (without quotes).\n"
+      "                 Remainder of file is N rows, each defining a \n"
+      "                 sphere.\n"
+      "                 Column content depends on the number of columns\n"
+      "                 in the file:\n"
+      "                 3  cols: ox oy oz\n"
+      "                 4  cols: ox oy oz rd\n"
+      "                          with rd being the radius of the sphere\n"
+      "                 5  cols: ox oy oz rd st\n"
+      "                          with st being the style of the sphere's\n"
+      "                          rendering. Choose from:\n"
+      "                             0: points\n"
+      "                             1: Lines\n"
+      "                             2: Filled\n"
+      "                 7  cols: ox oy oz c0 c1 c2 c3 \n"
+      "                          with c0..3 being the RGBA values\n"
+      "                          between 0 and 1.0\n"
+      "                 8  cols: ox oy oz c0 c1 c2 c3 rd\n"
+      "                 9  cols: ox oy oz c0 c1 c2 c3 rd st\n"
+            );
    SS = SUMA_StringAppend (SS, 
       "     Alt+s: Switch mouse buttons 1 and 3.\n\n");
    if (SUMAg_CF->Dev) SS = SUMA_StringAppend (SS, 

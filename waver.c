@@ -183,7 +183,7 @@ static double WAV_dt   =   0.1 ;
 static int      IN_npts = -666 ;
 static double * IN_ts   = NULL ;
 
-static int      WAV_duration = -666.0 ;
+static double   WAV_duration = -666.0 ;
 static int      WAV_npts     = -666 ;
 static double * WAV_ts       = NULL ;
 
@@ -208,7 +208,9 @@ int main( int argc , char * argv[] )
 
    if( argc < 2 || strncmp(argv[1],"-help",5) == 0 ) Syntax() ;
 
-   PRINT_VERSION("waver"); machdep(); AFNI_logger("waver",argc,argv);
+   /* this writes to stdout (default), so no version    06 Jan 2006 [rickr] */
+   /* PRINT_VERSION("waver"); */
+   machdep(); AFNI_logger("waver",argc,argv);
 
    Process_Options( argc , argv ) ;
 
@@ -522,6 +524,8 @@ void Syntax(void)
     "                     is not given, then enough points are output to\n"
     "                     let the result tail back down to zero.\n"
     "\n"
+    "  -ver           = Output version information and exit.\n"
+    "\n"
     "At least one option is required, or the program will just print this message\n"
     "to stdout.  Only one of the 3 timeseries input options above can be used.\n"
     "\n"
@@ -538,8 +542,10 @@ void Syntax(void)
 
 /*----------------------------------------------------------------*/
 
+/* no -help here (let the user see the error)        9 Mar 2006 [rickr]  */
 #define ERROR \
- do{fprintf(stderr,"Illegal %s option\n",argv[nopt]);Syntax();}while(0)
+ do{fprintf(stderr,"Illegal '%s' option",argv[nopt]);  \
+    fprintf(stderr,"  (consider 'waver -help')\n");exit(0);}while(0)
 
 void Process_Options( int argc , char * argv[] )
 {
@@ -857,8 +863,6 @@ void Process_Options( int argc , char * argv[] )
 
       if( strcmp(argv[nopt],"-when") == 0 ){   /* 08 Apr 2002 */
          int iopt , bot,top , nn , nbt,*bt , count=0 , ii,kk ;
-         float value ;
-         char sep ;
 
          if( IN_npts > 0 || IN_num_tstim > 0 ){
             fprintf(stderr,"Cannot input two timeseries!\n") ;
@@ -923,6 +927,14 @@ void Process_Options( int argc , char * argv[] )
          }
          OUT_numout = val ;
          nopt++ ; nopt++ ; continue ;
+      }
+
+      /*-----*/
+
+      if( strncmp(argv[nopt],"-ver",4) == 0 ){  /* 06 Jan 2006 [rickr] */
+         PRINT_VERSION("waver");
+         fprintf(stderr,"   (compiled %s)\n",__DATE__);
+         exit(0) ;
       }
 
       /*-----*/

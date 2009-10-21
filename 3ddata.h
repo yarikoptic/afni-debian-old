@@ -3395,7 +3395,7 @@ extern THD_3dim_dataset * THD_copy_dset_subs( THD_3dim_dataset * , int * ) ;
    "               2 4 6\n"                                                   \
    "               0 3 3\n"                                                   \
    "               7 2 9\n"                                                   \
-   "This example has 3 rows and 4 columns.  Each column is considered as\n"   \
+   "This example has 4 rows and 3 columns.  Each column is considered as\n"   \
    "a timeseries in AFNI.  The convention is to store this type of data\n"    \
    "in a filename ending in '.1D'.\n"                                         \
    "\n"                                                                       \
@@ -3634,6 +3634,9 @@ extern int thd_floatscan  ( int , float *   ) ; /* 30 Jul 1999 */
 extern int thd_complexscan( int , complex * ) ; /* 14 Sep 1999 */
 
 extern byte * THD_makemask( THD_3dim_dataset *, int,float,float) ;
+extern int    THD_makedsetmask( THD_3dim_dataset *, int,float,float, byte*cmask) ;
+extern int *THD_unique_vals( THD_3dim_dataset *mask_dset , int miv, int *n_unique, byte*cmask );
+
 extern int    THD_countmask( int , byte * ) ;
 extern byte * THD_automask( THD_3dim_dataset * ) ;         /* 13 Aug 2001 */
 extern void   THD_automask_verbose( int ) ;                /* 28 Oct 2003 */
@@ -3645,6 +3648,8 @@ extern void THD_autobbox( THD_3dim_dataset * ,             /* 06 Jun 2002 */
                           int *, int * , int *, int * , int *, int * ) ;
 extern void MRI_autobbox( MRI_IMAGE * ,
                           int *, int * , int *, int * , int *, int * ) ;
+
+extern void THD_automask_set_clipfrac( float f ) ;         /* 20 Mar 2006 */
 
 extern int THD_mask_fillin_completely( int,int,int, byte *, int ) ; /* 19 Apr 2002 */
 extern int THD_mask_fillin_once      ( int,int,int, byte *, int ) ;
@@ -3671,6 +3676,8 @@ extern void THD_put_dset_row( THD_3dim_dataset *, int,
                               int, int,int,int, void * row ) ;
 extern int THD_dataset_rowfillin( THD_3dim_dataset *, int, int, int ) ;
 extern int THD_dataset_zfillin( THD_3dim_dataset *, int, int, int ) ; /* 03 Jul 2001 */
+
+extern MRI_IMAGE * mri_get_dset_row( THD_3dim_dataset *, int , int,int,int,int ) ;
 
 /*------------------------------------------------------------------*/
 /*-- October 1998: routines for 3D volume rotation and alignment. --*/
@@ -4003,6 +4010,7 @@ extern void   UNIQ_idcode_fill(char *) ;
 /*------------------------------------------------------------------------*/
 
 extern char * TT_whereami( float , float , float ) ;
+extern char * TT_whereami_old( float , float , float ) ;
 extern int  TT_load_atlas (void);
 extern void TT_purge_atlas(void);
 extern THD_3dim_dataset * TT_retrieve_atlas(void) ;

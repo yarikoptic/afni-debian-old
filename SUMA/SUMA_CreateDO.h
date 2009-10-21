@@ -24,10 +24,10 @@ void SUMA_MeshAxisStandard (SUMA_Axis* Ax, SUMA_SurfaceObject *cso);
 void SUMA_EyeAxisStandard (SUMA_Axis* Ax, SUMA_SurfaceViewer *csv);
 void SUMA_Free_CrossHair (SUMA_CrossHair *Ch);
 SUMA_CrossHair* SUMA_Alloc_CrossHair (void);
-SUMA_Boolean SUMA_DrawCrossHair (SUMA_CrossHair* Ch);
+SUMA_Boolean SUMA_DrawCrossHair (SUMA_SurfaceViewer *csv);
 void SUMA_Free_SphereMarker (SUMA_SphereMarker *SM);
 SUMA_SphereMarker* SUMA_Alloc_SphereMarker (void);
-SUMA_Boolean SUMA_DrawFaceSetMarker (SUMA_FaceSetMarker* FM);
+SUMA_Boolean SUMA_DrawFaceSetMarker (SUMA_FaceSetMarker* FM, SUMA_SurfaceViewer *sv);
 SUMA_FaceSetMarker* SUMA_Alloc_FaceSetMarker (void);
 void SUMA_Free_FaceSetMarker (SUMA_FaceSetMarker* FM);
 void SUMA_DrawMesh(SUMA_SurfaceObject *SurfObj, SUMA_SurfaceViewer *csv);
@@ -40,10 +40,14 @@ SUMA_DRAWN_ROI * SUMA_AllocateDrawnROI (char *Parent_idcode_str, SUMA_ROI_DRAWIN
 SUMA_ROI * SUMA_AllocateROI (char *Parent_idcode_str, SUMA_ROI_TYPE Type, char * label, int N_ElInd, int *ElInd);
 SUMA_Boolean SUMA_freeDrawnROI (SUMA_DRAWN_ROI *D_ROI); 
 SUMA_Boolean SUMA_freeROI (SUMA_ROI *ROI); 
-SUMA_Boolean SUMA_Draw_SO_ROI (SUMA_SurfaceObject *SO, SUMA_DO* dov, int N_dov);
-SUMA_SegmentDO * SUMA_Alloc_SegmentDO (int N_n, char *Label);
+SUMA_Boolean SUMA_Draw_SO_ROI (SUMA_SurfaceObject *SO, SUMA_DO* dov, int N_dov, SUMA_SurfaceViewer *csv);
+SUMA_DO_Types SUMA_Guess_DO_Type(char *s);
+SUMA_SegmentDO * SUMA_Alloc_SegmentDO (int N_n, char *Label, int oriented);
 void SUMA_free_SegmentDO (SUMA_SegmentDO * SDO);
-SUMA_Boolean SUMA_DrawSegmentDO (SUMA_SegmentDO *SDO);
+SUMA_Boolean SUMA_DrawSegmentDO (SUMA_SegmentDO *SDO, SUMA_SurfaceViewer *sv);
+SUMA_SphereDO * SUMA_Alloc_SphereDO (int N_n, char *Label);
+void SUMA_free_SphereDO (SUMA_SphereDO * SDO);
+SUMA_Boolean SUMA_DrawSphereDO (SUMA_SphereDO *SDO);
 SUMA_Boolean SUMA_isROIdequal (SUMA_ROI_DATUM *ROId1, SUMA_ROI_DATUM *ROId2);
 void SUMA_FreeROIDatum (void * data);
 SUMA_ROI_DATUM * SUMA_AllocROIDatum (void);
@@ -69,7 +73,8 @@ SUMA_DRAWN_ROI * SUMA_1DROI_to_DrawnROI ( int *Node, int N_Node, int Value, char
                                           char *Label, char *ColPlaneName, 
                                           float *FillColor, float *EdgeColor, int EdgeThickness , 
                                           SUMA_DO *dov, int N_dov, SUMA_Boolean ForDisplay);
-SUMA_SegmentDO * SUMA_ReadSegDO (char *s);
+SUMA_SegmentDO * SUMA_ReadSegDO (char *s, int oriented);
+SUMA_SphereDO * SUMA_ReadSphDO (char *s);
 SUMA_SurfaceObject *SUMA_Cmap_To_SO (SUMA_COLOR_MAP *Cmap, float orig[3], float topright[3], int verb);
 SUMA_Boolean SUMA_DrawLineAxis ( SUMA_AxisSegmentInfo *ASIp, SUMA_Axis *Ax, SUMA_Boolean AddText);
 DList *SUMA_SortedAxisSegmentList ( SUMA_SurfaceViewer *sv, SUMA_Axis *Ax, 

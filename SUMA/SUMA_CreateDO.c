@@ -556,6 +556,63 @@ SUMA_SurfaceObject *SUMA_Cmap_To_SO_old (SUMA_COLOR_MAP *Cmap, float orig[3], fl
 }
 
 /*!
+   A poor man's function to sniff if a DO file contains spheres or segments
+   Not to be used as a general purpose DO file detector 
+*/
+SUMA_DO_Types SUMA_Guess_DO_Type(char *s)
+{
+   static char FuncName[]={"SUMA_Guess_DO_Type"};
+   SUMA_DO_Types dotp = no_type;
+   FILE *fid=NULL;
+   char sbuf[200];
+   int i;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!s) {
+      SUMA_SL_Warn("Query with null file name");
+      SUMA_RETURN(dotp);
+   }
+   
+   fid = fopen(s,"r");
+   
+   if (!fid) {
+      SUMA_SLP_Err("Could not open file for read");
+      SUMA_RETURN(dotp);
+   }
+   
+   /* get first 100 chars */
+   i = 0;
+   sbuf[i] = '\0';
+   while (i<100 && !feof(fid)) {
+      sbuf[i] = fgetc(fid);
+      if (feof(fid)) {
+         break;
+      }
+      ++i;  
+   }
+   sbuf[i] = '\0';
+
+   /* check for tags */
+   if (strstr(sbuf,"#spheres")) {
+      dotp = SP_type;
+   } else if (strstr(sbuf,"#segments")) {
+      dotp = LS_type;
+   } else if (strstr(sbuf,"#oriented_segments")) {
+      dotp = OLS_type;
+   } 
+   
+   if (LocalHead) {
+      fprintf(SUMA_STDERR,"%s: Searched header string:\n>>>%s<<<\ndotp = %d\n", FuncName, sbuf, dotp);
+   }
+   
+   fclose(fid); fid = NULL;
+   
+   SUMA_RETURN(dotp);
+}
+
+/*!
  allocate for a segment DO 
    SDO = SUMA_Alloc_SegmentDO ( N_n, Label)
 
@@ -567,7 +624,7 @@ SUMA_SurfaceObject *SUMA_Cmap_To_SO_old (SUMA_COLOR_MAP *Cmap, float orig[3], fl
    \returns SDO (SUMA_SegmentDO *) 
      
 */
-SUMA_SegmentDO * SUMA_Alloc_SegmentDO (int N_n, char *Label)
+SUMA_SegmentDO * SUMA_Alloc_SegmentDO (int N_n, char *Label, int oriented)
 {
    static char FuncName[]={"SUMA_Alloc_SegmentDO"};
    SUMA_SegmentDO * SDO= NULL;
@@ -613,6 +670,14 @@ SUMA_SegmentDO * SUMA_Alloc_SegmentDO (int N_n, char *Label)
    SDO->LineWidth = 4.0;
    SDO->LineCol[0] = 1.0; SDO->LineCol[1] = 0.3; SDO->LineCol[2] = 1.0; SDO->LineCol[3] = 1.0; 
    
+   SDO->colv = NULL;
+   SDO->thickv = NULL;
+   
+   SDO->topobj = NULL;
+   if (oriented) {
+      SDO->botobj = gluNewQuadric();
+   } else SDO->botobj = NULL;
+   
    SUMA_RETURN (SDO);
 }
 
@@ -628,19 +693,24 @@ void SUMA_free_SegmentDO (SUMA_SegmentDO * SDO)
    if (SDO->n1) SUMA_free(SDO->n1);
    if (SDO->idcode_str) SUMA_free(SDO->idcode_str);
    if (SDO->Label) SUMA_free(SDO->Label);
+   if (SDO->thickv) SUMA_free(SDO->thickv);
+   if (SDO->colv) SUMA_free(SDO->colv);
+   if (SDO->botobj) gluDeleteQuadric(SDO->botobj);
+   if (SDO->topobj) gluDeleteQuadric(SDO->topobj);
    if (SDO) SUMA_free(SDO);
    
    SUMA_RETURNe;
 }
 
-SUMA_SegmentDO * SUMA_ReadSegDO (char *s)
+SUMA_SegmentDO * SUMA_ReadSegDO (char *s, int oriented)
 {
    static char FuncName[]={"SUMA_ReadSegDO"};
    SUMA_SegmentDO *SDO = NULL;
    MRI_IMAGE * im = NULL;
    float *far=NULL;
-   int itmp, itmp2;
+   int itmp, itmp2, icol_thick = -1, icol_col=-1;
    int nrow=-1, ncol=-1;
+   char buf[30];
    
    SUMA_ENTRY;
    
@@ -655,13 +725,10 @@ SUMA_SegmentDO * SUMA_ReadSegDO (char *s)
       SUMA_SLP_Err("Failed to read 1D file");
       SUMA_RETURN(NULL);
    }
-   im = mri_read_1D (s);
-
-   if (!im) {
-      SUMA_SLP_Err("Failed to read 1D file");
-      SUMA_RETURN(NULL);
-   }
-
+   
+   if (oriented) sprintf(buf,"Oriented segment");
+   else sprintf(buf,"Segment");
+   
    far = MRI_FLOAT_PTR(im);
    ncol = im->nx;
    nrow = im->ny;
@@ -670,15 +737,39 @@ SUMA_SegmentDO * SUMA_ReadSegDO (char *s)
       SUMA_SLP_Err("Empty file");
       SUMA_RETURN(NULL);
    }
-   if (nrow !=  6 ) {
-      SUMA_SLP_Err("File must have\n"
-                   "6 columns.");
-      mri_free(im); im = NULL;   /* done with that baby */
-      SUMA_RETURN(NULL);
-   }/* find out if file exists and how many values it contains */
+   
+   icol_col = -1;
+   icol_thick = -1;
+   switch (nrow) {
+      case 6:
+         fprintf(SUMA_STDERR,"%s: %s file %s's format:\n"
+                              "x0 y0 z0 x1 y1 z1\n", FuncName, buf, s);
+         break;
+      case 7:
+         fprintf(SUMA_STDERR,"%s: %s file %s's format:\n"
+                              "x0 y0 z0 x1 y1 z1 th\n", FuncName, buf, s);
+         icol_thick = 6;
+         break;
+      case 10:
+         fprintf(SUMA_STDERR,"%s: %s file %s's format:\n"
+                              "x0 y0 z0 x1 y1 z1 c0 c1 c2 c3\n", FuncName, buf, s);
+         icol_col = 6;
+         break;
+      case 11:
+         fprintf(SUMA_STDERR,"%s: %s file %s's format:\n"
+                              "x0 y0 z0 x1 y1 z1 c0 c1 c2 c3 th\n", FuncName, buf, s);
+         icol_col = 6;
+         icol_thick = 10;
+         break;
+      default:
+         SUMA_SLP_Err("File must have\n"
+                   "6,7,10 or 11 columns.");
+         mri_free(im); im = NULL;   /* done with that baby */
+         SUMA_RETURN(NULL);
+   }
 
    /* allocate for segments DO */
-   SDO = SUMA_Alloc_SegmentDO (ncol, s);
+   SDO = SUMA_Alloc_SegmentDO (ncol, s, oriented);
    if (!SDO) {
       fprintf(SUMA_STDERR,"Error %s: Failed in SUMA_Allocate_SegmentDO.\n", FuncName);
       SUMA_RETURN(NULL);
@@ -696,12 +787,197 @@ SUMA_SegmentDO * SUMA_ReadSegDO (char *s)
       SDO->n1[itmp2+2] = far[itmp+5*ncol]; 
       ++itmp;
    } 
-
+   
+   if (icol_col > 0) {
+      SDO->colv = (GLfloat *)SUMA_malloc(4*sizeof(GLfloat)*SDO->N_n);
+      if (!SDO->colv) {
+         SUMA_SL_Crit("Failed in to allocate for colv.");
+         SUMA_RETURN(NULL);
+      }
+      /* fill up idividual colors */
+      itmp = 0;
+      while (itmp < SDO->N_n) {
+         itmp2 = 4*itmp;
+         SDO->colv[itmp2]     = far[itmp+(icol_col  )*ncol];
+         SDO->colv[itmp2+1]   = far[itmp+(icol_col+1)*ncol];
+         SDO->colv[itmp2+2]   = far[itmp+(icol_col+2)*ncol];
+         SDO->colv[itmp2+3]   = far[itmp+(icol_col+3)*ncol];
+         ++itmp;
+      } 
+   }
+   if (icol_thick > 0) {
+      SDO->thickv = (GLfloat *)SUMA_malloc(sizeof(GLfloat)*SDO->N_n);
+      if (!SDO->thickv) {
+         SUMA_SL_Crit("Failed in to allocate for colv.");
+         SUMA_RETURN(NULL);
+      }
+      /* fill up idividual thickness */
+      itmp = 0;
+      while (itmp < SDO->N_n) {
+         SDO->thickv[itmp]     = far[itmp+(icol_thick  )*ncol];
+         ++itmp;
+      } 
+   }
+   
    mri_free(im); im = NULL; far = NULL;
 
    SUMA_RETURN(SDO);
 }
 
+GLenum SUMA_SphereStyleConvert (int v)
+{
+   switch (v) {
+      case 0:
+         return(GLU_POINT);
+      case 1:
+         return(GLU_LINE);
+      case 2:
+         return(GLU_FILL);
+      default:
+         return(GLU_FILL);
+   }
+}
+
+SUMA_SphereDO * SUMA_ReadSphDO (char *s)
+{
+   static char FuncName[]={"SUMA_ReadSphDO"};
+   SUMA_SphereDO *SDO = NULL;
+   MRI_IMAGE * im = NULL;
+   float *far=NULL;
+   int itmp, itmp2, icol_rad=-1, icol_style = -1, icol_col = -1;
+   int nrow=-1, ncol=-1;
+   
+   SUMA_ENTRY;
+      
+   if (!s) {
+      SUMA_SLP_Err("NULL s");
+      SUMA_RETURN(NULL);
+   }
+   
+   im = mri_read_1D (s);
+
+   if (!im) {
+      SUMA_SLP_Err("Failed to read 1D file");
+      SUMA_RETURN(NULL);
+   }
+
+   far = MRI_FLOAT_PTR(im);
+   ncol = im->nx;
+   nrow = im->ny;
+
+   if (!ncol) {
+      SUMA_SLP_Err("Empty file");
+      SUMA_RETURN(NULL);
+   }
+   
+   icol_col = -1;
+   icol_rad = -1;
+   icol_style = -1;
+   switch (nrow) {
+      case 3:
+         fprintf(SUMA_STDERR,"%s: Sphere file %s's format:\n"
+                              "ox oy oz\n", FuncName, s);
+         break;
+      case 4:
+         fprintf(SUMA_STDERR,"%s: Sphere file %s's format:\n"
+                              "ox oy oz rd\n", FuncName, s);
+         icol_rad = 3;
+         break;
+      case 5:
+         fprintf(SUMA_STDERR,"%s: Sphere file %s's format:\n"
+                              "ox oy oz rd st\n", FuncName, s);
+         icol_rad = 3;
+         icol_style = 4;
+         break;
+      case 7:
+         fprintf(SUMA_STDERR,"%s: Sphere file %s's format:\n"
+                              "ox oy oz c0 c1 c2 c3\n", FuncName, s);
+         icol_col = 3;
+         break;
+      case 8:
+         fprintf(SUMA_STDERR,"%s: Sphere file %s's format:\n"
+                              "ox oy oz c0 c1 c2 c3 rd\n", FuncName, s);
+         icol_col = 3;
+         icol_rad = 7;
+         break;
+      case 9:
+         fprintf(SUMA_STDERR,"%s: Sphere file %s's format:\n"
+                              "ox oy oz c0 c1 c2 c3 rd st\n", FuncName, s);
+         icol_col = 3;
+         icol_rad = 7;
+         icol_style = 8;
+         break;
+      default:
+         SUMA_SLP_Err("File must have\n"
+                   "3,4,5,7,8 or 9 columns.");
+         mri_free(im); im = NULL;   /* done with that baby */
+         SUMA_RETURN(NULL);
+   }
+
+   /* allocate for segments DO */
+   SDO = SUMA_Alloc_SphereDO (ncol, s);
+   if (!SDO) {
+      fprintf(SUMA_STDERR,"Error %s: Failed in SUMA_Allocate_SphereDO.\n", FuncName);
+      SUMA_RETURN(NULL);
+   }
+
+   /* fill up SDO */
+   itmp = 0;
+   while (itmp < SDO->N_n) {
+      itmp2 = 3*itmp;
+      SDO->cxyz[itmp2]   = far[itmp       ];
+      SDO->cxyz[itmp2+1] = far[itmp+  ncol];
+      SDO->cxyz[itmp2+2] = far[itmp+2*ncol];
+      ++itmp;
+   } 
+   
+   if (icol_col > 0) {
+      SDO->colv = (GLfloat *)SUMA_malloc(4*sizeof(GLfloat)*SDO->N_n);
+      if (!SDO->colv) {
+         SUMA_SL_Crit("Failed in to allocate for colv.");
+         SUMA_RETURN(NULL);
+      }
+      /* fill up idividual colors */
+      itmp = 0;
+      while (itmp < SDO->N_n) {
+         itmp2 = 4*itmp;
+         SDO->colv[itmp2]     = far[itmp+(icol_col  )*ncol];
+         SDO->colv[itmp2+1]   = far[itmp+(icol_col+1)*ncol];
+         SDO->colv[itmp2+2]   = far[itmp+(icol_col+2)*ncol];
+         SDO->colv[itmp2+3]   = far[itmp+(icol_col+3)*ncol];
+         ++itmp;
+      } 
+   }
+   if (icol_rad > 0) {
+      SDO->radv = (GLfloat *)SUMA_malloc(sizeof(GLfloat)*SDO->N_n);
+      if (!SDO->radv) {
+         SUMA_SL_Crit("Failed in to allocate for radv.");
+         SUMA_RETURN(NULL);
+      }
+      /* fill up idividual radius */
+      itmp = 0;
+      while (itmp < SDO->N_n) {
+         SDO->radv[itmp]     = far[itmp+(icol_rad  )*ncol];
+         ++itmp;
+      } 
+   }
+   if (icol_style > 0) {
+      SDO->stylev = (GLenum *)SUMA_malloc(sizeof(GLenum)*SDO->N_n);
+      if (!SDO->stylev) {
+         SUMA_SL_Crit("Failed in to allocate for radv.");
+         SUMA_RETURN(NULL);
+      }
+      /* fill up idividual style */
+      itmp = 0;
+      while (itmp < SDO->N_n) {
+         SDO->stylev[itmp]     = SUMA_SphereStyleConvert((int)far[itmp+(icol_style  )*ncol]);
+         ++itmp;
+      } 
+   }
+   mri_free(im); im = NULL; far = NULL;
+
+   SUMA_RETURN(SDO);
+}
 
 /*! Allocate for a axis object */
 SUMA_Axis* SUMA_Alloc_Axis (const char *Name)
@@ -877,10 +1153,142 @@ void SUMA_WorldAxisStandard (SUMA_Axis* Ax, SUMA_SurfaceViewer *sv)
    SUMA_RETURNe;
 }
 
-SUMA_Boolean SUMA_DrawSegmentDO (SUMA_SegmentDO *SDO)
+SUMA_Boolean SUMA_DrawSphereDO (SUMA_SphereDO *SDO)
 {
    static GLfloat NoColor[] = {0.0, 0.0, 0.0, 0.0};
-   int i, N_n3;
+   int i, N_n3, i3;
+   GLfloat rad = 3;
+   static char FuncName[]={"SUMA_DrawSphereDO"};
+   float origwidth=0.0;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!SDO) {
+      fprintf(stderr,"Error %s: NULL pointer.\n", FuncName);
+      SUMA_RETURN (NOPE);
+   }
+   
+   glGetFloatv(GL_LINE_WIDTH, &origwidth);
+   glLineWidth(SDO->LineWidth);
+   
+   if (!SDO->colv) {
+      glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, SDO->CommonCol);
+      glMaterialfv(GL_FRONT, GL_EMISSION, SDO->CommonCol);
+   }
+   if (!SDO->radv) rad = SDO->CommonRad;
+   if (!SDO->stylev) {
+      gluQuadricDrawStyle (SDO->sphobj, SDO->CommonStyle); 
+      if (SDO->CommonStyle == GLU_FILL) gluQuadricNormals (SDO->sphobj , GLU_SMOOTH);
+      else gluQuadricNormals (SDO->sphobj , GLU_NONE); 
+   }
+   
+   for (i=0; i<SDO->N_n;++i) {
+      i3 = 3*i;
+      if (SDO->colv) {
+         glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, &(SDO->colv[i*4]));
+         glMaterialfv(GL_FRONT, GL_EMISSION, &(SDO->colv[i*4]));
+      }
+      if (SDO->radv) rad = SDO->radv[i];
+      if (SDO->stylev) {
+         gluQuadricDrawStyle (SDO->sphobj, SDO->stylev[i]); 
+         if (SDO->stylev[i] == GLU_FILL) gluQuadricNormals (SDO->sphobj , GLU_SMOOTH);
+         else gluQuadricNormals (SDO->sphobj , GLU_NONE); 
+      }
+      glTranslatef (SDO->cxyz[i3], SDO->cxyz[i3+1], SDO->cxyz[i3+2]);
+      gluSphere(SDO->sphobj, rad/* *SUMA_MAX_PAIR(sv->ZoomCompensate, 0.06)  User set values, not cool to play with dimensions! */, 
+                SDO->CommonSlices, SDO->CommonStacks);
+      glTranslatef (-SDO->cxyz[i3], -SDO->cxyz[i3+1], -SDO->cxyz[i3+2]);
+   }
+   glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, NoColor);
+   glMaterialfv(GL_FRONT, GL_EMISSION, NoColor); 
+   glLineWidth(origwidth);
+
+   SUMA_RETURN (YUP);
+   
+}
+
+SUMA_SphereDO * SUMA_Alloc_SphereDO (int N_n, char *Label)
+{
+   static char FuncName[]={"SUMA_Alloc_SphereDO"};
+   SUMA_SphereDO* SDO;
+   
+   SUMA_ENTRY;
+
+   SDO = (SUMA_SphereDO*)SUMA_malloc (sizeof (SUMA_SphereDO));
+   if (SDO == NULL) {
+      fprintf(stderr,"SUMA_Alloc_SphereDO Error: Failed to allocate SDO\n");
+      SUMA_RETURN (NULL);
+   }
+   
+   if (N_n > 0) {
+      SDO->cxyz = (GLfloat *) SUMA_calloc (3*N_n, sizeof(GLfloat));
+   
+      if (!SDO->cxyz) {
+         fprintf(stderr,"Error %s: Failed to allocate for SDO->cxyz\n", FuncName);
+         if (SDO) SUMA_free (SDO);
+         SUMA_RETURN (NULL);
+      }
+      SDO->N_n = N_n;
+   } else {
+      SDO->cxyz = NULL;
+      SDO->N_n = 0;
+   }
+   
+   SDO->idcode_str = (char *)SUMA_calloc (SUMA_IDCODE_LENGTH, sizeof(char));
+   UNIQ_idcode_fill(SDO->idcode_str);
+   
+   if (Label) {
+      SDO->Label = (char *)SUMA_calloc (strlen(Label)+1, sizeof(char));
+      SDO->Label = strcpy (SDO->Label, Label);
+   } else {
+      SDO->Label = NULL;
+   }
+   
+   /* create the ball object*/
+   SDO->sphobj = gluNewQuadric();
+   
+   /* setup some default values */
+   SDO->LineWidth = 4.0;
+   SDO->CommonRad = 2.0;
+   SDO->CommonCol[0] = 1.0; SDO->CommonCol[1] = 1.0; SDO->CommonCol[2] = 1.0; SDO->CommonCol[3] = 1.0; 
+   SDO->CommonSlices = 10;
+   SDO->CommonStacks = 10;
+   SDO->CommonStyle = GLU_FILL;
+   SDO->radv=NULL;
+   SDO->colv=NULL;
+   SDO->stylev = NULL;
+   
+   SUMA_RETURN (SDO);
+}
+
+void SUMA_free_SphereDO (SUMA_SphereDO * SDO)
+{
+   static char FuncName[]={"SUMA_free_SphereDO"};
+
+   SUMA_ENTRY;
+   
+   if (!SDO) SUMA_RETURNe;
+   
+   if (SDO->cxyz) SUMA_free(SDO->cxyz);
+   if (SDO->idcode_str) SUMA_free(SDO->idcode_str);
+   if (SDO->Label) SUMA_free(SDO->Label);
+   if (SDO->sphobj) gluDeleteQuadric(SDO->sphobj);
+   if (SDO->radv) SUMA_free(SDO->radv);
+   if (SDO->colv) SUMA_free(SDO->colv);
+   if (SDO->stylev) SUMA_free(SDO->stylev);
+
+   if (SDO) SUMA_free(SDO);
+   
+   SUMA_RETURNe;
+
+}
+
+SUMA_Boolean SUMA_DrawSegmentDO (SUMA_SegmentDO *SDO, SUMA_SurfaceViewer *sv)
+{
+   static GLfloat NoColor[] = {0.0, 0.0, 0.0, 0.0};
+   int i, N_n3, i3;
+   float origwidth=0.0, rad = 0.0;
    static char FuncName[]={"SUMA_DrawSegmentDO"};
    
    SUMA_ENTRY;
@@ -890,7 +1298,8 @@ SUMA_Boolean SUMA_DrawSegmentDO (SUMA_SegmentDO *SDO)
       SUMA_RETURN (NOPE);
    }
    
-   glLineWidth(SDO->LineWidth);
+   glGetFloatv(GL_LINE_WIDTH, &origwidth);
+   if (!SDO->thickv) glLineWidth(SDO->LineWidth);  
    
    switch (SDO->Stipple) {
       case SUMA_DASHED_LINE:
@@ -904,21 +1313,41 @@ SUMA_Boolean SUMA_DrawSegmentDO (SUMA_SegmentDO *SDO)
          SUMA_RETURN(NOPE);
    }
    
-   glBegin(GL_LINES);
-   glMaterialfv(GL_FRONT, GL_EMISSION, SDO->LineCol); /*turn on emissivity for */
-   glMaterialfv(GL_FRONT, GL_AMBIENT, NoColor); /* turn off ambient and diffuse components */
-   glMaterialfv(GL_FRONT, GL_DIFFUSE, NoColor);
-   
-   i = 0;
-   N_n3 = 3*SDO->N_n;
-   while (i < N_n3) {
-      glVertex3f(SDO->n0[i], SDO->n0[i+1], SDO->n0[i+2]);
-      glVertex3f(SDO->n1[i], SDO->n1[i+1], SDO->n1[i+2]); 
-      i += 3;
+   if (!SDO->thickv) {
+      glBegin(GL_LINES);
+      if (!SDO->colv) glMaterialfv(GL_FRONT, GL_EMISSION, SDO->LineCol); /*turn on emissivity  */
+      glMaterialfv(GL_FRONT, GL_AMBIENT, NoColor); /* turn off ambient and diffuse components */
+      glMaterialfv(GL_FRONT, GL_DIFFUSE, NoColor);
+
+      i = 0;
+      N_n3 = 3*SDO->N_n;
+      while (i < N_n3) {
+         if (SDO->colv) glMaterialfv(GL_FRONT, GL_EMISSION, &(SDO->colv[4*(i/3)]));
+         glVertex3f(SDO->n0[i], SDO->n0[i+1], SDO->n0[i+2]);
+         glVertex3f(SDO->n1[i], SDO->n1[i+1], SDO->n1[i+2]); 
+         i += 3;
+      }
+
+      glEnd();
+   } else { /* slow slow slow */
+      if (!SDO->colv) glMaterialfv(GL_FRONT, GL_EMISSION, SDO->LineCol);
+      glMaterialfv(GL_FRONT, GL_AMBIENT, NoColor); /* turn off ambient and diffuse components */
+      glMaterialfv(GL_FRONT, GL_DIFFUSE, NoColor);
+      i = 0;
+      N_n3 = 3*SDO->N_n;
+      while (i < N_n3) {
+         if (SDO->thickv) glLineWidth(SDO->thickv[i/3]);   
+         glBegin(GL_LINES);
+         if (SDO->colv) glMaterialfv(GL_FRONT, GL_EMISSION, &(SDO->colv[4*(i/3)]));
+         glVertex3f(SDO->n0[i], SDO->n0[i+1], SDO->n0[i+2]);
+         glVertex3f(SDO->n1[i], SDO->n1[i+1], SDO->n1[i+2]); 
+         i += 3;
+         glEnd();
+      }
+      
    }
    
-   glEnd();
-      switch (SDO->Stipple) {
+   switch (SDO->Stipple) {
       case SUMA_DASHED_LINE:
          glDisable(GL_LINE_STIPPLE);
          break;
@@ -926,8 +1355,37 @@ SUMA_Boolean SUMA_DrawSegmentDO (SUMA_SegmentDO *SDO)
          break;
    }
    
-   glMaterialfv(GL_FRONT, GL_EMISSION, NoColor); /*turn off emissivity */
+   /* draw the bottom object */
+   if (SDO->botobj) {
+      glLineWidth(0.5);
+      if (!SDO->colv) {
+         glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, SDO->LineCol);
+      }
+      if (!SDO->thickv) rad = SDO->LineWidth*0.5*sv->FOV[sv->iState]/FOV_INITIAL;
+      gluQuadricDrawStyle (SDO->botobj, GLU_FILL); 
+      gluQuadricNormals (SDO->botobj , GLU_SMOOTH);
 
+      for (i=0; i<SDO->N_n;++i) {
+         i3 = 3*i;
+         if (SDO->colv) {
+            glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, &(SDO->colv[i*4]));
+            glMaterialfv(GL_FRONT, GL_EMISSION, &(SDO->colv[i*4]));
+         }
+         if (SDO->thickv) rad = SDO->thickv[i]*0.5*sv->FOV[sv->iState]/FOV_INITIAL;
+         /* fprintf(SUMA_STDERR,"thickv[i] = %f, FOV %f, FOV_INITIAL %f, radinit=%f, radcomp=%f\n", 
+                        SDO->thickv[i], sv->FOV[sv->iState], FOV_INITIAL,
+                        rad,  rad *SUMA_MAX_PAIR(sv->ZoomCompensate, 0.06)); */
+         glTranslatef (SDO->n0[i3], SDO->n0[i3+1], SDO->n0[i3+2]);
+         gluSphere(SDO->botobj, SUMA_MAX_PAIR(rad, 0.005) /* *SUMA_MAX_PAIR(sv->ZoomCompensate, 0.06) */ , 
+                   10, 10);
+         glTranslatef (-SDO->n0[i3], -SDO->n0[i3+1], -SDO->n0[i3+2]);
+      }
+      glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, NoColor);
+   }
+
+   glMaterialfv(GL_FRONT, GL_EMISSION, NoColor); /*turn off emissivity */
+   glLineWidth(origwidth);
+     
    SUMA_RETURN (YUP);
    
 }
@@ -1662,7 +2120,7 @@ SUMA_DRAWN_ROI **SUMA_Find_ROIrelatedtoSO (SUMA_SurfaceObject *SO, SUMA_DO* dov,
 }
 
 /*! Create the ROIs for a particular surface */
-SUMA_Boolean SUMA_Draw_SO_ROI (SUMA_SurfaceObject *SO, SUMA_DO* dov, int N_do)
+SUMA_Boolean SUMA_Draw_SO_ROI (SUMA_SurfaceObject *SO, SUMA_DO* dov, int N_do, SUMA_SurfaceViewer *sv)
 {
    static char FuncName[]={"SUMA_Draw_SO_ROI"};
    GLfloat ROI_SphCol[] = {1.0, 0.0, 0.0, 1.0};
@@ -1744,7 +2202,8 @@ SUMA_Boolean SUMA_Draw_SO_ROI (SUMA_SurfaceObject *SO, SUMA_DO* dov, int N_do)
                               glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, ROI_SphCol_frst);
                               idFirst = 3 * ROId->nPath[0];
                               glTranslatef (SO->NodeList[idFirst], SO->NodeList[idFirst+1], SO->NodeList[idFirst+2]);
-                              gluSphere(SO->NodeMarker->sphobj, SO->NodeMarker->sphrad, SO->NodeMarker->slices, SO->NodeMarker->stacks);
+                              gluSphere(SO->NodeMarker->sphobj, SO->NodeMarker->sphrad*SUMA_MAX_PAIR(sv->ZoomCompensate, 0.06), 
+                                       SO->NodeMarker->slices, SO->NodeMarker->stacks);
                               glTranslatef (-SO->NodeList[idFirst], -SO->NodeList[idFirst+1], -SO->NodeList[idFirst+2]);
                            } 
 
@@ -1762,7 +2221,8 @@ SUMA_Boolean SUMA_Draw_SO_ROI (SUMA_SurfaceObject *SO, SUMA_DO* dov, int N_do)
                               glEnd();
 
                               glTranslatef (SO->NodeList[id], SO->NodeList[id+1], SO->NodeList[id+2]);
-                              gluSphere(SO->NodeMarker->sphobj, SO->NodeMarker->sphrad, SO->NodeMarker->slices, SO->NodeMarker->stacks);
+                              gluSphere(SO->NodeMarker->sphobj, SO->NodeMarker->sphrad*SUMA_MAX_PAIR(sv->ZoomCompensate, 0.06),
+                                        SO->NodeMarker->slices, SO->NodeMarker->stacks);
                               glTranslatef (-SO->NodeList[id], -SO->NodeList[id+1], -SO->NodeList[id+2]);
                            }
 
@@ -1841,7 +2301,8 @@ SUMA_Boolean SUMA_Draw_SO_ROI (SUMA_SurfaceObject *SO, SUMA_DO* dov, int N_do)
                      for (ii=0; ii < ROI->N_ElInd; ++ii) {
                         id = 3 * ROI->ElInd[ii];
                         glTranslatef (SO->NodeList[id], SO->NodeList[id+1], SO->NodeList[id+2]);
-                        gluSphere(SO->NodeMarker->sphobj, SO->NodeMarker->sphrad, SO->NodeMarker->slices, SO->NodeMarker->stacks);
+                        gluSphere(SO->NodeMarker->sphobj, SO->NodeMarker->sphrad*SUMA_MAX_PAIR(sv->ZoomCompensate, 0.06), 
+                           SO->NodeMarker->slices, SO->NodeMarker->stacks);
                         glTranslatef (-SO->NodeList[id], -SO->NodeList[id+1], -SO->NodeList[id+2]);
                      }
                      break;
@@ -2573,60 +3034,70 @@ DList * SUMA_Addto_ROIplane_List (DList *ROIplaneListIn, SUMA_DO *dov, int idov)
 }
 
 /*! Create the cross hair */
-SUMA_Boolean SUMA_DrawCrossHair (SUMA_CrossHair* Ch)
+SUMA_Boolean SUMA_DrawCrossHair (SUMA_SurfaceViewer *sv)
 {
    static char FuncName[]={"SUMA_DrawCrossHair"};
    static GLfloat NoColor[] = {0.0, 0.0, 0.0, 0.0};
+   static GLdouble radsph, fac;
+   static GLfloat gapch, radch;
+   float origwidth = 0.0;
+   SUMA_CrossHair* Ch = sv->Ch;
    
    SUMA_ENTRY;
+   
+   fac = SUMA_MAX_PAIR(sv->ZoomCompensate, 0.03);
+   radsph = Ch->sphrad*fac;
+   gapch = Ch->g*fac;
+   radch = Ch->r*fac;
 
+   glGetFloatv(GL_LINE_WIDTH, &origwidth);
    glLineWidth(Ch->LineWidth);
    /*fprintf(SUMA_STDOUT, "Center: %f, %f, %f. Gap %f, Radius: %f\n",\
-      Ch->c[0], Ch->c[2], Ch->c[2], Ch->g, Ch->r);*/
+      Ch->c[0], Ch->c[2], Ch->c[2], gapch, radch);*/
       glMaterialfv(GL_FRONT, GL_AMBIENT, NoColor); /* turn off ambient and diffuse components */
       glMaterialfv(GL_FRONT, GL_DIFFUSE, NoColor);
-      if (Ch->g) { /* gap */
+      if (gapch) { /* gap */
          glMaterialfv(GL_FRONT, GL_EMISSION, Ch->XaxisColor); /*turn on emissivity for axis*/
          glBegin(GL_LINES);
-         glVertex3f(Ch->c[0] - Ch->r, Ch->c[1], Ch->c[2]);
-         glVertex3f(Ch->c[0] - Ch->g, Ch->c[1], Ch->c[2]);
-         glVertex3f(Ch->c[0] + Ch->r, Ch->c[1], Ch->c[2]);
-         glVertex3f(Ch->c[0] + Ch->g, Ch->c[1], Ch->c[2]);
+         glVertex3f(Ch->c[0] - radch, Ch->c[1], Ch->c[2]);
+         glVertex3f(Ch->c[0] - gapch, Ch->c[1], Ch->c[2]);
+         glVertex3f(Ch->c[0] + radch, Ch->c[1], Ch->c[2]);
+         glVertex3f(Ch->c[0] + gapch, Ch->c[1], Ch->c[2]);
          glEnd();  
 
          glMaterialfv(GL_FRONT, GL_EMISSION, Ch->YaxisColor); /*turn on emissivity for axis*/
          glBegin(GL_LINES);
-         glVertex3f(Ch->c[0], Ch->c[1] - Ch->r, Ch->c[2]);
-         glVertex3f(Ch->c[0], Ch->c[1] - Ch->g, Ch->c[2]);
-         glVertex3f(Ch->c[0], Ch->c[1] + Ch->r, Ch->c[2]);
-         glVertex3f(Ch->c[0], Ch->c[1] + Ch->g, Ch->c[2]);
+         glVertex3f(Ch->c[0], Ch->c[1] - radch, Ch->c[2]);
+         glVertex3f(Ch->c[0], Ch->c[1] - gapch, Ch->c[2]);
+         glVertex3f(Ch->c[0], Ch->c[1] + radch, Ch->c[2]);
+         glVertex3f(Ch->c[0], Ch->c[1] + gapch, Ch->c[2]);
          glEnd();  
 
          glMaterialfv(GL_FRONT, GL_EMISSION, Ch->ZaxisColor); /*turn on emissivity for axis*/
          glBegin(GL_LINES);
-         glVertex3f(Ch->c[0], Ch->c[1], Ch->c[2] - Ch->r);
-         glVertex3f(Ch->c[0], Ch->c[1], Ch->c[2] - Ch->g);
-         glVertex3f(Ch->c[0], Ch->c[1], Ch->c[2] + Ch->r);
-         glVertex3f(Ch->c[0], Ch->c[1], Ch->c[2] + Ch->g);
+         glVertex3f(Ch->c[0], Ch->c[1], Ch->c[2] - radch);
+         glVertex3f(Ch->c[0], Ch->c[1], Ch->c[2] - gapch);
+         glVertex3f(Ch->c[0], Ch->c[1], Ch->c[2] + radch);
+         glVertex3f(Ch->c[0], Ch->c[1], Ch->c[2] + gapch);
          glEnd();  
 
       }/*gap */ else {/*no gap */
          glMaterialfv(GL_FRONT, GL_EMISSION, Ch->XaxisColor); /*turn on emissivity for axis*/
          glBegin(GL_LINES);
-         glVertex3f(Ch->c[0] - Ch->r, Ch->c[1], Ch->c[2]);
-         glVertex3f(Ch->c[0] + Ch->r, Ch->c[1], Ch->c[2]);
+         glVertex3f(Ch->c[0] - radch, Ch->c[1], Ch->c[2]);
+         glVertex3f(Ch->c[0] + radch, Ch->c[1], Ch->c[2]);
          glEnd();  
          
          glMaterialfv(GL_FRONT, GL_EMISSION, Ch->YaxisColor); /*turn on emissivity for axis*/
          glBegin(GL_LINES);
-         glVertex3f(Ch->c[0], Ch->c[1] - Ch->r, Ch->c[2]);
-         glVertex3f(Ch->c[0], Ch->c[1] + Ch->r, Ch->c[2]);
+         glVertex3f(Ch->c[0], Ch->c[1] - radch, Ch->c[2]);
+         glVertex3f(Ch->c[0], Ch->c[1] + radch, Ch->c[2]);
          glEnd();  
 
          glMaterialfv(GL_FRONT, GL_EMISSION, Ch->ZaxisColor); /*turn on emissivity for axis*/
          glBegin(GL_LINES);
-         glVertex3f(Ch->c[0], Ch->c[1], Ch->c[2] - Ch->r);
-         glVertex3f(Ch->c[0], Ch->c[1], Ch->c[2] + Ch->r);
+         glVertex3f(Ch->c[0], Ch->c[1], Ch->c[2] - radch);
+         glVertex3f(Ch->c[0], Ch->c[1], Ch->c[2] + radch);
          glEnd();  
       }
       glMaterialfv(GL_FRONT, GL_EMISSION, NoColor); /*turn off emissivity for axis*/
@@ -2636,11 +3107,12 @@ SUMA_Boolean SUMA_DrawCrossHair (SUMA_CrossHair* Ch)
       /*fprintf(SUMA_STDOUT, "SHOWING SPHERE\n");*/
       glMaterialfv(GL_FRONT, GL_EMISSION, Ch->sphcol); /*turn on emissivity for sphere */
       glTranslatef (Ch->c[0], Ch->c[1],Ch->c[2]);
-      gluSphere(Ch->sphobj, Ch->sphrad, Ch->slices, Ch->stacks);
+      gluSphere(Ch->sphobj, radsph, Ch->slices, Ch->stacks);
       glTranslatef (-Ch->c[0], -Ch->c[1],-Ch->c[2]);
       glMaterialfv(GL_FRONT, GL_EMISSION, NoColor); /*turn off emissivity for axis*/
    }
    
+   glLineWidth(origwidth);
    SUMA_RETURN (YUP);
 }
 
@@ -2725,7 +3197,7 @@ SUMA_SphereMarker* SUMA_Alloc_SphereMarker (void)
    
    SUMA_ENTRY;
 
-   SM = SUMA_malloc (sizeof (SUMA_SphereMarker));
+   SM = (SUMA_SphereMarker*)SUMA_malloc (sizeof (SUMA_SphereMarker));
    if (SM == NULL) {
       fprintf(stderr,"SUMA_Alloc_SphereMarker Error: Failed to allocate SM\n");
       SUMA_RETURN (NULL);
@@ -2764,15 +3236,17 @@ void SUMA_Free_SphereMarker (SUMA_SphereMarker *SM)
 }
 
 /*! Create the highlighted faceset  marker */
-SUMA_Boolean SUMA_DrawFaceSetMarker (SUMA_FaceSetMarker* FM)
-{   static GLfloat NoColor[] = {0.0, 0.0, 0.0, 0.0}, dx, dy, dz;
+SUMA_Boolean SUMA_DrawFaceSetMarker (SUMA_FaceSetMarker* FM, SUMA_SurfaceViewer *sv)
+{   
+   static GLfloat NoColor[] = {0.0, 0.0, 0.0, 0.0}, dx, dy, dz, fac;
    static char FuncName[]={"SUMA_DrawFaceSetMarker"};
    
    SUMA_ENTRY;
 
-   dx = SUMA_SELECTED_FACESET_OFFSET_FACTOR * FM->NormVect[0];
-   dy = SUMA_SELECTED_FACESET_OFFSET_FACTOR * FM->NormVect[1];
-   dz = SUMA_SELECTED_FACESET_OFFSET_FACTOR * FM->NormVect[2];
+   fac = (SUMA_SELECTED_FACESET_OFFSET_FACTOR);
+   dx = fac * FM->NormVect[0];
+   dy = fac * FM->NormVect[1];
+   dz = fac * FM->NormVect[2];
     
    glLineWidth(FM->LineWidth);
    glDisable(GL_LINE_STIPPLE);
@@ -2833,10 +3307,10 @@ void SUMA_DrawMesh(SUMA_SurfaceObject *SurfObj, SUMA_SurfaceViewer *sv)
 {  static GLfloat NoColor[] = {0.0, 0.0, 0.0, 0.0};
    GLfloat *colp = NULL;
    int i, ii, ND, id, ip, NP, PolyMode;
-   static char FuncName[]={"SUMA_DrawMesh"};
    SUMA_DRAWN_ROI *DrawnROI = NULL;
-      static unsigned char *image=NULL;
-      static GLuint texName;
+   static char FuncName[]={"SUMA_DrawMesh"};
+   static unsigned char *image=NULL;
+   static GLuint texName;
    SUMA_Boolean LocalHead = NOPE;
       
    SUMA_ENTRY;
@@ -2854,6 +3328,19 @@ void SUMA_DrawMesh(SUMA_SurfaceObject *SurfObj, SUMA_SurfaceViewer *sv)
      /* not the default, do the deed */
      SUMA_SET_GL_RENDER_MODE(SurfObj->PolyMode); 
    }
+   
+   #if 0 /* demo only. now handled elsewhere */
+   if (0) { /* clipping parts of the OBJECT */
+      GLdouble eqn[4] = {0.0, 1.0, 0.0, 0.0}; /* clip nodes with y < 0, below plane of equation eqn (y = 0)*/
+      GLdouble eqn2[4] = {1.0, 0.0, 0.0, 0.0}; /* clip nodes with x < 0, below plane of equation eqn (x = 0)*/
+      
+      SUMA_S_Note("The clip");
+      glClipPlane(GL_CLIP_PLANE0, eqn);
+      glEnable(GL_CLIP_PLANE0);
+      glClipPlane(GL_CLIP_PLANE1, eqn2);
+      glEnable(GL_CLIP_PLANE1);
+   }
+   #endif
    
    SUMA_LH("Draw Method");
    ND = SurfObj->NodeDim;
@@ -3018,7 +3505,7 @@ void SUMA_DrawMesh(SUMA_SurfaceObject *SurfObj, SUMA_SurfaceViewer *sv)
          
          SUMA_LH("ROIs");
          /* draw surface ROIs */
-         if (!SUMA_Draw_SO_ROI (SurfObj, SUMAg_DOv, SUMAg_N_DOv)) {
+         if (!SUMA_Draw_SO_ROI (SurfObj, SUMAg_DOv, SUMAg_N_DOv, sv)) {
             fprintf (SUMA_STDERR, "Error %s: Failed in drawing ROI objects.\n", FuncName);
          }
          /* Draw Axis */
@@ -3037,7 +3524,8 @@ void SUMA_DrawMesh(SUMA_SurfaceObject *SurfObj, SUMA_SurfaceViewer *sv)
             glMaterialfv(GL_FRONT, GL_EMISSION, SurfObj->NodeMarker->sphcol); /*turn on emissidity for sphere */
             glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, NoColor);
             glTranslatef (SurfObj->NodeList[id], SurfObj->NodeList[id+1],SurfObj->NodeList[id+2]);
-            gluSphere(SurfObj->NodeMarker->sphobj, SurfObj->NodeMarker->sphrad, SurfObj->NodeMarker->slices, SurfObj->NodeMarker->stacks);
+            gluSphere(SurfObj->NodeMarker->sphobj, SurfObj->NodeMarker->sphrad*SUMA_MAX_PAIR(sv->ZoomCompensate, 0.06),
+                      SurfObj->NodeMarker->slices, SurfObj->NodeMarker->stacks);
             glTranslatef (-SurfObj->NodeList[id], -SurfObj->NodeList[id+1],-SurfObj->NodeList[id+2]);
             glMaterialfv(GL_FRONT, GL_EMISSION, NoColor); /*turn off emissidity for axis*/
          }
@@ -3045,7 +3533,7 @@ void SUMA_DrawMesh(SUMA_SurfaceObject *SurfObj, SUMA_SurfaceViewer *sv)
          /* Draw Selected FaceSet Highlight */
          if (SurfObj->ShowSelectedFaceSet && SurfObj->SelectedFaceSet >= 0) {
             if (LocalHead) fprintf(SUMA_STDOUT,"Drawing FaceSet Selection \n");            
-            if (!SUMA_DrawFaceSetMarker (SurfObj->FaceSetMarker)) {
+            if (!SUMA_DrawFaceSetMarker (SurfObj->FaceSetMarker, sv)) {
                fprintf(SUMA_STDERR,"Error SUMA_DrawMesh: Failed in SUMA_DrawFaceSetMarker\b");
             }
          } 

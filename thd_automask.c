@@ -13,6 +13,12 @@ void THD_automask_extclip( int e ){ exterior_clip = e ; }
 
 static int dall = 0 ;
 
+static float clfrac = 0.5f ;                     /* 20 Mar 2006 */
+void THD_automask_set_clipfrac( float f )
+{
+  if( f >= 0.1f && f <= 0.9f ) clfrac = f ;
+}
+
 /*---------------------------------------------------------------------*/
 
 static int mask_count( int nvox , byte *mmm )
@@ -105,7 +111,7 @@ ENTRY("mri_automask_image") ;
 
    /* find clip value to excise small stuff */
 
-   clip_val = THD_cliplevel(medim,0.5) ;
+   clip_val = THD_cliplevel(medim,clfrac) ;
 
    if( verb ) ININFO_message("Clip level = %f\n",clip_val) ;
 
@@ -484,7 +490,9 @@ ENTRY("THD_mask_clust") ;
    kbest = AFMALL(short, sizeof(short)) ;
 
    /*--- scan through array, find nonzero point, build a cluster, ... ---*/
-
+   if (verb) 
+      fprintf(stderr,"++ THD_mask_clust: building cluster ...\n");
+      
    ijk_last = 0 ; if( dall < DALL ) dall = DALL ;
    while(1) {
      /* find next nonzero point */
@@ -495,7 +503,7 @@ ENTRY("THD_mask_clust") ;
      ijk_last = ijk+1 ;         /* start here next time */
 
      /* init current cluster list with this point */
-
+         
      mmm[ijk] = 0 ;                                /* clear found point */
      nall = DALL ;                                 /* # allocated pts */
      nnow = 1 ;                                    /* # pts in cluster */
@@ -538,7 +546,6 @@ ENTRY("THD_mask_clust") ;
    } /* loop ends when all nonzero points are clustered */
 
    /* put 1's back in at all points in best cluster */
-
    for( icl=0 ; icl < nbest ; icl++ ){
       ijk = THREE_TO_IJK(ibest[icl],jbest[icl],kbest[icl],nx,nxy) ;
       mmm[ijk] = 1 ;
@@ -738,7 +745,7 @@ ENTRY("THD_autobbox") ;
    nvox = medim->nvox ;
    for( ii=0 ; ii < nvox ; ii++ ) mar[ii] = fabs(mar[ii]) ;
 
-   clip_val = THD_cliplevel(medim,0.5) ;
+   clip_val = THD_cliplevel(medim,clfrac) ;
    for( ii=0 ; ii < nvox ; ii++ )
      if( mar[ii] < clip_val ) mar[ii] = 0.0 ;
 

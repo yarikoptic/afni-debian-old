@@ -67,10 +67,14 @@ int SUMA_SphereQuality(SUMA_SurfaceObject *SO, char *Froot, char *shist)
 {
    static char FuncName[]={"SUMA_SphereQuality"};
    float *dist = NULL, mdist, *dot=NULL, nr, r[3], *bad_dot = NULL;
+   float *face_dot=NULL, *face_bad_dot = NULL, *face_cent = NULL;
    float dmin, dmax, dminloc, dmaxloc;
    int i, i3, *isortdist = NULL;
    int *bad_ind = NULL, ibad =-1;
+   int *face_bad_ind = NULL, face_ibad =-1;
+   int F[3];
    FILE *fid;
+   FILE *face_id;
    char *fname;
    SUMA_COLOR_MAP *CM;
    SUMA_SCALE_TO_MAP_OPT * OptScl;
@@ -171,15 +175,44 @@ int SUMA_SphereQuality(SUMA_SurfaceObject *SO, char *Froot, char *shist)
    fprintf (SUMA_STDERR," Largest 10 absolute departures from estimated radius:\n"
                         " See output files for more detail.\n");
    for (i=SO->N_Node-1; i > SO->N_Node - 10; --i) {
-      fprintf (SUMA_STDERR,"dist @ %d: %f\n", isortdist[i], dist[i]);
+      fprintf (SUMA_STDERR,"dist @ %d: %f\n", isortdist[i], dist[i]); 
    }
    
+   /* write the FaceSetList to file */
+   fname = SUMA_append_string(Froot, "_FaceSetList.1D.dset");
+   if (LocalHead) fprintf (SUMA_STDERR,"%s:\nWriting %s...\n", FuncName, fname);
+   fid = fopen(fname, "w");
+   fprintf(fid,"#FaceSetList.\n"
+               "#col 0: Facet Index\n");
+   if (shist) fprintf(fid,"#History:%s\n\n", shist);
+   for (i=0; i<SO->N_FaceSet; ++i) { 
+      i3 = 3*i; 
+      fprintf(fid,"%d   %d    %d    %d\n", 
+                  i, SO->FaceSetList[i3  ], SO->FaceSetList[i3+1], SO->FaceSetList[i3+2]);
+   }
+   fclose(fid);
+   SUMA_free(fname); fname = NULL;
+   
+   /* write the FaceNormList to file */
+   fname = SUMA_append_string(Froot, "_FaceNormList.1D.dset");
+   if (LocalHead) fprintf (SUMA_STDERR,"%s:\nWriting %s...\n", FuncName, fname);
+   fid = fopen(fname, "w");
+   fprintf(fid,"#Facet Normals.\n"
+               "#col 0: Facet Index\n\n");
+   if (shist) fprintf(fid,"#History:%s\n", shist);
+   for (i=0; i<SO->N_FaceSet; ++i) { 
+      i3 = 3*i; 
+      fprintf(fid,"%d   %f    %f    %f\n", 
+                  i, SO->FaceNormList[i3  ], SO->FaceNormList[i3+1], SO->FaceNormList[i3+2]);
+   }
+   fclose(fid);
+   SUMA_free(fname); fname = NULL;
    
    /* New idea:
    If we had a perfect sphere then the normal of each node
    will be colinear with the direction of the vector between the
    sphere's center and the node.
-   The mode the deviation, the worse the sphere */
+   The more the deviation, the worse the sphere */
    dot     = (float *)SUMA_calloc(SO->N_Node, sizeof(float));
    bad_ind = (int *)  SUMA_calloc(SO->N_Node, sizeof(int)  );
    bad_dot = (float *)SUMA_calloc(SO->N_Node, sizeof(float));
@@ -314,17 +347,108 @@ int SUMA_SphereQuality(SUMA_SurfaceObject *SO, char *Froot, char *shist)
          fprintf (SUMA_STDERR,"cos(ang) @ node %d: %f\n", bad_ind[i], bad_dot[i]);
       } 
    }  
+ 
+   /* Newer idea:
+   Compare the normal of each facet to the direction of the vector
+   between the sphere's center and the center of the facet.  
+   Use the center of mass of the triangle as the center of the facet.
+   If we had a perfect sphere then these vectors would
+   be colinear. The more the deviation, the worse the sphere */
    
+   face_cent      = (float *)SUMA_calloc(3*SO->N_FaceSet, sizeof(float));
+   face_dot       = (float *)SUMA_calloc(SO->N_FaceSet, sizeof(float));
+   face_bad_ind   = (int *)  SUMA_calloc(SO->N_FaceSet, sizeof(int)  );
+   face_bad_dot   = (float *)SUMA_calloc(SO->N_FaceSet, sizeof(float));
+   face_ibad = 0;
+   
+   /* Calculate Center of Gravity of each facet. */
+   for (i=0; i < SO->N_FaceSet; ++i) {
+      i3 = 3*i;
+      F[0] = 3*SO->FaceSetList[i3  ];
+      F[1] = 3*SO->FaceSetList[i3+1];
+      F[2] = 3*SO->FaceSetList[i3+2];
+      
+      face_cent[i3  ] = (1.0/3.0) * ( SO->NodeList[F[0]  ] + SO->NodeList[F[1]  ] + SO->NodeList[F[2]  ] );
+      face_cent[i3+1] = (1.0/3.0) * ( SO->NodeList[F[0]+1] + SO->NodeList[F[1]+1] + SO->NodeList[F[2]+1] );
+      face_cent[i3+2] = (1.0/3.0) * ( SO->NodeList[F[0]+2] + SO->NodeList[F[1]+2] + SO->NodeList[F[2]+2] );
+   }
+     
+   for (i=0; i < SO->N_FaceSet; ++i) {
+      i3 = 3*i;
+      r[0] = face_cent[i3  ] - SO->Center[0];
+      r[1] = face_cent[i3+1] - SO->Center[1];
+      r[2] = face_cent[i3+2] - SO->Center[2];
+      
+      nr = sqrt ( r[0] * r[0] + r[1] * r[1] + r[2] * r[2] );
+      r[0] /= nr; r[1] /= nr; r[2] /= nr; 
+      
+      face_dot[i] =  r[0]*SO->FaceNormList[i3  ] + 
+                     r[1]*SO->FaceNormList[i3+1] +
+                     r[2]*SO->FaceNormList[i3+2] ;
+      
+      if (fabs(face_dot[i]) < 0.5) {
+         face_bad_ind[face_ibad] = i;
+         face_bad_dot[face_ibad] = face_dot[i];
+         ++face_ibad;
+      }
+   }
+   
+   face_bad_ind = (int *)  SUMA_realloc(face_bad_ind, face_ibad * sizeof(int));
+   face_bad_dot = (float *)SUMA_realloc(face_bad_dot, face_ibad * sizeof(float));
+   
+   /* write the data */
+   fname = SUMA_append_string(Froot, "_facedotprod.1D.dset");
+   if (LocalHead) fprintf (SUMA_STDERR,"%s:\nWriting %s...\n", FuncName, fname);
+   face_id= fopen(fname, "w");
+   fprintf(face_id,"#Cosine of facet normal angles with radial direction from facet center\n"
+               "#col 0: Facet Index\n"
+               "#col 1: cos(angle)\n"
+               ); 
+   if (shist) fprintf(face_id,"#History:%s\n", shist);
+   for (i=0; i<SO->N_FaceSet; ++i) fprintf(face_id,"%d\t%f\n", i, face_dot[i]);
+   fclose(face_id);
+   SUMA_free(fname); fname = NULL;
+
+   fname = SUMA_append_string(Froot, "_BadFaceSets.1D.dset");
+   if (LocalHead) fprintf (SUMA_STDERR,"%s:\nWriting %s...\n", FuncName, fname);
+   face_id= fopen(fname, "w");
+   fprintf(face_id,"#Facets with normals at angle with radial direction: abs(dot product < 0.9)\n"
+               "#col 0: Facet Index\n"
+               "#col 1: cos(angle)\n"
+               ); 
+   if (shist) fprintf(face_id,"#History:%s\n", shist);
+   for (i=0; i<face_ibad; ++i) fprintf(face_id,"%d\t%f\n", face_bad_ind[i], face_bad_dot[i]);
+   fclose(face_id);
+   SUMA_free(fname); fname = NULL;
+
+   /* report, just 10 of them  */
+   {
+      int face_nrep;
+      face_nrep = SUMA_MIN_PAIR(face_ibad, 10); 
+      fprintf (SUMA_STDERR,"%d of the %d facets with normals at angle with radial direction\n"
+                           " i.e. abs(dot product < 0.9)\n"
+                           " See output files for full list\n", face_nrep, face_ibad);
+      for (i=0; i < face_nrep; ++i) {
+         fprintf (SUMA_STDERR,"cos(ang) @ facet %d: %f\n", face_bad_ind[i], face_bad_dot[i]);
+      /* If face_nrep is zero, then this will not be printed. */
+      } 
+   }
+     
    if (dot) SUMA_free(dot);
    if (bad_dot) SUMA_free(bad_dot);
    if (bad_ind) SUMA_free(bad_ind);
+   if (face_cent) SUMA_free(face_cent);
+   if (face_dot) SUMA_free(face_dot);
+   if (face_bad_dot) SUMA_free(face_bad_dot);
+   if (face_bad_ind) SUMA_free(face_bad_ind); 
    if (isortdist) SUMA_free(isortdist);
    if (dist) SUMA_free(dist);
    if (CM) SUMA_Free_ColorMap (CM);
    if (OptScl) SUMA_free(OptScl);
+
+/* CAREFUL, CHANGED RETURN VARIABLE TO REFLECT FACET DEVIATIONS INSTEAD OF BAD NODES.  Before was just "(ibad)" */  
    
-   
-   SUMA_RETURN(ibad);
+   SUMA_RETURN(face_ibad);
 }
 
 /*!
@@ -657,7 +781,7 @@ void SUMA_addTri(int *triList, int *ctr, int n1, int n2, int n3) {
   \param ToSpHere (int) if 1 then project nodes to form a sphere of radius r
   \ret SO (SUMA_SurfaceObject *) icosahedron is a surface object structure.
   returns NULL if function fails.
-  SO returned with NodeList, N_Node, FaceSetList, N_FaceSet, and NodeNormList
+  SO returned with NodeList, N_Node, List, N_FaceSet, and NodeNormList
      
   Written by Brenna Argall  
 */
@@ -2589,6 +2713,10 @@ int main (int argc, char *argv[])
   
 
    /* read spec file*/
+   if (!SUMA_AllocSpecFields(&spec)) {
+      SUMA_S_Err("Failed to allocate spec fields");
+      exit(1);
+   }
    if ( !SUMA_Read_SpecFile (specFile, &spec) ) {
       fprintf(SUMA_STDERR,"Error %s: Error in SUMA_Read_SpecFile\n", FuncName);
       exit(1);
@@ -2796,6 +2924,9 @@ int main (int argc, char *argv[])
 
 
    /* free the variables */
+   if (!SUMA_FreeSpecFields(&spec)) {
+      SUMA_S_Err("Failed to free spec fields");
+   }
    if (MI) SUMA_Free_MorphInfo (MI);
    if (SUMAg_DOv) SUMA_Free_Displayable_Object_Vect (SUMAg_DOv, SUMAg_N_DOv);
    if (surfaces_orig) SUMA_free(surfaces_orig);
@@ -3025,6 +3156,11 @@ int main (int argc, char *argv[])
                exit (1);
             }
             morph_surf = argv[kar];
+            if (strcmp (morph_surf, "sphere.reg") != 0 && strcmp (morph_surf, "sphere") != 0 ) {
+               fprintf (SUMA_STDERR, " Only 'sphere' or 'sphere.reg' are allowed with -morph option\n"
+                                     " User specified %s\n", morph_surf);
+               exit (1);
+            }
             brk = YUP;
          }   
       if (!brk && (strcmp(argv[kar], "-it") == 0 ))
@@ -3098,6 +3234,10 @@ int main (int argc, char *argv[])
    }
  
    /* read spec file*/
+   if (!SUMA_AllocSpecFields(&brainSpec)) {
+      SUMA_S_Err("Failed to allocate spec fields");
+      exit(1);
+   }
    if ( !SUMA_Read_SpecFile (brainSpecFile, &brainSpec)) {
       fprintf(SUMA_STDERR,"Error %s: Error in %s SUMA_Read_SpecFile\n", FuncName, brainSpecFile);
       exit(1);
@@ -3354,20 +3494,23 @@ int main (int argc, char *argv[])
    i_morph = -1;
    if ( morph_surf!=NULL ) {
       /*sphere specified by user input*/
-      if (SUMA_iswordin( morph_surf, "sphere.reg") ==1 )
+      if (strcmp (morph_surf, "sphere.reg") == 0) { /* (SUMA_iswordin( morph_surf, "sphere.reg") ==1 ) */
+         fprintf(SUMA_STDERR, "Note %s: Using sphere.reg, per user request.\n", FuncName);
          i_morph = 4;
-      else if ( SUMA_iswordin( morph_surf, "sphere") == 1 &&
-                SUMA_iswordin( morph_surf, "sphere.reg") == 0 ) 
+      } else if ( strcmp( morph_surf, "sphere") == 0 ) { /*( SUMA_iswordin( morph_surf, "sphere") == 1 &&SUMA_iswordin( morph_surf, "sphere.reg") == 0 ) */
+         fprintf(SUMA_STDERR, "Note %s: Using sphere, per user request.\n", FuncName);
          i_morph = 3;
-      else {
-         fprintf(SUMA_STDERR, "\nWarning %s: Indicated morphSurf (%s) is not sphere or sphere.reg.\n\tDefault path to determine morphing sphere will be taken.\n", FuncName, morph_surf);
+      } else {
+         fprintf(SUMA_STDERR, "\nError %s: Indicated morphSurf (%s) is not sphere or sphere.reg.\n", FuncName, morph_surf);
          morph_surf = NULL;
+         exit (1);
       }
       if ( i_morph!=-1 ) {
          if ( spec_order[i_morph]==-1 ) {
             /*user specified sphere does not exist*/
-            fprintf(SUMA_STDERR, "\nWarning %s: Indicated morphSurf (%s) does not exist.\n\tDefault path to determine morphing sphere will be taken.\n", FuncName, morph_surf);
+            fprintf(SUMA_STDERR, "\nError %s: Indicated morphSurf (%s) does not exist.\n", FuncName, morph_surf);
             morph_surf = NULL;
+            exit (1);
          }
       }
    }
@@ -3618,6 +3761,9 @@ int main (int argc, char *argv[])
    
    
    /* free variables */
+   if (!SUMA_FreeSpecFields(&brainSpec)) {
+      SUMA_S_Err("Faile to free spec fields");
+   }
    if (spec_order) SUMA_free(spec_order);
    if (spec_mapRef) SUMA_free(spec_mapRef);
    if (spec_info) SUMA_free(spec_info);

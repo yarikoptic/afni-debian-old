@@ -75,6 +75,12 @@
    Mod:      Changes to allow -jobs option.
    Date:     07 May 2003 - RWCox.
 
+   Mod:      Added options -aux_name, -aux_fval and -voxel_count.
+   Date:     25 Jan 2006 [rickr]
+
+   Mod:      Removed options -aux_name and -aux_fval, and the globals
+             require linking to afni, too.
+   Date:     30 Jan 2006 [rickr]
 */
 
 /*---------------------------------------------------------------------------*/
@@ -124,6 +130,8 @@
 
 #endif
 
+/*---------------------------------------------------------------------------*/
+
 #include "matrix.h"
 #include "simplex.h"
 #include "NLfit.h"
@@ -151,9 +159,11 @@ typedef struct NL_options
 /***** 22 July 1998 -- RWCox:
        Modified to allow DELT to be set from the TR of the input file *****/
 
-static float DELT = 1.0;   /* default */
-static int   inTR = 0 ;    /* set to 1 if -inTR option is used */
-static float dsTR = 0.0 ;  /* TR of the input file */
+static float DELT = 1.0;        /* default */
+static int   inTR = 0 ;         /* set to 1 if -inTR option is used */
+static float dsTR = 0.0 ;       /* TR of the input file */
+static int   g_voxel_count = 0; /* display current voxel counter */
+                                         /* 25 Jan 2006 [rickr]  */
 
 static char * commandline = NULL ;       /* command line for history notes */
 
@@ -203,6 +213,7 @@ void display_help_menu()
      "[-rmsmin r]        r = minimum rms error to reject reduced model      \n"
      "[-fdisp fval]      display (to screen) results for those voxels       \n"
      "                     whose f-statistic is > fval                      \n"
+     "[-voxel_count]     display (to screen) the current voxel index        \n"
      "                                                                      \n"
      "                                                                      \n"
      "The following commands generate individual AFNI 2 sub-brick datasets: \n"
@@ -735,6 +746,15 @@ void get_options
 	  sscanf (argv[nopt], "%f", &fval); 
 	  *fdisp = fval;
 	  nopt++;
+	  continue;
+	}
+      
+
+       /*-----   -voxel_count   -----*/
+      if (strcmp(argv[nopt], "-voxel_count") == 0)
+	{
+	  nopt++;
+          g_voxel_count = 1;
 	  continue;
 	}
       
@@ -3173,7 +3193,8 @@ int main
 #endif /* PROC_MAX */
 
    if( proc_numjob == 1 )
-     fprintf(stderr,"++ Calculations starting; elapsed time=%.3f\n",COX_clock_time()) ;
+     fprintf(stderr,"++ Calculations starting; elapsed time=%.3f\n",
+             COX_clock_time()) ;
 
 
   /*----- loop over voxels in the data set -----*/
@@ -3183,6 +3204,11 @@ int main
       if (mask_vol != NULL)
 	if (mask_vol[iv] == 0)  continue;
 
+      /*----- display progress for user (1-based) -----*/
+      if (g_voxel_count) {
+        fprintf(stderr,"\r++ voxel count: %8d (of %d)", iv+1, ixyz_top);
+        if(iv == ixyz_top-1) fputc('\n',stderr);
+      }
 
       /*----- read the time series for voxel iv -----*/
       read_ts_array (dset_time, iv, ts_length, ignore, ts_array);
@@ -3220,7 +3246,6 @@ int main
 	  printf ("%s \n", label);
 	}
 
-
       /*----- save results for this voxel into volume data -----*/
       save_results (iv, nmodel, smodel, r, p, novar, ts_length, x_array, 
 		    par_full, tpar_full, rmsreg, freg, rsqr, smax, 
@@ -3237,7 +3262,8 @@ int main
 #ifdef PROC_MAX
     if( proc_numjob > 1 ){
      if( proc_ind > 0 ){                          /* death of child */
-       fprintf(stderr,"++ Job #%d finished; elapsed time=%.3f\n",proc_ind,COX_clock_time()) ;
+       fprintf(stderr,"++ Job #%d finished; elapsed time=%.3f\n",
+               proc_ind,COX_clock_time()) ;
        _exit(0) ;
 
      } else {                      /* parent waits for children */
@@ -3245,7 +3271,8 @@ int main
        fprintf(stderr,"++ Job #0 waiting for children to finish; elapsed time=%.3f\n",COX_clock_time()) ;
        for( pp=1 ; pp < proc_numjob ; pp++ )
          waitpid( proc_pid[pp] , NULL , 0 ) ;
-       fprintf(stderr,"++ Job #0 now finishing up; elapsed time=%.3f\n",COX_clock_time()) ;
+       fprintf(stderr,"++ Job #0 now finishing up; elapsed time=%.3f\n",
+               COX_clock_time()) ;
      }
 
      /* when get to here, only parent process is left alive,
@@ -3253,7 +3280,8 @@ int main
    }
 #endif
    if( proc_numjob == 1 )
-     fprintf(stderr,"++ Calculations finished; elapsed time=%.3f\n",COX_clock_time()) ;
+     fprintf(stderr,"++ Calculations finished; elapsed time=%.3f\n",
+             COX_clock_time()) ;
 
 
   /*----- delete input dataset -----*/ 

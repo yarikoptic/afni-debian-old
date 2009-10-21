@@ -60,7 +60,7 @@ PROGRAMS = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge count   
            3dWavelets 3dfim+ imcutup 3dWinsor 3dZeropad 3dTagalign 3dUndump     \
            3dMean 3dAttribute cat_matvec 3dOverlap 3dClipLevel 3dZregrid        \
            3dEntropy 3ddelay ent16 3dRowFillin 1dgrayplot 3dToutcount 1dsum     \
-           3dExtrema qhull strblast 3dConvolve 3dZcutup 3dZcat 3dTqual          \
+           3dExtrema qhull strblast 3dConvolve 3dZcutup 3dZcat 3dTqual 3dGetrow \
            3dTcorrelate 3dAnatNudge 3dcopy Vecwarp 3dMINCtoAFNI 3dCM            \
            3dAFNItoANALYZE siemens_vision ge_header mayo_analyze 3dAFNItoNIFTI  \
            3dAutoTcorrelate 3dFDR rtfeedme 3dAutomask 3dAFNItoMINC 3dMax        \
@@ -71,6 +71,7 @@ PROGRAMS = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge count   
            nifti_tool nifti_stats nifti1_test whereami plugout_drive            \
            3dMedianFilter 3dretroicor 3dAFNItoNIML 3dAFNItoRaw im2niml 3dedge3  \
            DTIStudioFibertoSegments Dimon 3dLocalstat 3danisosmooth 3dmaxima    \
+           3dTwotoComplex                                                       \
            $(EXTRAS)
 
 PROGRAMS_NOPLUG = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge      \
@@ -93,9 +94,9 @@ PROGRAMS_NOPLUG = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge  
                   3dThreetoRGB Ifile 3dresample 3dAutobox 3dLRflip 3dANALYZEtoAFNI  \
                   dicom_hdr 3dDespike dicom_to_raw file_tool rotcom 3dUniformize    \
                   3dWarp nicat 3dSpatNorm 3dWarpDrive 3dretroicor ge_header         \
-                  3dAFNItoRaw DTIStudioFibertoSegments im2niml 3dLocalstat          \
+                  3dAFNItoRaw DTIStudioFibertoSegments im2niml 3dLocalstat 3dGetrow \
                   Imon nifti_tool nifti_stats nifti1_test Dimon 3danisosmooth       \
-                  3dmaxima                                                          \
+                  3dmaxima 3dTwotoComplex                                           \
                   $(EXTRAS)
 
 # For CYGWIN (look for "exe" to find various places below)
@@ -103,7 +104,7 @@ PROGRAMS_NOPLUG = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge  
 
 PROGRAMS_EXE = afni.exe to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge   \
                sfim tfim ftosh 3dttest 3ddup imrotate imreg imstat 3dnvals count  \
-               fim2 imand FD2 sqwave immask imdump imaver 3dhistog 3dfim          \
+               fim2 imand FD2 sqwave immask imdump imaver 3dhistog 3dfim 3dGetrow \
                p2t cdf 2swap 4swap mritopgm 3dANOVA 3dANOVA2 3dANOVA3 plugout_tta \
                waver 3dnewid 3dcalc ccalc imcalc 3T_toafni 3drefit 3dbucket       \
                3dAFNItoNIML    AlphaSim 3dFWHM plugout_tt 3dnoise plugout_ijk     \
@@ -125,7 +126,7 @@ PROGRAMS_EXE = afni.exe to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge 
                dicom_to_raw rotcom 3dDeconvolve_f 3dUniformize 3dWarp 3dWarpDrive \
                file_tool.exe Imon.exe 3dresample.exe serial_helper.exe im2niml    \
                nifti_tool.exe 3dAFNItoRaw DTIStudioFibertoSegments Dimon.exe      \
-               3danisosmooth
+               3danisosmooth 3dTwotoComplex
 
 SCRIPTS = @4Daverage @CommandGlobb @GetAfniOrient @DTI_studio_reposition          \
           @GetAfniPrefix @NoExt @UpdateAfni @RenamePanga @2dwarper                \
@@ -133,7 +134,8 @@ SCRIPTS = @4Daverage @CommandGlobb @GetAfniOrient @DTI_studio_reposition        
           @SUMA_Make_Spec_SF @make_stim_file @Align_Centers suma_change_spec      \
           @CheckForAfniDset @clip_volume @AfniOrient2RAImap @parse_afni_name      \
           @auto_align @auto_tlrc @FromRAI @ToRAI @AfniOrientSign @VolCenter       \
-          @Center_Distance @fix_FSsphere @parse_name @align_partial_oblique
+          @Center_Distance @fix_FSsphere @parse_name @align_partial_oblique       \
+          @IsoMasks
 
 LIBHEADERS = mrilib.h cdflib.h mcw_glob.h 3ddata.h thd_maker.h thd_iochan.h       \
              editvol.h cs.h eispack.h killer.h vecmat.h machdep.h tagset.h        \
@@ -194,6 +196,9 @@ Ifile:Ifile.o
 
 3dUndump:3dUndump.o
 	$(CC) -o 3dUndump 3dUndump.o $(LFLAGS) $(LLIBS)
+
+3dGetrow:3dGetrow.o
+	$(CC) -o 3dGetrow 3dGetrow.o $(LFLAGS) $(LLIBS)
 
 3dnoise:3dnoise.o
 	$(CC) -o 3dnoise 3dnoise.o $(LFLAGS) $(LLIBS)
@@ -492,6 +497,10 @@ dsetdup:dsetdup.o
 	$(RM) $@
 	$(CC) -o 3dThreetoRGB 3dThreetoRGB.o $(LFLAGS) $(LLIBS)
 
+3dTwotoComplex:3dTwotoComplex.o
+	$(RM) $@
+	$(CC) -o 3dTwotoComplex 3dTwotoComplex.o $(LFLAGS) $(LLIBS)
+
 3dvolreg:3dvolreg.o
 	$(RM) $@
 	$(CC) -o 3dvolreg 3dvolreg.o $(LFLAGS) -lmri -lf2c $(LLIBS)
@@ -580,12 +589,12 @@ d3dmerge:3dmerge.c
 
 3dedge3:lib3DEdge.a 3dedge3.o
 	$(RM) $@
-	$(CC) -o 3dedge3 3dedge3.o -I3DEdge/src -l3DEdge \
-              $(LFLAGS) -lmri -lf2c $(LLIBS)
+	$(CC) -o 3dedge3 3dedge3.o -I3DEdge/src            \
+              $(LFLAGS) -l3DEdge -lmri -lf2c $(LLIBS)
 
 whereami:whereami.c
 	$(RM) $@
-	$(CC) -o whereami whereami.c $(INFLAGS) $(LFLAGS) -lmri $(LLIBS)
+	$(CC) -o whereami whereami.c parser.o parser_int.o $(INFLAGS) $(LFLAGS) $(AFWARPOBJS) -lrickr -lmri -lf2c $(LLIBS)
 
 3dUniformize:3dUniformize.o
 	$(RM) $@
@@ -1379,13 +1388,14 @@ plugins:plug_clust.$(SO)    plug_copy.$(SO)     plug_rename.$(SO)      \
         plug_3ddup.$(SO)                                               \
         models contrib_plugins
 
-models: model_constant.$(SO) model_linear.$(SO) model_quadratic.$(SO) \
-        model_null.$(SO) model_diffusion.$(SO) model_beta.$(SO) \
-        model_sinewave_ap.$(SO) model_sinewave_apf.$(SO) \
-        model_squarewave_ap.$(SO) model_squarewave_apf.$(SO) \
-        model_trnglwave_ap.$(SO) model_trnglwave_apf.$(SO) \
-        model_diffexp.$(SO) model_gammavar.$(SO) \
-        model_convgamma.$(SO) model_convgamma2a.$(SO)
+models: model_constant.$(SO) model_linear.$(SO) model_quadratic.$(SO)  \
+        model_null.$(SO) model_diffusion.$(SO) model_beta.$(SO)        \
+        model_sinewave_ap.$(SO) model_sinewave_apf.$(SO)               \
+        model_squarewave_ap.$(SO) model_squarewave_apf.$(SO)           \
+        model_trnglwave_ap.$(SO) model_trnglwave_apf.$(SO)             \
+        model_diffexp.$(SO) model_gammavar.$(SO)                       \
+        model_convgamma.$(SO) model_convgamma2a.$(SO)                  \
+        model_michaelis_menton.$(SO)
 
 # Contributed plugins go last, since they might not compile well
 
@@ -1730,7 +1740,7 @@ mpeg_encode:
 
 mpegtoppm:
 	( cd mpegtoppm_dir ; chmod ugo+x ./configure ;                                         \
-	  ./configure --disable-sdl --disable-mlib --without-x --disable-dependency-tracking ; \
+	  ./configure --disable-sdl --disable-mlib --without-x --disable-dependency-tracking --disable-accel-detect ; \
 	  $(MAKE) ; mv doc/sample2 ../mpegtoppm ; $(MAKE) clean ; )
 
 #######

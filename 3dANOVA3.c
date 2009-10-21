@@ -76,6 +76,14 @@
             Removed calculate_t_from_sums().
             Do checks against EPSILON before sqrt(), in case < 0.
    Date:    28 Dec 2005 [rickr]
+
+   Mod:     Bothered to actually assign df_prod before using it in
+            calc_type4_bcontr().  Fixed -aBdiff label.  Thanks to Debbie
+            at U-Toronto.
+   Date:    31 Jan 2005 [rickr]
+
+   Mod:     Small help update, including example.
+   Date:    09 Feb 2006 [rickr]
 */
 
 /*---------------------------------------------------------------------------*/
@@ -174,10 +182,10 @@ void display_help_menu()
      "[-Abcontr i : c1 ... cb prefix]   2nd order contrast in B, at fixed\n"
      "                                     A level i (collapsed across C)\n"
      "\n"
-     "[-aBdiff a1 a2 : j prefix]   difference between levels a1 and a2 of\n"
+     "[-aBdiff i_1 i_2 : j prefix] difference between levels i_1 and i_2 of\n"
      "                               factor A, with factor B fixed at level j\n"
      "\n"
-     "[-Abdiff i : b1 b2 prefix]   difference between levels b1 and b2 of\n"
+     "[-Abdiff i : j_1 j_2 prefix] difference between levels j_1 and j_2 of\n"
      "                               factor B, with factor A fixed at level i\n"
      "\n"
      "[-abmean i j prefix]         mean effect at factor A level i and\n"
@@ -211,6 +219,40 @@ void display_help_menu()
      "                    that does not sum to zero is invalid, and\n"
      "                    cannot be used with this option (such as\n"
      "                    ameans).\n"
+     "\n"
+     "-----------------------------------------------------------------\n"
+     "example: \"classic\" houses/faces/donuts for 4 subjects (2 genders)\n"
+     "         (level sets are gender (M/W), image (H/F/D), and subject)\n"
+     "\n"
+     "    Note: factor C is really subject within gender (since it is\n"
+     "          nested).  There are 4 subjects in this example, and 2\n"
+     "          subjects per gender.  So clevels is 2.\n"
+     "\n"
+     "    3dANOVA3 -type 5                            \\\n"
+     "        -alevels 2                              \\\n"
+     "        -blevels 3                              \\\n"
+     "        -clevels 2                              \\\n"
+     "        -dset 1 1 1 man1_houses+tlrc            \\\n"
+     "        -dset 1 2 1 man1_faces+tlrc             \\\n"
+     "        -dset 1 3 1 man1_donuts+tlrc            \\\n"
+     "        -dset 1 1 2 man2_houses+tlrc            \\\n"
+     "        -dset 1 2 2 man2_faces+tlrc             \\\n"
+     "        -dset 1 3 2 man2_donuts+tlrc            \\\n"
+     "        -dset 2 1 1 woman1_houses+tlrc          \\\n"
+     "        -dset 2 2 1 woman1_faces+tlrc           \\\n"
+     "        -dset 2 3 1 woman1_donuts+tlrc          \\\n"
+     "        -dset 2 1 2 woman2_houses+tlrc          \\\n"
+     "        -dset 2 2 2 woman2_faces+tlrc           \\\n"
+     "        -dset 2 3 2 woman2_donuts+tlrc          \\\n"
+     "        -adiff   1 2           MvsW             \\\n"
+     "        -bdiff   2 3           FvsD             \\\n"
+     "        -bcontr -0.5 1 -0.5    FvsHD            \\\n"
+     "        -aBcontr 1 -1 : 1      MHvsWH           \\\n"
+     "        -aBdiff  1  2 : 1      same_as_MHvsWH   \\\n"
+     "        -Abcontr 2 : 0 1 -1    WFvsWD           \\\n"
+     "        -Abdiff  2 : 2 3       same_as_WFvsWD   \\\n"
+     "        -Abcontr 2 : 1 7 -4.2  goofy_example    \\\n"
+     "        -bucket donut_anova\n"
      "\n", ANOVA_MODS_LINK);
 
   printf
@@ -221,7 +263,7 @@ void display_help_menu()
      "      more than 1 sub-brick, a sub-brick selector must be used, e.g.:\n"
      "      -dset 2 4 5 'fred+orig[3]'\n"
      );
-	  
+
   printf("\n" MASTER_SHORTHELP_STRING ) ;
   
   exit(0);
@@ -1764,7 +1806,7 @@ void calc_type4_acontr(anova_options *option_data, float *acontr,
   dsum2 = (double *) malloc(sizeof(double)*nxyz);
   dcontr = (double *) malloc(sizeof(double)*nxyz);
   if (dsum == NULL || dsum2 == NULL || dcontr == NULL)
-      ANOVA_error ("calc_sum_sq_acontr: unable to allocate sufficient memory");
+      ANOVA_error ("calc_type4_acontr: unable to allocate sufficient memory");
 
   for (ixyz = 0; ixyz < nxyz; ixyz++)  /* init sums to zero */
       dsum[ixyz] = dsum2[ixyz] = 0.0;
@@ -2081,7 +2123,7 @@ void calc_type4_bcontr(anova_options *option_data, float *acontr,
   dsum2 = (double *) malloc(sizeof(double)*nxyz);
   dcontr = (double *) malloc(sizeof(double)*nxyz);
   if (dsum == NULL || dsum2 == NULL || dcontr == NULL)
-      ANOVA_error ("calc_sum_sq_acontr: unable to allocate sufficient memory");
+      ANOVA_error ("calc_type4_bcontr: unable to allocate sufficient memory");
 
   for (ixyz = 0; ixyz < nxyz; ixyz++)  /* init sums to zero */
       dsum[ixyz] = dsum2[ixyz] = 0.0;
@@ -2112,12 +2154,13 @@ void calc_type4_bcontr(anova_options *option_data, float *acontr,
   }
 
   /*----- compute results -----*/
+  df_prod = df * (df + 1);
   for (ixyz = 0; ixyz < nxyz; ixyz++)
   {
       dmean = dsum[ixyz] / c;    /* divide by k for the mean */
       mean[ixyz] = dmean;        /* copy result to float output */
 
-      dval  = dsum2[ixyz] - (df+1.0) * dmean * dmean;
+      dval = dsum2[ixyz] - (df+1.0) * dmean * dmean;
       if (dval < EPSILON) tmean[ixyz] = 0.0;
       else                tmean[ixyz] = dmean * sqrt( df_prod / dval );
   }
@@ -6760,7 +6803,7 @@ void create_bucket (anova_options * option_data)
 
 	ibrick++;
 	sprintf (str, " -sublabel %d %s:Diff ", 
-		 ibrick, option_data->aBcname[i]);
+		 ibrick, option_data->aBdname[i]);
 	strcat (refit_str, str);
 
 	ibrick++;

@@ -316,6 +316,7 @@ SUMA_SurfaceViewer *SUMA_Alloc_SurfaceViewer_Struct (int N)
 
       SV->X->Title = NULL;
       SV->X->LookAt_prmpt = NULL;
+      SV->X->SetRot_prmpt = NULL;
       SV->X->JumpIndex_prmpt = NULL;
       SV->X->JumpXYZ_prmpt = NULL;
       SV->X->JumpFocusNode_prmpt = NULL;
@@ -373,6 +374,8 @@ SUMA_SurfaceViewer *SUMA_Alloc_SurfaceViewer_Struct (int N)
       SV->ShowLeft = YUP;
       SV->Record = NOPE;
       SV->rdc = SUMA_RDC_NOT_SET;
+      
+      SV->Blend_Mode = SUMA_NO_BLEND;
    }
    SUMA_RETURN (SVv);
 }
@@ -388,6 +391,7 @@ SUMA_Boolean SUMA_Free_SurfaceViewer_Struct (SUMA_SurfaceViewer *SV)
    if (SV->Ch) SUMA_Free_CrossHair (SV->Ch);
    if (SV->X->Title) SUMA_free(SV->X->Title);
    if (SV->X->LookAt_prmpt) SUMA_FreePromptDialogStruct (SV->X->LookAt_prmpt);
+   if (SV->X->SetRot_prmpt) SUMA_FreePromptDialogStruct (SV->X->SetRot_prmpt);
    if (SV->X->JumpIndex_prmpt) SUMA_FreePromptDialogStruct (SV->X->JumpIndex_prmpt);
    if (SV->X->JumpXYZ_prmpt) SUMA_FreePromptDialogStruct (SV->X->JumpXYZ_prmpt);
    if (SV->X->JumpFocusNode_prmpt) SUMA_FreePromptDialogStruct (SV->X->JumpFocusNode_prmpt);
@@ -1035,6 +1039,7 @@ char *SUMA_SurfaceViewer_StructInfo (SUMA_SurfaceViewer *SV, int detail)
    SS = SUMA_StringAppend_va(SS,"   Show Eye Axis %d\n", SV->ShowEyeAxis);
    SS = SUMA_StringAppend_va(SS,"   Show Cross Hair %d\n", SV->ShowCrossHair);
    SS = SUMA_StringAppend_va(SS,"   PolyMode %d\n", SV->PolyMode);
+   SS = SUMA_StringAppend_va(SS,"   Blend_Mode %d\n", SV->Blend_Mode);
    
    SS = SUMA_StringAppend_va(SS,"   Group Name %s, indexed %d\n", SV->CurGroupName, SV->iCurGroup);
    SS = SUMA_StringAppend_va(SS,"   Current State %s, indexed %d\n", SV->State, SV->iState);
@@ -1360,16 +1365,17 @@ int SUMA_WhichState (char *state, SUMA_SurfaceViewer *csv, char *ForceGroup)
    view states in the surface viewer's structure
    Essentially, it creates the vector VSv that is a part of the surface viewer structure
 */
-SUMA_Boolean SUMA_RegisterSpecSO (SUMA_SurfSpecFile *Spec, SUMA_SurfaceViewer *csv, SUMA_DO* dov, int N_dov)
+SUMA_Boolean SUMA_RegisterSpecSO (SUMA_SurfSpecFile *Spec, SUMA_SurfaceViewer *csv, SUMA_DO* dov, int N_dov, int viewopt)
 {
    static char FuncName[]={"SUMA_RegisterSpecSO"};
-   int is, i;
-   static int iwarn=0;
+   int is, i, old_N_VSv = 0;
    SUMA_SurfaceObject * SO;
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
 
+   if (!viewopt) viewopt = UPDATE_ALL_VIEWING_PARAMS_MASK;
+   
    if (LocalHead && SUMA_WhichSV(csv, SUMAg_SVv, SUMA_MAX_SURF_VIEWERS) != 0) {
       fprintf(SUMA_STDERR,"%s: Muted for viewer[%c]\n", FuncName, 65+SUMA_WhichSV(csv, SUMAg_SVv, SUMA_MAX_SURF_VIEWERS) );
       /* turn off the LocalHead, too much output*/
@@ -1401,6 +1407,7 @@ SUMA_Boolean SUMA_RegisterSpecSO (SUMA_SurfSpecFile *Spec, SUMA_SurfaceViewer *c
    
    /* register the various states from each SO in DOv */
    if (LocalHead) fprintf(SUMA_STDERR,"%s: Cycling through DOvs, looking for surfaces of group %s\n", FuncName, Spec->Group[0]);
+   old_N_VSv = csv->N_VSv;
    for (i=0; i < N_dov; ++i) {
       if (SUMA_isSO_G(dov[i], Spec->Group[0])) {
          SO = (SUMA_SurfaceObject *)(dov[i].OP);
@@ -1412,7 +1419,7 @@ SUMA_Boolean SUMA_RegisterSpecSO (SUMA_SurfSpecFile *Spec, SUMA_SurfaceViewer *c
                fprintf(SUMA_STDERR,"%s: For %s\nState:%s,Group:%s to be added\n", 
                   FuncName, SO->Label, SO->State, SO->Group);
             }
-            SUMA_New_ViewState (csv);
+            SUMA_New_ViewState (csv); 
             csv->VSv[csv->N_VSv-1].Name = SUMA_copy_string(SO->State);
             csv->VSv[csv->N_VSv-1].Group = SUMA_copy_string(SO->Group); /* ZSS Changed from Spec->Group[0] */
             if (!csv->VSv[csv->N_VSv-1].Name || !csv->VSv[csv->N_VSv-1].Group) {
@@ -1435,22 +1442,23 @@ SUMA_Boolean SUMA_RegisterSpecSO (SUMA_SurfSpecFile *Spec, SUMA_SurfaceViewer *c
    /* allocate for FOV */
    if (!csv->FOV) {
       csv->FOV = (float *)SUMA_calloc(csv->N_VSv, sizeof(float));
+      for (i=0; i < csv->N_VSv; ++i) {
+         csv->FOV[i] = csv->FOV_original;
+      } 
    } else {
       csv->FOV = (float *)SUMA_realloc(csv->FOV, csv->N_VSv * sizeof(float));
+      for (i=old_N_VSv; i< csv->N_VSv; ++i) {
+         csv->FOV[i] = csv->FOV[0]; /*  used to be  = csv->FOV_original, 
+                           but it is best to set to 0th view, 
+                           gives user ability to set display 
+                           before auto-movie making via talk-suma */;
+      }
    }
    
    /* allocate space for MembSOs counters will be reset for later use counting proceeds
    also initialize FOV*/
-   if (!iwarn) {
-      SUMA_LH(  "WARNING: This block is resetting FOV\n"
-                  "to all surface views regardless\n"
-                  "of whether a new addition was made or not.\n"
-                  "This message will not be shown again in this session.\n"
-                  "Well, looks like it does no bad thing...");
-                  ++iwarn;
-   }
+
    for (i=0; i < csv->N_VSv; ++i) {
-      csv->FOV[i] = csv->FOV_original;
       
       if (!csv->VSv[i].MembSOs) {
          csv->VSv[i].MembSOs = (int *) SUMA_calloc(csv->VSv[i].N_MembSOs, sizeof(int));
@@ -1624,6 +1632,8 @@ SUMA_CommonFields * SUMA_Create_CommonFields ()
    cf->X->Log_TextShell = NULL;
    cf->X->FileSelectDlg = NULL;
    cf->X->N_ForeSmooth_prmpt = NULL;
+   cf->X->Clip_prmpt = NULL;
+   cf->X->ClipObj_prmpt = NULL;
    {
       char *eee = getenv("SUMA_NumForeSmoothing");
       if (eee) {
@@ -1710,6 +1720,13 @@ SUMA_CommonFields * SUMA_Create_CommonFields ()
    
    cf->IgnoreVolreg = NOPE;
    cf->isGraphical = NOPE;
+   
+   cf->N_ClipPlanes = 0;
+   for (i=0; i<SUMA_MAX_N_CLIP_PLANES; ++i) {
+      cf->ClipPlanes[4*i] = cf->ClipPlanes[4*i+1] = cf->ClipPlanes[4*i+2] = cf->ClipPlanes[4*i+3]= 0.0;
+      cf->ClipPlaneType[i] = SUMA_NO_CLIP_PLANE_TYPE;
+      cf->ClipPlanesLabels[i][0]='\0';
+   }
    return (cf);
 
 }
@@ -2035,6 +2052,8 @@ SUMA_Boolean SUMA_Free_CommonFields (SUMA_CommonFields *cf)
    if (cf->X->SumaCont) SUMA_FreeSumaContStruct (cf->X->SumaCont); cf->X->SumaCont = NULL;
    if (cf->X->DrawROI) SUMA_FreeDrawROIStruct (cf->X->DrawROI); cf->X->DrawROI = NULL;
    if (cf->X->N_ForeSmooth_prmpt) SUMA_FreePromptDialogStruct (cf->X->N_ForeSmooth_prmpt); cf->X->N_ForeSmooth_prmpt = NULL;
+   if (cf->X->Clip_prmpt) SUMA_FreePromptDialogStruct (cf->X->Clip_prmpt); cf->X->Clip_prmpt = NULL;
+   if (cf->X->ClipObj_prmpt) SUMA_FreePromptDialogStruct (cf->X->ClipObj_prmpt); cf->X->ClipObj_prmpt = NULL;
    if (cf->X->SwitchCmapLst) SUMA_FreeScrolledList (cf->X->SwitchCmapLst);
    if (cf->X) free(cf->X); cf->X = NULL;
    if (cf->MessageList) SUMA_EmptyDestroyList(cf->MessageList); cf->MessageList = NULL;
@@ -2057,15 +2076,82 @@ SUMA_Boolean SUMA_Free_CommonFields (SUMA_CommonFields *cf)
    return (YUP);
 }
 
+void SUMA_Show_Clip_Planes (SUMA_CommonFields *cf, FILE *out)
+{
+   static char FuncName[]={"SUMA_Show_Clip_Planes"};
+   char *s=NULL;
+   
+   SUMA_ENTRY;
+   
+   s = SUMA_Show_Clip_Planes_Info (cf);
+   
+   if (!out) fprintf(SUMA_STDERR,"%s", s);
+   else fprintf(out,"%s", s);
+   
+   SUMA_free(s);
+   
+   SUMA_RETURNe;
+}
+
+const char * SUMA_Clip_Type_to_Clip_Name (SUMA_CLIP_PLANE_TYPES tp)
+{
+   switch (tp) {
+      case SUMA_NO_CLIP_PLANE_TYPE:
+         return("No_type");
+      case SUMA_SCREEN_CLIP:
+         return("Screen_Clip");
+      case SUMA_ALL_OBJECT_CLIP:
+         return("All_Objects_Clip");
+      default:
+         return("Bad value");
+   }
+}
+
+char * SUMA_Show_Clip_Planes_Info (SUMA_CommonFields *cf)
+{
+   static char FuncName[]={"SUMA_Show_Clip_Planes_Info"};
+   int i;
+   char *s=NULL;
+   SUMA_STRING *SS=NULL;
+   
+   SUMA_ENTRY;
+
+   SS = SUMA_StringAppend_va(NULL, NULL);
+   
+   if (cf == NULL) {
+      SS = SUMA_StringAppend_va(SS," NULL cf structure.\n");
+      SS = SUMA_StringAppend_va(SS, NULL);
+      s = SS->s; SUMA_free(SS); SS= NULL;
+      SUMA_RETURN(s);
+   }
+   
+   
+   SS = SUMA_StringAppend_va(SS," Number of Clip Planes: %d\n", cf->N_ClipPlanes);
+   for (i=0; i<cf->N_ClipPlanes; ++i) {
+      SS = SUMA_StringAppend_va(SS," %d: Clip plane >>%s<< of type %s. Eq: %.2fX + %.2fY + %.2fZ + %.2f = 0\n",
+                     i, cf->ClipPlanesLabels[i], SUMA_Clip_Type_to_Clip_Name(cf->ClipPlaneType[i]),
+                     (float)cf->ClipPlanes[4*i], (float)cf->ClipPlanes[4*i+1], (float)cf->ClipPlanes[4*i+2], (float)cf->ClipPlanes[4*i+3]);
+   }
+   
+   SS = SUMA_StringAppend_va(SS, NULL);
+   s = SS->s; SUMA_free(SS); SS= NULL;
+   
+   SUMA_RETURN(s);
+}   
+
 void SUMA_Show_CommonFields (SUMA_CommonFields *cf, FILE *out)
 {
    static char FuncName[]={"SUMA_Show_CommonFields"};
    char *s=NULL;
    
-   s = SUMA_CommonFieldsInfo (cf, 1);
+   SUMA_ENTRY;
+
+   s = SUMA_CommonFieldsInfo (cf,1);
    
    if (!out) fprintf(SUMA_STDERR,"%s", s);
    else fprintf(out,"%s", s);
+   
+   SUMA_free(s);
    
    SUMA_RETURNe;
 }
@@ -2082,7 +2168,7 @@ char * SUMA_CommonFieldsInfo (SUMA_CommonFields *cf, int detail)
    SS = SUMA_StringAppend_va(NULL, NULL);
    
    if (cf == NULL) {
-      SS = SUMA_StringAppend_va(SS," NULL cf structure.\n", FuncName);
+      SS = SUMA_StringAppend_va(SS," NULL cf structure.\n");
       SS = SUMA_StringAppend_va(SS, NULL);
       s = SS->s; SUMA_free(SS); SS= NULL;
       SUMA_RETURN(s);
@@ -2211,7 +2297,7 @@ SUMA_Boolean SUMA_AdoptGroup(SUMA_SurfaceViewer *csv, char *group)
 }
 
 /*!
-ans = SUMA_SetupSVforDOs (Spec, DOv, N_DOv, cSV);
+ans = SUMA_SetupSVforDOs (Spec, DOv, N_DOv, cSV, vo);
 
 This functions registers all surfaces in a spec file with a surface viewer. 
 The following steps are performed:
@@ -2219,9 +2305,10 @@ SUMA_RegisterSpecSO (register info on all surfaces loaded)
 SUMA_RegisterDO (only Surface Objects)
 SUMA_RegisterDO (all non SO objects)
 SUMA_BestStandardView (decide on best standard view)
-SUMA_UpdateRotaCenter (based on surfaces in first view)
-SUMA_UpdateViewPoint (based on surfaces in first view)
-SUMA_EyeAxisStandard (based on surfaces in first view)
+SUMA_UpdateRotaCenter (based on surfaces in first view) if vo & UPDATE_ROT_MASK
+SUMA_UpdateViewPoint (based on surfaces in first view)  if vo & UPDATE_VIEW_POINT_MASK
+SUMA_EyeAxisStandard (based on surfaces in first view)  if vo & UPDATE_EYE_AXIS_STD_MASK
+
 Set the Current SO pointer to the first surface object 
 if surface is SureFit, flip lights
 \param Spec (SUMA_SurfSpecFile)
@@ -2231,7 +2318,7 @@ if surface is SureFit, flip lights
 \ret ans (SUMA_Boolean) YUP/NOPE
 */
 
-SUMA_Boolean SUMA_SetupSVforDOs (SUMA_SurfSpecFile Spec, SUMA_DO *DOv, int N_DOv, SUMA_SurfaceViewer *cSV)
+SUMA_Boolean SUMA_SetupSVforDOs (SUMA_SurfSpecFile Spec, SUMA_DO *DOv, int N_DOv, SUMA_SurfaceViewer *cSV, int viewopt)
 {
    static char FuncName[] = {"SUMA_SetupSVforDOs"};
    int kar;
@@ -2242,6 +2329,10 @@ SUMA_Boolean SUMA_SetupSVforDOs (SUMA_SurfSpecFile Spec, SUMA_DO *DOv, int N_DOv
    
    SUMA_ENTRY;
 
+   if (!viewopt) {
+      viewopt = UPDATE_ALL_VIEWING_PARAMS_MASK;
+   }
+   
    #if 0
    /* adds DOs individually, left for reference purposes */
    /* Register all DOs with SV */
@@ -2285,7 +2376,7 @@ SUMA_Boolean SUMA_SetupSVforDOs (SUMA_SurfSpecFile Spec, SUMA_DO *DOv, int N_DOv
       }
       
       
-      if (!SUMA_RegisterSpecSO(&Spec, cSV, DOv, N_DOv)) {
+      if (!SUMA_RegisterSpecSO(&Spec, cSV, DOv, N_DOv, viewopt)) {
          fprintf(SUMA_STDERR,"Error %s: Failed in SUMA_RegisterSpecSO.\n", FuncName);
          SUMA_RETURN(NOPE);
       } 
@@ -2325,32 +2416,43 @@ SUMA_Boolean SUMA_SetupSVforDOs (SUMA_SurfSpecFile Spec, SUMA_DO *DOv, int N_DOv
    #endif
 
    /* decide what the best state is */
-   cSV->StdView = SUMA_BestStandardView (cSV, DOv, N_DOv);
-   /*fprintf(SUMA_STDOUT,"%s: Standard View Now %d\n", FuncName, cSV->StdView);*/
-   if (cSV->StdView == SUMA_Dunno) {
-      fprintf(SUMA_STDERR,"Error %s: Could not determine the best standard view. Choosing default SUMA_3D\n", FuncName);
-      cSV->StdView = SUMA_3D;
+   if (viewopt & UPDATE_STANDARD_VIEW_MASK) {
+      cSV->StdView = SUMA_BestStandardView (cSV, DOv, N_DOv);
+      if (LocalHead) fprintf(SUMA_STDOUT,"%s: Standard View Now %d\n", FuncName, cSV->StdView);
+      if (cSV->StdView == SUMA_Dunno) {
+         fprintf(SUMA_STDERR,"Error %s: Could not determine the best standard view. Choosing default SUMA_3D\n", FuncName);
+         cSV->StdView = SUMA_3D;
+      }
+   }
+   
+   if (viewopt & UPDATE_ROT_MASK) {
+      /* Set the Rotation Center  */
+      if (LocalHead) fprintf(SUMA_STDOUT,"%s: Setting the Rotation Center \n", FuncName);
+      if (!SUMA_UpdateRotaCenter(cSV, DOv, N_DOv)) {
+         fprintf (SUMA_STDERR,"Error %s: Failed to update center of rotation\n", FuncName);
+         SUMA_RETURN(NOPE);
+      }
    }
 
-   /* Set the Rotation Center */
-   if (!SUMA_UpdateRotaCenter(cSV, DOv, N_DOv)) {
-      fprintf (SUMA_STDERR,"Error %s: Failed to update center of rotation", FuncName);
-      SUMA_RETURN(NOPE);
+   if (viewopt & UPDATE_VIEW_POINT_MASK) {
+      /* set the viewing points */
+      if (LocalHead) fprintf(SUMA_STDOUT,"%s: setting the viewing points\n", FuncName);
+      if (!SUMA_UpdateViewPoint(cSV, DOv, N_DOv)) {
+         fprintf (SUMA_STDERR,"Error %s: Failed to update view point\n", FuncName);
+         SUMA_RETURN(NOPE);
+      }
    }
 
-   /* set the viewing points */
-   if (!SUMA_UpdateViewPoint(cSV, DOv, N_DOv)) {
-      fprintf (SUMA_STDERR,"Error %s: Failed to update view point", FuncName);
-      SUMA_RETURN(NOPE);
+   if (viewopt & UPDATE_EYE_AXIS_STD_MASK) {
+      /* Change the defaults of the eye axis to fit standard EyeAxis */
+      if (LocalHead) fprintf(SUMA_STDOUT,"%s: Changing defaults of the eye axis to fit standard EyeAxis\n", FuncName);
+      EyeAxis_ID = SUMA_GetEyeAxis (cSV, DOv);
+      if (EyeAxis_ID < 0) {
+         fprintf (SUMA_STDERR,"Error %s: Failed to get Eye Axis.\n", FuncName);
+         SUMA_RETURN(NOPE);
+      }
+      SUMA_EyeAxisStandard ((SUMA_Axis *)DOv[EyeAxis_ID].OP, cSV);
    }
-
-   /* Change the defaults of the eye axis to fit standard EyeAxis */
-   EyeAxis_ID = SUMA_GetEyeAxis (cSV, DOv);
-   if (EyeAxis_ID < 0) {
-      fprintf (SUMA_STDERR,"Error %s: Failed to get Eye Axis.\n", FuncName);
-      SUMA_RETURN(NOPE);
-   }
-   SUMA_EyeAxisStandard ((SUMA_Axis *)DOv[EyeAxis_ID].OP, cSV);
 
 
    /* Set the index Current SO pointer to the first surface object read of the first state, tiz NOT (Fri Jan 31 15:18:49 EST 2003) a surface of course*/

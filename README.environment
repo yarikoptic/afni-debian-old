@@ -2202,6 +2202,17 @@ buttons.  Note that if AFNI_AUTO_RESCAN is enabled, then the rescan
 method will be 'Add', not 'Replace', no matter what you set variable
 AFNI_RESCAN_METHOD to.
 
+--------------------------
+Variable: AFNI_WEB_BROWSER
+--------------------------
+This variable should be set to the full executable path to a Web browser,
+as in
+  setenv AFNI_WEB_BROWSER /usr/bin/mozilla
+If it is not set, AFNI will scan your path to see if it can find a browser,
+looking for "firefox", "mozilla", "netscape", and "opera" (in that order).
+If a browser is found, or set, then the 'hidden' popup menu (in the blank
+square to the right of the 'done' button) will have a menu item to open it.
+
 =============================================
 | Robert W Cox, PhD                         |
 | Scientific and Statistical Computing Core |
@@ -2286,3 +2297,11 @@ Variable: AFNI_GLTSYM_PRINT
 If this YES/NO variable is set to YES, then the GLT matrices generated
 in 3dDeconvolve by the "-gltsym" option will be printed to the screen
 when the program starts up.
+
+-------------------------------
+Variable: AFNI_PLUGOUT_TCP_BASE
+-------------------------------
+This integer will override the base TCP port used by afni to listen for
+plugouts.  This allows multiple instances of afni on one machine, where
+each can listen for plugouts.  Valid port numbers are 1024..65535.
+

@@ -4029,10 +4029,18 @@ ENTRY("AFNI_refashion_dataset") ;
      myXtFree( typ ) ;
    }
 
-   if( dblk->total_bytes > 500*1024*1024 ){
-     int mb = (int)(dblk->total_bytes/(1024*1024)) ;
-     fprintf(stderr,"++ WARNING: output filesize will be %d Mbytes!\n"
-                    "++ SUGGEST: increasing voxel size to save disk space!\n",mb) ;
+   /*-- 13 Mar 2006: check for free disk space --*/
+
+   { int mm = THD_freemegabytes(dkptr->header_name) ;
+     int rr = (int)(dblk->total_bytes/(1024*1024)) ;
+     if( rr >= 666 )
+       fprintf(stderr,"++ WARNING: output filesize %s will be %d Mbytes!\n"
+                      "++ SUGGEST: increase voxel size to save disk space.\n",
+               dkptr->brick_name , rr ) ;
+     if( mm >= 0 && mm <= rr )
+       WARNING_message("Disk space: writing file %s (%d MB),"
+                       " but only %d free MB on disk"        ,
+               dkptr->brick_name , rr , mm ) ;
    }
 
    dkptr->storage_mode = STORAGE_UNDEFINED ;       /* just for now */
@@ -5381,9 +5389,12 @@ ENTRY("AFNI_hidden_CB") ;
 
    /*------ Browser [22 Apr 2005] -----*/
 
-   else if( w == im3d->vwid->prog->hidden_browser_pb && w != NULL ){
+   else if( w == im3d->vwid->prog->hidden_browser_pb && w != NULL &&
+            GLOBAL_browser != NULL ){
 
-     system("open http://afni.nimh.nih.gov/afni") ;
+     char cmd[2345] ;
+     sprintf(cmd,"%s http://afni.nimh.nih.gov/afni &",GLOBAL_browser) ;
+     system(cmd) ;
    }
 
    /*------- random speaking --------*/

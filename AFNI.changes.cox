@@ -5637,7 +5637,7 @@
      if prefix starts with '-' character, will write .1D datasets to stdout.
 
 13 Jul 2005
- * Modifiy afni_widg.c and afni.c so that a Button-3 click on an Image or
+ * Modify afni_widg.c and afni.c so that a Button-3 click on an Image or
      Graph button will recall the open window from offscreen purgatory.
 
 19 Jul 2005
@@ -5790,3 +5790,34 @@
 28 Dec 2005
  * fixes to mri_warp3D_align.c and thd_automask.c to deal with problems
      with -parfix, and with doing mask stuff on 2D images.
+
+30 Dec 2005
+ * Web browser stuff in afni.h, afni_func.c, afni_widg.c.
+
+09 Jan 2006
+ * mri_warp3D_align.c now will revert to 'best' fit if final fit is
+     much worse in RMS terms.
+
+08 Mar 2006
+ * Bug fix in afni_version.c for MOTD failure when network down.
+ * Modify PERROR() macro in thd_iochan.c to NOT print so many duplicate
+     messages.
+ * Modified afni_environ.c so that setting AFNI_ALWAYS_LOCK immediately
+     changes the lock situation.
+
+09 Mar 2006
+ * A little more dynamical action when a few environment variables are
+     changed via external scripts.
+ * WAV_duration in waver.c was an int, not a double (thanks, Rasmus!).
+
+10 Mar 2006
+ * Mods to 3dcalc.c to allow use of complex-valued dataset on input.
+
+13 Mar 2006
+ * Checks in afni_func.c, adwarp.c, and thd_writedblk.c for free disk
+     space, just before actual writing of .BRIK file.
+ * 3dTwotoComplex.c from 3dThreetoRGB.c
+
+20 Mar 2006
+ * Modify 3dAutomask.c and thd_automask.c to add new -clfrac option.
+ * Modify matrix_f.c to use Solaris BLAS in single precision.

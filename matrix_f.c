@@ -82,7 +82,7 @@ extern MRI_IMAGE *mri_read_1D(char *) ;
 #undef DOTP
 #undef VSUB
 
-#if defined(USE_ALTIVEC)                             /** Apple **/
+#if defined(USE_ACCELERATE)                             /** Apple **/
 
 # include <Accelerate/Accelerate.h>
 # define DOTP(n,x,y,z) dotpr( x,1 , y,1 , z , n )
@@ -92,6 +92,23 @@ extern MRI_IMAGE *mri_read_1D(char *) ;
 
 # include <scsl_blas.h>
 # define SETUP_BLAS
+
+#elif defined(USE_SUNPERF)                           /** Sun Solaris **/
+#  ifndef _SUNPERF_COMPLEX
+#  define _SUNPERF_COMPLEX
+     typedef struct { double r; double i; } doublecomplex;
+#  endif
+#  include <sunperf.h>
+#  define SETUP_BLAS
+
+#elif defined(USE_ACML)                     /** AMD Core Math Library **/
+#  ifndef _ACML_COMPLEX
+#  define _ACML_COMPLEX
+ /*  typedef struct { float real, imag; } complex; */
+     typedef struct { double real, imag; } doublecomplex;
+#  endif
+#  include <acml.h>
+#  define SETUP_BLAS
 
 #endif  /* vectorization special cases */
 

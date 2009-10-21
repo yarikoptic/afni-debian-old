@@ -85,6 +85,14 @@
 #  define SETUP_BLAS1
 #  undef SETUP_BLAS2
 #  define TRANSA 'T'
+#elif defined(USE_ACML)
+#  ifndef _ACML_COMPLEX
+#  define _ACML_COMPLEX
+ /*    typedef struct { float real, imag; } complex; */
+ /*    typedef struct { double real, imag; } doublecomplex; */
+#  endif
+#  include <acml.h>
+#  define SETUP_BLAS1
 #endif
 
 /* double precision BLAS-1 functions */
@@ -1458,7 +1466,7 @@ void matrix_psinv( matrix X , matrix *XtXinv , matrix *XtXinvXt )
 
    /* "reciprocals" of singular values:  1/s is actually s/(s^2+del) */
 
-   del  = PSINV_EPS * smax*smax ;
+   del = PSINV_EPS * smax*smax ;
    for( ii=0 ; ii < n ; ii++ )
      sval[ii] = sval[ii] / ( sval[ii]*sval[ii] + del ) ;
 

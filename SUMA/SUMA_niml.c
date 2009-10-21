@@ -317,7 +317,7 @@ SUMA_Boolean SUMA_niml_call (SUMA_CommonFields *cf, int si, SUMA_Boolean fromSUM
             }
             if (!strcmp(cf->HostName_v[si],"localhost")) { /* only try shared memory when 
                                                                   AfniHostName is localhost */
-               fprintf (SUMA_STDERR, "%s: Trying shared memory...\n", FuncName);
+               fprintf (SUMA_STDERR, "%s: Trying local connection...\n", FuncName);
                if( strstr( cf->NimlStream_v[si] , "tcp:localhost:" ) != NULL ) {
                   if (!NI_stream_reopen( cf->ns_v[si] , "shm:WeLikeElvis:1M" )) {
                      fprintf (SUMA_STDERR, "Warning %s: Shared memory communcation failed.\n", FuncName);
@@ -755,6 +755,7 @@ SUMA_Boolean SUMA_process_NIML_data( void *nini , SUMA_SurfaceViewer *sv)
       }/* NewMesh_IJK */   
 
       if (strcmp(nel->name,"PrepNewSurface") == 0) { /* PrepNewSurface */
+         int viewopt = 0;
          /* show me nel */
          /* if (LocalHead) SUMA_nel_stdout (nel); */
          /* look for the surface idcode */
@@ -772,7 +773,7 @@ SUMA_Boolean SUMA_process_NIML_data( void *nini , SUMA_SurfaceViewer *sv)
          }
 
          if (LocalHead) fprintf(SUMA_STDERR,"%s: Surface SO about to be prepped: Label %s, State %s, Group %s\n", FuncName, SO->Label, SO->State, SO->Group);
-
+         
          #if 0
          if (NI_get_attribute(nel, "VolParFilecode")) {
             SO->VolPar = SUMA_VolPar_Attr (NI_get_attribute(nel, "VolParFilecode"));
@@ -806,18 +807,23 @@ SUMA_Boolean SUMA_process_NIML_data( void *nini , SUMA_SurfaceViewer *sv)
             SUMA_SL_Err("Failed to register group");
             SUMA_RETURN(NOPE);
          }
-
+ 
 	      /* Register the surfaces in Spec file with the surface viewer and perform setups */
-	      if (LocalHead) fprintf (SUMA_STDERR, "%s: Registering surfaces with surface viewers ...\n", FuncName);
+         viewopt = 0;
+	      fprintf (SUMA_STDERR, "%s: Registering surfaces with surface viewers, viewopt = %d...\n", FuncName, viewopt);
 
          for (i = 0; i< SUMA_MAX_SURF_VIEWERS; ++i) {
-            if (!SUMA_SetupSVforDOs (*Spec, SUMAg_DOv, SUMAg_N_DOv, &(SUMAg_SVv[i]))) {
+            if (!SUMA_SetupSVforDOs (*Spec, SUMAg_DOv, SUMAg_N_DOv, 
+                     &(SUMAg_SVv[i]), viewopt)) {
 			      fprintf (SUMA_STDERR, "Error %s: Failed in SUMA_SetupSVforDOs function.\n", FuncName);
 			      SUMA_RETURN(NOPE);
 		      }
 	      }
 
          /* do not switch or redisplay yet, all you have is garbage for geometry ... */
+         if (!SUMA_FreeSpecFields(Spec)) {
+            SUMA_S_Err("Failed to free spec fields");
+         }
          SUMA_free(Spec); Spec = NULL;
 
          /* switch viewer 0 to the group in question */
@@ -3055,7 +3061,7 @@ SUMA_Boolean SUMA_SendToSuma (SUMA_SurfaceObject *SO, SUMA_COMM_STRUCT *cs, void
    static float etm = 0.0;
    static int i_in = 0;
    char stmp[500];
-   struct  timeval tt;
+   static struct  timeval tt;
    NI_element *nel=NULL;
    NI_group *ngr = NULL;
    float *f=NULL;
@@ -3066,7 +3072,8 @@ SUMA_Boolean SUMA_SendToSuma (SUMA_SurfaceObject *SO, SUMA_COMM_STRUCT *cs, void
    
    SUMA_ENTRY;
    
-
+   /* fprintf (SUMA_STDERR, "%s: LocalHead = %d\n", FuncName, LocalHead); */
+   
    if (action == 0) { /* initialization of connection */
       
       SUMA_LH("Setting up for communication with SUMA ...");
@@ -3254,11 +3261,18 @@ SUMA_Boolean SUMA_SendToSuma (SUMA_SurfaceObject *SO, SUMA_COMM_STRUCT *cs, void
       #endif
 
       if (cs->nelps > 0) { /* make sure that you are not sending elements too fast */
-         if (!etm) etm = 100000.0; /* first pass, an eternity */
-         else etm = SUMA_etime(&tt, 1);
+         if (!etm) {
+            etm = 100000.0; /* first pass, an eternity */
+            if (LocalHead) fprintf (SUMA_STDOUT,"%s: Initializing timer\n", FuncName);
+            SUMA_etime(&tt, 0);
+         }
+         else {
+            if (LocalHead) fprintf (SUMA_STDOUT,"%s: Calculating etm\n", FuncName);
+            etm = SUMA_etime(&tt, 1);
+         }
          wtm = 1./cs->nelps - etm;
          if (wtm > 0) { /* wait */
-            SUMA_LH("Sleeping to meet refresh rate...");
+            if (LocalHead) fprintf (SUMA_STDOUT, "%s: Sleeping by %f to meet refresh rate...", FuncName, wtm);
             NI_sleep((int)(wtm*1000));
          }
       }
@@ -3281,7 +3295,10 @@ SUMA_Boolean SUMA_SendToSuma (SUMA_SurfaceObject *SO, SUMA_COMM_STRUCT *cs, void
       if (nel) NI_free_element(nel) ; nel = NULL;
       if (ngr) NI_free_element(ngr) ; ngr = NULL;
       
-      if (cs->nelps > 0) SUMA_etime(&tt, 0); /* start the timer */
+      if (cs->nelps > 0) {
+         if (LocalHead) fprintf (SUMA_STDOUT,"%s: Resetting time...\n", FuncName);
+         SUMA_etime(&tt, 0); /* start the timer */
+      }
       ++i_in;
       SUMA_RETURN(YUP);
    }/* action == 1 */
@@ -3392,7 +3409,7 @@ SUMA_Boolean SUMA_SendToAfni (SUMA_COMM_STRUCT *cs, void *data, int action)
    static float etm = 0.0;
    static int i_in = 0;
    char stmp[500];
-   struct  timeval tt;
+   static struct  timeval tt;
    NI_element *nel=NULL;
    float *f=NULL;
    int n=-1, WaitClose, WaitMax, *ip = NULL;
