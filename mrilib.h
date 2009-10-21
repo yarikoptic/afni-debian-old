@@ -199,6 +199,16 @@ typedef struct { float a,b ; } float_pair ;
 typedef struct { float a,b,c ; } float_triple ;
 #endif
 
+#ifndef TYPEDEF_double_pair
+#define TYPEDEF_double_pair
+typedef struct { double a,b ; } double_pair ;
+#endif
+
+#ifndef TYPEDEF_double_triple
+#define TYPEDEF_double_triple
+typedef struct { double a,b,c ; } double_triple ;
+#endif
+
 /*-------*/
 
 /*! Triple to hold RGB bytes. */
@@ -692,11 +702,12 @@ extern void mri_fix_data_pointer( void * , MRI_IMAGE * ) ;
 #endif
 
 extern char * mri_dicom_header( char * ) ;  /* 15 Jul 2002 */
-extern void   mri_dicom_pxlarr( off_t *, int * ) ;
+extern void   mri_dicom_pxlarr( off_t *, unsigned int * ) ;
 extern void   mri_dicom_noname( int ) ;
 extern void   mri_dicom_nohex ( int ) ;
 extern void   mri_dicom_setvm ( int ) ;     /* 28 Oct 2002 */
 extern void   mri_dicom_seterr( int ) ;     /* 05 Nov 2002 */
+extern void   mri_dicom_header_use_printf( int ) ; /* 02 May 2008 */
 
 extern MRI_IMARR * mri_read_dicom( char * )  ;
 extern int         mri_imcount_dicom( char * ) ;
@@ -1277,9 +1288,9 @@ extern int SYM_expand_errcount(void) ; /* 03 May 2007 */
 
 #include "afni_environ.h"  /* 07 Jun 1999 addition */
 
-#include "rickr/r_new_resam_dset.h" /* 31 Jul 2007 */
-#include "rickr/r_idisp.h"
-#include "rickr/r_misc.h"
+#include "r_new_resam_dset.h" /* 31 Jul 2007 */
+#include "r_idisp.h"
+#include "r_misc.h"
 
 /*------------------------------------------------------------------------*/
 /* some of these clusterize prototypes require editvol.h */
@@ -1317,6 +1328,7 @@ extern MRI_IMAGE * mri_matrix_scale    ( float, MRI_IMAGE * ) ;
 extern MRI_IMAGE * mri_matrix_evalrpn  ( char * ) ;
 extern char      * mri_matrix_evalrpn_help(void) ;
 extern void        mri_matrix_evalrpn_verb(int) ;
+extern float mri_matrix_size( MRI_IMAGE * ) ;
 
 #define            mri_matrix_transpose(x) mri_transpose(x)
 
@@ -1426,14 +1438,20 @@ extern void mri_metrics( MRI_IMAGE *, MRI_IMAGE *, float * ) ;
 /*--------------------------------------------------------------------*/
 /** July 2006: stuff for generic alignment functions: mri_genalign.c **/
 
+#include "mri_warpfield.h"
+
   /* definition of various convex neighborhoods */
 
 #define GA_BLOK_BALL 1  /* sphere */
 #define GA_BLOK_CUBE 2  /* cube */
 #define GA_BLOK_RHDD 3  /* rhombic dodecahedron */
+#define GA_BLOK_TOHD 4  /* truncated octahedron */
 
-#define GA_BLOK_STRING(b) \
- ( ((b)==GA_BLOK_BALL) ? "BALL" : ((b)==GA_BLOK_CUBE) ? "CUBE" : "RHDD" )
+#define GA_BLOK_STRING(b)  ( ((b)==GA_BLOK_BALL) ? "BALL" :          \
+                             ((b)==GA_BLOK_CUBE) ? "CUBE" :          \
+                             ((b)==GA_BLOK_RHDD) ? "RHDD" :          \
+                             ((b)==GA_BLOK_TOHD) ? "TOHD" :          \
+                                                            "UNKNOWN" )
 
  /* method codes for matching scalar-valued images */
 
@@ -1565,6 +1583,10 @@ extern void mri_genalign_mat44( int, float *,
                                      float *, float *, float * ) ;
 extern void mri_genalign_set_pgmat( int ) ;
 
+extern void mri_genalign_bilinear( int, float *,
+                                   int, float *, float *, float *,
+                                        float *, float *, float * ) ;
+
 void mri_genalign_set_targmask( MRI_IMAGE *, GA_setup * ) ; /* 07 Aug 2007 */
 
 extern void GA_reset_fit_callback( void (*fc)(int,double*) ) ;
@@ -1573,6 +1595,16 @@ extern void GA_do_cost(int, byte) ;
 extern void GA_do_params(int) ;
 extern float mri_genalign_scalar_cost( GA_setup * , float *) ;
 extern void GA_set_outval( float ) ;   /* 28 Feb 2007 */
+
+extern void mri_genalign_set_boxsize( float xbot, float xtop,
+                                      float ybot, float ytop,
+                                      float zbot, float ztop ) ;
+extern Warpfield * mri_genalign_warpfield_setup( int, float, int ) ;
+extern Warpfield * mri_genalign_warpfield_get(void) ;
+extern void mri_genalign_warpfield_set(Warpfield *) ;
+extern void mri_genalign_warpfield( int, float *,
+                                    int, float *, float *, float *,
+                                         float *, float *, float * ) ;
 
 extern floatvec * mri_genalign_scalar_allcosts( GA_setup * , float * ); /* 19 Sep 2007 */
 

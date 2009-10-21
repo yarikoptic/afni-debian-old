@@ -109,7 +109,7 @@ No callback is made*/
 /* scale size gets messed up, see afni_widg.c and afni.h's
 FIX_SCALE_SIZE*/
 #define SUMA_FORCE_SCALE_HEIGHT(SO) {\
-  XtVaSetValues(  SO->SurfCont->thr_sc, XmNheight,  SUMA_CMAP_HEIGHT, NULL ) ;   \
+  XtVaSetValues(  SO->SurfCont->thr_sc, XmNheight,  SUMA_CMAP_HEIGHT-40, NULL ) ; \
 }
 
 void SUMA_ShowMeTheChildren(Widget w);
@@ -213,6 +213,7 @@ SUMA_Boolean SUMA_DsetColSelectList(
          SUMA_SurfaceObject *SO, int type, 
          int refresh, int bringup);
 SUMA_ASSEMBLE_LIST_STRUCT * SUMA_AssembleDsetColList(SUMA_DSET *dset); 
+void SUMA_UpdatePvalueField (SUMA_SurfaceObject *SO, float thresh);
 
 /* the help strings */
 
@@ -420,7 +421,20 @@ SUMA_ASSEMBLE_LIST_STRUCT * SUMA_AssembleDsetColList(SUMA_DSET *dset);
    
 #define SUMA_SurfContHelp_DsetLoadCol  \
    "Load a new color plane.\n"   \
-   "(Same as ctrl+c option)."
+   "A color plane is a 1D text file with \n" \
+   "each row formatted as such:"  \
+   "  n  r g b\n" \
+   "where n is the node index, \n"  \
+   "r, g, and b are the red, green and blue\n"  \
+   "color values, respectively. \n"  \
+   "Color values must be between 0 and 1.0. \n" \
+   "A sample file would be: test.1D.col\n"   \
+   "   0    0.1 0.2 1   \n"   \
+   "   1    0   1   0.8 \n"   \
+   "   4    1   1   1   \n"   \
+   "   7    1   0   1   \n"   \
+   "   14   0.7 0.3 0   "
+
 
 #define SUMA_SurfContHelp_SelInt \
    "Select Intensity (I) column.\n"   \
@@ -720,5 +734,22 @@ SUMA_ASSEMBLE_LIST_STRUCT * SUMA_AssembleDsetColList(SUMA_DSET *dset);
 
 #define SUMA_SurfContHelp_RangeTbl_r3  \
    "Range of values in brightness (B) column."
+
+/* this one's based on AFNI's func->thr_pval_label help */
+#define SUMA_SurfContHelp_ThreshStats  \
+   "Shows the estimated significance\n"   \
+   "(p-value) of the threshold above,\n"  \
+   "if possible.\n"  \
+   "* If not possible, will display as\n" \
+   "   '[N/A]' instead.\n" \
+   "* p's that display as 1.2-7 should\n" \
+   "   be interpreted as 1.2 x 10^(-7).\n"   \
+   "* p-value here is significance PER NODE.\n" \
+   "* If FDR curves are pre-computed in\n"   \
+   "   the dataset header, then the False\n" \
+   "   Discovery Rate q-value will also\n"   \
+   "   be shown.\n"     \
+   "* You can add FDR curves to a dataset\n" \
+   "   with '3drefit -addFDR'.\n"   
    
 #endif

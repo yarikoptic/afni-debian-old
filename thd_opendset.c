@@ -31,7 +31,8 @@ static char * file_extension_list[] = {
     ".3D",
     ".nii", ".nii.gz", ".nia", ".hdr", ".img",
     ".mpg", ".mpeg", ".MPG", ".MPEG",
-    ".niml", ".niml.dset"
+    ".niml", ".niml.dset",
+    ".gii", ".gii.dset"
 };
 
 
@@ -52,6 +53,7 @@ THD_3dim_dataset * THD_open_one_dataset( char *pathname )
    long long fsize ;     /* 06 Jan 2005, to unsigned 20 Feb 2006 [rickr] */
                                       /* to long long 22 Mar 2007 [RWC] */
    int   isfile = 1;
+   static char qname[THD_MAX_NAME+222] ;
 
 ENTRY("THD_open_one_dataset") ;
 
@@ -60,6 +62,15 @@ ENTRY("THD_open_one_dataset") ;
    if( pathname == NULL              ||
        (plen=strlen(pathname)) == 0  ||
        pathname[plen-1]        == '/'  ) RETURN(NULL) ;
+
+
+   if( pathname[0] == '~' && pathname[1] == '/' ){  /* 13 Feb 2008 */
+     char *eee = getenv("HOME") ;
+     if( eee != NULL ){
+       strcpy(qname,eee); strcat(qname,pathname+1);
+       pathname = qname ;
+     }
+   }
 
    /*-- perhaps open the new-fangled way [22 May 2000] --*/
 
@@ -161,6 +172,17 @@ ENTRY("THD_open_one_dataset") ;
 
      CHECK_FOR_DATA(pathname) ;
      dset = THD_open_niml(pathname) ;
+     THD_patch_brickim(dset) ;  /* 20 Oct 2006 */
+     RETURN(dset) ;
+   }
+
+   /*-- 13 Feb 2008 [rickr]: the GIFTI way! --*/
+
+   if( STRING_HAS_SUFFIX(pathname,".gii") ||
+       STRING_HAS_SUFFIX(pathname,".gii.dset") ){
+
+     CHECK_FOR_DATA(pathname) ;
+     dset = THD_open_gifti(pathname) ;
      THD_patch_brickim(dset) ;  /* 20 Oct 2006 */
      RETURN(dset) ;
    }
@@ -439,6 +461,9 @@ ENTRY("storage_mode_from_filename");
     if( STRING_HAS_SUFFIX(fname, ".niml") )     RETURN(STORAGE_BY_NIML);
 
     if( STRING_HAS_SUFFIX(fname,".niml.dset") ) RETURN(STORAGE_BY_NI_SURF_DSET);
+
+    if( STRING_HAS_SUFFIX(fname,".gii") ||
+        STRING_HAS_SUFFIX(fname,".gii.dset") )  RETURN(STORAGE_BY_GIFTI);
 
     RETURN(STORAGE_UNDEFINED);
 }

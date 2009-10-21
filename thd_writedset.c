@@ -32,7 +32,8 @@ Boolean THD_write_3dim_dataset( char *new_sessname , char *new_prefixname ,
 {
    THD_datablock *blk ;
    int ii, cmode ;
-   int is_nsd = 0 ;  /* is NI_SURF_DSET  03 Jul 2006 [rickr] */
+   int is_nsd = 0, is_gifti = 0 ;  /* is NI_SURF_DSET  03 Jul 2006 [rickr] */
+   int free_1d = 0 ;               /* write 1D using prefix */
    char *ppp ;  /* 06 Apr 2005 */
 
 ENTRY("THD_write_3dim_dataset") ;
@@ -59,10 +60,16 @@ ENTRY("THD_write_3dim_dataset") ;
 
    /* block NI_SURF_DSET from 1D write    11 Jul 2006 [rickr] */
    ppp = DSET_PREFIX(dset) ;
-   is_nsd = DSET_IS_NI_SURF_DSET(dset) || STRING_HAS_SUFFIX(ppp,".niml.dset") ;
+   is_gifti = DSET_IS_GIFTI(dset) || STRING_HAS_SUFFIX(ppp,".gii")
+                                  || STRING_HAS_SUFFIX(ppp,".gii.dset") ;
+   is_nsd = DSET_IS_NI_SURF_DSET(dset) || STRING_HAS_SUFFIX(ppp,".niml.dset") ||
+            is_gifti ;
+
+   /* might want to block trapping of 1D writes    20 Mar 2008 [rickr] */
+   free_1d = is_nsd || AFNI_yesenv("AFNI_WRITE_1D_AS_PREFIX");
 
    if( DSET_IS_1D(dset) ||                 /* block NSD  03 Jul 2006 [rickr] */
-       ( DSET_NY(dset)==1 && DSET_NZ(dset)==1 && !is_nsd ) ){ /* 04 Mar 2003 */
+       ( DSET_NY(dset)==1 && DSET_NZ(dset)==1 && !free_1d) ){ /* 04 Mar 2003 */
 
      THD_write_1D( new_sessname , new_prefixname , dset ) ;
      RETURN(True) ;
@@ -86,18 +93,26 @@ ENTRY("THD_write_3dim_dataset") ;
    /*----- 06 Jun 2007: deconflict dataset name? -----*/
 
    /* default is ERROR_exit */
-   ppp = my_getenv("AFNI_DECONFLICT") ;
-   if( ppp == NULL || toupper(*ppp) != 'O' ){
-     char pfx[THD_MAX_PREFIX] ;
-     MCW_strncpy( pfx , DSET_PREFIX(dset) , THD_MAX_PREFIX ) ;
-     ii = THD_deconflict_prefix( dset ) ;
-     if( ii ){
-       if( ppp && toupper(*ppp) == 'Y' )
-         WARNING_message("changed output dataset name from '%s' to '%s'",
-                         pfx , DSET_PREFIX(dset) ) ;
-       else
-        ERROR_exit("output dataset name '%s' conflicts with existing file",pfx);
+   if( !THD_ok_overwrite() ){
+     ppp = my_getenv("AFNI_DECONFLICT") ;
+     if( ppp == NULL || toupper(*ppp) != 'O' ){
+       char pfx[THD_MAX_PREFIX] ;
+       MCW_strncpy( pfx , DSET_PREFIX(dset) , THD_MAX_PREFIX ) ;
+       ii = THD_deconflict_prefix( dset ) ;
+       if( ii ){
+         if( ppp && toupper(*ppp) == 'Y' ){
+           WARNING_message("changed output dataset name from '%s' to '%s'",
+                           pfx , DSET_PREFIX(dset) ) ;
+         } else {
+           ERROR_message("output dataset name '%s' conflicts with existing file",pfx);
+           ERROR_message("dataset NOT written to disk!") ;
+           RETURN(False) ;
+         }
+       }
      }
+   } else if( THD_is_file(dset->dblk->diskptr->header_name) ||
+              THD_is_file(dset->dblk->diskptr->brick_name)    ){
+     WARNING_message("Over-writing dataset %s",dset->dblk->diskptr->brick_name);
    }
 
    /*------ 06 Apr 2005: write a NIFTI-1 dataset??? -----*/
@@ -180,27 +195,11 @@ ENTRY("THD_write_3dim_dataset") ;
 
    /* if(STRING_HAS_SUFFIX(ppp,".niml.dset") || DSET_IS_NI_SURF_DSET(dset)){ */
    if( is_nsd ){  /* already determined                  03 Jul 2006 [rickr] */
-     RETURN( THD_write_niml( dset, write_brick ) ) ;
+     if( is_gifti ) RETURN( THD_write_gifti( dset, write_brick, 0 ) ) ;
+     else           RETURN( THD_write_niml( dset, write_brick ) ) ;
    }
 
    /*----- write datablock to disk in AFNI .HEAD/.BRIK format -----*/
 
    RETURN( THD_write_datablock(blk,write_brick) ) ;
 }
-
-/*-------------------------------------------------------------------------*/
-
-int THD_deathcon(void)  /* 06 Jun 2007 */
-{
-   char *ppp = my_getenv("AFNI_DECONFLICT") ;
-   if( ppp != NULL && *ppp == 'N' ) return 1 ;
-   return 0 ;
-}
-
-int THD_ok_overwrite(void)  /* Jan 2008*/
-{
-   char *ppp=my_getenv("AFNI_DECONFLICT");
-   if (ppp && strcmp(ppp,"OVERWRITE")==0) return 1;
-   return 0;
-}
-

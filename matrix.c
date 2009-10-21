@@ -58,6 +58,10 @@
 
   Mod:      Added USE_SCSLBLAS stuff for SGI Altix, and USE_SUNPERF for Solaris.
   Date:     01 Mar 2005
+
+  Mod:      Freed memory for an orphaned matrix in matrix_sqrt function
+  Date:     26 Mar 2008 - drg
+
 */
 
 /*---------------------------------------------------------------------*/
@@ -240,7 +244,7 @@ void matrix_print (matrix m)
   for( i=0 ; i < rows ; i++ ){
     for( j=0 ; j < cols ; j++ ){
       val = (int)m.elts[i][j] ;
-      if( val != m.elts[i][j] || fabs(val) > 9.0 ) goto zork ;
+      if( val != m.elts[i][j] || fabs(val) > 99.0 ) goto zork ;
     }
   }
 zork:
@@ -249,7 +253,7 @@ zork:
   for (i = 0;  i < rows;  i++)
     {
       for (j = 0;  j < cols;  j++)
-        if( ipr ) printf (" %2d"   , (int)m.elts[i][j]);
+        if( ipr ) printf (" %3d"   , (int)m.elts[i][j]);
         else      printf (" %10.4g", m.elts[i][j]);
       printf (" \n");
     }
@@ -830,6 +834,7 @@ int matrix_sqrt (matrix a, matrix * s)
   matrix_destroy (&xinv);
   matrix_destroy (&axinv);
   matrix_destroy (&xtemp);
+  matrix_destroy (&error);   /* destroy error matrix too  - 26 Mar 2008 drg */
 
   return (1);
 
@@ -1154,6 +1159,103 @@ void vector_multiply (matrix a, vector b, vector * c)
 #ifdef ENABLE_FLOPS
     flops += 2.0*rows*cols ;
     dotsum += rows*cols ; dotnum += rows ;
+#endif
+    return ;
+}
+
+/*---------------------------------------------------------------------------*/
+/*!
+  Right multiply matrix a-transpose by vector b.  Result is vector c.
+*/
+void vector_multiply_transpose (matrix a, vector b, vector * c)
+{
+  register int rows, cols;
+  register int i, j;
+  register double *bb ;
+  register double bj ;
+  register double *aa , *cc ;
+
+  if (a.rows != b.dim){
+    char str[444] ;
+    sprintf(str,
+            "Incompatible dimensions for vector_multiply_transpose: [%dx%d]' X %d",
+            a.rows,a.cols,b.dim ) ;
+    matrix_error(str) ;
+  }
+
+  rows = a.rows; cols = a.cols;
+
+  vector_create(cols, c);  /* initialized to 0 */
+
+  if( rows <= 0 ) return ;
+
+  bb = b.elts ; cc = c->elts ;
+
+#ifdef UNROLL_VECMUL
+  switch( cols%4 ){
+    case 0:
+     for( j=0 ; j < rows ; j++ ){
+       aa = a.elts[j] ; bj = bb[j] ;
+       for( i=0 ; i < cols ; i+=4 ){
+         cc[i]   += aa[i]  *bj ;
+         cc[i+1] += aa[i+1]*bj ;
+         cc[i+2] += aa[i+2]*bj ;
+         cc[i+3] += aa[i+3]*bj ;
+       }
+     }
+    break ;
+
+    case 1:
+     for( j=0 ; j < rows ; j++ ){
+       aa = a.elts[j] ; bj = bb[j] ;
+       cc[0] += aa[0]*bj ;
+       for( i=1 ; i < cols ; i+=4 ){
+         cc[i]   += aa[i]  *bj ;
+         cc[i+1] += aa[i+1]*bj ;
+         cc[i+2] += aa[i+2]*bj ;
+         cc[i+3] += aa[i+3]*bj ;
+       }
+     }
+    break ;
+
+    case 2:
+     for( j=0 ; j < rows ; j++ ){
+       aa = a.elts[j] ; bj = bb[j] ;
+       cc[0] += aa[0]*bj ;
+       cc[1] += aa[1]*bj ;
+       for( i=2 ; i < cols ; i+=4 ){
+         cc[i]   += aa[i]  *bj ;
+         cc[i+1] += aa[i+1]*bj ;
+         cc[i+2] += aa[i+2]*bj ;
+         cc[i+3] += aa[i+3]*bj ;
+       }
+     }
+    break ;
+
+    case 3:
+     for( j=0 ; j < rows ; j++ ){
+       aa = a.elts[j] ; bj = bb[j] ;
+       cc[0] += aa[0]*bj ;
+       cc[1] += aa[1]*bj ;
+       cc[2] += aa[1]*bj ;
+       for( i=3 ; i < cols ; i+=4 ){
+         cc[i]   += aa[i]  *bj ;
+         cc[i+1] += aa[i+1]*bj ;
+         cc[i+2] += aa[i+2]*bj ;
+         cc[i+3] += aa[i+3]*bj ;
+       }
+     }
+  }
+#else
+  for( j=0 ; j < rows ; j++ ){
+    aa = a.elts[j] ; bj = bb[j] ;
+    for( i=0 ; i < cols ; i++ ) cc[i] += aa[i]*bj ;
+  }
+#endif
+
+#ifdef ENABLE_FLOPS
+    flops += 2.0*rows*cols ;
+    dotsum += rows*cols ; dotnum += cols ;
 #endif
     return ;
 }
@@ -1549,5 +1651,162 @@ void matrix_psinv( matrix X , matrix *XtXinv , matrix *XtXinvXt )
    flops += n*n*(n+2.0*m+2.0) ;
 #endif
    free((void *)xfac); free((void *)sval);
-   free((void *)vmat); free((void *)umat); return;
+   free((void *)vmat); free((void *)umat); 
+   return;
+}
+
+/*---------------------------------------------------------------------------*/
+/*! Given MxN matrix X, compute the NxN upper triangle factor R in X = QR.
+    Must have M >= N (more rows than columns).
+    Q is not computed.  If you want Q, then compute it as [Q] = [X] * inv[R].
+*//*-------------------------------------------------------------------------*/
+
+void matrix_qrr( matrix X , matrix *R )
+{
+   int m = X.rows , n = X.cols , ii,jj,kk ;
+   double *amat , *uvec , x1 ;
+   register double alp, sum ;
+
+   if( m < 2 || n < 1 || m < n || R == NULL || X.elts == NULL ) return ;
+
+#undef  A
+#define A(i,j) amat[(i)+(j)*m]
+
+   amat = (double *)malloc( sizeof(double)*m*n ) ;  /* copy input matrix */
+   uvec = (double *)malloc( sizeof(double)*m   ) ;  /* Householder vector */
+
+   /* copy input matrix into amat == A */
+
+   for( ii=0 ; ii < m ; ii++ )
+     for( jj=0 ; jj < n ; jj++ ) A(ii,jj) = X.elts[ii][jj] ;
+
+   /* Householder transform each column of A in turn */
+
+   for( jj=0 ; jj < n ; jj++ ){
+     if( jj == m-1 ) break ;  /* at last column AND have m==n */
+     x1 = uvec[jj] = A(jj,jj) ;
+     for( sum=0.0,ii=jj+1 ; ii < m ; ii++ ){
+       uvec[ii] = alp = A(ii,jj) ; sum += alp*alp ;
+     }
+     if( sum == 0.0 ) continue ; /* tail of column is pre-reduced to 0 */
+     alp = sqrt(sum+x1*x1) ; if( x1 > 0.0 ) alp = -alp ;
+     x1 = uvec[jj] -= alp ; A(jj,jj) = alp ;
+     alp = 2.0 / (sum+x1*x1) ;
+     for( kk=jj+1 ; kk < n ; kk++ ){  /* process trailing columns */
+       for( sum=0.0,ii=jj ; ii < m ; ii++ ) sum += uvec[ii]*A(ii,kk) ;
+       sum *= alp ;
+       for( ii=jj ; ii < m ; ii++ ) A(ii,kk) -= sum*uvec[ii] ;
+     }
+   }
+
+   /* copy result in A to output
+      (changing row signs if needed to make R's diagonal non-negative) */
+
+   matrix_create( n , n , R ) ;
+   for( ii=0 ; ii < n ; ii++ ){
+     for( jj=0 ; jj < ii ; jj++ ) R->elts[ii][jj] = 0.0 ; /* sub-diagonal */
+     if( A(ii,ii) >= 0.0 )
+       for( jj=ii ; jj < n ; jj++ ) R->elts[ii][jj] =  A(ii,jj) ;
+     else
+       for( jj=ii ; jj < n ; jj++ ) R->elts[ii][jj] = -A(ii,jj) ;
+   }
+
+#ifdef ENABLE_FLOPS
+   flops += n*n*(2*m-0.666*n) ;
+#endif
+
+   free((void *)uvec) ; free((void *)amat) ;
+   return ;
+}
+
+/*--- below is a test program for matrix_qrr() ---*/
+
+#if 0
+#include <stdlib.h>
+#include <math.h>
+#include <stdio.h>
+#include "matrix.h"
+int main( int argc , char *argv[] )
+{
+   matrix X , R , Xt , XtX ;
+   int m , n , ii,jj ;
+
+   matrix_initialize(&X) ; matrix_initialize(&R)  ;
+   matrix_initialize(&Xt); matrix_initialize(&XtX);
+
+   if( argc < 3 ) exit(0);
+
+   m = (int)strtod(argv[1],NULL) ; if( m < 2 ) exit(0) ;
+   n = (int)strtod(argv[2],NULL) ; if( n < 1 || n > m ) exit(0) ;
+
+   matrix_create( m , n , &X ) ;
+   for( jj=0 ; jj < n ; jj++ )
+     for( ii=0 ; ii < m ; ii++ )
+       X.elts[ii][jj] = sin(1.0+ii+jj) + cos((1.0+ii*jj)/(1.0+ii+jj)) ;
+
+   matrix_transpose( X , &Xt ) ;
+   matrix_multiply ( Xt , X , &XtX ) ;
+   printf("=== X matrix:\n") ; matrix_print(X) ;
+   printf("=== XtX matrix:\n") ; matrix_print(XtX) ;
+
+   matrix_qrr( X , &R ) ;
+   printf("=== R matrix:\n") ; matrix_print(R) ;
+
+   matrix_transpose( R , &Xt ) ;
+   matrix_multiply( Xt , R , &XtX ) ;
+   printf("=== RtR matrix:\n") ; matrix_print(XtX) ;
+   exit(0) ;
+}
+#endif
+
+/*---------------------------------------------------------------------------*/
+/*! Solve [R] [x] = [b] for [x] where R is upper triangular. */
+
+void vector_rr_solve( matrix R , vector b , vector *x )
+{
+   register int n , ii,jj ;
+   register double sum , *xp , *bp , *rr ;
+
+   n = R.rows ;
+   if( n < 1 || R.cols != n || x == NULL ) return ;
+
+   vector_create_noinit( n , x ) ; xp = x->elts ; bp = b.elts ;
+
+   for( ii=n-1 ; ii >= 0 ; ii-- ){
+     rr = R.elts[ii] ; sum = bp[ii] ;
+     for( jj=ii+1 ; jj < n ; jj++ ) sum -= rr[jj] * xp[jj] ;
+     xp[ii] = sum / rr[ii] ;
+   }
+
+   return ;
+}
+
+/*---------------------------------------------------------------------------*/
+/*! Solve [R]' [x] = [b] for [x] where R is upper triangular. */
+
+void vector_rrtran_solve( matrix R , vector b , vector *x )
+{
+   register int n , ii,jj ;
+   register double sum , *xp , *bp , *rr ;
+
+   n = R.rows ;
+   if( n < 1 || R.cols != n || x == NULL ) return ;
+
+   bp = b.elts ;
+#if 0             /* the obvious way */
+   vector_create_noinit( n , x ) ; xp = x->elts ;
+   for( ii=0 ; ii < n ; ii++ ){
+     for( sum=bp[ii],jj=0 ; jj < ii ; jj++ )
+       sum -= R.elts[jj][ii] * xp[jj] ;
+     xp[ii] = sum / R.elts[ii][ii] ;
+   }
+#else             /* the row ordered way, which is faster in cache */
+   vector_equate( b , x ) ; xp = x->elts ;
+   for( ii=0 ; ii < n ; ii++ ){
+     rr = R.elts[ii] ; sum = xp[ii] = xp[ii] / rr[ii] ;
+     for( jj=ii+1 ; jj < n ; jj++ ) xp[jj] -= rr[jj]*sum ;
+   }
+#endif
+
+   return ;
 }

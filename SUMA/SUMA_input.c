@@ -59,14 +59,18 @@ int SUMA_KeyPress(char *keyin, char *keynameback)
             SUMA_RETURN(XK_b);
          case 'B':
             SUMA_RETURN(XK_B);
-         case 'n':
-            SUMA_RETURN(XK_n);
-         case 'N':
-            SUMA_RETURN(XK_N);
+         case 'g':
+            SUMA_RETURN(XK_g);
+         case 'G':
+            SUMA_RETURN(XK_G);
          case 'm':
             SUMA_RETURN(XK_m);
          case 'M':
             SUMA_RETURN(XK_M);
+         case 'n':
+            SUMA_RETURN(XK_n);
+         case 'N':
+            SUMA_RETURN(XK_N);
          case 'p':
             SUMA_RETURN(XK_p);
          case 'P':
@@ -525,6 +529,74 @@ int SUMA_B_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
    SUMA_RETURN(1);
 }
 
+int SUMA_G_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
+{
+   static char FuncName[]={"SUMA_G_Key"};
+   char tk[]={"G"}, keyname[100];
+   int k=0, nc=-1;
+   int inode = -1;
+   SUMA_DSET *Dset = NULL;
+   SUMA_SurfaceObject *SO=NULL;
+   SUMA_OVERLAYS *Sover=NULL;
+   char stmp[100]={"\0"};
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   SUMA_KEY_COMMON;
+   
+   if (sv->Focus_SO_ID < 0) {
+      if (callmode && strcmp(callmode, "interactive") == 0) {
+         SUMA_SLP_Err("No surface in focus.\nCannot graph.");
+      } else {
+         SUMA_S_Err("No surface in focus.\nCannot graph.");
+      }
+      SUMA_RETURN(0);
+   }
+   SO = (SUMA_SurfaceObject *)SUMAg_DOv[sv->Focus_SO_ID].OP;
+   if (  !SO || !SO->SurfCont || 
+         !SO->SurfCont->curColPlane || 
+         !SO->SurfCont->curColPlane->dset_link) {
+      SUMA_SL_Err("Nothing to graph");
+      SUMA_RETURN(0);
+   }
+   Sover = SO->SurfCont->curColPlane;
+   Dset = SO->SurfCont->curColPlane->dset_link;
+   inode = SO->SelectedNode;
+   if (inode < 0) {
+      if (callmode && strcmp(callmode, "interactive") == 0) {
+         SUMA_SLP_Warn("No selected node.\nNothing to graph.");
+      }else{
+         SUMA_S_Warn("No selected node.\nNothing to graph.");
+      }
+      SUMA_RETURN(1);
+   }
+   if (SDSET_VECNUM(Dset) < 2) {
+      if (callmode && strcmp(callmode, "interactive") == 0) {
+         SUMA_SLP_Warn("One or no value per node.\nNothing to graph.");
+      }else{
+         SUMA_S_Warn("One or no value per node.\nNothing to graph.");
+      }
+      SUMA_RETURN(1);
+   }
+   /* do the work */
+   switch (k) {
+      case XK_g:
+         if ((SUMA_CTRL_KEY(key))) {
+         } else {
+            SUMA_OverlayGraphAtNode(Sover, SO, inode); 
+         }
+         break;
+      case XK_G:
+         break;
+      default:
+         SUMA_S_Err("Il ne faut pas etre ici");
+         SUMA_RETURN(0);
+         break;
+   }
+   SUMA_RETURN(1);
+}
+
 int SUMA_M_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
 {
    static char FuncName[]={"SUMA_M_Key"};
@@ -543,13 +615,17 @@ int SUMA_M_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
             SUMA_SurfaceObject *SO;
             float fv3[3];
             int it;
-            fprintf(SUMA_STDOUT, "%s: Enter mm distance [RAI] to move center of all mappable surfaces in DOv by.\n", FuncName);
+            fprintf(SUMA_STDOUT, "%s: Enter shift in mm [RAI] "
+                                 "to apply to all mappable surfaces in DOv.\n",
+                                 FuncName);
             it = SUMA_ReadNumStdin (fv3, 3);
             if (it > 0 && it < 3) {
-               fprintf(SUMA_STDERR,"Error %s: read %d values, expected 3.\n", FuncName, it);
+               fprintf(SUMA_STDERR,"Error %s: read %d values, expected 3.\n", 
+                                    FuncName, it);
                SUMA_RETURN(0);
             }else if (it < 0) {
-               fprintf(SUMA_STDERR,"Error %s: Error in SUMA_ReadNumStdin.\n", FuncName);
+               fprintf(SUMA_STDERR,"Error %s: Error in SUMA_ReadNumStdin.\n", 
+                                    FuncName);
                SUMA_RETURN(0);
             }else if (it == 0) {
                fprintf(SUMA_STDERR,"%s: Nothing read.\n", FuncName);
@@ -562,7 +638,9 @@ int SUMA_M_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
                   if (SUMA_isLocalDomainParent(SO)) {
                      int imax, ii;
                      /* add the shift */
-                     fprintf (SUMA_STDERR,"%s: Shifting %s by %f %f %f mm RAI.\n", FuncName, SO->Label, fv3[0], fv3[1], fv3[2]);
+                     fprintf (SUMA_STDERR,
+                              "%s: Shifting %s by %f %f %f mm RAI.\n", 
+                              FuncName, SO->Label, fv3[0], fv3[1], fv3[2]);
                      ii = 0;
                      imax = 3 * SO->N_Node;
                      while (ii < imax) {
@@ -576,13 +654,19 @@ int SUMA_M_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
 
             SUMA_postRedisplay(sv->X->GLXAREA, NULL, NULL);
          } else {
-            sv->GVS[sv->StdView].ApplyMomentum = !sv->GVS[sv->StdView].ApplyMomentum;
+            sv->GVS[sv->StdView].ApplyMomentum = 
+                                 !sv->GVS[sv->StdView].ApplyMomentum;
             SUMA_UpdateViewerTitle(sv);
             if (sv->GVS[sv->StdView].ApplyMomentum) {
-                sv->X->MOMENTUMID = XtAppAddTimeOut(SUMAg_CF->X->App, 1, SUMA_momentum, (XtPointer) sv->X->GLXAREA);
+                sv->X->MOMENTUMID = XtAppAddTimeOut(  
+                                       SUMAg_CF->X->App, 1,   
+                                       SUMA_momentum, 
+                                       (XtPointer) sv->X->GLXAREA);
                 /* wait till user initiates turning */
-               sv->GVS[sv->StdView].spinDeltaX = 0; sv->GVS[sv->StdView].spinDeltaY = 0;
-               sv->GVS[sv->StdView].translateDeltaX = 0; sv->GVS[sv->StdView].translateDeltaY = 0;
+               sv->GVS[sv->StdView].spinDeltaX = 0; 
+               sv->GVS[sv->StdView].spinDeltaY = 0;
+               sv->GVS[sv->StdView].translateDeltaX = 0; 
+               sv->GVS[sv->StdView].translateDeltaY = 0;
             } else {
                if (sv->X->MOMENTUMID)  {
                   XtRemoveTimeOut(sv->X->MOMENTUMID);
@@ -1705,7 +1789,19 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
                sv->X->HighlightBox_prmpt = SUMA_CreatePromptDialog(sv->X->Title, sv->X->HighlightBox_prmpt);
                
             break;
-
+         case XK_g:
+            if (Kev.state & ControlMask){
+                  if (SUMAg_CF->Dev) {
+                     if (!SUMA_G_Key(sv, "ctrl+g", "interactive")) {
+                        SUMA_S_Err("Failed in key func.");
+                     }
+                  }
+               } else {
+                  if (!SUMA_G_Key(sv, "g", "interactive")) {
+                     SUMA_S_Err("Failed in key func.");
+                  }
+               }
+             break;
          case XK_h:
             if (Kev.state & ControlMask){
               if (!list) list = SUMA_CreateList();
@@ -3428,7 +3524,7 @@ SUMA_Boolean  SUMA_CreateBrushStroke (SUMA_SurfaceViewer *sv)
       SUMA_RETURN(NOPE); 
       
    }
-   sv->BS = (DList *)SUMA_malloc(sizeof(DList));
+   sv->BS = (DList *)SUMA_calloc(1,sizeof(DList));
    dlist_init(sv->BS, SUMA_FreeBSDatum);  
    
    SUMA_RETURN (YUP);
@@ -3441,7 +3537,8 @@ SUMA_BRUSH_STROKE_DATUM * SUMA_CreateBSDatum(void)
    
    SUMA_ENTRY;
    
-   bsd = (SUMA_BRUSH_STROKE_DATUM *)SUMA_malloc(sizeof(SUMA_BRUSH_STROKE_DATUM));
+   bsd = (SUMA_BRUSH_STROKE_DATUM *)
+            SUMA_calloc(1,sizeof(SUMA_BRUSH_STROKE_DATUM));
    if (!bsd) {
       SUMA_RegisterMessage (SUMAg_CF->MessageList, 
                             "Failed to allocate.", FuncName, 
@@ -3571,7 +3668,8 @@ void SUMA_DrawBrushStroke (SUMA_SurfaceViewer *sv, SUMA_Boolean incr)
          bsd = (SUMA_BRUSH_STROKE_DATUM *)NE->data;
          bsdn = (SUMA_BRUSH_STROKE_DATUM *)NEn->data;
          
-         SUMA_DrawWindowLine(sv, (int)bsd->x, (int)bsd->y, (int)bsdn->x, (int)bsdn->y, 1);
+         SUMA_DrawWindowLine( sv, (int)bsd->x, (int)bsd->y, 
+                              (int)bsdn->x, (int)bsdn->y, 1);
       } while (NEn != dlist_tail(sv->BS));
       
    } else {
@@ -3581,7 +3679,9 @@ void SUMA_DrawBrushStroke (SUMA_SurfaceViewer *sv, SUMA_Boolean incr)
       bsd = (SUMA_BRUSH_STROKE_DATUM *)NE->data;
       bsdn = (SUMA_BRUSH_STROKE_DATUM *)NEn->data;
       
-      SUMA_DrawWindowLine(sv, (int)bsd->x, (int)bsd->y, (int)bsdn->x, (int)bsdn->y, 1 );
+      SUMA_DrawWindowLine( sv, 
+                           (int)bsd->x, (int)bsd->y, 
+                           (int)bsdn->x, (int)bsdn->y, 1 );
           
    }
    SUMA_RETURNe;
@@ -3592,7 +3692,8 @@ void SUMA_DrawBrushStroke (SUMA_SurfaceViewer *sv, SUMA_Boolean incr)
    \brief Processes the brushstroke sent from a viewer
    
 */
-SUMA_DRAWN_ROI * SUMA_ProcessBrushStroke (SUMA_SurfaceViewer *sv, SUMA_BRUSH_STROKE_ACTION BsA)
+SUMA_DRAWN_ROI * SUMA_ProcessBrushStroke 
+                  (SUMA_SurfaceViewer *sv, SUMA_BRUSH_STROKE_ACTION BsA)
 {
    static char FuncName[]={"SUMA_ProcessBrushStroke"};
    SUMA_DRAWN_ROI *DrawnROI = NULL;
@@ -3613,12 +3714,14 @@ SUMA_DRAWN_ROI * SUMA_ProcessBrushStroke (SUMA_SurfaceViewer *sv, SUMA_BRUSH_STR
    SUMA_ENTRY;
 
    if (!SO) {
-      fprintf (SUMA_STDERR, "%s: No surface object in focus, nothing to do.\n", FuncName); 
+      fprintf (SUMA_STDERR, 
+               "%s: No surface object in focus, nothing to do.\n", FuncName); 
       SUMA_RETURN (DrawnROI);
    }
    
    if (!sv->BS) {
-      fprintf (SUMA_STDERR, "%s: No Brushstroke (BS), nothing to do.\n", FuncName); 
+      fprintf (SUMA_STDERR, 
+               "%s: No Brushstroke (BS), nothing to do.\n", FuncName); 
       SUMA_RETURN (DrawnROI);
    }
    
@@ -3627,24 +3730,32 @@ SUMA_DRAWN_ROI * SUMA_ProcessBrushStroke (SUMA_SurfaceViewer *sv, SUMA_BRUSH_STR
       SUMA_RETURN (DrawnROI);
    }
    
-   /* We are in ROI mode, is there an ROI in curDrawnROI that works with the current surface ? */
+   /* We are in ROI mode, 
+      is there an ROI in curDrawnROI that works with the current surface ? */
    if (SUMAg_CF->X->DrawROI->curDrawnROI) {
-      if (SUMA_isdROIrelated(SUMAg_CF->X->DrawROI->curDrawnROI, SO) && SUMAg_CF->X->DrawROI->curDrawnROI->DrawStatus != SUMA_ROI_Finished) {
-         if (LocalHead) fprintf (SUMA_STDERR,"%s: using currDrawnROI.\n", FuncName);
+      if (  SUMA_isdROIrelated(SUMAg_CF->X->DrawROI->curDrawnROI, SO) && 
+            SUMAg_CF->X->DrawROI->curDrawnROI->DrawStatus != SUMA_ROI_Finished){
+         if (LocalHead) 
+            fprintf (SUMA_STDERR,"%s: using currDrawnROI.\n", FuncName);
          DrawnROI = SUMAg_CF->X->DrawROI->curDrawnROI;
       }else {
-         if (LocalHead) fprintf (SUMA_STDERR,"%s: No match between currDrawnROI and SO.\n", FuncName);
+         if (LocalHead) 
+            fprintf (SUMA_STDERR,
+                     "%s: No match between currDrawnROI and SO.\n", FuncName);
          DrawnROI = NULL;
       }
    }
    if (!DrawnROI) { /* try some more */
       if ((DrawnROI = SUMA_FetchROI_InCreation (SO, SUMAg_DOv, SUMAg_N_DOv))){
-         if (LocalHead) fprintf (SUMA_STDERR,"%s: using ROI in creation.\n", FuncName);
-         /* There is an ROI being created on this surface, initialize DrawROI window*/
+         if (LocalHead) 
+            fprintf (SUMA_STDERR,"%s: using ROI in creation.\n", FuncName);
+         /* There is an ROI being created on this surface, 
+            initialize DrawROI window*/
          SUMA_InitializeDrawROIWindow(DrawnROI);
       } else {
          /* wait till later */
-         if (LocalHead) fprintf (SUMA_STDERR,"%s: will create a new ROI.\n", FuncName);
+         if (LocalHead) 
+            fprintf (SUMA_STDERR,"%s: will create a new ROI.\n", FuncName);
       }
    }
    
@@ -3654,9 +3765,12 @@ SUMA_DRAWN_ROI * SUMA_ProcessBrushStroke (SUMA_SurfaceViewer *sv, SUMA_BRUSH_STR
    }
    
    if (!DrawnROI) { /* No ROI found, create one */
-      if (LocalHead) fprintf (SUMA_STDERR, "%s: No ROI found, creating a new one.\n", FuncName);
+      if (LocalHead) 
+         fprintf (SUMA_STDERR, 
+                  "%s: No ROI found, creating a new one.\n", FuncName);
       SUMA_GET_TEXT_FIELD(SUMAg_CF->X->DrawROI->ROIlbl->textfield, sbuf);
-      DrawnROI = SUMA_AllocateDrawnROI (SO->idcode_str, SUMA_ROI_InCreation, SUMA_ROI_OpenPath, 
+      DrawnROI = SUMA_AllocateDrawnROI (SO->idcode_str, SUMA_ROI_InCreation,  
+                                        SUMA_ROI_OpenPath, 
                                         sbuf, 
                                         SUMAg_CF->X->DrawROI->ROIval->value);
       if (!DrawnROI) {
@@ -3666,35 +3780,51 @@ SUMA_DRAWN_ROI * SUMA_ProcessBrushStroke (SUMA_SurfaceViewer *sv, SUMA_BRUSH_STR
          SUMA_RETURN (NULL);
       }
 
-      /* Although ROIs are stored as DOs, they are dependent on the surfaces they are related to 
-      ROIs at this stage are node indices only (and perhaps the mesh) but the coordinates of the indices
-      come from the surface onto which they are displayed. So when you are drawing a surface, using CreateMesh,
-      you will search DOv for ROIs related to the surface displayed and overlay them accordingly */
+      /* Although ROIs are stored as DOs, 
+         they are dependent on the surfaces they are related to 
+         ROIs at this stage are node indices only (and perhaps the mesh) but the          coordinates of the indices
+         come from the surface onto which they are displayed. So when you are 
+         drawing a surface, using CreateMesh,
+         you will search DOv for ROIs related to the surface displayed and 
+         overlay them accordingly */
       /* Add the ROI to DO */
-      if (!SUMA_AddDO (SUMAg_DOv, &SUMAg_N_DOv, (void *)DrawnROI, ROIdO_type, SUMA_LOCAL)) {
-                           fprintf(SUMA_STDERR,"Error %s: Failed in SUMA_AddDO.\n", FuncName);
+      if (!SUMA_AddDO ( SUMAg_DOv, &SUMAg_N_DOv, 
+                        (void *)DrawnROI, ROIdO_type, SUMA_LOCAL)) {
+         fprintf(SUMA_STDERR,"Error %s: Failed in SUMA_AddDO.\n", FuncName);
       }
 
       /* is the Switch ROI window open ? */
       SUMA_IS_DRAW_ROI_SWITCH_ROI_SHADED(Shaded);
       if (!Shaded) {
-         SUMA_cb_DrawROI_SwitchROI (NULL, (XtPointer) SUMAg_CF->X->DrawROI->SwitchROIlst, NULL);
+         SUMA_cb_DrawROI_SwitchROI (
+               NULL, 
+               (XtPointer) SUMAg_CF->X->DrawROI->SwitchROIlst, 
+               NULL);
       }
    
 
    } else {
-      if (LocalHead) fprintf(SUMA_STDOUT,"%s: ROI %p fetched. Status %d.\n", FuncName, DrawnROI, DrawnROI->DrawStatus); 
+      if (LocalHead) 
+         fprintf( SUMA_STDOUT,
+                  "%s: ROI %p fetched. Status %d.\n", 
+                  FuncName, DrawnROI, DrawnROI->DrawStatus); 
    } 
 
    if (BsA == SUMA_BSA_AppendStrokeOrFill) {
-      if (DrawnROI->Type == SUMA_ROI_ClosedPath || DrawnROI->Type == SUMA_ROI_FilledArea) BsA = SUMA_BSA_FillArea;
-      else if (DrawnROI->Type == SUMA_ROI_OpenPath) BsA = SUMA_BSA_AppendStroke;
+      if (  DrawnROI->Type == SUMA_ROI_ClosedPath || 
+            DrawnROI->Type == SUMA_ROI_FilledArea) 
+         BsA = SUMA_BSA_FillArea;
+      else if (DrawnROI->Type == SUMA_ROI_OpenPath) 
+         BsA = SUMA_BSA_AppendStroke;
    }
-   if (DrawnROI->Type == SUMA_ROI_ClosedPath && BsA != SUMA_BSA_FillArea) {
-      SUMA_SLP_Err ("You can only fill a closed path.\nYou cannot append more paths to it.");
+   if (  DrawnROI->Type == SUMA_ROI_ClosedPath && 
+         BsA != SUMA_BSA_FillArea) {
+      SUMA_SLP_Err ( "You can only fill a closed path.\n"
+                     "You cannot append more paths to it.");
       SUMA_RETURN (DrawnROI);
    }
-   if (DrawnROI->Type == SUMA_ROI_FilledArea && BsA != SUMA_BSA_FillArea) {
+   if (  DrawnROI->Type == SUMA_ROI_FilledArea && 
+         BsA != SUMA_BSA_FillArea) {
       SUMA_SLP_Err ("You cannot add paths to a filled ROI.");
       SUMA_RETURN (DrawnROI);
    }
@@ -3706,8 +3836,11 @@ SUMA_DRAWN_ROI * SUMA_ProcessBrushStroke (SUMA_SurfaceViewer *sv, SUMA_BRUSH_STR
       }
    }
 
-   /* Now you must transform the brushstroke to a series of nodes (not necessarily connected)*/
-   if (LocalHead) fprintf (SUMA_STDERR, "%s: Turning BrushStroke to NodeStroke ...\n", FuncName);
+   /* Now you must transform the brushstroke to a series of nodes 
+      (not necessarily connected)*/
+   if (LocalHead) 
+      fprintf (SUMA_STDERR, 
+               "%s: Turning BrushStroke to NodeStroke ...\n", FuncName);
    if (!SUMA_BrushStrokeToNodeStroke (sv)) {
       SUMA_RegisterMessage (SUMAg_CF->MessageList, 
                          "Failed in SUMA_BrushStrokeToNodeStroke.", FuncName, 
@@ -3718,69 +3851,93 @@ SUMA_DRAWN_ROI * SUMA_ProcessBrushStroke (SUMA_SurfaceViewer *sv, SUMA_BRUSH_STR
    switch (BsA) {
       case SUMA_BSA_AppendStroke:
          /* Turn the brush stroke into a series of connected nodes */
-         if (LocalHead) fprintf (SUMA_STDERR, "%s: Turning NodeStroke to ROIStroke ...\n", FuncName);
+         if (LocalHead) 
+            fprintf (SUMA_STDERR, 
+                     "%s: Turning NodeStroke to ROIStroke ...\n", FuncName);
          if (!(ROIstroke = SUMA_NodeStrokeToConnectedNodes (sv))) {
             SUMA_RegisterMessage (SUMAg_CF->MessageList, 
-                               "Failed in SUMA_NodeStrokeToConnectedNodes.", FuncName, 
-                               SMT_Critical, SMA_LogAndPopup);
-            if (ROIlink) SUMA_FreeROIDatum((void *)ROIlink); ROIlink = NULL;
-            if (ROIstroke) SUMA_FreeROIDatum((void *)ROIstroke); ROIstroke = NULL;
+                                  "Failed in SUMA_NodeStrokeToConnectedNodes.",
+                                  FuncName, 
+                                  SMT_Critical, SMA_LogAndPopup);
+            if (ROIlink) SUMA_FreeROIDatum((void *)ROIlink); 
+            ROIlink = NULL;
+            if (ROIstroke) SUMA_FreeROIDatum((void *)ROIstroke); 
+            ROIstroke = NULL;
             SUMA_RETURN(NULL);
          }
 
-         if (LocalHead) fprintf (SUMA_STDERR, "%s: Turning NodeStroke to ROIStroke . DONE.\n", FuncName);
-         /* if this is the first element of ROI, create the first ROIdatum and get out */
+         if (LocalHead) 
+            fprintf (SUMA_STDERR, 
+                     "%s: Turning NodeStroke to ROIStroke . DONE.\n", 
+                     FuncName);
+         /* if this is the first element of ROI, 
+            create the first ROIdatum and get out */
          if (dlist_size(DrawnROI->ROIstrokelist)) {
             /* Not the beginning of an ROI */
-            if (LocalHead) fprintf (SUMA_STDERR, "%s: Adding ROIstroke to previous ones ...\n", FuncName);
-            /* make sure new brushstroke is not just one node that is the tail of the ROI*/
+            if (LocalHead) 
+               fprintf (SUMA_STDERR, 
+                        "%s: Adding ROIstroke to previous ones ...\n", 
+                        FuncName);
+            /* make sure new brushstroke is not just one node that is 
+               the tail of the ROI*/
             SUMA_DRAWN_ROI_TAIL_NODE(DrawnROI,TailNode);
 
             SUMA_BS_FIRST_SURF_NODE(sv->BS, FirstSurfNode, ft, El);
             SUMA_BS_COUNT_SURF_NODES(sv->BS, N_SurfNode);
             if (FirstSurfNode == TailNode && N_SurfNode == 1) {
                /* nothing to do here */
-               fprintf (SUMA_STDERR, "%s: New stroke has one node that is identical to tail node. Dumping element.\n", FuncName);
+               fprintf (SUMA_STDERR, 
+                        "%s: New stroke has one node that is \n"
+                        "identical to tail node. Dumping element.\n", FuncName);
                SUMA_RETURN(DrawnROI);
             }
 
             /* Connect this chunk to the last open Node in ROI */
             if (FirstSurfNode != TailNode) {
-               if (LocalHead) fprintf (SUMA_STDERR, "%s: linking Tail Node to New stroke.\n", FuncName);
+               if (LocalHead) 
+                  fprintf (SUMA_STDERR, 
+                           "%s: linking Tail Node to New stroke.\n", FuncName);
 
                ROIlink = SUMA_LinkTailNodeToNodeStroke (sv, DrawnROI);
                if (!ROIlink) {
-                  SUMA_SL_Err("Failed to connect Tail node to Node stroke, try again.");
+                  SUMA_SL_Err("Failed to connect Tail node to Node stroke\n"
+                              ", try again.");
                   SUMA_RETURN(NULL);
                }
                if (LocalHead) {
-                  fprintf (SUMA_STDERR, "%s: RIOlink, before prepending:\n", FuncName);
+                  fprintf (SUMA_STDERR, 
+                           "%s: RIOlink, before prepending:\n", FuncName);
                   SUMA_ShowDrawnROIDatum (ROIlink, NULL, NOPE);
                }
 
                /* connect the ROIlink with the ROIstroke */
                if (LocalHead) {
-                  fprintf (SUMA_STDERR, "%s: RIOstroke, before prepending:\n", FuncName);
+                  fprintf (SUMA_STDERR, 
+                           "%s: RIOstroke, before prepending:\n", FuncName);
                   SUMA_ShowDrawnROIDatum (ROIstroke, NULL, NOPE);
                }
                if (!SUMA_PrependToROIdatum (ROIlink, ROIstroke)) {
                   SUMA_RegisterMessage (SUMAg_CF->MessageList, 
                                      "Failed to merge ROIs.", FuncName,
                                      SMT_Critical, SMA_LogAndPopup);
-                  if (ROIlink) SUMA_FreeROIDatum((void *)ROIlink); ROIlink = NULL;
-                  if (ROIstroke) SUMA_FreeROIDatum((void *)ROIstroke); ROIstroke = NULL;
+                  if (ROIlink) SUMA_FreeROIDatum((void *)ROIlink); 
+                  ROIlink = NULL;
+                  if (ROIstroke) SUMA_FreeROIDatum((void *)ROIstroke); 
+                  ROIstroke = NULL;
                   SUMA_RETURN(NULL);   
                }
 
                if (LocalHead) {
-                  fprintf (SUMA_STDERR, "%s: RIOstroke, after prepending:\n", FuncName);
+                  fprintf (SUMA_STDERR, 
+                           "%s: RIOstroke, after prepending:\n", FuncName);
                   SUMA_ShowDrawnROIDatum (ROIstroke, NULL, NOPE);
                }
               /* now free ROIlink, not needed anymore */
                if (ROIlink) SUMA_FreeROIDatum ((void *)ROIlink); ROIlink = NULL;
             }
          }else{
-            if (LocalHead) fprintf (SUMA_STDERR, "%s: First ROIStroke of ROI.\n", FuncName);
+            if (LocalHead) 
+               fprintf (SUMA_STDERR, "%s: First ROIStroke of ROI.\n", FuncName);
          }
          break;
       case SUMA_BSA_JoinEnds:
@@ -3789,9 +3946,13 @@ SUMA_DRAWN_ROI * SUMA_ProcessBrushStroke (SUMA_SurfaceViewer *sv, SUMA_BRUSH_STR
             SUMA_DRAWN_ROI_HEAD_NODE(DrawnROI,HeadNode);         
             SUMA_BS_FIRST_SURF_NODE(sv->BS, FirstSurfNode, ft, El);
             bsd = (SUMA_BRUSH_STROKE_DATUM *)El->data;
-            if (LocalHead) fprintf(SUMA_STDERR, "%s: Trying to join node %d to node %d.\n", FuncName, FirstSurfNode, HeadNode);
+            if (LocalHead) 
+               fprintf( SUMA_STDERR, 
+                        "%s: Trying to join node %d to node %d.\n", 
+                        FuncName, FirstSurfNode, HeadNode);
             /* Now compute the intersection of the surface with the plane */
-            ROIstroke = SUMA_Surf_Plane_Intersect_ROI (SO, FirstSurfNode, HeadNode, bsd->NP);
+            ROIstroke = SUMA_Surf_Plane_Intersect_ROI (  SO, FirstSurfNode, 
+                                                         HeadNode, bsd->NP);
 
             if (!ROIstroke) {
                SUMA_SL_Err ("Failed to close path. Repeat new stroke.");
@@ -3800,14 +3961,18 @@ SUMA_DRAWN_ROI * SUMA_ProcessBrushStroke (SUMA_SurfaceViewer *sv, SUMA_BRUSH_STR
             /* what is the last node of ROIstroke ? 
             It is possible that the returned ROIstroke 
             was not a successful closure (a partial success), investigate*/
-            if (LocalHead) fprintf(SUMA_STDERR, "%s: Last node of ROIstroke is %d\n", FuncName, ROIstroke->nPath[ROIstroke->N_n-1]); 
+            if (LocalHead) 
+               fprintf( SUMA_STDERR, 
+                        "%s: Last node of ROIstroke is %d\n", 
+                        FuncName, ROIstroke->nPath[ROIstroke->N_n-1]); 
             if (ROIstroke->nPath[ROIstroke->N_n-1] != HeadNode) {
                /* pretend this is not a JoinEnds exercice */
                BsA = SUMA_BSA_AppendStroke;
                SUMA_SL_Err ("Failed to close path. Continue with stroke.");
                SUMA_RETURN(DrawnROI);
             }else {
-               /* Do not remove the last point from ROIstroke, otherwise it will make drawing a closed ROI painful */
+               /* Do not remove the last point from ROIstroke, 
+                  otherwise it will make drawing a closed ROI painful */
             } 
          } else {
             /* tremors, nothing to do */
@@ -3815,12 +3980,16 @@ SUMA_DRAWN_ROI * SUMA_ProcessBrushStroke (SUMA_SurfaceViewer *sv, SUMA_BRUSH_STR
          break;
       case SUMA_BSA_FillArea:
          SUMA_BS_FIRST_SURF_NODE(sv->BS, FirstSurfNode, ft, El);
-         if (LocalHead) fprintf (SUMA_STDERR, "%s: Should be filling from node %d\n", FuncName, FirstSurfNode);
+         if (LocalHead) 
+            fprintf (SUMA_STDERR, 
+                     "%s: Should be filling from node %d\n", 
+                     FuncName, FirstSurfNode);
          
          /* create the mask from ROIs on this surface */
          switch (SUMAg_CF->ROI_FillMode) {
             case SUMA_ROI_FILL_TO_ALLROI:
-               ROI_Mask = SUMA_Build_Mask_AllROI (SUMAg_DOv, SUMAg_N_DOv, SO, NULL, &N_ROI_Mask);
+               ROI_Mask = SUMA_Build_Mask_AllROI ( SUMAg_DOv, SUMAg_N_DOv, 
+                                                   SO, NULL, &N_ROI_Mask);
                break;
             case SUMA_ROI_FILL_TO_THISROI:
                ROI_Mask = (int *)SUMA_calloc (SO->N_Node, sizeof(int));
@@ -3840,69 +4009,98 @@ SUMA_DRAWN_ROI * SUMA_ProcessBrushStroke (SUMA_SurfaceViewer *sv, SUMA_BRUSH_STR
          ROIfill = SUMA_FillToMask (SO, ROI_Mask, FirstSurfNode);
          if (ROI_Mask) SUMA_free(ROI_Mask); ROI_Mask = NULL;
          if (!ROIfill) {
-            SUMA_SLP_Err("Failed to fill area:\nPerhaps seed on edge\nor nothing to fill.");
+            SUMA_SLP_Err(  "Failed to fill area:\n"
+                           "Perhaps seed on edge\nor nothing to fill.");
             SUMA_RETURN(DrawnROI);
          }
          
          break;
       default:
-         fprintf (SUMA_STDERR, "Error %s: Why are you doing this to me ?.\n", FuncName);
+         fprintf (SUMA_STDERR, 
+                  "Error %s: Why are you doing this to me ?.\n", FuncName);
          break;
    }
         
    
-   /* Another switch on BsA, it is possible that its value changed within this function */
+   /* Another switch on BsA, 
+      it is possible that its value changed within this function */
    
    switch (BsA) {
       case SUMA_BSA_AppendStroke:
          /* store the action */
          ROIstroke->action = SUMA_BSA_AppendStroke;
          /*now add the ROIdatum to the list of ROIs */
-         if (LocalHead) fprintf (SUMA_STDERR, "%s: Adding ROIStroke to DrawnROI->ROIstrokelist\n", FuncName);
-         ROIA = (SUMA_ROI_ACTION_STRUCT *) SUMA_malloc (sizeof(SUMA_ROI_ACTION_STRUCT)); /* this structure is freed in SUMA_DestroyROIActionData */
+         if (LocalHead) 
+            fprintf (SUMA_STDERR, 
+                     "%s: Adding ROIStroke to DrawnROI->ROIstrokelist\n",  
+                     FuncName);
+         ROIA = (SUMA_ROI_ACTION_STRUCT *)
+                   SUMA_calloc(1,sizeof(SUMA_ROI_ACTION_STRUCT)); 
+                   /* this structure is freed in SUMA_DestroyROIActionData */
          ROIA->DrawnROI = DrawnROI;
          ROIA->ROId = ROIstroke;
-         tmpStackPos = SUMA_PushActionStack (DrawnROI->ActionStack, DrawnROI->StackPos, SUMA_AddToTailROIDatum, (void *)ROIA, SUMA_DestroyROIActionData);
+         tmpStackPos = SUMA_PushActionStack (
+                           DrawnROI->ActionStack, 
+                           DrawnROI->StackPos, SUMA_AddToTailROIDatum, 
+                           (void *)ROIA, SUMA_DestroyROIActionData);
          if (tmpStackPos) DrawnROI->StackPos = tmpStackPos;
          else {
-            fprintf (SUMA_STDERR, "Error %s: Failed in SUMA_PushActionStack.\n", FuncName);
+            fprintf (SUMA_STDERR, 
+                     "Error %s: Failed in SUMA_PushActionStack.\n", FuncName);
             SUMA_RETURN (DrawnROI);
          }
-         if (SUMAg_CF->X->DrawROI->WhatDist == SW_DrawROI_WhatDistTrace ||  SUMAg_CF->X->DrawROI->WhatDist == SW_DrawROI_WhatDistAll) 
-            SUMA_ReportDrawnROIDatumLength(SO, ROIA->ROId, NULL, SUMAg_CF->X->DrawROI->WhatDist);
+         if (  SUMAg_CF->X->DrawROI->WhatDist == SW_DrawROI_WhatDistTrace ||  
+               SUMAg_CF->X->DrawROI->WhatDist == SW_DrawROI_WhatDistAll) 
+            SUMA_ReportDrawnROIDatumLength(  SO, ROIA->ROId, NULL, 
+                                             SUMAg_CF->X->DrawROI->WhatDist);
          break;
       case SUMA_BSA_JoinEnds:
          /* store the action */
          ROIstroke->action = SUMA_BSA_JoinEnds;
          if (LocalHead) fprintf (SUMA_STDERR, "%s: Closing path.\n", FuncName);
-         ROIA = (SUMA_ROI_ACTION_STRUCT *) SUMA_malloc (sizeof(SUMA_ROI_ACTION_STRUCT)); /* this structure is freed in SUMA_DestroyROIActionData */
+         ROIA = (SUMA_ROI_ACTION_STRUCT *)
+                   SUMA_calloc(1,sizeof(SUMA_ROI_ACTION_STRUCT)); 
+                     /* this structure is freed in SUMA_DestroyROIActionData */
          ROIA->DrawnROI = DrawnROI;
          ROIA->ROId = ROIstroke;
-         tmpStackPos = SUMA_PushActionStack (DrawnROI->ActionStack, DrawnROI->StackPos, SUMA_AddToTailJunctionROIDatum, (void *)ROIA, SUMA_DestroyROIActionData);
+         tmpStackPos = SUMA_PushActionStack (
+                           DrawnROI->ActionStack, DrawnROI->StackPos, 
+                           SUMA_AddToTailJunctionROIDatum, 
+                           (void *)ROIA, SUMA_DestroyROIActionData);
          if (tmpStackPos) DrawnROI->StackPos = tmpStackPos;
          else {
-            fprintf (SUMA_STDERR, "Error %s: Failed in SUMA_PushActionStack.\n", FuncName);
+            fprintf (SUMA_STDERR, 
+                     "Error %s: Failed in SUMA_PushActionStack.\n", FuncName);
             SUMA_RETURN (DrawnROI);
          }
-         if (SUMAg_CF->X->DrawROI->WhatDist == SW_DrawROI_WhatDistTrace ||  SUMAg_CF->X->DrawROI->WhatDist == SW_DrawROI_WhatDistAll) 
-            SUMA_ReportDrawnROIDatumLength(SO, ROIA->ROId, NULL, SUMAg_CF->X->DrawROI->WhatDist);
+         if (  SUMAg_CF->X->DrawROI->WhatDist == SW_DrawROI_WhatDistTrace ||  
+               SUMAg_CF->X->DrawROI->WhatDist == SW_DrawROI_WhatDistAll) 
+            SUMA_ReportDrawnROIDatumLength(  SO, ROIA->ROId, NULL, 
+                                             SUMAg_CF->X->DrawROI->WhatDist);
          break;
       case SUMA_BSA_FillArea:
          /* store the action */
          ROIfill->action = SUMA_BSA_FillArea;
          /* Now add ROIdatum to stack */
-         ROIA = (SUMA_ROI_ACTION_STRUCT *) SUMA_malloc (sizeof(SUMA_ROI_ACTION_STRUCT)); /* this structure is freed in SUMA_DestroyROIActionData */
+         ROIA = (SUMA_ROI_ACTION_STRUCT *)
+                   SUMA_calloc(1,sizeof(SUMA_ROI_ACTION_STRUCT)); 
+                     /* this structure is freed in SUMA_DestroyROIActionData */
          ROIA->DrawnROI = DrawnROI;
          ROIA->ROId = ROIfill;
-         tmpStackPos = SUMA_PushActionStack (DrawnROI->ActionStack, DrawnROI->StackPos, SUMA_AddFillROIDatum, (void *)ROIA, SUMA_DestroyROIActionData);
+         tmpStackPos = SUMA_PushActionStack (
+                           DrawnROI->ActionStack, DrawnROI->StackPos, 
+                           SUMA_AddFillROIDatum, 
+                           (void *)ROIA, SUMA_DestroyROIActionData);
          if (tmpStackPos) DrawnROI->StackPos = tmpStackPos;
          else {
-            fprintf (SUMA_STDERR, "Error %s: Failed in SUMA_PushActionStack.\n", FuncName);
+            fprintf (SUMA_STDERR, 
+               "Error %s: Failed in SUMA_PushActionStack.\n", FuncName);
             SUMA_RETURN (DrawnROI);
          } 
          break;
       default:
-         fprintf (SUMA_STDERR, "Error %s: Why are you doing this to me ?.\n", FuncName);
+         fprintf (SUMA_STDERR, 
+            "Error %s: Why are you doing this to me ??.\n", FuncName);
          break; 
    }      
    
@@ -3911,17 +4109,22 @@ SUMA_DRAWN_ROI * SUMA_ProcessBrushStroke (SUMA_SurfaceViewer *sv, SUMA_BRUSH_STR
       SUMA_SLP_Err("Failed in SUMA_Paint_SO_ROIplanes_w.");
       SUMA_RETURN(DrawnROI);
    }
-   
    if (BsA == SUMA_BSA_FillArea) {   /*  ZSS Sept 29 06 */
       SUMA_OVERLAYS *Overlay=NULL;
       int junk;
-      /* If you're drawing, and have just filled an area, better pop the dset to the top so it is visible */
-      if (!(Overlay = SUMA_Fetch_OverlayPointer(SO->Overlays, SO->N_Overlays, DrawnROI->ColPlaneName, &junk))) {
+      /* If you're drawing, and have just filled an area, 
+         better pop the dset to the top so it is visible */
+      if (!(Overlay = SUMA_Fetch_OverlayPointer(SO->Overlays, 
+                                                SO->N_Overlays, 
+                                                DrawnROI->ColPlaneName, 
+                                                &junk))) {
          SUMA_S_Err("Unexpected! Could not find overlay pointer");
       } else {
-         /* if the current col plane is not the same as this one, do the switching please */
+         /* if the current col plane is not the same as this one, 
+            do the switching please */
          SUMA_InitializeColPlaneShell(SO, Overlay);
-         SUMA_UpdateColPlaneShellAsNeeded(SO); /* update other open ColPlaneShells */
+         SUMA_UpdateColPlaneShellAsNeeded(SO); /* update other open 
+                                                   ColPlaneShells */
       }
    }
 
@@ -4473,7 +4676,8 @@ DListElmt * SUMA_PushActionStack (DList *ActionStack, DListElmt *StackPos,
    
    /* Pushing the action and its data onto the stack */
    if (LocalHead) fprintf (SUMA_STDERR, "%s: Pushing the action and its data onto the stack.\n", FuncName);
-   AS_data = (SUMA_ACTION_STACK_DATA *)SUMA_malloc (sizeof(SUMA_ACTION_STACK_DATA));
+   AS_data = (SUMA_ACTION_STACK_DATA *)
+                  SUMA_calloc(1,sizeof(SUMA_ACTION_STACK_DATA));
    AS_data->ActionDataDestructor = ActionDataDestructor;
    AS_data->ActionFunction = ActionFunction;
    AS_data->ActionData = ActionData;

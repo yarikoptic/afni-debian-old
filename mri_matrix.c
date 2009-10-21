@@ -318,8 +318,10 @@ ENTRY("mri_matrix_psinv") ;
      sum = V(ii,ii) ;
      for( kk=0 ; kk < ii ; kk++ ) sum -= V(ii,kk) * V(ii,kk) ;
      if( sum < PSINV_EPS ){
-       WARNING_message("Choleski fails in mri_matrix_psinv()!\n");
-       do_svd = 1 ; goto SVD_PLACE ;
+       static int first=1 ;
+       if( first )
+         WARNING_message("Choleski fails in mri_matrix_psinv()!\n");
+       first = 0 ; do_svd = 1 ; goto SVD_PLACE ;
      }
      V(ii,ii) = sqrt(sum) ;
    }
@@ -370,8 +372,10 @@ ENTRY("mri_matrix_psinv") ;
      for( ii=1 ; ii < n ; ii++ ) if( sval[ii] > smax ) smax = sval[ii] ;
 
      if( smax <= 0.0 ){                        /* this is bad */
-       ERROR_message("SVD fails in mri_matrix_psinv()!\n");
-       free((void *)xfac); free((void *)sval);
+       static int first = 1 ;
+       if( first )
+         ERROR_message("SVD fails in mri_matrix_psinv()!\n");
+       free((void *)xfac); free((void *)sval); first = 0;
        free((void *)vmat); free((void *)umat); RETURN( NULL);
      }
 
@@ -455,7 +459,7 @@ float mri_matrix_size( MRI_IMAGE *imc )  /* 30 Jul 2007 */
    int nxy , ii ;
    float sum , *car ;
 
-   if( imc == NULL || imc->kind != MRI_float ) RETURN(-1.0f) ;
+   if( imc == NULL || imc->kind != MRI_float ) return(-1.0f) ;
    nxy = imc->nx * imc->ny ; car = MRI_FLOAT_PTR(imc) ;
    sum = 0.0f ;
    for( ii=0 ; ii < nxy ; ii++ ) sum += fabs(car[ii]) ;
@@ -549,9 +553,9 @@ double Plegendre( double x , int m )
    if( m < 0 ) return 1.0 ;    /* bad input */
 
    switch( m ){                /*** direct formulas for P_m(x) for m=0..20 ***/
-    case 0: return 1.0 ;       /* that was easy */
-    case 1: return x ;         /* also easy */
-    case 2: return (3.0*x*x-1.0)/2.0 ;
+    case 0: return 1.0 ;                /* that was easy */
+    case 1: return x ;                  /* also pretty easy */
+    case 2: return (3.0*x*x-1.0)/2.0 ;  /* now it gets harder */
     case 3: return (5.0*x*x-3.0)*x/2.0 ;
     case 4: return ((35.0*x*x-30.0)*x*x+3.0)/8.0 ;
     case 5: return ((63.0*x*x-70.0)*x*x+15.0)*x/8.0 ;

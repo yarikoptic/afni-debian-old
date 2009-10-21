@@ -3704,8 +3704,12 @@ ENTRY("PLUTO_add_dset") ;
 
    POPDOWN_strlist_chooser ;  /* added dataset --> old choosers are invalid */
 
+#if 0
    THD_load_statistics( dset ) ;
    THD_write_3dim_dataset( NULL,NULL , dset , True ) ;
+#else
+   DSET_overwrite(dset) ;
+#endif
 
    if( dset->anat_parent == NULL )                          /* if() added 14 Dec 1999 */
      AFNI_force_adoption( sess , GLOBAL_argopt.warp_4D ) ;
@@ -3778,16 +3782,19 @@ ENTRY("PLUTO_dset_redisplay_mode") ;
          im3d->anat_voxwarp->type = ILLEGAL_TYPE ;
          im3d->fim_voxwarp->type  = ILLEGAL_TYPE ;
          AFNI_reset_func_range( im3d ) ;
+         IM3D_VEDIT_FORCE(im3d) ; /* 01 Feb 2008 */
          AFNI_set_viewpoint( im3d , -1,-1,-1 , REDISPLAY_ALL ) ;
       } else if( im3d->anat_now == dset ){
          im3d->anat_voxwarp->type = ILLEGAL_TYPE ;
          AFNI_reset_func_range( im3d ) ;
          AFNI_imseq_clearstat( im3d ) ;
+         IM3D_VEDIT_FORCE(im3d) ; /* 01 Feb 2008 */
          AFNI_set_viewpoint( im3d , -1,-1,-1 , amode ) ;
       } else if( im3d->fim_now == dset ){
          im3d->fim_voxwarp->type = ILLEGAL_TYPE ;
          AFNI_reset_func_range( im3d ) ;
          AFNI_imseq_clearstat( im3d ) ;
+         IM3D_VEDIT_FORCE(im3d) ; /* 01 Feb 2008 */
          AFNI_redisplay_func( im3d ) ;
       }
    }

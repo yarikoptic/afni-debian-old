@@ -21,28 +21,29 @@ void usage_AnalyzeTrace (SUMA_GENERIC_ARGV_PARSE *ps)
       
       s = SUMA_help_basics();
       sio  = SUMA_help_IO_Args(ps);
-      printf ( "\n"
-               "Usage: A program to analyze SUMA (and AFNI's perhaps) stack output\n"
-               "       The program can detect functions that return with RETURN without\n"
-               "       bothering to go on the stack.\n" 
-               "   AnaylzeTrace [options] FILE \n"
-               "       where FILE is obtained by redirecting program's trace output.\n" 
-               "Optional Param:\n"
-               "   -max_func_lines N: Set the maximum number of code lines before a function\n"
-               "                      returns. Default is no limit.\n"
-               "   -suma_c: FILE is a SUMA_*.c file. It is analyzed for functions that use SUMA_ RETURN \n"
-               "            (typo on purpose to avoid being caught here) without ENTRY\n"
-               "       Note: The file for this program has special strings (in comments at times)\n"
-               "            to avoid false alarms when processing it.\n"
-               "            \n"
-               "   -max_err MAX_ERR: Stop after encountering MAX_ERR errors\n"
-               "                     reported in log. Default is 5.\n"
-               "                     Error key terms are:\n"
-               "                     'Error', 'error', 'corruption'\n"
-               "\n"
-               "%s"
-               "%s"
-               "\n", sio,  s);
+      printf ( 
+"\n"
+"Usage: A program to analyze SUMA (and AFNI's perhaps) stack output\n"
+"       The program can detect functions that return with RETURN without\n"
+"       bothering to go on the stack.\n" 
+"   AnaylzeTrace [options] FILE \n"
+"       where FILE is obtained by redirecting program's trace output.\n" 
+"Optional Param:\n"
+"   -max_func_lines N: Set the maximum number of code lines before a function\n"
+"                      returns. Default is no limit.\n"
+"   -suma_c: FILE is a SUMA_*.c file. It is analyzed for functions that use SUMA_ RETURN \n"
+"            (typo on purpose to avoid being caught here) without ENTRY\n"
+"       Note: The file for this program has special strings (in comments at times)\n"
+"            to avoid false alarms when processing it.\n"
+"            \n"
+"   -max_err MAX_ERR: Stop after encountering MAX_ERR errors\n"
+"                     reported in log. Default is 5.\n"
+"                     Error key terms are:\n"
+"                     'Error', 'error', 'corruption'\n"
+"\n"
+"%s"
+"%s"
+"\n", sio,  s);
       SUMA_free(s); s = NULL; SUMA_free(st); st = NULL; SUMA_free(sio); sio = NULL;       
       s = SUMA_New_Additions(0, 1); printf("%s\n", s);SUMA_free(s); s = NULL;
       printf("       Ziad S. Saad SSCC/NIMH/NIH saadz@mail.nih.gov     \n");
@@ -164,29 +165,6 @@ void SUMA_ShowTraceStack(SUMA_TRACE_STRUCT *TS, int its, char *head) {
    return;
 }
 
-int SUMA_LineNumbersFromTo(char *f, char *t){
-   int N_line = 0;
-   
-   while (f<t) {
-      if (SUMA_IS_LINE_END(*f)) ++N_line;
-      ++f;
-   }
-   return(N_line);   
-}
-
-void SUMA_ShowFromTo(char *f, char *t, char *head){
-   if (head) {
-      fprintf(SUMA_STDERR, "%s", head);
-   } else {
-      fprintf(SUMA_STDERR, "Chunk in question:\n"
-                           "------------------\n");
-   }
-   while (f<t) {
-      fprintf(SUMA_STDERR, "%c", *f); ++f;
-   }
-   fprintf(SUMA_STDERR, "\n");
-   return;
-}
 
 char *SUMA_NextEntry(char *ss, int *level, int *io, char *func, char *file, int *line, int *error) {
    static char FuncName[]={"SUMA_NextEntry"};
@@ -360,7 +338,8 @@ int SUMA_AnalyzeTraceFunc(char *fname, SUMA_GENERIC_PROG_OPTIONS_STRUCT *Opt) {
    char *fl = NULL, *flc = NULL, *fls = NULL, *flo = NULL, 
          *fln = NULL, *fle = NULL, func[100],  file[100],
          *comp_fl=NULL, stmp[300];
-   int level, cur_level, io, nread, its, line, error, cnt, N_comp_fl, Nrep, N_error = 0;
+   int level, cur_level, io, nread, its, line, error, cnt, N_comp_fl, 
+       Nrep, N_error = 0;
    SUMA_TRACE_STRUCT TS[100];
    SUMA_Boolean Res = NOPE;
    FILE *fff=NULL;
@@ -398,7 +377,9 @@ int SUMA_AnalyzeTraceFunc(char *fname, SUMA_GENERIC_PROG_OPTIONS_STRUCT *Opt) {
       flc = fln; /* set current location */
       fln = SUMA_NextEntry(flc, &level, &io, func, file, &line, &error) ;
       if (fln == flc) {
-         SUMA_S_Note("\nDone Checking.\nTrace looks OK (Note that exit() calls are not popped off the stack).\n");
+         SUMA_S_Note("\nDone Checking.\n"
+                     "Trace looks OK \n"
+                     "(Note that exit() calls are not popped off the stack).\n");
          SUMA_ShowTraceStack(TS, its, "Stack at Exit:\n");
          Res = YUP;
          goto GETOUT;
@@ -768,7 +749,7 @@ int main (int argc,char *argv[])
 
    /* Allocate space for DO structure */
 	SUMAg_DOv = SUMA_Alloc_DisplayObject_Struct (SUMA_MAX_DISPLAYABLE_OBJECTS);
-   ps = SUMA_Parse_IO_Args(argc, argv, "-o;-talk;");
+   ps = SUMA_Parse_IO_Args(argc, argv, "");
    
    if (argc < 2) {
       usage_AnalyzeTrace(ps);

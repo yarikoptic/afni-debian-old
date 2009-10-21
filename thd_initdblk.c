@@ -248,10 +248,12 @@ ENTRY("THD_datablock_from_atr") ;
 
    /* scaling factors from short type to float type, if nonzero */
 
-   atr_flt = THD_find_float_atr( dblk , ATRNAME_BRICK_FLTFAC ) ;
-   if( atr_flt != NULL ){
-     for( ibr=0 ; ibr < nvals && ibr < atr_flt->nfl ; ibr++ )
-       dblk->brick_fac[ibr] = atr_flt->fl[ibr] ;
+   if( !AFNI_yesenv("AFNI_IGNORE_BRICK_FLTFAC") ){
+     atr_flt = THD_find_float_atr( dblk , ATRNAME_BRICK_FLTFAC ) ;
+     if( atr_flt != NULL ){
+       for( ibr=0 ; ibr < nvals && ibr < atr_flt->nfl ; ibr++ )
+         dblk->brick_fac[ibr] = atr_flt->fl[ibr] ;
+     }
    }
 
    /** Now create an empty shell of the "brick" == the data structure
@@ -610,7 +612,9 @@ int THD_WarpData_From_3dWarpDrive(THD_3dim_dataset *dset, ATR_float *atr_flt)
       RETURN(0);
    }
    if (atr_flt->nfl != 12) {
-      fprintf(stderr,"Number of parameters in TLRC transform is not 12.\nI won't float your boat.\n");
+      fprintf( stderr,
+               "Number of parameters in TLRC transform is not 12.\n"
+               "I won't float your boat.\n");
       RETURN(0); 
    }
    dset->warp = myXtNew( THD_warp ) ;
@@ -917,7 +921,8 @@ ENTRY("THD_datablock_apply_atr") ;
        break ;  /* end talairach_12 warp */
 
      } /* end of switch on warp type */
-   } /* end of if on warp existing */   else { /* But perhaps there is a little something from auto talairaching ZSS, June 06 */
+   } /* end of if on warp existing */   else { /* But perhaps there is a little 
+                                                something from auto talairaching                                                 ZSS, June 06 */
       if (dset->view_type == VIEW_TALAIRACH_TYPE) { /* something to do */
          int dbg = 0;
          atr_flt = THD_find_float_atr( blk , ATRNAME_WARP_DATA_3DWD_AF ) ; 
@@ -926,7 +931,10 @@ ENTRY("THD_datablock_apply_atr") ;
             /* fprintf(stderr,"Dude, where's my transform?\n");  */
          } else {
             STATUS("AutoTlrc Warp") ;
-            if (dbg) fprintf(stderr,"++ Will be using %s attribute for talairach warp in dset %s\n",
+            if (dbg) 
+               fprintf(stderr,
+                        "++ Will be using %s attribute for talairach warp in"
+                        " dset %s\n",
                                     ATRNAME_WARP_DATA_3DWD_AF, dset->self_name) ;
             if (!THD_WarpData_From_3dWarpDrive(dset, atr_flt)) {
                fprintf(stderr,"Error: Failed to create WarpData!\n");

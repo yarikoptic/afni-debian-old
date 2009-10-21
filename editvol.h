@@ -384,7 +384,17 @@ extern float EDIT_coerce_autoscale( int , int,void * , int,void * ) ;
 extern float EDIT_convert_dtype   ( int , int,void * , int,void *, int ) ;
 extern int   is_integral_data     ( int , int , void * ) ;
 
+extern void EDIT_floatize_dataset( THD_3dim_dataset *dset ) ;
+extern int DSET_pure_type( THD_3dim_dataset *dset ) ;
 
+#undef  DSET_IS_FLOAT
+#define DSET_IS_FLOAT(ds) (DSET_pure_type((ds))==MRI_float)
+
+#undef  DSET_IS_SHORT
+#define DSET_IS_SHORT(ds) (DSET_pure_type((ds))==MRI_short)
+
+#undef  DSET_IS_BYTE
+#define DSET_IS_BYTE(ds) (DSET_pure_type((ds))==MRI_byte)
 
 extern void EDIT_aver_fvol( int, int, int,
                             float, float, float, float *, float) ;
@@ -410,6 +420,9 @@ extern void * EDIT_volpad( int,int,int,int,int,int ,
 extern THD_3dim_dataset * EDIT_empty_copy( THD_3dim_dataset * ) ;
 extern THD_3dim_dataset * EDIT_full_copy ( THD_3dim_dataset * , char * ) ;
 extern int                EDIT_dset_items( THD_3dim_dataset * , ... ) ;
+extern THD_3dim_dataset * EDIT_geometry_constructor( char * , char * ) ; /* 05 Jan 2008 */
+extern char * EDIT_get_geometry_string( THD_3dim_dataset *dset ) ;
+
 extern int THD_volDXYZscale(  THD_dataxes  * daxes, 
                               float xyzscale, 
                               int reuse_shift);    /* ZSS Dec 07 */

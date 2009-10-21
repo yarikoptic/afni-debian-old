@@ -565,7 +565,7 @@ ENTRY("AFNI_parse_args") ;
       /*----- -layout (23 Sep 2000) -----*/
 
       if( strcmp(argv[narg],"-layout") == 0 ){
-         if( narg+1 >= argc ) FatalError("need an argument after -layout!") ;
+         if( narg+1 >= argc ) ERROR_exit("need an argument after -layout!") ;
          GLOBAL_argopt.layout_fname = argv[++narg] ;  /* just a pointer */
          narg++ ; continue ;  /* go to next arg */
       }
@@ -622,7 +622,7 @@ ENTRY("AFNI_parse_args") ;
 
       if( strcmp(argv[narg],"-comsep") == 0 ){
         char cc ;
-        if( ++narg >= argc ) FatalError("need an argument after -comsep") ;
+        if( ++narg >= argc ) ERROR_exit("need an argument after -comsep") ;
         cc = argv[narg][0] ;
         if( cc=='\0' || isalnum(cc) || isspace(cc) || cc=='\'' || cc=='\"' )
           ERROR_message("Illegal character after -comsep") ;
@@ -636,7 +636,7 @@ ENTRY("AFNI_parse_args") ;
 
       if( strcmp(argv[narg],"-com") == 0 ){
         int ii , ll ; char *cm , *cs , *cq ;
-        if( ++narg >= argc ) FatalError("need an argument after -com!");
+        if( ++narg >= argc ) ERROR_exit("need an argument after -com!");
         cm = argv[narg] ; ll = strlen(cm) ; cs = strchr(cm,comsep) ;
              if( ll > 255   ) ERROR_message("argument after -com is too long" );
         else if( ll <   3   ) ERROR_message("argument after -com is too short");
@@ -673,7 +673,7 @@ ENTRY("AFNI_parse_args") ;
 
       if( strcmp(argv[narg],"-np") == 0 ){
          float val ;
-         if( narg+1 >= argc ) FatalError("need an argument after -np!");
+         if( narg+1 >= argc ) ERROR_exit("need an argument after -np!");
 
          val = strtod( argv[++narg] , NULL ) ;
          if( val >= 1024 && val <= 65535 ) GLOBAL_argopt.port_niml = (int)val ;
@@ -691,7 +691,7 @@ ENTRY("AFNI_parse_args") ;
       /*----- -tbar 'name' option -----*/
 
       if( strncmp(argv[narg],"-tbar",5) == 0 ){
-         if( narg+1 >= argc ) FatalError("need an argument after -tbar!");
+         if( narg+1 >= argc ) ERROR_exit("need an argument after -tbar!");
          MCW_strncpy(GLOBAL_argopt.title_name,argv[++narg],32) ;
          narg++ ; continue ;  /* go to next arg */
       }
@@ -731,7 +731,7 @@ ENTRY("AFNI_parse_args") ;
          else {
             ll = strtol( argv[narg]+2 , NULL , 10 ) ;
             if( ll > 0 ) GLOBAL_argopt.recurse = ll ;
-            else FatalError("illegal -R option!") ;
+            else ERROR_exit("illegal -R option!") ;
          }
          narg++ ; continue ;  /* go to next arg */
       }
@@ -843,7 +843,7 @@ ENTRY("AFNI_parse_args") ;
       /*----- -orient code option -----*/
 
       if( strncmp(argv[narg],"-orient",4) == 0 ){
-         if( narg+1 >= argc ) FatalError("need an argument after -orient!");
+         if( narg+1 >= argc ) ERROR_exit("need an argument after -orient!");
 
          MCW_strncpy(GLOBAL_argopt.orient_code,argv[++narg],4) ;
          narg++ ; continue ;  /* go to next arg */
@@ -853,7 +853,7 @@ ENTRY("AFNI_parse_args") ;
 
       if( strncmp(argv[narg],"-ignore",4) == 0 ){
          float val ;
-         if( narg+1 >= argc ) FatalError("need an argument after -ignore!");
+         if( narg+1 >= argc ) ERROR_exit("need an argument after -ignore!");
 
          val = strtod( argv[++narg] , NULL ) ;
          if( val >= 0 ) GLOBAL_argopt.ignore = (int) val ;
@@ -867,7 +867,7 @@ ENTRY("AFNI_parse_args") ;
 
       if( strncmp(argv[narg],"-im1",4) == 0 ){
          float val ;
-         if( narg+1 >= argc ) FatalError("need an argument after -im1!");
+         if( narg+1 >= argc ) ERROR_exit("need an argument after -im1!");
 
          val = strtod( argv[++narg] , NULL ) ;
          if( val >= 1 ) GLOBAL_argopt.ignore = (int) (val-1.0) ;
@@ -882,7 +882,7 @@ ENTRY("AFNI_parse_args") ;
 
       if( strncmp(argv[narg],"-dy",3) == 0 ){
          float val ;
-         if( narg+1 >= argc ) FatalError("need an argument after -dy!");
+         if( narg+1 >= argc ) ERROR_exit("need an argument after -dy!");
 
          val = strtod( argv[++narg] , NULL ) ;
          if( val > 0 ) GLOBAL_argopt.dy = val ;
@@ -896,7 +896,7 @@ ENTRY("AFNI_parse_args") ;
 
       if( strncmp(argv[narg],"-dz",3) == 0 ){
          float val ;
-         if( narg+1 >= argc ) FatalError("need an argument after -dz!");
+         if( narg+1 >= argc ) ERROR_exit("need an argument after -dz!");
 
          val = strtod( argv[++narg] , NULL ) ;
          if( val > 0 ) GLOBAL_argopt.dz = val ;
@@ -910,7 +910,7 @@ ENTRY("AFNI_parse_args") ;
 
       if( strncmp(argv[narg],"-gamma",4) == 0 ){
          float val ;
-         if( narg+1 >= argc ) FatalError("need an argument after -gamma!");
+         if( narg+1 >= argc ) ERROR_exit("need an argument after -gamma!");
 
          val = strtod( argv[++narg] , NULL ) ;
          if( val > 0 ) GLOBAL_argopt.gamma = val ;
@@ -925,7 +925,7 @@ ENTRY("AFNI_parse_args") ;
 
       if( strncmp(argv[narg],"-gsfac",4) == 0 ){
          float val ;
-         if( narg+1 >= argc ) FatalError("need an argument after -gsfac!");
+         if( narg+1 >= argc ) ERROR_exit("need an argument after -gsfac!");
 
          val = strtod( argv[++narg] , NULL ) ;
          if( val != 0 ) GLOBAL_argopt.gsfac = val ;
@@ -939,7 +939,7 @@ ENTRY("AFNI_parse_args") ;
       /*----- -datum type option -----*/
 
       if( strncmp(argv[narg],"-datum",6) == 0 ){
-         if( ++narg >= argc ) FatalError("need an argument after -datum!") ;
+         if( ++narg >= argc ) ERROR_exit("need an argument after -datum!") ;
 
          if( strcmp(argv[narg],"short") == 0 ){
             GLOBAL_argopt.datum= MRI_short ;
@@ -953,7 +953,7 @@ ENTRY("AFNI_parse_args") ;
             char buf[256] ;
             sprintf(buf,"-datum of type '%s' is not supported in AFNI!",
                    argv[narg] ) ;
-            FatalError(buf) ;
+            ERROR_exit(buf) ;
          }
          narg++ ; continue ;  /* go to next arg */
       }
@@ -962,7 +962,7 @@ ENTRY("AFNI_parse_args") ;
 
       if( strncmp(argv[narg],"-ncolor",3) == 0 ){
          float val ;
-         if( narg+1 >= argc ) FatalError("need an argument after -ncolor!");
+         if( narg+1 >= argc ) ERROR_exit("need an argument after -ncolor!");
 
          val = strtod( argv[++narg] , NULL ) ;
          if( val > 2 ) GLOBAL_argopt.ncolor = val ;
@@ -1005,8 +1005,7 @@ ENTRY("AFNI_parse_args") ;
             if( nn > 1 ){
                GLOBAL_argopt.read_tim = nn ; /* will be nz or nt */
             } else {
-               fprintf(stderr,"** Error: illegal value in %s\n",argv[narg]);
-               exit(1) ;
+               ERROR_exit("Illegal value in %s",argv[narg]);
             }
          }
 
@@ -1038,9 +1037,8 @@ ENTRY("AFNI_parse_args") ;
 
       /*----- if we get here, bad news for America! -----*/
 
-      fprintf(stderr,"\n** Unknown option %s ***",argv[narg]) ;
-      fprintf(stderr,"\n** Try 'afni -help' for a list of command line options.\n") ;
-      exit(1) ;
+      ERROR_message("Unknown option %s ***",argv[narg]) ;
+      ERROR_exit   ("Try 'afni -help' for a list of command line options.") ;
 
    } /* end of loop over argv's starting with '-' */
 
@@ -1208,7 +1206,8 @@ void AFNI_sigfunc_alrm(int sig)
      "Absent from thee I languish"                                  ,
      "The return makes one love the farewell"                       ,
      "Every goodbye makes the next hello closer"                    ,
-     "The song is ended, but the melody lingers on"
+     "The song is ended, but the melody lingers on"                 ,
+     "A star will shine upon the hour of our next meeting"
    } ;
    int nn = (lrand48()>>3) % NMSG ;
    if( !AFNI_yesenv("AFNI_NEVER_SAY_GOODBYE") )
@@ -1270,9 +1269,11 @@ int main( int argc , char *argv[] )
    /** Check for -version [15 Aug 2003] **/
 
    if( check_string("-ver",argc,argv) || check_string("--ver",argc,argv) ){
-     printf("Version " VERSION  "\n") ;
+     printf( "Version " VERSION  "\n" ) ;
 #ifdef SHSTRING
-       printf( "[[Precompiled binary " SHSTRING ": " __DATE__ "]]\n" ) ;
+     printf( "[[Precompiled binary " SHSTRING ": " __DATE__ "]]\n" ) ;
+#else
+     printf( "Compile date = " __DATE__ " " __TIME__ "\n") ;
 #endif
      exit(0) ;
    }
@@ -1399,9 +1400,8 @@ int main( int argc , char *argv[] )
    MAIN_shell = XtVaAppInitialize( &MAIN_app , "AFNI" , NULL , 0 ,
                                    &argc , argv , FALLback , NULL ) ;
 
-   if( MAIN_shell == NULL ){
-     fprintf(stderr,"\n** Cannot initialize X11 **\n") ; exit(1) ;
-   }
+   if( MAIN_shell == NULL ) ERROR_exit("Cannot initialize X11") ;
+
    if( DBG_trace == 2 ){                           /* 01 Dec 1999 */
      XSynchronize(XtDisplay(MAIN_shell),TRUE) ;
      STATUS("XSynchronize is enabled") ;
@@ -1412,27 +1412,16 @@ int main( int argc , char *argv[] )
 
    REPORT_PROGRESS(".") ;
 
-   /*-- 04 Jun 1999: modify order of loading arguments and defaults --*/
-
-   if( ! GLOBAL_argopt.skip_afnirc ){
-     char *sysenv = getenv("AFNI_SYSTEM_AFNIRC") ;        /* 12 Apr 2000 */
-     if( sysenv != NULL ) AFNI_process_environ(sysenv) ;  /* 12 Apr 2000 */
-
-     AFNI_process_environ(NULL) ;                         /* 07 Jun 1999 */
-   } else {
-     AFNI_mark_environ_done() ;                           /* 16 Apr 2000 */
-   }
-
-   AFNI_load_defaults( MAIN_shell ) ;
-
    /** set default values of some environment variables [22 Jun 2004] **/
    /** moved here and made conditional on being empty -- 31 Jan 2008  **/
+   /** fixed to alloc new str for each putenv         -- 09 May 2008  **/
 
 #undef  PUTENV  /* 31 Jan 2008 */
-#define PUTENV(nm,val) do{ char str[256];                        \
-                           if( getenv((nm)) == NULL ){           \
+#define PUTENV(nm,val) do{ if( getenv((nm)) == NULL ){           \
+                             char *str = (char *)malloc(256) ;   \
                              strcpy(str,(nm)); strcat(str,"=");  \
                              strcat(str,val);  putenv(str);      \
+                             if( PRINT_TRACING ) STATUS(str) ;   \
                            }} while(0)
 
    PUTENV("AFNI_CROSSHAIR_LINES","YES") ;
@@ -1448,6 +1437,21 @@ int main( int argc , char *argv[] )
    PUTENV("AFNI_IMAGE_LABEL_SETBACK","01") ;
    PUTENV("AFNI_IMAGE_LABEL_COLOR","yellow") ;
 #endif
+
+   /*-- 04 Jun 1999: modify order of loading arguments and defaults --*/
+
+   if( ! GLOBAL_argopt.skip_afnirc ){
+     char *sysenv = getenv("AFNI_SYSTEM_AFNIRC") ;        /* 12 Apr 2000 */
+     if( sysenv != NULL ) AFNI_process_environ(sysenv) ;  /* 12 Apr 2000 */
+
+     AFNI_process_environ(NULL) ;                         /* 07 Jun 1999 */
+   } else {
+     AFNI_mark_environ_done() ;                           /* 16 Apr 2000 */
+   }
+
+/* INFO_message("AFNI_IMAGE_SAVESQUARE = %s",getenv("AFNI_IMAGE_SAVESQUARE")); */
+
+   AFNI_load_defaults( MAIN_shell ) ;
 
    if( ! GLOBAL_argopt.skip_afnirc ){          /* this line added 14 Jul 1998 */
       char *home = getenv("HOME") ; char fname[256] ;
@@ -1524,7 +1528,7 @@ int main( int argc , char *argv[] )
 STATUS("start XtAppMainLoop") ;
 
    XtAppMainLoop(MAIN_app) ;  /* never returns */
-   exit(0) ;                  /* should never be reached */
+   AFexit(0) ;                /* should never be reached */
 }
 
 #undef HUBERIZE
@@ -1694,7 +1698,8 @@ STATUS("call 13") ;
         AFNI_register_2D_function( "Median21", median21_box_func );
         AFNI_register_2D_function( "Winsor21", winsor21_box_func );
 
-        AFNI_register_2D_function( "|FFT2D|", fft2D_func );
+        AFNI_register_2D_function( "abs[FFT2D]", fft2D_absfunc   );
+        AFNI_register_2D_function( "arg[FFT2D]", fft2D_phasefunc );
 
         /* 01 Feb 2000: see afni_fimfunc.c */
 
@@ -1878,14 +1883,6 @@ STATUS("call 15") ;
    }
 
    MAIN_calls++ ; RETURN(False) ;
-}
-
-/*-------------------------------------------------------------------------*/
-
-void FatalError(char *str)
-{
-   fprintf(stderr,"\n** Fatal Error **\n %s\n",str) ;
-   sleep(1) ; exit(1) ;
 }
 
 /*-------------------------------------------------------------------------*/
@@ -2243,13 +2240,14 @@ STATUS("get status") ;
 
 #define RX 0.2
    if( type == isqCR_getmemplot ){
-     Three_D_View *im3d = (Three_D_View *) br->parent ;
+     Three_D_View *im3d = (Three_D_View *)br->parent ;
+     THD_3dim_dataset *udset = im3d->anat_now ; /* 07 Jan 2008 */
      int do_xhar=(im3d->vinfo->crosshair_visible && AFNI_yesenv("AFNI_CROSSHAIR_LINES"));
      int do_surf;
      MEM_plotdata *mp ;
      AFNI_surface_widgets *swid = im3d->vwid->view->swid ;  /* 19 Aug 2002 */
      THD_session *suss=im3d->ss_now ;                       /* 20 Jan 2004 */
-     THD_dataxes *daxes=CURRENT_DAXES(br->dset) ;
+     THD_dataxes *daxes=CURRENT_DAXES(udset) ;
 
      if( !IM3D_OPEN(im3d) )     RETURN(NULL) ;
 
@@ -2394,12 +2392,12 @@ STATUS("defining surface drawing parameters") ;
 
       LOAD_IVEC3(iv,0,0,n+1) ;                     /* next */
       ivp = THD_fdind_to_3dind( br , iv ) ;
-      fvp = THD_3dind_to_3dmm ( br->dset , ivp ) ;
-      fvp = THD_3dmm_to_dicomm( br->dset , fvp ) ;
+      fvp = THD_3dind_to_3dmm ( udset , ivp ) ;
+      fvp = THD_3dmm_to_dicomm( udset , fvp ) ;
       LOAD_IVEC3(iv,0,0,n-1) ;                     /* previous */
       ivm = THD_fdind_to_3dind( br , iv ) ;
-      fvm = THD_3dind_to_3dmm ( br->dset , ivm ) ;
-      fvm = THD_3dmm_to_dicomm( br->dset , fvm ) ;
+      fvm = THD_3dind_to_3dmm ( udset , ivm ) ;
+      fvm = THD_3dmm_to_dicomm( udset , fvm ) ;
 
       /* threshold for determining which axis this slice is along */
 
@@ -2424,8 +2422,8 @@ STATUS(" - x plane") ;
           for( ii=0 ; ii < nn ; ii++ ){
             if( nod[ii].x >= xb && nod[ii].x <= xt ){         /* inside?  */
                LOAD_FVEC3(fv,nod[ii].x,nod[ii].y,nod[ii].z) ; /* convert  */
-               fv = THD_dicomm_to_3dmm( br->dset , fv ) ;     /* coords   */
-               fv = THD_3dmm_to_3dfind( br->dset , fv ) ;     /* to slice */
+               fv = THD_dicomm_to_3dmm( udset , fv ) ;        /* coords   */
+               fv = THD_3dmm_to_3dfind( udset , fv ) ;        /* to slice */
                fv = THD_3dfind_to_fdfind( br , fv ) ;         /* indexes  */
 
                if( firstb ){
@@ -2461,8 +2459,8 @@ STATUS(" - y plane") ;
           for( ii=0 ; ii < nn ; ii++ ){
             if( nod[ii].y >= yb && nod[ii].y <= yt ){
                LOAD_FVEC3(fv,nod[ii].x,nod[ii].y,nod[ii].z) ;
-               fv = THD_dicomm_to_3dmm( br->dset , fv ) ;
-               fv = THD_3dmm_to_3dfind( br->dset , fv ) ;
+               fv = THD_dicomm_to_3dmm( udset , fv ) ;
+               fv = THD_3dmm_to_3dfind( udset , fv ) ;
                fv = THD_3dfind_to_fdfind( br , fv ) ;
 
                if( firstb ){
@@ -2498,8 +2496,8 @@ STATUS(" - z plane") ;
           for( ii=0 ; ii < nn ; ii++ ){
             if( nod[ii].z >= zb && nod[ii].z <= zt ){
                LOAD_FVEC3(fv,nod[ii].x,nod[ii].y,nod[ii].z) ;
-               fv = THD_dicomm_to_3dmm( br->dset , fv ) ;
-               fv = THD_3dmm_to_3dfind( br->dset , fv ) ;
+               fv = THD_dicomm_to_3dmm( udset , fv ) ;
+               fv = THD_3dmm_to_3dfind( udset , fv ) ;
                fv = THD_3dfind_to_fdfind( br , fv ) ;
 
                if( firstb ){
@@ -2615,24 +2613,24 @@ STATUS("drawing triangle lines") ;
 
             /* transform interpolated points to FD_brick coords */
 
-            fvp = THD_dicomm_to_3dmm( br->dset , fvp ) ;
+            fvp = THD_dicomm_to_3dmm( udset , fvp ) ;
             if( fvp.xyz[0] < daxes->xxmin ||
                 fvp.xyz[0] > daxes->xxmax ||
                 fvp.xyz[1] < daxes->yymin ||
                 fvp.xyz[1] > daxes->yymax ||
                 fvp.xyz[2] < daxes->zzmin ||
                 fvp.xyz[2] > daxes->zzmax   ) continue ;  /* 08 Jan 2004 */
-            fvp = THD_3dmm_to_3dfind( br->dset , fvp ) ;
+            fvp = THD_3dmm_to_3dfind( udset , fvp ) ;
             fvp = THD_3dfind_to_fdfind( br , fvp ) ;
 
-            fvm = THD_dicomm_to_3dmm( br->dset , fvm ) ;
+            fvm = THD_dicomm_to_3dmm( udset , fvm ) ;
             if( fvm.xyz[0] < daxes->xxmin ||
                 fvm.xyz[0] > daxes->xxmax ||
                 fvm.xyz[1] < daxes->yymin ||
                 fvm.xyz[1] > daxes->yymax ||
                 fvm.xyz[2] < daxes->zzmin ||
                 fvm.xyz[2] > daxes->zzmax   ) continue ;  /* 08 Jan 2004 */
-            fvm = THD_3dmm_to_3dfind( br->dset , fvm ) ;
+            fvm = THD_3dmm_to_3dfind( udset , fvm ) ;
             fvm = THD_3dfind_to_fdfind( br , fvm ) ;
 
             /* plot a line segment between them, in the plane of the slice */
@@ -2864,7 +2862,7 @@ STATUS("drawing crosshairs") ;
    /*--- underlay image # n ---*/
 
    if( type == isqCR_getimage || type == isqCR_getqimage ){
-      Three_D_View *im3d = (Three_D_View *) br->parent ;
+      Three_D_View *im3d = (Three_D_View *)br->parent ;
       int ival ;
 
       /*** decide which 3D brick to extract data from (ival) ***/
@@ -3024,7 +3022,7 @@ ENTRY("AFNI_read_images") ;
 
    /*----- see if there are any images to read! -----*/
 
-   if( nf < 1 ) FatalError("** No images on command line!? **") ;
+   if( nf < 1 ) ERROR_exit("No images on command line!?") ;
 
    /* count total number of images */
 
@@ -3037,10 +3035,8 @@ ENTRY("AFNI_read_images") ;
        exit(1) ;
      }
      ii = mri_imcount( fname[lf] ) ;
-     if( ii == 0 ){
-       sprintf(str,"** Illegal image file specifier: %s",fname[lf]) ;
-       FatalError(str) ;
-     }
+     if( ii == 0 )
+       ERROR_exit("Illegal image file specifier: %s",fname[lf]) ;
      nz += ii ;
    }
    if( nz == 1 ) nz = 2 ;  /* special case for just one image */
@@ -3048,10 +3044,8 @@ ENTRY("AFNI_read_images") ;
    /*--- read 1st file to get sizes ---*/
 
    arr = mri_read_file( fname[0] ) ;
-   if( arr == NULL || arr->num == 0 ){
-      sprintf(str,"** Cannot read first image file: %s",fname[0]) ;
-      FatalError(str) ;
-   }
+   if( arr == NULL || arr->num == 0 )
+      ERROR_exit("Cannot read first image file: %s",fname[0]) ;
 
    im = arr->imarr[0] ;
    nx = im->nx ;
@@ -3063,7 +3057,7 @@ ENTRY("AFNI_read_images") ;
 
    if( datum < 0 ) datum = im->kind ;
    if( ! AFNI_GOOD_DTYPE(datum) )
-      FatalError("** Illegal datum type found ***") ;
+     ERROR_exit("Illegal datum type found in image") ;
 
    dsize = mri_datum_size( (MRI_TYPE) datum ) ;
    bar   = (char *) malloc( dsize * nx*ny*nz ) ;
@@ -3081,10 +3075,8 @@ ENTRY("AFNI_read_images") ;
 
       if( lf != 0 ){
          arr = mri_read_file( fname[lf] ) ;
-         if( arr == NULL || arr->num == 0 ){
-           sprintf(str,"** Cannot read image file: %s",fname[lf]) ;
-           FatalError(str) ;
-         }
+         if( arr == NULL || arr->num == 0 )
+           ERROR_exit("Cannot read image file: %s",fname[lf]) ;
       }
 
       /** for each image in file ... **/
@@ -3096,10 +3088,10 @@ ENTRY("AFNI_read_images") ;
 
          if( im->nx != nx || im->ny != ny ){
             if( ! GLOBAL_argopt.resize_images ){
-               sprintf(str, "** Image size mismatch:\n"
+               sprintf(str, "Image size mismatch:\n"
                            " ** expected nx=%d ny=%d but got nx=%d ny=%d in file %s" ,
                            nx,ny,im->nx,im->ny , fname[lf] ) ;
-               FatalError(str) ;
+               ERROR_exit(str) ;
             } else {
                MRI_IMAGE *rim ;
                rim = mri_resize( im , nx , ny ) ;
@@ -3114,7 +3106,7 @@ ENTRY("AFNI_read_images") ;
             shim = im ;
          } else {
             shim = mri_to_mri( datum , im ) ;
-            if( shim == NULL ) FatalError("** Illegal convert! **") ;
+            if( shim == NULL ) ERROR_exit("Illegal datum convert!") ;
             mri_free( im ) ;
          }
 
@@ -3318,7 +3310,7 @@ ENTRY("AFNI_read_images") ;
      acod = toupper(GLOBAL_argopt.orient_code[2]) ; zz = ORCODE(acod) ;
 
      if( xx < 0 || yy < 0 || zz < 0 || ! OR3OK(xx,yy,zz) )
-        FatalError("Unusable -orient code!") ;
+       ERROR_exit("Unusable -orient code!") ;
 
      dset->daxes->xxorient = xx ;
      dset->daxes->yyorient = yy ;
@@ -4110,10 +4102,9 @@ ENTRY("AFNI_inconstancy_check") ;
    EXRETURN ;
 }
 
-/*----------------------------------------------------------------------
-   read the files specified on the command line
-   and create the data structures
-------------------------------------------------------------------------*/
+/*----------------------------------------------------------------------------
+   read the files specified on the command line and create the data structures
+------------------------------------------------------------------------------*/
 
 void AFNI_read_inputs( int argc , char *argv[] )
 {
@@ -4132,7 +4123,7 @@ ENTRY("AFNI_read_inputs") ;
    /*----- read files -----*/
 
    if( GLOBAL_argopt.first_file_arg >= argc && GLOBAL_argopt.read_images ){
-      FatalError("No image files on command line!!") ;
+      ERROR_exit("No image files on command line!!") ;
    }
 
    /*--- read directly from images (the old-fashioned way) ---*/
@@ -4153,12 +4144,12 @@ ENTRY("AFNI_read_inputs") ;
       MCW_warn_expand(0) ;  /* 13 Jul 2001 */
 
       if( gnim < 1 )
-        FatalError("No valid filenames on command line?!" ) ;
+        ERROR_exit("No valid filenames on command line?!") ;
 
       dset = AFNI_read_images( gnim , gname ) ;
 
       if( dset == NULL )
-        FatalError("Could not form 3D dataset from images!" ) ;
+        ERROR_exit("Could not form 3D dataset from images!" ) ;
 
       MCW_free_expand( gnim , gname ) ;
 
@@ -4292,8 +4283,10 @@ if(PRINT_TRACING)
 { char str[256] ;
   sprintf(str,"try to read directory %s",qlist->ar[id]) ; STATUS(str) ; }
 
-         dname  = qlist->ar[id] ;                /* try to read datasets from */
-         new_ss = THD_init_session( dname ) ;    /* this directory name       */
+         dname  = qlist->ar[id] ;
+         new_ss = NULL ;
+         if( strncmp(dname,"3dcalc(",7) != 0 )      /* try to read datasets */
+           new_ss = THD_init_session( dname ) ; /* from this directory name */
 
          REFRESH ;
 
@@ -4404,7 +4397,7 @@ if(PRINT_TRACING)
         GLOBAL_library.sslist->ssar[(GLOBAL_library.sslist->num_sess)++] = gss ;
 
         sprintf(str,"\n AFNI_GLOBAL_SESSION = %s %d datasets" ,
-            gss->sessname , gss->num_dsset ) ;
+                gss->sessname , gss->num_dsset ) ;
 
         num_dsets += gss->num_dsset ;
 
@@ -4765,13 +4758,13 @@ STATUS("reading commandline dsets") ;
       } /* end of loop over ii=command line arguments past options */
 
       if( nerr > 0 ){
-         fprintf(stderr,"** FATAL ERRORS on input\n") ; exit(1) ;  /* bad */
+        fprintf(stderr,"** FATAL ERRORS on input\n") ; exit(1) ;  /* bad */
       }
 
       sprintf(str,"\n dataset count = %d" , nds ) ;
       if( new_ss->num_dsset == 0 ){
-         fprintf(stderr,"\n** No datasets read from the list!\n") ;
-         exit(1) ;
+        fprintf(stderr,"\n** No datasets read from the list!\n") ;
+        exit(1) ;
       }
       REPORT_PROGRESS(str) ;
 
@@ -5863,11 +5856,7 @@ DUMP_IVEC3("  new_id",new_id) ;
        if( !im3d->vedskip )
          changed = AFNI_vedit( im3d->fim_now , im3d->vedset ) ;
        if( !DSET_VEDIT_good(im3d->fim_now) ){
-         VEDIT_clear_label(im3d) ;
-         if( im3d->vwid->func->clu_rep != NULL ){
-           free(im3d->vwid->func->clu_rep); im3d->vwid->func->clu_rep = NULL;
-         }
-         DESTROY_CLARR(im3d->vwid->func->clu_list) ;
+         UNCLUSTERIZE(im3d) ;
        } else if( changed ){
          mri_cluster_detail *cld ; int nc ; char *rrr ;
          VEDIT_helpize(im3d);
@@ -5881,14 +5870,8 @@ DUMP_IVEC3("  new_id",new_id) ;
          AFNI_cluster_dispize(im3d,0);  /* display the results */
        }
      } else {
-       AFNI_vedit_clear( im3d->fim_now ) ; VEDIT_clear_label(im3d) ;
-       AFNI_cluster_dispkill(im3d) ;
-       if( im3d->vwid->func->clu_rep != NULL ){
-         free(im3d->vwid->func->clu_rep); im3d->vwid->func->clu_rep = NULL;
-       }
-       DESTROY_CLARR(im3d->vwid->func->clu_list) ;
+       UNCLUSTERIZE(im3d) ;  /* macro-ized 13 Feb 2008 */
      }
-     AFNI_set_thr_pval(im3d) ;  /* for the * marker */
    }
 
    /*--- redraw images now ---*/
@@ -6718,7 +6701,7 @@ ENTRY("AFNI_marks_action_CB") ;
 #endif
 
          tross_Append_History( im3d->anat_now , "AFNI: markers were edited" ) ;
-         (void) THD_write_3dim_dataset( NULL,NULL , im3d->anat_now , False ) ;
+         DSET_overwrite_header(im3d->anat_now) ;
       }
 
       EXRETURN ;
@@ -6762,7 +6745,6 @@ if(PRINT_TRACING)
       markers->valid[ipt] = True ;
 
       LOAD_ANAT_VIEW(im3d) ;  /* 02 Nov 1996 */
-
       fv = THD_3dind_to_3dmm( im3d->anat_now ,    /* convert to mm */
                               TEMP_IVEC3( im3d->vinfo->i1 ,
                                           im3d->vinfo->j2 ,
@@ -6973,6 +6955,7 @@ ENTRY("AFNI_switchview_CB") ;
    SHOW_AFNI_PAUSE ;
 
    POPDOWN_strlist_chooser ;                        /* might be choosing datasets */
+   UNCLUSTERIZE(im3d) ;                             /* 13 Feb 2008 */
 
    im3d->vinfo->view_type = bval ;                  /* set the new view type */
    AFNI_initialize_view( im3d->anat_now , im3d ) ;  /* and initialize it */
@@ -7071,7 +7054,6 @@ if(PRINT_TRACING)
    new_func = GLOBAL_library.sslist->ssar[sss]->dsset[fff][vvv] ;
 
    AFNI_vedit_clear( im3d->fim_now ) ;  /* 05 Sep 2006 */
-   VEDIT_clear_label( im3d ) ;
 
    /*----------------------------------------------*/
    /*--- if the old dataset has markers and the
@@ -7110,6 +7092,8 @@ STATUS("purging old datasets from memory (maybe)") ;
    im3d->ss_now   = GLOBAL_library.sslist->ssar[sss] ;
 
    SENSITIZE( im3d->vwid->func->clu_rowcol , DSET_INMEMORY(im3d->fim_now) ) ;
+
+   if( !DSET_INMEMORY(im3d->fim_now) ) UNCLUSTERIZE(im3d) ; /* 14 Feb 2008 */
 
    /*------------------------------------------------*/
    /*--- if markers are defined, then set them up ---*/
@@ -7217,7 +7201,6 @@ STATUS("turning markers on") ;
               dset ) ;
 
       LOAD_ANAT_VIEW(im3d) ;  /* 02 Nov 1996 */
-
       fv = THD_dicomm_to_3dmm( dset , fv ) ;
       iv = THD_3dmm_to_3dind( dset , fv ) ;
    } else {
@@ -7323,7 +7306,7 @@ STATUS("setting anatmode_bbox back to 'View ULay Data Brick'") ;
       *(im3d->wod_daxes) = *(im3d->anat_now->daxes) ;
 
    im3d->anat_voxwarp->type =
-      im3d->fim_voxwarp->type = ILLEGAL_TYPE ;                  /* 02 Nov 1996 */
+     im3d->fim_voxwarp->type = ILLEGAL_TYPE ;                   /* 02 Nov 1996 */
 
    LOAD_ANAT_VIEW(im3d) ;                                       /* 02 Nov 1996 */
 
@@ -8956,7 +8939,7 @@ ENTRY("AFNI_marks_transform_CB") ;
 
 STATUS("writing new dataset") ;
 
-   (void) THD_write_3dim_dataset( NULL,NULL , new_dset , False ) ; /* header */
+   DSET_overwrite_header(new_dset) ;
 
    /*--- have transformed this anatomy dataset
          ==> if the input was the original view, then
@@ -10250,8 +10233,8 @@ void AFNI_load_defaults( Widget w )
 ENTRY("AFNI_load_defaults") ;
 
    if( w == NULL ){
-      fprintf(stderr,"\n** AFNI_load_defaults: NULL input widget **\n") ;
-      EXRETURN ;
+     ERROR_message("\n** AFNI_load_defaults: NULL input widget") ;
+     EXRETURN ;
    }
 
    display = XtDisplay( w ) ;
@@ -10259,12 +10242,11 @@ ENTRY("AFNI_load_defaults") ;
    /** initialize overlay color arrays from defaults **/
 
    for( ii=0 ; ii < DEFAULT_NCOLOVR ; ii++ ){
-      INIT_colovr[ii] = XtNewString(INIT_def_colovr[ii]) ;
-      INIT_labovr[ii] = XtNewString(INIT_def_labovr[ii]) ;
+     INIT_colovr[ii] = XtNewString(INIT_def_colovr[ii]) ;
+     INIT_labovr[ii] = XtNewString(INIT_def_labovr[ii]) ;
    }
-   for( ; ii < MAX_NCOLOVR ; ii++ ){
-      INIT_colovr[ii] = INIT_labovr[ii] = NULL ;
-   }
+   for( ; ii < MAX_NCOLOVR ; ii++ )
+     INIT_colovr[ii] = INIT_labovr[ii] = NULL ;
 
    /** initialize display and overlay colors **/
 
@@ -10275,11 +10257,11 @@ ENTRY("AFNI_load_defaults") ;
    NAME2FLOAT("gamma",INIT_gamma,0.1,9.9) ;
 
    for( ii=0 ; ii < INIT_ncolovr ; ii++ ){
-      sprintf( buf , "ovdef%02d" , ii+1 ) ;
-      NAME2STRING(buf,INIT_colovr[ii] ) ;
+     sprintf( buf , "ovdef%02d" , ii+1 ) ;
+     NAME2STRING(buf,INIT_colovr[ii] ) ;
 
-      sprintf( buf , "ovlab%02d" , ii+1 ) ;
-      NAME2STRING(buf,INIT_labovr[ii] ) ;
+     sprintf( buf , "ovlab%02d" , ii+1 ) ;
+     NAME2STRING(buf,INIT_labovr[ii] ) ;
    }
 
    NAME2INT("ovcrosshair"      , INIT_crosshair_color,0,INIT_ncolovr) ;
@@ -10317,15 +10299,15 @@ ENTRY("AFNI_load_defaults") ;
    cpt = NULL ;
    NAME2STRING( "tlrc_big" , cpt ) ;
    if( cpt != NULL ){
-      INIT_tlrc_big = (strcmp(cpt,"True")==0) ? 1 : 0 ;
-      XtFree(cpt) ;
+     INIT_tlrc_big = (strcmp(cpt,"True")==0) ? 1 : 0 ;
+     XtFree(cpt) ;
    }
 
    cpt = NULL ;
    NAME2STRING( "montage_periodic" , cpt ) ;
    if( cpt != NULL ){
-      INIT_montage_periodic = (strcmp(cpt,"True")==0) ? 1 : 0 ;
-      XtFree(cpt) ;
+     INIT_montage_periodic = (strcmp(cpt,"True")==0) ? 1 : 0 ;
+     XtFree(cpt) ;
    }
 
    NAME2INT("fim_ignore",INIT_ignore,0,999) ;
@@ -10333,8 +10315,8 @@ ENTRY("AFNI_load_defaults") ;
    cpt = NULL ;
    NAME2STRING( "purge" , cpt ) ;
    if( cpt != NULL ){
-      INIT_purge = (strcmp(cpt,"True")==0) ? 1 : 0 ;
-      myXtFree(cpt) ;
+     INIT_purge = (strcmp(cpt,"True")==0) ? 1 : 0 ;
+     myXtFree(cpt) ;
    }
 
    NAME2FLOAT("resam_vox",INIT_resam_vox,0.1,4.0) ;
@@ -10343,31 +10325,31 @@ ENTRY("AFNI_load_defaults") ;
    cpt = NULL ;
    NAME2STRING( "resam_anat" , cpt ) ;
    if( cpt != NULL ){
-      for( ii=FIRST_RESAM_TYPE ; ii <= LAST_RESAM_TYPE ; ii++ ){
-         if( strcmp(cpt,RESAM_shortstr[ii]) == 0 ) break ;
-      }
-      if( ii <= LAST_RESAM_TYPE ) INIT_resam_anat = ii ;
-      myXtFree(cpt) ;
+     for( ii=FIRST_RESAM_TYPE ; ii <= LAST_RESAM_TYPE ; ii++ )
+       if( strcmp(cpt,RESAM_shortstr[ii]) == 0 ) break ;
+
+     if( ii <= LAST_RESAM_TYPE ) INIT_resam_anat = ii ;
+     myXtFree(cpt) ;
    }
 
    cpt = NULL ;
    NAME2STRING( "resam_func" , cpt ) ;
    if( cpt != NULL ){
-      for( ii=FIRST_RESAM_TYPE ; ii <= LAST_RESAM_TYPE ; ii++ ){
-         if( strcmp(cpt,RESAM_shortstr[ii]) == 0 ) break ;
-      }
-      if( ii <= LAST_RESAM_TYPE ) INIT_resam_func = ii ;
-      (char*)myXtFree(cpt) ;
+     for( ii=FIRST_RESAM_TYPE ; ii <= LAST_RESAM_TYPE ; ii++ )
+       if( strcmp(cpt,RESAM_shortstr[ii]) == 0 ) break ;
+
+     if( ii <= LAST_RESAM_TYPE ) INIT_resam_func = ii ;
+     (char*)myXtFree(cpt) ;
    }
 
    cpt = NULL ;
    NAME2STRING( "resam_thr" , cpt ) ;
    if( cpt != NULL ){
-      for( ii=FIRST_RESAM_TYPE ; ii <= LAST_RESAM_TYPE ; ii++ ){
-         if( strcmp(cpt,RESAM_shortstr[ii]) == 0 ) break ;
-      }
-      if( ii <= LAST_RESAM_TYPE ) INIT_resam_thr = ii ;
-      myXtFree(cpt) ;
+     for( ii=FIRST_RESAM_TYPE ; ii <= LAST_RESAM_TYPE ; ii++ )
+       if( strcmp(cpt,RESAM_shortstr[ii]) == 0 ) break ;
+
+     if( ii <= LAST_RESAM_TYPE ) INIT_resam_thr = ii ;
+     myXtFree(cpt) ;
    }
 
    /** initialize pbar panes **/
@@ -10375,15 +10357,15 @@ ENTRY("AFNI_load_defaults") ;
    cpt = NULL ;
    NAME2STRING( "pbar_posfunc" , cpt ) ;
    if( cpt != NULL ){
-      INIT_posfunc = (strcmp(cpt,"True")==0) ? 1 : 0 ;
-      myXtFree(cpt) ;
+     INIT_posfunc = (strcmp(cpt,"True")==0) ? 1 : 0 ;
+     myXtFree(cpt) ;
    }
 
    cpt = NULL ;
    NAME2STRING( "pbar_hide" , cpt ) ;
    if( cpt != NULL ){
-      INIT_panes_hide = (strcmp(cpt,"True")==0) ? 1 : 0 ;
-      myXtFree(cpt) ;
+     INIT_panes_hide = (strcmp(cpt,"True")==0) ? 1 : 0 ;
+     myXtFree(cpt) ;
    }
 
    NAME2INT("pbar_pos_pane_count" , INIT_panes_pos , NPANE_MIN , NPANE_MAX ) ;
@@ -10392,94 +10374,92 @@ ENTRY("AFNI_load_defaults") ;
    /* start with positive panes */
 
    for( ii=NPANE_INIT+1 ; ii <= NPANE_MAX ; ii++ ){
-      fval     = 1.0 / ii ;
-      pthr[0]  = 1.0 ;
-      pthr[ii] = 0.0 ;
-      for( jj=1 ; jj < ii ; jj++ ) pthr[jj] = fval * (ii-jj) ;
-      for( jj=0 ; jj < ii ; jj++ ) pov[jj]  = (jj % INIT_ncolovr) + 1 ;
+     fval     = 1.0 / ii ;
+     pthr[0]  = 1.0 ;
+     pthr[ii] = 0.0 ;
+     for( jj=1 ; jj < ii ; jj++ ) pthr[jj] = fval * (ii-jj) ;
+     for( jj=0 ; jj < ii ; jj++ ) pov[jj]  = (jj % INIT_ncolovr) + 1 ;
 
-      for( jj=0 ; jj <= ii ; jj++ ) INIT_pval_pos[ii][jj] = pthr[jj] ;
-      for( jj=0 ; jj <  ii ; jj++ ) INIT_ovin_pos[ii][jj] = pov[jj] ;
+     for( jj=0 ; jj <= ii ; jj++ ) INIT_pval_pos[ii][jj] = pthr[jj] ;
+     for( jj=0 ; jj <  ii ; jj++ ) INIT_ovin_pos[ii][jj] = pov[jj] ;
    }
 
    for( ii=NPANE_MIN ; ii <= NPANE_MAX ; ii++ ){
 
-      for( jj=0 ; jj <= ii ; jj++ ){
-         sprintf( buf , "pbar_pos_pane%02d_thr%02d" , ii,jj ) ;
-         pthr[jj] = BAD ;
-         NAME2FLOAT(buf,pthr[jj],0.0,1.0) ;
-      }
+     for( jj=0 ; jj <= ii ; jj++ ){
+       sprintf( buf , "pbar_pos_pane%02d_thr%02d" , ii,jj ) ;
+       pthr[jj] = BAD ;
+       NAME2FLOAT(buf,pthr[jj],0.0,1.0) ;
+     }
 
-      for( jj=0 ; jj < ii ; jj++ ){
-         sprintf( buf , "pbar_pos_pane%02d_ov%02d" , ii,jj ) ;
-         pov[jj] = BAD ;
-         NAME2INT(buf,pov[jj],0,INIT_ncolovr) ;
-      }
+     for( jj=0 ; jj < ii ; jj++ ){
+       sprintf( buf , "pbar_pos_pane%02d_ov%02d" , ii,jj ) ;
+       pov[jj] = BAD ;
+       NAME2INT(buf,pov[jj],0,INIT_ncolovr) ;
+     }
 
-      /* check pthr for OK-ness; if not good, skip to next pane count (ii) */
+     /* check pthr for OK-ness; if not good, skip to next pane count (ii) */
 
-      if( pthr[0] != 1.0 || pthr[jj] != 0.0 ) continue ;
-      for( jj=1 ; jj <= ii ; jj++ ){
-         if( pthr[jj] == BAD || pthr[jj] >= pthr[jj-1] ) break ;
-      }
-      if( jj <= ii ) continue ;
+     if( pthr[0] != 1.0 || pthr[jj] != 0.0 ) continue ;
+     for( jj=1 ; jj <= ii ; jj++ )
+       if( pthr[jj] == BAD || pthr[jj] >= pthr[jj-1] ) break ;
+     if( jj <= ii ) continue ;
 
-      /* check pov for OK-ness */
+     /* check pov for OK-ness */
 
-      for( jj=0 ; jj < ii ; jj++ ) if( pov[jj] == BAD ) break ;
-      if( jj < ii ) continue ;
+     for( jj=0 ; jj < ii ; jj++ ) if( pov[jj] == BAD ) break ;
+     if( jj < ii ) continue ;
 
-      /* get to here --> load pthr and pov into arrays */
+     /* get to here --> load pthr and pov into arrays */
 
-      for( jj=0 ; jj <= ii ; jj++ ) INIT_pval_pos[ii][jj] = pthr[jj] ;
-      for( jj=0 ; jj <  ii ; jj++ ) INIT_ovin_pos[ii][jj] = pov[jj] ;
+     for( jj=0 ; jj <= ii ; jj++ ) INIT_pval_pos[ii][jj] = pthr[jj] ;
+     for( jj=0 ; jj <  ii ; jj++ ) INIT_ovin_pos[ii][jj] = pov[jj] ;
 
    }
 
    /** initialize signed pbar panes **/
 
    for( ii=NPANE_INIT+1 ; ii <= NPANE_MAX ; ii++ ){
-      fval     =  1.0 / ii ;
-      pthr[0]  =  1.0 ;
-      pthr[ii] = -1.0 ;
-      for( jj=1 ; jj < ii ; jj++ ) pthr[jj] = fval * (ii-2*jj) ;
-      for( jj=0 ; jj < ii ; jj++ ) pov[jj]  = (jj % INIT_ncolovr) + 1 ;
+     fval     =  1.0 / ii ;
+     pthr[0]  =  1.0 ;
+     pthr[ii] = -1.0 ;
+     for( jj=1 ; jj < ii ; jj++ ) pthr[jj] = fval * (ii-2*jj) ;
+     for( jj=0 ; jj < ii ; jj++ ) pov[jj]  = (jj % INIT_ncolovr) + 1 ;
 
-      for( jj=0 ; jj <= ii ; jj++ ) INIT_pval_sgn[ii][jj] = pthr[jj] ;
-      for( jj=0 ; jj <  ii ; jj++ ) INIT_ovin_sgn[ii][jj] = pov[jj] ;
+     for( jj=0 ; jj <= ii ; jj++ ) INIT_pval_sgn[ii][jj] = pthr[jj] ;
+     for( jj=0 ; jj <  ii ; jj++ ) INIT_ovin_sgn[ii][jj] = pov[jj] ;
    }
 
    for( ii=NPANE_MIN ; ii <= NPANE_MAX ; ii++ ){
 
-      for( jj=0 ; jj <= ii ; jj++ ){
-         sprintf( buf , "pbar_sgn_pane%02d_thr%02d" , ii,jj ) ;
-         pthr[jj] = BAD ;
-         NAME2FLOAT(buf,pthr[jj],-1.0,1.0) ; /* 14 Apr 1999: 0.0 changed to -1.0! */
-      }
+     for( jj=0 ; jj <= ii ; jj++ ){
+       sprintf( buf , "pbar_sgn_pane%02d_thr%02d" , ii,jj ) ;
+       pthr[jj] = BAD ;
+       NAME2FLOAT(buf,pthr[jj],-1.0,1.0) ; /* 14 Apr 1999: 0.0 changed to -1.0! */
+     }
 
-      for( jj=0 ; jj < ii ; jj++ ){
-         sprintf( buf , "pbar_sgn_pane%02d_ov%02d" , ii,jj ) ;
-         pov[jj] = BAD ;
-         NAME2INT(buf,pov[jj],0,INIT_ncolovr) ;
-      }
+     for( jj=0 ; jj < ii ; jj++ ){
+       sprintf( buf , "pbar_sgn_pane%02d_ov%02d" , ii,jj ) ;
+       pov[jj] = BAD ;
+       NAME2INT(buf,pov[jj],0,INIT_ncolovr) ;
+     }
 
-      /* check pthr for OK-ness; if not good, skip to next pane count (ii) */
+     /* check pthr for OK-ness; if not good, skip to next pane count (ii) */
 
-      if( pthr[0] != 1.0 || pthr[jj] != -1.0 ) continue ;
-      for( jj=1 ; jj <= ii ; jj++ ){
-         if( pthr[jj] == BAD || pthr[jj] >= pthr[jj-1] ) break ;
-      }
-      if( jj <= ii ) continue ;
+     if( pthr[0] != 1.0 || pthr[jj] != -1.0 ) continue ;
+     for( jj=1 ; jj <= ii ; jj++ )
+       if( pthr[jj] == BAD || pthr[jj] >= pthr[jj-1] ) break ;
+     if( jj <= ii ) continue ;
 
-      /* check pov for OK-ness */
+     /* check pov for OK-ness */
 
-      for( jj=0 ; jj < ii ; jj++ ) if( pov[jj] == BAD ) break ;
-      if( jj < ii ) continue ;
+     for( jj=0 ; jj < ii ; jj++ ) if( pov[jj] == BAD ) break ;
+     if( jj < ii ) continue ;
 
-      /* get to here --> load pthr and pov into arrays */
+     /* get to here --> load pthr and pov into arrays */
 
-      for( jj=0 ; jj <= ii ; jj++ ) INIT_pval_sgn[ii][jj] = pthr[jj] ;
-      for( jj=0 ; jj <  ii ; jj++ ) INIT_ovin_sgn[ii][jj] = pov[jj] ;
+     for( jj=0 ; jj <= ii ; jj++ ) INIT_pval_sgn[ii][jj] = pthr[jj] ;
+     for( jj=0 ; jj <  ii ; jj++ ) INIT_ovin_sgn[ii][jj] = pov[jj] ;
 
    }
 

@@ -32,6 +32,8 @@ int * SUMA_disaster(void)
    int i;
    
    SUMA_ENTRY;
+   
+   SUMA_S_Notev("Domemtrace %d\n", get_Domemtrace());
    N_iv1 = 5;
    N_iv2 = 5;
    iv1 = (int*) SUMA_calloc(N_iv1, sizeof(int));
@@ -43,7 +45,12 @@ int * SUMA_disaster(void)
    /* overwrite iv2 */
    iv2[N_iv2] = 7;
    
+   /* MEMCHECK should give a warning */
+   SUMA_S_Note("Memcheck output");
+   MCHECK ; fflush(stdout) ; /* ZSS */
+
    /* free iv1 (that should give a warning)*/
+   SUMA_S_Note("Now freeing iv1");
    SUMA_free(iv1); /* without the -trace option, 
                       you'll get a warning of this corruption here */
 
@@ -52,9 +59,12 @@ int * SUMA_disaster(void)
    /* SUMA_free(iv3);*/
          
    /* don't free iv2, that should only give a warning when you exit with -trace option turned on */
+   SUMA_S_Note("Now dumping malloc table");
+   mcw_malloc_dump();
    
    /* if you use -trace, you'll get a warning at the return for iv2 
    All allocated memory will be checked, at the return, not just iv2*/   
+   SUMA_S_Note("Now returning");
    SUMA_RETURN(iv2); 
 }
 
@@ -128,6 +138,13 @@ void SUMA_usage (SUMA_GENERIC_ARGV_PARSE *ps)
 "   [-memdbg] Turn on the memory tracing from the start.\n" */    
 "   [-visuals] Shows the available glxvisuals and exits.\n"
 "   [-version] Shows the current version number.\n"
+"   [-environment] Shows a list of all environment variables, \n"
+"                  their default setting and your current setting.\n"
+"                  The output can be used as a new .sumarc file.\n"
+"                  Since it takes into consideration your own settings\n"
+"                  this command can be used to update your .sumarc \n"
+"                  regularly with a csh command like this:\n"
+"                  suma -environment > ~/sumarc && mv ~/sumarc ~/.sumarc\n" 
 "   [-latest_news] Shows the latest news for the current \n"
 "                  version of the entire SUMA package.\n"
 "   [-all_latest_news] Shows the history of latest news.\n"
@@ -166,7 +183,8 @@ SUMA_SurfaceObject **SUMA_GimmeSomeSOs(int *N_SOv)
    
    SUMA_ENTRY;
    
-   Opt = (SUMA_GENERIC_PROG_OPTIONS_STRUCT *)SUMA_malloc(sizeof(SUMA_GENERIC_PROG_OPTIONS_STRUCT));
+   Opt = (SUMA_GENERIC_PROG_OPTIONS_STRUCT *)
+            SUMA_calloc(1,sizeof(SUMA_GENERIC_PROG_OPTIONS_STRUCT));
 
    N_k = 12; /* Think of this number as the number of states, rather than individual surfaces
                10 from isosurface (actually 9, number 6 is removed), 
@@ -410,6 +428,21 @@ int main (int argc,char *argv[])
           SUMA_free(s); s = NULL;
           exit (0);
 		}
+      if (strcmp(argv[kar], "-environment") == 0) {
+			 s = SUMA_env_list_help ();
+          fprintf (SUMA_STDOUT,  
+                  "#SUMA DEFAULT ENVIRONMENT \n"
+                  "# If you do not have a ~/.sumarc\n"
+                  "# or you want to update yours with\n"
+                  "# new variables, while keeping your\n"
+                  "# settings intact, you can use: \n"
+                  "# suma -environment > ~/sumarc && mv ~/sumarc ~/.sumarc \n"
+                  "# \n"
+                  "***ENVIRONMENT\n"
+                  "%s\n", s); 
+          SUMA_free(s); s = NULL;
+          exit (0);
+		}
       
       if (strcmp(argv[kar], "-latest_news") == 0) {
 			 s = SUMA_New_Additions (0.0, 0);
@@ -524,10 +557,18 @@ int main (int argc,char *argv[])
 		
 
 		if (!brk && !ps->arg_checked[kar]) {
-			fprintf (SUMA_STDERR,
+			if (  !strcmp(argv[kar], "-i") ||
+               !strncmp(argv[kar], "-i_",3) ) {
+            fprintf (SUMA_STDERR,
+                  "Error %s: Option %s not understood. \n"
+                  "Make sure parameter after -i or -i_ is the \n"
+                  "full name of a surface.\n", FuncName, argv[kar]);
+         } else {
+            fprintf (SUMA_STDERR,
                   "Error %s: Option %s not understood. Try -help for usage\n", 
                   FuncName, argv[kar]);
-			exit (1);
+			}
+         exit (1);
 		} else {	
 			brk = NOPE;
 			kar ++;
@@ -539,6 +580,19 @@ int main (int argc,char *argv[])
       AfniHostName = SUMA_copy_string(ps->cs->afni_host_name);
    }
    
+   #if 0
+   SUMA_S_Note("KILL ME");
+   { 
+      int i,j; 
+      SUMA_TextBoxSize("Hello\nMr Bond! How are you?\nzs", &i,&j,NULL); 
+      SUMA_TextBoxSize("Hello\nMr Bond! How are you?\nzs", 
+                        &i,&j,GLUT_BITMAP_8_BY_13); 
+   }
+   SUMA_ReadTextDO("/Users/ziad/SUMA_test_dirs/sample.niml", NULL);   
+      
+   exit(1);
+   #endif
+      
    /* Make surface loading pacifying */
    SetLoadPacify(1);
    
@@ -575,7 +629,7 @@ int main (int argc,char *argv[])
       SUMA_free(jnk); /* without the -trace, you'll get a warning here if jnk is corrupted */
    }
    #endif
-      
+   
 	/* create an Eye Axis DO */
 	EyeAxis = SUMA_Alloc_Axis ("Eye Axis", AO_type);
 	if (EyeAxis == NULL) {
@@ -584,7 +638,8 @@ int main (int argc,char *argv[])
 	}
 
 	/* Store it into SUMAg_DOv */
-	if (!SUMA_AddDO(SUMAg_DOv, &SUMAg_N_DOv, (void *)EyeAxis,  AO_type, SUMA_SCREEN)) {
+	if (!SUMA_AddDO(  SUMAg_DOv, &SUMAg_N_DOv, 
+                     (void *)EyeAxis,  AO_type, SUMA_SCREEN)) {
 		SUMA_error_message (FuncName,"Error Adding DO", 1);
 		exit(1);
 	}

@@ -56,6 +56,8 @@ int main(int argc, char *argv[])
     double *percentile=NULL;
     float *fv = NULL;
     int nfv = 0, perc = 0, nzperc = 0;
+    int nobriklab=0 ;  /* 14 Mar 2008 */
+    int disp1d=1;   /* ZSS May 2008 */
 
     if (argc < 3 || strcmp(argv[1], "-help") == 0) {
 	printf("Usage: 3dROIstats -mask[n] mset [options] datasets\n"
@@ -114,6 +116,9 @@ int main(int argc, char *argv[])
 	       "\n"
 	       "  -debug        Print out debugging information\n"
 	       "  -quiet        Do not print out labels for columns or rows\n"
+          "  -nobriklab    Do not print the sub-brick label next to its index\n"
+          "  -1Dformat     Output results in a 1D format that includes \n"
+          "                commented labels\n"
 	       "\n"
 	       "The following options specify what stats are computed.  By default\n"
 	       "the mean is always computed.\n"
@@ -151,7 +156,8 @@ int main(int argc, char *argv[])
    }
 
     /* scan argument list */
-
+   disp1d = 0;
+   
     while (narg < argc && argv[narg][0] == '-') {
 
 	if (strncmp(argv[narg], "-mask_f2short", 9) == 0) {
@@ -192,12 +198,17 @@ int main(int argc, char *argv[])
    narg++ ; continue ;
    }
  */
+	if (strncmp(argv[narg], "-1Dformat", 5) == 0) {
+	    disp1d = 1;
+	    narg++;
+	    continue;
+	}
 	if (strncmp(argv[narg], "-sigma", 5) == 0) {
 	    sigma = 1;
 	    narg++;
 	    continue;
 	}
-	if (strncmp(argv[narg], "-median", 5) == 0) {
+   if (strncmp(argv[narg], "-median", 5) == 0) {
 	    if (nzperc) {
              Error_Exit("perc cannot be used with nzperc");
             }
@@ -235,6 +246,11 @@ int main(int argc, char *argv[])
 	}
 	if (strncmp(argv[narg], "-quiet", 5) == 0) {
 	    quiet = 1;
+	    narg++;
+	    continue;
+	}
+	if (strncmp(argv[narg], "-nobriklab", 8) == 0) {  /* 14 Mar 2008 */
+	    nobriklab = 1;
 	    narg++;
 	    continue;
 	}
@@ -335,9 +351,10 @@ int main(int argc, char *argv[])
     }				/* switch */
 
     /* Print the header line, while we set up the index array */
-    if (!quiet && !summary)
-	fprintf(stdout, "File\tSub-brick");
-
+    if (!quiet && !summary) {
+	   if (disp1d) fprintf(stdout, "#File\tSub-brick\n\t\t#");
+      else fprintf(stdout, "File\tSub-brick");
+    }  
     for (i = 0, num_ROI = 0; i < 65536; i++)
 	if (non_zero[i]) {
 	    if (force_num_ROI && (((i - 32768) < 0) || ((i - 32768) > force_num_ROI)))
@@ -587,8 +604,16 @@ int main(int argc, char *argv[])
 	    }
        
        /* print the next line of results */
-	    if (!quiet && !summary)
-		fprintf(stdout, "%s\t%d", argv[narg], brik);
+	    if (!quiet && !summary){
+         if( nobriklab )
+		     if (disp1d) fprintf(stdout, "#%s\t%d\n\t\t", argv[narg], brik);
+           else fprintf(stdout, "%s\t%d", argv[narg], brik);
+         else
+           if (disp1d) fprintf(stdout, "#%s\t%d[%-.9s]\n\t\t",   
+                           argv[narg],brik,DSET_BRICK_LABEL(input_dset,brik));
+           else fprintf(stdout, "%s\t%d[%-.9s]",   /* 14 Mar 2008 */
+                           argv[narg],brik,DSET_BRICK_LABEL(input_dset,brik));
+       }
 	    if (!summary) {
 		for (i = 0; i < num_ROI; i++) {
 		    if (voxels[i]) {	/* possible if the numROI option is used - 5/00 */

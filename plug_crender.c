@@ -10,7 +10,7 @@
  */
 
 /*----------------------------------------------------------------------
-  $Id: plug_crender.c,v 1.43 2008/01/31 15:02:01 rwcox Exp $
+  $Id: plug_crender.c,v 1.46 2008/07/01 17:21:30 rickr Exp $
   ----------------------------------------------------------------------
 */
 
@@ -70,7 +70,7 @@ static char g_cren_hist[] =
 #include "parser.h"
 #include <ctype.h>
 
-#include "rickr/r_idisp.h"
+#include "r_idisp.h"
 
 #ifndef ALLOW_PLUGINS
 #  error "Plugins not properly set up -- see machdep.h"
@@ -7050,7 +7050,8 @@ ENTRY( "RCREND_reload_func_dset" );
          case MRI_short:{
             short * sar = (short *) car ;
             short * qar = (short *) tar ;
-            int     thr = (int) thresh  ;
+            /* need ceil() or off by 1          6 Jun 2008 [rickr] */
+            int     thr = (int) ceil(thresh) ;
 
             for( ii=0 ; ii < nvox ; ii++ ){
                if( (qar[ii] > -thr && qar[ii] < thr) || sar[ii] == 0 ){
@@ -7104,7 +7105,8 @@ ENTRY( "RCREND_reload_func_dset" );
          case MRI_byte:{
             byte * sar = (byte *) car ;
             byte * qar = (byte *) tar ;
-            int    thr = (int) thresh ;
+            /* need ceil() or off by 1          6 Jun 2008 [rickr] */
+            int    thr = (int) ceil(thresh) ;
 
             for( lp=0 ; lp < num_lp ; lp++ )
                if( pbar->pval[lp+1] <= 0.0 )
@@ -7965,6 +7967,7 @@ ENTRY( "RCREND_read_exec_CB" );
       GETSTR ; if(ISTARRED(str)) goto SkipSection ;    \
       strcpy(right,str) ; } while(0)
 
+#undef  NSBUF
 #define NSBUF 256
 
 /*--------------------------------------------------------------------------*/

@@ -2025,7 +2025,7 @@ char * AFNI_controller_label( Three_D_View *im3d )
    int ic ;
 
    ic = AFNI_controller_index( im3d ) ;
-   if( ic < 0 || ic > 26 ) strcpy (str,"    ") ;
+   if( ic < 0 || ic > 26 ) strcpy (str,"    ") ;  /* shouldn't happen */
    else                    sprintf(str,"[%c] ",clabel[ic]) ;
    return str ;
 }
@@ -2044,20 +2044,27 @@ void AFNI_set_window_titles( Three_D_View *im3d )
 {
    Boolean redo_title ;
    char ttl[THD_MAX_NAME] , nam[THD_MAX_NAME] ;
-   char *tnam , *clab ;
+   char *tnam , *clab ; int ilab ;
    char signum ; /* 08 Aug 2007 */
 
 ENTRY("AFNI_set_window_titles") ;
 
    if( ! IM3D_OPEN(im3d) ) EXRETURN ;
 
-   signum  = (im3d->vinfo->thr_sign==0) ? ' '
-            :(im3d->vinfo->thr_sign==1) ? '+' : '-' ;
-   clab    = AFNI_controller_label(im3d) ;
-   clab[3] = signum ; clab[4] = '\0' ;
+   clab = AFNI_controller_label(im3d) ;
+   switch( im3d->vinfo->thr_sign ){
+     default: ilab = 2 ; break ;
+     case 1:  ilab = 3 ; clab[3] = '+' ; break ;
+     case 2:  ilab = 3 ; clab[3] = '-' ; break ;
+   }
+   switch( im3d->vinfo->underlay_type ){  /* 08 May 2008 */
+     default:               clab[++ilab] = 'u' ; break ;
+     case UNDERLAY_ALLFUNC: clab[++ilab] = 'o' ; break ;
+   }
+   clab[++ilab] = ' ' ; clab[++ilab] = '\0' ;
 
    if( im3d->anat_wod_flag )
-     sprintf(ttl , "{warp} %s%s: " , clab,GLOBAL_argopt.title_name) ;
+     sprintf(ttl , "{warp}%s%s: " , clab,GLOBAL_argopt.title_name) ;
    else
      sprintf(ttl , "%s%s: " , clab,GLOBAL_argopt.title_name) ;
 
@@ -2260,8 +2267,19 @@ ENTRY("AFNI_choose_dataset_CB") ;
             if( DSET_in_global_session(im3d->ss_now->dsset[ii][vv]) )
               strcat( strlist[ii] , "G" ) ;
 
-         } else
+         } else {
+#if 0
+THD_3dim_dataset *qset ;
+for( vv=FIRST_VIEW_TYPE ; vv <= LAST_VIEW_TYPE ; vv++ ){
+ qset = im3d->ss_now->dsset[ii][vv] ;
+ if( qset != NULL ){
+  INFO_message("BAD: type=%d view_type=%d ibk=%d bkt=%d",
+               qset->type , qset->view_type , qset->dblk != NULL , qset->dblk->type ) ;
+ }
+}
+#endif
             MCW_strncpy( strlist[ii] , "??*BAD*??" , THD_MAX_PREFIX ) ;
+         }
       }
 
       init_str = im3d->vinfo->anat_num ;
@@ -2570,26 +2588,37 @@ ENTRY("AFNI_finalize_dataset_CB") ;
    /*--- make sure all values are set OK-ly ---*/
 
    if( new_view < 0 || new_sess < 0 || new_anat < 0 || new_func < 0 ){
-     XBell( im3d->dc->display , 100 ) ; EXRETURN ;  /* bad! */
+     ERROR_message("Something bad happened when trying to 'Switch'\a") ;
+     EXRETURN ;  /* bad! */
    }
 
    /*- beep & flash viewing control box if view type changes -*/
 
    if( old_view != new_view ){
-     XBell( im3d->dc->display , 100 ) ;
+     static int first=1 ;
      MCW_set_bbox( im3d->vwid->view->view_bbox , 1 << new_view ) ;
+     UNCLUSTERIZE(im3d) ;  /* 14 Feb 2008 */
 
      /* this stuff is for Adam Thomas -- 18 Oct 2006 */
 
-     fprintf(stderr,"** Forced switch from '%s' to '%s' **\n",
-             VIEW_typestr[old_view] , VIEW_typestr[new_view] ) ;
-     for( ii=0 ; ii < 7 ; ii++ ){
-       MCW_invert_widget(im3d->vwid->view->view_bbox->wframe ); RWC_sleep(16);
-       MCW_invert_widget(im3d->vwid->view->view_bbox->wrowcol); RWC_sleep(16);
-       MCW_invert_widget(wcall) ;
-       MCW_invert_widget(im3d->vwid->view->view_bbox->wframe ); RWC_sleep(16);
-       MCW_invert_widget(im3d->vwid->view->view_bbox->wrowcol); RWC_sleep(16);
-       MCW_invert_widget(wcall) ;
+     WARNING_message("Forced switch from '%s' to '%s'\a",
+                     VIEW_typestr[old_view] , VIEW_typestr[new_view] ) ;
+     if( first && wcall != NULL ){
+       char str[256] ; first = 0 ;
+       sprintf(str," \nForced switch from\n  '%s'\nto\n  '%s'\n ",
+                   VIEW_typestr[old_view] , VIEW_typestr[new_view] ) ;
+       (void) MCW_popup_message( wcall, str, MCW_USER_KILL | MCW_TIMER_KILL ) ;
+     }
+
+     if( wcall != NULL && !AFNI_noenv("AFNI_FLASH_VIEWSWITCH") ){
+       for( ii=0 ; ii < 6 ; ii++ ){
+         MCW_invert_widget(im3d->vwid->view->view_bbox->wframe ); RWC_sleep(32);
+         MCW_invert_widget(im3d->vwid->view->view_bbox->wrowcol); RWC_sleep(32);
+         MCW_invert_widget(wcall) ;
+         MCW_invert_widget(im3d->vwid->view->view_bbox->wframe ); RWC_sleep(32);
+         MCW_invert_widget(im3d->vwid->view->view_bbox->wrowcol); RWC_sleep(32);
+         MCW_invert_widget(wcall) ;
+       }
      }
    }
 
@@ -2635,7 +2664,6 @@ ENTRY("AFNI_finalize_dataset_CB") ;
    else
      AFNI_check_obliquity(wcall, ss_new->dsset[new_anat][0]);
 
-
    EXRETURN ;
 }
 
@@ -2650,6 +2678,11 @@ void AFNI_check_obliquity(Widget w, THD_3dim_dataset *dset)
 
    ENTRY("AFNI_check_obliquity");
    if( !ISVALID_DSET(dset) ) EXRETURN ;
+
+   if(AFNI_yesenv("AFNI_NO_OBLIQUE_WARNING")) EXRETURN;
+
+   THD_check_oblique_field(dset);
+
    angle = THD_compute_oblique_angle(dset->daxes->ijk_to_dicom_real, 0);
    if(angle == 0.0) EXRETURN ;
 
@@ -2836,8 +2869,8 @@ ENTRY("AFNI_append_sessions") ;
 
    qs = ssa->num_dsset ;
    for( qd=0; qd < ssb->num_dsset && qd+qs < THD_MAX_SESSION_SIZE ; qd++ )
-      for( vv=0 ; vv <= LAST_VIEW_TYPE ; vv++ )
-         ssa->dsset[qd+qs][vv] = ssb->dsset[qd][vv] ;
+     for( vv=0 ; vv <= LAST_VIEW_TYPE ; vv++ )
+       ssa->dsset[qd+qs][vv] = ssb->dsset[qd][vv] ;
    ssa->num_dsset += qd ;
 
    EXRETURN ;
@@ -2851,10 +2884,12 @@ ENTRY("AFNI_append_sessions") ;
 
 void AFNI_finalize_read_sess_CB( Widget w, XtPointer cd, XtPointer cb )
 {
-   Three_D_View *im3d = (Three_D_View *) cd ;
-   XmFileSelectionBoxCallbackStruct *cbs = (XmFileSelectionBoxCallbackStruct *) cb ;
+   Three_D_View *im3d = (Three_D_View *)cd ;
+   XmFileSelectionBoxCallbackStruct *cbs = (XmFileSelectionBoxCallbackStruct *)cb ;
 
 ENTRY("AFNI_finalize_read_sess_CB") ;
+
+   if( !IM3D_OPEN(im3d) || cbs == NULL ) EXRETURN ;  /* 04 Feb 2008 */
 
    switch( cbs->reason ){
 
@@ -3007,7 +3042,16 @@ STATUS("rescanning timeseries files") ;
                }
 
                RWC_XtPopdown( im3d->vwid->file_dialog ) ;
-            }
+
+               /* 04 Feb 2008: switch to this session */
+
+               if( !AFNI_noenv("AFNI_NEWSESSION_SWITCH") ){
+                 MCW_choose_cbs cbs;
+                 cbs.ival = GLOBAL_library.sslist->num_sess - 1 ;
+                 AFNI_finalize_dataset_CB( im3d->vwid->view->choose_sess_pb,
+                                           (XtPointer)im3d ,  &cbs          ) ;
+               }
+            } /* end of if we actually read a new session */
 
 STATUS("freeing 'text' variable") ;
             myXtFree(text) ;
@@ -3897,11 +3941,9 @@ ENTRY("AFNI_modify_viewing") ;
    if( im3d->type == AFNI_3DDATA_VIEW ){            /* 19 Oct 1999 */
 
       LOAD_ANAT_VIEW(im3d) ;  /* 02 Nov 1996 */
-
       fv = THD_dicomm_to_3dmm(
              im3d->anat_now ,
              TEMP_FVEC3(im3d->vinfo->xi, im3d->vinfo->yj, im3d->vinfo->zk) ) ;
-
       iv = THD_3dmm_to_3dind( im3d->anat_now , fv ) ;
 
    } else {
@@ -4379,11 +4421,13 @@ ENTRY("AFNI_refashion_dataset") ;
 
    /* write the header out */
 
+   THD_force_ok_overwrite(1);
    good = THD_write_3dim_dataset( NULL,NULL , dset , False ) ;
+   THD_force_ok_overwrite(0);
    if( !good ){
-      fprintf(stderr,"\a\n*** cannot write dataset header ***\n") ;
-      if( picturize ) UNPICTURIZE ;
-      RETURN(False) ;
+     fprintf(stderr,"\a\n*** cannot write dataset header ***\n") ;
+     if( picturize ) UNPICTURIZE ;
+     RETURN(False) ;
    }
    STATUS("wrote output header file") ;
 
@@ -4583,7 +4627,7 @@ STATUS("have new image") ;
    STATUS("rewriting header") ;
 
    tross_Append_History( dset , "AFNI: resampled and rewritten" ) ;
-   (void) THD_write_3dim_dataset( NULL,NULL , dset , False ) ;
+   DSET_overwrite(dset) ;
 
    STATUS("purging datablock") ;
 
@@ -5333,6 +5377,12 @@ STATUS("got func info") ;
 
    else if( w == im3d->vwid->dmode->misc_motd_pb ){  /* 29 Nov 2005 */
      AFNI_display_motd( im3d->vwid->imag->topper ) ;
+   }
+
+   /*.........................................................*/
+
+   else if( w == im3d->vwid->dmode->misc_hist_pb ){  /* 05 Mar 2008 */
+     AFNI_display_hist( im3d->vwid->imag->topper ) ;
    }
 
    /*.........................................................*/

@@ -9,15 +9,19 @@ SUMALIBLIST = libSUMA.a libglut.a libply.a
 
 ## 07 Dec 2005 -- Modify include path (RWCox)
 
-SUMA_INPATH = ${SUMA_INCLUDE_PATH} -I../nifti/niftilib -I../nifti/nifticdf -I../nifti/znzlib -I../3DEdge/src
+SUMA_INPATH = ${SUMA_INCLUDE_PATH} -I../nifti/niftilib -I../nifti/nifticdf -I../nifti/znzlib -I../3DEdge/src -I../rickr
 
-SUMA_SRCS = SUMA_trackball.c SUMA_SVmanip.c SUMA_input.c SUMA_MiscFunc.c SUMA_IV_XYZextract.c	\
-		 SUMA_IV_FaceSetsextract.c  SUMA_SurfNorm.c SUMA_DOmanip.c SUMA_StripPath.c 	\
-		 SUMA_Load_Surface_Object.c SUMA_CreateDO.c SUMA_help.c SUMA_display.c SUMA_ParseCommands.c	\
-		 SUMA_Engine.c SUMA_Surface_IO.c SUMA_VolData.c SUMA_niml.c SUMA_Color.c	\
-		 SUMA_GeomComp.c SUMA_SphericalMapping.c SUMA_DataSets.c	\
-		 SUMA_Homer.c SUMA_xColBar.c SUMA_SurfClust.c SUMA_IsoSurface.c SUMA_ConvexHull.c SUMA_BrainWrap.c \
-		 SUMA_SurfaceToSurface.c SUMA_LocalStat.c SUMA_spharm.c
+SUMA_SRCS = SUMA_trackball.c SUMA_SVmanip.c SUMA_input.c \
+		 SUMA_MiscFunc.c SUMA_IV_XYZextract.c	\
+		 SUMA_IV_FaceSetsextract.c SUMA_SurfNorm.c SUMA_DOmanip.c \
+		 SUMA_StripPath.c SUMA_Load_Surface_Object.c SUMA_CreateDO.c \
+		 SUMA_help.c SUMA_display.c SUMA_ParseCommands.c	\
+		 SUMA_Engine.c SUMA_Surface_IO.c SUMA_VolData.c SUMA_niml.c \
+		 SUMA_Color.c SUMA_GeomComp.c SUMA_SphericalMapping.c SUMA_DataSets.c	\
+		 SUMA_Homer.c SUMA_xColBar.c SUMA_SurfClust.c SUMA_IsoSurface.c \
+		 SUMA_ConvexHull.c SUMA_BrainWrap.c \
+		 SUMA_SurfaceToSurface.c SUMA_LocalStat.c SUMA_spharm.c \
+		 SUMA_plot.c
        
 SUMA_gts.o: SUMA_gts.c
 	${CC} -DSUMA_COMPILED ${CCOPT} ${WARNOPT} ${SUMA_INPATH} -c SUMA_gts.c 
@@ -189,6 +193,24 @@ quickspec: SUMA_quickspec.c
          SUMA_quickspec.c ${SUMA_INPATH} ${SUMA_LINK_PATH} \
          ${SUMALIBLIST} ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB}
 
+SurfDist: SUMA_SurfDist.c
+	$(RM) $@
+	${CC} -DSUMA_COMPILED ${CCOPT} ${WARNOPT} -o $@ ${AFNI_OBJS} ${AFNI_3dOBJS} \
+         SUMA_SurfDist.c ${SUMA_INPATH} ${SUMA_LINK_PATH} \
+         ${SUMALIBLIST} ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB}
+
+plottoy: plottoy.c
+	$(RM) $@
+	${CC} -DSUMA_COMPILED ${CCOPT} ${WARNOPT} -o $@ ${AFNI_OBJS} ${AFNI_3dOBJS} \
+         plottoy.c ${SUMA_INPATH} -I/Users/ziad/tmp/plotutils-2.5/include \
+         ${SUMA_LINK_PATH} \
+         ${SUMALIBLIST} ${AFNILIB}  \
+         /Users/ziad/tmp/plotutils-2.5/libplot/.libs/libplot.a \
+         ${ZLIB} ${SUMA_LINK_LIB} \
+         /usr/X11R6/lib/libXaw.a \
+         /usr/X11R6/lib/libXpm.a  
+         
+         
 #>>>>>>>>>>>>>>>>>> Begin special block, compiling without all of SUMA's load <<<<<<<<<<<<<<<<<<<<
 #A special compilation of SUMA_DataSets and SUMA_Algorithms, without SUMA_COMPILED defined
 SUMA_DataSets_NS.o: SUMA_DataSets.c 
@@ -562,6 +584,7 @@ install:
 	@if [ -f SurfFWHM ]; then mv SurfFWHM ${INSTALLDIR_SUMA}; fi;
 	@if [ -f SpharmDeco ]; then mv SpharmDeco ${INSTALLDIR_SUMA}; fi;
 	@if [ -f SpharmReco ]; then mv SpharmReco ${INSTALLDIR_SUMA}; fi;
+	@if [ -f SurfDist ]; then mv SurfDist ${INSTALLDIR_SUMA}; fi;
 
 packbins:
 	if [ ! -d SUMA_bin	]; then $(MKDIR) SUMA_bin; fi
@@ -620,6 +643,7 @@ packbins:
 	@if [ -f SurfFWHM ]; then $(CP) -p SurfFWHM SUMA_bin/; fi;
 	@if [ -f SpharmDeco ]; then $(CP) -p SpharmDeco SUMA_bin/; fi;
 	@if [ -f SpharmReco ]; then $(CP) -p SpharmReco SUMA_bin/; fi;
+	@if [ -f SurfDist ]; then $(CP) -p SurfDist SUMA_bin/; fi;
 
 	$(TAR) -cf $(SUMA_BIN_ARCHIVE) SUMA_bin
 	${RM} -r SUMA_bin
@@ -636,7 +660,7 @@ standalones: CreateIcosahedron SUMA_Map_SurfacetoSurface MapIcosahedron       \
    SUMA_TestDsetIO ConvertDset ShowCmap SurfClust IsoSurface 3dSkullStrip \
    3dCRUISEtoAFNI	3dBRAIN_VOYAGERtoAFNI 3dSurfMask Surf2VolCoord SurfToSurf ROIgrow\
    NikoMap SurfDsetInfo SurfInfo AnalyzeTrace DriveSuma SurfLocalstat SurfFWHM \
-   SpharmDeco SpharmReco SumaProgramTemplate 
+   SpharmDeco SpharmReco SurfDist SumaProgramTemplate 
    
  
 anew: clean libSUMA.a mainobj suma standalones packbins install 

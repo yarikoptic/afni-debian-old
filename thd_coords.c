@@ -130,6 +130,7 @@ THD_ivec3 THD_3dmm_to_3dind_warn( THD_3dim_dataset * dset ,
 
    return iv ;
 }
+
 THD_ivec3 THD_3dmm_to_3dind( THD_3dim_dataset * dset ,
                              THD_fvec3 fv )
 {
@@ -349,7 +350,7 @@ THD_fvec3 THD_3dfind_to_fdfind( FD_brick * br , THD_fvec3 id ) /* 30 Aug 2001 */
 
 /*-------------------------------------------------------------------*/
 
-void THD_coorder_fill( char * in_orcode , THD_coorder * cord )
+void THD_coorder_fill( char *in_orcode , THD_coorder *cord )
 {
    char acod , orcode[4] ;
    int xx,yy,zz , ss1,ss2,ss3 , ii,ll ;
@@ -418,8 +419,8 @@ void THD_coorder_fill( char * in_orcode , THD_coorder * cord )
    convert to output order x,y,z from Dicom x,y,z
 -----------------------------------------------------------------------*/
 
-void THD_dicom_to_coorder( THD_coorder * cord ,
-                           float * xx , float * yy , float * zz )
+void THD_dicom_to_coorder( THD_coorder *cord ,
+                           float *xx , float *yy , float *zz )
 {
    float xval , yval , zval ;
 
@@ -449,8 +450,8 @@ void THD_dicom_to_coorder( THD_coorder * cord ,
    convert to Dicom x,y,z from output order x,y,z
 ---------------------------------------------------------------------*/
 
-void THD_coorder_to_dicom( THD_coorder * cord ,
-                           float * xx , float * yy , float * zz )
+void THD_coorder_to_dicom( THD_coorder *cord ,
+                           float *xx , float *yy , float *zz )
 {
    float xval , yval , zval ;
 
@@ -548,6 +549,24 @@ void THD_dicom_card_xform (THD_3dim_dataset * dset ,
    return  ;
 }
 
+/*---------------------------------------------------------------------
+   Return rotation and shift param. to go from i, j, k to Real
+   Dicom x,y,z 
+-----------------------------------------------------------------------*/
+void THD_dicom_real_xform(THD_3dim_dataset * dset ,
+                      THD_dmat33 *tmat, THD_dfvec3 *dics )
+{
+   if (  !dset || !dset->daxes || 
+         !ISVALID_MAT44(dset->daxes->ijk_to_dicom_real)) {
+      THD_FATAL_ERROR("null input or no valid ijk_to_dicom_real") ;
+   }
+   
+   UNLOAD_MAT44(dset->daxes->ijk_to_dicom_real,
+      tmat->mat[0][0], tmat->mat[0][1], tmat->mat[0][2], dics->xyz[0],    \
+      tmat->mat[1][0], tmat->mat[1][1], tmat->mat[1][2], dics->xyz[1],    \
+      tmat->mat[2][0], tmat->mat[2][1], tmat->mat[2][2], dics->xyz[2]   );
+   return;
+}
 #define MAXNUM(a,b) ( (a) > (b) ? (a):(b))
 #define MAX3(a,b,c) ( (MAXNUM(a,b)) > (MAXNUM(a,c)) ? (MAXNUM(a,b)):(MAXNUM(a,c)))
 #define MINNUM(a,b) ( (a) < (b) ? (a):(b))
@@ -599,10 +618,14 @@ void THD_report_obliquity(THD_3dim_dataset *dset)
 {
    double angle;
 
-   if( !ISVALID_DSET(dset) || oblique_report_repeat==0 ) return;
+   ENTRY("THD_report_obliquity");
+   if(AFNI_yesenv("AFNI_NO_OBLIQUE_WARNING")) EXRETURN;
 
+   if( !ISVALID_DSET(dset) || oblique_report_repeat==0 ) EXRETURN;
+
+   THD_check_oblique_field(dset); /* make sure oblique field is available*/
    angle = THD_compute_oblique_angle(dset->daxes->ijk_to_dicom_real, 0);
-   if(angle == 0.0) return;
+   if(angle == 0.0) EXRETURN;
 
    if(oblique_report_index<oblique_report_repeat) {
       if(first_oblique) {
@@ -628,13 +651,14 @@ void THD_report_obliquity(THD_3dim_dataset *dset)
    if(oblique_report_repeat2==-1) {   /* report obliquity n times, stop */
       if(oblique_report_index>oblique_report_repeat) 
          oblique_report_index = oblique_report_repeat;
-      return;
+      EXRETURN;
    }
 
    /* reset counter if needed*/
    if(oblique_report_index>=(oblique_report_repeat+oblique_report_repeat2))
       oblique_report_index = 0;
 
+   EXRETURN;
 }
 
 /* set the number of times to report obliquity and 
@@ -658,4 +682,28 @@ int THD_get_oblique_report()
 void THD_reset_oblique_report_index()
 {
    oblique_report_index = 0;
+}
+
+/* make daxes structure set to cardinal orientation versus oblique */
+/* usually done if not already set (in older datasets) */
+void THD_make_cardinal(THD_3dim_dataset *dset)
+{
+   THD_dmat33 tmat ;
+   THD_dfvec3 tvec ;
+   mat44 Tc, Tr;
+
+   THD_dicom_card_xform(dset, &tmat, &tvec); 
+   LOAD_MAT44(Tc, 
+      tmat.mat[0][0], tmat.mat[0][1], tmat.mat[0][2], tvec.xyz[0],
+      tmat.mat[1][0], tmat.mat[1][1], tmat.mat[1][2], tvec.xyz[1],
+      tmat.mat[2][0], tmat.mat[2][1], tmat.mat[2][2], tvec.xyz[2]);
+   dset->daxes->ijk_to_dicom_real = Tc;
+}
+
+/* check the obliquity transformation field to see if it's valid */
+/* if not, reset it to the cardinal field */
+void THD_check_oblique_field(THD_3dim_dataset *dset)
+{
+   if( !ISVALID_MAT44(dset->daxes->ijk_to_dicom_real) )
+      THD_make_cardinal(dset);
 }

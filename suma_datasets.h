@@ -2,6 +2,7 @@
 #define SUMA_DATASETS_INCLUDED
 
 #include "matrix.h"
+#include "suma_afni_surface.h"
 
 #define MAX_ERRLOG_MSG 1000
 #define MAX_ERRLOG_FUNCNAME 200
@@ -205,7 +206,11 @@ typedef enum {
    SUMA_1D_PURE_STDOUT,       /* 12 */
    SUMA_1D_PURE_STDERR,       /* 13 */
    SUMA_1D_PURE_STDOUT_TRANSPOSE,       /* 14 */
-   SUMA_1D_PURE_STDERR_TRANSPOSE,   /* THIS ONE IS USED AS A MARKER TOO  */  /* 15 */
+   SUMA_1D_PURE_STDERR_TRANSPOSE,/* THIS ONE IS USED AS A MARKER TOO*/  /* 15 */
+   SUMA_XML_DSET,                  /* 16 */
+   SUMA_XML_ASCII_DSET,            /* 17 */
+   SUMA_XML_B64_DSET,              /* 18 */
+   SUMA_XML_B64GZ_DSET             /* 19 */
    
 } SUMA_DSET_FORMAT; /*!<  Format of data set
                           When you add a new element, modify functions
@@ -671,6 +676,14 @@ static byte NI_GOT;
    } else { NI_GOT = 0; }  \
 }
 #define NI_IS_STR_ATTR_EQUAL(ngr, name, stmp) ( (!name || !NI_get_attribute(ngr,name) || !stmp || strcmp(NI_get_attribute(ngr,name), stmp) ) ? 0:1 )
+
+#define NI_YES_ATTR(ngr, name) ( \
+   (  !name || \
+      !NI_get_attribute(ngr,name) ||   \
+      strncmp(SUMA_to_lower(NI_get_attribute(ngr,name)), "y",1) )   \
+      ? 0:1 )
+#define NI_NO_ATTR(ngr, name) ( (!name || !NI_get_attribute(ngr,name) || strncmp(SUMA_to_lower(NI_get_attribute(ngr,name)), "n",1) ) ? 0:1 )
+
 /*!
    NEL_READ macro for reading a NI element from strm
    nel (NI_element *) to contain the deed (if null then read failed)
@@ -1017,6 +1030,31 @@ If ind is NULL, then the index will be the line number.
    }  \
 }
 
+/*! A macro to transport common attributes when 
+    copying columns from one dset to another.
+    Do not include in ATR_LIST here, any of
+    HISTORY_NOTE (this should be done by appending old history separately)
+    COLMS_LABELS
+    COLMS_TYPES   
+    COLMS_RANGE as these are handled at the moment of column creation
+*/
+#define SUMA_COPY_DSET_COL_ATTRIBUTES(odset, ndset, io, in) {   \
+   char *m_ATR_LIST[64] = { \
+      "COLMS_STATSYM", "FDRCURVE",  \
+       NULL }; \
+   if (!SUMA_CopyDsetAttributes (odset, ndset, m_ATR_LIST, io, in)) {   \
+      SUMA_S_Err("Failed to copy dset attributes");   \
+   }  \
+}
+#define SUMA_COPY_DSETWIDE_ATTRIBUTES(odset, ndset) {   \
+   char *m_ATR_LIST[64] = { \
+      "TR",  \
+       NULL }; \
+   if (!SUMA_CopyDsetAttributes (odset, ndset, m_ATR_LIST, -1, -1)) {   \
+      SUMA_S_Err("Failed to copy dset attributes");   \
+   }  \
+}
+
 #define SUMA_MAX_OPEN_DX_FIELD_COMPONENTS 500
 #define SUMA_MAX_OPEN_DX_FIELD_ATTRIBUTES 500
 #define SUMA_MAX_OPEN_DX_OBJECTS  500
@@ -1064,7 +1102,6 @@ NI_element *SUMA_FindDsetDataElement(SUMA_DSET *dset);
 NI_element *SUMA_FindDsetNodeIndexElement(SUMA_DSET *dset);
 NI_element *SUMA_FindDsetAttributeElement(SUMA_DSET *dset, char *attname);
 NI_element *SUMA_FindNgrAttributeElement(NI_group *ngr, char *attname);
-NI_element *SUMA_FindNgrNamedElement(NI_group *ngr, char *elname);
 NI_element *SUMA_FindNgrDataElement(NI_group *ngr, char *nelname, char *typename);
 float SUMA_LatestVersionNumber(void);
 char * SUMA_Dset_Type_Name (SUMA_DSET_TYPE tp);
@@ -1091,6 +1128,17 @@ int SUMA_AddDsetNodeIndexColAttr (SUMA_DSET *dset, char *col_label,
                      SUMA_COL_TYPE ctp, void *col_attr );
 int SUMA_AddColAttr (NI_element *nel, char *col_label,
                      SUMA_COL_TYPE ctp, void *col_attr, int col_index);
+SUMA_Boolean SUMA_isMultiColumnAttr(NI_element *nel);
+SUMA_Boolean SUMA_isSingleColumnAttr(NI_element *nel, int *icolb, char *rtname);
+SUMA_Boolean SUMA_isDsetwideColumnAttr(NI_element *nel);
+SUMA_Boolean SUMA_isDsetNelAttr(NI_element *nel);
+char * SUMA_GetDsetColStringAttr( SUMA_DSET *dset, int col_index, 
+                                    char *attrname);
+SUMA_Boolean SUMA_ParseAttrName(NI_element *nel, int *tp, 
+                                 int *icol, char *rtname);
+SUMA_Boolean SUMA_CopyDsetAttributes ( SUMA_DSET *src, SUMA_DSET *dest,
+                                       char **attrlist, 
+                                       int isrc, int idest );
 SUMA_Boolean SUMA_NewDsetGrp (SUMA_DSET *dset, SUMA_DSET_TYPE dtp, 
                            char* MeshParent_idcode, 
                           char * geometry_parent_idcode, int N_el, 
@@ -1135,7 +1183,7 @@ int SUMA_FillDsetNelCol (SUMA_DSET *dset, char *col_label,
 int SUMA_FillDsetNelNodeIndexCol (SUMA_DSET *dset, char *col_label, 
                      SUMA_COL_TYPE ctp, void *col, 
                      void *col_attr, int stride); 
-SUMA_Boolean SUMA_PopulateDsetNodeIndexNel(SUMA_DSET *dset);
+SUMA_Boolean SUMA_PopulateDsetNodeIndexNel(SUMA_DSET *dset, int verb);
 int SUMA_FillNelCol (NI_element *nel, char *col_label,
                      SUMA_COL_TYPE ctp, void *col, 
                      void *col_attr, int stride); 
@@ -1152,6 +1200,7 @@ int SUMA_AddGenDsetColAttr (SUMA_DSET *dset, SUMA_COL_TYPE ctp, void *col, int s
 int SUMA_AddGenDsetNodeIndexColAttr (SUMA_DSET *dset, SUMA_COL_TYPE ctp, void *col, int stride) ;
 int SUMA_AddGenColAttr (NI_element *nel, SUMA_COL_TYPE ctp, void *col, int stride, int col_index); 
 SUMA_DSET *SUMA_LoadNimlDset (char *Name, int verb);
+SUMA_DSET *SUMA_LoadGIFTIDset (char *Name, int verb);
 SUMA_DSET *SUMA_LoadDset_eng (char *Name, SUMA_DSET_FORMAT *form, int verb);
 SUMA_DSET *SUMA_LoadDset_ns (char *Name, SUMA_DSET_FORMAT *form, int verb);
 SUMA_DSET *SUMA_Load1DDset_eng (char *Name, int verb);
@@ -1173,8 +1222,12 @@ SUMA_DSET * SUMA_far2dset_ns( char *FullName, char *dset_id, char *dom_id,
 int SUMA_is_AllNumeric_dset(SUMA_DSET *dset); 
 int SUMA_is_AllNumeric_ngr(NI_group *ngr) ;
 int SUMA_is_AllNumeric_nel(NI_element *nel);
+int SUMA_is_TimeSeries_dset(SUMA_DSET *dset, double *TRp);
+SUMA_Boolean SUMA_SetDsetTR(SUMA_DSET *dset, double TR);
 SUMA_Boolean SUMA_NewDsetID (SUMA_DSET *dset);
 SUMA_Boolean SUMA_NewDsetID2 (SUMA_DSET *dset, char *str);
+char *SUMA_DsetColStringAttrCopy(SUMA_DSET *dset, int i, 
+                                 int addcolnum, char *attrname);
 char *SUMA_DsetColLabelCopy(SUMA_DSET *dset, int i, int addcolnum);
 char *SUMA_ColLabelCopy(NI_element *nel, int i, int addcolnum);
 SUMA_DSET * SUMA_PaddedCopyofDset ( SUMA_DSET *odset, int MaxNodeIndex );
@@ -1210,7 +1263,7 @@ float * SUMA_DsetCol2FloatFullSortedColumn(  SUMA_DSET *dset, int ico, byte **nm
 SUMA_Boolean SUMA_MakeSparseColumnFullSorted(float **vp, int N_v, float mask_val, byte **bmp, SUMA_DSET *dset, int N_Node);
 SUMA_Boolean SUMA_AddNodeIndexColumn(SUMA_DSET *dset, int N_Node); 
 int *SUMA_CreateNodeIndexToRowIndexMap(SUMA_DSET *dset, int maxind);
-SUMA_DSET * SUMA_ngr_2_dset(NI_group *nini);
+SUMA_DSET * SUMA_ngr_2_dset(NI_group *nini, int warn);
 SUMA_Boolean SUMA_LabelDset(SUMA_DSET *dset, char *lbl);
 SUMA_Boolean SUMA_RenameDset(SUMA_DSET *dset, char *filename);
 byte *SUMA_load_1D_n_mask(char *name, int N_Node, byte *omask, const char *oper, int *N_inmask);
@@ -1222,6 +1275,11 @@ void SUMA_SetAddIndex_1D(int);
 int SUMA_GetAddIndex_1D(void);
 THD_3dim_dataset *SUMA_sumadset2afnidset(SUMA_DSET **dsetp, int copy_data, int cleardset);
 SUMA_DSET *SUMA_afnidset2sumadset(THD_3dim_dataset **dsetp, int copy_data, int cleardset);
+int SUMA_GetDsetColStatAttr(  SUMA_DSET *dset, int col_index, 
+                              int *statcode,
+                              float *p1, float *p2, float *p3);
+float SUMA_fdrcurve_zval( SUMA_DSET *dset , int iv , float thresh );
+
 
 /*********************** BEGIN Miscellaneous support functions **************************** */
    #define SUMA_STANDALONE_INIT {   \
@@ -1233,7 +1291,7 @@ SUMA_DSET *SUMA_afnidset2sumadset(THD_3dim_dataset **dsetp, int copy_data, int c
       SUMA_process_environ(); \
       SUMA_ParseInput_basics_ns (argv, argc);   \
    }
-
+char * SUMA_to_lower(char *s) ;
 int SUMA_filexists (char *f_name);
 char *SUMA_help_basics();
 char *SUMA_help_talk();
@@ -1269,9 +1327,14 @@ char *SUMA_set_string_length(char *buf, char cp, int n);
 SUMA_STRING * SUMA_StringAppend (SUMA_STRING *SS, char *newstring);
 SUMA_STRING * SUMA_StringAppend_va (SUMA_STRING *SS, char *newstring, ... );
 void SUMA_sigfunc(int sig);
-char *SUMA_pad_string(char *buf, char cp, int n, int add2end);
+char * SUMA_pad_string(char *buf, char cp, int n, int add2end);
 char * SUMA_GetDsetValInCol(SUMA_DSET *dset, int ind, int ival, double *dval) ;
 char * SUMA_GetValInCol(NI_element *nel, int ind, int ival, double *dval); 
+void * SUMA_GetDsetAllNodeValsInCols2(SUMA_DSET *dset, 
+                                       int *ind, int nind, 
+                                       int node, int N_Node,
+                                       int *N_ret, 
+                                       SUMA_VARTYPE tp);
 double SUMA_GetDsetValInCol2(SUMA_DSET *dset, int ind, int ival) ;
 double SUMA_GetValInCol2(NI_element *nel, int ind, int ival); 
 int SUMA_GetNodeRow_FromNodeIndex_ns(SUMA_DSET *dset, int node, int N_Node);
@@ -1301,8 +1364,23 @@ char * SUMA_file_suck( char *fname , int *nread );
 void *SUMA_AdvancePastNumbers(char *op, char **opend, SUMA_VARTYPE tp);
 void *SUMA_strtol_vec(char *op, int nvals, int *nread, SUMA_VARTYPE vtp);
 SUMA_Boolean SUMA_ShowParsedFname(SUMA_PARSED_NAME *pn, FILE *out);
+char *SUMA_EscapeChars(char *s1, char *ca, char *es);
+char *SUMA_ReplaceChars(char *s1, char *ca, char *es);
+char *SUMA_isEnv(char *env, char *sval);
 
 /*********************** END Miscellaneous support functions **************************** */
+
+/******** BEGIN functions for surface structure  ******************** */
+void SUMA_ShowAfniSurfaceObject(NI_group *aSO, FILE *out,
+                              int detail, char *title);
+char *SUMA_AfniSurfaceObject_Info(NI_group *aSO, 
+                                  int detail, char *title);
+NI_group * afni_open_gifti_surf(char * fname, int read_data);
+int afni_write_gifti_surf( NI_group *aSO, char * fname, 
+                           int write_data, int encoding);
+
+
+/******** END functions for surface structure  ******************** */
 
 
 #endif

@@ -390,6 +390,7 @@ typedef struct {
 
   MCW_arrowval *cmode_av ;  /* first row of controls */
   Widget clust3d_pb, savetable_pb, index_lab, prefix_tf, done_pb ;
+  Widget savemask_pb ;      /* 01 May 2008 */
 
   Widget dataset_pb ;       /* second row of controls */
   MCW_arrowval *from_av, *to_av, *aver_av ;
@@ -657,6 +658,7 @@ typedef struct {
       Widget         misc_readme_env_pb ; /* 05 Aug 2004 */
 
       Widget         misc_motd_pb ;       /* 29 Nov 2005 */
+      Widget         misc_hist_pb ;       /* 05 Mar 2008 */
 
 } AFNI_datamode_widgets ;
 
@@ -910,6 +912,23 @@ typedef struct {
       int   vedskip ;
 } Three_D_View ;
 
+/*! Force re-clusterizing when this viewer is redisplayed */
+
+#define IM3D_VEDIT_FORCE(iq) (iq)->vedset.flags=1
+
+/*! Turn cluster display off in this viewer */
+
+#define UNCLUSTERIZE(iq)                                                   \
+ do{ AFNI_vedit_clear((iq)->fim_now); VEDIT_clear_label((iq));             \
+     AFNI_cluster_dispkill((iq));                                          \
+     if( (iq)->vwid->func->clu_rep != NULL ){                              \
+       free((iq)->vwid->func->clu_rep); (iq)->vwid->func->clu_rep = NULL;  \
+     }                                                                     \
+     DESTROY_CLARR((iq)->vwid->func->clu_list);                            \
+     AFNI_set_thr_pval((iq)); (iq)->vedset.flags = 0;                      \
+ } while(0) ;
+
+
 /*! Is any image viewer window open? */
 
 #define IM3D_IMAGIZED(iq) \
@@ -1109,6 +1128,7 @@ typedef struct {
 #endif
 
 extern void AFNI_display_motd( Widget w ) ;       /* 29 Nov 2005 */
+extern void AFNI_display_hist( Widget w ) ;       /* 05 Mar 2008 */
 
 #define FIM_THR          (0.01*GLOBAL_library.fim_bkthr_perc)  /* 02 Jun 1999 */
 #define SET_FIM_bkthr(v) (GLOBAL_library.fim_bkthr_perc = (v))
@@ -1143,7 +1163,6 @@ extern int AFNI_vol2surf_func_overlay( Three_D_View *, SUMA_irgba **,
                                        int, int, int, float **, float * );
 
 extern void AFNI_parse_args( int argc , char * argv[] );
-extern void FatalError(char * str);
 
 extern void AFNI_splashup   (void) ;  /* 02 Aug 1999 */
 extern void AFNI_splashdown (void) ;
@@ -1206,6 +1225,7 @@ extern void AFNI_startup_3dview  ( Three_D_View * im3d ); /* 15 Jun 2000 */
 extern MRI_IMAGE * AFNI_overlay( int n , FD_brick * br );
 extern void AFNI_invert_CB( Widget, XtPointer, XtPointer ) ; /* 02 Feb 2007 */
 extern void AFNI_nimlpo_CB( Widget, XtPointer, XtPointer ) ; /* 02 Feb 2007 */
+extern void AFNI_process_NIML_data( int , void * , int ) ;   /* 01 Feb 2008 */
 
 extern char * AFNI_controller_label( Three_D_View * im3d ); /* 01 Apr 1999 */
 extern void AFNI_set_window_titles( Three_D_View * im3d );
@@ -1705,7 +1725,8 @@ extern float mad_proj    ( int, float * ) ;  /* 07 Dec 2007 */
 extern void median9_box_func ( int, int, double,double, float * ) ;
 extern void winsor9_box_func ( int, int, double,double, float * ) ;
 extern void osfilt9_box_func ( int, int, double,double, float * ) ;
-extern void fft2D_func       ( int, int, double,double, float * ) ;
+extern void fft2D_absfunc    ( int, int, double,double, float * ) ;
+extern void fft2D_phasefunc  ( int, int, double,double, float * ) ;
 extern void median21_box_func( int, int, double,double, float * ) ;
 extern void winsor21_box_func( int, int, double,double, float * ) ;
 
@@ -1762,7 +1783,7 @@ static char * INIT_def_colovr[DEFAULT_NCOLOVR] = {
    "#ffff00" , "#ffcc00"   , "#ff9900"  , "#ff6900" , "#ff4400" , "#ff0000" ,
    "#0000ff" , "#0044ff"   , "#0069ff"  , "#0099ff" , "#00ccff" , "#00ffff" ,
    "green"   , "limegreen" , "violet"   , "hotpink" ,
-   "white"   , "#dddddd"   , "#bbbbbb"  , "black"   ,
+   "white"   , "#dddddd"   , "#bbbbbb"  , "#010101" ,
 
    "#cc1033" , "#992066"   , "#663199"  , "#3341cc" ,  /* RGB cycle */
    "#0051ff" , "#0074cc"   , "#009799"  , "#00b966" ,  /* 10 Jun 2002 */

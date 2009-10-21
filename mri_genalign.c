@@ -695,21 +695,38 @@ typedef struct { int num , *nelm , **elm ; } GA_BLOK_set ;
 #undef  FAS
 #define FAS(a,s) ( (a) <= (s) && (a) >= -(s) )
 
+/** volume of ball = 4*PI/3 * siz**3 = 4.1888 * siz**3 **/
+
 #define GA_BLOK_inside_ball(a,b,c,siz) \
   ( ((a)*(a)+(b)*(b)+(c)*(c)) <= (siz) )
 
+/** volume of cube = 8 * siz**3 **/
+/** lattice vectors = [2*siz,0,0]  [0,2*siz,0]  [0,0,2*siz] **/
+
 #define GA_BLOK_inside_cube(a,b,c,siz) \
   ( FAS((a),(siz)) && FAS((b),(siz)) && FAS((c),(siz)) )
+
+/** volume of RHDD = 2 * siz**3 **/
+/** lattice vectors = [siz,siz,0]  [0,siz,siz]  [siz,0,siz] **/
 
 #define GA_BLOK_inside_rhdd(a,b,c,siz)              \
   ( FAS((a)+(b),(siz)) && FAS((a)-(b),(siz)) &&     \
     FAS((a)+(c),(siz)) && FAS((a)-(c),(siz)) &&     \
     FAS((b)+(c),(siz)) && FAS((b)-(c),(siz))   )
 
+/** volume of TOHD = 4 * siz**3 **/
+/** lattice vectors = [-siz,siz,siz]  [siz,-siz,siz]  [siz,siz,-siz] **/
+
+#define GA_BLOK_inside_tohd(a,b,c,siz)                              \
+  ( FAS((a),(siz)) && FAS((b),(siz)) && FAS((c),(siz))         &&   \
+    FAS((a)+(b)+(c),1.5f*(siz)) && FAS((a)-(b)+(c),1.5f*(siz)) &&   \
+    FAS((a)+(b)-(c),1.5f*(siz)) && FAS((a)-(b)-(c),1.5f*(siz))   )
+
 #define GA_BLOK_inside(bt,a,b,c,s)                              \
  (  ((bt)==GA_BLOK_BALL) ? GA_BLOK_inside_ball((a),(b),(c),(s)) \
   : ((bt)==GA_BLOK_CUBE) ? GA_BLOK_inside_cube((a),(b),(c),(s)) \
   : ((bt)==GA_BLOK_RHDD) ? GA_BLOK_inside_rhdd((a),(b),(c),(s)) \
+  : ((bt)==GA_BLOK_TOHD) ? GA_BLOK_inside_tohd((a),(b),(c),(s)) \
   : 0 )
 
 #define GA_BLOK_ADDTO_intar(nar,nal,ar,val)                                 \
@@ -797,7 +814,7 @@ ENTRY("create_GA_BLOK_set") ;
      }
      break ;
 
-     /* rhombic dodecahedra go on their own hexagonal lattice,
+     /* rhombic dodecahedra go on a FCC lattice,
         spaced so that faces touch (i.e., no volumetric overlap) */
 
      case GA_BLOK_RHDD:{
@@ -806,6 +823,18 @@ ENTRY("create_GA_BLOK_set") ;
        dxp = a   ; dyp = a   ; dzp = 0.0f ;
        dxq = 0.0f; dyq = a   ; dzq = a    ;
        dxr = a   ; dyr = 0.0f; dzr = a    ;
+     }
+     break ;
+
+     /* truncated octahedra go on a BCC lattice,
+        spaced so that faces touch (i.e., no volumetric overlap) */
+
+     case GA_BLOK_TOHD:{
+       float a = blokrad ;
+       siz = a ;
+       dxp = -a ; dyp =  a ; dzp =  a ;
+       dxq =  a ; dyq = -a ; dzq =  a ;
+       dxr =  a ; dyr =  a ; dzr = -a ;
      }
      break ;
 
@@ -953,11 +982,15 @@ ENTRY("create_GA_BLOK_set") ;
 
 /*---------------------------------------------------------------------------*/
 
+#undef  CMAX
+#define CMAX 0.9999f
+
 float GA_pearson_local( int npt , float *avm, float *bvm, float *wvm )
 {
    GA_BLOK_set *gbs ;
    int nblok , nelm , *elm , dd , ii,jj , nm ;
-   float xv,yv,xy,xm,ym,vv,ww,ws , pcor , wt , psum=0.0f ;
+   float xv,yv,xy,xm,ym,vv,ww,ws,wss , pcor , wt , psum=0.0f ;
+   static int uwb=-1 ;
 
    if( gstup->blokset == NULL ){
      float rad=gstup->blokrad , mrad ;
@@ -979,12 +1012,14 @@ float GA_pearson_local( int npt , float *avm, float *bvm, float *wvm )
    nblok = gbs->num ; nm = gstup->npt_match ;
    if( nblok < 1 ) ERROR_exit("Bad GA_BLOK_set?!") ;
 
-   for( dd=0 ; dd < nblok ; dd++ ){
+   if( uwb < 0 ) uwb = AFNI_yesenv("AFNI_LPC_UNWTBLOK") ;  /* first time in */
+
+   for( wss=0.0f,dd=0 ; dd < nblok ; dd++ ){
      nelm = gbs->nelm[dd] ; if( nelm < 9 ) continue ;
      elm = gbs->elm[dd] ;
 
      if( wvm == NULL ){   /*** unweighted correlation ***/
-       xv=yv=xy=xm=ym=0.0f ; /*** ws = nelm ; ***/
+       xv=yv=xy=xm=ym=0.0f ; ws = 1.0f ;
        for( ii=0 ; ii < nelm ; ii++ ){
          jj = elm[ii] ;
          xm += avm[jj] ; ym += bvm[jj] ;
@@ -1009,16 +1044,18 @@ float GA_pearson_local( int npt , float *avm, float *bvm, float *wvm )
          wt = wvm[jj] ; vv = avm[jj]-xm ; ww = bvm[jj]-ym ;
          xv += wt*vv*vv ; yv += wt*ww*ww ; xy += wt*vv*ww ;
        }
+       if( uwb ) ws = 1.0f ;
      }
+     wss += ws ;
 
      if( xv <= 0.0f || yv <= 0.0f ) continue ;      /* skip this blok */
      pcor = xy/sqrtf(xv*yv) ;                       /* correlation */
-     if( pcor > 1.0f ) pcor = 1.0f; else if( pcor < -1.0f ) pcor = -1.0f;
-     pcor = logf( (1.0001f+pcor)/(1.0001f-pcor) ) ; /* 2*arctanh() */
-     psum += pcor * fabsf(pcor) ;                   /* emphasize large values */
+     if( pcor > CMAX ) pcor = CMAX; else if( pcor < -CMAX ) pcor = -CMAX;
+     pcor = logf( (1.0f+pcor)/(1.0f-pcor) ) ;       /* 2*arctanh() */
+     psum += ws * pcor * fabsf(pcor) ;              /* emphasize large values */
    }
 
-   return (0.25f*psum/nblok) ; /* averaged stretched emphasized correlations */
+   return (0.25f*psum/wss);      /* averaged stretched emphasized correlation */
 }
 /*======================== End of BLOK-iness functionality ==================*/
 
@@ -2132,6 +2169,41 @@ ENTRY("mri_genalign_scalar_warpone") ;
    RETURN(wim) ;
 }
 
+/*--------------------------------------------------------------------------*/
+/*! - Find the 8 corners of the input dataset (voxel edges, not centers).
+    - Warp each one using the provided wfunc().
+    - Return the min and max (x,y,z) coordinates of these warped points.
+*//*------------------------------------------------------------------------*/
+
+#if 0
+static void mri_genalign_warped_bbox( THD_3dim_dataset *inset,
+                                      int npar, float *wpar, GA_warpfunc *wfunc,
+                                      float *xb , float *xt ,
+                                      float *yb , float *yt ,
+                                      float *zb , float *zt )
+{
+   THD_dataxes *daxes ;
+   float nx0,ny0,nz0 , nx1,ny1,nz1 ;
+   float xx,yy,zz , xbot,ybot,zbot , xtop,ytop,ztop ;
+
+   /* setup stuff */
+
+   if( !ISVALID_DSET(inset) || wfunc == NULL ) return ;
+
+   daxes = inset->daxes ;
+   nx0 =           -0.5 ; ny0 =           -0.5 ; nz0 =           -0.5 ;
+   nx1 = daxes->nxx-0.5 ; ny1 = daxes->nyy-0.5 ; nz1 = daxes->nzz-0.5 ;
+
+   /* send parameters to warp function, if needed */
+
+   if( npar > 0 && wpar != NULL )
+     wfunc( npar , wpar , 0,NULL,NULL,NULL , NULL,NULL,NULL ) ;
+
+   wfunc() ;
+}
+#endif
+
+
 /*==========================================================================*/
 /*****------------------------ Warping functions -----------------------*****/
 /*--------------------------------------------------------------------------*/
@@ -2371,7 +2443,7 @@ void mri_genalign_affine( int npar, float *wpar ,
 
    if( npt <= 0 || xi == NULL || xo == NULL ) return ;
 
-   /* mutiply matrix times input vectors */
+   /* multiply matrix times input vectors */
 
    for( ii=0 ; ii < npt ; ii++ )
      MAT44_VEC( gam , xi[ii],yi[ii],zi[ii] , xo[ii],yo[ii],zo[ii] ) ;
@@ -2402,10 +2474,253 @@ void mri_genalign_mat44( int npar, float *wpar,
 
    if( npt <= 0 || xi == NULL || xo == NULL ) return ;
 
-   /* mutiply matrix times input vectors */
+   /* multiply matrix times input vectors */
 
    for( ii=0 ; ii < npt ; ii++ )
      MAT44_VEC( gam , xi[ii],yi[ii],zi[ii] , xo[ii],yo[ii],zo[ii] ) ;
+
+   return ;
+}
+
+/*--------------------------------------------------------------------------*/
+
+void mri_genalign_bilinear( int npar, float *wpar ,
+                            int npt , float *xi, float *yi, float *zi ,
+                                      float *xo, float *yo, float *zo  )
+{
+   static mat44 gam ;  /* saved general affine matrix */
+   static float dd_for[3][3][3] , xcen,ycen,zcen,dd_fac ;
+   static int ddiag=0 ;  /* is dd matrix diagonal? */
+   int ii ;
+   THD_mat33 dd,ee ; float aa,bb,cc , uu,vv,ww ;
+
+   /** new parameters ==> setup matrix */
+
+   if( npar >= 43 && wpar != NULL ){  /* 39 'real' parameters, 4 'fake' ones */
+     xcen   = wpar[39] ;              /* the fake (non-varying) parameters */
+     ycen   = wpar[40] ;
+     zcen   = wpar[41] ;
+     dd_fac = wpar[42] ;
+
+     gam = GA_setup_affine( 12 , wpar ) ;
+
+     dd_for[0][0][0] = wpar[12] * dd_fac ;  /* the real parameters */
+     dd_for[0][0][1] = wpar[13] * dd_fac ;
+     dd_for[0][0][2] = wpar[14] * dd_fac ;
+
+     dd_for[0][1][0] = wpar[15] * dd_fac ;
+     dd_for[0][1][1] = wpar[16] * dd_fac ;
+     dd_for[0][1][2] = wpar[17] * dd_fac ;
+     ddiag = (wpar[15]==0.0f) && (wpar[16]==0.0f) && (wpar[17]==0.0f) ;
+
+     dd_for[0][2][0] = wpar[18] * dd_fac ;
+     dd_for[0][2][1] = wpar[19] * dd_fac ;
+     dd_for[0][2][2] = wpar[20] * dd_fac ;
+     ddiag = ddiag && (wpar[18]==0.0f) && (wpar[19]==0.0f) && (wpar[20]==0.0f) ;
+
+     dd_for[1][0][0] = wpar[21] * dd_fac ;
+     dd_for[1][0][1] = wpar[22] * dd_fac ;
+     dd_for[1][0][2] = wpar[23] * dd_fac ;
+     ddiag = ddiag && (wpar[21]==0.0f) && (wpar[22]==0.0f) && (wpar[23]==0.0f) ;
+
+     dd_for[1][1][0] = wpar[24] * dd_fac ;
+     dd_for[1][1][1] = wpar[25] * dd_fac ;
+     dd_for[1][1][2] = wpar[26] * dd_fac ;
+
+     dd_for[1][2][0] = wpar[27] * dd_fac ;
+     dd_for[1][2][1] = wpar[28] * dd_fac ;
+     dd_for[1][2][2] = wpar[29] * dd_fac ;
+     ddiag = ddiag && (wpar[27]==0.0f) && (wpar[28]==0.0f) && (wpar[29]==0.0f) ;
+
+     dd_for[2][0][0] = wpar[30] * dd_fac ;
+     dd_for[2][0][1] = wpar[31] * dd_fac ;
+     dd_for[2][0][2] = wpar[32] * dd_fac ;
+     ddiag = ddiag && (wpar[30]==0.0f) && (wpar[31]==0.0f) && (wpar[32]==0.0f) ;
+
+     dd_for[2][1][0] = wpar[33] * dd_fac ;
+     dd_for[2][1][1] = wpar[34] * dd_fac ;
+     dd_for[2][1][2] = wpar[35] * dd_fac ;
+     ddiag = ddiag && (wpar[33]==0.0f) && (wpar[34]==0.0f) && (wpar[35]==0.0f) ;
+
+     dd_for[2][2][0] = wpar[36] * dd_fac ;
+     dd_for[2][2][1] = wpar[37] * dd_fac ;
+     dd_for[2][2][2] = wpar[38] * dd_fac ;
+   }
+
+   /* nothing to transform? */
+
+   if( npt <= 0 || xi == NULL || xo == NULL ) return ;
+
+   /* multiply matrix times input vectors */
+
+   for( ii=0 ; ii < npt ; ii++ ){
+
+     aa = xi[ii] ; bb = yi[ii] ; cc = zi[ii] ;
+
+     if( aff_use_before ){
+       MAT44_VEC( aff_before , aa,bb,cc , uu,vv,ww ) ;
+     } else {
+       uu = aa ; vv = bb ; ww = cc ;
+     }
+     uu -= xcen; vv -= ycen; ww -= zcen;  /* centered coords */
+
+     /* compute denominator (dd) matrix from coordinates and parameters */
+
+     dd.mat[0][0] = 1.0f + dd_for[0][0][0]*uu + dd_for[0][0][1]*vv + dd_for[0][0][2]*ww;
+     dd.mat[1][1] = 1.0f + dd_for[1][1][0]*uu + dd_for[1][1][1]*vv + dd_for[1][1][2]*ww;
+     dd.mat[2][2] = 1.0f + dd_for[2][2][0]*uu + dd_for[2][2][1]*vv + dd_for[2][2][2]*ww;
+     if( !ddiag ){
+       dd.mat[0][1] =      dd_for[0][1][0]*uu + dd_for[0][1][1]*vv + dd_for[0][1][2]*ww;
+       dd.mat[0][2] =      dd_for[0][2][0]*uu + dd_for[0][2][1]*vv + dd_for[0][2][2]*ww;
+       dd.mat[1][0] =      dd_for[1][0][0]*uu + dd_for[1][0][1]*vv + dd_for[1][0][2]*ww;
+       dd.mat[1][2] =      dd_for[1][2][0]*uu + dd_for[1][2][1]*vv + dd_for[1][2][2]*ww;
+       dd.mat[2][0] =      dd_for[2][0][0]*uu + dd_for[2][0][1]*vv + dd_for[2][0][2]*ww;
+       dd.mat[2][1] =      dd_for[2][1][0]*uu + dd_for[2][1][1]*vv + dd_for[2][1][2]*ww;
+       ee = MAT_INV(dd) ;
+     } else {
+       ee.mat[0][0] = 1.0f / dd.mat[0][0] ;  /* diagonal dd matrix case */
+       ee.mat[1][1] = 1.0f / dd.mat[1][1] ;
+       ee.mat[2][2] = 1.0f / dd.mat[2][2] ;
+     }
+
+     MAT44_VEC( gam , aa,bb,cc, uu,vv,ww ) ;  /* affine part of transformation */
+
+     /* apply inverse of denominator matrix to affinely transformed vector */
+
+     if( !ddiag ){
+       xo[ii] = ee.mat[0][0] * uu + ee.mat[0][1] * vv + ee.mat[0][2] * ww ;
+       yo[ii] = ee.mat[1][0] * uu + ee.mat[1][1] * vv + ee.mat[1][2] * ww ;
+       zo[ii] = ee.mat[2][0] * uu + ee.mat[2][1] * vv + ee.mat[2][2] * ww ;
+     } else {
+       xo[ii] = ee.mat[0][0] * uu ;  /* diagonal dd matrix case */
+       yo[ii] = ee.mat[1][1] * vv ;
+       zo[ii] = ee.mat[2][2] * ww ;
+     }
+
+   } /* end of loop over input points */
+
+   return ;
+}
+
+/****************************************************************************/
+/****************  Nonlinear Warpfield on top of affine *********************/
+
+static float to_cube_ax=1.0f , to_cube_bx=0.0f ;
+static float to_cube_ay=1.0f , to_cube_by=0.0f ;
+static float to_cube_az=1.0f , to_cube_bz=0.0f ;
+static float fr_cube_ax=1.0f , fr_cube_bx=0.0f ;
+static float fr_cube_ay=1.0f , fr_cube_by=0.0f ;
+static float fr_cube_az=1.0f , fr_cube_bz=0.0f ;
+
+static mat44 to_cube , fr_cube ;
+
+void mri_genalign_set_boxsize( float xbot, float xtop,
+                               float ybot, float ytop, float zbot, float ztop )
+{
+   float ax=(xtop-xbot) ;
+   float ay=(ytop-ybot) ;
+   float az=(ztop-zbot) ;
+
+   if( ax == 0.0f ){ to_cube_ax = 1.0f ; to_cube_bx = -xbot ; }
+   else            { to_cube_ax = 2.0f/ax; to_cube_bx = -1.0f - xbot*to_cube_ax; }
+
+   if( ay == 0.0f ){ to_cube_ay = 1.0f ; to_cube_by = -ybot ; }
+   else            { to_cube_ay = 2.0f/ay; to_cube_by = -1.0f - ybot*to_cube_ay; }
+
+   if( az == 0.0f ){ to_cube_az = 1.0f ; to_cube_bz = -zbot ; }
+   else            { to_cube_az = 2.0f/az; to_cube_bz = -1.0f - zbot*to_cube_az; }
+
+   fr_cube_ax = 1.0f / to_cube_ax ; fr_cube_bx = -to_cube_bx * fr_cube_ax ;
+   fr_cube_ay = 1.0f / to_cube_ay ; fr_cube_by = -to_cube_by * fr_cube_ay ;
+   fr_cube_az = 1.0f / to_cube_az ; fr_cube_bz = -to_cube_bz * fr_cube_az ;
+
+   LOAD_DIAG_MAT44(to_cube,to_cube_ax,to_cube_ay,to_cube_az) ;
+   LOAD_MAT44_VEC (to_cube,to_cube_bx,to_cube_by,to_cube_bz) ;
+
+   LOAD_DIAG_MAT44(fr_cube,fr_cube_ax,fr_cube_ay,fr_cube_az) ;
+   LOAD_MAT44_VEC (fr_cube,fr_cube_bx,fr_cube_by,fr_cube_bz) ;
+
+   return ;
+}
+
+/*--------------------------------------------------------------------------*/
+
+static Warpfield *wfield  = NULL ;
+
+Warpfield * mri_genalign_warpfield_setup( int ttt , float ord , int flags )
+{
+   if( wfield != NULL ){ Warpfield_destroy(wfield); wfield = NULL; }
+
+   wfield = Warpfield_init( ttt , ord , flags , NULL ) ;
+
+   return wfield ;
+}
+
+/*--------------------------------------------------------------------------*/
+
+Warpfield * mri_genalign_warpfield_get(void){ return wfield; }
+
+void mri_genalign_warpfield_set(Warpfield *wf){ wfield = wf; }
+
+/*--------------------------------------------------------------------------*/
+/*! A wfunc function for nonlinear transformations. */
+/*--------------------------------------------------------------------------*/
+
+void mri_genalign_warpfield( int npar, float *wpar ,
+                             int npt , float *xi, float *yi, float *zi ,
+                                       float *xo, float *yo, float *zo  )
+{
+   int ii,pp,npp ;
+   static float *xii=NULL,*yii,*zii , *xoo,*yoo,*zoo ;
+
+   /* check for criminal inputs */
+
+   if( npar < 12 || wfield == NULL || !ISVALID_MAT44(to_cube) ) return ;
+
+   /** new parameters ==> setup transformation **/
+
+   if( npar > 0 && wpar != NULL ){
+     float *wp ;
+
+     if( !WARPFIELD_SKIPAFF(wfield) ){
+       mat44 gf , gam=GA_setup_affine(12,wpar) ; /* setup affine matrix */
+       gf = MAT44_MUL(gam,fr_cube) ; wfield->aa = MAT44_MUL(to_cube,gf) ;
+       wp = wpar+12 ; npp = npar-12 ;
+     } else {
+       wp = wpar ; npp = npar ;
+     }
+
+     npp = npp/3 ; if( npp > wfield->nfun ) npp = wfield->nfun ;
+     for( pp=ii=0 ; ii < npp ; ii++ ){
+       wfield->cx[ii] = wp[pp++] ;
+       wfield->cy[ii] = wp[pp++] ;
+       wfield->cz[ii] = wp[pp++] ;
+     }
+   }
+
+   /* nothing to transform? */
+
+   if( wfield == NULL || npt <= 0 || xi == NULL || xo == NULL ) return ;
+
+   if( xii == NULL ){
+     xii = (float *)malloc(sizeof(float)*NPER) ;
+     yii = (float *)malloc(sizeof(float)*NPER) ;
+     zii = (float *)malloc(sizeof(float)*NPER) ;
+     xoo = (float *)malloc(sizeof(float)*NPER) ;
+     yoo = (float *)malloc(sizeof(float)*NPER) ;
+     zoo = (float *)malloc(sizeof(float)*NPER) ;
+   }
+
+   for( pp=0 ; pp < npt ; pp+=NPER ){
+     npp = MIN( NPER , npt-pp ) ;  /* number to do in this iteration */
+     for( ii=0 ; ii < npp ; ii++ )
+       MAT44_VEC( to_cube , xi [ii+pp],yi [ii+pp],zi [ii+pp] ,
+                            xii[ii+pp],yii[ii+pp],zii[ii+pp]  ) ;
+     Warpfield_eval_array( wfield , npp , xii,yii,zii , xoo,yoo,zoo ) ;
+     for( ii=0 ; ii < npp ; ii++ )
+       MAT44_VEC( fr_cube , xoo[ii+pp],yoo[ii+pp],zoo[ii+pp] ,
+                            xo [ii+pp],yo [ii+pp],zo [ii+pp]  ) ;
+   }
 
    return ;
 }

@@ -21,15 +21,15 @@ static ni_globals gni =         /* default values for globals   */
         NI_BINARY_MODE          /* write_mode                   */
 };
 
-static int    are_sorted_ints(int *, int);
+static int    nsd_are_sorted_ints(int *, int);
 static int    loc_append_vals(char **, int *, char *, float, float, int, int);
 static char * my_strndup(char *, int);
 static int    nsd_add_colms_range(NI_group *, THD_3dim_dataset *);
-static int    nsd_add_colms_type(THD_datablock *, NI_group *);
+static int    nsd_add_colms_type(int, NI_group *);
 static int    nsd_add_sparse_data(NI_group *, THD_3dim_dataset *);
 static int    nsd_add_str_atr_to_group(char*, char*, THD_datablock*, NI_group*);
+static int    nsd_add_atr_to_group(char*, char*, THD_datablock*, NI_group*);
 static int    nsd_fill_index_list(NI_group *, THD_3dim_dataset *);
-static int    nsd_string_atr_to_slist(char ***, int, ATR_string *);
 static int    process_NSD_attrs(THD_3dim_dataset *);
 static int    process_NSD_group_attrs(NI_group *, THD_3dim_dataset *);
 static int    process_NSD_index_list(NI_group *, THD_datablock *);
@@ -64,8 +64,8 @@ ENTRY("get_blk_min_max_posn");
     switch(DBLK_BRICK_TYPE(blk, ind)){
         default:{
             fprintf(stderr,"** GBMMP, bad dtype\n");
-            break;
             *fmin = *fmax = 0.0;  *imin = *imax = 0;
+            break;
         }
         case MRI_byte:
         {
@@ -485,7 +485,7 @@ ENTRY("THD_write_niml");
 
     return the number of strings found
 */
-static int nsd_string_atr_to_slist(char *** slist, int llen, ATR_string * atr)
+int nsd_string_atr_to_slist(char *** slist, int llen, ATR_string * atr)
 {
     int sind, posn, prev, copy_len;
     int found = 0;
@@ -505,7 +505,7 @@ ENTRY("nsd_string_atr_to_slist");
         RETURN(0); 
     }
 
-    if(gni.debug > 1)
+    if(gni.debug > 2)
     {
         if( atr ) fprintf(stderr,"+d getting string attrs from %s\n",atr->name);
         else      fprintf(stderr,"+d setting default strings\n");
@@ -715,9 +715,8 @@ ENTRY("process_NSD_sparse_data");
         if( nel->vec_typ[ind] != NI_FLOAT &&
             nel->vec_typ[ind] != NI_INT )
         {
-            if(gni.debug)
-                fprintf(stderr,"** NI_SURF_DSET has non-float type %d\n",
-                        nel->vec_typ[ind]);
+            fprintf(stderr,"** NI_SURF_DSET has has invalid type %d\n",
+                    nel->vec_typ[ind]);
             RETURN(1);
         }
 
@@ -886,13 +885,19 @@ int THD_add_sparse_data(THD_3dim_dataset * dset, NI_group * ngr )
 
 ENTRY("THD_add_sparse_data");
 
-    if( !dset || !ngr ) RETURN(0);
+    if( !dset || !ngr ) {
+        if(gni.debug > 1) fprintf(stderr,"** bad params to add_sparse_data\n");
+        RETURN(0);
+    }
     blk = dset->dblk;
     nvals = blk->nvals;
 
     ind = NI_search_group_shallow(ngr, "SPARSE_DATA", &elist);
     if( ind > 0 ) { nel = (NI_element *)elist[0]; NI_free(elist); }
-    if( !nel ) RETURN(0);
+    if( !nel ) {
+        if(gni.debug > 1) fprintf(stderr,"-- no SPARSE_DATA to add\n");
+        RETURN(0);
+    }
 
     /* if mlist is NULL, no mastery */
     if( DBLK_IS_MASTERED(blk) ) mlist = blk->master_ival;
@@ -986,12 +991,13 @@ ENTRY("THD_add_sparse_data");
     - apply HISTORY_NOTE
     
 */
-NI_group * THD_dset_to_ni_surf_dset( THD_3dim_dataset * dset, int write_data )
+NI_group * THD_dset_to_ni_surf_dset( THD_3dim_dataset * dset, int copy_data )
 {
     THD_datablock * blk;
     NI_group      * ngr;
-    int             nx;
-
+    int             nx, ibr=0;
+    char name[100]={""};
+    
 ENTRY("THD_dset_to_ni_surf_dset");
 
     if( !ISVALID_DSET(dset) ) RETURN(NULL);
@@ -1020,11 +1026,17 @@ ENTRY("THD_dset_to_ni_surf_dset");
 
     nsd_add_str_atr_to_group("BRICK_LABS", "COLMS_LABS", blk, ngr);
     nsd_add_colms_range(ngr, dset);
-    nsd_add_colms_type(blk, ngr);
+    nsd_add_colms_type(blk->nvals, ngr);
     nsd_add_str_atr_to_group("BRICK_STATSYM", "COLMS_STATSYM", blk, ngr);
     nsd_add_str_atr_to_group("HISTORY_NOTE", NULL, blk, ngr);
+    
+    for (ibr=0; ibr<DSET_NVALS(dset); ++ibr) {
+      sprintf(name,"FDRCURVE_%06d",ibr) ;
+      nsd_add_atr_to_group(name, NULL, blk, ngr);
+    }
+    
     nsd_fill_index_list(ngr, dset);                  /* add INDEX_LIST */
-    if( write_data ) nsd_add_sparse_data(ngr, dset); /* add SPARSE_DATA */
+    if( copy_data ) nsd_add_sparse_data(ngr, dset);  /* add SPARSE_DATA */
 
     RETURN(ngr);
 }
@@ -1034,7 +1046,7 @@ ENTRY("THD_dset_to_ni_surf_dset");
 
    return 0 on success
 */
-static int nsd_add_colms_type(THD_datablock * blk, NI_group * ngr)
+static int nsd_add_colms_type(int nvals, NI_group * ngr)
 {
     NI_element * nel;
     char       * str, * slist[1];  /* add_column requires a list of strings */
@@ -1043,17 +1055,20 @@ static int nsd_add_colms_type(THD_datablock * blk, NI_group * ngr)
 ENTRY("nsd_add_colms_type");
 
     /* check usage */
-    if( !blk || !ngr ) RETURN(1);
+    if( nvals <= 0 || !ngr ) RETURN(1);
 
     /* create a new string: "Generic_Float;Generic_Float;..." */
-    plen = 14*blk->nvals + 1;
+
+    /* rcr - update this with more types (that agree with SUMA) */
+
+    plen = 14*nvals + 1;
     str = (char *)malloc(plen * sizeof(char));
 
     /* insert first string */
     strcpy(str, "Generic_Float");
 
     /* and then the rest */
-    for( c = 1; c < blk->nvals; c++ )
+    for( c = 1; c < nvals; c++ )
         strcat(str, ";Generic_Float");
 
     /* now add it to the group */
@@ -1069,6 +1084,75 @@ ENTRY("nsd_add_colms_type");
     RETURN(0);
 }
 
+
+/* - find the given attribute in the datablock
+   - put it in a data element
+   - add it to the group
+
+   aname  - AFNI attribute name
+   niname - NIML attribute name (if NULL, use aname)
+   blk    - datablock
+   ngr    - NI_group to insert new element into
+
+   ZSS Feb 08: pilfered from THD_nimlize_dsetatr
+   
+   return 0 on success
+*/
+static int nsd_add_atr_to_group(char * aname, char * niname,
+                                THD_datablock * blk, NI_group * ngr)
+{
+    ATR_any *atr_any ;
+    ATR_string * atr_str;
+    NI_element * nel;
+    char       * dest;
+
+ENTRY("nsd_add_atr_to_group");
+
+   /* check usage */
+   if( !aname || !blk || !ngr ) RETURN(1);
+
+   atr_any = THD_find_atr(blk, aname);
+   if( !atr_any ) RETURN(0);  /* nothing to add */
+
+   if(gni.debug > 1){
+     fprintf(stderr, "-d adding '%s' atr: ", niname?niname:aname);
+   }
+
+   switch( atr_any->type ){   /* pilfered from THD_nimlize_dsetatr */
+       case ATR_FLOAT_TYPE:{
+         ATR_float *atr_flo = (ATR_float *)atr_any ;
+
+         nel = NI_new_data_element( "AFNI_atr" , atr_flo->nfl ) ;
+         nel->outmode = NI_TEXT_MODE ;
+         NI_set_attribute( nel , "atr_name" , atr_flo->name ) ;
+         NI_add_column( nel , NI_FLOAT , atr_flo->fl ) ;
+         NI_add_to_group( ngr , nel ) ;
+       }
+       break ;
+
+       case ATR_INT_TYPE:{
+         ATR_int *atr_int = (ATR_int *)atr_any ;
+
+         nel = NI_new_data_element( "AFNI_atr" , atr_int->nin ) ;
+         nel->outmode = NI_TEXT_MODE ;
+         NI_set_attribute( nel , "atr_name" , atr_int->name ) ;
+         NI_add_column( nel , NI_INT , atr_int->in ) ;
+         NI_add_to_group( ngr , nel ) ;
+       }
+       break ;
+
+       case ATR_STRING_TYPE:{
+         nsd_add_str_atr_to_group(aname, niname, blk, ngr);
+       }
+       break;
+       
+       default:
+         fprintf(stderr, "*** unexpected type!\n");
+         RETURN(1);
+   }
+   
+   RETURN(0);
+}
 
 /* - find the given attribute in the datablock
    - now just add 1 to length (should we bother?)
@@ -1106,6 +1190,7 @@ ENTRY("nsd_add_str_atr_to_group");
     /* create a new string */
     dest = (char *)calloc(atr->nch+1, sizeof(char)); /* +1 for last '\0' */
     memcpy(dest, atr->ch, atr->nch);
+    if(gni.debug > 2) fprintf(stderr, "-d new atr (orig): '%s'\n", dest);
     THD_zblock_ch(atr->nch, dest, ZSBLOCK);  /* swap out nul chars */
     dest[atr->nch] = '\0';
 
@@ -1116,7 +1201,7 @@ ENTRY("nsd_add_str_atr_to_group");
     NI_add_column(nel, NI_STRING, &dest);
     NI_add_to_group(ngr, nel);
 
-    if(gni.debug > 1) fprintf(stderr, "-d new atr is: '%s' ", dest);
+    if(gni.debug > 1) fprintf(stderr, "-d new atr is: '%s'\n", dest);
 
     free(dest); /* nuke local copy */
 
@@ -1232,8 +1317,8 @@ ENTRY("nsd_fill_index_list");
 
     nel->outmode = gni.write_mode; /* ASCII or BINARY mode (from globals) */
 
-    if( are_sorted_ints(node_list, nx)) strcpy(str, "Yes");
-    else                                strcpy(str, "No");
+    if( nsd_are_sorted_ints(node_list, nx)) strcpy(str, "Yes");
+    else                                    strcpy(str, "No");
 
     NI_set_attribute(nel, "sorted_node_def", str);
     if(gni.debug > 1) fprintf(stderr,"+d set sorted_node_def = %s\n", str);
@@ -1291,7 +1376,8 @@ ENTRY("nsd_add_sparse_data");
     /* create initial element of length nx */
     nel = NI_new_data_element("SPARSE_DATA", nx);
 
-    if(gni.debug > 1) fprintf(stderr,"+d adding %d data columns\n", blk->nvals);
+    if(gni.debug > 1)
+        fprintf(stderr,"+d sparse_data: adding %d data columns\n", blk->nvals);
 
     /* insert data */
     for( ind = 0; ind < blk->nvals; ind++ )
@@ -1353,11 +1439,11 @@ ENTRY("set_sparse_data_attribs");
 /*------------------------------------------------------------------------*/
 /*! return whether the given list is sorted            23 Aug 2006 [rickr]
 --------------------------------------------------------------------------*/
-static int are_sorted_ints(int *list, int len)
+int nsd_are_sorted_ints(int *list, int len)
 {
     int c;
 
-ENTRY("are_sorted_ints");
+ENTRY("nsd_are_sorted_ints");
 
     if( !list || len <= 0 ) RETURN(0);
     for( c = 0; c < len - 1; c++ )
@@ -1445,6 +1531,62 @@ ENTRY("NI_get_byte_order");
 
 /* ---------------------------------------------------------------------- */
 /* NIML globals access functions                       3 Aug 2006 [rickr] */
+
+/* return the corresponding NI_type, and -1 on failure (since 0 is used) */
+int dtype_nifti_to_niml(int dtype) {
+    switch(dtype) {
+        case NIFTI_TYPE_INT16:   { return NI_SHORT;     }
+        case NIFTI_TYPE_INT32:   { return NI_INT;       }
+        case NIFTI_TYPE_FLOAT32: { return NI_FLOAT32;   }
+        case NIFTI_TYPE_FLOAT64: { return NI_FLOAT64;   }
+        case NIFTI_TYPE_INT8:    { return NI_BYTE;      }
+    }
+
+    return -1;
+}
+
+/* return the corresponding NIFTI_type, and DT_UNKNOWN on failure */
+int dtype_niml_to_nifti(int dtype) {
+    switch(dtype) {
+        case NI_SHORT:  { return NIFTI_TYPE_INT16;   }
+        case NI_INT:    { return NIFTI_TYPE_INT32;   }
+        case NI_FLOAT32:{ return NIFTI_TYPE_FLOAT32; }
+        case NI_FLOAT64:{ return NIFTI_TYPE_FLOAT64; }
+        case NI_BYTE:   { return NIFTI_TYPE_INT8;    }
+    }
+
+    return 0;   /* some #define seems to get in the way of DT_UNKNOWN */
+}
+
+/* return the first element where name is 'ename' and atr_name is 'atr_name' */
+NI_element * NI_find_element_by_aname(NI_group * ngr, char * ename,
+                                      char * aname, char * aval)
+{
+    NI_element  * nel = NULL;
+    void       ** elist = NULL;
+    char       ** sar, * atr;
+    int           ind, c;
+
+    ENTRY("NI_find_element_by_aname");
+
+    if( !ngr || !ename || !aname || !aval ) RETURN(NULL);
+
+    ind = NI_search_group_shallow(ngr, ename, &elist);
+    if( ind <= 0 ) RETURN(NULL);  /* no such name */
+
+    for( c = 0; c < ind; c++ ) {
+        atr = NI_get_attribute(elist[c], aname);
+        if( !strcmp(atr, aval) ) {   /* found! */
+            nel = (NI_element *)elist[c];
+            break;
+        }
+    }
+
+    NI_free(elist);
+
+    RETURN(nel);
+}
+
 int set_ni_globs_from_env(void)
 {
 ENTRY("set_ni_globs_from_env");
@@ -1475,3 +1617,4 @@ int  get_gni_to_float( void     ){ return gni.to_float; }
 
 void set_gni_write_mode( int mode ){ gni.write_mode = mode; }
 int  get_gni_write_mode( void     ){ return gni.write_mode; }
+

@@ -689,6 +689,13 @@ warning that it pops up in a message window when it discovers negative
 values in the input short images.  (The warning will still be printed
 to stdout.)
 
+-----------------------------------
+Variable: AFNI_NO_OBLIQUE_WARNING
+-----------------------------------
+If this YES/NO variable is set to YES, then the AFNI GUI will skip the usual
+warning that it pops up in a message window when an oblique dataset is selected.
+(The warning will still be printed to stdout.)
+
 ----------------------
 Variable: AFNI_NO_XDBE
 ----------------------
@@ -1857,7 +1864,29 @@ Variable: AFNI_1D_TIME
 If this YES/NO variable is set to YES, then when a multicolumn .1D file is
 read in as an AFNI dataset, the column variable is taken to be time, and
 a time-dependent dataset is created.  The default is to create a bucket
-dataset.
+dataset.  Note that each row is taken to be a separate 'voxel'.
+
+-------------------------
+Variable: AFNI_1D_TRANOUT
+-------------------------
+If this variable is set to YES, it affects the way 1D datasets are
+written out from 3d* programs that are being used to process 1D files
+as AFNI dataset.  If this variable is YES, AND if the output dataset
+prefix ends in '.1D' or is the string '-' (meaning standard output),
+then the output 1D file will be transposed and written so that the
+time axis goes down the columns instead of across them.  If this
+variable is NO, then the standard AFNI 1D-to-3D dataset convention is
+followed: each row is a single voxel time series.  Example:
+  3dDetrend -polort 1 -prefix - 1D:'3 4 5 4 3'\'
+will write to the screen
+           -0.8
+            0.2
+            1.2
+            0.2
+           -0.8
+if AFNI_1D_TRANOUT is YES, but will write
+ -0.8 0.2 1.2 0.2 -0.8
+to stdout if AFNI_1D_TRANOUT is NO.
 
 -------------------------
 Variable: AFNI_1D_TIME_TR
@@ -2416,12 +2445,15 @@ plugouts.  This allows multiple instances of afni on one machine, where
 each can listen for plugouts.  Valid port numbers are 1024..65535.
 
 -----------------------------------
-Variable: AFNI_IMAGE_TICK_DIV_IN_MM
+Variable: AFNI_IMAGE_TICK_DIV_IN_MM (editable)
 -----------------------------------
 If this YES/NO variable is set to YES, then the Tick Div. value in an
 image window will be interpreted as a separation distance, in mm, as
-opposed to the number of tick divisions along each edge.  In that case,
+opposed to the number of tick divisions along each edge.  In the YES case,
 a larger value would produce fewer ticks, as they would be farther apart.
+In the NO case, a larger value will produce more tick marks.  Tick marks
+are controlled from the Button 3 popup menu attached to the grayscale
+intensity bar in an image viewer.
 
 ----------------------------
 Variable: AFNI_IMAGRA_CLOSER
@@ -2477,16 +2509,19 @@ time to save files.
 Variable: AFNI_CLUSTER_SCROLL
 -----------------------------
 If this variable is NO, then the 'Clusterize' report will not be given
-scrollbars.  The default is to give it scroll bars.
+scrollbars.  The default is to give it scroll bars (i.e., YES).
 
 -----------------------------
 Variable: AFNI_CLUSTER_REPMAX  (editable)
 -----------------------------
-This numeric variable (between 10 and 99, inclusive) sets the maximum
+This numeric variable (between 10 and 9999, inclusive) sets the maximum
 number of clusters that will be reported in a 'Clusterize' report panel,
 if scroll bars are turned off by AFNI_CLUSTER_SCROLL. The default value
 is 15.  If scroll bars are turned on, then the maximum number of clusters
-shown is fixed at 99.
+shown defaults to 999, but can be increased to 9999 if you are completely
+mad, or are named Shruti.  If scroll bars are turned off, then you probably
+don't want to make this very big, since the report window would become
+taller than your monitor, and that would be hard to deal with.
 
 ----------------------------
 Variable: AFNI_STRLIST_INDEX
@@ -2518,6 +2553,42 @@ Variable: AFNI_NEVER_SAY_GOODBYE
 If this variable is set to YES, then the AFNI 'goodbye' messages won't
 be printed when the program exits.  For the grumpy people out there
 (you know who I'm talking about, don't you, Daniel?).
+
+--------------------------------
+Variable: AFNI_NEWSESSION_SWITCH
+--------------------------------
+If this variable is set to NO, then AFNI will not automatically switch
+to a new session after that session is read in using the 'Read Sess'
+button on the Datamode control panel.
+
+-------------------------------
+Variable: AFNI_FLASH_VIEWSWITCH
+-------------------------------
+If you switch sessions, underlay, or overlay, it can happen that the
+coordinate system might be forced to switch from +orig to +tlrc
+(for example) because there is no dataset to view in the +orig system.
+Normally, AFNI flashes the view switch buttons on and off a few times
+to let you know this is happening (this is the Adam Thomas feature).
+You can turn this feature off, by setting this variable to NO.
+
+-------------------------
+Variable: AFNI_SHELL_GLOB
+-------------------------
+'Globbing' is the Unix jargon for filename wildcard expansion.  AFNI programs
+do globbing at various points, using an adaptation of a function from the
+csh shell.  This function has been reported to fail on Mac OS X Server 10.5
+on network mounted directories.  If you set this variable to YES, then globbing
+will instead be done using the shell directly (via popen and ls).  You should
+only set this variable if you really need it, and understand the issue!
+[For Graham Wideman]
+
+----------------------------------
+Variable: AFNI_IGNORE_BRICK_FLTFAC
+----------------------------------
+Under some very rare circumstances, you might want to ignore the brick scaling
+factors.  Set this variable to YES to do so.  WARNING: this is dangerous, so
+be sure to unset this variable when you are done.  Sample usage:
+  3dBrickStat -DAFNI_IGNORE_BRICK_FLTFAC=YES -max fred+orig
 
 ----------------------------------------------------------------------
 --- variables specific to NIML I/O
@@ -2570,6 +2641,26 @@ to increase this past its default size of 255*1024=261120.
 ----------------------------------------------------------------------
 --- END: variables specific to NIML I/O
 ----------------------------------------------------------------------
+
+----------------------------
+Variable: AFNI_GIFTI_VERB
+----------------------------
+This integer sets the verbose level in the gifti I/O library routines.
+Level 1 is the default, 0 is "quiet", and values go up to 7.
+
+----------------------------
+Variable: AFNI_DATASETN_NMAX
+----------------------------
+This numeric variable, if set, lets you expand the number of dataset
+lines in the 'Dataset#N' plugin from the default of 9 up to a max of 49.
+(This one is for Shruti.)
+
+----------------------------
+Variable: AFNI_WRITE_1D_AS_PREFIX
+----------------------------
+If this variable is set to YES, then 1D formatted files will be written
+to the file based on the given prefix, rather than to an automatic 1D file.
+This allows writing surface files to NIfTI format, for example.
 
 =============================================
 | Robert W Cox, PhD                         |

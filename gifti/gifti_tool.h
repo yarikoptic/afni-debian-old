@@ -7,6 +7,7 @@ typedef struct { int len; int   * list; } gt_int_list;
 typedef struct {
     /* main action flags */
     int           gt_compare;   /* somehow compare 2 datasets           */
+    int           gt_copy;      /* copy things between 2 datasets        */
     int           gt_display;   /* display something                    */
     int           gt_write;     /* create output datasets               */
     int           gt_modify;    /* sub-action: to modify datasets       */
@@ -28,6 +29,15 @@ typedef struct {
     int           mod_DA_meta;  /* modify DataArray meta data           */
     int           mod_to_float; /* convert all input data to FLOAT32    */
 
+    /* compare options */
+    int           comp_gifti;   /* compare structures                   */
+    int           comp_data;    /* compare data in DataArrays           */
+    int           comp_verb;    /* set verbose level for compare_gifti  */
+
+    /* copy options */
+    int           copy_gim_meta;/* copy metadata between GIFTI elements */
+    int           copy_DA_meta; /* copy metadata between DA elements */
+
     /* GIFTI user options */
     int           verb;         /* verbose level                        */
     int           indent;       /* spaces per indent level              */
@@ -38,18 +48,21 @@ typedef struct {
 
     int           dstore;       /* whether to store read data           */
     int           encoding;     /* encoding for output data             */
+    int           set_extern;   /* set data to be external files        */
     int           show_gifti;   /* display the gifti_image              */
 
     char        * ofile_1D;     /* 1D output filename                   */
     char        * ofile_asc;    /* 'asc' output filename                */
     char        * ofile_gifti;  /* GIFTI output filename                */
 
-    gt_int_list   DAlist;       /* list of DataArray indices to read    */
+    gt_int_list   DAlist;       /* list of DA indices to operate on     */
+    gt_int_list   DAlistr;      /* list of DataArray indices to read    */
     gt_int_list   DAmodlist;    /* list of DA indices for modification  */
     gt_str_list   gim_atrs;
     gt_str_list   gim_meta;
     gt_str_list   DA_atrs;
     gt_str_list   DA_meta;
+    gt_str_list   ext_files;    /* external files as data source        */
     gt_str_list   infiles;
 } gt_opts;
 
@@ -73,10 +86,13 @@ typedef struct {
 /* protos */
 gifti_image * gt_read_dataset(gt_opts * opts, char * fname);
 
+int gt_compare       (gt_opts * opts);
+int gt_copy          (gt_opts * opts);
 int gt_display       (gt_opts *);
 int gt_modify_dset   (gt_opts *, gifti_image * gim);
 int gt_test          (gt_opts *);
 int gt_write         (gt_opts *);
+int gt_write_dataset (gt_opts *, gifti_image * gim);
 
 
 int ewrite_data_line (void *, int, int, int, int, int, FILE *);

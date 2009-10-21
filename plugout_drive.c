@@ -26,6 +26,9 @@
   use CLOSE_WINDOW to kill AFNI - it won't close the last
   controller window.
 
+  See README.driver for up-to-date information on what commands
+  are available for driving Miss AFNI.
+
 *******************************************************************/
 
 /***** Header file for communication routines *****/
@@ -36,7 +39,7 @@
 /***** Global variable determining on which system AFNI runs.  *****/
 /***** [default is the current system, can be changed by user] *****/
 
-static char afni_host[128] = "." ;
+static char afni_host[128] = "localhost" ;
 static char afni_name[128] = "\0" ;
 static int  afni_port      = 8099 ;
 static int  afni_verbose   = 0 ;  /* print out debug info? */
@@ -67,9 +70,13 @@ int main( int argc , char *argv[] )
              " over to AFNI to be executed.\n"
              "\n"
              "Options:\n"
-             "  -host name  Means to connect to AFNI running on the\n"
-             "                computer 'name' using TCP/IP.  The default is to\n"
-             "                connect on the current host using shared memory.\n"
+             "  -host name  Means to connect to AFNI running on the computer\n"
+             "                'name' using TCP/IP.  The default is to connect\n"
+             "                on the current host 'localhost' using TCP/IP.\n"
+             "  -shm        Means to connect to the current host using shared\n"
+             "                memory.  There is no reason to do this unless\n"
+             "                you are transferring huge quantities of data.\n"
+             "                N.B.:  '-host .' is equivalent to '-shm'.\n"
              "  -v          Verbose mode.\n"
              "  -port pp    Use TCP/IP port number 'pp'.  The default is\n"
              "                8099, but if two plugouts are running on the\n"
@@ -107,6 +114,13 @@ int main( int argc , char *argv[] )
    DontWait = 0;
    narg = 1 ;
    while( narg < argc ){
+
+      /** -shm [20 May 2008] **/
+
+      if( strcmp(argv[narg],"-shm") == 0 ){
+        strcpy( afni_host , "." ) ;
+        narg++ ; continue ;
+      }
 
       /** -host name **/
 
@@ -160,9 +174,11 @@ int main( int argc , char *argv[] )
          }
 
          if (argv[narg] && strlen(argv[narg]) >= PLUGOUT_COM_LENGTH) {
-            fprintf(stderr,"** Command length must be smaller than %d characters.\n"
-                           "   If you really need a longer command let us know.\n"
-                           "   Your command is %d characters long.\n" , PLUGOUT_COM_LENGTH, (int)strlen(argv[narg]));
+            fprintf(stderr,
+               "** Command length must be smaller than %d characters.\n"
+               "   If you really need a longer command let us know.\n"
+               "   Your command is %d characters long.\n" , 
+               PLUGOUT_COM_LENGTH, (int)strlen(argv[narg]));
             exit(1);
          }
 
@@ -170,7 +186,9 @@ int main( int argc , char *argv[] )
             com[N_com] = argv[narg];
             ++N_com;
          } else {
-            fprintf(stderr,"** Only 1024 -com options allowed. Are you nuts?\a\n"); exit(1);
+            fprintf( stderr,
+                     "** Only 1024 -com options allowed. Are you nuts?\a\n"); 
+            exit(1);
          }
 
          narg++ ; continue ;
@@ -189,7 +207,8 @@ int main( int argc , char *argv[] )
    }
 
    if (DontWait && !N_com) {
-      fprintf(stderr,"** WARNING: -quit option is meaningless without -com option.\n");
+      fprintf( stderr,
+               "** WARNING: -quit option is meaningless without -com option.\n");
       DontWait = 0;
    }
 
@@ -280,7 +299,7 @@ int afni_io(void)
       }
       afni_mode = AFNI_WAIT_CONTROL_MODE ; /* waiting for AFNI connection */
       gettimeofday(&tw, NULL);   /* keep track of time that you began waiting */
-      
+
       if( afni_verbose )
          fprintf(stderr,"++ AFNI control channel created\n") ;
    }
@@ -291,7 +310,7 @@ int afni_io(void)
    if( afni_mode == AFNI_WAIT_CONTROL_MODE ){
       ii = iochan_writecheck( afni_ioc , 5 ) ;     /* wait at most 5 msec */
       gettimeofday(&tn, NULL);   /* what time is it now? */
-      
+
       /** the iochan_*check() routines return
              -1 for an error,
               0 if not ready,
@@ -311,7 +330,7 @@ int afni_io(void)
                      (float)(tn.tv_usec - tw.tv_usec)) /Time_Fact;
          if (delta_t > 5.0) {
             fprintf(stderr,"** Waited 5 seconds to no avail.\n"
-                           "   I quit.\n"); 
+                           "   I quit.\n");
             IOCHAN_CLOSE(afni_ioc) ;
             afni_mode = 0 ;
             return -1 ;
@@ -328,7 +347,7 @@ int afni_io(void)
       char afni_iocname[128] ;
       char afni_buf[256] ;
       char shmstr[256];
-      
+
       /** decide name of data channel:
             use shared memory (shm:) on ".",
             use TCP/IP (tcp:) on other computer systems;
@@ -433,7 +452,7 @@ int afni_io(void)
          strcpy(afni_buf, "DRIVE_AFNI ") ;
          strcat(afni_buf, com[I_com]   ) ; strcpy(cmd_buf,com[I_com]) ;
          if (afni_verbose) {
-            fprintf(stderr,"Command String %d Echo: '%s'\n", I_com, afni_buf); fflush(stderr) ; 
+            fprintf(stderr,"Command String %d Echo: '%s'\n", I_com, afni_buf); fflush(stderr) ;
          }
          I_com++ ;
       } else {
@@ -452,7 +471,7 @@ int afni_io(void)
       }
 
       /* send command to AFNI */
-      
+
       ii = iochan_sendall( afni_ioc , afni_buf , strlen(afni_buf)+1 ) ;
 
       if( strcmp(cmd_buf,"QUIT") == 0 ){  /* 28 Jul 2005 */

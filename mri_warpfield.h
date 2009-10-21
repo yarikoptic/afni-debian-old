@@ -1,12 +1,12 @@
 #ifndef _MRI_WARPFIELD_HEADER_
+#define _MRI_WARPFIELD_HEADER_
 
 /*---------------------------------------------------------------------------*/
 /* Functions for warping the cube [-1..1]x[-1..1]x[-1..1].                   */
 /*---------------------------------------------------------------------------*/
 
 typedef void (*Warpfield_basis)(int,void *,int,float *,float *,float *,float *);
-typedef void * (*Warpfield_setup)(float,int *,void *) ;
-typedef char * (*Warpfield_label)(int,void *) ;
+typedef void * (*Warpfield_setup)(float,int *,int,void *) ;
 
 #define WARPFIELD_TRIG_TYPE   1  /* sin & cos */
 #define WARPFIELD_LEGEN_TYPE  2  /* Legendre polynomials */
@@ -15,7 +15,7 @@ typedef char * (*Warpfield_label)(int,void *) ;
 #define WARPFIELD_LAST_TYPE   3
 
 typedef struct {
-  int type ;
+  int type , flags ;
   mat44 aa ;
   float order ;
   floatvec *pv ;
@@ -24,31 +24,44 @@ typedef struct {
   void *bpar ;
   Warpfield_basis bfun ;
   Warpfield_setup bset ;
-  Warpfield_label blab ;
 } Warpfield ;
+
+#if 0
+#define FROZEN_X(ff) ((ff)&1 != 0)
+#define FROZEN_Y(ff) ((ff)&2 != 0)
+#define FROZEN_Z(ff) ((ff)&4 != 0)
+
+#define NOVARY_X(ff) ((ff)&16 != 0)
+#define NOVARY_Y(ff) ((ff)&32 != 0)
+#define NOVARY_Z(ff) ((ff)&64 != 0)
+
+#define WARPFIELD_FROZEN_X(ww) FROZEN_X((ww)->flags)
+#define WARPFIELD_FROZEN_Y(ww) FROZEN_Y((ww)->flags)
+#define WARPFIELD_FROZEN_Z(ww) FROZEN_Z((ww)->flags)
+
+#define WARPFIELD_NOVARY_X(ww) NOVARY_X((ww)->flags)
+#define WARPFIELD_NOVARY_Y(ww) NOVARY_Y((ww)->flags)
+#define WARPFIELD_NOVARY_Z(ww) NOVARY_Z((ww)->flags)
+#endif
+
+#define SKIPAFF(ff)           ((ff)&128 != 0)
+#define WARPFIELD_SKIPAFF(ww) SKIPAFF((ww)->flags)
 
 /*---------------------------------------------------------------------------*/
 
-extern Warpfield * Warpfield_init( int type, float order, floatvec *fv ) ;
+extern void Warpfield_set_verbose( int ) ;
+
+extern Warpfield * Warpfield_init( int type, float order, int flags, floatvec *fv ) ;
+
+extern void Warpfield_destroy( Warpfield *wf ) ;
 
 extern void Warpfield_change_order( Warpfield *wf , float neword ) ;
 
-extern float Warpfield_fitter( Warpfield *wf , int flags ,
-                               int npt, float *xi , float *yi , float *zi ,
-                                        float *xw , float *yw , float *zw  ) ;
-
 extern Warpfield * Warpfield_inverse( Warpfield *wf , float *rmserr ) ;
 
-extern float Warpfield_compose(void) ;
+extern Warpfield * Warpfield_approx( Warpfield *wf, float ord, float *rmserr );
 
-extern void Warpfield_trigfun( int kfun, void *vpar,
-                               int npt , float *x, float *y, float *z, float *val ) ;
-
-extern void Warpfield_legfun( int kfun, void *vpar,
-                              int npt , float *x, float *y, float *z, float *val ) ;
-
-extern void Warpfield_gegenfun( int kfun, void *vpar,
-                                int npt , float *x, float *y, float *z, float *val ) ;
+extern float Warpfield_compose(void) ; /* not implemented yet */
 
 extern void Warpfield_eval_array( Warpfield *wf ,
                                   int npt, float *xi, float *yi, float *zi,

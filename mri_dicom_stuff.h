@@ -23,7 +23,6 @@
 typedef struct {
   int   manufacturer_code ;                 /* from ID  group */
   float tr , slice_spacing , slice_thick ;  /* from ACQ group */
-  int   acq_matrix_xx , acq_matrix_yy ;
   float pos_xx , pos_yy , pos_zz ,          /* from REL group */
         ori_ix , ori_iy , ori_iz ,
         ori_jx , ori_jy , ori_jz ,
@@ -32,6 +31,9 @@ typedef struct {
   int   ni , nj , nk ;
   unsigned data_offset, data_length ;       /* from PXL group */
   int      nbits ;
+
+  float rescale_intercept, rescale_slope,
+        window_center    , window_width  ;
 
   char *filename ;                          /* where 'tis */
   void *extra_info ;                        /* whatever   */
@@ -61,10 +63,52 @@ typedef struct {
   float *inplane_rot  ;
 } AFD_siemens_info ;
 
+/*------ stuff for multi-frame collections of 2D images [05 May 2008] ------*/
+
+typedef struct {
+  int nframe ;                      /* number of frames */
+  int *time_index , *stack_index ;  /* nframe of each array */
+  float *xpos , *ypos , *zpos ;     /* might be NULL */
+} MultiFrame_info ;
+
+#define INIT_MultiFrame(mf,n)                                    \
+ do{ (mf) = (MultiFrame_info *)malloc(sizeof(MultiFrame_info));  \
+     (mf)->nframe      = (n) ;                                   \
+     (mf)->time_index  = (int *)  calloc(sizeof(int)  ,(n)) ;    \
+     (mf)->stack_index = (int *)  calloc(sizeof(int)  ,(n)) ;    \
+     (mf)->xpos        = (float *)calloc(sizeof(float),(n)) ;    \
+     (mf)->ypos        = (float *)calloc(sizeof(float),(n)) ;    \
+     (mf)->zpos        = (float *)calloc(sizeof(float),(n)) ;    \
+ } while(0)
+
+#define KILL_MultiFrame(mf)                                      \
+ do{ if( (mf) != NULL ){                                         \
+       if( (mf)->time_index  ) free((void *)(mf)->time_index) ;  \
+       if( (mf)->stack_index ) free((void *)(mf)->stack_index) ; \
+       if( (mf)->xpos        ) free((void *)(mf)->xpos) ;        \
+       if( (mf)->ypos        ) free((void *)(mf)->ypos) ;        \
+       if( (mf)->zpos        ) free((void *)(mf)->zpos) ;        \
+       free((void *)(mf)) ; (mf) = NULL ;                        \
+     }                                                           \
+ } while(0)
+
+#define DELPOS_MultiFrame(mf)                                           \
+ do{ if( (mf) != NULL ){                                                \
+       if( (mf)->xpos ){ free((void *)(mf)->xpos); (mf)->xpos = NULL; } \
+       if( (mf)->ypos ){ free((void *)(mf)->ypos); (mf)->ypos = NULL; } \
+       if( (mf)->zpos ){ free((void *)(mf)->zpos); (mf)->xpos = NULL; } \
+     }                                                                  \
+ } while(0)
+
 /*-- prototypes --*/
 
 extern char *AFD_manufacturer_code_to_string( int code ) ;
 extern void AFD_siemens_info_free( void *aei ) ;
 extern void AFD_dicom_header_free( AFD_dicom_header *adh ) ;
+extern int AFD_manufacturer_string_to_code( char * ) ;
+extern AFD_dicom_header * AFD_scanfor_header( char * ) ;
+extern char * AFD_format_header( AFD_dicom_header *adh ) ;
+
+extern MultiFrame_info * AFD_scanfor_MultiFrame( char *ppp ) ;
 
 #endif /* _MRILIB_DICOM_STUFF_ */

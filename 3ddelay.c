@@ -2045,7 +2045,7 @@ void write_bucket_data
       exit(1);
     }
   
-  if (!THD_ok_overwrite() && THD_is_file(DSET_HEADNAME(new_dset))) 
+  if (!THD_ok_overwrite() && THD_is_ondisk(DSET_HEADNAME(new_dset))) 
     {
       fprintf(stderr,
 	      "*** Output dataset file %s already exists--cannot continue!\n",
@@ -2081,10 +2081,18 @@ void write_bucket_data
 
 
   /*----- write bucket data set -----*/
+  if( !AFNI_noenv("AFNI_AUTOMATIC_FDR") ) {
+     if ((ip = THD_create_all_fdrcurves( new_dset )) != 1) {
+      fprintf(stderr,"*** Failed to add fdr curves! (%d)\n", ip);
+     }else{
+      fprintf(stderr,"+++ added %d fdrcurves\n",ip); 
+     }
+  }
+  
   THD_load_statistics (new_dset);
   THD_write_3dim_dataset( NULL,NULL , new_dset , True ) ;
   fprintf(stderr,"Wrote bucket dataset ");
-  fprintf(stderr,"into %s\n", DSET_BRIKNAME(new_dset));
+  fprintf(stderr,"into %s\n", DSET_PREFIX(new_dset));
 
   
   /*----- deallocate memory -----*/   

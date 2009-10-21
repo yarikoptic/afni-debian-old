@@ -160,13 +160,16 @@ typedef enum  { SUMA_FT_ERROR = -1, SUMA_FT_NOT_SPECIFIED,
                SUMA_FREE_SURFER, SUMA_FREE_SURFER_PATCH, SUMA_SUREFIT, 
                SUMA_INVENTOR_GENERIC, SUMA_PLY, SUMA_VEC, SUMA_CMAP_SO,
                SUMA_BRAIN_VOYAGER , 
-               SUMA_OPENDX_MESH, SUMA_BYU,
+               SUMA_OPENDX_MESH, SUMA_BYU, SUMA_GIFTI, 
                   SUMA_N_SO_FILE_TYPE} SUMA_SO_File_Type; /* add types always between SUMA_FT_NOT_SPECIFIED AND SUMA_N_SO_FILE_TYPE */
-typedef enum { SUMA_FF_NOT_SPECIFIED, SUMA_ASCII, SUMA_BINARY, SUMA_BINARY_BE, SUMA_BINARY_LE } SUMA_SO_File_Format;
+typedef enum { SUMA_FF_NOT_SPECIFIED, SUMA_ASCII, SUMA_BINARY, SUMA_BINARY_BE, SUMA_BINARY_LE, SUMA_XML_SURF, SUMA_XML_ASCII_SURF,  SUMA_XML_B64_SURF, SUMA_XML_B64GZ_SURF } SUMA_SO_File_Format;
 typedef enum { type_not_set = -1,
                no_type, SO_type, AO_type, ROIdO_type, ROIO_type, 
                GO_type, LS_type, OLS_type, NBV_type, ONBV_type, SP_type,
-               NBSP_type, PL_type} SUMA_DO_Types;   /*!< Displayable Object Types 
+               NBSP_type, PL_type,
+               NBT_type, SBT_type, DBT_type} SUMA_DO_Types;   
+
+/*!< Displayable Object Types 
                                                                                     S: surface, A: axis, G: grid, 
                                                                                     ROId: Region of interest drawn type,
                                                                                     LS_type: line segment
@@ -175,7 +178,11 @@ typedef enum { type_not_set = -1,
                                                                                     ONBV_type: NBV with a ball on the bottom (slower to render)
                                                                                     SP_type: spherical markers
                                                                                     NBSP_type: Node-Based spherical markers
-                                                                                    PL_type: planes*/
+                                                                                    PL_type: planes
+                                                                                    NBT_type: Node-based text
+                                                                                    SBT_type: Screen-based text
+                                                                                    DBT_type: Dicom-based text
+                                                                                    */
 typedef enum {SUMA_SCREEN, SUMA_LOCAL} SUMA_DO_CoordType; /*!< Coordinate system that Displayable object is attached to
                                                                   SCREEN is for a fixed system, LOCAL is for a mobile system,
                                                                   ie one that is rotated by the mouse movements */
@@ -184,18 +191,32 @@ typedef enum {SUMA_SOLID_LINE, SUMA_DASHED_LINE} SUMA_STIPPLE;
 typedef enum {SUMA_Button_12_Motion, SUMA_Button_2_Shift_Motion, SUMA_Button_1_Motion, SUMA_Button_2_Motion, SUMA_Button_3_Motion} SUMA_MOTION_TYPES; /*!< Types of mouse motion */
 
 typedef enum { SE_Empty, 
-               SE_SetLookAt, SE_SetLookFrom, SE_Redisplay, SE_Home, SE_SetNodeColor, 
-               SE_FlipLight0Pos, SE_GetNearestNode, SE_SetLookAtNode, SE_HighlightNodes, SE_SetRotMatrix, 
-               SE_SetCrossHair, SE_ToggleCrossHair, SE_SetSelectedNode, SE_ToggleShowSelectedNode, SE_SetSelectedFaceSet,
-               SE_ToggleShowSelectedFaceSet, SE_ToggleConnected, SE_SetAfniCrossHair, SE_SetAfniSurf, SE_SetAfniSurfList, SE_SetAfniThisSurf, 
-               SE_SetForceAfniSurf, SE_BindCrossHair, SE_ToggleForeground, SE_ToggleBackground, SE_FOVreset, SE_CloseStream4All, 
-               SE_Redisplay_AllVisible, SE_RedisplayNow, SE_ResetOpenGLState, SE_LockCrossHair,
-               SE_ToggleLockAllCrossHair, SE_SetLockAllCrossHair, SE_ToggleLockView, SE_ToggleLockAllViews, 
-               SE_Load_Group, SE_Home_AllVisible, SE_Help, SE_Help_Cmap, SE_Log, SE_UpdateLog, SE_SetRenderMode, SE_OpenDrawROI,
-               SE_RedisplayNow_AllVisible, SE_RedisplayNow_AllOtherVisible,  SE_SetLight0Pos, SE_OpenColFileSelection,
-               SE_SaveDrawnROIFileSelection, SE_OpenDrawnROIFileSelection, SE_SendColorMapToAfni, SE_SaveSOFileSelection,
-               SE_SetSOinFocus, SE_StartListening, SE_LoadViewFileSelection, SE_SaveViewFileSelection, SE_LoadSegDO,
-               SE_OpenDsetFileSelection, SE_OpenCmapFileSelection, SE_SetClip, SE_OpenDsetFile, SE_OneOnly, SE_OpenSurfCont,
+               SE_SetLookAt, SE_SetLookFrom, SE_Redisplay, 
+               SE_Home, SE_SetNodeColor, 
+               SE_FlipLight0Pos, SE_GetNearestNode, SE_SetLookAtNode,
+               SE_HighlightNodes, SE_SetRotMatrix, 
+               SE_SetCrossHair, SE_ToggleCrossHair, SE_SetSelectedNode, 
+               SE_ToggleShowSelectedNode, SE_SetSelectedFaceSet,
+               SE_ToggleShowSelectedFaceSet, SE_ToggleConnected, 
+               SE_SetAfniCrossHair, SE_SetAfniSurf, SE_SetAfniSurfList, 
+               SE_SetAfniThisSurf, 
+               SE_SetForceAfniSurf, SE_BindCrossHair, SE_ToggleForeground, 
+               SE_ToggleBackground, SE_FOVreset, SE_CloseStream4All, 
+               SE_Redisplay_AllVisible, SE_RedisplayNow, SE_ResetOpenGLState, 
+               SE_LockCrossHair,
+               SE_ToggleLockAllCrossHair, SE_SetLockAllCrossHair, 
+               SE_ToggleLockView, SE_ToggleLockAllViews, 
+               SE_Load_Group, SE_Home_AllVisible, SE_Help, SE_Help_Cmap, 
+               SE_Help_Plot, SE_Log,
+               SE_UpdateLog, SE_SetRenderMode, SE_OpenDrawROI,
+               SE_RedisplayNow_AllVisible, SE_RedisplayNow_AllOtherVisible,  
+               SE_SetLight0Pos, SE_OpenColFileSelection,
+               SE_SaveDrawnROIFileSelection, SE_OpenDrawnROIFileSelection, 
+               SE_SendColorMapToAfni, SE_SaveSOFileSelection,
+               SE_SetSOinFocus, SE_StartListening, SE_LoadViewFileSelection, 
+               SE_SaveViewFileSelection, SE_LoadSegDO,
+               SE_OpenDsetFileSelection, SE_OpenCmapFileSelection, SE_SetClip, 
+               SE_OpenDsetFile, SE_OneOnly, SE_OpenSurfCont,
                SE_SetSurfCont, SE_SetViewerCont, SE_SetRecorderCont,
                SE_BadCode} SUMA_ENGINE_CODE; /* DO not forget to modify SUMA_CommandCode */
 typedef enum { SE_niEmpty,
@@ -365,6 +386,7 @@ typedef enum {   SUMA_No_Lock, SUMA_I_Lock, SUMA_XYZ_Lock, SUMA_N_Lock_Types}  S
 typedef enum {  SWP_DONT_CARE,
                 SWP_TOP_RIGHT, /*!< Position to the top right of reference */
                 SWP_BOTTOM_RIGHT_CORNER, 
+                SWP_STEP_DOWN_RIGHT,
                 SWP_TOP_LEFT,
                 SWP_POINTER, /*!< Position centered to the pointer */
                 SWP_POINTER_OFF
@@ -437,22 +459,36 @@ typedef enum {
 to free this structure use the free function
 */
 typedef struct {
-   SUMA_Boolean ApplyMask; /*!< if YUP then values that fall in MaskRange are assigned the color in MaskColor */
-   float MaskRange[2]; /*!< values between MaskRange[0] and MaskRange[1] (inclusive) are assigned MaskColor */
-   float MaskColor[3]; /*!< color to assign to masked nodes */
-   SUMA_Boolean ApplyClip; /*!< if YUP then range clipping using Range is applied */
+   SUMA_Boolean ApplyMask; /*!< if YUP then values that fall in MaskRange 
+                                 are assigned the color in MaskColor */
+   float MaskRange[2];     /*!< values between MaskRange[0] and 
+                                MaskRange[1] (inclusive) are assigned 
+                                MaskColor */
+   float MaskColor[3];     /*!<   color to assign to masked nodes */
+   SUMA_Boolean ApplyClip; /*!< if YUP then range clipping using Range 
+                                 is applied */
    
    /* fields used in the _Interactive scale to map mode */
    float BrightFact; /*!< a brightness factor to apply to the color map. 
-                           This factor is applied to the colors in the colormap and the mask colors
+                           This factor is applied to the colors in the 
+                           colormap and the mask colors
                            This overrides DimFact in SUMA_OVERLAYS*/
-   SUMA_Boolean MaskZero; /*!< values equal to zero will be masked no matter what */
-   float ThreshRange[2]; /*!< Thresholding range. Only first value will be used */
-   float IntRange[2]; /*!< nodes with values <= Range[0] are given the first color in the color map, 
-                           values >= Range[1] get the last color in the map (USED to be called ClipRange*/
-   float BrightRange[2]; /*!< Same as IntRange but for brightness modulating column */
-   float BrightMap[2]; /*!< BrightRange[0] is mapped to BrightMap[0], BrightRange[1] is mapped to BrightMap[1] */
-   SUMA_Boolean alaAFNI; /*!< If yes, use ScaleToMap_alaAFNI, if NOPE, use ScaleToMap */
+   SUMA_Boolean MaskZero; /*!<   values equal to zero will be masked 
+                                 no matter what */
+   float ThreshRange[2]; /*!< Thresholding range.  */
+   float ThreshStats[2]; /*!<  Thresholding statistics, 
+                              ThreshStats[0] = p(ThreshRange[0])
+                              ThreshStats[1] = q(ThreshRange[0]) */
+   float IntRange[2]; /*!< nodes with values <= Range[0] are 
+                           given the first color in the color map, 
+                           values >= Range[1] get the last color in the map
+                            (USED to be called ClipRange*/
+   float BrightRange[2]; /*!< Same as IntRange but for brightness 
+                              modulating column */
+   float BrightMap[2]; /*!<   BrightRange[0] is mapped to BrightMap[0],
+                              BrightRange[1] is mapped to BrightMap[1] */
+   SUMA_Boolean alaAFNI; /*!< If yes, use ScaleToMap_alaAFNI, if NOPE, 
+                              use ScaleToMap */
    SUMA_COLORMAP_INTERP_MODE interpmode; /*!< see typedef.*/
    int find;   /*!< index of function sub-brick */
    int tind;   /*!< index of thresholf sub-brick */
@@ -461,8 +497,10 @@ typedef struct {
    SUMA_THRESH_MODE ThrMode;  /*!< how to apply the thresholding */
    SUMA_Boolean UseBrt; /*!< use or ignore bind */
    SUMA_WIDGET_INDEX_COORDBIAS DoBias;  /*!< use coordinate bias */
-   float CoordBiasRange[2]; /*!< Same as IntRange but for brightness modulating column */
-   float *BiasVect; /*!< A vector of values to add to the coordinates of the mesh */
+   float CoordBiasRange[2]; /*!< Same as IntRange but for brightness 
+                                 modulating column */
+   float *BiasVect; /*!< A vector of values to add to the coordinates 
+                         of the mesh */
    int AutoIntRange;
    int AutoBrtRange;
 } SUMA_SCALE_TO_MAP_OPT;
@@ -518,6 +556,9 @@ typedef struct {
    char *cmapname; /*!< name of colormap (must be in SUMAg_CF->scm)  */
    SUMA_SCALE_TO_MAP_OPT *OptScl;   /* Options for mapping values in dset to colormap */
    int SymIrange;
+   
+   MEM_topshell_data *rowgraph_mtd;
+   int rowgraph_num;
 } SUMA_OVERLAYS;
 
 
@@ -965,7 +1006,8 @@ typedef struct {
    SUMA_Boolean isShaded; /*!< YUP if the window is minimized or shaded, NOPE if you can see its contents */
    
    SUMA_ASSEMBLE_LIST_STRUCT *ALS; /*!< structure containing the list of strings shown in the widget and the pointers 
-                                       of the objects the list refers to*/  
+                                       of the objects the list refers to*/ 
+   int lastitempos; 
 } SUMA_LIST_WIDGET;
 
 /*! structure containing widgets for surface viewer controllers ViewCont */
@@ -1131,6 +1173,7 @@ typedef struct {
    SUMA_TABLE_FIELD *ColPlaneLabelTable; 
    SUMA_OVERLAYS *curColPlane; /*!< a copy of the pointer to the selected color plane */
    SUMA_Boolean ShowCurOnly; /*!< Show current plane only out of the entire stack */
+   SUMA_Boolean GraphHidden; /*!< Graph update even in ShowCurOnly */
    void **curSOp; /*!< a copy of the pointer to the surface object for which the controller is open */
    SUMA_CMAP_RENDER_AREA *cmp_ren;   /* data for cmap rendering zone */
    Widget thr_sc;   /*! scale for threshold data */
@@ -1260,6 +1303,7 @@ typedef struct {
    SUMA_XRESOURCES X_Resources; /*!< flag specifying the types of resources to use */
    SUMA_CREATE_TEXT_SHELL_STRUCT *Help_TextShell; /*!< structure containing widgets and options of SUMA_help window */
    SUMA_CREATE_TEXT_SHELL_STRUCT *Help_Cmap_TextShell; /*!< structure containing widgets and options of colormap help window */
+   SUMA_CREATE_TEXT_SHELL_STRUCT *Help_Plot_TextShell;
    SUMA_CREATE_TEXT_SHELL_STRUCT *Log_TextShell; /*!<  structure containing widgets and options of SUMA_log window */
    SUMA_SELECTION_DIALOG_STRUCT *FileSelectDlg; /*!< structure containing widgets and options of a generic file selection dialog */
    SUMA_PROMPT_DIALOG_STRUCT *N_ForeSmooth_prmpt; /*!< structure for the number of foreground smoothingLookAt dialog */
@@ -1314,6 +1358,34 @@ typedef struct {
    GLfloat LineCol[4]; /*!< LineColor of Edge*/
    GLfloat NormVect[3]; /*!< normal vector of faceset, two triangles are drawn at a small distance from the selected FaceSet */
 }SUMA_FaceSetMarker;
+
+/*!
+   Structure containg a bunch of text defined at various locations
+*/
+typedef struct {
+   char *idcode_str;    /*!< unique idcode for DO */
+   char *Label; /*!< ascii label for DO */ 
+   SUMA_DO_Types do_type;
+   
+   int NodeBased; /*!< flag: 1 if text is displayed relative to surface nodes */
+   char *Parent_idcode_str; /*!< Parent surface's id 
+                                 (only used if NodeBased = 1
+                                 NULL if NodeBased)*/
+   int *NodeID; /*!< ID of the node at which the vector is represented
+                     NULL if NodeBased = 0 */
+
+   char **text; /*! vector containing N_n strings */
+   GLfloat *x; /*!< vector containing XYZ of text locations (3*N_n elements long)
+                     NULL if NodeBased*/
+   int N_n; /*!< Number of elements in x */
+   void *FontSize; /*!< Common FontSize of all text 
+                     (based on constants in glut.h) */
+   GLfloat FontCol[4]; /*!< Common FontColor of all text*/
+   int *colv; /*!< Vector of text colors, 4 elements per segment. 
+                        NULL if using LineCol */
+   void **sizev; /*!< Vector of text size, 1 elements per segment. 
+                        NULL if using LineWidth */   
+} SUMA_TextDO;
 
 /*!
    Structure containg a bunch of segments defined between n0 and n1
@@ -1792,6 +1864,10 @@ typedef struct {
                   inodemin = FaceSet[ifacemin][inodeminlocal]*/
 } SUMA_MT_INTERSECT_TRIANGLE;
 
+typedef enum { BAD_WARP=-1, NO_WARP, ROTATE_WARP, VOLREG_WARP, 
+               TAGALIGN_WARP,  WARPDRIVE_WARP, ALLINEATE_WARP, 
+               N_WARP_TYPES } SUMA_WARP_TYPES;
+
 /*! Structure defining the surface's volume parent info */
 typedef struct {
    char *idcode_str; /*!< the id of the vol par element */
@@ -1805,14 +1881,18 @@ typedef struct {
    char *vol_idcode_str; /*!< idcode string OF parent volume*/
    char *vol_idcode_date; /*!< idcode date */
    int xxorient, yyorient, zzorient; /*!< orientation of three dimensions*/ 
-   float *VOLREG_CENTER_OLD; /*!< pointer to the named attribute (3x1) in the .HEAD file of the experiment-aligned Parent Volume */
-   float *VOLREG_CENTER_BASE; /*!< pointer to the named attribute (3x1) in the .HEAD file of the experiment-aligned Parent Volume */
+   double *CENTER_OLD; /*!< pointer to the named attribute (3x1) in the .HEAD file of the experiment-aligned Parent Volume */
+   double *CENTER_BASE; /*!< pointer to the named attribute (3x1) in the .HEAD file of the experiment-aligned Parent Volume */
+   double *MATVEC; /*!< pointer to the warp attribute (12x1) in the .HEAD file 
+                        of the experiment-aligned Parent Volume */
+   SUMA_WARP_TYPES MATVEC_source;
+#if 0
    float *VOLREG_MATVEC; /*!< pointer to the named attribute (12x1) in the .HEAD file of the experiment-aligned Parent Volume */
    float *TAGALIGN_MATVEC; /*!< pointer to the named attribute (12x1) in the .HEAD file of the tag aligned Parent Volume */
    float *WARPDRIVE_MATVEC; /*!< pointer to the named attribute (12x1) in the .HEAD file of the warpdrive aligned Parent Volume */
+   float *ALLINEATE_MATVEC; /*!< pointer to the named attribute (12x1) in the .HEAD file of the warpdrive aligned Parent Volume */
    float *ROTATE_MATVEC; /*!< pointer to the named attribute (12x1) in the .HEAD file of the rotate aligned Parent Volume */
-   float *ROTATE_CENTER_OLD; 
-   float *ROTATE_CENTER_BASE; 
+#endif
    int Hand; /*!< Handedness of axis 1 RH, -1 LH*/
 } SUMA_VOLPAR;
 
@@ -1820,142 +1900,216 @@ typedef struct {
    SUMA_OVERLAYS *Overlay; /*!< pointer to color overlay structures */
 } SUMA_OVERLAY_LIST_DATUM;   /*!< a structure used to create linked lists of SO->Overlays and co */ 
 
-
-
 /*! structure defining a Surface Object */
 typedef struct {
+   /* THE FIRST THREE FIELDS CANNOT BE MOVED FROM HERE */
    char *idcode_str; /*!< string containing the idcode of the surface */
-   char *Label; /*!< string containing a label for the surface. Used for window titles and saved image names */
-   SUMA_DO_Types do_type;
+   char *Label; /*!< string containing a label for the surface. 
+                     Used for window titles and saved image names */
+   SUMA_DO_Types do_type;  /* displayable type identifier */
+               
+   
+   /* Begin by fields that are generic    
+                  and need to be accessed from AFNI 
+                  Keep in sync with AFNI_SurfaceObject STRUCT 
+                  AND function SUMA_MergeAfniSO_In_SumaSO
+   **********  BEGIN KEEP THIS SECTION TIGHT 
+               WITH AFNI_SURFACEOBJECT STRUCT ***********
+   */
+   int N_Node; /*!< Number of nodes in the SO */
+   int NodeDim; /*!< Dimension of Node coordinates 3 for 3D only 3 
+                     is used for now, with flat surfaces having z = 0*/
+   int EmbedDim; /*!<   Embedding dimension of the surface, 
+                        2 for flat surfaces 3 for ones with non zero 
+                        curvature. */ 
+   float *NodeList; /*!< N_Node x 3 vector containing the XYZ node coordinates. 
+                        If NodeDim is 2 then the third column is all zeros
+                        Prior to SUMA  1.2 this used to be a 2D matrix 
+                        (a vector of vectors) */
+   
+   int N_FaceSet; /*!< Number of polygons defining the surface  */
+   int FaceSetDim; /*!< Number of sides on the polygon */
+   int *FaceSetList; /*!<  N_FaceSetList x FaceSetDim vector describing 
+                           the polygon set that makes up the SO.
+                           Each row contains the indices (into NodeList) of 
+                           the nodes that make up a polygon 
+                           Prior to SUMA  1.2 this used to be a 2D matrix 
+                           (a vector of vectors) */
+   /*
+   **********  END KEEP THIS SECTION TIGHT 
+               WITH AFNI_SurfaceObject STRUCT 
+               in suma_datasets.h     ***********
+   */
+   
+   /* Include also AFNI_SurfaceObject which would contain GIFTI's information
+   with pointers stolen for list above set to NULL 
+      (see SUMA_MergeAfniSO_In_SumaSO)  */
+   NI_group *aSO;
    
    SUMA_SO_File_Type FileType; /*!< Type of Surface file */
    SUMA_SO_File_Format FileFormat; /*!< Format of Surface file ascii or binary*/
    SUMA_FileName Name; /*!< Directory and Name of surface object file (SO) */
-   SUMA_FileName Name_coord; /*!< Directory and Name of surface coordinate file (for SureFit files) */
-   SUMA_FileName Name_topo; /*!< Directory and Name of surface topology file  (for SureFit files)*/
-   SUMA_FileName SpecFile; /*!< To be added for use in AFNI's mapping interface */
+   SUMA_FileName Name_coord; /*!< Directory and Name of surface coordinate 
+                                 file (for SureFit files) */
+   SUMA_FileName Name_topo; /*!< Directory and Name of surface topology file
+                                (for SureFit files)*/
+   SUMA_FileName SpecFile; /*!< To be added for use in AFNI's 
+                                 mapping interface*/
    
-   char *parent_vol_idcode_str; /*!< IDcode of the volume from which the surface was created. Called SurfVol (NOT SurfVol_AlndExp) 
-                                    That ID does not usually refer to the volume from which VolPar is created. Except in the case 
-                                    where you are viewing the surfaces on the orignal volume (SurfVol) then this field and
-                                    SurfVol (afni dset *) ->idcode.str and VolPar->vol_idcode_str should be identical*/
+   char *parent_vol_idcode_str; /*!< IDcode of the volume from which the surface
+                                     was created. 
+                                     Called SurfVol (NOT SurfVol_AlndExp) 
+                                    That ID does not usually refer to the volume
+                                    from which VolPar is created. 
+                                    Except in the case 
+                                    where you are viewing the surfaces on 
+                                    the orignal volume (SurfVol) then this 
+                                    field and
+                                    SurfVol (afni dset *) ->idcode.str and
+                                    VolPar->vol_idcode_str should be identical*/
    char *facesetlist_idcode_str;   /*!< ID of facesets element */
    char *nodelist_idcode_str; /*!< ID of nodelist element */
    char *facenormals_idcode_str; /*!< ID of facenormals element */
    char *nodenormals_idcode_str; /*!< ID of nodenormals element */
    char *polyarea_idcode_str; /*!< ID of polygon areas element */
-   char *Name_NodeParent; /*!< Node parent of the SO.   Node Indices of SO are into NodeList matrix of the NodeParent SO*/               
+   char *Name_NodeParent; /*!<   Node parent of the SO.   
+                                 Node Indices of SO are into NodeList 
+                                 matrix of the NodeParent SO*/               
    char *Group_idcode_str;  /*!< IDcode of group */
-   char *StandardSpace;   /*!< standard space of surface (orig, tlrc, stdxxx, etc.*/
-   char *Group;   /*!< Group the surface belongs to, like Simpsons H. (aka. SubjectLabel)*/
+   char *Group;   /*!<  Group the surface belongs to, 
+                        like Simpsons H. (aka. SubjectLabel)*/
    char *State; /*!< State of SO (like inflated, bloated, exploded) */
-   char *ModelName; /*!< cerebellum, hippocampus, cerebrum, etc. */
-   /* modifications to the lame MappingRef field */
+   
    SUMA_SO_SIDE Side; /*!< Left/right */
    SUMA_GEOM_TYPE isSphere;  /*!< yes/no */
    float SphereRadius; /*!< If a sphere, then this is its radius */
    float SphereCenter[3]; /*!< If a sphere, then this it is center */
-   SUMA_Boolean AnatCorrect;    /*!< Does surface geometry matches anatomy ? (YUP/NOPE)*/
-   char *DomainGrandParentID;        /*!< Grandparent's mesh ID (icosahedron's for std-meshes) */
-   char *OriginatorID;          /*!<  ID common for surfaces from one subject that are created
-                                      at one point in time. Surfaces of the same subject,
-                                      created at different points in time (like in a longitudinal
-                                      study) will have differing OriginatorID fields (aka InstanceID)*/
+   SUMA_Boolean AnatCorrect;    /*!<   Does surface geometry match 
+                                       anatomy ? (YUP/NOPE)*/
+   char *DomainGrandParentID;        /*!< Grandparent's mesh ID 
+                                          (icosahedron's for std-meshes) */
+   char *OriginatorID;          /*!<   ID common for surfaces from one subject
+                                       that are created
+                                       at one point in time. Surfaces of the  
+                                       same subject,
+                                      created at different points in time 
+                                      (like in a longitudinal
+                                      study) will have differing 
+                                      OriginatorID fields (aka InstanceID)*/
    char *OriginatorLabel;        /*!< aka InstanceLabel */
-   char *LocalCurvatureParent;   /*!< \sa same field in SUMA_SurfSpecFile structure */
-   char *LocalCurvatureParentID;        /*!< \sa idcode_str of LocalCurvatureParent*/
-   char *LocalDomainParent;   /*!< \sa same field in SUMA_SurfSpecFile structure */
+   char *LocalCurvatureParent;   /*!< \sa same field in SUMA_SurfSpecFile 
+                                       structure */
+   char *LocalCurvatureParentID;     /*!< \sa   idcode_str of 
+                                                LocalCurvatureParent*/
+   char *LocalDomainParent;   /*!< \sa same field in SUMA_SurfSpecFile 
+                                       structure */
    char *LocalDomainParentID;      /*!< \sa idcode_str of LocalDomainParent */
-   #if 0
-   /* in the old days */
-   char *MapRef_idcode_str; /*!< if NULL, then it is not known whether surface is mappable or not
-                                 if equal to idcode_str then surface surface is Mappable, 
-                                 otherwise it specifies the idcode of the Mapping reference surface */
-   #endif
-   SUMA_Boolean SUMA_VolPar_Aligned; /*!< Surface aligned to Parent Volume data sets ?*/
-   SUMA_Boolean VOLREG_APPLIED; /*!< YUP if VP->VOLREG_CENTER_BASE, VP->VOLREG_CENTER_OLD, VP->VOLREG_MATVEC were successfully applied*/
-   SUMA_Boolean TAGALIGN_APPLIED; /*!< YUP if VP->TAGALIGN_MATVEC was successfully applied */
-   SUMA_Boolean WARPDRIVE_APPLIED;
-   SUMA_Boolean ROTATE_APPLIED; /*!< YUP if VP->ROTATE_MATVEC was successfully applied */
-   SUMA_Boolean SentToAfni; /*!< YUP if the surface has been niml-sent to AFNI */
-   SUMA_Boolean Show; /*!< YUP then the surface is visible in the viewer. Not used that much I'd say*/
+
+   SUMA_Boolean SUMA_VolPar_Aligned; /*!< Surface aligned to Parent Volume 
+                                          data sets ?*/
+   SUMA_WARP_TYPES APPLIED_A2Exp_XFORM; /*! Type of warp applied
+                                            to bring SurfVol into alignment
+                                            with ExpVol 
+                                          Replaces VOLREG_APPLIED,
+                                                   TAGALIGN_APPLIED,
+                                                   ROTATE_APPLIED,
+                                                   etc*/
+   SUMA_Boolean SentToAfni; /*!< YUP if the surface has been 
+                                 niml-sent to AFNI */
+   SUMA_Boolean Show; /*!< YUP then the surface is visible in the viewer. 
+                           Not used that much I'd say*/
    
-   SUMA_RENDER_MODES PolyMode; /*!< polygon viewing mode, SRM_Fill, SRM_Line, SRM_Points */
+   SUMA_RENDER_MODES PolyMode; /*!< polygon viewing mode, SRM_Fill, 
+                                    SRM_Line, SRM_Points */
+      
+   float *NodeNormList ; /*!< N_Node x 3 vector (used to be matrix prior 
+                              to SUMA 1.2) containing normalized normal 
+                              vectors for each node*/
+   float *FaceNormList ; /*!< N_FaceSet x 3 vector (used to be matrix prior 
+                              to SUMA 1.2) containing normalized normal vectors 
+                              for each polygon*/ 
+   int normdir;        ; /*!< direction of normals, 0 not known. 
+                              1 outwards, -1 inwards */
    
-   int N_Node; /*!< Number of nodes in the SO */
-   int NodeDim; /*!< Dimension of Node coordinates 3 for 3D only 3 is used for now, with flat surfaces having z = 0*/
-   int EmbedDim; /*!< Embedding dimension of the surface, 2 for flat surfaces 3 for ones with non zero curvature other. */ 
-   float *NodeList; /*!< N_Node x 3 vector containing the XYZ node coordinates. 
-                        If NodeDim is 2 then the third column is all zeros
-                        Prior to SUMA  1.2 this used to be a 2D matrix (a vector of vectors) */
-   
-   int N_FaceSet; /*!< Number of polygons defining the surface  */
-   int FaceSetDim; /*!< Number of sides on the polygon */
-   int *FaceSetList; /*!< N_FaceSetList x FaceSetDim vector describing the polygon set that makes up the SO.
-                     Each row contains the indices (into NodeList) of the nodes that make up a polygon 
-                     Prior to SUMA  1.2 this used to be a 2D matrix (a vector of vectors) */
-   
-   float *NodeNormList ; /*!< N_Node x 3 vector (used to be matrix prior to SUMA 1.2) containing normalized normal vectors for each node*/
-   float *FaceNormList ; /*!< N_FaceSet x 3 vector (used to be matrix prior to SUMA 1.2) containing normalized normal vectors for each polygon*/ 
-   int normdir;        ; /*!< direction of normals, 0 not known. 1 outwards, -1 inwards */
-   
-   float Center[3];       /*!< The centroid of the surface (using all the nodes in NodeList)*/
+   float Center[3];       /*!< The centroid of the surface 
+                              (using all the nodes in NodeList)*/
    float MaxDims[3];      /*!< The maximum along each of the XYZ dimensions */
    float MinDims[3];      /*!< The minimum along each of the XYZ dimensions */
    float aMinDims;      /*!< The maximum across all dimensions*/
    float aMaxDims;      /*!< The minimum across all dimensions*/
    
-   int N_patchNode; /*!< Number of nodes used in the mesh. For patches, this number is < SO->N_Node */
-   float patchCenter[3];  /*!< The centroid of the surface (using all the nodes in FaceSetList)*/
-   float patchMaxDims[3];      /*!< The maximum along each of the XYZ dimensions (using all the nodes in FaceSetList)*/
-   float patchMinDims[3];      /*!< The minimum along each of the XYZ dimensions (using all the nodes in FaceSetList)*/
-   float patchaMinDims;      /*!< The maximum across all dimensions(using all the nodes in FaceSetList)*/
-   float patchaMaxDims;      /*!< The minimum across all dimensions(using all the nodes in FaceSetList)*/
+   int N_patchNode; /*!<   Number of nodes used in the mesh. 
+                           For patches, this number is < SO->N_Node */
+   float patchCenter[3];  /*!< The centroid of the surface 
+                              (using all the nodes in FaceSetList)*/
+   float patchMaxDims[3];      /*!< The maximum along each of the XYZ dimensions
+                                    (using all the nodes in FaceSetList)*/
+   float patchMinDims[3];      /*!< The minimum along each of the XYZ dimensions
+                                    (using all the nodes in FaceSetList)*/
+   float patchaMinDims;      /*!<   The maximum across all dimensions(using all 
+                                    the nodes in FaceSetList)*/
+   float patchaMaxDims;      /*!<   The minimum across all dimensions(using all 
+                                    the nodes in FaceSetList)*/
    
-   int RotationWeight; /*!< Contribution to center of rotation calculation. 
-                           set to 0 if not contributing.
-                            set to N_Node to have the number of nodes weigh into the center's location, center of mass effect
-                           set to 1 to give each object equal weight */
-   int ViewCenterWeight; /*!< Contribution to center of gaze and viewfrom location */
+   int RotationWeight; /*!<   Contribution to center of rotation calculation. 
+                              set to 0 if not contributing.
+                              set to N_Node to have the number of nodes weigh 
+                              into the center's location, center of mass effect
+                              set to 1 to give each object equal weight */
+   int ViewCenterWeight; /*!< Contribution to center of gaze and 
+                              viewfrom location */
    
 
-   GLfloat *glar_NodeList;         /*!< pointer to the 1D NodeList array - DO NOT FREE IT, it is a pointer copy of NodeList*/
-   GLint  *glar_FaceSetList;      /*!< pointer to the 1D FaceSetList array - DO NOT FREE IT, it is a pointer copy of FaceSetList*/
-   GLfloat *glar_FaceNormList;    /*!< pointer to the 1D FaceNormList array - DO NOT FREE IT, it is a pointer copy of NodeNormList*/
-   #if 0
-   /* This pointer is now a part of the surface viewer structure. Wed Nov  6 10:23:05 EST 2002
-   Node color assignment is not a property of the surface alone, it also depends on the settings of the viewer. */
-   GLfloat *glar_ColorList;       /*!< pointer to the 1D ColorList array*/
-   #endif
-   GLfloat *PermCol; /*!< pointer to a 1D ColorList array. If this vector is not null then it specifies the colors
-                           of the nodes on the surface. It is illegal to have this if Overlays != NULL */ 
-   GLfloat *glar_NodeNormList;    /*!< pointer to the 1D NodeNormList array - DO NOT FREE IT, it is a pointer copy of NodeNormList*/
+   GLfloat *glar_NodeList;         /*!< pointer to the 1D NodeList array 
+                                    - DO NOT FREE IT, 
+                                    it is a pointer copy of NodeList*/
+   GLint  *glar_FaceSetList;      /*!< pointer to the 1D FaceSetList array 
+                                    - DO NOT FREE IT, 
+                                    it is a pointer copy of FaceSetList*/
+   GLfloat *glar_FaceNormList;    /*!< pointer to the 1D FaceNormList array 
+                                    - DO NOT FREE IT, 
+                                    it is a pointer copy of NodeNormList*/
+   GLfloat *PermCol; /*!< pointer to a 1D ColorList array. 
+                         If this vector is not null then it specifies the colors
+                         of the nodes on the surface. 
+                         It is illegal to have this if Overlays != NULL */ 
+   GLfloat *glar_NodeNormList;    /*!< pointer to the 1D NodeNormList array 
+                                       - DO NOT FREE IT, 
+                                       it is a pointer copy of NodeNormList*/
    
    int ShowMeshAxis; /*!< flag to show Mesh Axis if it is created */
    SUMA_Axis *MeshAxis;   /*!< pointer to XYZ axis  */
    
-   SUMA_MEMBER_FACE_SETS *MF; /*!< structure containing the facesets containing each node */
-   SUMA_NODE_FIRST_NEIGHB *FN; /*!< structure containing the first order neighbors of each node */
+   SUMA_MEMBER_FACE_SETS *MF; /*!<  structure containing the facesets 
+                                    containing each node */
+   SUMA_NODE_FIRST_NEIGHB *FN; /*!< structure containing the first order
+                                    neighbors of each node */
    SUMA_EDGE_LIST *EL; /*!< structure containing the edge list */
-   float *PolyArea; /*!< N_FaceSet x 1 vector containing the area of each polygon in FaceSetList */
-   SUMA_SURFACE_CURVATURE *SC; /*!< Structure containing the surface curvature info */
+   float *PolyArea; /*!< N_FaceSet x 1 vector containing the area of 
+                         each polygon in FaceSetList */
+   SUMA_SURFACE_CURVATURE *SC; /*!< Structure containing the surface 
+                                    curvature info */
    
    
    /* selection stuff */
    SUMA_Boolean ShowSelectedNode; /*!< flag for an obvious reason */
-   int SelectedNode; /*!< index of one selected node, -1 if no node is selected */
+   int SelectedNode; /*!< index of one selected node, 
+                           -1 if no node is selected */
    SUMA_SphereMarker *NodeMarker; /*!< Node Marker object structure*/
    
    SUMA_Boolean ShowSelectedFaceSet; /*!< you know what I mean */
-   int SelectedFaceSet; /*!< index of one selected faceset, -1 if no faceset is selected */
+   int SelectedFaceSet; /*!< index of one selected faceset, 
+                              -1 if no faceset is selected */
    SUMA_FaceSetMarker *FaceSetMarker; /*!< Aha, I hear ya */
    
    SUMA_VOLPAR *VolPar; /*!< Parent Volume structure */
    
-   SUMA_OVERLAYS **Overlays; /*!< vector of pointers to color overlay structures */
+   SUMA_OVERLAYS **Overlays; /*!< vector of pointers to color overlay 
+                                  structures */
    int N_Overlays; /*!< number of pointers to overlay structures */
    
-   SUMA_X_SurfCont *SurfCont;/*!< pointer to structure containing surface controller widget structure */
+   SUMA_X_SurfCont *SurfCont;/*!< pointer to structure containing surface  
+                                  controller widget structure */
    
 }SUMA_SurfaceObject; /*!< \sa Alloc_SurfObject_Struct in SUMA_DOmanip.c
                      \sa SUMA_Free_Surface_Object in SUMA_Load_Surface_Object.c
@@ -1985,6 +2139,10 @@ typedef struct {
    char *Name; /*!< Name of colormap */
    
    SUMA_SurfaceObject *SO;    /*!< Surface object used to represent map */
+   
+   float M0[3];   /*!< The very first color at Map creation, needed to reset
+                      when rotations are performed*/
+   byte flipped;  /*!< if the colormap is flipped */
 } SUMA_COLOR_MAP;
 
 /*! structure containing a mapping of one surface to another*/
@@ -2393,6 +2551,8 @@ typedef struct {
    SUMA_TIMER Timer[SUMA_MAX_N_TIMER];
    
    char *cwd;
+   
+   float CmapRotaFrac; /*!< fraction by which to rotate colormap */
 } SUMA_CommonFields;
 
 typedef enum { SUMA_NO_SORT, SUMA_BY_PLANE_DISTANCE, SUMA_BY_SEGMENT_DISTANCE, SUMA_SORT_BY_LLC_DISTANCE, SUMA_SORT_BY_LL_QUAD } SUMA_SORT_BOX_AXIS_OPTION;

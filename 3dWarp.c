@@ -174,9 +174,7 @@ int main( int argc , char * argv[] )
             "---------------------\n"
             "Miscellaneous Options:\n"
             "---------------------\n"
-#if 0
             "  -verb         = Print out some information along the way.\n"
-#endif
             "  -prefix ppp   = Sets the prefix of the output dataset.\n"
             "\n"
            ) ;
@@ -225,12 +223,17 @@ int main( int argc , char * argv[] )
        matparset = THD_open_dataset( argv[nopt] ) ;
        if( matparset == NULL )
          ERROR_exit("Can't open -matparent %s\n",argv[nopt]);
-       atr = THD_find_float_atr( matparset->dblk, "WARPDRIVE_MATVEC_INV_000000" );
-       if( atr != NULL ) atr_matinv = (ATR_float *)THD_copy_atr( (ATR_any *)atr ) ;
-       atr = THD_find_float_atr( matparset->dblk, "WARPDRIVE_MATVEC_FOR_000000" );
-       if( atr != NULL ) atr_matfor = (ATR_float *)THD_copy_atr( (ATR_any *)atr ) ;
+       atr = THD_find_float_atr( matparset->dblk, 
+                                 "WARPDRIVE_MATVEC_INV_000000" );
+       if( atr != NULL ) 
+         atr_matinv = (ATR_float *)THD_copy_atr( (ATR_any *)atr ) ;
+       atr = THD_find_float_atr( matparset->dblk, 
+                                 "WARPDRIVE_MATVEC_FOR_000000" );
+       if( atr != NULL ) 
+         atr_matfor = (ATR_float *)THD_copy_atr( (ATR_any *)atr ) ;
        if( atr_matinv == NULL ||  atr_matinv->nfl < 12 )
-         ERROR_exit("-matparent %s doesn't have WARPDRIVE attributes!?\n",argv[nopt]) ;
+         ERROR_exit( "-matparent %s doesn't have WARPDRIVE attributes!?\n",
+                     argv[nopt]) ;
 
        matar = atr_matinv->fl ;
        if( strstr(argv[nopt-1],"INV") == NULL ){
@@ -380,7 +383,8 @@ int main( int argc , char * argv[] )
          matar = MRI_FLOAT_PTR(matim) ;
        }
 
-       use_matvec = (strstr(argv[nopt-1],"_in2out") != NULL) ? MATVEC_FOR : MATVEC_BAC ;
+       use_matvec = (strstr(argv[nopt-1],"_in2out") != NULL) ? 
+                        MATVEC_FOR : MATVEC_BAC ;
 
        switch( use_matvec ){
 
@@ -477,6 +481,68 @@ int main( int argc , char * argv[] )
    if( !ISVALID_DSET(inset) )
      ERROR_exit("Can't open dataset %s\n",argv[nopt]);
 
+   #if 0 
+   {
+      /*- 25 Mar 2008: Deal with xforms that apply to i_in rather 
+                       than x_in 
+          WARNING: This code has not been tested for lack of data.
+          Say the xform specified on command line is M_i such that
+               x_out = M_i i_in +  Vector,
+               where i_in is a voxel's IJK index, rather than a voxel's
+               dicomm coordinate. 
+               or 
+               X_out = M_I I_in (using 4x4 xform matrix convention) 
+          
+          We want to calculate the transform M_X such that:
+               X_out = M_X X_in , 
+               where X_in is the voxel's dicomm coordinate. 
+          
+               So M_X X_in = M_I I_in
+          
+          In AFNI's dset structure,
+               X_in = M_ijk I_in , 
+               where M_ijk is daxes->ijk_to_dicom_real
+          
+          Now we have:
+               M_X M_ijk I_in = M_I I_in
+               or
+               M_X = M_I inv(M_ijk)
+          
+          So if needed, the block below will replace
+          dicom_in2out with M_X . But first we have
+          to wait for some data.         
+          */
+      fprintf(stderr,"WARNING\nWARNING!\nWARNING!!\n");
+      if(ISVALID_MAT44(inset->daxes->ijk_to_dicom_real)) {
+         /* load dicom_in2out into Tw */
+         LOAD_MAT44(Tw, 
+          dicom_in2out.mm.mat[0][0], 
+          dicom_in2out.mm.mat[0][1], 
+          dicom_in2out.mm.mat[0][2], dicom_in2out.vv.xyz[0],
+          dicom_in2out.mm.mat[1][0], 
+          dicom_in2out.mm.mat[1][1], 
+          dicom_in2out.mm.mat[1][2], dicom_in2out.vv.xyz[1],
+          dicom_in2out.mm.mat[2][0], 
+          dicom_in2out.mm.mat[2][1], 
+          dicom_in2out.mm.mat[2][2], dicom_in2out.vv.xyz[2]);
+         DUMP_MAT44("MI:\n", Tw);
+         /* equivalent dicom transform is Tw*inv(ijk_to_dicom_real) */
+         Tc = MAT44_INV(inset->daxes->ijk_to_dicom_real);
+         DUMP_MAT44("inv(Mijk):\n", Tc);
+         Tw2 = MAT44_MUL(Tw,Tc);
+         DUMP_MAT44("MI*inv(Mijk):\n", Tw2);
+         /* Now reload Tw2 into dicom_in2out */
+         LOAD_MAT  ( dicom_in2out.mm, 
+                     Tw2.m[0][0],Tw2.m[0][1],Tw2.m[0][2],
+                     Tw2.m[1][0],Tw2.m[1][1],Tw2.m[1][2],
+                     Tw2.m[2][0],Tw2.m[2][1],Tw2.m[2][2] ) ;
+         LOAD_FVEC3( dicom_in2out.vv, 
+                     Tw2.m[0][3],Tw2.m[1][3],Tw2.m[2][3] ) ;
+         /* And recalculate the inverse of dicom_in2out */
+         dicom_out2in = INV_VECMAT( dicom_in2out ) ;
+      }
+   }
+   #endif
    /*- 11 Mar 2004: check for coherency -*/
 
    if( tta2mni || mni2tta ){
@@ -514,16 +580,18 @@ int main( int argc , char * argv[] )
       if(oblique_flag==1)   /* deoblique case*/
          matar = &Tw.m[0][0];
       else {               /* obliquing case */
-         DSET_delete(oblparset) ;  /* don't need oblique parent dataset anymore */
+         /* don't need oblique parent dataset anymore */
+         DSET_delete(oblparset) ;
          Tw_inv = MAT44_INV(Tw);
          matar = &Tw_inv.m[0][0];
+         Tw = Tw_inv;      /* just for the DUMP */
 #ifdef DEBUG_ON
 DUMP_MAT44("Tw_inv",Tw_inv);
 #endif
 	 if(ISVALID_MAT44(inset->daxes->ijk_to_dicom_real)) {
 	   angle = THD_compute_oblique_angle(inset->daxes->ijk_to_dicom_real, 0);
 	   if(angle>0.0) {
-              INFO_message("Need to deoblique original dataset before obliquing\n");
+              INFO_message("Deobliquing original dataset before obliquing\n");
               INFO_message("  Combining oblique transformations");
               Compute_Deoblique_Transformation(inset, &Tw2);
               Tw = MAT44_MUL(Tw_inv, Tw2);
@@ -534,6 +602,11 @@ DUMP_MAT44("Twcombined", Tw);
            }
          }
       }
+
+      /* show overall oblique/deoblique transformation */
+      if(verb && oblique_flag)
+         DUMP_MAT44("Obliquity Transformation :", Tw);
+
       LOAD_MAT  ( dicom_in2out.mm, matar[0],matar[1],matar[2],
                                    matar[4],matar[5],matar[6],
                                    matar[8],matar[9],matar[10] ) ;

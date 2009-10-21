@@ -43,6 +43,9 @@ static int         VL_coarse_del=10 ; /* 11 Dec 2000 */
 static int         VL_coarse_num=2  ;
 static int         VL_coarse_rot=1  ; /* 01 Dec 2005 */
 
+static THD_fvec3 VL_cen_bas , VL_cen_inp ; /* 11 Mar 2008 */
+static float     VL_cen_dist = 0.0f ;
+
 static THD_3dim_dataset *VL_dset = NULL ;
 static THD_3dim_dataset *VL_bset = NULL ;  /* 06 Feb 2001 */
 
@@ -76,6 +79,9 @@ static int VL_sinit = 1 ;                        /* 22 Mar 2004 */
 static char *VL_matrix_save_1D = NULL ;          /* 24 Jul 2007 */
 static FILE *VL_msfp = NULL ;
 
+static int VL_floatize = 0 ;                     /* 07 Jan 2008 */
+static int VL_floatize_forced = 0 ;
+
 /******* prototypes *******/
 
 void VL_syntax(void) ;
@@ -97,12 +103,12 @@ float new_get_best_shiftrot( THD_3dim_dataset *dset ,
 
 int main( int argc , char *argv[] )
 {
-   MRI_3dalign_basis * albase ;
-   THD_3dim_dataset * new_dset ;
-   MRI_IMAGE * qim , * tim , * fim ;
+   MRI_3dalign_basis *albase ;
+   THD_3dim_dataset *new_dset ;
+   MRI_IMAGE *qim , *tim , *fim ;
    double cputim ;
    float *dx, *dy, *dz, *roll, *yaw, *pitch, *rmsnew, *rmsold, *imb, *tar ;
-   float ddx,ddy,ddz , sum ;
+   float ddx,ddy,ddz , sum , fac ;
    float dxtop,dytop,dztop , rolltop,yawtop,pitchtop ;
    float dxbot,dybot,dzbot , rollbot,yawbot,pitchbot ;
    float dxbar,dybar,dzbar , rollbar,yawbar,pitchbar ;
@@ -259,6 +265,7 @@ int main( int argc , char *argv[] )
        ERROR_exit("Output file %s already exists -- cannot continue!\n",
                   DSET_HEADNAME(new_dset) ) ;
      }
+     EDIT_dset_items( new_dset, ADN_brick_fac,NULL, ADN_none ); /* 07 Jan 2008 */
    }
 
    tross_Copy_History( VL_dset , new_dset ) ;
@@ -404,7 +411,8 @@ int main( int argc , char *argv[] )
    /*-- initialize the registration algorithm --*/
 
    if( VL_imbase == NULL ){
-     VL_imbase = mri_to_float(DSET_BRICK(VL_dset,VL_nbase)) ; /* copy this */
+     fac = DSET_BRICK_FACTOR(VL_dset,VL_nbase) ;
+     VL_imbase = mri_scale_to_float(fac,DSET_BRICK(VL_dset,VL_nbase)) ;
    } else {
      VL_nbase = -1 ;  /* will not match any sub-brick index */
    }
@@ -488,7 +496,7 @@ int main( int argc , char *argv[] )
    /*--- 11 Sep 2000: if in twopass mode, do the first pass ---*/
 
    if( VL_twopass ){
-      MRI_IMAGE * tp_base ;
+      MRI_IMAGE *tp_base ;
       int sx=66666,sy,sz ;
       float rr=0.0f,pp=0.0f,yy=0.0f ;  /* 01 Dec 2005 */
 
@@ -529,7 +537,8 @@ int main( int argc , char *argv[] )
            fprintf(stderr,
                    "++ Computing first pass weight as sum of base and brick\n");
 
-         fim = mri_to_float( DSET_BRICK(VL_dset,0) ) ; /* 1st data brick */
+         fac = DSET_BRICK_FACTOR(VL_dset,0) ;
+         fim = mri_scale_to_float( fac,DSET_BRICK(VL_dset,0) ) ; /* 1st data brick */
          far = MRI_FLOAT_PTR(fim) ;
          EDIT_blur_volume_3d( nx,ny,nz , 1.0,1.0,1.0 , /* blur it */
                               MRI_float , far ,
@@ -648,7 +657,8 @@ int main( int argc , char *argv[] )
       for( kim=0 ; kim < imcount ; kim++ ){
 
          qim     = DSET_BRICK( VL_dset , kim ) ; /* the sub-brick in question */
-         fim     = mri_to_float( qim ) ;         /* make a float copy */
+         fac     = DSET_BRICK_FACTOR( VL_dset , kim ) ;
+         fim     = mri_scale_to_float( fac , qim ) ;     /* make a float copy */
          fim->dx = fabs( DSET_DX(VL_dset) ) ;    /* must set voxel dimensions */
          fim->dy = fabs( DSET_DY(VL_dset) ) ;
          fim->dz = fabs( DSET_DZ(VL_dset) ) ;
@@ -736,7 +746,8 @@ int main( int argc , char *argv[] )
    /* 06 Jun 2002: create -wtinp weight now */
 
    if( VL_wtinp ){
-     VL_imwt = mri_to_float( DSET_BRICK(VL_dset,0) ) ;
+     fac = DSET_BRICK_FACTOR(VL_dset,0) ;
+     VL_imwt = mri_scale_to_float( fac , DSET_BRICK(VL_dset,0) ) ;
      mri_3dalign_wproccing( 1 ) ;
    }
 
@@ -760,7 +771,8 @@ int main( int argc , char *argv[] )
       if( VL_verbose ) fprintf(stderr,"%d",kim) ;  /* mark start of this one */
 
       qim     = DSET_BRICK( VL_dset , kim ) ; /* the sub-brick in question */
-      fim     = mri_to_float( qim ) ;         /* make a float copy */
+      fac     = DSET_BRICK_FACTOR( VL_dset , kim ) ;
+      fim     = mri_scale_to_float( fac , qim ) ;     /* make a float copy */
       fim->dx = fabs( DSET_DX(VL_dset) ) ;    /* must set voxel dimensions */
       fim->dy = fabs( DSET_DY(VL_dset) ) ;
       fim->dz = fabs( DSET_DZ(VL_dset) ) ;
@@ -779,7 +791,7 @@ int main( int argc , char *argv[] )
 
       } else {               /* 16 Nov 1998: just make a copy of base image */
 
-         if( !matvec ) tim = mri_to_float( VL_imbase ) ;
+         if( !matvec ) tim = mri_to_float( VL_imbase ) ; /* make a copy */
          else          tim = NULL ;                      /* 14 Feb 2001 */
 
          roll[kim] = pitch[kim] = yaw[kim] = ddx = ddy = ddz = 0.0 ;
@@ -843,12 +855,9 @@ int main( int argc , char *argv[] )
          /* zero pad before final transformation? */
 
          if( npadd ){
-           MRI_IMAGE *qim = mri_zeropad_3D( 0,0,0,0,npad_neg,npad_pos , fim ) ;
-           if( qim == NULL ){
-             fprintf(stderr,"** Can't zeropad at kim=%d -- FATAL ERROR!\n",kim);
-             exit(1) ;
-           }
-           mri_free(fim) ; fim = qim ;
+           MRI_IMAGE *zim = mri_zeropad_3D( 0,0,0,0,npad_neg,npad_pos , fim ) ;
+           if( zim == NULL ) ERROR_exit("Can't zeropad at kim=%d !",kim);
+           mri_free(fim) ; fim = zim ;
          }
 
          THD_rota_method( VL_final ) ;
@@ -912,7 +921,8 @@ int main( int argc , char *argv[] )
            (the new registered brick in "tim" is stored as floats). --*/
 
       if( tim != NULL && !null_output ){
-        switch( qim->kind ){
+        int typ = (VL_floatize) ? MRI_float : qim->kind ;  /* 07 Jan 2008 */
+        switch( typ ){
 
           case MRI_float:
             EDIT_substitute_brick( new_dset, kim, MRI_float, MRI_FLOAT_PTR(tim) );
@@ -944,9 +954,9 @@ int main( int argc , char *argv[] )
 
       if( VL_verbose ) fprintf(stderr,".") ;  /* mark end of this one */
 
-   }  /* end of loop over sub-bricks */
+   }  /*--- end of loop over sub-bricks ---*/
 
-   /*-- done with registration --*/
+   /*------------------ done with registration ------------------*/
 
    mri_3dalign_cleanup( albase ) ;
    DSET_unload( VL_dset ) ;        /* 06 Feb 2001: unload instead of delete */
@@ -1030,14 +1040,12 @@ int main( int argc , char *argv[] )
 
      /* info about base dataset */
 
-     if( VL_bset == NULL ) VL_bset = VL_dset ;  /* default base */
-
      THD_set_string_atr( new_dset->dblk , "VOLREG_BASE_IDCODE" ,
                                           VL_bset->idcode.str ) ;
      THD_set_string_atr( new_dset->dblk , "VOLREG_BASE_NAME" ,
                                           DSET_HEADNAME(VL_bset) ) ;
 
-     cv = THD_dataset_center( VL_bset ) ;
+     cv = VL_cen_bas ;
      THD_set_float_atr( new_dset->dblk , "VOLREG_CENTER_BASE" , 3 , cv.xyz ) ;
 
      /* number of images registered */
@@ -1045,9 +1053,6 @@ int main( int argc , char *argv[] )
      THD_set_int_atr( new_dset->dblk , "VOLREG_ROTCOM_NUM" , 1 , &imcount ) ;
 
      /* each volume's transformation parameters, matrix, and vector */
-
-     if( VL_maxdisp > 0 && VL_verbose )
-       INFO_message("Max displacements (mm) for each sub-brick:") ;
 
      if( VL_maxdisp > 0 ){
        if( VL_verbose )
@@ -1090,12 +1095,33 @@ int main( int argc , char *argv[] )
 
         if( VL_msfp != NULL ){  /* 24 Jul 2007 */
           THD_dvecmat vm , ivm ;
-          vm.mm = rmat ; LOAD_DFVEC3(vm.vv,matar[3],matar[7],matar[11]) ;
-          ivm = invert_dvecmat(vm) ;
-
+          float xd=matar[3] , yd=matar[7] , zd=matar[11] ;
+          #if 0 /* ZSS: That's not good enough 
+                        One has to do the dance
+                        even if dist is 0.0, just like
+                        in cat_matvec*/
+          if( VL_cen_dist > 0.01f ){  /* 11 Mar 2008 */
+            THD_fvec3 dv , ev ;
+            dv = MATVEC(rmat,VL_cen_inp) ;
+            ev = SUB_FVEC3(VL_cen_bas,dv) ;
+            xd += dv.xyz[0] ; yd += dv.xyz[1] ; zd += dv.xyz[2] ;
+          }
+          LOAD_DFVEC3(vm.vv,xd,yd,zd) ;
+          vm.mm = rmat ; ivm = invert_dvecmat(vm) ;
+          #else
+          {
+            THD_fvec3 dv , ev ;
+            dv = MATVEC(rmat, VL_cen_inp) ;
+            xd += VL_cen_bas.xyz[0] - dv.xyz[0];
+            yd += VL_cen_bas.xyz[1] - dv.xyz[1];
+            zd += VL_cen_bas.xyz[2] - dv.xyz[2];
+            LOAD_DFVEC3(vm.vv,xd,yd,zd) ;
+            vm.mm = rmat ; ivm = invert_dvecmat(vm) ;
+          }
+          #endif
           fprintf(VL_msfp,"%13.6g %13.6g %13.6g %13.6g "
-                           "%13.6g %13.6g %13.6g %13.6g "
-                           "%13.6g %13.6g %13.6g %13.6g\n" ,
+                          "%13.6g %13.6g %13.6g %13.6g "
+                          "%13.6g %13.6g %13.6g %13.6g\n" ,
           ivm.mm.mat[0][0], ivm.mm.mat[0][1], ivm.mm.mat[0][2], ivm.vv.xyz[0],
           ivm.mm.mat[1][0], ivm.mm.mat[1][1], ivm.mm.mat[1][2], ivm.vv.xyz[1],
           ivm.mm.mat[2][0], ivm.mm.mat[2][1], ivm.mm.mat[2][2], ivm.vv.xyz[2] ) ;
@@ -1206,6 +1232,10 @@ int main( int argc , char *argv[] )
       printf("\n") ;  /* 11 Dec 2000 */
    }
 
+   if( VL_floatize_forced && !null_output )
+     WARNING_message(
+       "Input dataset has scale factors ==> output is stored as floats!");
+
    exit(0) ;
 }
 
@@ -1241,6 +1271,11 @@ void VL_syntax(void)
     "                    The program tries not to overwrite an existing dataset.\n"
     "                    Default = 'volreg'.\n"
     "              N.B.: If the prefix is 'NULL', no output dataset will be written.\n"
+    "\n"
+    "  -float          Force output dataset to be written in floating point format.\n"
+    "              N.B.: If the input dataset has scale factors attached to ANY\n"
+    "                    sub-bricks, then the output will always be written in\n"
+    "                    float format!\n"
     "\n"
     "  -base n         Sets the base brick to be the 'n'th sub-brick\n"
     "                    from the input dataset (indexing starts at 0).\n"
@@ -1294,6 +1329,9 @@ void VL_syntax(void)
     "                      the output dataset VOLREG_MATVEC_* attributes.\n"
     "                      The base-to-input convention followed with this\n"
     "                      option corresponds to the convention in 3dAllineate.\n"
+    "               *N.B.: 3dvolreg does not have a '-1Dmatrix_apply' option.\n"
+    "                      See 3dAllineate for this function.  Also confer with\n"
+    "                      program cat_matvec.\n"
     "\n"
     "  -rotcom         Write the fragmentary 3drotate commands needed to\n"
     "                  perform the realignments to stdout; for example:\n"
@@ -1526,8 +1564,10 @@ void VL_command_line(void)
       /** -1Dmatrix_save [24 Jul 2007] **/
 
       if( strcmp(Argv[Iarg],"-1Dmatrix_save") == 0 ){
-        if( VL_matrix_save_1D != NULL ) ERROR_exit("Can't have multiple %s options!",Argv[Iarg]);
-        if( ++Iarg >= Argc ) ERROR_exit("no argument after '%s'!",Argv[Iarg-1]) ;
+        if( VL_matrix_save_1D != NULL )
+          ERROR_exit("Can't have multiple %s options!",Argv[Iarg]);
+        if( ++Iarg >= Argc )
+          ERROR_exit("no argument after '%s'!",Argv[Iarg-1]) ;
         if( !THD_filename_ok(Argv[Iarg]) )
           ERROR_exit("badly formed filename: %s '%s'",Argv[Iarg-1],Argv[Iarg]) ;
         if( STRING_HAS_SUFFIX(Argv[Iarg],".1D") ){
@@ -1726,9 +1766,8 @@ void VL_command_line(void)
         /* try an integer */
 
         bb = strtol( Argv[++Iarg] , &cpt , 10 ) ;
-        if( bb < 0 ){
-          fprintf(stderr,"** Illegal number after -base\n"); exit(1);
-        }
+        if( bb < 0 )
+          ERROR_exit("Illegal negative number after -base") ;
 
         if( *cpt == '\0' ){  /* it WAS an integer */
 
@@ -1738,22 +1777,22 @@ void VL_command_line(void)
 
         } else {             /* it WAS NOT an integer */
 
+          float fac ;
+
           /* 06 Feb 2001: now we store the base dataset in a global variable */
           /* 13 Sep 2000: replaced old code with use of THD_open_dataset()   */
 
           VL_bset = THD_open_dataset( Argv[Iarg] ) ;
           if( VL_bset == NULL ){
-             fprintf(stderr,"** Couldn't open -base dataset %s\n",Argv[Iarg]) ;
-             exit(1) ;
+            ERROR_exit("Couldn't open -base dataset %s",Argv[Iarg]) ;
           }
           if( VL_verbose )
             fprintf(stderr,
                     "++ Reading in base dataset %s\n",DSET_BRIKNAME(VL_bset)) ;
           DSET_load(VL_bset) ; CHECK_LOAD_ERROR(VL_bset) ;
           if( DSET_NVALS(VL_bset) > 1 )
-             fprintf(stderr,
-                     "++ WARNING: -base dataset %s has more than 1 sub-brick\n",
-                     Argv[Iarg]) ;
+             WARNING_message("-base dataset %s has more than 1 sub-brick",
+                             Argv[Iarg]) ;
 
           VL_intern = 0 ;   /* not internal to input dataset */
 
@@ -1761,13 +1800,15 @@ void VL_command_line(void)
           bdy = fabs(DSET_DY(VL_bset)) ;  /* (14 Sep 2000)            */
           bdz = fabs(DSET_DZ(VL_bset)) ;
 
+          fac = DSET_BRICK_FACTOR(VL_bset,0) ;
+
           /* 10 Apr 2001: Tom Ross noticed that the "bb" which
                           used to be here as the brick selector
                           was no longer defined, and should be
-                          replaced by 0, which I just did -- RWCox
-                                                       |
-                                                       v           */
-          VL_imbase = mri_to_float( DSET_BRICK(VL_bset,0) ) ;  /* copy this */
+                          replaced by 0, which I just did -- RWCox.
+                                                                  |
+                                                                  v */
+          VL_imbase = mri_scale_to_float( fac, DSET_BRICK(VL_bset,0) ) ;
 
           VL_bxorg = VL_bset->daxes->xxorg ;                   /* 08 Dec 2000 */
           VL_byorg = VL_bset->daxes->yyorg ;
@@ -1836,9 +1877,9 @@ void VL_command_line(void)
       /** -weight **/
 
       if( strncmp(Argv[Iarg],"-weight",4) == 0 ){
-        int bb,ii ; char * cpt ;
-        THD_3dim_dataset * wset ;
-        char dname[256] ;
+        int bb,ii ; char *cpt ;
+        THD_3dim_dataset *wset ;
+        char dname[256] ; float fac ;
 
         if( VL_imwt != NULL ){
            fprintf(stderr,"** Can't have two -weight options\n") ; exit(1) ;
@@ -1867,8 +1908,9 @@ void VL_command_line(void)
         if( VL_verbose )
            fprintf(stderr,"++ Reading in weight dataset %s\n",DSET_BRIKNAME(wset)) ;
         DSET_load(wset) ;
-        VL_imwt = mri_to_float( DSET_BRICK(wset,bb) ) ;  /* copy this */
-        DSET_delete( wset ) ;                            /* toss this */
+        fac = DSET_BRICK_FACTOR(wset,bb) ;
+        VL_imwt = mri_scale_to_float( fac , DSET_BRICK(wset,bb) ) ;  /* copy this */
+        DSET_delete( wset ) ;                                        /* toss this */
         Iarg++ ; continue ;
       }
 
@@ -1916,6 +1958,10 @@ void VL_command_line(void)
             ERREX("Can't open -gridparent dataset!\n") ;
 
          Iarg++ ; continue ;
+      }
+
+      if( strncmp(Argv[Iarg],"-float",6) == 0 ){  /* 07 Jan 2008 */
+        VL_floatize = 1 ; Iarg++ ; continue ;
       }
 
       /***** get to here ==> bad news! *****/
@@ -1973,8 +2019,7 @@ void VL_command_line(void)
       }
    }
 
-   /*** Open the dataset to be registered ***/
-
+   /***---------- Open the dataset to be registered ----------***/
 
    if( VL_dset == NULL ){
           if( Iarg >= Argc  ) ERROR_exit("Too few arguments!?  Last=%s",Argv[Argc-1]);
@@ -1986,10 +2031,27 @@ void VL_command_line(void)
      WARNING_message("Skipping argument(s) after last option? '%s'",Argv[Iarg]) ;
    }
 
+   if( !VL_floatize && THD_need_brick_factor(VL_dset) ){  /* 07 Jan 2008 */
+     VL_floatize = 1 ; VL_floatize_forced = 1 ;
+     WARNING_message(
+       "Input dataset has scale factors ==> output will be stored as floats!");
+   }
+
    /** Check for errors **/
 
    if( VL_dset == NULL ){
       fprintf(stderr,"** Can't open dataset %s\n",Argv[Iarg]) ; exit(1) ;
+   }
+
+   if( VL_bset == NULL ) VL_bset = VL_dset ;  /* default base */
+   VL_cen_bas = THD_dataset_center(VL_bset) ;  /* 11 Mar 2008 */
+   VL_cen_inp = THD_dataset_center(VL_dset) ;
+   if( VL_bset != VL_dset ){
+     THD_fvec3 dv ; float dd ;
+     dv = SUB_FVEC3(VL_cen_bas,VL_cen_inp) ;
+     VL_cen_dist = SIZE_FVEC3(dv) ;
+     if( VL_cen_dist > 0.01f && VL_verbose )
+       INFO_message("centers of base and input datasets are %.2f mm apart",VL_cen_dist);
    }
 
    if( VL_tshift ){
@@ -2015,7 +2077,7 @@ void VL_command_line(void)
 
    /*-- 27 Feb 2001: do a better check for mismatch between base and input --*/
 #if 1
-   if( VL_bset != NULL ){
+   if( VL_bset != NULL && VL_bset != VL_dset ){
       int mm = THD_dataset_mismatch( VL_dset , VL_bset ) , nn=0 ;
 
       if( mm & MISMATCH_DIMEN ){
@@ -2103,10 +2165,8 @@ void VL_command_line(void)
       exit(1) ;
    }
 
-   if( VL_intern && DSET_NVALS(VL_dset) == 1 ){
-      fprintf(stderr,"** You can't register a 1 brick dataset to itself!\n") ;
-      exit(1) ;
-   }
+   if( VL_intern && DSET_NVALS(VL_dset) == 1 )
+     ERROR_exit("You can't register a 1 brick dataset to itself!") ;
 
    /* 15 Mar 2001: adjust VL_coarse_del, perhaps */
 

@@ -6,7 +6,9 @@
 #define NTYPE_SPHERE 1
 #define NTYPE_RECT   2
 #define NTYPE_RHDD   3
+#define NTYPE_TOHD   4
 
+void mri_principal_vector_params( int a , int b ) ;
 MRI_IMAGE * mri_principal_vector( MRI_IMARR *imar ) ;
 MRI_IMARR * THD_get_dset_nbhd_array( THD_3dim_dataset *dset, byte *mask,
                                      int xx, int yy, int zz, MCW_cluster *nbhd ) ;
@@ -22,8 +24,9 @@ int main( int argc , char *argv[] )
    byte *mask=NULL ; int mask_nx,mask_ny,mask_nz , automask=0 ;
    char *prefix="./LocalSVD" ;
    int iarg=1 , verb=1 , ntype=0 , kk,nx,ny,nz,nxy,nxyz,nt , xx,yy,zz, vstep ;
-   float na,nb,nc ;
+   float na,nb,nc , dx,dy,dz ;
    MRI_IMARR *imar=NULL ; MRI_IMAGE *pim=NULL ;
+   int do_vmean=0 , do_vnorm=0 ;
 
    if( argc < 2 || strcmp(argv[1],"-help") == 0 ){
      printf(
@@ -36,6 +39,8 @@ int main( int argc , char *argv[] )
        " -prefix ppp\n"
        " -input inputdataset\n"
        " -nbhd nnn\n"
+       " -vmean\n"
+       " -vnorm\n"
      ) ;
      PRINT_COMPILE_DATE ; exit(0) ;
    }
@@ -48,6 +53,13 @@ int main( int argc , char *argv[] )
    /*---- loop over options ----*/
 
    while( iarg < argc && argv[iarg][0] == '-' ){
+
+     if( strcmp(argv[iarg],"-vmean") == 0 ){
+       do_vmean = 1 ; iarg++ ; continue ;
+     }
+     if( strcmp(argv[iarg],"-vnorm") == 0 ){
+       do_vnorm = 1 ; iarg++ ; continue ;
+     }
 
      if( strcmp(argv[iarg],"-input") == 0 ){
        if( inset != NULL  ) ERROR_exit("Can't have two -input options") ;
@@ -114,6 +126,8 @@ int main( int argc , char *argv[] )
 
    } /*--- end of loop over options ---*/
 
+   mri_principal_vector_params( do_vmean , do_vnorm ) ;
+
    /*---- deal with input dataset ----*/
 
    if( inset == NULL ){
@@ -155,7 +169,6 @@ int main( int argc , char *argv[] )
        ERROR_exit("WTF?  ntype=%d",ntype) ;
 
      case NTYPE_SPHERE:{
-       float dx , dy , dz ;
        if( na < 0.0f ){ dx = dy = dz = 1.0f ; na = -na ; }
        else           { dx = fabsf(DSET_DX(inset)) ;
                         dy = fabsf(DSET_DY(inset)) ;
@@ -165,7 +178,6 @@ int main( int argc , char *argv[] )
      break ;
 
      case NTYPE_RECT:{
-       float dx , dy , dz ;
        if( na < 0.0f ){ dx = 1.0f; na = -na; } else dx = fabsf(DSET_DX(inset));
        if( nb < 0.0f ){ dy = 1.0f; nb = -nb; } else dy = fabsf(DSET_DY(inset));
        if( nc < 0.0f ){ dz = 1.0f; nc = -nc; } else dz = fabsf(DSET_DZ(inset));
@@ -174,7 +186,6 @@ int main( int argc , char *argv[] )
      break ;
 
      case NTYPE_RHDD:{
-       float dx , dy , dz ;
        if( na < 0.0f ){ dx = dy = dz = 1.0f ; na = -na ; }
        else           { dx = fabsf(DSET_DX(inset)) ;
                         dy = fabsf(DSET_DY(inset)) ;
@@ -183,6 +194,7 @@ int main( int argc , char *argv[] )
      }
      break ;
    }
+   MCW_radsort_cluster( nbhd , dx,dy,dz ) ;  /* 26 Feb 2008 */
 
    INFO_message("Neighborhood comprises %d voxels",nbhd->num_pt) ;
 
@@ -253,11 +265,21 @@ MRI_IMARR * THD_get_dset_nbhd_array( THD_3dim_dataset *dset, byte *mask,
 
 /*------------------------------------------------------------------------*/
 
+static int mpv_vmean = 0 ;
+static int mpv_vnorm = 0 ;
+
+void mri_principal_vector_params( int a , int b )
+{
+   mpv_vmean = a ; mpv_vnorm = b ;
+}
+
 MRI_IMAGE * mri_principal_vector( MRI_IMARR *imar )
 {
    int nx , nvec , ii,jj ;
    double *amat , *umat , *vmat , *sval ;
    float *far ; MRI_IMAGE *tim ;
+   float vmean=0.0f , vnorm=0.0f ;
+   register double sum ;
 
    if( imar == NULL ) return NULL ;
    nvec = IMARR_COUNT(imar) ;       if( nvec < 1 ) return NULL ;
@@ -278,23 +300,41 @@ MRI_IMAGE * mri_principal_vector( MRI_IMARR *imar )
      far = MRI_FLOAT_PTR(tim) ;
      for( ii=0 ; ii < nx ; ii++ ) A(ii,jj) = (double)far[ii] ;
    }
-#if 0
-   if( nvec > 1 ){
-     double sum ;
-     for( ii=0 ; ii < nx ; ii++ ){
+
+   if( mpv_vmean ){
+     for( jj=0 ; jj < nvec ; jj++ ){
        sum = 0.0 ;
-       for( jj=0 ; jj < nvec ; jj++ ) sum += A(ii,jj) ;
-       sum /= nvec ;
-       for( jj=0 ; jj < nvec ; jj++ ) A(ii,jj) -= sum ;
+       for( ii=0 ; ii < nx ; ii++ ) sum += A(ii,jj) ;
+       sum /= nx ; if( jj == 0 ) vmean = sum ;
+       for( ii=0 ; ii < nx ; ii++ ) A(ii,jj) -= sum ;
      }
    }
-#endif
+   if( mpv_vnorm ){
+     for( jj=0 ; jj < nvec ; jj++ ){
+       sum = 0.0 ;
+       for( ii=0 ; ii < nx ; ii++ ) sum += A(ii,jj)*A(ii,jj) ;
+       if( sum > 0.0 ){
+         sum = 1.0 / sqrt(sum) ; if( jj == 0 ) vnorm = 1.0/sum ;
+         for( ii=0 ; ii < nx ; ii++ ) A(ii,jj) *= sum ;
+       }
+     }
+   }
 
    svd_double( nx , nvec , amat , sval , umat , vmat ) ;
 
    tim = mri_new( nx , 1 , MRI_float ) ;
    far = MRI_FLOAT_PTR(tim) ;
    for( ii=0 ; ii < nx ; ii++ ) far[ii] = (float)U(ii,0) ;
+
+   sum = 0.0 ;
+   for( ii=0 ; ii < nx ; ii++ ) sum += A(ii,0)*far[ii] ;
+   if( sum < 0.0 )
+     for( ii=0 ; ii < nx ; ii++ ) far[ii] = -far[ii] ;
+
+   if( vnorm != 0.0f )
+     for( ii=0 ; ii < nx ; ii++ ) far[ii] *= vnorm ;
+   if( vmean != 0.0f )
+     for( ii=0 ; ii < nx ; ii++ ) far[ii] += vmean ;
 
    free(sval); free(vmat); free(umat); free(amat); return tim;
 }

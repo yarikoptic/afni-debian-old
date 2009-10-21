@@ -51,9 +51,9 @@
 **			of a file containing a DICOM stream.
 **   Usage:
 **			dcm_dump_file [-b] [-g] [-v] [-z] file [file ...]
-** Last Update:		$Author: rwcox $, $Date: 2007/06/01 17:29:39 $
+** Last Update:		$Author: rwcox $, $Date: 2008/05/08 16:14:36 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.26 $
+** Revision:		$Revision: 1.28 $
 ** Status:		$State: Exp $
 */
 
@@ -122,21 +122,27 @@ int g_readpreamble = FALSE;                /* 18 May 2006 [rickr] */
 /****************************************************************/
 /***** Function and variables to replace printf() ***************/
 
-static char *pbuf = NULL ;
-static int  npbuf = 0 ;
+static int just_do_printf = 0 ;  /* 02 May 2008 */
+void mri_dicom_header_use_printf( int i ){ just_do_printf = i; }
+
+static char *pbuf = NULL ;  /* output string buffer */
+static int  npbuf = 0 ;     /* number of bytes allocated in pbuf */
+static int  lpbuf = 0 ;     /* number of bytes used in pbuf */
 
 #define NPBUF 2048
 
 static void RWC_clear_pbuf(void)
 {
-   if( pbuf != NULL ){ free(pbuf); pbuf = NULL; npbuf = 0; }
+   if( pbuf != NULL ){ free(pbuf); pbuf = NULL; npbuf = 0; lpbuf = 0; }
 }
 
-static int RWC_printf( char *fmt , ... )
+int RWC_printf( char *fmt , ... )
 {
    static char *sbuf = NULL ;
-   int nsbuf , nn , lpbuf ;
+   int nsbuf , nn ;
    va_list vararg_ptr ;
+
+ENTRY("RWC_printf") ;
 
    va_start( vararg_ptr , fmt ) ;
 
@@ -146,27 +152,40 @@ static int RWC_printf( char *fmt , ... )
    nn = vsprintf( sbuf , fmt , vararg_ptr ) ;
    va_end( vararg_ptr ) ;
    nsbuf = strlen(sbuf) ;
-   if( nsbuf == 0 ) return(0);
+   if( nsbuf == 0 ) RETURN(0);
+
+   if( just_do_printf ){ fputs(sbuf,stdout); RETURN(nn); }
 
    if( npbuf == 0 ){
-     pbuf = AFMALL(char,NPBUF) ; npbuf = NPBUF ; pbuf[0] = '\0' ;
+STATUS("initial allocation of pbuf") ;
+     pbuf = AFMALL(char,NPBUF); npbuf = NPBUF; pbuf[0] = '\0'; lpbuf = 0;
    }
 
+#if 0
    lpbuf = strlen(pbuf) ;
+#endif
    if( lpbuf+nsbuf+8 > npbuf ){
-     npbuf += NPBUF + npbuf/4 ; pbuf = AFREALL( pbuf, char, npbuf) ;
+     npbuf += NPBUF + nsbuf + npbuf/16 ; pbuf = AFREALL( pbuf, char, npbuf) ;
+if(PRINT_TRACING){
+  char str[256];
+  sprintf(str,"realloc pbuf: lpbuf=%d nsbuf=%d npbuf=%d",lpbuf,nsbuf,npbuf);
+  STATUS(str);
+}
    }
-
+#if 0
    strcat(pbuf,sbuf) ;
-   return(nn);
+#else
+   strcpy(pbuf+lpbuf,sbuf) ; lpbuf += nsbuf ;
+#endif
+   RETURN(nn);
 }
 
 /****************************************************************/
 
-static off_t pxl_off = 0 ;  /* store pixel array offset */
-static int   pxl_len = 0 ;  /* and length in file */
+static off_t        pxl_off = 0 ;  /* store pixel array offset */
+static unsigned int pxl_len = 0 ;  /* and length in file */
 
-void mri_dicom_pxlarr( off_t *poff , int *plen )
+void mri_dicom_pxlarr( off_t *poff , unsigned int *plen )
 {
    *poff = pxl_off ; *plen = pxl_len ;
 }
@@ -258,23 +277,27 @@ STATUS("DCM_OpenFile open failed; try again as Part 10") ;
     if (cond == DCM_NORMAL) {
 STATUS("DCM_OpenFile is good") ;
        RWC_printf("DICOM File: %s\n", fname);
-       if (formatFlag)
+       if (formatFlag){
+STATUS("call DCM_FormatElements") ;
          cond = DCM_FormatElements(&object, vmLimit, "");
-       else
+       } else {
+STATUS("call DCM_DumpElements") ;
          cond = DCM_DumpElements(&object, vmLimit);
+       }
     } else {
 STATUS("DCM_OpenFile failed") ;
     }
+STATUS("closing") ;
     (void) DCM_CloseObject(&object);
     (void) COND_PopCondition(TRUE);
 
     if( pbuf != NULL ){
-      ppp = strdup(pbuf) ; RWC_clear_pbuf() ;
+      ppp = strdup(pbuf) ; RWC_clear_pbuf() ;  /* copy results for output */
     }
 
     if( rwc_fd >= 0 ){ close(rwc_fd); rwc_fd = -1; }
 
-    RETURN(ppp);
+    RETURN(ppp);  /* output */
 }
 
 /*
@@ -346,9 +369,9 @@ STATUS("DCM_OpenFile failed") ;
 **			The stack is maintained as a simple stack array.  If
 **			it overflows, we dump the stack to stdout and reset it.
 **
-** Last Update:		$Author: rwcox $, $Date: 2007/06/01 17:29:39 $
+** Last Update:		$Author: rwcox $, $Date: 2008/05/08 16:14:36 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.26 $
+** Revision:		$Revision: 1.28 $
 ** Status:		$State: Exp $
 */
 
@@ -776,9 +799,9 @@ COND_WriteConditions(FILE * lfp)
 ** Author, Date:	Steve Moore, 30-Jun-96
 ** Intent:		Provide common abstractions needed for operations
 **			in a multi-threaded environment.
-** Last Update:		$Author: rwcox $, $Date: 2007/06/01 17:29:39 $
+** Last Update:		$Author: rwcox $, $Date: 2008/05/08 16:14:36 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.26 $
+** Revision:		$Revision: 1.28 $
 ** Status:		$State: Exp $
 */
 
@@ -870,9 +893,9 @@ COND_WriteConditions(FILE * lfp)
 **	and convert the object to and from its "stream" representation.
 **	In addition, the package can parse a file which contains a stream
 **	and create its internal object.
-** Last Update:		$Author: rwcox $, $Date: 2007/06/01 17:29:39 $
+** Last Update:		$Author: rwcox $, $Date: 2008/05/08 16:14:36 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.26 $
+** Revision:		$Revision: 1.28 $
 ** Status:		$State: Exp $
 */
 
@@ -2329,26 +2352,36 @@ DCM_DumpElements(DCM_OBJECT ** callerObject, long vm)
     int
         stringLength;
 
+ENTRY("DCM_DumpElements") ;
+
     object = (PRIVATE_OBJECT **) callerObject;
 
+STATUS("calling checkObject") ;
     cond = checkObject(object, "DCM_DumpElements");
-    if (cond != DCM_NORMAL)
-	return cond;
+    if (cond != DCM_NORMAL){
+STATUS("abnormal condition") ;
+	RETURN(cond);
+   }
 
     switch ((*object)->objectType) {
     case DCM_OBJECTUNKNOWN:
+STATUS("objectType=UNKNOWN") ;
 	RWC_printf("Object type: UNKNOWN\n");
 	break;
     case DCM_OBJECTCOMMAND:
+STATUS("objectType=COMMAND") ;
 	RWC_printf("Object type: COMMAND\n");
 	break;
     case DCM_OBJECTIMAGE:
+STATUS("objectType=IMAGE") ;
 	RWC_printf("Object type: IMAGE\n");
 	break;
     case DCM_OBJECTELEMENTLIST:
+STATUS("objectType=ELEMENTLIST") ;
 	RWC_printf("Object type: ELEMENT LIST\n");
 	break;
     default:
+STATUS("objectType=Unknown") ;
 	RWC_printf("Object type: Unknown (error)\n");
 	break;
     }
@@ -2358,6 +2391,7 @@ DCM_DumpElements(DCM_OBJECT ** callerObject, long vm)
     if (groupItem != NULL)
 	(void) LST_Position(&(*object)->groupList, (void *)groupItem);
 
+STATUS("looping over groupItem") ;
     while (groupItem != NULL) {
 #ifdef MACOS
 	RWC_printf("Group: %04x, Length: %8ld\n", groupItem->group,
@@ -2454,12 +2488,12 @@ DCM_DumpElements(DCM_OBJECT ** callerObject, long vm)
 		    sq = (void *)LST_Head(&elementItem->element.d.sq);
 		    if (sq != NULL)
 			(void) LST_Position(&elementItem->element.d.sq, (void *)sq);
-		    RWC_printf("DCM Dump SEQUENCE\n");
+		    RWC_printf("DCM Dump SEQUENCE{\n");
 		    while (sq != NULL) {
 			(void) DCM_DumpElements(&sq->object, vm);
 			sq = (void *)LST_Next(&elementItem->element.d.sq);
 		    }
-		    RWC_printf("DCM Dump SEQUENCE Complete\n");
+		    RWC_printf("DCM Dump SEQUENCE Complete}\n");
 		    break;
 		case DCM_ST:
 		    stringLength = MIN(sizeof(scratch) - 1, elementItem->element.length);
@@ -2533,7 +2567,7 @@ DCM_DumpElements(DCM_OBJECT ** callerObject, long vm)
     }
 
     RWC_printf("DCM Dump Elements Complete\n");
-    return DCM_NORMAL;
+    RETURN(DCM_NORMAL);
 }
 
 CONDITION
@@ -2655,14 +2689,14 @@ DCM_FormatElements(DCM_OBJECT ** callerObject, long vm, const char* prefix)
 		    sq = (void *)LST_Head(&elementItem->element.d.sq);
 		    if (sq != NULL)
 			(void) LST_Position(&elementItem->element.d.sq, (void *)sq);
-		    RWC_printf("%sDCM Dump SEQUENCE\n", prefix);
+		    RWC_printf("%sDCM Dump SEQUENCE{\n", prefix);
 		    strcpy(localPrefix, prefix);
 		    strcat(localPrefix, " ");
 		    while (sq != NULL) {
 			(void) DCM_FormatElements(&sq->object, vm, localPrefix);
 			sq = (void *)LST_Next(&elementItem->element.d.sq);
 		    }
-		    RWC_printf("%sDCM Dump SEQUENCE Complete\n", prefix);
+		    RWC_printf("%sDCM Dump SEQUENCE Complete}\n", prefix);
 		    break;
 		case DCM_ST:
 		    stringLength = MIN(sizeof(scratch) - 1, elementItem->element.length);
@@ -6804,7 +6838,7 @@ readData(const char *name, unsigned char **ptr, int fd, U32 * size,
 		if ((*elementItem)->element.length != DCM_UNSPECIFIEDLENGTH){
 
                     pxl_off = lseek( fd , 0 , SEEK_CUR ) ;
-                    pxl_len = (int)((*elementItem)->element.length) ;
+                    pxl_len = (unsigned int)((*elementItem)->element.length) ;
 
                     (*elementItem)->element.data_offset = pxl_off ;   /* RWCox */
 
@@ -8262,9 +8296,9 @@ DCM_AddFragment(DCM_OBJECT** callerObject, void* fragment, U32 fragmentLength)
 ** Intent:		Define the ASCIZ messages that go with each DCM
 **			error number and provide a function for looking up
 **			the error message.
-** Last Update:		$Author: rwcox $, $Date: 2007/06/01 17:29:39 $
+** Last Update:		$Author: rwcox $, $Date: 2008/05/08 16:14:36 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.26 $
+** Revision:		$Revision: 1.28 $
 ** Status:		$State: Exp $
 */
 
@@ -8420,9 +8454,9 @@ DCM_DumpVector()
 **			static objects are maintained which define how
 **			elements in the DICOM V3.0 standard are to be
 **			interpreted.
-** Last Update:		$Author: rwcox $, $Date: 2007/06/01 17:29:39 $
+** Last Update:		$Author: rwcox $, $Date: 2008/05/08 16:14:36 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.26 $
+** Revision:		$Revision: 1.28 $
 ** Status:		$State: Exp $
 */
 
@@ -10536,9 +10570,9 @@ DCM_ElementDictionary(DCM_TAG tag, void *ctx,
 **			as support for the DCM facility and for applications.
 **			These routines help parse strings and other data
 **			values that are encoded in DICOM objects.
-** Last Update:		$Author: rwcox $, $Date: 2007/06/01 17:29:39 $
+** Last Update:		$Author: rwcox $, $Date: 2008/05/08 16:14:36 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.26 $
+** Revision:		$Revision: 1.28 $
 ** Status:		$State: Exp $
 */
 
@@ -10744,9 +10778,9 @@ DCM_IsString(DCM_VALUEREPRESENTATION representation)
 ** Author, Date:	Thomas R. Leith, 15-Apr-93
 ** Intent:		This package implements atomic functions on
 **			linked lists.
-** Last Update:		$Author: rwcox $, $Date: 2007/06/01 17:29:39 $
+** Last Update:		$Author: rwcox $, $Date: 2008/05/08 16:14:36 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.26 $
+** Revision:		$Revision: 1.28 $
 ** Status:		$State: Exp $
 */
 
@@ -11280,9 +11314,9 @@ LST_Index(LST_HEAD ** l, int index)
 ** Intent:		Miscellaneous functions that may be useful in
 **			a number of different areas.
 **
-** Last Update:		$Author: rwcox $, $Date: 2007/06/01 17:29:39 $
+** Last Update:		$Author: rwcox $, $Date: 2008/05/08 16:14:36 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.26 $
+** Revision:		$Revision: 1.28 $
 ** Status:		$State: Exp $
 */
 

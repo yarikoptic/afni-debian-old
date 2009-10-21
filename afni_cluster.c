@@ -262,6 +262,8 @@ static void AFNI_clus_action_CB( Widget,XtPointer,XtPointer ) ;
 
 /*---------------------------------------------------------------------------*/
 
+#define SHRUTI_NUM 999
+
 static int maxclu_default = -1 ;
 static int scrolling      =  1 ;
 
@@ -395,7 +397,7 @@ ENTRY("AFNI_clus_make_widgets") ;
      shtop = cwid->wtop ;
 
    scrolling = (swtop!=NULL) ;
-   if( maxclu_default < 0 ) maxclu_default = scrolling ? 15 : 99 ;
+   if( maxclu_default < 0 ) maxclu_default = scrolling ? 15 : SHRUTI_NUM ;
 
    /* vertical rowcol to hold it all */
 
@@ -506,14 +508,27 @@ ENTRY("AFNI_clus_make_widgets") ;
 
    cwid->index_lab = XtVaCreateManagedWidget( "menu" , xmLabelWidgetClass , rc , NULL ) ;
    MCW_register_hint( cwid->index_lab , "Crosshairs are in this cluster" ) ;
+   MCW_register_help( cwid->index_lab , "Shows the cluster index that\n"
+                                        "contains the crosshairs point.\n"
+                                        "* '??' means that the crosshairs\n"
+                                        "  are not in a cluster right now." ) ;
    VLINE(rc) ;
 
    /* row #1: coord_mode chooser */
 
-   { static char *clab[2] = { "Peak" , "Cmass" } ;
+   { static char *clab[2] = { "Peak" , "CMass" } ;
      cwid->cmode_av = new_MCW_optmenu( rc , "xyz" , 0,1,0,0 ,
                         AFNI_clus_av_CB,im3d , MCW_av_substring_CB,clab ) ;
      MCW_reghint_children( cwid->cmode_av->wrowcol , "Coordinate display type" ) ;
+     MCW_reghelp_children( cwid->cmode_av->wrowcol ,
+                            "Choose whether to show the Peak or\n"
+                            "Center-of-Mass x,y,z coordinates\n"
+                            "for each cluster.\n"
+                            "* The weights that define these\n"
+                            "  locations are taken from the\n"
+                            "  'OLay' sub-brick of the Overlay\n"
+                            "  dataset."
+                         ) ;
    }
 
    /* row #1: 3dclust button */
@@ -528,10 +543,12 @@ ENTRY("AFNI_clus_make_widgets") ;
    XmStringFree(xstr) ;
    XtAddCallback( cwid->clust3d_pb, XmNactivateCallback, AFNI_clus_action_CB, im3d );
    MCW_register_hint( cwid->clust3d_pb , "Output equivalent 3dclust command" ) ;
+   MCW_register_help( cwid->clust3d_pb , "Writes the equivalent 3dclust\n"
+                                         "command to the terminal (stdout)" ) ;
 
-   /* row #1: Save Table button */
+   /* row #1: SaveTable button */
 
-   xstr = XmStringCreateLtoR( "Save Table" , XmFONTLIST_DEFAULT_TAG ) ;
+   xstr = XmStringCreateLtoR( "SaveTable" , XmFONTLIST_DEFAULT_TAG ) ;
    cwid->savetable_pb = XtVaCreateManagedWidget(
            "menu" , xmPushButtonWidgetClass , rc ,
             XmNlabelString , xstr ,
@@ -540,6 +557,14 @@ ENTRY("AFNI_clus_make_widgets") ;
    XmStringFree(xstr) ;
    XtAddCallback( cwid->savetable_pb, XmNactivateCallback, AFNI_clus_action_CB, im3d );
    MCW_register_hint( cwid->savetable_pb , "Write results to a text file" ) ;
+   MCW_register_help( cwid->savetable_pb ,
+                      "Write cluster locations (CM and Peak)\n"
+                      "to a text file, whose name is of the\n"
+                      "form 'NAME_table.1D', where 'NAME'\n"
+                      "is the entry in the text field.\n"
+                      "* If 'NAME' is blank, then 'Clust' is used.\n"
+                      "* If 'NAME' is '-', then stdout is used."
+                    ) ;
 
    /* row #1: prefix textfield */
 
@@ -548,7 +573,7 @@ ENTRY("AFNI_clus_make_widgets") ;
      cwid->prefix_tf = XtVaCreateManagedWidget(
                        "menu" , xmTextFieldWidgetClass , rc ,
                            XmNvalue        , ppp ,
-                           XmNcolumns      , 11 ,
+                           XmNcolumns      , 8 ,
                            XmNeditable     , True ,
                            XmNmaxLength    , 64 ,
                            XmNresizeWidth  , False ,
@@ -560,9 +585,34 @@ ENTRY("AFNI_clus_make_widgets") ;
                            XmNtraversalOn , True  ,
                            XmNinitialResourcesPersistent , False ,
                         NULL ) ;
-     MCW_register_hint( cwid->prefix_tf , "Output file prefix" ) ;
      MCW_set_widget_bg( cwid->prefix_tf , "black" , (Pixel)0 ) ;
+     MCW_register_hint( cwid->prefix_tf , "Output file prefix" ) ;
+     MCW_register_help( cwid->prefix_tf , "This string is used to\n"
+                                          "set the output filename\n"
+                                          "for all 'Save' buttons."  ) ;
    }
+
+   /* row #1: SaveMask button [01 May 2008] */
+
+   xstr = XmStringCreateLtoR( "SaveMask" , XmFONTLIST_DEFAULT_TAG ) ;
+   cwid->savemask_pb = XtVaCreateManagedWidget(
+           "menu" , xmPushButtonWidgetClass , rc ,
+            XmNlabelString , xstr ,
+            XmNtraversalOn , True  ,
+         NULL ) ;
+   XmStringFree(xstr) ;
+   XtAddCallback( cwid->savemask_pb, XmNactivateCallback, AFNI_clus_action_CB, im3d );
+   MCW_register_hint( cwid->savemask_pb , "Write clusters to a mask dataset" ) ;
+   MCW_register_help( cwid->savemask_pb ,
+                       "Write the set of clusters to\n"
+                       "a 3D dataset.  The value in\n"
+                       "each voxel will be the cluster\n"
+                       "index (1,2,...) for that voxel,\n"
+                       "or 0 if that voxel isn't in\n"
+                       "any cluster.  The text field\n"
+                       "is used to set the dataset's\n"
+                       "prefix name."
+                    ) ;
 
    /* row #1: Done button */
 
@@ -577,6 +627,10 @@ ENTRY("AFNI_clus_make_widgets") ;
    XmStringFree(xstr) ;
    XtAddCallback( cwid->done_pb, XmNactivateCallback, AFNI_clus_done_CB, im3d );
    MCW_set_widget_bg( cwid->done_pb, MCW_hotcolor(cwid->done_pb), 0 ) ;
+   MCW_register_hint(cwid->done_pb,"Close this window!") ;
+   MCW_register_help(cwid->done_pb,"Don't you know what\n"
+                                   "a 'Done' button means\n"
+                                   "in AFNI by now?!!?"     ) ;
 
    XtManageChild(rc) ;  /* finished with row #1 setup */
    HLINE(cwid->rowcol) ;
@@ -602,6 +656,23 @@ ENTRY("AFNI_clus_make_widgets") ;
    XmStringFree(xstr) ;
    XtAddCallback( cwid->dataset_pb, XmNactivateCallback, AFNI_clus_action_CB, im3d );
    MCW_register_hint( cwid->dataset_pb , "data for Plot/Save from cluster" ) ;
+   MCW_register_help( cwid->dataset_pb ,
+                       "If you define an auxiliary dataset\n"
+                       "-- which must have the same grid\n"
+                       "   dimensions as the Overlay dataset --\n"
+                       "then for each cluster, you can extract\n"
+                       "the corresponding data from that\n"
+                       "dataset and do various things with it:\n"
+                       "* Average it:                        'Mean'\n"
+                       "* Compute first principal component: 'PC#1'\n"
+                       "* Histogram it:                      'Hist'\n"
+                       "And then either 'Plot' or 'Save' these\n"
+                       "results.  If you 'Save' these results,\n"
+                       "the textfield is used to define the\n"
+                       "output filename.  If the text field is\n"
+                       "just the string '-', then 'Save' writes\n"
+                       "to the terminal (stdout), instead of a file."
+                    ) ;
 
    /* row #2: 'from' and 'to' choosers */
 
@@ -626,6 +697,19 @@ ENTRY("AFNI_clus_make_widgets") ;
                                       NULL,NULL , MCW_av_substring_CB,clab ) ;
      MCW_reghint_children( cwid->aver_av->wrowcol ,
                            "Set data processing method for Plot/Save" ) ;
+     MCW_reghelp_children( cwid->aver_av->wrowcol ,
+                           "Defines how data extracted from the\n"
+                           "Auxiliary Dataset will be processed:\n"
+                           "* Mean = averaged across voxels\n"
+                           "* PC#1 = compute first principal\n"
+                           "         component vector\n"
+                           "* Hist = build a histogram across\n"
+                           "         voxels and sub-bricks\n"
+                           "* A hidden Button-3 popup menu on the\n"
+                           "  cluster summary report label atop this\n"
+                           "  window will let you choose the range\n"
+                           "  of data to be histogram-ized."
+                         ) ;
    }
 
    XtManageChild(rc) ;  /* row #2 is finished */
@@ -661,18 +745,20 @@ ENTRY("AFNI_clus_make_widgets") ;
    cwid->clu_alph_lab= (Widget *) XtCalloc( num , sizeof(Widget) ) ;
 
    for( ii=0 ; ii < num ; ii++ ){ MAKE_CLUS_ROW(ii) ; }
-   MCW_register_hint( cwid->clu_lab[0]     ,
-                      "Coordinates of cluster (Peak or Cmass)" ) ;
-   MCW_register_hint( cwid->clu_jump_pb[0] ,
-                      "Set crosshairs to these xyz coordinates" ) ;
-   MCW_register_hint( cwid->clu_plot_pb[0] ,
-                      "Plot average over cluster of 3D+time Dataset" ) ;
-   MCW_register_hint( cwid->clu_save_pb[0] ,
-                      "Save average timeseries to 1D file" ) ;
-   MCW_register_hint( cwid->clu_flsh_pb[0] ,
-                      "Flash cluster voxels in image viewers" ) ;
-   MCW_register_hint( cwid->clu_alph_lab[0] ,
-                      "Approximate alpha value for cluster" ) ;
+   for( ii=0 ; ii < num ; ii++ ){
+     MCW_register_hint( cwid->clu_lab[ii]     ,
+                        "Coordinates of cluster (Peak or CMass)" ) ;
+     MCW_register_hint( cwid->clu_jump_pb[ii] ,
+                        "Set crosshairs to these xyz coordinates" ) ;
+     MCW_register_hint( cwid->clu_plot_pb[ii] ,
+                        "Plot average over cluster of 3D+time Dataset" ) ;
+     MCW_register_hint( cwid->clu_save_pb[ii] ,
+                        "Save average timeseries to 1D file" ) ;
+     MCW_register_hint( cwid->clu_flsh_pb[ii] ,
+                        "Flash cluster voxels in image viewers" ) ;
+     MCW_register_hint( cwid->clu_alph_lab[ii] ,
+                        "Approximate alpha value for cluster" ) ;
+   }
 
    XtManageChild( cwid->rowcol ) ;
 
@@ -680,7 +766,7 @@ ENTRY("AFNI_clus_make_widgets") ;
      int wx,hy , cmax ;
      MCW_widget_geom( cwid->rowcol  , &wx,&hy,NULL,NULL ) ;
      hy *= 2 ; cmax = im3d->dc->height-128 ; if( hy > cmax ) hy = cmax ;
-     XtVaSetValues( cwid->wtop , XmNwidth,wx+63,XmNheight,hy+19 , NULL ) ;
+     XtVaSetValues( cwid->wtop , XmNwidth,wx+31,XmNheight,hy+21 , NULL ) ;
    }
 
    XtRealizeWidget( cwid->wtop ) ;
@@ -842,14 +928,14 @@ ENTRY("AFNI_clus_update_widgets") ;
    if( !IM3D_OPEN(im3d) ) EXRETURN ;
 
    if( maxclu_default < 0 )
-     maxclu_default = AFNI_noenv("AFNI_CLUSTER_SCROLL") ? 15 : 99 ;
+     maxclu_default = AFNI_noenv("AFNI_CLUSTER_SCROLL") ? 15 : SHRUTI_NUM ;
 
    clar = im3d->vwid->func->clu_list ;
    if( clar != NULL ){  /* sort and truncate */
      maxclu = maxclu_default ;
      if( !scrolling ){
        maxclu = AFNI_numenv("AFNI_CLUSTER_REPMAX") ;
-       if( maxclu < 10 || maxclu > 99 ) maxclu = maxclu_default ;
+       if( maxclu < 10 || maxclu > 9999 ) maxclu = 9999 ;
      }
      nclu = clar->num_clu ; nclu = MIN(nclu,maxclu) ;
      SORT_CLARR(clar) ;
@@ -1067,7 +1153,7 @@ ENTRY("AFNI_clus_action_CB") ;
      EXRETURN ;
    }
 
-   /*--------- Save Table button ---------*/
+   /*--------- SaveTable button ---------*/
 
    if( w == cwid->savetable_pb ){
      char fnam[128] , *ppp ; FILE *fp ; int ff ;
@@ -1079,9 +1165,13 @@ ENTRY("AFNI_clus_action_CB") ;
 
      ppp = XmTextFieldGetString( cwid->prefix_tf ) ;
      if( !THD_filename_pure(ppp) ) ppp = "Clust" ;
-     sprintf(fnam,"%s_table.1D",ppp) ;
-     ff = THD_is_file(fnam) ;
-     fp = fopen(fnam,"w") ;
+     if( strcmp(ppp,"-") != 0 ){
+       sprintf(fnam,"%s_table.1D",ppp) ;
+       ff = THD_is_file(fnam) ;
+       fp = fopen(fnam,"w") ;
+     } else {
+       fp = stdout ; ff = 0 ;
+     }
      if( fp == NULL ){
        ERROR_message("Can't open file %s for writing",fnam) ;
      } else {
@@ -1103,10 +1193,60 @@ ENTRY("AFNI_clus_action_CB") ;
          fprintf(fp,"%7d %+6.1f %+6.1f %+6.1f %+6.1f %+6.1f %+6.1f\n" ,
                  cld[ii].nvox , mx,my,mz , px,py,pz ) ;
        }
-       fclose(fp) ;
-       if( ff ) WARNING_message("Over-wrote file %s",fnam) ;
-       else     INFO_message   ("Wrote file %s"     ,fnam) ;
+       if( fp != stdout ){
+         fclose(fp) ;
+         if( ff ) WARNING_message("Over-wrote file %s",fnam) ;
+         else     INFO_message   ("Wrote file %s"     ,fnam) ;
+       }
      }
+     EXRETURN ;
+   }
+
+   /*--------- SaveMask button ---------*/
+
+   if( w == cwid->savemask_pb ){  /* 01 May 2008 */
+     char pref[128] , *ppp , *cmd ;
+     THD_3dim_dataset  *fset = im3d->fim_now , *mset ;
+     MCW_cluster_array *clar = im3d->vwid->func->clu_list ;
+     MCW_cluster *cl ;
+     short *mask ; int ii,jj,nx,ny,nxy,nz,ijk ;
+
+     nclu = im3d->vwid->func->clu_num ;
+     cld  = im3d->vwid->func->clu_det ;
+     if( nclu == 0 || cld == NULL ) EXRETURN ;
+
+     ppp = XmTextFieldGetString( cwid->prefix_tf ) ;
+     if( !THD_filename_pure(ppp) || strcmp(ppp,"-") == 0 ) ppp = "Clust" ;
+     sprintf(pref,"%s_mask",ppp) ;
+     cmd = AFNI_clus_3dclust(im3d) ;
+
+     mset = EDIT_empty_copy(fset) ;
+     tross_Copy_History(fset,mset) ;
+     tross_Append_History(mset,"== Interactive clusterize mask:") ;
+     tross_Append_History(mset,cmd) ;
+     EDIT_dset_items( mset ,
+                        ADN_prefix    , pref ,
+                        ADN_nvals     , 1    ,
+                        ADN_ntt       , 0    ,
+                        ADN_type      , HEAD_FUNC_TYPE ,
+                        ADN_func_type , FUNC_BUCK_TYPE ,
+                      ADN_none ) ;
+     nx = DSET_NX(mset); ny = DSET_NY(mset); nxy = nx*ny; nz = DSET_NZ(mset);
+     EDIT_substitute_brick( mset , 0 , MRI_short , NULL ) ;
+     mask = DSET_BRICK_ARRAY( mset , 0 ) ;
+     for( jj=0 ; jj < clar->num_clu ; jj++ ){
+       cl = clar->clar[jj] ;
+       for( ii=0 ; ii < cl->num_pt ; ii++ ){
+         ijk = THREE_TO_IJK( cl->i[ii] , cl->j[ii] , cl->k[ii] , nx,nxy ) ;
+         mask[ijk] = jj+1 ;
+       }
+     }
+     THD_force_ok_overwrite(1) ;
+     INFO_message("Writing mask dataset %s",DSET_BRIKNAME(mset)) ;
+     DSET_write(mset) ;
+     DSET_delete(mset) ;
+     THD_force_ok_overwrite(0) ;
+
      EXRETURN ;
    }
 
@@ -1162,6 +1302,7 @@ ENTRY("AFNI_clus_action_CB") ;
      /*-------- Jump to the cluster peak or cmass --------*/
 
      if( w == cwid->clu_jump_pb[ii] ){
+
        float px,py,pz , xx,yy,zz ;
        switch( cwid->coord_mode ){
          default:
@@ -1175,6 +1316,7 @@ ENTRY("AFNI_clus_action_CB") ;
      /*----------- Process the cluster data -----------*/
 
      } else if( w == cwid->clu_plot_pb[ii] || w == cwid->clu_save_pb[ii] ){
+
        int dosave = (w == cwid->clu_save_pb[ii]) ;
        int domean = (cwid->aver_av->ival == 0) ;
        int dopc   = (cwid->aver_av->ival == 1) ;
@@ -1261,9 +1403,13 @@ ENTRY("AFNI_clus_action_CB") ;
 
            ppp = XmTextFieldGetString( cwid->prefix_tf ) ;
            if( !THD_filename_pure(ppp) ) ppp = "Clust" ;
-           sprintf(fnam,"%s_%02d_hist.1D",ppp,ii+1) ;
-           ff = THD_is_file(fnam) ;
-           fp = fopen(fnam,"w") ;
+           if( strcmp(ppp,"-") != 0 ){
+             sprintf(fnam,"%s_%02d_hist.1D",ppp,ii+1) ;
+             ff = THD_is_file(fnam) ;
+             fp = fopen(fnam,"w") ;
+           } else {
+             fp = stdout ; ff = 0 ;
+           }
            if( fp == NULL ){
              ERROR_message("Can't open file %s for writing",fnam) ;
            } else {
@@ -1279,9 +1425,11 @@ ENTRY("AFNI_clus_action_CB") ;
              fprintf(fp,"# num of voxels  = %d\n"
                         "# num of values  = %d\n" , IMARR_COUNT(imar),nval ) ;
              for( jj=0 ; jj < nbin ; jj++ ) fprintf(fp,"%7d\n",(int)hbin[jj]) ;
-             fclose(fp) ;
-             if( ff ) WARNING_message("Over-wrote file %s",fnam) ;
-             else     INFO_message   ("Wrote file %s"     ,fnam) ;
+             if( fp != stdout ){
+               fclose(fp) ;
+               if( ff ) WARNING_message("Over-wrote file %s",fnam) ;
+               else     INFO_message   ("Wrote file %s"     ,fnam) ;
+             }
            }
 
          }
@@ -1331,9 +1479,13 @@ ENTRY("AFNI_clus_action_CB") ;
            char fnam[128] , *ppp ; int jj,kk,nx,ny,ff ; float *far ; FILE *fp ;
            ppp = XmTextFieldGetString( cwid->prefix_tf ) ;
            if( !THD_filename_pure(ppp) ) ppp = "Clust" ;
-           sprintf(fnam,"%s_%02d_%s.1D",ppp,ii+1,(dopc)?"pc":"mean") ;
-           ff = THD_is_file(fnam) ;
-           fp = fopen(fnam,"w") ;
+           if( strcmp(ppp,"-") != 0 ){
+             sprintf(fnam,"%s_%02d_%s.1D",ppp,ii+1,(dopc)?"pc":"mean") ;
+             ff = THD_is_file(fnam) ;
+             fp = fopen(fnam,"w") ;
+           } else {
+             fp = stdout ; ff = 0 ;
+           }
            if( fp == NULL ){
              ERROR_message("Can't open file %s for writing",fnam) ;
            } else {
@@ -1353,9 +1505,11 @@ ENTRY("AFNI_clus_action_CB") ;
                }
                fprintf(fp,"\n") ;
              }
-             fclose(fp) ;
-             if( ff ) WARNING_message("Over-wrote file %s",fnam) ;
-             else     INFO_message   ("Wrote file %s"     ,fnam) ;
+             if( fp != stdout ){
+               fclose(fp) ;
+               if( ff ) WARNING_message("Over-wrote file %s",fnam) ;
+               else     INFO_message   ("Wrote file %s"     ,fnam) ;
+             }
            }
          }
          if( im != IMARR_SUBIM(imar,0) ) mri_free(im) ;
@@ -1365,6 +1519,7 @@ ENTRY("AFNI_clus_action_CB") ;
      /*--------- flash the voxels for this cluster ---------*/
 
      } else if( w == cwid->clu_flsh_pb[ii] ){
+
        THD_3dim_dataset  *fset = im3d->fim_now ;
        MCW_cluster_array *clar = im3d->vwid->func->clu_list ; int jj ;
        STATUS("flashing") ;
@@ -1389,7 +1544,8 @@ ENTRY("AFNI_clus_action_CB") ;
          im3d->vedskip = 0 ;
        }
        EXRETURN ;
-     }
+
+     } /* end of flash */
 
    } /*---------- end of loop over button rows ----------*/
 
@@ -1463,12 +1619,13 @@ static char * AFNI_clus_3dclust( Three_D_View *im3d )
    static char cmd[3333] ;
    VEDIT_settings vednew ;
    float thr,rmm,vmul,thb,tht ;
-   int thrsign,posfunc,ithr ;
+   int thrsign,posfunc,ithr , ival ;
 
    if( !IM3D_OPEN(im3d) ) return NULL ;
 
    vednew = im3d->vedset ;
 
+   ival    =      vednew.ival     ;
    ithr    = (int)vednew.param[0] ;
    thr     =      vednew.param[1] ;
    rmm     =      vednew.param[2] ;
@@ -1478,7 +1635,7 @@ static char * AFNI_clus_3dclust( Three_D_View *im3d )
 
    thb = THBOT(thr) ; tht = THTOP(thr) ;
 
-   sprintf(cmd,"3dclust -1Dformat -nosum -1tindex %d",ithr) ;
+   sprintf(cmd,"3dclust -1Dformat -nosum -1dindex %d -1tindex %d",ival,ithr) ;
 
    if( posfunc )
      strcat(cmd," -1noneg") ;

@@ -130,7 +130,7 @@ SUMA_COLOR_MAP* SUMA_MakeColorMap (float **Fiducials, int Nfid, int Ncols, SUMA_
    }
 
    /* package the resutls */
-   SM = (SUMA_COLOR_MAP *)SUMA_malloc(sizeof(SUMA_COLOR_MAP));
+   SM = (SUMA_COLOR_MAP *)SUMA_calloc(1,sizeof(SUMA_COLOR_MAP));
    if (SM == NULL) {
       fprintf (SUMA_STDERR,"Error %s: Failed to allocate for SM.\n", FuncName);
       SUMA_RETURN (NULL);
@@ -144,6 +144,7 @@ SUMA_COLOR_MAP* SUMA_MakeColorMap (float **Fiducials, int Nfid, int Ncols, SUMA_
    }
    sprintf(SM->Name, "%s",Name); 
    SM->M = M;
+   SM->M0[0] = SM->M[0][0]; SM->M0[1] = SM->M[0][1]; SM->M0[2] = SM->M[0][2]; 
    SM->N_Col = Ncols;
 
    SM->frac = NULL; /* a linear map */
@@ -242,7 +243,7 @@ SUMA_COLOR_MAP* SUMA_MakeColorMap_v2 (float **Fiducials, int Nfid, int *Nint, SU
    }
    
    /* package the resutls */
-   SM = (SUMA_COLOR_MAP *)SUMA_malloc(sizeof(SUMA_COLOR_MAP));
+   SM = (SUMA_COLOR_MAP *)SUMA_calloc(1,sizeof(SUMA_COLOR_MAP));
    if (SM == NULL) {
       fprintf (SUMA_STDERR,"Error %s: Failed to allocate for SM.\n", FuncName);
       SUMA_RETURN (NULL);
@@ -256,6 +257,7 @@ SUMA_COLOR_MAP* SUMA_MakeColorMap_v2 (float **Fiducials, int Nfid, int *Nint, SU
    }
    sprintf(SM->Name, "%s",Name); 
    SM->M = M;
+   SM->M0[0] = SM->M[0][0]; SM->M0[1] = SM->M[0][1]; SM->M0[2] = SM->M[0][2]; 
    SM->N_Col = Ncols;
    
    SM->frac = NULL; /* a linear map */
@@ -295,21 +297,21 @@ SUMA_COLOR_MAP * SUMA_pbardef_to_CM(char *cmd)
    int ii , neq=0 , nonum=0, N_Col;
    float  val[NPANE_BIG+1],rgb[3]={0.0, 0.0, 0.0}, **M=NULL;
    char name[NSBUF]="\0", eqn[NSBUF]="\0" , rhs[NSBUF]="\0" ;
-   rgbyte col[NPANE_BIG+1] ;
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
    
    
-   CM = (SUMA_COLOR_MAP *)SUMA_malloc(sizeof(SUMA_COLOR_MAP));
+   CM = (SUMA_COLOR_MAP *)SUMA_calloc(1,sizeof(SUMA_COLOR_MAP));
    if (CM == NULL ) {
       SUMA_SL_Crit ("Failed to allocate for CM");
       SUMA_RETURN(NULL);
    }
+   memset(CM, 0, sizeof(SUMA_COLOR_MAP));
    CM->top_frac = 0.0f;
    CM->SO = NULL; 
    CM->cname = NULL;
-   CM->N_Col = NPANE_BIG+1; 
+   CM->N_Col = NPANE_BIG; 
    CM->Sgn = 0;
       
    CM->frac = NULL;
@@ -320,60 +322,113 @@ SUMA_COLOR_MAP * SUMA_pbardef_to_CM(char *cmd)
    }
    
    /* most of it from the PBAR_define_bigmap chunk */
-   name[0] = '\0' ; ii = 0 ;
-   sscanf(cmd,"%127s%n",name,&ii) ;
-   SUMA_LHv("name = %s %d\n",name,ii);
-   CM->Name = SUMA_copy_string(name);
-   
-   if( *name == '\0' || ii == 0 ) RETURN(NULL) ;
-   cmd += ii ;
-   /* get lines of form "value=colordef" */
+   if (strncmp(cmd,"init_bigmaps", 12) == 0) {
+      static char **bmn = NULL;
+      static rgbyte **bm = NULL;
+      char sname[100], snamemax[100];
+      int iii, kkk, found;
+      SUMA_LHv("one big map %s\n", cmd);
+      if (!bm) {
+         SUMA_LH("Going to initialize bigmaps");
+         if (NJ_bigmaps_init(NBIGMAP_INIT, &bmn, &bm)) {
+            SUMA_S_Err("That Acela Sure Sucks!");
+            SUMA_RETURN(NULL);
+         }
+      }
+      sprintf(snamemax, "init_bigmaps_%d", NBIGMAP_INIT-1);
+      found = 0;
+      for (iii=0; iii<NBIGMAP_INIT; ++iii) {
+         SUMA_LHv("testing %d/(%d)...\n",iii, NBIGMAP_INIT);
+         sprintf(sname, "init_bigmaps_%d", iii);
+         if ( strcmp(cmd,sname) == 0 ) {
+            SUMA_LHv("found one %d\n", iii);
+            CM->Name = SUMA_copy_string(BIGMAP_NAMES[iii]);
+            for (kkk=0; kkk<NPANE_BIG; ++kkk) {
+                  SUMA_LHv("%d [%d %d %d]\n", 
+                        kkk,
+                        bm[iii][kkk].r, bm[iii][kkk].g, bm[iii][kkk].b);
+               CM->M[NPANE_BIG-(kkk+1)][0] = bm[iii][kkk].r / 255.0f ; 
+               CM->M[NPANE_BIG-(kkk+1)][1] = bm[iii][kkk].g / 255.0f ; 
+               CM->M[NPANE_BIG-(kkk+1)][2] = bm[iii][kkk].b / 255.0f ;
+            }
+            found = 1;
+         }
+      }
+      if (strcmp(cmd, snamemax)==0) {
+         SUMA_LHv("Freeing bigmaps (at %s)\n", snamemax);
+         for (iii=0; iii<NBIGMAP_INIT; ++iii) {
+            if (bmn[iii]) free(bmn[iii]);
+            if (bm[iii]) free(bm[iii]);
+         }
+         free(bmn); free(bm);  
+         bmn = NULL;
+         bm= NULL;
+      }
+      if (found) {
+         CM->M0[0] = CM->M[0][0]; 
+         CM->M0[1] = CM->M[0][1]; 
+         CM->M0[2] = CM->M[0][2]; 
+         SUMA_RETURN(CM);
+      } else{
+         SUMA_S_Err("Bad deal. No bigmap constructed.");
+         SUMA_RETURN(NULL);
+      }
+   } else {
+      name[0] = '\0' ; ii = 0 ;
+      sscanf(cmd,"%127s%n",name,&ii) ;
+      SUMA_LHv("name = %s %d\n",name,ii);
+      CM->Name = SUMA_copy_string(name);
 
-   while( neq < NPANE_BIG ){
-      eqn[0] = '\0' ; ii = 0 ;
-      sscanf(cmd,"%127s%n",eqn,&ii) ;
-      SUMA_LHv("%s %d\n",eqn,ii);
-      if( *eqn == '\0' || ii == 0 ) break ;   /* exit loop */
+      if( *name == '\0' || ii == 0 ) RETURN(NULL) ;
       cmd += ii ;
-      if( neq == 0 && (isalpha(eqn[0]) || eqn[0]=='#') ) nonum = 1 ;
-      rhs[0] = '\0' ; ii = 0 ;
-      if( !nonum ) sscanf(eqn,"%f=%s%n",val+neq,rhs,&ii) ;
-      else         sscanf(eqn,"%s%n"           ,rhs,&ii) ;
-      if( *rhs == '\0' || ii == 0 ) RETURN(NULL);               /* bad */
-      SUMA_LHv("eqn=%s\n rhs=%s\n", eqn, rhs);
-      ii = !SUMA_Interpret_AFNIColor(rhs, rgb );
-      if (ii) {
-         SUMA_S_Errv("Failed to interpret AFNIColor %s\n", rhs);
-         RETURN(NULL);       
+      /* get lines of form "value=colordef" */
+
+      while( neq < NPANE_BIG ){
+         eqn[0] = '\0' ; ii = 0 ;
+         sscanf(cmd,"%127s%n",eqn,&ii) ;
+         SUMA_LHv("%s %d\n",eqn,ii);
+         if( *eqn == '\0' || ii == 0 ) break ;   /* exit loop */
+         cmd += ii ;
+         if( neq == 0 && (isalpha(eqn[0]) || eqn[0]=='#') ) nonum = 1 ;
+         rhs[0] = '\0' ; ii = 0 ;
+         if( !nonum ) sscanf(eqn,"%f=%s%n",val+neq,rhs,&ii) ;
+         else         sscanf(eqn,"%s%n"           ,rhs,&ii) ;
+         if( *rhs == '\0' || ii == 0 ) RETURN(NULL);               /* bad */
+         SUMA_LHv("eqn=%s\n rhs=%s\n", eqn, rhs);
+         ii = !SUMA_Interpret_AFNIColor(rhs, rgb );
+         if (ii) {
+            SUMA_S_Errv("Failed to interpret AFNIColor %s\n", rhs);
+            RETURN(NULL);       
+         }
+         SUMA_LHv("%s %f %f %f %d\n",rhs, rgb[0],rgb[1],rgb[2], ii);
+         CM->M[neq][0] = rgb[0];
+         CM->M[neq][1] = rgb[1];
+         CM->M[neq][2] = rgb[2];
+         neq++;
       }
-      SUMA_LHv("%s %f %f %f %d\n",rhs, rgb[0],rgb[1],rgb[2], ii);
-      CM->M[neq][0] = rgb[0];
-      CM->M[neq][1] = rgb[1];
-      CM->M[neq][2] = rgb[2];
-      neq++;
-   }
-   SUMA_LHv("Map %s, neq = %d\n", name, neq);
-   
-   /* in AFNI, all of these maps get interpolated to NPANE_BIG
-      but that is not needed in SUMA. Only some maps need the 
-      interpolation to look good */
-   if (neq <= 20) { /* an arbitrary number, really */
-      SUMA_COLOR_MAP *CMn=NULL;   
-      /* now do the interpolation to NPANE_BIG */
-      CMn = SUMA_MakeColorMap(CM->M, neq, NPANE_BIG+1, 0, CM->Name);
-      SUMA_Free_ColorMap(CM); CM=CMn; CMn=NULL;
-   } else { /* leave it like it is */
-      SUMA_LHv("Leaving map %s at %d colors\n", CM->Name, neq);
-      /* realloc */
-      N_Col = neq;
-      M = (float**)SUMA_allocate2D (N_Col, 3, sizeof(float));
-      for (ii=0; ii<N_Col; ++ii) { 
-         M[ii][0] = CM->M[ii][0];
-         M[ii][1] = CM->M[ii][1];
-         M[ii][2] = CM->M[ii][2];
+      SUMA_LHv("Map %s, neq = %d\n", name, neq);
+
+      /* in AFNI, all of these maps get interpolated to NPANE_BIG
+         but that is not needed in SUMA. Only some maps need the 
+         interpolation to look good */
+      if (neq <= 20) { /* an arbitrary number, really */
+         SUMA_COLOR_MAP *CMn=NULL;   
+         /* now do the interpolation to NPANE_BIG */
+         CMn = SUMA_MakeColorMap(CM->M, neq, NPANE_BIG+1, 0, CM->Name);
+         SUMA_Free_ColorMap(CM); CM=CMn; CMn=NULL;
+      } else { /* leave it like it is */
+         SUMA_LHv("Leaving map %s at %d colors\n", CM->Name, neq);
+         /* realloc */
+         N_Col = neq;
+         M = (float**)SUMA_allocate2D (N_Col, 3, sizeof(float));
+         for (ii=0; ii<N_Col; ++ii) { 
+            M[ii][0] = CM->M[ii][0];
+            M[ii][1] = CM->M[ii][1];
+            M[ii][2] = CM->M[ii][2];
+         }
+         SUMA_free2D((char**)CM->M, CM->N_Col); CM->M = M; M = NULL;
+         CM->N_Col = N_Col; 
       }
-      SUMA_free2D((char**)CM->M, CM->N_Col); CM->M = M; M = NULL;
-      CM->N_Col = N_Col; 
    }
    SUMA_RETURN(CM);
 }
@@ -479,8 +534,8 @@ SUMA_AFNI_COLORS *SUMA_Get_AFNI_Default_Color_Maps ()
    
    /* now create AFNI's colormaps */
    for (i = NPANE_MIN; i<= NPANE_MAX; ++i) {
-      CMp = (SUMA_COLOR_MAP *)SUMA_malloc(sizeof(SUMA_COLOR_MAP));
-      CMn = (SUMA_COLOR_MAP *)SUMA_malloc(sizeof(SUMA_COLOR_MAP));
+      CMp = (SUMA_COLOR_MAP *)SUMA_calloc(1,sizeof(SUMA_COLOR_MAP));
+      CMn = (SUMA_COLOR_MAP *)SUMA_calloc(1, sizeof(SUMA_COLOR_MAP));
       if (CMp == NULL || CMn == NULL) {
          SUMA_SL_Crit ("Failed to allocate for CMp &/| CMn.");
          SUMA_RETURN(NULL);
@@ -548,7 +603,10 @@ SUMA_AFNI_COLORS *SUMA_Get_AFNI_Default_Color_Maps ()
          SUMA_LH("top_frac not 1 for positive map");
          CMp->top_frac = CMp->frac[CMp->N_Col-1];
       }
-        
+      CMp->M0[0] = CMp->M[0][0]; 
+      CMp->M0[1] = CMp->M[0][1]; 
+      CMp->M0[2] = CMp->M[0][2]; 
+
       /* add the positive map to the list */
       CMv = SUMA_Add_ColorMap (CMp, CMv, &N_maps);
       if (!CMv) {
@@ -589,6 +647,9 @@ SUMA_AFNI_COLORS *SUMA_Get_AFNI_Default_Color_Maps ()
          SUMA_LH("top_frac not 1 for negative map");
          CMn->top_frac = CMn->frac[CMp->N_Col-1];
       }
+      CMn->M0[0] = CMn->M[0][0]; 
+      CMn->M0[1] = CMn->M[0][1]; 
+      CMn->M0[2] = CMn->M[0][2]; 
       /* add the negative map to the list */
       CMv = SUMA_Add_ColorMap (CMn, CMv, &N_maps);
       if (!CMv) {
@@ -601,7 +662,13 @@ SUMA_AFNI_COLORS *SUMA_Get_AFNI_Default_Color_Maps ()
    /* perhaps someday include the continuous color maps from AFNI too. 
       (see pbar.c file, search for colorscale) 
       That day has come Dec 18 07*/
-      
+   SUMA_PBARDEF_ADD("init_bigmaps_6");
+   SUMA_PBARDEF_ADD("init_bigmaps_5");
+   SUMA_PBARDEF_ADD("init_bigmaps_4");
+   SUMA_PBARDEF_ADD("init_bigmaps_3");
+   SUMA_PBARDEF_ADD("init_bigmaps_2");
+   SUMA_PBARDEF_ADD("init_bigmaps_1");
+   SUMA_PBARDEF_ADD("init_bigmaps_0");
    SUMA_PBARDEF_ADD(CB_CS_35); 
    SUMA_PBARDEF_ADD(CB_CS);
    SUMA_PBARDEF_ADD(CYTOARCH_ROI_256_CMD);
@@ -622,7 +689,7 @@ SUMA_AFNI_COLORS *SUMA_Get_AFNI_Default_Color_Maps ()
    SUMA_PBARDEF_ADD(ROI_256_CMD);
 
    /* now wrap it up */   
-   SAC = (SUMA_AFNI_COLORS *) SUMA_malloc(sizeof(SUMA_AFNI_COLORS));
+   SAC = (SUMA_AFNI_COLORS *) SUMA_calloc(1,sizeof(SUMA_AFNI_COLORS));
    SAC->CMv = CMv;
    SAC->N_maps = N_maps;
    SAC->Cv = Cv;
@@ -1291,12 +1358,12 @@ SUMA_COLOR_MAP *SUMA_Read_Color_Map_1D (char *Name)
    
    
    /* allocate for SM */
-   SM = (SUMA_COLOR_MAP*) SUMA_malloc(sizeof(SUMA_COLOR_MAP));
+   SM = (SUMA_COLOR_MAP*) SUMA_calloc(1,sizeof(SUMA_COLOR_MAP));
    SM->top_frac = 0.0f;
    SM->SO = NULL; 
    SM->cname = NULL;
    SM->N_Col = im->nx;
-   SM->Name = (char *)SUMA_malloc(sizeof(char)*(strlen(Name)+1));
+   SM->Name = (char *)SUMA_calloc((strlen(Name)+1),sizeof(char));
    sprintf(SM->Name, "%s", Name);
    if (im->ny == 4) {
       SM->frac = (float*) SUMA_calloc(im->nx, sizeof(float));
@@ -1358,7 +1425,10 @@ SUMA_COLOR_MAP *SUMA_Read_Color_Map_1D (char *Name)
       } else SUMA_disp_mat (SM->M, SM->N_Col, 3, 1);
    }
    
-   
+   SM->M0[0] = SM->M[0][0]; 
+   SM->M0[1] = SM->M[0][1]; 
+   SM->M0[2] = SM->M[0][2]; 
+
    SUMA_RETURN (SM);
 }
 
@@ -1401,7 +1471,7 @@ SUMA_COLOR_MAP *SUMA_Linearize_Color_Map (SUMA_COLOR_MAP* SM, int N_lin)
    
    /* allocate for new map */
    SUMA_LH("Allocating for new map");
-   LSM = (SUMA_COLOR_MAP *)SUMA_malloc(sizeof(SUMA_COLOR_MAP));
+   LSM = (SUMA_COLOR_MAP *)SUMA_calloc(1,sizeof(SUMA_COLOR_MAP));
    if (LSM == NULL) {
       fprintf (SUMA_STDERR,"Error %s: Failed to allocate for LSM.\n", FuncName);
       SUMA_RETURN (NULL);
@@ -1454,6 +1524,11 @@ SUMA_COLOR_MAP *SUMA_Linearize_Color_Map (SUMA_COLOR_MAP* SM, int N_lin)
    LSM->M[LSM->N_Col-1][0] = SM->M[SM->N_Col-1][0];
    LSM->M[LSM->N_Col-1][1] = SM->M[SM->N_Col-1][1];
    LSM->M[LSM->N_Col-1][2] = SM->M[SM->N_Col-1][2];
+
+   LSM->M0[0] = LSM->M[0][0]; 
+   LSM->M0[1] = LSM->M[0][1]; 
+   LSM->M0[2] = LSM->M[0][2]; 
+   
    
    if (LocalHead) {
       for (i=0; i < LSM->N_Col; ++i) {
@@ -2852,7 +2927,7 @@ SUMA_COLOR_SCALED_VECT * SUMA_Create_ColorScaledVect(int N_Node)
    
    SUMA_ENTRY;
    if (LocalHead) fprintf (SUMA_STDERR,"%s:\n Allocate for %d nodes ...\n", FuncName, N_Node);
-   S = (SUMA_COLOR_SCALED_VECT *)SUMA_malloc(sizeof(SUMA_COLOR_SCALED_VECT));
+   S = (SUMA_COLOR_SCALED_VECT *)SUMA_calloc(1,sizeof(SUMA_COLOR_SCALED_VECT));
    if (S == NULL) {
       fprintf(SUMA_STDERR, "Error %s: Failed to allocate for S.\n", FuncName);
       SUMA_RETURN (S);
@@ -2918,7 +2993,7 @@ SUMA_SCALE_TO_MAP_OPT * SUMA_ScaleToMapOptInit(void)
    SUMA_ENTRY;
 
    Opt = (SUMA_SCALE_TO_MAP_OPT *)SUMA_malloc(sizeof(SUMA_SCALE_TO_MAP_OPT));
-   
+   memset (Opt, 0, sizeof(SUMA_SCALE_TO_MAP_OPT));
    if (Opt == NULL) {
       fprintf (SUMA_STDERR, "Error %s: Could not allocate for Opt.\n", FuncName);
       SUMA_RETURN (NULL);
@@ -2930,6 +3005,7 @@ SUMA_SCALE_TO_MAP_OPT * SUMA_ScaleToMapOptInit(void)
    Opt->ApplyClip = NOPE;
    Opt->IntRange[0] = Opt->IntRange[1] = 0.0;
    Opt->ThreshRange[0] = Opt->ThreshRange[1] = 0.0;
+   Opt->ThreshStats[0] = Opt->ThreshStats[1] = -1.0;
    Opt->BrightRange[0] = 0.0; Opt->BrightRange[1] = 0.0; 
    Opt->BrightMap[0] = 0.3; Opt->BrightMap[1] = 0.8; 
    Opt->BrightFact = 1.0;
@@ -3510,6 +3586,8 @@ SUMA_COLOR_MAP * SUMA_MakeStandardMap (char *mapname)
 void SUMA_Flip_Color_Map (SUMA_COLOR_MAP *CM)
 {
    static char FuncName[] = {"SUMA_Flip_Color_Map"};
+   float orig[3]={ SUMA_CMAP_ORIGIN };
+   float topright[3] = { SUMA_CMAP_TOPLEFT };
    int lim, i, j, c;
    float t;
    SUMA_Boolean LocalHead = NOPE;
@@ -3529,18 +3607,109 @@ void SUMA_Flip_Color_Map (SUMA_COLOR_MAP *CM)
          CM->M[c][j] = t;           /* put old color of i ar c */
       } 
    }
-   
-   if (CM->frac) { /* got to flip fractions */
-      for (i=0; i < lim; ++i) {
-         t = CM->frac[i];           /* store fraction at i to be flipped */
-         c = CM->N_Col - i - 1;     /* index of fraction to replace one at i */
-         CM->frac[i] = CM->frac[c]; /* replace fraction at i */
-         CM->frac[c] = t;           /* put old fraction of i at c */
-      } 
+      
+   if (CM->SO) { /* Free it, and recreate it */
+      SUMA_Free_Surface_Object(CM->SO);
+      CM->SO = SUMA_Cmap_To_SO(CM, orig, topright, 0);; 
    }
    
+   #if 0 /* not sure you want to do that. If you flip
+            after rotation, you'll be lost */
+   CM->M0[0] = CM->M[CM->N_Col-1][0]; 
+   CM->M0[1] = CM->M[CM->N_Col-1][1]; 
+   CM->M0[2] = CM->M[CM->N_Col-1][2]; 
+   #endif
+   
+   CM->flipped = !CM->flipped;
    SUMA_RETURNe;
 }
+
+/*!
+   \brief rotates a color map by a fraction of its
+   length 
+   frac = 0, ET go home
+   frac < 0 rotate down
+   frac > 0 rotate up
+   abs(frac) = 1, go one color at a time 
+   \param CM (SUMA_COLOR_MAP *) to be flipped
+*/
+int SUMA_Rotate_Color_Map (SUMA_COLOR_MAP *CM, float frac)
+{
+   static char FuncName[] = {"SUMA_Rotate_Color_Map"};
+   float orig[3]={ SUMA_CMAP_ORIGIN };
+   float topright[3] = { SUMA_CMAP_TOPLEFT };
+   float **orig_cols=NULL, tdist=0.0, tdistmin=0.0;
+   int i, j, di, ic, dmin;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!CM) SUMA_RETURN(0);
+   
+   if (!CM->M) SUMA_RETURN(0);
+   
+   /* make copy */
+   orig_cols = (float **)SUMA_allocate2D (CM->N_Col, 3, sizeof(float));
+   for (j=0; j < 3; ++j) { 
+      for (i=0; i < CM->N_Col; ++i) {
+         orig_cols[i][j] = CM->M[i][j];  
+      }
+   }
+   
+   /* shift */
+   if (frac == 0.0f) {  /* come back baby */
+      tdistmin = 1000;
+      dmin = 900;
+      for (i=0; i < CM->N_Col; ++i) {
+         tdist = 0.0;
+         for (j=0; j<3; ++j) {
+            tdist += SUMA_POW2(CM->M[i][j]-CM->M0[j]); 
+         }
+         if (tdist <= tdistmin) {
+            tdistmin = tdist;
+            dmin = i;
+         }
+      }
+     if (!CM->flipped) di = dmin;
+     else di = dmin+1;
+   } else if (SUMA_ABS(frac) == 1.0f) {   /* one color at a time */
+      di = 1;
+   } else {
+      di = SUMA_ROUND(SUMA_ABS(frac*CM->N_Col));
+      if (di > CM->N_Col/2) di = CM->N_Col/2;
+      if (di < 1) di = 1;
+   }
+   SUMA_LHv("A shift of %d colors (frac %f, N_Col %d)...\n",
+            di, frac, CM->N_Col); 
+   if (frac > 0) {
+      for (i=0; i < CM->N_Col; ++i)  {
+         ic = (i+di) % CM->N_Col;
+         for (j=0; j < 3; ++j) {
+            CM->M[ic][j] = orig_cols[i][j];
+         }
+      }
+   } else {
+      for (i=0; i < CM->N_Col; ++i)  {
+         ic = (i+di) % CM->N_Col;
+         for (j=0; j < 3; ++j) {
+            CM->M[i][j] = orig_cols[ic][j];
+         }
+      }
+   }
+   
+   SUMA_free2D((char **)orig_cols, CM->N_Col); orig_cols = NULL;
+      
+   if (CM->SO) { /* Free it, and recreate it here or suffer
+                  from asynchronous display related problems if you
+                  wait for that to happen when DrawCmap is
+                  doing it. */
+      SUMA_Free_Surface_Object(CM->SO);
+      CM->SO = SUMA_Cmap_To_SO(CM, orig, topright, 0);; 
+   }
+      
+   SUMA_RETURN(di);
+}
+
 /*! 
    A function to compute the percentile range.
    
@@ -3680,9 +3849,10 @@ SUMA_OVERLAYS * SUMA_CreateOverlayPointerIdentifiers(int N_Nodes, const char *Na
 
    SUMA_ENTRY;
     
-   Sover = (SUMA_OVERLAYS *)SUMA_malloc(sizeof(SUMA_OVERLAYS));
+   Sover = (SUMA_OVERLAYS *)SUMA_calloc(1, sizeof(SUMA_OVERLAYS));
    if (!Sover) {
-      fprintf (SUMA_STDERR,"Error %s: Could not allocate for Sover.\n", FuncName);
+      fprintf (SUMA_STDERR,
+               "Error %s: Could not allocate for Sover.\n", FuncName);
       SUMA_RETURN (NULL);
    }
    
@@ -3711,10 +3881,15 @@ SUMA_OVERLAYS * SUMA_CreateOverlayPointerIdentifiers(int N_Nodes, const char *Na
    Sover->Label = sfn.FileName;
    if (sfn.Path) SUMA_free(sfn.Path); /* get rid of path */
    
+   Sover->rowgraph_mtd=NULL;
+   Sover->rowgraph_num=0;
    SUMA_RETURN(Sover);   
 }
 
-SUMA_OVERLAYS * SUMA_CreateOverlayPointer (int N_Nodes, const char *Name, SUMA_DSET *dset, char *ownerid, SUMA_OVERLAYS *Recycle)
+SUMA_OVERLAYS * SUMA_CreateOverlayPointer (
+                     int N_Nodes, const char *Name, 
+                     SUMA_DSET *dset, char *ownerid, 
+                     SUMA_OVERLAYS *Recycle)
 {
    static char FuncName[]={"SUMA_CreateOverlayPointer"};
    SUMA_OVERLAYS *Sover=NULL;
@@ -3730,7 +3905,8 @@ SUMA_OVERLAYS * SUMA_CreateOverlayPointer (int N_Nodes, const char *Name, SUMA_D
    }
    
    if (!Recycle) { /* a new puppy */
-      if (!(Sover = SUMA_CreateOverlayPointerIdentifiers(N_Nodes, Name, dset, ownerid))) {
+      if (!(Sover = SUMA_CreateOverlayPointerIdentifiers(N_Nodes, Name, 
+                                                         dset, ownerid))) {
          SUMA_S_Err("Failed to create overlay pointer identifiers.");
          SUMA_RETURN(NULL);
       }
@@ -3757,13 +3933,15 @@ SUMA_OVERLAYS * SUMA_CreateOverlayPointer (int N_Nodes, const char *Name, SUMA_D
    for (i=0; i < Sover->N_NodeDef; ++i) Sover->NodeDef[i] = i;
    Sover->FullList = 1;
    
-   /* Sover->ColMat = (float **) SUMA_allocate2D(Sover->N_Alloc, 3, sizeof(float)); NO MORE 2D ! Mar 17 04*/
+
    Sover->ColVec = (float *)SUMA_calloc(N_Alloc*3, sizeof(float));
    Sover->LocalOpacity = (float *)SUMA_calloc(N_Alloc, sizeof(float));
-   Sover->LocalOpacity[0] = -1.0; /* flag indicating local facts have not been initialized */
+   Sover->LocalOpacity[0] = -1.0; /* flag indicating local facts 
+                                       have not been initialized */
    
    if (!Sover->ColVec || !Sover->LocalOpacity || !Sover->NodeDef) {
-      fprintf (SUMA_STDERR,"Error %s: Could not allocate for Sover fields.\n", FuncName);
+      fprintf (SUMA_STDERR,
+               "Error %s: Could not allocate for Sover fields.\n", FuncName);
       SUMA_FreeOverlayPointer(Sover);
       SUMA_RETURN (NULL);   
    }
@@ -3774,7 +3952,8 @@ SUMA_OVERLAYS * SUMA_CreateOverlayPointer (int N_Nodes, const char *Name, SUMA_D
       Sover->PlaneOrder = -1; /* No order is specified */
       Sover->isBackGrnd = 0; /* no brightness modulation effects */
       Sover->DimFact = 0.3;
-      Sover->ForceIntRange[0] = 0.0; Sover->ForceIntRange[1] = 0.0; /* force nothing */
+      Sover->ForceIntRange[0] = 0.0; 
+      Sover->ForceIntRange[1] = 0.0; /* force nothing */
 
       /* new, from Feb 20 */
       /* default, choose something */
@@ -3787,10 +3966,21 @@ SUMA_OVERLAYS * SUMA_CreateOverlayPointer (int N_Nodes, const char *Name, SUMA_D
          Sover->cmapname = NULL;
          Sover->OptScl = NULL;
       } else {
-         Sover->cmapname = SUMA_copy_string("bgyr64");
+         char *eee=getenv("SUMA_DsetColorMap");
+         if (eee) {
+            if (!SUMA_FindNamedColMap(eee)) {
+               Sover->cmapname = SUMA_copy_string("Spectrum:red_to_blue");
+               SUMA_S_Errv( "Colormap %s not found.\n"
+                           "Using Spectrum:red_to_blue instead.\n", eee);
+            } else Sover->cmapname = SUMA_copy_string(eee);
+         } else {
+            Sover->cmapname = SUMA_copy_string("Spectrum:red_to_blue");
+         }
          Sover->OptScl = SUMA_ScaleToMapOptInit();
          if (!Sover->OptScl) {
-            fprintf (SUMA_STDERR,"Error %s: Could not get scaling option structure.\n", FuncName);
+            fprintf (SUMA_STDERR,
+                     "Error %s: Could not get scaling option structure.\n",
+                     FuncName);
             SUMA_RETURN (NOPE); 
          }
       }
@@ -3876,6 +4066,11 @@ SUMA_Boolean SUMA_FreeOverlayPointer (SUMA_OVERLAYS * Sover)
    if (Sover->Name) SUMA_free(Sover->Name);
    if (Sover->cmapname) SUMA_free(Sover->cmapname);
    if (Sover->OptScl) SUMA_free(Sover->OptScl);
+   if (Sover->rowgraph_mtd) Sover->rowgraph_mtd = NULL; /* that struct is killed
+                                                           with delete_memplot
+                                                           which is called with
+                                                           donebut_CB in
+                                                           plot_motif.c*/
    SUMA_free(Sover); Sover = NULL;
    
    SUMA_RETURN (YUP);
@@ -4650,22 +4845,33 @@ char *SUMA_ScaleToMapOpt_Info (SUMA_SCALE_TO_MAP_OPT *OptScl, int detail)
       SS = SUMA_StringAppend_va (SS, "find = %d\n", OptScl->find);
       SS = SUMA_StringAppend_va (SS, "IntRange = %f %f\n", 
          OptScl->IntRange[0], OptScl->IntRange[1]);
-      SS = SUMA_StringAppend_va (SS, "AutoIntRange = %d\n", OptScl->AutoIntRange);
-      SS = SUMA_StringAppend_va (SS, "tind = %d (use:%d). Mode %d\n", OptScl->tind, OptScl->UseThr, OptScl->ThrMode);
+      SS = SUMA_StringAppend_va (SS, "AutoIntRange = %d\n", 
+                                 OptScl->AutoIntRange);
+      SS = SUMA_StringAppend_va (SS, "tind = %d (use:%d). Mode %d\n", 
+                                 OptScl->tind, OptScl->UseThr, 
+                                 OptScl->ThrMode);
       SS = SUMA_StringAppend_va (SS, "ThreshRange = %f %f\n", 
          OptScl->ThreshRange[0], OptScl->ThreshRange[1]);
-      SS = SUMA_StringAppend_va (SS, "bind = %d (use:%d)\n", OptScl->bind, OptScl->UseBrt);
+      SS = SUMA_StringAppend_va (SS, "ThreshStats = %f %f\n", 
+         OptScl->ThreshStats[0], OptScl->ThreshStats[1]);
+      SS = SUMA_StringAppend_va (SS, "bind = %d (use:%d)\n", 
+                                 OptScl->bind, OptScl->UseBrt);
       SS = SUMA_StringAppend_va (SS, "BrightRange = %f %f\n", 
          OptScl->BrightRange[0], OptScl->BrightRange[1]);
       SS = SUMA_StringAppend_va (SS, "BrightMap = %f %f\n", 
          OptScl->BrightMap[0], OptScl->BrightMap[1]);
-      SS = SUMA_StringAppend_va (SS, "AutoBrtRange = %d\n", OptScl->AutoBrtRange);
+      SS = SUMA_StringAppend_va (SS, "AutoBrtRange = %d\n", 
+                                 OptScl->AutoBrtRange);
       SS = SUMA_StringAppend_va (SS, "alaAFNI = %d\n", OptScl->alaAFNI);
-      SS = SUMA_StringAppend_va (SS, "interpmode = %d (%s)\n", OptScl->interpmode, SUMA_CmapModeName(OptScl->interpmode));
+      SS = SUMA_StringAppend_va (SS, "interpmode = %d (%s)\n", 
+                                 OptScl->interpmode, 
+                                 SUMA_CmapModeName(OptScl->interpmode));
       SS = SUMA_StringAppend_va (SS, "BiasMode = %d, Range=%f, %f \n", 
-            OptScl->DoBias, OptScl->CoordBiasRange[0], OptScl->CoordBiasRange[1]);
-      if (OptScl->BiasVect) SS = SUMA_StringAppend_va (SS, "BiasVect is NOT NULL\n");
-         else SS = SUMA_StringAppend_va (SS, "BiasVect is NULL\n");
+                                 OptScl->DoBias, OptScl->CoordBiasRange[0],
+                                 OptScl->CoordBiasRange[1]);
+      if (OptScl->BiasVect) 
+         SS = SUMA_StringAppend_va (SS, "BiasVect is NOT NULL\n");
+      else SS = SUMA_StringAppend_va (SS, "BiasVect is NULL\n");
    }        
    SUMA_SS2S(SS, s);
    SUMA_RETURN(s);
@@ -4715,20 +4921,23 @@ DList * SUMA_OverlaysToOrderedList (SUMA_SurfaceObject *SO, int Opt)
    
    SUMA_ENTRY; 
    
-   listop = (DList *)SUMA_malloc(sizeof(DList));
+   listop = (DList *)SUMA_calloc(1,sizeof(DList));
    
    dlist_init(listop, SUMA_FreeOverlayListDatum);
    SUMA_LH("Considering loop");
    for (i=0; i < SO->N_Overlays; ++i) {
       SUMA_LH("In Loop");
-         OvD = (SUMA_OVERLAY_LIST_DATUM *)SUMA_malloc(sizeof(SUMA_OVERLAY_LIST_DATUM));
+         OvD = (SUMA_OVERLAY_LIST_DATUM *)
+                  SUMA_calloc(1,sizeof(SUMA_OVERLAY_LIST_DATUM));
          OvD->Overlay = SO->Overlays[i];
          if (!OvD->Overlay) {
             SUMA_LH("NULL Overlay");
          }
             SUMA_LH("Here");
-         if (OvD->Overlay->isBackGrnd && Opt == 1) continue;   /* that was an unwanted background */
-         if (!OvD->Overlay->isBackGrnd && Opt == -1) continue; /* that was an unwanted foreground */
+         if (OvD->Overlay->isBackGrnd && Opt == 1) continue;   
+            /* that was an unwanted background */
+         if (!OvD->Overlay->isBackGrnd && Opt == -1) continue; 
+            /* that was an unwanted foreground */
          if (!listop->size) {
             SUMA_LH("Very first");
             dlist_ins_next(listop, dlist_tail(listop), (void*)OvD);
@@ -4745,13 +4954,16 @@ DList * SUMA_OverlaysToOrderedList (SUMA_SurfaceObject *SO, int Opt)
                
                oOvD = (SUMA_OVERLAY_LIST_DATUM *)Elmop->data;
                
-               /* transform PlaneOrder so that is reflects the Background modulation */
+               /* transform PlaneOrder so that is 
+                  reflects the Background modulation */
                Shift = SO->N_Overlays;
                
-               if (OvD->Overlay->isBackGrnd) ShftPlaneOrder = OvD->Overlay->PlaneOrder - Shift;
+               if (OvD->Overlay->isBackGrnd) 
+                  ShftPlaneOrder = OvD->Overlay->PlaneOrder - Shift;
                else ShftPlaneOrder = OvD->Overlay->PlaneOrder;
                
-               if (oOvD->Overlay->isBackGrnd) oShftPlaneOrder = oOvD->Overlay->PlaneOrder - Shift;
+               if (oOvD->Overlay->isBackGrnd) 
+                  oShftPlaneOrder = oOvD->Overlay->PlaneOrder - Shift;
                else oShftPlaneOrder = oOvD->Overlay->PlaneOrder; 
                
                if (ShftPlaneOrder <= oShftPlaneOrder) {
@@ -5160,9 +5372,11 @@ SUMA_Boolean SUMA_AddNewPlane (SUMA_SurfaceObject *SO, SUMA_OVERLAYS *Overlay,
    
    if (SUMA_NewPlaneSearch(SO, Overlay)) {
       if (DuplicateFlag == 0) {
-         SUMA_S_Errv("Plane exists in SO->Overlays either by pointer %p or by name (%s).\n"
-                     "Both of these must be unique because DuplicateFlag=%d\n", 
-                     Overlay, Overlay->Name, DuplicateFlag);
+         SUMA_S_Errv(
+            "Plane exists in SO->Overlays either \n"
+            "by pointer %p or by name (%s).\n"
+            "Both of these must be unique because DuplicateFlag=%d\n", 
+            Overlay, Overlay->Name, DuplicateFlag);
          SUMA_DUMP_TRACE("Allora");
          SUMA_RETURN (NOPE);
       } else {
@@ -5174,11 +5388,15 @@ SUMA_Boolean SUMA_AddNewPlane (SUMA_SurfaceObject *SO, SUMA_OVERLAYS *Overlay,
    /* make sure that overlay plane does not have bias in it */
    if (Overlay->OptScl) {
       if (Overlay->OptScl->BiasVect) {
-         SUMA_SL_Err("New overlay plane cannot have coordinate bias.\nNot yet at least.\n");
-         /* If you want to support this feature, you'll have to call SUMA_ADD_COORD_BIAS_VECT
-         on any surface the plane gets assigned to. That means SO and SO2 below.
-         Search for macro SUMA_ADD_COORD_BIAS_VECT in SUMA_SwitchState in file SUMA_Engine.c
-         for the example */
+         SUMA_SL_Err("New overlay plane cannot have coordinate bias.\n"
+                     "Not yet at least.\n");
+         /* If you want to support this feature, 
+            you'll have to call SUMA_ADD_COORD_BIAS_VECT
+            on any surface the plane gets assigned to. 
+            That means SO and SO2 below.
+            Search for macro SUMA_ADD_COORD_BIAS_VECT in 
+            SUMA_SwitchState in file SUMA_Engine.c
+            for the example */
          SUMA_RETURN(NOPE);
       }
    }
@@ -5199,7 +5417,8 @@ SUMA_Boolean SUMA_AddNewPlane (SUMA_SurfaceObject *SO, SUMA_OVERLAYS *Overlay,
    }
    
    SUMA_LH("Adding to list...");
-   OvD = (SUMA_OVERLAY_LIST_DATUM *) SUMA_malloc(sizeof(SUMA_OVERLAY_LIST_DATUM));
+   OvD = (SUMA_OVERLAY_LIST_DATUM *)
+            SUMA_calloc(1,sizeof(SUMA_OVERLAY_LIST_DATUM));
    OvD->Overlay = Overlay;
    
    if (Overlay->isBackGrnd) {
@@ -5234,16 +5453,22 @@ SUMA_Boolean SUMA_AddNewPlane (SUMA_SurfaceObject *SO, SUMA_OVERLAYS *Overlay,
    } else kin = 1; 
    if (dov) {
       SUMA_LH("Registering plane with surfaces deserving it");
-      /* Now that you have the color overlay plane set, go about all the surfaces, searching for ones related to SO 
-      and make sure they have this colorplane, otherwise, create a link to it. */   
+      /* Now that you have the color overlay plane set, 
+         go about all the surfaces, searching for ones related to SO 
+         and make sure they have this colorplane, 
+         otherwise, create a link to it. */   
       for (i=0; i < N_dov; ++i) {
          if (SUMA_isSO(dov[i])) { 
             SO2 = (SUMA_SurfaceObject *)dov[i].OP;
-            if (SUMA_isRelated(SO, SO2, kin) && SO != SO2) { /* only 1st order kinship allowed */
+            if (SUMA_isRelated(SO, SO2, kin) && SO != SO2) { 
+               /* only 1st order kinship allowed */
                /* surfaces related and not identical, check on colorplanes */
-               if (!SUMA_Fetch_OverlayPointer (SO2->Overlays, SO2->N_Overlays, Overlay->Name, &OverInd)) {
+               if (!SUMA_Fetch_OverlayPointer ( SO2->Overlays, SO2->N_Overlays, 
+                                                Overlay->Name, &OverInd)) {
                   /* color plane not found, link to that of SO */
-                  SO2->Overlays[SO2->N_Overlays] = (SUMA_OVERLAYS *)SUMA_LinkToPointer((void*)SO->Overlays[SO->N_Overlays-1]);
+                  SO2->Overlays[SO2->N_Overlays] = 
+                     (SUMA_OVERLAYS*)SUMA_LinkToPointer(
+                                       (void*)SO->Overlays[SO->N_Overlays-1]);
                   /*increment the number of overlay planes */
                   ++SO2->N_Overlays;
                } else {
@@ -5637,10 +5862,10 @@ SUMA_ASSEMBLE_LIST_STRUCT * SUMA_AssembleColorPlaneList (SUMA_SurfaceObject *SO)
    OverlayPlanelist = SUMA_OverlaysToOrderedList (SO, 0);
 
    /* need a list to store new names */
-   list = (DList *)SUMA_malloc(sizeof(DList));
+   list = (DList *)SUMA_calloc(1,sizeof(DList));
    dlist_init(list, NULL); /* you don't want to free the strings */
    /* need a list to store the pointers, it is useless when SortByOrder is used, but I leave it in to keep the code simple */
-   listop = (DList *)SUMA_malloc(sizeof(DList)); 
+   listop = (DList *)SUMA_calloc(1,sizeof(DList)); 
    dlist_init(listop, NULL); /* you don't want to free the data as it is copied from  OverlayPlanelist*/
          
    clist = NULL;
@@ -5730,12 +5955,12 @@ SUMA_ASSEMBLE_LIST_STRUCT * SUMA_AssembleColorPlaneList (SUMA_SurfaceObject *SO)
 
       N_clist = list->size;
       /* destroy list */
-      dlist_destroy(list);
-      dlist_destroy(listop);
-      dlist_destroy(OverlayPlanelist);
-      SUMA_free(list);
-      SUMA_free(listop);
-      SUMA_free(OverlayPlanelist);
+      dlist_destroy(list);SUMA_free(list);
+      dlist_destroy(listop);SUMA_free(listop);
+      dlist_destroy(OverlayPlanelist);SUMA_free(OverlayPlanelist);
+      
+      
+      
    }
    
    clist_str = SUMA_CreateAssembleListStruct();
@@ -5909,7 +6134,9 @@ void SUMA_LoadDsetFile (char *filename, void *data)
    SO = (SUMA_SurfaceObject *)data;
    
    if (LocalHead) {
-      fprintf (SUMA_STDERR,"%s: Received request to load %s for surface %s.\n", FuncName, filename, SO->Label);
+      fprintf (SUMA_STDERR,
+               "%s: Received request to load %s for surface %s.\n", 
+               FuncName, filename, SO->Label);
    }
 
    /* find out if file exists and how many values it contains */
@@ -5935,7 +6162,9 @@ void SUMA_LoadDsetFile (char *filename, void *data)
    if (!dset) { SUMA_SLP_Err(  "Failed to load dataset.\n"
                                  "Make sure file exists\n"
                                  "and is of a supported\n"
-                                 "format."); SUMA_RETURNe; }
+                                 "format. See command line\n"
+                                 "for hints in other error\n"
+                                 "messages."); SUMA_RETURNe; }
    SUMA_SetParent_DsetToLoad(NULL);  /* reset the parent surface flag */
    
    if (LocalHead) {
@@ -6377,7 +6606,7 @@ int SUMA_AFNI_Extract_Colors ( char *fname, SUMA_AFNI_COLORS *SAC )
             }
             
             /* prepare the colormap */
-            CM = (SUMA_COLOR_MAP *)SUMA_malloc(sizeof(SUMA_COLOR_MAP));
+            CM = (SUMA_COLOR_MAP *)SUMA_calloc(1,sizeof(SUMA_COLOR_MAP));
             if (CM == NULL) {
                SUMA_SL_Crit ("Failed to allocate for CM");
                SUMA_RETURN(-1);
@@ -6424,6 +6653,10 @@ int SUMA_AFNI_Extract_Colors ( char *fname, SUMA_AFNI_COLORS *SAC )
                CM->top_frac = CM->frac[CM->N_Col-1];
             }
             
+            CM->M0[0] = CM->M[0][0]; 
+            CM->M0[1] = CM->M[0][1]; 
+            CM->M0[2] = CM->M[0][2]; 
+
             /* add the map to the list */
             SAC->CMv = SUMA_Add_ColorMap (CM, SAC->CMv, &(SAC->N_maps));  
             if (SAC->CMv) ++ngood;
@@ -6480,7 +6713,8 @@ SUMA_Boolean SUMA_Interpret_AFNIColor (char *Name, float RGB[3])
       if (tl && dpy) {
          SUMA_LH("Cleanup");
          XFreeColormap(dpy, cmap);
-         /* These 2 lines cause a crash on Fedora Core 4, but Core 4 crashes at XmCreateMainWindow anyway so we're doomed.*/
+         /* These 2 lines cause a crash on Fedora Core 4, 
+            but Core 4 crashes at XmCreateMainWindow anyway so we're doomed.*/
          XtDestroyWidget(tl); 
          XtDestroyApplicationContext(*app);
          tl = NULL;
@@ -6529,7 +6763,6 @@ SUMA_Boolean SUMA_Interpret_AFNIColor (char *Name, float RGB[3])
             RGB[0] = (float)color_exact->red/255.0/257.0;
             RGB[1] = (float)color_exact->green/255.0/257.0;
             RGB[2] = (float)color_exact->blue/255.0/257.0;
-            XtFree((char *)color_exact); color_exact=NULL;
          } else {
             SUMA_LH("Not graphical");
             if (0 && (LocalHead || !(iwarn % 10))) {
@@ -6544,6 +6777,7 @@ SUMA_Boolean SUMA_Interpret_AFNIColor (char *Name, float RGB[3])
          }
       }
    
+   if (color_exact) XtFree((char *)color_exact); color_exact=NULL;
 
    if (LocalHead) {
       fprintf (SUMA_STDERR,"%s: %s = %f %f %f\n", 

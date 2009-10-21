@@ -9,7 +9,7 @@
 /*------------------------------------------------------------------------
    Read an entire file into a character string.  When you are
    done with the returned string, free() it.  If the string pointer
-   is returned as NULL, something bad happened.
+   is returned as NULL, something bad happened, and you are doomed.
 --------------------------------------------------------------------------*/
 
 char * AFNI_suck_file( char *fname )
@@ -43,14 +43,14 @@ char * AFNI_suck_file( char *fname )
 
 #define EOLSKIP                                                          \
   do{ for( ; fptr[0] != '\n' && fptr[0] != '\0' ; fptr++ ) ; /* nada */  \
-      if( fptr[0] == '\0' ) goto done ;                                  \
+      if( fptr[0] == '\0' ) goto Done ;                                  \
       fptr++ ; } while(0)
 
 #define GETSSS                                                            \
   do{ int nu=0,qq;                                                        \
-      if( fptr-fbuf >= nbuf || fptr[0] == '\0' ) goto done ;              \
+      if( fptr-fbuf >= nbuf || fptr[0] == '\0' ) goto Done ;              \
       str[0]='\0'; qq=sscanf(fptr,"%127s%n",str,&nu); nused+=nu;fptr+=nu; \
-      if( str[0]=='\0' || qq==0 || nu==0 ) goto done ;                    \
+      if( str[0]=='\0' || qq==0 || nu==0 ) goto Done ;                    \
     } while(0)
 
 #define GETSTR                                                            \
@@ -67,6 +67,7 @@ char * AFNI_suck_file( char *fname )
       GETSTR ; if(ISTARRED(str)) goto SkipSection ; \
       strcpy(right,str) ; } while(0)
 
+#undef  NSBUF
 #define NSBUF 256
 
 static int afni_env_done = 0 ;
@@ -80,27 +81,28 @@ void AFNI_mark_environ_done(void){ afni_env_done = 1 ; return ; }
 char * my_getenv( char *ename )
 {
    if( !afni_env_done ){
-      char *sysenv = getenv("AFNI_SYSTEM_AFNIRC") ;       /* 16 Apr 2000 */
-      if( sysenv != NULL ) AFNI_process_environ(sysenv) ; /* 16 Apr 2000 */
-      AFNI_process_environ(NULL) ;
+     char *sysenv = getenv("AFNI_SYSTEM_AFNIRC") ;       /* 16 Apr 2000 */
+     if( sysenv != NULL ) AFNI_process_environ(sysenv) ; /* 16 Apr 2000 */
+     AFNI_process_environ(NULL) ;
    }
    return getenv( ename ) ;
 }
 
 /*---------------------------------------------------------------------------*/
 
-void AFNI_process_environ( char *fname )
+int AFNI_process_environ( char *fname )
 {
    int   nbuf , nused , ii ;
    char *fbuf , *fptr ;
    char str[NSBUF] , left[NSBUF] , middle[NSBUF] , right[NSBUF] ;
+   int nenv=0 , senv=0 ; static int first=1 ;  /* 13 Mar 2008 */
 
 ENTRY("AFNI_process_environ") ;
    if( fname != NULL ){
      strcpy(str,fname) ;
    } else {
      char *home ;
-     if( afni_env_done ) EXRETURN ;
+     if( afni_env_done ) RETURN(nenv) ;
      home = getenv("HOME") ;
      if( home != NULL ){ strcpy(str,home) ; strcat(str,"/.afnirc") ; }
      else              { strcpy(str,".afnirc") ; }
@@ -111,8 +113,8 @@ ENTRY("AFNI_process_environ") ;
      afni_env_done = 1 ;
    }
 
-   fbuf = AFNI_suck_file( str ) ; if( fbuf == NULL ) EXRETURN ;
-   nbuf = strlen(fbuf) ;          if( nbuf == 0    ) EXRETURN ;
+   fbuf = AFNI_suck_file( str ) ; if( fbuf == NULL ) RETURN(nenv) ;
+   nbuf = strlen(fbuf) ;          if( nbuf == 0    ) RETURN(nenv) ;
 
    fptr = fbuf ; nused = 0 ;
 
@@ -136,10 +138,11 @@ ENTRY("AFNI_process_environ") ;
       /**---------------------------------------**/
       /**-- ENVIRONMENT section [04 Jun 1999] --**/
 
-      if( strcmp(str,"***ENVIRONMENT") == 0 ){  /* loop, looking for environment settings */
+      if( strcmp(str,"***ENVIRONMENT") == 0 ){ /* loop: find environment eqns */
          char *enveqn ; int nl , nr ;
+         senv = 1 ;
 
-         while(1){                          /* loop, looking for 'name = value' */
+         while(1){                        /* loop, looking for 'name = value' */
             GETEQN ;
 
             if( !THD_filename_pure(left) ) continue ;
@@ -147,7 +150,7 @@ ENTRY("AFNI_process_environ") ;
             nl = strlen(left) ; nr = strlen(right) ;
             enveqn = (char *) malloc(nl+nr+4) ;
             strcpy(enveqn,left) ; strcat(enveqn,"=") ; strcat(enveqn,right) ;
-            putenv(enveqn) ;
+            putenv(enveqn) ; nenv++ ;
          }
 
          continue ;  /* to end of outer while */
@@ -155,8 +158,15 @@ ENTRY("AFNI_process_environ") ;
 
    }  /* end of while loop */
 
- done:
-   free(fbuf) ; EXRETURN ;
+  Done:
+   if( fname == NULL && first ){
+     if( senv == 0 )
+       WARNING_message("didn't find '***ENVIRONMENT' line in ~/.afnirc") ;
+     else if( nenv == 0 )
+       WARNING_message("didn't find any environment equations in ~/.afnirc") ;
+   }
+
+   first = 0 ; free(fbuf) ; RETURN(nenv) ;
 }
 
 /*-----------------------------------------------------------------*/
@@ -193,6 +203,8 @@ double AFNI_numenv( char *ename )  /* 23 Aug 2003 */
    else if( *ccc == 'g' || *ccc == 'G' ) val *= 1024.0*1024.0*1024.0 ;
    return val ;
 }
+
+/*------------------------------------------------------------------*/
 
 double AFNI_numenv_def( char *ename, double dd ) /* 18 Sep 2007 */
 {
@@ -247,7 +259,7 @@ int AFNI_prefilter_args( int *argc , char **argv )
 
    /*--- scan thru argv[];
          see if any should be processed now and marked as 'used up' ---*/
-   
+
    for( ii=1 ; ii < narg ; ii++ ){
 
      /*** empty argument (should never happen in Unix) ***/
@@ -284,24 +296,24 @@ int AFNI_prefilter_args( int *argc , char **argv )
        if( ttt ) fprintf(stderr,"++ argv[%d] is -pad_to_node\n",ii) ;
        if (ii+1 >= narg) {
          fprintf(stderr,"** -pad_to_node needs a positive integer.\n");
-         exit(1); 
+         exit(1);
        }
-       used[ii] = 1 ; ii++; 
+       used[ii] = 1 ; ii++;
        MRILIB_DomainMaxNodeIndex = atoi(argv[ii]);
-       if (MRILIB_DomainMaxNodeIndex < 0) { 
+       if (MRILIB_DomainMaxNodeIndex < 0) {
          fprintf(stderr,"** parameter for -pad_to_node (%d) is negative!\n",
                         MRILIB_DomainMaxNodeIndex);
-         exit(1); 
+         exit(1);
        }else if (MRILIB_DomainMaxNodeIndex > 500000) {
          fprintf(stderr,
                   "** parameter for -pad_to_node (%d) is suspiciously large.\n"
-                  "   I hope you know what you're doing.\n", 
+                  "   I hope you know what you're doing.\n",
                   MRILIB_DomainMaxNodeIndex );
        }
-       used[ii] = 1; 
+       used[ii] = 1;
        continue ;
      }
-     
+
      /*** if get to here, argv[ii] is nothing special ***/
 
    } /* end of loop over argv[] */
@@ -318,4 +330,28 @@ int AFNI_prefilter_args( int *argc , char **argv )
      fprintf(stderr,"++ 'used up' %d argv[] entries, leaving %d\n",nused,narg) ;
 
    free((void *)used) ; *argc = narg ; return(nused);
+}
+
+
+/*-------------------------------------------------------------------------*/
+/* These functions moved here: 05 Feb 2008. */
+
+int THD_deathcon(void)  /* 06 Jun 2007 */
+{
+   char *ppp = my_getenv("AFNI_DECONFLICT") ;
+   if( ppp != NULL && *ppp == 'N' ) return 1 ;
+   return 0 ;
+}
+
+/*-------------------------------------------------------------------------*/
+
+static int force_ok_overwrite = 0 ;
+void THD_force_ok_overwrite( int ii ){ force_ok_overwrite = ii; }
+
+int THD_ok_overwrite(void)  /* Jan 2008 */
+{
+   char *ppp=my_getenv("AFNI_DECONFLICT");
+   if( force_ok_overwrite ) return 1 ;
+   if (ppp && strcmp(ppp,"OVERWRITE")==0) return 1;
+   return 0;
 }

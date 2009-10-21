@@ -10,8 +10,8 @@ int main( int argc , char * argv[] )
 {
    MRI_IMAGE * inim ;
    int ii , jj , nx,ny , nopt;
-   float * iar ;
-   double sq ;
+   float *iar ;
+   int mode=2 ;  /* 26 Mar 2008 */
 
    /*-- help? --*/
 
@@ -19,7 +19,14 @@ int main( int argc , char * argv[] )
      printf("Usage: 1dnorm infile outfile\n"
             "where infile is an AFNI *.1D file (ASCII list of numbers arranged\n"
             "in columns); outfile will be a similar file, with each column being\n"
-            "L2 normalized.\n"
+            "L_2 normalized (sum of squares = 1).\n"
+            "* If 'infile'  is '-', it will be read from stdin.\n"
+            "* If 'outfile' is '-', it will be written to stdout.\n"
+            "\n"
+            "Options:\n"
+            "--------\n"
+            " -norm1  = Normalize so sum of absolute values is 1 (L_1 norm)\n"
+            " -normx  = So that max absolute value is 1 (L_infinity norm)\n"
            ) ;
       PRINT_COMPILE_DATE ; exit(0) ;
    }
@@ -27,33 +34,38 @@ int main( int argc , char * argv[] )
    machdep() ;
 
    nopt = 1 ;
-   if( nopt+1 >= argc ){
-      fprintf(stderr,"** Need input and output filenames!\n");exit(1);
+
+   if( strncmp(argv[nopt],"-norm",5) == 0 ){       /* 26 Mar 2008 */
+          if( argv[nopt][5] == '1' ) mode = 1 ;
+     else if( argv[nopt][5] == 'x' ) mode = 666 ;
+     else if( argv[nopt][5] == '2' ) mode = 2 ;
+     else ERROR_message("Don't understand option '%s'",argv[nopt]) ;
+     nopt++ ;
    }
 
-   if( argc > nopt+1 && !THD_filename_ok(argv[nopt+1]) ){
-      fprintf(stderr,"** Illegal output filename!\n"); exit(1);
-   }
-   if( argc > nopt+1 && strcmp(argv[nopt+1],"-") != 0 && THD_is_file(argv[nopt+1]) ){
-      fprintf(stderr,"** Output file already exists!\n"); exit(1);
-   }
+   if( nopt+1 >= argc )
+     ERROR_exit("Need input and output filenames!") ;
+
+   if( argc > nopt+1 && !THD_filename_ok(argv[nopt+1]) )
+     ERROR_exit(" Illegal output filename!") ;
+
+   if( argc > nopt+1 && strcmp(argv[nopt+1],"-") != 0 && THD_is_file(argv[nopt+1]) )
+     ERROR_exit("Output file already exists!") ;
 
    /* read input file */
 
    inim = mri_read_1D( argv[nopt] ) ;
-   if( inim == NULL ){
-      fprintf(stderr,"** Can't read input file!\n"); exit(1);
-   }
+   if( inim == NULL )
+     ERROR_exit("Can't read input file!") ;
 
    nx = inim->nx ; ny = inim->ny ; iar = MRI_FLOAT_PTR(inim) ;
 
    for( jj=0 ; jj < ny ; jj++ ){
-      sq = 0.0 ;
-      for( ii=0 ; ii < nx ; ii++ ) sq += SQR(iar[ii+jj*nx]) ;
-      if( sq > 0.0 ){
-         sq = 1.0 / sq ;
-         for( ii=0 ; ii < nx ; ii++ ) iar[ii+jj*nx] *= sq ;
-      }
+     switch( mode ){
+       default:  THD_normalize( nx , iar + jj*nx ); break;
+       case 1:   THD_normL1   ( nx , iar + jj*nx ); break;
+       case 666: THD_normmax  ( nx , iar + jj*nx ); break;
+     }
    }
 
    mri_write_1D( (argc > nopt+1) ? argv[nopt+1] : "-" , inim ) ;

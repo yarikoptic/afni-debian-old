@@ -49,7 +49,7 @@ void DT_Syntax(void) ;
 
 void DT_read_opts( int argc , char * argv[] )
 {
-   int nopt = 1 , nvals , ii , nvcheck ;
+   int nopt = 1 , nvals , ii , nvcheck , nerr=0 ;
    MRI_IMARR *slice_imar ;
 
    INIT_IMARR(DT_imar) ;
@@ -257,17 +257,21 @@ void DT_read_opts( int argc , char * argv[] )
    if( DT_byslice ) nvcheck *= DSET_NZ(DT_dset) ;
 #endif
    for( ii=0 ; ii < DT_nvector ; ii++ ){
-     if( IMARR_SUBIMAGE(DT_imar,ii)->nx < nvcheck )
-       ERROR_exit("%d-th -vector is shorter than dataset!\n",ii+1) ;
+     if( IMARR_SUBIMAGE(DT_imar,ii)->nx < nvcheck ){
+       ERROR_message("%d-th -vector is shorter (%d) than dataset (%d)",
+                     ii+1,IMARR_SUBIMAGE(DT_imar,ii)->nx,nvcheck) ;
+       nerr++ ;
+     }
    }
+   if( nerr > 0 ) ERROR_exit("Cannot continue") ;
 
    /*--- create time series from expressions */
 
    if( DT_exnum > 0 ){
      double atoz[26] , del ;
      int kvar , jj ;
-     MRI_IMAGE * flim ;
-     float * flar ;
+     MRI_IMAGE *flim ;
+     float *flar ;
 
      for( jj=0 ; jj < DT_exnum ; jj++ ){
        if( DT_verb ) INFO_message("Evaluating %d-th -expr\n",jj+1) ;
@@ -309,10 +313,13 @@ void DT_Syntax(void)
 {
    printf(
     "Usage: 3dDetrend [options] dataset\n"
-    "This program removes components from voxel time series using\n"
-    "linear least squares.  Each voxel is treated independently.\n"
-    "The input dataset may have a sub-brick selector string; otherwise,\n"
-    "all sub-bricks will be used.\n\n"
+    "* This program removes components from voxel time series using\n"
+    "  linear least squares.  Each voxel is treated independently.\n"
+    "* Note that least squares detrending is equivalent to orthogonalizing\n"
+    "  the input dataset time series with respect to the basis time series\n"
+    "  provided by the '-vector', '-polort', et cetera options.\n"
+    "* The input dataset may have a sub-brick selector string; otherwise,\n"
+    "  all sub-bricks will be used.\n\n"
    ) ;
 
    printf(
@@ -327,7 +334,7 @@ void DT_Syntax(void)
     " -normalize    = Normalize each output voxel time series; that is,\n"
     "                   make the sum-of-squares equal to 1.\n"
     "           N.B.: This option is only valid if the input dataset is\n"
-    "                   stored as floats!\n"
+    "                   stored as floats! (1D files are always floats.)\n"
 #ifdef ALLOW_BYSLICE
     " -byslice      = Treat each input vector (infra) as describing a set of\n"
     "                   time series interlaced across slices.  If NZ is the\n"
@@ -389,7 +396,24 @@ void DT_Syntax(void)
 #endif
    ) ;
 
-   printf("\n" MASTER_SHORTHELP_STRING ) ;
+   printf("\n"
+    "Detrending 1D files\n"
+    "-------------------\n"
+    "As far as '3d' programs are concerned, you can input a 1D file as\n"
+    "a 'dataset'.  Each row is a separate voxel, and each column is a\n"
+    "separate time point.  If you want to detrend a single column, then\n"
+    "you need to transpose it on input.  For example:\n"
+    "\n"
+    "  3dDetrend -prefix - -vector G1.1D -polort 3 G5.1D\\' | 1dplot -stdin\n"
+    "\n"
+    "Note that the '-vector' file is NOT transposed with \\', but that\n"
+    "the input dataset file IS transposed.  This is because in the first\n"
+    "case the program expects a 1D file, and so knows that the column\n"
+    "direction is time.  In the second case, the program expects a 3D\n"
+    "dataset, and when given a 1D file, knows that the row direction is\n"
+    "time -- so it must be transposed.  I'm sorry if this is confusing,\n"
+    "but that's the way it is.\n"
+   ) ;
 
    PRINT_COMPILE_DATE ; exit(0) ;
 }
@@ -448,9 +472,9 @@ int main( int argc , char * argv[] )
 
    nvals = DSET_NVALS(new_dset) ;
    for( iv=0 ; iv < nvals ; iv++ )
-      EDIT_substitute_brick( new_dset , iv ,
-                             DSET_BRICK_TYPE(DT_dset,iv) ,
-                             DSET_ARRAY(DT_dset,iv)       ) ;
+     EDIT_substitute_brick( new_dset , iv ,
+                            DSET_BRICK_TYPE(DT_dset,iv) ,
+                            DSET_ARRAY(DT_dset,iv)       ) ;
 
    if( DT_norm && DSET_BRICK_TYPE(new_dset,0) != MRI_float ){
      INFO_message("Turning -normalize option off (input not in float format)");
@@ -466,9 +490,9 @@ int main( int argc , char * argv[] )
 
    refvec = (float **) malloc( sizeof(float *)*nvec ) ;
    for( kk=ii=0 ; ii < IMARR_COUNT(DT_imar) ; ii++ ){
-      fv = MRI_FLOAT_PTR( IMARR_SUBIMAGE(DT_imar,ii) ) ;
-      for( jj=0 ; jj < IMARR_SUBIMAGE(DT_imar,ii)->ny ; jj++ )          /* compute ptr */
-         refvec[kk++] = fv + ( jj * IMARR_SUBIMAGE(DT_imar,ii)->nx ) ;  /* to vectors  */
+     fv = MRI_FLOAT_PTR( IMARR_SUBIMAGE(DT_imar,ii) ) ;
+     for( jj=0 ; jj < IMARR_SUBIMAGE(DT_imar,ii)->ny ; jj++ )         /* compute ptr */
+       refvec[kk++] = fv + ( jj * IMARR_SUBIMAGE(DT_imar,ii)->nx ) ;  /* to vectors  */
    }
 
    fit = (float *) malloc( sizeof(float) * nvals ) ;  /* will get fit to voxel data */

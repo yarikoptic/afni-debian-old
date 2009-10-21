@@ -10,10 +10,14 @@
 #  error "Plugins not properly set up -- see machdep.h"
 #endif
 
-#ifndef BGCOLOR_ARG
+#undef  BGCOLOR_ARG
 #define BGCOLOR_ARG(str) \
   XtVaTypedArg , XmNbackground , XmRString , (str) , strlen(str)+1
-#endif
+
+#undef  RCOL
+#define RCOL "#440011"  /* 26 Oct 2007 */
+#undef  GCOL
+#define GCOL "#003311"
 
 /***********************************************************************
   Plugin to draw values into a dataset.
@@ -252,13 +256,13 @@ static int    mode_ints[] = {
 #define NUM_modes (sizeof(mode_ints)/sizeof(int))
 
 #define NFILLIN_DIR 3
-static char * fillin_dir_strings[NFILLIN_DIR] = { "A-P" , "I-S" , "R-L" } ;
+static char *fillin_dir_strings[NFILLIN_DIR] = { "A-P" , "I-S" , "R-L" } ;
 #define NFILLIN_GAP 9
 
-static MCW_DC * dc ;                 /* display context */
-static Three_D_View * im3d ;         /* AFNI controller */
-static THD_3dim_dataset * dset ;     /* The dataset!    */
-static MCW_idcode         dset_idc ; /* 31 Mar 1999     */
+static MCW_DC *dc ;                 /* display context */
+static Three_D_View *im3d ;         /* AFNI controller */
+static THD_3dim_dataset *dset ;     /* The dataset!    */
+static MCW_idcode        dset_idc ; /* 31 Mar 1999     */
 
 static Dtable *vl_dtable=NULL ;      /* 17 Oct 2003     */
 
@@ -353,19 +357,19 @@ static THD_dataxes dax_save ;    /* save this for later reference */
 
 static int old_stroke_autoplot = 0 ;  /* 27 Oct 2003 */
 
-char * DRAW_main( PLUGIN_interface * plint )
+char * DRAW_main( PLUGIN_interface *plint )
 {
    XmString xstr ;
 
    /*-- sanity checks --*/
 
    if( ! IM3D_OPEN(plint->im3d) )
-      return " \n AFNI Controller\nnot opened?! \n " ;
+     return " \n AFNI Controller\nnot opened?! \n " ;
 
    if( editor_open ){
-      XtMapWidget(shell) ;
-      XRaiseWindow( XtDisplay(shell) , XtWindow(shell) ) ;
-      return NULL ;
+     XtMapWidget(shell) ;
+     XRaiseWindow( XtDisplay(shell) , XtWindow(shell) ) ;
+     return NULL ;
    }
 
    im3d = plint->im3d ;  /* save for local use */
@@ -373,10 +377,10 @@ char * DRAW_main( PLUGIN_interface * plint )
    /*-- create widgets, first time through --*/
 
    if( shell == NULL ){
-      dc = im3d->dc ;        /* save this too */
-      DRAW_make_widgets() ;
-      PLUTO_set_topshell( plint , shell ) ;  /* 22 Sep 2000 */
-      RWC_visibilize_widget( shell ) ;       /* 27 Sep 2000 */
+     dc = im3d->dc ;        /* save this too */
+     DRAW_make_widgets() ;
+     PLUTO_set_topshell( plint , shell ) ;  /* 22 Sep 2000 */
+     RWC_visibilize_widget( shell ) ;       /* 27 Sep 2000 */
    }
 
    /*-- set titlebar --*/
@@ -388,9 +392,11 @@ char * DRAW_main( PLUGIN_interface * plint )
 
    /*-- set the info label --*/
 
-   xstr = XmStringCreateLtoR( "[No dataset]" ,
-                              XmFONTLIST_DEFAULT_TAG ) ;
-   XtVaSetValues( info_lab , XmNlabelString , xstr , NULL ) ;
+   xstr = XmStringCreateLtoR( "[No dataset]" , XmFONTLIST_DEFAULT_TAG ) ;
+   XtVaSetValues( info_lab ,
+                    XmNlabelString , xstr ,
+                    BGCOLOR_ARG(RCOL) ,
+                  NULL ) ;
    XmStringFree(xstr) ;
 
    /*-- 22 Aug 2001: perhaps allow TT Atlas stuff --*/
@@ -512,15 +518,12 @@ void DRAW_make_widgets(void)
 
    /*** label at top to let user know who we are ***/
 
-#undef  BCOL
-#define BCOL "#003311"  /* 26 Oct 2007 */
-
    xstr = XmStringCreateLtoR( "[No dataset]" ,
                               XmFONTLIST_DEFAULT_TAG ) ;
    info_lab = XtVaCreateManagedWidget(
                  "AFNI" , xmLabelWidgetClass , rowcol ,
                     XmNlabelString , xstr ,
-                    BGCOLOR_ARG(BCOL) ,
+                    BGCOLOR_ARG(RCOL) ,
                     XmNinitialResourcesPersistent , False ,
                  NULL ) ;
    XmStringFree(xstr) ;
@@ -617,7 +620,7 @@ void DRAW_make_widgets(void)
                   "AFNI" , xmPushButtonWidgetClass , rowcol ,
                      XmNlabelString , xstr ,
                      XmNtraversalOn , True  ,
-                     BGCOLOR_ARG(BCOL) ,
+                     BGCOLOR_ARG(GCOL) ,
                      XmNinitialResourcesPersistent , False ,
                   NULL ) ;
    XmStringFree(xstr) ;
@@ -1036,16 +1039,16 @@ Sensitize_copy_bbox(int  sens)
 void DRAW_done_CB( Widget w, XtPointer client_data, XtPointer call_data )
 {
    if( dset != NULL ){
-      if( recv_open )  /* 31 Mar 1999: changed shutdown to EVERYTHING */
-         AFNI_receive_control( im3d, recv_key,EVERYTHING_SHUTDOWN, NULL ) ;
-      if( dset_changed ){
-         MCW_invert_widget( done_pb ) ;
-         DRAW_attach_dtable( vl_dtable, "VALUE_LABEL_DTABLE",  dset ) ;
-         DSET_write(dset) ;
-         MCW_invert_widget( done_pb ) ;
-      }
-      DSET_unlock(dset) ; DSET_anyize(dset) ;
-      dset = NULL ; dset_changed = 0 ;
+     if( recv_open )  /* 31 Mar 1999: changed shutdown to EVERYTHING */
+       AFNI_receive_control( im3d, recv_key,EVERYTHING_SHUTDOWN, NULL ) ;
+     if( dset_changed ){
+       MCW_invert_widget( done_pb ) ;
+       DRAW_attach_dtable( vl_dtable, "VALUE_LABEL_DTABLE",  dset ) ;
+       DSET_overwrite(dset) ;
+       MCW_invert_widget( done_pb ) ;
+     }
+     DSET_unlock(dset) ; DSET_anyize(dset) ;
+     dset = NULL ; dset_changed = 0 ;
    }
 
    CLEAR_UNREDOBUF ;  /* 19 Nov 2003 */
@@ -1148,7 +1151,7 @@ void DRAW_save_CB( Widget w, XtPointer client_data, XtPointer call_data )
    MCW_invert_widget(save_pb) ;
 
    DRAW_attach_dtable( vl_dtable, "VALUE_LABEL_DTABLE",  dset ) ;
-   DSET_write(dset) ; dset_changed = 0 ; SENSITIZE(choose_pb,1) ;
+   DSET_overwrite(dset); dset_changed = 0; SENSITIZE(choose_pb,1);
    Sensitize_copy_bbox(1);   /* turn copy dataset widgets back on  - drg 4/4/2006 */
    MCW_invert_widget(save_pb) ;
    SENSITIZE(save_pb,0) ; SENSITIZE(saveas_pb,0) ;
@@ -1199,7 +1202,7 @@ void DRAW_saveas_finalize_CB( Widget w, XtPointer fd, MCW_choose_cbs * cbs )
    }
    EDIT_dset_items( cset , ADN_prefix,cbs->cval , ADN_none ) ;
 
-   if( THD_is_file(DSET_HEADNAME(cset)) ){  /* stupid user */
+   if( THD_is_file(DSET_BRIKNAME(cset)) ){  /* stupid user */
      (void) MCW_popup_message( saveas_pb ,
                                  " \n"
                                  "*** Cannot SaveAs this edited   ***\n"
@@ -1222,19 +1225,22 @@ void DRAW_saveas_finalize_CB( Widget w, XtPointer fd, MCW_choose_cbs * cbs )
 
    dset = cset ; dset_idc = dset->idcode ;
    DRAW_attach_dtable( vl_dtable, "VALUE_LABEL_DTABLE",  dset ) ;
-   DSET_write(dset) ; DSET_mallocize(dset) ; DSET_load(dset) ; DSET_lock(dset) ;
+   DSET_overwrite(dset); DSET_mallocize(dset); DSET_load(dset); DSET_lock(dset);
 
    /*-- re-write the informational label --*/
 
    if( DSET_BRICK_FACTOR(dset,0) == 0.0 ){
-      strcpy(str,DSET_FILECODE(dset)) ;
+     strcpy(str,DSET_BRIKNAME(dset)) ;
    } else {
-      char abuf[16] ;
-      AV_fval_to_char( DSET_BRICK_FACTOR(dset,0) , abuf ) ;
-      sprintf(str,"%s\nbrick factor: %s", DSET_FILECODE(dset) , abuf ) ;
+     char abuf[16] ;
+     AV_fval_to_char( DSET_BRICK_FACTOR(dset,0) , abuf ) ;
+     sprintf(str,"%s\nbrick factor: %s", DSET_BRIKNAME(dset) , abuf ) ;
    }
    xstr = XmStringCreateLtoR( str , XmFONTLIST_DEFAULT_TAG ) ;
-   XtVaSetValues( info_lab , XmNlabelString , xstr , NULL ) ;
+   XtVaSetValues( info_lab ,
+                    XmNlabelString , xstr ,
+                    BGCOLOR_ARG(GCOL) ,
+                  NULL ) ;
    XmStringFree(xstr) ;
 
    /*-- finish up --*/
@@ -1730,7 +1736,7 @@ void DRAW_finalize_dset_CB( Widget w, XtPointer fd, MCW_choose_cbs *cbs )
 
    /*-- write the informational label --*/
 
-   if( copied ) dtit = DSET_FILECODE(dset) ;  /* 24 Sep 2001 */
+   if( copied ) dtit = DSET_BRIKNAME(dset) ;  /* 24 Sep 2001 */
    else         dtit = dsl[id].title ;
 
    if( DSET_BRICK_FACTOR(dset,0) == 0.0 ){
@@ -1741,7 +1747,10 @@ void DRAW_finalize_dset_CB( Widget w, XtPointer fd, MCW_choose_cbs *cbs )
       sprintf(str,"%s\nbrick factor: %s", dtit , abuf ) ;
    }
    xstr = XmStringCreateLtoR( str , XmFONTLIST_DEFAULT_TAG ) ;
-   XtVaSetValues( info_lab , XmNlabelString , xstr , NULL ) ;
+   XtVaSetValues( info_lab ,
+                    XmNlabelString , xstr ,
+                    BGCOLOR_ARG(GCOL) ,
+                  NULL ) ;
    XmStringFree(xstr) ;
 
    /*-- setup AFNI for drawing --*/

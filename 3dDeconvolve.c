@@ -10,14 +10,14 @@
 
 /*---------------------------------------------------------------------------*/
 /*
-  Program to calculate the deconvolution of a measurement 3d+time dataset
+  Program to calculate the deconvolution of a measurement 3D+time dataset
   with a specified input stimulus time series.  This program will also
   perform multiple linear regression using multiple input stimulus time
   series. Output consists of an AFNI 'bucket' type dataset containing the
   least squares estimates of the linear regression coefficients, t-statistics
   for significance of the coefficients, partial F-statistics for significance
   of the individual input stimuli, and the F-statistic for significance of
-  the overall regression.  Additional output consists of a 3d+time dataset
+  the overall regression.  Additional output consists of a 3D+time dataset
   containing the estimated system impulse response function.
 
   File:    3dDeconvolve.c
@@ -89,11 +89,11 @@
   Date:    12 November 1999
 
   Mod:     Added options for writing the fitted full model time series (-fitts)
-           and the residual error time series (-errts) to 3d+time datasets.
+           and the residual error time series (-errts) to 3D+time datasets.
   Date:    22 November 1999
 
   Mod:     Added option to perform analysis on a single (fMRI) measurement
-           time series instead of a 3d+time dataset (-input1D).
+           time series instead of a 3D+time dataset (-input1D).
   Date:    23 November 1999
 
   Mod:     Added test for maximum number of full model parameters.
@@ -131,7 +131,7 @@
   Mod:     Added -glt_label option for labeling the GLT matrix.
   Date:    23 June 2000
 
-  Mod:     Added -concat option for analysis of a concatenated 3d+time dataset.
+  Mod:     Added -concat option for analysis of a concatenated 3D+time dataset.
   Date:    26 June 2000
 
   Mod:     Increased max. allowed number of input stimulus functions, GLTs,
@@ -339,18 +339,29 @@
 # include "matrix.h"          /* double precision */
 # define MTYPE    double
 # define NI_MTYPE NI_DOUBLE
-# define QEPS 1.e-6
+# define QEPS     1.e-6
+# define MPAIR    double_pair
 #else
 # include "matrix_f.h"        /* single precision */
 # define MTYPE    float
 # define NI_MTYPE NI_FLOAT
-# define QEPS 1.e-4
+# define QEPS     1.e-4
+# define MPAIR    float_pair
 #endif
+
+#define MEM_MESSAGE                                                     \
+ do{ long long val = MCW_MALLOC_total ;                                  \
+     if( val > 0 )                                                        \
+       INFO_message("current memory malloc-ated = %lld bytes (about %s)" , \
+                    val , approximate_number_string((double)val) ) ;        \
+ } while(0)
+
 
 /*------------ prototypes for routines far below (RWCox) ------------------*/
 
 void JPEG_matrix_gray( matrix X, char *fname );        /* save X matrix to JPEG */
-void ONED_matrix_save( matrix X, char *fname, void *,int,int *, matrix *Xf ); /* save X matrix to .1D */
+void ONED_matrix_save( matrix X, char *fname, void *,int,int *, matrix *Xf ,
+                       int nbl, int *bl ); /* save X matrix to .1D */
 
 void XSAVE_output( char * ) ;                      /* save X matrix into file */
 
@@ -380,6 +391,13 @@ static int verb = 1 ;
 static int goforit = 0 ;  /* 07 Mar 2007 */
 static int badlev  = 0 ;
 static int floatout= 0 ;  /* 13 Mar 2007 */
+
+#define CHECK_NIFTI(fn)                                                \
+ do{ if( !floatout && strstr((fn),".nii") != NULL ){                   \
+       WARNING_message(                                                \
+        "output prefix '%s' is NIfTI-1 ==> forcing '-float'" , (fn)) ; \
+       floatout = 1 ;                                                  \
+   }} while(0)
 
 static int allzero_OK = 0 ;  /* 30 May 2007 */
 
@@ -445,6 +463,10 @@ typedef struct {
 basis_expansion * basis_parser( char *sym ) ;
 float basis_evaluation( basis_expansion *be , float *wt , float x ) ;
 void basis_write_iresp( int argc , char *argv[] ,
+                        struct DC_options *option_data ,
+                        basis_expansion *be , float dt ,
+                        float **wtar , char *output_filename ) ;
+void basis_write_iresp_1D( int argc , char *argv[] ,
                         struct DC_options *option_data ,
                         basis_expansion *be , float dt ,
                         float **wtar , char *output_filename ) ;
@@ -527,16 +549,16 @@ static column_metadata *coldat = NULL ;  /* global info about matrix columns */
 typedef struct DC_options
 {
   int nxyz;                /* number of voxels in the input dataset */
-  int nt;                  /* number of input 3d+time dataset time points */
-  int NFirst;              /* first image from input 3d+time dataset to use */
-  int NLast;               /* last image from input 3d+time dataset to use */
+  int nt;                  /* number of input 3D+time dataset time points */
+  int NFirst;              /* first image from input 3D+time dataset to use */
+  int NLast;               /* last image from input 3D+time dataset to use */
   int N;                   /* number of usable data points from input data */
   int polort;              /* degree of polynomial for baseline model */
   float rms_min;           /* minimum rms error to reject reduced model */
   int quiet;               /* flag to suppress screen output */
   int progress;            /* print periodic progress reports */
   float fdisp;             /* minimum f-statistic for display */
-  char * input_filename;   /* input 3d+time dataset */
+  char * input_filename;   /* input 3D+time dataset */
   char * mask_filename;    /* input mask dataset */
   char * input1D_filename; /* input fMRI measurement time series */
   float  input1D_TR;       /* TR for input 1D time series */
@@ -565,10 +587,10 @@ typedef struct DC_options
   char ** glt_label;       /* label for general linear tests */
 
   char * bucket_filename;  /* bucket dataset file name */
-  char ** iresp_filename;  /* impulse response 3d+time output */
-  char ** sresp_filename;  /* std. dev. 3d+time output */
-  char * fitts_filename;   /* fitted time series 3d+time output */
-  char * errts_filename;   /* error time series 3d+time output */
+  char ** iresp_filename;  /* impulse response 3D+time output */
+  char ** sresp_filename;  /* std. dev. 3D+time output */
+  char * fitts_filename;   /* fitted time series 3D+time output */
+  char * errts_filename;   /* error time series 3D+time output */
   int nobucket ;           /* don't output a -bucket file! */
 
   int tshift;           /* flag to time shift the impulse response */
@@ -650,21 +672,42 @@ void display_help_menu()
   identify_software();
 
   printf ("\n"
-"Program to calculate the deconvolution of a measurement 3d+time dataset    \n"
-"with a specified input stimulus time series.  This program will also       \n"
-"perform multiple linear regression using multiple input stimulus time      \n"
-"series. Output consists of an AFNI 'bucket' type dataset containing the    \n"
-"least squares estimates of the linear regression coefficients, t-statistics\n"
-"for significance of the coefficients, partial F-statistics for significance\n"
-"of the individual input stimuli, and the F-statistic for significance of   \n"
-"the overall regression.  Additional output consists of a 3d+time dataset   \n"
-"containing the estimated system impulse response function.                 \n"
-    "                                                                       \n"
+   "Program to calculate the deconvolution of a measurement 3D+time dataset \n"
+   "with a specified input stimulus time series.  This program can also     \n"
+   "perform multiple linear regression using multiple input stimulus time   \n"
+   "series. Output consists of an AFNI 'bucket' type dataset containing     \n"
+   "(for each voxel)                                                        \n"
+   " * the least squares estimates of the linear regression coefficients.   \n"
+   " * t-statistics for significance of the coefficients.                   \n"
+   " * partial F-statistics for significance of individual input stimuli.   \n"
+   " * the F-statistic for significance of the overall regression.          \n"
+   "The program can optionally output extra datasets containing             \n"
+   " * the estimated impulse response function                              \n"
+   " * the fitted model and error (residual) time series                    \n"
+   "------------------------------------------------------------------------\n"
+   "Consider the time series model  Z(t) = K(t)*S(t) + baseline + noise,    \n"
+   "where Z(t) = data                                                       \n"
+   "      K(t) = kernel (e.g., hemodynamic response function),              \n"
+   "      S(t) = stimulus                                                   \n"
+   "  baseline = constant, drift, etc.                                      \n"
+   "     and * = convolution                                                \n"
+   "Then 3dDeconvolve solves for K(t) given S(t).  If you want to process   \n"
+   "the reverse problem and solve for S(t) given the kernel K(t),           \n"
+   "use the program 3dTfitter.  The difference between the two cases is     \n"
+   "that K(t) is presumed to be causal and have limited support, whereas    \n"
+   "S(t) is a full-length time series.  Note that program 3dTfitter does    \n"
+   "not have all the capabilities of 3dDeconvolve for calculating output    \n"
+   "statistics; on the other hand, 3dTfitter can solve the deconvolution    \n"
+   "problem (in either direction) with L1 or L2 regression, with sign       \n"
+   "constraints on the computed values.                                     \n"
+   "------------------------------------------------------------------------\n"
+  ) ;
+  printf("\n"
     "Usage:                                                                 \n"
     PROGRAM_NAME "\n"
     "                                                                       \n"
     "**** Input data and control options:                                   \n"
-    "-input fname         fname = filename of 3d+time input dataset         \n"
+    "-input fname         fname = filename of 3D+time input dataset         \n"
     "                       (more than  one filename  can be  given)        \n"
     "                       (here,   and  these  datasets  will  be)        \n"
     "                       (catenated  in time;   if you do this, )        \n"
@@ -848,21 +891,21 @@ void display_help_menu()
     "   Use 'dt' as the stepsize for computation of integrals in -IRC_times \n"
     "   options.  Default is to use value given in '-TR_times'.             \n"
     "                                                                       \n"
-    "**** Options for output 3d+time datasets:                              \n"
-    "[-iresp k iprefix]   iprefix = prefix of 3d+time output dataset which  \n"
+    "**** Options for output 3D+time datasets:                              \n"
+    "[-iresp k iprefix]   iprefix = prefix of 3D+time output dataset which  \n"
     "                       will contain the kth estimated impulse response \n"
     "[-tshift]            Use cubic spline interpolation to time shift the  \n"
     "                       estimated impulse response function, in order to\n"
     "                       correct for differences in slice acquisition    \n"
-    "                       times. Note that this effects only the 3d+time  \n"
+    "                       times. Note that this effects only the 3D+time  \n"
     "                       output dataset generated by the -iresp option.  \n"
-    "[-sresp k sprefix]   sprefix = prefix of 3d+time output dataset which  \n"
+    "[-sresp k sprefix]   sprefix = prefix of 3D+time output dataset which  \n"
     "                       will contain the standard deviations of the     \n"
     "                       kth impulse response function parameters        \n"
-    "[-fitts  fprefix]    fprefix = prefix of 3d+time output dataset which  \n"
+    "[-fitts  fprefix]    fprefix = prefix of 3D+time output dataset which  \n"
     "                       will contain the (full model) time series fit   \n"
     "                       to the input data                               \n"
-    "[-errts  eprefix]    eprefix = prefix of 3d+time output dataset which  \n"
+    "[-errts  eprefix]    eprefix = prefix of 3D+time output dataset which  \n"
     "                       will contain the residual error time series     \n"
     "                       from the full model fit to the input data       \n"
     "[-TR_times dt]                                                         \n"
@@ -1812,7 +1855,7 @@ void get_options
         k = ival-1;
         nopt++;
 
-        if( strncmp(option_data->stim_label[k],"Stim",4) != 0 )
+        if( strncmp(option_data->stim_label[k],"Stim#",5) != 0 )
           WARNING_message("-stim_label %d '%s' replacing old label '%s'",
                           ival , argv[nopt] , option_data->stim_label[k] ) ;
 
@@ -1973,6 +2016,18 @@ void get_options
         option_data->glt_rows[iglt] = -1 ;  /* flag for symbolic read */
 
         option_data->glt_filename[iglt] = strdup( argv[nopt] ) ;
+        if (option_data->glt_filename[iglt]) {  /* ZSS May 08:remove trailing '\'
+                                                   or go into inf. loops */
+         int ss;
+         char *fdup=option_data->glt_filename[iglt];
+         ss = strlen(fdup)-1;
+         while (  ss >= 0 && 
+                  ( fdup[ss] == '\\' || isspace(fdup[ss]) ) ) { 
+            fdup[ss]='\0'; 
+            --ss; 
+         }
+       }
+
         iglt++ ; nopt++ ; continue ;
       }
 
@@ -2011,6 +2066,7 @@ void get_options
           = malloc (sizeof(char)*THD_MAX_NAME);
         MTEST (option_data->iresp_filename[k]);
         strcpy (option_data->iresp_filename[k], argv[nopt]);
+        CHECK_NIFTI(argv[nopt]) ;
         nopt++;
         continue;
       }
@@ -2041,6 +2097,7 @@ void get_options
           = malloc (sizeof(char)*THD_MAX_NAME);
         MTEST (option_data->sresp_filename[k]);
         strcpy (option_data->sresp_filename[k], argv[nopt]);
+        CHECK_NIFTI(argv[nopt]) ;
         nopt++;
         continue;
       }
@@ -2129,6 +2186,7 @@ void get_options
         option_data->bucket_filename = malloc (sizeof(char)*THD_MAX_NAME);
         MTEST (option_data->bucket_filename);
         strcpy (option_data->bucket_filename, argv[nopt]);
+        CHECK_NIFTI(argv[nopt]) ;
         nopt++;
         continue;
       }
@@ -2143,7 +2201,8 @@ void get_options
       {
         nopt++;
         if (nopt >= argc)  DC_error ("need file prefixname after -cbucket ");
-          CoefFilename = strdup( argv[nopt] ) ;
+        CoefFilename = strdup( argv[nopt] ) ;
+        CHECK_NIFTI(argv[nopt]) ;
         nopt++; continue;
       }
 
@@ -2156,6 +2215,7 @@ void get_options
         option_data->fitts_filename = malloc (sizeof(char)*THD_MAX_NAME);
         MTEST (option_data->fitts_filename);
         strcpy (option_data->fitts_filename, argv[nopt]);
+        CHECK_NIFTI(argv[nopt]) ;
         nopt++;
         continue;
       }
@@ -2169,6 +2229,7 @@ void get_options
         option_data->errts_filename = malloc (sizeof(char)*THD_MAX_NAME);
         MTEST (option_data->errts_filename);
         strcpy (option_data->errts_filename, argv[nopt]);
+        CHECK_NIFTI(argv[nopt]) ;
         nopt++;
         continue;
       }
@@ -2204,6 +2265,11 @@ void get_options
 
       /*----- unknown command -----*/
       sprintf(message,"Unrecognized command line option: %s\n", argv[nopt]);
+      if( isspace(argv[nopt][0]) )
+        sprintf(message,"Unknown command line option '%s'\n"
+                        "**  Is there a blank after a '\\' character?",argv[nopt]) ;
+      else
+        sprintf(message,"Unrecognized command line option: '%s'\n", argv[nopt]);
       DC_error (message);
 
     } /***** end of loop over input arguments ****/
@@ -2282,7 +2348,7 @@ void get_options
   nerr = 0 ;
   for( k=0 ; k < option_data->num_stimts ; k++ ){
 
-    if( strncmp(option_data->stim_label[k],"Stim",4) == 0 )
+    if( strncmp(option_data->stim_label[k],"Stim#",5) == 0 )
       WARNING_message("no -stim_label given for stim #%d ==> label = '%s'",
                       k+1 , option_data->stim_label[k] ) ;
 
@@ -2443,7 +2509,7 @@ ENTRY("read_time_series") ;
 void read_input_data
 (
   DC_options * option_data,         /* deconvolution program options */
-  THD_3dim_dataset ** dset_time,    /* input 3d+time data set */
+  THD_3dim_dataset ** dset_time,    /* input 3D+time data set */
   byte ** mask_vol,                 /* input mask volume */
   float ** fmri_data,               /* input fMRI time series data */
   int * fmri_length,                /* length of fMRI time series */
@@ -2632,13 +2698,15 @@ ENTRY("read_input_data") ;
       if (verb) INFO_message("1D TR is %.3f seconds", basis_TR);
    }
 
-  else if (option_data->input_filename != NULL) /*----- 3d+time dataset -----*/
+  else if (option_data->input_filename != NULL) /*----- 3D+time dataset -----*/
     {
       *dset_time = THD_open_dataset (option_data->input_filename);
       CHECK_OPEN_ERROR(*dset_time,option_data->input_filename);
       if( !option_data->x1D_stop ){
+        if( verb ) MEM_MESSAGE ;
         if( verb ) INFO_message("loading dataset %s",option_data->input_filename);
         DSET_load(*dset_time) ; CHECK_LOAD_ERROR(*dset_time) ;
+        if( verb ) MEM_MESSAGE ;
       }
       if( (*dset_time)->taxis == NULL )
         WARNING_message("dataset '%s' has no time axis",
@@ -2839,6 +2907,7 @@ ENTRY("read_input_data") ;
     int   ii,jj , kk , ngood , nx,ny , nf,dd , btyp , nbas ;
     int   nbl=*num_blocks , *bst=*block_list ;
     basis_expansion *be ;
+    char *glprefix = "\0" ;  /* 21 May 2008 */
 
     if( basis_TR    <= 0.0f ) basis_TR    = 1.0f ;
     if( basis_dtout <= 0.0f ) basis_dtout = basis_TR ;
@@ -2849,6 +2918,11 @@ ENTRY("read_input_data") ;
                  basis_dtout) ;
     if( basis_dtout == basis_TR )
       INFO_message(" [you can alter the -iresp TR via the -TR_times option]");
+
+    if( basis_timetype == GUESS_TIMES ){
+      INFO_message("** NOTE ** Will guess GLOBAL times if 1 time per line; LOCAL otherwise");
+      glprefix = "** GUESSED ** " ;
+    }
 
     for( is=0 ; is < num_stimts ; is++ ){
       be = basis_stim[is] ;
@@ -2909,7 +2983,7 @@ ENTRY("read_input_data") ;
 
       if( be->timetype == GLOBAL_TIMES ){  /****------ global times ------****/
         int nbad=0 , nout=0 ;
-        INFO_message("%s %d using GLOBAL times",be->option,is+1) ;
+        INFO_message("%s%s %d using GLOBAL times",glprefix,be->option,is+1) ;
         tmax = (nt-1)*basis_TR ;         /* max allowed time offset */
         for( ii=0 ; ii < ny ; ii++ ){    /* loop over all input times */
           tt = tar[ii] ;
@@ -2930,7 +3004,7 @@ ENTRY("read_input_data") ;
 
       } else {   /****---------- local times => 1 row per block ----------****/
         int nout ;
-        INFO_message("%s %d using LOCAL times",be->option,is+1) ;
+        INFO_message("%s%s %d using LOCAL times",glprefix,be->option,is+1) ;
         if( ny != nbl ){                 /* times are relative to block */
           WARNING_message(
                   "'%s %d' file '%s' has %d rows,"
@@ -2959,19 +3033,21 @@ ENTRY("read_input_data") ;
         int ndup=0 , nndup=0 ; float qt , dt ;
         for( ii=0 ; ii < ngood ; ii++ ){
           qt = qar[ii] ;
-          for( jj=0 ; jj < ngood ; jj++ ){
-            if( jj == ii ) continue ;
+          for( jj=ii+1 ; jj < ngood ; jj++ ){
             dt = fabsf(qt-qar[jj]) ;
-                 if( dt == 0.0f ) ndup++ ;
+                 if( dt == 0.0f ) ndup++  ;
             else if( dt < 0.05f ) nndup++ ;
           }
         }
-        if( ndup > 0 || nndup > 0 )
+        if( ndup > 0 || nndup > 0 ){
           WARNING_message(
             "'%s %d' file '%s' has %d duplicate and %d near-duplicate times ???",
             be->option , is+1 , option_data->stim_filename[is] , ndup,nndup ) ;
-        if( nndup > 0 )
-          INFO_message("Where 'near-duplicate' means within 5% of one TR") ;
+          if( nndup > 0 )
+            ININFO_message(" Where 'near-duplicate' means within 5%% of one TR") ;
+          if( be->timetype == GLOBAL_TIMES ) 
+            ININFO_message(" You are using global times: do you want local times?") ;
+        }
       }
 
       /* create qim image to hold time indexes (and paired vals, if present) */
@@ -3417,7 +3493,7 @@ ENTRY("remove_zero_stimfns") ;
 
 void check_one_output_file
 (
-  THD_3dim_dataset * dset_time,     /* input 3d+time data set */
+  THD_3dim_dataset * dset_time,     /* input 3D+time data set */
   char * filename                   /* name of output file */
 )
 
@@ -3480,7 +3556,7 @@ void check_one_output_file
 void check_output_files
 (
   DC_options * option_data,       /* deconvolution program options */
-  THD_3dim_dataset * dset_time    /* input 3d+time data set */
+  THD_3dim_dataset * dset_time    /* input 3D+time data set */
 )
 
 {
@@ -3518,7 +3594,7 @@ void check_output_files
 void check_for_valid_inputs
 (
   DC_options * option_data,       /* deconvolution program options */
-  THD_3dim_dataset * dset_time,   /* input 3d+time data set */
+  THD_3dim_dataset * dset_time,   /* input 3D+time data set */
   int fmri_length,                /* length of input fMRI time series */
   float * censor_array,           /* input censor time series array */
   int censor_length,              /* length of censor array */
@@ -3542,9 +3618,9 @@ void check_for_valid_inputs
   int p;                   /* number of full model parameters */
   int nbricks;             /* number of sub-bricks in bucket dataset output */
   int it;                  /* time point index */
-  int nt;                  /* number of images in input 3d+time dataset */
-  int NFirst;              /* first image from input 3d+time dataset to use */
-  int NLast;               /* last image from input 3d+time dataset to use */
+  int nt;                  /* number of images in input 3D+time dataset */
+  int NFirst;              /* first image from input 3D+time dataset to use */
+  int NLast;               /* last image from input 3D+time dataset to use */
   int N;                   /* number of usable time points */
   int ib;                  /* block (run) index */
   int irb;                 /* time index relative to start of block (run) */
@@ -3721,7 +3797,7 @@ void check_for_valid_inputs
       {
         if (option_data->iresp_filename[is] != NULL)
           {
-            sprintf (message, "Only %d time points for 3d+time dataset %s\n",
+            sprintf (message, "Only %d time points for 3D+time dataset %s\n",
                     m, option_data->iresp_filename[is]);
             strcat (message, "Require >= 4 data points for -tshift option");
             DC_error (message);
@@ -3807,15 +3883,35 @@ void check_for_valid_inputs
   Allocate volume memory and fill with zeros.
 */
 
+static long long zvf_totalbytes = 0 ;  /* 04 Mar 2008 */
+
 void zero_fill_volume (float ** fvol, int nxyz)
 {
   int ixyz;
 
+  zvf_totalbytes += (long long) (sizeof(float) * nxyz) ;  /* 04 Mar 2008 */
+
   if( proc_numjob == 1 ){ /* 1 process ==> allocate locally */
 
-    *fvol  = (float *) malloc (sizeof(float) * nxyz);   MTEST(*fvol);
-    for (ixyz = 0;  ixyz < nxyz;  ixyz++)
-      (*fvol)[ixyz]  = 0.0;
+    *fvol  = (float *) malloc (sizeof(float) * nxyz);
+
+    if( *fvol == NULL ){  /* 04 Mar 2008 */
+      MEM_MESSAGE ;
+      ERROR_message("Memory allocation for output sub-bricks fails!") ;
+      ERROR_message("Have allocated %lld bytes (about %s) for output, up to now",
+                    zvf_totalbytes ,
+                    approximate_number_string((double)zvf_totalbytes) ) ;
+      ERROR_message("Potential lenitives or palliatives:\n"
+                    " ++ Use 3dZcutup to cut input dataset into\n"
+                    "      smaller volumes, then 3dZcat to put\n"
+                    "      the results datasets back together.\n"
+                    " ++ Reduce the number of output sub-bricks.\n"
+                    " ++ Use a system with more memory and/or swap space."
+                   ) ;
+      ERROR_exit("Alas, 3dDeconvolve cannot continue under these circumstances.") ;
+    }
+
+    for (ixyz = 0;  ixyz < nxyz;  ixyz++) (*fvol)[ixyz]  = 0.0;
 
   }
 #ifdef PROC_MAX
@@ -3914,13 +4010,9 @@ void proc_finalize_shm_volumes(void)
        "** SUGGESTION:  Run on a 64-bit computer system, instead of 32-bit.\n"
       , psum,twogig) ;
    else {
-     long long val ;
      INFO_message("total shared memory needed = %lld bytes (about %s)" ,
                   psum , approximate_number_string((double)psum) ) ;
-     val = MCW_MALLOC_total ;
-     if( val > 0 )
-       INFO_message("current memory allocated = %lld bytes (about %s)" ,
-                    val , approximate_number_string((double)val) ) ;
+     if( verb ) MEM_MESSAGE ;
    }
 
    proc_shmsize = psum ;  /* global variable */
@@ -3997,7 +4089,7 @@ void proc_finalize_shm_volumes(void)
    atexit(proc_atexit) ;   /* or when the program exits */
 
 #ifdef MAP_ANON
-   INFO_message("mmap() memory allocated: %lld bytes [%s]\n" ,
+   INFO_message("mmap() memory allocated: %lld bytes (about %s)\n" ,
                 proc_shmsize, approximate_number_string((double)proc_shmsize) );
 #else
    INFO_message("Shared memory allocated: %lld bytes at id=%d\n" ,
@@ -4092,7 +4184,7 @@ void allocate_memory
   int nlc;                 /* number of linear combinations in a GLT */
   int ilc;                 /* linear combination index */
   int it;                  /* time point index */
-  int nt;                  /* number of images in input 3d+time dataset */
+  int nt;                  /* number of images in input 3D+time dataset */
   int * min_lag;           /* minimum time delay for impulse response */
   int * max_lag;           /* maximum time delay for impulse response */
 
@@ -4293,7 +4385,7 @@ void initialize_program
   int argc,                         /* number of input arguments */
   char ** argv,                     /* array of input arguments */
   DC_options ** option_data,        /* deconvolution algorithm options */
-  THD_3dim_dataset ** dset_time,    /* input 3d+time data set */
+  THD_3dim_dataset ** dset_time,    /* input 3D+time data set */
   byte ** mask_vol,                 /* input mask volume */
   float ** fmri_data,               /* input fMRI time series data */
   int * fmri_length,                /* length of fMRI time series */
@@ -4372,11 +4464,16 @@ ENTRY("initialize_program") ;
 
 
   /*----- Allocate memory for output volumes -----*/
-  if (!(*option_data)->nodata)
+  if (!(*option_data)->nodata){
     allocate_memory (*option_data, coef_vol, scoef_vol, tcoef_vol,
                  fpart_vol, rpart_vol, mse_vol, ffull_vol, rfull_vol,
                  glt_coef_vol, glt_tcoef_vol, glt_fstat_vol, glt_rstat_vol,
                  fitts_vol, errts_vol);
+
+    INFO_message("Memory required for output bricks = %lld bytes (about %s)",
+                 zvf_totalbytes ,
+                 approximate_number_string((double)zvf_totalbytes) ) ;
+  }
 
   EXRETURN ;
 }
@@ -4385,12 +4482,12 @@ ENTRY("initialize_program") ;
 #ifndef USE_GET
 /*---------------------------------------------------------------------------*/
 /*
-  Get the time series for one voxel from the AFNI 3d+time data set.
+  Get the time series for one voxel from the AFNI 3D+time data set.
 */
 
 void extract_ts_array
 (
-  THD_3dim_dataset * dset_time,      /* input 3d+time dataset */
+  THD_3dim_dataset * dset_time,      /* input 3D+time dataset */
   int iv,                            /* get time series for this voxel */
   float * ts_array                   /* time series data for voxel #iv */
 )
@@ -4398,16 +4495,16 @@ void extract_ts_array
 {
   MRI_IMAGE * im;          /* intermediate float data */
   float * ar;              /* pointer to float data */
-  int ts_length;           /* length of input 3d+time data set */
+  int ts_length;           /* length of input 3D+time data set */
   int it;                  /* time index */
 
 
-  /*----- Extract time series from 3d+time data set into MRI_IMAGE -----*/
+  /*----- Extract time series from 3D+time data set into MRI_IMAGE -----*/
   im = THD_extract_series (iv, dset_time, 0);
 
 
   /*----- Verify extraction -----*/
-  if (im == NULL)  DC_error ("Unable to extract data from 3d+time dataset");
+  if (im == NULL)  DC_error ("Unable to extract data from 3D+time dataset");
 
 
   /*----- Now extract time series from MRI_IMAGE -----*/
@@ -4451,7 +4548,7 @@ void save_voxel
   vector * glt_tcoef,          /* t-statistics for the general linear tests */
   float * fglt,                /* F-statistics for the general linear tests */
   float * rglt,                /* R^2 stats. for the general linear tests */
-  int nt,                      /* number of images in input 3d+time dataset */
+  int nt,                      /* number of images in input 3D+time dataset */
   float * ts_array,            /* array of measured data for one voxel */
   int * good_list,             /* list of usable time points */
   float * fitts,               /* full model fitted time series */
@@ -4811,7 +4908,7 @@ void setup_regression_matrices( DC_options *option_data ,
 void calculate_results
 (
   DC_options * option_data,         /* deconvolution algorithm options */
-  THD_3dim_dataset * dset,          /* input 3d+time data set */
+  THD_3dim_dataset * dset,          /* input 3D+time data set */
   byte * mask_vol,                  /* input mask volume */
   float * fmri_data,                /* input fMRI time series data */
   int fmri_length,                  /* length of fMRI time series */
@@ -4875,7 +4972,7 @@ void calculate_results
   int ixyz;                   /* voxel index */
   int nxyz;                   /* number of voxels per dataset */
 
-  int nt;                  /* number of images in input 3d+time dataset */
+  int nt;                  /* number of images in input 3D+time dataset */
   int N;                   /* number of usable data points */
 
   int num_stimts;          /* number of stimulus time series */
@@ -5021,13 +5118,14 @@ ENTRY("calculate_results") ;
     if( AFNI_noenv("AFNI_3dDeconvolve_NIML") &&
         strstr(option_data->x1D_filename,"niml") == NULL ) cd = NULL ;
     ONED_matrix_save( xdata , option_data->x1D_filename , cd , N,gl ,
-                      (is_xfull) ? &xfull : NULL ) ;
+                      (is_xfull) ? &xfull : NULL , num_blocks,block_list ) ;
   }
   if( is_xfull && option_data->x1D_unc != NULL ){   /* 25 Mar 2007 */
     void *cd=(void *)coldat ; int *gl=good_list ;
     if( AFNI_noenv("AFNI_3dDeconvolve_NIML") &&
         strstr(option_data->x1D_filename,"niml") == NULL ) cd = NULL ;
-    ONED_matrix_save( xfull , option_data->x1D_unc , cd , xfull.rows,NULL , &xfull ) ;
+    ONED_matrix_save( xfull , option_data->x1D_unc , cd , xfull.rows,NULL , &xfull,
+                      num_blocks,block_list ) ;
   }
   if( option_data->x1D_stop ){   /* 28 Jun 2007 */
     INFO_message("3dDeconvolve exits: -x1D_stop option was given") ;
@@ -5129,7 +5227,7 @@ ENTRY("calculate_results") ;
     if( jpt == NULL )  jpt = strstr(fn,".1D") ;
     if( jpt == NULL )  jpt = fn + strlen(fn) ;
     strcpy(jpt,"_XtXinv.xmat.1D") ;
-    ONED_matrix_save( xtxinv_full,fn, NULL,0,NULL,NULL ) ; /* no column metadata */
+    ONED_matrix_save( xtxinv_full,fn, NULL,0,NULL,NULL,0,NULL ) ; /* no column metadata */
   }
 
   /*----- Save some of this stuff for later, dude -----*/
@@ -5223,7 +5321,7 @@ ENTRY("calculate_results") ;
                          jpt = strstr(fn,".1D") ; jsuf = ".1D" ;
       if( jpt == NULL )  jpt = fn + strlen(fn) ;
       strcpy(jpt,"_psinv") ; strcat(fn,jsuf) ;
-      ONED_matrix_save( xpsinv , fn , NULL,0,NULL,NULL ) ; /* no column metadata */
+      ONED_matrix_save( xpsinv , fn , NULL,0,NULL,NULL,0,NULL ) ; /* no column metadata */
     }
 #endif
 
@@ -5379,10 +5477,7 @@ ENTRY("calculate_results") ;
 #endif /* PROC_MAX */
 
       if( proc_numjob == 1 && !option_data->quiet ){
-        long long val = MCW_MALLOC_total ;
-        if( val > 0 )
-          INFO_message("current memory allocated = %lld bytes (about %s)" ,
-                       val , approximate_number_string((double)val) ) ;
+        MEM_MESSAGE ;
         INFO_message("Calculations starting; elapsed time=%.3f",COX_clock_time()) ;
       }
 
@@ -5774,7 +5869,7 @@ void cubic_spline
 
 /*---------------------------------------------------------------------------*/
 /*
-  Routine to write one AFNI 3d+time data set.
+  Routine to write one AFNI 3D+time data set.
 */
 
 
@@ -6026,7 +6121,7 @@ void write_bucket_data
   int num_stimts;           /* number of stimulus time series */
   int istim;                /* stimulus index */
   int nxyz;                 /* total number of voxels */
-  int nt;                   /* number of images in input 3d+time dataset */
+  int nt;                   /* number of images in input 3D+time dataset */
   int ilag;                 /* lag index */
   int icoef;                /* coefficient index */
   int ibrick;               /* sub-brick index */
@@ -6601,7 +6696,7 @@ void output_results
   int ib;                   /* sub-brick index */
   int is;                   /* stimulus index */
   int ts_length;            /* length of impulse reponse function */
-  int nt;                   /* number of images in input 3d+time dataset */
+  int nt;                   /* number of images in input 3D+time dataset */
   int nxyz;                 /* number of voxels */
 
 
@@ -6628,16 +6723,23 @@ void output_results
       write_one_ts (option_data->bucket_filename, p, coef_vol);
 
 
-  /*----- Write the impulse response function 3d+time dataset -----*/
+  /*----- Write the impulse response function 3D+time dataset -----*/
   ib = qp;
   for (is = 0;  is < num_stimts;  is++)
     {
       if( basis_stim[is] != NULL ){                    /* until later */
-        if( option_data->iresp_filename[is] != NULL )
-          basis_write_iresp( argc , argv , option_data ,
-                             basis_stim[is] , basis_dtout ,
-                             coef_vol+ib    ,
-                             option_data->iresp_filename[is] ) ;
+        if( option_data->iresp_filename[is] != NULL ) {
+          if( option_data->input_filename )
+              basis_write_iresp( argc , argv , option_data ,
+                                 basis_stim[is] , basis_dtout ,
+                                 coef_vol+ib    ,
+                                 option_data->iresp_filename[is] ) ;
+          else if( option_data->input1D_filename )
+              basis_write_iresp_1D( argc , argv , option_data ,
+                                 basis_stim[is] , basis_dtout ,
+                                 coef_vol+ib    ,
+                                 option_data->iresp_filename[is] ) ;
+        }
           ib += basis_stim[is]->nparm ;
         continue ;
       }
@@ -6663,7 +6765,7 @@ void output_results
     }
 
 
-  /*----- Write the standard deviation 3d+time dataset -----*/
+  /*----- Write the standard deviation 3D+time dataset -----*/
   ib = qp;
   for (is = 0;  is < num_stimts;  is++)
     {
@@ -6693,7 +6795,7 @@ void output_results
     }
 
 
-  /*----- Write the fitted (full model) 3d+time dataset -----*/
+  /*----- Write the fitted (full model) 3D+time dataset -----*/
   if (option_data->fitts_filename != NULL)
     if (nxyz > 1)
       write_ts_array (argc, argv, option_data, nt, 1, 0, fitts_vol,
@@ -6703,7 +6805,7 @@ void output_results
 
 
 
-  /*----- Write the residual errors 3d+time dataset -----*/
+  /*----- Write the residual errors 3D+time dataset -----*/
   if (option_data->errts_filename != NULL)
     if (nxyz > 1)
       write_ts_array (argc, argv, option_data, nt, 1, 0, errts_vol,
@@ -6750,7 +6852,7 @@ void terminate_program
   int * glt_rows;           /* number of linear constraints in glt */
   int ilc;                  /* linear combination index */
   int it;                   /* time index */
-  int nt;                   /* number of images in input 3d+time dataset */
+  int nt;                   /* number of images in input 3D+time dataset */
 
 
   /*----- Initialize local variables -----*/
@@ -6911,7 +7013,7 @@ int main
 
 {
   DC_options * option_data;               /* deconvolution algorithm options */
-  THD_3dim_dataset * dset_time = NULL;    /* input 3d+time data set */
+  THD_3dim_dataset * dset_time = NULL;    /* input 3D+time data set */
   byte * mask_vol  = NULL;                /* mask volume */
   float * fmri_data = NULL;               /* input fMRI time series data */
   int fmri_length;                        /* length of fMRI time series */
@@ -7202,7 +7304,7 @@ void JPEG_matrix_gray( matrix X , char *fname )
 /*! Save matrix to a .1D text file */
 
 void ONED_matrix_save( matrix X , char *fname , void *xd , int Ngl, int *gl,
-                       matrix *Xff )
+                       matrix *Xff , int nbl, int *bl )
 {
    int nx=X.rows , ny=X.cols , ii,jj ;
    column_metadata *cd = (column_metadata *)xd ;
@@ -7278,6 +7380,15 @@ void ONED_matrix_save( matrix X , char *fname , void *xd , int Ngl, int *gl,
      if( nxf > 0 ){
        sprintf(lll,"%d",nxf) ;
        NI_set_attribute( nel , "NRowFull" , lll ) ;
+     }
+#endif
+#if 1
+     if( nbl > 0 && bl != NULL ){  /* Bastille Day, 2008 */
+       NI_int_array iar ;
+       iar.num = nbl ;
+       iar.ar  = bl ;
+       lab = NI_encode_int_list( &iar , "," ) ;
+       NI_set_attribute( nel, "RunStart", lab ); NI_free((void *)lab); lab = NULL;
      }
 #endif
      NI_write_element_tofile( fname, nel, NI_HEADERSHARP_FLAG | NI_TEXT_MODE );
@@ -8229,7 +8340,7 @@ void read_glt_matrix( char *fname, int *nrows, int ncol, matrix *cmat )
    int ii,jj ;
 
 ENTRY("read_glt_matrix") ;
-
+ 
    if( *nrows > 0 ){    /* standard read of numbers from a file*/
 
      matrix_file_read( fname , *nrows , ncol , cmat , 1 ) ;  /* mri_read_1D */
@@ -8247,7 +8358,6 @@ ENTRY("read_glt_matrix") ;
      if( strncmp(fname,"SYM:",4) == 0 ){  /* read directly from fname string */
        char *fdup=strdup(fname+4) , *fpt , *buf ;
        int ss , ns ;
-
        buf = fdup ;
        while(1){
                            fpt = strchr(buf,'\\'); /* find end of 'line' */
@@ -8300,7 +8410,6 @@ ENTRY("read_glt_matrix") ;
      if( jj == ncol )
        ERROR_message("row #%d of matrix '%s' is all zero!", ii+1 , fname ) ;
    }
-
    EXRETURN ;
 }
 
@@ -8352,7 +8461,7 @@ static float basis_tent( float x, float bot, float mid, float top, void *q )
 
 /*--------------------------------------------------------------------------*/
 #undef  CA
-#define CA  0.5f   /* negative of slope at x=0 */
+#define CA  0.5f   /* negative of slope at x=1 */
 static float hh_csplin( float y )   /* for CSPLIN */
 {
    float yy = fabsf(y) ;
@@ -9281,6 +9390,92 @@ void basis_write_iresp( int argc , char *argv[] ,
     INFO_message("Wrote iresp 3D+time dataset into %s\n",DSET_BRIKNAME(out_dset)) ;
 
    DSET_delete( out_dset ) ;
+   return ;
+}
+
+/*----------------------------------------------------------------------*/
+/*! For IRFs defined by -stim_times basis function expansion, write out
+    a 1D dataset with time spacing dt.
+------------------------------------------------------------------------*/
+
+void basis_write_iresp_1D( int argc , char *argv[] ,
+                        DC_options *option_data ,
+                        basis_expansion *be , float dt ,
+                        float **wtar , char *output_filename )
+{
+   int nvox, ii, nf, allz, ts_length ;
+   register int pp, ib ;
+   float *wt , *tt , **hout , factor , **bb ;
+   short *bar ;
+   char *commandline , label[512] ;
+   const float EPSILON = 1.0e-10 ;
+
+   nvox = 1 ;  /* from basis_write_iresp(), but use 1 voxel */
+
+   if( dt <= 0.0f ) dt = 1.0f ;
+
+   ts_length = 1 + (int)ceil( (be->ttop - be->tbot)/dt ) ; /* 13 Apr 2005: +1 */
+
+   /* create output bricks */
+
+   hout = (float **) malloc( sizeof(float *) * ts_length ) ;
+   for( ib=0 ; ib < ts_length ; ib++ )
+     hout[ib] = (float *)calloc(sizeof(float),nvox) ;
+
+   /* create basis vectors for the expansion on the dt time grid */
+
+   nf = be->nfunc ;
+   wt = (float *) malloc( sizeof(float) * nf ) ;
+   tt = (float *) malloc( sizeof(float) * ts_length ) ;
+
+   for( ib=0 ; ib < ts_length ; ib++ )     /* output time grid */
+     tt[ib] = be->tbot + ib*dt ;
+
+   bb = (float **) malloc( sizeof(float *) * nf ) ;
+   for( pp=0 ; pp < nf ; pp++ ){
+     bb[pp] = (float *) malloc( sizeof(float) * ts_length ) ;
+     for( ib=0 ; ib < ts_length ; ib++ )
+       bb[pp][ib] = basis_funceval( be->bfunc[pp] , tt[ib] ) ;
+   }
+
+   /* loop over voxels:
+        extract coefficient (weights) for each basis function into wt
+        sum up basis vectors times wt to get result, save into output arrays */
+
+   for( ii=0 ; ii < nvox ; ii++ ){
+     allz = 1 ;
+     for( pp=0 ; pp < nf ; pp++ ){
+       wt[pp] = wtar[pp][ii] ; allz = ( allz && (wt[pp] == 0.0f) );
+     }
+
+     if( allz ){
+       for( ib=0 ; ib < ts_length ; ib++ ) hout[ib][ii] = 0.0f ;
+     } else {
+       register float sum ;
+       for( ib=0 ; ib < ts_length ; ib++ ){
+         sum = 0.0f ;
+         for( pp=0 ; pp < nf ; pp++ ) sum += wt[pp] * bb[pp][ib] ;
+         hout[ib][ii] = sum ;
+       }
+     }
+   }
+
+   /* toss some trash */
+
+   for( pp=0 ; pp < nf ; pp++ ) free((void *)bb[pp]) ;
+   free((void *)bb) ; free((void *)tt) ; free((void *)wt) ;
+
+   /* write output */
+   write_one_ts( output_filename , ts_length , hout ) ;
+
+   /* and free results */
+   for( ib=0 ; ib < ts_length ; ib++ )
+       free((void *)hout[ib]) ;
+   free((void *)hout) ;
+
+   if( verb )
+    INFO_message("Wrote iresp 1D dataset into %s\n",output_filename) ;
+
    return ;
 }
 

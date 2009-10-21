@@ -838,8 +838,8 @@ C
      X          FICTTP , FICTPT , FICTTZ ,
      X          FIBTTP , FIBTPT , FIBTTZ ,
      X          FIBNTP , FIBNPT , FIBNTZ ,
-     X          FIGTTP , FIGTPT , FIGTTZ ,
-     X          FIPTTP , FIPTPT , FIPTTZ , LEGENDRE
+     X          FIGTTP , FIGTPT , FIGTTZ , RHDDC2   ,
+     X          FIPTTP , FIPTPT , FIPTTZ , LEGENDRE , CBRTFF
 C
       REAL*8 R2D , D2R
       PARAMETER ( R2D = 57.29577951308232D+00 ,
@@ -922,6 +922,9 @@ C.......................................................................
          ELSEIF( CNCODE .EQ. 'SQRT' )THEN
             R8_EVAL(NEVAL) = SQRT(ABS(R8_EVAL(NEVAL)))
 C.......................................................................
+         ELSEIF( CNCODE .EQ. 'CBRT' )THEN
+            R8_EVAL(NEVAL) = CBRTFF(R8_EVAL(NEVAL))
+C.......................................................................
          ELSEIF( CNCODE .EQ. 'ABS' )THEN
             R8_EVAL(NEVAL) = ABS( R8_EVAL(NEVAL) )
 C.......................................................................
@@ -982,6 +985,11 @@ C.......................................................................
          ELSEIF( CNCODE .EQ. 'PLEG')THEN
             NEVAL = NEVAL - 1
             R8_EVAL(NEVAL) = LEGENDRE( R8_EVAL(NEVAL),R8_EVAL(NEVAL+1) )
+C.......................................................................
+         ELSEIF( CNCODE .EQ. 'RHDDC2')THEN
+            NEVAL = NEVAL - 2
+            R8_EVAL(NEVAL) = RHDDC2( R8_EVAL(NEVAL),R8_EVAL(NEVAL+1),
+     X                                              R8_EVAL(NEVAL+2) )
 C.......................................................................
          ELSEIF( CNCODE .EQ. 'SINH' )THEN
             IF( ABS(R8_EVAL(NEVAL)) .LT. 87.5 )
@@ -1350,8 +1358,8 @@ C
      X          FICTTP , FICTPT , FICTTZ ,
      X          FIBTTP , FIBTPT , FIBTTZ ,
      X          FIBNTP , FIBNPT , FIBNTZ ,
-     X          FIGTTP , FIGTPT , FIGTTZ ,
-     X          FIPTTP , FIPTPT , FIPTTZ , LEGENDRE
+     X          FIGTTP , FIGTPT , FIGTTZ , RHDDC2   ,
+     X          FIPTTP , FIPTPT , FIPTTZ , LEGENDRE , CBRTFF
 C
       REAL*8 R2D , D2R
       PARAMETER ( R2D = 57.29577951308232D+00 ,
@@ -1631,6 +1639,11 @@ C.......................................................................
                R8_EVAL(IV-IBV,NEVAL) = SQRT(ABS(R8_EVAL(IV-IBV,NEVAL)))
             ENDDO
 C.......................................................................
+         ELSEIF( CNCODE .EQ. 'CBRT' )THEN
+            DO IV=IVBOT,IVTOP
+               R8_EVAL(IV-IBV,NEVAL) = CBRTFF(R8_EVAL(IV-IBV,NEVAL))
+            ENDDO
+C.......................................................................
          ELSEIF( CNCODE .EQ. 'ABS' )THEN
             DO IV=IVBOT,IVTOP
 ccc               WRITE(*,9809) IV
@@ -1733,6 +1746,14 @@ C.......................................................................
             DO IV=IVBOT,IVTOP
                R8_EVAL(IV-IBV,NEVAL) = LEGENDRE( R8_EVAL(IV-IBV,NEVAL) ,
      X                                         R8_EVAL(IV-IBV,NEVAL+1) )
+            ENDDO
+C.......................................................................
+         ELSEIF( CNCODE .EQ. 'RHDDC2')THEN
+            NEVAL = NEVAL - 2
+            DO IV=IVBOT,IVTOP
+               R8_EVAL(IV-IBV,NEVAL) = RHDDC2( R8_EVAL(IV-IBV,NEVAL) ,
+     X                                         R8_EVAL(IV-IBV,NEVAL+1) ,
+     X                                         R8_EVAL(IV-IBV,NEVAL+2) )
             ENDDO
 C.......................................................................
          ELSEIF( CNCODE .EQ. 'SINH' )THEN

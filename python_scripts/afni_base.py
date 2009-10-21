@@ -3,12 +3,17 @@ import os, sys, glob, operator, string, afni_base
 
 class afni_name:
    def __init__(self, name=""):
+      self.initname = name
       res = parse_afni_name(name)
       self.path = res['path']
       self.prefix = res['prefix']
       self.view = res['view']
       self.extension = res['extension']
       self.type = res['type']
+      self.colsel = res['col']
+      self.nodesel = res['node']
+      self.rowsel = res['row']
+      self.rangesel = res['range']
       return
    def p(self):   #Full path 
       pp = "%s/" % os.path.abspath('./')  #full path at this location
@@ -16,26 +21,42 @@ class afni_name:
       if (fn > 0 and fn+len(self.path) == len(pp)): #path is at end of abs path
          return pp
       else:
-         return os.path.abspath(self.path)
+         return "%s/" % os.path.abspath(self.path)
    def ppve(self):
-      s = "%s/%s%s%s" % (self.p(), self.prefix, \
+      s = "%s%s%s%s" % (self.p(), self.prefix, \
                          self.view, self.extension)
       return s
+   def ppves(self):
+      s = "%s%s%s%s'%s%s%s%s'" % (self.p(), self.prefix, \
+                         self.view, self.extension,\
+                         self.colsel, self.rowsel,\
+                         self.nodesel, self.rangesel)
+      return s
+   def input(self):
+      if self.type == 'BRIK':
+         return self.ppv()
+      else:
+         return self.ppve() 
+   def out_prefix(self):
+      if self.type == 'BRIK':
+         return self.prefix
+      else:
+         return self.pve() 
    def ppv(self):
-      s = "%s/%s%s" % (self.p(), self.prefix, self.view)
+      s = "%s%s%s" % (self.p(), self.prefix, self.view)
       return s
    def rpv(self): # relative path, prefix, view (no leading './')
-      if self.path == './':
-          s = "%s%s" % (self.prefix, self.view)
-      else:
-          s = "%s%s%s" % (self.path, self.prefix, self.view)
+      rp = string.replace(self.path, "%s/" % os.path.abspath(os.curdir), '')
+      s = "%s%s%s" % (rp, self.prefix, self.view)
       return s
    def pp(self):
-      return "%s/%s" % (self.p(), self.prefix)
+      return "%s%s" % (self.p(), self.prefix)
    def pv(self):
       return "%s%s" % (self.prefix, self.view)
    def pve(self):
       return "%s%s%s" % (self.prefix, self.view, self.extension)
+   def dims(self):
+      return dset_dims(self.ppves())
    def exist(self):
       if (self.type == 'NIFTI'):
          if (     os.path.isfile("%s.nii" % self.ppv()) or \
@@ -65,18 +86,18 @@ class afni_name:
    def delete(self, oexec=""): #delete files on disk!
       if (self.type == 'BRIK'):
          if os.path.isfile("%s.HEAD" % self.ppv()):
-            shell_exec("rm %s.HEAD" % self.ppv(), oexec)
+            shell_com("rm %s.HEAD" % self.ppv(), oexec).run()
          if os.path.isfile("%s.BRIK" % self.ppv()):
-            shell_exec("rm %s.BRIK" % self.ppv(), oexec)
+            shell_com("rm %s.BRIK" % self.ppv(), oexec).run()
          if os.path.isfile("%s.BRIK.gz" % self.ppv()):
-            shell_exec("rm %s.BRIK.gz" % self.ppv(), oexec)
+            shell_com("rm %s.BRIK.gz" % self.ppv(), oexec).run()
          if os.path.isfile("%s.BRIK.bz2" % self.ppv()):
-            shell_exec("rm %s.BRIK.bz2" % self.ppv(), oexec)
+            shell_com("rm %s.BRIK.bz2" % self.ppv(), oexec).run()
          if os.path.isfile("%s.BRIK.Z" % self.ppv()):
-            shell_exec("rm %s.BRIK.Z" % self.ppv(), oexec)
+            shell_com("rm %s.BRIK.Z" % self.ppv(), oexec).run()
       else:
          if os.path.isfile(self.ppve()):
-            shell_exec("rm %s" % self.ppve(), oexec)
+            shell_com("rm %s" % self.ppve(), oexec).run()
       return
    def move_to_dir(self, path="", oexec=""):
       #self.show()
@@ -85,19 +106,19 @@ class afni_name:
       if os.path.isdir(path):
          if (self.type == 'BRIK'):
             if os.path.isfile("%s.HEAD" % self.ppv()):
-               sv = shell_com("mv %s %s/" % (self.head(), path), oexec)
+               sv = shell_com("mv %s %s/" % (self.head(), path), oexec).run()
                found = found + 1
             if os.path.isfile("%s.BRIK" % self.ppv()):           
-               sv = shell_com("mv %s %s/" % (self.brick(), path), oexec)
+               sv = shell_com("mv %s %s/" % (self.brick(), path), oexec).run()
                found = found + 1
             if os.path.isfile("%s.BRIK.gz" % self.ppv()):
-               sv = shell_com("mv %s %s/" % (self.brickgz(), path), oexec)
+               sv = shell_com("mv %s %s/" % (self.brickgz(), path), oexec).run()
                found = found + 1         
             if os.path.isfile("%s.BRIK.bz2" % self.ppv()):
-               sv = shell_com("mv %s %s/" % (self.brickbz2(), path), oexec)
+               sv = shell_com("mv %s %s/" % (self.brickbz2(), path), oexec).run()
                found = found + 1 
             if os.path.isfile("%s.BRIK.Z" % self.ppv()):
-               sv = shell_com("mv %s %s/" % (self.brickZ(), path), oexec)
+               sv = shell_com("mv %s %s/" % (self.brickZ(), path), oexec).run()
                found = found + 1 
             if (found > 0):
                self.new_path(path)
@@ -109,7 +130,7 @@ class afni_name:
                return 0
          else:
             if os.path.isfile("%s" % self.ppve()):
-               sv = shell_com("mv %s %s/" % (self.ppve(), path), oexec)
+               sv = shell_com("mv %s %s/" % (self.ppve(), path), oexec).run()
                found = found + 1
             if (found > 0):
                self.new_path(path)
@@ -137,18 +158,17 @@ class afni_name:
    def new_path(self,path=""):
       #give name a new path
       if len(path) == 0:
-         self.path = "./"
+         self.path = "%s/" % os.path.abspath("./")
       else:
-         if path[-1] == '/':
-            self.path = path
-         else:
-            self.path = "%s/" % path
+         self.path = "%s/" % os.path.abspath(path)
    def new_prefix(self, prefix=""):
       self.prefix = prefix
    def new_view(self,view=""):
       self.view = view
    def show(self):
       print "AFNI filename:"
+      print "   curdir  : %s" % os.path.abspath(os.curdir)
+      print "   initial : %s" % self.initname
       print "   name    : %s" % self.ppve()
       print "   path    : %s" % self.path
       print "   prefix  : %s" % self.prefix   
@@ -156,6 +176,11 @@ class afni_name:
       print "   exten.  : %s" % self.extension
       print "   type    : %s" % self.type
       print "   On Disk : %d" % self.exist()
+      print "   Row Sel : %s" % self.rowsel
+      print "   Col Sel : %s" % self.colsel
+      print "   Node Sel: %s" % self.nodesel
+      print "   RangeSel: %s" % self.rangesel
+      
    def new(self,new_pref='', new_view=''):  
       #return a copy of class member with new_prefix and new_view if needed
       an = afni_name()
@@ -173,7 +198,7 @@ class afni_name:
       return an
                
 class comopt:
-   def __init__(self, name, npar, defpar, acplist=[]):
+   def __init__(self, name, npar, defpar, acplist=[], helpstr=""):
       self.name = name
       self.i_name = -1      # index of option name in argv
       self.n_exp = npar     # Number of expected params, 0 if no params, 
@@ -185,6 +210,7 @@ class comopt:
       self.deflist = defpar # default parameter list,if any
       self.acceptlist = acplist # acceptable values if any
       self.required = 0     # is the argument required?
+      self.helpstr = helpstr  # The help string
       return 
 
    def show(self, mesg = '', short = 0):
@@ -230,12 +256,17 @@ class comopt:
       return 1
 
 class shell_com:
-   def __init__(self, com, eo="echo"):
-      self.com = com #command
+   def __init__(self, com, eo="", capture=0):
+      self.com = com    # command string to be executed
+      self.eo = eo      # echo mode (echo/dry_run/script/"")
       self.dir = os.getcwd()
       self.exc = 0      #command not executed yet
       self.so = ''
       self.se = ''
+      if (self.eo == "quiet"):
+         self.capture = 1
+      else:
+         self.capture = capture; #Want stdout and stderr captured?
       #If command line is long, trim it, if possible
       l1 = len(self.com)
       if (l1 > 80):
@@ -244,25 +275,6 @@ class shell_com:
          #print "Command trimmed to: %s" % (self.com)
       else:
          self.trimcom = self.com
-      if (len(self.trimcom) < len(self.com)):
-         ms = " (command trimmed)"
-      else:
-         ms = ""
-      if eo == "echo":
-         print "#Now running%s:\n   cd %s\n   %s" % (ms, self.dir, self.trimcom)
-         #if (len(self.trimcom)):
-         #   print "#Command trimmed to:\n   %s" % (self.trimcom)
-         sys.stdout.flush()
-         self.run()
-         self.out()
-      elif eo == "dry_run":
-         print "#Would be running%s:\n   cd %s\n   %s" % (ms, self.dir, self.trimcom)
-         sys.stdout.flush()
-         self.out()
-      else:
-         self.run()
-         self.out()
-      return
    def trim(self):
       #try to remove absolute path
       if self.dir[-1] != '/':
@@ -270,11 +282,44 @@ class shell_com:
       else:
          tcom = string.replace(self.com, self.dir, '')
       return tcom
+   def echo(self): 
+      if (len(self.trimcom) < len(self.com)):
+         ms = " (command trimmed)"
+      else:
+         ms = ""
+      if self.eo == "echo":
+         print "#Now running%s:\n   cd %s\n   %s" % (ms, self.dir, self.trimcom)
+         sys.stdout.flush()
+      elif self.eo == "dry_run":
+         print "#Would be running%s:\n   cd %s\n   %s" % (ms, self.dir, self.trimcom)
+         sys.stdout.flush()
+      elif (self.eo == "script"):
+         print "#Script is running%s:\n  %s" % (ms, self.trimcom)
+         sys.stdout.flush()
+      elif (self.eo == "quiet"):
+         pass
+      
+      if self.exc==1:
+         print "#    WARNING: that command has been executed already! "
+         sys.stdout.flush()
+      return
+
    def run(self):
-      so, se = shell_exec(self.trimcom, "")
-      self.so = so
-      self.se = se
+      self.echo()
+      if(self.exc==1):
+         return 0
+      if(self.eo=="dry_run"):
+         self.status = 0
+         self.exc = 1
+         return 0
+      self.status, self.so, self.se = shell_exec2(self.trimcom, self.capture) 
       self.exc = 1
+      return self.status
+      
+   def run_echo(self,eo=""):
+      self.eo = eo;
+      self.run()
+
    def stdout(self):
       if (len(self.so)):
          print "++++++++++ stdout:" 
@@ -295,10 +340,13 @@ class shell_com:
       else:
          print "#............. not executed."
          sys.stdout.flush()
+   
    def val(self, i, j=-1): #return the jth string from the ith line of output. if j=-1, return all ith line
       if not self.exc:
          print "Error: Command not executed"
          return None
+      elif self.eo == "dry_run":
+         return "0"  #Just something that won't cause trouble for places expecting numbers
       elif len(self.so) == 0:
          print "Error: Empty output."
          return None
@@ -334,12 +382,19 @@ def read_attribute(dset, atr):
 
 # return dimensions of dset, 4th dimension included
 def dset_dims(dset):
-   ld = read_attribute(dset, 'DATASET_DIMENSIONS')
-   lr = read_attribute(dset, 'DATASET_RANK')
-   dl = []
-   for dd in ld[0:3]:
-      dl.append(int(dd))
-   dl.append(int(lr[1]))
+   dl = [-1 -1 -1 -1]
+   if 0: #This approach fails with selectors!
+      ld = read_attribute(dset, 'DATASET_DIMENSIONS')
+      lr = read_attribute(dset, 'DATASET_RANK')
+      dl = []
+      for dd in ld[0:3]:
+         dl.append(int(dd))
+      dl.append(int(lr[1]))
+   else:
+      com = shell_com('3dnvals -all %s' % dset, capture=1);
+      if (com.run()):
+         print '** failed to get dimensions.'
+      dl = [int(com.val(0,0)), int(com.val(0,1)), int(com.val(0,2)), int(com.val(0,3))]   
    return dl
    
 
@@ -510,8 +565,11 @@ def parse_afni_name(name):
    res = {}
    #get the path  #Can also use os.path.split
    rp = os.path.dirname(name) #relative path
-   #ap = os.path.abspath(name) #absolute path
+   ap = os.path.abspath(rp) #absolute path
    fn = os.path.basename(name)
+   #Get selectors out of the way:
+   res['col'], res['row'], res['node'], res['range'], fn = afni_selectors(fn)
+   
    #is this a .nii volume?
    rni = strip_extension(fn,['.nii', '.nii.gz'])
    if (len(rni[1]) > 0):
@@ -534,10 +592,12 @@ def parse_afni_name(name):
       rni = strip_extension(rni[0], ['+orig','+tlrc','+acpc'])
       vi = rni[1]
       pr = rni[0]
+   #get selectors 
+   
    #Build the dictionary result
    if len(rp) == 0:
       rp = '.'
-   res['path'] = "%s/" % rp
+   res['path'] = "%s/" % ap   #A world of trouble when relative path is used. So use ap instead April 08
    res['prefix'] = pr
    res['view'] = vi
    res['extension'] = ex
@@ -559,30 +619,98 @@ def afni_view(names):
       pref.append(res['view'])
    return pref
 
-#exectute a shell command and return results in so (stdout) and se (stderr)
-def shell_exec(s,opt=""):
-   if opt == "dry_run":
-      print "In %s, would execute:\n%s" % (os.getcwd(), s)
-      return "", ""
-   elif opt == "echo":
-      print "In %s, about to execute:\n%s" % (os.getcwd(), s)
+def afni_selectors(names):
+   sqsel = ""
+   cusel = ""
+   pnsel = ""
+   ltsel = ""
+   namestr = names
    
-   i,o,e = os.popen3(s,'r') #captures stdout in o,  stderr in e and stdin in i      
-   so = o.readlines()
-   se = e.readlines()
-   o.close
-   e.close                     
-   if (len(so) and opt == "echo"):
-      print "++++++++++ stdout:" 
-      for ln in so:
-         print "   %s" % ln
-   if (len(se) and opt == "echo"):
-      print "---------- stderr:" 
-      for ln in se:
-         print "   %s" % ln
+   nse = names.count('[')
+   if (nse == 1 and nse == names.count(']')):
+      sqsel = names[names.find('['):names.find(']')+1]
+      namestr = namestr.replace(sqsel,'')
+   
+   nse = names.count('{')
+   if (nse == 1 and nse == names.count('}')):
+      cusel = names[names.find('{'):names.find('}')+1]
+      namestr = namestr.replace(cusel,'')
+   
+   nse = names.count('<')
+   if (nse == 1 and nse == names.count('>')):
+      ltsel = names[names.find('<'):names.find('>')+1]
+      namestr = namestr.replace(ltsel,'')
+   
+   nse = names.count('#')
+   if (nse == 2):
+      nf = names.find('#')
+      pnsel = names[nf[0]:nf[1]+1]
+      namestr = namestr.replace(pnsel,'')
+   
+   return sqsel, cusel, pnsel, ltsel, namestr
+   
+#execute a shell command and when capture is 1 returns results in:
+# so (stdout) and se (stderr) and status
+#status is only reliable with python versions 2.5 and above
+def shell_exec(s,opt="",capture=1):
+   #opt is left here for backwards compatibility.
+   #no echoing should be done here. It is better
+   #to use the shell_com objects
+   if opt == "dry_run":
+      print "#In %s, would execute:\n   %s" % (os.getcwd(), s)
+      sys.stdout.flush()
+   elif opt == "echo":
+      print "#In %s, about to execute:\n   %s" % (os.getcwd(), s)   
+      sys.stdout.flush()
       
+   status, so, se = shell_exec2(s,capture)
    return so, se
+   
+def shell_exec2(s, capture=0):
 
+   vs = sys.version.split()[0]
+   v = vs.split('.')
+   if len(v) > 1:
+      vs = "%s.%s" % (v[0], v[1])
+   else:
+      vs = v[0]
+
+   v = float(vs)
+
+   if (v < 2.5): #Use old version and pray
+      #if there is no capture in option: run os.system
+      if(not capture):
+         os.system("%s"%s)
+         status = 0; #Don't got status here 
+         so = ""
+         se = ""
+      else:
+         i,o,e = os.popen3(s) #captures stdout in o,  stderr in e and stdin in i      
+         #The readlines seems to hang below despite all the attempts at limiting the size
+         #and flushing, etc. The hangup happens when a program spews out a lot to stdout
+         #So when that is expected, redirect output to a file at the command.
+         #Or use the "script" execution mode
+         so = o.readlines(64)  #default is to read till EOF but that might make python hang 
+         se = e.readlines(64)  # output to stdout and stderr is too large.
+         o.close             #Have tried readlines(1024) and (256) to little effect 
+         e.close             #
+         status = 0; #Don't got status here 
+   else:
+      import subprocess as SP
+      if(not capture):
+         pipe = SP.Popen(s,shell=True, executable='/bin/tcsh', stdout=None, stderr=None, close_fds=True)
+         status = pipe.wait() #Wait till it is over and store returncode
+         so = ""
+         se = ""
+      else:
+         pipe = SP.Popen(s,shell=True, stdout=SP.PIPE, stderr=SP.PIPE, close_fds=True)
+         o,e = pipe.communicate()   #This won't return until command is over
+         status = pipe.returncode   #NOw get returncode
+         so = o.splitlines()
+         se = e.splitlines()                           
+
+   return status, so, se
+   
 #generic unique function, from:
 #  http://aspn.activestate.com/ASPN/Cookbook/Python/Recipe/52560/index_txt
 def unique(s):
@@ -710,4 +838,14 @@ def GetSelectionFromList(l, prmpt = ""):
                   ( name, len(match(name, l)))
       cnt += 1
    print "Vous ne comprenez pas l'anglais?"
-   print "Ciao"            
+   print "Ciao"
+   
+# determine if a string is a valid floating point number
+# from http://mail.python.org/pipermail/python-list/2002-September/164892.html
+# used like isnum() or isalpha() built-in string methods
+def isFloat(s):
+    try:
+        float(s)
+        return True
+    except (ValueError, TypeError), e:
+        return False

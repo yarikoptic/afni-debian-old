@@ -103,10 +103,14 @@ void usage_SUMA_BrainWrap (SUMA_GENERIC_ARGV_PARSE *ps)
 "        gyri.\n"
 "     Massive chunks missing:\n"
 "        + If brain has very large ventricles and lots of CSF between gyri,\n"
-"        the ventricles will keep attracting the surface inwards. In such \n"
-"        cases, use the -visual option to see what is happening and try these\n"
-"        options to reduce the severity of the problem:\n"
-"            -blur_fwhm 2 -use_skull\n"
+"        the ventricles will keep attracting the surface inwards. \n"
+"        This often happens with older brains. In such \n"
+"        cases, use the -visual option to see what is happening.\n"
+"        For example, the options below did the trick in various\n"
+"        instances. \n"
+"            -blur_fwhm 2 -use_skull  \n"
+"        or for more stubborn cases increase csf avoidance with this cocktail\n"
+"            -blur_fwhm 2 -use_skull -avoid_vent -avoid_vent -init_radius 75 \n"
 "\n" 
 "  Eye Candy Mode: \n"
 "  ---------------\n"
@@ -281,10 +285,15 @@ void usage_SUMA_BrainWrap (SUMA_GENERIC_ARGV_PARSE *ps)
 "                       Smoothing is done using Taubin's method, \n"
 "                       see SurfSmooth -help for detail.\n"
 "     -avoid_vent: avoid ventricles. Default.\n"
+"                  Use this option twice to make the avoidance more\n"
+"                  agressive. That is at times needed with old brains.\n"
 "     -no_avoid_vent: Do not use -avoid_vent.\n"
 "     -init_radius RAD: Use RAD for the initial sphere radius.\n"
 "                       For the automatic setting, there is an\n"
-"                       upper limit of 80mm for humans.\n"
+"                       upper limit of 100mm for humans.\n"
+"                       For older brains with lots of CSF, you\n"
+"                       might benefit from forcing the radius \n"
+"                       to something like 75mm\n"
 "     -avoid_eyes: avoid eyes. Default\n"
 "     -no_avoid_eyes: Do not use -avoid_eyes.\n"
 "     -use_edge: Use edge detection to reduce leakage into meninges and eyes.\n"
@@ -423,7 +432,7 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_BrainWrap_ParseInput (
    Opt->NoEyes = 1;
    Opt->NNsmooth = 72;
    Opt->smootheach = 50;
-   Opt->avoid_vent = 1;
+   Opt->avoid_vent = -1;
    Opt->smooth_end = 20;
    Opt->k98mask = NULL;
    Opt->k98maskcnt = 0;
@@ -658,7 +667,8 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_BrainWrap_ParseInput (
 		}
       
       if (!brk && (strcmp(argv[kar], "-avoid_vent") == 0)) {
-			Opt->avoid_vent = 1;
+			if (Opt->avoid_vent < 0) Opt->avoid_vent = 1;
+         else ++Opt->avoid_vent;
          brk = YUP;
 		}
       
@@ -1118,7 +1128,8 @@ int main (int argc,char *argv[])
    SO_name = SUMA_Prefix2SurfaceName(
                Opt->out_prefix, NULL, NULL, 
                Opt->SurfFileType, &exists);
-   if (exists && strcmp(Opt->out_prefix,"skull_strip_out")) { 
+   if (  !THD_ok_overwrite() &&
+         exists && strcmp(Opt->out_prefix,"skull_strip_out")) { 
       /* do not worry about the default name for the surface */
       fprintf( SUMA_STDERR,
                "Error %s:\nOutput file(s) %s* on disk.\nWill not overwrite.\n",
@@ -1130,7 +1141,8 @@ int main (int argc,char *argv[])
    iskullprefix = SUMA_append_string(Opt->out_prefix,"_innerskull");
    SO_name_bhull = SUMA_Prefix2SurfaceName(bhullprefix, NULL, NULL,
                                            Opt->SurfFileType, &exists);
-   if (exists && strcmp(Opt->out_prefix,"skull_strip_out")) {
+   if (  !THD_ok_overwrite() &&
+         exists && strcmp(Opt->out_prefix,"skull_strip_out")) {
       fprintf( SUMA_STDERR,
                "Error %s:\nOutput file(s) %s* on disk.\nWill not overwrite.\n",
                FuncName, Opt->out_prefix);
@@ -1138,7 +1150,8 @@ int main (int argc,char *argv[])
    }   
    SO_name_iskull = SUMA_Prefix2SurfaceName( iskullprefix, NULL, NULL,
                                              Opt->SurfFileType, &exists);
-   if (exists && strcmp(Opt->out_prefix,"skull_strip_out")) {
+   if (  !THD_ok_overwrite() &&
+         exists && strcmp(Opt->out_prefix,"skull_strip_out")) {
       fprintf( SUMA_STDERR,
                "Error %s:\nOutput file(s) %s* on disk.\nWill not overwrite.\n",
                FuncName, Opt->out_prefix);
@@ -1146,7 +1159,8 @@ int main (int argc,char *argv[])
    }  
    SO_name_oskull = SUMA_Prefix2SurfaceName( oskullprefix, NULL, NULL,
                                              Opt->SurfFileType, &exists);
-   if (exists && strcmp(Opt->out_prefix,"skull_strip_out")) {
+   if (  !THD_ok_overwrite() &&
+         exists && strcmp(Opt->out_prefix,"skull_strip_out")) {
       fprintf( SUMA_STDERR,
                "Error %s:\nOutput file(s) %s* on disk.\nWill not overwrite.\n",
                 FuncName, Opt->out_prefix);
@@ -1156,7 +1170,8 @@ int main (int argc,char *argv[])
    hullprefix = SUMA_append_string(Opt->out_prefix,"_hull");
    SO_name_hull = SUMA_Prefix2SurfaceName(hullprefix, NULL, NULL,
                                           Opt->SurfFileType, &exists);
-   if (exists) {
+   if (  !THD_ok_overwrite() &&
+         exists && strcmp(Opt->out_prefix,"skull_strip_out")) {
       fprintf(SUMA_STDERR,
                "Error %s:\nOutput file(s) %s* on disk.\nWill not overwrite.\n",
                 FuncName, hullprefix);
@@ -1725,15 +1740,21 @@ int main (int argc,char *argv[])
          }
       }
 
-      if (Opt->avoid_vent && Opt->specie != RAT) { /* No need for this avoidance in rodents*/
-         float U[3], Un, *a, P2[2][3];
+      if (Opt->avoid_vent && Opt->specie != RAT) {  /* No need for this
+                                                      avoidance in rodents*/
+         float U[3], Un, *a, P2[2][3], den=3;
+         if (Opt->avoid_vent == 2) den = 10.0;
+         else den = 3.0;
          for (i=0; i<SO->N_Node; ++i) {
             /* stretch the top coordinates by d1 and the back too*/
             a = &(SO->NodeList[3*i]); 
-            if (a[2] - SO->Center[2] > Opt->r/3 || a[1] - SO->Center[1] > Opt->r/2) {
+            if (  a[2] - SO->Center[2] > Opt->r/den || 
+                  a[1] - SO->Center[1] > Opt->r/2) {
                SUMA_UNIT_VEC(SO->Center, a, U, Un);
                SUMA_POINT_AT_DISTANCE_NORM(U, SO->Center, (Un+1.1*Opt->d1), P2);
-               SO->NodeList[3*i] = P2[0][0]; SO->NodeList[3*i+1] = P2[0][1]; SO->NodeList[3*i+2] = P2[0][2];
+               SO->NodeList[3*i] = P2[0][0]; 
+               SO->NodeList[3*i+1] = P2[0][1]; 
+               SO->NodeList[3*i+2] = P2[0][2];
             }
          }   
       }
@@ -1743,26 +1764,39 @@ int main (int argc,char *argv[])
          SUMA_SL_Crit("Failed to allocate");
          exit(1);
       } 
-      for (i=0; i<SO->N_Node; ++i) Opt->ztv[i] = SUMA_MIN_PAIR(1.0, (Opt->Zt*Opt->shrink_bias[i]));
+      for (i=0; i<SO->N_Node; ++i) 
+         Opt->ztv[i] = SUMA_MIN_PAIR(1.0, (Opt->Zt*Opt->shrink_bias[i]));
 
       /* need sv for communication to AFNI */
       SO->VolPar = SUMA_VolParFromDset (Opt->in_vol);
-      SO->SUMA_VolPar_Aligned = YUP; /* Surface is in alignment with volume, should not call SUMA_Align_to_VolPar ... */
+      SO->SUMA_VolPar_Aligned = YUP; 
+            /* Surface is in alignment with volume, 
+               should not call SUMA_Align_to_VolPar ... */
       if (!SO->State) {SO->State = SUMA_copy_string("3dSkullStrip"); }
       if (!SO->Group) {SO->Group = SUMA_copy_string("3dSkullStrip"); }
       if (!SO->Label) {SO->Label = SUMA_copy_string(stmp); }
       /* make the idcode_str depend on the Label, it is convenient to
       send the same surface all the time to SUMA */
-      if (SO->Label) { if (SO->idcode_str) SUMA_free(SO->idcode_str); SO->idcode_str = NULL; SUMA_NEW_ID(SO->idcode_str, SO->Label); }
+      if (SO->Label) { 
+         if (SO->idcode_str) SUMA_free(SO->idcode_str); 
+         SO->idcode_str = NULL; 
+         SUMA_NEW_ID(SO->idcode_str, SO->Label); 
+      }
       
       if (!nint && SOhull) {
          SOhull->VolPar = SUMA_VolParFromDset (Opt->in_vol);
-         SOhull->SUMA_VolPar_Aligned = YUP; /* Surface is in alignment with volume, should not call SUMA_Align_to_VolPar ... */
+         SOhull->SUMA_VolPar_Aligned = YUP; 
+               /* Surface is in alignment with volume, 
+               should not call SUMA_Align_to_VolPar ... */
    
          if (!SOhull->State) {SOhull->State = SUMA_copy_string("3dSkullStrip"); }
          if (!SOhull->Group) {SOhull->Group = SUMA_copy_string("3dSkullStrip"); }
          if (!SOhull->Label) {SOhull->Label = SUMA_copy_string(stmphull); }
-         if (SOhull->Label) { if (SOhull->idcode_str) SUMA_free(SOhull->idcode_str); SOhull->idcode_str = NULL; SUMA_NEW_ID(SOhull->idcode_str,SOhull->Label); }
+         if (SOhull->Label) { 
+            if (SOhull->idcode_str) SUMA_free(SOhull->idcode_str); 
+            SOhull->idcode_str = NULL;       
+            SUMA_NEW_ID(SOhull->idcode_str,SOhull->Label); 
+         }
       }
 
       /* see if SUMA talk is turned on */
@@ -1780,15 +1814,28 @@ int main (int argc,char *argv[])
             ps->cs->afni_Send = NOPE;
             ps->cs->Send = NOPE;
          } else {
+            /* send in_vol to afni */
+            if (Opt->DoSpatNorm && ps->cs->afni_Send) {
+               SUMA_SL_Note("Sending spatnormed volume to AFNI");
+               if (!SUMA_SendToAfni(ps->cs, Opt->in_vol, 1)) {
+                  SUMA_SL_Err("Failed to send volume to AFNI");
+                  ps->cs->afni_Send = NOPE;
+               }
+            }
+
             if (!nint && SOhull) {
                if (Opt->send_hull) {
                   SUMA_LH("Sending Hull");
-                  if (Opt->DemoPause == SUMA_3dSS_DEMO_PAUSE) { SUMA_PAUSE_PROMPT("Sending HULL next"); }
+                  if (Opt->DemoPause == SUMA_3dSS_DEMO_PAUSE) { 
+                     SUMA_PAUSE_PROMPT("Sending HULL next"); 
+                  }
                   SUMA_SendSumaNewSurface(SOhull, ps->cs);
                }
             }
             SUMA_LH("Sending Ico");
-            if (Opt->DemoPause  == SUMA_3dSS_DEMO_PAUSE) { SUMA_PAUSE_PROMPT("Sending Ico next"); }
+            if (Opt->DemoPause  == SUMA_3dSS_DEMO_PAUSE) { 
+               SUMA_PAUSE_PROMPT("Sending Ico next"); 
+            }
             SUMA_SendSumaNewSurface(SO, ps->cs);
 
          }
@@ -1797,10 +1844,13 @@ int main (int argc,char *argv[])
 
       if (!nint && Opt->UseSkull) {
          /* get a crude mask of outer skull */
-         if (Opt->DemoPause == SUMA_3dSS_DEMO_PAUSE) { SUMA_PAUSE_PROMPT("Shrinking skull hull next"); }
+         if (Opt->DemoPause == SUMA_3dSS_DEMO_PAUSE) {
+            SUMA_PAUSE_PROMPT("Shrinking skull hull next"); 
+         }
          SUMA_SkullMask (SOhull, Opt, ps->cs);
          /* Now take mask and turn it into a volume */
-         fprintf (SUMA_STDERR,"%s: Locating voxels on skull boundary  ...\n", FuncName);
+         fprintf (SUMA_STDERR,
+                  "%s: Locating voxels on skull boundary  ...\n", FuncName);
          isin = SUMA_FindVoxelsInSurface (SOhull, SO->VolPar, &N_in, 0, NULL);
          for (i=0; i<SO->VolPar->nx*SO->VolPar->ny*SO->VolPar->nz; ++i) { 
             if (isin[i] <= SUMA_ON_NODE) Opt->fvec[i] = 0; 
@@ -1811,7 +1861,9 @@ int main (int argc,char *argv[])
                FILE *fout=fopen("hullmask.1D","w");
                int ii, jj, kk; 
                for (i=0; i<SO->VolPar->nx*SO->VolPar->ny*SO->VolPar->nz; ++i) { 
-                  SUMA_1D_2_3D_index(i, ii, jj, kk, SO->VolPar->nx, SO->VolPar->nx*SO->VolPar->ny); 
+                  SUMA_1D_2_3D_index(  i, ii, jj, kk, 
+                                       SO->VolPar->nx, 
+                                       SO->VolPar->nx*SO->VolPar->ny); 
                   fprintf(fout,"%d %d %d %d\n",ii, jj, kk, isin[i]); 
                }
                fclose(fout);
@@ -1819,19 +1871,11 @@ int main (int argc,char *argv[])
          #endif
          if (isin) SUMA_free(isin); isin = NULL;
       }
-      
-      /* send in_vol to afni */
-      if (Opt->DoSpatNorm && ps->cs->afni_Send) {
-         SUMA_SL_Note("Sending spatnormed volume to AFNI");
-         if (!SUMA_SendToAfni(ps->cs, Opt->in_vol, 1)) {
-            SUMA_SL_Err("Failed to send volume to AFNI");
-            ps->cs->afni_Send = NOPE;
-         }
-      }
-      
+            
             
       /* This is it baby, start walking */
-      if (Opt->DemoPause == SUMA_3dSS_DEMO_PAUSE) { SUMA_PAUSE_PROMPT("Brain expansion next"); }
+      if (Opt->DemoPause == SUMA_3dSS_DEMO_PAUSE) { 
+         SUMA_PAUSE_PROMPT("Brain expansion next"); }
       if ( !Opt->UseThisBrain ) {
          SUMA_StretchToFitLeCerveau (SO, Opt, ps->cs);
       } else {

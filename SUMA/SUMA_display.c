@@ -1,4 +1,6 @@
 #include "SUMA_suma.h"
+#include "coxplot.h"
+#include "SUMA_plot.h"
  
 /* the method for hiding a surface viewer (and other controllers), used to have three options prior to Fri Jan  3 10:21:52 EST 2003
 Now only SUMA_USE_WITHDRAW and NOT SUMA_USE_DESTROY should be used*/
@@ -40,6 +42,9 @@ static String fallbackResources_default[] = {
    "*fontList:              9x15bold=charset1"    ,
    "*pbar*fontList:         6x10=charset1"        ,
    "*imseq*fontList:        7x13=charset1"        ,
+   "*font8*fontList:        8x13=charset1"        ,
+   "*font7*fontList:        7x13=charset1"        ,
+   "*font6*fontList:        6x10=charset1"        ,
    "*background:            gray50"               ,
    "*menu*background:       gray30"               ,
    "*borderColor:           gray30"               ,
@@ -75,6 +80,9 @@ static String fallbackResources_AFNI[] = {
    "*fontList:              9x15bold=charset1"    ,
    "*pbar*fontList:         6x10=charset1"        ,
    "*imseq*fontList:        7x13=charset1"        ,
+   "*font8*fontList:        8x13=charset1"        ,
+   "*font7*fontList:        7x13=charset1"        ,
+   "*font6*fontList:        6x10=charset1"        ,
    "*background:            gray30"               ,
    "*menu*background:       gray30"               ,
    "*borderColor:           gray30"               ,
@@ -108,6 +116,9 @@ static String fallbackResources_EURO[] = {
    "*frame*rightOffset: 20", "*frame*leftOffset: 20",
    "*frame*shadowType: SHADOW_IN", 
    "*fontList:              9x15=charset1"    ,
+   "*font8*fontList:        8x13=charset1"        ,
+   "*font7*fontList:        7x13=charset1"        ,
+   "*font6*fontList:        6x10=charset1"        ,
    "*pbar*fontList:         6x10=charset1"        ,
    "*imseq*fontList:        7x13=charset1"        ,
    "*background:            black"               ,
@@ -144,6 +155,9 @@ static String fallbackResources_Bonaire[] = {
    "*frame*rightOffset: 20", "*frame*leftOffset: 20",
    "*frame*shadowType: SHADOW_IN", 
    "*fontList:              9x15bold=charset1"    ,
+   "*font8*fontList:        8x13=charset1"        ,
+   "*font7*fontList:        7x13=charset1"        ,
+   "*font6*fontList:        6x10=charset1"        ,
    "*pbar*fontList:         6x10=charset1"        ,
    "*imseq*fontList:        7x13=charset1"        ,
    "*background:            navy"               ,
@@ -1076,8 +1090,36 @@ void SUMA_display(SUMA_SurfaceViewer *csv, SUMA_DO *dov)
       }
    }
 
-   /* cycle through csv->RegisteredDO and display those things that have a fixed CoordType*/
-   if (LocalHead) fprintf (SUMA_STDOUT,"%s: Creating objects with fixed coordinates ...\n", FuncName);
+   /* cycle through csv->RegisteredDO and display 
+      those things that have a fixed CoordType*/
+   if (LocalHead) 
+      fprintf (SUMA_STDOUT,
+               "%s: Creating objects with fixed coordinates ...\n", 
+               FuncName);
+   #if 0
+      {
+         float Ps[3]={0.0, 0.0, 0.0};
+         /* To ponder:
+         How to define coordinates of location
+            You could have centered text on center of screen axis,
+         but then what do you do you're off center and you zoom in and out...
+            Do you want coordinate relative to window size or do you want them
+         in mm units?
+         You probably want two loops on the display. 
+            One for DOs in the foreground and one for DOs in the background.
+            It gets complicated but you typically want text on the front and
+            axis on the back even though both may be SUMA_SCREEN CoordType
+         
+         Last but not least, you need a respectable DO for text on screen
+         
+         See SUMA_DrawWindowLine and SUMA_GetSelectionLine for relating 
+         window coords to 3d coords.
+         
+         */ 
+         SUMA_S_Note("make me DO");
+         SUMA_DrawText("YeeeeHaw", Ps);
+      }
+   #endif
    i = 0;
    while (i < csv->N_DO) {
       if (dov[csv->RegisteredDO[i]].CoordType == SUMA_SCREEN) {
@@ -1094,8 +1136,11 @@ void SUMA_display(SUMA_SurfaceViewer *csv, SUMA_DO *dov)
                break;
             case AO_type:
                if (csv->ShowEyeAxis){
-                  if (!SUMA_DrawAxis ((SUMA_Axis*)dov[csv->RegisteredDO[i]].OP, csv)) {
-                     fprintf(SUMA_STDERR,"Error %s: Could not display EYE AXIS\n", FuncName);
+                  if (!SUMA_DrawAxis (
+                        (SUMA_Axis*)dov[csv->RegisteredDO[i]].OP, csv)) {
+                     fprintf( SUMA_STDERR,
+                              "Error %s: Could not display EYE AXIS\n", 
+                              FuncName);
                   }
                }
                break;
@@ -1286,7 +1331,7 @@ void
 SUMA_graphicsInit(Widget w, XtPointer clientData, XtPointer call)
 {
    
-   XVisualInfo *SUMAg_cVISINFO;
+   XVisualInfo *SUMAg_cVISINFO=NULL;
    static char FuncName[]={"SUMA_graphicsInit"};
    int isv;
    SUMA_SurfaceViewer *sv;
@@ -1554,8 +1599,9 @@ void SUMA_BuildMenuReset(int n_max)
    SUMA_RETURNe;
 }
 
-int SUMA_BuildMenu(Widget parent, int menu_type, char *menu_title, 
-                     char menu_mnemonic, SUMA_Boolean tear_off, SUMA_MenuItem *items, 
+int SUMA_BuildMenu(  Widget parent, int menu_type, char *menu_title, 
+                     char menu_mnemonic, SUMA_Boolean tear_off, 
+                     SUMA_MenuItem *items, 
                      void *ContID, 
                      char *hint, char *help,
                      Widget *MenuWidgets )
@@ -1695,7 +1741,7 @@ int SUMA_BuildMenu(Widget parent, int menu_type, char *menu_title,
       if (LocalHead) fprintf (SUMA_STDERR, "%s: Setting callback ...\n", FuncName);
       if (items[i].callback) {
          SUMA_MenuCallBackData *CBp=NULL;
-         CBp = (SUMA_MenuCallBackData *)malloc (sizeof(SUMA_MenuCallBackData)); /* There is no freeing of this pointer in SUMA. Once created, a widget is only destroyed when SUMA is killed */
+         CBp = (SUMA_MenuCallBackData *)calloc(1,sizeof(SUMA_MenuCallBackData)); /* There is no freeing of this pointer in SUMA. Once created, a widget is only destroyed when SUMA is killed */
          /* prepare the callback pointer */
          CBp->callback_data = (XtPointer) items[i].callback_data;
          CBp->ContID = ContID;
@@ -1952,8 +1998,11 @@ SUMA_Boolean SUMA_X_SurfaceViewer_Create (void)
          SUMAg_SVv[ic].X->TOPLEVEL = XtAppInitialize(&SUMAg_CF->X->App, "SUMA", NULL, 0, &cargc, vargv,
        SUMA_get_fallbackResources(), NULL, 0); Superseded by XtOpenApplication
       */
-      SUMAg_SVv[ic].X->TOPLEVEL = XtOpenApplication(&SUMAg_CF->X->App, "SUMA", NULL, 0, &cargc, vargv,
-       SUMA_get_fallbackResources(), topLevelShellWidgetClass, NULL, 0); 
+      SUMAg_SVv[ic].X->TOPLEVEL = 
+         XtOpenApplication(&SUMAg_CF->X->App, "SUMA", 
+                           NULL, 0, &cargc, vargv,
+                           SUMA_get_fallbackResources(), 
+                           topLevelShellWidgetClass, NULL, 0); 
       SUMAg_SVv[ic].X->DPY = XtDisplay(SUMAg_SVv[ic].X->TOPLEVEL);
       /* save DPY for first controller opened */
       SUMAg_CF->X->DPY_controller1 = SUMAg_SVv[ic].X->DPY;
@@ -1970,7 +2019,9 @@ SUMA_Boolean SUMA_X_SurfaceViewer_Create (void)
          }
       }
       if (!Found) { /* no unopen windows left to open */
-         fprintf (SUMA_STDERR,"Error %s: Cannot open more than %d viewers.\n", FuncName, SUMA_MAX_SURF_VIEWERS);
+         fprintf (SUMA_STDERR,
+                  "Error %s: Cannot open more than %d viewers.\n", 
+                  FuncName, SUMA_MAX_SURF_VIEWERS);
          SUMA_RETURN (NOPE);
       }
       
@@ -2000,16 +2051,21 @@ SUMA_Boolean SUMA_X_SurfaceViewer_Create (void)
 
       /* Step 3 */
       if (!Inherit) {
-         if (LocalHead) fprintf(stdout, "trying for cool double buffer visual\n");
-         SUMAg_SVv[ic].X->VISINFO = glXChooseVisual(SUMAg_SVv[ic].X->DPY, DefaultScreen(SUMAg_SVv[ic].X->DPY), dblBuf);
+         if (LocalHead) 
+            fprintf(stdout, "trying for cool double buffer visual\n");
+         SUMAg_SVv[ic].X->VISINFO = 
+            glXChooseVisual(  SUMAg_SVv[ic].X->DPY, 
+                              DefaultScreen(SUMAg_SVv[ic].X->DPY), dblBuf);
          if (SUMAg_SVv[ic].X->VISINFO == NULL) {
-         fprintf(stdout, "trying lame single buffer visual\n");
-          XtAppWarning(SUMAg_CF->X->App, "trying lame single buffer visual");
-          SUMAg_SVv[ic].X->VISINFO = glXChooseVisual(SUMAg_SVv[ic].X->DPY, DefaultScreen(SUMAg_SVv[ic].X->DPY), snglBuf);
+            fprintf(stdout, "trying lame single buffer visual\n");
+            XtAppWarning(SUMAg_CF->X->App, "trying lame single buffer visual");
+            SUMAg_SVv[ic].X->VISINFO = 
+               glXChooseVisual(  SUMAg_SVv[ic].X->DPY, 
+                                 DefaultScreen(SUMAg_SVv[ic].X->DPY), snglBuf);
           if (SUMAg_SVv[ic].X->VISINFO == NULL) {
             XtAppError(SUMAg_CF->X->App, "no good visual");
             SUMA_RETURN (NOPE);
-            }
+          }
           SUMAg_SVv[ic].X->DOUBLEBUFFER = False;
          }
       } else {
@@ -2865,24 +2921,28 @@ SUMA_Boolean SUMA_World2ScreenCoords (SUMA_SurfaceViewer *sv, int N_List, double
 }
 
 /*!
-   Purpose: Takes a the x,y positions of the cursor and sets the Pick0 and Pick1 values (usually sv's) 
+   Purpose: Takes a the x,y positions of the cursor and sets 
+            the Pick0 and Pick1 values (usually sv's) 
    \param sv (*SUMA_SurfaceViewer)
    \param x (int) mouse coordinate
    \param y (int)
    \param Pick0 (GLdouble *) vector of 3 elements (usually, pass sv->Pick0)
    \param Pick1 (GLdouble *) vector of 3 elements (usually, pass sv->Pick1)
-   \param N_List (int) if > 0, it indicates that there are N_list other mouse coordinates
-                              to consider in addition to the y and y above.
+   \param N_List (int) if > 0, it indicates that there are N_list 
+                       other mouse coordinates to consider 
+                       in addition to the y and y above.
    \param xList (int *) a vector of N_list x values
    \param yList (int *) a vector of N_list y values
-   \param PickList (Gldouble *) a N_list x 3 vector containing the equivalent of Pick0 
-                                 for the values in xList and yList
+   \param PickList (Gldouble *) a N_list x 3 vector containing the equivalent 
+                                of Pick0 for the values in xList and yList
    \return YUP/NOPE
    \sa SUMA_input, button3 pick
    \sa 
 */
-SUMA_Boolean SUMA_GetSelectionLine (SUMA_SurfaceViewer *sv, int x, int y, GLdouble *Pick0, GLdouble *Pick1, 
-                                    int N_List, int *xList, int *yList, GLdouble *Pick0List)
+SUMA_Boolean SUMA_GetSelectionLine (SUMA_SurfaceViewer *sv, int x, int y, 
+                                    GLdouble *Pick0, GLdouble *Pick1, 
+                                    int N_List, int *xList, int *yList, 
+                                    GLdouble *Pick0List)
 {
    static char FuncName[]={"SUMA_GetSelectionLine"};
    GLfloat rotationMatrix[4][4];
@@ -2897,47 +2957,73 @@ SUMA_Boolean SUMA_GetSelectionLine (SUMA_SurfaceViewer *sv, int x, int y, GLdoub
    
    
    if (LocalHead) {
-      fprintf (SUMA_STDERR, "%s: Current Quat: %.4f, %.4f, %.4f, %.4f.\n", \
-       FuncName, sv->GVS[sv->StdView].currentQuat[0], sv->GVS[sv->StdView].currentQuat[1], \
-       sv->GVS[sv->StdView].currentQuat[2],sv->GVS[sv->StdView].currentQuat[3]);
-      fprintf (SUMA_STDERR, "%s: Translation Vector of view #%d: %.4f, %.4f, %.4f\n", \
-         FuncName, sv->StdView, sv->GVS[sv->StdView].translateVec[0], sv->GVS[sv->StdView].translateVec[1], \
-         sv->GVS[sv->StdView].translateVec[2]);
-      fprintf (SUMA_STDERR, "%s: RotaCenter of view #%d: %.4f, %.4f, %.4f\n", \
-         FuncName, sv->StdView, sv->GVS[sv->StdView].RotaCenter[0], sv->GVS[sv->StdView].RotaCenter[1], \
-         sv->GVS[sv->StdView].RotaCenter[2]);
+      fprintf (SUMA_STDERR, 
+               "%s: Current Quat: %.4f, %.4f, %.4f, %.4f.\n", 
+                FuncName, 
+                sv->GVS[sv->StdView].currentQuat[0], 
+                sv->GVS[sv->StdView].currentQuat[1],  
+                sv->GVS[sv->StdView].currentQuat[2],
+                sv->GVS[sv->StdView].currentQuat[3]);
+      fprintf (SUMA_STDERR, 
+               "%s: Translation Vector of view #%d: %.4f, %.4f, %.4f\n",
+               FuncName, sv->StdView, sv->GVS[sv->StdView].translateVec[0], 
+               sv->GVS[sv->StdView].translateVec[1], 
+               sv->GVS[sv->StdView].translateVec[2]);
+      fprintf (SUMA_STDERR, 
+               "%s: RotaCenter of view #%d: %.4f, %.4f, %.4f\n", 
+               FuncName, sv->StdView, sv->GVS[sv->StdView].RotaCenter[0], 
+               sv->GVS[sv->StdView].RotaCenter[1], 
+               sv->GVS[sv->StdView].RotaCenter[2]);
    }
       
    
-   /* go through the ModelView transforms as you would in display since the modelview matrix is popped
-   after each display call */
+   /* go through the ModelView transforms as you would in 
+      display since the modelview matrix is popped
+      after each display call */
    SUMA_build_rotmatrix(rotationMatrix, sv->GVS[sv->StdView].currentQuat);
    glMatrixMode(GL_MODELVIEW);
-   /* The next line appears to fix some bug with GL_MODELVIEW's matrix. When you clicked button3 for the first time in a viewer, 
-   the chosen point was off. The next click in the identical position would select the correct point and subsequent clicks are OK.
-   None of the parameters used for the selection would change between the first click and the next but it appears that going from one
-   viewer to the next caused GL_MODELVIEW to change (sometimes) slightly. Putting the line glGetDoublev(GL_MODELVIEW_MATRIX, mvmatrix);
-   to check (and debug) what was happening to GL_MODELVIEW matrix between one viewer and the next fixed the clicking problem. So, we keep
-   it here as a fix until a better one comes along. PS: This was also the source of the Z (blue) eye axis showing up when it should not. */  
+   /* The next line appears to fix some bug with GL_MODELVIEW's matrix. 
+      When you clicked button3 for the first time in a viewer, 
+      the chosen point was off. The next click in the identical position would 
+      select the correct point and subsequent clicks are OK.
+      None of the parameters used for the selection would change between the
+      first click and the next but it appears that going from one
+      viewer to the next caused GL_MODELVIEW to change (sometimes) slightly.  
+      Putting the line glGetDoublev(GL_MODELVIEW_MATRIX, mvmatrix);
+      to check (and debug) what was happening to GL_MODELVIEW matrix between one 
+      viewer and the next fixed the clicking problem. So, we keep
+      it here as a fix until a better one comes along. 
+      PS: This was also the source of the Z (blue) eye axis showing up when 
+      it should have not. */  
       glGetDoublev(GL_MODELVIEW_MATRIX, mvmatrix);
       if (LocalHead) {
          int itmp = 0;
-         fprintf (SUMA_STDERR, "%s: Initial Modelview:\nMV=[ ", FuncName);
-         while (itmp < 16) { fprintf (SUMA_STDERR, "%.4f, ", mvmatrix[itmp]); ++itmp;}
+         fprintf (SUMA_STDERR, 
+                  "%s: Initial Modelview:\nMV=[ ", FuncName);
+         while (itmp < 16) { 
+            fprintf (SUMA_STDERR, "%.4f, ", mvmatrix[itmp]); ++itmp;}
          fprintf (SUMA_STDERR, "]\n");
       }
    glPushMatrix();
-   glTranslatef (sv->GVS[sv->StdView].translateVec[0], sv->GVS[sv->StdView].translateVec[1], 0.0);
-   glTranslatef (sv->GVS[sv->StdView].RotaCenter[0], sv->GVS[sv->StdView].RotaCenter[1], sv->GVS[sv->StdView].RotaCenter[2]);
+   glTranslatef ( sv->GVS[sv->StdView].translateVec[0], 
+                  sv->GVS[sv->StdView].translateVec[1], 0.0);
+   glTranslatef ( sv->GVS[sv->StdView].RotaCenter[0], 
+                  sv->GVS[sv->StdView].RotaCenter[1], 
+                  sv->GVS[sv->StdView].RotaCenter[2]);
    glMultMatrixf(&rotationMatrix[0][0]);
       glGetDoublev(GL_MODELVIEW_MATRIX, mvmatrix);
       if (LocalHead) {
          int itmp = 0;
-         fprintf (SUMA_STDERR, "%s: Modelview After Translation & Rotation:\nMVtr=[ ", FuncName);
-         while (itmp < 16) { fprintf (SUMA_STDERR, "%.4f, ", mvmatrix[itmp]); ++itmp;}
+         fprintf (SUMA_STDERR, 
+                  "%s: Modelview After Translation & Rotation:\nMVtr=[ ", 
+                  FuncName);
+         while (itmp < 16) { 
+            fprintf (SUMA_STDERR, "%.4f, ", mvmatrix[itmp]); ++itmp;}
          fprintf (SUMA_STDERR, "]\n");
       }
-   glTranslatef (-sv->GVS[sv->StdView].RotaCenter[0], -sv->GVS[sv->StdView].RotaCenter[1], -sv->GVS[sv->StdView].RotaCenter[2]);
+   glTranslatef ( -sv->GVS[sv->StdView].RotaCenter[0], 
+                  -sv->GVS[sv->StdView].RotaCenter[1], 
+                  -sv->GVS[sv->StdView].RotaCenter[2]);
 
    glGetIntegerv(GL_VIEWPORT, viewport);
    glGetDoublev(GL_MODELVIEW_MATRIX, mvmatrix);
@@ -2945,35 +3031,45 @@ SUMA_Boolean SUMA_GetSelectionLine (SUMA_SurfaceViewer *sv, int x, int y, GLdoub
    /* viewport[3] is height of window in pixels */
    realy = viewport[3] - (GLint)y -1;
 
-   if (LocalHead) fprintf (SUMA_STDOUT, "%s: Coordinates at cursor are (%4d, %4d)\n", FuncName, x, realy);
+   if (LocalHead) 
+      fprintf (SUMA_STDOUT, 
+               "%s: Coordinates at cursor are (%4d, %4d)\n", 
+               FuncName, x, realy);
 
    /* set the pick points at both ends of the clip planes */
    if (Pick0) {
-      gluUnProject((GLdouble)x, (GLdouble)realy, 0.0,\
-         mvmatrix, projmatrix, viewport, \
-         &(Pick0[0]), &(Pick0[1]), &(Pick0[2]));
-      if (LocalHead) fprintf (SUMA_STDOUT, "World Coords at z=0.0 (near clip plane) are (%f, %f, %f)\n",\
-         (Pick0[0]), (Pick0[1]), (Pick0[2]));
+      gluUnProject(  (GLdouble)x, (GLdouble)realy, 0.0,
+                     mvmatrix, projmatrix, viewport, 
+         &           (Pick0[0]), &(Pick0[1]), &(Pick0[2]));
+      if (LocalHead) 
+         fprintf (SUMA_STDOUT, 
+                  "World Coords at z=0.0 (near clip plane) are (%f, %f, %f)\n",
+                 (Pick0[0]), (Pick0[1]), (Pick0[2]));
    }
    if (Pick1) {
-      gluUnProject((GLdouble)x, (GLdouble)realy, 1.0,\
-         mvmatrix, projmatrix, viewport, \
-         &(Pick1[0]), &(Pick1[1]), &(Pick1[2]));
-      if (LocalHead) fprintf (SUMA_STDOUT, "World Coords at z=1.0 (far clip plane) are (%f, %f, %f)\n",\
-         (Pick1[0]), (Pick1[1]), (Pick1[2]));
+      gluUnProject(  (GLdouble)x, (GLdouble)realy, 1.0,
+                     mvmatrix, projmatrix, viewport, 
+                     &(Pick1[0]), &(Pick1[1]), &(Pick1[2]));
+      if (LocalHead) 
+         fprintf (SUMA_STDOUT, 
+                  "World Coords at z=1.0 (far clip plane) are (%f, %f, %f)\n",
+                  (Pick1[0]), (Pick1[1]), (Pick1[2]));
    }
 
    if (N_List > 0) {
       SUMA_LH("Doing the list thing");
-      if (!Pick0List || !xList || !yList) { SUMA_S_Err("Null Pick0List or xlist or ylist with non 0 N_List.\nPickList ignored."); }
+      if (!Pick0List || !xList || !yList) { 
+         SUMA_S_Err( "Null Pick0List or xlist or ylist with non 0 N_List.\n"
+                     "PickList ignored."); }
       else {
          int i, i3;
          for (i=0; i<N_List; ++i) {
             i3 = 3*i;
             realy = viewport[3] - (GLint)yList[i] -1;
-            gluUnProject((GLdouble)xList[i], (GLdouble)realy, 0.0,\
-                           mvmatrix, projmatrix, viewport, \
-                           &(Pick0List[i3+0]), &(Pick0List[i3+1]), &(Pick0List[i3+2]));
+            gluUnProject((GLdouble)xList[i], (GLdouble)realy, 0.0,
+                           mvmatrix, projmatrix, viewport, 
+                           &(Pick0List[i3+0]), &(Pick0List[i3+1]), 
+                           &(Pick0List[i3+2]));
          }
       }  
    }
@@ -2985,7 +3081,9 @@ SUMA_Boolean SUMA_GetSelectionLine (SUMA_SurfaceViewer *sv, int x, int y, GLdoub
 /*!
    \brief Draws a line between screen (window) coordinates 
 */
-SUMA_Boolean SUMA_DrawWindowLine(SUMA_SurfaceViewer *sv, int x0, int y0, int x1, int y1, int meth)
+SUMA_Boolean SUMA_DrawWindowLine(SUMA_SurfaceViewer *sv, 
+                                 int x0, int y0, 
+                                 int x1, int y1, int meth)
 {
    static char FuncName[]={"SUMA_DrawWindowLine"};
    GLfloat rotationMatrix[4][4];
@@ -3006,19 +3104,29 @@ SUMA_Boolean SUMA_DrawWindowLine(SUMA_SurfaceViewer *sv, int x0, int y0, int x1,
          SUMA_build_rotmatrix(rotationMatrix, sv->GVS[sv->StdView].currentQuat);
          xlist[0] = x0; xlist[1] = x1;
          ylist[0] = y0; ylist[1] = y1;
-         SUMA_GetSelectionLine (sv, x0, y0, NULL, NULL, 2, xlist, ylist, PickList);
+         SUMA_GetSelectionLine ( sv, x0, y0, 
+                                 NULL, NULL, 
+                                 2, 
+                                 xlist, ylist, 
+                                 PickList);
          SUMA_SET_GL_PROJECTION(sv);
          SUMA_SET_GL_MODELVIEW(sv);
          glMaterialfv(GL_FRONT, GL_EMISSION, LineCol);
          glLineWidth(SUMA_CROSS_HAIR_LINE_WIDTH);
          if (LocalHead) {
-            fprintf(SUMA_STDERR,"%s:PickList\n[%.3f %.3f %.3f\n %.3f %.3f %.3f]\n", FuncName,
-                     PickList[0],PickList[1],PickList[2],PickList[3], PickList[4],PickList[5] );
+            fprintf( SUMA_STDERR,
+                     "%s:PickList\n"
+                     "[%.3f %.3f %.3f\n %.3f %.3f %.3f]\n", 
+                     FuncName,
+                     PickList[0],PickList[1],PickList[2],
+                     PickList[3], PickList[4],PickList[5] );
          }
          glBegin(GL_LINES);
-         glVertex3d(PickList[0], PickList[1], PickList[2]-0.001); /* something to do with clipping ...*/
+         glVertex3d(PickList[0], PickList[1], PickList[2]-0.001); 
+                  /* something to do with clipping ...*/
          glVertex3d(PickList[3], PickList[4], PickList[5]-0.001);
-         glVertex3d(PickList[0], PickList[1], PickList[2]+0.001); /* something to do with clipping ...*/
+         glVertex3d(PickList[0], PickList[1], PickList[2]+0.001); 
+                  /* something to do with clipping ...*/
          glVertex3d(PickList[3], PickList[4], PickList[5]+0.001);
          glEnd();
          glMaterialfv(GL_FRONT, GL_EMISSION, NoColor);
@@ -3762,7 +3870,7 @@ void SUMA_cb_createSurfaceCont(Widget w, XtPointer data, XtPointer callData)
    Widget tl, pb, form, DispFrame, SurfFrame, rc_left, rc_right, rc_mamma;
    Display *dpy;
    SUMA_SurfaceObject *SO;
-   char *slabel, *lbl30; 
+   char *slabel, *lbl30, *sss=NULL; 
    SUMA_Boolean LocalHead = NOPE;
    static char FuncName[] = {"SUMA_cb_createSurfaceCont"};
    
@@ -3772,7 +3880,9 @@ void SUMA_cb_createSurfaceCont(Widget w, XtPointer data, XtPointer callData)
    *(SO->SurfCont->curSOp) = (void *)SO;
    
    if (SO->SurfCont->TopLevelShell) {
-      fprintf (SUMA_STDERR,"Error %s: SO->SurfCont->TopLevelShell!=NULL. Should not be here.\n", FuncName);
+      fprintf (SUMA_STDERR,
+               "Error %s: SO->SurfCont->TopLevelShell!=NULL.\n"
+               "Should not be here.\n", FuncName);
       SUMA_RETURNe;
    }
    tl = SUMA_GetTopShell(w); /* top level widget */
@@ -3790,20 +3900,35 @@ void SUMA_cb_createSurfaceCont(Widget w, XtPointer data, XtPointer callData)
       sprintf(slabel,"[%s] Surface Controller", SO->Label);
    }
    
-   #if SUMA_CONTROLLER_AS_DIALOG /*xmDialogShellWidgetClass, topLevelShellWidgetClass*/
-   if (LocalHead) fprintf(SUMA_STDERR, "%s: Creating dialog shell.\n", FuncName);
-   SO->SurfCont->TopLevelShell = XtVaCreatePopupShell (slabel,
+   /* March 12 08: Made font8 default for surface controller */
+   if (SUMA_isEnv("SUMA_SurfContFontSize", "BIG")) {
+      sss = slabel;
+   } else {
+      sss = "font8";
+   }
+
+   #if SUMA_CONTROLLER_AS_DIALOG /* xmDialogShellWidgetClass, 
+                                    topLevelShellWidgetClass*/
+   if (LocalHead) 
+      fprintf(SUMA_STDERR, "%s: Creating dialog shell.\n", FuncName);
+   
+   SO->SurfCont->TopLevelShell = XtVaCreatePopupShell (sss,
+      XmNtitle, slabel,
       xmDialogShellWidgetClass, tl,
       XmNallowShellResize, True, /* let code resize shell */
       XmNdeleteResponse, XmDO_NOTHING,
       NULL);    
    #else
-   if (LocalHead) fprintf(SUMA_STDERR, "%s: Creating toplevel shell.\n", FuncName);
-   /** Feb 03/03: I was using XtVaCreatePopupShell to create a topLevelShellWidgetClass. 
-   XtVaCreatePopupShell is used to create dialog shells not toplevel or appshells. 
-   Of course, it made no difference! */
-   SO->SurfCont->TopLevelShell = XtVaAppCreateShell (slabel, "Suma",
+   if (LocalHead) 
+      fprintf(SUMA_STDERR, "%s: Creating toplevel shell.\n", FuncName);
+   /** Feb 03/03:    I was using XtVaCreatePopupShell to create a 
+                     topLevelShellWidgetClass. 
+                     XtVaCreatePopupShell is used to create dialog 
+                     shells not toplevel or appshells. 
+                     Of course, it made no difference! */
+   SO->SurfCont->TopLevelShell = XtVaAppCreateShell (sss, "Suma",
       topLevelShellWidgetClass, SUMAg_CF->X->DPY_controller1 ,
+      XmNtitle, slabel,
       XmNdeleteResponse, XmDO_NOTHING,
       NULL);   
    #endif
@@ -3847,8 +3972,8 @@ void SUMA_cb_createSurfaceCont(Widget w, XtPointer data, XtPointer callData)
             XmNorientation , XmVERTICAL ,
             XmNmarginHeight, SUMA_MARGIN ,
             XmNmarginWidth , SUMA_MARGIN ,
-            XmNwidth, 317,
-            XmNresizeWidth, False,
+/*            XmNwidth, 317,
+            XmNresizeWidth, False, */
             NULL);
    
    rc_right = XtVaCreateWidget ("rowcolumn",
@@ -3912,19 +4037,21 @@ void SUMA_cb_createSurfaceCont(Widget w, XtPointer data, XtPointer callData)
       SO->SurfCont->SurfInfo_pb = XtVaCreateWidget ("more", 
          xmPushButtonWidgetClass, rc, 
          NULL);   
-      XtAddCallback (SO->SurfCont->SurfInfo_pb, XmNactivateCallback, SUMA_cb_moreSurfInfo, (XtPointer)SO->SurfCont->curSOp);
-      XtVaSetValues (SO->SurfCont->SurfInfo_pb, XmNuserData, (XtPointer)SO->SurfCont->curSOp, NULL); /* 
-                                                                  Feb 23 04: XmNuserData is not used anymore.
-                                                                  See notes for SUMA_cb_moreViewerInfo
-                                                                  call for reasons why this was done...
-                                                                  
-                                                                  store the surface object SO in userData
-                                                                  I think it is more convenient than as data
-                                                                  in the call back structure. This way it will
-                                                                  be easy to change the SO that this same button
-                                                                  might refer to. 
-                                                                  This is only for testing purposes, the pb_close
-                                                                  button still expects SO in clientData*/
+      XtAddCallback (SO->SurfCont->SurfInfo_pb, XmNactivateCallback, 
+                     SUMA_cb_moreSurfInfo, (XtPointer)SO->SurfCont->curSOp);
+      XtVaSetValues (SO->SurfCont->SurfInfo_pb, XmNuserData, 
+                     (XtPointer)SO->SurfCont->curSOp, NULL); /* 
+            Feb 23 04: XmNuserData is not used anymore.
+            See notes for SUMA_cb_moreViewerInfo
+            call for reasons why this was done...
+
+            store the surface object SO in userData
+            I think it is more convenient than as data
+            in the call back structure. This way it will
+            be easy to change the SO that this same button
+            might refer to. 
+            This is only for testing purposes, the pb_close
+            button still expects SO in clientData*/
       MCW_register_hint( SO->SurfCont->SurfInfo_pb , "More info on Surface" ) ;
       MCW_register_help( SO->SurfCont->SurfInfo_pb , SUMA_SurfContHelp_more ) ;
       XtManageChild (SO->SurfCont->SurfInfo_pb); 
@@ -3956,8 +4083,11 @@ void SUMA_cb_createSurfaceCont(Widget w, XtPointer data, XtPointer callData)
       pb = XtVaCreateWidget ("Dsets", 
          xmPushButtonWidgetClass, rc, 
          NULL);   
-      XtAddCallback (pb, XmNactivateCallback, SUMA_cb_UnmanageWidget, (XtPointer) SO->SurfCont->curSOp);
-      MCW_register_hint( pb , "Show/Hide Dataset (previously Color Plane) controllers" ) ;
+      XtAddCallback (pb, XmNactivateCallback, SUMA_cb_UnmanageWidget, 
+                     (XtPointer) SO->SurfCont->curSOp);
+      MCW_register_hint( pb , 
+                        "Show/Hide Dataset (previously Color Plane) "
+                        "controllers" ) ;
       MCW_register_help( pb , SUMA_SurfContHelp_Dsets ) ;
       XtManageChild (pb);
       
@@ -4106,7 +4236,8 @@ void SUMA_cb_createSurfaceCont(Widget w, XtPointer data, XtPointer callData)
                            2, SUMA_int,
                            NOPE,
                            SUMA_ColPlane_NewOrder, (void *)SO,
-                           SUMA_SurfCont_ColPlaneOrder_hint, SUMA_SurfContHelp_DsetOrd,
+                           SUMA_SurfCont_ColPlaneOrder_hint, 
+                           SUMA_SurfContHelp_DsetOrd,
                            SO->SurfCont->ColPlaneOrder);
                              
       SUMA_CreateArrowField ( rc, "Opa:",
@@ -4114,7 +4245,8 @@ void SUMA_cb_createSurfaceCont(Widget w, XtPointer data, XtPointer callData)
                            3, SUMA_float,
                            NOPE,
                            SUMA_ColPlane_NewOpacity, (void *)SO,
-                           SUMA_SurfCont_ColPlaneOpacity_hint, SUMA_SurfContHelp_DsetOpa,
+                           SUMA_SurfCont_ColPlaneOpacity_hint,
+                           SUMA_SurfContHelp_DsetOpa,
                            SO->SurfCont->ColPlaneOpacity);
 
       /* manage  rc */
@@ -4132,7 +4264,8 @@ void SUMA_cb_createSurfaceCont(Widget w, XtPointer data, XtPointer callData)
                            3, SUMA_float,
                            YUP,
                            SUMA_ColPlane_NewDimFact, (void *)SO, 
-                           SUMA_SurfCont_ColPlaneDim_hint, SUMA_SurfContHelp_DsetDim,
+                           SUMA_SurfCont_ColPlaneDim_hint, 
+                           SUMA_SurfContHelp_DsetDim,
                            SO->SurfCont->ColPlaneDimFact);
            
       SO->SurfCont->ColPlaneShow_tb = XtVaCreateManagedWidget("view", 
@@ -4141,18 +4274,24 @@ void SUMA_cb_createSurfaceCont(Widget w, XtPointer data, XtPointer callData)
       XtAddCallback (SO->SurfCont->ColPlaneShow_tb, 
                   XmNvalueChangedCallback, SUMA_cb_ColPlaneShow_toggled, SO);
                   
-      MCW_register_help(SO->SurfCont->ColPlaneShow_tb , SUMA_SurfContHelp_DsetView ) ;
+      MCW_register_help(SO->SurfCont->ColPlaneShow_tb , 
+                        SUMA_SurfContHelp_DsetView ) ;
       MCW_register_hint(SO->SurfCont->ColPlaneShow_tb , "Shows/Hides Dset." ) ;
       SUMA_SET_SELECT_COLOR(SO->SurfCont->ColPlaneShow_tb);
       
-      SO->SurfCont->ColPlaneShowOne_tb = XtVaCreateManagedWidget("1 Only", 
-            xmToggleButtonWidgetClass, rc, NULL);
-      XmToggleButtonSetState (SO->SurfCont->ColPlaneShowOne_tb, SO->SurfCont->ShowCurOnly, NOPE);
+      SO->SurfCont->ColPlaneShowOne_tb = 
+         XtVaCreateManagedWidget("1 Only", 
+                                 xmToggleButtonWidgetClass, rc, NULL);
+      XmToggleButtonSetState (SO->SurfCont->ColPlaneShowOne_tb, 
+                              SO->SurfCont->ShowCurOnly, NOPE);
       XtAddCallback (SO->SurfCont->ColPlaneShowOne_tb, 
-                  XmNvalueChangedCallback, SUMA_cb_ColPlaneShowOne_toggled, SO);
+                     XmNvalueChangedCallback, 
+                     SUMA_cb_ColPlaneShowOne_toggled, SO);
                   
-      MCW_register_help(SO->SurfCont->ColPlaneShowOne_tb , SUMA_SurfContHelp_DsetViewOne ) ;
-      MCW_register_hint(SO->SurfCont->ColPlaneShowOne_tb , "Shows ONLY selected Dset from foreground stack." ) ;
+      MCW_register_help(SO->SurfCont->ColPlaneShowOne_tb , 
+                        SUMA_SurfContHelp_DsetViewOne ) ;
+      MCW_register_hint(SO->SurfCont->ColPlaneShowOne_tb , 
+                        "Shows ONLY selected Dset from foreground stack." ) ;
       SUMA_SET_SELECT_COLOR(SO->SurfCont->ColPlaneShowOne_tb);
            
       /* manage  rc */
@@ -4170,18 +4309,21 @@ void SUMA_cb_createSurfaceCont(Widget w, XtPointer data, XtPointer callData)
          NULL);
          
       /* put a push button to switch between color planes */
-      SO->SurfCont->SwitchDsetlst = SUMA_AllocateScrolledList ("Switch Dset", SUMA_LSP_SINGLE, 
-                                 NOPE, NOPE, /* duplicate deletion, no sorting */ 
-                                 SO->SurfCont->TopLevelShell, SWP_POINTER,
-                                 SUMA_cb_SelectSwitchColPlane, (void *)SO,
-                                 SUMA_cb_SelectSwitchColPlane, (void *)SO,
-                                 SUMA_cb_CloseSwitchColPlane, NULL);
+      SO->SurfCont->SwitchDsetlst = 
+            SUMA_AllocateScrolledList ("Switch Dset", 
+                     SUMA_LSP_SINGLE, 
+                     NOPE, NOPE, /* duplicate deletion, no sorting */ 
+                     SO->SurfCont->TopLevelShell, SWP_POINTER,
+                     SUMA_cb_SelectSwitchColPlane, (void *)SO,
+                     SUMA_cb_SelectSwitchColPlane, (void *)SO,
+                     SUMA_cb_CloseSwitchColPlane, NULL);
 
 
       pb = XtVaCreateWidget ("Switch Dset", 
          xmPushButtonWidgetClass, rc, 
          NULL);   
-      XtAddCallback (pb, XmNactivateCallback, SUMA_cb_SurfCont_SwitchColPlane, (XtPointer)SO);
+      XtAddCallback (pb, XmNactivateCallback, 
+                     SUMA_cb_SurfCont_SwitchColPlane, (XtPointer)SO);
       MCW_register_hint(pb , "Switch between datasets" ) ;
       MCW_register_help(pb , SUMA_SurfContHelp_DsetSwitch ) ;
       XtManageChild (pb);
@@ -4199,14 +4341,16 @@ void SUMA_cb_createSurfaceCont(Widget w, XtPointer data, XtPointer callData)
       pb = XtVaCreateWidget ("Delete", 
          xmPushButtonWidgetClass, rc, 
          NULL);   
-      XtAddCallback (pb, XmNactivateCallback, SUMA_cb_ColPlane_Delete, (XtPointer) SO);
+      XtAddCallback (pb, XmNactivateCallback, 
+                     SUMA_cb_ColPlane_Delete, (XtPointer) SO);
       /* XtManageChild (pb); */ /* Not ready for this one yet */
 
       pb = XtVaCreateWidget ("Load Col", 
          xmPushButtonWidgetClass, rc, 
          NULL);   
-      XtAddCallback (pb, XmNactivateCallback, SUMA_cb_ColPlane_Load, (XtPointer) SO);
-      MCW_register_hint(pb , "Load a new color plane (same as ctrl+c)" ) ;
+      XtAddCallback (pb, XmNactivateCallback, 
+                     SUMA_cb_ColPlane_Load, (XtPointer) SO);
+      MCW_register_hint(pb , "Load a new color plane (more with BHelp)" ) ;
       MCW_register_help(pb , SUMA_SurfContHelp_DsetLoadCol  ) ;
       XtManageChild (pb);
       
@@ -4254,7 +4398,8 @@ void SUMA_cb_createSurfaceCont(Widget w, XtPointer data, XtPointer callData)
       pb_close = XtVaCreateWidget ("Close", 
          xmPushButtonWidgetClass, rc, 
          NULL);   
-      XtAddCallback (pb_close, XmNactivateCallback, SUMA_cb_closeSurfaceCont, (XtPointer) SO);
+      XtAddCallback (pb_close, XmNactivateCallback, 
+                     SUMA_cb_closeSurfaceCont, (XtPointer) SO);
       MCW_register_hint( pb_close , "Close Surface controller" ) ;
       MCW_register_help( pb_close , SUMA_closeSurfaceCont_help ) ;
       XtManageChild (pb_close); 
@@ -4264,7 +4409,9 @@ void SUMA_cb_createSurfaceCont(Widget w, XtPointer data, XtPointer callData)
          NULL);
       XtAddCallback (pb_bhelp, XmNactivateCallback, MCW_click_help_CB, NULL);
       MCW_register_help(pb_bhelp , SUMA_help_help ) ;
-      MCW_register_hint(pb_bhelp  , "Press this button then click on a button/label/menu for more help." ) ;
+      MCW_register_hint(pb_bhelp  , 
+                        "Press this button then click on a "
+                        "button/label/menu for more help." ) ;
 
       XtManageChild (pb_bhelp); 
 
@@ -4517,23 +4664,30 @@ SUMA_Boolean SUMA_InitializeDrawROIWindow (SUMA_DRAWN_ROI *DrawnROI)
    SUMA_ENTRY;
    
    if (!DrawnROI) {
-      if (LocalHead) fprintf (SUMA_STDERR, "%s: Initializing with NULL.\n", FuncName);
+      if (LocalHead) 
+         fprintf (SUMA_STDERR, "%s: Initializing with NULL.\n", FuncName);
       SUMA_SET_LABEL(SUMAg_CF->X->DrawROI->ParentLabel_lb, "Parent: -");
       SUMA_SET_TEXT_FIELD(SUMAg_CF->X->DrawROI->ROIlbl->textfield, "-");
       SUMA_SET_TEXT_FIELD(SUMAg_CF->X->DrawROI->ROIval->textfield, "0");
    }else {
-      if (LocalHead) fprintf (SUMA_STDERR, "%s: Initializing with %p.\n", FuncName, DrawnROI);
-      SOp = SUMA_findSOp_inDOv(DrawnROI->Parent_idcode_str, SUMAg_DOv, SUMAg_N_DOv);
-      sprintf (sbuf, "Parent: %s", SOp->Label);
+      if (LocalHead) 
+         fprintf (SUMA_STDERR, 
+                  "%s: Initializing with %p.\n", FuncName, DrawnROI);
+      SOp = SUMA_findSOp_inDOv(DrawnROI->Parent_idcode_str, 
+                               SUMAg_DOv, SUMAg_N_DOv);
       if (SOp) {
+         sprintf (sbuf, "Parent: %s", SOp->Label);
          SUMA_SET_LABEL(SUMAg_CF->X->DrawROI->ParentLabel_lb, sbuf);
       } else {
-         SUMA_SET_LABEL(SUMAg_CF->X->DrawROI->ParentLabel_lb, "Parent: Not Found");
+         SUMA_SET_LABEL(SUMAg_CF->X->DrawROI->ParentLabel_lb, 
+                        "Parent: Not Found");
       }  
 
-      SUMAg_CF->X->DrawROI->curDrawnROI = DrawnROI; /* set the currently drawnROI */
+      SUMAg_CF->X->DrawROI->curDrawnROI = DrawnROI; 
+            /* set the currently drawnROI */
 
-      SUMA_SET_TEXT_FIELD(SUMAg_CF->X->DrawROI->ROIlbl->textfield, DrawnROI->Label);
+      SUMA_SET_TEXT_FIELD(SUMAg_CF->X->DrawROI->ROIlbl->textfield, 
+                           DrawnROI->Label);
       
       SUMAg_CF->X->DrawROI->ROIval->value = DrawnROI->iLabel;
       sprintf(sbuf,"%d", DrawnROI->iLabel);
@@ -4545,7 +4699,9 @@ SUMA_Boolean SUMA_InitializeDrawROIWindow (SUMA_DRAWN_ROI *DrawnROI)
 /*!
    \brief Initializes the widgets in the color plane shell window based on the SUMA_OVERLAYS structue
 */
-SUMA_Boolean SUMA_InitializeColPlaneShell(SUMA_SurfaceObject *SO, SUMA_OVERLAYS *ColPlane)
+SUMA_Boolean SUMA_InitializeColPlaneShell (
+                  SUMA_SurfaceObject *SO, 
+                  SUMA_OVERLAYS *ColPlane)
 {
    static char FuncName[] = {"SUMA_InitializeColPlaneShell"};
    char sbuf[SUMA_MAX_LABEL_LENGTH];
@@ -4558,7 +4714,12 @@ SUMA_Boolean SUMA_InitializeColPlaneShell(SUMA_SurfaceObject *SO, SUMA_OVERLAYS 
    SUMA_ENTRY;
    
    SUMA_LH("Called");
-   if (!SO->SurfCont->ColPlane_fr) SUMA_RETURN(YUP);
+   
+   if (!SO->SurfCont->ColPlane_fr) {
+      /* just set the curColPlane before returning ZSS  March 25 08*/
+      if (ColPlane) SO->SurfCont->curColPlane = ColPlane;
+      SUMA_RETURN(YUP);
+   }
    
    if (!ColPlane) {
       SUMA_LH("Initializing with NULL");
@@ -4572,18 +4733,26 @@ SUMA_Boolean SUMA_InitializeColPlaneShell(SUMA_SurfaceObject *SO, SUMA_OVERLAYS 
       SUMA_LH("Initializing for real");
       if (ColPlane->dset_link) { /* get the parent surface of the colorplane */
          if (ColPlane->dset_link->ngr) {
-            SOpar = SUMA_findSOp_inDOv(NI_get_attribute(ColPlane->dset_link->ngr,"domain_parent_idcode"), SUMAg_DOv, SUMAg_N_DOv);
+            SOpar = SUMA_findSOp_inDOv(
+                              NI_get_attribute(ColPlane->dset_link->ngr,
+                                                "domain_parent_idcode"), 
+                              SUMAg_DOv, SUMAg_N_DOv);
          }
       }
       if (!SOpar) {
-         SUMA_SL_Warn("No parent for dset found.\nProceeding with next best option.");
+         SUMA_SL_Warn(  "No parent for dset found.\n"
+                        "Proceeding with next best option.");
          SOpar = SO;
       }
       
-      if (strlen(ColPlane->Label) + strlen(SOpar->Label) +25 > SUMA_MAX_LABEL_LENGTH) {
+      if (  strlen(ColPlane->Label) + 
+            strlen(SOpar->Label) +  25   > 
+            SUMA_MAX_LABEL_LENGTH) {
          SUMA_SL_Warn("Surface Labels too long!");
-         SUMA_INSERT_CELL_STRING(SO->SurfCont->ColPlaneLabelTable, 0, 1, "Surface Labels too long!");
-         SUMA_INSERT_CELL_STRING(SO->SurfCont->ColPlaneLabelTable, 1, 1, "Surface Labels too long!");
+         SUMA_INSERT_CELL_STRING(SO->SurfCont->ColPlaneLabelTable, 
+                                 0, 1, "Surface Labels too long!");
+         SUMA_INSERT_CELL_STRING(SO->SurfCont->ColPlaneLabelTable, 
+                                 1, 1, "Surface Labels too long!");
       } else {
          if (strlen(SOpar->Label) > 40) {
             char *tmpstr=NULL;
@@ -4592,13 +4761,18 @@ SUMA_Boolean SUMA_InitializeColPlaneShell(SUMA_SurfaceObject *SO, SUMA_OVERLAYS 
                sprintf (sbuf, "Label: %s\nParent: %s", ColPlane->Label, tmpstr);
                free(tmpstr); tmpstr = NULL;
             }
-            SUMA_INSERT_CELL_STRING(SO->SurfCont->ColPlaneLabelTable, 0, 1, ColPlane->Label);
-            SUMA_INSERT_CELL_STRING(SO->SurfCont->ColPlaneLabelTable, 1, 1, tmpstr);
+            SUMA_INSERT_CELL_STRING(SO->SurfCont->ColPlaneLabelTable, 
+                                    0, 1, ColPlane->Label);
+            SUMA_INSERT_CELL_STRING(SO->SurfCont->ColPlaneLabelTable, 
+                                    1, 1, tmpstr);
          } else {
-            sprintf (sbuf, "Label: %s\nParent: %s", ColPlane->Label, SOpar->Label);
+            sprintf (sbuf, "Label: %s\nParent: %s", 
+                     ColPlane->Label, SOpar->Label);
          }
-         SUMA_INSERT_CELL_STRING(SO->SurfCont->ColPlaneLabelTable, 0, 1, ColPlane->Label);
-         SUMA_INSERT_CELL_STRING(SO->SurfCont->ColPlaneLabelTable, 1, 1, SOpar->Label);
+         SUMA_INSERT_CELL_STRING(SO->SurfCont->ColPlaneLabelTable, 
+                                 0, 1, ColPlane->Label);
+         SUMA_INSERT_CELL_STRING(SO->SurfCont->ColPlaneLabelTable, 
+                                 1, 1, SOpar->Label);
       }
       
       SO->SurfCont->ColPlaneOrder->value = ColPlane->PlaneOrder;
@@ -4609,7 +4783,8 @@ SUMA_Boolean SUMA_InitializeColPlaneShell(SUMA_SurfaceObject *SO, SUMA_OVERLAYS 
       sprintf(sbuf,"%.1f", ColPlane->GlobalOpacity);
       SUMA_SET_TEXT_FIELD(SO->SurfCont->ColPlaneOpacity->textfield, sbuf);
       
-      if (ColPlane->OptScl) SO->SurfCont->ColPlaneDimFact->value = ColPlane->OptScl->BrightFact;
+      if (ColPlane->OptScl) 
+         SO->SurfCont->ColPlaneDimFact->value = ColPlane->OptScl->BrightFact;
       else SO->SurfCont->ColPlaneDimFact->value = ColPlane->DimFact;
       sprintf(sbuf,"%.1f", SO->SurfCont->ColPlaneDimFact->value);
       SUMA_SET_TEXT_FIELD(SO->SurfCont->ColPlaneDimFact->textfield, sbuf);
@@ -4633,7 +4808,9 @@ SUMA_Boolean SUMA_InitializeColPlaneShell(SUMA_SurfaceObject *SO, SUMA_OVERLAYS 
          }
       } else {
          if (!XtIsManaged(SO->SurfCont->DsetMap_fr)) {
-            SUMA_LH("A non RGB dset, surface controls need to be seen\nBut only when ColPlane_fr is also shown (frame may be hidden by Dsets button action)");
+            SUMA_LH( "A non RGB dset, surface controls need to be seen\n"
+                     "But only when ColPlane_fr is also shown \n"
+                     "(frame may be hidden by Dsets button action)");
             if (XtIsManaged(SO->SurfCont->ColPlane_fr)) {
                XtManageChild(XtParent(SO->SurfCont->DsetMap_fr));
                XtManageChild(SO->SurfCont->DsetMap_fr);
@@ -4648,7 +4825,9 @@ SUMA_Boolean SUMA_InitializeColPlaneShell(SUMA_SurfaceObject *SO, SUMA_OVERLAYS 
          SUMA_SetCmapMenuChoice(SO, ColPlane->cmapname);
 
          /* set the values for the threshold bar */
-         if (SUMA_GetDsetColRange(SO->SurfCont->curColPlane->dset_link, SO->SurfCont->curColPlane->OptScl->tind, range, loc)) {   
+         if (SUMA_GetDsetColRange(  SO->SurfCont->curColPlane->dset_link, 
+                                    SO->SurfCont->curColPlane->OptScl->tind, 
+                                    range, loc)) {   
             SUMA_SetScaleRange(SO, range );
          }
       }
@@ -4681,9 +4860,12 @@ SUMA_Boolean SUMA_UpdateColPlaneShellAsNeeded(SUMA_SurfaceObject *SO)
    for (i=0; i<SUMAg_N_DOv; ++i) {
       if (SUMA_isSO(SUMAg_DOv[i])) {
          SOi = (SUMA_SurfaceObject *)SUMAg_DOv[i].OP;
-         if (SOi != SO && SUMA_isRelated (SOi, SO, 1)) { /* do this for kins of the 1st order */
+         if (SOi != SO && SUMA_isRelated (SOi, SO, 1)) { 
+            /* do this for kins of the 1st order */
             if (SOi->SurfCont) {
-               if (SOi->SurfCont != SO->SurfCont && SOi->SurfCont->ColPlane_fr && SOi->SurfCont->curColPlane == SO->SurfCont->curColPlane) {
+               if (  SOi->SurfCont != SO->SurfCont && 
+                     SOi->SurfCont->ColPlane_fr && 
+                     SOi->SurfCont->curColPlane == SO->SurfCont->curColPlane) {
                   SUMA_InitializeColPlaneShell(SOi, SOi->SurfCont->curColPlane);
                }
             }
@@ -4833,14 +5015,18 @@ void SUMA_CreateDrawROIWindow(void)
    if (SUMAg_CF->Connected) SUMAg_CF->ROI2afni = YUP;
    else SUMAg_CF->ROI2afni = NOPE;
    #endif
-   SUMAg_CF->ROI2afni = NOPE; /* keep link off when starting, otherwise  it is confusing */
+   SUMAg_CF->ROI2afni = NOPE; /* keep link off when starting, 
+                                 otherwise  it is confusing */
    
-   XmToggleButtonSetState (SUMAg_CF->X->DrawROI->AfniLink_tb, SUMAg_CF->ROI2afni, NOPE);
+   XmToggleButtonSetState (SUMAg_CF->X->DrawROI->AfniLink_tb, 
+                           SUMAg_CF->ROI2afni, NOPE);
    XtAddCallback (SUMAg_CF->X->DrawROI->AfniLink_tb, 
                   XmNvalueChangedCallback, SUMA_cb_AfniLink_toggled, 
                   NULL);
-   MCW_register_help(SUMAg_CF->X->DrawROI->AfniLink_tb , SUMA_DrawROI_AfniLink_help ) ;
-   MCW_register_hint(SUMAg_CF->X->DrawROI->AfniLink_tb , "Toggles Link to Afni" ) ;
+   MCW_register_help(SUMAg_CF->X->DrawROI->AfniLink_tb , 
+                     SUMA_DrawROI_AfniLink_help ) ;
+   MCW_register_hint(SUMAg_CF->X->DrawROI->AfniLink_tb , 
+                     "Toggles Link to Afni" ) ;
 
    /* set the toggle button's select color */
    SUMA_SET_SELECT_COLOR(SUMAg_CF->X->DrawROI->AfniLink_tb);
@@ -4849,7 +5035,9 @@ void SUMA_CreateDrawROIWindow(void)
    SUMA_BuildMenuReset(0);
    SUMA_BuildMenu (rc, XmMENU_OPTION, 
                    "Dist", '\0', YUP, DrawROI_WhatDist_Menu, 
-                   "DoDist", "Report length of drawn segments? (BHelp for more)", SUMA_DrawROI_WhatDist_help,   
+                   "DoDist", 
+                   "Report length of drawn segments? (BHelp for more)", 
+                   SUMA_DrawROI_WhatDist_help,   
                    SUMAg_CF->X->DrawROI->WhatDistMenu);
    XtManageChild (SUMAg_CF->X->DrawROI->WhatDistMenu[SW_DrawROI_WhatDist]);
    
@@ -4876,7 +5064,8 @@ void SUMA_CreateDrawROIWindow(void)
                            3, SUMA_int,
                            NOPE,
                            SUMA_DrawROI_NewValue, NULL,
-                           "Integer value associated with ROI", SUMA_DrawROI_Value_help,
+                           "Integer value associated with ROI", 
+                           SUMA_DrawROI_Value_help,
                            SUMAg_CF->X->DrawROI->ROIval);
    /* manage  rc */
    XtManageChild (rc);
@@ -5125,6 +5314,7 @@ SUMA_LIST_WIDGET * SUMA_AllocateScrolledList (
    }
    
    LW = (SUMA_LIST_WIDGET *) SUMA_malloc(sizeof(SUMA_LIST_WIDGET));
+   memset(LW, 0, sizeof(SUMA_LIST_WIDGET));
    LW->toplevel = NULL;
    LW->list = NULL;      
    LW->rc = NULL;  
@@ -5143,6 +5333,7 @@ SUMA_LIST_WIDGET * SUMA_AllocateScrolledList (
    LW->Select_Data = Select_Data;
    LW->ALS = NULL;
    LW->isShaded = YUP;
+   LW->lastitempos = -1;
    SUMA_RETURN(LW);
    
 }
@@ -5321,8 +5512,9 @@ SUMA_Boolean SUMA_UpdateScrolledListData(SUMA_LIST_WIDGET *LW, void *Default_Dat
    
                            
 */
-void SUMA_CreateScrolledList (    char **clist, int N_clist, SUMA_Boolean Partial,  
-                                  SUMA_LIST_WIDGET *LW)
+void SUMA_CreateScrolledList (    
+      char **clist, int N_clist, 
+      SUMA_Boolean Partial, SUMA_LIST_WIDGET *LW)
 {
    static char FuncName[]={"SUMA_CreateScrolledList"};
    XmString  str, *strlist;
@@ -5345,7 +5537,9 @@ void SUMA_CreateScrolledList (    char **clist, int N_clist, SUMA_Boolean Partia
       SUMA_RETURNe;
    }
    
-   if (!LW->toplevel) { /* widget has never been created or had been destroyed, create it anew */  
+   if (!LW->toplevel) { 
+      /* widget has never been created 
+         or had been destroyed, create it anew */  
       /* create the widget */ 
       LW->toplevel = XtVaAppCreateShell(LW->Label , "Suma" ,
                      topLevelShellWidgetClass , SUMAg_CF->X->DPY_controller1 ,
@@ -5356,32 +5550,41 @@ void SUMA_CreateScrolledList (    char **clist, int N_clist, SUMA_Boolean Partia
            XmNdeleteResponse, XmDO_NOTHING,
            NULL);  
              
-      /* handle the close button from window manager  SEE ALSO  SUMA_UpdateScrolledListData */
+      /* handle the close button from window manager  
+         SEE ALSO  SUMA_UpdateScrolledListData */
       if (!LW->CloseList_Data) {
          XmAddWMProtocolCallback(/* make "Close" window menu work */
             LW->toplevel,
-            XmInternAtom( SUMAg_CF->X->DPY_controller1  , "WM_DELETE_WINDOW" , False ) ,
+            XmInternAtom(  SUMAg_CF->X->DPY_controller1  , 
+                           "WM_DELETE_WINDOW" , False ) ,
             LW->CloseList_cb, (XtPointer)LW) ;
       } else {
          XmAddWMProtocolCallback(/* make "Close" window menu work */
             LW->toplevel,
-            XmInternAtom( SUMAg_CF->X->DPY_controller1  , "WM_DELETE_WINDOW" , False ) ,
+            XmInternAtom(  SUMAg_CF->X->DPY_controller1  , 
+                           "WM_DELETE_WINDOW" , False ) ,
             LW->CloseList_cb, (XtPointer)LW->CloseList_Data) ;
       }   
       
 
-      LW->rc = XtVaCreateWidget("Tonka", xmRowColumnWidgetClass, LW->toplevel, NULL);
+      LW->rc = XtVaCreateWidget( "Tonka", 
+                                 xmRowColumnWidgetClass, LW->toplevel, NULL);
       n = 0;
       XtSetArg (args[n], XmNitemCount,      0); n++;
       XtSetArg (args[n], XmNlistSizePolicy,   XmCONSTANT   ); n++;
       LW->list = XmCreateScrolledList (LW->rc, "Tonka", args, n);
       
       
-      /* add the default selection callback  SEE ALSO  SUMA_UpdateScrolledListData */
+      /* add the default selection callback  
+         SEE ALSO  SUMA_UpdateScrolledListData */
       if (!LW->Default_Data) {
-         XtAddCallback (LW->list, XmNdefaultActionCallback, LW->Default_cb, (XtPointer)LW);
+         XtAddCallback (LW->list, 
+                        XmNdefaultActionCallback, 
+                        LW->Default_cb, (XtPointer)LW);
       } else {
-         XtAddCallback (LW->list, XmNdefaultActionCallback, LW->Default_cb, (XtPointer)LW->Default_Data);
+         XtAddCallback (LW->list, 
+                        XmNdefaultActionCallback, 
+                        LW->Default_cb, (XtPointer)LW->Default_Data);
       }        
 
      /* set the selection policy SEE ALSO  SUMA_UpdateScrolledListData */
@@ -5389,33 +5592,50 @@ void SUMA_CreateScrolledList (    char **clist, int N_clist, SUMA_Boolean Partia
          case SUMA_LSP_SINGLE:
             XtVaSetValues( LW->list, XmNselectionPolicy, XmSINGLE_SELECT, NULL);
             if (!LW->Select_Data) 
-               XtAddCallback (LW->list, XmNsingleSelectionCallback, LW->Select_cb, (XtPointer)LW);
+               XtAddCallback (LW->list, 
+                              XmNsingleSelectionCallback, 
+                              LW->Select_cb, (XtPointer)LW);
             else
-               XtAddCallback (LW->list, XmNsingleSelectionCallback, LW->Select_cb, (XtPointer)LW->Select_Data); 
+               XtAddCallback (LW->list, XmNsingleSelectionCallback, 
+                              LW->Select_cb, (XtPointer)LW->Select_Data); 
             break;
          case SUMA_LSP_BROWSE:
             XtVaSetValues( LW->list, XmNselectionPolicy, XmBROWSE_SELECT, NULL);
             if (!LW->Select_Data) 
-               XtAddCallback (LW->list, XmNbrowseSelectionCallback, LW->Select_cb, (XtPointer)LW);
+               XtAddCallback (LW->list, 
+                              XmNbrowseSelectionCallback, 
+                              LW->Select_cb, (XtPointer)LW);
             else
-               XtAddCallback (LW->list, XmNbrowseSelectionCallback, LW->Select_cb, (XtPointer)LW->Select_Data); 
+               XtAddCallback (LW->list, 
+                              XmNbrowseSelectionCallback, 
+                              LW->Select_cb, (XtPointer)LW->Select_Data); 
             
             break;
          case SUMA_LSP_MULTIPLE:
             if (!LW->Select_Data) 
-               XtAddCallback (LW->list, XmNmultipleSelectionCallback, LW->Select_cb, (XtPointer)LW);
+               XtAddCallback (LW->list, 
+                              XmNmultipleSelectionCallback, 
+                              LW->Select_cb, (XtPointer)LW);
             else
-               XtAddCallback (LW->list, XmNmultipleSelectionCallback, LW->Select_cb, (XtPointer)LW->Select_Data); 
+               XtAddCallback (LW->list, 
+                              XmNmultipleSelectionCallback, 
+                              LW->Select_cb, (XtPointer)LW->Select_Data); 
             
-            XtVaSetValues( LW->list, XmNselectionPolicy, XmMULTIPLE_SELECT, NULL);
+            XtVaSetValues( LW->list, 
+                           XmNselectionPolicy, XmMULTIPLE_SELECT, NULL);
             break;
          case SUMA_LSP_EXTENDED:
             if (!LW->Select_Data) 
-               XtAddCallback (LW->list, XmNextendedSelectionCallback, LW->Select_cb, (XtPointer)LW);
+               XtAddCallback (LW->list, 
+                              XmNextendedSelectionCallback, 
+                              LW->Select_cb, (XtPointer)LW);
             else
-               XtAddCallback (LW->list, XmNextendedSelectionCallback, LW->Select_cb, (XtPointer)LW->Select_Data); 
+               XtAddCallback (LW->list, 
+                              XmNextendedSelectionCallback, 
+                              LW->Select_cb, (XtPointer)LW->Select_Data); 
             
-            XtVaSetValues( LW->list, XmNselectionPolicy, XmEXTENDED_SELECT, NULL);
+            XtVaSetValues( LW->list, 
+                           XmNselectionPolicy, XmEXTENDED_SELECT, NULL);
             break;
          default:
             SUMA_SL_Err("Bad selection policy");
@@ -5441,12 +5661,17 @@ void SUMA_CreateScrolledList (    char **clist, int N_clist, SUMA_Boolean Partia
    }  
 
    
-   /* now cycle through the elements in clist and add them, if they are new, in alphabetical order */
+   /* now cycle through the elements in clist and add them, 
+      if they are new, in alphabetical order */
    if (!Partial && !LW->RemoveDups) {
-      if (LocalHead) fprintf (SUMA_STDERR, "%s: New full list, deleting old entries. \n", FuncName);
+      if (LocalHead) 
+         fprintf (SUMA_STDERR, 
+                  "%s: New full list, deleting old entries. \n", FuncName);
       XmListDeleteAllItems(LW->list);
    }else {
-      if (LocalHead) fprintf (SUMA_STDERR, "%s: Partial list, will add.\n", FuncName);
+      if (LocalHead) 
+         fprintf (SUMA_STDERR, 
+                  "%s: Partial list, will add.\n", FuncName);
    }
    for (iclist=0; iclist < N_clist; iclist++)     {
       SUMA_LH(clist[iclist]);
@@ -5474,13 +5699,16 @@ void SUMA_CreateScrolledList (    char **clist, int N_clist, SUMA_Boolean Partia
         l_bound = 0; 
       }
       
-      if (LocalHead) fprintf (SUMA_STDERR,"%s: Adding %s...\n", FuncName, clist[iclist]);
+      if (LocalHead) 
+         fprintf (SUMA_STDERR,"%s: Adding %s...\n", FuncName, clist[iclist]);
       str = XmStringCreateLocalized (clist[iclist]); 
 
       /* positions indexes start at 1, so increment accordingly */
       if (LW->RemoveDups) { 
-         if (LocalHead) fprintf (SUMA_STDERR,"%s: removing duplicates\n", FuncName);
-         if (!XmListItemExists(LW->list, str)) XmListAddItemUnselected (LW->list, str, l_bound+1);
+         if (LocalHead) 
+            fprintf (SUMA_STDERR,"%s: removing duplicates\n", FuncName);
+         if (!XmListItemExists(LW->list, str)) 
+            XmListAddItemUnselected (LW->list, str, l_bound+1);
       } else { 
          if (LocalHead) fprintf (SUMA_STDERR,"%s: with duplicates\n", FuncName);
          XmListAddItemUnselected (LW->list, str, l_bound+1);
@@ -5501,14 +5729,9 @@ void SUMA_CreateScrolledList (    char **clist, int N_clist, SUMA_Boolean Partia
       XmListSelectPos(LW->list,1, False); 
       /* realize the widget */
       XtRealizeWidget (LW->toplevel);
-      /* The wheel buidness is done in fallback resources.
-         This approach does not work no matter where I put it. 
-         For text widgets, it causes more trouble) */
-         /*XtVaSetValues  (  LW->list, 
-                     XmNtranslations,
-                     XtParseTranslationTable(
-                                 SUMA_SCR_LIST_WIDGET_TRANSLATIONS),
-                     NULL);  */
+   } else {
+      XmListSetPos(LW->list,SUMA_MAX_PAIR(1,LW->lastitempos-3));
+      XmListSelectPos(LW->list,SUMA_MAX_PAIR(1,LW->lastitempos), False); 
    }
    
    SUMA_RETURNe;
@@ -5655,11 +5878,12 @@ void SUMA_CreateTextField ( Widget pw, char *label,
                               char *hint, char *help,
                               SUMA_ARROW_TEXT_FIELD *AF)
 {
-   static char FuncName[]={"SUMA_ATF_cb_label_Modify"};
+   static char FuncName[]={"SUMA_CreateTextField"};
 
    SUMA_ENTRY;
 
-   /* techincally, one should have a structure that is only for text but that is not necessary, I think */
+   /* techincally, one should have a structure that 
+      is only for text but that is not necessary, I think */
    
    AF->up = AF->down = NULL;
    AF->step = AF->value = AF->min = AF->max = AF->wrap = 0;
@@ -5858,8 +6082,10 @@ void SUMA_DrawROI_NewValue (void *data)
    if (AF->value == DrawnROI->iLabel) SUMA_RETURNe;
    
    if (!DrawnROI->DrawStatus == SUMA_ROI_Finished) {
-      if (LocalHead) fprintf (SUMA_STDERR, "%s: Changing ROI value from %d to %d\n", 
-         FuncName, DrawnROI->iLabel, (int)AF->value);   
+      if (LocalHead) 
+         fprintf (SUMA_STDERR, 
+                  "%s: Changing ROI value from %d to %d\n", 
+                  FuncName, DrawnROI->iLabel, (int)AF->value);   
 
       DrawnROI->iLabel = (int)AF->value;
       ErrCnt = 0;
@@ -6259,7 +6485,11 @@ void SUMA_ATF_SetValue (SUMA_ARROW_TEXT_FIELD * AF)
    
   
    XtVaGetValues (AF->textfield, XmNvalue, &n, NULL);
-   /* YOU DO NOT WANT TO FREE n because n is not a copy of the string in the widget! */
+   /* YOU DO NOT WANT TO FREE n because n is not a 
+      copy of the string in the widget! 
+      Later in time:
+      Hmmmm, maybe you do, maybe you do. Must abide by 
+      upper case message. Must have crashed somwhere */
    
    if (LocalHead) fprintf (SUMA_STDERR, "%s: Read %s\n", FuncName, (char *)n);
    
@@ -6544,8 +6774,8 @@ void SUMA_cb_SelectSwitchColPlane(Widget w, XtPointer data, XtPointer call_data)
       SUMA_S_Err("NULL LW!");
       SUMA_RETURNe;
    }
-   
-   
+
+   #if 0
    if (cbs->reason == XmCR_SINGLE_SELECT) {
       if (LocalHead) fprintf (SUMA_STDERR,"%s: Single selection, list widget %s... \n", FuncName, LW->Label);
    } else {
@@ -6557,6 +6787,8 @@ void SUMA_cb_SelectSwitchColPlane(Widget w, XtPointer data, XtPointer call_data)
    XmStringGetLtoR (cbs->item, XmFONTLIST_DEFAULT_TAG, &choice);
    
    if (LocalHead) fprintf (SUMA_STDERR,"%s: Selected item: %s {%s} (%d)\n", FuncName, choice, choice, cbs->item_position);
+   LW->lastitempos = cbs->item_position;   /* store for next opening */
+   
    /* because of sorting, choice cannot be used as an index into clist and oplist in ALS */
    Found = NOPE;
    ichoice = 0;
@@ -6573,6 +6805,10 @@ void SUMA_cb_SelectSwitchColPlane(Widget w, XtPointer data, XtPointer call_data)
    
    XtFree (choice);
    
+   #else
+   /* the new way */
+   ichoice = SUMA_GetListIchoice(cbs, LW, &CloseShop);
+   #endif
    /* now retrieve that choice from the SUMA_ASSEMBLE_LIST_STRUCT structure and initialize the drawing window */
    if (LW->ALS) {
       if (LocalHead) fprintf (SUMA_STDERR,"%s: N_clist = %d\n", FuncName, LW->ALS->N_clist); 
@@ -6593,7 +6829,7 @@ void SUMA_cb_SelectSwitchColPlane(Widget w, XtPointer data, XtPointer call_data)
       SUMA_cb_CloseSwitchColPlane( w,  (XtPointer)SO->SurfCont->SwitchDsetlst,  call_data);
    }  
    
-
+   
    SUMA_RETURNe;
 }
 
@@ -6655,6 +6891,8 @@ void SUMA_cb_SelectSwitchGroup(Widget w, XtPointer data, XtPointer call_data)
       SUMA_S_Err("NULL LW!");
       SUMA_RETURNe;
    }
+
+   #if 0
    if (cbs->reason == XmCR_SINGLE_SELECT) {
       if (LocalHead) fprintf (SUMA_STDERR,"%s: Single selection, list widget %s... \n", FuncName, LW->Label);
    } else {
@@ -6665,6 +6903,7 @@ void SUMA_cb_SelectSwitchGroup(Widget w, XtPointer data, XtPointer call_data)
    
    XmStringGetLtoR (cbs->item, XmFONTLIST_DEFAULT_TAG, &choice);
    if (LocalHead) fprintf (SUMA_STDERR,"%s: Selected item: %s (%d)\n", FuncName, choice, cbs->item_position);
+   LW->lastitempos = cbs->item_position;   /* store for next opening */
  
    /* because of sorting, choice cannot be used as an index into clist and oplist in ALS */
    Found = NOPE;
@@ -6681,6 +6920,10 @@ void SUMA_cb_SelectSwitchGroup(Widget w, XtPointer data, XtPointer call_data)
    }
    
    XtFree (choice);
+   #else
+   /* the new way */
+   ichoice = SUMA_GetListIchoice(cbs, LW, &CloseShop);
+   #endif
 
    /* now retrieve that choice from the SUMA_ASSEMBLE_LIST_STRUCT structure and initialize the drawing window */
    if (LW->ALS) {
@@ -6766,7 +7009,8 @@ void SUMA_cb_SelectSwitchROI(Widget w, XtPointer data, XtPointer call_data)
       SUMA_S_Err("NULL LW!");
       SUMA_RETURNe;
    }
-   
+
+   #if 0   
    if (cbs->reason == XmCR_SINGLE_SELECT) {
       if (LocalHead) fprintf (SUMA_STDERR,"%s: Single selection, list widget %s... \n", FuncName, LW->Label);
    } else {
@@ -6777,6 +7021,7 @@ void SUMA_cb_SelectSwitchROI(Widget w, XtPointer data, XtPointer call_data)
 
    XmStringGetLtoR (cbs->item, XmFONTLIST_DEFAULT_TAG, &choice);
    if (LocalHead) fprintf (SUMA_STDERR,"%s: Selected item: %s (%d)\n", FuncName, choice, cbs->item_position);
+   LW->lastitempos = cbs->item_position;   /* store for next opening */
  
    /* because of sorting, choice cannot be used as an index into clist and oplist in ALS */
    Found = NOPE;
@@ -6793,6 +7038,10 @@ void SUMA_cb_SelectSwitchROI(Widget w, XtPointer data, XtPointer call_data)
    }
    
    XtFree (choice);
+   #else
+   /* the new way */
+   ichoice = SUMA_GetListIchoice(cbs, LW, &CloseShop);
+   #endif
 
    /* now retrieve that choice from the SUMA_ASSEMBLE_LIST_STRUCT structure and initialize the drawing window */
    if (LW->ALS) {
@@ -7774,7 +8023,7 @@ SUMA_CREATE_TEXT_SHELL_STRUCT * SUMA_CreateTextShellStruct (
    SUMA_ENTRY;
    
    TextShell = (SUMA_CREATE_TEXT_SHELL_STRUCT *) 
-               SUMA_malloc (sizeof(SUMA_CREATE_TEXT_SHELL_STRUCT));
+               SUMA_calloc(1,sizeof(SUMA_CREATE_TEXT_SHELL_STRUCT));
    if (!TextShell) {
       fprintf (SUMA_STDERR, 
                "Error %s: Failed to allocate for TextShell.\n", 
@@ -8201,7 +8450,7 @@ void SUMA_PopUpMessage (SUMA_MessageData *MD)
    static char FuncName[]={"SUMA_PopUpMessage"};
    Widget Parent_w=NULL, wmsg = NULL;
    int ii;
-   
+   char *sf=NULL; 
    SUMA_ENTRY;
    
    if (!SUMAg_N_SVv) {
@@ -8211,7 +8460,9 @@ void SUMA_PopUpMessage (SUMA_MessageData *MD)
    
    /* find a decent popup message parent */
    ii=0;
-   while ((SUMAg_SVv[ii].isShaded || !SUMAg_SVv[ii].X->TOPLEVEL) && (ii < SUMAg_N_SVv)) {
+   while (  (  SUMAg_SVv[ii].isShaded || 
+               !SUMAg_SVv[ii].X->TOPLEVEL) && 
+            (ii < SUMAg_N_SVv)) {
       ++ii;   
    }
    
@@ -8225,32 +8476,40 @@ void SUMA_PopUpMessage (SUMA_MessageData *MD)
          ++ii;   
       }
       if (ii >= SUMAg_N_SVv) {
-         fprintf (SUMA_STDERR, "Error %s: This should not be happening.\n", FuncName);
+         fprintf (SUMA_STDERR, 
+            "Error %s: This should not be happening.\n", FuncName);
          SUMA_RETURNe;  
       }else Parent_w = SUMAg_SVv[ii].X->TOPLEVEL;
    }
    
    if (MD->Action ==  SMA_LogAndPopup) {
       wmsg = NULL;
+      sf = SUMA_FormatMessage (MD);
       switch (MD->Type) {
          case SMT_Notice:
-            wmsg = MCW_popup_message(Parent_w, SUMA_FormatMessage (MD), MCW_USER_KILL | MCW_TIMER_KILL);
+            wmsg = MCW_popup_message(Parent_w, sf, 
+                                     MCW_USER_KILL | MCW_TIMER_KILL);
             break;
          case SMT_Warning:
-            wmsg = MCW_popup_message(Parent_w, SUMA_FormatMessage (MD), MCW_USER_KILL | MCW_TIMER_KILL);
+            wmsg = MCW_popup_message(Parent_w, sf, 
+                                     MCW_USER_KILL | MCW_TIMER_KILL);
             break;
          case SMT_Error:
-            wmsg = MCW_popup_message(Parent_w, SUMA_FormatMessage (MD), MCW_USER_KILL);
+            wmsg = MCW_popup_message(Parent_w, sf, 
+                                     MCW_USER_KILL);
             break;
          case SMT_Critical:
-            wmsg = MCW_popup_message(Parent_w, SUMA_FormatMessage (MD), MCW_CALLER_KILL);
+            wmsg = MCW_popup_message(Parent_w, sf, 
+                                     MCW_CALLER_KILL);
             break;
          case SMT_Text:
-            wmsg = MCW_popup_message(Parent_w, SUMA_FormatMessage (MD), MCW_CALLER_KILL | MCW_TIMER_KILL);
+            wmsg = MCW_popup_message(Parent_w, sf,  
+                                     MCW_CALLER_KILL | MCW_TIMER_KILL);
             break;
          default:
             break;
       }
+      if (sf)SUMA_free(sf); sf = NULL;
       if (wmsg) {
          SUMA_PositionWindowRelative (wmsg, NULL, SWP_POINTER_OFF);
       }
@@ -8492,7 +8751,8 @@ void SUMA_cb_DrawROI_Join (Widget w, XtPointer data, XtPointer client_data)
    
    /* looking good, add the thing */
    ROIstroke->action = SUMA_BSA_JoinEnds;
-   ROIA = (SUMA_ROI_ACTION_STRUCT *) SUMA_malloc (sizeof(SUMA_ROI_ACTION_STRUCT)); /* this structure is freed in SUMA_DestroyROIActionData */
+   ROIA = (SUMA_ROI_ACTION_STRUCT *)
+            SUMA_calloc(1,sizeof(SUMA_ROI_ACTION_STRUCT)); /* this structure is freed in SUMA_DestroyROIActionData */
    ROIA->DrawnROI = DrawnROI;
    ROIA->ROId = ROIstroke;
    tmpStackPos = SUMA_PushActionStack (DrawnROI->ActionStack, DrawnROI->StackPos, SUMA_AddToTailJunctionROIDatum, (void *)ROIA, SUMA_DestroyROIActionData);
@@ -8535,7 +8795,8 @@ void SUMA_cb_DrawROI_Finish (Widget w, XtPointer data, XtPointer client_data)
    }
    
    /* looking good, add the thing */
-   ROIA = (SUMA_ROI_ACTION_STRUCT *) SUMA_malloc (sizeof(SUMA_ROI_ACTION_STRUCT)); /* this structure is freed in SUMA_DestroyROIActionData */
+   ROIA = (SUMA_ROI_ACTION_STRUCT *)
+             SUMA_calloc(1,sizeof(SUMA_ROI_ACTION_STRUCT)); /* this structure is freed in SUMA_DestroyROIActionData */
    ROIA->DrawnROI = DrawnROI;
    ROIA->ROId = NULL;
    tmpStackPos = SUMA_PushActionStack (DrawnROI->ActionStack, DrawnROI->StackPos, SUMA_FinishedROI, (void *)ROIA, SUMA_DestroyROIActionData);
@@ -8752,7 +9013,7 @@ void SUMA_DrawROI_NewLabel (void *data)
       SUMA_RETURNe;
    }
    
-   XtVaGetValues (AF->textfield, XmNvalue, &n, NULL);
+   XtVaGetValues (AF->textfield, XmNvalue, &n, NULL); 
    /* return if no change has been made */
    if (!strcmp((char *)n, DrawnROI->Label)) {
       SUMA_LH("No change");
@@ -8765,7 +9026,8 @@ void SUMA_DrawROI_NewLabel (void *data)
       SUMA_LH("unFinished");
       /* YOU DO NOT WANT TO FREE n because n is not a copy of the string in the widget! */
       if (DrawnROI->Label) {
-         if (LocalHead) fprintf (SUMA_STDERR, "%s: Changing ROI label from %s to %s\n", FuncName, DrawnROI->Label, (char *)n);         
+         if (LocalHead) 
+            fprintf (SUMA_STDERR, "%s: Changing ROI label from %s to %s\n", FuncName, DrawnROI->Label, (char *)n);         
          DrawnROI->Label = (char *)SUMA_realloc(DrawnROI->Label, sizeof(char)*(strlen((char *)n)+1));
       }  else {
          if (LocalHead) fprintf (SUMA_STDERR, "%s: Setting ROI label to %s\n", FuncName, (char *)n);
@@ -8860,6 +9122,10 @@ void SUMA_PositionWindowRelative (Widget New, Widget Ref, SUMA_WINDOW_POSITION L
       case SWP_TOP_LEFT:
          NewX = RefW + Dx;
          NewY = RefY;
+         break;
+      case SWP_STEP_DOWN_RIGHT:
+         NewY = RefY + 10;
+         NewX = RefX + 10;
          break;
       case SWP_POINTER:
          {
@@ -8972,7 +9238,8 @@ SUMA_PROMPT_DIALOG_STRUCT *SUMA_CreatePromptDialogStruct (SUMA_PROMPT_MODE Mode,
    
    if (!oprmpt) {
       SUMA_LH ("New prompt structure");
-      prmpt = (SUMA_PROMPT_DIALOG_STRUCT *)SUMA_malloc(sizeof(SUMA_PROMPT_DIALOG_STRUCT));
+      prmpt = (SUMA_PROMPT_DIALOG_STRUCT *)
+                  SUMA_calloc(1,sizeof(SUMA_PROMPT_DIALOG_STRUCT));
       if (!prmpt) {
          SUMA_SLP_Crit("Failed to allocate for prmpt");
          SUMA_RETURN(prmpt);
@@ -9551,11 +9818,16 @@ void SUMA_FreePromptDialogStruct(SUMA_PROMPT_DIALOG_STRUCT *prmpt)
    
    See SUMA_DestroyTextShell
 */
-SUMA_SELECTION_DIALOG_STRUCT *SUMA_CreateFileSelectionDialogStruct (Widget daddy, SUMA_FILE_SELECT_MODE Mode, SUMA_Boolean preserve,
-                                                                  void (*SelectCallback)(char *filename, void *data), void *SelectData,
-                                                                  void (*CancelCallback)(void *data), void *CancelData,
-                                                                  char *FilePattern,
-                                                                  SUMA_SELECTION_DIALOG_STRUCT *odlg)
+SUMA_SELECTION_DIALOG_STRUCT *SUMA_CreateFileSelectionDialogStruct (
+   Widget daddy, 
+   SUMA_FILE_SELECT_MODE Mode, 
+   SUMA_Boolean preserve,
+   void (*SelectCallback)(char *filename, void *data), 
+   void *SelectData,
+   void (*CancelCallback)(void *data), 
+   void *CancelData,
+   char *FilePattern,
+   SUMA_SELECTION_DIALOG_STRUCT *odlg)
 {
    static char FuncName[]={"SUMA_CreateFileSelectionDialogStruct"};
    SUMA_SELECTION_DIALOG_STRUCT * dlg = NULL;
@@ -9565,9 +9837,12 @@ SUMA_SELECTION_DIALOG_STRUCT *SUMA_CreateFileSelectionDialogStruct (Widget daddy
    
    if (!odlg) { /* new structure */
       SUMA_LH("A new structure ");    
-      dlg = (SUMA_SELECTION_DIALOG_STRUCT *)SUMA_malloc(sizeof(SUMA_SELECTION_DIALOG_STRUCT));
+      dlg = (SUMA_SELECTION_DIALOG_STRUCT *)
+                  SUMA_calloc(1,sizeof(SUMA_SELECTION_DIALOG_STRUCT));
       if (!dlg) {
-         fprintf (SUMA_STDERR, "Error %s: Failed to allocate for TextShell.\n", FuncName);
+         fprintf (SUMA_STDERR, 
+                  "Error %s: Failed to allocate for TextShell.\n", 
+                  FuncName);
          SUMA_RETURN (NULL);
       }
       dlg->dlg_w = NULL;
@@ -9575,7 +9850,9 @@ SUMA_SELECTION_DIALOG_STRUCT *SUMA_CreateFileSelectionDialogStruct (Widget daddy
    }else {
       SUMA_LH("Refitting old one. ");
       if (!preserve) 
-         SUMA_SLP_Warn("You should not be reusing\na dlg structure along with\nthe Preserve flag on.");
+         SUMA_SLP_Warn( "You should not be reusing\n"
+                        "a dlg structure along with\n"
+                        "the Preserve flag on.");
       dlg = odlg;
       if (dlg->filename) {
          SUMA_LH("Freeing dlg->filename");
@@ -9595,7 +9872,7 @@ SUMA_SELECTION_DIALOG_STRUCT *SUMA_CreateFileSelectionDialogStruct (Widget daddy
    if (FilePattern) {
       /* new one specified, destroy the old one */
       if (dlg->FilePattern) {
-         SUMA_LH("Freeing dlg->FilePattern");
+         SUMA_LHv("Restting dlg->FilePattern to %s\n", FilePattern);
          SUMA_free(dlg->FilePattern);
       }   
       dlg->FilePattern = SUMA_copy_string (FilePattern);
@@ -9627,6 +9904,7 @@ SUMA_SELECTION_DIALOG_STRUCT *SUMA_CreateFileSelectionDialog (
       SUMA_LH ("Creating new file selection window.");
       dlg->dlg_w = XmCreateFileSelectionDialog (dlg->daddy, "Files", NULL, 0);
       
+      
       XtVaSetValues (dlg->dlg_w,
          XmNdeleteResponse, XmUNMAP,  /* system menu "Close" action */
         NULL);
@@ -9650,19 +9928,27 @@ SUMA_SELECTION_DIALOG_STRUCT *SUMA_CreateFileSelectionDialog (
    same = NOPE;
    if (title_extension) {
       if (last_title_extension) {
+   SUMA_LHv("last: %s, this: %s\n", last_title_extension, title_extension);
          if (strcmp(last_title_extension, title_extension) == 0) 
             { same = YUP; }
          SUMA_free(last_title_extension); last_title_extension=NULL;
       }
       last_title_extension = SUMA_copy_string( title_extension);
    }
-   
-   if (dlg->FilePattern && !same) {
-      pattern = XmStringCreateLocalized (dlg->FilePattern);
-      XtVaSetValues (dlg->dlg_w,
-         XmNpattern, pattern,
-         NULL);
-      XmStringFree (pattern);
+   if (dlg->FilePattern ) { 
+      if (!same) {
+         pattern = XmStringCreateLocalized (dlg->FilePattern);
+         XtVaSetValues (dlg->dlg_w,
+            XmNpattern, pattern,
+            NULL);
+         XmStringFree (pattern);
+      } else { 
+         XtVaGetValues(dlg->dlg_w, XmNpattern, &pattern, NULL);
+         if (pattern) {
+            XmFileSelectionDoSearch(dlg->dlg_w, pattern); 
+            XmStringFree (pattern); 
+         }
+      }
    }
       
    XtAddCallback (dlg->dlg_w, 

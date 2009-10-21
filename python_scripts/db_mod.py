@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
-import math
-import os, afni_util, afni_base
+import math, os
+import afni_base as BASE, afni_util as UTIL
 
 # --------------- tcat ---------------
 
@@ -77,7 +77,7 @@ def db_cmd_despike(proc, block):
     opt = block.opts.find_opt('-despike_opts_3dDes')
     if not opt or not opt.parlist: other_opts = ''
     else: other_opts = ' %s' %      \
-               ' '.join(afni_util.quotize_list(opt.parlist, '', 1))
+               ' '.join(UTIL.quotize_list(opt.parlist, '', 1))
 
     prefix = proc.prefix_form_run(block)
     prev   = proc.prev_prefix_form_run()
@@ -469,11 +469,11 @@ def db_mod_regress(block, proc, user_opts):
     bopt = block.opts.find_opt('-regress_basis')
     if uopt and bopt:
         bopt.parlist[0] = uopt.parlist[0]
-        if not afni_util.basis_has_known_response(bopt.parlist[0]):
+        if not UTIL.basis_has_known_response(bopt.parlist[0]):
             if not user_opts.find_opt('-regress_iresp_prefix'):
                 block.opts.add_opt('-regress_iresp_prefix',1,['iresp'],setpar=1)
         uopt = user_opts.find_opt('-regress_make_ideal_sum')
-        if uopt and not afni_util.basis_has_known_response(bopt.parlist[0]):
+        if uopt and not UTIL.basis_has_known_response(bopt.parlist[0]):
             print '** -regress_make_ideal_sum is inappropriate for basis %s'\
                   % bopt.parlist[0]
             errs += 1
@@ -652,7 +652,7 @@ def db_cmd_regress(proc, block):
     opt = block.opts.find_opt('-regress_polort')
     polort = opt.parlist[0]
     if ( polort < 0 ) :
-        polort = get_default_polort(proc.tr, proc.reps)
+        polort = UTIL.get_default_polort(proc.tr, proc.reps)
         if proc.verb > 0:
             print "+d updating polort to %d, from run len %.1f s" %  \
                   (polort, proc.tr*proc.reps)
@@ -746,7 +746,7 @@ def db_cmd_regress(proc, block):
     opt = block.opts.find_opt('-regress_opts_3dD')
     if not opt or not opt.parlist: other_opts = ''
     else: other_opts = '    %s  \\\n' %         \
-               ' '.join(afni_util.quotize_list(opt.parlist, '\\\n    ', 1))
+               ' '.join(UTIL.quotize_list(opt.parlist, '\\\n    ', 1))
 
     # add misc options
     cmd = cmd + iresp
@@ -755,6 +755,15 @@ def db_cmd_regress(proc, block):
     cmd = cmd + fitts + errts
     cmd = cmd + "    -bucket stats.$subj\n\n\n"
 
+    # if 3dDeconvolve fails, terminate the script
+    cmd = cmd + "# if 3dDeconvolve fails, terminate the script\n"       \
+                "if ( $status != 0 ) then\n"                            \
+                "    echo '---------------------------------------'\n"  \
+                "    echo '** 3dDeconvolve error, failing...'\n"        \
+                "    echo '   (consider the file 3dDeconvolve.err)'\n"  \
+                "    exit\n"                                            \
+                "endif\n\n\n"
+
     # create all_runs, and store name for blur_est
     all_runs = 'all_runs.$subj'
     cmd = cmd + "# create an all_runs dataset to match the fitts, errts, etc.\n"
@@ -762,7 +771,7 @@ def db_cmd_regress(proc, block):
                 (all_runs, proc.prev_prefix_form_rwild())
 
     opt = block.opts.find_opt('-regress_no_ideals')
-    if not opt and afni_util.basis_has_known_response(basis):
+    if not opt and UTIL.basis_has_known_response(basis):
         # then we compute individual ideal files for each stim
         cmd = cmd + "# create ideal files for each stim type\n"
         first = (polort+1) * proc.runs
@@ -805,6 +814,7 @@ def db_cmd_blur_est(proc, block):
     if proc.mask: mask = '-mask %s+orig' % proc.mask
     else:
         print '** refusing to estimate blur without a mask dataset'
+        print '   (perhaps keep the mask block and apply -regress_no_mask)'
         return
 
     if proc.verb > 1: print 'computing blur_estimates'
@@ -879,7 +889,7 @@ def db_cmd_regress_sfiles2times(proc, block):
     cols = 0
     for file in proc.stims_orig:
         cmd = cmd + 'stimuli/%s ' % os.path.basename(file)      # add filename
-        cols += afni_util.num_cols_1D(file)         # tally the number of cols
+        cols += UTIL.num_cols_1D(file)         # tally the number of cols
     cmd = cmd + '\n\n'
 
     # and reset proc.stims to the new file list (which is 1-based)
@@ -917,9 +927,9 @@ def db_tlrc_opts_okay(opts):
         print '** -tlrc_anat option requires anatomy via -copy_anat'
         return 0
 
-    dset = afni_base.afni_name(opt_anat.parlist[0])
+    dset = BASE.afni_name(opt_anat.parlist[0])
     if not dset.exist():  # allow for no +view
-        dset = afni_base.afni_name(opt_anat.parlist[0]+'+orig')
+        dset = BASE.afni_name(opt_anat.parlist[0]+'+orig')
         if not dset.exist():
             print "** -tlrc_anat dataset '%s' does not exist" % \
                   opt_anat.parlist[0]
@@ -935,7 +945,7 @@ def db_cmd_tlrc(dname, options):
         print "** missing dataset name for tlrc operation"
         return None
 
-    dset = afni_base.afni_name(dname)   # allow for no +view
+    dset = BASE.afni_name(dname)   # allow for no +view
     if not dset.exist():
         dname = dname + '+orig'
 
@@ -984,13 +994,18 @@ def db_cmd_empty(proc, block):
 
     return cmd
 
-# compute a default polort, as done in 3dDeconvolve
-def get_default_polort(tr, reps):
-    if tr <= 0 or reps <= 0:
-        print "** cannot guess polort from tr = %f, reps = %d" % (tr,reps)
-        return 2        # return some default
-    run_time = tr * reps
-    return 1+math.floor(run_time/150.0)
+# create a gen_epi_review.py command
+def db_cmd_gen_review(proc):
+    if not proc.gen_review: return None
+
+    tblk = proc.find_block('tcat')
+
+    cmd = "# -------------------------------------------------------\n" \
+          "# generate a review script for the unprocessed EPI data\n"   \
+          "gen_epi_review.py -script %s \\\n"                           \
+          "    -dsets %s\n\n" % (proc.gen_review, proc.dset_form_wild('tcat'))
+
+    return cmd
 
 # dummy main - should not be used
 if __name__ == '__main__':

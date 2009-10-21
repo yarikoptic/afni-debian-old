@@ -204,11 +204,64 @@ void THD_normalize( int npt , float *far )
 
    if( npt <= 0 || far == NULL ) return ;
 
-   fac = 0 ;
+   fac = 0.0f ;
    for( ii=0 ; ii < npt ; ii++ ) fac += far[ii]*far[ii] ;
-   if( fac == 0.0 ) return ;
-   fac = 1.0 / sqrt(fac) ;
-   for( ii=0 ; ii < npt ; ii++ ) far[ii] /= fac ;
+   if( fac == 0.0f ) return ;
+   fac = 1.0f / sqrtf(fac) ;
+   for( ii=0 ; ii < npt ; ii++ ) far[ii] *= fac ;
+   return ;
+}
+
+/*-------------------------------------------------------------------------
+   Make a vector have RMS value = 1
+---------------------------------------------------------------------------*/
+
+void THD_normRMS( int npt , float *far )
+{
+   register int ii ;
+   register float fac ;
+
+   if( npt <= 0 || far == NULL ) return ;
+
+   fac = 0.0f ;
+   for( ii=0 ; ii < npt ; ii++ ) fac += far[ii]*far[ii] ;
+   if( fac == 0.0f ) return ;
+   fac = 1.0f / sqrtf(fac/npt) ;
+   for( ii=0 ; ii < npt ; ii++ ) far[ii] *= fac ;
+   return ;
+}
+
+/*-----------------------------------------------------------------------*/
+/* Make a vector have max abs 1 [26 Mar 2008]. */
+
+void THD_normmax( int npt , float *far )
+{
+   register int ii ;
+   register float fac , val ;
+
+   if( npt <= 0 || far == NULL ) return ;
+   fac = 0.0f ;
+   for( ii=0 ; ii < npt ; ii++ ){ val = fabsf(far[ii]); fac = MAX(fac,val); }
+   if( fac == 0.0f ) return ;
+   fac = 1.0f / fac ;
+   for( ii=0 ; ii < npt ; ii++ ) far[ii] *= fac ;
+   return ;
+}
+
+/*-----------------------------------------------------------------------*/
+/* Make a vector have max sum |far| = 1 [26 Mar 2008]. */
+
+void THD_normL1( int npt , float *far )
+{
+   register int ii ;
+   register float fac , val ;
+
+   if( npt <= 0 || far == NULL ) return ;
+   fac = 0.0f ;
+   for( ii=0 ; ii < npt ; ii++ ){ val = fabsf(far[ii]); fac += val; }
+   if( fac == 0.0f ) return ;
+   fac = 1.0f / fac ;
+   for( ii=0 ; ii < npt ; ii++ ) far[ii] *= fac ;
    return ;
 }
 
@@ -662,7 +715,9 @@ ENTRY("THD_extract_detrended_array") ;
      val = 1.0f / var[ii] ;
      for( tt=0 ; tt < nval ; tt++ ) far[tt] *= val ;
    }
-
+   
+   /* ZSS: Need to free fitar */
+   free(fitar); fitar=NULL;
    EXRETURN ;
 }
 

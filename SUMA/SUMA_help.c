@@ -14,6 +14,184 @@ static char * SUMA_ver2date(int ver)
    return(s_ver);
 } 
 
+typedef struct {
+   char *envhelp;
+   char *envname;
+   char *envval;  /* This is the default */
+}ENV_SPEC;
+
+static ENV_SPEC envlist[] = {
+   {  "Incremental arrow rotation angle in degrees",
+      "SUMA_ArrowRotAngle",
+      "5" } ,
+   {  "Color pattern (AFNI, EURO, DEFAULT)",
+      "SUMA_ColorPattern",
+      "EURO" },
+   {  "Swap mouse buttons 1 and 3",
+      "SUMA_SwapButtons_1_3",
+      "NO" },
+   {  "Background color r g b. No space between values",
+      "SUMA_BackgroundColor",
+      "0.0,0.0,0.0" },
+   {  "ROI color map (bgyr64, roi64, roi128, roi256)",
+      "SUMA_ROIColorMap",
+      "roi256" },
+   {  "Number of smoothing operations to run on convexity data",
+      "SUMA_NumConvSmooth",
+      "5" },
+   {  "Colormap for convexity (gray02, gray_i02, ngray20, bgyr64, etc.)",
+      "SUMA_ConvColorMap",
+      "gray02" },
+   {  "Brightness factor for convexity ",
+      "SUMA_ConvBrightFactor",
+      "0.5" },
+   {  "Number of smoothing operations to run on mixed foregroung color plane\n"
+      " before mixing with background",
+      "SUMA_NumForeSmoothing",
+      "0" },
+   {  "Setup the color mixing mode (ORIG, MOD1) ",
+      "SUMA_ColorMixingMode",
+      "ORIG" },
+   {  "Port for communicating with AFNI\n"
+      " Listening ports are derived from SUMA_AFNI_TCP_PORT\n"
+      " Listening port i\n"
+      " SUMA_AFNI_TCP_PORT + i (i > 0)",
+      "SUMA_AFNI_TCP_PORT",
+      "53211" },
+   {  "Warn before closing with the Escape key (YES/NO)",
+      "SUMA_WarnBeforeClose",
+      "YES" },
+   {  "Mask node values\n"
+      " 0 ? YES/NO",
+      "SUMA_MaskZero",
+      "YES" },
+   {  "Threshold if Val < thr (NO) or | Val | < | Thr | (YES)",
+      "SUMA_AbsThreshold",
+      "YES" },
+   {  "Threshold scale precision. 2 is the minimum allowed. \n"
+      " This value might be overriden in SUMA.",
+      "SUMA_ThresholdScalePower",
+      "2" },
+   {  "Center of Rotation is based on nodes used in the mesh and not \n"
+      " on all the nodes in NodeList",
+      "SUMA_CenterOnPatch",
+      "NO" },
+   {  "Use cross ticks on axis ?",
+      "SUMA_UseCrossTicks",
+      "NO" },
+   {  "Warn if 1D file looks like it needs a transpose",
+      "SUMA_1D_Transponse_Warn",
+      "YES" },
+   {  "Adjust roation and translation factor of mouse with changes \n"
+      " in zoom levels ",
+      "SUMA_AdjustMouseMotionWithZoom",
+      "YES" },
+   {  "Use orthographic projection ",
+      "SUMA_ViewOrthographicProjection",
+      "NO" },
+   {  "Percent gain for zooming in and out with the 'z' and 'Z' keys. \n"
+      " Typical range from 0 to 50",
+      "SUMA_KeyZoomGain",
+      "5" },
+   {  "Original FOV. Set between 1.0 and 100.0 \n"
+      " Default is 30.0, -1 == auto",
+      "SUMA_FOV_Original",
+      "-1" },
+   {  "light0 color",
+      "SUMA_Light0Color",
+      "1.0,1.0,1.0" },
+   {  "Ambient light ",
+      "SUMA_AmbientLight",
+      "1.0,1.0,1.0" },
+   {  "Allow for replacement of pre-loaded dsets",
+      "SUMA_AllowDsetReplacement",
+      "NO" },
+   {  "Allow for surfaces with same DomainGrandParentID to share overlays",
+      "SUMA_ShareGrandChildrenOverlays",
+      "NO" },
+   {  "Increase the resolution of images recorded with 'r' button.\n"
+      " Increase is done by taking multiple shots that once stitched  \n"
+      " together form a high-resolution image.\n"
+      " The maximum resolution is set by the GL_MAX_VIEWPORT_DIMS of your\n" 
+      " graphics card. I have 4096 pixels.\n"
+      " If you exceed this number, SUMA will make adjustments automatically.\n"
+      " Assemble images with program imcat.",
+      "SUMA_SnapshotOverSampling",
+      "1" },
+   {  "Ignore consecutive duplicate images in recorder",
+      "SUMA_NoDuplicatesInRecorder",
+      "YES" },
+   {  "start NIML (can't do this for more than one suma at a time!)",
+      "SUMA_START_NIML",
+      "YES" },
+   {  "Allow (YES) datasets with the same filename but differing ID \n"
+      " to be considered the same.\n"
+      " This is only useful with SUMA_AllowDsetReplacement",
+      "SUMA_AllowFilenameDsetMatch",
+      "NO" },
+   {  "Freeze zoom across states",
+      "SUMA_FreezeFOVAcrossStates",
+      "NO" },
+   {  "Dset color map",
+      "SUMA_DsetColorMap",
+      "Spectrum:red_to_blue" },
+   {  "Show only selected dset in suma's surface controller.",
+      "SUMA_ShowOneOnly",
+      "YES" },
+   {  "Update graphs, even SUMA_ShowOneOnly (or suma's '1 Only') is turned on.",
+      "SUMA_GraphHidden",
+      "YES" },
+   {  "Fraction of colormap to rotate with up/down arrow keys.",
+      "SUMA_ColorMapRotationFraction",
+      "0.05"},
+   {  "Size of surface controller font. \n"
+      " Values are SMALL, BIG (old style).",
+      "SUMA_SurfContFontSize",
+      "SMALL"},
+   {  NULL, NULL, NULL  }
+};
+      
+
+
+char * SUMA_env_list_help(){
+   static char FuncName[]={"SUMA_env_list_help"};
+   int i=0;
+   char *sli=NULL;
+   SUMA_STRING *SS=NULL;
+   char *s=NULL, *eee=NULL, *userval=NULL;
+   
+   SUMA_ENTRY;
+   
+   SS = SUMA_StringAppend(NULL, NULL);
+   
+   while (envlist[i].envhelp) {
+      /* find the user's setting */
+      char *eee = getenv(envlist[i].envname);
+      if (userval) 
+         SUMA_free(userval); 
+      userval=NULL;
+      if (!eee) userval = SUMA_copy_string(envlist[i].envval);
+      else userval = SUMA_copy_string(eee);
+      sli = SUMA_ReplaceChars(envlist[i].envhelp,"\n","\n//      ");
+      SS = SUMA_StringAppend_va(SS,
+                     "// %03d-%s:\n"
+                     "//     %s\n"
+                     "//     default:   %s = %s\n"
+                     "   %s = %s\n",
+                     i, envlist[i].envname,
+                     sli,
+                     envlist[i].envname,
+                     envlist[i].envval,
+                     envlist[i].envname,
+                     userval);
+      SUMA_free(sli); sli = NULL;
+      ++i;
+   }
+   SUMA_SS2S(SS,s);
+   
+   SUMA_RETURN(s);
+}
+
 /*!
    \brief Returns a string with the new additions and version information
    
@@ -39,7 +217,7 @@ char * SUMA_New_Additions (int ver, SUMA_Boolean StampOnly)
    SUMA_STRING *SS = NULL;
    
    SUMA_ENTRY;
-   
+
    SS = SUMA_StringAppend (NULL, NULL);
    
    if (ver == 0) { /* just the latest */
@@ -124,34 +302,36 @@ char * SUMA_New_Additions_perver (int ver, SUMA_Boolean StampOnly)
          SS = SUMA_StringAppend_va(SS, 
             "++ SUMA version %s\n", SUMA_ver2date(ver)); if (StampOnly) break;
          SS = SUMA_StringAppend(SS, 
-            "New Programs:\n"
-            "  + SurfDsetInfo: Program to display surface dataset information.\n"
-            "  + AnalyzeTrace: Program to analyze the output of -trace option.\n"
-            "  + DriveSuma: Program to control SUMA from the command line\n"
-            "  + imcat: Program to catenate images.\n"
-            "  + Surf2VolCoord: Surface-node to voxel correspondence.\n"
-            "Modifications:\n"
-            "  + SUMA:\n"
-            "    o Addition of new Displayable Objects (DO)(ctrl+Alt+s)\n"
-            "    o Allow replacement of pre-loaded DO and Dsets\n"
-            "    o Support for .niml.dset as format for surface-based anlysis\n"
-            "    o High resolution image saving with ctrl+r\n"
-            "    o Bug fixes for support of niml dset format\n"
-            "    o Use of '[i]' to select node index from surface dset\n"
-            "    o Scroll lists for I T and B selectors in SUMA\n"
-            "  + ConvertDset:\n"
-            "    o Output of full dsets if needed\n"
-            "  + ROIgrow:\n"
-            "    o Grows regions separately, depending on labels.\n"
-            "  + ROI2dataset:\n"
-            "    o outputs full datasets if needed.\n"
-            "  + SurfSmooth:\n"
-            "    o Improved HEAT_05 method.\n"
-            "    o New 'blurring to' a FWHM with HEAT_07 method.\n"
-            "  + SurfFWHM:\n"
-            "    o Estimating FWHM on the surface.\n" 
-            "  + MapIcosahedron:\n"
-            "    o Better handling of surface centers. \n"
+         "New Programs:\n"
+         "  + SurfDsetInfo: Program to display surface dataset information.\n"
+         "  + AnalyzeTrace: Program to analyze the output of -trace option.\n"
+         "  + DriveSuma: Program to control SUMA from the command line\n"
+         "  + imcat: Program to catenate images.\n"
+         "  + Surf2VolCoord: Surface-node to voxel correspondence.\n"
+         "  + SurfDist: Program to calculate internodal distances.\n"
+         "Modifications:\n"
+         "  + SUMA:\n"
+         "    o Addition of new Displayable Objects (DO)(ctrl+Alt+s)\n"
+         "    o Allow replacement of pre-loaded DO and Dsets\n"
+         "    o Support for .niml.dset as format for surface-based anlysis\n"
+         "    o High resolution image saving with ctrl+r\n"
+         "    o Bug fixes for support of niml dset format\n"
+         "    o Use of '[i]' to select node index from surface dset\n"
+         "    o Scroll lists for I T and B selectors in SUMA\n"
+         "    o Graphing of dset content with 'g'\n"
+         "  + ConvertDset:\n"
+         "    o Output of full dsets if needed\n"
+         "  + ROIgrow:\n"
+         "    o Grows regions separately, depending on labels.\n"
+         "  + ROI2dataset:\n"
+         "    o outputs full datasets if needed.\n"
+         "  + SurfSmooth:\n"
+         "    o Improved HEAT_05 method.\n"
+         "    o New 'blurring to' a FWHM with HEAT_07 method.\n"
+         "  + SurfFWHM:\n"
+         "    o Estimating FWHM on the surface.\n" 
+         "  + MapIcosahedron:\n"
+         "    o Better handling of surface centers. \n"
             );
          break; 
       case 20041229:
@@ -344,6 +524,15 @@ void SUMA_Help_Cmap_open (void *p)
    
    SUMA_RETURNe;
 }
+void SUMA_Help_Plot_open (void *p)
+{
+   static char FuncName[]={"SUMA_Help_Plot_open"};
+
+   SUMA_ENTRY;
+   /* nothing to do here */
+   
+   SUMA_RETURNe;
+}
 
 /*!
    \brief function called when help window is destroyed
@@ -355,6 +544,19 @@ void SUMA_Help_Cmap_destroyed (void *p)
    SUMA_ENTRY;
 
    SUMAg_CF->X->Help_Cmap_TextShell = NULL;
+   
+   SUMA_RETURNe;
+}
+/*!
+   \brief function called when help window is destroyed
+*/
+void SUMA_Help_Plot_destroyed (void *p)
+{
+   static char FuncName[]={"SUMA_Help_Plot_destroyed"};
+   
+   SUMA_ENTRY;
+
+   SUMAg_CF->X->Help_Plot_TextShell = NULL;
    
    SUMA_RETURNe;
 }
@@ -572,7 +774,7 @@ char * SUMA_sources_Info(void)
 
 char * SUMA_help_Cmap_message_Info(SUMA_COLOR_MAP * ColMap)
 {
-   static char FuncName[]={"SUMA_help_message_Info"};
+   static char FuncName[]={"SUMA_help_Cmap_message_Info"};
    char stmp[1000], *s = NULL;
    SUMA_STRING *SS = NULL;
    
@@ -584,7 +786,9 @@ char * SUMA_help_Cmap_message_Info(SUMA_COLOR_MAP * ColMap)
    SS = SUMA_StringAppend (SS, s); SUMA_free(s); s = NULL;
    
    SS = SUMA_StringAppend (SS, 
-      "\nKeyboard Controls\n"
+      "\nColormap Keyboard Controls:\n"
+      "     f: flip color map\n"
+      "        See also Up/Down keys.\n"
       "     r: record image of colormap.\n"
       "\n"
       "     Ctrl+h: this help message\n"
@@ -594,9 +798,17 @@ char * SUMA_help_Cmap_message_Info(SUMA_COLOR_MAP * ColMap)
       "     z: Zoom out.\n"
       "        Minimum zoom in shows all colors in the map\n"
       "\n"
-      "     Up/Down arrows: move colormap up/down.\n"
+      "     Up/Down arrows: rotate colormap up/down by fraction of\n"
+      "                     number of colors in color map. Fraction\n"
+      "                     a number between 0 and 0.5 and set via\n"
+      "                     the environment variable\n"
+      "                     SUMA_ColorMapRotationFraction.\n"
+      "                     See suma -environment for complete list\n"
+      "                     of variables.\n"
+      "     Ctrl+Up/Down arrows: rotate colormap up/down by one color\n"
+      "     Shift+Up/Down arrows: move colormap up/down\n"
       "\n"
-      "     Home: Reset zoom and translation parameters\n"
+      "     Home: Reset zoom, translation and rotation parameters\n"
       "\n");
       
    SS = SUMA_StringAppend (SS, 
@@ -608,6 +820,52 @@ char * SUMA_help_Cmap_message_Info(SUMA_COLOR_MAP * ColMap)
    s = SUMA_Help_AllSurfCont();
    SS = SUMA_StringAppend (SS, s); SUMA_free(s); s = NULL;
    
+   /* clean SS */
+   SS = SUMA_StringAppend (SS, NULL);
+   /* copy s pointer and free SS */
+   s = SS->s;
+   SUMA_free(SS); 
+   
+   SUMA_RETURN (s);
+
+}
+static char PlotCommonHelp[]={
+      "        Open a graphing window for the dataset\n"
+      "        currently selected. The graphing window\n"
+      "        updates with each new node selection.\n"
+      "        A graphing window can be opened for each\n"
+      "        dataset, and all graphs will update unless\n"
+      "        '1 Only' is set in Surface Controller.\n"
+      "        Use 'ctrl+h' in graph window for more help.\n" };
+
+char * SUMA_help_Plot_message_Info(void)
+{
+   static char FuncName[]={"SUMA_help_Plot_message_Info"};
+   char stmp[1000], *s = NULL;
+   SUMA_STRING *SS = NULL;
+   
+   SUMA_ENTRY;
+   
+   SS = SUMA_StringAppend (NULL, NULL);
+
+   
+   SS = SUMA_StringAppend_va (SS, 
+      "What's in it for me?\n"
+      "%s"
+      "\nButtons:\n"
+      "  Save:   Write graph image to file\n"
+      "  Freeze: Detach graph from SUMA.\n"
+      "        Further clicks will not update\n"
+      "        graph.\n"
+      "  Done: Close graph forever.\n"
+      "\nKeyboard Controls\n"
+      "     Ctrl+h: this help message\n"
+      "\n"
+      "     q/Q: Quit\n"
+      "     w: Write time series to 1D file.\n"
+      "\n"
+      "\n", PlotCommonHelp);
+     
    /* clean SS */
    SS = SUMA_StringAppend (SS, NULL);
    /* copy s pointer and free SS */
@@ -668,6 +926,9 @@ char * SUMA_help_message_Info(void)
       "     F: Flip light position between +z and -z.\n");
    SS = SUMA_StringAppend (SS, 
       "     f: functional overlay, toggle.\n\n");
+   SS = SUMA_StringAppend_va (SS, 
+      "     g: graph data.\n"
+      "%s\n", PlotCommonHelp); 
    SS = SUMA_StringAppend (SS, 
       "     H: Highlight nodes inside a specified box.\n"
       "        Does not update other viewers\n"
@@ -1031,9 +1292,15 @@ char * SUMA_help_message_Info(void)
       "    ->MemTrace: Turn on memory tracing.\n"
       "                Once turned on, this can't be turned off.\n"
       "\n");
+   SS = SUMA_StringAppend_va( SS,
+                              "SUMA's list of environment variables:\n");
+   s = SUMA_env_list_help();
+   SS = SUMA_StringAppend( SS, s); SUMA_free(s); s = NULL;
+   SS = SUMA_StringAppend( SS, "\n");
+   
    SS = SUMA_StringAppend (SS, 
       "    More help at \n"
-      "    http://afni.nimh.nih.gov/ssc/ziad/SUMA/SUMA_doc.htm\n");
+      "    http://afni.nimh.nih.gov/pub/dist/doc/SUMA/SUMA_doc.htm\n");
    SS = SUMA_StringAppend (SS, 
       "\n");
    

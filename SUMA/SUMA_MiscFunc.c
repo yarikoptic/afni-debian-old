@@ -6603,6 +6603,7 @@ void SUMA_free_Edge_List (SUMA_EDGE_LIST *SEL)
    if (SEL->ELps) SUMA_free2D((char **)SEL->ELps, SEL->N_EL);
    if (SEL->Tri_limb) SUMA_free2D((char **)SEL->Tri_limb, SEL->N_EL/3);
    if (SEL->idcode_str) SUMA_free(SEL->idcode_str);
+   if (SEL->Le) SUMA_free(SEL->Le);
    if (SEL) SUMA_free(SEL);
    SUMA_RETURNe;
 }
@@ -6649,12 +6650,15 @@ SUMA_EDGE_LIST * SUMA_Make_Edge_List (int *FL, int N_FL, int N_Node, float *Node
    DO NOT MODIFY WHAT THIS FUNCTION RETURNS without serious thought.
    Complicated functions depend on it.                
 */
-SUMA_EDGE_LIST * SUMA_Make_Edge_List_eng (int *FL, int N_FL, int N_Node, float *NodeList, int debug, char *ownerid)
+SUMA_EDGE_LIST * SUMA_Make_Edge_List_eng (
+                     int *FL, int N_FL, int N_Node, 
+                     float *NodeList, int debug, char *ownerid)
 {
    static char FuncName[]={"SUMA_Make_Edge_List_eng"};
-   int i, ie, ip, *isort_EL, **ELp, lu, ht, *iTri_limb, icur, in1, in2;
+   int i, ie, ip, *isort_EL=NULL, **ELp=NULL, lu, ht, 
+       *iTri_limb=NULL, icur, in1, in2;
    float dx, dy, dz;
-   SUMA_EDGE_LIST *SEL;
+   SUMA_EDGE_LIST *SEL=NULL;
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
@@ -6672,7 +6676,7 @@ SUMA_EDGE_LIST * SUMA_Make_Edge_List_eng (int *FL, int N_FL, int N_Node, float *
    }
    /* allocate and form the List of edges */
    SUMA_LH("New SEL next");
-   SEL = (SUMA_EDGE_LIST *) SUMA_malloc(sizeof(SUMA_EDGE_LIST));
+   SEL = (SUMA_EDGE_LIST *) SUMA_calloc(1,sizeof(SUMA_EDGE_LIST));
    SUMA_LH("New ID next");
    SEL->idcode_str = NULL;
    SUMA_NEW_ID(SEL->idcode_str, NULL); 
@@ -7310,7 +7314,7 @@ SUMA_Boolean SUMA_MakeConsistent (int *FL, int N_FL, SUMA_EDGE_LIST *SEL, int de
       while (i < SEL->N_EL) {
          ht0 = SEL->ELps[i][1];
          /* make sure edge is not part of three triangles, if it is, skip it */
-         if (SEL->ELps[i][2] > 3) {
+         if (SEL->ELps[i][2] > 2) {
             ++i;
             fprintf(SUMA_STDERR, "%s: Bad edge (#%d: %d--%d), part of more than 2 triangles, skip it\n", FuncName, i, SEL->EL[i][0], SEL->EL[i][1]); 
             continue;
@@ -9135,4 +9139,29 @@ int *SUMA_reorder(int *y, int *isort, int N_isort)
    
    SUMA_RETURN(yr);
 }
+
+void SUMA_ShowFromTo(char *f, char *t, char *head){
+   if (head) {
+      fprintf(SUMA_STDERR, "%s", head);
+   } else {
+      fprintf(SUMA_STDERR, "Chunk in question:\n"
+                           "------------------\n");
+   }
+   while (f<t) {
+      fprintf(SUMA_STDERR, "%c", *f); ++f;
+   }
+   fprintf(SUMA_STDERR, "\n");
+   return;
+}
+
+int SUMA_LineNumbersFromTo(char *f, char *t){
+   int N_line = 0;
+   
+   while (f<t) {
+      if (SUMA_IS_LINE_END(*f)) ++N_line;
+      ++f;
+   }
+   return(N_line);   
+}
+
 

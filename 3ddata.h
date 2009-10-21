@@ -252,7 +252,7 @@ typedef struct {
 /*! Add a pointer to a dynamic XtPointer array. */
 
 #define ADDTO_XTARR(name,bblk)                                 \
-   { if( (name)->num == (name)->nall ){                        \
+ do{ if( (name)->num == (name)->nall ){                        \
       (name)->nall += INC_XTARR + (name)->nall/8 ;             \
       (name)->ar    = (XtPointer *)                            \
                        XtRealloc( (char *) (name)->ar ,        \
@@ -260,11 +260,10 @@ typedef struct {
       (name)->ic    = (int *) XtRealloc( (char *) (name)->ic , \
                           sizeof(int) * (name)->nall ) ;       \
      }                                                         \
-     if( (XtPointer) (bblk) != NULL ){               \
-      (name)->ar[(name)->num] = (XtPointer) (bblk) ; \
-      (name)->ic[(name)->num] = 0                  ; \
-      ((name)->num)++ ;                              \
-     } }
+     (name)->ar[(name)->num] = (XtPointer)(bblk) ;             \
+     (name)->ic[(name)->num] = 0 ;                             \
+     ((name)->num)++ ;                                         \
+   } while(0)
 
 /*! Number of good entries in a dynamic XtPointer array. */
 
@@ -277,7 +276,6 @@ typedef struct {
 #define XTARR_IC(name,i) ((name)->ic[i])
 
 /*! Free a dynamic XtPointer array.
-
     But not what the pointers point to - that is a completely separate matter.
 */
 
@@ -956,8 +954,9 @@ static THD_warp tempA_warp ;
 #define STORAGE_BY_MPEG          11  /* 03 Dec 2003 */
 #define STORAGE_BY_NIML          12  /* NIML AFNI dset   25 May 2006 [rickr] */
 #define STORAGE_BY_NI_SURF_DSET  13  /* NIML surface dset */
+#define STORAGE_BY_GIFTI         14  /* GIFTI surface dset */
 
-#define LAST_STORAGE_MODE        13
+#define LAST_STORAGE_MODE        14
 
 /*! Contains information about where/how dataset is stored on disk.
 
@@ -1055,9 +1054,10 @@ extern void THD_delete_diskptr( THD_diskptr * ) ;
 /*------------------------------------------------------------------*/
 /* Stuff for volume-editing on demand.  [05 Sep 2006] */
 
+#define VEDIT_NPARAM 9
 typedef struct {
-  int code , ival ;
-  float param[9] ;
+  int code , ival , flags ;
+  float param[VEDIT_NPARAM] ;
 } VEDIT_settings ;
 
 #define VEDIT_CLUST  1   /* param= ithr,thr,rmm,vmul */
@@ -1071,6 +1071,10 @@ typedef struct {
 #define DBLK_VEDIT_CODE(db) VEDIT_CODE((db)->vedset)
 #define DSET_VEDIT_CODE(ds) DBLK_VEDIT_CODE((ds)->dblk)
 
+#define VEDIT_FLAGS(vv)      ((vv).flags)
+#define DBLK_VEDIT_FLAGS(db) VEDIT_FLAGS((db)->vedset)
+#define DSET_VEDIT_FLAGS(db) DBLK_VEDIT_FLAGS((ds)->dblk)
+
 #define VEDIT_good(vv)                                            \
    ( (vv).code>0 && (vv).code<=VEDIT_LASTCODE )
 #define DBLK_VEDIT_good(db)                                       \
@@ -1082,7 +1086,7 @@ typedef struct {
 /*!  All subvolumes are stored in an array of MRI_IMAGE (the "brick").
      - If mmap is used, then the whole external file is mmap()-ed in one
        block and the data pointers for each image computed from this base.
-     - If malloc() is used, then each image is separately allocated and read in.
+     - If malloc() is used, then each image is separately allocated and input.
      - Each datablock has a brick, even if it doesn't actually contain
        data (is only warp-on-demand).
      - Whether or not a datablock contains actual voxel data can be
@@ -1637,13 +1641,14 @@ extern mat44 THD_mat44_sqrt( mat44 A ) ;  /* matrix square root [30 Jul 2007] */
 
 #undef  DUMP_MAT44
 #define DUMP_MAT44(SS,AA)                              \
-     printf("mat44 %s:\n"                              \
-            " %9.4f %9.4f %9.4f | %9.4f\n"             \
-            " %9.4f %9.4f %9.4f | %9.4f\n"             \
-            " %9.4f %9.4f %9.4f | %9.4f\n" ,           \
+     printf("# mat44 %s:\n"                            \
+            " %13.6f %13.6f %13.6f  %13.6f\n"         \
+            " %13.6f %13.6f %13.6f  %13.6f\n"         \
+            " %13.6f %13.6f %13.6f  %13.6f\n" ,       \
   SS, AA.m[0][0], AA.m[0][1], AA.m[0][2], AA.m[0][3],  \
       AA.m[1][0], AA.m[1][1], AA.m[1][2], AA.m[1][3],  \
       AA.m[2][0], AA.m[2][1], AA.m[2][2], AA.m[2][3] )
+
 
 /* modify the last column of a mat44 struct so that the
    same spatial coords apply to an image with pp,qq,rr
@@ -2421,12 +2426,12 @@ typedef struct THD_3dim_dataset {
 
 /*! Determine if ds is a pointer to a valid dataset. */
 
-#define ISVALID_3DIM_DATASET(ds)                      \
-   ( (ds) != NULL && (ds)->type >= FIRST_3DIM_TYPE && \
-                     (ds)->type <= LAST_3DIM_TYPE  && \
-                 (ds)->view_type >= 0              && \
-                 (ds)->view_type <= LAST_VIEW_TYPE && \
-      ISVALID_DATABLOCK((ds)->dblk)                    )
+#define ISVALID_3DIM_DATASET(ds)                       \
+   ( (ds) != NULL && (ds)->type >= FIRST_3DIM_TYPE  && \
+                     (ds)->type <= LAST_3DIM_TYPE   && \
+                 (ds)->view_type >= FIRST_VIEW_TYPE && \
+                 (ds)->view_type <= LAST_VIEW_TYPE  && \
+      ISVALID_DATABLOCK((ds)->dblk)                     )
 
 /*! Determine if ds is a pointer to a valid dataset. */
 
@@ -2549,6 +2554,12 @@ typedef struct THD_3dim_dataset {
                        ISVALID_DISKPTR((db)->diskptr) &&  \
                        (db)->diskptr->storage_mode == STORAGE_BY_NI_SURF_DSET )
 
+/*! Determine if datablock db is stored in a NI_SURF_DSET file on disk */
+
+#define DBLK_IS_GIFTI(db) ( ISVALID_DBLK(db)   &&  \
+                       ISVALID_DISKPTR((db)->diskptr) &&  \
+                       (db)->diskptr->storage_mode == STORAGE_BY_GIFTI )
+
 /*! Determine if dataset ds is stored in a 1D file on disk */
 
 #define DSET_IS_1D(ds) ( ISVALID_DSET(ds) && ISVALID_DBLK((ds)->dblk) &&           \
@@ -2578,6 +2589,12 @@ typedef struct THD_3dim_dataset {
 #define DSET_IS_NI_SURF_DSET(ds) (ISVALID_DSET(ds) && ISVALID_DBLK((ds)->dblk) \
                  && ISVALID_DISKPTR((ds)->dblk->diskptr) &&                    \
                  (ds)->dblk->diskptr->storage_mode == STORAGE_BY_NI_SURF_DSET )
+
+/*! Determine if dataset ds is stored in a GIFTI file on disk */
+
+#define DSET_IS_GIFTI(ds) (ISVALID_DSET(ds) && ISVALID_DBLK((ds)->dblk) \
+                 && ISVALID_DISKPTR((ds)->dblk->diskptr) &&                    \
+                 (ds)->dblk->diskptr->storage_mode == STORAGE_BY_GIFTI )
 
 /*! Determine if datablock db is stored by volume files rather than 1 big BRIK */
 
@@ -2617,7 +2634,8 @@ typedef struct THD_3dim_dataset {
             (ds)->dblk->diskptr->storage_mode == STORAGE_BY_NIFTI        ||  \
             (ds)->dblk->diskptr->storage_mode == STORAGE_BY_MPEG         ||  \
             (ds)->dblk->diskptr->storage_mode == STORAGE_BY_NIML         ||  \
-            (ds)->dblk->diskptr->storage_mode == STORAGE_BY_NI_SURF_DSET     \
+            (ds)->dblk->diskptr->storage_mode == STORAGE_BY_NI_SURF_DSET ||  \
+            (ds)->dblk->diskptr->storage_mode == STORAGE_BY_GIFTI            \
           ) )
 
 /*! Determine if AFNI is allowed to over-write dataset ds */
@@ -3147,12 +3165,23 @@ extern float THD_fdrcurve_zval( THD_3dim_dataset *, int, float ) ;
 #define DSET_write(ds)  ( THD_load_statistics( (ds) ) ,                    \
                           THD_write_3dim_dataset( NULL,NULL , (ds),True ) )
 
-extern int THD_deathcon(void) ; /* 06 Jun 2007 */
-extern int THD_ok_overwrite(void) ; /* Jan 2008 */
+/*! Write dataset to disk, fer shur this time, Cletus. [07 Jan 2008] */
+
+#define DSET_overwrite(ds)      \
+ do{ THD_force_ok_overwrite(1); \
+     DSET_write(ds); THD_force_ok_overwrite(0); } while(0)
+
+extern int THD_deathcon(void) ;             /* 06 Jun 2007 */
+extern int THD_ok_overwrite(void) ;         /* Jan 2008 */
+extern void THD_force_ok_overwrite( int ) ; /* 07 Jan 2008 */
 
 /*! Write only the dataset header to disk, for dataset ds */
 
 #define DSET_write_header(ds)  THD_write_3dim_dataset( NULL,NULL , (ds),False )
+
+#define DSET_overwrite_header(ds)  \
+ do{ THD_force_ok_overwrite(1);    \
+     DSET_write_header(ds); THD_force_ok_overwrite(0); } while(0)
 
 /*! Check if dataset ds if fully loaded into memory.
 
@@ -3317,6 +3346,8 @@ typedef struct THD_3dim_dataset_array {
 /*--------        holds all data from a session!          -----------*/
 
 #define SESSION_TYPE 97
+
+typedef struct { THD_3dim_dataset *drow[LAST_VIEW_TYPE+1] ; } THD_dsetrow ;
 
 /*! Holds all the datasets from a directory (session).
     [28 Jul 2003: modified to put elide distinction between anat and func]
@@ -3658,6 +3689,7 @@ extern THD_3dim_dataset * THD_open_nifti( char * ) ;        /* 28 Aug 2003 */
 extern THD_3dim_dataset * THD_open_mpeg( char * ) ;         /* 03 Dec 2003 */
 extern THD_3dim_dataset * THD_open_tcat( char * ) ;         /* 04 Aug 2004 */
 extern THD_3dim_dataset * THD_open_niml( char * ) ;         /* 01 Jun 2006 */
+extern THD_3dim_dataset * THD_open_gifti( char * ) ;        /* 13 Feb 2008 */
 
 extern THD_string_array * THD_multiplex_dataset( char * ) ; /* 19 Jul 2007 */
 
@@ -3666,6 +3698,8 @@ extern THD_3dim_dataset * THD_ni_surf_dset_to_afni( NI_group *, int ) ;
 extern void * read_niml_file( char *, int ) ;
 extern int    storage_mode_from_niml( void * ) ;
 
+extern int        NI_write_gifti( NI_group *, char * , int);
+extern NI_group * NI_read_gifti( char * , int ) ;
 
 extern int storage_mode_from_filename( char * fname );      /* 20 Apr 2006 */
 extern int has_known_non_afni_extension( char * fname ) ;   /*     [rickr] */
@@ -3865,6 +3899,7 @@ extern void    THD_load_nifti  ( THD_datablock * ) ;         /* 28 Aug 2003 */
 extern void    THD_load_mpeg   ( THD_datablock * ) ;         /* 03 Dec 2003 */
 extern void    THD_load_tcat   ( THD_datablock * ) ;         /* 04 Aug 2004 */
 extern int     THD_load_niml   ( THD_datablock * ) ;         /* 12 Jun 2006 */
+extern int     THD_load_gifti  ( THD_datablock * ) ;         /* 13 Feb 2008 */
 
 extern int     THD_count_potential_databricks( THD_datablock *dblk );
 
@@ -3884,6 +3919,7 @@ extern int THD_write_minc( char *, THD_3dim_dataset * , int) ; /* 11 Apr 2002 */
 extern void THD_write_1D( char *, char *, THD_3dim_dataset *); /* 04 Mar 2003 */
 extern void THD_write_3D( char *, char *, THD_3dim_dataset *); /* 21 Mar 2003 */
 extern Boolean THD_write_niml( THD_3dim_dataset *, int);
+extern Boolean THD_write_gifti( THD_3dim_dataset *, int, int);
 
 extern int  write_niml_file( char *, NI_group *);      /* 12 Jun 2006 [rickr] */
 
@@ -3993,6 +4029,7 @@ extern float THD_get_voxel( THD_3dim_dataset *dset , int ijk , int ival ) ;
 
 extern MRI_IMAGE * THD_extract_series( int , THD_3dim_dataset * , int ) ;
 extern MRI_IMARR * THD_extract_many_series( int, int *, THD_3dim_dataset * );
+extern MRI_IMAGE * THD_dset_to_1Dmri( THD_3dim_dataset *dset ) ;
 
 extern int THD_extract_array( int, THD_3dim_dataset *, int, void * ) ;
 
@@ -4002,6 +4039,21 @@ extern void THD_insert_series( int, THD_3dim_dataset *, int, int, void *, int );
 
 extern int THD_voxel_is_constant( int ind , THD_3dim_dataset *dset ) ;
 
+extern floatvec * THD_fitter( int npt , float *far  ,
+                              int nref, float *ref[], int meth, float *ccon ) ;
+
+extern floatvec * THD_deconvolve( int npt    , float *far   ,
+                                  int minlag , int maxlag   , float *kern,
+                                  int nbase  , float *base[],
+                                  int meth   , float *ccon  , int dcon   ,
+                                  int pencode, float penpar               ) ;
+
+extern floatvec * THD_fitter_fitts( int npt, floatvec *fv,
+                                    int nref, float *ref[], float *far ) ;
+
+extern void       THD_fitter_do_fitts(int qq) ;
+extern floatvec * THD_retrieve_fitts(void) ;
+
 /*--------------- routines that are in thd_detrend.c ---------------*/
 
 extern void get_linear_trend     ( int, float *, float *, float * ) ;
@@ -4009,6 +4061,9 @@ extern void THD_linear_detrend   ( int, float *, float *, float * ) ;
 extern void get_quadratic_trend  ( int, float *, float *, float *, float * ) ;
 extern void THD_quadratic_detrend( int, float *, float *, float *, float * ) ;
 extern void THD_normalize        ( int, float * ) ;
+extern void THD_normRMS          ( int, float * ) ;  /* 06 Jun 2008 */
+extern void THD_normmax          ( int, float * ) ;  /* 26 Mar 2008 */
+extern void THD_normL1           ( int, float * ) ;  /* 26 Mar 2008 */
 extern void THD_cubic_detrend    ( int, float * ) ;  /* 15 Nov 1999 */
 
 extern void THD_const_detrend    ( int, float *, float * ); /* 24 Aug 2001 */
@@ -4192,6 +4247,8 @@ extern THD_dvecmat THD_read_dvecmat( char * , int ) ;  /* THD_read_vecmat.c */
   /* cf. thd_coords.c for cardinal transformation matrix */
 extern void THD_dicom_card_xform (THD_3dim_dataset * dset ,
                       THD_dmat33 *tmat, THD_dfvec3 *dics );
+extern void THD_dicom_real_xform (THD_3dim_dataset * dset ,
+                      THD_dmat33 *tmat, THD_dfvec3 *dics );
 extern float THD_compute_oblique_angle(mat44 ijk_to_dicom44, int verbose);
 
 extern void THD_report_obliquity(THD_3dim_dataset *dset);
@@ -4202,6 +4259,8 @@ extern int THD_get_oblique_report(void);
 
 extern void THD_reset_oblique_report_index(void);
 
+extern void THD_check_oblique_field(THD_3dim_dataset *dset);
+extern void THD_make_cardinal(THD_3dim_dataset *dset);
 
   /* cf. thd_tmask.c */
 
@@ -4607,8 +4666,10 @@ extern float THD_BN_rat (void);
 /*------------------------------------------------------------------------*/
 /* 09 May 2005: stuff for converting a dataset to from a NIML group.      */
 
-extern NI_group * THD_nimlize_dsetatr( THD_3dim_dataset *) ;
-extern NI_group * THD_dset_to_ni_surf_dset( THD_3dim_dataset * , int ) ;
+extern NI_group   * THD_nimlize_dsetatr( THD_3dim_dataset *) ;
+extern NI_group   * THD_dset_to_ni_surf_dset( THD_3dim_dataset * , int ) ;
+extern NI_element * NI_find_element_by_aname(NI_group *,char *,char *,char *);
+
 extern void       THD_dblkatr_from_niml( NI_group *, THD_datablock * ) ;
 extern void       THD_set_dataset_attributes( THD_3dim_dataset * ) ;
 
@@ -4618,6 +4679,10 @@ extern int THD_add_sparse_data( THD_3dim_dataset * , NI_group * ) ;
 extern int THD_add_sparse_bricks( THD_3dim_dataset *, NI_element *) ;
 
 extern int  NI_get_byte_order(NI_element *) ;    /* 29 Aug 2006 [rickr] */
+extern int  dtype_nifti_to_niml(int dtype);      /* 19 Feb 2008 [rickr] */
+extern int  dtype_niml_to_nifti(int dtype);      /* 20 Feb 2008 [rickr] */
+extern int  nsd_string_atr_to_slist(char ***, int, ATR_string *);
+
 
 extern int  get_gni_debug(void) ;                /*  3 Aug 2006 [rickr] */
 extern int  get_gni_to_float(void) ;

@@ -17,10 +17,24 @@ static char * g_history[] =
     " 2.2  Aug 29, 2005 [rickr] - added options -rev_org_dir, -rev_sort_dir\n",
     " 2.3  Sep 01, 2005 [rickr] - added option -tr\n",
     " 2.4  Nov 20, 2006 [rickr] - added option -epsilon\n",
+    " 2.5  Mar 10, 2008 [rickr]\n"
+    "      - if 1 run, GERT_Reco_dicom is named by it\n",
+    "      - apply -gert_outdir in the case of dicom images\n",
+    " 2.6  Mar 17, 2008 [rickr]\n"
+    "      - if 1 volume, GERT_Reco_dicom does not specify nt=1 in to3d\n",
+    " 2.7  Mar 24, 2008 [rickr] - new GERT_Reco options\n"
+    "      - added -gert_filename, -gert_nz, -gert_to3d_prefix (for D Glen)\n",
+    " 2.8  Jul 10, 2008 [rickr] - handle oblique datasets\n"
+    "      - pass oblique transform matrix to plug_realtime\n",
+    " 2.9  Jul 11, 2008 [rickr]\n"
+    "      - slight change in sleeping habits (no real effect)\n"
+    "      - pass all 16 elements of oblique transform matrix\n",
+    " 2.10 Jul 14, 2008 [rickr] - control over real-time sleep habits\n"
+    "      - added -sleep_init, -sleep_vol, -sleep_frac\n"
     "----------------------------------------------------------------------\n"
 };
 
-#define DIMON_VERSION "version 2.4 (November 20, 2006)"
+#define DIMON_VERSION "version 2.10 (July 14, 2008)"
 
 /*----------------------------------------------------------------------
  * todo:
@@ -106,6 +120,12 @@ extern MRI_IMAGE * r_mri_read_dicom( char *fname, int debug, void ** data );
 static int         read_dicom_image( char *pathname, finfo_t *fp, int get_data);
 static int         sort_by_num_suff( char ** names, int nnames);
 
+/* oblique function protos */
+extern void   mri_read_dicom_reset_obliquity();
+extern int    mri_read_dicom_get_obliquity(float *, int);
+extern int    data_is_oblique(void);
+extern int    disp_obl_info(char * mesg);
+
 /*----------------------------------------------------------------------*/
 /* static function declarations */
 
@@ -130,7 +150,7 @@ static int find_next_zoff      ( param_t * p, int start, float zoff );
 static int init_extras         ( param_t * p, ART_comm * ac );
 static int init_options        ( param_t * p, ART_comm * a, int argc,
                                  char * argv[] );
-static int nap_time_from_tr    ( float tr );
+static int nap_time_in_ms      ( float, float );
 static int path_to_dir_n_suffix( char * dir, char * suff, char * path );
 static int read_ge_files       ( param_t * p, int start, int max );
 static int read_ge_image       ( char * pathname, finfo_t * fp,
@@ -217,12 +237,14 @@ static int find_first_volume( vol_t * v, param_t * p, ART_comm * ac )
 {
     int max_im_alloc = IFM_MAX_IM_ALLOC;
     int ret_val;
-    int sleep_secs = -1; /* has not been set from data yet */
+    int sleep_ms = -1; /* has not been set from data yet */
     int vs_state = 0;    /* state for volume search, can reset */
     int fl_start = 0;    /* starting offset into the current flist */
 
     if ( gD.level > 0 )                 /* status */
         fprintf( stderr, "-- scanning for first volume\n" );
+
+    mri_read_dicom_reset_obliquity();   /* to be sure */
 
     ret_val = 0;
     while ( ret_val == 0 )
@@ -247,14 +269,16 @@ static int find_first_volume( vol_t * v, param_t * p, ART_comm * ac )
         {
             if ( gD.level > 0 ) fprintf( stderr, "." );   /* status    */
 
-            /* try to update nap time */
-            if( sleep_secs < 0 && p->nused > 0 )
-                sleep_secs = (p->opts.tr > 0) ? /* TR option overrides image */
-                                nap_time_from_tr(p->opts.tr) :
-                                nap_time_from_tr(p->flist->geh.tr);
+            /* try to update nap time (either given or computed from TR) */
+            if( sleep_ms < 0 ) {
+                if( p->opts.sleep_init > 0 )
+                    sleep_ms = p->opts.sleep_init;
+                else /* TR option overrides image */
+                    sleep_ms = nap_time_in_ms(p->opts.tr,
+                                   p->flist ? p->flist->geh.tr : 0.0);
+            }
 
-            if( sleep_secs < 0 ) sleep( 4 );              /* nap time! */
-            else                 sleep(sleep_secs);
+            iochan_sleep(sleep_ms);
         }
         else if ( ret_val > 0 )         /* success - we have a volume! */
         {
@@ -268,6 +292,12 @@ static int find_first_volume( vol_t * v, param_t * p, ART_comm * ac )
                     disp_ftype("-d ftype: ", p->ftype);
                 }
             }
+
+            mri_read_dicom_get_obliquity(ac->oblique_xform, gD.level>1);
+            ac->is_oblique = data_is_oblique();
+            if( gD.level > 1 )
+                fprintf(stderr,"-- data is %soblique\n",
+                        ac->is_oblique ? "" : "not ");
 
             /* make sure there is enough memory for bad volumes */
             if ( p->nalloc < (4 * v->nim) )
@@ -337,7 +367,7 @@ static int find_more_volumes( vol_t * v0, param_t * p, ART_comm * ac )
     int   run, seq_num, next_im;
     int   fl_index;                     /* current index into p->flist    */
     int   naps;                         /* keep track of consecutive naps */
-    int   nap_time;                     /* sleep time, in seconds         */
+    int   nap_time;                     /* sleep time, in milliseconds    */
 
     if ( v0 == NULL || p == NULL )
     {
@@ -353,8 +383,9 @@ static int find_more_volumes( vol_t * v0, param_t * p, ART_comm * ac )
     fl_index = v0->fn_n + 1;            /* start looking past first volume */
     next_im  = v0->fn_n + 1;            /* for read_ge_files()             */
 
-    nap_time = (p->opts.tr > 0) ? nap_time_from_tr(p->opts.tr) :
-                                  nap_time_from_tr(v0->geh.tr);
+    /* nap time is either given or computed */
+    if( p->opts.sleep_vol > 0 ) nap_time = p->opts.sleep_vol;
+    else nap_time = nap_time_in_ms(p->opts.tr, v0->geh.tr);
 
     if ( gD.level > 0 )                 /* status */
     {
@@ -387,7 +418,7 @@ static int find_more_volumes( vol_t * v0, param_t * p, ART_comm * ac )
 
             if ( (ret_val == 1) || (ret_val == -1) )
             {
-                if ( gD.level > 2 )
+                if ( gD.level > 3 )
                     idisp_vol_t( "-- new volume: ", &vn );
 
                 fl_index += vn.nim;             /* note the new position   */
@@ -404,6 +435,7 @@ static int find_more_volumes( vol_t * v0, param_t * p, ART_comm * ac )
 
                     if ( gD.level > 0 )
                         fprintf( stderr, "\n-- run %d: %d ", run, seq_num );
+                    if ( gD.level > 2 ) disp_obl_info("+d new run obl info: ");
                 }
                 else
                 {
@@ -437,7 +469,8 @@ static int find_more_volumes( vol_t * v0, param_t * p, ART_comm * ac )
         /* now we need new data - skip past last file name index */
 
         ret_val = read_ge_files( p, next_im, p->nalloc );
-        fl_index = 0;                   /* reset flist index          */
+        fl_index = 0;                   /* reset flist index                 */
+        naps = 0;                       /* do not accumulate for stall check */
 
         while ( (ret_val >= 0 ) &&      /* no fatal error, and        */
                 (ret_val < v0->nim) )   /* didn't see full volume yet */
@@ -462,7 +495,7 @@ static int find_more_volumes( vol_t * v0, param_t * p, ART_comm * ac )
                     fprintf( stderr, ". " );
             }
 
-            sleep( nap_time );          /* wake after a couple of TRs */
+            iochan_sleep( nap_time );   /* wake after a couple of TRs */
             naps ++;
 
             ret_val = read_ge_files( p, next_im, p->nalloc );
@@ -506,6 +539,7 @@ static int volume_search(
     float      delta;
     int        bound;                   /* upper bound on image slice  */
     static int prev_bound = -1;         /* note previous 'bound' value */
+    static int bound_cnt  =  0;         /* allow 3 checks */
     int        first = start;           /* first image (start or s+1)  */
     int        last;                    /* final image in volume       */
     int        rv;
@@ -527,8 +561,12 @@ static int volume_search(
         return 0;                   /* not enough data to work with   */
 
     /* maintain the state */
-    if ( *state == 1 && bound == prev_bound ) *state = 2;  /* try to finish */
-    else                                      *state = 1;  /* continue mode */
+    if ( *state == 1 && bound == prev_bound ) {
+        if( bound_cnt < 3 ) bound_cnt++;
+        else *state = 2;  /* try to finish */
+        fprintf(stderr,"** bound_cnt %d, state %d\n", bound_cnt, *state);
+    }
+    else *state = 1;  /* continue mode */
     prev_bound = bound;
 
     rv = check_one_volume(p,start,fl_start,bound,*state, &first,&last,&delta);
@@ -714,7 +752,7 @@ int check_one_volume(param_t *p, int start, int *fl_start, int bound, int state,
     /* note final image in current volume -                        */
     /* if we left the current volume, next is too far by 2, else 1 */
     if ( (fabs(dz - delta) > gD_epsilon) || (run1 != run0) ) last = next - 2;
-    else                                                      last = next - 1;
+    else                                                     last = next - 1;
 
     /* set return values */
     *r_first = first;
@@ -946,6 +984,8 @@ static int volume_match( vol_t * vin, vol_t * vout, param_t * p, int start )
 */
 static int check_error( int * retry, float tr, char * note )
 {
+    int nap_time;
+
     if ( !retry )
         return -1;
 
@@ -957,8 +997,12 @@ static int check_error( int * retry, float tr, char * note )
                     CHECK_NULL_STR(note));
 
         *retry = 0;
-                                /* use tr option, if given */
-        sleep( nap_time_from_tr(gP.opts.tr > 0 ? gP.opts.tr : tr) );
+
+        /* sleep time is either given or computed from some TR */
+        nap_time = (gP.opts.sleep_vol > 0) ? gP.opts.sleep_vol :
+                                             nap_time_in_ms(gP.opts.tr, tr);
+
+        iochan_sleep( nap_time );
         return 0;
     }
 
@@ -1165,7 +1209,7 @@ static int scan_ge_files (
                     return -1;
             }
 
-            if ( gD.level > 1 )
+            if ( gD.level > 2 )
                 fprintf( stderr, "++ allocated image %d at address %p\n",
                          im_num, p->im_store.im_ary[im_num] );
         }
@@ -1205,7 +1249,7 @@ static int scan_ge_files (
             p->im_store.nused++;        /* keep track of used images     */
             fp->index = fnum;           /* store index into fnames array */
 
-            if ( gD.level > 2 )
+            if ( gD.level > 3 )
             {
                 idisp_ge_header_info( p->fnames[fp->index], &fp->geh );
                 idisp_ge_extras( p->fnames[fp->index], &fp->gex );
@@ -1530,6 +1574,7 @@ static int init_options( param_t * p, ART_comm * A, int argc, char * argv[] )
     ART_init_AC_struct( A );            /* init for no real-time comm */
     A->param = p;                       /* store the param_t pointer  */
     p->opts.ep = IFM_EPSILON;           /* allow user to override     */
+    p->opts.sleep_frac = 1.5;           /* fraction of TR to sleep    */
     p->opts.use_dicom = 1;              /* will delete this later...  */
 
     empty_string_list( &p->opts.drive_list, 0 );
@@ -1576,9 +1621,45 @@ static int init_options( param_t * p, ART_comm * A, int argc, char * argv[] )
                 errors++;
             }
         }
+        else if ( ! strncmp( argv[ac], "-gert_filename", 10 ) )
+        {
+            if ( ++ac >= argc )
+            {
+                fputs( "option usage: -gert_filename FILENAME\n", stderr );
+                return 1;
+            }
+
+            p->opts.gert_filename = argv[ac];
+        }
+        else if ( ! strncmp( argv[ac], "-gert_nz", 8 ) )
+        {
+            if ( ++ac >= argc )
+            {
+                fputs( "option usage: -gert_nz NZ\n", stderr );
+                return 1;
+            }
+
+            p->opts.gert_nz = atoi(argv[ac]);
+            if( p->opts.gert_nz <= 0 )
+            {
+                fprintf(stderr,"gert_nz error: NZ must be positive (have %d)\n",
+                        p->opts.gert_nz);
+                return 1;
+            }
+        }
         else if ( ! strncmp( argv[ac], "-GERT_Reco", 7 ) )
         {
             p->opts.gert_reco = 1;      /* output script at the end */
+        }
+        else if ( ! strncmp( argv[ac], "-gert_to3d_prefix", 14 ) )
+        {
+            if ( ++ac >= argc )
+            {
+                fputs( "option usage: -gert_to3d_prefix PREFIX\n", stderr );
+                return 1;
+            }
+
+            p->opts.gert_prefix = argv[ac];
         }
         else if ( ! strncmp( argv[ac], "-help", 5 ) )
         {
@@ -1701,6 +1782,36 @@ static int init_options( param_t * p, ART_comm * A, int argc, char * argv[] )
             }
 
             p->opts.flist_file = argv[ac];
+        }
+        else if ( ! strncmp( argv[ac], "-sleep_frac", 11 ) )
+        {
+            if ( ++ac >= argc )
+            {
+                fputs( "option usage: -sleep_vol TIME\n", stderr );
+                return 1;
+            }
+
+            p->opts.sleep_frac = atof(argv[ac]);
+        }
+        else if ( ! strncmp( argv[ac], "-sleep_init", 11 ) )
+        {
+            if ( ++ac >= argc )
+            {
+                fputs( "option usage: -sleep_init TIME\n", stderr );
+                return 1;
+            }
+
+            p->opts.sleep_init = atoi(argv[ac]);
+        }
+        else if ( ! strncmp( argv[ac], "-sleep_vol", 10 ) )
+        {
+            if ( ++ac >= argc )
+            {
+                fputs( "option usage: -sleep_vol TIME\n", stderr );
+                return 1;
+            }
+
+            p->opts.sleep_vol = atoi(argv[ac]);
         }
         else if ( ! strncmp( argv[ac], "-sort_by_num_suffix", 12 ) )
         {
@@ -2463,8 +2574,15 @@ static int idisp_opts_t( char * info, opts_t * opt )
             "   (argv, argc)       = (%p, %d)\n"
             "   tr                 = %f\n"
             "   (nt, nice, pause)  = (%d, %d, %d)\n"
-            "   (debug, gert_reco) = (%d, %d)\n"
+            "   sleep_frac         = %f\n"
+            "   sleep_init         = %d\n"
+            "   sleep_vol          = %d\n"
+            "   debug              = %d\n"
             "   quit, use_dicom    = %d, %d\n"
+            "   gert_reco          = %d\n"
+            "   gert_filename      = %s\n"
+            "   gert_prefix        = %s\n"
+            "   gert_nz            = %d\n"
             "   dicom_org          = %d\n"
             "   sort_num_suff      = %d\n"
             "   rev_org_dir        = %d\n"
@@ -2482,7 +2600,10 @@ static int idisp_opts_t( char * info, opts_t * opt )
             CHECK_NULL_STR(opt->gert_outdir),
             opt->argv, opt->argc,
             opt->tr, opt->nt, opt->nice, opt->pause,
-            opt->debug, opt->gert_reco, opt->quit, opt->use_dicom,
+            opt->sleep_frac, opt->sleep_init, opt->sleep_vol,
+            opt->debug, opt->quit, opt->use_dicom, opt->gert_reco,
+            CHECK_NULL_STR(opt->gert_filename),
+            CHECK_NULL_STR(opt->gert_prefix), opt->gert_nz,
             opt->dicom_org, opt->sort_num_suff,
             opt->rev_org_dir, opt->rev_sort_dir,
             CHECK_NULL_STR(opt->flist_file),
@@ -2710,6 +2831,15 @@ static int usage ( char * prog, int level )
           "    %s -infile_prefix   s8912345/i  -debug 2\n"
           "    %s -infile_prefix   s8912345/i  -dicom_org -GERT_Reco -quit\n"
           "\n"
+          "  examples (for GERT_Reco):\n"
+          "\n"
+          "    %s -infile_prefix run_003/image -GERT_Reco -quit\n"
+          "    %s -infile_prefix run_003/image -dicom_org -GERT_Reco -quit\n"
+          "    %s -infile_prefix 'run_00[3-5]/image' -GERT_Reco -quit\n"
+          "    %s -infile_prefix anat/image -GERT_Reco -quit\n"
+          "    %s -infile_prefix epi_003/image -dicom_org -quit   \\\n"
+          "          -GERT_Reco -gert_to3d_prefix run3 -gert_nz 42\n"
+          "\n"
           "  examples (with real-time options):\n"
           "\n"
           "    %s -infile_prefix s8912345/i -rt \n"
@@ -2724,13 +2854,15 @@ static int usage ( char * prog, int level )
           "       -rt -nt 120                           \\\n"
           "       -host some.remote.computer            \\\n"
           "       -rt_cmd \"PREFIX 2005_0513_run3\"     \\\n"
+          "       -sleep_frac 1.1                       \\\n"
           "       -quit                                 \n"
           "\n"
           "    This example scans data starting from directory 003, expects\n"
-          "    160 repetitions (TRs), and invokes the real-time processing,\n"
+          "    120 repetitions (TRs), and invokes the real-time processing,\n"
           "    sending data to a computer called some.remote.computer.name\n"
           "    (where afni is running, and which considers THIS computer to\n"
           "    be trusted - see the AFNI_TRUSTHOST environment variable).\n"
+          "    The time to wait for new data is 1.1*TR.\n"
           "\n"
           "  ---------------------------------------------------------------\n"
           "    Multiple DRIVE_AFNI commands are passed through '-drive_afni'\n"
@@ -2766,6 +2898,7 @@ static int usage ( char * prog, int level )
           "\n"
           "  ---------------------------------------------------------------\n",
           prog, prog, prog, prog, prog, prog,
+          prog, prog, prog, prog, prog,
           prog, prog, prog, prog, prog, prog,
           prog, prog, prog, prog, prog, prog, prog );
           
@@ -2900,6 +3033,51 @@ static int usage ( char * prog, int level )
           "        Note: this option may be used multiple times.\n"
           "\n"
           "        See README.realtime for more details.\n"
+          "\n"
+          "    -sleep_init MS    : time to sleep between initial data checks\n"
+          "\n"
+          "        e.g.  -sleep_init 500\n"
+          "\n"
+          "        While Dimon searches for the first volume, it checks for\n"
+          "        files, pauses, checks, pauses, etc., until some are found.\n"
+          "        By default, the pause is approximately 3000 ms.\n"
+          "\n"
+          "        This option, given in milliseconds, will override that\n"
+          "        default time.\n"
+          "\n"
+          "        A small time makes the program seem more responsive.  But\n"
+          "        if the time is too small, and no new files are seen on\n"
+          "        successive checks, Dimon may think the first volume is\n"
+          "        complete (with too few slices).\n"
+          "\n"
+          "        If the minimum time it takes for the scanner to output\n"
+          "        more slices is T, then 1/2 T is a reasonable -sleep_init\n"
+          "        time.  Note: that minimum T had better be reliable.\n"
+          "\n"
+          "        The example shows a sleep time of half of a second.\n"
+          "\n"
+          "    -sleep_vol MS     : time to sleep between volume checks\n"
+          "\n"
+          "        e.g.  -sleep_vol 1000\n"
+          "\n"
+          "        When Dimon finds some volumes and there still seems to be\n"
+          "        more to acquire, it sleeps for a while (and outputs '.').\n"
+          "        This option can be used to specify the amount of time it\n"
+          "        sleeps before checking again.  The default is 1.5*TR.\n"
+          "\n"
+          "        The example shows a sleep time of one second.\n"
+          "\n"
+          "    -sleep_frac FRAC  : new data search, fraction of TR to sleep\n"
+          "\n"
+          "        e.g.  -sleep_frac 0.5\n"
+          "\n"
+          "        When Dimon finds some volumes and there still seems to be\n"
+          "        more to acquire, it sleeps for a while (and outputs '.').\n"
+          "        This option can be used to specify the amount of time it\n"
+          "        sleeps before checking again, as a fraction of the TR.\n"
+          "        The default is 1.5 (as the fraction).\n"
+          "\n"
+          "        The example shows a sleep time of one half of a TR.\n"
           "\n"
           "    -swap  (obsolete) : swap data bytes before sending to afni\n"
           "\n"
@@ -3104,7 +3282,10 @@ static int usage ( char * prog, int level )
           "    -use_imon          : revert to Imon functionality\n"
           "\n"
           "    -version           : show the version information\n"
-          "\n"
+          "\n",
+          prog, prog, prog, prog, prog, prog, prog
+        );
+        printf(
           "  ---------------------------------------------------------------\n"
           "  GERT_Reco options:\n"
           "\n"
@@ -3113,6 +3294,29 @@ static int usage ( char * prog, int level )
           "        Create a script called 'GERT_Reco_dicom', similar to the\n"
           "        one that Ifile creates.  This script may be run to create\n"
           "        the AFNI datasets corresponding to the I-files.\n"
+          "\n"
+          "    -gert_filename FILENAME : save GERT_Reco as FILENAME\n"
+          "\n"
+          "        e.g. -gert_filename gert_reco_anat\n"
+          "\n"
+          "        This option can be used to specify the name of the script,\n"
+          "        as opposed to using GERT_Reco_dicom.\n"
+          "\n"
+          "        By default, if the script is generated for a single run,\n"
+          "        it will be named GERT_Reco_dicom_NNN, where 'NNN' is the\n"
+          "        run number found in the image files.  If it is generated\n"
+          "        for multiple runs, then the default it to name it simply\n"
+          "        GERT_Reco_dicom.\n"
+          "\n"
+          "    -gert_nz NZ        : specify the number of slices in a mosaic\n"
+          "\n"
+          "        e.g. -gert_nz 42\n"
+          "\n"
+          "        Dimon happens to be able to write valid to3d commands\n"
+          "        for mosaic (volume) data, even though it is intended for\n"
+          "        slices.  In the case of mosaics, the user must specify the\n"
+          "        number of slices in an image file, or any GERT_Reco script\n"
+          "        will specify nz as 1.\n"
           "\n"
           "    -gert_outdir OUTPUT_DIR  : set output directory in GERT_Reco\n"
           "\n"
@@ -3134,11 +3338,23 @@ static int usage ( char * prog, int level )
           "\n"
           "        See 'to3d -help' for more information.\n"
           "\n"
+          "    -gert_to3d_prefix PREFIX : set to3d PREFIX in output script\n"
+          "\n"
+          "        e.g. -gert_to3d_prefix anatomy\n"
+          "\n"
+          "        When creating a GERT_Reco script that calls 'to3d', this\n"
+          "        option will be applied to '-prefix'.\n"
+          "\n"
+          "        The default prefix is 'OutBrick_run_NNN', where NNN is the\n"
+          "        run number found in the images.\n"
+          "\n"
+          "      * Caution: this option should only be used when the output\n"
+          "        is for a single run.\n"
+          "\n"
           "  ---------------------------------------------------------------\n"
           "\n"
           "  Author: R. Reynolds - %s\n"
           "\n",
-          prog, prog, prog, prog, prog, prog, prog,
           DIMON_VERSION
         );
 
@@ -3308,18 +3524,26 @@ static int create_gert_dicom( stats_t * s, param_t * p )
 {
     opts_t * opts = &p->opts;
     FILE   * fp, * nfp;                   /* script and name file pointers */
-    char   * script = IFM_GERT_DICOM;     /* output script filename */
+    char     script[32] = IFM_GERT_DICOM; /* output script filename */
+    char   * sfile;                       /* pointer to script      */
+    char     prefixname[32];              /* output prefix          */
+    char   * pname;                       /* pointer to prefix      */
+    char     command[64];                 /* command line for chmod */
     char   * spat;                        /* slice acquisition pattern */
     char     outfile[32];                 /* run files */
     char     TR[16];                      /* for printing TR w/out zeros */
     int      num_valid, c, findex;
+    int      first_run = -1;
 
     /* if the user did not give a slice pattern string, use the default */
     spat = opts->sp ? opts->sp : IFM_SLICE_PAT;
 
     for ( c = 0, num_valid = 0; c < s->nused; c++ )
         if ( s->runs[c].volumes > 0 )
+        {
+            if( first_run < 0 ) first_run = c;  /* note first valid run */
             num_valid++;
+        }
 
     if ( num_valid == 0 )
     {
@@ -3327,10 +3551,16 @@ static int create_gert_dicom( stats_t * s, param_t * p )
         return 0;
     }
 
-    if ( (fp = fopen( script, "w" )) == NULL )
+    sfile = script;                     /* init to script string   */
+    if ( opts->gert_filename )          /* override with user name */
+        sfile = opts->gert_filename;
+    else if ( num_valid == 1 && first_run >= 0 )    /* name by run */
+        sprintf(script, "%s_%03d", IFM_GERT_DICOM, first_run);
+
+    if ( (fp = fopen( sfile, "w" )) == NULL )
     {
         fprintf( stderr, "failure: cannot open '%s' for writing, "
-                 "check permissions\n", script );
+                 "check permissions\n", sfile );
         return -1;
     }
 
@@ -3342,12 +3572,23 @@ static int create_gert_dicom( stats_t * s, param_t * p )
              "#\n"
              "# Please modify the following options for your own evil uses.\n"
              "\n"
-             "set OutlierCheck = ''         # use '-skip_outliers' to skip\n"
-             "set OutPrefix    = 'OutBrick' # prefix for datasets\n"
-             "\n"
-             "\n",
+             "set OutlierCheck = ''         # use '-skip_outliers' to skip\n",
              IFM_PROG_NAME
            );
+
+    if( !opts->gert_prefix )
+        fprintf(fp, "set OutPrefix    = 'OutBrick' # prefix for datasets\n");
+
+    /* maybe use an output directory */
+    if( opts->gert_outdir )
+        fprintf(fp,
+             "set OutDir       = '%s'     # output directoy for datasets\n"
+             "\n\n"
+             "#---------- make sure output directory exists ----------\n"
+             "test -d $OutDir || mkdir $OutDir\n",
+             opts->gert_outdir );
+
+    fprintf(fp, "\n\n");
 
     /* create run files, containing lists of all files in a run */
     for ( c = 0; c < s->nused; c++ )
@@ -3372,16 +3613,43 @@ static int create_gert_dicom( stats_t * s, param_t * p )
             clear_float_zeros(TR);
 
             /* and write to3d command */
-            fprintf(fp, "to3d -prefix ${OutPrefix}_run_%03d  \\\n"
-                        "     -time:zt %d %d %ssec %s \\\n"
-                        "     -@ < %s\n\n",
-                    c, s->slices, s->runs[c].volumes, TR, spat, outfile);
+            if( opts->gert_outdir )
+                fprintf(fp, "#------- create dataset for run #%d -------\n",c);
+
+            /* if volumes = 1, do not print timing information, 17 Mar 2008 */
+
+            if( ! opts->gert_prefix )
+            {
+                sprintf(prefixname, "${OutPrefix}_run_%03d", c);
+                pname = prefixname;
+            } else
+                pname = opts->gert_prefix;
+
+            fprintf(fp, "to3d -prefix %s  \\\n", pname );
+
+            if( s->runs[c].volumes > 1 )
+            {
+                if( opts->gert_nz && s->slices != 1 )
+                    fprintf(stderr,"** warning: overriding %d slices with %d"
+                                   " in script %s\n",
+                            s->slices, opts->gert_nz, sfile);
+                fprintf(fp, "     -time:zt %d %d %ssec %s   \\\n",
+                        opts->gert_nz ? opts->gert_nz : s->slices,
+                        s->runs[c].volumes, TR, spat);
+            }
+
+            fprintf(fp, "     -@ < %s\n\n", outfile);
+
+            /* and possibly move output datasets there */
+            if( opts->gert_outdir )
+                fprintf(fp, "mv %s+orig.* $OutDir\n\n", pname);
         }
 
     fclose( fp );
 
     /* now make it an executable */
-    system( "chmod u+x " IFM_GERT_DICOM );
+    sprintf(command, "chmod u+x %s", sfile );
+    system( command );
 
     return 0;
 }
@@ -3567,24 +3835,31 @@ static int show_run_stats( stats_t * s )
 
 
 /* ----------------------------------------------------------------------
- * given tr, compute a sleep time of approximate 2*TR
+ * given tr (in seconds), return a sleep time in ms (approx. 1.5*TR)
+ *
+ * pass 2 potential trs, and apply the first positive one, else use 4s
  * ----------------------------------------------------------------------
 */
-static int nap_time_from_tr( float tr )
+static int nap_time_in_ms( float t1, float t2 )
 {
-    float tr2 = 2 * tr;
+    float tr, fr;
     int   nap_time;
 
-    if ( tr2 < 1 )
-        return 1;
+    if     ( t1 > 0.0 ) tr = t1;
+    else if( t2 > 0.0 ) tr = t2;
+    else                tr = 2.0;
 
-    if ( tr2 > 30 )
-        return 30;                      /* ??? tres big */
+    /* note the fraction of a TR to sleep */
+    fr = ( gP.opts.sleep_frac > 0.0 ) ? gP.opts.sleep_frac : 1.5;
 
-    nap_time = (int)(tr2 + 0.9);
+    nap_time = (int)(1000.0*fr*tr + 0.5);       /* convert to time, in ms */
+
+    if ( nap_time < 10 )    return 10;          /* 10 ms is minimum */
+
+    if ( nap_time > 30000 ) return 30000;       /* 30 sec is maximum */
 
     if ( gD.level > 1 )
-        fprintf(stderr,"-d computed nap_time is %d seconds (TR = %.2f)\n",
+        fprintf(stderr,"-d computed nap_time is %d ms (TR = %.2f)\n",
                 nap_time, tr );
 
     return( nap_time );
@@ -3623,7 +3898,7 @@ static int find_next_zoff( param_t * p, int start, float zoff )
 /* ----------------------------------------------------------------------
  * Given:  run     > 0
  *         seq_num > 0
- *         naps
+ *         naps_time    in ms
  *
  * If naps is too big, and the run is incomplete, print an obnoxious
  * warning message to the user.

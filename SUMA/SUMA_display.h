@@ -338,8 +338,6 @@ SUMA_Boolean SUMA_UpdateColPlaneShellAsNeeded(SUMA_SurfaceObject *SO);
 void SUMA_cb_createSurfaceCont(Widget w, XtPointer data, XtPointer callData);
 SUMA_Boolean SUMA_display_edge_striplist(DList *striplist, SUMA_SurfaceViewer *sv, SUMA_SurfaceObject *SO, char *DispOptions);
 
-
-
 #define SUMA_DrawROI_ParentLabel_help  \
    "Label of the ROI's parent surface." 
 

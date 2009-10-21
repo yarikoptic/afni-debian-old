@@ -92,7 +92,8 @@ static AFNI_friend afni_friends[] = {
   { "I Gobbini"      , (     2                                          ) } ,
   { "SM Laconte"     , (                      32 | 64                   ) } ,
   { "L Pezawas"      , (     2 | 4 | 8                                  ) } ,
-  { "W Gaggl"        , (         4 | 8                                  ) }
+  { "W Gaggl"        , (         4 | 8                                  ) } ,
+  { "V Hradil"       , (         4 | 8 | 16                             ) } ,
 } ;
 
 #define NUM_FRIENDS (sizeof(afni_friends)/sizeof(AFNI_friend))
@@ -298,6 +299,7 @@ static mday holiday[] = {
    {APR, 8,"Siddhartha Gautama's birthday"                           } ,
    {APR, 9,"Anniversary of Lee's surrender at Appomattox"            } ,
    {APR,10,"Anniversary of loss of USS Thresher"                     } ,
+   {APR,10,"National Sibling Day (USA)"                              } ,
    {APR,11,"Dean Acheson's birthday"                                 } ,
    {APR,12,"Anniversary of Yuri Gagarin's spaceflight"               } ,
    {APR,13,"Thomas Jefferson's birthday"                             } ,

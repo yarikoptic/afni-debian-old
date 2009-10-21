@@ -32,17 +32,16 @@ static int  partial_buf_size    (long long);
 static int  push_gifti          (gxml_data *, const char **);
 static int  push_meta           (gxml_data *);
 static int  push_md             (gxml_data *);
-static int  push_name           (gxml_data *, const char **);
-static int  push_value          (gxml_data *, const char **);
-static int  push_LT             (gxml_data *, const char **);
+static int  push_name           (gxml_data *);
+static int  push_value          (gxml_data *);
+static int  push_LT             (gxml_data *);
 static int  push_label          (gxml_data *, const char **);
 static int  push_darray         (gxml_data *, const char **);
 static int  push_cstm           (gxml_data *);
 static int  push_data           (gxml_data *);
 static int  push_dspace         (gxml_data *);
 static int  push_xspace         (gxml_data *);
-static int  push_xform          (gxml_data *, const char **);
-static int  push_cdata          (gxml_data *, const char **);
+static int  push_xform          (gxml_data *);
 static int  reset_xml_buf       (gxml_data *, char **, int *);
 
 static void show_attrs          (gxml_data *,int,const char **);
@@ -61,6 +60,26 @@ static int  show_bad_b64_chars  (const char *, int);
 
 static giiMetaData * find_current_MetaData(gxml_data *, int);
 
+#ifndef XMLCALL
+/* XMLCALL was added to expat in version 1.95.7 to define a calling convention,
+ * as cdecl
+ */
+#if defined(XML_USE_MSC_EXTENSIONS)
+#define XMLCALL __cdecl
+#elif defined(__GNUC__) && defined(__i386)
+#define XMLCALL __attribute__((cdecl))
+#else
+#define XMLCALL 
+#endif
+#endif /* not defined XMLCALL */
+
+#ifndef XML_STATUS_ERROR
+#define XML_STATUS_ERROR 0
+#endif
+#ifndef XML_STATUS_OK
+#define XML_STATUS_OK 1
+#endif
+
 static void XMLCALL cb_start_ele    (void *, const char *, const char **);
 static void XMLCALL cb_end_ele      (void *, const char *);
 static void XMLCALL cb_char         (void *, const char *, int);
@@ -77,8 +96,8 @@ static void XMLCALL cb_elem_dec     (void *, const char *, XML_Content *);
 static XML_Parser init_xml_parser   (void *);
 
 /* writing functions */
-static int  gxml_write_gifti(gxml_data *, FILE *);
-static int  gxml_write_preamble(gxml_data *, FILE *);
+static int  gxml_write_gifti        (gxml_data *, FILE *);
+static int  gxml_write_preamble     (FILE *);
 
 static int  ewrite_text_ele         (int, const char *, const char *,
                                      int, int, FILE *);
@@ -141,7 +160,7 @@ static gxml_data GXD = {
 };
 
 #ifndef HAVE_ZLIB  /* so we can print a callback message once per file */
-    static int g_first_zlib = 1;
+    static int g_first_zlib_err_msg = 1;
 #endif
 
 /*--- Base64 binary encoding and decoding tables ---*/
@@ -214,11 +233,11 @@ gifti_image * gxml_read_image(const char * fname, int read_data,
 {
     gxml_data  * xd = &GXD;     /* point to global struct */
     XML_Parser   parser;
+    unsigned     blen;
     FILE       * fp;
     char       * buf = NULL;
     int          bsize;    /* be sure it doesn't change at some point */
-    int          done = 0, blen;
-    int          pcount = 1;
+    int          done = 0, pcount = 1;
  
     if( init_gxml_data(xd, 0, dalist, dalen) ) /* reset non-user variables */
         return NULL;
@@ -263,7 +282,7 @@ gifti_image * gxml_read_image(const char * fname, int read_data,
         if( reset_xml_buf(xd, &buf, &bsize) )  /* fail out */
             { gifti_free_image(xd->gim); xd->gim = NULL; break; }
 
-        blen = (int)fread(buf, 1, bsize, fp);
+        blen = fread(buf, 1, bsize, fp);
         done = blen < sizeof(buf);
 
         if(xd->verb > 3) fprintf(stderr,"-- XML_Parse # %d\n", pcount);
@@ -581,7 +600,7 @@ static int init_gxml_data(gxml_data *dp, int doall, const int *dalist, int len)
     dp->gim   = NULL;
 
 #ifndef HAVE_ZLIB  /* if we don't have this (and need it), print warnings */
-    g_first_zlib = 1;
+    g_first_zlib_err_msg = 1;
 #endif
 
     return errs;
@@ -709,17 +728,17 @@ static int epush( gxml_data * xd, int etype, const char * ename,
         case GXML_ETYPE_GIFTI      : return push_gifti (xd, attr);
         case GXML_ETYPE_META       : return push_meta  (xd);
         case GXML_ETYPE_MD         : return push_md    (xd);
-        case GXML_ETYPE_NAME       : return push_name  (xd, attr);
-        case GXML_ETYPE_VALUE      : return push_value (xd, attr);
-        case GXML_ETYPE_LABELTABLE : return push_LT    (xd, attr);
+        case GXML_ETYPE_NAME       : return push_name  (xd);
+        case GXML_ETYPE_VALUE      : return push_value (xd);
+        case GXML_ETYPE_LABELTABLE : return push_LT    (xd);
         case GXML_ETYPE_LABEL      : return push_label (xd, attr);
         case GXML_ETYPE_DATAARRAY  : return push_darray(xd, attr);
         case GXML_ETYPE_CSTM       : return push_cstm  (xd);
         case GXML_ETYPE_DATA       : return push_data  (xd);
         case GXML_ETYPE_DATASPACE  : return push_dspace(xd);
         case GXML_ETYPE_XFORMSPACE : return push_xspace(xd);
-        case GXML_ETYPE_MATRIXDATA : return push_xform (xd, attr);
-        case GXML_ETYPE_CDATA      : return push_cdata (xd, attr);
+        case GXML_ETYPE_MATRIXDATA : return push_xform (xd);
+        case GXML_ETYPE_CDATA      : return 0;  /* do nothing */
         default:
             fprintf(stderr,"** epush, unknow type '%s'\n",enames[etype]);
             break;
@@ -733,12 +752,14 @@ static int push_gifti(gxml_data * xd, const char ** attr )
 {
     gifti_image *     gim;
     int               c;
+
     if( !xd ) return 1;
-    if( !attr ) return 0;
 
     /* be explicit with pointers (struct should be clear) */
     gim = xd->gim;
     gifti_clear_gifti_image(gim);
+
+    if( !attr ) return 0;
 
     for(c = 0; attr[c]; c+= 2 )
         if( gifti_str2attr_gifti(gim, attr[c], attr[c+1]) )
@@ -834,7 +855,7 @@ static int push_md(gxml_data * xd)
 }
 
 /* set cdata to the current meta->name address, and clear it */
-static int push_name(gxml_data * xd, const char ** attr)
+static int push_name(gxml_data * xd)
 {
     giiMetaData * md = find_current_MetaData(xd, 2);  /* name is 2 below */
 
@@ -848,7 +869,7 @@ static int push_name(gxml_data * xd, const char ** attr)
 }
 
 /* set cdata to the current meta->value address, and clear it */
-static int push_value(gxml_data * xd, const char ** attr)
+static int push_value(gxml_data * xd)
 {
     giiMetaData * md = find_current_MetaData(xd, 2);  /* value is 2 below */
 
@@ -861,8 +882,8 @@ static int push_value(gxml_data * xd, const char ** attr)
     return 0;
 }
 
-/* initialize the gifti_element and set attributes */
-static int push_LT(gxml_data * xd, const char ** attr)
+/* check that LT is currently empty */
+static int push_LT(gxml_data * xd)
 {
     giiLabelTable * lt = &xd->gim->labeltable;
 
@@ -873,7 +894,8 @@ static int push_LT(gxml_data * xd, const char ** attr)
     return 0;
 }
 
-/* initialize the gifti_element and set attributes */
+/* increase LabelTable length by 1, and fill new entries
+ * (note that the Index attribute is required) */
 static int push_label(gxml_data * xd, const char ** attr)
 {
     giiLabelTable * lt = &xd->gim->labeltable;
@@ -883,9 +905,10 @@ static int push_label(gxml_data * xd, const char ** attr)
     lt->label = (char **)realloc(lt->label, lt->length * sizeof(char *));
 
     /* set index from the attributes */
-    if( !attr[0] || strcmp(attr[0],"Index"))
+    if( !attr || !attr[0] || strcmp(attr[0],"Index")) {
+        fprintf(stderr,"** Label %d missing Index attribute\n", lt->length-1);
         lt->index[lt->length-1] = 0;
-    else
+    } else
         lt->index[lt->length-1] = atoi(attr[1]);
 
     xd->cdata = lt->label + (lt->length-1); /* addr of newest (char *) */
@@ -986,15 +1009,8 @@ static int pop_darray(gxml_data * xd)
     }
 
     /* possibly read data from an external file */
-    if( da->ext_fname && *da->ext_fname ) {
-        if( da->data ) {
-            fprintf(stderr,"** have data, but external filename '%s'\n",
-                    da->ext_fname);
-        } else {
-            fprintf(stderr,"** TODO: read data from file '%s', offset '%lld'\n",
-                    da->ext_fname, da->ext_offset);
-        }
-    }
+    if( da->ext_fname && *da->ext_fname )
+        (void)gifti_read_extern_DA_data(da); /* nothing to do on failure */
 
     /* possibly perform byte-swapping on data */
     if( da->data && da->encoding != GIFTI_ENCODING_ASCII ) {
@@ -1017,19 +1033,17 @@ static int pop_darray(gxml_data * xd)
 }
 
 
-/* verify the elements are clear */
+/* make space for a new CS structure in the current DataArray */
 static int push_cstm(gxml_data * xd)
 {
     giiDataArray * da = xd->gim->darray[xd->gim->numDA-1]; /* current DA */
 
-    /* NIFTI_INTENT_POINTSET is 1008 - don't know whether to use nifti1.h */
-    if( da->intent != 1008 && xd->verb > 0 )
+    if( da->intent != NIFTI_INTENT_POINTSET && xd->verb > 0 )
         fprintf(stderr,"** DA[%d] has coordsys with intent %s (should be %s)\n",
                 xd->gim->numDA-1, gifti_intent_to_string(da->intent),
-                gifti_intent_to_string(1008));
+                gifti_intent_to_string(NIFTI_INTENT_POINTSET));
 
-    da->coordsys = (giiCoordSystem *)malloc(sizeof(giiCoordSystem));
-    gifti_clear_CoordSystem(da->coordsys);
+    if( gifti_add_empty_CS(da) ) return 1;
 
     return 0;
 }
@@ -1056,9 +1070,9 @@ static int push_data(gxml_data * xd)
     if( da->encoding == GIFTI_ENCODING_B64GZ ) {
 
 #ifndef HAVE_ZLIB  /* we don't know the encoding until push_darray */
-        if( g_first_zlib ) {
+        if( g_first_zlib_err_msg ) {
             fprintf(stderr,"** no ZLIB: skipping all compressed data\n");
-            g_first_zlib = 0;
+            g_first_zlib_err_msg = 0;
         }
         xd->skip = xd->depth;
         return 1;   /* return and skip this element */
@@ -1094,13 +1108,21 @@ static int push_data(gxml_data * xd)
 /* point cdata to the correct location and init */
 static int push_dspace(gxml_data * xd)
 {
-    if( !xd->gim->darray[xd->gim->numDA-1]->coordsys ) {
+    int CSind = xd->gim->darray[xd->gim->numDA-1]->numCS-1;
+    if( CSind < 0 ) {
+        fprintf(stderr,"** PD: bad numCS %d in darray %d, skipping...",
+                CSind+1, xd->gim->numDA-1);
+        xd->skip = xd->depth;
+        return 1;
+    }
+
+    if( !xd->gim->darray[xd->gim->numDA-1]->coordsys[CSind] ) {
         fprintf(stderr,"** found dataspace without coordsys, skipping...\n");
         xd->skip = xd->depth;
         return 1;
     }
 
-    xd->cdata = &xd->gim->darray[xd->gim->numDA-1]->coordsys->dataspace;
+    xd->cdata = &xd->gim->darray[xd->gim->numDA-1]->coordsys[CSind]->dataspace;
     *xd->cdata = NULL;                      /* init to empty */
     xd->clen = 0;
     return 0;
@@ -1109,22 +1131,38 @@ static int push_dspace(gxml_data * xd)
 /* point cdata to the correct location and init */
 static int push_xspace(gxml_data * xd)
 {
-    if( !xd->gim->darray[xd->gim->numDA-1]->coordsys ) {
+    int CSind = xd->gim->darray[xd->gim->numDA-1]->numCS-1;
+    if( CSind < 0 ) {
+        fprintf(stderr,"** PX: bad numCS %d in darray %d, skipping...",
+                CSind+1, xd->gim->numDA-1);
+        xd->skip = xd->depth;
+        return 1;
+    }
+
+    if( !xd->gim->darray[xd->gim->numDA-1]->coordsys[CSind] ) {
         fprintf(stderr,"** found xformspace without coordsys, skipping...\n");
         xd->skip = xd->depth;
         return 1;
     }
 
-    xd->cdata = &xd->gim->darray[xd->gim->numDA-1]->coordsys->xformspace;
+    xd->cdata = &xd->gim->darray[xd->gim->numDA-1]->coordsys[CSind]->xformspace;
     *xd->cdata = NULL;                      /* init to empty */
     xd->clen = 0;
     return 0;
 }
 
 /* verify the processing buffer space */
-static int push_xform(gxml_data * xd, const char ** attr)
+static int push_xform(gxml_data * xd)
 {
-    if( !xd->gim->darray[xd->gim->numDA-1]->coordsys ) {
+    int CSind = xd->gim->darray[xd->gim->numDA-1]->numCS-1;
+    if( CSind < 0 ) {
+        fprintf(stderr,"** PXform: bad numCS %d in darray %d, skipping...",
+                CSind+1, xd->gim->numDA-1);
+        xd->skip = xd->depth;
+        return 1;
+    }
+
+    if( !xd->gim->darray[xd->gim->numDA-1]->coordsys[CSind] ) {
         fprintf(stderr,"** found xform without coordsys, skipping...\n");
         xd->skip = xd->depth;
         return 1;
@@ -1143,12 +1181,6 @@ static int push_xform(gxml_data * xd, const char ** attr)
     xd->dind = 0;       /* init for filling */
     xd->doff = 0;
 
-    return 0;
-}
-
-/* if we are in a char append state, append */
-static int push_cdata(gxml_data * xd, const char ** attr)
-{
     return 0;
 }
 
@@ -1730,15 +1762,21 @@ static int append_to_xform(gxml_data * xd, const char * cdata, int len)
     double    * dptr;
     char      * cptr;
     long long   rem_vals;
-    int         rem_len = len, copy_len, unused;
+    int         rem_len = len, copy_len, unused, CSind;
     int         type = gifti_str2datatype("NIFTI_TYPE_FLOAT64"); /* double */
 
-    if( !da || !xd->xlen || !xd->xdata || xd->dind < 0 ) {
-        fprintf(stderr,"** A2X: bad setup (%p,%d,%p,%lld)\n",
-                (void *)da, xd->xlen, (void *)xd->xdata, xd->dind);
+    if( !da || !xd->xlen || !xd->xdata || xd->dind < 0 || da->numCS <= 0) {
+        fprintf(stderr,"** A2X: bad setup (%p,%d,%p,%lld,%d)\n",
+                (void *)da, xd->xlen, (void *)xd->xdata, xd->dind, da->numCS);
         return 1;
     } else if( xd->verb > 4 )
         fprintf(stderr,"++ appending %d bytes to xform\n",len);
+
+    CSind = da->numCS-1;
+    if( !da->coordsys || !da->coordsys[CSind] ) {
+        fprintf(stderr,"** A2X: bad coordsys[%d]\n", CSind);
+        return 1;
+    }
 
     /* if there is only whitespace, blow outta here */
     if( whitespace_len(cdata, len) == len ) { xd->doff = 0; return 0; }
@@ -1771,7 +1809,7 @@ static int append_to_xform(gxml_data * xd, const char * cdata, int len)
 
         /*--- process the ascii data ---*/
         if( xd->dind == 0 ) mod_prev = 0;       /* nothing to modify at first */
-        dptr = (double *)da->coordsys->xform + (xd->dind);  /* as array */
+        dptr = (double *)da->coordsys[CSind]->xform + (xd->dind); /* as array */
         xd->doff = decode_ascii(xd,
                         xd->xdata,              /* data source */
                         xd->doff+copy_len,      /* data length */
@@ -2361,10 +2399,11 @@ static int gxml_write_gifti(gxml_data * xd, FILE * fp)
         fprintf(stderr,"++ gifti image, numDA = %d, size = %lld MB\n",
                 gim->numDA, gifti_gim_DA_size(gim,1));
 
-    gxml_write_preamble(xd, fp);
+    gxml_write_preamble(fp);
     fprintf(fp,"<%s",enames[GXML_ETYPE_GIFTI]);
     if(gim->version){ fprintf(fp," Version=\"%s\"", gim->version); first = 0; }
-    fprintf(fp,"%sNumberOfDataArrays=\"%d\"", first ? "" : "  ", gim->numDA);
+    /* add space if no version, requested by E Anderson */
+    fprintf(fp,"%sNumberOfDataArrays=\"%d\"", first ? " " : "  ", gim->numDA);
 
     /* add any extra attributes */
     offset = strlen(enames[GXML_ETYPE_GIFTI]) + 2;
@@ -2373,7 +2412,7 @@ static int gxml_write_gifti(gxml_data * xd, FILE * fp)
 
     xd->depth++;
     ewrite_meta(xd, &gim->meta, fp);
-    ewrite_LT(xd, &gim->labeltable, 0, fp);
+    ewrite_LT(xd, &gim->labeltable, 1, fp);
 
     /* write the giiDataArray */
     if(!gim->darray) {
@@ -2428,7 +2467,8 @@ static int ewrite_darray(gxml_data * xd, giiDataArray * da, FILE * fp)
     /* write sub-elements */
     xd->depth++;
     ewrite_meta(xd, &da->meta, fp);
-    ewrite_coordsys(xd, da->coordsys, fp);
+    for( c = 0; c < da->numCS; c++ )
+        ewrite_coordsys(xd, da->coordsys[c], fp);
     ewrite_data(xd, da, fp);
     xd->depth--;
 
@@ -2457,7 +2497,10 @@ static int ewrite_data(gxml_data * xd, giiDataArray * da, FILE * fp)
         return 0;
     }
 
-    fprintf(fp, "%*s<%s>", spaces, "", enames[GXML_ETYPE_DATA]);
+    if (da->encoding == GIFTI_ENCODING_EXTBIN) /* then write as empty */ 
+        fprintf(fp, "%*s<%s/>\n", spaces, "", enames[GXML_ETYPE_DATA]);
+    else  /* write normal Data tag */
+        fprintf(fp, "%*s<%s>", spaces, "", enames[GXML_ETYPE_DATA]);
 
     if( xd->dstore ) {
         if( da->encoding == GIFTI_ENCODING_ASCII ) {
@@ -2493,13 +2536,18 @@ static int ewrite_data(gxml_data * xd, giiDataArray * da, FILE * fp)
 #else
             fprintf(stderr,"** ewrite_data: no ZLIB to compress with\n");
 #endif
+        } else if (da->encoding == GIFTI_ENCODING_EXTBIN)  {
+            /* write to external file */
+            if( gifti_write_extern_DA_data(da) ) errs = 1;
         } else {
             fprintf(stderr,"** unknown data encoding, %d\n", da->encoding);
             errs = 1;
         }
     }
 
-    fprintf(fp, "</%s>\n", enames[GXML_ETYPE_DATA]);
+    if (da->encoding != GIFTI_ENCODING_EXTBIN)
+        fprintf(fp, "</%s>\n", enames[GXML_ETYPE_DATA]);
+
     return errs;
 }
 
@@ -2718,7 +2766,7 @@ static int ewrite_LT(gxml_data *xd, giiLabelTable *lt, int in_CDATA, FILE *fp)
 
         sprintf(attr, " Index=\"%d\"", lt->index[c]);
         ewrite_text_ele(GXML_ETYPE_LABEL, lt->label[c], attr,
-                        spaces+xd->indent, 0, fp);
+                        spaces+xd->indent, in_CDATA, fp);
     }
     fprintf(fp, "%*s</LabelTable>\n", spaces, "");
 
@@ -2813,7 +2861,7 @@ static int ewrite_str_attr(const char * name, const char * value, int spaces,
 }
 
 
-static int gxml_write_preamble(gxml_data * xd, FILE * fp)
+static int gxml_write_preamble(FILE * fp)
 {
     char * version  = GIFTI_XML_VERSION;
     char * encoding = GIFTI_XML_ENCODING;

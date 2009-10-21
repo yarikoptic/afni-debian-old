@@ -5,7 +5,8 @@ import option_list, afni_util
 
 g_help_string = """
 ===========================================================================
-Convert a set of 0/1 stim files into a set of stim_times files.
+Convert a set of 0/1 stim files into a set of stim_times files, or
+convert real-valued files into those for use with -stim_times_AM2.
 
 Each input stim file can have a set of columns of stim classes,
      and multiple input files can be used.  Each column of an
@@ -37,6 +38,8 @@ Corresponding stim_times files, assume TR = 2.5 seconds:
         stim.02.1D:     5    7.5
         stim.03.1D:     15
 
+---------------------------------------------------------------------------
+
 Options: -files file1.1D file2.1D ...   : specify stim files
          -prefix PREFIX                 : output prefix for files
          -nruns  NRUNS                  : number of runs
@@ -45,6 +48,30 @@ Options: -files file1.1D file2.1D ...   : specify stim files
          -offset OFFSET                 : add OFFSET to all output times
          -verb   LEVEL                  : provide verbose output
 
+other options:
+         -amplitudes                    : Marry times with amplitudes
+
+                This is to make files for -stim_times_AM1 or -stim_times_AM2
+                in 3dDeconvolve (for 2-parameter amplitude modulation).
+
+                With this option, the output files do not just contain times,
+                they contain values in the format 'time*amplitude', where the
+                amplitude is the non-zero value in the input file.
+
+                For example, the input might look like:
+
+                   0
+                   2.4
+                   0
+                   0
+                   -1.2
+
+                On a TR=2.5 grid, this would (skip zeros as usual and) output:
+
+                   2.5*2.4 10*-1.2
+
+---------------------------------------------------------------------------
+
 examples:
 
     1. Given 3 stimulus classes, A, B and C, each with a single column
@@ -52,25 +79,35 @@ examples:
        3 stim_times files (stimes.01.1D, stimes.02.1D, stimes.02.1D)
        having the times, in seconds, of the stimuli, one run per row.
 
-            make_stim_files -files stimA.1D stimB.1D stimC.1D   \\
-                            -prefix stimes -tr 2.5 -nruns 7 -nt 100
+            make_stim_times.py -files stimA.1D stimB.1D stimC.1D   \\
+                               -prefix stimes1 -tr 2.5 -nruns 7 -nt 100
 
     2. Same as 1, but suppose stim_all.1D has all 3 stim types (so 3 columns).
 
-            make_stim_files -files stim_all.1D -prefix stimes -tr 2.5 \\
-                            -nruns 7 -nt 100
+            make_stim_times.py -files stim_all.1D -prefix stimes2 -tr 2.5 \\
+                               -nruns 7 -nt 100
 
     3. Same as 2, but the stimuli were presented at the middle of the TR, so
        add 1.25 seconds to each stimulus time.
 
-            make_stim_files -files stim_all.1D -prefix stimes -tr 2.5 \\
-                            -nruns 7 -nt 100 -offset 1.25
+            make_stim_times.py -files stim_all.1D -prefix stimes3 -tr 2.5 \\
+                               -nruns 7 -nt 100 -offset 1.25
 
     4. An appropriate conversion of stim_files to stim_times for the 
        example in AFNI_data2 (HowTo #5).
 
             make_stim_times.py -prefix stim_times -tr 1.0 -nruns 10 -nt 272 \\
                                -files misc_files/all_stims.1D
+
+    5. Generate files for 2-term amplitude modulation in 3dDeconvolve (i.e.
+       for use with -stim_times_AM2).  For any TR that has a non-zero value
+       in the input, the output will have that current time along with the
+       non-zero amplitude value in the format time:value.
+
+       Just add -amplitudes to any existing command.
+
+            make_stim_times.py -files stim_weights.1D -prefix stimes5 -tr 2.5 \\
+                               -nruns 7 -nt 100 -amplitudes
 
 - R Reynolds, Nov 17, 2006
 ===========================================================================
@@ -83,24 +120,43 @@ g_mst_history = """
     1.1  Feb 02, 2007:
          - only print needed '*' (or two) for first run
          - added options -hist, -ver
+    1.2  May 21, 2008:
+         - added -amplitudes for Rutvik Desai
+    1.3  June 19, 1008:
+         - help update and change ':' separator to '*' when using -amplitudes
+         - added -show_valid_opts
 """
 
-g_mst_version = "version 1.1, February 2, 2007"
+g_mst_version = "version 1.3, May 21, 2008"
 
 def get_opts():
     global g_help_string
     okopts = option_list.OptionList('for input')
-    okopts.add_opt('-help', 0, [])
-    okopts.add_opt('-hist', 0, [])
-    okopts.add_opt('-ver', 0, [])
+    okopts.add_opt('-help', 0, [],      \
+                   helpstr='display program help')
+    okopts.add_opt('-hist', 0, [],      \
+                   helpstr='display the modification history')
+    okopts.add_opt('-show_valid_opts', 0, [],   \
+                   helpstr='display all valid options')
+    okopts.add_opt('-ver', 0, [],       \
+                   helpstr='display the current version number')
 
-    okopts.add_opt('-files', -1, [], req=1)
-    okopts.add_opt('-prefix', 1, [], req=1)
-    okopts.add_opt('-tr', 1, [], req=1)
-    okopts.add_opt('-nt', 1, [], req=1)
-    okopts.add_opt('-nruns', 1, [], req=1)
-    okopts.add_opt('-offset', 1, [])
-    okopts.add_opt('-verb', 1, [])
+    okopts.add_opt('-amplitudes', 0, [],        \
+                   helpstr='output is in -stim_times_AM1 format')
+    okopts.add_opt('-files', -1, [], req=1,     \
+                   helpstr='set the list of input files')
+    okopts.add_opt('-prefix', 1, [], req=1,     \
+                   helpstr='specify the prefix for output files')
+    okopts.add_opt('-tr', 1, [], req=1, \
+                   helpstr='set the TR time, in seconds')
+    okopts.add_opt('-nt', 1, [], req=1, \
+                   helpstr='set the number of TRs per run')
+    okopts.add_opt('-nruns', 1, [], req=1,      \
+                   helpstr='set the number of runs')
+    okopts.add_opt('-offset', 1, [],    \
+                   helpstr='specify offset to add to all output times')
+    okopts.add_opt('-verb', 1, [],      \
+                   helpstr='set the verbosity level')
     okopts.trailers = 1
 
     # if argv has only the program name, or user requests help, show it
@@ -108,12 +164,15 @@ def get_opts():
         print g_help_string
         return
 
-    # check for -ver and -hist, too
-    if '-hist' in sys.argv:
+    if '-hist' in sys.argv:                 # print history
         print g_mst_history
         return
 
-    if '-ver' in sys.argv:
+    if '-show_valid_opts' in sys.argv:      # show all valid options
+        okopts.show('', 1)
+        return
+
+    if '-ver' in sys.argv:                  # print version
         print g_mst_version
         return
 
@@ -160,9 +219,17 @@ def proc_mats(uopts):
     except:
         print "** error: -nt must be int, have '%s'" % opt.parlist[0]
         return
-    
-    if verb: print "-d nt = %d, nruns = %d, TR = %s" % (nt, nruns, str(tr))
 
+    # print some info
+    if verb: print "-- nt = %d, nruns = %d, TR = %s" % (nt, nruns, str(tr))
+
+    # new option, -amplitudes (columns of amplitudes to Marry, not just 1s)
+    use_amp = 0
+    opt = uopts.find_opt('-amplitudes')
+    if opt:
+        use_amp = 1
+        if verb: print '-- using amplitudes to Marry with times...'
+    
     newfile_index = 1   # index over output files
     for file in files:
         mat = afni_util.read_1D_file(file, -1, verb=verb)
@@ -171,8 +238,12 @@ def proc_mats(uopts):
             return
         mat = afni_util.transpose(mat)
 
-        if len(mat[0]) != nt * nruns:
-            print 'warning: file %s has %d entries (expected %d)' % \
+        if len(mat[0]) < nt * nruns:
+            print '** error: file %s has only %d entries (%d required)' % \
+                  (file, len(mat[0]), nt*nruns)
+            return
+        elif len(mat[0]) > nt * nruns:
+            print '** warning: file %s has %d entries (expected only %d)' % \
                   (file, len(mat[0]), nt*nruns)
 
         for row in mat:
@@ -186,7 +257,8 @@ def proc_mats(uopts):
             for run in range(nruns):
                 rindex = run * nt   # point to start of run
 
-                if not 1 in row[rindex:rindex+nt]:  # no stim in this run
+                # if empty run, use placeholders
+                if not stim_in_run(row[rindex:rindex+nt], use_amp):
                     if run == 0: fp.write('* *\n')  # first run gets 2
                     else:        fp.write('*\n')
                     continue
@@ -195,7 +267,12 @@ def proc_mats(uopts):
                 for lcol in range(nt):
                     if row[rindex+lcol]:
                         nstim += 1
-                        fp.write('%s ' % str(time+offset))
+                        # if -amplitudes write as time:amplitude
+                        if use_amp:
+                            fp.write('%s*%s ' % \
+                                     (str(time+offset),str(row[rindex+lcol])))
+                        else:
+                            fp.write('%s ' % str(time+offset))
                     time += tr
                 if run == 1 and need_ast and nstim == 1:
                     fp.write('*')   # if first time has 1 stim, add '*'
@@ -205,6 +282,20 @@ def proc_mats(uopts):
 
             fp.close()
             newfile_index += 1
+
+def stim_in_run(values, non_zero):
+    """search for any value==1, if non_zero, search for any non-zero
+
+       this might return either 1/0 or True/False, depending on python ver"""
+
+    if not non_zero:
+        return 1 in values
+
+    # so any non-zero is okay
+    for val in values:
+        if val: return 1
+
+    return 0
 
 if __name__ == "__main__":
     proc_mats(get_opts())

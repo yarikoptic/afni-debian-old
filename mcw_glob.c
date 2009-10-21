@@ -78,6 +78,8 @@
 #include <ctype.h>
 typedef void * ptr_t;
 
+#include <errno.h>
+
 /** don't use sh.h any more **/
 
 #if 0
@@ -558,7 +560,7 @@ glob3(Char *pathbuf, Char *pathend, Char *pattern, Char *restpattern, glob_t *pg
 	    return (0);
     }
 
-    err = 0;
+    err = 0; errno = 0 ;
 
     /* search directory for matching names */
     while ((dp = readdir(dirp)) != NULL) {
@@ -603,6 +605,53 @@ glob3(Char *pathbuf, Char *pathend, Char *pattern, Char *restpattern, glob_t *pg
 	    break;
     }
     /* todo: check error from readdir? */
+    if( errno != 0 ){
+      static int cnt=2 ;
+      if( cnt ){
+        perror("** glob error"); errno = 0; cnt-- ;
+        fprintf(stderr,"** You may need to 'setenv AFNI_SHELL_GLOB YES'\n") ;
+        if( cnt == 1 )
+          fprintf(stderr,
+            "**\n"
+            "** In particular, if you are trying to access an NFS (network file\n"
+            "** system) mounted drive, you might be running into the situation\n"
+            "** where the NFS 'cookie' length on the remote system does not\n"
+            "** match the cookie length on your local system -- this is the only\n"
+            "** situation in which we have ever seen this error.  In that case,\n"
+            "** you can either set the environment variable as described above,\n"
+            "** or fix the cookie length mismatch by changing the way the NFS\n"
+            "** drive is exported.\n"
+            "**-------------------------------------------------------------------\n"
+            "** The following information from Graham Wideman of UCSD might also\n"
+            "** be helpful if you are reading this 'glob error' message:\n"
+            "**\n"
+            "**  I've changed the NFS export settings on our Mac OS X 10.5 server\n"
+            "**  to include the '-32bitclients' option, and can confirm that\n"
+            "**  this does cause AFNI to be able to see files that it could not\n"
+            "**  see without this option. So this appears to be the more general\n"
+            "**  way to fix the problem.\n"
+            "**\n"
+            "**  For others in the same boat who may stumble on this message:\n"
+            "**  It's not at all obvious how to actually set this option,\n"
+            "**  as OS X 10.5's Server Admin NFS settings panels don't have\n"
+            "**  any way to do it.\n"
+            "**\n"
+            "**  The short story is:\n"
+            "**  You have to edit the /etc/exports file, as per usual in Unix,\n"
+            "**  but decidedly not in line with all other SharePoint related\n"
+            "**  settings in 10.5.  But first, in order to have the edits not\n"
+            "**  conflict with Server Admin management of those settings, you\n"
+            "**  have to uncheck Server Admin's 'NFS Enabled' checkbox for the\n"
+            "**  relevant shares.  Then, when editing the exports file, move\n"
+            "**  the relevant lines outside the 'Server Admin managed' brackets,\n"
+            "**  and add your options.  In general, such options have to go in\n"
+            "**  the middle section of a line; for example, after the path.\n"
+            "**  Example:\n"
+            "**\n"
+            "** /Somedir -32bitclients -maproot=nobody -sec=sys -network 123.1.2.3 -mask 255.255.255.0\n"
+          ) ;
+      }
+    }
     (void) closedir(dirp);
     return (err);
 }
@@ -748,28 +797,31 @@ void MCW_warn_expand( int www ){ warn = www; return; }  /* 13 Jul 2001 */
      - 10 Feb  2000:  and for 3A: prefixes.
 --------------------------------------------------------------------------*/
 
-void MCW_file_expand( int nin , char ** fin , int * nout , char *** fout )
+void MCW_file_expand( int nin , char **fin , int *nout , char ***fout )
 {
    glob_t gl ;
    int    ii , gnum, gold , ilen ;
-   char ** gout ;
-   char *  fn ;
-   char prefix[4] , fpre[128] , fname[256] ;
+   char **gout ;
+   char *fn , *ehome ;
+   char prefix[4] , fpre[128] , fname[1024] ;
    int  b1,b2,b3,b4,b5 , ib,ig , lpre ;
+   char *eee ;
 
    if( nin <= 0 ){ *nout = 0 ; return ; }
 
-   gnum = 0 ;
-   gout = NULL ;
+   gnum  = 0 ;
+   gout  = NULL ;
+   ehome = getenv("HOME") ;
 
    for( ii=0 ; ii < nin ; ii++ ){
-      fn = fin[ii] ;
+      fn = fin[ii] ; if( fn == NULL || *fn == '\0' ) continue ;
 
-      ig = 0 ;
+      ig = 0 ; fname[0] = '\0' ;
 
       /** look for 3D: prefix **/
 
       if( strlen(fn) > 9 && fn[0] == '3' && fn[1] == 'D' ){
+
          ib = 0 ;
          prefix[ib++] = '3' ;
          prefix[ib++] = 'D' ;
@@ -787,9 +839,9 @@ void MCW_file_expand( int nin , char ** fin , int * nout , char *** fout )
          } else {
             ig = 0 ;
          }
-      }
 
-      if( strlen(fn) > 9 && fn[0] == '3' && fn[1] == 'A' && fn[3] == ':' ){
+      } else if( strlen(fn) > 9 && fn[0] == '3' && fn[1] == 'A' && fn[3] == ':' ){
+
          ib = 0 ;
          prefix[ib++] = '3' ;
          prefix[ib++] = 'A' ;
@@ -809,8 +861,47 @@ void MCW_file_expand( int nin , char ** fin , int * nout , char *** fout )
          }
       }
 
-      if( ig > 0 ) (void) glob( fname , 0 , NULL ,  &gl ) ;  /* 3D: was OK */
-      else         (void) glob( fn    , 0 , NULL ,  &gl ) ;  /*     not OK */
+      if( fname[0] == '\0' ) strcpy(fname,fn) ;
+      if( ehome != NULL && fname[0] == TILDE && fname[1] == '/' ){
+        char qname[1024] ;
+        strcpy(qname,ehome); strcat(qname,fname+1);
+        strcpy(fname,qname);
+      }
+
+      /** 30 Apr 2008: do globbing directly via the shell **/
+
+      eee = getenv("AFNI_SHELL_GLOB") ;
+      if( eee != NULL && (*eee == 'Y' || *eee == 'y') ){
+        FILE *pf ; char *cmd , buf[6666] ; int nb ;
+
+        cmd = malloc(sizeof(char)*(strlen(fname)+32)) ;
+        sprintf(cmd,"/bin/ls -d1 %s 2> /dev/null",fname) ;
+        pf = popen( cmd , "r" ) ;
+        if( pf == NULL ){
+          fprintf(stderr,"** ERROR: popen() fails with AFNI_SHELL_GLOB\n") ;
+          free(cmd) ; goto NEXT_STRING ;
+        }
+        while( fgets(buf,6666,pf) != NULL ){
+          nb = strlen(buf)-1 ;
+          if( nb > 0 ){
+            if( isspace(buf[nb]) ) buf[nb] = '\0' ;
+            gout = (char **)realloc( gout , sizeof(char *)*(gnum+1) ) ;
+            ilen = nb+3 ; if( ig > 0 ) ilen += lpre ;
+            gout[gnum] = (char *)malloc( sizeof(char) * ilen ) ;
+            if( ig > 0 ){
+              strcpy(gout[gnum],fpre) ; strcat(gout[gnum],buf) ;
+            } else {
+              strcpy(gout[gnum],buf) ;
+            }
+            gnum++ ;
+          }
+        }
+        pclose(pf) ; free(cmd) ; goto NEXT_STRING ;
+      }
+
+      /** the olden way (via glob function) **/
+
+      (void) glob( fname , 0 , NULL , &gl ) ;
 
       /** put each matched string into the output array **/
 
@@ -855,6 +946,8 @@ void MCW_file_expand( int nin , char ** fin , int * nout , char *** fout )
       }
 
       globfree( &gl ) ;
+
+    NEXT_STRING: continue ;
    }
 
    *nout = gnum ; *fout = gout ; return ;

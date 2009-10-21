@@ -791,6 +791,8 @@ SUMA_Boolean SUMA_ApplyAffine (float *NodeList, int N_Node, float M[][4], float 
    
    SUMA_ENTRY;
    
+   SUMA_S_Note("Use SUMA_Apply_Coord_xform instead");
+   
    if (!NodeList || N_Node <=0) { 
       SUMA_SL_Err("Bad Entries.\n");
       SUMA_RETURN(NOPE);
@@ -5436,17 +5438,22 @@ SUMA_Boolean SUMA_WriteSmoothingRecord (  SUMA_SurfaceObject *SO,
    on each column, successively.
     
 */
-SUMA_Boolean SUMA_Chung_Smooth_07_toFWHM_dset (SUMA_SurfaceObject *SO, double **wgt, 
+SUMA_Boolean SUMA_Chung_Smooth_07_toFWHM_dset (
+                           SUMA_SurfaceObject *SO, double **wgt, 
                            int *N_iter, double *FWHMp, SUMA_DSET *dset, 
                            byte *nmask, byte strict_mask, 
                            char *FWHM_mixmode, float **fwhmgp)
 {
    static char FuncName[]={"SUMA_Chung_Smooth_07_toFWHM_dset"};
    double fp, dfp, fpj, minfn=0.0, maxfn=0.0, FWHM, dfps=0.0;
-   float *fin_float=NULL, *fwhmg=NULL, *fwhmv=NULL, *fout_final = NULL, *fin=NULL, *fout=NULL;
-   int n , k, j, niter, jj, nj, *icols=NULL, N_icols, N_nmask, kth_buf, niter_alloc, N;
-   int NITERMAX = 3000;
-   char LogFWHM_hist[]={""}; /* for now don't save history.  to turn it back on, use something like: {"FWHM_vs_iteration"}; */
+   float *fin_float=NULL, *fwhmg=NULL, *fwhmv=NULL, 
+         *fout_final = NULL, *fin=NULL, *fout=NULL;
+   int   n , k, j, niter, jj, nj, *icols=NULL, 
+         N_icols, N_nmask, kth_buf, niter_alloc, N;
+   int   NITERMAX = 3000;
+   char  LogFWHM_hist[]={""}; /* for now don't save history.  
+                                 to turn it back on, use something like: 
+                                 {"FWHM_vs_iteration"}; */
    byte *bfull=NULL, stop = 0;
    SUMA_Boolean LocalHead = NOPE;
    
@@ -5504,8 +5511,10 @@ SUMA_Boolean SUMA_Chung_Smooth_07_toFWHM_dset (SUMA_SurfaceObject *SO, double **
    niter = 0;
    while (!stop) {
       if (*N_iter < 0) { /* function knows best */
-         if (niter >= niter_alloc) {   fwhmg = SUMA_realloc(fwhmg,sizeof(float)*(niter_alloc+500)); 
-                                       niter_alloc = niter_alloc+500; }
+         if (niter >= niter_alloc) {   
+            fwhmg = SUMA_realloc(fwhmg,sizeof(float)*(niter_alloc+500)); 
+            niter_alloc = niter_alloc+500; 
+         }
          fwhmg[niter] = 0.0; N = 0;
          if (!(fwhmv = SUMA_estimate_dset_FWHM_1dif(  SO, dset, 
                                                 icols, N_icols, nmask, 
@@ -5520,24 +5529,37 @@ SUMA_Boolean SUMA_Chung_Smooth_07_toFWHM_dset (SUMA_SurfaceObject *SO, double **
          }
          if (fwhmg[niter] > FWHM) stop = 1;
          else if (niter > NITERMAX) {
-            SUMA_S_Warnv( "More than %d iterations failed to reach target of %f.\n"
-                        "Stopping at fwhm of %f.\n"
-                        "Consider increasing kernel bandwidth\n", niter-1,FWHM, fwhmg[niter]);
+            SUMA_S_Warnv( 
+                  "More than %d iterations failed to reach target of %f.\n"
+                  "Stopping at fwhm of %f.\n"
+                  "Consider increasing kernel bandwidth\n", 
+                  niter-1,FWHM, fwhmg[niter]);
             stop =1;
          }
       } else { /* caller is the boss */
          if (niter >= *N_iter) stop = 1;
       } 
       if (!stop) {
-         if (*N_iter < 0) { SUMA_LHv("Beginning iteration %d, fwhm = %f; target %f\n", niter, fwhmg[niter], FWHM); }
+         if (*N_iter < 0) { 
+            SUMA_LHv("Beginning iteration %d, fwhm = %f; target %f\n", 
+                      niter, fwhmg[niter], FWHM); }
          else { SUMA_LHv("Iteration %d/%d\n", niter+1,*N_iter);}
+         /* Dull report */
+         if (!LocalHead && !(niter % 10)) 
+            fprintf( SUMA_STDERR,
+                     "Iteration %d, fwhm = %f; target %f\n", 
+                      niter, fwhmg[niter], FWHM);
          /* Begin filtering operation for each column */
          for (k=0; k < N_icols; ++k) {
             /*SUMA_LHv("Filtering column %d\n",icols[k]); */
             if (k==0) {
-               fin_float = SUMA_DsetCol2FloatFullSortedColumn (dset, icols[k], &bfull, 0.0, SO->N_Node, &N_nmask, YUP);
+               fin_float = 
+                  SUMA_DsetCol2FloatFullSortedColumn (
+                     dset, icols[k], &bfull, 0.0, SO->N_Node, &N_nmask, YUP);
             } else {
-               fin_float = SUMA_DsetCol2FloatFullSortedColumn (dset, icols[k], &bfull, 0.0, SO->N_Node, &N_nmask, NOPE);
+               fin_float = 
+                  SUMA_DsetCol2FloatFullSortedColumn (
+                     dset, icols[k], &bfull, 0.0, SO->N_Node, &N_nmask, NOPE);
             }
 
 
@@ -5550,12 +5572,15 @@ SUMA_Boolean SUMA_Chung_Smooth_07_toFWHM_dset (SUMA_SurfaceObject *SO, double **
                   fp = fin[n]; /* kth value at node n */
                   dfp = 0.0;
                   for (j=0; j < SO->FN->N_Neighb[n]; ++j) {
-                     fpj = (double)fin[SO->FN->FirstNeighb[n][j]]; /* value at jth neighbor of n */
+                     fpj = (double)fin[SO->FN->FirstNeighb[n][j]]; 
+                                          /* value at jth neighbor of n */
                      dfp += wgt[n][j+1] * (fpj); 
                   }/* for j*/
                   fout[n] = (float)((double)fin[n] * wgt[n][0] +  dfp);
                   #if 0
-                     if (LocalHead && n == SUMA_SSidbg) SUMA_LHv("node %d, fin %g, fout %g\n", n, fin[n], fout[n]);
+                     if (LocalHead && n == SUMA_SSidbg) 
+                        SUMA_LHv("node %d, fin %g, fout %g\n", 
+                                 n, fin[n], fout[n]);
                   #endif
                }/* for n */ 
             } else {  /* masking potential */
@@ -5568,8 +5593,11 @@ SUMA_Boolean SUMA_Chung_Smooth_07_toFWHM_dset (SUMA_SurfaceObject *SO, double **
                      for (j=0; j < SO->FN->N_Neighb[n]; ++j) {
                         {
                            nj = SO->FN->FirstNeighb[n][j];
-                           if (bfull[nj] || !strict_mask) { /* consider only neighbors that are in mask if strict_mask is 1*/
-                              fpj = (double)fin[nj]; /* value at jth neighbor of n */
+                           if (bfull[nj] || !strict_mask) { 
+                                 /* consider only neighbors that are in mask 
+                                    if strict_mask is 1*/
+                              fpj = (double)fin[nj]; 
+                                          /* value at jth neighb. of n */
                               dfp += wgt[n][j+1] * fpj;
                               dfps += wgt[n][j+1];
                            }
@@ -5588,8 +5616,8 @@ SUMA_Boolean SUMA_Chung_Smooth_07_toFWHM_dset (SUMA_SurfaceObject *SO, double **
                SUMA_S_Err("Failed to update dset's values");
                SUMA_RETURN(NOPE);      
             }
-            /* Need to free fin_float now 
-            SUMA_free(fin_float); fin_float = NULL;*/
+            /* Need to free fin_float now */
+            SUMA_free(fin_float); fin_float = NULL;
          }/* repeat for each column */
 
          if (fwhmv) SUMA_free(fwhmv); fwhmv = NULL;
@@ -6125,7 +6153,9 @@ float SUMA_estimate_FWHM_1dif( SUMA_SurfaceObject *SO, float *fim , byte *nmask,
    error flag */
    par[0] = (float)SO->N_Node;
    par[1] = (float)SO->N_Node; /* assuming independence of course */
-   prob = THD_stat_to_pval( SUMA_MAX_PAIR(varss/(2.0*var), (2.0*var)/varss)  , NI_STAT_FTEST , par ) ;
+   prob = THD_stat_to_pval(   SUMA_MAX_PAIR(varss/(2.0*var),(2.0*var)/varss), 
+                              NI_STAT_FTEST , 
+                              par ) ;
    if (prob > 0.01) {
       /* so what would the smallest acceptable FWHM be? */
       stat = THD_pval_to_stat (0.01, NI_STAT_FTEST, par);
@@ -6134,7 +6164,8 @@ float SUMA_estimate_FWHM_1dif( SUMA_SurfaceObject *SO, float *fim , byte *nmask,
       SUMA_S_Notev(  "   Distribution of data is possibly random noise (p=%f)\n"
                      "   Expect fwhm to be no different from 0 \n"
                      "   FWHM values up to %.2f(segments) or %.2f(mm)\n"
-                     "   are likely meaningless (at p=0.01) on this mesh.\n\n", prob, ss, ss*ds);
+                     "   are likely meaningless (at p=0.01) on this mesh.\n\n",
+                      prob, ss, ss*ds);
    }
    arg = 1.0 - 0.5*(varss/var);
    if (arg <= 0.0 || arg >= 1.0) {
@@ -6380,6 +6411,8 @@ SUMA_Boolean SUMA_Offset_Smooth_dset(
    SUMA_S_Warn("Niter is not treated properly");
    SUMA_S_Warn("No useful weighting in place");
    
+   SUMA_S_Warn("Useless and obsolete. DO NOT USE");
+   SUMA_RETURN(NOPE);
    
    if (!SO || !dset) {
       SUMA_S_Errv("NULL SO (%p) or dset(%p)\n", SO, dset);
@@ -6815,7 +6848,8 @@ SUMA_SurfaceObject *SUMA_Patch2Surf(float *NodeList, int N_NodeList, int *PatchF
    \return isNodeInPatch (SUMA_Boolean *) a vector SO->N_Node long such that if isNodeInPatch[n] = YUP then node n is used
                                     in the mesh 
 */
-SUMA_Boolean *SUMA_MaskOfNodesInPatch(SUMA_SurfaceObject *SO, int *N_NodesUsedInPatch)
+SUMA_Boolean *SUMA_MaskOfNodesInPatch(
+                  SUMA_SurfaceObject *SO, int *N_NodesUsedInPatch)
 {
    static char FuncName[]={"SUMA_MaskOfNodesInPatch"};
    int k;
@@ -6834,7 +6868,8 @@ SUMA_Boolean *SUMA_MaskOfNodesInPatch(SUMA_SurfaceObject *SO, int *N_NodesUsedIn
       SUMA_RETURN(NULL);
    }
 
-   NodesInPatchMesh = (SUMA_Boolean *)SUMA_calloc(SO->N_Node, sizeof(SUMA_Boolean)); 
+   NodesInPatchMesh = (SUMA_Boolean *)
+                        SUMA_calloc(SO->N_Node, sizeof(SUMA_Boolean)); 
    if (!NodesInPatchMesh) {
       SUMA_SL_Crit("Failed to allocate for NodesInPatchMesh");
       SUMA_RETURN(NULL);
@@ -7037,18 +7072,22 @@ SUMA_CONTOUR_EDGES * SUMA_GetContour (
    if (LocalHead) SUMA_ShowPatch (Patch,NULL);
    
    if (Patch->N_FaceSet) {
-      SEL = SUMA_Make_Edge_List_eng (Patch->FaceSetList, Patch->N_FaceSet, SO->N_Node, SO->NodeList, 0, NULL);
+      SEL = SUMA_Make_Edge_List_eng (  Patch->FaceSetList, 
+                                       Patch->N_FaceSet, SO->N_Node, 
+                                       SO->NodeList, 0, NULL);
    
       if (0 && LocalHead) SUMA_Show_Edge_List (SEL, NULL);
       /* allocate for maximum */
-      CE = (SUMA_CONTOUR_EDGES *) SUMA_malloc(SEL->N_EL * sizeof(SUMA_CONTOUR_EDGES));
+      CE = (SUMA_CONTOUR_EDGES *) 
+            SUMA_calloc(SEL->N_EL, sizeof(SUMA_CONTOUR_EDGES));
       if (!CE) {
          SUMA_SLP_Crit("Failed to allocate for CE");
          SUMA_RETURN(CE);
       }
    
       switch (ContourMode) {
-         case 0: /* a pretty contour, edges used here may not be the outermost of the patch */
+         case 0: /* a pretty contour, edges used here may 
+                     not be the outermost of the patch */
             /* edges that are part of unfilled triangles are good */
             i = 0;
             *N_ContEdges = 0;
@@ -7086,7 +7125,8 @@ SUMA_CONTOUR_EDGES * SUMA_GetContour (
                }
             }
             break;
-         case 1: /* outermost contour, not pretty, but good for getting the outermost edge */
+         case 1: /* outermost contour, not pretty, 
+                   but good for getting the outermost edge */
             i = 0;
             *N_ContEdges = 0;
             while (i < SEL->N_EL) {
@@ -7095,8 +7135,9 @@ SUMA_CONTOUR_EDGES * SUMA_GetContour (
                   CE[*N_ContEdges].n2 = SEL->EL[i][1];
                   ++ *N_ContEdges;
                   if (LocalHead) {
-                           fprintf (SUMA_STDERR,"%s: Found edge made up of nodes [%d %d]\n",
-                              FuncName, SEL->EL[i][0], SEL->EL[i][1]);
+                           fprintf (SUMA_STDERR,
+                                    "%s: Found edge made up of nodes [%d %d]\n",
+                                    FuncName, SEL->EL[i][0], SEL->EL[i][1]);
                   }
                }
                if (SEL->ELps[i][2] > 0) {
@@ -7117,14 +7158,15 @@ SUMA_CONTOUR_EDGES * SUMA_GetContour (
          SUMA_free(CE); CE = NULL;
          SUMA_RETURN(CE);
       }else {
-         CE = (SUMA_CONTOUR_EDGES *) SUMA_realloc (CE, *N_ContEdges * sizeof(SUMA_CONTOUR_EDGES));
+         CE = (SUMA_CONTOUR_EDGES *) 
+                  SUMA_realloc (CE, *N_ContEdges * sizeof(SUMA_CONTOUR_EDGES));
          if (!CE) {
             SUMA_SLP_Crit("Failed to reallocate for CE");
             SUMA_RETURN(CE);
          }
       }
          
-      SUMA_free_Edge_List (SEL); 
+      SUMA_free_Edge_List (SEL); SEL = NULL;
    }
    
    if (!UseThisPatch) {
@@ -7132,7 +7174,7 @@ SUMA_CONTOUR_EDGES * SUMA_GetContour (
    }
    Patch = NULL;
    
-   SUMA_free(isNode);
+   SUMA_free(isNode); isNode = NULL;
    
    SUMA_RETURN(CE);
 }
@@ -7887,6 +7929,7 @@ SUMA_ROI_DATUM *SUMA_Surf_Plane_Intersect_ROI (SUMA_SurfaceObject *SO, int Nfrom
    }
    #endif
    
+   if (Eq) SUMA_free(Eq); Eq = NULL; /* not needed further */
    
    if (DrawIntersEdges) {
       /* Show all intersected edges */
@@ -8628,13 +8671,15 @@ int SUMA_Find_Edge_Nhost (SUMA_EDGE_LIST  *EL, int *IsInter, int N_IsInter, int 
                                        a complete surface is only for very patient people.
                                 NOTE:  This vector is modified as a node is visited. Make sure you 
                                        do not use it after this function has been called.
+                                       Set to NULL if you want all nodes used.
 \param N_isNodeInMesh (int *) Pointer to the total number of nodes that make up the mesh (subset of SO)
                This parameter is passed as a pointer because as nodes in the mesh are visited, that
                number is reduced and represents when the function returns, the number of nodes that were
                never visited in the search. 
+               Set to NULL, if isNodeInMesh is NULL
 \param Method_Number (int) selector for which algorithm to use. Choose from:
                      0 - Straight forward implementation, slow
-                     1 - Variation to eliminate long searches for minimum of L, much much much faster than 0, 5 time more memory.
+                     1 - Variation to eliminate long searches for minimum of L, much much much faster than 0, 5 times more memory.
 \param Path_length (float *) The distance between Nx and Ny. This value is negative if no path between Nx and Ny was found.
 \param N_Path (int *) Number of nodes forming the Path vector
 
@@ -8645,18 +8690,23 @@ int SUMA_Find_Edge_Nhost (SUMA_EDGE_LIST  *EL, int *IsInter, int N_IsInter, int 
 */
 #define LARGE_NUM 9e300
 /* #define LOCALDEBUG */ /* lots of debugging info. */
-int * SUMA_Dijkstra (SUMA_SurfaceObject *SO, int Nx, int Ny, SUMA_Boolean *isNodeInMesh, int *N_isNodeInMesh, int Method_Number, float *Lfinal, int *N_Path)
+int * SUMA_Dijkstra (SUMA_SurfaceObject *SO, int Nx, 
+                     int Ny, SUMA_Boolean *isNodeInMeshp, 
+                     int *N_isNodeInMesh, int Method_Number, 
+                     float *Lfinal, int *N_Path)
 {
    static char FuncName[] = {"SUMA_Dijkstra"};
    SUMA_Boolean LocalHead = NOPE;
    float *L = NULL, Lmin = -1.0, le = 0.0, DT_DIJKSTRA;
-   int i, iw, iv, v, w, N_Neighb, *Path = NULL;
+   int i, iw, iv, v, w, N_Neighb, *Path = NULL, N_loc=-1;
+   SUMA_Boolean *isNodeInMesh=NULL;
    struct  timeval  start_time;
-   SUMA_DIJKSTRA_PATH_CHAIN *DC = NULL, *DCi, *DCp;
+   SUMA_DIJKSTRA_PATH_CHAIN *DC = NULL, *DCi=NULL, *DCp=NULL;
    SUMA_Boolean Found = NOPE;
    /* variables for method 2 */
-   int N_Lmins, *vLmins, *vLocInLmins, iLmins, ReplacingNode, ReplacedNodeLocation;
-   float *Lmins; 
+   int N_Lmins, *vLmins=NULL, *vLocInLmins=NULL, 
+      iLmins, ReplacingNode, ReplacedNodeLocation;
+   float *Lmins=NULL; 
    
    
    SUMA_ENTRY;
@@ -8664,19 +8714,33 @@ int * SUMA_Dijkstra (SUMA_SurfaceObject *SO, int Nx, int Ny, SUMA_Boolean *isNod
    *Lfinal = -1.0;
    *N_Path = 0;
    
+   if (!isNodeInMeshp) {
+      if (!(isNodeInMesh = (SUMA_Boolean *)SUMA_malloc(  sizeof(SUMA_Boolean) * 
+                                                         SO->N_Node) )) {
+                                                   
+         SUMA_S_Err("Failed to allocate"); 
+         goto CLEANUP;
+      }
+      memset((void*)isNodeInMesh, 1,  sizeof(SUMA_Boolean) * SO->N_Node);
+      N_isNodeInMesh = &N_loc;
+      *N_isNodeInMesh = SO->N_Node;                                          
+   } else {
+      isNodeInMesh = isNodeInMeshp;
+   }
+   
    /* make sure Both Nx and Ny exist in isNodeInMesh */
    if (!isNodeInMesh[Nx]) {
       fprintf (SUMA_STDERR,"\aError %s: Node %d (Nx) is not in mesh.\n", FuncName, Nx);
-      SUMA_RETURN (NULL);
+      goto CLEANUP;
    }  
    if (!isNodeInMesh[Ny]) {
       fprintf (SUMA_STDERR,"\aError %s: Node %d (Ny) is not in mesh.\n", FuncName, Ny);
-      SUMA_RETURN (NULL);
+      goto CLEANUP;
    }
 
    if (!SO->FN) {
       fprintf (SUMA_STDERR, "Error %s: SO does not have FN structure.\n", FuncName);
-      SUMA_RETURN (NULL);
+      goto CLEANUP;
    }
 
    if (LocalHead) {
@@ -8688,7 +8752,7 @@ int * SUMA_Dijkstra (SUMA_SurfaceObject *SO, int Nx, int Ny, SUMA_Boolean *isNod
    DC = (SUMA_DIJKSTRA_PATH_CHAIN *) SUMA_malloc (sizeof(SUMA_DIJKSTRA_PATH_CHAIN) * SO->N_Node);
    if (!DC) {
       fprintf (SUMA_STDERR, "Error %s: Could not allocate. \n", FuncName);
-      SUMA_RETURN (NULL);
+      goto CLEANUP;
    }
    
    switch (Method_Number) {
@@ -8698,8 +8762,7 @@ int * SUMA_Dijkstra (SUMA_SurfaceObject *SO, int Nx, int Ny, SUMA_Boolean *isNod
          L = (float *) SUMA_calloc (SO->N_Node, sizeof (float));
          if (!L) {
             fprintf (SUMA_STDERR, "Error %s: Failed to allocate.\n", FuncName);
-            SUMA_free(DC);
-            SUMA_RETURN (NULL);
+            goto CLEANUP;
          }
 
          /* label all vertices with very large numbers, initialize path previous pointers to null */
@@ -8726,9 +8789,7 @@ int * SUMA_Dijkstra (SUMA_SurfaceObject *SO, int Nx, int Ny, SUMA_Boolean *isNod
             SUMA_MIN_LOC_VEC(L, SO->N_Node, Lmin, v);   /* locates and finds the minimum of L, nodes not in mesh will keep their large values and will not be picked*/
             if (!isNodeInMesh[v]) {
                fprintf (SUMA_STDERR, "\aERROR %s: Dijkstra derailed. v = %d, Lmin = %f\n. Try another point.", FuncName, v, Lmin);
-               SUMA_free (L);
-               SUMA_free(DC);
-               SUMA_RETURN (NULL); 
+               goto CLEANUP; 
             }
             if (v == Ny) {
                if (LocalHead) fprintf (SUMA_STDERR, "%s: Done.\n", FuncName);
@@ -8767,9 +8828,7 @@ int * SUMA_Dijkstra (SUMA_SurfaceObject *SO, int Nx, int Ny, SUMA_Boolean *isNod
 
          if (!Found) {
             fprintf (SUMA_STDERR, "Error %s: No more nodes in mesh, failed to reach target.\n", FuncName);
-            SUMA_free (L);
-            SUMA_free(DC);
-            SUMA_RETURN (NULL);
+            goto CLEANUP;
          }else {
             if (LocalHead) fprintf (SUMA_STDERR, "%s: Path between Nodes %d and %d is %f.\n", FuncName, Nx, Ny, *Lfinal);
          }
@@ -8781,7 +8840,7 @@ int * SUMA_Dijkstra (SUMA_SurfaceObject *SO, int Nx, int Ny, SUMA_Boolean *isNod
             fprintf (SUMA_STDERR, "%s: Method 1- Elapsed time in function %f seconds.\n", FuncName, DT_DIJKSTRA);
          }
 
-         SUMA_free(L);
+         if (L) SUMA_free(L); L = NULL;
          break;
 
       case 1:  /********* Method 1- faster minimum searching *******************/
@@ -8798,7 +8857,7 @@ int * SUMA_Dijkstra (SUMA_SurfaceObject *SO, int Nx, int Ny, SUMA_Boolean *isNod
 
          if (!L || !Lmins || !vLmins || !vLocInLmins) {
             fprintf (SUMA_STDERR, "Error %s: Failed to allocate.\n", FuncName);
-            SUMA_RETURN (NULL);
+            goto CLEANUP;
          }
 
          /* label all vertices with very large numbers and initialize vLocInLmins to -1*/
@@ -8833,13 +8892,10 @@ int * SUMA_Dijkstra (SUMA_SurfaceObject *SO, int Nx, int Ny, SUMA_Boolean *isNod
             SUMA_MIN_LOC_VEC(Lmins, N_Lmins, Lmin, iLmins);   /* locates the minimum value in Lmins vector */
             v = vLmins[iLmins];   /* get the node for this Lmin value */
             if (!isNodeInMesh[v]) {
-               fprintf (SUMA_STDERR, "\aERROR %s: Dijkstra derailed. v = %d, Lmin = %f\n. Try another point.", FuncName, v, Lmin);
-               SUMA_free (L);
-               SUMA_free (Lmins);
-               SUMA_free(vLmins);
-               SUMA_free(vLocInLmins);
-               SUMA_free(DC);
-               SUMA_RETURN (NULL);
+               fprintf (SUMA_STDERR,"\aERROR %s: \n"
+                                    "Dijkstra derailed. v = %d, Lmin = %f\n."
+                                    "Try another point.", FuncName, v, Lmin);
+               goto CLEANUP;
             }
             #ifdef LOCALDEBUG
                fprintf (SUMA_STDERR, "%s: Node v = %d.\n", FuncName, v);
@@ -8927,12 +8983,7 @@ int * SUMA_Dijkstra (SUMA_SurfaceObject *SO, int Nx, int Ny, SUMA_Boolean *isNod
 
          if (!Found) {
             fprintf (SUMA_STDERR, "Error %s: No more nodes in mesh, failed to reach target %d. NLmins = %d\n", FuncName, Ny, N_Lmins);
-            SUMA_free (L);
-            SUMA_free (Lmins);
-            SUMA_free(vLmins);
-            SUMA_free(vLocInLmins);
-            SUMA_free(DC);
-            SUMA_RETURN (NULL);
+            goto CLEANUP;
          }else {
             if (LocalHead) fprintf (SUMA_STDERR, "%s: Path between Nodes %d and %d is %f.\n", FuncName, Nx, Ny, *Lfinal);
          }
@@ -8941,18 +8992,21 @@ int * SUMA_Dijkstra (SUMA_SurfaceObject *SO, int Nx, int Ny, SUMA_Boolean *isNod
          if (LocalHead) {
             /* stop timer */
             DT_DIJKSTRA = SUMA_etime(&start_time,1);
-            fprintf (SUMA_STDERR, "%s: Method 2- Elapsed time in function %f seconds.\n", FuncName, DT_DIJKSTRA);
+            fprintf (SUMA_STDERR, 
+                     "%s: Method 2- Elapsed time in function %f seconds.\n", 
+                     FuncName, DT_DIJKSTRA);
          }
 
-         SUMA_free(L);
-         SUMA_free(Lmins);
-         SUMA_free(vLmins);
-         SUMA_free(vLocInLmins);
+         if (L) SUMA_free(L); L = NULL;
+         if (Lmins) SUMA_free(Lmins); Lmins = NULL;
+         if (vLmins) SUMA_free(vLmins); vLmins = NULL;
+         if (vLocInLmins) SUMA_free(vLocInLmins); vLocInLmins = NULL;
          break;   /********** Method 1- faster minimum searching **************/
       default: 
-         fprintf (SUMA_STDERR, "Error %s: No such method (%d).\n", FuncName, Method_Number);
-         if (DC) SUMA_free(DC);
-         SUMA_RETURN (NULL);
+         fprintf (SUMA_STDERR, 
+                  "Error %s: No such method (%d).\n", 
+                  FuncName, Method_Number);
+         goto CLEANUP;
          break;
    }
    
@@ -8961,8 +9015,7 @@ int * SUMA_Dijkstra (SUMA_SurfaceObject *SO, int Nx, int Ny, SUMA_Boolean *isNod
    Path = (int *) SUMA_calloc (*N_Path, sizeof(int));
    if (!Path) {
       fprintf (SUMA_STDERR, "Error %s: Failed to allocate.\n", FuncName);
-      if (DC) SUMA_free(DC);
-      SUMA_RETURN (NULL);
+      goto CLEANUP;
    }
    
    DCi = &(DC[Ny]);
@@ -8978,10 +9031,19 @@ int * SUMA_Dijkstra (SUMA_SurfaceObject *SO, int Nx, int Ny, SUMA_Boolean *isNod
    }
    
    if (iv != 0) {
-      fprintf (SUMA_STDERR, "Error %s: iv = %d. This should not be.\n", FuncName, iv);
+      fprintf (SUMA_STDERR, 
+               "Error %s: iv = %d. This should not be.\n", 
+               FuncName, iv);
    }  
    
-   SUMA_free(DC);
+   CLEANUP:
+      if (L) SUMA_free(L);
+      if (Lmins) SUMA_free(Lmins);
+      if (vLmins)  SUMA_free(vLmins);
+      if (vLocInLmins)   SUMA_free(vLocInLmins);
+      if (DC) SUMA_free(DC);
+      if (!isNodeInMeshp) SUMA_free(isNodeInMesh); 
+   
    SUMA_RETURN (Path);
 }
 

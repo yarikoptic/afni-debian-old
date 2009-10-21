@@ -30,9 +30,16 @@ char *SUMA_AfniPrefix(char *name, char *view, char *path, int *exists);
 byte * SUMA_isSkin(THD_3dim_dataset *dset, float *fvec, double thresh, int *N_skin);
 void SUMA_Show_VolPar(SUMA_VOLPAR *VP, FILE *Out);
 char *SUMA_VolPar_Info (SUMA_VOLPAR *VP);
+SUMA_Boolean SUMA_Apply_Coord_xform(float *NodeList,
+                                    int N_Node,
+                                    int NodeDim, 
+                                    double Xform[4][4],
+                                    int doinv,
+                                    double *pps);
 SUMA_Boolean SUMA_Align_to_VolPar (SUMA_SurfaceObject *SO, void* S_struct);
 SUMA_Boolean SUMA_Delign_to_VolPar (SUMA_SurfaceObject *SO, void * S_Struct);
 SUMA_Boolean SUMA_Apply_VolReg_Trans (SUMA_SurfaceObject *SO);
+const char *SUMA_WarpTypeName(SUMA_WARP_TYPES wt);
 SUMA_Boolean SUMA_Read_SureFit_Param (char *f_name, SUMA_SureFit_struct *SF);
 int SUMA_ReleaseLink (SUMA_INODE * IN);
 int SUMA_AddLink (SUMA_INODE *IN);
@@ -69,6 +76,7 @@ SUMA_ASSEMBLE_LIST_STRUCT *SUMA_CreateAssembleListStruct(void);
 SUMA_Boolean SUMA_DeleteROI (SUMA_DRAWN_ROI *ROI); 
 int SUMA_isTypicalSOforVolSurf (SUMA_SurfaceObject *SO);
 char *SUMA_DOv_Info (SUMA_DO *dov, int N_dov, int detail);
+int SUMA_BiggestLocalDomainParent(SUMA_DO *dov, int N_dov);
 
 /*!
    \brief SUMA_IS_DRAW_ROI_SWITCH_ROI_SHADED(Shaded)

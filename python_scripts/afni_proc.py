@@ -35,7 +35,7 @@ g_help_string = """
     should feel free to modify the script for their own evil purposes, before
     running it.
 
-    The text interface can be accessed via the -ask_me option.  It envokes a
+    The text interface can be accessed via the -ask_me option.  It invokes a
     question & answer session, during which this program sets user options on
     the fly.  The user may elect to enter some of the options on the command
     line, even if using -ask_me.  See "-ask_me EXAMPLES", below.
@@ -51,6 +51,26 @@ g_help_string = """
     user, must match datasets that have had such TRs removed (i.e. the stim
     files should start _after_ steady state has been reached).
 
+    --------------------------------------------------
+    NOTE on having runs of different lengths:
+
+    In the case that the EPI datasets are not all of the same length, here
+    are some issues that may come up, listed by relevant option:
+
+        -volreg_align_to        If aligning to "last" afni_proc.py might get
+                                an inaccurate index for the volreg -base.
+
+        -regress_polort         If this option is not used, then the degree of
+                                polynomial used for the baseline will come from
+                                the first run.
+
+        -regress_est_blur_epits This may fail, as afni_proc.py may have trouble
+                                teasing the different runs apart from the errts
+                                dataset.
+
+        -regress_use_stim_files This may fail, as make_stim_times.py is not
+                                currently prepared to handle runs of different
+                                lengths.
     --------------------------------------------------
     PROCESSING STEPS (of the output script):
 
@@ -76,7 +96,7 @@ g_help_string = """
     optional steps (the default is _not_ to apply these blocks)
 
         despike     : truncate spikes in each voxel's time series
-        empty       : placehold for some user commamd (using 3dTcat as sample)
+        empty       : placehold for some user command (using 3dTcat as sample)
 
     --------------------------------------------------
     EXAMPLES (options can be provided in any order):
@@ -391,7 +411,7 @@ g_help_string = """
             datasets to be alphabetical, as that is how the shell will list
             them on the command line.  For instance, epi_run1+orig through
             epi_run11+orig is not alphabetical.  If they were specified via
-            wildward their order would end up as run1 run10 run11 run2 ...
+            wildcard their order would end up as run1 run10 run11 run2 ...
 
             Note also that when using a wildcard it is essential to specify
             the datasets suffix, so that the shell doesn't put both the .BRIK
@@ -451,7 +471,7 @@ g_help_string = """
                 e.g. -subj_id elvis
                 default: SUBJ
 
-            The suject ID is used in dataset names and in the output directory
+            The subject ID is used in dataset names and in the output directory
             name (unless -out_dir is used).  This option allows the user to
             apply an appropriate naming convention.
 
@@ -539,8 +559,8 @@ g_help_string = """
             must be applied via -despike_opts_3dDes.
 
             Note that the despike block is not applied by default.  To apply
-            despike in the processing script, use either '-do_block despike' or
-            '-blocks ... despike ...'.
+            despike in the processing script, use either '-do_block despike'
+            or '-blocks ... despike ...'.
 
             Please see '3dDespike -help' for more information.
             See also '-do_blocks', '-blocks'.
@@ -550,10 +570,10 @@ g_help_string = """
                 e.g. -tshift_align_to -slice 14
                 default: -tzero 0
 
-            By default, each time series is aligned to the beginning of the TR.
-            This option allows the users to change the alignment, and applies
-            the option parmeters directly to the 3dTshift command in the output
-            script.
+            By default, each time series is aligned to the beginning of the
+            TR.  This option allows the users to change the alignment, and
+            applies the option parameters directly to the 3dTshift command
+            in the output script.
 
             It is likely that the user will use either '-slice SLICE_NUM' or
             '-tzero ZERO_TIME'.
@@ -873,7 +893,7 @@ g_help_string = """
             Use of this option will add a 3dTstat command to sum the regressor
             (of interest) columns of the 1D X-matrix, output by 3dDeconvolve.
 
-            This is simlilar to the default behavior of creating ideal_STIM.1D
+            This is similar to the default behavior of creating ideal_STIM.1D
             files for each stimulus label, STIM.
 
             Please see '3dDeconvolve -help' and '3dTstat -help'.
@@ -893,12 +913,12 @@ g_help_string = """
                 e.g. -regress_no_ideals
 
             By default, if the GAM or BLOCK basis function is used, ideal
-            resonse curve files are generated for each stimulus type (from
+            response curve files are generated for each stimulus type (from
             the output X matrix using '3dDeconvolve -x1D').  The names of the
             ideal response function files look like 'ideal_LABEL.1D', for each
             stimulus label, LABEL.
 
-            This option is used to supress generation of those files.
+            This option is used to suppress generation of those files.
 
             See also -regress_basis, -regress_stim_labels.
 
@@ -995,9 +1015,9 @@ g_help_string = """
 
             Labels may be specified using the -regress_stim_labels option.
 
-            These two examples of such files are for a 3-run experiment.
-            In the second example, there is only 1 stimulus at all, occuring
-            in run 2.
+            These two examples of such files are for a 3-run experiment.  In
+            the second example, there is only 1 stimulus at all, occurring in
+            run #2.
 
                 e.g.            0  12.4  27.3  29
                                 *
@@ -1149,10 +1169,12 @@ g_history = """
          - added -regress_est_blur_errts, -regress_est_blur_epits options
            for estimating the blur in the EPI and errts data
          - added -regress_no_mask, -regress_errts_prefix and -show_valid_opts
-                       
+    1.29 Jun 12 2008 : move code to afni_util.get_dset_reps_tr
+    1.30 Jun 30 2008 : added -gen_epi_review and -no_epi_review options
+
 """
 
-g_version = "version 1.28, Jan 28, 2008"
+g_version = "version 1.29, June 12, 2008"
 
 # ----------------------------------------------------------------------
 # dictionary of block types and modification functions
@@ -1188,6 +1210,7 @@ class SubjProcSream:
         self.dsets      = []            # list of afni_name elements
         self.stims_orig = []            # orig list of stim files to apply
         self.stims      = []            # list of stim files to apply
+        self.mot_labs   = []            # labels for motion params
         self.opt_src    = 'cmd'         # option source
         self.subj_id    = 'SUBJ'        # hopefully user will replace this
         self.subj_label = '$subj'       # replace this for execution
@@ -1198,7 +1221,7 @@ class SubjProcSream:
         self.fp         = None          # file object
         self.anat       = None          # anatomoy to copy (afni_name class)
         self.rm_rm      = 1             # remove rm.* files
-        self.mot_labs   = []            # labels for motion params
+        self.gen_review = '@epi_review.$subj' # filename for gen_epi_review.py
 
         self.verb       = 1             # verbosity level
 
@@ -1207,6 +1230,7 @@ class SubjProcSream:
         self.runs       = 0             # number of runs
         self.mask       = None          # mask dataset
         self.regmask    = 1             # apply any full_mask in regression
+        self.view       = '+orig'       # view could also be '+tlrc'
 
         self.bindex     = 0             # current block index
         self.pblabel    = ''            # previous block label
@@ -1247,6 +1271,8 @@ class SubjProcSream:
         self.valid_opts.add_opt('-bash', 0, [])
         self.valid_opts.add_opt('-copy_anat', 1, [])
         self.valid_opts.add_opt('-copy_files', -1, [])
+        self.valid_opts.add_opt('-gen_epi_review', 1, [])
+        self.valid_opts.add_opt('-no_epi_review', 0, [])
         self.valid_opts.add_opt('-keep_rm_files', 0, [])
         self.valid_opts.add_opt('-move_preproc_files', 0, [])
         self.valid_opts.add_opt('-tlrc_anat', 0, [])
@@ -1361,11 +1387,23 @@ class SubjProcSream:
             print g_version
             return 0  # gentle termination
         
-        opt = opt_list.find_opt('-subj_id')
-        if opt != None: self.subj_id = opt.parlist[0]
+        opt = opt_list.find_opt('-copy_anat')
+        if opt != None: self.anat = afni_name(opt.parlist[0])
+
+        opt = opt_list.find_opt('-gen_epi_review')  # name epi review script
+        if opt != None: self.gen_review = opt.parlist[0]
+
+        opt = opt_list.find_opt('-no_epi_review') # no epi review script
+        if opt != None: self.gen_review = None
+
+        opt = opt_list.find_opt('-keep_rm_files')
+        if opt != None: self.rm_rm = 0
 
         opt = opt_list.find_opt('-out_dir')
         if opt != None: self.out_dir = opt.parlist[0]
+
+        opt = opt_list.find_opt('-subj_id') # -- needs to be before script
+        if opt != None: self.subj_id = opt.parlist[0]
 
         opt = opt_list.find_opt('-script')
         if opt != None: self.script = opt.parlist[0]
@@ -1373,12 +1411,6 @@ class SubjProcSream:
 
         opt = opt_list.find_opt('-scr_overwrite')
         if opt != None: self.overwrite = 1
-
-        opt = opt_list.find_opt('-copy_anat')
-        if opt != None: self.anat = afni_name(opt.parlist[0])
-
-        opt = opt_list.find_opt('-keep_rm_files')
-        if opt != None: self.rm_rm = 0
 
     # init blocks from command line options, then check for an
     # alternate source       rcr - will we use 'file' as source?
@@ -1470,6 +1502,17 @@ class SubjProcSream:
                 if self.verb>2: block.show('+d post command creation: ')
                 if self.verb>1: print '+d %s command: %s'%(block.label, cmd_str)
 
+        if self.gen_review:
+            cmd_str = db_cmd_gen_review(self)
+            if cmd_str:
+                self.fp.write(add_line_wrappers(cmd_str))
+                if self.verb > 1:
+                    print "+d generated EPI review script %s" % self.gen_review
+            else:
+                errs += 1
+                if self.verb > 1:
+                    print '** failed to generate EPI review script'
+
         rv = self.finalize_script()     # finish the script
         if rv: errs += 1
 
@@ -1500,38 +1543,9 @@ class SubjProcSream:
 
         # updated by 'tcat' opteration (and -remove_trs option)
         dset = self.dsets[0].rpv()
-        list = read_attribute(dset, 'TAXIS_NUMS')
-        if list == None:
-            print "** failed to find the number of TRs from dset '%s'" % dset
-            return 1
-        try: self.reps = int(list[0])
-        except:
-            print "** reps '%s' is not an int?" % list[0]
-            return 1
-        if self.reps < 1:
-            print "** invalid nreps (%d) for dset %s" % (self.reps, dset)
-            return 1
-        # and set units (to either sec (77002) or ms (77001))
-        try: units = int(list[2])
-        except: units = 77002
-        if units != 77001 and units != 77002: units = 77002
 
-        list = read_attribute(dset, 'TAXIS_FLOATS')
-        if list == None:
-            print "** failed to find the TR length from dset '%s'" % dset
-            return 1
-        try: self.tr = float(list[1])
-        except:
-            print "** TR '%s' is not a float?" % list[0]
-            return 1
-        # specify units in string
-        if units == 77001: unit_str = 'ms'
-        else             : unit_str = 's'
-
-        if self.verb > 1: print '(reps, runs, tr) = (%d, %d, %s%s)' %  \
-                                 (self.reps, self.runs, str(self.tr), unit_str)
-        # and adjust TR
-        if units == 77001: self.tr /= 1000.0
+        err, self.reps, self.tr = get_dset_reps_tr(dset, self.verb)
+        if err: return 1   # check for failure
 
     # create a new block for the given label, and append it to 'blocks'
     def add_block(self, label):
@@ -1548,7 +1562,7 @@ class SubjProcSream:
         return None
 
     def find_block_index(self, label):
-        block = find_block(label)
+        block = self.find_block(label)
         if block: return self.blocks.index(block)
         return None
 
@@ -1688,6 +1702,15 @@ class SubjProcSream:
     def prev_prefix_form_rwild(self):
         return 'pb%02d.%s.r??.%s' %    \
                 (self.bindex-1, self.subj_label, self.pblabel)
+
+    # like prefix, but list the whole dset form, in wildcard format
+    def dset_form_wild(self, blabel):
+        bind = self.find_block_index(blabel)
+        if bind == None:
+            print "** DFW: failed to find block for label '%s'" % blabel
+            return ''
+        return 'pb%02d.%s.r??.%s%s.HEAD' %      \
+               (bind, self.subj_label, blabel, self.view)
 
 class ProcessBlock:
     def __init__(self, label, proc):

@@ -1,3 +1,9 @@
+#------------------------------------------------------------------
+# Extracted (and modified) from fmri library by Karsten Tabelow, 
+# tabelow@wias-berlin.de and Joerg Polzehl (polzehl@wias-berlin.de)
+#------------------------------------------------------------------
+
+
 read.AFNI <- function(filename) {
   fileparts <- strsplit(filename,"\\.")[[1]]
   ext <- tolower(fileparts[length(fileparts)])

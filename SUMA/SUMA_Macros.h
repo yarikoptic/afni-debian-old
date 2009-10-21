@@ -37,6 +37,17 @@
    else {   char *m_tmp; m_tmp = UNIQ_hashcode((strn)); (newcode) = SUMA_copy_string(m_tmp); free(m_tmp); m_tmp = NULL; }  \
 }
 
+#define SUMA_PUT_ID_ATTR(nel,name,strn) { \
+   if (strn) { \
+      char *m_tmp; m_tmp = UNIQ_hashcode((strn));  \
+      NI_set_attribute(nel, name,m_tmp); free(m_tmp); \
+   } else { \
+      char m_sbuf[SUMA_IDCODE_LENGTH]; \
+      UNIQ_idcode_fill(m_sbuf); \
+      NI_set_attribute(nel, name, m_sbuf); \
+   }  \
+}
+
 
 #define SUMA_WHAT_ENDIAN(End){   \
    int m_one = 1;   \
@@ -608,6 +619,13 @@ if Dist = 0, point on plane, if Dist > 0 point above plane (along normal), if Di
       }  \
    }
 
+/*! is 3x4 xform an indentity matrix? */
+#define SUMA_IS_XFORM_IDENTITY(Xform)  \
+      (  Xform[0][0] == 1.0 && Xform[1][1] == 1.0 && Xform[2][2] == 1.0 && \
+         Xform[0][3] == 0.0 && Xform[1][3] == 0.0 && Xform[2][3] == 0.0 && \
+         Xform[0][1] == 0.0 && Xform[0][2] == 0.0 &&  \
+         Xform[1][0] == 0.0 && Xform[1][2] == 0.0 &&  \
+         Xform[2][0] == 0.0 && Xform[2][1] == 0.0 )   ? 1:0 
 
 /* definitions for SUMA_MT_intersect */
 #define SUMA_MT_CROSS(m_MTCR_dest,m_MTCR_v1,m_MTCR_v2) \
@@ -2342,5 +2360,17 @@ WARNING: The input data vectors are not cast to the type of s.
             }\
          }\
    }
+
+/*!
+   Change a 12 element 1D affine transform vector to a 3x4 double array format
+*/
+   #define SUMA_Xform1Dto2D(v,m){\
+      m[0][0] = v[0]; m[0][1] = v[1]; m[0][2] = v[2]; m[0][3] = v[3]; \
+      m[1][0] = v[4]; m[1][1] = v[5]; m[1][2] = v[6]; m[1][3] = v[7]; \
+      m[2][0] = v[8]; m[2][1] = v[9]; m[2][2] = v[10]; m[2][3] = v[11]; \
+   }
+
+
+
 #endif
 

@@ -128,6 +128,10 @@ ENTRY("THD_dataset_info") ;
       case STORAGE_BY_NI_SURF_DSET:
         outbuf = THD_zzprintf(outbuf,"Storage Mode:    NI_SURF_DSET file\n") ;
        break ;
+
+      case STORAGE_BY_GIFTI:
+        outbuf = THD_zzprintf(outbuf,"Storage Mode:    GIFTI file\n") ;
+       break ;
     }
    }
 
@@ -185,6 +189,10 @@ ENTRY("THD_dataset_info") ;
             "Data Axes Tilt:  Plumb\n"
             "Data Axes Orientation:");
          obliquity = 0;
+      }
+      { char *gstr = EDIT_get_geometry_string(dset) ;
+        if( gstr != NULL && *gstr != '\0' )
+          outbuf = THD_zzprintf(outbuf,"Geometry String: \"%s\"\n",gstr) ;
       }
    } else {
       sprintf (soblq, 

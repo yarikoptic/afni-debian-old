@@ -578,6 +578,12 @@ void get_options
          * (*dset_time)->dblk->diskptr->dimsizes[2] ;
        *ts_length = DSET_NUM_TIMES(*dset_time);
 
+       /* verify that we seem to have a time series */
+       if( DSET_NVALS(*dset_time) != *ts_length )
+          WARNING_message("dataset num_times (%d) != nvals (%d)\n"
+                          "   --> no time axis could be a problem!\n",
+                          *ts_length, DSET_NVALS(*dset_time));
+
      dsTR = DSET_TIMESTEP(*dset_time) ;
      if(output_datum==ILLEGAL_TYPE) {   /* if output_datum type is not specified by user*/
         output_datum = DSET_BRICK_TYPE(*dset_time,0);  /* get datum type from dataset */
@@ -3445,8 +3451,8 @@ int main
       /*----- display progress for user (1-based) -----*/
       if (g_voxel_count && proc_ind == 0 )
       {
-        /* only print every 10th          26 Oct 2006 [rickr] */
-        if( voxel_count_index % 10 == 0 )
+        /* only print every 100th         26 Oct 2006 [rickr] */
+        if( voxel_count_index % 100 == 0 )
           fprintf(stderr,"\r++ voxel count: %8d (of %d)", iv+1, ixyz_top);
         voxel_count_index++ ;
       }

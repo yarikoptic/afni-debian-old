@@ -507,7 +507,8 @@ void CALC_read_opts( int argc , char * argv[] )
 
          ll = strlen(argv[nopt]) ;
          if( ll >= 4 && ( strstr(argv[nopt],".1D") != NULL ||
-                          strstr(argv[nopt],"1D:") != NULL   ) ){
+                          strstr(argv[nopt],"1D:") != NULL   )
+                     && strstr(argv[nopt],"'") == NULL       ){
 
             ll = TS_reader( ival , argv[nopt] ) ;
             if( ll == 0 ){ nopt++ ;  goto DSET_DONE ; }
@@ -1257,6 +1258,21 @@ void CALC_Syntax(void)
     "                                                                        \n"
     " N.B.: To perform calculations ONLY on .1D files, use program 1deval.   \n"
     "       3dcalc takes .1D files for use in combination with 3D datasets!  \n"
+    "                                                                        \n"
+    " N.B.: If you auto-transpose a .1D file on the command line, (by ending \n"
+    "       the filename with \\'), then 3dcalc will NOT treat it as the     \n"
+    "       special case described above, but instead will treat it as       \n"
+    "       a normal dataset, where each row in the transposed input is a    \n"
+    "       'voxel' time series.  This would allow you to do differential    \n"
+    "       subscripts on 1D time series, which program 1deval does not      \n"
+    "       implement.  For example:                                         \n"
+    "                                                                        \n"
+    "        3dcalc -a '1D: 3 4 5 6'\\' -b a+l -expr 'sqrt(a+b)' -prefix -   \n"
+    "                                                                        \n"
+    "       This technique allows expression evaluation on multi-column      \n"
+    "       .1D files, which 1deval also does not implement.  For example:   \n"
+    "                                                                        \n"
+    "        3dcalc -a '1D: 3 4 5 | 1 2 3'\\' -expr 'cbrt(a)' -prefix -      \n"
     "                                                                        \n"
     "------------------------------------------------------------------------\n"
     "'1D:' INPUT:                                                            \n"

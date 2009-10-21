@@ -33,6 +33,15 @@ SUMA_Boolean SUMA_DrawFaceSetMarker (SUMA_FaceSetMarker* FM, SUMA_SurfaceViewer 
 SUMA_FaceSetMarker* SUMA_Alloc_FaceSetMarker (void);
 void SUMA_Free_FaceSetMarker (SUMA_FaceSetMarker* FM);
 void SUMA_DrawMesh(SUMA_SurfaceObject *SurfObj, SUMA_SurfaceViewer *csv);
+char *SUMA_SO_AnatomicalStructurePrimary(SUMA_SurfaceObject *SO);
+char *SUMA_SO_GeometricType(SUMA_SurfaceObject *SO);
+char *SUMA_SO_AnatomicalStructureSecondary(SUMA_SurfaceObject *SO);
+char *SUMA_SO_TopologicalType(SUMA_SurfaceObject *SO);
+SUMA_Boolean SUMA_MergeAfniSO_In_SumaSO(NI_group **aSOp,
+                                        SUMA_SurfaceObject *SO);
+NI_group *SUMA_ExtractAfniSO_FromSumaSO( SUMA_SurfaceObject *SO, 
+                                                   int CopyData);
+
 SUMA_Boolean SUMA_Free_Surface_Object (SUMA_SurfaceObject *SO);
 void SUMA_Print_Surface_Object(SUMA_SurfaceObject *SO, FILE *Out);
 char *SUMA_SurfaceObject_Info (SUMA_SurfaceObject *SO, DList *DsetList);
@@ -44,6 +53,9 @@ SUMA_Boolean SUMA_freeDrawnROI (SUMA_DRAWN_ROI *D_ROI);
 SUMA_Boolean SUMA_freeROI (SUMA_ROI *ROI); 
 SUMA_Boolean SUMA_Draw_SO_ROI (SUMA_SurfaceObject *SO, SUMA_DO* dov, int N_dov, SUMA_SurfaceViewer *csv);
 SUMA_DO_Types SUMA_Guess_DO_Type(char *s);
+SUMA_TextDO * SUMA_Alloc_TextDO (int N_n, char *Label, 
+                                 char *Parent_idcode_str, SUMA_DO_Types type);
+SUMA_TextDO *SUMA_free_TextDO(SUMA_TextDO *TDO) ;
 SUMA_SegmentDO * SUMA_Alloc_SegmentDO (int N_n, char *Label, int oriented, char *parent_idcode, SUMA_DO_Types type);
 void SUMA_free_SegmentDO (SUMA_SegmentDO * SDO);
 SUMA_Boolean SUMA_DrawSegmentDO (SUMA_SegmentDO *SDO, SUMA_SurfaceViewer *sv);
@@ -95,6 +107,7 @@ DList *SUMA_SortedAxisSegmentList ( SUMA_SurfaceViewer *sv, SUMA_Axis *Ax,
                                     SUMA_SORT_BOX_AXIS_OPTION opt);
 void SUMA_WorldAxisStandard (SUMA_Axis* Ax, SUMA_SurfaceViewer *sv);
 SUMA_Boolean SUMA_AxisText(SUMA_AxisSegmentInfo *ASIp, double *Ps);
+SUMA_Boolean SUMA_DrawText(char *txt, float *Ps);
 void SUMA_ReportDrawnROIDatumLength(SUMA_SurfaceObject *SO, SUMA_ROI_DATUM *ROId, FILE *out, SUMA_WIDGET_INDEX_DRAWROI_WHATDIST option);
 SUMA_SurfaceObject *SUMA_HJS_Surface(int ipart);
 SUMA_SurfaceObject *SUMA_head_01_surface(void);
@@ -102,6 +115,9 @@ NI_group *SUMA_SDO2niSDO(SUMA_SegmentDO *SDO);
 SUMA_SegmentDO *SUMA_niSDO2SDO(NI_group *ngr); 
 SUMA_Boolean SUMA_isSODimInitialized(SUMA_SurfaceObject *SO) ;
 SUMA_Boolean SUMA_SetSODims(SUMA_SurfaceObject *SO);
+SUMA_Boolean SUMA_MinMaxNodesInROI (SUMA_DRAWN_ROI *D_ROI, 
+                                    int MinMax[]);
+SUMA_Boolean SUMA_TextBoxSize(char *txt, int *w, int *h, void *font);
 
 /*!
    NO Guarantee that certain nodes might 
