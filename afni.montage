@@ -1,0 +1,123 @@
+
+The following is a C shell script that will take a bunch of .pnm files and
+makes a montage of them, formed into an uncompressed TIFF file.  To use this
+script, you need the file "2.pbm" to provide the spacing between the images.
+This file is given below:
+------------ Cut out the 4 lines below and put into file "2.pbm" ----------
+P1
+2 2
+00
+00
+------------------ Don't include this line in "2.pbm"! --------------------
+
+Instructions for using the script file:
+  1) In this example, the pnm files are named ditt.*.pnm and pc2.*.pnm;
+     the outputs will be ditt.tif and pc2.tif.  These are controlled by
+     the "foreach fred" statement.
+
+  2) This example is from my SMR poster, where I used coronal images
+     in Talairach space.  For that purpose, I used slices 20 through
+     165, every 5 mm.  These I produced by using the Save:pnm option
+     in the coronal viewing window (after turning the crosshairs off!).
+     The montage can be formed from images saved in any orientation.
+     It is up to you to decide which orientation, which slices to
+     use, and how to lay them out.
+
+  3) The slice number for the first slice to use is given by the
+     "set first =" statement.  The interval between slices to use
+     is given by the "set step =" statement.  In this case, I used
+     every fifth slice (every 5 mm).
+
+  4) The number of images across the page is given by the "set across ="
+     statement; the number of images down the page is given by the
+     "set down =" statement.  In this case, I used a layout of 6 x 5,
+     and later printed the page out in landscape.
+
+  5) The four "set" statements with numbers and the "foreach" statement
+     are all that you should need to edit to use this script.  There
+     are no command line arguments.  The script will echo to the screen
+     the commands that it executes to produce the output.
+
+  6) You need to compile and install the "netpbm" utilities to use this
+     script.  They are available at the AFNI distribution computer, or
+     at many other sites on the Internet.  With the appropriate utility
+     from this package, you could produce GIF or Sun raster files, or
+     many other output formats besides TIFF, if that is your requirement.
+     I used uncompressed TIFF because the software on our PC with the
+     color Epson inkjet printer likes this format.
+
+   7) You also need the 2.pbm file, as described above.  This should be
+      in the current directory (or you can alter the SPACER variable).
+      Notice that the AFNI package utility "count" is used to generate
+      lists of filenames.
+
+   8) One last detail -- to get the "PNM save" feature, you need to use
+      the "Disp" control in the image viewing window that you are dumping
+      out.  You will find that the images look a little nicer when printed
+      if you also use the "Sharpen" filter from the "Disp" menu.
+
+   9) To see a 7x5 sample montage, Netscape to
+         http://www.biophysics.mcw.edu/Images/cor_montage.jpg
+      Note that I converted the TIFF file to JPEG format using the "cjpeg"
+      utility (not in netpbm).
+
+Please let me know if you get this script to work.  At one point
+I was planning to put such a "paste up" capability into AFNI itself,
+but simply ran out of time and patience.  Maybe someday.
+
+Bob Cox / Biophysics Research Institute / Medical College of Wisconsin
+Voice: 414-456-4038 / Fax: 414-266-8515 / rwcox@mcw.edu
+http://www.biophysics.mcw.edu/BRI-people/cox.html
+
+------------------ Cut script out and put in file "montage" ---------------
+------------------------ Then "chmod ugo+x montage" -----------------------
+--------------------- Script file starts with NEXT line -------------------
+#!/bin/csh
+
+setenv SPACER ./2.pbm
+
+foreach fred ( ditt pc2 )
+
+  set first  = 20
+  set step   = 5
+  set across = 6
+  set down   = 5
+
+  set outif  = ${fred}.tif
+  set prefix = $fred
+
+  set rlist = ( )
+  set dlist = ( )
+
+  foreach row ( `count -digits 2 1 $down` )
+     @ base = $first + ( $row - 1 ) * $across * $step
+     @ top  = $first + $row * $across * $step - 2 * $step
+
+     set alist = ( )
+     foreach col ( `count -digits 4 -root ${prefix}. -suffix .pnm $base $top $step` )
+        set alist = ( $alist $col $SPACER )
+     end
+     @ top = $top + $step
+     set top = `count -digits 4 $top $top`
+     set alist = ( $alist ${prefix}.${top}.pnm )
+
+     echo "pnmcat -lr $alist > row${row}.pnm"
+     if( $?db == 0 )then
+        pnmcat -lr $alist > row${row}.pnm
+     endif
+
+     set rlist = ( $rlist row${row}.pnm )
+     set dlist = ( $dlist row${row}.pnm )
+     @ diff = $row - $down
+     if( $diff != 0 )then
+        set rlist = ( $rlist $SPACER )
+     endif
+  end
+
+  echo "pnmcat -tb $rlist | pnmtotiff -none > $outif"
+  if( $?db == 0 )then
+     pnmcat -tb $rlist | pnmtotiff -none > $outif
+     /bin/rm -f $dlist
+  endif
+
+end

@@ -1,0 +1,1439 @@
+##
+## Include for MCW AFNI make
+##   -- goes at end of each platform specific Makefile.
+##
+
+F2C = ./f2c -A
+
+DOCS     = docfiles/*.ps README* AFNI.changes.cox
+MINDOCS  = README* AFNI.changes.cox
+MYDOCS   = docfiles/*.tex *.txt art12cox.sty $(DOCS)
+
+IMOBJS  = display.o imseq.o bbox.o xim.o xutil.o LiteClue.o
+AFOBJS  = afni.o afni_func.o afni_widg.o afni_warp.o afni_fimmer.o \
+            afni_slice_short.o afni_slice_float.o                  \
+            afni_slice_byte.o  afni_slice_complex.o                \
+            afni_pcor.o afni_pcor_float.o                          \
+            pbar.o afni_graph.o afni_plugin.o                      \
+            parser.o parser_int.o afni_plugout.o afni_fimfunc.o    \
+            afni_setup.o afni_receive.o mcw_graf.o afni_splash.o   \
+            afni_pplug_env.o afni_pplug_2dfunc.o afni_friends.o    \
+            afni_ttren.o afni_pplug_1dfunc.o afni_driver.o         \
+            $(IMOBJS)
+
+T3OBJS  = to3d.o $(IMOBJS)
+
+MISC    = afni.montage AFNI.Xdefaults AFNI.afnirc mF64 mF128 3d*.lib gmovie*
+
+## Some programs (like whirlgif) are not included in this list,
+## and must be "made" separately.  This list is the core AFNI
+## package -- other programs are experimental and/or outsiders.
+
+PROGRAMS = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge count   \
+           sfim tfim ftosh 3dttest 3ddup imrotate imreg imstat 3dnvals          \
+           fim2 imand FD2 sqwave immask imdump imaver 3dhistog 3dfim 3daxialize \
+           p2t cdf 2swap 4swap mritopgm 3dANOVA 3dANOVA2 3dANOVA3 plugout_tta  \
+           waver 3dnewid 3dcalc ccalc imcalc 3T_toafni 3drefit 3dbucket       \
+           3dNLfim 3dTSgen AlphaSim 3dFWHM plugout_tt 3dnoise plugout_ijk    \
+           3dMannWhitney 3dWilcoxon 3dKruskalWallis 3dFriedman 3dRegAna      \
+           2dImReg 3dmaskave 3dbuc2fim byteorder imstack 3dDeconvolve 3dTcat \
+           3drotate 3dvolreg 3dpc 3dfractionize 1dplot adwarp imupsam        \
+           3dIntracranial 24swap 3dTsmooth RSFgen float_scan 1dtranspose     \
+           3dFourier 3dNotes 3dROIstats 1deval 3dStatClust 3dTstat 3dmaskdump \
+           3dTshift 3dDetrend 1dfft 1dcat 3drename 1dnorm afni_vcheck 3ddot  \
+           3dWavelets 3dfim+ imcutup 3dWinsor 3dZeropad 3dTagalign 3dUndump \
+           3dMean 3dAttribute cat_matvec 3dOverlap 3dClipLevel 3dZregrid    \
+           3dEntropy 3ddelay ent16 3dRowFillin 1dgrayplot 3dToutcount 1dsum \
+           3dExtrema qhull strblast 3dConvolve 3dZcutup 3dZcat 3dTqual      \
+           3dTcorrelate 3dAnatNudge 3dcopy Vecwarp 3dMINCtoAFNI             \
+           3dAFNItoANALYZE siemens_vision ge_header mayo_analyze
+
+PROGRAMS_NOPLUG = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge count \
+                  sfim tfim ftosh 3dttest 3ddup imrotate imreg imstat 3dnoise       \
+                  fim2 imand FD2 sqwave immask imdump imaver 3dhistog 3dfim imupsam \
+                  p2t cdf 2swap 4swap mritopgm 3dANOVA 3dANOVA2 3dANOVA3 3drefit   \
+                  waver 3dnewid 3dcalc ccalc imcalc 2dImReg 3dmaskave adwarp      \
+                  3dMannWhitney 3dWilcoxon 3dKruskalWallis 3dFriedman 3dRegAna     \
+                  imstack byteorder 3dDeconvolve 3dTcat 3drotate 3dvolreg 1dplot    \
+                  24swap 3dTsmooth RSFgen float_scan                                 \
+                  3dFourier 3dNotes 3dROIstats 1deval 3dStatClust 3dTstat 1dtranspose \
+                  3dTshift 3dDetrend 1dfft 1dcat 3drename 1dnorm afni_vcheck 3ddot    \
+                  imcutup 3dMean 3dAttribute 3dZeropad 3dWinsor 3dmaskdump 3dfim+      \
+                  3dUndump cat_matvec 3dOverlap 3dClipLevel 3dZregrid 3dEntropy 3ddelay \
+                  ent16 3dRowFillin 1dgrayplot 3dToutcount 1dsum 3dExtrema strblast      \
+                  3dConvolve 3dZcutup 3dZcat 3dTqual 3dTcorrelate 3dAnatNudge 3dcopy     \
+                  Vecwarp 3dMINCtoAFNI 3dAFNItoANALYZE siemens_vision ge_header         \
+                  mayo_analyze
+
+SCRIPTS = @4Daverage @CommandGlobb @GetAfniPrefix @NoExt @UpdateAfni
+
+LIBHEADERS = mrilib.h cdflib.h mcw_glob.h 3ddata.h thd_maker.h thd_iochan.h \
+             editvol.h cs.h eispack.h killer.h vecmat.h machdep.h tagset.h  \
+             thd_compress.h afni_warp.h coxplot.h f2c.h volpack.h mcw_malloc.h \
+             multivector.h afni_environ.h
+
+all:libmri.a libcoxplot.a libvolpack.a programs
+
+itall:all plugins install install_plugins
+
+$(INSTALLDIR):
+	if [ ! -d $(INSTALLDIR) ]; then $(MKDIR) -p $(INSTALLDIR); echo Made directory $(INSTALLDIR); fi
+
+totality:all plugins install install_plugins install_lib clean
+	$(CP) README* $(INSTALLDIR)
+
+vastness:all plugins install install_plugins install_lib
+	$(CP) README* $(INSTALLDIR)
+
+all_noplug:libmri.a programs_noplug
+
+totality_noplug:libmri.a libcoxplot.a programs_noplug install_noplug clean
+
+programs:$(PROGRAMS)
+
+programs_noplug:$(PROGRAMS_NOPLUG)
+
+libraries:libmri.a libcoxplot.a libvolpack.a libf2c.a
+
+quotize:quotize.o
+	$(CC) -o quotize quotize.o $(LFLAGS) $(LLIBS)
+
+newstuff.hhh:quotize README.changes
+	$(RM) newstuff.hhh
+	./quotize newstuff < README.changes > newstuff.hhh
+
+license.h:quotize
+	./quotize license < README.copyright > license.h
+
+3dUndump:3dUndump.o
+	$(CC) -o 3dUndump 3dUndump.o $(LFLAGS) $(LLIBS)
+
+3dnoise:3dnoise.o
+	$(CC) -o 3dnoise 3dnoise.o $(LFLAGS) $(LLIBS)
+
+3dstrip:3dstrip.o
+	$(CC) -o 3dstrip 3dstrip.o $(LFLAGS) $(LLIBS)
+
+byteorder:byteorder.o
+	$(CC) -o byteorder byteorder.o $(LFLAGS) $(LLIBS)
+
+3dbuc2fim:3dbuc2fim.o
+	$(CC) -o 3dbuc2fim 3dbuc2fim.o $(LFLAGS) $(LLIBS)
+
+mritopgm:mritopgm.c
+	$(CC) -o mritopgm mritopgm.c $(IFLAGS) $(LFLAGS) $(LLIBS)
+
+ppmtocmap:ppmtocmap.c
+	$(CC) -o ppmtocmap ppmtocmap.c $(IFLAGS) $(LFLAGS) $(LLIBS)
+
+impdif:impdif.c
+	$(CC) -o impdif impdif.c $(IFLAGS) $(LFLAGS) $(LLIBS)
+
+imcutup:imcutup.c
+	$(CC) -o imcutup imcutup.c $(IFLAGS) $(LFLAGS) $(LLIBS)
+
+Vecwarp:Vecwarp.c
+	$(CC) -o Vecwarp Vecwarp.c $(IFLAGS) $(LFLAGS) -lmri -lf2c $(LLIBS)
+
+float_scan:float_scan.c
+	$(CC) -o float_scan float_scan.c $(IFLAGS) $(LFLAGS) $(LLIBS)
+
+to26:to26.c
+	$(CC) -o to26 to26.c $(IFLAGS) $(LFLAGS) $(LLIBS)
+
+imupsam:imupsam.c
+	$(CC) -o imupsam imupsam.c $(IFLAGS) $(LFLAGS) $(LLIBS)
+
+2swap:2swap.c
+	$(CC) -o 2swap 2swap.c $(IFLAGS) $(LFLAGS) $(LLIBS)
+
+4swap:4swap.c
+	$(CC) -o 4swap 4swap.c $(IFLAGS) $(LFLAGS) $(LLIBS)
+
+24swap:24swap.c
+	$(CC) -o 24swap 24swap.c $(IFLAGS) $(LFLAGS) $(LLIBS)
+
+crao:crao.o
+	$(CC) -o crao crao.o $(LFLAGS) $(LLIBS)
+crao2:crao2.o
+	$(CC) -o crao2 crao2.o $(LFLAGS) $(LLIBS)
+
+imaver:imaver.o
+	$(CC) -o imaver imaver.o $(LFLAGS) $(LLIBS)
+
+impsd:impsd.o
+	$(CC) -o impsd impsd.o $(LFLAGS) $(LLIBS)
+
+imdump:imdump.o
+	$(CC) -o imdump imdump.o $(LFLAGS) $(LLIBS)
+
+imswap:imswap.o
+	$(CC) -o imswap imswap.o $(LFLAGS) $(LLIBS)
+
+immask:immask.o
+	$(CC) -o immask immask.o $(LFLAGS) $(LLIBS)
+
+sqwave:sqwave.o
+	$(CC) -o sqwave sqwave.o
+
+pcor.o:pcor.c pcor.h
+	$(RM) $@
+	$(CC) -c pcor.c $(IFLAGS) -DREF_FLOAT_SINGLE -UVOX_SHORT
+
+pcorsh.o:pcor.c pcor.h
+	$(RM) $@
+	$(CP) pcor.c pcorsh.c
+	$(CC) -c pcorsh.c $(IFLAGS) -DREF_FLOAT_SINGLE -DVOX_SHORT
+	$(RM) pcorsh.c
+
+FD2:FD2.o ts.o mcw.o overfim.o pcorsh.o csfft_AJ.o
+	$(RM) $@
+	$(CC) -o FD2 FD2.o mcw.o overfim.o ts.o pcorsh.o csfft_AJ.o $(LFLAGS) $(LLIBS)
+
+dFD2:dFD2.o ts.o mcw.o overfim.o pcorsh.o
+	$(RM) $@
+	$(CC) -o dFD2 dFD2.o mcw.o overfim.o ts.o pcorsh.o $(LFLAGS) $(LLIBS)
+
+fim:fim.c
+	$(RM) $@
+	$(CC) -o fim fim.c -DSYSV $(LFLAGS) $(LLIBS)
+
+bzip2:bzip2.o
+	$(CC) -o bzip2 bzip2.o
+
+fim2:fim2.o ts.o pcor.o
+	$(RM) $@
+	$(CC) -o fim2 fim2.o ts.o pcor.o $(LFLAGS) $(LLIBS)
+
+imstat:imstat.o
+	$(RM) $@
+	$(CC) -o imstat imstat.o $(LFLAGS) $(LLIBS)
+
+imstack:imstack.o
+	$(RM) $@
+	$(CC) -o imstack imstack.o $(LFLAGS) $(LLIBS)
+
+imreg:imreg.o pcor.o
+	$(RM) $@
+	$(CC) -o imreg imreg.o pcor.o $(LFLAGS) $(LLIBS)
+
+imfit:imfit.o
+	$(RM) $@
+	$(CC) -o imfit imfit.o $(LFLAGS) $(LLIBS)
+
+imand:imand.o
+	$(RM) $@
+	$(CC) -o imand imand.o $(LFLAGS) $(LLIBS)
+
+imrotate:imrotate.o
+	$(RM) $@
+	$(CC) -o imrotate imrotate.o $(LFLAGS) $(LLIBS)
+
+dsetdup:dsetdup.o
+	$(RM) $@
+	$(CC) -o dsetdup dsetdup.o $(LFLAGS) $(LLIBS)
+
+3ddup:3ddup.o
+	$(RM) $@
+	$(CC) -o 3ddup 3ddup.o $(LFLAGS) $(LLIBS)
+
+3dZeropad:3dZeropad.o
+	$(RM) $@
+	$(CC) -o 3dZeropad 3dZeropad.o $(LFLAGS) $(LLIBS)
+
+3dnvals:3dnvals.o
+	$(RM) $@
+	$(CC) -o 3dnvals 3dnvals.o $(LFLAGS) $(LLIBS)
+
+3dAttribute:3dAttribute.o
+	$(RM) $@
+	$(CC) -o 3dAttribute 3dAttribute.o $(LFLAGS) $(LLIBS)
+
+3dproject:3dproject.o parser.o parser_int.o
+	$(RM) $@
+	$(CC) -o 3dproject 3dproject.o parser.o parser_int.o \
+                 $(LFLAGS) -lmri -lf2c $(LLIBS)
+
+3dinfo:3dinfo.o
+	$(RM) $@
+	$(CC) -o 3dinfo 3dinfo.o $(LFLAGS) $(LLIBS) -lmri
+
+3dmaskave:3dmaskave.o
+	$(RM) $@
+	$(CC) -o 3dmaskave 3dmaskave.o $(LFLAGS) $(LLIBS)
+
+3dmaskdump:3dmaskdump.o parser.o parser_int.o
+	$(RM) $@
+	$(CC) -o 3dmaskdump 3dmaskdump.o parser.o parser_int.o \
+                 $(LFLAGS) -lmri -lf2c $(LLIBS)
+
+3drefit:3drefit.o
+	$(RM) $@
+	$(CC) -o 3drefit 3drefit.o $(LFLAGS) $(LLIBS)
+
+3drename:3drename.o
+	$(RM) $@
+	$(CC) -o 3drename 3drename.o $(LFLAGS) $(LLIBS)
+
+3dcopy:3dcopy.o
+	$(RM) $@
+	$(CC) -o 3dcopy 3dcopy.o $(LFLAGS) $(LLIBS)
+
+3daxialize:3daxialize.o afni_warp.o afni_slice_byte.o afni_slice_short.o \
+           afni_slice_float.o afni_slice_complex.o
+	$(RM) $@
+	$(CC) -o 3daxialize 3daxialize.o afni_warp.o afni_slice_byte.o \
+                 afni_slice_short.o afni_slice_float.o afni_slice_complex.o \
+                 $(LFLAGS) $(LLIBS)
+
+3dfractionize:3dfractionize.o
+	$(RM) $@
+	$(CC) -o 3dfractionize 3dfractionize.o $(LFLAGS) $(LLIBS)
+
+3dbucket:3dbucket.o
+	$(RM) $@
+	$(CC) -o 3dbucket 3dbucket.o $(LFLAGS) $(LLIBS)
+
+3dZcutup:3dZcutup.o
+	$(RM) $@
+	$(CC) -o 3dZcutup 3dZcutup.o $(LFLAGS) $(LLIBS)
+
+3dZcat:3dZcat.o
+	$(RM) $@
+	$(CC) -o 3dZcat 3dZcat.o $(LFLAGS) $(LLIBS)
+
+3dTqual:3dTqual.o
+	$(RM) $@
+	$(CC) -o 3dTqual 3dTqual.o $(LFLAGS) $(LLIBS)
+
+3dTcat:3dTcat.o
+	$(RM) $@
+	$(CC) -o 3dTcat 3dTcat.o $(LFLAGS) $(LLIBS)
+
+3dTcorrelate:3dTcorrelate.o
+	$(RM) $@
+	$(CC) -o 3dTcorrelate 3dTcorrelate.o $(LFLAGS) $(LLIBS)
+
+3dTagalign:3dTagalign.o
+	$(RM) $@
+	$(CC) -o 3dTagalign 3dTagalign.o $(LFLAGS) -lmri -lf2c $(LLIBS)
+
+3dTshift:3dTshift.o
+	$(RM) $@
+	$(CC) -o 3dTshift 3dTshift.o $(LFLAGS) $(LLIBS)
+
+3dTstat:3dTstat.o
+	$(RM) $@
+	$(CC) -o 3dTstat 3dTstat.o $(LFLAGS) $(LLIBS)
+
+3dToutcount:3dToutcount.o
+	$(RM) $@
+	$(CC) -o 3dToutcount 3dToutcount.o $(LFLAGS) $(LLIBS)
+
+3dTsmooth:3dTsmooth.o
+	$(RM) $@
+	$(CC) -o 3dTsmooth 3dTsmooth.o $(LFLAGS) $(LLIBS)
+
+3dMean:3dMean.o
+	$(RM) $@
+	$(CC) -o 3dMean 3dMean.o $(LFLAGS) $(LLIBS)
+
+3dMINCtoAFNI:3dMINCtoAFNI.o
+	$(RM) $@
+	$(CC) -o 3dMINCtoAFNI 3dMINCtoAFNI.o $(LFLAGS) $(LLIBS)
+
+3dAFNItoANALYZE:3dAFNItoANALYZE.o
+	$(RM) $@
+	$(CC) -o 3dAFNItoANALYZE 3dAFNItoANALYZE.o $(LFLAGS) $(LLIBS)
+
+3dvolreg:3dvolreg.o
+	$(RM) $@
+	$(CC) -o 3dvolreg 3dvolreg.o $(LFLAGS) -lmri -lf2c $(LLIBS)
+
+3dedge:3dedge.o
+	$(RM) $@
+	$(CC) -o 3dedge 3dedge.o $(LFLAGS) -lmri -lf2c $(LLIBS)
+
+from3d:from3d.o
+	$(RM) $@
+	$(CC) -o from3d from3d.o $(LFLAGS) $(LLIBS)
+
+3dfim:3dfim.o afni_pcor_float.o ts.o
+	$(RM) $@
+	$(CC) -o 3dfim 3dfim.o ts.o afni_pcor_float.o $(LFLAGS) $(LLIBS)
+
+3T_toafni:3T_toafni.o
+	$(RM) $@
+	$(CC) -o 3T_toafni 3T_toafni.o $(LFLAGS) $(LLIBS)
+
+p2t:p2t.o
+	$(RM) $@
+	$(CC) -o p2t p2t.o $(LFLAGS) $(LLIBS)
+
+cdf:cdf.o
+	$(RM) $@
+	$(CC) -o cdf cdf.o $(LFLAGS) $(LLIBS)
+
+hide:hide.o
+	$(RM) $@
+	$(CC) -o hide hide.o $(LFLAGS)
+
+count:count.o
+	$(RM) $@
+	$(CC) -o count count.o $(LFLAGS) $(LLIBS)
+
+nsize:nsize.o
+	$(RM) $@
+	$(CC) -o nsize nsize.o $(LFLAGS) $(LLIBS)
+
+3dclust:3dclust.o parser.o parser_int.o
+	$(RM) $@
+	$(CC) -o 3dclust 3dclust.o parser.o parser_int.o \
+              $(LFLAGS) -lmri -lf2c $(LLIBS)
+
+3dhistog:3dhistog.o parser.o parser_int.o
+	$(RM) $@
+	$(CC) -o 3dhistog 3dhistog.o  parser.o parser_int.o \
+              $(LFLAGS) -lmri -lf2c $(LLIBS)
+
+3dhclip:3dhclip.o
+	$(RM) $@
+	$(CC) -o 3dhclip 3dhclip.o $(LFLAGS) $(LLIBS)
+
+3dmerge:3dmerge.o parser.o parser_int.o
+	$(RM) $@
+	$(CC) -o 3dmerge 3dmerge.o parser.o parser_int.o \
+                 $(LFLAGS) -lmri -lf2c $(LLIBS)
+
+3dcalc:3dcalc.o parser.o parser_int.o
+	$(RM) $@
+	$(CC) -o 3dcalc 3dcalc.o parser.o parser_int.o \
+              $(LFLAGS) -lmri -lf2c $(LLIBS)
+
+3dDetrend:3dDetrend.o parser.o parser_int.o
+	$(RM) $@
+	$(CC) -o 3dDetrend 3dDetrend.o parser.o parser_int.o \
+              $(LFLAGS) -lmri -lf2c $(LLIBS)
+
+d3dmerge:3dmerge.c
+	$(RM) $@
+	$(CCD) -o d3dmerge 3dmerge.c $(LFLAGS) $(LLIBS)
+
+3dttest:3dttest.o parser.o parser_int.o
+	$(RM) $@
+	$(CC) -o 3dttest 3dttest.o parser.o parser_int.o \
+              $(LFLAGS) -lmri -lf2c $(LLIBS)
+
+3dUniformize:3dUniformize.o
+	$(RM) $@
+	$(CC) -o 3dUniformize 3dUniformize.o $(PLFLAGS) $(LLIBS)
+
+3dpc:3dpc.o
+	$(RM) $@
+	$(CC) -o 3dpc 3dpc.o $(LFLAGS) -lmri -lf2c $(LLIBS)
+
+3duca:3duca.o
+	$(RM) $@
+	$(CC) -o 3duca 3duca.o $(LFLAGS) -lmri -lf2c $(LLIBS)
+
+3duuu:3duuu.o uuu.c
+	$(RM) $@
+	$(CC) -o 3duuu 3duuu.o $(LFLAGS) -lmri -lf2c $(LLIBS)
+
+3duuu2:3duuu2.o uuu2.c
+	$(RM) $@
+	$(CC) -o 3duuu2 3duuu2.o $(LFLAGS) -lmri -lf2c $(LLIBS)
+
+3ddot:3ddot.o
+	$(RM) $@
+	$(CC) -o 3ddot 3ddot.o $(LFLAGS) $(LLIBS)
+
+3dRowFillin:3dRowFillin.o
+	$(RM) $@
+	$(CC) -o 3dRowFillin 3dRowFillin.o $(LFLAGS) $(LLIBS)
+
+3dZFillin:3dZFillin.o
+	$(RM) $@
+	$(CC) -o 3dZFillin 3dZFillin.o $(LFLAGS) $(LLIBS)
+
+3ddelay:3ddelay.o
+	$(RM) $@
+	$(CC) -o 3ddelay 3ddelay.o $(LFLAGS) $(LLIBS)
+
+ent16:ent16.o
+	$(RM) $@
+	$(CC) -o ent16 ent16.o $(LFLAGS) $(LLIBS)
+
+strblast:strblast.o
+	$(RM) $@
+	$(CC) -o strblast strblast.o $(LFLAGS) $(LLIBS)
+
+3dEntropy:3dEntropy.o
+	$(RM) $@
+	$(CC) -o 3dEntropy 3dEntropy.o $(LFLAGS) $(LLIBS)
+
+3dZregrid:3dZregrid.o
+	$(RM) $@
+	$(CC) -o 3dZregrid 3dZregrid.o $(LFLAGS) $(LLIBS)
+
+3dOverlap:3dOverlap.o
+	$(RM) $@
+	$(CC) -o 3dOverlap 3dOverlap.o $(LFLAGS) $(LLIBS)
+
+3dClipLevel:3dClipLevel.o
+	$(RM) $@
+	$(CC) -o 3dClipLevel 3dClipLevel.o $(LFLAGS) $(LLIBS)
+
+3dWinsor:3dWinsor.o
+	$(RM) $@
+	$(CC) -o 3dWinsor 3dWinsor.o $(LFLAGS) $(LLIBS)
+
+3drotate:3drotate.o
+	$(RM) $@
+	$(CC) -o 3drotate 3drotate.o $(LFLAGS) -lmri -lf2c $(LLIBS)
+
+3dAnatNudge:3dAnatNudge.o
+	$(RM) $@
+	$(CC) -o 3dAnatNudge 3dAnatNudge.o $(LFLAGS) -lmri -lf2c $(LLIBS)
+
+rtfeedme:rtfeedme.o
+	$(RM) $@
+	$(CC) -o rtfeedme rtfeedme.o $(LFLAGS) $(LLIBS)
+
+3dANOVA:3dANOVA.o
+	$(RM) $@
+	$(CC) -o 3dANOVA 3dANOVA.o $(LFLAGS) $(LLIBS)
+
+3dANOVA2:3dANOVA2.o
+	$(RM) $@
+	$(CC) -o 3dANOVA2 3dANOVA2.o $(LFLAGS) $(LLIBS)
+
+3dANOVA3:3dANOVA3.o
+	$(RM) $@
+	$(CC) -o 3dANOVA3 3dANOVA3.o $(LFLAGS) $(LLIBS)
+
+3dNLfim:3dNLfim.o NLfit.c NLfit.h NLfit_model.c NLfit_model.h
+	$(RM) $@
+	$(CC) -o 3dNLfim 3dNLfim.o $(PLFLAGS) $(LLIBS)
+
+3dStatClust:3dStatClust.o
+	$(RM) $@
+	$(CC) -o 3dStatClust 3dStatClust.o $(PLFLAGS) $(LLIBS)
+
+RSFgen:RSFgen.o
+	$(RM) $@
+	$(CC) -o RSFgen RSFgen.o $(LFLAGS) $(LLIBS)
+
+3dTSgen:3dTSgen.o NLfit.c NLfit.h NLfit_model.c NLfit_model.h
+	$(RM) $@
+	$(CC) -o 3dTSgen 3dTSgen.o $(PLFLAGS) $(LLIBS)
+
+AlphaSim:AlphaSim.o
+	$(RM) $@
+	$(CC) -o AlphaSim AlphaSim.o $(LFLAGS) $(LLIBS)
+
+3dFWHM:3dFWHM.o
+	$(RM) $@
+	$(CC) -o 3dFWHM 3dFWHM.o $(LFLAGS) $(LLIBS)
+
+3dMannWhitney:3dMannWhitney.o
+	$(RM) $@
+	$(CC) -o 3dMannWhitney 3dMannWhitney.o $(LFLAGS) $(LLIBS)
+
+3dWilcoxon:3dWilcoxon.o
+	$(RM) $@
+	$(CC) -o 3dWilcoxon 3dWilcoxon.o $(LFLAGS) $(LLIBS)
+
+3dWavelets:3dWavelets.o
+	$(RM) $@
+	$(CC) -o 3dWavelets 3dWavelets.o $(LFLAGS) $(LLIBS)
+
+3dfim+:3dfim+.o
+	$(RM) $@
+	$(CC) -o 3dfim+ 3dfim+.o $(LFLAGS) $(LLIBS)
+
+3dKruskalWallis:3dKruskalWallis.o
+	$(RM) $@
+	$(CC) -o 3dKruskalWallis 3dKruskalWallis.o $(LFLAGS) $(LLIBS)
+
+3dFriedman:3dFriedman.o
+	$(RM) $@
+	$(CC) -o 3dFriedman 3dFriedman.o $(LFLAGS) $(LLIBS)
+
+3dRegAna:3dRegAna.o
+	$(RM) $@
+	$(CC) -o 3dRegAna 3dRegAna.o $(LFLAGS) $(LLIBS)
+
+3dDeconvolve:3dDeconvolve.o
+	$(RM) $@
+	$(CC) -o 3dDeconvolve 3dDeconvolve.o $(LFLAGS) $(LLIBS)
+
+3dConvolve:3dConvolve.o
+	$(RM) $@
+	$(CC) -o 3dConvolve 3dConvolve.o $(LFLAGS) $(LLIBS)
+
+3dIntracranial:3dIntracranial.o
+	$(RM) $@
+	$(CC) -o 3dIntracranial 3dIntracranial.o $(LFLAGS) $(LLIBS)
+
+3dExtrema:3dExtrema.o
+	$(RM) $@
+	$(CC) -o 3dExtrema 3dExtrema.o $(LFLAGS) $(LLIBS)
+
+adwarp:adwarp.o afni_warp.o afni_slice_byte.o afni_slice_short.o \
+                afni_slice_float.o  afni_slice_complex.o
+	$(RM) $@
+	$(CC) -o adwarp adwarp.o afni_warp.o afni_slice_byte.o \
+	         afni_slice_short.o afni_slice_float.o afni_slice_complex.o \
+	         $(LFLAGS) $(LLIBS)
+
+2dImReg:2dImReg.o
+	$(RM) $@
+	$(CC) -o 2dImReg 2dImReg.o $(LFLAGS) $(LLIBS)
+
+waver:waver.o parser.o parser_int.o
+	$(RM) $@
+	$(CC) -o waver waver.o parser.o parser_int.o $(LFLAGS) -lmri -lf2c $(LLIBS)
+
+3dnewid:3dnewid.o
+	$(RM) $@
+	$(CC) -o 3dnewid 3dnewid.o $(LFLAGS) $(LLIBS)
+
+.c.o:
+	$(RM) $@
+	$(CC) -c $*.c $(IFLAGS)
+
+dafni:dafni_slice_short.o dafni_slice_float.o dafni_slice_byte.o \
+      dafni_slice_complex.o  dafni_pcor_float.o  LiteClue.o    \
+      afni.c afni_func.c afni_widg.c afni_warp.c afni_fimmer.c \
+      pbar.c display.c imseq.c bbox.c xim.c xutil.c afni_setup.c  \
+      afni_pcor.c afni_pcor_update.c afni_plugin.c afni_receive.c \
+      parser.c parser_int.c afni_plugout.c afni_plugout.c
+	$(CCD) -o dafni $(IFLAGS) \
+                afni.c afni_func.c afni_widg.c afni_warp.c afni_graph.c \
+                dafni_slice_short.o dafni_slice_float.o  LiteClue.o \
+                dafni_slice_byte.o  dafni_slice_complex.o afni_fimmer.c \
+                dafni_pcor_float.o parser.c parser_int.c \
+                pbar.c display.c imseq.c bbox.c xim.c xutil.c afni_pcor.c \
+                afni_plugin.c afni_plugout.c afni_setup.c afni_receive.c \
+                $(PLFLAGS) -lcoxplot -lmri -lf2c $(LLIBS)
+
+dto3d:to3d.c display.c imseq.c bbox.c xim.c xutil.c
+	$(CCD) -o dto3d $(IFLAGS) \
+               to3d.c display.c imseq.c bbox.c xim.c xutil.c \
+               $(LFLAGS) $(LLIBS)
+	$(RM) to3d.o display.o imseq.o bbox.o xim.o xutil.o
+
+### Special compilations for the reslicing routines, which
+### are templates that require definition of the data type
+### upon which they operate.
+
+afni_slice_short.o:3ddata.h afni_slice.c afni_warp.h
+	$(RM) $@
+	$(CC) -c -DDTYPE=short afni_slice.c $(IFLAGS)
+	$(MV) afni_slice.o afni_slice_short.o
+
+afni_slice_float.o:3ddata.h afni_slice.c afni_warp.h
+	$(RM) $@
+	$(CC) -c -DDTYPE=float afni_slice.c $(IFLAGS)
+	$(MV) afni_slice.o afni_slice_float.o
+
+afni_slice_byte.o:3ddata.h afni_slice.c afni_warp.h
+	$(RM) $@
+	$(CC) -c -DDTYPE=byte afni_slice.c $(IFLAGS)
+	$(MV) afni_slice.o afni_slice_byte.o
+
+afni_slice_int.o:3ddata.h afni_slice.c afni_warp.h
+	$(RM) $@
+	$(CC) -c -DDTYPE=int afni_slice.c $(IFLAGS)
+	$(MV) afni_slice.o afni_slice_int.o
+
+afni_slice_complex.o:3ddata.h afni_slice.c afni_warp.h
+	$(RM) $@
+	$(CC) -c -DDTYPE=complex afni_slice.c $(IFLAGS)
+	$(MV) afni_slice.o afni_slice_complex.o
+
+afni_pcor_byte.o:afni_pcor.h afni_pcor_update.c
+	$(RM) $@
+	$(CC) -c -DDTYPE=byte afni_pcor_update.c $(IFLAGS)
+	$(MV) afni_pcor_update.o afni_pcor_byte.o
+
+afni_pcor_float.o:afni_pcor.h afni_pcor_update.c
+	$(RM) $@
+	$(CC) -c -DDTYPE=float afni_pcor_update.c $(IFLAGS)
+	$(MV) afni_pcor_update.o afni_pcor_float.o
+
+afni_pcor_short.o:afni_pcor.h afni_pcor_update.c
+	$(RM) $@
+	$(CC) -c -DDTYPE=short afni_pcor_update.c $(IFLAGS)
+	$(MV) afni_pcor_update.o afni_pcor_short.o
+
+# Debugging versions of the above
+
+dafni_slice_short.o:3ddata.h afni_slice.c afni_warp.h
+	$(RM) $@
+	$(CCD) -c -DDTYPE=short afni_slice.c $(IFLAGS)
+	$(MV) afni_slice.o dafni_slice_short.o
+
+dafni_slice_float.o:3ddata.h afni_slice.c afni_warp.h
+	$(RM) $@
+	$(CCD) -c -DDTYPE=float afni_slice.c $(IFLAGS)
+	$(MV) afni_slice.o dafni_slice_float.o
+
+dafni_slice_byte.o:3ddata.h afni_slice.c afni_warp.h
+	$(RM) $@
+	$(CCD) -c -DDTYPE=byte afni_slice.c $(IFLAGS)
+	$(MV) afni_slice.o dafni_slice_byte.o
+
+dafni_slice_int.o:3ddata.h afni_slice.c afni_warp.h
+	$(RM) $@
+	$(CCD) -c -DDTYPE=int afni_slice.c $(IFLAGS)
+	$(MV) afni_slice.o dafni_slice_int.o
+
+dafni_slice_complex.o:3ddata.h afni_slice.c afni_warp.h
+	$(RM) $@
+	$(CCD) -c -DDTYPE=complex afni_slice.c $(IFLAGS)
+	$(MV) afni_slice.o dafni_slice_complex.o
+
+dafni_pcor_byte.o:afni_pcor.h afni_pcor_update.c
+	$(RM) $@
+	$(CCD) -c -DDTYPE=byte afni_pcor_update.c $(IFLAGS)
+	$(MV) afni_pcor_update.o dafni_pcor_byte.o
+
+dafni_pcor_float.o:afni_pcor.h afni_pcor_update.c
+	$(RM) $@
+	$(CCD) -c -DDTYPE=float afni_pcor_update.c $(IFLAGS)
+	$(MV) afni_pcor_update.o dafni_pcor_float.o
+
+dafni_pcor_short.o:afni_pcor.h afni_pcor_update.c
+	$(RM) $@
+	$(CCD) -c -DDTYPE=short afni_pcor_update.c $(IFLAGS)
+	$(MV) afni_pcor_update.o dafni_pcor_short.o
+
+### End of reslicing routines
+
+SHOWOFF = NO
+
+afni.o:afni.c
+	$(RM) $@
+	$(CC) -c afni.c $(IFLAGS) -DSHOWOFF=$(SHOWOFF)
+
+afni:$(AFOBJS) libcoxplot.a libvolpack.a libmri.a volpack.h coxplot.h
+	$(RM) $@
+	$(CC) -o afni $(AFOBJS) $(PLFLAGS) -lcoxplot -lmri -lvolpack -lf2c $(LLIBS)
+
+# pafni:$(AFOBJS) libcoxplot.a
+# 	$(RM) $@
+# 	purify $(CC) -o pafni $(AFOBJS) $(PLFLAGS) -lcoxplot -lmri -lf2c $(LLIBS)
+
+# This program is only used with XFree86 4.0 and above
+xiner:xiner.o
+	$(RM) $@
+	$(CC) -o xiner xiner.o $(LFLAGS) -lXinerama $(LLIBS)
+
+cat_matvec:cat_matvec.o
+	$(RM) $@
+	$(CC) -o cat_matvec cat_matvec.o $(LFLAGS) -lmri -lf2c $(LLIBS)
+
+to3d:to3d.h $(T3OBJS) libcoxplot.a
+	$(RM) $@
+	$(CC) -o to3d $(T3OBJS) $(LFLAGS) -lcoxplot -lmri -lf2c $(LLIBS)
+
+1dplot:libcoxplot.a 1dplot.o display.o
+	$(RM) $@
+	$(CC) -o 1dplot 1dplot.o display.o $(LFLAGS) -lcoxplot -lmri -lf2c $(LLIBS)
+
+1dgrayplot:libcoxplot.a 1dgrayplot.o display.o
+	$(RM) $@
+	$(CC) -o 1dgrayplot 1dgrayplot.o display.o $(LFLAGS) -lcoxplot -lmri -lf2c $(LLIBS)
+
+1dsigplot:libcoxplot.a 1dsigplot.o display.o
+	$(RM) $@
+	$(CC) -o 1dsigplot 1dsigplot.o display.o $(LFLAGS) -lcoxplot -lmri -lf2c $(LLIBS)
+
+1dtranspose:1dtranspose.o
+	$(RM) $@
+	$(CC) -o 1dtranspose 1dtranspose.o $(LFLAGS) $(LLIBS)
+
+afni_vcheck:afni_vcheck.o
+	$(RM) $@
+	$(CC) -o afni_vcheck afni_vcheck.o $(LFLAGS) $(LLIBS)
+
+1dfft:1dfft.o
+	$(RM) $@
+	$(CC) -o 1dfft 1dfft.o $(LFLAGS) $(LLIBS)
+
+1dcat:1dcat.o
+	$(RM) $@
+	$(CC) -o 1dcat 1dcat.o $(LFLAGS) $(LLIBS)
+
+1dsum:1dsum.o
+	$(RM) $@
+	$(CC) -o 1dsum 1dsum.o $(LFLAGS) $(LLIBS)
+
+1dnorm:1dnorm.o
+	$(RM) $@
+	$(CC) -o 1dnorm 1dnorm.o $(LFLAGS) $(LLIBS)
+
+abut:abut.o
+	$(RM) $@
+	$(CC) -o abut abut.o $(LFLAGS) $(LLIBS)
+
+siemens_vision:siemens_vision.o
+	$(RM) $@
+	$(CC) -o siemens_vision siemens_vision.o $(LFLAGS) $(LLIBS)
+
+ge_header:ge_header.o
+	$(RM) $@
+	$(CC) -o ge_header ge_header.o $(LFLAGS) $(LLIBS)
+
+mayo_analyze:mayo_analyze.o
+	$(RM) $@
+	$(CC) -o mayo_analyze mayo_analyze.o $(LFLAGS) $(LLIBS)
+
+sfim:sfim.o
+	$(RM) $@
+	$(CC) -o sfim sfim.o $(LFLAGS) $(LLIBS)
+
+tfim:tfim.o
+	$(RM) $@
+	$(CC) -o tfim tfim.o $(LFLAGS) $(LLIBS)
+
+ftosh:ftosh.o
+	$(RM) $@
+	$(CC) -o ftosh ftosh.o $(LFLAGS) $(LLIBS)
+
+ppmtoargb:ppmtoargb.o
+	$(RM) $@
+	$(CC) -o ppmtoargb ppmtoargb.o $(LFLAGS) $(LLIBS)
+
+colari:colari.o
+	$(RM) $@
+	$(CC) -o colari colari.o $(LFLAGS) $(LLIBS)
+
+iotest:iotest.o
+	$(RM) $@
+	$(CC) -o iotest iotest.o $(LFLAGS) $(LLIBS)
+
+iochan_relay:iochan_relay.o
+	$(RM) $@
+	$(CC) -o iochan_relay iochan_relay.o $(LFLAGS) $(LLIBS)
+
+# These programs are from Tom Ross
+
+3dFourier:3dFourier.o
+	$(RM) $@
+	$(CC) -o 3dFourier 3dFourier.o $(LFLAGS) $(LLIBS)
+
+3dNotes:3dNotes.o
+	$(RM) $@
+	$(CC) -o 3dNotes 3dNotes.o $(LFLAGS) $(LLIBS)
+
+3dROIstats:3dROIstats.o
+	$(RM) $@
+	$(CC) -o 3dROIstats 3dROIstats.o $(LFLAGS) $(LLIBS)
+
+# Sort of clean
+
+clean:
+	$(RM) *.o
+
+cleaner:
+	$(RM) *.a $(PROGRAMS)
+
+#backup:
+#	ssh afni chmod -R u+w /home/rwcox/AFNI_BACKUP
+#	scp -prq * afni:/home/rwcox/AFNI_BACKUP
+
+backup:
+	chmod -R u+w /net/afni/home2/AFNI/BACKUP/
+	cp -pr * /net/afni/home2/AFNI/BACKUP
+
+backtape:
+	$(TAR) cvf $(TAPE) ../AFNI98/
+
+afni98.tgz:
+	$(RM) $@
+	$(MKDIR) AFNI98
+	$(CP) *.c *.f *.inc *.h *.hhh Makefile.* *.xbm $(MINDOCS) $(MISC) $(SCRIPTS) ./AFNI98
+	$(CP) -r coxplot volpack moveup moveAFNI* ./AFNI98
+	$(CP) -r gifsicledir qhulldir f2cdir mpeg_encodedir dlcompat ./AFNI98
+	$(CP) -r netcdf-3.5.0 ./AFNI98
+	$(TAR) cf - AFNI98 | $(GZIP) -9v > afni98.tgz
+	$(RM) -r AFNI98
+
+src.tgz:
+	$(RM) $@
+	$(MKDIR) ./SRC
+	$(CP) *.c *.f *.inc *.h *.hhh Makefile.* *.xbm moveup moveAFNI* README* AFNI.* \
+              dist* 3d*.lib gmovie $(SCRIPTS) ./SRC
+	$(TAR) cf - ./SRC | $(GZIP) -9v > src.tgz
+	$(RM) -r ./SRC
+
+src.bz2:
+	$(RM) $@
+	$(MKDIR) ./SRC
+	$(CP) *.c *.f *.inc *.h *.hhh Makefile.* *.xbm moveup moveAFNI* README* AFNI.* \
+              3d*.lib $(SCRIPTS) ./SRC
+	$(RM) ./SRC/cdf_*.c ./SRC/eis_*.c
+	$(TAR) cf - ./SRC | bzip2 -9v > src.bz2
+	$(RM) -r ./SRC
+
+epv.tgz:
+	$(TAR) cf - ./epv | $(GZIP) -9v > epv.tgz
+
+TLv.tgz:
+	$(TAR) cf - ./TLv | $(GZIP) -9v > TLv.tgz
+
+mydoc.tgz:
+	$(RM) $@
+	$(MKDIR) ./MYDOC
+	$(CP) $(MYDOCS) ./MYDOC
+	$(TAR) cf - ./MYDOC | $(GZIP) -9v > mydoc.tgz
+	$(RM) -r ./MYDOC
+
+afnidoc.tgz:
+	$(RM) $@
+	$(MKDIR) ./AFNIDOC
+	$(CP) $(DOCS) ./AFNIDOC
+	$(TAR) cf - ./AFNIDOC | $(GZIP) -9v > afnidoc.tgz
+	$(RM) -r ./AFNIDOC
+
+install: $(INSTALLDIR)
+	$(MV) $(PROGRAMS) $(INSTALLDIR)
+	$(CP) $(SCRIPTS) $(INSTALLDIR)
+
+install_noplug: $(INSTALLDIR)
+	$(MV) $(PROGRAMS_NOPLUG) $(INSTALLDIR)
+	$(CP) $(SCRIPTS) $(INSTALLDIR)
+
+install_lib: $(LIBDIR)
+	$(CP) libmri.a libf2c.a libcoxplot.a libvolpack.a $(LIBHEADERS) $(LIBDIR)
+###################################################################
+# some dependencies (not complete)
+
+afni.o:imseq.h 3ddata.h xutil.h pbar.h afni.h bbox.h afni_warp.h \
+       afni_graph.h afni_setup.h machdep.h
+
+afni_vcheck.o:afni.h
+
+afni_splash.o:afni_splash.h imseq.h
+
+afni_func.o:imseq.h 3ddata.h xutil.h pbar.h afni.h machdep.h
+afni_widg.o:imseq.h 3ddata.h xutil.h pbar.h afni.h logo.h machdep.h
+afni_warp.o:afni_warp.h 3ddata.h machdep.h
+afni_graph.o:afni_graph.h 3ddata.h xutil.h bbox.h afni.h machdep.h
+afni_fimmer.o:afni_graph.h afni.h machdep.h
+afni_plugin.o:afni_plugin.h 3ddata.h xutil.h afni.h bbox.h afni_warp.h \
+              machdep.h display.h imseq.h
+afni_plugout.o:afni_plugin.h afni_plugout.h machdep.h
+afni_setup.o:afni.h afni_setup.h pbar.h
+
+3dclust.o:3ddata.h
+3dmerge.o:3ddata.h
+pbar.o:pbar.h machdep.h
+bbox.o:bbox.h xutil.h coxplot.h
+xutil.o:xutil.h
+imseq.o:imseq.h display.h bbox.h xutil.h mrilib.h
+display.o:display.h mrilib.h
+xim.o:xim.h display.h mrilib.h
+
+ts.o:ts.h
+to3d.o:to3d.h
+
+3dbucket.o:3ddata.h
+
+3dTSgen.o:NLfit.c NLfit.h NLfit_model.c NLfit_model.h
+3dNLfim.o:NLfit.c NLfit.h NLfit_model.c NLfit_model.h
+
+mcw_graf.o:mcw_graf.h
+
+###################################################################
+# make the mri library
+
+agni.o:agni.c agni.h cs_sort_template.h
+	$(RM) $@
+	$(CCFAST) -c agni.c $(IFLAGS)
+
+csfft.o:csfft.c
+	$(RM) $@
+	$(CCFAST) -c csfft.c $(IFLAGS)
+
+thd_rot3d.o:thd_rot3d.c
+	$(RM) $@
+	$(CCFAST) -c thd_rot3d.c $(IFLAGS)
+
+thd_shift2.o:thd_shift2.c
+	$(RM) $@
+	$(CCFAST) -c thd_shift2.c $(IFLAGS)
+
+thd_rot3d_byte.o:thd_rot3d_byte.c
+	$(RM) $@
+	$(CCFAST) -c thd_rot3d_byte.c $(IFLAGS)
+
+cox_render.o:cox_render.h cox_render.c
+	$(RM) $@
+	$(CCFAST) -c cox_render.c $(IFLAGS)
+
+MRI_OBJS = mri_cfft.o mri_complex_arith.o mri_fft_complex.o mri_free.o    \
+           mri_max.o mri_new.o mri_read.o mri_swapbytes.o mri_dup.o        \
+           mri_to_byte.o mri_to_complex.o mri_to_float.o mri_to_short.o     \
+           mri_warp.o mri_write.o mri_float_func.o mri_edit.o mri_stat_seq.o \
+           mri_add_name.o mri_histog.o mri_nsize.o mri_lsqfit.o mri_sobel.o  \
+           csfft.o mri_filt_fft.o mri_align.o mri_rota.o mri_thresh.o        \
+           mri_to_mri.o mri_flippo.o mri_percents.o mri_stats.o mri_cat2D.o  \
+           mri_transpose.o mri_shifter.o mcw_glob.o mri_2dalign.o mri_order.o \
+           mri_3dalign.o mri_render.o mri_to_rgb.o mcw_malloc.o mri_cut.o      \
+           mri_overlay.o mri_copy.o mri_uncat2D.o cox_render.o mri_histobyte.o \
+           mri_aff2d.o debugtrace.o mri_zeropad.o mri_write_angif.o            \
+           mri_histoshort.o mri_shift2D.o mri_drawing.o mri_coxplot.o          \
+           mri_get_cmass.o mri_scale.o mri_write_analyze.o
+
+CDF_OBJS = cdf_00.o cdf_01.o cdf_02.o cdf_03.o cdf_04.o cdf_05.o \
+           cdf_06.o cdf_07.o cdf_08.o cdf_09.o cdf_10.o cdf_11.o \
+           cdf_12.o cdf_13.o cdf_14.o cdf_15.o cdf_16.o cdf_17.o \
+           cdf_18.o cdf_19.o cdf_20.o cdf_21.o cdf_22.o cdf_23.o \
+           cdf_24.o cdf_25.o cdf_26.o cdf_27.o cdf_28.o cdf_29.o \
+           cdf_30.o cdf_31.o cdf_32.o cdf_33.o cdf_34.o cdf_35.o \
+           cdf_36.o cdf_37.o cdf_38.o cdf_39.o cdf_40.o cdf_41.o \
+           cdf_42.o cdf_43.o cdf_44.o cdf_45.o cdf_46.o cdf_47.o \
+           cdf_48.o cdf_49.o cdf_50.o cdf_51.o cdf_52.o cdf_53.o \
+           cdf_54.o cdf_55.o cdf_56.o cdf_57.o cdf_58.o cdf_59.o \
+           cdf_60.o cdf_61.o cdf_62.o cdf_63.o cdf_64.o cdf_65.o \
+           cdf_66.o cdf_67.o cdf_68.o cdf_69.o cdf_70.o cdf_71.o \
+           cdf_72.o cdf_73.o cdf_74.o cdf_75.o cdf_76.o cdf_77.o \
+           cdf_78.o cdf_79.o cdf_80.o
+
+THD_OBJS = thd_atr.o thd_dsetto1D.o thd_initalldir.o thd_reconpar.o \
+           thd_auxdata.o thd_editdaxes.o thd_initdblk.o thd_sarr.o  \
+           thd_bstats.o thd_fdbrick.o thd_initdkptr.o thd_statpval.o \
+           thd_compress.o thd_fdto1D.o thd_initprefix.o thd_timeof.o  \
+           thd_coords.o thd_fdto2D.o thd_initsess.o thd_warps.o        \
+           thd_countb.o thd_filestuff.o thd_linecount.o thd_writeatr.o  \
+           thd_delete.o thd_forcemalloc.o thd_loaddblk.o thd_writedblk.o \
+           thd_dsetdblk.o thd_get1D.o thd_manydset.o thd_writedset.o    \
+           thd_dsetinsess.o  thd_idcode.o thd_opendset.o thd_zblock.o  \
+           thd_dsetinslist.o thd_info.o thd_purgedblk.o thd_http.o    \
+           thd_iochan.o thd_makefbuc.o thd_makefim.o thd_makefith.o  \
+           thd_trusthost.o thd_rot3d.o thd_mastery.o thd_intlist.o  \
+           thd_checkidc.o thd_floatscan.o thd_notes.o thd_makemask.o \
+           thd_shift2.o thd_1Dtodset.o thd_detrend.o thd_base64.o     \
+           thd_winsor.o thd_zeropad.o thd_rot3d_byte.o thd_shear3d.o   \
+           thd_tmask.o thd_rotangles.o thd_md5.o thd_center.o           \
+           thd_mismatch.o thd_read_vecmat.o thd_tshift.o thd_newprefix.o \
+           thd_entropy16.o thd_dsetrow.o thd_rowfillin.o thd_fetchdset.o  \
+           thd_getpathprogs.o thd_zfillin.o thd_ttatlas_query.o          \
+           thd_dsetto3D.o thd_median.o thd_cliplevel.o thd_automask.o   \
+           thd_outlier_count.o thd_correlate.o agni.o thd_autonudge.o
+
+EDT_OBJS = edt_addbrick.o edt_blur.o edt_buildmask.o edt_checkargv.o \
+           edt_clust.o edt_clustarr.o edt_coerce.o edt_dsetitems.o   \
+           edt_emptycopy.o edt_filtervol.o edt_help.o edt_onedset.o  \
+           edt_scl2max.o edt_substbrick.o edt_volamax.o edt_zscore.o \
+           edt_fullcopy.o edt_calcmask.o edt_volpad.o edt_sortmask.o
+
+CS_OBJS  = cs_sort_fi.o cs_sort_di.o cs_symeig.o cs_sort_ii.o cs_sort_ff.o \
+           cs_addto_args.o multivector.o afni_environ.o cs_qmed.o          \
+           cs_sort_fv.o cs_laguerre.o machdep.o cs_qhull.o afni_logger.o
+
+EIS_OBJS = eis_bakvec.o eis_balanc.o eis_balbak.o eis_bandr.o              \
+           eis_bandv.o eis_bisect.o eis_bqr.o eis_cbabk2.o eis_cbal.o      \
+           eis_cdiv.o eis_cg.o eis_ch.o eis_cinvit.o eis_combak.o          \
+           eis_comhes.o eis_comlr.o eis_comlr2.o eis_comqr.o eis_comqr2.o  \
+           eis_cortb.o eis_corth.o eis_csroot.o eis_elmbak.o eis_elmhes.o  \
+           eis_eltran.o eis_epslon.o eis_figi.o eis_figi2.o eis_hqr.o      \
+           eis_hqr2.o eis_htrib3.o eis_htribk.o eis_htrid3.o eis_htridi.o  \
+           eis_imtql1.o eis_imtql2.o eis_imtqlv.o eis_invit.o eis_minfit.o \
+           eis_ortbak.o eis_orthes.o eis_ortran.o eis_pythag.o eis_qzhes.o \
+           eis_qzit.o eis_qzval.o eis_qzvec.o eis_ratqr.o eis_rebak.o      \
+           eis_rebakb.o eis_reduc.o eis_reduc2.o eis_rg.o eis_rgg.o        \
+           eis_rs.o eis_rsb.o eis_rsg.o eis_rsgab.o eis_rsgba.o            \
+           eis_rsm.o eis_rsp.o eis_rst.o eis_rt.o eis_svd.o                \
+           eis_tinvit.o eis_tql1.o eis_tql2.o eis_tqlrat.o eis_trbak1.o    \
+           eis_trbak3.o eis_tred1.o eis_tred2.o eis_tred3.o                \
+           eis_tridib.o eis_tsturm.o
+
+NETCDF_OBJS =  netcdf_attr.o   netcdf_dim.o   netcdf_error.o netcdf_libvers.o \
+               netcdf_nc.o     netcdf_ncio.o  netcdf_ncx.o   netcdf_putget.o  \
+               netcdf_string.o netcdf_v1hpg.o netcdf_v2i.o   netcdf_var.o     \
+               thd_mincread.o
+
+libmri.a:$(MRI_OBJS) $(CDF_OBJS) $(THD_OBJS) $(EDT_OBJS) $(CS_OBJS) $(EIS_OBJS) $(NETCDF_OBJS)
+	$(RM) $@
+	$(AR) q libmri.a $(MRI_OBJS) $(CDF_OBJS) $(THD_OBJS) $(EDT_OBJS) $(CS_OBJS) $(EIS_OBJS) $(NETCDF_OBJS)
+	$(RANLIB) libmri.a
+
+### Dependencies for above
+
+thd_compress.o:thd_compress.h
+mcw_glob.o:mcw_glob.h
+thd_iochan.o:thd_iochan.h
+mcw_malloc.o:mcw_malloc.h
+afni_environ.o:afni_environ.h
+
+###################################################################
+# Plugin stuff
+
+.SUFFIXES:.$(PLUGIN_SUFFIX)
+
+SO = $(PLUGIN_SUFFIX)
+
+plugins:plug_clust.$(SO)    plug_copy.$(SO)     plug_rename.$(SO)      \
+        plug_tag.$(SO)      plug_power.$(SO)    plug_stats.$(SO)       \
+        plug_lsqfit.$(SO)   plug_imreg.$(SO)    plug_edit.$(SO)        \
+        plug_nlfit.$(SO)    plug_realtime.$(SO) plug_3ddot.$(SO)       \
+        plug_coorder.$(SO)  plug_compress.$(SO) plug_volreg.$(SO)      \
+        plug_drawdset.$(SO) plug_maskave.$(SO)  plug_deconvolve.$(SO)  \
+        plug_render.$(SO)   plug_notes.$(SO)    plug_histog.$(SO)      \
+        plug_scatplot.$(SO) plug_nudge.$(SO)    plug_wavelets.$(SO)    \
+        plug_second_dataset.$(SO)               plug_betafit.$(SO)     \
+        plug_zeropad.$(SO)                                             \
+        models contrib_plugins
+
+models: model_constant.$(SO) model_linear.$(SO) model_quadratic.$(SO) \
+        model_null.$(SO) model_diffusion.$(SO) model_beta.$(SO) \
+        model_sinewave_ap.$(SO) model_sinewave_apf.$(SO) \
+        model_squarewave_ap.$(SO) model_squarewave_apf.$(SO) \
+        model_trnglwave_ap.$(SO) model_trnglwave_apf.$(SO) \
+        model_diffexp.$(SO) model_gammavar.$(SO) \
+        model_convgamma.$(SO) model_convgamma2a.$(SO)
+
+# Contributed plugins go last, since they might not compile well
+
+contrib_plugins: ziad_plugins birn_plugins kummer_plugins \
+                 rickr_plugins tross_plugins belmonte_plugins
+
+ziad_plugins: plug_3Ddump_V2.$(SO) plug_4Ddump.$(SO) \
+              plug_delay_V2.$(SO)  plug_extract.$(SO)
+
+birn_plugins: plug_stavg.$(SO)
+
+kummer_plugins: plug_reorder.$(SO)
+
+rickr_plugins: plug_roiedit.$(SO) plug_hemisub.$(SO) \
+               plug_maskcalc.$(SO) plug_maxima.$(SO)
+
+tross_plugins: plug_fourier.$(SO)
+
+belmonte_plugins: plug_threshold.$(SO) plug_permtest.$(SO)
+
+install_plugins: $(INSTALLDIR)
+	$(MV) *.$(PLUGIN_SUFFIX) $(INSTALLDIR)
+	echo Plugins put in directory $(INSTALLDIR):
+	echo Do not forget to setenv AFNI_PLUGINPATH appropriately
+
+.c.$(SO):afni_plugin.h afni.h 3ddata.h
+	$(RM) $@
+	$(PLUGIN_CC) -c $*.c $(IFLAGS)
+	$(LD) $(PLUGIN_LFLAGS) -o $*.$(SO) $*.o
+
+libmri.$(SO):mrilib.h $(MRI_OBJS)
+	$(RM) $@
+	$(LD) $(PLUGIN_LFLAGS) -o libmri.$(SO) $(MRI_OBJS)
+
+libcdf.$(SO):cdflib.h $(CDF_OBJS)
+	$(RM) $@
+	$(LD) $(PLUGIN_LFLAGS) -o libcdf.$(SO) $(CDF_OBJS)
+
+plug_realtime.$(SO):plug_realtime.c
+	$(RM) $@
+	$(PLUGIN_CC) -c plug_realtime.c $(IFLAGS)
+	$(LD) $(PLUGIN_LFLAGS) -o plug_realtime.$(SO) plug_realtime.o
+
+plug_drealtime.$(SO):plug_realtime.c
+	$(RM) $@
+	$(PLUGIN_CCD) -c plug_realtime.c $(IFLAGS)
+	$(LD) $(PLUGIN_LFLAGS) -o plug_drealtime.$(SO) plug_realtime.o
+
+plug_render.$(SO):mri_render.h
+
+epsim:epsim.o
+	$(RM) $@
+	$(CC) -o epsim epsim.o $(LFLAGS) $(LLIBS)
+
+plugout_tt:plugout_tt.o
+	$(RM) $@
+	$(CC) -o plugout_tt plugout_tt.o $(LFLAGS) $(LLIBS)
+
+plugout_ijk:plugout_ijk.o
+	$(RM) $@
+	$(CC) -o plugout_ijk plugout_ijk.o $(LFLAGS) $(LLIBS)
+
+plugout_tta:plugout_tta.o
+	$(RM) $@
+	$(CC) -o plugout_tta plugout_tta.o $(LFLAGS) $(LLIBS)
+
+plugout_surf:plugout_surf.o
+	$(RM) $@
+	$(CC) -o plugout_surf plugout_surf.o $(LFLAGS) -lcurses $(LLIBS)
+
+plugout_drive:plugout_drive.o
+	$(RM) $@
+	$(CC) -o plugout_drive plugout_drive.o $(LFLAGS) $(LLIBS)
+
+plugout_graph:plugout_graph.o
+	$(RM) $@
+	$(CC) -o plugout_graph plugout_graph.o $(LFLAGS) $(LLIBS)
+
+######################################################################
+# Stuff that was originally in Fortran
+
+f2c:
+	( cd f2cdir ; \
+	  make f2c clean 'RM=$(RM)' 'CC=$(CC)' 'AR=$(AR)' 'CCMIN=$(CCMIN)' \
+	        'RANLIB=$(RANLIB)' 'LDFLAGS=$(LDFLAGS)' 'IFLAGS=$(IFLAGS)' ; \
+	  $(MV) f2c .. ; )
+
+libf2c.a:
+	( cd f2cdir ; \
+	  make libf2c.a clean 'RM=$(RM)' 'CC=$(CC)' 'AR=$(AR)' \
+	        'RANLIB=$(RANLIB)' 'LDFLAGS=$(LDFLAGS)' 'IFLAGS=$(IFLAGS)' ; \
+	  $(MV) libf2c.a .. ; )
+
+f2c.h:
+	$(CP) f2cdir/f2c.h ./
+
+f2c.tgz:
+	$(TAR) cf - ./f2cdir | $(GZIP) -9v > f2c.tgz
+
+#######
+
+libcoxplot.a:coxplot.h
+	( cd coxplot ; \
+	  make libcoxplot.a clean 'RM=$(RM)' 'CC=$(CC)' 'AR=$(AR)' \
+	        'RANLIB=$(RANLIB)' 'LDFLAGS=$(LDFLAGS)' 'IFLAGS=$(IFLAGS)' ; \
+	  $(MV) libcoxplot.a .. ; )
+
+coxplot.h:coxplot/coxplot.h
+	$(CP) coxplot/coxplot.h ./
+
+coxplot.tgz:
+	$(TAR) cf - ./coxplot | $(GZIP) -9v > coxplot.tgz
+
+#######
+
+libsipp.a:
+	( cd sipp ; \
+	  make libsipp.a clean 'RM=$(RM)' 'CC=$(CCFAST)' 'AR=$(AR)' \
+	        'RANLIB=$(RANLIB)' 'LDFLAGS=$(LDFLAGS)' 'IFLAGS=$(IFLAGS)' ; \
+	  $(MV) libsipp.a .. ; )
+
+sipp.h:
+	$(CP) sipp/sipp.h ./
+
+sipp.tgz:
+	$(TAR) cf - ./sipp | $(GZIP) -9v > sipp.tgz
+
+#######
+
+libvolpack.a:
+	( cd volpack ; \
+	  make libvolpack.a clean 'RM=$(RM)' 'CC=$(CCVOL)' 'AR=$(AR)' \
+	        'RANLIB=$(RANLIB)' 'LDFLAGS=$(LDFLAGS)' 'IFLAGS=$(IFLAGS)' ; \
+	  $(MV) libvolpack.a .. ; )
+
+volpack.h:
+	$(CP) volpack/volpack.h ./
+
+volpack.tgz:
+	$(TAR) cf - ./volpack | $(GZIP) -9v > volpack.tgz
+
+#######
+
+qhull:
+	( cd qhulldir ; \
+	  make qhull clean 'RM=$(RM)' 'CC=$(CC)' 'LFLAGS=$(LFLAGS)' ; \
+	  $(MV) qhull .. ; )
+
+#######
+
+netcdf_attr.o:
+	( cd netcdf-3.5.0/src ;                           \
+          FC=""  ; export FC  ; F90=""   ; export F90 ;   \
+          CXX="" ; export CXX ; CC="${CCMIN}";export CC;  \
+          $(RM) config.cache config.log config.status ;   \
+          ./configure ; make libsrc/all ;                 \
+	  $(CP) libsrc/netcdf.h  ../.. ;                  \
+          $(MV) libsrc/attr.o    ../../netcdf_attr.o    ; \
+          $(MV) libsrc/dim.o     ../../netcdf_dim.o     ; \
+          $(MV) libsrc/error.o   ../../netcdf_error.o   ; \
+          $(MV) libsrc/libvers.o ../../netcdf_libvers.o ; \
+          $(MV) libsrc/nc.o      ../../netcdf_nc.o      ; \
+          $(MV) libsrc/ncio.o    ../../netcdf_ncio.o    ; \
+          $(MV) libsrc/ncx.o     ../../netcdf_ncx.o     ; \
+          $(MV) libsrc/putget.o  ../../netcdf_putget.o  ; \
+          $(MV) libsrc/string.o  ../../netcdf_string.o  ; \
+          $(MV) libsrc/v1hpg.o   ../../netcdf_v1hpg.o   ; \
+          $(MV) libsrc/v2i.o     ../../netcdf_v2i.o     ; \
+          $(MV) libsrc/var.o     ../../netcdf_var.o     ; \
+          $(RM) config.cache config.log config.status ;   \
+          make clean ; )
+
+#######
+# 27 Jul 2001
+
+gifsicle:
+	( cd gifsicledir ; \
+	  make gifsicle clean 'RM=$(RM)' 'CC=$(CC)' 'LFLAGS=$(LFLAGS)' ; \
+	  $(MV) gifsicle .. ; )
+
+#######
+# 02 Aug 2001
+
+mpeg_encode:
+	( cd mpeg_encodedir ; \
+	  make mpeg_encode clean 'RM=$(RM)' 'CC=$(CC)' 'LFLAGS=$(LFLAGS) $(LLIBS)' ; \
+	  $(MV) mpeg_encode .. ; )
+
+#######
+
+libfftw.a:
+	( cd fftw ; \
+	  make libfftw.a clean 'RM=$(RM)' 'CC=$(CCFAST)' 'AR=$(AR)' \
+	        'RANLIB=$(RANLIB)' 'LDFLAGS=$(LDFLAGS)' 'IFLAGS=$(IFLAGS)' ; \
+	  $(MV) libfftw.a .. ; )
+
+fftw.h:
+	$(CP) fftw/fftw.h ./
+
+fftw_setup:fftw_setup.o
+	$(CC) -o fftw_setup fftw_setup.o $(LFLAGS) -lfftw $(LLIBS)
+
+#######
+
+libclam.a:
+	( cd clamdir ; \
+	  make libclam.a clean 'RM=$(RM)' 'CC=$(CC)' 'AR=$(AR)' \
+	        'RANLIB=$(RANLIB)' 'IFLAGS=-I..' ; \
+	  $(MV) libclam.a .. ; )
+
+libclam.h:
+	$(CP) clamdir/libclam.h ./
+
+clamsrc.tgz:
+	$(TAR) cf - ./clamsrc | $(GZIP) -9v > clamsrc.tgz
+
+clamdir.tgz:
+	$(TAR) cf - ./clamdir | $(GZIP) -9v > clamdir.tgz
+
+#######
+## The following line only needs to be used if parser.f
+## is edited, since AFNI ships with parser.c already made.
+
+parser.c:
+	$(F2C) parser.f
+
+parser.o:parser.c f2c.h libf2c.a
+	$(CCFAST) -c parser.c $(IFLAGS)
+
+ccalc:parser.o parser_int.o ccalc.o
+	$(RM) $@
+	$(CC) -o ccalc ccalc.o parser.o parser_int.o $(LFLAGS) -lmri -lf2c $(LLIBS)
+
+1deval:parser.o parser_int.o 1deval.o
+	$(RM) $@
+	$(CC) -o 1deval 1deval.o parser.o parser_int.o $(LFLAGS) -lmri -lf2c $(LLIBS)
+
+colfit.c:
+	$(F2C) colfit.f
+
+colcalc.c:
+	$(F2C) colcalc.f
+
+colfit:parser.o colfit.o
+	$(CC) -o colfit colfit.o parser.o $(LFLAGS) -lclam -lmri -lf2c $(LLIBS)
+
+colcalc:parser.o colcalc.o
+	$(CC) -o colcalc colcalc.o parser.o $(LFLAGS) -lclam -lmri -lf2c $(LLIBS)
+
+imcalc:imcalc.o parser.o parser_int.o
+	$(CC) -o imcalc imcalc.o parser.o parser_int.o $(LFLAGS) -lmri -lf2c $(LLIBS)
+
+###########################################################################
+# Miscellaneous programs
+
+fftest:fftest.o
+	$(CC) -o fftest fftest.o $(LFLAGS) $(LLIBS)
+
+fftwest:fftest.c
+	$(CC) -o fftwest fftest.c -DUSE_FFTW $(LFLAGS) -lfftw $(LLIBS)
+
+fftnext:fftnext.o
+	$(CC) -o fftnext fftnext.o $(LFLAGS) $(LLIBS)
+
+fftcheck:fftcheck.o
+	$(CC) -o fftcheck fftcheck.o $(LFLAGS) $(LLIBS)
+
+fftest_dj:fftest_dj.o csfft_dj.o fft_dj.o
+	$(CC) -o fftest_dj fftest_dj.o csfft_dj.o fft_dj.o $(LFLAGS) $(LLIBS)
+
+fftprint:fftprint.o
+	$(CC) -o fftprint fftprint.o $(LFLAGS) $(LLIBS)
+
+myget:myget.o
+	$(CC) -o myget myget.o $(LFLAGS) $(LLIBS)
+
+rmz:rmz.o
+	$(CC) -o rmz rmz.o $(LFLAGS) $(LLIBS)
+
+uncomment:uncomment.o
+	$(CC) -o uncomment uncomment.o $(LFLAGS) $(LLIBS)
+
+ibinom:ibinom.o
+	$(CC) -o ibinom ibinom.o $(LFLAGS) $(LLIBS)
+
+whirlgif:whirlgif.h whirlgif.c
+	$(CC) -o whirlgif -o whirlgif whirlgif.c $(IFLAGS) $(LFLAGS) $(LLIBS)
+
+extor.o:extor.c
+	$(CCFAST) -c extor.c $(IFLAGS)
+
+extor:extor.o
+	$(CC) -o extor extor.o $(IFLAGS) $(LFLAGS) $(LLIBS)
+
+exx.o:exx.c
+	$(CCFAST) -c exx.c $(IFLAGS)
+
+exx:exx.o
+	$(CC) -o exx exx.o $(IFLAGS) $(LFLAGS) $(LLIBS)
+
+qqq.o:qqq.c
+	$(CCFAST) -c qqq.c $(IFLAGS)
+
+qqq:qqq.o
+	$(CC) -o qqq qqq.o $(IFLAGS) $(LFLAGS) $(LLIBS)
+
+bitvec.o:bitvec.c
+	$(CCFAST) -c bitvec.c $(IFLAGS)
+
+bitvec:bitvec.o
+	$(CC) -o bitvec bitvec.o $(IFLAGS) $(LFLAGS) $(LLIBS)
+
+unu.o:unu.c
+	$(CCFAST) -c unu.c $(IFLAGS)
+
+unu:unu.o
+	$(CC) -o unu unu.o $(IFLAGS) $(LFLAGS) $(LLIBS)
+
+Xphace:Xphace.o $(IMOBJS)
+	$(CC) -o Xphace Xphace.o $(IMOBJS) $(IFLAGS) $(LFLAGS) -lcoxplot  -lf2c $(LLIBS)
+
+3dbetafit:3dbetafit.o betafit.c
+	$(CC) -o 3dbetafit 3dbetafit.o $(IFLAGS) $(LFLAGS) $(LLIBS)
+
+3dbetafit2.o:3dbetafit2.c
+	$(CCFAST) -c 3dbetafit2.c $(IFLAGS)
+
+3dbetafit2:3dbetafit2.o betafit.c
+	$(CC) -o 3dbetafit2 3dbetafit2.o $(IFLAGS) $(LFLAGS) $(LLIBS)
+
+3dbetafit3:3dbetafit3.o betafit.c
+	$(CC) -o 3dbetafit3 3dbetafit3.o $(IFLAGS) $(LFLAGS) $(LLIBS)
+
+testcox:testcox.o
+	$(CC) -o testcox testcox.o $(IFLAGS) $(LFLAGS) -lmri -lf2c $(LLIBS)
+
+agni_to_afni:agni_to_afni.o agni.o
+	$(CC) -o agni_to_afni agni_to_afni.o $(IFLAGS) $(LFLAGS) -lmri -lf2c $(LLIBS)
+
+#-------------------------------------------------------------------------------
