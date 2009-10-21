@@ -264,6 +264,7 @@ extern long   strtol() ;
 # define USE_LOCKF
 # define DONT_USE_MATRIX_MAT  /* 04 Mar 2005 */
 
+#ifdef SOLARIS_OLD            /* 03 Feb 2009 [rickr] */
 # define fabsf  fabs          /* 09 Jul 2007 */
 # define sqrtf  sqrt          /* to deal with lameness of Solaris */
 # define cbrtf  cbrt
@@ -276,6 +277,11 @@ extern long   strtol() ;
 # define floorf floor
 # define ceilf  ceil
 # define expf   exp
+# define atanhf atanh         /* 27 Jul 2009 [rickr] */
+# define atan2f atan2         /* 24 Aug 2009 [RWCox] */
+# define tanhf  tanh          /* 20 Oct 2009 [RWCox] */
+
+#endif
 
 #endif
 
@@ -352,7 +358,7 @@ extern long   strtol() ;
 # define THD_MKDIR_MODE (S_IRUSR|S_IWUSR|S_IXUSR|S_IRGRP|S_IXGRP|S_IROTH|S_IXOTH)
 # define SCANDIR_WANTS_CONST
 # define FIX_SCALE_SIZE_PROBLEM   /* Motif 2.0 bug? */
-# define MMAP_THRESHOLD -1        /* no mmap-ing */
+/* # define MMAP_THRESHOLD -1 */       /* no mmap-ing */
 #if 0
 # define DONT_CHECK_FOR_MWM       /* assume Motif WM functionality is present */
 #endif
@@ -360,7 +366,9 @@ extern long   strtol() ;
 # define DYNAMIC_LOADING_VIA_DL
 # undef  DONT_UNROLL_FFTS
 # define USE_FLOCK
+#if 0
 # define USE_RANDOM
+#endif
 # define DONT_USE_STRPTIME
 /** # define NEED_XSETLOCALE **/  /* removed on 16 May 2005, for Tiger */
 # define NEED_NL_LANGINFO
@@ -400,5 +408,8 @@ extern double lgamma(double) ;
 #endif
 
 extern char * Random_Insult(void) ;
+extern void init_rand_seed( long int seed ) ; /* 15 Apr 2009 (cf machdep.c) */
+#undef  SET_RAND_SEED
+#define SET_RAND_SEED init_rand_seed(0)
 
 #endif /* _MCW_MACHDEP_ */

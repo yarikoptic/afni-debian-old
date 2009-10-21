@@ -20,6 +20,11 @@ ENTRY("mri_to_float") ;
 
    if( oldim == NULL || mri_data_pointer(oldim) == NULL ) RETURN(NULL) ;
 
+   if( oldim->kind == MRI_fvect ){              /* 10 Dec 2008: special case */
+     newim = mri_fvect_subimage( oldim , 0 ) ;
+     RETURN(newim) ;
+   }
+
    newim = mri_new_conforming( oldim , MRI_float ) ;
    npix  = oldim->nvox ;
    far   = MRI_FLOAT_PTR(newim) ;
@@ -46,7 +51,7 @@ ENTRY("mri_to_float") ;
 
       case MRI_float:{
          float *qar = MRI_FLOAT_PTR(oldim) ;
-         (void) memcpy( far , qar , sizeof(float) * npix ) ;
+         for( ii=0 ; ii < npix ; ii++ ) far[ii] = qar[ii] ;
       }
       break ;
 
@@ -85,7 +90,7 @@ ENTRY("mri_to_float") ;
         MRI_FATAL_ERROR ;
    }
 
-   MRI_COPY_AUX(newim,oldim) ;
+   MRI_COPY_AUX(newim,oldim) ; (void)mri_floatscan(newim) ;
    RETURN( newim );
 }
 
@@ -100,7 +105,7 @@ MRI_IMAGE *mri_scale_to_float( float scl , MRI_IMAGE *oldim )
 
 ENTRY("mri_scale_to_float") ;
 
-   if( oldim == NULL ) RETURN( NULL );  /* 09 Feb 1999 */
+   if( oldim == NULL || mri_data_pointer(oldim) == NULL ) RETURN(NULL) ;
 
    fac = scl ;
    if( fac==0.0f || fac==1.0f ){ newim = mri_to_float(oldim); RETURN(newim); }
@@ -108,6 +113,7 @@ ENTRY("mri_scale_to_float") ;
    newim = mri_new_conforming( oldim , MRI_float ) ;
    npix  = oldim->nvox ;
    far   = MRI_FLOAT_PTR(newim) ;
+   if( far == NULL ){ mri_free(newim); RETURN(NULL); }
 
    switch( oldim->kind ){
 
@@ -170,7 +176,7 @@ ENTRY("mri_scale_to_float") ;
          MRI_FATAL_ERROR ;
    }
 
-   MRI_COPY_AUX(newim,oldim) ;
+   MRI_COPY_AUX(newim,oldim) ; (void)mri_floatscan(newim) ;
    RETURN( newim );
 }
 
@@ -234,6 +240,6 @@ ENTRY("mri_mult_to_float") ;
          MRI_FATAL_ERROR ;
    }
 
-   MRI_COPY_AUX(newim,oldim) ;
+   MRI_COPY_AUX(newim,oldim) ; (void)mri_floatscan(newim) ;
    RETURN( newim );
 }

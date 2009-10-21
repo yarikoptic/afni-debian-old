@@ -30,7 +30,7 @@ static char *INIT_labovr[DEFAULT_NCOLOVR] = {
 static int nx,nts , sep=1, sepscl=0;
 static float **yar , *xar ;
 static MCW_DC *dc ;
-static char *title = NULL , *xlabel = NULL , *ylabel = NULL ;
+static char *title = NULL , *wintitle = NULL, *xlabel = NULL , *ylabel = NULL ;
 
 static char *dfile_nar[6] = {
          "Roll [\\degree]" , "Pitch [\\degree]" , "Yaw [\\degree]"    ,
@@ -53,18 +53,19 @@ int main( int argc , char *argv[] )
 {
    int iarg , ii , ny , ignore=0 , use=0 , install=0 ;
    float dx=1.0 , xzero=0.0 ;
-   char *cpt , *xfile=NULL;
+   char *cpt , *xfile=NULL;   int xl10=0 ;
    MRI_IMAGE *inim , *flim ;
    float *far ;
    XtAppContext app ;
-   Widget shell ;
+   Widget shell=(Widget)NULL ;
    int use_stdin=0 ; /* 01 Aug 2001 */
    int out_ps   =0 ; /* 29 Nov 2002 */
    int nopush   =0 ;
    int nnax=0,mmax=0 , nnay=0,mmay=0 ;
-   float xbot,xtop   , ybot,ytop ;
+   float xbot,xtop   , ybot,ytop ; float thik=0.0f ;
    int skip_x11=0 , imsave=0 ; char *imfile=NULL ;
-   int do_norm=0 ; /* 26 Mar 2008 */
+   int do_norm=0 ;   /* 26 Mar 2008 */
+   char *ytran=NULL; /* 16 Jun 2009 */
 
    /*-- help? --*/
 
@@ -95,10 +96,12 @@ int main( int argc , char *argv[] )
             "              Note that X.1D should have one column\n"
             "              of the same length as the columns in tsfile. \n"
             " N.B.: -x will override -dx and -xzero; -xaxis still has effects\n"
+            " -xl10 X.1D = Use log10(X.1D) as the X axis.\n"
             "\n"
             " -dx xx     = Spacing between points on the x-axis is 'xx'\n"
-            "                [default = 1]\n"
+            "                [default = 1] SYNONYMS: '-dt' and '-del'\n"
             " -xzero zz  = Initial x coordinate is 'zz' [default = 0]\n"
+            "                SYNONYMS: '-tzero' and '-start'\n"
             " -nopush    = Don't 'push' axes ranges outwards.\n"
             " -ignore nn = Skip first 'nn' rows in the input file\n"
             "                [default = 0]\n"
@@ -115,6 +118,8 @@ int main( int argc , char *argv[] )
             "              versus\n"
             "        echo 2 4.5 -1 | 1dplot -plabel 'test\\_underscore' -stdin\n"
             " -title pp = Same as -plabel, but only works with -ps/-png/-jpg options.\n"
+            " -wintitle pp = Set string 'pp' as the title of the frame \n"
+            "                containing the plot. Default is based on input.\n"
 #if 0
             "             Use -plabel instead for full interoperability.\n"
             "             [In X11 mode, the X11 startup 'consumes' the '-title' ]\n"
@@ -147,43 +152,65 @@ int main( int argc , char *argv[] )
             "               * PNG output requires that the netpbm program\n"
             "                 pnmtopng be installed somewhere in your PATH.\n"
             "\n"
-            " -xaxis b:t:n:m    = Set the x-axis to run from value 'b' to\n"
-            "                     value 't', with 'n' major divisions and\n"
-            "                     'm' minor tic marks per major division.\n"
-            "                     For example:\n"
-            "                       -xaxis 0:100:5:20\n"
-            "                     Setting 'n' to 0 means no tic marks or labels.\n"
+            "-ytran 'expr'    = Transform the data along the y-axis by\n"
+            "                   applying the expression to each input value.\n"
+            "                   For example:\n"
+            "                     -ytran 'log10(z)'\n"
+            "                   will take log10 of each input time series value\n"
+            "                   before plotting it.\n"
+            "                 * The expression should have one variable (any letter\n"
+            "                   from a-z will do), which stands for the time series\n"
+            "                   data to be transformed.\n"
+            "                 * An expression such as 'sqrt(x*x+i)' will use 'x'\n"
+            "                   for the time series value and use 'i' for the time\n"
+            "                   index (starting at 0) -- in this way, you can use\n"
+            "                   time-dependent transformations, if needed.\n"
+            "                 * This transformation applies to all input time series\n"
+            "                   (at present, there is no way to transform different\n"
+            "                   time series in distinct ways inside 1dplot).\n"
+            "                 * '-ytran' is applied BEFORE the various '-norm' options.\n"
             "\n"
-            " -yaxis b:t:n:m    = Similar to above, for the y-axis.  These\n"
-            "                     options override the normal autoscaling\n"
-            "                     of their respective axes.\n"
+            " -xaxis b:t:n:m  = Set the x-axis to run from value 'b' to\n"
+            "                   value 't', with 'n' major divisions and\n"
+            "                   'm' minor tic marks per major division.\n"
+            "                   For example:\n"
+            "                     -xaxis 0:100:5:20\n"
+            "                   Setting 'n' to 0 means no tic marks or labels.\n"
             "\n"
-            " -ynames aa bb ... = Use the strings 'aa', 'bb', etc., as\n"
-            "                     labels to the right of the graphs,\n"
-            "                     corresponding to each input column.\n"
-            "                     These strings CANNOT start with the\n"
-            "                     '-' character.\n"
-            "               N.B.: Each separate string after '-ynames'\n"
-            "                     is taken to be a new label, until the\n"
-            "                     end of the command line or until some\n"
-            "                     string starts with a '-'.  In particular,\n"
-            "                     This means you CANNOT do something like\n"
-            "                       1dplot -ynames a b c file.1D\n"
-            "                     since the input filename 'file.1D' will\n"
-            "                     be used as a label string, not a filename.\n"
-            "                     Instead, you must put another option between\n"
-            "                     the end of the '-ynames' label list, OR you\n"
-            "                     can put a single '-' at the end of the label\n"
-            "                     list to signal its end:\n"
-            "                       1dplot -ynames a b c - file.1D\n"
+            " -yaxis b:t:n:m  = Similar to above, for the y-axis.  These\n"
+            "                   options override the normal autoscaling\n"
+            "                   of their respective axes.\n"
             "\n"
-            " -volreg           = Makes the 'ynames' be the same as the\n"
-            "                     6 labels used in plug_volreg for\n"
-            "                     Roll, Pitch, Yaw, I-S, R-L, and A-P\n"
-            "                     movements, in that order.\n"
+            " -ynames a b ... = Use the strings 'a', 'b', etc., as\n"
+            "                   labels to the right of the graphs,\n"
+            "                   corresponding to each input column.\n"
+            "                   These strings CANNOT start with the\n"
+            "                   '-' character.\n"
+            "             N.B.: Each separate string after '-ynames'\n"
+            "                   is taken to be a new label, until the\n"
+            "                   end of the command line or until some\n"
+            "                   string starts with a '-'.  In particular,\n"
+            "                   This means you CANNOT do something like\n"
+            "                     1dplot -ynames a b c file.1D\n"
+            "                   since the input filename 'file.1D' will\n"
+            "                   be used as a label string, not a filename.\n"
+            "                   Instead, you must put another option between\n"
+            "                   the end of the '-ynames' label list, OR you\n"
+            "                   can put a single '-' at the end of the label\n"
+            "                   list to signal its end:\n"
+            "                     1dplot -ynames a b c - file.1D\n"
             "\n"
-            " -Dname=val        = Set environment variable 'name' to 'val'\n"
-            "                     for this run of the program only:\n"
+            " -volreg         = Makes the 'ynames' be the same as the\n"
+            "                   6 labels used in plug_volreg for\n"
+            "                   Roll, Pitch, Yaw, I-S, R-L, and A-P\n"
+            "                   movements, in that order.\n"
+            "\n"
+            " -thick          = Each time you give this, it makes the line\n"
+            "                   thickness used for plotting a little larger.\n"
+            "                   [An alternative to using '-DAFNI_1DPLOT_THIK=...']\n"
+            "\n"
+            " -Dname=val      = Set environment variable 'name' to 'val'\n"
+            "                   for this run of the program only:\n"
             " 1dplot -DAFNI_1DPLOT_THIK=0.01 -DAFNI_1DPLOT_COLOR_01=blue '1D:3 4 5 3 1 0'\n"
             "\n"
             "You may also select a subset of columns to display using\n"
@@ -205,7 +232,17 @@ int main( int argc , char *argv[] )
             "You can alter the thickness of the lines by setting the variable\n"
             "AFNI_1DPLOT_THIK to a value between 0.00 and 0.05 -- the units are\n"
             "fractions of the page size.\n"
-
+            "\n"
+            "LABELS\n"
+            "------\n"
+            "Besides normal alphabetic text, the various labels can include some\n"
+            "special characters, using TeX-like escapes starting with '\\'.\n"
+            "Also, the '^' and '_' characters denote super- and sub-scripts,\n"
+            "respectively.  The following command shows many of the escapes:\n"
+            " 1deval -num 100 -expr 'J0(t/4)' | 1dplot -stdin -thick \\\n"
+            " -xlabel '\\alpha\\beta\\gamma\\delta\\epsilon\\zeta\\eta^{\\oplus\\dagger}\\times c' \\\n"
+            " -ylabel 'Bessel Function \\green J_0(t/4)'     \\\n"
+            " -plabel '\\Upsilon\\Phi\\Chi\\Psi\\Omega\\red\\leftrightarrow\\blue\\partial^{2}f/\\partial x^2'\n"
             "\n"
             TS_HELP_STRING
            ) ;
@@ -253,6 +290,10 @@ int main( int argc , char *argv[] )
        iarg++ ; continue ;
      }
 
+     if( strncasecmp(argv[iarg],"-thi",4) == 0 ){  /* 15 Apr 2009: thickness */
+       thik += 0.005f ; iarg++ ; continue ;
+     }
+
      if( strcmp(argv[iarg],"-norm2") == 0 ){  /* 26 Mar 2008 */
        do_norm = 2 ; iarg++ ; continue ;
      }
@@ -264,7 +305,11 @@ int main( int argc , char *argv[] )
      }
 
      if( strcasecmp(argv[iarg],"-x") == 0 ){   /* ZSS: April 2007 */
-       xfile = argv[++iarg];
+       xfile = argv[++iarg]; xl10 = 0 ;
+       iarg++; continue;
+     }
+     if( strcasecmp(argv[iarg],"-xl10") == 0 ){
+       xfile = argv[++iarg]; xl10 = 1 ;
        iarg++; continue;
      }
 
@@ -284,6 +329,10 @@ int main( int argc , char *argv[] )
 
        plot_ts_yfix( nnay,mmay , ybot,ytop ) ;
        iarg++ ; continue ;
+     }
+
+     if( strcmp(argv[iarg],"-ytran") == 0 ){   /* 16 Jun 2009 */
+       ytran = strdup(argv[++iarg]) ; iarg++ ; continue ;
      }
 
      if( strcmp(argv[iarg],"-nopush") == 0 ){  /* 12 Mar 2003 */
@@ -349,6 +398,11 @@ int main( int argc , char *argv[] )
         iarg++ ; continue ;
      }
 
+     if( strcmp(argv[iarg],"-wintitle") == 0 ){
+        wintitle = argv[++iarg] ;
+        iarg++ ; continue ;
+     }
+     
      if( strcmp(argv[iarg],"-title") == 0 ){ /* normally eaten by XtVaAppInitialize */
 #if 0
         WARNING_message(                     /* unless  using -ps! So keep it here, */
@@ -375,7 +429,7 @@ int main( int argc , char *argv[] )
         iarg++ ; continue ;
      }
 
-     if( strcmp(argv[iarg],"-use") == 0 ){
+     if( strcmp(argv[iarg],"-use") == 0 || strcmp(argv[iarg],"-num") == 0 ){
         use = strtod( argv[++iarg] , NULL ) ;
         if( use < 2 ) ERROR_exit("Illegal -use value!\n") ;
         iarg++ ; continue ;
@@ -390,7 +444,8 @@ int main( int argc , char *argv[] )
         iarg++ ; continue ;
      }
 
-     if( strcmp(argv[iarg],"-xzero") == 0 || strcmp(argv[iarg],"-start") == 0 ){
+     if( strcmp(argv[iarg],"-xzero") == 0 || strcmp(argv[iarg],"-start") == 0 ||
+         strcmp(argv[iarg],"-tzero") == 0   ){
         xzero = strtod( argv[++iarg] , NULL ) ;
         iarg++ ; continue ;
      }
@@ -406,7 +461,7 @@ int main( int argc , char *argv[] )
         sep = 0 ; iarg++ ; continue ;
      }
 
-#if 0 
+#if 0
      if( strncmp(argv[iarg],"-D",2) == 0 && strchr(argv[iarg],'=') != NULL ){
        (void) AFNI_setenv( argv[iarg]+2 ) ;
        iarg++ ; continue ;
@@ -414,6 +469,10 @@ int main( int argc , char *argv[] )
 #endif
 
      ERROR_exit("Unknown option: %s\n",argv[iarg]) ;
+   }
+
+   if( thik > 0.0f ){
+     char cmd[128]; sprintf(cmd,"AFNI_1DPLOT_THIK=%.3f",thik); AFNI_setenv(cmd);
    }
 
    if(sepscl && sep == 0) {
@@ -440,6 +499,8 @@ int main( int argc , char *argv[] )
      int   nval ;
      float *val , fff ;
 
+     if (!wintitle) wintitle = "stdin";   /* ZSS Oct 7 09 */
+     
      lbuf = (char * )malloc(sizeof(char )*NLBUF) ;
      val  = (float *)malloc(sizeof(float)*NVMAX) ;
 
@@ -499,16 +560,26 @@ int main( int argc , char *argv[] )
      if( iarg >= argc )
        ERROR_exit("No input files on command line?!\n");  /* bad user?! */
 
+ 
      if( iarg == argc-1 ){                 /* only 1 input file */
+       
+       if (!wintitle) wintitle = argv[iarg];   /* ZSS Oct 7 09 */
+       
        inim = mri_read_1D( argv[iarg] ) ;
        if( inim == NULL )
          ERROR_exit("Can't read input file '%s'\n",argv[iarg]) ;
 
      } else {                              /* multiple inputs [05 Mar 2003] */
        MRI_IMARR *imar ;                   /* read them & glue into 1 image */
-       int iarg_first=iarg, nysum=0, ii,jj,nx ;
+       int iarg_first=iarg, nysum=0, ii,jj,nx=1 ;
        float *far,*iar ;
-
+       char stmp[256];
+       
+       if (!wintitle) {
+         snprintf(stmp,64*sizeof(char),"%s ...", argv[iarg] );
+         wintitle = stmp;
+       } 
+       
        INIT_IMARR(imar) ;
        for( ; iarg < argc ; iarg++ ){
          inim = mri_read_1D( argv[iarg] ) ;
@@ -556,7 +627,19 @@ int main( int argc , char *argv[] )
 
    if( use > 1 && nx > use ) nx = use ;  /* 29 Nov 1999 */
 
-   switch( do_norm ){  /* 26 Mar 2008 */
+   /*--- 16 Jun 2009: -ytran transformation? ---*/
+
+   if( ytran != NULL && *ytran != '\0' ){
+     int cc ;
+     for( ii=0 ; ii < ny ; ii++ ){
+       cc = PARSER_1dtran( ytran , nx , yar[ii] ) ;
+       if( cc <= 0 ) ERROR_exit("Can't evaluate -ytran expression '%s'",ytran) ;
+     }
+   }
+
+   /*--- 26 Mar 2008: normalize time series? ---*/
+
+   switch( do_norm ){
      case 2:
       for( ii=0 ; ii < ny ; ii++ ) THD_normalize(nx,yar[ii]) ;
      break ;
@@ -588,11 +671,15 @@ int main( int argc , char *argv[] )
       xar = (float *) malloc( sizeof(float) * nx ) ;
       for( ii=0 ; ii < nx ; ii++ ) xar[ii] = far[ii+ignore] ;
       mri_free(inimx); inimx=NULL; far = NULL;
+      if( xl10 )
+        for( ii=0 ; ii < nx ; ii++ ) xar[ii] = log10(fabs(xar[ii])) ;
    }
 
    /*--- start X11 ---*/
 
    if( !skip_x11 ){
+     set_wintitle_memplot(wintitle);  /* ZSS Oct. 7 2009 */
+
      (void) XtAppAddTimeOut( app , 123 , startup_timeout_CB , NULL ) ;
      XtAppMainLoop(app) ;   /* never returns */
    }

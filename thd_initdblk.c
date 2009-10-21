@@ -1,7 +1,7 @@
 /*****************************************************************************
-   Major portions of this software are copyrighted by the Medical College
-   of Wisconsin, 1994-2000, and are released under the Gnu General Public
-   License, Version 2.  See the file README.Copyright for details.
+Major portions of this software are copyrighted by the Medical College of
+Wisconsin, 1994-2000, and are released under the Gnu General Public License,
+Version 2.  See the file README.Copyright for details.
 ******************************************************************************/
 
 #include "mrilib.h"
@@ -81,6 +81,7 @@ ENTRY("THD_init_one_datablock") ;
    dblk->vedim = NULL ; /* 05 Sep 2006 */
 
    dblk->brick_fdrcurve = NULL ; /* 23 Jan 2008 */
+   dblk->brick_mdfcurve = NULL ; /* 22 Oct 2008 */
 
    dblk->master_bot = 1.0 ;     /* 21 Feb 2001 */
    dblk->master_top = 0.0 ;
@@ -444,8 +445,70 @@ ENTRY("THD_datablock_from_atr") ;
      }
    }
 
+   for( ibr=0 ; ibr < dblk->nvals ; ibr++ ){
+     sprintf(name,"MDFCURVE_%06d",ibr) ;
+     atr_flt = THD_find_float_atr( dblk , name ) ;
+     if( atr_flt != NULL && atr_flt->nfl > 3 ){
+       int nv = atr_flt->nfl - 2 ; floatvec *fv ;
+       MAKE_floatvec(fv,nv) ;
+       fv->x0 = atr_flt->fl[0] ; fv->dx = atr_flt->fl[1] ;
+       memcpy( fv->ar , atr_flt->fl + 2 , sizeof(float)*nv ) ;
+       if( dblk->brick_mdfcurve == NULL )
+         dblk->brick_mdfcurve = (floatvec **)calloc(sizeof(floatvec *),dblk->nvals);
+       dblk->brick_mdfcurve[ibr] = fv ;
+     }
+   }
+
    RETURN(1) ;
 }
+
+#if 0
+/* update daxes structure in dataset header from datablock attributes */
+int THD_daxes_from_atr( THD_datablock *dblk, THD_dataxes *daxes)
+{
+   ATR_int           *atr_rank , *atr_dimen , *atr_scene , *atr_btype ;
+   ATR_float         *atr_flt ;
+   ATR_string        *atr_labs ;
+   int   ii , view_type , func_type , dset_type , 
+         nx,ny,nz,nvox , nvals , ibr,typ ;
+   Boolean ok ;
+   char prefix[THD_MAX_NAME]="Unknown" ;
+   MRI_IMAGE *qim ;
+   int brick_ccode ;
+
+ENTRY("THD_daxes_from_atr") ;
+
+   if( dblk == NULL || dblk->natr <= 0 ) RETURN(0) ; /* bad input */
+
+   dkptr = dblk->diskptr ;
+
+   /*-- get relevant attributes: rank, dimensions, view_type & func_type --*/
+
+   atr_rank  = THD_find_int_atr( dblk , ATRNAME_DATASET_RANK ) ;
+   atr_dimen = THD_find_int_atr( dblk , ATRNAME_DATASET_DIMENSIONS ) ;
+   atr_scene = THD_find_int_atr( dblk , ATRNAME_SCENE_TYPE ) ;
+
+   /*-- missing an attribute ==> quit now --*/
+
+   if( atr_rank == NULL || atr_dimen == NULL || atr_scene == NULL ) RETURN(0) ;
+
+   /*-- load type codes from SCENE attribute --*/
+
+   STATUS("loading *_type from SCENE") ;
+
+   view_type = atr_scene->in[0] ;
+   func_type = atr_scene->in[1] ;
+   dset_type = atr_scene->in[2] ;
+
+   /*-- load other values from attributes into relevant places --*/
+
+   ok   = True ;
+   nvox = 1 ;
+
+   RETURN(1) ;
+}
+
+#endif
 
 /*-------------------------------------------------------------------*/
 /*!  Given a 12 parameter affine transform created a la 3dWarpDrive's
@@ -774,6 +837,20 @@ ENTRY("THD_datablock_apply_atr") ;
      }
    }
 
+   for( ibr=0 ; ibr < blk->nvals ; ibr++ ){
+     sprintf(name,"MDFCURVE_%06d",ibr) ;
+     atr_flt = THD_find_float_atr( blk , name ) ;
+     if( atr_flt != NULL && atr_flt->nfl > 3 ){
+       int nv = atr_flt->nfl - 2 ; floatvec *fv ;
+       MAKE_floatvec(fv,nv) ;
+       fv->x0 = atr_flt->fl[0] ; fv->dx = atr_flt->fl[1] ;
+       memcpy( fv->ar , atr_flt->fl + 2 , sizeof(float)*nv ) ;
+       if( blk->brick_mdfcurve == NULL )
+         blk->brick_mdfcurve = (floatvec **)calloc(sizeof(floatvec *),blk->nvals);
+       blk->brick_mdfcurve[ibr] = fv ;
+     }
+   }
+
    /*-- ID codes --*/
 
    if( ATR_IS_STR(ATRNAME_IDSTRING) )
@@ -1024,6 +1101,60 @@ ENTRY("THD_datablock_apply_atr") ;
      }
    }
 
+   if(atr_flt = THD_find_float_atr( blk, "IJK_TO_DICOM_REAL" )){
+      /* load oblique transformation matrix */
+      if(atr_flt) {
+        LOAD_MAT44(dset->daxes->ijk_to_dicom_real, \
+            atr_flt->fl[0], atr_flt->fl[1], atr_flt->fl[2], atr_flt->fl[3], \
+            atr_flt->fl[4], atr_flt->fl[5], atr_flt->fl[6], atr_flt->fl[7], \
+            atr_flt->fl[8], atr_flt->fl[9], atr_flt->fl[10], atr_flt->fl[11]);
+      }
+   }
+
+   /* update attributes for time axes - copied from thd_dsetdblk.c */
+   /*--- read time-dependent information, if any ---*/
+   atr_int = THD_find_int_atr  ( blk , ATRNAME_TAXIS_NUMS ) ;
+   atr_flt = THD_find_float_atr( blk , ATRNAME_TAXIS_FLOATS ) ;
+   if( atr_int != NULL && atr_flt != NULL ){
+     int isfunc , nvals ;
+
+     dset->taxis = myXtNew( THD_timeaxis ) ;
+
+     dset->taxis->type    = TIMEAXIS_TYPE ;
+     dset->taxis->ntt     = atr_int->in[0] ;
+     dset->taxis->nsl     = atr_int->in[1] ;
+     dset->taxis->ttorg   = atr_flt->fl[0] ;
+     dset->taxis->ttdel   = atr_flt->fl[1] ;
+     dset->taxis->ttdur   = atr_flt->fl[2] ;
+     dset->taxis->zorg_sl = atr_flt->fl[3] ;
+     dset->taxis->dz_sl   = atr_flt->fl[4] ;
+
+     dset->taxis->units_type = atr_int->in[2] ;    /* 21 Oct 1996 */
+     if( dset->taxis->units_type < 0 )             /* assign units */
+       dset->taxis->units_type = UNITS_SEC_TYPE ;  /* to the time axis */
+
+     if( dset->taxis->nsl > 0 ){
+       atr_flt = THD_find_float_atr( blk , ATRNAME_TAXIS_OFFSETS ) ;
+       if( atr_flt == NULL || atr_flt->nfl < dset->taxis->nsl ){
+         dset->taxis->nsl     = 0 ;
+         dset->taxis->toff_sl = NULL ;
+         dset->taxis->zorg_sl = 0.0 ;
+         dset->taxis->dz_sl   = 0.0 ;
+       } else {
+         int ii ;
+         dset->taxis->toff_sl = (float *) XtMalloc(sizeof(float)*dset->taxis->nsl) ;
+         for( ii=0 ; ii < dset->taxis->nsl ; ii++ )
+           dset->taxis->toff_sl[ii] = atr_flt->fl[ii] ;
+       }
+     } else {
+       dset->taxis->nsl     = 0 ;
+       dset->taxis->toff_sl = NULL ;
+       dset->taxis->zorg_sl = 0.0 ;
+       dset->taxis->dz_sl   = 0.0 ;
+     }
+
+   }
+
    EXRETURN ;
 }
 
@@ -1125,16 +1256,16 @@ int THD_need_brick_factor( THD_3dim_dataset * dset )
 {
    int ii , nval ;
 
-ENTRY("THD_need_brick_factor") ;
+/** ENTRY("THD_need_brick_factor") ; **/
 
-   if( ! ISVALID_DSET(dset)            ) RETURN( 0 ) ;
-   if( ! ISVALID_DATABLOCK(dset->dblk) ) RETURN( 0 ) ;
-   if( dset->dblk->brick_fac == NULL   ) RETURN( 0 ) ;
+   if( ! ISVALID_DSET(dset)            ) return( 0 ) ;
+   if( ! ISVALID_DATABLOCK(dset->dblk) ) return( 0 ) ;
+   if( dset->dblk->brick_fac == NULL   ) return( 0 ) ;
 
    nval = DSET_NVALS(dset) ;
    for( ii=0 ; ii < nval ; ii++ )
       if( DSET_BRICK_FACTOR(dset,ii) != 0.0 &&
-          DSET_BRICK_FACTOR(dset,ii) != 1.0   ) RETURN( 1 ) ;
+          DSET_BRICK_FACTOR(dset,ii) != 1.0   ) return( 1 ) ;
 
-   RETURN( 0 ) ;
+   return( 0 ) ;
 }

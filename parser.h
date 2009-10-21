@@ -37,6 +37,9 @@ extern int PARSER_has_symbol( char * sym , PARSER_code * pc ) ;
 extern void PARSER_mark_symbols( PARSER_code * pc , int * sl ) ;
 
 extern int PARSER_1deval( char *, int, float, float, float * ) ; /* 17 Nov 1999 */
+extern int PARSER_1dtran( char *, int, float * ) ;               /* 16 Jun 2009 */
+
+extern double PARSER_strtod( char *expr ) ;
 
 #ifdef  __cplusplus
 }
@@ -102,14 +105,14 @@ extern "C" {                    /* care of Greg Balls    7 Aug 2006 [rickr] */
   "    J0   , J1   , Y0   , Y1    , erf   , erfc  , qginv, qg ,  \n"           \
   "    rect , step , astep, bool  , and   , or    , mofn ,       \n"           \
   "    sind , cosd , tand , median, lmode , hmode , mad  ,       \n"           \
-  "    gran , uran , iran , eran  , lran  , orstat,              \n"           \
-  "    mean , stdev, sem  , Pleg  , cbrt  , rhddc2,\n"                         \
+  "    gran , uran , iran , eran  , lran  , orstat, mod  ,       \n"           \
+  "    mean , stdev, sem  , Pleg  , cbrt  , rhddc2, hrfbk4,hrfbk5\n"           \
   "\n"                                                                         \
-  " where:\n"                                                                  \
+  " where some of the less obvious funcions are:\n"                            \
   " * qg(x)    = reversed cdf of a standard normal distribution\n"             \
   " * qginv(x) = inverse function to qg\n"                                     \
   " * min, max, atan2 each take 2 arguments ONLY\n"                            \
-  " * J0, J1, Y0, Y1 are Bessel functions (see Watson)\n"                      \
+  " * J0, J1, Y0, Y1 are Bessel functions (see the holy book: Watson)\n"       \
   " * Pleg(m,x) is the m'th Legendre polynomial evaluated at x\n"              \
   " * erf, erfc are the error and complementary error functions\n"             \
   " * sind, cosd, tand take arguments in degrees (vs. radians)\n"              \
@@ -131,7 +134,15 @@ extern "C" {                    /* care of Greg Balls    7 Aug 2006 [rickr] */
   " * uran(r)   returns a uniform deviate in the range [0,r]\n"                \
   " * iran(t)   returns a random integer in the range [0..t]\n"                \
   " * eran(s)   returns an exponentially distributed deviate\n"                \
+  "               with parameter s; mean=s\n"                                  \
   " * lran(t)   returns a logistically distributed deviate\n"                  \
+  "               with parameter t; mean=0, stdev=t*1.814\n"                   \
+  " * mod(a,b)  returns (a modulo b) = a - b*int(a/b)\n"                       \
+  " * hrfbk4(t,L) and hrfbk5(t,L) are the BLOCK4 and BLOCK5 hemodynamic\n"     \
+  "    response functions from 3dDeconvolve (L=stimulus duration in sec,\n"    \
+  "    and t is the time in sec since start of stimulus); for example:\n"      \
+  " 1deval -del 0.1 -num 400 -expr 'hrfbk5(t-2,20)' | 1dplot -stdin -del 0.1\n"\
+  "    These HRF functions are scaled to return values in the range [0..1]\n"  \
   "\n"                                                                         \
   " You may use the symbol 'PI' to refer to the constant of that name.\n"      \
   " This is the only 2 letter symbol defined; all variables are\n"             \
@@ -142,16 +153,19 @@ extern "C" {                    /* care of Greg Balls    7 Aug 2006 [rickr] */
   " The following functions are designed to help implement logical\n"          \
   " functions, such as masking of 3D volumes against some criterion:\n"        \
   "       step(x)    = {1 if x>0        , 0 if x<=0},\n"                       \
+  "       posval(x)  = {x if x>0        , 0 if x<=0},\n"                       \
   "       astep(x,y) = {1 if abs(x) > y , 0 otherwise} = step(abs(x)-y)\n"     \
   "       rect(x)    = {1 if abs(x)<=0.5, 0 if abs(x)>0.5},\n"                 \
   "       bool(x)    = {1 if x != 0.0   , 0 if x == 0.0},\n"                   \
   "    notzero(x)    = bool(x),\n"                                             \
   "     iszero(x)    = 1-bool(x) = { 0 if x != 0.0, 1 if x == 0.0 },\n"        \
+  "        not(x)    = same as iszero(x)\n"                                    \
   "     equals(x,y)  = 1-bool(x-y) = { 1 if x == y , 0 if x != y },\n"         \
   "   ispositive(x)  = { 1 if x > 0; 0 if x <= 0 },\n"                         \
   "   isnegative(x)  = { 1 if x < 0; 0 if x >= 0 },\n"                         \
   "   and(a,b,...,c) = {1 if all arguments are nonzero, 0 if any are zero}\n"  \
   "    or(a,b,...,c) = {1 if any arguments are nonzero, 0 if all are zero}\n"  \
+  "        not(x)    = same as iszero(x) = Boolean negation\n"                 \
   "  mofn(m,a,...,c) = {1 if at least 'm' arguments are nonzero, else 0 }\n"   \
   "  argmax(a,b,...) = index of largest argument; = 0 if all args are 0\n"     \
   "  argnum(a,b,...) = number of nonzero arguments\n"                          \
@@ -170,8 +184,8 @@ extern "C" {                    /* care of Greg Balls    7 Aug 2006 [rickr] */
   "\n"                                                                         \
   "  [These last 8 functions take a variable number of arguments.]\n"          \
   "\n"                                                                         \
-  " The following 27 new [Mar 1999] functions are used for statistical\n"      \
-  " conversions, as in the program 'cdf':\n"                                   \
+  " The following 27 functions are used for statistical conversions,\n"        \
+  " as in the program 'cdf':\n"                                                \
   "   fico_t2p(t,a,b,c), fico_p2t(p,a,b,c), fico_t2z(t,a,b,c),\n"              \
   "   fitt_t2p(t,a)    , fitt_p2t(p,a)    , fitt_t2z(t,a)    ,\n"              \
   "   fift_t2p(t,a,b)  , fift_p2t(p,a,b)  , fift_t2z(t,a,b)  ,\n"              \
@@ -186,8 +200,38 @@ extern "C" {                    /* care of Greg Balls    7 Aug 2006 [rickr] */
   " and arguments to these functions.  The two functions below use the\n"      \
   " NIfTI-1 statistical codes to map between statistical values and\n"         \
   " cumulative distribution values:\n"                                         \
-  "   cdf2stat(val,code,p1,p2,3)\n"                                            \
-  "   stat2cdf(val,code,p1,p2,3)\n"
+  "   cdf2stat(val,code,p1,p2,p3)\n"                                           \
+  "   stat2cdf(val,code,p1,p2,p3)\n"                                           \
+  " where code is\n"                                                           \
+  "   2 = correlation statistic     p1 = DOF\n"                                \
+  "   3 = t statistic (central)     p1 = DOF\n"                                \
+  "   4 = F statistic (central)     p1 = num DOF, p2 = den DOF\n"              \
+  "   5 = N(0,1) statistic          no parameters\n"                           \
+  "   6 = Chi-squared (central)     p1 = DOF\n"                                \
+  "   7 = Beta variable (central)   p1 = a , p2 = b\n"                         \
+  "   8 = Binomial variable         p1 = #trials, p2 = prob per trial\n"       \
+  "   9 = Gamma distribution        p1 = shape, p2 = scale\n"                  \
+  "  10 = Poisson distribution      p1 = mean\n"                               \
+  "  11 = N(mu,variance) normal     p1 = mean, p2 = scale\n"                   \
+  "  12 = noncentral F statistic    p1 = num DOF, p2 = den DOF, p3 = noncen\n" \
+  "  13 = noncentral chi-squared    p1 = DOF, p2 = noncentrality parameter\n"  \
+  "  14 = Logistic distribution     p1 = mean, p2 = scale\n"                   \
+  "  15 = Laplace distribution      p1 = mean, p2 = scale\n"                   \
+  "  16 = Uniform distribution      p1 = min, p2 = max\n"                      \
+  "  17 = noncentral t statistic    p1 = DOF, p2 = noncentrality parameter\n"  \
+  "  18 = Weibull distribution      p1 = location, p2 = scale, p3 = power\n"   \
+  "  19 = Chi statistic (central)   p1 = DOF\n"                                \
+  "  20 = inverse Gaussian variable p1 = mu, p2 = lambda\n"                    \
+  "  21 = Extreme value type I      p1 = location, p2 = scale\n"               \
+  "  22 = 'p-value'                 no parameters\n"                           \
+  "  23 = -ln(p)                    no parameters\n"                           \
+  "  24 = -log10(p)                 no parameters\n"                           \
+  "\n"                                                                         \
+  "Finally, note that the expression evaluator is designed not to crash, or\n" \
+  "to return NaN or Infinity.  Illegal operations, such as division by 0,\n"   \
+  "logarithm of negative value, etc., are intercepted and something else\n"    \
+  "will be returned.  To find out what that 'something else' is in any\n"      \
+  "specific problematic case, you should play with the ccalc program.\n"
 
 #ifdef  __cplusplus
 }

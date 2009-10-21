@@ -67,6 +67,7 @@ typedef struct {
       int enable_suma ;       /* 29 Aug 2001 */
 
       int quiet ;             /* 25 Aug 2001 */
+      int disable_done ;      /* 21 Aug 2008 [rickr] */
 
       int yes_niml ;          /* 28 Feb 2002 */
       int port_niml ;         /* 10 Dec 2002 */
@@ -124,7 +125,7 @@ static char * UNDERLAY_typestr[] =
 #define TOPSIZE 2048
 
 #include "AFNI_label.h"
-#define VERSION AFNI_VERSION_LABEL    /* 21 chars long */
+#define AVERZHN AFNI_VERSION_LABEL    /* 21 chars long */
 
 #ifdef  __cplusplus
 extern "C" {
@@ -134,7 +135,7 @@ extern "C" {
 #define AFNI_about \
      "************************************************\n"  \
      "* GPL AFNI: Analysis of Functional NeuroImages *\n"  \
-     "*           Version " VERSION          "       *\n"  \
+     "*           Version " AVERZHN          "       *\n"  \
      "*                                              *\n"  \
      "* Major portions are Copyright 1994-2000,      *\n"  \
      "*   Medical College of Wisconsin               *\n"  \
@@ -203,11 +204,32 @@ extern char AFNI_abohelp[1024] ;
 #define ORIMASK_AP_IS (ORIMASK_AP | ORIMASK_IS)
 #define ORIMASK_ALL   (ORIMASK_LR | ORIMASK_AP | ORIMASK_IS)
 
-typedef struct {                           /* 29 Mar 1999 */
+/*-- callbacks to receive various kinds of transactions --*/
+
+/* whys for input to the receiver routine */
+
+#define RECEIVE_POINTS         101
+#define RECEIVE_VIEWPOINT      102
+#define RECEIVE_OVERLAY        103
+#define RECEIVE_CLOSURE        104
+#define RECEIVE_ALTERATION     105
+#define RECEIVE_DRAWNOTICE     106  /* 30 Mar 1999 */
+#define RECEIVE_DSETCHANGE     107  /* 31 Mar 1999 */
+#define RECEIVE_TTATLAS        108  /* 12 Jul 2001 */
+#define RECEIVE_REDISPLAY      109  /* 04 Mar 2002 */
+#define RECEIVE_FUNCDISPLAY    110  /* 04 Mar 2002 */
+#define RECEIVE_TIMEINDEX      111  /* 29 Jan 2003 */
+
+#define RECEIVE_BASEVAL        101
+#define RECEIVE_LASTVAL        111
+#define RECEIVE_NUMVAL         (RECEIVE_LASTVAL-RECEIVE_BASEVAL+1)
+
+typedef struct {                             /* 29 Mar 1999 */
       gen_func * receiver_func ;
       void *     receiver_data ;
       int        receiver_mask ;
-      char *     receiver_funcname ;       /* 20 Feb 2003 */
+      char *     receiver_funcname ;         /* 20 Feb 2003 */
+      int        last_when[RECEIVE_NUMVAL] ; /* 08 Sep 2009 */
 } AFNI_receiver ;
 
 typedef struct {
@@ -256,10 +278,10 @@ typedef struct {
       /** Feb 1998: stuff for the "receive" modules **/
       /** Mar 1999: modified to allow for more than one receiver **/
 
-      AFNI_receiver ** receiver ;
-      int              num_receiver ;
-      int              drawing_enabled , drawing_mode ;
-      Pixel            drawing_pixel ;
+      AFNI_receiver **receiver ;
+      int             num_receiver ;
+      int             drawing_enabled , drawing_mode ;
+      Pixel           drawing_pixel ;
 
       int writeownsize ; /* 01 Aug 1999 */
 
@@ -275,6 +297,8 @@ typedef struct {
       int stats_anat_ok,     /* 29 Mar 2005: set in AFNI_range_label() */
           stats_func_ok,     /*   to indicate if the sub-brick range  */
           stats_thresh_ok ;  /*   statistics are loaded properly     */
+
+      int i1_icor, j2_icor, k3_icor;  /* for InstaCorr -- 08 May 2009 */
 
 } AFNI_view_info ;
 
@@ -366,6 +390,9 @@ typedef struct {
 
       Widget pop_environment_pb ; /* 05 Nov 2003 */
       Widget pop_drawdataset_pb ; /* 17 May 2005 */
+
+      Widget pop_instacorr_pb ;   /* 06 May 2009 */
+      Widget pop_icorrjump_pb ;
 } AFNI_imaging_widgets ;
 
 /*--- 19 Aug 2002: Switch Surface control box ---*/
@@ -381,6 +408,8 @@ typedef struct {
 } AFNI_surface_widgets ;
 
 /*---*/
+
+struct Three_D_View ;  /* incomplete type definition */
 
 typedef struct {
   Widget wtop, rowcol;      /* containers */
@@ -412,6 +441,70 @@ typedef struct {
   float hbot,htop ;
   float fwhm ;
 } AFNI_clu_widgets ;      /** not yet used **/
+
+/*---*/
+
+typedef struct {
+  Widget        rc ;
+  MCW_bbox     *tog_bbox ;
+  MCW_arrowval *menu_av ;
+  Widget        chooser_pb ;
+  MCW_arrowval *index_av ;
+  Widget        chooser_lab ;
+  Widget        string_lab ;
+  Widget        string_text ;
+} ICALC_widget_row ;
+
+typedef struct {
+  Widget wtop, rowcol ;  /* top level containers */
+
+  Widget actar ;         /* action area holding control buttons */
+
+  Widget olay_expr_text ;
+
+  ICALC_widget_row  war[26] ;
+  void             *var[26] ;
+
+  int is_open ;
+  struct Three_D_View *im3d ;
+} ICALC_widget_set ;
+
+typedef struct {
+   int is_good ; char *prefix ;
+
+   char *olay_expr ;
+   void *olay_pcode ;
+   THD_3dim_dataset *dset_master ;
+
+   int               intyp[26] ;
+   THD_3dim_dataset *inset[26] ; int inidx[26] ;
+   double            inval[26] ;
+
+   int dshift_mode , cxcode ;
+   int dshift  [26] ;
+   int dshift_i[26] ;
+   int dshift_j[26] ;
+   int dshift_k[26] ;
+   int dshift_l[26] ;
+   int has_sym[26] , has_predefined, has_xyz, mangle_xyz ;
+} ICALC_setup ;
+
+#undef  INIT_ICALC_setup
+#define INIT_ICALC_setup(qcs)                                \
+ do{ int qx ;                                                \
+     (qcs) = (ICALC_setup *)calloc(1,sizeof(ICALC_setup)) ;  \
+     for( qx=0 ; qx < 26 ; qx++ ) (qcs)->intyp[qx] = -666 ;  \
+ } while(0)
+
+#undef  DESTROY_ICALC_setup
+#define DESTROY_ICALC_setup(qcs)                                  \
+ do{ if( (qcs) != NULL ){                                         \
+       int aa ;                                                   \
+       XtFree((qcs)->ulay_expr) ;                                 \
+       XtFree((qcs)->olay_expr) ;                                 \
+       XtFree((qcs)->the_expr) ;                                  \
+       free((qcs)) ; (qcs) = NULL ;                               \
+ }} while(0)
 
 /*---*/
 
@@ -536,10 +629,15 @@ typedef struct {
       generic_func *pbar_transform2D_func ;
       int           pbar_transform2D_index ;
 
-      Widget options_rowcol , options_label ;
-      Widget ulaclu_rowcol ;
+      Widget options_rowcol , options_top_rowcol , options_label ;
+      MCW_arrowval *options_vedit_av ;
+      Widget ulaclu_rowcol , vedit_frame ;
       MCW_bbox     *underlay_bbox ;
       Widget clu_rowcol, clu_clear_pb, clu_cluster_pb, clu_report_pb ;  /* 05 Sep 2006 */
+
+      Widget icor_rowcol, icor_pb , icor_label ; /* 05 May 2009 */
+
+      Widget icalc_rowcol , icalc_pb , icalc_label ; /* 18 Sep 2009 */
 
       Widget         buck_frame , buck_rowcol ;
       MCW_arrowval * anat_buck_av , *fim_buck_av , *thr_buck_av ;  /* 30 Nov 1997 */
@@ -565,6 +663,8 @@ typedef struct {
       int                 clu_index;
       int                 clu_num ;
       mri_cluster_detail *clu_det ;
+
+      ICALC_widget_set   *iwid ;       /* 17 Sep 2009 */
 } AFNI_function_widgets ;
 
 extern void AFNI_func_autothresh_CB(Widget,XtPointer,XtPointer) ; /* 25 Jul 2007 */
@@ -582,7 +682,7 @@ extern void AFNI_func_fdr_CB    (Widget,XtPointer,XtPointer) ;    /* 29 Jan 2008
 
 #ifdef FIX_SCALE_SIZE_PROBLEM
 #  define FIX_SCALE_SIZE(iqqq)                                           \
-     do{ int sel_height ;  XtPointer sel_ptr ;                           \
+     do{ int sel_height ;  XtPointer sel_ptr=NULL ;                      \
          XtVaGetValues( (iqqq)->vwid->func->thr_scale ,                  \
                            XmNuserData , &sel_ptr , NULL ) ;             \
          sel_height = (int) sel_ptr ;                                    \
@@ -870,7 +970,7 @@ typedef struct {
 #define AFNI_IGNORE_REDRAWS    1
 #define AFNI_IGNORE_EVERYTHING 2
 
-typedef struct {
+typedef struct Three_D_View {
       int type , opened ;
       MCW_DC *dc ;
 
@@ -910,24 +1010,80 @@ typedef struct {
       VEDIT_settings vedset ;                   /* 05 Sep 2006 */
       char *vedlabel ;                          /* 27 Mar 2007 */
       int   vedskip ;
+
+      ICOR_setup  *iset ;                       /* 05 May 2009 */
+      ICALC_setup *icalc_setup ;                /* 18 Sep 2009 */
 } Three_D_View ;
 
-/*! Force re-clusterizing when this viewer is redisplayed */
+/*! Force re-volume-editing when this viewer is redisplayed */
 
 #define IM3D_VEDIT_FORCE(iq) (iq)->vedset.flags=1
 
-/*! Turn cluster display off in this viewer */
+/*! Turn clusterized display off in this viewer */
 
 #define UNCLUSTERIZE(iq)                                                   \
- do{ AFNI_vedit_clear((iq)->fim_now); VEDIT_clear_label((iq));             \
+ do{ int redis=0 ;                                                         \
+     AFNI_vedit_clear((iq)->fim_now); VEDIT_clear_label((iq));             \
      AFNI_cluster_dispkill((iq));                                          \
      if( (iq)->vwid->func->clu_rep != NULL ){                              \
-       free((iq)->vwid->func->clu_rep); (iq)->vwid->func->clu_rep = NULL;  \
+       free((iq)->vwid->func->clu_rep) ;                                   \
+       (iq)->vwid->func->clu_rep = NULL ; redis++ ;                        \
      }                                                                     \
      DESTROY_CLARR((iq)->vwid->func->clu_list);                            \
-     AFNI_set_thr_pval((iq)); (iq)->vedset.flags = 0;                      \
+     if( (iq)->vedset.code ) redis++ ;                                     \
+     (iq)->vedset.flags = (iq)->vedset.code = 0; AFNI_set_thr_pval((iq));  \
+     if( (iq)->vinfo->func_visible && redis ) AFNI_redisplay_func((iq)) ;  \
  } while(0) ;
 
+#define STOP_COLOR "#770000"
+#define GO_COLOR   "#005500"
+
+#define INSTACORR_LABEL_ON(iq)                                          \
+ do{ MCW_set_widget_label((iq)->vwid->func->icor_label,"** Ready **") ; \
+     MCW_set_widget_bg   ((iq)->vwid->func->icor_label,GO_COLOR,0   ) ; \
+ } while(0)
+
+#define INSTACORR_LABEL_OFF(iq)                                         \
+ do{ MCW_set_widget_label((iq)->vwid->func->icor_label,"*NOT Ready*") ; \
+     MCW_set_widget_bg   ((iq)->vwid->func->icor_label,STOP_COLOR,0 ) ; \
+ } while(0)
+
+/*! Allow InstaCorr in this viewer */
+
+#define ENABLE_INSTACORR(iq)                                   \
+ do{ XtSetSensitive((iq)->vwid->imag->pop_instacorr_pb,True) ; \
+     XtSetSensitive((iq)->vwid->imag->pop_icorrjump_pb,True) ; \
+     INSTACORR_LABEL_ON((iq)) ;                                \
+ } while(0)
+
+/*! Turn InstaCorr off in this viewer */
+
+#define DISABLE_INSTACORR(iq)                                                 \
+ do{ XtSetSensitive((iq)->vwid->imag->pop_instacorr_pb,False) ;               \
+     XtSetSensitive((iq)->vwid->imag->pop_icorrjump_pb,False) ;               \
+     INSTACORR_LABEL_OFF((iq)) ;                                              \
+     (iq)->vinfo->i1_icor = (iq)->vinfo->j2_icor = (iq)->vinfo->k3_icor = -1; \
+     AFNI_misc_CB((iq)->vwid->func->icor_pb,(XtPointer)(iq),NULL) ;           \
+ } while(0)
+
+/** InstaCalc stuff [18 Sep 2009] **/
+
+#define INSTACALC_LABEL_ON(iq)                                           \
+ do{ MCW_set_widget_label((iq)->vwid->func->icalc_label,"*Computed!*") ; \
+     MCW_set_widget_bg   ((iq)->vwid->func->icalc_label,GO_COLOR,0   ) ; \
+ } while(0)
+
+#define INSTACALC_LABEL_OFF(iq)                                          \
+ do{ MCW_set_widget_label((iq)->vwid->func->icalc_label,"*NOT Ready*") ; \
+     MCW_set_widget_bg   ((iq)->vwid->func->icalc_label,STOP_COLOR,0 ) ; \
+ } while(0)
+
+#define DISABLE_INSTACALC(iq)                                            \
+ do{ INSTACALC_LABEL_OFF(iq) ;                                           \
+     if( (iq)->icalc_setup != NULL ) (iq)->icalc_setup->is_good = 0 ;    \
+     if( (iq)->vwid->func->iwid != NULL )                                \
+       XtUnmapWidget((iq)->vwid->func->iwid->wtop) ;                     \
+ } while(0)
 
 /*! Is any image viewer window open? */
 
@@ -1051,11 +1207,14 @@ extern "C" {
 
    extern PLUGIN_interface * F2D_init(void) ;            /* 03 Jul 2000 */
    extern PLUGIN_interface * F1D_init(void) ;            /* 08 Aug 2001 */
+   extern PLUGIN_interface * ICOR_init(char *);          /* 29 Apr 2009 */
 #endif
 
-typedef struct {                 /* windows and widgets */
-   XtPointer_array * windows ;   /* allowed to interrupt */
-   XtPointer_array * widgets ;   /* 'real-time' functions */
+extern void ICALC_make_widgets( Three_D_View *im3d ) ;   /* 18 Sep 2009 */
+
+typedef struct {                /* windows and widgets */
+   XtPointer_array *windows ;   /* allowed to interrupt */
+   XtPointer_array *widgets ;   /* 'real-time' functions */
 } MCW_interruptables ;
 
 #ifndef MAX_CONTROLLERS
@@ -1075,43 +1234,57 @@ extern "C" {
 #endif
 
 typedef struct {
-   MCW_DC * dc ;                                  /* display context for everyone */
-   THD_sessionlist * sslist ;                     /* all sessions viewable */
-   MRI_IMARR * timeseries ;                       /* all timeseries available */
-   Three_D_View * controllers[MAX_CONTROLLERS] ;  /* all controllers available */
-   MCW_interruptables interruptables ;            /* windows and widgets */
+   int numchan ;
+   int status ;
+   int numdset ;
+   THD_3dim_dataset **dset ;
+} RT_status ;
 
-   MCW_function_list registered_0D ;              /* registered functions */
+#define RT_STARTUP    1  /* status codes [01 Jun 2009] */
+#define RT_CONTINUE   2
+#define RT_FINISHED   3
+
+typedef struct {
+   MCW_DC *dc ;                                  /* display context for everyone */
+   THD_sessionlist *sslist ;                     /* all sessions viewable */
+   MRI_IMARR *timeseries ;                       /* all timeseries available */
+   Three_D_View *controllers[MAX_CONTROLLERS] ;  /* all controllers available */
+   MCW_interruptables interruptables ;           /* windows and widgets */
+
+   MCW_function_list registered_0D ;             /* registered functions */
    MCW_function_list registered_1D ;
    MCW_function_list registered_2D ;
 
    int controller_lock , ignore_lock ;
    int have_dummy_dataset ;
-   int sesstrail ;                                /* 23 Oct 1998 */
+   int sesstrail ;                               /* 23 Oct 1998 */
 
    THD_coorder cord ;
 
 #ifdef ALLOW_PLUGINS
-   struct AFNI_plugin_array * plugins ;           /* plugins */
+   struct AFNI_plugin_array *plugins ;           /* plugins */
 #endif
 
-   PBAR_palette_table * gpt ;
+   PBAR_palette_table *gpt ;
 
-   int time_lock ;                                /* 03 Nov 1998 */
+   int time_lock ;                               /* 03 Nov 1998 */
 
-   int hints_on ;                                 /* 01 Aug 1999 */
+   int hints_on ;                                /* 01 Aug 1999 */
 
-   float fim_bkthr_perc ;                         /* 02 Jun 1999 */
+   float fim_bkthr_perc ;                        /* 02 Jun 1999 */
 
-   MCW_function_list registered_fim ;             /* 30 Jan 2000 */
+   MCW_function_list registered_fim ;            /* 30 Jan 2000 */
 
-   int ijk_lock ;                                 /* 11 Sep 2000 */
+   int ijk_lock ;                                /* 11 Sep 2000 */
 
-   THD_session *session ;                         /* 20 Dec 2001 */
+   THD_session *session ;                        /* 20 Dec 2001 */
 
-   MCW_function_list registered_slice_proj ;      /* 31 Jan 2002 */
+   MCW_function_list registered_slice_proj ;     /* 31 Jan 2002 */
 
-   Htable *warptable ;                            /* 28 Aug 2002 */
+   Htable *warptable ;                           /* 28 Aug 2002 */
+
+   RT_status *realtime_status ;                  /* 01 Jun 2009 */
+   gen_func  *realtime_callback ;
 
 } AFNI_library_type ;
 
@@ -1136,7 +1309,7 @@ extern void AFNI_display_hist( Widget w ) ;       /* 05 Mar 2008 */
 #define DISABLE_LOCK    (GLOBAL_library.ignore_lock=1)
 #define ENABLE_LOCK     (GLOBAL_library.ignore_lock=0)
 #define BEEPIT          XBell(GLOBAL_library.dc->display,100)
-#define ALLOW_real_time GLOBAL_argopt.allow_rt
+#define ALLOW_realtime  GLOBAL_argopt.allow_rt
 #define ELIDE_quality   GLOBAL_argopt.elide_quality
 #define GPT             GLOBAL_library.gpt
 #define NO_frivolities  GLOBAL_argopt.no_frivolities
@@ -1161,6 +1334,8 @@ extern void AFNI_display_hist( Widget w ) ;       /* 05 Mar 2008 */
 extern int AFNI_vnlist_func_overlay( Three_D_View *,int, SUMA_irgba **,int * ) ;
 extern int AFNI_vol2surf_func_overlay( Three_D_View *, SUMA_irgba **,
                                        int, int, int, float **, float * );
+extern float * AFNI_v2s_node_timeseries(THD_session *, THD_3dim_dataset *,
+                                int, int, int, int);  /* 29 Apr 2009 [rickr] */
 
 extern void AFNI_parse_args( int argc , char * argv[] );
 
@@ -1239,6 +1414,8 @@ extern void AFNI_viewbut_EV( Widget, XtPointer, XEvent *, Boolean * ) ;
 extern void AFNI_cluster_EV( Widget, XtPointer, XEvent *, Boolean * ) ;
 extern void AFNI_clus_update_widgets( Three_D_View *im3d ) ;
 extern void AFNI_clus_popdown( Three_D_View *im3d ) ;
+
+extern void AFNI_update_dataset_viewing( THD_3dim_dataset * ); /* 21 Jul 2009 */
 
 #define AFNI_SEE_FUNC_ON(iq) ( MCW_set_bbox( (iq)->vwid->view->see_func_bbox, 1 ), \
                                AFNI_see_func_CB( NULL , (XtPointer)(iq) , NULL )  )
@@ -1359,6 +1536,7 @@ extern void AFNI_process_interrupts( Widget ) ;
 extern void AFNI_add_interruptable( Widget ) ;
 
 extern int AFNI_ts_in_library( MRI_IMAGE * tsim ) ;
+extern int AFNI_tsname_in_library( char *nam ) ; /* 10 May 2009 */
 
 extern THD_3dim_dataset * AFNI_fimmer_compute( Three_D_View * ,
                                                THD_3dim_dataset * , MRI_IMAGE *,
@@ -1377,6 +1555,10 @@ extern void   AFNI_resam_av_CB     ( MCW_arrowval * , XtPointer ) ;
 
 extern void   AFNI_bucket_CB      ( MCW_arrowval * , XtPointer ) ; /* 30 Nov 1997 */
 extern char * AFNI_bucket_label_CB( MCW_arrowval * , XtPointer ) ;
+
+extern void   AFNI_vedit_CB       ( MCW_arrowval * , XtPointer ) ; /* 05 May 2009 */
+extern int    AFNI_icor_setref    ( Three_D_View *im3d ) ;
+extern void   AFNI_icor_setref_locked( Three_D_View *im3d ) ;      /* 15 May 2009 */
 
 extern Boolean AFNI_refashion_dataset( Three_D_View * ,
                                        THD_3dim_dataset *, THD_dataxes * , int ) ;
@@ -1523,6 +1705,7 @@ extern void AFNI_misc_CB    ( Widget , XtPointer , XtPointer );
 extern void AFNI_editenv_CB ( Widget , XtPointer , XtPointer );
 
 extern void AFNI_add_timeseries( MRI_IMAGE * ) ;
+extern void AFNI_replace_timeseries( MRI_IMAGE * ) ; /* 10 May 2009 */
 
 /*----------------------------------------------------------------*/
 /*----- stuff for dataset drawing, etc. (see afni_receive.c) -----*/
@@ -1540,7 +1723,6 @@ extern void AFNI_xyz_to_dicomm( THD_3dim_dataset * ,
 
 extern void AFNI_dicomm_to_xyz( THD_3dim_dataset * ,
                                 float,float,float , float *,float *,float *) ;
-
 
 /* masks for input to AFNI_receive_init */
 
@@ -1601,27 +1783,15 @@ extern void AFNI_dicomm_to_xyz( THD_3dim_dataset * ,
 
 #define EVERYTHING_SHUTDOWN    666
 
-/* whys for input to the receiver routine */
-
-#define RECEIVE_POINTS         101
-#define RECEIVE_VIEWPOINT      102
-#define RECEIVE_OVERLAY        103
-#define RECEIVE_CLOSURE        104
-#define RECEIVE_ALTERATION     105
-#define RECEIVE_DRAWNOTICE     106  /* 30 Mar 1999 */
-#define RECEIVE_DSETCHANGE     107  /* 31 Mar 1999 */
-#define RECEIVE_TTATLAS        108  /* 12 Jul 2001 */
-#define RECEIVE_REDISPLAY      109  /* 04 Mar 2002 */
-#define RECEIVE_FUNCDISPLAY    110  /* 04 Mar 2002 */
-#define RECEIVE_TIMEINDEX      111  /* 29 Jan 2003 */
-
 /* modes for the process_drawing routine */
 
 #define SINGLE_MODE           1000
 #define PLANAR_MODE           2000
 #define THREED_MODE           3000
 #define SPECIAL_MODE        100000
-#define UNDO_MODE           101000
+#define UNDO_MODE           102000
+#define INCVAL_MODE         103000
+#define DECVAL_MODE         104000
 
 extern void AFNI_toggle_drawing ( Three_D_View * ) ;
 extern int AFNI_receive_init    ( Three_D_View *, int, gen_func *, void *, char * ) ;
@@ -1709,6 +1879,11 @@ extern void ssqrt_func( int, float * ) ;
 extern void osfilt3_func( int, double,double, float * ) ;
 extern void median3_func( int, double,double, float * ) ;
 extern void absfft_func ( int, double,double, float * ) ;
+extern void ztone_func  ( int, double,double, float * ) ; /* 02 Sep 2009 */
+extern void adpt_wt_mn9 ( int, double,double, float * ) ; /* 04 Sep 2009 */
+
+extern void L1normalize_func( int, double,double, float * ) ; /* 03 Sep 2009 */
+extern void L2normalize_func( int, double,double, float * ) ; /* 03 Sep 2009 */
 
 /* 31 Jan 2002: sample slice_proj transform functions */
 
@@ -1720,6 +1895,8 @@ extern float extreme_proj( int, float * ) ;  /* 02 Feb 2002 */
 extern float osfilt_proj ( int, float * ) ;  /* 07 Dec 2007 */
 extern float mad_proj    ( int, float * ) ;  /* 07 Dec 2007 */
 
+extern float adaptive_weighted_mean( int , float * ) ;  /* 04 Sep 2009 */
+
 /* sample 2D transform functions */
 
 extern void median9_box_func ( int, int, double,double, float * ) ;
@@ -1729,6 +1906,7 @@ extern void fft2D_absfunc    ( int, int, double,double, float * ) ;
 extern void fft2D_phasefunc  ( int, int, double,double, float * ) ;
 extern void median21_box_func( int, int, double,double, float * ) ;
 extern void winsor21_box_func( int, int, double,double, float * ) ;
+extern void adapt_mean_21_box_func( int, int, double,double, float * ) ; /* 04 Sep 2009 */
 
 extern void AFNI_register_nD_function( int, char *, generic_func *, int ) ;
 extern void AFNI_register_nD_func_init( int nd , generic_func *fin ) ;

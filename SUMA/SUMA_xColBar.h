@@ -3,6 +3,7 @@
 
 #define SUMA_CMAP_WIDTH    20
 #define SUMA_CMAP_HEIGHT   300
+#define SUMA_SCALE_SLIDER_WIDTH 18
 #define SUMA_SCALE_WIDTH 70
 #define SUMA_SCALE_HEIGHT  SUMA_CMAP_HEIGHT   
 #define SUMA_CMAP_ORIGIN   0.0,  0.0,     0.0
@@ -56,9 +57,10 @@
    This one below does not work, all three three strings have the same value
    sprintf(str,"%s, %s, %s", \
       MV_format_fval2(v[0], 7),  MV_format_fval2(v[1], 7),  MV_format_fval2(v[2], 7)); */\
-   sprintf(str,"%s", MV_format_fval2(v[0], 7)); \
-   sprintf(str,"%s, %s", str, MV_format_fval2(v[1], 7)); \
-   sprintf(str,"%s, %s", str, MV_format_fval2(v[2], 7)); \
+   sprintf(str,"%s, ", MV_format_fval2(v[0], 7)); \
+   strcat(str, MV_format_fval2(v[1], 7)); \
+   strcat(str, ", ");   \
+   strcat(str,MV_format_fval2(v[2], 7)); \
 }
 
 #define SUMA_INSERT_CELL_STRING(TF, i, j, strng)   {  \
@@ -112,7 +114,18 @@ FIX_SCALE_SIZE*/
   XtVaSetValues(  SO->SurfCont->thr_sc, XmNheight,  SUMA_CMAP_HEIGHT-40, NULL ) ; \
 }
 
+#define SUMA_UPDATE_ALL_NODE_GUI_FIELDS(SO) {\
+      SUMA_UpdateNodeNodeField(SO); \
+      /* Now get the data values at that node */   \
+      SUMA_UpdateNodeValField(SO);  \
+      /* now find that node in the colored list */ \
+      SUMA_UpdateNodeLblField(SO);  \
+}    
+
 void SUMA_ShowMeTheChildren(Widget w);
+void SUMA_UnmanageTheChildren(Widget w);
+void SUMA_ManageTheChildren(Widget w);
+void SUMA_DoForTheChildren(Widget w, int i, int lvl, int rec);
 XImage *SUMA_cmap_to_XImage (Widget wid, SUMA_COLOR_MAP *cm);
 void SUMA_DrawCmap(SUMA_COLOR_MAP *Cmap);
 void SUMA_cmap_wid_display(SUMA_SurfaceObject *SO);
@@ -162,7 +175,7 @@ int SUMA_SelectSwitchDsetCol(
          int block,
          int ichoice);
 void SUMA_cb_CloseSwitchLst (Widget w, XtPointer client_data, XtPointer call);
-void SUMA_SetScaleRange(SUMA_SurfaceObject *SO, float range[2]);  
+void SUMA_SetScaleRange(SUMA_SurfaceObject *SO, double range[2]);  
 void SUMA_cb_set_threshold_label(Widget w, XtPointer clientData, XtPointer call);
 void SUMA_optmenu_EV( Widget w , XtPointer cd ,
                       XEvent *ev , Boolean *continue_to_dispatch );
@@ -214,6 +227,7 @@ SUMA_Boolean SUMA_DsetColSelectList(
          int refresh, int bringup);
 SUMA_ASSEMBLE_LIST_STRUCT * SUMA_AssembleDsetColList(SUMA_DSET *dset); 
 void SUMA_UpdatePvalueField (SUMA_SurfaceObject *SO, float thresh);
+SUMA_Boolean SUMA_UpdateNodeField(SUMA_SurfaceObject *SO);
 
 /* the help strings */
 
@@ -355,8 +369,11 @@ void SUMA_UpdatePvalueField (SUMA_SurfaceObject *SO, float thresh);
    "Switch between datasets."
 
 #define SUMA_SurfContHelp_SetThreshTblr0   \
-   "Set the threshold."
-
+   "Set the threshold.\n"  \
+   "For statistical parameters, you can \n"  \
+   "append a 'p' to set by the p value.\n" \
+   "For example 0.001p\n"
+   
 #define SUMA_SurfContHelp_DsetLoad  \
    "Load a new dataset (Dset).\n"   \
    "Datasets can be of 2 formats:\n"   \

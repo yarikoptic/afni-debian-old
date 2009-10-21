@@ -607,9 +607,9 @@ C
       ELSEIF( C_FIRST .EQ. '^' )THEN
          NTYPE = NT_EXPOP
          VALUE = VT_STARS
-      ELSEIF( C_FIRST .EQ. '(' )THEN
+      ELSEIF( C_FIRST .EQ. '(' .OR. C_FIRST .EQ. '[' )THEN
          NTYPE = NT_OPEN
-      ELSEIF( C_FIRST .EQ. ')' )THEN
+      ELSEIF( C_FIRST .EQ. ')' .OR. C_FIRST .EQ. ']' )THEN
          NTYPE = NT_CLOSE
       ELSEIF( C_FIRST .EQ. ',' )THEN
          NTYPE = NT_COMMA
@@ -819,7 +819,7 @@ C
       REAL*8 QG , QGINV , BELL2 , RECT , STEP , BOOL ,
      X       LAND,LOR,LMOFN,MEDIAN , ZTONE , HMODE,LMODE,
      X       GRAN,URAN,IRAN,ERAN,LRAN , ORSTAT , TENT, MAD ,
-     X       MEAN , STDEV , SEM
+     X       MEAN , STDEV , SEM , POSVAL , ZZMOD
       REAL*8 ARGMAX,ARGNUM , PAIRMX,PAIRMN , AMONGF
 C
 C  External library functions
@@ -837,7 +837,7 @@ C
      X          FIZTTP , FIZTPT , FIZTTZ ,
      X          FICTTP , FICTPT , FICTTZ ,
      X          FIBTTP , FIBTPT , FIBTTZ ,
-     X          FIBNTP , FIBNPT , FIBNTZ ,
+     X          FIBNTP , FIBNPT , FIBNTZ , HRFBK4   , HRFBK5 ,
      X          FIGTTP , FIGTPT , FIGTTZ , RHDDC2   ,
      X          FIPTTP , FIPTPT , FIPTTZ , LEGENDRE , CBRTFF
 C
@@ -963,12 +963,16 @@ C.......................................................................
 C.......................................................................
          ELSEIF( CNCODE .EQ. 'ATAN2')THEN
             NEVAL          = NEVAL - 1
-            IF( R8_EVAL(NEVAL).NE.0.D+0.AND.R8_EVAL(NEVAL+1).NE.0.D+0)
+            IF( R8_EVAL(NEVAL).NE.0.D+0.OR.R8_EVAL(NEVAL+1).NE.0.D+0)
      X        R8_EVAL(NEVAL) = ATAN2( R8_EVAL(NEVAL),R8_EVAL(NEVAL+1) )
 C.......................................................................
          ELSEIF( CNCODE .EQ. 'GRAN')THEN
             NEVAL = NEVAL - 1
             R8_EVAL(NEVAL) = GRAN( R8_EVAL(NEVAL),R8_EVAL(NEVAL+1) )
+C.......................................................................
+         ELSEIF( CNCODE .EQ. 'MOD')THEN
+            NEVAL = NEVAL - 1
+            R8_EVAL(NEVAL) = ZZMOD( R8_EVAL(NEVAL),R8_EVAL(NEVAL+1) )
 C.......................................................................
          ELSEIF( CNCODE .EQ. 'URAN' )THEN
             R8_EVAL(NEVAL) = URAN( R8_EVAL(NEVAL) )
@@ -985,6 +989,14 @@ C.......................................................................
          ELSEIF( CNCODE .EQ. 'PLEG')THEN
             NEVAL = NEVAL - 1
             R8_EVAL(NEVAL) = LEGENDRE( R8_EVAL(NEVAL),R8_EVAL(NEVAL+1) )
+C.......................................................................
+         ELSEIF( CNCODE .EQ. 'HRFBK4')THEN
+            NEVAL = NEVAL - 1
+            R8_EVAL(NEVAL) = HRFBK4( R8_EVAL(NEVAL),R8_EVAL(NEVAL+1) )
+C.......................................................................
+         ELSEIF( CNCODE .EQ. 'HRFBK5')THEN
+            NEVAL = NEVAL - 1
+            R8_EVAL(NEVAL) = HRFBK5( R8_EVAL(NEVAL),R8_EVAL(NEVAL+1) )
 C.......................................................................
          ELSEIF( CNCODE .EQ. 'RHDDC2')THEN
             NEVAL = NEVAL - 2
@@ -1076,6 +1088,8 @@ C.......................................................................
             R8_EVAL(NEVAL) = RECT( R8_EVAL(NEVAL) )
          ELSEIF( CNCODE .EQ. 'STEP' )THEN
             R8_EVAL(NEVAL) = STEP( R8_EVAL(NEVAL) )
+         ELSEIF( CNCODE .EQ. 'POSVAL' )THEN
+            R8_EVAL(NEVAL) = POSVAL( R8_EVAL(NEVAL) )
          ELSEIF( CNCODE .EQ. 'TENT' )THEN
             R8_EVAL(NEVAL) = TENT( R8_EVAL(NEVAL) )
          ELSEIF( CNCODE .EQ. 'BOOL' )THEN
@@ -1100,7 +1114,7 @@ C.......................................................................
 C.......................................................................
          ELSEIF( CNCODE .EQ. 'NOTZERO' )THEN
             R8_EVAL(NEVAL) = BOOL( R8_EVAL(NEVAL) )
-         ELSEIF( CNCODE .EQ. 'ISZERO' )THEN
+         ELSEIF( CNCODE .EQ. 'ISZERO' .OR. CNCODE .EQ. 'NOT' )THEN
             R8_EVAL(NEVAL) = 1.D+0 - BOOL( R8_EVAL(NEVAL) )
          ELSEIF( CNCODE .EQ. 'EQUALS' )THEN
             NEVAL = NEVAL - 1
@@ -1339,7 +1353,7 @@ C
       REAL*8 QG , QGINV , BELL2 , RECT , STEP , BOOL , LAND,
      X       LOR, LMOFN , MEDIAN , ZTONE , HMODE , LMODE ,
      X       GRAN,URAN,IRAN,ERAN,LRAN , ORSTAT , TENT, MAD ,
-     X       MEAN , STDEV , SEM
+     X       MEAN , STDEV , SEM , POSVAL , ZZMOD
       REAL*8 ARGMAX,ARGNUM , PAIRMX,PAIRMN, AMONGF
 C
 C  External library functions
@@ -1357,7 +1371,7 @@ C
      X          FIZTTP , FIZTPT , FIZTTZ ,
      X          FICTTP , FICTPT , FICTTZ ,
      X          FIBTTP , FIBTPT , FIBTTZ ,
-     X          FIBNTP , FIBNPT , FIBNTZ ,
+     X          FIBNTP , FIBNPT , FIBNTZ , HRFBK4   , HRFBK5 ,
      X          FIGTTP , FIGTPT , FIGTTZ , RHDDC2   ,
      X          FIPTTP , FIPTPT , FIPTTZ , LEGENDRE , CBRTFF
 C
@@ -1708,7 +1722,7 @@ C.......................................................................
          ELSEIF( CNCODE .EQ. 'ATAN2')THEN
             NEVAL = NEVAL - 1
             DO IV=IVBOT,IVTOP
-               IF( R8_EVAL(IV-IBV,NEVAL)  .NE.0.D+0 .AND.
+               IF( R8_EVAL(IV-IBV,NEVAL)  .NE.0.D+0 .OR.
      X             R8_EVAL(IV-IBV,NEVAL+1).NE.0.D+0      )
      X         R8_EVAL(IV-IBV,NEVAL) = ATAN2( R8_EVAL(IV-IBV,NEVAL) ,
      X                                        R8_EVAL(IV-IBV,NEVAL+1) )
@@ -1719,6 +1733,13 @@ C.......................................................................
             DO IV=IVBOT,IVTOP
                R8_EVAL(IV-IBV,NEVAL) = GRAN( R8_EVAL(IV-IBV,NEVAL) ,
      X                                       R8_EVAL(IV-IBV,NEVAL+1) )
+            ENDDO
+C.......................................................................
+         ELSEIF( CNCODE .EQ. 'MOD')THEN
+            NEVAL = NEVAL - 1
+            DO IV=IVBOT,IVTOP
+               R8_EVAL(IV-IBV,NEVAL) = ZZMOD( R8_EVAL(IV-IBV,NEVAL) ,
+     X                                        R8_EVAL(IV-IBV,NEVAL+1) )
             ENDDO
 C.......................................................................
          ELSEIF( CNCODE .EQ. 'URAN')THEN
@@ -1745,6 +1766,20 @@ C.......................................................................
             NEVAL = NEVAL - 1
             DO IV=IVBOT,IVTOP
                R8_EVAL(IV-IBV,NEVAL) = LEGENDRE( R8_EVAL(IV-IBV,NEVAL) ,
+     X                                         R8_EVAL(IV-IBV,NEVAL+1) )
+            ENDDO
+C.......................................................................
+         ELSEIF( CNCODE .EQ. 'HRFBK4')THEN
+            NEVAL = NEVAL - 1
+            DO IV=IVBOT,IVTOP
+               R8_EVAL(IV-IBV,NEVAL) = HRFBK4( R8_EVAL(IV-IBV,NEVAL) ,
+     X                                         R8_EVAL(IV-IBV,NEVAL+1) )
+            ENDDO
+C.......................................................................
+         ELSEIF( CNCODE .EQ. 'HRFBK5')THEN
+            NEVAL = NEVAL - 1
+            DO IV=IVBOT,IVTOP
+               R8_EVAL(IV-IBV,NEVAL) = HRFBK5( R8_EVAL(IV-IBV,NEVAL) ,
      X                                         R8_EVAL(IV-IBV,NEVAL+1) )
             ENDDO
 C.......................................................................
@@ -1889,6 +1924,10 @@ C.......................................................................
             DO IV=IVBOT,IVTOP
                R8_EVAL(IV-IBV,NEVAL) = STEP( R8_EVAL(IV-IBV,NEVAL) )
             ENDDO
+         ELSEIF( CNCODE .EQ. 'POSVAL' )THEN
+            DO IV=IVBOT,IVTOP
+               R8_EVAL(IV-IBV,NEVAL) = POSVAL( R8_EVAL(IV-IBV,NEVAL) )
+            ENDDO
          ELSEIF( CNCODE .EQ. 'TENT' )THEN
             DO IV=IVBOT,IVTOP
                R8_EVAL(IV-IBV,NEVAL) = TENT( R8_EVAL(IV-IBV,NEVAL) )
@@ -1925,7 +1964,7 @@ C.......................................................................
             DO IV=IVBOT,IVTOP
               R8_EVAL(IV-IBV,NEVAL) = BOOL( R8_EVAL(IV-IBV,NEVAL) )
             ENDDO
-         ELSEIF( CNCODE .EQ. 'ISZERO' )THEN
+         ELSEIF( CNCODE .EQ. 'ISZERO' .OR. CNCODE .EQ. 'NOT' )THEN
             DO IV=IVBOT,IVTOP
               R8_EVAL(IV-IBV,NEVAL) = 1.D+0-BOOL(R8_EVAL(IV-IBV,NEVAL))
             ENDDO
@@ -2333,7 +2372,7 @@ C
 C
 C
 CCC The UNIF() function is now in parser_int.c,
-CCC where it calls CCC upon the C library to do the dirty work.
+CCC where it calls upon the C library to do the dirty work.
 C
 CCC      FUNCTION UNIF( XJUNK )
 CCC      IMPLICIT REAL*8 (A-H,O-Z)
@@ -2481,6 +2520,20 @@ C
 C
 C
 C
+      FUNCTION ZZMOD( A , B )
+      IMPLICIT REAL*8 (A-H,O-Z)
+C+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+C
+      IF( B .NE. 0.0D+00 )THEN
+        ZZMOD = A - B * DINT(A/B)
+      ELSE
+        ZZMOD = 0.0D+00
+      ENDIF
+      RETURN
+      END
+C
+C
+C
       FUNCTION QGINV( P )
 C
 C  Return x such that Q(x)=P, for 0 < P < 1.  Q=reversed Gaussian cdf.
@@ -2558,6 +2611,18 @@ C
          STEP = 0.D+0
       ELSE
          STEP = 1.D+0
+      ENDIF
+      RETURN
+      END
+C
+C
+C
+      FUNCTION POSVAL(X)
+      REAL*8 POSVAL , X
+      IF( X .LE. 0.D+0 )THEN
+         POSVAL = 0.D+0
+      ELSE
+         POSVAL = X
       ENDIF
       RETURN
       END

@@ -891,7 +891,8 @@ static int equal_strings (char *s1,char *s2)
 
 /*-----------------------------------------------------------------------------------*/	
 
-static int float_file_size (char *f_name)
+/* Fails miserably with commented .1D files */ 
+static int float_file_size_junk (char *f_name)
    
     { 
       
@@ -918,6 +919,31 @@ static int float_file_size (char *f_name)
       fclose (internal_file);
       return (cnt);                                                          
    }
+
+/* inefficient version but more robust */   
+static int float_file_size (char *f_name)
+   
+   { 
+      int i=0, ncol = 0, nrow = 0;
+      MRI_IMAGE *im = NULL;
+      float *far=NULL;
+
+      im = mri_read_1D (f_name);
+
+      if (!im) {
+         fprintf(stderr,"Failed to read 1D file\n");
+         return(-1);
+      }
+
+      far = MRI_FLOAT_PTR(im);
+      ncol = im->nx;
+      nrow = im->ny;
+
+      mri_free(im); im = NULL;  
+
+      return(ncol);
+   }
+
 
 /*-----------------------------------------------------------------------------------*/	
 
@@ -1143,15 +1169,17 @@ static void f_mult (float *x,float *y,float *z,int ln)
 static int hilbertdelay_V2 (float *x,float *y,int lng_full,int Nseg,int Pover,int opt,int dtrnd, float Dtx, int biasrem, float *del,float *slp,float *xcor,float *xcorCoef, float *vx, float *vy)
 	{	
 	 static int i_call=0,olng,m,lng_use,lng,strt,nd,sg,cnt,maxdel = 0;
-	 static COMPLEX *fftx,*ffty,*Pxy,*fftyc,*fftxc,*Pxx,*Pyy,*Rxx,*Ryy,**fftyca,**Pxya,**Rxxa,**Ryya;
-	 static float *Px,*Py,*Rxy,*HRxy,*xp,*yp,*xcpy,*ycpy,*tmp_f_vect,*tmp_f_vect2,*ubias,a,\
-	 			var_y,varu_y,stdv_y,stdvu_y,var_x,varu_x,stdv_x,stdvu_x;
+	 static COMPLEX   *fftx,*ffty,*Pxy,*fftyc,*fftxc,*Pxx,*Pyy,
+                     *Rxx,*Ryy,**fftyca,**Pxya,**Rxxa,**Ryya;
+	 static float  *Px,*Py,*Rxy,*HRxy,*xp,*yp,*xcpy,*ycpy,
+                  *tmp_f_vect,*tmp_f_vect2,*ubias,a,
+	 			      var_y,varu_y,stdv_y,stdvu_y,var_x,varu_x,stdv_x,stdvu_x;
 	 
 			  int i,j,k;
 			  char buf[100];
-			  float *mPxy,tmp,sPx,sPy,alfx,betx,alfy,bety,\
-						f_i,f_i1,izero,reg_pnt,\
-						NoWayDelay = -100000.0,\
+			  float *mPxy,tmp,sPx,sPy,alfx,betx,alfy,bety,
+						f_i,f_i1,izero=-1.0,reg_pnt,
+						NoWayDelay = -100000.0,
 						NoWayxcorCoef = NOWAYXCORCOEF;
 						
 			  COMPLEX tmp_c;

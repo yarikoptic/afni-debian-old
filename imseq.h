@@ -273,6 +273,8 @@ typedef struct {
 #define isqCR_getstatus   403
 #define isqCR_getqimage   404
 #define isqCR_getopacim   405  /* 26 Sep 2007 */
+#define isqCR_getulayim   406  /* 24 Oct 2008 */
+#define isqCR_getolayim   407  /* 24 Oct 2008 */
 
 #define isqCR_getxynim    411  /* 30 Dec 1998 */
 
@@ -322,6 +324,7 @@ typedef struct {
 
 extern void ISQ_montage_CB( Widget , XtPointer , XtPointer ) ;
 extern void ISQ_montage_action_CB( Widget , XtPointer , XtPointer ) ;
+extern void ISQ_set_anim_dup( int ) ;  /* 09 Feb 2009 */
 
 /*------------- the central data type -------------*/
 
@@ -528,7 +531,17 @@ typedef struct MCW_imseq {
 
      float top_clip ;                                 /* 14 Sep 2007 */
      int   redo_clip ;                                /* 17 Sep 2007 */
+
+     int render_mode ;                                /* 25 Oct 2008 */
+     MCW_arrowval *wbar_checkbrd_av ;
+
+     MCW_arrowval *wbar_animdup_av ;                  /* 10 Feb 2009 */
 } MCW_imseq ;
+
+#define RENDER_DEFAULT    0
+#define RENDER_CHECK_UO   1
+#define RENDER_CHECK_OU   2
+#define RENDER_LASTMODE   2
 
 #define ISQ_TIMERFUNC_INDEX  701
 #define ISQ_TIMERFUNC_BOUNCE 702
@@ -541,6 +554,10 @@ extern void ISQ_zoom_pb_CB( Widget, XtPointer, XtPointer ) ;
 extern void ISQ_crop_pb_CB( Widget, XtPointer, XtPointer ) ;
 extern void ISQ_actually_pan( MCW_imseq * , int , int ) ;
 extern int ISQ_show_zoom( MCW_imseq *seq )  ;
+extern void ISQ_center_zoom( MCW_imseq *seq ) ; /* 27 Aug 2009 */
+
+extern void ISQ_adjust_crop( MCW_imseq *,int,int,int,int) ; /* 25 Aug 2009 */
+extern void ISQ_set_crop_hint( MCW_imseq *seq ) ;
 
 #define CURSOR_NORMAL    0                            /* 10 Mar 2003 */
 #define CURSOR_PENCIL    1
@@ -721,6 +738,8 @@ extern MRI_IMAGE    * ISQ_getimage  ( int , MCW_imseq * ) ; /* 31 Jan 2002 */
 extern MRI_IMAGE    * ISQ_getoverlay( int , MCW_imseq * ) ; /* 11 Jun 2002 */
 extern MEM_plotdata * ISQ_getmemplot( int , MCW_imseq * ) ;
 extern char         * ISQ_getlabel  ( int , MCW_imseq * ) ;
+extern MRI_IMAGE    * ISQ_getchecked( int nn , MCW_imseq *seq ) ;
+extern int_triple ISQ_get_crosshairs( MCW_imseq *seq ) ;    /* 27 Aug 2009 */
 
 extern void ISQ_free_alldata( MCW_imseq * ) ;
 
@@ -804,6 +823,7 @@ extern MEM_plotdata * ISQ_plot_label( MCW_imseq *, char * ) ; /* 20 Sep 2001 */
 extern void ISQ_record_button( MCW_imseq * ) ;
 extern void ISQ_record_CB( Widget,XtPointer,XtPointer ) ;
 extern void ISQ_butsave_EV( Widget, XtPointer, XEvent *, Boolean * ) ;
+extern void ISQ_butcrop_EV( Widget, XtPointer, XEvent *, Boolean * ) ;
 
 extern void ISQ_record_open( MCW_imseq * ) ;
 extern void ISQ_record_update( MCW_imseq * , int ) ;
@@ -828,7 +848,7 @@ extern void ISQ_snap_mpeg_rng( char *,int,int ) ;
 extern void ISQ_snap_jpeg_rng( char *,int,int ) ;
 extern void ISQ_snap_png_rng ( char *,int,int ) ;
 
-extern int ISQ_handle_keypress( MCW_imseq * , unsigned long ); /* 18 Feb 2005 */
+extern int ISQ_handle_keypress( MCW_imseq *, unsigned long, unsigned int ); /* 18 Feb 2005 */
 
 extern void mri_rgb_transform_nD( MRI_IMAGE *, int, generic_func * ) ;
 

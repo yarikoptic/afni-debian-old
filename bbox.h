@@ -128,6 +128,7 @@ typedef struct {
 #define MCW_AV_downup    1
 #define MCW_AV_leftright 2
 #define MCW_AV_optmenu   3
+#define MCW_AV_updown    4      /* 03 Jun 2009 */
 #define MCW_AV_notext    11
 #define MCW_AV_editext   12
 #define MCW_AV_edittext  12
@@ -152,9 +153,20 @@ extern MCW_arrowval * new_MCW_optmenu( Widget , char * ,
                                        gen_func * , XtPointer ,
                                        str_func * , XtPointer ) ;
 
+extern MCW_arrowval * new_MCW_optmenu_64fix( Widget , char * ,
+                                       int,int,int,int,
+                                       gen_func * , XtPointer ,
+                                       str_func * , XtPointer ) ;
+extern MCW_arrowval * new_MCW_optmenu_orig( Widget , char * ,
+                                       int,int,int,int,
+                                       gen_func * , XtPointer ,
+                                       str_func * , XtPointer ) ;
+
 extern void refit_MCW_optmenu( MCW_arrowval * ,
                                int,int,int,int,
                                str_func * , XtPointer ) ;
+
+extern void colorize_MCW_optmenu( MCW_arrowval *av, char *cname, int ibut ) ;
 
 extern void allow_MCW_optmenu_popup(int) ;  /* 12 Dec 2001 */
 

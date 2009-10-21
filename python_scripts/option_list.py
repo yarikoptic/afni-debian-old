@@ -7,7 +7,14 @@
 import sys
 import afni_base
 
-# hisory:
+# whine about execution as a main program
+if __name__ == '__main__':
+   import sys
+   print '** %s: not a main program' % sys.argv[0].split('/')[-1]
+   sys.exit(1)
+
+# ---------------------------------------------------------------------------
+# history:              see: afni_history -program option_list.py
 #   
 #   07 May 2008 [rickr]:
 #     - added doc string and reformatted add_opt()
@@ -18,6 +25,14 @@ import afni_base
 #   06 June 2008 [rickr]:
 #     - get_*_opt functions now return an error code along with the result
 #
+#   06 Nov 2008 [rickr]:
+#     - added 'opt' param to get_type_opt and get_type_list
+#       (to skip find_)
+#
+#   01 Dec 2008 [rickr]:
+#     - added 'opt' param to get_string_opt and get_string_list
+#     - initialized more parameters (to get_*) to make them optional
+# ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
 # This class provides functionality for processing lists of comopt elements.
@@ -27,6 +42,8 @@ class OptionList:
         self.olist    = []      # list of comopt elements
         self.trailers = 0       # for  read_options: no trailing args allowed
                                 # from read_options: say there were such args
+        self.show_count = 1     # display option count in show()
+        self.verb     = 1       # display option count in show()
 
     def add_opt(self, name, npar, deflist, acplist=[], req=0, setpar=0,  \
                 helpstr = ""):
@@ -48,18 +65,22 @@ class OptionList:
         self.olist.append(com)
 
     def show(self, mesg = '', verb = 0):
-        if verb: print "%sOptionList: %s (len %d)" % \
-                       (mesg, self.label, len(self.olist))
+        if verb or mesg != '': print "%sOptionList: %s (len %d)" % \
+                                      (mesg, self.label, len(self.olist))
         for index in range(len(self.olist)):
             # possibly add short help string
             if verb and self.olist[index].helpstr :
                 hs = ": %s" % self.olist[index].helpstr
+            elif self.olist[index].n_found > 0 :
+                hs = '  args found = %2d' % self.olist[index].n_found
             else :
                 hs = ''
-            print "%sopt %02d: %-20s%s" % \
-                (mesg, index, self.olist[index].name, hs)
+            if self.show_count:
+               print "opt %02d: %-24s%s" % (index, self.olist[index].name, hs)
+            else: 
+               print "    %-24s%s" % (self.olist[index].name, hs)
 
-    def find_opt(self, name, nth=1):    # find nth occurance of option label
+    def find_opt(self, name, nth=1):    # find nth occurance of option name
         """return nth comopt where name=name, else None"""
         index = 0
         for com in self.olist:
@@ -67,6 +88,14 @@ class OptionList:
                 index += 1
                 if index == nth: return com
         return None
+
+    def find_all_opts(self, name):
+        """return all comopts where name=name"""
+        olist = []
+        for com in self.olist:
+            if com.name == name:
+                olist.append(com)
+        return olist
 
     def count_opt(self, name):
         """return number of comopts where name=name"""
@@ -85,33 +114,42 @@ class OptionList:
                     del self.olist[index]
                     return 1
 
-    def get_string_opt(self, opt_name):
+    def get_string_opt(self, opt_name, opt=None):
         """return the option parameter string and err
+           (if opt is passed, we don't need to find it)
            err = 0 on success, 1 on failure"""
 
-        opt = self.find_opt(opt_name)
+        if opt == None: opt = self.find_opt(opt_name)
         if not opt or not opt.parlist: return None, 0
+        if not opt_name: opt_name = opt.name
         if len(opt.parlist) != 1:
-            print '** option %s takes exactly 1 parameter, have: %s' % \
+            print "** expecting 1 parmeter for option '%s', have: %s" % \
                   (opt_name, opt.parlist)
             return None, 1
         return opt.parlist[0], 0
 
-    def get_string_list(self, opt_name):
-        """return the option parameter string and an error code"""
+    def get_string_list(self, opt_name, opt=None):
+        """return the option parameter string and an error code
+           (if opt is passed, we don't need to find it)"""
 
-        opt = self.find_opt(opt_name)
+        if opt == None: opt = self.find_opt(opt_name)
         if not opt or not opt.parlist or len(opt.parlist) < 1: return None,0
         return opt.parlist, 0
 
-    def get_type_opt(self, type, opt_name):
+    def get_type_opt(self, type, opt_name='', opt=None):
         """return the option param value converted to the given type, and err
-           (err = 0 on success, 1 on failure)"""
+           (err = 0 on success, 1 on failure)
 
-        opt = self.find_opt(opt_name)
+           If the opt element is passed, we don't need to find it.
+        """
+
+        # if no opt was passed, try to find it
+        if opt == None: opt = self.find_opt(opt_name)
+
         if not opt or not opt.parlist: return None, 0
+        if not opt_name: opt_name = opt.name
         if len(opt.parlist) != 1:
-            print '** option %s takes exactly 1 parameter, have: %s' % \
+            print "** expectin 1 parameter for option '%s', have: %s" % \
                   (opt_name, opt.parlist)
             return None, 1
         try: val = type(opt.parlist[0])
@@ -121,7 +159,8 @@ class OptionList:
 
         return val, 0
 
-    def get_type_list(self, type, opt_name, length, len_name, verb=1):
+    def get_type_list(self, type, opt_name='', length=0, len_name='',
+                      opt=None, verb=1):
         """return a list of values of the given type, and err
 
             err will be set (1) if there is an error
@@ -129,46 +168,73 @@ class OptionList:
             type      : expected conversion type
             opt_name  : option name to find in opts list
             length    : expected length of option parameters (or 1)
+                        (if length == 0, return whatever is found)
             len_name  : name of option that would define expected length
+            opt       : optionally provide a comopt element
             verb      : verbose level
 
             Find opt_name in opts list.  Verify that the parlist values are of
             the proper type and that there are either 1 or 'length' of them.
             If 1, duplicate it to length."""
 
-        opt = self.find_opt(opt_name)
+        if opt == None: opt = self.find_opt(opt_name)
         if not opt or not opt.parlist: return None, 0
+        if not opt_name: opt_name = opt.name
         olen = len(opt.parlist)
-        if olen != 1 and olen != length:
+        if length > 0 and olen != 1 and olen != length:
             print '** %s takes 1 or %s (%d) values, have %d: %s' % \
                   (opt_name, len_name, length, olen, ', '.join(opt.parlist))
             return 1, 1
         try:
             tlist = map(type,opt.parlist)
         except:
-            print "** %s takes only %s, have: %s" % (opt_name,type,opt.parlist)
+            print "** %s takes only %ss, have: %s" % (opt_name,type,opt.parlist)
             return None, 1
-        if olen != length:     # expand the list
+        if length > 0 and olen != length:     # expand the list
             tlist = [tlist[0] for i in range(length)]
             if verb > 1: print '++ expanding %s to list %s' % (opt_name, tlist)
         elif verb > 1: print '-- have %s list %s' % (opt_name, tlist)
 
         return tlist, 0        # return the list
 
+    # rcr - improve this garbage
+    def check_special_opts(self, argv):
+        """process known '-optlist_* options', nuking them from list"""
+
+        alen = len(argv)
+
+        if '-optlist_verbose' in argv:
+            ind = argv.index('-optlist_verbose')
+            self.verb = 4
+            argv[ind:ind+1] = ''
+            print '++ optlist: setting verb to %d' % self.verb
+        if '-optlist_no_show_count' in argv:
+            ind = argv.index('-optlist_no_show_count')
+            self.show_count = 0
+            argv[ind:ind+1] = ''
+            if self.verb>1: print '++ optlist: clearing show_count'
+
+        if self.verb > 1:
+            print '-- argv: orig len %d, new len %d' % (alen,len(argv))
+
 
 # ---------------------------------------------------------------------------
 # read_options:
 #   given an argument list, and OptionList of acceptable options,
 #   return an OptionList of found options, or None on failure
-def read_options(argv, oplist, verb = 1):
+def read_options(argv, oplist, verb = -1):
     """Input an OptionList element, containing a list of options, required
        or not, and return an OptionList of options as they are found.
+
+       If verb is not passed, apply that of oplist.
 
        return: an OptionList element, or None on a terminal error
        note: options may occur more than once
     """
 
     OL = OptionList("read_options")
+
+    if verb < 0: verb = oplist.verb
 
     alen = len(argv)
     if alen == 0: return OL
@@ -177,7 +243,7 @@ def read_options(argv, oplist, verb = 1):
     namelist = {}
     for co in oplist.olist:
         if co.name in namelist:   # complain if input list contains repeats
-            print "** RO warning: option '%s' appears more than once", co.name
+            print "** RO warning: option '%s' appears more than once"%co.name
         namelist[co.name] = 0
     if verb > 1 : print "-d namelist: ", namelist
 
@@ -186,6 +252,12 @@ def read_options(argv, oplist, verb = 1):
     #   so ac increments by 1+num_params each time
     ac = 1
     while ac < alen:
+        # -optlist_* : global options to be ignored
+        if argv[ac] in [ '-optlist_verbose', '-optlist_no_show_count' ]:
+            if oplist.verb > 1: print "-- found optlist opt '%s'" % argv[ac]
+            ac += 1
+            continue
+
         com = oplist.find_opt(argv[ac])
         if com:
             namelist[argv[ac]] += 1     # increment dictionary count
@@ -262,6 +334,7 @@ def read_options(argv, oplist, verb = 1):
             newopt = afni_base.comopt('trailers', -1, [])
             newopt.n_found = alen - ac
             newopt.parlist = argv[ac:]
+            if verb > 2: print "-- found trailing args: %s" % newopt.parlist
 
         OL.olist.append(newopt) # insert newopt into our return list
         ac += newopt.n_found    # and increment the argument counter
@@ -279,12 +352,45 @@ def read_options(argv, oplist, verb = 1):
                 newopt.parlist = newopt.deflist
                 # leave n_found at -1, so calling function knows
                 OL.olist.append(newopt) # insert newopt into our return list
+                if verb > 2: print "++ applying default opt '%s', args: %s" % \
+                                   (co.name, newopt.deflist)
 
-    if verb > 1 :
-        print "-d namelist: ", namelist
-        print "-d clist: "
+    if verb > 1 : OL.show("-d all found options: ")
+    if verb > 3 : print "-d final optlist with counts: ", namelist
 
     return OL
+
+def opt_is_yes(opt):
+    """return 1 if and only if option has yes/Yes/YES for oplist[0]"""
+
+    rv = 0
+    try:
+        val = opt.parlist[0]
+        if val == 'yes' or val == 'Yes' or val == 'YES': rv = 1
+    except: pass
+
+    return rv
+
+def opt_is_no(opt):
+    """return 1 if and only if option has no/No/NO for oplist[0]"""
+
+    rv = 0
+    try:
+        val = opt.parlist[0]
+        if val == 'no' or val == 'No' or val == 'NO': rv = 1
+    except: pass
+
+    return rv
+
+def opt_is_val(opt, optval):
+    """return 1 if and only if opt.oplist[0] == optval"""
+
+    rv = 0
+    try:
+        if opt.parlist[0] == optval: rv = 1
+    except: pass
+
+    return rv
 
 def test_comopts():
 
@@ -303,6 +409,6 @@ def test_comopts():
     
     if found_opts: found_opts.show('------ found options ------ ')
 
-if __name__ == '__main__':
-    test_comopts()
+# if __name__ == '__main__':
+#     test_comopts()
 

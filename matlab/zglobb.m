@@ -74,6 +74,11 @@ N_ID = length(Identifiers);
 cnt = 0;
 i=1;
 while (i<=length(Identifiers)),
+   % grab the path if it is there
+   [eee, ppp] = GetPath(char(Identifiers(i)));
+   if (ppp(length(ppp)) ~= filesep),
+      ppp = [ppp filesep];
+   end
    if (~isempty (find(char(Identifiers(i)) == '?'))),
       %have to go via ls!
       com = sprintf('\\ls %s', char(Identifiers(i)));
@@ -107,9 +112,15 @@ while (i<=length(Identifiers)),
 					NameList(cnt).date =  sd(j).date;
 					NameList(cnt).bytes = sd(j).bytes;
 					NameList(cnt).isdir = sd(j).isdir;
+               NameList(cnt).path = ppp;
 				case '|'
-					NameList = sprintf('%s|%s',NameList,sd(j).name);
-			end
+					if (strcmp(ppp,'.') || strcmp(ppp,'./')),
+                  NameList = sprintf('%s|%s',NameList,sd(j).name);
+               else
+                  NameList = sprintf('%s|%s%s',  ...
+                                     NameList,ppp,sd(j).name);
+			      end
+         end
 		end 
 	end
    i = i + 1;
@@ -124,9 +135,12 @@ if (cnt == 0),
 	return;
 end
 
-
-err = 0;
-ErrMessage = '';
+if (nargout <= 1),
+   err = NameList;
+else,
+   err = 0;
+   ErrMessage = '';
+end
 return;
 
 function cl = zstr2cell(ll)

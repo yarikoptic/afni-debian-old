@@ -30,28 +30,24 @@ static char * g_history[] =
     "      - slight change in sleeping habits (no real effect)\n"
     "      - pass all 16 elements of oblique transform matrix\n",
     " 2.10 Jul 14, 2008 [rickr] - control over real-time sleep habits\n"
-    "      - added -sleep_init, -sleep_vol, -sleep_frac\n"
+    "      - added -sleep_init, -sleep_vol, -sleep_frac\n",
+    " 2.11 Jul 25, 2008 [rickr]\n"
+    "      - allow -sleep_vol to be very small w/out early run termination\n"
+    "      - limit search failures to 1, again\n",
+    " 2.12 Jul 31, 2008 [rickr]\n"
+    "      - added full real-time testing example to help (example E)\n",
+    "      - added -num_slices option\n",
+    " 2.13 Aug 14, 2008 [rickr]\n"
+    "      - moved num_slices check to separate function\n"
+    " 2.14 Aug 18, 2008 [rickr] - help update\n"
+    " 2.15 Aug 18, 2008 [rickr] - suggest -num_slices with -sleep_init\n"
+    " 2.16 Sep  3, 2008 [rickr] - added -drive_wait option\n"
+    " 2.17 Nov 24, 2008 [rickr] - added -infile_list and -show_sorted_list\n"
+    " 2.18 Jun 25, 2009 [rickr] - fixed dz sent to RT plugin for oblique data\n"
     "----------------------------------------------------------------------\n"
 };
 
-#define DIMON_VERSION "version 2.10 (July 14, 2008)"
-
-/*----------------------------------------------------------------------
- * todo:
- *
- *    - without -rt_cmd 'PREFIX ...', set from last dir in glob (data/time?)
- *    - if there is a change in valid volume size, restart
- * ok - add -sort_by_num_suffix option
- * ok - setup an infile sorting step that will organize the files
- * ok - re-write help
- * ok - add -infile_prefix for no wildcards (and no quotes)
- * ok - find memory leak in dicom reader
- * ok - make this work for a single volume (e.g. anatomical)
- * ok - process run of single-slice volumes
- * ok - process run of fewer than 3 slices
- * ok - remove tabs
- *----------------------------------------------------------------------
-*/
+#define DIMON_VERSION "version 2.18 (Jun 25, 2009)"
 
 /*----------------------------------------------------------------------
  * Dimon - monitor real-time aquisition of Dicom or I-files
@@ -80,6 +76,7 @@ static char * g_history[] =
  *   examples:    Dimon -infile_pattern 's12345/i*'
  *                Dimon -help
  *                Dimon -version
+ *                Dimon -infile_list my_files.txt -quit
  *                Dimon -infile_prefix 's12345/i' -rt -host pickle -quit
  *----------------------------------------------------------------------
 */
@@ -108,6 +105,7 @@ static char * g_history[] =
 
 extern char  DI_MRL_orients[8];
 extern float DI_MRL_tr;
+extern int   g_use_last_elem;
 
 extern struct dimon_stuff_t { int study, series, image; } gr_dimon_stuff;
 
@@ -134,7 +132,8 @@ static int alloc_x_im          ( im_store_t * is, int bytes );
 static int check_error         ( int * retry, float tr, char * note );
 static int check_im_byte_order ( int * order, vol_t * v, param_t * p );
 static int check_im_store_space( im_store_t * is, int num_images );
-static int check_stalled_run   ( int run, int seq_num, int naps, int nap_time );
+static int check_stalled_run   ( int run, int seq_num, int naps, int tr_naps,
+                                 int nap_time );
 static int complete_orients_str( vol_t * v, param_t * p );
 static int create_flist_file   ( param_t * p );
 static int create_gert_script  ( stats_t * s, param_t * p );
@@ -151,10 +150,12 @@ static int init_extras         ( param_t * p, ART_comm * ac );
 static int init_options        ( param_t * p, ART_comm * a, int argc,
                                  char * argv[] );
 static int nap_time_in_ms      ( float, float );
+static int num_slices_ok       ( int, int, char * );
 static int path_to_dir_n_suffix( char * dir, char * suff, char * path );
 static int read_ge_files       ( param_t * p, int start, int max );
 static int read_ge_image       ( char * pathname, finfo_t * fp,
                                  int get_image, int need_memory );
+static int read_file_list      ( param_t  * p );
 static int scan_ge_files       ( param_t * p, int next, int nfiles );
 static int set_nice_level      ( int level );
 static int set_volume_stats    ( param_t * p, stats_t * s, vol_t * v );
@@ -184,6 +185,7 @@ static int usage                ( char * prog, int level );
 
 /* local copy of AFNI function */
 unsigned long l_THD_filesize( char * pathname );
+static   char * l_strdup(char * text);
 
 /*----------------------------------------------------------------------*/
 
@@ -244,6 +246,9 @@ static int find_first_volume( vol_t * v, param_t * p, ART_comm * ac )
     if ( gD.level > 0 )                 /* status */
         fprintf( stderr, "-- scanning for first volume\n" );
 
+    /* clear initial volume */
+    memset(v, 0, sizeof(vol_t));
+
     mri_read_dicom_reset_obliquity();   /* to be sure */
 
     ret_val = 0;
@@ -284,7 +289,8 @@ static int find_first_volume( vol_t * v, param_t * p, ART_comm * ac )
         {
             if ( gD.level > 0 )
             {
-                fprintf( stderr, "\n-- first volume found\n" );
+                fprintf( stderr, "\n-- first volume found (%d slices)\n",
+                         v->nim );
                 if ( gD.level > 1 )
                 {
                     idisp_vol_t( "+d first volume : ", v );
@@ -292,12 +298,6 @@ static int find_first_volume( vol_t * v, param_t * p, ART_comm * ac )
                     disp_ftype("-d ftype: ", p->ftype);
                 }
             }
-
-            mri_read_dicom_get_obliquity(ac->oblique_xform, gD.level>1);
-            ac->is_oblique = data_is_oblique();
-            if( gD.level > 1 )
-                fprintf(stderr,"-- data is %soblique\n",
-                        ac->is_oblique ? "" : "not ");
 
             /* make sure there is enough memory for bad volumes */
             if ( p->nalloc < (4 * v->nim) )
@@ -368,6 +368,8 @@ static int find_more_volumes( vol_t * v0, param_t * p, ART_comm * ac )
     int   fl_index;                     /* current index into p->flist    */
     int   naps;                         /* keep track of consecutive naps */
     int   nap_time;                     /* sleep time, in milliseconds    */
+    int   prev_nim;                     /* previous number of images read */
+    int   tr_naps;                      /* naps per TR                    */
 
     if ( v0 == NULL || p == NULL )
     {
@@ -387,11 +389,16 @@ static int find_more_volumes( vol_t * v0, param_t * p, ART_comm * ac )
     if( p->opts.sleep_vol > 0 ) nap_time = p->opts.sleep_vol;
     else nap_time = nap_time_in_ms(p->opts.tr, v0->geh.tr);
 
+    /* compute the number of naps per TR, for stalled run checks */
+    tr_naps = nap_time_in_ms(p->opts.tr, v0->geh.tr) / nap_time;
+
     if ( gD.level > 0 )                 /* status */
     {
         fprintf( stderr, "-- scanning for additional volumes...\n" );
         fprintf( stderr, "-- run %d: %d ", run, seq_num );
     }
+    if ( gD.level > 1 ) fprintf(stderr,"++ nap time = %d, tr_naps = %d\n",
+                                nap_time, tr_naps);
 
     /* give stats when user quits */
     signal( SIGHUP,  hf_signal );
@@ -468,6 +475,7 @@ static int find_more_volumes( vol_t * v0, param_t * p, ART_comm * ac )
 
         /* now we need new data - skip past last file name index */
 
+        prev_nim = 0;
         ret_val = read_ge_files( p, next_im, p->nalloc );
         fl_index = 0;                   /* reset flist index                 */
         naps = 0;                       /* do not accumulate for stall check */
@@ -475,7 +483,9 @@ static int find_more_volumes( vol_t * v0, param_t * p, ART_comm * ac )
         while ( (ret_val >= 0 ) &&      /* no fatal error, and        */
                 (ret_val < v0->nim) )   /* didn't see full volume yet */
         {
-            if ( naps > 0 )
+            if ( ret_val != prev_nim )
+                naps = 0;               /* then start over */
+            else if ( naps >= tr_naps )
             {
                 if ( p->opts.quit )     /* then we are outta here */
                 {
@@ -487,13 +497,15 @@ static int find_more_volumes( vol_t * v0, param_t * p, ART_comm * ac )
                 }
 
                 /* continue, regardless */
-                if ( check_stalled_run( run, seq_num, naps, nap_time ) > 0 )
+                if( check_stalled_run(run,seq_num,naps,tr_naps,nap_time ) > 0 )
                     if ( ac->state == ART_STATE_IN_USE )
                         ART_send_end_of_run( ac, run, seq_num, gD.level );
-
-                if ( gD.level > 0 )     /* status */
-                    fprintf( stderr, ". " );
             }
+
+            prev_nim = ret_val;
+
+            if ( gD.level > 0 && !(naps % tr_naps) )
+                fprintf( stderr, ". " ); /* pacifier */
 
             iochan_sleep( nap_time );   /* wake after a couple of TRs */
             naps ++;
@@ -511,6 +523,10 @@ static int find_more_volumes( vol_t * v0, param_t * p, ART_comm * ac )
     return 0;   /* success */
 }
 
+
+/* maybe we should let volume search fail multiple times */
+#undef MAX_SEARCH_FAILURES
+#define MAX_SEARCH_FAILURES 1
 
 /*----------------------------------------------------------------------
  * volume_search:   scan p->flist for a complete volume
@@ -539,7 +555,7 @@ static int volume_search(
     float      delta;
     int        bound;                   /* upper bound on image slice  */
     static int prev_bound = -1;         /* note previous 'bound' value */
-    static int bound_cnt  =  0;         /* allow 3 checks */
+    static int bound_cnt  =  0;         /* allow some number of checks */
     int        first = start;           /* first image (start or s+1)  */
     int        last;                    /* final image in volume       */
     int        rv;
@@ -562,9 +578,8 @@ static int volume_search(
 
     /* maintain the state */
     if ( *state == 1 && bound == prev_bound ) {
-        if( bound_cnt < 3 ) bound_cnt++;
-        else *state = 2;  /* try to finish */
-        fprintf(stderr,"** bound_cnt %d, state %d\n", bound_cnt, *state);
+        bound_cnt++;
+        if( bound_cnt >= MAX_SEARCH_FAILURES ) *state = 2; /* try to finish */
     }
     else *state = 1;  /* continue mode */
     prev_bound = bound;
@@ -574,6 +589,9 @@ static int volume_search(
     if ( rv == 1 )
     {
         /* One volume exists from slice 'first' to slice 'last'. */
+
+        /* note obliquity */
+        mri_read_dicom_get_obliquity(gAC.oblique_xform, gD.level>1);
 
         V->geh      = p->flist[first].geh;         /* copy GE structure  */
         V->gex      = p->flist[first].gex;         /* copy GE extras     */
@@ -586,8 +604,16 @@ static int volume_search(
         V->z_first  = p->flist[first].geh.zoff;
         V->z_last   = p->flist[last].geh.zoff;
         V->z_delta  = delta;
+        V->image_dz = V->geh.dz;
+        V->oblique  = data_is_oblique();
         V->seq_num  = -1;                               /* uninitialized */
         V->run      = V->geh.uv17;
+
+        /* store obliquity */
+        if( gD.level > 0 && V->oblique != gAC.is_oblique ) {
+            fprintf(stderr,"-- data is %soblique\n", V->oblique ? "" : "not ");
+            gAC.is_oblique = V->oblique;
+        }
 
         return 1;
     }
@@ -760,12 +786,16 @@ int check_one_volume(param_t *p, int start, int *fl_start, int bound, int state,
     *r_delta = delta;
 
     if( gD.level > 1 )
-        fprintf(stderr,"+d cov: returning first, last, delta = %d, %d, %f\n",
+        fprintf(stderr,"+d cov: returning first, last, delta = %d, %d, %g\n",
                 first, last, delta);
 
     /* If we have found the same slice location, we are done. */
     if ( fabs(fp->geh.zoff - p->flist[first].geh.zoff) < gD_epsilon )
     {
+        /* maybe verify that we have the correct number of slices */
+        if ( ! num_slices_ok(p->opts.num_slices,last-first+1,"same location") )
+            return 0;
+
         if ( gD.level > 1 )
             fprintf(stderr,"+d found first slice of second volume\n");
         return 1;  /* success */
@@ -775,18 +805,57 @@ int check_one_volume(param_t *p, int start, int *fl_start, int bound, int state,
        state 2, then we seem to have only a single volume to read. */
     if ( ( state == 2 && fabs(dz-delta)<gD_epsilon) && run1 == run0 )
     {
+        /* maybe verify that we have the correct number of slices */
+        if ( ! num_slices_ok(p->opts.num_slices,last-first+1,"data stall") )
+            return 0;
+
         if ( gD.level > 1 )
             fprintf(stderr,"+d no new data after finding sufficient slices\n"
                            "   --> assuming completed single volume\n");
         return 1;
     }
+
     /* otherwise, if we have not changed the delta or run, continue */
     if ( (fabs(dz - delta) < gD_epsilon) && (run1 == run0) ) /* not state 2 */
         return 0;  /* not done yet */
+
     if ( dz * delta < 0.0 ) return -1;   /* wrong direction */
 
     /* all other cases, until we hear of a new one to watch for */
     return -2;
+}
+
+
+/*----------------------------------------------------------------------
+ * check that num_slices matches the number seen
+ *
+ * Setting num_slices prevents early termination of the first volume when
+ * the first slice of second volume is seen before the entire first volume.
+ *----------------------------------------------------------------------
+*/
+static int num_slices_ok( int num_slices, int nfound, char * mesg )
+{
+    int ok = 0;
+
+    if( gD.level > 2 )
+        fprintf(stderr,"-- num_slices_ok (%s): checking %d against %d...\n",
+                mesg ? mesg : "no mesg", num_slices, nfound);
+
+    if( num_slices <= 0 ) return 1;     /* no use means ok */
+
+    ok = num_slices == nfound;
+
+    if ( gD.level > 1 ) {
+        if( ok )
+            fprintf(stderr,"+d (%s) num_slices found matches option, %d\n",
+                    mesg ? mesg : "no mesg", nfound);
+        else
+            fprintf(stderr,"+d (%s) num_slices found (%d) does not match"
+                           " option (%d), still waiting...\n",
+                    mesg ? mesg : "no mesg", nfound, num_slices);
+    }
+
+    return ok;
 }
 
 
@@ -965,6 +1034,7 @@ static int volume_match( vol_t * vin, vol_t * vout, param_t * p, int start )
     vout->z_first  = vin->z_first;
     vout->z_last   = vin->z_last;
     vout->z_delta  = vin->z_delta;
+    vout->image_dz = vout->geh.dz;
     vout->seq_num  = -1;                                /* uninitialized */
     vout->run      = vout->geh.uv17;
 
@@ -1042,8 +1112,9 @@ static int read_ge_files(
         return -1;
     }
 
-    /* clear away old file list, unless we are using the DICOM organizer */
-    if ( p->fnames && !p->opts.dicom_org )
+    /* clear away old file list, unless we are using the DICOM organizer
+     * or have a given file_list */
+    if ( p->fnames && !p->opts.dicom_org && !p->opts.infile_list )
     {
         if ( p->nfiles <= 0 )
         {
@@ -1058,7 +1129,16 @@ static int read_ge_files(
     /* get files (check for dicom) */
     if ( p->opts.use_dicom )
     {
-        if ( p->opts.dicom_org ) /* organize? */
+        if ( p->opts.infile_list )
+        {
+            if ( org_todo )
+            {
+                if ( read_file_list(p) ) return -1;
+                if( p->opts.dicom_org && dicom_order_files( p ) ) return -1;
+                org_todo = 0;  /* now don't do it, again */
+            }
+        }
+        else if ( p->opts.dicom_org ) /* organize? */
         {
             if( org_todo )       /* may be used only once */
             {
@@ -1148,6 +1228,107 @@ static int read_ge_files(
 
     /* may be negative for an error condition */
     return p->nused;
+}
+
+/*----------------------------------------------------------------------
+ * read_file_list:
+ *
+ * Get the list of files from the input file.
+ *
+ * return 0 on success
+ *----------------------------------------------------------------------
+*/
+static int read_file_list ( param_t  * p )
+{
+    FILE   * fp;
+    char   * fname, *text, *infname = p->opts.infile_list;
+    size_t   nread;
+    int      flen, nalloc;
+
+    if ( ! infname ) return 1;
+
+    /* first, allocate memory for the file text */
+    flen = l_THD_filesize(infname);
+
+    if ( flen <= 0 ) {
+        fprintf(stderr,"** no text in -file_list file, '%s'\n", infname);
+        return 1;
+    }
+
+    fp = fopen(infname, "r");
+    if( !fp ) {
+        fprintf(stderr,"** failed to open -file_list file, '%s'\n", infname);
+        return 1;
+    }
+
+    if( p->opts.debug > 1 )
+        fprintf(stderr,"++ reading file list from %s, size %d\n",infname,flen);
+
+    text = (char *)malloc((flen+1)*sizeof(char));
+    if( !text ) {
+        fprintf(stderr,"** failed to alloc for read of %d byte file '%s'\n",
+                flen, infname);
+        fclose(fp);
+        return 1;
+    }
+
+    nread = fread(text, sizeof(char), flen, fp);
+
+    if( nread != flen ) {
+        fprintf(stderr,"** RFL: read %d of %d bytes from %s\n",
+                (int)nread, flen, infname);
+        free(text);
+        fclose(fp);
+        return 1;
+    }
+
+    /* now actually parse the file */
+
+    p->nfiles = 0;
+    p->fnames = NULL;
+    nalloc = 0;
+    fname = strtok(text, " \n\r\t\f");
+    while( fname ) {
+        if( nalloc <= p->nfiles ) {
+            nalloc += 1000;
+            p->fnames = (char  **)realloc(p->fnames, nalloc*sizeof(char *));
+            if( !p->fnames ){
+                fprintf(stderr,"** RFL: failed realloc of %d ptrs\n", nalloc);
+                free(text);
+                fclose(fp);
+            }
+        }
+        p->fnames[p->nfiles] = l_strdup(fname);
+        p->nfiles++;
+        fname = strtok(NULL, " \n\r\t\f");
+    }
+
+    if( p->opts.debug > 1 )
+        fprintf(stderr,"++ read %d filenames from '%s'\n", p->nfiles, infname);
+
+    free(text);
+    fclose(fp);
+
+    return 0;
+}
+
+/* return an allocated string */
+static char * l_strdup(char * text)
+{
+    char * ret;
+    int    len;
+
+    if( !text ) return NULL;
+    len = strlen(text);
+    ret = (char *)malloc((len+1)*sizeof(char));
+    if( ! ret ) {
+        fprintf(stderr,"** failed to alloc %d bytes for l_strdup\n", len);
+        return NULL;
+    }
+
+    strcpy(ret, text);
+
+    return ret;
 }
 
 /*----------------------------------------------------------------------
@@ -1346,6 +1527,15 @@ static int dicom_order_files( param_t * p )
     if( gD.level > 1 && p->nfiles > dcount )
        fprintf(stderr,"-d first non-DICOM file is '%s', index %d\n",
                p->fnames[flist[dcount].index], flist[dcount].index);
+    if( gD.level > 2 || p->opts.show_sorted_list ) {
+       fprintf(stderr,"-d sorted DICOM file list:\n");
+       for( c = 0; c < dcount; c++ )
+          fprintf(stderr,"   run %3d   index %06d  findex %06d : %s\n",
+                  flist[c].geh.uv17, flist[c].geh.index, flist[c].index,
+                  p->fnames[flist[c].index]);
+    }
+
+    if( p->opts.show_sorted_list ) return -1;
 
     /* test the sort */
     bad = 0;
@@ -1560,7 +1750,7 @@ static int init_options( param_t * p, ART_comm * A, int argc, char * argv[] )
 
     if ( argc < 2 )
     {
-        usage( IFM_PROG_NAME, IFM_USE_SHORT );
+        usage( IFM_PROG_NAME, IFM_USE_LONG );
         return 1;
     }
 
@@ -1578,6 +1768,7 @@ static int init_options( param_t * p, ART_comm * A, int argc, char * argv[] )
     p->opts.use_dicom = 1;              /* will delete this later...  */
 
     empty_string_list( &p->opts.drive_list, 0 );
+    empty_string_list( &p->opts.wait_list, 0 );
     empty_string_list( &p->opts.rt_list, 0 );
 
     /* debug level 1 is now the default - by order of Wen-Ming :) */
@@ -1671,6 +1862,16 @@ static int init_options( param_t * p, ART_comm * A, int argc, char * argv[] )
             usage( IFM_PROG_NAME, IFM_USE_HIST );
             return 1;
         }
+        else if ( ! strncmp( argv[ac], "-infile_list", 12 ) )
+        {
+            if ( ++ac >= argc )
+            {
+                fputs( "option usage: -infile_list FILE\n", stderr );
+                return 1;
+            }
+            /* just append a '*' to the PREFIX */
+            p->opts.infile_list = argv[ac];
+        }
         else if ( ! strncmp( argv[ac], "-infile_pattern", 11 ) ||
                   ! strncmp( argv[ac], "-dicom_glob", 9 ) )
         {
@@ -1729,6 +1930,16 @@ static int init_options( param_t * p, ART_comm * A, int argc, char * argv[] )
                 errors++;
             }
         }
+        else if ( ! strncmp( argv[ac], "-num_slices", 4 ) )
+        {
+            if ( ++ac >= argc )
+            {
+                fputs( "option usage: -num_slices NUM_SLICES\n", stderr );
+                return 1;
+            }
+
+            p->opts.num_slices = atoi(argv[ac]);
+        }
         else if ( ! strncmp( argv[ac], "-od", 3 ) ||
                   ! strncmp( argv[ac], "-gert_outdir", 9 ) )
         {
@@ -1782,6 +1993,10 @@ static int init_options( param_t * p, ART_comm * A, int argc, char * argv[] )
             }
 
             p->opts.flist_file = argv[ac];
+        }
+        else if ( ! strncmp( argv[ac], "-show_sorted_list", 12 ) )
+        {
+            p->opts.show_sorted_list = 1;
         }
         else if ( ! strncmp( argv[ac], "-sleep_frac", 11 ) )
         {
@@ -1858,7 +2073,7 @@ static int init_options( param_t * p, ART_comm * A, int argc, char * argv[] )
             p->opts.tr = atof(argv[ac]);
             if ( p->opts.tr <= 0 || p->opts.tr > 30 )
             {
-                fprintf(stderr,"bad value for -tr: %f (from '%s')\n",
+                fprintf(stderr,"bad value for -tr: %g (from '%s')\n",
                         p->opts.tr, argv[ac]);
                 return 1;
             }
@@ -1869,7 +2084,7 @@ static int init_options( param_t * p, ART_comm * A, int argc, char * argv[] )
             return 1;
         }
         /* real-time options */
-        else if ( ! strncmp( argv[ac], "-drive_afni", 6 ) )
+        else if ( ! strncmp( argv[ac], "-drive_afni", 8 ) )
         {
             if ( ++ac >= argc )
             {
@@ -1880,6 +2095,20 @@ static int init_options( param_t * p, ART_comm * A, int argc, char * argv[] )
             if ( add_to_string_list( &p->opts.drive_list, argv[ac] ) != 0 )
             {
                 fprintf(stderr,"** failed add '%s' to drive_list\n",argv[ac]);
+                return 1;
+            }
+        }
+        else if ( ! strncmp( argv[ac], "-drive_wait", 8 ) )
+        {
+            if ( ++ac >= argc )
+            {
+                fputs( "option usage: -drive_wait COMMAND\n", stderr );
+                return 1;
+            }
+
+            if ( add_to_string_list( &p->opts.wait_list, argv[ac] ) != 0 )
+            {
+                fprintf(stderr,"** failed add '%s' to drive_wait\n",argv[ac]);
                 return 1;
             }
         }
@@ -1928,6 +2157,11 @@ static int init_options( param_t * p, ART_comm * A, int argc, char * argv[] )
             /* still run as Imon */
             p->opts.use_dicom = 0;
         }
+        else if ( ! strncmp( argv[ac], "-use_last_elem", 11 ) )
+        {
+            p->opts.use_last_elem = 1;
+            g_use_last_elem = 1;        /* for external function */
+        }
         else if ( ! strncmp( argv[ac], "-zorder", 6 ) )
         {
             if ( ++ac >= argc )
@@ -1960,6 +2194,13 @@ static int init_options( param_t * p, ART_comm * A, int argc, char * argv[] )
         return 1;
     }
 
+    if ( p->opts.use_dicom && p->opts.show_sorted_list && !p->opts.dicom_org )
+    {
+        fputs( "error: -dicom_org is required with -show_sorted_list", stderr );
+        usage( IFM_PROG_NAME, IFM_USE_SHORT );
+        return 1;
+    }
+
     if ( p->opts.rev_bo && p->opts.swap )
     {
         fprintf( stderr, "error: options '-rev_byte_order' and '-swap' "
@@ -1980,7 +2221,7 @@ static int init_options( param_t * p, ART_comm * A, int argc, char * argv[] )
 
     if ( p->opts.use_dicom )
     {   
-        if( ! p->opts.dicom_glob )
+        if( ! p->opts.dicom_glob && ! p->opts.infile_list )
         {
             fprintf(stderr,"** missing -infile_pattern option\n");
             return 1;
@@ -1991,6 +2232,10 @@ static int init_options( param_t * p, ART_comm * A, int argc, char * argv[] )
             return 1;
         }
     }
+
+    if ( p->opts.sleep_init > 0 && p->opts.sleep_init < 1000
+             && p->opts.num_slices == 0 && gD.level > 0 )
+        fprintf(stderr,"\n** consider using -num_slices with -sleep_init");
 
     /* done processing argument list */
 
@@ -2569,16 +2814,20 @@ static int idisp_opts_t( char * info, opts_t * opt )
             "   start_file         = %s\n"
             "   start_dir          = %s\n"
             "   dicom_glob         = %s\n"
+            "   infile_list        = %s\n"
             "   sp                 = %s\n"
             "   gert_outdir        = %s\n"
             "   (argv, argc)       = (%p, %d)\n"
-            "   tr                 = %f\n"
-            "   (nt, nice, pause)  = (%d, %d, %d)\n"
-            "   sleep_frac         = %f\n"
+            "   tr, ep             = %g, %g\n"
+            "   nt, num_slices     = %d, %d\n"
+            "   nice, pause        = %d, %d\n"
+            "   sleep_frac         = %g\n"
             "   sleep_init         = %d\n"
             "   sleep_vol          = %d\n"
             "   debug              = %d\n"
             "   quit, use_dicom    = %d, %d\n"
+            "   use_last_elem      = %d\n"
+            "   show_sorted_list   = %d\n"
             "   gert_reco          = %d\n"
             "   gert_filename      = %s\n"
             "   gert_prefix        = %s\n"
@@ -2591,17 +2840,20 @@ static int idisp_opts_t( char * info, opts_t * opt )
             "   (rt, swap, rev_bo) = (%d, %d, %d)\n"
             "   host               = %s\n"
             "   drive_list(u,a,p)  = %d, %d, %p\n"
+            "   wait_list (u,a,p)  = %d, %d, %p\n"
             "   rt_list   (u,a,p)  = %d, %d, %p\n",
             opt,
             CHECK_NULL_STR(opt->start_file),
             CHECK_NULL_STR(opt->start_dir),
             CHECK_NULL_STR(opt->dicom_glob),
+            CHECK_NULL_STR(opt->infile_list),
             CHECK_NULL_STR(opt->sp),
             CHECK_NULL_STR(opt->gert_outdir),
             opt->argv, opt->argc,
-            opt->tr, opt->nt, opt->nice, opt->pause,
+            opt->tr, opt->ep, opt->nt, opt->num_slices, opt->nice, opt->pause,
             opt->sleep_frac, opt->sleep_init, opt->sleep_vol,
-            opt->debug, opt->quit, opt->use_dicom, opt->gert_reco,
+            opt->debug, opt->quit, opt->use_dicom, opt->use_last_elem,
+            opt->show_sorted_list, opt->gert_reco,
             CHECK_NULL_STR(opt->gert_filename),
             CHECK_NULL_STR(opt->gert_prefix), opt->gert_nz,
             opt->dicom_org, opt->sort_num_suff,
@@ -2610,6 +2862,7 @@ static int idisp_opts_t( char * info, opts_t * opt )
             opt->rt, opt->swap, opt->rev_bo,
             CHECK_NULL_STR(opt->host),
             opt->drive_list.nused, opt->drive_list.nalloc, opt->drive_list.str,
+            opt->wait_list.nused, opt->wait_list.nalloc, opt->wait_list.str,
             opt->rt_list.nused, opt->rt_list.nalloc, opt->rt_list.str
             );
 
@@ -2665,12 +2918,13 @@ static int idisp_vol_t( char * info, vol_t * v )
             "   (fl_1, fn_1, fn_n)  = (%d, %d, %d)\n"
             "   first_file          = %s\n"
             "   last_file           = %s\n"
-            "   (z_first, z_last)   = (%f, %f)\n"
-            "   z_delta             = %f\n"
+            "   (z_first, z_last)   = (%g, %g)\n"
+            "   z_delta, image_dz   = (%g, %g)\n"
+            "   oblique             = %d\n"
             "   (seq_num, run)      = (%d, %d)\n",
             v, v->nim, v->fl_1, v->fn_1, v->fn_n,
             v->first_file, v->last_file,
-            v->z_first, v->z_last, v->z_delta,
+            v->z_first, v->z_last, v->z_delta, v->image_dz, v->oblique,
             v->seq_num, v->run );
 
     idisp_ge_header_info( info, &v->geh );
@@ -2703,11 +2957,11 @@ static int idisp_ge_extras( char * info, ge_extras * E )
             "    skip             = %d\n"
             "    swap             = %d\n"
             "    kk               = %d\n"
-            "    xorg             = %f\n"
-            "    yorg             = %f\n"
-            "    (xyz0,xyz1,xyz2) = (%f,%f,%f)\n"
-            "    (xyz3,xyz4,xyz5) = (%f,%f,%f)\n"
-            "    (xyz6,xyz7,xyz8) = (%f,%f,%f)\n",
+            "    xorg             = %g\n"
+            "    yorg             = %g\n"
+            "    (xyz0,xyz1,xyz2) = (%g,%g,%g)\n"
+            "    (xyz3,xyz4,xyz5) = (%g,%g,%g)\n"
+            "    (xyz6,xyz7,xyz8) = (%g,%g,%g)\n",
             E, E->bpp, E->cflag, E->hdroff, E->skip, E->swap, E->kk,
             E->xorg,   E->yorg,
             E->xyz[0], E->xyz[1], E->xyz[2],
@@ -2738,9 +2992,9 @@ static int idisp_ge_header_info( char * info, ge_header_info * I )
             "    (nx,ny)     = (%d,%d)\n"
             "    uv17        = %d\n"
             "    index        = %d\n"
-            "    (dx,dy,dz)  = (%f,%f,%f)\n"
-            "    zoff        = %f\n"
-            "    (tr,te)     = (%f,%f)\n"
+            "    (dx,dy,dz)  = (%g,%g,%g)\n"
+            "    zoff        = %g\n"
+            "    (tr,te)     = (%g,%g)\n"
             "    orients     = %-8s\n",
             I, I->good, I->nx, I->ny, I->uv17, I->index,
             I->dx, I->dy, I->dz, I->zoff, I->tr, I->te,
@@ -2766,143 +3020,236 @@ static int usage ( char * prog, int level )
     }
     else if ( level == IFM_USE_LONG )
     {
-        printf(
-          "\n"
-          "%s - monitor real-time acquisition of DICOM image files\n"
-          "    (or GEMS 5.x I-files, as 'Imon')\n"
-          "\n"
-          "    This program is intended to be run during a scanning session\n"
-          "    on a scanner, to monitor the collection of image files.  The\n"
-          "    user will be notified of any missing slice or any slice that\n"
-          "    is acquired out of order.\n"
-          "\n"
-          "    When collecting DICOM files, it is recommended to run this\n"
-          "    once per run, only because it is easier to specify the input\n"
-          "    file pattern for a single run (it may be very difficult to\n"
-          "    predict the form of input filenames runs that have not yet\n"
-          "    occurred.\n"
-          "\n"
-          "    This program can also be used off-line (away from the scanner)\n"
-          "    to organize the files, run by run.  If the DICOM files have\n"
-          "    a correct DICOM 'image number' (0x0020 0013), then Dimon can\n"
-          "    use the information to organize the sequence of the files, \n"
-          "    particularly when the alphabetization of the filenames does\n"
-          "    not match the sequencing of the slice positions.  This can be\n"
-          "    used in conjunction with the '-GERT_Reco' option, which will\n"
-          "    write a script that can be used to create AFNI datasets.\n"
-          "\n"
-          "    See the '-dicom_org' option, under 'other options', below.\n"
-          "\n"
-          "    If no -quit option is provided, the user should terminate the\n"
-          "    program when it is done collecting images according to the\n"
-          "    input file pattern.\n"
-          "\n"
-          "    Dimon can be terminated using <ctrl-c>.\n"
-          "\n"
-          "  ---------------------------------------------------------------\n"
-          "  realtime notes for running afni remotely:\n"
-          "\n"
-          "    - The afni program must be started with the '-rt' option to\n"
-          "      invoke the realtime plugin functionality.\n"
-          "\n"
-          "    - If afni is run remotely, then AFNI_TRUSTHOST will need to be\n"
-          "      set on the host running afni.  The value of that variable\n"
-          "      should be set to the IP address of the host running %s.\n"
-          "      This may set as an environment variable, or via the .afnirc\n"
-          "      startup file.\n"
-          "\n"
-          "    - The typical default security on a Linux system will prevent\n"
-          "      %s from communicating with afni on the host running afni.\n"
-          "      The iptables firewall service on afni's host will need to be\n"
-          "      configured to accept the communication from the host running\n"
-          "      %s, or it (iptables) will need to be turned off.\n"
-          "  ---------------------------------------------------------------\n"
-          "  usage: %s [options] -infile_prefix PREFIX\n"
-          "     OR: %s [options] -infile_pattern \"PATTERN\"\n"
-          "\n"
-          "  ---------------------------------------------------------------\n"
-          "  examples (no real-time options):\n"
-          "\n"
-          "    %s -infile_pattern 's8912345/i*'\n"
-          "    %s -infile_prefix   s8912345/i\n"
-          "    %s -help\n"
-          "    %s -infile_prefix   s8912345/i  -quit\n"
-          "    %s -infile_prefix   s8912345/i  -nt 120 -quit\n"
-          "    %s -infile_prefix   s8912345/i  -debug 2\n"
-          "    %s -infile_prefix   s8912345/i  -dicom_org -GERT_Reco -quit\n"
-          "\n"
-          "  examples (for GERT_Reco):\n"
-          "\n"
-          "    %s -infile_prefix run_003/image -GERT_Reco -quit\n"
-          "    %s -infile_prefix run_003/image -dicom_org -GERT_Reco -quit\n"
-          "    %s -infile_prefix 'run_00[3-5]/image' -GERT_Reco -quit\n"
-          "    %s -infile_prefix anat/image -GERT_Reco -quit\n"
-          "    %s -infile_prefix epi_003/image -dicom_org -quit   \\\n"
-          "          -GERT_Reco -gert_to3d_prefix run3 -gert_nz 42\n"
-          "\n"
-          "  examples (with real-time options):\n"
-          "\n"
-          "    %s -infile_prefix s8912345/i -rt \n"
-          "\n"
-          "    %s -infile_pattern 's*/i*' -rt \n"
-          "    %s -infile_pattern 's*/i*' -rt -nt 120\n"
-          "    %s -infile_pattern 's*/i*' -rt -quit\n"
-          "\n"
-          "  ** detailed real-time example:\n"
-          "    %s                                    \\\n"
-          "       -infile_pattern 's*/i*'               \\\n"
-          "       -rt -nt 120                           \\\n"
-          "       -host some.remote.computer            \\\n"
-          "       -rt_cmd \"PREFIX 2005_0513_run3\"     \\\n"
-          "       -sleep_frac 1.1                       \\\n"
-          "       -quit                                 \n"
-          "\n"
-          "    This example scans data starting from directory 003, expects\n"
-          "    120 repetitions (TRs), and invokes the real-time processing,\n"
-          "    sending data to a computer called some.remote.computer.name\n"
-          "    (where afni is running, and which considers THIS computer to\n"
-          "    be trusted - see the AFNI_TRUSTHOST environment variable).\n"
-          "    The time to wait for new data is 1.1*TR.\n"
-          "\n"
-          "  ---------------------------------------------------------------\n"
-          "    Multiple DRIVE_AFNI commands are passed through '-drive_afni'\n"
-          "    options, one requesting to open an axial image window, and\n"
-          "    another requesting an axial graph, with 160 data points.\n"
-          "\n"
-          "    See README.driver for acceptable DRIVE_AFNI commands.\n"
-          "\n"
-          "    Also, multiple commands specific to the real-time plugin are\n"
-          "    passed via '-rt_cmd' options.  The PREFIX command sets the\n"
-          "    prefix for the datasets output by afni.  The GRAPH_XRANGE and\n"
-          "    GRAPH_YRANGE commands set the graph dimensions for the 3D\n"
-          "    motion correction graph (only).  And the GRAPH_EXPR command\n"
-          "    is used to replace the 6 default motion correction graphs with\n"
-          "    a single graph, according to the given expression, the square\n"
-          "    root of the average squared entry of the 3 rotation params,\n"
-          "    roll, pitch and yaw, ignoring the 3 shift parameters, dx, dy\n"
-          "    and dz.\n"
-          "\n"
-          "    See README.realtime for acceptable DRIVE_AFNI commands.\n"
-          "\n"
-          "    %s                                                   \\\n"
-          "       -infile_pattern 's*/i*.dcm'                         \\\n"
-          "       -nt 160                                             \\\n"
-          "       -rt                                                 \\\n"
-          "       -host some.remote.computer.name                     \\\n"
-          "       -drive_afni 'OPEN_WINDOW axialimage'                \\\n"
-          "       -drive_afni 'OPEN_WINDOW axialgraph pinnum=160'     \\\n"
-          "       -rt_cmd 'PREFIX eat.more.cheese'                    \\\n"
-          "       -rt_cmd 'GRAPH_XRANGE 160'                          \\\n"
-          "       -rt_cmd 'GRAPH_YRANGE 1.02'                         \\\n"
-          "       -rt_cmd 'GRAPH_EXPR sqrt((d*d+e*e+f*f)/3)'            \n"
-          "\n"
-          "  ---------------------------------------------------------------\n",
-          prog, prog, prog, prog, prog, prog,
-          prog, prog, prog, prog, prog,
-          prog, prog, prog, prog, prog, prog,
-          prog, prog, prog, prog, prog, prog, prog );
+      printf(
+      "\n"
+      "%s - monitor real-time acquisition of DICOM image files\n"
+      "    (or GEMS 5.x I-files, as 'Imon')\n"
+      "\n"
+      "    This program is intended to be run during a scanning session\n"
+      "    on a scanner, to monitor the collection of image files.  The\n"
+      "    user will be notified of any missing slice or any slice that\n"
+      "    is acquired out of order.\n"
+      "\n"
+      "    When collecting DICOM files, it is recommended to run this\n"
+      "    once per run, only because it is easier to specify the input\n"
+      "    file pattern for a single run (it may be very difficult to\n"
+      "    predict the form of input filenames runs that have not yet\n"
+      "    occurred.\n"
+      "\n"
+      "    This program can also be used off-line (away from the scanner)\n"
+      "    to organize the files, run by run.  If the DICOM files have\n"
+      "    a correct DICOM 'image number' (0x0020 0013), then Dimon can\n"
+      "    use the information to organize the sequence of the files, \n"
+      "    particularly when the alphabetization of the filenames does\n"
+      "    not match the sequencing of the slice positions.  This can be\n"
+      "    used in conjunction with the '-GERT_Reco' option, which will\n"
+      "    write a script that can be used to create AFNI datasets.\n"
+      "\n"
+      "    See the '-dicom_org' option, under 'other options', below.\n"
+      "\n"
+      "    If no -quit option is provided, the user should terminate the\n"
+      "    program when it is done collecting images according to the\n"
+      "    input file pattern.\n"
+      "\n"
+      "    Dimon can be terminated using <ctrl-c>.\n"
+      "\n"
+      "  ---------------------------------------------------------------\n"
+      "  realtime notes for running afni remotely:\n"
+      "\n"
+      "    - The afni program must be started with the '-rt' option to\n"
+      "      invoke the realtime plugin functionality.\n"
+      "\n"
+      "    - If afni is run remotely, then AFNI_TRUSTHOST will need to be\n"
+      "      set on the host running afni.  The value of that variable\n"
+      "      should be set to the IP address of the host running %s.\n"
+      "      This may set as an environment variable, or via the .afnirc\n"
+      "      startup file.\n"
+      "\n"
+      "    - The typical default security on a Linux system will prevent\n"
+      "      %s from communicating with afni on the host running afni.\n"
+      "      The iptables firewall service on afni's host will need to be\n"
+      "      configured to accept the communication from the host running\n"
+      "      %s, or it (iptables) will need to be turned off.\n"
+      "  ---------------------------------------------------------------\n"
+      "  usage: %s [options] -infile_prefix PREFIX\n"
+      "     OR: %s [options] -infile_pattern \"PATTERN\"\n"
+      "     OR: %s [options] -infile_list FILES.txt\n"
+      "\n"
+      "  ---------------------------------------------------------------\n"
+      "  examples:\n"
+      "\n"
+      "  A. no real-time options:\n"
+      "\n"
+      "    %s -infile_prefix   s8912345/i\n"
+      "    %s -infile_pattern 's8912345/i*'\n"
+      "    %s -infile_list     my_files.txt\n"
+      "    %s -help\n"
+      "    %s -infile_prefix   s8912345/i  -quit\n"
+      "    %s -infile_prefix   s8912345/i  -nt 120 -quit\n"
+      "    %s -infile_prefix   s8912345/i  -debug 2\n"
+      "    %s -infile_prefix   s8912345/i  -dicom_org -GERT_Reco -quit\n"
+      "\n"
+      "  A2. investigate a list of files: \n"
+      "    %s -infile_pattern '*' -dicom_org -show_sorted_list\n"
+      "\n"
+      "  B. for GERT_Reco:\n"
+      "\n"
+      "    %s -infile_prefix run_003/image -GERT_Reco -quit\n"
+      "    %s -infile_prefix run_003/image -dicom_org -GERT_Reco -quit\n"
+      "    %s -infile_prefix 'run_00[3-5]/image' -GERT_Reco -quit\n"
+      "    %s -infile_prefix anat/image -GERT_Reco -quit\n"
+      "    %s -infile_prefix epi_003/image -dicom_org -quit   \\\n"
+      "          -GERT_Reco -gert_to3d_prefix run3 -gert_nz 42\n"
+      "\n"
+      "  C. with real-time options:\n"
+      "\n"
+      "    %s -infile_prefix s8912345/i -rt \n"
+      "\n"
+      "    %s -infile_pattern 's*/i*' -rt \n"
+      "    %s -infile_pattern 's*/i*' -rt -nt 120\n"
+      "    %s -infile_pattern 's*/i*' -rt -quit\n"
+      "\n"
+      "    ** detailed real-time example:\n"
+      "\n"
+      "    %s                                    \\\n"
+      "       -infile_pattern 's*/i*'               \\\n"
+      "       -rt -nt 120                           \\\n"
+      "       -host some.remote.computer            \\\n"
+      "       -rt_cmd \"PREFIX 2005_0513_run3\"     \\\n"
+      "       -num_slices 32                        \\\n"
+      "       -sleep_frac 1.1                       \\\n"
+      "       -quit                                 \n"
+      "\n"
+      "    This example scans data starting from directory 003, expects\n"
+      "    120 repetitions (TRs), and invokes the real-time processing,\n"
+      "    sending data to a computer called some.remote.computer.name\n"
+      "    (where afni is running, and which considers THIS computer to\n"
+      "    be trusted - see the AFNI_TRUSTHOST environment variable).\n"
+      "    The time to wait for new data is 1.1*TR, and 32 slices are\n"
+      "    required for a volume\n"
+      "\n"
+      "    Note that -num_slices can be important in a real-time setup,\n"
+      "    as scanners do not always write the slices in order.   Slices\n"
+      "    from volume #1 can appear on disk before all slices from volume\n"
+      "    #0, in which case Dimon might determine an incorrect number of\n"
+      "    slices per volume.\n"
+      "\n"
+      "  -------------------------------------------\n"
+      "    Multiple DRIVE_AFNI commands are passed through '-drive_afni'\n"
+      "    options, one requesting to open an axial image window, and\n"
+      "    another requesting an axial graph, with 160 data points.\n"
+      "\n"
+      "    Also, '-drive_wait' options may be used like '-drive_afni',\n"
+      "    except that the real-time plugin will wait until the first new\n"
+      "    volume is processed before executing those DRIVE_AFNI commands.\n"
+      "    One advantage of this is opening an image window for a dataset\n"
+      "    _after_ it is loaded, allowing afni to approriately set the\n"
+      "    window size.\n"
+      "\n"
+      "    See README.driver for acceptable DRIVE_AFNI commands.\n"
+      "\n"
+      "    Also, multiple commands specific to the real-time plugin are\n"
+      "    passed via '-rt_cmd' options.  The PREFIX command sets the\n"
+      "    prefix for the datasets output by afni.  The GRAPH_XRANGE and\n"
+      "    GRAPH_YRANGE commands set the graph dimensions for the 3D\n"
+      "    motion correction graph (only).  And the GRAPH_EXPR command\n"
+      "    is used to replace the 6 default motion correction graphs with\n"
+      "    a single graph, according to the given expression, the square\n"
+      "    root of the average squared entry of the 3 rotation params,\n"
+      "    roll, pitch and yaw, ignoring the 3 shift parameters, dx, dy\n"
+      "    and dz.\n"
+      "\n"
+      "    See README.realtime for acceptable DRIVE_AFNI commands.\n"
+      "\n"
+      "  example D (drive_afni):\n"
+      "\n"
+      "    %s                                                   \\\n"
+      "       -infile_pattern 's*/i*.dcm'                         \\\n"
+      "       -nt 160                                             \\\n"
+      "       -rt                                                 \\\n"
+      "       -host some.remote.computer.name                     \\\n"
+      "       -drive_afni 'OPEN_WINDOW axialimage'                \\\n"
+      "       -drive_afni 'OPEN_WINDOW axialgraph pinnum=160'     \\\n"
+      "       -rt_cmd 'PREFIX eat.more.cheese'                    \\\n"
+      "       -rt_cmd 'GRAPH_XRANGE 160'                          \\\n"
+      "       -rt_cmd 'GRAPH_YRANGE 1.02'                         \\\n"
+      "       -rt_cmd 'GRAPH_EXPR sqrt(d*d+e*e+f*f)'\n"
+      "\n"
+      "  -------------------------------------------\n"
+      "\n"
+      "  example E (drive_wait):\n"
+      "\n"
+      "    Close windows and re-open them after data has arrived.\n"
+      "\n"
+      "    Dimon                                                    \\\n"
+      "       -infile_prefix EPI_run1/8HRBRAIN                      \\\n"
+      "       -rt                                                   \\\n"
+      "       -drive_afni 'CLOSE_WINDOW axialimage'                 \\\n"
+      "       -drive_afni 'CLOSE_WINDOW sagittalimage'              \\\n"
+      "       -drive_wait 'OPEN_WINDOW axialimage geom=+20+20'      \\\n"
+      "       -drive_wait 'OPEN_WINDOW sagittalimage geom=+520+20'  \\\n"
+      "       -rt_cmd 'PREFIX brie.would.be.good'                   \\\n"
+      "\n"
+      "  -------------------------------------------\n"
+      "  example F (for testing complete real-time system):\n"
+      "\n"
+      "    Use Dimon to send volumes to afni's real-time plugin, simulating\n"
+      "    TR timing with Dimon's -pause option.  Motion parameters and ROI\n"
+      "    averages are then sent on to serial_helper (for subject feedback),\n"
+      "    run in test mode (so no actual serial communication).\n"
+      "    \n"
+      "    a. Start afni in real-time mode, but first set some environment\n"
+      "       variables to make it explicit what might be set in the plugin.\n"
+      "       Not one of these variables is actually necessary, but they \n"
+      "       make the process more scriptable.\n"
+      "    \n"
+      "       See Readme.environment for details on any variable.\n"
+      "    \n"
+      "           setenv AFNI_TRUSTHOST              localhost\n"
+      "           setenv AFNI_REALTIME_Registration  3D:_realtime\n"
+      "           setenv AFNI_REALTIME_Graph         Realtime\n"
+      "           setenv AFNI_REALTIME_MP_HOST_PORT  localhost:53214\n"
+      "           setenv AFNI_REALTIME_SEND_VER      YES\n"
+      "           setenv AFNI_REALTIME_SHOW_TIMES    YES\n"
+      "           setenv AFNI_REALTIME_Mask_Vals     ROI_means\n"
+      "    \n"
+      "           afni -rt\n"
+      "    \n"
+      "       Note: in order to send ROI averages per TR, the user must\n"
+      "             choose a mask in the real-time plugin.\n"
+      "    \n"
+      "    b. Start serial_helper in testing mode (i.e. get debug output\n"
+      "       and block serial output).\n"
+      "    \n"
+      "           serial_helper -no_serial -debug 3\n"
+      "    \n"
+      "    c. Run Dimon from the AFNI_data3 directory, in real-time mode,\n"
+      "       using a 2 second pause to simulate the TR.  Dicom images are\n"
+      "       under EPI_run1, and the files start with 8HRBRAIN.\n"
+      "    \n"
+      "           Dimon -rt -pause 2000 -infile_prefix EPI_run1/8HRBRAIN\n"
+      "    \n"
+      "       Note that Dimon can be run many times at this point.\n"
+      "\n"
+      "    ------------------------------\n"
+      "\n"
+      "    c2. alternately, set some env vars via Dimon\n"
+      "\n"
+      "         Dimon -rt -pause 2000 -infile_prefix EPI_run1/8          \\\n"
+      "           -drive_afni 'SETENV AFNI_REALTIME_Mask_Vals=ROI_means' \\\n"
+      "           -drive_afni 'SETENV AFNI_REALTIME_SEND_VER=Yes'        \\\n"
+      "           -drive_afni 'SETENV AFNI_REALTIME_SHOW_TIMES=Yes'\n"
+      "\n"
+      "       Note that plugout_drive can also be used to set vars at\n"
+      "       run-time, though plugouts must be enabled to use it.\n"
+      "\n"
+      "  ---------------------------------------------------------------\n",
+      prog, prog, prog, prog, prog, prog, prog, prog, prog,
+      prog, prog, prog, prog, prog,
+      prog, prog, prog, prog, prog, prog,
+      prog, prog, prog, prog, prog, prog, prog );
           
-        printf(
+      printf(
           "  notes:\n"
           "\n"
           "    - Once started, unless the '-quit' option is used, this\n"
@@ -2954,6 +3301,14 @@ static int usage ( char * prog, int level )
           "        end, if the prefix is a directory (e.g. use run1/ instead\n"
           "        of simply run1).\n"
           "\n"
+          "    -infile_list MY_FILES.txt : filenames are in MY_FILES.txt\n"
+          "\n"
+          "        e.g. -infile_list subject_17_files\n"
+          "\n"
+          "        If the user would rather specify a list of DICOM files to\n"
+          "        read, those files can be enumerated in a text file, the\n"
+          "        name of which would be passed to the program.\n"
+          "\n"
           "  ---------------------------------------------------------------\n"
           "  real-time options:\n"
           "\n"
@@ -2985,6 +3340,22 @@ static int usage ( char * prog, int level )
           "        Note: this option may be used multiple times.\n"
           "\n"
           "        See README.driver for more details.\n"
+          "\n"
+          "    -drive_wait CMND   : send delayed 'drive afni' command, CMND\n"
+          "\n"
+          "        e.g.  -drive_wait 'OPEN_WINDOW axialimage'\n"
+          "\n"
+          "        This option is used to pass a single DRIVE_AFNI command\n"
+          "        to afni.  For example, 'OPEN_WINDOW axialimage' will open\n"
+          "        such an axial view window on the afni controller.\n"
+          "\n"
+          "        This has the same effect as '-drive_afni', except that\n"
+          "        the real-time plugin will wait until the next completed\n"
+          "        volume to execute the command.\n"
+          "\n"
+          "        An example of where this is useful is so that afni 'knows'\n"
+          "        about a new dataset before opening the given image window,\n"
+          "        allowing afni to size the window appropriately.\n"
           "\n"
           "    -host HOSTNAME     : specify the host for afni communication\n"
           "\n"
@@ -3033,6 +3404,15 @@ static int usage ( char * prog, int level )
           "        Note: this option may be used multiple times.\n"
           "\n"
           "        See README.realtime for more details.\n"
+          "\n"
+          "    -show_sorted_list  : display -dicom_org info and quit\n"
+          "\n"
+          "        After the -dicom_org has taken effect, display the list\n"
+          "        of run index, image index and filenames that results.\n"
+          "        This option can be used as a simple review of the files\n"
+          "        under some directory tree, say.\n"
+          "\n"
+          "        See the -show_sorted_list example under example A2.\n"
           "\n"
           "    -sleep_init MS    : time to sleep between initial data checks\n"
           "\n"
@@ -3192,6 +3572,17 @@ static int usage ( char * prog, int level )
           "        allow the value to increase based on subsequent runs).\n"
           "        Therefore %s would not detect a stalled first run.\n"
           "\n"
+          "    -num_slices SLICES  : slices per volume must match this\n"
+          "\n"
+          "        e.g.  -num_slices 34\n"
+          "\n"
+          "        Setting this puts a restriction on the first volume\n"
+          "        search, requiring the number of slices found to match.\n"
+          "\n"
+          "        This prevents odd failures at the scanner, which does not\n"
+          "        necessarily write out all files for the first volume\n"
+          "        before writing some file from the second.\n"
+          "\n"
           "    -quiet             : show only errors and final information\n"
           "\n"
           "    -quit              : quit when there is no new data\n"
@@ -3280,6 +3671,14 @@ static int usage ( char * prog, int level )
           "        Here, TR is in seconds.\n"
           "\n"
           "    -use_imon          : revert to Imon functionality\n"
+          "\n"
+          "    -use_last_elem     : use the last elements when reading DICOM\n"
+          "\n"
+          "        In some poorly created DICOM image files, some elements\n"
+          "        are listed incorrectly, before being listed correctly.\n"
+          "\n"
+          "        Use the option to search for the last occurrence of each\n"
+          "        element, not necessarily the first.\n"
           "\n"
           "    -version           : show the version information\n"
           "\n",
@@ -3441,14 +3840,16 @@ static int set_volume_stats( param_t * p, stats_t * s, vol_t * v )
         }
 
         /* first time caller - fill initial stats info */
-        s->slices  = v->nim;
-        s->z_first = v->z_first;
-        s->z_last  = v->z_last;
-        s->z_delta = v->z_delta;
+        s->slices   = v->nim;
+        s->z_first  = v->z_first;
+        s->z_last   = v->z_last;
+        s->z_delta  = v->z_delta;
+        s->image_dz = v->image_dz;
 
         s->nalloc  = IFM_STAT_ALLOC;
         s->nused   = 0;
         s->nvols   = gP.opts.nt;        /* init with any user input value */
+        s->oblique = v->oblique;
 
         if ( gD.level > 1 )
             fprintf( stderr, "\n-- svs: init alloc - vol %d, run %d, file %s\n",
@@ -3638,6 +4039,9 @@ static int create_gert_dicom( stats_t * s, param_t * p )
                         s->runs[c].volumes, TR, spat);
             }
 
+            if( opts->use_last_elem )
+                fprintf(fp, "     -use_last_elem                \\\n");
+
             fprintf(fp, "     -@ < %s\n\n", outfile);
 
             /* and possibly move output datasets there */
@@ -3808,13 +4212,15 @@ static int show_run_stats( stats_t * s )
 
     printf( "\n\n"
             "final run statistics:\n"
-            "    volume info :\n"
-            "        slices  : %d\n"
-            "        z_first : %.4f\n"
-            "        z_last  : %.4f\n"
-            "        z_delta : %.4f\n"
-            "\n",
-            s->slices, s->z_first, s->z_last, s->z_delta );
+            "    volume info  :\n"
+            "        slices   : %d\n"
+            "        z_first  : %.4g\n"
+            "        z_last   : %.4g\n"
+            "        z_delta  : %.4g\n"
+            "        oblique  : %s\n\n",  /* display obliquity  25 Jun 2009 */
+            s->slices, s->z_first, s->z_last,
+            s->oblique ? s->image_dz : s->z_delta,
+            s->oblique ? "yes" : "no" );
 
     for ( c = 0; c < s->nused; c++ )
     {
@@ -3898,10 +4304,14 @@ static int find_next_zoff( param_t * p, int start, float zoff )
 /* ----------------------------------------------------------------------
  * Given:  run     > 0
  *         seq_num > 0
+ *         naps
+ *         tr_naps
  *         naps_time    in ms
  *
  * If naps is too big, and the run is incomplete, print an obnoxious
  * warning message to the user.
+ *
+ * Too big means naps > tr_naps * MAX_RUN_NAPS.
  *
  * notes:   - print only 1 warning message per seq_num, per run
  *          - prev_run and prev_seq_num are for the previously found volume
@@ -3913,7 +4323,8 @@ static int find_next_zoff( param_t * p, int start, float zoff )
  *         -1 : function failure
  * ----------------------------------------------------------------------
 */
-static int check_stalled_run ( int run, int seq_num, int naps, int nap_time )
+static int check_stalled_run ( int run, int seq_num, int naps, int tr_naps,
+                               int nap_time )
 {
     static int func_failure =  0;
     static int prev_run     = -1;
@@ -3922,7 +4333,7 @@ static int check_stalled_run ( int run, int seq_num, int naps, int nap_time )
     if ( func_failure != 0 )
         return 0;
 
-    if ( ( run < 1 ) || ( seq_num < 1 ) || ( naps <= IFM_MAX_RUN_NAPS ) )
+    if ( (run < 1) || (seq_num < 1) || (naps <= tr_naps*IFM_MAX_RUN_NAPS) )
         return 0;
 
     /* verify that we have already taken note of the previous volume */
@@ -3950,7 +4361,7 @@ static int check_stalled_run ( int run, int seq_num, int naps, int nap_time )
                      "    first file of this run : %s\n"
                      "****************************************************\n",
                      run, seq_num, gS.nvols,
-                     naps*nap_time, gS.runs[run].f1name );
+                     naps*nap_time/1000, gS.runs[run].f1name );
 
             prev_run = run;
             prev_seq = seq_num;

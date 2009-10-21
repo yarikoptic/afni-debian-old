@@ -1,4 +1,5 @@
 #include "afni.h"
+#include "afni_plugout.h"
 #include <X11/keysym.h>
 
 /******************************************************************************
@@ -28,6 +29,7 @@ static int AFNI_drive_open_window( char *cmd ) ;
 static int AFNI_drive_close_window( char *cmd ) ;
 static int AFNI_drive_quit( char *cmd ) ;
 static int AFNI_drive_setenv( char *cmd ) ;
+static int AFNI_drive_getenv( char *cmd );          /* 20 Oct 2008 */
 
 static int AFNI_drive_set_subbricks( char *cmd ) ;  /* 30 Nov 2005 */
 
@@ -82,6 +84,8 @@ static int AFNI_open_panel             ( char *cmd ) ; /* 05 Feb 2003 */
 static int AFNI_drive_purge_memory     ( char *cmd ) ; /* 09 Dec 2004 */
 static int AFNI_redisplay              ( char *cmd ) ;
 static int AFNI_read_niml_file         ( char *cmd ) ; /* 01 Feb 2008 */
+static int AFNI_drive_quiet_plugouts   ( char *cmd);   /* 15 Oct 2008 */
+static int AFNI_drive_noisy_plugouts   ( char *cmd);   /* 15 Oct 2008 */
 
 static int AFNI_trace                  ( char *cmd ) ; /* 04 Oct 2005 */
 
@@ -175,6 +179,7 @@ static AFNI_driver_pair dpair[] = {
  { "SET_FUNC_RESAM"     , AFNI_set_func_resam          } ,
  { "SLEEP"              , AFNI_sleeper                 } ,
  { "SETENV"             , AFNI_drive_setenv            } ,
+ { "GETENV"             , AFNI_drive_getenv            } , /* 20 Oct 2008,rcr */
  { "DEFINE_COLORSCALE"  , AFNI_define_colorscale       } ,
  { "DEFINE_COLOR_SCALE" , AFNI_define_colorscale       } ,
  { "OPEN_PANEL"         , AFNI_open_panel              } ,
@@ -186,6 +191,8 @@ static AFNI_driver_pair dpair[] = {
  { "READ_NIML_DATA"     , AFNI_read_niml_file          } ,
 
  { "TRACE"              , AFNI_trace                   } , /* debugging */
+ { "QUIET_PLUGOUTS"     , AFNI_drive_quiet_plugouts    } , /* 15 Oct 2008 */
+ { "NOISY_PLUGOUTS"     , AFNI_drive_noisy_plugouts    } , /* 15 Oct 2008 */
 
  { NULL , NULL }  /* flag that we've reached the end times */
 } ;
@@ -393,6 +400,23 @@ ENTRY("AFNI_rescan_controller") ;
    AFNI_rescan_CB( NULL , (XtPointer)im3d , NULL ) ;
    RETURN(0) ;
 }
+
+/* make AFNI quiet when communicating with plugouts */
+static int AFNI_drive_quiet_plugouts( char *cmd)
+{
+   iochan_enable_perror(0) ;
+   AFNI_plugout_verb(0);
+   RETURN(0) ;
+}
+
+/* make AFNI verbose when communicating with plugouts */
+static int AFNI_drive_noisy_plugouts( char *cmd)
+{
+   iochan_enable_perror(1) ;
+   AFNI_plugout_verb(1);
+   RETURN(0) ;
+}
+
 
 /*-----------------------------------------------------------------
   Switch to a new directory in a controller.
@@ -841,7 +865,7 @@ ENTRY("AFNI_drive_open_window") ;
           else if( strncmp(cpt,"XK_F11"      , 6) == 0 ) key = XK_F11      ;
           else if( strncmp(cpt,"XK_F12"      , 6) == 0 ) key = XK_F12      ;
           else                                           key = *cpt        ;
-          ISQ_handle_keypress( isq , key ) ;
+          ISQ_handle_keypress( isq , key , 0 ) ;
         } else {
           break ;  /* break out of this while(1) loop */
         }
@@ -1547,6 +1571,7 @@ ENTRY("AFNI_drive_open_graph_1D") ;
    ig = find_empty_graph_xy() ;
 
    Graph_xy_list[ig] = gxy = (Graph_xy *) malloc(sizeof(Graph_xy)) ;
+   memset(gxy, 0 , sizeof(Graph_xy)) ;  /* 12 Feb 2009 [lesstif patrol] */
 
    MCW_strncpy( gxy->gname , gname , THD_MAX_NAME ) ;
 
@@ -2369,6 +2394,30 @@ int AFNI_drive_setenv( char *cmd )
    }
 
    return(0) ;
+}
+
+/*------------------------------------------------------------------*/
+/*! GETENV name         - print env value       20 Oct 2008 [rickr] */
+
+int AFNI_drive_getenv( char *cmd )
+{
+   char nam[256]="\0" , *eee ;
+
+   if( cmd == NULL || strlen(cmd) < 3 ) return(-1) ;
+
+   /*-- scan for the name --*/
+
+   sscanf( cmd , "%255s" , nam ) ;
+
+   if( nam[0] == '\0' ) return(-1) ;
+
+   /*-- get and printf the actual environment variable --*/
+
+   eee = my_getenv(nam);
+   printf("%s = %s\n", nam, eee ? eee : "<UNSET>");
+   fflush(stdout);
+
+   return 0;
 }
 
 /*------------------------------------------------------------------*/

@@ -114,7 +114,7 @@ THD_brick_stats THD_get_brick_stats( MRI_IMAGE *im )
    switch( im->kind ){
 
      default:
-        INVALIDATE_BSTAT(bst) ;
+        INVALIDATE_BSTAT(bst) ; bot = top = 0 ;
      break ;
 
      case MRI_rgb:{
@@ -187,13 +187,12 @@ THD_brick_stats THD_get_brick_stats( MRI_IMAGE *im )
      case MRI_complex:{
        register complex *ar = (complex *) br ;
        register float zz ;
-       bot = top = CSQR(ar[0]) ;
+       bot = top = CABS(ar[0]) ;
        for( ii=1 ; ii < nvox ; ii++ ){
-          zz = CSQR(ar[ii]) ;
+          zz = CABS(ar[ii]) ;
                if( bot > zz ) bot = zz ;
           else if( top < zz ) top = zz ;
        }
-       bot = sqrt(bot) ; top = sqrt(top) ;
      }
      break ;
 

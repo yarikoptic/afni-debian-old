@@ -124,7 +124,8 @@ SUMA_CLUST_DATUM * SUMA_Build_Cluster_From_Node(
       Clust->totalvalue = 0.0; Clust->totalabsvalue = 0.0;  
       Clust->minvalue = ToBeAssigned[dothisnode]; Clust->minnode = dothisnode;
       Clust->maxvalue = ToBeAssigned[dothisnode]; Clust->maxnode = dothisnode; 
-      Clust->varvalue = 0.0;  Clust->centralnode = 0; Clust->weightedcentralnode = 0; 
+      Clust->varvalue = 0.0;  Clust->centralnode = 0; 
+      Clust->weightedcentralnode = 0; 
       Clust->NodeList = (int *)SUMA_malloc((*N_TobeAssigned) * sizeof(int)); 
       Clust->ValueList = (float *)SUMA_malloc((*N_TobeAssigned) * sizeof(float));  
       if (!Clust->NodeList || !Clust->ValueList) { 
@@ -133,21 +134,33 @@ SUMA_CLUST_DATUM * SUMA_Build_Cluster_From_Node(
          SUMA_RETURN(NULL);  
       }
       NewClust = 1;
-      if (LocalHead) fprintf (SUMA_STDERR,"%s: New Cluster     %p, with node %d\n", FuncName, Clust, dothisnode);
+      if (LocalHead) 
+         fprintf (SUMA_STDERR,"%s: New Cluster     %p, with node %d\n", 
+                              FuncName, Clust, dothisnode);
    } else { 
       NewClust = 0;
       Clust = AddToThisClust; 
-      if (LocalHead) fprintf (SUMA_STDERR,"%s: Reusing Cluster %p, with node %d\n", FuncName, Clust, dothisnode);
+      if (LocalHead) 
+         fprintf (SUMA_STDERR,"%s: Reusing Cluster %p, with node %d\n", 
+                              FuncName, Clust, dothisnode);
    }
    
    /* Add node to cluster */
-   if (LocalHead) fprintf(SUMA_STDERR,"%s: Adding node %d to cluster %p of %d nodes\n", FuncName, dothisnode, Clust, Clust->N_Node);
+   if (LocalHead) 
+      fprintf(SUMA_STDERR,"%s: Adding node %d to cluster %p of %d nodes\n", 
+                          FuncName, dothisnode, Clust, Clust->N_Node);
    Clust->NodeList[Clust->N_Node] = dothisnode; 
    Clust->totalarea += NodeArea[dothisnode]; 
    Clust->totalvalue += ToBeAssigned[dothisnode];
    Clust->totalabsvalue += (float)fabs((float)ToBeAssigned[dothisnode]);
-   if (ToBeAssigned[dothisnode] < Clust->minvalue) { Clust->minvalue = ToBeAssigned[dothisnode]; Clust->minnode = dothisnode; }
-   if (ToBeAssigned[dothisnode] > Clust->maxvalue) { Clust->maxvalue = ToBeAssigned[dothisnode]; Clust->maxnode = dothisnode; }
+   if (ToBeAssigned[dothisnode] < Clust->minvalue) { 
+      Clust->minvalue = ToBeAssigned[dothisnode]; 
+      Clust->minnode = dothisnode; 
+   }
+   if (ToBeAssigned[dothisnode] > Clust->maxvalue) { 
+      Clust->maxvalue = ToBeAssigned[dothisnode]; 
+      Clust->maxnode = dothisnode; 
+   }
    Clust->ValueList[Clust->N_Node] = ToBeAssigned[dothisnode];
    ++Clust->N_Node;
 
@@ -166,7 +179,8 @@ SUMA_CLUST_DATUM * SUMA_Build_Cluster_From_Node(
             char *s=NULL, tmp[50];
             fid = fopen("offsets2.1D", "w"); 
             if (!fid) {
-               SUMA_SL_Err("Could not open file for writing.\nCheck file permissions, disk space.\n");
+               SUMA_SL_Err("Could not open file for writing.\n"
+                           "Check file permissions, disk space.\n");
             } else {
                s = SUMA_ShowOffset_Info(OffS, 0);
                if (s) { fprintf(fid,"%s\n", s);  SUMA_free(s); s = NULL;}
@@ -175,23 +189,44 @@ SUMA_CLUST_DATUM * SUMA_Build_Cluster_From_Node(
          }
          #endif
          /* search to see if any are to be assigned */
-         for (il=1; il<OffS->N_layers; ++il) { /* starting at layer 1, layer 0 is the node itself */
-            for (jl=0; jl<OffS->layers[il].N_NodesInLayer; ++jl) {
-               neighb = OffS->layers[il].NodesInLayer[jl];
-               if (ToBeAssigned[neighb] && OffS->OffVect[neighb] <= Opt->DistLim) {
-                     /* take that node into the cluster */
-                     SUMA_Build_Cluster_From_Node( neighb, Clust, ToBeAssigned, N_TobeAssigned, NodeArea, SO, Opt); 
+         if (Opt->DistLim >= 0.0) {
+            for (il=1; il<OffS->N_layers; ++il) { 
+                                          /* starting at layer 1, 
+                                             layer 0 is the node itself */
+               for (jl=0; jl<OffS->layers[il].N_NodesInLayer; ++jl) {
+                  neighb = OffS->layers[il].NodesInLayer[jl];
+                  if (  ToBeAssigned[neighb] && 
+                        OffS->OffVect[neighb] <= Opt->DistLim) {
+                        /* take that node into the cluster */
+                        SUMA_Build_Cluster_From_Node( 
+                                    neighb, Clust, ToBeAssigned, 
+                                    N_TobeAssigned, NodeArea, SO, Opt); 
+                  }
+               }
+            }
+         } else { /* accept nodes connect by -((int)Opt->DistLim) edges or less*/
+            for (il=1; il <= -((int)Opt->DistLim); ++il) {
+               for (jl=0; jl<OffS->layers[il].N_NodesInLayer; ++jl) {
+                  neighb = OffS->layers[il].NodesInLayer[jl];
+                  if (  ToBeAssigned[neighb] ) {
+                        /* take that node into the cluster */
+                        SUMA_Build_Cluster_From_Node( 
+                                    neighb, Clust, ToBeAssigned, 
+                                    N_TobeAssigned, NodeArea, SO, Opt); 
+                  }
                }
             }
          }
-         /* free this OffS structure (Note you can't recycle the same structure because you are using many
-         OffS at one because of recursive calls */
+         /* free this OffS structure (Note you can't recycle the same 
+            structure because you are using many OffS at one because 
+            of recursive calls */
          if (OffS) SUMA_Free_getoffsets(OffS); OffS = NULL;
       }
    } else if (BuildMethod == SUMA_OFFSETS_LL) { 
       if (*N_TobeAssigned) {
          /* look in its vicinity */
-         if (!(offlist = SUMA_getoffsets_ll (dothisnode, SO, Opt->DistLim, NULL, 0))) {
+         if (!(offlist = SUMA_getoffsets_ll (dothisnode, SO, Opt->DistLim, 
+                                             NULL, 0))) {
             SUMA_SL_Err("Failed to get offsets.\nNo cleanup done.");
             SUMA_RETURN(NULL);
          }
@@ -201,7 +236,8 @@ SUMA_CLUST_DATUM * SUMA_Build_Cluster_From_Node(
             char *s=NULL, tmp[50];
             fid = fopen("offsets_ll.1D", "w"); 
             if (!fid) {
-               SUMA_SL_Err("Could not open file for writing.\nCheck file permissions, disk space.\n");
+               SUMA_SL_Err("Could not open file for writing.\n"
+                           "Check file permissions, disk space.\n");
             } else {
                s = SUMA_ShowOffset_ll_Info(offlist, 0);
                if (s) { fprintf(fid,"%s\n", s);  SUMA_free(s); s = NULL;}
@@ -221,9 +257,18 @@ SUMA_CLUST_DATUM * SUMA_Build_Cluster_From_Node(
             elm = elm->next;
             dat = (SUMA_OFFSET_LL_DATUM *)elm->data;
             neighb = dat->ni;
-            if (ToBeAssigned[neighb] && dat->off <= Opt->DistLim) {
-               /* take that node into the cluster */
-               SUMA_Build_Cluster_From_Node( neighb, Clust, ToBeAssigned, N_TobeAssigned, NodeArea, SO, Opt); 
+            if (ToBeAssigned[neighb]) {
+               if (dat->off <= Opt->DistLim) {
+                  /* take that node into the cluster */
+                  SUMA_Build_Cluster_From_Node( neighb, Clust, ToBeAssigned, 
+                                                N_TobeAssigned, NodeArea, SO, 
+                                                Opt); 
+               } else if (dat->layer <= -(int)Opt->DistLim) {
+                  /* take that node into the cluster */
+                  SUMA_Build_Cluster_From_Node( neighb, Clust, ToBeAssigned, 
+                                                N_TobeAssigned, NodeArea, SO, 
+                                                Opt);
+               }
             }      
          } while (elm != dlist_tail(offlist));
          dlist_destroy(offlist); SUMA_free(offlist); offlist = NULL;   
@@ -298,7 +343,8 @@ SUMA_CLUST_DATUM * SUMA_Build_Cluster_From_Node_NoRec    (  int dothisnode,
       Clust->totalvalue = 0.0; Clust->totalabsvalue = 0.0;  
       Clust->minvalue = ToBeAssigned[dothisnode]; Clust->minnode = dothisnode;
       Clust->maxvalue = ToBeAssigned[dothisnode]; Clust->maxnode = dothisnode; 
-      Clust->varvalue = 0.0;  Clust->centralnode = 0; Clust->weightedcentralnode = 0;
+      Clust->varvalue = 0.0;  Clust->centralnode = 0; 
+      Clust->weightedcentralnode = 0;
       Clust->NodeList = (int *)SUMA_malloc((*N_TobeAssigned) * sizeof(int)); 
       Clust->ValueList = (float *)SUMA_malloc((*N_TobeAssigned) * sizeof(float));  
       if (!Clust->NodeList || !Clust->ValueList || !OffS) { 
@@ -319,36 +365,79 @@ SUMA_CLUST_DATUM * SUMA_Build_Cluster_From_Node_NoRec    (  int dothisnode,
    /* mark it as assigned, an reduce the number of nodes left to assign*/
    ToBeAssigned[dothisnode] = 0; --(*N_TobeAssigned);
    visited[dothisnode] = YUP;
-   dlist_ins_next(candlist, dlist_tail(candlist), (void *)dothisnode);
+   dlist_ins_next(candlist, dlist_tail(candlist), (VOID_CAST)dothisnode);
       while (*N_TobeAssigned && dlist_size(candlist)) {
          /* look in its vicinity */
-         dothiselm = dlist_head(candlist); dothisnode = (int) dothiselm->data;
+         dothiselm = dlist_head(candlist); 
+         dothisnode = (INT_CAST) dothiselm->data;
          SUMA_getoffsets2 (dothisnode, SO, Opt->DistLim, OffS, NULL, 0);
          /* remove node from candidate list */
          dlist_remove(candlist, dothiselm, (void*)&dtmp);
          /* search to see if any are to be assigned */
-         for (il=1; il<OffS->N_layers; ++il) { /* starting at layer 1, layer 0 is the node itself */
-            for (jl=0; jl<OffS->layers[il].N_NodesInLayer; ++jl) {
-               neighb = OffS->layers[il].NodesInLayer[jl];
-               if (ToBeAssigned[neighb] && OffS->OffVect[neighb] <= Opt->DistLim) {
+         if (Opt->DistLim >= 0.0) {
+            for (il=1; il<OffS->N_layers; ++il) { 
+               /*  starting at layer 1, layer 0 is the node itself */
+               for (jl=0; jl<OffS->layers[il].N_NodesInLayer; ++jl) {
+                  neighb = OffS->layers[il].NodesInLayer[jl];
+                  if (  ToBeAssigned[neighb] && 
+                        OffS->OffVect[neighb] <= Opt->DistLim) {
                      /* take that node into the cluster */
-                     SUMA_ADD_NODE_TO_CLUST(neighb, Clust, NodeArea, ToBeAssigned);
-                     /* mark it as assigned, an reduce the number of nodes left to assign*/
+                     SUMA_ADD_NODE_TO_CLUST( neighb, Clust, 
+                                             NodeArea, ToBeAssigned);
+                     /* mark it as assigned, an reduce the number 
+                        of nodes left to assign*/
                      ToBeAssigned[neighb] = 0; --(*N_TobeAssigned);
                      if (Opt->update) {
                         if (N_Orig - *N_TobeAssigned >= Opt->update) {
-                           if (LocalHead) fprintf(SUMA_STDERR,"%s: tick (%d nodes processed)\n", FuncName, N_Orig - *N_TobeAssigned); 
+                           if (LocalHead) 
+                              fprintf( SUMA_STDERR,
+                                       "%s: tick (%d nodes processed)\n", 
+                                       FuncName, N_Orig - *N_TobeAssigned); 
                            else fprintf(SUMA_STDERR,".");
-                           
+
                            N_Orig = *N_TobeAssigned;
                         }
                      }
-                     /* mark it as a candidate if it has not been visited as a candidate before */
+                     /* mark it as a candidate if it has not been visited as 
+                        a candidate before */
                      if (!visited[neighb]) {
-                        dlist_ins_next(candlist, dlist_tail(candlist), (void *)neighb);
+                        dlist_ins_next(candlist, dlist_tail(candlist), 
+                                       (VOID_CAST)neighb);
                         visited[neighb] = YUP;   
                      }
-                     
+                  }
+               }
+            }
+         } else {/* accept nodes connected by up to -((int)Opt->DistLim) edges */
+            for (il=1; il <= -((int)Opt->DistLim); ++il) {
+               for (jl=0; jl<OffS->layers[il].N_NodesInLayer; ++jl) {
+                  neighb = OffS->layers[il].NodesInLayer[jl];
+                  if (  ToBeAssigned[neighb] ) {
+                        /* take that node into the cluster */
+                     SUMA_ADD_NODE_TO_CLUST( neighb, Clust, 
+                                             NodeArea, ToBeAssigned);
+                     /* mark it as assigned, an reduce the number 
+                        of nodes left to assign*/
+                     ToBeAssigned[neighb] = 0; --(*N_TobeAssigned);
+                     if (Opt->update) {
+                        if (N_Orig - *N_TobeAssigned >= Opt->update) {
+                           if (LocalHead) 
+                              fprintf( SUMA_STDERR,
+                                       "%s: tick (%d nodes processed)\n", 
+                                       FuncName, N_Orig - *N_TobeAssigned); 
+                           else fprintf(SUMA_STDERR,".");
+
+                           N_Orig = *N_TobeAssigned;
+                        }
+                     }
+                     /* mark it as a candidate if it has not been visited as 
+                        a candidate before */
+                     if (!visited[neighb]) {
+                        dlist_ins_next(candlist, dlist_tail(candlist), 
+                                       (VOID_CAST)neighb);
+                        visited[neighb] = YUP;   
+                     }
+                  }
                }
             }
          }
@@ -458,8 +547,9 @@ DList *SUMA_FindClusters ( SUMA_SurfaceObject *SO, int *ni,
                               "%s: Cluster %p is finished, %d nodes\n",
                               FuncName, Clust, Clust->N_Node); 
       
-      if (Opt->AreaLim > 0 && Clust->totalarea < Opt->AreaLim) {
-         SUMA_LH("Cluster less than area limit");
+      if ( (Opt->AreaLim > 0 && Clust->totalarea < Opt->AreaLim)  || 
+           (Opt->NodeLim > 0 && Clust->N_Node < Opt->NodeLim) ) {
+         SUMA_LH("Cluster less than area (or node number) limit");
          SUMA_FreeClustDatum((void *)Clust); Clust = NULL;
       } else {
          mean = Clust->totalvalue/((float)Clust->N_Node);
@@ -1029,7 +1119,7 @@ SUMA_Boolean SUMA_Sort_ClustersList (DList *list, SUMA_SURF_CLUST_SORT_MODES Sor
    SUMA_RETURN(YUP);
 }
 
-#define SUMA_LOCAL_STATS_NODE_DBG { \
+#define SUMA_WORLD_STATS_NODE_DBG { \
    if (n == ndbg ) {  \
       if (OffS_out) {  \
           FILE *mf ;    \
@@ -1137,7 +1227,8 @@ SUMA_DSET *SUMA_CalculateLocalStats(SUMA_SurfaceObject *SO, SUMA_DSET *din,
    SUMA_ENTRY;
       
    if (ncode <=0 || !din || rhood <= 0.0f || !code || !SO) {
-      SUMA_S_Errv("Bad input: SO=%p, din=%p, nmask=%p, rhood=%f, ncode=%d,code=%p, UseThisDout=%p\n", 
+      SUMA_S_Errv("Bad input: SO=%p, din=%p, nmask=%p, "
+                  "rhood=%f, ncode=%d,code=%p, UseThisDout=%p\n", 
             SO, din, nmask, rhood, ncode, code, UseThisDout);
       SUMA_RETURN(NULL);
    }
@@ -1164,16 +1255,23 @@ SUMA_DSET *SUMA_CalculateLocalStats(SUMA_SurfaceObject *SO, SUMA_DSET *din,
       if ((ind = SDSET_NODE_INDEX_COL(din))) {
          if (!masked_only) {
             /* preserve all rows */
-            ncoli = SUMA_Copy_Part_Column(ind, NI_rowtype_find_code(SUMA_ColType2TypeCast(SUMA_NODE_INDEX)), SDSET_VECLEN(din), NULL, masked_only, &n_incopy);
+            ncoli = 
+               SUMA_Copy_Part_Column(ind, 
+                  NI_rowtype_find_code(SUMA_ColType2TypeCast(SUMA_NODE_INDEX)), 
+                  SDSET_VECLEN(din), NULL, masked_only, &n_incopy);
          } else {
-            ncoli = SUMA_Copy_Part_Column(ind, NI_rowtype_find_code(SUMA_ColType2TypeCast(SUMA_NODE_INDEX)), SDSET_VECLEN(din), nmask, masked_only, &n_incopy);  
+            ncoli = 
+               SUMA_Copy_Part_Column(ind, 
+                  NI_rowtype_find_code(SUMA_ColType2TypeCast(SUMA_NODE_INDEX)), 
+                  SDSET_VECLEN(din), nmask, masked_only, &n_incopy);  
          }
          if (!ncoli) {
             SUMA_SL_Err("No index data got copied.");
             SUMA_RETURN(NULL);
          }
-         dout = SUMA_CreateDsetPointer("LocalStat", SUMA_NODE_BUCKET, NULL,  NI_get_attribute(din->ngr,"domain_parent_idcode"), n_incopy);
-         if (!SUMA_AddDsetNelCol (dout, NI_get_attribute(din->inel,"COLMS_LABS"), SUMA_NODE_INDEX, ncoli, NULL ,1)) {
+         dout = SUMA_CreateDsetPointer("LocalStat", SUMA_NODE_BUCKET, NULL,  
+                                       SDSET_IDMDOM(din), n_incopy);
+         if (!SUMA_AddDsetNelCol (dout, NI_get_attribute(din->inel,"COLMS_LABS"),                                    SUMA_NODE_INDEX, ncoli, NULL ,1)) {
             SUMA_SL_Crit("Failed in SUMA_AddDsetNelCol");
             SUMA_FreeDset((void*)dout); dout = NULL;
             SUMA_RETURN(NULL);
@@ -1181,7 +1279,8 @@ SUMA_DSET *SUMA_CalculateLocalStats(SUMA_SurfaceObject *SO, SUMA_DSET *din,
          if (lblcp) SUMA_free(lblcp); lblcp = NULL;
          if (ncoli) SUMA_free(ncoli); ncoli = NULL; 
       } else {
-         SUMA_S_Err("Do not have node indices in input dset! and could not create one.");
+         SUMA_S_Err( "Do not have node indices in input dset!\n"
+                     " and could not create one.");
          SUMA_RETURN(NULL);
       }
    }
@@ -1189,12 +1288,16 @@ SUMA_DSET *SUMA_CalculateLocalStats(SUMA_SurfaceObject *SO, SUMA_DSET *din,
    /* some checks? Some day? */
    if (dout == UseThisDout) {
       if (SDSET_VECLEN(dout) != SDSET_VECLEN(din)) {
-         SUMA_S_Errv("Mismatch in recycled dset (%d rows) and input dset (%d rows)\n", SDSET_VECLEN(dout),  SDSET_VECLEN(din));
+         SUMA_S_Errv("Mismatch in recycled dset (%d rows)"
+                     " and input dset (%d rows)\n", 
+                     SDSET_VECLEN(dout),  SDSET_VECLEN(din));
          SUMA_FreeDset((void*)dout); dout = NULL;
          SUMA_RETURN(NULL);
       }
       if (SDSET_VECNUM(dout) != SDSET_VECNUM(din)) {
-         SUMA_S_Errv("Mismatch in recycled dset (%d cols) and input dset (%d cols)\n", SDSET_VECNUM(dout),  SDSET_VECNUM(din));
+         SUMA_S_Errv("Mismatch in recycled dset (%d cols) "
+                     "and input dset (%d cols)\n", 
+                     SDSET_VECNUM(dout),  SDSET_VECNUM(din));
          SUMA_FreeDset((void*)dout); dout = NULL;
          SUMA_RETURN(NULL);
       }
@@ -1222,9 +1325,12 @@ SUMA_DSET *SUMA_CalculateLocalStats(SUMA_SurfaceObject *SO, SUMA_DSET *din,
          }
          /* make sure column is not sparse, one value per node */
          if (k==0) {
-            SUMA_LH( "Special case k = 0, going to SUMA_MakeSparseColumnFullSorted");
+            SUMA_LH( "Special case k = 0, going to"
+                     " SUMA_MakeSparseColumnFullSorted");
             bfull = NULL;
-            if (!SUMA_MakeSparseColumnFullSorted(&fin_orig, SDSET_VECFILLED(din), 0.0, &bfull, din, SO->N_Node)) {
+            if (!SUMA_MakeSparseColumnFullSorted(
+                     &fin_orig, SDSET_VECFILLED(din), 0.0, 
+                     &bfull, din, SO->N_Node)) {
                SUMA_S_Err("Failed to get full column vector");
                SUMA_RETURN(NOPE);
             }
@@ -1277,7 +1383,7 @@ SUMA_DSET *SUMA_CalculateLocalStats(SUMA_SurfaceObject *SO, SUMA_DSET *din,
                         if (OffS_out[n].Neighb_dist[j] <= rhood) { fp += fin_orig[nj]; ++nval; }
                      }/* for j*/
                         fout[n] = fp/(float)(nval);
-                        SUMA_LOCAL_STATS_NODE_DBG;
+                        SUMA_WORLD_STATS_NODE_DBG;
                   } /* for n */
                } else {
                   SUMA_LH("Have mask");
@@ -1292,7 +1398,7 @@ SUMA_DSET *SUMA_CalculateLocalStats(SUMA_SurfaceObject *SO, SUMA_DSET *din,
                            } 
                         }/* for j*/
                         fout[n] = fp/(float)nval;
-                        SUMA_LOCAL_STATS_NODE_DBG;
+                        SUMA_WORLD_STATS_NODE_DBG;
                      } else {
                         fout[n] = fin_orig[n];
                      }
@@ -1357,7 +1463,7 @@ SUMA_DSET *SUMA_CalculateLocalStats(SUMA_SurfaceObject *SO, SUMA_DSET *din,
                            }
                            if (n==ndbg) SUMA_SetDbgFWHM(0);
                         }  
-                     SUMA_LOCAL_STATS_NODE_DBG;
+                     SUMA_WORLD_STATS_NODE_DBG;
                      /* reset mask */
                      fwhm_mask[n] = 0; 
                      for (j=0; j<OffS_out[n].N_Neighb; ++j) {
@@ -1402,7 +1508,7 @@ SUMA_DSET *SUMA_CalculateLocalStats(SUMA_SurfaceObject *SO, SUMA_DSET *din,
                               }
                               if (n==ndbg) SUMA_SetDbgFWHM(0);
                            }  
-                        SUMA_LOCAL_STATS_NODE_DBG;
+                        SUMA_WORLD_STATS_NODE_DBG;
                         /* reset mask */
                         fwhm_mask[n] = 0; 
                         for (j=0; j<OffS_out[n].N_Neighb; ++j) {
@@ -1453,7 +1559,7 @@ SUMA_DSET *SUMA_CalculateLocalStats(SUMA_SurfaceObject *SO, SUMA_DSET *din,
                      if (nval > 6) fout[n] = SUMA_estimate_FWHM_1dif( SO, fin_orig, fwhm_mask, 1);
                      else fout[n] = -1.0;
                      if (n==ndbg) SUMA_SetDbgFWHM(0);
-                     SUMA_LOCAL_STATS_NODE_DBG;
+                     SUMA_WORLD_STATS_NODE_DBG;
                      
                   } /* for n */
                } else {
@@ -1482,7 +1588,7 @@ SUMA_DSET *SUMA_CalculateLocalStats(SUMA_SurfaceObject *SO, SUMA_DSET *din,
                         } else {
                            fout[n] = -1.0;
                         }
-                        SUMA_LOCAL_STATS_NODE_DBG;
+                        SUMA_WORLD_STATS_NODE_DBG;
                      } else {
                         fout[n] = 0.0; nval = 0;/* Non, rien de rien */
                      }

@@ -55,6 +55,14 @@
 typedef void void_func() ;
 #endif
 
+#ifndef floatfix
+#ifdef isfinite
+# define floatfix(x) if( !isfinite(x) ) (x) = 0.0f ; else
+#else
+# define floatfix(x) if( !finite(x) ) (x) = 0.0f ; else
+#endif
+#endif
+
 /*----- data structure to hold a plot -----*/
 
 typedef struct {
@@ -263,8 +271,9 @@ extern MEM_topshell_data * suma_memplot_to_topshell( Display *dpy,
                                          MEM_plotdata *mp, void_func *kfun );
 extern void plotkill_topshell( MEM_topshell_data * ) ;
 extern void redraw_topshell( MEM_topshell_data * ) ;
-
-extern void memplot_topshell_setsaver( char * , void (*)(char *,MEM_plotdata *) ) ;
+extern void set_wintitle_memplot( char *s );
+extern void memplot_topshell_setsaver( char * , 
+                                       void (*)(char *,MEM_plotdata *) ) ;
 
 #define memplot_to_shell(d) memplot_to_topshell( (d),get_active_memplot(),1 )
 

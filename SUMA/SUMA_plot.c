@@ -61,6 +61,8 @@ void SUMA_pm_input_CB( Widget w , XtPointer cd , XtPointer cb )
    if( cbs  == NULL || cbs->reason != XmCR_INPUT ) return ;  /* real bad */
    
    Kev = *(XKeyEvent *) &cbs->event->xkey;
+   Bev = *(XButtonEvent *) &cbs->event->xbutton;
+   Mev = *(XMotionEvent *) &cbs->event->xmotion;
    
    switch( Kev.type ){
 
@@ -228,7 +230,7 @@ static void clonebut_CB( Widget w , XtPointer cd , XtPointer cb )
    data involves the use of malloc, it is the user's responsibility
    to free it in the call to kfun.
 --------------------------------------------------------------------*/
-
+extern void pm_decode_geom( char * geom , int *ww, int *hh , int *xx, int *yy );
 MEM_topshell_data * SUMA_memplot_to_topshell( Display *dpy,
                                          MEM_plotdata *mp, void_func *kfun )
 {
@@ -676,7 +678,7 @@ SUMA_Boolean SUMA_OverlayGraphAtNode(SUMA_OVERLAYS *Sover,
          SUMA_RETURN(1);
       }
       /* position plot */
-      sv = SUMA_OneViewerWithSOinFocus(SO);
+      sv = SUMA_BestViewerForSO(SO);
       if (sv) {
          SUMA_PositionWindowRelative(  Sover->rowgraph_mtd->top , 
                                        sv->X->TOPLEVEL, 

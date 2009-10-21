@@ -807,7 +807,9 @@ char MNI_Anatomical_Side(ATLAS_COORD ac)
    }
 
    if (dseCA_EZ_LR == NULL) {
-      if (LocalHead) fprintf(stderr,"Loading %s\n",  Atlas_Code_to_Atlas_Name(CA_EZ_N27_LR_ATLAS));
+      if (LocalHead) 
+         fprintf(stderr,"Loading %s\n", 
+                 Atlas_Code_to_Atlas_Name(CA_EZ_N27_LR_ATLAS));
       ii = CA_EZ_LR_load_atlas();
       if (ii == 0 && !n_warn) {
          WARNING_message("Could not read LR atlas (dset %s+tlrc)",
@@ -914,10 +916,12 @@ char Atlas_Voxel_Side( THD_3dim_dataset *dset, int k1d, byte *lrmask)
    The string returned is malloc()-ed and should be free()-ed later.
    The string will end with a newline '\n' character.
 ------------------------------------------------------------------------*/
-char * Atlas_Query_to_String (ATLAS_QUERY *wami, ATLAS_COORD ac, WAMI_SORT_MODES mode)
+char * Atlas_Query_to_String (ATLAS_QUERY *wami,
+                              ATLAS_COORD ac, WAMI_SORT_MODES mode)
 {
    char *rbuf = NULL;
-   char xlab[5][24], ylab[5][24] , zlab[5][24], clab[5][24], lbuf[500], tmps[128] ;
+   char  xlab[5][24], ylab[5][24] , zlab[5][24],
+         clab[5][24], lbuf[500], tmps[128] ;
    THD_fvec3 t, m;
    THD_string_array *sar =NULL;
    ATLAS_COORD acv[NUMBER_OF_SPC];
@@ -936,6 +940,7 @@ char * Atlas_Query_to_String (ATLAS_QUERY *wami, ATLAS_COORD ac, WAMI_SORT_MODES
    /* first put ac in AFNI_TLRC */
    LOAD_FVEC3( m , ac.x, ac.y, ac.z ) ;
    switch (ac.space) {
+      default: ERROR_message("bad ac.space") ; RETURN(rbuf);
       case AFNI_TLRC_SPC:
          acv[AFNI_TLRC_SPC].x = ac.x;
          acv[AFNI_TLRC_SPC].y = ac.y;
@@ -951,21 +956,28 @@ char * Atlas_Query_to_String (ATLAS_QUERY *wami, ATLAS_COORD ac, WAMI_SORT_MODES
          acv[AFNI_TLRC_SPC].space = AFNI_TLRC_SPC;
          break;
       case MNI_SPC:
-         t = THD_mni_to_tta_N27(m);
+         /* function below expects coords in LPI !!!*/
+         m.xyz[0] = -m.xyz[0]; m.xyz[1] = -m.xyz[1];
+         t = THD_mni_to_tta(m);  /* Used to be: THD_mni_to_tta_N27 but that
+                                    is inconsistent with inverse transformation
+                                    below which used  THD_tta_to_mni to go back
+                                    to mni space ZSS: Jul. 08*/
          if (t.xyz[0] < -500) { ERROR_message("Failed in xforming the data"); }
          acv[AFNI_TLRC_SPC].x = t.xyz[0];
          acv[AFNI_TLRC_SPC].y = t.xyz[1];
          acv[AFNI_TLRC_SPC].z = t.xyz[2];
          acv[AFNI_TLRC_SPC].space = AFNI_TLRC_SPC;
-         RETURN(rbuf);
          break;
    }
 
 
    if (LocalHead) {/* Show me all the coordinates */
-      INFO_message("Original Coordinates in %s: %f %f %f\n", Space_Code_to_Space_Name(ac.space), ac.x, ac.y, ac.z);
+      INFO_message("Original Coordinates in %s: %f %f %f\n",
+                     Space_Code_to_Space_Name(ac.space), ac.x, ac.y, ac.z);
       for (i=UNKNOWN_SPC+1; i<NUMBER_OF_SPC; ++i) {
-         INFO_message("Coordinate in %s: %f %f %f\n", Space_Code_to_Space_Name(acv[i].space), acv[i].x, acv[i].y, acv[i].z);
+         INFO_message("Coordinate in %s: %f %f %f\n",
+                     Space_Code_to_Space_Name(acv[i].space),
+                     acv[i].x, acv[i].y, acv[i].z);
       }
    }
    ac = acv[AFNI_TLRC_SPC]; /* TLRC from now on */
@@ -991,7 +1003,8 @@ char * Atlas_Query_to_String (ATLAS_QUERY *wami, ATLAS_COORD ac, WAMI_SORT_MODES
       LOAD_FVEC3(m,ac.x,ac.y,ac.z);
       t = THD_tta_to_mnia_N27(m);
       /* find the LR, if possible from mask */
-      sprintf(xlab[2],"%4.0f mm [%c]",-t.xyz[0], TO_UPPER(MNI_Anatomical_Side(ac))) ;
+      sprintf( xlab[2],
+               "%4.0f mm [%c]",-t.xyz[0], TO_UPPER(MNI_Anatomical_Side(ac))) ;
       sprintf(ylab[2],"%4.0f mm [%c]",-t.xyz[1], (ac.y<0.0)?'A':'P') ;
       sprintf(zlab[2],"%4.0f mm [%c]",t.xyz[2], (ac.z<0.0)?'I':'S') ;
       sprintf(clab[2],"{MNI Anat.}");
@@ -1308,9 +1321,29 @@ void TT_whereami_remove_atlas(AFNI_ATLAS_CODES ac)
    return;
 }
 
+AFNI_STD_SPACES TT_whereami_default_spc (void)
+{
+   char *eee = getenv("AFNI_DEFAULT_STD_SPACE");
+   if (eee) {
+      if (strncasecmp(eee, "TLRC", 4) == 0) {
+         return (AFNI_TLRC_SPC);
+      } else if (strncasecmp(eee, "MNI_ANAT", 8) == 0) {
+         return (MNI_ANAT_SPC);
+      } else if (strncasecmp(eee, "MNI", 3) == 0) {
+         return (MNI_SPC);
+      } else {
+         WARNING_message(  "Bad value for AFNI_DEFAULT_STD_SPACE\n"
+                           "%s is unrecognized. Assuming TLRC\n", eee);
+         return (AFNI_TLRC_SPC);
+      }
+   } else {
+      /* no env, return default */
+      return(AFNI_TLRC_SPC);
+   }
+}
 /* a new version of TT_whereami that can use the variety
    of atlases */
-char * TT_whereami( float xx , float yy , float zz )
+char * TT_whereami( float xx , float yy , float zz, AFNI_STD_SPACES spc)
 {
    ATLAS_COORD ac;
    ATLAS_QUERY *wami = NULL;
@@ -1327,10 +1360,25 @@ char * TT_whereami( float xx , float yy , float zz )
       }
    }
 
-   /* build coord structure */
-   ac.x = xx; ac.y = yy; ac.z = zz; ac.space = AFNI_TLRC_SPC;
+   switch (spc) {
+      case UNKNOWN_SPC:
+         spc = TT_whereami_default_spc();
+         break;
+      case MNI_SPC:
+      case MNI_ANAT_SPC:
+      case AFNI_TLRC_SPC:
+         /* OK, do nothing */
+         break;
+      default:
+         WARNING_message("Bad coordinate space %d\n", spc);
+         RETURN(rbuf) ;
+   }
 
-   strg = whereami_9yards(ac, &wami, TT_whereami_atlas_list, TT_whereami_n_atlas_list);
+   /* build coord structure */
+   ac.x = xx; ac.y = yy; ac.z = zz; ac.space = spc;
+
+   strg = whereami_9yards( ac, &wami,
+                           TT_whereami_atlas_list, TT_whereami_n_atlas_list);
    if (strg) {
       WARNING_message("Unexpected string (%s) from whereami_9yards\n", strg);
       free(strg); strg = NULL; /* nothing useful here */
@@ -2088,7 +2136,9 @@ AFNI_ATLAS_REGION * Atlas_Chunk_Label(char *lbli, int id)
 
    /* change any '.' surrounded by digits to a 0 */
    for (k=1; k<nc-1; ++k) {
-      if (lbl[k] == '.' && IS_NUMBER(lbl[k+1]) && IS_NUMBER(lbl[k-1])) lbl[k] = '0';
+      if (  lbl[k] == '.' && 
+            IS_NUMBER(lbl[k+1]) && 
+            IS_NUMBER(lbl[k-1]) ) lbl[k] = '0';
    }
 
    ic = 0;
@@ -2112,7 +2162,8 @@ AFNI_ATLAS_REGION * Atlas_Chunk_Label(char *lbli, int id)
          sd = '\0';
          if (aar->N_chnks == 0) { /* check on side */
             sd = Is_Side_Label(lachunk, NULL);
-            if (LocalHead) fprintf(stderr,"Side check on %s returned %c\n", lachunk, sd);
+            if (LocalHead) 
+               fprintf(stderr,"Side check on %s returned %c\n", lachunk, sd);
             if (sd == 'l' || sd == 'r' || sd == 'b') {
                aar->side = sd;
             } else {
@@ -2122,7 +2173,8 @@ AFNI_ATLAS_REGION * Atlas_Chunk_Label(char *lbli, int id)
          }
          if (sd == '\0') { /* new, non left/right chunk */
             /* store lachunk, skip to next char or number */
-            aar->chnks = (char **)realloc(aar->chnks, sizeof(char*)*(aar->N_chnks+1));
+            aar->chnks = (char **)realloc(aar->chnks, 
+                                          sizeof(char*)*(aar->N_chnks+1));
             aar->chnks[aar->N_chnks] = strdup(lachunk);
             ++ aar->N_chnks;
          }
@@ -2141,7 +2193,8 @@ AFNI_ATLAS_REGION * Atlas_Chunk_Label(char *lbli, int id)
       sd = '\0';
       if (aar->N_chnks == 0) { /* check on side */
          sd = Is_Side_Label(lachunk, NULL);
-         if (LocalHead) fprintf(stderr,"Side check on %s returned %c\n", lachunk, sd);
+         if (LocalHead) 
+            fprintf(stderr,"Side check on %s returned %c\n", lachunk, sd);
          if (sd == 'l' || sd == 'r' || sd == 'b') {
             aar->side = sd;
          } else {
@@ -2150,7 +2203,8 @@ AFNI_ATLAS_REGION * Atlas_Chunk_Label(char *lbli, int id)
          }
       }
       if (sd == '\0') { /* new, non left/right chunk */
-         aar->chnks = (char **)realloc(aar->chnks, sizeof(char*)*(aar->N_chnks+1));
+         aar->chnks = (char **)realloc(aar->chnks, 
+                                       sizeof(char*)*(aar->N_chnks+1));
          aar->chnks[aar->N_chnks] = strdup(lachunk);
          ++ aar->N_chnks;
       }
@@ -2351,17 +2405,20 @@ AFNI_ATLAS_REGION *ROI_String_Decode(char *str, AFNI_ATLAS_CODES *ac)
    /* get the atlas name, 1st item*/
    for (k=icol[0]; k<icol[1]; ++k) atlas_name[k] = str[k];
    atlas_name[icol[1]] = '\0';
-   /* fprintf(stderr,"atlas_name from %s is: %s\n", str, atlas_name); */
+   if (LocalHead > 2) 
+      fprintf(stderr,"atlas_name from %s is: %s\n", str, atlas_name); 
    *ac = Atlas_Name_to_Atlas_Code(atlas_name);
    /* is this an OK atlas */
    if (*ac <= UNKNOWN_ATLAS || *ac >= NUMBER_OF_ATLASES) {
       if (LocalHead) {
-         ERROR_message("Atlas %s not recognized\nAvailable atlas names are:\n", atlas_name);
+         ERROR_message( "Atlas %s not recognized\n"
+                        "Available atlas names are:\n", atlas_name);
          for (k=UNKNOWN_ATLAS+1; k<NUMBER_OF_ATLASES; ++k) {
             fprintf(stderr,"   %s (code %d)\n", Atlas_Code_to_Atlas_Name(k), k);
          }
       }
-      if (LocalHead) WARNING_message("Proceeding with hope for an impossible miracle...\n");
+      if (LocalHead) 
+         WARNING_message("Proceeding with hope for an impossible miracle...\n");
    }
 
    /* get the label, last item */
@@ -2369,7 +2426,8 @@ AFNI_ATLAS_REGION *ROI_String_Decode(char *str, AFNI_ATLAS_CODES *ac)
    shft = icol[ncol]+1;
    for (k=shft; k<nc; ++k) lbl[k-shft] = str[k];
    lbl[nc-shft] = '\0';
-   /*fprintf(stderr,"lbl from %s(%d to %d) is : '%s'\n", str, shft, nc, lbl); */
+   if (LocalHead > 2) 
+      fprintf(stderr,"lbl from %s(%d to %d) is : '%s'\n", str, shft, nc, lbl); 
 
    /* Now get aar */
    if (!(aar = Atlas_Chunk_Label(lbl, 0))) {
@@ -2382,7 +2440,8 @@ AFNI_ATLAS_REGION *ROI_String_Decode(char *str, AFNI_ATLAS_CODES *ac)
    /* set the side if possible */
    if (ncol == 2 && (icol[2] - icol[1] > 1)) {
       aar->side = TO_LOWER(str[icol[1]+1]);
-      if (aar->side != 'l' && aar->side != 'r' &&  aar->side != 'u'  &&  aar->side != 'b') {
+      if (  aar->side != 'l' && aar->side != 'r' 
+            &&  aar->side != 'u'  &&  aar->side != 'b') {
          if (LocalHead) ERROR_message("Bad side specifier");
          aar = Free_Atlas_Region(aar);
          RETURN(aar) ;
@@ -3744,10 +3803,12 @@ ATLAS_DSET_HOLDER Atlas_With_Trimming (AFNI_ATLAS_CODES atcode, int LoadLRMask)
    RETURN(adh);
 }
 
-char *whereami_9yards(ATLAS_COORD aci, ATLAS_QUERY **wamip, AFNI_ATLAS_CODES *atlaslist, int N_atlaslist)
+char *whereami_9yards(  ATLAS_COORD aci, ATLAS_QUERY **wamip,
+                        AFNI_ATLAS_CODES *atlaslist, int N_atlaslist)
 {
    char *s = NULL;
-   int ii,kk , ix,jy,kz , nx,ny,nz,nxy , aa,bb,cc , ff,baf,rff, iatlas=0, sb = 0 ;
+   int   ii,kk , ix,jy,kz , nx,ny,nz,nxy ,
+         aa,bb,cc , ff,baf,rff, iatlas=0, sb = 0 ;
    THD_ivec3 ijk ;
    byte *ba = NULL ;
    THD_string_array *sar ;
@@ -3779,15 +3840,18 @@ char *whereami_9yards(ATLAS_COORD aci, ATLAS_QUERY **wamip, AFNI_ATLAS_CODES *at
       case MNI_ANAT_SPC: /* change to AFNI_TLRC */
          LOAD_FVEC3(vo3, aci.x, aci.y, aci.z);
          vn3 = THD_mnia_to_tta_N27(vo3);
-         ac.x = vn3.xyz[0]; ac.y = vn3.xyz[1]; ac.z = vn3.xyz[2]; ac.space = AFNI_TLRC_SPC;
+         ac.x = vn3.xyz[0]; ac.y = vn3.xyz[1]; ac.z = vn3.xyz[2];
+         ac.space = AFNI_TLRC_SPC;
          break;
       case MNI_SPC: /* change to AFNI_TLRC*/
          LOAD_FVEC3(vo3, aci.x, aci.y, aci.z);
          vn3 = THD_mni_to_tta_N27(vo3);
-         ac.x = vn3.xyz[0]; ac.y = vn3.xyz[1]; ac.z = vn3.xyz[2]; ac.space = AFNI_TLRC_SPC;
+         ac.x = vn3.xyz[0]; ac.y = vn3.xyz[1]; ac.z = vn3.xyz[2];
+         ac.space = AFNI_TLRC_SPC;
          break;
       case AFNI_TLRC_SPC: /* make conversion using 12 pwl xform */
-         ac.x = aci.x; ac.y = aci.y; ac.z = aci.z; ac.space = AFNI_TLRC_SPC;
+         ac.x = aci.x; ac.y = aci.y; ac.z = aci.z;
+         ac.space = AFNI_TLRC_SPC;
          break;
       default:
          ERROR_message("Coordinates in bad space.");
@@ -3800,7 +3864,8 @@ char *whereami_9yards(ATLAS_COORD aci, ATLAS_QUERY **wamip, AFNI_ATLAS_CODES *at
    b_find = (int*)calloc(MAX_FIND, sizeof(int));
    rr_find = (int*)calloc(MAX_FIND, sizeof(int));
    if (!b_find || !rr_find) {
-      ERROR_message("Jiminy Crickets!\nFailed to allocate for finds!\nMAX_FIND = %d\n", MAX_FIND);
+      ERROR_message( "Jimney Crickets!\nFailed to allocate for finds!\n"
+                     "MAX_FIND = %d\n", MAX_FIND);
       RETURN(s);
    }
 
@@ -3809,20 +3874,27 @@ char *whereami_9yards(ATLAS_COORD aci, ATLAS_QUERY **wamip, AFNI_ATLAS_CODES *at
       wami = Add_To_Atlas_Query(NULL, NULL);
    }
 
-   if (LocalHead) INFO_message("Coords: %f %f %f (%d)\n", ac.x, ac.y, ac.z, ac.space);
+   if (LocalHead)
+      INFO_message("Coords: %f %f %f (%d)\n", ac.x, ac.y, ac.z, ac.space);
 
 
    for (iatlas=0; iatlas<N_atlaslist; ++iatlas) {/* iatlas loop */
       atcode = atlaslist[iatlas];
-      if (LocalHead) INFO_message("Now Processing atlas %s (%d)", Atlas_Code_to_Atlas_Name(atcode), atcode);
+      if (LocalHead)
+         INFO_message(  "Now Processing atlas %s (%d)",
+                        Atlas_Code_to_Atlas_Name(atcode), atcode);
 
       adh = Atlas_With_Trimming (atcode, 0);
 
       if (!adh.dset) continue;
 
-      if (atcode == CA_EZ_N27_ML_ATLAS || atcode == CA_EZ_N27_MPM_ATLAS || atcode == AFNI_TLRC_ATLAS || atcode == CA_EZ_N27_LR_ATLAS ) { /* the multi-radius searches */
+      if (  atcode == CA_EZ_N27_ML_ATLAS ||
+            atcode == CA_EZ_N27_MPM_ATLAS ||
+            atcode == AFNI_TLRC_ATLAS ||
+            atcode == CA_EZ_N27_LR_ATLAS ) { /* the multi-radius searches */
          for (sb=0; sb < DSET_NVALS(adh.dset); ++sb) {
-            if (LocalHead)  fprintf(stderr,"Processing sub-brick %d with %s\n",sb,  Atlas_Code_to_Atlas_Name(atcode));
+            if (LocalHead)
+               fprintf(stderr,"Processing sub-brick %d with %s\n",sb,  Atlas_Code_to_Atlas_Name(atcode));
             ba = DSET_BRICK_ARRAY(adh.dset,sb); if (!ba) { ERROR_message("Unexpected NULL array"); RETURN(s); }
             if (WAMIRAD < 0.0) {
                WAMIRAD = Init_Whereami_Max_Rad();
@@ -4041,7 +4113,9 @@ char *whereami_9yards(ATLAS_COORD aci, ATLAS_QUERY **wamip, AFNI_ATLAS_CODES *at
    *wamip = wami;
 
    free(b_find); b_find = NULL; free(rr_find); rr_find = NULL;
-
+   if (LocalHead) {
+      fprintf(stderr,"Returning with:\n%s\n", s);
+   }
    RETURN(s);
 }
 
@@ -4069,7 +4143,9 @@ THD_3dim_dataset *THD_3dim_from_ROIstring(char *shar)
    }
 
    if (LocalHead) {
-      fprintf(stderr,"User seeks the following region in atlas %s:\n", Atlas_Code_to_Atlas_Name(ac));
+      fprintf( stderr,
+               "User seeks the following region in atlas %s:\n", 
+               Atlas_Code_to_Atlas_Name(ac));
       Show_Atlas_Region(aar);
    }
 
@@ -4095,7 +4171,8 @@ THD_3dim_dataset *THD_3dim_from_ROIstring(char *shar)
       if (LocalHead) fprintf(stderr,"%s\n", string);
       free(string); string = NULL;
    } else {
-      if (LocalHead) ERROR_message("NULL string returned"); /* something went wrong, although I care not for string ... */
+      if (LocalHead) ERROR_message("NULL string returned"); 
+            /* something went wrong, although I care not for string ... */
       RETURN(maskset);
    }
    /* Now we know what matches, give me a mask */

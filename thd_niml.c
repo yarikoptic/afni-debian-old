@@ -1033,6 +1033,10 @@ ENTRY("THD_dset_to_ni_surf_dset");
     for (ibr=0; ibr<DSET_NVALS(dset); ++ibr) {
       sprintf(name,"FDRCURVE_%06d",ibr) ;
       nsd_add_atr_to_group(name, NULL, blk, ngr);
+#if 0
+      sprintf(name,"MDFCURVE_%06d",ibr) ;
+      nsd_add_atr_to_group(name, NULL, blk, ngr);
+#endif
     }
     
     nsd_fill_index_list(ngr, dset);                  /* add INDEX_LIST */
@@ -1417,7 +1421,8 @@ int set_sparse_data_attribs(NI_element * nel, THD_3dim_dataset * dset,
                             int nodes_from_dset)
 {
     char str[32];
-
+    float TR=0.0;
+    
 ENTRY("set_sparse_data_attribs");
 
     if( !nel || !dset ) RETURN(1);
@@ -1427,7 +1432,9 @@ ENTRY("set_sparse_data_attribs");
     /* check for need of the ni_timestep attribute */
     if( DSET_NUM_TIMES(dset) > 1 )  /* then it is time dependent */
     {
-        strcpy(str, MV_format_fval(DSET_TIMESTEP(dset)));
+        TR = DSET_TIMESTEP(dset);
+        if( DSET_TIMEUNITS(dset) == UNITS_MSEC_TYPE ) TR *= 0.001;
+        strcpy(str, MV_format_fval(TR));
         NI_set_attribute(nel, "ni_timestep", str);
         if(gni.debug > 1) fprintf(stderr,"+d setting ni_timestep = %s\n", str);
     }
@@ -1586,6 +1593,119 @@ NI_element * NI_find_element_by_aname(NI_group * ngr, char * ename,
 
     RETURN(nel);
 }
+
+/* Read the NIML file and determine the order of labels in the
+ * ColumnLabels element.
+ *
+ * return values are:
+ * 0 : unknown order (includes error conditions)
+ * 1 : slice-major order (labels are s0.*, s1,*, ...)
+ * 2 : slice-minor order (labels are s0.L0, s1.L0, ...)
+ */
+int niml_get_major_label_order(char * fname)
+{
+    NI_element   * nel=NULL;            /* main read element      */
+    NI_str_array * lablist=NULL;        /* array of parsed labels */
+    char         * labstr=NULL;         /* unparsed label string  */
+    int            c, order=0;          /* init order as unknown  */
+
+ENTRY("niml_get_major_label_order");
+
+    gni.debug = AFNI_numenv("AFNI_NIML_DEBUG"); /* maybe we want info */
+    if(gni.debug > 3) fprintf(stderr,"-- get_major_label_order\n");
+
+    /* check each step of the way ... */
+
+    if( !fname ) {
+        fprintf(stderr,"** major_label_order: fname is NULL\n");
+        RETURN(0);
+    } 
+    if ( (nel = (NI_element*)read_niml_file(fname, 0)) == NULL ) {
+        if( gni.debug )
+            fprintf(stderr,"** MLO: failed to read %s as NIML\n", fname);
+        RETURN(0);
+    }
+    if(gni.debug > 2) fprintf(stderr,"-- NGMLO: vec_num = %d, vec_len = %d\n",
+                              nel->vec_num, nel->vec_len);
+
+    labstr = NI_get_attribute(nel, "ColumnLabels");
+    if( !labstr ) {
+        if( gni.debug ) fprintf(stderr,"** MLO: no ColumnLabels in %s\n",fname);
+        RETURN(0);
+    }
+    if(gni.debug > 3) fprintf(stderr,"-- NGMLO: labstr = %-.66s...\n", labstr);
+    lablist = NI_decode_string_list(labstr, ";");
+    if( !lablist ) {
+        if(gni.debug) fprintf(stderr,"** MLO: bad ColumnLabels in %s\n",fname);
+        RETURN(0);
+    }
+    if( lablist->num < 3 ) {
+        if( gni.debug ) fprintf(stderr,"** MLO: vec_num = %d\n",nel->vec_num);
+        RETURN(0);
+    }
+
+    /* we have the label list, now just check the first 2 labels */
+    if(gni.debug > 2) fprintf(stderr,"== NGMLO: l[0]=%s, l[1]=%s, l[2]=%s\n",
+                          lablist->str[0], lablist->str[1], lablist->str[2]);
+
+    if( !strncmp(lablist->str[0], "s0", 2) &&
+        !strncmp(lablist->str[1], "s0", 2) ) {
+        if(gni.debug>1) fprintf(stderr,"-- %s is slice-major order\n",fname);
+        order = 1;
+    } else if( !strncmp(lablist->str[0], "s0", 2) &&
+               !strncmp(lablist->str[1], "s1", 2) ) {
+        if(gni.debug>1) fprintf(stderr,"-- %s is slice-minor order\n",fname);
+        order = 2;
+    } else {
+        if(gni.debug>1) fprintf(stderr,"-- %s has indeterminate order\n",fname);
+        order = 0;
+    }
+
+    NI_delete_str_array(lablist);
+    NI_free(nel);
+
+    RETURN(order);
+}
+
+/* apply any escape characters, and return a new string
+ *  * (which will not exceed the orignal string in length)
+ *   * 
+ *    * \n, \t, \b                   31 Jul 2009 */
+char * unescape_unix_str(const char * ustr)
+{
+    char * newstr = NULL;
+    int    len, c, nind;
+    if( !ustr ) return NULL;
+    len = strlen(ustr);
+    newstr = (char *)malloc(len+1);
+
+    for( c = 0, nind = 0; c < len; c++, nind++ ) {
+        if( ustr[c] == '\\' ) {
+            switch(ustr[c+1]) {
+                case 'n':
+                    newstr[nind] = '\n';
+                    c++;
+                    break;
+                case 't':
+                    newstr[nind] = '\t';
+                    c++;
+                    break;
+                case 'b':
+                    newstr[nind] = '\b';
+                    c++;
+                    break;
+                default:
+                    newstr[nind] = ustr[c]; /* no escape applied */
+                    break;
+            }
+        } else newstr[nind] = ustr[c];      /* no escape found */
+    }
+
+    newstr[nind] = '\0';
+
+    return newstr;
+}
+
 
 int set_ni_globs_from_env(void)
 {

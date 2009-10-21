@@ -10,7 +10,7 @@
  */
 
 /*----------------------------------------------------------------------
-  $Id: plug_crender.c,v 1.46 2008/07/01 17:21:30 rickr Exp $
+  $Id: plug_crender.c,v 1.51 2009/05/07 16:31:18 rwcox Exp $
   ----------------------------------------------------------------------
 */
 
@@ -694,7 +694,7 @@ static int reset_bigcolors( rgbyte * bcs );     /* v1.8 [rickr] */
 #undef HIDE_SCALE
 #ifdef FIX_SCALE_SIZE_PROBLEM
 #  define FIX_SCALE_SIZE                                        \
-     do{ int sel_height ;  XtPointer sel_ptr ;                  \
+     do{ int sel_height ;  XtPointer sel_ptr=NULL ;             \
          if( wfunc_thr_scale != NULL ){                         \
            XtVaGetValues( wfunc_thr_scale ,                     \
                              XmNuserData , &sel_ptr , NULL ) ;  \
@@ -829,7 +829,7 @@ static int reset_bigcolors( rgbyte * bcs );     /* v1.8 [rickr] */
 #  define INIT_RSA(name)                                                               \
      do{ int iq ; (name) = (RENDER_state_array *) malloc(sizeof(RENDER_state_array)) ; \
          (name)->num = 0 ; (name)->nall = INC_RSA ;                                   \
-         (name)->rsarr = (RENDER_state **)malloc(sizeof(RENDER_state *)*INC_RSA) ;   \
+         (name)->rsarr = (RENDER_state **)calloc(INC_RSA,sizeof(RENDER_state *)) ;   \
          for( iq=0 ; iq < INC_RSA ; iq++ ) (name)->rsarr[iq] = NULL ;               \
          break ; } while(0)
 
@@ -2684,7 +2684,7 @@ ENTRY( "RCREND_draw_CB" );
 
 #ifdef USE_SCRIPTING
    if( last_rendered_state == NULL )
-      last_rendered_state = (RENDER_state *) malloc(sizeof(RENDER_state)) ;
+      last_rendered_state = (RENDER_state *) calloc(1,sizeof(RENDER_state)) ;
 
    RCREND_widgets_to_state( last_rendered_state ) ;
 #endif
@@ -2701,7 +2701,7 @@ ENTRY( "RCREND_draw_CB" );
       }
       ADDTO_IMARR( renderings , rim ) ;
 #ifdef USE_SCRIPTING
-      { RENDER_state * rs = (RENDER_state *) malloc(sizeof(RENDER_state)) ;
+      { RENDER_state * rs = (RENDER_state *) calloc(1,sizeof(RENDER_state)) ;
 
         *rs = *last_rendered_state ;
         ADDTO_RSA( renderings_state , rs ) ;
@@ -2713,7 +2713,7 @@ ENTRY( "RCREND_draw_CB" );
       INIT_IMARR( renderings ) ;
       ADDTO_IMARR( renderings , rim ) ;
 #ifdef USE_SCRIPTING
-      { RENDER_state * rs = (RENDER_state *) malloc(sizeof(RENDER_state)) ;
+      { RENDER_state * rs = (RENDER_state *) calloc(1,sizeof(RENDER_state)) ;
         DESTROY_RSA( renderings_state ) ;
         INIT_RSA( renderings_state ) ; script_load_last = -1 ;
         *rs = *last_rendered_state ;
@@ -3950,7 +3950,7 @@ ENTRY( "RCREND_xhair_recv" );
             func_dset = PLUTO_find_dset( &func_dset_idc ) ;
 
          FREE_VOLUMES ; INVALIDATE_OVERLAY ;
-
+#if 0
          (void) MCW_popup_message( reload_pb ,
                                      "********** NOTICE ***********\n"
                                      "* Session rescan has forced *\n"
@@ -3958,6 +3958,7 @@ ENTRY( "RCREND_xhair_recv" );
                                      "* from memory.              *\n"
                                      "*****************************" ,
                                    MCW_USER_KILL | MCW_TIMER_KILL     ) ;
+#endif
       }
       EXRETURN ;
 
@@ -4432,7 +4433,7 @@ void RCREND_cutout_blobs( MRI_IMAGE * oppim )
    int ibot,itop , jbot,jtop , kbot,ktop ;
    float par ;
    float dx,dy,dz , xorg,yorg,zorg , xx,yy,zz ;
-   byte * oar , * gar ;
+   byte * oar , * gar = NULL;
    byte ncdone = 0 ;
 
 ENTRY( "RCREND_cutout_blobs" );
@@ -4914,7 +4915,7 @@ ENTRY( "RCREND_open_imseq" );
 
 #ifndef DONT_INSTALL_ICONS
    if( afni48_good && afni48ren_pixmap == XmUNSPECIFIED_PIXMAP ){
-      Pixel bg_pix , fg_pix  ;
+      Pixel bg_pix=0 , fg_pix=0  ;
 
       XtVaGetValues( info_lab ,
                        XmNforeground , &fg_pix ,
@@ -5312,8 +5313,16 @@ ENTRY( "RCREND_func_widgets" );
 
    /* top level managers */
 
-   wfunc_vsep = SEP_VER(top_rowcol) ;
-
+   #ifdef USING_LESSTIF
+      /* for some reason, the height of the vertical separator is
+         way too big. Putting an XtVaSetValues for XmNheight here
+         does not work. The resizing must be happening elsewhere.
+         Fuggehaboutit           Lesstif Patrol  Jan 09*/
+      wfunc_vsep = NULL;
+   #else
+      wfunc_vsep = SEP_VER(top_rowcol) ;
+   #endif
+   
    wfunc_frame = XtVaCreateWidget(
                    "AFNI" , xmFrameWidgetClass , top_rowcol ,
                       XmNshadowType , XmSHADOW_ETCHED_IN ,
@@ -5430,6 +5439,13 @@ ENTRY( "RCREND_func_widgets" );
 
 #ifdef FIX_SCALE_SIZE_PROBLEM
    XtVaSetValues( wfunc_thr_scale , XmNuserData , (XtPointer) sel_height , NULL ) ;
+#endif
+#ifdef USING_LESSTIF
+   XtVaSetValues( wfunc_thr_scale , XmNscaleWidth,24 , NULL ) ;
+#endif
+
+#ifdef USING_LESSTIF    /* 7 Jan 2009 [lesstif patrol] */
+   XtVaSetValues( wfunc_thr_scale , XmNscaleWidth,24 , NULL ) ;
 #endif
 
    XtAddCallback( wfunc_thr_scale , XmNvalueChangedCallback ,
@@ -6071,11 +6087,11 @@ ENTRY( "RCREND_open_func_CB" );
    if( wfunc_frame == NULL ) RCREND_func_widgets() ;  /* need to make them */
 
    if( XtIsManaged(wfunc_frame) ){          /* if open, close */
-      XtUnmanageChild(wfunc_vsep ) ;
+      if (wfunc_vsep) XtUnmanageChild(wfunc_vsep ) ;
       XtUnmanageChild(wfunc_frame) ;
    } else {                                 /* if closed, open */
       HIDE_SCALE ;
-      XtManageChild(wfunc_vsep ) ;
+      if (wfunc_vsep) XtManageChild(wfunc_vsep ) ;
       XtManageChild(wfunc_frame) ;
       update_MCW_pbar( wfunc_color_pbar ) ; /* may need to be redrawn */
       FIX_SCALE_SIZE ;
@@ -6829,7 +6845,8 @@ void RCREND_reload_func_dset(void)
    int         ival_func, ival_thr;
    void      * car , * tar ;
    float       cfac ,  tfac ;
-   float       bbot,  btop, bdelta;
+   float       bbot,  btop=1.0, bdelta=1.0; /* ZSS: initialized bdelta, 
+                                              and btop 01/07/09*/
    int         ii , nvox , num_lp , lp , bindex ;
    byte     *  ovar ;
    MCW_pbar *  pbar = wfunc_color_pbar ;
@@ -7184,7 +7201,7 @@ void RCREND_overlay_ttatlas(void)
    THD_3dim_dataset *dseTT ;
    byte *b0 , *b1 , *ovar ;
    int nvox , ii,jj , xx ;
-   int fwin , gwin , nreg , hemi,hbot ;
+   int fwin , gwin , nreg , hemi, hbot=0; /* ZSS: initialized hbot 01/07/09*/
    byte *brik , *val , *ovc , g_ov , a_ov , final_ov ;
 
 ENTRY( "RCREND_overlay_ttatlas" );
@@ -7856,8 +7873,8 @@ void RCREND_read_exec_CB( Widget w , XtPointer cd , MCW_choose_cbs * cbs )
    char * fname , buf[256] ;
    RENDER_state rs ;
    RENDER_state_array * rsa ;
-   float scl ;
-   Widget autometer ;
+   float scl = 1.0;
+   Widget autometer = NULL ;
 
 ENTRY( "RCREND_read_exec_CB" );
 

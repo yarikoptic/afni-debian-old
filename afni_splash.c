@@ -201,14 +201,14 @@ static void AFNI_splash_timer_CB( XtPointer cd, XtIntervalId *id )
 
 void AFNI_splashup(void)
 {
-   PLUGIN_impopper *ppp ;
-   MRI_IMAGE *imov ;
-   int    dd,ee ;
-   char   bb ;
-   byte *bspl ;
-   int   sxx,syy ;
-   char *sen ;
-   static int ncall=0 , nov , dnov , nm=-1 ;
+   PLUGIN_impopper *ppp=NULL ;
+   MRI_IMAGE *imov=NULL ;
+   int    dd=0,ee=0 ;
+   char   bb=0 ;
+   byte *bspl=NULL ;
+   int   sxx=0,syy=0 ;
+   char *sen=NULL ;
+   static int ncall=0 , nov=0 , dnov=0 , nm=-1 ;
 
 ENTRY("AFNI_splashup") ;
 
@@ -216,7 +216,7 @@ ENTRY("AFNI_splashup") ;
 
    if( ! PLUTO_popup_open(handle) ){  /* not open at this time? */
 
-      int nxov,nyov,ff ;
+      int nxov=0,nyov=0,ff=0 ;
 
       num_splashup++ ;  /* 14 Nov 2005 */
 
@@ -226,28 +226,16 @@ ENTRY("AFNI_splashup") ;
         int np ;
         num_face   = AFNI_find_jpegs( "face_"   , &fname_face   ) ;
         num_splash = AFNI_find_jpegs( "splash_" , &fname_splash ) ;
-if(PRINT_TRACING){
- char str[256];
- sprintf(str,"num_face=%d  num_splash=%d",num_face,num_splash); STATUS(str);
-}
+
         if( num_splash > 0 ){
-          char *targ = (lrand48()%3 == 0) ? "bobkarl" : "sscc2006" ;
-          for( np=0 ; np < num_splash ; np++ )
-            if( strstr(fname_splash[np],targ) != NULL ) break ;
-          if( np < num_splash ) first_splash = np ;
-
-#if 0
-          if( first_splash >= 0 && num_face > 0 && strcmp(targ,"bobkarl") == 0 ){
-            for( np=0 ; np < num_face ; np++ )
-              if( strstr(fname_face[np],"rwcox6") != NULL ) break ;
-            if( np < num_face ) first_face = np ;
+          char *targ=(lrand48()%5 == 0) ? "bobkarl" : NULL ;
+          if( targ != NULL ){
+            for( np=0 ; np < num_splash ; np++ )
+              if( strstr(fname_splash[np],targ) != NULL ) break ;
+            if( np < num_splash ) first_splash = np ;
+          } else {
+            first_splash = (lrand48()>>8) % num_splash ;
           }
-#endif
-
-if(PRINT_TRACING){
- char str[256];
- sprintf(str,"first_face=%d  first_splash=%d",first_face,first_splash); STATUS(str);
-}
         }
       }
 

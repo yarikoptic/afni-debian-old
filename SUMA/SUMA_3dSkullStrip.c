@@ -57,7 +57,7 @@ void usage_SUMA_BrainWrap (SUMA_GENERIC_ARGV_PARSE *ps)
 "       in 3dedge3 -help.\n"
 "  3- The creation of various masks and surfaces modeling brain\n"
 "     and portions of the skull\n"
-"\n"
+"\n" 
 "  Common examples of usage:\n"
 "  -------------------------\n"
 "  o 3dSkullStrip -input VOL -prefix VOL_PREFIX\n"
@@ -111,6 +111,14 @@ void usage_SUMA_BrainWrap (SUMA_GENERIC_ARGV_PARSE *ps)
 "            -blur_fwhm 2 -use_skull  \n"
 "        or for more stubborn cases increase csf avoidance with this cocktail\n"
 "            -blur_fwhm 2 -use_skull -avoid_vent -avoid_vent -init_radius 75 \n"
+"\n"
+"     Large regions outside brain included:\n"
+"       + Usually because noise level is high. Try @NoisySkullStrip.\n"
+"\n" 
+"  Make sure that brain orientation is correct. This means the image in \n"
+"  AFNI's axial slice viewer should be close to the brain's axial plane.\n"
+"  The same goes for the other planes. Otherwise, the program might do a lousy\n"
+"  job removing the skull.\n"
 "\n" 
 "  Eye Candy Mode: \n"
 "  ---------------\n"
@@ -469,6 +477,9 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_BrainWrap_ParseInput (
    Opt->efrac = -1.0;
    Opt->match_area = 0;  
    Opt->xyz_scale = 1.0; 
+   Opt->cog[0]=-9000.0f;
+   Opt->cog[1]=-9000.0f;
+   Opt->cog[2]=-9000.0f;
    brk = NOPE;
 	while (kar < argc) { /* loop accross command ine options */
 		/*fprintf(stdout, "%s verbose: Parsing command line...\n", FuncName);*/
@@ -581,6 +592,18 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_BrainWrap_ParseInput (
             fprintf (SUMA_STDERR, "parameter after -perc_int should be -1 or between 0 and 10 (have %f) \n", Opt->PercInt);
 				exit (1);
          }
+         brk = YUP;
+		}
+      
+      if (!brk && (strcmp(argv[kar], "-cog") == 0)) {
+         kar ++;
+			if (kar+2 >= argc)  {
+		  		fprintf (SUMA_STDERR, "need argument after -cog \n");
+				exit (1);
+			}
+			Opt->cog[0] = atof(argv[kar]); ++kar;
+         Opt->cog[1] = atof(argv[kar]); ++kar;
+         Opt->cog[2] = atof(argv[kar]); 
          brk = YUP;
 		}
       
@@ -1525,9 +1548,12 @@ int main (int argc,char *argv[])
                   fprintf(SUMA_STDERR,"Error %s:\n Failed to allocate for fat edge mask\n", FuncName);
                   exit(1);
                }
-               EDIT_coerce_scale_type( DSET_NVOX(fatoutset) , DSET_BRICK_FACTOR(fatoutset,0) ,
-                              DSET_BRICK_TYPE(fatoutset,0), DSET_ARRAY(fatoutset, 0) ,      /* input  */
-                              MRI_float               , Opt->fatemask  ) ;   /* output */
+               EDIT_coerce_scale_type( 
+                     DSET_NVOX(fatoutset) ,
+                     DSET_BRICK_FACTOR(fatoutset,0) ,
+                     DSET_BRICK_TYPE(fatoutset,0), 
+                     DSET_ARRAY(fatoutset, 0) ,   /* input  */
+                     MRI_float               , Opt->fatemask  ) ;/* output */
 
                if (DSET_NVOX(fatoutset) != DSET_NVOX(outset) || DSET_NVOX(fatoutset) != DSET_NVOX(Opt->in_vol)) {
                   SUMA_S_Err("Bad news in tennis shoes!");
@@ -1745,6 +1771,11 @@ int main (int argc,char *argv[])
          float U[3], Un, *a, P2[2][3], den=3;
          if (Opt->avoid_vent == 2) den = 10.0;
          else den = 3.0;
+         if (Opt->debug) 
+            fprintf (SUMA_STDERR,   
+                     "%s: Stretching to avoid ventricles.\n"
+                     "SO->Center is [%f %f %f]\n", 
+                     FuncName, SO->Center[0], SO->Center[1], SO->Center[2]);
          for (i=0; i<SO->N_Node; ++i) {
             /* stretch the top coordinates by d1 and the back too*/
             a = &(SO->NodeList[3*i]); 
@@ -1756,7 +1787,7 @@ int main (int argc,char *argv[])
                SO->NodeList[3*i+1] = P2[0][1]; 
                SO->NodeList[3*i+2] = P2[0][2];
             }
-         }   
+         }
       }
       /* allocate and fix zt */
       Opt->ztv = (float *)SUMA_malloc(sizeof(float)*SO->N_Node);
@@ -2475,11 +2506,21 @@ int main (int argc,char *argv[])
    {
       THD_3dim_dataset *dout=NULL;
       
-      if (Opt->MaskMode == 0 || Opt->MaskMode == 1) { /* use spatnormed baby, OK for mask too*/
+      if (Opt->MaskMode == 0 || Opt->MaskMode == 1) { 
+         /* use spatnormed baby, OK for mask too*/
          dout = Opt->OrigSpatNormedSet;
       } else if (Opt->MaskMode == 2) { /* use original dset */
-         DSET_load(Opt->iset);
-         dout = Opt->iset;
+         if (Opt->debug) 
+            fprintf (SUMA_STDERR,
+               "%s: Setting output to orig_vol (iset = %p) (osnd = %p)...\n", 
+                  FuncName, Opt->iset, Opt->OrigSpatNormedSet);
+         if (Opt->iset) {
+            DSET_load(Opt->iset);
+            dout = Opt->iset;
+         } else { /* They may have used -no_spatnorm and -orig_vol options */
+            DSET_load(Opt->OrigSpatNormedSet);
+            dout = Opt->OrigSpatNormedSet;
+         }
       } else {
          SUMA_S_Errv("Bad MaskMode value of %d!\n", Opt->MaskMode);
          SUMA_RETURN(NOPE);
@@ -2493,9 +2534,13 @@ int main (int argc,char *argv[])
          SUMA_RETURN(NOPE);
       }
 
+      if (Opt->debug) 
+         fprintf (SUMA_STDERR,
+            "%s: Coercing...\n", FuncName);
       EDIT_coerce_scale_type( Opt->nvox , DSET_BRICK_FACTOR(dout,0) ,
-                              DSET_BRICK_TYPE(dout,0), DSET_ARRAY(dout, 0) ,      /* input  */
-                              MRI_float               , Opt->fvec  ) ;   /* output */
+                              DSET_BRICK_TYPE(dout,0), 
+                                 DSET_ARRAY(dout, 0) ,      /* input  */
+                              MRI_float, Opt->fvec  ) ;   /* output */
    }
    if (Opt->MaskMode == 0 || Opt->MaskMode == 2) {
       SUMA_LH("Creating skull-stripped volume");

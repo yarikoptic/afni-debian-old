@@ -453,7 +453,8 @@ SUMA_MX_VEC *SUMA_matrix2MxVec(matrix c)
    SUMA_RETURN(mxv);
 }
 
-SUMA_MX_VEC *SUMA_CoerceMxVec(SUMA_MX_VEC *va, SUMA_VARTYPE tp, int abs, SUMA_MX_VEC *recycle) 
+SUMA_MX_VEC *SUMA_CoerceMxVec(SUMA_MX_VEC *va, SUMA_VARTYPE tp, 
+                              int abs, SUMA_MX_VEC *recycle) 
 {
    static char FuncName[]={"SUMA_CoerceMxVec"};
    SUMA_MX_VEC *vt=NULL;
@@ -473,7 +474,8 @@ SUMA_MX_VEC *SUMA_CoerceMxVec(SUMA_MX_VEC *va, SUMA_VARTYPE tp, int abs, SUMA_MX
          SUMA_RETURN(NULL);
       }
       if (recycle->tp != tp) {
-         SUMA_S_Errv("Mismatch between recycle->tp=%d and tp=%d\n", recycle->tp , tp);
+         SUMA_S_Errv("Mismatch between recycle->tp=%d and tp=%d\n", 
+                     recycle->tp , tp);
          SUMA_RETURN(NULL);
       }
       vt = recycle;
@@ -2263,7 +2265,34 @@ int SUMA_Read_2Ddfile (char *f_name, int **x, int n_rows, int n_cols)
 /*! 
 count the number of float values in a file
 -1 if the file could not be open
+1D reading based.
 */ 
+int SUMA_float_file_size_1D(char *f_name)
+{
+   static char FuncName[]={"SUMA_float_file_size_1D"};
+   int i=0, ncol = 0, nrow = 0;
+   MRI_IMAGE *im = NULL;
+   float *far=NULL;
+
+   SUMA_ENTRY;
+
+   im = mri_read_1D (f_name);
+   
+   if (!im) {
+      SUMA_SLP_Err("Failed to read 1D file");
+      SUMA_RETURN(-1);
+   }
+   
+   far = MRI_FLOAT_PTR(im);
+   ncol = im->nx;
+   nrow = im->ny;
+   
+   mri_free(im); im = NULL;   /* done with that baby */
+
+   SUMA_RETURN(ncol);
+}
+
+/* dumber version of SUMA_float_file_size_1D */
 int SUMA_float_file_size (char *f_name)
 { 
    int cnt=0,ex;
@@ -3343,6 +3372,50 @@ void SUMA_disp_vecucmat (unsigned char *v,int nr, int nc , int SpcOpt,
    }
    SUMA_RETURNe;
 }/*SUMA_disp_vecucmat*/
+void SUMA_disp_veccmat (char *v,int nr, int nc , int SpcOpt, 
+                        SUMA_INDEXING_ORDER d_order, FILE *fout, 
+                        SUMA_Boolean AddRowInd)
+{/*SUMA_disp_veccmat*/
+   char spc [40]; 
+   int i,j;
+   FILE *foutp;
+   static char FuncName[]={"SUMA_disp_veccmat"};
+      
+   SUMA_ENTRY;
+
+   if (!fout) foutp = stdout;
+   else foutp = fout;
+   
+   if (!SpcOpt)
+      sprintf(spc," ");
+   else if (SpcOpt == 1)
+      sprintf(spc,"\t");
+   else
+      sprintf(spc," , ");
+   
+   if (!fout) fprintf (SUMA_STDOUT,"\n"); /* a blank 1st line when writing to screen */
+   switch (d_order) {
+      case SUMA_ROW_MAJOR:
+         for (i=0; i < nr; ++i) {
+            if (AddRowInd) fprintf (foutp, "%d%s", i, spc);
+            for (j=0; j < nc; ++j) fprintf (foutp, "%d%s",v[i*nc+j],spc);
+            fprintf (foutp,"\n");
+         }
+         break;
+      case SUMA_COLUMN_MAJOR:
+         for (i=0; i < nr; ++i) {
+            if (AddRowInd) fprintf (foutp, "%d%s", i, spc);
+            for (j=0; j < nc; ++j) fprintf (foutp, "%d%s",v[i+j*nr],spc);
+            fprintf (foutp,"\n");
+         }
+         break;
+      default:
+         SUMA_SL_Err("Bad order.\n");
+         SUMA_RETURNe;
+         break;
+   }
+   SUMA_RETURNe;
+}/*SUMA_disp_vecucmat*/
 
 /*!
    Set *N_dims to -1 if you don't have dims setup and are willing to take whatever is in Name
@@ -3491,22 +3564,28 @@ int SUMA_WriteMxVec(SUMA_MX_VEC *mxv, char *Name, char *title)
     
    switch (mxv->tp) {
       case SUMA_byte:
-         SUMA_disp_vecbytemat((byte *)mxv->v, d0, d1, 1, SUMA_COLUMN_MAJOR, out, 0);
+         SUMA_disp_vecbytemat((byte *)mxv->v, d0, d1, 1, 
+                              SUMA_COLUMN_MAJOR, out, 0);
          break;
       case SUMA_short:
-         SUMA_disp_vecshortmat((short *)mxv->v, d0, d1, 1, SUMA_COLUMN_MAJOR, out, 0);
+         SUMA_disp_vecshortmat((short *)mxv->v, d0, d1, 1, 
+                                 SUMA_COLUMN_MAJOR, out, 0);
          break;
       case SUMA_int:
-         SUMA_disp_vecdmat((int *)mxv->v, d0, d1, 1, SUMA_COLUMN_MAJOR, out, 0);
+         SUMA_disp_vecdmat((int *)mxv->v, d0, d1, 1, 
+                           SUMA_COLUMN_MAJOR, out, 0);
          break;
       case SUMA_float:
-         SUMA_disp_vecmat((float *)mxv->v, d0, d1, 1, SUMA_COLUMN_MAJOR, out, 0);
+         SUMA_disp_vecmat((float *)mxv->v, d0, d1, 1, 
+                           SUMA_COLUMN_MAJOR, out, 0);
          break;
       case SUMA_double:
-         SUMA_disp_vecdoubmat((double *)mxv->v, d0, d1, 1, SUMA_COLUMN_MAJOR, out, 0);
+         SUMA_disp_vecdoubmat((double *)mxv->v, d0, d1, 1, 
+                              SUMA_COLUMN_MAJOR, out, 0);
          break;
       case SUMA_complex:
-         SUMA_disp_veccompmat((complex *)mxv->v, d0, d1, 1, SUMA_COLUMN_MAJOR, out, 0);
+         SUMA_disp_veccompmat((complex *)mxv->v, d0, d1, 1, 
+                              SUMA_COLUMN_MAJOR, out, 0);
          break;
       default:
          SUMA_SL_Err("Type not supported");

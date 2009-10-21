@@ -53,8 +53,13 @@ int SUMA_whichDO(char *idcode, SUMA_DO *dov, int N_dov);
 int SUMA_findSO_inDOv(char *idcode, SUMA_DO *dov, int N_dov);
 SUMA_SurfaceObject * SUMA_findSOp_inDOv(char *idcode, SUMA_DO *dov, int N_dov);
 SUMA_SurfaceObject * SUMA_find_named_SOp_inDOv(char *coordname, SUMA_DO *dov, int N_dov);
+SUMA_Boolean  SUMA_is_ID_4_SO(char *idcode, SUMA_SurfaceObject **SOp);
 char *SUMA_find_SOLabel_from_idcode (char *idcode, SUMA_DO *dov, int N_dov);
 char *SUMA_find_SOidcode_from_label (char *label, SUMA_DO *dov, int N_dov);
+SUMA_SurfaceObject *SUMA_Contralateral_SO(SUMA_SurfaceObject *SO,
+                                          SUMA_DO *dov, int N_dov); 
+SUMA_DSET * SUMA_Contralateral_dset(SUMA_DSET *dset, SUMA_SurfaceObject *SO, 
+                                    SUMA_SurfaceObject**SOCp);
 SUMA_Boolean SUMA_ismappable (SUMA_SurfaceObject *SO);
 SUMA_Boolean SUMA_isINHmappable (SUMA_SurfaceObject *SO);
 SUMA_Boolean SUMA_isLocalDomainParent (SUMA_SurfaceObject *SO);
@@ -65,6 +70,8 @@ SUMA_Boolean SUMA_isRelated (SUMA_SurfaceObject *SO1, SUMA_SurfaceObject *SO2, i
 SUMA_Boolean SUMA_isNBDOrelated (SUMA_NB_DO *SDO, SUMA_SurfaceObject *SO);
 SUMA_Boolean SUMA_isdROIrelated (SUMA_DRAWN_ROI *ROI, SUMA_SurfaceObject *SO);
 SUMA_Boolean SUMA_isROIrelated (SUMA_ROI *ROI, SUMA_SurfaceObject *SO);
+SUMA_Boolean SUMA_isNIDOrelated (SUMA_NIDO *SDO, SUMA_SurfaceObject *SO);
+SUMA_Boolean SUMA_isNIDO_SurfBased(SUMA_NIDO *nido);
 SUMA_DRAWN_ROI * SUMA_FetchROI_InCreation (SUMA_SurfaceObject *SO, SUMA_DO * dov, int N_dov); 
 SUMA_Boolean SUMA_AFNI_forward_warp_xyz( THD_warp * warp , float *XYZv, int N);
 SUMA_Boolean SUMA_AFNItlrc_toMNI(float *NodeList, int N_Node, char *Coord);
@@ -77,6 +84,9 @@ SUMA_Boolean SUMA_DeleteROI (SUMA_DRAWN_ROI *ROI);
 int SUMA_isTypicalSOforVolSurf (SUMA_SurfaceObject *SO);
 char *SUMA_DOv_Info (SUMA_DO *dov, int N_dov, int detail);
 int SUMA_BiggestLocalDomainParent(SUMA_DO *dov, int N_dov);
+SUMA_Boolean SUMA_SetXformShowPreProc(SUMA_XFORM *xf, int ShowPreProc, 
+                                      int fromgui);
+
 
 /*!
    \brief SUMA_IS_DRAW_ROI_SWITCH_ROI_SHADED(Shaded)
@@ -118,6 +128,106 @@ int SUMA_BiggestLocalDomainParent(SUMA_DO *dov, int N_dov);
 
 
 
+/* Xform stuff is in SUMA_display.h 
+   Callback stuff is here */
+typedef enum {
+   SUMA_ERROR_ACTIVATE_EVENT = -1, 
+   SUMA_NO_ACTIVATE_EVENT = 0, 
+   SUMA_NEW_NODE_ACTIVATE_EVENT,
+   SUMA_N_ACTIVATE_EVENTS, 
+}  SUMA_CALLBACK_ACTIVATE_EVENTS;
+
+    
+typedef struct {
+   SUMA_CALLBACK_ACTIVATE_EVENTS event;
+   char creator_xform[SUMA_IDCODE_LENGTH]; /*!< In some cases, the callbacks are 
+               created when a transform is applied to some dataset, or surface.
+               The callback thus created may need to be modified when that
+               transforms is altered. creator_xform stores the ID  
+               (xform->idcode_str) of the xform that setup the callback. 
+               So when xform is changed, it can alter callbacks that it created. 
+               This field could be empty*/
+   char parents[SUMA_MAX_XFCB_OBJS][SUMA_IDCODE_LENGTH]; /*!< IDs of parents upon                      which this callback acts.
+                     These could be SOs or DSETS*/  
+   char parents_domain[SUMA_MAX_XFCB_OBJS][SUMA_IDCODE_LENGTH]; /*!< IDs of SO
+                   defining the domain of the parent. This is meaningful when
+                   the parent is a dset */
+   int N_parents;
+   int active;
+   int pending;
+   SUMA_ENGINE_SOURCE trigger_source; /*!< A flag indicating who turned the
+                                           pending flag on */
+   char FunctionName[128];
+   void  (*FunctionPtr)();
+   NI_group *FunctionInput;
+}  SUMA_CALLBACK;  
+
+char *SUMA_Xforms_Info(DList *dl, int detail) ;
+char *SUMA_Callbacks_Info(DList *dl, int detail);
+void SUMA_Show_Xforms (DList *dl, FILE *Out, int detail);
+void SUMA_Show_Callbacks (DList *dl, FILE *Out, int detail);
+SUMA_Boolean SUMA_SetXformActive(SUMA_XFORM *xf, int active, int fromgui);
+SUMA_Boolean SUMA_AddXformParent (SUMA_XFORM *xf, 
+                                  char *parent_idcode, char *parent_domain);
+SUMA_Boolean SUMA_AddXformChild (SUMA_XFORM *xf, 
+                                 char *child_idcode);
+SUMA_Boolean SUMA_AddCallbackParent (SUMA_CALLBACK *cb, 
+                                     char *parent_idcode, char *parent_domain);
+SUMA_XFORM *SUMA_NewXform(char *name, char *parent_idcode, char *parent_domain);
+SUMA_CALLBACK *SUMA_NewCallback  (char *FunctionName, 
+                               SUMA_CALLBACK_ACTIVATE_EVENTS event, 
+                               void *FunctionPtr,
+                               char *parent_idcode, 
+                               char *parent_domain,
+                               char *creator_xform);
+void SUMA_FreeXform(void *data);
+void SUMA_FreeCallback(void *data);
+SUMA_Boolean SUMA_is_XformParent (SUMA_XFORM *xf, char *id, int *loc);
+SUMA_Boolean SUMA_is_XformChild (SUMA_XFORM *xf, char *id, int *iloc);
+SUMA_Boolean SUMA_is_CallbackParent (SUMA_CALLBACK *cb, char *id, int *loc);
+SUMA_XFORM *SUMA_Find_XformByID(char *idcode_str);
+SUMA_XFORM *SUMA_Find_XformByParent(char *name, char *parent_idcode, int *iloc);
+SUMA_CALLBACK *SUMA_Find_CallbackByParent(char *FunctionName, 
+                                       char *parent_idcode, int *iloc);
+SUMA_CALLBACK *SUMA_Find_CallbackByCreatorXformID(char *creator_xform_idcode);
+SUMA_Boolean SUMA_SetCallbackPending (SUMA_CALLBACK *cb, SUMA_Boolean pen,
+                                      SUMA_ENGINE_SOURCE src);
+SUMA_Boolean SUMA_FlushCallbackEventParameters (SUMA_CALLBACK *cb);
+SUMA_Boolean SUMA_ExecuteCallback(SUMA_CALLBACK *cb, 
+                                  int refresh, SUMA_SurfaceObject *SO,
+                                  int doall) ;
+void SUMA_FreeXformInterface(SUMA_GENERIC_XFORM_INTERFACE *gui);
+SUMA_GENERIC_XFORM_INTERFACE * SUMA_NewXformInterface(
+   SUMA_XFORM *xf);
+
+#define SUMA_XFORM_STORE_AS_LAST_EVENT(nelpars) {\
+         NI_set_attribute(nelpars, "last_event.new_node",   \
+                          NI_get_attribute(nelpars,"event.new_node"));  \
+         NI_set_attribute(nelpars, "last_event.SO_idcode",  \
+                          NI_get_attribute(nelpars,"event.SO_idcode")); \
+         NI_set_attribute(nelpars, "last_event.overlay_name",  \
+                          NI_get_attribute(nelpars,"event.overlay_name")); \
+}  
+
+#define SUMA_XFORM_RETRIEVE_LAST_EVENT(nelpars) {\
+         NI_set_attribute(nelpars, "event.new_node",   \
+                          NI_get_attribute(nelpars,"last_event.new_node"));  \
+         NI_set_attribute(nelpars, "event.SO_idcode",  \
+                          NI_get_attribute(nelpars,"last_event.SO_idcode")); \
+         NI_set_attribute(nelpars, "event.overlay_name",  \
+                          NI_get_attribute(nelpars,"last_event.overlay_name")); \
+}  
+
+#define SUMA_XFORM_FLUSH_EVENT(nelpars) {\
+         NI_SET_INT(nelpars, "event.new_node", -1);   \
+         NI_set_attribute(nelpars, "event.SO_idcode", "");  \
+         NI_set_attribute(nelpars,"event.overlay_name", "");   \
+}  
+
+#define SUMA_XFORM_SAVE_FLUSH_EVENT(nelpars) {  \
+   SUMA_XFORM_STORE_AS_LAST_EVENT(nelpars);  \
+   SUMA_XFORM_FLUSH_EVENT(nelpars); \
+}
 
 
 #endif

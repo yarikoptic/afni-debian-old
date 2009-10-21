@@ -12,10 +12,15 @@ function [err,p,f] = GetPath (s, allmc)
 %           0 --> search for path using filesep's output (default)
 %   
 %Output Parameters:
+%
+%if nargout = 1
+%  returns PathString
+%
+%Otherwise:
 %   err : 0 No Problem
 %       : 1 Mucho Problems
 %   
-%   PathString is a string like How/Didley
+%   PathString is a string like How/Didley/
 %   FileString is a string like Doo
 %      
 %More Info :
@@ -41,7 +46,9 @@ f = '';
 
 N = length(s);
 if (N == 0),
-	err = ErrEval(FuncName,'Err_Emtpy string');	return;
+	err = ErrEval(FuncName,'Err_Emtpy string');	
+   if (nargout == 1) err = ''; end
+   return;
 end
 
 if (allmc == 0),  
@@ -50,7 +57,7 @@ else
    [i] = union(findstr(s,'/'), findstr(s,'\'));
 end
 if (isempty(i)),
-	p = '.';
+	p = ['.' filesep];
 	f = s;
 elseif (max(i)==N);
 	p = s;
@@ -60,7 +67,8 @@ else
 	f = s(max(i)+1:N);
 end
 
+if (nargout < 2) err = p; else err = 0; end
 
-err = 0;
+
 return;
 

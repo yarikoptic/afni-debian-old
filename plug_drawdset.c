@@ -1016,7 +1016,7 @@ void DRAW_copy_bbox_CB( Widget w, XtPointer client_data, XtPointer call_data )
 static void 
 Sensitize_copy_bbox(int  sens) 
 {
-   XtPointer clienttemp; 
+   XtPointer clienttemp=NULL; 
 
    SENSITIZE(copy_bbox->wbut[0], sens);
    SENSITIZE(copy_bbox->wbut[1], sens);
@@ -2238,6 +2238,16 @@ void DRAW_receiver( int why , int np , void * vp , void * cbd )
          if( mode == UNDO_MODE ){
            if( undo_num > 0 ) DRAW_undo_CB( undo_pb,NULL,NULL ) ;
            else               XBell(dc->display,100) ;
+           return ;
+         }
+
+         if( mode == INCVAL_MODE || mode == DECVAL_MODE ){ /* 13 Sep 2008 */
+           float nval ;
+           nval = value_float + ((mode==INCVAL_MODE) ? (1.0f) : (-1.0f)) ;
+           AV_assign_fval( value_av , nval ) ;
+           value_int   = value_av->ival ;
+           value_float = value_av->fval ;
+           DRAW_set_value_label() ;
            return ;
          }
 

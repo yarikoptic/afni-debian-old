@@ -1,6 +1,40 @@
 #ifndef SUMA_DISPLAY_INCLUDED
 #define SUMA_DISPLAY_INCLUDED
 
+/* 
+
+   Historical Note from Fri Jan  3 10:21:52 EST 2003:
+   the method for hiding a surface viewer (and other controllers), used to have     three options prior to Fri Jan  3 10:21:52 EST 2003
+   Now only SUMA_WITHDRAW and NOT SUMA_DESTROY should be used.
+
+   As of Wed Sep 23 14:45:59 EDT 2009
+   ----------------------------------
+   On Mac OS X 10.5, and at least early 10.6, using XWithdrawWindow,
+   followed by XMapRaised, SUMA would crash with a GLX_BadDrawable error.
+   One way around this is to go back to XtUnrealizeWidget/XtRealizeWidget pair.
+   It appears that GLX implementation is full of uninitialzation errors, 
+   according to Valgrind. 
+   
+   So now one can choose between three closing modes. For widgets with GLX drawables (Viewers, and SurfaceControllers) use SUMA_UNREALIZE.
+   For other, stick with SUMA_WITHDRAW as previously done.
+*/
+
+#define SUMA_DESTROY    1
+#define SUMA_WITHDRAW   2
+#define SUMA_UNREALIZE  3
+
+#define SUMA_CLOSE_MODE       SUMA_WITHDRAW
+#define SUMA_GL_CLOSE_MODE    SUMA_UNREALIZE
+
+#define DO_FLUSH        0  /* 0 = Avoid flushing/Buffer swapping, at close time 
+                                  Part of the effort to keep suma from crashing
+                                  on OS X 10.5 , when closing a widget with an 
+                                  OpenGL drawable.
+                                  Keep it at 0, at least for OS X 10.5 and 
+                                  early 10.6 . 
+                                  Perhaps it should be kept off forever */
+#define SUMA_HOLD_IT  if (0) { SUMA_S_Note("Waiting...");glXWaitGL();glXWaitX(); SUMA_S_Note("Done.");}  
+                                  
 typedef struct suma_menu_item {
     char        *label;         /*!< the label for the item */
     WidgetClass *class;         /*!< pushbutton, label, separator... */
@@ -9,20 +43,20 @@ typedef struct suma_menu_item {
     char        *accel_text;    /*!< to be converted to compound string */
     void       (*callback)();   /*!< routine to call; NULL if none */
     XtPointer    callback_data; /*!< client_data for callback(). 
-                                    This ends up being the index
-                                    of the widget in the menu, in addition
-                                    to being the callback value. 
-                                    Specify it even if callback is NULL 
-                                    because it is needed to index into 
-                                    the vector of widgets. The callback value
-                                    is actually a bit more complicated than what 
-                                    is stored in callback_data. The call back ends
-                                    up receiving a pointer to a structure of the 
-                                    type SUMA_MenuCallBackData. That structure contains
-                                    callback_data in a field of the same name, in addition
-                                    to an identifier of the controller containing that menu.
-                                    This way you can tell from which controller the menu
-                                    had been activated.*/
+                        This ends up being the index
+                        of the widget in the menu, in addition
+                        to being the callback value. 
+                        Specify it even if callback is NULL 
+                        because it is needed to index into 
+                        the vector of widgets. The callback value
+                        is actually a bit more complicated than what 
+                        is stored in callback_data. The call back ends
+                        up receiving a pointer to a structure of the 
+                        type SUMA_MenuCallBackData. That structure contains
+                        callback_data in a field of the same name, in addition
+                        to an identifier of the controller containing that menu.
+                        This way you can tell from which controller the menu
+                        had been activated.*/
     struct suma_menu_item *subitems; /*!< pullright menu items, if not NULL */
 } SUMA_MenuItem; /*!< Structure to hold descriptions of menu items. 
                   This structure is mostly based on the build_option.c example 
@@ -43,26 +77,28 @@ activated.
 #define SUMA_VIEWER_FROM_FILEMENU_CALLBACK(data, isv, widtype) {\
          SUMA_MenuCallBackData *datap; \
          datap = (SUMA_MenuCallBackData *)data;  \
-         isv = (int)datap->ContID; \
-         widtype = (int)datap->callback_data; }
+         isv = (INT_CAST)datap->ContID; \
+         widtype = (INT_CAST)datap->callback_data; }
          
 
 #define SUMA_VIEWER_FROM_VIEWMENU_CALLBACK(data, isv, widtype) {\
          SUMA_MenuCallBackData *datap; \
          datap = (SUMA_MenuCallBackData *)data;  \
-         isv = (int)datap->ContID; \
-         widtype = (int)datap->callback_data; }
+         isv = (INT_CAST)datap->ContID; \
+         widtype = (INT_CAST)datap->callback_data; }
 /*!
 sets the select color of the widget to its foreground color */         
 #define SUMA_SET_SELECT_COLOR(m_w) {\
-      Pixel m_fg_pix;  \
+      Pixel m_fg_pix=0;  \
       XtVaGetValues (m_w, XmNforeground, &m_fg_pix, NULL);  \
       XtVaSetValues (m_w, XmNselectColor, m_fg_pix, NULL);  \
 }
 
 /*! set the string of a label , sa: SUMA_SET_LABEL_MAX*/
 #define SUMA_SET_LABEL(m_w, m_s) {\
-   XmString m_str = XmStringCreateLocalized(m_s); \
+   /* XmStringCreateLocalized does not work well with \n chars */ \
+   /*XmString m_str = XmStringCreateLocalized(m_s); */\
+   XmString m_str = XmStringCreateLtoR (m_s, XmSTRING_DEFAULT_CHARSET); \
    XtVaSetValues (m_w, XmNlabelString, m_str, NULL); \
    XmStringFree (m_str);   \
 }
@@ -72,7 +108,9 @@ sets the select color of the widget to its foreground color */
    char m_tmp = '\0'; \
    XmString m_str ;   \
    if (strlen(m_s) >= m_max) { m_tmp = m_s[m_max-1]; m_s[m_max-1] = '\0'; } \
-   m_str = XmStringCreateLocalized(m_s); \
+   /* XmStringCreateLocalized does not work well with \n chars */ \
+   /* m_str = XmStringCreateLocalized(m_s); */ \
+   m_str = XmStringCreateLtoR (m_s, XmSTRING_DEFAULT_CHARSET); \
    XtVaSetValues (m_w, XmNlabelString, m_str, NULL); \
    XmStringFree (m_str);   \
    if (m_tmp != '\0') m_s[m_max-1] = m_tmp;  \
@@ -85,27 +123,38 @@ sets the select color of the widget to its foreground color */
 /*! m_s is a char *. Do not allocate space for it, do not free it afterwards 
 */
 #define SUMA_GET_TEXT_FIELD(m_w, m_s) {\
-   void *n; \
+   void *n=NULL; \
    XtVaGetValues (m_w, XmNvalue, &n, NULL); \
    m_s = (char *)n;  \
 }
 
-#define SUMA_SET_GL_PROJECTION(csv) {  \
-   if (!csv->ortho) { \
-      if (LocalHead) fprintf (SUMA_STDOUT,"%s: Setting up matrix mode and perspective ...\n", FuncName); \
+#define SUMA_SET_GL_PROJECTION(csv, ortho) {  \
+   if (!ortho) { \
+      if (LocalHead) \
+         fprintf (SUMA_STDOUT,\
+                  "%s: Setting up matrix mode and perspective ...\n", \
+                  FuncName); \
       glMatrixMode (GL_PROJECTION); \
       glLoadIdentity ();   \
-      gluPerspective((GLdouble)csv->FOV[csv->iState], csv->Aspect, SUMA_PERSPECTIVE_NEAR, SUMA_PERSPECTIVE_FAR); /*lower angle is larger zoom,*/   \
+      gluPerspective((GLdouble)csv->FOV[csv->iState], csv->Aspect, \
+                     SUMA_PERSPECTIVE_NEAR, SUMA_PERSPECTIVE_FAR); \
+                     /*lower angle is larger zoom,*/   \
    }  else { \
-      GLdouble m_sz = 0.5 *tan(SUMA_PI * csv->FOV[csv->iState] / 180.0)*csv->GVS[csv->StdView].ViewFrom[2];  \
+      GLdouble m_sz = \
+         0.5 *tan(SUMA_PI * csv->FOV[csv->iState] / 180.0) * \
+         csv->GVS[csv->StdView].ViewFrom[2];  \
       GLdouble m_szx = m_sz * csv->Aspect;   \
       GLdouble m_szy = m_sz ;   \
-      if (LocalHead) fprintf (SUMA_STDOUT,"%s: Setting up matrix mode and orthographic projection (m_szx = %g, m_szy=%g)...\n", FuncName, m_szx, m_szy); \
+      if (LocalHead) \
+         fprintf (SUMA_STDOUT,\
+                  "%s: Setting up matrix mode and orthographic projection "\
+                  "(m_szx = %g, m_szy=%g)...\n", FuncName, m_szx, m_szy); \
       glMatrixMode (GL_PROJECTION); \
       glLoadIdentity ();   \
       glOrtho( -m_szx, m_szx, \
                -m_szy, m_szy, \
-               SUMA_PERSPECTIVE_NEAR, SUMA_PERSPECTIVE_FAR); /*lower angle is larger zoom,*/   \
+               SUMA_PERSPECTIVE_NEAR, SUMA_PERSPECTIVE_FAR); /*lower angle is  \
+                                                               larger zoom,*/   \
    }  \
 }
 
@@ -113,17 +162,24 @@ sets the select color of the widget to its foreground color */
    if (LocalHead) {  \
       int m_i; \
       fprintf(stdout,"Translation Vector: %f %f\n", \
-         csv->GVS[csv->StdView].translateVec[0], csv->GVS[csv->StdView].translateVec[1]); \
+         csv->GVS[csv->StdView].translateVec[0], \
+         csv->GVS[csv->StdView].translateVec[1]); \
       fprintf(stdout,"Rotation Matrix:\n");  \
       for (m_i=0; m_i<4; ++m_i){ fprintf(stdout, "%f\t%f\t%f\t%f\n",   \
-         rotationMatrix[m_i][0], rotationMatrix[m_i][1], rotationMatrix[m_i][2], rotationMatrix[m_i][3]); }   \
+         rotationMatrix[m_i][0], rotationMatrix[m_i][1], \
+         rotationMatrix[m_i][2], rotationMatrix[m_i][3]); }   \
    }  \
    glMatrixMode(GL_MODELVIEW);   \
    glPushMatrix();   \
-   glTranslatef (csv->GVS[csv->StdView].translateVec[0], csv->GVS[csv->StdView].translateVec[1], 0.0);   \
-   glTranslatef (csv->GVS[csv->StdView].RotaCenter[0], csv->GVS[csv->StdView].RotaCenter[1], csv->GVS[csv->StdView].RotaCenter[2]); \
+   glTranslatef ( csv->GVS[csv->StdView].translateVec[0], \
+                  csv->GVS[csv->StdView].translateVec[1], 0.0);   \
+   glTranslatef ( csv->GVS[csv->StdView].RotaCenter[0], \
+                  csv->GVS[csv->StdView].RotaCenter[1], \
+                  csv->GVS[csv->StdView].RotaCenter[2]); \
    glMultMatrixf(&rotationMatrix[0][0]);  \
-   glTranslatef (-csv->GVS[csv->StdView].RotaCenter[0], -csv->GVS[csv->StdView].RotaCenter[1], -csv->GVS[csv->StdView].RotaCenter[2]); \
+   glTranslatef (-csv->GVS[csv->StdView].RotaCenter[0], \
+                  -csv->GVS[csv->StdView].RotaCenter[1], \
+                  -csv->GVS[csv->StdView].RotaCenter[2]); \
 }   
 
 
@@ -147,8 +203,13 @@ int SUMA_generateEPS(char *filename, int inColor, unsigned int width, unsigned i
 GLvoid *SUMA_grabPixels(int inColor, unsigned int width, unsigned int height);
 SUMA_Boolean SUMA_RenderToPixMap (SUMA_SurfaceViewer *csv, SUMA_DO* dov);
 void SUMA_context_Init(SUMA_SurfaceViewer *sv);
-SUMA_Boolean SUMA_GetSelectionLine (SUMA_SurfaceViewer *sv, int x, int y, GLdouble *Pick0, GLdouble *Pick1, 
-                                    int N_List, int *xList, int *yList, GLdouble *Pick0List);
+SUMA_Boolean SUMA_NormScreenToWorld(SUMA_SurfaceViewer *sv, 
+                                    double xn, double yn, 
+                                    GLdouble *pfront, GLdouble *pback);
+SUMA_Boolean SUMA_GetSelectionLine (SUMA_SurfaceViewer *sv, int x, int y, 
+                                    GLdouble *Pick0, GLdouble *Pick1, 
+                                    int N_List, int *xList, int *yList, 
+                                    GLdouble *Pick0List);
 int SUMA_viewSurfaceCont(Widget w, SUMA_SurfaceObject *SO, SUMA_SurfaceViewer *sv);
 void SUMA_cb_viewSurfaceCont(Widget w, XtPointer data, XtPointer callData);
 void SUMA_cb_viewViewerCont(Widget w, XtPointer data, XtPointer callData);
@@ -212,7 +273,9 @@ void SUMA_cb_CloseDrawROIWindow(Widget w, XtPointer client_data, XtPointer call_
 void SUMA_CreateDrawROIWindow(void);
 SUMA_Boolean SUMA_InitializeDrawROIWindow (SUMA_DRAWN_ROI *DrawnROI);
 SUMA_Boolean SUMA_OpenDrawROIWindow (SUMA_DRAWN_ROI *DrawnROI);
+SUMA_Boolean SUMA_OpenDrawROIController(SUMA_SurfaceViewer *sv);
 void SUMA_cb_DrawROImode_toggled (Widget w, XtPointer data, XtPointer call_data);
+void SUMA_cb_ContROImode_toggled (Widget w, XtPointer data, XtPointer call_data);
 void SUMA_cb_DrawROIPen_toggled (Widget w, XtPointer data, XtPointer call_data);
 void SUMA_cb_AfniLink_toggled (Widget w, XtPointer data, XtPointer call_data);
 void SUMA_cb_DrawROI_Undo (Widget w, XtPointer data, XtPointer client_data);
@@ -250,12 +313,22 @@ void SUMA_cb_DrawROI_SwitchROI (Widget w, XtPointer data, XtPointer call_data);
 void SUMA_cb_DrawROI_Delete(Widget wcall, XtPointer cd1, XtPointer cbs);
 void SUMA_delete_timeout_CB( XtPointer client_data , XtIntervalId * id );
 SUMA_LIST_WIDGET * SUMA_FreeScrolledList (SUMA_LIST_WIDGET *LW);
-SUMA_LIST_WIDGET * SUMA_AllocateScrolledList (char *Label, int SelectPolicy, 
-                                                SUMA_Boolean RemoveDups, SUMA_Boolean ShowSorted,
-                                                Widget PosRef, SUMA_WINDOW_POSITION Pos,
-                                                void (*Default_cb)(Widget w, XtPointer data, XtPointer calldata), void *DefaultData,
-                                                void (*Select_cb)(Widget w, XtPointer data, XtPointer calldata), void *SelectData,
-                                                void (*CloseList_cb)(Widget w, XtPointer data, XtPointer calldata), void *CloseListData);
+SUMA_LIST_WIDGET * SUMA_AllocateScrolledList (
+                     char *Label, int SelectPolicy, 
+                     SUMA_Boolean RemoveDups, 
+                     SUMA_Boolean ShowSorted,
+                     Widget PosRef,
+                     SUMA_WINDOW_POSITION Pos,
+                     int width, 
+                     void (*Default_cb)(  Widget w, XtPointer data, 
+                                          XtPointer calldata), 
+                     void *DefaultData,
+                     void (*Select_cb)(   Widget w, XtPointer data, 
+                                          XtPointer calldata), 
+                     void *SelectData,
+                     void (*CloseList_cb)(Widget w, XtPointer data, 
+                                          XtPointer calldata), 
+                     void *CloseListData);
 SUMA_Boolean SUMA_UpdateScrolledListData(SUMA_LIST_WIDGET *LW, void *Default_Data, void *Select_Data, void *CloseList_Data); 
 void SUMA_CreateScrolledList (    char **clist, int N_clist, SUMA_Boolean Partial, 
                                   SUMA_LIST_WIDGET *LW);
@@ -291,7 +364,7 @@ void SUMA_PromptHelp_cb (Widget w, XtPointer data, XtPointer calldata);
 void SUMA_PromptActivate_cb (Widget w, XtPointer data, XtPointer calldata);
 void SUMA_PromptUnmap_cb (Widget w, XtPointer data, XtPointer calldata);
 void SUMA_FreePromptDialogStruct(SUMA_PROMPT_DIALOG_STRUCT *prmpt);
-void  SUMA_cb_UnmanageWidget(Widget w, XtPointer data, XtPointer client_data);
+void  SUMA_cb_ToggleManagementColPlaneWidget(Widget w, XtPointer data, XtPointer client_data);
 void SUMA_ColPlane_NewOrder (void *data);
 void SUMA_ColPlane_NewOpacity (void *data);
 void SUMA_ColPlane_NewDimFact (void *data);
@@ -314,7 +387,9 @@ SUMA_Boolean SUMA_RemixRedisplay (SUMA_SurfaceObject *SO);
 void SUMA_cb_SetDrawROI_SaveMode(Widget w, XtPointer data, XtPointer call_data);
 void SUMA_cb_SetDrawROI_SaveWhat(Widget w, XtPointer data, XtPointer call_data);
 void SUMA_response(Widget widget, XtPointer client_data, XtPointer call_data);
-int SUMA_PauseForUser(Widget parent, char *question, SUMA_WINDOW_POSITION pos);
+int SUMA_PauseForUser(Widget parent, char *question, 
+                      SUMA_WINDOW_POSITION pos, XtAppContext    *app,
+                      int withpause);
 int SUMA_ForceUser_YesNo(Widget parent, char *question, int default_ans, SUMA_WINDOW_POSITION pos);
 int AskUser(Widget parent, char *question, char *ans1, char *ans2, int default_ans);
 char * SUMA_ClassOf(int c);
@@ -330,6 +405,9 @@ void SUMA_LoadSegDO (char *s, void *csvp);
 void SUMA_SiSi_I_Insist(void);
 void SUMA_BuildMenuReset(int nchar);
 SUMA_Boolean SUMA_Init_SurfCont_SurfParam(SUMA_SurfaceObject *SO);
+int SUMA_NodeNeighborAlongScreenDirection(SUMA_SurfaceViewer *sv,
+                                          SUMA_SurfaceObject *SO,
+                                          int inode, double *dd);
 SUMA_Boolean SUMA_World2ScreenCoords (SUMA_SurfaceViewer *sv, int N_List, double *WorldList, 
                                        double *ScreenList, int *Quad, SUMA_Boolean ApplyXform);
 SUMA_Boolean SUMA_DrawWindowLine(SUMA_SurfaceViewer *sv, int x0, int y0, int x1, int y1, int meth);
@@ -337,6 +415,119 @@ void SUMA_cb_SetDrawROI_WhatDist(Widget widget, XtPointer client_data, XtPointer
 SUMA_Boolean SUMA_UpdateColPlaneShellAsNeeded(SUMA_SurfaceObject *SO);
 void SUMA_cb_createSurfaceCont(Widget w, XtPointer data, XtPointer callData);
 SUMA_Boolean SUMA_display_edge_striplist(DList *striplist, SUMA_SurfaceViewer *sv, SUMA_SurfaceObject *SO, char *DispOptions);
+Widget SUMA_CloseBhelp_Frame( Widget parent,
+                              XtCallbackProc close_callback, 
+                              XtPointer close_data,
+                              char *close_hint,
+                              char *close_help,
+                              XtCallbackProc help_callback,
+                              XtPointer help_data,
+                              char *help_hint,
+                              char *help_help);
+void SUMA_cb_XformPreProc_Save (Widget w, XtPointer data, 
+                             XtPointer client_data);
+void SUMA_cb_XformOpts_Apply (Widget w, XtPointer data, 
+                             XtPointer client_data);
+void SUMA_setIO_notify(int val);
+
+#define SUMA_MAX_XFCB_OBJS 32       /*!< Max number of callbacks or xforms 
+                                         that may act on dsets or SOs */
+
+#define SUMA_SPECT_AXIS(TR,NSAMP,fs, fmax,fstep) {\
+   fs=1.0/(TR); fmax = fs/2.0; fstep=fs/(float)(NSAMP);   \
+}
+
+typedef struct {
+   
+   Widget AppShell;
+   Widget Active_tb;
+   
+   Widget ParentLabel_lb;
+
+   SUMA_ARROW_TEXT_FIELD *AF0;
+   SUMA_ARROW_TEXT_FIELD *AF1;
+   SUMA_ARROW_TEXT_FIELD *AF2;
+   
+   Widget SaveOpts_pb;
+   Widget SavePreProc_pb;
+   Widget ShowPreProc_tb;
+   Widget ApplyOpts_pb;
+   Widget LoadOrtFile_pb;
+   Widget OrtFileLabel_lb;
+   
+} SUMA_GENERIC_XFORM_INTERFACE;
+
+typedef struct {
+   char name[128];
+   char idcode_str[SUMA_IDCODE_LENGTH]; /*!< A unique identifier for xform */
+   char parents[SUMA_MAX_XFCB_OBJS][SUMA_IDCODE_LENGTH]; /*!< IDs of parents
+                     upon which the xform is applied. 
+                     These could be SOs or DSETS*/ 
+   char parents_domain[SUMA_MAX_XFCB_OBJS][SUMA_IDCODE_LENGTH]; /*!< IDs of SO
+                   defining the domain of the parent. This is meaningful when
+                   the parent is a dset */
+   int  N_parents;
+   char children[SUMA_MAX_XFCB_OBJS][SUMA_IDCODE_LENGTH]; /*!< IDs of children
+                  created by application of xform.
+                  These could be SOs or DSETS*/  
+   int N_children;
+   int active;
+   int ShowPreProc;
+   NI_group *XformOpts;
+      
+   SUMA_GENERIC_XFORM_INTERFACE *gui;
+} SUMA_XFORM;  /*!< See Comments in ZSS labbook NIH-5, pp30-... */ 
+
+void SUMA_cb_CloseXformInterface(Widget w, XtPointer data, XtPointer call_data);
+SUMA_Boolean SUMA_InitializeXformInterface (SUMA_XFORM *xf);
+void SUMA_CreateXformInterface(SUMA_XFORM *xf);
+void SUMA_DotXform_NewOrtName(  SUMA_XFORM *xf,
+                               char * ortname, 
+                               int fromgui);
+void SUMA_OpenXformOrtFile (char *filename, void *data);
+SUMA_Boolean SUMA_WildcardChoice(int filetype, 
+                  SUMA_SurfaceObject *SO, char wild[]); 
+
+
+#define SUMA_XformOrtFile_Load_help   \
+   "Load an ort file"
+
+#define SUMA_XformPreProc_Save_help \
+   "Save preprocessed dsets to disk"
+   
+#define SUMA_XformOpts_Apply_help   \
+   "Apply changes to transform options now"
+   
+#define SUMA_XformOpts_Save_help \
+   "Save options structure to disk"
+   
+#define SUMA_ShowPreProcXform_help  \
+   "Show in SUMA pre-processed time series" 
+
+#define SUMA_ActivateXform_help  \
+   "Activate/Suspend xform" 
+
+#define SUMA_DotXform_AF0_hint \
+   "Bottom pass frequency in Hz." 
+
+#define SUMA_DotXform_AF0_help   \
+   "Bottom pass frequency in Hz."
+   
+#define SUMA_DotXform_AF1_hint \
+   "Top pass frequency in Hz." 
+
+#define SUMA_DotXform_AF1_help   \
+   "Top pass frequency in Hz."
+
+#define SUMA_DotXform_AF2_hint \
+   "Baseline model polynomial degree." 
+
+#define SUMA_DotXform_AF2_help   \
+   "Baseline model polynomial degree\n"   \
+   "-1 for no baseline model.\n"
+
+#define SUMA_DotXform_ParentLabel_help  \
+   "Label of time series dsets transformed." 
 
 #define SUMA_DrawROI_ParentLabel_help  \
    "Label of the ROI's parent surface." 
@@ -348,6 +539,10 @@ SUMA_Boolean SUMA_display_edge_striplist(DList *striplist, SUMA_SurfaceViewer *s
    "To draw, use the right mouse button. \n" \
    "If you want to pick a node without causing \n" \
    "a drawing action, use shift+right button."
+   
+#define SUMA_DrawROI_ContROIMode_help\
+   "Toggles ROI contour drawing \n" \
+   "If turned on, then contours are drawn around filled ROIs\n" 
    
 #define SUMA_DrawROI_PenMode_help\
    "Toggles Pen drawing mode\n"\
@@ -433,11 +628,18 @@ SUMA_Boolean SUMA_display_edge_striplist(DList *striplist, SUMA_SurfaceViewer *s
    "value is a node index, the second is the node's value. \n" \
    "Needless, to say, this format does not support the storage \n"   \
    "of ROI auxiliary information such as Label and \n"   \
-   "Parent Surface, etc... For that you'll have to use NIML.\n" \
+   "Parent Surface, etc., nor does it preserve the order in which \n"   \
+   "nodes are traversed during a tracing. For that you'll have to use NIML.\n" \
    "   NIML is a whole different story which will be documented \n"  \
    "(if necessary) in the future. Suffice it to say that in NIML \n" \
    "format you can store all the auxiliary information about \n"  \
-   "each ROI, unlike with the .1D format. "
+   "each ROI, unlike with the .1D format. \n"   \
+   "But more importantly, the NIML format allows you to preserve\n"  \
+   "--------------------  the order in which you traced the ROI. \n" \
+   "This information can be later used for the purpose of sampling \n"  \
+   "cortical activity along a particular path. This would be accomplished \n" \
+   "with the aid of ROI2dataset's -nodelist* options, along with \n" \
+   "ConvertDset's -node_select_1D option."
    
 #define SUMA_DrawROI_SaveWhat_help  \
    "Which ROIs to save?\n" \
@@ -535,6 +737,15 @@ SUMA_Boolean SUMA_display_edge_striplist(DList *striplist, SUMA_SurfaceViewer *s
    "Current settings are preserved\n"\
    "when controller is reopened.\n"
 
+#define SUMA_closeXformCont_help   \
+   "Close Xform controller window.\n"   \
+   "Current settings are preserved\n"\
+   "when controller is reopened.\n"
+
+#define SUMA_helpXformCont_help   \
+   "Open a searchable help window\n"   \
+   "about using this interface.\n"
+
 #define SUMA_closeViewerCont_help   \
    "Close Viewer controller window.\n"   \
    "Current settings are preserved\n"\
@@ -554,5 +765,7 @@ SUMA_Boolean SUMA_display_edge_striplist(DList *striplist, SUMA_SurfaceViewer *s
 
 #define SUMA_SurfCont_ColPlaneOpacity_hint \
    "Opacity of Dset's colorplane." \
+
+
    
 #endif

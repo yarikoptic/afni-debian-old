@@ -18,6 +18,7 @@
 /*---------------------------------------------------------------------------*/
 
 #include "NLfit_model.h"
+#include "debugtrace.h"
 
 /*----- Compile this only if plugins are properly enabled in machdep.h -----*/
 #ifndef ALLOW_PLUGINS
@@ -42,18 +43,18 @@ NLFIT_MODEL_array * NLFIT_get_all_MODELs( char * dname )
    NLFIT_MODEL_array * outar ;
    NLFIT_MODEL       * model ;
 
+ENTRY("NLFIT_get_all_MODELs") ;
+
    /*----- sanity check and initialize -----*/
 
-   if( dname == NULL || strlen(dname) == 0 )  return (NULL) ;
-   if( ! THD_is_directory(dname) )            return (NULL) ;
+   if( dname == NULL || strlen(dname) == 0 )  RETURN (NULL) ;
+   if( ! THD_is_directory(dname) )            RETURN (NULL) ;
 
    INIT_MODEL_ARRAY( outar ) ;
 
    if (NL_DEBUG)
      { 
-       char str[256] ; 
-       sprintf (str,"scanning directory %s \n",dname) ; 
-       printf (str) ; 
+       printf ("scanning directory %s \n",dname) ; 
      }
 
    /*----- find all filenames -----*/
@@ -62,7 +63,7 @@ NLFIT_MODEL_array * NLFIT_get_all_MODELs( char * dname )
    if( flist == NULL || flist->num <= 0 ){
       DESTROY_SARR(flist) ;
       DESTROY_MODEL_ARRAY(outar) ;
-      return (NULL) ;
+      RETURN (NULL) ;
    }
 
    rlist = THD_extract_regular_files( flist ) ;
@@ -70,14 +71,12 @@ NLFIT_MODEL_array * NLFIT_get_all_MODELs( char * dname )
    if( rlist == NULL || rlist->num <= 0 ){
       DESTROY_SARR(rlist) ;
       DESTROY_MODEL_ARRAY(outar) ;
-      return (NULL) ;
+      RETURN (NULL) ;
    }
 
   if (NL_DEBUG)
     { 
-      char str[256] ; 
-      sprintf(str,"%d files to scan \n",rlist->num) ; 
-      printf (str) ; 
+      printf("%d files to scan \n",rlist->num) ; 
     }
 
 
@@ -96,15 +95,13 @@ NLFIT_MODEL_array * NLFIT_get_all_MODELs( char * dname )
 
   if (NL_DEBUG)
     { 
-      char str[256] ;
-      sprintf (str,"directory %s has %d MODELs \n",dname,outar->num) ; 
-      printf (str) ; 
+      printf ("directory %s has %d MODELs \n",dname,outar->num) ; 
     }
 
 
    DESTROY_SARR(rlist) ;
    if( outar->num == 0 ) DESTROY_MODEL_ARRAY(outar) ;
-   return (outar) ;
+   RETURN (outar) ;
 }
 
 
@@ -118,10 +115,12 @@ NLFIT_MODEL * NLFIT_read_MODEL( char * fname )
    NLFIT_MODEL * model ;
    static int firsterr=1 ;
 
+ENTRY("NLFIT_read_MODEL") ;
+
    /*----- sanity checks -----*/
 
-   if( fname == NULL || strlen(fname) == 0 )  return (NULL) ;
-   if( ! THD_is_file(fname) )                 return (NULL) ;
+   if( fname == NULL || strlen(fname) == 0 )  RETURN (NULL) ;
+   if( ! THD_is_file(fname) )                 RETURN (NULL) ;
 
    /*----- make space for new MODEL -----*/
 
@@ -143,15 +142,13 @@ NLFIT_MODEL * NLFIT_read_MODEL( char * fname )
       if( er != NULL ) fprintf(stderr," -- %s\n",er) ;
       else             fprintf(stderr,"\n") ;
       myXtFree(model) ;
-      return (NULL) ;
+      RETURN (NULL) ;
    }
 
    if (NL_DEBUG)
      { 
-       char str[256] ;
-       sprintf (str,"opened library %s with handle %p \n" , 
+       printf ("opened library %s with handle %p \n" , 
 	       fname,model->libhandle ) ;
-       printf (str) ; 
      }
 
 
@@ -176,7 +173,7 @@ NLFIT_MODEL * NLFIT_read_MODEL( char * fname )
       if( er != NULL ) fprintf(stderr," -- %s\n",er) ;
       DYNAMIC_CLOSE( model->libhandle ) ;
       myXtFree(model) ;
-      return (NULL) ;
+      RETURN (NULL) ;
    }
 
    /*----- create interface(s) by calling initialization function -----*/
@@ -186,20 +183,18 @@ NLFIT_MODEL * NLFIT_read_MODEL( char * fname )
      {
        DYNAMIC_CLOSE( model->libhandle ) ;
        myXtFree(model) ;
-       return (NULL) ;
+       RETURN (NULL) ;
      }
 
    if (NL_DEBUG)
      { 
-       char str[256] ;
-       sprintf (str,"Interface created for %s model\n",
+       printf ("Interface created for %s model\n",
 		model->interface->label) ; 
-       printf (str) ; 
      }
 
    /*----- done -----*/
 
-   return (model) ;
+   RETURN (model) ;
 }
 
 
@@ -215,6 +210,8 @@ NLFIT_MODEL_array * NLFIT_get_many_MODELs(void)
    NLFIT_MODEL_array * outar , * tmpar ;
    int epos , ll , ii , id ;
    THD_string_array *qlist ;  /* 02 Feb 2002 */
+
+ENTRY("NLFIT_get_many_MODELs") ;
 
    /*----- sanity checks -----*/
 
@@ -290,15 +287,13 @@ NLFIT_MODEL_array * NLFIT_get_many_MODELs(void)
 
    if (NL_DEBUG)
      { 
-       char str[256] ; 
-       sprintf (str,"found %d MODELs \n",outar->num) ; 
-       printf (str) ; 
+       printf ("found %d MODELs \n",outar->num) ; 
      }
 
    if( outar->num == 0 ) DESTROY_MODEL_ARRAY(outar) ;
 
    DESTROY_SARR(qlist) ; /* 02 Feb 2002 */
-   return (outar) ;
+   RETURN (outar) ;
 }
 
 

@@ -106,6 +106,13 @@ SUMA_SurfaceObject *SUMA_Load_Surface_Object_Wrapper ( char *if_name, char *if_n
          SO = SUMA_Load_Surface_Object (  SO_name, SUMA_PLY, 
                                           SUMA_FF_NOT_SPECIFIED, sv_name);
          break;  
+      case SUMA_MNI_OBJ:
+         SO_name = (void *)if_name; 
+         if (debug > 0) 
+            fprintf (SUMA_STDOUT,"Reading %s ...\n",if_name);
+         SO = SUMA_Load_Surface_Object (  SO_name, SUMA_MNI_OBJ, 
+                                          SUMA_ASCII, sv_name);
+         break;  
       case SUMA_BRAIN_VOYAGER:
          SO_name = (void *)if_name; 
          if (debug > 0) 
@@ -159,7 +166,8 @@ char *SUMA_RemoveSurfNameExtension (char*Name, SUMA_SO_File_Type oType)
          break;
       case SUMA_VEC:
          tmp  =  SUMA_Extension(Name, ".1D.coord", YUP);
-         noex  =  SUMA_Extension(tmp, ".1D.topo", YUP); SUMA_free(tmp); tmp = NULL;
+         noex  =  SUMA_Extension(tmp, ".1D.topo", YUP); 
+         SUMA_free(tmp); tmp = NULL;
          break;
       case SUMA_FREE_SURFER:
       case SUMA_FREE_SURFER_PATCH:
@@ -167,6 +175,9 @@ char *SUMA_RemoveSurfNameExtension (char*Name, SUMA_SO_File_Type oType)
          break;  
       case SUMA_PLY:
          noex  =  SUMA_Extension(Name,".ply" , YUP); 
+         break;  
+      case SUMA_MNI_OBJ:
+         noex  =  SUMA_Extension(Name,".obj" , YUP); 
          break;  
       case SUMA_OPENDX_MESH:
          noex  =  SUMA_Extension(Name,".dx" , YUP); 
@@ -185,7 +196,8 @@ char *SUMA_RemoveSurfNameExtension (char*Name, SUMA_SO_File_Type oType)
          noex  =  SUMA_Extension(Name,".gii" , YUP); 
          break;
       default:
-         /* do nothing, get back fprintf (SUMA_STDERR,"Warning %s: Bad format.\n", FuncName); */
+         /* do nothing, 
+         get back fprintf (SUMA_STDERR,"Warning %s: Bad format.\n", FuncName); */
          noex = SUMA_copy_string(Name);
          break;
    }
@@ -197,7 +209,9 @@ char *SUMA_RemoveSurfNameExtension (char*Name, SUMA_SO_File_Type oType)
    \brief much like SUMA_Prefix2SurfaceName, but handles the case where namecoord and nametopo are not the same
    consider it a more general version of SUMA_Prefix2SurfaceName
 */
-void * SUMA_2Prefix2SurfaceName (char *namecoord, char *nametopo, char *path, char *vp_name, SUMA_SO_File_Type oType, SUMA_Boolean *exists)
+void * SUMA_2Prefix2SurfaceName (char *namecoord, char *nametopo, char *path, 
+                                 char *vp_name, SUMA_SO_File_Type oType, 
+                                 SUMA_Boolean *exists)
 {
    static char FuncName[]={"SUMA_2Prefix2SurfaceName"};
    SUMA_Boolean exist1, exist2;
@@ -209,12 +223,19 @@ void * SUMA_2Prefix2SurfaceName (char *namecoord, char *nametopo, char *path, ch
    
    if (!nametopo && !namecoord) { SUMA_RETURN(NULL); }
    
-   if (!nametopo) SUMA_RETURN(SUMA_Prefix2SurfaceName (namecoord, path, vp_name, oType, exists));
-   if (!namecoord) SUMA_RETURN(SUMA_Prefix2SurfaceName (nametopo, path, vp_name, oType, exists));
+   if (!nametopo) 
+      SUMA_RETURN(SUMA_Prefix2SurfaceName (namecoord, path, vp_name, 
+                                           oType, exists));
+   if (!namecoord) SUMA_RETURN(SUMA_Prefix2SurfaceName (nametopo, path, vp_name, 
+                                                        oType, exists));
    
-   if (strcmp(namecoord, nametopo) == 0) SUMA_RETURN(SUMA_Prefix2SurfaceName (nametopo, path, vp_name, oType, exists));
+   if (strcmp(namecoord, nametopo) == 0) 
+      SUMA_RETURN(SUMA_Prefix2SurfaceName (nametopo, path, vp_name, 
+                                           oType, exists));
    if (oType != SUMA_SUREFIT && oType != SUMA_VEC) {
-      SUMA_SL_Err("Wrong usage of function, namecoord and nametopo are different but surface type is neither SUMA_SUREFIT nor SUMA_VEC");
+      SUMA_SL_Err("Wrong usage of function, namecoord and nametopo \n"
+                  "are different but surface type is neither "
+                  "SUMA_SUREFIT nor SUMA_VEC");
       SUMA_RETURN(NULL);
    }
    
@@ -249,7 +270,8 @@ void * SUMA_2Prefix2SurfaceName (char *namecoord, char *nametopo, char *path, ch
    \sa SUMA_2Prefix2SurfaceName if you have a surface with different names for coord and topo )
 */
 
-void * SUMA_Prefix2SurfaceName (char *prefix_in, char *path, char *vp_name, SUMA_SO_File_Type oType, SUMA_Boolean *exists)
+void * SUMA_Prefix2SurfaceName ( char *prefix_in, char *path, char *vp_name, 
+                                 SUMA_SO_File_Type oType, SUMA_Boolean *exists)
 {
    static char FuncName[]={"SUMA_Prefix2SurfaceName"};
    SUMA_SFname *SF_name = NULL;
@@ -282,10 +304,10 @@ void * SUMA_Prefix2SurfaceName (char *prefix_in, char *path, char *vp_name, SUMA
       case SUMA_SUREFIT:
          SF_name = (SUMA_SFname *) SUMA_malloc(sizeof(SUMA_SFname));
          snprintf(SF_name->name_coord, 
-                  (SUMA_MAX_DIR_LENGTH+SUMA_MAX_NAME_LENGTH+1)*sizeof(char),
+                  (SUMA_MAX_FILENAME_LENGTH+1)*sizeof(char),
                    "%s.coord", ppref);
          snprintf(SF_name->name_topo,  
-                  (SUMA_MAX_DIR_LENGTH+SUMA_MAX_NAME_LENGTH+1)*sizeof(char),
+                  (SUMA_MAX_FILENAME_LENGTH+1)*sizeof(char),
                    "%s.topo", ppref); 
          if (  SUMA_filexists(SF_name->name_topo) || 
                SUMA_filexists(SF_name->name_coord)) *exists = YUP;
@@ -295,7 +317,7 @@ void * SUMA_Prefix2SurfaceName (char *prefix_in, char *path, char *vp_name, SUMA
          }
          else {
             snprintf(SF_name->name_param, 
-                     (SUMA_MAX_DIR_LENGTH+SUMA_MAX_NAME_LENGTH+1)*sizeof(char),
+                     (SUMA_MAX_FILENAME_LENGTH+1)*sizeof(char),
                      "%s", vp_name);
          }
          SO_name = (void *)SF_name;
@@ -304,10 +326,10 @@ void * SUMA_Prefix2SurfaceName (char *prefix_in, char *path, char *vp_name, SUMA
          if (SF_name) SUMA_free(SF_name);
          SF_name = (SUMA_SFname *) SUMA_malloc(sizeof(SUMA_SFname));
          snprintf(SF_name->name_coord,
-                  (SUMA_MAX_DIR_LENGTH+SUMA_MAX_NAME_LENGTH+1)*sizeof(char),
+                  (SUMA_MAX_FILENAME_LENGTH+1)*sizeof(char),
                    "%s.1D.coord", ppref);
          snprintf(SF_name->name_topo,
-                  (SUMA_MAX_DIR_LENGTH+SUMA_MAX_NAME_LENGTH+1)*sizeof(char),
+                  (SUMA_MAX_FILENAME_LENGTH+1)*sizeof(char),
                    "%s.1D.topo", ppref); 
          if (  SUMA_filexists(SF_name->name_topo) || 
                SUMA_filexists(SF_name->name_coord)) *exists = YUP;
@@ -327,6 +349,11 @@ void * SUMA_Prefix2SurfaceName (char *prefix_in, char *path, char *vp_name, SUMA
          break;  
       case SUMA_PLY:
          SO_name = (void *)SUMA_append_string(ppref,".ply"); 
+         if (SUMA_filexists((char*)SO_name)) *exists = YUP;
+         else *exists = NOPE;
+         break;  
+      case SUMA_MNI_OBJ:
+         SO_name = (void *)SUMA_append_string(ppref,".obj"); 
          if (SUMA_filexists((char*)SO_name)) *exists = YUP;
          else *exists = NOPE;
          break;  
@@ -363,7 +390,208 @@ void * SUMA_Prefix2SurfaceName (char *prefix_in, char *path, char *vp_name, SUMA
    
    SUMA_RETURN(SO_name);
 }
+
+/*! Read MNI_OBJ surface */
+SUMA_Boolean SUMA_MNI_OBJ_Read(char * f_name, SUMA_SurfaceObject *SO)
+{
+   static char FuncName[]={"SUMA_MNI_OBJ_Read"};
+   char *fl=NULL, *flp = NULL;
+   int ii=0, Found = 0, nread=0;
+   double num = 0;
+	int LocalHead = NOPE;
+
+   SUMA_ENTRY;
    
+   SUMA_LH("Sucking file");
+
+   nread = SUMA_suck_file( f_name , &fl ) ;
+   if (!fl) {
+      SUMA_SL_Err("Failed to read file.");
+      SUMA_RETURN(NOPE);
+   }
+	
+   /* find 'P' */
+   ii = 0; flp = fl;
+   while (ii<nread && *flp != 'P') ++flp;
+	if (ii == nread) {
+      SUMA_S_Err("Failed to find 'P'");
+      SUMA_RETURN(NOPE);
+   }
+   SUMA_SKIP_TO_NEXT_BLANK(flp, NULL);
+   
+   /* P is followed by 6 values, the last one being the number of points */
+   ii=0;
+   Found = 1;
+   while (ii < 5) {
+      if (Found) {
+         SUMA_ADVANCE_PAST_NUM(flp, num, Found);
+      } else {
+         SUMA_S_Err("Don't understand format");
+         SUMA_RETURN(NOPE);
+      }
+      ++ii;
+   }
+	/* get the sixth number */
+   SUMA_ADVANCE_PAST_INT(flp, SO->N_Node, Found);
+   if (!Found || SO->N_Node < 0 || SO->N_Node > 999999999) {
+      SUMA_S_Errv("Bad N_Node of %d\n", SO->N_Node);
+      SUMA_RETURN(NOPE);
+   }
+   SUMA_LHv("Expecting %d nodes\n", SO->N_Node);
+   SO->NodeDim = 3;
+   if (!(SO->NodeList = (float *)
+            SUMA_strtol_vec(flp, SO->NodeDim*SO->N_Node, &Found, 
+                            SUMA_float, &flp))) {
+      SUMA_S_Err("Failed to read node XYZ");
+      SUMA_RETURN(NOPE);
+   }
+   SUMA_LHv("Reading %d node normals\n", SO->N_Node);
+   if (!(SO->NodeNormList = (float *)
+            SUMA_strtol_vec(flp, SO->NodeDim*SO->N_Node, &Found, 
+                            SUMA_float, &flp))) {
+      SUMA_S_Err("Failed to read node XYZ");
+      SUMA_RETURN(NOPE);
+   }
+   if (LocalHead) {
+      fprintf(SUMA_STDERR,"%s: >>", FuncName);
+      for (ii=0; ii<200; ++ii) {
+         fprintf(SUMA_STDERR,"%c", flp[ii]);
+      }
+      fprintf(SUMA_STDERR,"\n");
+   }
+   
+   SO->FaceSetDim = 3;
+   SUMA_ADVANCE_PAST_INT(flp, SO->N_FaceSet, Found);
+   if (!Found || SO->N_FaceSet < 0 || SO->N_FaceSet > 999999999) {
+      SUMA_S_Errv("Bad N_FaceSet of %d\n", SO->N_FaceSet);
+      SUMA_RETURN(NOPE);
+   }
+   SUMA_LHv("Expecting to reading %d triangles\n", SO->N_FaceSet);
+   
+   /* skip past 5+SO->N_FaceSet integers for some reason */
+   ii=0;
+   Found = 1;
+   while (ii < 5+SO->N_FaceSet) {
+      if (Found) {
+         SUMA_ADVANCE_PAST_NUM(flp, num, Found);
+      } else {
+         SUMA_S_Err("Don't understand format");
+         SUMA_RETURN(NOPE);
+      }
+      ++ii;
+   }
+   SUMA_SKIP_BLANK(flp, NULL);
+   
+   if (LocalHead) {
+      fprintf(SUMA_STDERR,"%s: >>", FuncName);
+      if (LocalHead) for (ii=0; ii<500 && flp[ii]; ++ii) {
+         fprintf(SUMA_STDERR,"%c", flp[ii]);
+      }
+      fprintf(SUMA_STDERR,"\n");
+   }
+   if (!(SO->FaceSetList = (int *)
+            SUMA_strtol_vec(flp, SO->FaceSetDim*SO->N_FaceSet, &Found, 
+                            SUMA_int, &flp))) {
+      SUMA_S_Err("Failed to read node XYZ");
+      SUMA_RETURN(NOPE);
+   }
+   
+   if (LocalHead) { 
+      for (ii=0; ii<10; ++ii) {fprintf(SUMA_STDERR,"%d ", SO->FaceSetList[ii]);}
+   }
+   /* fill up a few more fields */
+   SO->FileType = SUMA_MNI_OBJ;
+   SO->FileFormat = SUMA_ASCII;
+            
+   SO->Name = SUMA_StripPath(f_name);
+   
+   SUMA_RETURN(YUP);
+}
+SUMA_Boolean SUMA_MNI_OBJ_Write(char * f_name_in, SUMA_SurfaceObject *SO)
+{
+   static char FuncName[]={"SUMA_MNI_OBJ_Write"};
+   int ii=0;
+   char *f_name=NULL, *f_name2=NULL;
+   FILE *fid = NULL;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!SO || !SO->NodeList || !SO->FaceSetList) {
+      SUMA_S_Err("Null or incomplete surface");
+      SUMA_RETURN(NOPE);
+   }
+   if (SO->NodeDim != 3 || SO->FaceSetDim != 3) {
+      SUMA_S_Err("NodeDim and FaceSetDim must be 3\n");
+      SUMA_RETURN(NOPE);
+   }
+   if (!SO->NodeNormList) {
+      SUMA_RECOMPUTE_NORMALS(SO)
+   }
+   if (!f_name_in) {
+      fprintf (SUMA_STDERR, "Error %s: NULL filename\n", FuncName);
+      SUMA_RETURN (NOPE);
+   }
+   
+   f_name = SUMA_Extension(f_name_in,".obj" , YUP); 
+   f_name2  = SUMA_append_string(f_name,".obj");
+   if (!THD_ok_overwrite() && SUMA_filexists (f_name2)) {
+      fprintf (SUMA_STDERR, 
+               "Error %s: file %s exists, will not overwrite.\n", 
+               FuncName, f_name2);
+      SUMA_free(f_name2);f_name2 = NULL;
+      SUMA_free(f_name);f_name = NULL;
+      SUMA_RETURN (NOPE);
+   }
+   SUMA_free(f_name); f_name = NULL;
+   f_name = f_name2; f_name2 = NULL;
+   
+   if (!(fid = fopen(f_name,"w"))) {
+      SUMA_S_Err("Could not open file for writing");
+      SUMA_free(f_name); f_name = NULL; 
+      SUMA_RETURN(NOPE);
+   }
+   
+    
+   fprintf(fid,"P 0.3 0.3 0.4 10 1 %d\n", SO->N_Node);
+      /* don't know what numbers between O and SO->N_Node mean ...*/
+   for (ii=0; ii < SO->N_Node; ++ii) {
+      fprintf(fid," %f", SO->NodeList[3*ii]);
+      fprintf(fid," %f", SO->NodeList[3*ii+1]);
+      fprintf(fid," %f\n", SO->NodeList[3*ii+2]);
+   }   
+   for (ii=0; ii < SO->N_Node; ++ii) {
+      fprintf(fid," %f", SO->NodeNormList[3*ii]);
+      fprintf(fid," %f", SO->NodeNormList[3*ii+1]);
+      fprintf(fid," %f\n", SO->NodeNormList[3*ii+2]);
+   }
+   
+   /* number of triangles */
+   fprintf(fid,"\n %d\n", SO->N_FaceSet);
+   
+   /* stuff I don't understand */
+   fprintf(fid," 0 1 1 1 1\n"); /* dunno what that is */
+   for (ii=0; ii<SO->N_FaceSet; ++ii) {
+      if (!(ii%8)) fprintf(fid,"\n");
+      fprintf(fid," %d", ii);  /* that is just a space filler. Don't quite
+                                 know what these indices refer to in MNI_OBJ */
+   }
+      
+   /* the triangle list */
+   for (ii=0; ii<SO->FaceSetDim*SO->N_FaceSet; ++ii) {
+      if (!(ii%8)) fprintf(fid,"\n");
+      fprintf(fid," %d", SO->FaceSetList[ii]);  
+   }
+   
+   fprintf(fid,"\n"); 
+   
+   SUMA_free(f_name); f_name = NULL; 
+   
+   fclose (fid);
+   
+   SUMA_RETURN(YUP);
+}   
+
 /*!**  
 Function: SUMA_SureFit_Read_Coord 
 Usage : 
@@ -429,7 +657,10 @@ SUMA_Boolean SUMA_SureFit_Read_Coord (char * f_name, SUMA_SureFit_struct *SF)
 	}
 	
 	if (!FoundHead) {
-		fprintf(SUMA_STDERR,"Error %s: BeginHeader not found in %s.\nPerhaps you are using old versions of Caret/SureFit files.\n", FuncName, f_name);
+		fprintf( SUMA_STDERR, 
+               "Error %s: BeginHeader not found in %s.\n"
+               "Perhaps you are using old versions of Caret/SureFit files.\n", 
+               FuncName, f_name);
 		SUMA_RETURN (NOPE);
 	}
 	EndHead = 0;
@@ -470,6 +701,13 @@ SUMA_Boolean SUMA_SureFit_Read_Coord (char * f_name, SUMA_SureFit_struct *SF)
 			}
          
          sprintf(stmp,"caret-version");
+			if (!skp && SUMA_iswordin (st, stmp) == 1) {
+				/*fprintf(stdout,"Found caret-version\n");*/
+				ex = fscanf (sf_file,"%f",&(SF->caret_version));
+				skp = 1;
+			}
+         
+         sprintf(stmp,"Caret-Version");
 			if (!skp && SUMA_iswordin (st, stmp) == 1) {
 				/*fprintf(stdout,"Found caret-version\n");*/
 				ex = fscanf (sf_file,"%f",&(SF->caret_version));
@@ -722,9 +960,12 @@ SUMA_Boolean SUMA_SureFit_Read_Topo (char * f_name, SUMA_SureFit_struct *SF)
    }
 	
 	NP = 3;	
-   SF->FaceSetList = (int *)SUMA_strtol_vec(fl, SF->N_FaceSet * NP, &ex, SUMA_int);
+   SF->FaceSetList = (int *)SUMA_strtol_vec(fl, SF->N_FaceSet * NP, 
+                                            &ex, SUMA_int, NULL);
    if (!SF->FaceSetList || ex != SF->N_FaceSet * NP) {
-      fprintf(SUMA_STDERR, "Error %s: Failed to read all FaceSets. Expected %d vals, read %d.\nOr NULL output.\n", FuncName, SF->N_FaceSet*NP, ex);
+      fprintf(SUMA_STDERR, "Error %s: Failed to read all FaceSets. "
+                           "Expected %d vals, read %d.\nOr NULL output.\n", 
+                           FuncName, SF->N_FaceSet*NP, ex);
       SUMA_RETURN (NOPE);
    }
 	
@@ -943,20 +1184,25 @@ void SUMA_Show_SureFit (SUMA_SureFit_struct *SF, FILE *Out)
       fprintf (Out, "NULL SF->FaceSetList:\n");
    }
    if (SF->N_FaceSet > 2 && SF->FaceSetList) {
-	   fprintf (Out, "First 2 polygons:\n\t%d %d %d\n\t%d %d %d\n", \
+	   fprintf (Out, "First 2 polygons:\n\t%d %d %d\n\t%d %d %d\n",
 		   SF->FaceSetList[0], SF->FaceSetList[1], SF->FaceSetList[2],
 		   SF->FaceSetList[3], SF->FaceSetList[4], SF->FaceSetList[5]);
-      fprintf (Out, "Last 2 polygons:\n\t%d %d %d\n\t%d %d %d\n", \
-		   SF->FaceSetList[NP*(SF->N_FaceSet-2)], SF->FaceSetList[NP*(SF->N_FaceSet-2) + 1], SF->FaceSetList[NP*(SF->N_FaceSet-2) + 2],
-		   SF->FaceSetList[NP*(SF->N_FaceSet-1)], SF->FaceSetList[NP*(SF->N_FaceSet-1) + 1], SF->FaceSetList[NP*(SF->N_FaceSet-1) + 2]);
+      fprintf (Out, "Last 2 polygons:\n\t%d %d %d\n\t%d %d %d\n", 
+		         SF->FaceSetList[NP*(SF->N_FaceSet-2)],    
+               SF->FaceSetList[NP*(SF->N_FaceSet-2) + 1], 
+               SF->FaceSetList[NP*(SF->N_FaceSet-2) + 2],
+		         SF->FaceSetList[NP*(SF->N_FaceSet-1)], 
+               SF->FaceSetList[NP*(SF->N_FaceSet-1) + 1], 
+               SF->FaceSetList[NP*(SF->N_FaceSet-1) + 2]);
 	} else if (SF->FaceSetList){
-      fprintf (Out, "First polygon:\n\t%d %d %d\n", \
+      fprintf (Out, "First polygon:\n\t%d %d %d\n", 
 		   SF->FaceSetList[0], SF->FaceSetList[1], SF->FaceSetList[2] );
    }
    fprintf (Out, "\nNode Specs (%d):\n", SF->N_Node_Specs);
 	if (SF->Specs_mat) {
-      fprintf (Out, "First Entry: \t%d %d %d %d %d %d\n", \
-	   SF->Specs_mat[0][0], SF->Specs_mat[0][1],SF->Specs_mat[0][2], SF->Specs_mat[0][3],SF->Specs_mat[0][4], SF->Specs_mat[0][5]);
+      fprintf (Out, "First Entry: \t%d %d %d %d %d %d\n", 
+	            SF->Specs_mat[0][0], SF->Specs_mat[0][1],SF->Specs_mat[0][2], 
+               SF->Specs_mat[0][3],SF->Specs_mat[0][4], SF->Specs_mat[0][5]);
 	} else {
       fprintf (Out, "NULL SF->Specs_mat\n");
    }
@@ -970,14 +1216,19 @@ void SUMA_Show_SureFit (SUMA_SureFit_struct *SF, FILE *Out)
       fprintf (Out, "NULL SF->FN.FirstNeighb\n");
    }
 	if (SF->Specs_mat) {
-      fprintf (Out, "Last Entry: \t%d %d %d %d %d %d\n", \
-		   SF->Specs_mat[SF->N_Node_Specs-1][0], SF->Specs_mat[SF->N_Node_Specs-1][1],SF->Specs_mat[SF->N_Node_Specs-1][2],\
-		   SF->Specs_mat[SF->N_Node_Specs-1][3],SF->Specs_mat[SF->N_Node_Specs-1][4], SF->Specs_mat[SF->N_Node_Specs-1][5]);
+      fprintf (Out, "Last Entry: \t%d %d %d %d %d %d\n", 
+		   SF->Specs_mat[SF->N_Node_Specs-1][0], 
+         SF->Specs_mat[SF->N_Node_Specs-1][1],
+         SF->Specs_mat[SF->N_Node_Specs-1][2],
+		   SF->Specs_mat[SF->N_Node_Specs-1][3],
+         SF->Specs_mat[SF->N_Node_Specs-1][4], 
+         SF->Specs_mat[SF->N_Node_Specs-1][5]);
 	} 
    if (SF->FN.N_Neighb) {
       cnt = 0;
 	   while (cnt < SF->FN.N_Neighb[SF->N_Node_Specs-1]) {
-		   fprintf (Out, "\t%d %d\n", cnt, SF->FN.FirstNeighb[SF->N_Node_Specs-1][cnt]); 
+		   fprintf (Out, "\t%d %d\n", 
+                  cnt, SF->FN.FirstNeighb[SF->N_Node_Specs-1][cnt]); 
 		   ++cnt;
 	   }
    }
@@ -1193,7 +1444,9 @@ SUMA_Boolean SUMA_Read_SureFit_Param (char *f_name, SUMA_SureFit_struct *SF)
 
 	/* read until you reach something you like */
 	SF->AC_WholeVolume[0] = SF->AC_WholeVolume[1] = SF->AC_WholeVolume[2] = 0.0f;
-	SF->AC[0] = SF->AC[1] = SF->AC[2] = 0.0f;
+	SF->AC[0] = SF->AC[1] = SF->AC[2] = 0.0f; 
+   SF->CropMax[0] = SF->CropMax[1] = SF->CropMax[2] = 0.0f;
+   SF->CropMin[0] = SF->CropMin[1] = SF->CropMin[2] = 0.0f;
    
    ex = 1;
 	Done = NOPE;			
@@ -1299,6 +1552,104 @@ SUMA_Boolean SUMA_Read_SureFit_Param (char *f_name, SUMA_SureFit_struct *SF)
             if (LocalHead) fprintf(SUMA_STDERR, "Empty field.\n"); 
          }
          continue;
+		}
+		
+      sprintf(stmp,"CropMinX");
+		evl = SUMA_iswordin (s,stmp);
+		if (evl == 1) {
+			/* found  CropMinX */
+			if (LocalHead) fprintf(SUMA_STDERR, "Found CropMinX:");
+			/* go past the = sign and grab the value */
+			st = strtok(s, delimstr);
+			st = strtok(NULL, delimstr);
+			if (st) {
+            SF->CropMin[0] = atof(st);
+            if (LocalHead) fprintf(SUMA_STDERR, " %f\n", SF->CropMin[0]);
+         } else {
+            if (LocalHead) fprintf(SUMA_STDERR, "Empty field.\n"); 
+         }
+			continue;
+		}
+      sprintf(stmp,"CropMinY");
+		evl = SUMA_iswordin (s,stmp);
+		if (evl == 1) {
+			/* found  CropMinY */
+			if (LocalHead) fprintf(SUMA_STDERR, "Found CropMinY:");
+			/* go past the = sign and grab the value */
+			st = strtok(s, delimstr);
+			st = strtok(NULL, delimstr);
+			if (st) {
+            SF->CropMin[1] = atof(st);
+            if (LocalHead) fprintf(SUMA_STDERR, " %f\n", SF->CropMin[1]);
+         } else {
+            if (LocalHead) fprintf(SUMA_STDERR, "Empty field.\n"); 
+         }
+			continue;
+		}
+      sprintf(stmp,"CropMinZ");
+		evl = SUMA_iswordin (s,stmp);
+		if (evl == 1) {
+			/* found  CropMinZ */
+			if (LocalHead) fprintf(SUMA_STDERR, "Found CropMinZ:");
+			/* go past the = sign and grab the value */
+			st = strtok(s, delimstr);
+			st = strtok(NULL, delimstr);
+			if (st) {
+            SF->CropMin[2] = atof(st);
+            if (LocalHead) fprintf(SUMA_STDERR, " %f\n", SF->CropMin[2]);
+         } else {
+            if (LocalHead) fprintf(SUMA_STDERR, "Empty field.\n"); 
+         }
+			continue;
+		}
+		
+      sprintf(stmp,"CropMaxX");
+		evl = SUMA_iswordin (s,stmp);
+		if (evl == 1) {
+			/* found  CropMaxX */
+			if (LocalHead) fprintf(SUMA_STDERR, "Found CropMaxX:");
+			/* go past the = sign and grab the value */
+			st = strtok(s, delimstr);
+			st = strtok(NULL, delimstr);
+			if (st) {
+            SF->CropMax[0] = atof(st);
+            if (LocalHead) fprintf(SUMA_STDERR, " %f\n", SF->CropMax[0]);
+         } else {
+            if (LocalHead) fprintf(SUMA_STDERR, "Empty field.\n"); 
+         }
+			continue;
+		}
+      sprintf(stmp,"CropMaxY");
+		evl = SUMA_iswordin (s,stmp);
+		if (evl == 1) {
+			/* found  CropMaxY */
+			if (LocalHead) fprintf(SUMA_STDERR, "Found CropMaxY:");
+			/* go past the = sign and grab the value */
+			st = strtok(s, delimstr);
+			st = strtok(NULL, delimstr);
+			if (st) {
+            SF->CropMax[1] = atof(st);
+            if (LocalHead) fprintf(SUMA_STDERR, " %f\n", SF->CropMax[1]);
+         } else {
+            if (LocalHead) fprintf(SUMA_STDERR, "Empty field.\n"); 
+         }
+			continue;
+		}
+      sprintf(stmp,"CropMaxZ");
+		evl = SUMA_iswordin (s,stmp);
+		if (evl == 1) {
+			/* found  CropMaxZ */
+			if (LocalHead) fprintf(SUMA_STDERR, "Found CropMaxZ:");
+			/* go past the = sign and grab the value */
+			st = strtok(s, delimstr);
+			st = strtok(NULL, delimstr);
+			if (st) {
+            SF->CropMax[2] = atof(st);
+            if (LocalHead) fprintf(SUMA_STDERR, " %f\n", SF->CropMax[2]);
+         } else {
+            if (LocalHead) fprintf(SUMA_STDERR, "Empty field.\n"); 
+         }
+			continue;
 		}
 		
 	}
@@ -1440,6 +1791,7 @@ SUMA_FS_COLORTABLE *SUMA_CreateFS_ColorTable(int nbins, int len, SUMA_FS_COLORTA
       ct->fname = (char *)SUMA_malloc((len + 1)*sizeof(char));
       if (!ct->bins || !ct->fname) {
          SUMA_SL_Crit("Failed to allocate for ct fields");
+         SUMA_DUMP_TRACE(FuncName);
          if (ct->bins) SUMA_free(ct->bins);
          if (ct->fname) SUMA_free(ct->fname);
          SUMA_free(ct);
@@ -1543,7 +1895,8 @@ SUMA_Boolean SUMA_readFScolorLUT(char *f_name, SUMA_FS_COLORTABLE **ctp)
    else {
        char *eee = getenv("FREESURFER_HOME");
        if (eee) { 
-         colfile = SUMA_append_replace_string(eee,"FreeSurferColorLUT.txt", "/", 0);
+         colfile = 
+            SUMA_append_replace_string(eee,"FreeSurferColorLUT.txt", "/", 0);
        } else {
          SUMA_S_Err("FREESURFER_HOME environment variable not set");
          SUMA_RETURN(NOPE);
@@ -1704,7 +2057,9 @@ SUMA_COLOR_MAP *SUMA_FScolutToColorMap(char *fscolutname, int lbl1, int lbl2, in
    - If a colormap is found, it should be added to SUMAg_CF->scm
    - Based on code provided by Bruce Fischl
 */
-SUMA_Boolean SUMA_readFSannot (char *f_name, char *f_ROI, char *f_cmap, char *f_col, int Showct)
+SUMA_Boolean SUMA_readFSannot (char *f_name, 
+                               char *f_ROI, char *f_cmap, char *f_col, 
+                               int Showct, char *ctfile)
 {
    static char FuncName[]={"SUMA_readFSannot"};
    int n_labels = -1, ex, ni, chnk, j, annot, r, g, b, imap;
@@ -1723,14 +2078,28 @@ SUMA_Boolean SUMA_readFSannot (char *f_name, char *f_ROI, char *f_cmap, char *f_
    
    /* check for existence */
 	if (!SUMA_filexists(f_name)) {
-		fprintf(SUMA_STDERR,"Error %s: File %s does not exist or cannot be read.\n", FuncName, f_name);
+		fprintf(SUMA_STDERR,
+         "Error %s: File %s does not exist or cannot be read.\n", 
+         FuncName, f_name);
 		SUMA_RETURN (NOPE);
 	}else if (LocalHead) {
-		fprintf(SUMA_STDERR,"%s: File %s exists and will be read.\n", FuncName, f_name);
+		fprintf( SUMA_STDERR,
+               "%s: File %s exists and will be read.\n", 
+               FuncName, f_name);
 	}
+   
+   if (ctfile) {
+      if (!(SUMA_readFScolorLUT(ctfile, &ct))) {
+         SUMA_S_Errv("Failed to read FS color table %s\n", ctfile);
+         SUMA_RETURN (NOPE);
+      }
+   }
+   
    if (f_ROI) { /* check for existence of ROI file */
       if (SUMA_filexists(f_ROI)) { 
-         fprintf(SUMA_STDERR,"Error %s: File %s exists, will not overwrite.\n", FuncName, f_ROI);
+         fprintf( SUMA_STDERR,
+                  "Error %s: File %s exists, will not overwrite.\n", 
+                  FuncName, f_ROI);
 	      SUMA_RETURN (NOPE);
       }else {
          fr = fopen(f_ROI, "w");
@@ -1743,7 +2112,9 @@ SUMA_Boolean SUMA_readFSannot (char *f_name, char *f_ROI, char *f_cmap, char *f_
    
    if (f_cmap) { /* check for existence of ROI file */
       if (SUMA_filexists(f_cmap)) { 
-         fprintf(SUMA_STDERR,"Error %s: File %s exists, will not overwrite.\n", FuncName, f_cmap);
+         fprintf( SUMA_STDERR,
+                  "Error %s: File %s exists, will not overwrite.\n", 
+                  FuncName, f_cmap);
 	      SUMA_RETURN (NOPE);
       }else {
          fc = fopen(f_cmap, "w");
@@ -1756,7 +2127,9 @@ SUMA_Boolean SUMA_readFSannot (char *f_name, char *f_ROI, char *f_cmap, char *f_
    
    if (f_col) { /* check for existence of ROI file */
       if (SUMA_filexists(f_col)) { 
-         fprintf(SUMA_STDERR,"Error %s: File %s exists, will not overwrite.\n", FuncName, f_col);
+         fprintf(SUMA_STDERR,
+                 "Error %s: File %s exists, will not overwrite.\n", 
+                 FuncName, f_col);
 	      SUMA_RETURN (NOPE);
       }else {
          fo = fopen(f_col, "w");
@@ -1795,13 +2168,19 @@ SUMA_Boolean SUMA_readFSannot (char *f_name, char *f_ROI, char *f_cmap, char *f_
    }
 
    if (ex != EOF) {
-      if (LocalHead) fprintf(SUMA_STDERR,"%s:\n Expecting to read %d labels\n", FuncName, n_labels);
+      if (LocalHead) 
+         fprintf( SUMA_STDERR,
+                  "%s:\n Expecting to read %d labels\n", 
+                  FuncName, n_labels);
    }   
    SUMA_LH("Reading annotations...");
    for (j=0; j<n_labels; ++j) {
       SUMA_READ_INT (&ni, bs, fl, ex);
       if (ni < 0 || ni >= n_labels) {
-         fprintf(SUMA_STDERR,"Error %s:\n Read a node index of %d. Bad because  < 0 or > %d\n", FuncName, ni, n_labels);
+         fprintf(SUMA_STDERR,
+                 "Error %s:\n"
+                 " Read a node index of %d. Bad because  < 0 or > %d\n", 
+                 FuncName, ni, n_labels);
          SUMA_RETURN(NOPE);
       }
       SUMA_READ_INT (&annot, bs, fl, ex);
@@ -1816,50 +2195,67 @@ SUMA_Boolean SUMA_readFSannot (char *f_name, char *f_ROI, char *f_cmap, char *f_
       }
    }
    
-   SUMA_LH("Searching for colortables");
-   while (!feof(fl)) {
-      SUMA_READ_INT (&tg, bs, fl, ex);
-      SUMA_LHv("tg = %d (%d is FS_ANNOT_TAG_COLORTABLE)\n", tg,  SUMA_FS_ANNOT_TAG_COLORTABLE);
-      if (tg == SUMA_FS_ANNOT_TAG_COLORTABLE) {
-         if (ct) {
-            SUMA_S_Warn("Already have a color table\n"
-                        "ignoring second one in file.\n"
-                        "If you want it, post a message to\n"
-                        "AFNI's message board\n");
-            break;
+   if (!ct) {
+      SUMA_LH("Searching for colortables");
+      while (!feof(fl)) {
+         SUMA_READ_INT (&tg, bs, fl, ex);
+         SUMA_LHv("tg = %d (%d is FS_ANNOT_TAG_COLORTABLE)\n", 
+                   tg,  SUMA_FS_ANNOT_TAG_COLORTABLE);
+         if (tg == SUMA_FS_ANNOT_TAG_COLORTABLE) {
+            if (ct) {
+               SUMA_S_Warn("Already have a color table\n"
+                           "ignoring second one in file.\n"
+                           "If you want it, post a message to\n"
+                           "AFNI's message board\n");
+               break;
+            }
+            SUMA_READ_INT (&nbins, bs, fl, ex);
+            SUMA_READ_INT (&len, bs, fl, ex);
+            SUMA_LHv("Found color table (nbins %d, len %d)\n", nbins, len);
+            if (  nbins <= 0  || nbins > 500 || 
+                  len <= 0 || len > 500 ) { /* upper limit is just a guess ... */
+               SUMA_S_Warnv("bad nbins (%d) or len (%d).\n"
+                           "Color table will not be created, \n"
+                           "and annotation values will be used instead \n"
+                           "of indices into a colormap.\n"
+                           "You can use -FScmap option to specify\n"
+                           "a colormap in an external file.\n",
+                           nbins, len);
+               break;
+            }
+            ct = SUMA_CreateFS_ColorTable(nbins, len, NULL);
+            fread(ct->fname, sizeof(char), len, fl) ;
+            SUMA_LHv("fname: %s\n", ct->fname);
+            for (i = 0 ; i < nbins ; i++)
+            {
+                   cte = &ct->bins[i] ; cte->i = i;
+                   SUMA_READ_INT (&len, bs, fl, ex);
+                   if (len < 0 || len > SUMA_FS_STRLEN ) {
+                        SUMA_SL_Err("Too long a name");
+                        SUMA_RETURN(NOPE);
+                   }
+                   fread(cte->name, sizeof(char), len, fl) ;
+                   SUMA_READ_INT (&(cte->r), bs, fl, ex);
+                   SUMA_READ_INT (&(cte->g), bs, fl, ex);
+                   SUMA_READ_INT (&(cte->b), bs, fl, ex);
+                   SUMA_READ_INT (&(cte->flag), bs, fl, ex);
+                   SUMA_LHv("name: %s, r,g,b,f = %d %d %d %d\n", 
+                        cte->name, cte->r, cte->g, cte->b, cte->flag);
+            }
+
          }
-         SUMA_LH("Found color table");
-         SUMA_READ_INT (&nbins, bs, fl, ex);
-         SUMA_READ_INT (&len, bs, fl, ex);
-         ct = SUMA_CreateFS_ColorTable(nbins, len, NULL);
-         fread(ct->fname, sizeof(char), len, fl) ;
-         SUMA_LHv("fname: %s\n", ct->fname);
-         for (i = 0 ; i < nbins ; i++)
-         {
-                cte = &ct->bins[i] ; cte->i = i;
-                SUMA_READ_INT (&len, bs, fl, ex);
-                if (len < 0 || len > SUMA_FS_STRLEN ) {
-                     SUMA_SL_Err("Too long a name");
-                     SUMA_RETURN(NOPE);
-                }
-                fread(cte->name, sizeof(char), len, fl) ;
-                SUMA_READ_INT (&(cte->r), bs, fl, ex);
-                SUMA_READ_INT (&(cte->g), bs, fl, ex);
-                SUMA_READ_INT (&(cte->b), bs, fl, ex);
-                SUMA_READ_INT (&(cte->flag), bs, fl, ex);
-                SUMA_LHv("name: %s, r,g,b,f = %d %d %d %d\n", 
-                     cte->name, cte->r, cte->g, cte->b, cte->flag);
-         }
-         
+         /* reset flag values, on mac for some reason feof seems 
+            to fail even if on linux say feof(fl) would return true 
+            at that point. When that happens,
+            tg keeps its last value and a new colortable of junk gets built
+            */
+         tg = -1;  nbins = -1;
       }
-      /* reset flag values, on mac for some reason feof seems to fail even if on 
-         linux say feof(fl) would return true at that point. When that happens,
-         tg keeps its last value and a new colortable of junk gets built
-         */
-      tg = -1;  nbins = -1;
+   } else {
+      SUMA_LHv("Using colortable from %s\n", ctfile);
    }             
    
-   if (fc) { /* write the colormap to a file */
+   if (fc && ct) { /* write the colormap to a file */
       fprintf(fc, "#name\n#bin  r  g  b  flag \n");
       for (i=0; i<ct->nbins; ++i) {
          fprintf(fc, "#%s\n", ct->bins[i].name);
@@ -1871,7 +2267,12 @@ SUMA_Boolean SUMA_readFSannot (char *f_name, char *f_ROI, char *f_cmap, char *f_
    
    if (fr) { /* write the annotation, ROI style  */
       if (ct) {
-         fprintf(fr, "#NodeID  ROI(indexed into labels cmap)  r  g  b \n");
+         if (ctfile) {
+            fprintf(fr, "#NodeID  ROI(indexed into labels cmap %s)  r  g  b \n", 
+                        ctfile);
+         } else {
+            fprintf(fr, "#NodeID  ROI(indexed into labels cmap)  r  g  b \n");
+         }
          for (i=0; i < n_labels; ++i) {
                j = 0;
                imap = -1;
@@ -1886,18 +2287,24 @@ SUMA_Boolean SUMA_readFSannot (char *f_name, char *f_ROI, char *f_cmap, char *f_
                if (imap < 0) {
                   static int iwarn;
                   if (!iwarn) {
-                     SUMA_SL_Warn("Node Color (label) not found in cmap.\nMarking with annotation value.\nFurther occurences will not be reported.");
+                     SUMA_SL_Warn("Node Color (label) not found in cmap.\n"
+                                  "Marking with annotation value.\n"
+                                  "Further occurences will not be reported.");
                      ++iwarn;
                   }
                   imap = anv[i];
                }
                fprintf(fr, "%d  %d  %f %f %f   \n",
-                        niv[i], imap, (float)rv[i]/255.0, (float)gv[i]/255.0, (float)bv[i]/255.0);
+                        niv[i], imap, 
+                        (float)rv[i]/255.0, 
+                        (float)gv[i]/255.0, (float)bv[i]/255.0);
          }
       } else { /* no color map */
-         fprintf(fr, "#NodeID  Annotation\n");
+         fprintf(fr, "#NodeID  Annotation  r  g  b \n");
          for (i=0; i < n_labels; ++i) {
-            fprintf(fr, "%d  %d \n", niv[i], anv[i]);
+            fprintf(fr, "%d  %d  %f %f %f   \n", niv[i], anv[i], 
+                        (float)rv[i]/255.0, 
+                        (float)gv[i]/255.0, (float)bv[i]/255.0);
          }
       }
    }
@@ -1907,12 +2314,16 @@ SUMA_Boolean SUMA_readFSannot (char *f_name, char *f_ROI, char *f_cmap, char *f_
          fprintf(fo, "#NodeID  r  g  b \n");
          for (i=0; i < n_labels; ++i) {
                fprintf(fo, "%d  %f %f %f   \n",
-                        niv[i], (float)rv[i]/255.0, (float)gv[i]/255.0, (float)bv[i]/255.0);
+                        niv[i], (float)rv[i]/255.0, 
+                        (float)gv[i]/255.0, (float)bv[i]/255.0);
          }
       } else { /* no color map */
-         fprintf(fo, "#NodeID  Annotation\n");
+         fprintf(fo, "#NodeID  r  g  b \n");
          for (i=0; i < n_labels; ++i) {
-            fprintf(fo, "%d  %d \n", niv[i], anv[i]);
+            /* fprintf(fo, "%d  %d \n", niv[i], anv[i]); */
+            fprintf(fo, "%d  %f %f %f   \n",
+                        niv[i], (float)rv[i]/255.0, 
+                        (float)gv[i]/255.0, (float)bv[i]/255.0);
          }
       }
    }
@@ -2477,7 +2888,7 @@ SUMA_Boolean SUMA_FreeSurfer_WritePatch (char *fileNm, SUMA_SurfaceObject *SO, c
    static char FuncName[]={"SUMA_FreeSurfer_WritePatch"};
    int cnt, i, iface;
    int *FaceSetIndexInParent=NULL;
-   SUMA_Boolean *isInPatch=NULL;
+   byte *isInPatch=NULL;
    FILE *fout=NULL;
    
    SUMA_ENTRY;
@@ -2867,10 +3278,12 @@ int * SUMA_BYU_PolyFaceToTriFace(int *face, int *N)
 /*! \brief Load a BYU surface model
 
 */
-SUMA_Boolean SUMA_BYU_Read(char *f_name, SUMA_SurfaceObject *SO, int debug, byte hide_negcols) 
+SUMA_Boolean SUMA_BYU_Read(char *f_name, SUMA_SurfaceObject *SO, 
+                           int debug, byte hide_negcols) 
 {
    static char FuncName[]={"SUMA_BYU_Read"};
-   int ok, nread, i, k, lessen, nodemin, nodemax, *face=NULL, n = -1, nalloc=-1;
+   int ok, nread, i, k, lessen=0, nodemin, nodemax, 
+      *face=NULL, n = -1, nalloc=-1;
    double dum;
    char *fl=NULL, *fli;
    SUMA_Boolean LocalHead = NOPE;
@@ -4417,7 +4830,6 @@ int main (int argc,char *argv[])
  } /* Main */  
 #endif
 
-
 /*!
    \brief Handles opening an ROI file
    \param filename (char *)
@@ -4432,7 +4844,8 @@ void SUMA_OpenDrawnROI (char *filename, void *data)
    DList *list=NULL;
    SUMA_DRAWN_ROI **ROIv=NULL;
    int i, N_ROI;
-   SUMA_SurfaceObject *SO=NULL;
+   SUMA_SurfaceObject *SO=NULL, *SOp=NULL;
+   SUMA_OVERLAYS *over=NULL;
    
    SUMA_Boolean LocalHead = NOPE;
    
@@ -4453,7 +4866,19 @@ void SUMA_OpenDrawnROI (char *filename, void *data)
       /* You need to select a parent surface */
       SUMA_SLP_Warn("Assuming parent surface.");
       SO = (SUMA_SurfaceObject *)(SUMAg_DOv[SUMAg_SVv[0].Focus_SO_ID].OP);
-      if (!( ROIv = SUMA_OpenDrawnROI_1D (filename, SO->idcode_str, &N_ROI, YUP))) {
+      if (SO->N_patchNode < SO->N_Node ||
+          SO->patchNodeMask) {
+         SUMA_S_Note("Assigning ROI to domain parent");
+         if (!(SOp = SUMA_findSOp_inDOv(SO->LocalDomainParentID, 
+                                        SUMAg_DOv, SUMAg_N_DOv))) {
+            SUMA_S_Note("Failed to find LDP, sticking with initial surf"); 
+                  /* continue ...*/
+         }else {
+            SO = SOp;
+         }
+      }    
+      if (!( ROIv = SUMA_OpenDrawnROI_1D (filename, SO->idcode_str, 
+                                          &N_ROI, YUP))) {
          SUMA_SLP_Err("Failed to read NIML ROI.");
          SUMA_RETURNe;
       }
@@ -4466,7 +4891,8 @@ void SUMA_OpenDrawnROI (char *filename, void *data)
    /* put those ROIs in SUMAg_DOv */
    for (i=0; i < N_ROI; ++i) {
       /* add ROI to DO list */
-      if (!SUMA_AddDO (SUMAg_DOv, &SUMAg_N_DOv, (void *)ROIv[i], ROIdO_type, SUMA_LOCAL)) {
+      if (!SUMA_AddDO ( SUMAg_DOv, &SUMAg_N_DOv, 
+                        (void *)ROIv[i], ROIdO_type, SUMA_WORLD)) {
          fprintf(SUMA_STDERR,"Error %s: Failed in SUMA_AddDO.\n", FuncName);
       }
    }
@@ -4478,7 +4904,8 @@ void SUMA_OpenDrawnROI (char *filename, void *data)
    if (!SUMAg_CF->X->DrawROI->curDrawnROI) {
       i = 0;
       do {
-         if (SUMAg_DOv[i].ObjectType == ROIdO_type) SUMAg_CF->X->DrawROI->curDrawnROI =
+         if (SUMAg_DOv[i].ObjectType == ROIdO_type) 
+            SUMAg_CF->X->DrawROI->curDrawnROI =
                                              (SUMA_DRAWN_ROI *)SUMAg_DOv[i].OP;
          ++i;
       } while (i < SUMAg_N_DOv && !SUMAg_CF->X->DrawROI->curDrawnROI);
@@ -4489,20 +4916,30 @@ void SUMA_OpenDrawnROI (char *filename, void *data)
    }
    
    /* Now update the Paint job on the ROI plane */
-   if (!SUMA_Paint_SO_ROIplanes_w (
-            SUMA_findSOp_inDOv(SUMAg_CF->X->DrawROI->curDrawnROI->Parent_idcode_str, 
-            SUMAg_DOv, SUMAg_N_DOv), SUMAg_DOv, SUMAg_N_DOv)) {
+   SO = SUMA_findSOp_inDOv(
+               SUMAg_CF->X->DrawROI->curDrawnROI->Parent_idcode_str, 
+               SUMAg_DOv, SUMAg_N_DOv);
+   if (!SUMA_Paint_SO_ROIplanes_w (SO, SUMAg_DOv, SUMAg_N_DOv)) {
       SUMA_SLP_Err("Failed in SUMA_Paint_SO_ROIplanes_w.");
       SUMA_RETURNe;
    }
    
+   /* find the overlay plane */
+   over = SUMA_Fetch_OverlayPointer(
+            SO->Overlays, SO->N_Overlays, 
+            SUMAg_CF->X->DrawROI->curDrawnROI->ColPlaneName,
+            &i);       
+   if (over) SUMA_InitializeColPlaneShell(SO, over);
+
    /* put a nice redisplay here */
    if (!list) list = SUMA_CreateList ();
-   SUMA_REGISTER_TAIL_COMMAND_NO_DATA(list, SE_Redisplay_AllVisible, SES_Suma, NULL); 
+   SUMA_REGISTER_TAIL_COMMAND_NO_DATA( list, SE_Redisplay_AllVisible, 
+                                       SES_Suma, NULL); 
    if (!SUMA_Engine(&list)) {
       SUMA_SLP_Err("Failed to redisplay.");
       SUMA_RETURNe;
    }
+   
    
    SUMA_RETURNe; 
 }
@@ -4751,11 +5188,14 @@ SUMA_DRAWN_ROI ** SUMA_OpenDrawnROI_1D (char *filename, char *Parent_idcode_str,
       SUMA_PARSED_NAME *NewName=NULL; 
       
       edgethickness = 3;
-      fillcolor[0] = RGB[3*i]; fillcolor[1] = RGB[3*i+1]; fillcolor[2] = RGB[3*i+2]; 
+      fillcolor[0] = RGB[3*i]; 
+      fillcolor[1] = RGB[3*i+1]; 
+      fillcolor[2] = RGB[3*i+2]; 
       edgecolor[0] = 0; edgecolor[1] = 0; edgecolor[2] = 1; 
       Value = iLabel[iStart[i]]; /* the index label of this ROI */
       N_Node = iStop[i] - iStart[i] + 1; /* Number of Nodes in this ROI */
-      Node = &(iNode[iStart[i]]); /* pointer to location of first index in this ROI */
+      Node = &(iNode[iStart[i]]); 
+                     /* pointer to location of first index in this ROI */
       /* prepare a label for these ROIs */
       NewName = SUMA_ParseFname (filename, NULL);
       if (!NewName) {
@@ -4765,19 +5205,29 @@ SUMA_DRAWN_ROI ** SUMA_OpenDrawnROI_1D (char *filename, char *Parent_idcode_str,
          Label = SUMA_append_string(stmp,NewName->FileName_NoExt);
       }
       SUMA_LH("Transforming to Drawn ROIs...");
-      ROIv[i] = SUMA_1DROI_to_DrawnROI( Node, N_Node , 
+      if (!(ROIv[i] = SUMA_1DROI_to_DrawnROI( Node, N_Node , 
                                     Value, Parent_idcode_str,
                                     Label, NULL,
                                     fillcolor, edgecolor, edgethickness, 
                                     SUMAg_DOv, SUMAg_N_DOv,
-                                    ForDisplay);
+                                    ForDisplay))) {
+         int kkk = 0;
+         SUMA_SL_Err("Failed to transform to Drawn ROI");
+         for (kkk=0; kkk<i; ++kkk) {
+            if (ROIv[kkk]) SUMA_freeDrawnROI(ROIv[kkk]); 
+         }
+         SUMA_free(ROIv);ROIv=NULL;
+         SUMA_RETURN(NULL);
+      }
       if (nrow == 5 || nrow == 4) {
          SUMA_LH("Marking as color by fillcolor");
          ROIv[i]->ColorByLabel = NOPE;
       }
       if (Label) SUMA_free(Label); Label = NULL;
       if (NewName) SUMA_Free_Parsed_Name(NewName); NewName = NULL;
-      if (LocalHead) fprintf (SUMA_STDERR, "%s: ROI->Parent_idcode_str %s\n", FuncName, ROIv[i]->Parent_idcode_str);
+      if (LocalHead) 
+         fprintf (SUMA_STDERR,   "%s: ROI->Parent_idcode_str %s\n", 
+                                 FuncName, ROIv[i]->Parent_idcode_str);
 
    }
  
@@ -4801,20 +5251,21 @@ SUMA_DRAWN_ROI ** SUMA_OpenDrawnROI_1D (char *filename, char *Parent_idcode_str,
 /*!
    \brief Loads a niml ROI 
    
-   \param ForDisplay (SUMA_Boolean) YUP: Performs checks to see if ROI with similar idcode already
-                                          exists and if parent surface is loaded.
-                                    NOPE: Does not check for above conditions.
+   \param ForDisplay (SUMA_Boolean) 
+      YUP: Performs checks to see if ROI with similar idcode already
+      exists and if parent surface is loaded.
+      NOPE: Does not check for above conditions.
 */
 SUMA_DRAWN_ROI ** SUMA_OpenDrawnROI_NIML (char *filename, 
                                           int *N_ROI, 
                                           SUMA_Boolean ForDisplay)
 { /* begin embedded function */
    static char FuncName[]={"SUMA_OpenDrawnROI_NIML"};
-   char stmp[SUMA_MAX_NAME_LENGTH+100], *nel_idcode;
+   char stmp[SUMA_MAX_NAME_LENGTH+100], *nel_idcode, *att=NULL;
    NI_element *nel = NULL;
    NI_element **nelv=NULL;
    NI_stream ns ;
-   int n_read=0, idat, answer, inel, iDO, N_nel;
+   int n_read=0, idat, answer, inel, iDO, N_nel, iwarn=0;
    SUMA_NIML_ROI_DATUM *niml_ROI_datum_buff=NULL;
    SUMA_NIML_DRAWN_ROI * nimlROI=NULL;
    SUMA_DRAWN_ROI **ROIv=NULL;
@@ -4853,11 +5304,17 @@ SUMA_DRAWN_ROI ** SUMA_OpenDrawnROI_NIML (char *filename,
    AlwaysReplace = NOPE;
    inel = 0;
    do {
+      SUMA_LH("Calling NI_read_element");
       nel = NI_read_element(ns,1) ;
       
-      if (nel) {
+      if (nel && nel->vec_num) { /* Must check for ROIs that are empty.
+                                    They cause a crash that was meticulously
+                                    reported by Mike Arcaro.  
+                                    Empty ROIs can be created if one
+                                    starts a new ROI then undo drawing operations
+                                    and save all ROIs to niml format. */ 
          found = YUP;
-         
+         SUMA_LH("Have nel, will travel");
          if (LocalHead && 0) SUMA_nel_stdout (nel);
          
          if (strcmp(nel->name,SUMA_Dset_Type_Name(SUMA_NODE_ROI))) {
@@ -4867,6 +5324,7 @@ SUMA_DRAWN_ROI ** SUMA_OpenDrawnROI_NIML (char *filename,
             NI_free_element(nel) ; nel = NULL;
             SUMA_RETURN(NULL);
          }
+         SUMA_LH("Type check redux");
          /* somewhat redundant test */
          if (nel->vec_typ[0] != SUMAg_CF->nimlROI_Datum_type) {
             SUMA_SLP_Err ("Datum type mismatch.");
@@ -4874,12 +5332,39 @@ SUMA_DRAWN_ROI ** SUMA_OpenDrawnROI_NIML (char *filename,
             SUMA_RETURN(NULL);
          }
 
+         SUMA_LH("IDs please");
+         /* make sure id is set properly (the curse of old versions) */
+         att = NI_get_attribute( nel , "self_idcode");
+         if (!att) { /* try old way */
+            if ((att = NI_get_attribute( nel , "idcode_str"))) {
+               NI_set_attribute(nel, "self_idcode", att);
+               NI_kill_attribute (nel,"idcode_str"); 
+               att = NI_get_attribute( nel , "self_idcode");
+            } else if ((att = NI_get_attribute( nel , "Object_ID"))) {
+               NI_set_attribute(nel, "self_idcode", att);
+               NI_kill_attribute (nel,"Object_ID"); 
+               att = NI_get_attribute( nel , "self_idcode");
+            }
+         }
+         if (att) {
+            nel_idcode = att; 
+         } else { /* put one in, anything is fine */
+            att = (char*)SUMA_calloc(SUMA_IDCODE_LENGTH, 
+                                     sizeof(char)); 
+            UNIQ_idcode_fill(att);
+            NI_set_attribute(nel,"self_idcode",att);
+            SUMA_free(att); att = NULL;
+            nel_idcode = NI_get_attribute(nel,"self_idcode"); 
+         }
+         
          if (ForDisplay) {
             /* find out if a displayable object exists 
                with the same idcode_str */
-            nel_idcode = NI_get_attribute( nel , "idcode_str"); /* obsolete*/
-            if (!nel_idcode) 
-               nel_idcode = NI_get_attribute( nel , "self_idcode"); 
+            SUMA_LH("Checking for self id...");
+            if (!nel_idcode) { 
+               SUMA_S_Err("Must have id by now!");
+               SUMA_RETURN(NULL);
+            } 
             if (SUMA_existDO(nel_idcode, SUMAg_DOv, SUMAg_N_DOv)) {
                if (AlwaysReplace) {
                   AddNel = YUP; 
@@ -4888,9 +5373,9 @@ SUMA_DRAWN_ROI ** SUMA_OpenDrawnROI_NIML (char *filename,
                   AddNel = NOPE;
                }
                if (!AlwaysReplace && !NeverReplace) {   /* ASk */
-                  sprintf(stmp, "Found duplicate ROIs.\n"\
-                                             "Replace ROI %s (%s) by\n" \
-                                             "version in file ?", 
+                  sprintf(stmp, "Found duplicate ROIs.\n"
+                                "Replace ROI %s (%s) by\n" 
+                                "version in file ?", 
                   NI_get_attribute( nel , "Label"), nel_idcode); 
 
                   answer = SUMA_ForceUser_YesNo (SUMAg_SVv[0].X->TOPLEVEL, 
@@ -4920,7 +5405,8 @@ SUMA_DRAWN_ROI ** SUMA_OpenDrawnROI_NIML (char *filename,
 
                      case SUMA_NO_ALL:
                         SUMA_LH("NO ALL");
-                        /* don't add this one and set flag to ignore the doubles */
+                        /* don't add this one and set flag to 
+                           ignore the doubles */
                         AddNel = NOPE;
                         NeverReplace = YUP;
                         break;
@@ -4939,28 +5425,41 @@ SUMA_DRAWN_ROI ** SUMA_OpenDrawnROI_NIML (char *filename,
             /* make sure element's parent exists */
             if (AddNel) {
                SUMA_LH("Checking for Parent surface...");
-               iDO = SUMA_whichDO(  NI_get_attribute( nel ,
-                                                      "Parent_idcode_str"), 
-                                    SUMAg_DOv, SUMAg_N_DOv); /* obsolete */
-               if (iDO < 0) 
-                  iDO = SUMA_whichDO(
-                              NI_get_attribute( nel , "domain_parent_idcode"), 
-                              SUMAg_DOv, SUMAg_N_DOv);
+               att = NI_get_attribute( nel , "domain_parent_idcode");
+               if (!att) { /* try old way */
+                  if ((att = NI_get_attribute( nel , "Parent_idcode_str"))) {
+                     NI_set_attribute(nel, "domain_parent_idcode", att);
+                     NI_kill_attribute (nel,"Parent_idcode_str");
+                     att = NI_get_attribute(nel,"domain_parent_idcode"); 
+                  } else if ((att = NI_get_attribute( nel , "Parent_ID"))) {
+                     NI_set_attribute(nel, "domain_parent_idcode", att);
+                     NI_kill_attribute (nel,"Parent_ID"); 
+                     att = NI_get_attribute(nel,"domain_parent_idcode"); 
+                  }
+               }
+               iDO = -1;
+               if (att) {
+                  iDO = SUMA_whichDO(  att, 
+                                       SUMAg_DOv, SUMAg_N_DOv);
+               }
               
                if (iDO < 0) {
-                  SUMA_SL_Warn(  "ROI's parent surface\n"
-                                 "is not loaded. \n"
-                                 "Trying adoptive parents\n"
-                                  );
+                  if (!iwarn) {
+                     SUMA_S_Warnv(
+                        "ROI's parent surface not loaded, or ROI is\n"
+                        "unparented. Looking for adoptive parents...\n"
+                        "(Message muted for remainder of ROIs in:\n"
+                        " %s )\n"
+                        , filename );
+                     ++iwarn;
+                  }
                   iDO = SUMA_BiggestLocalDomainParent(SUMAg_DOv, SUMAg_N_DOv); 
                   if (iDO < 0) {
                      SUMA_S_Err("Can't find adoptive surface");
                      AddNel = NOPE;
                   } else {
                      SO = (SUMA_SurfaceObject *)SUMAg_DOv[iDO].OP;
-                     NI_set_attribute(nel,
-                                       "Parent_idcode_str", 
-                                       SO->idcode_str);
+                     SUMA_LHv("Found LDP in %s\n", SO->Label);
                      NI_set_attribute(nel,
                                        "domain_parent_idcode", 
                                        SO->idcode_str);
@@ -4973,15 +5472,16 @@ SUMA_DRAWN_ROI ** SUMA_OpenDrawnROI_NIML (char *filename,
          }         
          
          if (AddNel) {
-            SUMA_LH("Adding Nel");
+            SUMA_LHv("Adding Nel %d\n", inel);
             nelv[inel] = nel;
             ++inel; 
          }else {
-            SUMA_LH("Skipping Nel");
+            SUMA_LHv("Skipping Nel %d\n", inel);
          }
          
          ++n_read;
       }else {
+         SUMA_LH("NULL nel, to the spruce goose");
          found = NOPE;
       } 
       
@@ -5006,9 +5506,11 @@ SUMA_DRAWN_ROI ** SUMA_OpenDrawnROI_NIML (char *filename,
          fprintf (SUMA_STDERR,
                   "%s: Processing nel %d/%d...\n", FuncName, inel, N_nel);
       nel = nelv[inel];
-      nel_idcode = NI_get_attribute( nel , "idcode_str"); /* obsolete */
-      if (!nel_idcode) nel_idcode = NI_get_attribute( nel , "self_idcode"); 
-
+      nel_idcode = NI_get_attribute( nel , "self_idcode"); 
+      if (!nel_idcode) {
+         SUMA_S_Err("An id must be present by now!\n");
+         SUMA_RETURN(NULL);
+      }
       /* store nel in nimlROI struct */
 
       /* allocate for nimlROI */
@@ -5016,29 +5518,22 @@ SUMA_DRAWN_ROI ** SUMA_OpenDrawnROI_NIML (char *filename,
                      SUMA_calloc(1,sizeof(SUMA_NIML_DRAWN_ROI));
       nimlROI->Type = (int)strtod(NI_get_attribute( nel , "Type"), NULL);
       nimlROI->idcode_str = 
-         SUMA_copy_string(NI_get_attribute( nel , "idcode_str")); /* obsolete */
-      if (SUMA_IS_EMPTY_STR_ATTR(nimlROI->idcode_str)) 
-         nimlROI->idcode_str = 
-            SUMA_copy_string(NI_get_attribute( nel , "self_idcode"));
+         SUMA_copy_string(NI_get_attribute( nel , "self_idcode"));
       nimlROI->Parent_idcode_str = 
-         SUMA_copy_string(NI_get_attribute( nel , "Parent_idcode_str")); 
-            /* obsolete */
-      if (SUMA_IS_EMPTY_STR_ATTR(nimlROI->Parent_idcode_str)) 
-         nimlROI->Parent_idcode_str = 
-            SUMA_copy_string(NI_get_attribute( nel , "domain_parent_idcode"));
+         SUMA_copy_string(NI_get_attribute( nel , "domain_parent_idcode"));
       nimlROI->Label = SUMA_copy_string(NI_get_attribute( nel , "Label"));
       nimlROI->iLabel = (int)strtod(NI_get_attribute( nel , "iLabel"), NULL);
       nimlROI->N_ROI_datum = nel->vec_len;
       nimlROI->ColPlaneName = 
          SUMA_copy_string(NI_get_attribute( nel , "ColPlaneName"));
       if (SUMA_StringToNum (NI_get_attribute( nel , "FillColor"), 
-                           nimlROI->FillColor, 3) < 0) {
+                           (void*)nimlROI->FillColor, 3,1) < 0) {
          SUMA_SLP_Err("Failed in reading FillColor.");
          SUMA_free(nelv);
          SUMA_RETURN(NULL);
       }
       if (SUMA_StringToNum (NI_get_attribute( nel , "EdgeColor"), 
-                           nimlROI->EdgeColor, 3) < 0) {
+                           (void*)nimlROI->EdgeColor, 3,1) < 0) {
          SUMA_SLP_Err("Failed in reading EdgeColor.");
          SUMA_free(nelv);
          SUMA_RETURN(NULL);
@@ -5154,7 +5649,9 @@ SUMA_DRAWN_ROI ** SUMA_OpenDrawnROI_NIML (char *filename,
    \return nel (NI_element *) structure to data set
                               NULL if failed
 */
-SUMA_DSET *SUMA_ROIv2Grpdataset (SUMA_DRAWN_ROI** ROIv, int N_ROIv, char *Parent_idcode_str, int Pad_to, int Pad_val) 
+SUMA_DSET *SUMA_ROIv2Grpdataset (SUMA_DRAWN_ROI** ROIv, int N_ROIv, 
+                                 char *Parent_idcode_str, 
+                                 int Pad_to, int Pad_val) 
 {
    static char FuncName[]={"SUMA_ROIv2Grpdataset"};
    int ii, i, nn, cnt, N_NodesTotal = 0, MaxIndex = 0,
@@ -5175,7 +5672,8 @@ SUMA_DSET *SUMA_ROIv2Grpdataset (SUMA_DRAWN_ROI** ROIv, int N_ROIv, char *Parent
       }
       N_NodesTotal += cnt;
    }
-   if (LocalHead) fprintf (SUMA_STDERR,"%s: %d nodes total.\n", FuncName, N_NodesTotal);
+   if (LocalHead) 
+      fprintf (SUMA_STDERR,"%s: %d nodes total.\n", FuncName, N_NodesTotal);
 
    NodesTotal = (int *)SUMA_calloc(N_NodesTotal, sizeof(int));
    LabelsTotal = (int *)SUMA_calloc(N_NodesTotal, sizeof(int));
@@ -5229,8 +5727,10 @@ SUMA_DSET *SUMA_ROIv2Grpdataset (SUMA_DRAWN_ROI** ROIv, int N_ROIv, char *Parent
       SUMA_free(isort); isort = NULL;
 
       /* now get the unique set of nodes */
-      NodesTotal_u = SUMA_UniqueInt_ind (NodesTotal, N_NodesTotal, &N_NodesTotal_u, &iu);
-      /* reorder LabelsTotal to contain data from the nodes left in NodesTotal_u */
+      NodesTotal_u = SUMA_UniqueInt_ind (NodesTotal, N_NodesTotal, 
+                                        &N_NodesTotal_u, &iu);
+      /* reorder LabelsTotal to contain data from the nodes 
+         left in NodesTotal_u */
       LabelsTotal_r = SUMA_reorder (LabelsTotal, iu, N_NodesTotal_u);
       SUMA_free(NodesTotal); NodesTotal = NULL;
       SUMA_free(LabelsTotal); LabelsTotal = NULL;
@@ -5253,7 +5753,8 @@ SUMA_DSET *SUMA_ROIv2Grpdataset (SUMA_DRAWN_ROI** ROIv, int N_ROIv, char *Parent
    if (Pad_to > 0) {
       SUMA_LH("Padding to desired length");
       if (Pad_to < MaxIndex) {
-         SUMA_SL_Err("ROI contains node index > padding limit\nNo padding done.");
+         SUMA_SL_Err("ROI contains node index > padding limit\n"
+                     "No padding done.");
          if (NodesTotal) SUMA_free(NodesTotal); NodesTotal = NULL;
          if (LabelsTotal) SUMA_free(LabelsTotal); LabelsTotal = NULL;
          SUMA_RETURN(NULL);
@@ -5261,7 +5762,8 @@ SUMA_DSET *SUMA_ROIv2Grpdataset (SUMA_DRAWN_ROI** ROIv, int N_ROIv, char *Parent
          NodesTotal_p =  (int *)SUMA_calloc(Pad_to+1, sizeof(int));
          LabelsTotal_p = (int *)SUMA_calloc(Pad_to+1, sizeof(int));
          if (!NodesTotal_p || !LabelsTotal_p) {
-            SUMA_SL_Crit("Failed to allocate for NodesTotal_p || LabelsTotal_p");
+            SUMA_SL_Crit("Failed to allocate for NodesTotal_p || "
+                         "LabelsTotal_p");
             if (NodesTotal) SUMA_free(NodesTotal); NodesTotal = NULL;
             if (LabelsTotal) SUMA_free(LabelsTotal); LabelsTotal = NULL;
             SUMA_RETURN(NULL);
@@ -5271,24 +5773,28 @@ SUMA_DSET *SUMA_ROIv2Grpdataset (SUMA_DRAWN_ROI** ROIv, int N_ROIv, char *Parent
          for(i=0; i<N_NodesTotal; ++i) {
             LabelsTotal_p[NodesTotal[i]] = LabelsTotal[i];
          }
-         SUMA_free(NodesTotal); NodesTotal = NodesTotal_p; NodesTotal_p = NULL;
-         SUMA_free(LabelsTotal);  LabelsTotal = LabelsTotal_p; LabelsTotal_p = NULL;
+         SUMA_free(NodesTotal); 
+            NodesTotal = NodesTotal_p; NodesTotal_p = NULL;
+         SUMA_free(LabelsTotal);  
+            LabelsTotal = LabelsTotal_p; LabelsTotal_p = NULL;
          N_NodesTotal = Pad_to + 1;
       }
    }
    if (LocalHead) {
-      fprintf(SUMA_STDERR,"%s: N_NodesTotal = %d\nCreating dset\n", FuncName, N_NodesTotal);
+      fprintf( SUMA_STDERR,
+               "%s: N_NodesTotal = %d\nCreating dset\n", 
+               FuncName, N_NodesTotal);
    }
    /* construct a NIML data set for the output */
    dset = SUMA_CreateDsetPointer(
-                                 NULL,         /* usually the filename */
-                                 SUMA_NODE_ROI,                /* mix and match */
-                                 NULL,    /* no idcode, let the function create one from the filename*/
-                                 Parent_idcode_str,       /* no domain str specified */
-                                 N_NodesTotal    /* Number of nodes allocated for */
-                                 ); /* DO NOT free dset, it is store in DsetList */
+         NULL,         /* usually the filename */
+         SUMA_NODE_ROI,                /* mix and match */
+         NULL,    /* no idcode, let the function create one from the filename*/
+         Parent_idcode_str,       /* no domain str specified */
+         N_NodesTotal    /* Number of nodes allocated for */
+         ); /* DO NOT free dset, it is store in DsetList */
 
-   
+
    
    if (!dset) {
       SUMA_SL_Err("Failed in SUMA_CreateDsetPointer");
@@ -5297,14 +5803,16 @@ SUMA_DSET *SUMA_ROIv2Grpdataset (SUMA_DRAWN_ROI** ROIv, int N_ROIv, char *Parent
 
    /* Add the index column */
    SUMA_LH("Adding index column...");
-   if (!SUMA_AddDsetNelCol (dset, "node index", SUMA_NODE_INDEX, (void *)NodesTotal, NULL, 1)) {
+   if (!SUMA_AddDsetNelCol (  dset, "node index", 
+                              SUMA_NODE_INDEX, (void *)NodesTotal, NULL, 1)) {
       SUMA_SL_Err("Failed in SUMA_AddNelCol");
       SUMA_RETURN(dset);
    }
 
    /* Add the label column */
    SUMA_LH("Adding label column...");
-   if (!SUMA_AddDsetNelCol (dset, "integer label", SUMA_NODE_ILABEL, (void *)LabelsTotal, NULL, 1)) {
+   if (!SUMA_AddDsetNelCol (dset, "integer label", 
+                            SUMA_NODE_ILABEL, (void *)LabelsTotal, NULL, 1)) {
       SUMA_SL_Err("Failed in SUMA_AddNelCol");
       SUMA_RETURN(dset);
    }
@@ -5318,6 +5826,157 @@ SUMA_DSET *SUMA_ROIv2Grpdataset (SUMA_DRAWN_ROI** ROIv, int N_ROIv, char *Parent
    if (LabelsTotal) SUMA_free(LabelsTotal); LabelsTotal = NULL;
    
    SUMA_RETURN(dset);
+}
+/*!
+   \brief turns a bunch of ROIs into a list of node vectors
+            Each list is for a particular ROI. 
+            The ordering of the node indices is preserved as
+            it appears in the ROI
+   \param ROIv (SUMA_DRAWN_ROI**) vector of ROI structures
+   \param N_ROIv (int) number of ROI structures
+   \return nl (DList *) linked list of node indices for each ROI
+                              NULL if failed
+*/
+
+void SUMA_free_ROI_Extract(void *dd)
+{
+   SUMA_ROI_EXTRACT *ddd=(SUMA_ROI_EXTRACT *)dd;
+   if (ddd) {
+      if (ddd->vals) SUMA_free(ddd->vals); 
+      SUMA_free(ddd);
+   }
+   return;
+}
+
+SUMA_ROI_EXTRACT *SUMA_GetROIExtractLabeled(DList *ddl, int i)
+{
+   static char FuncName[]={"SUMA_GetROIExtractLabeled"};
+   DListElmt *el=NULL;
+   SUMA_ROI_EXTRACT *dd=NULL;
+   
+   SUMA_ENTRY;
+   
+   if (!ddl) SUMA_RETURN(NULL);
+   
+   el=dlist_head(ddl);
+   while (el) {
+      dd = (SUMA_ROI_EXTRACT *)el->data;
+      if (dd->label == i) SUMA_RETURN(dd);
+      el = dlist_next(el);
+   }
+   
+   SUMA_RETURN(NULL);
+}
+
+DList *SUMA_ROIv2NodeLists (SUMA_DRAWN_ROI** ROIv, int N_ROIv, int purgedups) 
+{
+   static char FuncName[]={"SUMA_ROIv2NodeLists"};
+   int ii, i, nn, cnt, nodemin=9999999, nodemax=-1, MaxNodeIndex=-1,
+      N_NodesMax=0;
+   byte *visited=NULL;
+   SUMA_DSET *dset =NULL;
+   DList *ddl=NULL;
+   DListElmt *Elm=NULL, *eldd=NULL;
+   SUMA_ROI_EXTRACT *dd=NULL;
+   SUMA_ROI_DATUM *ROI_Datum=NULL;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   /* Now you have the ROIs, concatenate all NodesInROI vectors into 1*/
+   /* count the total number of nodes */
+   ddl = (DList *)SUMA_calloc(1, sizeof(DList));
+   dlist_init(ddl, SUMA_free_ROI_Extract);
+   N_NodesMax = 0; nodemin=100000; nodemax=0, MaxNodeIndex=0;
+   for (ii=0; ii < N_ROIv; ++ii) {
+      if ((cnt=SUMA_NodeRange_DrawnROI (ROIv[ii], &nodemin, &nodemax)) >= 0) {
+         if (LocalHead) {
+            fprintf (SUMA_STDERR,"%s: ROI #%d: %d nodes,%d/%d min/max nodes\n", 
+                     FuncName, ii, cnt, nodemin, nodemax);
+         }
+         /* is this a new label ? */
+         dd = SUMA_GetROIExtractLabeled(ddl, ROIv[ii]->iLabel);
+         if (!dd) {
+            dd = (SUMA_ROI_EXTRACT*)SUMA_calloc(1,sizeof(SUMA_ROI_EXTRACT));
+            dd->label = ROIv[ii]->iLabel;
+            dd->N_alloc = cnt;
+            dd->vals = (int *)SUMA_calloc(dd->N_alloc, sizeof(int));
+            dd->N_vals = 0;
+            dlist_ins_next(ddl,dlist_tail(ddl),dd);
+         } else { /* This allows for multiple ROI of the same label 
+                     to be combined */
+            dd->N_alloc += cnt;
+            dd->vals = (int *)SUMA_realloc(dd->vals, dd->N_alloc*sizeof(int));
+         }
+         if (MaxNodeIndex < nodemax) MaxNodeIndex = nodemax;
+      } else {
+         SUMA_S_Err( "Cannont handle failure in NodeRange function\n"
+                     "Must have as manu elements in ddl as in ROIv");
+         SUMA_RETURN(NULL);
+      }
+   }
+   
+
+   /* allocate a vector to keep track of visited nodes */
+   SUMA_LHv("Ready to fill up, MaxNodeIndex %d\n", MaxNodeIndex);
+   {
+      if (purgedups) 
+         visited = (byte *)SUMA_malloc(sizeof(byte)*(MaxNodeIndex+1));
+      else visited = NULL;
+      #if 0
+      eldd = dlist_head(ddl);
+      for (ii=0; ii < N_ROIv; ++ii) {
+         SUMA_LHv("Working %d/%d\n", ii, N_ROIv);
+         dd = (SUMA_ROI_EXTRACT *)eldd->data;
+         if (visited) memset((void*)visited, 0, sizeof(byte)*(MaxNodeIndex+1));
+         Elm = dlist_head(ROIv[ii]->ROIstrokelist);
+         while (Elm && Elm->data) {
+            ROI_Datum = (SUMA_ROI_DATUM *)Elm->data;
+            SUMA_LHv("Will check on %d nodes\n", ROI_Datum->N_n);
+            for (i=0; i < ROI_Datum->N_n; ++i) {
+               if (!visited || !visited[ROI_Datum->nPath[i]]) {
+                  dd->vals[dd->N_vals] = ROI_Datum->nPath[i];
+                  if (visited) visited[ROI_Datum->nPath[i]]=1;
+                  ++dd->N_vals;
+               }
+            }
+            Elm = dlist_next(Elm);
+         }
+         eldd = dlist_next(eldd);   
+      }
+      #else
+      eldd = dlist_head(ddl);
+      while(eldd) {
+         dd = (SUMA_ROI_EXTRACT *)eldd->data;
+         if (visited) memset((void*)visited, 0, sizeof(byte)*(MaxNodeIndex+1));
+         for (ii=0; ii < N_ROIv; ++ii) {
+            if (ROIv[ii]->iLabel == dd->label) {
+               Elm = dlist_head(ROIv[ii]->ROIstrokelist);
+               while (Elm && Elm->data) {
+                  ROI_Datum = (SUMA_ROI_DATUM *)Elm->data;
+                  SUMA_LHv("Will check on %d nodes, label %d, (%d)\n", 
+                           ROI_Datum->N_n, dd->label, ROIv[ii]->iLabel);
+                  for (i=0; i < ROI_Datum->N_n; ++i) {
+                     if (!visited || !visited[ROI_Datum->nPath[i]]) {
+                        dd->vals[dd->N_vals] = ROI_Datum->nPath[i];
+                        if (visited) visited[ROI_Datum->nPath[i]]=1;
+                        ++dd->N_vals;
+                     }
+                  }
+                  Elm = dlist_next(Elm);
+               }
+            } /* add ROI's of this label */
+         } /* ii */
+         eldd = dlist_next(eldd);
+      } 
+      #endif   
+      
+   } 
+   
+   if (visited) SUMA_free(visited); visited = NULL;
+   
+   
+   SUMA_RETURN(ddl);
 }
    
 /*!
@@ -5679,6 +6338,48 @@ void SUMA_SaveSOascii (char *filename, void *data)
    if (newprefix) SUMA_free(newprefix); 
    SUMA_RETURNe;
 }
+/*!
+   \brief handles saving xform opts to filename.
+   
+   \param filename (char *)
+   \param data(void *) pointer to SUMA_XFORM stucture to be saved.
+*/
+void SUMA_SaveXformOpts (char *filename, void *data)
+{
+   static char FuncName[]={"SUMA_SaveXformOpts"};
+   SUMA_XFORM *xf=(SUMA_XFORM *)data;
+   char *fn=NULL;
+   int suc;
+   NI_element *dotopts=NULL; 
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+
+   SUMA_LH("Called");   
+   if (!data) {
+      SUMA_S_Err("NULL input");
+      SUMA_RETURNe;
+   }
+   
+   SUMA_LHv("Xform %s, filename %s\n", xf->name, filename);
+    
+   if (!strcmp(xf->name,"Dot")) {
+      if (!(dotopts = SUMA_FindNgrNamedElement(xf->XformOpts, "dotopts"))) {
+         SUMA_S_Err("No dotopts");
+         SUMA_RETURNe;
+      }  
+      fn = SUMA_Extension(filename, ".niml.xfopts", NOPE);
+      fn = SUMA_append_replace_string("file:",fn,"",2);
+      NEL_WRITE_1D(dotopts, fn, suc);
+      SUMA_free(fn);
+   } else {
+      fn = SUMA_Extension(filename, ".niml.xfopts", NOPE);
+      fn = SUMA_append_replace_string("file:",fn,"",2);
+      NEL_WRITE_TXH(xf->XformOpts, fn, suc);
+   }
+   
+   SUMA_RETURNe;
+} 
 
 /*!
    \brief handles saving ROI to filename.
@@ -5877,15 +6578,20 @@ SUMA_Boolean SUMA_Write_DrawnROI_NIML (SUMA_DRAWN_ROI **ROIv, int N_ROI, char *f
       }
  
       /* Now create a ni element */
-      if (LocalHead) fprintf(SUMA_STDERR,"%s: Creating new element of %d segments\n", FuncName, niml_ROI->N_ROI_datum);
-      nel = NI_new_data_element(SUMA_Dset_Type_Name(SUMA_NODE_ROI),  niml_ROI->N_ROI_datum);
+      if (LocalHead) 
+         fprintf( SUMA_STDERR,
+                  "%s: Creating new element of %d segments\n", 
+                  FuncName, niml_ROI->N_ROI_datum);
+      nel = NI_new_data_element( SUMA_Dset_Type_Name(SUMA_NODE_ROI),  
+                                 niml_ROI->N_ROI_datum);
 
       SUMA_LH("Adding column...");
       NI_add_column( nel , SUMAg_CF->nimlROI_Datum_type, niml_ROI->ROI_datum );
 
       SUMA_LH("Setting attributes...");
       NI_set_attribute (nel, "self_idcode", niml_ROI->idcode_str);
-      NI_set_attribute (nel, "domain_parent_idcode", niml_ROI->Parent_idcode_str);
+      NI_set_attribute (nel, "domain_parent_idcode", 
+                              niml_ROI->Parent_idcode_str);
       NI_set_attribute (nel, "Label", niml_ROI->Label);
       sprintf(stmp,"%d", niml_ROI->iLabel);
       NI_set_attribute (nel, "iLabel", stmp);
@@ -5905,7 +6611,8 @@ SUMA_Boolean SUMA_Write_DrawnROI_NIML (SUMA_DRAWN_ROI **ROIv, int N_ROI, char *f
 
       if (!WriteBin) {
          SUMA_LH ("Writing element, Text mode.");
-         if (NI_write_element( ns , nel , NI_TEXT_MODE | NI_HEADERSHARP_FLAG ) < 0) {
+         if (NI_write_element(   ns , nel , 
+                                 NI_TEXT_MODE | NI_HEADERSHARP_FLAG ) < 0) {
            SUMA_SL_Err("Badness, failed to write nel");
            NI_stream_close( ns ) ; 
            SUMA_RETURN(NOPE);
@@ -6045,6 +6752,51 @@ SUMA_1D_DRAWN_ROI * SUMA_DrawnROI_to_1DDrawROI (SUMA_DRAWN_ROI *ROI)
    
    SUMA_RETURN(ROI_1D);
 }
+/*!
+   \brief A function to find the range of node values in an ROI
+   \returns the maximum number of nodes in this ROI.  
+   
+*/
+int SUMA_NodeRange_DrawnROI (SUMA_DRAWN_ROI *ROI, int *min, int *max)
+{
+   static char FuncName[]={"SUMA_NodeRange_DrawnROI"};
+   
+   SUMA_ROI_DATUM *ROI_Datum=NULL;
+   DListElmt *Elm = NULL;
+   int i = -1, cnt = 0;
+   SUMA_Boolean LocalHead = NOPE;
+
+   SUMA_ENTRY;
+
+   if (!ROI || !min || !max) {
+      SUMA_SL_Err("Null ROI");
+      SUMA_RETURN(-1);
+   }
+   
+   /* count the total number of nodes in ROI */
+   
+   
+   /* now fill the node indices and the node values */
+   Elm = NULL;
+   *min = -1;
+   *max = -1;
+   cnt = 0;
+   do {
+      if (!Elm) Elm = dlist_head(ROI->ROIstrokelist);
+      else Elm = Elm->next;
+      ROI_Datum = (SUMA_ROI_DATUM *)Elm->data;
+      for (i=0; i < ROI_Datum->N_n; ++i) {
+         if (*min < 0) *min = ROI_Datum->nPath[i];
+         else if (*min > ROI_Datum->nPath[i]) *min = ROI_Datum->nPath[i];
+         
+         if (*max < ROI_Datum->nPath[i]) *max = ROI_Datum->nPath[i];
+         ++cnt;
+      }
+   } while (Elm != dlist_tail(ROI->ROIstrokelist));
+   
+   SUMA_RETURN(cnt);
+}
+
 
 /*!
    \brief frees a ROI_1D structure. These structures are created by
@@ -6339,7 +7091,7 @@ THD_3dim_dataset *SUMA_FormAfnidset (float *NodeList, float *vals, int N_vals, S
       orcode[2] = ORIENT_typestr[mset->daxes->zzorient][0] ;
       orcode[3] = '\0' ;
    } else if (Opt->orcode) {
-      orcode = malloc(4) ; orcode = strcpy(orcode, Opt->orcode);
+      orcode = malloc(6) ; orcode = strcpy(orcode, Opt->orcode);
    } else {
       SUMA_SL_Err("Huh?");
       if (mset) {  DSET_delete(mset); mset = NULL; }
@@ -6654,7 +7406,8 @@ NI_group *SUMA_SO2nimlSO(SUMA_SurfaceObject *SO, char *optlist, int nlee)
    
    /* set the grand parent ID */
    if (SO->DomainGrandParentID) {
-      NI_set_attribute(ngr, "Grand_domain_parent_idcode", SO->DomainGrandParentID);
+      NI_set_attribute(ngr, "Grand_domain_parent_idcode", 
+                            SO->DomainGrandParentID);
    } else {
       NI_set_attribute(ngr, "Grand_domain_parent_idcode", SUMA_EMPTY_ATTR);
    }
@@ -6755,7 +7508,8 @@ NI_group *SUMA_SO2nimlSO(SUMA_SurfaceObject *SO, char *optlist, int nlee)
          if (SO->idcode_str) {
             sprintf(stmp, "nodelist_idcode_str_%s", SO->idcode_str);
             SUMA_NEW_ID(SO->nodelist_idcode_str, stmp);
-            NI_set_attribute(ngr, "NodeList_Element_ID", SO->nodelist_idcode_str);
+            NI_set_attribute(ngr, "NodeList_Element_ID", 
+                                  SO->nodelist_idcode_str);
          } else  {
             NI_set_attribute(ngr, "NodeList_Element_ID", SUMA_EMPTY_ATTR);
          }
@@ -6763,12 +7517,14 @@ NI_group *SUMA_SO2nimlSO(SUMA_SurfaceObject *SO, char *optlist, int nlee)
    }
    if (!nlee || SUMA_iswordin(optlist,"facenormals")) {
       if (SO->facenormals_idcode_str) {
-         NI_set_attribute(ngr, "Polygon_Normals_Element_ID", SO->facenormals_idcode_str);
+         NI_set_attribute(ngr, "Polygon_Normals_Element_ID", 
+                               SO->facenormals_idcode_str);
       } else {
          if (SO->idcode_str) {
             sprintf(stmp, "facenormals_idcode_str_%s", SO->idcode_str);
             SUMA_NEW_ID(SO->facenormals_idcode_str, stmp);
-            NI_set_attribute(ngr, "Polygon_Normals_Element_ID", SO->facenormals_idcode_str);
+            NI_set_attribute(ngr, "Polygon_Normals_Element_ID", 
+                                  SO->facenormals_idcode_str);
          } else  {
             NI_set_attribute(ngr, "Polygon_Normals_Element_ID", SUMA_EMPTY_ATTR);
          }
@@ -6777,12 +7533,14 @@ NI_group *SUMA_SO2nimlSO(SUMA_SurfaceObject *SO, char *optlist, int nlee)
    
    if (!nlee || SUMA_iswordin(optlist,"NodeNormals")) {
       if (SO->nodenormals_idcode_str) {
-         NI_set_attribute(ngr, "Node_Normals_Element_ID", SO->nodenormals_idcode_str);
+         NI_set_attribute(ngr, "Node_Normals_Element_ID", 
+                               SO->nodenormals_idcode_str);
       } else {
          if (SO->idcode_str) {
             sprintf(stmp, "nodenormals_idcode_str_%s", SO->idcode_str);
             SUMA_NEW_ID(SO->nodenormals_idcode_str, stmp);
-            NI_set_attribute(ngr, "Node_Normals_Element_ID", SO->nodenormals_idcode_str);
+            NI_set_attribute(ngr, "Node_Normals_Element_ID", 
+                                  SO->nodenormals_idcode_str);
          } else  {
             NI_set_attribute(ngr, "Node_Normals_Element_ID", SUMA_EMPTY_ATTR);
          }
@@ -6791,12 +7549,14 @@ NI_group *SUMA_SO2nimlSO(SUMA_SurfaceObject *SO, char *optlist, int nlee)
    
    if (!nlee || SUMA_iswordin(optlist,"PolyArea")) {
       if (SO->polyarea_idcode_str) {
-         NI_set_attribute(ngr, "Polygon_Area_Element_ID", SO->polyarea_idcode_str);
+         NI_set_attribute(ngr, "Polygon_Area_Element_ID", 
+                               SO->polyarea_idcode_str);
       } else {
          if (SO->idcode_str) {
             sprintf(stmp, "polyarea_idcode_str_%s", SO->idcode_str);
             SUMA_NEW_ID(SO->polyarea_idcode_str, stmp);
-            NI_set_attribute(ngr, "Polygon_Area_Element_ID", SO->polyarea_idcode_str);
+            NI_set_attribute(ngr, "Polygon_Area_Element_ID", 
+                                  SO->polyarea_idcode_str);
          } else  {
             NI_set_attribute(ngr, "Polygon_Area_Element_ID", SUMA_EMPTY_ATTR);
          }
@@ -6804,7 +7564,8 @@ NI_group *SUMA_SO2nimlSO(SUMA_SurfaceObject *SO, char *optlist, int nlee)
    }
 
    if (!nlee || SUMA_iswordin(optlist,"EdgeList")) {
-      /* add here the edge list, the node neighbor list and the face neighbor list IDs*/
+      /* add here the edge list, the node neighbor list 
+         and the face neighbor list IDs*/
       if (SO->EL && SO->EL->idcode_str) {
          NI_set_attribute(ngr, "SUMA_Edge_List_Element_ID", SO->EL->idcode_str);
       } else {
@@ -6814,27 +7575,34 @@ NI_group *SUMA_SO2nimlSO(SUMA_SurfaceObject *SO, char *optlist, int nlee)
    
    if (!nlee || SUMA_iswordin(optlist,"MemberFace")) {
       if (SO->MF && SO->MF->idcode_str) {
-         NI_set_attribute(ngr, "SUMA_Node_Face_Member_Element_ID", SO->MF->idcode_str);
+         NI_set_attribute(ngr, "SUMA_Node_Face_Member_Element_ID", 
+                               SO->MF->idcode_str);
       } else {
-         NI_set_attribute(ngr, "SUMA_Node_Face_Member_Element_ID", SUMA_EMPTY_ATTR);
+         NI_set_attribute(ngr, "SUMA_Node_Face_Member_Element_ID", 
+                               SUMA_EMPTY_ATTR);
       }
    }
    
    if (!nlee || SUMA_iswordin(optlist,"NodeNeighb")) {
       if (SO->FN && SO->FN->idcode_str) {
-         NI_set_attribute(ngr, "SUMA_Node_First_Neighb_Element_ID", SO->FN->idcode_str);
+         NI_set_attribute(ngr, "SUMA_Node_First_Neighb_Element_ID", 
+                               SO->FN->idcode_str);
       } else {
-         NI_set_attribute(ngr, "SUMA_Node_First_Neighb_Element_ID", SUMA_EMPTY_ATTR);
+         NI_set_attribute(ngr, "SUMA_Node_First_Neighb_Element_ID", 
+                               SUMA_EMPTY_ATTR);
       }
    }
 
    if (!nlee) {
       /* add the parent volume (SurfVol, NOT SurfVol_AlndExp) IDcode if present. 
-        That ID does not usually refer to the volume from which VolPar is created. Except in the case 
-        where you are viewing the surfaces on the orignal volume (SurfVol) then this field and
-        SurfVol (afni dset *) ->idcode.str and VolPar->vol_idcode_str should be identical */
+        That ID does not usually refer to the volume from which VolPar 
+        is created. Except in the case 
+        where you are viewing the surfaces on the orignal volume (SurfVol) then 
+        this field and SurfVol (afni dset *) ->idcode.str and 
+        VolPar->vol_idcode_str should be identical */
       if (SO->parent_vol_idcode_str) {
-         NI_set_attribute(ngr, "SUMA_Afni_Parent_Vol_ID", SO->parent_vol_idcode_str);
+         NI_set_attribute(ngr, "SUMA_Afni_Parent_Vol_ID", 
+                               SO->parent_vol_idcode_str);
       } else {
          NI_set_attribute(ngr, "SUMA_Afni_Parent_Vol_ID", SUMA_EMPTY_ATTR);
       }
@@ -7066,14 +7834,18 @@ SUMA_SurfaceObject *SUMA_nimlSO2SO(NI_group *ngr)
                   SUMA_SL_Err("Failed in SUMA_NodeXYZ_nel2NodeXYZ");
                   SUMA_Free_Surface_Object(SO); SO = NULL; SUMA_RETURN(SO);
                }
-            } else if ( strcmp(nel->name,"Mesh_IJK") == 0 || strcmp(nel->name,"NewMesh_IJK") == 0) { /* Get Da FaceSetList */ 
-               if (LocalHead) fprintf (SUMA_STDERR,"%s:\nGetting FaceSetList...\n", 
+            } else if ( strcmp(nel->name,"Mesh_IJK") == 0 || 
+                        strcmp(nel->name,"NewMesh_IJK") == 0) { 
+                                             /* Get Da FaceSetList */ 
+               if (LocalHead) 
+                  fprintf (SUMA_STDERR,"%s:\nGetting FaceSetList...\n", 
                                              FuncName);
                if (!SUMA_Mesh_IJK_nel2Mesh_IJK(SO, nel)) {
                   SUMA_SL_Err("Failed in SUMA_Mesh_IJK_nel2Mesh_IJK");
                   SUMA_Free_Surface_Object(SO); SO = NULL; SUMA_RETURN(SO);
                }
-            } else if ( strcmp(nel->name,"SurfaceVolumeParent") == 0) { /* Get Da FaceSetList */ 
+            } else if ( strcmp(nel->name,"SurfaceVolumeParent") == 0) { 
+                                                   /* Get Da FaceSetList */ 
                if (LocalHead) fprintf (SUMA_STDERR,"%s:\nGetting VolPar...\n", 
                                              FuncName);
                if (!SUMA_VolPar_nel2SOVolPar(SO, nel)) {
@@ -7081,17 +7853,22 @@ SUMA_SurfaceObject *SUMA_nimlSO2SO(NI_group *ngr)
                   SUMA_Free_Surface_Object(SO); SO = NULL; SUMA_RETURN(SO);
                }
             } else {
-               fprintf (SUMA_STDERR,"Warning %s:\n nel (%s) unknown, ignoring it.\n", FuncName, nel->name);
+               fprintf (SUMA_STDERR,
+                        "Warning %s:\n nel (%s) unknown, ignoring it.\n", 
+                        FuncName, nel->name);
             }
             break;
          default:
-            SUMA_SL_Err("Don't know what to make of this group element, ignoring.");
+            SUMA_SL_Err("Don't know what to make of this "
+                        "group element, ignoring.");
             break;
       }
    }
    
-   if (!SO->NodeList || !SO->FaceSetList) { /* perhaps you'll remove this condition in the future ...*/
-      SUMA_SL_Err("Looks like NodeList and/or FaceSetList not in group. Balking.\n");
+   if (!SO->NodeList || !SO->FaceSetList) { 
+               /* perhaps you'll remove this condition in the future ...*/
+      SUMA_SL_Err("Looks like NodeList and/or FaceSetList "
+                  "not in group. Balking.\n");
       SUMA_Free_Surface_Object(SO); SO = NULL; SUMA_RETURN(SO);
    }
    

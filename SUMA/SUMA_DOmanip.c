@@ -237,12 +237,14 @@ SUMA_Boolean SUMA_Free_Displayable_Object (SUMA_DO *dov)
    switch (dov->ObjectType) {
       case SO_type:
          if (!SUMA_Free_Surface_Object ((SUMA_SurfaceObject *)dov->OP)) {
-            fprintf(SUMA_STDERR,"Error SUMA_Free_Displayable_Object, could not free surface\n");
+            fprintf(SUMA_STDERR,
+               "Error SUMA_Free_Displayable_Object, could not free surface\n");
          }
          break;
       case ROIdO_type:
          if (!SUMA_freeDrawnROI ((SUMA_DRAWN_ROI *)dov->OP)) {
-            fprintf(SUMA_STDERR,"Error SUMA_freeDrawnROI, could not free  ROI.\n");
+            fprintf(SUMA_STDERR,
+               "Error SUMA_freeDrawnROI, could not free  ROI.\n");
          }
          break;
       case ROIO_type:
@@ -254,17 +256,23 @@ SUMA_Boolean SUMA_Free_Displayable_Object (SUMA_DO *dov)
       case NBV_type:
       case OLS_type:
       case LS_type:
+      case NBLS_type:
+      case NBOLS_type:
          SUMA_free_SegmentDO ((SUMA_SegmentDO *)dov->OP);
          break;
       case AO_type:
          SUMA_Free_Axis((SUMA_Axis*)dov->OP);
          break;
       case GO_type:
-         fprintf(SUMA_STDERR,"Error SUMA_Free_Displayable_Object, Not trained to free GO objects\n");
+         fprintf(SUMA_STDERR,
+                  "Error SUMA_Free_Displayable_Object, "
+                  "Not trained to free GO objects\n");
          break;
       case type_not_set:
       case no_type:
-         fprintf(SUMA_STDERR,"Error SUMA_Free_Displayable_Object, no free no_type or type_not_set\n");
+         fprintf(SUMA_STDERR,
+                  "Error SUMA_Free_Displayable_Object, "
+                  "no free no_type or type_not_set\n");
          break;
       case NBSP_type:
       case SP_type:
@@ -273,7 +281,18 @@ SUMA_Boolean SUMA_Free_Displayable_Object (SUMA_DO *dov)
       case PL_type:
          SUMA_free_PlaneDO ((SUMA_PlaneDO *)dov->OP);
          break;
-         
+      case NIDO_type:
+         SUMA_free_NIDO((SUMA_NIDO*)dov->OP);
+         break;
+      case NBT_type:
+      case SBT_type:
+      case DBT_type:
+         /* those types are not used */
+         SUMA_S_Warnv("Type %d should not be in  use!\n", dov->ObjectType);
+         break;
+      default:
+         SUMA_S_Errv("Type %d not accounted for!\n", dov->ObjectType);
+         break;   
    }   
 
    SUMA_RETURN(YUP);
@@ -953,8 +972,10 @@ int SUMA_findSO_inDOv(char *idcode, SUMA_DO *dov, int N_dov)
    for (i=0; i<N_dov; ++i) {
       if (dov[i].ObjectType == SO_type) {
          SO = (SUMA_SurfaceObject *)dov[i].OP;
-         if (LocalHead) fprintf (SUMA_STDERR, "%s: Comparing \n\t:%s:to\n\t:%s:\n", \
-                  FuncName, idcode, SO->idcode_str);
+         if (LocalHead) 
+            fprintf (SUMA_STDERR, 
+                     "%s: Comparing \n\t:%s:to\n\t:%s:\n", 
+                     FuncName, idcode, SO->idcode_str);
          if (strcmp(idcode, SO->idcode_str)== 0) {
             SUMA_RETURN (i);
          }
@@ -969,7 +990,8 @@ int SUMA_findSO_inDOv(char *idcode, SUMA_DO *dov, int N_dov)
    searches all SO_type DO objects for idcode
    
    \param idcode (char *) idcode of SO you are searching for
-   \param dov (SUMA_DO*) pointer to vector of Displayable Objects, typically SUMAg_DOv
+   \param dov (SUMA_DO*) pointer to vector of Displayable Objects, 
+                         typically SUMAg_DOv
    \param N_dov (int) number of DOs in dov
    \return SO (SUMA_SurfaceObject *) pointer of SO with matching idcode 
        NULL if not found
@@ -995,6 +1017,27 @@ SUMA_SurfaceObject * SUMA_findSOp_inDOv(char *idcode, SUMA_DO *dov, int N_dov)
    }
    SUMA_RETURN(NULL);
 }
+
+SUMA_Boolean  SUMA_is_ID_4_SO(char *idcode, SUMA_SurfaceObject **SOp)
+{
+   static char FuncName[]={"SUMA_is_ID_4_SO"};
+   SUMA_SurfaceObject *SO=NULL;
+   
+   SUMA_ENTRY;
+   
+   if (SOp) *SOp = NULL;
+   if (!idcode) SUMA_RETURN(NOPE);
+   
+   SO = SUMA_findSOp_inDOv(idcode, SUMAg_DOv, SUMAg_N_DOv);
+   
+   if (SO) {
+      if (SOp) *SOp = SO;
+      SUMA_RETURN(YUP);
+   }
+   
+   SUMA_RETURN(NOPE);   
+}
+
 
 /*!
    Returns an index into dov of a surface domain parent with the largest
@@ -1164,6 +1207,7 @@ SUMA_SurfaceObject * SUMA_find_named_SOp_inDOv( char *coordnamei,
             case SUMA_BRAIN_VOYAGER:
             case SUMA_BYU:
             case SUMA_GIFTI:
+            case SUMA_MNI_OBJ:
             case SUMA_PLY: 
                if (strstr(SO->Name.FileName, coordname)) {
                   if (SOf) {
@@ -1267,16 +1311,21 @@ SUMA_Boolean SUMA_isLocalDomainParent (SUMA_SurfaceObject *SO)
    
    returns YUP if SO1 and SO2 are related at level 1 or 2
    level 1 means nuclear family (share the same parent)
-   level 2 means extended family (share a grandparent, ultimately this could be the grand icosahedron duc
-                                 Surfaces must be the of the same hemi side since both hemispheres can have
-                                 the same grandparent, use level 3 if you want to go across hemis.)
-   level 3 is like level 2 with no care for what side of the brain we're working with
+   level 2 means extended family (share a grandparent, ultimately this could be
+            the grand icosahedron duc
+            Surfaces must be the of the same hemi side since both hemispheres 
+            can have the same grandparent, use level 3 if you want to go across 
+            hemis.)
+   level 3 is like level 2 with no care for what side of the brain we're working 
+            with
+   
    For more definitions on relationships:
    
    \sa SUMA_WhatAreYouToMe
 */
 
-SUMA_Boolean SUMA_isRelated ( SUMA_SurfaceObject *SO1, SUMA_SurfaceObject *SO2, int level)
+SUMA_Boolean SUMA_isRelated ( SUMA_SurfaceObject *SO1, 
+                              SUMA_SurfaceObject *SO2, int level)
 {
    static char FuncName[]={"SUMA_isRelated"};
    SUMA_DOMAIN_KINSHIPS kin;
@@ -1294,12 +1343,14 @@ SUMA_Boolean SUMA_isRelated ( SUMA_SurfaceObject *SO1, SUMA_SurfaceObject *SO2, 
                if ( (SO1->Side == SO2->Side) ) {
                   SUMA_RETURN(YUP);
                } else {
+                  SUMA_S_Note( "Surfaces appear related at level 2 "
+                               "but sides are not the same.\n"                                                   "Kinship level is being ignored.\n");
                   if (SO1->Side < SUMA_LR || SO2->Side < SUMA_LR) {
-                     SUMA_S_Note("Surfaces appear related at level 2 but sides are not the same.\n"
-                                 "Kinship level is being ignored.\n");
-                     SUMA_S_Note("Surface sides are not clearly defined, if this is in error\n"
-                              "Consider adding Hemisphere = R  (or L or B) in the spec file\n"
-                              "to make sure surfaces sides are correctly labeled.\n");
+                     SUMA_S_Note("Surface sides are not clearly defined. "
+                                 "If this is in error, consider adding \n"
+                                 "Hemisphere = R  (or L or B) in the spec file\n"
+                                 "to make sure surfaces sides are correctly "
+                                 "labeled.\n");
                   }
                }
          }
@@ -1308,14 +1359,18 @@ SUMA_Boolean SUMA_isRelated ( SUMA_SurfaceObject *SO1, SUMA_SurfaceObject *SO2, 
          if (  (kin > SUMA_DOMAINS_NOT_RELATED) && 
                (kin < SUMA_NUCELAR_FAMILY ) ) {
                if (SO1->Side == SO2->Side) {
-                   SUMA_RETURN(YUP); /* last condition is not really necessary but it don't hoyt...*/
+                   SUMA_RETURN(YUP); 
+                     /* last condition is not really necessary but it 
+                     don't hoyt...*/
                } else {
-                  SUMA_S_Note("Surfaces appear related at level 2 but sides are not the same.\n"
-                                 "Kinship level is being ignored.\n");
+                  SUMA_S_Note( "Surfaces appear related at level 2 "
+                               "but sides are not the same.\n"                                                   "Kinship level is being ignored.\n");
                   if (SO1->Side < SUMA_LR || SO2->Side < SUMA_LR) {
-                     SUMA_S_Note("Surface sides are not clearly defined, if this is in error\n"
-                                 "Consider adding Hemisphere = R  (or L or B) in the spec file\n"
-                                 "to make sure surfaces sides are correctly labeled.\n");
+                     SUMA_S_Note("Surface sides are not clearly defined. "
+                                 "If this is in error, consider adding \n"
+                                 "Hemisphere = R  (or L or B) in the spec file\n"
+                                 "to make sure surfaces sides are correctly "
+                                 "labeled.\n");
                   }
                }
          }
@@ -1327,6 +1382,117 @@ SUMA_Boolean SUMA_isRelated ( SUMA_SurfaceObject *SO1, SUMA_SurfaceObject *SO2, 
    SUMA_RETURN(NOPE);
 }
 
+/*!
+   \brief finds a contralateral surface to SO that is of the same
+   Group AND State
+*/
+SUMA_SurfaceObject *SUMA_Contralateral_SO(SUMA_SurfaceObject *SO,
+                                          SUMA_DO *dov, int N_dov) 
+{
+   static char FuncName[]={"SUMA_Contralateral_SO"};
+   SUMA_SurfaceObject *SOC=NULL;
+   int findside = SUMA_SIDE_ERROR;
+   int i;
+   
+   SUMA_ENTRY;
+
+   if (!SO) {
+      SUMA_S_Err("NULL input");
+      SUMA_RETURN(SOC);
+   }
+   if (!SO->Group) {
+      SUMA_S_Err("Need SO->Group");
+      SUMA_RETURN(SOC);
+   }
+   
+   if (SO->Side != SUMA_LEFT && SO->Side != SUMA_RIGHT) {
+      if (SO->Side < SUMA_LR) {
+         SUMA_S_Warn("Surface sides are not clearly defined. "
+                     "If this is in error, consider adding \n"
+                     "Hemisphere = R  (or L or B) in the spec file\n"
+                     "to make sure surfaces sides are correctly "
+                     "labeled.\n");   
+      }
+      SUMA_RETURN(SOC);
+   }
+      
+   if (SO->Side == SUMA_LEFT) findside = SUMA_RIGHT;
+   else findside = SUMA_LEFT;
+   
+   for (i=0; i<N_dov; ++i) {
+      if (SUMA_isSO_G(dov[i], SO->Group)) { 
+         SOC = (SUMA_SurfaceObject *)dov[i].OP;
+         if (SOC->Side == findside && !strcmp(SOC->State, SO->State) ) break;
+         else SOC = NULL;   
+      }
+   }
+   
+   if (SOC && SUMA_isRelated(SOC, SO, 1)) {
+      SUMA_S_Warn("Unexpected surface pair with same localdomainparent.\n"
+                  "Good Luck To You");
+   }
+   /*
+      if (SOC) SOC = SUMA_findSOp_inDOv( SOC->LocalDomainParentID, 
+                                      dov, N_dov);
+   */
+
+   
+   SUMA_RETURN(SOC);
+}
+
+SUMA_DSET * SUMA_Contralateral_dset(SUMA_DSET *dset, SUMA_SurfaceObject *SO, 
+                                    SUMA_SurfaceObject**SOCp)
+{
+   static char FuncName[]={"SUMA_Contralateral_dset"};
+   SUMA_DSET *cdset=NULL, *dd=NULL;
+   DListElmt *el=NULL;
+   SUMA_SurfaceObject *SOC=NULL;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!dset) { 
+      SUMA_S_Err("NULL input");
+      SUMA_RETURN(cdset);
+   }
+   
+   if (!SO) {
+      if (!(SO = 
+            SUMA_findSOp_inDOv(  SUMA_sdset_idmdom(dset), 
+                                 SUMAg_DOv, SUMAg_N_DOv))){
+         SUMA_S_Err("Can't find dset's domain parent");
+         SUMA_RETURN(cdset);
+      }
+   }
+   
+   if (!(SOC = SUMA_Contralateral_SO(SO, SUMAg_DOv, SUMAg_N_DOv))) {
+      /* Nothing there, return */
+      SUMA_RETURN(cdset);
+   }
+   
+   SUMA_LH("Have contralateral surface to consider\n");
+   el = dlist_head(SUMAg_CF->DsetList);
+   while (el) {
+      dd = (SUMA_DSET*)el->data;
+      if (SUMA_isDsetRelated(dd,SOC)) {
+         SUMA_LHv("Have Dset %s related to SOC\n", SDSET_LABEL(dd));
+         /* Does dd relate to dset ? */
+         if (  SUMA_isSameDsetColTypes(dset, dd) ) {
+            if (!cdset) {
+               cdset = dd;
+            }else {
+               SUMA_S_Warn("More than one dset matches\n"
+                           "Returning NULL");
+               SUMA_RETURN(NULL);
+            }
+         } 
+      }
+      el = dlist_next(el);
+   }
+   
+   if (SOCp) *SOCp=SOC;
+   SUMA_RETURN(cdset);
+}
 /*!
    \brief ans = SUMA_WhatAreYouToMe (SUMA_SurfaceObject *SO1, SUMA_SurfaceObject *SO2);
    returns a code for the kinship between two surfaces:
@@ -1342,15 +1508,16 @@ SUMA_Boolean SUMA_isRelated ( SUMA_SurfaceObject *SO1, SUMA_SurfaceObject *SO2, 
    \sa definition of SUMA_DOMAIN_KINSHIPS and
    \sa SUMA_DomainKinships_String
 */
-SUMA_DOMAIN_KINSHIPS SUMA_WhatAreYouToMe (SUMA_SurfaceObject *SO1, SUMA_SurfaceObject *SO2)
+SUMA_DOMAIN_KINSHIPS SUMA_WhatAreYouToMe (SUMA_SurfaceObject *SO1, 
+                                          SUMA_SurfaceObject *SO2)
 {
    static char FuncName[]={"SUMA_WhatAreYouToMe"};
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
    
-   if (!SO1->idcode_str || !SO2->idcode_str) {
-      fprintf (SUMA_STDERR, "Error %s: NULL idcode_str.\n", FuncName);
+   if (!SO1 || !SO2 || !SO1->idcode_str || !SO2->idcode_str) {
+      fprintf (SUMA_STDERR, "Error %s: NULL SOs or SO->idcode_str.\n", FuncName);
       SUMA_RETURN (SUMA_DOMAINS_NOT_RELATED);
    }
    
@@ -1685,7 +1852,7 @@ ans = SUMA_isNBDOrelated (NBDO, SO);
 \param NBV (SUMA_NB_DO * ) pointer to NBV/NBSP object
 \param SO (SUMA_SurfaceObject *) pointer to surface object
 \return ans (SUMA_Boolean) YUP/NOPE
-
+\sa SUMA_isNIDOrelated
 */
 SUMA_Boolean SUMA_isNBDOrelated (SUMA_NB_DO *SDO, SUMA_SurfaceObject *SO)
 {
@@ -1710,6 +1877,64 @@ SUMA_Boolean SUMA_isNBDOrelated (SUMA_NB_DO *SDO, SUMA_SurfaceObject *SO)
    
    /* find the pointer to the surface having for an idcode_str: ROI->Parent_idcode_str */
    SO_NB = SUMA_findSOp_inDOv(SDO->Parent_idcode_str, SUMAg_DOv, SUMAg_N_DOv);
+   
+   if (!SO_NB) {
+      SUMA_SL_Err("Could not find surface of SDO->Parent_idcode_str");
+      SUMA_RETURN (NOPE);
+   }
+   
+   if ( SUMA_isRelated (SO, SO_NB, 1)) { /*  relationship of the 1st order only */ 
+      SUMA_RETURN (YUP);
+   }
+   
+   /* If you get here, you have SO_NB so return happily */
+   SUMA_RETURN (NOPE);
+}
+
+SUMA_Boolean SUMA_isNIDO_SurfBased(SUMA_NIDO *nido)
+{
+   static char FuncName[]={"SUMA_isNIDO_SurfBased"};
+   char *atr=NULL;
+
+   SUMA_ENTRY;
+
+   atr = NI_get_attribute(nido->ngr,"bond");
+   if (!atr) SUMA_RETURN(NOPE);
+
+   if (atr[0] == 's') SUMA_RETURN(YUP);
+
+   SUMA_RETURN(NOPE);
+}
+
+/*!
+   If you make changes here, look into  SUMA_isNBDOrelated  
+   */
+SUMA_Boolean SUMA_isNIDOrelated (SUMA_NIDO *SDO, SUMA_SurfaceObject *SO)
+{
+   static char FuncName[]={"SUMA_isNIDOrelated"};
+   SUMA_SurfaceObject *SO_NB = NULL;
+   char *Parent_idcode_str=NULL;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   /* Just compare the idcodes, not allowing 
+   for kinship yet but code below could do that */
+   if ((Parent_idcode_str = NI_get_attribute(SDO->ngr, "Parent_idcode_str")) &&
+       strcmp(SO->idcode_str, Parent_idcode_str) == 0) {
+      SUMA_RETURN(YUP);
+   } else {
+      SUMA_RETURN(NOPE);
+   }
+   
+   if (LocalHead) {
+      fprintf (SUMA_STDERR, "%s: %s SO->LocalDomainParentID\n", FuncName, SO->LocalDomainParentID);
+      fprintf (SUMA_STDERR, "%s: %s SDO->Parent_idcode_str\n", FuncName, Parent_idcode_str);
+      fprintf (SUMA_STDERR, "%s: %s SO->idcode_str\n", FuncName, SO->idcode_str);
+   }
+   
+   /* find the pointer to the surface having for an idcode_str: ROI->Parent_idcode_str */
+   SO_NB = SUMA_findSOp_inDOv(Parent_idcode_str, SUMAg_DOv, SUMAg_N_DOv);
    
    if (!SO_NB) {
       SUMA_SL_Err("Could not find surface of SDO->Parent_idcode_str");
@@ -2033,5 +2258,1020 @@ int SUMA_isTypicalSOforVolSurf (SUMA_SurfaceObject *SO)
    }
    
    SUMA_RETURN(0);
+}
+
+
+SUMA_XFORM *SUMA_Find_XformByID(char *idcode_str)
+{
+   static char FuncName[]={"SUMA_Find_XformByID"};
+   SUMA_XFORM *xf = NULL, *xft=NULL;
+   DListElmt *el=NULL;
+   DList *lst = SUMAg_CF->xforms;
+   
+   SUMA_ENTRY;
+   
+   if (!lst || !idcode_str) SUMA_RETURN(xf);
+   
+   el = dlist_head(lst);
+   
+   while (el && !xf) {
+      xft = (SUMA_XFORM *)el->data;
+      if (!strcmp(xft->idcode_str,idcode_str)) {
+         xf = xft; break;
+      }   
+      el = dlist_next(el);
+   } 
+   
+   SUMA_RETURN(xf);
+}
+   
+
+/*!
+   Find a transform with a particular name AND a parent with a matching idcode
+*/
+SUMA_XFORM *SUMA_Find_XformByParent(char *name, char *parent_idcode, int *iloc)
+{
+   static char FuncName[]={"SUMA_Find_XformByParent"};
+   SUMA_XFORM *xf = NULL, *xft=NULL;
+   DListElmt *el=NULL;
+   DList *lst = SUMAg_CF->xforms;
+   int i;
+    
+   SUMA_ENTRY;
+   
+   if (!lst || !name || !parent_idcode) SUMA_RETURN(xf);
+   
+   el = dlist_head(lst);
+   
+   while (el && !xf) {
+      xft = (SUMA_XFORM *)el->data;
+      if (!strcmp(xft->name,name)) {
+         for (i=0; i<xft->N_parents; ++i) {
+            if (!strcmp(xft->parents[i], parent_idcode)) {
+               xf = xft; 
+               if (iloc) *iloc = i; 
+               break;
+            }
+         }
+      }   
+      el = dlist_next(el);
+   }  
+   
+   SUMA_RETURN(xf);
+}
+
+SUMA_XFORM *SUMA_Find_XformByChild(char *name, char *child_idcode, int *iloc)
+{
+   static char FuncName[]={"SUMA_Find_XformByChild"};
+   SUMA_XFORM *xf = NULL, *xft=NULL;
+   DListElmt *el=NULL;
+   DList *lst = SUMAg_CF->xforms;
+   int i;
+    
+   SUMA_ENTRY;
+   
+   if (!lst || !name || !child_idcode) SUMA_RETURN(xf);
+   
+   el = dlist_head(lst);
+   
+   while (el && !xf) {
+      xft = (SUMA_XFORM *)el->data;
+      if (!strcmp(xft->name,name)) {
+         for (i=0; i<xft->N_children; ++i) {
+            if (!strcmp(xft->children[i], child_idcode)) {
+               xf = xft; 
+               if (iloc) *iloc = i; 
+               break;
+            }
+         }
+      }   
+      el = dlist_next(el);
+   }  
+   
+   SUMA_RETURN(xf);
+}
+
+
+void SUMA_Show_Xforms (DList *dl, FILE *Out, int detail)
+{
+   static char FuncName[]={"SUMA_Show_Xforms"};
+   char *s = NULL;  
+   
+   SUMA_ENTRY;
+
+   if (Out == NULL) Out = stdout;
+   
+   s = SUMA_Xforms_Info (dl, detail);
+   
+   if (s) {
+      fprintf(Out, "%s", s);
+      SUMA_free(s); s = NULL;
+   }else {
+      SUMA_SL_Err("Failed in SUMA_Xforms_Info");
+   }
+   
+   SUMA_RETURNe;
+}
+
+char *SUMA_Xforms_Info(DList *dl, int detail) 
+{
+   static char FuncName[]={"SUMA_Xforms_Info"};
+   DListElmt *el=NULL;
+   char *s = NULL;
+   SUMA_STRING *SS = NULL;
+   SUMA_XFORM *xf=NULL;
+   SUMA_DSET *dset=NULL;
+   SUMA_SurfaceObject *SO=NULL;
+   int i;
+   
+   SUMA_ENTRY;
+   
+   SS = SUMA_StringAppend(NULL, NULL);
+  
+   if (!dl) {
+      SS = SUMA_StringAppend(SS,"NULL Overlay Xforms List\n");
+      SUMA_SS2S(SS, s);
+      SUMA_RETURN(s);
+   } else {
+      SS = SUMA_StringAppend_va(SS,"%d Overlay Xforms in list.\n", 
+                                 dlist_size(dl));
+   }
+   
+   el = dlist_head(dl);
+   while(el) {
+      xf = (SUMA_XFORM *)el->data;
+      SS = SUMA_StringAppend_va( SS,"Xform name: %s, id: %s\n"
+                                    "           active (1=Y, -1=N): %d\n",
+                                 xf->name, xf->idcode_str,
+                                 xf->active);
+      for (i=0; i<xf->N_parents; ++i) {
+         SS = SUMA_StringAppend_va( SS,
+                                    "  parent %d:  %s\n",
+                                    i, xf->parents[i]);
+         if (SUMA_is_ID_4_SO(xf->parents[i], &SO)) {
+            SS = SUMA_StringAppend_va( SS,
+                                    "     SO labeled %s \n",
+                                    CHECK_NULL_STR(SO->Label));
+         } else if (SUMA_is_ID_4_DSET(xf->parents[i], &dset)) {
+            SS = SUMA_StringAppend_va( SS,
+                                    "     DSET labeled %s \n",
+                                    CHECK_NULL_STR(SDSET_LABEL(dset)));
+         } else {
+            SS = SUMA_StringAppend_va( SS,
+                                    "     %s is neither SO, not DSET.\n",
+                                    xf->parents[i]);
+         }
+         if (SUMA_is_ID_4_SO(xf->parents_domain[i], &SO)) {
+            SS = SUMA_StringAppend_va( SS,
+                                    "  parent_domain: %s, labeled %s\n",
+                                    xf->parents_domain[i],
+                                    CHECK_NULL_STR(SO->Label));
+         } else {
+            SS = SUMA_StringAppend_va( SS,
+                                    "  parent_domain: %s, Not found!\n",
+                                    xf->parents_domain[i]);
+         }
+                                 
+      }
+      
+      for (i=0; i<xf->N_children; ++i) {
+         SS = SUMA_StringAppend_va( SS,
+                                    "  child %d:  %s\n",
+                                    i, xf->children[i]);
+         if (SUMA_is_ID_4_SO(xf->children[i], &SO)) {
+            SS = SUMA_StringAppend_va( SS,
+                                    "     SO labeled %s \n",
+                                    CHECK_NULL_STR(SO->Label));
+         } else if (SUMA_is_ID_4_DSET(xf->parents[i], &dset)) {
+            SS = SUMA_StringAppend_va( SS,
+                                    "     DSET labeled %s \n",
+                                    CHECK_NULL_STR(SDSET_LABEL(dset)));
+         } else {
+            SS = SUMA_StringAppend_va( SS,
+                                    "     %s is neither SO, not DSET.\n",
+                                    xf->children[i]);
+         }
+      }
+      
+      if (xf->XformOpts) {
+         s = SUMA_NI_nel_Info((NI_element *)xf->XformOpts, detail);
+         SS = SUMA_StringAppend_va( SS,
+                                    "  XformOpts is:\n"
+                                    "%s\n",
+                                    s);
+         SUMA_free(s);
+      } else {
+         SS = SUMA_StringAppend_va( SS,
+                                    "  XformOpts is NULL"); 
+      }
+        
+      if (xf->gui) {
+         SS = SUMA_StringAppend_va( SS,
+                                    "     GUI is not null");
+      } else {
+         SS = SUMA_StringAppend_va( SS,
+                                    "     GUI is null");
+      }
+      
+      SS = SUMA_StringAppend(SS, "\n");
+      
+      el = dlist_next(el);
+   }
+   
+   SUMA_SS2S(SS, s);
+
+   SUMA_RETURN(s);
+}
+
+void SUMA_Show_Callbacks (DList *dl, FILE *Out, int detail)
+{
+   static char FuncName[]={"SUMA_Show_Callbacks"};
+   char *s = NULL;  
+   
+   SUMA_ENTRY;
+
+   if (Out == NULL) Out = stdout;
+   
+   s = SUMA_Callbacks_Info (dl, detail);
+   
+   if (s) {
+      fprintf(Out, "%s", s);
+      SUMA_free(s); s = NULL;
+   }else {
+      SUMA_SL_Err("Failed in SUMA_Callbacks_Info");
+   }
+   
+   SUMA_RETURNe;
+}
+
+char *SUMA_Callbacks_Info(DList *dl, int detail)
+{
+   static char FuncName[]={"SUMA_Callbacks_Info"};
+   char *s = NULL;
+   DListElmt *el=NULL;
+   NI_group *ngr=NULL;
+   NI_element *nel = NULL;
+   SUMA_STRING *SS = NULL;
+   SUMA_DSET *dset=NULL;
+   SUMA_SurfaceObject *SO=NULL;
+   SUMA_CALLBACK *cb=NULL;
+   SUMA_XFORM *xf=NULL;
+   int i;
+
+   SUMA_ENTRY;
+   SS = SUMA_StringAppend(NULL, NULL);
+  
+   if (!dl) {
+      SS = SUMA_StringAppend(SS,"NULL Callbacks List\n");
+      SUMA_SS2S(SS, s);
+      SUMA_RETURN(s);
+   } else {
+      SS = SUMA_StringAppend_va(SS,"%d Callbacks in list.\n", 
+                                 dlist_size(dl));
+   }
+   
+   el = dlist_head(dl);
+   while(el) {
+      cb = (SUMA_CALLBACK *)el->data;
+      xf = SUMA_Find_XformByID(cb->creator_xform);
+      SS = SUMA_StringAppend_va( SS,"CB trigger event: %d \n"
+                                    "           active (1=Y, -1=N): %d\n"
+                                    "           pending (1=Y, 0=N): %d\n"
+                                    "           trigger source %d\n"
+                                    , cb->event
+                                    , cb->active, cb->pending
+                                    , cb->trigger_source );
+      if (xf) {
+         SS = SUMA_StringAppend_va( SS,"   Creator Xform: %s\n", xf->name);
+      } else {
+         SS = SUMA_StringAppend_va( SS,"   No creator xform found.\n");
+      }
+      for (i=0; i<cb->N_parents; ++i) {
+         SS = SUMA_StringAppend_va( SS,
+                                    "  parent %d:  %s\n",
+                                    i, cb->parents[i]);
+                               
+         if (SUMA_is_ID_4_SO(cb->parents[i], &SO)) {
+            SS = SUMA_StringAppend_va( SS,
+                                    "     SO labeled %s \n",
+                                    CHECK_NULL_STR(SO->Label));
+         } else if (SUMA_is_ID_4_DSET(cb->parents[i], &dset)) {
+            SS = SUMA_StringAppend_va( SS,
+                                    "     DSET labeled %s \n",
+                                    CHECK_NULL_STR(SDSET_LABEL(dset)));
+         } else {
+            SS = SUMA_StringAppend_va( SS,
+                                    "     %s is neither SO, not DSET.\n",
+                                    cb->parents[i]);
+         }
+         if (SUMA_is_ID_4_SO(cb->parents_domain[i], &SO)) {
+            SS = SUMA_StringAppend_va( SS,
+                                    "  parent_domain: %s, labeled %s\n",
+                                    cb->parents_domain[i],
+                                    CHECK_NULL_STR(SO->Label));
+         } else {
+            SS = SUMA_StringAppend_va( SS,
+                                    "  parent_domain: %s, Not found!\n",
+                                    cb->parents_domain[i]);
+         }
+      }
+
+      SS = SUMA_StringAppend_va( SS, 
+                                 "  Function Name %s (%p)\n", 
+                                 cb->FunctionName, cb->FunctionPtr);
+      
+      s = SUMA_NI_nel_Info((NI_element *)cb->FunctionInput, detail);
+      SS = SUMA_StringAppend_va( SS, 
+                                 "  Function Params:\n%s\n-----\n",
+                                 s); SUMA_free(s); s = NULL;
+                                                
+      SS = SUMA_StringAppend(SS, "\n");
+      
+      if (detail > 1) {
+         SUMA_S_Note("Detailed nel view\n");
+         SUMA_ShowNel(nel);
+      }
+      el = dlist_next(el);
+   }
+
+   
+   SUMA_SS2S(SS, s);
+
+   SUMA_RETURN(s);
+}
+
+
+
+SUMA_Boolean SUMA_SetXformActive(SUMA_XFORM *xf, int active, int fromgui)
+{
+   static char FuncName[]={"SUMA_SetXformActive"};
+   SUMA_CALLBACK *cb;
+   DListElmt *el=NULL;
+   DList *dl=SUMAg_CF->callbacks;
+   SUMA_Boolean LocalHead = NOPE;
+      
+   SUMA_ENTRY;
+   
+   if (!xf) SUMA_RETURN(NOPE);
+   
+   xf->active = active;
+   
+   if (!xf->gui) {
+      /* create GUI */
+      SUMA_CreateXformInterface(xf);
+   } else if (!fromgui){
+      /* Raise GUI */
+      if (LocalHead) 
+         fprintf (SUMA_STDERR,"%s: raising Xform GUI window \n", FuncName);
+      XMapRaised(SUMAg_CF->X->DPY_controller1, 
+                  XtWindow(xf->gui->AppShell));
+   }
+   
+   if (0 && !fromgui) { /* not sure why I have this here. 
+                           SUMA_InitializeXformInterface is called in SUMA_D_Key,
+                           which is the function called in both GUI and non GUI 
+                           modes... */
+      /* initialize the gui */
+      SUMA_InitializeXformInterface(xf);
+   }
+   
+   if (!dl) SUMA_RETURN(YUP);
+   
+   /* Now reflect that in all callbacks that were created by xform */
+   el = dlist_head(dl);
+   while (el) {
+      cb = (SUMA_CALLBACK *)el->data;
+      if (!strcmp(cb->creator_xform, xf->idcode_str)) {
+         cb->active = active; 
+         if (!cb->active < 1) { 
+            SUMA_SetCallbackPending(cb, 0, SES_Empty);
+         }
+      }
+      el = dlist_next(el);
+   }
+   SUMA_RETURN(YUP);
+}
+
+SUMA_Boolean SUMA_SetXformShowPreProc(SUMA_XFORM *xf, int ShowPreProc, 
+                                      int fromgui)
+{
+   static char FuncName[]={"SUMA_SetXformShowPreProc"};
+   SUMA_CALLBACK *cb;
+   DListElmt *el=NULL;
+   DList *dl=SUMAg_CF->callbacks;
+   NI_element *dotopt=NULL;
+   int ii=0;
+   SUMA_DSET *in_dset=NULL, *pp_dset=NULL;
+   SUMA_Boolean LocalHead = NOPE;
+      
+   SUMA_ENTRY;
+   
+   if (!xf) SUMA_RETURN(NOPE);
+   
+   xf->ShowPreProc = ShowPreProc;
+   
+   if (!xf->gui) {
+      /* create GUI */
+      SUMA_CreateXformInterface(xf);
+   } else if (!fromgui){
+      /* Raise GUI */
+      if (LocalHead) 
+         fprintf (SUMA_STDERR,"%s: raising Xform GUI window \n", FuncName);
+      XMapRaised(SUMAg_CF->X->DPY_controller1, 
+                  XtWindow(xf->gui->AppShell));
+   }
+   
+   if (!fromgui) {
+      /* initialize the gui */
+      SUMA_InitializeXformInterface(xf);
+   }
+   
+   if (!dl) SUMA_RETURN(YUP);
+   
+   /* Now do something about showing */
+   if (!strcmp(xf->name,"Dot")) {
+      if (!(dotopt = SUMA_FindNgrNamedElement(xf->XformOpts, "dotopts"))) {
+         SUMA_S_Err("dotopt not found");
+         SUMA_RETURN(NOPE);
+      }
+      for (ii=0; ii<xf->N_parents; ++ii) {
+         if (!SUMA_is_ID_4_DSET(xf->parents[ii], &in_dset)) {
+            SUMA_S_Err("Parent not found");
+            SUMA_RETURN(NOPE);
+         }
+         if (!(pp_dset = SUMA_GetDotPreprocessedDset(in_dset, dotopt))){
+            SUMA_S_Err("PreProcParent not found");
+            SUMA_RETURN(NOPE);
+         }
+         /* now make it visible */
+         /* For this to work, you'll need to have a version of the
+         block under LoadDsetFile beginning from OverInd = -1;
+         To make matters more exciting, you'll need to update this sucker,
+         any time that the preprocessing is redone because of changes in 
+         orts or bandpass, etc. So leave this feature out for now */  
+      }
+   } else {
+      SUMA_S_Errv("Don't know how to do this for %s\n", xf->name);
+      SUMA_RETURN(NOPE);
+   }
+   
+   SUMA_RETURN(YUP);
+}
+
+SUMA_Boolean SUMA_is_XformParent (SUMA_XFORM *xf, char *id, int *iloc)
+{
+   static char FuncName[]={"SUMA_is_XformParent"};
+   int ii;
+   
+   SUMA_ENTRY;
+   
+   if (!xf || !id) SUMA_RETURN(NOPE);
+   
+   for (ii=0; ii<xf->N_parents; ++ii) {
+      if (!strcmp(xf->parents[ii],id)) {
+         if (iloc) *iloc=ii;
+         SUMA_RETURN(YUP);
+      }
+   }
+   
+   SUMA_RETURN(NOPE);
+}
+
+SUMA_Boolean SUMA_AddXformParent (SUMA_XFORM *xf, 
+                                  char *parent_idcode, char *parent_domain)
+{
+   static char FuncName[]={"SUMA_AddXformParent"};
+   SUMA_DSET *dset=NULL;
+   
+   SUMA_ENTRY;
+   
+   if (!xf || !parent_idcode) {
+      SUMA_S_Err("NULL input");
+      SUMA_RETURN(NOPE);
+   }
+   if (SUMA_is_XformParent(xf, parent_idcode, NULL)) {
+      SUMA_S_Err("Parent exists");
+      SUMA_RETURN(NOPE);
+   }
+   
+   strcpy(xf->parents[xf->N_parents], parent_idcode); 
+   if (!parent_domain) {
+      if (SUMA_is_ID_4_DSET(parent_idcode, &dset)) {
+         strcpy( xf->parents_domain[xf->N_parents],
+                 SDSET_IDMDOM(dset));
+      } else {
+         xf->parents_domain[xf->N_parents][0] = '\0';
+      }
+   } else {
+      strcpy( xf->parents_domain[xf->N_parents],
+              parent_domain);
+   }
+   
+   
+   ++xf->N_parents;
+   SUMA_RETURN(YUP);
+   
+}
+
+SUMA_Boolean SUMA_is_XformChild (SUMA_XFORM *xf, char *id, int *iloc)
+{
+   static char FuncName[]={"SUMA_is_XformChild"};
+   int ii;
+   
+   SUMA_ENTRY;
+   
+   if (!xf || !id) SUMA_RETURN(NOPE);
+   
+   for (ii=0; ii<xf->N_children; ++ii) {
+      if (!strcmp(xf->children[ii],id)) {
+         if (iloc) *iloc=ii;
+         SUMA_RETURN(YUP);
+      }
+   }
+   
+   SUMA_RETURN(NOPE);
+}
+
+SUMA_Boolean SUMA_AddXformChild (SUMA_XFORM *xf, 
+                                 char *child_idcode)
+{
+   static char FuncName[]={"SUMA_AddXformChild"};
+   SUMA_DSET *dset=NULL;
+   int ii;
+   
+   SUMA_ENTRY;
+   
+   if (!xf || !child_idcode) {
+      SUMA_S_Err("NULL input");
+      SUMA_RETURN(NOPE);
+   }
+   if (SUMA_is_XformChild(xf, child_idcode, NULL)) {
+      SUMA_S_Err("Child exists");
+      SUMA_RETURN(NOPE);
+   }
+   
+   strcpy(xf->children[xf->N_children], child_idcode); 
+   
+   ++xf->N_children;
+   SUMA_RETURN(YUP);
+   
+}
+
+
+SUMA_XFORM *SUMA_NewXform(char *name, char *parent_idcode, char *parent_domain)
+{
+   static char FuncName[]={"SUMA_NewXform"};
+   SUMA_XFORM *xf = NULL;
+   
+   SUMA_ENTRY;
+   if (!name || !parent_idcode) SUMA_RETURN(xf);
+   
+   if (  !SUMA_is_ID_4_SO(parent_idcode, NULL) && 
+         !SUMA_is_ID_4_DSET(parent_idcode, NULL) ) {
+      SUMA_S_Err("Invalid parent_idcode");
+      SUMA_RETURN(xf);     
+   }
+   
+   if (SUMA_Find_XformByParent("Dot", parent_idcode, NULL)) {
+      SUMA_S_Err("An xform exists already");
+      SUMA_RETURN(xf);
+   }
+   
+   xf = (SUMA_XFORM *)SUMA_calloc(1, sizeof(SUMA_XFORM));
+ 
+   snprintf(xf->name, 127*sizeof(char), "%s", name);
+   UNIQ_idcode_fill(xf->idcode_str);
+   
+   if (!SUMA_AddXformParent(xf,parent_idcode, parent_domain)) {
+      SUMA_S_Err("Failed to add parent");
+      SUMA_FreeXform(xf); xf = NULL;
+      SUMA_RETURN(xf); 
+   }
+
+   
+   xf->N_children = 0;
+   
+   xf->active = 0;
+   xf->ShowPreProc = 0;
+   
+   xf->XformOpts = NI_new_group_element();
+   NI_rename_group(xf->XformOpts, "XformOpts");
+   
+   dlist_ins_next(SUMAg_CF->xforms, dlist_tail(SUMAg_CF->xforms), xf);
+   
+   SUMA_RETURN(xf);  
+} 
+
+void SUMA_FreeXform(void *data)
+{
+   static char FuncName[]={"SUMA_FreeXform"};
+   SUMA_XFORM *xf = (SUMA_XFORM *)data;
+   
+   SUMA_ENTRY;
+   
+   if (xf) {
+      if (xf->XformOpts) NI_free(xf->XformOpts); 
+      if (xf->gui) SUMA_FreeXformInterface(xf->gui);
+      SUMA_free(xf);
+   }
+   
+   SUMA_RETURNe;
+}
+
+SUMA_GENERIC_XFORM_INTERFACE * SUMA_NewXformInterface(
+                                 SUMA_XFORM *xf)
+{
+   static char FuncName[]={"SUMA_NewXformInterface"};
+   SUMA_GENERIC_XFORM_INTERFACE *gui=NULL;
+   
+   SUMA_ENTRY;
+   
+   
+   gui = (SUMA_GENERIC_XFORM_INTERFACE *)
+            SUMA_calloc(1,sizeof(SUMA_GENERIC_XFORM_INTERFACE));
+   
+   gui->AF0 = 
+      (SUMA_ARROW_TEXT_FIELD *)calloc(1, sizeof(SUMA_ARROW_TEXT_FIELD));
+   gui->AF1 = 
+      (SUMA_ARROW_TEXT_FIELD *)calloc(1, sizeof(SUMA_ARROW_TEXT_FIELD));
+   gui->AF2 = 
+      (SUMA_ARROW_TEXT_FIELD *)calloc(1, sizeof(SUMA_ARROW_TEXT_FIELD));
+  
+   SUMA_RETURN(gui);
+}
+
+void SUMA_FreeXformInterface(SUMA_GENERIC_XFORM_INTERFACE *gui)
+{
+   static char FuncName[]={"SUMA_FreeXformInterface"};
+   
+   SUMA_ENTRY;
+   if (gui) {
+      if (gui->AF0) SUMA_free(gui->AF0);
+      if (gui->AF1) SUMA_free(gui->AF1);
+      if (gui->AF2) SUMA_free(gui->AF2);
+      
+      SUMA_free(gui);
+   }
+   SUMA_RETURNe;
+}
+
+SUMA_Boolean SUMA_is_CallbackParent (SUMA_CALLBACK *cb, char *id, int *iloc)
+{
+   static char FuncName[]={"SUMA_is_CallbackParent"};
+   int ii;
+   
+   SUMA_ENTRY;
+   
+   if (!cb || !id) SUMA_RETURN(NOPE);
+   
+   for (ii=0; ii<cb->N_parents; ++ii) {
+      if (!strcmp(cb->parents[ii],id)) {
+         if (iloc) *iloc=ii;
+         SUMA_RETURN(YUP);
+      }
+   }
+   
+   SUMA_RETURN(NOPE);
+}
+
+
+/*!
+   Find a callback with a particular name AND a parent with a matching idcode
+*/
+SUMA_CALLBACK *SUMA_Find_CallbackByParent(char *FunctionName, 
+                                       char *parent_idcode, int *iloc)
+{
+   static char FuncName[]={"SUMA_Find_CallbackByParent"};
+   SUMA_CALLBACK *cb = NULL, *cbt=NULL;
+   DListElmt *el=NULL;
+   DList *lst = SUMAg_CF->callbacks;
+   int i;
+    
+   SUMA_ENTRY;
+   
+   if (!lst || !FunctionName || !parent_idcode) SUMA_RETURN(cb);
+   
+   el = dlist_head(lst);
+   
+   while (el && !cb) {
+      cbt = (SUMA_CALLBACK *)el->data;
+      if (!strcmp(cbt->FunctionName, FunctionName)) {
+         for (i=0; i<cbt->N_parents; ++i) {
+            if (!strcmp(cbt->parents[i], parent_idcode)) {
+               cb = cbt; 
+               if (iloc) *iloc = i;
+               break;
+            }
+         }
+      }   
+      el = dlist_next(el);
+   }  
+   
+   SUMA_RETURN(cb);
+}
+
+SUMA_CALLBACK *SUMA_Find_CallbackByCreatorXformID(char *creator_xform_idcode)
+{
+   static char FuncName[]={"SUMA_Find_CallbackByCreatorXformID"};
+   SUMA_CALLBACK *cb = NULL, *cbf=NULL;
+   DListElmt *el=NULL;
+   DList *lst = SUMAg_CF->callbacks;
+   int i, found=0;
+    
+   SUMA_ENTRY;
+   
+   if (!lst || !creator_xform_idcode) SUMA_RETURN(cbf);
+   
+   el = dlist_head(lst);
+   cbf=NULL;
+   while (el && !cbf) {
+      cb = (SUMA_CALLBACK *)el->data;
+      if (!strcmp(cb->creator_xform, creator_xform_idcode)) {
+         ++found; cbf = cb;   
+      }   
+      el = dlist_next(el);
+   }  
+   if (found > 1) {
+      SUMA_S_Errv("%d callbacks found\n" 
+                  "write a new function to return them all\n",
+                  found); 
+   }
+   SUMA_RETURN(cbf);
+}
+
+SUMA_Boolean SUMA_AddCallbackParent (SUMA_CALLBACK *cb, 
+                                     char *parent_idcode,
+                                     char *parent_domain)
+{
+   static char FuncName[]={"SUMA_AddCallbackParent"};
+   SUMA_DSET *dset=NULL;
+   
+   SUMA_ENTRY;
+   
+   if (!cb || !parent_idcode) {
+      SUMA_S_Err("NULL input");
+      SUMA_RETURN(NOPE);
+   }
+   
+   if (SUMA_is_CallbackParent(cb, parent_idcode, NULL)) {
+      SUMA_S_Err("Parent exists");
+      SUMA_RETURN(NOPE);
+   }
+   
+   strcpy(cb->parents[cb->N_parents], parent_idcode);    
+   if (!parent_domain) {
+      if (SUMA_is_ID_4_DSET(parent_idcode, &dset)) {
+         strcpy( cb->parents_domain[cb->N_parents],
+                 SDSET_IDMDOM(dset));
+      } else {
+         cb->parents_domain[cb->N_parents][0] = '\0';
+      }
+   } else {
+      strcpy( cb->parents_domain[cb->N_parents],
+              parent_domain);
+   }
+   
+   ++cb->N_parents;
+   SUMA_RETURN(YUP);
+   
+}
+
+SUMA_Boolean SUMA_SetCallbackPending (SUMA_CALLBACK *cb, 
+                                      SUMA_Boolean pen, SUMA_ENGINE_SOURCE src) 
+{
+   static char FuncName[]={"SUMA_SetCallbackPending"};
+   
+   SUMA_ENTRY;
+   
+   if (!cb) SUMA_RETURN(NOPE);
+   
+   if (cb->active < 1 && pen) {
+      SUMA_S_Notev("Callback %s inactive. Pending flag not set\n", 
+                  cb->FunctionName);
+      SUMA_RETURN(YUP);
+   }
+   
+   if (src <= SES_Empty && pen) {
+      SUMA_S_Errv("Source %d is not appropriate.\n",src);
+      SUMA_RETURN(NOPE);
+   }
+   
+   if (cb->pending && pen) {
+      SUMA_S_Errv("Callback %s is already pending. \n", 
+                  cb->FunctionName);
+      SUMA_RETURN(NOPE);
+   }
+   
+   cb->pending = pen;
+   if (!pen) cb->trigger_source = SES_Empty;
+   else cb->trigger_source = pen;
+   
+   SUMA_RETURN(YUP);
+}
+
+SUMA_CALLBACK *SUMA_NewCallback  (char *FunctionName, 
+                               SUMA_CALLBACK_ACTIVATE_EVENTS event, 
+                               void *FunctionPtr,
+                               char *parent_idcode,
+                               char *parent_domain, 
+                               char *creator_xform)
+{
+   static char FuncName[]={"SUMA_NewCallback"};
+   SUMA_XFORM *xf = NULL;
+   NI_element *nel=NULL;
+   SUMA_CALLBACK *cb = NULL;
+   char stmp[256];
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   SUMA_LH("Checks");
+   if (!parent_idcode || !FunctionName ||
+       strlen(FunctionName) > 125  ) SUMA_RETURN(cb);
+   
+   if (  !SUMA_is_ID_4_SO(parent_idcode, NULL) && 
+         !SUMA_is_ID_4_DSET(parent_idcode, NULL) ) {
+      SUMA_S_Err("Invalid parent_idcode");
+      SUMA_RETURN(cb);     
+   }
+ 
+   if (SUMA_Find_CallbackByParent(FunctionName, parent_idcode, NULL)) {
+      SUMA_S_Err("A callback exists already");
+      SUMA_RETURN(cb);
+   }
+   
+   SUMA_LH("New callback");
+   cb = (SUMA_CALLBACK *)calloc(1,sizeof(SUMA_CALLBACK));
+   
+   cb->event = event;
+   cb->active = 0;
+   cb->pending = 0;
+   cb->trigger_source = SES_Empty;
+   strcpy(cb->FunctionName, FunctionName); 
+   cb->FunctionPtr = FunctionPtr;
+   
+   SUMA_LH("Func input");
+   cb->FunctionInput = NI_new_group_element();
+   SUMA_LH(FunctionName);
+   snprintf(stmp,sizeof(char)*64,"input.%s",FunctionName);
+   NI_rename_group(cb->FunctionInput, stmp);
+   
+   SUMA_LH("defaults");
+   /* Set defaults for generic parameters */
+   nel = NI_new_data_element("event_parameters", 0); 
+   NI_add_to_group(cb->FunctionInput, nel);
+   NI_SET_INT(nel,"event.new_node", -1);
+   NI_set_attribute(nel, "event.SO_idcode", "");
+   NI_set_attribute(nel,"event.overlay_name", "");
+  
+   SUMA_LH("Adding parent"); 
+   if (!SUMA_AddCallbackParent(cb, parent_idcode, parent_domain)){
+      SUMA_S_Err("Failed to add parent");
+      SUMA_RETURN(NOPE);
+   }
+   
+      
+   if (creator_xform) {
+      if (!(xf=SUMA_Find_XformByID(creator_xform))) {
+         SUMA_S_Err("Failed to find xform");
+         SUMA_RETURN(NOPE);
+      }
+      strcpy(cb->creator_xform, creator_xform);   
+   }
+      
+   dlist_ins_next(SUMAg_CF->callbacks, dlist_tail(SUMAg_CF->callbacks), cb);
+ 
+   SUMA_RETURN(cb);  
+}  
+
+
+void SUMA_FreeCallback(void *data)
+{
+   static char FuncName[]={"SUMA_FreeCallback"};
+   SUMA_CALLBACK *cb = (SUMA_CALLBACK *)data;
+   
+   SUMA_ENTRY;
+   
+   if (cb) {
+      if (cb->FunctionInput) {
+         NI_free_element(cb->FunctionInput);
+      }
+      SUMA_free(cb);
+   }
+   
+   SUMA_RETURNe;
+}
+
+SUMA_Boolean SUMA_FlushCallbackEventParameters (SUMA_CALLBACK *cb) 
+{
+   static char FuncName[]={"SUMA_FlushCallbackEventParameters"};
+   NI_element *nelpars=NULL;
+   
+   SUMA_ENTRY;
+   
+   if (!cb ||
+       !(nelpars = SUMA_FindNgrNamedElement(
+                     cb->FunctionInput, "event_parameters"))) {
+      SUMA_S_Err("NULL cb or Bad callback content");
+      SUMA_RETURN(NOPE);
+   }
+   
+   switch (cb->event) {
+      case SUMA_NEW_NODE_ACTIVATE_EVENT:
+         SUMA_XFORM_SAVE_FLUSH_EVENT(nelpars);
+         break;
+      case SUMA_ERROR_ACTIVATE_EVENT: 
+      case SUMA_NO_ACTIVATE_EVENT:
+      case SUMA_N_ACTIVATE_EVENTS:
+         SUMA_S_Warn("This should not come up");
+         break;
+      default:
+         SUMA_S_Err("Seriously off folks");
+         SUMA_RETURN(NOPE);
+         break;
+   }
+   
+   SUMA_RETURN(YUP);
+}
+
+SUMA_Boolean SUMA_ExecuteCallback(SUMA_CALLBACK *cb, 
+                                  int refresh, SUMA_SurfaceObject *SO,
+                                  int doall) 
+{
+   static char FuncName[]={"SUMA_ExecuteCallback"};
+   SUMA_SurfaceObject *curSO=NULL, *targetSO=NULL;
+   SUMA_OVERLAYS *targetSover=NULL;
+   int i, jj=0;
+   SUMA_DSET *targetDset=NULL;
+   SUMA_Boolean LocalHead = NOPE;
+  
+   SUMA_ENTRY;
+   
+   cb->FunctionPtr((void *)cb);  
+
+   SUMA_SetCallbackPending(cb, 0, SES_Empty);
+   
+   /* flush event specific parameters */
+   SUMA_FlushCallbackEventParameters(cb);
+   
+   if (refresh) {/* Now decide on what needs refreshing */
+      if (!SO) {
+         curSO = NULL;
+      } else {
+         curSO = *(SO->SurfCont->curSOp);
+      }           
+      for (i=0; i<cb->N_parents; ++i) {
+         if (SUMA_is_ID_4_DSET(cb->parents[i], &targetDset)) {
+            targetSO = SUMA_findSOp_inDOv(cb->parents_domain[i],
+                                          SUMAg_DOv, SUMAg_N_DOv);
+            if (!targetSO) {
+               if (SO) {
+                  SUMA_S_Warn("Could not find targetSO, using SO instead");
+                  targetSO = SO;
+               } else {
+                  SUMA_S_Err("Don't know what do do here");
+                  SUMA_RETURN(NOPE);
+               }
+            }
+            /* refresh overlay and SO for this callback */
+            targetSover = SUMA_Fetch_OverlayPointerByDset(
+                                 targetSO->Overlays, 
+                                 targetSO->N_Overlays,
+                                 targetDset,
+                                 &jj);
+            SUMA_LHv("Colorizing %s\n", targetSover->Name);
+            SUMA_ColorizePlane(targetSover);
+            SUMA_LHv("Setting remix flag for %s\n",targetSO->Label);
+            if (!SUMA_SetRemixFlag( targetSO->idcode_str, 
+                                    SUMAg_SVv, SUMAg_N_SVv)) {
+               SUMA_SLP_Err("Failed in SUMA_SetRemixFlag.\n");
+               SUMA_RETURN(NOPE);
+            }
+            if (doall || curSO != targetSO) {
+               SUMA_UPDATE_ALL_NODE_GUI_FIELDS(targetSO);
+               SUMA_RemixRedisplay(targetSO);
+            } else {
+               /* Update and Remix will be done for curSO 
+                  by the function who called this one */
+            }
+            /* it is possible that the callback caused a change 
+               in the p value so update it to be sure, 
+               but I am not fond of doing this all the time,
+               every time there is a button click triggering the
+               event .... */
+            SUMA_LHv("Updating threshold at %f\n", 
+                     targetSO->SurfCont->curColPlane->OptScl->ThreshRange[0]);
+            SUMA_UpdatePvalueField( targetSO,
+                     targetSO->SurfCont->curColPlane->OptScl->ThreshRange[0]);
+         } else if (SUMA_is_ID_4_SO(cb->parents[i], &targetSO)) {
+            SUMA_S_Note("Got surface, don't know \n"
+                        "what to do in case like this yet\n");
+         } else {
+            SUMA_S_Err("Dunno what to do with such an object...");
+         }   
+      }
+
+   }
+   SUMA_RETURN(YUP);
 }
 

@@ -77,12 +77,26 @@ extern "C" {
 #ifdef _DEBUGTRACE_MAIN_
    char *DBG_rout[DEBUG_MAX_DEPTH] = { "Bottom of Debug Stack" } ;
    int DBG_num   = 1 ;
+   int DBG_stoff = 0 ;   /* temporarily disable ENTRY/RETURN stack [01 Jun 2009] */
    int DBG_trace = 0 ;   /* turn off at start (cf. mainENTRY) */
    FILE *DBG_fp  = NULL ;    /* 01 Sep 2006 */
 
    char *DBG_labels[3] = { "Trace=OFF " , "Trace=LOW " , "Trace=HIGH" } ;
 
    char last_status[1024] = "\0" ;  /* 22 Apr 2002 */
+
+/*------------------------------------------------------*/
+#ifdef SHOWOFF
+# undef  SHSH
+# undef  SHSHSH
+# undef  SHSTRING
+# define SHSH(x)   #x
+# define SHSHSH(x) SHSH(x)
+# define SHSTRING  SHSHSH(SHOWOFF)   /* now in "quotes" */
+#else
+# undef  SHSTRING
+#endif
+/*------------------------------------------------------*/
 
 void DBG_traceback(void)
 { int tt ;
@@ -119,8 +133,18 @@ void DBG_sigfunc(int sig)   /** signal handler for fatal errors **/
    fprintf(stderr,"** AFNI version = " AFNI_VERSION_LABEL
                    "  Compile date = " __DATE__ "\n" );
 #endif
+#ifdef SHSTRING
+   fprintf(stderr,"** [[Precompiled binary " SHSTRING ": " __DATE__ "]]\n");
+#endif
 
-   fprintf(stderr,"** Program Abort **\n") ; fflush(stderr) ;
+   fprintf(stderr,"** Program Abort **\n") ;
+   if( sig != SIGINT && sig != SIGTERM )
+   fprintf(stderr,"** If you report this crash to the AFNI message board,\n"
+                  "** please copy the error messages EXACTLY, and give\n"
+                  "** the command line you used to run the program, and\n"
+                  "** any other information needed to repeat the problem.\n"
+                  "** You may later be asked to upload data to help debug.\n");
+   fflush(stderr) ;
    MPROBE ; exit(1) ;
 }
 
@@ -131,6 +155,7 @@ void DBG_sigfunc(int sig)   /** signal handler for fatal errors **/
 #else /* not _DEBUGTRACE_MAIN_ */
    extern char *DBG_rout[DEBUG_MAX_DEPTH] ;
    extern int DBG_num ;
+   extern int DBG_stoff ;
    extern int DBG_trace ;
    extern FILE *DBG_fp ;
    extern char *DBG_labels[3] ;
@@ -151,29 +176,31 @@ void DBG_sigfunc(int sig)   /** signal handler for fatal errors **/
 #define DBG_LEADER_IN  "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
 #define DBG_LEADER_OUT "-----------------------------------------------------------"
 
-#define ENTRY(rout) do{ static char *rrr = (rout) ;  DBG_rout[DBG_num++] = rrr ; \
-                        if( DBG_trace ){                                        \
-                          if( DBG_fp == NULL ) DBG_fp = stdout ;               \
-                          fprintf(DBG_fp,                                     \
-                                  "%*.*s%s [%d]: {ENTRY (file=%s line=%d)\n", \
-                                  DBG_num,DBG_num,DBG_LEADER_IN,rrr,DBG_num,  \
-                                  __FILE__ , __LINE__ ) ;                     \
-                          MCHECK ; fflush(DBG_fp) ; }                         \
-                        last_status[0] = '\0' ;                               \
-                    } while(0)
+#define ENTRY(rout) do{ if( !DBG_stoff ){                                         \
+                         static char *rrr = (rout) ;  DBG_rout[DBG_num++] = rrr ; \
+                         if( DBG_trace ){                                         \
+                           if( DBG_fp == NULL ) DBG_fp = stdout ;                 \
+                           fprintf(DBG_fp,                                        \
+                                   "%*.*s%s [%d]: {ENTRY (file=%s line=%d)\n",    \
+                                   DBG_num,DBG_num,DBG_LEADER_IN,rrr,DBG_num,     \
+                                   __FILE__ , __LINE__ ) ;                        \
+                           MCHECK ; fflush(DBG_fp) ; }                            \
+                         last_status[0] = '\0' ;                                  \
+                     } } while(0)
 
 #define DBROUT      DBG_rout[DBG_num-1]
 
-#define DBEXIT      do{ if( DBG_trace ){                                     \
-                          if( DBG_fp == NULL ) DBG_fp = stdout ;              \
-                          fprintf(DBG_fp,                                      \
-                                  "%*.*s%s [%d]: EXIT} (file=%s line=%d)\n",    \
-                                  DBG_num,DBG_num,DBG_LEADER_OUT,DBROUT,DBG_num, \
-                                  __FILE__ , __LINE__ );                         \
-                          MCHECK ; fflush(DBG_fp) ; }                            \
-                        DBG_num = (DBG_num>1) ? DBG_num-1 : 1 ;                  \
-                        last_status[0] = '\0' ;                                  \
-                    } while(0)
+#define DBEXIT      do{ if( !DBG_stoff ){                                     \
+                          if( DBG_trace ){                                     \
+                            if( DBG_fp == NULL ) DBG_fp = stdout ;              \
+                            fprintf(DBG_fp,                                      \
+                                    "%*.*s%s [%d]: EXIT} (file=%s line=%d)\n",    \
+                                    DBG_num,DBG_num,DBG_LEADER_OUT,DBROUT,DBG_num, \
+                                    __FILE__ , __LINE__ );                         \
+                            MCHECK ; fflush(DBG_fp) ; }                            \
+                          DBG_num = (DBG_num>1) ? DBG_num-1 : 1 ;                  \
+                          last_status[0] = '\0' ;                                  \
+                    } } while(0)
 
 /*! This macro is only to be used inside main(). */
 
@@ -185,14 +212,14 @@ void DBG_sigfunc(int sig)   /** signal handler for fatal errors **/
       if( DBG_fp==NULL ) DBG_fp=stdout;                               \
       DBG_SIGNALS; ENTRY(rout); (void)AFNI_prefilter_args(&argc,argv); } while(0)
 
-#define PRINT_TRACING (DBG_trace > 1)
+#define PRINT_TRACING (DBG_trace > 1 && !DBG_stoff)
 
 #define STATUS(str)                                                      \
   do{ if(PRINT_TRACING){                                                  \
         MCHECK ; if( DBG_fp==NULL ) DBG_fp=stdout;                         \
         fprintf(DBG_fp,"%*.*s%s -- %s\n",DBG_num,DBG_num," ",DBROUT,(str)); \
         fflush(DBG_fp) ; }                                                   \
-      strncpy(last_status,str,1023); last_status[1023]='\0';                  \
+      if(!DBG_stoff){strncpy(last_status,str,1023); last_status[1023]='\0';}  \
   } while(0)
 
 /*********************************************************************/
@@ -215,7 +242,8 @@ void DBG_sigfunc(int sig)   /** signal handler for fatal errors **/
       extern void DBG_sigfunc(int) ;
 #  endif
 
-#  define mainENTRY(rout) /* nada */
+#  define mainENTRY(rout) \
+   do { (void)AFNI_prefilter_args(&argc,argv); } while(0)
 
 #endif /* USE_TRACING */
 /*********************************************************************/

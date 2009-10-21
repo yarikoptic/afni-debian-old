@@ -9,9 +9,9 @@
 
 static int disabled = 0 ;
 
-#define VERSION_URL "http://afni.nimh.nih.gov/afni/AFNI.version"
+#define VERSION_URL "http://afni.nimh.nih.gov/pub/dist/AFNI.version"
 #define STR_CHILD   "tcp:localhost:20279"
-#define AFNI_HOST   "http://afni.nimh.nih.gov/afni/"
+#define AFNI_HOST   "http://afni.nimh.nih.gov/pub/dist/"
 #define VSIZE       1024
 
 static pid_t vc_child_pid = (pid_t)(-1) ;
@@ -85,10 +85,10 @@ void AFNI_start_version_check(void)
            }
          }
          rhs = NI_get_attribute(nel,"version_string") ;  /* 27 Jan 2003 */
-         if( rhs != NULL && strcmp(rhs,VERSION) != 0 ){
+         if( rhs != NULL && strcmp(rhs,AVERZHN) != 0 ){
            fprintf(stderr,
                    "\n** Your AFNI version changed from %s to %s since last check\n",
-                   rhs , VERSION ) ;
+                   rhs , AVERZHN ) ;
          }
          rhs = NI_get_attribute(nel,"motd") ;            /* 29 Nov 2005 */
          if( rhs != NULL ) motd_old = strdup(rhs) ;
@@ -162,9 +162,9 @@ void AFNI_start_version_check(void)
      if( jj >= 0 && ubuf.nodename[0] != '\0' )
        sprintf( ua ,
                "afni (avers='%s'; prec='%s' node='%s'; sys='%s'; mach='%s')" ,
-                VERSION, PCLAB, ubuf.nodename, ubuf.sysname, ubuf.machine   ) ;
+                AVERZHN, PCLAB, ubuf.nodename, ubuf.sysname, ubuf.machine   ) ;
      else
-       sprintf( ua , "afni (avers='%s'; prec='%s')" , VERSION , PCLAB ) ;
+       sprintf( ua , "afni (avers='%s'; prec='%s')" , AVERZHN , PCLAB ) ;
 
      set_HTTP_10( 1 ) ;
      set_HTTP_user_agent( ua ) ;
@@ -173,6 +173,8 @@ void AFNI_start_version_check(void)
 #endif
 
      /* send the request */
+
+     THD_death_setup( 34567 ) ;  /* die if 34.567 seconds passes away */
 
      nbuf = read_URL( VERSION_URL , &vbuf ) ;  /* may take a while */
 
@@ -304,7 +306,7 @@ int AFNI_version_check(void)
        sprintf(rhs,"%d",(int)time(NULL)) ;
        NI_set_attribute( nel , "version_check_time" , rhs ) ;
        if( strcmp(vv,"none") != 0 )                            /* 27 Jan 2003 */
-         NI_set_attribute( nel , "version_string" , VERSION ) ;
+         NI_set_attribute( nel , "version_string" , AVERZHN ) ;
        if( motd_new != NULL )
          NI_set_attribute( nel , "motd" , motd_new ) ;         /* 29 Nov 2005 */
        NI_write_element( ns , nel , NI_TEXT_MODE ) ;
@@ -327,7 +329,7 @@ int AFNI_version_check(void)
 
    /* compare version strings */
 
-   if( strcmp(vv,VERSION) == 0 ){                    /* versions match */
+   if( strcmp(vv,AVERZHN) == 0 ){                    /* versions match */
      fprintf(stderr,"\n** Version check: you are up-to-date!\n"
                       "** To disable future version checks:\n"
                       "** set environment variable AFNI_VERSION_CHECK to NO.\n"
@@ -348,7 +350,7 @@ int AFNI_version_check(void)
                    " To disable future version checks:\n"
                    " set environment variable AFNI_VERSION_CHECK to NO\n"
                    "****************************************************\n"
-          , VERSION, AFNI_HOST , vv ) ;
+          , AVERZHN, AFNI_HOST , vv ) ;
 
    return 1 ;
 
@@ -468,6 +470,7 @@ ENTRY("AFNI_display_motd") ;
    }
 
    sprintf(url,"%s%.988s",AFNI_HOST,GLOBAL_motd) ;
+/** INFO_message("MOTD URL = '%s'",url) ; **/
    nbuf = read_URL( url , &buf ) ;
    if( nbuf > 0 && buf != NULL ){
      char *msg = malloc(sizeof(char)*(nbuf+2048)) ;
@@ -480,10 +483,12 @@ ENTRY("AFNI_display_motd") ;
      "%s\n"
      , url , buf );
 
-     if( w != NULL )
+     if( w != NULL ){
+       MCW_textwin_setbig(1) ;  /* 29 Apr 2009 */
        (void) new_MCW_textwin( w , msg , TEXT_READONLY );
-     else
+     } else {
        fputs(msg,stderr) ;
+     }
 
      free(msg) ; free(buf) ;
    } else {

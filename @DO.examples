@@ -1,0 +1,183 @@
+#!/bin/tcsh -f
+
+#!/bin/tcsh -f
+if ("$1" == "-h" || "$1" == "-help") goto HELP
+
+set tmpico = __donut
+
+#goto NIDO
+
+suma -niml &
+
+echo patience while suma starts up...
+sleep 3
+
+#if ( ! -f ${tmpico}_surf.asc) CreateIcosahedron -ld 10 -prefix ${tmpico}
+#DriveSuma   -com show_surf -label ${tmpico} \
+#            -i_fs ${tmpico}_surf.asc
+IsoSurface -shape 3 64 -o_ply ${tmpico}.ply
+quickspec -spec ${tmpico}.spec -tn ply ${tmpico}.ply
+DriveSuma   -com show_surf -label ${tmpico} \
+            -i ${tmpico}.ply \
+            -com viewer_cont -viewer_size 1000 1000 \
+                              -key m -key left
+
+prompt_user -pause "Hit enter for node-based segments object"
+
+#node-based_segments  or #node-based_oriented_segments 
+set pr = '__nbs'
+rm -f $pr.1D.do
+echo "#node-based_segments" >> $pr.1D.do
+echo "616 574  9" >> $pr.1D.do
+echo "554 634  1" >> $pr.1D.do
+DriveSuma   -com viewer_cont -load_do $pr.1D.do \
+                           -key p
+
+prompt_user -pause "Hit enter for node-based oriented segments"
+
+set pr = '__onbs'
+rm -f $pr.1D.do
+echo "#node-based_oriented_segments" >> $pr.1D.do
+echo "313 160    1 0 0 1" >> $pr.1D.do
+echo "314 331    1 1 0 1" >> $pr.1D.do
+DriveSuma   -com viewer_cont -load_do $pr.1D.do 
+
+prompt_user -pause "Hit enter for node-based oriented segments with differing thickness"
+
+set pr = '__onbst'
+rm -f $pr.1D.do
+echo "#node-based_oriented_segments" >> $pr.1D.do
+echo "327 1    1 0 0 1 8" >> $pr.1D.do
+echo "116 532    1 1 0 1 2" >> $pr.1D.do
+DriveSuma   -com viewer_cont -load_do $pr.1D.do 
+
+prompt_user -pause "Hit enter for coordinate-based segments"
+
+#oriented_segments  or #segments
+set pr = '__os'
+rm -f $pr.1D.do
+echo "#oriented_segments" >> $pr.1D.do
+echo "230.3 261.1 210.9  240 220.8 198.5  0 1 1 1" >> $pr.1D.do
+echo "240.1 280.2 185.23   240.9 250.1 180     0 1 0 1" >> $pr.1D.do
+DriveSuma   -com viewer_cont -load_do $pr.1D.do 
+
+prompt_user -pause "Hit enter for spheres"
+
+#spheres
+set pr = '__sp'
+rm -f $pr.1D.do
+echo "#spheres" >> $pr.1D.do
+echo "240 230.8 208.5  1 1 1 1 15 1" >> $pr.1D.do
+echo "235  201  215    1 1  0 1 10 2 " >> $pr.1D.do
+DriveSuma   -com viewer_cont -load_do $pr.1D.do 
+
+prompt_user -pause "Hit enter for vectors"
+
+#vectors
+set pr = '__vec'
+rm -f $pr.TriNormSeg.1D
+SurfaceMetrics -spec ${tmpico}.spec -surf_A ${tmpico} \
+               -face_normals -normals_scale -10 -prefix $pr
+#get a  random colection
+set nout = `3dnvals -all ${pr}.TriNormSeg.1D`
+set nout = `ccalc -int $nout[1] - 1`
+1dcat $pr.TriNormSeg.1D"{count 0 $nout S50}" > $pr.mini.TriNormSeg.1D
+
+DriveSuma   -com viewer_cont -load_do $pr.mini.TriNormSeg.1D
+
+prompt_user -pause "Hit enter for planes"
+
+PLANES:
+set pr = '__pl'
+rm -f $pr.1D.do
+echo "#planes" >> $pr.1D.do
+echo "1 1 1 0 286.766998, 281.160004, 236." >> $pr.1D.do
+DriveSuma   -com viewer_cont -load_do $pr.1D.do
+
+prompt_user -pause "Hit enter for node path on surface"
+
+DriveSuma   -com viewer_cont -key:r3:s0.8 p
+
+NODE_PATH:
+set pr = '__np'
+rm -f $pr.1D.do
+echo 2 344 > nodelist.1D
+echo 416 489 >> nodelist.1D
+echo 1215 2309 >> nodelist.1D
+echo 1256 1095 >> nodelist.1D
+set echo
+SurfDist -i ${tmpico}.ply \
+         -input nodelist.1D \
+         -node_path_do $pr   > surfdist.1D
+DriveSuma   -com viewer_cont -load_do $pr.1D.do
+
+prompt_user -pause "Hit enter for NIML displayable objects (NIDO)"
+
+NIDO:
+#Displayable objects (DO) action
+set spath = `which suma`
+set spath = $spath:h
+cp $spath/demo.fixed.niml.do ./fixed.niml.do
+cp $spath/demo.mobile.niml.do ./mobile.niml.do
+if ( ! -f fixed.niml.do || ! -f mobile.niml.do ) then
+   echo "could not find demo .do files."
+   goto END
+endif
+
+prompt_user -pause "Hit enter to see images, and text in fixed coord_type."
+
+#Hide the textures
+sed "s;\<Tex;\<\#Tex;g" fixed.niml.do > __fixed.niml.do
+DriveSuma -com viewer_cont -load_do __fixed.niml.do 
+
+echo ""
+echo ">>> Hit enter to see texture images added, fixed coord_type."
+echo "    This may slow rendering speeds considerably on some machines." 
+prompt_user -pause "Hit enter to see texture images added, fixed coord_type."
+
+cp fixed.niml.do __fixed.niml.do
+DriveSuma -com viewer_cont -load_do __fixed.niml.do
+
+prompt_user -pause "Hit enter to see images, texture and text in, mobile coord_type."
+
+#first hide all content of fixed, to reduce confusion
+sed "s;\<;\<#;g" fixed.niml.do > __fixed.niml.do
+DriveSuma -com viewer_cont -load_do __fixed.niml.do
+
+#Now load the mobile one
+DriveSuma -com viewer_cont -load_do mobile.niml.do 
+
+prompt_user -pause "Hit enter to see all NIDO elements together"
+
+DriveSuma -com viewer_cont -load_do fixed.niml.do
+
+sleep 3
+DriveSuma -com viewer_cont -key:r8 Z
+sleep 3
+DriveSuma -com viewer_cont -key:r8 Z  
+
+QUIT:
+echo ""
+echo ">>> Enter 'c' if you want to cleanup before quitting."
+set kk = $<
+
+if ("$kk" == "c") then
+   rm -f __*.1D.do ${tmpico}*.*  __*.niml.do
+   cd ..
+   rm -rf suma_tmp
+else 
+   cd ..
+endif
+
+goto END
+
+HELP:
+echo "Usage: `basename $0` "
+echo "A script to illustrate the use of Displayable Objects in SUMA."
+echo "Read this script and see SUMA's interactive help (ctrl+h) "
+echo "section for Ctrl+Alt+s for more details on SUMA's Displayable objects."
+echo ""
+goto END
+
+END:
+

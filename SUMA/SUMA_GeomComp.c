@@ -167,17 +167,25 @@ void SUMA_Set_SurfSmooth_NodeDebug(int n)
    to be subdivided. Bad idea, for very large triangles, such as produced
    by convex hull, you could end up with nodes that have hundreds of neighbors...
 */
-int SUMA_Subdivide_Mesh(float **NodeListp, int *N_Nodep, int **FaceSetListp, int *N_FaceSetp, float maxarea)
+int SUMA_Subdivide_Mesh(   float **NodeListp, int *N_Nodep, int **FaceSetListp, 
+                           int *N_FaceSetp, float maxarea)
 {
    static char FuncName[]={"SUMA_Subdivide_Mesh"};
-   int in, it, N_NodeAlloc, N_FaceSetAlloc, N_Node, N_FaceSet, it3, in0, in1, in2, inc3, inc, itn, itn3;
+   int in, it, N_NodeAlloc, N_FaceSetAlloc, N_Node, 
+         N_FaceSet, it3, in0, in1, in2, inc3, inc, itn, itn3;
    float c[3];
    float *NodeList = NULL, a, *n1, *n2, *n0;
    int *FaceSetList = NULL;
    SUMA_SurfaceObject SObuf, *SO=NULL;
-   SUMA_Boolean LocalHead = YUP;
+   SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
+   
+   SUMA_S_Warn("Function is very basic\n"
+               "Divisions are done by adding a node at the centroid of the\n"
+               "triangle to be subdivided. Bad idea, for very large triangles,\n"
+               "such as those produced by convex hull. You could end up with\n"
+               "nodes that have hundreds of neighbors\n");
    
    SO = &SObuf;
    
@@ -186,7 +194,8 @@ int SUMA_Subdivide_Mesh(float **NodeListp, int *N_Nodep, int **FaceSetListp, int
    NodeList = *NodeListp;
    FaceSetList = *FaceSetListp;
    SO->NodeList = NodeList; SO->FaceSetList = FaceSetList;
-   if (!NodeList || !FaceSetList) { SUMA_SL_Err("NULL input"); SUMA_RETURN(NOPE); }
+   if (!NodeList || !FaceSetList) { 
+      SUMA_SL_Err("NULL input"); SUMA_RETURN(NOPE); }
    
    it = 0; /* triangle index */
    while (it < N_FaceSet) {
@@ -613,7 +622,8 @@ int SUMA_VoxelNeighbors (int ijk, int ni, int nj, int nk, SUMA_VOX_NEIGHB_TYPES 
       1: for voxels inside mask
        
 */
-byte *SUMA_FillToVoxelMask(byte *ijkmask, int ijkseed, int ni, int nj, int nk, int *N_in, byte *usethisisin) 
+byte *SUMA_FillToVoxelMask(byte *ijkmask, int ijkseed, int ni, int nj, 
+                           int nk, int *N_in, byte *usethisisin) 
 {
    static char FuncName[]={"SUMA_FillToVoxelMask"};
    byte *isin = NULL, *visited=NULL;
@@ -668,40 +678,59 @@ byte *SUMA_FillToVoxelMask(byte *ijkmask, int ijkseed, int ni, int nj, int nk, i
    
    isin[dothisvoxel] = 1; ++(*N_in); /* Add voxel to cluster */
    visited[dothisvoxel] = 1;  
-   dlist_ins_next(candlist, dlist_tail(candlist), (const void *)dothisvoxel); /* Add voxel as next candidate*/
+   dlist_ins_next(candlist, dlist_tail(candlist), 
+                  (CVOID_CAST)dothisvoxel); /* Add voxel as next candidate*/
    
    while (dlist_size(candlist)) {
       /* find neighbors in its vicinity */
-      dothiselm = dlist_head(candlist); dothisvoxel = (int) dothiselm->data;
-      N_n = SUMA_VoxelNeighbors (dothisvoxel, ni, nj, nk, SUMA_VOX_NEIGHB_FACE, nl);
+      dothiselm = dlist_head(candlist); dothisvoxel = (INT_CAST) dothiselm->data;
+      N_n = SUMA_VoxelNeighbors (dothisvoxel, ni, nj, nk, 
+                                 SUMA_VOX_NEIGHB_FACE, nl);
       /*
          if (dothisvoxel == 5030 && LocalHead) {
-            for (in=0; in<N_n; ++in) {  fprintf(SUMA_STDERR,"%s: pre removal %d\n", FuncName, nl[in]); }    
+            for (in=0; in<N_n; ++in) {  
+               fprintf(SUMA_STDERR,"%s: pre removal %d\n", FuncName, nl[in]); 
+            }    
          }
       */
       /* remove node from candidate list */
-      dlist_remove(candlist, dothiselm, (void *)(&dtmp)); /* Make sure dtmp has enough space to hold a pointer! An int does not hold a pointer on 64 bit MCs */
+      dlist_remove(candlist, dothiselm, (void *)(&dtmp)); /* Make sure dtmp has 
+            enough space to hold a pointer! 
+            An int will not hold a pointer on 64 bit MCs */
       /*
          if (dothisvoxel == 5030 && LocalHead) {
-            for (in=0; in<N_n; ++in) {  fprintf(SUMA_STDERR,"%s: post removal %d\n", FuncName, nl[in]); }    
+            for (in=0; in<N_n; ++in) {  
+               fprintf(SUMA_STDERR,"%s: post removal %d\n", FuncName, nl[in]); 
+            }    
          }
       */
       /* search to see if any are to be assigned */
-      /* if (dothisvoxel == 5030 && LocalHead) fprintf(SUMA_STDERR,"%s: dothisvoxel = %d\n", FuncName, dothisvoxel);*/
+      /* if (dothisvoxel == 5030 && LocalHead) 
+         fprintf(SUMA_STDERR,"%s: dothisvoxel = %d\n", FuncName, dothisvoxel);*/
       for (in=0; in<N_n; ++in) { 
          neighb = nl[in];
-         /* if (dothisvoxel == 5030 && LocalHead) fprintf(SUMA_STDERR,"   Working neighb %d, ijkmask[neighb] = %d\n", neighb, ijkmask[neighb]);*/
+         /* if (dothisvoxel == 5030 && LocalHead) 
+               fprintf(SUMA_STDERR,
+                       "   Working neighb %d, ijkmask[neighb] = %d\n", 
+                       neighb, ijkmask[neighb]);*/
          if (!ijkmask[neighb]) {
-            /* if (dothisvoxel == 5030 && LocalHead) fprintf(SUMA_STDERR,"   neighb %d marked isin\n", neighb); */
+            /* if (dothisvoxel == 5030 && LocalHead) 
+               fprintf(SUMA_STDERR,"   neighb %d marked isin\n", neighb); */
             isin[neighb] = 1; ++(*N_in); /* Add voxel to cluster */
-            /* mark it as a candidate if it has not been visited as a candidate before */
+            /* mark it as a candidate if it has not been visited as a 
+               candidate before */
             if (!visited[neighb]) {
-               /* if (dothisvoxel == 5030 && LocalHead) fprintf(SUMA_STDERR,"   neighb %d added to candidate list\n", neighb); */
-               dlist_ins_next(candlist, dlist_tail(candlist), (const void *)neighb);
+               /* if (dothisvoxel == 5030 && LocalHead) 
+                  fprintf( SUMA_STDERR,
+                           "   neighb %d added to candidate list\n", neighb); */
+               dlist_ins_next(candlist, dlist_tail(candlist), 
+                              (CVOID_CAST)neighb);
                visited[neighb] = 1;   
             }
          } else {
-         /*   if (dothisvoxel == 5030 && LocalHead) fprintf(SUMA_STDERR,"   neighb %d already in mask\n", neighb); */
+         /*   if (dothisvoxel == 5030 && LocalHead) 
+                  fprintf(SUMA_STDERR,
+                           "   neighb %d already in mask\n", neighb); */
          }
       }
    }
@@ -1153,6 +1182,10 @@ float ** SUMA_CalcNeighbDist (SUMA_SurfaceObject *SO)
    \param SO (SUMA_SurfaceObject *) structure containing surface object
    \param lim (float) maximum geodesic distance to travel 
                      (ignored when CoverThisNode is used)
+                     if lim is < 0 then the seach stops when 
+                     layer (int)-lim is reached. The geodesic
+                     distances are still computed in that case
+                     but no distance limit applies here.
    \param OffS (SUMA_GET_OFFSET_STRUCT *) initialized structure to contain
           the nodes that neighbor n within lim mm 
           or until all the nodes in CoverThisNode are used up
@@ -1215,11 +1248,14 @@ switch (SEG_METHOD) {
       break;
 }                    
 */
-SUMA_Boolean SUMA_getoffsets2 (int n, SUMA_SurfaceObject *SO, float lim, SUMA_GET_OFFSET_STRUCT *OffS, int *CoverThisNode, int N_CoverThisNode) 
+SUMA_Boolean SUMA_getoffsets2 (  int n, SUMA_SurfaceObject *SO, 
+                                 float lim, SUMA_GET_OFFSET_STRUCT *OffS, 
+                                 int *CoverThisNode, int N_CoverThisNode) 
 {
    static char FuncName[]={"SUMA_getoffsets2"};
-   int LayInd, il, n_il, n_jne, k, n_prec = -1, n_k, jne, iseg=0;
-   float Off_tmp, Seg, *a, *b, minSeg, SegPres; /*! *** SegPres added Jul 08 04, ZSS bug before ... */
+   int LayInd, il, n_il, n_jne, k, n_prec = -1, n_k, jne, iseg=0, MaxLay;
+   float Off_tmp, Seg, *a, *b, minSeg, SegPres; 
+      /*! *** SegPres added Jul 08 04, ZSS bug before ... */
    SUMA_Boolean Visit = NOPE;
    SUMA_Boolean AllDone = NOPE;
    static SUMA_Boolean LocalHead = NOPE;
@@ -1230,6 +1266,11 @@ SUMA_Boolean SUMA_getoffsets2 (int n, SUMA_SurfaceObject *SO, float lim, SUMA_GE
       SUMA_SL_Err("NULL OffS");
       SUMA_RETURN(NOPE);
    }
+   
+   if (lim < 0) { /* Secret code for stopping based on layer number */
+      MaxLay = (int) -lim; /* Maximum layer */
+      lim = 100000.0;   /* Hayuge */
+   } else MaxLay = SO->N_Node; /* a very large number */
    
    /* setup 0th layer */
    OffS->OffVect[n] = 0.0;   /* n is at a distance 0.0 from itself */
@@ -1243,30 +1284,43 @@ SUMA_Boolean SUMA_getoffsets2 (int n, SUMA_SurfaceObject *SO, float lim, SUMA_GE
    }
    LayInd = 1;  /* index of next layer to build */
    AllDone = NOPE;
-   while (!AllDone) {
-      
+   while (!AllDone && LayInd <= MaxLay) {
       AllDone = YUP; /* assume that this would be the last layer */
-      for (il=0; il < OffS->layers[LayInd - 1].N_NodesInLayer; ++il) { /* go over all nodes in previous layer */
-         n_il =  OffS->layers[LayInd - 1].NodesInLayer[il]; /* node from previous layer */
-         for (jne=0; jne < SO->FN->N_Neighb[n_il]; ++jne) { /* go over all the neighbours of node n_il */
-            n_jne = SO->FN->FirstNeighb[n_il][jne];        /* node that is an immediate neighbor to n_il */
-            if (OffS->LayerVect[n_jne] < 0) { /* node is not assigned to a layer yet */
-               OffS->LayerVect[n_jne] =  LayInd;    /* assign new layer index to node */
-               OffS->OffVect[n_jne] = 0.0;          /* reset its distance from node n */
-               SUMA_AddNodeToLayer (n_jne, LayInd, OffS);   /* add the node to the nodes in the layer */
+      for (il=0; il < OffS->layers[LayInd - 1].N_NodesInLayer; ++il) { 
+                                 /* go over all nodes in previous layer */
+         n_il =  OffS->layers[LayInd - 1].NodesInLayer[il]; 
+                              /* node from previous layer */
+         for (jne=0; jne < SO->FN->N_Neighb[n_il]; ++jne) { 
+                           /* go over all the neighbours of node n_il */
+            n_jne = SO->FN->FirstNeighb[n_il][jne];        
+                           /* node that is an immediate neighbor to n_il */
+            if (OffS->LayerVect[n_jne] < 0) { 
+                           /* node is not assigned to a layer yet */
+               OffS->LayerVect[n_jne] =  LayInd;    
+                           /* assign new layer index to node */
+               OffS->OffVect[n_jne] = 0.0;          
+                           /* reset its distance from node n */
+               SUMA_AddNodeToLayer (n_jne, LayInd, OffS);   
+                           /* add the node to the nodes in the layer */
                minSeg = 100000.0;
                n_prec = -1; 
                Seg = 0.0;
                SegPres = 0.0;
-               for (k=0; k < SO->FN->N_Neighb[n_jne]; ++k) { /* calculate shortest distance of node to any precursor */  
+               for (k=0; k < SO->FN->N_Neighb[n_jne]; ++k) { 
+                           /* calculate shortest distance of node to 
+                              any precursor */  
                   n_k = SO->FN->FirstNeighb[n_jne][k];
-                  if (OffS->LayerVect[n_k] == LayInd - 1) { /* this neighbor is a part of the previous layer, good */
+                  if (OffS->LayerVect[n_k] == LayInd - 1) { 
+                           /* this neighbor is a part of the previous layer, 
+                              good */
                      if (n_prec < 0) n_prec = SO->FN->FirstNeighb[n_jne][0];
                      a = &(SO->NodeList[3*n_k]); b = &(SO->NodeList[3*n_jne]);
                      /* this is the slow part, too many redundant computations. 
-                        Computation time is cut by a factor > 2 if Seg was set to a constant
-                        However, attempts at accessing pre-calculated segment lengths
-                        proved to be slower. See Comments in function help*/
+                        Computation time is cut by a factor > 2 if Seg was set 
+                        to a constant
+                        However, attempts at accessing pre-calculated segment 
+                        lengths proved to be slower. See Comments in function 
+                        help*/
                      SUMA_SEG_LENGTH_SQ (a, b, Seg);                    
                      if (OffS->OffVect[n_prec] + Seg < minSeg) {
                         minSeg = Seg + OffS->OffVect[n_prec];
@@ -1281,14 +1335,18 @@ SUMA_Boolean SUMA_getoffsets2 (int n, SUMA_SurfaceObject *SO, float lim, SUMA_GE
                   OffS = SUMA_Free_getoffsets (OffS);
                   SUMA_RETURN(NOPE);
                } else {
-                  OffS->OffVect[n_jne] = OffS->OffVect[n_prec] + sqrt(SegPres); SegPres = 0.0;
+                  OffS->OffVect[n_jne] = OffS->OffVect[n_prec] + 
+                                             sqrt(SegPres); 
+                  SegPres = 0.0;
                   if (!CoverThisNode) {
-                     if (OffS->OffVect[n_jne] < lim) { /* must go at least one more layer */
+                     if (OffS->OffVect[n_jne] < lim) { 
+                        /* must go at least one more layer */
                         AllDone = NOPE;
                      }
                   } else {
                      if (CoverThisNode[n_jne]) {
-                        CoverThisNode[n_jne] = 0; --N_CoverThisNode;
+                        CoverThisNode[n_jne] = 0; 
+                        --N_CoverThisNode;
                      }
                      if (N_CoverThisNode > 0) {
                         AllDone = NOPE;
@@ -1357,14 +1415,17 @@ SUMA_OFFSET_LL_DATUM *SUMA_New_Offset_ll_Datum(int n, int layer)
    if (m_dat->ni != n_jne) Elm = NULL;  \
    else Elm = m_Elm; \
 }
-DList * SUMA_getoffsets_ll (int n, SUMA_SurfaceObject *SO, float lim, int *CoverThisNode, int N_CoverThisNode) 
+DList * SUMA_getoffsets_ll (  int n, SUMA_SurfaceObject *SO, float lim, 
+                              int *CoverThisNode, int N_CoverThisNode) 
 {
    static char FuncName[]={"SUMA_getoffsets_ll"};
-   int LayInd, il, n_il, n_jne, k, n_prec = -1, n_k, jne, iseg=0;
-   float Off_tmp, Seg, *a, *b, minSeg, SegPres; /*! *** SegPres added Jul 08 04, ZSS bug before ... */
+   int LayInd, il, n_il, n_jne, k, n_prec = -1, n_k, jne, iseg=0, MaxLay=0;
+   float Off_tmp, Seg, *a, *b, minSeg, SegPres; 
+      /*! *** SegPres added Jul 08 04, ZSS bug before ... */
    SUMA_Boolean Visit = NOPE;
    SUMA_Boolean AllDone = NOPE;
-   SUMA_OFFSET_LL_DATUM * n_dat = NULL, *dat = NULL, *dat_nk = NULL, *dat_prec = NULL, *dat_ne=NULL;
+   SUMA_OFFSET_LL_DATUM * n_dat = NULL, *dat = NULL, *dat_nk = NULL, 
+                        *dat_prec = NULL, *dat_ne=NULL;
    DList *list = NULL;
    DListElmt *elm = NULL, *elm_prec = NULL, *elm_ne=NULL, *elm_nk=NULL;
    static SUMA_Boolean LocalHead = NOPE;
@@ -1376,6 +1437,11 @@ DList * SUMA_getoffsets_ll (int n, SUMA_SurfaceObject *SO, float lim, int *Cover
    SUMA_LH("Initializing list ...");
    list = (DList *)SUMA_malloc(sizeof(DList));
    dlist_init(list, SUMA_Free_Offset_ll_Datum);
+   
+   if (lim < 0) { /* Secret code for stopping based on layer number */
+      MaxLay = (int) -lim; /* Maximum layer */
+      lim = 100000.0;   /* Hayuge */
+   } else MaxLay = SO->N_Node; /* a very large number */
    
    /* setup 0th layer */
    SUMA_LH("New OffsetDatum");
@@ -1390,7 +1456,7 @@ DList * SUMA_getoffsets_ll (int n, SUMA_SurfaceObject *SO, float lim, int *Cover
    }
    LayInd = 1;  /* index of next layer to build */
    AllDone = NOPE;
-   while (!AllDone) {
+   while (!AllDone && LayInd <= MaxLay) {
       AllDone = YUP; /* assume that this would be the last layer */
       elm = NULL;
          do {
@@ -1403,18 +1469,23 @@ DList * SUMA_getoffsets_ll (int n, SUMA_SurfaceObject *SO, float lim, int *Cover
             dat = (SUMA_OFFSET_LL_DATUM *)elm->data;
             if (dat->layer == LayInd -1) {
                n_il = dat->ni;
-               for (jne=0; jne < SO->FN->N_Neighb[n_il]; ++jne) { /* go over all the neighbours of node n_il */
-                  n_jne = SO->FN->FirstNeighb[n_il][jne];        /* node that is an immediate neighbor to n_il */
+               for (jne=0; jne < SO->FN->N_Neighb[n_il]; ++jne) { 
+                        /* go over all the neighbours of node n_il */
+                  n_jne = SO->FN->FirstNeighb[n_il][jne];        
+                        /* node that is an immediate neighbor to n_il */
                   SUMA_FIND_ELMENT_FOR_NODE(list, n_jne, elm_ne);
                   if (!elm_ne) { /* node not in any layer */
-                     dat_ne = SUMA_New_Offset_ll_Datum(n_jne, LayInd); /* create an element for it */
+                     dat_ne = SUMA_New_Offset_ll_Datum(n_jne, LayInd); 
+                           /* create an element for it */
                      dat_ne->off = 0.0;
                      dlist_ins_next(list, dlist_tail(list), (void*)dat_ne);
                      minSeg = 100000.0;
                      n_prec = -1; 
                      Seg = 0.0;
                      SegPres = 0.0;
-                     for (k=0; k < SO->FN->N_Neighb[n_jne]; ++k) { /* calculate shortest distance of node to any precursor */  
+                     for (k=0; k < SO->FN->N_Neighb[n_jne]; ++k) { 
+                           /* calculate shortest distance of node to 
+                              any precursor */  
                         n_k = SO->FN->FirstNeighb[n_jne][k];
                         SUMA_FIND_ELMENT_FOR_NODE(list, n_k, elm_nk); 
                         if (n_prec < 0 && elm_nk) { 
@@ -1423,12 +1494,17 @@ DList * SUMA_getoffsets_ll (int n, SUMA_SurfaceObject *SO, float lim, int *Cover
                         }
                         if (elm_nk) {
                            dat_nk = (SUMA_OFFSET_LL_DATUM *)elm_nk->data;
-                           if (dat_nk->layer == LayInd - 1) { /* this neighbor is a part of the previous layer, good */
-                              a = &(SO->NodeList[3*n_k]); b = &(SO->NodeList[3*n_jne]);
-                              /* this is the slow part, too many redundant computations. 
-                                 Computation time is cut by a factor > 2 if Seg was set to a constant
-                                 However, attempts at accessing pre-calculated segment lengths
-                                 proved to be slower. See Comments in function help*/
+                           if (dat_nk->layer == LayInd - 1) { 
+                                 /* this neighbor is a part of the 
+                                    previous layer, good */
+                              a = &(SO->NodeList[3*n_k]); 
+                              b = &(SO->NodeList[3*n_jne]);
+                                 /* this is the slow part, too many redundant 
+                                    computations. Computation time is cut by a 
+                                    factor > 2 if Seg was set to a constant
+                                    However, attempts at accessing pre-calculated
+                                    segment lengths proved to be slower. 
+                                    See Comments in function help*/
                               SUMA_SEG_LENGTH_SQ (a, b, Seg);                    
                               if (dat_prec->off + Seg < minSeg) {
                                  minSeg = Seg + dat_prec->off;
@@ -1444,9 +1520,11 @@ DList * SUMA_getoffsets_ll (int n, SUMA_SurfaceObject *SO, float lim, int *Cover
                         SUMA_SL_Crit("No precursor found for node.");
                         SUMA_RETURN(NULL);
                      } else {
-                        dat_ne->off = dat_prec->off + sqrt(SegPres); SegPres = 0.0;
+                        dat_ne->off = dat_prec->off + sqrt(SegPres); 
+                        SegPres = 0.0;
                         if (!CoverThisNode) {
-                           if (dat_ne->off < lim) { /* must go at least one more layer */
+                           if (dat_ne->off < lim) { 
+                              /* must go at least one more layer */
                               AllDone = NOPE;
                            }
                         } else {
@@ -3188,7 +3266,8 @@ float * SUMA_Taubin_Smooth (SUMA_SurfaceObject *SO, float **wgt,
                             byte *nmask, byte strict_mask)
 {
    static char FuncName[]={"SUMA_Taubin_Smooth"};
-   float *fout_final=NULL, *fbuf=NULL, *fin=NULL, *fout=NULL, *fin_next=NULL, *ftmp=NULL;
+   float *fout_final=NULL, *fbuf=NULL, *fin=NULL, *fout=NULL, 
+         *fin_next=NULL, *ftmp=NULL;
    float fp, dfp, fpj;
    int i, n , k, j, niter, vnk, n_offset, DoThis, nj=-1, nnei=-1; 
    SUMA_Boolean LocalHead = NOPE;
@@ -3235,7 +3314,8 @@ float * SUMA_Taubin_Smooth (SUMA_SurfaceObject *SO, float **wgt,
    
    if (cs->Send) {
       if(vpn != 3) {
-         SUMA_SL_Warn("It does not look like you are smoothing coordinates!\nCommunication halted.");
+         SUMA_SL_Warn(  "It does not look like you are smoothing coordinates!\n"
+                        "Communication halted.");
          cs->Send = NOPE;
       }
       if (d_order == SUMA_COLUMN_MAJOR) {
@@ -3251,7 +3331,9 @@ float * SUMA_Taubin_Smooth (SUMA_SurfaceObject *SO, float **wgt,
    }
    
    if (LocalHead) {
-      fprintf (SUMA_STDERR,"%s: Mu = %f, Lambda = %f\nShould have M(%f)< -L(%f) < 0\nN_iter=%d\n", 
+      fprintf (SUMA_STDERR,
+               "%s: Mu = %f, Lambda = %f\n"
+               "Should have M(%f)< -L(%f) < 0\nN_iter=%d\n", 
          FuncName, mu, lambda, mu, -lambda, N_iter);
    }
    
@@ -3268,12 +3350,14 @@ float * SUMA_Taubin_Smooth (SUMA_SurfaceObject *SO, float **wgt,
             if ( niter % 2 ) { /* odd */
                fin = fin_next; /* input from previous output buffer */
                fout = fout_final; /* results go into final vector */
-               fin_next = fout_final; /* in the next iteration, the input is from fout_final */
+               fin_next = fout_final; /*  in the next iteration, 
+                                          the input is from fout_final */
             } else { /* even */
                /* input data is in fin_new */
                fin = fin_next;
                fout = fbuf; /* results go into buffer */
-               fin_next = fbuf; /* in the next iteration, the input is from the buffer */
+               fin_next = fbuf; /*  in the next iteration, 
+                                    the input is from the buffer */
                if (wgt && niter) {
                   /* recalculate the weights */
                   if (SUMA_Taubin_Weights == SUMA_FUJIWARA) {
@@ -3296,28 +3380,36 @@ float * SUMA_Taubin_Smooth (SUMA_SurfaceObject *SO, float **wgt,
                      dfp = 0.0;
                      if (nmask) {
                         nnei = 0;
-                        for (j=0; j < SO->FN->N_Neighb[n]; ++j) { /* calculating the laplacian */
+                        for (j=0; j < SO->FN->N_Neighb[n]; ++j) { 
+                                                /* calculating the laplacian */
                               nj = SO->FN->FirstNeighb[n][j];
-                              if (nmask[nj] || !strict_mask){ /* consider only neighbors that are in mask if strict_mask is 1*/
-                                 fpj = fin[nj+n_offset]; /* value at jth neighbor of n */
+                              if (nmask[nj] || !strict_mask){ /* consider only 
+                                    neighbors that are in mask if strict_mask 
+                                    is 1*/
+                                 fpj = fin[nj+n_offset]; /* value at jth neighbor                                                             of n */
                                  if (wgt) dfp += wgt[n][j] * (fpj - fp); 
-                                 else { dfp += (fpj - fp); ++nnei; }/* will apply equal weight later */
+                                 else { dfp += (fpj - fp); ++nnei; }/* will apply                                                            equal weight later */
                               }
                         }/* for j*/
                      } else {
                         nnei = SO->FN->N_Neighb[n];
-                        for (j=0; j < SO->FN->N_Neighb[n]; ++j) { /* calculating the laplacian */
-                              fpj = fin[SO->FN->FirstNeighb[n][j]+n_offset]; /* value at jth neighbor of n */
+                        for (j=0; j < SO->FN->N_Neighb[n]; ++j) { /* calculating 
+                                                                 the laplacian */
+                              fpj = fin[SO->FN->FirstNeighb[n][j]+n_offset]; 
+                                                 /* value at jth neighbor of n */
                               if (wgt) dfp += wgt[n][j] * (fpj - fp); 
-                              else dfp += (fpj - fp); /* will apply equal weight later */
+                              else dfp += (fpj - fp); /* will apply equal 
+                                                         weight later      */
                         }/* for j*/
                      }
                      if (niter%2) { /* odd */
                         if (wgt) fout[vnk] = fin[vnk] + mu * dfp;
-                        else fout[vnk] = fin[vnk] + mu * dfp / (float)nnei;   /* apply equal weight factor here */
+                        else fout[vnk] = fin[vnk] + mu * dfp / (float)nnei; 
+                                          /* apply equal weight factor here */
                      }else{ /* even */
                        if (wgt) fout[vnk] = fin[vnk] + lambda * dfp;
-                       else fout[vnk] = fin[vnk] + lambda * dfp / (float)nnei;  /* apply equal weight factor here */
+                       else fout[vnk] = fin[vnk] + lambda * dfp / (float)nnei;  
+                                          /* apply equal weight factor here */
                      }
                   } else {
                      fout[vnk] = fin[vnk];
@@ -3326,15 +3418,23 @@ float * SUMA_Taubin_Smooth (SUMA_SurfaceObject *SO, float **wgt,
             }/* for k */
             if (cs->Send) {
                /* SUMA_SendToSuma does not deal with such COLUMN_MAJOR order.
-               Must flip things here, boooooring */
+                  Must flip things here, boooooring */
                if (!niter) { /* allocate for buffer */
                   ftmp = (float *) SUMA_malloc(3*SO->N_Node*sizeof(float));
-                  if (!ftmp) { SUMA_SL_Err("Failed to allocate. Communication Off.\n"); cs->Send = NOPE; }
+                  if (!ftmp) { 
+                     SUMA_SL_Err("Failed to allocate. Communication Off.\n"); 
+                     cs->Send = NOPE; 
+                  }
                }
                if (ftmp) {
-                  for (i=0; i<SO->N_Node; ++i) { ftmp[3*i] = fout[i]; ftmp[3*i+1] = fout[i+SO->N_Node];  ftmp[3*i+2] = fout[i+2*SO->N_Node];}
-                  if (!SUMA_SendToSuma (SO, cs, (void *)ftmp, SUMA_NODE_XYZ, 1)) {
-                     SUMA_SL_Warn("Failed in SUMA_SendToSuma\nCommunication halted.");
+                  for (i=0; i<SO->N_Node; ++i) { 
+                     ftmp[3*i] = fout[i]; ftmp[3*i+1] = fout[i+SO->N_Node];  
+                     ftmp[3*i+2] = fout[i+2*SO->N_Node];
+                  }
+                  if (!SUMA_SendToSuma (  SO, cs, (void *)ftmp, 
+                                          SUMA_NODE_XYZ, 1) ) {
+                     SUMA_SL_Warn("Failed in SUMA_SendToSuma\n"
+                                  "Communication halted.");
                   }
                }
                if (niter == N_iter -1) { /* free the buffer */
@@ -3348,12 +3448,14 @@ float * SUMA_Taubin_Smooth (SUMA_SurfaceObject *SO, float **wgt,
             if ( niter % 2 ) { /* odd */
                fin = fin_next; /* input from previous output buffer */
                fout = fout_final; /* results go into final vector */
-               fin_next = fout_final; /* in the next iteration, the input is from fout_final */
+               fin_next = fout_final; /*  in the next iteration, 
+                                          the input is from fout_final */
             } else { /* even */
                /* input data is in fin_new */
                fin = fin_next;
                fout = fbuf; /* results go into buffer */
-               fin_next = fbuf; /* in the next iteration, the input is from the buffer */
+               fin_next = fbuf; /* in the next iteration, 
+                                   the input is from the buffer */
                if (wgt && niter ) {
                   /* recalculate the weights */
                   if (SUMA_Taubin_Weights == SUMA_FUJIWARA) {
@@ -3375,29 +3477,38 @@ float * SUMA_Taubin_Smooth (SUMA_SurfaceObject *SO, float **wgt,
                      dfp = 0.0;
                      if (nmask) {
                         nnei = 0;
-                        for (j=0; j < SO->FN->N_Neighb[n]; ++j) { /* calculating the laplacian */
+                        for (j=0; j < SO->FN->N_Neighb[n]; ++j) { /* calculating 
+                                                               the laplacian */
                            nj = SO->FN->FirstNeighb[n][j];
-                           if (nmask[nj] || !strict_mask) { /* consider only neighbors that are in mask if strict_mask is 1*/
+                           if (nmask[nj] || !strict_mask) { /* consider only 
+                                 neighbors that are in mask if strict_mask is 1*/
                             
-                              fpj = fin[nj*vpn+k]; /* value at jth neighbor of n */
+                              fpj = fin[nj*vpn+k]; /* value at jth neighbor 
+                                                      of n */
                               if (wgt) dfp += wgt[n][j] * (fpj - fp); 
-                              else { dfp += (fpj - fp); ++nnei;} /* will apply equal weight later */
+                              else { dfp += (fpj - fp); ++nnei;} /* will apply 
+                                                           equal weight later */
                            }
                         }/* for j*/
                      } else {
                         nnei = SO->FN->N_Neighb[n];
-                        for (j=0; j < SO->FN->N_Neighb[n]; ++j) { /* calculating the laplacian */
-                           fpj = fin[SO->FN->FirstNeighb[n][j]*vpn+k]; /* value at jth neighbor of n */
+                        for (j=0; j < SO->FN->N_Neighb[n]; ++j) { /* calculating 
+                                                               the laplacian */
+                           fpj = fin[SO->FN->FirstNeighb[n][j]*vpn+k]; /* value 
+                                                         at jth neighbor of n */
                            if (wgt) dfp += wgt[n][j] * (fpj - fp); 
-                           else dfp += (fpj - fp); /* will apply equal weight later */
+                           else dfp += (fpj - fp); /* will apply equal weight 
+                                                      later */
                         }/* for j*/
                      }
                      if (niter%2) { /* odd */
                         if (wgt) fout[vnk] = fin[vnk] + mu * dfp;
-                        else fout[vnk] = fin[vnk] + mu * dfp / (float)nnei;   /* apply equal weight factor here */
+                        else fout[vnk] = fin[vnk] + mu * dfp / (float)nnei;   
+                                             /* apply equal weight factor here */
                      }else{ /* even */
                        if (wgt) fout[vnk] = fin[vnk] + lambda * dfp;
-                       else fout[vnk] = fin[vnk] + lambda * dfp / (float)nnei;  /* apply equal weight factor here */
+                       else fout[vnk] = fin[vnk] + lambda * dfp / (float)nnei;  
+                                             /* apply equal weight factor here */
                      }
                   } else {
                      fout[vnk] = fin[vnk];
@@ -3407,7 +3518,8 @@ float * SUMA_Taubin_Smooth (SUMA_SurfaceObject *SO, float **wgt,
             }/* for n */
             if (cs->Send) {
                if (!SUMA_SendToSuma (SO, cs, (void *)fout, SUMA_NODE_XYZ, 1)) {
-                  SUMA_SL_Warn("Failed in SUMA_SendToSuma\nCommunication halted.");
+                  SUMA_SL_Warn("Failed in SUMA_SendToSuma\n"
+                               "Communication halted.");
                }
             }
          }/* for niter */
@@ -3800,7 +3912,7 @@ SUMA_OFFSET_STRUCT *SUMA_FormNeighbOffset ( SUMA_SurfaceObject *SO, float Offset
    int i, ii, il, jl, ip, noffs,  DoProp = 0, iproc, N_mask;
    SUMA_GET_OFFSET_STRUCT *OffS = NULL;
    struct  timeval start_time;
-   double scl, ds2, sig, d;
+   double scl=0.0, ds2=0.0, sig, d;
    float etime_GetOffset, mean_N_Neighb, dist, dist_norm;   
    SUMA_OFFSET_STRUCT *OffS_out=NULL;
    SUMA_Boolean LocalHead = NOPE;
@@ -4900,8 +5012,9 @@ SUMA_Boolean SUMA_Chung_Smooth_05_single_dset (SUMA_SurfaceObject *SO, float **w
       
    } /* for each col */
    
-   CLEANUP:
-   if (fin_orig) SUMA_free(fin_orig); fin_orig = NULL; /* just in case, this one's still alive from a GOTO */
+   /* CLEANUP: */
+   if (fin_orig) SUMA_free(fin_orig); fin_orig = NULL; 
+      /* just in case, this one's still alive from a GOTO */
    if (bfull) SUMA_free(bfull); bfull = NULL;
    if (fbuf) SUMA_free(fbuf); fbuf = NULL;
    if (fout_final) SUMA_free(fout_final); fout_final = NULL;
@@ -5118,7 +5231,7 @@ SUMA_Boolean SUMA_Chung_Smooth_07_dset (SUMA_SurfaceObject *SO, double **wgt,
             *fout=NULL, *fin_next = NULL, *fin_orig = NULL, FWHM;
    double fp, dfp, fpj, minfn=0.0, maxfn=0.0, dfps=0.0;
    float *fin_float=NULL, *fsend=NULL, *fwhmg=NULL;
-   int n , k, j, niter, jj, nj, 
+   int n , k, j, niter=-1, jj, nj, 
       *icols=NULL, N_icols, N_nmask, kth_buf, niter_alloc;
    byte *bfull=NULL, stop = 0;
    char stmp[100];
@@ -5365,7 +5478,7 @@ SUMA_Boolean SUMA_Chung_Smooth_07_dset (SUMA_SurfaceObject *SO, double **wgt,
    *N_iter = niter;
    *FWHMp = FWHM;
    
-   CLEANUP:
+   /* CLEANUP: */
    if (fwhmg) SUMA_free(fwhmg); fwhmg=NULL;
    if (fsend) SUMA_free(fsend); fsend=NULL;
    if (fin_orig) SUMA_free(fin_orig); fin_orig = NULL; 
@@ -5653,14 +5766,15 @@ SUMA_Boolean SUMA_Chung_Smooth_07_toFWHM_dset (
    *N_iter = niter;
    *FWHMp = FWHM;
    
-   CLEANUP:
+   /* CLEANUP: */
    if (fwhmv) SUMA_free(fwhmv); fwhmv = NULL;
    if (!fwhmgp) {
       if (fwhmg) SUMA_free(fwhmg); fwhmg=NULL;
    } else { /* save it for the trip back home */
       *fwhmgp = fwhmg; fwhmg = NULL;
    }
-   if (fin_float) SUMA_free(fin_float); fin_float = NULL; /* just in case, this one's still alive from a GOTO */
+   if (fin_float) SUMA_free(fin_float); fin_float = NULL; 
+      /* just in case, this one's still alive from a GOTO */
    if (bfull) SUMA_free(bfull); bfull = NULL;
    if (fout_final) SUMA_free(fout_final); fout_final = NULL;
    
@@ -5796,10 +5910,9 @@ double SUMA_SigForFWHM(float AvgLe, double dfwhm, int *niterest, double *beta)
    value. The blurring is done on all columns of the data but the testing is done on column indexed
    icol
    If MaskZeros is set to 1 then nodes having a value of 0 are not considered
-   
-   I am not convinced, this solves much. Go back and see effect on 1D sample in matlab...
 */
-SUMA_Boolean SUMA_FixNN_Oversampling ( SUMA_SurfaceObject *SO, SUMA_DSET *dset, byte *nmask, 
+SUMA_Boolean SUMA_FixNN_Oversampling ( SUMA_SurfaceObject *SO, SUMA_DSET *dset, 
+                                       byte *nmask, 
                                        int icol, SUMA_Boolean MaskZeros) 
 {
    static char FuncName[]={"SUMA_FixNN_Oversampling"};
@@ -5812,7 +5925,7 @@ SUMA_Boolean SUMA_FixNN_Oversampling ( SUMA_SurfaceObject *SO, SUMA_DSET *dset, 
    SUMA_Boolean SameZone=YUP; /* if YUP, then keep blurring the first zone detected.
                                  if NOPE, then zone changes with each pass (results in many interpolation artifacts at edges 
                                          of shrinking zone...*/
-   SUMA_Boolean LocalHead = YUP;
+   SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
    
@@ -5935,11 +6048,16 @@ float *SUMA_estimate_dset_FWHM_1dif(SUMA_SurfaceObject *SO, SUMA_DSET *dset,
    }
    if (!SO->FN || !SO->EL) {
       /* do it here */
-      if (!SO->EL && !(SO->EL = SUMA_Make_Edge_List_eng (SO->FaceSetList, SO->N_FaceSet, SO->N_Node, SO->NodeList, 0, SO->idcode_str))) {
+      if (  !SO->EL && 
+            !(SO->EL = SUMA_Make_Edge_List_eng (
+                           SO->FaceSetList, SO->N_FaceSet, SO->N_Node, 
+                           SO->NodeList, 0, SO->idcode_str))) {
          SUMA_S_Err("Failed to create Edge_List");
          SUMA_RETURN(NULL);
       }
-      if (!SO->FN && !(SO->FN = SUMA_Build_FirstNeighb( SO->EL, SO->N_Node, SO->idcode_str)) ) {
+      if (  !SO->FN && 
+            !(SO->FN = SUMA_Build_FirstNeighb( 
+                        SO->EL, SO->N_Node, SO->idcode_str)) ) {
          SUMA_S_Err("Failed to create FirstNeighb");
          SUMA_RETURN(NULL);
       }
@@ -5967,19 +6085,23 @@ float *SUMA_estimate_dset_FWHM_1dif(SUMA_SurfaceObject *SO, SUMA_DSET *dset,
       }
       /* make sure column is not sparse, one value per node */
       if (k==0) {
-         SUMA_LH( "Special case k = 0, going to SUMA_MakeSparseColumnFullSorted");
+         SUMA_LH( "Special case k = 0, going to"
+                  " SUMA_MakeSparseColumnFullSorted");
          bfull = NULL;
-         if (!SUMA_MakeSparseColumnFullSorted(&fin_orig, SDSET_VECFILLED(dset), 0.0, &bfull, dset, SO->N_Node)) {
+         if (!SUMA_MakeSparseColumnFullSorted(&fin_orig, SDSET_VECFILLED(dset), 
+                                              0.0, &bfull, dset, SO->N_Node)) {
             SUMA_S_Err("Failed to get full column vector");
             SUMA_free(fwhmv); fwhmv = NULL;
             goto CLEANUP;
          }
          if (bfull) {
-            SUMA_LH( "Something was filled in SUMA_MakeSparseColumnFullSorted\n" );
-            /* something was filled in good old SUMA_MakeSparseColumnFullSorted */
+            SUMA_LH( "Something was filled in "
+                     "SUMA_MakeSparseColumnFullSorted\n" );
+            /* something was filled in SUMA_MakeSparseColumnFullSorted */
             if (nmask) {   /* combine bfull with nmask */
                SUMA_LH( "Merging masks\n" );
-               for (jj=0; jj < SO->N_Node; ++jj) { if (nmask[jj] && !bfull[jj]) nmask[jj] = 0; }   
+               for (jj=0; jj < SO->N_Node; ++jj) { 
+                  if (nmask[jj] && !bfull[jj]) nmask[jj] = 0; }   
             } else { nmask = bfull; }
          } 
          if (nmask) {
@@ -5993,7 +6115,8 @@ float *SUMA_estimate_dset_FWHM_1dif(SUMA_SurfaceObject *SO, SUMA_DSET *dset,
          }
       } else {
          SUMA_LH( "going to SUMA_MakeSparseColumnFullSorted");
-         if (!SUMA_MakeSparseColumnFullSorted(&fin_orig, SDSET_VECFILLED(dset), 0.0, NULL, dset, SO->N_Node)) {
+         if (!SUMA_MakeSparseColumnFullSorted(&fin_orig, SDSET_VECFILLED(dset), 
+                                              0.0, NULL, dset, SO->N_Node)) {
             SUMA_S_Err("Failed to get full column vector");
             SUMA_free(fwhmv); fwhmv = NULL;
             goto CLEANUP;
@@ -6003,19 +6126,23 @@ float *SUMA_estimate_dset_FWHM_1dif(SUMA_SurfaceObject *SO, SUMA_DSET *dset,
       }
       
       if (SUMA_Get_UseSliceFWHM()) {
-         fwhmv[k] = SUMA_estimate_slice_FWHM_1dif( SO, fin_orig, nmask, nodup, NULL, NULL);
+         fwhmv[k] = SUMA_estimate_slice_FWHM_1dif( SO, fin_orig, nmask, 
+                                                   nodup, NULL, NULL);
       } else {
          fwhmv[k] = SUMA_estimate_FWHM_1dif( SO, fin_orig, nmask, nodup);
       }
-      if (fin_orig) SUMA_free(fin_orig); fin_orig = NULL; /* just in case, this one's still alive from a GOTO */
+      if (fin_orig) SUMA_free(fin_orig); fin_orig = NULL; 
+                  /* just in case, this one's still alive from a GOTO */
    } /* for k */
 
    CLEANUP:
    
-   if (fin_orig) SUMA_free(fin_orig); fin_orig = NULL; /* just in case, this one's still alive from a GOTO */
+   if (fin_orig) SUMA_free(fin_orig); fin_orig = NULL; 
+                     /* just in case, this one's still alive from a GOTO */
    if (bfull) SUMA_free(bfull); bfull=NULL; 
    SUMA_RETURN(fwhmv);
 }
+
 #define OK_FWHM_DBG
 static int DbgFWHM_1_dif=0;
 void SUMA_SetDbgFWHM(int i) { DbgFWHM_1_dif=i; return; }
@@ -6026,10 +6153,13 @@ int SUMA_GetDbgFWHM(void) { return(DbgFWHM_1_dif); }
    SO (SUMA_SurfaceObject *) La surface
    fim (float *) SO->N_Node x 1 vector of data values
    mask (byte *) SO->N_Node x 1 mask vector (NULL for no masking)
-   nodup (int ) 0- allow a segment to be counted twice (uncool, but slightly faster)
-               1- Do not allow a segment to be counted twice (respectful approach)
+   nodup (int ) 0- allow a segment to be counted twice 
+               (uncool, but slightly faster)
+               1- Do not allow a segment to be counted twice 
+               (respectful approach)
 */
-float SUMA_estimate_FWHM_1dif( SUMA_SurfaceObject *SO, float *fim , byte *nmask, int nodup )
+float SUMA_estimate_FWHM_1dif(   SUMA_SurfaceObject *SO, float *fim , 
+                                 byte *nmask, int nodup )
 {
    static char FuncName[]={"SUMA_estimate_FWHM_1dif"};
    
@@ -6056,28 +6186,34 @@ float SUMA_estimate_FWHM_1dif( SUMA_SurfaceObject *SO, float *fim , byte *nmask,
    }
    
    if (!SO->FN || !SO->EL) {
-      if (!SUMA_SurfaceMetrics_eng(SO, "EdgeList", NULL, 0, SUMAg_CF->DsetList)){
+      if (!SUMA_SurfaceMetrics_eng( SO, "EdgeList", NULL, 
+                                    0, SUMAg_CF->DsetList)){
          SUMA_SL_Err("Failed to create needed accessories");
          SUMA_RETURN(ss);
       }
    } 
    if (!SO->MF || !SO->PolyArea) {
-      if (!SUMA_SurfaceMetrics_eng(SO, "MemberFace|PolyArea", NULL, 0, SUMAg_CF->DsetList)){
+      if (!SUMA_SurfaceMetrics_eng( SO, "MemberFace|PolyArea", 
+                                    NULL, 0, SUMAg_CF->DsetList)){
          SUMA_SL_Err("Failed to create needed accessories");
          SUMA_RETURN(ss);
       }
    }
 
    if (!SO->FN || !SO->EL || !SO->MF || !SO->PolyArea) {
-      SUMA_S_Errv("J'ai besoin des voisins(%p) et des cotes (%p), cherie\nEt en plus, MF(%p) and PolyArea(%p)", 
-            SO->FN, SO->EL, SO->MF, SO->PolyArea);
+      SUMA_S_Errv("J'ai besoin des voisins(%p) et des cotes (%p), cherie\n"
+                  "Et en plus, MF(%p) and PolyArea(%p)", 
+                  SO->FN, SO->EL, SO->MF, SO->PolyArea);
       SUMA_RETURN(ss);
    }
    /*----- estimate the variance of the data -----*/
 
    fsum = 0.0; fsq = 0.0; count = 0;
    for (in = 0;  in < SO->N_Node;  in++){
-      if( !nmask || nmask[in] ) { count++; arg = fim[in]; fsum += arg; fsq  += arg*arg; }
+      if( !nmask || nmask[in] ) { 
+         count++; arg = fim[in]; 
+         fsum += arg; fsq  += arg*arg; 
+      }
    }
    if( count < 9 || fsq <= 0.0 ){     /* no data? */
       SUMA_RETURN(ss) ;
@@ -6112,7 +6248,9 @@ float SUMA_estimate_FWHM_1dif( SUMA_SurfaceObject *SO, float *fim , byte *nmask,
                if (in < ink) { SUMA_FIND_EDGE(SO->EL, in, ink, iseg); }
                else { SUMA_FIND_EDGE(SO->EL, ink, in, iseg); }
                if (iseg < 0) {
-                  SUMA_S_Errv("Could not find segment between nodes %d and %d\nThis should not happen.\n", in, ink);
+                  SUMA_S_Errv("Could not find segment between "
+                              "nodes %d and %d\n"
+                              "This should not happen.\n", in, ink);
                   SUMA_RETURN(ss);
                }  
                if (nodup) { /* make sure edge is fresh */
@@ -6125,7 +6263,8 @@ float SUMA_estimate_FWHM_1dif( SUMA_SurfaceObject *SO, float *fim , byte *nmask,
                   dfdssum += dfds; dfdssq += dfds*dfds; 
                   #ifdef OK_FWHM_DBG
                      if (SUMA_GetDbgFWHM()) {
-                        fprintf(fdbg,"%5d %5d   %.3f  %.3f\n", in, ink, SO->EL->Le[iseg], dfds);      
+                        fprintf( fdbg,"%5d %5d   %.3f  %.3f\n", 
+                                 in, ink, SO->EL->Le[iseg], dfds);      
                      }
                   #endif
                   counts++;
@@ -6141,7 +6280,7 @@ float SUMA_estimate_FWHM_1dif( SUMA_SurfaceObject *SO, float *fim , byte *nmask,
    /*----- estimate the variance of the partial derivatives -----*/
 
    varss = (counts < 36) ? 0.0
-                       : (dfdssq - (dfdssum * dfdssum)/counts) / (counts-1.0);
+                    : (dfdssq - (dfdssum * dfdssum)/counts) / (counts-1.0);
    ds /= (double)counts;  /* the average segment length */
 
    /*----- now estimate the FWHMs -----*/
@@ -6165,7 +6304,7 @@ float SUMA_estimate_FWHM_1dif( SUMA_SurfaceObject *SO, float *fim , byte *nmask,
                      "   Expect fwhm to be no different from 0 \n"
                      "   FWHM values up to %.2f(segments) or %.2f(mm)\n"
                      "   are likely meaningless (at p=0.01) on this mesh.\n\n",
-                      prob, ss, ss*ds);
+                     prob, ss, ss*ds);
    }
    arg = 1.0 - 0.5*(varss/var);
    if (arg <= 0.0 || arg >= 1.0) {
@@ -6176,7 +6315,10 @@ float SUMA_estimate_FWHM_1dif( SUMA_SurfaceObject *SO, float *fim , byte *nmask,
    
    #ifdef OK_FWHM_DBG
       if (SUMA_GetDbgFWHM()) {
-         fprintf(fdbg,"#counts=%d\n#var=%f\n#varss=%f\n#ds=%.3f\n#arg=%.3f\n#ss=%f\n", counts, var, varss, ds, arg, ss);
+         fprintf(fdbg,  "#counts=%d\n#var=%f\n"
+                        "#varss=%f\n#ds=%.3f\n"
+                        "#arg=%.3f\n#ss=%f\n", 
+                  counts, var, varss, ds, arg, ss);
          fclose(fdbg);
       }
    #endif                  
@@ -6188,10 +6330,14 @@ float SUMA_estimate_FWHM_1dif( SUMA_SurfaceObject *SO, float *fim , byte *nmask,
    SO (SUMA_SurfaceObject *) La surface
    fim (float *) SO->N_Node x 1 vector of data values
    mask (byte *) SO->N_Node x 1 mask vector (NULL for no masking)
-   nodup (int ) 0- allow a segment to be counted twice (uncool, but slightly faster)
-               1- Do not allow a segment to be counted twice (respectful approach)
+   nodup (int ) 0- allow a segment to be counted twice 
+                  (uncool, but slightly faster)
+               1- Do not allow a segment to be counted twice 
+                  (respectful approach)
 */
-float SUMA_estimate_slice_FWHM_1dif( SUMA_SurfaceObject *SO, float *fim , byte *nmask, int nodup, float *ssvr, DList **striplist_vec)
+float SUMA_estimate_slice_FWHM_1dif( 
+         SUMA_SurfaceObject *SO, float *fim , byte *nmask, 
+         int nodup, float *ssvr, DList **striplist_vec)
 {
    static char FuncName[]={"SUMA_estimate_slice_FWHM_1dif"};
    
@@ -6224,20 +6370,23 @@ float SUMA_estimate_slice_FWHM_1dif( SUMA_SurfaceObject *SO, float *fim , byte *
    }
    
    if (!SO->FN || !SO->EL) {
-      if (!SUMA_SurfaceMetrics_eng(SO, "EdgeList", NULL, 0, SUMAg_CF->DsetList)){
+      if (!SUMA_SurfaceMetrics_eng( SO, "EdgeList", NULL, 
+                                    0, SUMAg_CF->DsetList)){
          SUMA_SL_Err("Failed to create needed accessories");
          SUMA_RETURN(ssc);
       }
    } 
    if (!SO->MF || !SO->PolyArea) {
-      if (!SUMA_SurfaceMetrics_eng(SO, "MemberFace|PolyArea", NULL, 0, SUMAg_CF->DsetList)){
+      if (!SUMA_SurfaceMetrics_eng( SO, "MemberFace|PolyArea", 
+                                    NULL, 0, SUMAg_CF->DsetList)){
          SUMA_SL_Err("Failed to create needed accessories");
          SUMA_RETURN(ssc);
       }
    }
 
    if (!SO->FN || !SO->EL || !SO->MF || !SO->PolyArea) {
-      SUMA_S_Errv("J'ai besoin des voisins(%p) et des cotes (%p), cherie\nEt en plus, MF(%p) and PolyArea(%p)", 
+      SUMA_S_Errv("J'ai besoin des voisins(%p) et des cotes (%p), cherie\n"
+                  "Et en plus, MF(%p) and PolyArea(%p)", 
             SO->FN, SO->EL, SO->MF, SO->PolyArea);
       SUMA_RETURN(ssc);
    }
@@ -6261,13 +6410,16 @@ float SUMA_estimate_slice_FWHM_1dif( SUMA_SurfaceObject *SO, float *fim , byte *
       if (!striplist_vec) { /* need to create your own */
          /* get the intersection strips, start alond the various directions */
          Eq[0] = Eq[1]=Eq[2]=Eq[3] = 0.0;
-         Eq[ipl] = 1.0; Eq[3] = -SO->Center[ipl];  /* 0==Saggittal, 1==Coronal, 2==Axial */
-         SUMA_LHv("Kill me!\nEq:[%f %f %f %f], step: %f\n", Eq[0], Eq[1], Eq[2], Eq[3], SO->EL->AvgLe);
+         Eq[ipl] = 1.0; Eq[3] = -SO->Center[ipl];  
+                        /* 0==Saggittal, 1==Coronal, 2==Axial */
+         SUMA_LHv("Kill me!\nEq:[%f %f %f %f], step: %f\n", 
+                  Eq[0], Eq[1], Eq[2], Eq[3], SO->EL->AvgLe);
          if (!(striplist = SUMA_SliceAlongPlane(SO, Eq, SO->EL->AvgLe))) {
             SUMA_S_Err("Failed to slice along plane");
             SUMA_RETURN(ssc);
          }
-         /*SUMA_display_edge_striplist(striplist, &(SUMAg_SVv[0]), SO, "ShowConnectedPoints"); */
+         /*SUMA_display_edge_striplist(striplist, &(SUMAg_SVv[0]), SO, 
+                                       "ShowConnectedPoints"); */
       } else {
          striplist = striplist_vec[ipl];
       }
@@ -6288,9 +6440,12 @@ float SUMA_estimate_slice_FWHM_1dif( SUMA_SurfaceObject *SO, float *fim , byte *
          loope = NULL;
          loopp = NULL;
          SUMA_LHv("Have a strip of %d points/edges\n", dlist_size(strip->Edges));
-         if (clsd = SUMA_isEdgeStripClosed(strip->Edges, SO)) { /* close list */
-            dlist_ins_next(strip->Edges, dlist_tail(strip->Edges), (dlist_head(strip->Edges))->data);
-            dlist_ins_next(strip->Points, dlist_tail(strip->Points), (dlist_head(strip->Points))->data);
+         if ((clsd = SUMA_isEdgeStripClosed(strip->Edges, SO))) { 
+                                                         /* close list */
+            dlist_ins_next(strip->Edges, dlist_tail(strip->Edges), 
+                           (dlist_head(strip->Edges))->data);
+            dlist_ins_next(strip->Points, dlist_tail(strip->Points), 
+                           (dlist_head(strip->Points))->data);
          }
          do {
             if (!loope) {
@@ -6300,13 +6455,15 @@ float SUMA_estimate_slice_FWHM_1dif( SUMA_SurfaceObject *SO, float *fim , byte *
             loope_n = dlist_next(loope);  /* the next point */
             loopp_n = dlist_next(loopp); 
             /* which nodes from the edge? */
-            in0 = SO->EL->EL[(int)loope->data][0];
-            in1 = SO->EL->EL[(int)loope->data][1];
-            in0_n = SO->EL->EL[(int)loope_n->data][0];
-            in1_n = SO->EL->EL[(int)loope_n->data][1];
-            if( !nmask || (nmask[in0]&& nmask[in1] && nmask[in0_n]&& nmask[in1_n])){
+            in0 = SO->EL->EL[(INT_CAST)loope->data][0];
+            in1 = SO->EL->EL[(INT_CAST)loope->data][1];
+            in0_n = SO->EL->EL[(INT_CAST)loope_n->data][0];
+            in1_n = SO->EL->EL[(INT_CAST)loope_n->data][1];
+            if( !nmask || (nmask[in0]&& nmask[in1] && 
+                           nmask[in0_n]&& nmask[in1_n])){
                p4 = (float*)loopp->data;
-               arg = p4[3]*fim[in0] + (1.0-p4[3])*fim[in1] ;   /* interpolated value at intersection point on edge */
+               arg = p4[3]*fim[in0] + (1.0-p4[3])*fim[in1] ;   
+                     /* interpolated value at intersection point on edge */
                p4_n = (float*)loopp_n->data;
                arg_n = p4_n[3]*fim[in0_n] + (1.0-p4_n[3])*fim[in1_n] ; 
                SUMA_UNIT_VEC(p4, p4_n, U, Un);
@@ -6315,7 +6472,8 @@ float SUMA_estimate_slice_FWHM_1dif( SUMA_SurfaceObject *SO, float *fim , byte *
                dfdssum += dfds; dfdssq += dfds*dfds; 
                #ifdef OK_FWHM_DBG
                   if (SUMA_GetDbgFWHM()) {
-                     fprintf(fdbg,"%5d %5d %5d %5d   %.3f  %.3f\n", in0, in1, in0_n, in1_n, Un, dfds);      
+                     fprintf(fdbg,"%5d %5d %5d %5d   %.3f  %.3f\n", 
+                              in0, in1, in0_n, in1_n, Un, dfds);      
                   }
                #endif
                counts++;
@@ -6397,14 +6555,15 @@ SUMA_Boolean SUMA_Offset_Smooth_dset(
    SUMA_COMM_STRUCT *cs, byte *nmask, byte strict_mask) 
 {
    static char FuncName[]={"SUMA_Offset_Smooth_dset"};
-   float *fout_final = NULL, *fbuf=NULL, *fin=NULL, *fout=NULL, *fin_next = NULL, *fin_orig = NULL;
+   float *fout_final = NULL, *fbuf=NULL, *fin=NULL, *fout=NULL, 
+         *fin_next = NULL, *fin_orig = NULL;
    float fp, dfp, fpj, wt, wts, sig, fwhm_orig, fwhm_out;
    double dj, ds2, scl;
    int n , k, j, niter, vnk, os, jj, nj=-1, *icols=NULL, N_icols, N_nmask;
    byte *bfull=NULL;
    SUMA_OFFSET_STRUCT *OffS_out = NULL;
    
-   SUMA_Boolean LocalHead = YUP;
+   SUMA_Boolean LocalHead = NOPE;
 
    SUMA_ENTRY;
    
@@ -6848,12 +7007,12 @@ SUMA_SurfaceObject *SUMA_Patch2Surf(float *NodeList, int N_NodeList, int *PatchF
    \return isNodeInPatch (SUMA_Boolean *) a vector SO->N_Node long such that if isNodeInPatch[n] = YUP then node n is used
                                     in the mesh 
 */
-SUMA_Boolean *SUMA_MaskOfNodesInPatch(
+byte *SUMA_MaskOfNodesInPatch(
                   SUMA_SurfaceObject *SO, int *N_NodesUsedInPatch)
 {
    static char FuncName[]={"SUMA_MaskOfNodesInPatch"};
    int k;
-   SUMA_Boolean *NodesInPatchMesh = NULL;
+   byte *NodesInPatchMesh = NULL;
 
    SUMA_ENTRY;
 
@@ -6863,13 +7022,14 @@ SUMA_Boolean *SUMA_MaskOfNodesInPatch(
       SUMA_SL_Err("NULL SO");
       SUMA_RETURN(NULL);
    }
+   
    if (!SO->FaceSetList || !SO->N_FaceSet) {
       SUMA_SL_Err("NULL or empty SO->FaceSetList");
       SUMA_RETURN(NULL);
    }
 
-   NodesInPatchMesh = (SUMA_Boolean *)
-                        SUMA_calloc(SO->N_Node, sizeof(SUMA_Boolean)); 
+   NodesInPatchMesh = (byte *)
+                        SUMA_calloc(SO->N_Node, sizeof(byte)); 
    if (!NodesInPatchMesh) {
       SUMA_SL_Crit("Failed to allocate for NodesInPatchMesh");
       SUMA_RETURN(NULL);
@@ -6916,35 +7076,55 @@ SUMA_PATCH * SUMA_getPatch (  int *NodesSelected, int N_Nodes,
    
    SUMA_ENTRY;
    
+   if (!NodesSelected || !Full_FaceSetList || !Memb) {
+      SUMA_S_Errv("NULL input %p, %p, %p\n",
+                  NodesSelected,Full_FaceSetList, Memb);
+      SUMA_RETURN(NULL);
+   }
+   
+   SUMA_LH("Allocating");
    NP = 3;
    BeenSelected = (int *)SUMA_calloc (N_Full_FaceSetList, sizeof(int));
    Patch = (SUMA_PATCH *)SUMA_malloc(sizeof(SUMA_PATCH));
    
    if (!BeenSelected || !Patch) {
-      fprintf (SUMA_STDERR,"Error %s: Could not allocate for BeenSelected or patch.\n", FuncName);
+      fprintf (SUMA_STDERR,
+               "Error %s: Could not allocate for BeenSelected or patch.\n", 
+               FuncName);
       SUMA_RETURN(NULL);
    }
+   
+   SUMA_LH("BeenSelected");
    /* find out the total number of facesets these nodes are members of */
    Patch->N_FaceSet = 0; /* total number of facesets containing these nodes */
    for (i=0; i < N_Nodes; ++i) {
       node = NodesSelected[i];
       for (j=0; j < Memb->N_Memb[node]; ++j) {
-         if (!BeenSelected[Memb->NodeMemberOfFaceSet[node][j]]) {
-            /* this faceset has not been selected, select it */
-            ++ Patch->N_FaceSet;
+         if (Memb->NodeMemberOfFaceSet[node][j] < N_Full_FaceSetList) {
+            if (!BeenSelected[Memb->NodeMemberOfFaceSet[node][j]]) {
+               /* this faceset has not been selected, select it */
+               ++ Patch->N_FaceSet;
+            }
+            ++ BeenSelected[Memb->NodeMemberOfFaceSet[node][j]];
+         } else {
+            SUMA_S_Warnv("Node %d >= %d\n", 
+                        Memb->NodeMemberOfFaceSet[node][j], 
+                         N_Full_FaceSetList);
          }
-         ++ BeenSelected[Memb->NodeMemberOfFaceSet[node][j]];
       }   
    }
    
-   /* now load these facesets into a new matrix */
    
+   SUMA_LH("Loading");
+   /* now load these facesets into a new matrix */
    Patch->FaceSetList = (int *) SUMA_calloc (Patch->N_FaceSet * 3, sizeof(int));
    Patch->FaceSetIndex = (int *) SUMA_calloc (Patch->N_FaceSet, sizeof(int));
    Patch->nHits = (int *) SUMA_calloc (Patch->N_FaceSet, sizeof(int));
    
    if (!Patch->FaceSetList || !Patch->FaceSetIndex || !Patch->nHits) {
-      fprintf (SUMA_STDERR,"Error %s: Could not allocate for Patch->FaceSetList || Patch_FaceSetIndex.\n", FuncName);
+      fprintf (SUMA_STDERR,
+               "Error %s: Could not allocate for Patch->FaceSetList ||"
+               " Patch_FaceSetIndex.\n", FuncName);
       SUMA_RETURN(NULL);
    }
    j=0;
@@ -6961,7 +7141,8 @@ SUMA_PATCH * SUMA_getPatch (  int *NodesSelected, int N_Nodes,
       }
    }
    
-   /* reset the numer of facesets because it might have changed given the MinHits condition,
+   /* reset the numer of facesets because it might have changed given the 
+   MinHits condition,
    It won't change if MinHits = 1.
    It's OK not to change the allocated space as long as you are using 1D arrays*/
    Patch->N_FaceSet = j;
@@ -7050,6 +7231,14 @@ SUMA_CONTOUR_EDGES * SUMA_GetContour (
       SUMA_RETURN(CE);
    }
    
+   if (LocalHead) {  /* only check in debugging mode. for efficiency */
+      for (i=0; i < N_Node; ++i) 
+         if (Nodes[i] >= SO->N_Node) {
+            SUMA_S_Errv("Nodes[%d]=%d >= SO->N_Node %d\n",
+                        i, Nodes[i], SO->N_Node);
+            SUMA_RETURN(CE);
+         }  
+   }
    for (i=0; i < N_Node; ++i) isNode[Nodes[i]] = YUP;
   
    if (UseThisPatch) {
@@ -7059,7 +7248,8 @@ SUMA_CONTOUR_EDGES * SUMA_GetContour (
       SUMA_LH("Creating patch");
       switch (ContourMode) {
          case 0:
-            Patch = SUMA_getPatch (Nodes, N_Node, SO->FaceSetList, SO->N_FaceSet, SO->MF, 2);
+            Patch = SUMA_getPatch (Nodes, N_Node, SO->FaceSetList, 
+                                    SO->N_FaceSet, SO->MF, 2);
             break;
          case 1:
             Patch = SUMA_getPatch (Nodes, N_Node, SO->FaceSetList, SO->N_FaceSet, SO->MF, 1);
@@ -7939,7 +8129,7 @@ SUMA_ROI_DATUM *SUMA_Surf_Plane_Intersect_ROI (SUMA_SurfaceObject *SO, int Nfrom
       if (!ROIe) {
          fprintf(SUMA_STDERR,"Error %s: Failed in SUMA_AllocateROI.\n", FuncName);
       } else {
-         if (!SUMA_AddDO (SUMAg_DOv, &SUMAg_N_DOv, (void *)ROIe, ROIO_type, SUMA_LOCAL)) {
+         if (!SUMA_AddDO (SUMAg_DOv, &SUMAg_N_DOv, (void *)ROIe, ROIO_type, SUMA_WORLD)) {
             fprintf(SUMA_STDERR,"Error %s: Failed in SUMA_AddDO.\n", FuncName);
          }
       }
@@ -7951,7 +8141,7 @@ SUMA_ROI_DATUM *SUMA_Surf_Plane_Intersect_ROI (SUMA_SurfaceObject *SO, int Nfrom
       if (!ROIt) {
          fprintf(SUMA_STDERR,"Error %s: Failed in SUMA_AllocateROI.\n", FuncName);
       } else {
-         if (!SUMA_AddDO (SUMAg_DOv, &SUMAg_N_DOv, (void *)ROIt, ROIO_type, SUMA_LOCAL)) {
+         if (!SUMA_AddDO (SUMAg_DOv, &SUMAg_N_DOv, (void *)ROIt, ROIO_type, SUMA_WORLD)) {
             fprintf(SUMA_STDERR,"Error %s: Failed in SUMA_AddDO.\n", FuncName);
          }
       }
@@ -8032,7 +8222,7 @@ SUMA_ROI_DATUM *SUMA_Surf_Plane_Intersect_ROI (SUMA_SurfaceObject *SO, int Nfrom
                if (ROId) SUMA_FreeROIDatum (ROId);
                SUMA_RETURN(NULL);   
             }
-            if (!SUMA_AddDO (SUMAg_DOv, &SUMAg_N_DOv, (void *)ROIts, ROIO_type, SUMA_LOCAL)) {
+            if (!SUMA_AddDO (SUMAg_DOv, &SUMAg_N_DOv, (void *)ROIts, ROIO_type, SUMA_WORLD)) {
                fprintf(SUMA_STDERR,"Error %s: Failed in SUMA_AddDO.\n", FuncName);
                if (ROIn) SUMA_freeROI(ROIn);
                if (ROIts) SUMA_freeROI(ROIts);
@@ -8056,7 +8246,7 @@ SUMA_ROI_DATUM *SUMA_Surf_Plane_Intersect_ROI (SUMA_SurfaceObject *SO, int Nfrom
                if (ROId) SUMA_FreeROIDatum (ROId);
                SUMA_RETURN(NULL);
             }
-            if (!SUMA_AddDO (SUMAg_DOv, &SUMAg_N_DOv, (void *)ROIn, ROIO_type, SUMA_LOCAL)) {
+            if (!SUMA_AddDO (SUMAg_DOv, &SUMAg_N_DOv, (void *)ROIn, ROIO_type, SUMA_WORLD)) {
                fprintf(SUMA_STDERR,"Error %s: Failed in SUMA_AddDO.\n", FuncName);
                if (ROIn) SUMA_freeROI(ROIn);
                if (ROIts) SUMA_freeROI(ROIts);
@@ -8427,7 +8617,9 @@ SUMA_Boolean SUMA_Show_SPI (SUMA_SURF_PLANE_INTERSECT *SPI, FILE * Out, SUMA_Sur
    
    fprintf (Out,"Intersection Edges: %d\n[", SPI->N_IntersEdges);
    for (i=0; i < SPI->N_IntersEdges; ++i) {
-      fprintf (Out, "%d, %d\n", SO->EL->EL[SPI->IntersEdges[i]][0], SO->EL->EL[SPI->IntersEdges[i]][1]);
+      fprintf (Out, "%d, %d\n", 
+               SO->EL->EL[SPI->IntersEdges[i]][0], 
+               SO->EL->EL[SPI->IntersEdges[i]][1]);
    }
    fprintf (Out," ]\n");
    if (opref) {
@@ -8447,24 +8639,29 @@ SUMA_Boolean SUMA_Show_SPI (SUMA_SURF_PLANE_INTERSECT *SPI, FILE * Out, SUMA_Sur
    }
    if (sv) {
       SUMA_SegmentDO *SDO = NULL;
-      if ((SDO = SUMA_Alloc_SegmentDO (SPI->N_IntersEdges, "Show_SPI_segs", 0, NULL, LS_type))) {
+      if ((SDO = SUMA_Alloc_SegmentDO (SPI->N_IntersEdges, 
+                                 "Show_SPI_segs", 0, NULL, 0, LS_type))) {
          SDO->do_type = LS_type;
          for (i=0; i < SPI->N_IntersEdges; ++i) {
             for (j=0; j<3;++j) {
-               SDO->n0[3*i+j] = SO->NodeList[3*SO->EL->EL[SPI->IntersEdges[i]][0]+j];
-               SDO->n1[3*i+j] = SO->NodeList[3*SO->EL->EL[SPI->IntersEdges[i]][1]+j];
+               SDO->n0[3*i+j] = 
+                  SO->NodeList[3*SO->EL->EL[SPI->IntersEdges[i]][0]+j];
+               SDO->n1[3*i+j] = 
+                  SO->NodeList[3*SO->EL->EL[SPI->IntersEdges[i]][1]+j];
             }
          }   
          /* addDO */
-         if (!SUMA_AddDO(SUMAg_DOv, &SUMAg_N_DOv, (void *)SDO, LS_type, SUMA_LOCAL)) {
+         if (!SUMA_AddDO(  SUMAg_DOv, &SUMAg_N_DOv, 
+                           (void *)SDO, LS_type, SUMA_WORLD)) {
             fprintf(SUMA_STDERR,"Error %s: Failed in SUMA_AddDO.\n", FuncName);
-            SUMA_RETURNe;
+            SUMA_RETURN(NOPE);
          }
 
          /* register DO with viewer */
          if (!SUMA_RegisterDO(SUMAg_N_DOv-1, sv)) {
-            fprintf(SUMA_STDERR,"Error %s: Failed in SUMA_RegisterDO.\n", FuncName);
-            SUMA_RETURNe;
+            fprintf(SUMA_STDERR,
+                     "Error %s: Failed in SUMA_RegisterDO.\n", FuncName);
+            SUMA_RETURN(NOPE);
          }
 
          /* redisplay curent only*/
@@ -8475,7 +8672,11 @@ SUMA_Boolean SUMA_Show_SPI (SUMA_SURF_PLANE_INTERSECT *SPI, FILE * Out, SUMA_Sur
    
    fprintf (Out,"Intersection Nodes: %d\n[", SPI->N_IntersEdges);
    for (i=0; i < SO->EL->N_EL; ++i) {
-      if (SPI->isEdgeInters[i]) fprintf (Out, "%f, %f, %f, ", SPI->IntersNodes[3*i], SPI->IntersNodes[3*i+1], SPI->IntersNodes[3*i+2]);
+      if (SPI->isEdgeInters[i]) 
+         fprintf (Out, "%f, %f, %f, ", 
+                  SPI->IntersNodes[3*i], 
+                  SPI->IntersNodes[3*i+1], 
+                  SPI->IntersNodes[3*i+2]);
    }
    fprintf (Out," ]\n");
    if (opref) {
@@ -8484,13 +8685,17 @@ SUMA_Boolean SUMA_Show_SPI (SUMA_SURF_PLANE_INTERSECT *SPI, FILE * Out, SUMA_Sur
       fprintf (fout, "#spheres\n#locations of intersections\n");
       for (i=0; i < SO->EL->N_EL; ++i) {
          if (SPI->isEdgeInters[i]) 
-            fprintf (fout, "%f %f %f\n ", SPI->IntersNodes[3*i], SPI->IntersNodes[3*i+1], SPI->IntersNodes[3*i+2]);
+            fprintf (fout, "%f %f %f\n ", 
+                     SPI->IntersNodes[3*i], 
+                     SPI->IntersNodes[3*i+1], 
+                     SPI->IntersNodes[3*i+2]);
       }
       fclose(fout); fout = NULL; SUMA_free(fname); fname=NULL;   
    }
    if (sv) {
       SUMA_SphereDO *SDO = NULL;
-      if ((SDO = SUMA_Alloc_SphereDO (SPI->N_IntersEdges, "Show_SPI_interspoints", NULL, SP_type))) {
+      if ((SDO = SUMA_Alloc_SphereDO (SPI->N_IntersEdges, 
+                              "Show_SPI_interspoints", NULL, SP_type))) {
          SDO->do_type = SP_type;
          SDO->CommonRad = SO->EL->AvgLe/6.0;
          for (i=0; i < SPI->N_IntersEdges; ++i) {
@@ -8501,15 +8706,17 @@ SUMA_Boolean SUMA_Show_SPI (SUMA_SURF_PLANE_INTERSECT *SPI, FILE * Out, SUMA_Sur
             }
          }
          /* addDO */
-         if (!SUMA_AddDO(SUMAg_DOv, &SUMAg_N_DOv, (void *)SDO, SP_type, SUMA_LOCAL)) {
+         if (!SUMA_AddDO(  SUMAg_DOv, &SUMAg_N_DOv, 
+                           (void *)SDO, SP_type, SUMA_WORLD)) {
             fprintf(SUMA_STDERR,"Error %s: Failed in SUMA_AddDO.\n", FuncName);
-            SUMA_RETURNe;
+            SUMA_RETURN(NOPE);
          }
 
          /* register DO with viewer */
          if (!SUMA_RegisterDO(SUMAg_N_DOv-1, sv)) {
-            fprintf(SUMA_STDERR,"Error %s: Failed in SUMA_RegisterDO.\n", FuncName);
-            SUMA_RETURNe;
+            fprintf(SUMA_STDERR,
+                     "Error %s: Failed in SUMA_RegisterDO.\n", FuncName);
+            SUMA_RETURN(NOPE);
          }
 
          /* redisplay curent only*/
@@ -8659,22 +8866,28 @@ int SUMA_Find_Edge_Nhost (SUMA_EDGE_LIST  *EL, int *IsInter, int N_IsInter, int 
       The subset of nodes is stored in isNodeInMesh. This subset is typically specified in SUMA_Surf_Plane_Intersect.
       
       
- Path = SUMA_Dijkstra (SO, Nx,  Ny, isNodeInMesh, N_isNodeInMesh, Method_Number, Path_length, N_Path)
-\param SO (SUMA_SurfaceObject *) The surface Object structure. NodeList, EL and FN are needed. 
+ Path = SUMA_Dijkstra ( SO, Nx,  Ny, 
+                        isNodeInMesh, N_isNodeInMesh, Method_Number, 
+                        Path_length, N_Path)
+\param SO (SUMA_SurfaceObject *) The surface Object structure. 
+            NodeList, EL and FN are needed. 
 \param Nx (int) The node index (referring to SO's nodes) where the search begins.
 \param Ny (int) The node index (referring to SO's nodes) where the search ends.
-\param isNodeInMesh (SUMA_Boolean *) Pointer to SO->N_Node long vector such that 
-                                       if (isNodeInMesh[i]) then node i is part of the 
-                                       mesh that is used in the search path. This mesh is a subset 
-                                       of SO->FaceSetList and is typically obtained when one 
-                                       runs SUMA_Surf_Plane_Intersect. Running SUMA_Dijkstra on 
-                                       a complete surface is only for very patient people.
-                                NOTE:  This vector is modified as a node is visited. Make sure you 
-                                       do not use it after this function has been called.
-                                       Set to NULL if you want all nodes used.
-\param N_isNodeInMesh (int *) Pointer to the total number of nodes that make up the mesh (subset of SO)
-               This parameter is passed as a pointer because as nodes in the mesh are visited, that
-               number is reduced and represents when the function returns, the number of nodes that were
+\param isNodeInMesh (SUMA_Boolean *) 
+         Pointer to SO->N_Node long vector such that 
+         if (isNodeInMesh[i]) then node i is part of the 
+         mesh that is used in the search path. This mesh is a subset 
+         of SO->FaceSetList and is typically obtained when one 
+         runs SUMA_Surf_Plane_Intersect. Running SUMA_Dijkstra on 
+         a complete surface is only for very patient people.
+   NOTE:  This vector is modified as a node is visited. Make sure you 
+         do not use it after this function has been called.
+         Set to NULL if you want all nodes used.
+\param N_isNodeInMesh (int *) Pointer to the total number of nodes that 
+               make up the mesh (subset of SO)
+               This parameter is passed as a pointer because as nodes in the mesh
+               are visited, that number is reduced and represents when the
+               function returns, the number of nodes that were
                never visited in the search. 
                Set to NULL, if isNodeInMesh is NULL
 \param Method_Number (int) selector for which algorithm to use. Choose from:
@@ -8688,7 +8901,6 @@ int SUMA_Find_Edge_Nhost (SUMA_EDGE_LIST  *EL, int *IsInter, int N_IsInter, int 
 
 \sa Graph Theory by Ronald Gould and labbook NIH-2 page 154 for path construction
 */
-#define LARGE_NUM 9e300
 /* #define LOCALDEBUG */ /* lots of debugging info. */
 int * SUMA_Dijkstra (SUMA_SurfaceObject *SO, int Nx, 
                      int Ny, SUMA_Boolean *isNodeInMeshp, 
@@ -8697,7 +8909,8 @@ int * SUMA_Dijkstra (SUMA_SurfaceObject *SO, int Nx,
 {
    static char FuncName[] = {"SUMA_Dijkstra"};
    SUMA_Boolean LocalHead = NOPE;
-   float *L = NULL, Lmin = -1.0, le = 0.0, DT_DIJKSTRA;
+   float *L = NULL, Lmin = -1.0, DT_DIJKSTRA;
+   double le = 0.0, de=0.0;
    int i, iw, iv, v, w, N_Neighb, *Path = NULL, N_loc=-1;
    SUMA_Boolean *isNodeInMesh=NULL;
    struct  timeval  start_time;
@@ -8707,7 +8920,6 @@ int * SUMA_Dijkstra (SUMA_SurfaceObject *SO, int Nx,
    int N_Lmins, *vLmins=NULL, *vLocInLmins=NULL, 
       iLmins, ReplacingNode, ReplacedNodeLocation;
    float *Lmins=NULL; 
-   
    
    SUMA_ENTRY;
    
@@ -8729,17 +8941,27 @@ int * SUMA_Dijkstra (SUMA_SurfaceObject *SO, int Nx,
    }
    
    /* make sure Both Nx and Ny exist in isNodeInMesh */
+   if (  Nx < 0 || Nx >= SO->N_Node ||
+         Ny < 0 || Ny >= SO->N_Node ) {
+      fprintf (SUMA_STDERR,
+               "\aError %s: Node %d (Nx) or %d (Ny) is outside range [0..%d[ \n"
+               , FuncName, Nx, Ny, SO->N_Node);
+      goto CLEANUP;     
+   }
    if (!isNodeInMesh[Nx]) {
-      fprintf (SUMA_STDERR,"\aError %s: Node %d (Nx) is not in mesh.\n", FuncName, Nx);
+      fprintf (SUMA_STDERR,
+               "\aError %s: Node %d (Nx) is not in mesh.\n", FuncName, Nx);
       goto CLEANUP;
    }  
    if (!isNodeInMesh[Ny]) {
-      fprintf (SUMA_STDERR,"\aError %s: Node %d (Ny) is not in mesh.\n", FuncName, Ny);
+      fprintf (SUMA_STDERR,
+               "\aError %s: Node %d (Ny) is not in mesh.\n", FuncName, Ny);
       goto CLEANUP;
    }
 
    if (!SO->FN) {
-      fprintf (SUMA_STDERR, "Error %s: SO does not have FN structure.\n", FuncName);
+      fprintf (SUMA_STDERR, 
+               "Error %s: SO does not have FN structure.\n", FuncName);
       goto CLEANUP;
    }
 
@@ -8749,7 +8971,8 @@ int * SUMA_Dijkstra (SUMA_SurfaceObject *SO, int Nx,
    }
    
    /* allocate for chain */
-   DC = (SUMA_DIJKSTRA_PATH_CHAIN *) SUMA_malloc (sizeof(SUMA_DIJKSTRA_PATH_CHAIN) * SO->N_Node);
+   DC = (SUMA_DIJKSTRA_PATH_CHAIN *)SUMA_malloc(
+                     sizeof(SUMA_DIJKSTRA_PATH_CHAIN) * SO->N_Node);
    if (!DC) {
       fprintf (SUMA_STDERR, "Error %s: Could not allocate. \n", FuncName);
       goto CLEANUP;
@@ -8765,7 +8988,8 @@ int * SUMA_Dijkstra (SUMA_SurfaceObject *SO, int Nx,
             goto CLEANUP;
          }
 
-         /* label all vertices with very large numbers, initialize path previous pointers to null */
+         /* label all vertices with very large numbers, 
+         initialize path previous pointers to null */
          for (i=0; i < SO->N_Node; ++i) {
             L[i] = LARGE_NUM;   
             DC[i].Previous = NULL;
@@ -8784,11 +9008,17 @@ int * SUMA_Dijkstra (SUMA_SurfaceObject *SO, int Nx,
          /* Brute force method */
          do {
             /* find v in Mesh / L(v) is minimal */
-            /* this sucks up a lot of time because it is searching the entire set of SO->N_Node instead of the one that was intersected only.
+            /* this sucks up a lot of time because it is searching 
+            the entire set of SO->N_Node instead of the one that was 
+            intersected only.
             This can be sped up, considerably */
-            SUMA_MIN_LOC_VEC(L, SO->N_Node, Lmin, v);   /* locates and finds the minimum of L, nodes not in mesh will keep their large values and will not be picked*/
+            SUMA_MIN_LOC_VEC(L, SO->N_Node, Lmin, v);   
+                  /* locates and finds the minimum of L, nodes not in mesh will 
+                  keep their large values and will not be picked*/
             if (!isNodeInMesh[v]) {
-               fprintf (SUMA_STDERR, "\aERROR %s: Dijkstra derailed. v = %d, Lmin = %f\n. Try another point.", FuncName, v, Lmin);
+               fprintf (SUMA_STDERR, 
+                        "\aERROR %s: Dijkstra derailed. v = %d, Lmin = %f.\n"
+                        " Try another point.", FuncName, v, Lmin);
                goto CLEANUP; 
             }
             if (v == Ny) {
@@ -8802,9 +9032,13 @@ int * SUMA_Dijkstra (SUMA_SurfaceObject *SO, int Nx,
                   if (isNodeInMesh[w]) {
                      iw = 3*w;
                      iv = 3*v;
-                     le = sqrt ( (SO->NodeList[iw] - SO->NodeList[iv]) * (SO->NodeList[iw] - SO->NodeList[iv]) +
-                                 (SO->NodeList[iw+1] - SO->NodeList[iv+1]) * (SO->NodeList[iw+1] - SO->NodeList[iv+1]) +
-                                 (SO->NodeList[iw+2] - SO->NodeList[iv+2]) * (SO->NodeList[iw+2] - SO->NodeList[iv+2]) );
+                     de = (double)(SO->NodeList[iw] - SO->NodeList[iv]);
+                     le = de*de;
+                     de = (double)(SO->NodeList[iw+1] - SO->NodeList[iv+1]);
+                     le += de*de;
+                     de = (double)(SO->NodeList[iw+2] - SO->NodeList[iv+2]);
+                     le += de*de;
+                     le = sqrt ( le );
                      if (L[w] > L[v] + le ) {
                         L[w] = L[v] + le;  
                         /* update the path */
@@ -8817,7 +9051,8 @@ int * SUMA_Dijkstra (SUMA_SurfaceObject *SO, int Nx,
                   }
                }
 
-               /* remove node v from isNodeInMesh and reset their distance value to a very large one, 
+               /* remove node v from isNodeInMesh and reset their distance 
+                  value to a very large one, 
                   this way you do not have to reinitialize this variable. */
                isNodeInMesh[v] = NOPE;
                *N_isNodeInMesh -= 1;
@@ -8827,17 +9062,24 @@ int * SUMA_Dijkstra (SUMA_SurfaceObject *SO, int Nx,
          } while (*N_isNodeInMesh > 0 && !Found);
 
          if (!Found) {
-            fprintf (SUMA_STDERR, "Error %s: No more nodes in mesh, failed to reach target.\n", FuncName);
+            fprintf (SUMA_STDERR, 
+                     "Error %s: No more nodes in mesh, "
+                     "failed to reach target.\n", FuncName);
             goto CLEANUP;
          }else {
-            if (LocalHead) fprintf (SUMA_STDERR, "%s: Path between Nodes %d and %d is %f.\n", FuncName, Nx, Ny, *Lfinal);
+            if (LocalHead) 
+               fprintf (SUMA_STDERR, 
+                        "%s: Path between Nodes %d and %d is %f.\n", 
+                        FuncName, Nx, Ny, *Lfinal);
          }
 
 
          if (LocalHead) {
             /* stop timer */
             DT_DIJKSTRA = SUMA_etime(&start_time,1);
-            fprintf (SUMA_STDERR, "%s: Method 1- Elapsed time in function %f seconds.\n", FuncName, DT_DIJKSTRA);
+            fprintf (SUMA_STDERR, 
+                     "%s: Method 1- Elapsed time in function %f seconds.\n", 
+                     FuncName, DT_DIJKSTRA);
          }
 
          if (L) SUMA_free(L); L = NULL;
@@ -8850,17 +9092,24 @@ int * SUMA_Dijkstra (SUMA_SurfaceObject *SO, int Nx,
          }
 
          /* allocate for vertices labels and minimums vectors*/
-         L = (float *) SUMA_calloc (SO->N_Node, sizeof (float));        /* L[i] = distance to a node i*/
-         Lmins = (float *) SUMA_calloc (SO->N_Node, sizeof (float));    /* Lmins = vector containing minimum calculated distances to node */
-         vLmins = (int *) SUMA_calloc (SO->N_Node, sizeof (int));       /* vLmins[i] = index (into L) of the node having a distance Lmins[i] */
-         vLocInLmins = (int *) SUMA_calloc (SO->N_Node, sizeof (int));  /* vLocInLmin[j] = index (into Lmins) of a node having index j (into L) */
+         L = (float *) SUMA_calloc (SO->N_Node, sizeof (float));        
+               /* L[i] = distance to a node i*/
+         Lmins = (float *) SUMA_calloc (SO->N_Node, sizeof (float));    
+               /* Lmins = vector of minimum calculated distances to node */
+         vLmins = (int *) SUMA_calloc (SO->N_Node, sizeof (int));       
+               /* vLmins[i] = index (into L) of the node having a 
+                  distance Lmins[i] */
+         vLocInLmins = (int *) SUMA_calloc (SO->N_Node, sizeof (int));  
+               /* vLocInLmin[j] = index (into Lmins) of a node having 
+                  index j (into L) */
 
          if (!L || !Lmins || !vLmins || !vLocInLmins) {
             fprintf (SUMA_STDERR, "Error %s: Failed to allocate.\n", FuncName);
             goto CLEANUP;
          }
 
-         /* label all vertices with very large numbers and initialize vLocInLmins to -1*/
+         /* label all vertices with very large numbers and initialize 
+            vLocInLmins to -1*/
          for (i=0; i < SO->N_Node; ++i) {
             L[i] = LARGE_NUM;
             Lmins[i] = LARGE_NUM;   
@@ -8872,7 +9121,8 @@ int * SUMA_Dijkstra (SUMA_SurfaceObject *SO, int Nx,
          L[Nx] = 0.0;
          *Lfinal = -1.0;
 
-         /* initialize values of vectors used to keep track of minimum values of L and their corresponding nodes */
+         /* initialize values of vectors used to keep track of minimum 
+            values of L and their corresponding nodes */
          Lmins[0] = 0.0;
          vLmins[0] = Nx;
          vLocInLmins[Nx] = 0;
@@ -8886,10 +9136,14 @@ int * SUMA_Dijkstra (SUMA_SurfaceObject *SO, int Nx,
          *N_Path = 0;
          
          /* method with efficient tracking of minimum */
-         if (LocalHead) fprintf (SUMA_STDERR, "%s: about to MIN_LOC ....N_isNodeInMesh = %d\n", FuncName, *N_isNodeInMesh);
+         if (LocalHead) 
+            fprintf (SUMA_STDERR, 
+                     "%s: about to MIN_LOC ....N_isNodeInMesh = %d\n", 
+                     FuncName, *N_isNodeInMesh);
          do {
             /* find v in Mesh / L(v) is minimal */
-            SUMA_MIN_LOC_VEC(Lmins, N_Lmins, Lmin, iLmins);   /* locates the minimum value in Lmins vector */
+            SUMA_MIN_LOC_VEC(Lmins, N_Lmins, Lmin, iLmins);   
+               /* locates the minimum value in Lmins vector */
             v = vLmins[iLmins];   /* get the node for this Lmin value */
             if (!isNodeInMesh[v]) {
                fprintf (SUMA_STDERR,"\aERROR %s: \n"
@@ -8911,12 +9165,18 @@ int * SUMA_Dijkstra (SUMA_SurfaceObject *SO, int Nx,
                   if (isNodeInMesh[w]) {
                      iw = 3*w;
                      iv = 3*v;
-                     le = sqrt ( (SO->NodeList[iw] - SO->NodeList[iv]) * (SO->NodeList[iw] - SO->NodeList[iv]) +
-                                 (SO->NodeList[iw+1] - SO->NodeList[iv+1]) * (SO->NodeList[iw+1] - SO->NodeList[iv+1]) +
-                                 (SO->NodeList[iw+2] - SO->NodeList[iv+2]) * (SO->NodeList[iw+2] - SO->NodeList[iv+2]) );
+                     de = (double)(SO->NodeList[iw] - SO->NodeList[iv]);
+                     le = de*de;
+                     de = (double)(SO->NodeList[iw+1] - SO->NodeList[iv+1]);
+                     le += de*de;
+                     de = (double)(SO->NodeList[iw+2] - SO->NodeList[iv+2]);
+                     le += de*de;
+                     le = sqrt ( le );
                      if (L[w] > L[v] + le ) {
                         #ifdef LOCALDEBUG
-                           fprintf (SUMA_STDERR, "%s: L[%d]=%f > L[%d] = %f + le = %f.\n", FuncName, w, L[w], v, L[v], le);
+                           fprintf (SUMA_STDERR, 
+                                    "%s: L[%d]=%f > L[%d] = %f + le = %f.\n", 
+                                    FuncName, w, L[w], v, L[v], le);
                         #endif
                         L[w] = L[v] + le; 
                         /* update the path */
@@ -8928,46 +9188,63 @@ int * SUMA_Dijkstra (SUMA_SurfaceObject *SO, int Nx,
                         
                         if (vLocInLmins[w] < 0) { 
                            #ifdef LOCALDEBUG
-                              fprintf (SUMA_STDERR, "%s: adding entry for w = %d - First Hit. \n", FuncName, w);
+                              fprintf (SUMA_STDERR, 
+                                 "%s: adding entry for w = %d - First Hit. \n", 
+                                 FuncName, w);
                            #endif
-                           Lmins[N_Lmins] = L[w]; /* add this value to Lmins vector */
-                           vLmins[N_Lmins] = w; /* store the node for this Lmins value */
-                           vLocInLmins[w] = N_Lmins; /* store where that node is represented in Lmins */
+                           Lmins[N_Lmins] = L[w]; 
+                                 /* add this value to Lmins vector */
+                           vLmins[N_Lmins] = w; 
+                                 /* store the node for this Lmins value */
+                           vLocInLmins[w] = N_Lmins; 
+                                 /* store where that node is represented 
+                                    in Lmins */
                            ++N_Lmins;  /* increment N_Lmins */  
                         } else {
                            #ifdef LOCALDEBUG
-                              fprintf (SUMA_STDERR, "%s: modifying entry for w = %d  Second Hit.\n", FuncName, w); */
+                              fprintf (SUMA_STDERR, 
+                                 "%s: modifying entry for w = %d  Second Hit.\n",                                  FuncName, w); 
                            #endif
-                           Lmins[vLocInLmins[w]] = L[w]; /* update value for Lmins */
+                           Lmins[vLocInLmins[w]] = L[w]; 
+                                 /* update value for Lmins */
                         }                        
                      }else {
                         #ifdef LOCALDEBUG
-                           fprintf (SUMA_STDERR, "%s: L[%d]=%f < L[%d] = %f + le = %f.\n", FuncName, w, L[w], v, L[v], le); */
+                           fprintf (SUMA_STDERR, 
+                                    "%s: L[%d]=%f < L[%d] = %f + le = %f.\n", 
+                                    FuncName, w, L[w], v, L[v], le); 
                         #endif
                      } 
                   }
                }
 
-               /* remove node v from isNodeInMesh and reset their distance value to a very large one, 
+               /* remove node v from isNodeInMesh and reset their distance 
+                  value to a very large one, 
                   this way you do not have to reinitialize this variable. */
                isNodeInMesh[v] = NOPE;
                *N_isNodeInMesh -= 1;
                L[v] = LARGE_NUM; 
                Found = NOPE;
 
-               /* also remove the values (by swapping it with last element) for this node from Lmins */
+               /* also remove the values (by swapping it with last element) 
+                  for this node from Lmins */
                #ifdef LOCALDEBUG
                   {
                      int kkk;
                      fprintf (SUMA_STDERR,"Lmins\tvLmins\tvLocInLmins\n");
-                     for (kkk=0; kkk < N_Lmins; ++kkk) fprintf (SUMA_STDERR,"%f\t%d\t%d\n", Lmins[kkk], vLmins[kkk], vLocInLmins[vLmins[kkk]] );
+                     for (kkk=0; kkk < N_Lmins; ++kkk) 
+                        fprintf (SUMA_STDERR,"%f\t%d\t%d\n", 
+                                             Lmins[kkk], vLmins[kkk], 
+                                             vLocInLmins[vLmins[kkk]] );
                
                   }
                #endif
                
                if (vLocInLmins[v] >= 0) { /* remove its entry if there is one */
                   #ifdef LOCALDEBUG
-                     fprintf (SUMA_STDERR, "%s: removing node v = %d. N_Lmins = %d\n", FuncName,  v, N_Lmins);
+                     fprintf (SUMA_STDERR, 
+                              "%s: removing node v = %d. N_Lmins = %d\n", 
+                              FuncName,  v, N_Lmins);
                   #endif
                   --N_Lmins;
                   ReplacingNode = vLmins[N_Lmins];
@@ -8982,10 +9259,16 @@ int * SUMA_Dijkstra (SUMA_SurfaceObject *SO, int Nx,
          } while (*N_isNodeInMesh > 0 && !Found);
 
          if (!Found) {
-            fprintf (SUMA_STDERR, "Error %s: No more nodes in mesh, failed to reach target %d. NLmins = %d\n", FuncName, Ny, N_Lmins);
+            fprintf (SUMA_STDERR, 
+                     "Error %s: No more nodes in mesh, "
+                     "failed to reach target %d. NLmins = %d\n", 
+                     FuncName, Ny, N_Lmins);
             goto CLEANUP;
          }else {
-            if (LocalHead) fprintf (SUMA_STDERR, "%s: Path between Nodes %d and %d is %f.\n", FuncName, Nx, Ny, *Lfinal);
+            if (LocalHead) 
+               fprintf (SUMA_STDERR, 
+                        "%s: Path between Nodes %d and %d is %f.\n", 
+                        FuncName, Nx, Ny, *Lfinal);
          }
 
 
@@ -9046,6 +9329,27 @@ int * SUMA_Dijkstra (SUMA_SurfaceObject *SO, int Nx,
    
    SUMA_RETURN (Path);
 }
+
+/* A version with the same call format of SUMA_Dijkstra 
+but uses SUMA_Dijkstra_generic instead 
+You can easily compare SUMA_Dijkstra_usegen to 
+                       SUMA_Dijkstra by replacing
+      SUMA_Dijkstra in SurfDist and rerunning the examples.
+*/
+int * SUMA_Dijkstra_usegen (SUMA_SurfaceObject *SO, int Nx, 
+                     int Ny, SUMA_Boolean *isNodeInMeshp, 
+                     int *N_isNodeInMesh, int Method_Number, 
+                     float *Lfinal, int *N_Path)
+{
+   return(SUMA_Dijkstra_generic (SO->N_Node, 
+                     SO->NodeList, SO->NodeDim, 0, 
+                     SO->FN->N_Neighb, SO->FN->FirstNeighb, NULL,
+                     Nx, Ny, 
+                     isNodeInMeshp, 
+                     N_isNodeInMesh, Method_Number, 
+                     Lfinal, N_Path, 1));
+}
+
 
 /*!
 \brief Converts a path formed by a series of connected nodes to a series of edges
@@ -9515,20 +9819,25 @@ SUMA_Boolean SUMA_MergeStrips(DList *striplist, SUMA_SurfaceObject *SO, char *Me
          if (!list_elm) { list_elm = listnext_elm = dlist_head(striplist); }
          else { list_elm = listnext_elm = dlist_next(list_elm); }
          strip = (SUMA_STRIP *)list_elm->data;
-         strip_first_edge = (int)(dlist_head(strip->Edges))->data;
-         strip_last_edge = (int)(dlist_tail(strip->Edges))->data;
+         strip_first_edge = (INT_CAST)(dlist_head(strip->Edges))->data;
+         strip_last_edge = (INT_CAST)(dlist_tail(strip->Edges))->data;
          repeat = 0;
          do {
             listnext_elm = dlist_next(listnext_elm);
             stripnext = (SUMA_STRIP *)listnext_elm->data;
-            stripnext_first_edge = (int)(dlist_head(stripnext->Edges))->data;
-            stripnext_last_edge = (int)(dlist_tail(stripnext->Edges))->data;
+            stripnext_first_edge = 
+               (INT_CAST)(dlist_head(stripnext->Edges))->data;
+            stripnext_last_edge = 
+               (INT_CAST)(dlist_tail(stripnext->Edges))->data;
 
-            SUMA_LHv( "Strip from edges %d to %d\n"
-                     "Stripnext  edges %d to %d\n", strip_first_edge, strip_last_edge,
-                                                    stripnext_first_edge, stripnext_last_edge);
+            SUMA_LHv("Strip from edges %d to %d\n"
+                     "Stripnext  edges %d to %d\n", 
+                     strip_first_edge, strip_last_edge,
+                     stripnext_first_edge, stripnext_last_edge);
             /* any reason to merge?*/
-            if (strip_last_edge == stripnext_first_edge || SUMA_whichTri_e (SO->EL, strip_last_edge, stripnext_first_edge, 1, !LocalHead)>=0) {
+            if (  strip_last_edge == stripnext_first_edge || 
+                  SUMA_whichTri_e ( SO->EL, strip_last_edge, 
+                                    stripnext_first_edge, 1, !LocalHead)>=0) {
                SUMA_S_Note("Merging beginning of next to end of 1");
                repeat = 1;
                SUMA_MergeLists_Beg2_End1(stripnext->Edges, strip->Edges);
@@ -9559,11 +9868,13 @@ SUMA_Boolean SUMA_MergeStrips(DList *striplist, SUMA_SurfaceObject *SO, char *Me
             }
             if (repeat) { /* merger done, remove next strip */
                /* remove listnext_elm */
-               dlist_remove(striplist, listnext_elm, (void*)&stripnext); SUMA_free_strip(stripnext);
+               dlist_remove(striplist, listnext_elm, (void*)&stripnext); 
+               SUMA_free_strip(stripnext);
             }
          } while (!repeat && listnext_elm != dlist_tail(striplist));
 
-         SUMA_LHv("Now list of %d strips (repeat=%d).\n", dlist_size(striplist), repeat);
+         SUMA_LHv("Now list of %d strips (repeat=%d).\n", 
+                  dlist_size(striplist), repeat);
 
       } while (!repeat && dlist_next(list_elm) != dlist_tail(striplist));
    } else { /* Merge by other list*/
@@ -9582,16 +9893,18 @@ SUMA_Boolean SUMA_isEdgeStripClosed(DList *edgestrip, SUMA_SurfaceObject *SO)
    SUMA_ENTRY;
    
    if (!edgestrip || !SO || !SO->EL) {
-      SUMA_S_Errv("Null input edgestrip %p or SO %p or SO->EL %p\n", edgestrip, SO, SO->EL);
+      SUMA_S_Errv("Null input edgestrip %p or SO %p or SO->EL %p\n", 
+                  edgestrip, SO, SO->EL);
       SUMA_RETURN(NOPE);
    }
    
    if (dlist_size(edgestrip) < 2) SUMA_RETURN(NOPE);
    
-   e0 = (int)((dlist_head(edgestrip))->data);
-   e1 = (int)((dlist_tail(edgestrip))->data);
+   e0 = (INT_CAST)((dlist_head(edgestrip))->data);
+   e1 = (INT_CAST)((dlist_tail(edgestrip))->data);
    if (e0 >= SO->EL->N_EL || e1 >= SO->EL->N_EL) {
-      SUMA_S_Errv("Edge %d or %d is >= than SO->EL->N_EL (%d)\n", e0, e1, SO->EL->N_EL);
+      SUMA_S_Errv("Edge %d or %d is >= than SO->EL->N_EL (%d)\n", 
+                  e0, e1, SO->EL->N_EL);
       SUMA_RETURN(NOPE);
    }
    if (  SO->EL->EL[e0][0] == SO->EL->EL[e1][0]   ||
@@ -9604,7 +9917,8 @@ SUMA_Boolean SUMA_isEdgeStripClosed(DList *edgestrip, SUMA_SurfaceObject *SO)
 }
 
 /*!
-   Given a SPI structure, return the various connected paths that are formed by the intersections
+   Given a SPI structure, return the various connected paths that are 
+   formed by the intersections
 */
 DList * SUMA_SPI_to_EdgeStrips(SUMA_SurfaceObject *SO, SUMA_SURF_PLANE_INTERSECT *SPI)
 {
@@ -9687,15 +10001,21 @@ DList * SUMA_SPI_to_EdgeStrips(SUMA_SurfaceObject *SO, SUMA_SURF_PLANE_INTERSECT
             E0 = -1;
             if (T0>=0) { /* have gun, will travel, find next edge */
                /* find the other interesected edge of this triangle*/
-               n0 = SO->FaceSetList[3*T0]; n1 = SO->FaceSetList[3*T0+1]; n2 = SO->FaceSetList[3*T0+2];   
-               SUMA_LHv("Working triangle %d, nodes: %d %d %d\n", T0, n0, n1, n2);
+               n0 = SO->FaceSetList[3*T0]; 
+               n1 = SO->FaceSetList[3*T0+1]; 
+               n2 = SO->FaceSetList[3*T0+2];   
+               SUMA_LHv("Working triangle %d, nodes: %d %d %d\n", 
+                        T0, n0, n1, n2);
                /* find the two intersected edges */
                Ec0 = SUMA_FindEdge (SO->EL, n0, n1); 
                Ec1 = SUMA_FindEdge (SO->EL, n0, n2); 
                Ec2 = SUMA_FindEdge (SO->EL, n1, n2); 
-               if (!Visited[Ec0] && SPI->isEdgeInters[Ec0]) { E0 = Ec0; /* have a new candidate */}
-               else if (!Visited[Ec1] && SPI->isEdgeInters[Ec1]) { E0 = Ec1; /* have a new candidate */} 
-               else if (!Visited[Ec2] && SPI->isEdgeInters[Ec2]) { E0 = Ec2; /* have a new candidate */} 
+               if (!Visited[Ec0] && SPI->isEdgeInters[Ec0]) { 
+                  E0 = Ec0; /* have a new candidate */}
+               else if (!Visited[Ec1] && SPI->isEdgeInters[Ec1]) { 
+                  E0 = Ec1; /* have a new candidate */} 
+               else if (!Visited[Ec2] && SPI->isEdgeInters[Ec2]) { 
+                  E0 = Ec2; /* have a new candidate */} 
                else {  /* no where to go */ }
             }
          }  
@@ -9708,17 +10028,22 @@ DList * SUMA_SPI_to_EdgeStrips(SUMA_SurfaceObject *SO, SUMA_SURF_PLANE_INTERSECT
          one_strp = SUMA_alloc_strip(SO->idcode_str);
          /* now add edge sequence to this list */ 
          for (i=0; i<N_Epath; ++i) {
-            dlist_ins_next(one_strp->Edges, dlist_tail(one_strp->Edges), (void *)Epath[i]);
+            dlist_ins_next(one_strp->Edges, dlist_tail(one_strp->Edges), 
+                           (VOID_CAST)Epath[i]);
             /* here you can add the Points (xyz of intersections), if you like */
             p4 = (float *)SUMA_malloc(sizeof(float)*4); 
-            p4[0] = SPI->IntersNodes[3*Epath[i]];  p4[1] = SPI->IntersNodes[3*Epath[i]+1]; p4[2] = SPI->IntersNodes[3*Epath[i]+2];    
-            /* Store the position of the point as a fraction of the edge length from the first node forming edge */
+            p4[0] = SPI->IntersNodes[3*Epath[i]];  
+            p4[1] = SPI->IntersNodes[3*Epath[i]+1]; 
+            p4[2] = SPI->IntersNodes[3*Epath[i]+2];    
+            /* Store the position of the point as a fraction of the edge 
+               length from the first node forming edge */
             n0 = SO->EL->EL[Epath[i]][0]; n1 = SO->EL->EL[Epath[i]][1];
             p0 = &(SO->NodeList[3*n0]); p1 = &(SO->NodeList[3*n1]);
             SUMA_UNIT_VEC(p0, p1, U, Un);
             SUMA_UNIT_VEC(p0, p4, U2, Un2);
-            p4[3] = Un2/Un;   /* Hide it here. Forgive me Lord for I have sinned */
-            dlist_ins_next(one_strp->Points, dlist_tail(one_strp->Points), (void *)p4);
+            p4[3] = Un2/Un; /* Hide it here. Forgive me Lord for I have sinned */
+            dlist_ins_next(one_strp->Points, dlist_tail(one_strp->Points), 
+                           (void *)p4);
          }
          /* add the stip to the striplist */
          dlist_ins_next(striplist, dlist_tail(striplist), (void *)one_strp);

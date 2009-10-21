@@ -65,6 +65,7 @@ MCW_3shear permute_3shear( MCW_3shear shin , int ox1, int ox2, int ox3 )
    MCW_3shear shout ;
    int ii , ain,aout , pi[3] ;
 
+   ZZME(shout) ;
    /* sanity check */
 
    if( ! ISVALID_3SHEAR(shin) ){ INVALIDATE_3SHEAR(shout) ; return shout ; }
@@ -210,7 +211,6 @@ MCW_3shear shear_xzyx( THD_dmat33 *q , THD_dfvec3 *xyzdel )
    /* output variable */
 
    MCW_3shear shr ;
-
    /* internals (created by Maple) */
 
    double t1, t3, t4, t5, t6, t7, t8, t9, t10, t11,
@@ -228,6 +228,7 @@ MCW_3shear shear_xzyx( THD_dmat33 *q , THD_dfvec3 *xyzdel )
 
    /* initialize output to an invalid result */
 
+   ZZME(shr) ;
    INVALIDATE_3SHEAR(shr) ;
 
    /* load inputs into local variables */
@@ -269,9 +270,13 @@ MCW_3shear shear_xzyx( THD_dmat33 *q , THD_dfvec3 *xyzdel )
       t32 = t13*t13;
 
       t34 = (-t19-3.0*t24+t27+3.0*t30)*t32 ;
+#if 0
+      t34 = cbrt(t34) ;
+#else
            if( t34 > 0.0 ) t34 =   pow(  t34 , 0.333333333333333 ) ;
       else if( t34 < 0.0 ) t34 = - pow( -t34 , 0.333333333333333 ) ;
       else                 t34 = 0.0 ;
+#endif
 
       if( t13 == 0.0 ) return shr ;
 
@@ -530,6 +535,8 @@ MCW_3shear rot_to_shear( int ax1 , double th1 ,
 
    /* check if this is a duplicate call */
 
+   ZZME(p) ;
+
    if( ax1 == old_ax1  &&  ax2 == old_ax2  &&  ax3 == old_ax3  && dcode == old_dcode &&
        th1 == old_th1  &&  th2 == old_th2  &&  th3 == old_th3  &&
        dx  == old_dx   &&  dy  == old_dy   &&  dz  == old_dz   &&
@@ -551,6 +558,7 @@ MCW_3shear rot_to_shear( int ax1 , double th1 ,
       if( top < q.mat[1][1] ){ top = q.mat[1][1] ; itop = 1 ; }
       if( top < q.mat[2][2] ){ top = q.mat[2][2] ; itop = 2 ; }
       switch(itop){
+         default:
          case 0: i1 = 1 ; i2 = 2 ; LOAD_DIAG_DMAT(p, 1,-1,-1) ; break ;
          case 1: i1 = 0 ; i2 = 2 ; LOAD_DIAG_DMAT(p,-1, 1,-1) ; break ;
          case 2: i1 = 0 ; i2 = 1 ; LOAD_DIAG_DMAT(p,-1,-1, 1) ; break ;
@@ -640,8 +648,12 @@ MCW_3shear rot_to_shear_matvec( THD_dmat33 rmat , THD_dfvec3 tvec ,
    /* 13 Feb 2001: make sure it is orthogonal;
                    even slightly off produces bad shears */
 
-   p = DMAT_svdrot_old( rmat ) ;
+   p = DMAT_svdrot_newer( rmat ) ;
    q = TRANSPOSE_DMAT( p ) ;
+#if 0
+   DUMP_MAT33("rmat",rmat) ;
+   DUMP_MAT33("q   ",q   ) ;
+#endif
 #endif
 
    /* if trace too small, maybe we should flip a couple axes */
@@ -651,6 +663,7 @@ MCW_3shear rot_to_shear_matvec( THD_dmat33 rmat , THD_dfvec3 tvec ,
       if( top < q.mat[1][1] ){ top = q.mat[1][1] ; itop = 1 ; }
       if( top < q.mat[2][2] ){ top = q.mat[2][2] ; itop = 2 ; }
       switch(itop){
+         default:
          case 0: i1 = 1 ; i2 = 2 ; LOAD_DIAG_DMAT(p, 1,-1,-1) ; break ;
          case 1: i1 = 0 ; i2 = 2 ; LOAD_DIAG_DMAT(p,-1, 1,-1) ; break ;
          case 2: i1 = 0 ; i2 = 1 ; LOAD_DIAG_DMAT(p,-1,-1, 1) ; break ;
@@ -776,18 +789,18 @@ THD_udv33 DMAT_svd( THD_dmat33 inmat )
    /* load matrix from inmat into simple array */
 
    for( jj=0 ; jj < 3 ; jj++ )
-      for( ii=0 ; ii < 3 ; ii++ ) a[ii+3*jj] = inmat.mat[ii][jj] ;
+     for( ii=0 ; ii < 3 ; ii++ ) a[ii+3*jj] = inmat.mat[ii][jj] ;
 
    svd_double( 3,3 , a , e,u,v ) ;
 
    /* load eigenvectors and eigenvalues into output */
 
    for( jj=0 ; jj < 3 ; jj++ ){
-      out.d.xyz[jj] = e[jj] ;                 /* eigenvalues */
-      for( ii=0 ; ii < 3 ; ii++ ){
-         out.u.mat[ii][jj] = u[ii+3*jj] ;     /* eigenvectors */
-         out.v.mat[ii][jj] = v[ii+3*jj] ;     /* eigenvectors */
-      }
+     out.d.xyz[jj] = e[jj] ;                /* eigenvalues */
+     for( ii=0 ; ii < 3 ; ii++ ){
+       out.u.mat[ii][jj] = u[ii+3*jj] ;     /* eigenvectors */
+       out.v.mat[ii][jj] = v[ii+3*jj] ;     /* eigenvectors */
+     }
    }
 
    return out ;
@@ -854,7 +867,8 @@ THD_dmat33 DMAT_svdrot_old( THD_dmat33 inmat )
 }
 
 /*---------------------------------------------------------------------*/
-/*  Alternative calculation to above, computing U and V directly.
+/*  Alternative calculation to above, computing U and V directly,
+    as eigenmatrices from symmetric eigenvalue problems.
     This avoids a problem that arises when inmat is singular.
 -----------------------------------------------------------------------*/
 
@@ -876,7 +890,7 @@ THD_dmat33 DMAT_svdrot_new( THD_dmat33 inmat )
 
 /*---------------------------------------------------------------------*/
 /*  Yet another alternative calculation to above, computing U and V
-    even more directly.  [22 Oct 2004]
+    even more directly, from the SVD itself.  [22 Oct 2004]
 -----------------------------------------------------------------------*/
 
 THD_dmat33 DMAT_svdrot_newer( THD_dmat33 inmat )
@@ -913,6 +927,7 @@ THD_dvecmat DLSQ_rot_trans( int n, THD_dfvec3 *xx, THD_dfvec3 *yy, double *ww )
 
    /*- check for bad inputs -*/
 
+   ZZME(out) ;
    if( n < 3 || xx == NULL || yy == NULL ){ LOAD_ZERO_DMAT(out.mm); return out; }
 
    /*- make a fake weight array, if none supplied -*/
@@ -996,6 +1011,7 @@ THD_dvecmat DLSQ_affine( int n, THD_dfvec3 *xx, THD_dfvec3 *yy )
 
    /*- check for bad inputs -*/
 
+   ZZME(out) ;
    if( n < 3 || xx == NULL || yy == NULL ){ LOAD_ZERO_DMAT(out.mm); return out; }
 
    /*- compute centroids of each set of vectors -*/
@@ -1051,6 +1067,7 @@ THD_dvecmat DLSQ_rotscl( int n, THD_dfvec3 *xx, THD_dfvec3 *yy , int ndim )
 
    /*- check for bad inputs -*/
 
+   ZZME(out) ;
    if( n < 3 || xx == NULL || yy == NULL ){ LOAD_ZERO_DMAT(out.mm); return out; }
 
    /*- compute centroids of each set of vectors -*/
@@ -1085,8 +1102,8 @@ THD_dvecmat DLSQ_rotscl( int n, THD_dfvec3 *xx, THD_dfvec3 *yy , int ndim )
    wsum = DMAT_DET(aa); wsum = fabs(wsum);
    switch( ndim ){
      default:
-     case 3: wsum = pow(wsum,0.333333333333) ; break ;  /* 3D rotation */
-     case 2: wsum = sqrt(wsum)               ; break ;  /* 2D rotation */
+     case 3: wsum = cbrt(wsum) ; break ;  /* 3D rotation */
+     case 2: wsum = sqrt(wsum) ; break ;  /* 2D rotation */
    }
    out.mm = DMAT_SCALAR( cc , wsum ) ;
 

@@ -429,7 +429,7 @@ typedef struct {
    Widget opt_menu , opt_cbut ;
    Widget opt_scale_menu    , opt_scale_cbut  ,
           opt_scale_down_pb , opt_scale_up_pb , opt_scale_choose_pb ,
-          opt_scale_auto_pb ;
+          opt_scale_auto_pb , opt_scale_AUTO_pb;
    Widget opt_mat_menu      , opt_mat_cbut ,
           opt_mat_down_pb   , opt_mat_up_pb   ;
    Widget opt_grid_menu     , opt_grid_cbut   ,
@@ -505,6 +505,7 @@ typedef struct {
 
    float tmed[MAT_MAX][MAT_MAX] , tmad[MAT_MAX][MAT_MAX] ;    /* 08 Mar 2001 */
    int   sbot[MAT_MAX][MAT_MAX] , stop[MAT_MAX][MAT_MAX] ;    /* 19 Mar 2004 */
+   float tbmv[MAT_MAX][MAT_MAX] ;                             /* 16 Oct 2009 */
 
    XtIntervalId timer_id ;                          /* 04 Dec 2003 */
    int          timer_func, timer_param, timer_delay ;

@@ -94,8 +94,8 @@ void THD_linear_detrend_complex( int npt , complex *cx )  /* 05 Mar 2007 */
 
 void get_quadratic_trend( int npt, float *xx, float *f0, float *f1, float *f2 )
 {
-   double  x0,x1,x2 , N=npt ;
-   int ii ;
+   register double x0,x1,x2 ; double N=npt ;
+   register int ii ;
 
    if( npt < 3 || xx == NULL || f0 == NULL || f1 == NULL || f2 == NULL ) return;
 
@@ -303,6 +303,10 @@ void THD_generic_detrend_LSQ( int npt, float *far ,
    xmid = 0.5*(npt-1) ; xfac = 1.0 / xmid ;
    for( jj=0 ; jj <= polort ; jj++ ){
      ref[jj] = (float *) malloc( sizeof(float) * npt ) ;
+#if 1  /* the new way */
+     for( ii=0 ; ii < npt ; ii++ )
+       ref[jj][ii] = (float)Plegendre(xfac*(ii-xmid),jj) ;
+#else  /* the olden way */
      switch( jj ){
        case 0:
          for( ii=0 ; ii < npt ; ii++ ) ref[jj][ii] = 1.0 ;
@@ -326,10 +330,12 @@ void THD_generic_detrend_LSQ( int npt, float *far ,
 
        default:
          for( ii=0 ; ii < npt ; ii++ ){
-           val = xfac*(ii-xmid) ; ref[jj][ii] = pow(val,(double)(jj)) ;
+           val = xfac*(ii-xmid) ;
+           ref[jj][ii] = pow(val,(double)(jj)) ;
          }
        break ;
      }
+#endif
    }
    for( jj=0 ; jj < nort ; jj++ )   /* user supplied refs */
      ref[polort+1+jj] = ort[jj] ;
@@ -342,7 +348,7 @@ void THD_generic_detrend_LSQ( int npt, float *far ,
        for( jj=0 ; jj < nref ; jj++ ) val -= qfit[jj] * ref[jj][ii] ;
        far[ii] = val ;
      }
-     if( fit != NULL ) memcpy(fit,qfit,sizeof(float)*nref) ;
+     if( fit != NULL ){ for( ii=0 ; ii < nref ; ii++ ) fit[ii] = qfit[ii] ; }
      free(qfit) ;
    } else {
      ERROR_message("THD_generic_detrend_LSQ: fit fails - no detrending!") ;
@@ -431,7 +437,7 @@ void THD_generic_detrend_L1( int npt, float *far ,
        for( jj=0 ; jj < nref ; jj++ ) val -= qfit[jj] * ref[jj][ii] ;
        far[ii] = val ;
      }
-     if( fit != NULL ) memcpy(fit,qfit,sizeof(float)*nref) ;
+     if( fit != NULL ){ for( ii=0 ; ii < nref ; ii++ ) fit[ii] = qfit[ii] ; }
    } else {
      ERROR_message("THD_generic_detrend_L1: fit fails - no detrending!") ;
      if( fit != NULL ) memset(fit,0,sizeof(float)*nref) ;
@@ -533,7 +539,7 @@ ENTRY("THD_build_polyref") ;
    for( jj=0 ; jj < nref ; jj++ ){
      ref[jj] = (float *) malloc( sizeof(float) * nvals ) ;
      for( kk=0 ; kk < nvals ; kk++ ){
-       x = fac * kk - 1.0 ; ref[jj][kk] = Plegendre( x , jj ) ;
+       x = fac * kk - 1.0 ; ref[jj][kk] = (float)Plegendre( x , jj ) ;
      }
    }
 
@@ -632,8 +638,7 @@ ENTRY("THD_time_fit_dataset") ;
      ADDTO_IMARR(imar,qim) ;
    }
    qim = mri_new_conforming( DSET_BRICK(dset,0) , MRI_float ) ;
-   var = MRI_FLOAT_PTR(qim) ;
-   ADDTO_IMARR(imar,qim) ;
+   var = MRI_FLOAT_PTR(qim) ; ADDTO_IMARR(imar,qim) ;
 
    nvox = DSET_NVOX(dset) ; nval = DSET_NVALS(dset) ;
    far  = (float *)malloc(sizeof(float)*nval) ;

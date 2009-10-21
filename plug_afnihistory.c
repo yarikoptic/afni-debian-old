@@ -61,14 +61,14 @@ DEFINE_PLUGIN_PROTOTYPE
 
 PLUGIN_interface * PLUGIN_init( int ncall )
 {
-   if( ncall > 0 ) return NULL ;  /* at most one interface */
+   if( ncall > 0 ) return( NULL );  /* at most one interface */
 
    /*-- check if we can access the defined history file --*/
 
    histusername = getenv("AFNI_HISTORY_USERNAME") ;
    if( !THD_filename_pure(histusername) ){
      /* INFO_message("Invalid AFNI_HISTORY_USERNAME") ; */
-     return NULL ;
+     return( NULL );
    }
 
    if( !AFNI_yesenv("AFNI_HISTORY_DONTSAVE") ){
@@ -83,7 +83,6 @@ PLUGIN_interface * PLUGIN_init( int ncall )
    }
 
    /*-- at this point, histusername and histfilename are setup, so proceed --*/
-
    plint = PLUTO_new_interface( "++AFNI_History++" , NULL , NULL ,
                                 PLUGIN_CALL_IMMEDIATELY , AHIST_main ) ;
 
@@ -91,7 +90,7 @@ PLUGIN_interface * PLUGIN_init( int ncall )
 
    PLUTO_set_butcolor( plint , "lightblue" ) ;
 
-   return plint ;
+   return( plint );
 }
 
 /***************************************************************************
@@ -322,7 +321,7 @@ static void AHIST_make_widgets(void)
       in case it ever becomes useful again to know the pixel dimens */
 #if 0
    { char cbuf[TWIDTH+8] ; int ii ;
-     XmFontList xflist ;
+     XmFontList xflist=(XmFontLlist)NULL ;
 
      for( ii=0; ii < TWIDTH+3; ii++ ) cbuf[ii] = 'x' ; cbuf[ii] = '\0' ;
      xstr = XmStringCreateLtoR( cbuf , XmFONTLIST_DEFAULT_TAG ) ;

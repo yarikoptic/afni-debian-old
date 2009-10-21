@@ -294,6 +294,7 @@ static char *  ppmto_png_filter   = NULL ;  /* 07 Dec 2006 */
  } while(0)
 
 /*---- setup programs as filters: ppm stdin to some output file ----*/
+
 void ISQ_setup_ppmto_filters(void)
 {
    char *pg , *pg2 , *str , *eee ;
@@ -670,6 +671,11 @@ static char * ISQ_arrow_hint[NARROW] = {
 
 /*........................................................................*/
 
+static int ISQ_anim_dup = 0 ;
+void ISQ_set_anim_dup( int ii ){ ISQ_anim_dup = ii ; }
+
+/*........................................................................*/
+
 #define DEFAULT_MINFRAC 0.02
 #define DEFAULT_MAXFRAC 0.90
 
@@ -684,10 +690,10 @@ MCW_imseq * open_MCW_imseq( MCW_DC *dc ,
                             get_ptr get_image , XtPointer aux )
 {
    MCW_imseq        *newseq ;
-   MCW_imseq_status *imstatus ;
+   MCW_imseq_status *imstatus=NULL ;
    int ii , xwide , yhigh , one_image ;
    float fac ;
-   MRI_IMAGE *tim ;
+   MRI_IMAGE *tim=NULL ;
    float minfrac=DEFAULT_MINFRAC ; char *eee ; /* 27 Feb 2001 */
    Widget wtemp ;                              /* 11 Mar 2002 */
    float maxfrac=DEFAULT_MAXFRAC ;             /* 13 Jun 2003 */
@@ -733,6 +739,7 @@ ENTRY("open_MCW_imseq") ;
    }
 
    newseq = (MCW_imseq *) XtMalloc( sizeof(MCW_imseq) ) ;  /* new structure */
+   memset(newseq, 0, sizeof(MCW_imseq));
 
    newseq->dc     = dc ;               /* copy input pointers */
    newseq->getim  = get_image ;
@@ -804,8 +811,8 @@ if( PRINT_TRACING ){
    newseq->bot    = 0 ;
    newseq->top    = dc->ncol_im-1 ;
 
-   newseq->clbot  = newseq->cltop  = 0.0 ;     /* 29 Jul 2001 */
-   newseq->barbot = newseq->bartop = 0.0 ;
+   newseq->clbot  = newseq->cltop  = 0.0f ;     /* 29 Jul 2001 */
+   newseq->barbot = newseq->bartop = 0.0f ;
 
    strcpy( newseq->im_label , "hi bob" ) ;
    newseq->scl_label[0] = '\0' ;
@@ -1382,27 +1389,39 @@ if( PRINT_TRACING ){
 
      MCW_register_help( newseq->crop_drag_pb ,
                            "To crop the image window:\n"
-                           "- Click on this 'crop' button;\n"
-                           "- Then click and hold down a\n"
-                           "   mouse Button at a corner\n"
-                           "   of the rectangle to crop;\n"
-                           "- Then drag a rectangle to crop\n"
-                           "   and release the mouse button\n"
+                           "- Click on the 'crop' button;\n"
+                           "- Then click and hold down mouse Button #1\n"
+                           "   at a corner of the rectangle to crop;\n"
+                           "- Then drag a rectangle to set the crop size,\n"
+                           "   and then release the mouse button.\n"
                            "\n"
-                           "To uncrop (back to original size):\n"
-                           "- Click on this 'crop' button\n"
-                           "- Click on it again without cropping\n"
+                           "To uncrop (back to original image size):\n"
+                           "- Click on the 'crop' button;\n"
+                           "- Click on it again without cropping.\n"
                            "\n"
-                           "Another way to crop without using\n"
-                           "this 'crop' button is to drag the\n"
-                           "crop rectangle using Shift+Button #2\n"
+                           "* Another way to crop without using the 'crop'\n"
+                           "  button is to drag the crop rectangle using\n"
+                           "  Shift+Button #2.\n"
                            "\n"
-                           "Another way to uncrop is to click\n"
-                           "Shift+Button #2 in the image without\n"
-                           "any dragging\n"
+                           "* Another way to uncrop is to click Shift+Button #2\n"
+                           "  in the image without any dragging.\n"
+                           "\n"
+                           "* Button #3 (right-click) on the 'crop' pushbutton\n"
+                           "  will popup a menu that lets you set the crop\n"
+                           "  rectangle size exactly.\n"
+                           "\n"
+                           "* Scroll the crop region using Shift+keyboard arrows.\n"
+                           "* Resize the crop region using Ctrl+keyboard arrows."
                        ) ;
-     MCW_register_hint( newseq->crop_drag_pb ,
-                           "Crop image" );
+     MCW_register_hint( newseq->crop_drag_pb , "Crop image" );
+
+     XtInsertEventHandler( newseq->crop_drag_pb ,
+                           ButtonPressMask ,    /* button presses */
+                           FALSE ,              /* nonmaskable events? */
+                           ISQ_butcrop_EV ,     /* handler */
+                           (XtPointer) newseq , /* client data */
+                           XtListTail           /* last in queue */
+                          ) ;
 
      wtemp = newseq->crop_drag_pb ;
 
@@ -1720,6 +1739,8 @@ STATUS("creation: widgets created") ;
 
      newseq->timer_id = 0 ;  /* 03 Dec 2003 */
 
+     newseq->render_mode = RENDER_DEFAULT ;  /* 0 */
+
      /*-- labels stuff --*/
 
      iii = 0 ;
@@ -1775,7 +1796,7 @@ STATUS("creation: widgets created") ;
                         "Tick Div." ,
                         MCW_AV_optmenu ,      /* option menu style */
                         0 ,                   /* first option */
-                        20 ,                  /* last option */
+                        21 ,                  /* last option */
                         0 ,                   /* initial selection */
                         MCW_AV_readtext ,     /* ignored but needed */
                         0 ,                   /* ditto */
@@ -1804,6 +1825,50 @@ STATUS("creation: widgets created") ;
    AVOPT_columnize(newseq->wbar_ticsiz_av,2) ;
    MCW_reghint_children( newseq->wbar_ticsiz_av->wrowcol ,
                          "Size of tick marks around image edges" ) ;
+
+   /** 27 Oct 2008: menu item to control checkerboarding */
+
+   (void) XtVaCreateManagedWidget( "menu",
+                                   xmSeparatorWidgetClass, newseq->wbar_menu,
+                                     XmNseparatorType , XmSINGLE_LINE ,
+                                   NULL ) ;
+   newseq->wbar_checkbrd_av =
+      new_MCW_arrowval( newseq->wbar_menu ,
+                        "CheckBrd#" ,
+                        MCW_AV_optmenu ,      /* option menu style */
+                        0 ,                   /* first option */
+                        43 ,                  /* last option */
+                        0 ,                   /* initial selection */
+                        MCW_AV_readtext ,     /* ignored but needed */
+                        0 ,                   /* ditto */
+                        ISQ_wbar_label_CB ,   /* callback when changed */
+                        (XtPointer)newseq ,   /* data for above */
+                        NULL                , /* text creation routine */
+                        NULL                  /* data for above */
+                      ) ;
+   AVOPT_columnize(newseq->wbar_checkbrd_av,4) ;
+   MCW_reghint_children( newseq->wbar_checkbrd_av->wrowcol ,
+                         "Size of checks in the checkerboard display [# key]" );
+
+   /** 10 Feb 2009: menu item to control animation duplicates **/
+
+   newseq->wbar_animdup_av =
+      new_MCW_arrowval( newseq->wbar_menu ,
+                        "Anim_Dup " ,
+                        MCW_AV_optmenu ,      /* option menu style */
+                        0 ,                   /* first option */
+                        19 ,                  /* last option */
+                        ISQ_anim_dup ,        /* initial selection */
+                        MCW_AV_readtext ,     /* ignored but needed */
+                        0 ,                   /* ditto */
+                        ISQ_wbar_label_CB ,   /* callback when changed */
+                        (XtPointer)newseq ,   /* data for above */
+                        NULL                , /* text creation routine */
+                        NULL                  /* data for above */
+                      ) ;
+   AVOPT_columnize(newseq->wbar_animdup_av,2) ;
+   MCW_reghint_children( newseq->wbar_animdup_av->wrowcol ,
+                         "Duplicate images for Save:aGif and Save:mpeg" ) ;
 
    newseq->top_clip = 0.0f ; /* 17 Sep 2007 */
    newseq->redo_clip = 0 ;
@@ -1843,7 +1908,7 @@ STATUS("creation: widgets created") ;
    if the image is a different size
 ------------------------------------------------------------------------*/
 
-void ISQ_reset_dimen( MCW_imseq * seq,  float new_width_mm, float new_height_mm )
+void ISQ_reset_dimen( MCW_imseq *seq,  float new_width_mm, float new_height_mm )
 {
    int xwide , yhigh , oldx,oldy ;
    float scale_x , scale_y ;
@@ -2007,6 +2072,19 @@ char * ISQ_opacity_label( int val ) /* 07 Mar 2001 */
 
 /*-----------------------------------------------------------------------*/
 
+int_triple ISQ_get_crosshairs( MCW_imseq *seq ) /* 27 Aug 2009 */
+{
+   int_triple xyn ; ISQ_cbs cbs ;
+
+   cbs.reason = isqCR_getxynim ;
+   cbs.xim = cbs.yim = cbs.nim = -666 ;  /* initialize to badness */
+   if( seq->status->send_CB != NULL ) SEND(seq,cbs) ;
+   xyn.i = cbs.xim ; xyn.j = cbs.yim ; xyn.k = cbs.nim ;
+   return xyn ;
+}
+
+/*-----------------------------------------------------------------------*/
+
 void ISQ_opacity_CB( MCW_arrowval *av , XtPointer cd ) /* 07 Mar 2001 */
 {
    MCW_imseq *seq = (MCW_imseq *) cd ;
@@ -2022,7 +2100,6 @@ void ISQ_opacity_CB( MCW_arrowval *av , XtPointer cd ) /* 07 Mar 2001 */
 }
 
 /*-----------------------------------------------------------------------*/
-
 /*! Callback for the zoom arrowval buttons */
 
 void ISQ_zoom_av_CB( MCW_arrowval *apv , XtPointer cd ) /* 11 Mar 2002 */
@@ -2030,28 +2107,25 @@ void ISQ_zoom_av_CB( MCW_arrowval *apv , XtPointer cd ) /* 11 Mar 2002 */
    MCW_imseq    *seq = (MCW_imseq *) cd ;
    MCW_arrowval *av  = seq->zoom_val_av ;
    XmString xstr ;
-   int zlev=av->ival , zold=seq->zoom_fac ;
+   int zlev=av->ival ,       /* new zoom level */
+       zold=seq->zoom_fac ;  /* old zoom level */
 
 ENTRY("ISQ_zoom_av_CB") ;
 
    if( !ISQ_REALZ(seq) || av != apv ) EXRETURN ;  /* bad */
 
+   /* don't allow zoom > 1 if montage-izing */
+
    if( seq->mont_nx > 1 || seq->mont_ny > 1 ){   /* 18 Nov 2003 */
-#if 0
-fprintf(stderr,"zoom: montage nx=%d ny=%d\n",seq->mont_nx,seq->mont_ny) ;
-#endif
      AV_assign_ival(av,ZOOM_BOT) ; seq->zoom_fac = 1 ;
      XBell(seq->dc->display,100); EXRETURN;
    }
    if( seq->dialog != NULL && seq->dialog_starter == NBUT_MONT ){
-#if 0
-fprintf(stderr,"zoom: dialog_starter = %d\n",seq->dialog_starter) ;
-#endif
      AV_assign_ival(av,ZOOM_BOT) ; seq->zoom_fac = 1 ;
      XBell(seq->dc->display,100); EXRETURN;
    }
 
-   /*-- change zoom factor --*/
+   /*-- change zoom factor (and label) --*/
 
    xstr = XmStringCreateLtoR( (zlev==1)?"z":"Z" , XmFONTLIST_DEFAULT_TAG );
    XtVaSetValues( av->wlabel , XmNlabelString , xstr , NULL ) ;
@@ -2059,11 +2133,11 @@ fprintf(stderr,"zoom: dialog_starter = %d\n",seq->dialog_starter) ;
 
    seq->zoom_fac = zlev ;   /* change recorded zoom factor */
    if( zlev == 1 ){
-      seq->zoom_hor_off = seq->zoom_ver_off = 0.0 ; /* no offsets */
+      seq->zoom_hor_off = seq->zoom_ver_off = 0.0 ; /* no image offsets */
    } else {
-      float mh = (zlev-1.001)/zlev ;        /* max offset allowed */
-      float dh = 0.5*(1.0/zold-1.0/zlev) ;  /* change in offset to */
-                                            /* keep current center */
+      float mh = (zlev-1.001f)/zlev ;          /* max offset allowed */
+      float dh = 0.5f*(1.0f/zold-1.0f/zlev) ;  /* change in offset to */
+                                               /* keep current center */
       seq->zoom_hor_off += dh ;
       seq->zoom_ver_off += dh ;
            if( seq->zoom_hor_off > mh  ) seq->zoom_hor_off = mh  ;
@@ -2108,7 +2182,7 @@ fprintf(stderr,"zoom: dialog_starter = %d\n",seq->dialog_starter) ;
 
 void ISQ_zoom_pb_CB( Widget w , XtPointer client_data , XtPointer call_data )
 {
-   MCW_imseq * seq = (MCW_imseq *) client_data ;
+   MCW_imseq *seq = (MCW_imseq *) client_data ;
 
 ENTRY("ISQ_zoom_pb_CB") ;
 
@@ -2147,7 +2221,7 @@ ENTRY("ISQ_actually_pan") ;
 
    if( !ISQ_REALZ(seq) || seq->zoom_fac == 1 || seq->zoom_xim == NULL ) EXRETURN;
 
-   mh = (seq->zoom_fac-1.001)/seq->zoom_fac ;  /* max offset    */
+   mh = (seq->zoom_fac-1.001f)/seq->zoom_fac ; /* max offset    */
    dh = 0.020/seq->zoom_fac ;                  /* delta offset   */
    hh=seq->zoom_hor_off ; hhold=hh ;           /* current offsets */
    vv=seq->zoom_ver_off ; vvold=vv ;
@@ -2173,7 +2247,7 @@ ENTRY("ISQ_actually_pan") ;
 
 void ISQ_crop_pb_CB( Widget w , XtPointer client_data , XtPointer call_data )
 {
-   MCW_imseq * seq = (MCW_imseq *) client_data ;
+   MCW_imseq *seq = (MCW_imseq *) client_data ;
 
 ENTRY("ISQ_crop_pb_CB") ;
 
@@ -2196,6 +2270,197 @@ ENTRY("ISQ_crop_pb_CB") ;
    }
 
    EXRETURN ;
+}
+
+/*-----------------------------------------------------------------------*/
+
+void ISQ_adjust_crop( MCW_imseq *seq ,
+                      int dxa , int dxb , int dya , int dyb )
+{
+   int new_xa, new_xb, new_ya, new_yb , ii,jj ;
+
+ENTRY("ISQ_adjust_crop") ;
+
+   if( !ISQ_REALZ(seq) || seq->cropit == 0 ) EXRETURN ;
+
+   if( dxa==0 && dxb==0 && dya==0 && dyb==0 ){  /* recenter */
+     int_triple xyn ; int xcen,ycen , xwid,ywid ;
+
+     /* find current location of crosshairs (if any) */
+
+     xyn = ISQ_get_crosshairs( seq ) ; xcen = xyn.i ; ycen = xyn.j ;
+     if( xcen < 0 || ycen < 0 ) EXRETURN ; /* check for bad return */
+
+     xwid = seq->crop_xb - seq->crop_xa ;  /* crop region sizes */
+     ywid = seq->crop_yb - seq->crop_ya ;
+
+     /* compute new left-upper corner */
+
+     new_xa = xcen - xwid/2 ; if( new_xa < 0 ) new_xa = 0 ;
+     new_ya = ycen - ywid/2 ; if( new_ya < 0 ) new_ya = 0 ;
+
+     /* compute new right-lower corner */
+
+     new_xb = new_xa + xwid ;
+     if( new_xb >= seq->crop_nxorg ){
+       new_xb = seq->crop_nxorg - 1 ; new_xa = new_xb - xwid ;
+     }
+
+     new_yb = new_ya + ywid ;
+     if( new_yb >= seq->crop_nyorg ){
+       new_yb = seq->crop_nyorg - 1 ; new_ya = new_yb - ywid ;
+     }
+
+   } else {  /* change one or more crop window coordinate manually */
+
+     /* get current corner coords */
+
+     new_xa = seq->crop_xa ; new_xb = seq->crop_xb ;
+     new_ya = seq->crop_ya ; new_yb = seq->crop_yb ;
+
+     /* 27 Aug 2009: allow for flipped image,
+                     to give the user a uniform experience */
+
+     ISQ_unflipxy( seq , &new_xa , &new_ya ) ; /* flip to screen coords */
+     ISQ_unflipxy( seq , &new_xb , &new_yb ) ;
+
+     /* make sure (xa,ya) is before (xb,yb) */
+
+     ii = MIN(new_xa,new_xb); jj = MAX(new_xa,new_xb); new_xa = ii; new_xb = jj;
+     ii = MIN(new_ya,new_yb); jj = MAX(new_ya,new_yb); new_ya = ii; new_yb = jj;
+
+     new_xa += dxa ; new_xb += dxb ;  /* NOW adjust crop window coords */
+     new_ya += dya ; new_yb += dyb ;  /*   in screen coords, not image */
+
+     ISQ_flipxy( seq , &new_xa , &new_ya ) ; /* flip back to image coords */
+     ISQ_flipxy( seq , &new_xb , &new_yb ) ;
+
+     /* make sure (xa,ya) is before (xb,yb) */
+
+     ii = MIN(new_xa,new_xb); jj = MAX(new_xa,new_xb); new_xa = ii; new_xb = jj;
+     ii = MIN(new_ya,new_yb); jj = MAX(new_ya,new_yb); new_ya = ii; new_yb = jj;
+
+   } /* new_?? variables now contain image coords of new crop region */
+
+   /* check for bad-ositiness */
+
+   if( new_xa < 0 || new_ya < 0  ) EXRETURN ;  /* all these are bad */
+   if( new_xa+MINCROP >= new_xb  ) EXRETURN ;
+   if( new_ya+MINCROP >= new_yb  ) EXRETURN ;
+   if( new_xb >= seq->crop_nxorg ) EXRETURN ;
+   if( new_yb >= seq->crop_nyorg ) EXRETURN ;
+
+   /* now apply the new crop window coordinates */
+
+   seq->crop_xa = new_xa ; seq->crop_xb = new_xb ;
+   seq->crop_ya = new_ya ; seq->crop_yb = new_yb ;
+   ISQ_redisplay( seq , -1 , isqDR_display ) ;
+   EXRETURN ;
+}
+/*---------------------------------------------------------------------*/
+
+void ISQ_set_crop_hint( MCW_imseq *seq )
+{
+   if( !ISQ_REALZ(seq) ) return ;
+
+   if( !seq->cropit ){
+     MCW_register_hint( seq->crop_drag_pb , "Crop image" ) ;
+   } else {
+     static char str[256] ;
+     sprintf(str,"Crop image: %d..%d[w=%d] X %d..%d[h=%d]" ,
+             seq->crop_xa , seq->crop_xb , seq->crop_xb-seq->crop_xa+1 ,
+             seq->crop_ya , seq->crop_yb , seq->crop_yb-seq->crop_ya+1  ) ;
+     MCW_register_hint( seq->crop_drag_pb , str ) ;
+   }
+
+   return ;
+}
+
+/*---------------------------------------------------------------------
+   Handle the user's action on the Button 3 popup on the crop button
+-----------------------------------------------------------------------*/
+
+void ISQ_butcrop_choice_CB( Widget w , XtPointer client_data ,
+                                       MCW_choose_cbs *cbs   )
+{
+   MCW_imseq *seq = (MCW_imseq *)client_data ;
+   float *vec = (float *)(cbs->cval) ;
+   int ww , hh , new_xa , new_xb , new_ya , new_yb , oww,ohh ;
+
+   if( !ISQ_REALZ(seq) || vec == NULL ) return ;
+
+   ww = (int)vec[0] ; hh = (int)vec[1] ;
+
+   if( seq->cropit && seq->crop_nxorg > 0 ){
+     oww = seq->crop_nxorg ; ohh = seq->crop_nyorg ;
+   } else {
+     oww = seq->horig ; ohh = seq->vorig ;
+   }
+
+   if( ww < MINCROP || hh < MINCROP ) return ;
+   if( ww >= oww    || hh >= ohh    ) return ;
+
+   new_xa = (oww - ww) / 2 ; new_xb = new_xa + ww-1 ;
+   new_ya = (ohh - hh) / 2 ; new_yb = new_ya + hh-1 ;
+
+   if( new_xa         <  0      ) return ;
+   if( new_ya         <  0      ) return ;
+   if( new_xa+MINCROP >= new_xb ) return ;
+   if( new_ya+MINCROP >= new_yb ) return ;
+   if( new_xb         >= oww    ) return ;
+   if( new_yb         >= ohh    ) return ;
+
+   seq->crop_xa = new_xa ; seq->crop_xb = new_xb ;
+   seq->crop_ya = new_ya ; seq->crop_yb = new_yb ;
+   seq->cropit  = 1 ;
+   ISQ_redisplay( seq , -1 , isqDR_display ) ;
+   return ;
+}
+
+/*--------------------------------------------------------------------
+  make Button 3 popup for Crop button
+----------------------------------------------------------------------*/
+
+void ISQ_butcrop_EV( Widget w , XtPointer client_data ,
+                     XEvent *ev , Boolean *continue_to_dispatch )
+{
+   MCW_imseq *seq = (MCW_imseq *)client_data ;
+
+   if( !ISQ_REALZ(seq) ) return ;
+
+   ISQ_timer_stop(seq) ;
+
+   switch( ev->type ){
+      case ButtonPress:{
+         XButtonEvent *event = (XButtonEvent *) ev ;
+         if( event->button == Button3 ){
+           char *lvec[2] = { "Width " , "Height" } ;
+           float fvec[2] ; int oww,ohh ;
+           if( seq->cropit && seq->crop_nxorg > 0 ){
+             oww = seq->crop_nxorg ; ohh = seq->crop_nyorg ;
+           } else {
+             oww = seq->horig ; ohh = seq->vorig ;
+           }
+           fvec[0] = oww/2 ; fvec[1] = ohh/2 ;
+           if( oww > MINCROP && ohh > MINCROP ){
+             MCW_choose_vector(
+                seq->crop_drag_pb ,
+                "--------------------------------------------\n"
+                "Choose width and height of image crop window\n"
+                "    (minimum allowed size is 9 pixels)\n"
+                "--------------------------------------------"  ,
+                2 , lvec , fvec , ISQ_butcrop_choice_CB , (XtPointer)seq ) ;
+           }
+
+         } else if( event->button == Button2 ){
+            XBell(XtDisplay(w),100) ;
+            MCW_popup_message( w, " \n Ooch! \n ", MCW_USER_KILL );
+            /** AFNI_speak( "Ouch!" , 0 ) ; **/
+         }
+      }
+      break ;
+   }
+   return ;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -2353,9 +2618,7 @@ ENTRY("ISQ_overlay") ;
       /* now scale gs values */
       bb = (MaxGain - MinGain)/(maxgs-mings);
       for( ii=0 ; ii < npix ; ii++ ){
-         if( gs[ii] ){
-            gs[ii] =  bb * (gs[ii]-mings)+MinGain;
-         }  
+         if( gs[ii] ) gs[ii] =  bb * (gs[ii]-mings)+MinGain;
       }
       for( jj=ii=0 ; ii < npix ; ii++,jj+=3 ){
          if( gs[ii] ){ /* Colors will change here, not just a brightness
@@ -2364,10 +2627,10 @@ ENTRY("ISQ_overlay") ;
                bb = (gs[ii])*orr[jj  ]  ;  /* mix colors */
                if (bb > 255) our[jj  ] = 255;
                else our[jj  ] = (byte)bb;
-               bb = (gs[ii])*orr[jj+1]  ;  
+               bb = (gs[ii])*orr[jj+1]  ;
                if (bb > 255) our[jj+1] = 255;
                else our[jj+1] = (byte)bb;
-               bb = (gs[ii])*orr[jj+2]  ; 
+               bb = (gs[ii])*orr[jj+2]  ;
                if (bb > 255) our[jj+2] = 255;
                else our[jj+2] = (byte)bb;
          }
@@ -2384,11 +2647,11 @@ ENTRY("ISQ_overlay") ;
    Make a color bar "given" XImage
 -------------------------------------------------------------------------*/
 
-void ISQ_make_bar( MCW_imseq * seq )
+void ISQ_make_bar( MCW_imseq *seq )
 {
-   MRI_IMAGE * im ;
+   MRI_IMAGE *im ;
    int iy , ny ;
-   short * ar ;
+   short *ar ;
 
 ENTRY("ISQ_make_bar") ;
 
@@ -2458,25 +2721,28 @@ ENTRY("ISQ_make_image") ;
    if( im == NULL ){
       float new_width_mm , new_height_mm ;
 
-      tim = ISQ_getimage( seq->im_nr , seq ) ;
+      switch( seq->render_mode ){
+        default:
+          tim = ISQ_getimage( seq->im_nr , seq ) ;
+          if( tim == NULL ) EXRETURN ;
+          seq->last_image_type = tim->kind ;
+          seq->set_orim = (seq->need_orim != 0) ;  /* 30 Dec 1998 */
+          seq->imim = im = ISQ_process_mri( seq->im_nr , seq , tim ) ;
+          KILL_1MRI(tim) ;
+          seq->set_orim = 0 ;
+          seq->barbot = seq->clbot ; /* 29 Jul 2001 */
+          seq->bartop = seq->cltop ;
+        break ;
 
-      if( tim == NULL ){
-#if 0
-         fprintf(stderr,
-                 "\n*** error in ISQ_make_image: NULL image returned for display! ***\n") ;
-#endif
-         EXRETURN ;
+        case RENDER_CHECK_UO:
+        case RENDER_CHECK_OU:
+          seq->set_orim = 0 ;
+          seq->imim = im = ISQ_getchecked( seq->im_nr ,seq ) ;
+          if( im == NULL ) EXRETURN ;
+          seq->last_image_type = im->kind ;
+          seq->barbot = seq->bartop = 0.0f ;
+        break ;
       }
-
-      seq->last_image_type = tim->kind ;
-
-      seq->set_orim = (seq->need_orim != 0) ;  /* 30 Dec 1998 */
-      seq->imim = im = ISQ_process_mri( seq->im_nr , seq , tim ) ;
-      KILL_1MRI(tim) ;
-      seq->set_orim = 0 ;
-
-      seq->barbot = seq->clbot ; /* 29 Jul 2001 */
-      seq->bartop = seq->cltop ;
       ISQ_set_barhint(seq,NULL) ;
 
       /* fix window dimensions if image size is different from before */
@@ -2696,7 +2962,7 @@ MRI_IMAGE * ISQ_process_mri( int nn , MCW_imseq *seq , MRI_IMAGE *im )
 
 ENTRY("ISQ_process_mri") ;
 
-   seq->clbot = seq->cltop = 0.0 ; /* 29 Jul 2001 */
+   seq->clbot = seq->cltop = 0.0f ; /* 29 Jul 2001 */
 
    if( ! ISQ_VALID(seq) || im == NULL ) RETURN(NULL) ;
 
@@ -2735,6 +3001,8 @@ ENTRY("ISQ_process_mri") ;
             for( ii=0 ; ii < npix ; ii++ ) lar[ii] = cxar[ii].i ;
          break ;
       }
+
+      (void)thd_floatscan( npix , lar ) ;  /* 24 Aug 2009 */
    }
 
    have_transform = (seq->transform0D_func != NULL ||
@@ -2958,6 +3226,7 @@ ENTRY("ISQ_process_mri") ;
          }
          break ;  /* end of groupscaling */
       }  /* end of scaling */
+      floatfix(seq->clbot) ; floatfix(seq->cltop) ; /* 24 Aug 2009 */
 
       /* 11/30/94 fix: mri_to_short_sclip has problems with short overflow */
 
@@ -3240,6 +3509,7 @@ void ISQ_saver_CB( Widget w , XtPointer cd , MCW_choose_cbs *cbs )
    char tsuf[8] ;                     /* 09 Dec 2002 */
    float dx,dy ;                      /* 08 Jun 2004 */
    int dbg ;                          /* 03 Sep 2004 */
+   int adup=1 , akk,aa ;              /* 09 Feb 2009 */
 
 #ifndef DONT_USE_METER
 #  define METER_MINCOUNT 20
@@ -3531,14 +3801,17 @@ ENTRY("ISQ_saver_CB") ;
      tsuf[1] = (lrand48()>>5)%26 + 'A' ;   /* for animation */
      tsuf[2] = (lrand48()>>5)%26 + 'A' ;   /* temp files    */
      tsuf[3] = '\0' ;
-     if( dbg ) fprintf(stderr,"IMSAVE: animation suffix='%s'\n",tsuf) ;
+     adup = (ISQ_anim_dup > 0) ? ISQ_anim_dup : AFNI_numenv("AFNI_ANIM_DUP") ;
+     if( adup <= 0 ) adup = 1 ; else if( adup > 99 ) adup = 99 ;
+     if( dbg ) fprintf(stderr,"IMSAVE: animation suffix='%s' adup=%d\n",tsuf,adup) ;
    } else {
      tsuf[0] = '\0' ;                      /* not used */
+     adup    = 1 ;
    }
 
 #ifdef USE_GIFF          /* create the fixed GIF colormap for animations */
    if( DO_AGIF(seq) ){
-     MRI_IMAGE *im = mri_colorsetup( 76 , 6,6,5 ); /* 76 grays + */
+     MRI_IMAGE *im = mri_colorsetup( 76 , 6,6,5 ); /* 76 gray levels + */
      remove( GIFF_MAPFILE ) ;                     /* 6*red X 6*green X 5*blue */
      mri_write_pnm( GIFF_MAPFILE , im ) ;
      mri_free( im ) ;
@@ -3547,7 +3820,7 @@ ENTRY("ISQ_saver_CB") ;
 
    /*---- loop thru, get images, save them ----*/
 
-   for( kf=seq->saver_from ; kf <= seq->saver_to ; kf++ ){
+   for( akk=0,kf=seq->saver_from ; kf <= seq->saver_to ; kf++ ){
 
       /* get the underlay image */
 
@@ -3623,6 +3896,7 @@ ENTRY("ISQ_saver_CB") ;
          }
 
 /* INFO_message("AFNI_IMAGE_SAVESQUARE = %s",getenv("AFNI_IMAGE_SAVESQUARE")); */
+
          if( AFNI_yesenv("AFNI_IMAGE_SAVESQUARE") ){   /* 08 Jun 2004 */
            flim->dx = seq->last_dx ; flim->dy = seq->last_dy ;
            if( dbg ) fprintf(stderr,"  square-ize aspect ratio\n") ;
@@ -3702,55 +3976,57 @@ ENTRY("ISQ_saver_CB") ;
 
          /* create the filter command into string 'filt' */
 
-         if( !DO_ANIM(seq) ){                          /* arbitrary filtering */
-           sprintf( fname, "%s%04d.%s", seq->saver_prefix, kf, ppmto_suffix[ff] ) ;
-           sprintf( filt , ppmto_filter[ff] , fname ) ;
-         } else if( DO_AGIF(seq) ){                    /* use the gif filter */
-           sprintf( fname, "%s%s.%05d.gif" , seq->saver_prefix,tsuf, kf) ;
+         for( aa=0 ; aa < adup ; aa++,akk++ ){ /* adup==1 if no animation */
+           if( !DO_ANIM(seq) ){                          /* arbitrary filtering */
+             sprintf( fname, "%s%04d.%s", seq->saver_prefix, kf, ppmto_suffix[ff] ) ;
+             sprintf( filt , ppmto_filter[ff] , fname ) ;
+           } else if( DO_AGIF(seq) ){                    /* use the gif filter */
+             sprintf( fname, "%s%s.%05d.gif" , seq->saver_prefix,tsuf, akk) ;
 #ifndef USE_GIFF
-           sprintf( filt , ppmto_gif_filter  , fname ) ;  /* free colormap */
+             sprintf( filt , ppmto_gif_filter  , fname ) ;  /* free colormap */
 #else
-           sprintf( filt , ppmto_giff_filter , fname ) ;  /* fixed colormap */
+             sprintf( filt , ppmto_giff_filter , fname ) ;  /* fixed colormap */
 #endif
-           if( agif_list == NULL ) INIT_SARR(agif_list) ;
-           ADDTO_SARR(agif_list,fname) ;
-         } else if( DO_MPEG(seq) ){                    /* use the ppm filter */
-           sprintf( fname, "%s%s.%05d.ppm" , seq->saver_prefix,tsuf, kf) ;
-           sprintf( filt , ppmto_ppm_filter , fname ) ;
-           if( agif_list == NULL ) INIT_SARR(agif_list) ;
-           ADDTO_SARR(agif_list,fname) ;
-         }
+             if( agif_list == NULL ) INIT_SARR(agif_list) ;
+             ADDTO_SARR(agif_list,fname) ;
+           } else if( DO_MPEG(seq) ){                    /* use the ppm filter */
+             sprintf( fname, "%s%s.%06d.ppm" , seq->saver_prefix,tsuf, akk) ;
+             sprintf( filt , ppmto_ppm_filter , fname ) ;
+             if( agif_list == NULL ) INIT_SARR(agif_list) ;
+             ADDTO_SARR(agif_list,fname) ;
+           }
 #ifndef CYGWIN
-         signal( SIGPIPE , SIG_IGN ) ;                 /* ignore broken pipe */
+           signal( SIGPIPE , SIG_IGN ) ;                 /* ignore broken pipe */
 #endif
-         if( dbg ) fprintf(stderr,"  piping image to '%s'\n",filt) ;
-         fp = popen( filt , "w" ) ;                    /* open pipe to filter */
-         if( fp == NULL ){
-           fprintf(stderr,"** Can't open output filter %s\n",filt) ;
-           continue ;  /* loop over files */
-         }
+           if( dbg ) fprintf(stderr,"  piping image to '%s'\n",filt) ;
+           fp = popen( filt , "w" ) ;                    /* open pipe to filter */
+           if( fp == NULL ){                             /* should not happen */
+             ERROR_message("Can't open output filter %s",filt) ;
+             break ;  /* out of loop over aa */
+           }
 
-         /* write RGB image to pipe as a PPM file */
+           /* write RGB image to pipe as a PPM file */
 
-         fprintf(fp,"P6\n%d %d\n255\n" , nx,ny ) ;
-         fwrite( MRI_RGB_PTR(flim), sizeof(byte), 3*npix, fp ) ;
-         pc = pclose(fp) ;
-         if( pc == -1 ) perror("Error in image output pipe") ;
-         if( dbg ) fprintf(stderr,"  pipe done\n") ;
+           fprintf(fp,"P6\n%d %d\n255\n" , nx,ny ) ;
+           fwrite( MRI_RGB_PTR(flim), sizeof(byte), 3*npix, fp ) ;
+           pc = pclose(fp) ;
+           if( pc == -1 ) perror("Error in image output pipe") ;
+           if( dbg ) fprintf(stderr,"  pipe done\n") ;
+         } /* loop over aa = image duplicates for animations */
 
          /* done with this image */
 
          mri_free(flim) ; flim = NULL ;
 
          /* 27 Jul 2001: if doing animation,
-                         and if at last image, then create result */
+                         and if at final image, then create result */
 
          if( kf == seq->saver_to && agif_list != NULL ){
 
             int af ;
 
             if( agif_list->num == 0 ){
-               fprintf(stderr,"** Can't save animation: no images in list!\n");
+               ERROR_message("Can't save animation: no images in list!");
                goto AnimationCleanup ;
             }
 
@@ -3758,16 +4034,15 @@ ENTRY("ISQ_saver_CB") ;
 
             if( DO_AGIF(seq) ){
                int alen ; char *alc , *alf , *oof ;
-
 #ifdef USE_GIFF
                remove( GIFF_MAPFILE ) ;   /* don't need this any longer */
 #endif
 
                for( alen=af=0 ; af < agif_list->num ; af++ ) /* size of all */
-                  alen += strlen( agif_list->ar[af] ) ;      /* filenames  */
+                  alen += strlen( agif_list->ar[af] ) ;      /* filename strings */
 
                alen += 3*agif_list->num + 32 ;               /* all filenames */
-               alc = AFMALL ( char, alen) ; alc[0] = '\0' ;          /* in one string */
+               alc = AFMALL ( char, alen) ; alc[0] = '\0' ;  /* in one string */
                for( alen=af=0 ; af < agif_list->num ; af++ ){
                  strcat(alc," ") ; strcat(alc,agif_list->ar[af]) ;
                }
@@ -3778,7 +4053,7 @@ ENTRY("ISQ_saver_CB") ;
                alen =  strlen(alc)+strlen(ppmto_agif_filter)+strlen(oof)+32 ;
                alf  = AFMALL( char, alen) ;
                sprintf(alf , ppmto_agif_filter, alc, oof ) ; /* command to run */
-               fprintf(stderr,"Running '%s'\n",alf) ;
+               INFO_message("Running '%s'\n",alf) ;
                system(alf) ;                                 /* so run it!    */
                free(alf) ; free(oof) ; free(alc) ;           /* free trash   */
             }
@@ -3787,7 +4062,7 @@ ENTRY("ISQ_saver_CB") ;
 
             else if( DO_MPEG(seq) ){ /* 02 Aug 2001 */
                int alen ; char *alf , *oof , *par , *frate ;
-               char *qscale , *pattrn ;
+               char *qscale , *pattrn ; int mpar=0 ;
                FILE *fpar ;
 
                /* write mpeg_encode parameter file */
@@ -3800,9 +4075,16 @@ ENTRY("ISQ_saver_CB") ;
                if( fpar == NULL ){ free(par) ; goto AnimationCleanup ; }
                oof = AFMALL( char, strlen(seq->saver_prefix)+32 ) ; /* output fname */
                sprintf(oof,"%smpg",seq->saver_prefix) ;
-               qscale=getenv("AFNI_MPEG_QSCALE") ;if(qscale==NULL) qscale="11"   ;
-               pattrn=getenv("AFNI_MPEG_PATTERN");if(pattrn==NULL) pattrn="IIIII";
-               frate =getenv("AFNI_MPEG_FRAMERATE");if(frate==NULL)frate ="24"   ;
+               qscale=getenv("AFNI_MPEG_QSCALE")   ; if(qscale==NULL) qscale="11" ;
+               frate =getenv("AFNI_MPEG_FRAMERATE"); if(frate ==NULL) frate ="24" ;
+               pattrn=getenv("AFNI_MPEG_PATTERN")  ;
+               if( pattrn == NULL ){                  /* 07 Apr 2009 */
+                 if( adup <= 1 ) pattrn="IIIII";
+                 else {
+                   pattrn = calloc(sizeof(char),(adup+1)) ; mpar = 1 ;
+                   pattrn[0] = 'I' ; memset( pattrn+1 , 'P' , adup-1 ) ;
+                 }
+               }
                fprintf(fpar,
                           "OUTPUT %s\n"             /* oof */
                           "GOP_SIZE          5\n"
@@ -3821,26 +4103,27 @@ ENTRY("ISQ_saver_CB") ;
                           "BSEARCH_ALG       SIMPLE\n"
                           "REFERENCE_FRAME   ORIGINAL\n"
                           "INPUT\n"
-                          "%s%s.*.ppm [%05d-%05d]\n"  /* prefix, tsuf, from, to */
+                          "%s%s.*.ppm [%06d-%06d]\n"  /* prefix, tsuf, from, to */
                           "END_INPUT\n"
                        , oof , frate , pattrn , qscale ,
-                         seq->saver_prefix,tsuf,seq->saver_from,seq->saver_to ) ;
+                         seq->saver_prefix,tsuf,0,akk-1 ) ;
                fclose(fpar) ;
+               if( mpar ) free(pattrn) ;
 
                /* make command to run */
 
                alen = strlen(par)+strlen(ppmto_mpeg_filter)+32 ;
                alf  = AFMALL( char, alen) ;
                sprintf(alf , ppmto_mpeg_filter, par ) ; /* command to run */
-               fprintf(stderr,"Running '%s' to produce %s\n",alf,oof) ;
+               INFO_message("Running '%s' to produce %s\n",alf,oof) ;
                system(alf) ;                            /* so run it!    */
-               unlink(par); free(alf); free(oof); free(par); /* free trash   */
+               remove(par); free(alf); free(oof); free(par); /* free trash   */
             }
 
             /* animation is done, for good or for ill */
 
             for( af=0 ; af < agif_list->num ; af++ )  /* erase temp files */
-               unlink( agif_list->ar[af] ) ;
+              remove( agif_list->ar[af] ) ;
 
           AnimationCleanup:
             DESTROY_SARR(agif_list) ;                 /* free more trash */
@@ -3906,12 +4189,12 @@ ENTRY("ISQ_saver_CB") ;
 
       } else { /** write color overlay and everything **/
 
-         MRI_IMAGE * ovim=NULL ;
+         MRI_IMAGE *ovim=NULL ;
          int ii , nx , ny , npix , bb , allgray , ncode,nout ;
-         byte * rgb ;   /* "byte" is defined in mrilib.h */
-         short * flar ;
-         XColor * ulc , * ovc , * xc ;
-         FILE * fd ;
+         byte *rgb ;   /* "byte" is defined in mrilib.h */
+         short *flar ;
+         XColor *ulc , *ovc , *xc ;
+         FILE *fd ;
          byte rrr,ggg,bbb ;
 
          /* process given image to make the grayscale index */
@@ -3946,7 +4229,7 @@ ENTRY("ISQ_saver_CB") ;
             if( flim == NULL ){ flim = tim ; }     /* shouldn't happen */
             else              { KILL_1MRI(tim) ; }
 #else
-            short * ovar ; int jj ;                /* the old way */
+            short *ovar ; int jj ;                /* the old way */
             ovar = mri_data_pointer(ovim) ;
             for( jj=0 ; jj < npix ; jj++ )
                if( ovar[jj] != 0 ) flar[jj] = -ovar[jj] ;
@@ -4048,7 +4331,7 @@ ENTRY("ISQ_saver_CB") ;
 void ISQ_but_save_CB( Widget w , XtPointer client_data ,
                                  XtPointer call_data    )
 {
-   MCW_imseq * seq = (MCW_imseq *) client_data ;
+   MCW_imseq *seq = (MCW_imseq *) client_data ;
 
 ENTRY("ISQ_but_save_CB") ;
 
@@ -4069,7 +4352,7 @@ ENTRY("ISQ_but_save_CB") ;
 --------------------------------------------------------------------------*/
 
 #ifdef REQUIRE_TWO_DONES
-void ISQ_but_done_reset( MCW_imseq * seq )
+void ISQ_but_done_reset( MCW_imseq *seq )
 {
    if( ! ISQ_VALID(seq) || seq->done_first ) return ;
 
@@ -4243,8 +4526,8 @@ ENTRY("ISQ_free_alldata") ;
 
 void ISQ_scale_CB( Widget w , XtPointer client_data , XtPointer call_data )
 {
-   MCW_imseq * seq             = (MCW_imseq *)             client_data ;
-   XmScaleCallbackStruct * cbs = (XmScaleCallbackStruct *) call_data ;
+   MCW_imseq *seq             = (MCW_imseq *)             client_data ;
+   XmScaleCallbackStruct *cbs = (XmScaleCallbackStruct *) call_data ;
 
 ENTRY("ISQ_scale_CB") ;
 
@@ -4365,6 +4648,7 @@ ENTRY("ISQ_redisplay") ;
    ISQ_show_image( seq ) ;
    ISQ_rowgraph_draw( seq ) ;
    ISQ_surfgraph_draw( seq ) ;  /* 21 Jan 1999 */
+   ISQ_set_crop_hint( seq ) ;   /* 25 Aug 2009 */
 
    if( seq->graymap_mtd != NULL ) ISQ_graymap_draw( seq ) ; /* 24 Oct 2003 */
 
@@ -4410,7 +4694,7 @@ ENTRY("ISQ_redisplay") ;
    return value is 0 if this can't be done, 1 if things go OK
 --------------------------------------------------------------------------*/
 
-int ISQ_set_image_number( MCW_imseq * seq , int n )
+int ISQ_set_image_number( MCW_imseq *seq , int n )
 {
 ENTRY("ISQ_set_image_number") ;
 
@@ -4461,6 +4745,43 @@ ENTRY("ISQ_set_image_number") ;
 static volatile int xwasbad ;
 typedef int (*xhandler)(Display *, XErrorEvent *) ;
 static int qhandler( Display *dpy , XErrorEvent *xev ){ xwasbad=1; return 0; }
+
+/*-----------------------------------------------------------------------*/
+
+void ISQ_center_zoom( MCW_imseq *seq ) /* 27 Aug 2009 */
+{
+   int zlev,xcen,ycen ; int_triple xyn ; float mh,zwid , xch,ych ;
+
+ENTRY("ISQ_center_zoom") ;
+
+   if( !ISQ_REALZ(seq) || seq->imim == NULL || seq->zoom_fac <= 1 ) EXRETURN ;
+
+#if 0
+   if( seq->cropit ) /* centering on crop region not implemented */ EXRETURN ;
+#endif
+
+   xyn = ISQ_get_crosshairs(seq) ; xcen = xyn.i ; ycen = xyn.j ;
+   if( xcen < 0 || ycen < 0 )                                       EXRETURN ;
+   ISQ_unflipxy( seq , &xcen , &ycen ) ; /* flip to screen coord */
+   if( xcen < 0 || ycen < 0 )                                       EXRETURN ;
+   xch = xcen / (float)seq->imim->nx ; if( xch >= 1.0f )            EXRETURN ;
+   ych = ycen / (float)seq->imim->ny ; if( ych >= 1.0f )            EXRETURN ;
+
+   zlev = seq->zoom_fac ;
+   mh   = (zlev-1.001f)/zlev ; /* max offset allowed */
+   zwid = 0.5f / zlev ;
+
+   seq->zoom_hor_off = xch - zwid ;
+   seq->zoom_ver_off = ych - zwid ;
+        if( seq->zoom_hor_off > mh   ) seq->zoom_hor_off = mh  ;
+   else if( seq->zoom_hor_off < 0.0f ) seq->zoom_hor_off = 0.0f ;
+        if( seq->zoom_ver_off > mh   ) seq->zoom_ver_off = mh  ;
+   else if( seq->zoom_ver_off < 0.0f ) seq->zoom_ver_off = 0.0f ;
+
+   ISQ_redisplay( seq , -1 , isqDR_display ) ;
+
+   EXRETURN ;
+}
 
 /*-----------------------------------------------------------------------*/
 
@@ -4528,7 +4849,6 @@ STATUS("killing old XImage because have new image") ;
    /* scale up the given_xim, if needed;
       it will be save in the seq struct for next time,
       unless the image changes, in which case it will have been axed */
-
 
    if( seq->zoom_xim == NULL ){
      MRI_IMAGE *im , *tim ;
@@ -4751,6 +5071,7 @@ ENTRY("ISQ_draw_winfo") ;
      sprintf(buf+strlen(buf)," %s",seq->scl_label) ;
    if( (seq->opt.improc_code & ISQ_IMPROC_SHARP) )
      sprintf(buf+strlen(buf)," s=%d",(int)(10.0*seq->sharp_fac+.01)) ;
+   if( seq->render_mode ) strcat(buf,"#") ;
 
    if( seq->im_label[0] == '\0' || strcmp(buf,seq->im_label) != 0 ){
      char qbuf[128] ; qbuf[0] = '\0' ;
@@ -4805,13 +5126,15 @@ ENTRY("ISQ_draw_winfo") ;
   Put a range hint on the color bar, if possible -- 29 Jul 2001
 -------------------------------------------------------------------------*/
 
-void ISQ_set_barhint( MCW_imseq * seq , char * lab )
+void ISQ_set_barhint( MCW_imseq *seq , char *lab )
 {
    char sbot[16],stop[16] , hint[64] , *sb,*st ;
 
 ENTRY("ISQ_set_barhint") ;
 
    if( !ISQ_REALZ(seq) ) EXRETURN ;            /* bad news */
+
+   floatfix(seq->barbot) ; floatfix(seq->bartop) ; /* 24 Aug 2009 */
 
    if( seq->barbot < seq->bartop ){            /* can make a hint */
       AV_fval_to_char( seq->barbot , sbot ) ;  /* convert to nice strings */
@@ -4868,7 +5191,7 @@ fprintf(stderr,"ISQ_set_cursor_state: old=%d new=%d\n",seq->cursor_state,cstat);
   actually put the color bar into its window
 ---------------------------------------------------------------------*/
 
-void ISQ_show_bar( MCW_imseq * seq )
+void ISQ_show_bar( MCW_imseq *seq )
 {
    if( seq == NULL || seq->ignore_redraws ) return ;  /* 16 Aug 2002 */
 ENTRY("ISQ_show_bar") ;
@@ -4910,9 +5233,9 @@ STATUS("putting sized_xbar to screen");
 -------------------------------------------------------------------------*/
 
 void ISQ_drawing_EV( Widget w , XtPointer client_data ,
-                     XEvent * ev , Boolean * continue_to_dispatch )
+                     XEvent *ev , Boolean *continue_to_dispatch )
 {
-   MCW_imseq * seq = (MCW_imseq *) client_data ;
+   MCW_imseq *seq = (MCW_imseq *) client_data ;
    static ISQ_cbs cbs ;
    static int busy=0 ;   /* 23 Jan 2004: prevent recursion */
 
@@ -4931,12 +5254,14 @@ ENTRY("ISQ_drawing_EV") ;
      STATUS(str) ;
    }
 
+   /** memset(&cbs,0,sizeof(ISQ_cbs)) ; **/
+
    switch( ev->type ){
 
       /*----- button release event -----*/
 
       case ButtonRelease:{
-         XButtonEvent * event = (XButtonEvent *) ev ;
+         XButtonEvent *event = (XButtonEvent *) ev ;
          int but = event->button ;
 
          /** 03 Oct 2002: change Shift+Button1 into Button2, then send to that event handler **/
@@ -4990,7 +5315,7 @@ ENTRY("ISQ_drawing_EV") ;
       /*----- motion with Button #1 pressed down -----*/
 
       case MotionNotify:{
-        XMotionEvent * event = (XMotionEvent *) ev ;
+        XMotionEvent *event = (XMotionEvent *) ev ;
         int bx,by ;
 
         /** 03 Oct 2002: change Shift+Button1 into Button2, then send to that event handler **/
@@ -5072,7 +5397,7 @@ ENTRY("ISQ_drawing_EV") ;
       /*----- redraw -----*/
 
       case Expose:{
-         XExposeEvent * event = (XExposeEvent *) ev ;
+         XExposeEvent *event = (XExposeEvent *) ev ;
 
 DPRI(" .. Expose; count=",event->count) ;
 
@@ -5127,18 +5452,19 @@ STATUS(" .. KeyPress") ;
          ks     = 0 ;
          nbuf = XLookupString( event , buf , 32 , &ks , NULL ) ;
 #if 0
-fprintf(stderr,"KeySym=%04x nbuf=%d\n",(unsigned int)ks,nbuf) ;
+fprintf(stderr,"KeySym=%04x nbuf=%d state=%u\n",(unsigned int)ks,nbuf,event->state) ;
 #endif
 
          /* 24 Jan 2003: deal with special function keys */
 
          if( nbuf == 0 || ks > 255 ){
            if( seq->record_mode ){ busy=0; EXRETURN ; }
-           nbuf = ISQ_handle_keypress( seq , (unsigned long)ks ) ;
+           nbuf = ISQ_handle_keypress( seq , (unsigned long)ks ,
+                                             (unsigned int )event->state ) ;
            busy=0; EXRETURN ;
          }
 
-         nbuf = ISQ_handle_keypress( seq , (unsigned long)buf[0] ) ;
+         nbuf = ISQ_handle_keypress( seq , (unsigned long)buf[0] , 0 ) ;
          if( nbuf ){ busy=0; EXRETURN; }
 
          /* in special modes (record, Button2, zoom-pan) mode, this is bad */
@@ -5318,11 +5644,12 @@ STATUS(" .. ButtonPress") ;
                 cbs.nim    = nim ;
 
                 if( but == Button1 &&
-                    (event->state & ControlMask) ){ /* 18 Oct 2001 */
+                    (event->state & ControlMask) && !(event->state & ShiftMask) ){ /* 18 Oct 2001 */
                    event->button = Button3 ;        /* fake Button3 press */
                 }
 
-                if( event->button == Button3 )      /* 04 Nov 2003: only for Button3 */
+                if( event->button == Button3 ||     /* 04 Nov 2003: only for Button3 */
+                    (event->button == Button1 && event->state&ShiftMask && event->state&ControlMask) )
 #if 0
                   seq->status->send_CB( seq , seq->getaux , &cbs ) ;
 #else
@@ -5354,7 +5681,7 @@ STATUS(" .. ButtonPress") ;
       /*----- window changed size -----*/
 
       case ConfigureNotify:{
-         XConfigureEvent * event = (XConfigureEvent *) ev ;
+         XConfigureEvent *event = (XConfigureEvent *) ev ;
 
          static int am_active = 0  ;  /* 09 Oct 1999 */
 
@@ -5444,12 +5771,12 @@ else fprintf(stderr,"  -- too soon to enforce aspect!\n") ;
 #define NPTS_MAX 4095  /* max # points in a single button2 operation */
 
 void ISQ_button2_EV( Widget w , XtPointer client_data ,
-                     XEvent * ev , Boolean * continue_to_dispatch )
+                     XEvent *ev , Boolean *continue_to_dispatch )
 {
-   MCW_imseq * seq = (MCW_imseq *) client_data ;
+   MCW_imseq *seq = (MCW_imseq *) client_data ;
    ISQ_cbs cbs ;
    static int nsav ;
-   static int * bxsav=NULL , *bysav=NULL , *xyout=NULL ;
+   static int *bxsav=NULL , *bysav=NULL , *xyout=NULL ;
 
 ENTRY("ISQ_button2_EV") ;
 
@@ -5507,7 +5834,7 @@ ENTRY("ISQ_button2_EV") ;
       /*----- take button release -----*/
 
       case ButtonRelease:{
-         XButtonEvent * event = (XButtonEvent *) ev ;
+         XButtonEvent *event = (XButtonEvent *) ev ;
          int bx,by ;
          int ii,nout , nim , xim,yim,zim ;
 
@@ -5594,7 +5921,7 @@ ENTRY("ISQ_button2_EV") ;
               this is minimal so as to keep up with mouse movements -----*/
 
       case MotionNotify:{
-         XMotionEvent * event = (XMotionEvent *) ev ;
+         XMotionEvent *event = (XMotionEvent *) ev ;
          int bx,by ;
 
          /* check for legality */
@@ -6058,7 +6385,7 @@ ENTRY("ISQ_place_widget") ;
    MCW_widget_geom( w     , &dw,&dh,&dx,&dy ) ;  /* of dialog */
 
    sh = HeightOfScreen(XtScreen(wmain)) ;
-   sh = WidthOfScreen (XtScreen(wmain)) ;
+   sw = WidthOfScreen (XtScreen(wmain)) ;
 
    xp = xx+wx+8 ;
    if( xp+dw > sw ) xp = xx-dw-8 ;
@@ -6318,7 +6645,7 @@ DPRI("set scale_range =",seq->opt.scale_range) ;
      ISQ_perpoints     -> get the percentage points for 2%-to-98% scaling
 ------------------------------------------------------------------------*/
 
-void ISQ_statify_all( MCW_imseq * seq , Boolean stop_on_minmax )
+void ISQ_statify_all( MCW_imseq *seq , Boolean stop_on_minmax )
 {
    Boolean done ;
    Widget wmsg ;
@@ -6375,10 +6702,10 @@ ENTRY("ISQ_statify_all") ;
 
 Boolean ISQ_statistics_WP( XtPointer client_data )
 {
-   MCW_imseq * seq = (MCW_imseq *) client_data ;
-   ISQ_glob_statistics * gl ;
+   MCW_imseq *seq = (MCW_imseq *) client_data ;
+   ISQ_glob_statistics *gl ;
 
-   MRI_IMAGE * im ;
+   MRI_IMAGE *im=NULL ;
    register int ntot , nser , nn ;
 
 ENTRY("ISQ_statistics_WP") ;
@@ -6469,10 +6796,10 @@ ENTRY("ISQ_statistics_WP") ;
    collect statistics on an image and put into location n in table
 -------------------------------------------------------------------------*/
 
-void ISQ_statify_one( MCW_imseq * seq , int n , MRI_IMAGE * im )
+void ISQ_statify_one( MCW_imseq *seq , int n , MRI_IMAGE *im )
 {
-   ISQ_indiv_statistics * st ;
-   ISQ_glob_statistics *  gl ;
+   ISQ_indiv_statistics *st ;
+   ISQ_glob_statistics  *gl ;
    static int hist[NHISTOG] ; /* static to avoid create/destroy overhead */
 
 ENTRY("ISQ_statify_one") ;
@@ -6488,8 +6815,8 @@ ENTRY("ISQ_statify_one") ;
 
    if( ! st->one_done ){  /* must do individual statistics */
 
-      st->min = mri_min( im ) ;
-      st->max = mri_max( im ) ;
+      st->min = mri_min( im ) ; floatfix(st->min) ;
+      st->max = mri_max( im ) ; floatfix(st->max) ;
 
       ISQ_SCLEV( st->min , st->max ,
                  seq->dc->ncol_im , st->scl_mm , st->lev_mm ) ;
@@ -6524,7 +6851,7 @@ ENTRY("ISQ_statify_one") ;
 /*-----------------------------------------------------------------------*/
 
 void ISQ_perpoints( float bot , float top ,
-                    int hist[] , float * per02 , float * per98 )
+                    int hist[] , float *per02 , float *per98 )
 {
    register int ih , nsum , ns02 , ns98 ;
    float prev , cur , frac , dbin ;
@@ -6572,9 +6899,9 @@ ENTRY("ISQ_perpoints") ;
    change the palette based on the arrow actions
 --------------------------------------------------------------------------*/
 
-void ISQ_arrow_CB( MCW_arrowval * av , XtPointer client_data )
+void ISQ_arrow_CB( MCW_arrowval *av , XtPointer client_data )
 {
-   MCW_imseq * seq = (MCW_imseq *) client_data ;
+   MCW_imseq *seq = (MCW_imseq *) client_data ;
    int ddd ;
 
 ENTRY("ISQ_arrow_CB") ;
@@ -6813,7 +7140,7 @@ ENTRY("ISQ_but_cnorm_CB") ;
 The Boolean return value is True for success, False for failure.
 -------------------------------------------------------------------------*/
 
-Boolean drive_MCW_imseq( MCW_imseq * seq ,
+Boolean drive_MCW_imseq( MCW_imseq *seq ,
                          int drive_code , XtPointer drive_data )
 {
 ENTRY("drive_MCW_imseq") ;
@@ -7361,7 +7688,7 @@ static unsigned char record_bits[] = {
       /* [mostly copied from ISQ_arrow_CB()]  */
 
       case isqDR_setifrac:{
-         float * ff = (float *) drive_data ;
+         float *ff = (float *) drive_data ;
 
          if( ff == NULL || *ff < FRAC_MIN || *ff > 1.0 ) RETURN( False );
 
@@ -7399,7 +7726,7 @@ static unsigned char record_bits[] = {
 
       case isqDR_keypress:{
         unsigned int key = (unsigned int)drive_data ;
-        (void )ISQ_handle_keypress( seq , key ) ;
+        (void )ISQ_handle_keypress( seq , key , 0 ) ;
         RETURN( True );
       }
       break ;
@@ -7407,7 +7734,7 @@ static unsigned char record_bits[] = {
       /*------- winfo extra text [07 Aug 1999] -------*/
 
       case isqDR_winfotext:{
-         char * wt = (char *) drive_data ;
+         char *wt = (char *) drive_data ;
 
          if( wt == NULL || wt[0] == '\0' ){
             seq->winfo_extra[0] = '\0' ;
@@ -7541,7 +7868,7 @@ static unsigned char record_bits[] = {
       /*------ get image number -----*/
 
       case isqDR_getimnr:{
-         int * retval = (int *) drive_data ;
+         int *retval = (int *) drive_data ;
 
          if( retval != NULL ) *retval = seq->im_nr ;
          RETURN( True );
@@ -7597,7 +7924,7 @@ static unsigned char record_bits[] = {
       /*------- title --------*/
 
       case isqDR_title:{
-         char * title = (char *) drive_data ;
+         char *title = (char *) drive_data ;
 
          if( title == NULL || strlen(title) == 0 ) title = "AFNI" ;
 
@@ -7641,6 +7968,7 @@ static unsigned char record_bits[] = {
             POPUP_cursorize( seq->wimage ) ;
             POPUP_cursorize( seq->wbar )   ;
             POPUP_cursorize( seq->wbut_bot[NBUT_SAVE] ) ;
+            POPUP_cursorize( seq->crop_drag_pb ) ;
             XmUpdateDisplay( seq->wtop )   ;
          }
 #ifndef DONT_ONOFF_ONE
@@ -7656,7 +7984,7 @@ static unsigned char record_bits[] = {
       /*------- change helptext! -------*/
 
       case isqDR_imhelptext:{
-        char * newtxt = (char *) drive_data ;
+        char *newtxt = (char *) drive_data ;
         int ii ;
 
         if( newtxt == NULL ) RETURN( False );
@@ -7705,8 +8033,8 @@ static unsigned char record_bits[] = {
       /*------- new options -------*/
 
       case isqDR_options:{
-         ISQ_options * newopt = (ISQ_options *) drive_data ;
-         int sf ;
+         ISQ_options *newopt = (ISQ_options *) drive_data ;
+         int sf=0 ;
 
          if( ppmto_num > 0 )           /* 27 Mar 2002: keep the old */
            sf = seq->opt.save_filter ; /*              save filter  */
@@ -7729,7 +8057,7 @@ static unsigned char record_bits[] = {
       /*------- get current options [07 Aug 1999] -------*/
 
       case isqDR_getoptions:{
-         ISQ_options * opt = (ISQ_options *) drive_data ;
+         ISQ_options *opt = (ISQ_options *) drive_data ;
 
          if( opt == NULL ) RETURN( False );
          *opt = seq->opt ;
@@ -7739,12 +8067,12 @@ static unsigned char record_bits[] = {
       /*------- turn arrowpad on -------*/
 
       case isqDR_arrowpadon:{
-         char * helptext = (char *) drive_data ;
+         char *helptext = (char *) drive_data ;
 
          XtSetMappedWhenManaged( seq->arrowpad->wform , True ); /* on */
 
          if( helptext != NULL && strlen(helptext) > 0 ){
-            char * str = XtNewString( helptext ) ;
+            char *str = XtNewString( helptext ) ;
             MCW_reghelp_children( seq->arrowpad->wform , str ) ;
             XtFree(str) ;  /* 28 Sep 1998: via Purify */
          }
@@ -7777,7 +8105,7 @@ static unsigned char record_bits[] = {
          int newtot = (int) drive_data ,
              oldtot = seq->status->num_total ,
              numser = seq->status->num_series , ii ;
-         char * msg =
+         char *msg =
              "illegal change to image\n"
              "count from driver routine\n"
              "(press here to continue)" ;
@@ -7951,18 +8279,18 @@ ENTRY("ISQ_arrowpad_CB") ;
    to the correct number (or things won't look good at all).
 ---------------------------------------------------------------------*/
 
-Boolean ISQ_setup_new( MCW_imseq * seq , XtPointer newaux )
+Boolean ISQ_setup_new( MCW_imseq *seq , XtPointer newaux )
 {
-   MCW_imseq_status * imstatus ;
+   MCW_imseq_status *imstatus=NULL ;
    int ii ;
-   MRI_IMAGE * tim ;
+   MRI_IMAGE *tim ;
 
 ENTRY("ISQ_setup_new") ;
 
    if( !ISQ_VALID(seq) ) RETURN( False );
 
 #if 0
-   imstatus = (MCW_imseq_status *) seq->getim(0,isqCR_getstatus,newaux);
+   imstatus = (MCW_imseq_status *)seq->getim(0,isqCR_getstatus,newaux);
 #else
    AFNI_CALL_VALU_3ARG( seq->getim , MCW_imseq_status *,imstatus ,
                         int,0 , int,isqCR_getstatus , XtPointer,newaux ) ;
@@ -8068,7 +8396,7 @@ ENTRY("ISQ_setup_new") ;
 
 void ISQ_wbar_plots_CB( Widget w , XtPointer cld , XtPointer cad ) /* 20 Sep 2001 */
 {
-   MCW_imseq * seq = (MCW_imseq *) cld ;
+   MCW_imseq *seq = (MCW_imseq *) cld ;
 
 ENTRY("ISQ_wbar_plots_CB") ;
 
@@ -8081,12 +8409,17 @@ ENTRY("ISQ_wbar_plots_CB") ;
 
 void ISQ_wbar_label_CB( MCW_arrowval *av , XtPointer cd )
 {
-   MCW_imseq * seq = (MCW_imseq *) cd ;
+   MCW_imseq *seq = (MCW_imseq *)cd ;
 
 ENTRY("ISQ_wbar_label_CB") ;
 
    if( !ISQ_REALZ(seq) ) EXRETURN ;
-   ISQ_redisplay( seq , -1 , isqDR_display ) ;
+
+   if( av == seq->wbar_animdup_av )
+     ISQ_anim_dup = av->ival;  /* 10 Feb 2009 */
+   else
+     ISQ_redisplay( seq , -1 , isqDR_display ) ;
+
    EXRETURN ;
 }
 
@@ -8095,7 +8428,7 @@ ENTRY("ISQ_wbar_label_CB") ;
 void ISQ_wbar_menu_CB( Widget w , XtPointer client_data ,
                                   XtPointer call_data    )
 {
-   MCW_imseq * seq = (MCW_imseq *) client_data ;
+   MCW_imseq *seq = (MCW_imseq *) client_data ;
 
 ENTRY("ISQ_wbar_menu_CB") ;
 
@@ -8133,9 +8466,9 @@ ENTRY("ISQ_wbar_menu_CB") ;
 
 /*----------------------------------------------------------------------*/
 
-void ISQ_set_rng_CB( Widget w , XtPointer cd , MCW_choose_cbs * cbs )
+void ISQ_set_rng_CB( Widget w , XtPointer cd , MCW_choose_cbs *cbs )
 {
-   MCW_imseq * seq = (MCW_imseq *) cd ;
+   MCW_imseq *seq = (MCW_imseq *) cd ;
 
 ENTRY("ISQ_set_rng_CB") ;
 
@@ -8151,9 +8484,9 @@ ENTRY("ISQ_set_rng_CB") ;
 
 /*----------------------------------------------------------------------*/
 
-void ISQ_set_zcol_CB( Widget w , XtPointer cd , MCW_choose_cbs * cbs )
+void ISQ_set_zcol_CB( Widget w , XtPointer cd , MCW_choose_cbs *cbs )
 {
-   MCW_imseq * seq = (MCW_imseq *) cd ;
+   MCW_imseq *seq = (MCW_imseq *) cd ;
 
 ENTRY("ISQ_set_zcol_CB") ;
 
@@ -8166,9 +8499,9 @@ ENTRY("ISQ_set_zcol_CB") ;
 
 /*----------------------------------------------------------------------*/
 
-void ISQ_set_flat_CB( Widget w , XtPointer cd , MCW_choose_cbs * cbs )
+void ISQ_set_flat_CB( Widget w , XtPointer cd , MCW_choose_cbs *cbs )
 {
-   MCW_imseq * seq = (MCW_imseq *) cd ;
+   MCW_imseq *seq = (MCW_imseq *) cd ;
 
 ENTRY("ISQ_set_flat_CB") ;
 
@@ -8192,9 +8525,9 @@ ENTRY("ISQ_set_flat_CB") ;
 
 /*----------------------------------------------------------------------*/
 
-void ISQ_set_sharp_CB( Widget w , XtPointer cd , MCW_choose_cbs * cbs )
+void ISQ_set_sharp_CB( Widget w , XtPointer cd , MCW_choose_cbs *cbs )
 {
-   MCW_imseq * seq = (MCW_imseq *) cd ;
+   MCW_imseq *seq = (MCW_imseq *) cd ;
 
 ENTRY("ISQ_set_sharp_CB") ;
 
@@ -8236,7 +8569,7 @@ static MCW_action_item MONT_act[NUM_MONT_ACT] = {
 
 void ISQ_montage_CB( Widget w, XtPointer client_data, XtPointer call_data )
 {
-   MCW_imseq * seq = (MCW_imseq *) client_data ;
+   MCW_imseq *seq = (MCW_imseq *) client_data ;
    int ib ;
    Widget wrc ;
 
@@ -8442,9 +8775,9 @@ fprintf(stderr,"montage: zoom_fac = %d\n",seq->zoom_fac) ;
 
 void ISQ_montage_action_CB( Widget w , XtPointer client_data , XtPointer call_data )
 {
-   MCW_imseq * seq = (MCW_imseq *) client_data ;
-   XmAnyCallbackStruct * cbs = (XmAnyCallbackStruct *) call_data ;
-   char * wname ;
+   MCW_imseq *seq = (MCW_imseq *) client_data ;
+   XmAnyCallbackStruct *cbs = (XmAnyCallbackStruct *) call_data ;
+   char *wname ;
    int ib , close_window , new_mont ;
 
 ENTRY("ISQ_montage_action_CB") ;
@@ -8586,11 +8919,21 @@ ENTRY("ISQ_manufacture_one") ;
 
    /** Not an overlay image **/
 
-   if( ! overlay ){
-     tim = ISQ_getimage( nim , seq ) ;
-     if( tim == NULL ) RETURN( NULL );
-     im = ISQ_process_mri( nim , seq , tim ) ; mri_free(tim) ;
-     RETURN( im );
+   if( !overlay ){
+     switch( seq->render_mode ){
+       default:
+         tim = ISQ_getimage( nim , seq ) ;
+         if( tim == NULL ) RETURN(NULL) ;
+         im = ISQ_process_mri( nim , seq , tim ) ; mri_free(tim) ;
+       break ;
+
+       case RENDER_CHECK_UO:
+       case RENDER_CHECK_OU:
+         im = ISQ_getchecked( nim , seq ) ;
+         if( im == NULL ) RETURN(NULL) ;
+       break ;
+     }
+     RETURN(im) ;
    }
 
    /** Get the overlay image **/
@@ -8660,7 +9003,7 @@ ENTRY("ISQ_make_montage");
       float new_width_mm = 0.0 , new_height_mm = 0.0 ;
       int   nxim = 0 , nyim = 0 , nxyim = 0 ;
       int ij , nim , nmont = seq->mont_nx * seq->mont_ny , ijcen ;
-      MRI_IMARR * mar ;
+      MRI_IMARR *mar ;
 
       INIT_IMARR(mar) ;
 
@@ -8724,7 +9067,7 @@ DPRI(" Making underlay cat2D from",nxyim) ;
          for( ij=0 ; ij < nmont ; ij++ ){
             tim = IMARR_SUBIMAGE(mar,ij) ;
             if( tim != NULL && tim->kind != MRI_rgb ){
-               MRI_IMAGE * qim ;
+               MRI_IMAGE *qim ;
 
                if( tim->kind == MRI_short )
                   qim = ISQ_index_to_rgb( seq->dc , 0 , tim ) ; /* 07 Mar 2001 */
@@ -8791,7 +9134,7 @@ STATUS("Destroying underlay image array") ;
 
       ovim = seq->ovim ;
       if( ovim == NULL ){
-         MRI_IMARR * mar ;
+         MRI_IMARR *mar ;
 
          INIT_IMARR(mar) ;
 
@@ -8817,7 +9160,7 @@ DPRI(" Making overlay cat2D from",nov) ;
             for( ij=0 ; ij < nmont ; ij++ ){
                tim = IMARR_SUBIMAGE(mar,ij) ;
                if( tim != NULL && tim->kind != MRI_rgb ){
-                  MRI_IMAGE * qim ;
+                  MRI_IMAGE *qim ;
 
                   if( tim->kind == MRI_short )
                      qim = ISQ_index_to_rgb( seq->dc , 1 , tim ) ; /* 07 Mar 2001 */
@@ -8978,7 +9321,7 @@ STATUS("Destroying overlay image array") ;
 #else                                  /** the old way **/
    } else if( im->kind == MRI_short ){            /* process overlay onto shorts */
 
-      register short * tar , * oar , * iar ;
+      register short *tar , *oar , *iar ;
       register int ii , npix = im->nx * im->ny ;
 
       tim = mri_new( im->nx , im->ny , MRI_short ) ;
@@ -8992,9 +9335,9 @@ STATUS("Destroying overlay image array") ;
    } else if( im->kind == MRI_rgb ){                       /* 11 Feb 1999 */
 
       register int ii , npix = im->nx * im->ny ;
-      register short * oar = MRI_SHORT_PTR(ovim) ;
-      register byte * tar , * iar = MRI_RGB_PTR(im) ;
-      register Pixel * negpix = seq->dc->ovc->pix_ov ;
+      register short *oar = MRI_SHORT_PTR(ovim) ;
+      register byte *tar , *iar = MRI_RGB_PTR(im) ;
+      register Pixel *negpix = seq->dc->ovc->pix_ov ;
 
       tim = mri_to_rgb( im ) ; tar = MRI_RGB_PTR(tim) ;
 
@@ -9020,11 +9363,11 @@ STATUS("Destroying overlay image array") ;
     that may vary with montaging.
 
     12 Mar 2002: modified to allow for possibility of zoom
-    12 Jun 2002: allow for cropping
+    12 Jun 2002: and to allow for cropping
 -------------------------------------------------------------------------*/
 
-void ISQ_mapxy( MCW_imseq * seq, int xwin, int ywin,
-                int * xim, int * yim, int * nim )
+void ISQ_mapxy( MCW_imseq *seq, int xwin, int ywin,
+                int *xim, int *yim, int *nim )
 {
    int win_wide,win_high , nxim,nyim ;
    int monx,mony,monsk,mongap , win_wide_orig,win_high_orig ;
@@ -9056,11 +9399,6 @@ ENTRY("ISQ_mapxy") ;
    /* convert actual coordinates input to
       equivalent coordinates in the original (montaged) image */
 
-#if 0   /* old code, without zoom */
-   xorg = ( (float) xwin / win_wide ) * win_wide_orig /* + 0.49 */ ;
-   yorg = ( (float) ywin / win_high ) * win_high_orig /* + 0.49 */ ;
-#else
-
    /* conversion if zoom is not on */
 
    if( zlev == 1 || monx > 1 || mony > 1 ){
@@ -9079,7 +9417,6 @@ ENTRY("ISQ_mapxy") ;
      xorg = nxim * (xoff+xwin) / pw ;
      yorg = nyim * (yoff+ywin) / ph ;
    }
-#endif
 
    /* compute the coordinates within the sub-image (*xim and *yim),
       and the grid column and row number of the sub-image (xcol,yrow) */
@@ -9118,9 +9455,11 @@ ENTRY("ISQ_mapxy") ;
 
    Note that these coordinates are relative to original (un-resized)
    image dimensions.
+
+   Also see ISQ_unflipxy().
 -----------------------------------------------------------------------*/
 
-void ISQ_flipxy( MCW_imseq * seq, int * xflip, int * yflip )
+void ISQ_flipxy( MCW_imseq *seq, int *xflip, int *yflip )
 {
    int fopt , xim , yim , nx,ny ;
 
@@ -9163,8 +9502,9 @@ ENTRY("ISQ_flipxy") ;
 }
 
 /*-------------------------------------------------------------------*/
+/* The inverse to ISQ_flipxy() */
 
-void ISQ_unflipxy( MCW_imseq * seq, int * xflip, int * yflip )
+void ISQ_unflipxy( MCW_imseq *seq, int *xflip, int *yflip )
 {
    int fopt , xim , yim , nx,ny ;
 
@@ -9210,9 +9550,9 @@ ENTRY("ISQ_unflipxy") ;
    Routines to handle transformations of an image.
 -------------------------------------------------------------------------------*/
 
-char * ISQ_transform_label( MCW_arrowval * av , XtPointer cd )
+char * ISQ_transform_label( MCW_arrowval *av , XtPointer cd )
 {
-   MCW_function_list * xforms = (MCW_function_list *) cd ;
+   MCW_function_list *xforms = (MCW_function_list *) cd ;
 
    if( av == NULL    || xforms == NULL        ||
        av->ival <= 0 || av->ival > xforms->num  ) return "-none-" ;
@@ -9222,9 +9562,9 @@ char * ISQ_transform_label( MCW_arrowval * av , XtPointer cd )
 
 /*-----------------------------------------------------------------------------*/
 
-void ISQ_transform_CB( MCW_arrowval * av , XtPointer cd )
+void ISQ_transform_CB( MCW_arrowval *av , XtPointer cd )
 {
-   MCW_imseq * seq = (MCW_imseq *) cd ;
+   MCW_imseq *seq = (MCW_imseq *) cd ;
 
 ENTRY("ISQ_transform_CB") ;
 
@@ -9275,9 +9615,9 @@ ENTRY("ISQ_transform_CB") ;
 
 /*-----------------------------------------------------------------------------*/
 
-void ISQ_slice_proj_CB( MCW_arrowval * av , XtPointer cd )
+void ISQ_slice_proj_CB( MCW_arrowval *av , XtPointer cd )
 {
-   MCW_imseq * seq = (MCW_imseq *) cd ;
+   MCW_imseq *seq = (MCW_imseq *) cd ;
 
 ENTRY("ISQ_slice_proj_CB") ;
 
@@ -9308,7 +9648,7 @@ ENTRY("ISQ_slice_proj_CB") ;
    30 Dec 1998:  Handle the row graphs
 ----------------------------------------------------------------------------*/
 
-char * ISQ_rowgraph_label( MCW_arrowval * av , XtPointer cd )
+char * ISQ_rowgraph_label( MCW_arrowval *av , XtPointer cd )
 {
    static char buf[16] ;
    sprintf(buf,"%2d  ",av->ival) ;
@@ -9317,9 +9657,9 @@ char * ISQ_rowgraph_label( MCW_arrowval * av , XtPointer cd )
 
 /*--------------------------------------------------------------------------*/
 
-void ISQ_rowgraph_CB( MCW_arrowval * av , XtPointer cd )
+void ISQ_rowgraph_CB( MCW_arrowval *av , XtPointer cd )
 {
-   MCW_imseq * seq = (MCW_imseq *) cd ;
+   MCW_imseq *seq = (MCW_imseq *) cd ;
 
 ENTRY("ISQ_rowgraph_CB") ;
 
@@ -9361,7 +9701,7 @@ ENTRY("ISQ_rowgraph_draw") ;
 
    if( seq->orim == NULL ) EXRETURN ;
 
-   /* find current location */
+   /* find current location of crosshairs (if any) */
 
    cbs.reason = isqCR_getxynim ;
    cbs.xim = cbs.yim = cbs.nim = -666 ;
@@ -9372,8 +9712,7 @@ ENTRY("ISQ_rowgraph_draw") ;
      SEND(seq,cbs) ;
 #endif
    if( cbs.xim < 0 || cbs.yim < 0 ){
-     fprintf(stderr,
-      "*** error in ISQ_rowgraph_draw: xim=%d yim=%d\n",cbs.xim,cbs.yim) ;
+     ERROR_message("in ISQ_rowgraph_draw: xim=%d yim=%d",cbs.xim,cbs.yim) ;
      EXRETURN ;  /* bad result */
    }
    ISQ_unflipxy( seq , &(cbs.xim) , &(cbs.yim) ) ;
@@ -9382,7 +9721,7 @@ ENTRY("ISQ_rowgraph_draw") ;
    /* get pointers to data rows */
 
    if( jbot < 0 || jbot >= seq->orim->ny ){
-      fprintf(stderr,"*** error in ISQ_rowgraph_draw: jbot=%d\n",jbot) ;
+      ERROR_message("in ISQ_rowgraph_draw: jbot=%d",jbot) ;
       EXRETURN ;  /* no data? */
    }
 
@@ -9390,8 +9729,10 @@ ENTRY("ISQ_rowgraph_draw") ;
    nx   = seq->orim->nx ;
    ny   = seq->orim->ny ;
 
-   for( jj=0 ; jj < nrow ; jj++ )
+   for( jj=0 ; jj < nrow ; jj++ ){
      yar[jj] = MRI_FLOAT_PTR(seq->orim) + (jbot-jj)*nx ;
+     (void)thd_floatscan( nx , yar[jj] ) ;
+   }
 
    /* make a plot in memory */
 
@@ -9399,7 +9740,7 @@ ENTRY("ISQ_rowgraph_draw") ;
 
    mp = plot_ts_mem( nx , NULL , nrow,ymask,yar , "Column (pixels)",NULL,NULL,NULL ) ;
    if( mp == NULL ){
-      fprintf(stderr,"*** error in ISQ_rowgraph_draw: can't make plot_ts_mem\n") ;
+      ERROR_message("in ISQ_rowgraph_draw: can't make plot_ts_mem") ;
       EXRETURN ;  /* error */
    }
 
@@ -9448,7 +9789,8 @@ ENTRY("ISQ_rowgraph_draw") ;
 
    } else {  /* make a new plot window */
 
-      seq->rowgraph_mtd = memplot_to_topshell( seq->dc->display, mp, ISQ_rowgraph_mtdkill ) ;
+      seq->rowgraph_mtd = memplot_to_topshell( seq->dc->display, mp,
+                                               ISQ_rowgraph_mtdkill ) ;
 
       if( seq->rowgraph_mtd == NULL ){ delete_memplot( mp ); EXRETURN; }
 
@@ -9461,9 +9803,9 @@ ENTRY("ISQ_rowgraph_draw") ;
 /*-----------------------------------------------------------------------*/
 /*! This function is called when then rowgraph_mtd is killed.            */
 
-void ISQ_rowgraph_mtdkill( MEM_topshell_data * mp )
+void ISQ_rowgraph_mtdkill( MEM_topshell_data *mp )
 {
-   MCW_imseq * seq ;
+   MCW_imseq *seq ;
 
 ENTRY("ISQ_rowgraph_mtdkill") ;
 
@@ -9596,7 +9938,7 @@ ENTRY("ISQ_graymap_draw") ;
    21 Jan 1999: Handle the surface graph stuff
 -------------------------------------------------------------------------*/
 
-char * ISQ_surfgraph_label( MCW_arrowval * av , XtPointer cd )
+char * ISQ_surfgraph_label( MCW_arrowval *av , XtPointer cd )
 {
    switch( av->ival ){
       case 0:  return "No"  ;
@@ -9608,9 +9950,9 @@ char * ISQ_surfgraph_label( MCW_arrowval * av , XtPointer cd )
 
 /*-------- called when the user changes the SurfGraph menu button --------*/
 
-void ISQ_surfgraph_CB( MCW_arrowval * av , XtPointer cd )
+void ISQ_surfgraph_CB( MCW_arrowval *av , XtPointer cd )
 {
-   MCW_imseq * seq = (MCW_imseq *) cd ;
+   MCW_imseq *seq = (MCW_imseq *) cd ;
 
 ENTRY("ISQ_surfgraph_CB") ;
 
@@ -9629,9 +9971,9 @@ ENTRY("ISQ_surfgraph_CB") ;
 
 /*---------------- called to redraw the surface graph -------------------*/
 
-void ISQ_surfgraph_draw( MCW_imseq * seq )
+void ISQ_surfgraph_draw( MCW_imseq *seq )
 {
-   MEM_plotdata * mp ;
+   MEM_plotdata *mp ;
    ISQ_cbs cbs ;
    int ix , jy ;
 
@@ -9725,9 +10067,9 @@ ENTRY("ISQ_surfgraph_draw") ;
 /*-----------------------------------------------------------*/
 /*--- Called when the user kills the surface graph window ---*/
 
-void ISQ_surfgraph_mtdkill( MEM_topshell_data * mp )
+void ISQ_surfgraph_mtdkill( MEM_topshell_data *mp )
 {
-   MCW_imseq * seq ;
+   MCW_imseq *seq ;
 
 ENTRY("ISQ_surfgraph_mtdkill") ;
 
@@ -9746,12 +10088,12 @@ ENTRY("ISQ_surfgraph_mtdkill") ;
 
 /*--- actually draws an image to a wiremesh, in memory ---*/
 
-MEM_plotdata * plot_image_surface( MRI_IMAGE * im , float fac ,
+MEM_plotdata * plot_image_surface( MRI_IMAGE *im , float fac ,
                                    float theta , float phi , int ix , int jy )
 {
-   MRI_IMAGE * fim , * qim ;
-   MEM_plotdata * mp ;
-   float * x , * y , * z ;
+   MRI_IMAGE *fim , *qim ;
+   MEM_plotdata *mp ;
+   float *x , *y , *z ;
    float  dx ,  dy , zbot,ztop ;
    int ii , nx , ny , nxy ;
    char str[128] ;
@@ -9775,6 +10117,9 @@ ENTRY("plot_image_surface") ;
 
    y = (float *) malloc( sizeof(float) * ny ) ;
    for( ii=0 ; ii < ny ; ii++ ) y[ii] = ii * dy ;
+
+   (void)thd_floatscan( nx , x ) ;
+   (void)thd_floatscan( ny , y ) ;
 
    /*-- scale image data --*/
 
@@ -9845,10 +10190,10 @@ ENTRY("plot_image_surface") ;
 
 /*--- called when the user presses a surface graph arrowpad button ---*/
 
-void ISQ_surfgraph_arrowpad_CB( MCW_arrowpad * apad , XtPointer client_data )
+void ISQ_surfgraph_arrowpad_CB( MCW_arrowpad *apad , XtPointer client_data )
 {
-   MCW_imseq * seq = (MCW_imseq *) client_data ;
-   XButtonEvent * xev = (XButtonEvent *) &(apad->xev) ;
+   MCW_imseq *seq = (MCW_imseq *) client_data ;
+   XButtonEvent *xev = (XButtonEvent *) &(apad->xev) ;
    float step = 10.0 ;
 
 ENTRY("ISQ_surfgraph_arrowpad_CB") ;
@@ -9886,7 +10231,7 @@ ENTRY("ISQ_surfgraph_arrowpad_CB") ;
                and permanently unmanage it (for the recorder)
 -------------------------------------------------------------------------*/
 
-void ISQ_remove_widget( MCW_imseq * seq , Widget w )
+void ISQ_remove_widget( MCW_imseq *seq , Widget w )
 {
    int ii ;
 ENTRY("ISQ_remove_onoff") ;
@@ -9916,7 +10261,7 @@ ENTRY("ISQ_remove_onoff") ;
   24 Apr 2001: recording button and accoutrements
 -------------------------------------------------------------------------*/
 
-void ISQ_record_button( MCW_imseq * seq )
+void ISQ_record_button( MCW_imseq *seq )
 {
    Widget rc , mbar , menu , cbut , wpar ;
    XmString xstr ;
@@ -10048,6 +10393,9 @@ ENTRY("ISQ_record_button") ;
 
    /*-- top of menu = a label to click on that does nothing at all --*/
 
+   /* This --- Cancel --- label does not cause the hangup, so it is
+   left alone. See related comments in afni_graph.c LessTif patrol, Jan 07 09 */
+
    xstr = XmStringCreateLtoR( "-- Cancel --" , XmFONTLIST_DEFAULT_TAG ) ;
    (void) XtVaCreateManagedWidget(
             "menu" , xmLabelWidgetClass , menu ,
@@ -10064,14 +10412,14 @@ ENTRY("ISQ_record_button") ;
 
    /*-- menu toggles switches --*/
 
-   {  static char * status_label[3] = { "Off" , "Next One" , "Stay On" } ;
-      static char * method_label[7] = { "After End"    ,
-                                        "Before Start" ,
-                                        "Insert --"    ,
-                                        "Insert ++"    ,
-                                        "OverWrite"    ,
-                                        "-- OverWrite" ,
-                                        "++ OverWrite"   } ;
+   {  static char *status_label[3] = { "Off" , "Next One" , "Stay On" } ;
+      static char *method_label[7] = { "After End"    ,
+                                       "Before Start" ,
+                                       "Insert --"    ,
+                                       "Insert ++"    ,
+                                       "OverWrite"    ,
+                                       "-- OverWrite" ,
+                                       "++ OverWrite"   } ;
 
       seq->record_status_bbox =
          new_MCW_bbox( menu , 3,status_label ,
@@ -10111,7 +10459,7 @@ ENTRY("ISQ_record_button") ;
 
 void ISQ_record_CB( Widget w, XtPointer client_data, XtPointer call_data )
 {
-   MCW_imseq * seq = (MCW_imseq *) client_data ;
+   MCW_imseq *seq = (MCW_imseq *) client_data ;
    int ib ;
 
 ENTRY("ISQ_record_CB") ;
@@ -10147,9 +10495,9 @@ ENTRY("ISQ_record_CB") ;
   The recorder is left positioned at the new image.
 ------------------------------------------------------------------------*/
 
-void ISQ_record_addim( MCW_imseq * seq , int pos , int meth )
+void ISQ_record_addim( MCW_imseq *seq , int pos , int meth )
 {
-   MRI_IMAGE * tim ;
+   MRI_IMAGE *tim ;
    int opos , ii,bot,top ;
 
 ENTRY("ISQ_record_addim") ;
@@ -10238,7 +10586,7 @@ ENTRY("ISQ_record_addim") ;
 
 /*-----------------------------------------------------------------------*/
 
-void ISQ_record_open( MCW_imseq * seq )
+void ISQ_record_open( MCW_imseq *seq )
 {
    int ntot ;
 
@@ -10274,7 +10622,7 @@ ENTRY("ISQ_record_open") ;
 
 /*-----------------------------------------------------------------------*/
 
-void ISQ_record_update( MCW_imseq * seq , int npos )
+void ISQ_record_update( MCW_imseq *seq , int npos )
 {
    int ntot , ii ;
 
@@ -10312,7 +10660,7 @@ ENTRY("ISQ_record_update") ;
 XtPointer ISQ_record_getim( int n , int type , XtPointer handle )
 {
    int ntot = 0 ;
-   MCW_imseq * seq = (MCW_imseq *) handle ;  /* parent of recorder */
+   MCW_imseq *seq = (MCW_imseq *) handle ;  /* parent of recorder */
 
 ENTRY("ISQ_record_getim") ;
 
@@ -10322,9 +10670,9 @@ ENTRY("ISQ_record_getim") ;
    /*--- send control info ---*/
 
    if( type == isqCR_getstatus ){
-      MCW_imseq_status * stat = myXtNew( MCW_imseq_status ); /* will be free-d */
-                                                             /* when imseq is */
-                                                             /* destroyed    */
+      MCW_imseq_status *stat = myXtNew( MCW_imseq_status ); /* will be free-d */
+                                                            /* when imseq is */
+                                                            /* destroyed    */
       stat->num_total  = ntot ;
       stat->num_series = stat->num_total ;
       stat->send_CB    = ISQ_record_send_CB ;
@@ -10372,7 +10720,7 @@ ENTRY("ISQ_record_getim") ;
    so that we can free some memory.
 -----------------------------------------------------------------------------*/
 
-void ISQ_record_send_CB( MCW_imseq * seq , XtPointer handle , ISQ_cbs * cbs )
+void ISQ_record_send_CB( MCW_imseq *seq , XtPointer handle , ISQ_cbs *cbs )
 {
 ENTRY("ISQ_record_send_CB") ;
 
@@ -10412,8 +10760,8 @@ ENTRY("ISQ_record_send_CB") ;
 
 void ISQ_record_kill_CB( Widget w, XtPointer client_data, XtPointer call_data )
 {
-   MCW_imseq * seq = (MCW_imseq *) client_data ;
-   MCW_imseq * pseq ;
+   MCW_imseq *seq = (MCW_imseq *) client_data ;
+   MCW_imseq *pseq ;
    int pos=-1 ;
 
 ENTRY("ISQ_record_kill_CB") ;
@@ -10445,9 +10793,9 @@ ENTRY("ISQ_record_kill_CB") ;
 -----------------------------------------------------------------------*/
 
 void ISQ_butsave_choice_CB( Widget w , XtPointer client_data ,
-                                       MCW_choose_cbs * cbs   )
+                                       MCW_choose_cbs *cbs   )
 {
-   MCW_imseq * seq = (MCW_imseq *) client_data ;
+   MCW_imseq *seq = (MCW_imseq *) client_data ;
    int pp , agif_ind=0 , mpeg_ind=0 , nstr ;
 
    if( !ISQ_REALZ(seq)               ||
@@ -10482,9 +10830,9 @@ void ISQ_butsave_choice_CB( Widget w , XtPointer client_data ,
 ----------------------------------------------------------------------*/
 
 void ISQ_butsave_EV( Widget w , XtPointer client_data ,
-                     XEvent * ev , Boolean * continue_to_dispatch )
+                     XEvent *ev , Boolean *continue_to_dispatch )
 {
-   MCW_imseq * seq = (MCW_imseq *) client_data ;
+   MCW_imseq *seq = (MCW_imseq *) client_data ;
 
    if( !ISQ_REALZ(seq) ) return ;
 
@@ -10492,7 +10840,7 @@ void ISQ_butsave_EV( Widget w , XtPointer client_data ,
 
    switch( ev->type ){
       case ButtonPress:{
-         XButtonEvent * event = (XButtonEvent *) ev ;
+         XButtonEvent *event = (XButtonEvent *) ev ;
          if( event->button == Button3 ){
             char **strlist ; int pp , nstr , agif_ind=0 , mpeg_ind=0 ;
             if( seq->dialog_starter==NBUT_DISP ){XBell(XtDisplay(w),100); return; }
@@ -10537,7 +10885,7 @@ void ISQ_butsave_EV( Widget w , XtPointer client_data ,
 
 char * ISQ_getlabel( int nn , MCW_imseq *seq )
 {
-   char *lab ;
+   char *lab=NULL ;
 
 ENTRY("ISQ_getlabel") ;
 
@@ -10556,7 +10904,7 @@ ENTRY("ISQ_getlabel") ;
 
 MEM_plotdata * ISQ_getmemplot( int nn , MCW_imseq *seq )
 {
-   MEM_plotdata *mp ;
+   MEM_plotdata *mp=NULL ;
    int           ntic ;
 
 ENTRY("ISQ_getmemplot") ;
@@ -10677,7 +11025,7 @@ ENTRY("ISQ_getmemplot") ;
 
 MRI_IMAGE * ISQ_getoverlay( int nn , MCW_imseq *seq )
 {
-   MRI_IMAGE *tim ;
+   MRI_IMAGE *tim=NULL ;
 
 ENTRY("ISQ_getoverlay") ;
 
@@ -10707,9 +11055,9 @@ ENTRY("ISQ_getoverlay") ;
 MRI_IMAGE * ISQ_getimage( int nn , MCW_imseq *seq )
 {
    int ii , rr , jj , ns , npix , ktim ;
-   MRI_IMAGE *tim , *qim , *fim ;
+   MRI_IMAGE *tim=NULL , *qim=NULL , *fim=NULL ;
    MRI_IMARR *imar ;
-   float *far , val , *qar , **iar ;
+   float *far , val=0.0f , *qar , **iar ;
 
 ENTRY("ISQ_getimage") ;
 
@@ -10848,6 +11196,101 @@ ENTRY("ISQ_getimage") ;
 }
 
 /*---------------------------------------------------------------------*/
+
+MRI_IMAGE * ISQ_cropim( MRI_IMAGE *tim , MCW_imseq *seq )
+{
+   if( tim == NULL || !seq->cropit ) return NULL ;
+
+   if( seq->crop_nxorg < 0 || seq->crop_nyorg < 0 ){ /* orig image size not set yet */
+     seq->crop_nxorg = tim->nx ;
+     seq->crop_nyorg = tim->ny ;
+   }
+
+   if( tim->nx != seq->crop_nxorg ||    /* image changed size? */
+       tim->ny != seq->crop_nyorg   ){  /* => turn cropping off */
+
+     seq->cropit = 0 ; seq->crop_nxorg = seq->crop_nyorg = -1 ;
+
+     if( seq->crop_drag ){              /* should not happen */
+       MCW_invert_widget( seq->crop_drag_pb ) ;
+       seq->crop_drag = 0 ;
+     }
+
+   } else {
+     MRI_IMAGE *cim ;
+     if( seq->crop_xb >= seq->crop_nxorg ) seq->crop_xb = seq->crop_nxorg - 1 ;
+     if( seq->crop_yb >= seq->crop_nyorg ) seq->crop_yb = seq->crop_nyorg - 1 ;
+     cim = mri_cut_2D( tim, seq->crop_xa,seq->crop_xb,
+                            seq->crop_ya,seq->crop_yb ) ;
+     if( cim != NULL ){ MRI_COPY_AUX(cim,tim); return cim; }
+   }
+
+   return NULL ;
+}
+
+/*---------------------------------------------------------------------*/
+
+MRI_IMAGE * ISQ_getulay( int nn , MCW_imseq *seq )
+{
+   MRI_IMAGE *tim=NULL , *cim ;
+
+   AFNI_CALL_VALU_3ARG( seq->getim , MRI_IMAGE *,tim ,
+                        int,nn , int,isqCR_getulayim , XtPointer,seq->getaux ) ;
+
+   cim = ISQ_cropim( tim , seq ) ;
+   if( cim != NULL ){ mri_free(tim) ; tim = cim ; }
+   return tim ;
+}
+
+/*---------------------------------------------------------------------*/
+
+MRI_IMAGE * ISQ_getolay( int nn , MCW_imseq *seq )
+{
+   MRI_IMAGE *tim=NULL , *cim ;
+
+   AFNI_CALL_VALU_3ARG( seq->getim , MRI_IMAGE *,tim ,
+                        int,nn , int,isqCR_getolayim , XtPointer,seq->getaux ) ;
+
+   cim = ISQ_cropim( tim , seq ) ;
+   if( cim != NULL ){ mri_free(tim) ; tim = cim ; }
+   return tim ;
+}
+
+/*---------------------------------------------------------------------*/
+
+MRI_IMAGE *ISQ_getchecked( int nn , MCW_imseq *seq )
+{
+   MRI_IMAGE *qim=NULL , *uim , *oim ; float dx,dy ;
+
+ENTRY("ISQ_getchecked") ;
+
+   qim = ISQ_getimage(nn,seq) ; if( qim == NULL ) RETURN(NULL) ;
+   dx  = qim->dx ; dy = qim->dy ;
+   uim = ISQ_process_mri(nn,seq,qim) ; mri_free(qim) ;
+
+   qim = ISQ_getolay (nn,seq) ; if( qim == NULL ) RETURN(uim) ;
+   oim = ISQ_process_mri(nn,seq,qim) ; mri_free(qim) ;
+
+   if( uim->kind == MRI_rgb && oim->kind == MRI_short ){
+     qim = ISQ_index_to_rgb( seq->dc , 0 , oim ) ;
+     mri_free(oim) ; oim = qim ;
+   } else if( uim->kind == MRI_short && oim->kind == MRI_rgb ){
+     qim = ISQ_index_to_rgb( seq->dc , 0 , uim ) ;
+     mri_free(uim) ; uim = qim ;
+   }
+
+   if( seq->render_mode == RENDER_CHECK_OU )
+     qim = mri_check_2D( seq->wbar_checkbrd_av->ival , oim , uim ) ;
+   else
+     qim = mri_check_2D( seq->wbar_checkbrd_av->ival , uim , oim ) ;
+
+   mri_free(oim) ;
+   if( qim == NULL ){ uim->dx = dx ; uim->dy = dy ; RETURN(uim) ; }
+
+   mri_free(uim) ;    qim->dx = dx ; qim->dy = dy ; RETURN(qim) ;
+}
+
+/*---------------------------------------------------------------------*/
 /*! Deal with dragging a crop window after a button has been pressed.
 -----------------------------------------------------------------------*/
 
@@ -10926,7 +11369,7 @@ ENTRY("ISQ_cropper") ;
        int xmid=(imx2+imx1)/2, xh=(imx2-imx1)/2, xhw=zlev*xh ;
        int ymid=(imy2+imy1)/2, yh=(imy2-imy1)/2, yhw=zlev*yh ;
        int nx,ny ;
-       float mh = (zlev-1.001)/zlev ;  /* max offset allowed */
+       float mh = (zlev-1.001f)/zlev ;  /* max offset allowed */
 
        /* set size of original image from which cropping will be done */
 
@@ -11001,7 +11444,7 @@ CropDone:
 
 /*! Xt warning handler (to avoid messages to screen). */
 
-static void SNAP_warnhandler(char * msg){ return ; }
+static void SNAP_warnhandler(char *msg){ return ; }
 
 /*----------------------------------------------------------------------*/
 
@@ -11382,9 +11825,13 @@ ENTRY("ISQ_timer_stop") ;
     Return value is 1 if processed OK, 0 if not.
 ----------------------------------------------------------------------*/
 
-int ISQ_handle_keypress( MCW_imseq *seq , unsigned long key )
+int ISQ_handle_keypress( MCW_imseq *seq , unsigned long key , unsigned int state )
 {
    static int busy=0 ;   /* prevent recursion */
+
+   int shft = (state & ShiftMask) ;    /* 25 Aug 2009: stuff for  */
+   int ctrl = (state & ControlMask) ;  /* editing crop window via */
+   int astp ;                          /* arrow keypresses        */
 
 ENTRY("ISQ_handle_keypress") ;
 
@@ -11393,38 +11840,77 @@ ENTRY("ISQ_handle_keypress") ;
    if( busy || key == 0 ) RETURN(1) ;
    busy = 1 ;
 
+   astp = (int)AFNI_numenv("AFNI_IMAGE_CROPSTEP") ;
+        if( astp == 0 ) astp =  1 ;  /* default */
+   else if( astp >  9 ) astp =  9 ;  /* maximum */
+   else if( astp < -9 ) astp = -9 ;  /* minimum */
+
    /* 24 Jan 2003: deal with special function keys */
 
    if( key > 255 ){
      KeySym ks = (KeySym)key ;
      switch( ks ){
 
+       case XK_Home:       /* 27 Aug 2009 : center crop or pan at crosshairs */
+         if( shft ){
+           ISQ_adjust_crop( seq, 0,0,0,0 ) ;  /* crop center */
+         } else if (ctrl ){
+           /* nada */
+         } else {
+           ISQ_center_zoom( seq ) ;           /* pan center */
+         }
+       break ;
+
        case XK_Left:
        case XK_KP_Left:
-         seq->arrowpad->which_pressed = AP_LEFT ;
-         seq->arrowpad->xev.type = 0 ;
-         ISQ_arrowpad_CB( seq->arrowpad , (XtPointer)seq ) ;
+         if( shft ){                        /* 25 Aug 2009: edit crop window */
+           ISQ_adjust_crop( seq , +astp,+astp , 0,0 ) ;
+         } else if( ctrl ){
+           ISQ_adjust_crop( seq , +1,-1 , 0,0 ) ;
+         } else {
+           seq->arrowpad->which_pressed = AP_LEFT ;
+           seq->arrowpad->xev.type = 0 ;
+           ISQ_arrowpad_CB( seq->arrowpad , (XtPointer)seq ) ;
+         }
        break ;
 
        case XK_Right:
        case XK_KP_Right:
-         seq->arrowpad->which_pressed = AP_RIGHT ;
-         seq->arrowpad->xev.type = 0 ;
-         ISQ_arrowpad_CB( seq->arrowpad , (XtPointer)seq ) ;
+         if( shft ){
+           ISQ_adjust_crop( seq , -astp,-astp , 0,0 ) ;
+         } else if( ctrl ){
+           ISQ_adjust_crop( seq , -1,+1 , 0,0 ) ;
+         } else {
+           seq->arrowpad->which_pressed = AP_RIGHT ;
+           seq->arrowpad->xev.type = 0 ;
+           ISQ_arrowpad_CB( seq->arrowpad , (XtPointer)seq ) ;
+         }
        break ;
 
        case XK_Down:
        case XK_KP_Down:
-         seq->arrowpad->which_pressed = AP_DOWN ;
-         seq->arrowpad->xev.type = 0 ;
-         ISQ_arrowpad_CB( seq->arrowpad , (XtPointer)seq ) ;
+         if( shft ){
+           ISQ_adjust_crop( seq , 0,0 , -astp,-astp ) ;
+         } else if( ctrl ){
+           ISQ_adjust_crop( seq , 0,0 , -1,+1 ) ;
+         } else {
+           seq->arrowpad->which_pressed = AP_DOWN ;
+           seq->arrowpad->xev.type = 0 ;
+           ISQ_arrowpad_CB( seq->arrowpad , (XtPointer)seq ) ;
+         }
        break ;
 
        case XK_Up:
        case XK_KP_Up:
-         seq->arrowpad->which_pressed = AP_UP ;
-         seq->arrowpad->xev.type = 0 ;
-         ISQ_arrowpad_CB( seq->arrowpad , (XtPointer)seq ) ;
+         if( shft ){
+           ISQ_adjust_crop( seq , 0,0 , +astp,+astp ) ;
+         } else if( ctrl ){
+           ISQ_adjust_crop( seq , 0,0 , +1,-1 ) ;
+         } else {
+           seq->arrowpad->which_pressed = AP_UP ;
+           seq->arrowpad->xev.type = 0 ;
+           ISQ_arrowpad_CB( seq->arrowpad , (XtPointer)seq ) ;
+         }
        break ;
 
        case XK_Page_Up:
@@ -11467,17 +11953,28 @@ ENTRY("ISQ_handle_keypress") ;
                               " Drawing!! \n ", MCW_USER_KILL );
            XBell(seq->dc->display,100); busy=0; RETURN(0);
          }
-
          ISQ_set_cursor_state( seq ,
                                (seq->cursor_state == CURSOR_PENCIL)
                                ? CURSOR_NORMAL : CURSOR_PENCIL ) ;
        }
        break ;
 
-       default:
-       case XK_Home:
-       case XK_F3:
        case XK_F4:
+       case XK_F3:{                     /* 13 Sep 2008 */
+         ISQ_cbs cbs ;
+         if( !seq->button2_enabled ){
+           MCW_popup_message( seq->wimage,
+                              " \n Only when \n"
+                              " Drawing!! \n ", MCW_USER_KILL );
+           XBell(seq->dc->display,100); busy=0; RETURN(0);
+         }
+         cbs.reason = isqCR_button2_key ;
+         cbs.key    = (int)ks ;
+         SEND(seq,cbs) ;
+       }
+       break ;
+
+       default:
        case XK_F5:
        case XK_F6:
        case XK_F7:
@@ -11633,13 +12130,7 @@ ENTRY("ISQ_handle_keypress") ;
          default:
          case ISQ_RNG_MINTOMAX: seq->opt.scale_range = ISQ_RNG_02TO98;  break;
          case ISQ_RNG_CLIPPED:  seq->opt.scale_range = ISQ_RNG_MINTOMAX;break;
-         case ISQ_RNG_02TO98:
-           if( 0.0f < seq->top_clip ){
-             seq->opt.scale_range = ISQ_RNG_CLIPPED; seq->redo_clip = 1 ;
-           } else {
-             seq->opt.scale_range = ISQ_RNG_MINTOMAX;
-           }
-         break;
+         case ISQ_RNG_02TO98:   seq->opt.scale_range = ISQ_RNG_MINTOMAX;break;
        }
 
        ISQ_redisplay( seq , -1 , isqDR_display ) ;
@@ -11711,6 +12202,17 @@ ENTRY("ISQ_handle_keypress") ;
        if( (seq->opt.save_one || seq->status->num_total > 1) )
          ISQ_but_save_CB( seq->wbut_bot[NBUT_SAVE] , seq , NULL ) ;
        busy=0 ; RETURN(1) ;
+     break ;
+
+     case '3':
+     case '#':{
+       int rr = (key == '#') ? RENDER_CHECK_UO : RENDER_CHECK_OU ;
+       if( seq->render_mode == rr ) rr = 0 ;
+       seq->render_mode = rr ;
+       ISQ_redisplay( seq , -1 , isqDR_display ) ;
+       ISQ_draw_winfo( seq ) ;
+       busy=0 ; RETURN(1) ;
+     }
      break ;
 
 #if 0
@@ -12014,6 +12516,7 @@ void ISQ_save_anim( MCW_imseq *seq, char *prefin, int bot, int top, int mode )
    int doanim=0 ;
    char filt[512], *ppo = NULL; FILE *fp ; MRI_IMAGE *ovim ;
    int nx , ny , npix , pc ;
+   int adup=1 , akk,aa ;        /* 10 Feb 2009 */
 
 ENTRY("ISQ_save_anim") ;
 
@@ -12104,6 +12607,12 @@ ENTRY("ISQ_save_anim") ;
    }
 #endif
 
+   if( mode == AGIF_MODE || mode == MPEG_MODE ){
+     adup = (ISQ_anim_dup > 0) ? ISQ_anim_dup : AFNI_numenv("AFNI_ANIM_DUP") ;
+     if( adup <= 0 ) adup = 1 ; else if( adup > 99 ) adup = 99 ;
+   }
+
+
    /*---- loop thru, get images, save them ----*/
 
    if( doanim )
@@ -12111,7 +12620,7 @@ ENTRY("ISQ_save_anim") ;
    else
      INFO_message("Starting to save images") ;
 
-   for( kf=bot ; kf <= top ; kf++ ){
+   for( akk=0,kf=bot ; kf <= top ; kf++ ){
 
       /* get the underlay image */
 
@@ -12219,55 +12728,60 @@ ENTRY("ISQ_save_anim") ;
 
       /* create the filter command into string 'filt' */
 
-      switch( mode ){
-        case AGIF_MODE:
-          sprintf( fname, "%s%s.%05d.gif" , prefix,tsuf, kf) ;
-          sprintf( filt , togif  , fname ) ;  /* free colormap */
-          if( agif_list == NULL ) INIT_SARR(agif_list) ;
-          ADDTO_SARR(agif_list,fname) ;
-        break ;
+      for( aa=0 ; aa < adup ; aa++,akk++ ){ /* adup==1 if no animation */
 
-        case MPEG_MODE:
-          sprintf( fname, "%s%s.%05d.ppm" , ppo,tsuf, kf) ;
-          sprintf( filt , ppmto_ppm_filter , fname ) ;
-          if( agif_list == NULL ) INIT_SARR(agif_list) ;
-          ADDTO_SARR(agif_list,fname) ;
-        break ;
+        switch( mode ){
+          case AGIF_MODE:
+            sprintf( fname, "%s%s.%05d.gif" , prefix,tsuf, akk) ;
+            sprintf( filt , togif  , fname ) ;  /* free colormap */
+            if( agif_list == NULL ) INIT_SARR(agif_list) ;
+            ADDTO_SARR(agif_list,fname) ;
+          break ;
 
-        case JPEG_MODE:
-          sprintf( fname, "%s%05d.jpg" , prefix, kf) ;
-          sprintf( filt , ppmto_jpg95_filter , fname ) ;
-          if( agif_list == NULL ) INIT_SARR(agif_list) ;
-          ADDTO_SARR(agif_list,fname) ;
-        break ;
+          case MPEG_MODE:
+            sprintf( fname, "%s%s.%06d.ppm" , ppo,tsuf, akk) ;
+            sprintf( filt , ppmto_ppm_filter , fname ) ;
+            if( agif_list == NULL ) INIT_SARR(agif_list) ;
+            ADDTO_SARR(agif_list,fname) ;
+          break ;
 
-        case PNG_MODE:
-          sprintf( fname, "%s%05d.png" , prefix, kf) ;
-          sprintf( filt , ppmto_png_filter , fname ) ;
-          if( agif_list == NULL ) INIT_SARR(agif_list) ;
-          ADDTO_SARR(agif_list,fname) ;
-        break ;
-      }
+          case JPEG_MODE:
+            sprintf( fname, "%s%05d.jpg" , prefix, kf) ;
+            sprintf( filt , ppmto_jpg95_filter , fname ) ;
+            if( agif_list == NULL ) INIT_SARR(agif_list) ;
+            ADDTO_SARR(agif_list,fname) ;
+          break ;
+
+          case PNG_MODE:
+            sprintf( fname, "%s%05d.png" , prefix, kf) ;
+            sprintf( filt , ppmto_png_filter , fname ) ;
+            if( agif_list == NULL ) INIT_SARR(agif_list) ;
+            ADDTO_SARR(agif_list,fname) ;
+          break ;
+        }
 #ifndef CYGWIN
-      signal( SIGPIPE , SIG_IGN ) ;                 /* ignore broken pipe */
+        signal( SIGPIPE , SIG_IGN ) ;                 /* ignore broken pipe */
 #endif
-      fp = popen( filt , "w" ) ;                    /* open pipe to filter */
-      if( fp == NULL ){
-        ERROR_message("Can't open output filter %s\a",filt) ;
-        continue ;  /* loop over files */
-      }
+        fp = popen( filt , "w" ) ;                    /* open pipe to filter */
+        if( fp == NULL ){
+          ERROR_message("Can't open output filter %s\a",filt) ;
+          break ;  /* out of loop over aa */
+        }
 
-      /* write RGB image to pipe as a PPM file */
+        /* write RGB image to pipe as a PPM file */
 
-      fprintf(fp,"P6\n%d %d\n255\n" , nx,ny ) ;
-      fwrite( MRI_RGB_PTR(flim), sizeof(byte), 3*npix, fp ) ;
-      pc = pclose(fp) ;
-      if( pc == -1 ) perror("Error in image output pipe") ;
+        fprintf(fp,"P6\n%d %d\n255\n" , nx,ny ) ;
+        fwrite( MRI_RGB_PTR(flim), sizeof(byte), 3*npix, fp ) ;
+        pc = pclose(fp) ;
+        if( pc == -1 ) perror("Error in image output pipe") ;
+
+      } /* end of loop over aa = image duplicates for animation */
 
       /* done with this image */
 
       mri_free(flim) ; flim = NULL ;
-   }
+
+   } /* end of loop over image sequence to save */
 
    /** post-process saved images into animation? **/
 
@@ -12309,7 +12823,7 @@ ENTRY("ISQ_save_anim") ;
 
       case MPEG_MODE:{
         int alen ; char *alf , *oof , *par , *frate ;
-        char *qscale , *pattrn ;
+        char *qscale , *pattrn ; int mpar=0 ;
         FILE *fpar ;
 
         /* write mpeg_encode parameter file */
@@ -12321,9 +12835,16 @@ ENTRY("ISQ_save_anim") ;
         if( fpar == NULL ){ free(par) ; break ; }
         oof = AFMALL( char, strlen(prefix)+32 ) ; /* output fname */
         sprintf(oof,"%smpg",prefix) ;
-        qscale=getenv("AFNI_MPEG_QSCALE") ;if(qscale==NULL) qscale="11"   ;
-        pattrn=getenv("AFNI_MPEG_PATTERN");if(pattrn==NULL) pattrn="IIIII";
-        frate =getenv("AFNI_MPEG_FRAMERATE");if(frate==NULL)frate ="24"   ;
+        qscale=getenv("AFNI_MPEG_QSCALE")   ; if(qscale==NULL) qscale="11";
+        frate =getenv("AFNI_MPEG_FRAMERATE"); if(frate ==NULL) frate ="24";
+        pattrn=getenv("AFNI_MPEG_PATTERN")  ;
+        if( pattrn == NULL ){
+          if( adup <= 1 ) pattrn="IIIII";
+          else {
+            pattrn = calloc(sizeof(char),(adup+1)) ; mpar = 1 ;
+            pattrn[0] = 'I' ; memset( pattrn+1 , 'P' , adup-1 ) ;
+          }
+        }
         fprintf(fpar,
                   "OUTPUT %s\n"             /* oof */
                   "GOP_SIZE          5\n"
@@ -12342,11 +12863,12 @@ ENTRY("ISQ_save_anim") ;
                   "BSEARCH_ALG       SIMPLE\n"
                   "REFERENCE_FRAME   ORIGINAL\n"
                   "INPUT\n"
-                  "%s%s.*.ppm [%05d-%05d]\n"  /* prefix, tsuf, from, to */
+                  "%s%s.*.ppm [%06d-%06d]\n"  /* prefix, tsuf, from, to */
                   "END_INPUT\n"
                , oof , frate , pattrn , qscale ,
-                 ppo,tsuf,bot,top ) ;
+                 ppo,tsuf,0,akk) ;
         fclose(fpar) ;
+        if( mpar ) free(pattrn) ;
 
         /* make command to run */
 
@@ -12356,7 +12878,7 @@ ENTRY("ISQ_save_anim") ;
         INFO_message("Running '%s' to produce %s",alf,oof) ;
         if( THD_is_ondisk(oof) ) WARNING_message("Over-writing '%s'",oof);
         system(alf) ;                            /* so run it!    */
-        unlink(par); free(alf); free(oof); free(par); /* free trash   */
+        remove(par); free(alf); free(oof); free(par); /* free trash   */
       }
       break ;
      }
@@ -12364,7 +12886,7 @@ ENTRY("ISQ_save_anim") ;
      /* animation is done, for good or for ill */
 
      for( af=0 ; af < agif_list->num ; af++ )  /* erase temp files */
-       unlink( agif_list->ar[af] ) ;
+       remove( agif_list->ar[af] ) ;
      INFO_message("Done saving images") ;
 
    } else if( agif_list != NULL && agif_list->num > 0 ){

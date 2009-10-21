@@ -12,26 +12,31 @@
    is returned as NULL, something bad happened, and you are doomed.
 --------------------------------------------------------------------------*/
 
+static int nsuck = 0 ;
+int AFNI_suck_file_len(void){ return nsuck; }  /* 27 Feb 2009 */
+
 char * AFNI_suck_file( char *fname )
 {
    int len , fd , ii ;
    char *buf ;
 
-   if( fname == NULL || fname[0] == '\0' ) return NULL ;
+ENTRY("AFNI_suck_file") ;
+   nsuck = 0 ;
+   if( fname == NULL || fname[0] == '\0' ) RETURN(NULL );
 
    len = THD_filesize( fname ) ;
-   if( len <= 0 ) return NULL ;
+   if( len <= 0 ) RETURN(NULL ) ;
 
    fd = open( fname , O_RDONLY ) ;
-   if( fd < 0 ) return NULL ;
+   if( fd < 0 ) RETURN(NULL) ;
 
    buf = (char *) malloc( sizeof(char) * (len+4) ) ;
    ii  = read( fd , buf , len ) ;
    close( fd ) ;
-   if( ii <= 0 ){ free(buf) ; return NULL; }
+   if( ii <= 0 ){ free(buf); RETURN(NULL); }
 
    buf[len] = '\0' ;  /* 27 July 1998: 'len' used to be 'ii+1', which is bad */
-   return buf ;
+   nsuck = len ; RETURN(buf) ;
 }
 
 /*-----------------------------------------------------------------------
@@ -74,13 +79,16 @@ static int afni_env_done = 0 ;
 
 /*---------------------------------------------------------------------------*/
 
-void AFNI_mark_environ_done(void){ afni_env_done = 1 ; return ; }
+void AFNI_mark_environ_done(void)   { afni_env_done = 1 ; return ; }
+void AFNI_mark_environ_undone(void) { afni_env_done = 0 ; return ; }
 
 /*---------------------------------------------------------------------------*/
 
+static int blocked=0 ;
+
 char * my_getenv( char *ename )
 {
-   if( !afni_env_done ){
+   if( !blocked && !afni_env_done ){
      char *sysenv = getenv("AFNI_SYSTEM_AFNIRC") ;       /* 16 Apr 2000 */
      if( sysenv != NULL ) AFNI_process_environ(sysenv) ; /* 16 Apr 2000 */
      AFNI_process_environ(NULL) ;
@@ -94,10 +102,13 @@ int AFNI_process_environ( char *fname )
 {
    int   nbuf , nused , ii ;
    char *fbuf , *fptr ;
-   char str[NSBUF] , left[NSBUF] , middle[NSBUF] , right[NSBUF] ;
+   char  str[NSBUF] , left[NSBUF] , middle[NSBUF] ,
+         right[NSBUF], fname_str[NSBUF] = {"not_set"};
    int nenv=0 , senv=0 ; static int first=1 ;  /* 13 Mar 2008 */
 
 ENTRY("AFNI_process_environ") ;
+   blocked = 1 ;
+
    if( fname != NULL ){
      strcpy(str,fname) ;
    } else {
@@ -112,9 +123,10 @@ ENTRY("AFNI_process_environ") ;
      }
      afni_env_done = 1 ;
    }
+   strcpy(fname_str,str) ; /* ZSS: Nov. 25 08 */
 
-   fbuf = AFNI_suck_file( str ) ; if( fbuf == NULL ) RETURN(nenv) ;
-   nbuf = strlen(fbuf) ;          if( nbuf == 0    ) RETURN(nenv) ;
+   fbuf = AFNI_suck_file( str ) ; if( fbuf == NULL ){ blocked=0; RETURN(nenv); }
+   nbuf = strlen(fbuf) ;          if( nbuf == 0    ){ blocked=0; RETURN(nenv); }
 
    fptr = fbuf ; nused = 0 ;
 
@@ -139,7 +151,7 @@ ENTRY("AFNI_process_environ") ;
       /**-- ENVIRONMENT section [04 Jun 1999] --**/
 
       if( strcmp(str,"***ENVIRONMENT") == 0 ){ /* loop: find environment eqns */
-         char *enveqn ; int nl , nr ;
+         char *enveqn , *eee=NULL; int nl , nr ;
          senv = 1 ;
 
          while(1){                        /* loop, looking for 'name = value' */
@@ -150,7 +162,15 @@ ENTRY("AFNI_process_environ") ;
             nl = strlen(left) ; nr = strlen(right) ;
             enveqn = (char *) malloc(nl+nr+4) ;
             strcpy(enveqn,left) ; strcat(enveqn,"=") ; strcat(enveqn,right) ;
-            putenv(enveqn) ; nenv++ ;
+            if (!(eee = getenv(left))) {          /* ZSS Nov. 25 08 */
+               putenv(enveqn) ;
+            } else if( !AFNI_noenv("AFNI_ENVIRON_WARNINGS") &&
+                        strcmp(right, eee)){
+               INFO_message(  "Environment variable %s already set to '%s'. "
+                              "Value of '%s' from %s is ignored.",
+                              left, eee, right, fname_str);
+            }
+            nenv++ ;
          }
 
          continue ;  /* to end of outer while */
@@ -166,7 +186,7 @@ ENTRY("AFNI_process_environ") ;
        WARNING_message("didn't find any environment equations in ~/.afnirc") ;
    }
 
-   first = 0 ; free(fbuf) ; RETURN(nenv) ;
+   first = 0 ; free(fbuf) ; blocked = 0 ; RETURN(nenv) ;
 }
 
 /*-----------------------------------------------------------------*/
@@ -236,6 +256,17 @@ int AFNI_setenv( char *cmd )
 
    sprintf(eqn,"%s=%s",nam,val) ;
    eee = strdup(eqn) ; putenv(eee) ;
+
+#ifdef USE_TRACING  /* else DBG_trace is #defined to 0   2 Jan 2008 [rickr] */
+   if( strcmp(nam,"AFNI_DEBUG") == 0 ){  /* 29 Dec 2008 */
+     switch( val[0] ){
+       default:  DBG_trace = 0 ; break ;
+       case 'y': DBG_trace = 1 ; break ;
+       case 'Y': DBG_trace = 2 ; break ;
+     }
+   }
+#endif
+
    return(0) ;
 }
 

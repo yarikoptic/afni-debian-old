@@ -438,9 +438,9 @@ ENTRY("THD_load_datablock") ; /* 29 Aug 2001 */
      char *ept ;
      idone = strtol( ptr , &ept , 10 ) ;
      if( idone > 0 ){
-            if( *ept == 'K' || *ept == 'k' ) id *= 1024 ;
-       else if( *ept == 'M' || *ept == 'm' ) id *= 1024*1024 ;
-       print_size = id ;
+            if( *ept == 'K' || *ept == 'k' ) idone *= 1024 ;
+       else if( *ept == 'M' || *ept == 'm' ) idone *= 1024*1024 ;
+       print_size = idone ;
      } else {
        print_size = 666000000 ;
      }
@@ -1032,10 +1032,8 @@ fprintf(stderr,"mbot=%d mtop=%d\n",(int)mbot,(int)mtop) ;
            float mfac = DBLK_BRICK_FACTOR(blk,jbr) ;
            if( mfac == 0.0 ) mfac = 1.0 ;
            mbot = (bot/mfac) ; mtop = (top/mfac) ;
-           mbot = (mbot > 0) ? mbot*mbot : 0 ;
-           mtop = (mtop > 0) ? mtop*mtop : 0 ;
            for( ii=0 ; ii < nxyz ; ii++ ){
-              val = CSQR(mar[ii]) ;
+              val = CABS(mar[ii]) ;
               if( val < mbot || val > mtop ) mar[ii].r = mar[ii].i = 0 ;
            }
         }

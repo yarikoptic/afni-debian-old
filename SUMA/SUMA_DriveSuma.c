@@ -29,61 +29,62 @@ static char uDS_show_surf[]={
                "                       -i_fs CreateIco_surf.asc\n"
 };
 static char uDS_node_xyz[]={
-               "        ConvertSurface -i_fs CreateIco_surf.asc \\\n"
-               "                       -o_1D radcoord radcoord \\\n"
-               "                       -radial_to_sphere 100\n"
-               "        DriveSuma -com node_xyz -label icoco \\\n"
-               "                       -xyz_1D radcoord.1D.coord'[0,1,2]'\n"
-               "        1deval -a radcoord.1D.coord'[0]' -expr 'sin(a)*100' \\\n"
-               "            > xmess.1D ;1dcat xmess.1D radcoord.1D.coord'[1,2]' \\\n"
-               "            > somecoord.1D.coord ; rm xmess.1D\n"
-               "        DriveSuma -com node_xyz -label icoco \\\n"
-               "                       -xyz_1D somecoord.1D.coord\n"
+"        ConvertSurface -i_fs CreateIco_surf.asc \\\n"
+"                       -o_1D radcoord radcoord \\\n"
+"                       -radial_to_sphere 100\n"
+"        DriveSuma -com node_xyz -label icoco \\\n"
+"                       -xyz_1D radcoord.1D.coord'[0,1,2]'\n"
+"        1deval -a radcoord.1D.coord'[0]' -expr 'sin(a)*100' \\\n"
+"            > xmess.1D ;1dcat xmess.1D radcoord.1D.coord'[1,2]' \\\n"
+"            > somecoord.1D.coord ; rm xmess.1D\n"
+"        DriveSuma -com node_xyz -label icoco \\\n"
+"                       -xyz_1D somecoord.1D.coord\n"
 };
 static char uDS_viewer_cont[]={
-               "       DriveSuma -com  viewer_cont -key R -key ctrl+right\n"
-               "       DriveSuma -com  viewer_cont -key:r3:s0.3 up  \\\n"
-               "                       -key:r2:p left -key:r5:d right \\\n"
-               "                       -key:r3 z   -key:r5 left -key F6\n"
-               "       DriveSuma -com  viewer_cont -key m -key down \\\n"
-               "                 -com  sleep 2s -com viewer_cont -key m \\\n"
-               "                       -key:r4 Z   -key ctrl+right\n"
-               "       DriveSuma -com  viewer_cont -key m -key right \\\n"
-               "                 -com  pause press enter to stop this misery \\\n"
-               "                 -com  viewer_cont -key m \n"
+"       DriveSuma -com  viewer_cont -key R -key ctrl+right\n"
+"       DriveSuma -com  viewer_cont -key:r3:s0.3 up  \\\n"
+"                       -key:r2:p left -key:r5:d right \\\n"
+"                       -key:r3 z   -key:r5 left -key F6\n"
+"       DriveSuma -com  viewer_cont -key m -key down \\\n"
+"                 -com  sleep 2s -com viewer_cont -key m \\\n"
+"                       -key:r4 Z   -key ctrl+right\n"
+"       DriveSuma -com  viewer_cont -key m -key right \\\n"
+"                 -com  pause press enter to stop this misery \\\n"
+"                 -com  viewer_cont -key m \n"
 };
 static char uDS_recorder_cont[]={
-               "       DriveSuma -com  recorder_cont -save_as allanimgif.agif \\\n"
-               "                 -com  recorder_cont -save_as lastone.jpg \\\n"
-               "                 -com  recorder_cont -save_as three.jpg -save_index 3\\\n"
-               "                 -com  recorder_cont -save_as some.png -save_range 3 6\n"
+"       DriveSuma -com  recorder_cont -save_as allanimgif.agif \\\n"
+"                 -com  recorder_cont -save_as lastone.jpg \\\n"
+"                 -com  recorder_cont -save_as three.jpg -save_index 3\\\n"
+"                 -com  recorder_cont -save_as some.png -save_range 3 6\n"
 };
 static char uDS_surf_cont[]={
                /*"       quickspec -spec radcoord.spec \\\n"
                "                 -tn 1d radcoord.1D.coord radcoord.1D.topo \\\n"
                "       SurfaceMetrics -curv -spec radcoord.spec \\\n"
                "                      -surf_A radcoord -prefix radcoord      \n"*/
-               "       echo 1 0 0 > bbr.1D.cmap; echo 1 1 1 >> bbr.1D.cmap; \\\n"
-               "       echo 0 0  1 >> bbr.1D.cmap\n"
-               "       IsoSurface -shape 4 128 -o_ply blooby.ply\n"
-               "       quickspec -spec blooby.spec -tn ply blooby.ply\n"
-               "       SurfaceMetrics -curv -spec blooby.spec \\\n"
-               "                      -surf_A blooby -prefix blooby      \n"
-               "       DriveSuma -com show_surf -surf_label blooby \\\n"
-               "                      -i_ply blooby.ply -surf_winding cw \\\n"
-               "                      -surf_state la_blooby\n"
-               "       DriveSuma -com surf_cont -load_dset blooby.curv.1D.dset \\\n"
-               "                      -surf_label blooby -view_surf_cont y\n"
-               "       DriveSuma -com surf_cont -I_sb 7 -T_sb 8 -T_val 0.0\n"
-               "       DriveSuma -com surf_cont -I_range 0.05 -T_sb -1\n"
-               "       DriveSuma -com surf_cont -I_sb 8 -I_range -0.1 0.1 \\\n"
-               "                      -T_val 0.02 -Dim 0.4\n"
-               "       DriveSuma -com surf_cont -switch_dset Convexity -1_only y\n"
-               "       DriveSuma -com surf_cont -switch_cmap roi64 -1_only n\n"
-               "       DriveSuma -com surf_cont -view_dset n\n"
-               "       DriveSuma -com surf_cont -switch_dset blooby.curv.1D.dset \\\n"
-               "                      -view_surf_cont n -I_range -0.05 0.14\n"
-               "       DriveSuma -com surf_cont -load_cmap bbr.1D.cmap\n"
+"       echo 1 0 0 > bbr.1D.cmap; echo 1 1 1 >> bbr.1D.cmap; \\\n"
+"       echo 0 0  1 >> bbr.1D.cmap\n"
+"       IsoSurface -shape 4 128 -o_ply blooby.ply\n"
+"       quickspec -spec blooby.spec -tn ply blooby.ply\n"
+"       SurfaceMetrics -curv -spec blooby.spec \\\n"
+"                      -surf_A blooby -prefix blooby      \n"
+"       DriveSuma -com show_surf -surf_label blooby \\\n"
+"                      -i_ply blooby.ply -surf_winding cw \\\n"
+"                      -surf_state la_blooby\n"
+"       DriveSuma -com surf_cont -load_dset blooby.curv.1D.dset \\\n"
+"                      -surf_label blooby -view_surf_cont y\n"
+"       DriveSuma -com surf_cont -I_sb 7 -T_sb 8 -T_val 0.0\n"
+"       DriveSuma -com surf_cont -I_range 0.05 -T_sb -1\n"
+"       DriveSuma -com surf_cont -I_sb 8 -I_range -0.1 0.1 \\\n"
+"                      -T_val 0.02 -Dim 0.4\n"
+"       DriveSuma -com surf_cont -B_sb 7 -B_range 0.5 -B_scale 0.1 0.9\n"
+"       DriveSuma -com surf_cont -switch_dset Convexity -1_only y\n"
+"       DriveSuma -com surf_cont -switch_cmap roi64 -1_only n\n"
+"       DriveSuma -com surf_cont -view_dset n\n"
+"       DriveSuma -com surf_cont -switch_dset blooby.curv.1D.dset \\\n"
+"                      -view_surf_cont n -I_range -0.05 0.14\n"
+"       DriveSuma -com surf_cont -load_cmap bbr.1D.cmap\n"
 };
 static char uDS_kill_suma[]={
                "       DriveSuma -com kill_suma\n"
@@ -96,200 +97,250 @@ void usage_DriveSuma (SUMA_GENERIC_ARGV_PARSE *ps)
       s = SUMA_help_basics();
       sio  = SUMA_help_IO_Args(ps);
       printf ( "\n"
-               "Usage: A program to drive suma from command line.\n"
-               "       DriveSuma [options] -com COM1 -com COM2 ...\n"
-               "Mandatory parameters:\n"
-               "---------------------\n"
-               "   -com COM: Command to be sent to SUMA.\n"
-               "             At least one command must be used\n"
-               "             and various commands can follow in\n"
-               "             succession.\n"
-               "        COM is the command string and consists\n"
-               "            of at least an action ACT. Some actions\n"
-               "            require additional parameters to follow\n"
-               "            ACT. \n"
-               " Actions (ACT) and their parameters:\n"
-               " -----------------------------------\n"
-               " o pause [MSG]: Pauses DriveSuma and awaits\n"
-               "                an 'Enter' to proceed with\n"
-               "                other commands. \n"
-               "                MSG is an optional collection of\n"
-               "                strings that can be displayed as\n"
-               "                a prompt to the user. See usage\n"
-               "                in examples below.\n"
-               "\n"
-               " o sleep DUR: Put DriveSuma to sleep for a duration DUR.\n"
-               "              DUR is the duration, specified with something\n"
-               "              like 2s (or 2) or 150ms\n"
-               "              See usage in examples below.\n"
-               "\n"
-               " o show_surf: Send surface to SUMA.\n"
-               "     + Mandatory parameters for show_surf action:\n"
-               "        -surf_label LABEL: A label (identifier) to assign to the\n"
-               "                           surface\n"
-               "        -i_TYPE SURF: Name of surface file, see surface I/O \n"
-               "                      options below for details.\n"
-               "     + Optional parameters for show_surf action:\n"
-               /*"        -surf_group GROUP:\n"*/
-               "          -surf_state STATE: Name the state of that surface\n"
-               "          -surf_winding WIND: Winding of triangles. Choose \n"
-               "                              from ccw or cw (normals on sphere\n"
-               "                              pointing in). This option affects\n"
-               "                              the lighting of the surface.\n"
-               "     + Example show_surf: \n"
-               "        1- Create some surface\n"
-               "        2- Start SUMA\n"
-               "        3- Send new surface to SUMA\n"
-               "        ---------------------------\n"
-               "%s"
-               "\n"
-               " o node_xyz: Assign new coordinates to surface in SUMA\n"
-               "     + Mandatory parameters for action node_xyz:\n"
-               "        -surf_label LABEL: A label to identify the target \n"
-               "                           surface\n"
-               "        -xyz_1D COORDS.1D: A 1D formatted file containing a new \n"
-               "                           coordinate for each of the nodes \n"
-               "                           forming the surface. COORDS.1D must \n"
-               "                           have three columns.\n"
-               "                           Column selectors can be used here as \n"
-               "                           they are in AFNI.\n"
-               "     + Example node_xyz (needs surface from 'Example show_surf')\n"
-               "        1- Create some variation on the coords of the surface\n"
-               "        2- Send new coordinates to SUMA\n"
-               "        3- Manipulate the x coordinate now\n"
-               "        4- Send new coordinates again to SUMA\n"
-               "        -------------------------------------\n"
-               "%s"
-               "\n"
-               " o viewer_cont: Apply settings to viewer or viewer controller\n"
-               "     + Optional parameters for action viewer_cont:\n"
-               "       (Parameter names reflect GUI labels or key strokes.)\n"
-               "        -load_view VIEW_FILE: Load a previously\n"
-               "                              saved view file (.vvs).\n"
-               "                              Same as 'File-->Load View'\n"
-               "        -key KEY_STRING: Act as if the key press KEY_STRING\n"
-               "                         was applied in the viewer.\n"
-               "                         ~ Not all key presses from interactive\n"
-               "                         more are allowed here.\n"
-               "                         ~ Available keys and their variants are:\n"
-               "                         b, m, n, p, r, t, z, up, down, left, right,\n"
-               "                         and F1 to F8.\n"
-               "                         ~ Key variants are specified this way:\n"
-               "                         ctrl+Up or ctrl+alt+Down etc.\n"
-               "                         ~ For help on key actions consult SUMA's\n"
-               "                         GUI help.\n"
-               "                         ~ Using multiple keys in the same command\n"
-               "                         might not result in the serial display of\n"
-               "                         the effect of each key, unless 'd' modifier\n"
-               "                         is used as shown further below. For example,\n"
-               "                         -key right -key right would most likely\n"
-               "                         produce one image rotated twice rather than\n"
-               "                         two images, each turned right once.\n"
-               "           The -key string can be followed by modifiers:\n"
-               "              For example, -key:r5:s0.2 has two modifiers,\n"
-               "              r5 and s0.2. All modifiers are separated by ':'.\n"
-               "              'r' Repeat parameter, so r5 would repeat the \n"
-               "                  same key 5 times.\n"
-               "              's' Sleep parameter, so s0.2 would sleep for 0.2\n"
-               "                  seconds between repeated keys.\n"
-               "              'd' Immediate redisplay flag. That is useful\n"
-               "                  when you are performing a succession of keys and\n"
-               "                  want to ensure each individual one gets displayed\n"
-               "                  and recorded (most likely). Otherwise, successive\n"
-               "                  keys may only display their resultant. 'd' is used\n"
-               "                  automatically with 's' modifier.\n"
-               "              'p' Pause flag. Requires user intervention to proceed.\n"
-               "        -viewer VIEWER: Specify which viewer should be acted \n"
-               "                        upon. Default is viewer 'A'. Viewers\n"
-               "                        must be created first (ctrl+n) before\n"
-               "                        they can be acted upon.\n"
-               "     + Example viewer_cont (assumes all previous examples have\n"
-               "       been executed and suma is still running).\n"
-               "        - a series of commands that should be obvious.\n"
-               "       -------------------------------------\n"
-               "%s"
-               "\n"
-               " o recorder_cont: Apply commands to recorder window\n"
-               "     + Optional parameters for action recorder_cont:\n"
-               "       -save_as PREFIX.EXT: Save image(s) in recorder\n"
-               "                             in the format determined by\n"
-               "                             extension EXT.\n"
-               "                             Allowed extensions are:\n"
-               "                             agif or gif: Animated GIF (movie)\n"
-               "                             mpeg or mpg: MPEG (movie)\n"
-               "                             jpeg or jpg: JPEG (stills)\n"
-               "                             png: PNG (stills)\n"
-               "       -save_index IND: Save one image indexed IND (start at 0)\n"
-               "       -save_range FROM TO: Save images from FROM to TO \n"
-               "       -save_last: Save last image (default for still formats)\n"
-               "       -save_last_n N: Save last N images\n"
-               "       -save_all: Save all images (default for movie formats)\n"
-               "     + Example recorder_cont (assumes there is a recorder window)\n"
-               "       currently open from SUMA.\n"
-               "       -------------------------------------\n"
-               "%s"
-               "\n"                            
-               " o surf_cont: Apply settings to surface controller.\n"
-               "     + Optional parameters for action surf_cont:\n"
-               "       (Parameter names reflect GUI labels.)\n"  
-               "       -surf_label LABEL: A label to identify the target surface\n"
-               "       -load_dset DSET: Load a dataset\n"
-               "           ! NOTE: When using -load_dset you can follow it\n"
-               "                   with -surf_label in order to attach\n"
-               "                   the dataset to a particular target surface.\n"
-               /*"       -view_surf y/n: Show or hide surface LABEL\n" */
-               "       -view_surf_cont y/n: View surface controller\n"
-               "       -switch_surf LABEL: switch state to that of surface \n"
-               "                           labeled LABEL and make that surface \n"
-               "                           be in focus.\n"
-               "       -switch_dset DSET: switch dataset to DSET\n"
-               "       -view_dset y/n: Set view toggle button of DSET\n"
-               "       -1_only y/n: Set 1_only toggle button of DSET\n"
-               "       -switch_cmap CMAP: switch colormap to CMAP\n"
-               "       -load_cmap CMAP.1D.cmap: load and switch colormap in \n"
-               "                                file CMAP.1D.cmap\n"
-               "       -I_sb ISB: Switch intensity to ISBth column (sub-brick)\n"
-               "       -I_range IR0 IR1: set intensity range from IR0 to IR1.\n"
-               "                         If only one number is given, the range\n"
-               "                         is symmetric from -|IR0| to |IR0|.\n"
-               "       -T_sb TSB: Switch threshold to TSBth column (sub-brick)\n"
-               "                  Set TSB to -1 to turn off thresholding.\n"
-               "       -T_val THR: Set threshold to THR\n"
-               "       -Dim DIM: Set the dimming factor.\n"
-               "     + Example surf_cont (assumes all previous examples have\n"
-               "       been executed and suma is still running).\n"
-               "       - Obvious chicaneries to follow:\n"
-               "       --------------------------------\n"
-               "%s"
-               "\n"
-               " o kill_suma: Close suma and quit.\n"
-               "\n"
-               "Advice:\n"
-               "-------\n"
-               "   If you get a colormap in your recorded image, it is\n"
-               "   because the last thing you drew was the surface controller\n"
-               "   which has an openGL surface for a colormap. In such cases,\n"
-               "   Force a redisplay of the viewer with something like:\n"
-               "      -key:r2:d m \n"
-               "                  where the m key is pressed twice (nothing)\n"
-               "                  changes in the setup but the surface is \n"
-               "                  redisplayed nonetheless because of the 'd'\n"
-               "                  key option.\n"
-               "Options:\n"
-               "--------\n"
-               "   -examples: Show all the sample commands and exit\n"
-               "   -C_demo: execute a preset number of commands\n"
-               "            which are meant to illustrate how one\n"
-               "            can communicate with SUMA from one's \n"
-               "            own C code. Naturally, you'll need to\n"
-               "            look at the source code file SUMA_DriveSuma.c\n"
-               "      Example:\n"
-               "      suma -niml &\n"
-               "      DriveSuma -C_demo\n"
-               "\n"
-               "%s"
-               "%s"
-               "\n", uDS_show_surf, uDS_node_xyz, uDS_viewer_cont, uDS_recorder_cont, uDS_surf_cont, sio,  s);
+"Usage: A program to drive suma from command line.\n"
+"       DriveSuma [options] -com COM1 -com COM2 ...\n"
+"Mandatory parameters:\n"
+"---------------------\n"
+"   -com COM: Command to be sent to SUMA.\n"
+"             At least one command must be used\n"
+"             and various commands can follow in\n"
+"             succession.\n"
+"        COM is the command string and consists\n"
+"            of at least an action ACT. Some actions\n"
+"            require additional parameters to follow\n"
+"            ACT. \n"
+" Actions (ACT) and their parameters:\n"
+" -----------------------------------\n"
+" o pause [MSG]: Pauses DriveSuma and awaits\n"
+"                an 'Enter' to proceed with\n"
+"                other commands. \n"
+"                MSG is an optional collection of\n"
+"                strings that can be displayed as\n"
+"                a prompt to the user. See usage\n"
+"                in examples below.\n"
+"\n"
+" o sleep DUR: Put DriveSuma to sleep for a duration DUR.\n"
+"              DUR is the duration, specified with something\n"
+"              like 2s (or 2) or 150ms\n"
+"              See usage in examples below.\n"
+"\n"
+" o show_surf: Send surface to SUMA.\n"
+"     + Mandatory parameters for show_surf action:\n"
+"        -surf_label LABEL: A label (identifier) to assign to the\n"
+"                           surface\n"
+"        -i_TYPE SURF: Name of surface file, see surface I/O \n"
+"                      options below for details.\n"
+"     + Optional parameters for show_surf action:\n"
+/*"        -surf_group GROUP:\n"*/
+"          -surf_state STATE: Name the state of that surface\n"
+"          -surf_winding WIND: Winding of triangles. Choose \n"
+"                              from ccw or cw (normals on sphere\n"
+"                              pointing in). This option affects\n"
+"                              the lighting of the surface.\n"
+"     + Example show_surf: \n"
+"        1- Create some surface\n"
+"        2- Start SUMA\n"
+"        3- Send new surface to SUMA\n"
+"        ---------------------------\n"
+"%s"
+"\n"
+" o node_xyz: Assign new coordinates to surface in SUMA\n"
+"     + Mandatory parameters for action node_xyz:\n"
+"        -surf_label LABEL: A label to identify the target \n"
+"                           surface\n"
+"        -xyz_1D COORDS.1D: A 1D formatted file containing a new \n"
+"                           coordinate for each of the nodes \n"
+"                           forming the surface. COORDS.1D must \n"
+"                           have three columns.\n"
+"                           Column selectors can be used here as \n"
+"                           they are in AFNI.\n"
+"     + Example node_xyz (needs surface from 'Example show_surf')\n"
+"        1- Create some variation on the coords of the surface\n"
+"        2- Send new coordinates to SUMA\n"
+"        3- Manipulate the x coordinate now\n"
+"        4- Send new coordinates again to SUMA\n"
+"        -------------------------------------\n"
+"%s"
+"\n"
+" o viewer_cont: Apply settings to viewer or viewer controller\n"
+"     + Optional parameters for action viewer_cont:\n"
+"       (Parameter names reflect GUI labels or key strokes.)\n"
+"        -load_view VIEW_FILE: Load a previously\n"
+"                              saved view file (.vvs).\n"
+"                              Same as 'File-->Load View'\n"
+"        -load_do   DO_FILE: Load a displayable object file\n"
+"                            For detailed information on DO_FILE's format,\n"
+"                            see the section under suma's  help (ctrl+h)\n"
+"                            where the function of Ctrl+Alt+s is detailed.\n"
+"        -key KEY_STRING: Act as if the key press KEY_STRING\n"
+"                         was applied in the viewer.\n"
+"                         ~ Not all key presses from interactive\n"
+"                         mode are allowed here.\n"
+"                         ~ Available keys and their variants are:\n"
+"                         [, ], comma (or ','), period (or '.'), space,\n"
+"                         a, b, d, G, j, m, n, p, r, t, z, \n"
+"                         up, down, left, right, and F1 to F8.\n"
+"                         ~ Key variants are specified this way:\n"
+"                         ctrl+Up or ctrl+alt+Down etc.\n"
+"                         ~ For help on key actions consult SUMA's\n"
+"                         GUI help.\n"
+"                         ~ Using multiple keys in the same command\n"
+"                         might not result in the serial display of\n"
+"                         the effect of each key, unless 'd' modifier\n"
+"                         is used as shown further below. For example,\n"
+"                         -key right -key right would most likely\n"
+"                         produce one image rotated twice rather than\n"
+"                         two images, each turned right once.\n"
+"           The -key string can be followed by modifiers:\n"
+"              For example, -key:r5:s0.2 has two modifiers,\n"
+"              r5 and s0.2. All modifiers are separated by ':'.\n"
+"              'r' Repeat parameter, so r5 would repeat the \n"
+"                  same key 5 times.\n"
+"              's' Sleep parameter, so s0.2 would sleep for 0.2\n"
+"                  seconds between repeated keys.\n"
+"              'd' Immediate redisplay flag. That is useful\n"
+"                  when you are performing a succession of keys and\n"
+"                  want to ensure each individual one gets displayed\n"
+"                  and recorded (most likely). Otherwise, successive\n"
+"                  keys may only display their resultant. 'd' is used\n"
+"                  automatically with 's' modifier.\n"
+"              'p' Pause flag. Requires user intervention to proceed.\n"
+"              'v' Value string. The string is passed to the function\n"
+"                  that processes this key, as if you'd entered that string\n"
+"                  in the GUI directly. To avoid parsing headaches, you\n"
+"                  should use quotes with this qualifier. For example, say\n"
+"                  you want to pass 0.0 0.0 0.0 to the 'ctrl+j' key press.\n"
+"                  At the shell you would enter:\n"
+"                  DriveSuma -com viewer_cont '-key:v\"0.8 0 10.3\"' ctrl+j\n"
+"        -viewer VIEWER: Specify which viewer should be acted \n"
+"                        upon. Default is viewer 'A'. Viewers\n"
+"                        must be created first (ctrl+n) before\n"
+"                        they can be acted upon.\n"
+"                        You can also refer to viewers with integers\n"
+"                        0 for A, 1 for B, etc.\n"
+"        -viewer_width or (-width) WIDTH: Set the width in pixels of\n"
+"                                     the current viewer.\n"
+"        -viewer_height or (-height) HEIGHT: Set the height in pixels of\n"
+"                                     the current viewer.\n"
+"        -viewer_size WIDTH HEIGHT : Convenient combo of -viewer_width \n"
+"                                    and -viewer_height\n"
+"        -viewer_position X Y: Set position on the screen\n"
+"        -inout_notify y/n: Turn on or off function call tracing\n"
+"     + Example viewer_cont (assumes all previous examples have\n"
+"       been executed and suma is still running).\n"
+"        - a series of commands that should be obvious.\n"
+"       -------------------------------------\n"
+"%s"
+"\n"
+" o recorder_cont: Apply commands to recorder window\n"
+"     + Optional parameters for action recorder_cont:\n"
+"       -anim_dup DUP: Save DUP copies of each frame into movie\n"
+"                      This has the effect of slowing movies down\n"
+"                      at the expense of file size, of course.\n"
+"                      DUP's default is set by the value of AFNI_ANIM_DUP\n"
+"                      environment variable. \n"
+"                      To set DUP back to its default value, use -anim_dup 0.\n" 
+"       -save_as PREFIX.EXT: Save image(s) in recorder\n"
+"                             in the format determined by\n"
+"                             extension EXT.\n"
+"                             Allowed extensions are:\n"
+"                             agif or gif: Animated GIF (movie)\n"
+"                             mpeg or mpg: MPEG (movie)\n"
+"                             jpeg or jpg: JPEG (stills)\n"
+"                             png: PNG (stills)\n"
+"       -save_index IND: Save one image indexed IND (start at 0)\n"
+"       -save_range FROM TO: Save images from FROM to TO \n"
+"       -save_last: Save last image (default for still formats)\n"
+"       -save_last_n N: Save last N images\n"
+"       -save_all: Save all images (default for movie formats)\n"
+"       -cwd ABSPATH: Set ABSPATH as SUMA's working directory. \n"
+"                     This path is used for storing output files\n"
+"                     or loading dsets.\n"
+"     + Example recorder_cont (assumes there is a recorder window)\n"
+"       currently open from SUMA.\n"
+"       -------------------------------------\n"
+"%s"
+"\n"                            
+" o surf_cont: Apply settings to surface controller.\n"
+"     + Optional parameters for action surf_cont:\n"
+"       (Parameter names reflect GUI labels.)\n"  
+"       -surf_label LABEL: A label to identify the target surface\n"
+"       -load_dset DSET: Load a dataset\n"
+"           ! NOTE: When using -load_dset you can follow it\n"
+"                   with -surf_label in order to attach\n"
+"                   the dataset to a particular target surface.\n"
+"       -view_surf y/n: Show or hide surface LABEL\n"
+"       -load_col COL: Load a colorfile named COL.\n"
+"                      Similar to what one loads under\n"
+"                      SUMA-->ctrl+s-->Load Col\n"
+"                      COL contains 4 columns, of\n"
+"                      the following format:\n"
+"                      n r g b\n"
+"                      where n is the node index and \n"
+"                      r g b are thre flooat values between 0 and 1\n"
+"                      specifying the color of each node.\n"
+"       -view_surf_cont y/n: View surface controller\n"
+"       -switch_surf LABEL: switch state to that of surface \n"
+"                           labeled LABEL and make that surface \n"
+"                           be in focus.\n"
+"       -switch_dset DSET: switch dataset to DSET\n"
+"       -view_dset y/n: Set view toggle button of DSET\n"
+"       -1_only y/n: Set 1_only toggle button of DSET\n"
+"       -switch_cmap CMAP: switch colormap to CMAP\n"
+"       -load_cmap CMAP.1D.cmap: load and switch colormap in \n"
+"                                file CMAP.1D.cmap\n"
+"       -I_sb ISB: Switch intensity to ISBth column (sub-brick)\n"
+"       -I_range IR0 IR1: set intensity range from IR0 to IR1.\n"
+"                         If only one number is given, the range\n"
+"                         is symmetric from -|IR0| to |IR0|.\n"
+"       -shw_0 y/n      or \n" 
+"       -show_0 y/n: Set shw 0 toggle button of DSET.\n"
+"       -T_sb TSB: Switch threshold to TSBth column (sub-brick)\n"
+"                  Set TSB to -1 to turn off thresholding.\n"
+"       -T_val THR: Set threshold to THR\n"
+"       -B_sb BSB: Switch brightness modulation to BSBth column (sub-brick)\n"
+"       -B_range BR0 BR1: set brightness clamping range from BR0 to BR1.\n"
+"                         If only one number is given, the range\n"
+"                         is symmetric from -|BR0| to |BR0|.\n"
+"       -B_scale BS0 BS1: Modulate brightness by BS0 factor for BR0 or lower\n"
+"                         by BS1 factor for BR1 or higher, and linearly \n"
+"                         interpolate scaling for BR0 < values < BR1\n" 
+"       -Dim DIM: Set the dimming factor.\n"
+"     + Example surf_cont (assumes all previous examples have\n"
+"       been executed and suma is still running).\n"
+"       - Obvious chicaneries to follow:\n"
+"       --------------------------------\n"
+"%s"
+"\n"
+" o kill_suma: Close suma and quit.\n"
+"\n"
+"Advice:\n"
+"-------\n"
+"   If you get a colormap in your recorded image, it is\n"
+"   because the last thing you drew was the surface controller\n"
+"   which has an openGL surface for a colormap. In such cases,\n"
+"   Force a redisplay of the viewer with something like:\n"
+"      -key:r2:d m \n"
+"                  where the m key is pressed twice (nothing)\n"
+"                  changes in the setup but the surface is \n"
+"                  redisplayed nonetheless because of the 'd'\n"
+"                  key option.\n"
+"Options:\n"
+"--------\n"
+"   -examples: Show all the sample commands and exit\n"
+"   -C_demo: execute a preset number of commands\n"
+"            which are meant to illustrate how one\n"
+"            can communicate with SUMA from one's \n"
+"            own C code. Naturally, you'll need to\n"
+"            look at the source code file SUMA_DriveSuma.c\n"
+"      Example:\n"
+"      suma -niml &\n"
+"      DriveSuma -C_demo\n"
+"\n"
+"%s"
+"%s"
+"\n"
+               , uDS_show_surf, uDS_node_xyz, uDS_viewer_cont, uDS_recorder_cont, uDS_surf_cont, sio,  s);
       SUMA_free(s); s = NULL; SUMA_free(st); st = NULL; SUMA_free(sio); sio = NULL;       
       s = SUMA_New_Additions(0, 1); printf("%s\n", s);SUMA_free(s); s = NULL;
       printf("       Ziad S. Saad SSCC/NIMH/NIH saadz@mail.nih.gov     \n");
@@ -297,7 +348,8 @@ void usage_DriveSuma (SUMA_GENERIC_ARGV_PARSE *ps)
 }
 
 SUMA_Boolean SUMA_ParseKeyModifiers(char *keyopt, int *Key_mult, 
-                                    float *Key_pause, int *Key_redis)
+                                    float *Key_pause, int *Key_redis, 
+                                    char **strgvalp)
 {
    static char FuncName[]={"SUMA_ParseKeyModifiers"};
    char *cccp=NULL, *op=NULL;
@@ -309,6 +361,9 @@ SUMA_Boolean SUMA_ParseKeyModifiers(char *keyopt, int *Key_mult,
    *Key_mult = 1;
    *Key_pause = 0.0;
    *Key_redis = 0;
+   if (!strgvalp || *strgvalp) {
+      SUMA_S_Err("strgvalp is NULL or point to not NULL");
+   }  
    if (!keyopt || strncmp(keyopt,"-key", 4)) {
       SUMA_S_Errv("NULL or bad keyopt %s", SUMA_CHECK_NULL_STR(keyopt));
       SUMA_RETURN(NOPE);
@@ -352,7 +407,11 @@ SUMA_Boolean SUMA_ParseKeyModifiers(char *keyopt, int *Key_mult,
                *Key_redis = 1;
                SUMA_LH("Will redisplay for each rep\n");
                break;
-            
+            case 'v':
+               op = cccp;
+               SUMA_SKIP_TO_NEXT_CHAR(cccp, NULL, ':');
+               SUMA_COPY_TO_STRING(op, cccp, (*strgvalp));
+               break;
             default:
                SUMA_S_Errv("Failed to parse content of %s\n", keyopt);
                Found = 0;
@@ -371,7 +430,7 @@ int SUMA_DriveSuma_ParseCommon(NI_group *ngr, int argtc, char ** argt)
 {
    static char FuncName[]={"SUMA_DriveSuma_ParseCommon"};
    int kar, N, nv, nums;
-   float fv3[3], tmpf;
+   double dv3[3], tmpd;
    char *stmp=NULL;
    SUMA_PARSED_NAME *fn;
    SUMA_Boolean brk = NOPE;
@@ -505,6 +564,23 @@ int SUMA_DriveSuma_ParseCommon(NI_group *ngr, int argtc, char ** argt)
          brk = YUP;
       }
       
+      if (!brk && ( (strcmp(argt[kar], "-load_col") == 0) ) )
+      {
+         if (kar+1 >= argtc)
+         {
+            fprintf (SUMA_STDERR, "need a color file after -load_col \n");
+            SUMA_RETURN(0);
+         }
+         
+         argt[kar][0] = '\0';
+         fn = SUMA_ParseFname(argt[++kar], SUMAg_CF->cwd);
+         /* SUMA_ShowParsedFname(fn, NULL); */
+         NI_set_attribute(ngr, "Col_FileName", fn->FullName);
+         fn = SUMA_Free_Parsed_Name(fn);
+         argt[kar][0] = '\0';
+         brk = YUP;
+      }
+      
       if (!brk && ( (strcmp(argt[kar], "-I_sb") == 0) ) )
       {
          if (kar+1 >= argtc)
@@ -531,7 +607,7 @@ int SUMA_DriveSuma_ParseCommon(NI_group *ngr, int argtc, char ** argt)
          ++kar; N = 1; stmp = NULL; nums = 0;
          while (  kar < argtc && 
                   argt[kar] && 
-                  SUMA_isNumString(argt[kar],(void *)N)) {
+                  SUMA_isNumString(argt[kar],(void *)((long int)N))) {
             stmp = SUMA_append_replace_string(stmp, argt[kar], " ", 1); ++nums;
             argt[kar][0] = '\0'; ++kar;
          } --kar;
@@ -540,21 +616,114 @@ int SUMA_DriveSuma_ParseCommon(NI_group *ngr, int argtc, char ** argt)
                         " 1 or 2 values allowed.");
             SUMA_RETURN(0);
          }
-         nv = SUMA_StringToNum(stmp, fv3, 3);
+         nv = SUMA_StringToNum(stmp, (void *)dv3, 3,2);
          if (nv < 1 || nv > 2) {
             SUMA_S_Err("Bad range string.");
             SUMA_RETURN(0);
          }else {
-            if (nv == 1) { fv3[0] = -SUMA_ABS(fv3[0]); fv3[1] = -fv3[0]; }
-            else if (fv3[0] > fv3[1]) { 
-               tmpf = fv3[0]; fv3[0] = fv3[1]; fv3[1] = tmpf; 
+            if (nv == 1) { dv3[0] = -SUMA_ABS(dv3[0]); dv3[1] = -dv3[0]; }
+            else if (dv3[0] > dv3[1]) { 
+               tmpd = dv3[0]; dv3[0] = dv3[1]; dv3[1] = tmpd; 
             }
             /* have range, set it please */
             SUMA_free(stmp); stmp = NULL; 
             stmp = (char *)SUMA_malloc(sizeof(char)*nv*50);
-            sprintf(stmp,"%f , %f", fv3[0], fv3[1]);
+            sprintf(stmp,"%f , %f", dv3[0], dv3[1]);
             NI_set_attribute(ngr, "I_range", stmp);
             SUMA_LHv("Range of %s\n", stmp);
+            SUMA_free(stmp); stmp = NULL;
+         }
+         brk = YUP;
+      }
+      if (!brk && ( (strcmp(argt[kar], "-B_sb") == 0) ) )
+      {
+         if (kar+1 >= argtc)
+         {
+            fprintf (SUMA_STDERR, "need an index after -B_sb \n");
+            SUMA_RETURN(0);
+         }
+         
+         argt[kar][0] = '\0';
+         NI_set_attribute(ngr, "B_sb", argt[++kar]);
+         argt[kar][0] = '\0';
+         brk = YUP;
+      }
+      
+      if (!brk && ( (strcmp(argt[kar], "-B_range") == 0) ) )
+      {
+         if (kar+1 >= argtc)
+         {
+            fprintf (SUMA_STDERR, "need at least one value after -B_range \n");
+            SUMA_RETURN(0);
+         }
+         
+         argt[kar][0] = '\0';
+         ++kar; N = 1; stmp = NULL; nums = 0;
+         while (  kar < argtc && 
+                  argt[kar] && 
+                  SUMA_isNumString(argt[kar],(void *)((long int)N))) {
+            stmp = SUMA_append_replace_string(stmp, argt[kar], " ", 1); ++nums;
+            argt[kar][0] = '\0'; ++kar;
+         } --kar;
+         if (!stmp || nums < 1 || nums > 2) {
+            SUMA_S_Err( "Bad format for -B_range option values;\n"
+                        " 1 or 2 values allowed.");
+            SUMA_RETURN(0);
+         }
+         nv = SUMA_StringToNum(stmp, (void *)dv3, 3,2);
+         if (nv < 1 || nv > 2) {
+            SUMA_S_Err("Bad range string.");
+            SUMA_RETURN(0);
+         }else {
+            if (nv == 1) { dv3[0] = -SUMA_ABS(dv3[0]); dv3[1] = -dv3[0]; }
+            else if (dv3[0] > dv3[1]) { 
+               tmpd = dv3[0]; dv3[0] = dv3[1]; dv3[1] = tmpd; 
+            }
+            /* have range, set it please */
+            SUMA_free(stmp); stmp = NULL; 
+            stmp = (char *)SUMA_malloc(sizeof(char)*nv*50);
+            sprintf(stmp,"%f , %f", dv3[0], dv3[1]);
+            NI_set_attribute(ngr, "B_range", stmp);
+            SUMA_LHv("Range of %s\n", stmp);
+            SUMA_free(stmp); stmp = NULL;
+         }
+         brk = YUP;
+      }
+      if (!brk && ( (strcmp(argt[kar], "-B_scale") == 0) ) )
+      {
+         if (kar+2 >= argtc)
+         {
+            fprintf (SUMA_STDERR, "need two values after -B_scale \n");
+            SUMA_RETURN(0);
+         }
+         
+         argt[kar][0] = '\0';
+         ++kar; N = 1; stmp = NULL; nums = 0;
+         while (  kar < argtc && 
+                  argt[kar] && 
+                  SUMA_isNumString(argt[kar],(void *)((long int)N))) {
+            stmp = SUMA_append_replace_string(stmp, argt[kar], " ", 1); ++nums;
+            argt[kar][0] = '\0'; ++kar;
+         } --kar;
+         if (!stmp || nums != 2) {
+            SUMA_S_Err( "Bad format for -B_scale option values;\n"
+                        " 2 values needed.");
+            SUMA_RETURN(0);
+         }
+         nv = SUMA_StringToNum(stmp, (void *)dv3, 3,2);
+         if ( nv != 2) {
+            SUMA_S_Err("Bad scale string.");
+            SUMA_RETURN(0);
+         }else {
+            if (dv3[0] > dv3[1]) { 
+               tmpd = dv3[0]; dv3[0] = dv3[1]; dv3[1] = tmpd; 
+            }
+            /* have scale, set it please */
+            SUMA_free(stmp); stmp = NULL; 
+            stmp = (char *)SUMA_malloc(sizeof(char)*nv*50);
+            sprintf(stmp,"%f , %f", dv3[0], dv3[1]);
+            NI_set_attribute(ngr, "B_scale", stmp);
+            SUMA_LHv("Scale of %s\n", stmp);
             SUMA_free(stmp); stmp = NULL;
          }
          brk = YUP;
@@ -606,7 +775,8 @@ int SUMA_DriveSuma_ParseCommon(NI_group *ngr, int argtc, char ** argt)
       {
          if (kar+1 >= argtc)
          {
-            fprintf (SUMA_STDERR, "need a viewer (A-F) after -viewer \n");
+            fprintf (SUMA_STDERR, 
+                     "need a viewer (A-F) or (0-5) after -viewer \n");
             SUMA_RETURN(0);
          }
          
@@ -627,7 +797,7 @@ int SUMA_DriveSuma_ParseCommon(NI_group *ngr, int argtc, char ** argt)
          ++kar;
          if (argt[kar][0] == 'y' || argt[kar][0] == 'Y')  
             NI_set_attribute(ngr, "1_only", "y");
-         else if (argt[kar][0] == 'n' || argt[kar][0] == 'n')  
+         else if (argt[kar][0] == 'n' || argt[kar][0] == 'N')  
             NI_set_attribute(ngr, "1_only", "n");
          else {
             fprintf (SUMA_STDERR, "need a 'y/n' after -1_only \n");
@@ -636,6 +806,29 @@ int SUMA_DriveSuma_ParseCommon(NI_group *ngr, int argtc, char ** argt)
          argt[kar][0] = '\0';
          brk = YUP;
       }
+
+      if (!brk && (  (strcmp(argt[kar], "-shw_0") == 0) ||
+                     (strcmp(argt[kar], "-show_0") == 0) ) )
+      {
+         if (kar+1 >= argtc)
+         {
+            fprintf (SUMA_STDERR, "need a 'y/n' after -show_0 \n");
+            SUMA_RETURN(0);
+         }
+         argt[kar][0] = '\0';
+         ++kar;
+         if (argt[kar][0] == 'y' || argt[kar][0] == 'Y')  
+            NI_set_attribute(ngr, "shw_0", "y");
+         else if (argt[kar][0] == 'n' || argt[kar][0] == 'N')  
+            NI_set_attribute(ngr, "shw_0", "n");
+         else {
+            fprintf (SUMA_STDERR, "need a 'y/n' after -show_0 \n");
+            SUMA_RETURN(0);
+         }
+         argt[kar][0] = '\0';
+         brk = YUP;
+      }
+      
       
       if (!brk && (strcmp(argt[kar], "-view_dset") == 0))
       {
@@ -648,7 +841,7 @@ int SUMA_DriveSuma_ParseCommon(NI_group *ngr, int argtc, char ** argt)
          ++kar;
          if (argt[kar][0] == 'y' || argt[kar][0] == 'Y')  
             NI_set_attribute(ngr, "view_dset", "y");
-         else if (argt[kar][0] == 'n' || argt[kar][0] == 'n')  
+         else if (argt[kar][0] == 'n' || argt[kar][0] == 'N')  
             NI_set_attribute(ngr, "view_dset", "n");
          else {
             fprintf (SUMA_STDERR, "need a 'y/n' after -view_dset \n");
@@ -669,7 +862,7 @@ int SUMA_DriveSuma_ParseCommon(NI_group *ngr, int argtc, char ** argt)
          ++kar;
          if (argt[kar][0] == 'y' || argt[kar][0] == 'Y')  
             NI_set_attribute(ngr, "view_surf", "y");
-         else if (argt[kar][0] == 'n' || argt[kar][0] == 'n')  
+         else if (argt[kar][0] == 'n' || argt[kar][0] == 'N')  
             NI_set_attribute(ngr, "view_surf", "n");
          else {
             fprintf (SUMA_STDERR, "need a 'y/n' after -view_surf \n");
@@ -690,7 +883,7 @@ int SUMA_DriveSuma_ParseCommon(NI_group *ngr, int argtc, char ** argt)
          ++kar;
          if (argt[kar][0] == 'y' || argt[kar][0] == 'Y')  
             NI_set_attribute(ngr, "View_Surf_Cont", "y");
-         else if (argt[kar][0] == 'n' || argt[kar][0] == 'n')  
+         else if (argt[kar][0] == 'n' || argt[kar][0] == 'N')  
             NI_set_attribute(ngr, "View_Surf_Cont", "n");
          else {
             fprintf (SUMA_STDERR, "need a 'y/n' after -view_surf_cont \n");
@@ -703,6 +896,7 @@ int SUMA_DriveSuma_ParseCommon(NI_group *ngr, int argtc, char ** argt)
       if (!brk && (strncmp(argt[kar], "-key", 4) == 0))
       {
          int N_Key = 0, Key_mult = 1, Key_redis= 0;
+         char *Key_strval=NULL;
          char stmp[100];
          float Key_pause = 0;
          
@@ -715,8 +909,8 @@ int SUMA_DriveSuma_ParseCommon(NI_group *ngr, int argtc, char ** argt)
          if (!SUMA_ParseKeyModifiers(argt[kar], 
                                     &Key_mult, 
                                     &Key_pause, 
-                                    &Key_redis 
-                                    )) {
+                                    &Key_redis, 
+                                    &Key_strval)) {
             SUMA_S_Errv("Failed in parsing %s\n", argt[kar]);
             SUMA_RETURN(0);
          } 
@@ -734,7 +928,11 @@ int SUMA_DriveSuma_ParseCommon(NI_group *ngr, int argtc, char ** argt)
          NI_SET_FLOAT(ngr, stmp, Key_pause);
          sprintf(stmp, "Key_redis_%d", N_Key);
          NI_SET_INT(ngr, stmp, Key_redis);
-         
+         sprintf(stmp, "Key_strval_%d", N_Key);
+         if (Key_strval) {
+            NI_set_attribute(ngr, stmp, Key_strval);
+            SUMA_free(Key_strval);
+         }
          argt[kar][0] = '\0';
          ++N_Key;
          NI_SET_INT(ngr,"N_Key", N_Key);
@@ -751,6 +949,62 @@ int SUMA_DriveSuma_ParseCommon(NI_group *ngr, int argtc, char ** argt)
          
          argt[kar][0] = '\0';
          NI_set_attribute(ngr, "VVS_FileName", argt[++kar]);
+         argt[kar][0] = '\0';
+         brk = YUP;
+      }
+      
+      if (!brk && ( (strcmp(argt[kar], "-inout_notify") == 0) ) )
+      {
+         if (kar+1 >= argtc)
+         {
+            fprintf (SUMA_STDERR, "need a value after -inout_notify\n");
+            SUMA_RETURN(0);
+         }
+         
+         argt[kar][0] = '\0';
+         ++kar;
+         if (argt[kar][0] == 'y' || argt[kar][0] == 'Y')  
+            NI_set_attribute(ngr, "inout_notify", "y");
+         else if (argt[kar][0] == 'n' || argt[kar][0] == 'N')  
+            NI_set_attribute(ngr, "inout_notify", "n");
+         else {
+            fprintf (SUMA_STDERR, "need a 'y/n' after -view_surf \n");
+            SUMA_RETURN(0);
+         }
+         argt[kar][0] = '\0';
+         brk = YUP;
+         
+      }
+      
+      if (!brk && ( (strcmp(argt[kar], "-load_do") == 0) ) )
+      {
+         if (kar+1 >= argtc)
+         {
+            fprintf (SUMA_STDERR, "need a .do file after -load_do \n");
+            SUMA_RETURN(0);
+         }
+         
+         argt[kar][0] = '\0';
+         NI_set_attribute(ngr, "DO_FileName", argt[++kar]);
+         argt[kar][0] = '\0';
+         brk = YUP;
+      }
+      if (!brk && ( (strcmp(argt[kar], "-anim_dup") == 0) ) )
+      {
+         if (kar+1 >= argtc)
+         {
+            fprintf (SUMA_STDERR, "need a positive integer after -anim_dup \n");
+            SUMA_RETURN(0);
+         }
+         
+         argt[kar][0] = '\0';++kar;
+         
+         if (atoi(argt[kar]) < 0) {
+            fprintf (SUMA_STDERR, "need a positive integer after -anim_dup \n");
+            SUMA_RETURN(0);
+         }
+         NI_set_attribute(ngr, "Anim_Dup", argt[kar]);
+         
          argt[kar][0] = '\0';
          brk = YUP;
       }
@@ -840,7 +1094,9 @@ int SUMA_DriveSuma_ParseCommon(NI_group *ngr, int argtc, char ** argt)
          argt[kar][0] = '\0';
          brk = YUP;
       }
-      if (!brk && ( (strcmp(argt[kar], "-caller_working_dir") == 0) || (strcmp(argt[kar], "-cwd") == 0)) )
+      if (  !brk && 
+            (  (strcmp(argt[kar], "-caller_working_dir") == 0) || 
+               (strcmp(argt[kar], "-cwd") == 0)) )
       {
          if (kar+1 >= argtc)
          {
@@ -856,6 +1112,109 @@ int SUMA_DriveSuma_ParseCommon(NI_group *ngr, int argtc, char ** argt)
          brk = YUP;
       }
       
+      if (  !brk && 
+            (  (strcmp(argt[kar], "-viewer_width") == 0) ||
+               (strcmp(argt[kar], "-width") == 0) ) )
+      {
+         if (kar+1 >= argtc)
+         {
+            fprintf (SUMA_STDERR, "need 1 number after %s \n", argt[kar]);
+            SUMA_RETURN(0);
+         }
+         
+         argt[kar][0] = '\0';++kar;
+         if (atoi(argt[kar]) < 10 || atoi(argt[kar]) > 2000) {
+            fprintf (SUMA_STDERR, 
+               "Have %d for width in pixels! \n", atoi(argt[kar]));
+            SUMA_RETURN(0);
+         }
+         NI_set_attribute(ngr, "WindWidth", argt[kar]);
+         NI_set_attribute(ngr, "DoViewerSetup","y"); /* flag indicating 
+                                                      need to setup viewer, 
+                                                      a la vvs */
+        
+         argt[kar][0] = '\0';
+         brk = YUP;
+      }
+      
+      if (  !brk && 
+            (  (strcmp(argt[kar], "-viewer_height") == 0) ||
+               (strcmp(argt[kar], "-height") == 0) ) )
+      {
+         if (kar+1 >= argtc)
+         {
+            fprintf (SUMA_STDERR, "need 1 number after %s \n", argt[kar]);
+            SUMA_RETURN(0);
+         }
+         argt[kar][0] = '\0';++kar;
+         if (atoi(argt[kar]) < 10 || atoi(argt[kar]) > 2000) {
+            fprintf (SUMA_STDERR, 
+               "Have %d for height in pixels! \n", atoi(argt[kar]));
+            SUMA_RETURN(0);
+         }
+         NI_set_attribute(ngr, "WindHeight", argt[kar]);
+         NI_set_attribute(ngr, "DoViewerSetup","y"); /* flag indicating 
+                                                      need to setup viewer, 
+                                                      a la vvs */
+         argt[kar][0] = '\0';
+         brk = YUP;
+      }
+      if (  !brk && 
+            (  (strcmp(argt[kar], "-viewer_size") == 0)  ) )
+      {
+         if (kar+2 >= argtc)
+         {
+            fprintf (SUMA_STDERR, "need 2 numbers after %s \n", argt[kar]);
+            SUMA_RETURN(0);
+         }
+         argt[kar][0] = '\0';++kar;
+         if (atoi(argt[kar]) < 10 || atoi(argt[kar]) > 2000) {
+            fprintf (SUMA_STDERR, 
+               "Have %d for width in pixels! \n", atoi(argt[kar]));
+            SUMA_RETURN(0);
+         }
+         NI_set_attribute(ngr, "WindWidth", argt[kar]);
+         argt[kar][0] = '\0';++kar;
+         if (atoi(argt[kar]) < 10 || atoi(argt[kar]) > 2000) {
+            fprintf (SUMA_STDERR, 
+               "Have %d for height in pixels! \n", atoi(argt[kar]));
+            SUMA_RETURN(0);
+         }
+         NI_set_attribute(ngr, "WindHeight", argt[kar]);
+         NI_set_attribute(ngr, "DoViewerSetup","y"); /* flag indicating 
+                                                      need to setup viewer, 
+                                                      a la vvs */
+         argt[kar][0] = '\0';
+         brk = YUP;
+      }
+      if (  !brk && 
+            (  (strcmp(argt[kar], "-viewer_position") == 0)  ) )
+      {
+         if (kar+2 >= argtc)
+         {
+            fprintf (SUMA_STDERR, "need 2 numbers after %s \n", argt[kar]);
+            SUMA_RETURN(0);
+         }
+         argt[kar][0] = '\0';++kar;
+         if (atoi(argt[kar]) < 10 || atoi(argt[kar]) > 4000) {
+            fprintf (SUMA_STDERR, 
+               "Have %d for X in pixels! \n", atoi(argt[kar]));
+            SUMA_RETURN(0);
+         }
+         NI_set_attribute(ngr, "WindX", argt[kar]);
+         argt[kar][0] = '\0';++kar;
+         if (atoi(argt[kar]) < 10 || atoi(argt[kar]) > 4000) {
+            fprintf (SUMA_STDERR, 
+               "Have %d for Y in pixels! \n", atoi(argt[kar]));
+            SUMA_RETURN(0);
+         }
+         NI_set_attribute(ngr, "WindY", argt[kar]);
+         NI_set_attribute(ngr, "DoViewerSetup","y"); /* flag indicating 
+                                                      need to setup viewer, 
+                                                      a la vvs */
+         argt[kar][0] = '\0';
+         brk = YUP;
+      }
       if (0 && !brk) { /* do not enforce this here */
 			fprintf (SUMA_STDERR,
                   "Error %s:\n"
@@ -1091,7 +1450,9 @@ SUMA_SurfaceObject *SUMA_ShowSurfComToSO(char *com)
          brk = YUP;
       }
       
-      if (!brk && ( (strcmp(argt[kar], "-group") == 0) || (strcmp(argt[kar], "-surf_group") == 0) || (strcmp(argt[kar], "-so_group") == 0)))
+      if (!brk && (  (strcmp(argt[kar], "-group") == 0) || 
+                     (strcmp(argt[kar], "-surf_group") == 0) || 
+                     (strcmp(argt[kar], "-so_group") == 0)))
       {
          if (kar+1 >= argtc)
          {
@@ -1104,7 +1465,9 @@ SUMA_SurfaceObject *SUMA_ShowSurfComToSO(char *com)
          brk = YUP;
       }
       
-      if (!brk && ( (strcmp(argt[kar], "-state") == 0) || (strcmp(argt[kar], "-surf_state") == 0) || (strcmp(argt[kar], "-so_state") == 0)))
+      if (!brk && (  (strcmp(argt[kar], "-state") == 0) || 
+                     (strcmp(argt[kar], "-surf_state") == 0) || 
+                     (strcmp(argt[kar], "-so_state") == 0)))
       {
          if (kar+1 >= argtc)
          {
@@ -1117,22 +1480,29 @@ SUMA_SurfaceObject *SUMA_ShowSurfComToSO(char *com)
          brk = YUP;
       }
       
-      if (!brk && ( (strcmp(argt[kar], "-norm_dir") == 0) || (strcmp(argt[kar], "-surf_winding") == 0) )) 
+      if (!brk && (  (strcmp(argt[kar], "-norm_dir") == 0) || 
+                     (strcmp(argt[kar], "-surf_winding") == 0) )) 
       {
          if (kar+1 >= argtc)
          {
-            fprintf (SUMA_STDERR, "need a direction (cw or ccw) after -surf_winding \n");
+            fprintf (SUMA_STDERR, 
+                     "need a direction (cw or ccw) after -surf_winding \n");
             exit (1);
          }
          ++kar;
          if (  SUMA_iswordsame_ci("cw", argt[kar]) == 1 ||
-               SUMA_iswordsame_ci("in", argt[kar]) == 1 || SUMA_iswordsame_ci("-1", argt[kar]) == 1 ) {
+               SUMA_iswordsame_ci("in", argt[kar]) == 1 || 
+               SUMA_iswordsame_ci("-1", argt[kar]) == 1 ) {
             SO->normdir = -1;
          } else if ( SUMA_iswordsame_ci("ccw", argt[kar]) == 1 || 
-                     SUMA_iswordsame_ci("out", argt[kar]) == 1 || SUMA_iswordsame_ci("1", argt[kar]) == 1) {
+                     SUMA_iswordsame_ci("out", argt[kar]) == 1 || 
+                     SUMA_iswordsame_ci("1", argt[kar]) == 1) {
             SO->normdir = 1;
          } else {
-            fprintf (SUMA_STDERR,"Error %s:\nvalue %s not valid with -surf_winding (cw or ccw only acceptable)\n", 
+            fprintf (SUMA_STDERR,
+                     "Error %s:\n"
+                     "value %s not valid with -surf_winding "
+                     "(cw or ccw only acceptable)\n", 
                                     FuncName, argt[kar]);
             exit(1);
          }
@@ -1140,7 +1510,9 @@ SUMA_SurfaceObject *SUMA_ShowSurfComToSO(char *com)
       }
       
       if (!brk && !pst->arg_checked[kar]) {
-			fprintf (SUMA_STDERR,"Error %s:\nOption %s not understood. Try -help for usage\n",
+			fprintf (SUMA_STDERR,
+                  "Error %s:\n"
+                  "Option %s not understood. Try -help for usage\n",
                FuncName, argt[kar]);
 			exit (1);
 		} else {	
@@ -1387,7 +1759,16 @@ int SUMA_ProcessCommand(char *com, SUMA_GENERIC_ARGV_PARSE *ps)
          SUMA_SL_Warn("Failed in SUMA_SendToSuma\nCommunication halted.");
       }
       NI_free_element(ngr); ngr = NULL;
-   } else if (strcmp((act), "surf_cont") == 0) {
+   } else if (strcmp((act), "load_col") == 0) {
+      if (!(ngr = SUMA_ComToNgr(com, act))) {
+         SUMA_S_Err("Failed to process command."); SUMA_RETURN(NOPE); 
+      }
+      SUMA_LH("Sending LoadCol to suma");
+      if (!SUMA_SendToSuma (SO, ps->cs, (void *)ngr, SUMA_ENGINE_INSTRUCTION, 1)) {
+         SUMA_SL_Warn("Failed in SUMA_SendToSuma\nCommunication halted.");
+      }
+      NI_free_element(ngr); ngr = NULL;
+   }else if (strcmp((act), "surf_cont") == 0) {
       if (!(ngr = SUMA_ComToNgr(com, act))) {
          SUMA_S_Err("Failed to process command."); SUMA_RETURN(NOPE); 
       }

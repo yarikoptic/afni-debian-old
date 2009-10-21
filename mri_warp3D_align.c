@@ -482,7 +482,7 @@ ENTRY("mri_warp3D_align_setup") ;
    else                        bas->imww = mri_to_float( bas->imwt ) ;
 
    if( bas->twoblur > 0.0f ){
-     float bmax = (float)pow((double)nxyz,0.33333333) * 0.03 ;
+     float bmax = cbrt((double)nxyz) * 0.03 ;
      if( bmax < bas->twoblur ){
        if( bas->verb )
          fprintf(stderr,"+   shrink bas->twoblur from %.3f to %.3f\n",
@@ -695,7 +695,7 @@ MRI_IMAGE * mri_warp3D_align_one( MRI_warp3D_align_basis *bas, MRI_IMAGE *im )
    float  sdif , fitdif[NMEM] ;   /* 28 Sep 2005 */
    int    num_bad_diff ;
    float  best_dif , best_par[999] ;  /* 09 Jan 2006 */
-   int    best_ite ;
+   int    best_ite=0 ;
 
 ENTRY("mri_warp3D_align_one") ;
 

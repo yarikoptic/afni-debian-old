@@ -99,17 +99,22 @@ static char * gifti_history[] =
   "     - added gifti_free_CS_list, gifti_add_empty_CS\n"
   "\n"
   "------------------------ initial release version -----------------------\n",
-  "1.0.0  13 May, 2008 : release version of gifticlib\n",
+  "1.00 13 May, 2008 : release version of gifticlib\n",
   "     - allowed external data\n"
   "     - added gifti_read/write_extern_DA_data() and\n"
   "             gifti_set_extern_filelist()\n"
-  "1.0.1  02 June, 2008 :\n",
+  "1.01 02 June, 2008 :\n",
   "     - added CMakeLists.txt and XMLCALL update from Simon Warfield\n"
   "       (define XMLCALL for pre-1.95.7 versions of expat)\n"
   "     - added LICENSE.gifti\n"
+  "1.02 02 October, 2008 :\n",
+  "     - separate diffs in DAs from those in gifti_image\n"
+  "     - decode additional data types: INT8, UINT16, INT64\n"
+  "     - add link flags to libgiftiio_la target\n"
+  "1.03 17 April, 2009 : allow DA size to vary over each external file\n"
 };
 
-static char gifti_version[] = "gifti library version 1.0.1, 2 June, 2008";
+static char gifti_version[] = "gifti library version 1.03, 17 April, 2009";
 
 /* ---------------------------------------------------------------------- */
 /*! global lists of XML strings */
@@ -1386,8 +1391,8 @@ int gifti_disp_gifti_image(const char * mesg, const gifti_image * p, int subs)
                    "    swapped    = %d\n"
                    "    compressed = %d\n", p->swapped, p->compressed);
 
+    fprintf(stderr," -- darray totals: %lld MB\n",gifti_gim_DA_size(p,1));
     if( subs ) gifti_disp_nvpairs("gim->ex_atrs" , &p->ex_atrs);
-    else fprintf(stderr," -- darray totals: %lld MB\n",gifti_gim_DA_size(p,1));
 
     fprintf(stderr,"==================================================\n");
 
@@ -1952,19 +1957,14 @@ int gifti_set_extern_filelist(gifti_image * gim, int nfiles, char ** files)
         return 1;
     }
 
-    if(G.verb > 4) fprintf(stderr,"-- set_extern_flist for %d files\n", nfiles);
-
     nper = gim->numDA / nfiles;
+
+    if(G.verb>4) fprintf(stderr,"-- set_extern_flist for %d files (nper=%d)\n",
+                         nfiles, nper);
+
     if( nfiles * nper != gim->numDA ) { /* be sure division is integral */
         fprintf(stderr,"** Cannot evenly divide %d DataArrays by %d"
                        " external files\n", gim->numDA, nfiles);
-        return 1;
-    }
-
-    /* note and check nbytes */
-    nbytes = gim->darray[0]->nvals * gim->darray[0]->nbyper;
-    if( nbytes <= 0 ) {
-        fprintf(stderr,"** gifti_set_extern_filelist: bad nbytes\n");
         return 1;
     }
 
@@ -1975,13 +1975,21 @@ int gifti_set_extern_filelist(gifti_image * gim, int nfiles, char ** files)
             return 1;
         }
 
+        /* note and check nbytes */
+        nbytes = gim->darray[daindex]->nvals * gim->darray[daindex]->nbyper;
+        if( nbytes <= 0 ) {
+            fprintf(stderr,"** gifti_set_extern_filelist: bad nbytes\n");
+            return 1;
+        }
+
         /* within this file, offset will be multiples of nbytes */
         for( oindex=0, offset=0; oindex < nper; oindex++, offset += nbytes ) {
             da = gim->darray[daindex];
 
             if( nbytes != da->nvals * da->nbyper ) {
-              fprintf(stderr,"** set_extern_flist: nbytes mismatch at DA[%d]\n",
-                      daindex);
+              fprintf(stderr,"** set_extern_flist: nbytes mismatch at DA[%d]\n"
+                             "   (expected %lld, found %lld)\n",
+                             daindex, nbytes, da->nvals * da->nbyper);
               return 1;
             }
 
@@ -2397,7 +2405,7 @@ int gifti_copy_all_DA_meta(giiDataArray *dest, giiDataArray *src)
 int gifti_compare_gifti_images(const gifti_image * g1, const gifti_image * g2,
                                int comp_data, int verb)
 {
-    int diffs = 0, data_diffs = 0, c, rv, numDA;
+    int diffs = 0, data_diffs = 0, gdiffs = 0, c, rv, numDA;
     int lverb = verb;           /* possibly override passed 'verb' */
 
     if( G.verb > 3 ) lverb = 3;
@@ -2413,7 +2421,7 @@ int gifti_compare_gifti_images(const gifti_image * g1, const gifti_image * g2,
     if( gifti_compare_gims_only(g1, g2, lverb) ) {
         if( lverb > 0 ) printf("++ gifti_images differ\n");
         if( lverb < 2 ) return 1;        /* all we need to know */
-        diffs++;
+        gdiffs++;
     }
 
     /* get min numDA, just to be safe */
@@ -2430,14 +2438,17 @@ int gifti_compare_gifti_images(const gifti_image * g1, const gifti_image * g2,
         }
     }
 
-    /* maybe we should state data diffs separately */
+    if( diffs && G.verb > 0 )
+        fprintf(stderr,"-- differences found in %d of %d DAs\n", diffs, numDA);
+
+    /* state data diffs separately */
     if( G.verb > 2 && comp_data ) {
         if( ! data_diffs ) fprintf(stderr,"-- no data differences found\n");
         else fprintf(stderr,"-- data differences found in %d of %d DAs\n",
                             data_diffs, numDA);
     }
 
-    if( diffs ) return 1;
+    if( diffs || gdiffs ) return 1;
     return 0;
 }
 

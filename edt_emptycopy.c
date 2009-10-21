@@ -80,6 +80,7 @@ ENTRY("EDIT_empty_copy") ; /* 29 Aug 2001 */
 
    new_dset->vox_warp       = myXtNew( THD_warp ) ;  /* create a voxel warp */
    new_dset->vox_warp->type = ILLEGAL_TYPE ;         /* but don't put anything in it */
+   ADDTO_KILL(new_dset->kl, new_dset->vox_warp) ;    /* 3 Mar 2009 [rickr] */
    new_dset->self_warp      = NULL ;                 /* 26 Aug 2002 */
 
    new_dset->warp_parent_name[0] = '\0' ;
@@ -112,6 +113,7 @@ ENTRY("EDIT_empty_copy") ; /* 29 Aug 2001 */
       new_dkptr->dimsizes[1]  = 2 ;
       new_dkptr->dimsizes[2]  = 2 ;
    }
+   new_dkptr->allow_directwrite = 0 ;  /* 08 May 2009 */
 
    if( old_good )
       THD_init_diskptr_names( new_dkptr ,
@@ -133,6 +135,7 @@ ENTRY("EDIT_empty_copy") ; /* 29 Aug 2001 */
    new_dblk->vedim = NULL ; /* 05 Sep 2006 */
 
    new_dblk->brick_fdrcurve = NULL ; /* 23 Jan 2008 */
+   new_dblk->brick_mdfcurve = NULL ; /* 22 Oct 2008 */
 
    DBLK_unlock(new_dblk) ;  /* Feb 1998 */
 
@@ -248,6 +251,7 @@ ENTRY("EDIT_empty_datablock") ;
    new_dblk->vedim = NULL ; /* 05 Sep 2006 */
 
    new_dblk->brick_fdrcurve = NULL ; /* 23 Jan 2008 */
+   new_dblk->brick_mdfcurve = NULL ; /* 22 Oct 2008 */
 
    new_dkptr = new_dblk->diskptr = myXtNew( THD_diskptr ) ;
 
@@ -264,11 +268,15 @@ ENTRY("EDIT_empty_datablock") ;
                            "./" , NULL , DUMMY_NAME ,
                            VIEW_ORIGINAL_TYPE , True ) ;
 
+STATUS("addto_kill(new_dkptr)") ;
    INIT_KILL(new_dblk->kl) ;
    ADDTO_KILL(new_dblk->kl,new_dkptr) ;
 
+STATUS("unlocking") ;
    DBLK_unlock(new_dblk) ;
+STATUS("nulling auxdata") ;
    THD_null_datablock_auxdata( new_dblk ) ;
+STATUS("done") ;
 
    RETURN( new_dblk ) ;
 }

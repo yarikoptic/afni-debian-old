@@ -28,7 +28,9 @@ extern char * THD_find_executable( char * ) ;
 void MCW_expose_widget( Widget w )
 {
    XExposeEvent xev;
-   Dimension ww , hh ;
+   Dimension ww=0 , hh=0 ;
+
+   memset(&xev, 0, sizeof(xev));
 
                                if(   w == NULL                 ) return ;
                                if( ! XtIsRealized(w)           ) return ;
@@ -109,8 +111,10 @@ void MCW_set_colormap( Widget w , Colormap cmap )
 
 void MCW_invert_widget( Widget w )
 {
-   Pixel bg_pix , topsh_pix , botsh_pix , fg_pix , sel_pix ;
+   Pixel bg_pix=0 , topsh_pix=0 , botsh_pix=0 , fg_pix=0 , sel_pix=0 ;
    Colormap cmap ;
+
+   memset(&cmap, 0, sizeof(cmap));
 
    if( ! XtIsWidget(w) ) return ;
    SYNC(w) ;
@@ -147,8 +151,10 @@ void MCW_invert_widget( Widget w )
 
 void MCW_set_widget_bg( Widget w , char *cname , Pixel pix )
 {
-   Pixel bg_pix , topsh_pix , botsh_pix , fg_pix , sel_pix ;
+   Pixel bg_pix=0 , topsh_pix=0 , botsh_pix=0 , fg_pix=0 , sel_pix=0 ;
    Colormap cmap ;
+
+   memset(&cmap, 0, sizeof(cmap));
 
 #if 1
    if( ! XtIsWidget(w) ) return ;
@@ -186,6 +192,12 @@ void MCW_set_widget_bg( Widget w , char *cname , Pixel pix )
 #else
    XmChangeColor( w , bg_pix ) ;
 #endif
+
+   if( XmIsToggleButton(w) ){   /* 18 Sep 2009 */
+     Pixel  fg_pix=0 ;
+     XtVaGetValues( w , XmNforeground , &fg_pix , NULL ) ;
+     XtVaSetValues( w , XmNselectColor,  fg_pix , NULL ) ;
+   }
 
    return ;
 }
@@ -235,8 +247,8 @@ void MCW_set_widget_label_tagged( Widget w , char *str , char *tag )
 
 void MCW_widget_geom( Widget w, int *wout, int *hout, int *xout, int *yout )
 {
-   Dimension nx , ny ;  /* don't try to make these ints! */
-   Position  xx , yy ;
+   Dimension nx=0 , ny=0 ;  /* don't try to make these ints! */
+   Position  xx=0 , yy=0 ;
 
    if( w == NULL ) return ;
    SYNC(w) ; RWC_sleep(1) ;
@@ -246,6 +258,7 @@ void MCW_widget_geom( Widget w, int *wout, int *hout, int *xout, int *yout )
                          XmNx      , &xx , XmNy      , &yy , NULL ) ;
    } else {
       XtWidgetGeometry wg ;
+      memset(&wg, 0, sizeof(wg)); /* probably doesn't matter, but be safe */
       (void) XtQueryGeometry( w , NULL , &wg ) ;   /* works! */
       nx = wg.width ; ny = wg.height ;
       xx = wg.x     ; yy = wg.y      ;
@@ -558,7 +571,7 @@ ENTRY("MCW_message_alter") ;
 void MCW_message_CB( Widget w , XtPointer cd , XtPointer cbs )
 {
 #ifdef ALLOW_TIMER_KILL
-   XtIntervalId tid ;
+   XtIntervalId tid=0 ;
 
    XtVaGetValues( w , XmNuserData , &tid , NULL ) ;  /* get timer id */
    XtDestroyWidget( XtParent(w) ) ;
@@ -697,8 +710,8 @@ static int clueless    = -1 ;
 void MCW_hint_toggle(void)
 {
 #define PBIG 999999
-   int period ;
-   char *pdef ;
+   int period=0 ;
+   char *pdef=NULL ;
 
    if( liteClue == NULL ) return ;
 
@@ -830,8 +843,8 @@ void MCW_register_help( Widget w , char *msg )
 
 void MCW_reghelp_children( Widget w , char *msg )
 {
-   Widget *children ;
-   int  num_children , ic ;
+   Widget *children=NULL ;
+   int  num_children=0 , ic ;
 
    if( disable_helps ) return ;
    if( w == NULL || msg == NULL ) return ;
@@ -1181,6 +1194,9 @@ MCW_textwin * new_MCW_textwin( Widget wpar, char *msg, int type )
    return new_MCW_textwin_2001( wpar,msg,type , NULL,NULL ) ;
 }
 
+static int bigtext = 0 ;
+void MCW_textwin_setbig( int b ){ bigtext = b ; }  /* 29 Apr 2009 */
+
 /*-----------------------------------------------------------------------
    Modified 10 Jul 2001 to include killing callback
 -------------------------------------------------------------------------*/
@@ -1195,12 +1211,17 @@ MCW_textwin * new_MCW_textwin_2001( Widget wpar, char *msg, int type,
    Screen *scr ;
    Boolean editable , cursorable ;
    Arg wa[64] ; int na ; Widget ws ;
+   char *wtype = "menu" ;
 
 ENTRY("new_MCW_textwin_2001") ;
 
    /*-- sanity check --*/
 
    if( wpar == NULL || !XtIsRealized(wpar) ) RETURN(NULL) ;
+
+        if( bigtext > 0 ) wtype = "bigtext" ;  /* 29 Apr 2009 */
+   else if( bigtext < 0 ) wtype = "font8"   ;
+   bigtext = 0 ;
 
    /* set position based on parent and screen geometry */
 
@@ -1228,7 +1249,7 @@ ENTRY("new_MCW_textwin_2001") ;
    tw->kill_data = kill_data ;
 
    tw->wshell = XtVaCreatePopupShell(
-                 "menu" , xmDialogShellWidgetClass , wpar ,
+                 wtype , xmDialogShellWidgetClass , wpar ,
                     XmNx , xpr ,
                     XmNy , ypr ,
                     XmNborderWidth , 0 ,
@@ -1244,7 +1265,7 @@ ENTRY("new_MCW_textwin_2001") ;
    /* create a form to hold everything else */
 
    tw->wtop = XtVaCreateWidget(
-                "menu" , xmFormWidgetClass , tw->wshell ,
+                wtype , xmFormWidgetClass , tw->wshell ,
                   XmNborderWidth , 0 ,
                   XmNborderColor , 0 ,
                   XmNtraversalOn , True  ,
@@ -1268,7 +1289,7 @@ ENTRY("new_MCW_textwin_2001") ;
    /* create text area */
 
    tw->wscroll = XtVaCreateManagedWidget(
-                    "menu" , xmScrolledWindowWidgetClass , tw->wtop ,
+                    wtype , xmScrolledWindowWidgetClass , tw->wtop ,
                        XmNscrollingPolicy        , XmAUTOMATIC ,
                        XmNvisualPolicy           , XmVARIABLE ,
                        XmNscrollBarDisplayPolicy , XmAS_NEEDED ,
@@ -1291,7 +1312,7 @@ ENTRY("new_MCW_textwin_2001") ;
                   NULL ) ;
 
    tw->wtext = XtVaCreateManagedWidget(
-                    "menu" , xmTextWidgetClass , tw->wscroll ,
+                    wtype , xmTextWidgetClass , tw->wscroll ,
                        XmNeditMode               , XmMULTI_LINE_EDIT ,
                        XmNautoShowCursorPosition , cursorable ,
                        XmNeditable               , editable ,
@@ -1303,10 +1324,24 @@ ENTRY("new_MCW_textwin_2001") ;
    if( msg != NULL ){
       int cmax = 20 , ll , nlin ;
       char *cpt , *cold , cbuf[128] ;
-      XmString xstr ;
-      XmFontList xflist ;
+      XmString xstr=NULL ;
+      XmFontList xflist=NULL ;
 
+      /* In lesstif, the text length is limited by the XmTextGetMaxLength
+       * resource, however setting it via XmTextSetMaxLength does not work.
+       * The string lengths seems to be limited to perhaps 100, even though
+       * XmTextGetMaxLength might return 256.
+       *
+       * The solution is to use XmTextSetString(w, str) to set the text.
+       * After that, XmTextGetMaxLength returns an updated value.
+       *
+       * 31 Dec, 2008 [lesstif patrol] */
+#ifdef USING_LESSTIF
+      XmTextSetString( tw->wtext , msg ) ;
+#else
       XtVaSetValues( tw->wtext , XmNvalue , msg , NULL ) ;
+#endif
+
       XtVaGetValues( tw->wtext , XmNfontList , &xflist , NULL ) ;
 
       cmax = 20 ; nlin = 1 ;
@@ -1382,7 +1417,7 @@ void MCW_textwin_alter( MCW_textwin *tw , char *mmm ) /* 10 Jul 2001 */
    int cmax = 20 , ll , nlin ;
    char *cpt , *cold , cbuf[128] ;
    XmString xstr ;
-   XmFontList xflist ;
+   XmFontList xflist=(XmFontList)NULL ;
 
 ENTRY("MCW_textwin_alter") ;
 

@@ -73,7 +73,7 @@ void BUCK_read_opts( int argc , char * argv[] )
    char dname[THD_MAX_NAME] ;
    char subv[THD_MAX_NAME] ;
    char *cpt ;
-   THD_3dim_dataset *dset , *fset ;
+   THD_3dim_dataset *dset , *fset=NULL ;
    int *svar ;
    char *str;
    int ok, ilen, nlen;
@@ -191,7 +191,8 @@ void BUCK_read_opts( int argc , char * argv[] )
 	 if (! ok)
 	   {
 	     fprintf(stderr,
-	       "File name must end in +orig, +acpc, or +tlrc after -glueto\n");
+	     "File name must end in +orig, +acpc, or +tlrc after -glueto\n"
+             "(consider: 3dbucket -prefix dsetA -overwrite dsetA dsetB ...)\n");
 	     exit(1);
 	   }
 
@@ -542,6 +543,9 @@ int main( int argc , char * argv[] )
          exit(1);
       }
       if( BUCK_verb ) printf("-verb: adding fdrcurve list\n");
+
+      new_dset->dblk->brick_mdfcurve = (floatvec **)calloc(sizeof(floatvec *),
+                         /* 22 Oct 2008 */                 new_nvals) ;
    }
 
    /*** loop over input datasets ***/
@@ -574,14 +578,18 @@ int main( int argc , char * argv[] )
               sprintf(buf,"%.12s[%d]",DSET_PREFIX(dset),jv) ;
             EDIT_dset_items( new_dset , ADN_brick_label_one+ivout, buf , ADN_none ) ;
 
+#if 0
             sprintf(buf,"%s[%d]",DSET_FILECODE(dset),jv) ;
             EDIT_dset_items(
               new_dset, ADN_brick_keywords_replace_one+ivout, buf, ADN_none ) ;
+#endif
 
             EDIT_dset_items(
               new_dset ,
                 ADN_brick_fac_one            +ivout, DSET_BRICK_FACTOR(dset,jv),
+#if 0
                 ADN_brick_keywords_append_one+ivout, DSET_BRICK_KEYWORDS(dset,jv) ,
+#endif
               ADN_none ) ;
 
             /** possibly write statistical parameters for this sub-brick **/
@@ -634,6 +642,12 @@ int main( int argc , char * argv[] )
                   nfdr++;
                }
                else new_dset->dblk->brick_fdrcurve[ivout] = NULL ;
+
+               if(dset->dblk->brick_mdfcurve && dset->dblk->brick_mdfcurve[iv]){
+                  COPY_floatvec(new_dset->dblk->brick_mdfcurve[ivout],
+                                    dset->dblk->brick_mdfcurve[iv]) ;
+               }
+               else new_dset->dblk->brick_mdfcurve[ivout] = NULL ;
             }
 
             /** print a message? **/

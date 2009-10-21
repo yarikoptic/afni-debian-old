@@ -169,10 +169,27 @@ double waveform_FILE( double t )   /* 23 Aug 2005 */
    nn = (int) tf ;
    tf = tf - (double)nn ;
    if( nn < 0 || nn > FILE_nval ) return 0.0 ;
+                  
+   /* Changed (tf < 0.0001) to (tf && tf < 0.0001)
+   Otherwise an extra repetition would occur if tf is exactly 0.
+   To illustrate:
+         waver -dt 1 -FILE 1 '1D:1 1' -tstim 0
+   used to return: 1 1 1 0 (bad)
+   and   waver -dt 1 -FILE 1 '1D:1 1' -tstim 0.001
+   used to return: 0 1 0.001 0 0 (which is OK)
+   With the new change:
+         waver -dt 1 -FILE 1 '1D:1 1' -tstim 0
+   returns: 1 1 0 0     (OK)
+   and   waver -dt 1 -FILE 1 '1D:1 1' -tstim 0.001
+   returns: 0 1 0.001 0 0 (OK)
+                                       R&Z   */ 
    if( nn == FILE_nval )
-     return (tf < 0.0001) ? (double)FILE_val[nn-1] : 0.0 ;
+     return (tf && tf < 0.0001) ? (double)FILE_val[nn-1] : 0.0 ;
 
-   return ( (1.0-tf)*FILE_val[nn] + tf*FILE_val[nn+1] ) ;
+   /* The if statement is to guard against reading nn+1 when 
+   nn is equal to FILE_nval -1            R&Z   */
+   if (nn == FILE_nval -1) return ((1.0-tf)*FILE_val[nn]);
+   else return ( (1.0-tf)*FILE_val[nn] + tf*FILE_val[nn+1] ) ;
 }
 
 /*----------------------------------------------------------------*/
@@ -399,7 +416,8 @@ void Syntax(void)
     "\n"
     "Options: (# refers to a number; [xx] is the default value)\n"
     "  -WAV = Sets waveform to Cox special                    [default]\n"
-    "           (cf. AFNI FAQ list for formulas)\n"
+    "           cf. AFNI FAQ list for formulas:\n"
+    "           http://afni.nimh.nih.gov/afni/doc/faq/17\n"
     "  -GAM = Sets waveform to form t^b * exp(-t/c)\n"
     "           (cf. Mark Cohen)\n"
     "\n"
@@ -522,16 +540,13 @@ void Syntax(void)
     "\n"
     "  -ver           = Output version information and exit.\n"
     "\n"
-    "At least one option is required, or the program will just print this message\n"
-    "to stdout.  Only one of the 3 timeseries input options above can be used.\n"
-    "\n"
-    "If you have the 'xmgr' graphing program, then a useful way to preview the\n"
-    "results of this program is through a command pipe like\n"
-    "   waver -dt 0.25 -xyout -inline 16@1 40@0 16@1 40@0 | xmgr -source stdin\n"
-    "Using the cruder AFNI package program 1dplot, you can do something like:\n"
-    "   waver -GAM -tstim 0 7.7 | 1dplot -stdin\n"
-    "\n"
-    "If a square wave is desired, see the 'sqwave' program.\n"
+    "* Only one of the 3 timeseries input options above can be used at a time.\n"
+    "* Using the AFNI program 1dplot, you can do something like the following,\n"
+    "  to check if the results make sense:\n"
+    "    waver -GAM -tstim 0 7.7 | 1dplot -stdin\n"
+    "* Note that program 3dDeconvolve can now generate many different\n"
+    "  waveforms internally, markedly reducing the need for this program.\n"
+    "* If a square wave is desired, see the 'sqwave' program.\n"
    ) ;
 
    PRINT_COMPILE_DATE ; exit(0) ;

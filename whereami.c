@@ -70,71 +70,72 @@ void whereami_usage(void)
    int i = 0;
    
    ENTRY("whereami_usage");
-      printf(  "Usage: whereami [x y z [output_format]] [-lpi/-spm] [-atlas ATLAS] \n"
-               "   ++ Reports brain areas located at x y z mm in TLRC space according \n"
-               "   to atlases present with your AFNI installation.\n"
-               "   ++ Show the contents of available atlases\n"
-               "   ++ Extract ROIs for certain atlas regions using symbolic notation\n"
-               "   ++ Report on the overlap of ROIs with Atlas-defined regions.\n"
-               "\n"
-               "Options (all options are optional):\n"
-               "-----------------------------------\n"
-               "    x y z [output_format] : Specifies the x y z coordinates of the \n"
-               "                            location probed. Coordinate are in mm and \n"
-               "                            assumed to be in RAI or DICOM format, unless\n"
-               "                            otherwise specified (see -lpi/-spm below)\n"
-               "                            In the AFNI viewer, coordinate format is\n"
-               "                            specified above the coordinates in the top-left\n"
-               "                            of the AFNI controller. Right click in that spot\n"
-               "                            to change between RAI/DICOM and LPI/SPM.\n"
-               "                     NOTE I:In the output, the coordinates are reported\n"
-               "                            in LPI, in keeping with the convention used\n"
-               "                            in most publications.\n"
-               "                    NOTE II:To go between LPI and RAI, simply flip the \n"
-               "                            sign of the X and Y coordinates.\n"
-               "\n"
-               "                            Output_format is an optional flag where:\n"
-               "                            0 is for standard AFNI 'Where am I?' format.\n"
-               "                            1 is for Tab separated list, meant to be \n"
-               "                            friendly for use in spreadsheets. \n"
-               "                            The default output flag is 0. You can use\n"
-               "                            options -tab/-classic instead of the 0/1 flag.\n"
-               " -coord_file XYZ.1D: Input coordinates are stored in file XYZ.1D\n"
-               "                     Use the '[ ]' column selectors to specify the\n"
-               "                     X,Y, and Z columns in XYZ.1D.\n"
-               "                     Say you ran the following 3dclust command:\n"
-               "           3dclust -1Dformat -1clip 0.3  5 3000 func+orig'[1]' > out.1D\n"
-               "                     You can run whereami on each cluster's center\n"
-               "                     of mass with:\n"
-               "           whereami -coord_file out.1D'[1,2,3]' -tab\n"
-               "               NOTE: You cannot use -coord_file AND specify x,y,z on\n"
-               "                     command line.\n" 
-               " -lpi/-spm: Input coordinates' orientation is in LPI or SPM format. \n"
-               " -rai/-dicom: Input coordinates' orientation is in RAI or DICOM format.\n"
-               " NOTE: The default format for input coordinates' orientation is set by \n"
-               "       AFNI_ORIENT environment variable. If it is not set, then the default \n"
-               "       is RAI/DICOM\n"
-               " -space SPC: Space of input coordinates.\n"
-               "       SPC can be either MNI or TLRC which is the default.\n"
-               "       If SPC is the MNI space, the x,y,z coordinates are transformed to\n"
-               "       TLRC space prior to whereami query.\n"
-               " -classic: Classic output format (output_format = 0).\n"
-               " -tab: Tab delimited output (output_format = 1). \n"
-               "       Useful for spreadsheeting.\n"
-               " -atlas ATLAS: Use atlas ATLAS for the query.\n"
-               "               You can use this option repeatedly to specify\n"
-               "               more than one atlas. Default is all available atlases.\n"
-               "               ATLAS is one of:\n"
-               "   %-12s: Created by tracing Talairach and Tournoux brain illustrations.\n"
-               "   Generously contributed by Jack Lancaster and Peter Fox of RIC UTHSCSA)\n"
-               "\n"
-               "   %-12s: Anatomy Toolbox's atlases, some created from cytoarchitectonic \n"
-               "   %-12s: studies of 10 human post-mortem brains (CA_N27_MPM, CA_N27_PM). \n"
-               "   %-12s: Generously contributed by Simon Eickhoff,\n"
-               "   %-12s: Katrin Amunts and Karl Zilles of IME, Julich, \n"
-               "   Germany. Please take into account the references and abide by the \n"
-               "   warning below (provided with the Anatomy toolbox) when using these \n"
-               "   atlases:\n", 
+      printf(  
+"Usage: whereami [x y z [output_format]] [-lpi/-spm] [-atlas ATLAS] \n"
+"   ++ Reports brain areas located at x y z mm in TLRC space according \n"
+"   to atlases present with your AFNI installation.\n"
+"   ++ Show the contents of available atlases\n"
+"   ++ Extract ROIs for certain atlas regions using symbolic notation\n"
+"   ++ Report on the overlap of ROIs with Atlas-defined regions.\n"
+"\n"
+"Options (all options are optional):\n"
+"-----------------------------------\n"
+"    x y z [output_format] : Specifies the x y z coordinates of the \n"
+"                            location probed. Coordinate are in mm and \n"
+"                            assumed to be in RAI or DICOM format, unless\n"
+"                            otherwise specified (see -lpi/-spm below)\n"
+"                            In the AFNI viewer, coordinate format is\n"
+"                            specified above the coordinates in the top-left\n"
+"                            of the AFNI controller. Right click in that spot\n"
+"                            to change between RAI/DICOM and LPI/SPM.\n"
+"                     NOTE I:In the output, the coordinates are reported\n"
+"                            in LPI, in keeping with the convention used\n"
+"                            in most publications.\n"
+"                    NOTE II:To go between LPI and RAI, simply flip the \n"
+"                            sign of the X and Y coordinates.\n"
+"\n"
+"                            Output_format is an optional flag where:\n"
+"                            0 is for standard AFNI 'Where am I?' format.\n"
+"                            1 is for Tab separated list, meant to be \n"
+"                            friendly for use in spreadsheets. \n"
+"                            The default output flag is 0. You can use\n"
+"                            options -tab/-classic instead of the 0/1 flag.\n"
+" -coord_file XYZ.1D: Input coordinates are stored in file XYZ.1D\n"
+"                     Use the '[ ]' column selectors to specify the\n"
+"                     X,Y, and Z columns in XYZ.1D.\n"
+"                     Say you ran the following 3dclust command:\n"
+"           3dclust -1Dformat -1clip 0.3  5 3000 func+orig'[1]' > out.1D\n"
+"                     You can run whereami on each cluster's center\n"
+"                     of mass with:\n"
+"           whereami -coord_file out.1D'[1,2,3]' -tab\n"
+"               NOTE: You cannot use -coord_file AND specify x,y,z on\n"
+"                     command line.\n" 
+" -lpi/-spm: Input coordinates' orientation is in LPI or SPM format. \n"
+" -rai/-dicom: Input coordinates' orientation is in RAI or DICOM format.\n"
+" NOTE: The default format for input coordinates' orientation is set by \n"
+"       AFNI_ORIENT environment variable. If it is not set, then the default \n"
+"       is RAI/DICOM\n"
+" -space SPC: Space of input coordinates.\n"
+"       SPC can be MNI, MNI_ANAT or TLRC which is the default.\n"
+"       If SPC is either MNI or MNI_ANAT space, the x,y,z coordinates are\n"
+"       transformed to TLRC space prior to whereami query.\n"
+" -classic: Classic output format (output_format = 0).\n"
+" -tab: Tab delimited output (output_format = 1). \n"
+"       Useful for spreadsheeting.\n"
+" -atlas ATLAS: Use atlas ATLAS for the query.\n"
+"               You can use this option repeatedly to specify\n"
+"               more than one atlas. Default is all available atlases.\n"
+"               ATLAS is one of:\n"
+"   %-12s: Created by tracing Talairach and Tournoux brain illustrations.\n"
+"   Generously contributed by Jack Lancaster and Peter Fox of RIC UTHSCSA)\n"
+"\n"
+"   %-12s: Anatomy Toolbox's atlases, some created from cytoarchitectonic \n"
+"   %-12s: studies of 10 human post-mortem brains (CA_N27_MPM, CA_N27_PM). \n"
+"   %-12s: Generously contributed by Simon Eickhoff,\n"
+"   %-12s: Katrin Amunts and Karl Zilles of IME, Julich, \n"
+"   Germany. Please take into account the references and abide by the \n"
+"   warning below (provided with the Anatomy toolbox) when using these \n"
+"   atlases:\n", 
                Atlas_Code_to_Atlas_Name(AFNI_TLRC_ATLAS),
                Atlas_Code_to_Atlas_Name(CA_EZ_N27_MPM_ATLAS),
                Atlas_Code_to_Atlas_Name(CA_EZ_N27_ML_ATLAS),
@@ -156,220 +157,230 @@ void whereami_usage(void)
                "      [7] Visual cortex (BA 17, BA 18) : Amunts et al., Neuroimage, 2000\n"
                "      Warning:\n"
                "        All other areas may only be used after consultation (contact S.Eickhoff@fz-juelich.de)\n" */
-       printf( "   \n"
-               "   See Eickhoff et al. Neuroimage 25 (2005) for more info on:\n"
-               "       Probability Maps (CA_N27_PM)\n"
-               "       and Maximum Probability Maps (CA_N27_MPM)\n");
-       printf( "   ----------------------------------------------------------\n"
-               "\n" 
-               " -atlas_sort: Sort results by atlas (default)\n"
-               " -zone_sort | -radius_sort: Sort by radius of search\n"
-               " -old : Run whereami in the olde (Pre Feb. 06) way.\n"
-               " -show_atlas_code: Shows integer code to area label map of the atlases\n"
-               "                   in use. The output is not too pretty because\n"
-               "                   the option is for debugging use.\n"
-               " -show_atlas_region REGION_CODE: You can now use symbolic notation to\n"
-               "                                 select atlas regions. REGION_CODE has \n"
-               "                                 three colon-separated elements forming it:\n"
-               "            Atlas_Name:Side:Area.\n"
-               "      Atlas_Name: one of the atlas names listed above.\n"
-               "                  If you do not have a particular atlas in your AFNI\n"
-               "                  installation, you'll need to download it (see below).\n"
-               "      Side      : Either left, right or nothing(::) for bilateral.\n"
-               "      Area      : A string identifying an area. The string cannot contain\n"
-               "                  blanks. Replace blanks by '_' for example Cerebellar Vermis\n"
-               "                  is Cerebellar_Vermis. You can also use the abbreviated \n" 
-               "                  version cereb_ver and the program will try to guess at \n"
-               "                  what you want and offer suggestions if it can't find the\n"
-               "                  area or if there is ambiguity. Abbreviations are formed\n"
-               "                  by truncating the components (chunks) of an area's name \n"
-               "                  (label). For example:\n"
-               "               1- TT_Daemon::ant_cing specifies the bilateral\n"
-               "                  anterior cingulate in the TT_Daemon atlas.\n"
-               "               2- CA_N27_ML:left:hippo specifies the left\n"
-               "                  hippocampus in the CA_N27_ML atlas.\n"
-               "               3- CA_N27_MPM:right:124 specifies the right\n"
-               "                  ROI with integer code 124 in the CA_N27_MPM atlas\n"
-               "               4- CA_N27_ML::cereb_ver seeks the Cerebellar\n"
-               "                  Vermis in the CA_N27_ML atlas. However there\n"
-               "                  many distinct areas with this name so the program\n"
-               "                  will return with 'potential matches' or suggestions.\n"
-               "                  Use the suggestions to refine your query. For example:\n"
-               "                  CA_N27_ML::cereb_vermis_8\n"
-               " -mask_atlas_region REGION_CODE: Same as -show_atlas_region, plus\n"
-               "                                 write out a mask dataset of the region.\n"
-               " -prefix PREFIX: Prefix for the output mask dataset\n"
-               " -max_areas MAX_N: Set a limit on the number of distinct areas to report.\n"
-               "             This option will override the value set by the environment\n"
-               "             variable AFNI_WHEREAMI_MAX_FIND, which is now set to %d\n"
-               "             The variable  AFNI_WHEREAMI_MAX_FIND should be set in your\n"
-               "             .afnirc file.\n"
-               " -max_search_radius MAX_RAD: Set a limit on the maximum searching radius when\n"
-               "                     reporting results. This option will override the \n"
-               "                     value set by the environment variable \n"
-               "                     AFNI_WHEREAMI_MAX_SEARCH_RAD,\n"
-               "                     which is now set to %f .\n" 
-               " NOTE: You can turn off some of the whining by setting the environment \n"
-               "       variable  AFNI_WHEREAMI_NO_WARN\n"            
-               " -debug DEBUG: Debug flag\n"
-               " -CA_N27_version: Output the version of the Anatomy Toolbox atlases and quit.\n"
-               "                  If you get warnings that AFNI's version differs from that \n"
-               "                  of the atlas' datasets then you will need to download the \n"
-               "                  latest atlas datasets from AFNI's website. You cannot use \n"
-               "                  older atlases because the atlas' integer-code to area-label\n"
-               "                  map changes from one version to the next.\n"
-               "                  To get the version of the atlas' datasets, run 3dNotes \n"
-               "                  on the atlases and look for 'Version' in one of the notes\n"
-               "                  printed out.\n" 
-               "\n"
-               "Options for determining the percent overlap of ROIs with Atlas-defined areas:\n"
-               "---------------------------------------------------------------------------\n"
-               " -bmask MASK: Report on the overlap of all non-zero voxels in MASK dataset\n"
-               "              with various atlas regions. NOTE: The mask itself is not binary,\n"
-               "              the masking operation results in a binary mask.\n"
-               " -omask ORDERED_MASK:Report on the overlap of each ROI formed by an integral \n"
-               "                     value in ORDERED_MASK. For example, if ORDERED_MASK has \n"
-               "                     ROIs with values 1, 2, and 3, then you'll get three \n"
-               "                     reports, one for each ROI value. Note that -omask and\n"
-               "                     -bmask are mutually exclusive.\n"
-               " -cmask MASK_COMMAND: command for masking values in BINARY_MASK, \n"
-               "                      or ORDERED_MASK on the fly.\n"
-               "        e.g. whereami -bmask JoeROIs+tlrc \\\n"
-               "                      -cmask '-a JoeROIs+tlrc -expr equals(a,2)'\n"
-               "              Would set to 0, all voxels in JoeROIs that are not\n"
-               "              equal to 2.\n"
-               "        Note that this mask should form a single sub-brick,\n"
-               "        and must be at the same resolution as BINARY_MASK or ORDERED_MASK.\n"
-               "        This option follows the style of 3dmaskdump (since the\n"
-               "        code for it was, uh, borrowed from there (thanks Bob!, thanks Rick!)).\n"
-               "        See '3dmaskdump -help' for more information.\n"
-               "\n"
-               "Note on the reported coordinates of the Focus Point:\n"
-               "----------------------------------------------------\n"
-               "  Coordinates of the Focus Point are reported in 3 coordinate spaces.\n"
-               "The 3 spaces are Talairach (TLRC), MNI, MNI Anatomical (MNI Anat.). \n"
-               "All three coordinates are reported in the LPI coordinate order.\n"
-               "  The TLRC coordinates follow the convention specified by the Talairach and \n"
-               "     Tournoux Atlas.\n"
-               "  The MNI coordinates are derived from the TLRC ones using an approximation \n"
-               "     equation.\n"
-               "  The MNI Anat. coordinates are a shifted version of the MNI coordinates \n"
-               "     (see Eickhoff et al. 05).\n"
-               "\n"
-               "  However because the MNI coordinates reported here are derived from TLRC \n"
-               "by an approximate function it is best to derive the MNI Anat. coordinates \n"
-               "in a different manner. This option is possible because the MNI Anat. \n"
-               "coordinates are defined relative to the single-subject N27 dataset. \n"
-               "MNI Anat. coordinates are thus derived via the 12 piece-wise \n"
-               "linear transformations used to put the MNI N27 brain in TLRC space.\n" 
-               "\n"
-               "Installing Atlases:\n"
-               "-------------------\n"
-               "   Atlases are stored as AFNI datasets, plus perhaps an extra file or two.\n"
-               "   These files should be placed in a location that AFNI can find. \n"
-               "   Let us refer to this directory as ATLAS_DIR, usually it is the same as\n"
-               "   the directory in which AFNI's binaries (such as the program afni) reside.\n"
-               "   At a minimum, you need the TTatlas+tlrc dataset present to activate the \n"
-               "   AFNI 'whereami' feature. To install it, if you do not have it already, \n"
-               "   download TTatlas+tlrc* from this link: \n"
-               "   http://afni.nimh.nih.gov/pub/dist/tgz/\n"
-               "   and move TTatlas+tlrc* to ATLAS_DIR.\n"
-               "   The Anatomy Toolbox atlases are in archives called CA_EZ_v*.tgz with *\n"
-               "   indicating a particular version number. Download the archive from:\n"
-               "   http://afni.nimh.nih.gov/pub/dist/tgz/, unpack it and move all the \n"
-               "   files in the unpacked directory into ATLAS_DIR.\n"
-               "\n"
-               "How To See Atlas Data In AFNI as datasets:\n"
-               "------------------------------------------\n"
-               "   If you want to view the atlases in the same session\n"
-               "   that you are working with, choose one of options below.\n"
-               "   For the sake of illustrations, I will assume that atlases\n"
-               "   reside in directory: /user/abin/\n"
-               " 1-Load the session where atlases reside on afni's command\n"
-               "   line: afni ./ /user/abin\n" 
-               " 2-Set AFNI's environment variable AFNI_GLOBAL_SESSION\n"
-               "   to the directory where the atlases reside.\n"
-               "   You can add the following to you .afnirc file:\n"
-               "   AFNI_GLOBAL_SESSION = /user/abin\n"
-               "   Or, for a less permanent solution, you can set this environment\n"
-               "   variable in the shell you are working in with (for csh and tcsh):\n"
-               "   setenv AFNI_GLOBAL_SESSION /user/abin \n"
-               "   ***********\n"
-               "   BE CAREFUL: Do not use the AFNI_GLOBAL_SESSION approach\n"
-               "   *********** if the data in your session is not already \n"
-               "   written in +tlrc space. To be safe, you must have\n"
-               "   both +tlrc.HEAD and +tlrc.BRIK for all datasets\n"
-               "   in that session (directory). Otherwise, if the anat parents are\n"
-               "   not properly set, you can end up applying the +tlrc transform\n"
-               "   from one of the atlases instead of the proper anatomical \n"
-               "   parent for that session.\n"
-               "\n"
-               "   Note: You can safely ignore the:\n"
-               "              ** Can't find anat parent ....  \n"
-               "         messages for the Atlas datasets.\n"
-               "\n"
-               "Convenient Colormaps For Atlas Datasets:\n"
-               "----------------------------------------\n"
-               "   New colormaps (colorscales) have been added\n"
-               "   to AFNI to facilitate integral valued datasets\n"
-               "   like ROIs and atlases. Here's what to do:\n"
-               "     o set the color map number chooser to '**' \n"
-               "     o right-click on the color map and select 'Choose Colorscale'\n"
-               "     o pick one of: CytoArch_ROI_256, CytoArch_ROI_256_gap, ROI_32. etc.\n"
-               "     o set autorange off and set the range to the number of colors \n"
-               "       in the chosen map (256, 32, etc.). \n"
-               "       Color map CytoArch_ROI_256_gap was created for the proper viewing\n"
-               "       of the Maximum Probability Maps of the Anatomy Toolbox.\n"
-               "\n"
-               "How To See Atlas regions overlaid in the AFNI GUI:\n"
-               "--------------------------------------------------\n"
-               "   To see specific atlas regions overlaid on underlay and other overlay data,\n"
-               "     1. In Overlay control panel, check \"See TT Atlas Regions\" \n"
-               "     2. Switch view to Talairach in View Panel\n"
-               "     3. Right-click on image and select \"-Atlas colors\". In the Atlas colors\n"
-               "        menu, select the colors you would like and then choose Done.\n"
-               "     The images need to be redrawn to see the atlas regions, for instance,\n"
-               "        by changing slices. Additional help is available in the Atlas colors\n"
-               "        menu.\n"
-               "   For the renderer plug-in, the underlay and overlay datasets should both\n"
-               "     have Talairach view datasets actually written out to disk\n"
-               "   The whereami and \"Talairach to\" functions are also available by right-\n"
-               "     clicking in an image window.\n\n"
-               "Examples:\n"
-               "_________\n"
-               "   To find a cluster center close to the top of the brain at -12,-26, 76 (LPI),\n"
-               "   whereami, assuming the coordinates are in Talairach space, would report:\n"
-               "   > whereami -12 -26 76 -lpi\n"
-               "   > Focus point (LPI)= \n"
-               "   -12 mm [L], -26 mm [P], 76 mm [S] {T-T Atlas}\n\n"
-               "   Atlas CA_N27_MPM: Cytoarch. Max. Prob. Maps (N27)\n"
-               "   Within 4 mm: Area 6\n"
-               "   Within 7 mm: Area 4a\n"
-               "\n"
-               "   Atlas CA_N27_ML: Macro Labels (N27)\n"
-               "   Within 1 mm: Left Paracentral Lobule\n"
-               "   Within 6 mm: Left Precentral Gyrus\n"
-               "   -AND- Left Postcentral Gyrus\n"
-               "\n"
-               "   To create a mask dataset of both the left and right amygdala, you can do the\n"
-               "   following (although masks and datasets can be specified in the same way for\n"
-               "   other afni commands, so a mask, very often, is not needed as a separate\n"
-               "   dataset):\n"
-               "   > whereami -prefix amymask -mask_atlas_region 'TT_Daemon::amygdala'\n\n"
-               "Questions Comments:\n"
-               "-------------------\n"
-               "   Ziad S. Saad   (saadz@mail.nih.gov)\n"
-               "   SSCC/NIMH/NIH/DHHS/USA\n"
-               "\n"
-               "Thanks to Kristina Simonyan for feedback and testing.\n"
-               "\n" 
-               "\n",Init_Whereami_Max_Find(), Init_Whereami_Max_Rad());
+       printf( 
+"   \n"
+"   See Eickhoff et al. Neuroimage 25 (2005) for more info on:\n"
+"       Probability Maps (CA_N27_PM)\n"
+"       and Maximum Probability Maps (CA_N27_MPM)\n");
+       printf( 
+"   ----------------------------------------------------------\n"
+"\n" 
+" -atlas_sort: Sort results by atlas (default)\n"
+" -zone_sort | -radius_sort: Sort by radius of search\n"
+" -old : Run whereami in the olde (Pre Feb. 06) way.\n"
+" -show_atlas_code: Shows integer code to area label map of the atlases\n"
+"                   in use. The output is not too pretty because\n"
+"                   the option is for debugging use.\n"
+" -show_atlas_region REGION_CODE: You can now use symbolic notation to\n"
+"                                 select atlas regions. REGION_CODE has \n"
+"                                 three colon-separated elements forming it:\n"
+"            Atlas_Name:Side:Area.\n"
+"      Atlas_Name: one of the atlas names listed above.\n"
+"                  If you do not have a particular atlas in your AFNI\n"
+"                  installation, you'll need to download it (see below).\n"
+"      Side      : Either left, right or nothing(::) for bilateral.\n"
+"      Area      : A string identifying an area. The string cannot contain\n"
+"                  blanks. Replace blanks by '_' for example Cerebellar Vermis\n"
+"                  is Cerebellar_Vermis. You can also use the abbreviated \n" 
+"                  version cereb_ver and the program will try to guess at \n"
+"                  what you want and offer suggestions if it can't find the\n"
+"                  area or if there is ambiguity. Abbreviations are formed\n"
+"                  by truncating the components (chunks) of an area's name \n"
+"                  (label). For example:\n"
+"               1- TT_Daemon::ant_cing specifies the bilateral\n"
+"                  anterior cingulate in the TT_Daemon atlas.\n"
+"               2- CA_N27_ML:left:hippo specifies the left\n"
+"                  hippocampus in the CA_N27_ML atlas.\n"
+"               3- CA_N27_MPM:right:124 specifies the right\n"
+"                  ROI with integer code 124 in the CA_N27_MPM atlas\n"
+"               4- CA_N27_ML::cereb_ver seeks the Cerebellar\n"
+"                  Vermis in the CA_N27_ML atlas. However there\n"
+"                  many distinct areas with this name so the program\n"
+"                  will return with 'potential matches' or suggestions.\n"
+"                  Use the suggestions to refine your query. For example:\n"
+"                  CA_N27_ML::cereb_vermis_8\n"
+" -mask_atlas_region REGION_CODE: Same as -show_atlas_region, plus\n"
+"                                 write out a mask dataset of the region.\n"
+" -prefix PREFIX: Prefix for the output mask dataset\n"
+" -max_areas MAX_N: Set a limit on the number of distinct areas to report.\n"
+"             This option will override the value set by the environment\n"
+"             variable AFNI_WHEREAMI_MAX_FIND, which is now set to %d\n"
+"             The variable  AFNI_WHEREAMI_MAX_FIND should be set in your\n"
+"             .afnirc file.\n"
+" -max_search_radius MAX_RAD: Set a limit on the maximum searching radius when\n"
+"                     reporting results. This option will override the \n"
+"                     value set by the environment variable \n"
+"                     AFNI_WHEREAMI_MAX_SEARCH_RAD,\n"
+"                     which is now set to %f .\n" 
+" NOTE: You can turn off some of the whining by setting the environment \n"
+"       variable  AFNI_WHEREAMI_NO_WARN\n"            
+" -debug DEBUG: Debug flag\n"
+" -CA_N27_version: Output the version of the Anatomy Toolbox atlases and quit.\n"
+"                  If you get warnings that AFNI's version differs from that \n"
+"                  of the atlas' datasets then you will need to download the \n"
+"                  latest atlas datasets from AFNI's website. You cannot use \n"
+"                  older atlases because the atlas' integer-code to area-label\n"
+"                  map changes from one version to the next.\n"
+"                  To get the version of the atlas' datasets, run 3dNotes \n"
+"                  on the atlases and look for 'Version' in one of the notes\n"
+"                  printed out.\n" 
+"\n"
+"Options for determining the percent overlap of ROIs with Atlas-defined areas:\n"
+"---------------------------------------------------------------------------\n"
+" -bmask MASK: Report on the overlap of all non-zero voxels in MASK dataset\n"
+"              with various atlas regions. NOTE: The mask itself is not binary,\n"
+"              the masking operation results in a binary mask.\n"
+" -omask ORDERED_MASK:Report on the overlap of each ROI formed by an integral \n"
+"                     value in ORDERED_MASK. For example, if ORDERED_MASK has \n"
+"                     ROIs with values 1, 2, and 3, then you'll get three \n"
+"                     reports, one for each ROI value. Note that -omask and\n"
+"                     -bmask are mutually exclusive.\n"
+" -cmask MASK_COMMAND: command for masking values in BINARY_MASK, \n"
+"                      or ORDERED_MASK on the fly.\n"
+"        e.g. whereami -bmask JoeROIs+tlrc \\\n"
+"                      -cmask '-a JoeROIs+tlrc -expr equals(a,2)'\n"
+"              Would set to 0, all voxels in JoeROIs that are not\n"
+"              equal to 2.\n"
+"        Note that this mask should form a single sub-brick,\n"
+"        and must be at the same resolution as BINARY_MASK or ORDERED_MASK.\n"
+"        This option follows the style of 3dmaskdump (since the\n"
+"        code for it was, uh, borrowed from there (thanks Bob!, thanks Rick!)).\n"
+"        See '3dmaskdump -help' for more information.\n"
+"\n"
+"Note on the reported coordinates of the Focus Point:\n"
+"----------------------------------------------------\n"
+"  Coordinates of the Focus Point are reported in 3 coordinate spaces.\n"
+"The 3 spaces are Talairach (TLRC), MNI, MNI Anatomical (MNI Anat.). \n"
+"All three coordinates are reported in the LPI coordinate order.\n"
+"  The TLRC coordinates follow the convention specified by the Talairach and \n"
+"     Tournoux Atlas.\n"
+"  The MNI coordinates are derived from the TLRC ones using an approximation \n"
+"     equation.\n"
+"  The MNI Anat. coordinates are a shifted version of the MNI coordinates \n"
+"     (see Eickhoff et al. 05).\n"
+"\n"
+"  However because the MNI coordinates reported here are derived from TLRC \n"
+"by an approximate function it is best to derive the MNI Anat. coordinates \n"
+"in a different manner. This option is possible because the MNI Anat. \n"
+"coordinates are defined relative to the single-subject N27 dataset. \n"
+"MNI Anat. coordinates are thus derived via the 12 piece-wise \n"
+"linear transformations used to put the MNI N27 brain in TLRC space.\n" 
+"\n"
+"Installing Atlases:\n"
+"-------------------\n"
+"   Atlases are stored as AFNI datasets, plus perhaps an extra file or two.\n"
+"   These files should be placed in a location that AFNI can find. \n"
+"   Let us refer to this directory as ATLAS_DIR, usually it is the same as\n"
+"   the directory in which AFNI's binaries (such as the program afni) reside.\n"
+"   At a minimum, you need the TTatlas+tlrc dataset present to activate the \n"
+"   AFNI 'whereami' feature. To install it, if you do not have it already, \n"
+"   download TTatlas+tlrc* from this link: \n"
+"   http://afni.nimh.nih.gov/pub/dist/tgz/\n"
+"   and move TTatlas+tlrc* to ATLAS_DIR.\n"
+"   The Anatomy Toolbox atlases are in archives called CA_EZ_v*.tgz with *\n"
+"   indicating a particular version number. Download the archive from:\n"
+"   http://afni.nimh.nih.gov/pub/dist/tgz/, unpack it and move all the \n"
+"   files in the unpacked directory into ATLAS_DIR.\n"
+"\n"
+"How To See Atlas Data In AFNI as datasets:\n"
+"------------------------------------------\n"
+"   If you want to view the atlases in the same session\n"
+"   that you are working with, choose one of options below.\n"
+"   For the sake of illustrations, I will assume that atlases\n"
+"   reside in directory: /user/abin/\n"
+" 1-Load the session where atlases reside on afni's command\n"
+"   line: afni ./ /user/abin\n" 
+" 2-Set AFNI's environment variable AFNI_GLOBAL_SESSION\n"
+"   to the directory where the atlases reside.\n"
+"   You can add the following to you .afnirc file:\n"
+"   AFNI_GLOBAL_SESSION = /user/abin\n"
+"   Or, for a less permanent solution, you can set this environment\n"
+"   variable in the shell you are working in with (for csh and tcsh):\n"
+"   setenv AFNI_GLOBAL_SESSION /user/abin \n"
+"   ***********\n"
+"   BE CAREFUL: Do not use the AFNI_GLOBAL_SESSION approach\n"
+"   *********** if the data in your session is not already \n"
+"   written in +tlrc space. To be safe, you must have\n"
+"   both +tlrc.HEAD and +tlrc.BRIK for all datasets\n"
+"   in that session (directory). Otherwise, if the anat parents are\n"
+"   not properly set, you can end up applying the +tlrc transform\n"
+"   from one of the atlases instead of the proper anatomical \n"
+"   parent for that session.\n"
+"\n"
+"   Note: You can safely ignore the:\n"
+"              ** Can't find anat parent ....  \n"
+"         messages for the Atlas datasets.\n"
+"\n"
+"Convenient Colormaps For Atlas Datasets:\n"
+"----------------------------------------\n"
+"   New colormaps (colorscales) have been added\n"
+"   to AFNI to facilitate integral valued datasets\n"
+"   like ROIs and atlases. Here's what to do:\n"
+"     o set the color map number chooser to '**' \n"
+"     o right-click on the color map and select 'Choose Colorscale'\n"
+"     o pick one of: CytoArch_ROI_256, CytoArch_ROI_256_gap, ROI_32. etc.\n"
+"     o set autorange off and set the range to the number of colors \n"
+"       in the chosen map (256, 32, etc.). \n"
+"       Color map CytoArch_ROI_256_gap was created for the proper viewing\n"
+"       of the Maximum Probability Maps of the Anatomy Toolbox.\n"
+"\n"
+"How To See Atlas regions overlaid in the AFNI GUI:\n"
+"--------------------------------------------------\n"
+"   To see specific atlas regions overlaid on underlay and other overlay data,\n"
+"     1. In Overlay control panel, check \"See TT Atlas Regions\" \n"
+"     2. Switch view to Talairach in View Panel\n"
+"     3. Right-click on image and select \"-Atlas colors\". In the Atlas colors\n"
+"        menu, select the colors you would like and then choose Done.\n"
+"     The images need to be redrawn to see the atlas regions, for instance,\n"
+"        by changing slices. Additional help is available in the Atlas colors\n"
+"        menu.\n"
+"   For the renderer plug-in, the underlay and overlay datasets should both\n"
+"     have Talairach view datasets actually written out to disk\n"
+"   The whereami and \"Talairach to\" functions are also available by right-\n"
+"     clicking in an image window.\n\n"
+"Examples:\n"
+"_________\n"
+"   To find a cluster center close to the top of the brain at -12,-26, 76 (LPI),\n"
+"   whereami, assuming the coordinates are in Talairach space, would report:\n"
+"   > whereami -12 -26 76 -lpi\n"
+"   > Focus point (LPI)= \n"
+"   -12 mm [L], -26 mm [P], 76 mm [S] {T-T Atlas}\n\n"
+"   Atlas CA_N27_MPM: Cytoarch. Max. Prob. Maps (N27)\n"
+"   Within 4 mm: Area 6\n"
+"   Within 7 mm: Area 4a\n"
+"\n"
+"   Atlas CA_N27_ML: Macro Labels (N27)\n"
+"   Within 1 mm: Left Paracentral Lobule\n"
+"   Within 6 mm: Left Precentral Gyrus\n"
+"   -AND- Left Postcentral Gyrus\n"
+"\n"
+"   To create a mask dataset of both the left and right amygdala, you can do the\n"
+"   following (although masks and datasets can be specified in the same way for\n"
+"   other afni commands, so a mask, very often, is not needed as a separate\n"
+"   dataset):\n"
+"   > whereami -prefix amymask -mask_atlas_region 'TT_Daemon::amygdala'\n\n"
+"Questions Comments:\n"
+"-------------------\n"
+"   Ziad S. Saad   (saadz@mail.nih.gov)\n"
+"   SSCC/NIMH/NIH/DHHS/USA\n"
+"\n"
+"Thanks to Kristina Simonyan for feedback and testing.\n"
+"\n" 
+"\n",Init_Whereami_Max_Find(), Init_Whereami_Max_Rad());
 
    PRINT_COMPILE_DATE ;
    EXRETURN;
 }
 
 /*----------------------------------------------------------------------------*/
+extern int * SUMA_Dijkstra_generic (int N_Node, 
+                     float *NodeList, int NodeDim, int dist_metric,
+                     int *N_Neighbv, int **FirstNeighb, float **FirstNeighbDist,
+                     int Nx, int Ny, 
+                     byte *isNodeInMeshp, 
+                     int *N_isNodeInMesh, int Method_Number, 
+                     float *Lfinal, int *N_Path,
+                     int verb);
 
 int main(int argc, char **argv)
 {
@@ -394,7 +405,9 @@ int main(int argc, char **argv)
    char *coord_file=NULL;
    float *coord_list = NULL, rad;
    THD_fvec3 tv, m;
+   byte b1;
    
+   b1 = 0;
    mni = -1;
    dobin = 0;
    ncmask=0 ;
@@ -439,8 +452,16 @@ int main(int argc, char **argv)
             fprintf(stdout,"Anatomy Toolbox Version in AFNI is:\n%s\n", CA_EZ_VERSION_STR);  
             return(0);
          }
-         if (strcmp(argv[iarg],"-rai") == 0 || strcmp(argv[iarg],"-dicom") == 0) { 
+         
+         if (  strcmp(argv[iarg],"-rai") == 0 || 
+               strcmp(argv[iarg],"-dicom") == 0) { 
             dicom = 1; 
+            ++iarg;
+            continue; 
+         }
+         
+         if (  strcmp(argv[iarg],"-for_daniel") == 0 ) { 
+            b1 = 1; 
             ++iarg;
             continue; 
          }
@@ -462,6 +483,8 @@ int main(int argc, char **argv)
             }
             if (strcmp(argv[iarg],"MNI") == 0 || strcmp(argv[iarg],"mni") == 0) {
                mni = 1; 
+            } else if (strcasecmp(argv[iarg],"MNI_ANAT") == 0){
+               mni = 2;
             } else if (strcmp(argv[iarg],"TLRC") == 0 || strcmp(argv[iarg],"tlrc") == 0) {
                mni = 0; 
             } else {
@@ -680,6 +703,117 @@ int main(int argc, char **argv)
       return 1;
    }
    
+   if (b1) { 
+      /* The secret option for Daniel,
+      See NIH-5 labbook pp 46 for graph */
+      int N_Neighb_Max = 5; /* max number of nieghbors a node can have*/
+      int N_Node = 7;
+      int N_Neighb[7];
+      int **FirstNeighb=NULL;
+      float **FirstNeighbDist=NULL; 
+      int N_np=4;
+      int np[4][2];
+      int ii, kk;
+      char prefix[] = {"puns.paths.1D"};
+      int *nPath=NULL, N_n=0;
+      float nDistance=0.0;
+      FILE *fout=stdout, *fpout=NULL;
+      
+      /* fill number of neighbors for nodes 0 to 6 */
+      ii=0;
+      N_Neighb[ii++] = 4;      
+      N_Neighb[ii++] = 2;
+      N_Neighb[ii++] = 3;
+      N_Neighb[ii++] = 2;
+      N_Neighb[ii++] = 2;
+      N_Neighb[ii++] = 0;
+      N_Neighb[ii++] = 1;
+      
+      /* fill neighborhood (edges) and distances */
+      FirstNeighb = (int **)calloc(N_Node, sizeof(int*));
+      FirstNeighbDist = (float **)calloc(N_Node, sizeof(float*));
+      for (ii=0; ii<7;++ii) {
+         FirstNeighb[ii] = (int *)calloc(N_Neighb_Max, sizeof(int)); 
+         FirstNeighbDist[ii] = (float *)calloc(N_Neighb_Max, sizeof(float)); 
+      }
+      FirstNeighb[0][0]=2;    FirstNeighbDist[0][0]=1.0; /*1st neighb of node 0*/
+      FirstNeighb[0][1]=1;    FirstNeighbDist[0][1]=1.0; /*2nd neighb of node 0*/
+      FirstNeighb[0][2]=4;    FirstNeighbDist[0][2]=5.0; /*3rd neighb of node 0*/
+      FirstNeighb[0][3]=6;    FirstNeighbDist[0][3]=2.0; /* ... */
+
+      FirstNeighb[1][0]=0;    FirstNeighbDist[1][0]=1.0; /*1st neighb of node 1*/
+      FirstNeighb[1][1]=2;    FirstNeighbDist[1][1]=2.0; /*2nd neighb of node 1*/
+      
+      FirstNeighb[2][0]=1;    FirstNeighbDist[2][0]=2.0; 
+      FirstNeighb[2][1]=3;    FirstNeighbDist[2][1]=1.0;
+      FirstNeighb[2][2]=0;    FirstNeighbDist[2][2]=1.0;
+   
+      FirstNeighb[3][0]=4;    FirstNeighbDist[3][0]=2.0;
+      FirstNeighb[3][1]=2;    FirstNeighbDist[3][1]=1.0;
+   
+      FirstNeighb[4][0]=3;    FirstNeighbDist[4][0]=2.0;
+      FirstNeighb[4][1]=0;    FirstNeighbDist[4][1]=5.0;
+      
+      FirstNeighb[5][0]=-1;   /* not necessary, but to emphasize */
+      
+      FirstNeighb[6][0]=0;    FirstNeighbDist[6][0]=2.0;
+      
+      if (!(fpout = fopen(prefix,"w"))) {
+         fprintf(stderr,"** Error: Failed to open %s for writing.\n", prefix);
+         exit(1);
+      }
+      fprintf(fpout, 
+               "#Paths between nodes\n"
+               "#Col. 0: Total number of nodes in path\n"
+               "#    0 for no path\n"
+               "#Col. 1: Distance\n"
+               "#    -1 for no path\n"
+               "#Col. 2: First node\n"
+               "#Col. last: Last node\n");
+      
+      /* Now get the shortest distance between some nodes pairs*/
+      ii=0;
+      np[ii][0] = 0; np[ii][1] = 4; ++ii;  /* from node 0 to node 4 */
+      np[ii][0] = 6; np[ii][1] = 5; ++ii;  /* from node 6 to node 5 */
+      np[ii][0] = 1; np[ii][1] = 2; ++ii;  /* from node 1 to node 2 */
+      np[ii][0] = 3; np[ii][1] = 3; ++ii;  /* from node 1 to node 2 */
+      /* work  the node pairs */
+      fprintf(fout, "#Internodal distance along graph \n");
+      fprintf(fout, "#%-6s %-6s %-6s\n",
+                    "From" , "to", "Dist." );
+      for (ii=0; ii < N_np; ++ii) {
+         if ( !(nPath = SUMA_Dijkstra_generic ( 
+                           7, 
+                           NULL, -1, 0,
+                           N_Neighb, FirstNeighb, FirstNeighbDist,
+                           np[ii][0], np[ii][1], 
+                           NULL, NULL, 
+                           1, 
+                           &nDistance, &N_n, 0)) ) {
+            nDistance = -1.0;
+            if (fpout) fprintf(fpout, "0 -1.0 %d %d\n", np[ii][0], np[ii][1]);
+         } else {
+            if (fpout) {
+               fprintf(fpout, "%d %.2f ", N_n, nDistance);
+               for(kk=0; kk<N_n; ++kk) 
+                  fprintf(fpout, 
+                           "%d ", 
+                           nPath[kk]); 
+               fprintf(fpout, "\n");
+            }
+            free(nPath); nPath = NULL;
+         }
+      
+         fprintf(fout, " %-6d %-6d %-4.2f\n", 
+                       np[ii][0], np[ii][1], nDistance);
+      }
+      
+      fprintf(stderr,"See file %s for full output\n", prefix);
+      
+      if (fpout) fclose(fpout); fpout=NULL;
+      exit(0);
+      
+   }
    if (nakedarg >= 3 && coord_file) {
       /* bad combo */
       fprintf(stderr,"** Error: Can't specify x, y, z coordinates on command line AND in coord_file.\n");
@@ -715,6 +849,8 @@ int main(int argc, char **argv)
       fprintf(stdout,"++ Input coordinates space set by user to TLRC\n");
    } else if (mni == 1) {
       fprintf(stdout,"++ Input coordinates space set by user to MNI\n");
+   } else if (mni == 2) {
+      fprintf(stdout,"++ Input coordinates space set by user to MNI_ANAT\n");
    } else {
       fprintf(stderr,"** Error: Should not happen!\n"); return(1);
    }
@@ -1070,6 +1206,18 @@ int main(int argc, char **argv)
          }
          x = m.xyz[0]; y = m.xyz[1]; z = m.xyz[2];
       }
+
+      if (mni == 2) { /* go from mni anat to tlrc */
+         LOAD_FVEC3( tv , -x, -y, z ) ; /* next call expects input in MNI, LPI*/
+         tv.xyz[2] = z - 8; /* 8mm I-S shift relative to mni - to use mni xform */
+         m = THD_mni_to_tta( tv ); /* m units are in RAI */
+         if (ixyz == 0) {
+            fprintf(stdout,"++ Input coordinates being transformed from MNI_ANAT RAI ([%.2f %.2f %.2f]) \n"
+                           "                                         to TLRC RAI ([%.2f %.2f %.2f]).\n", 
+                                                               x, y, z, m.xyz[0],  m.xyz[1], m.xyz[2]);
+         }
+         x = m.xyz[0]; y = m.xyz[1]; z = m.xyz[2];
+      }
       
       if (OldMethod) {
         string = TT_whereami_old(x,y,z);
@@ -1161,7 +1309,7 @@ int main(int argc, char **argv)
             if (output == 1) TT_whereami_set_outmode (TAB1_WAMI_ZONE_SORT);
             else TT_whereami_set_outmode (CLASSIC_WAMI_ZONE_SORT);
          }
-         string = TT_whereami(x,y,z);
+         string = TT_whereami(x,y,z, AFNI_TLRC_SPC);
          if (string) fprintf(stdout,"%s\n", string);
          else fprintf(stdout,"whereami NULL string out.\n");
          if (string) free(string); string = NULL;            

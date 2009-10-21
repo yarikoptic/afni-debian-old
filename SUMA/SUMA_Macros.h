@@ -18,6 +18,7 @@
 #define SQ_2PI 2.50662827463100024161
 #define iSQ_2PI 0.39894228040143270286
 
+
 /*! Return a random number from a gaussian distribution of mean m and std s 
     Based on parser.c and parser_int.c functions unif_ and gran_1*/
 #define SUMA_GRAN(m,s)  \
@@ -31,7 +32,10 @@
    Macro to create a new ID code at random (when strn = NULL) or a hash of a string
    written mostly to allow for the allocation of newcode with SUMA's functions
 */
-#define SUMA_NEW_ID(newcode, strn) { \
+#define SUMA_NEW_ID(newcode, istrn) { \
+   char *strn=(char*)istrn; /* a trick to quiet compiler warnings like  \
+   warning: the address of 'stmp' will always evaluate as 'true'\
+   when 'stmp' is a string of the type char [] */\
    if ((newcode)) { SUMA_S_Err("newcode pointer must be null"); } \
    else if (!(strn)) { (newcode) = (char*)SUMA_calloc(SUMA_IDCODE_LENGTH, sizeof(char)); UNIQ_idcode_fill((newcode)); } \
    else {   char *m_tmp; m_tmp = UNIQ_hashcode((strn)); (newcode) = SUMA_copy_string(m_tmp); free(m_tmp); m_tmp = NULL; }  \
@@ -165,14 +169,26 @@
    ai.r = a.r/m_a;   ai.i = -a.i/m_a; \
 }
 
+/*! Transpose a 4x4 matrix */
+#define SUMA_TRANSP_4MATRIX(mm){\
+   double tt;\
+   tt=mm[1][0]; mm[1][0] = mm[0][1]; mm[0][1]=tt;  \
+   tt=mm[2][0]; mm[2][0] = mm[0][2]; mm[0][2]=tt;  \
+   tt=mm[3][0]; mm[3][0] = mm[0][3]; mm[0][3]=tt;  \
+   tt=mm[1][2]; mm[1][2] = mm[2][1]; mm[2][1]=tt;  \
+   tt=mm[1][3]; mm[1][3] = mm[3][1]; mm[3][1]=tt;  \
+   tt=mm[3][2]; mm[3][2] = mm[2][3]; mm[2][3]=tt;  \
+}
 #define SUMA_POW2(a) ((a)*(a))
 
 #define SUMA_POW3(a) ((a)*(a)*(a))
 
 #define SUMA_R2D(a) ( (a)*180.0/SUMA_PI )
-#define SUMA_ROUND(a) ( ( ((a) - (int)(a)) < 0.5 ) ? (int)(a) : ((int)(a)+1) )
 
-#define SUMA_CEIL(a) ( ( ((a) - (int)(a)) == 0.0 ) ? (int)(a) : ((int)(a)+1) )
+#define SUMA_ROUND(a) ( ((a) < 0 ) ? (int)((a)-0.5) : (int)((a)+0.5) )
+
+#define SUMA_CEIL_POS(a) ( ( ((a) - (int)(a)) == 0.0 ) ? (int)(a) : ((int)(a)+1) )
+#define SUMA_CEIL(a) ( ((a) < 0 ) ? (int)(a) : SUMA_CEIL_POS(a) )
 
 #define SUMA_3D_2_1D_index(i, j, k, ni, nij) ( (int)(i) + (int)(j) * (ni) + (int)(k) * (nij) )
 
@@ -471,7 +487,46 @@ if Dist = 0, point on plane, if Dist > 0 point above plane (along normal), if Di
 /*!
    Pause prompt, stdin
 */
-#define SUMA_PAUSE_PROMPT(s) { int m_jnk; fprintf(SUMA_STDOUT,"Pausing: %s  ...", s); fflush(SUMA_STDOUT); m_jnk = getchar(); fprintf(SUMA_STDOUT,"\n"); fflush(SUMA_STDOUT);}
+#define SUMA_PAUSE_PROMPT_STDIN(s) { int m_jnk; fprintf(SUMA_STDOUT,"Pausing: %s  ...", s); fflush(SUMA_STDOUT); m_jnk = getchar(); fprintf(SUMA_STDOUT,"\n"); fflush(SUMA_STDOUT);}
+
+#define SUMA_PAUSE_PROMPT(s) {    \
+   XtAppContext    m_app; \
+   Widget m_w;   \
+   XEvent m_ev;  \
+   XtInputMask m_pp; \
+   int m_ii=0, m_wkill=1;  \
+   if (SUMAg_SVv && SUMAg_SVv[0].X->TOPLEVEL){\
+      m_w = SUMAg_SVv[0].X->TOPLEVEL; \
+      m_wkill = 0;  \
+   }  else { \
+      m_w = XtOpenApplication(&m_app, FuncName, \
+                           NULL, 0, &m_ii, NULL,  \
+                           SUMA_get_fallbackResources(), \
+                           topLevelShellWidgetClass, NULL, 0); \
+   }  \
+   if (m_w)  { \
+      SUMA_PauseForUser(m_w, s, \
+                        SWP_POINTER_OFF, &m_app, 0);  \
+      if (m_wkill) {    \
+         /* This is set when the top level widget is created  */ \
+         /* and there is no XtAppMainLoop to process events and */\
+         /* ensure that the destroyed widget gets off of the screen */\
+         /* so you'll need to do the event processing yourself */\
+         /* or you'll end up with ghostly windows if events come in */\
+         /* too rapidly */    \
+         /* A simpler call to XtAppNextEvent(app, &ev); was enough */   \
+         /* to cause the widget to go away, but not when events are */  \
+         /* piling up. Not too surprising since events are not getting */  \
+         /* processed. The while statement seems to do the trick */  \
+         while ((m_pp = XtAppPending(m_app))) {  \
+            XtAppProcessEvent(m_app, m_pp); \
+         } \
+         XtDestroyWidget(m_w);  \
+      }; \
+   }  else {\
+      SUMA_PAUSE_PROMPT_STDIN(s);   \
+   }  \
+}
 
 /*!
    A macro to recalculate a surface's center and its bounding box 

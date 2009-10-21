@@ -20,6 +20,8 @@ SUMA_Boolean SUMA_Free_FreeSurfer (SUMA_FreeSurfer_struct *FS);
 void SUMA_Show_FreeSurfer (SUMA_FreeSurfer_struct *FS, FILE *Out);
 SUMA_Boolean SUMA_Ply_Read (char * f_name, SUMA_SurfaceObject *SO); 
 SUMA_Boolean SUMA_Ply_Write (char * f_name, SUMA_SurfaceObject *SO); 
+SUMA_Boolean SUMA_Mnc_Read (char * f_name, SUMA_SurfaceObject *SO); 
+SUMA_Boolean SUMA_Mnc_Write (char * f_name, SUMA_SurfaceObject *SO); 
 SUMA_Boolean SUMA_VEC_Write (SUMA_SFname *Fname, SUMA_SurfaceObject *SO);
 SUMA_Boolean SUMA_VEC_Read(SUMA_SFname *Fname, SUMA_SurfaceObject *SO);
 SUMA_Boolean SUMA_FS_Write (char *fileNm, SUMA_SurfaceObject *SO, char *firstLine);
@@ -28,6 +30,7 @@ SUMA_Boolean SUMA_GIFTI_Write (char *fileNm, SUMA_SurfaceObject *SO,
                                SUMA_SO_File_Format forceencode);
 SUMA_Boolean SUMA_BYU_Write (char *fileNm, SUMA_SurfaceObject *SO, int base1);
 void SUMA_SaveDrawnROI (char *filename, void *data);
+void SUMA_SaveXformOpts (char *filename, void *data);
 SUMA_Boolean SUMA_SaveDrawnROI_1D (char *filename, SUMA_SurfaceObject *SO, SUMA_DRAWN_ROI *DrawnROI, int SaveWhat); 
 SUMA_Boolean SUMA_SaveDrawnROINIML (char *filename, SUMA_SurfaceObject *SO, SUMA_DRAWN_ROI *DrawnROI, int SaveWhat, int Format); 
 SUMA_1D_DRAWN_ROI * SUMA_Free_1DDrawROI (SUMA_1D_DRAWN_ROI *ROI1D);
@@ -37,7 +40,8 @@ SUMA_DRAWN_ROI ** SUMA_OpenDrawnROI_NIML (char *filename, int *N_ROI, SUMA_Boole
 SUMA_DRAWN_ROI ** SUMA_OpenDrawnROI_1D(char *filename, char *Parent_idcode_str, int *N_ROI, SUMA_Boolean ForDisplay);
 void SUMA_OpenDrawnROI (char *filename, void *data);
 SUMA_DSET *SUMA_ROIv2Grpdataset (SUMA_DRAWN_ROI** ROIv, int N_ROIv, char *Parent_idcode_str, int Pad_to, int Pad_val) ;
-NI_element *SUMA_ROIv2dataset (SUMA_DRAWN_ROI** ROIv, int N_ROIv, char *Parent_idcode_str, int pad_to, int pad_val); 
+NI_element *SUMA_ROIv2dataset (SUMA_DRAWN_ROI** ROIv, int N_ROIv, char *Parent_idcode_str, int pad_to, int pad_val);
+DList *SUMA_ROIv2NodeLists (SUMA_DRAWN_ROI** ROIv, int N_ROIv, int purgedups) ; 
 void SUMA_SaveSOascii (char *filename, void *data);
 float * SUMA_readFScurv (char *f_name, int *nrows, int *ncols, SUMA_Boolean rowmajor, SUMA_Boolean SkipCoords);
 SUMA_Boolean SUMA_BYU_Read(char *f_name, SUMA_SurfaceObject *SO, int debug, byte hide_negcols); 
@@ -56,8 +60,24 @@ SUMA_OPEN_DX_STRUCT *SUMA_Find_OpenDX_Object_Name(SUMA_OPEN_DX_STRUCT **dxv, int
 SUMA_OPEN_DX_STRUCT *SUMA_Find_OpenDX_Object_Class(SUMA_OPEN_DX_STRUCT **dxv, int iop, char *nm, int *nf);
 SUMA_Boolean SUMA_OpenDX_Read_SO(char *fname, SUMA_SurfaceObject *SO);
 char * SUMA_OpenDX_Read_CruiseVolHead(char *fname, THD_3dim_dataset *dset, int loaddata);
-SUMA_Boolean SUMA_readFSannot (char *f_name, char *f_ROI, char *f_cmap, char *f_col, int Showct);
+SUMA_Boolean SUMA_readFSannot (char *f_name, 
+                               char *f_ROI, char *f_cmap, char *f_col, 
+                               int Showct, char *ctfile);
 SUMA_COLOR_MAP *SUMA_FScolutToColorMap(char *fscolutname, int lbl1, int lbl2, int show); 
 SUMA_Boolean SUMA_isnimlSO(NI_group *ngr);
+void SUMA_free_ROI_Extract(void *dd);
+SUMA_Boolean SUMA_MNI_OBJ_Write(char * f_name_in, SUMA_SurfaceObject *SO);
+SUMA_Boolean SUMA_MNI_OBJ_Read(char * f_name, SUMA_SurfaceObject *SO);
+SUMA_Boolean SUMA_GIFTI_Read(char *f_name, SUMA_SurfaceObject *SO,
+                             int debug);
+SUMA_Boolean SUMA_GetSOCoordXform(SUMA_SurfaceObject *SO, double xform[4][4]);                          
+                             
+
+typedef struct {
+   int label;
+   int N_vals;
+   int N_alloc;
+   int *vals;
+} SUMA_ROI_EXTRACT;
 
 #endif

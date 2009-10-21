@@ -535,7 +535,7 @@ rgbyte DC_spectrum_AJJ( double an , double gamm )
 void DC_init_im_col( MCW_DC * dc )
 {
    double da, an, c, s, sb, cb, ak, ab , a1,a2 , gamm ;
-   int i, r, g, b , nc ;
+   int i, r=0, g=0, b=0, nc ;
 
    a1 = 0.0   ;  /* range of spectrum -- hardwired for now */
    a2 = 240.0 ;
@@ -1670,4 +1670,38 @@ int NJ_bigmaps_init(int bigmap_num, char ***bigmap_namep, rgbyte ***bigmapp)
    return 0;
 }
 
+/* want to check this from the command line     4 Mar 2009 [rickr] */
+void show_motif_version_string(void)
+{
+   char * verstr = "** VERSION STRING NOT DEFINED**";
+   char * typestr = source_is_lesstif() ? "LessTif" : "Motif";
+
+#ifdef XmVERSION_STRING
+   verstr = XmVERSION_STRING;
+#endif
+
+#ifdef AFNI_MOTIF_TYPE
+   typestr = AFNI_MOTIF_TYPE;
+#endif
+
+   fprintf(stderr, "-- Motif source = %s, USING_LESSTIF = %d\n",
+           typestr, using_lesstif_is_defined());
+   fprintf(stderr, "   %s\n", verstr);
+}
+
+int source_is_lesstif(void)
+{
+#ifdef LESSTIF_VERSION
+   return 1;
+#endif
+   return 0;
+}
+
+int using_lesstif_is_defined(void)
+{
+#ifdef USING_LESSTIF
+   return 1;
+#endif
+   return 0;
+}
 

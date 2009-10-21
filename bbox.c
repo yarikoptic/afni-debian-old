@@ -6,6 +6,220 @@
 
 #include "bbox.h"
 
+/*------------------------------------------------------------------------*/
+/*
+   This function was meant to find the top parent of a widget and later 
+   test if that parent was one that allowed rowcolumns. This was function
+   was to be called from new_MCW_bbox. However, none of the tests shown
+   below identified such forbidding widgets. 
+   Code is left here for documentation purposes. 
+   
+   Lesstif patrol          Jan 09 
+*/
+Widget top_parent( Widget w)
+{
+   Widget pa = w;
+   int iw = 0;
+   char str[500]={""}, strb[500]={""};
+
+ENTRY("top_parent");   
+
+   while (pa) {
+      str[iw] = '-'; str[iw+1]='\0';
+      strb[iw] = ' '; strb[iw+1]='\0';
+      fprintf( stderr,
+               "%sWidget name %s      ancestor(%d)\n", 
+               str, XtName(pa), iw);
+      if (XtIsTransientShell(pa)) {
+         fprintf(stderr,"%sTransient (%d)!!!\n",strb, iw);
+      } else {
+         /*fprintf(stderr,"%sNOOOT Transient (%d)!!!\n",strb, iw);*/
+      }
+      if (XtIsTopLevelShell(pa)) {
+         fprintf(stderr,"%sTopLevel (%d)!!!\n", strb, iw);
+      } else {
+         /*fprintf(stderr,"%sNOOOT TopLevel (%d)!!!\n", strb, iw);*/
+      }
+      if (XtIsSubclass(pa, xmCascadeButtonWidgetClass)) {
+         fprintf(stderr,"%sCascadeButtonWidget (%d)!!!\n", strb, iw);
+      } else {
+         /*fprintf(stderr,"%sNOOOT CascadeButtonWidget (%d)!!!\n", strb, iw);*/
+
+      }
+      if (XtIsShell(pa)) {
+         fprintf(stderr,"%sShell (%d)!!!\n", strb, iw);
+      } else {
+         /*fprintf(stderr,"%sNOOOT Shell (%d)!!!\n", strb, iw);*/
+      }
+      w = pa;
+      pa = XtParent(w);
+      ++iw;
+   }
+   RETURN(w);
+}
+/*------------------------------------------------------------------------*/
+/* 
+   A simple way to determine if a widget has a popup_menu for a parent. 
+   
+   Lesstif Partol,         Jan 09
+*/
+int is_daddy_popup(Widget w)
+{
+   Widget pa = w;
+   int iw = 0;
+   char str[500]={""}, strb[500]={""};
+
+ENTRY("is_daddy_popup");
+   
+   while (pa) {
+      str[iw] = '-'; str[iw+1]='\0';
+      strb[iw] = ' '; strb[iw+1]='\0';
+      if (!strcmp(XtName(pa), "popup_menu")) RETURN(1);
+      w = pa;
+      pa = XtParent(w);
+      ++iw;
+   }
+   RETURN(0);
+}
+
+/*
+   A structure to hold widget and callback information
+   for the callback wrapper used by new_MCW_bbox
+   
+   Lesstif Patrol,      Jan 09 
+*/
+   
+typedef struct {
+   MCW_bbox *bb;
+   XtCallbackProc cb;
+   XtPointer cb_data;
+   XtPointer client_data;
+   Widget parent;
+   int is_popup;
+   int bb_type;
+} cb_wrap_struct;
+
+/*------------------------------------------------------------------------*/
+/* set all buttons in a button box, given that button ikeep 
+   has been pressed on */
+void MCW_enforce_radio_bbox( MCW_bbox *bb, int ikeep  )
+{
+   int ib;
+   Boolean oset ;
+
+ENTRY("MCW_enforce_radio_bbox") ;
+
+   if( bb == NULL ) EXRETURN ;  /* 01 Feb 2000 */
+   for( ib=0 ; ib < bb->nbut ; ib++ ){
+      if (ib != ikeep) {
+         oset = XmToggleButtonGetState( bb->wbut[ib] ) ;
+         if( XtIsSensitive(bb->wbut[ib]) && oset){
+            XmToggleButtonSetState( bb->wbut[ib] , !oset , False ) ;
+            XmUpdateDisplay( bb->wbut[ib] ) ;
+         }
+      }
+   }
+   bb->value = MCW_val_bbox(bb) ;
+   EXRETURN ;
+}
+
+
+/*------------------------------------------------------------------------*/
+/* 
+   Manually handle radio buttons where rowcolumn widgets are not allowed 
+   
+   See new_MCW_bbox for help
+   
+   Lesstif Patrol,   Jan 2009
+*/
+void new_MCW_bbox_cbwrap ( Widget w, XtPointer client_data, XtPointer call_data )
+{
+   int ib=0, icaller = -1;
+   Boolean oset = False;
+   cb_wrap_struct *cbws = (cb_wrap_struct *)client_data;
+   XmAnyCallbackStruct *cbs = (XmAnyCallbackStruct *) call_data ;
+   int dbg = 0;
+   
+ENTRY("new_MCW_bbox_cbwrap") ;
+   
+   if (cbws->is_popup) {
+      if (dbg) {  /* some debugging */
+         fprintf(stderr,"Potential for work\n");
+         /* For some reason, when a button other than button
+         0 is pressed, there are two callback calls made.
+         The first comes from widget 0 with a NULL event,
+         and the second from the widget pressed. */
+         for (ib=0; ib<cbws->bb->nbut; ++ib) {
+            if (cbws->bb->wbut[ib] == w) {
+               fprintf(stderr,
+                        "A call from widget (%p) %s at ib = %d, reason: %d\n", 
+                        cbws->bb->wbut[ib], XtName(w), ib, cbs->reason);
+               if (cbs->event) {
+                  fprintf(stderr,
+                        "   event->type = %d\n", cbs->event->type);
+               } else {
+                  fprintf(stderr,
+                        "   event is NULL\n");
+               }
+            }
+         }
+      }
+         
+      if (cbs->event) {
+         for (ib=0; ib<cbws->bb->nbut && icaller < 0; ++ib) {
+            if (cbws->bb->wbut[ib] == w) icaller = ib;
+         }
+         
+         /* what --was-- the state the calling widget? */
+         oset = !XmToggleButtonGetState( cbws->bb->wbut[icaller] );
+         if (oset && cbws->bb_type == MCW_BB_radio_one) {
+            /* widget was already set, and we're in radio one mode 
+              turn it back on and vamoose */
+            XmToggleButtonSetState(cbws->bb->wbut[icaller], oset, False);
+            EXRETURN;
+         } 
+         
+         /* flip everything but the calling widget */
+         MCW_enforce_radio_bbox(cbws->bb, icaller);
+      } else {
+         /* ignore the initial call */
+         /* for some reason, if you press on widgets other than 0, you get
+         two calls, one from widget 0 with a NULL event and another from
+         the proper widget with a proper event */
+      }
+   } else {
+      /* This is not a popup menu case, rowcolumns are allowed.
+         No need to do anything */
+      if (dbg) {  /* some debugging */
+         fprintf(stderr,"I thought this caused no trouble, but check anyway\n");
+         /* For some reason, when a button other than button
+         0 is pressed, there are two callback calls made.
+         The first comes from widget 0 with a NULL event,
+         and the second from the widget pressed. */
+         for (ib=0; ib<cbws->bb->nbut; ++ib) {
+            if (cbws->bb->wbut[ib] == w) {
+               fprintf(stderr,
+                        "A call from widget (%p) %s at ib = %d, reason: %d\n", 
+                        cbws->bb->wbut[ib], XtName(w), ib, cbs->reason);
+               if (cbs->event) {
+                  fprintf(stderr,
+                        "   event->type = %d\n", cbs->event->type);
+               } else {
+                  fprintf(stderr,
+                        "   event is NULL\n");
+               }
+            }
+         }
+      }
+      
+   }  
+   
+   /* Now call the intended callback */
+   (cbws->cb)(w, cbws->cb_data, call_data); 
+   
+   EXRETURN;
+}
+
 /*-------------------------------------------------------------------------
    create a new MCW_bbox:
        parent    = parent Widget
@@ -18,6 +232,20 @@
                  = MCW_BB_frame      -> put frame around box
        cb        = Callback procedure for Disarm (NULL for none)
        cb_data   = data to pass to Callback procedure (NULL for none)
+
+   Lesstif Patrol, Jan 13, 2009
+   ----------------------------
+   Rowcolumn widgets are not allowed in popup menus. Motif allowed them
+   to work, in most cases, but Lesstif does not. To fix this, new_MCW_bbox
+   was modified to check whether MCW_bbox has a popup parent. The check is 
+   done with function 'is_daddy_popup'. If the parent is a popup, then 
+   a rowcolumn widget is NOT created and the widget wtop is set to the 
+   parent Widget. For MCW_bbox with a popup parent, allowing 'frame' to 
+   be wtop if a frame is requested is bad news.
+   With this modification however, radio buttons must be managed manually.
+   To do so, new_MCW_bbox always calls a wrapper callback named
+   new_MCW_bbox_cbwrap. This callback will perform radio button management
+   if necessary and then call the button's intended callbacks.
 ---------------------------------------------------------------------------*/
 
 MCW_bbox * new_MCW_bbox( Widget parent ,
@@ -27,10 +255,13 @@ MCW_bbox * new_MCW_bbox( Widget parent ,
 {
    MCW_bbox *bb ;
    int ib , initial_value ;
-   Widget rc_parent ;
+   Widget rc_parent, gp;
    Arg wa[30] ;  int na ;
-   Pixel  fg_pix ;
-
+   Pixel  fg_pix=0 ;
+   int is_popup=0;
+   cb_wrap_struct *cbws=NULL;
+   int dbg = 0;
+   
 ENTRY("new_MCW_bbox") ;
 
    if( num_but <= 0 || num_but >= 32 ){
@@ -38,7 +269,29 @@ ENTRY("new_MCW_bbox") ;
      EXIT(1) ;
    }
 
+   /* study the parent     Lesstif Patrol*/
+
+   /* finding out if a parent was 'transient' failed.
+      the function that was to do that is called 
+      gp = top_parent(parent); and is left here for documentation
+      purposes. */
+      
+   /* this simpler approach worked fine */
+   is_popup = is_daddy_popup(parent);
+   if (dbg) {
+      if (is_popup) {
+         for( ib=0 ; ib < num_but ; ib++ ){
+            fprintf(stderr,"     Popping for button %s\n", label_but[ib]);
+         }
+      } else {
+         for( ib=0 ; ib < num_but ; ib++ ){
+            fprintf(stderr,"     Not popping for button %s\n", label_but[ib]);
+         }
+      }
+   }
+   
    bb = (MCW_bbox *) XtMalloc( sizeof(MCW_bbox) ) ;
+   memset(bb, 0, sizeof(MCW_bbox)) ;  /* 12 Feb 2009 [lesstif patrol] */
 
    bb->nbut      = num_but ;
    initial_value = 0 ;
@@ -67,43 +320,54 @@ ENTRY("new_MCW_bbox") ;
 
    /***--- create RowColumn to hold the buttons ---***/
 
-#define MAX_PER_COL 8
+   if (!is_popup) {
+   #define MAX_PER_COL 8
 
-   na = 0 ;
+      na = 0 ;
 
-#ifdef BBOX_COL
-   XtSetArg( wa[na] , XmNpacking    , XmPACK_COLUMN )               ; na++ ;
-   XtSetArg( wa[na] , XmNnumColumns , 1 + (num_but-1)/MAX_PER_COL ) ; na++ ;
-#else
-   XtSetArg( wa[na] , XmNpacking    , XmPACK_TIGHT )                ; na++ ;
-#endif
+   #ifdef BBOX_COL
+      XtSetArg( wa[na] , XmNpacking    , XmPACK_COLUMN )               ; na++ ;
+      XtSetArg( wa[na] , XmNnumColumns , 1 + (num_but-1)/MAX_PER_COL ) ; na++ ;
+   #else
+      XtSetArg( wa[na] , XmNpacking    , XmPACK_TIGHT )                ; na++ ;
+   #endif
 
-   XtSetArg( wa[na] , XmNmarginHeight , 0 ) ; na++ ;  /* squash things in */
-   XtSetArg( wa[na] , XmNmarginWidth  , 0 ) ; na++ ;
-   XtSetArg( wa[na] , XmNspacing      , 1 ) ; na++ ;
+      XtSetArg( wa[na] , XmNmarginHeight , 0 ) ; na++ ;  /* squash things in */
+      XtSetArg( wa[na] , XmNmarginWidth  , 0 ) ; na++ ;
+      XtSetArg( wa[na] , XmNspacing      , 1 ) ; na++ ;
 
-   XtSetArg( wa[na] , XmNtraversalOn , True ) ; na++ ;
-   XtSetArg( wa[na] , XmNinitialResourcesPersistent , False ) ; na++ ;
+      XtSetArg( wa[na] , XmNtraversalOn , True ) ; na++ ;
+      XtSetArg( wa[na] , XmNinitialResourcesPersistent , False ) ; na++ ;
 
-   if( bb_type == MCW_BB_radio_zero || bb_type == MCW_BB_radio_one ){
+      if( bb_type == MCW_BB_radio_zero || bb_type == MCW_BB_radio_one ){
 
-     XtSetArg( wa[na] , XmNradioBehavior , True ) ; na++ ;
+        XtSetArg( wa[na] , XmNradioBehavior , True ) ; na++ ;
 
-     if( bb_type == MCW_BB_radio_one ){
-       initial_value = 1 ;
-       XtSetArg( wa[na] , XmNradioAlwaysOne , True ) ; na++ ;
-     } else {
-       XtSetArg( wa[na] , XmNradioAlwaysOne , False ) ; na++ ;
-     }
+        if( bb_type == MCW_BB_radio_one ){
+          XtSetArg( wa[na] , XmNradioAlwaysOne , True ) ; na++ ;
+        } else {
+          XtSetArg( wa[na] , XmNradioAlwaysOne , False ) ; na++ ;
+        }
+      }
+
+      STATUS("create rowcol") ;
+      bb->wrowcol = XtCreateWidget(
+                      "dialog" , xmRowColumnWidgetClass , rc_parent ,
+                      wa , na ) ;
+      if( bb->wframe == NULL ) bb->wtop = bb->wrowcol ;  /* topmost widget */
+   } else {
+      bb->wrowcol = NULL;
+      /* You cannot use:
+         if( bb->wframe == NULL ) bb->wtop = parent;
+         If you do so, the recorder window does not respond to mouse
+         input */
+      
+      bb->wtop = parent; 
    }
-
-   STATUS("create rowcol") ;
-   bb->wrowcol = XtCreateWidget(
-                   "dialog" , xmRowColumnWidgetClass , rc_parent ,
-                   wa , na ) ;
-
-   if( bb->wframe == NULL ) bb->wtop = bb->wrowcol ;  /* topmost widget */
-
+   if( bb_type == MCW_BB_radio_one ){
+      initial_value = 1 ;
+   }
+   
    XtVaGetValues( bb->wtop , XmNforeground , &fg_pix , NULL ) ;
 
    /***--- create the buttons ---***/
@@ -111,7 +375,8 @@ ENTRY("new_MCW_bbox") ;
    STATUS("create toggle buttons") ;
    for( ib=0 ; ib < num_but ; ib++ ){
       bb->wbut[ib] = XtVaCreateManagedWidget(
-                        "dialog" , xmToggleButtonWidgetClass , bb->wrowcol ,
+                        "dialog" , xmToggleButtonWidgetClass , 
+                           is_popup ?  parent : bb->wrowcol ,
                            LABEL_ARG(label_but[ib]) ,
                            XmNmarginHeight  , 0 ,
                            XmNmarginWidth   , 0 ,
@@ -121,15 +386,28 @@ ENTRY("new_MCW_bbox") ;
                            XmNinitialResourcesPersistent , False ,
                         NULL ) ;
 
-      if( cb != NULL )
-        XtAddCallback( bb->wbut[ib] , XmNdisarmCallback , cb , cb_data ) ;
-
+      if( cb != NULL ) {
+        cbws = (cb_wrap_struct *)calloc(1, sizeof(cb_wrap_struct));
+        cbws->bb = bb;
+        cbws->cb = cb;
+        cbws->cb_data = cb_data;
+        cbws->parent = parent;
+        cbws->is_popup = is_popup;
+        cbws->bb_type = bb_type;
+        if (dbg) fprintf(stderr,
+                        "Registering callback for\n"
+                        "   widget (%p) %s at ib = %d, labeled %s\n", 
+                        bb->wbut[ib], XtName(bb->wbut[ib]), ib, label_but[ib]);
+        XtAddCallback(  bb->wbut[ib] , 
+                        XmNdisarmCallback , 
+                        new_MCW_bbox_cbwrap, (XtPointer)cbws);
+      }
    }
    for( ib=num_but ; ib < MCW_MAX_BB ; ib++ ) bb->wbut[ib] = NULL ;
 
    MCW_set_bbox( bb , initial_value ) ;
    STATUS("manage button box") ;
-   XtManageChild( bb->wrowcol ) ;
+   if (bb->wrowcol) XtManageChild( bb->wrowcol ) ;
 
    bb->parent = bb->aux = NULL ;
    RETURN(bb) ;
@@ -193,6 +471,7 @@ int MCW_val_bbox( MCW_bbox *bb )
     label   = string to put to left of arrows (NULL means none)
     direc   = MCW_AV_downup    for down and up arrows
               MCW_AV_leftright for left and right arrows
+              MCW_AV_updown    for up and down arrows
               MCW_AV_optmenu   for option menu (completely different style!)
     minval  = smallest value allowed } value is like in Scales:
     maxval  = largest  value allowed }   an integer
@@ -233,6 +512,7 @@ MCW_arrowval * new_MCW_arrowval( Widget parent ,
 {
    MCW_arrowval *av = NULL ;
    int asizx = 20 , asizy = 15 ;  /* arrow sizes */
+   int aup , adown ;
 
 ENTRY("new_MCW_arrowval") ;
 
@@ -264,23 +544,26 @@ ENTRY("new_MCW_arrowval") ;
 
    if( label != NULL && strlen(label) > 0 ){
       XmString   xstr = XmStringCreateLtoR( label , XmFONTLIST_DEFAULT_TAG );
-      XmFontList xflist ;
+      XmFontList xflist = (XmFontList)NULL ;
 
       STATUS("creating wlabel") ;
       av->wlabel = XtVaCreateManagedWidget(
                     "dialog" , xmLabelWidgetClass , av->wrowcol ,
-
                        XmNlabelString   , xstr  ,
                        XmNrecomputeSize , False ,
                        XmNmarginWidth   , 0     ,
-
                        XmNinitialResourcesPersistent , False ,
                     NULL ) ;
 
       XtVaGetValues( av->wlabel , XmNfontList , &xflist , NULL ) ;
 
       STATUS("getting label height") ;
-      asizy = XmStringHeight( xflist , xstr ) ;
+      if( xflist != (XmFontList)NULL ){
+        asizy = XmStringHeight( xflist , xstr ) ;
+      } else {
+        static first = 1 ;
+        if( first ){ ERROR_message("Can't get font list?"); first=0; }
+      }
       STATUS("freeing xstr") ;
       XmStringFree( xstr ) ;
 
@@ -292,11 +575,17 @@ ENTRY("new_MCW_arrowval") ;
    else                asizy = asizx ;
 
    STATUS("creating item labels") ;
+
+   adown = (direc==MCW_AV_leftright) ? XmARROW_LEFT
+          :(direc==MCW_AV_downup   ) ? XmARROW_DOWN : XmARROW_UP   ;
+
+   aup   = (direc==MCW_AV_leftright) ? XmARROW_RIGHT
+          :(direc==MCW_AV_downup   ) ? XmARROW_UP   : XmARROW_DOWN ;
+
    av->wdown = XtVaCreateManagedWidget(
                   "arrow" , xmArrowButtonWidgetClass , av->wrowcol ,
 
-                     XmNarrowDirection , (direc==MCW_AV_leftright)
-                                         ? XmARROW_LEFT : XmARROW_DOWN ,
+                     XmNarrowDirection , adown ,
 
                      XmNheight , asizy , XmNwidth , asizx ,
                      XmNborderWidth , 0 ,
@@ -308,8 +597,7 @@ ENTRY("new_MCW_arrowval") ;
    av->wup    = XtVaCreateManagedWidget(
                   "arrow" , xmArrowButtonWidgetClass , av->wrowcol ,
 
-                     XmNarrowDirection , (direc==MCW_AV_leftright)
-                                         ? XmARROW_RIGHT : XmARROW_UP ,
+                     XmNarrowDirection , aup ,
 
                      XmNheight , asizy , XmNwidth , asizx ,
                      XmNborderWidth , 0 ,
@@ -504,9 +792,130 @@ void allow_MCW_optmenu_popup( int ii ){ allow_optmenu_EV = ii ; }
 static void optmenu_EV_fixup( Widget ww ) ;
 #endif
 
+
+/*
+This is the only fix we could come up with to keep
+AFNI from crashing when users open a pulldown menu
+and select from a menu within:
+
+graph-->click Opt AND drag to Tran 0D  = BOOM
+
+Doing:
+graph-->click Opt, RELEASE -->click Tran 0D = Hazah!
+
+The problem is either in Lesstif or Xt.
+
+What we do is capture the button release over such
+menus and dispatch a button press immediately. So 
+every time there is a button release atop such menus,
+there is an additional button press call done.
+
+That seems to do the trick, we hope.
+
+            Feb 13 2009, [LPatrol]
+*/
+const char *text_EV(int v)
+{
+   switch (v) {
+      case EnterNotify:
+         return("enter");
+      case LeaveNotify:
+         return("leave");
+      case ButtonPress:
+         return("press");
+      case ButtonRelease:
+         return("release");
+      default:
+         return("dunno"); 
+   }
+   return("weird");
+}
+void enter_EV( Widget w , XtPointer client_data ,
+                  XEvent * ev , Boolean * continue_to_dispatch )
+{
+   XLeaveWindowEvent * lev = (XLeaveWindowEvent *) ev ;
+   XButtonEvent *bev = (XButtonEvent *)ev;
+   MCW_arrowval *av = (MCW_arrowval *)client_data;
+   int is_popup = 0;
+   static Widget widlist[10000];
+   int N_widlist=0;
+   int dbg =0;
+   
+   #ifdef USING_LESSTIF
+   if (CPU_IS_64_BIT() ){
+      is_popup = is_daddy_popup(w); 
+      if (dbg > 1) {
+         fprintf(stderr,
+                     "\n"
+                     "ispopup=%d\n"
+                     "%s bev->button = %d\n"
+                     "av->wdown=%p, av->wlabel=%p\n"
+                     "w        =%p, w         =%p\n"
+                     "av->wrowcol=%p\n"
+                     "ev->type %d (realized: %d) \n"
+                     "  Queued %d, QAF %d, QAR %d\n"
+                     "E%d,L%d,P%d,R%d\n"
+                     "\n",
+                     is_popup, text_EV(lev->type), bev->button,
+                     av->wdown, av->wlabel, w, w, av->wrowcol,
+                     lev->type,  
+                     XtIsRealized(w), 
+                     XEventsQueued(XtDisplay(w), QueuedAlready ),
+                     XEventsQueued(XtDisplay(w), QueuedAfterFlush ),
+                     XEventsQueued(XtDisplay(w), QueuedAfterReading ),
+                     EnterNotify, LeaveNotify, ButtonPress, ButtonRelease); 
+      } else if (dbg) {
+         fprintf(stderr,
+                     "\n"
+                     "%s widget %p, button = %d\n""\n",
+                     text_EV(lev->type), w, bev->button);
+
+      }
+   
+      /* NOTICE: This last ditch fix only for an option menu inside a pulldown
+         window.  */ 
+      if (is_popup && bev->button == 1 && ev->type == ButtonRelease) { 
+                     /* Button release over menu button: DUCK! */
+         if (dbg) fprintf(stderr,"Holy Toledo!\n");
+         ev->type = ButtonPress;  /* Make that be a button press first */
+         XtDispatchEvent(ev); /* pray real hard now */
+         /* DO NOT reset ev->type to ButtonRelease; don't ask. */
+      } 
+   }
+   #endif  
+}
+
 MCW_arrowval * new_MCW_optmenu( Widget parent ,
                                 char *label ,
-                                int   minval , int maxval , int inival , int decim ,
+                                int   minval , int maxval , int inival , 
+                                int decim ,
+                                gen_func *delta_value, XtPointer delta_data,
+                                str_func *text_proc  , XtPointer text_data
+                              )
+{
+   #ifdef USING_LESSTIF_NOT_DOING_THIS_CRAP
+      if (CPU_IS_64_BIT() ){
+         RETURN(new_MCW_optmenu_64fix( 
+                  parent , label ,
+                  minval , maxval , inival , 
+                  decim ,
+                  delta_value, delta_data,
+                  text_proc  , text_data));
+      }  
+   #endif
+   
+   RETURN(new_MCW_optmenu_orig( 
+                  parent , label ,
+                  minval , maxval , inival , 
+                  decim ,
+                  delta_value, delta_data,
+                  text_proc  , text_data));
+}
+
+MCW_arrowval * new_MCW_optmenu_orig( Widget parent ,
+                                char *label ,
+                                int   minval , int maxval , int inival , 
+                                int decim ,
                                 gen_func *delta_value, XtPointer delta_data,
                                 str_func *text_proc  , XtPointer text_data
                               )
@@ -517,13 +926,13 @@ MCW_arrowval * new_MCW_optmenu( Widget parent ,
    int nargs , ival ;
    XmString xstr ;
    char *butlabel , *blab ;
-
-ENTRY("new_MCW_optmenu") ;
+   int dbg = 0;
+   
+ENTRY("new_MCW_optmenu_orig") ;
 
    /** create the menu window **/
-
+   
    av->wmenu = wmenu = XmCreatePulldownMenu( parent , "menu" , NULL , 0 ) ;
-
    av->optmenu_call_if_unchanged = 0 ;  /* 10 Oct 2007 */
 
    VISIBILIZE_WHEN_MAPPED(wmenu) ;
@@ -534,13 +943,13 @@ ENTRY("new_MCW_optmenu") ;
    /** create the button that pops down the menu **/
 
    nargs = 0 ;
-   XtSetArg( args[0] , XmNsubMenuId , wmenu ) ; nargs++ ;
-   XtSetArg( args[1] , XmNtraversalOn, True ) ; nargs++ ;
+   XtSetArg( args[nargs] , XmNsubMenuId , wmenu ) ; nargs++ ;
+   XtSetArg( args[nargs] , XmNtraversalOn, True ) ; nargs++ ;
 
    if( label == NULL ) label = " " ;  /* 24 Sep 2001 */
 
    xstr = XmStringCreateLtoR( label , XmFONTLIST_DEFAULT_TAG ) ;
-   XtSetArg( args[2] , XmNlabelString , xstr ) ; nargs++ ;
+   XtSetArg( args[nargs] , XmNlabelString , xstr ) ; nargs++ ;
 
    av->wrowcol = XmCreateOptionMenu( parent , "dialog" , args , nargs ) ;
    XmStringFree(xstr) ;
@@ -613,7 +1022,7 @@ ENTRY("new_MCW_optmenu") ;
                   XmNmarginTop    , 0 ,
                   XmNmarginRight  , 0 ,
                   XmNmarginLeft   , 0 ,
-                  XmNuserData     , (XtPointer) ival ,    /* Who am I? */
+                  XmNuserData     , (XtPointer)ival ,    /* Who am I? */
                   XmNtraversalOn  , True  ,
                   XmNinitialResourcesPersistent , False ,
                 NULL ) ;
@@ -660,6 +1069,225 @@ ENTRY("new_MCW_optmenu") ;
    RETURN(av) ;
 }
 
+
+MCW_arrowval * new_MCW_optmenu_64fix( Widget parent ,
+                                char *label ,
+                                int   minval , int maxval , int inival , 
+                                int decim ,
+                                gen_func *delta_value, XtPointer delta_data,
+                                str_func *text_proc  , XtPointer text_data
+                              )
+{
+   MCW_arrowval *av = myXtNew( MCW_arrowval ) ;
+   Widget wmenu , wbut, rcholder , lb, rcparent;
+   Arg args[5] ;
+   int nargs , ival ;
+   XmString xstr ;
+   char *butlabel , *blab ;
+   int dbg = 0;
+   
+ENTRY("new_MCW_optmenu_64fix") ;
+
+rcparent = XtVaCreateWidget ("rowcolumn",
+         xmRowColumnWidgetClass, parent,
+         XmNpacking, XmPACK_TIGHT, 
+         XmNorientation , XmHORIZONTAL ,
+         XmNmarginHeight, 0 ,
+         XmNmarginWidth , 0 ,
+         NULL);   /** create the menu window **/
+   
+   av->wmenu = wmenu = XmCreatePulldownMenu( rcparent , "menu" , NULL , 0 ) ;
+   av->optmenu_call_if_unchanged = 0 ;  /* 10 Oct 2007 */
+
+   VISIBILIZE_WHEN_MAPPED(wmenu) ;
+#if 0   /* doesn't work well if optmenu is inside a popup! */
+   if( !AFNI_yesenv("AFNI_DISABLE_TEAROFF") ) TEAROFFIZE(wmenu) ;
+#endif
+
+   /** create the button that pops down the menu **/
+
+   nargs = 0 ;
+   XtSetArg( args[nargs] , XmNsubMenuId , wmenu ) ; nargs++ ;
+   XtSetArg( args[nargs] , XmNtraversalOn, True ) ; nargs++ ;
+
+   if( label == NULL ) label = " " ;  /* 24 Sep 2001 */
+
+   rcholder = XtVaCreateWidget ("rowcolumn",
+         xmRowColumnWidgetClass, rcparent,
+         XmNpacking, XmPACK_TIGHT, 
+         XmNorientation , XmHORIZONTAL ,
+                  XmNmarginWidth  , 0 ,
+                  XmNmarginHeight , 0 ,
+                  XmNmarginBottom , 0 ,
+                  XmNmarginTop    , 0 ,
+                  XmNmarginRight  , 0 ,
+                  XmNmarginLeft   , 0 ,
+                     XmNspacing      , 0 ,
+         NULL);
+   lb = XtVaCreateManagedWidget (label, 
+                               xmLabelWidgetClass, rcholder,
+                               XmNmarginHeight, 0 ,
+                               XmNmarginWidth , 0 ,
+                  XmNmarginWidth  , 0 ,
+                  XmNmarginHeight , 0 ,
+                  XmNmarginBottom , 0 ,
+                  XmNmarginTop    , 0 ,
+                  XmNmarginRight  , 0 ,
+                  XmNmarginLeft   , 0 ,
+                              NULL);
+                                     
+   xstr = XmStringCreateLtoR( "" , XmFONTLIST_DEFAULT_TAG ) ;
+   XtSetArg( args[nargs] , XmNlabelString , xstr ) ; nargs++ ;
+   av->wrowcol = XmCreateOptionMenu( rcholder , "dialog" , args , nargs ) ;
+   XmStringFree(xstr) ;
+   XtVaSetValues( av->wrowcol ,
+                     XmNmarginWidth  , 0 ,
+                     XmNmarginHeight , 0 ,
+                     XmNspacing      , 2 ,
+                     XmNtraversalOn  , True ,
+                  NULL ) ;
+
+   #ifdef USING_LESSTIF
+   if (CPU_IS_64_BIT() ){
+      XtInsertEventHandler( av->wrowcol ,        
+                               ButtonReleaseMask ,  
+                               FALSE ,            
+                               enter_EV,
+                               (XtPointer) av,
+                               XtListHead) ; 
+      /*
+      XtInsertEventHandler( av->wrowcol ,       
+                               ButtonPressMask ,  
+                               FALSE ,           
+                               enter_EV,
+                               (XtPointer) av ,
+                               XtListHead) ; 
+      XtInsertEventHandler( av->wrowcol ,        
+                               EnterWindowMask ,  
+                               FALSE ,            
+                               enter_EV,
+                               (XtPointer) av,
+                               XtListHead) ; 
+                               
+      XtInsertEventHandler( av->wrowcol ,        
+                               LeaveWindowMask ,  
+                               FALSE ,            
+                               enter_EV,
+                               (XtPointer) av,
+                               XtListHead) ; 
+      */
+   }
+   #endif
+   av->wlabel = lb ;
+   av->wdown  = XmOptionButtonGadget(av->wrowcol) ;
+   av->wup    = NULL ;
+   av->wtext  = NULL ;  /* signal that this is NOT really an arrowval */
+
+   XtVaSetValues( av->wlabel ,              /* label next to menu button */
+                     XmNmarginWidth  , 0 ,
+                     XmNmarginHeight , 0 ,
+                     XmNmarginBottom , 0 ,
+                     XmNmarginTop    , 0 ,
+                     XmNmarginRight  , 0 ,
+                     XmNmarginLeft   , 0 ,
+                  NULL ) ;
+
+   if( label == NULL || strlen(label) == 0 ){
+      XtVaSetValues( av->wlabel  , XmNwidth   , 0 , NULL ) ;
+      XtVaSetValues( av->wrowcol , XmNspacing , 2 , NULL ) ;
+   }
+
+   XtVaSetValues( av->wdown ,               /* menu button */
+                     XmNmarginWidth  , 0 ,
+                     XmNmarginHeight , 0 ,
+                     XmNmarginBottom , 0 ,
+                     XmNmarginTop    , 0 ,
+                     XmNmarginRight  , 0 ,
+                     XmNmarginLeft   , 0 ,
+                     XmNtraversalOn  , True ,
+                     XmNhighlightThickness , 0 ,
+                  NULL ) ;
+
+   av->text_CB   = (text_proc != NULL ) ? (text_proc)
+                                        : (AV_default_text_CB) ;
+   av->text_data = text_data ;
+   av->decimals  = decim ;
+   av->fmin      = av->imin = minval ; AV_SHIFT_VAL(decim,av->fmin) ;
+   av->fmax      = av->imax = maxval ; AV_SHIFT_VAL(decim,av->fmax) ;
+   av->sval      = av->old_sval = NULL ;
+
+   av->block_assign_actions = 1 ;    /* temporarily block these actions */
+
+   /** create the buttons on the menu window **/
+
+   for( ival=minval ; ival <= maxval ; ival++ ){
+
+      AV_assign_ival( av , ival ) ;  /* just to create label */
+
+      blab = butlabel = XtNewString( av->sval ) ;
+      if( av->text_CB==AV_default_text_CB && butlabel[0]==' ' && minval >= 0 ){
+        blab += 1 ;  /* deal with leading blanks in default routine */
+      }
+
+      xstr = XmStringCreateLtoR( blab , XmFONTLIST_DEFAULT_TAG ) ;
+
+      wbut = XtVaCreateManagedWidget(
+                "dialog" , xmPushButtonWidgetClass , wmenu ,
+                  XmNlabelString  , xstr ,
+                  XmNmarginWidth  , 0 ,
+                  XmNmarginHeight , 0 ,
+                  XmNmarginBottom , 0 ,
+                  XmNmarginTop    , 0 ,
+                  XmNmarginRight  , 0 ,
+                  XmNmarginLeft   , 0 ,
+                  XmNuserData     , (XtPointer)ival ,    /* Who am I? */
+                  XmNtraversalOn  , True  ,
+                  XmNinitialResourcesPersistent , False ,
+                NULL ) ;
+
+      XmStringFree(xstr) ; myXtFree(butlabel) ;
+
+      XtAddCallback( wbut , XmNactivateCallback , AVOPT_press_CB , av ) ;
+
+      if( ival == inival )
+        XtVaSetValues( av->wrowcol ,  XmNmenuHistory , wbut , NULL ) ;
+   }
+
+   XtManageChild( av->wrowcol ) ;
+
+   av->timer_id  = 0 ;  /* won't be used for this type of arrowval! */
+   av->fastdelay = 0 ;
+
+   av->block_assign_actions = 0 ;   /* unblock these actions */
+
+   AV_assign_ival( av , inival ) ;  /* actual initial assignment */
+
+   av->dval_CB   = delta_value ;
+   av->dval_data = delta_data ;
+
+   av->allow_wrap = 0 ;
+
+   av->parent = av->aux = NULL ;
+   av->fstep = 0.0 ;  /* 16 Feb 1999 */
+
+   /* 11 Dec 2001: allow user to choose via Button-3 popup */
+
+   if( allow_optmenu_EV ){
+     XtInsertEventHandler( av->wlabel ,      /* handle events in optmenu */
+                           ButtonPressMask ,  /* button presses */
+                           FALSE ,            /* nonmaskable events? */
+                           optmenu_EV ,       /* handler */
+                           (XtPointer) av ,   /* client data */
+                           XtListTail ) ;     /* last in queue */
+#ifdef USE_FIXUP
+     optmenu_EV_fixup( av->wlabel ) ;
+#endif
+   }
+   XtManageChild( rcholder);
+   XtManageChild( rcparent);
+   RETURN(av) ;
+}
+
 /*----------------------------------------------------------------------------
    Relabels all the buttons on an optmenu, adding or unmanaging as needed.
    The label and action callback remain the same.
@@ -669,8 +1297,8 @@ void refit_MCW_optmenu( MCW_arrowval *av ,
                         int  minval , int maxval , int inival , int decim ,
                         str_func *text_proc  , XtPointer text_data )
 {
-   Widget *children , wbut , wmenu ;
-   int  num_children , ic , ival ;
+   Widget *children=NULL , wbut , wmenu ;
+   int  num_children=0 , ic , ival ;
    char *butlabel , *blab ;
    XmString xstr ;
    int maxbut ;   /* 23 Aug 2003 */
@@ -716,6 +1344,7 @@ ENTRY("refit_MCW_optmenu") ;
 
    /** create buttons anew **/
 
+   STATUS("create buttons anew") ;
    for( ival=minval ; ival <= maxval ; ival++ ){
 
       ic = ival - minval ;           /* index into widget list */
@@ -732,9 +1361,9 @@ ENTRY("refit_MCW_optmenu") ;
       /** re-use old button if possible, otherwise add a new one **/
 
       if( ic < num_children ){
-         XtPointer user_old ;
+         XtPointer user_old=NULL ;
          int       ival_old ;
-         XmString  xstr_old ;
+         XmString  xstr_old=NULL ;
 
          wbut = children[ic] ;
          XtVaGetValues( wbut ,
@@ -744,14 +1373,20 @@ ENTRY("refit_MCW_optmenu") ;
          ival_old = (int) user_old ;
 
          if( ival_old != ival || XmStringCompare(xstr_old,xstr) != True ){
+            STATUS("setting label in recycled button") ;
             XtVaSetValues( wbut ,
                               XmNlabelString , xstr ,             /* change label */
                               XmNuserData    , (XtPointer) ival , /* Who am I? */
                            NULL ) ;
          }
+#if 1
+         STATUS("freeing xstr_old") ;
          XmStringFree( xstr_old ) ;
+#endif
+         STATUS("managing child") ;
          XtManageChild( wbut ) ;    /* if not now managed */
       } else {
+         STATUS("setting up new button") ;
          wbut = XtVaCreateManagedWidget(
                    "dialog" , xmPushButtonWidgetClass , wmenu ,
                      XmNlabelString  , xstr ,
@@ -768,21 +1403,27 @@ ENTRY("refit_MCW_optmenu") ;
          XtAddCallback( wbut , XmNactivateCallback , AVOPT_press_CB , av ) ;
       }
 
+      STATUS("freeing xstr") ;
       XmStringFree(xstr) ; myXtFree(butlabel) ;
 
-      if( ival == inival )
-         XtVaSetValues( av->wrowcol ,  XmNmenuHistory , wbut , NULL ) ;
+      if( ival == inival ){
+        STATUS("setting menu history") ;
+        XtVaSetValues( av->wrowcol ,  XmNmenuHistory , wbut , NULL ) ;
+      }
    }
 
    /** Unmanage extra children from an old incarnation **/
 
    ic = maxval-minval+1 ;  /* first child after those used above */
 
-   if( ic < num_children )
-      XtUnmanageChildren( children + ic , num_children - ic ) ;
+   if( ic < num_children ){
+     STATUS("unmanaging unused children") ;
+     XtUnmanageChildren( children + ic , num_children - ic ) ;
+   }
 
    /** set number of columns to see **/
 
+   STATUS("set number of columns") ;
    AVOPT_columnize( av , 1+(maxval-minval)/COLSIZE ) ;
 
 #if 0
@@ -919,11 +1560,11 @@ static void optmenu_EV( Widget w , XtPointer cd ,
    MCW_arrowval *av = (MCW_arrowval *) cd ;
    int  ic , ival , sval , nstr ;
    XButtonEvent *bev = (XButtonEvent *) ev ;
-   Dimension lw ;
+   Dimension lw=0 ;
    static char **strlist=NULL ;
    static  int  nstrlist=0 ;    /* 06 Aug 2002 */
    char *slab=NULL ;
-   XmString xstr ;
+   XmString xstr=NULL ;
 
    /*-- Attempt to fix a Motif problem with Button 2
         when the optmenu is itself in a popup menu.
@@ -1004,8 +1645,8 @@ MCW_arrowval * new_MCW_colormenu( Widget parent , char *label , MCW_DC *dc ,
                                 )
 {
    MCW_arrowval *av ;
-   Widget *children ;
-   int  num_children , ic , icol ;
+   Widget *children=NULL ;
+   int  num_children=0 , ic , icol ;
 
 ENTRY("new_MCW_colormenu") ;
 
@@ -1016,7 +1657,6 @@ ENTRY("new_MCW_colormenu") ;
 
    XtVaGetValues( av->wmenu , XmNchildren    , &children ,
                               XmNnumChildren , &num_children , NULL ) ;
-
    for( ic=0 ; ic < num_children ; ic++ ){
       icol = min_col + ic ;
       if( icol > 0 ) MCW_set_widget_bg( children[ic] , 0 , dc->ovc->pix_ov[icol] ) ;
@@ -1027,6 +1667,33 @@ ENTRY("new_MCW_colormenu") ;
 
    RETURN(av) ;
 }
+
+/*-----------------------------------------------------------------------*/
+
+void colorize_MCW_optmenu( MCW_arrowval *av , char *cname , int ibut )
+{
+   Widget *children=NULL ;
+   int num_children=0 , ic,ibot,itop ;
+
+ENTRY("colorize_MCW_optmenu") ;
+
+   if( av == NULL || av->wmenu == NULL ) EXRETURN ;
+   if( cname == NULL || *cname == '\0' ) cname = "gray40" ;
+
+   XtVaGetValues( av->wmenu , XmNchildren    , &children ,
+                              XmNnumChildren , &num_children , NULL ) ;
+   if( children == NULL || num_children <= 0 || ibut >= num_children ) EXRETURN ;
+
+   if( ibut < 0 ){ ibot = 0 ; itop = num_children-1 ; }
+   else          { ibot = itop = ibut ; }
+
+   for( ic=ibot ; ic <= itop ; ic++ )
+     MCW_set_widget_bg( children[ic] , cname , 0 ) ;
+
+   EXRETURN ;
+}
+
+/*-----------------------------------------------------------------------*/
 
 char * MCW_av_substring_CB( MCW_arrowval *av , XtPointer cd )
 {
@@ -1040,7 +1707,9 @@ void AVOPT_press_CB( Widget wbut, XtPointer client_data, XtPointer call_data )
 {
    MCW_arrowval *av = (MCW_arrowval *) client_data ;
    int newval ;
-   XtPointer xval ;
+   XtPointer xval=NULL ;
+
+ENTRY("AVOPT_press_CB");
 
    XtVaGetValues( wbut , XmNuserData , &xval , NULL ) ;
    newval = (int) xval ;
@@ -1059,7 +1728,7 @@ void AVOPT_press_CB( Widget wbut, XtPointer client_data, XtPointer call_data )
                            XtPointer      , av->dval_data ) ;
 #endif
 
-   return ;
+   EXRETURN ;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -1214,8 +1883,8 @@ ENTRY("AV_assign_ival") ;
 
    if( av->wmenu != NULL && ! av->block_assign_actions ){
 
-      Widget *children , wbut ;
-      int  num_children , ic ;
+      Widget *children=NULL , wbut=NULL ;
+      int  num_children=0 , ic ;
 
       XtVaGetValues( av->wmenu ,
                         XmNchildren    , &children ,
@@ -1492,7 +2161,7 @@ char * MCW_DC_ovcolor_text( MCW_arrowval *av , MCW_DC *dc )
    /** make the option menu cascade button gadget be outlined in color **/
 
    else if( av->wmenu != NULL && XtIsRealized(av->wrowcol) ){
-      Pixel ptop , pbot ;
+      Pixel ptop=0 , pbot=0 ;
       wfix = av->wrowcol ;
       if( ii > 0 ) pbot = ptop = dc->ovc->pix_ov[ii] ;
       else         XtVaGetValues( XtParent(wfix) ,
@@ -2279,7 +2948,7 @@ ENTRY("MCW_choose_string") ;
 
 /*-------------------------------------------------------------------------*/
 
-static int browse_select = 0 ;
+static int browse_select = 0 , bcs = 0 , blocked = 0 ;
 void MCW_set_browse_select(int i){ browse_select = i ; } /* 21 Feb 2007 */
 
 /*-------------------------------------------------------------------------*/
@@ -2344,7 +3013,7 @@ static MCW_arrowval *str_wlist_av = NULL ;
 
 static void MCW_strlist_av_CB( MCW_arrowval *av , XtPointer cd )
 {
-   int init=1+av->ival , itop,nvis ;
+   int init=1+av->ival , itop=0,nvis=0 ;
 
    if( str_wlist == NULL || !XtIsRealized(str_wlist) ||
        init <= 0         || init > str_wlist_num       ) return ;
@@ -2356,7 +3025,15 @@ static void MCW_strlist_av_CB( MCW_arrowval *av , XtPointer cd )
                   NULL ) ;
         if( init <  itop      ) XmListSetPos      ( str_wlist , init ) ;
    else if( init >= itop+nvis ) XmListSetBottomPos( str_wlist , init ) ;
+
+   if( bcs && !blocked ){
+     blocked = 1 ;
+     XtCallCallbacks( str_wlist , XmNbrowseSelectionCallback , NULL ) ;
+     blocked = 0 ;
+   }
 }
+
+/*-------------------------------------------------------------------------*/
 
 static void MCW_strlist_select_CB( Widget w, XtPointer cd, XtPointer cb )
 {
@@ -2370,7 +3047,9 @@ static void MCW_strlist_select_CB( Widget w, XtPointer cd, XtPointer cb )
                   NULL ) ;
    if( ns <= 0 || sp == NULL ) return ;
    AV_assign_ival( str_wlist_av , (int)(sp[0])-1 ) ;
+   blocked = 1 ;
    MCW_strlist_av_CB( str_wlist_av , NULL ) ;
+   blocked = 0 ;
 }
 
 /*-------------------------------------------------------------------------*/
@@ -2388,13 +3067,13 @@ void MCW_choose_multi_strlist( Widget wpar , char *label , int mode ,
    XmString xms ;
    char *lbuf ;
    int nvisible ;
-   int bc=browse_select ;  /* 21 Feb 2007 */
    MCW_arrowval *wav ;     /* 12 Oct 2007 */
 
 ENTRY("MCW_choose_multi_strlist") ;
 
    /** destructor callback **/
 
+   bcs = browse_select ; /* 21 Feb 2007 */
    browse_select = 0 ;  /* 21 Feb 2007 */
    str_wlist = NULL ;   /* 12 Oct 2007 */
 
@@ -2517,7 +3196,7 @@ ENTRY("MCW_choose_multi_strlist") ;
      MCW_register_help( wlist , OVC_list_help_1 ) ;
      MCW_register_help( wlab  , OVC_list_help_1 ) ;
      XtAddCallback( wlist , XmNdefaultActionCallback , MCW_choose_CB , &cd ) ;
-     if( bc )  /* 21 Feb 2007 */
+     if( bcs )  /* 21 Feb 2007 */
        XtAddCallback( wlist, XmNbrowseSelectionCallback,MCW_choose_CB, &cd ) ;
    }
 
@@ -2564,7 +3243,7 @@ ENTRY("MCW_choose_multi_strlist") ;
 
       if( init != NULL && init[0] > 0 && init[0] < num_str ) ival = init[0] ;
 
-      str_wlist_av = new_MCW_arrowval( wrc , "Index" , MCW_AV_downup ,
+      str_wlist_av = new_MCW_arrowval( wrc , "Index" , MCW_AV_updown ,
                                        0 , num_str-1 , ival , MCW_AV_editext , 0 ,
                                        MCW_strlist_av_CB , NULL , NULL , NULL ) ;
 
@@ -3213,6 +3892,7 @@ void MCW_choose_CB( Widget w , XtPointer client_data , XtPointer call_data )
    static MCW_choose_cbs cbs ;  /* to be passed back to user */
    static int list_dbclick_use = LIST_DBCLICK_UNKNOWN ;
    Boolean clear ;
+   XEvent *cbev = (icbs != NULL) ? icbs->event : NULL ;  /* 03 Jun 2009 */
 
 ENTRY("MCW_choose_CB") ;
 
@@ -3262,7 +3942,7 @@ ENTRY("MCW_choose_CB") ;
 
          if( call ){
             cbs.reason = mcwCR_vector ;  /* set structure for call to user */
-            cbs.event  = icbs->event ;
+            cbs.event  = cbev ;
             cbs.ival   = cd->nvec ;
             vec        = (float *)malloc(sizeof(float)*cd->nvec) ;
             cbs.cval   = (char *)vec ;
@@ -3295,7 +3975,7 @@ ENTRY("MCW_choose_CB") ;
 
          if( call ){
             cbs.reason = mcwCR_ovcolor ;  /* set structure for call to user */
-            cbs.event  = icbs->event ;
+            cbs.event  = cbev ;
             cbs.ival   = cd->av->ival ;
 
             if( !done ) MCW_invert_widget(w) ;              /* flash */
@@ -3333,7 +4013,7 @@ ENTRY("MCW_choose_CB") ;
             Boolean any ;
 
             cbs.reason = mcwCR_integer ;    /* set structure for call to user */
-            cbs.event  = icbs->event ;
+            cbs.event  = cbev ;
 
             if( cd->av != NULL ){           /* chooser was an arrowval */
                cbs.ival   = cd->av->ival ;
@@ -3397,7 +4077,7 @@ ENTRY("MCW_choose_CB") ;
 
          if( call ){
             cbs.reason = mcwCR_string ;  /* set structure for call to user */
-            cbs.event  = icbs->event ;
+            cbs.event  = cbev ;
             cbs.cval   = TEXT_GET( cd->wchoice ) ;
 
             if( !done ) MCW_invert_widget(w) ;              /* flash */
@@ -3480,7 +4160,7 @@ printf("MCW_choose_CB: choice index = %d\n",first) ;
 
             if( call ){
                cbs.reason = mcwCR_timeseries ;  /* set structure for call to user */
-               cbs.event  = icbs->event ;
+               cbs.event  = cbev ;
                cbs.ival   = first ;
                cbs.imval  = fim ;
 

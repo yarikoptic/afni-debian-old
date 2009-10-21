@@ -480,6 +480,27 @@ PLUGIN_interface * ENV_init(void)
    ENV_add_yesno( "AFNI_IMAGE_TICK_DIV_IN_MM" ,
                   "Image tick divisions count is in mm?" ) ;
 
+   /* 09 Feb 2009 [RWCox] */
+   ENV_add_numeric( "AFNI_ANIM_DUP" ,
+                    "Duplication factor for MPEG save" ,
+                    1,99,0,1 , NULL ) ;
+
+   /* 29 Apr 2009 [RWCox] */
+   { static char *fsize[3] = { "Normal" , "Big" , "Small" } ;
+     ENV_add_string( "AFNI_TTATLAS_FONTSIZE" ,
+                     "Size of 'Where am I?' window font" ,
+                     3 , fsize , NULL  ) ;
+   }
+
+   /* 11 May 2009 [RWCox] */
+   ENV_add_yesno( "AFNI_INSTACORR_FDR" ,
+                  "Compute FDR curve for InstaCorr correlations?" ) ;
+
+   /* 27 Aug 2009 [RWCox] */
+   ENV_add_numeric( "AFNI_IMAGE_CROPSTEP" ,
+                    "Cropped image panning step size" ,
+                    -9,9,0,1 , NULL ) ;
+
    /*--------- Sort list of variables [21 Feb 2007]  -----------*/
 
    if( !AFNI_yesenv("AFNI_DONT_SORT_ENVIRONMENT") )
@@ -616,6 +637,7 @@ void ENV_add_numeric( char *vname , char *vhint ,
 
    ii = NUM_env_var ; NUM_env_var++ ;
 
+   memset(env_var + ii, 0, sizeof(ENV_var)) ; /* 12 Feb 2009 [L patrol] */
    MCW_strncpy( env_var[ii].vname , vname , NAME_NMAX ) ;
    MCW_strncpy( env_var[ii].vhint , vhint , HINT_NMAX ) ;
 
@@ -657,6 +679,7 @@ void ENV_add_string( char *vname , char *vhint ,
 
    ii = NUM_env_var ; NUM_env_var++ ;
 
+   memset(env_var + ii, 0, sizeof(ENV_var)) ; /* 12 Feb 2009 [L patrol] */
    MCW_strncpy( env_var[ii].vname , vname , NAME_NMAX ) ;
    MCW_strncpy( env_var[ii].vhint , vhint , HINT_NMAX ) ;
 

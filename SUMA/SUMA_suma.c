@@ -20,6 +20,7 @@ SUMA_DO *SUMAg_DOv;	/*!< Global pointer to Displayable Object structure vector*/
 int SUMAg_N_DOv = 0; /*!< Number of DOs stored in DOv */
 SUMA_CommonFields *SUMAg_CF; /*!< Global pointer to structure containing info common to all viewers */
 
+
 #ifdef SUMA_DISASTER
 /*!
    a function to test debugging 
@@ -30,8 +31,16 @@ int * SUMA_disaster(void)
    int *iv1=NULL, *iv2 = NULL, *iv3 = NULL;
    int N_iv1, N_iv2;
    int i;
+   double v[7] = {-1.6, -1.5, -1.4, 0, 1.4, 1.5, 1.6};
    
    SUMA_ENTRY;
+   
+   
+   
+   for (i=0; i<7; ++i) {
+      fprintf (stderr,"%f  : r %d, c %d\n", 
+               v[i], SUMA_ROUND(v[i]), SUMA_CEIL(v[i]));
+   }
    
    SUMA_S_Notev("Domemtrace %d\n", get_Domemtrace());
    N_iv1 = 5;
@@ -149,7 +158,9 @@ void SUMA_usage (SUMA_GENERIC_ARGV_PARSE *ps)
 "                  version of the entire SUMA package.\n"
 "   [-all_latest_news] Shows the history of latest news.\n"
 "   [-progs] Lists all the programs in the SUMA package.\n"
+"   [-motif_ver] Displays the linked version of Motif.\n"
 "   [-sources] Lists code sources used in parts of SUMA.\n"
+"   [-help_nido] Help message for displayable objects of type NIDO\n"
 "\n"
 "   For help on interacting with SUMA, press 'ctrl+h' with the mouse \n"
 "   pointer inside SUMA's window.\n"     
@@ -422,6 +433,12 @@ int main (int argc,char *argv[])
           exit (0);
 		}
       
+      if (strcmp(argv[kar], "-help_nido") == 0) {
+         s = SUMA_NIDO_Info();
+         fprintf (SUMA_STDOUT,"%s\n", s); 
+         SUMA_free(s); s = NULL;
+         exit (0);
+      }
       if (strcmp(argv[kar], "-all_latest_news") == 0) {
 			 s = SUMA_New_Additions (-1.0, 0);
           fprintf (SUMA_STDOUT,"%s\n", s); 
@@ -457,6 +474,11 @@ int main (int argc,char *argv[])
           SUMA_free(s); s = NULL;
           exit (0);
 		}
+      
+      if (strcmp(argv[kar], "-motif_ver") == 0) {  /* 9 Mar 2009 [rickr] */
+         show_motif_version_string();
+         exit (0);
+      }
       
 		if (!brk && (strcmp(argv[kar], "-iodbg") == 0)) {
 			fprintf(SUMA_STDERR,"Error %s: Obsolete, use -trace\n", FuncName);
@@ -583,14 +605,18 @@ int main (int argc,char *argv[])
    #if 0
    SUMA_S_Note("KILL ME");
    { 
-      int i,j; 
-      SUMA_TextBoxSize("Hello\nMr Bond! How are you?\nzs", &i,&j,NULL); 
-      SUMA_TextBoxSize("Hello\nMr Bond! How are you?\nzs", 
-                        &i,&j,GLUT_BITMAP_8_BY_13); 
+      int i,j, nl; 
+      SUMA_TextBoxSize("Hello", &i,&j,&nl,NULL); 
+      SUMA_TextBoxSize("", 
+                        &i,&j,&nl,GLUT_BITMAP_8_BY_13); 
+      SUMA_TextBoxSize("O", 
+                        &i,&j,&nl,GLUT_BITMAP_8_BY_13); 
+                        SUMA_TextBoxSize(NULL, 
+                        &i,&j,&nl,GLUT_BITMAP_8_BY_13); 
    }
-   SUMA_ReadTextDO("/Users/ziad/SUMA_test_dirs/sample.niml", NULL);   
-      
+   SUMA_ReadNIDO("/Users/ziad/SUMA_test_dirs/DO/TextDO/sample.niml.do", NULL);   
    exit(1);
+      
    #endif
       
    /* Make surface loading pacifying */
@@ -617,7 +643,8 @@ int main (int argc,char *argv[])
 	}
 
 	if(!SUMA_Assign_HostName (SUMAg_CF, AfniHostName, -1)) {
-		fprintf (SUMA_STDERR, "Error %s: Failed in SUMA_Assign_HostName\n", FuncName);
+		fprintf (SUMA_STDERR, 
+         "Error %s: Failed in SUMA_Assign_HostName\n", FuncName);
 		exit (1);
 	}
    
@@ -626,7 +653,8 @@ int main (int argc,char *argv[])
    {
       int *jnk;
       jnk = SUMA_disaster();
-      SUMA_free(jnk); /* without the -trace, you'll get a warning here if jnk is corrupted */
+      SUMA_free(jnk); /* without the -trace, you'll get a 
+                           warning here if jnk is corrupted */
    }
    #endif
    

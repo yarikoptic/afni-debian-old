@@ -14,7 +14,7 @@
 MRI_IMARR * THD_get_many_timeseries( THD_string_array * dlist )
 {
    int id , ii , ndir ;
-   MRI_IMARR * outar , * tmpar ;
+   MRI_IMARR * outar=NULL, * tmpar=NULL ;
    char * epath , * eee ;
    char   efake[] = "./" ;
    THD_string_array *qlist ; /* 02 Feb 2002 */
@@ -29,7 +29,7 @@ ENTRY("THD_get_many_timeseries") ;
 
    ndir = (dlist != NULL) ? dlist->num : 0 ;
 
-   if( ndir == 0 && epath == NULL ) RETURN( NULL ) ;
+   if( ndir == 0 && epath == NULL ) RETURN( outar ) ;
 
    INIT_IMARR( outar ) ;
    INIT_SARR( qlist ) ;

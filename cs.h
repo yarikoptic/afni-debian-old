@@ -36,6 +36,9 @@ extern float qmed_float     ( int , float * ) ;
 extern void  qmedmad_float  ( int,float *,float *,float * ) ; /* 08 Mar 2001 */
 extern void  meansigma_float( int,float *,float *,float * ) ; /* 07 Dec 2006 */
 
+extern void qmedmadbmv_float( int, float *, float *, float *, float * ) ;
+
+
 /***** Eigensolutions *****/
 
 extern void symeig_double( int , double * , double * ) ;
@@ -47,6 +50,8 @@ extern void set_svd_sort(int) ;
 extern void symeig_3( double *, double *, int ) ;  /* 30 Sep 2005 */
 extern void symeig_2( double *, double *, int ) ;
 extern void symeig_forbid_23( int ) ;
+
+extern int symeig_irange( int n, double *a, double *e, int bb, int tt, int novec ) ;
 
 /***** Argument list mangling *****/
 

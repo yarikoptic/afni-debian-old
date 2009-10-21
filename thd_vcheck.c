@@ -1,7 +1,45 @@
 #include "afni.h"
 #include <sys/utsname.h>
 
-#define VERSION_URL  "http://afni.nimh.nih.gov/afni/AFNI.version"
+/*------------------------------------------------------------------------*/
+
+#include <sys/time.h>
+#include <signal.h>
+
+static void THD_death_now_now_now(int sig)
+{
+  fprintf(stderr,"\n** program exits via safety timer **\n") ; _exit(0) ;
+}
+
+/***-------------------------------------------------------------------***/
+/*!  This function is intended to be called from within a fork()-ed
+     off child, and it will cause the child process to die after so
+     many milliseconds have passed -- the intention is to prevent
+     any zombies from hanging around, in case the child fails to
+     complete itself properly for some hideously grotesque reason.
+*//*-------------------------------------------------------------------***/
+
+void THD_death_setup( int msec )
+{
+   struct itimerval itval ;
+   struct timeval tva, tvb ;
+
+   if( msec <= 0 ) return ;
+   tva.tv_sec  = msec/1000 ;
+   tva.tv_usec = (msec%1000)*1000 ;
+   tvb.tv_sec  = tvb.tv_usec = 0 ;
+
+   itval.it_interval = tvb ;
+   itval.it_value    = tva ;
+
+   signal(SIGALRM,THD_death_now_now_now) ;  /* invoked when timer ends */
+   (void)setitimer( ITIMER_REAL , &itval , NULL ) ;
+   return ;
+}
+
+/*------------------------------------------------------------------------*/
+
+#define VERSION_URL  "http://afni.nimh.nih.gov/pub/dist/AFNI.version"
 #define VERSION_FILE "/Volumes/afni/var/www/html/pub/dist/AFNI.version"
 
 #undef  VSIZE
@@ -72,6 +110,8 @@ void THD_check_AFNI_version( char *pname )
 
    /* grandchild process continues to do the actual work */
 
+   THD_death_setup( 12345 ) ; /* die in 12.345 seconds, no matter what */
+
    /*-- setup the "User-agent:" header for HTTP --*/
 
 #define USE_HTTP_10
@@ -100,9 +140,9 @@ void THD_check_AFNI_version( char *pname )
        if( jj >= 0 && ubuf.nodename[0] != '\0' )
          sprintf( ua ,
                  "%s (avers='%s'; prec='%s' node='%s'; sys='%s'; mach='%s')" ,
-                  pname,VERSION,PCLAB,ubuf.nodename,ubuf.sysname,ubuf.machine );
+                  pname,AVERZHN,PCLAB,ubuf.nodename,ubuf.sysname,ubuf.machine );
        else
-         sprintf( ua , "%s (avers='%s'; prec='%s')" , pname , VERSION , PCLAB );
+         sprintf( ua , "%s (avers='%s'; prec='%s')" , pname , AVERZHN , PCLAB );
 
        set_HTTP_10( 1 ) ;
        set_HTTP_user_agent( ua ) ;
@@ -129,13 +169,13 @@ void THD_check_AFNI_version( char *pname )
 
    /* compare with compiled-in version (from afni.h) */
 
-   if( strcmp(vv,VERSION) != 0 )
+   if( strcmp(vv,AVERZHN) != 0 )
     fprintf(stderr,"\n"
                    "++ VERSION CHECK!  This program = %s\n"
                    "++         Current AFNI website = %s\n" ,
-            VERSION , vv ) ;
+            AVERZHN , vv ) ;
 
-   /* record the current time and VERSION, so we don't check too often */
+   /* record the current time and AVERZHN, so we don't check too often */
 
    ns = NI_stream_open( mname , "w" ) ;
    if( ns != NULL ){
@@ -143,7 +183,7 @@ void THD_check_AFNI_version( char *pname )
      sprintf(rhs,"%d",(int)time(NULL)) ;
      NI_set_attribute( nel , "version_check_time" , rhs ) ;
      if( strcmp(vv,"none") != 0 )
-       NI_set_attribute( nel , "version_string" , VERSION ) ;
+       NI_set_attribute( nel , "version_string" , AVERZHN ) ;
      if( motd != NULL ){     /* 29 Nov 2005 */
        NI_set_attribute( nel , "motd" , motd ); free((void *)motd) ;
      }

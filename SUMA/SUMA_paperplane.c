@@ -38,7 +38,13 @@
 #include <Xm/DrawingA.h>  /* Motif drawing area widget */
 #else
 #ifdef noMotifGLwidget
+
+#ifdef SOLARIS            /* 3 Feb 2009 [rickr] */
+#include <GLw/GLwDrawA.h> /* Pure Xt OpenGL drawing area widget. */
+#else
 #include <GL/GLwDrawA.h>  /* Pure Xt OpenGL drawing area widget. */
+#endif
+
 #else
 #include <GL/GLwMDrawA.h>  /* Motif OpenGL drawing area widget. */
 #endif
@@ -222,7 +228,7 @@ resize(Widget w, XtPointer data, XtPointer callData)
 {
   if (made_current) {
 #ifdef noGLwidget
-    Dimension width, height;
+    Dimension width=0, height=0;
 
     /* Unfortunately, drawing area resize callback does not give
        height and width via its parameters. */
@@ -289,6 +295,29 @@ input(Widget w, XtPointer data, XtPointer callData)
           draw(w);
         }
         break;
+      case XK_r:  /* ZSS testing widget hiding 
+                   which started causing problems 
+                   on OS X 10.5 and 10.6 */
+         fprintf(stderr,"unrealizing...\n");
+         XtUnrealizeWidget(toplevel);
+         fprintf(stderr,"waiting for 3 seconds...\n");
+         sleep(3);
+         fprintf(stderr,"realizing...\n");
+         XtRealizeWidget(toplevel);
+         break;
+      case XK_w:  /* ZSS testing widget hiding 
+                   which started causing problems 
+                   on OS X 10.5 and 10.6 */
+         fprintf(stderr,"withdrawing...\n");
+         XWithdrawWindow(XtDisplay(toplevel), 
+                  XtWindow(toplevel), 
+                  XScreenNumberOfScreen(XtScreen(toplevel)));
+         fprintf(stderr,"waiting for 3 seconds...\n");
+         sleep(3);
+         fprintf(stderr,"Remapping...\n");
+         XMapRaised(XtDisplay(toplevel), 
+                        XtWindow(toplevel));
+         break;
       case XK_Escape:
         exit(0);
       }

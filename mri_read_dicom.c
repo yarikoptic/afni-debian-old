@@ -3,6 +3,7 @@
 
 /*-----------------------------------------------------------------------------------*/
 #undef DEBUG_ON
+/*#define DEBUG_ON 1*/
 
 #define NWMAX 2  /* max number of warning message of each type to print */
 
@@ -16,8 +17,10 @@ typedef struct {
   int have_data[3] ;               /* do we have slices 0 and 1 in           *
 				    * each dimension to determine z-spacing? *
 				    * added 25 Feb 2003 KRH                  */
+  int mos_ix, mos_nx, mos_ny; /* mosaic properties */
   int mosaic_num ;                 /* how many slices in 1 'image' */
   float slice_xyz[NMOMAX][3] ;     /* Sag, Cor, Tra coordinates */
+  int ImageNumbSag, ImageNumbTra, ImageNumbCor; /* reverse the slices */
 } Siemens_extra_info ;
 
 typedef struct {
@@ -31,12 +34,18 @@ typedef struct {
    float Tr_dicom[4][4];            /* transformation matrix */
    float slice_xyz[2][3];           /* coordinates for 1st and last slices */
    int mos_sliceinfo;               /* flag for existence of coordinate info */
+   int flip_slices;
 } oblique_info;
 
 oblique_info obl_info;
 
 /* mod -16 May 2007 */
 /* compute Tr transformation matrix for oblique data */
+static int read_mosaic_data( FILE *fp, MRI_IMAGE *im, MRI_IMARR *imar,
+          int datum, Siemens_extra_info *mi, int * flip_slices,
+          int bpp, int kor, int swap, float dx, float dy, float dz, float dt);
+static int flip_slices_mosaic (Siemens_extra_info *mi, int kor);
+
 static float *ComputeObliquity(oblique_info *obl_info);
 static void Clear_obl_info(oblique_info *obl_info);
 static void Fill_obl_info(oblique_info *obl_info, char **epos, Siemens_extra_info *siem);
@@ -48,6 +57,8 @@ static void get_siemens_extra_info( char *str , Siemens_extra_info *mi ) ;
 static float get_dz(  char **epos);
 
 static int CheckObliquity(float xc1, float xc2, float xc3, float yc1, float yc2, float yc3);
+static int get_posns_from_elist(char *plist[], char *elist[], char *text,
+                                int nume);
 
 static int obl_info_set = 0;
 
@@ -83,6 +94,7 @@ static void RWC_set_endianosity(void)
 /*---------------------------------------------------------------------------*/
 /* global set via 'to3d -assume_dicom_mosaic'            13 Mar 2006 [rickr] */
 int assume_dicom_mosaic = 0;   /* (case of 1 is equivalent to Rich's change) */
+int use_last_elem = 0;         /* when filling epos list 10 Apr 2009 [rickr] */
 
 #undef  SINT
 #undef  SFLT
@@ -103,15 +115,15 @@ MRI_IMARR * mri_read_dicom( char *fname )
    int nx,ny,nz , swap , shift=0 ;
    float dx,dy,dz,dt ;
    MRI_IMARR *imar ;
-   MRI_IMAGE *im ;
+   MRI_IMAGE *im=NULL ;
    void *iar ;
    FILE *fp ;
    int have_orients=0 ;
-   int ior,jor,kor ;
+   int ior=0,jor=0,kor=0 ;
    static int nzoff=0 ;   /* for determining z-axis orientation/offset from multiple calls */
-   int mosaic=0 , mos_nx,mos_ny , mos_ix,mos_iy,mos_nz ;  /* 28 Oct 2002 */
-   Siemens_extra_info sexinfo ;                           /* 31 Oct 2002 */
-#if 0
+   int mosaic=0 , mos_nx=0,mos_ny=0 , mos_ix=0,mos_iy=0,mos_nz=0 ;  /* 28 Oct 2002 */
+   Siemens_extra_info sexinfo ;                                     /* 31 Oct 2002 */
+#if DEBUG_ON
    short sbot,stop ;
    float xcen,ycen,zcen ;
    int use_xycen=0 ;
@@ -159,8 +171,8 @@ ENTRY("mri_read_dicom") ;
 
    /* find positions in header of elements we care about */
 
-   for( ee=0 ; ee < NUM_ELIST ; ee++ )
-     epos[ee] = strstr(ppp,elist[ee]) ;
+   /* allow some choices when filling the list    10 Apr 2009 [rickr] */
+   get_posns_from_elist(epos, elist, ppp, NUM_ELIST);
 
    /* Determine if we need to swap bytes after reading image data */
    /* DICOM files are stored in LSB first (little endian) mode    */
@@ -336,7 +348,8 @@ ENTRY("mri_read_dicom") ;
        static int nwarn=NWMAX+1 ; /* never show these messages   31 Aug 2007 */
        if( nwarn < NWMAX )
          fprintf(stderr,
-                 "++ DICOM WARNING: file %s has Window tags; setenv AFNI_DICOM_WINDOW YES to enforce them\n",
+                 "++ DICOM WARNING: file %s has Window tags;\n"
+                 " setenv AFNI_DICOM_WINDOW YES to enforce them, but this is rarely necessary or even wanted\n",
                  fname ) ;
        if( nwarn == NWMAX )
          fprintf(stderr,"++ DICOM WARNING: no more Window tags messages will be printed\n") ;
@@ -397,7 +410,7 @@ ENTRY("mri_read_dicom") ;
        }
      }
    }
-
+/*********Siemens mosaic section ***********************/
    /*-- process str_sexinfo only if this is marked as a mosaic image --*/
    /*-- preliminary processing of sexinfo EVEN IF NOT MARKED AS MOSAIC, --*/
    /*-- SINCE PSYCHOTIC, UNMARKED MOSAICS ARE TURNING UP IN THE WILD!  KRH, 11/6/05 --*/
@@ -450,9 +463,10 @@ ENTRY("mri_read_dicom") ;
           as 1st integer whose square is >= # of images in mosaic */
 
          for( mos_ix=1 ; mos_ix*mos_ix < sexinfo.mosaic_num ; mos_ix++ ) ; /* nada */
-         mos_iy = mos_ix ;
+         sexinfo.mos_ix = mos_iy = mos_ix ;
 
-         mos_nx = nx / mos_ix ; mos_ny = ny / mos_iy ;  /* sub-image dimensions */
+         sexinfo.mos_nx = mos_nx = nx / mos_ix ;
+         sexinfo.mos_ny = mos_ny = ny / mos_iy ;  /* sub-image dimensions */
 
          if( mos_ix*mos_nx == nx &&               /* Sub-images must fit nicely */
            mos_iy*mos_ny == ny    ){            /* into super-image layout.   */
@@ -483,10 +497,12 @@ ENTRY("mri_read_dicom") ;
 
          else {                        /* warn about bad mosaic sizes */
            static int nwarn=0 ;
-           if( nwarn < NWMAX )
+           if( nwarn < NWMAX ) {
              fprintf(stderr,
-                   "++ DICOM WARNING: bad Siemens Mosaic params: nx=%d ny=%d ix=%d iy=%d imx=%d imy=%d\n",
+                   "\n** DICOM WARNING: bad Siemens Mosaic params: nx=%d ny=%d ix=%d iy=%d imx=%d imy=%d\n",
                    mos_nx,mos_ny , mos_ix,mos_iy , nx,ny ) ;
+             fprintf(stderr,"   (consider the option -use_last_elem)\n");
+           }
            if( nwarn == NWMAX )
              fprintf(stderr,"++ DICOM NOTICE: no more Siemens Mosaic param messages will be printed\n");
            nwarn++ ;
@@ -505,6 +521,7 @@ ENTRY("mri_read_dicom") ;
          nwarn++ ;
        }
    } /* end of if str_sexinfo exists */
+/*********end of Siemens mosaic section ***********************/
 
    /*-- try to get dx, dy, dz, dt --*/
 
@@ -526,20 +543,17 @@ ENTRY("mri_read_dicom") ;
      }
    }
 
-   /*-- 27 Nov 2002: fix stupid GE error,
-                     where the slice spacing is really the slice gap --*/
-
+   /* get dz now*/
    dz = get_dz(epos);
 
    /* get dt */
-
    if( epos[E_REPETITION_TIME] != NULL ){
      ddd = strstr(epos[E_REPETITION_TIME],"//") ;
      if( ddd != NULL ) dt = 0.001f * SFLT(ddd+2) ;  /* ms to s conversion */
    }
 
-   /* check if we might have 16 bit unsigned data that fills all bits */
 
+   /* check if we might have 16 bit unsigned data that fills all bits */
    if( bpp == 2 ){
      if( epos[E_PIXEL_REPRESENTATION] != NULL ){
        ddd = strstr(epos[E_PIXEL_REPRESENTATION],"//") ;
@@ -572,6 +586,340 @@ ENTRY("mri_read_dicom") ;
      sbot = 32767 ; stop = -32767 ;
    }
 #endif
+
+   /*-- store some extra information in MRILIB globals, too? --*/
+
+   if( dt > 0.0 && MRILIB_tr <= 0.0 ) MRILIB_tr = dt ;  /* TR */
+
+   /*-- try to get image orientation fields (also, set ior,jor,kor) --*/
+
+   if( epos[E_IMAGE_ORIENTATION] != NULL ){    /* direction cosines of image plane */
+
+     ddd = strstr(epos[E_IMAGE_ORIENTATION],"//") ;
+     if( ddd != NULL ){
+       qq = sscanf(ddd+2,"%f\\%f\\%f\\%f\\%f\\%f",&xc1,&xc2,&xc3,&yc1,&yc2,&yc3);
+       xn = sqrt( xc1*xc1 + xc2*xc2 + xc3*xc3 ) ; /* vector norms */
+       yn = sqrt( yc1*yc1 + yc2*yc2 + yc3*yc3 ) ;
+       if( qq == 6 && xn > 0.0 && yn > 0.0 ){     /* both vectors OK */
+
+         xc1 /= xn ; xc2 /= xn ; xc3 /= xn ;      /* normalize vectors */
+         yc1 /= yn ; yc2 /= yn ; yc3 /= yn ;
+         if(!obl_info_set) {
+            obliqueflag = CheckObliquity(xc1, xc2, xc3, yc1, yc2, yc3);
+             if(obliqueflag) {
+        	INFO_message("Data detected to be oblique");
+             /* can also check obliquity consistency here across dicom files*/
+             }
+         }
+         if( !use_MRILIB_xcos ){
+           MRILIB_xcos[0] = xc1 ; MRILIB_xcos[1] = xc2 ;  /* save direction */
+           MRILIB_xcos[2] = xc3 ; use_MRILIB_xcos = 1 ;   /* cosine vectors */
+         }
+
+         if( !use_MRILIB_ycos ){
+           MRILIB_ycos[0] = yc1 ; MRILIB_ycos[1] = yc2 ;
+           MRILIB_ycos[2] = yc3 ; use_MRILIB_ycos = 1 ;
+         }
+
+         /* x-axis orientation */
+         /* ior determines which spatial direction is x-axis  */
+         /* and is the direction that has the biggest change */
+
+         dxx = fabs(xc1) ; ior = 1 ;
+         dyy = fabs(xc2) ; if( dyy > dxx ){ ior=2; dxx=dyy; }
+         dzz = fabs(xc3) ; if( dzz > dxx ){ ior=3;        }
+         dxx = MRILIB_xcos[ior-1] ; if( dxx < 0. ) ior = -ior;
+
+         if( MRILIB_orients[0] == '\0' ){
+           switch( ior ){
+             case -1: MRILIB_orients[0] = 'L'; MRILIB_orients[1] = 'R'; break;
+             case  1: MRILIB_orients[0] = 'R'; MRILIB_orients[1] = 'L'; break;
+             case -2: MRILIB_orients[0] = 'P'; MRILIB_orients[1] = 'A'; break;
+             case  2: MRILIB_orients[0] = 'A'; MRILIB_orients[1] = 'P'; break;
+             case  3: MRILIB_orients[0] = 'I'; MRILIB_orients[1] = 'S'; break;
+             case -3: MRILIB_orients[0] = 'S'; MRILIB_orients[1] = 'I'; break;
+             default: MRILIB_orients[0] ='\0'; MRILIB_orients[1] ='\0'; break;
+           }
+         }
+
+         /* y-axis orientation */
+         /* jor determines which spatial direction is y-axis  */
+         /* and is the direction that has the biggest change */
+
+         dxx = fabs(yc1) ; jor = 1 ;
+         dyy = fabs(yc2) ; if( dyy > dxx ){ jor=2; dxx=dyy; }
+         dzz = fabs(yc3) ; if( dzz > dxx ){ jor=3;        }
+         dyy = MRILIB_ycos[jor-1] ; if( dyy < 0. ) jor = -jor;
+         if( MRILIB_orients[2] == '\0' ){
+           switch( jor ){
+             case -1: MRILIB_orients[2] = 'L'; MRILIB_orients[3] = 'R'; break;
+             case  1: MRILIB_orients[2] = 'R'; MRILIB_orients[3] = 'L'; break;
+             case -2: MRILIB_orients[2] = 'P'; MRILIB_orients[3] = 'A'; break;
+             case  2: MRILIB_orients[2] = 'A'; MRILIB_orients[3] = 'P'; break;
+             case  3: MRILIB_orients[2] = 'I'; MRILIB_orients[3] = 'S'; break;
+             case -3: MRILIB_orients[2] = 'S'; MRILIB_orients[3] = 'I'; break;
+             default: MRILIB_orients[2] ='\0'; MRILIB_orients[3] ='\0'; break;
+           }
+         }
+
+         MRILIB_orients[6] = '\0' ;   /* terminate orientation string */
+
+         kor = 6 - abs(ior)-abs(jor) ;   /* which spatial direction is z-axis */
+                                         /* where 1=L-R, 2=P-A, 3=I-S */
+         have_orients = 1 ;
+#if DEBUG_ON
+fprintf(stderr,"MRILIB_orients=%s (from IMAGE_ORIENTATION)\n",MRILIB_orients) ;
+#endif
+       }
+     }
+
+   } else if( epos[E_PATIENT_ORIENTATION] != NULL ){  /* symbolic orientation of image */
+                                                      /* [not so useful, or common] */
+     ddd = strstr(epos[E_PATIENT_ORIENTATION],"//") ;
+     if( ddd != NULL ){
+       char xc='\0' , yc='\0' ;
+       sscanf(ddd+2,"%c\\%c",&xc,&yc) ;   /* e.g., "L\P" */
+       switch( toupper(xc) ){
+         case 'L': MRILIB_orients[0] = 'L'; MRILIB_orients[1] = 'R'; ior=-1; break;
+         case 'R': MRILIB_orients[0] = 'R'; MRILIB_orients[1] = 'L'; ior= 1; break;
+         case 'P': MRILIB_orients[0] = 'P'; MRILIB_orients[1] = 'A'; ior=-2; break;
+         case 'A': MRILIB_orients[0] = 'A'; MRILIB_orients[1] = 'P'; ior= 2; break;
+         case 'F': MRILIB_orients[0] = 'I'; MRILIB_orients[1] = 'S'; ior= 3; break;  /* F = foot */
+         case 'H': MRILIB_orients[0] = 'S'; MRILIB_orients[1] = 'I'; ior=-3; break;  /* H = head */
+         default:  MRILIB_orients[0] ='\0'; MRILIB_orients[1] ='\0'; ior= 0; break;
+       }
+       switch( toupper(yc) ){
+         case 'L': MRILIB_orients[2] = 'L'; MRILIB_orients[3] = 'R'; jor=-1; break;
+         case 'R': MRILIB_orients[2] = 'R'; MRILIB_orients[3] = 'L'; jor= 1; break;
+         case 'P': MRILIB_orients[2] = 'P'; MRILIB_orients[3] = 'A'; jor=-2; break;
+         case 'A': MRILIB_orients[2] = 'A'; MRILIB_orients[3] = 'P'; jor= 2; break;
+         case 'F': MRILIB_orients[2] = 'I'; MRILIB_orients[3] = 'S'; jor= 3; break;
+         case 'H': MRILIB_orients[2] = 'S'; MRILIB_orients[3] = 'I'; jor=-3; break;
+         default:  MRILIB_orients[2] ='\0'; MRILIB_orients[3] ='\0'; jor= 0; break;
+       }
+       MRILIB_orients[6] = '\0' ;      /* terminate orientation string */
+       kor = 6 - abs(ior)-abs(jor) ;   /* which spatial direction is z-axis */
+       have_orients = (ior != 0 && jor != 0) ;
+     }
+
+   }  /* end of 2D image orientation */
+
+   /*-- try to get image offset (position), if have orientation from above --*/
+
+   if( nzoff == 0 && have_orients && mosaic && sexinfo.good ){  /* 01 Nov 2002: use Siemens mosaic info */
+     int qq ;
+     float z0=0.0, z1=0.0 ;
+     /* 25 Feb 2003 changing error checking for mosaics missing one or more *
+      * dimension of slice coordinates                                 KRH  */
+     if (sexinfo.have_data[kor-1]) {
+       z0 = sexinfo.slice_xyz[0][kor-1] ;   /* kor from orients above */
+       z1 = sexinfo.slice_xyz[1][kor-1] ;   /* z offsets of 1st 2 slices */
+     } else {                  /* warn if sexinfo was bad */
+       static int nwarn=0 ;
+       if( nwarn < NWMAX )
+         fprintf(stderr,"++ DICOM WARNING: Unusable coord. in Siemens Mosaic info (%s) in file %s\n",
+                 elist[E_SIEMENS_2] , fname ) ;
+       if( nwarn == NWMAX )
+         fprintf(stderr,"++ DICOM NOTICE: no more Siemens Mosaic info messages will be printed\n");
+       nwarn++ ;
+     }
+
+
+#if 0
+     /* Save x,y center of this 1st slice */
+
+     xcen = sexinfo.slice_xyz[0][abs(ior)-1] ;
+     ycen = sexinfo.slice_xyz[0][abs(jor)-1] ; use_xycen = 1 ;
+#endif
+
+     /* finish z orientation now */
+
+     if( z1-z0 < 0.0 ) kor = -kor ;     /* reversed orientation */
+     if( MRILIB_orients[4] == '\0' ){
+       switch( kor ){
+         case  1: MRILIB_orients[4] = 'R'; MRILIB_orients[5] = 'L'; break;
+         case -1: MRILIB_orients[4] = 'L'; MRILIB_orients[5] = 'R'; break;
+         case  2: MRILIB_orients[4] = 'A'; MRILIB_orients[5] = 'P'; break;
+         case -2: MRILIB_orients[4] = 'P'; MRILIB_orients[5] = 'A'; break;
+         case  3: MRILIB_orients[4] = 'I'; MRILIB_orients[5] = 'S'; break;
+         case -3: MRILIB_orients[4] = 'S'; MRILIB_orients[5] = 'I'; break;
+         default: MRILIB_orients[4] ='\0'; MRILIB_orients[5] ='\0'; break;
+       }
+     }
+     MRILIB_orients[6] = '\0' ;
+
+#if DEBUG_ON
+fprintf(stderr,"z0=%f z1=%f kor=%d MRILIB_orients=%s\n",z0,z1,kor,MRILIB_orients) ;
+#endif
+
+     MRILIB_zoff = z0 ; use_MRILIB_zoff = 1 ;
+     if( kor > 0 ) MRILIB_zoff = -MRILIB_zoff ;
+   }
+
+   /** use image position vector to set offsets,
+       and (2cd time in) the z-axis orientation **/
+
+   if( nzoff < 2 && epos[E_IMAGE_POSITION] != NULL && have_orients ){
+     ddd = strstr(epos[E_IMAGE_POSITION],"//") ;
+     if( ddd != NULL ){
+       float xyz[3] ; int qq ;
+       qq = sscanf(ddd+2,"%f\\%f\\%f",xyz,xyz+1,xyz+2) ;
+       if( qq == 3 ){
+         static float zoff ;      /* saved from nzoff=0 case */
+         float zz = xyz[abs(kor)-1] ;  /* kor from orients above */
+
+#if DEBUG_ON
+fprintf(stderr,"IMAGE_POSITION=%f %f %f  kor=%d\n",xyz[0],xyz[1],xyz[2],kor) ;
+#endif
+
+         if( nzoff == 0 ){  /* 1st DICOM image */
+
+           zoff = zz ;      /* save this for 2nd image calculation */
+
+           /* 01 Nov 2002: in mosaic case, may have set this already */
+
+           if( MRILIB_orients[4] == '\0' ){
+             switch( abs(kor) ){   /* may be changed on second image */
+               case  1: MRILIB_orients[4] = 'L'; MRILIB_orients[5] = 'R'; break;
+               case  2: MRILIB_orients[4] = 'P'; MRILIB_orients[5] = 'A'; break;
+               case  3: MRILIB_orients[4] = 'I'; MRILIB_orients[5] = 'S'; break;
+               default: MRILIB_orients[4] ='\0'; MRILIB_orients[5] ='\0'; break;
+             }
+             MRILIB_orients[6] = '\0' ;
+           }
+
+           /* Save x,y offsets of this 1st slice */
+
+           qq = abs(ior) ;
+           MRILIB_xoff = xyz[qq-1] ; use_MRILIB_xoff = 1 ;
+           if( ior > 0 ) MRILIB_xoff = -MRILIB_xoff ;
+
+           qq = abs(jor) ;
+           MRILIB_yoff = xyz[qq-1] ; use_MRILIB_yoff = 1 ;
+           if( jor > 0 ) MRILIB_yoff = -MRILIB_yoff ;
+
+           /* 01 Nov 2002: adjust x,y offsets for mosaic */
+
+           if( mosaic ){
+             if( MRILIB_xoff < 0.0 ) MRILIB_xoff += 0.5*dx*mos_nx*(mos_ix-1) ;
+             else                    MRILIB_xoff -= 0.5*dx*mos_nx*(mos_ix-1) ;
+             if( MRILIB_yoff < 0.0 ) MRILIB_yoff += 0.5*dy*mos_ny*(mos_iy-1) ;
+             else                    MRILIB_yoff -= 0.5*dy*mos_ny*(mos_iy-1) ;
+           }
+
+         } else if( nzoff == 1 && !use_MRILIB_zoff ){  /* 2nd DICOM image */
+
+           float qoff = zz - zoff ;    /* vive la difference */
+           if( qoff < 0 ) kor = -kor ; /* kor determines z-axis orientation */
+#if DEBUG_ON
+fprintf(stderr,"  nzoff=1 kor=%d qoff=%f\n",kor,qoff) ;
+#endif
+           switch( kor ){
+             case  1: MRILIB_orients[4] = 'R'; MRILIB_orients[5] = 'L'; break;
+             case -1: MRILIB_orients[4] = 'L'; MRILIB_orients[5] = 'R'; break;
+             case  2: MRILIB_orients[4] = 'A'; MRILIB_orients[5] = 'P'; break;
+             case -2: MRILIB_orients[4] = 'P'; MRILIB_orients[5] = 'A'; break;
+             case  3: MRILIB_orients[4] = 'I'; MRILIB_orients[5] = 'S'; break;
+             case -3: MRILIB_orients[4] = 'S'; MRILIB_orients[5] = 'I'; break;
+             default: MRILIB_orients[4] ='\0'; MRILIB_orients[5] ='\0'; break;
+           }
+           MRILIB_orients[6] = '\0' ;
+
+           /* save spatial offset of first slice              */
+           /* [this needs to be positive in the direction of] */
+           /* [the -z axis, so may need to change its sign  ] */
+
+           MRILIB_zoff = zoff ; use_MRILIB_zoff = 1 ;
+           if( kor > 0 ) MRILIB_zoff = -MRILIB_zoff ;
+         }
+         nzoff++ ;  /* 3rd and later images don't count for z-orientation */
+       }
+     }
+   }  /* end of using image position */
+
+   /** 23 Dec 2002:
+       use slice location value to set z-offset,
+       and (2cd time in) the z-axis orientation
+       -- only try this if image position vector (code above) isn't present
+          AND if we don't have a mosaic image (which already did this stuff)
+       -- shouldn't be necessary, since slice location is deprecated        **/
+
+   else if( nzoff < 2 && epos[E_SLICE_LOCATION] != NULL && have_orients && !mosaic ){
+     ddd = strstr(epos[E_SLICE_LOCATION],"//") ;
+     if( ddd != NULL ){
+       float zz ; int qq ;
+       qq = sscanf(ddd+2,"%f",&zz) ;
+       if( qq == 1 ){
+         static float zoff ;      /* saved from nzoff=0 case */
+
+#if DEBUG_ON
+fprintf(stderr,"SLICE_LOCATION = %f\n",zz) ;
+#endif
+
+         if( nzoff == 0 ){  /* 1st DICOM image */
+
+           zoff = zz ;      /* save this for 2nd image calculation */
+
+           if( MRILIB_orients[4] == '\0' ){
+             switch( kor ){   /* may be changed on second image */
+               case  1: MRILIB_orients[4] = 'L'; MRILIB_orients[5] = 'R'; break;
+               case  2: MRILIB_orients[4] = 'P'; MRILIB_orients[5] = 'A'; break;
+               case  3: MRILIB_orients[4] = 'I'; MRILIB_orients[5] = 'S'; break;
+               default: MRILIB_orients[4] ='\0'; MRILIB_orients[5] ='\0'; break;
+             }
+             MRILIB_orients[6] = '\0' ;
+           }
+
+         } else if( nzoff == 1 && !use_MRILIB_zoff ){  /* 2nd DICOM image */
+
+           float qoff = zz - zoff ;    /* vive la difference */
+           if( qoff < 0 ) kor = -kor ; /* kor determines z-axis orientation */
+           switch( kor ){
+             case  1: MRILIB_orients[4] = 'R'; MRILIB_orients[5] = 'L'; break;
+             case -1: MRILIB_orients[4] = 'L'; MRILIB_orients[5] = 'R'; break;
+             case  2: MRILIB_orients[4] = 'A'; MRILIB_orients[5] = 'P'; break;
+             case -2: MRILIB_orients[4] = 'P'; MRILIB_orients[5] = 'A'; break;
+             case  3: MRILIB_orients[4] = 'I'; MRILIB_orients[5] = 'S'; break;
+             case -3: MRILIB_orients[4] = 'S'; MRILIB_orients[5] = 'I'; break;
+             default: MRILIB_orients[4] ='\0'; MRILIB_orients[5] ='\0'; break;
+           }
+           MRILIB_orients[6] = '\0' ;
+
+           /* save spatial offset of first slice              */
+           /* [this needs to be positive in the direction of] */
+           /* [the -z axis, so may need to change its sign  ] */
+
+           MRILIB_zoff = zoff ; use_MRILIB_zoff = 1 ;
+           if( kor > 0 ) MRILIB_zoff = -MRILIB_zoff ;
+         }
+         nzoff++ ;  /* 3rd and later images don't count for z-orientation */
+       }
+     }
+   } /* end of using slice location */
+
+   /* perhaps shift data shorts */
+
+#if 0
+   if( shift == 1 ){
+     switch( datum ){
+       case MRI_short:{
+         if( sbot < 0 ){
+           unsigned short *sar ; int nvox = IMARR_SUBIM(imar,0)->nvox ;
+           for( ii=0 ; ii < nz ; ii++ ){
+             sar = mri_data_pointer( IMARR_SUBIM(imar,ii) ) ;
+             for( jj=0 ; jj < nvox ; jj++ ) sar[jj] >>= 1 ;
+           }
+         }
+       }
+       break ;
+     }
+   }
+#endif
+
+
+   if(obl_info_set<2)
+         Fill_obl_info(&obl_info, epos, &sexinfo);
+
 
    /** Finally! Read images from file. **/
 
@@ -628,114 +976,21 @@ ENTRY("mri_read_dicom") ;
       ADDTO_IMARR(imar,im) ;
     }
 
-   } else {   /*-- 28 Oct 2002:  is a 2D mosaic --*/
-
-     char *dar , *iar ;
-     int last_ii=-1 , nvox , yy,xx,nxx ;
-
-     nvox = mos_nx*mos_ny*mos_nz ;         /* total number of voxels */
-     dar  = (char*)calloc(bpp,nvox) ;            /* make space for super-image */
-     if(dar==NULL)  {  /* exit if can't allocate memory */
-        ERROR_message("Could not allocate memory for mosaic volume");
-        RETURN(NULL);
-     }
-     fread( dar , bpp , nvox , fp ) ;    /* read data directly into it */
-
-     if( swap ){                        /* swap bytes? */
-       switch( bpp ){
-         default: break ;
-         case 2:  swap_twobytes (   nvox, dar ) ; break ;  /* short */
-         case 4:  swap_fourbytes(   nvox, dar ) ; break ;  /* int, float */
-         case 8:  swap_fourbytes( 2*nvox, dar ) ; break ;  /* complex */
-       }
-     }
-
-     /* load data from dar into images */
-
-     nxx = mos_nx * mos_ix ;              /* # pixels per mosaic line */
-
-     for( yy=0 ; yy < mos_iy ; yy++ ){    /* loop over sub-images in mosaic */
-       for( xx=0 ; xx < mos_ix ; xx++ ){
-
-         im = mri_new( mos_nx , mos_ny , datum ) ;
-         iar = mri_data_pointer( im ) ;             /* sub-image array */
-
-         /* copy data rows from dar into iar */
-
-         for( jj=0 ; jj < mos_ny ; jj++ )  /* loop over rows inside sub-image */
-           memcpy( iar + jj*mos_nx*bpp ,
-                   dar + xx*mos_nx*bpp + (jj+yy*mos_ny)*nxx*bpp ,
-                   mos_nx*bpp                                    ) ;
-
-         if( dx > 0.0 && dy > 0.0 && dz > 0.0 ){
-           im->dx = dx; im->dy = dy; im->dz = dz; im->dw = 1.0;
-         }
-         if( dt > 0.0 ) im->dt = dt ;
-         if( swap ) im->was_swapped = 1 ;
-
-         ADDTO_IMARR(imar,im) ;
-
-       } /* end of x sub-image loop */
-     } /* end of y sub-image loop */
-     free(dar) ;  /* don't need no more; copied all data out of it now */
-
-     /* truncate zero images out of tail of mosaic */
-
-     if( sexinfo.good ){  /* the new way: use the mosaic count from Siemens extra info */
-
-       if( sexinfo.mosaic_num < IMARR_COUNT(imar) )
-         TRUNCATE_IMARR(imar,sexinfo.mosaic_num) ;
-
-     } else {  /* the old way: find the last image with a nonzero value inside */
-
-       for( ii=mos_nz-1 ; ii >= 0 ; ii-- ){  /* loop backwards over images */
-         im = IMARR_SUBIM(imar,ii) ;
-         switch( im->kind ){
-           case MRI_short:{
-             short *ar = mri_data_pointer( im ) ;
-             for( jj=0 ; jj < im->nvox ; jj++ ) if( ar[jj] != 0 ) break ;
-             if( jj < im->nvox ) last_ii = ii ;
-           }
-           break ;
-
-           case MRI_byte:{
-             byte *ar = mri_data_pointer( im ) ;
-             for( jj=0 ; jj < im->nvox ; jj++ ) if( ar[jj] != 0 ) break ;
-             if( jj < im->nvox ) last_ii = ii ;
-           }
-           break ;
-
-           case MRI_int:{
-             int *ar = mri_data_pointer( im ) ;
-             for( jj=0 ; jj < im->nvox ; jj++ ) if( ar[jj] != 0 ) break ;
-             if( jj < im->nvox ) last_ii = ii ;
-           }
-           break ;
-         }
-         if( last_ii >= 0 ) break ;
-       }
-
-       if( last_ii <= 0 ) last_ii = 1 ;
-       if( last_ii+1 < IMARR_COUNT(imar) ) TRUNCATE_IMARR(imar,last_ii+1) ;
-
-     } /* end of truncating off all zero images at end */
-
-#if 0
-fprintf(stderr,"\nmri_read_dicom Mosaic: mos_nx=%d mos_ny=%d mos_ix=%d mos_iy=%d slices=%d\n",
-mos_nx,mos_ny,mos_ix,mos_iy,IMARR_COUNT(imar)) ;
-MCHECK ;
-#endif
-
-   } /* end of mosaic input mode */
-
+   }
+   else {         /*copy images from mosaic data into an image array */
+      read_mosaic_data( fp, im, imar, datum, &sexinfo, &obl_info.flip_slices,
+                        bpp, kor, swap,dx,dy,dz, dt);
+   }
    fclose(fp) ;     /* 10 Sep 2002: oopsie - forgot to close file */
 
    /*-- 05 Jul 2006 - check for 16 bit overflow --*/
 
+   /* make sure im wasn't TRUNCATEd   1 Jul 2008 (and 5 Aug 2008) [rickr] */
+   im = IMARR_SUBIM(imar,0) ;
+
    if( un16 ){
      for( ov16=ii=0 ; ii < IMARR_COUNT(imar) ; ii++ ){
        short *sar = MRI_SHORT_PTR( IMARR_SUBIM(imar,ii) ) ;
-       im = IMARR_SUBIM(imar,0) ; /* make sure im wasn't TRUNCATEd */
        for( jj=0 ; jj < im->nvox ; jj++ ) if( sar[jj] < 0 ) ov16++ ;
      }
      if( ov16 )
@@ -743,6 +998,9 @@ MCHECK ;
         "DICOM file %s: unsigned 16-bit; AFNI stores signed: %d pixels < 0" ,
           fname , ov16 ) ;
    }
+
+
+   /* rescale data - rarely needed */
 
    /*-- 23 Dec 2002: implement Rescale, if ordered --*/
 
@@ -865,338 +1123,7 @@ MCHECK ;
      }
    } /* end of Window */
 
-   /*-- store some extra information in MRILIB globals, too? --*/
 
-   if( dt > 0.0 && MRILIB_tr <= 0.0 ) MRILIB_tr = dt ;  /* TR */
-
-   /*-- try to get image orientation fields (also, set ior,jor,kor) --*/
-
-   if( epos[E_IMAGE_ORIENTATION] != NULL ){    /* direction cosines of image plane */
-
-     ddd = strstr(epos[E_IMAGE_ORIENTATION],"//") ;
-     if( ddd != NULL ){
-       qq = sscanf(ddd+2,"%f\\%f\\%f\\%f\\%f\\%f",&xc1,&xc2,&xc3,&yc1,&yc2,&yc3);
-       xn = sqrt( xc1*xc1 + xc2*xc2 + xc3*xc3 ) ; /* vector norms */
-       yn = sqrt( yc1*yc1 + yc2*yc2 + yc3*yc3 ) ;
-       if( qq == 6 && xn > 0.0 && yn > 0.0 ){     /* both vectors OK */
-
-         xc1 /= xn ; xc2 /= xn ; xc3 /= xn ;      /* normalize vectors */
-         yc1 /= yn ; yc2 /= yn ; yc3 /= yn ;
-         if(!obl_info_set) {
-            obliqueflag = CheckObliquity(xc1, xc2, xc3, yc1, yc2, yc3);
-             if(obliqueflag) {
-        	INFO_message("Data detected to be oblique");
-             /* can also check obliquity consistency here across dicom files*/
-             }
-         }
-         if( !use_MRILIB_xcos ){
-           MRILIB_xcos[0] = xc1 ; MRILIB_xcos[1] = xc2 ;  /* save direction */
-           MRILIB_xcos[2] = xc3 ; use_MRILIB_xcos = 1 ;   /* cosine vectors */
-         }
-
-         if( !use_MRILIB_ycos ){
-           MRILIB_ycos[0] = yc1 ; MRILIB_ycos[1] = yc2 ;
-           MRILIB_ycos[2] = yc3 ; use_MRILIB_ycos = 1 ;
-         }
-
-         /* x-axis orientation */
-         /* ior determines which spatial direction is x-axis  */
-         /* and is the direction that has the biggest change */
-
-         dxx = fabs(xc1) ; ior = 1 ;
-         dyy = fabs(xc2) ; if( dyy > dxx ){ ior=2; dxx=dyy; }
-         dzz = fabs(xc3) ; if( dzz > dxx ){ ior=3;        }
-         dxx = MRILIB_xcos[ior-1] ; if( dxx < 0. ) ior = -ior;
-
-         if( MRILIB_orients[0] == '\0' ){
-           switch( ior ){
-             case -1: MRILIB_orients[0] = 'L'; MRILIB_orients[1] = 'R'; break;
-             case  1: MRILIB_orients[0] = 'R'; MRILIB_orients[1] = 'L'; break;
-             case -2: MRILIB_orients[0] = 'P'; MRILIB_orients[1] = 'A'; break;
-             case  2: MRILIB_orients[0] = 'A'; MRILIB_orients[1] = 'P'; break;
-             case  3: MRILIB_orients[0] = 'I'; MRILIB_orients[1] = 'S'; break;
-             case -3: MRILIB_orients[0] = 'S'; MRILIB_orients[1] = 'I'; break;
-             default: MRILIB_orients[0] ='\0'; MRILIB_orients[1] ='\0'; break;
-           }
-         }
-
-         /* y-axis orientation */
-         /* jor determines which spatial direction is y-axis  */
-         /* and is the direction that has the biggest change */
-
-         dxx = fabs(yc1) ; jor = 1 ;
-         dyy = fabs(yc2) ; if( dyy > dxx ){ jor=2; dxx=dyy; }
-         dzz = fabs(yc3) ; if( dzz > dxx ){ jor=3;        }
-         dyy = MRILIB_ycos[jor-1] ; if( dyy < 0. ) jor = -jor;
-         if( MRILIB_orients[2] == '\0' ){
-           switch( jor ){
-             case -1: MRILIB_orients[2] = 'L'; MRILIB_orients[3] = 'R'; break;
-             case  1: MRILIB_orients[2] = 'R'; MRILIB_orients[3] = 'L'; break;
-             case -2: MRILIB_orients[2] = 'P'; MRILIB_orients[3] = 'A'; break;
-             case  2: MRILIB_orients[2] = 'A'; MRILIB_orients[3] = 'P'; break;
-             case  3: MRILIB_orients[2] = 'I'; MRILIB_orients[3] = 'S'; break;
-             case -3: MRILIB_orients[2] = 'S'; MRILIB_orients[3] = 'I'; break;
-             default: MRILIB_orients[2] ='\0'; MRILIB_orients[3] ='\0'; break;
-           }
-         }
-
-         MRILIB_orients[6] = '\0' ;   /* terminate orientation string */
-
-         kor = 6 - abs(ior)-abs(jor) ;   /* which spatial direction is z-axis */
-                                         /* where 1=L-R, 2=P-A, 3=I-S */
-         have_orients = 1 ;
-#if 0
-fprintf(stderr,"MRILIB_orients=%s (from IMAGE_ORIENTATION)\n",MRILIB_orients) ;
-#endif
-       }
-     }
-
-   } else if( epos[E_PATIENT_ORIENTATION] != NULL ){  /* symbolic orientation of image */
-                                                      /* [not so useful, or common] */
-     ddd = strstr(epos[E_PATIENT_ORIENTATION],"//") ;
-     if( ddd != NULL ){
-       char xc='\0' , yc='\0' ;
-       sscanf(ddd+2,"%c\\%c",&xc,&yc) ;   /* e.g., "L\P" */
-       switch( toupper(xc) ){
-         case 'L': MRILIB_orients[0] = 'L'; MRILIB_orients[1] = 'R'; ior=-1; break;
-         case 'R': MRILIB_orients[0] = 'R'; MRILIB_orients[1] = 'L'; ior= 1; break;
-         case 'P': MRILIB_orients[0] = 'P'; MRILIB_orients[1] = 'A'; ior=-2; break;
-         case 'A': MRILIB_orients[0] = 'A'; MRILIB_orients[1] = 'P'; ior= 2; break;
-         case 'F': MRILIB_orients[0] = 'I'; MRILIB_orients[1] = 'S'; ior= 3; break;  /* F = foot */
-         case 'H': MRILIB_orients[0] = 'S'; MRILIB_orients[1] = 'I'; ior=-3; break;  /* H = head */
-         default:  MRILIB_orients[0] ='\0'; MRILIB_orients[1] ='\0'; ior= 0; break;
-       }
-       switch( toupper(yc) ){
-         case 'L': MRILIB_orients[2] = 'L'; MRILIB_orients[3] = 'R'; jor=-1; break;
-         case 'R': MRILIB_orients[2] = 'R'; MRILIB_orients[3] = 'L'; jor= 1; break;
-         case 'P': MRILIB_orients[2] = 'P'; MRILIB_orients[3] = 'A'; jor=-2; break;
-         case 'A': MRILIB_orients[2] = 'A'; MRILIB_orients[3] = 'P'; jor= 2; break;
-         case 'F': MRILIB_orients[2] = 'I'; MRILIB_orients[3] = 'S'; jor= 3; break;
-         case 'H': MRILIB_orients[2] = 'S'; MRILIB_orients[3] = 'I'; jor=-3; break;
-         default:  MRILIB_orients[2] ='\0'; MRILIB_orients[3] ='\0'; jor= 0; break;
-       }
-       MRILIB_orients[6] = '\0' ;      /* terminate orientation string */
-       kor = 6 - abs(ior)-abs(jor) ;   /* which spatial direction is z-axis */
-       have_orients = (ior != 0 && jor != 0) ;
-     }
-
-   }  /* end of 2D image orientation */
-
-   /*-- try to get image offset (position), if have orientation from above --*/
-
-   if( nzoff == 0 && have_orients && mosaic && sexinfo.good ){  /* 01 Nov 2002: use Siemens mosaic info */
-     int qq ;
-     float z0, z1 ;
-     /* 25 Feb 2003 changing error checking for mosaics missing one or more *
-      * dimension of slice coordinates                                 KRH  */
-     if (sexinfo.have_data[kor-1]) {
-       z0 = sexinfo.slice_xyz[0][kor-1] ;   /* kor from orients above */
-       z1 = sexinfo.slice_xyz[1][kor-1] ;   /* z offsets of 1st 2 slices */
-     } else {                  /* warn if sexinfo was bad */
-       static int nwarn=0 ;
-       if( nwarn < NWMAX )
-         fprintf(stderr,"++ DICOM WARNING: Unusable coord. in Siemens Mosaic info (%s) in file %s\n",
-                 elist[E_SIEMENS_2] , fname ) ;
-       if( nwarn == NWMAX )
-         fprintf(stderr,"++ DICOM NOTICE: no more Siemens Mosaic info messages will be printed\n");
-       nwarn++ ;
-     }
-
-
-#if 0
-     /* Save x,y center of this 1st slice */
-
-     xcen = sexinfo.slice_xyz[0][abs(ior)-1] ;
-     ycen = sexinfo.slice_xyz[0][abs(jor)-1] ; use_xycen = 1 ;
-#endif
-
-     /* finish z orientation now */
-
-     if( z1-z0 < 0.0 ) kor = -kor ;     /* reversed orientation */
-     if( MRILIB_orients[4] == '\0' ){
-       switch( kor ){
-         case  1: MRILIB_orients[4] = 'R'; MRILIB_orients[5] = 'L'; break;
-         case -1: MRILIB_orients[4] = 'L'; MRILIB_orients[5] = 'R'; break;
-         case  2: MRILIB_orients[4] = 'A'; MRILIB_orients[5] = 'P'; break;
-         case -2: MRILIB_orients[4] = 'P'; MRILIB_orients[5] = 'A'; break;
-         case  3: MRILIB_orients[4] = 'I'; MRILIB_orients[5] = 'S'; break;
-         case -3: MRILIB_orients[4] = 'S'; MRILIB_orients[5] = 'I'; break;
-         default: MRILIB_orients[4] ='\0'; MRILIB_orients[5] ='\0'; break;
-       }
-     }
-     MRILIB_orients[6] = '\0' ;
-
-#if 0
-fprintf(stderr,"z0=%f z1=%f kor=%d MRILIB_orients=%s\n",z0,z1,kor,MRILIB_orients) ;
-#endif
-
-     MRILIB_zoff = z0 ; use_MRILIB_zoff = 1 ;
-     if( kor > 0 ) MRILIB_zoff = -MRILIB_zoff ;
-   }
-
-   /** use image position vector to set offsets,
-       and (2cd time in) the z-axis orientation **/
-
-   if( nzoff < 2 && epos[E_IMAGE_POSITION] != NULL && have_orients ){
-     ddd = strstr(epos[E_IMAGE_POSITION],"//") ;
-     if( ddd != NULL ){
-       float xyz[3] ; int qq ;
-       qq = sscanf(ddd+2,"%f\\%f\\%f",xyz,xyz+1,xyz+2) ;
-       if( qq == 3 ){
-         static float zoff ;      /* saved from nzoff=0 case */
-         float zz = xyz[kor-1] ;  /* kor from orients above */
-
-#if 0
-fprintf(stderr,"IMAGE_POSITION=%f %f %f  kor=%d\n",xyz[0],xyz[1],xyz[2],kor) ;
-#endif
-
-         if( nzoff == 0 ){  /* 1st DICOM image */
-
-           zoff = zz ;      /* save this for 2nd image calculation */
-
-           /* 01 Nov 2002: in mosaic case, may have set this already */
-
-           if( MRILIB_orients[4] == '\0' ){
-             switch( kor ){   /* may be changed on second image */
-               case  1: MRILIB_orients[4] = 'L'; MRILIB_orients[5] = 'R'; break;
-               case  2: MRILIB_orients[4] = 'P'; MRILIB_orients[5] = 'A'; break;
-               case  3: MRILIB_orients[4] = 'I'; MRILIB_orients[5] = 'S'; break;
-               default: MRILIB_orients[4] ='\0'; MRILIB_orients[5] ='\0'; break;
-             }
-             MRILIB_orients[6] = '\0' ;
-           }
-
-           /* Save x,y offsets of this 1st slice */
-
-           qq = abs(ior) ;
-           MRILIB_xoff = xyz[qq-1] ; use_MRILIB_xoff = 1 ;
-           if( ior > 0 ) MRILIB_xoff = -MRILIB_xoff ;
-
-           qq = abs(jor) ;
-           MRILIB_yoff = xyz[qq-1] ; use_MRILIB_yoff = 1 ;
-           if( jor > 0 ) MRILIB_yoff = -MRILIB_yoff ;
-
-           /* 01 Nov 2002: adjust x,y offsets for mosaic */
-
-           if( mosaic ){
-             if( MRILIB_xoff < 0.0 ) MRILIB_xoff += 0.5*dx*mos_nx*(mos_ix-1) ;
-             else                    MRILIB_xoff -= 0.5*dx*mos_nx*(mos_ix-1) ;
-             if( MRILIB_yoff < 0.0 ) MRILIB_yoff += 0.5*dy*mos_ny*(mos_iy-1) ;
-             else                    MRILIB_yoff -= 0.5*dy*mos_ny*(mos_iy-1) ;
-           }
-
-         } else if( nzoff == 1 && !use_MRILIB_zoff ){  /* 2nd DICOM image */
-
-           float qoff = zz - zoff ;    /* vive la difference */
-           if( qoff < 0 ) kor = -kor ; /* kor determines z-axis orientation */
-#if 0
-fprintf(stderr,"  nzoff=1 kor=%d qoff=%f\n",kor,qoff) ;
-#endif
-           switch( kor ){
-             case  1: MRILIB_orients[4] = 'R'; MRILIB_orients[5] = 'L'; break;
-             case -1: MRILIB_orients[4] = 'L'; MRILIB_orients[5] = 'R'; break;
-             case  2: MRILIB_orients[4] = 'A'; MRILIB_orients[5] = 'P'; break;
-             case -2: MRILIB_orients[4] = 'P'; MRILIB_orients[5] = 'A'; break;
-             case  3: MRILIB_orients[4] = 'I'; MRILIB_orients[5] = 'S'; break;
-             case -3: MRILIB_orients[4] = 'S'; MRILIB_orients[5] = 'I'; break;
-             default: MRILIB_orients[4] ='\0'; MRILIB_orients[5] ='\0'; break;
-           }
-           MRILIB_orients[6] = '\0' ;
-
-           /* save spatial offset of first slice              */
-           /* [this needs to be positive in the direction of] */
-           /* [the -z axis, so may need to change its sign  ] */
-
-           MRILIB_zoff = zoff ; use_MRILIB_zoff = 1 ;
-           if( kor > 0 ) MRILIB_zoff = -MRILIB_zoff ;
-         }
-         nzoff++ ;  /* 3rd and later images don't count for z-orientation */
-       }
-     }
-   }  /* end of using image position */
-
-   /** 23 Dec 2002:
-       use slice location value to set z-offset,
-       and (2cd time in) the z-axis orientation
-       -- only try this if image position vector (code above) isn't present
-          AND if we don't have a mosaic image (which already did this stuff)
-       -- shouldn't be necessary, since slice location is deprecated        **/
-
-   else if( nzoff < 2 && epos[E_SLICE_LOCATION] != NULL && have_orients && !mosaic ){
-     ddd = strstr(epos[E_SLICE_LOCATION],"//") ;
-     if( ddd != NULL ){
-       float zz ; int qq ;
-       qq = sscanf(ddd+2,"%f",&zz) ;
-       if( qq == 1 ){
-         static float zoff ;      /* saved from nzoff=0 case */
-
-#if 0
-fprintf(stderr,"SLICE_LOCATION = %f\n",zz) ;
-#endif
-
-         if( nzoff == 0 ){  /* 1st DICOM image */
-
-           zoff = zz ;      /* save this for 2nd image calculation */
-
-           if( MRILIB_orients[4] == '\0' ){
-             switch( kor ){   /* may be changed on second image */
-               case  1: MRILIB_orients[4] = 'L'; MRILIB_orients[5] = 'R'; break;
-               case  2: MRILIB_orients[4] = 'P'; MRILIB_orients[5] = 'A'; break;
-               case  3: MRILIB_orients[4] = 'I'; MRILIB_orients[5] = 'S'; break;
-               default: MRILIB_orients[4] ='\0'; MRILIB_orients[5] ='\0'; break;
-             }
-             MRILIB_orients[6] = '\0' ;
-           }
-
-         } else if( nzoff == 1 && !use_MRILIB_zoff ){  /* 2nd DICOM image */
-
-           float qoff = zz - zoff ;    /* vive la difference */
-           if( qoff < 0 ) kor = -kor ; /* kor determines z-axis orientation */
-           switch( kor ){
-             case  1: MRILIB_orients[4] = 'R'; MRILIB_orients[5] = 'L'; break;
-             case -1: MRILIB_orients[4] = 'L'; MRILIB_orients[5] = 'R'; break;
-             case  2: MRILIB_orients[4] = 'A'; MRILIB_orients[5] = 'P'; break;
-             case -2: MRILIB_orients[4] = 'P'; MRILIB_orients[5] = 'A'; break;
-             case  3: MRILIB_orients[4] = 'I'; MRILIB_orients[5] = 'S'; break;
-             case -3: MRILIB_orients[4] = 'S'; MRILIB_orients[5] = 'I'; break;
-             default: MRILIB_orients[4] ='\0'; MRILIB_orients[5] ='\0'; break;
-           }
-           MRILIB_orients[6] = '\0' ;
-
-           /* save spatial offset of first slice              */
-           /* [this needs to be positive in the direction of] */
-           /* [the -z axis, so may need to change its sign  ] */
-
-           MRILIB_zoff = zoff ; use_MRILIB_zoff = 1 ;
-           if( kor > 0 ) MRILIB_zoff = -MRILIB_zoff ;
-         }
-         nzoff++ ;  /* 3rd and later images don't count for z-orientation */
-       }
-     }
-   } /* end of using slice location */
-
-   /* perhaps shift data shorts */
-
-#if 0
-   if( shift == 1 ){
-     switch( datum ){
-       case MRI_short:{
-         if( sbot < 0 ){
-           unsigned short *sar ; int nvox = IMARR_SUBIM(imar,0)->nvox ;
-           for( ii=0 ; ii < nz ; ii++ ){
-             sar = mri_data_pointer( IMARR_SUBIM(imar,ii) ) ;
-             for( jj=0 ; jj < nvox ; jj++ ) sar[jj] >>= 1 ;
-           }
-         }
-       }
-       break ;
-     }
-   }
-#endif
-
-
-   if(obl_info_set<2)
-         Fill_obl_info(&obl_info, epos, &sexinfo);
 
    free(ppp); RETURN( imar );
 }
@@ -1335,8 +1262,8 @@ ENTRY("mri_imcount_dicom") ;
 
    /* find positions in header of elements we care about */
 
-   for( ee=0 ; ee < NUM_ELIST ; ee++ )
-     epos[ee] = strstr(ppp,elist[ee]) ;
+   /* allow some choices when filling the list    10 Apr 2009 [rickr] */
+   get_posns_from_elist(epos, elist, ppp, NUM_ELIST) ;
 
    /* see if the header has the elements we absolutely need */
 
@@ -1495,6 +1422,40 @@ ENTRY("mri_imcount_dicom") ;
    free(ppp); RETURN(nz);
 }
 
+/*---------------------------------------------------------------------------*/
+/*! Normally we will find the first occurance of each element in the text.
+ *  Maybe the user wants to use the last, instead.     10 Apr 2009 [rickr]
+-----------------------------------------------------------------------------*/
+
+static int get_posns_from_elist(char *plist[], char *elist[], char *text,
+                                int nume)
+{
+   static int check_env = 1;
+   int    ee;
+   char * cp;
+
+   ENTRY("flip_slices_mosaic");
+
+   if( check_env && !use_last_elem ) {
+        check_env = 0;
+        cp = getenv("AFNI_DICOM_USE_LAST_ELEMENT") ;
+        if( cp && (*cp == 'Y' || *cp == 'y') ) {
+           use_last_elem = 1 ;
+           fprintf(stderr,"-- will search for last Dicom elements...\n");
+        }
+   }
+
+   for( ee=0 ; ee < nume ; ee++ ) {
+      plist[ee] = strstr(text,elist[ee]) ;
+      if( use_last_elem && plist[ee] ) {
+         while( (cp = strstr(plist[ee]+1, elist[ee])) != NULL )
+            plist[ee] = cp ;
+      }
+   }
+
+   RETURN(0);
+}
+
 /*--------------------------------------------------------------------------------*/
 /*! Read some bytes from an open file at a given offset.  Return them in a
     newly malloc()-ed array.  If return value is NULL, something bad happened.
@@ -1525,7 +1486,7 @@ static char * extract_bytes_from_file( FILE *fp, off_t start, size_t len, int st
 
 static void get_siemens_extra_info( char *str , Siemens_extra_info *mi )
 {
-   char *cpt , *dpt, *ept ;
+   char *cpt=NULL , *dpt, *ept ;
    int nn , mm , snum , last_snum=-1 ;
    int have_x[2] = {0,0},
        have_y[2] = {0,0},
@@ -1572,36 +1533,12 @@ static void get_siemens_extra_info( char *str , Siemens_extra_info *mi )
    }
 
    /*-- scan for coordinates, until can't find a good string to scan --*/
-
-#if 0
-   /* 25 Feb 2003 Changed logic here KRH */
-   have_x = have_y = have_z = 0 ;
-#endif
-
    while(1){
-
-
      if( nn   <  3                   ) break ;  /* bad conversion set */
      if( snum <  0 || snum >= NMOMAX ) break ;  /* slice number out of range */
 
 /* 21 Feb 2003 rework this section to allow for missing coordinates in
  * some mosaic files                                        --KRH  */
-#if 0
-     /* assign val based on name */
-
-          if( strcmp(name,"sPosition.dSag") == 0 ){ x = val; have_x = 1; }
-     else if( strcmp(name,"sPosition.dCor") == 0 ){ y = val; have_y = 1; }
-     else if( strcmp(name,"sPosition.dTra") == 0 ){ z = val; have_z = 1; }
-
-     /* if now have all 3 coordinates, save them */
-
-     if( have_x && have_y && have_z ){
-       mi->slice_xyz[snum][0] = x; mi->slice_xyz[snum][1] = y; mi->slice_xyz[snum][2] = z;
-       last_snum = snum ;
-       have_x = have_y = have_z = 0 ;
-     }
-#endif
-
      if( strcmp(name,"sPosition.dSag") == 0 ){
        mi->slice_xyz[snum][0] = val;
        if (snum < 2) have_x[snum] = 1;
@@ -1637,7 +1574,6 @@ static void get_siemens_extra_info( char *str , Siemens_extra_info *mi )
    }
 
    /* if got at least 1 slice info, mark data as being good */
-
    if( last_snum >= 0 ){
      mi->good       = 1 ;
      if (have_x[0] && have_x[1]) mi->have_data[0] = 1;
@@ -1646,8 +1582,148 @@ static void get_siemens_extra_info( char *str , Siemens_extra_info *mi )
      mi->mosaic_num = last_snum+1 ;
    }
 
+   ept = str;
+   if(cpt = strstr(str,"\nsSliceArray.ucImageNumbSag")){
+      sscanf(cpt, "%1022s = %x", name, &mi->ImageNumbSag);
+#if DEBUG_ON
+  printf("ImageNumbSag in header %x\n",mi->ImageNumbSag);
+#endif
+   }
+   else
+      mi->ImageNumbSag = 0;
+   if(cpt = strstr(str,"\nsSliceArray.ucImageNumbTra")){
+      sscanf(cpt, "%1022s = %x", name, &mi->ImageNumbTra);
+#if DEBUG_ON
+  printf("ImageNumbTra in header %x\n",mi->ImageNumbTra);
+#endif
+   }
+   else
+      mi->ImageNumbTra = 0;
+   if(cpt = strstr(str,"\nsSliceArray.ucImageNumbCor")){
+      sscanf(cpt, "%1022s = %x", name, &mi->ImageNumbCor);
+#if DEBUG_ON
+  printf("ImageNumbCor in header %x\n",mi->ImageNumbCor);
+#endif
+   }
+   else
+      mi->ImageNumbCor = 0;
+
    return ;
 }
+/* determine if slice order is reversed in Siemens mosaic files */
+static int
+flip_slices_mosaic (Siemens_extra_info *mi, int kor)
+{
+  /*       kor = orientation of slices,  which spatial direction is z-axis */
+  /* where 1=L-R, 2=P-A, 3=I-S */
+   ENTRY("flip_slices_mosaic");
+#if DEBUG_ON
+  printf("flip_slices_mosaic kor = %d\n", kor);
+  printf("ImageNumbSag,Cor,Tra= %d,%d,%d\n",mi->ImageNumbSag, mi->ImageNumbCor, mi->ImageNumbTra);
+#endif
+   switch(abs(kor)) {
+      case 1:
+        if(mi->ImageNumbSag==1)
+           RETURN(1);
+        RETURN(0);
+      case 2:
+        if(mi->ImageNumbCor==1)
+           RETURN(1);
+        RETURN(0);
+      case 3:
+        if(mi->ImageNumbTra==1)
+           RETURN(1);
+        RETURN(0);
+      default :
+         /* should never get here */
+         RETURN(0);
+  }
+}
+
+/* copy data from mosaic input to image array */
+static int
+read_mosaic_data( FILE *fp, MRI_IMAGE *im, MRI_IMARR *imar, int datum,
+   Siemens_extra_info *mi, int *flip_slices, int bpp, int kor, int swap,
+   float dx, float dy, float dz, float dt)
+{   /*-- 28 Oct 2002:  is a 2D mosaic --*******************/
+
+   char *dar , *iar ;
+   int last_ii=-1, nvox, yy, xx, nxx, XX, YY, ii, jj, slice ;
+   int mos_nx, mos_ny, mos_nz, mos_ix, mos_iy, mosaic_num;
+
+   ENTRY("read_mosaic_data");
+
+   /* determine if slices should be reversed */
+   *flip_slices = flip_slices_mosaic(mi, kor);
+
+   /* just to make it a little easier to read */
+   mos_nx = mi->mos_nx;   mos_ny = mi->mos_ny;
+   mos_ix = mi->mos_ix;   mos_iy = mi->mos_ix; /* always square */
+   mos_nz = mos_ix * mos_iy ;   /* number of slices in mosaic */
+
+#if DEBUG_ON
+printf("read_mosaic_data flip_slices %d mos_nx,ny,nz = %d,%d,%d  mos_ix = %d\n",
+*flip_slices,mos_nx,mos_ny,mos_nz, mos_ix);
+#endif
+
+   mosaic_num = mi->mosaic_num;
+
+   nvox = mos_nx*mos_ny*mos_nz ;         /* total number of voxels */
+   dar  = (char*)calloc(bpp,nvox) ;      /* make space for super-image */
+   if(dar==NULL)  {  /* exit if can't allocate memory */
+      ERROR_message("Could not allocate memory for mosaic volume");
+      RETURN(0);
+   }
+   fread( dar , bpp , nvox , fp ) ;    /* read data directly into it */
+
+   if( swap ){                        /* swap bytes? */
+     switch( bpp ){
+       default: break ;
+       case 2:  swap_twobytes (   nvox, dar ) ; break ;  /* short */
+       case 4:  swap_fourbytes(   nvox, dar ) ; break ;  /* int, float */
+       case 8:  swap_fourbytes( 2*nvox, dar ) ; break ;  /* complex */
+     }
+   }
+
+   /* load data from dar into images */
+   nxx = mos_nx * mos_ix ;              /* # pixels per mosaic line */
+
+   for (ii=0;ii<mosaic_num;ii++) {
+      /* find right slice - may be reading the series of slices backwards */
+      if(*flip_slices) slice = mosaic_num - ii -1;
+      else slice = ii;
+      xx = slice % mos_ix;   /* xx,yy are indices for position in mosaic matrix */
+      yy = slice / mos_iy;
+      im = mri_new( mos_nx , mos_ny , datum ) ;
+      iar = mri_data_pointer( im ) ;             /* sub-image array */
+
+      for( jj=0 ; jj < mos_ny ; jj++ )  /* loop over rows inside sub-image */
+        memcpy( iar + jj*mos_nx*bpp ,
+                dar + xx*mos_nx*bpp + (jj+yy*mos_ny)*nxx*bpp ,
+                mos_nx*bpp                                    ) ;
+
+       if( dx > 0.0 && dy > 0.0 && dz > 0.0 ){
+         im->dx = dx; im->dy = dy; im->dz = dz; im->dw = 1.0;
+       }
+       if( dt > 0.0 ) im->dt = dt ;
+       if( swap ) im->was_swapped = 1 ;
+
+       ADDTO_IMARR(imar,im) ;
+   } /* end of ii sub-image loop */
+   free(dar) ;  /* don't need no more; copied all data out of it now */
+
+   /* truncate zero images out of tail of mosaic */
+   if( mosaic_num < IMARR_COUNT(imar) )
+       TRUNCATE_IMARR(imar,mosaic_num) ;
+
+#if DEBUG_ON
+fprintf(stderr,"\nmri_read_dicom Mosaic: mos_nx=%d mos_ny=%d mos_ix=%d mos_iy=%d slices=%d\n",
+mos_nx,mos_ny,mos_ix,mos_iy,IMARR_COUNT(imar)) ;
+MCHECK ;
+#endif
+   RETURN(0);
+}
+
 
 /*--------------------------------------------------------------------------*/
 /*! Test if a file is possibly a DICOM file.  -- RWCox - 07 May 2003
@@ -1713,6 +1789,9 @@ static void
 Clear_obl_info(oblique_info *obl_info)
 {
    int i,j;
+
+   /* start with a full clearing */
+   memset(obl_info, 0, sizeof(*obl_info));
 
    LOAD_FVEC3(obl_info->dfpos1,0.0,0.0,0.0);
    LOAD_FVEC3(obl_info->dfpos2,0.0,0.0,0.0);
@@ -1827,6 +1906,7 @@ Fill_obl_info(oblique_info *obl_info, char **epos, Siemens_extra_info *siem)
       obl_info->mos_ix = mos_ix;
       obl_info->mos_nx = nx / mos_ix ;  /* sub-image dimensions*/
       obl_info->mos_ny = ny / mos_iy ;
+
       obl_info->mos_nslice = siem->mosaic_num;
       obl_info->nx = nx; obl_info->ny = ny;
       obl_info_set = 2;
@@ -1878,7 +1958,7 @@ static float *ComputeObliquity(oblique_info *obl_info)
    THD_fvec3 vec3, vec4, vec5, vec6, dc1, dc2, dc3, dc4 ;
    THD_fvec3 offsetxvec, offsetyvec,offsetzvec, Cm, Orgin, Cx;
 /*   double dotp, angle, aangle;*/
-   float fac;
+   float fac=1;
    int altsliceinfo = 0;
    Siemens_extra_info *siem;
    int ii,jj;
@@ -1982,11 +2062,14 @@ DUMP_FVEC3("dc4", dc4);
    /* compute central mosaic point - in funny way */
    offsetxvec = SCALE_FVEC3(dc1, ((obl_info->nx)/2.0));
    offsetyvec = SCALE_FVEC3(dc2, ((obl_info->ny)/2.0));
+
    offsetzvec = SCALE_FVEC3(dc3, ((obl_info->mos_nslice - 1.0)*fac/2.0));
+   if( obl_info->flip_slices ) 
+      offsetzvec = SCALE_FVEC3(offsetzvec, -1.0);
 
    Cm = ADD_FVEC3(obl_info->dfpos1, offsetxvec);
-   Cm  = ADD_FVEC3(Cm, offsetyvec);
-   Cm  = ADD_FVEC3(Cm, offsetzvec);
+   Cm = ADD_FVEC3(Cm, offsetyvec);
+   Cm = ADD_FVEC3(Cm, offsetzvec);
 
   /* find origin using single slice info */
    offsetxvec = SCALE_FVEC3(dc1, ((obl_info->mos_nx - 1.0)/2.0));
@@ -2046,11 +2129,13 @@ DUMP_FVEC3("dc4", dc4);
          DUMP_FVEC3("Slice-based Center", Cx);
       }
       else
-         INFO_message("Slice based center matches mosaic center\n");
+         INFO_message("Slice based center matches mosaic center - good!\n");
    }
-
+   
+#ifdef DEBUG_ON
    DUMP_FVEC3("Mosaic Center", Cm);
    DUMP_FVEC3("Origin Coordinates", Orgin);
+#endif
 
    /* update 4th column of transformation matrix with computed origin */
    obl_info->Tr_dicom[0][3] = Orgin.xyz[0];
@@ -2124,3 +2209,64 @@ void mri_read_dicom_get_obliquity(float *Tr)
 
    return;
 }
+
+
+/* externally available function to set origin and orientation from obliquity */
+/* transformation matrix */
+void
+Obliquity_to_coords(THD_3dim_dataset *tdset)
+{
+   THD_ivec3 orixyz;
+
+   mat44 nmat; int icod, jcod, kcod;
+   int orimap[7] = { 6 , 1 , 0 , 2 , 3 , 4 , 5 } ;
+   float dxtmp, dytmp, dztmp ;
+   THD_dataxes      * daxes   = NULL ;
+
+   daxes = tdset->daxes;
+   nmat = daxes->ijk_to_dicom_real;
+   /* negate first two rows to go from RAI to LPI definition for nifti */
+   nmat.m[0][0] = -nmat.m[0][0];
+   nmat.m[0][1] = -nmat.m[0][1];
+   nmat.m[0][2] = -nmat.m[0][2];
+   nmat.m[0][3] = -nmat.m[0][3];
+   nmat.m[1][0] = -nmat.m[1][0];
+   nmat.m[1][1] = -nmat.m[1][1];
+   nmat.m[1][2] = -nmat.m[1][2];
+   nmat.m[1][3] = -nmat.m[1][3];
+   /* from thd_niftiread.c */
+   /* convert nifti orientation codes to AFNI codes and store in vector */
+
+   nifti_mat44_to_orientation( nmat , &icod, &jcod, &kcod ) ;
+   LOAD_IVEC3( orixyz , orimap[icod] ,
+                        orimap[jcod] ,
+                        orimap[kcod] ) ;
+
+   /* load the offsets and the grid spacings */
+
+   daxes->xxorg = daxes->ijk_to_dicom_real.m[ORIENT_xyzint[orixyz.ijk[0]] - 1][3] ;
+   daxes->yyorg = daxes->ijk_to_dicom_real.m[ORIENT_xyzint[orixyz.ijk[1]] - 1][3] ;
+   daxes->zzorg = daxes->ijk_to_dicom_real.m[ORIENT_xyzint[orixyz.ijk[2]] - 1][3] ;
+
+   daxes->xxorient = orimap[icod] ;
+   daxes->yyorient = orimap[jcod] ;
+   daxes->zzorient = orimap[kcod] ;
+
+   dxtmp = fabs(daxes->xxdel);
+   dytmp = fabs(daxes->yydel);
+   dztmp = fabs(daxes->zzdel);
+
+   daxes->xxdel =  (ORIENT_sign[orixyz.ijk[0]]=='+') ? dxtmp : -dxtmp ;
+   daxes->yydel =  (ORIENT_sign[orixyz.ijk[1]]=='+') ? dytmp : -dytmp ;
+   daxes->zzdel =  (ORIENT_sign[orixyz.ijk[2]]=='+') ? dztmp : -dztmp ;
+
+ #if DEBUG_ON
+ printf("Orients = %d %d % d\n", daxes->xxorient, daxes->yyorient, \
+       daxes->zzorient);
+ printf("daxes origins = %f %f %f\n", daxes->xxorg, daxes->yyorg, \
+       daxes->zzorg);
+ #endif
+ /*     daxes->xxdel    =   user_inputs.xsize ;
+   daxes->yydel    =   user_inputs.ysize ;*/
+
+ }

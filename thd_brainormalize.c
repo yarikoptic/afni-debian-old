@@ -163,16 +163,6 @@ float THD_BN_zheight()
 }
 
 
-/*---------------------------------------------------------------------*/
-/*! Count number of nonzeros in mask array */
-
-static int mask_count( int nvox , byte *mmm )
-{
-   int ii , nn ;
-   for( nn=ii=0 ; ii < nvox ; ii++ ) nn += (mmm[ii] != 0) ;
-   return nn ;
-}
-
 /*------------------------------------------------------------------*/
 
 #undef  DALL
@@ -474,6 +464,7 @@ static clipvec get_octant_clips( MRI_IMAGE *im , float mfrac )
 
 ENTRY("get_octant_clips") ;
 
+   ZZME(cv) ;
    cv.clip_000 = -1 ;  /* flags error return */
 
    if( im == NULL || im->kind != MRI_short ) RETURN(cv) ;

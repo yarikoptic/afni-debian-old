@@ -4,8 +4,8 @@
 
 USE_ZLIB = -DHAVE_ZLIB
 LZLIB    = -lz
-# USE_GIFTI = -DHAVE_GIFTI
-# LGIFTI    = -lexpat
+USE_GIFTI = -DHAVE_GIFTI
+LGIFTI    = /sw/lib/libexpat.a
 
 CC_G5  = -O3 -funroll-loops -fstrict-aliasing -fsched-interblock               \
          -falign-loops=32 -falign-jumps=16 -falign-functions=16                \
@@ -53,6 +53,9 @@ LIBDIR = $(INSTALLDIR)
 
 INSTALL_PREREQ = suma_gts
 #INSTALL_PREREQ = suma
+# uncomment if the Gnu Scientific Library is installed (libgsl, libgslcblas)
+GSLPROGS = balloon
+EXPROGS = gifti_tool $(GSLPROGS)
 
 # LIBDL = libdl.a
 

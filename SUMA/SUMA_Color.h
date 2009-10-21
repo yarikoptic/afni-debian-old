@@ -46,8 +46,6 @@
 int SUMA_a_good_col(char *name, int i, float *acol);
 SUMA_COLOR_MAP * SUMA_MakeColorMap (float **Fiducials, int Nfid, int Ncols, SUMA_Boolean SkipLast, char *Name);
 void SUMA_Free_ColorMap (SUMA_COLOR_MAP* SM);
-int r_ulong_size ( unsigned long l );
-int r_sprintf_long_to_hex (char  * dest, unsigned long  lsrc,	int bytes, int	pad);
 SUMA_SCALE_TO_MAP_OPT * SUMA_ScaleToMapOptInit(void);
 void SUMA_Free_ColorScaledVect (SUMA_COLOR_SCALED_VECT * S);
 SUMA_COLOR_SCALED_VECT * SUMA_Create_ColorScaledVect(int N_Node);
@@ -58,7 +56,7 @@ SUMA_COLOR_MAP *SUMA_FindCodedColMap(int imap);
 float * SUMA_PercRange (float *V, float *Vsort, int N_V, float *PercRange, float *PercRangeVal, int *iPercRange);
 double * SUMA_dPercRange (double *V, double *Vsort, int N_V, double *PercRange, double *PercRangeVal, int *iPercRangeVal);
 SUMA_COLOR_MAP* SUMA_MakeColorMap_v2 (float **Fiducials, int Nfid, int *Nint, SUMA_Boolean SkipLast, char *Name);
-SUMA_OVERLAYS * SUMA_CreateOverlayPointer (int N_Nodes, const char *Name, SUMA_DSET *dset, char *owner_id, SUMA_OVERLAYS *Recycle);
+SUMA_OVERLAYS * SUMA_CreateOverlayPointer (const char *Name, SUMA_DSET *dset, char *owner_id, SUMA_OVERLAYS *Recycle);
 SUMA_Boolean SUMA_FreeOverlayPointerRecyclables (SUMA_OVERLAYS * Sover);
 SUMA_Boolean SUMA_FreeOverlayPointer (SUMA_OVERLAYS * Sover);
 SUMA_Boolean SUMA_Overlays_2_GLCOLAR4(SUMA_SurfaceObject *SO, SUMA_SurfaceViewer *sv, GLfloat *glcolar);
@@ -136,6 +134,12 @@ static char SUMA_COLOR_MAP_NAMES[][32]={
          "bw20"      , "byr64"   , "bgyr64"  , 
          "ygbrp256"  , "ygbrp128", "ygbrp64",
          "\0" };
+SUMA_Boolean SUMA_Selected_Node_Activate_Callbacks (
+      SUMA_SurfaceObject *SO, SUMA_OVERLAYS *Sover,
+      SUMA_ENGINE_SOURCE Src, NI_group *ngr);
+SUMA_DRAWN_ROI * SUMA_is_NamedColPlane_ForROI(char *PlaneName);
+SUMA_Boolean  SUMA_isDsetRelated(SUMA_DSET *dset, SUMA_SurfaceObject *SO);
+
 
 
 

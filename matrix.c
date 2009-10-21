@@ -138,16 +138,21 @@ double get_matrix_flops(void){ return flops; }
 static double dotnum=0.0 , dotsum=0.0 ;
 double get_matrix_dotlen(void){ return (dotnum > 0.0) ? dotsum/dotnum : 0.0 ; }
 
-#define ENABLE_FLOPS
+#ifndef USE_OMP
+# define ENABLE_FLOPS
+#else
+# undef  ENABLE_FLOPS
+#endif
+
 /*---------------------------------------------------------------------------*/
 /*!
   Routine to print and error message and stop.
 */
 
-void matrix_error (char * message)
+void matrix_error (char *message)
 {
   printf ("Matrix error: %s \n", message);
-  exit (1);
+  EXIT (1);
 }
 
 
@@ -156,7 +161,7 @@ void matrix_error (char * message)
   Initialize matrix data structure.
 */
 
-void matrix_initialize (matrix * m)
+void matrix_initialize (matrix *m)
 {
   m->rows = 0;
   m->cols = 0;
@@ -172,7 +177,7 @@ void matrix_initialize (matrix * m)
   Destroy matrix data structure by deallocating memory.
 */
 
-void matrix_destroy (matrix * m)
+void matrix_destroy (matrix *m)
 {
   if (m->elts != NULL){
 #ifdef DONT_USE_MATRIX_MAT
@@ -238,8 +243,8 @@ void matrix_print (matrix m)
   double val ;
   int ipr ;
 
-  rows = m.rows;
-  cols = m.cols;
+  rows = m.rows; if( rows < 1 ) return ;
+  cols = m.cols; if( cols < 1 ) return ;
 
   for( i=0 ; i < rows ; i++ ){
     for( j=0 ; j < cols ; j++ ){
@@ -402,7 +407,7 @@ void matrix_file_read (char * filename, int rows, int cols,  matrix * m,
       m->elts[i][j] = far[i + j*rows];
 
 
-  mri_free (flim);  flim = NULL;
+  { mri_free (flim);  flim = NULL; }
 
 }
 
@@ -448,6 +453,43 @@ void matrix_equate (matrix a, matrix * b)
       memcpy( b->elts[i] , a.elts[i] , sizeof(double)*cols ) ;  /* RWCox */
 #endif
   }
+}
+
+
+/*---------------------------------------------------------------------------*/
+/*!
+    Extending a matrix with nradd rows and ncadd columns (zero-filled).
+*/
+
+void matrix_enlarge( int nradd , int ncadd , matrix *a )
+{
+  int i , rows, cols ;
+  matrix *b ;
+
+  if( ncadd < 0 ) ncadd = 0 ;  /* no subtraction allowed */
+  if( nradd < 0 ) nradd = 0 ;
+
+  if( nradd == 0 && ncadd == 0 ) return ;  /* nothing to do? */
+
+  rows = a->rows ; cols = a->cols ;
+
+  /* create bigger matrix with extra rows/columns */
+
+  b = (matrix *)malloc(sizeof(matrix)) ;
+  matrix_initialize( b ) ;
+  matrix_create( rows+nradd , cols+ncadd, b ) ;  /* zero-filled */
+
+  /* copy row data from a into b */
+
+  if( cols > 0 ){
+    for( i=0 ; i < rows ; i++ ){
+      memcpy( b->elts[i] , a->elts[i] , sizeof(double)*cols ) ;
+    }
+  }
+
+  /* destroy contents of a, replace with contents of b */
+
+  matrix_destroy(a) ; *a = *b ; return ;
 }
 
 
@@ -766,7 +808,8 @@ int matrix_inverse_dsc (matrix a, matrix * ainv)  /* 15 Jul 2004 - RWCox */
    for( j=0 ; j < n ; j++ )
     ainv->elts[i][j] *= diag[i]*diag[j] ;
 
-  matrix_destroy (&atmp); free((void *)diag) ;
+  matrix_destroy (&atmp);
+  free((void *)diag) ;
 #ifdef ENABLE_FLOPS
   flops += 4.0*n*n + 4.0*n ;
 #endif
@@ -860,7 +903,7 @@ void vector_initialize (vector * v)
 
 void vector_destroy (vector * v)
 {
-  if (v->elts != NULL)  free (v->elts);
+  if (v->elts != NULL) free (v->elts);
   vector_initialize (v);
 }
 
@@ -974,16 +1017,18 @@ void array_to_vector (int dim, float * f, vector * v)
   Convert column c of matrix m into vector v.
 */
 
-void column_to_vector (matrix m, int c, vector * v)
+void column_to_vector (matrix m, int c, vector *v)
 {
-  register int i;
-  register int dim;
+  register int i , dim ;
+  dim = m.rows; vector_create_noinit (dim, v);
+  for (i = 0;  i < dim;  i++) v->elts[i] = m.elts[i][c];
+}
 
-  dim = m.rows;
-  vector_create_noinit (dim, v);
-
-  for (i = 0;  i < dim;  i++)
-    v->elts[i] = m.elts[i][c];
+void row_to_vector( matrix m , int r , vector *v )
+{
+   register int j , dim ;
+   dim = m.cols ; vector_create_noinit(dim,v) ;
+   for( j=0 ; j < dim ; j++ ) v->elts[j] = m.elts[r][j] ;
 }
 
 
@@ -1237,7 +1282,7 @@ void vector_multiply_transpose (matrix a, vector b, vector * c)
        aa = a.elts[j] ; bj = bb[j] ;
        cc[0] += aa[0]*bj ;
        cc[1] += aa[1]*bj ;
-       cc[2] += aa[1]*bj ;
+       cc[2] += aa[2]*bj ;
        for( i=3 ; i < cols ; i+=4 ){
          cc[i]   += aa[i]  *bj ;
          cc[i+1] += aa[i+1]*bj ;
@@ -1444,6 +1489,38 @@ double matrix_norm( matrix a )
 }
 
 /*---------------------------------------------------------------------------*/
+
+double matrix_frobenius( matrix a )  /* sum of squares of all elements */
+{
+   int i,j , rows=a.rows, cols=a.cols ;
+   double sum=0.0  , **aa=a.elts ;
+
+   for (i = 0;  i < rows;  i++){
+     for (j = 0;  j < cols;  j++) sum += aa[i][j] * aa[i][j] ;
+   }
+#ifdef ENABLE_FLOPS
+   flops += 2.0*rows*cols ;
+#endif
+   return sum ;
+}
+
+/*---------------------------------------------------------------------------*/
+
+void matrix_colsqsums( matrix a , vector *v )
+{
+   int i,j , rows=a.rows , cols=a.cols ;
+   double sum , **aa , *vp ;
+
+   vector_create_noinit( cols , v ) ; vp = v->elts ; aa = a.elts ;
+
+   for( j=0 ; j < cols ; j++ ){
+     for( sum=0.0,i=0 ; i < rows ; i++ ) sum += aa[i][j] * aa[i][j] ;
+     vp[j] = sqrt(sum) ;
+   }
+   return ;
+}
+
+/*---------------------------------------------------------------------------*/
 /*! Search a matrix for nearly identical column pairs, where "nearly identical"
     means they are correlated closer than 1-eps.
 
@@ -1568,6 +1645,9 @@ void matrix_psinv( matrix X , matrix *XtXinv , matrix *XtXinvXt )
    sval = (double *)calloc( sizeof(double),n   ) ;  /* singular values */
    xfac = (double *)calloc( sizeof(double),n   ) ;  /* column norms of [a] */
 
+#undef  A
+#undef  U
+#undef  V
 #define A(i,j) amat[(i)+(j)*m]
 #define U(i,j) umat[(i)+(j)*m]
 #define V(i,j) vmat[(i)+(j)*n]
@@ -1601,7 +1681,8 @@ void matrix_psinv( matrix X , matrix *XtXinv , matrix *XtXinvXt )
 
    if( smax <= 0.0 ){                        /* this is bad */
      free((void *)xfac); free((void *)sval);
-     free((void *)vmat); free((void *)umat); return;
+     free((void *)vmat); free((void *)umat);
+     return;
    }
 
    for( ii=0 ; ii < n ; ii++ )
@@ -1651,23 +1732,123 @@ void matrix_psinv( matrix X , matrix *XtXinv , matrix *XtXinvXt )
    flops += n*n*(n+2.0*m+2.0) ;
 #endif
    free((void *)xfac); free((void *)sval);
-   free((void *)vmat); free((void *)umat); 
+   free((void *)vmat); free((void *)umat);
    return;
 }
+
+/*---------------------------------------------------------------------------*/
+/*! Check a matrix for column collinearity and adjust it (via the SVD)
+    if it needs it.  Return value is -1 if there is an error, 0 if no
+    fix was made, or the number of bad singular values if a fix was made
+    -- in which case the adjusted matrix is in Xa.
+*//*-------------------------------------------------------------------------*/
+#if 0
+int matrix_collinearity_fixup( matrix X , matrix *Xa )
+{
+   int m = X.rows , n = X.cols , ii,jj,kk , nbad ;
+   double *amat , *umat , *vmat , *sval , *xfac , smax,del,sum ;
+
+   if( m < 1 || n < 1 || m < n ) return (-1) ;
+
+   amat = (double *)calloc( sizeof(double),m*n ) ; /* input matrix */
+   umat = (double *)calloc( sizeof(double),m*n ) ; /* left singular vectors */
+   vmat = (double *)calloc( sizeof(double),n*n ) ; /* right singular vectors */
+   sval = (double *)calloc( sizeof(double),n   ) ; /* singular values */
+   xfac = (double *)calloc( sizeof(double),n   ) ; /* column norms of [a] */
+
+#undef  A
+#undef  U
+#undef  V
+#define A(i,j) amat[(i)+(j)*m]
+#define U(i,j) umat[(i)+(j)*m]
+#define V(i,j) vmat[(i)+(j)*n]
+
+   /* copy input matrix into amat */
+
+   for( ii=0 ; ii < m ; ii++ )
+     for( jj=0 ; jj < n ; jj++ ) A(ii,jj) = X.elts[ii][jj] ;
+
+   /* scale each column to have L2 norm 1 */
+
+   for( jj=0 ; jj < n ; jj++ ){
+     sum = 0.0 ;
+     for( ii=0 ; ii < m ; ii++ ) sum += A(ii,jj)*A(ii,jj) ;
+     xfac[jj] = sqrt(sum) ;
+     if( sum > 0.0 ){
+       sum = 1.0 / xfac[jj] ;
+       for( ii=0 ; ii < m ; ii++ ) A(ii,jj) *= sum ;
+     }
+   }
+
+   /* compute SVD of scaled matrix */
+
+   svd_double( m , n , amat , sval , umat , vmat ) ;
+
+   free((void *)amat) ;  /* done with this */
+
+   /* find largest singular value */
+
+   if( sval[0] < 0.0 ) sval[0] = 0.0 ;
+   smax = sval[0] ;
+   for( ii=1 ; ii < n ; ii++ ){
+          if( sval[ii] > smax ) smax = sval[ii] ;
+     else if( sval[ii] < 0.0  ) sval[ii] = 0.0 ;
+   }
+
+   if( smax == 0.0 ){                        /* this is bad */
+     free((void *)xfac); free((void *)sval);
+     free((void *)vmat); free((void *)umat);
+     return (-1);
+   }
+
+   /* adjust small singular values upwards */
+
+   del = 1.e-6 * smax ;
+   for( nbad=ii=0 ; ii < n ; ii++ )
+     if( sval[ii] < del ){ sval[ii] = del ; nbad++ ; }
+
+   /* if all were OK, then nothing more needs to be done */
+
+   if( nbad == 0 || Xa == NULL ){
+     free((void *)xfac); free((void *)sval);
+     free((void *)vmat); free((void *)umat);
+     return (nbad);
+   }
+
+   /* create and compute output matrix */
+
+   matrix_create( m , n , Xa ) ;
+
+   for( ii=0 ; ii < m ; ii++ ){
+     for( jj = 0 ; jj < n ; jj++ ){
+       sum = 0.0 ;
+       for( kk=0 ; kk < n ; kk++ )
+         sum += sval[kk] * U(ii,kk) * V(jj,kk) ;
+       Xa->elts[ii][jj] = sum * xfac[jj] ;
+     }
+   }
+
+   free((void *)xfac); free((void *)sval);
+   free((void *)vmat); free((void *)umat);
+   return (nbad);
+}
+#endif
 
 /*---------------------------------------------------------------------------*/
 /*! Given MxN matrix X, compute the NxN upper triangle factor R in X = QR.
     Must have M >= N (more rows than columns).
     Q is not computed.  If you want Q, then compute it as [Q] = [X] * inv[R].
+    The return value is the number of diagonal elements that were adjusted
+    because they were very tiny (should be 0 except in collinear cases).
 *//*-------------------------------------------------------------------------*/
 
-void matrix_qrr( matrix X , matrix *R )
+int matrix_qrr( matrix X , matrix *R )
 {
-   int m = X.rows , n = X.cols , ii,jj,kk ;
-   double *amat , *uvec , x1 ;
-   register double alp, sum ;
+   int m=X.rows , n=X.cols , ii,jj,kk , m1=m-1 ;
+   double *amat , x1 ;
+   register double alp, sum , *uvec, *Ak;
 
-   if( m < 2 || n < 1 || m < n || R == NULL || X.elts == NULL ) return ;
+   if( m < 2 || n < 1 || m < n || R == NULL || X.elts == NULL ) return (-1) ;
 
 #undef  A
 #define A(i,j) amat[(i)+(j)*m]
@@ -1683,7 +1864,7 @@ void matrix_qrr( matrix X , matrix *R )
    /* Householder transform each column of A in turn */
 
    for( jj=0 ; jj < n ; jj++ ){
-     if( jj == m-1 ) break ;  /* at last column AND have m==n */
+     if( jj == m1 ) break ;  /* at last column AND have m==n */
      x1 = uvec[jj] = A(jj,jj) ;
      for( sum=0.0,ii=jj+1 ; ii < m ; ii++ ){
        uvec[ii] = alp = A(ii,jj) ; sum += alp*alp ;
@@ -1693,9 +1874,15 @@ void matrix_qrr( matrix X , matrix *R )
      x1 = uvec[jj] -= alp ; A(jj,jj) = alp ;
      alp = 2.0 / (sum+x1*x1) ;
      for( kk=jj+1 ; kk < n ; kk++ ){  /* process trailing columns */
-       for( sum=0.0,ii=jj ; ii < m ; ii++ ) sum += uvec[ii]*A(ii,kk) ;
+       Ak = amat + kk*m ;
+       for( sum=0.0,ii=jj ; ii < m1 ; ii+=2 )
+         sum += uvec[ii]*Ak[ii] + uvec[ii+1]*Ak[ii+1] ;
+       if( ii == m1 ) sum += uvec[m1]*Ak[m1] ;
        sum *= alp ;
-       for( ii=jj ; ii < m ; ii++ ) A(ii,kk) -= sum*uvec[ii] ;
+       for( ii=jj ; ii < m1 ; ii+=2 ){
+         Ak[ii] -= sum*uvec[ii] ; Ak[ii+1] -= sum*uvec[ii+1] ;
+       }
+       if( ii == m1 ) Ak[m1] -= sum*uvec[m1] ;
      }
    }
 
@@ -1711,15 +1898,36 @@ void matrix_qrr( matrix X , matrix *R )
        for( jj=ii ; jj < n ; jj++ ) R->elts[ii][jj] = -A(ii,jj) ;
    }
 
+#if 0
+fprintf(stderr,"matrix_qrr diagonal:") ;
+for( ii=0 ; ii < n ; ii++ ) fprintf(stderr," %g",R->elts[ii][ii]) ;
+fprintf(stderr,"\n") ;
+#endif
+
+#if 0
+   /* adjust tiny (or zero) diagonal elements, for solution stability */
+
+   for( kk=ii=0 ; ii < n ; ii++ ){
+     sum = 0.0 ;
+     for( jj=0    ; jj < ii ; jj++ ) sum += fabs( R->elts[jj][ii] ) ;
+     for( jj=ii+1 ; jj < n  ; jj++ ) sum += fabs( R->elts[ii][jj] ) ;
+     sum = (sum==0.0) ? 1.0 : sum/n ;
+     sum *= 1.e-7 ; alp = R->elts[ii][ii] ;  /* alp >= 0 from above */
+     if( alp < sum ){
+       kk++ ; R->elts[ii][ii] = alp + sum*(sum-alp)/(sum+alp) ;
+     }
+   }
+#endif
+
 #ifdef ENABLE_FLOPS
    flops += n*n*(2*m-0.666*n) ;
 #endif
 
    free((void *)uvec) ; free((void *)amat) ;
-   return ;
+   return (0) ;
 }
 
-/*--- below is a test program for matrix_qrr() ---*/
+/*----------------- below is a test program for matrix_qrr() -----------------*/
 
 #if 0
 #include <stdlib.h>
@@ -1764,17 +1972,21 @@ int main( int argc , char *argv[] )
 
 void vector_rr_solve( matrix R , vector b , vector *x )
 {
-   register int n , ii,jj ;
+   register int n , ii,jj , n1 ;
    register double sum , *xp , *bp , *rr ;
 
-   n = R.rows ;
+   n = R.rows ; n1 = n-1 ;
    if( n < 1 || R.cols != n || x == NULL ) return ;
 
    vector_create_noinit( n , x ) ; xp = x->elts ; bp = b.elts ;
 
+   /* backwards loop, from last element to first */
+
    for( ii=n-1 ; ii >= 0 ; ii-- ){
      rr = R.elts[ii] ; sum = bp[ii] ;
-     for( jj=ii+1 ; jj < n ; jj++ ) sum -= rr[jj] * xp[jj] ;
+     for( jj=ii+1 ; jj < n1 ; jj+=2 )         /* unrolled by 2 */
+       sum -= rr[jj] * xp[jj] + rr[jj+1] * xp[jj+1] ;
+     if( jj == n1 ) sum -= rr[jj] * xp[jj] ;  /* fix unroll if odd length */
      xp[ii] = sum / rr[ii] ;
    }
 
@@ -1786,14 +1998,14 @@ void vector_rr_solve( matrix R , vector b , vector *x )
 
 void vector_rrtran_solve( matrix R , vector b , vector *x )
 {
-   register int n , ii,jj ;
+   register int n , ii,jj , n1 ;
    register double sum , *xp , *bp , *rr ;
 
-   n = R.rows ;
+   n = R.rows ; n1 = n-1 ;
    if( n < 1 || R.cols != n || x == NULL ) return ;
 
    bp = b.elts ;
-#if 0             /* the obvious way */
+#if 0             /* the obvious way, but is slower */
    vector_create_noinit( n , x ) ; xp = x->elts ;
    for( ii=0 ; ii < n ; ii++ ){
      for( sum=bp[ii],jj=0 ; jj < ii ; jj++ )
@@ -1804,9 +2016,59 @@ void vector_rrtran_solve( matrix R , vector b , vector *x )
    vector_equate( b , x ) ; xp = x->elts ;
    for( ii=0 ; ii < n ; ii++ ){
      rr = R.elts[ii] ; sum = xp[ii] = xp[ii] / rr[ii] ;
-     for( jj=ii+1 ; jj < n ; jj++ ) xp[jj] -= rr[jj]*sum ;
+     for( jj=ii+1 ; jj < n1 ; jj+=2 ){     /* unrolled by 2 */
+       xp[jj] -= rr[jj]*sum ; xp[jj+1] -= rr[jj+1]*sum ;
+     }
+     if( jj == n1 ) xp[jj] -= rr[jj]*sum ; /* fix unroll if odd length */
    }
 #endif
 
    return ;
+}
+
+/*---------------------------------------------------------------------------*/
+/*! Solve [R] [X] = [B] for matrix X, where R is upper triangular. */
+
+void matrix_rr_solve( matrix R , matrix B , matrix *X )
+{
+   int n=R.rows , m=B.cols , i,j ;
+   vector u, v ;
+
+   if( R.cols != n || B.rows != n || X == NULL ) return ;
+
+   vector_initialize(&u) ; vector_initialize(&v) ;
+   matrix_create( n , m , X ) ;
+
+   /* extract each column from B, solve, put resulting column into X */
+
+   for( j=0 ; j < m ; j++ ){
+     column_to_vector( B , j , &u ) ;
+     vector_rr_solve( R , u , &v ) ;
+     for( i=0 ; i < n ; i++ ) X->elts[i][j] = v.elts[i] ;
+   }
+   vector_destroy(&v) ; vector_destroy(&u) ; return ;
+}
+
+/*---------------------------------------------------------------------------*/
+/*! Solve [R'] [X] = [B] for matrix X, where R is upper triangular
+    (and so R' is lower triangular). */
+
+void matrix_rrtran_solve( matrix R , matrix B , matrix *X )
+{
+   int n=R.rows , m=B.cols , i,j ;
+   vector u, v ;
+
+   if( R.cols != n || B.rows != n || X == NULL ) return ;
+
+   vector_initialize(&u) ; vector_initialize(&v) ;
+   matrix_create( n , m , X ) ;
+
+   /* extract each column from B, solve, put resulting column into X */
+
+   for( j=0 ; j < m ; j++ ){
+     column_to_vector( B , j , &u ) ;
+     vector_rrtran_solve( R , u , &v ) ;
+     for( i=0 ; i < n ; i++ ) X->elts[i][j] = v.elts[i] ;
+   }
+   vector_destroy(&v) ; vector_destroy(&u) ; return ;
 }

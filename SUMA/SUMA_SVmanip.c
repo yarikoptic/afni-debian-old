@@ -291,7 +291,7 @@ SUMA_SurfaceViewer *SUMA_Alloc_SurfaceViewer_Struct (int N)
          float fv3[3];
          char *eee = getenv("SUMA_Light0Color");
          if (eee && !err) {
-            if (SUMA_StringToNum (eee, fv3, 3) != 3) { 
+            if (SUMA_StringToNum (eee, (void *)fv3, 3, 1) != 3) { 
                err = YUP;
                SUMA_SL_Err("Syntax error in environment\n"
                            "variable SUMA_Light0Color");
@@ -318,7 +318,7 @@ SUMA_SurfaceViewer *SUMA_Alloc_SurfaceViewer_Struct (int N)
          float fv3[3];
          char *eee = getenv("SUMA_AmbientLight");
          if (eee && !err) {
-            if (SUMA_StringToNum (eee, fv3, 3) != 3) { 
+            if (SUMA_StringToNum (eee, (void *)fv3, 3, 1) != 3) { 
                err = YUP;
                SUMA_SL_Err("Syntax error in environment\n"
                            "variable SUMA_AmbientLight");
@@ -344,7 +344,7 @@ SUMA_SurfaceViewer *SUMA_Alloc_SurfaceViewer_Struct (int N)
          float fv3[3];
          char *eee = getenv("SUMA_BackgroundColor");
          if (eee && !err) {
-            if (SUMA_StringToNum (eee, fv3, 3) != 3) { 
+            if (SUMA_StringToNum (eee, (void *)fv3, 3,1) != 3) { 
                err = YUP;
                SUMA_SL_Err("Syntax error in environment\n"
                            "variable SUMA_BackgroundColor");
@@ -384,7 +384,16 @@ SUMA_SurfaceViewer *SUMA_Alloc_SurfaceViewer_Struct (int N)
             else SV->KeyZoomGain = 0.05;
          } else SV->KeyZoomGain = 0.05;
       }
-      
+      {
+         char *eee = getenv("SUMA_KeyNodeJump");
+         if (eee) {
+            int KeyNodeJump = (int)strtod(eee, NULL);
+            if (KeyNodeJump > 0 && KeyNodeJump <= 10) 
+               SV->KeyNodeJump = KeyNodeJump;
+            else SV->KeyNodeJump = 1;
+         } else SV->KeyNodeJump = 1;
+      }
+
       {
          char *eee = getenv("SUMA_FOV_Original");
          if (eee) {
@@ -462,6 +471,7 @@ SUMA_SurfaceViewer *SUMA_Alloc_SurfaceViewer_Struct (int N)
       SV->X->REDISPLAYID = SV->X->MOMENTUMID = 0;
       SV->X->CMAP = 0;
       SV->X->GLXCONTEXT=NULL;
+      SV->X->CrappyDrawable = 0;
       SV->X->gc=NULL;
       SV->X->ToggleCrossHair_View_tglbtn=NULL;
       for (iii=0; iii<SW_N_Tools; ++iii) {
@@ -516,6 +526,9 @@ SUMA_SurfaceViewer *SUMA_Alloc_SurfaceViewer_Struct (int N)
       SV->rdc = SUMA_RDC_NOT_SET;
       
       SV->Blend_Mode = SUMA_NO_BLEND;
+      
+      SV->Do_3Drender = 0;
+      memset(&(SV->SER), 0, sizeof(SUMA_EnablingRecord));
    }
    SUMA_RETURN (SVv);
 }
@@ -1282,6 +1295,10 @@ char *SUMA_SurfaceViewer_StructInfo (SUMA_SurfaceViewer *SV, int detail)
    SS = SUMA_StringAppend_va(SS, "\nBackground Modulation Factor= %f\n", SV->Back_Modfact);
    SS = SUMA_StringAppend_va(SS, "\nLast non mappable visited %d\n", SV->LastNonMapStateID);
    
+   s = SUMA_EnablingState_Info(SV->SER);
+   SS = SUMA_StringAppend_va(SS,"Enabling state in sv->SER\n%s",s); 
+      SUMA_free(s); s = NULL;
+   
    SS = SUMA_StringAppend(SS,"\n");
    
    /* trim SS */
@@ -1520,7 +1537,7 @@ int SUMA_WhichSV (SUMA_SurfaceViewer *sv, SUMA_SurfaceViewer *SVv, int N_SVv)
 }
 
 /* return 1st viewer that is open and has a 
-   particular surface visible
+   particular surface visible AND in focus
 */
 SUMA_SurfaceViewer *SUMA_OneViewerWithSOinFocus(
                               SUMA_SurfaceObject *curSO)
@@ -1545,6 +1562,81 @@ SUMA_SurfaceViewer *SUMA_OneViewerWithSOinFocus(
       }
    }
 
+   SUMA_RETURN(sv);
+}
+
+SUMA_SurfaceViewer *SUMA_OneViewerWithSOVisible(
+                              SUMA_SurfaceObject *curSO)
+{  
+   static char FuncName[]={"SUMA_OneViewerWithSOVisible"};
+   int i=0;
+   SUMA_SurfaceViewer *sv=NULL;
+   
+   SUMA_ENTRY;
+
+   /* look for 1st viewer that is showing this 
+      surface and has this surface in focus*/
+   for (i=0; i<SUMAg_N_SVv; ++i) {
+      if (!SUMAg_SVv[i].isShaded && SUMAg_SVv[i].X->TOPLEVEL) {
+         /* is this viewer showing curSO ? */
+         if (SUMA_isVisibleSO(&(SUMAg_SVv[i]), SUMAg_DOv, curSO)) {
+            sv = &(SUMAg_SVv[i]);
+            SUMA_RETURN(sv);
+         }
+      }
+   }
+
+   SUMA_RETURN(sv);
+}
+
+SUMA_SurfaceViewer *SUMA_OneViewerWithSORegistered(
+                              SUMA_SurfaceObject *curSO)
+{  
+   static char FuncName[]={"SUMA_OneViewerWithSORegistered"};
+   int i=0;
+   SUMA_SurfaceViewer *sv=NULL;
+   
+   SUMA_ENTRY;
+
+   /* look for 1st viewer that is showing this 
+      surface and has this surface in focus*/
+   for (i=0; i<SUMAg_N_SVv; ++i) {
+      if (!SUMAg_SVv[i].isShaded && SUMAg_SVv[i].X->TOPLEVEL) {
+         /* is this viewer showing curSO ? */
+         if (SUMA_isRegisteredSO(&(SUMAg_SVv[i]), SUMAg_DOv, curSO)) {
+            sv = &(SUMAg_SVv[i]);
+            SUMA_RETURN(sv);
+         }
+      }
+   }
+
+   SUMA_RETURN(sv);
+}
+
+SUMA_SurfaceViewer *SUMA_BestViewerForSO(
+                              SUMA_SurfaceObject *curSO)
+{  
+   static char FuncName[]={"SUMA_BestViewerForSO"};
+   int i=0;
+   SUMA_SurfaceViewer *sv=NULL;
+   
+   SUMA_ENTRY;
+   
+   /* best bet, visible, and in focus */
+   if ((sv=SUMA_OneViewerWithSOinFocus(curSO))) {
+      SUMA_RETURN(sv);
+   }
+   /* just visible */
+   if ((sv=SUMA_OneViewerWithSOVisible(curSO))) {
+      SUMA_RETURN(sv);
+   }
+   /* registered */
+   if ((sv=SUMA_OneViewerWithSORegistered(curSO))) {
+      SUMA_RETURN(sv);
+   }
+   /* crap! */
+   sv = &(SUMAg_SVv[0]);
+   
    SUMA_RETURN(sv);
 }
 
@@ -1750,8 +1842,9 @@ SUMA_CommonFields * SUMA_Create_CommonFields ()
 {
    static char FuncName[]={"SUMA_Create_CommonFields"};
    SUMA_CommonFields *cf;
-   int i, portn = -1, n, portn2;
+   int i, portn = -1, n, portn2, portn3, kkk;
    char *eee=NULL;
+   float dsmw=5*60;
    SUMA_Boolean LocalHead = NOPE;
       
    /* This is the function that creates the debugging flags, do not use them here */
@@ -1770,6 +1863,17 @@ SUMA_CommonFields * SUMA_Create_CommonFields ()
    cf->InOut_Notify = NOPE;
    cf->InOut_Level = 0;
    cf->MemTrace = NOPE;
+   
+   /* verify pointer size. I use INT_MAX and LONG_MAX
+   to guess whether or not we have 64 bit pointers.
+   I need to guess with #if to do proper type casting and
+   avoid compiler warnings */
+   cf->PointerSize = sizeof(void *);
+   if (INT_MAX < LONG_MAX && cf->PointerSize < 8) {
+      SUMA_S_Warn("Using INT_MAX and LONG_MAX fails to"
+                  "guess pointer size.");
+   }
+
    #ifdef USE_SUMA_MALLOC
    SUMA_SL_Err("NO LONGER SUPPORTED");
    return(NULL);
@@ -1804,18 +1908,68 @@ SUMA_CommonFields * SUMA_Create_CommonFields ()
       } 
    } else {
       portn2 = portn+1;
+   }
+   
+   eee = getenv("SUMA_MATLAB_LISTEN_PORT");
+   if (eee) {
+      portn3 = atoi(eee);
+      if (portn3 < 1024 ||  portn3 > 65535) {
+         fprintf (SUMA_STDERR, 
+                "Warning %s:\n"
+                "Environment variable SUMA_MATLAB_LISTEN_PORT %d is invalid.\n"
+                "port must be between 1025 and 65534.\n"
+                "Using default of %d\n", 
+                FuncName, portn, SUMA_MATLAB_LISTEN_PORT);
+         portn3 = SUMA_MATLAB_LISTEN_PORT;
+      } 
+   } else {
+      portn3 = SUMA_MATLAB_LISTEN_PORT;
    }   
+      
+   eee = getenv("SUMA_DriveSumaMaxWait");
+   if (eee) {
+      dsmw = atof(eee);
+      if (dsmw < 0 || dsmw > 60000) {
+         fprintf (SUMA_STDERR, 
+                "Warning %s:\n"
+                "Environment variable SUMA_DriveSumaMaxWait %f is invalid.\n"
+                "value must be between 0 and 60000 seconds.\n"
+                "Using default of %d\n", 
+                FuncName, dsmw, 5*60);
+         dsmw = (float)5*60;/* wait for 5 minutes */
+      }
+   } else {
+      dsmw = (float)5*60;
+   } 
     
+   kkk=0;
    for (i=0; i<SUMA_MAX_STREAMS; ++i) {
       cf->ns_v[i] = NULL;
+      switch(i) {
+         case SUMA_DRIVESUMA_LINE:
+            cf->ns_to[i] = (int)(dsmw*1000);  
+            break;
+         default:
+            cf->ns_to[i] = SUMA_WRITECHECKWAITMAX;
+            break;
+      }
       cf->ns_flags_v[i] = 0;
       cf->Connected_v[i] = NOPE;
       cf->TrackingId_v[i] = 0;
       cf->NimlStream_v[i][0] = '\0';
       cf->HostName_v[i][0] = '\0';
-      if (i==0) cf->TCP_port[i] = portn;           /* AFNI listening */
-      else if (i==1) cf->TCP_port[i] = portn2;     /* AFNI listening */
-      else cf->TCP_port[i] = SUMA_TCP_LISTEN_PORT0 + i - 2;   /* SUMA listening */
+      cf->TalkMode[i] = NI_BINARY_MODE;   
+      if (i==SUMA_AFNI_STREAM_INDEX) 
+         cf->TCP_port[SUMA_AFNI_STREAM_INDEX] = portn;           
+            /* AFNI listening */
+      else if (i==SUMA_AFNI_STREAM_INDEX2) 
+         cf->TCP_port[SUMA_AFNI_STREAM_INDEX2] = portn2;     /* AFNI listening */
+      else if (i==SUMA_TO_MATLAB_STREAM_INDEX) 
+         cf->TCP_port[SUMA_TO_MATLAB_STREAM_INDEX] = portn3; /* Matlab listeng */
+      else {
+         cf->TCP_port[i] = SUMA_TCP_LISTEN_PORT0 + kkk;   /* SUMA listening */
+         ++kkk;
+      }
    }
    cf->Listening = NOPE;
    cf->niml_work_on = NOPE;
@@ -1875,20 +2029,38 @@ SUMA_CommonFields * SUMA_Create_CommonFields ()
    cf->X->Log_TextShell = NULL;
    cf->X->FileSelectDlg = NULL;
    cf->X->N_ForeSmooth_prmpt = NULL;
+   cf->X->N_FinalSmooth_prmpt = NULL;
    cf->X->Clip_prmpt = NULL;
    cf->X->ClipObj_prmpt = NULL;
+   cf->X->TableTextFontList = NULL;   
    {
       char *eee = getenv("SUMA_NumForeSmoothing");
       if (eee) {
          int rotval = (int)strtod(eee, NULL);
          if (rotval >= 0) cf->X->NumForeSmoothing = rotval;
          else {
-            fprintf (SUMA_STDERR,   "Warning %s:\n"
-                                    "Bad value for environment variable SUMA_NumForeSmoothing\n"
-                                    "Assuming default of 0", FuncName);
+            fprintf (SUMA_STDERR,   
+               "Warning %s:\n"
+               "Bad value for environment variable SUMA_NumForeSmoothing\n"
+               "Assuming default of 0", FuncName);
             cf->X->NumForeSmoothing = 0;
          }
       } else cf->X->NumForeSmoothing = 0;
+   }
+   
+   {
+      char *eee = getenv("SUMA_NumFinalSmoothing");
+      if (eee) {
+         int rotval = (int)strtod(eee, NULL);
+         if (rotval >= 0) cf->X->NumFinalSmoothing = rotval;
+         else {
+            fprintf (SUMA_STDERR,   
+               "Warning %s:\n"
+               "Bad value for environment variable SUMA_NumFinalSmoothing\n"
+               "Assuming default of 0", FuncName);
+            cf->X->NumFinalSmoothing = 0;
+         }
+      } else cf->X->NumFinalSmoothing = 0;
    }
    
    {
@@ -1939,6 +2111,7 @@ SUMA_CommonFields * SUMA_Create_CommonFields ()
    /*SUMA_ShowMemTrace (cf->Mem, NULL);*/
    #endif
    cf->ROI_mode = NOPE;
+   cf->ROI_contmode = YUP;
    cf->Pen_mode = NOPE;
    
    cf->nimlROI_Datum_type = NI_rowtype_define("SUMA_NIML_ROI_DATUM", "int,int,int,int[#3]");
@@ -2037,6 +2210,13 @@ SUMA_CommonFields * SUMA_Create_CommonFields ()
          cf->CmapRotaFrac = 0.05;
       }
    }
+   
+   cf->xforms = (DList *)SUMA_calloc(1,sizeof(DList));
+   dlist_init (cf->xforms, SUMA_FreeXform);
+   cf->callbacks = (DList *)SUMA_calloc(1,sizeof(DList));
+   dlist_init (cf->callbacks, SUMA_FreeCallback);
+   cf->HoldClickCallbacks = 0;
+   
    return (cf);
 
 }
@@ -2234,6 +2414,7 @@ SUMA_X_SurfCont *SUMA_CreateSurfContStruct (char *idcode_str)
    if (idcode_str) sprintf(SurfCont->owner_id, "%s", idcode_str);
    else SurfCont->owner_id[0] = '\0';
    SurfCont->N_links = 0;
+   SurfCont->Open = 0;
    SurfCont->LinkedPtrType = SUMA_LINKED_SURFCONT_TYPE;
    
    SurfCont->DsetMap_fr = NULL;
@@ -2290,6 +2471,7 @@ SUMA_X_SurfCont *SUMA_CreateSurfContStruct (char *idcode_str)
    SurfCont->PosRef = NULL;
    SurfCont->cmp_ren = 
       (SUMA_CMAP_RENDER_AREA *)SUMA_calloc(1, sizeof(SUMA_CMAP_RENDER_AREA));
+   SurfCont->cmp_ren->CrappyDrawable = 0;
    SurfCont->cmp_ren->cmap_wid = NULL;
    SurfCont->cmp_ren->FOV = SUMA_CMAP_FOV_INITIAL;
    SurfCont->cmp_ren->cmap_context = NULL;
@@ -2392,19 +2574,42 @@ SUMA_Boolean SUMA_Free_CommonFields (SUMA_CommonFields *cf)
    if (cf->ROI_CM) SUMA_Free_ColorMap(cf->ROI_CM); /* free the colormap */ 
    #endif
    cf->ROI_CM = NULL;
-   if (cf->X->FileSelectDlg) SUMA_FreeFileSelectionDialogStruct(cf->X->FileSelectDlg); cf->X->FileSelectDlg = NULL;
-   if (cf->X->SumaCont) SUMA_FreeSumaContStruct (cf->X->SumaCont); cf->X->SumaCont = NULL;
-   if (cf->X->DrawROI) SUMA_FreeDrawROIStruct (cf->X->DrawROI); cf->X->DrawROI = NULL;
-   if (cf->X->N_ForeSmooth_prmpt) SUMA_FreePromptDialogStruct (cf->X->N_ForeSmooth_prmpt); cf->X->N_ForeSmooth_prmpt = NULL;
-   if (cf->X->Clip_prmpt) SUMA_FreePromptDialogStruct (cf->X->Clip_prmpt); cf->X->Clip_prmpt = NULL;
-   if (cf->X->ClipObj_prmpt) SUMA_FreePromptDialogStruct (cf->X->ClipObj_prmpt); cf->X->ClipObj_prmpt = NULL;
+   if (cf->X->FileSelectDlg) 
+      SUMA_FreeFileSelectionDialogStruct(cf->X->FileSelectDlg); 
+   cf->X->FileSelectDlg = NULL;
+   if (cf->X->SumaCont) 
+      SUMA_FreeSumaContStruct (cf->X->SumaCont); 
+   cf->X->SumaCont = NULL;
+   if (cf->X->DrawROI) 
+      SUMA_FreeDrawROIStruct (cf->X->DrawROI); 
+   cf->X->DrawROI = NULL;
+   if (cf->X->N_ForeSmooth_prmpt) 
+      SUMA_FreePromptDialogStruct (cf->X->N_ForeSmooth_prmpt); 
+   cf->X->N_ForeSmooth_prmpt = NULL;
+   if (cf->X->N_FinalSmooth_prmpt) 
+      SUMA_FreePromptDialogStruct (cf->X->N_FinalSmooth_prmpt); 
+   cf->X->N_FinalSmooth_prmpt = NULL;
+   if (cf->X->Clip_prmpt) 
+      SUMA_FreePromptDialogStruct (cf->X->Clip_prmpt); 
+   cf->X->Clip_prmpt = NULL;
+   if (cf->X->ClipObj_prmpt) 
+      SUMA_FreePromptDialogStruct (cf->X->ClipObj_prmpt); 
+   cf->X->ClipObj_prmpt = NULL;
    if (cf->X->SwitchCmapLst) SUMA_FreeScrolledList (cf->X->SwitchCmapLst);
    if (cf->X) free(cf->X); cf->X = NULL;
-   if (cf->MessageList) SUMA_EmptyDestroyList(cf->MessageList); cf->MessageList = NULL;
+   if (cf->MessageList) 
+      SUMA_EmptyDestroyList(cf->MessageList); 
+   cf->MessageList = NULL;
    if (cf->scm) cf->scm = SUMA_DestroyAfniColors (cf->scm); cf->scm = NULL;
    if (cf->DsetList) {
       dlist_destroy(cf->DsetList);  SUMA_free(cf->DsetList); 
       cf->DsetList = NULL;
+   }
+   if (cf->xforms) {
+      dlist_destroy(cf->xforms); SUMA_free(cf->xforms);
+   }
+   if (cf->callbacks) {
+      dlist_destroy(cf->callbacks); SUMA_free(cf->callbacks);
    }
    #ifdef USE_SUMA_MALLOC
    SUMA_SL_Err("NO LONGER SUPPORTED");
@@ -2540,20 +2745,23 @@ char * SUMA_CommonFieldsInfo (SUMA_CommonFields *cf, int detail)
       SS = SUMA_StringAppend_va(SS,"   InOut_Notify = %d\n", cf->InOut_Notify);
       SS = SUMA_StringAppend_va(SS,"   MemTrace = %d\n", cf->MemTrace);
    #endif
+      SS = SUMA_StringAppend_va(SS,"   PointerSize = %d\n", cf->PointerSize);
    
    /* add the displayable objects Info */
    s = SUMA_DOv_Info(SUMAg_DOv, SUMAg_N_DOv, 0);
    SS = SUMA_StringAppend_va(SS, "%s\n", s); SUMA_free(s); s = NULL;
    
    if (cf->DsetList) {
-      SS = SUMA_StringAppend_va(SS, "DsetList (Allow Replacement = %d):\n", cf->Allow_Dset_Replace);
+      SS = SUMA_StringAppend_va( SS, "DsetList (Allow Replacement = %d):\n", 
+                                 cf->Allow_Dset_Replace);
       el = NULL;
       do { 
          if (!el) el = dlist_head(cf->DsetList);
          else el = dlist_next(el);
          dset = (SUMA_DSET *)el->data;
          if (!dset) {
-            SUMA_SLP_Err("Unexpected NULL dset element in list!\nPlease report this occurrence to saadz@mail.nih.gov."); 
+            SUMA_SLP_Err("Unexpected NULL dset element in list!\n"
+                         "Please report this occurrence to saadz@mail.nih.gov.");
          } else {   
            s = SUMA_DsetInfo (dset,0);
            SS = SUMA_StringAppend_va(SS, "\n%s\n", s); SUMA_free(s); s = NULL;    
@@ -2566,10 +2774,19 @@ char * SUMA_CommonFieldsInfo (SUMA_CommonFields *cf, int detail)
    /* add the colormap info */
    if (cf->scm) {
       SS = SUMA_StringAppend(SS, "   Colormaps:\n");
-      SS = SUMA_StringAppend(SS, SUMA_ColorMapVec_Info (cf->scm->CMv, cf->scm->N_maps, detail));
+      s = SUMA_ColorMapVec_Info (cf->scm->CMv, 
+                              cf->scm->N_maps, detail);
+      SS = SUMA_StringAppend_va( SS, "%s\n",s); SUMA_free(s); s = NULL;
    } else {
       SS = SUMA_StringAppend_va(SS, "   No Colormaps.\n");
    }  
+   
+   /* add xforms and callbacks */
+   s = SUMA_Xforms_Info(cf->xforms, detail);
+   SS = SUMA_StringAppend_va( SS, "%s\n",s); SUMA_free(s); s = NULL;
+   s = SUMA_Callbacks_Info(cf->callbacks, detail);
+   SS = SUMA_StringAppend_va( SS, "%s\n",s); SUMA_free(s); s = NULL;
+   
    
    /* clean up */
    SS = SUMA_StringAppend_va(SS, NULL);
@@ -2942,7 +3159,8 @@ void SUMA_UpdateViewerCursor(SUMA_SurfaceViewer *sv)
    if (!sv->X) SUMA_RETURNe;
    if (!sv->X->GLXAREA) SUMA_RETURNe;
    if (SUMAg_CF->ROI_mode) {
-      if (SUMAg_CF->Pen_mode) MCW_set_widget_cursor( sv->X->GLXAREA  , -XC_pencil ) ;
+      if (SUMAg_CF->Pen_mode) 
+         MCW_set_widget_cursor( sv->X->GLXAREA  , -XC_pencil ) ;
       else  MCW_set_widget_cursor( sv->X->GLXAREA  , -XC_target ) ;
    } else {
       MCW_set_widget_cursor( sv->X->GLXAREA  , -XC_top_left_arrow ) ;
@@ -3018,7 +3236,9 @@ void SUMA_UpdateViewerTitle_old(SUMA_SurfaceViewer *sv)
    if (sv->GVS[sv->StdView].ApplyMomentum) sprintf(smoment,":M");
    else smoment[0] = '\0';
    
-   if (LocalHead) fprintf (SUMA_STDERR, "%s: Found %d surface models.\n", FuncName, N_SOlist);
+   if (LocalHead) 
+      fprintf (SUMA_STDERR, 
+               "%s: Found %d surface models.\n", FuncName, N_SOlist);
    
    i = 0; 
    if (N_SOlist >= 0) {   
@@ -3095,7 +3315,7 @@ void SUMA_UpdateViewerTitle(SUMA_SurfaceViewer *sv)
    
    SUMA_LH("Momentum");
    if (sv->GVS[sv->StdView].ApplyMomentum) SS = SUMA_StringAppend_va(SS,":M");
-   
+      
    SUMA_LH("Surf List");
    N_SOlist = SUMA_RegisteredSOs(sv, SUMAg_DOv, SOlist);   
    

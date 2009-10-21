@@ -182,10 +182,15 @@ printf(
 "    -input1D dname     dname = .1D file containing column of p-values      \n"
 "                                                                           \n"
 "    -mask_file mname   Use mask values from file mname.                    \n"
-"                       Note: If file mname contains more than 1 sub-brick, \n"
-"                       the mask sub-brick must be specified!               \n"
+"     *OR*              Note: If file mname contains more than 1 sub-brick, \n"
+"    -mask mname        the mask sub-brick must be specified!               \n"
 "                       Default: No mask                                    \n"
-"                       N.B.: may also be abbreviated to '-mask'            \n"
+"                     ** Generally speaking, you really should use a mask   \n"
+"                        to avoid counting non-brain voxels.  However, with \n"
+"                        the changes described below, the program will      \n"
+"                        automatically ignore voxels where the statistics   \n"
+"                        are set to 0, so if the program that created the   \n"
+"                        dataset used a mask, then you don't need one here. \n"
 "                                                                           \n"
 "    -mask_thr m        Only voxels whose corresponding mask value is       \n"
 "                       greater than or equal to m in absolute value will   \n"
@@ -219,12 +224,12 @@ printf(
 "     process tends to increase the q-values and so decrease the z-scores.\n"
 "\n"
 " * The array of voxel p-values are now sorted via Quicksort, rather than\n"
-"     by binning, as in the old mode.  This probably has no discernible\n"
-"     effect on the results.\n"
+"     by binning, as in the old mode.  This (by itself) probably has no\n"
+"     discernible effect on the results, but should be faster.\n"
 "\n"
 "New Options:\n"
 "------------\n"
-"    -old     = Use the old mode of operation\n"
+"    -old     = Use the old mode of operation (for compatibility/nostalgia)\n"
 "    -new     = Use the new mode of operation [now the default]\n"
 "                N.B.: '-list' does not work in the new mode!\n"
 "    -pmask   = Instruct the program to ignore p=1 voxels\n"
@@ -235,18 +240,18 @@ printf(
 "                     with '-new', and so don't need to be explicitly\n"
 "                     masked with the '-mask' option.\n"
 "    -nopmask = Instruct the program to count p=1 voxels\n"
-"                [the default in the old mode, but not in the new mode]\n"
+"                [the default in the old mode, but NOT in the new mode]\n"
 "    -force   = Force the conversion of all sub-bricks, even if they\n"
 "                are not marked as with a statistical code; such\n"
 "                sub-bricks are treated as though they were p-values.\n"
 "    -float   = Force the output of z-scores in floating point format.\n"
 "    -qval    = Force the output of q-values rather than z-scores.\n"
 "                N.B.: A smaller q-value is more significant!\n"
-"                [-float is recommended when -qval is used]\n"
+"                [-float is strongly recommended when -qval is used]\n"
 "\n"
 "* To be clear, you can use '-new -nopmask' to have the new mode of computing\n"
 "   carried out, but with p=1 voxels included (which should give results\n"
-"   virtually identical to '-old').\n"
+"   nearly identical to '-old').\n"
 "\n"
 "* Or you can use '-old -pmask' to use the old mode of computing but where\n"
 "   p=1 voxels are not counted (which should give results virtually\n"
@@ -254,7 +259,7 @@ printf(
 "\n"
 "* However, the combination of '-new', '-nopmask' and '-mask_file' does not\n"
 "   work -- if you try it, '-pmask' will be turned back on and a warning\n"
-"   message printed to aid your path elucidation and enlightenment.\n"
+"   message printed to aid your path towards elucidation and enlightenment.\n"
 "\n"
 "Other Notes:\n"
 "------------\n"
@@ -267,6 +272,9 @@ printf(
 "       3dcalc -a stat+orig -b mask+orig -expr 'a*step(b)' -prefix statmm\n"
 "   - '-addFDR' runs as if '-new -pmask' were given to 3dFDR, so that\n"
 "     stat values == 0 are ignored in the FDR calculations.\n"
+"   - most AFNI statistical programs now automatically add FDR curves to\n"
+"     the output dataset header, so you can see the q-value as you adjust\n"
+"     the threshold slider.\n"
 "\n"
 "* q-values are estimates of the False Discovery Rate at a given threshold;\n"
 "   that is, about 5%% of all voxels with q <= 0.05 (z >= 1.96) are\n"
@@ -283,12 +291,30 @@ printf(
 "   probability of the unit Gaussian N(0,1) distribution; that is, z(q)\n"
 "   is the value such that if x is a N(0,1) random variable, then\n"
 "   Prob[|x|>z] = q: for example, z(0.05) = 1.95996.\n"
+"  The reason for using z-scores here is simply that their range is\n"
+"   highly compressed relative to the range of q-values\n"
+"   (e.g., z(1e-9) = 6.10941), so z-scores are easily stored as shorts,\n"
+"   whereas q-values are much better stored as floats.\n"
 "\n"
-"* cf. http://en.wikipedia.org/wiki/False_discovery_rate\n"
+"* Changes above by RWCox -- 18 Jan 2008 == Cary Grant's Birthday!\n"
+"\n"
+"26 Mar 2009 -- Yet Another Change [RWCox]\n"
+"-----------------------------------------\n"
+"* FDR calculations in AFNI now 'adjust' the q-values downwards by\n"
+"   estimating the number of true negatives [m0 in the statistics\n"
+"   literature], and then reporting\n"
+"     q_new = q_old * m0 / m, where m = number of voxels being tested.\n"
+"   If you do NOT want this adjustment, then set environment variable\n"
+"   AFNI_DONT_ADJUST_FDR to YES.  You can do this on the 3dFDR command\n"
+"   line with the option '-DAFNI_DONT_ADJUST_FDR=YES'\n"
+"\n"
+"For Further Reading and Amusement\n"
+"---------------------------------\n"
+"* cf. http://en.wikipedia.org/wiki/False_discovery_rate [Easy overview of FDR]\n"
+"* cf. http://dx.doi.org/10.1093/bioinformatics/bti448   [False Negative Rate]\n"
+"* cf. http://dx.doi.org/10.1093/biomet/93.3.491         [m0 adjustment idea]\n"
+"* cf. C implementation in mri_fdrize.c                  [trust in the Source]\n"
 "* cf. http://afni.nimh.nih.gov/pub/dist/doc/misc/FDR/FDR_Jan2008.pdf\n"
-"* cf. C source code in mri_fdrize.c\n"
-"* changes by RWCox -- 18 Jan 2008 == Cary Grant's Birthday!\n"
-"\n"
 ) ;
 
    PRINT_COMPILE_DATE ;
@@ -1122,34 +1148,6 @@ void process_1ddata ()
 
 }
 
-
-/*---------------------------------------------------------------------------*/
-/*
-  Convert one volume to another type, autoscaling:
-     nxy   = # voxels
-     itype = input datum type
-     ivol  = pointer to input volume
-     otype = output datum type
-     ovol  = pointer to output volume (again, must be pre-malloc-ed)
-  Return value is the scaling factor used (0.0 --> no scaling).
-*/
-
-float EDIT_coerce_autoscale_new( int nxyz ,
-				 int itype,void *ivol , int otype,void *ovol )
-{
-  float fac=0.0 , top ;
-  
-  if( MRI_IS_INT_TYPE(otype) ){
-    top = MCW_vol_amax( nxyz,1,1 , itype,ivol ) ;
-    if (top == 0.0)  fac = 0.0;
-    else  fac = MRI_TYPE_maxval[otype]/top;
-  }
-  
-  EDIT_coerce_scale_type( nxyz , fac , itype,ivol , otype,ovol ) ;
-  return ( fac );
-}
-
-
 /*---------------------------------------------------------------------------*/
 /*
   Perform all processing for this sub-brick.
@@ -1191,6 +1189,9 @@ void process_subbrick (THD_3dim_dataset * dset, int ibrick)
 				      DSET_BRICK_TYPE(dset,ibrick), vfim);  
     if (factor < EPSILON)  factor = 0.0;
     else factor = 1.0 / factor;
+    if( DSET_BRICK_TYPE(dset,ibrick) == MRI_short )
+      EDIT_misfit_report( DSET_FILECODE(dset) , ibrick ,
+                          FDR_nxyz , factor , vfim , ffim ) ;
   } else {                          /*** if -float was given ***/
     EDIT_substitute_brick( dset , ibrick , MRI_float , ffim ) ;
     ffim = NULL ; factor = 0.0f ;
@@ -1336,8 +1337,3 @@ int main( int argc , char * argv[] )
   
   exit(0) ;
 }
-
-
-/*---------------------------------------------------------------------------*/
-
-

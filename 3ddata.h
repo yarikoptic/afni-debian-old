@@ -135,6 +135,19 @@ extern "C" {
 
 #define ILLEGAL_TYPE -666
 
+/* define the max length of a string input to realpath() */
+
+#undef  RPMAX
+#define RPMAX 4096
+#if defined(PATH_MAX) && PATH_MAX > RPMAX
+# undef  RPMAX
+# define RPMAX PATH_MAX
+#endif
+#if defined(MAXPATHLEN) && MAXPATHLEN > RPMAX
+# undef  RPMAX
+# define RPMAX MAXPATHLEN
+#endif
+
 /***************  generic function with no return value  **********************/
 
 /*! Generic function type returning void. */
@@ -192,6 +205,11 @@ typedef struct {
 /*! Combine two interpreted tokens into one using TWO_TWO. */
 
 #define TWO_TWO(x,y) TWO_ONE(x,y)
+
+/*! Zero out a variable */
+
+#undef  ZZME
+#define ZZME(x) memset(&(x),0,sizeof(x))
 
 /*! Copy n units of the given type "type * ptr", into a structure "str",
      starting at byte offset "off";
@@ -980,6 +998,8 @@ typedef struct {
       char directory_name[THD_MAX_NAME] ;  /*!< contain all files for this dataset */
       char header_name[THD_MAX_NAME] ;     /*!< contains attributes */
       char brick_name[THD_MAX_NAME] ;      /*!< THIS contains actual data volumes */
+
+      int  allow_directwrite ;             /* 08 May 2009 -- Star Trek Day! */
 } THD_diskptr ;
 
 #define ATRNAME_BYTEORDER "BYTEORDER_STRING"
@@ -1058,9 +1078,10 @@ extern void THD_delete_diskptr( THD_diskptr * ) ;
 typedef struct {
   int code , ival , flags ;
   float param[VEDIT_NPARAM] ;
+  void *exinfo ;
 } VEDIT_settings ;
 
-#define VEDIT_CLUST  1   /* param= ithr,thr,rmm,vmul */
+#define VEDIT_CLUST    1   /* param= ithr,thr,rmm,vmul  exinfo=NULL */
 #define VEDIT_LASTCODE 1
 
 #define VEDIT_IVAL(vv)      ((vv).ival)
@@ -1143,6 +1164,7 @@ typedef struct {
       MRI_IMAGE *vedim ;      /*!< Volume edit-on-the-fly result */
 
       floatvec **brick_fdrcurve ; /*!< FDR z(q) as a function of statistic */
+      floatvec **brick_mdfcurve ; /*!< FDR mdf as a function of log10(p) */
 
 } THD_datablock ;
 
@@ -1721,7 +1743,9 @@ static char * UNITS_TYPE_labelstring[] = { "ms" , "s" , "Hz" } ;
 
 /*! Return a string for the units of the uu-th time unit type. */
 
-#define UNITS_TYPE_LABEL(uu) UNITS_TYPE_labelstring[(uu)-UNITS_MSEC_TYPE]
+#define UNITS_TYPE_LABEL(uu) ( ((uu)<UNITS_MSEC_TYPE || (uu)>UNITS_HZ_TYPE) ? \
+                                 "none" : \
+                                 UNITS_TYPE_labelstring[(uu)-UNITS_MSEC_TYPE] )
 
 /*! Struct to hold information about the time axis of a 3D+time datset.
 
@@ -2429,8 +2453,8 @@ typedef struct THD_3dim_dataset {
 #define ISVALID_3DIM_DATASET(ds)                       \
    ( (ds) != NULL && (ds)->type >= FIRST_3DIM_TYPE  && \
                      (ds)->type <= LAST_3DIM_TYPE   && \
-                 (ds)->view_type >= FIRST_VIEW_TYPE && \
-                 (ds)->view_type <= LAST_VIEW_TYPE  && \
+                (ds)->view_type >= FIRST_VIEW_TYPE &&  \
+                (ds)->view_type <= LAST_VIEW_TYPE  &&  \
       ISVALID_DATABLOCK((ds)->dblk)                     )
 
 /*! Determine if ds is a pointer to a valid dataset. */
@@ -2643,9 +2667,9 @@ typedef struct THD_3dim_dataset {
 #define DSET_WRITEABLE(ds)       \
  ( ISVALID_DSET(ds)          &&  \
    ISVALID_DBLK((ds)->dblk)  &&  \
-   (ds)->warp_parent != NULL &&  \
    !DSET_IS_MINC(ds)         &&  \
-   !DSET_IS_ANALYZE(ds)        )
+   !DSET_IS_ANALYZE(ds)      &&  \
+   ( (ds)->warp_parent != NULL || (ds)->dblk->diskptr->allow_directwrite==1 ) )
 
 /*! Determine if dataset ds is stored in a compressed format */
 
@@ -2814,6 +2838,10 @@ extern int    THD_deconflict_prefix( THD_3dim_dataset * ) ;          /* 23 Mar 2
 
 #define DSET_NVOX(ds) ( (ds)->daxes->nxx * (ds)->daxes->nyy * (ds)->daxes->nzz )
 
+/*! Return total size of dataset in bytes. */
+
+#define DSET_TOTALBYTES(ds) ((ds)->dblk->total_bytes)
+
 /*! Return number of voxels along x-axis of dataset ds */
 
 #define DSET_NX(ds) ((ds)->daxes->nxx)
@@ -2904,6 +2932,11 @@ extern int    THD_deconflict_prefix( THD_3dim_dataset * ) ;          /* 23 Mar 2
 /*! Convert a triple-index (ix,jy,kz) to a single 3D index for dataset ds */
 
 #define DSET_ixyz_to_index(ds,ix,jy,kz) ((ix)+((jy)+(kz)*(ds)->daxes->nyy)*(ds)->daxes->nxx)
+
+#define DAXES_index_to_ix(da,ii)         (  (ii) % (da)->nxx)
+#define DAXES_index_to_jy(da,ii)         ( ((ii) / (da)->nxx) % (da)->nyy )
+#define DAXES_index_to_kz(da,ii)         (  (ii) /((da)->nxx * (da)->nyy ))
+#define DAXES_ixyz_to_index(da,ix,jy,kz) ((ix)+((jy)+(kz)*(da)->nyy)*(da)->nxx)
 
 /*! Determine if dataset ds has cubical voxels */
 
@@ -3061,9 +3094,35 @@ static char tmp_dblab[8] ;
 
 #define DSET_BRICK_FDRCURVE_ALLKILL(ds) DBLK_BRICK_FDRCURVE_ALLKILL((ds)->dblk)
 
+/*---- same for MDF curves [22 Oct 2008] -----*/
+
+#define DBLK_BRICK_MDFCURVE(db,ii) \
+ ( ((db)->brick_mdfcurve==NULL) ? NULL : (db)->brick_mdfcurve[ii] )
+
+#define DSET_BRICK_MDFCURVE(ds,ii) DBLK_BRICK_MDFCURVE((ds)->dblk,(ii))
+
+#define DBLK_BRICK_MDFCURVE_KILL(db,ii)                                      \
+ do{ if( (db)->brick_mdfcurve != NULL ){                                     \
+       floatvec *fv = (db)->brick_mdfcurve[ii] ;                             \
+       if( fv != NULL ){ KILL_floatvec(fv); (db)->brick_mdfcurve[ii]=NULL; } \
+ }} while(0)
+
+#define DSET_BRICK_MDFCURVE_KILL(ds,ii) DBLK_BRICK_MDFCURVE_KILL((ds)->dblk,(ii))
+
+#define DBLK_BRICK_MDFCURVE_ALLKILL(db)                                    \
+ do{ if( (db)->brick_mdfcurve != NULL ){                                   \
+      int qq;                                                              \
+      for( qq=0; qq < (db)->nvals; qq++ ) DBLK_BRICK_MDFCURVE_KILL(db,qq); \
+      free((db)->brick_mdfcurve) ; (db)->brick_mdfcurve = NULL ;           \
+ }} while(0)
+
+#define DSET_BRICK_MDFCURVE_ALLKILL(ds) DBLK_BRICK_MDFCURVE_ALLKILL((ds)->dblk)
+
 extern int   THD_create_one_fdrcurve( THD_3dim_dataset *, int ) ;
 extern int   THD_create_all_fdrcurves( THD_3dim_dataset * ) ;
 extern float THD_fdrcurve_zval( THD_3dim_dataset *, int, float ) ;
+extern float THD_mdfcurve_mval( THD_3dim_dataset *, int, float ) ;
+extern int THD_count_fdrwork( THD_3dim_dataset *dset ) ; /* 12 Nov 2008 */
 
 /*! Macro to load the self_name and labels of a dataset
     with values computed from the filenames;
@@ -3157,6 +3216,9 @@ extern float THD_fdrcurve_zval( THD_3dim_dataset *, int, float ) ;
     Does not delete from disk
 */
 #define DSET_delete(ds) THD_delete_3dim_dataset((ds),False)
+
+#define DSET_deletepp(ds) \
+  do{ THD_delete_3dim_dataset((ds),False); myXtFree((ds)); } while(0)
 
 /*! Write dataset ds to disk.
 
@@ -3677,6 +3739,7 @@ extern XtPointer_array * THD_init_alldir_datablocks( char * ) ;
 extern THD_session * THD_init_session( char * ) ;
 extern void          THD_order_session( THD_session * ) ;   /* 29 Jul 2003 */
 
+extern char * Add_plausible_path(char *fname);              /* ZSS:Aug. 08 */
 extern THD_3dim_dataset * THD_open_one_dataset( char * ) ;
 extern THD_3dim_dataset * THD_open_dataset( char * ) ;      /* 11 Jan 1999 */
 extern THD_3dim_dataset * THD_open_minc( char * ) ;         /* 29 Oct 2001 */
@@ -3697,6 +3760,8 @@ extern THD_3dim_dataset * THD_niml_3D_to_dataset( NI_element *, char * ) ;
 extern THD_3dim_dataset * THD_ni_surf_dset_to_afni( NI_group *, int ) ;
 extern void * read_niml_file( char *, int ) ;
 extern int    storage_mode_from_niml( void * ) ;
+extern int    niml_get_major_label_order( char * ) ;        /* 28 Jul 2009 */
+
 
 extern int        NI_write_gifti( NI_group *, char * , int);
 extern NI_group * NI_read_gifti( char * , int ) ;
@@ -3719,6 +3784,7 @@ extern void MCW_intlist_allow_negative( int ) ;             /* 22 Nov 1999 */
 
 /* copy a dataset, given a list of sub-bricks          [rickr] 26 Jul 2004 */
 extern THD_3dim_dataset * THD_copy_dset_subs( THD_3dim_dataset * , int * ) ;
+extern THD_3dim_dataset * THD_copy_one_sub  ( THD_3dim_dataset * , int ) ;
 
 /*! Help string to explain dataset "mastering" briefly. */
 
@@ -4008,6 +4074,7 @@ typedef struct FD_brick {
    char namecode[32] ;          /*!< June 1997 */
 
    XtPointer parent ;           /*!< struct owner */
+   XtPointer brother;
 } FD_brick ;
 
 /*! rotate the three numbers (a,b,c) to (b,c,a) into (na,nb,nc) */
@@ -4031,7 +4098,94 @@ extern MRI_IMAGE * THD_extract_series( int , THD_3dim_dataset * , int ) ;
 extern MRI_IMARR * THD_extract_many_series( int, int *, THD_3dim_dataset * );
 extern MRI_IMAGE * THD_dset_to_1Dmri( THD_3dim_dataset *dset ) ;
 
-extern int THD_extract_array( int, THD_3dim_dataset *, int, void * ) ;
+/*---------------------------------------------------------------------------*/
+
+typedef struct {
+  int    nvec , nvals , ignore ;
+  int   *ivec ;
+  float *fvec ;
+  int    nx,ny,nz ;
+  float  dx,dy,dz , dt ;
+} MRI_vectim ;
+
+#undef  MAKE_VECTIM
+#define MAKE_VECTIM(nam,nvc,nvl)                                  \
+ do{ (nam) = (MRI_vectim *)malloc(sizeof(MRI_vectim)) ;           \
+     (nam)->nvec  = (nvc) ;                                       \
+     (nam)->nvals = (nvl) ;                                       \
+     (nam)->ivec  = (int *)  malloc(sizeof(int)  *(nvc)) ;        \
+     (nam)->fvec  = (float *)malloc(sizeof(float)*(nvc)*(nvl)) ;  \
+ } while(0)
+
+#undef  ISVALID_VECTIM
+#define ISVALID_VECTIM(mv)                                        \
+ ( (mv) != NULL && (mv)->ivec != NULL && (mv)->fvec != NULL )
+
+#undef  VECTIM_PTR
+#define VECTIM_PTR(mv,j) ((mv)->fvec + (j)*(mv)->nvals)
+
+#undef  VECTIM_extract
+#define VECTIM_extract(mv,j,aa) \
+  memcpy( (aa) , VECTIM_PTR((mv),(j)) , sizeof(float)*(mv)->nvals )
+
+#undef  VECTIM_insert
+#define VECTIM_insert(mv,j,aa) \
+  memcpy( VECTIM_PTR((mv),(j)) , (aa) , sizeof(float)*(mv)->nvals )
+
+#undef  VECTIM_destroy
+#define VECTIM_destroy(mv)                       \
+ do{ if( (mv)->fvec != NULL ) free((mv)->fvec);  \
+     if( (mv)->ivec != NULL ) free((mv)->ivec);  \
+     free((mv)); (mv) = NULL;                    \
+ } while(0)
+
+extern MRI_vectim * THD_dset_to_vectim( THD_3dim_dataset *dset, byte *mask, int ignore );
+extern int64_t THD_vectim_size( THD_3dim_dataset *dset , byte *mask ) ;
+extern int THD_vectim_ifind( int iv , MRI_vectim *mrv ) ;
+extern int bsearch_int( int tt , int nar , int *ar ) ;
+extern void THD_vectim_to_dset( MRI_vectim *mrv , THD_3dim_dataset *dset ) ;
+
+extern void mri_blur3D_vectim( MRI_vectim *vim , float fwhm ) ;
+extern void THD_vectim_normalize( MRI_vectim *mrv ) ;
+extern void THD_vectim_dotprod( MRI_vectim *mrv, float *vec, float *dp, int ata ) ;
+
+extern int THD_vectim_subset_average( MRI_vectim *mrv, int nind, int *ind, float *ar );
+
+typedef struct {
+  THD_3dim_dataset *dset , *mset ;
+  byte *mmm ;
+  MRI_IMAGE *gortim ;
+  int ignore , automask , mindex ;
+  float fbot , ftop , blur , sblur ;
+  MRI_vectim *mv ;
+  char *prefix ; int ndet ;
+  float *tseed ;
+} ICOR_setup ;
+
+#undef  INIT_ICOR_setup
+#define INIT_ICOR_setup(is) (is) = (ICOR_setup *)calloc(1,sizeof(ICOR_setup))
+
+#undef  ISVALID_ICOR_setup
+#define ISVALID_ICOR_setup(is) ( (is) != NULL && (is)->mv != NULL )
+
+#undef  DESTROY_ICOR_setup
+#define DESTROY_ICOR_setup(is)                               \
+ do{ if( (is) != NULL ){                                     \
+       if( (is)->mmm    != NULL ) free((is)->mmm) ;          \
+       if( (is)->gortim != NULL ) mri_free((is)->gortim) ;   \
+       if( (is)->mv     != NULL ) VECTIM_destroy((is)->mv) ; \
+       if( (is)->prefix != NULL ) free((is)->prefix) ;       \
+       if( (is)->tseed  != NULL ) free((is)->tseed) ;        \
+       free((is)) ; (is) = NULL ;                            \
+ }} while(0)
+
+extern int         THD_instacorr_prepare( ICOR_setup *iset ) ;
+extern MRI_IMAGE * THD_instacorr        ( ICOR_setup *iset, int ijk, int ata ) ;
+
+/*---------------------------------------------------------------------------*/
+
+extern int THD_extract_array      ( int, THD_3dim_dataset *, int, void * ) ;
+extern int THD_extract_float_array( int, THD_3dim_dataset *, float * ) ;
 
 extern MRI_IMAGE * THD_extract_float_brick( int , THD_3dim_dataset * ) ;
 
@@ -4053,6 +4207,7 @@ extern floatvec * THD_fitter_fitts( int npt, floatvec *fv,
 
 extern void       THD_fitter_do_fitts(int qq) ;
 extern floatvec * THD_retrieve_fitts(void) ;
+extern void       THD_fitter_voxid( int i ) ;  /* 10 Sep 2008 */
 
 /*--------------- routines that are in thd_detrend.c ---------------*/
 
@@ -4119,14 +4274,38 @@ extern FD_brick * THD_oriented_brick( THD_3dim_dataset *, char *) ; /* 07 Dec 20
 extern int thd_floatscan  ( int , float *   ) ; /* 30 Jul 1999 */
 extern int thd_complexscan( int , complex * ) ; /* 14 Sep 1999 */
 
+#undef floatfix
+#ifdef isfinite
+# define floatfix(x) if( !isfinite(x) ) (x) = 0.0f ; else
+#else
+# define floatfix(x) if( !finite(x) ) (x) = 0.0f ; else
+#endif
+
 extern int mri_floatscan  ( MRI_IMAGE * ) ;     /* 22 Feb 2007 */
 extern int imarr_floatscan( MRI_IMARR * ) ;
 extern int dblk_floatscan ( THD_datablock * ) ;
 extern int dset_floatscan ( THD_3dim_dataset * ) ;
 
+#undef  BAD_FLOAT
+#define BAD_FLOAT(xx) thd_floatscan(1,&(xx))    /* 31 Dec 2008 */
+
+#define BOXLEN    7  /* number of values to define a box */
+#define BOX_XYZ   1
+#define BOX_DIC   2
+#define BOX_NEU   3
+#define BOX_IJK   4
+#define BALL_XYZ 11
+#define BALL_DIC 12
+#define BALL_NEU 13
+
+extern int THD_parse_boxball( int *, float **, char **) ;
+extern byte * THD_boxballmask( THD_3dim_dataset *, int, float * ) ;
+
 extern byte * THD_makemask( THD_3dim_dataset *, int,float,float) ;
-extern int    THD_makedsetmask( THD_3dim_dataset *, int,float,float, byte*cmask) ;
-extern int *THD_unique_vals( THD_3dim_dataset *mask_dset , int miv, int *n_unique, byte*cmask );
+extern int    THD_makedsetmask( THD_3dim_dataset *, int,float,float, byte* ) ;
+extern int *THD_unique_vals( THD_3dim_dataset *mask_dset, int miv,
+                              int *n_unique, byte*cmask );
+extern int THD_mask_remove_isolas( int nx, int ny, int nz , byte *mmm ) ;
 
 extern int    THD_countmask( int , byte * ) ;
 extern byte * THD_automask( THD_3dim_dataset * ) ;         /* 13 Aug 2001 */
@@ -4134,6 +4313,11 @@ extern void   THD_automask_verbose( int ) ;                /* 28 Oct 2003 */
 extern void   THD_automask_extclip( int ) ;
 extern byte * mri_automask_image( MRI_IMAGE * ) ;          /* 05 Mar 2003 */
 extern byte * mri_automask_imarr( MRI_IMARR * ) ;          /* 18 Nov 2004 */
+extern int    mask_intersect_count( int, byte *, byte * ); /* 30 Mar 2009 */
+extern int    mask_union_count    ( int, byte *, byte * ); /* 30 Mar 2009 */
+extern int    mask_count          ( int, byte * ) ;
+extern float_triple mask_rgyrate( int nx, int ny, int nz , byte *mmm ) ;
+
 
                                                    /* 13 Nov 2006 [rickr] */
 extern int    thd_mask_from_brick(THD_3dim_dataset *, int, float, byte **, int);
@@ -4172,6 +4356,7 @@ extern MRI_IMAGE * THD_median_brick( THD_3dim_dataset * ) ;  /* 12 Aug 2001 */
 extern MRI_IMAGE * THD_mad_brick   ( THD_3dim_dataset * ) ;  /* 07 Dec 2006 */
 extern MRI_IMAGE * THD_mean_brick  ( THD_3dim_dataset * ) ;  /* 15 Apr 2005 */
 extern MRI_IMAGE * THD_rms_brick   ( THD_3dim_dataset * ) ;  /* 15 Apr 2005 */
+extern MRI_IMAGE * THD_aveabs_brick( THD_3dim_dataset * ) ;  /* 11 May 2009 */
 
 extern MRI_IMARR * THD_medmad_bricks   (THD_3dim_dataset *); /* 07 Dec 2006 */
 extern MRI_IMARR * THD_meansigma_bricks(THD_3dim_dataset *); /* 07 Dec 2006 */
@@ -4316,6 +4501,11 @@ extern void quint_shift( int , float , float *) ;
 
 extern void THD_fftshift( THD_3dim_dataset *, float,float,float, int ) ;
 
+extern int THD_bandpass_vectors( int nlen, int nvec, float **vec, /* 30 Apr 2009 */
+                                 float dt, float fbot, float ftop,
+                                 int qdet, int nort, float **ort ) ;
+extern int THD_bandpass_OK( int nx, float dt, float fbot, float ftop, int verb ) ;
+
   /*-- see mri_3dalign.c for these routines --*/
 
 /*! Struct that holds information used during 3D registration. */
@@ -4350,6 +4540,10 @@ extern MRI_IMARR * mri_3dalign_many( MRI_IMAGE *, MRI_IMAGE * , MRI_IMARR *,
 extern void mri_3dalign_cleanup( MRI_3dalign_basis * ) ;
 
 extern void mri_3dalign_initvals( float,float,float,float,float,float ) ;
+
+extern MRI_IMARR * mri_3dalign_oneplus( MRI_3dalign_basis * , MRI_IMARR * ,
+                                        float *, float *, float *,
+                                        float *, float *, float * ) ;
 
 /*---------------------------------------------------------------------*/
 
@@ -4404,6 +4598,7 @@ extern MRI_IMAGE * mri_warp3D_align_one    ( MRI_warp3D_align_basis *, MRI_IMAGE
 extern void        mri_warp3D_align_cleanup( MRI_warp3D_align_basis * ) ;
 
 extern void THD_check_AFNI_version(char *) ;  /* 26 Aug 2005 */
+extern void THD_death_setup( int msec ) ;     /* 14 Sep 2009 */
 
 /*---------------------------------------------------------------------*/
 
@@ -4549,7 +4744,16 @@ extern void   UNIQ_idcode_fill(char *) ;
 
 /*------------------------------------------------------------------------*/
 
-extern char * TT_whereami( float , float , float ) ;
+typedef enum { UNKNOWN_SPC=0, /*!< Dunno */
+               AFNI_TLRC_SPC, /*!< The Classic */
+               MNI_SPC,       /*!< A la Canadienne */
+               MNI_ANAT_SPC,  /*!< Mit viele liebe */
+
+               NUMBER_OF_SPC  /*!< A flag for the number of spaces,
+                                    leave for last */
+               } AFNI_STD_SPACES;
+
+extern char * TT_whereami( float , float , float, AFNI_STD_SPACES ) ;
 extern char * TT_whereami_old( float , float , float ) ;
 extern int  TT_load_atlas (void);
 extern void TT_purge_atlas(void);
@@ -4627,13 +4831,31 @@ extern void clear_2Dhist     ( void ) ;
 extern void build_2Dhist( int n , float xbot,float xtop,float *x ,
                           float ybot,float ytop,float *y , float *w ) ;
 
-extern void set_2Dhist_xybin( int nb , float *xb , float *yb ) ;  /* 07 May 2007 */
+extern void set_2Dhist_xybin( int nb, float *xb, float *yb ) ; /* 07 May 2007 */
 extern int get_2Dhist_xybin( float **xb , float **yb ) ;
 extern void set_2Dhist_xybin_eqwide( int,float,float,float,float ) ;
 extern void set_2Dhist_xybin_eqhigh( int,int,float *,float * ) ;
 extern void set_2Dhist_xyclip      ( int, float *, float * ) ;
 extern int  get_2Dhist_xyclip      ( float *, float *, float *, float * ) ;
 
+extern MRI_IMAGE *build_byteized_vectors( int n ,              /* 02 Mar 2009 */
+                                          float xbot,float xtop,float *x ,
+                                          float ybot,float ytop,float *y  ) ;
+
+/*------------------------------------------------------------------------*/
+/* Stuff for compression via zlib - see zfun.c - 02 Mar 2009 == snow day! */
+
+extern void zz_compress_dosave( int ii );
+extern void zz_compress_dlev( int ii );
+extern int zz_compress_some( int nsrc, void *ptr );
+extern int zz_compress_all( int nsrc , char *src , char **dest );
+extern int zz_uncompress_some( int nsrc, char *src, int ndest, char *dest );
+extern int zz_uncompress_all( int nsrc , byte *src , char **dest );
+extern MRI_IMAGE * zz_ncd_many( int nar , int *nsrc , char **src );
+extern float zz_ncd_pair( int n1 , char *s1 , int n2 , char *s2 );
+extern float THD_ncdfloat( int n , float *x , float *y );
+extern float THD_ncdfloat_scl( int n , float xbot,float xtop,float *x ,
+                                       float ybot,float ytop,float *y  );
 
 /*------------------------------------------------------------------------*/
 
@@ -4672,6 +4894,9 @@ extern NI_element * NI_find_element_by_aname(NI_group *,char *,char *,char *);
 
 extern void       THD_dblkatr_from_niml( NI_group *, THD_datablock * ) ;
 extern void       THD_set_dataset_attributes( THD_3dim_dataset * ) ;
+
+extern char     * THD_make_statsym_string(THD_3dim_dataset *, int);
+extern char     * unescape_unix_str(const char *);
 
 extern THD_3dim_dataset * THD_niml_to_dataset( NI_group * , int ) ;
 extern int THD_add_bricks( THD_3dim_dataset * , void * ) ;

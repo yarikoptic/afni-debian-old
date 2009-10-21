@@ -379,13 +379,10 @@ ENTRY("get_surf_data");
 
         if ((sopt->norm_dir == V2S_NORM_DEFAULT) && check_norm_dirs(sopt, p, 0))
             RETURN(-1);
-        else if ( sopt->norm_dir == V2S_NORM_REVERSE)
-        {
-            /* okay, reverse the direction */
-            sopt->norm_len *= -1;
-            if ( sopt->debug > 0 )
-                fprintf(stderr,"++ reversing normal direction\n");
-        }
+
+        /* norm direction applied in vol2surf function, just set norm_dir */
+        /*                                            4 Feb, 2009 [rickr] */
+        /* else if ( sopt->norm_dir == V2S_NORM_REVERSE) */
         /* else V2S_NORM_KEEP, i.e. do nothing */
     }
 
@@ -430,7 +427,8 @@ ENTRY("check_norm_dirs");
     fmin[2] = fmax[2] = coords->z;
 
     /* now check the rest of them */
-    for ( node = 1; node < p->surf[surf].num_ixyz; node++, coords++ )
+    /* fixed coord++ bug, noted by Xiaopeng Zong   4 Feb 2009 [rickr] */
+    for ( node = 1; node < p->surf[surf].num_ixyz; node++ )
     {
         if ( fmin[0] > coords[node].x )         /* x min */
         {
@@ -528,8 +526,8 @@ ENTRY("check_norm_dirs");
     /* do we need to reverse the direction? */
     if ( ncount < 2 )
     {
-        fprintf(stderr,"-- reversing direction of normals\n");
-        sopt->norm_len *= -1.0;
+        fprintf(stderr,"-- reversing direction of normals (via norm_dir)\n");
+        sopt->norm_dir = V2S_NORM_REVERSE;
     }
 
     RETURN(0);
@@ -538,8 +536,6 @@ ENTRY("check_norm_dirs");
 
 /*----------------------------------------------------------------------
  * copy_surfaces - fill SUMA_surface structures
- *
- *
  *
  * return -1 : on error
  *         0 : on success
@@ -1323,6 +1319,14 @@ ENTRY("init_options");
             }
 
             opts->outfile_niml = argv[++ac];
+            ind = strlen(opts->outfile_niml);
+            /* make sure the filename ends with .niml.dset     4 Nov 2008 */
+            if ( ind > 0 && (ind < 11 ||
+                             strcmp(opts->outfile_niml+ind-10, ".niml.dset")) )
+            {
+                fputs( "** -out_niml name must end in .niml.dset\n\n",stderr);
+                RETURN(-1);
+            }
         }
         else if ( ! strncmp(argv[ac], "-reverse_norm_dir", 8) )
         {

@@ -176,6 +176,7 @@ static int     process_NIML_Node_ROI( NI_element * nel, int ct_start ) ;
 static int     disp_ldp_surf_list(LDP_list * ldp_list, THD_session * sess);
 static int     fill_ldp_surf_list(LDP_list * ldp_list, THD_session * sess,
                                   v2s_plugin_opts * po);
+static int     get_ldp_surfs(THD_session *, int, int *, int *, int *);
 static int     int_list_posn(int * vals, int nvals, int test_val);
 static int     slist_choose_surfs(LDP_list * ldp_list, THD_session * sess,
                                   v2s_plugin_opts * po);
@@ -183,6 +184,8 @@ static int     slist_check_user_surfs(ldp_surf_list * lsurf, int * surfs,
                                       v2s_plugin_opts * po);
 static int     slist_surfs_for_ldp(ldp_surf_list * lsurf, int * surfs, int max,
                                    THD_session * sess, int debug);
+
+static ldp_surf_list *find_lpd_list(LDP_list *LDP, THD_session *sess, int surf);
 
 /*----------------------------------------------------------------------*/
 /* Functions for receiving an AFNI dataset from NIML elements.
@@ -437,7 +440,7 @@ ENTRY("AFNI_niml_workproc") ;
                "drive_afni cmd='stuff'"  ==> execute a DRIVE_AFNI command right now */
 
            if(PRINT_TRACING){
-             char sss[256]; sprintf("Processing instruction: '%s'",npi->name);
+             char sss[256]; sprintf(sss,"Processing instruction: '%s'",npi->name);
              STATUS(sss) ;
            }
            if( strcasecmp(npi->name,"keep_reading") == 0 )
@@ -513,11 +516,11 @@ ENTRY("AFNI_process_NIML_data") ;
 
        process_NIML_AFNI_dataset( ngr , ct_start ) ;   /* AFNI dataset header */
 
-     } else if( strncmp(ngr->name,"VOLUME_DATA",11) == 0 ){
+     } else if( strncmp(ngr->name,"VOLUME_DATA",11) == 0 ){ /* VOLUME_DATA or */
+                                                        /* VOLUME_DATA_SPARSE */
+       process_NIML_AFNI_volumedata( ngr , ct_start ) ; /* == AFNI sub-bricks */
 
-       process_NIML_AFNI_volumedata( ngr , ct_start ) ;    /* AFNI sub-bricks */
-
-     } else {                 /* the old way: we don't know about this group,
+     } else {             /* the old way: we don't know about this group name,
                                  so process the elements within it separately */
        int ii ;
        for( ii=0 ; ii < ngr->part_num ; ii++ )
@@ -798,6 +801,52 @@ ENTRY("disp_ldp_surf_list");
       fprintf(stderr,"     (nsurf,sA,sB,use_v2s) = (%d, %d, %d, %d) : '%s'\n",
            slist->nsurf, slist->sA, slist->sB, slist->use_v2s,
            slist->full_label_ldp[0] ? slist->full_label_ldp : slist->label_ldp);
+   RETURN(0);
+}
+
+/*--------------------------------------------------------------------*/
+/*! For this session, return applical v2s LDP surfaces for the given surf.
+ *  return 0 on success
+----------------------------------------------------------------------*/
+static int get_ldp_surfs(THD_session * sess, int surf, int * sA, int * sB,
+                                                       int * use_v2s)
+{
+   /* don't keep allocating and freeing this list */
+   static LDP_list   ldp_list = { NULL, 0, 0 };
+   ldp_surf_list   * slist = NULL;
+   int               verb = gv2s_plug_opts.sopt.debug;
+
+   ENTRY("get_ldp_surfs");
+
+   if( !sess || surf < 0 || !sA ) {
+      fprintf(stderr,"** get_LDPS - bad inputs\n");
+      RETURN(1);
+   }
+
+   /* construct current surface LDP list */
+   if( fill_ldp_surf_list(&ldp_list, sess, &gv2s_plug_opts) ) {
+      if(verb > 0) fprintf(stderr,"** get_LDPS: failed to fill ldp list\n");
+      RETURN(1);
+   }
+
+    /* find the ldp struct for surf, and note surface A and maybe B */
+   slist = find_lpd_list(&ldp_list, sess, surf);
+
+   if( !slist ) {
+      if(verb > 0) fprintf(stderr,"** get_LDPS: no LDP for surf %d\n", surf);
+      RETURN(1);
+   }
+
+   if(verb > 1) fprintf(stderr,"-- LDP details for surface %d, ldp label %s\n"
+                        "   nsurf=%d, sA=%d, sB=%d, use_v2s=%d\n",
+                        surf, slist->label_ldp ? slist->label_ldp : "NONE",
+                        slist->nsurf, slist->sA, slist->sB, slist->use_v2s);
+
+   /* pass back anything requested */
+   if( sA ) *sA = slist->sA;
+   if( sB ) *sB = slist->sB;
+   if( use_v2s ) *use_v2s = slist->use_v2s;
+
    RETURN(0);
 }
 
@@ -1104,6 +1153,22 @@ ENTRY("slist_surfs_for_ldp");
    RETURN(0);
 }
 
+/*------------------------------------------------------------------------*/
+/*! return the ldp_surf_list pointer corresponding to the given surface
+ *------------------------------------------------------------------------*/
+static ldp_surf_list *find_lpd_list(LDP_list *LDP, THD_session *sess, int surf)
+{
+   int lind;
+
+   if( !LDP || !sess || surf < 0 ) return NULL;
+
+   for( lind = 0; lind < LDP->nused; lind++ )
+      if( !strncmp(LDP->list[lind].idcode_ldp,
+                   sess->su_surf[surf]->idcode_ldp,32) )
+         return &LDP->list[lind];       /* found it! */
+
+   return NULL;
+}
 
 /*--------------------------------------------------------------------*/
 /*! Receives notice when user changes viewpoint position.
@@ -1113,9 +1178,11 @@ static void AFNI_niml_viewpoint_CB( int why, int q, void *qq, void *qqq )
 {
    Three_D_View *im3d = (Three_D_View *) qqq ;
    NI_element *nel ;
-   float xyz[3] ;
+   NI_group *ngr = NULL;
+   float xyz[3], *vv=NULL ;
    static float xold=-666,yold=-777,zold=-888 ;
-   int kbest=-1,ibest=-1 ;
+   int kbest=-1,ibest=-1, i1d=-1;
+   char stmp[128]={""};
 
 ENTRY("AFNI_niml_viewpoint_CB") ;
 
@@ -1143,15 +1210,25 @@ ENTRY("AFNI_niml_viewpoint_CB") ;
    if( kbest < 0 ) kbest = 0 ;  /* default surface */
 
    /* now send info to SUMA */
+   ngr = NI_new_group_element();
+   NI_rename_group(ngr, "SUMA_crosshair");
 
    nel = NI_new_data_element( "SUMA_crosshair_xyz" , 3 ) ;
+   NI_add_to_group( ngr, nel); 
    NI_add_column( nel , NI_FLOAT , xyz ) ;
 
    /* 13 Mar 2002: add idcodes of what we are looking at right now */
 
-   NI_set_attribute( nel, "surface_idcode", im3d->ss_now->su_surf[kbest]->idcode ) ;
-   NI_set_attribute( nel, "volume_idcode" , im3d->anat_now->idcode.str ) ;
+   NI_set_attribute( nel,  "surface_idcode", 
+                           im3d->ss_now->su_surf[kbest]->idcode ) ;
+   /*
+      SUMA does not expect to receive volume_idcode attribute
+      If it needs it, it will use underlay_idcode instead      Apr. 09 
+      
+      NI_set_attribute( nel,  "volume_idcode" , im3d->anat_now->idcode.str ) ;
 
+   */
+   
    /* 20 Feb 2003: set attribute showing closest node ID */
 
    if( ibest >= 0 ){
@@ -1162,12 +1239,59 @@ ENTRY("AFNI_niml_viewpoint_CB") ;
 
    xold = xyz[0] ; yold = xyz[1] ; zold = xyz[2] ;  /* save old point */
 
-   if( sendit )
-     NI_write_element( ns_listen[NS_SUMA] , nel , NI_TEXT_MODE ) ;
-   if( serrit )
-     NIML_to_stderr(nel,1) ;
+   /* April 2009: Get the values at that voxel from the underlay and overlay */
+   nel = NI_new_data_element( "underlay_array", DSET_NVALS(im3d->anat_now));
+   NI_set_attribute( nel,  "underlay_idcode" , im3d->anat_now->idcode.str ) ;
+   vv = (float*)calloc(DSET_NVALS(im3d->anat_now),sizeof(float));
 
-   NI_free_element(nel) ;
+   i1d = im3d->vinfo->i1 + 
+         im3d->vinfo->j2*DSET_NX(im3d->anat_now) +   
+         im3d->vinfo->k3*DSET_NX(im3d->anat_now)*DSET_NY(im3d->anat_now);
+   if (THD_extract_array( i1d, im3d->anat_now, 0, vv ) < 0) {
+      fprintf(stderr,"Failed to get underlay array\n");
+   } else {
+      NI_add_column(nel, NI_FLOAT, vv); free(vv); vv=NULL;
+      sprintf(stmp,"%d %d %d", 
+                   im3d->vinfo->i1, im3d->vinfo->j2, im3d->vinfo->k3);
+      NI_set_attribute(nel, "vox_ijk", stmp);
+      if (HAS_TIMEAXIS(im3d->anat_now)) {
+         NI_set_attribute(nel, "has_taxis", "y");
+      } else {
+         NI_set_attribute(nel, "has_taxis", "n");
+      }
+   }
+   NI_add_to_group( ngr, nel); 
+   
+   /* get vol2surf underlay time series at this node     29 Apr 2009 [rickr] */
+   do { /* cheat: break on error (until data has been allocated) */
+      int sA, sB, usev2s;
+
+      if( ibest < 0 || kbest < 0 ) break;       /* nothing to do */
+
+      /* note surfaces to get time series from */
+      if( get_ldp_surfs(im3d->ss_now, kbest, &sA, &sB, &usev2s) ) break;
+
+      /* get time series */
+      vv = AFNI_v2s_node_timeseries(im3d->ss_now, im3d->anat_now, sA,sB,
+                                    ibest, usev2s);
+      if( ! vv ) break;
+
+      /* put the time series data into a new element */
+      nel = NI_new_data_element("v2s_node_array",DSET_NVALS(im3d->anat_now));
+      sprintf(stmp,"%d",ibest);
+      NI_set_attribute(nel, "surface_nodeid", stmp);
+      NI_add_column(nel, NI_FLOAT, vv); free(vv); vv=NULL;
+
+      /* and add it to the group */
+      NI_add_to_group(ngr, nel); 
+   } while (0);
+
+   if( sendit )
+     NI_write_element( ns_listen[NS_SUMA] , ngr , NI_TEXT_MODE ) ;
+   if( serrit )
+     NIML_to_stderr(ngr,1) ;
+
+   NI_free_element(ngr) ;
    EXRETURN ;
 }
 
@@ -2345,6 +2469,7 @@ ENTRY("process_NIML_AFNI_volumedata") ;
          ss->dsset[qs][vv] = dset ; ss->num_dsset++ ;
          INFO_message("Added dataset '%s' to controller %s",
                       DSET_FILECODE(dset), AFNI_controller_label(im3d) ) ;
+         UNDUMMYIZE ;
        } else {
          DSET_delete(dset) ;
          ERROR_message("Can't create dataset '%s': session array overflow",gidc);
@@ -2362,6 +2487,10 @@ ENTRY("process_NIML_AFNI_volumedata") ;
    (void)THD_add_bricks( dset , nini ) ;
    THD_update_statistics( dset ) ;
 
+   /** if anyone is looking at this dataset, need to change stuff **/
+
+   AFNI_update_dataset_viewing( dset ) ;  /* 21 Jul 2009 */
+
    /** wrapup **/
 
    if( ct_start >= 0 )                      /* keep track    */
@@ -2374,6 +2503,44 @@ ENTRY("process_NIML_AFNI_volumedata") ;
                             ct_read , ct_tot-ct_read ) ;
    SHOW_MESSAGE( msg ) ;
    EXRETURN ;
+}
+
+/*------------------------------------------------------------------------*/
+/* If any controller is viewing this dataset, update it's widgets. */
+
+void AFNI_update_dataset_viewing( THD_3dim_dataset *dset ) /* 21 Jul 2009 */
+{
+   Three_D_View *qq3d ;
+   int review , ii , kk ;
+   MCW_arrowval *tav ;
+
+   if( !ISVALID_DSET(dset) ) return ;
+
+   /* check all controllers to see if they are looking at this dataset **/
+
+   for( ii=0 ; ii < MAX_CONTROLLERS ; ii++ ){
+     qq3d = GLOBAL_library.controllers[ii] ;
+     if( !IM3D_OPEN(qq3d) ) break ;  /* skip this one */
+
+     review = EQUIV_DSETS(dset,qq3d->anat_now) ||   /* same anat? */
+              ( qq3d->vinfo->func_visible &&        /* or same func? */
+                EQUIV_DSETS(dset,qq3d->fim_now) ) ;
+
+     if( review ){
+       DISABLE_LOCK ;
+       tav = qq3d->vwid->imag->time_index_av ;
+       kk  = DSET_NVALS(dset)-1 ;
+       if( kk > tav->imax ){
+         tav->fmax = tav->imax = qq3d->vinfo->time_index  = kk ;
+         qq3d->vinfo->top_index = kk+1 ;
+       }
+       AV_assign_ival( tav , kk ) ;
+       AFNI_time_index_CB( tav , (XtPointer)qq3d ) ;
+       ENABLE_LOCK ;
+     }
+   }
+
+   return ;
 }
 
 /*--------------------------------------------------------------------*/

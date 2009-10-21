@@ -118,10 +118,10 @@ if(PRINT_TRACING)
    Routine to open and initialize a single plugin
 ------------------------------------------------------------------------*/
 
-AFNI_plugin * PLUG_read_plugin( char * fname )
+AFNI_plugin * PLUG_read_plugin( char *fname )
 {
-   AFNI_plugin * plin ;
-   PLUGIN_interface * plint ;
+   AFNI_plugin *plin ;
+   PLUGIN_interface *plint=NULL ;
    int nin ;
    static int firsterr=1 ;
 
@@ -135,6 +135,7 @@ ENTRY("PLUG_read_plugin") ;
    /*----- make space for new plugin -----*/
 
    plin = (AFNI_plugin *) XtMalloc( sizeof(AFNI_plugin) ) ;
+   memset(plin, 0, sizeof(AFNI_plugin)) ; /* 11 Feb 2009 [lesstif patrol] */
    plin->type = AFNI_PLUGIN_TYPE ;
 
    /*----- copy name into plin structure -----*/
@@ -397,6 +398,7 @@ ENTRY("PLUG_load_plugin") ;
    /*----- make space for new plugin -----*/
 
    plin = (AFNI_plugin *) XtMalloc( sizeof(AFNI_plugin) ) ;
+   memset(plin, 0, sizeof(AFNI_plugin)) ; /* 11 Feb 2009 [lesstif patrol] */
    plin->type = AFNI_PLUGIN_TYPE ;
 
    /*----- copy name into plin structure -----*/
@@ -549,6 +551,7 @@ ENTRY("new_PLUGIN_interface_1999") ;
 
    plint = (PLUGIN_interface *) XtMalloc(sizeof(PLUGIN_interface)) ;
    if( plint == NULL ) RETURN(NULL) ;
+   memset(plint, 0, sizeof(PLUGIN_interface)) ; /* 11 Feb 2009 [LPatrol] */
 
    plint->flags = 0 ;  /* 29 Mar 2002 */
 
@@ -693,7 +696,8 @@ ENTRY("add_option_to_PLUGIN_interface") ;
                      XtRealloc( (char *) plint->option ,
                                 sizeof(PLUGIN_option *) * (nopt+1) ) ;
 
-   plint->option[nopt] = opt = (PLUGIN_option *) XtMalloc( sizeof(PLUGIN_option) ) ;
+   plint->option[nopt] = opt = (PLUGIN_option *)XtMalloc(sizeof(PLUGIN_option));
+   memset(opt, 0, sizeof(PLUGIN_option)) ; /* 11 Feb 2009 [lesstif patrol] */
 
    /*-- put values in new option --*/
 
@@ -1157,10 +1161,10 @@ int PLUG_nonblank_len( char *str )
 {
    int ii , ll ;
 
-   if( str == NULL ) return 0 ;
-   ll = strlen(str) ; if( ll == 0 ) return 0 ;
+   if( str == NULL || *str == '\0' ) return 0 ;
+   ll = strlen(str) ;
 
-   for( ii=ll-1 ; ii >= 0 ; ii-- ) if( str[ii] != ' ' ) break ;
+   for( ii=ll-1 ; ii >= 0 ; ii-- ) if( !isspace(str[ii]) ) break ;
 
    return (ii+1) ;
 }
@@ -1170,7 +1174,7 @@ int PLUG_nonblank_len( char *str )
   legality, then the list of all datasets is checked for duplicates.
 ----------------------------------------------------------------------------*/
 
-int PLUTO_prefix_ok( char * str )
+int PLUTO_prefix_ok( char *str )
 {
    int ll , ii ;
    THD_slist_find find ;
@@ -1238,7 +1242,7 @@ void PLUG_setup_widgets( PLUGIN_interface * plint , MCW_DC * dc )
    int opt_lwid , sv_lwid[PLUGIN_MAX_SUBVALUES] ;
    Widget widest_chooser[PLUGIN_MAX_SUBVALUES] ;
    int    widest_width[PLUGIN_MAX_SUBVALUES] ;
-   Pixel  fg_pix ;
+   Pixel  fg_pix=0 ;
 
 ENTRY("PLUG_setup_widgets") ;
 
@@ -1250,9 +1254,19 @@ ENTRY("PLUG_setup_widgets") ;
    /**** create widgets structure ****/
 
    plint->wid = wid = myXtNew(PLUGIN_widgets) ;
-
+   
    /**** create Shell that can be opened up later ****/
-
+   /* 'LessTif Widormous' 
+      With 64bit LessTif, some widgets get created with 
+      enormous sizes. To complicate matters, the problem
+      occurred randomly so tracking it is a frustrating
+      exercise. It looks like adding a few, harmless,
+      XmNheight and XmNwidth parameters at widget creation
+      fixed the problem. Those parameters have no effect
+      on the final plugin's look so we won't bother to find
+      out which of them was necessary for fixing the problem.
+                  12 Feb 2009 9Lesstif patrol] 
+   */
    wid->shell =
       XtVaAppCreateShell(
            "AFNI" , "AFNI" , topLevelShellWidgetClass , dc->display ,
@@ -1263,7 +1277,9 @@ ENTRY("PLUG_setup_widgets") ;
            XmNdeleteResponse    , XmDO_NOTHING , /* deletion handled below */
            XmNallowShellResize  , False ,        /* let code resize shell? */
            XmNinitialResourcesPersistent , False ,
-              XmNkeyboardFocusPolicy , XmEXPLICIT ,
+               XmNheight, 207, /* See 'LessTif Widormous' comment above */
+               XmNwidth, 206,  /*         12 Feb 2009 9Lesstif patrol] */
+           XmNkeyboardFocusPolicy , XmEXPLICIT ,
       NULL ) ;
 
    DC_yokify( wid->shell , dc ) ; /* 14 Sep 1998 */
@@ -1289,6 +1305,8 @@ ENTRY("PLUG_setup_widgets") ;
                  "AFNI" , xmFormWidgetClass , wid->shell ,
                      XmNborderWidth , 0 ,
                      XmNborderColor , 0 ,
+                        XmNwidth, 70,/* See 'LessTif Widormous' comment above */
+                        XmNheight, 100,/*         12 Feb 2009 9Lesstif patrol] */
                      XmNtraversalOn , True  ,
                      XmNinitialResourcesPersistent , False ,
                  NULL ) ;
@@ -1307,6 +1325,8 @@ ENTRY("PLUG_setup_widgets") ;
            XmNrightAttachment, XmATTACH_FORM ,
            XmNtopAttachment  , XmATTACH_FORM ,
            XmNtopOffset      , 5 ,
+               XmNheight, 20, /* See 'LessTif Widormous' comment above */
+               XmNwidth, 20, /*         12 Feb 2009 9Lesstif patrol] */
            XmNinitialResourcesPersistent , False ,
         NULL ) ;
     XmStringFree( xstr ) ;
@@ -1468,7 +1488,8 @@ ENTRY("PLUG_setup_widgets") ;
               XmNmarginHeight     , 0  ,
               XmNmarginWidth      , 0  ,
               XmNselectColor      , fg_pix ,  /* fill with foreground when set */
-
+               XmNheight, 20,
+               XmNwidth, 20,
               XmNtraversalOn , True  ,
               XmNinitialResourcesPersistent , False ,
            NULL ) ;
@@ -1545,7 +1566,7 @@ fprintf(stderr,"Option setup %s\n",opt->label) ;
          switch( sv->data_type ){
 
             /** type I can't handle yet, so just put some label there **/
-
+            fprintf(stderr,"Doing type %d\n", sv->data_type);
             default:
                xstr = XmStringCreateLtoR( "** N/A **" , XmFONTLIST_DEFAULT_TAG ) ;
                ow->chtop[ib] =
@@ -1580,6 +1601,14 @@ fprintf(stderr,"colormenu setup %s; opt->tag=%s.\n",sv->label,opt->tag) ;
 
                ow->chooser[ib] = (void *) av ;
                ow->chtop[ib]   = av->wrowcol ;  /* get the top widget */
+               #ifdef USING_LESSTIF_NOT_DOING_THIS
+                  if (CPU_IS_64_BIT() ){
+                     ow->chtop[ib]   = XtParent(XtParent(av->wrowcol)); 
+                              /* get the very top rowcol holding the 
+                                 optmenu rowcol, see function
+                                 new_MCW_optmenu_64fix   [LPatrol Feb 19 2009] */
+                  }
+               #endif
 
                ow->chooser_type[ib] = OP_CHOOSER_COLORMENU ;
             }
@@ -1613,7 +1642,14 @@ fprintf(stderr,"colormenu setup %s; opt->tag=%s.\n",sv->label,opt->tag) ;
 
                ow->chooser[ib] = (void *) av ;
                ow->chtop[ib]   = av->wrowcol ;  /* get the top widget */
-
+               #ifdef USING_LESSTIF_NOT_DOING_THIS
+                  if (CPU_IS_64_BIT() && use_optmenu){
+                     ow->chtop[ib]   = XtParent(XtParent(av->wrowcol)); 
+                              /* get the very top rowcol holding the 
+                                 optmenu rowcol, see function
+                                 new_MCW_optmenu_64fix [LPatrol Feb 19 2009]*/
+                  }
+               #endif
                ow->chooser_type[ib] = (use_optmenu) ? OP_CHOOSER_OPTMENU
                                                     : OP_CHOOSER_NUMBER ;
 
@@ -1671,7 +1707,14 @@ fprintf(stderr,"colormenu setup %s; opt->tag=%s.\n",sv->label,opt->tag) ;
 
                   ow->chooser[ib] = (void *) av ;
                   ow->chtop[ib]   = av->wrowcol ;  /* get the top widget */
-
+                  #ifdef USING_LESSTIF_NOT_DOING_THIS
+                  if (CPU_IS_64_BIT() && use_optmenu ){
+                     ow->chtop[ib]   = XtParent(XtParent(av->wrowcol)); 
+                              /* get the very top rowcol holding the 
+                                 optmenu rowcol, see function
+                                 new_MCW_optmenu_64fix [LPatrol Feb 19 2009]*/
+                  }
+                  #endif
                   ow->chooser_type[ib] = (use_optmenu) ? OP_CHOOSER_OPTMENU
                                                        : OP_CHOOSER_STRING ;
 
@@ -1832,6 +1875,8 @@ fprintf(stderr,"colormenu setup %s; opt->tag=%s.\n",sv->label,opt->tag) ;
                        XmNmarginWidth , 0 ,
                        XmNspacing     , 0 ,
                        XmNtraversalOn , True  ,
+                              XmNheight, 20,
+                              XmNwidth, 30,
                        XmNinitialResourcesPersistent , False ,
                     NULL ) ;
 
@@ -1995,7 +2040,7 @@ fprintf(stderr,"Widget realization\n") ;
 #define LUCK        5
 
    if( wframe != NULL ){
-      Widget bar ;
+      Widget bar=NULL ;
       int fww , fhh , fyy , bww ;
 
 #if 0
@@ -2065,9 +2110,9 @@ ENTRY("PLUTO_turnoff_options") ;
 
 void PLUG_action_CB( Widget w , XtPointer cd , XtPointer cbs )
 {
-   PLUGIN_interface * plint = (PLUGIN_interface *) cd ;
-   char * wname = XtName(w) ;
-   char * mesg ;
+   PLUGIN_interface *plint = (PLUGIN_interface *) cd ;
+   char *wname = XtName(w) ;
+   char *mesg=NULL ;
    int close , run , badrun=0 , help ;
 
 ENTRY("PLUG_action_CB") ;
@@ -2151,7 +2196,7 @@ void PLUG_optional_toggle_CB( Widget w , XtPointer cd , XtPointer cbs )
 {
    PLUGIN_option_widgets * ow = (PLUGIN_option_widgets *) cd ;
    int ib , zlen ;
-   XtPointer xptr ;
+   XtPointer xptr=NULL ;
 
 ENTRY("PLUG_optional_toggle_CB") ;
 
@@ -3396,10 +3441,11 @@ ENTRY("AFNI_plugin_button") ;
    /*-- make arrays to hold the plugin buttons (etc.),
         so that plugins can be started from layouts (in afni_splash.c) --*/
 
+   /* from malloc    12 Feb 2009 [lesstif patrol] */
    im3d->vwid->nplugbut = npbut ;
-   im3d->vwid->plugbut  = (Widget *)            malloc(sizeof(Widget)            *npbut) ;
-   im3d->vwid->pluglab  = (char **)             malloc(sizeof(char *)            *npbut) ;
-   im3d->vwid->plugint  = (PLUGIN_interface **) malloc(sizeof(PLUGIN_interface *)*npbut) ;
+   im3d->vwid->plugbut  = (Widget *)            calloc(1, sizeof(Widget)            *npbut) ;
+   im3d->vwid->pluglab  = (char **)             calloc(1, sizeof(char *)            *npbut) ;
+   im3d->vwid->plugint  = (PLUGIN_interface **) calloc(1, sizeof(PLUGIN_interface *)*npbut) ;
 
    /*-- create menu bar --*/
 
@@ -3561,11 +3607,11 @@ ENTRY("AFNI_plugin_button") ;
 
 void PLUG_startup_plugin_CB( Widget w , XtPointer cd , XtPointer cbd )
 {
-   PLUGIN_interface * plint = (PLUGIN_interface *) cd ;
-   XmAnyCallbackStruct * cbs = (XmAnyCallbackStruct *) cbd ;
-   char * mesg ;
+   PLUGIN_interface *plint = (PLUGIN_interface *) cd ;
+   XmAnyCallbackStruct *cbs = (XmAnyCallbackStruct *) cbd ;
+   char *mesg=NULL ;
    Widget wpop ;
-   Three_D_View * im3d = NULL ;
+   Three_D_View *im3d = NULL ;
 
 ENTRY("PLUG_startup_plugin_CB") ;
 
@@ -4327,8 +4373,8 @@ void * PLUTO_imseq_popim( MRI_IMAGE * im, generic_func * kfunc, void * kdata )
 void * PLUTO_imseq_popup( MRI_IMARR * imar, generic_func * kfunc, void * kdata )
 {
    int ntot , ii ;
-   MRI_IMAGE * im , * cim ;
-   PLUGIN_imseq * psq ;
+   MRI_IMAGE * im=NULL , * cim=NULL ;
+   PLUGIN_imseq * psq=NULL ;
 
    if( imar == NULL || IMARR_COUNT(imar) == 0 ) return NULL ;
 
@@ -4361,6 +4407,7 @@ void * PLUTO_imseq_popup( MRI_IMARR * imar, generic_func * kfunc, void * kdata )
 
    { ISQ_options opt ;       /* change some options from the defaults */
 
+     memset(&opt, 0, sizeof(opt));
      ISQ_DEFAULT_OPT(opt) ;
      opt.save_one = False ;  /* change to Save:bkg */
      opt.save_pnm = False ;
@@ -4764,6 +4811,7 @@ static vptr_func * forced_loads[] = {
    (vptr_func *) r_new_resam_dset ,       /* 31 Jul 2007 */
    (vptr_func *) r_hex_str_to_long ,      /* 31 Jul 2007 */
    (vptr_func *) r_idisp_vec3f ,          /* 31 Jul 2007 */
+   (vptr_func *) THD_dataset_mismatch ,   /* 04 Sep 2009 */
 #endif
 NULL } ;
 

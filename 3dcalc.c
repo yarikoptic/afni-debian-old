@@ -150,6 +150,20 @@ static int   CALC_taxis_num = 0 ;    /* 28 Apr 2003 */
 #define CX_PHASE     3
 static int CUR_cxcode = CX_MAGNITUDE ;  /* default conversion method */
 
+/*----------------------------------------------------------------------------*/
+static char *tempfnam = NULL ;  /* 18 Oct 2005: -usetemp stuff */
+static FILE *tempfile = NULL ;
+
+static void calc_atexit(void) /*-- called by exit(): delete tempfile --*/
+{
+   if( tempfile != NULL ){ fclose(tempfile) ; tempfile = NULL ; }
+   if( tempfnam != NULL ){
+     INFO_message("Deleting -usetemp file %s",tempfnam) ;
+     remove(tempfnam) ; tempfnam = NULL ;
+   }
+   return ;
+}
+
 /*--------------------------- prototypes ---------------------------*/
 void CALC_read_opts( int , char ** ) ;
 void CALC_Syntax(void) ;
@@ -468,7 +482,7 @@ void CALC_read_opts( int argc , char * argv[] )
            (ids > 2 && argv[nopt][2] >= '0' && argv[nopt][2] <= '9')) ){
 
          int ival , nxyz , isub , ll ;
-         THD_3dim_dataset * dset ;
+         THD_3dim_dataset *dset ;
 
          ival = argv[nopt][1] - 'a' ;
          if( VAR_DEFINED(ival) )
@@ -780,15 +794,15 @@ DSET_DONE: continue;  /*** target for various goto statements above ***/
 
    for( ii=0 ; ii < 26 ; ii++ ){
      if( IJKAR_flim[ii] != NULL ){
-       int siz ;
+       int siz=0 ;
        switch( IJKAR_dcod[ii] ){
          case  8: siz = DSET_NX(CALC_dset[ids]) ; break ;
          case  9: siz = DSET_NY(CALC_dset[ids]) ; break ;
          case 10: siz = DSET_NZ(CALC_dset[ids]) ; break ;
        }
        if( IJKAR_flim[ii]->nx != siz )
-         ERROR_message("dimension mismatch between '-%c' and '%-c'\n",
-                       'a'+ii , 'a'+ids ) ;
+         WARNING_message("dimension mismatch between '-%c' and '%-c'\n",
+                         'a'+ii , 'a'+ids ) ;
      }
    }
 
@@ -996,6 +1010,18 @@ void CALC_Syntax(void)
     "                                                                        \n"
     "    This operation could also be performed with program 3dAFNItoNIFTI.  \n"
     "                                                                        \n"
+    "11. Compute the edge voxels of a mask dataset.  An edge voxel is one    \n"
+    "    that shares some face with a non-masked voxel.  This computation    \n"
+    "    assumes 'a' is a binary mask (particularly for 'amongst').          \n"
+    "                                                                        \n"
+    "      3dcalc -a mask+orig -prefix edge                     \\           \n"
+    "             -b a+i -c a-i -d a+j -e a-j -f a+k -g a-k     \\           \n"
+    "             -expr 'a*amongst(0,b,c,d,e,f,g)'                           \n"
+    "                                                                        \n"
+    "    consider similar erosion or dilation operations:                    \n"
+    "        erosion:  -expr 'a*(1-amongst(0,b,c,d,e,f,g))'                  \n"
+    "        dilation: -expr 'amongst(1,a,b,c,d,e,f,g)'                      \n"
+    "                                                                        \n"
     "------------------------------------------------------------------------\n"
     "ARGUMENTS for 3dcalc (must be included on command line):                \n"
     "---------                                                               \n"
@@ -1102,6 +1128,9 @@ void CALC_Syntax(void)
     "                  hold intermediate results.  This will make the program\n"
     "                  run slower, but can be useful when creating huge      \n"
     "                  datasets that won't all fit in memory at once.        \n"
+    "                * The program prints out the name of the temporary      \n"
+    "                  file; if 3dcalc crashes, you might have to delete     \n"
+    "                  this file manually.                                   \n"
     "               ** N.B.: -usetemp and -gscale are incompatible!!         \n"
     "                                                                        \n"
     "  -dt tstep     = Use 'tstep' as the TR for \"manufactured\" 3D+time    \n"
@@ -1412,11 +1441,17 @@ void CALC_Syntax(void)
     " on the command line applies when a differential subscript symbol is\n"
     " encountered.\n"
     "\n"
-    "------------------------------------------------------------------------\n"
-    "PROBLEMS:\n"
-    "-------- \n"
+    "N.B.: You can also use program 3dLocalstat to process data from a\n"
+    "      spatial neighborhood of each voxel; for example, to compute\n"
+    "      the maximum over a sphere of radius 9 mm placed around\n"
+    "      each voxel:\n"
+    "        3dLocalstat -nbhd 'SPHERE(9)' -stat max -prefix Amax9 A+orig\n"
     "\n"
-    " * Complex-valued datasets cannot be processed.\n"
+    "------------------------------------------------------------------------\n"
+    "ISSUES:\n"
+    "------ \n"
+    "\n"
+    " * Complex-valued datasets cannot be processed, except via '-cx2r'.\n"
     " * This program is not very efficient (but is faster than it once was).\n"
     " * Differential subscripts slow the program down even more.\n"
     "\n"
@@ -1424,11 +1459,13 @@ void CALC_Syntax(void)
    ) ;
 
    printf(
+    "------------------------------------------------------------------------\n"
     "EXPRESSIONS:\n"
     "----------- \n"
     "\n"
     " As noted above, datasets are referred to by single letter variable names.\n"
-    PARSER_HELP_STRING 
+    PARSER_HELP_STRING
+    "\n"
     "** If you modify a statistical sub-brick, you may want to use program\n"
     "  '3drefit' to modify the dataset statistical auxiliary parameters.\n"
     "\n"
@@ -1441,7 +1478,7 @@ void CALC_Syntax(void)
     "** Try the 'ccalc' program to see how the expression evaluator works.\n"
     "   The arithmetic parser and evaluator is written in Fortran-77 and\n"
     "   is derived from a program written long ago by RW Cox to facilitate\n"
-    "   compiling on an array processor hooked up to a VAX.  It's a mess, but\n"
+    "   compiling on an array processor hooked up to a VAX. (It's a mess, but\n"
     "   it works - somewhat slowly - but hey, computers are fast these days.)\n"
    ) ;
 
@@ -1467,8 +1504,6 @@ int main( int argc , char *argv[] )
    int   iii,jjj,kkk , nx,nxy ;
    THD_dataxes * daxes ;
 
-   char *tempfnam = NULL ;  /* 18 Oct 2005: -usetemp stuff */
-   FILE *tempfile = NULL ;
    size_t tempnum , tempsiz ;
 
    /*** read input options ***/
@@ -1595,9 +1630,12 @@ int main( int argc , char *argv[] )
    buf = (float **) malloc(sizeof(float *) * ntime_max);
 
    if( CALC_usetemp ){                  /* 18 Oct 2005: -usetemp? */
-     tempfnam = UNIQ_idcode() ;
-     tempfile = fopen( tempfnam , "w+b" ) ;
-     if( CALC_verbose ) INFO_message("-usetemp filename = %s",tempfnam) ;
+     tempfnam    = UNIQ_idcode() ;
+     tempfnam[0] = 'C'; tempfnam[1] = 'A';
+     tempfnam[2] = 'L'; tempfnam[3] = 'C'; tempfnam[4] = '_' ;
+     tempfile    = fopen( tempfnam , "w+b" ) ;
+     INFO_message("Creating -usetemp file %s",tempfnam) ;
+     atexit(calc_atexit) ;
    }
    tempsiz = ((size_t)CALC_nvox) * sizeof(float) ;
 
@@ -2094,7 +2132,7 @@ int main( int argc , char *argv[] )
       case MRI_byte:         /* modified 31 Mar 1999 to scale each sub-brick  */
       case MRI_short:{       /* with its own factor, rather than use the same */
          void **dfim ;       /* factor for each sub-brick -- RWCox            */
-         float gtop , fimfac , gtemp ;
+         float gtop=0.0f , fimfac , gtemp ;
 
          if( CALC_verbose )
            INFO_message("Scaling output to type %s brick(s)\n",
@@ -2178,6 +2216,12 @@ int main( int argc , char *argv[] )
 
            EDIT_coerce_scale_type( CALC_nvox , fimfac ,
                                    MRI_float, buf[ii] , CALC_datum,dfim[ii] ) ;
+
+           if( CALC_datum == MRI_short )
+             EDIT_misfit_report( DSET_FILECODE(new_dset) , ii ,
+                                 CALC_nvox , (fimfac != 0.0f) ? 1.0f/fimfac : 0.0f ,
+                                 dfim[ii] , buf[ii] ) ;
+
            free( buf[ii] ) ; buf[ii] = NULL ;
 
            /* put result into output dataset */
@@ -2191,7 +2235,9 @@ int main( int argc , char *argv[] )
    }
 
    if( tempfile != NULL ){                   /* 18 Oct 2005 */
-     fclose(tempfile) ; remove(tempfnam) ;
+     INFO_message("Deleting -usetemp file %s",tempfnam) ;
+     fclose(tempfile) ; tempfile = NULL ;
+     remove(tempfnam) ; tempfnam = NULL ;
    }
 
    if( CALC_verbose ) INFO_message("Computing output statistics\n") ;
@@ -2200,7 +2246,7 @@ int main( int argc , char *argv[] )
    DSET_BRICK_FDRCURVE_ALLKILL(new_dset) ;  /* 24 Jan 2008 */
 
    THD_write_3dim_dataset( NULL,NULL , new_dset , True ) ;
-   if( CALC_verbose ) WROTE_DSET(new_dset) ;
+   WROTE_DSET(new_dset) ;
 
    exit(0) ;
 }

@@ -408,6 +408,24 @@ void NI_free_element_data( void *nini )
 }
 
 /*-----------------------------------------------------------------------*/
+
+static void NI_init_veclen( NI_element *nel , int veclen )
+{
+   if( veclen == 0 ){                      /* empty element */
+     nel->vec_len      = 0 ;
+     nel->vec_filled   = 0 ;
+     nel->vec_rank     = 0 ;
+     nel->vec_axis_len = NULL ;
+   } else {                                /* element with data to */
+     nel->vec_len         = veclen ;       /* come via NI_add_column */
+     nel->vec_filled      = veclen ;
+     nel->vec_rank        = 1 ;
+     nel->vec_axis_len    = NI_malloc(int, sizeof(int)) ;
+     nel->vec_axis_len[0] = veclen ;
+   }
+}
+
+/*-----------------------------------------------------------------------*/
 /*! Create a new data element.
 
     - name   = string name for header.
@@ -439,18 +457,7 @@ NI_element * NI_new_data_element( char *name , int veclen )
    nel->vec_typ = NULL ;
    nel->vec     = NULL ;
 
-   if( veclen == 0 ){                      /* empty element */
-     nel->vec_len      = 0 ;
-     nel->vec_filled   = 0 ;
-     nel->vec_rank     = 0 ;
-     nel->vec_axis_len = NULL ;
-   } else {                                /* element with data to */
-     nel->vec_len         = veclen ;       /* come via NI_add_column */
-     nel->vec_filled      = veclen ;
-     nel->vec_rank        = 1 ;
-     nel->vec_axis_len    = NI_malloc(int, sizeof(int)) ;
-     nel->vec_axis_len[0] = veclen ;
-   }
+   NI_init_veclen( nel , veclen ) ;  /* 19 Sep 2008 */
 
    nel->vec_axis_delta  = NULL ;
    nel->vec_axis_origin = NULL ;
@@ -646,8 +653,10 @@ void NI_remove_column(NI_element *nel, int irm)
      - If the columns are longer, they will be zero filled.
      - New values can be inserted later with NI_insert_value().
      - If the columns are shorter, data will be lost.
-     - You cannot use this to convert an element to/from being empty;
-       that is, newlen > 0 is required, as is nel->vec_len on input.
+     - You can use this to convert an element from empty to non-empty
+       by entering newlen > 0 when the original vec_len is 0.
+     - But, you cannot use this to convert an element to empty from
+       non-empty, by entering newlen == 0 when vec_len > 0!
 --------------------------------------------------------------------------*/
 
 void NI_alter_veclen( NI_element *nel , int newlen )
@@ -656,12 +665,14 @@ void NI_alter_veclen( NI_element *nel , int newlen )
    NI_rowtype *rt ;
    char *pt ;
 
-   if( nel          == NULL || nel->type != NI_ELEMENT_TYPE ) return ;
-   if( nel->vec_len <= 0    || newlen    <= 0               ) return ;
+   if( nel    == NULL || nel->type != NI_ELEMENT_TYPE ) return ;
+   if( newlen <= 0                                    ) return ;
 
    if( nel->vec_num == 0 ){                       /* if have no data yet */
      nel->vec_len = nel->vec_filled = newlen; return;
    }
+
+   if( nel->vec_len == 0 ) NI_init_veclen( nel , newlen ) ;  /* 19 Sep 2008 */
 
    oldlen = nel->vec_len ; if( oldlen == newlen ) return ;
 
@@ -863,6 +874,106 @@ void NI_insert_string( NI_element *nel, int row, int col, char *str )
    if( nel->vec_typ[col] != NI_STRING     ) return ;
 
    NI_insert_value( nel , row,col , &str ); return ;
+}
+
+/*------------------------------------------------------------------------*/
+/*! Remove an attribute, if it exists from a data or group element.
+                                    ZSS Feb 09 
+--------------------------------------------------------------------------*/
+void NI_kill_attribute( void *nini , char *attname  )
+{
+   int nn , tt=NI_element_type(nini) ;
+
+   if( tt < 0 || attname == NULL || attname[0] == '\0' ) return ;
+
+   /* input is a data element */
+
+   if( tt == NI_ELEMENT_TYPE ){
+      NI_element *nel = (NI_element *) nini ;
+
+      /* see if name is already in element header */
+
+      for( nn=0 ; nn < nel->attr_num ; nn++ )
+         if( strcmp(nel->attr_lhs[nn],attname) == 0 ) break ;
+
+      
+
+      if( nn == nel->attr_num ){ /* not found, return */
+        return;
+      } else {
+        NI_free(nel->attr_lhs[nn]) ;  /* free old attribute */
+        NI_free(nel->attr_rhs[nn]) ;
+        if ( nn < nel->attr_num-1 ) { /* move last attr to nn */
+         nel->attr_lhs[nn] = nel->attr_lhs[nel->attr_num-1];
+         nel->attr_lhs[nel->attr_num-1] = NULL; 
+         nel->attr_rhs[nn] = nel->attr_rhs[nel->attr_num-1];
+         nel->attr_rhs[nel->attr_num-1] = NULL;      
+        }
+        --nel->attr_num;
+        /* reallocate */
+        nel->attr_lhs = NI_realloc( nel->attr_lhs, 
+                                    char*, sizeof(char *)*(nel->attr_num) );
+        nel->attr_rhs = NI_realloc( nel->attr_rhs, 
+                                    char*, sizeof(char *)*(nel->attr_num) ); 
+      }
+
+   /* input is a group element */
+
+   } else if( tt == NI_GROUP_TYPE ){
+      NI_group *ngr = (NI_group *) nini ;
+
+      for( nn=0 ; nn < ngr->attr_num ; nn++ )
+         if( strcmp(ngr->attr_lhs[nn],attname) == 0 ) break ;
+
+      if( nn == ngr->attr_num ){
+        return;
+      } else {
+        NI_free(ngr->attr_lhs[nn]) ;
+        NI_free(ngr->attr_rhs[nn]) ;
+        if ( nn < ngr->attr_num-1 ) { /* move last attr to nn */
+         ngr->attr_lhs[nn] = ngr->attr_lhs[ngr->attr_num-1];
+         ngr->attr_lhs[ngr->attr_num-1] = NULL; 
+         ngr->attr_rhs[nn] = ngr->attr_rhs[ngr->attr_num-1];
+         ngr->attr_rhs[ngr->attr_num-1] = NULL;      
+        }
+        --ngr->attr_num;
+        /* reallocate */
+        ngr->attr_lhs = NI_realloc( ngr->attr_lhs, 
+                                    char*, sizeof(char *)*(ngr->attr_num) );
+        ngr->attr_rhs = NI_realloc( ngr->attr_rhs, 
+                                    char*, sizeof(char *)*(ngr->attr_num) ); 
+      }
+
+   /* input is a processing instruction */
+
+   } else if( tt == NI_PROCINS_TYPE ){
+      NI_procins *npi = (NI_procins *) nini ;
+
+      for( nn=0 ; nn < npi->attr_num ; nn++ )
+        if( strcmp(npi->attr_lhs[nn],attname) == 0 ) break ;
+
+      if( nn == npi->attr_num ){
+        return;
+      } else {
+        NI_free(npi->attr_lhs[nn]) ;
+        NI_free(npi->attr_rhs[nn]) ;
+        if ( nn < npi->attr_num-1 ) { /* move last attr to nn */
+         npi->attr_lhs[nn] = npi->attr_lhs[npi->attr_num-1];
+         npi->attr_lhs[npi->attr_num-1] = NULL; 
+         npi->attr_rhs[nn] = npi->attr_rhs[npi->attr_num-1];
+         npi->attr_rhs[npi->attr_num-1] = NULL;      
+        }
+        --npi->attr_num;
+        /* reallocate */
+        npi->attr_lhs = NI_realloc( npi->attr_lhs, 
+                                    char*, sizeof(char *)*(npi->attr_num) );
+        npi->attr_rhs = NI_realloc( npi->attr_rhs, 
+                                    char*, sizeof(char *)*(npi->attr_num) ); 
+      }
+
+   }
+
+   return ;
 }
 
 /*------------------------------------------------------------------------*/

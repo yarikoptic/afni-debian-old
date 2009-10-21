@@ -5,6 +5,11 @@
 # include <malloc.h>
 #endif
 
+#include <unistd.h>
+#include <time.h>
+
+int MRILIB_verb = 0 ;
+
 /*--------------------------------------------------------------------
    Code to provide runtime fixups for various machines
    (things that can't be fixed by declarations in machdep.h).
@@ -13,6 +18,7 @@
 
 void machdep()
 {
+   long seed ;
    /*-- force use of mcw_malloc.c functions - 05 Nov 2001 --*/
 
 #ifdef USING_MCW_MALLOC
@@ -25,6 +31,17 @@ void machdep()
    mallopt( M_MMAP_MAX , 1 ) ;
 #endif
 
+   seed = AFNI_numenv("AFNI_RANDOM_SEEDVAL") ;
+   if( seed != 0) srand48(seed) ;
+
+}
+
+/*-------------------------------------------------------------------*/
+
+void init_rand_seed( long int seed )
+{
+   if( seed == 0 ) seed = (long)time(NULL)+(long)getpid() ;
+   srand48(seed) ;
 }
 
 /*-------------------------------------------------------------------
@@ -132,3 +149,4 @@ char * Random_Insult(void)
    int ii = (lrand48()>>5) % NINSULT ;
    return ins[ii] ;
 }
+

@@ -3,13 +3,41 @@
 
 #define SUMA_BRUSH_BLOCK 500
 
+#define SUMA_APPLE_AltOptMask		(1<<13)     /* empirically determined,
+                                               no sign for it in X.h 
+                                               Would not work for catching
+                                               alt/option+character because
+                                               on mac, this combo maps to
+                                               new characters. See XK_e
+                                               for sample case */
+
 #define SUMA_APPLE_KEY(s) ( (SUMA_iswordin_ci(s,"apl")==1) ? 1:0 )
 #define SUMA_CTRL_KEY(s) ( (SUMA_iswordin_ci(s,"ctrl")==1) ? 1:0 )
 #define SUMA_ALT_KEY(s) ( (SUMA_iswordin_ci(s,"alt")==1) ? 1:0 )
 #define SUMA_AALT_KEY(s) ( (SUMA_APPLE_KEY(s) || SUMA_ALT_KEY(s) ) )
 #define SUMA_SHIFT_KEY(s) ( (SUMA_iswordin_ci(s,"shift")==1) ? 1:0 )
+#define SUMA_GL_ERRS {  \
+   int m_error, m_cnt = 0;  \
+   fprintf (SUMA_STDERR, \
+            "%s (via SUMA_GL_ERRS): Looking for OpenGL errors ...\n", \
+            FuncName); \
+   \
+   while ((m_error = glGetError()) != GL_NO_ERROR) { \
+      ++m_cnt;   \
+     fprintf ( SUMA_STDERR, "GL error %d: %s\n", \
+               m_cnt, gluErrorString(m_error));  \
+   }  \
+   if (!m_cnt) {  \
+      fprintf (SUMA_STDERR, "%s: No errors found.\n", FuncName);  \
+   }\
+}
 
 int SUMA_KeyPress(char *key, char *keyname); 
+int SUMA_bracketleft_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode);
+int SUMA_bracketright_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode);
+int SUMA_space_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode);
+int SUMA_period_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode);
+int SUMA_comma_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode);
 int SUMA_F1_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode);
 int SUMA_F2_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode);
 int SUMA_F3_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode);
@@ -18,7 +46,11 @@ int SUMA_F5_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode);
 int SUMA_F6_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode);
 int SUMA_F7_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode);
 int SUMA_F8_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode);
+int SUMA_A_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode);
 int SUMA_B_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode);
+int SUMA_D_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode);
+int SUMA_G_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode);
+int SUMA_J_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode, char *strgval);
 int SUMA_M_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode);
 int SUMA_N_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode);
 int SUMA_P_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode);
@@ -67,6 +99,7 @@ void SUMA_JumpFocusNode (char *s, void *data);
 void SUMA_JumpFocusFace (char *s, void *data);
 void SUMA_HighlightBox (char *s, void *data);
 void SUMA_SetNumForeSmoothing (char *s, void *data);
+void SUMA_SetNumFinalSmoothing (char *s, void *data);
 void SUMA_SetRotCenter (char *s, void *data);
 
 /*!

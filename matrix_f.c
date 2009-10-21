@@ -223,8 +223,8 @@ void matrix_print (matrix m)
   float val ;
   int ipr ;
 
-  rows = m.rows;
-  cols = m.cols;
+  rows = m.rows; if( rows < 1 ) return ;
+  cols = m.cols; if( cols < 1 ) return ;
 
   for( i=0 ; i < rows ; i++ ){
     for( j=0 ; j < cols ; j++ ){
@@ -1520,13 +1520,13 @@ void matrix_psinv( matrix X , matrix *XtXinv , matrix *XtXinvXt )
     Q is not computed.  If you want Q, then compute it as [Q] = [X] * inv[R].
 *//*-------------------------------------------------------------------------*/
 
-void matrix_qrr( matrix X , matrix *R )
+int matrix_qrr( matrix X , matrix *R )
 {
    int m = X.rows , n = X.cols , ii,jj,kk ;
    float *amat , *uvec , x1 ;
    register float alp, sum ;
 
-   if( m < 2 || n < 1 || m < n || R == NULL || X.elts == NULL ) return ;
+   if( m < 2 || n < 1 || m < n || R == NULL || X.elts == NULL ) return -1 ;
 
 #undef  A
 #define A(i,j) amat[(i)+(j)*m]
@@ -1570,7 +1570,7 @@ void matrix_qrr( matrix X , matrix *R )
    }
 
    free((void *)uvec) ; free((void *)amat) ;
-   return ;
+   return 0 ;
 }
 
 /*---------------------------------------------------------------------------*/

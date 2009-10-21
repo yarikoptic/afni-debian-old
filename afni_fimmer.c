@@ -33,6 +33,28 @@ ENTRY("AFNI_ts_in_library") ;
 
 /*--------------------------------------------------------------------*/
 
+int AFNI_tsname_in_library( char *nam )
+{
+ENTRY("AFNI_tsname_in_library") ;
+
+   if( GLOBAL_library.timeseries != NULL         &&
+      IMARR_COUNT(GLOBAL_library.timeseries) > 0 &&
+      nam != NULL && *nam != '\0'                  ){
+
+     int its ; MRI_IMAGE *tsim ;
+
+     for( its=0 ; its < IMARR_COUNT(GLOBAL_library.timeseries) ; its++ ){
+       tsim = IMARR_SUBIMAGE(GLOBAL_library.timeseries,its) ;
+       if( tsim != NULL && tsim->name != NULL && strcmp(nam,tsim->name) == 0 )
+         RETURN(its) ;
+     }
+   }
+
+   RETURN(-1) ;
+}
+
+/*--------------------------------------------------------------------*/
+
 void AFNI_fimmer_pickref_CB( Widget wcall ,
                              XtPointer cd , MCW_choose_cbs *cbs )
 {
@@ -274,9 +296,9 @@ THD_3dim_dataset * AFNI_fimmer_compute( Three_D_View *im3d ,
    char new_prefix[THD_MAX_PREFIX] ;
    char old_prefix[THD_MAX_PREFIX] ;
    THD_slist_find fff ;
-   int ifim , it,iv , nvox , ngood_ref , ntime , it1 , dtyp , nxyz , itbot ;
+   int ifim , it,iv , nvox=0 , ngood_ref , ntime , it1 , dtyp , nxyz , itbot ;
    float *vval, *tsar, *aval, *rbest, *abest, *pbest, *pval, *bbest, *bval;
-   int   *indx ;
+   int   *indx=NULL ;
    short *bar ;
    short *ibest ;  /* 15 Dec 1997 */
    void  *ptr ;
@@ -286,8 +308,8 @@ THD_3dim_dataset * AFNI_fimmer_compute( Three_D_View *im3d ,
    PCOR_references **pc_ref ;
    PCOR_voxel_corr **pc_vc ;
 
-   int fim_nref , nx_ort , ny_ort , internal_ort ;
-   float *ortar ;
+   int fim_nref , nx_ort=0 , ny_ort=0 , internal_ort ;
+   float *ortar=NULL ;
    static float * ref_vec = NULL ;
    static int    nref_vec = -666 ;
 

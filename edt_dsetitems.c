@@ -467,10 +467,17 @@ fprintf(stderr,"EDIT_dset_items: iarg=%d flag_arg=%d\n",iarg,flag_arg) ;
 
    if( new_prefix || new_directory_name || new_view_type ){
       char *nprefix = THD_deplus_prefix( prefix ) ;
+      int   smode ;
 
       THD_init_diskptr_names( dset->dblk->diskptr ,
                               directory_name , NULL ,
                               nprefix , view_type , True ) ;
+
+      /* if the storage mode has been specified via the prefix, apply it */
+      /*                                             21 Aug 2008 [rickr] */
+      smode = storage_mode_from_filename(prefix);
+      if( smode != STORAGE_UNDEFINED )
+         dset->dblk->diskptr->storage_mode = smode;
 
       if( DSET_IS_1D(dset) || DSET_IS_3D(dset) ){         /* 21 Mar 2003 */
         char *fname = dset->dblk->diskptr->brick_name ;
@@ -743,6 +750,11 @@ fprintf(stderr,"EDIT_dset_items: about to make datum_array\n") ;
       int jv , npar , kv , iv ;
 
       iv = brick_stataux_one_iv ;
+
+#if 0
+fprintf(stderr,"stataux_one:  iv=%d bso[0]=%g bso[1]=%g bso[2]=%g\n",
+        iv, brick_stataux_one[0],  brick_stataux_one[1], brick_stataux_one[2] ) ;
+#endif
 
       if( iv < 0 || iv >= dset->dblk->nvals ){
          EDERR("illegal index for ADN_brick_stataux_one") ;

@@ -53,7 +53,7 @@ int main (int argc,char *argv[])
    int found = 0, NoStride = 0;
    byte *bt=NULL;
    SUMA_DSET * dset = NULL, *ndset=NULL;
-   SUMA_Boolean LocalHead = YUP;
+   SUMA_Boolean LocalHead = NOPE;
    
    SUMA_STANDALONE_INIT;
    SUMA_mainENTRY;
@@ -71,7 +71,11 @@ int main (int argc,char *argv[])
       bt = (byte *)SUMA_malloc(N_Alloc * sizeof(byte));
       s = (char **)SUMA_malloc(N_Alloc * sizeof(char *));
       maskrow = (byte *)SUMA_malloc(N_Alloc * sizeof(byte));
-      maskcol = (byte *)SUMA_malloc(10*sizeof(byte)); for (i=0; i<10; ++i) { if (i==1 || i == 3) maskcol[i]=0; else maskcol[i] = 1; }
+      maskcol = (byte *)SUMA_malloc(10*sizeof(byte)); 
+      for (i=0; i<10; ++i) { 
+         if (i==1 || i == 3) maskcol[i]=0; 
+         else maskcol[i] = 1; 
+      }
       N_NodeDef = N_Alloc;
       for (i=0; i<N_NodeDef; ++i) {
          NodeDef[i] = i;
@@ -113,7 +117,7 @@ int main (int argc,char *argv[])
                                     NULL,    /* no idcode, let the function create one from the filename*/
                                     NULL,       /* no domain str specified */
                                     N_Alloc    /* Number of nodes allocated for */
-                                    ); /* DO NOT free dset, it is store in DsetList */
+                                    ); /* DO NOT free dset, if it is stored in DsetList */
       #ifdef SUMA_COMPILED
       SUMA_LH("inserting dset pointer into list");
       if (!SUMA_InsertDsetPointer(&dset, SUMAg_CF->DsetList,0)) {

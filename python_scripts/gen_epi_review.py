@@ -163,12 +163,14 @@ geometry arguments (optional):
 g_history = """
     gen_epi_review.py history:
 
-    0.1  June 27, 2008: initial version
-    0.2  June 30, 2008:
+    0.1  Jun 27, 2008: initial version
+    0.2  Jun 30, 2008:
          - make script executable, decrease sleep time and add usage comment
+    0.3  Sep 23, 2008: 
+         - in script, check for existence of given datasets
 """
 
-g_version = "version 0.2, June 30, 2008"
+g_version = "version 0.3, Sep 23, 2008"
 
 gDEF_VERB       = 1             # default verbose level
 gDEF_IM_SIZE    = [300,300]     # image size, in pixels
@@ -251,6 +253,10 @@ class GenEPIReview:
         """check for terminal arguments, then read the user options"""
 
         # ------------------------------------------------------------
+        # process any optlist_ options
+        self.valid_opts.check_special_opts(sys.argv)
+
+        # ------------------------------------------------------------
         # check for terminal args in argv (to ignore required args)
 
         # if argv has only the program name, or user requests help, show it
@@ -319,7 +325,7 @@ class GenEPIReview:
         # ----------------------------------------
         # image coordinates
         self.im_size, err = self.user_opts.get_type_list(int, '-im_size',
-                                2, 'two', self.verb)
+                                2, 'two', verb=self.verb)
         if err: return 1
         if not self.im_size: self.im_size = gDEF_IM_SIZE
 
@@ -335,7 +341,7 @@ class GenEPIReview:
         # ----------------------------------------
         # graph coordinates
         self.gr_size, err = self.user_opts.get_type_list(int, '-gr_size',
-                                2, 'two', self.verb)
+                                2, 'two', verb=self.verb)
         if err: return 1
         if not self.gr_size: self.gr_size = gDEF_GR_SIZE
 
@@ -364,6 +370,13 @@ class GenEPIReview:
               "# set the list of datasets\n"                                \
               "set dsets = ( %s )\n\n" %                                    \
                  ' '.join([dset.prefix for dset in self.adsets])
+
+        c2 += '# ------------------------------------------------------\n'  \
+              '# verify that the input data exists\n'                       \
+              'if ( ! -f $dsets[1]+orig.HEAD ) then\n'                      \
+              '    echo "** missing data to review (e.g. $dsets[1])"\n'     \
+              '    exit\n'                                                  \
+              'endif\n\n'
 
         c2 += '# ------------------------------------------------------\n'  \
               '# start afni is listening mode, and take a brief nap\n\n'    \

@@ -55,6 +55,8 @@ void symeig_3( double *a , double *e , int dovec )
 
    if( a == NULL || e == NULL ) return ;
 
+   /*----- unload matrix into local variables -----*/
+
    aa = a[0] ; bb = a[1] ; cc = a[2] ;  /* matrix is [ aa bb cc ]  */
    dd = a[4] ; ee = a[5] ; ff = a[8] ;  /*           [ bb dd ee ]  */
                                         /*           [ cc ee ff ]  */
@@ -119,8 +121,11 @@ void symeig_3( double *a , double *e , int dovec )
 
    if( qq <= 0.0 ){       /*** This should never happen!!! ***/
      static int nerr=0 ;
+#pragma omp critical (STDERR)
+     {
      if( ++nerr < 4 )
        fprintf(stderr,"** ERROR in symeig_3: discrim=%g numer=%g\n",qq,rr) ;
+     }
      qs = qq = rr = 0.0 ;
    } else {
      qs = sqrt(qq) ; rr = rr / (qs*qq) ;
@@ -144,7 +149,7 @@ void symeig_3( double *a , double *e , int dovec )
 
    /*-- are doing eigenvectors; must do double root as a special case --*/
 
-#undef  CROSS
+#undef  CROSS  /* cross product (x1,x2,x3) X (y1,y2,y3) -> (z1,z2,z3) */
 #define CROSS(x1,x2,x3,y1,y2,y3,z1,z2,z3) \
  ( (z1)=(x2)*(y3)-(x3)*(y2), (z2)=(x3)*(y1)-(x1)*(y3), (z3)=(x1)*(y2)-(x2)*(y1) )
 
@@ -266,6 +271,8 @@ void symeig_2( double *a , double *e , int dovec )
 
    if( a == NULL || e == NULL ) return ;
 
+   /*----- unload matrix into local variables -----*/
+
    sxx = a[0] ; sxy = a[1] ; syy = a[3] ;
 
    ss = fabs(sxx) ; tt = fabs(syy) ; if( ss > tt ) ss = tt ;
@@ -327,7 +334,7 @@ void symeig_double( int n , double *a , double *e )
 
    if( a == NULL || e == NULL || n < 1 ) return ;
 
-   /* special cases of small n */
+   /* special cases of small n (much faster than EISPACK) */
 
    if( n == 1 ){
      e[0] = a[0] ; a[0] = 1.0 ; return ;  /* degenerate case */
@@ -358,7 +365,7 @@ void symeigval_double( int n , double *a , double *e )
 
    if( a == NULL || e == NULL || n < 1 ) return ;
 
-   /* special cases of small n */
+   /* special cases of small n (much faster than EISPACK) */
 
    if( n == 1 ){
      e[0] = a[0] ; return ;  /* degenerate case */
@@ -384,6 +391,248 @@ void symeigval_double( int n , double *a , double *e )
 }
 
 /*--------------------------------------------------------------------*/
+/*! Return eigenvalues/eigenvectors indexed from bb to tt (bb <= tt),
+    where index #0 = smallest eigenvalue, index #n-1 = largest
+     n = order of matrix
+     a = on input: matrix(i,j) is in a[i+n*j] for i=0..n-1 , j=0..n-1
+           output: a[i+n*j] has the i'th component of the j'th
+                   eigenvector, for j=0..tt-bb.
+         However, if novec!=0, then eigenvectors will not be computed;
+         only the eigenvalues will be output.
+     e = on input: not used (but the calling program must
+                             allocate the space for e[0..tt-bb])
+           output: e[j] has the j'th eigenvalue, ordered so that
+           e[0] <= e[1] <= ... <= e[tt-bb]
+
+    Return value is 0 for all being done OK, nonzero for error.
+*//*------------------------------------------------------------------*/
+
+int symeig_irange( int n, double *a, double *e, int bb, int tt, int novec )
+{
+   integer nm , m11,mmm , ierr , *ind ;
+   double *fv1, *fv2, *fv3, eps1, lb,ub, *rv4,*rv5,*rv6,*rv7,*rv8, *zzz ;
+   int ii , nval ;
+
+   if( n < 1 || a == NULL || e == NULL || bb < 0 || tt < bb || tt >= n )
+     return -66666 ;
+
+   if( bb==0 && tt==n-1 ){ symeig_double( n , a , e ) ; return 0 ; }
+
+   /* reduction to tridiagonal form (stored in fv1..3) */
+
+   nm  = n ;
+   fv1 = (double *) malloc(sizeof(double)*(n+9)) ;  /* workspaces */
+   fv2 = (double *) malloc(sizeof(double)*(n+9)) ;
+   fv3 = (double *) malloc(sizeof(double)*(n+9)) ;
+
+   tred1_( &nm , &nm , a , fv1,fv2,fv3 ) ;
+
+   /* determination of the desired eigenvalues of the tridiagonal matrix */
+
+   eps1 = 0.0 ;
+   m11  = bb+1 ;
+   mmm  = tt-bb+1 ;
+   ierr = 0 ;
+   ind  = (integer *)malloc(sizeof(integer)*(n+9)) ;
+   rv4  = (double *) malloc(sizeof(double) *(n+9)) ;
+   rv5  = (double *) malloc(sizeof(double) *(n+9)) ;
+
+   tridib_( &nm , &eps1 , fv1,fv2,fv3 , &lb,&ub , &m11,&mmm , e ,
+            ind , &ierr , rv4,rv5 ) ;
+
+   if( ierr != 0 || novec != 0 ){
+     free(rv5); free(rv4); free(ind); free(fv3); free(fv2); free(fv1);
+     return -ierr ;
+   }
+
+   /* determination of the eigenvectors of the tridiagonal matrix */
+
+   nval = nm * mmm ;
+   zzz  = (double *) malloc(sizeof(double) *nval ) ;
+   rv6  = (double *) malloc(sizeof(double) *(n+9)) ;
+   rv7  = (double *) malloc(sizeof(double) *(n+9)) ;
+   rv8  = (double *) malloc(sizeof(double) *(n+9)) ;
+
+   tinvit_( &nm , &nm , fv1,fv2,fv3 , &mmm , e ,
+            ind , zzz , &ierr , rv4,rv5,rv6,rv7,rv8 ) ;
+
+   if( ierr != 0 ){
+     free(rv8); free(rv7); free(rv6); free(zzz);
+     free(rv5); free(rv4); free(ind); free(fv3); free(fv2); free(fv1);
+     return ierr ;
+   }
+
+   /* transform eigenvectors back to original space */
+
+   trbak1_( &nm , &nm , a , fv2 , &mmm , zzz ) ;
+
+   /* copy output eigenvectors into a */
+
+   for( ii=0 ; ii < nval ; ii++ ) a[ii] = zzz[ii] ;
+
+   free(rv8); free(rv7); free(rv6); free(zzz);
+   free(rv5); free(rv4); free(ind); free(fv3); free(fv2); free(fv1);
+   return 0 ;
+}
+
+/*----------------------------------------------------------------------------*/
+
+#undef  A
+#define A(i,j) asym[(i)+(j)*nsym]
+
+/*----------------------------------------------------------------------------*/
+/*! Compute the nvec principal singular vectors of a set of m columns, each
+    of length n, stored in array xx[i+j*n] for i=0..n-1, j=0..m-1.
+    The singular values (largest to smallest) are stored in sval, and
+    the left singular vectors [first nvec columns of U in X = U S V'] are
+    stored into uvec[i+j*n] for i=0..n-1, j=0..nvec-1.
+
+    The return value is the number of vectors computed.  If the return
+    value is not positive, something bad happened.  Normally, the return
+    value would be the same as nvec, but it cannot be larger than MIN(n,m).
+
+    If sval==NULL, then the output into sval is skipped.
+    If uval==NULL, then the output into uval is skipped.
+    If both are NULL, exactly why did you want to call this function?
+*//*--------------------------------------------------------------------------*/
+
+int first_principal_vectors( int n , int m , float *xx ,
+                             int nvec , float *sval , float *uvec )
+{
+   int nn=n , mm=m , nsym , ii,jj,kk,qq ;
+   double *asym , *deval ;
+   register double sum , qsum ; register float *xj , *xk ;
+
+   nsym = MIN(nn,mm) ;  /* size of the symmetric matrix to create */
+
+   if( nsym < 1 || xx == NULL || (uvec == NULL && sval == NULL) ) return -666 ;
+
+   if( nvec > nsym ) nvec = nsym ;  /* can't compute more vectors than nsym! */
+
+#pragma omp critical (MALLOC)
+   { asym  = (double *)malloc(sizeof(double)*nsym*nsym) ;  /* symmetric matrix */
+     deval = (double *)malloc(sizeof(double)*nsym) ;       /* its eigenvalues */
+   }
+
+   /** setup matrix to eigensolve: choose smaller of [X]'[X] and [X][X]' **/
+   /**     since [X] is n x m, [X]'[X] is m x m and [X][X]' is n x n     **/
+
+   if( nn > mm ){                       /* more rows than columns:  */
+                                        /* so [A] = [X]'[X] = m x m */
+     int n1 = nn-1 ;
+     for( jj=0 ; jj < mm ; jj++ ){
+       xj = xx + jj*nn ;
+       for( kk=0 ; kk <= jj ; kk++ ){
+         sum = 0.0 ; xk = xx + kk*nn ;
+         for( ii=0 ; ii < n1 ; ii+=2 ) sum += xj[ii]*xk[ii] + xj[ii+1]*xk[ii+1];
+         if( ii == n1 ) sum += xj[ii]*xk[ii] ;
+         A(jj,kk) = sum ; if( kk < jj ) A(kk,jj) = sum ;
+       }
+     }
+
+   } else {                             /* more columns than rows:  */
+                                        /* so [A] = [X][X]' = n x n */
+     float *xt ; int m1=mm-1 ;
+#pragma omp critical (MALLOC)
+     xt = (float *)malloc(sizeof(float)*nn*mm) ;
+     for( jj=0 ; jj < mm ; jj++ ){      /* form [X]' into array xt */
+       for( ii=0 ; ii < nn ; ii++ ) xt[jj+ii*mm] = xx[ii+jj*nn] ;
+     }
+
+     for( jj=0 ; jj < nn ; jj++ ){
+       xj = xt + jj*mm ;
+       for( kk=0 ; kk <= jj ; kk++ ){
+         sum = 0.0 ; xk = xt + kk*mm ;
+         for( ii=0 ; ii < m1 ; ii+=2 ) sum += xj[ii]*xk[ii] + xj[ii+1]*xk[ii+1];
+         if( ii == m1 ) sum += xj[ii]*xk[ii] ;
+         A(jj,kk) = sum ; if( kk < jj ) A(kk,jj) = sum ;
+       }
+     }
+
+#pragma omp critical (MALLOC)
+     free(xt) ;  /* don't need this no more */
+   }
+
+   /** compute the nvec eigenvectors corresponding to largest eigenvalues **/
+   /** these eigenvectors are stored on top of first nvec columns of asym **/
+
+   ii = symeig_irange( nsym, asym, deval, nsym-nvec, nsym-1, (uvec==NULL) ) ;
+
+   if( ii != 0 ){
+#pragma omp critical (MALLOC)
+     { free(deval) ; free(asym) ; }
+     return -33333 ;  /* eigensolver failed!? */
+   }
+
+   /** Store singular values (sqrt of eigenvalues), if desired:
+       Note that symeig_irange returns things smallest to largest,
+       but we want largest to smallest, so have to reverse the order **/
+
+   if( sval != NULL ){
+     for( jj=0 ; jj < nvec ; jj++ ){
+       sum = deval[nvec-1-jj] ;
+       sval[jj] = (sum <= 0.0) ? 0.0 : sqrt(sum) ;
+     }
+   }
+
+   /** if no output vectors desired, we are done done done!!! **/
+
+   if( uvec == NULL ){
+#pragma omp critical (MALLOC)
+     { free(deval) ; free(asym) ; }
+     return nvec ;
+   }
+
+   /** SVD is [X] = [U] [S] [V]', where [U] = desired output vectors
+
+       case n <= m: [A] = [X][X]' = [U] [S][S]' [U]'
+                    so [A][U] = [U] [S][S]'
+                    so eigenvectors of [A] are just [U]
+
+       case n > m:  [A] = [X]'[X] = [V] [S]'[S] [V]'
+                    so [A][V] = [V] [S'][S]
+                    so eigenvectors of [A] are [V], but we want [U]
+                    note that [X][V] = [U] [S]
+                    so pre-multiplying each column vector in [V] by matrix [X]
+                    will give the corresponding column in [U], but scaled;
+                    below, just L2-normalize the column to get output vector **/
+
+	if( nn <= mm ){                    /* copy eigenvectors into output directly */
+                                      /* (e.g., more vectors than time points) */
+     for( jj=0 ; jj < nvec ; jj++ ){
+       qq = nvec-1-jj ;               /* eigenvalues are in reversed order */
+       for( ii=0 ; ii < nn ; ii++ )
+         uvec[ii+jj*nn] = (float)asym[ii+qq*nn] ;
+     }
+
+   } else {  /* n > m: transform eigenvectors to get left singular vectors */
+             /* (e.g., more time points than vectors) */
+
+     for( jj=0 ; jj < nvec ; jj++ ){
+       qq = nvec-1-jj ; qsum = 0.0 ;  /* eigenvalues are in reversed order */
+       for( ii=0 ; ii < nn ; ii++ ){
+         sum = 0.0 ;
+         for( kk=0 ; kk < mm ; kk++ ) sum += xx[ii+kk*nn] * asym[kk+qq*mm] ;
+         uvec[ii+jj*nn] = sum ; qsum += sum*sum ;
+       }
+       if( qsum > 0.0 ){       /* L2 normalize */
+         register float fac ;
+         fac = (float)(1.0/sqrt(qsum)) ;
+         for( ii=0 ; ii < nn ; ii++ ) uvec[ii+jj*nn] *= fac ;
+       }
+     }
+   }
+
+   /** free at last!!! **/
+
+#pragma omp critical (MALLOC)
+   { free(deval) ; free(asym) ; }
+   return nvec ;
+}
+
+#undef A
+
+/*--------------------------------------------------------------------*/
 
 #define CHECK_SVD
 
@@ -397,10 +646,10 @@ void symeigval_double( int n , double *a , double *e )
 # define CHK 0
 #endif
 
-/** sorting SVD values:
-      0 = no sort
-     +1 = sort increasing order
-     -1 = sort descending order **/
+/** setup for sorting SVD values:
+      0 = no sort (whatever the function returns)
+     +1 = sort in increasing order of singular values
+     -1 = sort in descending order of singular values **/
 
 static int svd_sort = 0 ;
 void set_svd_sort( int ss ){ svd_sort = ss; }
@@ -408,14 +657,15 @@ void set_svd_sort( int ss ){ svd_sort = ss; }
 /*----------------------------------------------------------------------------*/
 /*! Compute SVD of double precision matrix:                      T
                                             [a] = [u] diag[s] [v]
-    - m = # of rows in a
-    - n = # of columns in a
-    - a = pointer to input matrix; a[i+j*m] has the (i,j) element (mXn matrix)
-    - s = pointer to output singular values; length = n
-    - u = pointer to output matrix, if desired; length = m*n (mXn matrix)
-    - v = pointer to output matrix, if desired; length = n*n (nxn matrix)
+    - m = # of rows in a = length of each column
+    - n = # of columns in a = length of each row
+    - a = pointer to input matrix; a[i+j*m] has the (i,j) element
+          (m X n matrix, stored in column-first order)
+    - s = pointer to output singular values; length = n (cannot be NULL)
+    - u = pointer to output matrix, if desired; length = m*n (m X n matrix)
+    - v = pointer to output matrix, if desired; length = n*n (n x n matrix)
 
-  Modified 10 Jan 2007 to add sorting of s and columns of u & v.
+  Modified 10 Jan 2007 to add sorting of s and corresponding columns of u & v.
 ------------------------------------------------------------------------------*/
 
 void svd_double( int m, int n, double *a, double *s, double *u, double *v )
@@ -432,6 +682,8 @@ void svd_double( int m, int n, double *a, double *s, double *u, double *v )
    lda = m ;
    ww  = s ;
 
+   /* make space for u matrix, if not supplied */
+
    if( u == NULL ){
      matu = (logical) CHK ;
      uu   = (doublereal *)malloc(sizeof(double)*m*n) ;
@@ -440,6 +692,8 @@ void svd_double( int m, int n, double *a, double *s, double *u, double *v )
      uu = u ;
    }
    ldu = m ;
+
+   /* make space for v matrix if not supplied */
 
    if( v == NULL ){
      matv = (logical) CHK ;
@@ -452,10 +706,17 @@ void svd_double( int m, int n, double *a, double *s, double *u, double *v )
 
    rv1 = (double *) malloc(sizeof(double)*n) ;  /* workspace */
 
+   /** the actual SVD **/
+
    (void) svd_( &mm , &nn , &lda , aa , ww ,
                 &matu , &ldu , uu , &matv , &ldv , vv , &ierr , rv1 ) ;
 
 #ifdef CHECK_SVD
+   /** back-compute [A] from [U] diag[ww] [V]'
+       and see if it is close to the input matrix;
+       if not, compute the results in another function;
+       this is needed because the svd() function compiles with
+       rare computational errors on some compilers' optimizers **/
    { register int i,j,k ; register doublereal aij ; double err ;
      err = 0.0 ;
      for( j=0 ; j < n ; j++ ){
@@ -464,9 +725,9 @@ void svd_double( int m, int n, double *a, double *s, double *u, double *v )
         for( k=0 ; k < n ; k++ ) aij -= U(i,k)*V(j,k)*ww[k] ;
         err += fabs(aij) ;
      }}
-     err /= (m*n) ;
+     err /= (m*n) ;  /* average absolute error per matrix element */
      if( err >= 1.e-5 ){
-       WARNING_message("SVD err=%g; recomputing ...\n",err) ;
+       WARNING_message("SVD avg err=%g; recomputing ...\n",err) ;
        (void) svd_slow_( &mm , &nn , &lda , aa , ww ,
                          &matu , &ldu , uu , &matv , &ldv , vv , &ierr , rv1 ) ;
        err = 0.0 ;
@@ -477,13 +738,15 @@ void svd_double( int m, int n, double *a, double *s, double *u, double *v )
           err += fabs(aij) ;
        }}
        err /= (m*n) ;
-       WARNING_message("Recomputed SVD err=%g %s\n",
+       WARNING_message("Recomputed SVD avg err=%g %s\n",
                err , (err >= 1.e-5) ? "**BAD**" : "**OK**"      ) ;
      }
    }
 #endif
 
    free((void *)rv1) ;
+
+   /* discard [u] and [v] spaces if not needed for output */
 
    if( u == NULL && uu != NULL ) free((void *)uu) ;
    if( v == NULL && vv != NULL ) free((void *)vv) ;
@@ -500,18 +763,22 @@ void svd_double( int m, int n, double *a, double *s, double *u, double *v )
      qsort_doubleint( n , sv , iv ) ;
      if( u != NULL ){
        double *cc = (double *)malloc(sizeof(double)*m*n) ;
+#pragma omp critical (MEMCPY)
        (void)memcpy( cc , u , sizeof(double)*m*n ) ;
        for( jj=0 ; jj < n ; jj++ ){
          kk = iv[jj] ;  /* where the new jj-th col came from */
+#pragma omp critical (MEMCPY)
          (void)memcpy( u+jj*m , cc+kk*m , sizeof(double)*m ) ;
        }
        free((void *)cc) ;
      }
      if( v != NULL ){
        double *cc = (double *)malloc(sizeof(double)*n*n) ;
+#pragma omp critical (MEMCPY)
        (void)memcpy( cc , v , sizeof(double)*n*n ) ;
        for( jj=0 ; jj < n ; jj++ ){
          kk = iv[jj] ;
+#pragma omp critical (MEMCPY)
          (void)memcpy( v+jj*n , cc+kk*n , sizeof(double)*n ) ;
        }
        free((void *)cc) ;
@@ -544,14 +811,16 @@ void svd_double( int m, int n, double *a, double *s, double *u, double *v )
    remove_mean: 0  : do nothing
                 1  : remove the mean of each column in data_mat (like -dmean in 3dpc)
 
-   To match matlab's cov function, you need to remove the mean of each column and set norm to 0 (default for matlab) or 1
+   To match matlab's cov function, you need to remove the mean of each column
+   and set norm to 0 (default for matlab) or 1
 
-   the function returns the trace of the covariance matrix if all went well.
-    a -1.0 in case of error.
+   the function returns the trace of the covariance matrix if all went well;
+   returns -1.0 in case of error.
 
 */
-double covariance(float *data_mat, double *cov_mat, unsigned char * row_mask, int num_rows,
-               int num_cols, int norm, int remove_mean, int be_quiet)
+
+double covariance(float *data_mat, double *cov_mat, unsigned char * row_mask,
+                  int num_rows, int num_cols, int norm, int remove_mean, int be_quiet)
 {
    double atrace, dsum, normval=0.0;
    int idel, jj, nn, mm, ifirst, ilast, ii, PC_be_quiet, kk, nsum;
@@ -626,6 +895,7 @@ double covariance(float *data_mat, double *cov_mat, unsigned char * row_mask, in
 
    return(atrace);
 }
+
 /*!
    Principal Component calculation by doing SVD on the
    covariance matrix of the data.

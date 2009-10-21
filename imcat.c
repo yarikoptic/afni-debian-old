@@ -19,7 +19,8 @@ int main( int argc , char * argv[] )
    char suffix[50] = "\0";
    char *scale_image = NULL;
    int iarg , ii,jj , nx,ny , nxim,nyim ;
-   int nmode = XYNUM, nxin, nyin ;
+   int nmode = XYNUM, nxin, nyin, nbad = 0;
+   int cutL=0, cutR=0, cutT=0, cutB=0;
    int gap = 0, ScaleInt=0, force_rgb_out = 0, matrix_size_from_scale = 0;
    byte  gap_col[3] = {255, 20, 128} ;
    MRI_IMAGE *imscl=NULL;
@@ -56,12 +57,18 @@ int main( int argc , char * argv[] )
  "  -res_in RX RY: Set resolution of all input images to RX by RY pixels.\n"
  "                 Default is to make all input have the same\n"
  "                 resolution as the first image.\n"
+ "  -crop L R T B: Crop images by L (Left), R (Right), T (Top), B (Bottom)\n"
+ "                 pixels. Cutting is performed after any resolution change, \n"
+ "                 if any, is to be done.\n"
  " ++ Options for output:\n"
  "  -zero_wrap: If number of images is not enough to fill matrix\n"
  "              blank images are used.\n"
  "  -image_wrap: If number of images is not enough to fill matrix\n"
  "               images on command line are reused (default)\n"
  "  -prefix ppp = Prefix the output files with string 'ppp'\n"
+ "          Note: If the prefix ends with .1D, then a 1D file containing\n"
+ "                the average of RGB values. You can view the output with\n"
+ "                1dgrayplot.\n"
  "  -matrix NX NY: Specify number of images in each row and column \n"
  "                 of IM at the same time. \n"
  "  -nx NX: Number of images in each row (3 for example below)\n"
@@ -113,10 +120,13 @@ int main( int argc , char * argv[] )
       exit(0) ;
     }
 
-
     ScaleInt = 0;
     resix=-1;
     resiy=-1;
+    cutL=0;
+    cutB=0;
+    cutT=0;
+    cutR=0;
     force_rgb_out = 0;
     iarg = 1 ;
       nx = -1; ny = -1;
@@ -129,6 +139,19 @@ int main( int argc , char * argv[] )
          }
          nx = (int) strtod( argv[++iarg] , NULL ) ;
          ny = (int) strtod( argv[++iarg] , NULL ) ;
+          iarg++ ; continue ;
+       }
+       
+       if( strcmp(argv[iarg],"-crop") == 0 ){
+         if (iarg+4 > argc) {
+            fprintf(stderr,
+                     "*** ERROR: Need four positive integers after -crop\n");
+            exit(1);
+         }
+         cutL = (int) strtod( argv[++iarg] , NULL ) ;
+         cutR = (int) strtod( argv[++iarg] , NULL ) ;
+         cutT = (int) strtod( argv[++iarg] , NULL ) ;
+         cutB = (int) strtod( argv[++iarg] , NULL ) ;
           iarg++ ; continue ;
        }
        
@@ -272,6 +295,18 @@ int main( int argc , char * argv[] )
    } else if( inimar->num < 1 ){
       fprintf(stderr,"*** less than 1 input image read!\a\n") ;
       exit(1) ;
+   }
+   /* crop all images if needed */
+   if (cutL || cutR || cutT || cutB) {
+      /* original image size */
+      nxin = IMAGE_IN_IMARR(inimar,0)->nx;
+      nyin = IMAGE_IN_IMARR(inimar,0)->ny;
+      
+      nbad = mri_cut_many_2D(inimar, cutL, nxin-1-cutR, cutT, nyin-1-cutB);
+      if (nbad) {
+         fprintf(stderr,"*** failed (%d) in cropping operation!\a\n", nbad) ;
+         exit(1) ;
+      }
    }
    
    /* figure out the count */
@@ -441,7 +476,7 @@ int main( int argc , char * argv[] )
                                     (float)scl3[3*(kkk%nscl)+2]); */
               tim = mri_to_byte_scl(0.0, (float)scl3[3*(kkk%nscl)  ], rim ); mri_free(rim); rim = tim;
               tim = mri_to_byte_scl(0.0, (float)scl3[3*(kkk%nscl)+1], gim ); mri_free(gim); gim = tim;
-              tim = mri_to_byte_scl(0.0, (float)scl3[3*(kkk%nscl)+1], bim ); mri_free(bim); bim = tim;
+              tim = mri_to_byte_scl(0.0, (float)scl3[3*(kkk%nscl)+2], bim ); mri_free(bim); bim = tim;
            }
            newim = mri_3to_rgb( rim, gim, bim ) ;
            mri_free(rim) ; mri_free(gim) ; mri_free(bim) ;
@@ -471,11 +506,40 @@ int main( int argc , char * argv[] )
 
    }
 
-   sprintf(fnam,"%s.ppm",prefix);
-   fprintf(stderr,"+++ Writing image to %s\n", fnam);
-   mri_write(fnam,im) ;
+   if (!(STRING_HAS_SUFFIX_CASE(prefix,".1D"))) {
+      if (!(STRING_HAS_SUFFIX_CASE(prefix,".jpg"))) {
+         sprintf(fnam,"%s.ppm",prefix);
+      } else {
+         sprintf(fnam,"%s",prefix);
+      }
+      fprintf(stderr,"+++ Writing image to %s\n", fnam);
+      mri_write(fnam,im) ;
+      fprintf(stdout, "You can view image %s with:\n aiv %s \n", fnam, fnam);
+   } else { /* write a 1D out */
+      FILE *fout=fopen(prefix,"w");
+      float *fff=NULL;
+      MRI_IMAGE *tim;
+      if (!fout) {
+         fprintf(stderr,"*** ERROR: Failed to open %s for output!\n", prefix);
+         exit(1) ;
+      }
+      if (!(tim = mri_to_float(im))) {
+         fprintf(stderr,"*** ERROR: Failed to convert output image.\n");
+         exit(1) ;
+      }
+      fff= MRI_FLOAT_PTR(tim);  
+      for (jj=0; jj<tim->ny; ++jj)  {
+         for (ii=0; ii<tim->nx; ++ii) {
+            fprintf(fout,"%.4f ", fff[jj*tim->nx+ii]);
+         }
+         fprintf(fout,"\n");
+      }
+      fclose(fout);
+      mri_free(tim); tim = NULL;  
+      fprintf(stdout, "You can view image %s with:\n 1dgrayplot %s \n", 
+                        fnam, prefix);
+   }
    
    mri_free(im); im = NULL;
-   fprintf(stdout, "You can view image %s with:\n aiv %s \n", fnam, fnam);
     exit(0) ;
 }

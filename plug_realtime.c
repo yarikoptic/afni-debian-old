@@ -24,16 +24,13 @@
 #  error "Plugins not properly set up -- see machdep.h"
 #endif
 
-#define ALLOW_REGISTRATION
-
-#ifdef ALLOW_REGISTRATION
-#  include "coxplot.h"
-#endif
+#include "coxplot.h"
 
 /***********************************************************************
-  Plugin to accept data from an external process and assemble
-  it into a dataset.  Initial implementation for the Bruker 3T/60
-  system at the Medical College of Wisconsin.
+  Plugin to accept data from an external process and assemble it
+  into a dataset.  Initial implementation was for the Bruker 3T/60
+  system at the Medical College of Wisconsin.  Now works with generic
+  external "image source" software.  See README.realtime for info.
 ************************************************************************/
 
 /** 24 Jun 2002: modified to allow nzz=1 for UCSD trolls                     **/
@@ -71,6 +68,11 @@
 /** 10 May 2005: added TPATTERN command to set timing pattern        [rickr] **/
 /** 13 Sep 2005: add empty markers to appropriate datasets           [rickr] **/
 /** 11 Nov 2006: pass ROI means via RT_mp_*, one per ROI per TR      [rickr] **/
+/** 16 Oct 2008: added capability to write data to disk in real time [vinai] **/
+/** 01 Jun 2009: added ability to have a callback called at each
+                 time an update is sent to AFNI -- for further
+                 processing of some hideous sort, I suppose          [RWCox] **/
+/** 02 Jun 2009: added ability to merge multichannel data            [RWCox] **/
 
 
 /**************************************************************************/
@@ -116,6 +118,8 @@
 static int        num_open_controllers ;                       /* 02 Aug 2002 */
 static int            open_controller_index[MAX_CONTROLLERS] ;
 static Three_D_View * open_controller      [MAX_CONTROLLERS] ;
+
+static int num_runs = 0 ;  /* 20 May 2009 = # times new acquisitions started */
 
 typedef struct {
 
@@ -190,23 +194,27 @@ typedef struct {
    int func_condit ;              /* condition that function computation is in now */
    int_func * func_func ;         /* function to compute the function */
 
-#ifdef ALLOW_REGISTRATION
    /*-- 07 Apr and 01 Aug 1998: real-time image registration stuff --*/
 
-   THD_3dim_dataset * reg_dset ;      /* registered dataset, if any */
-   MRI_2dalign_basis ** reg_2dbasis ; /* stuff for each slice */
+   THD_3dim_dataset *reg_dset ;       /* registered dataset, if any */
+   THD_3dim_dataset *reg_base_dset ;  /* registration base dataset */
+   MRI_2dalign_basis **reg_2dbasis ;  /* stuff for each slice */
    int reg_base_index ;               /* where to start? */
    int reg_mode ;                     /* how to register? */
+   int reg_base_mode ;                /* how to apply registration base */
    int reg_status ;                   /* does AFNI know about this dataset yet? */
    int reg_nvol ;                     /* number of volumes registered so far */
    int reg_graph ;                    /* 17 Aug 1998: to graph, or not to graph */
    int reg_nest ;                     /* number of estimated parameters */
-   float * reg_tim , * reg_dx  ,
-         * reg_dy  , * reg_phi  ;     /* estimated motion parameters */
+   float *reg_tim , *reg_dx  ,
+         *reg_dy  , *reg_phi  ;       /* estimated motion parameters */
+
+   THD_3dim_dataset *reg_basis_dset ; /* 02 Jul 2009 */
+   int              *reg_basis_nvol ;
 
    /*--  Oct 1998: more stuff for 3D registration --*/
 
-   float * reg_dz , * reg_theta , * reg_psi , * reg_rep ;
+   float *reg_dz , *reg_theta , *reg_psi , *reg_rep ;
    MRI_3dalign_basis * reg_3dbasis ;
    int iha , ax1,hax1 , ax2,hax2 , ax3,hax3 ;
    MEM_topshell_data * mp ;
@@ -236,8 +244,6 @@ typedef struct {
    int           mask_nvals ;     /* number of non-zero mask values to use   */
    int           mask_nset ;      /* number of set voxels in mask            */
    double *      mask_aves ;      /* averages over each mask value           */
-   
-#endif
 
    /*-- Jul 2008 [rickr]: for oblique data                                 --*/
    int           is_oblique ;     /* flag: is the dataset oblique            */
@@ -251,6 +257,12 @@ typedef struct {
    char **note ;
 
    int    marked_for_death ;      /* 10 Dec 2002 */
+
+   /*-- Jun 2009 [RWCox]: merged multi-channel dataset --*/
+
+   THD_3dim_dataset *mrg_dset ;
+   int mrg_status ;                   /* does AFNI know about this dataset yet? */
+   int mrg_nvol ;                     /* number of volumes merged so far */
 
 } RT_input ;
 
@@ -296,7 +308,6 @@ static char helpstring[] =
    " Verbose  = If set to 'Yes', the plugin will print out progress\n"
    "              reports as information flows into it.\n"
    "              If set to 'Very', prints out LOTS of information.\n"
-#ifdef ALLOW_REGISTRATION
    "\n"
    " Registration = If activated, image registration will take place\n"
    "                  either in realtime or at the end of image acquisition.\n"
@@ -310,8 +321,6 @@ static char helpstring[] =
    "                  done in realtime.\n"
    "                * If 3D realtime or estimate modes are chosen, the motion\n"
    "                  parameters can be graphed in realtime - see 'Graph' below.\n"
-   " Base Image   = The value sets the time index in the new dataset to which\n"
-   "                  the alignment will take place.\n"
    " Resampling   = Determines the interpolation method used:\n"
    "                  Cubic     = fastest, least accurate interpolation\n"
    "                  Quintic   = intermediate in speed and accuracy\n"
@@ -322,6 +331,23 @@ static char helpstring[] =
    "              N.B.: Linear interpolation is always used for '3D: estimate'.\n"
    "                    Quintic/Heptic interpolation is only available for 3D.\n"
    "\n"
+   " Reg Base     = If activated, the user choose the base dataset and image\n"
+   "                  for registration.  Reg Base allows 3 choices of which\n"
+   "                  choice the Base Image index applies to:\n"
+   "                    Current Run        : next RT dataset to be acquired\n"
+   "                    Current Run & Keep : same, and store for future runs\n"
+   "                    External Dataset   : choose a specific 'Extern Dset'\n"
+   "                  It is likely that one would choose Current & Keep, as\n"
+   "                  then all runs would be aligned to the first one, rather\n"
+   "                  than each run aligned to its own Base Image.\n"
+   "                * Note that using Current for the first run, and then\n"
+   "                  choosing that dataset as Extern for future runs should\n"
+   "                  be identical to using Current & Keep to begin with.\n"
+   " Extern Dset  = The dataset to apply if Reg Base is 'External Dataset'\n"
+   "                  For other Reg Base choices, this is ignored.\n"
+   " Base Image   = The value sets the time index in the Reg Base dataset to\n"
+   "                  which the alignment will take place.\n"
+   "\n"
    " Graph        = If set to 'Yes', will display a graph of the estimated\n"
    "                  motion parameters at the end of the run.\n"
    "                * If set to 'Realtime', will also show a cruder graph that\n"
@@ -330,7 +356,27 @@ static char helpstring[] =
    "                  how many repetitions (TR's) to expect.\n"
    " YR [y-axis]  = If a realtime graph is generated, this entry specifies\n"
    "                  the vertical range for each motion parameter.\n"
-#endif
+   "\n"
+   " Mask         = Turns on sending extra data to serial_helper port.\n"
+   "                * Motion Only       : send only the 6 motion parameters\n"
+   "                * ROI Means         : also send a mean for each Mask ROI\n"
+   "                * All Data          : send all Mask voxel data\n"
+   "\n"
+   "                  --> see example F from 'Dimon -help'\n"
+   "\n"
+   " RT Write     = Turns on real time writing of individual time point data\n"
+   "                  sets (either the acquired or volume registered data) to\n"
+   "                  disk.\n"
+   "\n"
+   " ChannelMerge = Turn on method for merging multi-channel information.\n"
+   "                * Has no effect if only one channel of data is sent.\n"
+   "                * Only works if the data channels are float or complex\n"
+   "                  data (doesn't work with shorts or bytes).\n"
+   "                * Creates an extra '_mrg' dataset.\n"
+   "                * none    ==> don't combine channels at all\n"
+   "                  sum     ==> add channels          [output is float or complex]\n"
+   "                  L1 norm ==> add absolute values of channels  [output is float]\n"
+   "                  L2 norm ==> sqrt(sum of squares of channels) [output is float]\n"
    "\n"
    "MULTICHANNEL ACQUISITION [Aug 2002]:\n"
    " Multiple image channels can be acquired (e.g., from multi-coil and/or\n"
@@ -338,7 +384,7 @@ static char helpstring[] =
    "  * These datasets will have names like Root#007_03 (for the 3rd channel\n"
    "    in the 7th acquisition).\n"
    "  * Functional activation cannot be computed with multichannel acquisition.\n"
-   "  * Registration cannot be computed with multichannel acquisition.\n"
+   "  * Registration cannot be computed with multichannel acquisition (yet).\n"
    "\n"
    "HOW TO SEND DATA:\n"
    " See file README.realtime for details; see program rtfeedme.c for an example.\n"
@@ -372,10 +418,13 @@ int_func * FUNC_funcs[NFUNC] = { NULL , RT_fim_recurse } ;
 static char * VERB_strings[NVERB] = { "No" , "Yes" , "Very" } ;
 static int verbose = 1 ;
 
-#ifdef ALLOW_REGISTRATION
   static int regtime  = 3 ;  /* index of base time for registration */
   static int regmode  = 0 ;  /* index into REG_strings */
   static int reggraph = 0 ;  /* graphing mode */
+
+  /* registriation base globals to apply in RT_main     27 Aug 2009 [rickr] */
+  static int g_reg_base_mode = 0 ;           /* index into REG_BASE_strings */
+  static THD_3dim_dataset * g_reg_base_dset = NULL ;  /* single volume dset */
 
   static int reg_resam = 1 ;    /* index into REG_resam_strings */
   static int   reg_nr  = 100 ;  /* units of TR */
@@ -399,12 +448,51 @@ static char * GRAPH_strings[NGRAPH] = { "No" , "Yes" , "Realtime" } ;
     "None" , "2D:_realtime" , "2D:_at_end"
            , "3D:_realtime" , "3D:_at_end" , "3D:_estimate" } ;
 
-#define N_RT_MASK_METHODS 3     /* 15 Jul 2008 [rickr] */
+# define RT_RBASE_MODE_CUR      0
+# define RT_RBASE_MODE_CUR_KEEP 1
+# define RT_RBASE_MODE_EXTERN   2
+# define NREG_BASE 3
+  static char * REG_BASE_strings[NREG_BASE] = {
+    "Current Run", "Current Run & Keep", "External Dataset" } ;
+
+  static char * REG_BASE_strings_ENV[NREG_BASE] = {
+    "Current_Run", "Current_Run_Keep", "External_Dataset" } ;
+
+#define N_RT_MASK_METHODS 4     /* 15 Jul 2008 [rickr] */
   static char * RT_mask_strings[N_RT_MASK_METHODS] = {
-    "None" , "ROI means" , "All Data" } ;
+    "None" , "Motion Only", "ROI means" , "All Data" } ;
 
   static char * RT_mask_strings_ENV[N_RT_MASK_METHODS] = {
-    "None" , "ROI_means" , "All_Data" } ;
+    "None" , "Motion_Only", "ROI_means" , "All_Data" } ;
+
+/* Variables to enable writing individual time-point volumes to disk */
+#define RT_WRITE_NOTHING       0
+#define RT_WRITE_ACQUIRED      1
+#define RT_WRITE_REGISTERED    2
+#define RT_WRITE_MERGED        3  /* 10 Jul 2009 */
+#define N_RT_WRITE_MODES       4
+  static char * RT_write_strings[N_RT_WRITE_MODES] = {"Off", "Acquired",
+                                                      "Registered", "Merged"};
+  static int    RTdatamode = 0 ;      /* mode of writing to disk in real time */
+  static int    RT_written[MAX_CHAN]; /* num time points already written out */
+  static int    RT_written_mrg = 0 ;  /* 10 Jul 2009 - RWCox */
+
+/* Variables for multi-channel merger operation (if any) */
+
+#define RT_CHMER_NONE      0
+#define RT_CHMER_SUM       1
+#define RT_CHMER_L1NORM    2
+#define RT_CHMER_L2NORM    3
+#define N_RT_CHMER_MODES   4
+   static char *RT_chmrg_strings[N_RT_CHMER_MODES] =
+                { "none" , "sum" , "L1 norm" , "L2 norm" } ;
+   static char *RT_chmrg_labels[N_RT_CHMER_MODES] =
+                { "none" , "sum" , "L1" , "L2" } ;
+   static int RT_chmrg_mode  = 0 ;
+   static int RT_chmrg_datum = -1 ;
+
+   MRI_IMAGE * RT_mergerize( int , THD_3dim_dataset ** , int ) ;
+
 
 # define REGMODE_NONE      0
 # define REGMODE_2D_RTIME  1
@@ -422,9 +510,18 @@ static char * GRAPH_strings[NGRAPH] = { "No" , "Yes" , "Realtime" } ;
   ( (mm) == REGMODE_2D_RTIME || (mm) == REGMODE_2D_ATEND ||  \
     (mm) == REGMODE_3D_RTIME || (mm) == REGMODE_3D_ATEND   )
 
-  static int g_mask_val_type = 0 ;                /* RT_mask_strings index */
-  static THD_3dim_dataset * g_mask_dset = NULL ;  /* mask aves w/ MP vals */
-#endif
+typedef struct {
+   int     len;
+   char ** list;
+} rt_string_list;
+
+# define RT_DRIVE_LIMIT 4096
+
+  static int g_mask_val_type = 1 ;                /* RT_mask_strings index   */
+  static int g_show_times = 0 ;                   /* show MP comm times      */
+  static int g_MP_send_ver = 0 ;                  /* send MP version         */
+  static THD_3dim_dataset * g_mask_dset = NULL ;  /* mask aves w/ MP vals    */
+  static rt_string_list drive_wait_list = {0,NULL} ;      /* DRIVE_WAIT list */
 
 /************ global data for reading data *****************/
 
@@ -454,28 +551,41 @@ void RT_process_xevents( RT_input * ) ;  /* 13 Oct 2000 */
 
 void RT_tell_afni_one( RT_input * , int , int ) ;  /* 01 Aug 2002 */
 
-#ifdef ALLOW_REGISTRATION
-  void RT_registration_2D_atend( RT_input * rtin ) ;
-  void RT_registration_2D_setup( RT_input * rtin ) ;
-  void RT_registration_2D_close( RT_input * rtin ) ;
-  void RT_registration_2D_onevol( RT_input * rtin , int tt ) ;
-  void RT_registration_2D_realtime( RT_input * rtin ) ;
+/* registration, RT_mp and related */
+void RT_registration_2D_atend( RT_input * rtin ) ;
+void RT_registration_2D_setup( RT_input * rtin ) ;
+void RT_registration_2D_close( RT_input * rtin ) ;
+void RT_registration_2D_onevol( RT_input * rtin , int tt ) ;
+void RT_registration_2D_realtime( RT_input * rtin ) ;
 
-  void RT_registration_3D_atend( RT_input * rtin ) ;
-  void RT_registration_3D_setup( RT_input * rtin ) ;
-  void RT_registration_3D_close( RT_input * rtin ) ;
-  void RT_registration_3D_onevol( RT_input * rtin , int tt ) ;
-  void RT_registration_3D_realtime( RT_input * rtin ) ;
+void RT_registration_3D_atend( RT_input * rtin ) ;
+void RT_registration_3D_setup( RT_input * rtin ) ;
+void RT_registration_3D_close( RT_input * rtin ) ;
+void RT_registration_3D_onevol( RT_input * rtin , int tt ) ;
+void RT_registration_3D_realtime( RT_input * rtin ) ;
 
-  int  RT_mp_comm_close       ( RT_input * rtin );
-  int  RT_mp_comm_init        ( RT_input * rtin );
-  int  RT_mp_comm_init_vars   ( RT_input * rtin );
-  int  RT_mp_comm_send_data   ( RT_input * rtin, float *mp[6], int nt, int sub);
-  int  RT_parser_init         ( RT_input * rtin );
-  void RT_set_grapher_pinnums ( int pinnum );
-  int  RT_mask_free           ( RT_input * rtin );  /* 10 Nov 2006 [rickr] */
-  int  RT_get_mask_aves       ( RT_input * rtin, int sub );
-#endif
+static int  RT_mp_comm_alive    ( int, int, char * );
+static int  RT_mp_comm_close    ( RT_input * rtin, int );
+static int  RT_mp_comm_init     ( RT_input * rtin );
+static int  RT_mp_comm_init_vars( RT_input * rtin );
+static int  RT_mp_comm_send_data( RT_input * rtin, float *mp[6],int nt,int sub);
+
+static int  RT_mp_get_mask_aves ( RT_input * rtin, int sub );
+static int  RT_mp_set_mask_data ( RT_input * rtin, float * data, int sub );
+static int  RT_mp_mask_free     ( RT_input * rtin );  /* 10 Nov 2006 [rickr] */
+
+static int  RT_mp_getenv        ( void );
+static int  RT_mp_show_time     ( char * mesg ) ;
+
+/* string list functions (used for DRIVE_WAIT commands) */
+static int add_to_rt_slist    ( rt_string_list * slist, char * str );
+static int free_rt_string_list( rt_string_list * slist );
+static int rt_run_drive_wait_commands( rt_string_list * slist );
+
+int  RT_parser_init         ( RT_input * rtin );
+void RT_set_grapher_pinnums ( int pinnum );
+
+void RT_test_callback(void *junk) ;      /* 01 Jun 2009 */
 
 #define TELL_NORMAL  0
 #define TELL_WRITE   1
@@ -510,13 +620,13 @@ PLUGIN_interface * PLUGIN_init( int ncall )
 {
    char * ept ; /* 09 Oct 2000 */
 
-   if( ncall > 0 )         return NULL ;  /* only one interface */
-   if( ! ALLOW_real_time ) return NULL ;  /* do nothing if not allowed */
-   AFNI_block_rescan(1) ;                 /* 10 Nov 2005 */
+   if( ncall > 0 )        return NULL ;  /* only one interface */
+   if( ! ALLOW_realtime ) return NULL ;  /* do nothing if not allowed */
+   AFNI_block_rescan(1) ;                /* 10 Nov 2005 */
 
    /*-- set titles and call point --*/
 
-   plint = PLUTO_new_interface( "RT Options" , "Set Real-Time Acquisition Options" ,
+   plint = PLUTO_new_interface("RT Options","Set Real-Time Acquisition Options",
                                 helpstring , PLUGIN_CALL_VIA_MENU , RT_main  ) ;
 
    PLUTO_add_hint( plint , "Set Real-Time Acquisition Options" ) ;
@@ -579,7 +689,6 @@ PLUGIN_interface * PLUGIN_init( int ncall )
    PLUTO_add_option( plint , "" , "Verbose" , FALSE ) ;
    PLUTO_add_string( plint , "Verbose" , NVERB , VERB_strings , verbose ) ;
 
-#ifdef ALLOW_REGISTRATION
    /*-- next line of input: registration mode --*/
 
    ept = getenv("AFNI_REALTIME_Registration") ;  /* 09 Oct 2000 */
@@ -590,12 +699,6 @@ PLUGIN_interface * PLUGIN_init( int ncall )
       if( ii >= 0 && ii < NREG ) regmode = ii ;
    }
 
-   ept = getenv("AFNI_REALTIME_Base_Image") ;     /* 09 Oct 2000 */
-   if( ept != NULL ){
-      int ii = (int) rint(strtod(ept,NULL)) ;
-      if( ii >= 0 && ii <= 59 ) regtime = ii ;
-   }
-
    ept = getenv("AFNI_REALTIME_Resampling") ;    /* 09 Oct 2000 */
    if( ept != NULL ){
       int ii = PLUTO_string_index( ept , NRESAM , REG_resam_strings ) ;
@@ -604,8 +707,36 @@ PLUGIN_interface * PLUGIN_init( int ncall )
 
    PLUTO_add_option( plint , "" , "Registration" , FALSE ) ;
    PLUTO_add_string( plint , "Registration" , NREG , REG_strings , regmode ) ;
-   PLUTO_add_number( plint , "Base Image" , 0,59,0 , regtime , FALSE ) ;
-   PLUTO_add_string( plint , "Resampling" , NRESAM , REG_resam_strings , reg_resam ) ;
+   PLUTO_add_string( plint , "Resampling",NRESAM, REG_resam_strings, reg_resam);
+   PLUTO_add_hint  ( plint , "resampling method for registered data");
+
+   /*-- registration base type, dset and index     27 Aug 2009 [rickr] --*/
+
+   ept = getenv("AFNI_REALTIME_Reg_Base_Mode") ;  /* 04 Sep 2009 [rickr] */
+   if( ept != NULL ){
+      int ii = PLUTO_string_index( ept , NREG_BASE , REG_BASE_strings ) ;
+      if (ii < 0) ii = PLUTO_string_index(ept, NREG_BASE, REG_BASE_strings_ENV);
+      if( ii >= 0 && ii < NREG_BASE ) g_reg_base_mode = ii ;
+   }
+
+   ept = getenv("AFNI_REALTIME_Base_Image") ;     /* 09 Oct 2000 */
+   if( ept != NULL ){
+      int ii = (int) rint(strtod(ept,NULL)) ;
+      if( ii >= 0 && ii <= 9999 ) regtime = ii ;
+   }
+
+   PLUTO_add_option(plint, "" , "Registration Base" , FALSE ) ;
+   PLUTO_add_hint  (plint, "choose registration base dataset and sub-brick");
+   PLUTO_add_string(plint, "Reg Base", NREG_BASE, REG_BASE_strings,
+                           g_reg_base_mode );
+   PLUTO_add_hint  (plint, "registration base dataset, and whether to store");
+   PLUTO_add_dataset( plint , "Extern Dset", ANAT_ALL_MASK, FUNC_ALL_MASK,
+                                      DIMEN_ALL_MASK | BRICK_ALLREAL_MASK ) ;
+   PLUTO_add_hint( plint , "choose mask dataset for serial_helper" ) ;
+   PLUTO_add_number(plint, "Base Image" , 0,9999,0 , regtime , TRUE ) ;
+   PLUTO_add_hint  (plint, "registration base dataset index");
+
+
 
    /*-- next line of input: registration graphing --*/
 
@@ -627,17 +758,21 @@ PLUGIN_interface * PLUGIN_init( int ncall )
       if( ff > 0.0 ) reg_yr = ff ;
    }
 
+   PLUTO_add_option( plint , "" , "Graphing" , FALSE ) ;
+   PLUTO_add_string( plint , "Graph" , NGRAPH , GRAPH_strings , reggraph ) ;
+   PLUTO_add_number( plint , "NR [x-axis]" , 5,9999,0 , reg_nr , TRUE ) ;
+   PLUTO_add_number( plint , "YR [y-axis]" , 1,100,1 , (int)(reg_yr*10.0),TRUE);
+
+   /* try to set the mask vals option from the env */
    ept = getenv("AFNI_REALTIME_Mask_Vals")  ;  /* 15 Jul 2008 [rickr] */
    if( ept != NULL ){
       int ii = PLUTO_string_index(ept, N_RT_MASK_METHODS, RT_mask_strings_ENV);
       if( ii >= 0 && ii < N_RT_MASK_METHODS ) g_mask_val_type = ii;
    }
 
-
-   PLUTO_add_option( plint , "" , "Graphing" , FALSE ) ;
-   PLUTO_add_string( plint , "Graph" , NGRAPH , GRAPH_strings , reggraph ) ;
-   PLUTO_add_number( plint , "NR [x-axis]" , 5,9999,0 , reg_nr , TRUE ) ;
-   PLUTO_add_number( plint , "YR [y-axis]" , 1,100,1 , (int)(reg_yr*10.0) , TRUE ) ;
+   /* but if no HOST_PORT, it must be cleared */
+   ept = getenv("AFNI_REALTIME_MP_HOST_PORT") ;
+   if( ept == NULL ) g_mask_val_type = 0;
 
    /* mask dataset option line   10 Nov 2006 [rickr] */
    PLUTO_add_option( plint , "" , "Masking" , FALSE ) ;
@@ -648,7 +783,21 @@ PLUGIN_interface * PLUGIN_init( int ncall )
                              RT_mask_strings , g_mask_val_type ) ;
    PLUTO_add_hint( plint , "choose which mask data to send to serial_helper" ) ;
 
-#endif
+   /* Adding options for writing individual time-point volumes to disk */
+
+   PLUTO_add_option( plint , "" , "DataWriting" , FALSE ) ;
+
+   RTdatamode = (int)AFNI_numenv("AFNI_REALTIME_WRITEMODE") ;
+   if( RTdatamode < 0 || RTdatamode >= N_RT_WRITE_MODES ) RTdatamode = 0 ;
+   PLUTO_add_string( plint , "RT Write" , N_RT_WRITE_MODES, RT_write_strings,
+                     RTdatamode ) ;
+
+   /* channel merge modes: 02 Jun 2009 */
+
+   RT_chmrg_mode = (int)AFNI_numenv("AFNI_REALTIME_CHMERMODE") ;
+   if( RT_chmrg_mode < 0 || RT_chmrg_mode >= N_RT_CHMER_MODES ) RT_chmrg_mode = 0 ;
+   PLUTO_add_string( plint , "ChannelMerge" , N_RT_CHMER_MODES ,
+                              RT_chmrg_strings , RT_chmrg_mode ) ;
 
    /***** Register a work process *****/
 
@@ -669,7 +818,7 @@ PLUGIN_interface * PLUGIN_init( int ncall )
 
    /***** go home to mama (i.e., AFNI) *****/
 
-   ALLOW_real_time = 1 ;  /* flag to AFNI that realtime work is started */
+   ALLOW_realtime = 1 ;  /* flag to AFNI that realtime work is started */
    return plint ;
 }
 
@@ -690,9 +839,7 @@ char * RT_main( PLUGIN_interface * plint )
    /** loop over input from AFNI **/
 
 #if 0                         /* 09 Oct 2000: turn this "feature" off */
-#ifdef ALLOW_REGISTRATION
    regmode = REGMODE_NONE ;   /* no registration if not ordered explicitly */
-#endif
 #endif
 
    while( (tag=PLUTO_get_optiontag(plint)) != NULL ){
@@ -732,15 +879,57 @@ char * RT_main( PLUGIN_interface * plint )
          continue ;
       }
 
-#ifdef ALLOW_REGISTRATION
       if( strcmp(tag,"Registration") == 0 ){
          str       = PLUTO_get_string(plint) ;
          regmode   = PLUTO_string_index( str , NREG , REG_strings ) ;
 
-         regtime   = PLUTO_get_number(plint) ;
+         /* regtime   = PLUTO_get_number(plint); moved to Reg Base below... */
 
          str       = PLUTO_get_string(plint) ;
          reg_resam = PLUTO_string_index( str , NRESAM , REG_resam_strings ) ;
+         continue ;
+      }
+
+      /* 2 Sep 2009 [rickr] */
+      if( strcmp(tag,"Registration Base") == 0 ){
+         MCW_idcode * idc ;
+         if( g_reg_base_dset ) { /* since changing: nuke any existing dset */
+            DSET_delete(g_reg_base_dset);
+            g_reg_base_dset = NULL;
+         }
+
+         str             = PLUTO_get_string(plint) ;
+         g_reg_base_mode = PLUTO_string_index(str, NREG_BASE, REG_BASE_strings);
+
+         idc = PLUTO_get_idcode(plint) ;
+         g_reg_base_dset = PLUTO_find_dset(idc);     /* might be NULL */
+
+         regtime = PLUTO_get_number(plint) ;
+
+         /* if extern dset, copy single volume */
+         if( g_reg_base_mode == RT_RBASE_MODE_EXTERN ) {
+            if( ! g_reg_base_dset )
+               return "**************************************\n"
+                      "RT_opts: choose Reg Base 'Extern Dset'\n"
+                      "**************************************" ;
+            g_reg_base_dset = THD_copy_one_sub(g_reg_base_dset, regtime);
+            if( ! g_reg_base_dset ) {
+               sprintf(buf, /* rely on being static */
+                "*********************************************\n"
+                "RT_opts: failed to load Extern Dset, index %d\n"
+                "*********************************************", regtime);
+               return buf;
+            }
+         } else if ( g_reg_base_dset ) {
+            fprintf(stderr,"** ignoring Reg Base Dset...\n");
+            g_reg_base_dset = NULL;
+         }
+
+         if (verbose)
+            fprintf(stderr,"RTM: reg base mode '%s', index %d, dset %s\n",
+                    REG_BASE_strings[g_reg_base_mode], regtime,
+                    g_reg_base_dset ? "<found>" : "<empty>");
+
          continue ;
       }
 
@@ -763,22 +952,36 @@ char * RT_main( PLUGIN_interface * plint )
       if( strcmp(tag,"Masking") == 0 ){
          MCW_idcode * idc = PLUTO_get_idcode(plint) ;
          g_mask_dset = PLUTO_find_dset(idc) ;
-         if ( !g_mask_dset )
-            return "*************************\n"
-                   "RT_opts: bad mask dataset\n"
-                   "*************************" ;
-
          str = PLUTO_get_string(plint) ;
          g_mask_val_type = PLUTO_string_index(str , N_RT_MASK_METHODS ,
                                                     RT_mask_strings ) ;
 
+         if ( g_mask_val_type > 1 && !g_mask_dset )
+            return "*************************\n"
+                   "RT_opts: bad mask dataset\n"
+                   "*************************" ;
+
+         /* since this is now read from the env, we need to put it there */
+         sprintf(buf, "AFNI_REALTIME_Mask_Vals %s",
+                      RT_mask_strings[g_mask_val_type]);
+         AFNI_setenv(buf);
+
          if (verbose)
-            fprintf(stderr,"-d RTM: found mask dataset, method '%s'\n",
-                           RT_mask_strings[g_mask_val_type]);
+            fprintf(stderr,"RTM: %s mask dataset, method '%s'\n",
+                 g_mask_dset ? "found":"no", RT_mask_strings[g_mask_val_type]);
 
          continue ;
       }
-#endif
+
+      if( strcmp(tag,"DataWriting") == 0 ){
+         str        = PLUTO_get_string(plint) ;
+         RTdatamode = PLUTO_string_index( str , N_RT_WRITE_MODES,
+                                                RT_write_strings ) ;
+         str           = PLUTO_get_string(plint) ;
+         RT_chmrg_mode = PLUTO_string_index( str , N_RT_CHMER_MODES,
+                                                   RT_chmrg_strings ) ;
+         continue ;
+      }
 
       /** How the hell did this happen? **/
 
@@ -845,6 +1048,7 @@ int RT_check_listen(void)
 
       if( ! TRUST_host(ioc_control->name) ){
          fprintf(stderr,"RT: untrusted host connection - closing!\a\n") ;
+         fprintf(stderr,"==> set environment variable AFNI_TRUSTHOST to IP address\n") ;
          IOCHAN_CLOSENOW(ioc_control) ;
          return 0 ;
       }
@@ -898,7 +1102,6 @@ void cleanup_rtinp( int keep_ioc_data )
        free( rtinp->sbr[cc] ) ;            /* destroy buffered data */
    }
 
-#ifdef ALLOW_REGISTRATION
    if( rtinp->reg_2dbasis != NULL ){       /* destroy registration setup */
       int kk ;
       for( kk=0 ; kk < rtinp->nzz ; kk++ )
@@ -915,7 +1118,6 @@ void cleanup_rtinp( int keep_ioc_data )
    FREEUP( rtinp->reg_phi   ) ; FREEUP( rtinp->reg_psi   ) ;
    FREEUP( rtinp->reg_theta ) ; FREEUP( rtinp->reg_rep   ) ;
    FREEUP( rtinp->reg_eval  ) ;
-#endif
 
    if( rtinp->image_handle != NULL )
       PLUTO_imseq_rekill( rtinp->image_handle,NULL,NULL ) ;  /* 28 Apr 2000 */
@@ -1241,6 +1443,7 @@ Boolean RT_worker( XtPointer elvis )
 
       if( rtinp->child_info == 0 && ! rtinp->info_ok ){
          fprintf(stderr,"RT: image header info was incomplete!\a\n") ;
+         fprintf(stderr,"==> check image source program and README.realtime\n");
          RT_check_info( rtinp , 1 ) ;
          PLUTO_beep() ;
          PLUTO_popup_transient( plint , " \n"
@@ -1272,7 +1475,7 @@ Boolean RT_worker( XtPointer elvis )
       RT_input *new_rtinp ;
       fprintf(stderr,"RT: data stream says to close dataset.\n") ;
       if( rtinp->sbr[0] != NULL ) RT_finish_dataset( rtinp ) ;
-      fprintf(stderr,"RT: starting to read from existing data stream.\n") ;
+      fprintf(stderr,"RT: starting to read new data from existing data stream.\n");
       new_rtinp = new_RT_input( rtinp->ioc_data ) ; /* new RT_input context */
       CLEANUP(1) ;                                 /* will delete old rtinp */
       rtinp = new_rtinp ; return False ;
@@ -1599,13 +1802,23 @@ RT_input * new_RT_input( IOCHAN *ioc_data )
 
    rtin->func_func   = FUNC_funcs[rtin->func_code] ; /* where to evaluate */
 
-#ifdef ALLOW_REGISTRATION
+   rtin->mrg_dset    = NULL ;     /* 02 Jun 2009 */
+   rtin->mrg_status  = 0 ;
+   rtin->mrg_nvol    = 0 ;
+
    rtin->reg_base_index = regtime ;  /* save these now, in case the evil */
    rtin->reg_mode       = regmode ;  /* user changes them on the fly!    */
+   rtin->reg_base_mode  = g_reg_base_mode ;
    rtin->reg_dset       = NULL ;
+   /* if dset to copy, dupe one vol                  04 Sep 2009 [rickr] */
+   if(g_reg_base_dset) rtin->reg_base_dset=THD_copy_one_sub(g_reg_base_dset,0);
+   else                rtin->reg_base_dset=NULL;
    rtin->reg_2dbasis    = NULL ;
    rtin->reg_status     = 0 ;        /* AFNI knows nothing. NOTHING.     */
    rtin->reg_nvol       = 0 ;        /* number volumes registered so far */
+
+   rtin->reg_basis_dset = NULL ;     /* 02 Jul 2009 */
+   rtin->reg_basis_nvol = NULL ;
 
    rtin->reg_nest  = 0 ;
    rtin->reg_tim   = (float *) malloc( sizeof(float) ) ;
@@ -1653,7 +1866,6 @@ RT_input * new_RT_input( IOCHAN *ioc_data )
 
    rtin->reg_graph = reggraph ;
    if( regmode==REGMODE_3D_ESTIM && reggraph==0 ) rtin->reg_graph = 1;
-#endif
 
    /** record the times for later reportage **/
 
@@ -1682,7 +1894,7 @@ void RT_start_child( RT_input * rtin )
    child_pid = fork() ;             /* AKA bifurcation */
 
    if( child_pid == (pid_t)(-1) ){  /* real bad news */
-     fprintf(stderr,"RT: can't fork child process!\a\n") ; EXIT(1) ;
+     fprintf(stderr,"RT: can't fork child process! Quitting NOW!\a\n"); EXIT(1);
    }
 
    if( child_pid > 0 ){              /** I'm the parent **/
@@ -1697,7 +1909,7 @@ void RT_start_child( RT_input * rtin )
       rtin->ioc_info   = iochan_init( SHM_CHILD , "accept" ) ;
       if( rtinp->ioc_info == NULL ){
         kill( child_pid , SIGTERM ) ;
-        fprintf(stderr,"RT: can't create read stream from child!\a\n") ;
+        fprintf(stderr,"RT: can't create read stream from child! Quitting NOW!\a\n");
         EXIT(1) ;
       }
 
@@ -1733,7 +1945,7 @@ int RT_acquire_info( char * command )
 
    ioc = iochan_init( SHM_CHILD , "create" ) ;
    if( ioc == NULL ){
-      fprintf(stderr,"RT: child fails to open stream back to parent!\a\n") ;
+      fprintf(stderr,"RT: child fails to open stream back to parent! Child dies!\a\n");
       _exit(1) ;
    }
 
@@ -1741,7 +1953,8 @@ int RT_acquire_info( char * command )
 
    fp = popen( command , "r" ) ;
    if( fp == NULL ){
-      fprintf(stderr,"RT: child fails to open pipe to command=%s\a\n",command) ;
+      fprintf(stderr,"RT: child fails to open pipe to command='%s' ; Child dies!\a\n",
+              command) ;
       IOCHAN_CLOSENOW(ioc) ; _exit(1) ;
    }
 
@@ -1756,7 +1969,7 @@ int RT_acquire_info( char * command )
 
    jj = iochan_writecheck(ioc,-1) ;  /* wait until ready */
    if( jj < 0 ){
-      fprintf(stderr,"RT: child can't write IOCHAN to parent!\a\n") ;
+      fprintf(stderr,"RT: child can't write IOCHAN to parent! Child dies!\a\n") ;
       IOCHAN_CLOSENOW(ioc) ; _exit(1) ;
    }
 
@@ -1845,23 +2058,53 @@ void RT_check_info( RT_input * rtin , int prt )
    return ;
 }
 
-#ifdef ALLOW_REGISTRATION
+/* mostly allow for verbose output */
+static int RT_mp_comm_alive(int sock, int verb, char * mesg)
+{
+    char buf[4];
+    int  wc, rc, ac, tr = -2;
+
+    ac = tcp_alivecheck(sock);
+    if( !ac ) {
+        if( mesg ) fprintf(stderr,"** %s: socket has gone bad\n", mesg);
+        else       fprintf(stderr,"** RT_comm socket has gone bad\n");
+    }
+
+    if( verb ) {  /* check and print extra info */
+        wc = tcp_writecheck(sock, 1);
+        rc = tcp_readcheck(sock, 1);
+
+        if( rc ) tr = tcp_recv(sock, buf, 1, MSG_PEEK);
+
+        fprintf(stderr,"-- alive test: wc=%d, rc=%d, ac=%d, tr=%d\n",
+                wc, rc, ac, tr);
+    }
+
+    return ac;
+}
+
 /*---------------------------------------------------------------------------
    Close the socket connection.                        30 Mar 2004 [rickr]
+
+   new_tcp_use should be set to either 0 or -1, where -1 means not
+   to allow any init again (this run)
 
    return   0 : on success
           < 0 : on error
 -----------------------------------------------------------------------------*/
-int RT_mp_comm_close( RT_input * rtin )
+static int RT_mp_comm_close( RT_input * rtin, int new_tcp_use )
 {
     char magic_bye[] = { 0xde, 0xad, 0xde, 0xad, 0 };
+    int  rv;
 
-    if ( rtin->mp_tcp_use != 1 || rtin->mp_tcp_sd <= 0 )
+    if ( rtin->mp_tcp_use <= 0 || rtin->mp_tcp_sd <= 0 )
         return 0;
 
-    if ( (tcp_writecheck(rtin->mp_tcp_sd, 1)   == -1) ||
-         (send(rtin->mp_tcp_sd, magic_bye, 4, 0) == -1 ) )
-        fprintf(stderr,"** closing: our MP socket has gone bad?\n");
+    if( tcp_alivecheck(rtin->mp_tcp_sd) && tcp_writecheck(rtin->mp_tcp_sd,0) ){
+        if( verbose > 1 ) fprintf(stderr,"RTM: sending magic_bye...\n");
+        if( (rv = send(rtin->mp_tcp_sd, magic_bye, 4, 0)) <= 0 )
+            fprintf(stderr,"** bad return of %d closing RT MP socket\n",rv);
+    }
 
     fprintf(stderr,"RTM: closing motion param socket, "
                    "sent %d param sets over %d messages\n",
@@ -1870,12 +2113,13 @@ int RT_mp_comm_close( RT_input * rtin )
     /* in any case, close the socket */
     close(rtin->mp_tcp_sd);
     rtin->mp_tcp_sd  = 0;
-    rtin->mp_tcp_use = 0;
+    /* verifythat tcp_use goes to either 0 or -1 */
+    rtin->mp_tcp_use = (new_tcp_use == -1) ? new_tcp_use : 0;
     rtin->mp_npsets  = 0;
     rtin->mp_nmsg    = 0;
 
     /* free up any mask memory */
-    RT_mask_free(rtin);
+    RT_mp_mask_free(rtin);
 
     return 0;
 }
@@ -1889,32 +2133,39 @@ int RT_mp_comm_close( RT_input * rtin )
    return   0 : on success
           < 0 : on error
 -----------------------------------------------------------------------------*/
-int RT_mp_comm_send_data( RT_input * rtin, float * mp[6], int nt, int sub )
+static int RT_mp_comm_send_data(RT_input *rtin, float *mp[6], int nt, int sub)
 {
     static float * data = NULL;
     static int     dvals = 0;
-    int   rv, b2send, remain, tr_vals;
-    int   c, c2, dind, mpindex, nblocks, bsize, err = 0;
+    int   b2send, remain, tr_vals;
+    int   c, c2, dind, mpindex, nblocks, bsize;
 
     if ( rtin->mp_tcp_use != 1 || nt <= 0 ) return 0;
 
     if ( rtin->mp_tcp_sd <= 0 ) return -1;
 
-    if( ! g_mask_dset || ! g_mask_val_type ) return 0;
+    if( ! g_mask_val_type ) return 0;
 
     /* verify that the socket is still good */
-    if ( (rv = tcp_writecheck(rtin->mp_tcp_sd, 1)) == -1 ) {
-        RT_mp_comm_close(rtin);
+    if ( ! RT_mp_comm_alive(rtin->mp_tcp_sd, 0, "pre data send") ) {
+        RT_mp_comm_close(rtin, 0);
         return -1;
     }
 
     /* how many values do we need to send? */
-    if( g_mask_dset && g_mask_val_type == 1 ) {
+    if( g_mask_val_type == 1 ) {
+        tr_vals = 6;    /* enough for motion */
+        bsize   = 6;
+    } else if( g_mask_dset && g_mask_val_type == 2 ) {
         tr_vals = 256 + 6;    /* enough for many masks and motion */
         bsize   = 6 + rtin->mask_nvals;          /* single block size per TR */
-    } else if( g_mask_dset && g_mask_val_type == 2 ) {
+    } else if( g_mask_dset && g_mask_val_type == 3 ) {
         bsize   = 6 + rtin->mask_nset*8;         /* motion plus all vals */
         tr_vals = bsize;
+    } else {
+        fprintf(stderr,"** need mask to send data\n");
+        RT_mp_comm_close(rtin, 0);
+        return -1;
     }
 
     /* maybe we need more space for data */
@@ -1924,7 +2175,7 @@ int RT_mp_comm_send_data( RT_input * rtin, float * mp[6], int nt, int sub )
         if(!data) {
             fprintf(stderr,"** failed to alloc %d floats for mask data\n"
                            "   closing MP communication...\n" ,dvals);
-            RT_mp_comm_close(rtin);
+            RT_mp_comm_close(rtin, 0);
             return -1;
         }
     }
@@ -1943,18 +2194,18 @@ int RT_mp_comm_send_data( RT_input * rtin, float * mp[6], int nt, int sub )
                 data[bsize*c+c2] = mp[c2][mpindex];
 
             /* process mask, if desired (ROI averages or all set values) */
-            if( g_mask_dset && g_mask_val_type == 1 ) {
-                if( ! RT_get_mask_aves(rtin, sub+mpindex) )
+            if( g_mask_dset && g_mask_val_type == 2 ) {
+                if( ! RT_mp_get_mask_aves(rtin, sub+mpindex) )
                     for ( c2 = 0; c2 < rtin->mask_nvals; c2++ )
                         data[bsize*c+6+c2] = (float)rtin->mask_aves[c2+1];
                 else {  /* bad failure, close socket */
-                    RT_mp_comm_close(rtin);
+                    RT_mp_comm_close(rtin, 0);
                     return -1;
                 }
-            } else if( g_mask_dset && g_mask_val_type == 2 ) {
+            } else if( g_mask_dset && g_mask_val_type == 3 ) {
                 dind = bsize*c+6;  /* note initial offset */
                 if( RT_mp_set_mask_data(rtin, data+dind, sub+mpindex) ) {
-                    RT_mp_comm_close(rtin);
+                    RT_mp_comm_close(rtin, 0);
                     return -1;
                 }
             }
@@ -1962,14 +2213,24 @@ int RT_mp_comm_send_data( RT_input * rtin, float * mp[6], int nt, int sub )
             mpindex++;  /* that was one TR */
         }
 
+        /* verify that the socket is still good */
+        if ( ! RT_mp_comm_alive(rtin->mp_tcp_sd, 0, "send data") ) {
+            RT_mp_comm_close(rtin, 0);
+            return -1;
+        }
+
         if ( send(rtin->mp_tcp_sd, data, bsize*b2send*sizeof(float), 0) == -1 )
         {
             fprintf(stderr,"** failed to send %d floats, closing socket...\n",
                     bsize*b2send);
-            close(rtin->mp_tcp_sd);
-            rtin->mp_tcp_sd  = 0;
-            rtin->mp_tcp_use = 0;  /* allow a later re-try... */
+            RT_mp_comm_close(rtin, 0);
             return -1;
+        }
+        if( g_show_times ) {
+           char mesg[64];
+           sprintf(mesg,"mp_comm_send_data %d floats for %d trs",
+                   bsize*b2send, nt);
+           RT_mp_show_time(mesg);
         }
 
         /* keep track of num messages and num param sets */
@@ -1987,23 +2248,23 @@ int RT_mp_comm_send_data( RT_input * rtin, float * mp[6], int nt, int sub )
 
    return 0 on success
 -----------------------------------------------------------------------------*/
-int RT_mp_set_mask_data( RT_input * rtin, float * data, int sub )
+static int RT_mp_set_mask_data( RT_input * rtin, float * data, int sub )
 {
     THD_fvec3   fvec;
     THD_ivec3   ivec;
     void      * dptr;
-    float       ffac, x, y, z;
+    float       ffac;
     int         dind, vind, iv, nvox;
     int         i, j, k, nx, nxy;
 
     if( !ISVALID_DSET(rtin->reg_dset) || DSET_NVALS(rtin->reg_dset) <= sub ){
-        fprintf(stderr,"** RT_get_mask_aves: not set for sub-brick %d\n",sub);
-        return -1;
+       fprintf(stderr,"** RT_mp_get_mask_aves: not set for sub-brick %d\n",sub);
+       return -1;
     }
 
     if( !rtin->mask || !data || rtin->mask_nvals <= 0 ) {
-        fprintf(stderr,"** RT_get_mask_aves: no mask information to apply\n");
-        return -1;
+       fprintf(stderr,"** RT_mp_get_mask_aves: no mask information to apply\n");
+       return -1;
     }
 
     /* note dimensions */
@@ -2013,14 +2274,14 @@ int RT_mp_set_mask_data( RT_input * rtin, float * data, int sub )
         fprintf(stderr,"** nvox for mask (%d) != nvox for reg_dset (%d)\n"
                        "   terminating mask processing...\n",
                 nvox, DSET_NVOX(rtin->reg_dset) );
-        return RT_mask_free(rtin);
+        return RT_mp_mask_free(rtin);
     }
     nx = DSET_NX(g_mask_dset);
     nxy = nx * DSET_NY(g_mask_dset);
 
     ffac = DSET_BRICK_FACTOR(rtin->reg_dset, sub);
     if( ffac == 0.0 ) ffac = 1.0;
-    
+
     dind = 0;   /* index into output data array */
     vind = 0;   /* mask counter */
     dptr = (void *) DSET_ARRAY(rtin->reg_dset, sub);
@@ -2061,7 +2322,7 @@ int RT_mp_set_mask_data( RT_input * rtin, float * data, int sub )
 
    return 0 on success
 -----------------------------------------------------------------------------*/
-int RT_get_mask_aves( RT_input * rtin, int sub )
+static int RT_mp_get_mask_aves( RT_input * rtin, int sub )
 {
     static int * nvals = NULL;
     static int   nval_len = 0;
@@ -2070,13 +2331,13 @@ int RT_get_mask_aves( RT_input * rtin, int sub )
     int          c, nvox;
 
     if( !ISVALID_DSET(rtin->reg_dset) || DSET_NVALS(rtin->reg_dset) <= sub ){
-        fprintf(stderr,"** RT_get_mask_aves: not set for sub-brick %d\n",sub);
-        return -1;
+       fprintf(stderr,"** RT_mp_get_mask_aves: not set for sub-brick %d\n",sub);
+       return -1;
     }
 
     if( !rtin->mask || !rtin->mask_aves || rtin->mask_nvals <= 0 ) {
-        fprintf(stderr,"** RT_get_mask_aves: no mask information to apply\n");
-        return -1;
+       fprintf(stderr,"** RT_mp_get_mask_aves: no mask information to apply\n");
+       return -1;
     }
 
     nvox = DSET_NVOX(g_mask_dset);
@@ -2085,7 +2346,7 @@ int RT_get_mask_aves( RT_input * rtin, int sub )
         fprintf(stderr,"** nvox for mask (%d) != nvox for reg_dset (%d)\n"
                        "   terminating mask processing...\n",
                 nvox, DSET_NVOX(rtin->reg_dset) );
-        return RT_mask_free(rtin);
+        return RT_mp_mask_free(rtin);
     }
 
    /* verify local memory for sizes (mask is 0..nvals) */
@@ -2094,7 +2355,7 @@ int RT_get_mask_aves( RT_input * rtin, int sub )
         nvals = (int *)realloc(nvals, nval_len * sizeof(int));
         if( !nvals ){
             fprintf(stderr,"** GMA: failed alloc of %d ints\n",nval_len);
-            return RT_mask_free(rtin);
+            return RT_mp_mask_free(rtin);
         }
     }
 
@@ -2106,7 +2367,7 @@ int RT_get_mask_aves( RT_input * rtin, int sub )
 
     ffac = DSET_BRICK_FACTOR(rtin->reg_dset, sub);
     if( ffac == 1.0 ) ffac = 0.0;
-    
+
     /* try to be efficient... */
     switch( rtin->datum ){
         int iv, m;
@@ -2173,17 +2434,17 @@ int RT_get_mask_aves( RT_input * rtin, int sub )
     {
         if( nvals[c] ) rtin->mask_aves[c] /= (double)nvals[c];
         if( verbose > 1 )
-            fprintf(stderr,"-d RTM: sub-brick %d, mask %d: %d vals, mean %f\n",
+            fprintf(stderr,"RTM: sub-brick %d, mask %d: %d vals, mean %f\n",
                     sub, c, nvals[c], rtin->mask_aves[c]);
     }
     if( verbose == 1 ) /* then only first mask */
-        fprintf(stderr,"-d RTM: brick %d, mask %d (of %d): %d vals, mean %f\n",
+        fprintf(stderr,"RTM: brick %d, mask %d (of %d): %d vals, mean %f\n",
                 sub, 1, nval_len-1, nvals[1], rtin->mask_aves[1]);
 
     return 0;
 }
 
-int RT_mask_free( RT_input * rtin )
+static int RT_mp_mask_free( RT_input * rtin )
 {
     if( rtin->mask )     { free(rtin->mask);      rtin->mask      = NULL; }
     if( rtin->mask_aves ){ free(rtin->mask_aves); rtin->mask_aves = NULL; }
@@ -2193,18 +2454,109 @@ int RT_mask_free( RT_input * rtin )
     return 1;
 }
 
+/* show time at ms resolution, wrapping per hour */
+static int RT_mp_show_time( char * mesg )
+{
+   struct timeval  tval ;
+   struct timezone tzone ;
+
+   gettimeofday( &tval , &tzone ) ;
+
+   if( mesg ) fprintf(stderr,"++ RT TIME (%s): ", mesg);
+   else       fprintf(stderr,"++ RT TIME : ");
+
+   fprintf(stderr,"%d seconds, %d ms\n", ((int)tval.tv_sec)%3600,
+                                         ((int)tval.tv_usec)/1000);
+
+   return 0;
+}
+
+/*---------------------------------------------------------------------------
+   Check env vars for MP communication.
+
+   NOTE: anything applied here that is also in the interface needs to
+         be set as an env var if the interface is applied (so the most
+         recent action is effective).
+
+         currently includes: AFNI_REALTIME_Mask_Vals
+
+   return 0 on success
+-----------------------------------------------------------------------------*/
+static int RT_mp_getenv( void )
+{
+    char * estr = NULL;
+
+    estr = getenv("AFNI_REALTIME_Mask_Vals");
+    if( estr != NULL ){
+        int ii = PLUTO_string_index(estr,N_RT_MASK_METHODS,RT_mask_strings_ENV);
+        if( ii >= 0 && ii < N_RT_MASK_METHODS ) g_mask_val_type = ii;
+        if(verbose>1) fprintf(stderr,"++ RTM getenv: mvals = %s\n",
+                              RT_mask_strings_ENV[g_mask_val_type]);
+    }
+
+    if( ! g_mask_val_type ) return 0;
+
+    /* do we want to spit out times? */
+    estr = getenv("AFNI_REALTIME_SHOW_TIMES") ;
+    g_show_times = (estr && (*estr == 'y' || *estr == 'Y'));
+    if(estr && verbose>1)
+        fprintf(stderr,"++ RTM getenv: show_times = %d\n", g_show_times);
+    if( g_show_times ) RT_mp_show_time("mp_comm_init");
+
+    /* maybe the user wants to set the hello version */
+    estr = getenv("AFNI_REALTIME_SEND_VER") ;
+    if( estr && (*estr == 'y' || *estr == 'Y') ) {
+        g_MP_send_ver = 1;
+        if( verbose ) fprintf(stderr,"RTM: will send hello version\n");
+    }
+
+    return 0;
+}
+
 /*---------------------------------------------------------------------------
    Initialize the motion parameter communications.        30 Mar 2004 [rickr]
 
    return   0 : on success
           < 0 : on error
 -----------------------------------------------------------------------------*/
-int RT_mp_comm_init( RT_input * rtin )
+static int RT_mp_comm_init( RT_input * rtin )
 {
     struct sockaddr_in   sin;
     struct hostent     * hostp;
     char                 magic_hi[] = { 0xab, 0xcd, 0xef, 0xab };
-    int                  sd;
+    int                  sd, send_nvals = 0, rv;
+
+     /* if error or not in use, return */
+    if( RT_mp_getenv() || ! g_mask_val_type) {
+        rtin->mp_tcp_use = -1;
+        return -1;
+    }
+
+    /* set the 'hello' mode (based on the mask values choice)
+     *    0 : original magic_hi
+     *    1 : magic_hi[3] += 1   -> also send num_extra as int
+     *    2 : magic_hi[3] += 2   -> also send num_extra as int for ALL_DATA
+     *
+     * if we are prepared to send mask info, and hello mode is set, then
+     * note to also send mask_nvals (or mask_nset)
+     */
+    if( g_MP_send_ver ) {  /* send VERSION info */
+        if ( g_mask_val_type == 1 ) {                       /* motion only */
+            send_nvals = 0;
+            magic_hi[3] += 1;
+        } else if ( g_mask_val_type == 2 && g_mask_dset ) { /* averages */
+            send_nvals = rtin->mask_nvals;
+            magic_hi[3] += 1;
+        } else if( g_mask_val_type == 3 && g_mask_dset ) {  /* all data */
+            send_nvals = rtin->mask_nset;
+            magic_hi[3] += 2;
+        } else {                                            /* bad combo */
+            fprintf(stderr,"** RTM init: mask is required with type %d\n",
+                    g_mask_val_type);
+            rtin->mp_tcp_use = -1;
+            return -1;
+        }
+    }
 
     if ( rtin->mp_tcp_sd != 0 )
         fprintf(stderr,"** warning, did we not close the MP socket?\n");
@@ -2225,30 +2577,49 @@ int RT_mp_comm_init( RT_input * rtin )
     /* get a socket */
     if ( (sd = socket(AF_INET, SOCK_STREAM, 0)) == -1 )
     {
-        perror("pe: socket");
+        perror("** RT_mp_comm socket");
         rtin->mp_tcp_use = -1;   /* let us not try, try again */
         return -1;
     }
 
     if ( connect(sd, (struct sockaddr *)&sin, sizeof(sin)) == -1 )
     {
-        perror("pe: connect");
+        perror("** RT_mp_comm connect");
         rtin->mp_tcp_use = -1;
         return -1;
     }
 
     /* send the hello message */
-    if ( send(sd, magic_hi, 4*sizeof(char), 0) == -1 )
+    if ( (rv = send(sd, magic_hi, 4*sizeof(char), 0)) == -1 )
     {
-        perror("pe: send hello");
-        rtin->mp_tcp_use = -1;
+        perror("** RT_mp_comm send hello");
+        RT_mp_comm_close(rtin, -1);
         return -1;
+    } else if ( rv != 4*sizeof(char) ) {
+        fprintf(stderr,"** RT magic_hi: sent only %d of 4 bytes\n", rv);
+        RT_mp_comm_close(rtin, -1);
+    }
+
+    /* do we send nvals for an altered magic_hi? */
+    if ( g_MP_send_ver ) {
+        if ( (rv = send(sd, &send_nvals, sizeof(int), 0)) == -1 )
+        {
+            perror("** RT_mp_comm send hello nvals");
+            RT_mp_comm_close(rtin, -1);
+            return -1;
+        } else if ( rv != sizeof(int) ) {
+            fprintf(stderr,"** RT nextra: sent only %d of 4 bytes\n", rv);
+            RT_mp_comm_close(rtin, -1);
+            return -1;
+        }
+        if( verbose )
+            fprintf(stderr,"RTM: sent nextra = %d with hello\n", send_nvals);
     }
 
     fprintf(stderr,"RTM: opened motion param socket to %s:%d\n",
             rtin->mp_host, rtin->mp_port);
 
-    /* everything worked out, we're good to van Gogh */
+    /* everything worked out, we're good to Vincent */
 
     rtin->mp_tcp_sd = sd;
 
@@ -2264,7 +2635,7 @@ int RT_mp_comm_init( RT_input * rtin )
    return   0 : on success
           < 0 : on error
 -----------------------------------------------------------------------------*/
-int RT_mp_comm_init_vars( RT_input * rtin )
+static int RT_mp_comm_init_vars( RT_input * rtin )
 {
     char * ept, * cp;
     int    len;
@@ -2278,8 +2649,10 @@ int RT_mp_comm_init_vars( RT_input * rtin )
 
     /* for now, we will only init this if the HOST:PORT env var exists */
     ept = getenv("AFNI_REALTIME_MP_HOST_PORT") ;  /* 09 Oct 2000 */
-    if( ept == NULL )
+    if( ept == NULL ) {
+        rtin->mp_tcp_use = -1;
         return 0;
+    }
 
     cp = strchr(ept, ':');      /* find ':' seperator */
 
@@ -2308,7 +2681,7 @@ int RT_mp_comm_init_vars( RT_input * rtin )
     /* now setup the mask data, if g_mask_dset is set */
     if( g_mask_dset )
     {   int c, max;
-        if( verbose > 1 ) fprintf(stderr,"-d RTM: setting up mask...\n");
+        if( verbose > 1 ) fprintf(stderr,"RTM: setting up mask...\n");
         if( rtin->mask ) free(rtin->mask) ; /* in case of change */
         if( thd_multi_mask_from_brick(g_mask_dset, 0, &rtin->mask) )
         {
@@ -2332,11 +2705,11 @@ int RT_mp_comm_init_vars( RT_input * rtin )
             g_mask_dset = NULL;
             return 0;
         }
-        
+
         /* and allocate, include unused index 0 */
         rtin->mask_aves = (double *)realloc(rtin->mask_aves,
                                             (max+1)*sizeof(double));
-        if( verbose ) fprintf(stderr,"-d RTM: have %d-value mask\n", max);
+        if( verbose ) fprintf(stderr,"RTM: have %d-value mask\n", max);
     }
 
     return 0;
@@ -2374,7 +2747,6 @@ int RT_parser_init( RT_input * rtin )
 
     return 0;
 }
-#endif
 
 /*---------------------------------------------------------------------------
    Process command strings in the buffer, up to the first '\0' character.
@@ -2392,6 +2764,10 @@ int RT_process_info( int ninfo , char * info , RT_input * rtin )
    char buf[NBUF] ;
 
    if( rtin == NULL || info == NULL || ninfo == 0 ) return -1 ;
+
+   if( drive_wait_list.len > 0 && verbose )
+      fprintf(stderr,"** clearing old DRIVE_WAIT list\n");
+   free_rt_string_list( &drive_wait_list );
 
    for( nend=0 ; nend < ninfo && info[nend] != '\0' ; nend++ ) ; /* nada */
    if( nend == ninfo ){
@@ -2440,8 +2816,6 @@ int RT_process_info( int ninfo , char * info , RT_input * rtin )
          else
               BADNEWS ;
 
-#ifdef ALLOW_REGISTRATION
-
       /* Some troublesome physicist, let's just call him "Tom" (possibly
        * named by his mother, Mrs. Ross), wants control over the ranges
        * in the motion correction graph window.
@@ -2485,7 +2859,6 @@ int RT_process_info( int ninfo , char * info , RT_input * rtin )
          rtin->p_expr[RT_MAX_EXPR] = '\0';
          if ( RT_parser_init(rtin) != 0 )
             BADNEWS ;
-#endif
 
       } else if( STARTER("NAME") ){
          char npr[THD_MAX_PREFIX] = "\0" ;
@@ -2757,17 +3130,30 @@ int RT_process_info( int ninfo , char * info , RT_input * rtin )
             fprintf(stderr,"RT: received OBLIQUE_XFORM\n");
 
       } else if( STARTER("DRIVE_AFNI") ){   /* 30 Jul 2002 */
-         char cmd[1024]="\0" ;
-         int ii ;
-         if( strlen(buf) < 11 ){
+         char cmd[RT_DRIVE_LIMIT]="\0" ;
+         int ii, len = strlen(buf) ;
+         if( len < 11 ){
             fprintf(stderr,"RT: DRIVE_AFNI lacks command\n") ;
+         } else if ( len > RT_DRIVE_LIMIT ) {
+            fprintf(stderr,"RT: DRIVE_AFNI length exceeds %d bytes, ignoring\n",
+                    RT_DRIVE_LIMIT) ;
          } else {  /* the command is everything after "DRIVE_AFNI " */
-            MCW_strncpy(cmd,buf+11,1024) ;
-            if( verbose == 2 )
+            MCW_strncpy(cmd,buf+11, RT_DRIVE_LIMIT) ;
+            if( verbose > 1 )
                fprintf(stderr,"RT: command DRIVE_AFNI %s\n",cmd) ;
             ii = AFNI_driver( cmd ) ;  /* just do it */
             if( ii < 0 )
                fprintf(stderr,"RT: command DRIVE_AFNI %s **FAILS**\n",cmd) ;
+         }
+
+      } else if( STARTER("DRIVE_WAIT") ){   /* 21 Aug 2008 */
+         int len = strlen(buf) ;
+
+         if( len < 11 ){
+            fprintf(stderr,"RT: DRIVE_WAIT lacks command\n") ;
+         } else {  /* the command is everything after "DRIVE_WAIT " */
+            add_to_rt_slist( &drive_wait_list, buf+11 );
+            if(verbose>1) fprintf(stderr,"RT: command DRIVE_WAIT %s\n",buf+11);
          }
 
       } else {                              /* this is bad news */
@@ -2850,7 +3236,7 @@ void RT_start_dataset( RT_input * rtin )
 {
    THD_ivec3 nxyz , orixyz ;
    THD_fvec3 dxyz , orgxyz ;
-   int nvox , n1 , ii , cc ;
+   int nvox , n1 , ii , cc, base_ind ;
    char npr[THD_MAX_PREFIX] , ccpr[THD_MAX_PREFIX] ;
 
    /*********************************************/
@@ -2880,6 +3266,7 @@ void RT_start_dataset( RT_input * rtin )
 
    if( rtin->num_chan > 1 ){
      int ic , tc , nc=AFNI_count_controllers() , sn ;
+     int maxnc ;  /* 20 May 2009 -- for MCW and Andre Jesmanowicz */
 
      Three_D_View *im3d = plint->im3d ;             /* default controller */
      if( !IM3D_OPEN(im3d) )                         /* may not be open */
@@ -2887,14 +3274,20 @@ void RT_start_dataset( RT_input * rtin )
 
      sn = im3d->vinfo->sess_num ;                   /* session for all channels */
 
+     /* 20 May 2009: limit the number of controllers to allow */
+
+     maxnc = (int)AFNI_numenv("AFNI_REALTIME_MAX_CONTROLLERS") ;
+          if( maxnc <= 0              ) maxnc = 2 ;
+     else if( maxnc > MAX_CONTROLLERS ) maxnc = MAX_CONTROLLERS ;
+
      /* open new controllers if needed */
 
-     if( nc < rtin->num_chan && nc < MAX_CONTROLLERS ){
-       nc = MIN( rtin->num_chan , MAX_CONTROLLERS ) - nc ;  /* number to add */
+     if( nc < rtin->num_chan && nc < maxnc ){
+       nc = MIN( rtin->num_chan , maxnc ) - nc ;  /* number to add */
 
        fprintf(stderr,
-               "RT: %d channel data requires opening %d more AFNI controllers",
-               rtin->num_chan , nc ) ;
+               "RT: %d channel data requires opening %d more AFNI controller%c",
+               rtin->num_chan , nc , (nc==1) ? ' ' : 's' ) ;
 
        for( ic=0 ; ic < nc ; ic++ )                         /* add them */
          AFNI_clone_controller_CB(NULL,NULL,NULL) ;
@@ -2914,7 +3307,7 @@ void RT_start_dataset( RT_input * rtin )
 
      /* now assign channels to controllers */
 
-     tc = MIN( nc , rtin->num_chan ) ;
+     tc = MIN( nc , rtin->num_chan ) ; tc = MIN( tc , maxnc ) ;
      for( cc=0 ; cc < rtin->num_chan ; cc++ ){
        if( cc < tc ) rtin->im3d[cc] = open_controller[cc] ; /* next available */
        else          rtin->im3d[cc] = NULL ;                /* none available */
@@ -2941,7 +3334,7 @@ void RT_start_dataset( RT_input * rtin )
    /** Let there be dataset! **/  /* 01 Aug 2002: or datasets */
 
    for( cc=0 ; cc < rtin->num_chan ; cc++ ){
-     rtin->dset[cc] = EDIT_empty_copy(NULL) ;
+     rtin->dset[cc] = EDIT_empty_copy(NULL) ;  /* a really empty dataset */
      tross_Append_History( rtin->dset[cc] , "plug_realtime: creation" ) ;
 
      if( rtin->num_note > 0 && rtin->note != NULL ){  /* 01 Oct 2002 */
@@ -2950,11 +3343,20 @@ void RT_start_dataset( RT_input * rtin )
      }
    }
 
-   /********************************/
-   /** make a good dataset prefix **/
+   /******************************************/
+   /** make a good dataset prefix (somehow) **/
 
-   for( ii=1 ; ; ii++ ){
-      sprintf( npr , "%.*s#%03d" , RT_MAX_PREFIX, rtin->root_prefix , ii ) ;
+   num_runs++ ;  /* 20 May 2009 */
+
+   /* maybe the user prefers to start each new prefix at --001 */
+   base_ind = num_runs;
+   if( AFNI_yesenv("AFNI_REALTIME_reset_output_index") ) base_ind = 1;
+
+   for( ii=base_ind ; ; ii++ ){  /* will loop until it succeeds! */
+
+      /* use __001 etc., as '#' evaluates to a comment and '-' is
+         used for options                     27 Jul 2009 [rickr] */
+      sprintf( npr , "%.*s__%03d" , RT_MAX_PREFIX, rtin->root_prefix , ii ) ;
 
       if( rtin->num_chan == 1 ){                  /* the old way */
 
@@ -3165,8 +3567,45 @@ void RT_start_dataset( RT_input * rtin )
       DSET_lock(rtin->dset[cc]) ;  /* 20 Mar 1998 */
    }
 
-#ifdef ALLOW_REGISTRATION
+   /*---- 02 Jun 2009: make a dataset for merger, if need be ----*/
+
+   if( rtin->num_chan == 1 || !MRI_IS_FLOAT_TYPE(rtin->datum) )
+     RT_chmrg_mode = 0 ;  /* disable merger */
+
+   if( RT_chmrg_mode > 0 ){
+     char qbuf[128] ; int mdatum=MRI_float ; /* default merge datum is float */
+
+     rtin->mrg_dset = EDIT_empty_copy( rtin->dset[0] ) ;
+     sprintf(qbuf,"plug_realtime: merger %s",RT_chmrg_strings[RT_chmrg_mode]) ;
+     tross_Append_History( rtin->mrg_dset , qbuf ) ;
+
+     strcpy(ccpr,npr) ; strcat(ccpr,"%mrg_") ;
+     strcat(ccpr,RT_chmrg_labels[RT_chmrg_mode]) ;
+     EDIT_dset_items( rtin->mrg_dset , ADN_prefix , ccpr , ADN_none ) ;
+     DSET_lock(rtin->mrg_dset) ;
+
+     if( rtin->datum == MRI_complex && RT_chmrg_mode == RT_CHMER_SUM )
+       mdatum = MRI_complex ;
+     EDIT_dset_items( rtin->mrg_dset , ADN_datum_all , mdatum , ADN_none ) ;
+     RT_chmrg_datum = mdatum ;
+
+     if( rtin->num_note > 0 && rtin->note != NULL ){
+       for( ii=0 ; ii < rtin->num_note ; ii++ )
+         tross_Add_Note( rtin->mrg_dset , rtin->note[ii] ) ;
+     }
+   }
+
    /*---- Make a dataset for registration, if need be ----*/
+
+   if( rtin->reg_mode != REGMODE_NONE ){       /* 02 Jul 2009 */
+     if( rtin->mrg_dset != NULL && RT_chmrg_datum == MRI_float ){
+       rtin->reg_basis_dset = rtin->mrg_dset ;
+       rtin->reg_basis_nvol = &(rtin->mrg_nvol) ;
+     } else {
+       rtin->reg_basis_dset = rtin->dset[0] ;
+       rtin->reg_basis_nvol = &(rtin->nvol[0]) ;
+     }
+   }
 
    if( REG_MAKE_DSET(rtin->reg_mode) &&
        ((rtin->dtype==DTYPE_2DZT) || (rtin->dtype==DTYPE_3DT)) ){
@@ -3196,8 +3635,6 @@ void RT_start_dataset( RT_input * rtin )
     *  rtin->reg_graph_xr *= rtin->tr ;    *** scale to time units ***
     */
 
-#endif
-
    /***********************************************/
    /** now prepare space for incoming image data **/
 
@@ -3224,7 +3661,10 @@ void RT_start_dataset( RT_input * rtin )
      rtin->im[cc]   = rtin->sbr[cc] ;  /* place to put first image in sub-brick */
      rtin->nsl[cc]  = 0 ;              /* number of slices gathered so far */
      rtin->nvol[cc] = 0 ;              /* number of volumes gathered so far */
+
+     RT_written[cc] = 0 ;              /* for real time data writing to disk */
    }
+   RT_written_mrg = 0 ;
 
    /** if there is already data stored in the temporary buffer
        (acquired before this routine was called), then we want
@@ -3317,6 +3757,29 @@ void RT_start_dataset( RT_input * rtin )
           ) ;
 
      PLUTO_popup_transient(plint,str);
+   }
+
+   /*-- 01 Jun 2009: setup the global realtime status structure --*/
+
+   { RT_status *rts = GLOBAL_library.realtime_status ;
+     if( rts != NULL ){
+       if( rts->dset != NULL ){ free(rts->dset) ; rts->dset = NULL ; }
+     } else {
+       rts = (RT_status *)calloc(1,sizeof(RT_status)) ;
+       GLOBAL_library.realtime_status = rts ;
+     }
+     rts->numchan = rtin->num_chan ;
+     rts->status  = RT_STARTUP ;
+     rts->numdset = rtin->num_chan ;
+     if( rtin->mrg_dset != NULL ) rts->numdset++ ;
+     if( rtin->reg_dset != NULL ) rts->numdset++ ;
+     rts->dset = (THD_3dim_dataset **)malloc(sizeof(THD_3dim_dataset *)*rts->numdset) ;
+     for( cc=0 ; cc < rtin->num_chan ; cc++ ) rts->dset[cc] = rtin->dset[cc] ;
+     if( rtin->mrg_dset != NULL ) rts->dset[cc++] = rtin->mrg_dset ;
+     if( rtin->reg_dset != NULL ) rts->dset[cc++] = rtin->reg_dset ;
+#if 0
+     GLOBAL_library.realtime_callback = RT_test_callback ;  /* just for testing */
+#endif
    }
 
    return ;
@@ -3483,7 +3946,7 @@ static void RT_image_kfun(void * kdata)                /* 28 Apr 2000 */
 
 void RT_process_image( RT_input * rtin )
 {
-   int vdone , cc = rtin->cur_chan ;
+   int vdone=0 , cc = rtin->cur_chan ;
 
    /** 28 Apr 2000: Image Only mode stuff **/
 
@@ -3556,7 +4019,32 @@ void RT_process_image( RT_input * rtin )
          VMCHECK ;
       }
 
-#ifdef ALLOW_REGISTRATION
+      /** 02 Jun 2009: merger operations?
+                       if have completed a full set of channels, that is **/
+
+      if( cc+1 == rtin->num_chan && RT_chmrg_mode > 0 ){
+        int iv = rtin->nvol[cc]-1 ;  /* sub-brick index */
+        MRI_IMAGE *mrgim ;
+
+        mrgim = RT_mergerize( rtin->num_chan , rtin->dset , iv ) ;
+        if( mrgim == NULL ){
+          ERROR_message("RT can't merge channels at time index #%d",iv) ;
+        } else {
+          if( iv == 0 )
+            EDIT_substitute_brick( rtin->mrg_dset , 0 , (int)mrgim->kind ,
+                                                   mri_data_pointer(mrgim) ) ;
+          else
+            EDIT_add_brick( rtin->mrg_dset , (int)mrgim->kind , 0.0 ,
+                                                   mri_data_pointer(mrgim) ) ;
+          mri_clear_data_pointer(mrgim); mri_free(mrgim);
+          if( verbose == 2 )
+            fprintf(stderr,"RT: added brick #%d to merged dataset\n",iv) ;
+          EDIT_dset_items( rtin->mrg_dset , ADN_ntt , iv+1 , ADN_none ) ;
+          rtin->mrg_nvol = iv+1 ;
+        }
+        VMCHECK ;
+      }
+
       /* do registration before function computation   - 30 Oct 2003 [rickr] */
       switch( rtin->reg_mode ){
            case REGMODE_2D_RTIME: RT_registration_2D_realtime( rtin ) ;
@@ -3566,12 +4054,113 @@ void RT_process_image( RT_input * rtin )
            case REGMODE_3D_ESTIM: RT_registration_3D_realtime( rtin ) ;
            break ;
       }
-#endif /* ALLOW_REGISTRATION */
+
+      /* Seems like a good place to write individual volumes to disk in *
+       * near real time - vinai.                                        */
+
+      if ( RTdatamode ) /* if not zero, and writing data in real time   */
+      {
+         THD_3dim_dataset * tmp_dset = NULL ;
+         char               RT_prefix[THD_MAX_PREFIX] ;
+         int                cc, RT_sub_brick_id[2];
+
+         RT_sub_brick_id[0] = 1;
+
+         if ( RTdatamode == RT_WRITE_ACQUIRED ) /* write acquired data */
+         {
+            for( cc=0 ; cc < rtinp->num_chan ; cc++ )
+            {
+               for ( ; RT_written[cc] < rtin->dset[cc]->dblk->nvals ; )
+               {
+                  RT_sub_brick_id[1] = RT_written[cc];
+
+                  /* copy acquired data sets for writing now */
+                  tmp_dset = THD_copy_dset_subs(rtin->dset[cc],RT_sub_brick_id);
+
+                  /* add channel and rep index to the name of the written *
+                   * RT data sets                                         */
+                  sprintf ( RT_prefix, "%s_ch%03d_nr_%06d",
+                            rtin->dset[cc]->dblk->diskptr->prefix,
+                            cc, RT_sub_brick_id[1] ) ;
+                  EDIT_dset_items(tmp_dset, ADN_prefix, RT_prefix, ADN_none);
+
+                  if( verbose > 0 )
+                     fprintf(stderr,"RT: writing acquired volume %s\n",
+                             RT_prefix);
+
+                  DSET_overwrite ( tmp_dset ) ; /* write...        */
+                  DSET_delete( tmp_dset ) ;     /* and delete copy */
+                  tmp_dset = NULL ;
+
+                  RT_written[cc] += 1;
+               }
+            }
+         }
+
+         else if ( RTdatamode == RT_WRITE_REGISTERED )   /* write registered data */
+         {
+            /* check to make sure we are past the base registration brik */
+            if ( rtin->reg_dset->dblk->nvals >= rtin->reg_base_index )
+            {
+               for ( ; RT_written[0] < rtin->reg_dset->dblk->nvals ; )
+               {
+                  RT_sub_brick_id[1] = RT_written[0];
+
+                  tmp_dset = THD_copy_dset_subs(rtin->reg_dset,RT_sub_brick_id);
+
+                  /* again - modify name for RT sets as needed */
+                  sprintf ( RT_prefix, "%s_nr_%06d",
+                            rtin->reg_dset->dblk->diskptr->prefix,
+                            RT_written[0] ) ;
+                  EDIT_dset_items(tmp_dset, ADN_prefix, RT_prefix, ADN_none);
+
+                  if( verbose > 0 )
+                     fprintf(stderr,"RT: writing registered volume %s\n",
+                             RT_prefix);
+
+                  DSET_overwrite ( tmp_dset ) ; /* write...        */
+                  DSET_delete( tmp_dset ) ;     /* and delete copy */
+                  tmp_dset = NULL ;
+
+                  RT_written[0] += 1;
+               }
+            }
+         }
+
+         /* 10 Jul 2009: write merged dataset brick -- RWCox */
+
+         else if( RTdatamode == RT_WRITE_MERGED && rtin->mrg_dset != NULL ){
+ 
+            for ( ; RT_written_mrg < rtin->mrg_dset->dblk->nvals ; )
+               {
+                  RT_sub_brick_id[1] = RT_written_mrg ;
+
+                  /* copy acquired data sets for writing now */
+                  tmp_dset = THD_copy_dset_subs(rtin->mrg_dset,RT_sub_brick_id);
+
+                  /* add channel and rep index to the name of the written *
+                   * RT data sets                                         */
+                  sprintf ( RT_prefix, "%s_mrg_nr_%06d",
+                            rtin->mrg_dset->dblk->diskptr->prefix,
+                            RT_sub_brick_id[1] ) ;
+                  EDIT_dset_items(tmp_dset, ADN_prefix, RT_prefix, ADN_none);
+
+                  if( verbose > 0 )
+                     fprintf(stderr,"RT: writing merged volume %s\n",RT_prefix);
+
+                  DSET_overwrite ( tmp_dset ) ; /* write...        */
+                  DSET_delete( tmp_dset ) ;     /* and delete copy */
+                  tmp_dset = NULL ;
+
+                  RT_written_mrg += 1;
+               }
+            }
+      }
 
       /** compute function, maybe? **/
 
       if( rtin->func_code > 0 ){
-         int jj ;
+         int jj=0 ;
 
          /** if needed, initialize the function computations **/
 
@@ -3641,7 +4230,7 @@ void RT_process_image( RT_input * rtin )
 
    } else {  /** need to add more slices before volume is done **/
 
-      int noff ;  /* slice position in output brick */
+      int noff=0 ;  /* slice position in output brick */
 
       if( rtin->zorder == ZORDER_SEQ ){  /* sequential:       */
                                          /* slice position is */
@@ -3687,7 +4276,7 @@ void RT_tell_afni( RT_input *rtin , int mode )
    /*** at the end of acquisition, show messages ***/
 
    if( mode == TELL_FINAL && ISVALID_DSET(rtin->dset[0]) ){
-     char qbuf[256*(MAX_CHAN+1)] , zbuf[256] ;
+     char qbuf[256*(MAX_CHAN+1)] , zbuf[256] ; int qq=0 ;
      sprintf( qbuf ,
                 " \n"
                 " Acquisition Terminated\n\n"
@@ -3698,19 +4287,62 @@ void RT_tell_afni( RT_input *rtin , int mode )
        if( ISVALID_DSET(rtin->dset[cc]) )
          sprintf( zbuf ,
                   " Channel %02d: dataset %s has %d sub-bricks\n",
-                  cc+1 , DSET_FILECODE(rtin->dset[cc]) , rtin->nvol[cc] ) ;
+                  cc+1 , DSET_FILECODE(rtin->dset[cc]) , DSET_NVALS(rtin->dset[cc]) ) ;
        else
          sprintf( zbuf ,
                   " Channel %d: INVALID DATASET?!\n",cc) ;
        strcat( qbuf , zbuf ) ;
      }
      strcat(qbuf,"\n") ;
+     if( ISVALID_DSET(rtin->mrg_dset) ){
+       sprintf( zbuf ,
+                " Merger%4.4s: dataset %s has %d sub-bricks\n" ,
+                RT_chmrg_labels[RT_chmrg_mode] ,
+                DSET_FILECODE(rtin->mrg_dset) , DSET_NVALS(rtin->mrg_dset) ) ;
+       strcat( qbuf , zbuf ) ; qq++ ;
+     }
+     if( ISVALID_DSET(rtin->reg_dset) ){
+       sprintf( zbuf ,
+                " Registered : dataset %s has %d sub-bricks\n" ,
+                DSET_FILECODE(rtin->reg_dset) , DSET_NVALS(rtin->reg_dset) ) ;
+       strcat( qbuf , zbuf ) ; qq++ ;
+     }
+     if( qq ) strcat(qbuf,"\n") ;
 
      PLUTO_beep(); PLUTO_popup_transient(plint,qbuf);
 
      if( verbose == 2 ) SHOW_TIMES ;
 
      sync() ;  /* 08 Mar 2000: sync disk */
+   }
+
+   /* execute any pending DRIVE_WAIT commands  (moved) 3 Sep 2008 [rickr] */
+   if( drive_wait_list.len > 0 )
+      rt_run_drive_wait_commands( &drive_wait_list );
+
+   /* invoke the external callback function, if it exists [01 Jun 2009] */
+
+   if( GLOBAL_library.realtime_callback != NULL ){
+     RT_status *rts = GLOBAL_library.realtime_status ;
+     if( mode == TELL_FINAL ) rts->status = RT_FINISHED ;
+     AFNI_CALL_VOID_1ARG( GLOBAL_library.realtime_callback , void* , NULL ) ;
+     if( mode != TELL_FINAL ) rts->status = RT_CONTINUE ;
+   }
+
+   if( mode == TELL_FINAL ){   /* moved here 01 Jun 2009 */
+      if( rtin->func_dset != NULL )
+        THD_force_malloc_type( rtin->func_dset->dblk , DATABLOCK_MEM_ANY ) ;
+
+      if( rtin->reg_dset != NULL )
+        THD_force_malloc_type( rtin->reg_dset->dblk , DATABLOCK_MEM_ANY ) ;
+
+      if( rtin->mrg_dset != NULL )
+        THD_force_malloc_type( rtin->mrg_dset->dblk , DATABLOCK_MEM_ANY ) ;
+
+      for( cc=0 ; cc < rtin->num_chan ; cc++ )
+        THD_force_malloc_type( rtin->dset[cc]->dblk , DATABLOCK_MEM_ANY ) ;
+
+      AFNI_purge_unused_dsets() ;
    }
 
    return ;
@@ -3722,12 +4354,12 @@ void RT_tell_afni( RT_input *rtin , int mode )
 
 void RT_tell_afni_one( RT_input *rtin , int mode , int cc )
 {
-   Three_D_View * im3d ;
-   THD_session * sess ;
-   THD_3dim_dataset * old_anat ;
+   Three_D_View *im3d ;
+   THD_session *sess ;
+   THD_3dim_dataset *old_anat=NULL ;
    int ii , id , afni_init=0 ;
-   char clll , *cstr ;
-   MCW_arrowval * tav ;
+   char clll=0 , *cstr ;
+   MCW_arrowval *tav=NULL ;
 
    /** sanity check **/
 
@@ -3862,7 +4494,36 @@ void RT_tell_afni_one( RT_input *rtin , int mode , int cc )
       }  /* end of if functional dataset actually has data */
    }  /* end of if functional dataset exists */
 
-#ifdef ALLOW_REGISTRATION
+   /**--- Deal with the merged dataset, if any ---**/
+
+   if( rtin->mrg_dset != NULL && rtin->mrg_nvol > 0 && cc == 0 ){
+
+      if( rtin->mrg_status == 0 ){  /** first time for this dataset **/
+
+         THD_load_statistics( rtin->mrg_dset ) ;
+
+         if( verbose )
+           fprintf(stderr , "RT: sending dataset %s with %d bricks to AFNI\n" ,
+                   DSET_FILECODE(rtin->mrg_dset) , DSET_NVALS(rtin->mrg_dset)  ) ;
+
+         EDIT_dset_items( rtin->mrg_dset, ADN_directory_name,sess->sessname, ADN_none ) ;
+
+         id = sess->num_dsset ;
+         if( id >= THD_MAX_SESSION_SIZE ){
+           fprintf(stderr,"RT: max number of datasets exceeded!\a\n") ;
+           EXIT(1) ;
+         }
+         sess->dsset[id][VIEW_ORIGINAL_TYPE] = rtin->mrg_dset ; sess->num_dsset = id+1 ;
+         POPDOWN_strlist_chooser ;
+
+         rtin->mrg_status = 1 ;   /* AFNI knows about this dataset now */
+
+      } else {  /** 2nd or later call for this dataset **/
+
+         THD_update_statistics( rtin->mrg_dset ) ;
+      }
+   }
+
    /**--- Deal with the registered dataset, if any ---**/
 
    if( rtin->reg_dset != NULL && rtin->reg_nvol > 0 ){
@@ -3896,7 +4557,6 @@ void RT_tell_afni_one( RT_input *rtin , int mode , int cc )
          THD_update_statistics( rtin->reg_dset ) ;
       }
    }
-#endif
 
    /**--- actually talk to AFNI now ---**/
 
@@ -3912,7 +4572,7 @@ void RT_tell_afni_one( RT_input *rtin , int mode , int cc )
 
    } else {          /* just tell AFNI to refresh the images/graphs */
 
-      Three_D_View * qq3d ;
+      Three_D_View *qq3d ;
       int review ;
 
       /* check all controllers to see if they are looking at the same datasets */
@@ -3927,14 +4587,22 @@ void RT_tell_afni_one( RT_input *rtin , int mode , int cc )
                     qq3d->vinfo->func_visible &&
                     EQUIV_DSETS(rtin->func_dset,qq3d->fim_now) ) ;
 
-#ifdef ALLOW_REGISTRATION
          review = review || ( rtin->reg_dset != NULL &&       /* or same reg?  */
                               rtin->reg_nvol > 0     &&
                               EQUIV_DSETS(rtin->reg_dset,qq3d->anat_now) ) ;
-#endif
+
+         review = review || ( rtin->mrg_dset != NULL &&       /* or same mrg?  */
+                              rtin->mrg_nvol > 0     &&
+                              EQUIV_DSETS(rtin->mrg_dset,qq3d->anat_now) ) ;
 
          if( review ){
-            AFNI_modify_viewing( qq3d , False ) ;  /* Crazy Horse! */
+#if 1                       /** new code to enforce time index update: 20 May 2009 */
+           DISABLE_LOCK ;
+           AFNI_time_index_CB( qq3d->vwid->imag->time_index_av , (XtPointer)qq3d ) ;
+           ENABLE_LOCK ;
+#else
+           AFNI_modify_viewing( qq3d , False ) ;  /* Crazy Horse! */
+#endif
          }
       }
    }
@@ -3984,24 +4652,23 @@ void RT_tell_afni_one( RT_input *rtin , int mode , int cc )
 #endif
          DSET_overwrite( rtin->func_dset ) ;
          DSET_unlock( rtin->func_dset ) ;  /* 20 Mar 1998 */
-         THD_force_malloc_type( rtin->func_dset->dblk , DATABLOCK_MEM_ANY ) ;
       }
 
-#ifdef ALLOW_REGISTRATION
       if( rtin->reg_dset != NULL && rtin->reg_nvol > 0 ){
          DSET_overwrite( rtin->reg_dset ) ;
          DSET_unlock( rtin->reg_dset ) ;
-         THD_force_malloc_type( rtin->reg_dset->dblk , DATABLOCK_MEM_ANY ) ;
       }
-#endif
+
+      if( rtin->mrg_dset != NULL && rtin->mrg_nvol > 0 && cc == 0 ){
+         DSET_overwrite( rtin->mrg_dset ) ;
+         DSET_unlock( rtin->mrg_dset ) ;
+      }
 
       THD_set_write_compression(cmode) ;  /* restore compression mode */
 
       AFNI_force_adoption( sess , GLOBAL_argopt.warp_4D ) ;
       AFNI_make_descendants( GLOBAL_library.sslist ) ;
-      THD_force_malloc_type( rtin->dset[cc]->dblk , DATABLOCK_MEM_ANY ) ;
 
-      AFNI_purge_unused_dsets() ;
       SHOW_AFNI_READY ;
    }
 
@@ -4035,11 +4702,15 @@ void RT_finish_dataset( RT_input * rtin )
         if( rtin->func_dset != NULL ){
            DSET_delete( rtin->func_dset ) ; rtin->func_dset = NULL ;
         }
-#ifdef ALLOW_REGISTRATION
         if( rtin->reg_dset != NULL ){
            DSET_delete( rtin->reg_dset ) ; rtin->reg_dset = NULL ;
         }
-#endif
+        if( rtin->reg_base_dset != NULL ){
+           DSET_delete( rtin->reg_base_dset ) ; rtin->reg_base_dset = NULL ;
+        }
+        if( rtin->mrg_dset != NULL ){
+           DSET_delete( rtin->mrg_dset ) ; rtin->mrg_dset = NULL ;
+        }
         nbad++ ;
       }
 
@@ -4054,7 +4725,6 @@ void RT_finish_dataset( RT_input * rtin )
    if( verbose ) SHOW_TIMES ;
    if( nbad    ) return ;
 
-#ifdef ALLOW_REGISTRATION
    /*--- Do the "at end" registration, if ordered and if possible ---*/
 
    switch( rtin->reg_mode ){
@@ -4143,8 +4813,8 @@ void RT_finish_dataset( RT_input * rtin )
    }
 
    /* close any open tcp connection */
-   if ( rtin->mp_tcp_use )
-      RT_mp_comm_close( rtin );
+   if ( rtin->mp_tcp_use > 0 )
+      RT_mp_comm_close( rtin, 0 );
 
    /* if we have a parser expression, free it */
    if ( rtin->p_code )
@@ -4152,7 +4822,6 @@ void RT_finish_dataset( RT_input * rtin )
       free( rtin->p_code ) ;
       rtin->p_code = NULL ;
    }
-#endif
 
    /** tell afni about it one last time **/
 
@@ -4161,7 +4830,6 @@ void RT_finish_dataset( RT_input * rtin )
    return ;
 }
 
-#ifdef ALLOW_REGISTRATION
 /*****************************************************************************
   The collection of functions for handling slice registration in this plugin.
 ******************************************************************************/
@@ -4179,9 +4847,9 @@ void RT_set_grapher_pinnums( int pinnum )
     if( pinnum < MIN_PIN || pinnum > MAX_PIN || !IM3D_OPEN(plint->im3d) )
         return;
 
-    drive_MCW_grapher( plint->im3d->g123, graDR_setpinnum, (XtPointer) pinnum );
-    drive_MCW_grapher( plint->im3d->g231, graDR_setpinnum, (XtPointer) pinnum );
-    drive_MCW_grapher( plint->im3d->g312, graDR_setpinnum, (XtPointer) pinnum );
+    drive_MCW_grapher( plint->im3d->g123, graDR_setpinnum, (XtPointer)pinnum );
+    drive_MCW_grapher( plint->im3d->g231, graDR_setpinnum, (XtPointer)pinnum );
+    drive_MCW_grapher( plint->im3d->g312, graDR_setpinnum, (XtPointer)pinnum );
 }
 
 /*---------------------------------------------------------------------------
@@ -4294,6 +4962,8 @@ void RT_registration_2D_setup( RT_input * rtin )
    MRI_IMAGE * im ;
    char * bar ;
 
+   if( RT_registration_set_vr_base(rtin) ) return;  /* 26 Aug 2009 [rickr] */
+
    nx   = DSET_NX( rtin->dset[0] ) ;
    ny   = DSET_NY( rtin->dset[0] ) ;
    nz   = DSET_NZ( rtin->dset[0] ) ;
@@ -4304,8 +4974,12 @@ void RT_registration_2D_setup( RT_input * rtin )
    rtin->reg_2dbasis = (MRI_2dalign_basis **)
                          malloc( sizeof(MRI_2dalign_basis *) * nz ) ;
 
-   im   = mri_new_vol_empty( nx,ny,1 , kind ) ;        /* fake image for slices */
-   bar  = DSET_BRICK_ARRAY( rtin->dset[0] , ibase ) ;  /* ptr to base volume    */
+   im   = mri_new_vol_empty( nx,ny,1 , kind ) ;     /* fake image for slices */
+
+   /* set pointer to base volume                         26 Aug 2009 [rickr] */
+   if( rtin->reg_base_dset ) bar = DSET_BRICK_ARRAY(rtin->reg_base_dset, 0);
+   else                      bar = DSET_BRICK_ARRAY(rtin->dset[0], ibase);
+
    nbar = im->nvox * im->pixel_size ;               /* offset for each slice */
 
    for( kk=0 ; kk < nz ; kk++ ){                         /* loop over slices */
@@ -4431,7 +5105,7 @@ void RT_registration_2D_onevol( RT_input * rtin , int tt )
          break ;
 
          default:
-            fprintf(stderr,"RT: can't do registration on %s images!\a\n",
+            fprintf(stderr,"RT: can't do 2D registration on %s images!\a\n",
                     MRI_TYPE_name[kind] ) ;
             DSET_delete( rtin->reg_dset ) ; rtin->reg_dset = NULL ;
             rtin->reg_mode = REGMODE_NONE ;
@@ -4464,10 +5138,8 @@ void RT_registration_2D_onevol( RT_input * rtin , int tt )
    return ;
 }
 /*---------------------------------------------------------------------------*/
-#endif /* ALLOW_REGISTRATION */
 
 
-#ifdef ALLOW_REGISTRATION
 /*****************************************************************************
   The collection of functions for handling volume registration in this plugin.
 ******************************************************************************/
@@ -4476,7 +5148,7 @@ void RT_registration_2D_onevol( RT_input * rtin , int tt )
    Called when the user kills the realtime graph of motion parameters
 -----------------------------------------------------------------------------*/
 
-void MTD_killfunc( MEM_topshell_data * mp )
+void MTD_killfunc( MEM_topshell_data *mp )
 {
    /* if mp is for active input, then set the active one to nada */
 
@@ -4496,7 +5168,7 @@ void MTD_killfunc( MEM_topshell_data * mp )
   Do pieces of 3D registration during realtime.
 -----------------------------------------------------------------------------*/
 
-void RT_registration_3D_realtime( RT_input * rtin )
+void RT_registration_3D_realtime( RT_input *rtin )
 {
    int tt , ntt , ttbot ;
 
@@ -4558,7 +5230,7 @@ void RT_registration_3D_realtime( RT_input * rtin )
 
          /* set up comm for motion params    30 Mar 2004 [rickr] */
          RT_mp_comm_init_vars( rtin ) ;
-         if ( rtin->mp_tcp_use ) RT_mp_comm_init( rtin ) ;
+         if ( rtin->mp_tcp_use > 0 ) RT_mp_comm_init( rtin ) ;
       }
    }
 
@@ -4570,7 +5242,7 @@ void RT_registration_3D_realtime( RT_input * rtin )
       RT_registration_3D_onevol( rtin , tt ) ;
 
    /* even if user closed graph window, proceed if mp_tcp_use is set */
-   if( ntt > ttbot && (rtin->mp || rtin->mp_tcp_use) ){
+   if( ntt > ttbot && (rtin->mp || rtin->mp_tcp_use > 0) ){
       float        * yar[7] ;
       int            ycount = -6 ;
 
@@ -4583,8 +5255,11 @@ void RT_registration_3D_realtime( RT_input * rtin )
       yar[6] = rtin->reg_theta + ttbot ;
 
       /* send the data off over tcp connection          30 Mar 2004 [rickr] */
-      if ( rtin->mp_tcp_use )
+      if ( rtin->mp_tcp_use > 0 ) {
           RT_mp_comm_send_data( rtin, yar+1, ntt-ttbot, ttbot );
+          if( verbose > 1 )
+             fprintf(stderr,"RTM, sending TRs %d..%d\n",ttbot,ntt-1);
+      }
 
       if( ttbot > 0 )  /* modify yar after send_data, when ttbot > 0 */
       {
@@ -4665,6 +5340,56 @@ void RT_registration_3D_atend( RT_input * rtin )
 }
 
 /*-----------------------------------------------------------------------
+   Verify and possibly store the volume registration base dataset.
+
+   The global g_reg_base_dset variable will be set anytime the base needs
+   to be stored, which is:
+        1. EXTERN: the base/index is from an External dataset
+           In RT_main: nuke and set g_reg_base_dset from the chosen dset.
+           In any case, apply any g_reg_base_dset in new_RT_input.
+        2. CUR_KEEP: from current run, keep for future
+           Here (set_vr_base), if g_reg_base_dset is NULL, set to current
+           dset and appropriate volume.  If g_reg_base_dset is not NULL,
+           it was done previously.
+           In the previous case, g_reg_base_dset will have been _copied_ to
+           rtin->reg_base_dset in new_RT_input.
+        *. NOT done for CUR: current run and index
+    So if rtin->reg_base_dset, either EXTERN or old CUR_KEEP cases.  Else
+    new CUR_KEEP or just CUR.  Note, rtin->reg_base_dset is always a copy.
+-------------------------------------------------------------------------*/
+int RT_registration_set_vr_base(RT_input * rtin)
+{
+   int code;
+
+   ENTRY("RT_registration_set_vr_base");
+
+   if( rtin->reg_base_mode == RT_RBASE_MODE_CUR ) RETURN(0); /* nothing to do */
+
+   /* If CUR_KEEP, create the global base dataset (deleting any old one).
+      Note that we still do not need to set rtin->reg_base_dset. */
+   if( rtin->reg_base_mode == RT_RBASE_MODE_CUR_KEEP && ! g_reg_base_dset ) {
+      g_reg_base_dset = THD_copy_one_sub(rtin->dset[0], rtin->reg_base_index);
+      if( ! g_reg_base_dset ) {
+         PLUTO_beep() ;
+         PLUTO_popup_transient( plint , "Failed to set volreg base dset!" );
+         RETURN(1);
+      }
+      RETURN(0);
+   }
+
+   /* CHOOSE dset, so verify grid, etc. */
+   code = THD_dataset_mismatch(rtin->reg_base_dset, rtin->dset[0]);
+   if( code ) {
+      PLUTO_beep() ;
+      PLUTO_popup_transient(plint , "Dataset mismatch with volreg base dset!");
+      fprintf(stderr, "** Dataset mismatch with volreg base: code = %d\n",code);
+      RETURN(1);
+   }
+
+   RETURN(0);
+}
+
+/*-----------------------------------------------------------------------
    Setup the 3D registration data
 -------------------------------------------------------------------------*/
 
@@ -4680,6 +5405,8 @@ void RT_registration_3D_setup( RT_input * rtin )
    MRI_IMAGE * im ;
    char * ept ;
 
+   if( RT_registration_set_vr_base(rtin) ) return;  /* failure */
+
    /*-- extract info about coordinate axes of dataset --*/
 
    rtin->iha  = THD_handedness( rtin->dset[0] )   ;  /* LH or RH? */
@@ -4693,7 +5420,9 @@ void RT_registration_3D_setup( RT_input * rtin )
    rtin->ax3  = THD_axcode( rtin->dset[0] , 'A' ) ;
    rtin->hax3 = rtin->ax3 * rtin->iha      ;      /* yaw */
 
-   im     = DSET_BRICK(rtin->dset[0],ibase) ;
+   if( rtin->reg_base_dset ) im = DSET_BRICK(rtin->reg_base_dset,0) ;
+   else                      im = DSET_BRICK(rtin->dset[0],ibase) ;
+
    im->dx = fabs( DSET_DX(rtin->dset[0]) ) ;  /* must set voxel dimensions */
    im->dy = fabs( DSET_DY(rtin->dset[0]) ) ;
    im->dz = fabs( DSET_DZ(rtin->dset[0]) ) ;
@@ -4710,10 +5439,10 @@ void RT_registration_3D_setup( RT_input * rtin )
             kk = strtol(ept,NULL,10) ; if( kk <= 0 ) kk = VL_MIT ;
          }
          mri_3dalign_params( kk , VL_DXY , VL_DPH , VL_DEL ,
-                             abs(rtin->ax1)-1 , abs(rtin->ax2)-1 , abs(rtin->ax3)-1 , -1 ) ;
+                 abs(rtin->ax1)-1 , abs(rtin->ax2)-1 , abs(rtin->ax3)-1 , -1 ) ;
 
                                                            /* noreg , clipit */
-         mri_3dalign_method( rtin->reg_resam , verbose==2 ,   0     , 1        ) ;
+         mri_3dalign_method( rtin->reg_resam , verbose==2 ,   0     , 1       );
 
          mri_3dalign_final_regmode( rtin->reg_final_resam ) ;
 
@@ -4728,7 +5457,7 @@ void RT_registration_3D_setup( RT_input * rtin )
          }
 
          mri_3dalign_params( kk , VL_DXY , VL_DPH , 2.0*VL_DEL ,
-                             abs(rtin->ax1)-1 , abs(rtin->ax2)-1 , abs(rtin->ax3)-1 , -1 ) ;
+                 abs(rtin->ax1)-1 , abs(rtin->ax2)-1 , abs(rtin->ax3)-1 , -1 ) ;
 
          kk = MRI_CUBIC ;                     /* noreg , clipit */
          mri_3dalign_method( kk , verbose==2 ,   1     , 0        ) ;
@@ -4765,11 +5494,11 @@ void RT_registration_3D_close( RT_input * rtin )
 #  define R2DFAC (180.0/PI)
 #endif
 
-void RT_registration_3D_onevol( RT_input * rtin , int tt )
+void RT_registration_3D_onevol( RT_input *rtin , int tt )
 {
-   MRI_IMAGE * rim , * qim ;
-   char * qar ;
-   float dx,dy,dz , roll,pitch,yaw , ddx,ddy,ddz ;
+   MRI_IMAGE *rim , *qim ;
+   char *qar ;
+   float dx,dy,dz , roll,pitch,yaw , ddx=0.0,ddy=0.0,ddz=0.0 ;
    int   nest ;
 
    /*-- sanity check --*/
@@ -4878,10 +5607,14 @@ void RT_registration_3D_onevol( RT_input * rtin , int tt )
             qar = (char *) MRI_BYTE_PTR(rim) ;
          break ;
 
+         case MRI_complex:   /* 20 May 2009: for MCW and Andre Jesmanowicz */
+            qar = (char *) MRI_COMPLEX_PTR(rim) ;
+         break ;
+
          /* this case should not occur: */
 
          default:
-            fprintf(stderr,"RT: can't do registration on %s images!\a\n",
+            fprintf(stderr,"RT: can't do 3D registration on %s images!\a\n",
                     MRI_TYPE_name[rtin->datum] ) ;
             DSET_delete( rtin->reg_dset ) ; rtin->reg_dset = NULL ;
             rtin->reg_mode = REGMODE_NONE ;
@@ -4904,7 +5637,6 @@ void RT_registration_3D_onevol( RT_input * rtin , int tt )
    return ;
 }
 /*---------------------------------------------------------------------------*/
-#endif /* ALLOW_REGISTRATION */
 
 #ifndef FIM_THR
 #define FIM_THR  0.0999
@@ -4977,11 +5709,9 @@ int RT_fim_recurse( RT_input *rtin , int mode )
 
       dset_time = rtin->dset[0] ;       /* assign dset_time first   30 Oct 2003 [rickr] */
 
-#ifdef ALLOW_REGISTRATION
       /* now check for use of registered dataset                    30 Oct 2003 [rickr] */
       if( (rtin->reg_mode == REGMODE_2D_RTIME) || (rtin->reg_mode == REGMODE_3D_RTIME) )
          dset_time = rtin->reg_dset;
-#endif /* ALLOW_REGISTRATION */
 
       if( dset_time == NULL ) return -1 ;
 
@@ -5433,4 +6163,208 @@ int RT_fim_recurse( RT_input *rtin , int mode )
    }
 
    return 1 ;
+}
+
+/* for storing a list of strings (e.g. DRIVE_WAIT commands) */
+static int add_to_rt_slist( rt_string_list * slist, char * str )
+{
+    if( !slist || !str ) return 1;
+
+    /* add a pointer to the array */
+    slist->len++;
+    slist->list = (char **)realloc(slist->list, slist->len*sizeof(char *));
+    if( !slist->list ) {
+        fprintf(stderr,"** failed to realloc slist of %d items\n", slist->len);
+        slist->len = 0;
+        return 1;
+    }
+
+    slist->list[slist->len-1] = strdup(str);
+    if( !slist->list[slist->len-1] ) {
+        fprintf(stderr,"** failed to add string '%s' to slist\n", str);
+        free_rt_string_list(slist);
+        return 1;
+    }
+
+    return 0;
+}
+
+static int free_rt_string_list( rt_string_list * slist )
+{
+    int c;
+
+    if( !slist ) return 1;
+    if( !slist->list || slist->len <= 0 ) return 0;
+
+    for( c = 0; c < slist->len; c++ )
+        if( slist->list[c] ) free( slist->list[c] );
+    free(slist->list);
+    slist->list = NULL;
+    slist->len = 0;
+
+    return 0;
+}
+
+/* execute any pending DRIVE_WAIT commands   22 Aug 2008 [rickr] */
+static int rt_run_drive_wait_commands( rt_string_list * slist )
+{
+   char * cmd;
+   int    c;
+
+   if( !slist || !slist->list || slist->len <= 0 ) return 0 ;
+
+   for( c = 0; c < drive_wait_list.len; c++ ) {
+      cmd = drive_wait_list.list[c];
+      if(verbose > 1) fprintf(stderr,"RT: executing DRIVE_WAIT cmd: %s\n",cmd);
+      if( AFNI_driver( cmd ) < 0 )
+         fprintf(stderr,"RT: **FAILED DRIVE_WAIT** : %s \n", cmd) ;
+   }
+
+   free_rt_string_list(&drive_wait_list);  /* clear old commands */
+
+   return 0;
+}
+
+/*-------------------------------------------------------------------------*/
+/* Test realtime_callback function [01 Jun 2009] */
+
+void RT_test_callback(void *junk)
+{
+   RT_status *rts = GLOBAL_library.realtime_status ;
+   int cc , nval,nbr ;
+
+   if( rts == NULL ){ ERROR_message("bad call to RT_test_callback"); return; }
+
+   INFO_message("RT_test_callback: numchan=%d status=%d numdset=%d",
+                rts->numchan , rts->status , rts->numdset ) ;
+
+   for( cc=0 ; cc < rts->numdset ; cc++ ){
+     if( !ISVALID_DSET(rts->dset[cc]) ){
+       ININFO_message(" dset[%d] invalid!",cc) ;
+     } else {
+       nval = DSET_NVALS(rts->dset[cc]) ;
+       nbr  = THD_count_databricks(rts->dset[cc]->dblk) ;
+       ININFO_message(" dset[%d] '%s': nvals=%d  nbr=%d",
+                      cc , DSET_HEADNAME(rts->dset[cc]) , nval,nbr ) ;
+     }
+   }
+
+   return ;
+}
+
+/*-------------------------------------------------------------------------*/
+/* Function to merge a collection of datasets, at sub-brick #iv. */
+
+MRI_IMAGE * RT_mergerize( int nds , THD_3dim_dataset **ds , int iv )
+{
+   float *far[MAX_CHAN] ; complex *car[MAX_CHAN] ;
+   int cc , nvox , idatum , ii ;
+   MRI_IMAGE *mrgim ;
+   float *fmar=NULL , *ftar ; complex *cmar=NULL , *ctar ;
+
+   if( nds <= 1 || ds == NULL || !ISVALID_DSET(ds[0]) ) return NULL ;
+   if( iv < 0 || iv >= DSET_NVALS(ds[0]) )              return NULL ;
+
+   /* get pointers to input data arrays */
+
+   idatum = DSET_BRICK_TYPE(ds[0],iv) ;
+   switch( idatum ){
+     default: return NULL ; /* should never happen */
+
+     case MRI_float:
+       for( cc=0 ; cc < nds ; cc++ ) far[cc] = DSET_ARRAY(ds[cc],iv) ;
+     break ;
+
+     case MRI_complex:
+       for( cc=0 ; cc < nds ; cc++ ) car[cc] = DSET_ARRAY(ds[cc],iv) ;
+     break ;
+   }
+
+   /* make output image/array */
+
+   nvox  = DSET_NVOX(ds[0]) ;
+   mrgim = mri_new_conforming( DSET_BRICK(ds[0],iv) , RT_chmrg_datum ) ;
+   if( mrgim == NULL ) return NULL ;  /* should never happen */
+
+   /* get pointer to output array */
+
+   switch( RT_chmrg_datum ){
+     default: mri_free(mrgim) ; return NULL ; /* should never happen */
+     case MRI_float:   fmar = MRI_FLOAT_PTR  (mrgim) ; break ;
+     case MRI_complex: cmar = MRI_COMPLEX_PTR(mrgim) ; break ;
+   }
+
+   /*** do the mergerizing ***/
+
+   switch( RT_chmrg_mode ){
+
+     default: mri_free(mrgim) ; return NULL ; /* should never happen */
+
+     /*** sum of absolute values ***/
+
+     case RT_CHMER_L1NORM:  /* output datum is always float */
+       switch( idatum ){
+         case MRI_float:
+           for( cc=0 ; cc < nds ; cc++ ){
+             ftar = far[cc] ;
+             for( ii=0 ; ii < nvox ; ii++ ) fmar[ii] += fabsf(ftar[ii]) ;
+           }
+         break ;
+
+         case MRI_complex:
+           for( cc=0 ; cc < nds ; cc++ ){
+             ctar = car[cc] ;
+             for( ii=0 ; ii < nvox ; ii++ ) fmar[ii] += sqrtf(CSQR(ctar[ii])) ;
+           }
+         break ;
+       }
+     break ; /* done with L1 */
+
+     /*** sqrt of sum of squares ***/
+
+     case RT_CHMER_L2NORM:  /* output datum is always float */
+       switch( idatum ){
+         case MRI_float:
+           for( cc=0 ; cc < nds ; cc++ ){
+             ftar = far[cc] ;
+             for( ii=0 ; ii < nvox ; ii++ ) fmar[ii] += SQR(ftar[ii]) ;
+           }
+         break ;
+
+         case MRI_complex:
+           for( cc=0 ; cc < nds ; cc++ ){
+             ctar = car[cc] ;
+             for( ii=0 ; ii < nvox ; ii++ ) fmar[ii] += CSQR(ctar[ii]) ;
+           }
+         break ;
+       }
+       for( ii=0 ; ii < nvox ; ii++ ) fmar[ii] = sqrtf(fmar[ii]) ;
+     break ; /* done with L2 */
+
+     /*** sum of input values ***/
+
+     case RT_CHMER_SUM:  /* output datum is same as input datum */
+       switch( idatum ){
+         case MRI_float:
+           for( cc=0 ; cc < nds ; cc++ ){
+             ftar = far[cc] ;
+             for( ii=0 ; ii < nvox ; ii++ ) fmar[ii] += ftar[ii] ;
+           }
+         break ;
+
+         case MRI_complex:
+           for( cc=0 ; cc < nds ; cc++ ){
+             ctar = car[cc] ;
+             for( ii=0 ; ii < nvox ; ii++ ){
+               cmar[ii].r += ctar[ii].r ; cmar[ii].i += ctar[ii].i ;
+             }
+           }
+         break ;
+       }
+     break ; /* done with SUM */
+   }
+
+   /*** done done done ***/
+
+   return mrgim ;
 }

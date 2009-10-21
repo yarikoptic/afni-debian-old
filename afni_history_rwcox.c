@@ -44,6 +44,776 @@
 afni_history_struct rwcox_history[] = {
 /*=====BELOW THIS LINE=====*/
 
+ { 19 , OCT , 2009 , RWC , "3dBlurInMask" , MICRO , TYPE_NEW_OPT ,
+   "add -preserve option, to keep Rick Reynolds from defecting to SPM" ,
+   NULL } ,
+
+ { 16 , OCT , 2009 , RWC , "cs_qmed.c" , MICRO , TYPE_GENERAL ,
+   "added function to compute biweight midvariance" ,
+   NULL } ,
+
+ { 8 , OCT , 2009 , RWC , "3dPeriodogram" , MICRO , TYPE_NEW_PROG ,
+   "Does what it sound like, more or less, I hope." ,
+   NULL } ,
+
+ { 7 , OCT , 2009 , RWC , "various" , MICRO , TYPE_MODIFY ,
+   "Modify srand48() init to use time()+getpid()" ,
+   "To make close-in-time runs have independent seeds." } ,
+
+ { 7 , OCT , 2009 , RWC , "3dBlurInMask" , MINOR , TYPE_NEW_OPT ,
+   "Add -Mmask option to allow multiple mask values" ,
+   "For independent blurring (e.g., blur WM and GM separately)." } ,
+
+ { 2 , OCT , 2009 , RWC , "calc" , MICRO , TYPE_MODIFY ,
+   "Add mod(a,b) function to please RCR" ,
+   NULL } ,
+
+ { 2 , OCT , 2009 , RWC , "1dgenARMA11" , MICRO , TYPE_NEW_PROG ,
+   "Generates ARMA(1,1) correlated noise time series" ,
+   "For simulation purposes." } ,
+
+ { 30 , SEP , 2009 , RWC , "3dDeconvolve" , MICRO , TYPE_MODIFY ,
+   "Let user modulate amplitude of dmBLOCK" ,
+   "In particular, dmBLOCK(0) means the program modulates the amplitude\n"
+   "based on duration." } ,
+
+ { 30 , SEP , 2009 , RWC , "3dDeconvolve" , MICRO , TYPE_MODIFY ,
+   "Transpose row-wise 1D file on input when user screws up" ,
+   "1D files input to 3dDeconvolve are expected to have 1 column and many\n"
+   "rows.  If the user gets this backwards, the program now transposes the\n"
+   "file internally, with an INFO message." } ,
+
+ { 29 , SEP , 2009 , RWC , "afni InstaCorr" , MICRO , TYPE_GENERAL ,
+   "Modify SeedBlur to SeedRad" ,
+   "Flat average over a sphere of given radius, instead of a Gaussian blur. \n"
+   "For Steve and Alex." } ,
+
+ { 29 , SEP , 2009 , RWC , "afni" , MAJOR , TYPE_MODIFY ,
+   "InstaCalc is more-or-less ready" ,
+   "At least, I let Mike Beauchamp test it for his cunning plans." } ,
+
+ { 25 , SEP , 2009 , RWC , "afni" , MICRO , TYPE_GENERAL ,
+   "InstaCalc is starting to work! Sort of. Crudely." ,
+   NULL } ,
+
+ { 24 , SEP , 2009 , RWC , "thd_1Ddset.c" , MICRO , TYPE_GENERAL ,
+   "Allow writing of 1D complex datasets instead of convert to float" ,
+   "For Larry Frank, who I love like a brother.  Or a second cousin once\n"
+   "removed." } ,
+
+ { 17 , SEP , 2009 , RWC , "afni" , MICRO , TYPE_MODIFY ,
+   "Started writing InstaCalc" ,
+   NULL } ,
+
+ { 16 , SEP , 2009 , RWC , "All" , MICRO , TYPE_GENERAL ,
+   "Oh, and did I mention that Ziad Saad is Trouble?" ,
+   "Rasmus Birn isn't far behind, either." } ,
+
+ { 16 , SEP , 2009 , RWC , "afni" , MICRO , TYPE_GENERAL ,
+   "FIx recursive calls to AFNI_set_viewpoint()" ,
+   "Caused by the UNCLUSTERIZE macro, which now checks to see if the\n"
+   "function redisplay is really needed." } ,
+
+ { 16 , SEP , 2009 , RWC , "afni" , MICRO , TYPE_MODIFY ,
+   "Make the AFNI_FLASH_VIEWSWITCH variable default to NO, not YES" ,
+   "Sorry, Adam, but Ziad matters more to me than you do." } ,
+
+ { 16 , SEP , 2009 , RWC , "parser,f" , MICRO , TYPE_MODIFY ,
+   "Add 'NOT' function as a synonym for 'ISZERO'" ,
+   NULL } ,
+
+ { 9 , SEP , 2009 , RWC , "3dmaskave" , MICRO , TYPE_NEW_OPT ,
+   "Add box and ball options to this program, per Kyle Simmons" ,
+   NULL } ,
+
+ { 9 , SEP , 2009 , RWC , "3dmaskdump" , MINOR , TYPE_NEW_OPT ,
+   "Add 'ball' options for mask generation" ,
+   NULL } ,
+
+ { 2 , SEP , 2009 , RWC , "afni" , MICRO , TYPE_MODIFY ,
+   "Add ZeroToOne 1D transform function" ,
+   NULL } ,
+
+ { 27 , AUG , 2009 , RWC , "AFNI image viewer" , MICRO , TYPE_GENERAL ,
+   "Keyboard Home key centers zoom window at crosshairs" ,
+   "Doesn't work if cropping and zooming are mixed.  (The logistics are too\n"
+   "hard for my feeble brain.)" } ,
+
+ { 27 , AUG , 2009 , RWC , "AFNI image viewer" , MICRO , TYPE_MODIFY ,
+   "More crop region features" ,
+   "* Shift+Home centers crop region on the crosshairs\n"
+   "* Shift/Ctrl+arrow now respect image flip status\n"
+   "* Environment variable AFNI_IMAGE_CROPSTEP sets sign and size of crop\n"
+   "region shifting with Shift+arrow keys\n"
+   "* If this doesn't make John Butman happy, I don't know what will." } ,
+
+ { 26 , AUG , 2009 , RWC , "3dFFT" , MINOR , TYPE_NEW_PROG ,
+   "Compute spatial 3D FFT of a dataset" ,
+   "* This is for John Butman\n"
+   "* Was started a long time ago, but only finished today\n"
+   "* Probably useless" } ,
+
+ { 25 , AUG , 2009 , RWC , "afni" , MINOR , TYPE_MODIFY ,
+   "Provide keystroke fine control over cropping in image viewer" ,
+   "Shift+arrowkey = scroll crop window\n"
+   "Ctrl+arrowkey  = resize crop window\n"
+   "Right-click on crop button = menu to set size exactly\n"
+   "Hint on crop button = shows crop parameters" } ,
+
+ { 24 , AUG , 2009 , RWC , "mrilib.h" , MICRO , TYPE_BUG_FIX ,
+   "CABS macro fails if complex number has huge components" ,
+   "This is Larry Frank's fault, of course." } ,
+
+ { 24 , AUG , 2009 , RWC , "3dAFNItoNIML" , MICRO , TYPE_NEW_OPT ,
+   "Add -ascii option == way to dump dataset in plain text" ,
+   NULL } ,
+
+ { 11 , AUG , 2009 , RWC , "cs_symeig.c" , MICRO , TYPE_GENERAL ,
+   "Speedup first_principal_vectors() -- for 3dmaskSVD and 3dLocalSVD" ,
+   "By hand tweaking the normal matrix calculation loops" } ,
+
+ { 11 , AUG , 2009 , RWC , "3dAllineate" , MICRO , TYPE_GENERAL ,
+   "Make handedness warning more explicit" ,
+   NULL } ,
+
+ { 10 , AUG , 2009 , RWC , "afni" , MICRO , TYPE_GENERAL ,
+   "Fix crash reported by Ziad and Rick" ,
+   "In afni_setup_viewing(), fim_now might not be valid -- so allow for\n"
+   "that." } ,
+
+ { 10 , AUG , 2009 , RWC , "3dABoverlap" , MICRO , TYPE_MODIFY ,
+   "Modified to skip automask if dataset is byte-valued with 1 volume" ,
+   NULL } ,
+
+ { 27 , JUL , 2009 , RWC , "libmri" , MICRO , TYPE_MODIFY ,
+   "Add function mri_get_tempfilename() to mri_purger.c" ,
+   "To return a unique filename in a temp directory.  Sort of like a fancy\n"
+   "version of the C library function tmpnam()." } ,
+
+ { 24 , JUL , 2009 , RWC , "THD_open_3dcalc()" , MICRO , TYPE_GENERAL ,
+   "Modify to use globally unique filename every time, fer shur." ,
+   "cf. code in file thd_mastery.c, using the UNIQ_idcode() function in\n"
+   "niml_uuid.c to create a unique filename" } ,
+
+ { 24 , JUL , 2009 , RWC , "afni.h" , MICRO , TYPE_GENERAL ,
+   "Replaced VERSION with AVERZHN to avoid conflicts with SVMlight" ,
+   "So AFNI doesn't have a VERSION any more, it has an AVERZHN." } ,
+
+ { 23 , JUL , 2009 , RWC , "3dTfitter" , MICRO , TYPE_NEW_OPT ,
+   "Added -errsum option, to save error sums per voxel." ,
+   "And a -help example showing how the error sum of squares can be used to\n"
+   "compute partial correlation coefficients of a fit." } ,
+
+ { 23 , JUL , 2009 , RWC , "3dLocalSVD" , MICRO , TYPE_BUG_FIX ,
+   "Fix bug when all vectors are zero." ,
+   NULL } ,
+
+ { 21 , JUL , 2009 , RWC , "niml_feedme" , MINOR , TYPE_NEW_PROG ,
+   "Test and demo program showing how to set datasets to AFNI via NIML" ,
+   "An analog to rtfeedme.  Sends volumes to AFNI using VOLUME_DATA\n"
+   "elements.  Pretty rudimentary." } ,
+
+ { 21 , JUL , 2009 , RWC , "afni" , MINOR , TYPE_MODIFY ,
+   "Update widgets and viewing when VOLUME_DATA is added to a dataset" ,
+   "* Fix AFNI_setup_viewing() to update widgets properly when dataset nvals\n"
+   "changes\n"
+   "* Add function AFNI_update_dataset_viewing() to deal with viewing\n"
+   "changes that might be needed if a dataset is altered" } ,
+
+ { 17 , JUL , 2009 , RWC , "3dLocalstat" , MICRO , TYPE_MODIFY ,
+   "speedup for OpenMP" ,
+   "Modify mri_nstats.c to use pre-malloc-ed workspaces, instead of a new\n"
+   "one for each calculation, which makes a big difference in OpenMP." } ,
+
+ { 16 , JUL , 2009 , RWC , "3dmaskSVD" , MICRO , TYPE_MODIFY ,
+   "Speedup (a lot for large masks) by using new SVD routine." ,
+   NULL } ,
+
+ { 15 , JUL , 2009 , RWC , "3dLocalSVD" , MICRO , TYPE_GENERAL ,
+   "Modify to use more efficient SVD routine" ,
+   NULL } ,
+
+ { 13 , JUL , 2009 , RWC , "3dLocalstat" , MINOR , TYPE_MODIFY ,
+   "OpenMP" ,
+   "Also added option '-use_nonmask' to allow statistics to be computed for\n"
+   "voxels not in the mask (but presumably whose neighbors are in the mask)." } ,
+
+ { 1 , JUL , 2009 , RWC , "afni" , MICRO , TYPE_MODIFY ,
+   "Modify AFNI_START_SMALL to pick smallest dataset of all." ,
+   "Rather than the smallest 'anat' and smallest 'func', separately." } ,
+
+ { 30 , JUN , 2009 , RWC , "various 3D programs" , MICRO , TYPE_BUG_FIX ,
+   "Remove keywords propagation stuff" ,
+   "e.g., 3dTcat and 3dbucket\n"
+   "Also, fix keywords printout buffer overflow in thd_info.c" } ,
+
+ { 29 , JUN , 2009 , RWC , "3dREMLfit" , MICRO , TYPE_BUG_FIX ,
+   "Fix memcpy bug in data extraction when using OpenMP.  Ugghh." ,
+   NULL } ,
+
+ { 26 , JUN , 2009 , RWC , "afni" , MICRO , TYPE_MODIFY ,
+   "Add 1D index jumping to \"Jump to (ijk)\"" ,
+   NULL } ,
+
+ { 25 , JUN , 2009 , RWC , "3dREMLfit" , MICRO , TYPE_MODIFY ,
+   "More tweaks to the OpenMP-ization.  Only slightly better." ,
+   NULL } ,
+
+ { 24 , JUN , 2009 , RWC , "3dREMLfit" , MINOR , TYPE_GENERAL ,
+   "Modify to use OpenMP more effectively." ,
+   "Have to avoid use of Doug's matrix.c functions in the main loops, since\n"
+   "they do so much malloc/free, which blocks other threads from running. \n"
+   "Instead, rewrote versions of the needed functions that use pre-allocated\n"
+   "workspace arrays.  Speedup is very good now for the REML setup and REML\n"
+   "voxel loops.  Haven't decided whether to OpenMP-ize the GLSQ or OLSQ\n"
+   "loops, since these usually take much less time." } ,
+
+ { 23 , JUN , 2009 , RWC , "3dTcorrMap" , MICRO , TYPE_NEW_OPT ,
+   "Add -Pmean option, based on poster I saw at HBM." ,
+   NULL } ,
+
+ { 17 , JUN , 2009 , RWC , "3dREMLfit" , MICRO , TYPE_GENERAL ,
+   "OpenMP-ization" ,
+   "Some speedup, but need to work on not doing malloc/free so much in the\n"
+   "REML_func function!" } ,
+
+ { 16 , JUN , 2009 , RWC , "1dplot" , MICRO , TYPE_NEW_OPT ,
+   "Add '-ytran' option" ,
+   "Apply an expression to the time series, to transform it prior to\n"
+   "plotting.  To elide the use of 1deval." } ,
+
+ { 15 , JUN , 2009 , RWC , "AlphaSim" , MICRO , TYPE_BUG_FIX ,
+   "OpenMP: cdfnor() and other functions are not thread-safe" ,
+   "Make use of cdfnor() 'critical'.  Longer term: should patch the nifti\n"
+   "CDF functions to avoid static variables where possible." } ,
+
+ { 11 , JUN , 2009 , RWC , "zgaussian" , MICRO , TYPE_BUG_FIX ,
+   "'long' should be 'int' on 64 bit systems, when doing bit twiddling" ,
+   NULL } ,
+
+ { 11 , JUN , 2009 , RWC , "parser" , MICRO , TYPE_MODIFY ,
+   "Added posval() function, and treat '[]' as '()' for clarity." ,
+   NULL } ,
+
+ { 11 , JUN , 2009 , RWC , "AlphaSim" , MINOR , TYPE_MODIFY ,
+   "Added computation of analytic approximation of Alpha(i) for large i" ,
+   "Uses a modified extreme value distribution, which looks pretty good." } ,
+
+ { 9 , JUN , 2009 , RWC , "AlphaSim" , MICRO , TYPE_GENERAL ,
+   "Modify to use OpenMP (parallelize across iterations)" ,
+   NULL } ,
+
+ { 3 , JUN , 2009 , RWC , "bbox.c" , MICRO , TYPE_MODIFY ,
+   "Modify string list chooser to do Browse select callback via arrows" ,
+   "To make consistent the ways of browsing thru the dataset choosers in\n"
+   "AFNI." } ,
+
+ { 1 , JUN , 2009 , RWC , "debugtrace.h" , MICRO , TYPE_MODIFY ,
+   "Add ability to suspend/restore function traceback stack" ,
+   "Disable stack when OpenMP parallel section is engaged." } ,
+
+ { 26 , MAY , 2009 , RWC , "thd_1Ddset.c" , MICRO , TYPE_MODIFY ,
+   "Change way names are used in output of .1D 'datasets'" ,
+   "(a) If prefix starts with '-' or 'stdout', write results to stdout as a\n"
+   "'pure' 1D formatted file (no NIML header),\n"
+   "(b) Otherwise, if -prefix option had a directory name attached, use that\n"
+   "instead of always using the current working directory." } ,
+
+ { 22 , MAY , 2009 , RWC , "afni" , MICRO , TYPE_BUG_FIX ,
+   "Check if im3d->fim_now is NULL in AFNI_func_overlay()" ,
+   NULL } ,
+
+ { 20 , MAY , 2009 , RWC , "realtime plugin" , MICRO , TYPE_NEW_ENV ,
+   "Also modify it to limit the number of open controllers." ,
+   "cf. AFNI_REALTIME_MAX_CONTROLLERS" } ,
+
+ { 20 , MAY , 2009 , RWC , "realtime plugin" , MINOR , TYPE_MODIFY ,
+   "Modified to allow realtime 3D registration on complex inputs" ,
+   "Mostly a change in mri_3dalign.c, to take the movement estimation done\n"
+   "on the magnitude image and apply it to the 2 component images." } ,
+
+ { 18 , MAY , 2009 , RWC , "3dDespike" , MICRO , TYPE_GENERAL ,
+   "Speedup by OpenMP" ,
+   "Also required changes to mcw_malloc.c to mark various sections as\n"
+   "'critical' and to cl1.c to remove 'static' from all variables generated\n"
+   "from Fortran." } ,
+
+ { 15 , MAY , 2009 , RWC , "afni InstaCorr" , MICRO , TYPE_GENERAL ,
+   "SeedBlur + locked InstaCorr-ology" ,
+   NULL } ,
+
+ { 15 , MAY , 2009 , RWC , "afni InstaCorr" , MINOR , TYPE_GENERAL ,
+   "Remove OpenMP; carry out setref on all locked controllers" ,
+   NULL } ,
+
+ { 13 , MAY , 2009 , RWC , "InstaCorr+3dBlurInMask" , MINOR , TYPE_GENERAL ,
+   "Added OpenMP support for blurring to these programs" ,
+   "Parallelization occurs across sub-bricks -- speedup is significant." } ,
+
+ { 11 , MAY , 2009 , RWC , "afni" , MINOR , TYPE_MODIFY ,
+   "InstaCorr changes" ,
+   "* Save seed time series into the 1D timeseries library for graphicking\n"
+   "* Modify progress printouts slightly" } ,
+
+ { 8 , MAY , 2009 , RWC , "afni" , MINOR , TYPE_MODIFY ,
+   "Instacorr updates" ,
+   "* Can Write A_ICOR datasets using new allow_directwrite variable\n"
+   "* Disable InstaCorr when switching sessions and views\n"
+   "* Notify renderer (DRAWNOTICE) when changes made\n"
+   "* Shift-Ctrl-Left-Click does crosshair shift + InstaCorr Set" } ,
+
+ { 7 , MAY , 2009 , RWC , "afni" , MINOR , TYPE_GENERAL ,
+   "FIxes/upgrades for InstaCorr" ,
+   "* memory problem fixed by malloc-ing sizeof(float *)\n"
+   "  -- not sizeof(float) -- for a float ** variable!\n"
+   "* add dataset labels\n"
+   "* add statistical parameters (including FDR)\n"
+   "* add help" } ,
+
+ { 6 , MAY , 2009 , RWC , "afni" , MAJOR , TYPE_NEW_OPT ,
+   "First edition of InstaCorr!" ,
+   "Rough around the edges, but gnarly-ific to the level of the first\n"
+   "inaccessible cardinal!" } ,
+
+ { 1 , MAY , 2009 , RWC , "3dBlurInMask" , MINOR , TYPE_NEW_PROG ,
+   "Like 3dBlurToFWHM, but simpler." ,
+   NULL } ,
+
+ { 1 , MAY , 2009 , RWC , "thd_bandpass.c" , MICRO , TYPE_BUG_FIX ,
+   "modified to make it actually work, including lowpass and highpass" ,
+   NULL } ,
+
+ { 30 , APR , 2009 , RWC , "1dBandpass" , MICRO , TYPE_NEW_PROG ,
+   "for .. Bandpassing!" ,
+   "Really just to test the new bandpassing functions for inclusion into\n"
+   "AFNI's InstaCorr feature." } ,
+
+ { 29 , APR , 2009 , RWC , "3dTcorrMap" , MICRO , TYPE_GENERAL ,
+   "Add OpenMP support" ,
+   NULL } ,
+
+ { 29 , APR , 2009 , RWC , "3dTcorrMap" , MICRO , TYPE_GENERAL ,
+   "unroll innermost loop -- makes little difference :-(" ,
+   NULL } ,
+
+ { 29 , APR , 2009 , RWC , "afni" , MINOR , TYPE_NEW_ENV ,
+   "Make 'Where am I?' font size user controllable." ,
+   "via AFNI_TTATLAS_FONTSIZE environment variable (editable)." } ,
+
+ { 28 , APR , 2009 , RWC , "3dDeconvolve" , MINOR , TYPE_NEW_OPT ,
+   "Add duration argument to SPMGx basis functions for deconvolution." ,
+   "For Tracy Doty, apparently." } ,
+
+ { 16 , APR , 2009 , RWC , "All" , MINOR , TYPE_BUG_FIX ,
+   "Inadvertent recursion in afni_environ.c now blocked." ,
+   NULL } ,
+
+ { 15 , APR , 2009 , RWC , "1dplot" , MICRO , TYPE_NEW_OPT ,
+   "Add -thick option" ,
+   "Plus: modify plot_ts.c to thicken the lines used for plotting the labels\n"
+   "(so the fancy characters are filled in a little)." } ,
+
+ { 13 , APR , 2009 , RWC , "3dREMLfit" , MICRO , TYPE_BUG_FIX ,
+   "fixed bug in printing censor message for -addbase and -slibase" ,
+   NULL } ,
+
+ { 10 , APR , 2009 , RWC , "3dREMLfit" , MINOR , TYPE_BUG_FIX ,
+   "Error in processing -slibase file with censoring" ,
+   "Typo in replacing input image with censored image caused the end of the\n"
+   "world (SEGV crash)." } ,
+
+ { 8 , APR , 2009 , RWC , "AFNI image viewer" , MINOR , TYPE_MODIFY ,
+   "Set MPEG 'pattern' for frames to reflect the Anim_dup setting." ,
+   "This small change will make MPEG-1 (.mpg) files that are slowed down by\n"
+   "setting Anim_dup > 1 not significantly larger than full speed files, by\n"
+   "setting the frame pattern to 'IPPPP' where the number of Ps is the\n"
+   "number of duplicate frames (Anim_dup-1)." } ,
+
+ { 8 , APR , 2009 , RWC , "thd_filestuff.c" , MINOR , TYPE_NEW_ENV ,
+   "AFNI_ALLOW_ARBITRARY_FILENAMES" ,
+   "Set this environment variable to YES to allow 'strange' characters into\n"
+   "AFNI created filenames.  You should know what you are doing if you use\n"
+   "this variable!" } ,
+
+ { 6 , APR , 2009 , RWC , "3dLocalSVD" , MICRO , TYPE_NEW_OPT ,
+   "Add -vproj option" ,
+   "To project central voxel onto low-dimensional local SVD space." } ,
+
+ { 6 , APR , 2009 , RWC , "3dmaskSVD" , MICRO , TYPE_NEW_OPT ,
+   "Modify to allow output of more than 1 singular vector." ,
+   "Also, make the help more helpful." } ,
+
+ { 4 , APR , 2009 , RWC , "3dmaskSVD" , MINOR , TYPE_NEW_PROG ,
+   "Like 3dmaskave, but does SVD principal vector instead of average" ,
+   NULL } ,
+
+ { 2 , APR , 2009 , RWC , "3dLocalSVD" , MICRO , TYPE_BUG_FIX ,
+   "Fixed a little bug in 3dLocalSVD." ,
+   NULL } ,
+
+ { 2 , APR , 2009 , RWC , "3dTcorrMap" , MINOR , TYPE_NEW_OPT ,
+   "Add -Thresh option" ,
+   "To save a count of how many other voxels are above threshold correlated\n"
+   "with each seed voxel." } ,
+
+ { 1 , APR , 2009 , RWC , "realtime plugin" , MICRO , TYPE_GENERAL ,
+   "Enhanced a few error messages." ,
+   "I wish people would READ the damn things, instead of calling me to\n"
+   "complain." } ,
+
+ { 30 , MAR , 2009 , RWC , "3dABoverlap" , MINOR , TYPE_NEW_PROG ,
+   "Computes various overlap and non-overlap statistics for 2 datasets." ,
+   "Will resample dataset #B to match dataset #A, if needed.  This program\n"
+   "is intended to check if two datasets are grossly not aligned, and has\n"
+   "little other purpose." } ,
+
+ { 27 , MAR , 2009 , RWC , "FDR calculations" , MINOR , TYPE_MODIFY ,
+   "Changes/additions to mask operations for FDR curves." ,
+   "3dREMLfit and 3dDeconvolve now generate an automask for the FDR curving\n"
+   "purposes, if no other mask is used.  3drefit has a new -FDRmask option\n"
+   "for computing the FDR curves correctly if no mask was used before." } ,
+
+ { 26 , MAR , 2009 , RWC , "FDR" , MICRO , TYPE_MODIFY ,
+   "Change the way m1 is estimated for MDF 'hint'." ,
+   NULL } ,
+
+ { 25 , MAR , 2009 , RWC , "3dREMLfit" , MINOR , TYPE_NEW_OPT ,
+   "Add -nobout option, to suppress baseline betas from -Rbeta/-Obeta." ,
+   "Per the request of Michael S Beauchamp, University of Texas." } ,
+
+ { 24 , MAR , 2009 , RWC , "3dDeconvolve" , MICRO , TYPE_GENERAL ,
+   "Added -stim_times_subtract option" ,
+   "To allow adjustment of stimulus times due to removal of some images at\n"
+   "the start of each run.\n"
+   "ALSO: added -stim_time_millisec option, to allow -stim_times inputs to\n"
+   "be in milliseconds rather than seconds." } ,
+
+ { 24 , MAR , 2009 , RWC , "3dDeconvolve" , MICRO , TYPE_GENERAL ,
+   "Expand the -help output somewhat." ,
+   "Based on feedback and confusion from the Dartmouth bootcamp." } ,
+
+ { 11 , MAR , 2009 , RWC , "3dANOVA" , MINOR , TYPE_NEW_OPT ,
+   "Add -mask option to 3dANOVA, 3dANOVA2, 3dANOVA3" ,
+   NULL } ,
+
+ { 9 , MAR , 2009 , RWC , "3dDeconvolve" , MICRO , TYPE_NEW_OPT ,
+   "Add SPMG1 to -stim_times repertoire, and update help." ,
+   NULL } ,
+
+ { 6 , MAR , 2009 , RWC , "3dDeconvolve" , MINOR , TYPE_NEW_OPT ,
+   "Add 'WAV' function (from waver) to -stim_times repertoire." ,
+   NULL } ,
+
+ { 4 , MAR , 2009 , RWC , "3ddata.h" , MICRO , TYPE_BUG_FIX ,
+   "Fix usage of realpath() array dimension with RPMAX macro" ,
+   NULL } ,
+
+ { 2 , MAR , 2009 , RWC , "zfun" , MINOR , TYPE_GENERAL ,
+   "add compression functions (using zlib) to libmri in zfun.c" ,
+   NULL } ,
+
+ { 13 , FEB , 2009 , RWC , "3dRBFdset" , MICRO , TYPE_GENERAL ,
+   "Test program to make a dataset defined by RBF." ,
+   "Mostly built to test the Radial Basis Function expansion functions in\n"
+   "mri_rbfinterp.c." } ,
+
+ { 11 , FEB , 2009 , RWC , "3dvolreg" , MINOR , TYPE_BUG_FIX ,
+   "replace DMAT_svdrot_old with DMAT_svdrot_newer" ,
+   "Old function fails sometimes, making the output rotation be garbage and\n"
+   "producing junk image results; the newer one seems more robust." } ,
+
+ { 10 , FEB , 2009 , RWC , "3dDeconvolve" , MICRO , TYPE_BUG_FIX ,
+   "fixed premature mask free-ing bug" ,
+   NULL } ,
+
+ { 9 , FEB , 2009 , RWC , "imseq.c" , MINOR , TYPE_NEW_ENV ,
+   "Add AFNI_ANIM_DUP environment variable." ,
+   "Allows user to duplicate images when writting an animation (AGIF or\n"
+   "MPEG) file.  A simple and stoopid way to slow down an MPEG." } ,
+
+ { 5 , FEB , 2009 , RWC , "3dREMLfit" , MICRO , TYPE_BUG_FIX ,
+   "typo ==> DOF params for Full_Fstat weren't in output dataset" ,
+   NULL } ,
+
+ { 2 , FEB , 2009 , RWC , "parser (calc programs)" , MINOR , TYPE_MODIFY ,
+   "Add hrfbk4 and hrfbk5(t,T) functions to parser" ,
+   "To imitate the BLOCK4 and BLOCK5 response functions in 3dDeconvolve." } ,
+
+ { 8 , JAN , 2009 , RWC , "3dAllineate" , MICRO , TYPE_GENERAL ,
+   "Added OpenMP directives as a test of multi-threading speedup." ,
+   NULL } ,
+
+ { 7 , JAN , 2009 , RWC , "afni" , MICRO , TYPE_GENERAL ,
+   "Added more references to the help page." ,
+   NULL } ,
+
+ { 5 , JAN , 2009 , RWC , "3dAllineate" , MICRO , TYPE_MODIFY ,
+   "Change wsinc5 interpolation from radial to tensor product weight." ,
+   "Speedup is about a factor of 6, which is worth the effort." } ,
+
+ { 2 , JAN , 2009 , RWC , "3dAllineate" , MICRO , TYPE_GENERAL ,
+   "Add '-final wsinc5' interpolation mode." ,
+   "Slow but accurate.  Weight function is 'designed' to reduce the variance\n"
+   "smoothing artifact." } ,
+
+ { 31 , DEC , 2008 , RWC , "3dUndump" , MICRO , TYPE_MODIFY ,
+   "Make sure NaN values don't get into the dataset!" ,
+   NULL } ,
+
+ { 30 , DEC , 2008 , RWC , "3dTfitter" , MINOR , TYPE_MODIFY ,
+   "For FALTUNG, use sparse matrix operations for pure least squares." ,
+   "Deconvolution + penalty matrix is sparse.  Uses the 'rcmat' functions\n"
+   "originally developed for 3dREMLfit.  Speeds things up a lot when the\n"
+   "time series is long." } ,
+
+ { 29 , DEC , 2008 , RWC , "3dTfitter" , MICRO , TYPE_GENERAL ,
+   "Added better error messages if program runs out of memory." ,
+   NULL } ,
+
+ { 23 , DEC , 2008 , RWC , "3dDeconvolve" , MICRO , TYPE_BUG_FIX ,
+   "Program wouldn't read a -stim_times file that was all '*'" ,
+   "Actual change was in mri_read.c." } ,
+
+ { 19 , DEC , 2008 , RWC , "3dREMLfit" , MICRO , TYPE_MODIFY ,
+   "Added condition number checking and -GOFORIT" ,
+   "Also added floatscan checking for all output datasets, to be careful." } ,
+
+ { 16 , DEC , 2008 , RWC , "3dREMLfit" , MICRO , TYPE_GENERAL ,
+   "Fixed bug in linear solution when #columns%4==3 (unrolling)." ,
+   "Actually in matrix.c, in function vector_multiply_transpose(), which is\n"
+   "only  used in remla.c,  which is only used in 3dREMLfit.c." } ,
+
+ { 11 , DEC , 2008 , RWC , "3dREMLfit" , MICRO , TYPE_MODIFY ,
+   "Should behave better with ocllinear regression matrix." ,
+   "Modified the QR decomposition to adjust 'tiny' diagonal elements of R,\n"
+   "to avoid division by zero (or near-zero).  Prints a warning message when\n"
+   "this adjustment is made." } ,
+
+ { 11 , DEC , 2008 , RWC , "3dREMLfit" , MINOR , TYPE_BUG_FIX ,
+   "Fixed -slibase bug." ,
+   "Oopsie.  -slibase didn't work properly with more than 1 added column per\n"
+   "slice.  Also, per the request of ZSS, you can now input more than 1\n"
+   "column set per image file, in repetitive slice order:\n"
+   "  0 1 2 3 0 1 2 3 0 1 2 3\n"
+   "if there are 4 slices in the dataset, for example." } ,
+
+ { 9 , DEC , 2008 , RWC , "3dDeconvolve" , MINOR , TYPE_MODIFY ,
+   "Added 'dmBLOCK' to the '-stim_times_IM' repertoire." ,
+   NULL } ,
+
+ { 8 , DEC , 2008 , RWC , "3dDeconvolve" , MICRO , TYPE_GENERAL ,
+   "Expand -stim_times_AM modulation abilities even more." ,
+   "Now allow 'duration modulation' via the 'dmBLOCK' response model.  A\n"
+   "general facility for allowing up to 3 nonlinear function parameters has\n"
+   "been built into the code, for future expansion.  'dmBLOCK' can also be\n"
+   "amplitude modulated." } ,
+
+ { 4 , DEC , 2008 , RWC , "1dMarry" , MINOR , TYPE_MODIFY ,
+   "Allow multiple marriages, to go with 3dDeconvolve changes" ,
+   NULL } ,
+
+ { 4 , DEC , 2008 , RWC , "3dDeconvolve" , MINOR , TYPE_NEW_OPT ,
+   "Extend -stim_times_AM2 option to allow multiple amplitudes" ,
+   NULL } ,
+
+ { 18 , NOV , 2008 , RWC , "3dANOVA programs" , MINOR , TYPE_NEW_OPT ,
+   "Add option to output float-valued datasets." ,
+   "Set the AFNI_FLOATIZE environment variable to YES, and the output of\n"
+   "3dANOVA, 3dANOVA2, and 3dANOVA3 will be stored in float format instead\n"
+   "of in scaled short format.  [Per the request of Paul Hamilton]" } ,
+
+ { 14 , NOV , 2008 , RWC , "help_format" , MICRO , TYPE_NEW_PROG ,
+   "For formatting -help output into Web pages with hyperlinks." ,
+   "To be used with the dist_help script for making the help Web pages from\n"
+   "the -help outputs of all AFNI programs." } ,
+
+ { 11 , NOV , 2008 , RWC , "3dREMLfit" , MICRO , TYPE_GENERAL ,
+   "-usetemp now also saves output dataset stuff to TMPDIR." ,
+   NULL } ,
+
+ { 10 , NOV , 2008 , RWC , "3dUndump" , MICRO , TYPE_MODIFY ,
+   "Add warning if non-integer values are being saved to shorts/bytes." ,
+   NULL } ,
+
+ { 7 , NOV , 2008 , RWC , "afni" , MICRO , TYPE_MODIFY ,
+   "Write Clust_table.1D into dataset directory, not startup directory." ,
+   NULL } ,
+
+ { 6 , NOV , 2008 , RWC , "3dDeconvolve" , MINOR , TYPE_GENERAL ,
+   "Add 'scale to shorts misfit' warning messages." ,
+   "Also added to 3dcalc and some other programs." } ,
+
+ { 5 , NOV , 2008 , RWC , "model_expr2.c" , MICRO , TYPE_GENERAL ,
+   "Modified to allow up to 9 parameters -- see code for details." ,
+   NULL } ,
+
+ { 5 , NOV , 2008 , RWC , "3dREMLfit" , MICRO , TYPE_GENERAL ,
+   "If it saves memory, convert dataset to new MRI_vectim format." ,
+   "That is, an array of time series vectors, of voxels in the mask.  Will\n"
+   "save memory if the number of voxels in the mask is less than 1/2 the\n"
+   "volume." } ,
+
+ { 4 , NOV , 2008 , RWC , "3dBlurToFWHM" , MINOR , TYPE_BUG_FIX ,
+   "skip all zero sub-bricks in the blurmaster - for Tomski Rosski" ,
+   NULL } ,
+
+ { 4 , NOV , 2008 , RWC , "3dNLfim" , MINOR , TYPE_GENERAL ,
+   "Added model_expr2.c" ,
+   "Model that uses an arbitrary 3dcalc-like expression with 2 free\n"
+   "parameters (any letters but 't', which is used for the time axis)." } ,
+
+ { 3 , NOV , 2008 , RWC , "3dREMLfit" , MINOR , TYPE_NEW_OPT ,
+   "Several changes" ,
+   "Finished -gltsym, -Rglt, and -Oglt options = add GLTs on the 3dREMLfit\n"
+   "command line and output those exclusively to new files.\n"
+   "\n"
+   "Modified -addbase and -slibase to do censoring if input 1D files are the\n"
+   "same length as the uncensored matrix.\n"
+   "\n"
+   "Also fixed bugs in -ABfile.  Oopsie." } ,
+
+ { 28 , OCT , 2008 , RWC , "afni" , MICRO , TYPE_MODIFY ,
+   "add '3' checkerboard (inverse stippling to '#' key)" ,
+   NULL } ,
+
+ { 27 , OCT , 2008 , RWC , "afni" , MICRO , TYPE_GENERAL ,
+   "Checkerboard underlay and overlay images" ,
+   "For Ziad -- to help judge image alignment.  Use the # key to turn\n"
+   "checkerboarding on and off.  The grayscale intensity bar popup menu has\n"
+   "a new sub-menu to select the check size in units of underlay pixels.  At\n"
+   "this time, checkerboarding does NOT work with image Save, RowGraphs, or\n"
+   "SurfGraph, or just about any other feature.  If you want a picture of a\n"
+   "checkerboarded image, you'll have to use a snapshot utility to grab the\n"
+   "window." } ,
+
+ { 23 , OCT , 2008 , RWC , "3dREMLfit" , MINOR , TYPE_NEW_OPT ,
+   "Added -rout option, by popular 'demand'" ,
+   NULL } ,
+
+ { 23 , OCT , 2008 , RWC , "afni" , MICRO , TYPE_MODIFY ,
+   "Add MDF estimate to FDR q-value" ,
+   "MDF = Missed Detection Fraction = estimate of what fraction of true\n"
+   "positives are below any given threshold (analogous to FDR = estimate of\n"
+   "what fraction of above threshold voxels are true negatives).  Displays\n"
+   "in the hint attached to the label below the threshold slider.  Purely\n"
+   "experimental, since estimating the number of true positives in a given\n"
+   "collection of p-values is not a well-defined concept by any means." } ,
+
+ { 15 , OCT , 2008 , RWC , "fdrval" , MINOR , TYPE_NEW_PROG ,
+   "Compute FDR value on command line, from dataset header" ,
+   NULL } ,
+
+ { 15 , OCT , 2008 , RWC , "3dREMLfit" , MINOR , TYPE_BUG_FIX ,
+   "Fixed errts (etc) outputs: censored values not set to zero!" ,
+   NULL } ,
+
+ { 14 , OCT , 2008 , RWC , "3dAllineate" , MINOR , TYPE_BUG_FIX ,
+   "If source=scaled shorts, then output will be scaled as well." ,
+   NULL } ,
+
+ { 6 , OCT , 2008 , RWC , "afni" , MICRO , TYPE_GENERAL ,
+   "FDR curves can now be fetched from warp_parent" ,
+   "If a func dataset is missing FDR curves, then the program tries to get\n"
+   "them from the warp_parent dataset.  Also, AFNI no longer allows you to\n"
+   "add FDR curves to a dataset without actual bricks (warp-on-demand)." } ,
+
+ { 30 , SEP , 2008 , RWC , "3dREMLfit" , MINOR , TYPE_NEW_OPT ,
+   "added -gltsym option" ,
+   "Makes it easy for the user to add GLTs without using 3dDeconvolve." } ,
+
+ { 25 , SEP , 2008 , RWC , "3dREMLfit" , MINOR , TYPE_NEW_OPT ,
+   "added -usetemp option" ,
+   "Saves REML setup matrices for various cases to tmp disk files.  Is\n"
+   "necessary for -slibase and -Grid 5 combined, if anyone ever actually\n"
+   "wants to run such a case." } ,
+
+ { 24 , SEP , 2008 , RWC , "3dREMLfit" , MINOR , TYPE_NEW_OPT ,
+   "-addbase and -slibase options to add baseline columns to matrix" ,
+   "In particular, -slibase is intended for per-slice modeling of\n"
+   "physiological noise effects.  Sucks up a lot of memory and CPU time." } ,
+
+ { 23 , SEP , 2008 , RWC , "afni" , MINOR , TYPE_MODIFY ,
+   "save last jumpto_xyz string, etc." ,
+   NULL } ,
+
+ { 22 , SEP , 2008 , RWC , "3dREMLfit" , MICRO , TYPE_GENERAL ,
+   "got rid of some big memory leaks" ,
+   NULL } ,
+
+ { 19 , SEP , 2008 , RWC , "NIML library" , MICRO , TYPE_GENERAL ,
+   "modify NI_alter_veclen to allow conversion to non-empty from empty" ,
+   NULL } ,
+
+ { 18 , SEP , 2008 , RWC , "Vecwarp" , MICRO , TYPE_BUG_FIX ,
+   "Only require +orig dataset if user actually NEEDS it" ,
+   "Program required the +orig version of the -apar dataset, which is needed\n"
+   "for SureFit work, even if it wasn't actually going to be used.  Not any\n"
+   "more." } ,
+
+ { 16 , SEP , 2008 , RWC , "3dDeconvolve" , MICRO , TYPE_MODIFY ,
+   "Made 3dREMLfit command echo more complete for user's convenience" ,
+   NULL } ,
+
+ { 15 , SEP , 2008 , RWC , "Draw Dataset plugin" , MINOR , TYPE_MODIFY ,
+   "Keystrokes F3 and F3 now decrement/increment drawing value in plugin" ,
+   NULL } ,
+
+ { 10 , SEP , 2008 , RWC , "3dTfitter" , MICRO , TYPE_MODIFY ,
+   "skip all zero voxels; add voxel ID to error messages" ,
+   NULL } ,
+
+ { 9 , SEP , 2008 , RWC , "3dAllineate" , MICRO , TYPE_MODIFY ,
+   "add savehist to allcost output" ,
+   NULL } ,
+
+ { 2 , SEP , 2008 , RWC , "3dAllineate" , MICRO , TYPE_NEW_OPT ,
+   "-allcostX1D option (for Chairman Z)" ,
+   NULL } ,
+
+ { 29 , AUG , 2008 , RWC , "3dAllineate" , MICRO , TYPE_GENERAL ,
+   "More small changes, to speed the program up a little" ,
+   "* reduce the number of function evals used in the coarse refinements\n"
+   "* after coarse refinements, cast out parameter sets that are very close\n"
+   "  to the best set, to avoid duplicative work at the fine pass" } ,
+
+ { 28 , AUG , 2008 , RWC , "miscellaneous" , MICRO , TYPE_BUG_FIX ,
+   "Fixed 'is used uninitialized' errors in several codes." ,
+   "Via the new macro ZZME() in 3ddata.h, which zeros out a struct." } ,
+
+ { 28 , AUG , 2008 , RWC , "3dAllineate" , MAJOR , TYPE_MODIFY ,
+   "A number of changes to improve robustness." ,
+   "* Don't smooth noise added to source image outside of the mask\n"
+   "* Reduce default smoothing level for -lpc in coarse pass\n"
+   "* Increase number of points used for matching in the coarse pass\n"
+   "* More refinements of the twobest results in the coarse pass\n"
+   "* Refinements (-num_rtb option) of the twobest results in the fine pass\n"
+   "All this adds CPU time, but seems to make the program more reliably\n"
+   "convergent.  Also:\n"
+   "* Restored operation of the -check option, to restart the optimization\n"
+   "  at the final solution with other methods, to see what results they\n"
+   "  give compared to the original method." } ,
+
+ { 26 , AUG , 2008 , RWC , "3dTcorrMap" , MINOR , TYPE_NEW_PROG ,
+   "Average correlations with every other voxel time series." ,
+   "Kind of slow.  For Kyle Simmons.  And I still don't recognize Missouri!" } ,
+
+ { 25 , AUG , 2008 , RWC , "3dREMLfit" , MINOR , TYPE_NEW_OPT ,
+   "Added residual outputs to 3dREMLfit." ,
+   NULL } ,
+
+ { 22 , AUG , 2008 , RWC , "3dREMLfit" , MINOR , TYPE_NEW_OPT ,
+   "Add FDR curves and -?fitts options." ,
+   NULL } ,
+
+ { 21 , AUG , 2008 , RWC , "3dREMLfit" , SUPER , TYPE_NEW_PROG ,
+   "Program to mimic 3dDeconvolve, but with serial correlations" ,
+   "Uses ARMA(1,1) model of noise, separately for each voxel." } ,
+
+ { 18 , AUG , 2008 , RWC , "3dDeconvolve" , MICRO , TYPE_GENERAL ,
+   "add -force_TR option to override input dataset TR from header" ,
+   "Also added a printout of the dataset TR if the PSFB warning gets\n"
+   "printed." } ,
+
  { 15 , JUL , 2008 , RWC , "count" , MICRO , TYPE_BUG_FIX ,
    "Make '-suffix' work correctly for last item (per Fred Tam)." ,
    "Also, make '-sep' and '-suffix' work as separate items,\n"

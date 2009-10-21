@@ -53,7 +53,7 @@ float AFNI_get_autothresh( Three_D_View *im3d )
 
 ENTRY("AFNI_get_autothresh") ;
 
-   if( !IM3D_OPEN(im3d) || im3d->fim_now == NULL ) RETURN(-1.0f) ;
+   if( !IM3D_OPEN(im3d) || !ISVALID_DSET(im3d->fim_now) ) RETURN(-1.0f) ;
 
    ival = im3d->vinfo->thr_index ;  /* threshold sub-brick index */
 
@@ -93,7 +93,7 @@ ENTRY("AFNI_func_autothresh_CB") ;
 }
 
 /*-----------------------------------------------------------------------*/
-/*! 29 Jan 2008 */
+/*! 29 Jan 2008: add FDR curves to the functional dataset */
 
 void AFNI_func_fdr_CB( Widget w, XtPointer cd, XtPointer cb)
 {
@@ -206,19 +206,6 @@ ENTRY("AFNI_thr_scale_CB") ;
    AFNI_set_thr_pval( im3d ) ;
 
    MCW_discard_events_all( w , ButtonPressMask ) ;  /* 20 Mar 2007 */
-
-   if( im3d->vinfo->func_pval >= 0.0 && im3d->vinfo->func_pval <= 1.0 ){
-     char pstr[64] ;
-     sprintf( pstr , "Nominal p=%.4e" , im3d->vinfo->func_pval ) ;
-     if( im3d->vinfo->func_qval >= 0.0 && im3d->vinfo->func_qval <= 1.0 )
-       sprintf(pstr+strlen(pstr),"; FDR q=%.4e",im3d->vinfo->func_qval) ;
-     else
-       sprintf(pstr+strlen(pstr),"; FDR q=N/A") ;
-     MCW_register_hint( im3d->vwid->func->thr_pval_label , pstr ) ;
-   } else {
-     MCW_register_hint( im3d->vwid->func->thr_pval_label ,
-                        "Nominal p-value per voxel"       ) ;
-   }
 
    if( ! DOING_REALTIME_WORK ) AFNI_redisplay_func( im3d ) ;
 
@@ -387,7 +374,7 @@ if(PRINT_TRACING)
      if( zval > 0.0f ){
        float qval = 2.0*qg(zval) ;         /* convert z back to FDR q */
        im3d->vinfo->func_qval = qval ;
-       if( qval > 0.0f & qval < 0.9999 ){
+       if( qval > 0.0f && qval < 0.9999 ){   
          char qbuf[16] ;
          if( qval >= 0.0010 ) sprintf(qbuf,"%5.4f",qval) ;
          else {
@@ -404,6 +391,30 @@ if(PRINT_TRACING)
    }
 
    MCW_set_widget_label( im3d->vwid->func->thr_pval_label , buf ) ;
+
+   if( im3d->vinfo->func_pval >= 0.0f && im3d->vinfo->func_pval <= 1.0f ){
+     char pstr[128] ; float mval ;
+     sprintf( pstr , "Uncorrected p=%.4e" , im3d->vinfo->func_pval ) ;
+     if( im3d->vinfo->func_qval >= 0.0f && im3d->vinfo->func_qval <= 1.0f )
+       sprintf(pstr+strlen(pstr),"; FDR q=%.4e",im3d->vinfo->func_qval) ;
+     else
+       sprintf(pstr+strlen(pstr),"; FDR q=N/A") ;
+     mval = THD_mdfcurve_mval( im3d->fim_now, im3d->vinfo->thr_index ,
+                                              im3d->vinfo->func_pval  ) ;
+#if 1
+     if( mval >= 0.0f )
+       sprintf(pstr+strlen(pstr),"; MDF=%.1f%%",100.0f*mval) ;
+     else
+       strcat(pstr,"; MDF=N/A") ;
+#else
+       sprintf(pstr+strlen(pstr),"; MDF=%.1f%%",100.0f*mval) ;
+#endif
+     MCW_register_hint( im3d->vwid->func->thr_pval_label , pstr ) ;
+   } else {
+     MCW_register_hint( im3d->vwid->func->thr_pval_label ,
+                        "Uncorrected p-value per voxel"    ) ;
+   }
+
    FIX_SCALE_SIZE(im3d) ;
    EXRETURN ;
 }
@@ -1130,11 +1141,19 @@ ENTRY("AFNI_func_overlay") ;
    if( br_fim == NULL || n < 0 ) RETURN(NULL) ;  /* nothing to do */
 
    im3d = (Three_D_View *) br_fim->parent ;
+   if( !IM3D_OPEN(im3d) ) RETURN(NULL) ;         /* should not happen */
+
+   /* 22 May 2009: check if functional dataset is ready */
+
+   if( !ISVALID_DSET(im3d->fim_now) ){
+     AFNI_SEE_FUNC_OFF(im3d) ; RETURN(NULL) ;
+   }
 
    ival = im3d->vinfo->thr_index ;  /* threshold sub-brick index */
 
    /* get the component images */
 
+   ival = im3d->vinfo->thr_index ;  /* threshold sub-brick index */
    LOAD_DSET_VIEWS(im3d) ; /* 02 Nov 1996 */
 
    need_thr = (im3d->vinfo->func_threshold > 0.0) && im3d->vinfo->thr_onoff ;
@@ -1318,7 +1337,7 @@ if( PRINT_TRACING && im_thr != NULL )
       default:                             /* should not happen! */
          if( im_thr != im_fim ) mri_free(im_thr) ;
          mri_free(im_fim) ; mri_free(im_ov) ;
-STATUS("bad im_fim->kind!") ;
+         STATUS("bad im_fim->kind!") ;
       RETURN(NULL) ;
 
       case MRI_short:{
@@ -1643,7 +1662,7 @@ ENTRY("AFNI_ttatlas_overlay") ;
 
    /* setup and sanity checks */
 
-STATUS("checking if have Atlas dataset") ;
+   STATUS("checking if have Atlas dataset") ;
 
    /* 01 Aug 2001: retrieve atlas based on z-axis size of underlay dataset */
 #if 1
@@ -1655,13 +1674,13 @@ STATUS("checking if have Atlas dataset") ;
 
    /* make sure Atlas and current dataset match in size */
 
-STATUS("checking if Atlas and anat dataset match") ;
+   STATUS("checking if Atlas and anat dataset match") ;
 
    if( DSET_NVOX(dseTT) != DSET_NVOX(im3d->anat_now) )    RETURN(NULL) ;
 
    /* make sure we are actually drawing something */
 
-STATUS("checking if Atlas Colors is on") ;
+   STATUS("checking if Atlas Colors is on") ;
 
    ttp = TTRR_get_params() ; if( ttp == NULL )            RETURN(NULL) ;
 
@@ -1677,7 +1696,7 @@ STATUS("checking if Atlas Colors is on") ;
 
    /* get slices from TTatlas dataset */
 
-STATUS("loading Atlas bricks") ;
+   STATUS("loading Atlas bricks") ;
 
    DSET_load(dseTT) ;
    b0im = AFNI_slice_flip( n , 0 , RESAM_NN_TYPE , ax_1,ax_2,ax_3 , dseTT ) ;
@@ -1689,12 +1708,12 @@ STATUS("loading Atlas bricks") ;
    /* make a new overlay image, or just operate on the old one */
 
    if( fov == NULL ){
-STATUS("making new overlay for Atlas") ;
+      STATUS("making new overlay for Atlas") ;
       ovim = mri_new_conforming( b0im , MRI_short ) ;   /* new overlay */
       ovar = MRI_SHORT_PTR(ovim) ;
       memset( ovar , 0 , ovim->nvox * sizeof(short) ) ;
    } else{
-STATUS("re-using old overlay for Atlas") ;
+      STATUS("re-using old overlay for Atlas") ;
       ovim = fov ;                                      /* old overlay */
       ovar = MRI_SHORT_PTR(ovim) ;
       if( ovim->nvox != b0im->nvox ){                     /* shouldn't */
@@ -1717,7 +1736,7 @@ STATUS("re-using old overlay for Atlas") ;
 
    /* loop over image voxels, find overlays from Atlas */
 
-STATUS("doing Atlas overlay") ;
+   STATUS("doing Atlas overlay") ;
 
    for( nov=ii=0 ; ii < ovim->nvox ; ii++ ){
 
@@ -1773,7 +1792,7 @@ ENTRY("AFNI_resam_av_CB") ;
    /* assign resampling type based on which arrowval, and redraw */
 
    if( av == im3d->vwid->dmode->func_resam_av ){
-STATUS("set func_resam_mode") ;
+      STATUS("set func_resam_mode") ;
       im3d->vinfo->func_resam_mode = av->ival ;
       if( im3d->b123_fim != NULL ){
          im3d->b123_fim->resam_code =
@@ -1782,7 +1801,7 @@ STATUS("set func_resam_mode") ;
       }
 
    } else if( av == im3d->vwid->dmode->thr_resam_av ){  /* 09 Dec 1997 */
-STATUS("set thr_resam_mode") ;
+      STATUS("set thr_resam_mode") ;
       im3d->vinfo->thr_resam_mode = av->ival ;
       if( im3d->b123_fim != NULL ){
          im3d->b123_fim->thr_resam_code =
@@ -1791,7 +1810,7 @@ STATUS("set thr_resam_mode") ;
       }
 
    } else if( av == im3d->vwid->dmode->anat_resam_av ){
-STATUS("set anat_resam_mode") ;
+      STATUS("set anat_resam_mode") ;
       im3d->vinfo->anat_resam_mode = av->ival ;
       im3d->b123_anat->resam_code =
        im3d->b231_anat->resam_code =
@@ -2413,6 +2432,8 @@ ENTRY("AFNI_finalize_dataset_CB") ;
 
    if( wcall == im3d->vwid->view->choose_sess_pb ){
 
+      DISABLE_INSTACORR(im3d) ; DESTROY_ICOR_setup(im3d->iset) ; /* 08 May 2009 */
+
       new_sess = cbs->ival ;
       if( new_sess < 0 || new_sess >= GLOBAL_library.sslist->num_sess ){
          XBell( im3d->dc->display , 100 ) ; EXRETURN ;  /* bad! */
@@ -2575,8 +2596,7 @@ ENTRY("AFNI_finalize_dataset_CB") ;
       /* 03 Aug 2007: turn 'See Overlay' on? */
 
       if( !im3d->vinfo->func_visible && im3d->vinfo->func_visible_count == 0 ){
-        MCW_set_bbox( im3d->vwid->view->see_func_bbox , 1 ) ;
-        AFNI_see_func_CB( NULL , im3d , NULL ) ;
+        AFNI_SEE_FUNC_ON(im3d) ;
       }
 
    /*--- switch to Hell? ---*/
@@ -2595,22 +2615,23 @@ ENTRY("AFNI_finalize_dataset_CB") ;
    /*- beep & flash viewing control box if view type changes -*/
 
    if( old_view != new_view ){
-     static int first=1 ;
+     static int nwarn=0 ;
      MCW_set_bbox( im3d->vwid->view->view_bbox , 1 << new_view ) ;
      UNCLUSTERIZE(im3d) ;  /* 14 Feb 2008 */
 
      /* this stuff is for Adam Thomas -- 18 Oct 2006 */
 
-     WARNING_message("Forced switch from '%s' to '%s'\a",
-                     VIEW_typestr[old_view] , VIEW_typestr[new_view] ) ;
-     if( first && wcall != NULL ){
-       char str[256] ; first = 0 ;
+     if( nwarn < 3 )
+       WARNING_message("Forced switch from '%s' to '%s'\a",
+                       VIEW_typestr[old_view] , VIEW_typestr[new_view] ) ;
+     if( nwarn==0 && wcall != NULL ){
+       char str[256] ;
        sprintf(str," \nForced switch from\n  '%s'\nto\n  '%s'\n ",
                    VIEW_typestr[old_view] , VIEW_typestr[new_view] ) ;
-       (void) MCW_popup_message( wcall, str, MCW_USER_KILL | MCW_TIMER_KILL ) ;
+       (void)MCW_popup_message( wcall, str, MCW_USER_KILL | MCW_TIMER_KILL ) ;
      }
 
-     if( wcall != NULL && !AFNI_noenv("AFNI_FLASH_VIEWSWITCH") ){
+     if( wcall != NULL && AFNI_yesenv("AFNI_FLASH_VIEWSWITCH") ){
        for( ii=0 ; ii < 6 ; ii++ ){
          MCW_invert_widget(im3d->vwid->view->view_bbox->wframe ); RWC_sleep(32);
          MCW_invert_widget(im3d->vwid->view->view_bbox->wrowcol); RWC_sleep(32);
@@ -2620,6 +2641,7 @@ ENTRY("AFNI_finalize_dataset_CB") ;
          MCW_invert_widget(wcall) ;
        }
      }
+     nwarn++ ;  /* 16 Sep 2009 */
    }
 
    /*----- actually do the switch -----*/
@@ -2675,27 +2697,43 @@ void AFNI_check_obliquity(Widget w, THD_3dim_dataset *dset)
 {
    double angle;
    char str[1024];
-
+   static int num_warn = 0;
+   
    ENTRY("AFNI_check_obliquity");
    if( !ISVALID_DSET(dset) ) EXRETURN ;
 
    if(AFNI_yesenv("AFNI_NO_OBLIQUE_WARNING")) EXRETURN;
 
+   if(AFNI_yesenv("AFNI_ONE_OBLIQUE_WARNING") && num_warn) EXRETURN;
+   
    THD_check_oblique_field(dset);
 
    angle = THD_compute_oblique_angle(dset->daxes->ijk_to_dicom_real, 0);
    if(angle == 0.0) EXRETURN ;
 
-   sprintf( str,
-      " You have selected an oblique dataset (%s).\n"
-      "  If you are performing spatial transformations on an oblique dset, \n"
-      "  or viewing/combining it with volumes of differing obliquity,\n"
-      "  you should consider running: \n"
-      "     3dWarp -deoblique \n"
-      "  on this and other oblique datasets in the same session.\n",
-      DSET_BRIKNAME(dset));
-
+   if (AFNI_yesenv("AFNI_ONE_OBLIQUE_WARNING")) {
+      sprintf( str,
+         " You have selected an oblique dataset (%s).\n"
+         "  If you are performing spatial transformations on an oblique dset, \n"
+         "  or viewing/combining it with volumes of differing obliquity,\n"
+         "  you should consider running: \n"
+         "     3dWarp -deoblique \n"
+         "  on this and other oblique datasets in the same session.\n"
+         " Similar warnings will be muted for the rest of this session.\n", 
+         DSET_BRIKNAME(dset) );
+   } else {
+      sprintf( str,
+         " You have selected an oblique dataset (%s).\n"
+         "  If you are performing spatial transformations on an oblique dset, \n"
+         "  or viewing/combining it with volumes of differing obliquity,\n"
+         "  you should consider running: \n"
+         "     3dWarp -deoblique \n"
+         "  on this and other oblique datasets in the same session.\n",
+         DSET_BRIKNAME(dset));
+   }
    (void) MCW_popup_message( w , str, MCW_USER_KILL | MCW_TIMER_KILL ) ;
+   
+   ++num_warn;
    EXRETURN ;
 }
 
@@ -2924,7 +2962,7 @@ if(PRINT_TRACING)
             /** if the name given is a directory, try to read it **/
 
             if( THD_is_directory(text) ){
-               int ii , eq ;
+               int ii , eq=0 ;
                THD_session *old_ss ;
 
                /** 1st check if this is the same as some other session **/
@@ -3783,11 +3821,21 @@ STATUS(old_ss->sessname) ;
 int AFNI_rescan_session( int sss )
 {
    char *eee = getenv("AFNI_RESCAN_METHOD") ;
-   int use_new ;
+   int use_new , use_rep ;
+   static int first=1 ;
 
-   use_new = ( eee == NULL                      ||
-               strcasecmp(eee,"REPLACE") != 0   ||
-               AFNI_yesenv("AFNI_AUTO_RESCAN")    ) ;
+   use_rep = ( eee != NULL && strcasecmp(eee,"REPLACE") == 0 ) ;
+
+   use_new = ( AFNI_yesenv("AFNI_AUTO_RESCAN")      ||
+               AFNI_yesenv("AFNI_RESCAN_AT_SWITCH") || !use_rep ) ;
+
+   if( use_rep && use_new && first ){  /* 07 Oct 2008 */
+     WARNING_message(
+       " \n"
+       "   AFNI_RESCAN_METHOD = REPLACE is incompatible with\n"
+       "   AFNI_AUTO_RESCAN = YES  and/or  AFNI_RESCAN_AT_SWITCH = YES" ) ;
+     first = 0 ;
+   }
 
    return (use_new) ? AFNI_rescan_session_NEW( sss )
                     : AFNI_rescan_session_OLD( sss ) ;
@@ -4212,7 +4260,7 @@ void AFNI_write_dataset_CB( Widget w, XtPointer cd, XtPointer cb )
    THD_3dim_dataset *dset = NULL ;
    THD_dataxes        new_daxes ;
    Widget wmsg ;
-   int resam_mode ;
+   int resam_mode = 0;
    Boolean good , destroy ;
 
 ENTRY("AFNI_write_dataset_CB") ;
@@ -4228,6 +4276,12 @@ ENTRY("AFNI_write_dataset_CB") ;
    } else if( w == im3d->vwid->dmode->write_func_pb ){  /* write function */
       dset       = im3d->fim_now ;
       resam_mode = im3d->vinfo->func_resam_mode ;
+   }
+
+   if( ISVALID_DSET(dset) && dset->dblk->diskptr->allow_directwrite == 1 ){
+     INFO_message("Direct write of dataset '%s'",DSET_BRIKNAME(dset)) ;
+     DSET_overwrite(dset) ;
+     EXRETURN ;
    }
 
    good = ISVALID_3DIM_DATASET(dset)     &&     /* check for bad data */
@@ -4375,7 +4429,7 @@ Boolean AFNI_refashion_dataset( Three_D_View *im3d ,
    int native_order , save_order ;  /* 23 Nov 1999 */
 
    Boolean picturize ;
-   Pixmap brain_pixmap ;
+   Pixmap brain_pixmap=XmUNSPECIFIED_PIXMAP ;
 
 #ifndef DONT_USE_METER
    Widget meter = NULL ;
@@ -4389,7 +4443,6 @@ ENTRY("AFNI_refashion_dataset") ;
 
    if( picturize ){
       switch( ORIENT_xyz[daxes->zzorient] ){
-         default:  brain_pixmap = XmUNSPECIFIED_PIXMAP ; break ;
          case 'x': brain_pixmap = afni48sag_pixmap     ; break ;
          case 'y': brain_pixmap = afni48cor_pixmap     ; break ;
          case 'z': brain_pixmap = afni48axi_pixmap     ; break ;
@@ -5265,8 +5318,8 @@ ENTRY("AFNI_bucket_label_CB") ;
 
 void AFNI_misc_CB( Widget w , XtPointer cd , XtPointer cbd )
 {
-   Three_D_View *im3d = (Three_D_View *) cd ;
-   XmAnyCallbackStruct *cbs = (XmAnyCallbackStruct *) cbd ;
+   Three_D_View *im3d = (Three_D_View *)cd ;
+   XmAnyCallbackStruct *cbs = (XmAnyCallbackStruct *)cbd ;
 
 ENTRY("AFNI_misc_CB") ;
 
@@ -5620,6 +5673,103 @@ STATUS("got func info") ;
 
       XtMapWidget( wpop ) ;  /* after this, is up to user */
       RWC_visibilize_widget( wpop ) ;
+   }
+
+   /*.........................................................*/
+
+   else if( w == im3d->vwid->func->icor_pb ){ /* 29 Apr 2009 */
+      static PLUGIN_interface *plint[MAX_CONTROLLERS] ; static int first=1 ;
+      Widget wpop ;
+      char title[64] , *lc=AFNI_controller_label(im3d) ;
+      int ic=AFNI_controller_index(im3d) ;
+
+      if( first ){  /* initialize */
+        int ii ;
+        for( ii=0 ; ii < MAX_CONTROLLERS ; ii++ ) plint[ii] = NULL ;
+        first = 0 ;
+      }
+
+      /* first time in for this controller: create interface like a plugin */
+
+      if( plint[ic] == NULL ){
+         plint[ic] = ICOR_init(lc) ;
+         if( plint[ic] == NULL ){ XBell(im3d->dc->display,100); EXRETURN; }
+         PLUG_setup_widgets( plint[ic] , GLOBAL_library.dc ) ;
+         plint[ic]->im3d = im3d ;
+      }
+
+      if( cbs == NULL ){  /* synthetic call */
+         XtUnmapWidget(plint[ic]->wid->shell) ; EXRETURN ;
+      }
+
+      /* code below is from PLUG_startup_plugin_CB() in afni_plugin.c */
+
+      plint[ic]->im3d = im3d ;
+      sprintf(title,"%sAFNI InstaCorr Setup Operations",lc) ;
+      XtVaSetValues( plint[ic]->wid->shell ,
+                      XmNtitle     , title       , /* top of window */
+                      XmNiconName  , "InstaCorr" , /* label on icon */
+                     NULL ) ;
+      PLUTO_cursorize( plint[ic]->wid->shell ) ;
+
+      /*-- if possible, find where this popup should go --*/
+
+      wpop = plint[ic]->wid->shell ;
+
+      if( cbs->event != NULL && cbs->event->type == ButtonRelease ){
+
+         XButtonEvent *xev = (XButtonEvent *)cbs->event ;
+         int xx = (int)xev->x_root , yy = (int)xev->y_root ;
+         int ww,hh , sw,sh ;
+
+         MCW_widget_geom( wpop , &ww,&hh , NULL,NULL ) ;
+         sw = WidthOfScreen (XtScreen(wpop)) ;
+         sh = HeightOfScreen(XtScreen(wpop)) ;
+
+         if( xx+ww+3 >= sw && ww <= sw ) xx = sw-ww ;
+         if( yy+hh+3 >= sh && hh <= sh ) yy = sh-hh ;
+
+         XtVaSetValues( wpop , XmNx , xx , XmNy , yy , NULL ) ;
+      }
+
+      /*-- popup widgets --*/
+
+      XtMapWidget( wpop ) ;  /* after this, is up to user */
+      RWC_visibilize_widget( wpop ) ;
+   }
+
+   /*.........................................................*/
+
+   else if( w == im3d->vwid->func->icalc_pb ){ /* 18 Sep 2009 */
+     Widget wtop ;
+
+     if( im3d->vwid->func->iwid == NULL ){
+       ICALC_make_widgets(im3d) ;
+       if( im3d->vwid->func->iwid == NULL ){ BEEPIT; EXRETURN; }
+     }
+
+     if( im3d->icalc_setup == NULL )
+       INIT_ICALC_setup(im3d->icalc_setup) ;
+
+     if( !im3d->vwid->func->iwid->is_open ) INSTACALC_LABEL_OFF(im3d) ;
+     im3d->icalc_setup->is_good = 0 ;
+
+     wtop =  im3d->vwid->func->iwid->wtop ;
+
+     if( cbs->event != NULL && cbs->event->type == ButtonRelease ){
+       XButtonEvent *xev = (XButtonEvent *)cbs->event ;
+       int xx=(int)xev->x_root , yy=(int)xev->y_root , ww,hh,sw,sh ;
+       MCW_widget_geom( wtop , &ww,&hh , NULL,NULL ) ;
+       sw = WidthOfScreen (XtScreen(wtop)) ;
+       sh = HeightOfScreen(XtScreen(wtop)) ;
+       if( xx+ww+3 >= sw && ww <= sw ) xx = sw-ww ;
+       if( yy+hh+3 >= sh && hh <= sh ) yy = sh-hh ;
+       XtVaSetValues( wtop , XmNx , xx , XmNy , yy , NULL ) ;
+     }
+
+     XtMapWidget(wtop) ; RWC_visibilize_widget( wtop ) ;
+     XRaiseWindow( XtDisplay(wtop) , XtWindow(wtop) ) ;
+     im3d->vwid->func->iwid->is_open = 1 ;
    }
 
    /*.........................................................*/

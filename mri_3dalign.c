@@ -6,6 +6,9 @@
 
 #include "mrilib.h"
 
+#undef ASSIF
+#define ASSIF(b,a) if( (b) != NULL ) *(b) = (a)
+
 /*** NOT 7D SAFE ***/
 
 /*************************************************************************
@@ -201,7 +204,8 @@ ENTRY("mri_3dalign_setup") ;
 
    /*--- create output struct ---*/
 
-   basis = (MRI_3dalign_basis *) malloc( sizeof(MRI_3dalign_basis) ) ;
+   /* from malloc    12 Feb 2009 [lesstif patrol] */
+   basis = (MRI_3dalign_basis *) calloc( 1, sizeof(MRI_3dalign_basis) ) ;
 
    /*-- local copy of input image --*/
 
@@ -528,18 +532,21 @@ ENTRY("mri_3dalign_setup") ;
    Output:  Return value is aligned image;
             *dx, *dy, *dz, *th1, *th2, *th3 are set to estimated
             alignment parameters.  Note that returned image is floats.
+
+   20 May 2009: modified to return a complex-valued image if the input
+                is complex-valued (estimation is done on abs image)
 -------------------------------------------------------------------------*/
 
-MRI_IMAGE * mri_3dalign_one( MRI_3dalign_basis * basis , MRI_IMAGE * im ,
+MRI_IMAGE * mri_3dalign_one( MRI_3dalign_basis *basis , MRI_IMAGE *im ,
                              float *th1 , float *th2 , float *th3 ,
                              float *dx  , float *dy  , float *dz    )
 {
-   MRI_IMARR * fitim ;
-   double * chol_fitim=NULL ;
-   float * fit , *dfit ;
+   MRI_IMARR *fitim ;
+   double *chol_fitim=NULL ;
+   float *fit , *dfit ;
    int iter , good , ii ;
    float dxt , dyt , dzt , ftop,fbot ;
-   MRI_IMAGE * tim , * fim ;
+   MRI_IMAGE *tim=NULL , *fim ;
 
 ENTRY("mri_3dalign_one") ;
 
@@ -575,7 +582,7 @@ ENTRY("mri_3dalign_one") ;
       if( DOTRIM ){
         tim = IMTRIM(fim) ;
         fit = mri_delayed_lsqfit( tim , fitim , chol_fitim ) ;
-        mri_free( tim ) ;
+        mri_free( tim ) ; tim = NULL ;
       } else {                                /* L2 fit input image */
         fit = mri_delayed_lsqfit( fim , fitim , chol_fitim ) ;
       }
@@ -600,7 +607,7 @@ ENTRY("mri_3dalign_one") ;
       TRIM(tim) ; /* 06 Jun 2002: trim it if ordered to */
 
       dfit = mri_delayed_lsqfit( tim , fitim , chol_fitim ) ; /* delta angle/shift */
-      mri_free( tim ) ;
+      mri_free( tim ) ; tim = NULL ;
 
       fit[1] += dfit[1] ; fit[2] += dfit[2] ; fit[3] += dfit[3] ;  /* accumulate  */
       fit[4] += dfit[4] ; fit[5] += dfit[5] ; fit[6] += dfit[6] ;  /* angle/shift */
@@ -626,31 +633,50 @@ ENTRY("mri_3dalign_one") ;
 
    /*-- save final alignment parameters --*/
 
-   if( th1 != NULL ) *th1 = fit[1]*DFAC ;  /* convert to radians */
-   if( th2 != NULL ) *th2 = fit[2]*DFAC ;
-   if( th3 != NULL ) *th3 = fit[3]*DFAC ;
-   if( dx  != NULL ) *dx  = fit[4] ;
-   if( dy  != NULL ) *dy  = fit[5] ;
-   if( dz  != NULL ) *dz  = fit[6] ;
+   ASSIF(th1,fit[1]*DFAC) ;  /* convert to radians */
+   ASSIF(th2,fit[2]*DFAC) ;
+   ASSIF(th3,fit[3]*DFAC) ;
+   ASSIF(dx ,fit[4]     ) ;
+   ASSIF(dy ,fit[5]     ) ;
+   ASSIF(dz ,fit[6]     ) ;
 
    /*-- do the actual realignment --*/
 
+   tim = NULL ;
    if( ! noreg ){
       if( final_regmode < 0 ) final_regmode = regmode ;  /* 20 Nov 1998 */
       THD_rota_method( final_regmode ) ;
-      tim = THD_rota3D( fim ,
-                        ax1,fit[1]*DFAC , ax2,fit[2]*DFAC , ax3,fit[3]*DFAC ,
-                        dcode , fit[4],fit[5],fit[6] ) ;
-   } else {
-      tim = NULL ;
+
+      if( im->kind == MRI_complex ){   /* 20 May 2009: special case! */
+        MRI_IMARR *impair ; MRI_IMAGE *rim,*iim , *xim,*yim ;
+        impair = mri_complex_to_pair(im) ;
+        if( impair == NULL ){
+          ERROR_message("mri_complex_to_pair fails in mri_3dalign_one!") ;
+        } else {
+          rim = IMAGE_IN_IMARR(impair,0) ;
+          iim = IMAGE_IN_IMARR(impair,1) ;  FREE_IMARR(impair) ;
+          xim = THD_rota3D( rim ,
+                            ax1,fit[1]*DFAC, ax2,fit[2]*DFAC, ax3,fit[3]*DFAC,
+                            dcode , fit[4],fit[5],fit[6] ) ; mri_free(rim) ;
+          yim = THD_rota3D( iim ,
+                            ax1,fit[1]*DFAC, ax2,fit[2]*DFAC, ax3,fit[3]*DFAC,
+                            dcode , fit[4],fit[5],fit[6] ) ; mri_free(iim) ;
+          tim = mri_pair_to_complex(xim,yim) ; mri_free(xim) ; mri_free(yim) ;
+        }
+
+      } else {                  /* real-valued input */
+        tim = THD_rota3D( fim ,
+                          ax1,fit[1]*DFAC , ax2,fit[2]*DFAC , ax3,fit[3]*DFAC ,
+                          dcode , fit[4],fit[5],fit[6] ) ;
+      }
    }
 
-   if( tim != NULL && clipit &&
+   if( tim != NULL && tim->kind == MRI_float && clipit &&
        (final_regmode == MRI_QUINTIC || final_regmode==MRI_CUBIC  ||
         final_regmode == MRI_HEPTIC  || final_regmode==MRI_FOURIER  ) ){
 
       register int ii ;
-      register float ftop , fbot , * tar ;
+      register float ftop , fbot , *tar ;
 
       ftop = mri_max( fim ); fbot = mri_min( fim );
       tar  = MRI_FLOAT_PTR(tim) ;
@@ -665,16 +691,87 @@ ENTRY("mri_3dalign_one") ;
    RETURN( tim );  /* 10-4, good buddy */
 }
 
-/*--------------------------------------------------------------------*/
+/*---------------------------------------------------------------------------*/
+/* Register the first volume in imar to the base, then rotate/shift all
+   the others in the same way.
+*//*-------------------------------------------------------------------------*/
 
-MRI_IMARR * mri_3dalign_many( MRI_IMAGE * im , MRI_IMAGE * imwt , MRI_IMARR * ims ,
+MRI_IMARR * mri_3dalign_oneplus( MRI_3dalign_basis *basis, MRI_IMARR *imar ,
+                                 float *th1 , float *th2 , float *th3 ,
+                                 float *dx  , float *dy  , float *dz   )
+{
+   int nim = IMARR_COUNT(imar) , kk ;
+   MRI_IMAGE *bim , *outim ;
+   MRI_IMARR *outar ;
+   float dth1,dth2,dth3 , ddx,ddy,ddz ;
+
+ENTRY("mri_3dalign_oneplus") ;
+
+   bim   = IMARR_SUBIM(imar,0) ;
+   outim = mri_3dalign_one( basis , bim ,
+                            &dth1,&dth2,&dth3 , &ddx,&ddy,&ddz ) ;
+
+   ASSIF(th1,dth1) ; ASSIF(th2,dth2) ; ASSIF(th3,dth3) ;
+   ASSIF(dx ,ddx ) ; ASSIF(dy ,ddy ) ; ASSIF(dz ,ddz ) ;
+
+   if( outim == NULL ) RETURN(NULL) ;
+
+   INIT_IMARR (outar) ;
+   ADDTO_IMARR(outar,outim) ;
+
+   for( kk=1 ; kk < nim ; kk++ ){
+     bim = IMARR_SUBIM(imar,kk) ;
+
+     if( bim->kind == MRI_complex ){   /* special case! */
+       MRI_IMARR *impair ; MRI_IMAGE *rim,*iim , *xim,*yim ;
+       impair = mri_complex_to_pair(bim) ;
+       if( impair == NULL ){
+         ERROR_message("mri_complex_to_pair fails in mri_3dalign_oneplus! ") ;
+       } else {
+         rim = IMAGE_IN_IMARR(impair,0) ;
+         iim = IMAGE_IN_IMARR(impair,1) ;  FREE_IMARR(impair) ;
+         xim = THD_rota3D( rim ,
+                           ax1,dth1, ax2,dth2, ax3,dth3,
+                           dcode , ddx,ddy,ddz ) ; mri_free(rim) ;
+         yim = THD_rota3D( iim ,
+                           ax1,dth1, ax2,dth2, ax3,dth3,
+                           dcode , ddx,ddy,ddz ) ; mri_free(iim) ;
+         outim = mri_pair_to_complex(xim,yim) ; mri_free(xim) ; mri_free(yim) ;
+       }
+
+     } else {                  /* real-valued input */
+       outim = THD_rota3D( bim ,
+                           ax1,dth1, ax2,dth2, ax3,dth3, dcode , ddx,ddy,ddz ) ;
+
+       if( outim != NULL && outim->kind == MRI_float && clipit &&
+           (final_regmode == MRI_QUINTIC || final_regmode==MRI_CUBIC  ||
+            final_regmode == MRI_HEPTIC  || final_regmode==MRI_FOURIER  ) ){
+
+         register int ii ; register float ftop, fbot, *tar ;
+         ftop = mri_max(bim); fbot = mri_min(bim); tar = MRI_FLOAT_PTR(outim);
+         for( ii=0 ; ii < outim->nvox ; ii++ ){
+                 if( tar[ii] < fbot ) tar[ii] = fbot ;
+            else if( tar[ii] > ftop ) tar[ii] = ftop ;
+         }
+       }
+     }
+
+     ADDTO_IMARR(outar,outim) ;
+   }
+
+   RETURN(outar) ;
+}
+
+/*---------------------------------------------------------------------------*/
+
+MRI_IMARR * mri_3dalign_many( MRI_IMAGE *im , MRI_IMAGE *imwt , MRI_IMARR *ims ,
                               float *th1 , float *th2 , float *th3 ,
                               float *dx  , float *dy  , float *dz   )
 {
    int kim ;
-   MRI_IMAGE * tim ;
-   MRI_IMARR * alim ;
-   MRI_3dalign_basis * basis ;
+   MRI_IMAGE *tim ;
+   MRI_IMARR *alim ;
+   MRI_3dalign_basis *basis ;
 
 ENTRY("mri_3dalign_many") ;
 

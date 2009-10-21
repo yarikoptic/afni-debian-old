@@ -213,6 +213,7 @@ extern MCW_cluster * MCW_build_mask(float, float, float, float);
 extern MCW_cluster * MCW_spheremask( float,float,float,float ) ;
 extern MCW_cluster * MCW_rectmask  ( float,float,float,float,float,float ) ;
 extern MCW_cluster * MCW_rhddmask  ( float,float,float,float ) ;
+extern MCW_cluster * MCW_tohdmask  ( float,float,float,float ) ;
 
 /* 16 June 1998 */
 extern void MCW_erode_clusters (int, int, int, float, float, float, int,
@@ -384,6 +385,13 @@ extern float EDIT_coerce_autoscale( int , int,void * , int,void * ) ;
 extern float EDIT_convert_dtype   ( int , int,void * , int,void *, int ) ;
 extern int   is_integral_data     ( int , int , void * ) ;
 
+extern float EDIT_coerce_autoscale_new( int nxyz , int itype ,
+                                        void *ivol , int otype , void *ovol ) ;
+extern float EDIT_scale_misfit( int nxyz, float fac, short *sar, float *far ) ;
+extern void EDIT_misfit_report( char *name, int ib,
+                                int nxyz, float fac, short *sar, float *far ) ;
+extern void EDIT_set_misfit_mask( byte * ) ;
+
 extern void EDIT_floatize_dataset( THD_3dim_dataset *dset ) ;
 extern int DSET_pure_type( THD_3dim_dataset *dset ) ;
 
@@ -423,8 +431,8 @@ extern int                EDIT_dset_items( THD_3dim_dataset * , ... ) ;
 extern THD_3dim_dataset * EDIT_geometry_constructor( char * , char * ) ; /* 05 Jan 2008 */
 extern char * EDIT_get_geometry_string( THD_3dim_dataset *dset ) ;
 
-extern int THD_volDXYZscale(  THD_dataxes  * daxes, 
-                              float xyzscale, 
+extern int THD_volDXYZscale(  THD_dataxes  *daxes,
+                              float xyzscale,
                               int reuse_shift);    /* ZSS Dec 07 */
 extern THD_3dim_dataset * EDIT_wod_copy( THD_3dim_dataset * ) ; /* 31 Jul 2002 */
 extern THD_datablock *    EDIT_empty_datablock(void) ;          /* 11 Mar 2005 */
@@ -517,9 +525,9 @@ extern int cluster_alphaindex_64( int csize, int nz, float fw, float pv ) ;
 #define ADN_brick_keywords_replace_one  (5*ADN_ONE_STEP)  /*=  char *   =*/
 #define ADN_brick_keywords_append_one   (6*ADN_ONE_STEP)  /*=  char *   =*/
 
-/*-----------------------------------------------------------------
-   These 2 macros added 14 Dec 1999
--------------------------------------------------------------------*/
+/*------------------------------------------------------------------*/
+/* These 2 macros added 14 Dec 1999 */
+/*------------------------------------------------------------------*/
 
 /*! Copy anat parent from old datasets ods to new dataset nds. */
 
@@ -533,6 +541,24 @@ extern int cluster_alphaindex_64( int csize, int nz, float fw, float pv ) ;
 #define EDIT_ZERO_ANATOMY_PARENT_ID(nds)                 \
   do{ if( ISVALID_DSET(nds) )                             \
          ZERO_IDCODE((nds)->anat_parent_idcode); } while(0)
+
+/*------------------------------------------------------------------*/
+/* These 2 macros added 20 Aug 2008 */
+/*------------------------------------------------------------------*/
+
+#define EDIT_TO_FUNC_BUCKET(ds)                        \
+  EDIT_dset_items( (ds) ,                              \
+                    ADN_type      , HEAD_FUNC_TYPE ,   \
+                    ADN_func_type , FUNC_BUCK_TYPE ,   \
+                    ADN_ntt       , 0              ,   \
+                   ADN_none )
+
+#define EDIT_TO_ANAT_BUCKET(ds)                        \
+  EDIT_dset_items( (ds) ,                              \
+                    ADN_type      , HEAD_ANAT_TYPE ,   \
+                    ADN_func_type , ANAT_BUCK_TYPE ,   \
+                    ADN_ntt       , 0              ,   \
+                   ADN_none )
 
 /*------------------------------------------------------------------*/
 
@@ -623,8 +649,11 @@ extern int cluster_alphaindex_64( int csize, int nz, float fw, float pv ) ;
 
 #define MAX_NCODE 666
 #define MAX_CODE_PARAMS 16
-#define NTYPE_SPHERE 1
-#define NTYPE_RECT   2
+
+#define NTYPE_SPHERE 1  /* mask types: sphere */
+#define NTYPE_RECT   2              /* rectangular block */
+#define NTYPE_RHDD   3              /* rhombic dodecahedron */
+#define NTYPE_TOHD   4              /* truncated octahedron */
 
 extern void SetSearchAboutMaskedVoxel(int v);  /* ZSS */
 extern MRI_IMAGE * THD_get_dset_nbhd( THD_3dim_dataset *, int, byte *,
@@ -637,6 +666,9 @@ extern MRI_IMAGE * mri_get_nbhd( MRI_IMAGE *, byte *,
                                  int, int, int, MCW_cluster * ) ;
 extern MRI_IMARR * mri_get_indexed_nbhd( MRI_IMAGE *, byte *,
                                          int, int, int, MCW_cluster * ) ;
+
+extern int mri_get_nbhd_array( MRI_IMAGE *inim , byte *mask ,
+                               int xx, int yy, int zz, MCW_cluster *nbhd, float *nar ) ;
 
 extern MRI_IMAGE * mri_localstat( MRI_IMAGE *, byte *, MCW_cluster *, int ) ;
 extern THD_3dim_dataset * THD_localstat( THD_3dim_dataset *, byte *,

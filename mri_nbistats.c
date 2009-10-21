@@ -24,7 +24,7 @@ void mri_bistat_setweight( MRI_IMAGE *wm )  /* 14 Aug 2007 */
 /*--------------------------------------------------------------------------*/
 /*! Input = 2 1D images, and an NBISTAT_ code to compute some statistic.
    Output = statistic's value.
-----------------------------------------------------------------------------*/
+*//*------------------------------------------------------------------------*/
 
 float mri_nbistat( int code , MRI_IMAGE *im , MRI_IMAGE *jm )
 {
@@ -96,6 +96,9 @@ float mri_nbistat( int code , MRI_IMAGE *im , MRI_IMAGE *jm )
      case NBISTAT_CORR_RATIO_U:
        THD_corr_ratio_mode(0) ;
        outval = THD_corr_ratio( npt , far , gar ) ; break ;
+
+     case NBISTAT_NCD:
+       outval = THD_ncdfloat( npt , far , gar ) ; break ;
    }
 
    /* cleanup and exit */
@@ -109,7 +112,7 @@ float mri_nbistat( int code , MRI_IMAGE *im , MRI_IMAGE *jm )
 /*! Compute a local statistic at each voxel of an image pair, possibly with
     a mask; 'local' is defined with a neighborhood; 'statistic' is defined
     by an NBISTAT_ code.
-----------------------------------------------------------------------------*/
+*//*------------------------------------------------------------------------*/
 
 MRI_IMAGE * mri_localbistat( MRI_IMAGE *im, MRI_IMAGE *jm ,
                              byte *mask, MCW_cluster *nbhd, int code )
@@ -126,7 +129,7 @@ ENTRY("mri_localbistat") ;
    outar = MRI_FLOAT_PTR(outim) ;
    nx = outim->nx ; ny = outim->ny ; nz = outim->nz ;
 
-   ijk = (int)pow((double)nbhd->num_pt,0.33333) ;  /* for entropy, etc. */
+   ijk = (int)cbrt((double)nbhd->num_pt) ;  /* for entropy, etc. */
    set_2Dhist_hbin( ijk ) ;
 
    for( ijk=kk=0 ; kk < nz ; kk++ ){

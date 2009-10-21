@@ -42,6 +42,13 @@ N.B.: At the end of this file is a list of several environment variables
       that affect the program 3dDeconvolve, rather than the interactive
       AFNI program itself.
 
+N.B.: If you set an AFNI environment variable on the command line, or
+      in a shell startup file (e.g., ~/.cshrc), and also have that
+      variable in your ~/.afnirc file, you will get a warning telling
+      you that the value in the ~/.afnirc file is being ignored.
+      To turn off these warnings, set environment variable
+      AFNI_ENVIRON_WARNINGS to NO.
+
 ********************************************************
 June 1999: Setting environment variables in file .afnirc
 ********************************************************
@@ -696,6 +703,13 @@ If this YES/NO variable is set to YES, then the AFNI GUI will skip the usual
 warning that it pops up in a message window when an oblique dataset is selected.
 (The warning will still be printed to stdout.)
 
+-----------------------------------
+Variable: AFNI_ONE_OBLIQUE_WARNING
+-----------------------------------
+If this YES/NO variable is set to YES, then the AFNI GUI will pop up a warning
+just ONCE when an oblique dataset is encountered.
+
+
 ----------------------
 Variable: AFNI_NO_XDBE
 ----------------------
@@ -890,9 +904,11 @@ AFNI_REALTIME_Verbose      = "No", "Yes", or "Very"
 AFNI_REALTIME_Registration = "None", "2D:_realtime", "2D:_at_end",
                              "3D:_realtime", "3D:_at_end",
                              or "3D:_estimate"
-AFNI_REALTIME_Base_Image   = an integer from 0 to 59
 AFNI_REALTIME_Resampling   = "Cubic", "Quintic", "Heptic", "Fourier",
                              or "Hept+Four"
+AFNI_REALTIME_Reg_Base_Mode= "Current_Run", "Current_Run_Keep", or
+                             "External_Dataset"
+AFNI_REALTIME_Base_Image   = an integer from 0 to 9999
 AFNI_REALTIME_Graph        = "No", "Yes", or "Realtime"
 AFNI_REALTIME_NR           = an integer from 5 to 9999
 AFNI_REALTIME_YR           = a floating point number from 0.1 to 10.0
@@ -924,8 +940,73 @@ AFNI_GRAPH_AUTOGRID     = By default, if the number of time points in an
                           vertical grid lines changes.  If you don't
                           want this to happen, set this variable to NO.
 
-For more information about how the realtime plugin works, read the file
-README.realtime.
+AFNI_REALTIME_MP_HOST_PORT = HOST:PORT
+
+        When this variable is set, the realtime plugin will attempt to open a
+        tcp socket to the corresponding host and port, and will send the six
+        registration correction parameters for each 3D volume received by the
+        plugin.  This applies only to the case of graphing 3D registration.
+        The socket will be opened at the start of each run, and will be closed
+        at the end.  A simple example of what to set this variable to is
+        localhost:53214.
+        See 'serial_helper -help' for more details.
+
+AFNI_REALTIME_SEND_VER   = Y/N
+
+        If AFNI_REALTIME_MP_HOST_PORT is set, the RT plugin has 3 choices
+        of what to send to that port (possibly to serial_helper):
+            0. the motion parameters
+            1. motion params, along with average EPI values over each ROI
+               in the mask dataset (if set)
+            2. motion params, along with all voxel values over the mask
+               dataset (including index, i,j,k and x,y,z values)
+        If AFNI_REALTIME_SEND_VER is set to YES, then the plugin will offset
+        the last byte of the communication HELLO string by the version number
+        (0, 1 or 2).  In the case of versions 1 or 2, the plugin will send
+        the number of ROIs/voxels in a 4-byte int after the HELLO string.
+
+AFNI_REALTIME_Mask_Vals  = String (one of the listed strings)
+
+        This allows the user to set the "Vals to Send" field from the RT
+        plugin's "Mask" line.  It determines what data are sent to the remote
+        MP program (e.g. serial_helper).  Valid strings are:
+
+            None        - send nothing
+            Motion_Only - send only the 6 registration parameters
+            ROI_means   - send the mean EPI value per mask ROI (value) per TR
+            All_Data    - send each voxel value (in mask) per TR
+
+AFNI_REALTIME_SHOW_TIMES = Y/N
+
+        If set, the RT plugin will output CPU times whenever motion parameters
+        are sent to the remote program, allowing evaluation of timing.  The
+        times are modulo one hour, and are at a millisecond resolution.
+
+AFNI_REALTIME_MAX_CONTROLLERS = Number
+
+        If set, this is the maximum number of controllers that AFNI will
+         open for multi-channel acquisition display.  If more channels
+         than this are sent, only the first ones will be displayed.
+     ** If this variable is not set, its value defaults to 2.
+
+AFNI_REALTIME_DATAMODE = Number
+
+        If set, this variable controls the initial setting of the
+        "DataWriting" control, where 0=Off, 1=Acquired, etc.  If not
+        set, the default value is 0.
+
+AFNI_REALTIME_CHMERMODE = Number
+
+        If set, this variable controls the initial setting of the
+        "ChannelMerge" control, where 0=none, 1=sum, etc.  If not
+        set, the default value is 0.
+
+For detailed information about how the realtime plugin works, read the
+file README.realtime.
+
+Also see "Dimon -help" (example E "for testing complete real-time system").
+Also see "serial_helper -help".
+Also see program rtfeedme.c and "rtfeedme -help".
 
 ------------------------
 Variable: AFNI_FIM_IDEAL
@@ -1160,12 +1241,18 @@ cases, but please verify this.
 Variable: AFNI_START_SMALL
 --------------------------
 If this YES/NO variable is set to YES, then when AFNI starts, it will
-look for the smallest datasets in the first session, and choose these
+look for the smallest dataset in the first session, and choose this
 as its starting point.  This can be useful if you also use the layout
 feature to pop open an image window on startup; in that case, if the
 default starting dataset (the first alphabetical) is huge, you won't
 see anything while the program reads all of into memory before displaying
 the first image.
+
+The old behavior of this variable was to set the smallest dataset
+marked as 'Anatomical' to be the underlay, and the smallest dataset
+marked as 'Functional' to be the overlay.  The new behavior just
+sets both the underlay and overlay to be the smallest dataset.
+If you want the old behavior, set this variable to the string 'OLD'.
 
 ---------------------------
 Variable: AFNI_MENU_COLSIZE
@@ -1571,6 +1658,18 @@ decide whether to use these options -- manufacturers seem to differ.
 Plus, I don't have that much experience with DICOM data from many different
 sources.
 
+---------------------------------------------------
+Variable: AFNI_DICOM_VERBOSE
+---------------------------------------------------
+Set this YES/NO variable to YES to output extra details when reading
+DICOM images.
+
+---------------------------------------------------
+Variable: AFNI_DICOM_USE_LAST_ELEMENT
+---------------------------------------------------
+Set this YES/NO variable to YES to force the DICOM reading routines to set
+each DICOM element based on the last occurrence, not necessarily the first.
+
 -----------------------
 Variable: IDCODE_PREFIX
 -----------------------
@@ -1593,15 +1692,47 @@ family the overlay is to be mapped onto.
 Variable: AFNI_AGIF_DELAY
 -------------------------
 This is the time delay between frames when writing an animated GIF file from
-an image viewer window.  The units are 100ths of seconds; the default value
-is 20 (= 5 frames per second).
+an image viewer window.  The units are 100ths of seconds (centi-seconds!);
+the default value is 20 (= 5 frames per second).  Note that this value
+is NOT editable in the Edit Environment control panel, so you have to
+set it up prior to starting AFNI (e.g., by using an option like
+'-DAFNI_AGIF_DELAY=10' on the command line when starting AFNI).
 
 -----------------------------
 Variable: AFNI_MPEG_FRAMERATE
 -----------------------------
 This value sets the frame rate (per second) of the MPEG-1 output animation
 from the image viewer window.  The legal values allowed by MPEG-1 are
-24, 25, 30, 50, and 60; 24 is the default.
+24, 25, 30, 50, and 60; 24 (the slowest) is the default.  Note that the
+MPEG-1 standard does NOT allow arbitrary framerates, only these listed.
+To further slow down an MPEG-1 animation in AFNI, use the AFNI_ANIM_DUP
+variable, described below.
+
+-----------------------
+Variable: AFNI_ANIM_DUP (editable)
+-----------------------
+This value sets the frame duplication factor for AGIF or MPEG animation
+output.  If this value 'd' is between 1 and 99, then each frame (image)
+will be written out 'd' times before being incorporated into the
+movie file.  Note that AFNI_AGIF_DELAY can be used to slow down an
+AGIF file more efficiently, but that there is no other way (within AFNI)
+to slow down an MPEG file.  (Some MPEG movie players will let you slow
+down the animation, but that's outside of AFNI's control.)
+
+You can control this variable directly from the Edit Environment control
+panel, or set its internal value in AFNI (or other image viewers) from
+the right-click popup menu attached to the intensity grayscale bar just
+to the right of the image sub-window in the viewer.  Note that the
+duplication factor must be greater than 1 for any slowdown to occur.
+For example, if you want 6 frames per second in an MPEG file, then a
+duplication factor of 4 would work (24 fps / 4 = 6 fps).
+
+For MPEG-1 files, AFNI will set up the frame temporal encoding pattern so
+that there is very little .mpg file size overhead for this frame
+duplication.  The same is NOT true for animated GIF files, since these
+files do not have any compression along the time axis.  Therefore, you
+should use AFNI_AGIF_DELAY to control the frame rate of animated GIF
+files, and not this frame duplication factor.
 
 -----------------------------
 Variable: AFNI_STARTUP_SCRIPT
@@ -1756,9 +1887,10 @@ numbering (e.g., you define color 07 but not 05 or 06), then the undefined
 colors will be fuliginous.
 
 [Dec 2007] You can now specify the colors by using the special names 'green',
-'red', 'blue', 'gold', and 'purple'.  Also, by using 3 or 6 digit hexadecimal
-notation as in '#8888aa' for a blueish-gray color (6 digits) or '#0ac' for a
-cyanish color (3 digits).  These are intended to make life a little simpler.
+'red', 'blue', 'gold', 'pink', and 'purple'.  Also, by using 3 or 6 digit
+hexadecimal notation as in '#8888aa' for a blueish-gray color (6 digits) or
+'#0ac' for a cyanish color (3 digits).  These are intended to make life a
+little simpler.
 
 --------------------------
 Variable: AFNI_1DPLOT_THIK (editable)
@@ -1893,6 +2025,13 @@ Variable: AFNI_1D_TIME_TR
 -------------------------
 If this is set, and AFNI_1D_TIME is YES, then this determines the TR (in
 seconds) of a .1D file read in as an AFNI dataset.
+
+---------------------------
+Variable: AFNI_1D_ZERO_TEXT
+---------------------------
+If this is set to 'YES', then non-commented text gets set to 0
+instead of causing a read failure. The default setting is 'No'
+
 
 ------------------------
 Variable: AFNI_3D_BINARY
@@ -2072,6 +2211,9 @@ MPEG filenames input to AFNI programs (as sources of images or as datasets)
 must end in ".mpg", ".MPG", ".mpeg", or ".MPEG".  MPEG datasets will be read
 so that the individal images are displayed in an Axial image window.
 
+Note that decoding a long .mpg file that happens to be in your directory
+can slow down the AFNI startup considerably!
+
 ---------------------------
 Variable: AFNI_MPEG_GRAYIZE
 ---------------------------
@@ -2206,17 +2348,6 @@ own after 30 seconds) is to click in them.  You know who you are.
 However, if you are advanced enough to read this file, then you probably
 aren't one of THEM.
 
-------------------------------------
-Variable: AFNI_REALTIME_MP_HOST_PORT (editable)
-------------------------------------
-When this variable is set, the realtime plugin will attempt to open a tcp
-socket to the corresponding host and port, and will send the six registration
-correction parameters for each 3D volume received by the plugin.  This applies
-only to the case of graphing 3D registration.  The socket will be opened at
-the start of each run, and will be closed at the end.  A simple example of
-what to set this variable to is localhost:53214.  See 'serial_helper -help'
-for more details.
-
 -----------------------------
 Variable: AFNI_X11_REDECORATE (editable)
 -----------------------------
@@ -2296,6 +2427,12 @@ which will force a re-reading of the datasets and so force an elicitation
 of the NIfTI debug messages (for .nii files, that is).
 
 --------------------------
+Variable: AFNI_DEBUG_PLUG_VOL2SURF
+--------------------------
+Use this interger variable to initialize the debug level in plug_vol2surf.
+The current set of acceptable values is {0..5}.
+
+--------------------------
 Variable: AFNI_NIFTI_NOEXT
 --------------------------
 When writing a '.nii' (or '.nii.gz') file from an AFNI program, normally
@@ -2366,6 +2503,16 @@ Variable: AFNI_TTATLAS_CAUTION (editable)
 If this YES/NO variable is set to NO, then the warning about the potential
 errors in the "Where am I?" popup will not appear.  This is purely for
 cosmetic purposes, Ziad.
+
+-------------------------------
+Variable: AFNI_TTATLAS_FONTSIZE (editable)
+-------------------------------
+If this variable is not set, the default font size is used in the 'Where am I?'
+popup window.
+If this variable is set to 'BIG' or a positive number, then a larger font
+size is used.
+If this variable is set to 'SMALL' or a negative number, then a smaller font
+size is used.
 
 --------------------------
 Variable: AFNI_AUTO_RESCAN
@@ -2567,9 +2714,11 @@ Variable: AFNI_FLASH_VIEWSWITCH
 If you switch sessions, underlay, or overlay, it can happen that the
 coordinate system might be forced to switch from +orig to +tlrc
 (for example) because there is no dataset to view in the +orig system.
-Normally, AFNI flashes the view switch buttons on and off a few times
-to let you know this is happening (this is the Adam Thomas feature).
-You can turn this feature off, by setting this variable to NO.
+If you set this variable to YES, AFNI flashes the view switch buttons
+on and off a few times to let you know this is happening
+(this is the Adam Thomas feature).
+  ** Formerly, this feature was on by default, but now you have **
+  ** to explicitly turn it on (this is the Ziad Saad fixup).    **
 
 -------------------------
 Variable: AFNI_SHELL_GLOB
@@ -2589,6 +2738,57 @@ Under some very rare circumstances, you might want to ignore the brick scaling
 factors.  Set this variable to YES to do so.  WARNING: this is dangerous, so
 be sure to unset this variable when you are done.  Sample usage:
   3dBrickStat -DAFNI_IGNORE_BRICK_FLTFAC=YES -max fred+orig
+
+----------------------------------------
+Variable: AFNI_ALLOW_ARBITRARY_FILENAMES
+----------------------------------------
+Normally, AFNI checks output filenames for 'bad' characters, which are
+defined as control characters and ASCII characters that will cause
+trouble on the Unix command line ('*', '$', etc.).  'Bad' filenames
+will not be allowed by most AFNI programs.  If, for some reason, you
+want to use such filenames, set this variable to YES.  Don't blame
+me if you get into trouble with such filenames!
+
+----------------------------
+Variable: AFNI_INSTACORR_FDR (editable)
+----------------------------
+If you want AFNI's InstaCorr feature to compute the FDR curve for the
+on-the-fly correlation coefficient sub-brick created interactively, then set
+this variable to YES.  Since the FDR computations are the slowest part of the
+operation, the default (if this variable is not YES) is that FDR curves are
+NOT computed.
+
+---------------------------------
+Variable: AFNI_INSTACORR_SEEDBLUR
+---------------------------------
+The InstaCorr controls let you use extra spatial smoothing when selecting
+the seed voxel time series.  By default, this extra smoothing is a flat
+average over a sphere of the chosen radius: "SeedRad".  However, if this
+environment variable is set to YES, then the extra smoothing is done
+by Gaussian blurring with the chosen FWHM: "SeedBlur".  This variable
+cannot be set interactively, but can be set on the AFNI command line
+with the usual -DAFNI_INSTACORR_SEEDBLUR=YES method.
+
+----------------------------------
+Variable: AFNI_BLUR_INTS_AS_OLD
+----------------------------------
+As of 15 June 2009, the FIR (finite implulse response) method is applid to
+byte and short data.  Previously, 3dmerge had used FIR only on float data,
+meaning shorts and floats would be applied via Fourier interpolation.
+Setting AFNI_BLUR_INTS_AS_OLD to YES will revert to the Fourier method for
+such data.
+
+-----------------------------
+Variable: AFNI_IMAGE_CROPSTEP (editable)
+-----------------------------
+Numeric value sets the size of the panning step using in the image viewer,
+when you are adjusting the cropping region using the Shift+Arrow keys
+on the keyboard.  Defaults to 1.  Legal values are -9..9 (inclusive).
+Positive values means pressing Shift+LeftArrow causes the image in the
+crop window to appear to move to the left; negative values cause the
+crop window to move in the opposite direction, so the visible part of
+the image appears to move to the right.  (Mutatis mutandum for the
+other directions, of course.)
 
 ----------------------------------------------------------------------
 --- variables specific to NIML I/O
@@ -2717,6 +2917,16 @@ set this variable to YES, then the printout will include the -polort
 baseline parameters as well, and also the L2 norm of each column in
 the regression matrix.
 
+-----------------------------------
+Variable: AFNI_3dDeconvolve_oneline
+-----------------------------------
+3dDeconvolve outputs a command line for running the cognate 3dREMLfit
+program.  By default, this command line is line broken with '\'
+characters for printing beauty.  If you want this command line
+to be all on one physical output line, for convenience in automatic
+extraction (e.g., via grep), then set this variable to YES before
+running the program.
+
 --------------------------
 Variable: AFNI_XJPEG_COLOR
 --------------------------
@@ -2769,6 +2979,10 @@ If this YES/NO variable is set to YES, then 3dDeconvolve and 3dcalc
 will write their outputs in floating point format (unless they are
 forced to do otherwise with the '-datum short' type of option).  In
 the future, other programs may also be affected by this variable.
+Later [18 Nov 2008]: Now 3dANOVA, 3dANOVA2, and 3dANOVA3 will also
+use this flag to determine if their outputs should be written in
+float format.  For example:
+  3dANOVA -DAFNI_FLOATIZE=YES ... other options ...
 
 ----------------------------
 Variable: AFNI_AUTOMATIC_FDR
@@ -2779,3 +2993,14 @@ curves into headers output by 3dDeconvolve, 3dANOVA, 3dttest, and
 these datasets will performed when the datasets are written to disk.
 (You can always use '3drefit -addFDR' to add FDR curves to a dataset
 header, for those sub-bricks marked as statistical parameters.)
+
+------------------------------
+Variable: AFNI_DONT_ADJUST_FDR
+------------------------------
+If this variable is set to YES, then the adjustment of FDR q-values
+downwards by allowing for the estimate of the number of true
+negatives (e.g., as discussed by Storey, Benjamini, and others)
+will NOT be carried out.  As of 26 Mar 2009, this adjustment of
+q-values is the default in AFNI programs.  If you want the old
+behavior, set this variable to YES.
+

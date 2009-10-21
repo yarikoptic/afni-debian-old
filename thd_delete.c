@@ -89,6 +89,13 @@ STATUS("free brick_ stuff") ;
      }
      free((void *)dblk->brick_fdrcurve) ;
    }
+   if( dblk->brick_mdfcurve != NULL ){ /* 22 Oct 2008 */
+     floatvec *fv ;
+     for( ibr=0 ; ibr < dblk->nvals ; ibr++ ){
+       fv = dblk->brick_mdfcurve[ibr] ; KILL_floatvec(fv);
+     }
+     free((void *)dblk->brick_mdfcurve) ;
+   }
 
    if( DBLK_IS_MASTERED(dblk) ){       /* 11 Jan 1999 */
       myXtFree( dblk->master_ival ) ;
@@ -153,6 +160,10 @@ STATUS("destroy taxis") ;
    }
 
    THD_delete_datablock( dset->dblk ) ;
+
+   /* EDIT_empty_copy() is only vox_warp not in KILL_list, add it there */
+   /*                                                5 Mar 2008 [rickr] */
+   /* myXtFree( dset->vox_warp ) ;  * 23 Sep 2008                       */
 
 STATUS("KILL_KILL") ;
    KILL_KILL( dset->kl ) ;

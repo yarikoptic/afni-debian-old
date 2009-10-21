@@ -4,8 +4,8 @@
 # CPROF = -pg -g
 USE_ZLIB = -DHAVE_ZLIB
 LZLIB    = -lz
-# USE_GIFTI = -DHAVE_GIFTI
-# LGIFTI    = -lexpat
+USE_GIFTI = -DHAVE_GIFTI
+LGIFTI    = /usr/lib64/libexpat.a
 
 # default to having these off
 # D_USE_ACML = -DUSE_ACML
@@ -61,6 +61,9 @@ LIBDIR = $(INSTALLDIR)
 
 #INSTALL_PREREQ = suma
 INSTALL_PREREQ = suma_gts
+# uncomment if the Gnu Scientific Library is installed (libgsl, libgslcblas)
+# GSLPROGS = balloon
+EXPROGS = gifti_tool $(GSLPROGS)
 
 # for dynamic linking
 

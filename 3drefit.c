@@ -6,6 +6,9 @@
 
 #include "mrilib.h"
 
+static ATR_float *Update_float_atr(char *aname, char *fvstring);
+static ATR_int *Update_int_atr(char *aname, char *ivstring);
+
 void Syntax(char *str)
 {
    int ii ;
@@ -20,8 +23,8 @@ void Syntax(char *str)
            "'3dinfo dataset'.  Using 3dinfo both before and after 3drefit is\n"
            "a good idea to make sure the changes have been made correctly!\n"
            "\n"
-           "20 Jun 2006: 3drefit will now work on NIfTI datasets (but it will\n"
-           "             write out the entire dataset)\n\n"
+           "20 Jun 2006: 3drefit will now work on NIfTI datasets (but it will write\n"
+           "             out the entire dataset, into the current working directory)\n\n"
          ) ;
 
    printf(
@@ -155,6 +158,10 @@ void Syntax(char *str)
 "                  This option DOES NOT deoblique the volume. To do so\n"
 "                  you should use 3dWarp -deoblique. This option is not \n"
 "                  to be used unless you really know what you're doing.\n\n"
+"  -oblique_origin\n"
+"                  assume origin and orientation from oblique transformation\n"
+"                  matrix rather than traditional cardinal information\n\n"
+
 "  -byteorder bbb  Sets the byte order string in the header.\n"
 "                  Allowable values for 'bbb' are:\n"
 "                     LSB_FIRST   MSB_FIRST   NATIVE_ORDER\n"
@@ -208,6 +215,17 @@ void Syntax(char *str)
     "                  communicating information between programs.  However,\n"
     "                  when most AFNI programs write a new dataset, they will\n"
     "                  not preserve any such non-standard attributes.\n"
+    "  -atrfloat name 'values'\n"
+    "  -atrint name 'values'\n"
+    "                  Create or modify floating point or integer attributes.\n"
+    "                  The input values may be specified as a single string\n"
+    "                  in quotes or as a 1D filename or string. For example,\n"
+    "     3drefit -atrfloat IJK_TO_DICOM_REAL '1 0 0 0 0 1 0 0 0 0 0 1'"
+          " dset+orig\n"
+    "     3drefit -atrfloat IJK_TO_DICOM_REAL flipZ.1D dset+orig\n"
+    "     3drefit -atrfloat IJK_TO_DICOM_REAL '1D:1,3@0,0,1,2@0,2@0,1,0'"
+          " dset+orig\n"
+    "                  Almost all afni attributes can be modified in this way\n"
     "  -saveatr        (default) Copy the attributes that are known to AFNI into \n"
     "                  the dset->dblk structure thereby forcing changes to known\n"
     "                  attributes to be present in the output.\n"
@@ -296,13 +314,22 @@ void Syntax(char *str)
    printf(
     "\n"
     "The following options let you modify the FDR curves stored in the header:\n"
+    "\n"
     " -addFDR = For each sub-brick marked with a statistical code, (re)compute\n"
     "           the FDR curve of z(q) vs. statistic, and store in the dataset header\n"
-    "           * Since 3drefit doesn't have a '-mask' option, you will have to mask\n"
-    "             statistical sub-bricks yourself via 3dcalc (if desired):\n"
-    "              3dcalc -a stat+orig -b mask+orig -expr 'a*step(b)' -prefix statmm\n"
     "           * '-addFDR' runs as if '-new -pmask' were given to 3dFDR, so that\n"
     "              stat values == 0 will be ignored in the FDR algorithm.\n"
+    "\n"
+    " -FDRmask mset = load dataset 'mset' and use it as a mask\n"
+    "                 for the '-addFDR' calculations.\n"
+    "                 * This can be useful if you ran 3dDeconvolve/3dREMLFIT\n"
+    "                    without a mask, and want to apply a mask to improve\n"
+    "                    the FDR estimation procedure.\n"
+    "                 * If '-addFDR' is NOT given, then '-FDRmask' does nothing.\n"
+    "                 * 3drefit does not generate an automask for FDR purposes\n"
+    "                    (unlike 3dREMLfit and 3dDeconvolve), since the input\n"
+    "                    dataset may contain only statistics and no structural\n"
+    "                    information about the brain.\n"
     "\n"
     " -unFDR  = Remove all FDR curves from the header\n"
     "           [you will want to do this if you have done something to ]\n"
@@ -310,7 +337,7 @@ void Syntax(char *str)
     "\n"
    ) ;
 
-   printf("++ Last program update: 23 Jan 2008\n");
+   printf("++ Last program update: 27 Mar 2009\n");
 
    PRINT_COMPILE_DATE ; exit(0) ;
 }
@@ -356,8 +383,11 @@ int main( int argc , char * argv[] )
    int keepcen        = 0 ;          /* 17 Jul 2006 [RWCox] */
    float xyzscale     = 0.0f ;       /* 17 Jul 2006 */
    int deoblique  = 0;               /* 20 Jun 2007 [drg] */
+   int use_oblique_origin = 0;       /* 01 Dec 2008 */
    int do_FDR = 0 ;                  /* 23 Jan 2008 [RWCox] */
    int do_killSTAT = 0 ;             /* 24 Jan 2008 [RWCox] */
+   byte *FDRmask = NULL ;            /* 27 Mar 2009 [RWcox] */
+   int  nFDRmask = 0 ;
    int   ndone=0 ;                   /* 18 Jul 2006 */
    int   verb =0 ;
 #define VINFO(x) if(verb)ININFO_message(x)
@@ -383,12 +413,15 @@ int main( int argc , char * argv[] )
 
    int   num_atrcopy = 0 ;    /* 03 Aug 2005 */
    ATR_any **atrcopy = NULL ;
+   ATR_float  *atr_flt ;
+
    int saveatr = 1;
    int atrmod = 0;  /* if no ATR is modified, don't overwrite normal changes */
                                                       /* 28 Jul 2006 [rickr] */
    THD_dmat33 tmat ;
    THD_dfvec3 tvec ;
 
+   int code, acount;
 
    /*-------------------------- help me if you can? --------------------------*/
 
@@ -421,6 +454,25 @@ int main( int argc , char * argv[] )
         do_killSTAT = 1 ; do_FDR = -1 ; new_stuff++ ; iarg++ ; continue ;
       }
 
+      if( strcasecmp(argv[iarg],"-FDRmask") == 0 ){   /*-- 27 Mar 2009 --*/
+        THD_3dim_dataset *fset ;
+        if( iarg+1 >= argc ) Syntax("need 1 argument after -FDRmask!") ;
+        if( nFDRmask > 0 )   Syntax("can't have two -FDRmask options!") ;
+        fset = THD_open_dataset( argv[++iarg] ) ; CHECK_OPEN_ERROR(fset,argv[iarg]) ;
+        DSET_load(fset)                         ; CHECK_LOAD_ERROR(fset) ;
+        FDRmask = THD_makemask( fset , 0 , 1.0f,-1.0f ) ;
+        if( FDRmask == NULL ) Syntax("Can't use -FDRmask dataset!") ;
+        nFDRmask = DSET_NVOX(fset) ; DSET_delete(fset) ;
+        ii = THD_countmask(nFDRmask,FDRmask) ;
+        if( ii < 100 ){
+          WARNING_message("-FDRmask has only %d nonzero voxels: ignoring",ii) ;
+          free(FDRmask) ; FDRmask = NULL ; nFDRmask = 0 ;
+        } else {
+          INFO_message("-FDRmask has %d nonzero voxels (out of %d total)",ii,nFDRmask) ;
+        }
+        iarg++ ; continue ;
+      }
+
       /*----- -atrcopy dd nn [03 Aug 2005] -----*/
 
       if( strcmp(argv[iarg],"-atrcopy") == 0 ){
@@ -444,7 +496,8 @@ int main( int argc , char * argv[] )
                                        sizeof(ATR_any *)*(num_atrcopy+1) ) ;
         atrcopy[num_atrcopy++] = THD_copy_atr( atr ) ;
         /* atr_print( atr, NULL , NULL, '\0', 1) ;  */
-        DSET_delete(qset) ; atrmod = 1;  /* replaced new_stuff   28 Jul 2006 rcr */
+        DSET_delete(qset) ;
+        atrmod = 1;  /* replaced new_stuff   28 Jul 2006 rcr */
 
       atrcopy_done:
         iarg++ ; continue ;
@@ -479,6 +532,44 @@ int main( int argc , char * argv[] )
        atrstring_done:
         iarg++ ; continue ;
       }
+
+
+      /*----- -atrfloat name "xx.xx yy.yy ..." [02 Oct 2008] -----*/
+      if( strcmp(argv[iarg],"-atrfloat") == 0 ){
+        ATR_float *atr ;
+
+        if( iarg+2 >= argc ) Syntax("need 2 arguments after -atrfloat!") ;
+        atr = Update_float_atr(argv[iarg+1], argv[iarg+2]);
+        if(atr) {
+           /* add this float attribute to list of attributes being modified */
+           atrcopy = (ATR_any **)realloc( (void *)atrcopy ,
+                                       sizeof(ATR_any *)*(num_atrcopy+1) ) ;
+           atrcopy[num_atrcopy++] = (ATR_any *)atr ;
+
+           atrmod = 1;  /* replaced new_stuff++   28 Jul 2006 [rickr] */
+        }
+
+        iarg+=3 ; continue ;
+      }
+
+      /*----- -atrint name "xx.xx yy.yy ..." [06 Oct 2008] -----*/
+      if( strcmp(argv[iarg],"-atrint") == 0 ){
+        ATR_int *atr ;
+
+        if( iarg+2 >= argc ) Syntax("need 2 arguments after -atrint!") ;
+        atr = Update_int_atr(argv[iarg+1], argv[iarg+2]);
+        if(atr) {
+           /* add this int attribute to list of attributes being modified */
+           atrcopy = (ATR_any **)realloc( (void *)atrcopy ,
+                                       sizeof(ATR_any *)*(num_atrcopy+1) ) ;
+           atrcopy[num_atrcopy++] = (ATR_any *)atr ;
+
+           atrmod = 1;  /* new or modified attribute */
+        }
+
+        iarg+=3 ; continue ;
+      }
+
 
       if( strcmp(argv[iarg],"-saveatr") == 0 ){
         saveatr = 1 ; iarg++ ; continue ;
@@ -1054,6 +1145,14 @@ int main( int argc , char * argv[] )
          new_stuff++ ; iarg++ ; continue ;  /* go to next arg */
       }
 
+      /*----- -oblique_origin option [01 Dec 2008] -----*/
+
+      if( strcmp(argv[iarg],"-oblique_origin") == 0 ){
+         use_oblique_origin = 1 ;
+         THD_set_oblique_report(0,0); /* turn off obliquity warning */
+         new_stuff++ ; iarg++ ; continue ;  /* go to next arg */
+      }
+
 
       /** anything else must be a -type **/
       /*  try the anatomy prefixes */
@@ -1364,12 +1463,20 @@ int main( int argc , char * argv[] )
       /* this should be after any other axis, orientation, origin, voxel size changes */
       if(deoblique) {
          /* replace transformation matrix with cardinal form */
-	 THD_dicom_card_xform(dset, &tmat, &tvec); 
-	 LOAD_MAT44(dset->daxes->ijk_to_dicom_real, 
+	 THD_dicom_card_xform(dset, &tmat, &tvec);
+	 LOAD_MAT44(dset->daxes->ijk_to_dicom_real,
              tmat.mat[0][0], tmat.mat[0][1], tmat.mat[0][2], tvec.xyz[0],
              tmat.mat[1][0], tmat.mat[1][1], tmat.mat[1][2], tvec.xyz[1],
              tmat.mat[2][0], tmat.mat[2][1], tmat.mat[2][2], tvec.xyz[2]);
       }
+
+
+      /* if user has selected, get origin from obliquity */
+      /*   overriding all the previous command-line options */
+      if(use_oblique_origin)
+         Obliquity_to_coords(dset);
+
+
       /*-- change time axis --*/
 
       if( new_TR ){
@@ -1607,26 +1714,34 @@ int main( int argc , char * argv[] )
       }
 
       /* 03 Aug 2005: implement atrcopy */
-
-      for( ii=0 ; ii < num_atrcopy ; ii++ ) {
-        THD_insert_atr( dset->dblk , atrcopy[ii] ) ;
+      {
+           ATR_any *atr;
+         for( ii=0 ; ii < num_atrcopy ; ii++ ) {
+           THD_insert_atr( dset->dblk , atrcopy[ii] ) ;
+         }
       }
-
       /* 23 Jan 2008: the FDR stuff */
 
       if( do_FDR ){
         DSET_BRICK_FDRCURVE_ALLKILL(dset) ;
+        DSET_BRICK_MDFCURVE_ALLKILL(dset) ;  /* 22 Oct 2008 */
         if( do_FDR > 0 ){
-          int nf = THD_create_all_fdrcurves(dset) ;
+          int nf ;
+          mri_fdr_setmask( (nFDRmask == DSET_NVOX(dset)) ? FDRmask : NULL ) ;
+          nf = THD_create_all_fdrcurves(dset) ;
           ININFO_message("created %d FDR curves in dataset header",nf) ;
         }
       }
 
       /* Do we want to force new attributes into output ? ZSS Jun 06*/
       /* (only if -atrcopy or -atrstring)       28 Jul 2006 [rickr] */
-      if ( saveatr && atrmod )
-       THD_datablock_from_atr(dset->dblk , DSET_DIRNAME(dset) ,
-                              dset->dblk->diskptr->header_name);
+      if ( saveatr && atrmod ){
+         /* apply attributes to header - dataxes and dblk*/
+INFO_message("applying attributes");
+         THD_datablock_from_atr(dset->dblk , DSET_DIRNAME(dset) ,
+                                  dset->dblk->diskptr->header_name);
+         THD_datablock_apply_atr(dset );
+      }
 
       if( denote ) THD_anonymize_write(1) ;   /* 08 Jul 2005 */
 
@@ -1644,4 +1759,89 @@ int main( int argc , char * argv[] )
 
    INFO_message("3drefit processed %d datasets",ndone) ;
    exit(0) ;
+}
+
+/* read float values from string or file into float attribute */
+static ATR_float *
+Update_float_atr(char *aname, char *fvstring)
+{
+   ATR_float *atr ;
+   MRI_IMAGE *mri_matrix = NULL;
+   float *fptr;
+   int nx, ny, nxy,ii, acount;
+
+   ENTRY("Update_float_atr");
+   if( !THD_filename_pure(aname) ){
+     WARNING_message("Illegal atrfloat name %s",aname) ;
+     RETURN(NULL) ;
+   }
+
+   atr = (ATR_float *)XtMalloc(sizeof(ATR_float)) ;
+   atr->type = ATR_FLOAT_TYPE ;
+   atr->name = XtNewString( aname ) ;
+
+   /* parse floats from string to attribute */
+   /* try reading as float file or 1D: expression */
+   mri_matrix = mri_read_1D(fvstring);  /* string could be file name or commandline string */
+   if (mri_matrix == NULL)   {
+      mri_matrix = mri_1D_fromstring(fvstring);
+   }
+
+   if (mri_matrix == NULL)   {
+      printf("Error reading floating point attribute file");
+      RETURN(NULL);
+   }
+
+   /* number of floats in attribute */
+   nx = mri_matrix->nx; ny = mri_matrix->ny; acount = nx*ny;
+   atr->nfl  = acount ;
+   atr->fl   = (float *) XtMalloc( sizeof(float) * acount ) ;
+   fptr = MRI_FLOAT_PTR (mri_matrix);
+   for( ii=0 ; ii < acount ; ii++ ){
+      atr->fl[ii] = *fptr++;
+   }
+   RETURN(atr);
+}
+
+/* read integer values from string or file into int attribute */
+static ATR_int *
+Update_int_atr(char *aname, char *ivstring)
+{
+   ATR_int *atr ;
+   MRI_IMAGE *mri_matrix = NULL;
+   float *fptr;
+   int nx, ny, nxy,ii, acount;
+
+   ENTRY("Update_int_atr");
+   if( !THD_filename_pure(aname) ){
+     WARNING_message("Illegal atrint name %s",aname) ;
+     RETURN(NULL) ;
+   }
+
+   atr = (ATR_int *)XtMalloc(sizeof(ATR_int)) ;
+   atr->type = ATR_INT_TYPE ;
+   atr->name = XtNewString( aname ) ;
+
+   /* parse floats from string to attribute */
+   /* try reading as float file or 1D: expression */
+   mri_matrix = mri_read_1D(ivstring);  /* string could be file name or commandline string */
+   if (mri_matrix == NULL)   {
+      mri_matrix = mri_1D_fromstring(ivstring);
+   }
+
+   if (mri_matrix == NULL)   {
+      WARNING_message("Error reading integer attribute file");
+      RETURN(NULL);
+   }
+
+   /* number of floats in attribute */
+   nx = mri_matrix->nx; ny = mri_matrix->ny; acount = nx*ny;
+   atr->nin  = acount ;
+   atr->in   = (int *) XtMalloc( sizeof(int) * acount ) ;
+   fptr = MRI_FLOAT_PTR (mri_matrix);
+   for( ii=0 ; ii < acount ; ii++ ){
+      atr->in[ii] = *fptr++;
+   }
+
+   RETURN(atr);
 }

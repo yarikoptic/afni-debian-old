@@ -5,13 +5,15 @@
 
 static int datum                   = MRI_float ;
 static void Print_Header_MinMax(int Minflag, int Maxflag, THD_3dim_dataset * dset);
-static void Max_func(int Minflag, int Maxflag, int Meanflag, int Countflag, int Posflag,\
-    int Negflag, int Zeroflag, int nan_flag, int sum_flag, int Varflag, \
-    int Volflag,  THD_3dim_dataset * dset, byte *mmm, int mmvox);
+static void Max_func(int Minflag, int Maxflag, int Meanflag, int Countflag,
+    int Posflag, int Negflag, int Zeroflag, int nan_flag, int Sumflag,
+    int Varflag, int Volflag,  THD_3dim_dataset * dset, byte *mmm, int mmvox);
+/*
 static void Max_tsfunc( double tzero , double tdelta ,
-                         int npts , float ts[] , double ts_mean ,
-                         double ts_slope , void * ud , int nbriks, float * val ) ;
+                        int npts , float ts[] , double ts_mean ,
+                        double ts_slope , void *ud , int nbriks, float *val ) ;
 static float minvalue=1E10, maxvalue=-1E10;
+*/
  
 /*! compute the overall minimum and maximum voxel values for a dataset */
 int main( int argc , char * argv[] )
@@ -295,9 +297,10 @@ int main( int argc , char * argv[] )
       slow_flag = 1;
    }
 
-   if(max_flag==-1) {                   /* if max_flag is not set by user,*/
-     if(min_flag || mean_flag ||count_flag || vol_flag 
-          || sum_flag || perc_flag)   /* check if other user options set */
+  /* if max_flag is not set by user, check if other user options set */
+   if(max_flag==-1) {                
+     if(min_flag || mean_flag || count_flag || vol_flag || sum_flag
+                 || perc_flag || var_flag) 
          max_flag = 0;
       else
 	max_flag = 1;                  /* otherwise check only for max */
@@ -366,7 +369,9 @@ int main( int argc , char * argv[] )
       if (mp0 > mp1) {
          N_mp = 1; 
       } else {
-         N_mp = (int)((double)(mp1-mp0)/(double)mps) + 1;
+         /* allocate one above ceiling to prevent truncation error (and crash),
+            N_mp is recomputed anyway      16 Mar 2009 [rickr]               */
+         N_mp = (int)((double)(mp1-mp0)/(double)mps) + 2;
       } 
       mpv = (double *)malloc(sizeof(double)*N_mp);
       perc = (double *)malloc(sizeof(double)*N_mp);
@@ -503,14 +508,9 @@ THD_3dim_dataset * dset;
 
 /*! search whole dataset for minimum and maximum */
 /* load all at one time */
-static void Max_func(Minflag, Maxflag, Meanflag, Countflag, Posflag, 
-   Negflag, Zeroflag, nan_flag, Sumflag, Varflag, Volflag,
-   dset, mmm, mmvox)
-int Minflag, Maxflag;
-/* variables declared at beginning */
-THD_3dim_dataset * dset;
-byte *mmm;  /* mask pointer */
-int mmvox;
+static void Max_func(int Minflag, int Maxflag, int Meanflag, int Countflag,
+    int Posflag, int Negflag, int Zeroflag, int nan_flag, int Sumflag,
+    int Varflag, int Volflag,  THD_3dim_dataset * dset, byte *mmm, int mmvox)
 {
    double overallmin, overallmax, overallmean;
    double voxval, fac, sum, sum2, vr;

@@ -22,390 +22,17 @@ static int verb = 0 ;
 void mri_genalign_verbose(int v){ verb = v ; }
 
 /*---------------------------------------------------------------------------*/
-static int gcd( int m , int n )    /* Euclid's Greatest Common Denominator */
+/* 27 Aug 2008: replace use of drand48 with myunif, for inter-system control */
+
+static const unsigned long long MYa=62003 ;
+static const unsigned long long MYb=15485863 ;
+static unsigned long long MYx=15482917 ;
+INLINE float myunif(void)
 {
-  while( m > 0 ){
-    if( n > m ){ int t=m; m=n; n=t; } /* swap */
-    m -= n ;
-  }
-  return n ;
+  MYx = MYa * MYx + MYb ;
+  return ( ((unsigned int)MYx) / 4294967296.0f ) ;
 }
-static int find_relprime_fixed( int n )  /* find number relatively prime to n */
-{
-   int dj , n5=n/5 ;
-   if( n5 < 2 ) return 1 ;
-   for( dj=n5 ; gcd(n,dj) > 1 ; dj++ ) ; /*nada*/
-   return dj ;
-}
-/*---------------------------------------------------------------------------*/
-/*! Smooth an image with a given method to a given radius.
-    Assumes the dx,dy,dz parameters in the image struct are correct! */
-
-static MRI_IMAGE * GA_smooth( MRI_IMAGE *im , int meth , float rad )
-{
-   MRI_IMAGE *om=NULL ;
-
-   ENTRY("GA_smooth") ;
-
-   if( im == NULL || im->kind != MRI_float || rad <= 0.0f ) RETURN(NULL) ;
-
-   switch( meth ){
-     default:
-     case GA_SMOOTH_GAUSSIAN:
-       om  = mri_to_float(im) ;
-       rad = FWHM_TO_SIGMA(rad) ;   /* convert rad from FWHM to st.dev. */
-       FIR_blur_volume_3d( om->nx , om->ny , om->nz ,
-                           om->dx , om->dy , om->dz ,
-                           MRI_FLOAT_PTR(om) , rad,rad,rad ) ;
-     break ;
-
-     case GA_SMOOTH_MEDIAN:{
-       float d;
-       d = MIN(im->dx,im->dy) ; d = MIN(d,im->dz) ;
-       if( rad <= 1.01f*d ) rad = 1.01f*d ;
-       if( rad >  0.0f ){ mri_medianfilter_usedxyz(1);            }
-       else             { mri_medianfilter_usedxyz(0); rad=1.01f; }
-       om = mri_medianfilter( im , rad , NULL , 0 ) ;
-     }
-     break ;
-   }
-
-   RETURN(om) ;
-}
-
-/*---------------------------------------------------------------------------*/
-
-/* for interpolation access to the (i,j,k) element of an array */
-
-#undef  FAR
-#define FAR(i,j,k) far[(i)+(j)*nx+(k)*nxy]
-
-/* clip value mm to range 0..nn */
-
-#undef  CLIP
-#define CLIP(mm,nn) if(mm < 0)mm=0; else if(mm > nn)mm=nn
-
-static float outval = 0.0f ;                  /* value for 'outside' voxels */
-void GA_set_outval( float v ){ outval = v; }  /* 28 Feb 2007 */
-
-/*---------------------------------------------------------------*/
-/*! Interpolate an image at npp (index) points, using NN method. */
-
-static void GA_interp_NN( MRI_IMAGE *fim ,
-                          int npp, float *ip, float *jp, float *kp, float *vv )
-{
-   int nx=fim->nx , ny=fim->ny , nz=fim->nz , nxy=nx*ny , ii,jj,kk , pp ;
-   float nxh=nx-0.501f , nyh=ny-0.501f , nzh=nz-0.501f , xx,yy,zz ;
-   float *far = MRI_FLOAT_PTR(fim) ;
-
-ENTRY("GA_interp_NN") ;
-
-   for( pp=0 ; pp < npp ; pp++ ){
-     xx = ip[pp] ; if( xx < -0.499f || xx > nxh ){ vv[pp]=outval; continue; }
-     yy = jp[pp] ; if( yy < -0.499f || yy > nyh ){ vv[pp]=outval; continue; }
-     zz = kp[pp] ; if( zz < -0.499f || zz > nzh ){ vv[pp]=outval; continue; }
-
-     ii = (int)(xx+0.5f) ; jj = (int)(yy+0.5f) ; kk = (int)(zz+0.5f) ;
-     vv[pp] = FAR(ii,jj,kk) ;
-   }
-   EXRETURN ;
-}
-
-/*---------------------------------------------------------------------------*/
-/*! Interpolate an image at npp (index) points, using linear method. */
-
-static void GA_interp_linear( MRI_IMAGE *fim ,
-                              int npp, float *ip, float *jp, float *kp, float *vv )
-{
-   int nx=fim->nx , ny=fim->ny , nz=fim->nz , nxy=nx*ny , pp ;
-   float nxh=nx-0.501f , nyh=ny-0.501f , nzh=nz-0.501f , xx,yy,zz ;
-   float fx,fy,fz ;
-   float *far = MRI_FLOAT_PTR(fim) ;
-   int nx1=nx-1,ny1=ny-1,nz1=nz-1 ;
-   float ix,jy,kz ;
-   int ix_00,ix_p1 ;         /* interpolation indices */
-   int jy_00,jy_p1 ;
-   int kz_00,kz_p1 ;
-   float wt_00,wt_p1 ;       /* interpolation weights */
-   float f_j00_k00, f_jp1_k00, f_j00_kp1, f_jp1_kp1, f_k00, f_kp1 ;
-
-ENTRY("GA_interp_linear") ;
-
-   for( pp=0 ; pp < npp ; pp++ ){
-     xx = ip[pp] ; if( xx < -0.499f || xx > nxh ){ vv[pp]=outval; continue; }
-     yy = jp[pp] ; if( yy < -0.499f || yy > nyh ){ vv[pp]=outval; continue; }
-     zz = kp[pp] ; if( zz < -0.499f || zz > nzh ){ vv[pp]=outval; continue; }
-
-     ix = floorf(xx) ;  fx = xx - ix ;   /* integer and       */
-     jy = floorf(yy) ;  fy = yy - jy ;   /* fractional coords */
-     kz = floorf(zz) ;  fz = zz - kz ;
-
-     ix_00 = ix ; ix_p1 = ix_00+1 ; CLIP(ix_00,nx1) ; CLIP(ix_p1,nx1) ;
-     jy_00 = jy ; jy_p1 = jy_00+1 ; CLIP(jy_00,ny1) ; CLIP(jy_p1,ny1) ;
-     kz_00 = kz ; kz_p1 = kz_00+1 ; CLIP(kz_00,nz1) ; CLIP(kz_p1,nz1) ;
-
-     wt_00 = 1.0f-fx ; wt_p1 = fx ;  /* weights for ix_00 and ix_p1 points */
-
-#undef  XINT
-#define XINT(j,k) wt_00*FAR(ix_00,j,k)+wt_p1*FAR(ix_p1,j,k)
-
-     /* interpolate to location ix+fx at each jy,kz level */
-
-     f_j00_k00 = XINT(jy_00,kz_00) ; f_jp1_k00 = XINT(jy_p1,kz_00) ;
-     f_j00_kp1 = XINT(jy_00,kz_p1) ; f_jp1_kp1 = XINT(jy_p1,kz_p1) ;
-
-     /* interpolate to jy+fy at each kz level */
-
-     wt_00 = 1.0f-fy ; wt_p1 = fy ;
-     f_k00 =  wt_00 * f_j00_k00 + wt_p1 * f_jp1_k00 ;
-     f_kp1 =  wt_00 * f_j00_kp1 + wt_p1 * f_jp1_kp1 ;
-
-     /* interpolate to kz+fz to get output */
-
-     vv[pp] = (1.0f-fz) * f_k00 + fz * f_kp1 ;
-   }
-   EXRETURN ;
-}
-
-/*---------------------------------------------------------------------------*/
-
-/* define Lagrange cubic interpolation polynomials */
-
-#undef  P_M1
-#undef  P_00
-#undef  P_P1
-#undef  P_P2
-#undef  P_FACTOR
-#define P_M1(x)  (-(x)*((x)-1)*((x)-2))
-#define P_00(x)  (3*((x)+1)*((x)-1)*((x)-2))
-#define P_P1(x)  (-3*(x)*((x)+1)*((x)-2))
-#define P_P2(x)  ((x)*((x)+1)*((x)-1))
-#define P_FACTOR 4.62962963e-3            /* 1/216 = final scaling factor */
-
-/*------------------------------------------------------------------*/
-/*! Interpolate an image at npp (index) points, using cubic method. */
-
-static void GA_interp_cubic( MRI_IMAGE *fim ,
-                             int npp, float *ip, float *jp, float *kp, float *vv )
-{
-   int nx=fim->nx , ny=fim->ny , nz=fim->nz , nxy=nx*ny , pp ;
-   float nxh=nx-0.501f , nyh=ny-0.501f , nzh=nz-0.501f , xx,yy,zz ;
-   float fx,fy,fz ;
-   float *far = MRI_FLOAT_PTR(fim) ;
-   int nx1=nx-1,ny1=ny-1,nz1=nz-1, ix,jy,kz ;
-
-   int ix_m1,ix_00,ix_p1,ix_p2 ;     /* interpolation indices */
-   int jy_m1,jy_00,jy_p1,jy_p2 ;
-   int kz_m1,kz_00,kz_p1,kz_p2 ;
-   float wt_m1,wt_00,wt_p1,wt_p2 ;   /* interpolation weights */
-   float f_jm1_km1, f_j00_km1, f_jp1_km1, f_jp2_km1, /* interpolants */
-         f_jm1_k00, f_j00_k00, f_jp1_k00, f_jp2_k00,
-         f_jm1_kp1, f_j00_kp1, f_jp1_kp1, f_jp2_kp1,
-         f_jm1_kp2, f_j00_kp2, f_jp1_kp2, f_jp2_kp2,
-         f_km1    , f_k00    , f_kp1    , f_kp2     ;
-
-ENTRY("GA_interp_cubic") ;
-
-   for( pp=0 ; pp < npp ; pp++ ){
-     xx = ip[pp] ; if( xx < -0.499f || xx > nxh ){ vv[pp]=outval; continue; }
-     yy = jp[pp] ; if( yy < -0.499f || yy > nyh ){ vv[pp]=outval; continue; }
-     zz = kp[pp] ; if( zz < -0.499f || zz > nzh ){ vv[pp]=outval; continue; }
-
-     ix = floorf(xx) ;  fx = xx - ix ;   /* integer and       */
-     jy = floorf(yy) ;  fy = yy - jy ;   /* fractional coords */
-     kz = floorf(zz) ;  fz = zz - kz ;
-
-     ix_m1 = ix-1    ; ix_00 = ix      ; ix_p1 = ix+1    ; ix_p2 = ix+2    ;
-     CLIP(ix_m1,nx1) ; CLIP(ix_00,nx1) ; CLIP(ix_p1,nx1) ; CLIP(ix_p2,nx1) ;
-
-     jy_m1 = jy-1    ; jy_00 = jy      ; jy_p1 = jy+1    ; jy_p2 = jy+2    ;
-     CLIP(jy_m1,ny1) ; CLIP(jy_00,ny1) ; CLIP(jy_p1,ny1) ; CLIP(jy_p2,ny1) ;
-
-     kz_m1 = kz-1    ; kz_00 = kz      ; kz_p1 = kz+1    ; kz_p2 = kz+2    ;
-     CLIP(kz_m1,nz1) ; CLIP(kz_00,nz1) ; CLIP(kz_p1,nz1) ; CLIP(kz_p2,nz1) ;
-
-     wt_m1 = P_M1(fx) ; wt_00 = P_00(fx) ;  /* interpolation weights */
-     wt_p1 = P_P1(fx) ; wt_p2 = P_P2(fx) ;
-
-#undef  XINT
-#define XINT(j,k) wt_m1*FAR(ix_m1,j,k)+wt_00*FAR(ix_00,j,k)  \
-                 +wt_p1*FAR(ix_p1,j,k)+wt_p2*FAR(ix_p2,j,k)
-
-     /* interpolate to location ix+fx at each jy,kz level */
-
-     f_jm1_km1 = XINT(jy_m1,kz_m1) ; f_j00_km1 = XINT(jy_00,kz_m1) ;
-     f_jp1_km1 = XINT(jy_p1,kz_m1) ; f_jp2_km1 = XINT(jy_p2,kz_m1) ;
-     f_jm1_k00 = XINT(jy_m1,kz_00) ; f_j00_k00 = XINT(jy_00,kz_00) ;
-     f_jp1_k00 = XINT(jy_p1,kz_00) ; f_jp2_k00 = XINT(jy_p2,kz_00) ;
-     f_jm1_kp1 = XINT(jy_m1,kz_p1) ; f_j00_kp1 = XINT(jy_00,kz_p1) ;
-     f_jp1_kp1 = XINT(jy_p1,kz_p1) ; f_jp2_kp1 = XINT(jy_p2,kz_p1) ;
-     f_jm1_kp2 = XINT(jy_m1,kz_p2) ; f_j00_kp2 = XINT(jy_00,kz_p2) ;
-     f_jp1_kp2 = XINT(jy_p1,kz_p2) ; f_jp2_kp2 = XINT(jy_p2,kz_p2) ;
-
-     /* interpolate to jy+fy at each kz level */
-
-     wt_m1 = P_M1(fy) ; wt_00 = P_00(fy) ;
-     wt_p1 = P_P1(fy) ; wt_p2 = P_P2(fy) ;
-
-     f_km1 =  wt_m1 * f_jm1_km1 + wt_00 * f_j00_km1
-            + wt_p1 * f_jp1_km1 + wt_p2 * f_jp2_km1 ;
-     f_k00 =  wt_m1 * f_jm1_k00 + wt_00 * f_j00_k00
-            + wt_p1 * f_jp1_k00 + wt_p2 * f_jp2_k00 ;
-     f_kp1 =  wt_m1 * f_jm1_kp1 + wt_00 * f_j00_kp1
-            + wt_p1 * f_jp1_kp1 + wt_p2 * f_jp2_kp1 ;
-     f_kp2 =  wt_m1 * f_jm1_kp2 + wt_00 * f_j00_kp2
-            + wt_p1 * f_jp1_kp2 + wt_p2 * f_jp2_kp2 ;
-
-     /* interpolate to kz+fz to get output */
-
-     wt_m1 = P_M1(fz) ; wt_00 = P_00(fz) ;
-     wt_p1 = P_P1(fz) ; wt_p2 = P_P2(fz) ;
-
-     vv[pp] = P_FACTOR * (  wt_m1 * f_km1 + wt_00 * f_k00
-                          + wt_p1 * f_kp1 + wt_p2 * f_kp2 ) ;
-   }
-   EXRETURN ;
-}
-
-/*---------------------------------------------------------------------------*/
-
-/* define quintic interpolation polynomials (Lagrange) */
-
-#undef  Q_M2
-#undef  Q_M1
-#undef  Q_00
-#undef  Q_P1
-#undef  Q_P2
-#undef  Q_P3
-#define Q_M2(x)  (x*(x*x-1.0)*(2.0-x)*(x-3.0)*0.008333333)
-#define Q_M1(x)  (x*(x*x-4.0)*(x-1.0)*(x-3.0)*0.041666667)
-#define Q_00(x)  ((x*x-4.0)*(x*x-1.0)*(3.0-x)*0.083333333)
-#define Q_P1(x)  (x*(x*x-4.0)*(x+1.0)*(x-3.0)*0.083333333)
-#define Q_P2(x)  (x*(x*x-1.0)*(x+2.0)*(3.0-x)*0.041666667)
-#define Q_P3(x)  (x*(x*x-1.0)*(x*x-4.0)*0.008333333)
-
-/*--------------------------------------------------------------------*/
-/*! Interpolate an image at npp (index) points, using quintic method. */
-
-static void GA_interp_quintic( MRI_IMAGE *fim ,
-                               int npp, float *ip, float *jp, float *kp, float *vv )
-{
-   int nx=fim->nx , ny=fim->ny , nz=fim->nz , nxy=nx*ny , pp ;
-   float nxh=nx-0.501f , nyh=ny-0.501f , nzh=nz-0.501f , xx,yy,zz ;
-   float fx,fy,fz ;
-   float *far = MRI_FLOAT_PTR(fim) ;
-   int nx1=nx-1,ny1=ny-1,nz1=nz-1, ix,jy,kz ;
-   int ix_m2,ix_m1,ix_00,ix_p1,ix_p2,ix_p3 ; /* interpolation indices */
-   int jy_m2,jy_m1,jy_00,jy_p1,jy_p2,jy_p3 ; /* (input image) */
-   int kz_m2,kz_m1,kz_00,kz_p1,kz_p2,kz_p3 ;
-
-   float wt_m2,wt_m1,wt_00,wt_p1,wt_p2,wt_p3 ; /* interpolation weights */
-
-   float f_jm2_km2, f_jm1_km2, f_j00_km2, f_jp1_km2, f_jp2_km2, f_jp3_km2,
-         f_jm2_km1, f_jm1_km1, f_j00_km1, f_jp1_km1, f_jp2_km1, f_jp3_km1,
-         f_jm2_k00, f_jm1_k00, f_j00_k00, f_jp1_k00, f_jp2_k00, f_jp3_k00,
-         f_jm2_kp1, f_jm1_kp1, f_j00_kp1, f_jp1_kp1, f_jp2_kp1, f_jp3_kp1,
-         f_jm2_kp2, f_jm1_kp2, f_j00_kp2, f_jp1_kp2, f_jp2_kp2, f_jp3_kp2,
-         f_jm2_kp3, f_jm1_kp3, f_j00_kp3, f_jp1_kp3, f_jp2_kp3, f_jp3_kp3,
-         f_km2    , f_km1    , f_k00    , f_kp1    , f_kp2    , f_kp3     ;
-
-ENTRY("GA_interp_quintic") ;
-
-   for( pp=0 ; pp < npp ; pp++ ){
-     xx = ip[pp] ; if( xx < -0.499f || xx > nxh ){ vv[pp]=outval; continue; }
-     yy = jp[pp] ; if( yy < -0.499f || yy > nyh ){ vv[pp]=outval; continue; }
-     zz = kp[pp] ; if( zz < -0.499f || zz > nzh ){ vv[pp]=outval; continue; }
-
-     ix = floorf(xx) ;  fx = xx - ix ;   /* integer and       */
-     jy = floorf(yy) ;  fy = yy - jy ;   /* fractional coords */
-     kz = floorf(zz) ;  fz = zz - kz ;
-
-     /* compute indexes from which to interpolate (-2,-1,0,+1,+2,+3),
-        but clipped to lie inside input image volume                 */
-
-     ix_m1 = ix-1    ; ix_00 = ix      ; ix_p1 = ix+1    ; ix_p2 = ix+2    ;
-     CLIP(ix_m1,nx1) ; CLIP(ix_00,nx1) ; CLIP(ix_p1,nx1) ; CLIP(ix_p2,nx1) ;
-     ix_m2 = ix-2    ; ix_p3 = ix+3 ;
-     CLIP(ix_m2,nx1) ; CLIP(ix_p3,nx1) ;
-
-     jy_m1 = jy-1    ; jy_00 = jy      ; jy_p1 = jy+1    ; jy_p2 = jy+2    ;
-     CLIP(jy_m1,ny1) ; CLIP(jy_00,ny1) ; CLIP(jy_p1,ny1) ; CLIP(jy_p2,ny1) ;
-     jy_m2 = jy-2    ; jy_p3 = jy+3 ;
-     CLIP(jy_m2,ny1) ; CLIP(jy_p3,ny1) ;
-
-     kz_m1 = kz-1    ; kz_00 = kz      ; kz_p1 = kz+1    ; kz_p2 = kz+2    ;
-     CLIP(kz_m1,nz1) ; CLIP(kz_00,nz1) ; CLIP(kz_p1,nz1) ; CLIP(kz_p2,nz1) ;
-     kz_m2 = kz-2    ; kz_p3 = kz+3 ;
-     CLIP(kz_m2,nz1) ; CLIP(kz_p3,nz1) ;
-
-     wt_m1 = Q_M1(fx) ; wt_00 = Q_00(fx) ;  /* interpolation weights */
-     wt_p1 = Q_P1(fx) ; wt_p2 = Q_P2(fx) ;  /* in x-direction        */
-     wt_m2 = Q_M2(fx) ; wt_p3 = Q_P3(fx) ;
-
-#undef  XINT
-#define XINT(j,k) wt_m2*FAR(ix_m2,j,k)+wt_m1*FAR(ix_m1,j,k) \
-                 +wt_00*FAR(ix_00,j,k)+wt_p1*FAR(ix_p1,j,k) \
-                 +wt_p2*FAR(ix_p2,j,k)+wt_p3*FAR(ix_p3,j,k)
-
-     /* interpolate to location ix+fx at each jy,kz level */
-
-     f_jm2_km2 = XINT(jy_m2,kz_m2) ; f_jm1_km2 = XINT(jy_m1,kz_m2) ;
-     f_j00_km2 = XINT(jy_00,kz_m2) ; f_jp1_km2 = XINT(jy_p1,kz_m2) ;
-     f_jp2_km2 = XINT(jy_p2,kz_m2) ; f_jp3_km2 = XINT(jy_p3,kz_m2) ;
-
-     f_jm2_km1 = XINT(jy_m2,kz_m1) ; f_jm1_km1 = XINT(jy_m1,kz_m1) ;
-     f_j00_km1 = XINT(jy_00,kz_m1) ; f_jp1_km1 = XINT(jy_p1,kz_m1) ;
-     f_jp2_km1 = XINT(jy_p2,kz_m1) ; f_jp3_km1 = XINT(jy_p3,kz_m1) ;
-
-     f_jm2_k00 = XINT(jy_m2,kz_00) ; f_jm1_k00 = XINT(jy_m1,kz_00) ;
-     f_j00_k00 = XINT(jy_00,kz_00) ; f_jp1_k00 = XINT(jy_p1,kz_00) ;
-     f_jp2_k00 = XINT(jy_p2,kz_00) ; f_jp3_k00 = XINT(jy_p3,kz_00) ;
-
-     f_jm2_kp1 = XINT(jy_m2,kz_p1) ; f_jm1_kp1 = XINT(jy_m1,kz_p1) ;
-     f_j00_kp1 = XINT(jy_00,kz_p1) ; f_jp1_kp1 = XINT(jy_p1,kz_p1) ;
-     f_jp2_kp1 = XINT(jy_p2,kz_p1) ; f_jp3_kp1 = XINT(jy_p3,kz_p1) ;
-
-     f_jm2_kp2 = XINT(jy_m2,kz_p2) ; f_jm1_kp2 = XINT(jy_m1,kz_p2) ;
-     f_j00_kp2 = XINT(jy_00,kz_p2) ; f_jp1_kp2 = XINT(jy_p1,kz_p2) ;
-     f_jp2_kp2 = XINT(jy_p2,kz_p2) ; f_jp3_kp2 = XINT(jy_p3,kz_p2) ;
-
-     f_jm2_kp3 = XINT(jy_m2,kz_p3) ; f_jm1_kp3 = XINT(jy_m1,kz_p3) ;
-     f_j00_kp3 = XINT(jy_00,kz_p3) ; f_jp1_kp3 = XINT(jy_p1,kz_p3) ;
-     f_jp2_kp3 = XINT(jy_p2,kz_p3) ; f_jp3_kp3 = XINT(jy_p3,kz_p3) ;
-
-     /* interpolate to jy+fy at each kz level */
-
-     wt_m1 = Q_M1(fy) ; wt_00 = Q_00(fy) ; wt_p1 = Q_P1(fy) ;
-     wt_p2 = Q_P2(fy) ; wt_m2 = Q_M2(fy) ; wt_p3 = Q_P3(fy) ;
-
-     f_km2 =  wt_m2 * f_jm2_km2 + wt_m1 * f_jm1_km2 + wt_00 * f_j00_km2
-            + wt_p1 * f_jp1_km2 + wt_p2 * f_jp2_km2 + wt_p3 * f_jp3_km2 ;
-
-     f_km1 =  wt_m2 * f_jm2_km1 + wt_m1 * f_jm1_km1 + wt_00 * f_j00_km1
-            + wt_p1 * f_jp1_km1 + wt_p2 * f_jp2_km1 + wt_p3 * f_jp3_km1 ;
-
-     f_k00 =  wt_m2 * f_jm2_k00 + wt_m1 * f_jm1_k00 + wt_00 * f_j00_k00
-            + wt_p1 * f_jp1_k00 + wt_p2 * f_jp2_k00 + wt_p3 * f_jp3_k00 ;
-
-     f_kp1 =  wt_m2 * f_jm2_kp1 + wt_m1 * f_jm1_kp1 + wt_00 * f_j00_kp1
-            + wt_p1 * f_jp1_kp1 + wt_p2 * f_jp2_kp1 + wt_p3 * f_jp3_kp1 ;
-
-     f_kp2 =  wt_m2 * f_jm2_kp2 + wt_m1 * f_jm1_kp2 + wt_00 * f_j00_kp2
-            + wt_p1 * f_jp1_kp2 + wt_p2 * f_jp2_kp2 + wt_p3 * f_jp3_kp2 ;
-
-     f_kp3 =  wt_m2 * f_jm2_kp3 + wt_m1 * f_jm1_kp3 + wt_00 * f_j00_kp3
-            + wt_p1 * f_jp1_kp3 + wt_p2 * f_jp2_kp3 + wt_p3 * f_jp3_kp3 ;
-
-     /* interpolate to kz+fz to get output */
-
-     wt_m1 = Q_M1(fz) ; wt_00 = Q_00(fz) ; wt_p1 = Q_P1(fz) ;
-     wt_p2 = Q_P2(fz) ; wt_m2 = Q_M2(fz) ; wt_p3 = Q_P3(fz) ;
-
-     vv[pp] =  wt_m2 * f_km2 + wt_m1 * f_km1 + wt_00 * f_k00
-             + wt_p1 * f_kp1 + wt_p2 * f_kp2 + wt_p3 * f_kp3 ;
-   }
-   EXRETURN ;
-}
+static void myunif_reset(unsigned long long x){ MYx = x; return; }
 
 /*---------------------------------------------------------------------------*/
 
@@ -427,7 +54,7 @@ ENTRY("GA_interp_quintic") ;
 /* Max number of points to warp at a time */
 
 #undef  NPER
-#define NPER 4096
+#define NPER 131072  /* 512 Kbytes per float array */
 
 /*--------------------------------------------------------------------*/
 /*! Interpolate target image to control points in base image space.
@@ -436,11 +63,11 @@ ENTRY("GA_interp_quintic") ;
       the results are calculated at ALL points in the base image.
 ----------------------------------------------------------------------*/
 
-static void GA_get_warped_values( int nmpar , double *mpar , float *avm )
+void GA_get_warped_values( int nmpar , double *mpar , float *avm )
 {
    int    npar , ii,jj,kk,qq,pp,npp,mm,nx,ny,nxy , clip=0 , npt ;
    float *wpar , v ;
-   float *imf , *jmf , *kmf ;
+   float *imf=NULL , *jmf=NULL , *kmf=NULL ;
    float *imw , *jmw , *kmw ;
    MRI_IMAGE *aim ;
 
@@ -534,6 +161,16 @@ ENTRY("GA_get_warped_values") ;
          GA_interp_cubic( aim , npp , imw,jmw,kmw , avm+pp ) ;
        break ;
 
+       case MRI_VARP1:
+         clip = 1 ;
+         GA_interp_varp1( aim , npp , imw,jmw,kmw , avm+pp ) ;
+       break ;
+
+       case MRI_WSINC5:
+         clip = 1 ;
+         GA_interp_wsinc5( aim , npp , imw,jmw,kmw , avm+pp ) ;
+       break ;
+
        default:        /* for higher order methods not implemented here */
        case MRI_QUINTIC:
          clip = 1 ;
@@ -617,7 +254,7 @@ void GA_do_params( int x ){
 
 /*---------------------------------------------------------------------------*/
 
-static void GA_setup_2Dhistogram( float *xar , float *yar )  /* 08 May 2007 */
+void GA_setup_2Dhistogram( float *xar , float *yar )  /* 08 May 2007 */
 {
 ENTRY("GA_setup_2Dhistogram") ;
 
@@ -651,7 +288,7 @@ ENTRY("GA_setup_2Dhistogram") ;
        float *xx , *yy ;
 
        if( npt > 666*nbin ){                /* subsample data to save CPU time */
-         dm = find_relprime_fixed( npt ) ;
+         dm = GA_find_relprime_fixed( npt ) ;
          mm = 1 ; nnew = (int)(314.1593*nbin) ;
          xx = (float *)malloc(sizeof(float)*nnew) ;
          yy = (float *)malloc(sizeof(float)*nnew) ;
@@ -687,303 +324,13 @@ ENTRY("GA_setup_2Dhistogram") ;
    gstup->need_hist_setup = 0 ; EXRETURN ;
 }
 
-/*===========================================================================*/
-/*--- Stuff for storing sub-bloks of data points for localized cost funcs ---*/
-
-typedef struct { int num , *nelm , **elm ; } GA_BLOK_set ;
-
-#undef  FAS
-#define FAS(a,s) ( (a) <= (s) && (a) >= -(s) )
-
-/** volume of ball = 4*PI/3 * siz**3 = 4.1888 * siz**3 **/
-
-#define GA_BLOK_inside_ball(a,b,c,siz) \
-  ( ((a)*(a)+(b)*(b)+(c)*(c)) <= (siz) )
-
-/** volume of cube = 8 * siz**3 **/
-/** lattice vectors = [2*siz,0,0]  [0,2*siz,0]  [0,0,2*siz] **/
-
-#define GA_BLOK_inside_cube(a,b,c,siz) \
-  ( FAS((a),(siz)) && FAS((b),(siz)) && FAS((c),(siz)) )
-
-/** volume of RHDD = 2 * siz**3 **/
-/** lattice vectors = [siz,siz,0]  [0,siz,siz]  [siz,0,siz] **/
-
-#define GA_BLOK_inside_rhdd(a,b,c,siz)              \
-  ( FAS((a)+(b),(siz)) && FAS((a)-(b),(siz)) &&     \
-    FAS((a)+(c),(siz)) && FAS((a)-(c),(siz)) &&     \
-    FAS((b)+(c),(siz)) && FAS((b)-(c),(siz))   )
-
-/** volume of TOHD = 4 * siz**3 **/
-/** lattice vectors = [-siz,siz,siz]  [siz,-siz,siz]  [siz,siz,-siz] **/
-
-#define GA_BLOK_inside_tohd(a,b,c,siz)                              \
-  ( FAS((a),(siz)) && FAS((b),(siz)) && FAS((c),(siz))         &&   \
-    FAS((a)+(b)+(c),1.5f*(siz)) && FAS((a)-(b)+(c),1.5f*(siz)) &&   \
-    FAS((a)+(b)-(c),1.5f*(siz)) && FAS((a)-(b)-(c),1.5f*(siz))   )
-
-#define GA_BLOK_inside(bt,a,b,c,s)                              \
- (  ((bt)==GA_BLOK_BALL) ? GA_BLOK_inside_ball((a),(b),(c),(s)) \
-  : ((bt)==GA_BLOK_CUBE) ? GA_BLOK_inside_cube((a),(b),(c),(s)) \
-  : ((bt)==GA_BLOK_RHDD) ? GA_BLOK_inside_rhdd((a),(b),(c),(s)) \
-  : ((bt)==GA_BLOK_TOHD) ? GA_BLOK_inside_tohd((a),(b),(c),(s)) \
-  : 0 )
-
-#define GA_BLOK_ADDTO_intar(nar,nal,ar,val)                                 \
- do{ if( (nar) == (nal) ){                                                  \
-       (nal) = 1.2*(nal)+16; (ar) = (int *)realloc((ar),sizeof(int)*(nal)); \
-     }                                                                      \
-     (ar)[(nar)++] = (val);                                                 \
- } while(0)
-
-#define GA_BLOK_CLIP_intar(nar,nal,ar)                               \
- do{ if( (nar) < (nal) && (nar) > 0 ){                               \
-       (nal) = (nar); (ar) = (int *)realloc((ar),sizeof(int)*(nal)); \
- }} while(0)
-
-#define GA_BLOK_KILL(gbs)                                            \
- do{ int ee ;                                                        \
-     if( (gbs)->nelm != NULL ) free((gbs)->nelm) ;                   \
-     if( (gbs)->elm != NULL ){                                       \
-       for( ee=0 ; ee < (gbs)->num ; ee++ )                          \
-         if( (gbs)->elm[ee] != NULL ) free((gbs)->elm[ee]) ;         \
-       free((gbs)->elm) ;                                            \
-     }                                                               \
-     free((gbs)) ;                                                   \
- } while(0)
-
-/*----------------------------------------------------------------------------*/
-/*! Fill a struct with list of points contained in sub-bloks of the base. */
-
-static GA_BLOK_set * create_GA_BLOK_set( int   nx , int   ny , int   nz ,
-                                         float dx , float dy , float dz ,
-                                         int npt , float *im, float *jm, float *km ,
-                                         int bloktype , float blokrad , int minel )
-{
-   GA_BLOK_set *gbs ;
-   float dxp,dyp,dzp , dxq,dyq,dzq , dxr,dyr,dzr , xt,yt,zt ;
-   float xx,yy,zz , uu,vv,ww , siz ;
-   THD_mat33 latmat , invlatmat ; THD_fvec3 pqr , xyz ;
-   int pb,pt , qb,qt , rb,rt , pp,qq,rr , nblok,nball , ii , nxy ;
-   int aa,bb,cc , dd,ss , np,nq,nr,npq , *nelm,*nalm,**elm , ntot,nsav,ndup ;
-
-ENTRY("create_GA_BLOK_set") ;
-
-   if( nx < 3 || ny < 3 || nz < 1 ) RETURN(NULL) ;
-   if( dx <= 0.0f ) dx = 1.0f ;
-   if( dy <= 0.0f ) dy = 1.0f ;
-   if( dz <= 0.0f ) dz = 1.0f ;
-
-   if( npt <= 0 || im == NULL || jm == NULL || km == NULL ){
-     im = jm = km = NULL ; npt = 0 ;
-   }
-
-   /* mark type of blok being stored */
-
-   /* Create lattice vectors to generate translated bloks:
-      The (p,q,r)-th blok -- for integral p,q,r -- is at (x,y,z) offset
-        (dxp,dyp,dzp)*p + (dxq,dyq,dzq)*q + (dxr,dyr,dzr)*r
-      Also set the 'siz' parameter for the blok, to test for inclusion. */
-
-   switch( bloktype ){
-
-     /* balls go on a hexagonal close packed lattice,
-        but with lattice spacing reduced to avoid gaps
-        (of course, then the balls overlap -- c'est la geometrie) */
-
-     case GA_BLOK_BALL:{
-       float s3=1.73205f ,           /* sqrt(3) */
-             s6=2.44949f ,           /* sqrt(6) */
-             a =blokrad*0.866025f ;  /* shrink spacing to avoid gaps */
-       siz = blokrad*blokrad ;
-       /* hexagonal close packing basis vectors for sphere of radius a */
-       dxp = 2.0f * a ; dyp = 0.0f  ; dzp = 0.0f             ;
-       dxq = a        ; dyq = a * s3; dzq = 0.0f             ;
-       dxr = a        ; dyr = a / s3; dzr = a * 0.666667f*s6 ;
-     }
-     break ;
-
-     /* cubes go on a simple cubical lattice, spaced so faces touch */
-
-     case GA_BLOK_CUBE:{
-       float a =  blokrad ;
-       siz = a ;
-       dxp = 2*a ; dyp = 0.0f; dzp = 0.0f ;
-       dxq = 0.0f; dyq = 2*a ; dzq = 0.0f ;
-       dxr = 0.0f; dyr = 0.0f; dzr = 2*a  ;
-     }
-     break ;
-
-     /* rhombic dodecahedra go on a FCC lattice,
-        spaced so that faces touch (i.e., no volumetric overlap) */
-
-     case GA_BLOK_RHDD:{
-       float a = blokrad ;
-       siz = a ;
-       dxp = a   ; dyp = a   ; dzp = 0.0f ;
-       dxq = 0.0f; dyq = a   ; dzq = a    ;
-       dxr = a   ; dyr = 0.0f; dzr = a    ;
-     }
-     break ;
-
-     /* truncated octahedra go on a BCC lattice,
-        spaced so that faces touch (i.e., no volumetric overlap) */
-
-     case GA_BLOK_TOHD:{
-       float a = blokrad ;
-       siz = a ;
-       dxp = -a ; dyp =  a ; dzp =  a ;
-       dxq =  a ; dyq = -a ; dzq =  a ;
-       dxr =  a ; dyr =  a ; dzr = -a ;
-     }
-     break ;
-
-     default:  RETURN(NULL) ;  /** should not happen! **/
-   }
-
-   /* find range of (p,q,r) indexes needed to cover volume,
-      by checking out all 7 corners besides (0,0,0) (where p=q=r=0) */
-
-   LOAD_MAT( latmat, dxp , dxq , dxr ,
-                     dyp , dyq , dyr ,
-                     dzp , dzq , dzr  ) ; invlatmat = MAT_INV(latmat) ;
-
-   xt = (nx-1)*dx ; yt = (ny-1)*dy ; zt = (nz-1)*dz ;
-   pb = pt = qb = qt = rb = rt = 0 ;  /* initialize (p,q,r) bot, top values */
-
-   LOAD_FVEC3(xyz , xt,0.0f,0.0f ); pqr = MATVEC( invlatmat , xyz ) ;
-   pp = (int)floorf( pqr.xyz[0] ) ; pb = MIN(pb,pp) ; pp++ ; pt = MAX(pt,pp) ;
-   qq = (int)floorf( pqr.xyz[1] ) ; qb = MIN(qb,qq) ; qq++ ; qt = MAX(qt,qq) ;
-   rr = (int)floorf( pqr.xyz[2] ) ; rb = MIN(rb,rr) ; rr++ ; rt = MAX(rt,rr) ;
-
-   LOAD_FVEC3(xyz , xt,yt,0.0f )  ; pqr = MATVEC( invlatmat , xyz ) ;
-   pp = (int)floorf( pqr.xyz[0] ) ; pb = MIN(pb,pp) ; pp++ ; pt = MAX(pt,pp) ;
-   qq = (int)floorf( pqr.xyz[1] ) ; qb = MIN(qb,qq) ; qq++ ; qt = MAX(qt,qq) ;
-   rr = (int)floorf( pqr.xyz[2] ) ; rb = MIN(rb,rr) ; rr++ ; rt = MAX(rt,rr) ;
-
-   LOAD_FVEC3(xyz , xt,0.0f,zt )  ; pqr = MATVEC( invlatmat , xyz ) ;
-   pp = (int)floorf( pqr.xyz[0] ) ; pb = MIN(pb,pp) ; pp++ ; pt = MAX(pt,pp) ;
-   qq = (int)floorf( pqr.xyz[1] ) ; qb = MIN(qb,qq) ; qq++ ; qt = MAX(qt,qq) ;
-   rr = (int)floorf( pqr.xyz[2] ) ; rb = MIN(rb,rr) ; rr++ ; rt = MAX(rt,rr) ;
-
-   LOAD_FVEC3(xyz , xt,yt,zt )    ; pqr = MATVEC( invlatmat , xyz ) ;
-   pp = (int)floorf( pqr.xyz[0] ) ; pb = MIN(pb,pp) ; pp++ ; pt = MAX(pt,pp) ;
-   qq = (int)floorf( pqr.xyz[1] ) ; qb = MIN(qb,qq) ; qq++ ; qt = MAX(qt,qq) ;
-   rr = (int)floorf( pqr.xyz[2] ) ; rb = MIN(rb,rr) ; rr++ ; rt = MAX(rt,rr) ;
-
-   LOAD_FVEC3(xyz , 0.0f,yt,0.0f ); pqr = MATVEC( invlatmat , xyz ) ;
-   pp = (int)floorf( pqr.xyz[0] ) ; pb = MIN(pb,pp) ; pp++ ; pt = MAX(pt,pp) ;
-   qq = (int)floorf( pqr.xyz[1] ) ; qb = MIN(qb,qq) ; qq++ ; qt = MAX(qt,qq) ;
-   rr = (int)floorf( pqr.xyz[2] ) ; rb = MIN(rb,rr) ; rr++ ; rt = MAX(rt,rr) ;
-
-   LOAD_FVEC3(xyz , 0.0f,0.0f,zt ); pqr = MATVEC( invlatmat , xyz ) ;
-   pp = (int)floorf( pqr.xyz[0] ) ; pb = MIN(pb,pp) ; pp++ ; pt = MAX(pt,pp) ;
-   qq = (int)floorf( pqr.xyz[1] ) ; qb = MIN(qb,qq) ; qq++ ; qt = MAX(qt,qq) ;
-   rr = (int)floorf( pqr.xyz[2] ) ; rb = MIN(rb,rr) ; rr++ ; rt = MAX(rt,rr) ;
-
-   LOAD_FVEC3(xyz , 0.0f,yt,zt )  ; pqr = MATVEC( invlatmat , xyz ) ;
-   pp = (int)floorf( pqr.xyz[0] ) ; pb = MIN(pb,pp) ; pp++ ; pt = MAX(pt,pp) ;
-   qq = (int)floorf( pqr.xyz[1] ) ; qb = MIN(qb,qq) ; qq++ ; qt = MAX(qt,qq) ;
-   rr = (int)floorf( pqr.xyz[2] ) ; rb = MIN(rb,rr) ; rr++ ; rt = MAX(rt,rr) ;
-
-   /* Lattice index range is (p,q,r) = (pb..pt,qb..qt,rb..rt) inclusive */
-
-   np = pt-pb+1 ;                /* number of p values to consider */
-   nq = qt-qb+1 ; npq = np*nq ;
-   nr = rt-rb+1 ;
-   nblok = npq*nr ;              /* total number of bloks to consider */
-
-   /* Now have list of bloks, so put points into each blok list */
-
-   nelm = (int *) calloc(sizeof(int)  ,nblok) ;  /* # pts in each blok */
-   nalm = (int *) calloc(sizeof(int)  ,nblok) ;  /* # malloc-ed in each blok */
-   elm  = (int **)calloc(sizeof(int *),nblok) ;  /* list of pts in each blok */
-
-   nxy = nx*ny ; if( npt == 0 ) npt = nxy*nz ;
-
-   for( ndup=ntot=ii=0 ; ii < npt ; ii++ ){
-     if( im != NULL ){
-       pp = (int)im[ii]; qq = (int)jm[ii]; rr = (int)km[ii]; /* xyz indexes */
-     } else {
-       pp = ii%nx ; rr = ii/nxy ; qq = (ii-rr*nxy)/nx ;
-     }
-     ss = ii ; /* index in 1D array */
-     xx = pp*dx ; yy = qq*dy ; zz = rr*dz ; /* xyz spatial coordinates */
-     LOAD_FVEC3( xyz , xx,yy,zz ) ;
-     pqr = MATVEC( invlatmat , xyz ) ;      /* float lattice coordinates */
-     pp = (int)floorf(pqr.xyz[0]+.499f) ;   /* integer lattice coords */
-     qq = (int)floorf(pqr.xyz[1]+.499f) ;
-     rr = (int)floorf(pqr.xyz[2]+.499f) ; nsav = 0 ;
-     for( cc=rr-1 ; cc <= rr+1 ; cc++ ){    /* search nearby bloks */
-       if( cc < rb || cc > rt ) continue ;  /* for inclusion of (xx,yy,zz) */
-       for( bb=qq-1 ; bb <= qq+1 ; bb++ ){
-         if( bb < qb || bb > qt ) continue ;
-         for( aa=pp-1 ; aa <= pp+1 ; aa++ ){
-           if( aa < pb || aa > pt ) continue ;
-           LOAD_FVEC3( pqr , aa,bb,cc ) ;  /* compute center of this */
-           xyz = MATVEC( latmat , pqr ) ;  /* blok into xyz vector  */
-           uu = xx - xyz.xyz[0] ;    /* xyz coords relative to blok center */
-           vv = yy - xyz.xyz[1] ;
-           ww = zz - xyz.xyz[2] ;
-           if( GA_BLOK_inside( bloktype , uu,vv,ww , siz ) ){
-             dd = (aa-pb) + (bb-qb)*np + (cc-rb)*npq ; /* blok index */
-             GA_BLOK_ADDTO_intar( nelm[dd], nalm[dd], elm[dd], ss ) ;
-             ntot++ ; nsav++ ;
-           }
-         }
-       }
-     }
-     if( nsav > 1 ) ndup++ ;
-   }
-
-   if( minel < 9 ){
-     for( minel=dd=0 ; dd < nblok ; dd++ ) minel = MAX(minel,nelm[dd]) ;
-     minel = (int)(0.456*minel)+1 ;
-   }
-
-   /* now cast out bloks that have too few points,
-      and truncate those arrays that pass the threshold */
-
-   for( nsav=dd=0 ; dd < nblok ; dd++ ){
-     if( nelm[dd] < minel ){
-       if( elm[dd] != NULL ){ free(elm[dd]); elm[dd] = NULL; }
-       nelm[dd] = 0 ;
-     } else {
-       GA_BLOK_CLIP_intar( nelm[dd] , nalm[dd] , elm[dd] ) ; nsav++ ;
-     }
-   }
-   free(nalm) ;
-
-   if( nsav == 0 ){  /* didn't find any arrays to keep!? */
-     ERROR_message("create_GA_BLOK_set can't get bloks with %d elements",minel);
-     free(nelm) ; free(elm) ; RETURN(NULL) ;
-   }
-
-   /* create output struct */
-
-   gbs = (GA_BLOK_set *)malloc(sizeof(GA_BLOK_set)) ;
-   gbs->num  = nsav ;
-   gbs->nelm = (int *) calloc(sizeof(int)  ,nsav) ;
-   gbs->elm  = (int **)calloc(sizeof(int *),nsav) ;
-   for( ntot=nsav=dd=0 ; dd < nblok ; dd++ ){
-     if( nelm[dd] > 0 && elm[dd] != NULL ){
-       gbs->nelm[nsav] = nelm[dd] ; ntot += nelm[dd] ;
-       gbs->elm [nsav] = elm[dd]  ; nsav++ ;
-     }
-   }
-   free(nelm) ; free(elm) ;
-
-   if( verb > 1 )
-     ININFO_message("%d total points stored in %d '%s(%g)' bloks",
-                    ntot , gbs->num , GA_BLOK_STRING(bloktype) , blokrad ) ;
-
-   RETURN(gbs) ;
-}
-
 /*---------------------------------------------------------------------------*/
 
 #undef  CMAX
 #define CMAX 0.9999f
+
+/*----------------------------------------*/
+/*! LPC as described in the famous paper. */
 
 float GA_pearson_local( int npt , float *avm, float *bvm, float *wvm )
 {
@@ -998,19 +345,19 @@ float GA_pearson_local( int npt , float *avm, float *bvm, float *wvm )
        rad = sqrt( rad*rad +SQR(gstup->smooth_radius_base) ) ;
      mrad = 1.2345f*(gstup->base_di + gstup->base_dj + gstup->base_dk) ;
      rad  = MAX(rad,mrad) ;
-     gstup->blokset = (void *)create_GA_BLOK_set(
-                                gstup->bsim->nx, gstup->bsim->ny, gstup->bsim->nz,
-                                gstup->base_di , gstup->base_dj , gstup->base_dk ,
-                                gstup->npt_match ,
-                                 gstup->im->ar , gstup->jm->ar , gstup->km->ar ,
-                                gstup->bloktype , rad , gstup->blokmin ) ;
+     gstup->blokset = create_GA_BLOK_set(  /* cf. mri_genalign_util.c */
+                            gstup->bsim->nx, gstup->bsim->ny, gstup->bsim->nz,
+                            gstup->base_di , gstup->base_dj , gstup->base_dk ,
+                            gstup->npt_match ,
+                            gstup->im->ar , gstup->jm->ar , gstup->km->ar ,
+                            gstup->bloktype , rad , gstup->blokmin , 1.0f,verb ) ;
      if( gstup->blokset == NULL )
        ERROR_exit("Can't create GA_BLOK_set?!?") ;
    }
 
-   gbs = (GA_BLOK_set *)gstup->blokset ;
-   nblok = gbs->num ; nm = gstup->npt_match ;
-   if( nblok < 1 ) ERROR_exit("Bad GA_BLOK_set?!") ;
+   gbs   = gstup->blokset ;
+   nblok = gbs->num ;
+   if( nblok < 1 ) ERROR_exit("LPC: Bad GA_BLOK_set?!") ;
 
    if( uwb < 0 ) uwb = AFNI_yesenv("AFNI_LPC_UNWTBLOK") ;  /* first time in */
 
@@ -1048,6 +395,8 @@ float GA_pearson_local( int npt , float *avm, float *bvm, float *wvm )
      }
      wss += ws ;
 
+     /*** massage results to get final stretched correlation ***/
+
      if( xv <= 0.0f || yv <= 0.0f ) continue ;      /* skip this blok */
      pcor = xy/sqrtf(xv*yv) ;                       /* correlation */
      if( pcor > CMAX ) pcor = CMAX; else if( pcor < -CMAX ) pcor = -CMAX;
@@ -1056,8 +405,7 @@ float GA_pearson_local( int npt , float *avm, float *bvm, float *wvm )
    }
 
    return (0.25f*psum/wss);      /* averaged stretched emphasized correlation */
-}
-/*======================== End of BLOK-iness functionality ==================*/
+}                                /* [0.25 to compensate for the 2*arctanh()] */
 
 /*---------------------------------------------------------------------------*/
 /*! Compute a particular fit cost function
@@ -1066,8 +414,8 @@ float GA_pearson_local( int npt , float *avm, float *bvm, float *wvm )
     - wvm = weight image values
 -----------------------------------------------------------------------------*/
 
-static double GA_scalar_costfun( int meth , int npt ,
-                                 float *avm , float *bvm , float *wvm )
+double GA_scalar_costfun( int meth , int npt ,
+                          float *avm , float *bvm , float *wvm )
 {
   double val=0.0f ;
 
@@ -1085,13 +433,19 @@ ENTRY("GA_scalar_costfun") ;
       val = (double)THD_pearson_corr_wt( gstup->npt_match, avm, bvm,wvm ) ;
     break ;
 
-    case GA_MATCH_PEARSON_LOCALS:
+    case GA_MATCH_PEARSON_LOCALS:  /* LPC */
       val = (double)GA_pearson_local( gstup->npt_match, avm, bvm,wvm ) ;
     break ;
 
-    case GA_MATCH_PEARSON_LOCALA:
+    case GA_MATCH_PEARSON_LOCALA:  /* LPA */
       val = (double)GA_pearson_local( gstup->npt_match, avm, bvm,wvm ) ;
       val = 1.0 - fabs(val) ;
+    break ;
+
+    case GA_MATCH_NCDZLIB:         /* NCD -- 02 Mar 2009 */
+      val = (double)THD_ncdfloat_scl( gstup->npt_match ,
+                                      gstup->ajbot , gstup->ajclip , avm ,
+                                      gstup->bsbot , gstup->bsclip , bvm  ) ;
     break ;
 
     case GA_MATCH_SPEARMAN_SCALAR:  /* rank-order (Spearman) correlation */
@@ -1154,7 +508,7 @@ ENTRY("GA_scalar_costfun") ;
     (Smaller is a better match.)  For use as a NEWUOA optimization function.
 -----------------------------------------------------------------------------*/
 
-static double GA_scalar_fitter( int npar , double *mpar )
+double GA_scalar_fitter( int npar , double *mpar )
 {
   double val ;
   float *avm , *bvm , *wvm ;
@@ -1213,7 +567,7 @@ void mri_genalign_scalar_setup( MRI_IMAGE *basim  , MRI_IMAGE *wghtim ,
    int qq , rr , nx,ny,nz,nxy , mm,ii,jj,kk , qdim ;
    int use_all=0 , need_pts=0 , nmatch ;
    int need_smooth_base , do_smooth_base ;
-   int need_smooth_targ , do_smooth_targ ;
+   int need_smooth_targ , do_smooth_targ , got_new_targ=0 ;
    float *bsar ;
 
 ENTRY("mri_genalign_scalar_setup") ;
@@ -1299,38 +653,31 @@ ENTRY("mri_genalign_scalar_setup") ;
      stup->targ_di = MAT44_COLNORM(stup->targ_cmat,0) ;  /* 22 Aug 2007 */
      stup->targ_dj = MAT44_COLNORM(stup->targ_cmat,1) ;
      stup->targ_dk = MAT44_COLNORM(stup->targ_cmat,2) ;
-     if( stup->ajims != NULL ){ mri_free(stup->ajims); stup->ajims = NULL; }
 
-     /* 07 Aug 2007: deal with target mask */
-
+     if( stup->ajims  != NULL ){ mri_free(stup->ajims) ; stup->ajims  = NULL; }
      if( stup->ajimor != NULL ){ mri_free(stup->ajimor); stup->ajimor = NULL; }
 
      if( stup->ajmask != NULL && stup->ajmask->nvox != stup->ajim->nvox ){
        WARNING_message("mri_genalign_scalar_setup: target image/mask mismatch") ;
        mri_free(stup->ajmask) ; stup->ajmask = NULL ;
      }
-     if( stup->ajmask != NULL ){
+
+     if( stup->ajmask != NULL ){ /* set aj_u??? variables for mask noise */
        float *af, *qf ; byte *mmm ; float_pair quam ; float ubot,usiz , u1,u2;
        MRI_IMAGE *qim ; int nvox,pp ;
-       stup->ajimor = mri_copy(stup->ajim) ;
-       if( stup->usetemp ) mri_purge( stup->ajimor ) ;
+       stup->ajimor = mri_copy(stup->ajim) ;  /* backup of original image */
+       if( stup->usetemp ) mri_purge( stup->ajimor ) ;  /* save for later */
        af  = MRI_FLOAT_PTR(stup->ajim) ;
        mmm = MRI_BYTE_PTR (stup->ajmask) ;
        qim = mri_new_conforming(stup->ajim,MRI_float);
        qf  = MRI_FLOAT_PTR(qim); nvox = qim->nvox;
        for( ii=pp=0 ; ii < nvox ; ii++ ){ if( mmm[ii] ) qf[pp++] = af[ii] ; }
-       qim->nvox = pp; quam = mri_twoquantiles(qim,0.05f,0.95f); mri_free(qim);
-       ubot = quam.a ; usiz = (quam.b - quam.a)*0.5f ;
-       if( usiz > 0.0f ){
-         if( verb > 2 ) ININFO_message("source mask: ubot=%g usiz=%g",ubot,usiz);
-         for( ii=0 ; ii < nvox ; ii++ ){
-           if( !mmm[ii] ){
-             u1 = (float)drand48(); u2 = (float)drand48();
-             af[ii] = ubot + usiz*(u1+u2) ;
-           }
-         }
-       }
+       qim->nvox = pp; quam = mri_twoquantiles(qim,0.07f,0.93f); mri_free(qim);
+       stup->aj_ubot = quam.a ; stup->aj_usiz = (quam.b - quam.a)*0.5f ;
+     } else {
+       stup->aj_ubot = stup->aj_usiz = 0.0f ;
      }
+     got_new_targ = 1 ;
    } /* end of processing input targim */
 
    /* smooth images if needed
@@ -1375,6 +722,25 @@ ENTRY("mri_genalign_scalar_setup") ;
      stup->ajims = GA_smooth( stup->ajim , stup->smooth_code ,
                                            stup->smooth_radius_targ ) ;
      if( stup->usetemp ) mri_purge( stup->ajim ) ;  /* 20 Dec 2006 */
+     got_new_targ = 1 ;
+   }
+
+   /* 07 Aug 2007: deal with target mask, if any [moved here 28 Aug 2008] */
+
+   if( got_new_targ && stup->ajmask != NULL && stup->aj_usiz > 0.0f ){
+     float ubot=stup->aj_ubot , usiz=stup->aj_usiz , u1,u2 ;
+     float *af ; byte *mmm ; int nvox ;
+     if( stup->ajims != NULL ) af = MRI_FLOAT_PTR(stup->ajims) ;
+     else                      af = MRI_FLOAT_PTR(stup->ajim ) ;
+     mmm = MRI_BYTE_PTR (stup->ajmask) ;
+     nvox = stup->ajmask->nvox ;
+     if( verb > 2 ) ININFO_message("source mask: ubot=%g usiz=%g",ubot,usiz);
+     myunif_reset(12345678) ;
+     for( ii=0 ; ii < nvox ; ii++ ){  /* fill non-mask voxels with noise */
+       if( !mmm[ii] ){
+         u1 = myunif(); u2 = myunif(); af[ii] = ubot + usiz*(u1+u2);
+       }
+     }
    }
 
    /* get min and max values in base and target images */
@@ -1510,7 +876,7 @@ ENTRY("mri_genalign_scalar_setup") ;
        int nvox,pp,dm , *qm ; byte *mask = stup->bmask ;
 
        nvox = stup->bsim->nvox ;
-       dm   = find_relprime_fixed(nvox) ;
+       dm   = GA_find_relprime_fixed(nvox) ;
        if( stup->im != NULL ){
          KILL_floatvec(stup->im) ;
          KILL_floatvec(stup->jm) ;
@@ -1579,7 +945,7 @@ ENTRY("mri_genalign_scalar_setup") ;
    } /* end of if(need_pts) */
 
    if( stup->blokset != NULL ){                      /* 20 Aug 2007 */
-     GA_BLOK_KILL( (GA_BLOK_set *)(stup->blokset) ) ;
+     GA_BLOK_KILL(stup->blokset) ;
      stup->blokset = NULL ;
    }
 
@@ -1596,6 +962,7 @@ ENTRY("mri_genalign_scalar_setup") ;
 
 void mri_genalign_set_targmask( MRI_IMAGE *im_tmask , GA_setup *stup )
 {
+   int nmask , nvox ;
 ENTRY("mri_genalign_set_targmask") ;
    if( stup == NULL ) EXRETURN ;
    if( stup->ajmask != NULL ){ mri_free(stup->ajmask); stup->ajmask = NULL; }
@@ -1608,7 +975,15 @@ ENTRY("mri_genalign_set_targmask") ;
          WARNING_message("mri_genalign_set_targmask: called after setup()?!") ;
        }
      }
-     stup->ajmask = mri_copy(im_tmask) ;
+     stup->ajmask = mri_to_byte(im_tmask) ;
+     nvox  = stup->ajmask->nvox ;
+     nmask = THD_countmask( nvox , MRI_BYTE_PTR(stup->ajmask) ) ;
+     if( nmask < 999 || nvox-nmask < 999 ){
+       WARNING_message(
+        "mri_genalign_set_targmask: mask has %d voxels out of %d total ==> ignored!",
+        nmask , nvox ) ;
+       mri_free(stup->ajmask) ; stup->ajmask = NULL ;
+     }
    }
    EXRETURN ;
 }
@@ -1617,7 +992,7 @@ ENTRY("mri_genalign_set_targmask") ;
 /*! Setup parameters for optimizing.
 -----------------------------------------------------------------------------*/
 
-static void GA_param_setup( GA_setup *stup )
+void GA_param_setup( GA_setup *stup )
 {
    int ii , qq ;
 
@@ -1839,80 +1214,84 @@ ENTRY("mri_genalign_scalar_ransetup") ;
    GA_param_setup(stup) ; gstup = stup ;
    if( stup->wfunc_numfree <= 0 ) EXRETURN ;
 
-   nfr = stup->wfunc_numfree ;
-   switch( nfr ){
-     case 1: ngrid = 9 ; break ;
-     case 2: ngrid = 5 ; break ;
+   nfr = stup->wfunc_numfree ;    /* number of free parameters */
+   switch( nfr ){                 /* set ngrid = number of points along */
+     case 1: ngrid = 9 ; break ;  /*             parameter axis to scan */
+     case 2: ngrid = 5 ; break ;  /*             in the regular grid    */
      case 3: ngrid = 3 ; break ;
      case 4:
      case 5:
      case 6: ngrid = 2 ; break ;
     default: ngrid = 1 ; break ;
    }
-   for( ngtot=1,qq=0 ; qq < nfr ; qq++ ) ngtot *= ngrid ;
+   for( ngtot=1,qq=0 ; qq < nfr ; qq++ ) ngtot *= ngrid ; /* ngrid^nfr */
 
-   icod = stup->interp_code ;
-   stup->interp_code = MRI_NN ;
-   if( AFNI_yesenv("AFNI_TWOPASS_LIN") ) stup->interp_code = MRI_LINEAR ;
+   icod = stup->interp_code ;                     /* save and set interp mode */
+   if( icod == MRI_NN || AFNI_noenv("AFNI_TWOPASS_LIN") )
+     stup->interp_code = MRI_NN ;                            /* NN if desired */
+   else
+     stup->interp_code = MRI_LINEAR ;                       /* default=linear */
 
    wpar = (double *)calloc(sizeof(double),nfr) ;
    spar = (double *)calloc(sizeof(double),nfr) ;
-   for( kk=0 ; kk < NKEEP ; kk++ )
-     kpar[kk] = (double *)calloc(sizeof(double),nfr) ;
+   for( kk=0 ; kk < NKEEP ; kk++ )                     /* keep best NKEEP */
+     kpar[kk] = (double *)calloc(sizeof(double),nfr) ; /* parameters sets */
 
-   /* try the middle of the allowed parameter range */
+   /* try the middle of the allowed parameter range, and save it */
 
    for( qq=0 ; qq < nfr ; qq++ ) wpar[qq] = 0.5 ;
    val = GA_scalar_fitter( nfr , wpar ) ;
-
-   memcpy(kpar[0],wpar,sizeof(double)*nfr) ;
-   kval[0] = val ;
-   for( kk=1 ; kk < NKEEP ; kk++ ) kval[kk] = BIGVAL ;
+   memcpy(kpar[0],wpar,sizeof(double)*nfr) ;           /* saved parameters */
+   kval[0] = val ;                                     /* saved cost function */
+   for( kk=1 ; kk < NKEEP ; kk++ ) kval[kk] = BIGVAL ; /* all these are worse */
 
    /* try some random places, keep the best NKEEP of them */
 
    twof = 1 << nfr ;  /* 2^nfr */
 
-   if( verb ) fprintf(stderr," + - Scanning %d:",nrand+ngtot) ;
+   if( verb ) fprintf(stderr," + - Testing %d*%d params:",nrand+ngtot,twof) ;
+
+   myunif_reset(3456789) ;  /* 27 Aug 2008 */
 
    for( ii=0 ; ii < nrand+ngtot ; ii++ ){
-     if( ii < ngtot ){                     /* grid points */
-       val = 0.5/(ngrid+1.0) ; ss = ii ;
-       for( qq=0 ; qq < nfr ; qq++ ){
+     if( ii < ngtot ){                     /* regular grid points */
+       val = 0.5/(ngrid+1.0) ; ss = ii ;   /* in parameter space */
+       for( qq=0 ; qq < nfr ; qq++ ){      /* ss = number in base ngrid */
          kk = ss % ngrid; ss = ss / ngrid; wpar[qq] = 0.5+(kk+1)*val;
        }
-     } else {                              /* random */
-       for( qq=0 ; qq < nfr ; qq++ ) wpar[qq] = 0.5*(1.05+0.90*drand48()) ;
+     } else {                              /* pseudo-random */
+       for( qq=0 ; qq < nfr ; qq++ ) wpar[qq] = 0.5*(1.05+0.90*myunif()) ;
      }
 
      for( ss=0 ; ss < twof ; ss++ ){   /* try divers reflections */
        for( qq=0 ; qq < nfr ; qq++ )
          spar[qq] = (ss & (1<<qq)) ? 1.0-wpar[qq] : wpar[qq] ;
 
-       val = GA_scalar_fitter( nfr , spar ) ;     /* get error measurement */
-       for( kk=0 ; kk < NKEEP ; kk++ ){   /* find if this is better than */
-         if( val < kval[kk] ){            /* something we've seen so far */
+       val = GA_scalar_fitter( nfr , spar ) ;       /* get cost functional */
+       for( kk=0 ; kk < NKEEP ; kk++ ){     /* find if this is better than */
+         if( val < kval[kk] ){              /* something we've seen so far */
            for( jj=NKEEP-2 ; jj >= kk ; jj-- ){  /* push those above kk up */
              memcpy( kpar[jj+1] , kpar[jj] , sizeof(double)*nfr ) ;
              kval[jj+1] = kval[jj] ;
            }
            memcpy( kpar[kk] , spar , sizeof(double)*nfr ) ;  /* save what */
            kval[kk] = val ;                              /* we just found */
-           if( verb && kk < 3 ) fprintf(stderr,(kk==0)?"*":".") ;
+           if( verb && kk < 4 ) fprintf(stderr,(kk==0)?"*":".") ;
            break ;
          }
        }
      }
    } /* end of initial scan; should have NKEEP best results in kpar & kval */
 
-   for( kk=0 ; kk < NKEEP ; kk++ )  /* make sure are in 0..1 range */
+   for( kk=0 ; kk < NKEEP ; kk++ ){  /* make sure are in 0..1 range */
      for( ii=0 ; ii < nfr ; ii++ ) kpar[kk][ii] = PRED01(kpar[kk][ii]) ;
+   }
 
    if( verb ){                    /* print table of results? */
      fprintf(stderr,"\n") ;
-     fprintf(stderr," + - best random kval:\n") ;
+     fprintf(stderr," + - best %d costs found:\n",NKEEP) ;
      for(kk=0;kk<NKEEP;kk++){
-      fprintf(stderr,"   %2d v=%g:",kk,kval[kk]);
+      fprintf(stderr,"   %2d v=%.6f:",kk,kval[kk]);
       for( ii=qq=0 ; qq < stup->wfunc_numpar ; qq++ ){
        if( !stup->wfunc_param[qq].fixed ){
         val = stup->wfunc_param[qq].min+stup->wfunc_param[qq].siz*kpar[kk][ii];
@@ -1929,7 +1308,7 @@ ENTRY("mri_genalign_scalar_ransetup") ;
    for( kk=0 ; kk < NKEEP ; kk++ ){
      if( kval[kk] >= BIGVAL ) continue ;  /* should not happen */
      (void)powell_newuoa( nfr , kpar[kk] ,
-                          0.05 , 0.005 , 9*nfr+7 , GA_scalar_fitter ) ;
+                          0.05 , 0.005 , 11*nfr+17 , GA_scalar_fitter ) ;
      kval[kk] = GA_scalar_fitter( nfr , kpar[kk] ) ;
      if( kval[kk] < vbest ){ vbest = kval[kk]; jj = kk; }
    }
@@ -1941,9 +1320,9 @@ ENTRY("mri_genalign_scalar_ransetup") ;
    /* at this point, smallest error is vbest and best index in kpar is jj */
 
    if( verb ){                    /* print out optimized results? */
-     fprintf(stderr," + - optimized random kval:\n") ;
+     fprintf(stderr," + - costs of the above after a little optimization:\n") ;
      for(kk=0;kk<NKEEP;kk++){
-      fprintf(stderr,"  %c%2d %g:",(kk==jj)?'*':' ',kk,kval[kk]);
+      fprintf(stderr,"  %c%2d v=%.6f:",(kk==jj)?'*':' ',kk,kval[kk]);
       for( ii=qq=0 ; qq < stup->wfunc_numpar ; qq++ ){
        if( !stup->wfunc_param[qq].fixed ){
         val = stup->wfunc_param[qq].min+stup->wfunc_param[qq].siz*kpar[kk][ii];
@@ -1979,6 +1358,7 @@ ENTRY("mri_genalign_scalar_ransetup") ;
      else
        stup->wfunc_param[qq].val_trial[0] = stup->wfunc_param[qq].val_fixed ;
    }
+   if( verb > 1 ) ININFO_message("- save #%2d for twobest",ival[0]) ;
    nt = 1 ;
    for( jj=1 ; jj < NKEEP && nt < PARAM_MAXTRIAL ; jj++ ){
      qpar = kpar[ival[jj]] ;                 /* the jj-th best param set */
@@ -1988,11 +1368,13 @@ ENTRY("mri_genalign_scalar_ransetup") ;
          val = fabs(qpar[ii]-cpar[ii]) ; dist = MAX(dist,val) ;
        }
        if( dist < DTHRESH ){  /* too close to cpar ==> skip */
-         if( verb > 1 ) ININFO_message("- skip #%d in trials",ival[jj]) ;
+         if( verb > 1 )
+           ININFO_message("- skip #%2d for twobest: too close to set #%2d",
+                           ival[jj], ival[kk] ) ;
          goto NEXT_jj ;
        }
      }
-     if( verb > 1 ) ININFO_message("- save #%d in trials",ival[jj]) ;
+     if( verb > 1 ) ININFO_message("- save #%2d for twobest",ival[jj]) ;
      for( ii=qq=0 ; qq < stup->wfunc_numpar ; qq++ ){
        if( !stup->wfunc_param[qq].fixed ){
          stup->wfunc_param[qq].val_trial[nt] = stup->wfunc_param[qq].min
@@ -2038,9 +1420,9 @@ ENTRY("mri_genalign_scalar_warpim") ;
    wim = mri_new_conforming( stup->bsim , MRI_float ) ;
    war = MRI_FLOAT_PTR(wim) ;
 
-   oot = outval ; outval = 0.0f ;
+   oot = GA_get_outval() ; GA_set_outval(0.0f) ;
    GA_get_warped_values( 0 , NULL , war ) ;
-   outval = oot ;
+   GA_set_outval(oot) ;
 
    RETURN(wim) ;
 }
@@ -2107,7 +1489,7 @@ ENTRY("mri_genalign_scalar_warpone") ;
    jmw = (float *)calloc(sizeof(float),NPER) ;
    kmw = (float *)calloc(sizeof(float),NPER) ;
 
-   oot = outval ; outval = 0.0f ;
+   oot = GA_get_outval() ; GA_set_outval(0.0f) ;
 
    /*--- do (up to) NPER points at a time ---*/
 
@@ -2141,6 +1523,14 @@ ENTRY("mri_genalign_scalar_warpone") ;
          GA_interp_cubic( inim , npp , imw,jmw,kmw , war+pp ) ;
        break ;
 
+       case MRI_VARP1:
+         GA_interp_varp1( inim , npp , imw,jmw,kmw , war+pp ) ;
+       break ;
+
+       case MRI_WSINC5:
+         GA_interp_wsinc5( inim , npp , imw,jmw,kmw , war+pp ) ;
+       break ;
+
        default:        /* for higher order methods not implemented here */
        case MRI_QUINTIC:
          GA_interp_quintic( inim , npp , imw,jmw,kmw , war+pp ) ;
@@ -2148,7 +1538,7 @@ ENTRY("mri_genalign_scalar_warpone") ;
      }
    }
 
-   outval = oot ;
+   GA_set_outval(oot) ;
 
    /* clip interpolated values to range of target image, if need be */
 
@@ -2291,7 +1681,7 @@ void mri_genalign_set_pgmat( int p ){ pgmat = p; }
 
 /*--------------------------------------------------------------------------*/
 
-static mat44 GA_setup_affine( int npar , float *parvec )
+mat44 GA_setup_affine( int npar , float *parvec )
 {
    mat44 ss,dd,uu,aa,bb , gam ;
    THD_fvec3 vv ;
@@ -2483,6 +1873,7 @@ void mri_genalign_mat44( int npar, float *wpar,
 }
 
 /*--------------------------------------------------------------------------*/
+/*! A wfunc function for bilinear warp alignment. */
 
 void mri_genalign_bilinear( int npar, float *wpar ,
                             int npt , float *xi, float *yi, float *zi ,
@@ -2578,9 +1969,9 @@ void mri_genalign_bilinear( int npar, float *wpar ,
        dd.mat[2][1] =      dd_for[2][1][0]*uu + dd_for[2][1][1]*vv + dd_for[2][1][2]*ww;
        ee = MAT_INV(dd) ;
      } else {
-       ee.mat[0][0] = 1.0f / dd.mat[0][0] ;  /* diagonal dd matrix case */
-       ee.mat[1][1] = 1.0f / dd.mat[1][1] ;
-       ee.mat[2][2] = 1.0f / dd.mat[2][2] ;
+       LOAD_DIAG_MAT( ee , 1.0f / dd.mat[0][0] ,  /* diagonal dd matrix case */
+                           1.0f / dd.mat[1][1] ,
+                           1.0f / dd.mat[2][2]  ) ;
      }
 
      MAT44_VEC( gam , aa,bb,cc, uu,vv,ww ) ;  /* affine part of transformation */
@@ -2640,12 +2031,16 @@ void mri_genalign_set_boxsize( float xbot, float xtop,
    LOAD_DIAG_MAT44(fr_cube,fr_cube_ax,fr_cube_ay,fr_cube_az) ;
    LOAD_MAT44_VEC (fr_cube,fr_cube_bx,fr_cube_by,fr_cube_bz) ;
 
+   if( verb )
+     ININFO_message("Warpfield boxsize: %.1f..%.1f X %.1f..%.1f X %.1f..%.1f",
+                    xbot,xtop , ybot,ytop , zbot,ztop ) ;
+
    return ;
 }
 
 /*--------------------------------------------------------------------------*/
 
-static Warpfield *wfield  = NULL ;
+static Warpfield *wfield = NULL ;
 
 Warpfield * mri_genalign_warpfield_setup( int ttt , float ord , int flags )
 {
@@ -2724,3 +2119,86 @@ void mri_genalign_warpfield( int npar, float *wpar ,
 
    return ;
 }
+
+#if 0
+/****************************************************************************/
+/************** Nonlinear sum of basis fields stored in arrays **************/
+
+static int wsum_npar = 0 ;
+
+static int wsum_nx=0 , wsum_ny=0 , wsum_nz=0 , wsum_nxy=0 , wsum_nxyz=0 ;
+static float wsum_dx , wsum_dy , wsum_dz ;
+
+static float  *wsum_xinit  = NULL ;
+static float  *wsum_yinit  = NULL ;
+static float  *wsum_zinit  = NULL ;
+static float **wsum_xbasis = NULL ;
+static float **wsum_ybasis = NULL ;
+static float **wsum_zbasis = NULL ;
+static float  *wsum_param  = NULL ;
+
+/*--------------------------------------------------------------------------*/
+
+void mri_genalign_warpsum_set_dimen( int   nx, int   ny, int   nz,
+                                     float dx, float dy, float dz )
+{
+   int ii ;
+
+   if( nx < 1 ){ nx = ny = nz = 0 ; }
+
+   wsum_nx = nx ;
+   wsum_ny = ny ; wsum_nxy  = nx*ny ;
+   wsum_nz = nz ; wsum_nxyz = wsum_nx * nz ;
+   wsum_dx = dx ; wsum_dy = dy ; wsum_dz = dz ;
+
+   IFREE(wsum_xinit); IFREE(wsum_yinit); IFREE(wsum_zinit); IFREE(wsum_param);
+
+   if( wsum_xbasis != NULL ){
+     for( ii=0 ; ii < wsum_npar ; ii++ ){
+       IFREE(wsum_xbasis[ii]); IFREE(wsum_ybasis[ii]); IFREE(wsum_zbasis[ii]);
+     }
+     IFREE(wsum_xbasis); IFREE(wsum_ybasis); IFREE(wsum_zbasis);
+   }
+
+   return ;
+}
+
+/*--------------------------------------------------------------------------*/
+/*! A wfunc function for nonlinear transformations. */
+/*--------------------------------------------------------------------------*/
+
+void mri_genalign_warpsum( int npar, float *wpar ,
+                           int npt , float *xi, float *yi, float *zi ,
+                                     float *xo, float *yo, float *zo  )
+{
+   register int ii,jj , pp,qq,rr , pqr ;
+   register float xv,yv,zv , *wp ;
+
+   /** new parameters **/
+
+   if( npar > 0 && wpar != NULL ){
+     memcpy( wsum_param , wpar , sizeof(float)*npar ) ;
+   }
+   wp = wsum_param ;
+
+   /* nothing to transform? */
+
+   if( npt <= 0 || xi == NULL || xo == NULL ) return ;
+
+   /* multiply matrix times input vectors */
+
+   for( ii=0 ; ii < npt ; ii++ ){
+     pp  = (int)xi[ii] ; qq = (int)yi[ii] ; rr = (int)zi[ii] ;
+     pqr = pp + qq*wsum_nx + rr*wsum_nxy ;
+     xv  = wsum_xinit[pqr] ; yv  = wsum_yinit[pqr] ; zv  = wsum_zinit[pqr] ;
+     for( jj=0 ; jj < wsum_npar ; jj++ ){
+       xv += wp[jj] * wsum_xbasis[jj][pqr] ;
+       yv += wp[jj] * wsum_ybasis[jj][pqr] ;
+       zv += wp[jj] * wsum_zbasis[jj][pqr] ;
+     }
+     xo[ii] = xv ; yo[ii] = yv ; zo[ii] = zv ;
+   }
+
+   return ;
+}
+#endif

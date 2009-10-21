@@ -1,6 +1,7 @@
 #ifndef SUMA_DEFINE_INCLUDED
 #define SUMA_DEFINE_INCLUDED
 
+
 #define SUMA_DEF_GROUP_NAME "DefGroup"
 #define SUMA_DEF_TOY_GROUP_NAME "DeDe"
 #define SUMA_DEF_STATE_NAME "Default_state"
@@ -126,7 +127,7 @@
 #define SUMA_TESSCON_DIFF_FLAG    1000   /*!< If aMaxDim - aMinDim > SUMA_TESSCON_DIFF_FLAG in a .iv file, scaling by SUMA_TESSCON_TO_MM is applied */
 
 #define SUMA_WriteCheckWait 400 /*!< Milliseconds to wait for each stream_writecheck call */ 
-#define SUMA_WriteCheckWaitMax 2000 /*!< Milliseconds to try and establish a good WriteCheck */
+#define SUMA_WRITECHECKWAITMAX 2000 /*!< Milliseconds to try and establish a good WriteCheck */
 
 #define SUMA_MAX_N_SURFACE_SPEC 500/*!< Maximum number of surfaces allowed in a spec file */
 
@@ -160,20 +161,26 @@ typedef enum  { SUMA_FT_ERROR = -1, SUMA_FT_NOT_SPECIFIED,
                SUMA_FREE_SURFER, SUMA_FREE_SURFER_PATCH, SUMA_SUREFIT, 
                SUMA_INVENTOR_GENERIC, SUMA_PLY, SUMA_VEC, SUMA_CMAP_SO,
                SUMA_BRAIN_VOYAGER , 
-               SUMA_OPENDX_MESH, SUMA_BYU, SUMA_GIFTI, 
+               SUMA_OPENDX_MESH, SUMA_BYU, SUMA_GIFTI, SUMA_MNI_OBJ,
                   SUMA_N_SO_FILE_TYPE} SUMA_SO_File_Type; /* add types always between SUMA_FT_NOT_SPECIFIED AND SUMA_N_SO_FILE_TYPE */
-typedef enum { SUMA_FF_NOT_SPECIFIED, SUMA_ASCII, SUMA_BINARY, SUMA_BINARY_BE, SUMA_BINARY_LE, SUMA_XML_SURF, SUMA_XML_ASCII_SURF,  SUMA_XML_B64_SURF, SUMA_XML_B64GZ_SURF } SUMA_SO_File_Format;
+typedef enum { SUMA_FF_ERROR = -1, SUMA_FF_NOT_SPECIFIED, SUMA_ASCII, SUMA_BINARY, SUMA_BINARY_BE, SUMA_BINARY_LE, SUMA_XML_SURF, SUMA_XML_ASCII_SURF,  SUMA_XML_B64_SURF, SUMA_XML_B64GZ_SURF } SUMA_SO_File_Format;
 typedef enum { type_not_set = -1,
                no_type, SO_type, AO_type, ROIdO_type, ROIO_type, 
-               GO_type, LS_type, OLS_type, NBV_type, ONBV_type, SP_type,
+               GO_type, LS_type, NBLS_type, OLS_type, NBOLS_type,
+               NBV_type, ONBV_type, SP_type,
                NBSP_type, PL_type,
-               NBT_type, SBT_type, DBT_type} SUMA_DO_Types;   
+               NBT_type, SBT_type, DBT_type, /*!< Those three will 
+                                                   likely not be used */
+               NIDO_type } SUMA_DO_Types;   
 
 /*!< Displayable Object Types 
                                                                                     S: surface, A: axis, G: grid, 
                                                                                     ROId: Region of interest drawn type,
                                                                                     LS_type: line segment
-                                                                                    OLS_type: oriented line segment
+                                                                                    NBLS_type: Node-based line segment
+                 
+  OLS_type: oriented line segment
+                                                                                    NBOLS_type: Node-based oriented line segment
                                                                                     NBV_type: Node-Based vector (displayed as a line from node)
                                                                                     ONBV_type: NBV with a ball on the bottom (slower to render)
                                                                                     SP_type: spherical markers
@@ -183,9 +190,34 @@ typedef enum { type_not_set = -1,
                                                                                     SBT_type: Screen-based text
                                                                                     DBT_type: Dicom-based text
                                                                                     */
-typedef enum {SUMA_SCREEN, SUMA_LOCAL} SUMA_DO_CoordType; /*!< Coordinate system that Displayable object is attached to
-                                                                  SCREEN is for a fixed system, LOCAL is for a mobile system,
-                                                                  ie one that is rotated by the mouse movements */
+typedef enum { SUMA_COORD_TYPE_ERROR=0, 
+                  SUMA_SCREEN, 
+                  SUMA_WORLD} SUMA_DO_CoordType; /*!< Coordinate system that 
+                          Displayable object that is attached to SCREEN is for a
+                          fixed system, WORLD is for a mobile system, ie one 
+                          that is rotated by the mouse movements */
+typedef enum { SUMA_COORD_UNITS_ERROR=0,
+               SUMA_NORM_SCREEN_UNIT, /* XYZ coordinates between [0,1] relative
+                                       to the drawing screen X Y are the fixed
+                                       eye axes and Z is 1 closest to users and
+                                       Z = 0 is all the way back. Z=0.5 is where
+                                       the fixed eye axes lies. To display an 
+                                       object at such a location, it needs to be
+                                       transformed to SUMA_WORLD_UNIT with the 
+                                       function SUMA_NormScreenToWorld. If the
+                                       latter function is called with only the 
+                                       projection matrix set, i.e. before the                                           rotation and translations are applied,
+                                       as is done when SUMA_DO_CoordType is set 
+                                       to SUMA_SCREEN then the location does not
+                                       move with moving surface (mouse 
+                                       movements). If SUMA_DO_CoordType is set 
+                                       to SUMA_WORLD then the transformed 
+                                       location will track moving surface 
+                                       because rotation and translation matrices
+                                       are taken into account. */
+              SUMA_WORLD_UNIT }   SUMA_DO_CoordUnits;                      
+          
+                                       
 typedef enum {SUMA_SOLID_LINE, SUMA_DASHED_LINE} SUMA_STIPPLE;
 
 typedef enum {SUMA_Button_12_Motion, SUMA_Button_2_Shift_Motion, SUMA_Button_1_Motion, SUMA_Button_2_Motion, SUMA_Button_3_Motion} SUMA_MOTION_TYPES; /*!< Types of mouse motion */
@@ -207,16 +239,17 @@ typedef enum { SE_Empty,
                SE_ToggleLockAllCrossHair, SE_SetLockAllCrossHair, 
                SE_ToggleLockView, SE_ToggleLockAllViews, 
                SE_Load_Group, SE_Home_AllVisible, SE_Help, SE_Help_Cmap, 
-               SE_Help_Plot, SE_Log,
+               SE_Help_Plot, SE_Help_Xform, SE_Log,
                SE_UpdateLog, SE_SetRenderMode, SE_OpenDrawROI,
                SE_RedisplayNow_AllVisible, SE_RedisplayNow_AllOtherVisible,  
                SE_SetLight0Pos, SE_OpenColFileSelection,
                SE_SaveDrawnROIFileSelection, SE_OpenDrawnROIFileSelection, 
+               SE_SaveXformOptsFileSelection, SE_OpenXformOrtFileFileSelection,
                SE_SendColorMapToAfni, SE_SaveSOFileSelection,
                SE_SetSOinFocus, SE_StartListening, SE_LoadViewFileSelection, 
                SE_SaveViewFileSelection, SE_LoadSegDO,
                SE_OpenDsetFileSelection, SE_OpenCmapFileSelection, SE_SetClip, 
-               SE_OpenDsetFile, SE_OneOnly, SE_OpenSurfCont,
+               SE_OpenDsetFile, SE_OpenColFile, SE_OneOnly, SE_OpenSurfCont,
                SE_SetSurfCont, SE_SetViewerCont, SE_SetRecorderCont,
                SE_BadCode} SUMA_ENGINE_CODE; /* DO not forget to modify SUMA_CommandCode */
 typedef enum { SE_niEmpty,
@@ -475,15 +508,15 @@ typedef struct {
                            This overrides DimFact in SUMA_OVERLAYS*/
    SUMA_Boolean MaskZero; /*!<   values equal to zero will be masked 
                                  no matter what */
-   float ThreshRange[2]; /*!< Thresholding range.  */
+   double ThreshRange[2]; /*!< Thresholding range.  */
    float ThreshStats[2]; /*!<  Thresholding statistics, 
                               ThreshStats[0] = p(ThreshRange[0])
                               ThreshStats[1] = q(ThreshRange[0]) */
-   float IntRange[2]; /*!< nodes with values <= Range[0] are 
+   double IntRange[2]; /*!< nodes with values <= Range[0] are 
                            given the first color in the color map, 
                            values >= Range[1] get the last color in the map
                             (USED to be called ClipRange*/
-   float BrightRange[2]; /*!< Same as IntRange but for brightness 
+   double BrightRange[2]; /*!< Same as IntRange but for brightness 
                               modulating column */
    float BrightMap[2]; /*!<   BrightRange[0] is mapped to BrightMap[0],
                               BrightRange[1] is mapped to BrightMap[1] */
@@ -497,7 +530,7 @@ typedef struct {
    SUMA_THRESH_MODE ThrMode;  /*!< how to apply the thresholding */
    SUMA_Boolean UseBrt; /*!< use or ignore bind */
    SUMA_WIDGET_INDEX_COORDBIAS DoBias;  /*!< use coordinate bias */
-   float CoordBiasRange[2]; /*!< Same as IntRange but for brightness 
+   double CoordBiasRange[2]; /*!< Same as IntRange but for brightness 
                                  modulating column */
    float *BiasVect; /*!< A vector of values to add to the coordinates 
                          of the mesh */
@@ -514,6 +547,7 @@ typedef struct {
    SUMA_Boolean Show; /*!< if YUP then this overlay enters the composite color map */
    char *Name; /*!< name of ovelay, CONVEXITY or Functional or areal boundaries perhaps. The Name can be a filename with path*/
    char *Label; /*!< Usually the same as Name without any existing path */
+      
       /* These can't just come from dset_link because as you change the threshold, and other parameters 
       some nodes may not get colored so the NodeDef list will differ from that in dset.
       The macros COLP_NODEDEF, COLP_N_NODEDEF and COLP_N_ALLOC will be redefined
@@ -542,7 +576,7 @@ typedef struct {
    float DimFact;    /*!< a scaling factor applied to the colors in ColVec 
                            This is overriden by BrightFact in OptScl which is
                            defined for non-explicitly colored planes*/
-   float ForceIntRange[2]; /*!< Use values here to set OptScl->IntRange instead of the true
+   double ForceIntRange[2]; /*!< Use values here to set OptScl->IntRange instead of the true
                                  range of values in the dataset.
                                  The idea is to allow particular settings for the autoranging 
                                  options that are not from the dset's min to max.
@@ -559,6 +593,7 @@ typedef struct {
    
    MEM_topshell_data *rowgraph_mtd;
    int rowgraph_num;
+   
 } SUMA_OVERLAYS;
 
 
@@ -679,147 +714,57 @@ typedef struct {
 Stucture to hold the contents of the specs file 
 */
 typedef struct {
-   char SurfaceType[SUMA_MAX_N_SURFACE_SPEC][SUMA_MAX_LABEL_LENGTH];    /*!< Type of surface loaded: 
-                                                                        FreeSurfer, SureFit/Caret, 1D format, inventor, Ply */ 
-   char SurfaceFormat[SUMA_MAX_N_SURFACE_SPEC][SUMA_MAX_LABEL_LENGTH];  /*!< ASCII or Binary */
-   char TopoFile[SUMA_MAX_N_SURFACE_SPEC][SUMA_MAX_FP_NAME_LENGTH]; /*!< Surface Topology (mesh) file 
-                                                                     renamed from SureFitTopo because 1D uses it too */ 
-   char CoordFile[SUMA_MAX_N_SURFACE_SPEC][SUMA_MAX_FP_NAME_LENGTH]; /*!< Surface Coordinate (XYZ) file
-                                                                      renamed from SureFitCoord because 1D uses it too  */ 
-   char MappingRef[SUMA_MAX_N_SURFACE_SPEC][SUMA_MAX_FP_NAME_LENGTH]; /*!< Becoming obsolete. Jan 2 03 */
-   char SureFitVolParam[SUMA_MAX_N_SURFACE_SPEC][SUMA_MAX_FP_NAME_LENGTH]; /*!< For SureFit only: Name of file containing anatomical
-                                                                             coordinates modification. */
-   char SurfaceFile[SUMA_MAX_N_SURFACE_SPEC][SUMA_MAX_FP_NAME_LENGTH];  /*!< File containing topology and geometry of surface. */
-   char VolParName[SUMA_MAX_N_SURFACE_SPEC][SUMA_MAX_FP_NAME_LENGTH];   /*!< Now known as surface volume in the documentation 
-                                                                          This is the volume from which the surface was created,
-                                                                          aligned to the experiment's data. Alignment transforms
-                                                                          added by 3dVolreg or 3dAnatNudge that are stored in this 
-                                                                          volume ar applied to the surface. Also, tlrc transforms of
-                                                                          this volume can be applied to the surface. */
-   char *IDcode[SUMA_MAX_N_SURFACE_SPEC];                            /*!< Unique identifier for the surface object */
-   char State[SUMA_MAX_N_SURFACE_SPEC][SUMA_MAX_LABEL_LENGTH];       /*!< Geometrical state of the surface. For example:
-                                                                           pial, white, inflated, spherical, etc... */
-                                                                           
-   char Group[SUMA_MAX_N_SURFACE_SPEC][SUMA_MAX_LABEL_LENGTH];        /*!< Some identifier, best thought of as the name of 
-                                                                           the subject */
-   char SurfaceLabel[SUMA_MAX_N_SURFACE_SPEC][SUMA_MAX_LABEL_LENGTH]; /*!< A user defined "short" label to use in GUI */
-   int EmbedDim[SUMA_MAX_N_SURFACE_SPEC];                            /*!< 2 for flat surfaces, 3 for 3D dwelling ones. */
-   
-   /* modifications to the lame MappingRef field */
-   char AnatCorrect[SUMA_MAX_N_SURFACE_SPEC][SUMA_MAX_LABEL_LENGTH];    /*!< Does surface geometry match the anatomy ?*/
-   char Hemisphere[SUMA_MAX_N_SURFACE_SPEC][SUMA_MAX_LABEL_LENGTH];     /*!< Left/Right */
-   char DomainGrandParentID[SUMA_MAX_N_SURFACE_SPEC][SUMA_MAX_LABEL_LENGTH];   /*!< Grandparent's mesh ID 
-                                                                                    (icosahedron's for std-meshes) */
-   char OriginatorID[SUMA_MAX_N_SURFACE_SPEC][SUMA_MAX_LABEL_LENGTH];   /*!<  ID common to surfaces from one subject that are created
-                                                                              at one point in time. Surfaces of the same subject,
-                                                                              created at different points in time (like in a longitudinal
-                                                                              study) will have differing OriginatorID fields */
-   char LocalCurvatureParent[SUMA_MAX_N_SURFACE_SPEC][SUMA_MAX_FP_NAME_LENGTH];   /*!<  Name of surface (in current spec file)
-                                                                                 from which the curvature will be borrowed.
-                                                                                 The LocalCurvatureParent must be isotopic to 
-                                                                                 the child surface. This Parent used to be
-                                                                                 the MappingRef field*/
-   char LocalDomainParent[SUMA_MAX_N_SURFACE_SPEC][SUMA_MAX_FP_NAME_LENGTH];       /*!< Name of surface (in current spec file)
-                                                                                 from which EdgeLists and other shared information
-                                                                                 will be borrowed. This field used to be 
-                                                                                 the MappingRef field. Naturally, Parent and 
-                                                                                 Child must be isotopic.
-                                                                                 You must have at least one of the surfaces loaded
-                                                                                 into SUMA be the Parent. Use SAME for this field when
-                                                                                 a surface is a LocalDomainParent.
-                                                                                 */
-   #if 0
-   /* Not being used yet, but in the SurfaceObject structure */
-   int NodeDim; /*!< 3 for nodes specified in 3D, 2 for X,Y only (not really supported...) */
-   int MeshDim; /*!< 3 for triangles, 4 for quadrilaterals (not quite supported) */
-   /* you can also envision ID fields that point to surface attributes that are time consuming 
-   to calculate and do not change often. I use none at the moment, but will do so, perhaps in the future.
-   For example:
-   A sorted EdgeList (for fast topological shenanigans, I swear by this one)
-   A node curvature list,
-   Interpolation weights,
-   Datasets containing ROI or parcellation information  
-   etc...
-   */  
-   #endif
-   
-   int N_Surfs;                                                      /*!< Number of surfaces, in the spec file */
-   int N_States;                                                     
-   int N_Groups;
-   char StateList[SUMA_MAX_N_SURFACE_SPEC*100];
-   char SpecFilePath[SUMA_MAX_DIR_LENGTH];
-   char SpecFileName[SUMA_MAX_NAME_LENGTH];
-} SUMA_SurfSpecFile_OLD_DELETEME_SOON;
-
-/*! 
-Stucture to hold the contents of the specs file 
-*/
-typedef struct {
    char **SurfaceType;    /*!< Type of surface loaded: 
-                                                                        FreeSurfer, SureFit/Caret, 1D format, inventor, Ply */ 
+                               FreeSurfer, SureFit/Caret, 1D format, 
+                               inventor, Ply */ 
    char **SurfaceFormat;  /*!< ASCII or Binary */
    char **TopoFile; /*!< Surface Topology (mesh) file 
-                                                                     renamed from SureFitTopo because 1D uses it too */ 
+                         renamed from SureFitTopo because 1D uses it too */ 
    char **CoordFile; /*!< Surface Coordinate (XYZ) file
-                                                                      renamed from SureFitCoord because 1D uses it too  */ 
+                          renamed from SureFitCoord because 1D uses it too  */ 
    char **MappingRef; /*!< Becoming obsolete. Jan 2 03 */
-   char **SureFitVolParam; /*!< For SureFit only: Name of file containing anatomical
-                                                                             coordinates modification. */
+   char **SureFitVolParam; /*!<  For SureFit only: Name of file containing 
+                                 anatomical coordinates modification. */
    char **SurfaceFile;  /*!< File containing topology and geometry of surface. */
    char **VolParName;   /*!< Now known as surface volume in the documentation 
-                                                                          This is the volume from which the surface was created,
-                                                                          aligned to the experiment's data. Alignment transforms
-                                                                          added by 3dVolreg or 3dAnatNudge that are stored in this 
-                                                                          volume ar applied to the surface. Also, tlrc transforms of
-                                                                          this volume can be applied to the surface. */
-   char **IDcode;                            /*!< Unique identifier for the surface object */
+                             This is the volume from which the surface was 
+                             created, aligned to the experiment's data. Alignment                              transforms added by 3dVolreg or 3dAnatNudge that are                              stored in this volume ar applied to the surface.  
+                             Also, tlrc transforms of this volume can be applied 
+                             to the surface. */
+   char **IDcode;      /*!< Unique identifier for the surface object */
    char **State;       /*!< Geometrical state of the surface. For example:
-                                                                           pial, white, inflated, spherical, etc... */
+                            pial, white, inflated, spherical, etc... */
                                                                            
    char **Group;        /*!< Some identifier, best thought of as the name of 
-                                                                           the subject */
+                             the subject */
    char **SurfaceLabel; /*!< A user defined "short" label to use in GUI */
-   int *EmbedDim;                            /*!< 2 for flat surfaces, 3 for 3D dwelling ones. */
+   int *EmbedDim;       /*!< 2 for flat surfaces, 3 for 3D dwelling ones. */
    
    /* modifications to the lame MappingRef field */
    char **AnatCorrect;    /*!< Does surface geometry match the anatomy ?*/
    char **Hemisphere;     /*!< Left/Right */
    char **DomainGrandParentID;   /*!< Grandparent's mesh ID 
-                                                                                    (icosahedron's for std-meshes) */
-   char **OriginatorID;   /*!<  ID common to surfaces from one subject that are created
-                                                                              at one point in time. Surfaces of the same subject,
-                                                                              created at different points in time (like in a longitudinal
-                                                                              study) will have differing OriginatorID fields */
+                                    (icosahedron's for std-meshes) */
+   char **OriginatorID;   /*!<  ID common to surfaces from one subject that are 
+                                 created at one point in time. Surfaces of the 
+                                 same subject, created at different points in 
+                                 time (like in a longitudinal study) will have 
+                                 differing OriginatorID fields */
    char **LocalCurvatureParent;   /*!<  Name of surface (in current spec file)
-                                                                                 from which the curvature will be borrowed.
-                                                                                 The LocalCurvatureParent must be isotopic to 
-                                                                                 the child surface. This Parent used to be
-                                                                                 the MappingRef field*/
+                      from which the curvature will be borrowed.
+                      The LocalCurvatureParent must be isotopic to 
+                      the child surface. This Parent used to be
+                      the MappingRef field*/
    char **LocalDomainParent;       /*!< Name of surface (in current spec file)
-                                                                                 from which EdgeLists and other shared information
-                                                                                 will be borrowed. This field used to be 
-                                                                                 the MappingRef field. Naturally, Parent and 
-                                                                                 Child must be isotopic.
-                                                                                 You must have at least one of the surfaces loaded
-                                                                                 into SUMA be the Parent. Use SAME for this field when
-                                                                                 a surface is a LocalDomainParent.
-                                                                                 */
-   #if 0
-   /* Not being used yet, but in the SurfaceObject structure */
-   int NodeDim; /*!< 3 for nodes specified in 3D, 2 for X,Y only (not really supported...) */
-   int MeshDim; /*!< 3 for triangles, 4 for quadrilaterals (not quite supported) */
-   /* you can also envision ID fields that point to surface attributes that are time consuming 
-   to calculate and do not change often. I use none at the moment, but will do so, perhaps in the future.
-   For example:
-   A sorted EdgeList (for fast topological shenanigans, I swear by this one)
-   A node curvature list,
-   Interpolation weights,
-   Datasets containing ROI or parcellation information  
-   etc...
-   */  
-   #endif
+                       from which EdgeLists and other shared information                                 will be borrowed. This field used to be 
+                       the MappingRef field. Naturally, Parent and 
+                       Child must be isotopic.
+                       You must have at least one of the surfaces loaded
+                       into SUMA be the Parent. Use SAME for this field when
+                       a surface is a LocalDomainParent.
+                      */
    
-   int N_Surfs;                                                      /*!< Number of surfaces, in the spec file */
+   int N_Surfs;         /*!< Number of surfaces, in the spec file */
    int N_States;                                                     
    int N_Groups;
    char *StateList;
@@ -1007,7 +952,9 @@ typedef struct {
    
    SUMA_ASSEMBLE_LIST_STRUCT *ALS; /*!< structure containing the list of strings shown in the widget and the pointers 
                                        of the objects the list refers to*/ 
-   int lastitempos; 
+   int lastitempos;
+   
+   int width; /* initial width in pixels of list area (excluding margins) */ 
 } SUMA_LIST_WIDGET;
 
 /*! structure containing widgets for surface viewer controllers ViewCont */
@@ -1121,10 +1068,12 @@ typedef struct{
    int cell_modified; /*!< set to 1D index (column major) of cell_value edited, 
                            i = cell_modified % Ni, j = cell_modified / Ni 
                            cell_modified = j * Ni + i */
+   SUMA_NUMERICAL_UNITS num_units;
 } SUMA_TABLE_FIELD;
 
 typedef struct {
    Widget cmap_wid;  /*! GLXAREA widget for displaying colormap */
+   int CrappyDrawable;
    float FOV;  /*! FOV for viewing colormap */
    GLXContext cmap_context;   /* graphic context for cmap */
    float translateVec[3];
@@ -1143,6 +1092,9 @@ typedef struct {
    int N_links;   /*!< Number of links to this pointer */
    char owner_id[SUMA_IDCODE_LENGTH];   /*!< The id of whoever created that pointer. Might never get used.... */
    
+   int Open; /*!< Flag indicating that controller is open 
+                  This was introduced to help deal with crashes on 
+                  OS X 10.5 and 10.6*/
    Widget TopLevelShell;/*!< Top level shell for a Surface's controller */
    Widget PosRef; /*!< reference position widget */
    Widget Mainform; /*!< main form, child of TopLevelShell */
@@ -1238,6 +1190,7 @@ typedef struct {
 typedef struct {
    Widget AppShell; /*!< AppShell widget for the DrawROI window*/ 
    Widget DrawROImode_tb; /*!< widget for toggling draw ROI mode */
+   Widget ContROImode_tb;
    Widget Penmode_tb;   /*!< widget for toggling draw with Pen mode */
    Widget AfniLink_tb; /*!< widget for toggling link to Afni */
    Widget ParentLabel_lb; /*!< widget for specifying a label for the parent surface */ 
@@ -1274,47 +1227,73 @@ typedef struct {
    Colormap CMAP;
    Bool DOUBLEBUFFER;
    char *Title; 
-   int REDISPLAYPENDING;
+   int REDISPLAYPENDING, CrappyDrawable;
    int WIDTH, HEIGHT;
    XtWorkProcId REDISPLAYID;
    XtIntervalId MOMENTUMID;
    GC gc;
-   SUMA_X_ViewCont *ViewCont; /*!< pointer to structure containing viewer controller widget structure */
-   Widget ToggleCrossHair_View_tglbtn; /*!< OBSOLETE Toggle button in View-> menu */
+   SUMA_X_ViewCont *ViewCont; /*!< pointer to structure containing viewer 
+                                    controller widget structure */
+   Widget ToggleCrossHair_View_tglbtn; /*!< OBSOLETE Toggle button in 
+                                             View-> menu */
    Widget FileMenu[SW_N_File]; /*!< Vector of widgets under File Menu */       
    Widget ToolsMenu[SW_N_Tools]; /*!< Vector of widgets under File Menu */       
    Widget ViewMenu[SW_N_View]; /*!< Vector of widgets under View Menu */
    Widget HelpMenu[SW_N_Help]; /*!< Vector of widgets under Help Menu */
-   SUMA_PROMPT_DIALOG_STRUCT *LookAt_prmpt; /*!< structure for the LookAt dialog */
-   SUMA_PROMPT_DIALOG_STRUCT *SetRot_prmpt; /*!< structure for the set rotation dialog */
-   SUMA_PROMPT_DIALOG_STRUCT *JumpIndex_prmpt; /*!< structure for the Jump To Index dialog */
-   SUMA_PROMPT_DIALOG_STRUCT *JumpXYZ_prmpt; /*!< structure for the Jump To XYZ dialog */
-   SUMA_PROMPT_DIALOG_STRUCT *JumpFocusNode_prmpt; /*!< structure for setting the Focus Node dialog */
-   SUMA_PROMPT_DIALOG_STRUCT *JumpFocusFace_prmpt; /*!< structure for setting the Focus FaceSet dialog */
-   SUMA_PROMPT_DIALOG_STRUCT *HighlightBox_prmpt; /*!<  structure for highlighting nodes in Box dialog */ 
+   SUMA_PROMPT_DIALOG_STRUCT *LookAt_prmpt; /*!< structure for LookAt dialog */
+   SUMA_PROMPT_DIALOG_STRUCT *SetRot_prmpt; /*!< structure for set rotation 
+                                                dialog */
+   SUMA_PROMPT_DIALOG_STRUCT *JumpIndex_prmpt; /*!< structure for the 
+                                                   Jump To Index dialog */
+   SUMA_PROMPT_DIALOG_STRUCT *JumpXYZ_prmpt; /*!< structure for the 
+                                                   Jump To XYZ dialog */
+   SUMA_PROMPT_DIALOG_STRUCT *JumpFocusNode_prmpt; /*!< structure for setting the                                                         Focus Node dialog */
+   SUMA_PROMPT_DIALOG_STRUCT *JumpFocusFace_prmpt; /*!< structure for setting the                                                         Focus FaceSet dialog */
+   SUMA_PROMPT_DIALOG_STRUCT *HighlightBox_prmpt; /*!<  structure for 
+                                             highlighting nodes in Box dialog */ 
 }SUMA_X;
 
 /*! structure containg X vars common to all viewers */
 typedef struct {
-   SUMA_X_SumaCont *SumaCont; /*!< structure containing widgets for Suma's controller */
-   SUMA_X_DrawROI *DrawROI; /*!< structure containing widgets for DrawROI window */
+   SUMA_X_SumaCont *SumaCont; /*!< structure containing widgets 
+                                    for Suma's controller */
+   SUMA_X_DrawROI *DrawROI; /*!< structure containing widgets for 
+                                 DrawROI window */
    XtAppContext App; /*!< Application Context for SUMA */
    Display *DPY_controller1; /*!< Display of 1st controller's top level shell */
-   SUMA_XRESOURCES X_Resources; /*!< flag specifying the types of resources to use */
-   SUMA_CREATE_TEXT_SHELL_STRUCT *Help_TextShell; /*!< structure containing widgets and options of SUMA_help window */
-   SUMA_CREATE_TEXT_SHELL_STRUCT *Help_Cmap_TextShell; /*!< structure containing widgets and options of colormap help window */
+   SUMA_XRESOURCES X_Resources; /*!< flag specifying the types of 
+                                    resources to use */
+   SUMA_CREATE_TEXT_SHELL_STRUCT *Help_TextShell; /*!< structure containing 
+                                    widgets and options of SUMA_help window */
+   SUMA_CREATE_TEXT_SHELL_STRUCT *Help_Cmap_TextShell; /*!< structure containing
+                                 widgets and options of colormap help window */
    SUMA_CREATE_TEXT_SHELL_STRUCT *Help_Plot_TextShell;
-   SUMA_CREATE_TEXT_SHELL_STRUCT *Log_TextShell; /*!<  structure containing widgets and options of SUMA_log window */
-   SUMA_SELECTION_DIALOG_STRUCT *FileSelectDlg; /*!< structure containing widgets and options of a generic file selection dialog */
-   SUMA_PROMPT_DIALOG_STRUCT *N_ForeSmooth_prmpt; /*!< structure for the number of foreground smoothingLookAt dialog */
-   int NumForeSmoothing;   /*!< Number of steps for smoothing the foreground colors 
-                                 prior to mixing with background. Default is set
-                                 by environment variable SUMA_NumForeSmoothing which 
-                                 is set to 0 (No smoothing). */
-   SUMA_Boolean WarnClose; /*!< Pops up a window to double check before SUMA quits */
+   SUMA_CREATE_TEXT_SHELL_STRUCT *Log_TextShell; /*!<  structure containing
+                                       widgets and options of SUMA_log window */
+   SUMA_SELECTION_DIALOG_STRUCT *FileSelectDlg; /*!< structure containing widgets
+                              and options of a generic file selection dialog */
+   SUMA_PROMPT_DIALOG_STRUCT *N_ForeSmooth_prmpt; /*!< structure for the number  
+                           of foreground smoothing dialog */
+   SUMA_PROMPT_DIALOG_STRUCT *N_FinalSmooth_prmpt; /*!< structure for the number 
+                           of final smoothing dialog */
+   int NumForeSmoothing;   /*!< Number of steps for smoothing the foreground  
+                                colors prior to mixing with background. Default 
+                                is set by environment variable 
+                                SUMA_NumForeSmoothing which 
+                                is set to 0 (No smoothing). */
+   int NumFinalSmoothing;   /*!< Number of steps for smoothing the blended  
+                                colors (after foreground is mixed with
+                                background). Default 
+                                is set by environment variable 
+                                SUMA_NumFinalSmoothing which 
+                                is set to 0 (No smoothing). */
+   SUMA_Boolean WarnClose; /*!< Pops up a window to double check 
+                                 before SUMA quits */
    SUMA_LIST_WIDGET *SwitchCmapLst; /*!< list widget for switching colormaps */
-   SUMA_PROMPT_DIALOG_STRUCT *Clip_prmpt; /*!< structure for the LookAt dialog */
-   SUMA_PROMPT_DIALOG_STRUCT *ClipObj_prmpt; /*!< structure for the LookAt dialog */
+   SUMA_PROMPT_DIALOG_STRUCT *Clip_prmpt; /*!< structure for clipping dialog */
+   SUMA_PROMPT_DIALOG_STRUCT *ClipObj_prmpt; /*!< structure for clip obj dialg */
+   
+   XmFontList TableTextFontList; /*! Font list for table's text fields */
 }SUMA_X_AllView;
 
 /*! structure defining a cross hair */
@@ -1359,33 +1338,17 @@ typedef struct {
    GLfloat NormVect[3]; /*!< normal vector of faceset, two triangles are drawn at a small distance from the selected FaceSet */
 }SUMA_FaceSetMarker;
 
+
 /*!
-   Structure containg a bunch of text defined at various locations
+   Structure containing NIML formatted displayable objects
 */
 typedef struct {
    char *idcode_str;    /*!< unique idcode for DO */
    char *Label; /*!< ascii label for DO */ 
    SUMA_DO_Types do_type;
    
-   int NodeBased; /*!< flag: 1 if text is displayed relative to surface nodes */
-   char *Parent_idcode_str; /*!< Parent surface's id 
-                                 (only used if NodeBased = 1
-                                 NULL if NodeBased)*/
-   int *NodeID; /*!< ID of the node at which the vector is represented
-                     NULL if NodeBased = 0 */
-
-   char **text; /*! vector containing N_n strings */
-   GLfloat *x; /*!< vector containing XYZ of text locations (3*N_n elements long)
-                     NULL if NodeBased*/
-   int N_n; /*!< Number of elements in x */
-   void *FontSize; /*!< Common FontSize of all text 
-                     (based on constants in glut.h) */
-   GLfloat FontCol[4]; /*!< Common FontColor of all text*/
-   int *colv; /*!< Vector of text colors, 4 elements per segment. 
-                        NULL if using LineCol */
-   void **sizev; /*!< Vector of text size, 1 elements per segment. 
-                        NULL if using LineWidth */   
-} SUMA_TextDO;
+   NI_group *ngr;
+} SUMA_NIDO;
 
 /*!
    Structure containg a bunch of segments defined between n0 and n1
@@ -1401,7 +1364,8 @@ typedef struct {
                                  NULL if NodeBased)*/
    int *NodeID; /*!< ID of the node at which the vector is represented
                      NULL if NodeBased = 0 */
-
+   int *NodeID1; /*!< Used to define the 2 node of vectors that are fully
+                      nodebased */
    GLfloat *n0; /*!< vector containing XYZ of nodes 1 (3*N_n elements long)
                      NULL if NodeBased*/
    GLfloat *n1; /*!< vector containing XYZ of nodes 2 (3*N_n elements long)*/
@@ -1458,7 +1422,8 @@ typedef struct {
    char *Label; /*!< ascii label for DO */ 
    SUMA_DO_Types do_type;
    
-   int NodeBased; /*!< flag: 1 if segments are formed by vectors at surface nodes */
+   int NodeBased; /*!< flag: 1 if segments are formed by 
+                        vectors at surface nodes */
    char *Parent_idcode_str; /*!< Parent surface's id 
                                  (only used if NodeBased = 1
                                  NULL if NodeBased)*/
@@ -1627,6 +1592,28 @@ typedef struct {
 
 typedef enum {  SUMA_NO_WAX, SUMA_THREE_WAX, SUMA_THREE_TEXT_WAX, SUMA_BOX_WAX, SUMA_BOX_TEXT_WAX, SUMA_N_WAX_OPTIONS } SUMA_WORLD_AXIS_TOGGLE_METHODS;
 /*! structure defining the state of a viewer window */
+
+typedef struct {
+   int DEPTH_TEST;
+   int TEXTURE_3D_EXT;
+   int TEXTURE_3D;
+   int TEXTURE_GEN_S;
+   int TEXTURE_GEN_T;
+   int TEXTURE_GEN_R;
+   int CLIP_PLANE0;
+   int CLIP_PLANE1;
+   int CLIP_PLANE2;
+   int CLIP_PLANE3;
+   int CLIP_PLANE4;
+   int CLIP_PLANE5;
+   int LIGHTING;
+   int LIGHT0;
+   int LIGHT1;
+   int LIGHT2;
+   int BLEND;
+} SUMA_EnablingRecord;
+
+
 typedef struct {
    int N_DO;      /*!< Total number of surface objects registered with the viewer */
    int *RegisteredDO;    /*!< RegisteredDO[i] (i=0..N_DO) contains Object indices into DOv for DOs visible in the surface viewer*/
@@ -1656,6 +1643,8 @@ typedef struct {
    float ArrowRotationAngle; /*!< Angle to rotate surface by when arrows are used.
                                  Units are in radians */
    float KeyZoomGain; /*!< gain for zooming in and out with the 'z' and 'Z' keys. Typical range from 0 to 0.5. Must be < 1*/
+   float KeyNodeJump; /*!< Number of node jumps to do in response to 'alt+arrow'
+                           clicks. Default is 1 */
    byte BF_Cull; /*!< flag for backface culling */
    SUMA_RENDER_MODES PolyMode; /*!< polygon viewing mode, SRM_Fill, SRM_Line, SRM_Points
                                     There is a similar field for each surface object to 
@@ -1726,17 +1715,23 @@ typedef struct {
    SUMA_REDISPLAY_CAUSE rdc;  /*!< Why has a redisplay been requested */
    SUMA_BLEND_MODES Blend_Mode; /*!< blending mode */
    int FreezeZoomXstates; /*!< if 1, keep zoom constant across states */
+   
+   int Do_3Drender;
+   SUMA_EnablingRecord SER;
 } SUMA_SurfaceViewer;
 
 /*! structure defining an EngineData structure */
 typedef struct {
-   SUMA_ENGINE_CODE CommandCode; /*!< Code of command to be executed by SUMA_Engine function, 
-                                    this is the same as the _Dest fields for each variable type.
-                                    However, the _Dest fields are left as a way to make sure that
-                                    the user has correctly initialized EngineData for a certain command.*/
+   SUMA_ENGINE_CODE CommandCode; /*!< Code of command to be executed by 
+         SUMA_Engine function, 
+         this is the same as the _Dest fields for each variable type.
+         However, the _Dest fields are left as a way to make sure that
+         the user has correctly initialized EngineData for a certain command.*/
    
-   void *Srcp; /*!< Pointer to data structure of the calling source, typically, a typecast version of SUMA_SurfaceViewer * */
-   SUMA_ENGINE_SOURCE Src; /*!< Source of command. This replaces the _Source fields in the older version of the structure */
+   void *Srcp; /*!<  Pointer to data structure of the calling source, 
+                     typically, a typecast version of SUMA_SurfaceViewer * */
+   SUMA_ENGINE_SOURCE Src; /*!<  Source of command. This replaces the _Source 
+                                 fields in the older version of the structure */
    
    float fv3[3]; /*!< Float vector, 3 values */
    SUMA_ENGINE_CODE fv3_Dest; /*!<  float3 vector destination */
@@ -1784,7 +1779,8 @@ typedef struct {
    SUMA_ENGINE_CODE cp_Dest; /*!< character pointer destination */
    
    float **fm; /*!< float matrix pointer */
-   SUMA_Boolean fm_LocalAlloc; /*!< Locally allocated matrix pointer ? (if it is then it is freed in SUMA_ReleaseEngineData ) */
+   SUMA_Boolean fm_LocalAlloc; /*!< Locally allocated matrix pointer ? 
+                  (if it is then it is freed in SUMA_ReleaseEngineData ) */
    SUMA_ENGINE_CODE fm_Dest; /*!<  destination of fm */
    SUMA_ENGINE_SOURCE fm_Source; /*!< OBSOLETE source of fm*/
    
@@ -2040,6 +2036,9 @@ typedef struct {
    
    int N_patchNode; /*!<   Number of nodes used in the mesh. 
                            For patches, this number is < SO->N_Node */
+   byte *patchNodeMask; /*!< if not NULL, then if patchNodeMask[i] then
+                              that node is part of the patch. Else it is not.
+                              i goes from 0 to SO->N_Node */
    float patchCenter[3];  /*!< The centroid of the surface 
                               (using all the nodes in FaceSetList)*/
    float patchMaxDims[3];      /*!< The maximum along each of the XYZ dimensions
@@ -2110,7 +2109,9 @@ typedef struct {
    
    SUMA_X_SurfCont *SurfCont;/*!< pointer to structure containing surface  
                                   controller widget structure */
-   
+   NI_element *texnel;  /*!< a copy of a pointer to a texture element.
+                         This should be set only before drawing and turned
+                         back to NULL immediately after that */
 }SUMA_SurfaceObject; /*!< \sa Alloc_SurfObject_Struct in SUMA_DOmanip.c
                      \sa SUMA_Free_Surface_Object in SUMA_Load_Surface_Object.c
                      \sa SUMA_Print_Surface_Object in SUMA_Load_Surface_Object.c
@@ -2178,6 +2179,8 @@ typedef struct {
    char name_param[SUMA_MAX_NAME_LENGTH];
    float AC_WholeVolume[3]; /*!< XYZ (from .Orient.params file) of Anterior Comissure of whole volume */
    float AC[3]; /*!< XYZ of Anterior Comissure of cropped volume */
+   float CropMin[3];
+   float CropMax[3];
    float tag_version;
    float caret_version;
 } SUMA_SureFit_struct;
@@ -2227,29 +2230,31 @@ typedef struct {
 /* *** Niml defines */
 
 #define SUMA_TCP_PORT 53211      /*!< AFNI listens to SUMA on this port */
+#define SUMA_MATLAB_LISTEN_PORT 53230  /* MATLAB listens to SUMA on this port */
 #define SUMA_TCP_LISTEN_PORT0 53220 /*!< SUMA's 1st listening port */
 #define SUMA_FLAG_WAITING    1   /*!< Waiting for connection flag */
 #define SUMA_FLAG_CONNECTED  2   /*!< Connected flag */
 #define SUMA_FLAG_SKIP       4   /*!< Skip flag */
 
-typedef enum { SUMA_AFNI_STREAM_INDEX = 0, /*!< Index of SUMA<-->AFNI stream , afni listen line 1*/ 
-               SUMA_AFNI_STREAM_INDEX2 ,  /*!< Index of SUMA<-->AFNI 2nd stream, afni listen line 2 */  
-               SUMA_GENERIC_LISTEN_LINE, /*!< Using socket  SUMA_TCP_LISTEN_PORT0, generic suma listen line*/
-               SUMA_GEOMCOMP_LINE, /*!<  Using socket  SUMA_TCP_LISTEN_PORT0 + 1*/
-               SUMA_BRAINWRAP_LINE, /*!<  Using socket SUMA_TCP_LISTEN_PORT0 + 2*/
-               SUMA_DRIVESUMA_LINE, /*!<  Using socket SUMA_TCP_LISTEN_PORT0 + 3*/
-               SUMA_MAX_STREAMS /*!< Maximum number of streams, KEEP AT END */
+typedef enum { SUMA_AFNI_STREAM_INDEX = 0, 
+                     /*!< Index of SUMA<-->AFNI stream , afni listen line 1*/ 
+               SUMA_AFNI_STREAM_INDEX2 ,  
+                     /*!< Index of SUMA<-->AFNI 2nd stream, afni listen line 2 */
+               SUMA_TO_MATLAB_STREAM_INDEX, 
+                     /*!< Index of SUMA<-->MATLAB 2nd stream, matlab listen */
+               SUMA_GENERIC_LISTEN_LINE, 
+                     /*!< Using socket  SUMA_TCP_LISTEN_PORT0, 
+                           generic suma listen line*/
+               SUMA_GEOMCOMP_LINE, 
+                     /*!<  Using socket  SUMA_TCP_LISTEN_PORT0 + 1*/
+               SUMA_BRAINWRAP_LINE, 
+                     /*!<  Using socket SUMA_TCP_LISTEN_PORT0 + 2*/
+               SUMA_DRIVESUMA_LINE, 
+                     /*!<  Using socket SUMA_TCP_LISTEN_PORT0 + 3*/
+               SUMA_MAX_STREAMS 
+                     /*!< Maximum number of streams, KEEP AT END */
             } SUMA_STREAM_INDICES;
             
-#if 0
-   #define SUMA_AFNI_STREAM_INDEX 0  /*!< Index of SUMA<-->AFNI stream */ 
-   #define SUMA_AFNI_STREAM_INDEX2 1  /*!< Index of SUMA<-->AFNI stream */       
-   #define SUMA_GEOMCOMP_LINE 2 /*!<  Using socket SUMA_TCP_PORT + SUMA_GEOMCOMP_LINE 
-                                 Make sure SUMA_GEOMCOMP_LINE < SUMA_MAX_STREAMS*/
-   #define SUMA_BRAINWRAP_LINE 3 /*!<  Using socket SUMA_TCP_PORT + SUMA_BRAINWRAP_LINE 
-                                 Make sure SUMA_BRAINWRAP_LINE < SUMA_MAX_STREAMS*/
-   #define SUMA_MAX_STREAMS       5  /*!< Maximum number of streams, >= SUMA_INITIATED_STREAMS */
-#endif
 /* *** Niml defines end */
 
               
@@ -2345,15 +2350,6 @@ typedef struct {
 
 
 
-
-/*! Structure to contain the path between one node and the next. The path is defined in terms of the previous one, plus an edge from
-the previous to the current */
-typedef struct {
-   int node; /*!< Index of current node*/ 
-   float le;   /*!< Length of edge between current node and previous one. 0 for starting node. */ 
-   int order; /*!< Path order to node. A path order of i means i segments are needed to reach node from the starting node. 0 for starting node*/
-   void *Previous; /*!< pointer to path leading up to the previous node. NULL for starting node. This pointer is to be typecast to SUMA_DIJKSTRA_PATH_CHAIN **/
-} SUMA_DIJKSTRA_PATH_CHAIN;
 
 /*!
    Structure for passing info to function SUMA_SaveSOascii
@@ -2471,26 +2467,32 @@ typedef struct {
 #define SUMA_MAX_N_TIMER 50
 /*! structure containing information global to all surface viewers */
 typedef struct {
-   SUMA_Boolean Dev; /*!< Flag for developer option (allows the use of confusing or kludge options) */
-   SUMA_Boolean InOut_Notify; /*!< prints to STDERR a notice when a function is entered or exited */ 
+   SUMA_Boolean Dev; /*!< Flag for developer option 
+                     (allows the use of confusing or kludge options) */
+   SUMA_Boolean InOut_Notify; /*!< prints to STDERR a notice when a function 
+                                 is entered or exited */ 
    int InOut_Level; /*!< level of nested function calls */
-   
+   int PointerSize; /*!< size of void * */
    int N_OpenSV; /*!< Number of open (visible) surface viewers.
                      Do not confuse this with the number of surface viewers
                      created (SUMAg_N_SVv)*/
    
-   SUMA_MEMTRACE_STRUCT *Mem; /*!< structure used to keep track of memory usage */
-   SUMA_Boolean MemTrace; /*!< Flag for keeping track of memory usage (must also set SUMA_MEMTRACE_FLAG ) */
+   SUMA_MEMTRACE_STRUCT *Mem; /*!< structure used to keep track of 
+                                    memory usage */
+   SUMA_Boolean MemTrace; /*!< Flag for keeping track of memory usage 
+                              (must also set SUMA_MEMTRACE_FLAG ) */
 
-   char HostName_v[SUMA_MAX_STREAMS][SUMA_MAX_NAME_LENGTH];   /*!<  name or ipaddress of hosts maximum allowed name is 20
-                                                                      chars less than allocated for, see SUMA_Assign_AfniHostName
-                                                                      *** Dec. 19 03: This field used to be called AfniHostName
-                                                                      It is now a vector of hostnmes allowing for multiple
-                                                                      connections. 
-                                                                      AfniHostName = HostName_v[SUMA_AFNI_STREAM_INDEX]*/ 
-   char NimlStream_v[SUMA_MAX_STREAMS][SUMA_MAX_NAME_LENGTH]; /*!< niml stream name for communicating with other programs 
-                                                                 *** Dec. 19 03: This field used to be called AfniNimlStream
-                                                                 AfniNimlStream = NimlStream_v[SUMA_AFNI_STREAM_INDEX]*/
+   char HostName_v[SUMA_MAX_STREAMS][SUMA_MAX_NAME_LENGTH];   
+         /*!<  name or ipaddress of hosts maximum allowed name is 20
+             chars less than allocated for, see SUMA_Assign_AfniHostName
+             *** Dec. 19 03: This field used to be called AfniHostName
+             It is now a vector of hostnmes allowing for multiple
+             connections. 
+             AfniHostName = HostName_v[SUMA_AFNI_STREAM_INDEX]*/ 
+   char NimlStream_v[SUMA_MAX_STREAMS][SUMA_MAX_NAME_LENGTH]; 
+         /*!< niml stream name for communicating with other programs 
+           *** Dec. 19 03: This field used to be called AfniNimlStream
+           AfniNimlStream = NimlStream_v[SUMA_AFNI_STREAM_INDEX]*/
    NI_stream ns_v[SUMA_MAX_STREAMS]; /*!< 
                      *** Pre: Dec 19 03:
                      Stream used to communicate with AFNI. 
@@ -2503,47 +2505,79 @@ typedef struct {
                      *** Dec. 19 03
                      Used to be called ns for connecting to AFNI.
                      ns = ns_v[SUMA_AFNI_STREAM_INDEX]*/
+   int ns_to[SUMA_MAX_STREAMS];
    int ns_flags_v[SUMA_MAX_STREAMS];
    int TCP_port[SUMA_MAX_STREAMS];
-   
-   SUMA_Boolean Connected_v[SUMA_MAX_STREAMS]; /*!< YUP/NOPE, if SUMA is sending (or accepting) communication from AFNI 
-                                                   *** Dec. 19 03
-                                                   Vectorized Connected like fields above*/
-   int TrackingId_v[SUMA_MAX_STREAMS]; /*!<  for keeping track of serial number of incoming nels 
-                                             0 if not keeping track. So start numbering at 1*/
-   
+   int TalkMode[SUMA_MAX_STREAMS];  /* Talk text or talk binary? */
+   SUMA_Boolean Connected_v[SUMA_MAX_STREAMS]; 
+     /*!< YUP/NOPE, if SUMA is sending (or accepting) communication from AFNI 
+         *** Dec. 19 03
+         Vectorized Connected like fields above*/
+   int TrackingId_v[SUMA_MAX_STREAMS]; 
+      /*!<  for keeping track of serial number of incoming nels 
+            0 if not keeping track. So start numbering at 1*/
+
+
    SUMA_Boolean Listening; /*!< SUMA is listening for connections */
    SUMA_Boolean niml_work_on; /*!< Flag indicating that niml workprocess is ON */
-   SUMA_LINK_TYPES Locked[SUMA_MAX_SURF_VIEWERS]; /*!< All viewers i such that Locked[i] != SUMA_No_Lock have their cross hair locked together */   
-   SUMA_Boolean ViewLocked[SUMA_MAX_SURF_VIEWERS]; /*!< All viewers i such that ViewLocked[i] = YUP have their view point locked together */    
-   SUMA_Boolean SwapButtons_1_3; /*!< YUP/NOPE, if functions of mouse buttons 1 and 3 are swapped */
-   SUMA_X_AllView *X; /*!< structure containing widgets and other X related variables that are common to all viewers */ 
-   DList *MessageList; /*!< a doubly linked list with data elements containing notices, warnings and error messages*/
-   SUMA_Boolean ROI_mode; /*!< Flag specifying that SUMA is in ROI drawing mode */
-   SUMA_Boolean Pen_mode;  /*!< Flag specifying that a pen is being used for drawing */
-   SUMA_COLOR_MAP *ROI_CM; /*!< Color map used to map an ROI's index to a color */
-   SUMA_ROI_FILL_MODES ROI_FillMode; /*!< flag indicating how to fill a closed contour */
-   SUMA_COL_MIX_MODE ColMixMode; /*!< controls the way colors from multiple planes are mixed together */
+   SUMA_LINK_TYPES Locked[SUMA_MAX_SURF_VIEWERS]; 
+         /*!< All viewers i such that Locked[i] != SUMA_No_Lock 
+               have their cross hair locked together */   
+   SUMA_Boolean ViewLocked[SUMA_MAX_SURF_VIEWERS]; 
+         /*!< All viewers i such that ViewLocked[i] = YUP 
+               have their view point locked together */    
+   SUMA_Boolean SwapButtons_1_3; 
+         /*!< YUP/NOPE, if functions of mouse buttons 1 and 3 are swapped */
+   SUMA_X_AllView *X; 
+         /*!< structure containing widgets and other X related 
+               variables that are common to all viewers */ 
+   DList *MessageList; 
+      /*!< a doubly linked list with data elements 
+           containing notices, warnings and error messages*/
+   SUMA_Boolean ROI_mode; 
+      /*!< Flag specifying that SUMA is in ROI drawing mode */
+   SUMA_Boolean ROI_contmode;
+      /*!< Flag specifying that ROI contours should be drawn 
+            This field and Pen_mode and perhaps ROI_CM should
+            be inside SUMA_X_DrawROI, not here!*/
+   SUMA_Boolean Pen_mode;  
+      /*!< Flag specifying that a pen is being used for drawing */
+   SUMA_COLOR_MAP *ROI_CM; 
+      /*!< Color map used to map an ROI's index to a color */
+   SUMA_ROI_FILL_MODES ROI_FillMode; 
+      /*!< flag indicating how to fill a closed contour */
+   SUMA_COL_MIX_MODE ColMixMode; 
+      /*!< controls the way colors from multiple planes are mixed together */
    SUMA_Boolean ROI2afni; /*!< Send ROIs to afni as you draw them*/
    int nimlROI_Datum_type; /*!< the code for nimlROI_Datum_type */
 
    char **GroupList; /*!< Names of surface groups */
    int N_Group;   /*!< number of groups  available */
 
-   SUMA_AFNI_COLORS *scm;  /*!< a structure containing all the colormaps available to SUMA */
+   SUMA_AFNI_COLORS *scm;  
+      /*!< a structure containing all the colormaps available to SUMA */
    DList *DsetList;  /*!< List containing datasets */
-   SUMA_Boolean Allow_Dset_Replace; /*!< Allow replacement of old dset with new dset having same id */
+   SUMA_Boolean Allow_Dset_Replace; 
+      /*!< Allow replacement of old dset with new dset having same id */
    
    int SUMA_ThrScalePowerBias;
    int SUMA_SnapshotOverSampling; 
-   SUMA_Boolean IgnoreVolreg; /*!< if YUP then ignore any Volreg or TagAlign transform in the header of the surface volume */
-   SUMA_Boolean isGraphical; /*!< if YUP then Named afni colors will get resolved when creating color maps. 
-                                  Otherwise they are set to gray. Only suma and ScaleToMap will need to set 
-                                  this variable to YUP, for the moment June 3 05 */
+   SUMA_Boolean IgnoreVolreg; 
+      /*!< if YUP then ignore any Volreg or TagAlign 
+         transform in the header of the surface volume */
+   SUMA_Boolean isGraphical; 
+      /*!<if YUP then Named afni colors will 
+          get resolved when creating color maps. 
+          Otherwise they are set to gray. 
+          Only suma and ScaleToMap will need to set 
+          this variable to YUP, for the moment June 3 05 */
 
-   int N_ClipPlanes; /*!< Number of screen clipping planes, 3 max allowed */
-   GLdouble ClipPlanes[4*SUMA_MAX_N_CLIP_PLANES]; /*!< Equations of  clipping planes */
-   SUMA_CLIP_PLANE_TYPES ClipPlaneType[SUMA_MAX_N_CLIP_PLANES]; /*!< Screen clipping, object clipping, etc. */
+   int N_ClipPlanes; 
+      /*!< Number of screen clipping planes, 3 max allowed */
+   GLdouble ClipPlanes[4*SUMA_MAX_N_CLIP_PLANES]; 
+      /*!< Equations of  clipping planes */
+   SUMA_CLIP_PLANE_TYPES ClipPlaneType[SUMA_MAX_N_CLIP_PLANES]; 
+      /*!< Screen clipping, object clipping, etc. */
    char ClipPlanesLabels[SUMA_MAX_N_CLIP_PLANES][9]; 
    
    int NoDuplicatesInRecorder;
@@ -2553,7 +2587,15 @@ typedef struct {
    char *cwd;
    
    float CmapRotaFrac; /*!< fraction by which to rotate colormap */
+   
+   DList *xforms;    /*!<  List of transforms that apply to certain dsets 
+                           or surfaces */
+   DList *callbacks; /*!< List of callbacks that apply to certain dsets or
+                          surfaces */
+   
+   SUMA_Boolean HoldClickCallbacks;
 } SUMA_CommonFields;
+
 
 typedef enum { SUMA_NO_SORT, SUMA_BY_PLANE_DISTANCE, SUMA_BY_SEGMENT_DISTANCE, SUMA_SORT_BY_LLC_DISTANCE, SUMA_SORT_BY_LL_QUAD } SUMA_SORT_BOX_AXIS_OPTION;
 typedef enum { SUMA_LOWER_LEFT_SCREEN, SUMA_UPPER_LEFT_SCREEN, SUMA_UPPER_RIGHT_SCREEN, SUMA_LOWER_RIGHT_SCREEN } SUMA_SCREEN_CORNERS;

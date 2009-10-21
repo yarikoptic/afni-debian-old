@@ -19,6 +19,7 @@
 
 static int show_grapher_pixmap = 1 ;
 static void fd_line( MCW_grapher *, int,int,int,int ) ;
+static byte PLOT_FORCE_AUTOSCALE = 0;
 
 /*------------------------------------------------------------*/
 /*! Macro to call the getser function with correct prototype. */
@@ -61,6 +62,8 @@ ENTRY("new_MCW_grapher") ;
    grapher->getaux = aux ;
    grapher->parent = NULL ;
    grapher->valid  = 1 ;
+
+   grapher->grid_spacing    = 10;  /* prevent div by 0, 15 Aug 2008 [rickr] */
 
    grapher->dont_redraw     = 0 ;  /* 27 Jan 2004 */
    grapher->timer_id        = 0 ;  /* 04 Dec 2003 */
@@ -482,12 +485,33 @@ ENTRY("new_MCW_grapher") ;
 
    /*** top of menu = a label to click on that does nothing at all ***/
 
+#ifdef USING_LESSTIF     
+               /* Using  xmLabelWidgetClass causes X11 to hang until
+               afni is terminated. The hangup occurs after an option
+               button, like:   
+                   ignore --> |-3|
+               is set and then -- Cancel -- is clicked upon.
+               Also, it seems that the hangup does not occur unless we have:
+                  an 'option menu' inside a 'pulldown menu' which is in 
+                  another  'pulldown menu' !
+               
+               So, not all Cancel LabelWidgets will be modified.
+               
+                           LessTif patrol      Jan. 07 09  */                                   
+   (void) XtVaCreateManagedWidget(
+            "dialog" , xmPushButtonWidgetClass , grapher->opt_menu ,
+               LABEL_ARG("--- Cancel ---") ,
+               XmNrecomputeSize , False ,
+               XmNinitialResourcesPersistent , False ,
+            NULL ) ;
+#else
    (void) XtVaCreateManagedWidget(
             "dialog" , xmLabelWidgetClass , grapher->opt_menu ,
                LABEL_ARG("--- Cancel ---") ,
                XmNrecomputeSize , False ,
                XmNinitialResourcesPersistent , False ,
             NULL ) ;
+#endif
 
    MENU_SLINE(opt_menu) ;
 
@@ -496,6 +520,7 @@ ENTRY("new_MCW_grapher") ;
    OPT_MENU_PULL_BUT(opt_scale_menu,opt_scale_up_pb    ,"Up   [+]","Increase graph heights");
    OPT_MENU_PULL_BUT(opt_scale_menu,opt_scale_choose_pb,"Choose"  ,"Set vertical scale"    );
    OPT_MENU_PULL_BUT(opt_scale_menu,opt_scale_auto_pb  ,"Auto [a]","Scale automatically"   );
+   OPT_MENU_PULL_BUT(opt_scale_menu,opt_scale_AUTO_pb  ,"AUTO [A]","Always autoscale"   );
 
    OPT_MENU_PULLRIGHT(opt_mat_menu,opt_mat_cbut      ,"Matrix"  , "Change number of graphs"   ) ;
    OPT_MENU_PULL_BUT( opt_mat_menu,opt_mat_down_pb   ,"Down [m]", "Reduce number of graphs"   ) ;
@@ -537,13 +562,27 @@ ENTRY("new_MCW_grapher") ;
         sprintf( toplabel , "--- %s ---" , grapher->status->namecode ) ;
         xstr = XmStringCreateLtoR( toplabel , XmFONTLIST_DEFAULT_TAG ) ;
 
+#ifdef USING_LESSTIF     
+               
+               /* Using  xmLabelWidgetClass causes X11 to hang until
+               afni is terminated. For details, see preceding comment.
+               for another --- Cancel --- button.
+               
+                           LessTif patrol      Jan. 07 09  */                                   
+        (void) XtVaCreateManagedWidget(
+                 "dialog" , xmPushButtonWidgetClass , grapher->opt_colors_menu ,
+                    XmNlabelString , xstr ,
+                    XmNrecomputeSize , False ,
+                    XmNinitialResourcesPersistent , False ,
+                 NULL ) ;
+#else
         (void) XtVaCreateManagedWidget(
                  "dialog" , xmLabelWidgetClass , grapher->opt_colors_menu ,
                     XmNlabelString , xstr ,
                     XmNrecomputeSize , False ,
                     XmNinitialResourcesPersistent , False ,
                  NULL ) ;
-
+#endif
         XmStringFree( xstr ) ;
 
         MENU_DLINE(opt_colors_menu) ;
@@ -785,7 +824,8 @@ ENTRY("new_MCW_grapher") ;
                           "Tran 1D" ,
                           0 , grapher->status->transforms1D->num , 0 , 0 ,
                           GRA_transform_CB , (XtPointer) grapher ,
-                          GRA_transform_label , (XtPointer) grapher->status->transforms1D ) ;
+                          GRA_transform_label , 
+                          (XtPointer) grapher->status->transforms1D ) ;
 
       /* force the optmenu to call us even if the same button is chosen twice */
       grapher->transform1D_av->optmenu_call_if_unchanged = 1 ;  /* 10 Oct 2007 */
@@ -1240,7 +1280,7 @@ ENTRY("GRA_redraw_overlay") ;
      jj  = NBOT(grapher) ;                     /* first point to plot */
      xxx = NTOP(grapher) ;                     /* last */
      xxx = MIN (xxx , grapher->init_ignore) ;  /* point */
-     xxx = MIN (xxx , ii+grapher->nncen) ;     /* to plot */
+     xxx = MIN (xxx , jj+grapher->nncen) ;     /* to plot */
      for( ii=jj ; ii < xxx ; ii++ )
 #if 0
        GRA_overlay_circle( grapher , grapher->cen_line[ii-jj].x ,
@@ -1327,6 +1367,12 @@ ENTRY("redraw_graph") ;
 
    erase_fdw  ( grapher ) ;
    draw_grids ( grapher ) ;
+   
+   if (code == 0 && PLOT_FORCE_AUTOSCALE) 
+      code = PLOTCODE_AUTOSCALE; /* Daniel Glen   
+                                    July 14th Allons enfants de la patrie,
+                                    la guillottine est arrivee */
+                                    
    plot_graphs( grapher , code ) ;
 
    DC_fg_color( grapher->dc , TEXT_COLOR(grapher) ) ;
@@ -1420,7 +1466,7 @@ ENTRY("redraw_graph") ;
       }
    }
 
-   fd_txt( grapher , xxx , 21, strp) ;
+   fd_txt( grapher , xxx , 21, strp ) ;
 
    xxx = DC_text_width(grapher->dc,strp) ;           /* 19 Dec 2003 [rickr] */
 
@@ -1459,16 +1505,35 @@ ENTRY("redraw_graph") ;
    grapher->xx_text_3 = grapher->xx_text_2 + xxx + 15 ;
 
    if( !grapher->textgraph && !ISONE(grapher) ){
+      char *flab ;
+
       sprintf(strp,"Mean: %10s", MV_format_fval(grapher->tmean[xc][yc]) ) ;
 
       fd_txt( grapher , grapher->xx_text_3 ,  21, strp ) ;
+      xxx = DC_text_width(grapher->dc,strp) ;
 
       sprintf(strp,"Sigma:%10s", MV_format_fval(grapher->tstd[xc][yc]) ) ;
 
       fd_txt( grapher , grapher->xx_text_3 ,   7, strp ) ;
+      www = DC_text_width(grapher->dc,strp) ; xxx = MAX(xxx,www) ;
 
       fd_line( grapher , grapher->xx_text_3-7 , 31 , grapher->xx_text_3-7 , 5 ) ;
-   }
+
+      www = grapher->xx_text_3 + xxx + 7 ;
+      fd_line( grapher , www , 31 , www , 5 ) ;
+
+      flab = GRA_transform_label( grapher->transform0D_av ,
+                                  (XtPointer) grapher->status->transforms0D ) ;
+      sprintf(strp,"Tran 0D = %s",flab) ;
+      www = grapher->xx_text_3 + xxx + 15 ;
+      fd_txt( grapher , www , 21 , strp ) ;
+
+      flab = GRA_transform_label( grapher->transform1D_av ,
+                                  (XtPointer) grapher->status->transforms1D ) ;
+      sprintf(strp,"Tran 1D = %s",flab) ;
+      www = grapher->xx_text_3 + xxx + 15 ;
+      fd_txt( grapher , www , 7 , strp ) ;
+    }
 
    /*** flush the pixmap to the screen ***/
 
@@ -1676,7 +1741,7 @@ void plot_graphs( MCW_grapher *grapher , int code )
    MRI_IMARR *tsimar ;
    float     *tsar ;
    float       tsbot=0.0 , ftemp,fwid,foff , tstop ;
-   int i, m, index, ix, iy, xtemp,ytemp,ztemp , xoff,yoff , its,ibot,itop;
+   int i, m, index, ix, iy, xtemp,ytemp,ztemp, xoff=0,yoff=0, its,ibot,itop;
    int ptop,pbot,pnum,qnum , tbot,ttop,tnum , ntmax ;  /* 17 Mar 2004 */
 
    static int      *plot = NULL ;  /* arrays to hold plotting coordinates */
@@ -1689,7 +1754,7 @@ void plot_graphs( MCW_grapher *grapher , int code )
    MRI_IMARR *eximar ;
    int        iex ;
 
-   float nd_bot , nd_top , nd_dif ;                        /* 03 Feb 1998 */
+   float nd_bot=0 , nd_top=0 , nd_dif=0 ;                  /* 03 Feb 1998 */
    int   set_scale = ( (code & PLOTCODE_AUTOSCALE) != 0 ||
                        grapher->never_drawn ) ;
 
@@ -1983,6 +2048,7 @@ STATUS("finding statistics of time series") ;
              grapher->ttop[ix][iy] = grapher->tstd[ix][iy] = 0.0 ;
            grapher->tmed[ix][iy] = grapher->tmad[ix][iy] = 0.0 ;  /* 08 Mar 2001 */
            grapher->sbot[ix][iy] = grapher->stop[ix][iy] = 0 ;    /* 19 Mar 2004 */
+           grapher->tbmv[ix][iy] = 0.0f ;                         /* 16 Oct 2009 */
            continue ;
          }
 
@@ -1993,6 +2059,7 @@ STATUS("finding statistics of time series") ;
            grapher->tmean[ix][iy] = grapher->tbot[ix][iy] =
              grapher->ttop[ix][iy] = grapher->tstd[ix][iy] = 0.0 ;
            grapher->tmed[ix][iy] = grapher->tmad[ix][iy] = 0.0 ;  /* 08 Mar 2001 */
+           grapher->tbmv[ix][iy] = 0.0f ;                         /* 16 Oct 2009 */
            continue ;  /* to next iy */
          }
 
@@ -2010,9 +2077,10 @@ STATUS("finding statistics of time series") ;
          qsumq = (qsumq - (itop-ibot) * qsum * qsum) / (itop-ibot-1.0) ;
          grapher->tstd[ix][iy] = (qsumq > 0.0) ? sqrt(qsumq) : 0.0 ;
 
-         qmedmad_float( itop-ibot , tsar+ibot ,        /* 08 Mar 2001 */
-                        &(grapher->tmed[ix][iy]) ,
-                        &(grapher->tmad[ix][iy]) ) ;
+         qmedmadbmv_float( itop-ibot , tsar+ibot ,        /* 08 Mar 2001 */
+                           &(grapher->tmed[ix][iy]) ,
+                           &(grapher->tmad[ix][iy]) ,
+                           &(grapher->tbmv[ix][iy])  ) ;  /* tbmv: 16 Oct 2009 */
 
          if( set_scale ){        /* 03 Feb 1998 */
 
@@ -3015,6 +3083,7 @@ STATUS("button press") ;
                XmString xstr ;
                char bmin[16],bmax[16],bmean[16],bstd[16] ;
                char bmed[16] , bmad[16] ; /* 08 Mar 2001 */
+               char bbmv[16] ;            /* 16 Oct 2009 */
                char *qstr , *eee ;        /* 07 Mar 2002 */
                int nlin , nltop=40 ;      /* 07 Mar 2002 */
 
@@ -3024,7 +3093,8 @@ STATUS("button press") ;
                AV_fval_to_char( grapher->tstd[ix][iy]  , bstd ) ;
 
                AV_fval_to_char( grapher->tmed[ix][iy]  , bmed ) ; /* 08 Mar 2001 */
-               AV_fval_to_char( grapher->tmad[ix][iy]  , bmad ) ;
+               AV_fval_to_char( 1.4826*grapher->tmad[ix][iy]  , bmad ) ;
+               AV_fval_to_char( grapher->tbmv[ix][iy]  , bbmv ) ; /* 16 Oct 2009 */
 
                if( grapher->tuser[ix][iy] == NULL )
                  qstr = AFMALL(char, 912) ;
@@ -3048,12 +3118,13 @@ STATUS("button press") ;
                               "Min     =%s\n"
                               "Max     =%s\n"
                               "Mean    =%s\n"
-                              "Sigma   =%s\n"
                               "Median  =%s\n"     /* 08 Mar 2001 */
-                              "MAD     =%s" ,
+                              "Sigma   =%s\n"
+                              "MAD*1.48=%s\n"
+                              "BiwtMidV=%s"  ,    /* 16 Oct 2009 */
                         grapher->sbot[ix][iy], grapher->stop[ix][iy], /* 19 Mar 2004 */
                         xd , yd , zd ,
-                        bmin,bmax,bmean,bstd,bmed,bmad ) ;
+                        bmin,bmax,bmean,bmed,bstd,bmad,bbmv ) ;
 
                 /** 22 Apr 1997: incorporate user string for this voxel **/
 
@@ -3177,7 +3248,7 @@ STATUS("allocating new Pixmap") ;
 
 void GRA_handle_keypress( MCW_grapher *grapher , char *buf , XEvent *ev )
 {
-   int ii ;
+   int ii=0 ;
 
 ENTRY("GRA_handle_keypress") ;
 
@@ -3242,9 +3313,24 @@ STATUS(str); }
       case '+':
         if( buf[0] == '-' ) scale_down( grapher ) ;
         else                scale_up  ( grapher ) ;
+        if (PLOT_FORCE_AUTOSCALE) { /* turn it off, user wants to change */
+         PLOT_FORCE_AUTOSCALE = !PLOT_FORCE_AUTOSCALE;
+         MCW_invert_widget(grapher->opt_scale_AUTO_pb);
+        }
         redraw_graph( grapher , 0 ) ;
       break;
 
+      case 'A':
+        PLOT_FORCE_AUTOSCALE = !PLOT_FORCE_AUTOSCALE;
+        MCW_invert_widget(grapher->opt_scale_AUTO_pb);
+        if (PLOT_FORCE_AUTOSCALE) {
+         fprintf(stdout,"++ Force Autoscale: ON\n");
+        } else {
+         fprintf(stdout,"++ Force Autoscale: OFF\n");
+        }
+        redraw_graph( grapher , 0);
+      break;
+      
       case 'a':
         redraw_graph( grapher , PLOTCODE_AUTOSCALE ) ;         /* 03 Feb 1998 */
       break ;
@@ -3520,6 +3606,11 @@ ENTRY("GRA_opt_CB") ;
       EXRETURN ;
    }
 
+   if( w == grapher->opt_scale_AUTO_pb ){
+      GRA_handle_keypress( grapher , "A" , NULL ) ;
+      EXRETURN ;
+   }
+   
    if( w == grapher->opt_scale_auto_pb ){
       GRA_handle_keypress( grapher , "a" , NULL ) ;
       EXRETURN ;
@@ -4414,7 +4505,7 @@ ENTRY("drive_MCW_grapher") ;
 
          if( im == NULL ){                /* no input --> kill kill kill */
 STATUS("freeing reference timeseries") ;
-            FREE_IMARR(grapher->ref_ts) ;
+            FREE_IMARR(grapher->ref_ts) ;  /* doesn't delete images inside */
             grapher->ref_ts = NULL ;
          } else{
             if( grapher->ref_ts == NULL ) INIT_IMARR( grapher->ref_ts ) ;
@@ -5376,13 +5467,27 @@ ENTRY("AFNI_new_fim_menu") ;
  } while(0)
 
    /*** top of menu = a label to click on that does nothing at all ***/
-
+#ifdef USING_LESSTIF     
+               
+               /* Using  xmLabelWidgetClass causes X11 to hang until
+               afni is terminated. For details, see preceding comment.
+               for another --- Cancel --- button.
+               
+                           LessTif patrol      Jan. 07 09  */                                   
+   (void) XtVaCreateManagedWidget(
+            "dialog" , xmPushButtonWidgetClass , fmenu->fim_menu ,
+               LABEL_ARG("--- Cancel ---") ,
+               XmNrecomputeSize , False ,
+               XmNinitialResourcesPersistent , False ,
+            NULL ) ;
+#else
    (void) XtVaCreateManagedWidget(
             "dialog" , xmLabelWidgetClass , fmenu->fim_menu ,
                LABEL_ARG("--- Cancel ---") ,
                XmNrecomputeSize , False ,
                XmNinitialResourcesPersistent , False ,
             NULL ) ;
+#endif
 
    MENU_SLINE(fim_menu) ;
 
@@ -6002,6 +6107,9 @@ void GRA_mapmenu_CB( Widget w , XtPointer client_data , XtPointer call_data )
 
 ENTRY("GRA_mapmenu_CB") ;
 
+   #ifdef USING_LESSTIF 
+      EXRETURN; /* 30 Dec 2008, the LESSTIF patrol */
+   #endif
    if( AFNI_yesenv("AFNI_DONT_MOVE_MENUS") ) EXRETURN ;  /* 08 Aug 2001 */
 
    MCW_widget_geom( w                     , &ww,&hh , &xx,&yy ) ;

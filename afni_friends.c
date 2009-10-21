@@ -412,7 +412,7 @@ static mday holiday[] = {
    {JUN,26,"Malagasy Republic Independence Day"                      } ,
    {JUN,27,"Djibouti Independence Day"                               } ,
 
-   {JUL, 1,"Canada Day"                                              } ,  /* WW */
+   {JUL, 1,"Canada Day -- O Canada!"                                 } ,  /* WW */
    {JUL, 1,"Anniversary of Battle of the Somme"                      } ,
    {JUL, 1,"Gottfried Wilhelm Leibniz's birthday"                    } ,
    {JUL, 1,"Burundi Independence Day"                                } ,
@@ -436,9 +436,10 @@ static mday holiday[] = {
    {JUL, 9,"Palau Constitution Day"                                  } ,
    {JUL,10,"Bahamas Independence Day"                                } ,
    {JUL,11,"Mongolia Revolution Day"                                 } ,
+   {JUL,11,"Birthday of Tenzin Gyatso"                               } ,
    {JUL,12,"Sao Tome & Principe Independence Day"                    } ,
    {JUL,13,"Gaius Julius Caesar's birthday"                          } ,
-   {JUL,14,"Bastille Day"                                            } ,
+   {JUL,14,"Bastille Day - Vive la France!"                          } ,
    {JUL,14,"Iraq Republic Day"                                       } ,
    {JUL,14,"Gerald Ford's birthday"                                  } ,
    {JUL,15,"Anniversary of Battle of Grunwald"                       } ,
@@ -448,7 +449,6 @@ static mday holiday[] = {
    {JUL,17,"South Korea Constitution Day"                            } ,
    {JUL,18,"John Glenn's birthday"                                   } ,
    {JUL,18,"Nelson Mandela's birthday"                               } ,
-   {JUL,18,"Spain National Day"                                      } ,
    {JUL,19,"George McGovern's birthday"                              } ,
    {JUL,19,"Edgar Degas' birthday"                                   } ,
    {JUL,20,"Anniversary of Apollo 11 Moon landing"                   } ,
@@ -573,6 +573,7 @@ static mday holiday[] = {
    {OCT, 9,"Alfred Dreyfus's birthday"                               } ,
    {OCT,10,"Anniversary of Battle of Tours"                          } ,
    {OCT,12,"Columbus Day"                                            } ,
+   {OCT,12,"Spain National Day"                                      } ,
    {OCT,14,"Dwight Eisenhower's birthday"                            } ,
    {OCT,15,"Pelham Grenville Wodehouse's birthday"                   } ,
    {OCT,16,"National Boss Day!"                                      } ,

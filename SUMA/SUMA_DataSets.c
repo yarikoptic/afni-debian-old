@@ -68,6 +68,7 @@ void WorkErrLog_s(void)
    SUMA_Boolean LocalHead = NOPE;
    DListElmt *del=NULL;
    SUMA_ERRLOG *el=NULL;
+   char mmm[256];
    del = SUMA_PopErrLog(NULL);
    while (del) {
       el = (SUMA_ERRLOG *)del->data;
@@ -85,7 +86,8 @@ void WorkErrLog_s(void)
       else if (!strcmp(el->macroname,"SL_Crit")) { SUMA_SL_Crit(el->msg); }
       else if (!strcmp(el->macroname,"SLP_Crit")) { SUMA_SLP_Crit(el->msg); }
       else {
-         sprintf(FuncName, "%s", "WorkErrLog_ns"); SUMA_S_Err("Bad macroname");
+         snprintf(mmm, 255*sizeof(char), "Bad macroname %s", el->macroname); 
+         sprintf(FuncName, "%s", "WorkErrLog_ns"); SUMA_S_Err(mmm);
       }
       del = SUMA_PopErrLog(del);
    }
@@ -108,6 +110,27 @@ DListElmt * SUMA_FindDsetEl_s (char *idcode, DList *DsetList)
    WorkErrLog_s();
    return(el);
 }
+
+SUMA_Boolean  SUMA_is_ID_4_DSET(char *idcode, SUMA_DSET **dsetp)
+{
+   static char FuncName[]={"SUMA_is_ID_4_DSET"};
+   SUMA_DSET *dset=NULL;
+   
+   SUMA_ENTRY;
+   
+   if (dsetp) *dsetp = NULL;
+   if (!idcode) SUMA_RETURN(NOPE);
+   
+   dset = SUMA_FindDset_s(idcode, SUMAg_CF->DsetList);
+   
+   if (dset) {
+      if (dsetp) *dsetp = dset;
+      SUMA_RETURN(YUP);
+   }
+   
+   SUMA_RETURN(NOPE);   
+}
+
 
 /*!
    \brief Returns the index of the node for which 
@@ -268,3 +291,4 @@ float *SUMA_Load1D_s (char *oName, int *ncol, int *nrow, int RowMajor, int verb)
    WorkErrLog_s();
    return(far);
 }
+

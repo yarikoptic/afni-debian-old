@@ -51,7 +51,7 @@
 #ifdef SHSTRING
 #define ANNOUNCEMENT                                                           \
  "GPL AFNI: Analysis of Functional NeuroImages, by RW Cox (" COXEMAIL ")\n"    \
- "This is Version " VERSION               "\n"                                 \
+ "This is Version " AVERZHN               "\n"                                 \
  "[[Precompiled binary " SHSTRING ": " __DATE__ "]]\n\n"                       \
  " ** This software was designed to be used only for research purposes. **\n"  \
  " ** Clinical uses are not recommended, and have never been evaluated. **\n"  \
@@ -60,13 +60,18 @@
  " ** If these terms are not acceptable, you aren't allowed to use AFNI.**\n"  \
  " ** See 'Define Datamode->Misc->License Info' for more details.       **\n\n"\
  " **** If you DO find AFNI useful, please cite this paper:\n"                 \
- "      RW Cox. AFNI: Software for analysis and visualization of\n"            \
- "      functional magnetic resonance neuroimages.\n"                          \
- "      Computers and Biomedical Research, 29:162-173, 1996.\n\n"
+ "    RW Cox. AFNI: Software for analysis and visualization of\n"              \
+ "    functional magnetic resonance neuroimages.\n"                            \
+ "    Computers and Biomedical Research, 29:162-173, 1996.\n\n"                \
+ " **** If you find SUMA useful, citing this paper also would be nice:\n"      \
+ "    ZS Saad, RC Reynolds, B Argall, S Japee, RW Cox.\n"                      \
+ "    SUMA: An Interface For Surface-Based Intra- And Inter-Subject Analysis\n"\
+ "    With AFNI. 2nd IEEE International Symposium on Biomedical Imaging:\n"    \
+ "    Macro to Nano 2, 1510-1513, 2004.\n\n"
 #else
 #define ANNOUNCEMENT                                                           \
  "GPL AFNI: Analysis of Functional NeuroImages, by RW Cox (" COXEMAIL ")\n"    \
- "This is Version " VERSION " -- compiled " __DATE__  "\n\n"                   \
+ "This is Version " AVERZHN " -- compiled " __DATE__  "\n\n"                   \
  " ** This software was designed to be used only for research purposes. **\n"  \
  " ** Clinical uses are not recommended, and have never been evaluated. **\n"  \
  " ** This software comes with no warranties of any kind whatsoever,    **\n"  \
@@ -74,16 +79,21 @@
  " ** If these terms are not acceptable, you aren't allowed to use AFNI.**\n"  \
  " ** See 'Define Datamode->Misc->License Info' for more details.       **\n\n"\
  " **** If you DO find AFNI useful, please cite this paper:\n"                 \
- "      RW Cox. AFNI: Software for analysis and visualization of\n"            \
- "      functional magnetic resonance neuroimages.\n"                          \
- "      Computers and Biomedical Research, 29:162-173, 1996.\n\n"
+ "    RW Cox. AFNI: Software for analysis and visualization of\n"              \
+ "    functional magnetic resonance neuroimages.\n"                            \
+ "    Computers and Biomedical Research, 29:162-173, 1996.\n\n"                \
+ " **** If you find SUMA useful, citing this paper also would be nice:\n"      \
+ "    ZS Saad, RC Reynolds, B Argall, S Japee, RW Cox.\n"                      \
+ "    SUMA: An Interface For Surface-Based Intra- And Inter-Subject Analysis\n"\
+ "    With AFNI. 2nd IEEE International Symposium on Biomedical Imaging:\n"    \
+ "    Macro to Nano 2, 1510-1513, 2004.\n\n"
 #endif
 
 #ifdef AFNI_DEBUG
 #  define REPORT_PROGRESS(str)  /* nada */
 #else
 #  define REPORT_PROGRESS(str)  \
-    do{ if(AFNI_VERBOSE){printf(str);fflush(stdout);} } while(0)
+    do{ if(AFNI_VERBOSE){fputs(str,stderr);fflush(stderr);} } while(0)
 #endif
 
 #define EMPTY_STRING(str) ((str)[0] = '\0')
@@ -136,6 +146,9 @@ void AFNI_syntax(void)
      "   -purge       Conserve memory by purging data to disk.\n"
      "                  [Use this if you run out of memory when running AFNI.]\n"
      "                  [This will slow the code down, so use only if needed.]\n"
+#else
+     "   -nopurge     Disable the automatic purging of unused datasets from\n"
+     "                  memory, which is invoked when you switch datasets.\n"
 #endif
      "   -posfunc     Set up the color 'pbar' to use only positive function values.\n"
      "   -R           Recursively search each session_directory for more session\n"
@@ -354,21 +367,46 @@ void AFNI_syntax(void)
 #ifdef USING_MCW_MALLOC
      "   -nomall      Disables use of the mcw_malloc() library routines.\n"
 #endif
+     "   -motif_ver   Show the applied motif version string.\n"
      "\n"
      "N.B.: Many of these options, as well as the initial color set up,\n"
      "      can be controlled by appropriate X11 resources.  See the\n"
      "      files AFNI.Xdefaults and README.environment for instructions\n"
-     "      and examples.  For more help on all AFNI programs, see\n"
-     "        http://afni.nimh.nih.gov/afni/doc/program_help/index.html\n"
+     "      and examples.\n"
 
      , DEFAULT_NGRAY
    ) ;
 
+   printf("\n"
+    "--------------------------------------\n"
+    "Educational and Informational Material\n"
+    "--------------------------------------\n"
+    "* The presentations used in our AFNI teaching classes at the NIH can\n"
+    "  all be found at\n"
+    " http://afni.nimh.nih.gov/pub/dist/edu/latest/      (PowerPoint directories)\n"
+    " http://afni.nimh.nih.gov/pub/dist/edu/latest/afni_handouts/ (PDF directory)\n"
+    "* And for the interactive AFNI program in particular, see\n"
+    " http://afni.nimh.nih.gov/pub/dist/edu/latest/afni01_intro/afni01_intro.pdf\n"
+    " http://afni.nimh.nih.gov/pub/dist/edu/latest/afni03_interactive/afni03_interactive.pdf\n"
+    "* For the -help on all AFNI programs, plus the README files, and more, please see\n"
+    " http://afni.nimh.nih.gov/afni/doc/program_help/index.html\n"
+    "* For indvidualized help with AFNI problems, and to keep up with AFNI news, please\n"
+    "  use the AFNI Message Board:\n"
+    " http://afni.nimh.nih.gov/afni/community/board/\n"
+    "* If an AFNI program crashes, please include the EXACT error messages it outputs\n"
+    "  in your message board posting, as well as any other information needed to\n"
+    "  reproduce the problem.  Just saying 'program X crashed, what's the issue?'\n"
+    "  is not helpful at all!  In all message board postings, detail is relevant.\n"
+    "\n"
+    "* For some fun, see this image:\n"
+    " http://afni.nimh.nih.gov/pub/dist/doc/program_help/images/afni_splashes.gif\n"
+   ) ;
+
    printf(
     "\n"
-    "----------\n"
-    "REFERENCES\n"
-    "----------\n"
+    "-----------------------------------------\n"
+    "REFERENCES and some light bedtime reading\n"
+    "-----------------------------------------\n"
     "The following papers describe some of the components of the AFNI package.\n"
     "\n"
     "RW Cox.  AFNI: Software for analysis and visualization of functional\n"
@@ -377,12 +415,14 @@ void AFNI_syntax(void)
     "\n"
     "  * The first AFNI paper, and the one I prefer you cite if you want to\n"
     "    refer to the AFNI package as a whole.\n"
+    " ** http://afni.nimh.nih.gov/sscc/rwcox/papers/CBM_1996.pdf\n"
     "\n"
     "RW Cox, A Jesmanowicz, and JS Hyde.  Real-time functional magnetic\n"
     "  resonance imaging.  Magnetic Resonance in Medicine, 33: 230-236, 1995.\n"
     "\n"
     "  * The first paper on realtime FMRI; describes the algorithm used in\n"
     "    3dfim+, the interactive FIM calculations, and in the realtime plugin.\n"
+    "  * http://afni.nimh.nih.gov/sscc/rwcox/papers/Realtime_FMRI.pdf\n"
     "\n"
     "RW Cox and JS Hyde.  Software tools for analysis and visualization of\n"
     "  FMRI Data.  NMR in Biomedicine, 10: 171-178, 1997.\n"
@@ -394,11 +434,35 @@ void AFNI_syntax(void)
     "\n"
     "  * Describes the algorithm used for image registration in 3dvolreg\n"
     "    and in the realtime plugin.\n"
+    "  * I think the first paper to demonstrate realtime MRI volume image\n"
+    "    registration running on a standard workstation (not a supercomputer).\n"
+    "  * http://afni.nimh.nih.gov/sscc/rwcox/papers/RealtimeRegistration.pdf\n"
     "\n"
     "ZS Saad, KM Ropella, RW Cox, and EA DeYoe.  Analysis and use of FMRI\n"
     "  response delays.  Human Brain Mapping, 13: 74-93, 2001.\n"
     "\n"
     "  * Describes the algorithm used in 3ddelay (cf. '3ddelay -help').\n"
+    "  * http://afni.nimh.nih.gov/sscc/rwcox/papers/Delays2001.pdf\n"
+    "\n"
+    "ZS Saad, G Chen, RC Reynolds, PP Christidis, KR Hammett, PSF Bellgowan,\n"
+    "  and RW Cox.  FIAC Analysis According to AFNI and SUMA.\n"
+    "  Human Brain Mapping, 27: 417-424, 2006.\n"
+    "\n"
+    "  * Describes how we used AFNI to analyze the FIAC contest data.\n"
+    "  * http://dx.doi.org/10.1002/hbm.20247\n"
+    "  * http://afni.nimh.nih.gov/sscc/rwcox/papers/FIAC_AFNI_2006.pdf\n"
+    "\n"
+    "ZS Saad, DR Glen, G Chen, MS Beauchamp, R Desai, RW Cox.\n"
+    "  A new method for improving functional-to-structural MRI alignment\n"
+    "  using local Pearson correlation.  NeuroImage 44: 839-848, 2009.\n"
+    "\n"
+    "  * Describes the algorithm used in 3dAllineate (and thence in\n"
+    "    align_epi_anat.py) for EPI-to-structural volume image registration.\n"
+    "  * http://dx.doi.org/10.1016/j.neuroimage.2008.09.037\n"
+    "  * http://afni.nimh.nih.gov/sscc/rwcox/papers/LocalPearson2009.pdf\n"
+    "\n"
+    "POSTERS on varied subjects from the AFNI development group can be found at\n"
+    "  * http://afni.nimh.nih.gov/sscc/posters\n"
    ) ;
 
    PRINT_COMPILE_DATE ; exit(0) ;
@@ -428,6 +492,7 @@ ENTRY("AFNI_parse_args") ;
    GLOBAL_argopt.read_1D        = 1 ;      /* 27 Jan 2000 */
 
    GLOBAL_argopt.enable_suma    = 1 ;      /* 29 Aug 2001 */
+   GLOBAL_argopt.disable_done   = 0 ;      /* 21 Aug 2008 */
 
    GLOBAL_argopt.yes_niml       = AFNI_yesenv("AFNI_NIML_START") ;
    GLOBAL_argopt.port_niml      = 0 ;      /* 10 Dec 2002 */
@@ -509,7 +574,7 @@ ENTRY("AFNI_parse_args") ;
 #if MMAP_THRESHOLD > 0
    GLOBAL_argopt.auto_purge    = INIT_purge ;
 #else
-   GLOBAL_argopt.auto_purge    = True ;
+   GLOBAL_argopt.auto_purge    = (Boolean)!AFNI_noenv("AFNI_AUTOPURGE") ;
 #endif
    GLOBAL_argopt.resize_images = False ;       /* False means all images must match */
    GLOBAL_argopt.keep_logo     = False ;       /* For making pretty pictures? */
@@ -660,6 +725,15 @@ ENTRY("AFNI_parse_args") ;
         narg++ ; continue ;  /* go to next arg */
       }
 
+      /*---- -disable_done [21 Aug 2008, rickr] ----*/
+      /*     This flag disables use of the "done" and X buttons.
+             Close afni via plugout_drive or kill.                  */
+
+      if( strcmp(argv[narg],"-disable_done") == 0 ){
+         GLOBAL_argopt.disable_done = 1 ;
+         narg++ ; continue ;
+      }
+
       /*---- -niml [28 Feb 2002] -----*/
 
       if( strcmp(argv[narg],"-niml") == 0 ){
@@ -791,6 +865,10 @@ ENTRY("AFNI_parse_args") ;
 
       if( strncmp(argv[narg],"-purge",4) == 0 ){
          GLOBAL_argopt.auto_purge = True ;
+         narg++ ; continue ;  /* go to next arg */
+      }
+      if( strncmp(argv[narg],"-nopurge",6) == 0 ){
+         GLOBAL_argopt.auto_purge = False ;
          narg++ ; continue ;  /* go to next arg */
       }
 
@@ -1023,6 +1101,12 @@ ENTRY("AFNI_parse_args") ;
          narg++ ; continue ;  /* go to next arg */
       }
 
+      /*----- -motif_ver option -----*/
+
+      if( strncmp(argv[narg],"-motif_ver",10) == 0 ){/* was handled in main() */
+         narg++ ; continue ;  /* go to next arg */
+      }
+
       /*----- -q option -----*/
 
       if( strcmp(argv[narg],"-q") == 0 ){            /* was handled in main() */
@@ -1044,7 +1128,7 @@ ENTRY("AFNI_parse_args") ;
 
 #if 0
 #ifdef USE_TRACING
-   if( ALLOW_real_time ) DBG_trace = 0 ; /* 26 Jan 2001 */
+   if( ALLOW_realtime ) DBG_trace = 0 ; /* 26 Jan 2001 */
 #endif
 #endif
 
@@ -1131,6 +1215,7 @@ static char *FALLback[] =
       "AFNI*help*waitPeriod:       1066"                 ,
       "AFNI*help*fontList:         9x15bold=charset1"    ,
       "AFNI*cluefont:              9x15bold"             ,
+      "AFNI*bigtext*fontList:      10x20=charset1"       ,
       "AFNI*help*cancelWaitPeriod: 333"                  ,
       "AFNI*XmList.translations: #augment"                /* 24 Feb 2007 */
            "<Btn4Down>: ListPrevItem()\\n"
@@ -1171,8 +1256,15 @@ void AFNI_sigfunc(int sig)   /** signal handler for fatal errors **/
    }
    fprintf(stderr,"\nFatal Signal %d (%s) received\n",sig,sname); fflush(stderr);
    TRACEBACK ;
-   fprintf(stderr,"** AFNI version = " VERSION "  Compile date = " __DATE__ "\n" );
-   fprintf(stderr,"** Program Abort **\n") ; fflush(stderr) ;
+   fprintf(stderr,"** AFNI version = " AVERZHN "  Compile date = " __DATE__ "\n" );
+#ifdef SHSTRING
+   fprintf(stderr,"** [[Precompiled binary " SHSTRING ": " __DATE__ "]]\n") ;
+#endif
+   fprintf(stderr,"** Program Abort **\n") ;
+   if( sig != SIGINT && sig != SIGTERM )
+   fprintf(stderr,"** If you report this crash to the AFNI message\n"
+                  "** board, please copy the error messages EXACTLY.\n") ;
+   fflush(stderr) ;
    exit(1) ;
 }
 
@@ -1201,13 +1293,14 @@ void AFNI_sigfunc_alrm(int sig)
      "Don't cry because it's over; smile because it happened"       ,
      "Farewell! Thou art too dear for my possessing"                ,
      "Farewell, farewell, you old rhinoceros"                       ,
-     "Is that you, Jerzy?"                                          ,
+     "Is that you, Jerzy? Do widzenia"                              ,
      "A farewell is necessary before we can meet again"             ,
      "Absent from thee I languish"                                  ,
      "The return makes one love the farewell"                       ,
      "Every goodbye makes the next hello closer"                    ,
      "The song is ended, but the melody lingers on"                 ,
-     "A star will shine upon the hour of our next meeting"
+     "A star will shine upon the hour of our next meeting"          ,
+     "Au revoir, Ciao, Sayonara, Hasta luego, Czesc, and Zai jian"
    } ;
    int nn = (lrand48()>>3) % NMSG ;
    if( !AFNI_yesenv("AFNI_NEVER_SAY_GOODBYE") )
@@ -1248,7 +1341,7 @@ static int check_string( char *targ , int ns , char *ss[] )
 
 int main( int argc , char *argv[] )
 {
-   int ii ;
+   int ii ; int dienow=0 ;
 
    /*--- help the pitiful user? ---*/
 
@@ -1269,17 +1362,19 @@ int main( int argc , char *argv[] )
    /** Check for -version [15 Aug 2003] **/
 
    if( check_string("-ver",argc,argv) || check_string("--ver",argc,argv) ){
-     printf( "Version " VERSION  "\n" ) ;
+     printf( "Version " AVERZHN  "\n" ) ;
 #ifdef SHSTRING
      printf( "[[Precompiled binary " SHSTRING ": " __DATE__ "]]\n" ) ;
 #else
      printf( "Compile date = " __DATE__ " " __TIME__ "\n") ;
 #endif
-     exit(0) ;
+     dienow++ ;
    }
 
-   if( check_string("--motd",argc,argv) ){   /* 29 Nov 2005 */
-     AFNI_display_motd(NULL) ; exit(0) ;
+   /** MOTD output **/
+
+   if( check_string("--motd",argc,argv) || check_string("-motd",argc,argv) ){   /* 29 Nov 2005 */
+     AFNI_display_motd(NULL) ; dienow++ ;
    }
 
    /** just print the SHOWOFF string [26 Oct 2004] **/
@@ -1290,7 +1385,7 @@ int main( int argc , char *argv[] )
 #else
       printf("Unknown\n") ;
 #endif
-      exit(0) ;
+      dienow++ ;
    }
 
    /** debug stuff **/
@@ -1305,9 +1400,18 @@ int main( int argc , char *argv[] )
    if( check_string("-TRACE",argc,argv) ) DBG_trace = 2 ;
 #endif
 
+   if( check_string("-motif_ver",argc,argv) ) {
+     show_motif_version_string() ;
+     dienow++ ;
+   }
+
+   /*** if ordered, die right now ***/
+
+   if( dienow) exit(0) ;
+
 #if 0
 #ifdef USE_TRACING
-   if( ALLOW_real_time ) DBG_trace = 0 ; /* 26 Jan 2001 */
+   if( ALLOW_realtime ) DBG_trace = 0 ; /* 26 Jan 2001 */
 #endif
 #endif
 
@@ -1321,7 +1425,7 @@ int main( int argc , char *argv[] )
 
    GLOBAL_argopt.allow_rt = check_string("-rt",argc,argv) ;
 
-   if( !GLOBAL_argopt.quiet && !ALLOW_real_time )
+   if( !GLOBAL_argopt.quiet && !ALLOW_realtime )
      AFNI_start_version_check() ;               /* 21 Nov 2002 */
 
 #ifdef DARWIN
@@ -1346,7 +1450,7 @@ int main( int argc , char *argv[] )
    if( argc > 1 ) AFNI_logger("afni",argc,argv) ; /* 14 Aug 2001 */
 #endif
 
-   srand48((long)time(NULL)) ;  /* initialize random number generator */
+   srand48((long)time(NULL)+(long)getpid()) ;  /* initialize random number generator */
 
    REPORT_PROGRESS( "\n" ) ;
 
@@ -1392,11 +1496,15 @@ int main( int argc , char *argv[] )
    GLOBAL_library.session   = NULL ;                   /* 20 Dec 2001 */
    GLOBAL_library.warptable = NULL ;                   /* 28 Aug 2002 */
 
+   GLOBAL_library.realtime_status   = NULL ;           /* 01 Jun 2009 */
+   GLOBAL_library.realtime_callback = NULL ;
+
    /*--------------------------------------------------------------------*/
    /*--- initialize X, toplevel window, defaults, and display context ---*/
 
    REPORT_PROGRESS("Initializing: X11");
 
+   memset(&MAIN_app, 0, sizeof(MAIN_app)) ;  /* 11 Feb 2009 [lesstif patrol] */
    MAIN_shell = XtVaAppInitialize( &MAIN_app , "AFNI" , NULL , 0 ,
                                    &argc , argv , FALLback , NULL ) ;
 
@@ -1430,6 +1538,7 @@ int main( int argc , char *argv[] )
    PUTENV("AFNI_DECONFLICT","OVERWRITE") ; /* 24 Sep 2007 */
    PUTENV("AFNI_X11_REDECORATE","NO") ;
    PUTENV("AFNI_RESCAN_AT_SWITCH","YES") ; /* 16 Nov 2007 */
+   PUTENV("AFNI_VIDEO_DELAY","66") ;       /* 20 Aug 2009 */
 
 #if 0
    PUTENV("AFNI_IMAGE_LABEL_MODE","1") ;
@@ -1687,19 +1796,24 @@ STATUS("call 13") ;
         AFNI_register_0D_function( "Log10" , log10_func ) ;
         AFNI_register_0D_function( "SSqrt" , ssqrt_func ) ;
 
-        AFNI_register_1D_function( "Median3" , median3_func) ;
-        AFNI_register_1D_function( "OSfilt3" , osfilt3_func) ;
-        AFNI_register_1D_function( "|FFT()|" , absfft_func ) ;
+        AFNI_register_1D_function( "Median3"   , median3_func) ;
+        AFNI_register_1D_function( "OSfilt3"   , osfilt3_func) ;
+        AFNI_register_1D_function( "AdptMean9" , adpt_wt_mn9 ) ;       /* 04 Sep 2009 */
+        AFNI_register_1D_function( "|FFT()|"   , absfft_func ) ;
+        AFNI_register_1D_function( "ZeroToOne" , ztone_func  ) ;       /* 02 Sep 2009 */
+        AFNI_register_1D_function( "Normlz_L1" , L1normalize_func  ) ; /* 03 Sep 2009 */
+        AFNI_register_1D_function( "Normlz_L2" , L2normalize_func  ) ; /* 03 Sep 2009 */
 
         AFNI_register_2D_function( "Median9" , median9_box_func ) ;
         AFNI_register_2D_function( "Winsor9" , winsor9_box_func ) ;
         AFNI_register_2D_function( "OSfilt9" , osfilt9_box_func ) ;
 
-        AFNI_register_2D_function( "Median21", median21_box_func );
-        AFNI_register_2D_function( "Winsor21", winsor21_box_func );
+        AFNI_register_2D_function( "Median21" , median21_box_func );
+        AFNI_register_2D_function( "Winsor21" , winsor21_box_func );
+        AFNI_register_2D_function( "AdptMean21" , adapt_mean_21_box_func ); /* 04 Sep 2009 */
 
-        AFNI_register_2D_function( "abs[FFT2D]", fft2D_absfunc   );
-        AFNI_register_2D_function( "arg[FFT2D]", fft2D_phasefunc );
+        AFNI_register_2D_function( "abs[FFT2D]" , fft2D_absfunc   );
+        AFNI_register_2D_function( "arg[FFT2D]" , fft2D_phasefunc );
 
         /* 01 Feb 2000: see afni_fimfunc.c */
 
@@ -1716,6 +1830,8 @@ STATUS("call 13") ;
         AFNI_register_slice_proj( "OSfilt"  , osfilt_proj  ) ; /* 07 Dec 2007 */
         AFNI_register_slice_proj( "Extreme" , extreme_proj ) ; /* 02 Feb 2002 */
         AFNI_register_slice_proj( "MAD"     , mad_proj     ) ; /* 07 Dec 2007 */
+
+        AFNI_register_slice_proj( "AdptMean", adaptive_weighted_mean ) ; /* 04 Sep 2009 */
 
 #ifdef HUBERIZE
         AFNI_register_1D_funcstr( "Huber Fit" , huber_func ) ;
@@ -1798,8 +1914,8 @@ STATUS("call 14") ;
           REPORT_PROGRESS(str) ;
         }
 
-        if( ALLOW_real_time > 0 )
-          REPORT_PROGRESS("\nRT: realtime plugin is active") ;
+        if( ALLOW_realtime > 0 )
+          REPORT_PROGRESS("\nRT: AFNI realtime plugin is active; cf. README.realtime document") ;
 
         /* 23 Sep 2000: this function will be called 0.123 seconds
                         from now to initialize the window layouts  */
@@ -1864,7 +1980,8 @@ STATUS("call 14") ;
         { long long lfs = AFNI_logfilesize(); /* 17 Oct 2007 */
           if( lfs > 10000000 ){
             char msg[256] ;
-            sprintf(msg,"\n++ WARNING: ~/.afni.log is now %lld (%s) bytes long!\n",
+            sprintf(msg,"\n++ WARNING: ~/.afni.log is now %lld (%s) bytes long!"
+                        "\n +          (Is that you, Kevin?)\n" ,
                     lfs , approximate_number_string((double)lfs) ) ;
             REPORT_PROGRESS(msg) ;
           }
@@ -2038,17 +2155,25 @@ ENTRY("AFNI_startup_timeout_CB") ;
    if( !AFNI_noenv("AFNI_STARTUP_WARNINGS") ){  /* 22 Jul 2003 */
 
 #ifdef LESSTIF_VERSION /* 13 Jan 2003: If LessTif was used for this AFNI */
-
+    #ifndef USING_LESSTIF   /* Lesstif is good for you!
+                               Keep the warning if the proper
+                               -DUSING_LESSTIF was not used
+                               when compiling  */
     (void) MCW_popup_message( MAIN_im3d->vwid->picture ,
                                  " \n"
                                  "*** WARNING:                ***\n"
                                  "*** This  copy of AFNI  was ***\n"
                                  "*** built using the LessTif ***\n"
-                                 "*** library.  You will find ***\n"
-                                 "*** problems;  AFNI is best ***\n"
-                                 "*** when built using  Motif ***\n"
-                                 "*** or OpenMotif!           ***\n" ,
+                                 "*** library, but without the***\n"
+                                 "*** -DUSING_LESSTIF flag at ***\n"
+                                 "*** compile time.           ***\n"
+                                 "*** You will find problems; ***\n"
+                                 "*** AFNI works with either  ***\n"
+                                 "*** Motif or OpenMotif, or  ***\n"
+                                 "*** Lesstif with the proper ***\n"
+                                 "*** compiler flag.          ***\n" ,
                               MCW_USER_KILL | MCW_TIMER_KILL ) ;
+    #endif
 #endif
 
 #ifdef BAD_BUTTON3_POPUPS /* 21 Jul 2003: If this is a stupid system */
@@ -2076,6 +2201,10 @@ ENTRY("AFNI_startup_timeout_CB") ;
                               "++ so its subdirectories were searched  ++\n"
                               "++ for dataset files.                   ++\n" ,
                               MCW_USER_KILL | MCW_TIMER_KILL ) ;
+
+   /* 05 May 2009: make sure the Cluster widgets show up properly */
+
+   AFNI_vedit_CB( im3d->vwid->func->options_vedit_av , im3d ) ;
 
    /* 21 Nov 2002: check the AFNI version */
 
@@ -2283,7 +2412,7 @@ STATUS("creating memplot for image overlay") ;
       char str[32] , *eee ;
       float rx=RX ;         /* default rectangle halfsize */
       int   kkk=0 ;
-      float xyz=0.0,xyzp,xyzm , rxm,rxp ;
+      float xyz=0.0,xyzp=0.0,xyzm=0.0 , rxm,rxp ;
       int skip_boxes=1 , skip_lines=0 , skip_lcen=0, skip_ledg=1 ;
       float boxsize=RX , linewidth=0.0 ;      /* 23 Feb 2003 */
       int firstb ;                            /* 23 Jan 2004 */
@@ -2861,21 +2990,31 @@ STATUS("drawing crosshairs") ;
 
    /*--- underlay image # n ---*/
 
-   if( type == isqCR_getimage || type == isqCR_getqimage ){
+   if( type == isqCR_getimage  || type == isqCR_getqimage ||
+       type == isqCR_getulayim || type == isqCR_getolayim   ){
+
       Three_D_View *im3d = (Three_D_View *)br->parent ;
-      int ival ;
+      FD_brick *brr=NULL ;
+      int ival , banat ;
+
+      banat = EQUIV_DSETS(br->dset,im3d->anat_now) ;
+      switch( type ){
+        case isqCR_getulayim: brr = (banat) ? br : br->brother ; break ;
+        case isqCR_getolayim: brr = (banat) ? br->brother : br ; break ;
+      }
+      if( brr == NULL ) brr = br ;
 
       /*** decide which 3D brick to extract data from (ival) ***/
 
-      if( EQUIV_DSETS(br->dset,im3d->anat_now) )      /* underlay dataset */
+      if( EQUIV_DSETS(brr->dset,im3d->anat_now) )      /* underlay dataset */
         ival = im3d->vinfo->anat_index ;
-      else if( EQUIV_DSETS(br->dset,im3d->fim_now) )  /* overlay dataset */
+      else if( EQUIV_DSETS(brr->dset,im3d->fim_now) )  /* overlay dataset */
         ival = im3d->vinfo->fim_index ;
       else
-        ival = 0 ;                                    /* shouldn't happen */
+        ival = 0 ;                                     /* shouldn't happen */
 
-           if( type == isqCR_getqimage      ) ival = -1 ; /* get empty image */
-      else if( ival >= DSET_NVALS(br->dset) ) ival = br->dset->dblk->nvals -1 ;
+           if( type == isqCR_getqimage       ) ival = -1; /* get empty image */
+      else if( ival >= DSET_NVALS(brr->dset) ) ival = brr->dset->dblk->nvals-1;
 
 if(PRINT_TRACING)
 { char str[256] ;
@@ -2885,7 +3024,7 @@ if(PRINT_TRACING)
       LOAD_DSET_VIEWS(im3d) ;  /* 02 Nov 1996 */
 
       AFNI_set_ignore_vedit(1) ; /* 28 Jan 2008 */
-      im = FD_warp_to_mri( n , ival , br ) ; /* actually get image from dataset */
+      im = FD_warp_to_mri( n , ival , brr ) ; /* get image from dataset */
       AFNI_set_ignore_vedit(0) ;
 
       if( ival < 0 ) RETURN( (XtPointer) im ) ;  /* return fake image */
@@ -2893,7 +3032,8 @@ if(PRINT_TRACING)
       /* Load value of current pixel into display label */
       /* April 1996: only if image is at current slice  */
 
-      { char buf[64] = "\0" ; int ibest=-1 ;
+      if( brr == br ){
+        char buf[64] = "\0" ; int ibest=-1 ;
         AFNI_set_valabel( br , n , im , buf ) ;
         if( buf[0] != '\0' ){
           if( im3d->vinfo->underlay_type == UNDERLAY_ANAT )
@@ -2925,8 +3065,17 @@ STATUS("get something else, but I don't care!") ;
 }
 
 /*-----------------------------------------------------------------------------*/
+
+#undef   PFVAL
+#if 1
+# define PFVAL(vv,bb) strcpy((bb),AV_uformat_fval(vv))
+#else
+# define PFVAL(vv,bb) AV_fval_to_char((vv),(bb))
+#endif
+
+/*-----------------------------------------------------------------------------*/
 /*! Set a value label when the nsl-th image is in "im".
--------------------------------------------------------------------------------*/
+*//*---------------------------------------------------------------------------*/
 
 void AFNI_set_valabel( FD_brick *br , int nsl , MRI_IMAGE *im , char *blab )
 {
@@ -2955,35 +3104,34 @@ ENTRY("AFNI_set_valabel") ;
 
       case MRI_byte:{
          int val = MRI_BYTE_2D(im , ib.ijk[0],ib.ijk[1]) ;
-         sprintf( blab , "%6d" , val ) ;
+         sprintf( blab , "%-6d" , val ) ;
       }
       break ;
 
       case MRI_short:{
          int val = MRI_SHORT_2D(im , ib.ijk[0],ib.ijk[1]) ;
-         sprintf( blab , "%6d" , val ) ;
+         sprintf( blab , "%-6d" , val ) ;
       }
       break ;
 
       case MRI_int:{
          int val = MRI_INT_2D(im , ib.ijk[0],ib.ijk[1]) ;
-         sprintf( blab , "%6d" , val ) ;
+         sprintf( blab , "%-7d" , val ) ;
       }
       break ;
 
       case MRI_float:{
          float val = MRI_FLOAT_2D(im , ib.ijk[0],ib.ijk[1]) ;
-         AV_fval_to_char(val,blab) ;
+         PFVAL(val,blab) ;
       }
       break ;
 
       case MRI_complex:{
-         int iblab ;
-         complex val ;
+         int iblab ; char qbuf[16] ; complex val ;
          val = MRI_COMPLEX_2D(im , ib.ijk[0],ib.ijk[1]) ;
-         AV_fval_to_char(val.r,blab) ; iblab = strlen(blab) ;
+         PFVAL(val.r,blab) ; iblab = strlen(blab) ;
          if( val.i >= 0.0 ) blab[iblab++] = '+' ;
-         AV_fval_to_char(val.i,blab+iblab) ; iblab = strlen(blab) ;
+         PFVAL(val.i,blab+iblab) ; iblab = strlen(blab) ;
          blab[iblab++] = 'I' ; blab[iblab++] = '\0' ;
       }
       break ;
@@ -3406,7 +3554,7 @@ if(PRINT_TRACING)
       break ;  /* end of destroy */
 
       case isqCR_buttonpress:{
-         XButtonEvent *xev = (XButtonEvent *) cbs->event ;
+         XButtonEvent *xev = (XButtonEvent *)cbs->event ;
 
 if(PRINT_TRACING){
  char str[256] ;
@@ -3462,6 +3610,19 @@ if(PRINT_TRACING)
                        im3d , id.ijk[0] , id.ijk[1] , id.ijk[2] ,
                        (im3d->vinfo->crosshair_visible==True) ?
                        REDISPLAY_OVERLAY : REDISPLAY_OPTIONAL ) ;
+                  }
+
+                  /* 08 May 2009: if Shift+Control both pressed, do InstaCorr */
+
+                  if( xev->state&ShiftMask && xev->state&ControlMask ){
+                    int qq = AFNI_icor_setref(im3d) ;
+                    if( qq == 0 ) BEEPIT ;
+                    else {
+                      im3d->vinfo->i1_icor = im3d->vinfo->i1 ;
+                      im3d->vinfo->j2_icor = im3d->vinfo->j2 ;
+                      im3d->vinfo->k3_icor = im3d->vinfo->k3 ;
+                      AFNI_icor_setref_locked(im3d) ;           /* 15 May 2009 */
+                    }
                   }
                }
             } /* end of button 1 */
@@ -3650,6 +3811,12 @@ if(PRINT_TRACING)
         switch( ks ){
           case XK_Delete:
             AFNI_process_drawing( im3d , UNDO_MODE , 0,NULL,NULL,NULL ) ;
+          break ;
+
+          case XK_F4:
+          case XK_F3:  /* 13 Sep 2008 */
+            AFNI_process_drawing( im3d ,
+             (ks==XK_F3) ? DECVAL_MODE : INCVAL_MODE , 0,NULL,NULL,NULL ) ;
           break ;
         }
       }
@@ -4088,6 +4255,7 @@ ENTRY("AFNI_inconstancy_check") ;
      sprintf(msg+strlen(msg),
             "\n===== This is known as the Mike Beauchamp SINdrome =====\n"
               "===== Funky things may happen with these datasets! =====\n" ) ;
+     MCW_textwin_setbig(1) ;
      (void)new_MCW_textwin( wp , msg , TEXT_READONLY ) ;
      free((void *)msg) ;
      for(ii=0;ii<nbad;ii++)free((void *)sbad[ii]);
@@ -4922,7 +5090,7 @@ ENTRY("AFNI_closedown_3dview") ;
    im3d->b123_ulay = im3d->b231_ulay = im3d->b312_ulay = NULL ;
 
    if( XtIsManaged(im3d->vwid->view->frame) == True )
-      AFNI_controller_panel_CB( NULL , im3d , NULL ) ;
+     AFNI_controller_panel_CB( NULL , im3d , NULL ) ;
 
    /* null out montage info */
 
@@ -4937,6 +5105,7 @@ ENTRY("AFNI_closedown_3dview") ;
    RESET_AFNI_QUIT(im3d) ;
 
    im3d->anat_now = im3d->fim_now = NULL ;
+   AFNI_SEE_FUNC_OFF(im3d) ;   /* 22 May 2009 */
 
    AFNI_purge_unused_dsets() ;
 
@@ -5172,7 +5341,7 @@ ENTRY("AFNI_time_index_CB") ;
 
    ipx = av->ival ;
    if( ipx >= im3d->vinfo->top_index )    /* don't let index be too big */
-      ipx = im3d->vinfo->top_index - 1 ;
+     ipx = im3d->vinfo->top_index - 1 ;
 
    im3d->vinfo->time_index = ipx ;        /* change time index */
 
@@ -5235,13 +5404,19 @@ static char * AFNI_image_help =
  "< = Page Down = backward 1 image (e.g., slice)\n"
  "o = toggle (color) overlay on/off\n"
  "u = toggle background from underlay/overlay dataset\n"
+ "#/3 = toggle underlay/overlay checkerboard display\n"
  "v/V = Video image sequence up/down\n"
  "r/R = Ricochet image sequence up/down\n"
  "i/I = image fraction down/up\n"
  "z/Z = zoom out/in\n"
- "Del = drawing undo       F2= drawing pencil\n"
+ "Del = drawing undo       F2 = drawing pencil\n"
+ "F3  = drawing value --   F4 = drawing value ++\n"
  "Left/Right/Up/Down arrow keys\n"
- "    = move crosshairs OR pan image\n" ;
+ "    = move crosshairs OR pan zoomed image\n"
+ "Shift+keyboard arrow keys = pan crop region around\n"
+ "Ctrl+keyboard arrow keys  = expand/shrink crop region\n"
+ "Shift+Home = center crop region on current crosshairs\n"
+;
 
 static char * AFNI_arrowpad_help =
    "Click arrows to scroll crosshair position\n"
@@ -5636,10 +5811,12 @@ ENTRY("AFNI_viewbut_EV") ;
 
 void AFNI_redisplay_func( Three_D_View *im3d )  /* 05 Mar 2002 */
 {
+ENTRY("AFNI_redisplay_func") ;
    if( IM3D_OPEN(im3d) && IM3D_IMAGIZED(im3d) ){
      AFNI_set_viewpoint( im3d , -1,-1,-1 , REDISPLAY_OVERLAY ) ;
      AFNI_process_funcdisplay( im3d ) ;
    }
+   EXRETURN ;
 }
 
 /*------------------------------------------------------------------------*/
@@ -5648,7 +5825,9 @@ void AFNI_do_bkgd_lab( Three_D_View *im3d )
 {
    char str[256] ;
 
-   if( !IM3D_OPEN(im3d) || !im3d->vwid->imag->do_bkgd_lab ) return ;
+ENTRY("AFNI_do_bkgd_lab") ;
+
+   if( !IM3D_OPEN(im3d) || !im3d->vwid->imag->do_bkgd_lab ) EXRETURN ;
 
 #define VSTR(x) ( ((x)[0] == '\0') ? ("?") : (x) )
 
@@ -5664,6 +5843,7 @@ void AFNI_do_bkgd_lab( Three_D_View *im3d )
    MCW_set_widget_label( im3d->vwid->func->bkgd_lab , str ) ;
    XtManageChild( im3d->vwid->func->bkgd_lab ) ;
    FIX_SCALE_SIZE(im3d) ;
+   EXRETURN ;
 }
 
 /*------------------------------------------------------------------------*/
@@ -5739,7 +5919,9 @@ void AFNI_view_setter( Three_D_View *im3d , MCW_imseq *seq )
    MCW_imseq *sxyz, *syzx, *szxy ;
    int val=-1 ;
 
-   if( !IM3D_OPEN(im3d) ) return ;
+ENTRY("AFNI_view_setter") ;
+
+   if( !IM3D_OPEN(im3d) ) EXRETURN ;
 
    sxyz = im3d->s123 ; syzx = im3d->s231 ; szxy = im3d->s312 ;
 
@@ -5757,7 +5939,7 @@ void AFNI_view_setter( Three_D_View *im3d , MCW_imseq *seq )
    }
 
    im3d->vinfo->view_setter = val ;
-   return ;
+   EXRETURN ;
 }
 
 /*------------------------------------------------------------------------*/
@@ -5773,6 +5955,12 @@ void AFNI_set_viewpoint( Three_D_View *im3d ,
    THD_fvec3 fv ;
    THD_ivec3 old_ib , new_ib , old_id , new_id ;
 
+#undef  EXRR
+#define EXRR do{ recurse-- ; EXRETURN ; } while(0)
+   static int recurse=0 ;
+   if( recurse > 1 ) return ;  /* changed from 3 to 1 [16 Sep 2009] */
+   recurse++ ;
+
 ENTRY("AFNI_set_viewpoint") ;
 
 if(PRINT_TRACING)
@@ -5780,7 +5968,7 @@ if(PRINT_TRACING)
   sprintf(str,"input xx=%d yy=%d zz=%d",xx,yy,zz) ;
   STATUS(str) ; }
 
-   if( ! IM3D_OPEN(im3d) || ! ISVALID_3DIM_DATASET(im3d->anat_now) ) EXRETURN ;
+   if( ! IM3D_OPEN(im3d) || ! ISVALID_3DIM_DATASET(im3d->anat_now) ) EXRR ;
 
    /** 02 Nov 1996:
          Attach view-specific dataxes and warps to the datasets **/
@@ -5805,7 +5993,7 @@ if(PRINT_TRACING)
    new_xyz =
     do_lock = !( i1 == old_i1 && j2 == old_j2 && k3 == old_k3 ) ;  /* 11 Nov 1996 */
 
-   if( !redisplay_option && !new_xyz ) EXRETURN;
+   if( !redisplay_option && !new_xyz ) EXRR ;
 
    isq_driver = (redisplay_option == REDISPLAY_ALL) ? isqDR_display
                                                     : isqDR_overlay ;
@@ -5851,6 +6039,7 @@ DUMP_IVEC3("  new_id",new_id) ;
                                   *im3d->vinfo->func_thresh_top ;
            im3d->vedset.param[4] = im3d->vinfo->thr_sign ;
            im3d->vedset.param[5] = im3d->vinfo->use_posfunc ;
+           im3d->vedset.exinfo   = NULL ;
          break ;
        }
        if( !im3d->vedskip )
@@ -5859,7 +6048,7 @@ DUMP_IVEC3("  new_id",new_id) ;
          UNCLUSTERIZE(im3d) ;
        } else if( changed ){
          mri_cluster_detail *cld ; int nc ; char *rrr ;
-         VEDIT_helpize(im3d);
+         VEDIT_cluster_helpize(im3d);
          if( im3d->vwid->func->clu_rep != NULL ){
            free(im3d->vwid->func->clu_rep); im3d->vwid->func->clu_rep = NULL;
          }
@@ -5997,8 +6186,9 @@ DUMP_IVEC3("             new_ib",new_ib) ;
       }
    }
 
-   EXRETURN ;
+   EXRR ;
 }
+#undef EXRR
 
 /*-------------------------------------------------------------------------
    get the n-th overlay as an MRI_IMAGE *
@@ -6461,6 +6651,8 @@ ENTRY("AFNI_crosshair_label") ;
                   "1234567890123456789"  ) ;
 
    } else if( im3d->type == AFNI_IMAGES_VIEW || im3d->vinfo->show_voxind ){
+      int ixyz = DSET_ixyz_to_index( im3d->anat_now ,
+                                     im3d->vinfo->i1, im3d->vinfo->j2, im3d->vinfo->k3 ) ;
 
 STATUS("voxel indexes") ;
 
@@ -6468,7 +6660,7 @@ STATUS("voxel indexes") ;
           im3d->vinfo->func_visible && DSET_INMEMORY(im3d->fim_now) ){
          THD_fvec3 fv ;
          THD_ivec3 iv ;
-         int flag ;
+         int flag , fxyz ;
 
          flag = im3d->fim_now->wod_flag ;
          im3d->fim_now->wod_flag = False ;
@@ -6476,16 +6668,18 @@ STATUS("voxel indexes") ;
          fv = THD_dicomm_to_3dmm( im3d->fim_now ,
                                   TEMP_FVEC3(im3d->vinfo->xi,im3d->vinfo->yj,im3d->vinfo->zk) ) ;
          iv = THD_3dmm_to_3dind( im3d->fim_now , fv ) ;
+         fxyz = DSET_ixyz_to_index( im3d->fim_now , iv.ijk[0],iv.ijk[1],iv.ijk[2] ) ;
 
          im3d->fim_now->wod_flag = flag ;
 
-         sprintf( buf , "x: an=%4d fun=%4d\ny: an=%4d fun=%4d\nz: an=%4d fun=%4d" ,
+         sprintf( buf , "Ul=%d Ol=%d\nx: Ul=%4d Ol=%4d\ny: Ul=%4d Ol=%4d\nz: Ul=%4d Ol=%4d" ,
+                  ixyz , fxyz ,
                   im3d->vinfo->i1,iv.ijk[0] ,
                   im3d->vinfo->j2,iv.ijk[1] ,
                   im3d->vinfo->k3,iv.ijk[2]  ) ;
       } else {
-         sprintf( buf , "voxel x = %4d\nvoxel y = %4d\nvoxel z = %4d" ,
-                  im3d->vinfo->i1 , im3d->vinfo->j2 , im3d->vinfo->k3  ) ;
+         sprintf( buf , "index %d:\nvoxel x = %4d\nvoxel y = %4d\nvoxel z = %4d" ,
+                  ixyz , im3d->vinfo->i1 , im3d->vinfo->j2 , im3d->vinfo->k3  ) ;
       }
    } else {
       char bxyz[3][32] , *cname ;
@@ -6954,6 +7148,8 @@ ENTRY("AFNI_switchview_CB") ;
 
    SHOW_AFNI_PAUSE ;
 
+   DISABLE_INSTACORR(im3d) ; DESTROY_ICOR_setup(im3d->iset) ; /* 08 May 2009 */
+
    POPDOWN_strlist_chooser ;                        /* might be choosing datasets */
    UNCLUSTERIZE(im3d) ;                             /* 13 Feb 2008 */
 
@@ -7090,6 +7286,8 @@ STATUS("purging old datasets from memory (maybe)") ;
    im3d->anat_now = im3d->anat_dset[vvv] ;
    im3d->fim_now  = im3d->fim_dset[vvv] ;
    im3d->ss_now   = GLOBAL_library.sslist->ssar[sss] ;
+
+   if( !ISVALID_DSET(im3d->fim_now) ) AFNI_SEE_FUNC_OFF(im3d) ;  /* 22 May 2009 */
 
    SENSITIZE( im3d->vwid->func->clu_rowcol , DSET_INMEMORY(im3d->fim_now) ) ;
 
@@ -7274,6 +7472,8 @@ void AFNI_setup_viewing( Three_D_View *im3d , Boolean rescaled )
    static THD_3dim_dataset *old_fim  = NULL ; /* 12 Dec 2001 */
    static Three_D_View     *old_im3d = NULL ; /* 29 Jan 2002 */
    static THD_3dim_dataset *old_anat = NULL ; /* 12 Dec 2001 */
+   static int         old_anat_nvals = -1 ;   /* 21 Jul 2009 */
+   static int         old_func_nvals = -1 ;   /* 21 Jul 2009 */
 
 ENTRY("AFNI_setup_viewing") ;
 
@@ -7400,6 +7600,14 @@ STATUS("forcing function WOD") ;
       myXtFree(im3d->b312_fim) ; im3d->b312_fim = fbr[2] ;
       myXtFree(fbr) ;
 
+      im3d->b123_fim->brother = (XtPointer)im3d->b123_anat ;
+      im3d->b231_fim->brother = (XtPointer)im3d->b231_anat ;
+      im3d->b312_fim->brother = (XtPointer)im3d->b312_anat ;
+
+      im3d->b123_anat->brother = (XtPointer)im3d->b123_fim ;
+      im3d->b231_anat->brother = (XtPointer)im3d->b231_fim ;
+      im3d->b312_anat->brother = (XtPointer)im3d->b312_fim ;
+
       im3d->b123_fim->parent =
         im3d->b231_fim->parent =
           im3d->b312_fim->parent = (XtPointer) im3d ;
@@ -7436,7 +7644,7 @@ STATUS("forcing function WOD") ;
       /* 29 Jan 2008: enable/disable the FDR-izing button */
 
       { int scod=DSET_BRICK_STATCODE(im3d->fim_now,im3d->vinfo->thr_index) ,
-            doit=FUNC_IS_STAT(scod) ;
+            doit=FUNC_IS_STAT(scod) && DSET_INMEMORY(im3d->fim_now) ;
         XtSetSensitive( im3d->vwid->func->thr_fdr_pb , (Boolean)doit ) ;
       }
 
@@ -7518,7 +7726,7 @@ STATUS(" -- function widgets ON") ;
 
       XtManageChild( im3d->vwid->func->thr_rowcol ) ;
       qq = AFNI_controller_index(im3d) ;
-      if( zfim[qq] && im3d->fim_now != NULL && im3d->fim_now->func_type == FUNC_FIM_TYPE ){
+      if( zfim[qq] && ISVALID_DSET(im3d->fim_now) && im3d->fim_now->func_type == FUNC_FIM_TYPE ){
 STATUS(" -- set threshold to zero for FIM (once only)") ;
         XmScaleSetValue( im3d->vwid->func->thr_scale , 0 ) ;
         im3d->vinfo->func_threshold = 0.0 ; zfim[qq] = 0 ;
@@ -7572,7 +7780,9 @@ STATUS(" -- set threshold to zero for FIM (once only)") ;
 
       /** 12 Dec 2001: only refit menus if dataset has changed **/
 
-      if( have_fim && (im3d->fim_now != old_fim || im3d != old_im3d) ){
+      if( have_fim &&
+          (im3d->fim_now != old_fim || im3d != old_im3d ||
+           DSET_NVALS(im3d->fim_now) != old_func_nvals )  ){
         refit_MCW_optmenu( im3d->vwid->func->fim_buck_av ,
                            0 ,                            /* new minval */
                            DSET_NVALS(im3d->fim_now)-1 ,  /* new maxval */
@@ -7591,7 +7801,8 @@ STATUS(" -- set threshold to zero for FIM (once only)") ;
                          ) ;
       }
 
-      if( im3d->anat_now != old_anat || im3d != old_im3d ){
+      if( im3d->anat_now != old_anat || im3d != old_im3d ||
+          DSET_NVALS(im3d->anat_now) != old_anat_nvals     ){
         refit_MCW_optmenu( im3d->vwid->func->anat_buck_av ,
                            0 ,                             /* new minval */
                            DSET_NVALS(im3d->anat_now)-1 ,  /* new maxval */
@@ -7694,7 +7905,7 @@ STATUS(" -- processing points in this dataset") ;
    /*-------------------------------------------------------------------*/
    /*--- Sep 1995: turn Talairach to button on image popup on or off ---*/
 
-STATUS(" -- managing talairach_to button") ;
+STATUS(" -- managing tal_to button, etc") ;
 
    if( im3d->vwid->imag->pop_talto_pb != NULL ){
      if( CAN_TALTO(im3d) ){
@@ -7713,6 +7924,11 @@ STATUS(" -- managing talairach_to button") ;
      }
    }
 
+   if( im3d->vwid->imag->pop_instacorr_pb != NULL ){
+     if( ISVALID_ICOR_setup(im3d->iset) ) ENABLE_INSTACORR(im3d) ;
+     else                                 DISABLE_INSTACORR(im3d) ;
+   }
+
    /*--- 25 Jul 2001: sensitize 'See TT Atlas Regions' button ---*/
 
 #if 1
@@ -7727,9 +7943,15 @@ STATUS(" -- managing talairach_to button") ;
    /*--- May 1996: Time index control ---*/
    /*--- Mar 1997: Allow FIM also     ---*/
 
+#if 0
    top = DSET_NUM_TIMES(im3d->anat_now) ;
    if( ISVALID_3DIM_DATASET(im3d->fim_now) )
       top = MAX( top , DSET_NUM_TIMES(im3d->fim_now) ) ;
+#else
+   top = DSET_NVALS(im3d->anat_now) ;
+   if( ISVALID_3DIM_DATASET(im3d->fim_now) )
+      top = MAX( top , DSET_NVALS(im3d->fim_now) ) ;
+#endif
 
    if( top > 1 ){
      MCW_arrowval *tav = im3d->vwid->imag->time_index_av ;
@@ -7778,7 +8000,33 @@ STATUS(" -- turning time index control off") ;
    old_fim  = im3d->fim_now ;   /* remembrance */
    old_anat = im3d->anat_now ;
 
+   old_anat_nvals = DSET_NVALS(im3d->anat_now) ; /* 21 Jul 2009 */
+
+   /* This next line can fail if fim_now is NULL.
+   fim_now can be NULL if you switch to tlrc view and
+   for some reason, the transform fails on the fim image.
+   We have seen this happen when:
+      1st volume in list is anat and has a +orig only.
+      2nd volume in list is anat2 and has a +orig and +tlrc 
+      3rd volume in list is a functional dset  (selected as overlay)
+   You switch to anat2 and select TLRC view, BOOM.
+   Our guess is that since the first dset has no tlrc xform,
+   the third one, which is the overlay seems to get no TLRC daddy,
+   even if the second anat has a tlrc xform .
+   Should be able to test this hypothesis by expressly setting the 
+   anat parent of all volumes to that of the anat with the TLRC xform....
+   
+      ZSS, RICKR, with no time to fix this quite yet.    July 28 2009 */
+
+   /** 10 Aug 2009: the fix is below -- RWCox **/
+
+   if( ISVALID_DSET(im3d->fim_now) )
+     old_func_nvals = DSET_NVALS(im3d->fim_now) ;
+   else
+     old_func_nvals = -1 ;
+
    AFNI_sleep(13) ;             /* 18 Oct 2005: for luck */
+
    EXRETURN ;
 }
 
@@ -8311,11 +8559,16 @@ ENTRY("AFNI_crosshair_pop_CB") ;
   callback for non-marker buttons on the popup
 --------------------------------------------------------------------*/
 
+static char *last_jumpto_xyz_string = NULL ;  /* 23 Sep 2008 */
+static char *last_jumpto_ijk_string = NULL ;
+static char *last_mnito_string      = NULL ;
+static char *last_sumato_string     = NULL ;
+
 void AFNI_imag_pop_CB( Widget w ,
                        XtPointer client_data , XtPointer call_data )
 {
    Three_D_View *im3d = (Three_D_View *) client_data ;
-   MCW_imseq *seq ;
+   MCW_imseq *seq=NULL ;
 
 ENTRY("AFNI_imag_pop_CB") ;
 
@@ -8327,14 +8580,14 @@ ENTRY("AFNI_imag_pop_CB") ;
    /*-- jump back to old location --*/
 
    if( w == im3d->vwid->imag->pop_jumpback_pb ){
-     int ij,jj,kk ;
+     int ii,jj,kk ;
 
-     ij = im3d->vinfo->i1_old ;  /* extract old place */
+     ii = im3d->vinfo->i1_old ;  /* extract old place */
      jj = im3d->vinfo->j2_old ;
      kk = im3d->vinfo->k3_old ;
 
      SAVE_VPT(im3d) ;  /* save current place as old one */
-     AFNI_set_viewpoint( im3d , ij,jj,kk , REDISPLAY_OVERLAY ) ; /* jump */
+     AFNI_set_viewpoint( im3d , ii,jj,kk , REDISPLAY_OVERLAY ) ; /* jump */
    }
 
    /*-- switch window display mode --*/
@@ -8353,7 +8606,7 @@ ENTRY("AFNI_imag_pop_CB") ;
 
       if( ISQ_REALZ(seq) ){
         sprintf(tbuf , "Enter new x y z (%s mm):" , GLOBAL_library.cord.orcode ) ;
-        MCW_choose_string( seq->wbar , tbuf , NULL ,
+        MCW_choose_string( seq->wbar , tbuf , last_jumpto_xyz_string ,
                            AFNI_jumpto_CB , (XtPointer) im3d ) ;
       }
    }
@@ -8362,7 +8615,7 @@ ENTRY("AFNI_imag_pop_CB") ;
             im3d->type == AFNI_3DDATA_VIEW             ){
 
       if( ISQ_REALZ(seq) ){
-         MCW_choose_string( seq->wbar , "Enter new i j k:" , NULL ,
+         MCW_choose_string( seq->wbar , "Enter new i j k:" , last_jumpto_ijk_string ,
                             AFNI_jumpto_ijk_CB , (XtPointer) im3d ) ;
       }
    }
@@ -8373,7 +8626,8 @@ ENTRY("AFNI_imag_pop_CB") ;
             im3d->type == AFNI_3DDATA_VIEW        ){
 
       if( ISQ_REALZ(seq) && CAN_TALTO(im3d) ){
-         MCW_choose_string( seq->wbar , "Enter MNI x,y,z:" , NULL ,
+         MCW_choose_string( seq->wbar , "Enter MNI x,y,z (LPI mm):" ,
+                            last_mnito_string ,
                             AFNI_mnito_CB , (XtPointer) im3d ) ;
       } else {
          XBell(XtDisplay(w),100) ; /* should never happen */
@@ -8387,7 +8641,7 @@ ENTRY("AFNI_imag_pop_CB") ;
             im3d->type == AFNI_3DDATA_VIEW         ){
 
       if( ISQ_REALZ(seq) ){
-         MCW_choose_string( seq->wbar , "Enter SUMA node ID:" , NULL ,
+         MCW_choose_string( seq->wbar , "Enter SUMA node ID:" , last_sumato_string ,
                             AFNI_sumato_CB , (XtPointer) im3d ) ;
       }
    }
@@ -8440,10 +8694,16 @@ ENTRY("AFNI_imag_pop_CB") ;
       /*- open a window to show it -*/
 
       if( tlab != NULL ){
+         char *eee = getenv("AFNI_TTATLAS_FONTSIZE") ;
+
+         if( eee != NULL ){
+                if( *eee == 'B' || *eee == 'b' || isdigit(*eee) ) MCW_textwin_setbig( 1);
+           else if( *eee == 'S' || *eee == 's' || *eee == '-'   ) MCW_textwin_setbig(-1);
+         }
 
          im3d->vwid->imag->pop_whereami_twin =
-           new_MCW_textwin_2001( seq->wbar , tlab , TEXT_READONLY ,
-                                 AFNI_pop_whereami_kill , im3d     ) ;
+           new_MCW_textwin_2001( im3d->vwid->imag->crosshair_label , tlab ,
+                                 TEXT_READONLY , AFNI_pop_whereami_kill , im3d ) ;
 
 #if 0
          /* 31 Jul 2001: NULL out the pointer when the window is destroyed */
@@ -8538,6 +8798,35 @@ ENTRY("AFNI_imag_pop_CB") ;
 #endif
      sprintf(cmd,"OPEN_WINDOW %c.plugin.Draw_Dataset geom=+%d+%d",cc,xx,yy) ;
      (void) AFNI_driver(cmd) ;
+   }
+
+   /*---- 06 May 2009: set InstaCorr point ----*/
+
+   else if( w == im3d->vwid->imag->pop_instacorr_pb && w != NULL ){
+
+     int qq = AFNI_icor_setref(im3d) ;
+     if( qq == 0 ){ XBell( XtDisplay(w) , 100 ) ; }
+     else {
+       im3d->vinfo->i1_icor = im3d->vinfo->i1 ;
+       im3d->vinfo->j2_icor = im3d->vinfo->j2 ;
+       im3d->vinfo->k3_icor = im3d->vinfo->k3 ;
+       AFNI_icor_setref_locked(im3d) ;           /* 15 May 2009 */
+     }
+   }
+
+   /*---- 08 May 2009: jump to InstaCorr point ----*/
+
+   else if( w == im3d->vwid->imag->pop_icorrjump_pb &&
+            w != NULL && ISVALID_ICOR_setup(im3d->iset) ){
+     int ii,jj,kk ;
+
+     ii = im3d->vinfo->i1_icor ;  /* extract icor place */
+     jj = im3d->vinfo->j2_icor ;
+     kk = im3d->vinfo->k3_icor ;
+     if( ii >= 0 && jj >= 0 && kk >=0 ){
+       SAVE_VPT(im3d) ;
+       AFNI_set_viewpoint( im3d , ii,jj,kk , REDISPLAY_OVERLAY ) ;
+     }
    }
 
    /*--- unmap of the popup itself [elided] ---*/
@@ -8654,7 +8943,7 @@ char * AFNI_ttatlas_query( Three_D_View *im3d )
 
      /*-- get result string --*/
 
-     tlab = TT_whereami( tv.xyz[0] , tv.xyz[1] , tv.xyz[2] ) ;
+     tlab = TT_whereami( tv.xyz[0] , tv.xyz[1] , tv.xyz[2], UNKNOWN_SPC ) ;
      return tlab ;
    }
 
@@ -8702,6 +8991,9 @@ ENTRY("AFNI_mnito_CB") ;
       EXRETURN ;
    }
 
+   if( last_mnito_string != NULL ) free(last_mnito_string) ;
+   last_mnito_string = strdup(cbs->cval) ;
+
    nn = sscanf( cbs->cval , "%f%[ ,]%f%[ ,]%f" , &xx,dum1,&yy,dum2,&zz ) ;
    if( nn != 5 ){ XBell( im3d->dc->display , 100 ) ; EXRETURN ; }
 
@@ -8738,6 +9030,9 @@ ENTRY("AFNI_jumpto_CB") ;
 
    if( ! IM3D_VALID(im3d) || im3d->type != AFNI_3DDATA_VIEW ) EXRETURN ;
    if( cbs->reason != mcwCR_string ) EXRETURN ;  /* error */
+
+   if( last_jumpto_xyz_string != NULL ) free(last_jumpto_xyz_string) ;
+   last_jumpto_xyz_string = strdup(cbs->cval) ;
 
    nn = sscanf( cbs->cval , "%f%[ ,]%f%[ ,]%f" , &xx,dum1,&yy,dum2,&zz ) ;
    if( nn != 5 ){ XBell( im3d->dc->display , 100 ) ; EXRETURN ; }
@@ -8808,17 +9103,25 @@ ENTRY("AFNI_jumpto_ijk") ;
 void AFNI_jumpto_ijk_CB( Widget w , XtPointer cd , MCW_choose_cbs *cbs )
 {
    Three_D_View *im3d = (Three_D_View *) cd ;
-   int ii,jj,kk ;
+   int ii=-1,jj=-1,kk=-1 ;
    int nn ;
    char dum1[32],dum2[32];
 
-ENTRY("AFNI_jumpto_CB") ;
+ENTRY("AFNI_jumpto_ijk_CB") ;
 
    if( ! IM3D_VALID(im3d) || im3d->type != AFNI_3DDATA_VIEW ) EXRETURN ;
    if( cbs->reason != mcwCR_string ) EXRETURN ;  /* error */
 
+   if( last_jumpto_ijk_string != NULL ) free(last_jumpto_ijk_string) ;
+   last_jumpto_ijk_string = strdup(cbs->cval) ;
+
    nn = sscanf( cbs->cval , "%d%[ ,]%d%[ ,]%d" , &ii,dum1,&jj,dum2,&kk ) ;
-   if( nn != 5 ){ XBell( im3d->dc->display , 100 ) ; EXRETURN ; }
+   if( nn > 0 && nn < 3 && ii >= 0 ){  /* 1D index jump [26 Jun 2009] */
+     nn = ii ;
+     ii = DSET_index_to_ix(im3d->anat_now,nn) ;
+     jj = DSET_index_to_jy(im3d->anat_now,nn) ;
+     kk = DSET_index_to_kz(im3d->anat_now,nn) ;
+   } else if( nn != 5 ){ XBell( im3d->dc->display , 100 ) ; EXRETURN ; }
 
    nn = AFNI_jumpto_ijk( im3d , ii,jj,kk ) ;
    if( nn < 0 ) XBell( im3d->dc->display , 100 ) ;
@@ -8841,6 +9144,9 @@ ENTRY("AFNI_sumato_CB") ;
    if( !IM3D_VALID(im3d) || im3d->type != AFNI_3DDATA_VIEW ) EXRETURN ;
    if( cbs->reason != mcwCR_string )                         EXRETURN ;
    if( !SESSION_HAS_SUMA(im3d->ss_now) )                     EXRETURN ;
+
+   if( last_sumato_string != NULL ) free(last_sumato_string) ;
+   last_sumato_string = strdup(cbs->cval) ;
 
    nn = -1 ;
    sscanf( cbs->cval , "%d" , &nn ) ;
@@ -10479,7 +10785,7 @@ ENTRY("AFNI_load_defaults") ;
 
 void AFNI_popup_sonnet( Widget w , int ii )  /* 12 Dec 2001 */
 {
-   char buf[2048] ; int jj=MCW_USER_KILL ;
+   char buf[3192] ; int jj=MCW_USER_KILL ;
 
    if( w == NULL ) return ;
 
@@ -10623,9 +10929,9 @@ void AFNI_store_dset_index( int ijk , int tin )
 int AFNI_needs_dset_ijk(void){ return dset_ijk ; }
 int AFNI_needs_dset_tin(void){ return dset_tin ; }
 
-/*-----------------------------------------------------------------------
-   Add a timeseries to the global list
--------------------------------------------------------------------------*/
+/*-----------------------------------------------------------------------*/
+/*!  Add a timeseries to the global library.
+*//*---------------------------------------------------------------------*/
 
 void AFNI_add_timeseries( MRI_IMAGE *tsim )
 {
@@ -10635,5 +10941,30 @@ ENTRY("AFNI_add_timeseries") ;
       POPDOWN_timeseries_chooser ;
       ADDTO_IMARR(GLOBAL_library.timeseries,tsim) ;
    }
+   EXRETURN ;
+}
+
+/*-----------------------------------------------------------------------*/
+/* N.B.: The input time series structure is destroyed!
+         Never refer to it again, even to free() it!
+*//*---------------------------------------------------------------------*/
+
+void AFNI_replace_timeseries( MRI_IMAGE *tsim )
+{
+   int its ; MRI_IMAGE *qsim ;
+
+ENTRY("AFNI_replace_timeseries") ;
+
+   if( tsim == NULL ) EXRETURN ;
+
+   its = AFNI_tsname_in_library( tsim->name ) ;
+   if( its < 0 ){
+    AFNI_add_timeseries(tsim); EXRETURN;
+   }
+
+   POPDOWN_timeseries_chooser ;
+   qsim = IMARR_SUBIMAGE(GLOBAL_library.timeseries,its) ;
+   mri_move_guts( qsim , tsim ) ;
+   mri_free(tsim) ;
    EXRETURN ;
 }

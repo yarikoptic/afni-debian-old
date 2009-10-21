@@ -160,6 +160,7 @@ void array_to_matrix (int rows, int cols, float ** f, matrix * m);
 */
 
 void matrix_equate (matrix a, matrix * b);
+void matrix_enlarge( int nradd , int ncadd , matrix *a )  ;
 
 
 /*---------------------------------------------------------------------------*/
@@ -316,6 +317,7 @@ void array_to_vector (int dim, float * f, vector * v);
 */
 
 void column_to_vector (matrix m, int c, vector * v);
+void row_to_vector    (matrix m, int r, vector * v);
 
 
 /*---------------------------------------------------------------------------*/
@@ -369,7 +371,9 @@ double vector_dotself (vector a);  /* 28 Dec 2002: RWCox */
 
 /*---------------------------------------------------------------------------*/
 
-double matrix_norm( matrix a ) ;   /* 03 Mar 2003: RWCox */
+double matrix_norm     ( matrix a ) ;              /* 03 Mar 2003: RWCox */
+double matrix_frobenius( matrix a ) ;              /* 30 Jul 2008 */
+void matrix_colsqsums  ( matrix a , vector *v ) ;  /* 30 Jul 2008 */
 
 int * matrix_check_columns( matrix a , double eps ) ; /* 14 Jul 2004: RWCox */
 
@@ -377,13 +381,17 @@ double * matrix_singvals( matrix X ) ; /* 14 Jul 2004 */
 
 void matrix_psinv( matrix X , matrix *XtXinv , matrix *XtXinvXt ) ;  /* 19 Jul 2004 */
 
+extern int matrix_collinearity_fixup( matrix X , matrix *Xa ) ; /* 12 Dec 2008 */
+
 extern void matrix_psinv_seteps( double eps ) ; /* 02 Mar 2007 - MoJM */
 
-void matrix_qrr( matrix X , matrix *R ) ;  /* 03 Jul 2008 */
-void vector_rr_solve( matrix R , vector b , vector *x ) ;
-void vector_rrtran_solve( matrix R , vector b , vector *x ) ;
+extern int  matrix_qrr( matrix X , matrix *R ) ;  /* 03 Jul 2008 */
+extern void vector_rr_solve    ( matrix R , vector b , vector *x ) ;
+extern void vector_rrtran_solve( matrix R , vector b , vector *x ) ;
+extern void matrix_rr_solve    ( matrix R , matrix B , matrix *X ) ;
+extern void matrix_rrtran_solve( matrix R , matrix B , matrix *X ) ;
 
-double get_matrix_flops(void) ;
-double get_matrix_dotlen(void) ;
+extern double get_matrix_flops(void) ;
+extern double get_matrix_dotlen(void) ;
 
 #endif

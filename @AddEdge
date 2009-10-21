@@ -1,9 +1,20 @@
 #!/bin/tcsh -f
+# @AddEdge 
+# script to compute and display composite edge enhanced datasets for the
+# purpose of assessing alignment
 
 set olist = ()
 set dd = $PWD:t
 set uname = `whoami`
 set prs = "_ae."
+set PLUGOUT_OPTIONS = "-name @AddEdge -com QUIET_PLUGOUTS"
+# turn off recording jpeg images by default
+set auto_record = 0
+# remove temporary files by default
+set rm_ae_temp = 1
+# do not remove SPM files from selected lists for review
+set remove_SPM = 0
+set rs = "_rs"
 set do_score = 0
 set do_rand = 0
 set listlog = "${prs}ExamineList.log"
@@ -11,13 +22,19 @@ set ax_geom = '777x702+433+334'
 set sag_geom = '540x360+4+436'
 set lay = ()
 set hostopt = '-host 127.0.0.1'
+set unlayed = 1
+set do_deoblique = 1
+
 PARSE:
    set Narg = $#
    set cnt = 1
    set ax_mont='2x2:24'
    set opa=9
+   set epionly = 0
    set argrem = ()
-   while ($cnt <= $Narg && $#argrem == 0)
+   set epi_edge_perc_thresh = 10
+   set anat_edge_perc_thresh = 10
+    while ($cnt <= $Narg && $#argrem == 0)
       set donext = 1;
       
       if ($donext && "$argv[$cnt]" == "-help" || "$argv[$cnt]" == "-h") then
@@ -32,6 +49,39 @@ PARSE:
          else
             @ cnt ++
             set ax_mont = "$argv[$cnt]"
+            set donext = 0   
+         endif   
+      endif
+      
+      if ($donext && "$argv[$cnt]" == "-single_edge") then
+         set epionly = 1
+         set donext = 0   
+      endif
+      
+      if ($donext && "$argv[$cnt]" == "-no_layout") then
+         set unlayed = 0
+         set donext = 0   
+      endif
+
+      if ($donext && "$argv[$cnt]" == "-keep_temp") then
+         set rm_ae_temp = 0
+         set donext = 0   
+      endif
+
+      if ($donext && "$argv[$cnt]" == "-no_deoblique") then
+         set do_deoblique = 0
+         set donext = 0   
+      endif
+      
+      if ($donext && "$argv[$cnt]" == "-edge_percentile") then
+         set pLoc = $cnt      
+         if ($pLoc == $Narg) then
+            echo "Need a percentile threshold value (default 10)"
+            goto END
+         else
+            @ cnt ++
+            set epi_edge_perc_thresh = $argv[$cnt]
+            set anat_edge_perc_thresh = $argv[$cnt]
             set donext = 0   
          endif   
       endif
@@ -85,16 +135,38 @@ PARSE:
             set donext = 0   
          endif   
       endif
-      
+
+      if ($donext && "$argv[$cnt]" == "-examinelist") then
+         set pLoc = $cnt      
+         if ($pLoc == $Narg) then
+            echo "Need a layout file after -examinelist"
+            goto END
+         else
+            @ cnt ++
+            set listlog = "$argv[$cnt]"
+            set donext = 0
+         endif
+      endif
+
+      if ($donext && "$argv[$cnt]" == "-auto_record") then
+         set auto_record = 1
+         set donext = 0
+      endif
+
+
       if ($donext) then
-         #no more options, this is assumed to be the list 
+         #no more options, this is assumed to be the list of datasets 
          set argrem = ($argv[$cnt-])
       else
          #found an option, continue
          @ cnt ++
       endif
    end
-         
+
+if ($epionly && $do_rand) then
+   echo "Error: Cannot use -single_edge with randomization"
+   goto END     
+endif    
 if ($#argrem == 0) goto DANCE
 
 #Notice, 3dresample is now done with -rmode Li instead of -rmode Cu
@@ -128,18 +200,25 @@ foreach ana ($analist)
       set anaview = "+orig"
    endif   
    if ("$ana" != "$anabox") then
-      3dresample -master $anabox -inset $ana -prefix ${prs}$anapref -rmode Li
+      set anapref = ${anapref}${rs}
+      3dresample -master $anabox -inset $ana -prefix $anapref \
+      -rmode Li -overwrite
    else
-      3dcopy $ana ${prs}$anapref
+      # want data in AFNI format here
+      set afni_type = `@CheckForAfniDset $ana`
+      if($afni_type == 3) then
+         echo "Copying dataset to AFNI format"
+         3dcopy $ana $anapref
+      endif
    endif
    
    #deoblique if necessary
-   if (`@isOblique $ana`) then
-      3dWarp -deoblique -overwrite -prefix ${prs}$anapref \
-             -input ${prs}$anapref$anaview
+   if ( ($do_deoblique == 1) && (`@isOblique $ana`) ) then
+      3dWarp -deoblique -overwrite -prefix $anapref \
+             $anapref$anaview
    endif
    
-   set analistn = ($analistn ${prs}$anapref$anaview)
+   set analistn = ($analistn $anapref$anaview)
 end
 set analist = ($analistn)
 
@@ -151,6 +230,7 @@ set epipref = `@NoExt $epipref nii nii.gz`
 set epi = ${prs}$epi
 set epipref = `@GetAfniPrefix $epi`
 set epipref = `@NoExt $epipref nii nii.gz`
+set base_epipref = `echo $epipref| sed "s/$prs//g" `
 
 CROP_ANATS:
 #Get average of anats
@@ -158,7 +238,7 @@ if ($#analist > 1) then
    3dMean -overwrite -prefix tmp_avg $analist
 else
    rm -f tmp_avg+????.* >& /dev/null
-   3dcopy $analist        tmp_avg 
+   3dcopy $analist tmp_avg 
 endif
 #Get a nice cropping box
 3dAutobox   -input "3dcalc( -a tmp_avg+orig -b $epi -expr ((a+b)/2.0) )" \
@@ -167,19 +247,21 @@ endif
 
 EPI_EDGES:
 #Get epi edges
-3dedge3 -input $epi  -prefix  ${epipref}_e3
+3dedge3 -input $epi  -prefix  ${base_epipref}_e3
 
 
-set eth = `3dBrickStat -non-zero -percentile 30 1 30 ${epipref}_e3+orig`
+set eth = ` 3dBrickStat -non-zero \
+               -percentile  $epi_edge_perc_thresh 1 $epi_edge_perc_thresh \
+               ${base_epipref}_e3+orig`
 set eth = $eth[2]
 set eminval = `3dBrickStat -non-zero -min $epi`
 set emaxval = `3dBrickStat -non-zero -max $epi`
-3dcalc   -a $epi -b ${epipref}_e3+orig -overwrite -prefix ${epipref}_e \
+3dcalc   -a $epi -b ${base_epipref}_e3+orig -overwrite -prefix ${epipref}_e \
          -expr "(1-step(b-$eth))*a+step(b-$eth)*$eminval"
 3dresample  -master tmp_box+orig -rmode NN \
-            -overwrite -prefix ${epipref}_ec+orig \
+            -overwrite -prefix ${base_epipref}_ec+orig \
             -inset ${epipref}_e+orig
-set olist = ($olist ${epipref}_ec+orig.HEAD)
+set olist = ($olist ${base_epipref}_ec+orig.HEAD)
 rm -f ${epipref}_e+orig* 
 
 foreach anain ($analist)
@@ -188,22 +270,24 @@ foreach anain ($analist)
    set anatpref = `@NoExt $anatpref nii nii.gz`
 
    #deoblique if necessary
-   if (`@isOblique $anat`) then
-      3dWarp -deoblique -overwrite -prefix $anat -input $anat
+   if ( ($do_deoblique == 1) && (`@isOblique $anat`) ) then
+      3dWarp -deoblique -overwrite -prefix $anat $anat
    endif
    #Get anat edges
    3dedge3 -input $anat -overwrite -prefix ${anatpref}_e3
 
    #Create an edgized anat and an edgized EPI for display
 
-   set ath = `3dBrickStat -non-zero -percentile 30 1 30 ${anatpref}_e3+orig`
+   set ath = `3dBrickStat -non-zero \
+                  -percentile $anat_edge_perc_thresh 1 $anat_edge_perc_thresh \
+                  ${anatpref}_e3+orig`
    set ath = $ath[2]
 
 
    
    set amaxval = `3dBrickStat -max $anat`
    3dcalc   -a $anat -b ${anatpref}_e3+orig -overwrite -prefix ${anatpref}_e \
-            -expr "(1-step(b-$ath))*a+step(b-$ath)*$amaxval"
+            -expr "(1-step(b-$ath))*a+step(b-$ath)*$amaxval[1]"
    3dresample  -master tmp_box+orig -rmode NN \
                -overwrite -prefix ${anatpref}_ec+orig \
                -inset ${anatpref}_e+orig
@@ -213,24 +297,26 @@ foreach anain ($analist)
    if (1) then
       #new highlighting method
       #Scale epi from 5 to 250
-      rm -f ___ae.epi.sc* >& /dev/null
-      @ScaleVolume   -input $epi -prefix ___ae.epi.sc \
-                     -perc_clip 2 98 -val_clip 5 250
+      rm -f ${prs}epi_sc* >& /dev/null
+      @ScaleVolume   -input $epi -prefix ${prs}epi_sc \
+                     -perc_clip 2 98 -val_clip 6 249
       #put some of the anat edge in the epi image
       #Crazed equation
       #   line1: Keep value where there is no edge
-      #       2: Use 255 when both edges are present
-      #       3: Use 2   when ONLY epi  has an edge
-      #       4: Use 252 when ONLY anat has an edge
-      3dcalc   -a ___ae.epi.sc+orig \
+      #       2: Use 252  (blue) when both edges are present
+      #       3: Use 255 (cyan) when ONLY epi  has an edge
+      #       4: Use 2 (purple) when ONLY anat has an edge
+      # Used to be 255, 2, 252 (paper figures made me change mapping)
+      3dcalc   -a ${prs}epi_sc+orig \
                -b ${anatpref}_e3+orig \
-               -c ${epipref}_e3+orig   \
+               -c ${base_epipref}_e3+orig   \
+               -nscale -datum byte  \
                -overwrite -prefix ${epipref}_${anatpref}_e  \
                -expr "(1-step((step(c-$eth)+step(b-$ath))))*a\
-                     + step(step(c-$eth)+step(b-$ath)-1.9)*255 \
-                     + (1-step(b-$ath))*step(c-$eth)*2 \
-                     + (1-step(c-$eth))*step(b-$ath)*252"
-      #rm -f ___ae.epi.sc* >& /dev/null              
+                     + step(step(c-$eth)+step(b-$ath)-1.9)*252 \
+                     + (1-step(b-$ath))*step(c-$eth)*255 \
+                     + (1-step(c-$eth))*step(b-$ath)*2"
+      #rm -f ${prs}epi_sc* >& /dev/null              
    else
       ### Old highlighting method
       #put some of the anat edge in the epi image
@@ -241,7 +327,7 @@ foreach anain ($analist)
       #       4: Use emaxval when ONLY anat has an edge
       3dcalc   -a $epi \
                -b ${anatpref}_e3+orig \
-               -c ${epipref}_e3+orig   \
+               -c ${base_epipref}_e3+orig   \
                -overwrite -prefix ${epipref}_${anatpref}_e  \
                -expr "(1-step((step(c-$eth)+step(b-$ath))))*a\
                      + step(step(c-$eth)+step(b-$ath)-1.9)*$emaxval*1.2 \
@@ -249,18 +335,22 @@ foreach anain ($analist)
                      + (1-step(c-$eth))*step(b-$ath)*$emaxval"
    endif
    
-   set ooo = `echo ${epipref}_${anatpref}_ec | sed "s/$prs//g" `
+   set ooo = `echo ${base_epipref}_${anatpref}_ec`
    3dresample  -master tmp_box+orig -rmode NN \
-               -overwrite -prefix ${prs}${ooo}+orig  \
+               -overwrite -prefix ${ooo}+orig  \
                -inset ${epipref}_${anatpref}_e+orig 
    set olist = (  $olist \
-                  ${prs}${ooo}+orig.HEAD)               
-   
-   rm -f ${anatpref}_e+orig* ${anatpref}_e3+orig* ${epipref}_${anatpref}_e+orig* 
+                  ${ooo}+orig.HEAD)               
+   if($rm_ae_temp == 1) then
+     rm -f ${anatpref}_e+orig* ${epipref}_${anatpref}_e+orig* 
+   endif
 end
 
-
-rm -f tmp_box+orig* tmp_avg+orig*
+if($rm_ae_temp == 1) then
+   rm -f ${prs}*
+   rm -f ${prs}epi_sc* >& /dev/null
+   rm -f tmp_box+orig* tmp_avg+orig*
+endif
 
 echo "Recommended commands:"
 echo "   (make sure you kill all pre-existing AFNI sessions first)"
@@ -280,16 +370,24 @@ echo "$olist" > ${listlog}
 #better not go into interactive mode now since this mode is slow and not done repeatedly
 goto END
 
+# drive AFNI's display using the _ae.ExamineList.log entries
 DANCE:
+# read the listlog file that contains only the names of the input datasets
+# in a single row
 if ("$olist" == "") set olist = (`cat ${listlog}`)
 #trim what is not desired from list
-set qlist = ($olist)
-set olist = ()
-foreach ll ($qlist)
-   if (  "$ll" !~ *SPM*norm* &&  \
-         "$ll" !~ *SPM*seg* ) set olist = ($olist $ll)
-end
+# testing required removing some datasets from consideration
+if ($remove_SPM == 1) then
+   set qlist = ($olist)
+   set olist = ()
+   foreach ll ($qlist)
+      if (  "$ll" !~ *SPM*norm* &&  \
+            "$ll" !~ *SPM*seg* ) set olist = ($olist $ll)
+   end
+endif
 #Number of elements must be odd
+#  it seems the first entry is never used
+#  pairs are created from pairs of entries after the first
 set n_pairs = `ccalc -form int "($#olist-1)/2"`
 if (`ccalc -form int "$n_pairs*2+1"` != $#olist) then
    echo "Error:"
@@ -310,6 +408,8 @@ if ($do_rand == 1) then
    #first copy first volume in list (never used!)
    set qlist = ($olist)
    set olist = ($qlist[1])
+   #Get name of epionlyvol, the one with _e3 in the name
+   set epionlyvol = `echo $olist | sed 's;_ec+;_e3+;'`
    
    echo "" >> ${uname}${dd}_randmap.txt   
    echo "$PWD `date` $uname" >> ${uname}${dd}_randmap.txt   
@@ -353,42 +453,62 @@ else
 endif
 
 #It is time to dance
-plugout_drive $hostopt -com "RESCAN_THIS A" -quit
+plugout_drive $hostopt $PLUGOUT_OPTIONS -com "RESCAN_THIS A" -quit
+
+#Get name of epionlyvol, the one with _e3 in the name
+set epionlyvol = `echo $olist[1] | sed 's;_ec+;_e3+;'`
+
 set cnt = 2
+
 while ($cnt < $#olist)
    set ilbl =  `ccalc -form int $cnt/2`
    set ana = `@GetAfniPrefix $olist[$cnt]`
    @ cnt ++
    set ep = `@GetAfniPrefix $olist[$cnt]`
    @ cnt ++
+   if ($epionly) then
+      set ana = `echo $ana | sed 's;_ec;;'`
+      set ep = `@GetAfniPrefix $epionlyvol`
+      set FUNC_RANGE = "SET_FUNC_RANGE A.1"
+   else
+      set FUNC_RANGE = "SET_FUNC_RANGE A.0"
+   endif
    plugout_drive $hostopt  \
       -com "SWITCH_UNDERLAY $ana"   \
       -com "SWITCH_OVERLAY  $ep"    \
       -com "SEE_OVERLAY +"          \
       -com "SET_THRESHOLD A.0"      \
       -com "SET_PBAR_ALL A.+99 1.0 Add_Edge" \
+      -com "$FUNC_RANGE"   \
       -quit
-   if ($lay == "") then
-   plugout_drive $hostopt  \
-      -com "OPEN_WINDOW A.axialimage mont=$ax_mont opacity=$opa"\
-      -com "OPEN_WINDOW A.axialimage ifrac=0.9"\
-      -com "OPEN_WINDOW A.axialimage geom=$ax_geom "\
-      -com "OPEN_WINDOW A.sagittalimage ifrac=0.9"\
-      -com "OPEN_WINDOW A.sagittalimage opacity=$opa"\
-      -com "OPEN_WINDOW A.sagittalimage geom=$sag_geom"\
-      -quit
-   else
-      set lcnt = 1
-      set nn = `sed -n "${lcnt}p" $lay`
-      #echo $nn $#nn
-      #set echo
-      while ($#nn > 0)
-         #echo $lcnt  $nn
-         plugout_drive $hostopt  \
-            -com "OPEN_WINDOW $nn" -quit
-         @ lcnt ++
+   if ($unlayed) then
+      #Take a breather, allow previous settings to finish and 
+      #connection to be closed. Else you will get errors
+      sleep 1
+      if ($lay == "") then
+      plugout_drive $hostopt  \
+         -com "OPEN_WINDOW A.axialimage mont=$ax_mont opacity=$opa"\
+         -com "OPEN_WINDOW A.axialimage ifrac=0.9"\
+         -com "OPEN_WINDOW A.axialimage geom=$ax_geom "\
+         -com "OPEN_WINDOW A.sagittalimage ifrac=0.9"\
+         -com "OPEN_WINDOW A.sagittalimage opacity=$opa"\
+         -com "OPEN_WINDOW A.sagittalimage geom=$sag_geom"\
+         -quit
+      else
+         set lcnt = 1
          set nn = `sed -n "${lcnt}p" $lay`
-      end
+         #echo $nn $#nn
+         #set echo
+         while ($#nn > 0)
+            echo $lcnt  $nn
+            plugout_drive $hostopt  \
+               -com "OPEN_WINDOW $nn" -quit
+            sleep 0.3
+            @ lcnt ++
+            set nn = `sed -n "${lcnt}p" $lay`
+         end
+      endif
+      set unlayed = 0 
    endif
    set ilst = 2
    set iii  = 0
@@ -400,13 +520,50 @@ while ($cnt < $#olist)
    end
    set stay = 1
    while ($stay == 1)
-      echo "Enter: proceed to next inline (`ccalc -form int $ilbl + 1`)"
+      # next label number
+      @ nextlbl = $ilbl + 1
+      if ($nextlbl > $n_pairs) then
+           set nextlbl = 1
+      endif
+      if ($epionly == 0) then
+         echo ""
+         echo "Default colors are cyan (light blue) for the overlay edges."
+         echo "and purple for the underlay edges."
+         echo "Overlapping edges are shown in dark red"
+         echo ""
+      else
+         echo ""
+         echo "Single edge colors shown in overlay as cyan (light blue)"
+         echo "Use rotate in overlay for other colors"
+         echo ""
+      endif
+#      echo "Enter: proceed to next inline (`ccalc -form int $ilbl + 1`)"
+      @ ilst = $ilbl * 2 
+      # show name of just second dataset for single edge
+      if ($epionly == 1) then
+         @ ilst += 1
+      endif
+      set ilblname = `@GetAfniPrefix $olist[$ilst]`
+      echo "Current display is $ilbl : $ilblname"
+      echo "Press enter to go to next entry ($nextlbl)"
       echo "i: proceed to number i"
       echo "'r': record current"
-      echo "'s': save automatically recorded images and quit"
+#      echo "'s': save automatically recorded images and quit"
       echo "'q': quit"
-      set stay = 0
+
+      set stay = 1
       set nx = $<
+      # integer entry check
+      if ("$nx" != "" ) then
+        expr $nx + 2 >& /dev/null
+        if ("$status" == 0) then
+           set stay = 0
+        endif
+      else
+        # for just return, advance to next entry
+        set stay = 0
+      endif
+
       if ("$nx" == 'r') then
          set stay = 1
          if ($do_rand == 1) then
@@ -422,41 +579,47 @@ while ($cnt < $#olist)
       endif
       if ("$nx" == 'q')   goto END
    end
+ 
+
+
    #auto_record
-   if ($do_rand == 1) then
-      set ojpg = at${uname}${ilbl}${dd}
-   else
-      set ojpg = ${prs}
-   endif
-   echo "Autorecording number ${ilbl} to ${ojpg}..."
-   plugout_drive $hostopt \
-            -com "SAVE_JPEG A.axialimage ${ojpg}axi_$ana.jpg"  \
-            -com "SAVE_JPEG A.sagittalimage ${ojpg}sag_$ana.jpg"\
-            -quit
-   if ("$nx" == 's') then
+   if ($auto_record == 1) then
+      echo "auto_record $auto_record *****************************"
+      echo ""
       if ($do_rand == 1) then
-         set flr = '_all'
-      else 
-         set flr = '_all_norand'
+         set ojpg = at${uname}${ilbl}${dd}
+      else
+         set ojpg = ${prs}
       endif
-      #auto_stitch
-      imcat -nx 3 -overwrite -gap 1 -gap_col 0 0 255 \
-            -zero_wrap \
-            -prefix at${uname}${dd}axi${flr} \
-            at${uname}*${dd}axi*.jpg
-      imcat -nx 3 -overwrite -gap 1 -gap_col 0 0 255 \
-            -zero_wrap  \
-            -prefix at${uname}${dd}sag${flr} \
-            at${uname}*${dd}sag*.jpg
-      aiv -quiet at${uname}${dd}axi${flr}.ppm at${uname}${dd}sag${flr}.ppm &
-      goto SCORE
+      echo "Autorecording number ${ilbl} to ${ojpg}..."
+      plugout_drive $hostopt \
+               -com "SAVE_JPEG A.axialimage ${ojpg}axi_$ana.jpg"  \
+               -com "SAVE_JPEG A.sagittalimage ${ojpg}sag_$ana.jpg"\
+               -quit
+      if ("$nx" == 's') then
+         if ($do_rand == 1) then
+            set flr = '_all'
+         else 
+            set flr = '_all_norand'
+         endif
+         #auto_stitch
+         imcat -nx 3 -overwrite -gap 1 -gap_col 0 0 255 \
+               -zero_wrap \
+               -prefix at${uname}${dd}axi${flr} \
+               at${uname}*${dd}axi*.jpg
+         imcat -nx 3 -overwrite -gap 1 -gap_col 0 0 255 \
+               -zero_wrap  \
+               -prefix at${uname}${dd}sag${flr} \
+               at${uname}*${dd}sag*.jpg
+         aiv -quiet at${uname}${dd}axi${flr}.ppm at${uname}${dd}sag${flr}.ppm &
+         goto SCORE
+      endif
    endif
-   
    if ($nx >= 1) then
       set cnt = `ccalc -form int $nx\*2`
    endif
    if ($cnt > $#olist) set cnt = 2 
-   echo "Opening @GetAfniPrefix $olist[$cnt] results"
+   echo "Opening "`@GetAfniPrefix $olist[$cnt]`" results"
 end
 
 goto END
@@ -572,35 +735,92 @@ endif
 goto END
 
 HELP:   
-   echo "A script to examine the results of registration"
-   echo "using various cost functions and software."
-   echo "The script adds edge markers to anatomy"
-   echo "and EPI and attempts to illustrate the match."
-   echo "To run this, first do:"
-   echo "@AddEdge epi+orig. \"
-   echo "         anat+orig.  \"
-   echo "         Alline_aff_*.nii  \"
-   echo "         SPManat_coreg_rs.nii SPManat_norm_rs.nii SPManat_seg_rs.nii \"
-   echo "         FLIRT_aff_*_*w.nii"
-   echo "To examine results, open afni in listen mode "
-   echo "and preferably with a nice .layout file, then "
+   echo "A script to create composite edge-enhanced datasets and drive"
+   echo " the AFNI interface to display the results"
+   echo "The script helps visualize registration results and is an important"
+   echo " part of assessing image alignmnent"
+   echo ""
+   echo "Basic usage:"
+   echo ""
+   echo "   @AddEdge base_dset dset1 dset2 ...."
+   echo ""
+   echo "   The output is a composite image of each dset nn with the base"
+   echo "   dataset where the composite image is the base dataset with the"
+   echo "   edges of each input dataset and its own edges"
+   echo ""
+   echo "   Use without any parameters to drive AFNI's display to show"
+   echo "   the previously computed results from this script"
+   echo ""
+   echo "   The script requires all input datasets to share the same grid, so"
+   echo "   a previous resample step may be required. Also it is recommended"
+   echo "   to use skull-stripped input datasets to avoid extraneous and"
+   echo "   extracranial edges."
+   echo ""
+   echo "A typical use may be to compare the effect of alignment"
+   echo " as in this example for the alignment of anatomical dataset with an"
+   echo " epi dataset:"
+   echo ""
+   echo "   @AddEdge epi_rs+orig. anat_ns+orig anat_ns_al2epi+orig"
+   echo ""
+   echo " Note this particular kind of usage is included in the"
+   echo "   align_epi_anat.py script as the -AddEdge option"
+   echo ""
+   echo "To examine results, open afni in listen mode and"
    echo "rerun @AddEdge with no options."
    echo ""
-   echo "The edges from the EPI are added to the epi overlay using"
-   echo "the minimum value so they are of a dark blue. Edges from"
-   echo "the anatomy are added as the max of the epi. They end up"
-   echo "in orange on the composite image and dark red wherever"
-   echo "they also overlap with the epi's blue edges"
+   echo "   afni -niml -yesplugouts &"
+   echo "   @AddEdge"
    echo ""
-   echo "The colormap used is  Spectrum:red_to_blue, Pos"
+   echo "Using the typical case example above, the edges from the EPI"
+   echo " are shown in cyan (light blue); the edges from the anat dataset"
+   echo " are shown in purple. Overlapping edges are shown in dark purple"
+   echo " Non-edge areas (most of the volume) are shown in a monochromatic"
+   echo " amber color scale in the overlay layer of the AFNI image window"
+   echo " The underlay contains the edge-enhanced anat dataset with edges"
+   echo " of the anat dataset alone snd no EPI edges"
+   echo "By looking for significant overlap and close alignment of the"
+   echo " edges of internal structures of the brain, one can assess the"
+   echo " quality of the alignment."
+   echo "The script prompts the user in the terminal window to cycle between"
+   echo " the pre-aligned and post-aligned dataset views. Options are also"
+   echo " given to save images as jpeg files or to quit the @AddEdge script"
    echo ""
-   echo "Use: "
-   echo "setenv AFNI_MIX_BY_BRIGHT"
-   echo "setenv AFNI_IMAGE_LABEL_MODE 1"
-   echo "setenv AFNI_IMAGE_LABEL_SIZE 2"
-   echo "setenv AFNI_JPEG_COMPRESS 100"
+   echo "The colormap used is the AddEdge color scale which uses a monochrome"
+   echo " amber for the overlay and purple, cyan and dark purple for edges"
    echo ""
+   echo "Several types of datasets are created by this script, but using the"
+   echo " @AddEdge script without options is the best way to visualize these"
+   echo " datasets. The result datasets can be grouped by their suffix as"
+   echo " follows:"
+   echo ""
+   echo "dset_nn_ec : edge composite image of dataset with its own edges"
+   echo "base_dset_dset_nn_ec : edge composite image of base dataset together"
+   echo "                 with the edges of the input dset_nn dataset"
+   echo "base_dset_e3, dset_nn_e3: edge-only datasets - used in single edge"
+   echo "                 display option"
+   echo ""
+   echo "Available options (must precede the dataset names):"
+   echo ""
+   echo " -help         : this help screen"
+   echo " -examinelist mmmm : use list of paired datasets from file mmmm"
+   echo "               (default is _ae.ExamineList.log)"
+   echo " -ax_mont 'montformat': axial montage string (default='2x2:24')"
+   echo " -ax_geom 'geomformat': axial image window geometry"
+   echo "               (default = '777x702+433+334')"
+   echo " -sag_geom 'geomformat': sagittal image window geometry"
+   echo "               (default = '540x360+4+436')"
+   echo " -layout mmmm  : use AFNI layout file mmmm for display"
+   echo " -no_layout    : do not use layout. Use AFNI as it is open."
+   echo " -edge_percentile nn: specify edge threshold value (default=30%)"
+   echo " -single_edge  : show only a single edge in composite image"
+   echo " -opa          : set opacity of overlay (default=9 opaque)"
+   echo " -keep_temp    : do not remove temporary files"
+   echo " -no_deoblique : do not deoblique any data to show overlap"
+   echo " -auto_record  : save jpeg files of current slices  without prompting"
+   echo ""
+
    goto END
+
 if (0) then
    #Info for registration comparison.
    echo " Note: Had to prep SPM dset that way:"

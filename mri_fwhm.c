@@ -14,8 +14,8 @@ THD_fvec3 mriarr_estimate_FWHM_1dif( MRI_IMARR *imar, byte *mask, int unif )
    THD_fvec3 sv ;
    float cx,cy,cz , fx,fy,fz ;
    int   nx,ny,nz , nvox , kk ;
-   MRI_IMAGE *medim , *madim ;
-   float     *medar , *madar , *sar ;
+   MRI_IMAGE *medim=NULL , *madim=NULL ;
+   float     *medar=NULL , *madar=NULL , *sar=NULL ;
 
    unif = unif && (nar > 2) ;
    nvox = IMARR_SUBIM(imar,0)->nvox ;
@@ -82,7 +82,7 @@ THD_fvec3 mri_estimate_FWHM_1dif( MRI_IMAGE *im , byte *mask )
 
   LOAD_FVEC3(fw_xyz,sx,sy,sz) ;  /* load with error flags */
 
-  if( im == NULL ) return fw_xyz ;
+  if( im == NULL || mri_allzero(im) ) return fw_xyz ;
   lim = (im->kind == MRI_float) ? im : mri_to_float(im) ;
   fim = MRI_FLOAT_PTR(lim) ;
   nx = lim->nx; ny = lim->ny; nz = lim->nz; nxy = nx*ny; nxyz = nx*ny*nz;
@@ -323,8 +323,8 @@ MRI_IMAGE * THD_estimate_FWHM_all( THD_3dim_dataset *dset,
                                    byte *mask, int demed , int unif )
 {
    int iv , nvals , ii,nvox ;
-   MRI_IMAGE *bim , *outim , *medim , *madim ;
-   float *outar , fac ,      *medar , *madar , *bar ;
+   MRI_IMAGE *bim=NULL , *outim=NULL , *medim=NULL , *madim=NULL ;
+   float *outar , fac ,  *medar=NULL , *madar=NULL , *bar=NULL ;
    THD_fvec3 fw ;
 
 ENTRY("THD_estimate_FWHM_all") ;
@@ -352,6 +352,9 @@ ENTRY("THD_estimate_FWHM_all") ;
    }
 
    for( iv=0 ; iv < nvals ; iv++ ){
+     if( mri_allzero(DSET_BRICK(dset,iv)) ){
+       outar[0+3*iv] = outar[1+3*iv] = outar[2+3*iv] = 0.0f ; continue ;
+     }
      bim = mri_scale_to_float( DSET_BRICK_FACTOR(dset,iv), DSET_BRICK(dset,iv) );
      if( demed ){
        bar = MRI_FLOAT_PTR(bim) ;

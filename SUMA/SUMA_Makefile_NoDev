@@ -6,6 +6,7 @@ SUMAGTSLIB = libSUMAGTS.a
 AFNILIB = -lmrix -lcoxplot -lmri -lf2c -l3DEdge
 MAINCODE = SUMA
 SUMALIBLIST = libSUMA.a libglut.a libply.a 
+GLWLIB = libGLws.a
 
 ## 07 Dec 2005 -- Modify include path (RWCox)
 
@@ -20,8 +21,19 @@ SUMA_SRCS = SUMA_trackball.c SUMA_SVmanip.c SUMA_input.c \
 		 SUMA_Color.c SUMA_GeomComp.c SUMA_SphericalMapping.c SUMA_DataSets.c	\
 		 SUMA_Homer.c SUMA_xColBar.c SUMA_SurfClust.c SUMA_IsoSurface.c \
 		 SUMA_ConvexHull.c SUMA_BrainWrap.c \
-		 SUMA_SurfaceToSurface.c SUMA_LocalStat.c SUMA_spharm.c \
-		 SUMA_plot.c
+		 SUMA_SurfaceToSurface.c SUMA_LocalStat.c SUMA_spharm.c SUMA_dot.c\
+		 SUMA_plot.c SUMA_volume_render.c
+
+GLW_SRCS = GLwMDrawA.c GLwDrawA.c 
+
+GLw_local/GLwMDrawA.o: GLw_local/GLwMDrawA.c
+	${CC} -DSUMA_COMPILED ${CCOPT} ${WARNOPT} ${SUMA_INPATH} \
+		   -o GLw_local/GLwMDrawA.o -c GLw_local/GLwMDrawA.c
+
+GLw_local/GLwDrawA.o: GLw_local/GLwDrawA.c
+	${CC} -DSUMA_COMPILED ${CCOPT} ${WARNOPT} ${SUMA_INPATH} \
+		   -o GLw_local/GLwDrawA.o -c GLw_local/GLwDrawA.c 
+ 
        
 SUMA_gts.o: SUMA_gts.c
 	${CC} -DSUMA_COMPILED ${CCOPT} ${WARNOPT} ${SUMA_INPATH} -c SUMA_gts.c 
@@ -30,6 +42,7 @@ SUMA_SRCS_MAIN = SUMA_suma.c
 
 SUMA_OBJS = ${SUMA_SRCS:.c=.o}
 SUMA_GTS_OBJS = SUMA_gts.o
+GLW_OBJS = GLw_local/GLwMDrawA.o GLw_local/GLwDrawA.o
 
 AFNI_OBJS = ../xutil.o ../LiteClue.o
 AFOBJS  = ../afni.o ../afni_func.o ../afni_widg.o ../afni_warp.o ../afni_fimmer.o \
@@ -62,6 +75,14 @@ ${SUMALIB} : libply.a libglut.a ${SUMA_OBJS}
 	echo "library Rebuilt ..."
 	$(RANLIB) ${SUMALIB} 
 
+${GLWLIB} : ${GLW_OBJS}
+	rm -f ${GLWLIB}
+	if [ ! -d GLw_local/GL ] ; then $(MKDIR) -p GLw_local/GL ; cd GLw_local; \ln -s GL GLw; cp *.h GL/ ; cd .. ; fi ; 
+	ar q ${GLWLIB} ${GLW_OBJS}
+	echo "library Rebuilt ..."
+	$(RANLIB) ${GLWLIB}
+	cp ${GLWLIB} ../ 
+
 #rebuild libmri.a only when suma related files change
 libmri.a : ../suma_algorithms.c  ../suma_datasets.c  ../suma_niml.c
 	( cd .. ;	\
@@ -79,7 +100,7 @@ ${SUMAGTSLIB} : libply.a libglut.a ${SUMALIB} ${SUMA_GTS_OBJS}
 mainobj: ${SUMALIB} ${SUMA_SRCS_OBJS}
 
 clean:
-	$(RM) *.o
+	$(RM) ../suma_*.o *.o GLw_local/*.o
 
 .c.o:
 	${CC} -DSUMA_COMPILED ${CCOPT} ${WARNOPT} ${SUMA_INPATH} -c $*.c 
@@ -99,7 +120,7 @@ SUMA_pixmap2eps:SUMA_pixmap2eps.c
 suma: libSUMA.a SUMA_suma.o 
 	$(RM) $@
 	${CC} -DSUMA_COMPILED ${CCOPT} ${WARNOPT} -o suma ${AFNI_OBJS} SUMA_suma.o ${SUMA_INPATH} ${SUMA_LINK_PATH} \
-		${AFNI_3dOBJS} MarchingCubes/debug/MarchingCubes.o			\
+		$(AFWARPOBJS) ${AFNI_3dOBJS} MarchingCubes/debug/MarchingCubes.o			\
 		${SUMALIBLIST} ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB}
 
 MakeColorMap: SUMA_MakeColorMap.c
@@ -142,20 +163,20 @@ SUMA_inflate_compare: SUMA_inflate_compare.c
 	${CC} -DSUMA_COMPILED -DSUMA_inflate_compare_STAND_ALONE ${CCOPT} ${WARNOPT} -o $@ ${AFNI_OBJS} ${AFNI_3dOBJS} \
          SUMA_inflate_compare.c ${SUMA_INPATH} ${SUMA_LINK_PATH} ${SUMALIBLIST} ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB}
 
-CreateIcosahedron: SUMA_SphericalMapping.c
+CreateIcosahedron: SUMA_CreateIcosahedron.c
 	$(RM) $@
-	${CC} -DSUMA_COMPILED -DSUMA_CreateIcosahedron_STAND_ALONE ${CCOPT} ${WARNOPT} -o $@ ${AFNI_OBJS} ${AFNI_3dOBJS} \
-         SUMA_SphericalMapping.c ${SUMA_INPATH} ${SUMA_LINK_PATH} ${SUMALIBLIST} ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB}
+	${CC} -DSUMA_COMPILED  ${CCOPT} ${WARNOPT} -o $@ ${AFNI_OBJS} ${AFNI_3dOBJS} \
+         SUMA_CreateIcosahedron.c ${SUMA_INPATH} ${SUMA_LINK_PATH} ${SUMALIBLIST} ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB}
 
 SUMA_Map_SurfacetoSurface: SUMA_SphericalMapping.c
 	$(RM) $@
 	${CC} -DSUMA_COMPILED -DSUMA_Map_SurfacetoSurface_STAND_ALONE ${CCOPT} ${WARNOPT} -o $@ ${AFNI_OBJS} ${AFNI_3dOBJS} \
          SUMA_SphericalMapping.c ${SUMA_INPATH} ${SUMA_LINK_PATH} ${SUMALIBLIST} ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB}
 
-MapIcosahedron: SUMA_SphericalMapping.c
+MapIcosahedron: SUMA_MapIcosahedron.c
 	$(RM) $@
-	${CC} -DSUMA_COMPILED -DSUMA_MapIcosahedron_STAND_ALONE ${CCOPT} ${WARNOPT} -o $@ ${AFNI_OBJS} ${AFNI_3dOBJS} \
-         SUMA_SphericalMapping.c ${SUMA_INPATH} ${SUMA_LINK_PATH} ${SUMALIBLIST} ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB}
+	${CC} -DSUMA_COMPILED ${CCOPT} ${WARNOPT} -o $@ ${AFNI_OBJS} ${AFNI_3dOBJS} \
+         SUMA_MapIcosahedron.c ${SUMA_INPATH} ${SUMA_LINK_PATH} ${SUMALIBLIST} ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB}
 
 SUMA_SurfNorm: SUMA_SurfNorm.c
 	$(RM) $@
@@ -197,6 +218,12 @@ SurfDist: SUMA_SurfDist.c
 	$(RM) $@
 	${CC} -DSUMA_COMPILED ${CCOPT} ${WARNOPT} -o $@ ${AFNI_OBJS} ${AFNI_3dOBJS} \
          SUMA_SurfDist.c ${SUMA_INPATH} ${SUMA_LINK_PATH} \
+         ${SUMALIBLIST} ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB}
+
+SurfCorrMap: SUMA_SurfCorrMap.c
+	$(RM) $@
+	${CC} -DSUMA_COMPILED ${CCOPT} ${WARNOPT} -o $@ ${AFNI_OBJS} ${AFNI_3dOBJS} \
+         SUMA_SurfCorrMap.c ${SUMA_INPATH} ${SUMA_LINK_PATH} \
          ${SUMALIBLIST} ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB}
 
 plottoy: plottoy.c
@@ -282,7 +309,8 @@ ConvexHull: SUMA_ConvexHull.c
 
 3dSkullStrip: SUMA_3dSkullStrip.c
 	$(RM) $@
-	${CC} -DSUMA_COMPILED -DSUMA_BrainWrap_STANDALONE ${CCOPT} ${WARNOPT} -o $@ $(AFWARPOBJS) ${AFNI_OBJS} SUMA_3dSkullStrip.c ${SUMA_INPATH} ${SUMA_LINK_PATH} 	\
+	${CC} -DSUMA_COMPILED -DSUMA_BrainWrap_STANDALONE ${CCOPT} ${WARNOPT} -o $@ $(AFWARPOBJS) \
+		${AFNI_OBJS} SUMA_3dSkullStrip.c ${SUMA_INPATH} ${SUMA_LINK_PATH} 	\
 		${AFNI_3dOBJS} MarchingCubes/debug/MarchingCubes.o	-I../3DEdge/src -l3DEdge\
 		${SUMALIBLIST} ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB}
 
@@ -492,6 +520,18 @@ NikoMap: SUMA_NikoMap.c
 		${AFNI_3dOBJS} MarchingCubes/debug/MarchingCubes.o			\
 		${SUMALIBLIST} ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB}
 
+GLUT_volumedemo: SUMA_GLUT_volumedemo.c
+	$(RM) $@
+	${CC} -DSUMA_COMPILED ${CCOPT} ${WARNOPT} -o $@ $(AFWARPOBJS) ${AFNI_OBJS} SUMA_GLUT_volumedemo.c ${SUMA_INPATH} ${SUMA_LINK_PATH} 	\
+		${AFNI_3dOBJS} MarchingCubes/debug/MarchingCubes.o			\
+		${SUMALIBLIST} ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB}
+
+prompt_user: SUMA_prompt_user.c
+	$(RM) $@
+	${CC} -DSUMA_COMPILED ${CCOPT} ${WARNOPT} -o $@ $(AFWARPOBJS) ${AFNI_OBJS} SUMA_prompt_user.c ${SUMA_INPATH} ${SUMA_LINK_PATH} 	\
+		${AFNI_3dOBJS} MarchingCubes/debug/MarchingCubes.o			\
+		${SUMALIBLIST} ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB}
+
 libply.a: 
 	( cd PLY ;	\
 	  $(MAKE) clean $@ 'CC=$(CC)' 'RM=$(RM)' 'RANLIB=$(RANLIB)' 'CCOPT=$(CCOPT)' 'WARNOPT=$(WARNOPT)' ; \
@@ -585,6 +625,7 @@ install:
 	@if [ -f SpharmDeco ]; then mv SpharmDeco ${INSTALLDIR_SUMA}; fi;
 	@if [ -f SpharmReco ]; then mv SpharmReco ${INSTALLDIR_SUMA}; fi;
 	@if [ -f SurfDist ]; then mv SurfDist ${INSTALLDIR_SUMA}; fi;
+	@if [ -f prompt_user ]; then mv prompt_user ${INSTALLDIR_SUMA}; fi;
 
 packbins:
 	if [ ! -d SUMA_bin	]; then $(MKDIR) SUMA_bin; fi
@@ -644,12 +685,13 @@ packbins:
 	@if [ -f SpharmDeco ]; then $(CP) -p SpharmDeco SUMA_bin/; fi;
 	@if [ -f SpharmReco ]; then $(CP) -p SpharmReco SUMA_bin/; fi;
 	@if [ -f SurfDist ]; then $(CP) -p SurfDist SUMA_bin/; fi;
+	@if [ -f prompt_user ]; then $(CP) -p prompt_user SUMA_bin/; fi;
 
 	$(TAR) -cf $(SUMA_BIN_ARCHIVE) SUMA_bin
 	${RM} -r SUMA_bin
 	
-all: libmri.a libSUMA.a mainobj suma install 
-allgts: libmri.a libSUMA.a libgts.a mainobj suma SurfMesh install 
+all: libGLws.a libmri.a libSUMA.a mainobj suma install 
+allgts: libGLws.a libmri.a libSUMA.a libgts.a mainobj suma SurfMesh install 
 
 standalones: CreateIcosahedron SUMA_Map_SurfacetoSurface MapIcosahedron       \
 	SUMA_SureFit SUMA_Load_Surface_Object SUMA_Read_SpecFile	      \
@@ -663,6 +705,6 @@ standalones: CreateIcosahedron SUMA_Map_SurfacetoSurface MapIcosahedron       \
    SpharmDeco SpharmReco SurfDist SumaProgramTemplate 
    
  
-anew: clean libSUMA.a mainobj suma standalones packbins install 
+anew: clean libSUMA.a mainobj suma standalones  install 
 
 testGL: SUMA_glxdino SUMA_paperplane SUMA_pixmap2eps

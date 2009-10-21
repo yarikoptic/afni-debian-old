@@ -8,6 +8,7 @@
 #define SUMA_MAX_SURF_ON_COMMAND 100
 #define SUMA_MAX_DSET_ON_COMMAND 1000
 #define SUMA_N_ARGS_MAX 1000
+#define SUMA_VIEW_LENGTH 5
 
 typedef struct {
    /* spec related input */
@@ -98,9 +99,15 @@ typedef struct {
    byte check_input_surf;
    byte accept_mask;
    byte accept_dset;
+   byte accept_cmap;
    
    /* flags for help */
    byte hverb; /* help verbosity */
+
+   /* flags for cmap selection */
+   char *cmap;
+   char *cmapfile;
+   char *cmapdb;
 } SUMA_GENERIC_ARGV_PARSE;
 
 typedef struct {
@@ -115,13 +122,13 @@ typedef struct {
    char *surftype; /* do not free, argv[.] copy */
    char *out_prefix;   /* this one's dynamically allocated so you'll have to free it yourself */
    char *out_vol_prefix; /* this one's dynamically allocated so you'll have to free it yourself */
-   char out_vol_view[5];
+   char out_vol_view[SUMA_VIEW_LENGTH];
    int out_vol_exists;
    char *out_grid_prefix; /* this one's dynamically allocated so you'll have to free it yourself */
-   char out_grid_view[5];
+   char out_grid_view[SUMA_VIEW_LENGTH];
    int out_grid_exists;
    char *in_vol_prefix; /* this one's dynamically allocated so you'll have to free it yourself */
-   char in_vol_view[5];
+   char in_vol_view[SUMA_VIEW_LENGTH];
    int in_vol_exists;
    int MaskMode;
    char *cmask;
@@ -287,6 +294,8 @@ DList *SUMA_EmptyDestroyActionStack (DList *AS);
 const char *SUMA_ColMixModeString (SUMA_COL_MIX_MODE mode);
 SUMA_SO_File_Type SUMA_SurfaceTypeCode (char *cd);
 const char * SUMA_SurfaceTypeString (SUMA_SO_File_Type tp);
+const char * SUMA_SurfaceFormatString (SUMA_SO_File_Format ff);
+SUMA_SO_File_Format SUMA_SurfaceFormatCode (char *cd);
 SUMA_SO_File_Type SUMA_guess_surftype_argv(char *str);
 SUMA_SO_File_Type SUMA_GuessSurfFormatFromExtension_core(char *Name);
 SUMA_SO_File_Type SUMA_GuessSurfFormatFromExtension(
@@ -298,6 +307,10 @@ SUMA_GENERIC_ARGV_PARSE *SUMA_Parse_IO_Args (int argc, char *argv[], char *optfl
 SUMA_GENERIC_PROG_OPTIONS_STRUCT * SUMA_Alloc_Generic_Prog_Options_Struct(void);
 SUMA_GENERIC_PROG_OPTIONS_STRUCT * SUMA_Free_Generic_Prog_Options_Struct(SUMA_GENERIC_PROG_OPTIONS_STRUCT *Opt);
 SUMA_Boolean SUMA_isOutputFormatFromArg(char *arg, SUMA_DSET_FORMAT *o_formp);
+SUMA_Boolean SUMA_isInputFormatFromArg(char *arg, SUMA_DSET_FORMAT *o_formp);
+SUMA_Boolean SUMA_isFormatFromArg(char *arg, SUMA_DSET_FORMAT *o_formp);
+SUMA_Boolean SUMA_isIOFormatFromArg(char *argi, SUMA_DSET_FORMAT *oformp, 
+                                    int *io);
 
 /*!
    \brief Macro that adds a command to the head of command list.

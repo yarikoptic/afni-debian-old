@@ -13,7 +13,7 @@ int main( int argc , char * argv[] )
 {
    PARSER_code * pcode = NULL ;
    char sym[4] ;
-   double atoz[26] , value , del=1.0 , dzero=0.0 ;
+   double atoz[26] , value=0.0 , del=1.0 , dzero=0.0 ;
    int ii,jj , kvar , nopt , qvar , num=-1 , verbose=0 , do_1Dc=0 ;
    MRI_IMAGE * inim[26] ;
    float     * inar[26] ;
@@ -27,24 +27,30 @@ int main( int argc , char * argv[] )
       printf("Usage: 1deval [options] -expr 'expression'\n"
              "Evaluates an expression that may include columns of data\n"
              "from one or more text files and writes the result to stdout.\n\n"
-             "* Any single letter from a-z can be used as the independent\n"
-             "   variable in the expression. Only a single column can be\n"
-             "   used for each variable.\n"
-             "* Unless specified using the '[]' notation (cf. 1dplot -help),\n"
-             "   only the first column of an input 1D file is used, and other\n"
-             "   columns are ignored.\n"
-             "* Only one column of output will be produced -- if you want to\n"
-             "   calculate a multi-column output file, you'll have to run 1deval\n"
-             "   separately for each column, and then glue the results together\n"
-             "   using program 1dcat.  [However, see the 1dcat example combined\n"
-             "   with the '-1D:' option, infra.]\n"
+             "** Only a single column can be used for each input 1D file. **\n"
+             "*  Simple multiple column operations (e.g., addition, scaling)\n"
+             "    can be done with program 1dmatcalc.\n"
+             "*  Any single letter from a-z can be used as the independent\n"
+             "    variable in the expression.\n"
+             "*  Unless specified using the '[]' notation (cf. 1dplot -help),\n"
+             "    only the first column of an input 1D file is used, and other\n"
+             "    columns are ignored.\n"
+             "*  Only one column of output will be produced -- if you want to\n"
+             "    calculate a multi-column output file, you'll have to run 1deval\n"
+             "    separately for each column, and then glue the results together\n"
+             "    using program 1dcat.  [However, see the 1dcat example combined\n"
+             "    with the '-1D:' option, infra.]\n"
              "\n"
              "Options:\n"
              "--------\n"
              "  -del d   = Use 'd' as the step for a single undetermined variable\n"
              "               in the expression [default = 1.0]\n"
-             "  -start z = Start at value 'z' for a single undetermined variable\n"
+             "               SYNONYMS: '-dx' and '-dt'\n"
+             "  -start s = Start at value 's' for a single undetermined variable\n"
              "               in the expression [default = 0.0]\n"
+             "               That is, for the indeterminate variable in the expression\n"
+             "               (if any), the i-th value will be s+i*d for i=0, 1, ....\n"
+             "               SYNONYMS: '-xzero' and '-tzero'\n"
              "  -num n   = Evaluate the expression 'n' times.\n"
              "               If -num is not used, then the length of an\n"
              "               input time series is used.  If there are no\n"
@@ -59,12 +65,20 @@ int main( int argc , char * argv[] )
              "               string suitable for input on the command\n"
              "               line of another program.\n"
              "               [-1D: is incompatible with the -index option!]\n"
+             "               [This won't work if the output string is very long,]\n"
+             "               [since the maximum command line length is limited. ]\n"
              "Examples:\n"
              "---------\n"
-             " 1deval -expr 'sin(2*PI*t)' -del 0.01 -num 101 > sin.1D\n"
-             " 1deval -expr 'a*b' -a fred.1D -b ethel.1D > ab.1D\n"
-             " 1deval -start 10 -num 90 -expr 'fift_p2t(0.001,n,2*n)' | 1dplot -xzero 10 -stdin\n"
-             " 1deval -x '1D: 1 4 9 16' -expr 'sqrt(x)'\n"
+             " * 't' is the indeterminate variable in the expression below:\n"
+             "     1deval -expr 'sin(2*PI*t)' -del 0.01 -num 101 > sin.1D\n"
+             " * Multiply two columns of data (no indeterminate variable):\n"
+             "     1deval -expr 'a*b' -a fred.1D -b ethel.1D > ab.1D\n"
+             " * Compute and plot the F-statistic corresponding to p=0.001 for\n"
+             "   varying degrees of freedom given by the indeterminate variable 'n':\n"
+             "     1deval -start 10 -num 90 -expr 'fift_p2t(0.001,n,2*n)' | 1dplot -xzero 10 -stdin\n"
+             " * Compute the square root of some numbers given in '1D:' form\n"
+             "   directly on the command line:\n"
+             "     1deval -x '1D: 1 4 9 16' -expr 'sqrt(x)'\n"
              "\n"
              "Examples using '-1D:' as the output format:\n"
              "-------------------------------------------\n"
@@ -92,7 +106,23 @@ int main( int argc , char * argv[] )
              "   The input has 2 'columns' and so does the output.\n"
              "   Note that the 1D 'file' is transposed on input to 3dcalc!\n"
              "   This is essential, or 3dcalc will not treat the 1D file as\n"
-             "   a dataset, and the results will be very different.\n"
+             "   a dataset, and the results will be very different.  Recall that\n"
+             "   when a 1D file is read as an 3D AFNI dataset, the row direction\n"
+             "   corresponds to the sub-brick (e.g., time) direction, and the\n"
+             "   column direction corresponds to the voxel direction.\n"
+             "\n"
+             "A Dastardly Trick:\n"
+             "-----------------\n"
+             "If you use some other letter than 'z' as the indeterminate variable\n"
+             "in the calculation, and if 'z' is not assigned to any input 1D file,\n"
+             "then 'z' in the expression will be the previous value computed.\n"
+             "This trick can be used to create 1 point recursions, as in the\n"
+             "following command for creating a AR(1) noise time series:\n"
+             "   1deval -num 500 -expr 'gran(0,1)+(i-i)+0.7*z' > g07.1D\n"
+             "Note the use of '(i-i)' to intoduce the variable 'i' so that 'z'\n"
+             "would be used as the previous output value, rather than as the\n"
+             "indeterminate variable generated by '-del' and '-start'.\n"
+             "The initial value of 'z' is 0 (for the first evaluation).\n"
              "\n"
              "-- RW Cox --\n"
             ) ;
@@ -163,29 +193,25 @@ int main( int argc , char * argv[] )
          nopt++ ; continue ;
       }
 
-      if( strcmp(argv[nopt],"-del") == 0 ){
+      if( strcmp(argv[nopt],"-del") == 0 ||
+          strcmp(argv[nopt],"-dx")  == 0 || strcmp(argv[nopt],"-dt") == 0 ){
          nopt++ ;
-         if( nopt >= argc ){
-            fprintf(stderr,"** -del needs an argument!\n") ;
-            exit(1) ;
-         }
+         if( nopt >= argc )
+           ERROR_exit("%s needs an argument!",argv[nopt-1]) ;
          del = strtod( argv[nopt] , NULL ) ;
-         if( del == 0 ){
-            fprintf(stderr,"** -del value must not be zero!\n") ;
-            exit(1) ;
-         }
-         if( verbose ) fprintf(stderr,"del set to %g\n",del) ;
+         if( del == 0 )
+            ERROR_exit("%s value must not be zero!",argv[nopt-1]) ;
+         if( verbose ) INFO_message("variable delta set to %g",del) ;
          nopt++ ; continue ;
       }
 
-      if( strcmp(argv[nopt],"-start") == 0 ){  /* 29 Nov 2007 */
+      if( strcmp(argv[nopt],"-start") == 0 ||  /* 29 Nov 2007 */
+          strcmp(argv[nopt],"-xzero") == 0 || strcmp(argv[nopt],"-tzero") == 0 ){
          nopt++ ;
-         if( nopt >= argc ){
-            fprintf(stderr,"** -start needs an argument!\n") ;
-            exit(1) ;
-         }
+         if( nopt >= argc )
+           ERROR_exit("%s needs an argument!",argv[nopt-1]) ;
          dzero = strtod( argv[nopt] , NULL ) ;
-         if( verbose ) fprintf(stderr,"start set to %g\n",dzero) ;
+         if( verbose ) INFO_message("starting value of variable set to %g",dzero) ;
          nopt++ ; continue ;
       }
 
@@ -281,14 +307,16 @@ int main( int argc , char * argv[] )
 
    /*-- evaluate --*/
 
+   init_rand_seed(0) ;
    if( dindex && do_1Dc ){
      do_1Dc = 0; WARNING_message("-1D: is incompatible with -index");
    }
    if( do_1Dc ) printf("1D:") ;
    for( ii=0 ; ii < num ; ii++ ){
       for( jj=0 ; jj < 26 ; jj++ )
-         if( inar[jj] != NULL ) atoz[jj] = inar[jj][ii] ;
-      if( kvar >= 0 ) atoz[kvar] = ii * del + dzero ;
+         if( inar[jj] != NULL ) atoz[jj] = inar[jj][ii] ;  /* assign input values */
+      if( kvar >= 0                      ) atoz[kvar] = ii * del + dzero ;
+      if( kvar != 25 && inar[25] == NULL ) atoz[25]   = value; /* z = last output */
       value = PARSER_evaluate_one( pcode , atoz ) ;
       if (dindex)       printf(" %d\t%g\n", (int)dindex[ii], value) ;
       else if( do_1Dc ) printf("%g,",value) ;

@@ -5,19 +5,29 @@
 #undef  ASSIF
 #define ASSIF(p,v) if( p!= NULL ) *p = v
 
+static int dall = 1024 ;
+
+# define DALL 1024  /* Allocation size for cluster arrays */
+
+/*---------------------------------------------------------------------*/
+
 static int verb = 0 ;                            /* 28 Oct 2003 */
 void THD_automask_verbose( int v ){ verb = v ; }
+
+/*---------------------------------------------------------------------*/
 
 static int exterior_clip = 0 ;
 void THD_automask_extclip( int e ){ exterior_clip = e ; }
 
-static int dall = 1024 ;
+/*---------------------------------------------------------------------*/
 
 static float clfrac = 0.5f ;                     /* 20 Mar 2006 */
 void THD_automask_set_clipfrac( float f )
 {
   clfrac = (f >= 0.1f && f <= 0.9f) ? f : 0.5f ;
 }
+
+/*---------------------------------------------------------------------*/
 
 /* parameters for erode/restore peeling */
 
@@ -29,19 +39,77 @@ void THD_automask_set_peelcounts( int p , int t )
   peelthr   = (t >= 9 && t <= 18) ? t : 17 ;
 }
 
+/*---------------------------------------------------------------------*/
+
 static int gradualize = 1 ;
 void THD_automask_set_gradualize( int n ){ gradualize = n; }
+
+/*---------------------------------------------------------------------*/
 
 static int cheapo = 0 ;
 void THD_automask_set_cheapo( int n ){ cheapo = n; } /* 13 Aug 2007 */
 
 /*---------------------------------------------------------------------*/
 
-static int mask_count( int nvox , byte *mmm )
+INLINE int mask_count( int nvox , byte *mmm )
 {
-   int ii , nn ;
+   register int ii , nn ;
+   if( nvox <= 0 || mmm == NULL ) return 0 ;
    for( nn=ii=0 ; ii < nvox ; ii++ ) nn += (mmm[ii] != 0) ;
    return nn ;
+}
+
+/*---------------------------------------------------------------------*/
+
+int mask_intersect_count( int nvox , byte *mmm , byte *nnn )
+{
+   register int nint , ii ;
+   if( nvox <= 0 || mmm == NULL || nnn == NULL ) return 0 ;
+   for( nint=ii=0 ; ii < nvox ; ii++ ) nint += (mmm[ii] && nnn[ii]) ;
+   return nint ;
+}
+
+/*---------------------------------------------------------------------*/
+
+int mask_union_count( int nvox , byte *mmm , byte *nnn )
+{
+   register int nint , ii ;
+   if( nvox <= 0 ) return 0 ;
+   if( mmm == NULL && nnn != NULL ) return mask_count( nvox , nnn ) ;
+   if( mmm != NULL && nnn == NULL ) return mask_count( nvox , mmm ) ;
+   for( nint=ii=0 ; ii < nvox ; ii++ ) nint += (mmm[ii] || nnn[ii]) ;
+   return nint ;
+}
+
+/*---------------------------------------------------------------------*/
+
+float_triple mask_rgyrate( int nx, int ny, int nz , byte *mmm )
+{
+   float_triple xyz={0.0f,0.0f,0.0f} ;
+   float xx,yy,zz , kq,jq , xc,yc,zc ; int ii,jj,kk , vv , nmmm ;
+
+   if( nx < 1 || ny < 1 || nz < 1 || mmm == NULL ) return xyz ;
+
+   xc = yc = zc = 0.0f ; nmmm = 0 ;
+   for( vv=kk=0 ; kk < nz ; kk++ ){
+    for( jj=0 ; jj < ny ; jj++ ){
+     for( ii=0 ; ii < nx ; ii++,vv++ ){
+       if( mmm[vv] ){ xc += ii ; yc += jj ; zc += kk ; nmmm++ ; }
+   }}}
+   if( nmmm <= 1 ) return xyz ;
+   xc /= nmmm ; yc /= nmmm ; zc /= nmmm ;
+
+   xx = yy = zz = 0.0f ;
+   for( vv=kk=0 ; kk < nz ; kk++ ){
+    kq = (kk-zc)*(kk-zc) ;
+    for( jj=0 ; jj < ny ; jj++ ){
+     jq = (jj-yc)*(jj-yc) ;
+     for( ii=0 ; ii < nx ; ii++,vv++ ){
+       if( mmm[vv] ){ xx += (ii-xc)*(ii-xc) ; yy += jq ; zz += kq ; }
+   }}}
+
+   xyz.a = xx/nmmm ; xyz.b = yy/nmmm ; xyz.c = zz/nmmm ;
+   return xyz ;
 }
 
 /*---------------------------------------------------------------------*/
@@ -59,7 +127,11 @@ ENTRY("THD_automask") ;
 
    /* median at each voxel */
 
+#if 0
    medim = THD_median_brick(dset) ; if( medim == NULL ) RETURN(NULL);
+#else
+   medim = THD_aveabs_brick(dset) ; if( medim == NULL ) RETURN(NULL);
+#endif
 
    mmm = mri_automask_image( medim ) ;
 
@@ -155,6 +227,9 @@ ENTRY("mri_automask_image") ;
    if( verb ) ININFO_message("Number voxels above clip level = %d\n",nmm) ;
    if( im != medim && (!exterior_clip || nmm==0) ){ mri_free(medim); medim=NULL; }
    if( nmm == 0 ){ cheapo=0; RETURN(mmm); }  /* should not happen */
+
+   /*-- 6 Mar 2009: if we don't have volume data, stop here [rickr] --*/
+   if( im->nx < 2 || im->ny < 2 || im->nz < 2 ) RETURN(mmm);
 
    /*-- 10 Apr 2002: only keep the largest connected component --*/
 
@@ -471,8 +546,6 @@ ENTRY("THD_mask_fillin_completely") ;
 }
 
 /*------------------------------------------------------------------*/
-
-# define DALL 1024  /* Allocation size for cluster arrays */
 
 /*! Put (i,j,k) into the current cluster, if it is nonzero. */
 

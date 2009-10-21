@@ -180,7 +180,7 @@ if(PRINT_TRACING)
 { char str[256] ;
   sprintf(str,"found palette label=%s. [len=%d label[0]=%d]",
           label,(int)strlen(label),(int)label[0]); STATUS(str);
-  sprintf(str,"nbuf=%d fptr-fbuf=%d",nbuf,fptr-fbuf); STATUS(str);}
+  sprintf(str,"nbuf=%d fptr-fbuf=%d",nbuf,(int)(fptr-fbuf)); STATUS(str);}
 
                ii = label_in_PALTAB( GPT , label ) ; /* an old one? */
                if( ii < 0 ){
@@ -653,6 +653,7 @@ ENTRY("AFNI_pbar_CB") ;
 
    else if( w == im3d->vwid->func->pbar_showtable_pb ){
       char *dum = dump_PBAR_palette_table(1) ;
+      MCW_textwin_setbig(1) ;
       new_MCW_textwin( im3d->vwid->func->options_label, dum, TEXT_READONLY ) ;
       free(dum) ;
    }

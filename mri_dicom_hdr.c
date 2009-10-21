@@ -51,9 +51,9 @@
 **			of a file containing a DICOM stream.
 **   Usage:
 **			dcm_dump_file [-b] [-g] [-v] [-z] file [file ...]
-** Last Update:		$Author: rwcox $, $Date: 2008/05/08 16:14:36 $
+** Last Update:		$Author: rwcox $, $Date: 2008/09/09 15:40:48 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.28 $
+** Revision:		$Revision: 1.30 $
 ** Status:		$State: Exp $
 */
 
@@ -369,9 +369,9 @@ STATUS("closing") ;
 **			The stack is maintained as a simple stack array.  If
 **			it overflows, we dump the stack to stdout and reset it.
 **
-** Last Update:		$Author: rwcox $, $Date: 2008/05/08 16:14:36 $
+** Last Update:		$Author: rwcox $, $Date: 2008/09/09 15:40:48 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.28 $
+** Revision:		$Revision: 1.30 $
 ** Status:		$State: Exp $
 */
 
@@ -799,9 +799,9 @@ COND_WriteConditions(FILE * lfp)
 ** Author, Date:	Steve Moore, 30-Jun-96
 ** Intent:		Provide common abstractions needed for operations
 **			in a multi-threaded environment.
-** Last Update:		$Author: rwcox $, $Date: 2008/05/08 16:14:36 $
+** Last Update:		$Author: rwcox $, $Date: 2008/09/09 15:40:48 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.28 $
+** Revision:		$Revision: 1.30 $
 ** Status:		$State: Exp $
 */
 
@@ -893,9 +893,9 @@ COND_WriteConditions(FILE * lfp)
 **	and convert the object to and from its "stream" representation.
 **	In addition, the package can parse a file which contains a stream
 **	and create its internal object.
-** Last Update:		$Author: rwcox $, $Date: 2008/05/08 16:14:36 $
+** Last Update:		$Author: rwcox $, $Date: 2008/09/09 15:40:48 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.28 $
+** Revision:		$Revision: 1.30 $
 ** Status:		$State: Exp $
 */
 
@@ -2174,7 +2174,7 @@ DCM_ScanParseObject(DCM_OBJECT ** callerObject, void *buf, size_t bufferSize,
     CTNBOOLEAN
 	found;
     U32
-	l;
+	l=0;
     char
        *p;
 
@@ -7723,7 +7723,7 @@ static void
 copySequence(PRIVATE_OBJECT ** dstObj, DCM_ELEMENT * e)
 {
     LST_HEAD *lst;
-    DCM_SEQUENCE_ITEM *sqItem;
+    DCM_SEQUENCE_ITEM *sqItem=NULL;
     DCM_ELEMENT newElement;
 
     lst = LST_Create();
@@ -7769,7 +7769,7 @@ DCM_GetCompressedValue(DCM_OBJECT ** callerObject, DCM_TAG tag, void *buf,
     unsigned char *ptr;
     U32 size = 0;
     off_t fileOffset = 0;
-    unsigned long opt;
+    unsigned long opt=0 ;
     int byteOrder;
     int explicitVR;
     CTNBOOLEAN acceptVRMismatch = FALSE;
@@ -8296,9 +8296,9 @@ DCM_AddFragment(DCM_OBJECT** callerObject, void* fragment, U32 fragmentLength)
 ** Intent:		Define the ASCIZ messages that go with each DCM
 **			error number and provide a function for looking up
 **			the error message.
-** Last Update:		$Author: rwcox $, $Date: 2008/05/08 16:14:36 $
+** Last Update:		$Author: rwcox $, $Date: 2008/09/09 15:40:48 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.28 $
+** Revision:		$Revision: 1.30 $
 ** Status:		$State: Exp $
 */
 
@@ -8454,9 +8454,9 @@ DCM_DumpVector()
 **			static objects are maintained which define how
 **			elements in the DICOM V3.0 standard are to be
 **			interpreted.
-** Last Update:		$Author: rwcox $, $Date: 2008/05/08 16:14:36 $
+** Last Update:		$Author: rwcox $, $Date: 2008/09/09 15:40:48 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.28 $
+** Revision:		$Revision: 1.30 $
 ** Status:		$State: Exp $
 */
 
@@ -10570,9 +10570,9 @@ DCM_ElementDictionary(DCM_TAG tag, void *ctx,
 **			as support for the DCM facility and for applications.
 **			These routines help parse strings and other data
 **			values that are encoded in DICOM objects.
-** Last Update:		$Author: rwcox $, $Date: 2008/05/08 16:14:36 $
+** Last Update:		$Author: rwcox $, $Date: 2008/09/09 15:40:48 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.28 $
+** Revision:		$Revision: 1.30 $
 ** Status:		$State: Exp $
 */
 
@@ -10778,9 +10778,9 @@ DCM_IsString(DCM_VALUEREPRESENTATION representation)
 ** Author, Date:	Thomas R. Leith, 15-Apr-93
 ** Intent:		This package implements atomic functions on
 **			linked lists.
-** Last Update:		$Author: rwcox $, $Date: 2008/05/08 16:14:36 $
+** Last Update:		$Author: rwcox $, $Date: 2008/09/09 15:40:48 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.28 $
+** Revision:		$Revision: 1.30 $
 ** Status:		$State: Exp $
 */
 
@@ -11209,7 +11209,7 @@ LST_Sort(LST_HEAD ** list, size_t nodeSize, int (*compare) ())
 	*head;
     CTNBOOLEAN
 	inserted;
-    int ccc ;
+    int ccc=0 ;
 
     if ((*list)->head == NULL) {/* list is empty     */
 	return LST_NORMAL;
@@ -11314,9 +11314,9 @@ LST_Index(LST_HEAD ** l, int index)
 ** Intent:		Miscellaneous functions that may be useful in
 **			a number of different areas.
 **
-** Last Update:		$Author: rwcox $, $Date: 2008/05/08 16:14:36 $
+** Last Update:		$Author: rwcox $, $Date: 2008/09/09 15:40:48 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.28 $
+** Revision:		$Revision: 1.30 $
 ** Status:		$State: Exp $
 */
 

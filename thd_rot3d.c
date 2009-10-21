@@ -145,8 +145,8 @@ static void apply_xshear( float a , float b , float s ,
    float * fj0 , * fj1 ;
    int   nx1=nx-1    , ny1=ny-1    , nz1=nz-1    , nxy=nx*ny ;
    float nx2=0.5*nx1 , ny2=0.5*ny1 , nz2=0.5*nz1 ;
-   int ii,jj,kk , nup,nst ;
-   float a0 , a1 , st ;
+   int ii,jj,kk , nup=0,nst ;
+   float a0 , a1=0 , st ;
 
 ENTRY("apply_xshear") ;
 
@@ -184,8 +184,8 @@ static void apply_yshear( float a , float b , float s ,
    float * fj0 , * fj1 ;
    int   nx1=nx-1    , ny1=ny-1    , nz1=nz-1    , nxy=nx*ny ;
    float nx2=0.5*nx1 , ny2=0.5*ny1 , nz2=0.5*nz1 ;
-   int ii,jj,kk , nup,nst ;
-   float a0 , a1 , st ;
+   int ii,jj,kk , nup=0,nst ;
+   float a0 , a1=0 , st ;
 
 ENTRY("apply_yshear") ;
 
@@ -232,8 +232,8 @@ static void apply_zshear( float a , float b , float s ,
    float * fj0 , * fj1 ;
    int   nx1=nx-1    , ny1=ny-1    , nz1=nz-1    , nxy=nx*ny ;
    float nx2=0.5*nx1 , ny2=0.5*ny1 , nz2=0.5*nz1 ;
-   int ii,jj,kk , nup,nst ;
-   float a0 , a1 , st ;
+   int ii,jj,kk , nup=0,nst ;
+   float a0 , a1=0 , st ;
 
 ENTRY("apply_zshear") ;
 
@@ -528,8 +528,11 @@ void THD_rota_vol_matvec( int   nx   , int   ny   , int   nz   ,
    }
 
 #if 0
-   if( MRILIB_verbose )
-     DUMP_3SHEAR("Computed shear",shr) ;
+   DUMP_3SHEAR("Computed shear",shr) ;
+   DUMP_MAT33("rmat",rmat) ;
+   DUMP_FVEC3("tvec",tvec) ;
+   fprintf(stderr,"---- xdel = %f, ydel = %f, zdel = %f\n",
+           xdel, ydel, zdel);
 #endif
 
 #ifdef CLIPIT

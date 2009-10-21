@@ -5,9 +5,12 @@
 ******************************************************************************/
 
 #include "to3d.h"
+/*#define DEBUG_PRINT 1*/
 
 extern void mri_read_dicom_reset_obliquity();
 extern void mri_read_dicom_get_obliquity(float *);
+extern void Obliquity_to_coords(THD_3dim_dataset *);
+static void T3D_reverse_list(int, char **);
 
 #define LABEL_ARG(str) \
   XtVaTypedArg , XmNlabelString , XmRString , (str) , strlen(str)+1
@@ -48,6 +51,9 @@ static float   zoff ;                          /* 10 May 2001 */
 static int     use_zoff=0 ;
 
 static int     af_type_set=0 ;                 /* 20 Dec 2001 */
+
+static int     use_oblique_origin = 0;         /* 01 Dec 2008 */
+static int     reverse_list = 0;               /* 04 Dec 2008 */
 
 /*** additions of Mar 2, 1995 ***/
 
@@ -2942,6 +2948,27 @@ printf("decoded %s to give zincode=%d bot=%f top=%f\n",Argv[nopt],
          nopt++ ; continue ;  /* go to next arg */
       }
 
+      /*--- -oblique_origin ---*/ /* 01 Dec 2008 [drg] */
+
+      if( strncmp(Argv[nopt],"-oblique_origin",15) == 0 ){
+         use_oblique_origin = 1 ;
+         nopt++ ; continue ;
+      }
+
+      /*--- -reverse_list ---*/ /* 04 Dec 2008 [drg] */
+
+      if( strncmp(Argv[nopt],"-reverse_list",13) == 0 ){
+         reverse_list = 1 ;
+         nopt++ ; continue ;
+      }
+
+      /*----- -use_last_element -----*/  /* 10 Apr 2009 [rickr] */
+
+      if( strncmp(Argv[nopt],"-use_last_elem",14) == 0 ){
+         use_last_elem = 1 ;  /* global in mri_read_dicom.c */
+         nopt++ ; continue ;  /* go to next arg */
+      }
+
       /*--- illegal option ---*/
 
       printf("** ILLEGAL OPTION: %s\n\n",Argv[nopt]) ;
@@ -3463,6 +3490,16 @@ void Syntax()
     "  -assume_dicom_mosaic\n"
     "    If present, this tells the program that any Siemens DICOM file\n"
     "    is a potential MOSAIC image, even without the indicator string.\n"
+    "  -oblique_origin\n"
+    "    assume origin and orientation from oblique transformation matrix\n"
+    "    rather than traditional cardinal information (ignores FOV/SLAB\n"
+    "    options Sometimes useful for Siemens mosaic flipped datasets\n"
+    "  -reverse_list\n"
+    "    reverse the input file list.\n"
+    "    Convenience for Siemens non-mosaic flipped datasets\n\n"
+    "  -use_last_elem\n"
+    "    If present, search DICOM images for the last occurance of each\n"
+    "    element, not the first.\n"
    ) ;
 
    printf(
@@ -3979,6 +4016,10 @@ printf("T3D_read_images: input file count = %d; expanded = %d\n",nim,gnim) ;
 #endif
 
    if( gnim < 1 ){ ERROR_exit("NO INPUT IMAGE FILES?") ; }
+
+   /* may need to reverse list for some Siemens data */
+   if(reverse_list)
+      T3D_reverse_list(gnim, gname);
 
    /**--- count up the actual number of images into nz ---**/
 
@@ -4895,6 +4936,11 @@ void T3D_save_file_CB( Widget w ,
    daxes->zzskip = user_inputs.zspacing - user_inputs.zsize ;
 #endif
 
+   /* if user has selected, get origin from obliquity */
+   /*   overriding all the previous selections - GUI or command-line */
+   if(use_oblique_origin)
+      Obliquity_to_coords(dset);
+
    dset->taxis = NULL ;
 
    if( user_inputs.ntt > 0 ){
@@ -5522,7 +5568,10 @@ ENTRY("T3D_geometry_parent_CB") ;
    }
 
    FILENAME_TO_PREFIX(new_path,new_pref) ;
-   if( strlen(new_pref) == 0 ) strcat(new_path,"+orig") ;
+
+   /* no +orig if file has known extension       29 Apr 2009 [rickr] */
+   if( strlen(new_pref) == 0 && !has_known_non_afni_extension(new_path) )
+      strcat(new_path,"+orig") ;
 
    /* read dataset from this path */
 
@@ -6013,4 +6062,21 @@ ENTRY("T3D_check_outliers") ;
    }
 
    EXRETURN ;
+}
+
+
+/* reverse the list of input files */
+static void
+T3D_reverse_list(int gnim, char ** gname)
+{
+   int i;
+   char **strlist;
+
+   strlist = (char **) malloc( sizeof(char *) * gnim ) ;
+   for(i=0; i<gnim; i++)
+      strlist[i] = gname[gnim-i-1];
+   for(i=0; i<gnim; i++)
+      gname[i] = strlist[i];
+
+   free(strlist);      
 }

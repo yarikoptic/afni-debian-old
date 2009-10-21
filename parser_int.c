@@ -24,12 +24,12 @@ void PARSER_set_printout( int p ){ printout = p ; }
             if NULL is returned, an error occurred.
 --------------------------------------------------------------------*/
 
-PARSER_code * PARSER_generate_code( char * expression )
+PARSER_code * PARSER_generate_code( char *expression )
 {
    logical pr ;
    integer num_code ;
    int nexp ;
-   PARSER_code * pc ;
+   PARSER_code *pc ;
    char *exp,cc ; int ii,jj ;  /* 22 Jul 2003 */
    static first=1 ;
 
@@ -67,7 +67,7 @@ PARSER_code * PARSER_generate_code( char * expression )
    atoz = double [26] containing values for variables A,B,...,Z
 -----------------------------------------------------------------*/
 
-double PARSER_evaluate_one( PARSER_code * pc , double atoz[] )
+double PARSER_evaluate_one( PARSER_code *pc , double atoz[] )
 {
    integer num_code ;
    double  value ;
@@ -89,7 +89,7 @@ double PARSER_evaluate_one( PARSER_code * pc , double atoz[] )
 extern integer hassym_(char *sym, integer *num_code__, char *c_code__, ftnlen
         sym_len, ftnlen c_code_len) ;
 
-int PARSER_has_symbol( char * sym , PARSER_code * pc )
+int PARSER_has_symbol( char *sym , PARSER_code *pc )
 {
    int hh ;
    char sss[8] ;
@@ -107,7 +107,7 @@ int PARSER_has_symbol( char * sym , PARSER_code * pc )
    return hh ;
 }
 
-void PARSER_mark_symbols( PARSER_code * pc , int * sl )
+void PARSER_mark_symbols( PARSER_code *pc , int *sl )
 {
    int ii ;
    static char abet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ" ;
@@ -131,31 +131,37 @@ void PARSER_mark_symbols( PARSER_code * pc , int * sl )
    PARSER_evaluate_one nv different times is efficiency.
 ------------------------------------------------------------------------*/
 
-void PARSER_evaluate_vector( PARSER_code * pc , double* atoz[] ,
+void PARSER_evaluate_vector( PARSER_code *pc , double* atoz[] ,
                              int nv , double vout[] )
 {
    integer num_code , nvar , ivar , lvec , ldvec ;
+   int aa ; doublereal *zerovec=NULL , *myatoz[26] ;
 
    if( pc == NULL || pc->num_code <= 0 ) return ;
 
    num_code = (integer) pc->num_code ;
    lvec     = (integer) nv ;
 
+   for( aa=0 ; aa < 26 ; aa++ ){
+     if( atoz[aa] != NULL ){
+       myatoz[aa] = (doublereal *)atoz[aa] ;
+     } else {
+       if( zerovec == NULL ) zerovec = (doublereal *)calloc(sizeof(doublereal),nv) ;
+       myatoz[aa] = zerovec ;
+     }
+   }
+
    parevec_( &num_code , pc->c_code ,
-             (doublereal *) atoz[0]  , (doublereal *) atoz[1] ,
-             (doublereal *) atoz[2]  , (doublereal *) atoz[3] ,
-             (doublereal *) atoz[4]  , (doublereal *) atoz[5] ,
-             (doublereal *) atoz[6]  , (doublereal *) atoz[7] ,
-             (doublereal *) atoz[8]  , (doublereal *) atoz[9] ,
-             (doublereal *) atoz[10] , (doublereal *) atoz[11] ,
-             (doublereal *) atoz[12] , (doublereal *) atoz[13] ,
-             (doublereal *) atoz[14] , (doublereal *) atoz[15] ,
-             (doublereal *) atoz[16] , (doublereal *) atoz[17] ,
-             (doublereal *) atoz[18] , (doublereal *) atoz[19] ,
-             (doublereal *) atoz[20] , (doublereal *) atoz[21] ,
-             (doublereal *) atoz[22] , (doublereal *) atoz[23] ,
-             (doublereal *) atoz[24] , (doublereal *) atoz[25] ,
-         &lvec , (doublereal *) vout , (ftnlen) 8 ) ;
+             myatoz[0]  , myatoz[1]  , myatoz[2]  , myatoz[3]  ,
+             myatoz[4]  , myatoz[5]  , myatoz[6]  , myatoz[7]  ,
+             myatoz[8]  , myatoz[9]  , myatoz[10] , myatoz[11] ,
+             myatoz[12] , myatoz[13] , myatoz[14] , myatoz[15] ,
+             myatoz[16] , myatoz[17] , myatoz[18] , myatoz[19] ,
+             myatoz[20] , myatoz[21] , myatoz[22] , myatoz[23] ,
+             myatoz[24] , myatoz[25] ,
+         &lvec , (doublereal *)vout , (ftnlen)8 ) ;
+
+   if( zerovec != NULL ) free(zerovec) ;
 
    return ;
 }
@@ -172,9 +178,9 @@ void PARSER_evaluate_vector( PARSER_code * pc , double* atoz[] ,
    17 Nov 1999 - RW Cox - adapted from 1deval.c [hence the name]
 ------------------------------------------------------------------------*/
 
-int PARSER_1deval( char * expr, int nt, float tz, float dt, float * vec )
+int PARSER_1deval( char *expr, int nt, float tz, float dt, float *vec )
 {
-   PARSER_code * pcode = NULL ;
+   PARSER_code *pcode = NULL ;
    char sym[4] ;
    double atoz[26] ;
    int ii , kvar ;
@@ -205,22 +211,59 @@ int PARSER_1deval( char * expr, int nt, float tz, float dt, float * vec )
    free(pcode) ; return 1 ;
 }
 
+/*----------------------------------------------------------------------*/
+
+int PARSER_1dtran( char *expr , int nt , float *vec )  /* 16 Jun 2009 */
+{
+   PARSER_code *pcode = NULL ;
+   char sym[4] ;
+   double atoz[26] ;
+   int ii , kvar ;
+
+   if( expr == NULL || nt <= 0 || vec == NULL ) return 0 ;  /* bad */
+
+   pcode = PARSER_generate_code( expr ) ;        /* compile */
+   if( pcode == NULL ) return 0 ;                /* bad news */
+
+   kvar = -1 ;                                   /* find symbol */
+   for( ii=0 ; ii < 26 ; ii++ ){
+      if( ii == 8 ) continue ;            /* check 'I' last */
+      sym[0] = 'A' + ii ; sym[1] = '\0' ;
+      if( PARSER_has_symbol(sym,pcode) ){ kvar = ii ; break ; }
+   }
+   if( kvar < 0 ){                        /* check for 'I' now */
+     sym[0] = 'I' ; sym[1] = '\0' ;
+     if( PARSER_has_symbol(sym,pcode) ) kvar = 8 ;
+   }
+   if( kvar < 0 ) return 0 ;                     /* bad news */
+
+   for( ii=0 ; ii < 26 ; ii++ ) atoz[ii] = 0.0 ; /* initialize */
+
+   for( ii=0 ; ii < nt ; ii++ ){
+     atoz[kvar] = (double)vec[ii] ;
+     if( kvar != 8 ) atoz[8] = (double)ii ;
+     vec[ii]  = PARSER_evaluate_one( pcode , atoz ) ;
+   }
+
+   free(pcode) ; return 1 ;
+}
+
 /*------------------------------------------------------------------------*/
 /*! Sort of like strtod(), but with arithmetic -- 03 Sep 2002 - RWCox.
 --------------------------------------------------------------------------*/
 
 double PARSER_strtod( char *expr )
 {
-   PARSER_code * pcode = NULL ;
+   PARSER_code *pcode = NULL ;
    double atoz[26] , val ;
    int ii ;
 
-   if( expr == NULL ) return 0 ;                 /* bad */
+   if( expr == NULL || *expr == '\0' ) return 0.0 ; /* bad */
 
-   pcode = PARSER_generate_code( expr ) ;        /* compile */
-   if( pcode == NULL ) return 0 ;                /* bad news */
+   pcode = PARSER_generate_code( expr ) ;           /* compile */
+   if( pcode == NULL ) return 0.0 ;                 /* bad news */
 
-   for( ii=0 ; ii < 26 ; ii++ ) atoz[ii] = 0.0 ; /* initialize */
+   for( ii=0 ; ii < 26 ; ii++ ) atoz[ii] = 0.0 ;    /* initialize */
 
    val = PARSER_evaluate_one( pcode , atoz ) ;
 
@@ -230,38 +273,38 @@ double PARSER_strtod( char *expr )
 /********************************************************************/
 /*** use the C math library to provide Bessel and error functions ***/
 
-doublereal dbesj0_( doublereal * x )
+doublereal dbesj0_( doublereal *x )
 { return (doublereal) j0( (double) *x ) ; }
 
-doublereal dbesj1_( doublereal * x )
+doublereal dbesj1_( doublereal *x )
 { return (doublereal) j1( (double) *x ) ; }
 
-doublereal dbesy0_( doublereal * x )
+doublereal dbesy0_( doublereal *x )
 { return (doublereal) (*x>0) ? y0( (double) *x ) : 0.0 ; }
 
-doublereal dbesy1_( doublereal * x )
+doublereal dbesy1_( doublereal *x )
 { return (doublereal) (*x>0) ? y1( (double) *x ) : 0.0 ; }
 
-doublereal derf_ ( doublereal * x )
+doublereal derf_ ( doublereal *x )
 { return (doublereal) erf( (double) *x ) ; }
 
-doublereal derfc_( doublereal * x )
+doublereal derfc_( doublereal *x )
 { return (doublereal) erfc( (double) *x ) ; }
 
-doublereal unif_( doublereal * x )  /* 04 Feb 2000 */
+doublereal unif_( doublereal *x )  /* 04 Feb 2000 */
 {
    doublereal val ;
    val = (doublereal) drand48() ;
    return val ;
 }
 
-doublereal dgamma_( doublereal * x )
+doublereal dgamma_( doublereal *x )
 { double lg,g ;
   lg = lgamma((double)(*x)); g = signgam*exp(lg);
   return (doublereal)g ;
 }
 
-doublereal cbrtff_( doublereal * x )
+doublereal cbrtff_( doublereal *x )
 { return (doublereal) cbrt( (double) *x ) ; }
 
 /********************************************************************/
@@ -539,7 +582,7 @@ doublereal rhddc2_( doublereal *x, doublereal *y, doublereal *z )
    ISWAP(zz,xx) ; ISWAP(yy,xx) ;
 
    /* Entezari paper gives things in terms of RHDD(4), so scale up by 2 */
- 
+
    xx *= 2.0 ;  yy *= 2.0 ; zz *= 2.0 ;
    tt = xx+yy-4.0 ;
    if( tt >= 0.0 ) return 0.0 ;  /* outside RHDD(4) */
@@ -596,4 +639,124 @@ doublereal rhddc2_( doublereal *x, doublereal *y, doublereal *z )
    /* Region 4 */
 
    return ( PA ) ;
+}
+
+/*---------------------------------------------------------------------------*/
+
+static double block4( double tt , double TT )
+{
+  register double t26, t2, t4, t1, t42, t12, t34, t35, t16, t46, t,L ;
+  double w ;
+
+  if( tt <= 0.0f || tt >= (TT+15.0f) ) return 0.0f ;
+
+  t = tt ; L = TT ; t4 = exp(0.4e1 - t);
+  if( t < L ){ L = t ; t16 = 54.5982 ; }
+  else       { t16 = exp(4.0-t+L) ;    }
+
+  t1 = t * t;
+  t2 = t1 * t1;
+  t4 = exp(4.0 - t);
+  t12 = t1 * t;
+  t26 = t16 * L;
+  t34 = L * L;
+  t35 = t16 * t34;
+  t42 = t16 * t34 * L;
+  t46 = t34 * t34;
+
+  w = -t2 * t4 / 0.256e3 - 0.3e1 / 0.32e2 * t4 - 0.3e1 / 0.32e2 * t4 * t
+      - 0.3e1 / 0.64e2 * t4 * t1 - t4 * t12 / 0.64e2 + t16 * t2 / 0.256e3
+      + 0.3e1 / 0.32e2 * t16 + 0.3e1 / 0.32e2 * t16 * t
+      + 0.3e1 / 0.64e2 * t1 * t16 + t16 * t12 / 0.64e2 - 0.3e1 / 0.32e2 * t26
+      - 0.3e1 / 0.32e2 * t26 * t - 0.3e1 / 0.64e2 * t1 * t26
+      - t26 * t12 / 0.64e2 + 0.3e1 / 0.64e2 * t35 + 0.3e1 / 0.64e2 * t35 * t
+      + 0.3e1 / 0.128e3 * t1 * t35 - t42 / 0.64e2 - t42 * t / 0.64e2
+      + t16 * t46 / 0.256e3 ;
+
+  return w ;
+}
+
+/*.................................*/
+
+#undef  TPEAK4
+#define TPEAK4(TT) ((TT)/(1.0-exp(-0.25*(TT))))
+
+doublereal hrfbk4_( doublereal *ttp , doublereal *TTp )
+{
+   double tt=(double)*ttp , TT=(double)*TTp , w,tp ;
+   static double TTold=-1.0 , PPold=1.0 ;
+
+   w = block4(tt,TT) ;
+   if( w > 0.0 ){
+     if( TT != TTold ){
+       TTold = TT ; tp = TPEAK4(TT) ; PPold = block4(tp,TT) ;
+     }
+     w /= PPold ;
+   }
+   return (doublereal)w ;
+}
+
+/*.................................*/
+
+static double block5( double tt , double TT )
+{
+   register double t , T ;
+   register double t2,t3,t4,t5,t6,t7,t9,t10,t11,t14,t20,t25,t28,t37,t57 ;
+   double w ;
+
+   if( tt <= 0.0f || tt >= (TT+15.0f) ) return 0.0f ;
+
+   t = tt ; T = TT ;
+
+#if 1
+   t2 = exp(-t) ;
+   if( t <= T ){ t3 = t ; t4 = 1.0/t2 ; }
+   else        { t3 = T ; t4 = exp(T)  ; }
+   t2 *= 148.413 ;    /* 148.413 = exp(5) */
+#else
+   t2 = exp(0.5e1 - t);
+   t3 = (t <= T ? t : T);
+   t4 = exp(t3);
+#endif
+   t5 = t * t;
+   t6 = t5 * t5;
+   t7 = t6 * t;
+   t9 = t3 * t3;
+   t10 = t9 * t9;
+   t11 = t4 * t10;
+   t14 = t4 * t9 * t3;
+   t20 = t4 * t3;
+   t25 = t4 * t9;
+   t28 = t5 * t;
+   t37 = -0.120e3 + t4 * t7 + 0.5e1 * t11 - 0.20e2 * t14 - t4 * t10 * t3
+         - 0.10e2 * t14 * t5 - 0.120e3 * t20 * t - 0.20e2 * t14 * t
+         + 0.30e2 * t25 * t5 + 0.10e2 * t25 * t28 + 0.5e1 * t11 * t
+         + 0.20e2 * t4 * t28 + 0.60e2 * t25 * t;
+   t57 = -0.5e1 * t20 * t6 - 0.20e2 * t20 * t28 - 0.60e2 * t20 * t5
+         - 0.5e1 * t6 - 0.20e2 * t28 + 0.120e3 * t4 - 0.120e3 * t
+         - 0.120e3 * t20 + 0.60e2 * t25 - t7 - 0.60e2 * t5 + 0.120e3 * t4 * t
+         + 0.60e2 * t4 * t5 + 0.5e1 * t4 * t6;
+   w = t2 * (t37 + t57) / 0.3125e4;
+
+   return w ;
+}
+
+/*.................................*/
+
+#undef  TPEAK5
+#define TPEAK5(TT) ((TT)/(1.0-exp(-0.2*(TT))))
+
+doublereal hrfbk5_( doublereal *ttp , doublereal *TTp )
+{
+   double tt=(double)*ttp , TT=(double)*TTp , w,tp ;
+   static double TTold=-1.0 , PPold=1.0 ;
+
+   w = block5(tt,TT) ;
+   if( w > 0.0 ){
+     if( TT != TTold ){
+       TTold = TT ; tp = TPEAK5(TT) ; PPold = block5(tp,TT) ;
+     }
+     w /= PPold ;
+   }
+   return (doublereal)w ;
 }

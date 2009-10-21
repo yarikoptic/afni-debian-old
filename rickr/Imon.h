@@ -9,7 +9,7 @@
 #define IFM_EPSILON       0.01       /* slice epsilon                    */
 #define IFM_STAT_ALLOC      20       /* allocation blocksize - run stats */
 #define IFM_MAX_IM_ALLOC    40       /* initial limit for read_ge_files  */
-#define IFM_MAX_RUN_NAPS     3       /* maximum number of mid-run naps   */
+#define IFM_MAX_RUN_NAPS     2       /* maximum number of mid-run naps   */
 #define IFM_MAX_GE_FAILURES  3       /* file read failures before exit   */
 #define IFM_MAX_NT       32767       /* maximum valid num time points    */
 #define IFM_SUFFIX_LEN      10       /* allocated space for I-file sufix */
@@ -95,6 +95,7 @@ typedef struct  /* user options */
     char           * start_file;    /* user-specified starting file     */
     char           * start_dir;     /* user input starting directory    */
     char           * dicom_glob;    /* globbing form for dicom files    */
+    char           * infile_list;   /* file holding input filenames     */
     char           * sp;            /* slice acquisition pattern        */
     char           * gert_outdir;   /* output directory for GERT_Reco2  */
     char          ** argv;          /* passed to the program            */
@@ -102,6 +103,7 @@ typedef struct  /* user options */
     float            tr;            /* user input TR, overrides files   */
     float            ep;            /* epsilon - defaut to IFM_EPSILON  */
     int              nt;            /* user input time points per run   */
+    int              num_slices;    /* first volume must match          */
     int              nice;          /* nice offset (must be >= 0)       */
     int              pause;         /* pause time between volumes (ms)  */
     float            sleep_frac;    /* TR fraction to sleep (default 2) */
@@ -110,6 +112,8 @@ typedef struct  /* user options */
     int              debug;         /* debug level                      */
     int              quit;          /* quit when no new images found    */
     int              use_dicom;     /* flag for dicom (not GE) images   */
+    int              use_last_elem; /* use last element in DICOM images */
+    int              show_sorted_list; /* display sorted list and quit  */
 
     /* GERT_Reco options */
     int              gert_reco;     /* output GERT_Reco script          */
@@ -130,6 +134,7 @@ typedef struct  /* user options */
     int              rev_bo;        /* reverse BYTEORDER command        */
     char           * host;          /* pointer to hostname              */
     string_list      drive_list;    /* list of DRIVE_AFNI commands      */
+    string_list      wait_list;     /* list of DRIVE_AFNI commands      */
     string_list      rt_list;       /* list of real-time commands       */
 } opts_t;
 
@@ -161,11 +166,12 @@ typedef struct                  /* used to output statistics at the end */
 {
     int     slices;             /* the number of slices in each volume  */
     float   z_first, z_last;    /* bounding range for slice locations   */
-    float   z_delta;            /* slice thickness                      */
+    float   z_delta, image_dz;  /* slice thickness (and from image)     */
 
     int     nalloc;             /* number of run_t structures allocated */
     int     nused;              /* number of run_t structures in use    */
     int     nvols;              /* number of volumes in a run           */
+    int     oblique;            /* is the data oblique                  */
     run_t * runs;               /* array of run_t strcutrues            */
 } stats_t;
 
@@ -181,6 +187,8 @@ typedef struct
     float          z_first;              /* z location of first slice image  */
     float          z_last;               /* z location of last slice image   */
     float          z_delta;              /* signed slice thickness           */
+    float          image_dz;             /* dz from image (maybe oblique dz) */
+    int            oblique;              /* data is oblique                  */
     int            seq_num;              /* sequence number in TRs (1-based) */
     int            run;                  /* run number                       */
 } vol_t;

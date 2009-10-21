@@ -57,10 +57,10 @@ void TCAT_read_opts( int argc , char *argv[] )
    char dname[THD_MAX_NAME] ;
    char subv[THD_MAX_NAME] ;
    char *cpt ;
-   THD_3dim_dataset *dset , *fset ;
+   THD_3dim_dataset *dset, *fset=NULL ;
    int *svar ;
    char *str;
-   int ok, ilen, nlen , max_nsub=0 ;
+   int ok, ilen=0, nlen , max_nsub=0 ;
 
    INIT_3DARR(TCAT_dsar) ;  /* array of datasets */
    INIT_XTARR(TCAT_subv) ;  /* array of sub-brick selector arrays */
@@ -508,7 +508,7 @@ void TCAT_Syntax(void)
 int main( int argc , char *argv[] )
 {
    int ninp , ids , nv , iv,jv,kv , ivout , new_nvals , ivbot,ivtop ;
-   THD_3dim_dataset *new_dset=NULL , * dset ;
+   THD_3dim_dataset *new_dset=NULL , * dset=NULL ;
    char buf[256] ;
    float *rlt0=NULL , *rlt1=NULL ;
    float *rltsum=NULL ;             /* 16 Sep 1999 */
@@ -540,7 +540,8 @@ int main( int argc , char *argv[] )
    new_nvals = 0 ;
    for( ids=0 ; ids < ninp ; ids++ ) new_nvals += NSUBV(ids) ;
 
-   if( new_nvals < 2 )
+   /* 14 Oct 2009: allow creation of single volume dataset [rickr] */
+   if( new_nvals < 1 )
      ERROR_exit("Can't create 3D+time dataset with only %d sub-bricks!",
                 new_nvals) ;
 
@@ -680,14 +681,18 @@ int main( int argc , char *argv[] )
          sprintf(buf,"%.12s[%d]",DSET_PREFIX(dset),jv) ;
             EDIT_dset_items( new_dset, ADN_brick_label_one+ivout, buf, ADN_none );
 
+#if 0
             sprintf(buf,"%s[%d]",DSET_FILECODE(dset),jv) ;
             EDIT_dset_items(
               new_dset, ADN_brick_keywords_replace_one+ivout, buf, ADN_none ) ;
+#endif
 
             EDIT_dset_items(
               new_dset ,
                 ADN_brick_fac_one            +ivout, DSET_BRICK_FACTOR(dset,jv),
+#if 0
                 ADN_brick_keywords_append_one+ivout, DSET_BRICK_KEYWORDS(dset,jv),
+#endif
               ADN_none ) ;
 
             /** possibly write statistical parameters for this sub-brick **/

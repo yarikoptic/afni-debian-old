@@ -188,6 +188,11 @@ SET_SESSION [c.]directoryname
   "wilhelm/frederick/von/guttenstein".
   ++ You can also use "SWITCH_SESSION" or "SWITCH_DIRECTORY" for the command.
 
+SET_VIEW [c.]view
+  Switches controller 'c' to the named "view", which can be one of
+  'orig', 'acpc' or 'tlrc'.  The underlay dataset must have an
+  appropriate transformation.
+
 SET_ANATOMY [c.]prefix [i]
   Switches controller 'c' to be looking at the anatomical dataset with
   the given prefix.  The prefix must be a perfect match - this is NOT
@@ -356,6 +361,15 @@ SETENV name value
   Only when you instigate something that this variable controls will
   anything change in AFNI.  Thus, you may want to 'REDISPLAY' afterwards.
 
+GETENV name
+  Get the value of environment variable "name", and print to the terminal.
+  For example:
+    GETENV AFNI_PLUGINPATH
+  would show the directory that plugins were loaded from, if set:
+    AFNI_PLUGINPATH = /home/elvis/abin
+  If a variable is not set, the output says as much:
+    AFNI_PLUGINPATH = <UNSET>
+
 REDISPLAY
   Forces all images and graphs to be redrawn.
 
@@ -363,8 +377,14 @@ SLEEP ms
   Causes AFNI to sleep for "ms" milliseconds.  The main use would be in
   a script file to provide a pause between some effects.
 
+QUIET_PLUGOUTS
+  Turns off normal plugout communications messages
+
+NOISY_PLUGOUTS
+  Turns on normal plugout communication messages
+
 TRACE {YES | NO}
-  Turns debug tracig on or off.  Mostly for AFNI developers.
+  Turns debug tracing on or off.  Mostly for AFNI developers.
 
 
 ==============================================================================
