@@ -6,6 +6,17 @@
 #include "mrilib.h"
 
 /*--------------------------------------------------------------------------*/
+/* 02 Dec 2005: prototype for quick initializer for shift+rotate parameters */
+
+static float get_best_shiftrot( MRI_warp3D_align_basis *bas ,
+                                MRI_IMAGE *base , MRI_IMAGE *vol ,
+                                float *roll , float *pitch , float *yaw ,
+                                int   *dxp  , int   *dyp   , int   *dzp  ) ;
+
+static int VL_coarse_del = 10 ;  /* variables for the above, */
+static int VL_coarse_num =  2 ;  /* copied from 3dvolreg.c   */
+static int VL_coarse_rot =  0 ;
+/*--------------------------------------------------------------------------*/
 
 #define MAXPAR 99
 
@@ -152,6 +163,7 @@ void parset_affine(void)
 {
    THD_mat33 ss,dd,uu,aa,bb ;
    THD_fvec3 vv ;
+   float     a,b,c ;
 
 #if 0
 { int ii;fprintf(stderr,"\nparset:");
@@ -164,22 +176,29 @@ void parset_affine(void)
 
    /* scaling */
 
-   LOAD_DIAG_MAT( dd , parvec[6] , parvec[7] , parvec[8] ) ;
+   a = parvec[6] ; if( a <= 0.01f ) a = 1.0f ;
+   b = parvec[7] ; if( b <= 0.01f ) b = 1.0f ;
+   c = parvec[8] ; if( c <= 0.01f ) c = 1.0f ;
+   LOAD_DIAG_MAT( dd , a,b,c ) ;
 
    /* shear */
+
+   a = parvec[ 9] ; if( fabs(a) > 0.3333f ) a = 0.0f ;
+   b = parvec[10] ; if( fabs(b) > 0.3333f ) b = 0.0f ;
+   c = parvec[11] ; if( fabs(c) > 0.3333f ) c = 0.0f ;
 
    switch( smat ){
      default:
      case SMAT_LOWER:
-       LOAD_MAT( ss , 1.0        , 0.0        , 0.0 ,
-                      parvec[9]  , 1.0        , 0.0 ,
-                      parvec[10] , parvec[11] , 1.0  ) ;
+       LOAD_MAT( ss , 1.0 , 0.0 , 0.0 ,
+                       a  , 1.0 , 0.0 ,
+                       b  ,  c  , 1.0  ) ;
      break ;
 
      case SMAT_UPPER:
-       LOAD_MAT( ss , 1.0 , parvec[9] , parvec[10] ,
-                      0.0 , 1.0       , parvec[11] ,
-                      0.0 , 0.0       , 1.0         ) ;
+       LOAD_MAT( ss , 1.0 ,  a  ,  b ,
+                      0.0 , 1.0 ,  c ,
+                      0.0 , 0.0 , 1.0  ) ;
      break ;
    }
 
@@ -198,7 +217,7 @@ void parset_affine(void)
    LOAD_FVEC3( vv , parvec[0] , parvec[1] , parvec[2] ) ;
 
    switch( dcode ){
-     case DELTA_AFTER:  mv_for.vv = vv ; break ;
+     case DELTA_AFTER:  mv_for.vv = vv ;                       break ;
      case DELTA_BEFORE: mv_for.vv = MATVEC( mv_for.mm , vv ) ; break ;
    }
 
@@ -374,6 +393,8 @@ int main( int argc , char * argv[] )
    float i_xcm,i_ycm,i_zcm , b_xcm,b_ycm,b_zcm ;  /* 26 Sep 2005 */
    float sdif_before , sdif_after ;               /* 28 Sep 2005 */
    char *W_summfile=NULL ; FILE *summfp=NULL ;
+   int   init_set=0 ;                             /* 06 Dec 2005 */
+   float init_val[12] ;
 
    /*-- help? --*/
 
@@ -442,12 +463,16 @@ int main( int argc , char * argv[] )
             "  -parfix n v   = Fix the n'th parameter of the warp model to\n"
             "                   the value 'v'.  More than one -parfix option\n"
             "                   can be used, to fix multiple parameters.\n"
+            "      ***N.B.: this option appears to be broken at this time!!!\n"
             "  -1Dfile ename = Write out the warping parameters to the file\n"
             "                   named 'ename'.  Each sub-brick of the input\n"
             "                   dataset gets one line in this file.  Each\n"
             "                   parameter in the model gets one column.\n"
             "  -float        = Write output dataset in float format, even if\n"
             "                   input dataset is short or byte.\n"
+            "  -coarserot    = Initialize shift+rotation parameters by a\n"
+            "                   brute force coarse search, as in the similar\n"
+            "                   3dvolreg option.\n"
             "\n"
             "----------------------\n"
             "AFFINE TRANSFORMATIONS:\n"
@@ -509,6 +534,10 @@ int main( int argc , char * argv[] )
 
    /*-- startup mechanics --*/
 
+#ifdef USING_MCW_MALLOC
+   enable_mcw_malloc() ;
+#endif
+
    mainENTRY("3dWarpDrive main"); machdep(); AFNI_logger("3dWarpDrive",argc,argv);
    PRINT_VERSION("3dWarpDrive") ; AUTHOR("RW Cox") ;
    THD_check_AFNI_version("3dWarpDrive") ;
@@ -558,6 +587,13 @@ int main( int argc , char * argv[] )
 
      if( strcmp(argv[nopt],"-float") == 0 ){   /* 06 Jul 2005 */
        output_float = 1 ; nopt++ ; continue ;
+     }
+
+     /*-----*/
+
+     if( strcmp(argv[nopt],"-coarserot") == 0 ){  /* 05 Dec 2005 */
+       if( VL_coarse_rot ) INFO_message("-coarserot is already on") ;
+       VL_coarse_rot = 1 ; nopt++ ; continue ;
      }
 
      /*-----*/
@@ -729,12 +765,16 @@ int main( int argc , char * argv[] )
      if( strcmp(argv[nopt],"-weight") == 0 ){
        if( ++nopt >= argc )
          ERROR_exit("Need an argument after -weight!\n");
+       if( wtset != NULL ){
+         WARNING_message("2nd -weight option replaces 1st") ;
+         DSET_delete(wtset) ;
+       }
        wtset = THD_open_dataset( argv[nopt] ) ;
        if( wtset == NULL )
          ERROR_exit("Can't open -weight dataset %s\n",argv[nopt]);
        if( DSET_NVALS(wtset) > 1 )
          WARNING_message(
-           "-weight dataset %s has %d sub-bricks; will only use #0\n",
+           "-weight %s has %d sub-bricks; will only use #0\n",
            argv[nopt],DSET_NVALS(wtset) ) ;
        nopt++ ; continue ;
      }
@@ -846,8 +886,9 @@ int main( int argc , char * argv[] )
      ERROR_exit("Can't load base dataset into memory!\n") ;
    } else {
      mri_get_cmass_3D( DSET_BRICK(baset,0) , &b_xcm,&b_ycm,&b_zcm ) ;
-     clip_baset  = THD_cliplevel( DSET_BRICK(baset,0) , 0.0 ) ;
-     abas.imbase = mri_to_float( DSET_BRICK(baset,0) ) ;
+     abas.imbase = mri_scale_to_float( DSET_BRICK_FACTOR(baset,0) ,
+                                       DSET_BRICK(baset,0)         ) ;
+     clip_baset  = THD_cliplevel( abas.imbase , 0.0 ) ;
      base_idc    = strdup(baset->idcode.str) ;
      DSET_unload(baset) ;
    }
@@ -857,7 +898,8 @@ int main( int argc , char * argv[] )
      if( !DSET_LOADED(wtset) ){
        ERROR_exit("Can't load weight dataset into memory!\n") ;
      } else {
-       abas.imwt = mri_to_float( DSET_BRICK(wtset,0) ) ;
+       abas.imwt = mri_scale_to_float( DSET_BRICK_FACTOR(wtset,0) ,
+                                       DSET_BRICK(wtset,0)         ) ;
        wt_idc    = strdup(wtset->idcode.str) ;
        DSET_unload(wtset) ;
      }
@@ -1050,7 +1092,7 @@ int main( int argc , char * argv[] )
      nerr++ ;
    }
 
-   /* default number of iterations allowed */
+   /*-- default number of iterations allowed --*/
 
    if( abas.max_iter <= 0 ) abas.max_iter = 11*nfree+5 ;
 
@@ -1156,7 +1198,7 @@ int main( int argc , char * argv[] )
      ijk_to_xyz = MUL_VECMAT( xyz_to_dicom , ijk_to_inset_xyz ) ;
      xyz_to_ijk = INV_VECMAT( ijk_to_xyz ) ;
 
-#if 0
+#if 1
      if( abas.verb ){
        DUMP_VECMAT("ijk_to_xyz",ijk_to_xyz) ;
        DUMP_VECMAT("xyz_to_ijk",xyz_to_ijk) ;
@@ -1175,6 +1217,35 @@ int main( int argc , char * argv[] )
    }
 
    /*===== do the hard work =====*/
+
+   /*-- 05 Dec 2005: initialize shift + rotation parameters? --*/
+
+   if( VL_coarse_rot && abas.nparam >= 6 ){
+     float roll, pitch , yaw , sx , sy , sz ;
+     int   dxp , dyp   , dzp ;
+     MRI_IMAGE *vim ;
+     THD_fvec3  dxyz , sxyz ;
+
+     if( abas.verb ) fprintf(stderr,"++ Coarse initialize ") ;
+
+     vim = THD_median_brick( inset ) ;
+     (void)get_best_shiftrot( &abas , abas.imbase , vim ,
+                              &roll,&pitch,&yaw , &dxp,&dyp,&dzp ) ;
+     mri_free(vim) ;
+
+     LOAD_FVEC3( dxyz , -dxp,-dyp,-dzp ) ;
+     sxyz = MATVEC( ijk_to_xyz.mm , dxyz ) ;
+     UNLOAD_FVEC3( sxyz , sx,sy,sz ) ;
+
+     init_set    = 6 ;
+     init_val[0] = sx   ; init_val[1] = sy    ; init_val[2] = sz  ;
+     init_val[3] = roll ; init_val[4] = pitch ; init_val[5] = yaw ;
+
+     if( abas.verb )
+       fprintf(stderr,
+               "\n++  dx=%.1f dy=%.1f dz=%.1f  roll=%.1f pitch=%.1f yaw=%.1f\n",
+               sx,sy,sz , roll,pitch,yaw ) ;
+   }
 
    if( abas.verb ) INFO_message("Beginning alignment setup\n") ;
 
@@ -1206,6 +1277,8 @@ int main( int argc , char * argv[] )
      for( kpar=0 ; kpar < abas.nparam ; kpar++ ){  /** init params **/
        if( abas.param[kpar].fixed )
          abas.param[kpar].val_init = abas.param[kpar].val_fixed ;
+       else if( kpar < init_set )
+         abas.param[kpar].val_init = init_val[kpar] ;  /* 06 Dec 2005 */
        else
          abas.param[kpar].val_init = abas.param[kpar].ident ;
      }
@@ -1218,12 +1291,14 @@ int main( int argc , char * argv[] )
 
      sdif_before = mri_scaled_diff( abas.imbase , qim , abas.imsk ) ;
 
-     tim = mri_warp3d_align_one( &abas , qim ) ;
+     tim = mri_warp3D_align_one( &abas , qim ) ;
      mri_free( qim ) ; DSET_unload_one( inset , kim ) ;
 
      sdif_after = mri_scaled_diff( abas.imbase , tim , abas.imsk ) ;
 
+#if 0
      if( abas.verb ){ DUMP_VECMAT( "end mv_for" , mv_for ) ; }
+#endif
 
      if( abas.verb )
        INFO_message("#%d RMS_diff: before=%g  after=%g",kim,sdif_before,sdif_after) ;
@@ -1234,9 +1309,9 @@ int main( int argc , char * argv[] )
 
      /** save output parameters for later **/
 
-     for( kpar=0 ; kpar < abas.nparam ; kpar++ )
+     for( kpar=0 ; kpar < abas.nparam ; kpar++ ) {
        parsave[kpar][kim] = abas.param[kpar].val_out ;  /* 04 Jan 2005 */
-
+      }
      /** convert output image from float to whatever **/
 
      switch( DSET_BRICK_TYPE(outset,kim) ){
@@ -1281,7 +1356,7 @@ int main( int argc , char * argv[] )
 
    /*===== hard work is done =====*/
 
-   mri_warp3D_align_cleanup( &abas ) ;
+   /* mri_warp3D_align_cleanup( &abas ) ; ZSS: This one's moved below, just in case it messes with abas which is still in use. */
 
    /*-- 06 Jul 2005:
         write the affine transform matrices into the output header --*/
@@ -1301,8 +1376,9 @@ int main( int argc , char * argv[] )
      for( kpar=0 ; kpar < 12 ; kpar++ ) parvec[kpar] = 0.0 ;
 
      for( kim=0 ; kim < nvals ; kim++ ){
-       for( kpar=0 ; kpar < abas.nparam ; kpar++ )  /* load params */
+       for( kpar=0 ; kpar < abas.nparam ; kpar++ )  {/* load params */
          parvec[kpar] = parsave[kpar][kim] ;
+       }
        parset_affine() ;                            /* compute matrices */
 
        UNLOAD_MAT(mv_for.mm,matar[0],matar[1],matar[2],
@@ -1364,5 +1440,234 @@ int main( int argc , char * argv[] )
      INFO_message("Total elapsed time = %.2f s\n",tt) ;
    }
 
+   mri_warp3D_align_cleanup( &abas ) ;
+
    exit(0) ;
+}
+
+/*==========================================================================*/
+/*======= Code to find best initial shift_rotate parameters, crudely =======*/
+/*==========================================================================*/
+
+/*--------------------------------------------------------------------
+  Calculate
+              (      [                                 2          ] )
+          min ( sum  [ {a v(i-dx,j-dy,k-dz) - b(i,j,k)}  w(i,j,k) ] )
+           a  (  ijk [                                            ] )
+
+  where the sum is taken over voxels at least 'edge' in from the edge.
+  'edge' must be bigger than max(|dx|,|dy|,|dz|).  The weight w may
+  be NULL, in which case it is taken to be identically 1.
+----------------------------------------------------------------------*/
+
+#define B(i,j,k) b[(i)+(j)*nx+(k)*nxy]
+#define V(i,j,k) v[(i)+(j)*nx+(k)*nxy]
+#define W(i,j,k) w[(i)+(j)*nx+(k)*nxy]
+
+static float voldif( int nx, int ny, int nz, float *b,
+                     int dx, int dy, int dz, float *v, int edge , float *w )
+{
+   int nxy=nx*ny, nxtop=nx-edge, nytop=ny-edge, nztop=nz-edge , ii,jj,kk ;
+   float bbsum=0.0f , vvsum=0.0f , bvsum=0.0f , bb,vv,ww ;
+
+   if( w == NULL ){                         /** no weight given **/
+     for( kk=edge ; kk < nztop ; kk++ ){
+      for( jj=edge ; jj < nytop ; jj++ ){
+       for( ii=edge ; ii < nxtop ; ii++ ){
+         bb = B(ii,jj,kk) ; vv = V(ii-dx,jj-dy,kk-dz) ;
+         bbsum += bb*bb ; vvsum += vv*vv ; bvsum += bb*vv ;
+     }}}
+   } else {                                /** use given weight **/
+     for( kk=edge ; kk < nztop ; kk++ ){
+      for( jj=edge ; jj < nytop ; jj++ ){
+       for( ii=edge ; ii < nxtop ; ii++ ){
+         ww = W(ii,jj,kk) ;
+         if( ww > 0.0f ){
+           bb = B(ii,jj,kk) ; vv = V(ii-dx,jj-dy,kk-dz) ;
+           bbsum += ww*bb*bb ; vvsum += ww*vv*vv ; bvsum += ww*bb*vv ;
+         }
+     }}}
+   }
+
+   if( vvsum > 0.0f ) bbsum -= bvsum*bvsum/vvsum ;
+   return bbsum ;
+}
+
+/*---------------------------------------------------------------------
+  Do some shifts to find the best starting point for registration
+  (globals VL_coarse_del and VL_coarse_num control operations).
+-----------------------------------------------------------------------*/
+
+static float get_best_shift( int nx, int ny, int nz,
+                             float *b, float *v , float *w ,
+                             int *dxp , int *dyp , int *dzp )
+{
+   int bdx=0 , bdy=0 , bdz=0 , dx,dy,dz , nxyz=nx*ny*nz ;
+   float bsum , sum ;
+
+   int shift = VL_coarse_del, numsh = VL_coarse_num,
+       shtop = shift*numsh  , edge  = shtop+shift  , sqtop = shtop*shtop ;
+
+   bsum = 0.0 ;
+   for( dx=0 ; dx < nxyz ; dx++ ) bsum += b[dx]*b[dx] ;
+
+   for( dz=-shtop ; dz <= shtop ; dz+=shift ){
+    for( dy=-shtop ; dy <= shtop ; dy+=shift ){
+     for( dx=-shtop ; dx <= shtop ; dx+=shift ){
+       if( dx*dx+dy*dy+dz*dz > sqtop ) continue ;
+       sum = voldif( nx,ny,nz , b , dx,dy,dz , v , edge , w ) ;
+       if( sum < bsum ){ bsum = sum; bdx = dx; bdy = dy; bdz = dz; }
+   }}}
+
+   *dxp = bdx ; *dyp = bdy ; *dzp = bdz ; return bsum ;
+}
+
+/*----------------------------------------------------------------------*/
+/* Find best angles AND best shifts all at once't.  Will only be
+   called if VL_coarse_rot is nonzero.
+------------------------------------------------------------------------*/
+
+#define DANGLE 9.0f
+#define NROLL  1
+#define NPITCH 2
+#define NYAW   1
+
+static float get_best_shiftrot( MRI_warp3D_align_basis *bas ,
+                                MRI_IMAGE *base , MRI_IMAGE *vol ,
+                                float *roll , float *pitch , float *yaw ,
+                                int   *dxp  , int   *dyp   , int   *dzp  )
+{
+   int ii,jj,kk ;
+   float r,p,y , br=0.0f , bp=0.0f , by=0.0f ;
+   float bsum=1.e+38 , sum ;
+   MRI_IMAGE *tim , *wim=NULL , *bim, *vim , *msk ;
+   float *bar , *tar , *var , dif , *www=NULL , wtop , param[12] ;
+   byte *mmm ;
+   int nx,ny,nz , sx,sy,sz , bsx=0,bsy=0,bsz=0 , nxy,nxyz , subd=0 ;
+   THD_vecmat ijk_to_xyz_save , xyz_to_ijk_save ;
+   THD_mat33  mat ;
+
+   *roll = *pitch = *yaw = 0.0f ;   /* in case of sudden death */
+   *dxp  = *dyp   = *dzp = 0    ;
+
+   if( bas->nparam < 6 ) return 0.0f ;   /* no rotations allowed? */
+
+   for( ii=0 ; ii < 12 ; ii++ ) param[ii] = 0.0f ;
+   param[6] = param[7] = param[8] = 1.0f ;
+
+   nx = base->nx ; ny = base->ny ; nz = base->nz ; nxy = nx*ny ;
+
+   /** if image volume is big enough, sub-sample by 2 for speedup **/
+
+   bim = base ; vim = vol ;
+
+#if 1
+   if( nx >= 120 && ny >= 120 && nz >= 120 ){
+     int hnx=(nx+1)/2 , hny=(ny+1)/2 , hnz=(nz+1)/2 , hnxy=hnx*hny ;
+
+     if( bas->verb ) fprintf(stderr,"x") ;
+
+     /* copy and blur base, then subsample it into new image bim */
+
+     tim = mri_copy(base) ; tar = MRI_FLOAT_PTR(tim) ;
+     FIR_blur_volume( nx,ny,nz , 1.0f,1.0f,1.0f , tar , 1.0f ) ;
+     bim = mri_new_vol( hnx,hny,hnz , MRI_float ) ; bar = MRI_FLOAT_PTR(bim) ;
+     for( kk=0 ; kk < hnz ; kk++ )    /* subsampling */
+      for( jj=0 ; jj < hny ; jj++ )
+       for( ii=0 ; ii < hnx ; ii++ )
+         bar[ii+jj*hnx+kk*hnxy] = tar[2*(ii+jj*nx+kk*nxy)] ;
+     mri_free(tim) ;
+
+     /* copy and blur vol, then subsample it into a new image vim */
+
+     tim = mri_copy(vol) ; tar = MRI_FLOAT_PTR(tim) ;
+     FIR_blur_volume( nx,ny,nz , 1.0f,1.0f,1.0f , tar , 1.0f ) ;
+     vim = mri_new_vol( hnx,hny,hnz , MRI_float ) ; var = MRI_FLOAT_PTR(vim) ;
+     for( kk=0 ; kk < hnz ; kk++ )    /* subsampling */
+      for( jj=0 ; jj < hny ; jj++ )
+       for( ii=0 ; ii < hnx ; ii++ )
+         var[ii+jj*hnx+kk*hnxy] = tar[2*(ii+jj*nx+kk*nxy)] ;
+     mri_free(tim) ;
+
+     /* adjust grid spacing in new images */
+
+     bim->dx = vim->dx = 2.0f * base->dx ;
+     bim->dy = vim->dy = 2.0f * base->dy ;
+     bim->dz = vim->dz = 2.0f * base->dz ;
+
+     nx = hnx; ny = hny; nz = hnz; nxy = hnxy; subd = 2;
+     VL_coarse_del /= 2 ;
+
+     /* scale up the index-to-coord transformation */
+
+     ijk_to_xyz_save = ijk_to_xyz ;
+     xyz_to_ijk_save = xyz_to_ijk ;
+     mat             = ijk_to_xyz.mm ;
+     ijk_to_xyz.mm   = MAT_SCALAR( mat , 2.0f ) ;
+     xyz_to_ijk      = INV_VECMAT( ijk_to_xyz ) ;
+   }
+#endif
+
+   /* make a weighting image (blurred & masked copy of base) */
+
+   if( bas->verb ) fprintf(stderr,"w") ;
+
+   wim = mri_copy(bim) ; www = MRI_FLOAT_PTR(wim) ; nxyz = nx*ny*nz ;
+   for( ii=0 ; ii < nxyz ; ii++ ) www[ii] = fabsf(www[ii]) ;
+   FIR_blur_volume( nx,ny,nz , 1.0f,1.0f,1.0f , www , 1.0f ) ;
+   wtop = 0.0f ;
+   for( ii=0 ; ii < nxyz ; ii++ ) wtop = MAX(wtop,www[ii]) ;
+   wtop = 1.0f / wtop ;
+   for( ii=0 ; ii < nxyz ; ii++ ){
+     www[ii] *= wtop ; if( www[ii] < 0.05 ) www[ii] = 0.0f ;
+   }
+   mmm = mri_automask_image( wim ) ;
+   for( ii=0 ; ii < nxyz ; ii++ ) if( mmm[ii] == 0 ) www[ii] = 0.0f ;
+   msk = mri_empty_conforming( bim , MRI_byte ) ;
+   mri_fix_data_pointer( mmm , msk ) ;
+
+   if( bas->verb )
+     fprintf(stderr,"[%.1f%%]" , (100.0*THD_countmask(nxyz,mmm))/nxyz ) ;
+
+   /* prepare to rotate and shift the night away */
+
+   mri_warp3D_set_womask( msk ) ;
+   mri_warp3D_method( MRI_NN ) ;
+   bar = MRI_FLOAT_PTR(bim) ;
+
+   for( kk=-NROLL  ; kk <= NROLL  ; kk++ ){
+    for( jj=-NPITCH ; jj <= NPITCH ; jj++ ){
+     for( ii=-NYAW   ; ii <= NYAW   ; ii++ ){
+       r = kk*DANGLE ; p = jj*DANGLE ; y = ii*DANGLE ;
+
+       if( r == 0.0f && p == 0.0f && y == 0.0f ){  /* no rotate */
+         tim = vim ;
+       } else {                                    /* rotate vim */
+         param[3] = r ; param[4] = p ; param[5] = y ;
+         bas->vwset( 12 , param ) ;
+         tim = mri_warp3D( vim , 0,0,0 , bas->vwfor ) ;
+       }
+       tar = MRI_FLOAT_PTR(tim) ;
+       sum = get_best_shift( nx,ny,nz, bar, tar, www, &sx,&sy,&sz ) ;
+       if( bas->verb ) fprintf(stderr,"%s",(sum<bsum)?"*":".") ;
+       if( sum < bsum ){
+         br=r ; bp=p ; by=y ; bsx=sx ; bsy=sy; bsz=sz ; bsum=sum ;
+       }
+       if( tim != vim ) mri_free(tim) ;
+   }}}
+
+   /* cleanup and exeunt */
+
+   mri_free(wim) ; mri_free(msk) ; mri_warp3D_set_womask(NULL) ;
+   if( subd ){
+     mri_free(bim); mri_free(vim);
+     bsx *= 2; bsy *= 2; bsz *= 2; VL_coarse_del *=2;
+     ijk_to_xyz = ijk_to_xyz_save ;
+     xyz_to_ijk = xyz_to_ijk_save ;
+   }
+
+   *roll = br ; *pitch = bp ; *yaw = by ;
+   *dxp  = bsx; *dyp   = bsy; *dzp = bsz ;
+
+   return bsum ;
 }

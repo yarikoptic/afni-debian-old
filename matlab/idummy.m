@@ -8,7 +8,7 @@ function d = idummy(x, method)
 %   method = 3:   0/1 coding, overdetermined
 
 %   Copyright 1993-2002 The MathWorks, Inc. 
-%   $Revision: 1.33 $  $Date: 2005/10/03 21:33:04 $
+%   $Revision: 1.36 $  $Date: 2005/11/23 20:32:15 $
 
 if (nargin < 2)
    method = 1;

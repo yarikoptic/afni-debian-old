@@ -4430,6 +4430,14 @@ printf("T3D_read_images: nvals set to %d\n",nvals) ;
    daxes->yyorient = user_inputs.yorient ;
    daxes->zzorient = user_inputs.zorient ;
 
+   /*--- 15 Dec 2005: set the coordinate matrices in the header as well ---*/
+
+   THD_set_daxes_to_dicomm(daxes) ;
+
+   if( !ISVALID_MAT44(daxes->ijk_to_dicom) ) THD_daxes_to_mat44(daxes) ;
+
+   /*-----*/
+
    dset->type      = user_inputs.dataset_type ;
    dset->view_type = user_inputs.view_type ;
    dset->func_type = ISANAT(dset) ? (user_inputs.anatomy_type)

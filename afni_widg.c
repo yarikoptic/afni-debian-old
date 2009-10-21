@@ -4387,13 +4387,24 @@ STATUS("making prog->rowcol") ;
       prog->hidden_broutim_pb =            /* 06 Jun 2005 */
             XtVaCreateManagedWidget(
                "dialog" , xmPushButtonWidgetClass , prog->hidden_menu ,
-                  LABEL_ARG("Brodmann Areas") ,
+                  LABEL_ARG("Brodmann Areas: imag") ,
                   XmNmarginHeight , 0 ,
                   XmNtraversalOn , False ,
                   XmNinitialResourcesPersistent , False ,
                NULL ) ;
       XtAddCallback( prog->hidden_broutim_pb , XmNactivateCallback ,
                      AFNI_broutim_CB , im3d ) ;
+
+      prog->hidden_broutext_pb =            /* 21 Dec 2005 */
+            XtVaCreateManagedWidget(
+               "dialog" , xmPushButtonWidgetClass , prog->hidden_menu ,
+                  LABEL_ARG("Brodmann Areas: text") ,
+                  XmNmarginHeight , 0 ,
+                  XmNtraversalOn , False ,
+                  XmNinitialResourcesPersistent , False ,
+               NULL ) ;
+      XtAddCallback( prog->hidden_broutext_pb , XmNactivateCallback ,
+                     AFNI_broutext_CB , im3d ) ;
 
       /*----------*/
 
@@ -5263,6 +5274,7 @@ ENTRY("AFNI_misc_button") ;
                              " Run Script        = Run an AFNI script file\n"
                              " License Info      = GPL & Copyright notice\n"
                              " Version Check     = Check AFNI version\n"
+                             " Message of the Day= Fetch current AFNI MotD\n"
                              " Purge Memory      = Of dataset BRIKs\n"
 #ifdef USE_TRACING
                              " Trace=MODE        = Set trace mode to\n"
@@ -5536,6 +5548,22 @@ ENTRY("AFNI_misc_button") ;
       MCW_register_hint( dmode->misc_vcheck_pb,"Compare to master distribution" );
    } else {
       dmode->misc_vcheck_pb = NULL ;
+   }
+
+   if( !ALLOW_real_time ){    /* 29 Nov 2005: message of the day */
+      dmode->misc_motd_pb =
+            XtVaCreateManagedWidget(
+               "dialog" , xmPushButtonWidgetClass , menu ,
+                  LABEL_ARG("Message of the Day") ,
+                  XmNmarginHeight , 0 ,
+                  XmNtraversalOn , False ,
+                  XmNinitialResourcesPersistent , False ,
+               NULL ) ;
+      XtAddCallback( dmode->misc_motd_pb , XmNactivateCallback ,
+                     AFNI_misc_CB , im3d ) ;
+      MCW_register_hint( dmode->misc_motd_pb,"Display latest AFNI MotD" );
+   } else {
+      dmode->misc_motd_pb = NULL ;
    }
 
    /*--- pushbutton to purge unused datasets ---*/

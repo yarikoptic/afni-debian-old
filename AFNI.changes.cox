@@ -5768,3 +5768,25 @@
 
 18 Nov 2005
  * AUTHOR AUTHOR.
+
+22 Nov 2005
+ * [l] in imseq.c.
+
+29 Nov 2005
+ * Message of the Day (motd) stuff.
+
+30 Nov 2005
+ * Change sub-bricks stuff in afni_driver.c.
+
+01 Dec 2005
+ * -coarserot in 3dvolreg.c
+
+06 Dec 2005
+ * -coarserot in 3dWarpDrive.c, too.
+
+21 Dec 2005
+ * afni_broutext.h
+
+28 Dec 2005
+ * fixes to mri_warp3D_align.c and thd_automask.c to deal with problems
+     with -parfix, and with doing mask stuff on 2D images.

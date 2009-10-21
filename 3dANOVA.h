@@ -45,6 +45,20 @@
 
    Mod:     Set MAX_NAME_LENGTH equal to THD_MAX_NAME.
    Date:    02 December 2002
+
+   Mod:     Added aBcontr/Abcontr fields to the anova_options struct.
+   Date:    14 October 2005 [rickr]
+
+   Mod:     Added old_method flag to anova_options struct.
+            Added prototype for contrasts_are_valid(), and ANOVA_MODS_LINK.
+   Date:    01 December 2005 [rickr]
+
+   Mod:     Added debug field to anova_options struct.
+   Date:    08 December 2005 [rickr]
+
+   Mod:     Added aBdiff, Abdiff and abmean fields to anova_options struct.
+            Added ANOVA_BOUND() macro.
+   Date:    16 December 2005 [rickr]
 */
 
 /*---------------------------------------------------------------------------*/
@@ -53,6 +67,8 @@
 
 static char * commandline = NULL ;         /* command line for history notes */
 
+/* documentation about modifications to ANOVA computations */
+#define ANOVA_MODS_LINK "http://afni.nimh.nih.gov/sscc/gangc/ANOVA_Mod.html"
 
 /*** HP-UX ***/
 #ifdef HP
@@ -113,6 +129,12 @@ typedef struct anova_options
 				  model=3   A fixed; B,C random;  AxBxC 
 				  model=4   A,B fixed; C random;  AxBxC
 				  model=5   A,B fixed; C random;  AxB,BxC,C(A)
+                                */
+
+  int   old_method;             /* flag indicating use of old functionality
+                                     bits: 001 = old_method
+                                           010 = OK
+                                           100 = assume sphericity
                                 */
 
   int   a;                      /* number of levels for factor A */
@@ -209,8 +231,25 @@ typedef struct anova_options
   int   Abclevel[MAX_CONTR];    /* factor A level for Ab contrasts        */
   char  * Abcname[MAX_CONTR];   /* names of output files for Ab contrasts */
 
+  /* second order diffs for 3dANOVA3 (e.g. -aBdiff)     16 Dec 2005 [rickr] */
+  int   num_aBdiffs;            /* number of A diffs at fixed B level       */
+  float aBdiffs[MAX_DIFFS][2];  /* calc diffs in these factor A level means */
+  int   aBdlevel[MAX_DIFFS];    /* fixed factor B level for each diff       */
+  char  * aBdname[MAX_DIFFS];   /* names of output files for aB diffs       */
+
+  int   num_Abdiffs;            /* number of B diffs at fixed A level       */
+  float Abdiffs[MAX_DIFFS][2];  /* calc diffs in these factor B level means */
+  int   Abdlevel[MAX_DIFFS];    /* fixed factor A level for each diff       */
+  char  * Abdname[MAX_DIFFS];   /* names of output files for Ab diffs       */
+
+  /* -abmeans: at fixed A level and fixed B level       16 Dec 2005 [rickr] */
+  int   num_abmeans;            /* number of AB level means */ 
+  int   abmeans[MAX_MEANS][2];  /* calc means at each A-level B-level pair  */
+  char  * abmname[MAX_MEANS];   /* names of output files for AB means */
+  
   char * bucket_filename;       /* file name for bucket dataset */
 
+  int    debug;                 /* for more verbose output */
 } anova_options;
 
 
@@ -262,6 +301,12 @@ void initialize_options (anova_options * option_data);
                              (ptr) = (void *)( fim + (ind) ) ;                \
             } break ; } break ; } while(0)
 
+
+/** macro to bound a number **/
+#define ANOVA_BOUND(var,bot,top) do{         \
+        if((var)<(bot)) (var)=(bot);         \
+        else if((var)>(top)) (var)=(top);    \
+        } while (0)
 
 /*---------------------------------------------------------------------------*/
 /*
@@ -425,19 +470,12 @@ void destroy_anova_options (anova_options * option_data);
 
 
 /*---------------------------------------------------------------------------*/
+/*
+  Routine to check for contrasts not summing to zero.
+*/
+
+int contrasts_are_valid (anova_options * option_data, int show_errs, int level);
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+/*---------------------------------------------------------------------------*/
 

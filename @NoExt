@@ -1,4 +1,4 @@
-#!/bin/csh -f
+#!/bin/tcsh -f
 
 if ("$1" == '' || "$1" == '-h' || "$1" == '-help') then
 	goto USAGE
@@ -11,9 +11,11 @@ set Name = $1
 		@ ComCnt ++
 	end
 
+
 set cnt = 2
 while ($cnt <= $ComCnt)
-	if ("$Name" !=  "$argv[$cnt]") then
+   set ext = $Name:e
+   if ("$ext" == "$argv[$cnt]") then
 		set Name = $Name:r
 	endif
 	@ cnt ++

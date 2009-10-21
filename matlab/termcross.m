@@ -2,7 +2,7 @@ function ab = termcross(a,b)
 %TERMCROSS Multiply dummy variables for two terms to get interaction
 
 %   Copyright 1993-2002 The MathWorks, Inc. 
-%   $Revision: 1.33 $  $Date: 2005/10/03 21:33:04 $
+%   $Revision: 1.36 $  $Date: 2005/11/23 20:32:16 $
 if (isempty(a)), ab = b; return, end
 if (isempty(b)), ab = a; return, end
 

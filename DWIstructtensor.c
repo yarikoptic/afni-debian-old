@@ -35,6 +35,9 @@
 
 static char D_prefix[THD_MAX_PREFIX] = "TempDAni";
 
+float aniso_sigma1 = 0.5;
+float aniso_sigma2 = 1.0;
+
 
 THD_3dim_dataset *DWIstructtensor(THD_3dim_dataset * DWI_dset, int flag2D3D, byte *maskptr, int smooth_flag, int save_tempdsets_flag);
 void Smooth_DWI_dset(THD_3dim_dataset * DWI_dset, int flag2D3D);
@@ -50,7 +53,7 @@ static INLINE float vox_val(int x,int y,int z,float *imptr, int nx, int ny, int 
 extern THD_3dim_dataset * Copy_dset_to_float(THD_3dim_dataset * dset , char * new_prefix );
 void Compute_IMARR_Max(MRI_IMARR *Imptr);
 float Find_Max_Im(MRI_IMAGE *im, byte *maskptr);
-static void Save_imarr_to_dset(MRI_IMARR *Imarr_Im, THD_3dim_dataset *base_dset, char *dset_name);
+void Save_imarr_to_dset(MRI_IMARR *Imarr_Im, THD_3dim_dataset *base_dset, char *dset_name);
 
 extern int compute_method; /* determines which method to compute phi */
 
@@ -60,7 +63,6 @@ DWIstructtensor(THD_3dim_dataset * DWI_dset, int flag2D3D, byte *maskptr, int sm
 {
   MRI_IMARR *Gradient_Im, *EV_Im, *phi_Im, *D_Im;
   THD_3dim_dataset *D_dset, *tempdset;
-  float smooth_factor1;
 
   ENTRY("DWIstructtensor");
 
@@ -71,8 +73,8 @@ DWIstructtensor(THD_3dim_dataset * DWI_dset, int flag2D3D, byte *maskptr, int sm
                                      smoothing */
   /* compute gradients of smoothed DWI images */
   /* and form matrix of gradients - imarr with 3 sub-briks for 2D */
-  smooth_factor1 = 0.5;
-  Gradient_Im = Compute_Gradient_Matrix(DWI_dset, flag2D3D, maskptr, 1, smooth_flag, smooth_factor1);
+  Gradient_Im = Compute_Gradient_Matrix(DWI_dset, flag2D3D, maskptr,
+  1,smooth_flag, aniso_sigma1);
 /*  THD_delete_3dim_dataset(tempdset , False ) ;*/  /* delete temporary copy */
   if(save_tempdsets_flag)
      Save_imarr_to_dset(Gradient_Im,DWI_dset, "Gradient");
@@ -138,7 +140,7 @@ DWIstructtensor(THD_3dim_dataset * DWI_dset, int flag2D3D, byte *maskptr, int sm
 }
 
 /*! save IMARR structure to temporary dataset and write to disk */
-static void
+void
 Save_imarr_to_dset(MRI_IMARR *Imarr_Im, THD_3dim_dataset *base_dset, char *dset_name)
 {
   THD_3dim_dataset *temp_dset;
@@ -226,7 +228,7 @@ Smooth_Gradient_Matrix(MRI_IMARR *Gradient_Im, int flag2D3D)
       else
          dz = 1.0f;
 
-      EDIT_blur_volume( nx,ny,nz, 1.0f,1.0f,dz, fim_type, ar, 1.0f ) ;
+      EDIT_blur_volume( nx,ny,nz, 1.0f,1.0f,dz, fim_type, ar, aniso_sigma2 ) ;
    }
    EXRETURN;
 }
@@ -1774,7 +1776,9 @@ MRI_IMARR *Compute_Phi(MRI_IMARR *EV_Im, int flag2D3D, byte *maskptr)
   {
     MRI_IMARR *phi_Im;
     MRI_IMAGE *im;
-    double c1 = 0.01, c2 = -1.00, mc1 = 0.99, evensplit, secondsplit;
+    double c1 = 0.01f, c2 = -0.01f;
+    /* c2 = -1.00,*/
+    double mc1 = 0.99, evensplit, secondsplit;
     double e1, e2,e3, e12, a, b, emax;
     /* e1me2;*/
     float *gptr[3];
@@ -1906,13 +1910,13 @@ MRI_IMARR *Compute_Phi(MRI_IMARR *EV_Im, int flag2D3D, byte *maskptr)
                  e2 = e2 / e12;
                }
                 if(e1==e2)
-	           *gptr[0] = c1;
+	           *gptr[1] = c1;
                 else {
                    e12 = (e1-e2);
                    e12 *= e12;
-                 *gptr[0] =  c1 + (mc1 * exp(c2 / e12) );
+                 *gptr[1] =  c1 + (mc1 * exp(c2 / e12) );
                 }
-                *gptr[1] = c1;
+                *gptr[0] = c1;
 	   }  /* end in 2D */
 	} /* end in mask */  
        gptr[0]++; gptr[1]++;

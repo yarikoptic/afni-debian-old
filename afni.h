@@ -596,6 +596,8 @@ typedef struct {
 
       Widget         misc_readme_env_pb ; /* 05 Aug 2004 */
 
+      Widget         misc_motd_pb ;       /* 29 Nov 2005 */
+
 } AFNI_datamode_widgets ;
 
 /*---*/
@@ -636,6 +638,7 @@ typedef struct {
    Widget hidden_faces_pb   ;  /* 17 Dec 2004 */
    Widget hidden_browser_pb ;  /* 22 Apr 2005 */
    Widget hidden_broutim_pb ;  /* 06 Jun 2005 */
+   Widget hidden_broutext_pb;  /* 21 Dec 2005 */
 
 #endif  /* USE_HIDDEN */
 
@@ -995,10 +998,14 @@ typedef struct {
 #ifdef MAIN
    AFNI_library_type GLOBAL_library ;
    int GLOBAL_num_dsets = 0 ;
+   char *GLOBAL_motd = NULL ;                     /* 29 Nov 2005 */
 #else
    extern AFNI_library_type GLOBAL_library ;
-   extern GLOBAL_num_dsets ;
+   extern int GLOBAL_num_dsets ;
+   extern char *GLOBAL_motd ;
 #endif
+
+extern void AFNI_display_motd( Widget w ) ;       /* 29 Nov 2005 */
 
 #define FIM_THR          (0.01*GLOBAL_library.fim_bkthr_perc)  /* 02 Jun 1999 */
 #define SET_FIM_bkthr(v) (GLOBAL_library.fim_bkthr_perc = (v))
@@ -1041,6 +1048,7 @@ extern void AFNI_splashraise(void) ;  /* 25 Sep 2000 */
 extern void AFNI_faceup     (void) ;  /* 17 Dec 2004 */
 extern int  AFNI_splash_isopen(void); /* 10 Nov 2005 */
 extern void AFNI_broutim_CB (Widget,XtPointer,XtPointer) ; /* 06 Jun 2005 */
+extern void AFNI_broutext_CB(Widget,XtPointer,XtPointer) ; /* 21 Dec 2005 */
 
 extern void AFNI_quit_CB           ( Widget wcall , XtPointer cd , XtPointer cbs );
 extern void AFNI_quit_timeout_CB   ( XtPointer , XtIntervalId * ) ;
@@ -1794,6 +1802,11 @@ extern TTRR_params * TTRR_get_params(void) ;
 
 extern int AFNI_driver( char *cmd ) ;                    /* 07 Nov 2001 */
 extern int AFNI_controller_code_to_index( char *code ) ;
+
+extern void AFNI_set_thr_index ( Three_D_View * , int ) ; /* 30 Nov 2005 */
+extern void AFNI_set_anat_index( Three_D_View * , int ) ;
+extern void AFNI_set_fim_index ( Three_D_View * , int ) ;
+
 
 /*-------------------------------------------------------*/
 /*--------------  registration of functions -------------*/

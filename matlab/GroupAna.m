@@ -20,11 +20,16 @@
 %   
 %   
 %   
-%
-%     Author : Gang Chen
-%     Date : Tue Mar 23 14:06:44 EST 2004
-%     SSCC/NIMH/ National Institutes of Health, Bethesda MD 20892
+diary('diary');    % save all subsequent command window input and most of the resulting command window output to be appended
+                   % to file 'diary'
 
+fprintf('\nWelcome to GroupAna, AFNI Group Analysis Package!');
+fprintf('\n-----------------------------------------------------------\n');
+
+fprintf('\nVersion 1.0.1, Nov. 23, 2005');
+fprintf('\nAuthor: Gang Chen');
+fprintf('\nSSCC/NIMH/ National Institutes of Health, Bethesda MD 20892');
+fprintf('\n-----------------------------------------------------------\n');
 
 %Define the function name for easy referencing
 FuncName = 'GroupAna.m';
@@ -37,8 +42,6 @@ err = 1;
 
 clear all;
 
-diary('diary');    % save all subsequent command window input and most of the resulting command window output to be appended
-                   % to file 'diary'
 fprintf('\nPlease read the following carefully about group analysis setup:\n');
 fprintf('\n\t1. If the resolution of your EPI data is near n millimeters, during Talairach conversion use\n');
 fprintf('\t  "the command adwarp -dxyz n" to greatly reduce runtime without sacrificing accuracy.\n');

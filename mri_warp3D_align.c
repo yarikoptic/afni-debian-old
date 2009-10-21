@@ -31,7 +31,7 @@ static MRI_IMAGE * mri_psinv( MRI_IMAGE *imc , float *wt )
 #define A(i,j) amat[(i)+(j)*m]   /* i=0..m-1 , j=0..n-1 */
 #define P(i,j) pmat[(i)+(j)*n]   /* i=0..n-1 , j=0..m-1 */
 
-   /* copy input matrix into amat */
+   /* copy input matrix (float) into amat (double) */
 
    for( ii=0 ; ii < m ; ii++ )
      for( jj=0 ; jj < n ; jj++ ) A(ii,jj) = R(ii,jj) ;
@@ -41,7 +41,7 @@ static MRI_IMAGE * mri_psinv( MRI_IMAGE *imc , float *wt )
    if( wt != NULL ){
      for( ii=0 ; ii < m ; ii++ ){
        ww = wt[ii] ;
-       for( jj=0 ; jj < n ; jj++ ) A(ii,jj) *= ww ;
+       if( ww > 0.0 ) for( jj=0 ; jj < n ; jj++ ) A(ii,jj) *= ww ;
      }
    }
 
@@ -50,7 +50,8 @@ static MRI_IMAGE * mri_psinv( MRI_IMAGE *imc , float *wt )
    for( jj=0 ; jj < n ; jj++ ){
      sum = 0.0 ;
      for( ii=0 ; ii < m ; ii++ ) sum += A(ii,jj)*A(ii,jj) ;
-     if( sum > 0.0 ) sum = 1.0/sqrt(sum) ; else do_svd = 1 ;
+     if( sum > 0.0 ) sum = 1.0/sqrt(sum) ;
+     else           { do_svd = 1 ; ERROR_message("mri_psinv[%d]=0\n",jj);}
      xfac[jj] = sum ;
      for( ii=0 ; ii < m ; ii++ ) A(ii,jj) *= sum ;
    }
@@ -78,7 +79,7 @@ static MRI_IMAGE * mri_psinv( MRI_IMAGE *imc , float *wt )
      for( ii=1 ; ii < n ; ii++ ) if( sval[ii] > smax ) smax = sval[ii] ;
 
      if( smax <= 0.0 ){                        /* this is bad */
-       fprintf(stderr,"** ERROR: SVD fails in mri_warp3D_align_setup!\n");
+       ERROR_message("SVD fails in mri_warp3D_align_setup!\n");
        free((void *)xfac); free((void *)sval);
        free((void *)vmat); free((void *)umat); return NULL;
      }
@@ -132,7 +133,7 @@ static MRI_IMAGE * mri_psinv( MRI_IMAGE *imc , float *wt )
        sum = V(ii,ii) ;
        for( kk=0 ; kk < ii ; kk++ ) sum -= V(ii,kk) * V(ii,kk) ;
        if( sum <= 0.0 ){
-         fprintf(stderr,"** ERROR: Choleski fails in mri_warp3D_align_setup!\n");
+         ERROR_message("Choleski fails in mri_warp3D_align_setup!\n");
          free((void *)xfac); free((void *)amat); free((void *)vmat); return NULL ;
        }
        V(ii,ii) = sqrt(sum) ;
@@ -176,7 +177,7 @@ static MRI_IMAGE * mri_psinv( MRI_IMAGE *imc , float *wt )
    if( wt != NULL ){
      for( ii=0 ; ii < m ; ii++ ){
        ww = wt[ii] ;
-       for( jj=0 ; jj < n ; jj++ ) P(jj,ii) *= ww ;
+       if( ww > 0.0 ) for( jj=0 ; jj < n ; jj++ ) P(jj,ii) *= ww ;
      }
    }
 
@@ -308,7 +309,7 @@ static MRI_IMAGE * mri_warp3D_align_fitim( MRI_warp3D_align_basis *bas ,
    int nfree=bas->nfree , *ima=MRI_INT_PTR(bas->imap) , nmap=bas->imap->nx ;
    int npar =bas->nparam ;
    float *pvec , *par , *mar ;
-   int ii , pp ;
+   int ii , pp , cc ;
    float dpar , delta ;
 
    /*-- create image containing basis columns --*/
@@ -317,6 +318,7 @@ static MRI_IMAGE * mri_warp3D_align_fitim( MRI_warp3D_align_basis *bas ,
    fitar = MRI_FLOAT_PTR(fitim) ;
    pvec  = (float *)malloc(sizeof(float) * npar) ;
 
+#undef  FMAT
 #define FMAT(i,j) fitar[(i)+(j)*nmap]  /* col dim=nmap, row dim=nfree+1 */
 
    /* column #nfree = base image itself */
@@ -325,7 +327,7 @@ static MRI_IMAGE * mri_warp3D_align_fitim( MRI_warp3D_align_basis *bas ,
 
    pvec = (float *)malloc(sizeof(float) * npar) ;
 
-   /* for each parameter:
+   /* for each free parameter:
        apply inverse transform to base image with param value up and down
        compute central difference to approximate derivative of base
         image wrt parameter
@@ -334,7 +336,7 @@ static MRI_IMAGE * mri_warp3D_align_fitim( MRI_warp3D_align_basis *bas ,
    mri_warp3D_method( warp_mode ) ;  /* set interpolation mode */
    mri_warp3D_set_womask( bas->imsk ) ;
 
-   for( pp=0 ; pp < npar ; pp++ ){
+   for( pp=0,cc=0 ; pp < npar ; pp++ ){
 
      if( bas->param[pp].fixed ) continue ;  /* don't do this one! */
 
@@ -365,13 +367,36 @@ static MRI_IMAGE * mri_warp3D_align_fitim( MRI_warp3D_align_basis *bas ,
      delta = bas->scale_init / ( 2.0f * dpar ) ;
      par = MRI_FLOAT_PTR(pim) ; mar = MRI_FLOAT_PTR(mim) ;
      for( ii=0 ; ii < nmap ; ii++ )
-       FMAT(ii,pp) = delta * ( par[ima[ii]] - mar[ima[ii]] ) ;
+       FMAT(ii,cc) = delta * ( par[ima[ii]] - mar[ima[ii]] ) ;
+
+#if 0
+{ float psum=0.0f,msum=0.0f,dsum=0.0f;
+  for( ii=0 ; ii < nmap ; ii++ ){
+    psum += fabsf(par[ima[ii]]) ;
+    msum += fabsf(mar[ima[ii]]) ;
+    dsum += fabsf(FMAT(ii,cc)) ;
+  }
+  fprintf(stderr,"  pp=%d  psum=%g  msum=%g  dsum=%g\n",pp,psum,msum,dsum) ;
+}
+#endif
 
      mri_free(pim) ; mri_free(mim) ;  /* no longer needed */
+
+     cc++ ;  /* oopsie */
    }
 
    mri_warp3D_set_womask( NULL ) ;
    free((void *)pvec) ;
+
+#if 0
+{ int zz , jj ;
+  for( jj=0 ; jj <= nfree ; jj++ ){
+    zz = 0 ;
+    for( ii=0 ; ii < nmap ; ii++ ) if( FMAT(ii,jj) == 0.0 ) zz++ ;
+    fprintf(stderr,"  fitim: col#%d has %d zeros out of %d\n",jj,zz,nmap) ;
+  }
+}
+#endif
 
    return(fitim) ;
 }
@@ -549,7 +574,7 @@ ENTRY("mri_warp3D_align_setup") ;
      if( wf[ii] > 0.0f ){ ima[jj++] = ii; msk[ii] = 1; }
    }
 
-   /* make copy of sqrt(weight), only at mapped indexes */
+   /* make copy of sqrt(weight), but only at mapped indexes */
 
    wtar = (float *)malloc(sizeof(float)*nmap) ;
    for( ii=0 ; ii < nmap ; ii++ ) wtar[ii] = sqrt(wf[ima[ii]]) ;
@@ -629,7 +654,7 @@ ENTRY("mri_warp3D_align_setup") ;
             Note that returned image is floats.
 -------------------------------------------------------------------------*/
 
-MRI_IMAGE * mri_warp3d_align_one( MRI_warp3D_align_basis *bas, MRI_IMAGE *im )
+MRI_IMAGE * mri_warp3D_align_one( MRI_warp3D_align_basis *bas, MRI_IMAGE *im )
 {
    float *fit , *dfit , *qfit , *tol ;
    int iter , good,ngood , ii, pp , skip_first ;
@@ -661,9 +686,17 @@ ENTRY("mri_warp3D_align_one") ;
 
    save_prefix = getenv("AFNI_WARPDRIVE_SAVER") ;
 
+   /** pma[k] = external parameter index for the k-th free parameter **/
+
    pma = (int *)malloc(sizeof(int) * nfree) ;
    for( pp=ii=0 ; ii < npar ; ii++ )
      if( !bas->param[ii].fixed ) pma[pp++] = ii ;
+
+#if 0
+fprintf(stderr,"pma=") ;
+for(pp=0;pp<nfree;pp++)fprintf(stderr," %d",pma[pp]);
+fprintf(stderr,"\n") ;
+#endif
 
    fit  = (float *)malloc(sizeof(float) * npar ) ;
    dfit = (float *)malloc(sizeof(float) * npar ) ;
@@ -694,8 +727,8 @@ ENTRY("mri_warp3D_align_one") ;
          fit[pp] = bas->param[pp].val_fixed ;
        } else {
          fit[pp] = bas->param[pp].val_init ;
-         skip_first = skip_first && (fit[pp] == bas->param[pp].ident) ;
        }
+       skip_first = skip_first && (fit[pp] == bas->param[pp].ident) ;
      }
    } else {
      skip_first = 0 ;  /* and fit[] is unchanged */
@@ -713,7 +746,7 @@ ENTRY("mri_warp3D_align_one") ;
    }
 
    if( bas->verb )
-     fprintf(stderr,"++ mri_warp3d_align_one: START PASS #%d\n",passnum) ;
+     fprintf(stderr,"++ mri_warp3D_align_one: START PASS #%d\n",passnum) ;
 
    /* setup base image for registration into fim,
       and pseudo-inverse of base+derivative images into pmat */
@@ -731,16 +764,16 @@ ENTRY("mri_warp3D_align_one") ;
      pmat = MRI_FLOAT_PTR(bas->imps) ;
    }
 
-   /*-- iterate fit --*/
+   /******** iterate fit ********/
 
    iter = 0 ; good = 1 ; last_aitken = 3 ; num_bad_diff = 0 ;
    while( good ){
      if( skip_first ){
        tim = fim ; skip_first = 0 ;
      } else {
-       bas->vwset( npar , fit ) ;
+       bas->vwset( npar , fit ) ;                     /**************************/
        tim = mri_warp3D( fim , 0,0,0 , bas->vwfor ) ; /* warp on current params */
-     }
+     }                                                /**************************/
      tar = MRI_FLOAT_PTR(tim) ;
 
      sdif = mri_scaled_diff( bas->imbase , tim , bas->imsk ) ;
@@ -757,7 +790,12 @@ ENTRY("mri_warp3D_align_one") ;
        for( pp=0 ; pp < nfree ; pp++ ) qfit[pp] += P(pp,ii) * tv ;
      }
      if( tim != fim ) mri_free( tim ) ;
-     for( pp=0 ; pp < nfree ; pp++ ) dfit[pp] = qfit[pma[pp]] ;
+#if 0
+fprintf(stderr,"qfit=");
+for(pp=0;pp<nfree;pp++)fprintf(stderr," %g",qfit[pp]);
+fprintf(stderr,"\n") ;
+#endif
+     for( pp=0 ; pp < nfree ; pp++ ) dfit[pma[pp]] = qfit[pp] ;
      for( pp=0 ; pp < npar  ; pp++ ){
        fit[pp] += dfit[pp] ;
             if( fit[pp] > bas->param[pp].max ) fit[pp] = bas->param[pp].max ;
@@ -886,7 +924,7 @@ ENTRY("mri_warp3D_align_one") ;
 
      good = (ngood < nfree) && (iter < bas->max_iter) ;
 
-   } /* end while loop for iteration of fitting procedure */
+   } /******** end while loop for iteration of fitting procedure ********/
 
    for( mm=0 ; mm < NMEM ; mm++ )
      if( fitmem[mm] != NULL ){ free((void *)fitmem[mm]); fitmem[mm] = NULL; }
@@ -921,7 +959,7 @@ ENTRY("mri_warp3D_align_one") ;
 
    if( bas->verb ){
      double st = (NI_clock_time()-ctstart) * 0.001 ;
-     fprintf(stderr,"++ mri_warp3d_align_one EXIT: %.2f seconds elapsed\n",st) ;
+     fprintf(stderr,"++ mri_warp3D_align_one EXIT: %.2f seconds elapsed\n",st) ;
    }
 
    RETURN( tim ) ;

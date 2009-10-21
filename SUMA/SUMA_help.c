@@ -139,6 +139,7 @@ char * SUMA_New_Additions_perver (int ver, SUMA_Boolean StampOnly)
             "  + SurfMesh: Program to increase or decrease a mesh's density.\n"
             "  + SurfMask: Program to find the volume enclosed by a surface.\n"
             "  + SurfToSurf: Program to interpolate between non-isotopic surfaces.\n"
+            "  + ROIgrow: Program to expand an ROI on the surface.\n"
             "Modifications:\n"
             "  + SUMA:\n"
             "    o Slight modification to threshold scale.\n"
@@ -155,9 +156,11 @@ char * SUMA_New_Additions_perver (int ver, SUMA_Boolean StampOnly)
             "    o Support for reading BrainVoyager surfaces (.srf) format\n"
             "    o Mouse motion effect is modulated with Zoom level\n"
             "    o F8 toggles between orthographic and perspective viewing\n"
+            "    o Fixed bug causing crash in SUMA_MixColorOverlays\n"
             "  + ConvertSurface:\n"
             "    o Option -make_consistent added to make the winding\n"
             "    of the mesh consistent.  \n"
+            "    o Option to project surface nodes to sphere\n" 
             "  + SurfQual:\n"
             "    o Checks and warns about mesh's winding inconsistency.\n"
             "  + SurfSmooth:\n"
@@ -179,6 +182,8 @@ char * SUMA_New_Additions_perver (int ver, SUMA_Boolean StampOnly)
             "    without additional comments.\n"
             "  + SurfaceMetrics:\n"
             "    o Options for finding surface boundaries.\n"
+            "  + 3dSkullStrip:\n"
+            "    o Fixed bug on 64 bit machines.\n"
             );
          break; 
          
@@ -922,6 +927,7 @@ char *SUMA_All_Programs(void )
          "  MapIcosahedron\n"
          "  quickspec\n"
          "  ROI2dataset\n"
+         "  ROIgrow\n"
          "  ScaleToMap\n"
          "  SUMA_glxdino\n"
          "  SurfaceMetrics\n"

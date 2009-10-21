@@ -1096,7 +1096,8 @@ void AFNI_sigfunc(int sig)   /** signal handler for fatal errors **/
    }
    fprintf(stderr,"\nFatal Signal %d (%s) received\n",sig,sname); fflush(stderr);
    TRACEBACK ;
-   fprintf(stderr,"*** Program Abort ***\n") ; fflush(stderr) ;
+   fprintf(stderr,"** AFNI version = " VERSION "  Compile date = " __DATE__ "\n" );
+   fprintf(stderr,"** Program Abort ***\n") ; fflush(stderr) ;
    exit(1) ;
 }
 #endif
@@ -1153,6 +1154,10 @@ int main( int argc , char * argv[] )
        printf( "[[Precompiled binary " SHSTRING ": " __DATE__ "]]\n" ) ;
 #endif
      exit(0) ;
+   }
+
+   if( check_string("--motd",argc,argv) ){   /* 29 Nov 2005 */
+     AFNI_display_motd(NULL) ; exit(0) ;
    }
 
    /** just print the SHOWOFF string [26 Oct 2004] **/
@@ -1847,9 +1852,9 @@ void AFNI_vcheck_flasher( Three_D_View *im3d )
   Thus, the timeout - waiting a little made things work OK.
 ------------------------------------------------------------------------*/
 
-void AFNI_startup_timeout_CB( XtPointer client_data , XtIntervalId * id )
+void AFNI_startup_timeout_CB( XtPointer client_data , XtIntervalId *id )
 {
-   Three_D_View * im3d = (Three_D_View *) client_data ;
+   Three_D_View *im3d = (Three_D_View *)client_data ;
    int vv ;
 
 ENTRY("AFNI_startup_timeout_CB") ;
@@ -1960,6 +1965,11 @@ ENTRY("AFNI_startup_timeout_CB") ;
    /* 29 Jul 2005: run any driver commands from the command line */
 
    for( vv=0 ; vv < COM_num ; vv++ ) AFNI_driver( COM_com[vv] ) ;
+
+   /* 29 Nov 2005: Message Of The Day -- did it change? */
+
+   if( GLOBAL_motd != NULL && !AFNI_noenv("AFNI_MOTD_CHECK") )
+     AFNI_display_motd( im3d->vwid->imag->topper ) ;
 
    /* 09 Nov 2005: start checking periodically for updated datasets */
 
@@ -3126,6 +3136,9 @@ ENTRY("AFNI_read_images") ;
      dset->daxes->yyorient = yy ;
      dset->daxes->zzorient = zz ;
    }
+
+   if( !ISVALID_MAT44(dset->daxes->ijk_to_dicom) )  /* 15 Dec 2005 */
+     THD_daxes_to_mat44( dset->daxes ) ;
 
    dset->wod_flag  = False ;  /* no warp-on-demand */
    dset->wod_daxes = NULL ;   /* 02 Nov 1996 */
@@ -5371,14 +5384,14 @@ void AFNI_view_setter( Three_D_View *im3d , MCW_imseq *seq )
 
 /*------------------------------------------------------------------------*/
 
-void AFNI_set_viewpoint( Three_D_View * im3d ,
+void AFNI_set_viewpoint( Three_D_View *im3d ,
                          int xx,int yy,int zz , int redisplay_option )
 {
    int old_i1 , old_j2 , old_k3 , i1,j2,k3 ;
    int dim1,dim2,dim3 , isq_driver , do_lock , new_xyz ;
    int newti ; /* 24 Jan 2001 */
 
-   THD_dataxes * daxes ;
+   THD_dataxes *daxes ;
    THD_fvec3 fv ;
    THD_ivec3 old_ib , new_ib , old_id , new_id ;
 
@@ -6937,7 +6950,7 @@ STATUS("deciding whether to use function WOD") ;
       /*- The Ides of March, 2000: allow switching back to "view brick" -*/
 
 
-      if( func_brick_possible                          &&
+      if( func_brick_possible                       &&
           ( ( im3d->vinfo->force_func_wod  &&
               im3d->vinfo->tempflag == 0   &&
               !AFNI_noenv("AFNI_VIEW_FUNC_BRICK") ) ||
@@ -9580,6 +9593,9 @@ STATUS("init new_daxes") ;
    new_daxes->yyorient = ORI_A2P_TYPE ;
    new_daxes->zzorient = ORI_I2S_TYPE ;
    LOAD_DIAG_MAT(new_daxes->to_dicomm,1,1,1) ;  /* identity matrix */
+
+   if( !ISVALID_MAT44(new_daxes->ijk_to_dicom) )  /* 15 Dec 2005 */
+     THD_daxes_to_mat44( new_daxes ) ;
 
    /*--- if view type is appropriate, set new markers ---*/
 

@@ -336,6 +336,10 @@ extern int EDIT_check_argv( int , char * argv[] , int , EDIT_options * ) ;
 extern void EDIT_coerce_type      ( int , int,void * , int,void * ) ;
 extern void EDIT_coerce_scale_type( int , float , int,void * , int,void * ) ;
 extern float EDIT_coerce_autoscale( int , int,void * , int,void * ) ;
+extern float EDIT_convert_dtype   ( int , int,void * , int,void *, int ) ;
+extern int   is_integral_data     ( int , int , void * ) ;
+
+
 
 extern void EDIT_aver_fvol( int, int, int,
                             float, float, float, float *, float) ;
@@ -406,6 +410,8 @@ extern int              okay_to_add_markers(THD_3dim_dataset * dset);
 #define ADN_xyzorg               6022     /*=  THD_fvec3  =*/
 #define ADN_xyzorient            6023     /*=  THD_ivec3  =*/
 #define ADN_to_dicomm            6024     /*=  THD_mat33  =*/
+
+#define ADN_ijk_to_dicom         6026     /*=  mat44 [19 Dec 2005] =*/
 
 /** values in the timeaxis **/
 

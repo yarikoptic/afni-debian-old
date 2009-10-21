@@ -474,8 +474,8 @@ if Dist = 0, point on plane, if Dist > 0 point above plane (along normal), if Di
 }   
    
 /*! 
-SUMA_ANGLE_DIST(p2,p1,cent,a)  
-SUMA_ANGLE_DIST_NC(p2,p1,a) 
+SUMA_ANGLE_DIST(p2,p1,cent,a,nrm)  
+SUMA_ANGLE_DIST_NC(p2,p1,a, nrm) 
 calculate angular distance between two points
 on a sphere.
 For the _NC version, the sphere is centered on
@@ -483,18 +483,19 @@ For the _NC version, the sphere is centered on
 p1 and p2 are the XYZ of the two points
 cent is the center of the sphere
 and 'a' is the angle in radians between them.
+m_nrm contains the cross product p1 cross p2
 Tx to tip from JHU's Applied Physics Laboratory web page 
 */ 
-#define SUMA_ANGLE_DIST_NC(m_p2,m_p1,a)   \
+#define SUMA_ANGLE_DIST_NC(m_p2,m_p1,a, m_cr)   \
    {\
-      double m_cr[3], m_p2r[3];   \
+      double m_p2r[3];   \
       SUMA_MT_CROSS(m_cr, m_p1, m_p2); \
       a = atan2(sqrt(m_cr[0]*m_cr[0]+m_cr[1]*m_cr[1]+m_cr[2]*m_cr[2]),SUMA_MT_DOT(m_p2, m_p1)); \
    }
 
-#define SUMA_ANGLE_DIST(p2,p1,cent,a)   \
+#define SUMA_ANGLE_DIST(p2,p1,cent,a,m_cr)   \
    {\
-      double m_cr[3],m_p1[3],m_p2[3],m_np1, m_np2;   \
+      double m_p1[3],m_p2[3],m_np1, m_np2;   \
       SUMA_MT_SUB(m_p1, p1, cent);  SUMA_NORM(m_np1, m_p1); if (m_np1) { m_p1[0] /= m_np1; m_p1[1] /= m_np1; m_p1[2] /= m_np1; }\
       SUMA_MT_SUB(m_p2, p2, cent);  SUMA_NORM(m_np2, m_p2); if (m_np2) { m_p2[0] /= m_np2; m_p2[1] /= m_np2; m_p2[2] /= m_np2; }\
       SUMA_MT_CROSS(m_cr, m_p2, m_p1); \
@@ -1818,16 +1819,14 @@ WARNING: The input data vectors are not cast to the type of s.
       float m_of;\
          m_of = (1 - opacity); \
          for (m_I=0; m_I < nrgb; ++m_I) {\
-            if (!isColored[NodeId[m_I]]) { /* a new color, put it down as it is, Opacity gain should not be applied Wed Apr  2 17:31:33 EST 2003*/\
-               if (NodeId[m_I] < N_Node) {\
+            if (NodeId[m_I] < N_Node) {\
+               if (!isColored[NodeId[m_I]]) { /* a new color, put it down as it is, Opacity gain should not be applied Wed Apr  2 17:31:33 EST 2003*/\
                   m_I4 = 4*NodeId[m_I]; \
                   glcolar[m_I4] = RGBmat[m_I][0]; ++m_I4;\
                   glcolar[m_I4] = RGBmat[m_I][1]; ++m_I4;\
                   glcolar[m_I4] = RGBmat[m_I][2]; ++m_I4;\
                   isColored[NodeId[m_I]] = YUP;\
-               }\
-            }else {/* mixing to be done */\
-               if (NodeId[m_I] < N_Node) {\
+               }else {/* mixing to be done */\
                   m_I4 = 4*NodeId[m_I]; \
                   glcolar[m_I4] = m_of * glcolar[m_I4] + opacity * RGBmat[m_I][0];  ++m_I4;\
                   glcolar[m_I4] = m_of * glcolar[m_I4] + opacity * RGBmat[m_I][1];  ++m_I4;\
@@ -1841,17 +1840,15 @@ WARNING: The input data vectors are not cast to the type of s.
       float m_of;\
          m_of = (1 - opacity); \
          for (m_I=0; m_I < nrgb; ++m_I) {\
-            if (!isColored[NodeId[m_I]]) { /* a new color, put it down as it is, Opacity gain should not be applied Wed Apr  2 17:31:33 EST 2003*/\
-               if (NodeId[m_I] < N_Node) {\
+            if (NodeId[m_I] < N_Node) {\
+               if (!isColored[NodeId[m_I]]) { /* a new color, put it down as it is, Opacity gain should not be applied Wed Apr  2 17:31:33 EST 2003*/\
                   m_I4 = 4*NodeId[m_I]; \
                   m_I3 = 3*m_I; \
                   glcolar[m_I4] = RGBvec[m_I3]; ++m_I4; ++m_I3;\
                   glcolar[m_I4] = RGBvec[m_I3]; ++m_I4; ++m_I3;\
                   glcolar[m_I4] = RGBvec[m_I3]; ++m_I4; ++m_I3;\
                   isColored[NodeId[m_I]] = YUP;\
-               }\
-            }else {/* mixing to be done */\
-               if (NodeId[m_I] < N_Node) {\
+               }else {/* mixing to be done */\
                   m_I4 = 4*NodeId[m_I]; \
                   m_I3 = 3*m_I; \
                   glcolar[m_I4] = m_of * glcolar[m_I4] + opacity * RGBvec[m_I3];  ++m_I4; ++m_I3;\
@@ -1867,16 +1864,14 @@ WARNING: The input data vectors are not cast to the type of s.
       float m_of;\
          m_of = (1 - opacity); \
          for (m_I=0; m_I < nrgb; ++m_I) {\
-            if (!isColored[NodeId[m_I]]) { /* a new color, put it down as it is, Opacity gain should not be applied Wed Apr  2 17:31:33 EST 2003*/\
-               if (NodeId[m_I] < N_Node) {\
+            if (NodeId[m_I] < N_Node) {\
+               if (!isColored[NodeId[m_I]]) { /* a new color, put it down as it is, Opacity gain should not be applied Wed Apr  2 17:31:33 EST 2003*/\
                   m_I4 = 4*NodeId[m_I]; \
                   glcolar[m_I4] = RGBmat[m_I][0]; ++m_I4;\
                   glcolar[m_I4] = RGBmat[m_I][1]; ++m_I4;\
                   glcolar[m_I4] = RGBmat[m_I][2]; ++m_I4;\
                   isColored[NodeId[m_I]] = YUP;\
-               }\
-            }else {/* mixing to be done */\
-               if (NodeId[m_I] < N_Node) {\
+               }else {/* mixing to be done */\
                   m_I4 = 4*NodeId[m_I]; \
                   glcolar[m_I4] = m_of * glcolar[m_I4] + RGBmat[m_I][0]; SUMA_CLIP_UB(glcolar[m_I4], 1.0); ++m_I4;\
                   glcolar[m_I4] = m_of * glcolar[m_I4] + RGBmat[m_I][1]; SUMA_CLIP_UB(glcolar[m_I4], 1.0); ++m_I4;\
@@ -1890,17 +1885,15 @@ WARNING: The input data vectors are not cast to the type of s.
       float m_of;\
          m_of = (1 - opacity); \
          for (m_I=0; m_I < nrgb; ++m_I) {\
-            if (!isColored[NodeId[m_I]]) { /* a new color, put it down as it is, Opacity gain should not be applied Wed Apr  2 17:31:33 EST 2003*/\
-               if (NodeId[m_I] < N_Node) {\
+            if (NodeId[m_I] < N_Node) {\
+               if (!isColored[NodeId[m_I]]) { /* a new color, put it down as it is, Opacity gain should not be applied Wed Apr  2 17:31:33 EST 2003*/\
                   m_I4 = 4*NodeId[m_I]; \
                   m_I3 = 3*m_I; \
                   glcolar[m_I4] = RGBvec[m_I3]; ++m_I4; ++m_I3;\
                   glcolar[m_I4] = RGBvec[m_I3]; ++m_I4; ++m_I3;\
                   glcolar[m_I4] = RGBvec[m_I3]; ++m_I4; ++m_I3;\
                   isColored[NodeId[m_I]] = YUP;\
-               }\
-            }else {/* mixing to be done */\
-               if (NodeId[m_I] < N_Node) {\
+               }else {/* mixing to be done */\
                   m_I4 = 4*NodeId[m_I]; \
                   m_I3 = 3*m_I; \
                   glcolar[m_I4] = m_of * glcolar[m_I4] + RGBvec[m_I3]; SUMA_CLIP_UB(glcolar[m_I4], 1.0); ++m_I4; ++m_I3;\
@@ -1942,16 +1935,14 @@ WARNING: The input data vectors are not cast to the type of s.
       int m_I, m_I4 = 0; \
       float m_of, m_of2;\
          for (m_I=0; m_I < nrgb; ++m_I) {\
-            if (!isColored[NodeId[m_I]]) { /* a new color, put it down as it is */\
-               if (NodeId[m_I] < N_Node) {\
+            if (NodeId[m_I] < N_Node) {\
+               if (!isColored[NodeId[m_I]]) { /* a new color, put it down as it is */\
                   m_I4 = 4*NodeId[m_I]; \
                   glcolar[m_I4] = locgain[m_I] * RGBmat[m_I][0]; ++m_I4;\
                   glcolar[m_I4] = locgain[m_I] * RGBmat[m_I][1]; ++m_I4;\
                   glcolar[m_I4] = locgain[m_I] * RGBmat[m_I][2]; ++m_I4;\
                   isColored[NodeId[m_I]] = YUP;\
-               }\
-            }else { /* mixing to be done */\
-               if (NodeId[m_I] < N_Node) {\
+               }else { /* mixing to be done */\
                   m_I4 = 4*NodeId[m_I]; \
                   m_of = (locgain[m_I]  * opacity); /* Dec. 04 03, changed from locgain[m_I] * opacity */\
                   m_of2 = (1 - opacity);\
@@ -1966,17 +1957,15 @@ WARNING: The input data vectors are not cast to the type of s.
       int m_I, m_I4 = 0, m_I3=0; \
       float m_of, m_of2;\
          for (m_I=0; m_I < nrgb; ++m_I) {\
-            if (!isColored[NodeId[m_I]]) { /* a new color, put it down as it is */\
-               if (NodeId[m_I] < N_Node) {\
+            if (NodeId[m_I] < N_Node) {\
+               if (!isColored[NodeId[m_I]]) { /* a new color, put it down as it is */\
                   m_I4 = 4*NodeId[m_I]; \
                   m_I3 = 3*m_I; \
                   glcolar[m_I4] = locgain[m_I] * RGBvec[m_I3]; ++m_I4; ++m_I3;\
                   glcolar[m_I4] = locgain[m_I] * RGBvec[m_I3]; ++m_I4; ++m_I3;\
                   glcolar[m_I4] = locgain[m_I] * RGBvec[m_I3]; ++m_I4; ++m_I3;\
                   isColored[NodeId[m_I]] = YUP;\
-               }\
-            }else { /* mixing to be done */\
-               if (NodeId[m_I] < N_Node) {\
+               }else { /* mixing to be done */\
                   m_I4 = 4*NodeId[m_I]; \
                   m_I3 = 3*m_I; \
                   m_of = (locgain[m_I]  * opacity); /* Dec. 04 03, changed from locgain[m_I] * opacity */\
@@ -1993,16 +1982,14 @@ WARNING: The input data vectors are not cast to the type of s.
       int m_I, m_I4 = 0; \
       float m_of, m_of2;\
          for (m_I=0; m_I < nrgb; ++m_I) {\
-            if (!isColored[NodeId[m_I]]) { /* a new color, put it down as it is */\
-               if (NodeId[m_I] < N_Node) {\
+            if (NodeId[m_I] < N_Node) {\
+               if (!isColored[NodeId[m_I]]) { /* a new color, put it down as it is */\
                   m_I4 = 4*NodeId[m_I]; \
                   glcolar[m_I4] = locgain[m_I] * RGBmat[m_I][0]; ++m_I4;\
                   glcolar[m_I4] = locgain[m_I] * RGBmat[m_I][1]; ++m_I4;\
                   glcolar[m_I4] = locgain[m_I] * RGBmat[m_I][2]; ++m_I4;\
                   isColored[NodeId[m_I]] = YUP;\
-               }\
-            }else { /* mixing to be done */\
-               if (NodeId[m_I] < N_Node) {\
+               }else { /* mixing to be done */\
                   m_I4 = 4*NodeId[m_I]; \
                   m_of = (locgain[m_I]); /* Dec. 04 03, changed from locgain[m_I] * opacity */\
                   m_of2 = (1 - opacity);\
@@ -2017,17 +2004,15 @@ WARNING: The input data vectors are not cast to the type of s.
       int m_I, m_I4 = 0, m_I3=0; \
       float m_of, m_of2;\
          for (m_I=0; m_I < nrgb; ++m_I) {\
-            if (!isColored[NodeId[m_I]]) { /* a new color, put it down as it is */\
-               if (NodeId[m_I] < N_Node) {\
+            if (NodeId[m_I] < N_Node) {\
+               if (!isColored[NodeId[m_I]]) { /* a new color, put it down as it is */\
                   m_I4 = 4*NodeId[m_I]; \
                   m_I3 = 3*m_I; \
                   glcolar[m_I4] = locgain[m_I] * RGBvec[m_I3]; ++m_I4; ++m_I3;\
                   glcolar[m_I4] = locgain[m_I] * RGBvec[m_I3]; ++m_I4; ++m_I3;\
                   glcolar[m_I4] = locgain[m_I] * RGBvec[m_I3]; ++m_I4; ++m_I3;\
                   isColored[NodeId[m_I]] = YUP;\
-               }\
-            }else { /* mixing to be done */\
-               if (NodeId[m_I] < N_Node) {\
+               }else { /* mixing to be done */\
                   m_I4 = 4*NodeId[m_I]; \
                   m_I3 = 3*m_I; \
                   m_of = (locgain[m_I]); /* Dec. 04 03, changed from locgain[m_I] * opacity */\

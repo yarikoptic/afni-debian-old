@@ -305,7 +305,11 @@ SUMA_VTI *SUMA_GetVoxelsIntersectingTriangle(   SUMA_SurfaceObject *SO, SUMA_VOL
                                                              or an effect of discretization. At any rate
                                                              it should not affect what I plan to do with
                                                              this. Could the bug be in 
-                                                             SUMA_isVoxelIntersect_Triangle?*/
+                                                             SUMA_isVoxelIntersect_Triangle?
+                                                             Thu Dec 22 17:03:48 EST 2005, Update:
+                                                             SUMA_isVoxelIntersect_Triangle had a precision
+                                                             bug. It has been fixed but I have not reexamined
+                                                             this block yet*/
                if (!(SUMA_IS_STRICT_NEG(VolPar->Hand * dist))) { /* voxel is outside (along normal) */
                   /* does this triangle actually intersect this voxel ?*/
                   if (SUMA_isVoxelIntersect_Triangle (p, dxyz, p1, p2, p3)) {
@@ -430,7 +434,11 @@ int SUMA_VoxelNeighbors (int ijk, int ni, int nj, int nk, SUMA_VOX_NEIGHB_TYPES 
    
    /* change ijk to 3D */
    SUMA_1D_2_3D_index(ijk, i, j, k, ni, nij);
-   
+   /* 
+   if (ijk == 5030) {
+      fprintf(SUMA_STDERR,"%s:[%d] %d %d %d\n", FuncName, ijk, i, j, k);      
+   }
+   */
    if (i >= ni || i < 0) { SUMA_SL_Err("Voxel out of bounds along i direction"); SUMA_RETURN(N_n); }
    if (j >= nj || j < 0) { SUMA_SL_Err("Voxel out of bounds along j direction"); SUMA_RETURN(N_n); }
    if (k >= nk || k < 0) { SUMA_SL_Err("Voxel out of bounds along k direction"); SUMA_RETURN(N_n); }
@@ -442,7 +450,12 @@ int SUMA_VoxelNeighbors (int ijk, int ni, int nj, int nk, SUMA_VOX_NEIGHB_TYPES 
    if (i+1 < ni) { nl[N_n] = SUMA_3D_2_1D_index(i+1, j, k, ni, nij); ++N_n; } 
    if (j+1 < nj) { nl[N_n] = SUMA_3D_2_1D_index(i, j+1, k, ni, nij); ++N_n; } 
    if (k+1 < nk) { nl[N_n] = SUMA_3D_2_1D_index(i, j, k+1, ni, nij); ++N_n; } 
-   
+   /*
+   if (ijk == 5030) {
+      fprintf(SUMA_STDERR,"%s:[%d] %d %d %d %d %d %d\n", FuncName, ijk, 
+                              nl[0],nl[1],nl[2],nl[3],nl[4],nl[5] );      
+   }
+   */   
    if ( ntype < SUMA_VOX_NEIGHB_EDGE) { SUMA_RETURN(N_n); }
    
    /* add edge neighbors */
@@ -496,7 +509,8 @@ byte *SUMA_FillToVoxelMask(byte *ijkmask, int ijkseed, int ni, int nj, int nk, i
    byte *isin = NULL, *visited=NULL;
    DList*candlist=NULL;
    DListElmt *dothiselm=NULL;
-   int dothisvoxel, itmp;
+   int dothisvoxel;
+   void * dtmp=NULL;
    int nl[50], N_n, in ,neighb, nijk, i, j, k, nij;
    SUMA_Boolean LocalHead = NOPE;
    
@@ -527,39 +541,57 @@ byte *SUMA_FillToVoxelMask(byte *ijkmask, int ijkseed, int ni, int nj, int nk, i
       SUMA_RETURN(NULL);  
    }
    
-   if (usethisisin) isin = usethisisin;
-   else {
+   if (usethisisin) {
+      isin = usethisisin;
+      SUMA_LH("Reusing isin");
+   } else {
       isin = (byte *)SUMA_calloc(nijk, sizeof(byte));
       if (!isin) {
          SUMA_SL_Crit("Failed to allocate");
          SUMA_RETURN(NULL);
       }
+      SUMA_LH("Fresh isin");
    }
    
    dothisvoxel = ijkseed;
    dlist_init(candlist, NULL);
    
-   
    isin[dothisvoxel] = 1; ++(*N_in); /* Add voxel to cluster */
    visited[dothisvoxel] = 1;  
-   dlist_ins_next(candlist, dlist_tail(candlist), (void *)dothisvoxel); /* Add voxel as next candidate*/
+   dlist_ins_next(candlist, dlist_tail(candlist), (const void *)dothisvoxel); /* Add voxel as next candidate*/
    
    while (dlist_size(candlist)) {
       /* find neighbors in its vicinity */
       dothiselm = dlist_head(candlist); dothisvoxel = (int) dothiselm->data;
       N_n = SUMA_VoxelNeighbors (dothisvoxel, ni, nj, nk, SUMA_VOX_NEIGHB_FACE, nl);
+      /*
+         if (dothisvoxel == 5030 && LocalHead) {
+            for (in=0; in<N_n; ++in) {  fprintf(SUMA_STDERR,"%s: pre removal %d\n", FuncName, nl[in]); }    
+         }
+      */
       /* remove node from candidate list */
-      dlist_remove(candlist, dothiselm, (void*)&itmp);
+      dlist_remove(candlist, dothiselm, (void *)(&dtmp)); /* Make sure dtmp has enough space to hold a pointer! An int does not hold a pointer on 64 bit MCs */
+      /*
+         if (dothisvoxel == 5030 && LocalHead) {
+            for (in=0; in<N_n; ++in) {  fprintf(SUMA_STDERR,"%s: post removal %d\n", FuncName, nl[in]); }    
+         }
+      */
       /* search to see if any are to be assigned */
+      /* if (dothisvoxel == 5030 && LocalHead) fprintf(SUMA_STDERR,"%s: dothisvoxel = %d\n", FuncName, dothisvoxel);*/
       for (in=0; in<N_n; ++in) { 
          neighb = nl[in];
+         /* if (dothisvoxel == 5030 && LocalHead) fprintf(SUMA_STDERR,"   Working neighb %d, ijkmask[neighb] = %d\n", neighb, ijkmask[neighb]);*/
          if (!ijkmask[neighb]) {
+            /* if (dothisvoxel == 5030 && LocalHead) fprintf(SUMA_STDERR,"   neighb %d marked isin\n", neighb); */
             isin[neighb] = 1; ++(*N_in); /* Add voxel to cluster */
             /* mark it as a candidate if it has not been visited as a candidate before */
             if (!visited[neighb]) {
-               dlist_ins_next(candlist, dlist_tail(candlist), (void *)neighb);
+               /* if (dothisvoxel == 5030 && LocalHead) fprintf(SUMA_STDERR,"   neighb %d added to candidate list\n", neighb); */
+               dlist_ins_next(candlist, dlist_tail(candlist), (const void *)neighb);
                visited[neighb] = 1;   
             }
+         } else {
+         /*   if (dothisvoxel == 5030 && LocalHead) fprintf(SUMA_STDERR,"   neighb %d already in mask\n", neighb); */
          }
       }
    }
@@ -3335,12 +3367,12 @@ float *SUMA_NN_GeomSmooth( SUMA_SurfaceObject *SO, int N_iter, float *fin_orig,
 float * SUMA_Chung_Smooth (SUMA_SurfaceObject *SO, float **wgt, 
                            int N_iter, float FWHM, float *fin_orig, 
                            int vpn, SUMA_INDEXING_ORDER d_order, float *fout_final_user,
-                           SUMA_COMM_STRUCT *cs)
+                           SUMA_COMM_STRUCT *cs, byte *nmask)
 {
    static char FuncName[]={"SUMA_Chung_Smooth"};
    float *fout_final = NULL, *fbuf=NULL, *fin=NULL, *fout=NULL, *fin_next = NULL;
    float delta_time, fp, dfp, fpj, minfn=0.0, maxfn=0.0;
-   int n , k, j, niter, vnk, os;
+   int n , k, j, niter, vnk, os, jj;
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
@@ -3414,16 +3446,47 @@ float * SUMA_Chung_Smooth (SUMA_SurfaceObject *SO, float **wgt,
                   vnk = n+os; /* index of kth value at node n */
                   fp = fin[vnk]; /* kth value at node n */
                   dfp = 0.0;
-                  if (SO->FN->N_Neighb[n]) minfn = maxfn = fin[SO->FN->FirstNeighb[n][0]+os];
-                  for (j=0; j < SO->FN->N_Neighb[n]; ++j) {
-                     fpj = fin[SO->FN->FirstNeighb[n][j]+os]; /* value at jth neighbor of n */
-                     if (fpj < minfn) minfn = fpj;
-                     if (fpj > maxfn) maxfn = fpj;
-                     dfp += wgt[n][j] * (fpj - fp); 
-                  }/* for j*/
-                  fout[vnk] = fin[vnk] + delta_time * dfp;
-                  if (fout[vnk] < minfn) fout[vnk] = minfn;
-                  if (fout[vnk] > maxfn) fout[vnk] = maxfn;
+                  if (!nmask) {
+                     if (SO->FN->N_Neighb[n]) minfn = maxfn = fin[SO->FN->FirstNeighb[n][0]+os];
+                     for (j=0; j < SO->FN->N_Neighb[n]; ++j) {
+                        fpj = fin[SO->FN->FirstNeighb[n][j]+os]; /* value at jth neighbor of n */
+                        if (fpj < minfn) minfn = fpj;
+                        if (fpj > maxfn) maxfn = fpj;
+                        dfp += wgt[n][j] * (fpj - fp); 
+                     }/* for j*/
+                     fout[vnk] = fin[vnk] + delta_time * dfp;
+                     if (fout[vnk] < minfn) fout[vnk] = minfn;
+                     if (fout[vnk] > maxfn) fout[vnk] = maxfn;
+                  } else { /* masking potential */
+                     if (nmask[n]) {
+                        if (SO->FN->N_Neighb[n]) {
+                           jj = 0;
+                           #if 0 /* only use nodes in mask as neighbors */
+                              do {
+                                 minfn = maxfn = fin[SO->FN->FirstNeighb[n][jj]+os]; ++jj;
+                              } while (!nmask[SO->FN->FirstNeighb[n][jj]] && jj < SO->FN->N_Neighb[n]);
+                           #else
+                              minfn = maxfn = fin[SO->FN->FirstNeighb[n][jj]+os];
+                           #endif
+                        }
+                        for (j=0; j < SO->FN->N_Neighb[n]; ++j) {
+                           #if 0 /* only use nodes in mask as neighbors */
+                           if (nmask[SO->FN->FirstNeighb[n][j]])
+                           #endif
+                           {
+                              fpj = fin[SO->FN->FirstNeighb[n][j]+os]; /* value at jth neighbor of n */
+                              if (fpj < minfn) minfn = fpj;
+                              if (fpj > maxfn) maxfn = fpj;
+                              dfp += wgt[n][j] * (fpj - fp);
+                           } 
+                        }/* for j*/
+                        fout[vnk] = fin[vnk] + delta_time * dfp;
+                        if (fout[vnk] < minfn) fout[vnk] = minfn;
+                        if (fout[vnk] > maxfn) fout[vnk] = maxfn;
+                     } else {
+                        fout[vnk] = fin[vnk];
+                     }
+                  }
                }/* for n */ 
                  
                if (cs->Send) {
@@ -3581,12 +3644,16 @@ void usage_SUMA_SurfSmooth ()
               "      -add_index : Output the node index in the first column.\n"
               "                   This is not done by default.\n"
               "      -dbg_n node : output debug information for node 'node'.\n"
-              "      -n_mask filtermask: Apply filtering to nodes listed in\n"
-              "                          filtermask only. Nodes not in the filtermask will\n"
+              "      -n_mask filter_mask: Apply filtering to nodes listed in\n"
+              "                          filter_mask only. Nodes not in the filter_mask will\n"
               "                          not see their value change, but they will still \n"
               "                          contribute to the values of nodes in the filtermask.\n"
               "                          At the moment, it is only implemented for methods\n"
-              "                          NN_geom and LM\n" 
+              "                          NN_geom, LM and LB_FEM\n"
+              "      -b_mask filter_binary_mask: Similar to -n_mask, except that filter_binary_mask\n"
+              "                          contains 1 for nodes to filter and 0 for nodes to be ignored.\n"
+              "                          The number of rows in filter_binary_mask must be equal to the\n"
+              "                          number of nodes forming the surface.\n"
               "\n"
               "%s"
               "\n"
@@ -3696,6 +3763,7 @@ typedef struct {
    int MatchMethod;
    byte *nmask;
    char *nmaskname;
+   char *bmaskname;
 } SUMA_SURFSMOOTH_OPTIONS;
 
 /*!
@@ -3746,6 +3814,7 @@ SUMA_SURFSMOOTH_OPTIONS *SUMA_SurfSmooth_ParseInput (char *argv[], int argc, SUM
    Opt->insurf_method = 0;
    Opt->nmask = NULL;
    Opt->nmaskname = NULL;
+   Opt->bmaskname = NULL;
    Opt->spec_file = NULL;
    SUMA_Set_Taubin_Weights(SUMA_EQUAL);
    for (i=0; i<SURFSMOOTH_MAX_SURF; ++i) { Opt->surf_names[i] = NULL; }
@@ -3845,7 +3914,17 @@ SUMA_SURFSMOOTH_OPTIONS *SUMA_SurfSmooth_ParseInput (char *argv[], int argc, SUM
 			Opt->nmaskname = argv[kar]; 
 			brk = YUP;
 		}
-
+      
+      if (!brk && (strcmp(argv[kar], "-b_mask") == 0)) {
+         kar ++;
+			if (kar >= argc)  {
+		  		fprintf (SUMA_STDERR, "need 1 argument after -b_mask \n");
+				exit (1);
+			}
+			Opt->bmaskname = argv[kar]; 
+			brk = YUP;
+		}
+      
       if (!brk && (strcmp(argv[kar], "-Niter") == 0)) {
          kar ++;
 			if (kar >= argc)  {
@@ -4330,6 +4409,10 @@ SUMA_SURFSMOOTH_OPTIONS *SUMA_SurfSmooth_ParseInput (char *argv[], int argc, SUM
          break;
    }
    
+   if (Opt->bmaskname && Opt->nmaskname) {
+      fprintf (SUMA_STDERR,"Error %s:\n-n_mask and -b_mask options are mutually exclusive.\n", FuncName);
+      exit(1);
+   }
    SUMA_RETURN (Opt);
 }
 
@@ -4443,6 +4526,46 @@ int main (int argc,char *argv[])
       }
       mri_free(im); im = NULL;
    }
+   if (Opt->bmaskname) {
+      int kk;
+      float *far=NULL;
+      MRI_IMAGE * im=NULL;
+      
+      
+      im = mri_read_1D (Opt->bmaskname);
+      if (!im) {
+         SUMA_S_Err("Failed to read mask file");  
+         exit(1);
+      }
+      far = MRI_FLOAT_PTR(im);
+   
+      if (!im->nx) {
+         SUMA_S_Err("Empty file");  
+         exit(1);
+      }
+      if (im->nx != SO->N_Node) {
+         SUMA_S_Err( "Number of rows in mask file is not \n"
+                     "equal to number of nodes in surface.\n");  
+         exit(1);
+      }
+      if (im->ny != 1 ) {
+         SUMA_S_Err("nmask file must have\n"
+                     " 1 column.");
+         fprintf(SUMA_STDERR,"Have %d columns!\n", im->ny);
+         exit(1);
+      }
+      Opt->nmask = (byte *)SUMA_calloc(SO->N_Node, sizeof(byte));
+      if (!Opt->nmask) {
+         SUMA_S_Crit("Failed to allocate"); exit(1);
+      }
+      for (kk=0; kk<im->nx; ++kk) {
+         if ((int)far[kk]) {
+            Opt->nmask[kk] = 1; 
+            /* fprintf (SUMA_STDERR,"%d   ", kk);  */
+         }
+      }
+      mri_free(im); im = NULL;
+   }
    
    if (Opt->ShowNode >= 0 && Opt->ShowNode >= SO->N_Node) {
       fprintf (SUMA_STDERR,"Error %s: Requesting debugging info for a node index (%d) \n"
@@ -4540,7 +4663,7 @@ int main (int argc,char *argv[])
             }
             
             
-            dsmooth = SUMA_Chung_Smooth (SO, wgt, Opt->N_iter, Opt->fwhm, far, ncol, SUMA_COLUMN_MAJOR, NULL, cs);
+            dsmooth = SUMA_Chung_Smooth (SO, wgt, Opt->N_iter, Opt->fwhm, far, ncol, SUMA_COLUMN_MAJOR, NULL, cs, Opt->nmask);
             
             if (LocalHead) {
                etime_GetOffset = SUMA_etime(&start_time,1);

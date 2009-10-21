@@ -36,6 +36,8 @@
 
 #include "thd_compress.h"
 
+#include "nifti1_io.h"   /* 06 Dec 2005 */
+
 #ifndef myXtFree
 /*! Macro to free a pointer and NULL-ize it as well. */
 #define myXtFree(xp) (XtFree((char *)(xp)) , (xp)=NULL)
@@ -566,7 +568,7 @@ typedef struct {
 
      Boolean valid[MARKS_MAXNUM] ;            /*!< True if actually set */
 
-     float xyz[MARKS_MAXNUM][3] ;             /*!< Coordinates (3dmm, not Dicom) */
+     float xyz[MARKS_MAXNUM][3] ;             /*!< Coordinates (3dmm, not DICOM) */
 
      int aflags[MARKS_MAXFLAG] ;              /*!< Action flags */
 
@@ -1238,10 +1240,10 @@ static char * ORIENT_tinystr[] = {
    "RL" , "LR" , "PA" , "AP" , "IS" , "SI" , "??"
 } ;
 
-static char ORIENT_xyz[]   = "xxyyzzg" ;  /* Dicom directions are
+static char ORIENT_xyz[]   = "xxyyzzg" ;  /* DICOM directions are
                                              x = R->L , y = A->P , z = I->S */
 
-/*! Determines if orientation code (0..5) is Dicom positive or negative. */
+/*! Determines if orientation code (0..5) is DICOM positive or negative. */
 
 static char ORIENT_sign[]  = "+--++-" ;
 
@@ -1282,7 +1284,14 @@ typedef struct {
       int zzorient ;  /*!< Orientation code */
 
       THD_mat33 to_dicomm ; /*!< Orthogonal matrix transforming from
-                                dataset coordinates to Dicom coordinates */
+                                dataset coordinates to DICOM coordinates */
+
+      /*** 06 Dec 2005: extensions to allow arbitrarily oriented volumes ***/
+
+      mat44 ijk_to_dicom ;  /* matrix taking ijk indexes to DICOM xyz coords */
+      mat44 dicom_to_ijk ;  /* inverse of above */
+      float dicom_xxmin , dicom_yymin , dicom_zzmin ;
+      float dicom_xxmax , dicom_yymax , dicom_zzmax ;
 
    /* pointers to other stuff */
 
@@ -1345,7 +1354,123 @@ typedef struct {
 
 extern void THD_edit_dataxes( float , THD_dataxes * , THD_dataxes * ) ;
 
+extern void THD_set_daxes_bbox     ( THD_dataxes * ) ; /* 20 Dec 2005 */
+extern void THD_set_daxes_to_dicomm( THD_dataxes * ) ;
+
 int THD_get_axis_direction( THD_dataxes *, int ) ; /* 19 Mar 2003 */
+
+extern int  THD_daxes_to_mat44  ( THD_dataxes *dax ) ; /* 07 Dec 2005 */
+extern int  THD_daxes_from_mat44( THD_dataxes *dax ) ;
+extern void THD_set_dicom_box   ( THD_dataxes *dax ) ; /* 15 Dec 2005 */
+extern mat44 THD_resample_mat44( mat44 , int,int,int ,
+                                 float,float,float , int *,int *,int *) ;
+
+/*---------------------------------------------------------------------*/
+/* Macros and functions for dealing with mat44 structs. */
+
+/*******
+   Useful mat33 and mat44 functions in nifti1_io.c:
+      mat44 nifti_mat44_inverse( mat44 R ) ;           == matrix inverse
+      mat33 nifti_mat33_inverse( mat33 R ) ;           == matrix inverse
+      mat33 nifti_mat33_polar  ( mat33 A ) ;           == polar decomp
+      float nifti_mat33_rownorm( mat33 A ) ;           == max row sum
+      float nifti_mat33_colnorm( mat33 A ) ;           == max col sum
+      float nifti_mat33_determ ( mat33 R ) ;           == determinant
+      mat33 nifti_mat33_mul    ( mat33 A, mat33 B ) ;  == matrix multiply
+*******/
+
+/******* Not in nifti1_io.c, due to some oversight *******/
+
+extern mat44 THD_mat44_mul( mat44 A , mat44 B ) ;      /* matrix multiply */
+
+#undef  ISVALID_MAT44
+#define ISVALID_MAT44(AA) (AA.m[3][3] != 0.0f)
+
+/* load the top 3 rows of a mat44 matrix,
+   and set the 4th row to [ 0 0 0 1], as required */
+
+#undef  LOAD_MAT44
+#define LOAD_MAT44(AA,a11,a12,a13,a14,a21,a22,a23,a24,a31,a32,a33,a34)    \
+  ( AA.m[0][0]=a11 , AA.m[0][1]=a12 , AA.m[0][2]=a13 , AA.m[0][3]=a14 ,   \
+    AA.m[1][0]=a21 , AA.m[1][1]=a22 , AA.m[1][2]=a23 , AA.m[1][3]=a24 ,   \
+    AA.m[2][0]=a31 , AA.m[2][1]=a32 , AA.m[2][2]=a33 , AA.m[2][3]=a34 ,   \
+    AA.m[3][0]=AA.m[3][1]=AA.m[3][2]=0.0f , AA.m[3][3]=1.0f            )
+
+#undef  UNLOAD_MAT44
+#define UNLOAD_MAT44(AA,a11,a12,a13,a14,a21,a22,a23,a24,a31,a32,a33,a34)  \
+  ( a11=AA.m[0][0] , a12=AA.m[0][1] , a13=AA.m[0][2] , a14=AA.m[0][3] ,   \
+    a21=AA.m[1][0] , a22=AA.m[1][1] , a23=AA.m[1][2] , a24=AA.m[1][3] ,   \
+    a31=AA.m[2][0] , a32=AA.m[2][1] , a33=AA.m[2][2] , a34=AA.m[2][3]  )
+
+/* negate the top 2 rows of a mat44 matrix
+   (for transforming between NIfTI-1 and DICOM coord systems) */
+
+#undef  XYINVERT_MAT44
+#define XYINVERT_MAT44(AA)                                  \
+  ( AA.m[0][0] = -AA.m[0][0] , AA.m[0][1] = -AA.m[0][1] ,   \
+     AA.m[0][2] = -AA.m[0][2] , AA.m[0][3] = -AA.m[0][3] ,  \
+    AA.m[1][0] = -AA.m[1][0] , AA.m[1][1] = -AA.m[1][1] ,   \
+     AA.m[1][2] = -AA.m[1][2] , AA.m[1][3] = -AA.m[1][3] )
+
+/* load a mat33 matrix */
+
+#undef  LOAD_MAT33
+#define LOAD_MAT33(AA,a11,a12,a13,a21,a22,a23,a31,a32,a33)  \
+  ( AA.m[0][0]=a11 , AA.m[0][1]=a12 , AA.m[0][2]=a13 ,      \
+    AA.m[1][0]=a21 , AA.m[1][1]=a22 , AA.m[1][2]=a23 ,      \
+    AA.m[2][0]=a31 , AA.m[2][1]=a32 , AA.m[2][2]=a33  )
+
+/* copy the upper left corner of a mat44 struct into a mat33 struct */
+
+#undef  MAT44_TO_MAT33
+#define MAT44_TO_MAT33(AA,BB)                      \
+  LOAD_MAT33(BB,AA.m[0][0],AA.m[0][1],AA.m[0][2],  \
+                AA.m[1][0],AA.m[1][1],AA.m[1][2],  \
+                AA.m[2][0],AA.m[2][1],AA.m[2][2] )
+
+/* the reverse: copy mat33 to mat44 upper left corner */
+
+#undef  MAT33_TO_MAT44
+#define MAT33_TO_MAT44(AA,BB)                            \
+   LOAD_MAT44(BB,AA.m[0][0],AA.m[0][1],AA.m[0][2],0.0f,  \
+                 AA.m[1][0],AA.m[1][1],AA.m[1][2],0.0f,  \
+                 AA.m[2][0],AA.m[2][1],AA.m[2][2],0.0f )
+
+/* apply a mat44 matrix to a 3 vector (x,y,z) to produce (a,b,c) */
+
+#undef  MAT44_VEC
+#define MAT44_VEC(AA,x,y,z,a,b,c)                                        \
+ ( (a) = AA.m[0][0]*(x) + AA.m[0][1]*(y) + AA.m[0][2]*(z) + AA.m[0][3] , \
+   (b) = AA.m[1][0]*(x) + AA.m[1][1]*(y) + AA.m[1][2]*(z) + AA.m[1][3] , \
+   (c) = AA.m[2][0]*(x) + AA.m[2][1]*(y) + AA.m[2][2]*(z) + AA.m[2][3]  )
+
+/* apply a mat33 matrix to a 3 vector (x,y,z) to produce (a,b,c);
+   could also be used to apply the upper left 3x3
+   corner of a mat44 matrix to (x,y,z), if you insist */
+
+#undef  MAT33_VEC
+#define MAT33_VEC(AA,x,y,z,a,b,c)                           \
+ ( (a) = AA.m[0][0]*(x) + AA.m[0][1]*(y) + AA.m[0][2]*(z) , \
+   (b) = AA.m[1][0]*(x) + AA.m[1][1]*(y) + AA.m[1][2]*(z) , \
+   (c) = AA.m[2][0]*(x) + AA.m[2][1]*(y) + AA.m[2][2]*(z)  )
+
+/* L2 norm of i-th column of a matrix (3x3 or 4x4) */
+
+#undef  MAT33_CLEN
+#define MAT33_CLEN(AA,i)  \
+ sqrt(AA.m[0][i]*AA.m[0][i]+AA.m[1][i]*AA.m[1][i]+AA.m[2][i]*AA.m[2][i])
+
+/* print a mat44 struct to stdout (with a string) */
+
+#undef  DUMP_MAT44
+#define DUMP_MAT44(SS,AA)                              \
+     printf("mat44 %s:\n"                              \
+            " %9.4f %9.4f %9.4f | %9.4f\n"             \
+            " %9.4f %9.4f %9.4f | %9.4f\n"             \
+            " %9.4f %9.4f %9.4f | %9.4f\n" ,           \
+  SS, AA.m[0][0], AA.m[0][1], AA.m[0][2], AA.m[0][3],  \
+      AA.m[1][0], AA.m[1][1], AA.m[1][2], AA.m[1][3],  \
+      AA.m[2][0], AA.m[2][1], AA.m[2][2], AA.m[2][3] )
 
 /*---------------------------------------------------------------------*/
 /*--- data structure for information about time axis of 3D dataset ----*/
@@ -1370,7 +1495,7 @@ static char * UNITS_TYPE_labelstring[] = { "ms" , "s" , "Hz" } ;
 
     If ( nsl > 0 && toff_sl != NULL), then the data was acquired as
     slices, not as a 3D block.  The slicing direction must be the
-    dataset (not Dicom) z-axis.  The extra offset for the data at
+    dataset (not DICOM) z-axis.  The extra offset for the data at
     z is given by computing isl = (z - zorg_sl) / dz_sl + 0.5; the
     extra offset is then toff_sl[isl].  Note that dz_sl might be
     different from the dataxes zzdel because the dataset might actually
@@ -1501,7 +1626,7 @@ extern void       MCW_hash_idcode( char *, struct THD_3dim_dataset * ) ;
 /*----------------------------------------------------------------------*/
 /*------------------- how to present the coordinates -------------------*/
 
-/*! How to present coordinates to the user (vs. the internal RAI/Dicom order). */
+/*! How to present coordinates to the user (vs. the internal RAI/DICOM order). */
 
 typedef struct {
    int xxsign , yysign , zzsign ,
@@ -1989,7 +2114,7 @@ typedef struct THD_3dim_dataset {
       char self_name[THD_MAX_NAME]        ;  /*!< my own "name" (no longer used) */
 
 #ifdef ALLOW_DATASET_VLIST
-      THD_vector_list * pts ;     /*!< in dataset coords (not Dicom order!) - for Ted Deyoe */
+      THD_vector_list * pts ;     /*!< in dataset coords (not DICOM order!) - for Ted Deyoe */
       Boolean pts_original ;      /*!< true if was read from disk directly */
 #endif
 
@@ -3731,7 +3856,7 @@ typedef struct {
 } MRI_warp3D_align_basis ;
 
 extern int         mri_warp3D_align_setup  ( MRI_warp3D_align_basis * ) ;
-extern MRI_IMAGE * mri_warp3d_align_one    ( MRI_warp3D_align_basis *, MRI_IMAGE * );
+extern MRI_IMAGE * mri_warp3D_align_one    ( MRI_warp3D_align_basis *, MRI_IMAGE * );
 extern void        mri_warp3D_align_cleanup( MRI_warp3D_align_basis * ) ;
 
 extern void THD_check_AFNI_version(char *) ;  /* 26 Aug 2005 */
@@ -3776,6 +3901,7 @@ extern THD_3dim_dataset * WINsorize( THD_3dim_dataset * ,
 #define ZPAD_EMPTY (1<<0)
 #define ZPAD_PURGE (1<<1)
 #define ZPAD_MM    (1<<2)
+#define ZPAD_IJK   (1<<3)     /* ZSS Dec 23 05 pad values are in voxel coords */
 
 extern THD_3dim_dataset * THD_zeropad( THD_3dim_dataset * ,
                                        int,int,int,int,int,int, char *, int );

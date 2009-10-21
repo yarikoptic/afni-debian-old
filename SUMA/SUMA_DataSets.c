@@ -3246,7 +3246,7 @@ SUMA_DSET *SUMA_LoadDset (char *Name, SUMA_DSET_FORMAT *form, int verb)
       case SUMA_NO_DSET_FORMAT:
          if (!dset) { SUMA_LH("Trying NIML Dset"); dset = SUMA_LoadNimlDset(Name, 0); *form = SUMA_NIML; }
          if (!dset) { SUMA_LH("Trying 1D Dset"); dset = SUMA_Load1DDset(Name, 0); *form = SUMA_1D; }
-         if (!dset) { SUMA_LH("Trying DX Dset"); dset = SUMA_Load1DDset(Name, 0); *form = SUMA_ASCII_OPEN_DX_DSET; }
+         if (!dset) { SUMA_LH("Trying DX Dset"); dset = SUMA_LoadDXDset(Name, 0); *form = SUMA_ASCII_OPEN_DX_DSET; }
          break;
       default:
          if (verb) SUMA_SLP_Err("Bad format specification");
@@ -3588,7 +3588,7 @@ SUMA_DSET *SUMA_LoadNimlDset (char *Name, int verb)
       SUMA_LH("Dealing with element");
    } else {
       fprintf(SUMA_STDERR,"Error %s: Not an element, nor a group. What is this?\n", FuncName);
-      SUMA_RETURN(NOPE);
+      SUMA_RETURN(NULL);
    }
    
    
@@ -3714,8 +3714,8 @@ SUMA_DSET *SUMA_far2dset( char *FullName, char *dset_id, char *dom_id,
                         "1D files where the number of columns\n"
                         "is much larger than the number of \n"
                         "rows will take a long time to load \n"
-                        "and a longer time to have the X interface\n"
-                        "initialized.\n"
+                        "and a longer time, much longer a times,\n"
+                        "to have the X interface initialized.\n"
                         "The read operation was cancelled this\n"
                         "time, read the file again if you think\n"
                         "the file you are reading is properly \n"
@@ -5060,6 +5060,9 @@ char *SUMA_help_basics()
    
    SS = SUMA_StringAppend(NULL, NULL);
    SS = SUMA_StringAppend(SS,
+                  "   [-novolreg|-noxform]: Ignore any Rotate, Volreg, Tagalign, \n"
+                  "                or WarpDrive transformations present in \n"
+                  "                the Surface Volume.\n"
                   "  Common Debugging Options:\n"
                   "   [-trace]: Turns on In/Out debug and Memory tracing.\n"
                   "             For speeding up the tracing log, I recommend \n"
@@ -5070,8 +5073,6 @@ char *SUMA_help_basics()
                   "   [-TRACE]: Turns on extreme tracing.\n"
                   "   [-nomall]: Turn off memory tracing.\n"
                   "   [-yesmall]: Turn on memory tracing (default).\n"
-                  "   [-novolreg]: Ignore any Volreg or Tagalign transformations\n"
-                  "                present in the Surface Volume.\n"
                   "  NOTE: For programs that output results to stdout\n"
                   "    (that is to your shell/screen), the debugging info\n"
                   "    might get mixed up with your results.\n" 
@@ -5161,7 +5162,7 @@ void SUMA_ParseInput_basics (char *argv[], int argc)
          brk = 1;
 		}
       
-      if (!brk && (strcmp(argv[kar], "-novolreg") == 0)) {
+      if (!brk && (strcmp(argv[kar], "-novolreg") == 0 || strcmp(argv[kar], "-noxform") == 0)) {
 			SUMA_IGNORE_VOLREG;
          brk = 1;
 		}

@@ -405,7 +405,7 @@ STATUS("start y FFTs") ;
    /*** do z-direction ***/
  DO_Z_BLUR:
 
-   /** 03 Oct 2005: perhaps do the y-blur in real-space? **/
+   /** 03 Oct 2005: perhaps do the z-blur in real-space? **/
 
    if( nz < 2 || sigmay <= 0.0 ){
      STATUS("skip z blur") ; fir_num++ ; goto ALL_DONE_NOW ;
@@ -591,6 +591,26 @@ if(PRINT_TRACING){char str[256];sprintf(str,"m=%d",m);STATUS(str);}
 
    if( m < 1 || wt == NULL || nx < (m+1) || f == NULL ) EXRETURN ;
    if( ny <= 0 || nz <= 0 ) EXRETURN ;
+   switch(m){  /**assign weights to variables not arrays **/
+      case 7:
+           wt7 = wt[7];   /* let cases fall through to next case to assign weights */
+      case 6:
+           wt6 = wt[6];
+      case 5:
+           wt5 = wt[5];
+      case 4:
+           wt4 = wt[4];
+      case 3:
+           wt3 = wt[3];
+      case 2:
+           wt2 = wt[2];
+      case 1:
+           wt1 = wt[1];
+      case 0:
+           wt0 = wt[0];
+      default:
+      break ;
+   }
 
    /* 1 row workspace, with m-long buffers at each end
       (so that the i-th element of the row is in r[i+m]) */
@@ -602,7 +622,6 @@ if(PRINT_TRACING){char str[256];sprintf(str,"m=%d",m);STATUS(str);}
      default:
        for( kk=0 ; kk < nz ; kk++ ){
         for( jj=0 ; jj < ny ; jj++ ){
-
           off = jj*nx + kk*nxy ; ff = f+off ;     /* ff = ptr to this row */
           memcpy( r+m , ff , sizeof(float)*nx ) ; /* copy row into workspace */
           r[m-1] = r[m+1] ; r[nx+m] = r[nx+m-2] ; /* mirror at ends */
@@ -622,11 +641,8 @@ if(PRINT_TRACING){char str[256];sprintf(str,"m=%d",m);STATUS(str);}
 #undef  M
 #define M 7
      case 7:
-       wt0 = wt[0] ; wt1 = wt[1] ; wt2 = wt[2] ; wt3 = wt[3] ;
-       wt4 = wt[4] ; wt5 = wt[5] ; wt6 = wt[6] ; wt7 = wt[7] ;
        for( kk=0 ; kk < nz ; kk++ ){
         for( jj=0 ; jj < ny ; jj++ ){
-
           off = jj*nx + kk*nxy ; ff = f+off ;
           memcpy( r+m , ff , sizeof(float)*nx ) ;
           r[M-1] = r[M+1] ; r[nx+M] = r[nx+M-2] ;
@@ -645,11 +661,8 @@ if(PRINT_TRACING){char str[256];sprintf(str,"m=%d",m);STATUS(str);}
 #undef  M
 #define M 6
      case 6:
-       wt0 = wt[0] ; wt1 = wt[1] ; wt2 = wt[2] ; wt3 = wt[3] ;
-       wt4 = wt[4] ; wt5 = wt[5] ; wt6 = wt[6] ;
        for( kk=0 ; kk < nz ; kk++ ){
         for( jj=0 ; jj < ny ; jj++ ){
-
           off = jj*nx + kk*nxy ; ff = f+off ;
           memcpy( r+m , ff , sizeof(float)*nx ) ;
           r[M-1] = r[M+1] ; r[nx+M] = r[nx+M-2] ;
@@ -667,8 +680,6 @@ if(PRINT_TRACING){char str[256];sprintf(str,"m=%d",m);STATUS(str);}
 #undef  M
 #define M 5
      case 5:
-       wt0 = wt[0] ; wt1 = wt[1] ; wt2 = wt[2] ; wt3 = wt[3] ;
-       wt4 = wt[4] ; wt5 = wt[5] ;
        for( kk=0 ; kk < nz ; kk++ ){
         for( jj=0 ; jj < ny ; jj++ ){
 
@@ -688,8 +699,6 @@ if(PRINT_TRACING){char str[256];sprintf(str,"m=%d",m);STATUS(str);}
 #undef  M
 #define M 4
      case 4:
-       wt0 = wt[0] ; wt1 = wt[1] ; wt2 = wt[2] ; wt3 = wt[3] ;
-       wt4 = wt[4] ;
        for( kk=0 ; kk < nz ; kk++ ){
         for( jj=0 ; jj < ny ; jj++ ){
 
@@ -708,7 +717,6 @@ if(PRINT_TRACING){char str[256];sprintf(str,"m=%d",m);STATUS(str);}
 #undef  M
 #define M 3
      case 3:
-       wt0 = wt[0] ; wt1 = wt[1] ; wt2 = wt[2] ; wt3 = wt[3] ;
        for( kk=0 ; kk < nz ; kk++ ){
         for( jj=0 ; jj < ny ; jj++ ){
 
@@ -726,7 +734,6 @@ if(PRINT_TRACING){char str[256];sprintf(str,"m=%d",m);STATUS(str);}
 #undef  M
 #define M 2
      case 2:
-       wt0 = wt[0] ; wt1 = wt[1] ; wt2 = wt[2] ;
        for( kk=0 ; kk < nz ; kk++ ){
         for( jj=0 ; jj < ny ; jj++ ){
 
@@ -743,7 +750,6 @@ if(PRINT_TRACING){char str[256];sprintf(str,"m=%d",m);STATUS(str);}
 #undef  M
 #define M 1
      case 1:
-       wt0 = wt[0] ; wt1 = wt[1] ;
        for( kk=0 ; kk < nz ; kk++ ){
         for( jj=0 ; jj < ny ; jj++ ){
 
@@ -771,13 +777,183 @@ if(PRINT_TRACING){char str[256];sprintf(str,"m=%d",m);STATUS(str);}
 static void fir_blury( int m, float *wt,int nx, int ny, int nz, float *f )
 {
    int ii,jj,kk,qq , nxy=nx*ny , off ;
-   float *r , wt0,wt1,wt2,wt3,wt4,wt5,wt6,wt7 , sum , *ff ;
+   float *r, wt0,wt1,wt2,wt3,wt4,wt5,wt6,wt7 , sum , *ff ;
+   float *rr, *ss;
+   int ny2m = ny+2*m;
 
 ENTRY("fir_blury") ;
 if(PRINT_TRACING){char str[256];sprintf(str,"m=%d",m);STATUS(str);}
 
    if( m < 1 || wt == NULL || ny < (m+1) || f == NULL ) EXRETURN ;
    if( nx <= 0 || nz <= 0 ) EXRETURN ;
+   switch(m){  /**assign weights to variables not arrays **/
+      case 7:
+           wt7 = wt[7];   /* let cases fall through to next case to assign weights */
+      case 6:
+           wt6 = wt[6];
+      case 5:
+           wt5 = wt[5];
+      case 4:
+           wt4 = wt[4];
+      case 3:
+           wt3 = wt[3];
+      case 2:
+           wt2 = wt[2];
+      case 1:
+           wt1 = wt[1];
+      case 0:
+           wt0 = wt[0];
+      default:
+      break ;
+   }
+   
+   if( nx < 512) goto SMALLIMAGE;
+
+   /* In this function, for each value of kk (z index), we extract a
+      2D (y,x) slice, with m-long buffers on each side in the y-direction.
+      The purpose of this is to get multiple lines of y-direction data into
+      the CPU cache, to speed up processing (a lot).  For the x-axis, this
+      was unneeded, since the x-rows are contiguous in memory. For data at 256x256 
+      this 2D extract/process/insert trick was nugatory. However, for 512x512 data
+      this trick becomes important. The same method is used for the z-axis in fir_blurz*/
+
+   /* macro to access the input data 2D slice: (i,j) = (x,y) indexes */
+
+#undef  RR
+#define RR(i,j) rr[(j)+m+(i)*ny2m]  /*** 0 <= i <= nx-1 ; -m <= m <= ny-1+m ***/
+
+   /* macro to access the output data 2D slice */
+
+#undef  SS
+#define SS(i,k) ss[(k)+(i)*ny]
+
+   rr = (float *)calloc(sizeof(float),ny2m*nx) ;  /* ny2m = ny+2*m */
+   ss = (float *)malloc(sizeof(float)*ny  *nx) ;
+
+   for( kk=0 ; kk < nz ; kk++ ){  /* loop in z-direction  (an xy slice at a time) */
+     off = kk*nxy ; ff = f+off ;   /* ff = ptr to start of this 2D slice */
+
+     /* load data into 2D (y+2m,x) slice from 3D (x,y,z) array;
+        inner loop is over ii so as to access in the most contiguous way */
+
+     for( jj=0 ; jj < ny ; jj++ ){
+       for( ii=0 ; ii < nx ; ii++ ) RR(ii,jj) = ff[ii+D*jj] ;  /* D = nx here */
+     }
+     for( ii=0 ; ii < nx ; ii++ ){
+       RR(ii,-1) = RR(ii,1) ; RR(ii,ny) = RR(ii,ny-2) ; /* edge reflection - */
+                                                   /* only 1 point reflected*/
+     }
+
+     /* filter data in RR along y-direction, put into 2D SS array */
+
+     switch(m){  /** for small m, unroll the inner loop for speed **/
+
+       default:
+         for( ii=0 ; ii < nx ; ii++ ){
+           for( jj=0 ; jj < ny ; jj++ ){
+             sum = wt[0]*RR(ii,jj) ;
+             for( qq=1 ; qq <= m ; qq++ )
+               sum += wt[qq] * ( RR(ii,jj+qq) + RR(ii,jj-qq) ) ;
+             SS(ii,jj) = sum ;
+         }}
+       break ;
+
+       case 7:
+         for( ii=0 ; ii < nx ; ii++ ){
+           for( jj=0 ; jj < ny ; jj++ ){
+              SS(ii,jj) =  wt7 * ( RR(ii,jj+7) + RR(ii,jj-7) )
+                         + wt6 * ( RR(ii,jj+6) + RR(ii,jj-6) )
+                         + wt5 * ( RR(ii,jj+5) + RR(ii,jj-5) )
+                         + wt4 * ( RR(ii,jj+4) + RR(ii,jj-4) )
+                         + wt3 * ( RR(ii,jj+3) + RR(ii,jj-3) )
+                         + wt2 * ( RR(ii,jj+2) + RR(ii,jj-2) )
+                         + wt1 * ( RR(ii,jj+1) + RR(ii,jj-1) )
+                         + wt0 *   RR(ii,jj) ;
+         }}
+       break ;
+
+       case 6:
+         for( ii=0 ; ii < nx ; ii++ ){
+           for( jj=0 ; jj < ny ; jj++ ){
+              SS(ii,jj) =  wt6 * ( RR(ii,jj+6) + RR(ii,jj-6) )
+                         + wt5 * ( RR(ii,jj+5) + RR(ii,jj-5) )
+                         + wt4 * ( RR(ii,jj+4) + RR(ii,jj-4) )
+                         + wt3 * ( RR(ii,jj+3) + RR(ii,jj-3) )
+                         + wt2 * ( RR(ii,jj+2) + RR(ii,jj-2) )
+                         + wt1 * ( RR(ii,jj+1) + RR(ii,jj-1) )
+                         + wt0 *   RR(ii,jj) ;
+         }}
+       break ;
+
+       case 5:
+         for( ii=0 ; ii < nx ; ii++ ){
+           for( jj=0 ; jj < ny ; jj++ ){
+              SS(ii,jj) =  wt5 * ( RR(ii,jj+5) + RR(ii,jj-5) )
+                         + wt4 * ( RR(ii,jj+4) + RR(ii,jj-4) )
+                         + wt3 * ( RR(ii,jj+3) + RR(ii,jj-3) )
+                         + wt2 * ( RR(ii,jj+2) + RR(ii,jj-2) )
+                         + wt1 * ( RR(ii,jj+1) + RR(ii,jj-1) )
+                         + wt0 *   RR(ii,jj) ;
+         }}
+       break ;
+
+       case 4:
+         for( ii=0 ; ii < nx ; ii++ ){
+           for( jj=0 ; jj < ny ; jj++ ){
+              SS(ii,jj) =  wt4 * ( RR(ii,jj+4) + RR(ii,jj-4) )
+                         + wt3 * ( RR(ii,jj+3) + RR(ii,jj-3) )
+                         + wt2 * ( RR(ii,jj+2) + RR(ii,jj-2) )
+                         + wt1 * ( RR(ii,jj+1) + RR(ii,jj-1) )
+                         + wt0 *   RR(ii,jj) ;
+         }}
+       break ;
+
+       case 3:
+         for( ii=0 ; ii < nx ; ii++ ){
+           for( jj=0 ; jj < ny ; jj++ ){
+              SS(ii,jj) =  wt3 * ( RR(ii,jj+3) + RR(ii,jj-3) )
+                         + wt2 * ( RR(ii,jj+2) + RR(ii,jj-2) )
+                         + wt1 * ( RR(ii,jj+1) + RR(ii,jj-1) )
+                         + wt0 *   RR(ii,jj) ;
+         }}
+       break ;
+
+       case 2:
+         for( ii=0 ; ii < nx ; ii++ ){
+           for( jj=0 ; jj < ny ; jj++ ){
+              SS(ii,jj) =  wt2 * ( RR(ii,jj+2) + RR(ii,jj-2) )
+                         + wt1 * ( RR(ii,jj+1) + RR(ii,jj-1) )
+                         + wt0 *   RR(ii,jj) ;
+         }}
+       break ;
+
+       case 1:
+         for( ii=0 ; ii < nx ; ii++ ){
+           for( jj=0 ; jj < ny ; jj++ ){
+              SS(ii,jj) =  wt1 * ( RR(ii,jj+1) + RR(ii,jj-1) )
+                         + wt0 *   RR(ii,jj) ;
+         }}
+       break ;
+
+     } /* end of special cases of m */
+
+     /* put SS array back into input 3D array;
+        again, inner loop over ii for most contiguous access to f[] array */
+
+     for( jj=0 ; jj < ny ; jj++ ){
+       for( ii=0 ; ii < nx ; ii++ ) ff[ii+D*jj] = SS(ii,jj) ;
+     }
+
+   } /* end of loop over y-direction (zz) */
+
+   /*** finito, cara mia mine, oh, oh, oh, each time we part, my heart wants to die...***/
+
+   free((void *)ss) ; free((void *)rr) ; EXRETURN ;
+   
+
+/* for small images (nx<512), use slice as is and don't use reslicing trick*/
+
+SMALLIMAGE:
 
    r = (float *)calloc(sizeof(float),(ny+2*m)) ;
 
@@ -786,7 +962,6 @@ if(PRINT_TRACING){char str[256];sprintf(str,"m=%d",m);STATUS(str);}
      default:
        for( kk=0 ; kk < nz ; kk++ ){
         for( ii=0 ; ii < nx ; ii++ ){
-
           off = ii + kk*nxy ; ff = f+off ;
           for( jj=0 ; jj < ny ; jj++ ) r[jj+m] = ff[D*jj] ;
           r[m-1] = r[m+1] ; r[ny+m] = r[ny+m-2] ;
@@ -803,11 +978,8 @@ if(PRINT_TRACING){char str[256];sprintf(str,"m=%d",m);STATUS(str);}
 #undef  M
 #define M 7
      case 7:
-       wt0 = wt[0] ; wt1 = wt[1] ; wt2 = wt[2] ; wt3 = wt[3] ;
-       wt4 = wt[4] ; wt5 = wt[5] ; wt6 = wt[6] ; wt7 = wt[7] ;
        for( kk=0 ; kk < nz ; kk++ ){
         for( ii=0 ; ii < nx ; ii++ ){
-
           off = ii + kk*nxy ; ff = f+off ;
           for( jj=0 ; jj < ny ; jj++ ) r[jj+M] = ff[D*jj] ;
           r[M-1] = r[M+1] ; r[ny+M] = r[ny+M-2] ;
@@ -826,11 +998,8 @@ if(PRINT_TRACING){char str[256];sprintf(str,"m=%d",m);STATUS(str);}
 #undef  M
 #define M 6
      case 6:
-       wt0 = wt[0] ; wt1 = wt[1] ; wt2 = wt[2] ; wt3 = wt[3] ;
-       wt4 = wt[4] ; wt5 = wt[5] ; wt6 = wt[6] ;
        for( kk=0 ; kk < nz ; kk++ ){
         for( ii=0 ; ii < nx ; ii++ ){
-
           off = ii + kk*nxy ; ff = f+off ;
           for( jj=0 ; jj < ny ; jj++ ) r[jj+M] = ff[D*jj] ;
           r[M-1] = r[M+1] ; r[ny+M] = r[ny+M-2] ;
@@ -848,11 +1017,8 @@ if(PRINT_TRACING){char str[256];sprintf(str,"m=%d",m);STATUS(str);}
 #undef  M
 #define M 5
      case 5:
-       wt0 = wt[0] ; wt1 = wt[1] ; wt2 = wt[2] ; wt3 = wt[3] ;
-       wt4 = wt[4] ; wt5 = wt[5] ;
        for( kk=0 ; kk < nz ; kk++ ){
         for( ii=0 ; ii < nx ; ii++ ){
-
           off = ii + kk*nxy ; ff = f+off ;
           for( jj=0 ; jj < ny ; jj++ ) r[jj+M] = ff[D*jj] ;
           r[M-1] = r[M+1] ; r[ny+M] = r[ny+M-2] ;
@@ -869,11 +1035,8 @@ if(PRINT_TRACING){char str[256];sprintf(str,"m=%d",m);STATUS(str);}
 #undef  M
 #define M 4
      case 4:
-       wt0 = wt[0] ; wt1 = wt[1] ; wt2 = wt[2] ; wt3 = wt[3] ;
-       wt4 = wt[4] ;
        for( kk=0 ; kk < nz ; kk++ ){
         for( ii=0 ; ii < nx ; ii++ ){
-
           off = ii + kk*nxy ; ff = f+off ;
           for( jj=0 ; jj < ny ; jj++ ) r[jj+M] = ff[D*jj] ;
           r[M-1] = r[M+1] ; r[ny+M] = r[ny+M-2] ;
@@ -889,10 +1052,8 @@ if(PRINT_TRACING){char str[256];sprintf(str,"m=%d",m);STATUS(str);}
 #undef  M
 #define M 3
      case 3:
-       wt0 = wt[0] ; wt1 = wt[1] ; wt2 = wt[2] ; wt3 = wt[3] ;
        for( kk=0 ; kk < nz ; kk++ ){
         for( ii=0 ; ii < nx ; ii++ ){
-
           off = ii + kk*nxy ; ff = f+off ;
           for( jj=0 ; jj < ny ; jj++ ) r[jj+M] = ff[D*jj] ;
           r[M-1] = r[M+1] ; r[ny+M] = r[ny+M-2] ;
@@ -907,7 +1068,6 @@ if(PRINT_TRACING){char str[256];sprintf(str,"m=%d",m);STATUS(str);}
 #undef  M
 #define M 2
      case 2:
-       wt0 = wt[0] ; wt1 = wt[1] ; wt2 = wt[2] ;
        for( kk=0 ; kk < nz ; kk++ ){
         for( ii=0 ; ii < nx ; ii++ ){
 
@@ -924,10 +1084,8 @@ if(PRINT_TRACING){char str[256];sprintf(str,"m=%d",m);STATUS(str);}
 #undef  M
 #define M 1
      case 1:
-       wt0 = wt[0] ; wt1 = wt[1] ;
        for( kk=0 ; kk < nz ; kk++ ){
         for( ii=0 ; ii < nx ; ii++ ){
-
           off = ii + kk*nxy ; ff = f+off ;
           for( jj=0 ; jj < ny ; jj++ ) r[jj+M] = ff[D*jj] ;
           r[M-1] = r[M+1] ; r[ny+M] = r[ny+M-2] ;
@@ -939,7 +1097,7 @@ if(PRINT_TRACING){char str[256];sprintf(str,"m=%d",m);STATUS(str);}
 
    }  /* end of switch on m */
 
-   free((void *)r) ; EXRETURN ;
+   free((void *)r) ; EXRETURN ;  
 }
 
 /*-------------------------------------------------------------------*/
@@ -968,6 +1126,27 @@ if(PRINT_TRACING){char str[256];sprintf(str,"m=%d",m);STATUS(str);}
       y-axis, this trick might help, but only if a single (x,y) plane
       doesn't fit into cache.  For nx=ny=256, 1 plane is 256 KB, so I
       decided that this 2D extract/process/insert trick was nugatory. */
+
+   switch(m){  /**assign weights to variables not arrays **/
+      case 7:
+           wt7 = wt[7];   /* let cases fall through to next case to assign weights */
+      case 6:
+           wt6 = wt[6];
+      case 5:
+           wt5 = wt[5];
+      case 4:
+           wt4 = wt[4];
+      case 3:
+           wt3 = wt[3];
+      case 2:
+           wt2 = wt[2];
+      case 1:
+           wt1 = wt[1];
+      case 0:
+           wt0 = wt[0];
+      default:
+      break ;
+   }
 
    /* macro to access the input data 2D slice: (i,k) = (x,z) indexes */
 
@@ -1010,8 +1189,6 @@ if(PRINT_TRACING){char str[256];sprintf(str,"m=%d",m);STATUS(str);}
        break ;
 
        case 7:
-         wt0 = wt[0] ; wt1 = wt[1] ; wt2 = wt[2] ; wt3 = wt[3] ;
-         wt4 = wt[4] ; wt5 = wt[5] ; wt6 = wt[6] ; wt7 = wt[7] ;
          for( ii=0 ; ii < nx ; ii++ ){
            for( kk=0 ; kk < nz ; kk++ ){
               SS(ii,kk) =  wt7 * ( RR(ii,kk+7) + RR(ii,kk-7) )
@@ -1026,8 +1203,6 @@ if(PRINT_TRACING){char str[256];sprintf(str,"m=%d",m);STATUS(str);}
        break ;
 
        case 6:
-         wt0 = wt[0] ; wt1 = wt[1] ; wt2 = wt[2] ; wt3 = wt[3] ;
-         wt4 = wt[4] ; wt5 = wt[5] ; wt6 = wt[6] ;
          for( ii=0 ; ii < nx ; ii++ ){
            for( kk=0 ; kk < nz ; kk++ ){
               SS(ii,kk) =  wt6 * ( RR(ii,kk+6) + RR(ii,kk-6) )
@@ -1041,8 +1216,6 @@ if(PRINT_TRACING){char str[256];sprintf(str,"m=%d",m);STATUS(str);}
        break ;
 
        case 5:
-         wt0 = wt[0] ; wt1 = wt[1] ; wt2 = wt[2] ; wt3 = wt[3] ;
-         wt4 = wt[4] ; wt5 = wt[5] ;
          for( ii=0 ; ii < nx ; ii++ ){
            for( kk=0 ; kk < nz ; kk++ ){
               SS(ii,kk) =  wt5 * ( RR(ii,kk+5) + RR(ii,kk-5) )
@@ -1055,8 +1228,6 @@ if(PRINT_TRACING){char str[256];sprintf(str,"m=%d",m);STATUS(str);}
        break ;
 
        case 4:
-         wt0 = wt[0] ; wt1 = wt[1] ; wt2 = wt[2] ; wt3 = wt[3] ;
-         wt4 = wt[4] ;
          for( ii=0 ; ii < nx ; ii++ ){
            for( kk=0 ; kk < nz ; kk++ ){
               SS(ii,kk) =  wt4 * ( RR(ii,kk+4) + RR(ii,kk-4) )
@@ -1068,7 +1239,6 @@ if(PRINT_TRACING){char str[256];sprintf(str,"m=%d",m);STATUS(str);}
        break ;
 
        case 3:
-         wt0 = wt[0] ; wt1 = wt[1] ; wt2 = wt[2] ; wt3 = wt[3] ;
          for( ii=0 ; ii < nx ; ii++ ){
            for( kk=0 ; kk < nz ; kk++ ){
               SS(ii,kk) =  wt3 * ( RR(ii,kk+3) + RR(ii,kk-3) )
@@ -1079,7 +1249,6 @@ if(PRINT_TRACING){char str[256];sprintf(str,"m=%d",m);STATUS(str);}
        break ;
 
        case 2:
-         wt0 = wt[0] ; wt1 = wt[1] ; wt2 = wt[2] ;
          for( ii=0 ; ii < nx ; ii++ ){
            for( kk=0 ; kk < nz ; kk++ ){
               SS(ii,kk) =  wt2 * ( RR(ii,kk+2) + RR(ii,kk-2) )
@@ -1089,7 +1258,6 @@ if(PRINT_TRACING){char str[256];sprintf(str,"m=%d",m);STATUS(str);}
        break ;
 
        case 1:
-         wt0 = wt[0] ; wt1 = wt[1] ;
          for( ii=0 ; ii < nx ; ii++ ){
            for( kk=0 ; kk < nz ; kk++ ){
               SS(ii,kk) =  wt1 * ( RR(ii,kk+1) + RR(ii,kk-1) )

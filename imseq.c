@@ -4161,6 +4161,7 @@ ENTRY("ISQ_redisplay") ;
    /** find the image that is being seen right now **/
 
    nrold = seq->im_nr ;
+   seq->im_label[0] = '\0' ;  /* forces redraw of text */
 
    /** set the image number to be displayed now **/
 
@@ -4590,6 +4591,7 @@ ENTRY("ISQ_draw_winfo") ;
      sprintf(buf+strlen(buf)," s=%d",(int)(10.0*seq->sharp_fac+.01)) ;
 
    if( seq->im_label[0] == '\0' || strcmp(buf,seq->im_label) != 0 ){
+     char qbuf[128] ;
      if( seq->winfo_extra[0] == '\0' ){
 
        int iw=0 ;                                   /* winfo_sides stuff */
@@ -4602,18 +4604,29 @@ ENTRY("ISQ_draw_winfo") ;
        if( seq->opt.mirror ) iw = (iw+2)%4 ;
 
        if( seq->winfo_sides[iw][0] != '\0' ){
-         char qbuf[128] ;
          strcpy(qbuf,"left=") ;
          strcat(qbuf,seq->winfo_sides[iw]) ;
          strcat(qbuf," ") ; strcat(qbuf,buf) ;
+         MCW_set_widget_label( seq->winfo , qbuf ) ;
+       } else if( seq->opt.mirror || seq->opt.rot != ISQ_ROT_0 ){
+         switch( seq->opt.rot ){
+           case ISQ_ROT_0  : strcpy(qbuf,"["   ) ; break ;
+           case ISQ_ROT_90 : strcpy(qbuf,"[90" ) ; break ;
+           case ISQ_ROT_180: strcpy(qbuf,"[180") ; break ;
+           case ISQ_ROT_270: strcpy(qbuf,"[270") ; break ;
+         }
+         if( seq->opt.mirror ){
+           if( seq->opt.rot == ISQ_ROT_0 ) strcat(qbuf,"l] " ) ;
+           else                            strcat(qbuf,"+l] ") ;
+         } else                            strcat(qbuf,"] "  ) ;
+         strcat(qbuf,buf) ;
          MCW_set_widget_label( seq->winfo , qbuf ) ;
        } else {
          MCW_set_widget_label( seq->winfo , buf ) ;   /* default label! */
        }
 
      } else {                                        /* winfo_extra stuff */
-       char qbuf[128] ;                             /* from 07 Aug 1999  */
-       strcpy(qbuf,seq->winfo_extra) ;
+       strcpy(qbuf,seq->winfo_extra) ;              /* from 07 Aug 1999  */
        strcat(qbuf," ") ; strcat(qbuf,buf) ;
        MCW_set_widget_label( seq->winfo , qbuf ) ;
      }
@@ -7355,7 +7368,6 @@ static unsigned char record_bits[] = {
          AV_SENSITIZE(seq->ov_opacity_av,!seq->opt.no_overlay) ; /* 09 Mar 2001 */
 
 
-         seq->im_label[0] = '\0' ;  /* will force redraw */
          if( ISQ_REALZ(seq) ) ISQ_redisplay( seq , -1 , isqDR_display ) ;
          RETURN( True );
       }
@@ -11180,7 +11192,6 @@ ENTRY("ISQ_handle_keypress") ;
        else
          seq->opt.scale_range = ISQ_RNG_02TO98 ;
 
-       seq->im_label[0] = '\0' ;  /* forces redraw of text */
        ISQ_redisplay( seq , -1 , isqDR_display ) ;
        busy=0 ; RETURN(1) ;
      }
@@ -11191,7 +11202,6 @@ ENTRY("ISQ_handle_keypress") ;
      case 'l':{
        if( seq->dialog_starter==NBUT_DISP ){XBell(seq->dc->display,100); break;}
        seq->opt.mirror = ! seq->opt.mirror ;
-       seq->im_label[0] = '\0' ;  /* forces redraw of text */
        ISQ_redisplay( seq , -1 , isqDR_display ) ;
        busy=0 ; RETURN(1) ;
      }

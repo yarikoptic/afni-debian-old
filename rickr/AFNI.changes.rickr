@@ -1319,3 +1319,71 @@
   * checked in some of Hans' changes (with some alterations)
       - a few casts in fslio.[ch] and nifti1_io.[ch] and () in nifti_stats.c
 
+22 November 2005:
+  * modified 3dANOVA3.c, 3dANOVA.h, 3dANOVA.lib
+      - added -old_method option for using the a/bmeans, a/bdiff, a/bcontr
+        computations that assume sphericity (not yet documented)
+
+23 November 2005:
+  * modified 3dANOVA2.c, added -old_method for type 3 ameans, adiff, acontr
+
+25 November 2005:
+  * modified 3dANOVA.c, added subject ethel to -help example
+
+29 November 2005:
+  * modified 3dROIstats.c, added more help with examples
+
+02 December 2005:
+  * modified 3dANOVA3.c, 3dANOVA2.c, 3dANOVA.h, 3dANOVA.lib
+      - Note updates at the web site defined by ANOVA_MODS_LINK
+      - The -old_method option requires -OK.
+      - Added the -assume_sph option and a check for validity of the contrasts.
+      - Contrasts are verified via contrasts_are_valid().
+  * fixed Makefile.INCLUDE (had extra '\' at end of PROGRAMS)
+
+08 December 2005:
+  * modified 3dRegAna.c, setting default workmem to 750 (MB)
+
+09 December 2005:
+  * modified 3dANOVA.c
+      - modified contrast t-stat computations (per Gang)
+      - added -old_method, -OK, -assume_sph and -debug options
+  * modified 3dANOVA.h, added debug field to anova_options
+  * modified 3dANOVA.lib
+      - no models to check for level 1 in old_method_applies()
+      - option -OK is insufficient by itself
+
+14 Dec 2005:
+  * modified edt_coerce.c, added EDIT_convert_dtype() and is_integral_data()
+  * modified 3dttest.c
+      - process entire volume at once, not in multiple pieces
+      - added -voxel option (similar to the 3dANOVA progs)
+      - replaced scaling work with EDIT_convert_dtype() call
+
+15 Dec 2005:
+  * modified 3dhistog.c: fixed use of sub-brick factors
+
+16 Dec 2005:
+  * modified 3dUniformize.c: fixed upper_limit==0 case in resample()
+
+28 Dec 2005:
+  * modified 3dANOVA3.c
+      - Added -aBdiff, -Abdiff and -abmean options and routines.
+      - Replaced calc_mean_sum2_acontr() with calc_type4_acontr(), to
+          avoid intermediate storage of data as floats (by absorbing the
+          calculate_t_from_sums() operation).
+      - Similarly, replaced calc_mean_sum2_bcontr() with calc_type4_bcontr().
+      - Removed calculate_t_from_sums().
+      - Do checks against EPSILON before sqrt(), in case < 0.
+  * modified 3dANOVA.h, adding aBdiff, Abdiff and abmean fields to
+      anova_options struct, along with the ANOVA_BOUND() macro.
+  * modified 3dANOVA.lib, to init aBdiff, Abdiff and abmean struct members.
+
+29 Dec 2005:
+  * modified Dimon.c
+      - make any IMAGE_LOCATION/SLICE_LOCATION difference only a warning
+  * modified Makefile.INCLUDE (for cygwin)
+      - removed plug_maxima.fixed from PLUGIN_FIXED
+      - added Dimon.exe target
+  * modified fixed_plugins.h: removed plugin_maxima from file
+
