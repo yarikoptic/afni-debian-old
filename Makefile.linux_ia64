@@ -1,35 +1,43 @@
-# This Makefile works on Linux.
-# This is for compiling with GCC 3.3, on a 64-bit CPU.
+##################################################################
+#
+# This Makefile is tested on RedHat Linux AS 3.0 with GCC 3.4.2,
+# ia64 (Itanium 2).  At the time of this writing (12-9-2004), 
+# gcc produced code no faster than a 32-bit Athlon.  To utilize the
+# full capabilities of the Itanium, the Intel compiler "icc" is
+# recommended, as it produces code about twice as fast as gcc.
+# The speed we obtained with icc, however, are still only about half
+# that of AMD64 (Athlon 64 and Opteron) and Macintosh G5 processors.
+#
+# Contributed by: 
+#   Jason W. Bacon
+#   Medical College of Wisconsin
 
 # CPROF = -pg -g
-USE_ZLIB = -DHAVE_ZLIB
-LZLIB    = -lz
 
 CCDEBS = -DAFNI_DEBUG -DIMSEQ_DEBUG -DDISPLAY_DEBUG -DTHD_DEBUG
 CEXTRA = -Wcomment -Wformat -DUSE_TRACING -DHAVE_XDBE $(CPROF)
 
-CC     = /usr/bin/gcc -O2 -m64 -fPIC -ffast-math -mmmx -DREAD_WRITE_64 -DLINUX2 -DNO_GAMMA $(CEXTRA)
-CCVOL  = /usr/bin/gcc -O2 -m64 -fPIC -ffast-math -mmmx -DLINUX2 -DNO_GAMMA $(CEXTRA)
-CCFAST = /usr/bin/gcc -O3 -m64 -fPIC -ffast-math -mmmx -DLINUX2 -DNO_GAMMA $(CEXTRA)
+CC     = /usr/bin/gcc -O2 -ffast-math -fPIC -DREAD_WRITE_64 -DLINUX2 -DNO_GAMMA $(CEXTRA)
+CCVOL  = /usr/bin/gcc -O2 -ffast-math -fPIC -DREAD_WRITE_64 -DLINUX2 -DNO_GAMMA $(CEXTRA)
+CCFAST = /usr/bin/gcc -O2 -ffast-math -fPIC -DREAD_WRITE_64 -DLINUX2 -DNO_GAMMA $(CEXTRA)
 
 # The following line includes compiling for the SSE operations.
 # However, I found that it actually makes things worse in some test code.
 # Your mileage may vary.
 
-# CCFAST = /usr/bin/gcc -O3 -march=i686 -ffast-math -mmmx -msse -mfpmath=sse -DLINUX2 -DNO_GAMMA $(CEXTRA)
+# CCFAST = /usr/bin/gcc -O3 -ffast-math -fPIC -msse -mfpmath=sse -DREAD_WRITE_64 -DLINUX2 -DNO_GAMMA $(CEXTRA)
 
-CCMIN  = /usr/bin/gcc -m64 $(CPROF)
+CCMIN  = /usr/bin/gcc $(CPROF)
 CCD    = $(CC) $(CCDEBS)
 IFLAGS = -I. -I/usr/X11R6/include
-LFLAGS = -L. -L/usr/X11R6/lib64
+LFLAGS = -L. -L/usr/X11R6/lib
 
 PLUGIN_SUFFIX = so
-PLUGIN_LFLAGS = -shared -fPIC
+PLUGIN_LFLAGS = -shared
 PLUGIN_CC     = $(CC)
-# PLFLAGS       = -rdynamic -L. -L/usr/X11R6/lib
-PLFLAGS       = -rdynamic -L. -L/usr/X11R6/lib64
+PLFLAGS       = -rdynamic -L. -L/usr/X11R6/lib
 
-SHOWOFF = -DSHOWOFF=linux_gcc33_64
+SHOWOFF = -DSHOWOFF=linux_gcc34
 
 AR     = /usr/bin/ar
 RANLIB = /usr/bin/ranlib
@@ -44,18 +52,19 @@ CP = /bin/cp -f
 
 LINT = /usr/bin/lint -a -b -u -v -x $(IFLAGS) $(CCDEFS)
 
-INSTALLDIR = ./linux_gcc33_64
+# INSTALDIR should match the extension on the Makefile name
+INSTALLDIR = ./linux_ia64
 LIBDIR = $(INSTALLDIR)
 
 INSTALL_PREREQ = suma
 
 # for dynamic linking
 
-# LLIBS  = -lmri -lXm -lXp -lXpm -lXext -lXmu -lXt -lX11 $(LZLIB) -lm  -ldl -lc
+# LLIBS  = -lmri -lXm -lXp -lXpm -lXext -lXmu -lXt -lX11 -lm  -ldl -lc
 
 # for static linking to Motif, dynamic to all else
 
-LLIBS  = -lmri /usr/X11R6/lib64/libXm.a -lXp -lXpm -lXext -lXmu -lXt -lSM -lICE -lX11 $(LZLIB) -lm  -ldl -lc
+LLIBS  = -lmri /usr/X11R6/lib/libXm.a -lXp -lXpm -lXext -lXmu -lXt -lSM -lICE -lX11 -lm  -ldl -lc
 
 # for static linking, as far as possible
 
@@ -74,10 +83,10 @@ LLIBS  = -lmri /usr/X11R6/lib64/libXm.a -lXp -lXpm -lXext -lXmu -lXt -lSM -lICE 
 # vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 # For suma (NO STATIC LINKING OF GL libs)
 SUMA_INCLUDE_PATH = -I/usr/X11R6/include -I./ -I../ -I../niml/ -Igts/src
-SUMA_LINK_PATH = -L/usr/lib64 -L/usr/X11R6/lib64 -L../
+SUMA_LINK_PATH = -L/usr/lib -L/usr/X11R6/lib -L../
 #use -lGLw if you have libGLw.a or libGLw.so* or 
 #  -lMesaGLw if you have Mesa's version (libMesaGLw*) of libGLw
-SUMA_LINK_LIB = -lGLw -lGLU -lGL -lXmu -lXm -lXp -lXt -lXext -lX11 $(LZLIB) -lm 
+SUMA_LINK_LIB = -lGLw -lGLU -lGL -lXmu -lXm -lXp -lXt -lXext -lX11 -lm 
 SUMA_MAKEFILE_NAME = SUMA_Makefile
 SUMA_BIN_ARCHIVE = SUMA_Linux.tar
 # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -86,3 +95,4 @@ SUMA_BIN_ARCHIVE = SUMA_Linux.tar
 
 MAKE = make
 include Makefile.INCLUDE
+

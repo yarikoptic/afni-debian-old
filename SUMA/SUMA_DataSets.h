@@ -7,13 +7,14 @@
    #define SUMA_IDCODE_LENGTH 50
 #endif
 
-#define SUMA_VERSION_VECTOR 25000, 24800, \
-                            24500, -10000 /*!< modify this dude and you must update SUMA_New_Additions_perver 
+#define SUMA_VERSION_VECTOR 20041229, 20040610, 20040116, \
+                            20040106, -10000 /*!< modify this dude and you must update SUMA_New_Additions_perver 
                                        in SUMA_help.c. 
                                        Add to the left of the vector, leave the last value of -10000 untouched
                                        If you like to think of floating point version numbers,divide by 10000
                                        This define is stuck here so that non-SUMA DataSet manipulating programs 
-                                       can use it, one hopes*/
+                                       can use it, one hopes.
+                                       Numbering is yyyymmdd */
 typedef enum { NOPE, YUP} SUMA_Boolean;
 
 typedef enum { SUMA_notypeset = -1, 
@@ -24,6 +25,22 @@ typedef enum { SUMA_notypeset = -1,
                SUMA_double = NI_FLOAT64, 
                SUMA_complex = NI_COMPLEX64,
                SUMA_string = NI_STRING} SUMA_VARTYPE;
+
+/*! simple vectors */
+typedef struct {
+   int n;
+   int *v;
+} SUMA_IVEC;
+
+typedef struct {
+   int n;
+   float *v;
+} SUMA_FVEC;
+
+typedef struct {
+   int n;
+   double *v;
+} SUMA_DVEC;
 
 /*! filename and path */
 typedef struct {
@@ -58,8 +75,13 @@ typedef enum {
    SUMA_NODE_RGBA,
    SUMA_NODE_RGBAb,
    SUMA_NODE_XYZ,
+   SUMA_NEW_NODE_XYZ,
    SUMA_NODE_CONVEXITY,
-   SUMA_VIEWER_SETTING
+   SUMA_NEW_MESH_IJK,
+   SUMA_MESH_IJK,
+   SUMA_PREP_NEW_SURFACE,
+   SUMA_VIEWER_SETTING,
+   SUMA_N_DSET_TYPES
 } SUMA_DSET_TYPE; /*!<  Type of data set 
                         When you add a new element, modify functions
                         SUMA_Dset_Type_Name
@@ -562,6 +584,7 @@ void *SUMA_Copy_Part_Column(void *col,  NI_rowtype *rt, int N_col, byte *rowmask
 
 int SUMA_filexists (char *f_name);
 char *SUMA_help_basics();
+char *SUMA_help_talk();
 void SUMA_process_environ(void);
 void SUMA_ParseInput_basics (char *argv[], int argc); 
 SUMA_FileName SUMA_StripPath (char *FileName);

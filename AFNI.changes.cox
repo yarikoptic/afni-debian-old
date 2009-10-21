@@ -5281,3 +5281,34 @@
  * Incorporated 3dMean.c changes from Mike Beauchamp to add standard deviation
     option.
  * Fixed stupid scale_thr bug in afni_func.c.
+
+03 Jan 2005
+ * Modified mri_imcount() in mri_read.c to not do "3D:" counting on a file
+     unless there is actually a colon in the filename!  D'oh.
+
+04 Jan 2005
+ * Modified mri_warp3D_align.c and 3dWarpDrive.c to fix up some issues with
+     -twopass on small (EPI-sized) bricks and to add -1Dfile option.
+
+05 Jan 2005
+ * Modified 1dsvd.c to add -1Dright option.
+ * Fixed bug in 1dplot.c -stdin option: failed to skip leading blanks properly
+     when scanning input lines for '#' comment characters!  (Stupid)
+ * Modified imseq.[ch] to add saving of overlay MEM_plotdata stuff with the
+     recorder, as well as the images.
+
+06 Jan 2005
+ * Modified imseq.c to free the pen_bbox and labsz_av when destroying an image
+     viewer -- somehow these got overlooked in ISQ_free_alldata().
+
+14 Jan 2005
+ * Added program whereami, from Mike Angstadt of U Chicago.
+
+24 Jan 2005
+ * Added environment variable AFNI_SLAVE_THRTIME to afni.c.
+
+01 Feb 2005
+ * Added -redo_bstat option to 3drefit.c.
+
+07 Feb 2005
+ * Fixed bug in Deconvolve.c with removing mean of -stim_base columns.

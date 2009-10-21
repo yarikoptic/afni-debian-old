@@ -4733,10 +4733,18 @@ ENTRY("AFNI_time_index_CB") ;
 
    if( ISVALID_DSET(im3d->fim_now) &&
        HAS_TIMEAXIS(im3d->fim_now) && !AFNI_noenv("AFNI_SLAVE_FUNCTIME") ){
+
      im3d->vinfo->fim_index = ipx ;
      if( im3d->vinfo->fim_index >= DSET_NVALS(im3d->fim_now) )
        im3d->vinfo->fim_index = DSET_NVALS(im3d->fim_now) - 1 ;
      AV_assign_ival( im3d->vwid->func->fim_buck_av , im3d->vinfo->fim_index ) ;
+
+     if( AFNI_yesenv("AFNI_SLAVE_THRTIME") ){   /* 24 Jan 2005 - RWCox */
+       im3d->vinfo->thr_index = ipx ;
+       if( im3d->vinfo->thr_index >= DSET_NVALS(im3d->fim_now) )
+         im3d->vinfo->thr_index = DSET_NVALS(im3d->fim_now) - 1 ;
+       AV_assign_ival( im3d->vwid->func->thr_buck_av , im3d->vinfo->thr_index ) ;
+     }
    }
 
    im3d->vinfo->tempflag = 1 ;
@@ -4849,35 +4857,35 @@ ENTRY("AFNI_view_xyz_CB") ;
 
     m2m = AFNI_yesenv("AFNI_IMAGE_MINTOMAX") ;
 
-    if( w == pb_xyz && sxyz == NULL ){
+    if( w == pb_xyz && sxyz == NULL ){         /* axial image */
        snew  = &(im3d->s123) ;
        brnew = im3d->b123_ulay ;
        pboff = pb_xyz ;
        mirror= GLOBAL_argopt.left_is_left ;
 
-    } else if( w == pb_yzx && syzx == NULL ){
+    } else if( w == pb_yzx && syzx == NULL ){  /* sagittal image */
        snew  = &(im3d->s231) ;
        brnew = im3d->b231_ulay ;
        pboff = pb_yzx ;
 
-    } else if( w == pb_zxy && szxy == NULL ){
+    } else if( w == pb_zxy && szxy == NULL ){  /* coronal image */
        snew  = &(im3d->s312) ;
        brnew = im3d->b312_ulay ;
        pboff = pb_zxy ;
        mirror= GLOBAL_argopt.left_is_left ;
 
-    } else if( w == gr_xyz && gxyz == NULL ){
+    } else if( w == gr_xyz && gxyz == NULL ){  /* axial graph */
        gnew  = &(im3d->g123) ;
        brnew = im3d->b123_ulay ;
        pboff = gr_xyz ;
        mirror= GLOBAL_argopt.left_is_left ;
 
-    } else if( w == gr_yzx && gyzx == NULL ){
+    } else if( w == gr_yzx && gyzx == NULL ){  /* sagittal graph */
        gnew  = &(im3d->g231) ;
        brnew = im3d->b231_ulay ;
        pboff = gr_yzx ;
 
-    } else if( w == gr_zxy && gzxy == NULL ){
+    } else if( w == gr_zxy && gzxy == NULL ){  /* coronal graph */
        gnew  = &(im3d->g312) ;
        brnew = im3d->b312_ulay ;
        pboff = gr_zxy ;
