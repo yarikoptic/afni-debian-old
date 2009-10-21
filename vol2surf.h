@@ -1,6 +1,10 @@
 #ifndef _VOL2SURF_H_
 #define _VOL2SURF_H_
 
+#ifdef  __cplusplus
+extern "C" {                    /* care of Greg Balls    7 Aug 2006 [rickr] */
+#endif
+
 #define V2S_MAX_SURFS             2
 
 #define V2S_INDEX_VOXEL           0
@@ -61,7 +65,16 @@ typedef struct
     int    * k;
     int    * nvals;
     float ** vals;
+    char  ** labels;
+    int      nlab;
 } v2s_results;
+
+typedef struct
+{
+    int     fake;                       /* were arguments faked? */
+    int     argc;                       /* argument list length  */
+    char ** argv;                       /* argument list         */
+} v2s_cmd_t;
 
 typedef struct
 {
@@ -84,16 +97,22 @@ typedef struct
     float       f_pn_mm;                /* mm distance to add to pn      */
     char      * outfile_1D;             /* filename for ascii output     */
     char      * outfile_niml;           /* filename for NIML output      */
+    char      * segc_file;              /* filename for seg coors output */
+    v2s_cmd_t   cmd;                    /* command info for history      */
     v2s_oob_t   oob;                    /* display info for oob nodes    */
     v2s_oob_t   oom;                    /* display info for oom nodes    */
 } v2s_opts_t;
 
 typedef struct
 {
-    int        ready, use0, use1;
-    int        s0A, s0B;
-    int        s1A, s1B;
-    v2s_opts_t sopt;
+    int                ready, use0, use1;
+    int                s0A, s0B;
+    int                s1A, s1B;
+    int                gpt_index;       /* grid_parent thres ind (init -1) */
+    float              gpt_thresh;      /* threshold value (symmetric)     */
+    char             * label[4];        /* labels for 2 pairs of surfaces  */
+    THD_3dim_dataset * sv_dset;         /* surface volume dataset          */
+    v2s_opts_t         sopt;
 } v2s_plugin_opts;
 
 /* computational parameters */
@@ -115,28 +134,31 @@ v2s_results * afni_vol2surf     ( THD_3dim_dataset * gpar, int gp_index,
 v2s_results * vol2surf          ( v2s_opts_t * sopt, v2s_param_t * p );
 
 int disp_mri_imarr      ( char * info, MRI_IMARR * dp );
+int disp_v2s_command    ( v2s_opts_t * sopt );
 int disp_v2s_opts_t     ( char * info, v2s_opts_t * sopt );
 int disp_v2s_param_t    ( char * info, v2s_param_t * p );
 int disp_v2s_plugin_opts( char * mesg, v2s_plugin_opts * d );
 int disp_v2s_results    ( char * mesg, v2s_results * d );
 int free_v2s_results    ( v2s_results * sd );
 int v2s_is_good_map     ( int map, int from_afni );
+int v2s_make_command    ( v2s_opts_t * opt, v2s_param_t * p );
 int v2s_map_type        ( char * map_str );
 int v2s_vals_over_steps ( int map );
 int v2s_write_outfile_1D( v2s_opts_t * sopt, v2s_results * sd, char * label );
+int v2s_write_outfile_NSD( v2s_results *, v2s_opts_t *, v2s_param_t *, int);
 int v2s_write_outfile_niml( v2s_opts_t * sopt, v2s_results * sd, int free_vals);
 
-
-/* special thd function - might be moved from vol2surf.[ch] */
-int thd_mask_from_brick(THD_3dim_dataset * dset, int volume, float thresh,
-                        byte ** mask, int absolute);
 
 /* ---- define globals for everyone but vol2surf.c ---- */
 #ifndef _VOL2SURF_C_
     extern v2s_plugin_opts   gv2s_plug_opts;
     extern char            * gv2s_map_names[];
     extern char              gv2s_history[];
+    extern char              gv2s_no_label[];
 #endif
 
+#ifdef  __cplusplus
+}
+#endif
 
 #endif   /* _VOL2SURF_H_ */

@@ -448,7 +448,7 @@ void qsrec_pair( int n , float * ar , int * iar , int cutoff )
 
 /* quick_sort :  sort an array partially recursively, and partially insertion */
 
-void qsort_pair( int n , float * a , int * ia )
+void qsort_pair( int n , float *a , int *ia )
 {
    qsrec_pair( n , a , ia , QS_CUTOFF ) ;
    isort_pair( n , a , ia ) ;
@@ -464,7 +464,7 @@ void qsort_pair( int n , float * a , int * ia )
         "per" is float, no matter what the input image type is.
 ********************************************************************************/
 
-void mri_percents( MRI_IMAGE * im , int nper , float per[] )
+void mri_percents( MRI_IMAGE *im , int nper , float per[] )
 {
    register int pp , ii , nvox ;
    register float fi , frac ;
@@ -473,11 +473,7 @@ void mri_percents( MRI_IMAGE * im , int nper , float per[] )
 
    if( im == NULL || per == NULL || nper < 2 ) return ;
 
-#ifdef MRILIB_7D
    nvox = im->nvox ;
-#else
-   nvox = im->nx * im->ny ;
-#endif
    frac = nvox / ((float) nper) ;
 
    switch( im->kind ){
@@ -486,8 +482,8 @@ void mri_percents( MRI_IMAGE * im , int nper , float per[] )
            sort it, then interpolate the percentage points ***/
 
       default:{
-         MRI_IMAGE * inim ;
-         float * far ;
+         MRI_IMAGE *inim ;
+         float *far ;
 
          inim = mri_to_float( im ) ;
          far  = MRI_FLOAT_PTR(inim) ;
@@ -508,8 +504,8 @@ void mri_percents( MRI_IMAGE * im , int nper , float per[] )
 
       case MRI_short:
       case MRI_byte:{
-         MRI_IMAGE * inim ;
-         short * sar ;
+         MRI_IMAGE *inim ;
+         short *sar ;
 
          inim = mri_to_short( 1.0 , im ) ;
          sar  = MRI_SHORT_PTR(inim) ;
@@ -553,15 +549,9 @@ printf("Entry: mri_flatten\n") ;
    /*** make an image that is just the voxel index in its array ***/
    /*** also, make the output image while we are at it          ***/
 
-#ifdef MRILIB_7D
    nvox  = im->nvox ;
    intim = mri_new_conforming( im , MRI_int ) ;
    outim = mri_new_conforming( im , MRI_float ) ;
-#else
-   nvox  = im->nx * im->ny ;
-   intim = mri_new( im->nx , im->ny , MRI_int ) ;
-   outim = mri_new( im->nx , im->ny , MRI_float ) ;
-#endif
 
    iar = MRI_INT_PTR(intim) ; outar = MRI_FLOAT_PTR(outim) ;
 
@@ -617,15 +607,15 @@ printf("Entry: mri_flatten\n") ;
    return outim ;
 }
 
-/*-------------------------------------------------------------
-   Find the intensity in an image that is at the alpha-th
-   quantile of the distribution.  That is, for 0 <= alpha <= 1,
-   alpha*npix of the image values are below, and (1-alpha)*npix
-   are above.  If alpha is 0, this is the minimum.  If alpha
-   is 1, this is the maximum.
----------------------------------------------------------------*/
+/*-------------------------------------------------------------------*/
+/*! Find the intensity in an image that is at the alpha-th
+    quantile of the distribution.  That is, for 0 <= alpha <= 1,
+    alpha*npix of the image values are below, and (1-alpha)*npix
+    are above.  If alpha is 0, this is the minimum.  If alpha
+    is 1, this is the maximum.
+---------------------------------------------------------------------*/
 
-float mri_quantile( MRI_IMAGE * im , float alpha )
+float mri_quantile( MRI_IMAGE *im , float alpha )
 {
    int ii , nvox ;
    float fi , quan ;
@@ -637,11 +627,7 @@ float mri_quantile( MRI_IMAGE * im , float alpha )
    if( alpha <= 0.0 ) return (float) mri_min(im) ;
    if( alpha >= 1.0 ) return (float) mri_max(im) ;
 
-#ifdef MRILIB_7D
    nvox = im->nvox ;
-#else
-   nvox = im->nx * im->ny ;
-#endif
 
    switch( im->kind ){
 
@@ -649,8 +635,8 @@ float mri_quantile( MRI_IMAGE * im , float alpha )
            sort it, then interpolate the percentage points ***/
 
       default:{
-         MRI_IMAGE * inim ;
-         float * far ;
+         MRI_IMAGE *inim ;
+         float *far ;
 
          inim = mri_to_float( im ) ;
          far  = MRI_FLOAT_PTR(inim) ;
@@ -669,8 +655,8 @@ float mri_quantile( MRI_IMAGE * im , float alpha )
 
       case MRI_short:
       case MRI_byte:{
-         MRI_IMAGE * inim ;
-         short * sar ;
+         MRI_IMAGE *inim ;
+         short *sar ;
 
          inim = mri_to_short( 1.0 , im ) ;
          sar  = MRI_SHORT_PTR(inim) ;
@@ -686,4 +672,95 @@ float mri_quantile( MRI_IMAGE * im , float alpha )
    }
 
    return quan ;
+}
+
+/*-------------------------------------------------------------------*/
+/*! Return TWO quantile levels at once; cf. mri_quantile().
+---------------------------------------------------------------------*/
+
+floatpair mri_twoquantiles( MRI_IMAGE *im, float alpha, float beta )
+{
+   int ii , nvox ;
+   float fi ;
+   floatpair qt = {0.0f,0.0f} ;
+   float qalph=WAY_BIG,qbeta=WAY_BIG ;
+
+   /*** sanity checks ***/
+
+   if( im == NULL ) return qt ;
+
+   if( alpha == beta ){
+     qt.a = qt.b = mri_quantile(im,alpha) ; return qt ;
+   }
+
+        if( alpha <= 0.0f ) qalph = (float) mri_min(im) ;
+   else if( alpha >= 1.0f ) qalph = (float) mri_max(im) ;
+        if( beta  <= 0.0f ) qbeta = (float) mri_min(im) ;
+   else if( beta  >= 1.0f ) qbeta = (float) mri_max(im) ;
+
+   if( qalph != WAY_BIG && qbeta != WAY_BIG ){
+     qt.a = qalph; qt.b = qbeta; return qt;
+   }
+
+   nvox = im->nvox ;
+
+   switch( im->kind ){
+
+      /*** create a float image copy of the data,
+           sort it, then interpolate the percentage points ***/
+
+      default:{
+         MRI_IMAGE *inim ;
+         float *far ;
+
+         inim = mri_to_float( im ) ;
+         far  = MRI_FLOAT_PTR(inim) ;
+         qsort_float( nvox , far ) ;
+
+         if( alpha > 0.0f && alpha < 1.0f ){
+           fi    = alpha * nvox ;
+           ii    = (int) fi ; if( ii >= nvox ) ii = nvox-1 ;
+           fi    = fi - ii ;
+           qalph = (1.0-fi) * far[ii] + fi * far[ii+1] ;
+         }
+         if( beta > 0.0f && beta < 1.0f ){
+           fi    = beta * nvox ;
+           ii    = (int) fi ; if( ii >= nvox ) ii = nvox-1 ;
+           fi    = fi - ii ;
+           qbeta = (1.0-fi) * far[ii] + fi * far[ii+1] ;
+         }
+         mri_free( inim ) ;
+      }
+      break ;
+
+      /*** create a short image copy of the data,
+           sort it, then interpolate the percentage points ***/
+
+      case MRI_short:
+      case MRI_byte:{
+         MRI_IMAGE *inim ;
+         short *sar ;
+
+         inim = mri_to_short( 1.0 , im ) ;
+         sar  = MRI_SHORT_PTR(inim) ;
+         qsort_short( nvox , sar ) ;
+
+         if( alpha > 0.0f && alpha < 1.0f ){
+           fi    = alpha * nvox ;
+           ii    = (int) fi ; if( ii >= nvox ) ii = nvox-1 ;
+           fi    = fi - ii ;
+           qalph = (1.0-fi) * sar[ii] + fi * sar[ii+1] ;
+         }
+         if( beta > 0.0f && beta < 1.0f ){
+           fi    = beta * nvox ;
+           ii    = (int) fi ; if( ii >= nvox ) ii = nvox-1 ;
+           fi    = fi - ii ;
+           qbeta = (1.0-fi) * sar[ii] + fi * sar[ii+1] ;
+         }
+         mri_free( inim ) ;
+      }
+      break ;
+   }
+
+   qt.a = qalph; qt.b = qbeta; return qt;
 }

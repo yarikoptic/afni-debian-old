@@ -1,8 +1,9 @@
 #include "mrilib.h"
 
-#define USE_FILLIN
+#undef  DEBUG
 
-#undef DEBUG
+#undef  ASSIF
+#define ASSIF(p,v) if( p!= NULL ) *p = v
 
 static int verb = 0 ;                            /* 28 Oct 2003 */
 void THD_automask_verbose( int v ){ verb = v ; }
@@ -10,13 +11,26 @@ void THD_automask_verbose( int v ){ verb = v ; }
 static int exterior_clip = 0 ;
 void THD_automask_extclip( int e ){ exterior_clip = e ; }
 
-static int dall = 0 ;
+static int dall = 1024 ;
 
 static float clfrac = 0.5f ;                     /* 20 Mar 2006 */
 void THD_automask_set_clipfrac( float f )
 {
-  if( f >= 0.1f && f <= 0.9f ) clfrac = f ;
+  clfrac = (f >= 0.1f && f <= 0.9f) ? f : 0.5f ;
 }
+
+/* parameters for erode/restore peeling */
+
+static int peelcount =  1 ;                      /* 24 Oct 2006 */
+static int peelthr   = 17 ;
+void THD_automask_set_peelcounts( int p , int t )
+{
+  peelcount = (p > 0)             ? p :  1 ;
+  peelthr   = (t >= 9 && t <= 18) ? t : 17 ;
+}
+
+static int gradualize = 1 ;
+void THD_automask_set_gradualize( int n ){ gradualize = n; }
 
 /*---------------------------------------------------------------------*/
 
@@ -103,7 +117,7 @@ byte * mri_automask_image( MRI_IMAGE *im )
 
 ENTRY("mri_automask_image") ;
 
-   if( im == NULL ) return NULL ;
+   if( im == NULL )RETURN(NULL) ;
 
    if( im->kind != MRI_float ) medim = mri_to_float(im) ;
    else                        medim = im ;
@@ -112,22 +126,27 @@ ENTRY("mri_automask_image") ;
 
    clip_val = THD_cliplevel(medim,clfrac) ;
 
-   if( verb ) ININFO_message("Clip level = %f\n",clip_val) ;
+   if( verb ) ININFO_message("Fixed clip level = %f\n",clip_val) ;
 
    /* create mask of values above clip value */
 
    nvox = medim->nvox ;
    mar  = MRI_FLOAT_PTR(medim) ;
    mmm  = (byte *) calloc( sizeof(byte), nvox ) ;
-   for( nmm=ii=0 ; ii < nvox ; ii++ )
-     if( mar[ii] >= clip_val ){ mmm[ii] = 1; nmm++; }
 
-   if( AFNI_yesenv("TOPCLIP") ){
-     float tclip = 3.1*clip_val ;
-     if( verb ) ININFO_message("Top clip = %f\n",tclip) ;
-     for( ii=0 ; ii < nvox ; ii++ )
-       if( mar[ii] > tclip ) mmm[ii] = 0 ;
-     for( nmm=ii=0 ; ii < nvox ; ii++ ) if( mmm[ii] ) nmm++ ;
+   if( !gradualize ){
+     for( nmm=ii=0 ; ii < nvox ; ii++ )
+       if( mar[ii] >= clip_val ){ mmm[ii] = 1; nmm++; }
+   } else {
+     MRI_IMAGE *cim; float *car, cbot=1.e+38,ctop=-1.e+38 ;
+     cim = THD_cliplevel_gradual(medim,clfrac); car = MRI_FLOAT_PTR(cim);
+     for( nmm=ii=0 ; ii < nvox ; ii++ ){
+       if( mar[ii] >= car[ii] ){ mmm[ii] = 1; nmm++; }
+       if( car[ii] < cbot ) cbot = car[ii] ;
+       if( car[ii] > ctop ) ctop = car[ii] ;
+     }
+     if( verb ) ININFO_message("Used gradual clip level = %f .. %f",cbot,ctop) ;
+     mri_free(cim) ;
    }
 
    if( verb ) ININFO_message("Number voxels above clip level = %d\n",nmm) ;
@@ -139,19 +158,25 @@ ENTRY("mri_automask_image") ;
    nx = im->nx ; ny = im->ny ; nz = im->nz ;
    dall = (nx*ny*nz)/128 ;  /* allocation delta for clustering */
 
-   if( verb ) ININFO_message("Clustering voxels above clip level ...\n") ;
    THD_mask_clust( nx,ny,nz, mmm ) ;
 
    /* 18 Apr 2002: now erode the resulting volume
                    (to break off any thinly attached pieces) */
 
-   THD_mask_erode( nx,ny,nz, mmm, 1 ) ;
+#if 0
+   if( peelcount > 1 ){                              /* 25 Oct 2006 */
+     THD_mask_erodemany( nx,ny,nz, mmm, 1 ) ;
+     THD_mask_clust( nx,ny,nz, mmm ) ;
+     THD_mask_fillin_once( nx,ny,nz , mmm , 1 ) ;
+   }
+#endif
+
+   THD_mask_erodemany( nx,ny,nz, mmm, peelcount ) ;  /* 24 Oct 2006: multiple layers */
 
    /* now recluster it, and again keep only the largest survivor */
 
    THD_mask_clust( nx,ny,nz, mmm ) ;
 
-#ifdef USE_FILLIN
    /* 19 Apr 2002: fill in small holes */
 
    jj = ii = THD_mask_fillin_once( nx,ny,nz , mmm , 1 ) ;
@@ -162,17 +187,8 @@ ENTRY("mri_automask_image") ;
      }
    }
    if( jj > 0 && verb )
-    ININFO_message("Filled   %d voxels in small holes; now have %d voxels\n",
+    ININFO_message("Filled %5d voxels in small holes; now have %d voxels\n",
             jj , mask_count(nvox,mmm) ) ;
-
-   if( AFNI_yesenv("PEEL") ){
-     jj = THD_peel_mask( nx,ny,nz , mmm , 7 ) ;
-     if( jj > 0 ){
-       ININFO_message("Peeled %d voxels from surface\n",jj) ;
-       THD_mask_erode( nx,ny,nz, mmm, 1 ) ;
-       THD_mask_clust( nx,ny,nz, mmm ) ;
-     }
-   }
 
    nmm = 1 ;
    jj  = rint(0.016*nx) ; nmm = MAX(nmm,jj) ;
@@ -184,13 +200,12 @@ ENTRY("mri_automask_image") ;
        jj += THD_mask_fillin_once( nx,ny,nz , mmm , ii ) ;
      jj += THD_mask_fillin_completely( nx,ny,nz, mmm , nmm ) ;
      if( jj > 0 && verb )
-      ININFO_message("Filled   %d voxels in large holes; now have %d voxels\n",
+      ININFO_message("Filled %5d voxels in large holes; now have %d voxels\n",
               jj , mask_count(nvox,mmm) ) ;
    }
 
-   THD_mask_erode( nx,ny,nz, mmm, 1 ) ;
+   THD_mask_erodemany( nx,ny,nz, mmm, 1 ) ;
    THD_mask_clust( nx,ny,nz, mmm ) ;
-#endif
 
    /* 28 May 2002:
       invert the mask, then find the largest cluster of 1's;
@@ -208,8 +223,7 @@ ENTRY("mri_automask_image") ;
       mask AND whose values are below clip_val, do so now     */
 
    if( exterior_clip ){
-     float tclip ;
-     tclip = AFNI_yesenv("TOPCLIP") ? 3.1*clip_val : 9999.9*clip_val ;;
+     float tclip=9999.9*clip_val ;
      jj = THD_mask_clip_neighbors( nx,ny,nz , mmm , clip_val,tclip,mar ) ;
      if( im != medim ) mri_free(medim) ;
      if( jj > 0 && verb )
@@ -224,7 +238,7 @@ ENTRY("mri_automask_image") ;
    if( verb ) ININFO_message("Mask now has %d voxels\n",mask_count(nvox,mmm)) ;
 
    if( exterior_clip && jj > 0 ){
-     THD_mask_erode( nx,ny,nz, mmm, 1 ) ;
+     THD_mask_erodemany( nx,ny,nz, mmm, 1 ) ;
      THD_mask_clust( nx,ny,nz, mmm ) ;
    }
 
@@ -296,7 +310,7 @@ ENTRY("THD_mask_fillin_once") ;
    if( nsx == 0 && nsy == 0 && nsz == 0 ) RETURN(0) ;
 
 #ifdef DEBUG
-   fprintf(stderr,"THD_mask_fillin_once: nsx=%d nsy=%d nsz=%d\n",nsx,nsy,nsz);
+   ININFO_message("THD_mask_fillin_once: nsx=%d nsy=%d nsz=%d\n",nsx,nsy,nsz);
 #endif
 
    nxy = nx*ny ; nxyz = nxy*nz ; nfill = 0 ;
@@ -422,7 +436,7 @@ ENTRY("THD_mask_fillin_once") ;
    }
 
 #ifdef DEBUG
-   fprintf(stderr,"THD_mask_fillin_once: nfill=%d\n",nfill) ;
+   ININFO_message("THD_mask_fillin_once: nfill=%d\n",nfill) ;
 #endif
 
    free(nnn) ; RETURN(nfill) ;
@@ -489,9 +503,8 @@ ENTRY("THD_mask_clust") ;
    kbest = AFMALL(short, sizeof(short)) ;
 
    /*--- scan through array, find nonzero point, build a cluster, ... ---*/
-   if (verb) 
-      fprintf(stderr,"++ THD_mask_clust: building cluster ...\n");
-      
+   if(verb) ININFO_message("Clustering voxels ...");
+
    ijk_last = 0 ; if( dall < DALL ) dall = DALL ;
    while(1) {
      /* find next nonzero point */
@@ -502,7 +515,7 @@ ENTRY("THD_mask_clust") ;
      ijk_last = ijk+1 ;         /* start here next time */
 
      /* init current cluster list with this point */
-         
+
      mmm[ijk] = 0 ;                                /* clear found point */
      nall = DALL ;                                 /* # allocated pts */
      nnow = 1 ;                                    /* # pts in cluster */
@@ -583,24 +596,14 @@ ENTRY("THD_mask_erode") ;
     kz = kk*nxy ; km = kz-nxy ; kp = kz+nxy ;
     if( kk == 0    ) km = kz ;
     if( kk == nz-1 ) kp = kz ;
-#if 0
-fprintf(stderr,"kk=%d kz=%d\n",kk,kz) ;
-#endif
 
     for( jj=0 ; jj < ny ; jj++ ){
      jy = jj*nx ; jm = jy-nx ; jp = jy+nx ;
      if( jj == 0    ) jm = jy ;
      if( jj == ny-1 ) jp = jy ;
 
-#if 0
-fprintf(stderr,"  jj=%d jy=%d\n",jj,jy) ;
-#endif
-
      for( ii=0 ; ii < nx ; ii++ ){
        if( mmm[ii+jy+kz] ){           /* count nonzero nbhrs */
-#if 0
-fprintf(stderr,".") ;
-#endif
          im = ii-1 ; ip = ii+1 ;
          if( ii == 0    ) im = 0 ;
          if( ii == nx-1 ) ip = ii ;
@@ -613,9 +616,6 @@ fprintf(stderr,".") ;
               + mmm[im+jy+kp]
               + mmm[ii+jm+kp] + mmm[ii+jy+kp] + mmm[ii+jp+kp]
               + mmm[ip+jy+kp] ;
-#if 0
-fprintf(stderr,"%s", (num<17) ? "o" : "x") ;
-#endif
          if( num < 17 ) nnn[ii+jy+kz] = 1 ;  /* mark to erode */
        }
    } } }
@@ -630,22 +630,22 @@ fprintf(stderr,"%s", (num<17) ? "o" : "x") ;
    if(redilate) {
       STATUS("marking to redilate") ;
       for( kk=0 ; kk < nz ; kk++ ){
-       kz = kk*nxy ; km = kz-nxy ; kp = kz+nxy ;
-       if( kk == 0    ) km = kz ;
-       if( kk == nz-1 ) kp = kz ;
+        kz = kk*nxy ; km = kz-nxy ; kp = kz+nxy ;
+        if( kk == 0    ) km = kz ;
+        if( kk == nz-1 ) kp = kz ;
 
-       for( jj=0 ; jj < ny ; jj++ ){
-	jy = jj*nx ; jm = jy-nx ; jp = jy+nx ;
-	if( jj == 0    ) jm = jy ;
-	if( jj == ny-1 ) jp = jy ;
+        for( jj=0 ; jj < ny ; jj++ ){
+          jy = jj*nx ; jm = jy-nx ; jp = jy+nx ;
+          if( jj == 0    ) jm = jy ;
+          if( jj == ny-1 ) jp = jy ;
 
-	for( ii=0 ; ii < nx ; ii++ ){
-	  if( nnn[ii+jy+kz] ){           /* was eroded */
-            im = ii-1 ; ip = ii+1 ;
-            if( ii == 0    ) im = 0 ;
-            if( ii == nx-1 ) ip = ii ;
-            nnn[ii+jy+kz] =              /* see if has any nbhrs */
-        	  mmm[im+jy+km]
+          for( ii=0 ; ii < nx ; ii++ ){
+            if( nnn[ii+jy+kz] ){           /* was eroded */
+              im = ii-1 ; ip = ii+1 ;
+              if( ii == 0    ) im = 0 ;
+              if( ii == nx-1 ) ip = ii ;
+              nnn[ii+jy+kz] =              /* see if has any nbhrs */
+                  mmm[im+jy+km]
                || mmm[ii+jm+km] || mmm[ii+jy+km] || mmm[ii+jp+km]
                || mmm[ip+jy+km]
                || mmm[im+jm+kz] || mmm[im+jy+kz] || mmm[im+jp+kz]
@@ -654,21 +654,121 @@ fprintf(stderr,"%s", (num<17) ? "o" : "x") ;
                || mmm[im+jy+kp]
                || mmm[ii+jm+kp] || mmm[ii+jy+kp] || mmm[ii+jp+kp]
                || mmm[ip+jy+kp] ;
-	  }
-        } 
-      }  
-    }
+            }
+      }}} /* end of ii,jj,kk loops */
 
       /* actually do the dilation */
 
       STATUS("redilating") ;
       for( jj=ii=0 ; ii < nxyz ; ii++ )
-	if( nnn[ii] ){ mmm[ii] = 1 ; jj++ ; }
+        if( nnn[ii] ){ mmm[ii] = 1 ; jj++ ; }
 
       if( verb && jj > 0 ) ININFO_message("Restored %d eroded voxels\n",jj) ;
-   }
+
+   } /* end of redilate */
 
    free(nnn) ; EXRETURN ;
+}
+
+/*--------------------------------------------------------------------------*/
+/*! Generalization of THD_mask_erode(), to peel away multiple layers and
+    then redilate.
+----------------------------------------------------------------------------*/
+
+void THD_mask_erodemany( int nx, int ny, int nz, byte *mmm, int npeel )
+{
+   int ii,jj,kk , jy,kz, im,jm,km , ip,jp,kp , num , pp ;
+   int nxy=nx*ny , nxyz=nxy*nz ;
+   byte *nnn,*qqq , bpp , bth ;
+
+ENTRY("THD_mask_erodemany") ;
+
+   if( mmm == NULL || npeel < 1 || nxyz < 27 ) EXRETURN ;
+
+   nnn = (byte *)calloc(sizeof(byte),nxyz) ;  /* mask of eroded voxels */
+   if( nnn == NULL ) EXRETURN ;               /* WTF? */
+   qqq = (byte *)malloc(sizeof(byte)*nxyz) ;  /* another copy */
+   if( qqq == NULL ){ free(nnn); EXRETURN; }  /* WTF? */
+
+   /* mark interior voxels that don't have 'peelthr' out of 18 nonzero nbhrs */
+
+   STATUS("peelings, nothing more than peelings") ;
+   for( pp=1 ; pp <= npeel ; pp++ ){   /* pp = peel layer index */
+     bpp = (byte)pp ;
+     for( kk=0 ; kk < nz ; kk++ ){
+      kz = kk*nxy ; km = kz-nxy ; kp = kz+nxy ;
+      if( kk == 0    ) km = kz ;
+      if( kk == nz-1 ) kp = kz ;
+
+      for( jj=0 ; jj < ny ; jj++ ){
+       jy = jj*nx ; jm = jy-nx ; jp = jy+nx ;
+       if( jj == 0    ) jm = jy ;
+       if( jj == ny-1 ) jp = jy ;
+
+       for( ii=0 ; ii < nx ; ii++ ){
+         if( mmm[ii+jy+kz] ){           /* count nonzero nbhrs */
+           im = ii-1 ; ip = ii+1 ;
+           if( ii == 0    ) im = 0 ;
+           if( ii == nx-1 ) ip = ii ;
+           num =  mmm[im+jy+km]
+                + mmm[ii+jm+km] + mmm[ii+jy+km] + mmm[ii+jp+km]
+                + mmm[ip+jy+km]
+                + mmm[im+jm+kz] + mmm[im+jy+kz] + mmm[im+jp+kz]
+                + mmm[ii+jm+kz]                 + mmm[ii+jp+kz]
+                + mmm[ip+jm+kz] + mmm[ip+jy+kz] + mmm[ip+jp+kz]
+                + mmm[im+jy+kp]
+                + mmm[ii+jm+kp] + mmm[ii+jy+kp] + mmm[ii+jp+kp]
+                + mmm[ip+jy+kp] ;
+           if( num < peelthr ) nnn[ii+jy+kz] = bpp ;  /* mark to erode */
+         }
+     }}}
+     for( ii=0 ; ii < nxyz ; ii++ )             /* actually erode */
+       if( nnn[ii] ) mmm[ii] = 0 ;
+
+   } /* end of loop over peeling layers */
+
+   /* re-dilate eroded voxels that are next to survivors */
+
+   STATUS("unpeelings") ;
+   for( pp=npeel ; pp >= 1 ; pp-- ){  /* loop from innermost peel to outer */
+     bpp = (byte)pp ; memset(qqq,0,sizeof(byte)*nxyz) ;
+     bth = (pp==npeel) ? 0 : 1 ;
+     for( kk=0 ; kk < nz ; kk++ ){
+      kz = kk*nxy ; km = kz-nxy ; kp = kz+nxy ;
+      if( kk == 0    ) km = kz ;
+      if( kk == nz-1 ) kp = kz ;
+
+      for( jj=0 ; jj < ny ; jj++ ){
+       jy = jj*nx ; jm = jy-nx ; jp = jy+nx ;
+       if( jj == 0    ) jm = jy ;
+       if( jj == ny-1 ) jp = jy ;
+
+       for( ii=0 ; ii < nx ; ii++ ){
+         if( nnn[ii+jy+kz] >= bpp && !mmm[ii+jy+kz] ){  /* was eroded before */
+           im = ii-1 ; ip = ii+1 ;
+           if( ii == 0    ) im = 0 ;
+           if( ii == nx-1 ) ip = ii ;
+           qqq[ii+jy+kz] =              /* count any surviving nbhrs */
+                  mmm[im+jy+km]
+                + mmm[ii+jm+km] + mmm[ii+jy+km] + mmm[ii+jp+km]
+                + mmm[ip+jy+km]
+                + mmm[im+jm+kz] + mmm[im+jy+kz] + mmm[im+jp+kz]
+                + mmm[ii+jm+kz]                 + mmm[ii+jp+kz]
+                + mmm[ip+jm+kz] + mmm[ip+jy+kz] + mmm[ip+jp+kz]
+                + mmm[im+jy+kp]
+                + mmm[ii+jm+kp] + mmm[ii+jy+kp] + mmm[ii+jp+kp]
+                + mmm[ip+jy+kp] ;
+         }
+     }}} /* end of ii,jj,kk loops */
+
+     /* actually do the dilation */
+
+     for( ii=0 ; ii < nxyz ; ii++ )
+       if( qqq[ii] > bth ) mmm[ii] = 1 ;
+
+   } /* end of redilate loop */
+
+   free(qqq); free(nnn); EXRETURN;
 }
 
 /*--------------------------------------------------------------------------*/
@@ -756,6 +856,9 @@ ENTRY("THD_autobbox") ;
 
 /*------------------------------------------------------------------------*/
 
+static int bbox_clust=1 ;
+void MRI_autobbox_clust( int c ){ bbox_clust = c; }
+
 void MRI_autobbox( MRI_IMAGE *qim ,
                    int *xm, int *xp , int *ym, int *yp , int *zm, int *zp )
 {
@@ -783,59 +886,61 @@ ENTRY("MRI_autobbox") ;
 
    nx = qim->nx; ny = qim->ny; nz = qim->nz; nxy = nx*ny;
 
-   THD_mask_clust( nx,ny,nz, mmm ) ;
-   THD_mask_erode( nx,ny,nz, mmm, 1 ) ;
-   THD_mask_clust( nx,ny,nz, mmm ) ;
+   if( bbox_clust ){
+     THD_mask_clust( nx,ny,nz, mmm ) ;
+     THD_mask_erodemany( nx,ny,nz, mmm, peelcount ) ;
+     THD_mask_clust( nx,ny,nz, mmm ) ;
+   }
 
    /* For each plane direction,
       find the first and last index that have nonzero voxels in that plane */
 
    if( xm != NULL ){
      for( ii=0 ; ii < nx ; ii++ )
-       for( kk=0 ; kk < nz ; kk++ )
-         for( jj=0 ; jj < ny ; jj++ )
-           if( mmm[ii+jj*nx+kk*nxy] ) goto CP5 ;
-     CP5: *xm = ii ;
+      for( kk=0 ; kk < nz ; kk++ )
+       for( jj=0 ; jj < ny ; jj++ )
+        if( mmm[ii+jj*nx+kk*nxy] ) goto CP5 ;
+     CP5: ASSIF(xm,ii) ;
    }
 
    if( xp != NULL ){
      for( ii=nx-1 ; ii >= 0 ; ii-- )
-       for( kk=0 ; kk < nz ; kk++ )
-         for( jj=0 ; jj < ny ; jj++ )
-           if( mmm[ii+jj*nx+kk*nxy] ) goto CP6 ;
-     CP6: *xp = ii ;
+      for( kk=0 ; kk < nz ; kk++ )
+       for( jj=0 ; jj < ny ; jj++ )
+        if( mmm[ii+jj*nx+kk*nxy] ) goto CP6 ;
+     CP6: ASSIF(xp,ii) ;
    }
 
    if( ym != NULL ){
      for( jj=0 ; jj < ny ; jj++ )
-       for( kk=0 ; kk < nz ; kk++ )
-         for( ii=0 ; ii < nx ; ii++ )
-           if( mmm[ii+jj*nx+kk*nxy] ) goto CP3 ;
-     CP3: *ym = jj ;
+      for( kk=0 ; kk < nz ; kk++ )
+       for( ii=0 ; ii < nx ; ii++ )
+        if( mmm[ii+jj*nx+kk*nxy] ) goto CP3 ;
+     CP3: ASSIF(ym,jj) ;
    }
 
    if( yp != NULL ){
      for( jj=ny-1 ; jj >= 0 ; jj-- )
-       for( kk=0 ; kk < nz ; kk++ )
-         for( ii=0 ; ii < nx ; ii++ )
-           if( mmm[ii+jj*nx+kk*nxy] ) goto CP4 ;
-     CP4: *yp = jj ;
+      for( kk=0 ; kk < nz ; kk++ )
+       for( ii=0 ; ii < nx ; ii++ )
+        if( mmm[ii+jj*nx+kk*nxy] ) goto CP4 ;
+     CP4: ASSIF(yp,jj) ;
    }
 
    if( zm != NULL ){
      for( kk=0 ; kk < nz ; kk++ )
-       for( jj=0 ; jj < ny ; jj++ )
-         for( ii=0 ; ii < nx ; ii++ )
-           if( mmm[ii+jj*nx+kk*nxy] ) goto CP1 ;
-     CP1: *zm = kk ;
+      for( jj=0 ; jj < ny ; jj++ )
+       for( ii=0 ; ii < nx ; ii++ )
+        if( mmm[ii+jj*nx+kk*nxy] ) goto CP1 ;
+     CP1: ASSIF(zm,kk) ;
    }
 
    if( zp != NULL ){
      for( kk=nz-1 ; kk >= 0 ; kk-- )
-       for( jj=0 ; jj < ny ; jj++ )
-         for( ii=0 ; ii < nx ; ii++ )
-           if( mmm[ii+jj*nx+kk*nxy] ) goto CP2 ;
-     CP2: *zp = kk ;
+      for( jj=0 ; jj < ny ; jj++ )
+       for( ii=0 ; ii < nx ; ii++ )
+        if( mmm[ii+jj*nx+kk*nxy] ) goto CP2 ;
+     CP2: ASSIF(zp,kk) ;
    }
 
    free(mmm) ; EXRETURN ;

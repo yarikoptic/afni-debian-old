@@ -2,6 +2,7 @@
 #define SUMA_DEFINE_INCLUDED
 
 #define SUMA_DEF_GROUP_NAME "DefGroup"
+#define SUMA_DEF_TOY_GROUP_NAME "DeDe"
 #define SUMA_DEF_STATE_NAME "Default_state"
 
 #define SUMA_SUMA_NIML_DEBUG 0
@@ -152,13 +153,19 @@ typedef enum  { SUMA_FT_ERROR = -1, SUMA_FT_NOT_SPECIFIED,
                SUMA_OPENDX_MESH, 
                   SUMA_N_SO_FILE_TYPE} SUMA_SO_File_Type; /* add types always between SUMA_FT_NOT_SPECIFIED AND SUMA_N_SO_FILE_TYPE */
 typedef enum { SUMA_FF_NOT_SPECIFIED, SUMA_ASCII, SUMA_BINARY, SUMA_BINARY_BE, SUMA_BINARY_LE } SUMA_SO_File_Format;
-typedef enum { no_type, SO_type, AO_type, ROIdO_type, ROIO_type, GO_type, LS_type, OLS_type, NBV_type, SP_type} SUMA_DO_Types;   /*!< Displayable Object Types 
+typedef enum { type_not_set = -1,
+               no_type, SO_type, AO_type, ROIdO_type, ROIO_type, 
+               GO_type, LS_type, OLS_type, NBV_type, ONBV_type, SP_type,
+               NBSP_type, PL_type} SUMA_DO_Types;   /*!< Displayable Object Types 
                                                                                     S: surface, A: axis, G: grid, 
                                                                                     ROId: Region of interest drawn type,
                                                                                     LS_type: line segment
                                                                                     OLS_type: oriented line segment
-                                                                                    NBV_type: Node-Based vector 
-                                                                                    SP_type: spherical markers*/
+                                                                                    NBV_type: Node-Based vector (displayed as a line from node)
+                                                                                    ONBV_type: NBV with a ball on the bottom (slower to render)
+                                                                                    SP_type: spherical markers
+                                                                                    NBSP_type: Node-Based spherical markers
+                                                                                    PL_type: planes*/
 typedef enum {SUMA_SCREEN, SUMA_LOCAL} SUMA_DO_CoordType; /*!< Coordinate system that Displayable object is attached to
                                                                   SCREEN is for a fixed system, LOCAL is for a mobile system,
                                                                   ie one that is rotated by the mouse movements */
@@ -178,14 +185,19 @@ typedef enum { SE_Empty,
                SE_RedisplayNow_AllVisible, SE_RedisplayNow_AllOtherVisible,  SE_SetLight0Pos, SE_OpenColFileSelection,
                SE_SaveDrawnROIFileSelection, SE_OpenDrawnROIFileSelection, SE_SendColorMapToAfni, SE_SaveSOFileSelection,
                SE_SetSOinFocus, SE_StartListening, SE_LoadViewFileSelection, SE_SaveViewFileSelection, SE_LoadSegDO,
-               SE_OpenDsetFileSelection, SE_OpenCmapFileSelection, SE_SetClip,
+               SE_OpenDsetFileSelection, SE_OpenCmapFileSelection, SE_SetClip, SE_OpenDsetFile, SE_OneOnly, SE_OpenSurfCont,
+               SE_SetSurfCont, SE_SetViewerCont, SE_SetRecorderCont,
                SE_BadCode} SUMA_ENGINE_CODE; /* DO not forget to modify SUMA_CommandCode */
-               
+typedef enum { SE_niEmpty,
+               SE_niSetSurfCont, SE_niSetViewerCont, SE_niSetRecorderCont, 
+               SE_niKillSuma,
+               SE_niBadCode} SUMA_NI_COMMAND_CODE;
+                                
 typedef enum { SEF_Empty, 
                SEF_fm, SEF_im, SEF_fv3, SEF_iv3, SEF_fv15, 
                SEF_iv15, SEF_i, SEF_f, SEF_s, SEF_vp, 
                SEF_cp, SEF_fp, SEF_ip, SEF_iv200, SEF_fv200, 
-               SEF_ivec, SEF_fvec,
+               SEF_ivec, SEF_fvec, SEF_ngr, SEF_nel, 
                SEF_BadCode} SUMA_ENGINE_FIELD_CODE; 
                
 typedef enum { SES_Empty,
@@ -563,11 +575,12 @@ typedef struct {
 
 /*! structure to hold the drawing of an ROI */
 typedef struct {   
+   char *idcode_str;    /*!< unique idcode for ROI */
+   char *Label; /*!< ascii label for ROI */ 
+
    SUMA_ROI_DRAWING_TYPE Type;   /*!< The type of ROI drawn, that would be closed path, etc, etc, */
 
-   char *idcode_str;    /*!< unique idcode for ROI */
    char *Parent_idcode_str; /*!< idcode of parent surface */
-   char *Label; /*!< ascii label for ROI */ 
    char *ColPlaneName;  /*!< Name of color plane that the ROI is painted in.
                      If this field is set to NULL then the ROI will be painted
                      in the generic ROI_Plane plane. For the moment, NULL is the only
@@ -862,10 +875,17 @@ typedef struct {
    float **dXYZ; /*!< Not implemented */
 } SUMA_ISINSPHERE;
 
+typedef struct {
+   char *idcode_str;
+   char *Label;
+   SUMA_DO_Types do_type;
+   
+} SUMA_ALL_DO;
+
 /*! Displayable Object Type */
 typedef struct {
    void *OP;   /*!< Object Pointer */
-   SUMA_DO_Types ObjectType; /*!< Type of displayable object */
+   SUMA_DO_Types ObjectType; /*!< Type of displayable object (redundant with OP->type) */
    SUMA_DO_CoordType CoordType; /*!< Type of coordinate system that the object is attached to
                                     This is used to determine whether the object is drawn before or 
                                     or after the shift and rotation matrices are applied */
@@ -1289,7 +1309,8 @@ typedef struct {
 typedef struct {
    char *idcode_str;    /*!< unique idcode for DO */
    char *Label; /*!< ascii label for DO */ 
-
+   SUMA_DO_Types do_type;
+   
    int NodeBased; /*!< flag: 1 if segments are formed by vectors at surface nodes */
    char *Parent_idcode_str; /*!< Parent surface's id 
                                  (only used if NodeBased = 1
@@ -1317,7 +1338,14 @@ typedef struct {
 typedef struct {
    char *idcode_str;    /*!< unique idcode for DO */
    char *Label; /*!< ascii label for DO */ 
-
+   SUMA_DO_Types do_type;
+   
+   int NodeBased; /*!< flag: 1 if segments are formed by vectors at surface nodes */
+   char *Parent_idcode_str; /*!< Parent surface's id 
+                                 (only used if NodeBased = 1
+                                 NULL if NodeBased)*/
+   int *NodeID; /*!< ID of the node at which the vector is represented
+                     NULL if NodeBased = 0 */
    GLfloat *cxyz; /*!< vector containing XYZ of centers (3*N_n elements long)*/
    GLUquadricObj *sphobj; /*!< quadric object, representing central sphere */
    int N_n; /*!< Number of spheres */
@@ -1332,6 +1360,45 @@ typedef struct {
    GLenum *stylev; /*!< Vector of sphere styles */
    
 }SUMA_SphereDO;
+
+typedef struct {
+   char *idcode_str;    /*!< unique idcode for DO */
+   char *Label; /*!< ascii label for DO */ 
+   SUMA_DO_Types do_type;
+   
+   int NodeBased; /*!< flag: 1 if segments are formed by vectors at surface nodes */
+   char *Parent_idcode_str; /*!< Parent surface's id 
+                                 (only used if NodeBased = 1
+                                 NULL if NodeBased)*/
+   int *NodeID; /*!< ID of the node at which the vector is represented
+                     NULL if NodeBased = 0 */
+ 
+} SUMA_NB_DO; /*!< generic struct for common fields to Node-Based DOs */
+
+/*!
+   Structure containg a bunch of planes 
+*/
+typedef struct {
+   char *idcode_str;    /*!< unique idcode for DO */
+   char *Label; /*!< ascii label for DO */ 
+   SUMA_DO_Types do_type;
+   
+   GLfloat *cxyz; /*!< vector containing XYZ of centers (3*N_n elements long)*/
+   GLfloat *pleq; /*!< plane equations 4*N_n elements long */
+   int N_n; /*!< Number of planes */
+   GLfloat LineWidth; /*!< LineWidth*/
+   GLfloat CommonBoxDims[3] ; /*!< common dimensions of box containing plane (centered on cxyz) */
+   GLfloat CommonCol[4]; /*!< common colors */
+   GLfloat *boxdimv; /*!< Vector of box dimensions radii, 3 elements per plane. NULL if using CommonBoxDims */
+   GLfloat *colv; /*!< Vector of plane colors, 4 elements per plane. NULL if using CommonCol */
+   GLfloat *NodeList;
+   GLint *FaceSetList;
+   GLfloat *nodecol;
+   GLfloat *NodeNormList;
+   int N_Node;
+   int N_FaceSet;
+   SUMA_RENDER_MODES PolyMode; /*!< polygon viewing mode, SRM_Fill, SRM_Line, SRM_Points */
+}SUMA_PlaneDO;
 
 /*! Structure containing the communication info and status with AFNI */
 typedef struct {
@@ -1407,7 +1474,11 @@ typedef enum { SUMA_STD_ZERO_CENTERED, SUMA_SCALE_BOX } SUMA_AxisType;
 
 /*! structure defining an axis object */
 typedef struct {
-   SUMA_AxisType type;
+   char *idcode_str; /*! idcode of axis */
+   char *Label;
+   SUMA_DO_Types do_type; 
+   
+   SUMA_AxisType atype;
    GLfloat XaxisColor[4] ;
    GLfloat YaxisColor[4] ;
    GLfloat ZaxisColor[4] ;
@@ -1423,8 +1494,6 @@ typedef struct {
    double mTspace;   /*!< Minor tick spacing */
    double mTsize;    /*!< Minor tick size */
    int DoCross;      /*!< if 1 then ticks are centered on line. (total length is same as *Tsize value)*/
-   char *Name; /*!< name of axis */
-   char *idcode_str; /*! idcode of axis */
 }SUMA_Axis;
 
 typedef struct {
@@ -1508,6 +1577,7 @@ typedef struct {
                            a good setting is such that SUMA_BACKGROUND_ATTENUATION_FACTOR * SUMA_DIM_AFNI_COLOR_FACTOR = 1
                             Watch for saturation effects!  */
 
+   int lit_for;   /*! 1 = lit for surfaces of normdir = 1, -1 for normdir = -1, 0 for not set. */
    GLfloat light0_position[4]; /*!< Light 0 position: 1st 3 vals --> direction of light . Last value is 0 -->  directional light*/
    GLfloat light1_position[4]; /*!< Light 1 position: 1st 3 vals --> direction of light. Last value is 0 -->  directional light*/
    GLfloat light0_color[4];   /*!< Light 0 color */
@@ -1648,6 +1718,14 @@ typedef struct {
    int N_rows; /*!< Number of rows in fm or im */
    int N_cols; /*!< Number of colums in fm or im */
    
+   NI_group *ngr;
+   SUMA_ENGINE_CODE ngr_Dest; /*!<  destination of ngr */
+   SUMA_ENGINE_SOURCE ngr_Source; /*!< OBSOLETE source of ngr*/
+   
+   NI_element *nel;
+   SUMA_ENGINE_CODE nel_Dest; /*!<  destination of nel */
+   SUMA_ENGINE_SOURCE nel_Source; /*!< OBSOLETE source of nel*/
+   
 } SUMA_EngineData;
 
 
@@ -1726,6 +1804,10 @@ typedef struct {
 
 /*! structure defining a Surface Object */
 typedef struct {
+   char *idcode_str; /*!< string containing the idcode of the surface */
+   char *Label; /*!< string containing a label for the surface. Used for window titles and saved image names */
+   SUMA_DO_Types do_type;
+   
    SUMA_SO_File_Type FileType; /*!< Type of Surface file */
    SUMA_SO_File_Format FileFormat; /*!< Format of Surface file ascii or binary*/
    SUMA_FileName Name; /*!< Directory and Name of surface object file (SO) */
@@ -1733,7 +1815,6 @@ typedef struct {
    SUMA_FileName Name_topo; /*!< Directory and Name of surface topology file  (for SureFit files)*/
    SUMA_FileName SpecFile; /*!< To be added for use in AFNI's mapping interface */
    
-   char *idcode_str; /*!< string containing the idcode of the surface */
    char *parent_vol_idcode_str; /*!< IDcode of the volume from which the surface was created. Called SurfVol (NOT SurfVol_AlndExp) 
                                     That ID does not usually refer to the volume from which VolPar is created. Except in the case 
                                     where you are viewing the surfaces on the orignal volume (SurfVol) then this field and
@@ -1743,7 +1824,6 @@ typedef struct {
    char *facenormals_idcode_str; /*!< ID of facenormals element */
    char *nodenormals_idcode_str; /*!< ID of nodenormals element */
    char *polyarea_idcode_str; /*!< ID of polygon areas element */
-   char *Label; /*!< string containing a label for the surface. Used for window titles and saved image names */
    char *Name_NodeParent; /*!< Node parent of the SO.   Node Indices of SO are into NodeList matrix of the NodeParent SO*/               
    char *Group_idcode_str;  /*!< IDcode of group */
    char *StandardSpace;   /*!< standard space of surface (orig, tlrc, stdxxx, etc.*/
@@ -1872,6 +1952,10 @@ typedef struct {
                      the values shown on the right of the colorbar in 
                      AFNI.
                      This field is NULL if the map is linear*/
+   float top_frac; /* Not all afni maps end with 1 as the top fraction.
+                      For equivalent mapping in AFNI, the range needs 
+                      to be multiplied by this factor, set to 0 if not 
+                      in use */ 
    int Sgn; /*!         +1  colormap is positive ranging (a la afni)  
                          0  field is not set
                          -1 colormap is negative ranging (a la afni)*/
@@ -1972,6 +2056,7 @@ typedef enum { SUMA_AFNI_STREAM_INDEX = 0, /*!< Index of SUMA<-->AFNI stream , a
                SUMA_GENERIC_LISTEN_LINE, /*!< Using socket  SUMA_TCP_LISTEN_PORT0, generic suma listen line*/
                SUMA_GEOMCOMP_LINE, /*!<  Using socket  SUMA_TCP_LISTEN_PORT0 + 1*/
                SUMA_BRAINWRAP_LINE, /*!<  Using socket SUMA_TCP_LISTEN_PORT0 + 2*/
+               SUMA_DRIVESUMA_LINE, /*!<  Using socket SUMA_TCP_LISTEN_PORT0 + 3*/
                SUMA_MAX_STREAMS /*!< Maximum number of streams, KEEP AT END */
             } SUMA_STREAM_INDICES;
             
@@ -2123,6 +2208,8 @@ typedef struct {
    int *Neighb_ind;        /*!< N_Neighb x 1 vector containing  nodes neighboring node i */
    float *Neighb_dist;     /*!< N_Neighb x 1 vector containing node distances from node i. 
                                These are the shortes distances ON THE GRAPH. */
+   float *Neighb_PropLoc;  /*!< N_Neighb x 3 vector containing XYZ of estimated node propagation
+                                from one layer to the next. */
 } SUMA_OFFSET_STRUCT;      /*!< The structure returned by SUMA_FormNeighbOffset */
 
 typedef struct {
@@ -2195,6 +2282,12 @@ typedef enum {
    SUMA_GPSO1_is_GPSO2,     /*!< SO1 and SO2 have the same  granddaddy*/
 } SUMA_DOMAIN_KINSHIPS; /*!< The type of relationships between surfaces, modify 
                               function SUMA_DomainKinships_String; */
+typedef struct {
+   char name[100];
+   double lastcall;
+   struct timeval tt;
+} SUMA_TIMER;
+#define SUMA_MAX_N_TIMER 50
 /*! structure containing information global to all surface viewers */
 typedef struct {
    SUMA_Boolean Dev; /*!< Flag for developer option (allows the use of confusing or kludge options) */
@@ -2258,6 +2351,7 @@ typedef struct {
 
    SUMA_AFNI_COLORS *scm;  /*!< a structure containing all the colormaps available to SUMA */
    DList *DsetList;  /*!< List containing datasets */
+   SUMA_Boolean Allow_Dset_Replace; /*!< Allow replacement of old dset with new dset having same id */
    
    int SUMA_ThrScalePowerBias; 
    SUMA_Boolean IgnoreVolreg; /*!< if YUP then ignore any Volreg or TagAlign transform in the header of the surface volume */
@@ -2269,6 +2363,11 @@ typedef struct {
    GLdouble ClipPlanes[4*SUMA_MAX_N_CLIP_PLANES]; /*!< Equations of  clipping planes */
    SUMA_CLIP_PLANE_TYPES ClipPlaneType[SUMA_MAX_N_CLIP_PLANES]; /*!< Screen clipping, object clipping, etc. */
    char ClipPlanesLabels[SUMA_MAX_N_CLIP_PLANES][9]; 
+
+   int N_Timer;
+   SUMA_TIMER Timer[SUMA_MAX_N_TIMER];
+   
+   char *cwd;
 } SUMA_CommonFields;
 
 typedef enum { SUMA_NO_SORT, SUMA_BY_PLANE_DISTANCE, SUMA_BY_SEGMENT_DISTANCE, SUMA_SORT_BY_LLC_DISTANCE, SUMA_SORT_BY_LL_QUAD } SUMA_SORT_BOX_AXIS_OPTION;
@@ -2312,6 +2411,7 @@ typedef struct {
    byte *mmask;
    int full_list;
    THD_3dim_dataset *mset;
+   int exists;
 }  SUMA_FORM_AFNI_DSET_STRUCT;
  
 #endif

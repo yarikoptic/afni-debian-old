@@ -1,3 +1,6 @@
+/* FILE NOW OBSOLETE. LEFT HERE FOR THE RECORD.
+J. MOLONY Oct. 2006 */
+
 #include "SUMA_suma.h"
 #include "matrix.h"
 #include "SUMA_SurfWarp.h"
@@ -82,8 +85,8 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_toy_circle_ParseInput(char *argv[], int a
    popt->N_ctrl_points = 1;
    popt->renew_weights = 0;
    popt->CtrlPts_iim = NULL;
+   popt->CtrlPts = NULL;
    popt->CtrlPts_i = NULL;
-   popt->CtrlPts_I = NULL;
    popt->CtrlPts_f = NULL;
    popt->Dtheta = NULL;
    popt->Nrm = NULL;    /* Access of rotation used in the spline weights function. */
@@ -95,6 +98,7 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_toy_circle_ParseInput(char *argv[], int a
    popt->neighb_check = 0;
    popt->pause = 0;
    popt->sigma = 0.0;
+   popt->M_time_steps = 10;
    snprintf(popt->outfile, 499*sizeof(char),"test_move");
    kar = 1;
    brk = NOPE;
@@ -184,6 +188,22 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_toy_circle_ParseInput(char *argv[], int a
          } 
          brk = 1;
       }
+      
+      if (!brk && (strcmp(argv[kar], "-M_time") == 0)) {
+         kar ++;
+         if (kar >= argc)  
+         {
+            fprintf (stderr, "need argument after -M_time \n");
+            exit (1);
+         }
+         popt->M_time_steps = atoi(argv[kar]);               
+         if (popt->M_time_steps <= 0 || popt->M_time_steps > 100) {
+            fprintf (stderr, "You are mad \n");
+            exit (1);
+         } 
+         brk = 1;
+      }
+      
       if (!brk && (strcmp(argv[kar], "-ctrl") == 0)) {
          kar ++;
          if (kar >= argc)  
@@ -295,10 +315,12 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_toy_circle_ParseInput(char *argv[], int a
       }
       /* allocate for CtrlPoints and initialize them */
       popt->CtrlPts_iim = (int *)SUMA_malloc(popt->N_ctrl_points * sizeof (int));
-      popt->CtrlPts_i = (double *)SUMA_calloc(popt->N_ctrl_points * 3, sizeof (double)); /* initial (t=0) XYZ location of each node */
-      popt->CtrlPts_f = (double *)SUMA_calloc(popt->N_ctrl_points * 3, sizeof (double)); /* final   (t=1) XYZ location of each node */
-      popt->CtrlPts_I = (double *)SUMA_calloc(popt->N_ctrl_points * 3, sizeof (double)); /* renewed initial XYZ location of each node */
-     
+      popt->CtrlPts = (double *)SUMA_calloc(popt->N_ctrl_points * 3, sizeof (double));    /* renewed initial (t=0) XYZ location of each node */
+      popt->CtrlPts_f = (double *)SUMA_calloc(popt->N_ctrl_points * 3, sizeof (double));  /* final   (t=1) XYZ location of each node */
+      popt->CtrlPts_i = (double *)SUMA_calloc(popt->N_ctrl_points * 3, sizeof (double));  /* initial XYZ location of each node, never renewed */
+                                                                                          /* Cp_i used for error calculations at end. */
+      
+      /* column offsets */
       /* column offsets */
       for (i=0; i<6; ++i) { co[i] = (i+shft)*popt->N_ctrl_points; }
       
@@ -306,9 +328,9 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_toy_circle_ParseInput(char *argv[], int a
          i3 = 3*i;
          if (shft) popt->CtrlPts_iim[i] = (int)far[i];
          else popt->CtrlPts_iim[i] = -1;
-         popt->CtrlPts_I[i3  ] = far[i+co[0]];
-         popt->CtrlPts_I[i3+1] = far[i+co[1]];        
-         popt->CtrlPts_I[i3+2] = far[i+co[2]];
+         popt->CtrlPts_i[i3  ] = far[i+co[0]];
+         popt->CtrlPts_i[i3+1] = far[i+co[1]];        
+         popt->CtrlPts_i[i3+2] = far[i+co[2]];
          popt->CtrlPts_f[i3  ] = far[i+co[3]];
          popt->CtrlPts_f[i3+1] = far[i+co[4]];
          popt->CtrlPts_f[i3+2] = far[i+co[5]];
@@ -321,7 +343,7 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_toy_circle_ParseInput(char *argv[], int a
             i3 = 3*i;
             fprintf(SUMA_STDERR, "%d   %.5f   %.5f   %.5f   %.5f   %.5f   %.5f   \n",
                                  popt->CtrlPts_iim[i],
-                                 popt->CtrlPts_I[i3  ], popt->CtrlPts_I[i3+1], popt->CtrlPts_I[i3+2],
+                                 popt->CtrlPts_i[i3  ], popt->CtrlPts_i[i3+1], popt->CtrlPts_i[i3+2],
                                  popt->CtrlPts_f[i3  ], popt->CtrlPts_f[i3+1], popt->CtrlPts_f[i3+2] );
          }
       }
@@ -345,20 +367,21 @@ int main (int argc,char *argv[])
    double oda, faa, error, dtheta=0.0, nrmi[3]={0.0, 0.0, 0.0}, nrmf[3]={0.0, 0.0, 0.0};
    int niter=0, a_niter, first_bad_niter = 0;
    SUMA_SurfaceObject *SO = NULL;
-   void * SO_name;
+   void *SO_name;
    char *shist=NULL;
    int nbad;
    int too_close = 0, need_neighb_adjust = 0, need_more_adjustment = 0;
    static double energy, energy_sum, time_elapsed;
+   SUMA_SPHERE_QUALITY SSQ;
    SUMA_Boolean exists;
       
    MyCircle *Ci = NULL;
    vector Wv;
    
-   SUMA_Boolean LocalHead = NOPE;
+   SUMA_Boolean LocalHead = YUP;
 
-	SUMA_mainENTRY;
    SUMA_STANDALONE_INIT;
+	SUMA_mainENTRY;
 
    /* Allocate space for DO structure */
 	SUMAg_DOv = SUMA_Alloc_DisplayObject_Struct (SUMA_MAX_DISPLAYABLE_OBJECTS);
@@ -376,7 +399,7 @@ int main (int argc,char *argv[])
    Ci = (MyCircle *)SUMA_malloc(sizeof (MyCircle)); 
    
    /* based on dim, fix N_sub */
-   if (opt->dom_dim == 2) {
+   if (opt->dom_dim < 3) {
       Ci->N_Node = opt->N_sub;
    } else {
       opt->N_sub = SUMA_ROUND((sqrt((float)( opt->N_sub - 2 ) / 10.0)));
@@ -397,7 +420,7 @@ int main (int argc,char *argv[])
    
    if(opt->dot == 1) { fprintf( stderr, "USING DOT PRODUCT RESTRICTION.\n"); } 
    
-   if (opt->dom_dim == 2) {
+   if (opt->dom_dim < 3) {
       if (opt->dbg_flag) { fprintf(stderr,"%s: Creating circle.\n", FuncName); }
 
       for (i = 0; i < Ci->N_Node; ++i)
@@ -473,7 +496,7 @@ int main (int argc,char *argv[])
    }
 
    /* Initialize renewable initial control points (for error computations). */  
-   for (i = 0; i < 3*opt->N_ctrl_points; ++i) opt->CtrlPts_i[i] = opt->CtrlPts_I[i]; 
+   for (i = 0; i < 3*opt->N_ctrl_points; ++i) opt->CtrlPts[i] = opt->CtrlPts_i[i]; 
    
    /* Initialize NewNodelist and Velocity Field. */
    for (i = 0; i < 3*Ci->N_Node; ++i) {
@@ -626,41 +649,44 @@ int main (int argc,char *argv[])
          }
       }
       
-      /* Check Sphere Quality.  Since want to check at the end of each iteration, need to start at niter = 1. */
-      if(!first_bad_niter || niter < first_bad_niter+5){ 
-         if (opt->neighb_adjust) { 
-            fprintf(SUMA_STDERR, "\nNITER = %d, a_niter = %d", niter, a_niter);
-            sprintf(outfile_SphereQuality, "SphereQuality_%d_%d", niter, a_niter);
-         } else {         
-            fprintf(SUMA_STDERR, "\nNITER = %d", niter);
-            sprintf(outfile_SphereQuality, "SphereQuality_%d", niter);
-         } 
-         SO_name = SUMA_Prefix2SurfaceName (outfile_SphereQuality, NULL, NULL, SUMA_VEC, &exists); 
-         for (i3=0; i3<3*SO->N_Node; ++i3) SO->NodeList[i3] = Ci->NewNodeList[i3];
-         SUMA_RECOMPUTE_NORMALS(SO);
-         shist = SUMA_HistString (NULL, argc, argv, NULL);
-         nbad = SUMA_SphereQuality(SO, outfile_SphereQuality , shist);
-         if(nbad && !first_bad_niter){ first_bad_niter = niter; }
-         if (shist) SUMA_free(shist); shist = NULL;
-         SUMA_Save_Surface_Object(SO_name, SO, SUMA_VEC, SUMA_ASCII, NULL);
+      if(opt->dom_dim > 2) {
+         /* Check Sphere Quality.  Since want to check at the end of each iteration, need to start at niter = 1. */
+         if(!first_bad_niter || niter < first_bad_niter+5){ 
+            if (opt->neighb_adjust) { 
+               fprintf(SUMA_STDERR, "\nNITER = %d, a_niter = %d", niter, a_niter);
+               sprintf(outfile_SphereQuality, "SphereQuality_%d_%d", niter, a_niter);
+            } else {         
+               fprintf(SUMA_STDERR, "\nNITER = %d", niter);
+               sprintf(outfile_SphereQuality, "SphereQuality_%d", niter);
+            } 
+            SO_name = SUMA_Prefix2SurfaceName (outfile_SphereQuality, NULL, NULL, SUMA_VEC, &exists); 
+            for (i3=0; i3<3*SO->N_Node; ++i3) SO->NodeList[i3] = Ci->NewNodeList[i3];
+            SUMA_RECOMPUTE_NORMALS(SO);
+            shist = SUMA_HistString (NULL, argc, argv, NULL);
+            SSQ = SUMA_SphereQuality(SO, outfile_SphereQuality , shist);
+            nbad = SSQ.N_bad_facesets;
+            if(nbad && !first_bad_niter){ first_bad_niter = niter; }
+            if (shist) SUMA_free(shist); shist = NULL;
+            SUMA_Save_Surface_Object(SO_name, SO, SUMA_VEC, SUMA_ASCII, NULL);
+         }
       }
- 
+
       /* Call spline weight function to recalculate spline weights for renew_weights option. */
       if (opt->renew_weights) { 
          if(LocalHead) {
             fprintf( SUMA_STDERR, "%s: RENEW_WEIGHTS OPTION -- Check renewed control points: \n", FuncName ); }
          for(i=0; i < opt->N_ctrl_points; ++i) {
             i3 = 3*i;
-            opt->CtrlPts_i[i3  ] = Ci->NewNodeList[3*(opt->CtrlPts_iim[i])  ];
-            opt->CtrlPts_i[i3+1] = Ci->NewNodeList[3*(opt->CtrlPts_iim[i])+1];
-            opt->CtrlPts_i[i3+2] = Ci->NewNodeList[3*(opt->CtrlPts_iim[i])+2];
+            opt->CtrlPts[i3  ] = Ci->NewNodeList[3*(opt->CtrlPts_iim[i])  ];
+            opt->CtrlPts[i3+1] = Ci->NewNodeList[3*(opt->CtrlPts_iim[i])+1];
+            opt->CtrlPts[i3+2] = Ci->NewNodeList[3*(opt->CtrlPts_iim[i])+2];
             
             Ci->Wv.elts[i3  ] = 0.0; 
             Ci->Wv.elts[i3+1] = 0.0; 
             Ci->Wv.elts[i3+2] = 0.0; 
          if(opt->dbg_flag) {
             fprintf( SUMA_STDERR, "%s: Control Point(%d) = [%11.8f;  %11.8f;   %11.8f] \n", FuncName, i, 
-                                    opt->CtrlPts_i[i3  ], opt->CtrlPts_i[i3+1], opt->CtrlPts_i[i3+2] ); }
+                                    opt->CtrlPts[i3  ], opt->CtrlPts[i3+1], opt->CtrlPts[i3+2] ); }
          }
          FindSplineWeights(Ci, opt); 
       } 
@@ -701,8 +727,8 @@ int main (int argc,char *argv[])
                           "#Col. 3: Error (ODA-FAA) in rad.\n"
                           "#Col. 4: Error (ODA-FAA) in deg.\n", FuncName, niter, dt);
       if (opt->CtrlPts_iim[i] >= 0) {
-         SUMA_ANGLE_DIST_NC( (&(opt->CtrlPts_f[i3])), (&(opt->CtrlPts_I[i3])), oda, nrmi); /* original desired angle */ 
-         SUMA_ANGLE_DIST_NC( (&(Ci->NewNodeList[3*opt->CtrlPts_iim[i]])), (&(opt->CtrlPts_I[i3])), faa, nrmf); /* final achieved angle */ 
+         SUMA_ANGLE_DIST_NC( (&(opt->CtrlPts_f[i3])), (&(opt->CtrlPts_i[i3])), oda, nrmi); /* original desired angle */ 
+         SUMA_ANGLE_DIST_NC( (&(Ci->NewNodeList[3*opt->CtrlPts_iim[i]])), (&(opt->CtrlPts_i[i3])), faa, nrmf); /* final achieved angle */ 
          error = abs(oda - faa);
          fprintf(SUMA_STDERR,"%d   %.5f   %.5f   %.15f   %.15f\n", opt->CtrlPts_iim[i], oda, faa, error, SUMA_R2D(error));
          if(need_neighb_adjust && opt->neighb_check){ 
@@ -739,24 +765,27 @@ int main (int argc,char *argv[])
       }
    }   
 
-   /* Write final surface to file, so can view in SUMA without taking the time of the -talk option. */
-   SO_name = SUMA_Prefix2SurfaceName (opt->outfile, NULL, NULL, SUMA_VEC, &exists); 
-   for (i3=0; i3<3*SO->N_Node; ++i3) SO->NodeList[i3] = Ci->NewNodeList[i3];
-   SUMA_RECOMPUTE_NORMALS(SO);
-   shist = SUMA_HistString (NULL, argc, argv, NULL);
-   fprintf( SUMA_STDERR, "\nNITER = %d", niter );
-   nbad = SUMA_SphereQuality(SO, opt->outfile , shist);   
-   if (nbad) {
-      fprintf(SUMA_STDERR,"Shist %s!:\n you have %d bad points!\n", FuncName, nbad);
-   } else {
-      fprintf(SUMA_STDERR,"%s: Happy pretend Valentine!\n"
-                          "   You have no errors when checking node normals!\n" , FuncName);
+   if(opt->dom_dim > 2) {
+      /* Write final surface to file, so can view in SUMA without taking the time of the -talk option. */
+      SO_name = SUMA_Prefix2SurfaceName (opt->outfile, NULL, NULL, SUMA_VEC, &exists); 
+      for (i3=0; i3<3*SO->N_Node; ++i3) SO->NodeList[i3] = Ci->NewNodeList[i3];
+      SUMA_RECOMPUTE_NORMALS(SO);
+      shist = SUMA_HistString (NULL, argc, argv, NULL);
+      fprintf( SUMA_STDERR, "\nNITER = %d", niter );
+      SSQ = SUMA_SphereQuality(SO, opt->outfile , shist);   
+      nbad = SSQ.N_bad_facesets;
+      if (nbad) {
+         fprintf(SUMA_STDERR,"Shist %s!:\n you have %d bad points!\n", FuncName, nbad);
+      } else {
+         fprintf(SUMA_STDERR,"%s: Happy pretend Valentine!\n"
+                             "   You have no errors when checking node normals!\n" , FuncName);
+      }
+      if (shist) SUMA_free(shist); shist = NULL;
+
+      if(first_bad_niter) { fprintf(SUMA_STDERR, "First iteration with facet or node flip = %d\n", first_bad_niter); }
+
+      SUMA_Save_Surface_Object(SO_name, SO, SUMA_VEC, SUMA_ASCII, NULL);
    }
-   if (shist) SUMA_free(shist); shist = NULL;
-   
-   if(first_bad_niter) { fprintf(SUMA_STDERR, "First iteration with facet or node flip = %d\n", first_bad_niter); }
-   
-   SUMA_Save_Surface_Object(SO_name, SO, SUMA_VEC, SUMA_ASCII, NULL);
 
    /*Cleanup*/
    
@@ -773,7 +802,7 @@ int main (int argc,char *argv[])
    if (Opt) Opt = SUMA_Free_Generic_Prog_Options_Struct(Opt);
    if (opt->CtrlPts_iim) SUMA_free(opt->CtrlPts_iim); opt->CtrlPts_iim = NULL;
    if (opt->CtrlPts_i) SUMA_free(opt->CtrlPts_i); opt->CtrlPts_i = NULL;
-   if (opt->CtrlPts_I) SUMA_free(opt->CtrlPts_I); opt->CtrlPts_I = NULL;
+   if (opt->CtrlPts) SUMA_free(opt->CtrlPts); opt->CtrlPts = NULL;
    if (opt->CtrlPts_f) SUMA_free(opt->CtrlPts_f); opt->CtrlPts_f = NULL;
    if (opt->Dtheta) SUMA_free(opt->Dtheta); opt->Dtheta = NULL;
    if (opt->Nrm) SUMA_free(opt->Nrm); opt->Nrm = NULL;

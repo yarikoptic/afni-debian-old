@@ -5871,3 +5871,145 @@
 19 Jun 2006
  * Fixed flip_memplot() error in coxplot/plot_cox.c, where non-line elements
      were being flipped when they shouldn't be.
+
+02 Jul 2006
+ * Inserted Powell's NEWUOA code into AFNI libmri.a.
+
+05 Jul 2006
+ * Modified mri_read_dicom.c to deal with big-endian file transfer syntax.
+ * Also check for overflow in 16-bit unsigned integer DICOM images.
+
+17 Jul 2006
+ * Added options -keepcen and -xyzscale to 3drefit.c.
+
+18 Jul 2006
+ * Fixed -xyzsave option in 3drefit.c to make multiple datasets match.
+
+21 Jul 2006
+ * NEWUOA stuff into 3dNLfim.c and simplex.c.
+
+24 Jul 2006
+ * model_linplusort.c (Linear+Ort) for 3dNLfim.c.
+
+04 Aug 2006
+ * Add max displacement to 3dvolreg.c.
+
+14 Aug 2006
+ * Add pairmax() to parser.f.
+
+22 Aug 2006
+ * Add WARPDRIVE_ROTMAT_* attribute outputs to 3dWarpDrive.c.
+
+05 Sep 2006
+ * Mod mri_read_1D() so that ending filename in ' character causes
+   transposition.  Removed this feature from thd_1Ddset.c to match.
+ * Changes to AFNI to allow on-the-fly cluster editing.
+
+06 Sep 2006
+ * Changes to let Ziad/SUMA initialize colors for surfaces.
+ * Check input datasets for the Mike Beauchamp syndrome.
+
+08 Sep 2006
+ * Cosmetic changes to AlphaSim to make '-quiet -quiet' turn off all
+   stdout printing except numerical table at end.
+
+21 Sep 2006
+ * Put 3dAllineate into the distribution.  But is not finished.
+ * Modified plug_nlfit.c to allow AFNI_NLFIM_METHOD to select optimizer.
+
+27 Sep 2006
+ * Modified correlation ratio in thd_correlate.c to use both Var(y|x) and
+     Var(x|y) for symmetry between base and target.  Seems to make
+     registration work better.
+ * Added -check and -master options to 3dAllineate.c.
+
+28 Sep 2006
+ * End of Res Publica Americana.
+
+29 Sep 2006
+ * 3dAllineate.c edited to make -linear the default interpolation during
+     alignment process, and -cubic for the output dataset.
+
+10 Oct 2006
+ * Modified 3dClipLevel.c to allow float input datasets.
+ * Modified 3drefit.c to make '-TR' option add a timeaxis to a non-3D+time
+     dataset.
+ * More changes to 3dAllineate.c.
+ * Program 3dAcost.c to calculate 3dAllineate costs on 2 bricks.
+
+18 Oct 2006
+ * Ugh.
+ * Modified afni_warp.c to only use warp_parent if the dataset being
+     sliced is an AFNI dataset (not NIfTI, MINC, etc.).
+ * Modified afni_func.c to print warning when forced view change
+     when switching datasets or sessions - for Adam Thomas.
+
+24 Oct 2006
+ * Modified 3dAutomask.c (etc.) to add -peel and -nbhr options, with
+     also a fix to stupid error made a couple days before.
+
+30 Oct 2006
+ * Modified plut_scatplot.c to copy 'Aboot' option from plug_histog.c.
+ * Modified THD_pearson() stuff in thd_correlate.c to remove mean.
+ * New program 3dLocalBistat.c -- joint local statistics between 2
+     datasets.
+
+31 Oct 2006
+ * New program 3dFWHMx -- does all sub-bricks.
+
+09 Nov 2006
+ * Modified 3dFWHM to do what 3dFWHMx does -- not use a voxel in a difference
+     unless it is in the mask as well.
+
+15 Nov 2006
+ * New program 3dBlurToFWHM.c.
+
+20 Nov 2006
+ * Multitudinous changes to 3dBlurToFWHM.c.
+
+06 Dec 2006
+ * Added ISQ_snap_agif() and ISQ_snap_mpeg().
+
+07 Dec 2006
+ * Added movie saving commands to afni_driver.c.
+ * Modified 3dFWHMx.c -geom option to add up logs rather than multiply up
+     results -- for large numbers of sub-bricks, can get overflow the old way.
+ * Added THD_medmad_bricks() and THD_meansigma_bricks() functions to
+     thd_median.c -- get location and dispersion statistics at same time,
+     for speed.
+
+08 Dec 2006
+ * Added -dem option to 1ddot.c.
+
+11 Dec 2006
+ * More changes to 3dBlurToFWHM.c -- de-median and de-MAD before blurring and
+     before estimating blur, to be somewhat more self-consistent.
+ * Added SAVE_PNG to the roster of AFNI driver commands.
+
+14 Dec 2006
+ * Added SAVE_FILTERED to the roster of AFNI driver commands.
+
+15 Dec 2006
+ * Made SAVE_FILTERED work with graph windows -- by modifying mri_write_pnm()
+     to write through a filter if the output filename starts with '|'.
+
+19 Dec 2006
+ * New constrained optimizer in powell_int.c.
+
+20 Dec 2006
+ * mri_purge.c for purging/unpurging MRI_IMAGEs to disk files.
+ * modify thd_cliplevel.c to do float->int conversion inline, rather
+     than through a temp image (saves on memory).
+ * modify mrilib.h to change MRI_BYTE_PTR() (etc.) macro to use
+     mri_data_pointer() function, which will invoke mri_unpurge()
+     if necessary.  This also entailed changing a lot of functions
+     to avoid using the im.*_data pointers, which I eventually want
+     to eliminate entirely.
+
+21 Dec 2006
+ * Made the change to 'void *' -- no more im.short_data (etc.).  Changes
+     in a bunch more places.
+ * Modified mri_purger.c to delete extant TIM_* files when exit() happens.
+ * When AFNI_IMAGE_GLOBALRANGE is yes, don't do redisplay on isqDR_setrange.
+     Causes an unpleasant flickering in the image viewer window.  Changes
+     to afni.c (AFNI_range_setter()), imseq.c, etc.

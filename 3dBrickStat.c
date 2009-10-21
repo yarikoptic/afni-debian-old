@@ -89,7 +89,7 @@ int main( int argc , char * argv[] )
    negative_flag = -1;
    zero_flag = -1;
    nan_flag = -1;
-   perc_flag = -1;
+   perc_flag = 0;
    
    datum = MRI_float;
    while( nopt < argc && argv[nopt][0] == '-' ){
@@ -256,12 +256,9 @@ int main( int argc , char * argv[] )
            
          }
          mask_dset = THD_open_dataset(argv[++nopt]) ;
-         if( mask_dset == NULL ){
-            ERROR_exit(" ERROR: can't open -mask dataset!"); 
-         }
-         if( mmm != NULL ){
-            ERROR_exit(" ERROR: can't have 2 -mask options!"); 
-         }
+         CHECK_OPEN_ERROR(mask_dset,argv[nopt]) ;
+         if( mmm != NULL )
+           ERROR_exit(" ERROR: can't have 2 -mask options!"); 
          mmm = THD_makemask( mask_dset , 0 , 1.0,-1.0 ) ;
          mmvox = DSET_NVOX( mask_dset ) ;
 
@@ -314,9 +311,7 @@ int main( int argc , char * argv[] )
    }
 
    old_dset = THD_open_dataset( argv[nopt] ) ;
-   if( !ISVALID_DSET(old_dset) ){
-      ERROR_exit(" Can't open dataset %s",argv[nopt]); 
-   }
+   CHECK_OPEN_ERROR(old_dset,argv[nopt]) ;
 
    nxyz = DSET_NVOX(old_dset) ;
    if( mmm != NULL && mmvox != nxyz ){

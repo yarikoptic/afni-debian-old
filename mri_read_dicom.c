@@ -2,6 +2,8 @@
 
 /*-----------------------------------------------------------------------------------*/
 
+#define NWMAX 2  /* max number of warning message of each type to print */
+
 #define NMOMAX 256                 /* never seen one this big!!! */
 typedef struct {
   int good ;                       /* data in here is good? */
@@ -75,6 +77,8 @@ static char *elist[] = {
  "0029 1010" ,  /* Siemens addendum #1 */
  "0029 1020" ,  /* Siemens addendum #2 */
 
+ "0002 0010" ,  /* Transfer Syntax [RWC - 05 Jul 2006] */
+
 NULL } ;
 
 #define NUM_ELIST (sizeof(elist)/sizeof(char *)-1)
@@ -112,6 +116,8 @@ NULL } ;
 #define E_SIEMENS_1                  26    /* 31 Oct 2002 */
 #define E_SIEMENS_2                  27
 
+#define E_TRANSFER_SYNTAX            28    /* 05 Jul 2006 */
+
 /*---------------------------------------------------------------------------*/
 /* global set via 'to3d -assume_dicom_mosaic'            13 Mar 2006 [rickr] */
 int assume_dicom_mosaic = 0;   /* (case of 1 is equivalent to Rich's change) */
@@ -124,7 +130,7 @@ MRI_IMARR * mri_read_dicom( char *fname )
 {
    char *ppp , *ddd ;
    off_t poff ;
-   unsigned int plen ;
+   int plen ;
    char *epos[NUM_ELIST] ;
    int ii,jj , ee , bpp , datum ;
    int nx,ny,nz , swap , shift=0 ;
@@ -151,11 +157,20 @@ MRI_IMARR * mri_read_dicom( char *fname )
    char *sexi_start;   /* KRH 25 Jul 2003 */
    char *sexi_end;
 
+   int ts_endian = 1 ; /* 05 Jul 2006 - transfer syntax endian-ness
+                                      - 1 = little endian, 0 = big - RWCox */
+   int un16 = 0 ;      /* 05 Jul 2006 - is it 16 bit unsigned data? */
+   int ov16 = 0 ;      /*             - did 16 bit overflow occur? */
+
 ENTRY("mri_read_dicom") ;
 
    if( str_sexinfo != NULL ){ free(str_sexinfo); str_sexinfo=NULL; }
 
-   if( !mri_possibly_dicom(fname) ) RETURN(NULL) ;  /* 07 May 2003 */
+   if( !mri_possibly_dicom(fname) ){                /* 07 May 2003 */
+     if( AFNI_yesenv("AFNI_DICOM_VERBOSE") )
+       ERROR_message("file %s is not possibly DICOM",fname) ;
+     RETURN(NULL) ;
+   }
 
    /* extract header info from file into a string
       - cf. mri_dicom_hdr.[ch]
@@ -164,19 +179,10 @@ ENTRY("mri_read_dicom") ;
    mri_dicom_nohex(1) ;              /* don't print ints in hex mode */
    mri_dicom_noname(1) ;             /* don't print names, just tags */
    ppp = mri_dicom_header( fname ) ; /* print header to malloc()-ed string */
-   if( ppp == NULL ) RETURN(NULL);   /* didn't work; not a DICOM file? */
-
-   /* find out where the pixel array is in the file */
-
-   mri_dicom_pxlarr( &poff , &plen ) ;
-   if( plen <= 0 ){ free(ppp) ; RETURN(NULL); }
-
-   /* check if file is actually this big (maybe it was truncated) */
-
-   { unsigned int psiz , fsiz ;
-     fsiz = THD_filesize( fname ) ;
-     psiz = (unsigned int)(poff) + plen ;
-     if( fsiz < psiz ){ free(ppp) ; RETURN(NULL); }
+   if( ppp == NULL ){                /* didn't work; not a DICOM file? */
+     if( AFNI_yesenv("AFNI_DICOM_VERBOSE") )
+       ERROR_message("file %s is not interpretable as DICOM",fname) ;
+     RETURN(NULL) ;
    }
 
    /* find positions in header of elements we care about */
@@ -184,26 +190,113 @@ ENTRY("mri_read_dicom") ;
    for( ee=0 ; ee < NUM_ELIST ; ee++ )
      epos[ee] = strstr(ppp,elist[ee]) ;
 
+   /* Determine if we need to swap bytes after reading image data */
+   /* DICOM files are stored in LSB first (little endian) mode    */
+   /* 05 Jul 2006 - not necessarily: check transfer syntax - RWC  */
+
+   RWC_set_endianosity() ;
+
+   /* Transfer Syntax possibilities for the image data are:
+
+        "1.2.840.10008.1.2"       = implicit little endian (default)
+        "1.2.840.10008.1.2.1"     = explicit little endian
+        "1.2.840.10008.1.2.2"     = explicit big endian
+
+      Various other possibilities (not supported herein) include:
+
+        "1.2.840.10008.1.2.4.70"  = lossless JPEG
+        "1.2.840.10008.1.2.4.57"  = another lossless JPEG
+        "1.2.840.10008.1.2.4.50"  = 8-bit lossy JPEG
+        "1.2.840.10008.1.2.4.51"  = 12-bit lossy JPEG
+        "1.2.840.10008.1.2.5"     = RLE compression
+        "1.2.840.10008.1.2.4.80"  = lossless JPEG-LS
+        "1.2.840.10008.1.2.4.81"  = near-lossless JPEG-LS
+        "1.2.840.10008.1.2.4.90"  = lossless JPEG-2000
+        "1.2.840.10008.1.2.4.91"  = lossy JPEG-2000
+        "1.2.840.10008.1.2.4.100" = MPEG-2
+        "1.2.840.10008.1.2.1.99"  = 'deflate' compression
+
+      Plus, 'private' transfer syntaxes are legal.  05 Jul 2006 - RWCox */
+
+   if( epos[E_TRANSFER_SYNTAX] != NULL ){
+     ddd = strstr(epos[E_TRANSFER_SYNTAX],"//") ;
+     if( ddd != NULL ){
+       char ts[256]="\0" ;
+       sscanf(ddd+2,"%254s",ts) ;
+       ts_endian = -1 ;
+       if( strlen(ts) >= 17 && strncmp(ts,"1.2.840.10008.1.2",17)==0 ){
+         if( strcmp(ts,"1.2.840.10008.1.2.2") == 0 )        /* big endian */
+           ts_endian = 0 ;  /* big endian */
+         else if( strcmp(ts,"1.2.840.10008.1.2.1") == 0 ||
+                  strcmp(ts,"1.2.840.10008.1.2"  ) == 0   ) /* little endian */
+           ts_endian = 1 ;
+       }
+       if( ts_endian < 0 ){
+         static int nwarn=0 ;
+         if( nwarn < NWMAX )
+           WARNING_message("DICOM file %s: unsupported Transfer Syntax '%s'",fname,ts) ;
+         if( nwarn == NWMAX )
+           WARNING_message("DICOM: no more Transfer Syntax messages will be printed") ;
+         nwarn++ ;
+       }
+     }
+   }
+
+   if( ts_endian < 0 ) ts_endian = 1 ;
+
+   swap = (ts_endian != LITTLE_ENDIAN_ARCHITECTURE) ;
+
+   /* find out where the pixel array is in the file */
+
+   mri_dicom_pxlarr( &poff , &plen ) ;
+   if( plen <= 0 || poff == 0 ){
+     ERROR_message("DICOM file %s: ILLEGAL plen=%d  poff=%u",
+                   fname , plen , (unsigned int)poff ) ;
+     free(ppp); RETURN(NULL);
+   }
+
+   /* check if file is actually this big (maybe it was truncated) */
+
+   { unsigned int psiz , fsiz ;
+     fsiz = THD_filesize( fname ) ;
+     psiz = (unsigned int)(poff) + (unsigned int)(plen) ;
+     if( fsiz < psiz ){
+       ERROR_message("DICOM file %s: plen=%d  poff=%u  filesize=%u",
+                     fname , plen , (unsigned int)poff , fsiz ) ;
+       free(ppp) ; RETURN(NULL);
+     }
+   }
+
    /* see if the header has the elements we absolutely need */
 
    if( epos[E_ROWS]           == NULL ||
        epos[E_COLUMNS]        == NULL ||
-       epos[E_BITS_ALLOCATED] == NULL   ){ free(ppp) ; RETURN(NULL); }
+       epos[E_BITS_ALLOCATED] == NULL   ){
+
+     ERROR_message("DICOM file %s: missing mandatory fields",fname) ;
+     free(ppp) ; RETURN(NULL);
+   }
 
    /* check if we have 1 sample per pixel (can't deal with 3 or 4 now) */
 
    if( epos[E_SAMPLES_PER_PIXEL] != NULL ){
       ddd = strstr(epos[E_SAMPLES_PER_PIXEL],"//") ;
-      if( ddd == NULL ){ free(ppp) ; RETURN(NULL); }
-      ii = 0 ; sscanf(ddd+2,"%d",&ii) ;
-      if( ii != 1 ){ free(ppp) ; RETURN(NULL); }
+      ii  = 0 ; sscanf(ddd+2,"%d",&ii) ;
+      if( ii != 1 ){
+        ERROR_message("DICOM file %s: %d samples per pixel -- too much!",
+                      fname,ii) ;
+        free(ppp) ; RETURN(NULL);
+      }
    }
 
    /* check if photometric interpretation is MONOCHROME (don't like PALETTE) */
 
    if( epos[E_PHOTOMETRIC_INTERPRETATION] != NULL ){
       ddd = strstr(epos[E_PHOTOMETRIC_INTERPRETATION],"MONOCHROME") ;
-      if( ddd == NULL ){ free(ppp) ; RETURN(NULL); }
+      if( ddd == NULL ){
+        ERROR_message("DICOM file %s: not MONOCHROME!",fname) ;
+        free(ppp) ; RETURN(NULL);
+      }
    }
 
    /* check if we have 8, 16, or 32 bits per pixel */
@@ -212,7 +305,10 @@ ENTRY("mri_read_dicom") ;
    if( ddd == NULL ){ free(ppp); RETURN(NULL); }
    bpp = 0 ; sscanf(ddd+2,"%d",&bpp) ;
    switch( bpp ){
-      default: free(ppp); RETURN(NULL);    /* bad value */
+      default:
+        ERROR_message(
+          "DICOM file %s: unsupported Bits Allocated = %d", fname , bpp ) ;
+        free(ppp); RETURN(NULL);    /* bad value */
       case  8: datum = MRI_byte ; break ;
       case 16: datum = MRI_short; break ;
       case 32: datum = MRI_int  ; break ;  /* probably not present in DICOM? */
@@ -223,7 +319,6 @@ ENTRY("mri_read_dicom") ;
 
    /* check if BITS_STORED and HIGH_BIT are aligned */
 
-#define NWMAX 2
    if( epos[E_BITS_STORED] != NULL && epos[E_HIGH_BIT] != NULL ){
      int bs=0 , hb=0 ;
      ddd = strstr(epos[E_BITS_STORED],"//") ; sscanf(ddd+2,"%d",&bs) ;
@@ -305,7 +400,10 @@ ENTRY("mri_read_dicom") ;
    /* if didn't get nz above, make up a value */
 
    if( nz == 0 ) nz = plen / (bpp*nx*ny) ;    /* compute from image array size */
-   if( nz == 0 ){ free(ppp) ; RETURN(NULL); }
+   if( nz == 0 ){
+     ERROR_message("DICOM file %s: not enough data for 1 slice!",fname) ;
+     free(ppp) ; RETURN(NULL);
+   }
 
    /*-- 28 Oct 2002: Check if this is a Siemens mosaic.        --*/
    /*-- 02 Dec 2002: Don't use Acquisition Matrix anymore;
@@ -529,6 +627,23 @@ ENTRY("mri_read_dicom") ;
 
    /* check if we might have 16 bit unsigned data that fills all bits */
 
+   if( bpp == 2 ){
+     if( epos[E_PIXEL_REPRESENTATION] != NULL ){
+       ddd = strstr(epos[E_PIXEL_REPRESENTATION],"//") ;
+       if( ddd != NULL ){
+         ii = 0 ; sscanf( ddd+2 , "%d" , &ii ) ;
+         if( ii == 0 ) un16 = 1 ;                /* unsigned */
+       }
+     }
+     if( un16 && epos[E_HIGH_BIT] != NULL ){
+       ddd = strstr(epos[E_HIGH_BIT],"//") ;
+       if( ddd != NULL ){
+         ii = 0 ; sscanf( ddd+2 , "%d" , &ii ) ;
+         if( ii < 15 ) un16 = 0 ;               /* but less than 16 bits */
+       }
+     }
+   }
+
 #if 0
    if( bpp == 2 ){
      if( epos[E_PIXEL_REPRESENTATION] != NULL ){
@@ -552,14 +667,13 @@ ENTRY("mri_read_dicom") ;
    /** Finally! Read images from file. **/
 
    fp = fopen( fname , "rb" ) ;
-   if( fp == NULL ){ free(ppp) ; RETURN(NULL); }
+   if( fp == NULL ){
+     ERROR_message("DICOM file %s: can't open!?",fname) ;
+     free(ppp) ; RETURN(NULL);
+   }
    lseek( fileno(fp) , poff , SEEK_SET ) ;
 
    INIT_IMARR(imar) ;
-
-   /* DICOM files are stored in LSB first (little endian) mode */
-
-   RWC_set_endianosity() ; swap = !LITTLE_ENDIAN_ARCHITECTURE ;
 
    /* 28 Oct 2002: must allow for 2D mosaic mode */
 
@@ -646,8 +760,9 @@ ENTRY("mri_read_dicom") ;
          if( swap ) im->was_swapped = 1 ;
 
          ADDTO_IMARR(imar,im) ;
-       }
-     }
+
+       } /* end of x sub-image loop */
+     } /* end of y sub-image loop */
      free(dar) ;  /* don't need no more; copied all data out of it now */
 
      /* truncate zero images out of tail of mosaic */
@@ -700,6 +815,19 @@ MCHECK ;
    } /* end of mosaic input mode */
 
    fclose(fp) ;     /* 10 Sep 2002: oopsie - forgot to close file */
+
+   /*-- 05 Jul 2006 - check for 16 bit overflow --*/
+
+   if( un16 ){
+     for( ov16=ii=0 ; ii < IMARR_COUNT(imar) ; ii++ ){
+       short *sar = MRI_SHORT_PTR( IMARR_SUBIM(imar,ii) ) ;
+       for( jj=0 ; jj < im->nvox ; jj++ ) if( sar[jj] < 0 ) ov16++ ;
+     }
+     if( ov16 )
+       WARNING_message(
+        "DICOM file %s: unsigned 16-bit; AFNI stores signed: %d pixels < 0" ,
+          fname , ov16 ) ;
+   }
 
    /*-- 23 Dec 2002: implement Rescale, if ordered --*/
 
@@ -1159,7 +1287,7 @@ int mri_imcount_dicom( char *fname )
 {
    char *ppp , *ddd ;
    off_t poff ;
-   unsigned int plen ;
+   int plen ;
    char *epos[NUM_ELIST] ;
    int ii , ee , bpp , datum ;
    int nx,ny,nz ;
@@ -1191,7 +1319,7 @@ ENTRY("mri_imcount_dicom") ;
 
    { unsigned int psiz , fsiz ;
      fsiz = THD_filesize( fname ) ;
-     psiz = (unsigned int)(poff) + plen ;
+     psiz = (unsigned int)(poff) + (unsigned int)(plen) ;
      if( fsiz < psiz ){ free(ppp) ; RETURN(0); }
    }
 
@@ -1210,7 +1338,6 @@ ENTRY("mri_imcount_dicom") ;
 
    if( epos[E_SAMPLES_PER_PIXEL] != NULL ){
       ddd = strstr(epos[E_SAMPLES_PER_PIXEL],"//") ;
-      if( ddd == NULL ){ free(ppp) ; RETURN(0); }
       ii = 0 ; sscanf(ddd+2,"%d",&ii) ;
       if( ii != 1 ){ free(ppp) ; RETURN(0); }
    }

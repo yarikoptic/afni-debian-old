@@ -170,9 +170,9 @@ int main (int argc,char *argv[])
                   Do_area, Do_edges, Do_vol, Do_sph, NewCent, Do_cord, Do_TriNorm, 
                   Do_NodeNorm, Do_en, Do_in, LocalHead = NOPE;  
    
+	SUMA_STANDALONE_INIT;
    SUMA_mainENTRY;
    
-	SUMA_STANDALONE_INIT;
    
 	/* Allocate space for DO structure */
 	SUMAg_DOv = SUMA_Alloc_DisplayObject_Struct (SUMA_MAX_DISPLAYABLE_OBJECTS);
@@ -567,7 +567,7 @@ int main (int argc,char *argv[])
    histnote = SUMA_HistString (NULL, argc, argv, NULL);
    
    if (Do_sph) {
-      float *sph=NULL;
+      double *sph=NULL;
       sprintf(OutName, "%s.sphcoord.1D.dset", OutPrefix);
       if (SUMA_filexists(OutName)) {
          SUMA_S_Err("Edge output file exists.\nWill not overwrite.");

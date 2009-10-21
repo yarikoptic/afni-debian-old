@@ -10,7 +10,6 @@
  *   - AFNI_process_NIML_data() has been broken into many process_NIML_TYPE()
  *     functions.  Functionality has been added for local_domain_parents, such
  *     that surface data is sent per LDP, not per surface.
- *
  * 25 Oct 2004 [rickr]
  *   - use vol2surf for all surfaces now (so nvused is no longer computed)
  *   - in ldp_surf_list, added _ldp suffix and full_label_ldp for clarity
@@ -22,14 +21,14 @@
  *   - prepare for sending data to suma (but must still define new NIML type)
  *     can get data and global threshold from vol2surf
  *   - for users, try to track actual LDP label in full_label_ldp
- *
  * 04 Jan 2005 [rickr]
  *   - process_NIML_SUMA_ixyz: a new surface will replace the existing one
  *   - added g_show_as_popup, receive messages default to terminal
  *   - re-wrote receive messages, only to be shorter
- *
  * 11 Jan 2005 [rickr]
  *   - slist_choose_surfs(): do slist_check_user_surfs() for nsurf == 1
+ * 08 Aug 2006 [rickr]
+ *   - get spec_file name from suma via surface_specfile_name atr
  *----------------------------------------------------------------------*/
 
 /**************************************/
@@ -1272,6 +1271,7 @@ static int process_NIML_SUMA_ixyz( NI_element * nel, int ct_start )
    int nss = GLOBAL_library.sslist->num_sess ;
    int ct_read = 0, ct_tot = 0 ;
    char msg[1024] ;
+   char *scon_tog , *scon_box , *scon_lin , *scon_plm ;
 
 ENTRY("process_NIML_SUMA_ixyz");
 
@@ -1395,10 +1395,32 @@ ENTRY("process_NIML_SUMA_ixyz");
    else
      MCW_strncpy(ag->label_ldp,idc,64) ;
 
+   /*-- 06 Aug 2006 [rickr]: get the spec file for this surface  --*/
+   /*   Note that ziad is sending both surface_specfile_name and   */
+   /*   surface_specfile_path.  We may prepend the path later.     */
+
+   idc = NI_get_attribute( nel , "surface_specfile_name" ) ;
+   if( idc == NULL )
+     strcpy(ag->spec_file,"NO_SPEC_FILE");
+   else
+     MCW_strncpy(ag->spec_file,idc,64) ;  /* THD_MAX_NAME for path, actually */
+
    /*-- set IDCODEs of surface and of its dataset --*/
 
    if( dset != NULL )
      MCW_strncpy( ag->idcode_dset , dset->idcode.str , 32 ) ;
+
+   /*-- 06 Sep 2006: set Ziad's stupid colors --*/
+
+   scon_box = NI_get_attribute( nel , "afni_surface_controls_nodes"     ) ;
+   scon_lin = NI_get_attribute( nel , "afni_surface_controls_lines"     ) ;
+#if 0
+   scon_tog = NI_get_attribute( nel , "afni_surface_controls_toggle"    ) ;
+   scon_plm = NI_get_attribute( nel , "afni_surface_controls_plusminus" ) ;
+#endif
+
+   if( scon_box != NULL || scon_lin != NULL )
+     AFNI_init_suma_color( surf_num , scon_box , scon_lin ) ;
 
    /*-- pointers to the data columns in the NI_element --*/
 
@@ -1460,6 +1482,9 @@ ENTRY("process_NIML_SUMA_ixyz");
 
    /* 16 Jun 2003: if need be, switch sessions and anatomy */
 
+/* --- do not jump now, suma may send more data   28 Sep 2006 [rickr] --- */
+/*     (suma will send a 'switch underlay' command when ready)            */
+#if 0
    if( dset != NULL && find.sess_index != im3d->vinfo->sess_num ){
      cbs.ival = find.sess_index ;
      AFNI_finalize_dataset_CB( im3d->vwid->view->choose_sess_pb ,
@@ -1472,6 +1497,8 @@ ENTRY("process_NIML_SUMA_ixyz");
                                (XtPointer) im3d ,  &cbs          ) ;
    }
 #endif
+
+#endif  /*---  28 Sep 2006 --- */
 
    SHOW_MESSAGE(msg) ;
 
@@ -2149,7 +2176,7 @@ static void process_NIML_AFNI_dataset( NI_group *ngr , int ct_start )
    THD_3dim_dataset *dset , *old_dset ;
    THD_slist_find find ;
    THD_session *ss ;
-   int ii , vv , ww ;
+   int ii , vv ;
 
    int ct_read = 0, ct_tot = 0 ;
    char msg[1024] ;

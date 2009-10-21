@@ -952,6 +952,15 @@ N.B.: At this moment (26 Jan 2001), only the AFNI program itself is
       this purpose.  The goal is to make it easier to find bugs, and
       localize crashes.
 
+-------------------------
+Variable: AFNI_TRACE_FILE
+-------------------------
+If this variable is set, then the output from the AFNI function tracing
+macros will be written to a file with that name, rather than to stdout.
+This variable cannot be set in .afnirc; the intention is to provide a
+way to get 'clean' tracing output (not mixed up with other program junk)
+that can be fed to Ziad Saad's AnalyzeTrace function.
+
 ------------------------
 Variable: AFNI_ROTA_ZPAD
 ------------------------
@@ -2219,6 +2228,15 @@ Variable: AFNI_JPEG_COMPRESS
 This variable determines the compression quality of JPEG files saved in
 the AFNI GUI and 3dDeconvolve. Its value can be set to an integer from 
 1 to 100. If not set, the default value is 95%.
+
+---------------------------
+Variable: AFNI_NLFIM_METHOD
+---------------------------
+Can be used to set the optimization method using in the NLfit plugin
+(not in 3dNLfim).  The methods available are
+  SIMPLEX (the default)
+  POWELL  (the NEWUOA method)
+  BOTH    (use both methods, choose the 'best' result)
 
 =============================================
 | Robert W Cox, PhD                         |

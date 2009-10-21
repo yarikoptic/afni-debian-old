@@ -2,12 +2,22 @@
 #define SUMA_MACROSm_INCLUDED
 
 
+#ifdef isfinite
+# define SUMA_IS_GOOD_FLOAT(x) isfinite(x) /* stolen from Bob's thd_floatscan.c */
+#else
+# define SUMA_IS_GOOD_FLOAT(x) finite(x)
+#endif
+
+/*!   sqrt(2 pi) and 1/sqrt(2 pi) */
+#define SQ_2PI 2.50662827463100024161
+#define iSQ_2PI 0.39894228040143270286
+
 /*!
    Macro to create a new ID code at random (when strn = NULL) or a hash of a string
    written mostly to allow for the allocation of newcode with SUMA's functions
 */
 #define SUMA_NEW_ID(newcode, strn) { \
-   if ((newcode)) { SUMA_SL_Err("newcode pointer must be null"); } \
+   if ((newcode)) { SUMA_S_Err("newcode pointer must be null"); } \
    else if (!(strn)) { (newcode) = (char*)SUMA_calloc(SUMA_IDCODE_LENGTH, sizeof(char)); UNIQ_idcode_fill((newcode)); } \
    else {   char *m_tmp; m_tmp = UNIQ_hashcode((strn)); (newcode) = SUMA_copy_string(m_tmp); free(m_tmp); m_tmp = NULL; }  \
 }
@@ -101,11 +111,33 @@
 
 #define SUMA_SIGN(a) ( ((a) < 0) ? -1 : 1 )
 
+#define SUMA_SIGN_CHAR(p)  ( ( (p) < 0 ) ? '-' : '+' )
+
 #define SUMA_MIN_PAIR(a,b)   ( ((a) <= (b)) ? a : b )
 
 #define SUMA_MAX_PAIR(a,b)   ( ((a) <= (b)) ? b : a )
 
 #define SUMA_ABS(a) ( ((a) < 0 ) ? -(a) : a )
+
+#define SUMA_COMPLEX_ADD(a,b,m) {   \
+   (m).r = (a).r+(b).r; \
+   (m).i = (a).i+(b).i;   }
+#define SUMA_COMPLEX_REAL_ADD(a,b,m) {   \
+   (m).r = (a).r+(b); \
+   (m).i = (a).i;   }
+#define SUMA_COMPLEX_MULT(a,b,m) {  \
+   (m).r = (a).r*(b).r - (a).i*(b).i; \
+   (m).i = (a).i*(b).r + (a).r*(b).i;  }
+#define SUMA_COMPLEX_SCALE(a,f,m) {\
+   (m).r = (a).r*(f); \
+   (m).i = (a).i*(f);     }
+#define SUMA_COMPLEX_S2(a) ((a).r*(a).r+(a).i*(a).i)
+#define SUMA_COMPLEX_ABS(a) sqrt(SUMA_COMPLEX_S2(a))
+
+#define SUMA_COMPLEX_INV(a,ai) { \
+   double m_a=SUMA_COMPLEX_S2(a); \
+   ai.r = a.r/m_a;   ai.i = -a.i/m_a; \
+}
 
 #define SUMA_POW2(a) ((a)*(a))
 
@@ -277,6 +309,15 @@ if Dist = 0, point on plane, if Dist > 0 point above plane (along normal), if Di
 }
 
 /*!
+   Equation of a plane given its normal and a point
+   See also SUMA_Plane_Equation
+*/
+#define SUMA_PLANE_NORMAL_POINT(N, P, Eq) {   \
+   Eq[0] = N[0]; Eq[1] = N[1]; Eq[2] = N[2]; \
+   Eq[3] = -(Eq[0]*P[0] + Eq[1]*P[1] + Eq[2]*P[2]);   \
+}
+
+/*!
    determines the bounding box for a triangle 
 */
 #define SUMA_TRIANGLE_BOUNDING_BOX(n1, n2, n3, min_v, max_v){  \
@@ -287,6 +328,65 @@ if Dist = 0, point on plane, if Dist > 0 point above plane (along normal), if Di
    max_v[1] = SUMA_MAX_PAIR( (n1)[1], (n2)[1]); max_v[1] = SUMA_MAX_PAIR( (n3)[1], max_v[1]);   \
    max_v[2] = SUMA_MAX_PAIR( (n1)[2], (n2)[2]); max_v[2] = SUMA_MAX_PAIR( (n3)[2], max_v[2]);   \
 }   
+
+/*!
+   \brief find out if a point p on the line formed by points p0 and p1 is between p0 and p1
+   ans = SUMA_IS_POINT_IN_SEGMENT(p, p0, p1);
+   if ans then p is between p0 and p1
+   p, p0, p1 (float *) xyz of points
+   
+   - NOTE: macro does not check that three points are colinear (as they should be)!
+*/
+#define SUMA_IS_POINT_IN_SEGMENT(p, p0, p1)  (  (  (  \
+                                                      (p[0] >  p0[0] && p[0] <  p1[0]) ||   \
+                                                      (p[0] <  p0[0] && p[0] >  p1[0]) ||   \
+                                                      (SUMA_ABS(p[0] - p0[0]) < 0.00000001 || \
+                                                       SUMA_ABS(p[0] - p1[0]) < 0.00000001 ) \
+                                                   )\
+                                                   && \
+                                                   (  \
+                                                      (p[1] >  p0[1] && p[1] <  p1[1]) ||   \
+                                                      (p[1] <  p0[1] && p[1] >  p1[1]) ||   \
+                                                      (SUMA_ABS(p[1] - p0[1]) < 0.00000001 || \
+                                                       SUMA_ABS(p[1] - p1[1]) < 0.00000001 ) \
+                                                   )\
+                                                   && \
+                                                   (  \
+                                                      (p[2] >  p0[2] && p[2] <  p1[2]) ||   \
+                                                      (p[2] <  p0[2] && p[2] >  p1[2]) ||   \
+                                                      (SUMA_ABS(p[2] - p0[2]) < 0.00000001 || \
+                                                       SUMA_ABS(p[2] - p1[2]) < 0.00000001 ) \
+                                                   )\
+                                                   ) ? 1 : 0 )
+                                          
+/*!
+   \brief Intersection of a segment with a plane
+   \param p1 x y z of point 1
+   \param p2 x y z of point 2
+   \param Eq equation of plane
+   \param Hit: On exit: 1 segment interects plane
+                        0 segment does not intersect plane
+   \param pinter: On exit:  x y z of intersection point (0,0,0) if no intersection
+
+   Note: Macro is not efficient to use when intersection if between entire surface
+   and plane. For that use SUMA_Surf_Plane_Intersect 
+*/
+#define SUMA_SEGMENT_PLANE_INTERSECT(p1, p2, Eq, Hit, pinter) {   \
+   double m_p1, m_p2, m_u;   \
+   m_p1 = Eq[0] * p1[0] + Eq[1] * p1[1] + Eq[2] * p1[2] + Eq[3];  \
+   m_p2 = Eq[0] * p2[0] + Eq[1] * p2[1] + Eq[2] * p2[2] + Eq[3];  \
+   /* fprintf(SUMA_STDERR,"m_p1=%f, m_p2 = %f\n", m_p1, m_p2); */\
+   if ((SUMA_SIGN(m_p1)) != (SUMA_SIGN(m_p2)) ) {   \
+      Hit = 1; \
+      m_u = -m_p1 / (m_p2 - m_p1);  \
+      pinter[0] = p1[0] + m_u * ( p2[0] - p1[0] );   \
+      pinter[1] = p1[1] + m_u * ( p2[1] - p1[1] );   \
+      pinter[2] = p1[2] + m_u * ( p2[2] - p1[2] );   \
+   }  else {   \
+      Hit = 0; \
+      pinter[0] = pinter[1] = pinter[2] = 0.0;  \
+   }  \
+}
    
 #define SUMA_SET_GL_RENDER_MODE(m_PolyMode)  \
    {  \
@@ -357,6 +457,32 @@ if Dist = 0, point on plane, if Dist > 0 point above plane (along normal), if Di
    SUMA_MAX_VEC (SO->MaxDims, 3, SO->aMaxDims);    \
 }
 
+/*!
+   A macro to scale the surface so that the largest bounding box size is SZ  
+*/
+#define SUMA_LARGEST_SIZE_SCALE(SO, SZ){  \
+   float m_lg , m_lg1 , m_lg2 ;   \
+   double scl = 1.0; \
+   int m_i_mx, m_i, m_itop;  \
+   m_i_mx = 0; \
+   m_lg  = SO->MaxDims[0] - SO->Center[0]; \
+   m_lg1 = SO->MaxDims[1] - SO->Center[1], \
+   m_lg2 = SO->MaxDims[2] - SO->Center[2];   \
+   m_itop = SO->NodeDim * SO->N_Node;  \
+   if (m_lg < m_lg1) { m_lg = m_lg1; m_i_mx = 1; } \
+   if (m_lg < m_lg2) { m_lg = m_lg2; m_i_mx = 2; } \
+   if (m_lg > 0.0) { \
+      scl = (double)SZ / 2.0 / (double)m_lg;   \
+      for (m_i=0; m_i < m_itop; ++m_i) { SO->NodeList[m_i] = (float)(scl*(double)SO->NodeList[m_i]); }   \
+      for (m_i=0; m_i < 3; ++m_i) { \
+         SO->MinDims[m_i] = (float)(scl*(double)SO->MinDims[m_i]);   \
+         SO->MaxDims[m_i] = (float)(scl*(double)SO->MaxDims[m_i]);   \
+      }  \
+      SO->aMinDims = (float)(scl*(double)SO->aMinDims);  \
+      SO->aMaxDims = (float)(scl*(double)SO->aMaxDims);  \
+   }\
+}
+
 /*! calculate the centroid of a triangular faceset */
 #define SUMA_FACE_CENTROID(SO, ifc, c){   \
    static int m_n1, m_n2, m_n3;  \
@@ -369,7 +495,7 @@ if Dist = 0, point on plane, if Dist > 0 point above plane (along normal), if Di
 /*!
    A macro to find the third node forming a triangle
 */
-#define SUMA_THIRD_NODE(n1,n2,t,facelist,n3){  \
+#define SUMA_THIRD_TRIANGLE_NODE(n1,n2,t,facelist,n3){  \
    static int m_t3;  \
    m_t3 = 3 * t;  \
    n3 = -1; \
@@ -378,6 +504,27 @@ if Dist = 0, point on plane, if Dist > 0 point above plane (along normal), if Di
       else ++m_t3;   \
    }   while (n3 < 0);  \
 }
+
+/*!
+   A macro to find the two other nodes forming a triangle
+*/
+#define SUMA_TWO_OTHER_TRIANGLE_NODES(n1,t,facelist,n2,n3){  \
+   static int m_t3;  \
+   m_t3 = 3 * t;  \
+   n2 = n3 = -1;  \
+   if (facelist[m_t3  ] == n1) {   \
+      n2 = facelist[m_t3+1];  \
+      n3 = facelist[m_t3+2];  \
+   } else if (facelist[m_t3+1] == n1) { \
+      n2 = facelist[m_t3  ];  \
+      n3 = facelist[m_t3+2];  \
+   } else if (facelist[m_t3+2] == n1) { \
+      n2 = facelist[m_t3  ];  \
+      n3 = facelist[m_t3+1];  \
+   } \
+}
+
+
    
 /*! 
    A macro version of SUMA_FindEdge
@@ -388,8 +535,21 @@ if Dist = 0, point on plane, if Dist > 0 point above plane (along normal), if Di
    you should initialize iseg to -1 before calling the macro
    
 */
-
+/* NEW VERSION: Bug found in previous one (_OLD), 
+   it is possible that m_eloc is -1 at initialization: m_eloc = m_EL->ELloc[m_n1]; 
+   see below for fix
+*/
 #define SUMA_FIND_EDGE(m_EL, m_n1, m_n2, m_iseg)  \
+{  int m_eloc = m_EL->ELloc[m_n1];   \
+   if (m_eloc >= 0) {  /* It is possible that m_n1 has m_EL->ELloc[m_n1] = -1, this happens when m_n1 is surrounded by nodes of lower indices */\
+      for (m_eloc=m_EL->ELloc[m_n1]; m_eloc<m_EL->N_EL; ++m_eloc) {  \
+         /* fprintf(stderr, "%d/%d\n", m_eloc, m_EL->N_EL); */\
+         if (m_EL->EL[m_eloc][0] != m_n1) break;   \
+         if (m_EL->EL[m_eloc][1] == m_n2) m_iseg = m_eloc;   \
+      }   \
+   }  \
+} 
+#define SUMA_FIND_EDGE_OLD(m_EL, m_n1, m_n2, m_iseg)  \
 {  int m_eloc ;   \
    m_eloc = m_EL->ELloc[m_n1];  \
    do {  \
@@ -678,6 +838,24 @@ sinc is the value of the function at alpha
    }   \
 }
 
+/*!
+   Find the closest node in SO to coordinate xyz
+   distance^2 is stored in d and nc is the index of the
+   the closest node
+*/
+#define SUMA_CLOSEST_NODE(SO, xyz, nc, d) {  \
+   double m_dxyz = 1023734552736672366372.0; \
+   float *m_p; \
+   int m_n=0;  \
+   nc = -1; \
+   for (m_n=0; m_n<SO->N_Node; ++m_n) {   \
+      m_p = &(SO->NodeList[SO->NodeDim*m_n]);   \
+      SUMA_SEG_LENGTH_SQ(m_p, xyz, d); \
+      if (d < m_dxyz) {   \
+         m_dxyz = d; nc = m_n; \
+      }  \
+   }  \
+}
 
 /* Many of these macros are taken from DSP_in_C examples in
 C Language Algorithms for Digital Signal Processing 
@@ -1304,6 +1482,33 @@ WARNING: The input data vectors are not cast to the type of s.
       }  \
    }  \
    
+/*!
+   \brief Macro to calculate normal of a triangle 
+   \params P1, P2, P3: XYZ coordinates forming triangle
+   \param norm: Contains UN-NORMALIZED normal upon return
+   use SUMA_TRI_NORM_NORM for normalized normals
+*/
+#define SUMA_TRI_NORM(P1, P2, P3, norm){  \
+   double m_d1[3], m_d2[3];   \
+   m_d1[0] = P1[0] - P2[0];   \
+   m_d2[0] = P2[0] - P3[0];   \
+   m_d1[1] = P1[1] - P2[1];   \
+   m_d2[1] = P2[1] - P3[1];   \
+   m_d1[2] = P1[2] - P2[2];   \
+   m_d2[2] = P2[2] - P3[2];   \
+   norm[0] = m_d1[1]*m_d2[2] - m_d1[2]*m_d2[1]; \
+   norm[1] = m_d1[2]*m_d2[0] - m_d1[0]*m_d2[2]; \
+   norm[2] = m_d1[0]*m_d2[1] - m_d1[1]*m_d2[0]; \
+}  
+#define SUMA_TRI_NORM_NORM(P1, P2, P3, norm){  \
+   double m_d; \
+   SUMA_TRI_NORM(P1, P2, P3, norm); \
+   m_d = sqrt(norm[0]*norm[0]+norm[1]*norm[1]+norm[2]*norm[2]);  \
+   if (m_d == 0.0f) { norm[0] = norm[1] = norm[2] = 0.0; } \
+   else { norm[0] /= m_d; norm[1] /= m_d; norm[2] /= m_d;}  \
+}  
+
+     
 /*!
    \brief Macro to calculate the distance Un from P1-->P2 a
    \param P1/P2 (float *) 3-elements arrays containing XYZ of P1 and P2

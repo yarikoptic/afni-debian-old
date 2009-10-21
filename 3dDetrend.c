@@ -202,8 +202,10 @@ void DT_read_opts( int argc , char * argv[] )
               INFO_message("Found expression symbol %s\n",sym) ;
           }
         }
-        if( qvar != 1 )
-          ERROR_exit("-expr '%s' should have exactly one symbol",DT_expr[DT_exnum]) ;
+        if( qvar > 1 )
+          ERROR_exit("-expr '%s' has too many symbols",DT_expr[DT_exnum]) ;
+        else if( qvar == 0 )
+          WARNING_message("-expr '%s' is constant",DT_expr[DT_exnum]) ;
         DT_exvar[DT_exnum] = kvar ;
         DT_exnum = nexp ; nopt++ ; continue ;
       }
@@ -224,7 +226,7 @@ void DT_read_opts( int argc , char * argv[] )
 #endif
 
    DT_nvector = IMARR_COUNT(DT_imar) ;
-   if( DT_nvector + DT_exnum == 0 && DT_polort <= 0 )
+   if( DT_nvector + DT_exnum == 0 && DT_polort < 0 )
      ERROR_exit("No detrending options ordered!") ;
 
 #ifdef ALLOW_BYSLICE
@@ -235,6 +237,7 @@ void DT_read_opts( int argc , char * argv[] )
    /*--- read input dataset ---*/
 
    DT_dset = THD_open_dataset( argv[nopt] ) ;
+   CHECK_OPEN_ERROR(DT_dset,argv[nopt]) ;
    if( DT_dset == NULL )
      ERROR_exit("Can't open dataset %s\n",argv[nopt]) ;
 
@@ -441,9 +444,7 @@ int main( int argc , char * argv[] )
 
    DSET_mallocize( new_dset ) ;
    DSET_mallocize( DT_dset ) ;
-   DSET_load( DT_dset ) ;
-   if( !DSET_LOADED(DT_dset) )
-     ERROR_exit("Can't read input dataset bricks\n") ;
+   DSET_load( DT_dset ) ; CHECK_LOAD_ERROR(DT_dset) ;
 
    nvals = DSET_NVALS(new_dset) ;
    for( iv=0 ; iv < nvals ; iv++ )

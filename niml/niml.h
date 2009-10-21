@@ -23,6 +23,10 @@
 #include <sys/times.h>
 #include <limits.h>
 
+#ifdef  __cplusplus
+extern "C" {                    /* care of Greg Balls    7 Aug 2006 [rickr] */
+#endif
+
 /*****---------------------------------------------------*****/
 
 /* This is suppose to be defined in stddef.h, but
@@ -251,6 +255,10 @@ typedef struct {
 
 extern NI_procins * NI_rowtype_procins( NI_rowtype * ) ; /* 19 Apr 2005 */
 
+#ifdef  __cplusplus
+}
+#endif
+
 /*-----------------------------------------------------------------
   Stuff for shared memory transport between processes
 -------------------------------------------------------------------*/
@@ -321,6 +329,10 @@ extern NI_procins * NI_rowtype_procins( NI_rowtype * ) ; /* 19 Apr 2005 */
 
 #endif /* DONT_USE_SHM */
 /*-----------------------------------------------------------------*/
+
+#ifdef  __cplusplus
+extern "C" {                    /* care of Greg Balls    7 Aug 2006 [rickr] */
+#endif
 
 /*! Size of NI_stream buffer. */
 
@@ -551,6 +563,7 @@ extern int NI_element_rowsize( NI_element * ) ;
 extern int NI_element_allsize( NI_element * ) ;
 
 extern void NI_free_element( void * ) ;
+extern void NI_free_element_data( void * ) ;  /* 17 Jul 2006 */
 extern int  NI_element_type( void * ) ;
 extern char * NI_element_name( void * ) ;  /* 18 Apr 2005 */
 
@@ -563,6 +576,7 @@ extern void NI_add_column_stride( NI_element *, int, void *, int ); /* 29 May 20
 extern void NI_fill_column_stride( NI_element *,int,void *,int,int);/* 23 Mar 2004 */
 extern void NI_insert_string( NI_element *, int,int, char *);       /* 19 Apr 2005 */
 extern void NI_alter_veclen( NI_element * , int ) ;                 /* 19 Apr 2005 */
+extern void NI_set_ni_type_atr( NI_element * ) ;       /* 14 Jul 2006 [rickr] */
 
 extern NI_group * NI_new_group_element(void) ;
 extern void NI_add_to_group( NI_group *, void * ) ;
@@ -1205,5 +1219,9 @@ extern void   NI_convert_obj_to_elm( NI_objcontainer * ) ;
 extern void   NI_register_objconverters( char * ,
                                          NI_objconverter_func ,
                                          NI_objconverter_func  ) ;
+
+#ifdef  __cplusplus
+}
+#endif
 
 #endif /* _NIML_HEADER_FILE */

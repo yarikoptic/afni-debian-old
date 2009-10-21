@@ -472,6 +472,7 @@ int SUMA_Find_IminImax_Avg (SUMA_SurfaceObject *SO, SUMA_GENERIC_PROG_OPTIONS_ST
       travdir[0] = - istep * Opt->travstp * SO->NodeNormList[3*ni]; travdir[1] = -istep * Opt->travstp * SO->NodeNormList[3*ni+1]; travdir[2] = -istep * Opt->travstp * SO->NodeNormList[3*ni+2]; 
       
       /* find the set of triangles incident to node ni */
+      N_vtn = N_vtnmax; /* pass limit to SUMA_Get_NodeIncident */
       if (!SUMA_Get_NodeIncident(ni, SO, vtn, &N_vtn)) {
           SUMA_SL_Err("Failed to find incident triangles.\nDecidement, ca va tres mal.\n");
           SUMA_RETURN(NOPE);
@@ -655,7 +656,7 @@ int SUMA_SkullMask (SUMA_SurfaceObject *SO, SUMA_GENERIC_PROG_OPTIONS_STRUCT *Op
          cs->kth = 1;  /*make sure all gets sent at this stage */
          dsmooth = SUMA_Taubin_Smooth( SO, NULL,
                                     0.6307, -.6732, SO->NodeList,
-                                    8, 3, SUMA_ROW_MAJOR, dsmooth, cs, NULL);    
+                                    8, 3, SUMA_ROW_MAJOR, dsmooth, cs, NULL, 0);    
          memcpy((void*)SO->NodeList, (void *)dsmooth, SO->N_Node * 3 * sizeof(float));
          cs->kth = kth_buf; 
          
@@ -1031,12 +1032,12 @@ int SUMA_StretchToFitLeCerveau (SUMA_SurfaceObject *SO, SUMA_GENERIC_PROG_OPTION
       }
       if (Stage == 1) { /* if the surface is still growing, keep going */
          if (Opt->DemoPause == SUMA_3dSS_DEMO_PAUSE) { SUMA_PAUSE_PROMPT("About to be in stage 1"); }
-         if (LocalHead) fprintf (SUMA_STDERR,"%s: \n In stage 1\n", FuncName);
+         if (Opt->debug) fprintf (SUMA_STDERR,"%s: \n In stage 1\n", FuncName);
          if (MaxExp > 0.5) {
             /* Now, if you still have expansion, continue */
             if (!pastarea) { /* first time around, calculate area */
                pastarea = SUMA_Mesh_Area(SO, NULL, -1);
-               if (LocalHead) fprintf (SUMA_STDERR,"%s: \n Stage1: pastarea = %f\n", FuncName, pastarea);
+               if (Opt->debug) fprintf (SUMA_STDERR,"%s: \n Stage1: pastarea = %f\n", FuncName, pastarea);
                keepgoing = 1;
             }else {
                curarea = SUMA_Mesh_Area(SO, NULL, -1);
@@ -1050,14 +1051,14 @@ int SUMA_StretchToFitLeCerveau (SUMA_SurfaceObject *SO, SUMA_GENERIC_PROG_OPTION
             }
             if (keepgoing) {
                it0 = nit; nit = nit + (int)(Opt->N_it/2.5);
-               if (LocalHead) fprintf (SUMA_STDERR,"%s: \n Stage1: MaxExp = %f, darea = %f, going for more...\n", FuncName, MaxExp, darea);
+               if (Opt->debug) fprintf (SUMA_STDERR,"%s: \n Stage1: MaxExp = %f, darea = %f, going for more...\n", FuncName, MaxExp, darea);
                Done = 0;
             } else {
-               if (LocalHead) fprintf (SUMA_STDERR,"%s: \n Stage1: satiated, small area differential.\n", FuncName);
+               if (Opt->debug) fprintf (SUMA_STDERR,"%s: \n Stage1: satiated, small area differential.\n", FuncName);
                ++Stage;
             }
          } else {
-            if (LocalHead) fprintf (SUMA_STDERR,"%s: \n Stage1: satiated, low MaxExp\n", FuncName);
+            if (Opt->debug) fprintf (SUMA_STDERR,"%s: \n Stage1: satiated, low MaxExp\n", FuncName);
             ++Stage;
          }
       }
@@ -1072,7 +1073,7 @@ int SUMA_StretchToFitLeCerveau (SUMA_SurfaceObject *SO, SUMA_GENERIC_PROG_OPTION
                ++Stage;
             } else {
                   /* reduce tightness where expansion is needed */
-                  if (LocalHead) {
+                  if (Opt->debug) {
                      fprintf(SUMA_STDERR,"%s:\n reducing tightness, applying touchup with Stage2Type = %d\n", FuncName, Stage2Type);
                   }
                   for (in=0; in<SO->N_Node; ++in) {
@@ -1112,16 +1113,16 @@ int SUMA_StretchToFitLeCerveau (SUMA_SurfaceObject *SO, SUMA_GENERIC_PROG_OPTION
 
          if (!past_N_troub) { 
             past_N_troub = N_troub; 
-            if (LocalHead) fprintf (SUMA_STDERR,"%s: \n Stage %d, type %d: %d troubled nodes, going for more...\n", FuncName, Stage, Stage2Type, N_troub);
+            if (Opt->debug) fprintf (SUMA_STDERR,"%s: \n Stage %d, type %d: %d troubled nodes, going for more...\n", FuncName, Stage, Stage2Type, N_troub);
          } else {
             float dtroub;
             dtroub = (float)(past_N_troub - N_troub)/(float)past_N_troub;
-            if (LocalHead) fprintf (SUMA_STDERR,"%s: \n Stage %d, type %d: %f change in troubled nodes.\n", FuncName, Stage, Stage2Type, dtroub);
+            if (Opt->debug) fprintf (SUMA_STDERR,"%s: \n Stage %d, type %d: %f change in troubled nodes.\n", FuncName, Stage, Stage2Type, dtroub);
             if (dtroub > 0.01) {
-               if (LocalHead) fprintf (SUMA_STDERR,"%s: \n Continuing with Stage.\n", FuncName);
+               if (Opt->debug) fprintf (SUMA_STDERR,"%s: \n Continuing with Stage.\n", FuncName);
                Done = 0; /* continue */
             } else {
-               if (LocalHead) fprintf (SUMA_STDERR,"%s: \n Stage converged. Moving to new Stage or Type.\n", FuncName);
+               if (Opt->debug) fprintf (SUMA_STDERR,"%s: \n Stage converged. Moving to new Stage or Type.\n", FuncName);
                ++Stage; /* go to next stage */
             }
             past_N_troub = N_troub;
@@ -2882,7 +2883,7 @@ void *SUMA_Push_Nodes_To_Hull(SUMA_SurfaceObject *SO, SUMA_GENERIC_PROG_OPTIONS_
             /* civilized smoothing */
             dsmooth = SUMA_Taubin_Smooth( SO, NULL,
                                     0.6307, -.6732, SO->NodeList,
-                                    Opt->smooth_end, 3, SUMA_ROW_MAJOR, dsmooth, cs, NULL);    
+                                    Opt->smooth_end, 3, SUMA_ROW_MAJOR, dsmooth, cs, NULL, 0);    
             memcpy((void*)SO->NodeList, (void *)dsmooth, SO->N_Node * 3 * sizeof(float));
             SUMA_RECOMPUTE_NORMALS(SO);
          } 
@@ -3293,7 +3294,7 @@ int SUMA_Reposition_Touchup(SUMA_SurfaceObject *SO, SUMA_GENERIC_PROG_OPTIONS_ST
             SUMA_SL_Err("Failed to compute weights.\n"); 
             exit(1); 
          }  
-         dsmooth = SUMA_Chung_Smooth (SO, wgt, 200, 20, touchup, 1, SUMA_COLUMN_MAJOR, NULL, cs, NULL);   
+         dsmooth = SUMA_Chung_Smooth (SO, wgt, 200, 20, touchup, 1, SUMA_COLUMN_MAJOR, NULL, cs, NULL, 1);   
          if (LocalHead) fprintf (SUMA_STDERR,"%s: ********************* filtering done.\n", FuncName);   
       } else { 
          dsmooth = touchup; /* carefull at the free business */
@@ -3488,7 +3489,9 @@ SUMA_Boolean SUMA_3dedge3(THD_3dim_dataset *inset, float *emask, THD_3dim_datase
    int nxyz = DSET_NX(inset)*DSET_NY(inset)*DSET_NZ(inset);
    int fscale=0 , gscale=0 , nscale=0 ;
    
-   recursiveFilterType filterType = ALPHA_DERICHE;
+   recursiveFilterType filterType = ALPHA_DERICHE;  /* BAD BOY ZIAD */
+   
+   SUMA_ENTRY;
 
    /*-- Edge detect  --*/
    indims[0] = DSET_NX(inset);
@@ -3517,7 +3520,7 @@ SUMA_Boolean SUMA_3dedge3(THD_3dim_dataset *inset, float *emask, THD_3dim_datase
 				         filterCoefs,
 				         filterType ) == 0 ) {
           fprintf( stderr, "ERROR: gradient extraction failed.\n" );
-          exit( 1 );
+          SUMA_RETURN(0);
         }
 
      }
@@ -3537,7 +3540,7 @@ SUMA_Boolean SUMA_3dedge3(THD_3dim_dataset *inset, float *emask, THD_3dim_datase
 				         filterCoefs,
 				         filterType ) == 0 ) {
           fprintf( SUMA_STDERR, "ERROR: gradient extraction failed.\n" );
-          exit( 1 );
+          SUMA_RETURN(0);
          }
       }
       break ;
@@ -3556,7 +3559,7 @@ SUMA_Boolean SUMA_3dedge3(THD_3dim_dataset *inset, float *emask, THD_3dim_datase
 				         filterCoefs,
 				         filterType ) == 0 ) {
           fprintf(SUMA_STDERR , "ERROR: gradient extraction failed.\n" );
-          exit( 1 );
+          SUMA_RETURN(0);
          }
       }
       break ;

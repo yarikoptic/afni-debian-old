@@ -20,6 +20,7 @@ typedef struct
     char      * gpar_file;              /* AFNI grid parent filename    */
     char      * outfile_1D;             /* filename for ascii output    */
     char      * outfile_niml;           /* filename for NIML output     */
+    char      * seg_coords_file;        /* filename for segment coords  */
     char      * spec_file;              /* surface specification file   */
     char      * sv_file;                /* AFNI surface volume dataset  */
     char      * cmask_cmd;              /* 3dcalc style mask command    */
@@ -60,7 +61,8 @@ int init_options      ( opts_t * opts, int argc, char * argv [] );
 int print_default_line( FILE * fp, int max_ind, int node_ind,
                         int vind, int i, int j, int k, float fval );
 int read_surf_files   ( opts_t * opts, SUMA_SurfSpecFile * spec );
-int set_smap_opts     ( opts_t * opts, v2s_param_t * p, v2s_opts_t * sopt );
+int set_smap_opts     ( opts_t * opts, v2s_param_t * p, v2s_opts_t * sopt,
+                        int argc, char * argv[] );
 int suma2afni_surf    ( v2s_opts_t * sopt, v2s_param_t * p,
                         SUMA_SurfaceObject * so, int sindex );
 int surf_ave_radius   ( float * rad, SUMA_SurfaceObject * so, int disp );

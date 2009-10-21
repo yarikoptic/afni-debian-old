@@ -108,7 +108,7 @@ char * SUMA_New_Additions_perver (int ver, SUMA_Boolean StampOnly)
    
    
    switch (ver) {
-      /* Must modify verv in SUMA_New_Additions when you touch this block */
+      /* Must modify SUMA_VERSION_VECTOR  in SUMA_DataSets.h when add a new case  */
       /*
       case XX:
          SS = SUMA_StringAppend_va(SS, 
@@ -120,7 +120,21 @@ char * SUMA_New_Additions_perver (int ver, SUMA_Boolean StampOnly)
             "  + \n");
          break; 
       */
-      
+      case 20060703:
+         SS = SUMA_StringAppend_va(SS, 
+            "++ SUMA version %s\n", SUMA_ver2date(ver)); if (StampOnly) break;
+         SS = SUMA_StringAppend(SS, 
+            "New Programs:\n"
+            "  + SurfDsetInfo: Program to display surface dataset information.\n"
+            "  + AnalyzeTrace: Program to analyze the output of -trace option.\n"
+            "  + DriveSuma: Program to control SUMA from the command line\n"
+            "Modifications:\n"
+            "  + SUMA:\n"
+            "    o Addition of new Displayable Objects (DO)(ctrl+Alt+s)\n"
+            "    o Allow replacement of pre-loaded DO and Dsets\n"
+            "    o Support for .niml.dset as format for surface-based anlysis\n"
+            );
+         break; 
       case 20041229:
          SS = SUMA_StringAppend_va(SS, 
             "++ SUMA version %s\n", SUMA_ver2date(ver)); if (StampOnly) break;
@@ -376,6 +390,18 @@ char * SUMA_sources_Info(void)
    "  http://www-sop.inria.fr/prisme/personnel/Thomas.Lewiner/JGT.pdf\n"
    "  Permission to use this translation in other programs must be obtained \n"
    "  from Mr. Lewiner.\n"
+   "\n"
+   "* 3d Edge Detection:\n"
+   "  The code for 3dEdge detection is from the library 3DEdge \n"
+   "  by Gregoire Malandain (gregoire.malandain@sophia.inria.fr)\n"
+   "  References for the algorithms:\n"
+   "  -  Optimal edge detection using recursive filtering\n"
+   "     R. Deriche, International Journal of Computer Vision,\n"
+   "     pp 167-187, 1987.\n"
+   "  -  Recursive filtering and edge tracking: two primary tools\n"
+   "     for 3-D edge detection, O. Monga, R. Deriche, G. Malandain\n"
+   "     and J.-P. Cocquerez, Image and Vision Computing 4:9, \n"
+   "     pp 203-214, August 1991.\n"
    "\n"
    "* QHull:\n"
    "                       Qhull, Copyright (c) 1993-2001 \n"
@@ -706,9 +732,13 @@ char * SUMA_help_message_Info(void)
       "                 Files are of 1D format with a necessary comment\n"
       "                 at the top to indicate the type of objects in \n"
       "                 the file.\n"
+      "                 Note 1: Repeatedly loading files with the same \n"
+      "                 name will replace currently loaded versions.\n"
+      "                 Note 2: Node-based (Types 3 and 4) objects\n"
+      "                 will follow a node when its coordinates change.\n"
       "          Type 1:Segments between (x0,y0,z0) and (x1,y1,z1) \n"
       "                 1st line must be '#segments' (without quotes),\n"
-      "                 or '#oriented_segments'.\n"
+      "                 or '#oriented_segments' (slower to render).\n"
       "                 Remainder of file is N rows, each defining a \n"
       "                 segment (or a vector) between two points.\n"
       "                 Column content depends on the number of columns\n"
@@ -742,8 +772,9 @@ char * SUMA_help_message_Info(void)
       "                 9  cols: ox oy oz c0 c1 c2 c3 rd st\n"
       "          Type 3:Vectors (vx, vy, vz) at surface nodes \n"
       "                 1st line must be '#node-based_vectors' (without quotes)\n"
+      "                 or '#node-based_ball-vectors' (slower to render).\n"
       "                 Remainder of file is N rows, each defining a \n"
-      "                 a vector at a particular node.\n"
+      "                 a vector at a particular node of the current surface.\n"
       "                 Column content depends on the number of columns\n"
       "                 in the file:\n"
       "                 3  cols: vx, vy, vz \n"
@@ -760,7 +791,34 @@ char * SUMA_help_message_Info(void)
       "                          with with c0..3 being the RGBA values\n"
       "                          between 0 and 1.0\n"
       "                 9  cols: n, vx, vy, vz, c0 c1 c2 c3 gn\n"   
-            );
+      "          Type 4:Spheres centered at nodes n of the current surface\n"
+      "                 1st line must be '#node-based_spheres' (without quotes).\n"
+      "                 Remainder of file is N rows, each defining a \n"
+      "                 sphere.\n"
+      "                 Column content depends on the number of columns\n"
+      "                 in the file, see Type 2 for more details:\n"
+      "                 1  cols: n\n"
+      "                 2  cols: n rd\n"
+      "                 3  cols: n rd st\n"
+      "                 5  cols: n c0 c1 c2 c3 \n"
+      "                 6  cols: n c0 c1 c2 c3 rd\n"
+      "                 7  cols: n c0 c1 c2 c3 rd st\n"
+      "          Type 5:Planes defined with: ax + by + cz + d = 0.\n"
+      "                 1st line must be '#planes' (without quotes).\n"
+      "                 Remainder of file is N rows, each defining a \n"
+      "                 plane.\n"
+      "                 Column content depends on the number of columns\n"
+      "                 in the file:\n"
+      "                 7  cols: a b c d cx cy cz\n"
+      "                          with the plane's equation being:\n"
+      "                          ax + by + cz + d = 0\n"
+      "                          cx,cy,cz is the center of the plane's\n"
+      "                          representation. \n"
+      "                          Yes, d is not of much use here.\n"
+      "                 There are no node-based planes at the moment.\n"
+      "                 They are a little inefficient to reproduce with\n"
+      "                 each redraw. Complain if you need them.\n"
+      );
    SS = SUMA_StringAppend (SS, 
       "     Alt+s: Switch mouse buttons 1 and 3.\n\n");
    if (SUMAg_CF->Dev) SS = SUMA_StringAppend (SS, 
@@ -997,10 +1055,12 @@ char *SUMA_All_Programs(void )
          "  3dSurf2Vol\n"
          "  3dSurfMask\n"
          "  3dVol2Surf\n"
+         "  AnalyzeTrace\n"
          "  CompareSurfaces\n"
          "  ConvertSurface\n"
          "  ConvexHull\n"
          "  CreateIcosahedron\n"
+         "  DriveSuma\n"
          "  FSread_annot\n"
          "  inspec\n"
          "  IsoSurface\n"
@@ -1013,6 +1073,8 @@ char *SUMA_All_Programs(void )
          "  SUMA_glxdino\n"
          "  SurfaceMetrics\n"
          "  SurfClust\n"
+         "  SurfDsetInfo\n"
+         "  SurfInfo\n"
          "  SurfMeasures\n"
          "  SurfMesh\n"
          "  SurfPatch\n"

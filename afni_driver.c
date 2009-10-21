@@ -20,11 +20,17 @@ static int AFNI_drive_setenv( char *cmd ) ;
 static int AFNI_drive_set_subbricks( char *cmd ) ;  /* 30 Nov 2005 */
 
 static int AFNI_drive_save_jpeg( char *cmd ) ;      /* 28 Jul 2005 */
+static int AFNI_drive_save_png ( char *cmd ) ;      /* 11 Dec 2006 */
+static int AFNI_drive_save_agif( char *cmd ) ;      /* 07 Dec 2006 */
+static int AFNI_drive_save_mpeg( char *cmd ) ;      /* 07 Dec 2006 */
+static int AFNI_drive_save_alljpeg( char *cmd ) ;   /* 07 Dec 2006 */
 static int AFNI_drive_set_view( char *cmd ) ;       /* 28 Jul 2005 */
 static int AFNI_drive_set_dicom_xyz( char *cmd ) ;  /* 28 Jul 2005 */
 static int AFNI_drive_set_spm_xyz( char *cmd ) ;    /* 28 Jul 2005 */
 static int AFNI_drive_set_ijk( char *cmd ) ;        /* 28 Jul 2005 */
 static int AFNI_drive_set_xhairs( char *cmd ) ;     /* 28 Jul 2005 */
+static int AFNI_drive_save_filtered( char *cmd ) ;  /* 14 Dec 2006 */
+static int AFNI_drive_save_allpng( char *cmd ) ;    /* 15 Dec 2006 */
 
 static int AFNI_drive_system( char *cmd ) ;         /* 19 Dec 2002 */
 static int AFNI_drive_chdir ( char *cmd ) ;         /* 19 Dec 2002 */
@@ -69,11 +75,13 @@ static int AFNI_trace                  ( char *cmd ) ; /* 04 Oct 2005 */
   Return value is 0 if good, -1 if bad.
 -------------------------------------------------------------------*/
 
-typedef int dfunc(char *) ;
+typedef int dfunc(char *) ;  /* action functions */
 
-  /* function label from plugout, function pointer inside AFNI */
+  /* pairs of { command label , action function pointer } */
 
 typedef struct { char *nam; dfunc *fun; } AFNI_driver_pair ;
+
+  /* this array controls the dispatch of commands to functions */
 
 static AFNI_driver_pair dpair[] = {
  { "RESCAN_THIS"      , AFNI_drive_rescan_controller } ,
@@ -101,6 +109,12 @@ static AFNI_driver_pair dpair[] = {
  { "CLOSE_WINDOW"     , AFNI_drive_close_window      } ,
 
  { "SAVE_JPEG"        , AFNI_drive_save_jpeg         } ,
+ { "SAVE_PNG"         , AFNI_drive_save_png          } ,
+ { "SAVE_MPEG"        , AFNI_drive_save_mpeg         } ,
+ { "SAVE_AGIF"        , AFNI_drive_save_agif         } ,
+ { "SAVE_ALLJPEG"     , AFNI_drive_save_alljpeg      } ,
+ { "SAVE_ALLPNG"      , AFNI_drive_save_allpng       } ,
+ { "SAVE_FILTERED"    , AFNI_drive_save_filtered     } ,
  { "SET_VIEW"         , AFNI_drive_set_view          } ,
  { "SET_DICOM_XYZ"    , AFNI_drive_set_dicom_xyz     } ,
  { "SET_SPM_XYZ"      , AFNI_drive_set_spm_xyz       } ,
@@ -149,9 +163,11 @@ static AFNI_driver_pair dpair[] = {
 
  { "TRACE"              , AFNI_trace                   } , /* debugging */
 
- { NULL , NULL } } ;
+ { NULL , NULL }  /* flag that we've reached the end times */
+} ;
 
 /*----------------------------------------------------------------------*/
+/*! Accept a command, find the corresponding action function, call it.  */
 
 int AFNI_driver( char *cmdd )
 {
@@ -2172,6 +2188,9 @@ int AFNI_drive_setenv( char *cmd )
          AFNI_range_setter( im3d , im3d->s123 ) ;
          AFNI_range_setter( im3d , im3d->s231 ) ;
          AFNI_range_setter( im3d , im3d->s312 ) ;
+         drive_MCW_imseq( im3d->s123 , isqDR_display , (XtPointer)(-1) ) ;
+         drive_MCW_imseq( im3d->s231 , isqDR_display , (XtPointer)(-1) ) ;
+         drive_MCW_imseq( im3d->s312 , isqDR_display , (XtPointer)(-1) ) ;
        } else {
          drive_MCW_imseq( im3d->s123 , isqDR_setrange , (XtPointer)NULL ) ;
          drive_MCW_imseq( im3d->s231 , isqDR_setrange , (XtPointer)NULL ) ;
@@ -2295,17 +2314,17 @@ ENTRY("AFNI_open_panel") ;
 }
 
 /*--------------------------------------------------------------------*/
-/*! SAVE_JPEG [c.]imagewindowname fname */
+/*! Function for saving images in various formats. */
 
-static int AFNI_drive_save_jpeg( char *cmd )
+static int AFNI_drive_save_1image( char *cmd , int mode , char *suf )
 {
-   int ic , dadd=2 ;
+   int ic , dadd=2 , imm ;
    Three_D_View *im3d ;
-   char junk[256] , fname[288] ;
+   char junk[256] , fname[599] ;
    MCW_imseq   *isq=NULL ;
    MCW_grapher *gra=NULL ;
 
-ENTRY("AFNI_drive_save_jpeg") ;
+ENTRY("AFNI_drive_save_1image") ;
 
    /* make sure the controller itself is open */
 
@@ -2316,7 +2335,7 @@ ENTRY("AFNI_drive_save_jpeg") ;
 
    im3d = GLOBAL_library.controllers[ic] ;
    if( !IM3D_OPEN(im3d) ){
-     ERROR_message("SAVE_JPEG %s: controller not open",cmd); RETURN(-1);
+     ERROR_message("Image save '%s': controller not open",cmd); RETURN(-1);
    }
 
    /* extract the filename to save into */
@@ -2324,12 +2343,120 @@ ENTRY("AFNI_drive_save_jpeg") ;
    junk[0] = fname[0] = '\0' ;
    sscanf( cmd+dadd , "%255s%255s" , junk , fname ) ;
    if( junk[0] == '\0' || fname[0] == '\0' ){
-     ERROR_message("SAVE_JPEG %s: something is missing",cmd); RETURN(-1);
+     ERROR_message("Image save '%s': something is missing",cmd); RETURN(-1);
+     RETURN(-1) ;
+   }
+   if( fname[0] == '\'' || fname[0] == '\"' ){
+     char qt=fname[0] , *q1 , *q2 ;
+     q1 = strchr(cmd+dadd,qt)+1 ;
+     q2 = strchr(q1,qt) ; if( q2 == NULL ) q2 = cmd+strlen(cmd) ;
+     if( (imm=q2-q1) > 0 && imm < 599 ){
+       strncpy(fname,q1,imm) ; fname[imm] = '\0' ;
+     } else {
+       ERROR_message("Image save '%s': filename is bad",cmd); RETURN(-1);
+     }
+   }
+
+   /* find graph or image window */
+
+        if( strstr(cmd+dadd,"axialimage")    != NULL ) isq = im3d->s123 ;
+   else if( strstr(cmd+dadd,"sagittalimage") != NULL ) isq = im3d->s231 ;
+   else if( strstr(cmd+dadd,"coronalimage")  != NULL ) isq = im3d->s312 ;
+   else if( strstr(cmd+dadd,"axialgraph")    != NULL ) gra = im3d->g123 ;
+   else if( strstr(cmd+dadd,"sagittalgraph") != NULL ) gra = im3d->g231 ;
+   else if( strstr(cmd+dadd,"coronalgraph")  != NULL ) gra = im3d->g312 ;
+
+   XmUpdateDisplay( im3d->vwid->top_shell ) ;
+
+   if( suf != NULL && *suf != '\0' && !STRING_HAS_SUFFIX_CASE(fname,suf) )
+     strcat(fname,suf) ;
+
+   if( isq != NULL ){
+     switch( mode ){
+       case PNG_MODE:  imm = isqDR_save_png     ; break ;
+       case JPEG_MODE: imm = isqDR_save_jpeg    ; break ;
+       default:        imm = isqDR_save_filtered; break ;
+     }
+     drive_MCW_imseq( isq, imm , (XtPointer)fname ) ;
+   } else if( gra != NULL ){
+     if( mode == -1 ){  /* start with '|' means a pipe */
+       memmove( fname+1, fname, strlen(fname)+1 ); fname[0] = '|';
+     }
+     GRA_file_pixmap( gra , fname ) ;
+   } else {
+     ERROR_message("Image save '%s': don't understand windowname",cmd) ;
      RETURN(-1) ;
    }
 
-   if( !STRING_HAS_SUFFIX(fname,".jpg") && !STRING_HAS_SUFFIX(fname,".JPG") )
-     strcat(fname,".jpg") ;
+   RETURN(0) ;
+}
+
+/*--------------------------------------------------------------------*/
+/*! SAVE_JPEG [c.]imagewindowname fname */
+
+static int AFNI_drive_save_jpeg( char *cmd )
+{
+   return AFNI_drive_save_1image( cmd , JPEG_MODE , ".jpg" ) ;
+}
+
+/*------------*/
+/*! SAVE_PNG */
+
+static int AFNI_drive_save_png( char *cmd )
+{
+   return AFNI_drive_save_1image( cmd , PNG_MODE , ".png" ) ;
+}
+
+/*-----------------*/
+/*! SAVE_FILTERED */
+
+static int AFNI_drive_save_filtered( char *cmd )
+{
+   return AFNI_drive_save_1image( cmd , -1 , NULL ) ;
+}
+
+/*--------------------------------------------------------------------*/
+/*! Save all the images in an image viewer. */
+
+static int AFNI_drive_save_allimages( char *cmd , int mode )
+{
+   int ic , dadd=2 ;
+   Three_D_View *im3d ;
+   char junk[256] , fname[288] ;
+   MCW_imseq   *isq=NULL ;
+   MCW_grapher *gra=NULL ;
+   int imode ;
+
+ENTRY("AFNI_drive_save_allimages") ;
+
+   /* make sure the controller itself is open */
+
+   if( strlen(cmd) < 3 ) RETURN(-1) ;
+
+   switch( mode ){
+     case AGIF_MODE: imode = isqDR_save_agif    ; break ;
+     case MPEG_MODE: imode = isqDR_save_mpeg    ; break ;
+     case JPEG_MODE: imode = isqDR_save_jpegall ; break ;
+     case PNG_MODE : imode = isqDR_save_pngall  ; break ;
+     default:
+       ERROR_message("Saving All Images: illegal code=%d?",mode); RETURN(-1);
+   }
+
+   ic = AFNI_controller_code_to_index( cmd ) ;
+   if( ic < 0 ){ ic = 0 ; dadd = 0 ; }
+
+   im3d = GLOBAL_library.controllers[ic] ;
+   if( !IM3D_OPEN(im3d) ){
+     ERROR_message("Saving All Images '%s': Controller not open",cmd); RETURN(-1);
+   }
+
+   /* extract the filename to save into */
+
+   junk[0] = fname[0] = '\0' ;
+   sscanf( cmd+dadd , "%255s%255s" , junk , fname ) ;
+   if( junk[0] == '\0' || fname[0] == '\0' ){
+     ERROR_message("Saving All Images '%s': something is missing",cmd); RETURN(-1);
+   }
 
    /* find graph or image window */
 
@@ -2343,15 +2470,45 @@ ENTRY("AFNI_drive_save_jpeg") ;
    XmUpdateDisplay( im3d->vwid->top_shell ) ;
 
    if( isq != NULL ){
-     drive_MCW_imseq( isq, isqDR_save_jpeg , (XtPointer)fname ) ;
+     drive_MCW_imseq( isq, imode , (XtPointer)fname ) ;
    } else if( gra != NULL ){
-     GRA_file_pixmap( gra , fname ) ;
+     ERROR_message("Saving All Images '%s': graph windows not implemented",cmd);
+     RETURN(-1) ;
    } else {
-     ERROR_message("SAVE_JPEG %s: don't understand windowname",cmd) ;
+     ERROR_message("Saving All Images '%s': unknown window name",cmd) ;
      RETURN(-1) ;
    }
 
    RETURN(0) ;
+}
+
+/*--------------------------------------*/
+/*! SAVE_AGIF [c.]imagewindowname fname */
+
+static int AFNI_drive_save_agif( char *cmd )
+{
+  return AFNI_drive_save_allimages( cmd , AGIF_MODE ) ;
+}
+
+/*--------------------------------------*/
+/*! SAVE_MPEG [c.]imagewindowname fname */
+
+static int AFNI_drive_save_mpeg( char *cmd ){
+  return AFNI_drive_save_allimages( cmd , MPEG_MODE ) ;
+}
+
+/*-----------------------------------------*/
+/*! SAVE_ALLJPEG [c.]imagewindowname fname */
+
+static int AFNI_drive_save_alljpeg( char *cmd ){
+  return AFNI_drive_save_allimages( cmd , JPEG_MODE ) ;
+}
+
+/*-----------------------------------------*/
+/*! SAVE_ALLPNG [c.]imagewindowname fname */
+
+static int AFNI_drive_save_allpng( char *cmd ){
+  return AFNI_drive_save_allimages( cmd , PNG_MODE ) ;
 }
 
 /*--------------------------------------------------------------------*/

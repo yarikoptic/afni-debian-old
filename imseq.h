@@ -39,6 +39,10 @@
 
 #include "coxplot.h"  /* 30 Dec 1998 */
 
+#ifdef  __cplusplus
+extern "C" {
+#endif
+
 /*** typedefs ***/
 
 #ifndef HAVE_GET_PTR_TYPEDEF
@@ -170,6 +174,15 @@ typedef struct {
       int save_agif   ;  /* 27 Jul 2001 */
       int save_mpeg   ;  /* 02 Jul 2001 */
 } ISQ_options ;
+
+#undef  AGIF_MODE
+#undef  MPEG_MODE
+#undef  JPEG_MODE
+#undef  PNG_MODE
+#define AGIF_MODE 1  /* 06 Dec 2006 - for ISQ_save_anim() */
+#define MPEG_MODE 2
+#define JPEG_MODE 3
+#define PNG_MODE  4
 
 #define ISQ_OPT_EQUAL(opta,optb)                    \
     ( ((opta).mirror      == (optb).mirror     ) && \
@@ -612,6 +625,12 @@ extern MCW_imseq * open_MCW_imseq( MCW_DC * , get_ptr , XtPointer ) ;
 #define isqDR_plot_label      701  /* 20 Sep 2001 */
 #define isqDR_plot_plot       702  /* 20 Sep 2001 */
 #define isqDR_save_jpeg       703  /* 28 Jul 2005 */
+#define isqDR_save_agif       704  /* 07 Dec 2006 */
+#define isqDR_save_mpeg       705  /* 07 Dec 2006 */
+#define isqDR_save_jpegall    706  /* 07 Dec 2006 */
+#define isqDR_save_png        707  /* 11 Dec 2006 */
+#define isqDR_save_filtered   708  /* 14 Dec 2006 */
+#define isqDR_save_pngall     709  /* 15 Dec 2006 */
 
 extern Boolean drive_MCW_imseq( MCW_imseq * , int , XtPointer ) ;
 
@@ -781,13 +800,29 @@ extern void ISQ_cropper( MCW_imseq *, XButtonEvent *) ; /* 17 Jun 2002 */
 
 extern void ISQ_snapshot( Widget w ) ;                 /* 18 Jun 2003 */
 extern void ISQ_snapsave( int,int, byte *, Widget ) ;  /* 03 Jul 2003 */
+extern void ISQ_snap_agif( char * ) ;                  /* 06 Dec 2006 */
+extern void ISQ_snap_mpeg( char * ) ;
+extern void ISQ_snap_jpeg( char * ) ;
+extern void ISQ_snap_png ( char * ) ;
+extern void ISQ_snap_agif_rng( char *,int,int ) ;      /* 07 Dec 2006 */
+extern void ISQ_snap_mpeg_rng( char *,int,int ) ;
+extern void ISQ_snap_jpeg_rng( char *,int,int ) ;
+extern void ISQ_snap_png_rng ( char *,int,int ) ;
 
 extern int ISQ_handle_keypress( MCW_imseq * , unsigned long ); /* 18 Feb 2005 */
 
 extern void mri_rgb_transform_nD( MRI_IMAGE *, int, generic_func * ) ;
 
-extern void ISQ_save_jpeg( MCW_imseq *seq , char *fname ) ; /* 28 Jul 2005 */
+extern void ISQ_save_jpeg( MCW_imseq *seq , char *fname ) ;    /* 28 Jul 2005 */
+extern void ISQ_save_png ( MCW_imseq *seq , char *fname ) ;    /* 11 Dec 2006 */
+extern void ISQ_save_anim( MCW_imseq *, char *, int,int,int ); /* 06 Dec 2006 */
+
+extern void ISQ_save_image( MCW_imseq *, char *, char *, char *); /* 11 Dec 2006 */
 
 extern void ISQ_setup_ppmto_filters(void); /* 11 May 2006 */
+
+#ifdef  __cplusplus
+}
+#endif
 
 #endif /* _MCW_IMSEQ_HEADER_ */

@@ -3,8 +3,16 @@
    of Wisconsin, 1994-2000, and are released under the Gnu General Public
    License, Version 2.  See the file README.Copyright for details.
 ******************************************************************************/
+
+#ifndef _MAXIMA_H_
+#define _MAXIMA_H_
+
+#ifdef  __cplusplus
+extern "C" {
+#endif
    
 /*  AFNI stuff  */
+
 /*--------------------  defines    ----------------------------------------*/
 
 #define R_MAX_AFNI_DSETS          3
@@ -92,6 +100,7 @@ typedef struct
     int			ngbr_style;		/* what to do with neighbors  */
     int			overwrite;		/* do we allow overwrite      */
     int			quiet;			/* no text output of results  */
+    int			coords_only;		/* only output coordinates    */
     int			true_max;		/* no neighbor equality       */
     int			dicom_coords;		/* no neighbor equality       */
     int			debug;  		/* debug level                */
@@ -131,4 +140,8 @@ u_short r_get_max_u_short( ushort *, int );
 static short *  gr_orig_data = NULL;
 static float    gr_fac = 1.0;
 
+#ifdef  __cplusplus
+}
+#endif
 
+#endif /* _MAXIMA_H_ */

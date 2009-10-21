@@ -4,8 +4,6 @@
 
 #if defined SUMA_SurfSmooth_STAND_ALONE
 #define STAND_ALONE
-#elif defined SUMA_getPatch_STANDALONE
-#define STAND_ALONE 
 #elif defined SUMA_SurfQual_STANDALONE
 #define STAND_ALONE
 #endif
@@ -236,6 +234,7 @@ SUMA_VTI *SUMA_GetVoxelsIntersectingTriangle(   SUMA_SurfaceObject *SO, SUMA_VOL
    nx = VolPar->nx; ny = VolPar->ny; nz = VolPar->nz; nxy = nx * ny; nxyz = nx * ny * nz;
    
    if (LocalHead) {
+      SUMA_LH("Debug mode, writing file: SUMA_GetVoxelsIntersectingTriangle.1D");
       fp = fopen("SUMA_GetVoxelsIntersectingTriangle.1D","w");
       if (fp) fprintf(fp, "# Voxels from %s that intersect the triangles \n", VolPar->filecode);
    }   
@@ -872,6 +871,8 @@ SUMA_Boolean SUMA_AddNodeToLayer (int n, int LayInd, SUMA_GET_OFFSET_STRUCT *Off
    static char FuncName[]={"SUMA_AddNodeToLayer"};
    static SUMA_Boolean LocalHead = NOPE;
    
+   SUMA_ENTRY;
+   
    /* is this a new layer */
    if (LayInd > OffS->N_layers) { /* error */
       SUMA_SL_Err("LayInd > OffS->N_layers. This should not be!");
@@ -947,6 +948,8 @@ SUMA_Boolean SUMA_Recycle_getoffsets (SUMA_GET_OFFSET_STRUCT *OffS)
    static char FuncName[]={"SUMA_Recycle_getoffsets"};
    int i, j;
    static SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
    
    for (i=0; i < OffS->N_layers; ++i) {
       /* reset the layer index of used nodes in LayerVect */
@@ -2518,7 +2521,7 @@ float ** SUMA_Taubin_Desbrun_Smooth_Weights (SUMA_SurfaceObject *SO, float *NewN
          
          cot1= cot2 = cij = 0.0;   
          /* find the third node from each of the triangles */
-         SUMA_THIRD_NODE(nj,n,inci[0],SO->FaceSetList,nk_1);
+         SUMA_THIRD_TRIANGLE_NODE(nj,n,inci[0],SO->FaceSetList,nk_1);
          /* find the cotangent of the opposing angles at nk_1 and nk_2 */
          /* form vectors */
          SUMA_UNIT_VEC((&(nl[3*nk_1])), (&(nl[3*n ])), U1, U1n);
@@ -2527,7 +2530,7 @@ float ** SUMA_Taubin_Desbrun_Smooth_Weights (SUMA_SurfaceObject *SO, float *NewN
          /* cotangent = dot / cross product*/
          if (Ucn > 0.00000000001) cot1 = SUMA_MT_DOT(U1,U2)/Ucn;
          if (N_inci > 1) {
-            SUMA_THIRD_NODE(nj,n,inci[1],SO->FaceSetList,nk_2);
+            SUMA_THIRD_TRIANGLE_NODE(nj,n,inci[1],SO->FaceSetList,nk_2);
             /* form vectors */
             SUMA_UNIT_VEC((&(nl[3*nk_2])), (&(nl[3*n ])), U1, U1n);
             SUMA_UNIT_VEC((&(nl[3*nk_2])), (&(nl[3*nj])), U2, U2n);
@@ -2741,12 +2744,12 @@ float * SUMA_Taubin_Smooth (SUMA_SurfaceObject *SO, float **wgt,
                             float lambda, float mu, float *fin_orig, 
                             int N_iter, int vpn, SUMA_INDEXING_ORDER d_order,
                             float *fout_final_user, SUMA_COMM_STRUCT *cs, 
-                            byte *nmask)
+                            byte *nmask, byte strict_mask)
 {
    static char FuncName[]={"SUMA_Taubin_Smooth"};
    float *fout_final=NULL, *fbuf=NULL, *fin=NULL, *fout=NULL, *fin_next=NULL, *ftmp=NULL;
    float fp, dfp, fpj;
-   int i, n , k, j, niter, vnk, n_offset, DoThis; 
+   int i, n , k, j, niter, vnk, n_offset, DoThis, nj=-1, nnei=-1; 
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
@@ -2850,17 +2853,30 @@ float * SUMA_Taubin_Smooth (SUMA_SurfaceObject *SO, float **wgt,
                   if (DoThis) {
                      fp = fin[vnk]; /* kth value at node n */
                      dfp = 0.0;
-                     for (j=0; j < SO->FN->N_Neighb[n]; ++j) { /* calculating the laplacian */
-                        fpj = fin[SO->FN->FirstNeighb[n][j]+n_offset]; /* value at jth neighbor of n */
-                        if (wgt) dfp += wgt[n][j] * (fpj - fp); 
-                        else dfp += (fpj - fp); /* will apply equal weight later */
-                     }/* for j*/
+                     if (nmask) {
+                        nnei = 0;
+                        for (j=0; j < SO->FN->N_Neighb[n]; ++j) { /* calculating the laplacian */
+                              nj = SO->FN->FirstNeighb[n][j];
+                              if (nmask[nj] || !strict_mask){ /* consider only neighbors that are in mask if strict_mask is 1*/
+                                 fpj = fin[nj+n_offset]; /* value at jth neighbor of n */
+                                 if (wgt) dfp += wgt[n][j] * (fpj - fp); 
+                                 else { dfp += (fpj - fp); ++nnei; }/* will apply equal weight later */
+                              }
+                        }/* for j*/
+                     } else {
+                        nnei = SO->FN->N_Neighb[n];
+                        for (j=0; j < SO->FN->N_Neighb[n]; ++j) { /* calculating the laplacian */
+                              fpj = fin[SO->FN->FirstNeighb[n][j]+n_offset]; /* value at jth neighbor of n */
+                              if (wgt) dfp += wgt[n][j] * (fpj - fp); 
+                              else dfp += (fpj - fp); /* will apply equal weight later */
+                        }/* for j*/
+                     }
                      if (niter%2) { /* odd */
                         if (wgt) fout[vnk] = fin[vnk] + mu * dfp;
-                        else fout[vnk] = fin[vnk] + mu * dfp / (float)SO->FN->N_Neighb[n];   /* apply equal weight factor here */
+                        else fout[vnk] = fin[vnk] + mu * dfp / (float)nnei;   /* apply equal weight factor here */
                      }else{ /* even */
                        if (wgt) fout[vnk] = fin[vnk] + lambda * dfp;
-                       else fout[vnk] = fin[vnk] + lambda * dfp / (float)SO->FN->N_Neighb[n];  /* apply equal weight factor here */
+                       else fout[vnk] = fin[vnk] + lambda * dfp / (float)nnei;  /* apply equal weight factor here */
                      }
                   } else {
                      fout[vnk] = fin[vnk];
@@ -2916,17 +2932,31 @@ float * SUMA_Taubin_Smooth (SUMA_SurfaceObject *SO, float **wgt,
                   if (DoThis) {
                      fp = fin[vnk]; /* kth value at node n */
                      dfp = 0.0;
-                     for (j=0; j < SO->FN->N_Neighb[n]; ++j) { /* calculating the laplacian */
-                        fpj = fin[SO->FN->FirstNeighb[n][j]*vpn+k]; /* value at jth neighbor of n */
-                        if (wgt) dfp += wgt[n][j] * (fpj - fp); 
-                        else dfp += (fpj - fp); /* will apply equal weight later */
-                     }/* for j*/
+                     if (nmask) {
+                        nnei = 0;
+                        for (j=0; j < SO->FN->N_Neighb[n]; ++j) { /* calculating the laplacian */
+                           nj = SO->FN->FirstNeighb[n][j];
+                           if (nmask[nj] || !strict_mask) { /* consider only neighbors that are in mask if strict_mask is 1*/
+                            
+                              fpj = fin[nj*vpn+k]; /* value at jth neighbor of n */
+                              if (wgt) dfp += wgt[n][j] * (fpj - fp); 
+                              else { dfp += (fpj - fp); ++nnei;} /* will apply equal weight later */
+                           }
+                        }/* for j*/
+                     } else {
+                        nnei = SO->FN->N_Neighb[n];
+                        for (j=0; j < SO->FN->N_Neighb[n]; ++j) { /* calculating the laplacian */
+                           fpj = fin[SO->FN->FirstNeighb[n][j]*vpn+k]; /* value at jth neighbor of n */
+                           if (wgt) dfp += wgt[n][j] * (fpj - fp); 
+                           else dfp += (fpj - fp); /* will apply equal weight later */
+                        }/* for j*/
+                     }
                      if (niter%2) { /* odd */
                         if (wgt) fout[vnk] = fin[vnk] + mu * dfp;
-                        else fout[vnk] = fin[vnk] + mu * dfp / (float)SO->FN->N_Neighb[n];   /* apply equal weight factor here */
+                        else fout[vnk] = fin[vnk] + mu * dfp / (float)nnei;   /* apply equal weight factor here */
                      }else{ /* even */
                        if (wgt) fout[vnk] = fin[vnk] + lambda * dfp;
-                       else fout[vnk] = fin[vnk] + lambda * dfp / (float)SO->FN->N_Neighb[n];  /* apply equal weight factor here */
+                       else fout[vnk] = fin[vnk] + lambda * dfp / (float)nnei;  /* apply equal weight factor here */
                      }
                   } else {
                      fout[vnk] = fin[vnk];
@@ -2951,6 +2981,14 @@ float * SUMA_Taubin_Smooth (SUMA_SurfaceObject *SO, float **wgt,
       
    SUMA_RETURN(fout);
 }
+
+static int OffsetDebugNode = -1; /* debugging variable for Offset computing functions */
+void SUMA_Set_OffsetDebugNode (int d)
+{
+   OffsetDebugNode = d;
+   return;
+}
+
 
 /*!
    \brief a function to turn the often cumbersome SUMA_GET_OFFSET_STRUCT
@@ -3065,8 +3103,217 @@ char * SUMA_ShowOffset_ll_Info (DList *list, int detail)
 }
 
 /*!
+   For each node past layer 0, determine the propagation location prop_loc of that node. The 
+   propagation direction is given by the vector formed by vector: node-->prop_loc
+   Here's how the function works:
+   For each node njl in layer il, 
+      find nodes surrounding it and store njl and its neighbors in n_sur
+      calculate the 1st principal component of the matrix formed by the coordinates of these nodes
+      Form the plane that has the 1st principal component as a normal and that passes by njl
+      Intersect the plane with those triangles that are not in the previous layer (i.e. intersect with triangles going forward)
+      One triangle should intersect the plane and the intersection point (other than njl of course) is
+      called the propagation location of node njl. 
+*/
+#define LOC_DBG 1
+int SUMA_OffsetLayerPropagationLocation(SUMA_SurfaceObject *SO, SUMA_GET_OFFSET_STRUCT *OffS, float *PropLoc)
+{
+   static char FuncName[]={"SUMA_OffsetLayerPropagationLocation"};
+   int n_sur[50], iseg, njl, njjll, jjll, in_sur, hit, itgood, it, il0, nil0, n2, n3, i;
+   int N_Incident, N_IncidentMax=100, Incident[N_IncidentMax];
+   int noffs = 0, il, jl, ip;
+   float data_mat[50*3], *p1, *p2;
+   double trace, pc_vec[9], pc_eig[3], Eq[4], pinter[3], pc0[3];
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+
+   if (SO->NodeDim != 3) {
+      SUMA_S_Err("Need 3 dims for surf coords.");
+      SUMA_RETURN(0);
+   }
+   if (!SO->EL) {
+      SUMA_S_Err("Need SO->EL.");
+      SUMA_RETURN(0);
+   }
+   i = OffS->layers[0].NodesInLayer[0];
+   if (i==OffsetDebugNode) {
+      LocalHead = YUP;
+      SUMA_LHv("Debug mode for central node %d (must have LOC_DBG defined as 1): \n", i);
+   }
+   noffs = 0;
+   for (il=1; il<OffS->N_layers; ++il) { /* for each layer */  
+      for (jl=0; jl<OffS->layers[il].N_NodesInLayer; ++jl) { /* for each node in layer */
+         PropLoc[3*noffs  ] = PropLoc[3*noffs+1] = PropLoc[3*noffs+2] = 0.0 ;
+         njl = OffS->layers[il].NodesInLayer[jl];
+         in_sur = 0;
+         n_sur[in_sur] = njl; ++in_sur; 
+         /* SUMA_LHv("get nodes in layer %d, connected to node %d\n", il, njl); */
+         for (jjll=0; jjll<OffS->layers[il].N_NodesInLayer; ++jjll) {
+            njjll = OffS->layers[il].NodesInLayer[jjll];
+            if (njjll != njl) {
+               iseg = -1; 
+               /* SUMA_LHv("Looking for edge: %d %d\n", njjll, njl); */
+               if (njjll < njl) {SUMA_FIND_EDGE (SO->EL, njjll, njl, iseg);}
+               else {SUMA_FIND_EDGE (SO->EL, njl, njjll, iseg);}
+               /* SUMA_LHv("iseg is %d\n", iseg); */
+               if (iseg < 0) { 
+                  /* SUMA_LH("Segment not found."); */
+               } else {
+                  /* segment found, accept node in neighborhood */
+                  if (in_sur > 49) {
+                     SUMA_S_Crit("Hard limit exceeded! Fix it.");
+                     exit(1);
+                  }
+                  n_sur[in_sur] = njjll; ++in_sur;
+               }  
+            }
+         }
+         if (in_sur < 2) {
+            /* Node juts out with no nodes connected to it to meet the 
+            layer's distance criterion. This node is going nowhere*/
+            fprintf(SUMA_STDERR, "Warning %s: \n"
+                                 "in_sur is %d\n"
+                                 "Central node: %d\n"
+                                 "Layer %d, node %d.\n"
+                                 "%d nodes in this layer are:\n",
+                                 FuncName, in_sur, i, il, n_sur[0], OffS->layers[il].N_NodesInLayer); 
+            for (ip=0; ip<OffS->layers[il].N_NodesInLayer; ++ip) fprintf(SUMA_STDERR, "%d   ", OffS->layers[il].NodesInLayer[ip]);
+            fprintf(SUMA_STDERR, "\nPropLoc[%d] is set to 0s.\n", noffs);
+            goto NEW_OFFS;
+         } else if (in_sur == 2) {
+            /* Node has only one neighbor in layer. 
+            This happens when other neighboring nodes were part of the
+            previous layer. In this case, the direction of this node is towards its only
+            neighbor */
+            PropLoc[3*noffs+0] = SO->NodeList[3*n_sur[1]  ];
+            PropLoc[3*noffs+1] = SO->NodeList[3*n_sur[1]+1];
+            PropLoc[3*noffs+2] = SO->NodeList[3*n_sur[1]+2];
+            SUMA_LHv("Storing lazy hit (noffs=%d)\n"
+                     "PropLoc[%d]=%f %f %f\n", noffs, noffs, 
+                     PropLoc[3*noffs+0], PropLoc[3*noffs+1], PropLoc[3*noffs+2]); 
+            goto NEW_OFFS;
+         } else if (in_sur > 6) {
+            fprintf(SUMA_STDERR, "Warning %s: \n"
+                                 "in_sur is %d\n"
+                                 "Although it is common for it \n"
+                                 "to be slightly larger than 3.\n"
+                                 "the value observed seems excessive.\n"
+                                 "check mesh at nodes below\n"
+                                 "Central node: %d\n"
+                                 "Layer %d, node %d.\n",
+                                 FuncName, in_sur, i, il, n_sur[0]); 
+         } 
+         /* Now we have in n_sur, the indces of nodes that would enter the PCA */
+         for (ip=0; ip<in_sur; ++ip) { /* load the coords */
+               data_mat[ip  ] = SO->NodeList[3*n_sur[ip]  ];
+               data_mat[ip+3] = SO->NodeList[3*n_sur[ip]+1];
+               data_mat[ip+6] = SO->NodeList[3*n_sur[ip]+2];
+         }
+
+         #if LOC_DBG
+         SUMA_LHv("Calculating pca of nodes %d %d %d:\n"
+                  "[%f %f %f\n%f %f %f\n%f %f %f]\n",
+                  n_sur[0], n_sur[1], n_sur[2],
+                  SO->NodeList[3*n_sur[0]],SO->NodeList[3*n_sur[0]+1],SO->NodeList[3*n_sur[0]+2], 
+                  SO->NodeList[3*n_sur[1]],SO->NodeList[3*n_sur[1]+1],SO->NodeList[3*n_sur[1]+2], 
+                  SO->NodeList[3*n_sur[2]],SO->NodeList[3*n_sur[2]+1],SO->NodeList[3*n_sur[2]+2]); 
+         #endif
+                  
+         if ((trace = pca_fast3 (data_mat, in_sur, 1, pc_vec, pc_eig)) < 0) {
+            fprintf(SUMA_STDERR, "Warning %s:\n"
+                                 "Failed calculating PC at\n"
+                                 "Central node: %d\n"
+                                 "Layer %d, nodes for pca: %d %d %d\n",
+                                 FuncName, i, il, n_sur[0], n_sur[1], n_sur[2]);
+            goto NEW_OFFS;
+         } 
+         /* Have PC, will travel */
+         /* Find equation of plane passing by node n_sur[0] and having the PC for a normal */
+         pc0[0] = pc_vec[0]; pc0[1] = pc_vec[3]; pc0[2] = pc_vec[6];
+         p1 = &(SO->NodeList[3*n_sur[0]]);
+         SUMA_LHv("   Forming plane with normal [%f %f %f], passing by point [%f %f %f]\n", 
+            pc0[0], pc0[1], pc0[2], p1[0], p1[1], p1[2]); 
+         SUMA_PLANE_NORMAL_POINT(pc0, p1, Eq);
+         /* Then find the triangle that is      incident to node n_sur[0] 
+                                          AND   not part of the previous layer 
+                                          AND   intersects the plane Eq*/
+         N_Incident = N_IncidentMax; /* pass limit to SUMA_Get_NodeIncident */
+         if (!SUMA_Get_NodeIncident(n_sur[0], SO, Incident, &N_Incident)) {
+            SUMA_S_Err("Failed to get incident triangles.");
+            goto NEW_OFFS;
+         }
+         if (!N_Incident) {
+            SUMA_S_Err("No incident triangles");
+            goto NEW_OFFS;
+         }
+         /* of those triangles, which ones have a node in the previous layer? */
+         SUMA_LHv("   Searching for acceptable triangles out of a total of %d\n", N_Incident); 
+         itgood = 0;
+         for (it=0; it<N_Incident; ++it) {
+            hit = 0;
+            for (il0=0; il0<OffS->layers[il-1].N_NodesInLayer;++il0) {
+               nil0 = OffS->layers[il-1].NodesInLayer[il0];
+               if (  SO->FaceSetList[3*Incident[it]  ] == nil0 || 
+                     SO->FaceSetList[3*Incident[it]+1] == nil0 || 
+                     SO->FaceSetList[3*Incident[it]+2] == nil0) {
+                  hit = 1;
+                  break;
+               }
+            }
+            if (!hit) {
+               Incident[itgood] = Incident[it];
+               ++itgood;
+            }
+         } 
+         N_Incident = itgood;
+         if (LocalHead) {
+            fprintf (SUMA_STDERR,"%s:\n"
+                                 "    Which of remaining %d triangles intersect the plane [%.2f %.2f %.2f %.2f]\n"
+                                 "    Triangles:\n",
+                                 FuncName, N_Incident,Eq[0], Eq[1], Eq[2], Eq[3]); 
+            for (it=0; it<N_Incident; ++it) {
+               fprintf (SUMA_STDERR,"   %d", Incident[it]);
+            }
+            fprintf (SUMA_STDERR,"\n");
+         }
+         /* Now, which of these good triangles intersect the plane ?*/
+         hit = 0;
+         for (it=0; it<N_Incident; ++it) {
+            SUMA_LHv("      Checking Triangle %d\n", Incident[it]); 
+            SUMA_TWO_OTHER_TRIANGLE_NODES(n_sur[0],Incident[it],SO->FaceSetList,n2,n3);
+            if (n2 < 0 || n3 < 0) {
+               SUMA_S_Err("Failed to find other nodes in triangle");
+               goto NEW_OFFS;
+            } 
+            p1 = &(SO->NodeList[3*n2]);
+            p2 = &(SO->NodeList[3*n3]);
+            SUMA_LHv("Calling SUMA_SEGMENT_PLANE_INTERSECT, nodes of triangle are %d %d %d\n", n_sur[0], n2, n3); 
+            SUMA_SEGMENT_PLANE_INTERSECT(p1, p2, Eq, hit, pinter);
+            if (hit) {  /* OK, have hit, and the propagation direction */
+               PropLoc[3*noffs+0] = pinter[0];
+               PropLoc[3*noffs+1] = pinter[1];
+               PropLoc[3*noffs+2] = pinter[2];
+               SUMA_LHv("Storing hit (noffs=%d)\n"
+                        "PropLoc[%d]=%f %f %f\n", noffs, noffs, 
+                        PropLoc[3*noffs+0], PropLoc[3*noffs+1], PropLoc[3*noffs+2]);
+               break;
+            } 
+         }
+         if (!hit) {
+            SUMA_LHv("             Failed to get hit (noffs=%d)\n", noffs);
+         }
+         
+         NEW_OFFS:
+         SUMA_LHv("Done with noffs=%d\n", noffs); 
+         ++noffs;
+      }  /* for each node in layer */
+   }  /* for each layer */  
+   SUMA_RETURN(1);
+}
+
+/*!
    \brief creates a vector of node neighbors structures such that:
-   OffS = SUMA_FormNeighbOffset ( SUMA_SurfaceObject *SO, float OffsetLim);
+   OffS = SUMA_FormNeighbOffset ( SUMA_SurfaceObject *SO, float OffsetLim, const char *Opts, byte *nmask, float FWHM);
    
    \param OffS (SUMA_OFFSET_STRUCT *) SO->Node x 1 vector of structures 
          OffS[i] is a structure containing node neighbors of node i
@@ -3075,13 +3322,26 @@ char * SUMA_ShowOffset_ll_Info (DList *list, int detail)
                                     nodes neighboring node i
          OffS[i].Neighb_dist (float *) OffS[i].N_Neighb x 1 vector containing 
                                     node distances from node i. 
-                                    These are the shortes distances ON THE GRAPH.
+                                    These are the shortest distances ON THE GRAPH.
                                     The distances might be larger than OffsetLim
                                     because the child function SUMA_getoffsets2
                                     does so.
+         OffS[i].Prop_Direc (float *) OffS[i].N_Neighb x 3 vector containing 
+                                    contour propagation directions at each node,
+                                    in layers 1 and above. This is only created
+                                    if Opts has "DoProp" in it.           
+                           
    \param OffsetLim (float) maximal inclusive neighbor distance. In reality, some 
                            nodes may be farther apart. But all nodes closer than 
                            OffsetLim to each node will be included
+   \param Opts (const char *) if contains the string "DoProp" then the function
+                              also calculates the propagation directions.
+                              Default is NULL, no extras.
+   \param nmask (byte *) a mask vector, if non null, then only nodes n, where nmask[n] == 1
+                           are processed 
+   \param FWHM (float) if > 0, then the distances x are changed in Neighb_dist are 
+                              changed to G(x) = 1/(sqrt(2pi)Sig)*exp(-(x*x)/(2*Sig*Sig)) 
+                              where Sig is calculated from FWHM by Sig = FWHM /   2.354820;
    - NOTE: This function will chew up a lot of memory, real quick.
             An approximate equation for the size needed for OffS:
                (mean_N_Neighb_per_Node * 8 + 12) * SO->N_Node Bytes
@@ -3092,90 +3352,149 @@ char * SUMA_ShowOffset_ll_Info (DList *list, int detail)
          repeatedly for each node, as is done in this function.
          
 */
- 
-SUMA_OFFSET_STRUCT *SUMA_FormNeighbOffset ( SUMA_SurfaceObject *SO, float OffsetLim)
+
+SUMA_OFFSET_STRUCT *SUMA_FormNeighbOffset ( SUMA_SurfaceObject *SO, float OffsetLim, const char *opts, byte *nmask, float FWHM)
 {
    static char FuncName[]={"SUMA_FormNeighbOffset"};
-   int i, ii, il, jl, noffs, ShowNode = 4;
+   int i, ii, il, jl, ip, noffs,  DoProp = 0, iproc, N_mask;
    SUMA_GET_OFFSET_STRUCT *OffS = NULL;
    struct  timeval start_time;
+   double scl, ds2, sig, d;
    float etime_GetOffset, mean_N_Neighb, dist, dist_norm;   
    SUMA_OFFSET_STRUCT *OffS_out=NULL;
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
    if (!SO) { SUMA_SL_Err("NULL SO"); SUMA_RETURN(NULL); }
-   if (!SO->FN) {
-      SUMA_SL_Err("NULL SO->FN");
-      SUMA_RETURN(NULL);
+   if (!SO->FN || !SO->EL) {
+      /* do it here */
+      if (!SO->EL && !(SO->EL = SUMA_Make_Edge_List_eng (SO->FaceSetList, SO->N_FaceSet, SO->N_Node, SO->NodeList, 0, SO->idcode_str))) {
+         SUMA_S_Err("Failed to create Edge_List");
+         SUMA_RETURN(NULL);
+      }
+      if (!SO->FN && !(SO->FN = SUMA_Build_FirstNeighb( SO->EL, SO->N_Node, SO->idcode_str)) ) {
+         SUMA_S_Err("Failed to create FirstNeighb");
+         SUMA_RETURN(NULL);
+      }
    }
+   
+   if (SUMA_iswordin(opts,"DoProp") == 1) {
+      SUMA_LH("Propagation Directions Will Be Computed");
+      DoProp = 1;
+   }
+
+   /* calculate sigma */
+   if (FWHM > 0.0) {
+      sig = FWHM /   2.354820;
+      ds2 = 2*sig*sig;
+      scl = iSQ_2PI/sig;
+   } else sig = -1.0;
+   /* calculate the offset limit, if allowed */
+   if (OffsetLim < 0.0) {
+      if (sig > 0.0) {
+         OffsetLim = 3.5*sig;
+      } else {
+         SUMA_S_Errv("Have OffsetLim =%f and no FWHM (%f) from which to estimate it.\n", OffsetLim, FWHM);
+         SUMA_RETURN(NULL);
+      }
+   }
+   SUMA_LHv("OffsetLim set to %f\nSigma set to %f\n", OffsetLim, sig);
+   
+   N_mask=0;
+   if (nmask) {
+      for (i=0; i<SO->N_Node; ++i) if (nmask[i]) ++N_mask;
+   } else N_mask = SO->N_Node;
+   
    OffS_out = (SUMA_OFFSET_STRUCT *)SUMA_malloc(SO->N_Node * sizeof(SUMA_OFFSET_STRUCT));
    
    SUMA_etime(&start_time,0);
    
+   
    OffS = SUMA_Initialize_getoffsets (SO->N_Node);
    mean_N_Neighb = 0;
    dist_norm = 1.1 * OffsetLim;
+   iproc = 0;
    for (i=0; i < SO->N_Node; ++i) {
-      SUMA_getoffsets2 (i, SO, OffsetLim, OffS, NULL, 0);
-      /* Now store all the relevant info in OffS in OffS_out[i] */
-      OffS_out[i].N_Neighb = 0; 
-      for (il=1; il<OffS->N_layers; ++il) {
-         OffS_out[i].N_Neighb += OffS->layers[il].N_NodesInLayer;
-      }
-      OffS_out[i].Neighb_ind = (int *)SUMA_malloc(OffS_out[i].N_Neighb * sizeof(int));
-      OffS_out[i].Neighb_dist = (float *)SUMA_malloc(OffS_out[i].N_Neighb * sizeof(float));
-      mean_N_Neighb += OffS_out[i].N_Neighb;
-      noffs = 0;
-      for (il=1; il<OffS->N_layers; ++il) {
-         for (jl=0; jl<OffS->layers[il].N_NodesInLayer; ++jl) {
-            OffS_out[i].Neighb_ind[noffs] = OffS->layers[il].NodesInLayer[jl]; 
-            #if 1
-            /* don't play fancy with the weights here */
-            OffS_out[i].Neighb_dist[noffs] = OffS->OffVect[OffS_out[i].Neighb_ind[noffs]];
-            #else
-            dist = OffS->OffVect[OffS_out[i].Neighb_ind[noffs]];
-            if (dist > OffsetLim) OffS_out[i].Neighb_dist[noffs] = 0;
-            else OffS_out[i].Neighb_dist[noffs] = (dist ); 
-            #endif
-            ++noffs;
+      OffS_out[i].N_Neighb = 0;
+      OffS_out[i].Neighb_ind = NULL;
+      OffS_out[i].Neighb_dist = NULL; 
+      OffS_out[i].Neighb_PropLoc = NULL;
+      if (!nmask || nmask[i]) {
+         SUMA_getoffsets2 (i, SO, OffsetLim, OffS, NULL, 0);
+         /* Now store all the relevant info in OffS in OffS_out[i] */
+         for (il=1; il<OffS->N_layers; ++il) {
+            OffS_out[i].N_Neighb += OffS->layers[il].N_NodesInLayer;
          }
-      }
-      
-      /* Show me the offsets for one node*/
-      if (0) {
-         if (i == ShowNode) {
-            FILE *fid=NULL;
-            char *outname=NULL;
-            outname = SUMA_Extension("SomethingOffset", ".1D", YUP);
-            outname = SUMA_append_replace_string(outname, "offset.1D", "", 1);
-            fid = fopen(outname, "w"); free(outname); outname = NULL;
-            if (!fid) {
-               SUMA_SL_Err("Could not open file for writing.\nCheck file permissions, disk space.\n");
-            } else {
-               fprintf (fid,"#Column 1 = Node index\n"
-                            "#column 2 = Neighborhood layer\n"
-                            "#Column 3 = Distance from node %d\n", ShowNode);
-               for (ii=0; ii<SO->N_Node; ++ii) {
-                  if (OffS->LayerVect[ii] >= 0) {
-                     fprintf(fid,"%d\t%d\t%f\n", ii, OffS->LayerVect[ii], OffS->OffVect[ii]);
-                  }
+         OffS_out[i].Neighb_ind = (int *)SUMA_malloc(OffS_out[i].N_Neighb * sizeof(int));
+         OffS_out[i].Neighb_dist = (float *)SUMA_malloc(OffS_out[i].N_Neighb * sizeof(float));
+         if (DoProp) {
+            OffS_out[i].Neighb_PropLoc = (float*)SUMA_malloc(OffS_out[i].N_Neighb * sizeof(float)*3);
+         }  
+         mean_N_Neighb += OffS_out[i].N_Neighb;
+         noffs = 0;
+         for (il=1; il<OffS->N_layers; ++il) {
+            for (jl=0; jl<OffS->layers[il].N_NodesInLayer; ++jl) {
+               OffS_out[i].Neighb_ind[noffs] = OffS->layers[il].NodesInLayer[jl]; 
+               #if 1
+               /* don't play fancy with the weights here */
+               d = OffS->OffVect[OffS_out[i].Neighb_ind[noffs]];
+               if (sig > 0.0) {
+                  OffS_out[i].Neighb_dist[noffs] = scl * exp(-(d*d)/(ds2));
+               }  else {
+                  OffS_out[i].Neighb_dist[noffs] = d;
                }
-               fclose(fid);
+               #else
+               dist = OffS->OffVect[OffS_out[i].Neighb_ind[noffs]];
+               if (dist > OffsetLim) OffS_out[i].Neighb_dist[noffs] = 0;
+               else OffS_out[i].Neighb_dist[noffs] = (dist ); 
+               #endif
+               ++noffs;
             }
          }
-      }
-               
-      if (i == 99) {
-         etime_GetOffset = SUMA_etime(&start_time,1);
-         fprintf(SUMA_STDERR, "%s: Search to %f mm took %f seconds for %d nodes.\n"
-                              "Projected completion time: %f minutes\n"
-                              "Projected memory need for structure %f MB", 
-                              FuncName, OffsetLim, etime_GetOffset, i+1, 
-                              etime_GetOffset * SO->N_Node / 60.0 / (i+1),
-                              (mean_N_Neighb / (i+1) * 8 + 12)* SO->N_Node/1000000.0);
-      }
-      SUMA_Recycle_getoffsets (OffS);
+
+         if (DoProp) {
+            SUMA_LH("Going to SUMA_OffsetLayerPropagationLocation\n");
+            if (!SUMA_OffsetLayerPropagationLocation(SO, OffS, OffS_out[i].Neighb_PropLoc)) {
+               SUMA_S_Err("Failed to calculation propagation location.");
+            }  
+            SUMA_LH("Done with SUMA_OffsetLayerPropagationLocation\n");
+         }
+
+         /* Show me the offsets for one node*/
+         if (0) {
+            if (i == OffsetDebugNode) {
+               FILE *fid=NULL;
+               char *outname=NULL;
+               outname = SUMA_Extension("SomethingOffset", ".1D", YUP);
+               outname = SUMA_append_replace_string(outname, "offset.1D", "", 1);
+               fid = fopen(outname, "w"); free(outname); outname = NULL;
+               if (!fid) {
+                  SUMA_SL_Err("Could not open file for writing.\nCheck file permissions, disk space.\n");
+               } else {
+                  fprintf (fid,"#Column 1 = Node index\n"
+                               "#column 2 = Neighborhood layer\n"
+                               "#Column 3 = Distance from node %d\n", OffsetDebugNode);
+                  for (ii=0; ii<SO->N_Node; ++ii) {
+                     if (OffS->LayerVect[ii] >= 0) {
+                        fprintf(fid,"%d\t%d\t%f\n", ii, OffS->LayerVect[ii], OffS->OffVect[ii]);
+                     }
+                  }
+                  fclose(fid);
+               }
+            }
+         }
+         ++iproc;
+         if (iproc == 100) {
+            etime_GetOffset = SUMA_etime(&start_time,1);
+            fprintf(SUMA_STDERR, "%s: Search to %f mm took %f seconds for %d nodes.\n"
+                                 "Projected completion time: %f minutes\n"
+                                 "Projected memory need for structure %f MB\n", 
+                                 FuncName, OffsetLim, etime_GetOffset, iproc, 
+                                 etime_GetOffset * N_mask / 60.0 / (float)(iproc),
+                                 (mean_N_Neighb / (iproc) * 8 + 12)* N_mask/1000000.0);
+         }
+         SUMA_Recycle_getoffsets (OffS);
+      } /* if node in mask */
    }
    SUMA_Free_getoffsets(OffS); OffS = NULL;
    
@@ -3207,6 +3526,7 @@ SUMA_OFFSET_STRUCT * SUMA_free_NeighbOffset (SUMA_SurfaceObject *SO, SUMA_OFFSET
       OffS_out[i].N_Neighb = 0;
       if (OffS_out[i].Neighb_dist) SUMA_free(OffS_out[i].Neighb_dist); OffS_out[i].Neighb_dist = NULL;
       if (OffS_out[i].Neighb_ind) SUMA_free(OffS_out[i].Neighb_ind); OffS_out[i].Neighb_ind = NULL;
+      if (OffS_out[i].Neighb_PropLoc) SUMA_free(OffS_out[i].Neighb_PropLoc); OffS_out[i].Neighb_PropLoc = NULL;
    }
    SUMA_free(OffS_out); 
    SUMA_RETURN(NULL);
@@ -3275,7 +3595,7 @@ float *SUMA_Offset_GeomSmooth( SUMA_SurfaceObject *SO, int N_iter, float OffsetL
       }
    }
    SUMA_LH("Calculating OffS_out ...");
-   OffS_out = SUMA_FormNeighbOffset (SO, OffsetLim);
+   OffS_out = SUMA_FormNeighbOffset (SO, OffsetLim, NULL, NULL, -1.0);
    fin_next = fin_orig;
    switch (d_order) {
       case SUMA_ROW_MAJOR:
@@ -3335,7 +3655,7 @@ float *SUMA_Offset_GeomSmooth( SUMA_SurfaceObject *SO, int N_iter, float OffsetL
 
 float *SUMA_NN_GeomSmooth( SUMA_SurfaceObject *SO, int N_iter, float *fin_orig, 
                            int vpn, SUMA_INDEXING_ORDER d_order, float *fout_final_user,
-                           SUMA_COMM_STRUCT *cs, byte *nmask)
+                           SUMA_COMM_STRUCT *cs, byte *nmask, byte strict_mask)
 {
    static char FuncName[]= {"SUMA_NN_GeomSmooth"};
    float *fout_final=NULL, *fbuf=NULL, *fin_next=NULL, *fin=NULL, *fout=NULL;
@@ -3400,7 +3720,7 @@ float *SUMA_NN_GeomSmooth( SUMA_SurfaceObject *SO, int N_iter, float *fin_orig,
                fin_next = fbuf; /* in the next iteration, the input is from the buffer */
             }
             fout = SUMA_SmoothAttr_Neighb ( fin, vpn*SO->N_Node, 
-                                                 fout, SO->FN, vpn, nmask);
+                                                 fout, SO->FN, vpn, nmask, strict_mask);
             if (cs->Send) {
                if (!SUMA_SendToSuma (SO, cs, (void *)fout, SUMA_NODE_XYZ, 1)) {
                   SUMA_SL_Warn("Failed in SUMA_SendToSuma\nCommunication halted.");
@@ -3465,12 +3785,12 @@ float *SUMA_NN_GeomSmooth( SUMA_SurfaceObject *SO, int N_iter, float *fin_orig,
 float * SUMA_Chung_Smooth (SUMA_SurfaceObject *SO, float **wgt, 
                            int N_iter, float FWHM, float *fin_orig, 
                            int vpn, SUMA_INDEXING_ORDER d_order, float *fout_final_user,
-                           SUMA_COMM_STRUCT *cs, byte *nmask)
+                           SUMA_COMM_STRUCT *cs, byte *nmask, byte strict_mask)
 {
    static char FuncName[]={"SUMA_Chung_Smooth"};
    float *fout_final = NULL, *fbuf=NULL, *fin=NULL, *fout=NULL, *fin_next = NULL;
    float delta_time, fp, dfp, fpj, minfn=0.0, maxfn=0.0;
-   int n , k, j, niter, vnk, os, jj;
+   int n , k, j, niter, vnk, os, jj, nj=-1;
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
@@ -3559,20 +3879,18 @@ float * SUMA_Chung_Smooth (SUMA_SurfaceObject *SO, float **wgt,
                      if (nmask[n]) {
                         if (SO->FN->N_Neighb[n]) {
                            jj = 0;
-                           #if 0 /* only use nodes in mask as neighbors */
+                           if (strict_mask) { /* consider only neighbors that are in mask */
                               do {
                                  minfn = maxfn = fin[SO->FN->FirstNeighb[n][jj]+os]; ++jj;
                               } while (!nmask[SO->FN->FirstNeighb[n][jj]] && jj < SO->FN->N_Neighb[n]);
-                           #else
+                           } else { /* consider all neighbors */
                               minfn = maxfn = fin[SO->FN->FirstNeighb[n][jj]+os];
-                           #endif
+                           }
                         }
                         for (j=0; j < SO->FN->N_Neighb[n]; ++j) {
-                           #if 0 /* only use nodes in mask as neighbors */
-                           if (nmask[SO->FN->FirstNeighb[n][j]])
-                           #endif
-                           {
-                              fpj = fin[SO->FN->FirstNeighb[n][j]+os]; /* value at jth neighbor of n */
+                           nj = SO->FN->FirstNeighb[n][j];
+                           if (nmask[nj] || !strict_mask) { /* consider only neighbors that are in mask if strict_mask is 1*/
+                              fpj = fin[nj+os]; /* value at jth neighbor of n */
                               if (fpj < minfn) minfn = fpj;
                               if (fpj > maxfn) maxfn = fpj;
                               dfp += wgt[n][j] * (fpj - fp);
@@ -3609,6 +3927,204 @@ float * SUMA_Chung_Smooth (SUMA_SurfaceObject *SO, float **wgt,
                
    SUMA_RETURN(fout);
 }
+
+
+/*!
+   \brief A version of SUMA_Chung_Smooth that works on SUMA_DSET rather than
+   a float array.
+   NOTE: dset is changed on output (blurred values) but idcode
+   remains unchanged
+*/
+SUMA_Boolean SUMA_Chung_Smooth_dset (SUMA_SurfaceObject *SO, float **wgt, 
+                           int N_iter, float FWHM, SUMA_DSET *dset, 
+                           SUMA_COMM_STRUCT *cs, byte *nmask, byte strict_mask)
+{
+   static char FuncName[]={"SUMA_Chung_Smooth_dset"};
+   float *fout_final = NULL, *fbuf=NULL, *fin=NULL, *fout=NULL, *fin_next = NULL, *fin_orig = NULL;
+   float delta_time, fp, dfp, fpj, minfn=0.0, maxfn=0.0;
+   int n , k, j, niter, jj, *icols=NULL, N_icols, N_nmask, nj=-1;
+   byte *bfull=NULL;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+
+   if (N_iter % 2) {
+      SUMA_SL_Err("N_iter must be an even number\n");
+      SUMA_RETURN(NOPE);
+   }
+   
+   if (!SO || !wgt || !dset) {
+      SUMA_SL_Err("NULL SO or wgt or dset\n");
+      SUMA_RETURN(NOPE);
+   }
+   
+   if (!SO->FN) {
+      SUMA_SL_Err("NULL SO->FN\n");
+      SUMA_RETURN(NOPE);
+   }
+    
+   /* what columns can we process ?*/
+   icols = SUMA_FindNumericDataDsetCols(dset, &N_icols);
+         
+   if (N_icols <= 0) {
+      SUMA_SL_Err("No approriate data columns in dset");
+      SUMA_RETURN(NOPE);   
+   }
+   
+   /* allocate for buffer and output */
+   fbuf = (float *)SUMA_calloc(SO->N_Node, sizeof(float));
+   fout_final = (float *)SUMA_calloc(SO->N_Node, sizeof(float));
+   if (!fbuf || !fout_final) {
+      SUMA_SL_Crit("Failed to allocate for fbuf and fout_final\n");
+      SUMA_RETURN(NOPE);
+   }
+   
+   if (cs->Send && N_icols > 1) {
+      SUMA_S_Warn("Only 1st data column will be sent to SUMA in talk_mode.");
+   }
+   
+   delta_time= (FWHM * FWHM)/(16*N_iter*log(2));
+   
+   /* Begin filtering operation for each column */
+   for (k=0; k < N_icols; ++k) {
+      /* get a float copy of the data column */
+      fin_orig = SUMA_DsetCol2Float (dset, icols[k], 1);
+      if (!fin_orig) {
+         SUMA_SL_Crit("Failed to get copy of column. Woe to thee!");
+         SUMA_RETURN(NOPE);
+      }
+      /* make sure column is not sparse, one value per node */
+      if (k==0) {
+         SUMA_LH( "Special case k = 0, going to SUMA_MakeSparseColumnFullSorted");
+         bfull = NULL;
+         if (!SUMA_MakeSparseColumnFullSorted(&fin_orig, SDSET_VECFILLED(dset), 0.0, &bfull, dset, SO->N_Node)) {
+            SUMA_S_Err("Failed to get full column vector");
+            SUMA_RETURN(NOPE);
+         }
+         if (bfull) {
+            SUMA_LH( "Something was filled in SUMA_MakeSparseColumnFullSorted\n" );
+            /* something was filled in good old SUMA_MakeSparseColumnFullSorted */
+            if (nmask) {   /* combine bfull with nmask */
+               SUMA_LH( "Merging masks\n" );
+               for (jj=0; jj < SO->N_Node; ++jj) { if (nmask[jj] && !bfull[jj]) nmask[jj] = 0; }   
+            } else { nmask = bfull; }
+         } 
+         if (nmask) {
+            N_nmask = 0;
+            for (n=0; n<SO->N_Node; ++n) { if (nmask[n]) ++ N_nmask; }
+            SUMA_LHv("Blurring with node mask (%d nodes in mask)\n", N_nmask);
+            if (!N_nmask) {
+               SUMA_S_Warn("Empty mask, nothing to do");
+               goto CLEANUP;
+            }
+         }
+      } else {
+         SUMA_LH( "going to SUMA_MakeSparseColumnFullSorted");
+         if (!SUMA_MakeSparseColumnFullSorted(&fin_orig, SDSET_VECFILLED(dset), 0.0, NULL, dset, SO->N_Node)) {
+            SUMA_S_Err("Failed to get full column vector");
+            SUMA_RETURN(NOPE);
+         }
+         /* no need for reworking nmask and bfull for each column...*/
+      }
+           
+      if (cs->Send && k == 0) { /* send the first monster */
+         if (!SUMA_SendToSuma (SO, cs, (void *)fin_orig, SUMA_NODE_RGBAb, 1)) {
+            SUMA_SL_Warn("Failed in SUMA_SendToSuma\nCommunication halted.");
+         }
+      }
+      /* filter this column for each of the iterations */
+      fin_next = fin_orig;
+      for (niter=0; niter < N_iter; ++niter) {
+         SUMA_LHv("niter %d\n", niter);
+         if ( niter % 2 ) { /* odd */
+            fin = fin_next; /* input from previous output buffer */
+            fout = fout_final; /* results go into final vector */
+            fin_next = fout_final; /* in the next iteration, the input is from fout_final */
+         } else { /* even */
+            /* input data is in fin_new */
+            fin = fin_next;
+            fout = fbuf; /* results go into buffer */
+            fin_next = fbuf; /* in the next iteration, the input is from the buffer */
+         }
+         /* filter iteration for each node in data column k*/
+         if (!nmask) {
+            for (n=0; n < SO->N_Node; ++n) {
+               /*SUMA_LHv("node %d\n", n);*/
+               fp = fin[n]; /* kth value at node n */
+               dfp = 0.0;
+               if (SO->FN->N_Neighb[n]) minfn = maxfn = fin[SO->FN->FirstNeighb[n][0]];
+               for (j=0; j < SO->FN->N_Neighb[n]; ++j) {
+                  fpj = fin[SO->FN->FirstNeighb[n][j]]; /* value at jth neighbor of n */
+                  if (fpj < minfn) minfn = fpj;
+                  if (fpj > maxfn) maxfn = fpj;
+                  dfp += wgt[n][j] * (fpj - fp); 
+               }/* for j*/
+               fout[n] = fin[n] + delta_time * dfp;
+               if (fout[n] < minfn) fout[n] = minfn;
+               if (fout[n] > maxfn) fout[n] = maxfn;
+            }/* for n */ 
+         } else {  /* masking potential */
+            for (n=0; n < SO->N_Node; ++n) {
+               /*SUMA_LHv("node %d\n", n);*/
+               fp = fin[n]; /* kth value at node n */
+               dfp = 0.0;
+               if (nmask[n]) {
+                  if (SO->FN->N_Neighb[n]) {
+                     jj = 0;
+                     if (strict_mask) { /* consider only neighbors that are in mask */
+                        do {
+                           minfn = maxfn = fin[SO->FN->FirstNeighb[n][jj]]; ++jj;
+                        } while (!nmask[SO->FN->FirstNeighb[n][jj]] && jj < SO->FN->N_Neighb[n]);
+                     } else { /* consider all neighbors */
+                        minfn = maxfn = fin[SO->FN->FirstNeighb[n][jj]];
+                     }
+                  }
+                  for (j=0; j < SO->FN->N_Neighb[n]; ++j) {
+                     nj = SO->FN->FirstNeighb[n][j];
+                     if (nmask[nj] || !strict_mask) { /* consider only neighbors that are in mask if strict_mask is 1*/
+                        fpj = fin[nj]; /* value at jth neighbor of n */
+                        if (fpj < minfn) minfn = fpj;
+                        if (fpj > maxfn) maxfn = fpj;
+                        dfp += wgt[n][j] * (fpj - fp);
+                     } 
+                  }/* for j*/
+                  fout[n] = fin[n] + delta_time * dfp;
+                  if (fout[n] < minfn) fout[n] = minfn;
+                  if (fout[n] > maxfn) fout[n] = maxfn;
+               } else {
+                  fout[n] = fin[n];
+               }
+            }/* for n */ 
+         } /* masking potential */
+         
+         if (cs->Send && k == 0) {
+            if (!SUMA_SendToSuma (SO, cs, (void *)fout, SUMA_NODE_RGBAb, 1)) {
+               SUMA_SL_Warn("Failed in SUMA_SendToSuma\nCommunication halted.");
+            }
+         }
+
+      } /* for niter */
+      
+      if (fin_orig) SUMA_free(fin_orig); fin_orig = NULL;
+      
+      /* Now we need to shove the filtered data back into the dset */
+      if (!SUMA_Float2DsetCol (dset, icols[k], fout_final, SO->N_Node)) {
+         SUMA_S_Err("Failed to update dset's values");
+         SUMA_RETURN(NOPE);      
+      }
+      
+   } /* for each col */
+   
+   CLEANUP:
+   if (fin_orig) SUMA_free(fin_orig); fin_orig = NULL; /* just in case, this one's still alive from a GOTO */
+   /* Pre Dec 06 stupidity: if (bfull == nmask) { if (nmask) SUMA_free(nmask); nmask = NULL; bfull = NULL; } */
+   if (bfull) SUMA_free(bfull); bfull = NULL;
+   if (fbuf) SUMA_free(fbuf); fbuf = NULL;
+   if (fout_final) SUMA_free(fout_final); fout_final = NULL;
+   
+   SUMA_RETURN(YUP);
+}
+
 /*!
    \brief Filter data defined on the surface using M.K. Chung et al.'s 2005 method 
     [1] Chung, M.K., Robbins,S., Dalton, K.M., Davidson, R.J., Evans, A.C. (2004) 
@@ -3658,12 +4174,12 @@ float * SUMA_Chung_Smooth (SUMA_SurfaceObject *SO, float **wgt,
 float * SUMA_Chung_Smooth_05 (SUMA_SurfaceObject *SO, float **wgt, 
                            int N_iter, float FWHM, float *fin_orig, 
                            int vpn, SUMA_INDEXING_ORDER d_order, float *fout_final_user,
-                           SUMA_COMM_STRUCT *cs, byte *nmask)
+                           SUMA_COMM_STRUCT *cs, byte *nmask, byte strict_mask)
 {
    static char FuncName[]={"SUMA_Chung_Smooth_05"};
    float *fout_final = NULL, *fbuf=NULL, *fin=NULL, *fout=NULL, *fin_next = NULL;
    float fp, dfp, fpj;
-   int n , k, j, niter, vnk, os, jj;
+   int n , k, j, niter, vnk, os, jj, nj;
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
@@ -3746,8 +4262,11 @@ float * SUMA_Chung_Smooth_05 (SUMA_SurfaceObject *SO, float **wgt,
                      if (nmask[n]) {
                         for (j=0; j < SO->FN->N_Neighb[n]; ++j) {
                            {
-                              fpj = fin[SO->FN->FirstNeighb[n][j]+os]; /* value at jth neighbor of n */
-                              dfp += wgt[n][j+1] * fpj;
+                              nj = SO->FN->FirstNeighb[n][j];
+                              if (nmask[nj] || !strict_mask) { /* consider only neighbors that are in mask if strict_mask is 1*/
+                                 fpj = fin[nj+os]; /* value at jth neighbor of n */
+                                 dfp += wgt[n][j+1] * fpj;
+                              }
                            } 
                         }/* for j*/
                         fout[vnk] = fin[vnk] * wgt[n][0] +  dfp;
@@ -3780,523 +4299,539 @@ float * SUMA_Chung_Smooth_05 (SUMA_SurfaceObject *SO, float **wgt,
    SUMA_RETURN(fout);
 }
 
+/*!
+   A version of SUMA_Chung_Smooth_05 that works with SUMA_DSETs 
+   NOTE: dset is changed on output (blurred values) but idcode
+   remains unchanged
+*/
+SUMA_Boolean SUMA_Chung_Smooth_05_dset (SUMA_SurfaceObject *SO, float **wgt, 
+                           int N_iter, float FWHM, SUMA_DSET *dset, 
+                           SUMA_COMM_STRUCT *cs, byte *nmask, byte strict_mask)
+{
+   static char FuncName[]={"SUMA_Chung_Smooth_05_dset"};
+   float *fout_final = NULL, *fbuf=NULL, *fin=NULL, *fout=NULL, *fin_next = NULL, *fin_orig = NULL;
+   float delta_time, fp, dfp, fpj, minfn=0.0, maxfn=0.0;
+   int n , k, j, niter, jj, nj, *icols=NULL, N_icols, N_nmask;
+   byte *bfull=NULL;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
 
-
-#ifdef SUMA_getPatch_STANDALONE
-#define SURFPATCH_MAX_SURF 10  /*!< Maximum number of input surfaces */
-
-void usage_SUMA_getPatch ()
-   {
-      static char FuncName[]={"usage_SUMA_getPatch"};
-      char * s = NULL;
-      s = SUMA_help_basics();
-      printf ( "\nUsage:\n"
-               "  SurfPatch <-spec SpecFile> <-surf_A insurf> <-surf_B insurf> ...\n"
-               "            <-input nodefile inode ilabel> <-prefix outpref>  \n"
-               "            [-hits min_hits] [-masklabel msk] [-vol]\n"
-               "\n"
-               "Usage 1:\n"
-               "  The program creates a patch of surface formed by nodes \n"
-               "  in nodefile.\n"
-               "  Mandatory parameters:\n"
-               "     -spec SpecFile: Spec file containing input surfaces.\n"
-               "     -surf_X: Name of input surface X where X is a character\n"
-               "              from A to Z. If surfaces are specified using two\n"
-               "              files, use the name of the node coordinate file.\n"
-               "     -input nodefile inode ilabel: \n"
-               "            nodefile is the file containing nodes defining the patch.\n"
-               "            inode is the index of the column containing the nodes\n"
-               "            ilabel is the index of the column containing labels of\n"
-               "                   the nodes in column inode. If you want to use\n"
-               "                   all the nodes in column indode, then set this \n"
-               "                   parameter to -1 (default). \n"
-               "                   If ilabel is not equal to 0 then the corresponding \n"
-               "                   node is used in creating the patch.\n"
-               "                   See -masklabel option for one more variant.\n"
-               "     -prefix outpref: Prefix of output patch. If more than one surface\n"
-               "                      are entered, then the prefix will have _X added\n"
-               "                      to it, where X is a character from A to Z.\n"
-               "                      Output format depends on the input surface's.\n"
-               "                      With that setting, checking on pre-existing files\n"
-               "                      is only done before writing the new patch, which is\n"
-               "                      annoying. You can set the output type ahead of time\n"
-               "                      using -out_type option. This way checking for pre-existing\n"
-               "                      output files can be done at the outset.\n"
-               "\n" 
-               "  Optional parameters:\n"
-               "     -coord_gain GAIN: Multiply node coordinates by a GAIN.\n"
-               "                       That's useful if you have a tiny patch that needs\n"
-               "                       enlargement for easier viewing in SUMA.\n"
-               "                       Although you can zoon over very large ranges in SUMA\n"
-               "                       tiny tiny patches are hard to work with because\n"
-               "                       SUMA's parameters are optimized to work with objects\n"
-               "                       on the order of a brain, not on the order of 1 mm.\n"
-               "                       WARNING: Do not use this option if you are measuring\n"
-               "                       the volume of a patch!\n"
-               "     -out_type TYPE: Type of all output patches, regardless of input surface type.\n"
-               "                     Choose from: FreeSurfer, SureFit, 1D and Ply.\n"
-               "     -hits min_hits: Minimum number of nodes specified for a triangle\n"
-               "                     to be made a part of the patch (1 <= min_hits <= 3)\n"
-               "                     default is 2.\n"
-               "     -masklabel msk: If specified, then only nodes that are labeled with\n"
-               "                     with msk are considered for the patch.\n"
-               "                     This option is useful if you have an ROI dataset file\n"
-               "                     and whish to create a patch from one out of many ROIs\n"
-               "                     in that file. This option must be used with ilabel \n"
-               "                     specified (not = -1)\n"
-               "\n"
-               "Usage 2:\n"
-               "  The program can also be used to calculate the volume between the same patch\n"
-               "  on two isotopic surfaces. See -vol option below.\n"
-               "      -vol: Calculate the volume formed by the patch on surf_A and\n"
-               "            and surf_B. For this option, you must specify two and\n"
-               "            only two surfaces with surf_A and surf_B options.\n"
-               "      -vol_only: Only calculate the volume, don't write out patches.\n"
-               "\n"
-               "%s"
-               "\n",s); SUMA_free(s); s = NULL;
-       s = SUMA_New_Additions(0, 1); printf("%s\n", s);SUMA_free(s); s = NULL;
-       printf("       Ziad S. Saad SSCC/NIMH/NIH ziad@nih.gov     \n");
-       exit (0);
+   if (N_iter % 2) {
+      SUMA_SL_Err("N_iter must be an even number\n");
+      SUMA_RETURN(NOPE);
    }
+   
+   if (!SO || !wgt || !dset) {
+      SUMA_SL_Err("NULL SO or wgt or dset\n");
+      SUMA_RETURN(NOPE);
+   }
+   
+   if (!SO->FN) {
+      SUMA_SL_Err("NULL SO->FN\n");
+      SUMA_RETURN(NOPE);
+   }
+    
+   /* what columns can we process ?*/
+   icols = SUMA_FindNumericDataDsetCols(dset, &N_icols);
+         
+   if (N_icols <= 0) {
+      SUMA_SL_Err("No approriate data columns in dset");
+      SUMA_RETURN(NOPE);   
+   }
+   
+   /* allocate for buffer and output */
+   fbuf = (float *)SUMA_calloc(SO->N_Node, sizeof(float));
+   fout_final = (float *)SUMA_calloc(SO->N_Node, sizeof(float));
+   if (!fbuf || !fout_final) {
+      SUMA_SL_Crit("Failed to allocate for fbuf and fout_final\n");
+      SUMA_RETURN(NOPE);
+   }
+   
+   if (cs->Send && N_icols > 1) {
+      SUMA_S_Warn("Only 1st data column will be sent to SUMA in talk_mode.");
+   }
+   
+   delta_time= (FWHM * FWHM)/(16*N_iter*log(2));
+   
+   /* Begin filtering operation for each column */
+   for (k=0; k < N_icols; ++k) {
+      /* get a float copy of the data column */
+      fin_orig = SUMA_DsetCol2Float (dset, icols[k], 1);
+      if (!fin_orig) {
+         SUMA_SL_Crit("Failed to get copy of column. Woe to thee!");
+         SUMA_RETURN(NOPE);
+      }
+      /* make sure column is not sparse, one value per node */
+      if (k==0) {
+         SUMA_LH( "Special case k = 0, going to SUMA_MakeSparseColumnFullSorted");
+         bfull = NULL;
+         if (!SUMA_MakeSparseColumnFullSorted(&fin_orig, SDSET_VECFILLED(dset), 0.0, &bfull, dset, SO->N_Node)) {
+            SUMA_S_Err("Failed to get full column vector");
+            SUMA_RETURN(NOPE);
+         }
+         if (bfull) {
+            SUMA_LH( "Something was filled in SUMA_MakeSparseColumnFullSorted\n" );
+            /* something was filled in good old SUMA_MakeSparseColumnFullSorted */
+            if (nmask) {   /* combine bfull with nmask */
+               SUMA_LH( "Merging masks\n" );
+               for (jj=0; jj < SO->N_Node; ++jj) { if (nmask[jj] && !bfull[jj]) nmask[jj] = 0; }   
+            } else { nmask = bfull; }
+         } 
+         if (nmask) {
+            N_nmask = 0;
+            for (n=0; n<SO->N_Node; ++n) { if (nmask[n]) ++ N_nmask; }
+            SUMA_LHv("Blurring with node mask (%d nodes in mask)\n", N_nmask);
+            if (!N_nmask) {
+               SUMA_S_Warn("Empty mask, nothing to do");
+               goto CLEANUP;
+            }
+         }
+      } else {
+         SUMA_LH( "going to SUMA_MakeSparseColumnFullSorted");
+         if (!SUMA_MakeSparseColumnFullSorted(&fin_orig, SDSET_VECFILLED(dset), 0.0, NULL, dset, SO->N_Node)) {
+            SUMA_S_Err("Failed to get full column vector");
+            SUMA_RETURN(NOPE);
+         }
+         /* no need for reworking nmask and bfull for each column...*/
+      }
+           
+      if (cs->Send && k == 0) { /* send the first monster */
+         if (!SUMA_SendToSuma (SO, cs, (void *)fin_orig, SUMA_NODE_RGBAb, 1)) {
+            SUMA_SL_Warn("Failed in SUMA_SendToSuma\nCommunication halted.");
+         }
+      }
 
-typedef struct {
-   SUMA_SO_File_Type iType;
-   SUMA_SO_File_Type oType;
-   char *out_prefix;
-   char *sv_name;
-   char *surf_names[SURFPATCH_MAX_SURF];
-   int N_surf;
-   char *spec_file;
-   char *in_name;
-   int minhits;
-   int thislabel;
-   int labelcol;
-   int nodecol;
-   int DoVol;
-   int VolOnly;
-   float coordgain;
-} SUMA_GETPATCH_OPTIONS;
+      /* filter this column for each of the iterations */
+      fin_next = fin_orig;
+      for (niter=0; niter < N_iter; ++niter) {
+         SUMA_LHv("niter %d\n", niter);
+         if ( niter % 2 ) { /* odd */
+            fin = fin_next; /* input from previous output buffer */
+            fout = fout_final; /* results go into final vector */
+            fin_next = fout_final; /* in the next iteration, the input is from fout_final */
+         } else { /* even */
+            /* input data is in fin_new */
+            fin = fin_next;
+            fout = fbuf; /* results go into buffer */
+            fin_next = fbuf; /* in the next iteration, the input is from the buffer */
+         }
+         /* filter iteration for each node in data column k*/
+         if (!nmask) {
+            for (n=0; n < SO->N_Node; ++n) {
+               /*SUMA_LHv("node %d\n", n);*/
+               fp = fin[n]; /* kth value at node n */
+               dfp = 0.0;
+               for (j=0; j < SO->FN->N_Neighb[n]; ++j) {
+                  fpj = fin[SO->FN->FirstNeighb[n][j]]; /* value at jth neighbor of n */
+                  dfp += wgt[n][j+1] * (fpj); 
+               }/* for j*/
+               fout[n] = fin[n] * wgt[n][0] +  dfp;
+            }/* for n */ 
+         } else {  /* masking potential */
+            for (n=0; n < SO->N_Node; ++n) {
+               /*SUMA_LHv("node %d\n", n);*/
+               fp = fin[n]; /* kth value at node n */
+               dfp = 0.0;
+               if (nmask[n]) {
+                  for (j=0; j < SO->FN->N_Neighb[n]; ++j) {
+                     {
+                        nj = SO->FN->FirstNeighb[n][j];
+                        if (nmask[nj] || !strict_mask) { /* consider only neighbors that are in mask if strict_mask is 1*/
+                           fpj = fin[nj]; /* value at jth neighbor of n */
+                           dfp += wgt[n][j+1] * fpj;
+                        }
+                     } 
+                  }/* for j*/
+                  fout[n] = fin[n] * wgt[n][0] +  dfp;
+               } else {
+                  fout[n] = fin[n];
+               }
+            }/* for n */ 
+         } /* masking potential */
+         
+         if (cs->Send && k == 0) {
+            if (!SUMA_SendToSuma (SO, cs, (void *)fout, SUMA_NODE_RGBAb, 1)) {
+               SUMA_SL_Warn("Failed in SUMA_SendToSuma\nCommunication halted.");
+            }
+         }
+
+      } /* for niter */
+      
+      if (fin_orig) SUMA_free(fin_orig); fin_orig = NULL;
+      
+      /* Now we need to shove the filtered data back into the dset */
+      if (!SUMA_Float2DsetCol (dset, icols[k], fout_final, SO->N_Node)) {
+         SUMA_S_Err("Failed to update dset's values");
+         SUMA_RETURN(NOPE);      
+      }
+      
+   } /* for each col */
+   
+   CLEANUP:
+   if (fin_orig) SUMA_free(fin_orig); fin_orig = NULL; /* just in case, this one's still alive from a GOTO */
+   /* Pre Dec 06 stupidity: if (bfull == nmask) { if (nmask) SUMA_free(nmask); nmask = NULL; bfull = NULL; } */
+   if (bfull) SUMA_free(bfull); bfull = NULL;
+   if (fbuf) SUMA_free(fbuf); fbuf = NULL;
+   if (fout_final) SUMA_free(fout_final); fout_final = NULL;
+   
+   SUMA_RETURN(YUP);
+}
 
 /*!
-   \brief parse the arguments for SurfSmooth program
-   
-   \param argv (char *)
-   \param argc (int)
-   \return Opt (SUMA_GETPATCH_OPTIONS *) options structure.
-               To free it, use 
-               SUMA_free(Opt->out_prefix); 
-               SUMA_free(Opt);
+   Estimate the FWHM on a surface. 
+   FWHM based on implementation in mri_estimate_FWHM_1dif (Forman et. al 1995)
+   SO (SUMA_SurfaceObject *) La surface
+   fim (float *) SO->N_Node x 1 vector of data values
+   mask (byte *) SO->N_Node x 1 mask vector (NULL for no masking)
+   nodup (int ) 0- allow a segment to be counted twice (uncool, but slightly faster)
+               1- Do not allow a segment to be counted twice (respectful approach)
 */
-SUMA_GETPATCH_OPTIONS *SUMA_GetPatch_ParseInput (char *argv[], int argc)
+float SUMA_estimate_FWHM_1dif( SUMA_SurfaceObject *SO, float *fim , byte *nmask, int nodup )
 {
-   static char FuncName[]={"SUMA_GetPatch_ParseInput"}; 
-   SUMA_GETPATCH_OPTIONS *Opt=NULL;
-   int kar, i, ind;
-   char *outprefix;
-   SUMA_Boolean brk = NOPE;
-   SUMA_Boolean LocalHead = NOPE;
+   static char FuncName[]={"SUMA_estimate_FWHM_1dif"};
+   
+   double ds;                  /* average segment size */
+   double fsum, fsq, var , arg ;
+   double dfds, dfdssum, dfdssq, varss;
+   int count, counts, oke, iseg, k, in, ink;
+   float ss=-1.0f ;
+   byte *visited = NULL;
+   
+   SUMA_ENTRY;
+   
+   if (!fim || !SO) {
+      SUMA_S_Errv("NULL input fim=%p, SO=%p\n", fim, SO);
+      SUMA_RETURN(ss);
+   }
+   if (!SO->FN || !SO->EL) {
+      SUMA_S_Errv("J'ai besoin des voisins(%p) et des cotes (%p), cherie\n", SO->FN, SO->EL);
+      SUMA_RETURN(ss);
+   }
+   /*----- estimate the variance of the data -----*/
+
+   fsum = 0.0; fsq = 0.0; count = 0;
+   for (in = 0;  in < SO->N_Node;  in++){
+      if( !nmask || nmask[in] ) { count++; arg = fim[in]; fsum += arg; fsq  += arg*arg; }
+   }
+   if( count < 9 || fsq <= 0.0 ){     /* no data? */
+      SUMA_RETURN(ss) ;
+   }
+
+   var = (fsq - (fsum * fsum)/count) / (count-1.0);
+   if( var <= 0.0 ){                  /* crappy data? */
+      SUMA_RETURN(ss);
+   }
+
+   if (nodup) {
+      if (!(visited = (byte *)SUMA_calloc(SO->EL->N_EL, sizeof(byte)))) {
+         SUMA_S_Err("Failed to bytocate for visited.");
+         SUMA_RETURN(ss);
+      }
+   }
+      
+   /*----- estimate the partial derivatives -----*/
+
+   dfdssum = 0.0;   
+   dfdssq  = 0.0;   
+   counts  = 0;
+   ds = 0.0;     
+   for (in = 0;  in < SO->N_Node;  in++){
+      if( !nmask || nmask[in] ){
+         arg = fim[in] ;
+         for(k=0; k < SO->FN->N_Neighb[in]; ++k) { 
+            ink = SO->FN->FirstNeighb[in][k];
+            if (!nmask || nmask[ink]) { /* neighbour also in mask */
+               /* locate the segment, and get distance */
+               iseg = -1;
+               if (in < ink) { SUMA_FIND_EDGE(SO->EL, in, ink, iseg); }
+               else { SUMA_FIND_EDGE(SO->EL, ink, in, iseg); }
+               if (iseg < 0) {
+                  SUMA_S_Errv("Could not find segment between nodes %d and %d\nThis should not happen.\n", in, ink);
+                  SUMA_RETURN(ss);
+               }  
+               if (nodup) { /* make sure edge is fresh */
+                  if (visited[iseg]) oke = 0;
+                  else { oke = 1; visited[iseg] = 1; }
+               } else oke = 1;
+               if (oke) {
+                  ds += SO->EL->Le[iseg];
+                  dfds = (fim[ink] - arg) ;
+                  dfdssum += dfds; dfdssq += dfds*dfds; 
+                  counts++;
+               }
+            }
+         }
+      }
+   }   
+
+   
+   if (visited) SUMA_free(visited); visited = NULL;
+   
+   /*----- estimate the variance of the partial derivatives -----*/
+
+   varss = (counts < 36) ? 0.0
+                       : (dfdssq - (dfdssum * dfdssum)/counts) / (counts-1.0);
+   ds /= counts;  /* the average segment length */
+
+   /*----- now estimate the FWHMs -----*/
+
+   /*---- 2.35482 = sqrt(8*log(2)) = sigma-to-FWHM conversion factor ----*/
+
+   arg = 1.0 - 0.5*(varss/var);
+   ss  = ( arg <= 0.0 || arg >= 1.0 ) ? -1.0f
+                                       : 2.35482*sqrt( -1.0 / (4.0*log(arg)) )*ds;
+
+   SUMA_RETURN(ss) ;
+}
+
+SUMA_Boolean SUMA_Offset_Smooth_dset( SUMA_SurfaceObject *SO, 
+                                          float FWHM, float OffsetLim, 
+                                          int N_iter,
+                                          SUMA_DSET *dset, 
+                                          SUMA_COMM_STRUCT *cs, byte *nmask, byte strict_mask) 
+{
+   static char FuncName[]={"SUMA_Offset_Smooth_dset"};
+   float *fout_final = NULL, *fbuf=NULL, *fin=NULL, *fout=NULL, *fin_next = NULL, *fin_orig = NULL;
+   float fp, dfp, fpj, wt, wts, sig, fwhm_orig, fwhm_out;
+   double dj, ds2, scl;
+   int n , k, j, niter, vnk, os, jj, nj=-1, *icols=NULL, N_icols, N_nmask;
+   byte *bfull=NULL;
+   SUMA_OFFSET_STRUCT *OffS_out = NULL;
+   
+   SUMA_Boolean LocalHead = YUP;
 
    SUMA_ENTRY;
    
-   Opt = (SUMA_GETPATCH_OPTIONS *)SUMA_malloc(sizeof(SUMA_GETPATCH_OPTIONS));
+   SUMA_S_Warn("Niter is not treated properly");
+   SUMA_S_Warn("No useful weighting in place");
+   
+   
+   if (!SO || !dset) {
+      SUMA_S_Errv("NULL SO (%p) or dset(%p)\n", SO, dset);
+      SUMA_RETURN(NOPE);
+   }
+   
+   if (!SO->FN) {
+      SUMA_SL_Err("NULL SO->FN\n");
+      SUMA_RETURN(NOPE);
+   }
+    
+   /* what columns can we process ?*/
+   icols = SUMA_FindNumericDataDsetCols(dset, &N_icols);
+         
+   if (N_icols <= 0) {
+      SUMA_SL_Err("No approriate data columns in dset");
+      SUMA_RETURN(NOPE);   
+   }
+   
+   /* allocate for buffer and output */
+   fbuf = (float *)SUMA_calloc(SO->N_Node, sizeof(float));
+   fout_final = (float *)SUMA_calloc(SO->N_Node, sizeof(float));
+   if (!fbuf || !fout_final) {
+      SUMA_SL_Crit("Failed to allocate for fbuf and fout_final\n");
+      SUMA_RETURN(NOPE);
+   }
+   
+   if (cs->Send && N_icols > 1) {
+      SUMA_S_Warn("Only 1st data column will be sent to SUMA in talk_mode.");
+   }
+   
+   if (N_iter < 1) {
+      SUMA_S_Errv("Niter = %d!\n", N_iter);
+   }
+   /* reduce FWHM by Niter */
+   FWHM = FWHM/sqrt(N_iter);
+   
+   /* calculate sigma */
+   if (FWHM > 0.0) {
+      sig = FWHM /   2.354820;
+      ds2 = 2*sig*sig;
+      scl = iSQ_2PI/sig;
+   } else {
+      SUMA_S_Errv("Bad FWHM %f", FWHM);
+      SUMA_RETURN(NOPE);
+   }
 
-   kar = 1;
-   Opt->iType = SUMA_FT_NOT_SPECIFIED;
-   Opt->out_prefix = NULL;
-   Opt->sv_name = NULL;
-   Opt->spec_file = NULL;
-   Opt->in_name = NULL;
-   Opt->minhits = 2;
-   Opt->labelcol = -1;
-   Opt->nodecol = -1;
-   Opt->thislabel = -1;
-   Opt->N_surf = -1;
-   Opt->DoVol = 0;
-   Opt->VolOnly = 0;
-   Opt->coordgain = 0.0;
-   Opt->oType = SUMA_FT_NOT_SPECIFIED;
-   for (i=0; i<SURFPATCH_MAX_SURF; ++i) { Opt->surf_names[i] = NULL; }
-	brk = NOPE;
-   
-	while (kar < argc) { /* loop accross command ine options */
-		/*fprintf(stdout, "%s verbose: Parsing command line...\n", FuncName);*/
-		if (strcmp(argv[kar], "-h") == 0 || strcmp(argv[kar], "-help") == 0) {
-			 usage_SUMA_getPatch();
-          exit (0);
-		}
-		
-      SUMA_SKIP_COMMON_OPTIONS(brk, kar);
-      
-      if (!brk && (strcmp(argv[kar], "-spec") == 0)) {
-         kar ++;
-			if (kar >= argc)  {
-		  		fprintf (SUMA_STDERR, "need argument after -spec \n");
-				exit (1);
-			}
-			Opt->spec_file = argv[kar];
-			brk = YUP;
-		}
-      
-      if (!brk && (strcmp(argv[kar], "-hits") == 0)) {
-         kar ++;
-			if (kar >= argc)  {
-		  		fprintf (SUMA_STDERR, "need argument after -hits \n");
-				exit (1);
-			}
-			Opt->minhits = atoi(argv[kar]);
-			brk = YUP;
-		}
-      
-      if (!brk && (strcmp(argv[kar], "-coord_gain") == 0)) {
-         kar ++;
-			if (kar >= argc)  {
-		  		fprintf (SUMA_STDERR, "need argument after -coord_gain \n");
-				exit (1);
-			}
-			Opt->coordgain = atof(argv[kar]);
-			brk = YUP;
-		}
-      
-      if (!brk && (strcmp(argv[kar], "-masklabel") == 0)) {
-         kar ++;
-			if (kar >= argc)  {
-		  		fprintf (SUMA_STDERR, "need argument after -masklabel \n");
-				exit (1);
-			}
-			Opt->thislabel = atoi(argv[kar]);
-			brk = YUP;
-		}
-      
-      if (!brk && (strcmp(argv[kar], "-vol") == 0)) {
-			Opt->DoVol = 1;
-			brk = YUP;
-		}
-      
-      if (!brk && (strcmp(argv[kar], "-vol_only") == 0)) {
-			Opt->DoVol = 1;
-         Opt->VolOnly = 1;
-			brk = YUP;
-		}
-      
-      if (!brk && (strcmp(argv[kar], "-prefix") == 0)) {
-         kar ++;
-			if (kar >= argc)  {
-		  		fprintf (SUMA_STDERR, "need argument after -prefix \n");
-				exit (1);
-			}
-			Opt->out_prefix = SUMA_copy_string(argv[kar]);
-			brk = YUP;
-		}
-      
-      if (!brk && (strcmp(argv[kar], "-out_type") == 0)) {
-         kar ++;
-			if (kar >= argc)  {
-		  		fprintf (SUMA_STDERR, "need argument after -out_type \n");
-				exit (1);
-			}
-			Opt->oType = SUMA_guess_surftype_argv(argv[kar]);
-         brk = YUP;
-		}
+   /* calculate the offset limit, if allowed */
+   if (OffsetLim < 0.0) {
+      if (sig > 0.0) {
+         OffsetLim = 3.5*sig;
+      } else {
+         SUMA_S_Errv("Have OffsetLim =%f and no FWHM (%f) from which to estimate it.\n", OffsetLim, FWHM);
+         SUMA_RETURN(NOPE);
+      }
+   }
 
-      if (!brk && (strcmp(argv[kar], "-input") == 0)) {
-         kar ++;
-			if (kar+2 >= argc)  {
-		  		fprintf (SUMA_STDERR, "need 3 arguments after -input \n");
-				exit (1);
-			}
-			Opt->in_name = argv[kar]; kar ++;
-         Opt->nodecol = atoi(argv[kar]); kar ++;
-         Opt->labelcol = atoi(argv[kar]); 
-			brk = YUP;
-		}
-      
-      if (!brk && (strncmp(argv[kar], "-surf_", 6) == 0)) {
-			if (kar + 1>= argc)  {
-		  		fprintf (SUMA_STDERR, "need argument after -surf_X SURF_NAME \n");
-				exit (1);
-			}
-			ind = argv[kar][6] - 'A';
-         if (ind < 0 || ind >= SURFPATCH_MAX_SURF) {
-            fprintf (SUMA_STDERR, "-surf_X SURF_NAME option is out of range.\n");
-				exit (1);
-         }
-         kar ++;
-         Opt->surf_names[ind] = argv[kar];
-         Opt->N_surf = ind+1;
-         brk = YUP;
-		}
-      
-      if (!brk) {
-			fprintf (SUMA_STDERR,"Error %s:\nOption %s not understood. Try -help for usage\n", FuncName, argv[kar]);
-			exit (1);
-		} else {	
-			brk = NOPE;
-			kar ++;
-		}
-      
+   /* Check for plausible values */
+   if (OffsetLim < 3*SO->EL->AvgLe) {
+      int Niter_sug = SUMA_MAX_PAIR(1, (int)((float)N_iter*SUMA_POW2(OffsetLim/3.0/(float)SO->EL->AvgLe)));
+      fprintf(SUMA_STDERR,"Error %s:%d\n"
+                  "********************************************\n"
+                  "Inapropriate values for Niter of %d and/or\n"
+                  "FWHM of %.1f. Per iteration, fwhm is %.4f\n"
+                  "and OffsetLim is set to %f.\n"
+                  "But the internodal distance of %.3f is\n"
+                  "too large for proper estimation.\n", 
+                  FuncName, __LINE__,
+                  N_iter, FWHM*sqrt(N_iter), FWHM, OffsetLim, SO->EL->AvgLe);
+      if (Niter_sug < N_iter) {
+         fprintf(SUMA_STDERR,"Try replacing Niter by %d. If you still get\n"
+                  "this warning then your FWHM is too small for your\n"
+                  "mesh\n"
+                  "********************************************\n",
+                   Niter_sug);
+      } else {
+         fprintf(SUMA_STDERR,"Your FWHM is too small for this \n"
+                  "mesh\n"
+                  "********************************************\n");
+      }
+      SUMA_RETURN(NOPE); 
    }
-   
-   /* sanity checks */
-   if (!Opt->out_prefix) Opt->out_prefix = SUMA_copy_string("SurfPatch");
-   
-   if (Opt->thislabel >= 0 && Opt->labelcol < 0) {
-      SUMA_SL_Err("Cannot use -masklabel without specifying ilabel in -input option");
-      exit(1);
-   } 
-   if (Opt->minhits < 1 || Opt->minhits > 3) {
-      SUMA_SL_Err("minhits must be > 0 and < 3");
-      exit(1);
-   }
-   if (Opt->N_surf < 1) {
-      SUMA_SL_Err("No surface specified.");
-      exit(1);
-   }
-   if (!Opt->in_name) {
-      SUMA_SL_Err("No input specified.");
-      exit(1);
-   }
-   if (Opt->DoVol && Opt->N_surf != 2) {
-      SUMA_SL_Err("Must specify 2 and only 2 surfaces with -vol options");
-      exit(1);
-   }
-   SUMA_RETURN (Opt);
+   SUMA_LHv("OffsetLim set to %f\nSigma set to %f per iteration with %d iterations (FWHM per iteration=%f)\n", OffsetLim, sig, N_iter, FWHM);
      
+   /* Begin filtering operation for each column */
+   for (k=0; k < N_icols; ++k) {
+      /* get a float copy of the data column */
+      fin_orig = SUMA_DsetCol2Float (dset, icols[k], 1);
+      if (!fin_orig) {
+         SUMA_SL_Crit("Failed to get copy of column. Woe to thee!");
+         SUMA_RETURN(NOPE);
+      }
+      /* make sure column is not sparse, one value per node */
+      if (k==0) {
+         SUMA_LH( "Special case k = 0, going to SUMA_MakeSparseColumnFullSorted");
+         bfull = NULL;
+         if (!SUMA_MakeSparseColumnFullSorted(&fin_orig, SDSET_VECFILLED(dset), 0.0, &bfull, dset, SO->N_Node)) {
+            SUMA_S_Err("Failed to get full column vector");
+            SUMA_RETURN(NOPE);
+         }
+         if (bfull) {
+            SUMA_LH( "Something was filled in SUMA_MakeSparseColumnFullSorted\n" );
+            /* something was filled in good old SUMA_MakeSparseColumnFullSorted */
+            if (nmask) {   /* combine bfull with nmask */
+               SUMA_LH( "Merging masks\n" );
+               for (jj=0; jj < SO->N_Node; ++jj) { if (nmask[jj] && !bfull[jj]) nmask[jj] = 0; }   
+            } else { nmask = bfull; }
+         } 
+         if (nmask) {
+            N_nmask = 0;
+            for (n=0; n<SO->N_Node; ++n) { if (nmask[n]) ++ N_nmask; }
+            SUMA_LHv("Blurring with node mask (%d nodes in mask)\n", N_nmask);
+            if (!N_nmask) {
+               SUMA_S_Warn("Empty mask, nothing to do");
+               goto CLEANUP;
+            }
+         }
+         /* now calculate the neighbor offset structure */
+         SUMA_LHv("Calculating OffS_out FWHM=%f, OffsetLim = %f\n", FWHM, OffsetLim);
+         OffS_out = SUMA_FormNeighbOffset (SO, OffsetLim, NULL, nmask, FWHM);
+      } else {
+         SUMA_LH( "going to SUMA_MakeSparseColumnFullSorted");
+         if (!SUMA_MakeSparseColumnFullSorted(&fin_orig, SDSET_VECFILLED(dset), 0.0, NULL, dset, SO->N_Node)) {
+            SUMA_S_Err("Failed to get full column vector");
+            SUMA_RETURN(NOPE);
+         }
+         /* no need for reworking nmask and bfull for each column...*/
+         
+      }
+           
+      if (cs->Send && k == 0) { /* send the first monster */
+         if (!SUMA_SendToSuma (SO, cs, (void *)fin_orig, SUMA_NODE_RGBAb, 1)) {
+            SUMA_SL_Warn("Failed in SUMA_SendToSuma\nCommunication halted.");
+         }
+      }
+      
+      fwhm_orig = SUMA_estimate_FWHM_1dif(SO, fin_orig, nmask, 1);
+      SUMA_LHv("FWHM_orig for col. %d is : %f\n", k, fwhm_orig);
+      
+      /* filter this column for each of the iterations */
+      fin_next = fin_orig;
+      for (niter=0; niter < N_iter; ++niter) {
+         SUMA_LHv("niter %d\n", niter);
+         if ( niter % 2 ) { /* odd */
+            fin = fin_next; /* input from previous output buffer */
+            fout = fout_final; /* results go into final vector */
+            fin_next = fout_final; /* in the next iteration, the input is from fout_final */
+         } else { /* even */
+            /* input data is in fin_new */
+            fin = fin_next;
+            fout = fbuf; /* results go into buffer */
+            fin_next = fbuf; /* in the next iteration, the input is from the buffer */
+         }
+         
+         if (!nmask) {
+            for (n=0; n < SO->N_Node; ++n) {
+               fp = fin[n]; /* kth value at node n */
+               wt = iSQ_2PI/sig; 
+               dfp = wt*fp; wts = wt;
+               /* if (n == 1358) { fprintf(SUMA_STDOUT,"fin[%d]=%f; Have %d neighbs, wt = %f\n", n, fin[n], OffS_out[n].N_Neighb, wt); } */
+               for (j=0; j<OffS_out[n].N_Neighb; ++j) {
+                  nj = OffS_out[n].Neighb_ind[j];
+                  fpj = fin[nj]; /* value at jth neighbor of n */
+                  wt = OffS_out[n].Neighb_dist[j];   /*  */ 
+                  dfp += wt * (fpj);  wts += wt;
+                  /* if (n == 1358) { fprintf(SUMA_STDOUT,"   fin[%d]=%f; wt=%f, dfp=%f; wts=%f\n", nj, fin[nj],  wt, dfp, wts); }  */
+               }/* for j*/
+               fout[n] = dfp/(wts);
+            }/* for n */
+         }else{/* masking potential */
+            for (n=0; n < SO->N_Node; ++n) {
+               fp = fin[n]; /* kth value at node n */
+               wt = iSQ_2PI/sig; 
+               dfp = wt*fp; wts = wt;
+               if (nmask[n]) {
+                  for (j=0; j<OffS_out[n].N_Neighb; ++j) {
+                     nj = OffS_out[n].Neighb_ind[j];
+                     if (nmask[nj] || !strict_mask) { /* consider only neighbors that are in mask if strict_mask is 1*/ 
+                        fpj = fin[nj]; /* value at jth neighbor of n */
+                        wt = OffS_out[n].Neighb_dist[j];   
+                        dfp += wt * (fpj);  wts += wt;
+                     }
+                  }/* for j*/
+               }
+               fout[n] = dfp/(wts);
+            }/* for n */
+         }/* masking potential */
+            
+        if (cs->Send && k == 0) {
+            if (!SUMA_SendToSuma (SO, cs, (void *)fout, SUMA_NODE_RGBAb, 1)) {
+               SUMA_SL_Warn("Failed in SUMA_SendToSuma\nCommunication halted.");
+            }
+         }
+
+      } /* for niter */
+      
+      if (fin_orig) SUMA_free(fin_orig); fin_orig = NULL;
+      
+      /* Now we need to shove the filtered data back into the dset */
+      if (N_iter % 2) { /* odd */
+         fout = fbuf;
+      } else fout = fout_final;
+      
+      if (!SUMA_Float2DsetCol (dset, icols[k], fout, SO->N_Node)) {
+         SUMA_S_Err("Failed to update dset's values");
+         SUMA_RETURN(NOPE);      
+      }
+
+      fwhm_out = SUMA_estimate_FWHM_1dif(SO, fout, nmask, 1);
+      SUMA_LHv("FWHM_out for col. %d is : %f\n", k, fwhm_out);
+
+      
+   } /* for each col */
+   
+   CLEANUP:
+   OffS_out = SUMA_free_NeighbOffset (SO, OffS_out);
+   if (fin_orig) SUMA_free(fin_orig); fin_orig = NULL; /* just in case, this one's still alive from a GOTO */
+   /* Pre Dec 06 stupidity: if (bfull == nmask) { if (nmask) SUMA_free(nmask); nmask = NULL; bfull = NULL; } */
+   if (bfull) SUMA_free(bfull); bfull = NULL;
+   if (fbuf) SUMA_free(fbuf); fbuf = NULL;
+   if (fout_final) SUMA_free(fout_final); fout_final = NULL;
+   
+   SUMA_RETURN(YUP);
 }
 
-int main (int argc,char *argv[])
-{/* Main */    
-   static char FuncName[]={"SurfPatch"};
-   SUMA_GETPATCH_OPTIONS *Opt; 
-   char *ppref=NULL, ext[5]; 
-   float *far=NULL;
-   MRI_IMAGE *im = NULL;
-   int SO_read = -1;
-   int *NodePatch=NULL, N_NodePatch=-1, *FaceSetList=NULL , N_FaceSet = -1;          
-   int i, inodeoff=-1, ilabeloff=-1, nvec, ncol, cnt;
-   SUMA_SurfaceObject *SO = NULL;
-   SUMA_PATCH *ptch = NULL; 
-   SUMA_SurfSpecFile Spec;
-   SUMA_INDEXING_ORDER d_order;
-   void *SO_name = NULL;
-   SUMA_Boolean exists = NOPE;
-   SUMA_SO_File_Type typetmp;
-   SUMA_Boolean LocalHead = NOPE;
-	
-   SUMA_mainENTRY;
-   
-   SUMA_STANDALONE_INIT;
-   
-   
-	/* Allocate space for DO structure */
-	SUMAg_DOv = SUMA_Alloc_DisplayObject_Struct (SUMA_MAX_DISPLAYABLE_OBJECTS);
-   
-   if (argc < 4)
-       {
-          usage_SUMA_getPatch();
-          exit (1);
-       }
-   
-   Opt = SUMA_GetPatch_ParseInput (argv, argc);
-   
-   if (Opt->oType != SUMA_FT_NOT_SPECIFIED && !Opt->VolOnly) { 
-      for (i=0; i < Opt->N_surf; ++i) {
-         if (Opt->N_surf > 1) {
-            sprintf(ext, "_%c", 65+i);
-            ppref = SUMA_append_string(Opt->out_prefix, ext);
-         } else {
-            ppref = SUMA_copy_string(Opt->out_prefix);
-         }
-         
-         SO_name = SUMA_Prefix2SurfaceName(ppref, NULL, NULL, Opt->oType, &exists);
-         if (exists) {
-            fprintf(SUMA_STDERR,"Error %s:\nOutput file(s) %s* on disk.\nWill not overwrite.\n", FuncName, ppref);
-            exit(1);
-         }
-         if (ppref) SUMA_free(ppref); ppref = NULL; 
-         if (SO_name) SUMA_free(SO_name); SO_name = NULL;
-      } 
-   }
-   
-   /* read all surfaces */
-   if (!SUMA_AllocSpecFields(&Spec)) { SUMA_S_Err("Failed to initialize spec fields."); exit(1); }
-   if (!SUMA_Read_SpecFile (Opt->spec_file, &Spec)) {
-		fprintf(SUMA_STDERR,"Error %s: Error in SUMA_Read_SpecFile\n", FuncName);
-		exit(1);
-	}
-   SO_read = SUMA_spec_select_surfs(&Spec, Opt->surf_names, SURFPATCH_MAX_SURF, 0);
-   if ( SO_read != Opt->N_surf )
-   {
-	   if (SO_read >=0 )
-         fprintf(SUMA_STDERR,"Error %s:\nFound %d surfaces, expected %d.\n", FuncName,  SO_read, Opt->N_surf);
-      exit(1);
-   }
-   /* now read into SUMAg_DOv */
-   if (!SUMA_LoadSpec_eng(&Spec, SUMAg_DOv, &SUMAg_N_DOv, Opt->sv_name, 0, SUMAg_CF->DsetList) ) {
-	   fprintf(SUMA_STDERR,"Error %s: Failed in SUMA_LoadSpec_eng\n", FuncName);
-      exit(1);
-   }
-   
-   /* read in the file containing the node information */
-   im = mri_read_1D (Opt->in_name);
 
-   if (!im) {
-      SUMA_SL_Err("Failed to read 1D file");
-      exit(1);
-   }
-
-   far = MRI_FLOAT_PTR(im);
-   nvec = im->nx;
-   ncol = im->ny;
-   if (Opt->nodecol >= ncol || Opt->labelcol >= ncol) {
-      fprintf(SUMA_STDERR, "\n"
-                           "Error %s: Input file has a total of %d columns.\n"
-                           "One or both user-specified node (%d) and \n"
-                           "label (%d) columns are too high. Maximum usable\n"
-                           "column index is %d.\n"
-                           , FuncName, ncol, Opt->nodecol, Opt->labelcol, ncol -1 );
-      exit(1);
-   }
-   
-   d_order = SUMA_COLUMN_MAJOR;
-
-   if (!nvec) {
-      SUMA_SL_Err("Empty file");
-      exit(1);
-   }
-   /* form the node vector */
-   NodePatch = (int *)SUMA_malloc(sizeof(int)*nvec);
-   if (!NodePatch) {
-      SUMA_SL_Crit("Failed to allocate.");
-      exit(1);
-   }
-   inodeoff = Opt->nodecol*nvec;
-   if (Opt->labelcol < 0) { /* all listed nodes */ 
-      for (i=0; i<nvec; ++i) {
-         NodePatch[i] = far[i+inodeoff];
-      }
-      N_NodePatch = nvec;
-   } else {
-      ilabeloff =  Opt->labelcol*nvec;
-      if (Opt->thislabel < 0) { /* all nodes with non zero labels */
-         cnt = 0;
-         for (i=0; i<nvec; ++i) {
-            if (far[i+ilabeloff]) {
-               NodePatch[cnt] = far[i+inodeoff];
-               ++cnt;
-            }
-         }
-         N_NodePatch = cnt;     
-      } else { /* select labels */
-         cnt = 0;
-         for (i=0; i<nvec; ++i) {
-            if (far[i+ilabeloff] == Opt->thislabel) {
-               NodePatch[cnt] = far[i+inodeoff];
-               ++cnt;
-            }
-         }
-         N_NodePatch = cnt;    
-      }
-      NodePatch = (int *) SUMA_realloc(NodePatch , sizeof(int)*N_NodePatch);
-   }
-   
-   /* done with im, free it */
-   mri_free(im); im = NULL;   
-   
-   if (Opt->DoVol) {
-      SUMA_SurfaceObject *SO1 = SUMA_find_named_SOp_inDOv(Opt->surf_names[0], SUMAg_DOv, SUMAg_N_DOv);
-      SUMA_SurfaceObject *SO2 = SUMA_find_named_SOp_inDOv(Opt->surf_names[1], SUMAg_DOv, SUMAg_N_DOv);
-      double Vol = 0.0;
-      
-      if (!SO1 || !SO2) {
-         SUMA_SL_Err("Failed to load surfaces.");
-         exit(1);
-      }
-      /* a chunk used to test SUMA_Pattie_Volume */
-      Vol = SUMA_Pattie_Volume(SO1, SO2, NodePatch, N_NodePatch, NULL, Opt->minhits);
-      fprintf (SUMA_STDERR,"Volume = %f\n", fabs(Vol));
-   }
-   
-   
-   if (!Opt->VolOnly) {
-      FaceSetList = NULL;
-      N_FaceSet = -1;
-      for (i=0; i < Opt->N_surf; ++i) {/* loop to read in surfaces */
-         /* now identify surface needed */
-         SO = SUMA_find_named_SOp_inDOv(Opt->surf_names[i], SUMAg_DOv, SUMAg_N_DOv);
-         if (!SO) {
-            fprintf (SUMA_STDERR,"Error %s:\n"
-                                 "Failed to find surface %s\n"
-                                 "in spec file. Use full name.\n",
-                                 FuncName, Opt->surf_names[i]);
-            exit(1);
-         }
-         /* extract the patch */
-         if (!SO->MF) {
-            SUMA_SL_Warn ("NULL MF");
-         }
-         ptch = SUMA_getPatch (NodePatch, N_NodePatch, SO->FaceSetList, SO->N_FaceSet, SO->MF, Opt->minhits);
-         if (!ptch) {
-            SUMA_SL_Err("Failed to form patch.");
-            exit(1);
-         }
-         if (LocalHead) SUMA_ShowPatch(ptch, NULL);
-      
-         /* Now create a surface with that patch */
-         if (Opt->N_surf > 1) {
-            sprintf(ext, "_%c", 65+i);
-            ppref = SUMA_append_string(Opt->out_prefix, ext);
-         } else {
-            ppref = SUMA_copy_string(Opt->out_prefix);
-         }
-         /* save the original type */
-         typetmp = SO->FileType;
-         if (Opt->oType != SUMA_FT_NOT_SPECIFIED) SO->FileType = Opt->oType;
-         SO_name = SUMA_Prefix2SurfaceName(ppref, NULL, NULL, SO->FileType, &exists);
-         if (ppref) SUMA_free(ppref); ppref = NULL;
-         /* save the original pointers to the facesets and their number */
-         FaceSetList = SO->FaceSetList;
-         N_FaceSet = SO->N_FaceSet;
-         
-         /* replace with Patch */
-         SO->FaceSetList = ptch->FaceSetList;
-         SO->N_FaceSet = ptch->N_FaceSet; 
-         
-         if (SO->N_FaceSet <= 0) {
-            SUMA_S_Warn("The patch is empty.\n Non existing surface not written to disk.\n");
-         } else {
-            /* Is the gain wanted? */
-            if (Opt->coordgain) {
-               SUMA_SL_Note("Applying coord gain to surface nodes!");
-               for (cnt=0; cnt < SO->NodeDim*SO->N_Node; ++cnt) SO->NodeList[cnt] *= Opt->coordgain;
-            }
-            if (!SUMA_Save_Surface_Object (SO_name, SO, SO->FileType, SUMA_ASCII, NULL)) {
-                  fprintf (SUMA_STDERR,"Error %s: Failed to write surface object.\n", FuncName);
-                  exit (1);
-            }
-         }
-         /* bring SO back to shape */
-         SO->FileType = typetmp;
-         SO->FaceSetList = FaceSetList; FaceSetList = NULL;
-         SO->N_FaceSet = N_FaceSet; N_FaceSet = -1;
-         if (SO_name) SUMA_free(SO_name); SO_name = NULL;
-         if (ptch) SUMA_freePatch(ptch); ptch = NULL;
-      }
-   } 
-   
-   SUMA_LH("clean up");
-   if (!SUMA_FreeSpecFields(&Spec)) { SUMA_S_Err("Failed to free spec fields"); }
-   if (Opt->out_prefix) SUMA_free(Opt->out_prefix); Opt->out_prefix = NULL;
-   if (Opt) SUMA_free(Opt);   
-   if (!SUMA_Free_Displayable_Object_Vect (SUMAg_DOv, SUMAg_N_DOv)) {
-      SUMA_SL_Err("DO Cleanup Failed!");
-   }
-   
-   if (!SUMA_Free_CommonFields(SUMAg_CF)) {SUMA_SL_Err("SUMAg_CF Cleanup Failed!");}
-   
-   SUMA_RETURN(0);
-} 
-#endif
 /*!
    \brief determine overall orientation of triangle normals and change triangle orientation if required
    \param NodeList (float *) xyz vector of node coords
@@ -4309,7 +4844,7 @@ int main (int argc,char *argv[])
    \param Force (int) 1: Force the flipping of only those triangles whose normals point in the wrong direction (opposite to orient).
                            With this option, you will destroy the winding consistency of a surface!  
    \return ans (int):   0: error
-                       1: most normals were pointing outwards
+                        1: most normals were pointing outwards
                        -1:  most normals were pointing inwards
 */
 int SUMA_OrientTriangles (float *NodeList, int N_Node, int *FaceSetList, int N_FaceSet, int orient, int Force)
@@ -5225,6 +5760,7 @@ Usage :
    
          If the three points are colinear, Eq = [0 0 0 0]
  
+   \sa SUMA_PLANE_NORMAL_POINT
 */
 float * SUMA_Plane_Equation (float * P1, float *P2, float *P3, float *usethisEq)
 {/*SUMA_Plane_Equation*/
@@ -5259,6 +5795,7 @@ float * SUMA_Plane_Equation (float * P1, float *P2, float *P3, float *usethisEq)
    SUMA_RETURN (Eq);
 }/*SUMA_Plane_Equation*/
 
+
 /*! 
  
 \brief Determines the intersection of a plane and a surface 
@@ -5276,6 +5813,7 @@ float * SUMA_Plane_Equation (float * P1, float *P2, float *P3, float *usethisEq)
      
  
 
+\sa SUMA_SEGMENT_PLANE_INTERSECT
 \sa an older matlab version in Surf_Plane_Intersect_2.m  
 \sa SUMA_PlaneEq
 \sa SUMA_Allocate_SPI
@@ -6013,7 +6551,7 @@ SUMA_Boolean SUMA_Mark_Tri (SUMA_EDGE_LIST  *EL, int E1, int iBranch, int *TriBr
    SUMA_Boolean LocalHead = NOPE;
    
    /* this is a recursive function, you don't want to log every time it is called */
-   /* SUMA_ENTRY;    */
+   /* SUMA_EN TRY;  *//* syntax (space) error on purpose, to avoid upsetting AnalyzeTrace on this file  */
    
    ++In;
    if (LocalHead) fprintf (SUMA_STDERR, "%s: Entered #%d.\n", FuncName, In);
@@ -7233,448 +7771,6 @@ int *SUMA_NodePath_to_TriPath_Inters_OLD (SUMA_SurfaceObject *SO, SUMA_TRI_BRANC
 
 
 
-#ifdef SUMA_SurfQual_STANDALONE
-#define SURFQUAL_MAX_SURF 10  /*!< Maximum number of input surfaces */
-
-void usage_SUMA_SurfQual ()
-   {
-      static char FuncName[]={"usage_SUMA_SurfQual"};
-      char * s = NULL;
-      s = SUMA_help_basics();
-      printf ( "\nUsage: A program to check the quality of surfaces.\n"
-               "  SurfQual <-spec SpecFile> <-surf_A insurf> <-surf_B insurf> ...\n"
-               "             <-sphere> [-self_intersect] [-prefix OUTPREF]  \n"
-               "\n"
-               "  Mandatory parameters:\n"
-               "     -spec SpecFile: Spec file containing input surfaces.\n"
-               "     -surf_X: Name of input surface X where X is a character\n"
-               "              from A to Z. If surfaces are specified using two\n"
-               "              files, use the name of the node coordinate file.\n"
-               "  Mesh winding consistency and 2-manifold checks are performed\n"
-               "  on all surfaces.\n"
-               "  Optional parameters:\n"
-               "     -self_intersect: Check if surface is self intersecting.\n"
-               "                      This option is rather slow, so be patient.\n"
-               "                      In the presence of intersections, the output file\n"
-               "                      OUTPREF_IntersNodes.1D.dset will contain the indices\n"
-               "                      of nodes forming segments that intersect the surface.\n"
-               "  Most other checks are specific to spherical surfaces (see option below).\n"
-               "     -sphere: Indicates that surfaces read are spherical.\n"
-               "              With this option you get the following output.\n"
-               "              - Absolute deviation between the distance (d) of each\n"
-               "                node from the surface's center and the estimated\n"
-               "                radius(r). The distances, abs (d - r), are \n"
-               "                and written to the file OUTPREF_Dist.1D.dset .\n"
-               "                The first column represents node index and the \n"
-               "                second is the absolute distance. A colorized \n"
-               "                version of the distances is written to the file \n"
-               "                OUTPREF_Dist.1D.col (node index followed \n"
-               "                by r g b values). A list of the 10 largest absolute\n"
-               "                distances is also output to the screen.\n"
-               "              - Also computed is the cosine of the angle between \n"
-               "                the normal at a node and the direction vector formed\n"
-               "                formed by the center and that node. Since both vectors\n"
-               "                are normalized, the cosine of the angle is the dot product.\n"
-               "                On a sphere, the abs(dot product) should be 1 or pretty \n"
-               "                close. Nodes where abs(dot product) < 0.9 are flagged as\n"
-               "                bad and written out to the file OUTPREF_BadNodes.1D.dset .\n"
-               "                The file OUTPREF_dotprod.1D.dset contains the dot product \n"
-               "                values for all the nodes. The files with colorized results\n"
-               "                are OUTPREF_BadNodes.1D.col and OUTPREF_dotprod.1D.col .\n"
-               "                A list of the bad nodes is also output to the screen for\n"
-               "                convenience. You can use the 'j' option in SUMA to have\n"
-               "                the cross-hair go to a particular node. Use 'Alt+l' to\n"
-               "                have the surface rotate and place the cross-hair at the\n"
-               "                center of your screen.\n"
-               "              NOTE: For detecting topological problems with spherical\n"
-               "                surfaces, I find the dot product method to work best.\n"              
-               "  Optional parameters:\n"
-               "     -prefix OUTPREF: Prefix of output files. If more than one surface\n"
-               "                      are entered, then the prefix will have _X added\n"
-               "                      to it, where X is a character from A to Z.\n"
-               "                      THIS PROGRAM WILL OVERWRITE EXISTING FILES.\n"
-               "                      Default prefix is the surface's label.\n"
-               "\n"
-               "  Comments:\n"
-               "     - The colorized (.col) files can be loaded into SUMA (with the 'c' \n"
-               "     option. By focusing on the bright spots, you can find trouble spots\n"
-               "     which would otherwise be very difficult to locate.\n"
-               "     - You should also pay attention to the messages output when the \n"
-               "     surfaces are being loaded, particularly to edges (segments that \n"
-               "     join 2 nodes) are shared by more than 2 triangles. For a proper\n"
-               "     closed surface, every segment should be shared by 2 triangles. \n"
-               "     For cut surfaces, segments belonging to 1 triangle only form\n"
-               "     the edge of that surface.\n"
-               "     - There are no utilities within SUMA to correct these defects.\n"
-               "     It is best to fix these problems with the surface creation\n"
-               "     software you are using.\n"
-               "     - Some warnings may be redundant. That should not hurt you.\n"
-               "%s"
-               "\n", s);
-       SUMA_free(s); s = NULL;        
-       s = SUMA_New_Additions(0, 1); printf("%s\n", s);SUMA_free(s); s = NULL;
-       printf("       Ziad S. Saad SSCC/NIMH/NIH ziad@nih.gov     \n");
-       exit (0);
-   }
-
-typedef struct {
-   SUMA_SO_File_Type iType;
-   char *out_prefix;
-   char *sv_name;
-   char *surf_names[SURFQUAL_MAX_SURF];
-   int N_surf;
-   char *spec_file;
-   char *surftype;
-   int self_intersect;
-   int DoSum;
-} SUMA_SURFQUAL_OPTIONS;
-
-/*!
-   \brief parse the arguments for SurfQual program
-   
-   \param argv (char *)
-   \param argc (int)
-   \return Opt (SUMA_SURFQUAL_OPTIONS *) options structure.
-               To free it, use 
-               SUMA_free(Opt->out_prefix); 
-               SUMA_free(Opt);
-*/
-SUMA_SURFQUAL_OPTIONS *SUMA_SurfQual_ParseInput (char *argv[], int argc)
-{
-   static char FuncName[]={"SUMA_SurfQual_ParseInput"}; 
-   SUMA_SURFQUAL_OPTIONS *Opt=NULL;
-   int kar, i, ind;
-   char *outprefix;
-   SUMA_Boolean brk = NOPE;
-   SUMA_Boolean LocalHead = NOPE;
-
-   SUMA_ENTRY;
-   
-   Opt = (SUMA_SURFQUAL_OPTIONS *)SUMA_malloc(sizeof(SUMA_SURFQUAL_OPTIONS));
-
-   kar = 1;
-   Opt->iType = SUMA_FT_NOT_SPECIFIED;
-   Opt->out_prefix = NULL;
-   Opt->sv_name = NULL;
-   Opt->spec_file = NULL;
-   Opt->N_surf = -1;
-   Opt->surftype = NULL;
-   Opt->self_intersect = 0;
-   Opt->DoSum = 0;
-   
-   for (i=0; i<SURFQUAL_MAX_SURF; ++i) { Opt->surf_names[i] = NULL; }
-	brk = NOPE;
-   
-	while (kar < argc) { /* loop accross command ine options */
-		/*fprintf(stdout, "%s verbose: Parsing command line...\n", FuncName);*/
-		if (strcmp(argv[kar], "-h") == 0 || strcmp(argv[kar], "-help") == 0) {
-			 usage_SUMA_SurfQual();
-          exit (0);
-		}
-		
-      /* skip the options parsed in SUMA_ParseInput_basics */
-		SUMA_SKIP_COMMON_OPTIONS(brk, kar);
-      
-      if (!brk && (strcmp(argv[kar], "-sphere") == 0)) {
-			if (Opt->surftype) {
-            SUMA_S_Err("Surface type already specified.\nOnly one type allowed.");
-            exit(1);
-         }
-         Opt->surftype = argv[kar];
-			brk = YUP;
-		}
-      
-      if (!brk && (strcmp(argv[kar], "-self_intersect") == 0)) {
-         Opt->self_intersect = 1;
-			brk = YUP;
-		}
-      
-      if (!brk && (strcmp(argv[kar], "-summary") == 0)) {
-         Opt->DoSum = 1;
-			brk = YUP;
-		}
-      
-      if (!brk && (strcmp(argv[kar], "-spec") == 0)) {
-         kar ++;
-			if (kar >= argc)  {
-		  		fprintf (SUMA_STDERR, "need argument after -spec \n");
-				exit (1);
-			}
-			Opt->spec_file = argv[kar];
-			brk = YUP;
-		}
-            
-      if (!brk && (strcmp(argv[kar], "-prefix") == 0)) {
-         kar ++;
-			if (kar >= argc)  {
-		  		fprintf (SUMA_STDERR, "need argument after -prefix \n");
-				exit (1);
-			}
-			Opt->out_prefix = SUMA_copy_string(argv[kar]);
-			brk = YUP;
-		}
-            
-      if (!brk && (strncmp(argv[kar], "-surf_", 6) == 0)) {
-			if (kar + 1>= argc)  {
-		  		fprintf (SUMA_STDERR, "need argument after -surf_X SURF_NAME \n");
-				exit (1);
-			}
-			ind = argv[kar][6] - 'A';
-         if (ind < 0 || ind >= SURFQUAL_MAX_SURF) {
-            fprintf (SUMA_STDERR, "-surf_X SURF_NAME option is out of range.\n");
-				exit (1);
-         }
-         kar ++;
-         Opt->surf_names[ind] = argv[kar];
-         Opt->N_surf = ind+1;
-         brk = YUP;
-		}
-      
-      
-      if (!brk) {
-			fprintf (SUMA_STDERR,"Error %s:\nOption %s not understood. Try -help for usage\n", FuncName, argv[kar]);
-			exit (1);
-		} else {	
-			brk = NOPE;
-			kar ++;
-		}
-      
-   }
-   
-   if (Opt->N_surf < 1) {
-      SUMA_SL_Err("No surface specified.");
-      exit(1);
-   }
-      
-   SUMA_RETURN (Opt);
-     
-}
-
-int main (int argc,char *argv[])
-{/* Main */    
-   static char FuncName[]={"SurfQual"};
-   char *OutName = NULL, ext[5], *prefix = NULL, *shist=NULL;
-   SUMA_SURFQUAL_OPTIONS *Opt; 
-   int SO_read = -1, nbad = -1;
-   int i, cnt, trouble, consistent = -1, eu = -1, nsi = -1;
-   SUMA_SurfaceObject *SO = NULL;
-   SUMA_SurfSpecFile Spec;
-   void *SO_name = NULL;
-   SUMA_Boolean DoConv = NOPE, DoSphQ = NOPE, DoSelfInt = NOPE;   
-   SUMA_Boolean LocalHead = NOPE;
-	
-   SUMA_mainENTRY;
-   
-   SUMA_STANDALONE_INIT;
-   
-	/* Allocate space for DO structure */
-	SUMAg_DOv = SUMA_Alloc_DisplayObject_Struct (SUMA_MAX_DISPLAYABLE_OBJECTS);
-   
-   if (argc < 4)
-       {
-          usage_SUMA_SurfQual();
-          exit (1);
-       }
-   
-   Opt = SUMA_SurfQual_ParseInput (argv, argc);
-   
-   /* read all surfaces */
-   if (!SUMA_AllocSpecFields(&Spec)) { SUMA_S_Err("Failed to initialize spec fields."); exit(1); }   
-   if (!SUMA_Read_SpecFile (Opt->spec_file, &Spec)) {
-		fprintf(SUMA_STDERR,"Error %s: Error in SUMA_Read_SpecFile\n", FuncName);
-		exit(1);
-	}
-   SO_read = SUMA_spec_select_surfs(&Spec, Opt->surf_names, SURFQUAL_MAX_SURF, 0);
-   if ( SO_read != Opt->N_surf )
-   {
-	   if (SO_read >=0 )
-         fprintf(SUMA_STDERR,"Error %s:\nFound %d surfaces, expected %d.\n", FuncName,  SO_read, Opt->N_surf);
-      exit(1);
-   }
-   /* now read into SUMAg_DOv */
-   if (!SUMA_LoadSpec_eng(&Spec, SUMAg_DOv, &SUMAg_N_DOv, Opt->sv_name, 0, SUMAg_CF->DsetList) ) {
-	   fprintf(SUMA_STDERR,"Error %s: Failed in SUMA_LoadSpec_eng\n", FuncName);
-      exit(1);
-   }
-  
-   if (Opt->self_intersect) DoSelfInt = YUP;
-
-   DoConv = NOPE;
-   DoSphQ = NOPE;   
-   if (Opt->surftype) {
-      if (!strcmp(Opt->surftype, "-sphere")) { 
-         DoSphQ = YUP;
-      }else {
-         /* Don't complain anymore, maybe winding checking is all users need */
-      }
-   }
-   
-   for (i=0; i < Opt->N_surf; ++i) {/* loop to read in surfaces */
-      /* now identify surface needed */
-      SO = SUMA_find_named_SOp_inDOv(Opt->surf_names[i], SUMAg_DOv, SUMAg_N_DOv);
-      if (!SO) {
-         fprintf (SUMA_STDERR,"Error %s:\n"
-                              "Failed to find surface %s\n"
-                              "in spec file. Use full name.\n",
-                              FuncName, Opt->surf_names[i]);
-         exit(1);
-      }
-      
-      if (!SO->EL) SUMA_SurfaceMetrics(SO, "EdgeList", NULL);
-      if (!SO->MF) SUMA_SurfaceMetrics(SO, "MemberFace", NULL);
-      if (!SO->Label) SUMA_SurfaceFileName(SO, NOPE);
-      
-      
-      /* do the quality thing based on the Opt->surftype */
-      if (!Opt->out_prefix) prefix = SUMA_copy_string(SO->Label);
-      else prefix = SUMA_copy_string (Opt->out_prefix);
-      
-      /* check the winding */
-      if (!SUMA_MakeConsistent (SO->FaceSetList, SO->N_FaceSet, SO->EL, 0, &trouble)) {
-         SUMA_S_Warn("Failed to make sure surface's mesh is consistently wound.\n"
-                     "You should fix the mesh.\n");
-         consistent = 0;
-      } 
-      
-      if (DoConv) {
-         float *Cx = NULL;
-         if (Opt->N_surf > 1) {
-            sprintf(ext,"_%c", 65+i);
-            OutName = SUMA_append_replace_string (prefix, "_Conv_detail.1D.dset", ext, 0);
-         } else { 
-            OutName = SUMA_append_string (prefix, "_Conv_detail.1D.dset");
-         }
-         Cx = SUMA_Convexity_Engine ( SO->NodeList, SO->N_Node, 
-                                      SO->NodeNormList, SO->FN, OutName);
-         if (Cx) SUMA_free(Cx); Cx = NULL;
-         if (OutName) SUMA_free(OutName); OutName = NULL;
-      } 
-      
-      if (DoSphQ) {
-         if (Opt->N_surf > 1) {
-            sprintf(ext,"_%c", 65+i);
-            OutName = SUMA_append_string (prefix, ext);
-         } else { 
-            OutName = SUMA_copy_string (prefix);
-         }
-         shist = SUMA_HistString (NULL, argc, argv, NULL);
-         nbad = SUMA_SphereQuality (SO, OutName, shist);   
-         if (shist) SUMA_free(shist); shist = NULL;
-         if (OutName) SUMA_free(OutName); OutName = NULL;
-      }
-      
-   }
-   
-  
-   if (trouble) { /* put winding problem here to make it visible */
-      fprintf (SUMA_STDERR,"\n");
-      SUMA_S_Warn("Mesh is not consistent, use ConvertSurface's -make_consistent \n"
-                  "option to fix the problem before proceeding further.\n"
-                  "Other results reported by this and other programs\n"
-                  "may be incorrect if mesh is not consistently wound.\n" ); 
-      consistent = 0;
-   } else {
-      consistent = 1;
-      fprintf (SUMA_STDERR,"\n");
-      fprintf (SUMA_STDERR,"Surface is consistently wound\n");
-   }
-   { 
-      SUMA_EULER_SO(SO, eu);
-      fprintf (SUMA_STDERR,"\n");
-      fprintf(SUMA_STDERR,"Surface Euler number is: %d\n", eu);
-   }
-   if ((SO->EL->min_N_Hosts == 1 || SO->EL->max_N_Hosts == 1)) {
-         fprintf (SUMA_STDERR,"\n");
-         fprintf(SUMA_STDERR,"Warning %s:\n Min/Max number of edge hosting triangles: [%d/%d] \n", FuncName, SO->EL->min_N_Hosts, SO->EL->max_N_Hosts);
-         fprintf(SUMA_STDERR," You have edges that form a border in the surface.\n");
-   }
-   if (SO->EL->min_N_Hosts == 2 && SO->EL->max_N_Hosts == 2) {
-      fprintf (SUMA_STDERR,"\n");
-      fprintf(SUMA_STDERR,"Surface is closed and is a 2-manifold.");
-   }
-   if (SO->EL->min_N_Hosts > 2 || SO->EL->max_N_Hosts > 2) {
-      fprintf (SUMA_STDERR,"\n");
-      fprintf(SUMA_STDERR, "Warning %s:\n"
-                           "Min/Max number of edge hosting triangles: [%d/%d] \n", FuncName, SO->EL->min_N_Hosts, SO->EL->max_N_Hosts);
-      fprintf(SUMA_STDERR, "Warning %s:\n"
-                           " You have edges that belong to more than two triangles.\n"
-                           " Bad for analysis assuming surface is a 2-manifold.\n", FuncName);
-      if (1) {
-         int iii=0;
-         fprintf(SUMA_STDERR, " These edges are formed by the following nodes:\n");
-         for (iii = 0; iii < SO->EL->N_EL; ++iii) { 
-            if (SO->EL->ELps[iii][2] > 2) fprintf (SUMA_STDERR," %d: Edge [%d %d] shared by %d triangles.\n", 
-                                             iii+1, SO->EL->EL[iii][0], SO->EL->EL[iii][1] , SO->EL->ELps[iii][2] );
-         }
-      }
-   }
-   
-   if (DoSelfInt) {
-      int iii;
-      FILE *fout=NULL;
-      byte *report = (byte *)SUMA_calloc(SO->N_Node, sizeof(byte));
-      if (!report) {
-         SUMA_SL_Crit("Failed to allocate for report");
-         report = NULL;
-      }  
-      fprintf( SUMA_STDERR, "\n\nChecking for intersections...:\n");
-      nsi = SUMA_isSelfIntersect(SO, 500, report);
-      if (nsi) {
-         fprintf(SUMA_STDERR, " Surface is self intersecting.\n%d segments were found to intersect the surface.\n", nsi);
-         if (nsi >= 500) {
-            fprintf(SUMA_STDERR, " It is possible that you have additional segments intersecting the surface.\n");
-         }
-         if (report) {
-            if (Opt->N_surf > 1) {
-               sprintf(ext,"_%c", 65+i);
-               OutName = SUMA_append_replace_string (prefix, "_IntersNodes.1D.dset", ext, 0);
-            } else { 
-               OutName = SUMA_append_string (prefix, "_IntersNodes.1D.dset");
-            }
-            fout = fopen(OutName, "w");
-            if (fout) {
-               fprintf(fout,  "#List of nodes that are part of segments which intersect the surface\n"
-                              "#%s\n"
-                              "#A total of %d segments (search limit is 500) were found to intersect the surface.\n"
-                              "#Col.1 : Node index\n"
-                              "#Col.2 : Dummny flag, always 1\n", SUMA_CHECK_NULL_STR(SO->Label), nsi );
-               for (iii=0; iii<SO->N_Node; ++iii) if (report[iii]) fprintf(fout, "%d\t1\n", iii);
-               fclose(fout); fout = NULL;
-            } else {
-               SUMA_SL_Err("Failed to open file for output.");
-            }
-            if (OutName) SUMA_free(OutName);
-         }         
-      }else {
-         fprintf(SUMA_STDERR, " Surface is not self intersecting.\n");
-      }   
-      if (report) SUMA_free(report); report = NULL;
-   }
-   
-   fprintf (SUMA_STDERR,"\n");
-   
-   if (Opt->DoSum) {   /* do not change syntax, scripts depend on this */
-                     fprintf(stdout,"Summary:\n");
-                     fprintf(stdout,"Euler_No %d\n", eu);
-                     fprintf(stdout,"Consistent_Winding %d\n", consistent);
-      if (DoSphQ)    fprintf(stdout,"Folding_Triangles %d\n", nbad);
-      if (DoSelfInt) fprintf(stdout,"Self_Intersections %d\n", nsi);
-                     fprintf(stdout,"\n");
-   }
-   
-   SUMA_LH("clean up");
-   if (!SUMA_FreeSpecFields(&Spec)) { SUMA_S_Err("Failed to free spec fields"); }
-   if (prefix) SUMA_free(prefix); prefix = NULL;
-   if (Opt->out_prefix) SUMA_free(Opt->out_prefix); Opt->out_prefix = NULL;
-   if (Opt) SUMA_free(Opt);   
-   if (!SUMA_Free_Displayable_Object_Vect (SUMAg_DOv, SUMAg_N_DOv)) {
-      SUMA_SL_Err("DO Cleanup Failed!");
-   }
-   if (!SUMA_Free_CommonFields(SUMAg_CF)) SUMA_error_message(FuncName,"SUMAg_CF Cleanup Failed!",1);
-   
-   SUMA_RETURN(0);
-} 
-#endif
 
 
 

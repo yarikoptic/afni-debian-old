@@ -908,7 +908,7 @@ char * Atlas_Query_to_String (ATLAS_QUERY *wami, ATLAS_COORD ac, WAMI_SORT_MODES
          acv[AFNI_TLRC_SPC].space = AFNI_TLRC_SPC;
          break;
       case MNI_SPC:
-         t = THD_mnia_to_tta_N27(m);
+         t = THD_mni_to_tta_N27(m);
          if (t.xyz[0] < -500) { ERROR_message("Failed in xforming the data"); }
          acv[AFNI_TLRC_SPC].x = t.xyz[0];
          acv[AFNI_TLRC_SPC].y = t.xyz[1];
@@ -943,6 +943,7 @@ char * Atlas_Query_to_String (ATLAS_QUERY *wami, ATLAS_COORD ac, WAMI_SORT_MODES
       sprintf(ylab[1],"%4.0f mm [%c]",t.xyz[1],(t.xyz[1]>=0.0)?'A':'P') ;
       sprintf(zlab[1],"%4.0f mm [%c]",t.xyz[2],(t.xyz[2]< 0.0)?'I':'S') ;
       sprintf(clab[1],"{MNI Brain}");
+      t = THD_mni_to_tta(m); 
       /* good olde MNI_Anatomical, a la Zilles */
       LOAD_FVEC3(m,ac.x,ac.y,ac.z);
       t = THD_tta_to_mnia_N27(m);
@@ -1647,6 +1648,41 @@ int *z_idqsort (int *x , int nx )
 
 
 }/*z_idqsort*/
+
+/* 
+  give a shuffled series between bot and top inclusive
+
+*/
+int *z_rand_order(int bot, int top, long int seed) {
+   int i, *s=NULL, n;
+   float *num=NULL;
+   
+   ENTRY("z_rand_order");
+   if (!seed) seed = (long)time(NULL)+(long)getpid();
+   srand48(seed);
+   
+   if (bot > top) { i = bot; bot = top; top = i; }
+   n = top-bot+1;
+   
+   if (!(num = (float*)calloc(n , sizeof(float)))) {
+      fprintf(stderr,"Failed to allocate for %d floats.\n", n);
+      RETURN(s);
+   }
+   for (i=0;i<n;++i) num[i] = (float)drand48();
+   
+   if (!(s = z_iqsort(num, n))) {
+      fprintf(stderr,"Failed to sort %d floats.\n", n);
+      RETURN(s);
+   }
+   free(num); num = NULL;
+   
+   /* offset numbers to get to bot */
+   for (i=0;i<n;++i) {
+      /* fprintf(stderr,"s[%d]=%d (bot=%d)\n", i, s[i], bot); */
+      s[i] += bot;
+   }
+   RETURN(s);
+}
 
 /* inverse sort floats */
 int *z_iqsort (float *x , int nx )

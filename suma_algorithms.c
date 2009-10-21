@@ -9,7 +9,7 @@ use.
 #include <stdlib.h>
 #include <string.h>
 
-#include "SUMA_Algorithms.h"
+#include "suma_algorithms.h"
 
 
 /*****************************************************************************

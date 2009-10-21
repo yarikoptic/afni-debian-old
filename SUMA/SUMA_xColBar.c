@@ -47,6 +47,8 @@ unsigned char *SUMA_read_ppm(char *fname, int *width, int *height, int verb)
    int ir, ic, i1d, i1df, imx, i1d3, i1d4;
    SUMA_Boolean LocalHead = NOPE;
    
+   SUMA_ENTRY;
+   
    if (!fname) { if (verb) SUMA_SL_Err("NULL fname");  SUMA_RETURN(imar); }
    im = mri_read_ppm( fname ) ;
    if (!im) { 
@@ -199,7 +201,11 @@ void SUMA_DrawCmap(SUMA_COLOR_MAP *Cmap)
       Cmap->SO = SUMA_Cmap_To_SO(Cmap, orig, topright, 0);
       if (!Cmap->SO) { SUMA_SL_Err("Failed to create SO"); }
    }
-    
+   
+   /* initialize the context to be safe; sometimes there is conflict with the viewer's context 
+   and that causes the colormaps to be absent...   ZSS Nov. 28 06*/
+   SUMA_cmap_context_Init(Cmap->SO);
+ 
    /* This allows each node to follow the color specified when it was drawn */ 
    glColorMaterial(GL_FRONT, GL_AMBIENT_AND_DIFFUSE); 
    glEnable(GL_COLOR_MATERIAL);
@@ -443,19 +449,6 @@ void SUMA_cmap_wid_input(Widget w, XtPointer clientData, XtPointer callData)
       
       /* XK_* are found in keysymdef.h */ 
       switch (keysym) { /* keysym */
-         case XK_r:
-            {
-               GLvoid *pixels;
-               SUMA_LH("Recording");
-               pixels = SUMA_grabPixels(1, SUMA_CMAP_WIDTH, SUMA_CMAP_HEIGHT);
-               if (pixels) {
-                 ISQ_snapsave (SUMA_CMAP_WIDTH, -SUMA_CMAP_HEIGHT, (unsigned char *)pixels, SO->SurfCont->cmp_ren->cmap_wid ); 
-                 SUMA_free(pixels);
-               }else {
-                  SUMA_SLP_Err("Failed to record image.");
-               }
-            }
-            break;
          case XK_h:
             if (Kev.state & ControlMask){
               if (!list) list = SUMA_CreateList();
@@ -467,6 +460,35 @@ void SUMA_cmap_wid_input(Widget w, XtPointer clientData, XtPointer callData)
               if (!SUMA_Engine (&list)) {
                   fprintf(stderr, "Error %s: SUMA_Engine call failed.\n", FuncName);
               }    
+            }
+            break;
+         case XK_f:
+            {
+               if (0) { /* needs work, don't feel like it for now */
+                  GLvoid *pixels;
+                  SUMA_LH("Flipping colormap");
+                  SUMA_Flip_Color_Map(SUMA_CmapOfPlane(SO->SurfCont->curColPlane));
+                  SUMA_SwitchColPlaneCmap(SO, SUMA_CmapOfPlane(SO->SurfCont->curColPlane));
+                  #if SUMA_SEPARATE_SURF_CONTROLLERS
+                     SUMA_UpdateColPlaneShellAsNeeded(SO);
+                  #endif
+
+                  /* update Lbl fields */
+                  SUMA_UpdateNodeLblField(SO);
+               }
+            }
+            break;
+         case XK_r:
+            {
+               GLvoid *pixels;
+               SUMA_LH("Recording");
+               pixels = SUMA_grabPixels(1, SUMA_CMAP_WIDTH, SUMA_CMAP_HEIGHT);
+               if (pixels) {
+                 ISQ_snapsave (SUMA_CMAP_WIDTH, -SUMA_CMAP_HEIGHT, (unsigned char *)pixels, SO->SurfCont->cmp_ren->cmap_wid ); 
+                 SUMA_free(pixels);
+               }else {
+                  SUMA_SLP_Err("Failed to record image.");
+               }
             }
             break;
          case XK_Z:
@@ -703,38 +725,39 @@ void SUMA_cb_set_threshold(Widget w, XtPointer clientData, XtPointer call)
 
 }
 
-void SUMA_cb_SwitchIntensity(Widget w, XtPointer client_data, XtPointer call)
+/* changes you do here should be reflected under SE_SetSurfCont in SUMA_Engine*/
+int SUMA_SwitchColPlaneIntensity(SUMA_SurfaceObject *SO, SUMA_OVERLAYS *colp, int ind, int setmen)
 {
-   static char FuncName[]={"SUMA_cb_SwitchIntensity"};
-   int imenu = 0;
+   static char FuncName[]={"SUMA_SwitchColPlaneIntensity"};
    char srange[500];
-   SUMA_MenuCallBackData *datap=NULL;
-   SUMA_SurfaceObject *SO = NULL;
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
-   
-   /* get the surface object that the setting belongs to */
-   datap = (SUMA_MenuCallBackData *)client_data;
-   SO = (SUMA_SurfaceObject *)datap->ContID;
-   imenu = (int)datap->callback_data; 
-   
-   if (!SO->SurfCont->curColPlane) { SUMA_RETURNe; }
+
+   if (!SO || !SO->SurfCont || !SO->SurfCont->curColPlane || !colp || ind < 0 || !colp->dset_link) { SUMA_RETURN(0); }
    if (LocalHead) {
-      fprintf(SUMA_STDERR, "%s:\n request to switch intensity to col. %d\n", FuncName, imenu - 1);
+      fprintf(SUMA_STDERR, "%s:\n request to switch intensity to col. %d\n", FuncName, ind);
       fprintf(SUMA_STDERR, "SO->Label = %s\n", SO->Label);
    }
-   
-   SO->SurfCont->curColPlane->OptScl->find = imenu - 1;
-
+   if (ind >= SDSET_VECNUM(colp->dset_link)) {
+      SUMA_S_Errv("Col. Index of %d exceeds maximum of %d for this dset.\n", ind, SDSET_VECNUM(colp->dset_link)-1);
+      SUMA_RETURN(0);
+   }
+   colp->OptScl->find = ind;
+   if (setmen && colp == SO->SurfCont->curColPlane ) {
+      SUMA_LH("Setting values");
+      XtVaSetValues( SO->SurfCont->SwitchIntMenu[0], XmNmenuHistory , 
+         SO->SurfCont->SwitchIntMenu[colp->OptScl->find+1] , NULL ) ; 
+   }
+   SUMA_LH("Setting Range");
    SUMA_InitRangeTable(SO, 0) ;
 
-   if (!SO->SurfCont->curColPlane->Show) { SUMA_RETURNe; } /* nothing else to do */
+   if (!colp->Show) { SUMA_RETURN(0); } /* nothing else to do */
    
    
-   if (!SUMA_ColorizePlane (SO->SurfCont->curColPlane)) {
+   if (!SUMA_ColorizePlane (colp)) {
          SUMA_SLP_Err("Failed to colorize plane.\n");
-         SUMA_RETURNe;
+         SUMA_RETURN(0);
    }
    
    
@@ -747,17 +770,14 @@ void SUMA_cb_SwitchIntensity(Widget w, XtPointer client_data, XtPointer call)
    SUMA_UpdateNodeValField(SO);
    SUMA_UpdateNodeLblField(SO);
 
-   SUMA_RETURNe;
+   SUMA_RETURN(1);
 }
-
-void SUMA_cb_SwitchThreshold(Widget w, XtPointer client_data, XtPointer call)
+void SUMA_cb_SwitchIntensity(Widget w, XtPointer client_data, XtPointer call)
 {
-   static char FuncName[]={"SUMA_cb_SwitchThreshold"};
+   static char FuncName[]={"SUMA_cb_SwitchIntensity"};
    int imenu = 0;
-   char srange[500];
    SUMA_MenuCallBackData *datap=NULL;
    SUMA_SurfaceObject *SO = NULL;
-   float range[2]; int loc[2];  
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
@@ -767,29 +787,65 @@ void SUMA_cb_SwitchThreshold(Widget w, XtPointer client_data, XtPointer call)
    SO = (SUMA_SurfaceObject *)datap->ContID;
    imenu = (int)datap->callback_data; 
    
-   if (!SO->SurfCont->curColPlane) { SUMA_RETURNe; }
+   SUMA_SwitchColPlaneIntensity(SO, SO->SurfCont->curColPlane, imenu -1, 0);
+   
+   SUMA_RETURNe;
+}
+
+int SUMA_SwitchColPlaneThreshold(SUMA_SurfaceObject *SO, SUMA_OVERLAYS *colp, int ind, int setmen)
+{
+   static char FuncName[]={"SUMA_SwitchColPlaneThreshold"};
+   char srange[500];
+   float range[2]; int loc[2];  
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!SO || !SO->SurfCont || !SO->SurfCont->curColPlane || !colp || ind < -1 || !colp->dset_link) { SUMA_RETURN(0); }
+   
    
    if (LocalHead) {
-      fprintf(SUMA_STDERR, "%s:\n request to switch threshold to col. %d\n", FuncName, imenu -1);
+      fprintf(SUMA_STDERR, "%s:\n request to switch threshold to col. %d\n", FuncName, ind);
    }
-   SO->SurfCont->curColPlane->OptScl->tind = imenu - 1;
+   if (ind < 0) {
+      /* turn threshold off */
+      XmToggleButtonSetState (SO->SurfCont->Thr_tb, NOPE, YUP);
+      SUMA_RETURN(1);
+   } 
    
-   if (SUMA_GetDsetColRange(SO->SurfCont->curColPlane->dset_link, SO->SurfCont->curColPlane->OptScl->tind, range, loc)) {   
+   if (ind >= SDSET_VECNUM(colp->dset_link)) {
+      SUMA_S_Errv("Col. Index of %d exceeds maximum of %d for this dset.\n", ind, SDSET_VECNUM(colp->dset_link)-1);
+      SUMA_RETURN(0);
+   }
+   colp->OptScl->tind = ind;
+
+   /* make sure threshold is on if command is not from the interface*/
+   if (setmen && !colp->OptScl->UseThr && colp->OptScl->tind >= 0) {
+      colp->OptScl->UseThr = YUP;
+      XmToggleButtonSetState (SO->SurfCont->Thr_tb, YUP, NOPE);
+   }
+   
+   if (setmen && colp == SO->SurfCont->curColPlane) {
+      XtVaSetValues( SO->SurfCont->SwitchThrMenu[0], XmNmenuHistory , 
+         SO->SurfCont->SwitchThrMenu[colp->OptScl->tind+1] , NULL ) ; 
+   }
+   
+   if (SUMA_GetDsetColRange(colp->dset_link, colp->OptScl->tind, range, loc)) {   
       SUMA_SetScaleRange(SO, range );
    }else {
       SUMA_SLP_Err("Failed to get range");
-      SUMA_RETURNe;
+      SUMA_RETURN(0);
    }
     
    SUMA_InitRangeTable(SO, -1) ;
    
    SUMA_UpdateNodeValField(SO);
    
-   if (!SO->SurfCont->curColPlane->OptScl->UseThr) { SUMA_RETURNe; } /* nothing else to do */
+   if (!colp->OptScl->UseThr) { SUMA_RETURN(0); } /* nothing else to do */
 
-   if (!SUMA_ColorizePlane (SO->SurfCont->curColPlane)) {
+   if (!SUMA_ColorizePlane (colp)) {
          SUMA_SLP_Err("Failed to colorize plane.\n");
-         SUMA_RETURNe;
+         SUMA_RETURN(0);
    }
    
    SUMA_RemixRedisplay(SO);
@@ -799,7 +855,26 @@ void SUMA_cb_SwitchThreshold(Widget w, XtPointer client_data, XtPointer call)
    #endif
    
    SUMA_UpdateNodeLblField(SO);
+
+   SUMA_RETURN(1);
+}
+
+void SUMA_cb_SwitchThreshold(Widget w, XtPointer client_data, XtPointer call)
+{
+   static char FuncName[]={"SUMA_cb_SwitchThreshold"};
+   int imenu = 0;
+   SUMA_MenuCallBackData *datap=NULL;
+   SUMA_SurfaceObject *SO = NULL;
+   SUMA_Boolean LocalHead = NOPE;
    
+   SUMA_ENTRY;
+   
+   /* get the surface object that the setting belongs to */
+   datap = (SUMA_MenuCallBackData *)client_data;
+   SO = (SUMA_SurfaceObject *)datap->ContID;
+   imenu = (int)datap->callback_data; 
+   
+   SUMA_SwitchColPlaneThreshold(SO, SO->SurfCont->curColPlane, imenu -1, 0);
    SUMA_RETURNe;
 }
 
@@ -891,7 +966,7 @@ void SUMA_cb_SwitchCmap(Widget w, XtPointer client_data, XtPointer call)
 
 void SUMA_cb_ShowZero_tb_toggled (Widget w, XtPointer data, XtPointer client_data)
 {
-   static char FuncName[]={"SUMA_cb_SymIrange_tb_toggled"};
+   static char FuncName[]={"SUMA_cb_ShowZero_tb_toggled"};
    SUMA_SurfaceObject *SO = NULL;
    SUMA_TABLE_FIELD *TF=NULL;
    SUMA_Boolean LocalHead = NOPE;
@@ -902,7 +977,8 @@ void SUMA_cb_ShowZero_tb_toggled (Widget w, XtPointer data, XtPointer client_dat
    
    SO = (SUMA_SurfaceObject *)data;
    
-   if (!SO->SurfCont->curColPlane) SUMA_RETURNe;
+   if (!SO || !SO->SurfCont) { SUMA_S_Warn("NULL input"); SUMA_RETURNe; }
+   if (!SO->SurfCont->curColPlane || !SO->SurfCont->curColPlane->OptScl )  { SUMA_S_Warn("NULL input 2"); SUMA_RETURNe; }
    
    SO->SurfCont->curColPlane->OptScl->MaskZero = !SO->SurfCont->curColPlane->OptScl->MaskZero;
    
@@ -917,7 +993,7 @@ void SUMA_cb_ShowZero_tb_toggled (Widget w, XtPointer data, XtPointer client_dat
  
    SUMA_UpdateNodeLblField(SO);
    
-
+   SUMA_RETURNe;
 }
  
 
@@ -934,7 +1010,8 @@ void SUMA_cb_SymIrange_tb_toggled (Widget w, XtPointer data, XtPointer client_da
    
    SO = (SUMA_SurfaceObject *)data;
    
-   if (!SO->SurfCont->curColPlane) SUMA_RETURNe;
+   if (!SO || !SO->SurfCont) { SUMA_S_Warn("NULL input"); SUMA_RETURNe; }
+   if (!SO->SurfCont->curColPlane) { SUMA_S_Warn("NULL input 2"); SUMA_RETURNe; }
    
    SO->SurfCont->curColPlane->SymIrange = !SO->SurfCont->curColPlane->SymIrange;
    
@@ -1014,9 +1091,9 @@ void SUMA_cb_AbsThresh_tb_toggled (Widget w, XtPointer data, XtPointer client_da
    SUMA_RETURNe;
 }
 
-void SUMA_cb_SwithInt_toggled (Widget w, XtPointer data, XtPointer client_data)
+void SUMA_cb_SwitchInt_toggled (Widget w, XtPointer data, XtPointer client_data)
 {
-   static char FuncName[]={"SUMA_cb_SwithInt_toggled"};
+   static char FuncName[]={"SUMA_cb_SwitchInt_toggled"};
    SUMA_SurfaceObject *SO = NULL;
    SUMA_Boolean LocalHead = NOPE;
    
@@ -1050,9 +1127,9 @@ void SUMA_cb_SwithInt_toggled (Widget w, XtPointer data, XtPointer client_data)
    SUMA_RETURNe;
 }
 
-void SUMA_cb_SwithThr_toggled (Widget w, XtPointer data, XtPointer client_data)
+void SUMA_cb_SwitchThr_toggled (Widget w, XtPointer data, XtPointer client_data)
 {
-   static char FuncName[]={"SUMA_cb_SwithThr_toggled"};
+   static char FuncName[]={"SUMA_cb_SwitchThr_toggled"};
    SUMA_SurfaceObject *SO = NULL;
    SUMA_Boolean LocalHead = NOPE;
    
@@ -1085,9 +1162,9 @@ void SUMA_cb_SwithThr_toggled (Widget w, XtPointer data, XtPointer client_data)
    SUMA_RETURNe;
 }
 
-void SUMA_cb_SwithBrt_toggled (Widget w, XtPointer data, XtPointer client_data)
+void SUMA_cb_SwitchBrt_toggled (Widget w, XtPointer data, XtPointer client_data)
 {
-   static char FuncName[]={"SUMA_cb_SwithBrt_toggled"};
+   static char FuncName[]={"SUMA_cb_SwitchBrt_toggled"};
    SUMA_SurfaceObject *SO = NULL;
    SUMA_Boolean LocalHead = NOPE;
    
@@ -2768,7 +2845,7 @@ void SUMA_set_cmap_options(SUMA_SurfaceObject *SO, SUMA_Boolean NewDset, SUMA_Bo
             SO->SurfCont->Int_tb = XtVaCreateManagedWidget("v", 
                xmToggleButtonWidgetClass, SO->SurfCont->rcsw_v2, NULL);
             XtAddCallback (SO->SurfCont->Int_tb, 
-                  XmNvalueChangedCallback, SUMA_cb_SwithInt_toggled, SO);
+                  XmNvalueChangedCallback, SUMA_cb_SwitchInt_toggled, SO);
             MCW_register_hint(SO->SurfCont->Int_tb,   "View (ON)/Hide Dset node colors");
             MCW_register_help(SO->SurfCont->Int_tb,   SUMA_SurfContHelp_SelIntTgl);
 
@@ -2780,7 +2857,7 @@ void SUMA_set_cmap_options(SUMA_SurfaceObject *SO, SUMA_Boolean NewDset, SUMA_Bo
             SO->SurfCont->Thr_tb = XtVaCreateManagedWidget("v", 
                xmToggleButtonWidgetClass, SO->SurfCont->rcsw_v2, NULL);
             XtAddCallback (SO->SurfCont->Thr_tb, 
-                  XmNvalueChangedCallback, SUMA_cb_SwithThr_toggled, SO);
+                  XmNvalueChangedCallback, SUMA_cb_SwitchThr_toggled, SO);
             SUMA_SET_SELECT_COLOR(SO->SurfCont->Thr_tb);
             MCW_register_hint(SO->SurfCont->Thr_tb,   "Apply (ON)/Ignore thresholding");
             MCW_register_help(SO->SurfCont->Thr_tb,   SUMA_SurfContHelp_SelThrTgl);
@@ -2795,7 +2872,7 @@ void SUMA_set_cmap_options(SUMA_SurfaceObject *SO, SUMA_Boolean NewDset, SUMA_Bo
             SO->SurfCont->Brt_tb = XtVaCreateManagedWidget("v", 
                xmToggleButtonWidgetClass, SO->SurfCont->rcsw_v2, NULL);
             XtAddCallback (SO->SurfCont->Brt_tb, 
-                     XmNvalueChangedCallback, SUMA_cb_SwithBrt_toggled, SO);
+                     XmNvalueChangedCallback, SUMA_cb_SwitchBrt_toggled, SO);
             SUMA_SET_SELECT_COLOR(SO->SurfCont->Brt_tb);
             MCW_register_hint(SO->SurfCont->Brt_tb,   "View (ON)/Ignore brightness modulation");
             MCW_register_help(SO->SurfCont->Brt_tb,   SUMA_SurfContHelp_SelBrtTgl);
@@ -3481,15 +3558,22 @@ SUMA_Boolean SUMA_CmapSelectList(SUMA_SurfaceObject *SO, int refresh, int bringu
 SUMA_Boolean SUMA_SetCmapMenuChoice(SUMA_SurfaceObject *SO, char *str)
 {
    static char FuncName[]={"SUMA_SetCmapMenuChoice"};
-   int i, Nbutt = 0;
+   int i, Nbutt = 0, nstr=0, nf=0;
    Widget whist, *w = NULL;
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
    
+   SUMA_LHv("So(%p), SurfCont(%p), SwitchCmapMenu(%p)\n", SO, SO->SurfCont, SO->SurfCont->SwitchCmapMenu);
    w = SO->SurfCont->SwitchCmapMenu;
-   if (!w) SUMA_RETURN(NOPE);
-   
+   if (!w) {
+      SUMA_LH("NULL w");
+      SUMA_RETURN(NOPE);
+   }
+   if (!str) {
+      SUMA_S_Err("NULL str");
+      SUMA_RETURN(NOPE);
+   }
    /* what's your history joe ? */
    XtVaGetValues(  w[0], XmNmenuHistory , &whist , NULL ) ;  
    if (!whist) {
@@ -3501,11 +3585,16 @@ SUMA_Boolean SUMA_SetCmapMenuChoice(SUMA_SurfaceObject *SO, char *str)
       fprintf (SUMA_STDERR,"%s: The history is NAMED: %s (%d buttons total)\n", FuncName, XtName(whist), Nbutt);
    } 
       
-
+   nstr = strlen(str);
    /* Now search the widgets in w for a widget labeled str */
    for (i=0; i< SO->SurfCont->N_CmapMenu; ++i) {
-      if (LocalHead) fprintf (SUMA_STDERR,"I have %s\n", XtName(w[i]));
-      if (strcmp(str, XtName(w[i])) == 0) {
+      if (LocalHead) fprintf (SUMA_STDERR,"I have %s, want %s\n", XtName(w[i]), str);
+      if (nstr > strlen(XtName(w[i]))) { /* name in list got trunctated ...*/
+         nf = strncmp(str, XtName(w[i]), strlen(XtName(w[i])));
+      } else {
+         nf = strcmp(str, XtName(w[i]));
+      }
+      if (nf == 0) {
          SUMA_LH("Match!");
          XtVaSetValues(  w[0], XmNmenuHistory , w[i] , NULL ) ;  
          SUMA_RETURN(YUP);
@@ -4384,7 +4473,7 @@ SUMA_Boolean SUMA_UpdateNodeValField(SUMA_SurfaceObject *SO)
    }
    
    /* 1- Where is this node in the data set ? */
-   Found = SUMA_GetNodeRow_FromNodeIndex(Sover->dset_link, SO->SelectedNode, SO->N_Node);
+   Found = SUMA_GetNodeRow_FromNodeIndex_s(Sover->dset_link, SO->SelectedNode, SO->N_Node);
    if (LocalHead) {
       fprintf(SUMA_STDERR,"%s: Node index %d is at row %d in dset.", FuncName, SO->SelectedNode, Found);
    }
@@ -4673,7 +4762,7 @@ void SUMA_LoadCmapFile (char *filename, void *data)
    /* have Cmap, add to dbase */
 
    /* remove path from name for pretty purposes */
-   pn = SUMA_ParseFname(Cmap->Name);
+   pn = SUMA_ParseFname(Cmap->Name, NULL);
    SUMA_STRING_REPLACE(Cmap->Name, pn->FileName_NoExt);
    SUMA_Free_Parsed_Name(pn); pn = NULL;
    SUMAg_CF->scm->CMv = SUMA_Add_ColorMap (Cmap, SUMAg_CF->scm->CMv, &(SUMAg_CF->scm->N_maps)); 
@@ -4868,9 +4957,9 @@ int main (int argc,char *argv[])
 
    SUMA_Boolean LocalHead = NOPE;
    
+   SUMA_STANDALONE_INIT;
    SUMA_mainENTRY;
    
-   SUMA_STANDALONE_INIT;
    
    if (!SUMAg_CF->scm) {   
       SUMAg_CF->scm = SUMA_Build_Color_maps();

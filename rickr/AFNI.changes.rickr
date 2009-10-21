@@ -1567,3 +1567,309 @@
       - added NIML and NI_SURF_DSET write cases using THD_write_niml()
   * modified Makefile.INCLUDE: to add thd_niml.o to THD_OBJS
 
+30 Jun 2006:
+  * modified SUMA_3dVol2Surf.[ch], vol2surf.[ch], plug_vol2surf.c
+      - added -save_seg_coords option
+
+07 Jul 2006:
+  * modified @auto_tlrc: changed 3dMax to 3dBrickStat
+
+11 Jul 2006:
+  * modified niml_element.c: fixed use of NI_realloc() in NI_search_group_*()
+  * modified 3ddata.h: changed THD_write_niml to Boolean, added prototypes
+        for THD_dset_to_ni_surf_dset() and THD_add_sparse_data()
+  * modified thd_writedset.c:
+      - don't let NI_SURF_DSET get written as 1D
+  * modified thd_niml.c:
+      - added load for NI_SURF_DSET
+      - added basic write for NI_SURF_DSET
+
+12 Jul 2006:
+  * modified edt_emptycopy.c: init nnodes and node_list
+  * modified thd_auxdata.c: for NI_SURF_DSET, copy any nnodes and node_list
+  * modified thd_delete.c: free dblk->node_list
+  * modified thd_niml.c: (maybe good enough for SUMA now)
+      - write out more attributes
+      - use matching XtMalloc for dblk allocation
+  * modified 3ddata.h: added THD_[un]zblock_ch protos
+  * modified thd_zblock.c: added THD_zblock_ch() and THD_unzblock_ch()
+
+14 Jul 2006:
+  * modified 3ddata.h: added IS_VALID_NON_AFNI_DSET() macro
+  * modified 3dNotes.c:
+      - replaced if(DSET_IS_NIFTI()) with if(IS_VALID_NON_AFNI_DSET())
+  * modified 3drefit.c: same change as 3dNotes.c
+  * modified 3dniml.c: pass dset to nsd_add_sparse_data for nx
+  * modified niml_element.c, niml.h
+      - added NI_set_ni_type_atr() and calls to it from NI_add_column() and
+        stride(), so if ni_type is already set, it is adjusted
+
+17 Jul 2006:
+  * modified niml_element.c, niml.h:
+      - fixed NI_set_ni_type_atr() to allow for type name of arbitrary length,
+        not just known types
+      - added NI_free_element_data()
+  * modified thd_niml.c: added nsd_add_colms_type, to add column types for suma
+
+18 Jul 2006:
+  * modified thd_niml.c:
+      - added COLMS_RANGE attribute element
+      - use AFNI_NI_DEBUG as an integer level (as usual)
+
+28 Jul 2006:
+  * modified 3drefit.c: fixed saveatr use, and blocked atr mods with other mods
+
+03 Aug 2006: updates for writing niml files as NI_SURF_DSET
+  * modified thd_niml.c:
+      - added ni_globals struct to deal with debug and write_mode
+      - added and used set_ni_globs_from_env() for assigning those globals
+      - added set_sparse_data_attribs()
+      - added set/get access functions for globals debug and write_mode
+  * modified 3dvol2surf.c
+      - added v2s_write_outfile_NSD(), and use it instead of _niml()
+      - remove unused code in dump_surf_3dt()
+      - added static set_output_labels()
+      - allocate labels array in alloc_output_mem()
+      - free labels and labels array in free_v2s_results()
+  * modified 3dvol2surf.h: added labels and nlab to v2s_results struct
+  * modified SUMA_3dVol2Surf.c: use v2s_write_outfile_NSD, instead of _niml()
+  * modified 3ddata.h
+      - added protos for ni_globs functions and set_sparse_data_attribs()
+
+04 Aug 2006: auto-convert NI_SURF_DSET to floats
+  * modified thd_niml.c:
+      - added to_float to ni_globals struct, for blocking conversion to floats
+      - changed  LOC_GET_MIN_MAX_POSN to NOTYPE_GET_MIN_MAX_POSN
+      - added get_blk_min_max_posn(), to deal with varrying input types
+      - fixed missing output column type when no node_list
+      - nsd_add_colms_range(): do not require input type to be float
+      - nsd_add_sparse_data(): convert output to floats, if necessary
+      - add gni.to_float accessor funcs and in set_ni_globs_from_env()
+  * modified vol2surf.c: changed set_ni_debug() to set_gni_debug()
+  * modified 3ddata.h: changed prototype names, and added to_float protos
+
+08 Aug 2006: C++ compilation changes from Greg Balls
+  * modified niml/niml.h rickr/r_idisp.h rickr/r_new_resam_dset.h 3ddata.h
+        afni_environ.h afni_graph.h afni.h afni_pcor.h afni_setup.h afni_suma.h
+        afni_warp.h bbox.h cdflib.h coxplot.h cox_render.h cs.h debugtrace.h
+        display.h editvol.h imseq.h machdep.c machdep.h maxima.h mcw_glob.h
+        mcw_graf.h mcw_malloc.h mrilib.h mri_render.h multivector.h parser.h
+        pbar.h plug_permtest.c plug_retroicor.c retroicor.h thd_compress.h
+        thd_iochan.h thd_maker.h vol2surf.h xim.h xutil.h
+    (mostly adding #ifdef __cplusplus extern "C" { #endif, and closing set)
+  * modified rickr/Makefile: removed ../ge4_header.o from file_tool dep list
+
+09 Aug 2006: vol2surf creation of command history
+  * modified vol2surf.c:
+      - create argc, argv from options in v2s_make_command()
+      - added loc_add_2_list() and v2s_free_cmd() for v2s_make_command()
+      - added labels, thres index/value and surf vol dset to gv2s_plug_opts
+  * modified vol2surf.h:
+      - added v2s_cmt_t sturct, and into v2s_opts_t
+      - added gpt_index/thresh, label adn sv_dset to v2s_plugin_opts
+  * modified afni_niml.c: receive spec file name via surface_specfile_name atr
+  * modified afni_suma.h: added spec_file to SUMA_surface
+  * modified afni_vol2surf.c:
+      - store the surface volume dataset in the v2s_plugin_opts struct
+      - also store the index and threshold value of the threshold sub-brick
+  * modified plug_vol2surf.c:
+      - init surface labels, and set them given the user options
+  * modified SUMA_3dVol2Surf.c:
+      - store command-line arguments for history note
+      - added -skip_col_NSD_format option
+  * modified SUMA_3dVol2Surf.h:
+      - added argc, argv to set_smap_opts parameters
+  * modified edt_empty_copy.c: if they exist, let okay_to_add_markers() return 1
+
+14 Aug 2006:
+  * modified mri_dicom_hdr.c, setting the type for g_readpreamble
+  * modified rickr/Makefile: remove dependancies on an ../*.o, so they are
+        not removed by the build process (they should not be made from rickr)
+
+15 Aug 2006: added Makefile.linux_xorg7
+
+17 Aug 2006:
+  * modified thd_niml.c: fixed str in loc_append_vals()
+  * modified Makefile.linux_xorg7: set SUMA_GLIB_VER = -2.0
+  * modified Makefile.INCLUDE, passed any SUMA_GLIB_VER to SUMA builds
+  * modified SUMA_Makefile_NoDev, link glib via -lglib${SUMA_GLIB_VER}
+  * modified Vecwarp.c: fixed matrix-vector screen output (req. by Tom Holroyd)
+
+18 Aug 2006: modified 3dmaxima.c, maxima.[ch]: added -coords_only option
+
+23 Aug 2006:
+  * modified thd_niml.c:
+      - added sorted_node_def attr to SPARSE_DATA
+      - if set_sparse_data_attribs(), if nodes_from_dset, the set
+          sorted_node_def based on node_list in dset via has_sorted_node_list()
+  * modified vol2surf.c:
+      - use -outcols_afni_NSD in v2s_make_command
+      - in v2s_write_outfile_NSD(), only output node list if it exists
+      - pass 0 as nodes_from_dset to has_sorted_node_list()
+  * modified SUMA_3dVol2Surf.c (-> v6.7)
+      - changed -skip_col_* options to -outcols_* options
+      - added -outcols_afni_NSD option
+  * modified 3ddata.h: added nodes_from_dset to set_sparse_data_attribs()
+
+23 Aug 2006: do not assume node index column is #0 in NI_SURF_DSET
+  * modified thd_niml.c:
+      - added sum_ngr_get_node_column()
+      - apply in process_ni_sd_sparse_data(), process_ni_sd_attrs() and
+          THD_add_sparse_data
+  * modified vol2surf.c: possibly free nodes during write_NSD
+  * modified 3ddata.h: added suma_ngr_get_node_column() prototype
+
+25 Aug 2006:
+  * modified thd_niml.c
+      - added node_col to ni_globals, and hold the niml node column index
+      - modified nsd_string_atr_to_slist() to skip a given index
+      - apply node_col to process_ni_sparse_data() and process_ni_sd_attrs()
+      - modifed THD_add_sparse_data() to omit gni.node_col, not col 0
+
+30 Aug 2006: INDEX_LIST is now a separate attribute element in the group
+  * modified thd_niml.c:
+      - updated nsd_string_atr_to_slist(), THD_ni_surf_dset_to_afni(),
+          process_NSD_sparse_data(), process_NSD_attrs(), THD_add_sparse_data(),
+          THD_dset_to_ni_surf_dset(), nsd_add_colms_type(),
+          nsd_add_str_atr_to_group(), nsd_add_colms_range(),
+          nsd_add_sparse_data(), set_sparse_data_attribs()
+      - added process_NSD_index_list(), to read INDEX_LIST attribute element
+      - added nsd_fill_index_list(), to create the INDEX_LIST element
+      - added NI_get_byte_order(), to process "ni_form" attribute
+      - removed suma_ngr_get_node_column()
+      - removed node_col from ni_globals
+      - modified new nsd_fill_index_list():
+          add default list when AFNI_NSD_ADD_NODES is set
+  * modified 3ddata.h: lose suma_ngr_get_node_column(), add NI_get_byte_order()
+  * added Makefile.linux_xorg7_64 (compiled on radagast)
+
+05 Sep 2006:
+  * modified nifti1_io.c, added nifti_set_skip_blank_ext
+  * merged many fslio NIfTI changes by Kate Fissell for niftilib-0.4
+  * modified thd_niml.c: removed warning about missing Node_Index column type
+
+06 Sep 2006:
+  * modified vol2surf.c: use NI_free after NI_search_group_shallow
+  * modified thd_niml.c: in nsd_add_str_atr_to_group() swap out nul chars
+  * merged small nifti/README change
+
+12 Sep 2006: modified thd_niml.c:THD_open_niml(): set brick_name to fname
+15 Sep 2006: modified 3ddata.h: added AFNI_vedit_clear proto (for Greg Balls)
+28 Sep 2006:
+  * modified thd_niml.c:close niml stream in write_niml_file()
+  * modified afni_niml.c:no AFNI_finalize_dataset_CB from process_NIML_SUMA_ixyz
+
+12 Oct 2006: added serial_writer.c program for rasmus
+16 Oct 2006: modified serial_writer.c: added -ms_sleep, -nblocks and -swap
+22 Oct 2006: added model_demri_3.c
+23 Oct 2006: modified model_demri_3.c with DGlen, 2 speed-ups, 1 negation fix
+24 Oct 2006: modified model_demri_3.c: mpc was not stored across iterations
+25 Oct 2006:
+  * modified 3dNLfim.c:
+      - updated check of proc_shmptr
+      - change on of the TR uses to TF (computing ct from cp)
+      - expanded help, and added a sample script
+26 Oct 2006:
+  * modified Makefile.INCLUDE: added $(LFLAGS) to 3dNLfim target
+  * modified 3dNLfim.c: limit g_voxel_count output to every 10th voxel
+                      : RIB and RIT replace single R
+
+30 Oct 2006: modified afni_base.py: added comopt.required, show(), print mods
+31 Oct 2006: modified model_demri_3.c: allow ve param, instead of k_ep
+02 Nov 2006: modified model_demri_3.c: change init, so Ve is reported as output
+
+13 Nov 2006: changes to send ROI means to serial_helper (from Tom Ross)
+  * modified plug_realtime.c:
+      - added Mask dataset input to plugin interface
+      - if Mask, send averages over each ROI to AFNI_REALTIME_MP_HOST_PORT
+  * modified serial_helper.c:
+      - added -num_extras option to process extra floats per TR (ROI aves)
+  * modified thd_makemask.c:
+      - added thd_mask_from_brick() from vol2surf.c
+      - added new thd_multi_mask_from_brick()
+  * modified 3dvol2surf.c: moved thd_mask_from_brick() to thd_makemask.c
+  * modified 3ddata.h: added protos for mask functions
+
+15 Nov 2006: modified serial_helper.c: encode nex into handshake byte
+
+17 Nov 2006:
+  * modifed model_demri_3.c:
+      - do not exit on fatal errors, complain and return zero'd data
+      - if model parameters are bad (esp. computed), zero data and return
+      - if thd_floatscan() on results shows bad floats, zero data and return
+      - require AFNI_MODEL_D3_R1I_DSET to be float
+      - removed R1I_data_im
+  * added afni_util.py, afni_proc.py, make.stim.times.py,
+        and option_list.py to python_scripts
+  * modified afni_base.py
+
+18 Nov 2006: small mods to afni_base.py, afni_proc.py, option_list.py
+
+20 Nov 2006:
+  * modified Dimon.c, dimon_afni.c, Imon.h:
+      - added -epsilon option for difference tests, including in dimon_afni.c
+
+01 Dec 2006: python updates
+  * added db_mod.py: contains datablock modification functions (may disappear)
+  * modified afni_base.py:
+      - added afni_name:rpv() - to return the relative path, if possible
+      - added read_attribute(), which calls 3dAttribute on a dataset
+  * modified afni_proc.py: now does most of the pre-processing
+  * modified option_list.py:
+      - added setpar parameter to OptionList:add_opt()
+      - updated comments
+
+02 Dec 2006: modified suma_datasets.c:
+      - SUMA_iswordin -> strstr, MAXPATHLEN -> SUMA_MAX_DIR_LENGTH
+
+07 Dec 2006: minor mods to afni_util.py, db_mod.py, make.stim.times.py
+
+09 Dec 2006: 3dDeconvolve command in afni_proc.py
+  * modified make.stim.times.py, afni_util.py, afni_proc.py, db_mod.py
+
+10 Dec 2006: modified afni_proc.py, db_mod.py: help and other updates
+
+11 Dec 2006: more uber-script updates
+  * modified afni_proc.py: added version, history and complete help
+  * modified db_mod.py: volreg_base_ind now takes run number, not dset index
+  * modified make_stim_times.py:
+      - renamed from make.stim.times.py
+      - more help
+      - per output file, append '*' if first stim row has only 1 stim 
+  * modified vol2surf.[ch]: if plug_v2s:debug > 2, print 3dV2S command
+
+12 Dec 2006:
+  * modified afni_proc.py, db_mod.py, option_list.py:
+      - added fitts and iresp options, fixed scale limit
+
+13 Dec 2006:
+  * modified afni_proc.py, db_mod.py
+      - added -regress_stim_times_offset and -no_proc_command
+        (afni_proc commands are stored by default)
+  * modified make_stim_times.py: added -offset option
+
+14 Dec 2006:
+  * modified afni_proc.py, db_mod.py
+      - added -copy_anat, -regress_make_1D_ideal and -regress_opts_3dD
+  * modified make_stim_times.py: added required -nt option
+
+15 Dec 2006: modified SUMA_3dVol2surf: help for niml.dest and EPI -> surface
+17 Dec 2006: modified afni_proc.py, db_mod.py:
+      - added options -tshift_opts_ts, -volreg_opts_vr, -blur_opts_merge
+18 Dec 2006: small mods to afni_proc.py, db_mod.py, make_stim_times.py
+19 Dec 2006:
+  * modified afni_proc.py, db_mod.py: help update, use quotize_list
+  * modified afni_util.py: added quotist_list
+  * modified make_stim_times.py: use str(%f) for printing
+
+20 Dec 2006: afni_proc.py (version 1.0 - initial release)
+  * modified afni_proc.py
+      - changed -regress_make_1D_ideal to -regress_make_ideal_sum
+      - added output of stim ideals (default) and option -regress_no_ideals
+      - verify that AFNI datasets are unique
+      - added -regress_no_stim_times
+  * modified afni_base.py: added afni_name.pve()
+  * modified afni_util.py: added uniq_list_as_dsets, basis_has_known_response
+  * modified db_mod.py: for change in 'ideal' options & -regress_no_stim_times
+  * added ask_me.py: basically empty, to prompt users for options
+

@@ -5892,8 +5892,8 @@ ENTRY("GRA_file_pixmap") ;
    tim = XImage_to_mri( grapher->dc , xim , 0 ) ;
    if( tim == NULL ){ MCW_kill_XImage( xim ) ; EXRETURN ; }
 
+   INFO_message("Writing grapher image to '%s'",fname) ;
    mri_write_pnm( fname , tim ) ;
-   INFO_message("Writing grapher image to file %s\n",fname) ;
    mri_free( tim ) ;
    MCW_kill_XImage( xim ) ;  /* 10 Mar 1999 */
    EXRETURN ;
@@ -6014,5 +6014,7 @@ ENTRY("GRA_timer_CB") ;
 
 void GRA_timer_stop( MCW_grapher *grapher )
 {
-   if( grapher->timer_id > 0 ){ XtRemoveTimeOut(grapher->timer_id); grapher->timer_id = 0; }
+   if( grapher->timer_id > 0 ){
+     XtRemoveTimeOut(grapher->timer_id); grapher->timer_id = 0;
+   }
 }

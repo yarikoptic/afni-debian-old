@@ -130,6 +130,8 @@ ENTRY("EDIT_empty_copy") ; /* 29 Aug 2001 */
    new_dblk->atr         = NULL ;
    new_dblk->parent      = (XtPointer) new_dset ;
 
+   new_dblk->vedim = NULL ; /* 05 Sep 2006 */
+
    DBLK_unlock(new_dblk) ;  /* Feb 1998 */
 
    new_dblk->brick_fac   = NULL ;
@@ -238,6 +240,10 @@ ENTRY("EDIT_empty_datablock") ;
    new_dblk->nvals          = 1 ;
    new_dblk->natr           = new_dblk->natr_alloc = 0 ;
    new_dblk->atr            = NULL ;
+   new_dblk->nnodes         = 0 ;       /* 12 July 2006 [rickr] */
+   new_dblk->node_list      = NULL ;
+
+   new_dblk->vedim = NULL ; /* 05 Sep 2006 */
 
    new_dkptr = new_dblk->diskptr = myXtNew( THD_diskptr ) ;
 
@@ -302,7 +308,8 @@ THD_marker_set * create_empty_marker_set(void)
 int okay_to_add_markers(THD_3dim_dataset * dset)
 {
    if( !dset )         return 0 ;
-   if( dset->markers ) return 0 ; /* already have some */
+
+/*    if( dset->markers ) return 0 ;  allow deletion   9 Aug 2006 [rickr] */
 
    /* test comes from 3drefit.c */
    if( dset->type           == HEAD_ANAT_TYPE     &&

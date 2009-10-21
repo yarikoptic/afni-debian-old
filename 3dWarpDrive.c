@@ -144,20 +144,9 @@ static THD_mat33 rot_matrix( int ax1, double th1,
 
 #define D2R (PI/180.0)                /* angles are in degrees */
 
-#define MATORDER_SDU  1
-#define MATORDER_SUD  2
-#define MATORDER_DSU  3
-#define MATORDER_DUS  4
-#define MATORDER_USD  5
-#define MATORDER_UDS  6
-
-static int matorder = MATORDER_SDU ;
-static int dcode    = DELTA_AFTER  ;  /* cf. 3ddata.h */
-
-#define SMAT_UPPER    1
-#define SMAT_LOWER    2
-
+static int matorder = MATORDER_SDU ;  /* cf. mrilib.h */
 static int smat     = SMAT_LOWER ;
+static int dcode    = DELTA_AFTER  ;  /* cf. 3ddata.h */
 
 void parset_affine(void)
 {
@@ -862,46 +851,34 @@ int main( int argc , char * argv[] )
 
    if( abas.verb ) INFO_message("Loading datasets\n") ;
 
-   DSET_load(inset) ;
-   if( !DSET_LOADED(inset) ){
-     ERROR_exit("Can't load input dataset into memory!\n") ;
+   DSET_load(inset) ; CHECK_LOAD_ERROR(inset) ;
+   nvals = DSET_NVALS(inset) ;
+   if( nvals == 1 ){
+     clip_inset = THD_cliplevel( DSET_BRICK(inset,0) , 0.0 ) ;
+     if( DSET_BRICK_FACTOR(inset,0) > 0.0f )
+       clip_inset *= DSET_BRICK_FACTOR(inset,0) ;
+       mri_get_cmass_3D( DSET_BRICK(inset,0) , &i_xcm,&i_ycm,&i_zcm ) ;
    } else {
-     nvals = DSET_NVALS(inset) ;
-     if( nvals == 1 ){
-       clip_inset = THD_cliplevel( DSET_BRICK(inset,0) , 0.0 ) ;
-       if( DSET_BRICK_FACTOR(inset,0) > 0.0f )
-         clip_inset *= DSET_BRICK_FACTOR(inset,0) ;
-         mri_get_cmass_3D( DSET_BRICK(inset,0) , &i_xcm,&i_ycm,&i_zcm ) ;
-     } else {
-       qim = THD_median_brick( inset ) ;
-       clip_inset = THD_cliplevel( qim , 0.0 ) ;
-       mri_get_cmass_3D( qim , &i_xcm,&i_ycm,&i_zcm ) ;
-       mri_free(qim) ;
-     }
+     qim = THD_median_brick( inset ) ;
+     clip_inset = THD_cliplevel( qim , 0.0 ) ;
+     mri_get_cmass_3D( qim , &i_xcm,&i_ycm,&i_zcm ) ;
+     mri_free(qim) ;
    }
 
-   DSET_load(baset) ;
-   if( !DSET_LOADED(baset) ){
-     ERROR_exit("Can't load base dataset into memory!\n") ;
-   } else {
-     mri_get_cmass_3D( DSET_BRICK(baset,0) , &b_xcm,&b_ycm,&b_zcm ) ;
-     abas.imbase = mri_scale_to_float( DSET_BRICK_FACTOR(baset,0) ,
-                                       DSET_BRICK(baset,0)         ) ;
-     clip_baset  = THD_cliplevel( abas.imbase , 0.0 ) ;
-     base_idc    = strdup(baset->idcode.str) ;
-     DSET_unload(baset) ;
-   }
+   DSET_load(baset) ; CHECK_LOAD_ERROR(baset) ;
+   mri_get_cmass_3D( DSET_BRICK(baset,0) , &b_xcm,&b_ycm,&b_zcm ) ;
+   abas.imbase = mri_scale_to_float( DSET_BRICK_FACTOR(baset,0) ,
+                                     DSET_BRICK(baset,0)         ) ;
+   clip_baset  = THD_cliplevel( abas.imbase , 0.0 ) ;
+   base_idc    = strdup(baset->idcode.str) ;
+   DSET_unload(baset) ;
 
    if( wtset != NULL ){
-     DSET_load(wtset) ;
-     if( !DSET_LOADED(wtset) ){
-       ERROR_exit("Can't load weight dataset into memory!\n") ;
-     } else {
-       abas.imwt = mri_scale_to_float( DSET_BRICK_FACTOR(wtset,0) ,
-                                       DSET_BRICK(wtset,0)         ) ;
-       wt_idc    = strdup(wtset->idcode.str) ;
-       DSET_unload(wtset) ;
-     }
+     DSET_load(wtset) ; CHECK_LOAD_ERROR(wtset) ;
+     abas.imwt = mri_scale_to_float( DSET_BRICK_FACTOR(wtset,0) ,
+                                     DSET_BRICK(wtset,0)         ) ;
+     wt_idc    = strdup(wtset->idcode.str) ;
+     DSET_unload(wtset) ;
    }
 
    if( abas.verb ) INFO_message("Checking inputs\n") ;
@@ -1392,6 +1369,26 @@ int main( int argc , char * argv[] )
                             matar[8],matar[9],matar[10] ) ;
        UNLOAD_FVEC3(mv_inv.vv,matar[3],matar[7],matar[11]) ;
        sprintf(anam,"WARPDRIVE_MATVEC_INV_%06d",kim) ;
+       THD_set_float_atr( outset->dblk , anam , 12 , matar ) ;
+
+       /* redo with just the shift+rotation parameters [22 Aug 2006] */
+
+       for( kpar=0 ; kpar < 3           ; kpar++ ) parvec[kpar] = 0.0 ;
+       for( kpar=6 ; kpar < abas.nparam ; kpar++ ) parvec[kpar] = 0.0 ;
+       parset_affine() ;
+
+       UNLOAD_MAT(mv_for.mm,matar[0],matar[1],matar[2],
+                            matar[4],matar[5],matar[6],
+                            matar[8],matar[9],matar[10] ) ;
+       UNLOAD_FVEC3(mv_for.vv,matar[3],matar[7],matar[11]) ;
+       sprintf(anam,"WARPDRIVE_ROTMAT_FOR_%06d",kim) ;
+       THD_set_float_atr( outset->dblk , anam , 12 , matar ) ;
+
+       UNLOAD_MAT(mv_inv.mm,matar[0],matar[1],matar[2],
+                            matar[4],matar[5],matar[6],
+                            matar[8],matar[9],matar[10] ) ;
+       UNLOAD_FVEC3(mv_inv.vv,matar[3],matar[7],matar[11]) ;
+       sprintf(anam,"WARPDRIVE_ROTMAT_INV_%06d",kim) ;
        THD_set_float_atr( outset->dblk , anam , 12 , matar ) ;
      }
    }

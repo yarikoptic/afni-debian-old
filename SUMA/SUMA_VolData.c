@@ -3,15 +3,95 @@
 
 extern SUMA_CommonFields *SUMAg_CF; 
 
+/*!
+   \brief Find the closest node on the surface to a voxel in the volume (as defined in vp)
+   \param SO (SUMA_SurfaceObject *)
+      SO->NodeList is expected to be in dicomm (RAI) units
+   \param vp (SUMA_VOLPAR *) Volume grid of Nvox voxels.
+   \param closest_node (int *) Vector of Nvox elements. To contain the nodes closest to each voxel
+   \param closest_dist (float *) Vector of Nvox elements. 
+                                 To contain the distance between node and voxel centroid
+                                 Pass NULL if you do not care for this info.
+   \param vox_mask (byte *) Mask of voxels to process (NULL if you want to process all)
+   \param verb (int): 0 be quiet
+                    > 1 talk
+   
+*/
+int SUMA_ClosestNodeToVoxels(SUMA_SurfaceObject *SO, SUMA_VOLPAR *vp, int *closest_node, float *closest_dist, byte *vox_mask, int verb) 
+{
+   static char FuncName[]={"SUMA_ClosestNodeToVoxels"};
+   float *p=NULL;
+   float d, dxyz;
+   int i, j, k, n, nij, ijk, cnt = 0;
+   THD_fvec3     fv , iv;
+   
+   SUMA_ENTRY;
+   
+   if (!SO || !vp || !closest_node) {
+      SUMA_S_Err("NULL input");
+      SUMA_RETURN(0);
+   }
+   
+   if (verb) {
+      fprintf(SUMA_STDERR,"%s: Have %d nodes in surface\n%dx%dx%d (%d) voxels in volume.\n", 
+                  FuncName, SO->N_Node, vp->nx, vp->ny, vp->nz, vp->nx * vp->ny * vp->nz);
+   }
+   /* Now for each voxel, find the closest node (SLOW implementation) */
+   cnt = 0;
+   nij = vp->nx*vp->ny;
+   for (i=0;i<vp->nx; ++i) {  
+      for (j=0;j<vp->ny; ++j) {
+         for (k=0;k<vp->nz; ++k) {
+            ijk = SUMA_3D_2_1D_index(i,j,k,vp->nx,nij);
+            /* fprintf(SUMA_STDERR," %4d %4d %4d,  ijk: %d\n", i, j, k, ijk); */            
+            closest_node[ijk] = -1;
+            if (closest_dist) closest_dist[ijk] = -1.0;
+            if (!vox_mask || (vox_mask && vox_mask[ijk])) {
+               iv.xyz[0] = (float)i; iv.xyz[1] = (float)j; iv.xyz[2] = (float)k;    
+               fv = SUMA_THD_3dfind_to_3dmm_vp(vp, iv);
+               iv = SUMA_THD_3dmm_to_dicomm(vp->xxorient, vp->yyorient, vp->zzorient,  fv);
+               #if 0 /* macro not tested here so keeping older code below */
+               SUMA_CLOSEST_NODE(SO, iv.xyz, closest_node[ijk], d);
+               if (closest_dist) closest_dist[ijk] = (float)d;
+               #else
+               dxyz = 1023734552736672366372.0;
+               for (n=0; n<SO->N_Node; ++n) {
+                  p = &(SO->NodeList[SO->NodeDim*n]);
+                  SUMA_SEG_LENGTH_SQ(p, iv.xyz, d);
+                  if (d < dxyz) {
+                     dxyz = d; closest_node[ijk] = n; 
+                     if (closest_dist) closest_dist[ijk] = (float)d;
+                  }
+               }
+               #endif
+               if (closest_dist) { if (closest_dist[ijk] >= 0.0f) closest_dist[ijk] = (float)sqrt(closest_dist[ijk]); }
+               if (verb) {
+                  ++cnt;
+                  if (!(cnt % 1000)) {
+                     fprintf(SUMA_STDERR,". @ %4d %4d %4d   (%3.2f%%)\n", 
+                              i, j, k, (float)cnt/(float)(vp->nx * vp->ny * vp->nz)*100.0); fflush(SUMA_STDERR);
+                  }
+               }
+            }
+         }
+      }
+   } 
+   
+   SUMA_RETURN(1);
+}
+
+
 /*! a copy of THD_handedness from ../thd_rotangles.c
 Dunno why the original was giving me pain linking ... */
 int SUMA_THD_handedness( THD_3dim_dataset * dset )
 {
+   static char FuncName[]={"SUMA_THD_handedness"};
    THD_dataxes * dax ;
    THD_mat33 q ;
    int col ;
    float val ;
 
+   SUMA_ENTRY;
 
    if( !ISVALID_DSET(dset) ) SUMA_RETURN(1) ;
 
@@ -60,6 +140,8 @@ SUMA_Boolean SUMA_AfniExistsView(int exists, char *view)
 {
    static char FuncName[]={"SUMA_AfniExistsView"};
    SUMA_Boolean ans = NOPE;
+   
+   SUMA_ENTRY;
    
    if (!exists) SUMA_RETURN(ans);
    
@@ -114,6 +196,8 @@ SUMA_Boolean SUMA_AfniExists(char *prefix, char *c2view)
    char *head=NULL;
    SUMA_Boolean ans = NOPE;
    SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
    
    ans = NOPE;
 
@@ -1085,9 +1169,13 @@ SUMA_Boolean SUMA_Apply_VolReg_Trans (SUMA_SurfaceObject *SO)
    
    SUMA_ENTRY;
 
-   if (SUMAg_CF->IgnoreVolreg) {
+   if (get_IgnoreXforms()) {
       SUMA_SL_Note("Ignoring any Volreg, TagAlign, Rotate or WarpDrive transforms present in Surface Volume.\n");
+      SUMAg_CF->IgnoreVolreg = YUP;
       SO->VOLREG_APPLIED = NOPE;
+      SO->WARPDRIVE_APPLIED = NOPE;
+      SO->ROTATE_APPLIED   = NOPE;
+      SO->TAGALIGN_APPLIED  = NOPE;
       SUMA_RETURN (YUP);
    }
    
@@ -1402,6 +1490,23 @@ THD_fvec3 SUMA_THD_3dfind_to_3dmm( SUMA_SurfaceObject *SO,
    fv.xyz[0] = SO->VolPar->xorg + iv.xyz[0] * SO->VolPar->dx ;
    fv.xyz[1] = SO->VolPar->yorg + iv.xyz[1] * SO->VolPar->dy ;
    fv.xyz[2] = SO->VolPar->zorg + iv.xyz[2] * SO->VolPar->dz ;
+   SUMA_RETURN(fv) ;
+}
+
+/*! 
+   Same as SUMA_THD_3dfind_to_3dmm, but without needing SO
+*/
+THD_fvec3 SUMA_THD_3dfind_to_3dmm_vp( SUMA_VOLPAR *vp, 
+                                       THD_fvec3 iv )
+{
+   static char FuncName[]={"SUMA_THD_3dfind_to_3dmm_vp"};
+   THD_fvec3     fv ;
+
+   SUMA_ENTRY;
+
+   fv.xyz[0] = vp->xorg + iv.xyz[0] * vp->dx ;
+   fv.xyz[1] = vp->yorg + iv.xyz[1] * vp->dy ;
+   fv.xyz[2] = vp->zorg + iv.xyz[2] * vp->dz ;
    SUMA_RETURN(fv) ;
 }
 
@@ -1786,6 +1891,8 @@ int SUMA_flip_orient(int xxorient)
          SUMA_RETURN(-1);
    }
    
+   SUMA_RETURN(-1);
+   
 }
 
 SUMA_Boolean SUMA_CoordChange (char *orc_in, char *orc_out, float *XYZ, int N_xyz)
@@ -2075,6 +2182,8 @@ SUMA_Boolean SUMA_AFNItlrc_toMNI(float *NodeList, int N_Node, char *Coord)
    float mx = 0.0,my = 0.0,mz  = 0.0, tx = 0.0,ty = 0.0,tz = 0.0 ;
    SUMA_Boolean LocalHead = NOPE;
    
+   SUMA_ENTRY;
+   
    if (strcmp(Coord,"RAI") == 0) DoFlip = NOPE;
    else if (strcmp(Coord,"LPI") == 0) DoFlip = YUP;
    else {
@@ -2124,6 +2233,7 @@ SUMA_Boolean SUMA_AFNI_forward_warp_xyz( THD_warp * warp , float *xyzv, int N)
    static char FuncName[]={"SUMA_AFNI_forward_warp_xyz"};
    THD_fvec3 new_fv, old_fv;
    int i, i3;
+   SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
    
@@ -2173,6 +2283,11 @@ SUMA_Boolean SUMA_AFNI_forward_warp_xyz( THD_warp * warp , float *xyzv, int N)
 
       case WARP_AFFINE_TYPE:{
          THD_linear_mapping map = warp->rig_bod.warp ;
+         SUMA_LH("Have WarpAffineType");
+         if (LocalHead) {
+            for (i=0; i < 3; ++i) fprintf(SUMA_STDERR,"%.5f  %.5f  %.5f  %.5f\n", 
+                        map.mfor.mat[i][0], map.mfor.mat[i][1], map.mfor.mat[i][2], map.bvec.xyz[i]);
+         }
          for (i=0; i < N; ++i) {
             i3 = 3*i;
             old_fv.xyz[0] = xyzv[i3];

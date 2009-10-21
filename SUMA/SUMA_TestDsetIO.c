@@ -55,9 +55,9 @@ int main (int argc,char *argv[])
    SUMA_DSET * dset = NULL, *ndset=NULL;
    SUMA_Boolean LocalHead = YUP;
    
+   SUMA_STANDALONE_INIT;
    SUMA_mainENTRY;
    
-   SUMA_STANDALONE_INIT;
 	
    LocalHead = YUP; /* turn on debugging */
    SUMA_LH("Creating Data ...");
@@ -116,7 +116,7 @@ int main (int argc,char *argv[])
                                     ); /* DO NOT free dset, it is store in DsetList */
       #ifdef SUMA_COMPILED
       SUMA_LH("inserting dset pointer into list");
-      if (!SUMA_InsertDsetPointer(dset, SUMAg_CF->DsetList)) {
+      if (!SUMA_InsertDsetPointer(&dset, SUMAg_CF->DsetList,0)) {
          SUMA_SL_Err("Failed to insert dset into list");
          exit(1);
       }  
@@ -163,7 +163,11 @@ int main (int argc,char *argv[])
          SUMA_SL_Err("History addition failed.");
          exit(1);
       }
-      OutName = SUMA_WriteDset ("SampleDset", dset, SUMA_ASCII_NIML, 1, 1); 
+      #ifdef SUMA_COMPILED
+      OutName = SUMA_WriteDset_s ("SampleDset", dset, SUMA_ASCII_NIML, 1, 1); 
+      #else
+      OutName = SUMA_WriteDset_ns ("SampleDset", dset, SUMA_ASCII_NIML, 1, 1); 
+      #endif
       if (!OutName) {
          SUMA_SL_Err("Write Failed.");
       } else { fprintf (stderr,"%s:\nDset written to %s\n", FuncName, OutName); 
@@ -192,7 +196,7 @@ int main (int argc,char *argv[])
                                  ); /* DO NOT free dset, it is store in DsetList */
    #ifdef SUMA_COMPILED
    SUMA_LH("inserting dset pointer into list");
-   if (!SUMA_InsertDsetPointer(dset, SUMAg_CF->DsetList)) {
+   if (!SUMA_InsertDsetPointer(&dset, SUMAg_CF->DsetList,0)) {
       SUMA_SL_Err("Failed to insert dset into list");
       exit(1);
    }  
@@ -261,23 +265,36 @@ int main (int argc,char *argv[])
             exit(1);
       }
       
+      
       SUMA_LH("Testing write ops before adding string columns ...");
       /* before adding a string column ... */
-      OutName = SUMA_WriteDset ("Test_write_all_num", dset, SUMA_1D, 1, 1); 
+      #ifdef SUMA_COMPILED
+      OutName = SUMA_WriteDset_s ("Test_write_all_num", dset, SUMA_1D, 1, 1); 
+      #else
+      OutName = SUMA_WriteDset_ns ("Test_write_all_num", dset, SUMA_1D, 1, 1); 
+      #endif
       if (!OutName) {
          SUMA_SL_Err("Write Failed.");
       } else { fprintf (stderr,"%s:\nDset written to %s\n", FuncName, OutName); 
          SUMA_free(OutName); OutName = NULL;
       }
       
-      OutName = SUMA_WriteDset ("Test_writebi_all_num", dset, SUMA_BINARY_NIML, 1, 1); 
+      #ifdef SUMA_COMPILED
+      OutName = SUMA_WriteDset_s ("Test_writebi_all_num", dset, SUMA_BINARY_NIML, 1, 1); 
+      #else
+      OutName = SUMA_WriteDset_ns ("Test_writebi_all_num", dset, SUMA_BINARY_NIML, 1, 1); 
+      #endif
       if (!OutName) {
          SUMA_SL_Err("Write Failed.");
       } else { fprintf (stderr,"%s:\nDset written to %s\n", FuncName, OutName); 
          SUMA_free(OutName); OutName = NULL; 
       }
 	   
-      OutName = SUMA_WriteDset ("Test_writeas_all_num", dset, SUMA_ASCII_NIML, 1, 1); 
+      #ifdef SUMA_COMPILED
+      OutName = SUMA_WriteDset_s ("Test_writeas_all_num", dset, SUMA_ASCII_NIML, 1, 1); 
+      #else
+      OutName = SUMA_WriteDset_ns ("Test_writeas_all_num", dset, SUMA_ASCII_NIML, 1, 1); 
+      #endif
       if (!OutName) {
          SUMA_SL_Err("Write Failed.");
       } else { fprintf (stderr,"%s:\nDset written to %s\n", FuncName, OutName); 
@@ -298,7 +315,11 @@ int main (int argc,char *argv[])
       if (!ndset) {
          SUMA_SL_Err("Failed in SUMA_MaskedCopyofDset");
       } else {
-         OutName = SUMA_WriteDset ("Test_writeas_MaskedCopy_num", ndset, SUMA_ASCII_NIML, 1, 1); 
+         #ifdef SUMA_COMPILED
+         OutName = SUMA_WriteDset_s ("Test_writeas_MaskedCopy_num", ndset, SUMA_ASCII_NIML, 1, 1); 
+         #else
+         OutName = SUMA_WriteDset_ns ("Test_writeas_MaskedCopy_num", ndset, SUMA_ASCII_NIML, 1, 1); 
+         #endif
          if (!OutName) {
             SUMA_SL_Err("Write Failed.");
          } else { fprintf (stderr,"%s:\nDset written to %s\n", FuncName, OutName); 
@@ -325,14 +346,23 @@ int main (int argc,char *argv[])
       }  
       /* after adding a string column ... */
       SUMA_LH("Writing datasets ...");
-      OutName = SUMA_WriteDset ("Test_writeas", dset, SUMA_ASCII_NIML, 1, 1); 
+      #ifdef SUMA_COMPILED
+      OutName = SUMA_WriteDset_s ("Test_writeas", dset, SUMA_ASCII_NIML, 1, 1); 
+      #else
+      OutName = SUMA_WriteDset_ns ("Test_writeas", dset, SUMA_ASCII_NIML, 1, 1); 
+      #endif
       if (!OutName) {
          SUMA_SL_Err("Write Failed.");
       } else { fprintf (stderr,"%s:\nDset written to %s\n", FuncName, OutName); 
          SUMA_free(OutName); OutName = NULL;
       }
       
-      OutName = SUMA_WriteDset ("Test_writebi", dset, SUMA_BINARY_NIML, 1, 1); 
+      #ifdef SUMA_COMPILED
+      OutName = SUMA_WriteDset_s ("Test_writebi", dset, SUMA_BINARY_NIML, 1, 1); 
+      #else
+      OutName = SUMA_WriteDset_ns ("Test_writebi", dset, SUMA_BINARY_NIML, 1, 1); 
+      #endif
+      
       if (!OutName) {
          SUMA_SL_Err("Write Failed.");
       } else { fprintf (stderr,"%s:\nDset written to %s\n", FuncName, OutName); 
@@ -340,7 +370,11 @@ int main (int argc,char *argv[])
       }
 	   
       SUMA_LH("Writing to 1D a dataset that is not all numbers.\nThis should fail.\n");
-      OutName = SUMA_WriteDset ("Test_write", dset, SUMA_1D, 1, 1); 
+      #ifdef SUMA_COMPILED
+      OutName = SUMA_WriteDset_s ("Test_write", dset, SUMA_1D, 1, 1); 
+      #else
+      OutName = SUMA_WriteDset_ns ("Test_write", dset, SUMA_1D, 1, 1); 
+      #endif
       if (!OutName) {
          SUMA_SL_Err("Write Failed.");
       } else { fprintf (stderr,"%s:\nDset written to %s\n", FuncName, OutName); 
@@ -370,14 +404,14 @@ int main (int argc,char *argv[])
       
       #ifdef SUMA_COMPILED
       SUMA_LH("Inserting newly read element into list\n");
-      if (!SUMA_InsertDsetPointer(dset, SUMAg_CF->DsetList)) {
+      if (!SUMA_InsertDsetPointer(&dset, SUMAg_CF->DsetList, 0)) {
          char *newid = NULL;
          SUMA_SL_Err("Failed to insert dset into list");
          /* Now change the idcode of that baby */
          newid = UNIQ_hashcode(SDSET_ID(dset));
          NI_set_attribute(dset->dnel, "self_idcode", newid); SUMA_free(newid);
          SUMA_LH("Trying to insert dset with a new id ");
-         if (!SUMA_InsertDsetPointer(dset, SUMAg_CF->DsetList)) {
+         if (!SUMA_InsertDsetPointer(&dset, SUMAg_CF->DsetList, 0)) {
             SUMA_SL_Err("Failed to insert dset into list\nI failed to succeed, snif.");
             exit(1);
          }
@@ -386,7 +420,7 @@ int main (int argc,char *argv[])
       #endif
            
       /* show me the whole thing. Don't do this for an enormous nel */
-         /* SUMA_ShowNel(dset->nel); */
+         /* SUMA_ShowNel((void*)dset->nel); */
          
       
       /* I want the pointer to the green column but do not know its index */
@@ -405,7 +439,7 @@ int main (int argc,char *argv[])
                   fprintf (stderr,"\tReporting values at index %d\n", iv[0]);
                   fp = (float *)dset->dnel->vec[iv[0]]; /* I know we only have one 
                                                    such col. here */
-                  for (j=0; j < dset->dnel->vec_len; ++j) {
+                  for (j=0; j < SDSET_VECLEN(dset); ++j) {
                      fprintf (stderr,"%f, ", fp[j]);
                   }
                   SUMA_free(iv); iv = NULL;

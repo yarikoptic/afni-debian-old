@@ -70,12 +70,25 @@ void Syntax(char *str)
     "  -ydel dimy      for the given axis (x,y,z); dimensions in mm.\n"
     "  -zdel dimz   ** WARNING: if you change a voxel dimension, you will\n"
     "                  probably have to change the origin as well.\n"
+    "  -keepcen        When changing a voxel dimension with -xdel (etc.),\n"
+    "                  also change the corresponding origin to keep the\n"
+    "                  center of the dataset at the same coordinate location.\n"
+    "  -xyzscale fac   Scale the size of the dataset voxels by the factor 'fac'.\n"
+    "                  This is equivalent to using -xdel, -ydel, -zdel together.\n"
+    "                  -keepcen is used on the first input dataset, and then\n"
+    "                  any others will be shifted the same amount, to maintain\n"
+    "                  their alignment with the first one.\n"
+    "               ** WARNING: -xyzscale can't be used with any of the other\n"
+    "                  options that change the dataset grid coordinates!\n"
+    "               ** N.B.: 'fac' must be positive, and using fac=1.0 is stupid.\n"
     "\n"
     "  -TR time        Changes the TR time to a new value (see 'to3d -help').\n"
     "  -notoff         Removes the slice-dependent time-offsets.\n"
     "  -Torg ttt       Set the time origin of the dataset to value 'ttt'.\n"
     "                  (Time origins are set to 0 in to3d.)\n"
-    "               ** WARNING: these 3 options apply only to 3D+time datasets.\n"
+    "               ** WARNING: These 3 options apply only to 3D+time datasets.\n"
+    "                   **N.B.: Using '-TR' on a dataset without a time axis\n"
+    "                           will add a time axis to the dataset.\n"
     "\n"
     "  -newid          Changes the ID code of this dataset as well.\n"
     "\n"
@@ -167,6 +180,7 @@ void Syntax(char *str)
     "                  to change such an attribute, you have to use the\n"
     "                  corresponding 3drefit option directly or use the \n"
     "                  -saveatr option.\n"
+    "\n"
     "                  If you are confused, try to understand this: \n"
     "                  Option -atrcopy was never intended to modify AFNI-\n"
     "                  specific attributes. Rather, it was meant to copy\n"
@@ -177,6 +191,9 @@ void Syntax(char *str)
     "                  take effect in the output, the option -saveatr was added.\n"
     "                  Contact Daniel Glen and/or Rick Reynolds for further \n"
     "                  clarification and any other needs you may have.\n"
+    "\n"
+    "                  Do NOT use -atrcopy or -atrstring with other modification\n"
+    "                  options.\n"
     "\n"
     "  -atrstring n 'x' Copy the string 'x' into the dataset(s) being\n"
     "                   modified, giving it the attribute name 'n'.\n"
@@ -253,11 +270,12 @@ void Syntax(char *str)
    printf(
     "\n"
     "The following options allow you to modify VOLREG fields:\n"
-    "  -vr_mat <val1> ... <val12>   Use these twelve values for VOLREG_MATVEC_index.\n"
-    "  [-vr_mat_ind <index>]        Index of VOLREG_MATVEC_index field to be modified. Optional, default index is 0.\n"
-    "                               Note: You can only modify one VOLREG_MATVEC_index at a time.\n"
-    "  -vr_center_old <x> <y> <z>   Use these 3 values for VOLREG_CENTER_OLD.\n"
-    "  -vr_center_base <x> <y> <z>  Use these 3 values for VOLREG_CENTER_BASE.\n"
+    "  -vr_mat val1 ... val12  Use these twelve values for VOLREG_MATVEC_index.\n"
+    "  -vr_mat_ind index       Index of VOLREG_MATVEC_index field to be modified.\n"
+    "                          Optional, default index is 0.\n"
+    "                          NB: You can only modify one VOLREG_MATVEC_index at a time\n"
+    "  -vr_center_old x y z    Use these 3 values for VOLREG_CENTER_OLD.\n"
+    "  -vr_center_base x y z   Use these 3 values for VOLREG_CENTER_BASE.\n"
     "\n"
    );
 
@@ -304,6 +322,12 @@ int main( int argc , char * argv[] )
    char *new_label2   = NULL ;       /* 21 Dec 2004 */
    int denote         = 0 ;          /* 08 Jul 2005 */
    Boolean write_output ;            /* 20 Jun 2006 [rickr] */
+   int keepcen        = 0 ;          /* 17 Jul 2006 [RWCox] */
+   float xyzscale     = 0.0f ;       /* 17 Jul 2006 */
+
+   int   ndone=0 ;                   /* 18 Jul 2006 */
+   int   verb =0 ;
+#define VINFO(x) if(verb)ININFO_message(x)
 
    char str[256] ;
    int  iarg , ii ;
@@ -327,7 +351,9 @@ int main( int argc , char * argv[] )
    int   num_atrcopy = 0 ;    /* 03 Aug 2005 */
    ATR_any **atrcopy = NULL ;
    int saveatr = 1;
-   
+   int atrmod = 0;  /* if no ATR is modified, don't overwrite normal changes */
+                                                      /* 28 Jul 2006 [rickr] */
+
    /*-------------------------- help me if you can? --------------------------*/
 
    if( argc < 2 || strncmp(argv[1],"-help",4) == 0 ) Syntax(NULL) ;
@@ -346,10 +372,6 @@ int main( int argc , char * argv[] )
    AFNI_logger("3drefit",argc,argv) ;
 
    while( iarg < argc && argv[iarg][0] == '-' ){
-
-#if 0
-      if( strncmp(argv[iarg],"-v",5) == 0 ){ verbose = 1 ; iarg++ ; continue ; }
-#endif
 
       /*----- -atrcopy dd nn [03 Aug 2005] -----*/
 
@@ -374,7 +396,7 @@ int main( int argc , char * argv[] )
                                        sizeof(ATR_any *)*(num_atrcopy+1) ) ;
         atrcopy[num_atrcopy++] = THD_copy_atr( atr ) ;
         /* atr_print( atr, NULL , NULL, '\0', 1) ;  */
-        DSET_delete(qset) ; new_stuff++ ;
+        DSET_delete(qset) ; atrmod = 1;  /* replaced new_stuff   28 Jul 2006 rcr */
 
        atrcopy_done:
         iarg++ ; continue ;
@@ -405,7 +427,7 @@ int main( int argc , char * argv[] )
                                        sizeof(ATR_any *)*(num_atrcopy+1) ) ;
         atrcopy[num_atrcopy++] = (ATR_any *)atr ;
 
-        new_stuff++ ;
+        atrmod = 1;  /* replaced new_stuff++   28 Jul 2006 [rickr] */
        atrstring_done:
         iarg++ ; continue ;
       }
@@ -413,11 +435,11 @@ int main( int argc , char * argv[] )
       if( strcmp(argv[iarg],"-saveatr") == 0 ){
         saveatr = 1 ; iarg++ ; continue ;
       }
-      
+
       if( strcmp(argv[iarg],"-nosaveatr") == 0 ){
         saveatr = 0 ; iarg++ ; continue ;
       }
-      
+
       /*----- -denote [08 Jul 2005] -----*/
 
       if( strcmp(argv[iarg],"-denote") == 0 ){
@@ -478,11 +500,11 @@ int main( int argc , char * argv[] )
          if( iarg+1 >= argc )
             Syntax("need 1 argument after -wpar!") ;
 
-         if( waset != NULL || waset_code != 0 )                 
+         if( waset != NULL || waset_code != 0 )
             Syntax("Can't have more than one -wpar option!");
 
          iarg++ ;
-         if( strcmp(argv[iarg],"NULL") == 0 ){    
+         if( strcmp(argv[iarg],"NULL") == 0 ){
             waset_code = ASET_NULL ;
          } else if( strcmp(argv[iarg],"SELF") == 0 ){
             waset_code = ASET_SELF ;
@@ -824,6 +846,25 @@ int main( int argc , char * argv[] )
          iarg++ ; continue ;  /* go to next arg */
       }
 
+      if( strncmp(argv[iarg],"-keepcen",7) == 0 ){  /* 17 Jul 2006 */
+        keepcen = 1 ;
+        iarg++ ; continue ;  /* go to next arg */
+      }
+
+      if( strcmp(argv[iarg],"-verb") == 0 ){
+        verb++ ; iarg++ ; continue ;
+      }
+
+      if( strncmp(argv[iarg],"-xyzscale",8) == 0 ){ /* 17 Jul 2006 */
+         if( iarg+1 >= argc ) Syntax("need an argument after -xyzscale!");
+         xyzscale = strtod( argv[++iarg] , NULL ) ;
+         if( xyzscale <= 0.0f ) Syntax("argument after -xyzscale must be positive!");
+         if( xyzscale == 1.0f )
+           WARNING_message(
+            "-xyzscale 1.0 really makes no sense, but if that's what you want" ) ;
+         new_stuff++ ; iarg++ ; continue ;  /* go to next arg */
+      }
+
       /** -TR **/
 
       if( strncmp(argv[iarg],"-TR",3) == 0 ){
@@ -995,8 +1036,22 @@ int main( int argc , char * argv[] )
 
    }  /* end of loop over switches */
 
-   if( new_stuff == 0 ) Syntax("No options given!?") ;
+   /*-- some checks for erroneous inputs --*/
+
+   if( new_stuff == 0 && atrmod == 0 ) Syntax("No options given!?") ;
+   if( new_stuff == 1 && atrmod == 1 ){       /* 28 Jul 2006 [rickr] */
+      fprintf(stderr,"** Cannot use -atrcopy or -atrstring with other "
+                     "modification options.\n");
+      Syntax("Illegal attribute syntax.");
+   }
    if( iarg >= argc   ) Syntax("No datasets given!?") ;
+
+   if( xyzscale != 0.0f &&
+       (new_orient || new_xorg || new_yorg || new_zorg ||
+        keepcen    || new_xdel || new_ydel || new_zdel   ) ){  /* 18 Jul 2006 */
+    Syntax(
+    "-xyzscale is incompatible with other options for changing voxel grid");
+   }
 
    if( new_orient && (dxorg || dyorg || dzorg) )     /* 02 Mar 2000 */
       Syntax("Can't use -orient with -d?origin!?") ;
@@ -1022,76 +1077,87 @@ int main( int argc , char * argv[] )
 
       dset = THD_open_one_dataset( argv[iarg] ) ;
       if( dset == NULL ){
-         ERROR_message("Can't open dataset %s\n",argv[iarg]) ;
-         continue ;
+        ERROR_message("Can't open dataset %s\n",argv[iarg]) ;
+        continue ;
       }
       if( DSET_IS_MINC(dset) ){
-         ERROR_message("Can't process MINC dataset %s\n",argv[iarg]);
-         continue ;
+        ERROR_message("Can't process MINC dataset %s\n",argv[iarg]);
+        continue ;
       }
       if( DSET_IS_ANALYZE(dset) ){
-         ERROR_message("Can't process ANALYZE dataset %s\n",argv[iarg]);
-         continue ;
+        ERROR_message("Can't process ANALYZE dataset %s\n",argv[iarg]);
+        continue ;
       }
       if( DSET_IS_1D(dset) ){
-         ERROR_message("Can't process 1D dataset %s\n",argv[iarg]);
-         continue ;
+        ERROR_message("Can't process 1D dataset %s\n",argv[iarg]);
+        continue ;
       }
       if( DSET_IS_CTFMRI(dset) || DSET_IS_CTFSAM(dset) ){
-         ERROR_message("Can't process CTF dataset %s\n",argv[iarg]);
-         continue ;
-      }
-      if( DSET_IS_NIFTI(dset) ){
-         write_output = True ;     /* 20 Jun 2006 [rickr] */
+        ERROR_message("Can't process CTF dataset %s\n",argv[iarg]);
+        continue ;
       }
       if( DSET_IS_MPEG(dset) ){
-         ERROR_message("Can't process MPEG dataset %s\n",argv[iarg]);
-         continue ;
+        ERROR_message("Can't process MPEG dataset %s\n",argv[iarg]);
+        continue ;
       }
+
+      /* any surviving non-AFNI dataset needs the data written out */
+      if( IS_VALID_NON_AFNI_DSET(dset) ){
+        write_output = True ;     /* 13 Jul 2006 [rickr] */
+      }
+
       INFO_message("Processing AFNI dataset %s\n",argv[iarg]) ;
 
       tross_Make_History( "3drefit" , argc,argv, dset ) ;
 
       /* 21 Dec 2004: -label2 option */
 
-      if( new_label2 != NULL )
+      if( new_label2 != NULL ){
         EDIT_dset_items( dset , ADN_label2 , new_label2 , ADN_none ) ;
+        VINFO("setting label2") ;
+      }
 
       /* 14 Oct 1999: change anat parent */
       /* 14 Dec 1999: allow special cases: SELF and NULL */
 
       if( aset != NULL ){
          EDIT_dset_items( dset , ADN_anat_parent , aset , ADN_none ) ;
+         VINFO("setting Anat parent") ;
       } else if( aset_code == ASET_SELF ){
          EDIT_dset_items( dset , ADN_anat_parent , dset , ADN_none ) ;
+         VINFO("setting Anat parent") ;
       } else if( aset_code == ASET_NULL ){
          EDIT_ZERO_ANATOMY_PARENT_ID( dset ) ;
          dset->anat_parent_name[0] = '\0' ;
+         VINFO("clearing Anat parent") ;
       }
 
       /* ZSS June 06, add a warp parent field please */
       if( waset != NULL ){
          EDIT_dset_items( dset , ADN_warp_parent , waset , ADN_none ) ;
+         VINFO("setting Warp parent") ;
       } else if( waset_code == ASET_SELF ){
          EDIT_dset_items( dset , ADN_warp_parent , dset , ADN_none ) ;
+         VINFO("setting Warp parent") ;
       } else if( waset_code == ASET_NULL ){
          EDIT_ZERO_ANATOMY_PARENT_ID( dset ) ;
          dset->warp_parent_name[0] = '\0' ;
-      } 
+         VINFO("clearing Warp parent") ;
+      }
       /* Oct 04/02: zmodify volreg fields */
       if (Do_volreg_mat) {
          sprintf(str,"VOLREG_MATVEC_%06d", volreg_matind) ;
-         INFO_message("Modifying %s ...\n", str);
+         if( verb ) ININFO_message("Modifying %s ...\n", str);
          THD_set_float_atr( dset->dblk , str , 12 , volreg_mat ) ;
       }
 
       if (Do_center_old) {
-         INFO_message("Modifying VOLREG_CENTER_OLD ...\n");
+         VINFO("Modifying VOLREG_CENTER_OLD ...\n");
          THD_set_float_atr( dset->dblk , "VOLREG_CENTER_OLD" , 3 , center_old ) ;
       }
 
       if (Do_center_base) {
-        INFO_message("Modifying VOLREG_CENTER_BASE ...\n");
+        VINFO("Modifying VOLREG_CENTER_BASE ...\n");
         THD_set_float_atr( dset->dblk , "VOLREG_CENTER_BASE" , 3 , center_base ) ;
       }
 
@@ -1105,24 +1171,67 @@ int main( int argc , char * argv[] )
           REMOVEFROM_KILL( dset->kl , dset->stats ) ;
           REMOVEFROM_KILL( dset->kl , dset->stats->bstat ) ;
           dset->stats = NULL ;
+          VINFO("clearing brick statistics") ;
         }
       }
 
       if( redo_bstat ){
+        VINFO("reloading brick statistics") ;
         THD_load_statistics( dset ) ;   /* 01 Feb 2005 */
       }
 
-      /* 25 April 1998 */
+      if( new_byte_order > 0 ){
+         VINFO("changing byte order") ;
+         dset->dblk->diskptr->byte_order = new_byte_order ; /* 25 April 1998 */
+      }
 
-      if( new_byte_order > 0 )
-         dset->dblk->diskptr->byte_order = new_byte_order ;
+      /*-- change space axes (lots of possibilities here) --*/
 
       daxes = dset->daxes ;
 
       if( new_orient ){
+         VINFO("changing orientation codes") ;
          daxes->xxorient = xxor ;
          daxes->yyorient = yyor ;
          daxes->zzorient = zzor ;
+      }
+
+      if( xyzscale > 0.0f ){  /* 18 Jul 2006 */
+        float dxp = daxes->xxdel * xyzscale ;  /* new grid */
+        float dyp = daxes->yydel * xyzscale ;  /* spacings */
+        float dzp = daxes->zzdel * xyzscale ;
+        int   rl  = abs(THD_get_axis_direction(daxes,ORI_R2L_TYPE)) ;
+        int   ap  = abs(THD_get_axis_direction(daxes,ORI_A2P_TYPE)) ;
+        int   is  = abs(THD_get_axis_direction(daxes,ORI_I2S_TYPE)) ;
+        float xop , yop , zop ;
+        static float shift[3] ;
+
+        VINFO("applying -xyzscale") ;
+
+        if( rl == 0 || ap == 0 || is == 0 )
+          ERROR_exit("-xyzscale: Indeterminate axis directions!") ;
+
+        if( ndone == 0 ){  /* for the first dataset */
+          float op[3] , oo[3] ;
+          op[0] = xop = daxes->xxorg + (daxes->xxdel-dxp)*0.5f*(daxes->nxx-1) ;
+          op[1] = yop = daxes->yyorg + (daxes->yydel-dyp)*0.5f*(daxes->nyy-1) ;
+          op[2] = zop = daxes->zzorg + (daxes->zzdel-dzp)*0.5f*(daxes->nzz-1) ;
+          oo[0] = daxes->xxorg ; 
+          oo[1] = daxes->yyorg ; 
+          oo[2] = daxes->zzorg ; 
+          shift[0] = op[rl-1] - xyzscale * oo[rl-1] ;   /* RL shift */
+          shift[1] = op[ap-1] - xyzscale * oo[ap-1] ;   /* AP shift */
+          shift[2] = op[is-1] - xyzscale * oo[is-1] ;   /* IS shift */
+
+        } else {           /* for later datasets */
+          
+          xop = xyzscale * daxes->xxorg + shift[daxes->xxorient/2] ;
+          yop = xyzscale * daxes->yyorg + shift[daxes->yyorient/2] ;
+          zop = xyzscale * daxes->zzorg + shift[daxes->zzorient/2] ;
+        }
+
+        daxes->xxdel = dxp ; daxes->yydel = dyp ; daxes->zzdel = dzp ;
+        daxes->xxorg = xop ; daxes->yyorg = yop ; daxes->zzorg = zop ;
       }
 
       if( !new_xorg ) xorg = fabs(daxes->xxorg) ;
@@ -1132,6 +1241,33 @@ int main( int argc , char * argv[] )
       if( !new_xdel ) xdel = fabs(daxes->xxdel) ;
       if( !new_ydel ) ydel = fabs(daxes->yydel) ;
       if( !new_zdel ) zdel = fabs(daxes->zzdel) ;
+
+      /* 17 Jul 2006 - deal with the '-keepcen' option */
+
+      if( keepcen && !new_xdel && !new_ydel && !new_zdel ){
+        WARNING_message("-keepcen needs at least one of -xdel, -ydel, -zdel") ;
+        keepcen = 0 ;
+      }
+      if( keepcen && (new_xorg || new_yorg || new_zorg || new_orient) ){
+        WARNING_message(
+         "-keepcen incompatible with explicit origin or orientation changes") ;
+        keepcen = 0 ;
+      }
+      if( keepcen ){
+        VINFO("applying -keepcen") ;
+        if( new_xdel ){
+          dxorg = 1 ; xorg = 0.5f*(daxes->nxx-1)*(fabs(daxes->xxdel)-xdel) ;
+          if( ORIENT_sign[daxes->xxorient] == '-' ) xorg = -xorg ;
+        }
+        if( new_ydel ){
+          dyorg = 1 ; yorg = 0.5f*(daxes->nyy-1)*(fabs(daxes->yydel)-ydel) ;
+          if( ORIENT_sign[daxes->yyorient] == '-' ) yorg = -yorg ;
+        }
+        if( new_zdel ){
+          dzorg = 1 ; zorg = 0.5f*(daxes->nzz-1)*(fabs(daxes->zzdel)-zdel) ;
+          if( ORIENT_sign[daxes->zzorient] == '-' ) zorg = -zorg ;
+        }
+      }
 
       if( cxorg ) xorg = 0.5 * (daxes->nxx - 1) * xdel ;
       if( cyorg ) yorg = 0.5 * (daxes->nyy - 1) * ydel ;
@@ -1167,13 +1303,26 @@ int main( int argc , char * argv[] )
       if( new_zdel || new_orient )
          daxes->zzdel = (ORIENT_sign[daxes->zzorient] == '+') ? (zdel) : (-zdel) ;
 
+      /*-- change time axis --*/
+
       if( new_TR ){
          if( dset->taxis == NULL ){
-            WARNING_message("Can't process -TR for this dataset!\n") ;
+            if( DSET_NVALS(dset) < 2 ){
+              WARNING_message("Can't process -TR for this dataset!") ;
+            } else {
+              WARNING_message("Adding time axis to this dataset") ;
+              EDIT_dset_items( dset ,
+                                 ADN_ntt   , DSET_NVALS(dset) ,
+                                 ADN_ttdel , TR ,
+                                 ADN_tunits, UNITS_SEC_TYPE ,
+                                 ADN_nsl   , 0 ,
+                               ADN_none ) ;
+            }
          } else {
             float frac = TR / dset->taxis->ttdel ;
             int ii ;
 
+            VINFO("changing TR") ;
             dset->taxis->ttdel = TR ;
             if( new_tunits ) dset->taxis->units_type = tunits ;
             if( dset->taxis->nsl > 0 ){
@@ -1187,6 +1336,7 @@ int main( int argc , char * argv[] )
         if( dset->taxis == NULL ){
           WARNING_message("Can't process -Torg for this dataset!\n") ;
         } else {
+          VINFO("changing Torg") ;
           dset->taxis->ttorg = Torg ;
         }
       }
@@ -1197,21 +1347,28 @@ int main( int argc , char * argv[] )
          } else if( dset->taxis->nsl <= 0 ){
             WARNING_message("-notoff: dataset has no time-offsets to clear!\n") ;
          } else {
+            VINFO("clearing time-offsets") ;
             EDIT_dset_items( dset , ADN_nsl,0 , ADN_none ) ;
          }
       }
 
       if( (new_orient || new_zorg) && dset->taxis != NULL && dset->taxis->nsl > 0 ){
+         VINFO("changing time axis slice offset z-origin") ;
          dset->taxis->zorg_sl = daxes->zzorg ;
       }
 
       if( (new_orient || new_zdel) && dset->taxis != NULL && dset->taxis->nsl > 0 ){
+         VINFO("changing time axis slice offset z-spacing") ;
          dset->taxis->dz_sl = daxes->zzdel ;
       }
 
-      if( new_idcode ) dset->idcode = MCW_new_idcode() ;
+      if( new_idcode ){
+        VINFO("changing ID code") ;
+        dset->idcode = MCW_new_idcode() ;
+      }
 
       if( new_nowarp ){
+         VINFO("clearing warp") ;
          ZERO_IDCODE( dset->warp_parent_idcode ) ;
          dset->warp_parent_name[0] = '\0' ;
          dset->warp = NULL ;
@@ -1228,6 +1385,7 @@ int main( int argc , char * argv[] )
             ERROR_message("Can't change dataset to new type:\n"
                           " *     mismatch in number of sub-bricks!\n") ;
          } else {
+            VINFO("changing dataset 'type' marker") ;
             dset->type      = dtype ;
             dset->func_type = ftype ;
 
@@ -1251,6 +1409,7 @@ int main( int argc , char * argv[] )
          char new_head[THD_MAX_NAME] , new_brik[THD_MAX_NAME] ;
          int brick_ccode = COMPRESS_filecode( DSET_BRIKNAME(dset) ) ;
 
+         VINFO("changing dataset view code") ;
          strcpy(old_head,DSET_HEADNAME(dset)) ;
          strcpy(old_brik,DSET_BRIKNAME(dset)) ;
 
@@ -1277,7 +1436,7 @@ int main( int argc , char * argv[] )
                  free(fff) ; free(ggg) ;
               }
             }
-            INFO_message("Changed dataset view type and filenames.\n") ;
+            ININFO_message("Changed dataset view type and filenames.\n") ;
          }
       }
 
@@ -1286,7 +1445,7 @@ int main( int argc , char * argv[] )
          THD_usertag * tag;
          if( !dset->tagset ) WARNING_message("No tags to shift\n") ;
          else {
-            INFO_message("modifying tags") ;
+            ININFO_message("modifying tags") ;
             for( ii = 0; ii < dset->tagset->num; ii++ ){
                tag = dset->tagset->tag + ii ;
                tag->x += dxtag;  tag->y += dytag;  tag->z += dztag;
@@ -1379,9 +1538,12 @@ int main( int argc , char * argv[] )
       for( ii=0 ; ii < num_atrcopy ; ii++ ) {
         THD_insert_atr( dset->dblk , atrcopy[ii] ) ;
       }
-      
+
       /* Do we want to force new attributes into output ? ZSS Jun 06*/
-      if (saveatr) THD_datablock_from_atr(dset->dblk , DSET_DIRNAME(dset)  , dset->dblk->diskptr->header_name);
+      /* (only if -atrcopy or -atrstring)       28 Jul 2006 [rickr] */
+      if ( saveatr && atrmod )
+       THD_datablock_from_atr(dset->dblk , DSET_DIRNAME(dset) ,
+                              dset->dblk->diskptr->header_name);
 
       if( denote ) THD_anonymize_write(1) ;   /* 08 Jul 2005 */
 
@@ -1389,6 +1551,13 @@ int main( int argc , char * argv[] )
 
       THD_write_3dim_dataset( NULL,NULL , dset , write_output ) ;
       THD_delete_3dim_dataset( dset , False ) ;
-   }
+
+      ndone++ ;   /* 18 Jul 2006: number of datasets done */
+
+   } /* end of loop over datasets to be refitted */
+
+   /*--- DONE ---*/
+
+   INFO_message("3drefit processed %d datasets",ndone) ;
    exit(0) ;
 }

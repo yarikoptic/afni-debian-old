@@ -1,6 +1,8 @@
 #ifndef SUMA_DOMANIP_INCLUDED
 #define SUMA_DOMANIP_INCLUDED
 
+SUMA_SurfaceObject * SUMA_findanySOp_inDOv(SUMA_DO *dov, int N_dov);
+int SUMA_ClosestNodeToVoxels(SUMA_SurfaceObject *SO, SUMA_VOLPAR *vp, int *closest_node, float *closest_dist, byte *vox_mask, int verb);
 float * SUMA_IV_XYZextract (char *IV_filename, int *N_NodeList, int IncludeIndex);
 int *SUMA_IV_FaceSetsextract (char *IV_filename, int *N_FaceSetList);
 SUMA_SURF_NORM SUMA_SurfNorm (float *NodeList, int N_NodeList, int *FaceSetList, int N_FaceSetList );
@@ -44,6 +46,8 @@ int SUMA_whichDO(char *idcode, SUMA_DO *dov, int N_dov);
 int SUMA_findSO_inDOv(char *idcode, SUMA_DO *dov, int N_dov);
 SUMA_SurfaceObject * SUMA_findSOp_inDOv(char *idcode, SUMA_DO *dov, int N_dov);
 SUMA_SurfaceObject * SUMA_find_named_SOp_inDOv(char *coordname, SUMA_DO *dov, int N_dov);
+char *SUMA_find_SOLabel_from_idcode (char *idcode, SUMA_DO *dov, int N_dov);
+char *SUMA_find_SOidcode_from_label (char *label, SUMA_DO *dov, int N_dov);
 SUMA_Boolean SUMA_ismappable (SUMA_SurfaceObject *SO);
 SUMA_Boolean SUMA_isINHmappable (SUMA_SurfaceObject *SO);
 SUMA_Boolean SUMA_isLocalDomainParent (SUMA_SurfaceObject *SO);
@@ -51,7 +55,7 @@ SUMA_Boolean SUMA_isSO (SUMA_DO DO);
 SUMA_Boolean SUMA_isSO_G (SUMA_DO DO, char *Group);
 SUMA_DOMAIN_KINSHIPS SUMA_WhatAreYouToMe (SUMA_SurfaceObject *SO1, SUMA_SurfaceObject *SO2);
 SUMA_Boolean SUMA_isRelated (SUMA_SurfaceObject *SO1, SUMA_SurfaceObject *SO2, int level);
-SUMA_Boolean SUMA_isNBVrelated (SUMA_SegmentDO *SDO, SUMA_SurfaceObject *SO);
+SUMA_Boolean SUMA_isNBDOrelated (SUMA_NB_DO *SDO, SUMA_SurfaceObject *SO);
 SUMA_Boolean SUMA_isdROIrelated (SUMA_DRAWN_ROI *ROI, SUMA_SurfaceObject *SO);
 SUMA_Boolean SUMA_isROIrelated (SUMA_ROI *ROI, SUMA_SurfaceObject *SO);
 SUMA_DRAWN_ROI * SUMA_FetchROI_InCreation (SUMA_SurfaceObject *SO, SUMA_DO * dov, int N_dov); 
@@ -64,6 +68,7 @@ SUMA_ASSEMBLE_LIST_STRUCT *SUMA_FreeAssembleListStruct(SUMA_ASSEMBLE_LIST_STRUCT
 SUMA_ASSEMBLE_LIST_STRUCT *SUMA_CreateAssembleListStruct(void);
 SUMA_Boolean SUMA_DeleteROI (SUMA_DRAWN_ROI *ROI); 
 int SUMA_isTypicalSOforVolSurf (SUMA_SurfaceObject *SO);
+char *SUMA_DOv_Info (SUMA_DO *dov, int N_dov, int detail);
 
 /*!
    \brief SUMA_IS_DRAW_ROI_SWITCH_ROI_SHADED(Shaded)

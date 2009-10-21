@@ -250,6 +250,7 @@ SUMA_Boolean SUMA_Free_Displayable_Object (SUMA_DO *dov)
             fprintf(SUMA_STDERR,"Error SUMA_freeROI, could not free  ROI.\n");
          }
          break;
+      case ONBV_type:
       case NBV_type:
       case OLS_type:
       case LS_type:
@@ -261,11 +262,16 @@ SUMA_Boolean SUMA_Free_Displayable_Object (SUMA_DO *dov)
       case GO_type:
          fprintf(SUMA_STDERR,"Error SUMA_Free_Displayable_Object, Not trained to free GO objects\n");
          break;
+      case type_not_set:
       case no_type:
-         fprintf(SUMA_STDERR,"Error SUMA_Free_Displayable_Object, no free no_type\n");
+         fprintf(SUMA_STDERR,"Error SUMA_Free_Displayable_Object, no free no_type or type_not_set\n");
          break;
+      case NBSP_type:
       case SP_type:
          SUMA_free_SphereDO ((SUMA_SphereDO *)dov->OP);
+         break;
+      case PL_type:
+         SUMA_free_PlaneDO ((SUMA_PlaneDO *)dov->OP);
          break;
          
    }   
@@ -291,24 +297,91 @@ SUMA_Boolean SUMA_Free_Displayable_Object_Vect (SUMA_DO *dov, int N)
    SUMA_RETURN(Ret);
 
 }   
+
+/*!
+   Find a DO's index  by idcodestring 
+*/
+int SUMA_FindDOi_byID(SUMA_DO *dov, int N_dov, char *idcode_str)
+{
+   static char FuncName[] = {"SUMA_FindDOi_byID"};
+   int i;
+   void *op;
+   SUMA_ALL_DO *ado=NULL;
+   
+   SUMA_ENTRY;
+   
+   if (!dov || !idcode_str) {
+      SUMA_RETURN(-1);
+   }
+    
+   for (i=0; i<N_dov; ++i) {
+      if (dov[i].ObjectType > no_type) {
+         ado = (SUMA_ALL_DO *)dov[i].OP;
+         /* fprintf(SUMA_STDERR,"%s: Object %d/%d type: %d\n", FuncName, i, N_dov, dov[i].ObjectType); 
+         fprintf(SUMA_STDERR,"%s: ado->idcode_str= %s\n", FuncName, SUMA_CHECK_NULL_STR(ado->idcode_str));
+         fprintf(SUMA_STDERR,"%s: idcode_str= %s\n", FuncName, SUMA_CHECK_NULL_STR(idcode_str)); */
+         if (ado->idcode_str && strcmp(ado->idcode_str, idcode_str) == 0) {
+            SUMA_RETURN(i);
+         } 
+      } else {
+         SUMA_SL_Warn("Strange, no type for DO");
+      }
+   }
+   /* SUMA_Show_DOv (dov, N_dov, NULL); */
+   SUMA_RETURN(-1);
+}
 /*!
 Add a displayable object to dov
 */
 SUMA_Boolean SUMA_AddDO(SUMA_DO *dov, int *N_dov, void *op, SUMA_DO_Types DO_Type, SUMA_DO_CoordType DO_CoordType)
 {
    static char FuncName[] = {"SUMA_AddDO"};
+   SUMA_ALL_DO *ado=NULL;
+   static int nm=0;
+   void *eo=NULL;
+   int ieo;
    
    SUMA_ENTRY;
 
-   /* make sure you did not exceed allocated space */
-   if (*N_dov >= SUMA_MAX_DISPLAYABLE_OBJECTS) {
-      SUMA_error_message (FuncName, "Reached limit of DOv storage",0);
+   ado = (SUMA_ALL_DO *)op;
+   if (!ado->idcode_str) {
+      SUMA_error_message (FuncName, "Need an idcode_str for do",0);
       SUMA_RETURN(NOPE);
    }
-   dov[*N_dov].OP = op;
-   dov[*N_dov].ObjectType = DO_Type;
-   dov[*N_dov].CoordType = DO_CoordType;
-   *N_dov = *N_dov+1;
+   
+   /* Does that baby exist? */
+   if ((ieo = SUMA_FindDOi_byID(dov, *N_dov, ado->idcode_str)) >= 0) {
+      if (DO_Type == SO_type) {
+         SUMA_SLP_Err("Surface exists, cannot be replaced this way.");
+         SUMA_RETURN(NOPE);
+      }
+      if (!(nm % 300)) {
+         SUMA_SLP_Note("Object exists and will be replaced.\nMessage shown intermittently");
+      }
+      ++nm;
+      /* free olde one */
+      if (!SUMA_Free_Displayable_Object(&(dov[ieo]))) {
+         SUMA_SL_Err("Failed to free displayable object");
+         SUMA_RETURN(NOPE);
+      }
+      dov[ieo].OP = op;
+      dov[ieo].ObjectType = DO_Type;
+      dov[ieo].CoordType = DO_CoordType;
+   } else {
+      /* Addington */
+      /* make sure you did not exceed allocated space */
+      if (*N_dov >= SUMA_MAX_DISPLAYABLE_OBJECTS) {
+         SUMA_error_message (FuncName, "Reached limit of DOv storage",0);
+         SUMA_RETURN(NOPE);
+      }
+      dov[*N_dov].OP = op;
+      dov[*N_dov].ObjectType = DO_Type;
+      dov[*N_dov].CoordType = DO_CoordType;
+      *N_dov = *N_dov+1;
+   
+   }
+   
+   
    
    
    SUMA_RETURN(YUP);
@@ -484,89 +557,175 @@ SUMA_Boolean SUMA_UnRegisterDO(int dov_id, SUMA_SurfaceViewer *cSV)
    SUMA_RETURN(YUP); 
 }
 
+char *SUMA_DOv_Info (SUMA_DO *dov, int N_dov, int detail)
+{
+   static char FuncName[]={"SUMA_DOv_Info"};
+   int i;
+   SUMA_COL_TYPE ctp;
+   char *s=NULL, stmp[200];
+   SUMA_SurfaceObject *so_op=NULL;   
+   SUMA_STRING *SS=NULL;
+   
+   SUMA_ENTRY;
+   
+   SS = SUMA_StringAppend(NULL, NULL);
+   
+   if (dov) {
+      SS = SUMA_StringAppend_va(SS, "\nDOv contents (%d elements):\n", N_dov);
+      for (i=0; i < N_dov; ++i) {
+         switch (dov[i].ObjectType) {
+            case SO_type:
+               so_op = (SUMA_SurfaceObject *)dov[i].OP;
+               #if 0
+               if (so_op->FileType != SUMA_SUREFIT) {
+                  SS = SUMA_StringAppend_va(SS,"DOv ID: %d\n\tName: %s/%s\n\tType: %d, Axis Attachment %d\n",\
+                     i,  SUMA_CHECK_NULL_STR(so_op->Name.Path), SUMA_CHECK_NULL_STR(so_op->Name.FileName),\
+                     dov[i].ObjectType, dov[i].CoordType);
+               } else {
+                  SS = SUMA_StringAppend_va(SS,"DOv ID: %d\n\tNameCoord: %s/%s\n\tNameTopo: %s/%s\n\tType: %d, Axis Attachment %d\n",\
+                     i, SUMA_CHECK_NULL_STR(so_op->Name_coord.Path), SUMA_CHECK_NULL_STR(so_op->Name_coord.FileName),\
+                     so_op->Name_topo.Path, so_op->Name_topo.FileName,\
+                     dov[i].ObjectType, dov[i].CoordType);
+               } 
+               #else
+                  SS = SUMA_StringAppend_va(SS,"DOv ID: %d\n\tName: %s\n\tType: %d, Axis Attachment %d\n",\
+                     i,  SUMA_CHECK_NULL_STR(so_op->Label), \
+                     dov[i].ObjectType, dov[i].CoordType);
+               #endif  
+               break;
+            case AO_type:
+               {
+                  SUMA_Axis* ao;
+                  ao = (SUMA_Axis*) dov[i].OP;
+                  SS = SUMA_StringAppend_va(SS,"DOv ID: %d\n\tAxis Object\n\tType: %d, Axis Attachment %d\n", i,dov[i].ObjectType, dov[i].CoordType);
+                  SS = SUMA_StringAppend_va(SS,"\tName: %s\n\tidcode: %s\n", ao->Label, ao->idcode_str);
+               }
+               break;
+            case OLS_type:
+               {
+                  SUMA_SegmentDO *sdo=NULL;
+
+                  sdo = (SUMA_SegmentDO *)dov[i].OP;
+                  SS = SUMA_StringAppend_va(SS,"DOv ID: %d\n\tOriented Line Segment Object\n\tType: %d, Axis Attachment %d\n", i,dov[i].ObjectType, dov[i].CoordType);
+                  SS = SUMA_StringAppend_va(SS,"\tLabel: %s\n\tidcode: %s\n", sdo->Label, sdo->idcode_str);
+
+               }
+               break;
+            case ONBV_type:
+               {
+                  SUMA_SegmentDO *sdo=NULL;
+
+                  sdo = (SUMA_SegmentDO *)dov[i].OP;
+                  SS = SUMA_StringAppend_va(SS,"DOv ID: %d\n\tNode-Based Ball-Vector\n\tType: %d, Axis Attachment %d\n", i,dov[i].ObjectType, dov[i].CoordType);
+                  SS = SUMA_StringAppend_va(SS,"\tLabel: %s\n\tidcode: %s\n", sdo->Label, sdo->idcode_str);
+
+               }
+               break;
+            case NBV_type:
+               {
+                  SUMA_SegmentDO *sdo=NULL;
+
+                  sdo = (SUMA_SegmentDO *)dov[i].OP;
+                  SS = SUMA_StringAppend_va(SS,"DOv ID: %d\n\tNode-Based Vector\n\tType: %d, Axis Attachment %d\n", i,dov[i].ObjectType, dov[i].CoordType);
+                  SS = SUMA_StringAppend_va(SS,"\tLabel: %s\n\tidcode: %s\n", sdo->Label, sdo->idcode_str);
+
+               }
+               break;
+            case LS_type:
+               {
+                  SUMA_SegmentDO *sdo=NULL;
+
+                  sdo = (SUMA_SegmentDO *)dov[i].OP;
+                  SS = SUMA_StringAppend_va(SS,"DOv ID: %d\n\tLine Segment Object\n\tType: %d, Axis Attachment %d\n", i,dov[i].ObjectType, dov[i].CoordType);
+                  SS = SUMA_StringAppend_va(SS,"\tLabel: %s\n\tidcode: %s\n", sdo->Label, sdo->idcode_str);
+
+               }
+               break;
+            case NBSP_type:
+               {
+                  SUMA_SphereDO *sdo=NULL;
+
+                  sdo = (SUMA_SphereDO *)dov[i].OP;
+                  SS = SUMA_StringAppend_va(SS,"DOv ID: %d\n\tNode-Based Sphere Object\n\tType: %d, Axis Attachment %d\n", i,dov[i].ObjectType, dov[i].CoordType);
+                  SS = SUMA_StringAppend_va(SS,"\tLabel: %s\n\tidcode: %s\n", sdo->Label, sdo->idcode_str);
+
+               }
+               break;
+            case SP_type:
+               {
+                  SUMA_SphereDO *sdo=NULL;
+
+                  sdo = (SUMA_SphereDO *)dov[i].OP;
+                  SS = SUMA_StringAppend_va(SS,"DOv ID: %d\n\tSphere Object\n\tType: %d, Axis Attachment %d\n", i,dov[i].ObjectType, dov[i].CoordType);
+                  SS = SUMA_StringAppend_va(SS,"\tLabel: %s\n\tidcode: %s\n", sdo->Label, sdo->idcode_str);
+
+               }
+               break;
+            case PL_type:
+               {
+                  SUMA_PlaneDO *pdo=NULL;
+
+                  pdo = (SUMA_PlaneDO *)dov[i].OP;
+                  SS = SUMA_StringAppend_va(SS,"DOv ID: %d\n\tPlane Object\n\tType: %d, Axis Attachment %d\n", i,dov[i].ObjectType, dov[i].CoordType);
+                  SS = SUMA_StringAppend_va(SS,"\tLabel: %s\n\tidcode: %s\n", pdo->Label, pdo->idcode_str);
+
+               }
+               break;
+            case ROIdO_type:
+               {
+                  SUMA_DRAWN_ROI *dROI = NULL;
+
+                  dROI = (SUMA_DRAWN_ROI *)dov[i].OP;
+                  SS = SUMA_StringAppend_va(SS,"DOv ID: %d\n\tLine Segment Object\n\tType: %d, Axis Attachment %d\n", i,dov[i].ObjectType, dov[i].CoordType);
+                  SS = SUMA_StringAppend_va(SS,"\tLabel: %s\n\tidcode: %s\n", dROI->Label, dROI->idcode_str);
+               }  
+               break;
+            case ROIO_type:
+               {
+                  SUMA_ROI *ROI = NULL;
+
+                  ROI = (SUMA_ROI *)dov[i].OP;
+                  SS = SUMA_StringAppend_va(SS,"DOv ID: %d\n\tLine Segment Object\n\tType: %d, Axis Attachment %d\n", i,dov[i].ObjectType, dov[i].CoordType);
+                  SS = SUMA_StringAppend_va(SS,"\tLabel: %s\n\tidcode: %s\n", ROI->Label, ROI->idcode_str);
+               }  
+               break;
+            case GO_type:
+               SS = SUMA_StringAppend_va(SS,"DOv ID: %d\n\tGrid Object\n", i);
+               break;
+            default:
+               SS = SUMA_StringAppend_va(SS,"DOv ID: %d\n\tUnknown Type!\n", i);
+               break;
+         }
+      }
+      
+   } else {
+      SS = SUMA_StringAppend(SS, "NULL DO.");
+   }
+   
+   SUMA_SS2S(SS, s);
+   
+   SUMA_RETURN(s);
+}
+
 /*!
 print out the data contained in dov 
 */
 void SUMA_Show_DOv (SUMA_DO *dov, int N_dov, FILE *Out)
 {
    int i;
-   SUMA_SurfaceObject *so_op;
+   char *si=NULL;
    static char FuncName[]={"SUMA_Show_DOv"};
    
    SUMA_ENTRY;
 
    if (Out == NULL) Out = stdout;
-   fprintf(Out,"\nDOv contents (%d elements):\n", N_dov);
-   for (i=0; i < N_dov; ++i) {
-      switch (dov[i].ObjectType) {
-         case SO_type:
-            so_op = (SUMA_SurfaceObject *)dov[i].OP;
-            if (so_op->FileType != SUMA_SUREFIT) {
-               fprintf(Out,"DOv ID: %d\n\tName: %s/%s\n\tType: %d, Axis Attachment %d\n",\
-                  i, so_op->Name.Path, so_op->Name.FileName,\
-                  dov[i].ObjectType, dov[i].CoordType);
-            } else {
-               fprintf(Out,"DOv ID: %d\n\tNameCoord: %s/%s\n\tNameTopo: %s/%s\n\tType: %d, Axis Attachment %d\n",\
-                  i, so_op->Name_coord.Path, so_op->Name_coord.FileName,\
-                  so_op->Name_topo.Path, so_op->Name_topo.FileName,\
-                  dov[i].ObjectType, dov[i].CoordType);
-            }   
-            break;
-         case AO_type:
-            {
-               SUMA_Axis* ao;
-               ao = (SUMA_Axis*) dov[i].OP;
-               fprintf(Out,"DOv ID: %d\n\tAxis Object\n\tType: %d, Axis Attachment %d\n", i,dov[i].ObjectType, dov[i].CoordType);
-               fprintf(Out,"\tName: %s\tidcode: %s\n", ao->Name, ao->idcode_str);
-            }
-            break;
-         case OLS_type:
-         case LS_type:
-            {
-               SUMA_SegmentDO *sdo=NULL;
-               
-               sdo = (SUMA_SegmentDO *)dov[i].OP;
-               fprintf(Out,"DOv ID: %d\n\tLine Segment Object\n\tType: %d, Axis Attachment %d\n", i,dov[i].ObjectType, dov[i].CoordType);
-               fprintf(Out,"\tLabel: %s\tidcode: %s\n", sdo->Label, sdo->idcode_str);
-            
-            }
-            break;
-         case SP_type:
-            {
-               SUMA_SphereDO *sdo=NULL;
-               
-               sdo = (SUMA_SphereDO *)dov[i].OP;
-               fprintf(Out,"DOv ID: %d\n\tSphere Object\n\tType: %d, Axis Attachment %d\n", i,dov[i].ObjectType, dov[i].CoordType);
-               fprintf(Out,"\tLabel: %s\tidcode: %s\n", sdo->Label, sdo->idcode_str);
-            
-            }
-            break;
-         case ROIdO_type:
-            {
-               SUMA_DRAWN_ROI *dROI = NULL;
-               
-               dROI = (SUMA_DRAWN_ROI *)dov[i].OP;
-               fprintf(Out,"DOv ID: %d\n\tLine Segment Object\n\tType: %d, Axis Attachment %d\n", i,dov[i].ObjectType, dov[i].CoordType);
-               fprintf(Out,"\tLabel: %s\tidcode: %s\n", dROI->Label, dROI->idcode_str);
-            }  
-            break;
-         case ROIO_type:
-            {
-               SUMA_ROI *ROI = NULL;
-               
-               ROI = (SUMA_ROI *)dov[i].OP;
-               fprintf(Out,"DOv ID: %d\n\tLine Segment Object\n\tType: %d, Axis Attachment %d\n", i,dov[i].ObjectType, dov[i].CoordType);
-               fprintf(Out,"\tLabel: %s\tidcode: %s\n", ROI->Label, ROI->idcode_str);
-            }  
-            break;
-         case GO_type:
-            fprintf(Out,"DOv ID: %d\n\tGrid Object\n", i);
-            break;
-         default:
-            fprintf(Out,"DOv ID: %d\n\tUnknown Type!\n", i);
-            break;
-      }
-   }
+   
+   si = SUMA_DOv_Info(dov, N_dov, 0);
+   
+   fprintf(Out,"%s\n", si);
+   
+   if (si) SUMA_free(si); si = NULL;
+   
    SUMA_RETURNe;
 }
 
@@ -820,6 +979,8 @@ SUMA_SurfaceObject * SUMA_findSOp_inDOv(char *idcode, SUMA_DO *dov, int N_dov)
    
    SUMA_ENTRY;
 
+   if (!idcode) SUMA_RETURN(NULL);
+   
    for (i=0; i<N_dov; ++i) {
       if (dov[i].ObjectType == SO_type) {
          SO = (SUMA_SurfaceObject *)dov[i].OP;
@@ -829,6 +990,73 @@ SUMA_SurfaceObject * SUMA_findSOp_inDOv(char *idcode, SUMA_DO *dov, int N_dov)
       }
    }
    SUMA_RETURN(NULL);
+}
+
+SUMA_SurfaceObject * SUMA_findanySOp_inDOv(SUMA_DO *dov, int N_dov)
+{
+   static char FuncName[]={"SUMA_findanySOp_inDOv"};
+   SUMA_SurfaceObject *SO;
+   int i;
+   
+   SUMA_ENTRY;
+   
+   SO = NULL;
+   for (i=0; i<N_dov; ++i) {
+      if (dov[i].ObjectType == SO_type) {
+         SO = (SUMA_SurfaceObject *)dov[i].OP;
+         SUMA_RETURN (SO);
+      }
+   }
+   
+   SUMA_RETURN(NULL);
+}
+
+
+char *SUMA_find_SOLabel_from_idcode (char *idcode, SUMA_DO *dov, int N_dov)
+{
+   static char FuncName[]={"SUMA_find_SOLabel_from_idcode"};
+   SUMA_SurfaceObject *SO;
+   int i;
+   
+   SUMA_ENTRY;
+   
+   if (!idcode) SUMA_RETURN(NULL);
+   
+   for (i=0; i<N_dov; ++i) {
+      if (dov[i].ObjectType == SO_type) {
+         SO = (SUMA_SurfaceObject *)dov[i].OP;
+         if (strcmp(idcode, SO->idcode_str)== 0) {
+            SUMA_RETURN (SO->Label);
+         }
+      }
+   }
+   SUMA_RETURN(NULL);
+}
+
+char *SUMA_find_SOidcode_from_label (char *label, SUMA_DO *dov, int N_dov)
+{
+   static char FuncName[]={"SUMA_find_SOidcode_from_label"};
+   SUMA_SurfaceObject *SO;
+   int i;
+   char *found = NULL;
+   
+   SUMA_ENTRY;
+   
+   if (!label) SUMA_RETURN(NULL);
+   
+   for (i=0; i<N_dov; ++i) {
+      if (dov[i].ObjectType == SO_type) {
+         SO = (SUMA_SurfaceObject *)dov[i].OP;
+         if (strcmp(label, SO->Label)== 0) {
+            if (!found) { found = SO->idcode_str; }
+            else {
+               SUMA_S_Errv("More than one surface with label %s found.\n", label);
+               SUMA_RETURN(NULL);
+            }
+         }
+      }
+   }
+   SUMA_RETURN(found);
 }
 
 /*!
@@ -1369,20 +1597,20 @@ SUMA_DRAWN_ROI * SUMA_FetchROI_InCreation (SUMA_SurfaceObject *SO, SUMA_DO * dov
 }
 
 /*!
-\brief Returns YUP if the surface: NBV->Parent_idcode_str is the same as SO->idcode_str.
+\brief Returns YUP if the surface: NBV(or NBSP)->Parent_idcode_str is the same as SO->idcode_str.
 NOPE otherwise
 
-ans = SUMA_isNBVrelated (NBV, SO);
+ans = SUMA_isNBDOrelated (NBDO, SO);
 
-\param NBV (SUMA_SegmentDO  *) pointer to NBV object
+\param NBV (SUMA_NB_DO * ) pointer to NBV/NBSP object
 \param SO (SUMA_SurfaceObject *) pointer to surface object
 \return ans (SUMA_Boolean) YUP/NOPE
 
 */
-SUMA_Boolean SUMA_isNBVrelated (SUMA_SegmentDO *SDO, SUMA_SurfaceObject *SO)
+SUMA_Boolean SUMA_isNBDOrelated (SUMA_NB_DO *SDO, SUMA_SurfaceObject *SO)
 {
-   static char FuncName[]={"SUMA_isNBVrelated"};
-   SUMA_SurfaceObject *SO_NBV = NULL;
+   static char FuncName[]={"SUMA_isNBDOrelated"};
+   SUMA_SurfaceObject *SO_NB = NULL;
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
@@ -1401,18 +1629,18 @@ SUMA_Boolean SUMA_isNBVrelated (SUMA_SegmentDO *SDO, SUMA_SurfaceObject *SO)
    }
    
    /* find the pointer to the surface having for an idcode_str: ROI->Parent_idcode_str */
-   SO_NBV = SUMA_findSOp_inDOv(SDO->Parent_idcode_str, SUMAg_DOv, SUMAg_N_DOv);
+   SO_NB = SUMA_findSOp_inDOv(SDO->Parent_idcode_str, SUMAg_DOv, SUMAg_N_DOv);
    
-   if (!SO_NBV) {
+   if (!SO_NB) {
       SUMA_SL_Err("Could not find surface of SDO->Parent_idcode_str");
       SUMA_RETURN (NOPE);
    }
    
-   if ( SUMA_isRelated (SO, SO_NBV, 1)) { /*  relationship of the 1st order only */ 
+   if ( SUMA_isRelated (SO, SO_NB, 1)) { /*  relationship of the 1st order only */ 
       SUMA_RETURN (YUP);
    }
    
-   /* If you get here, you have SO_NBV so return happily */
+   /* If you get here, you have SO_NB so return happily */
    SUMA_RETURN (NOPE);
 }
 
@@ -1698,6 +1926,8 @@ int SUMA_isTypicalSOforVolSurf (SUMA_SurfaceObject *SO)
    SUMA_ENTRY;
    
    switch (SO->FileType) {
+      case SUMA_PLY:
+      case SUMA_VEC:
       case SUMA_FREE_SURFER: 
          if (SUMA_iswordin (SO->Name.FileName, "smoothwm")) SUMA_RETURN(-1);
          else if (SUMA_iswordin (SO->Name.FileName, "pial")) SUMA_RETURN(1);

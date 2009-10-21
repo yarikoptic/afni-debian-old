@@ -130,6 +130,7 @@ sets the select color of the widget to its foreground color */
 #define SUMA_MARGIN  1
 
 String *SUMA_get_fallbackResources ();         
+void SUMA_CullOption(SUMA_SurfaceViewer *, const char *action);
 Boolean SUMA_handleRedisplay (XtPointer w);
 void SUMA_postRedisplay(Widget w, XtPointer clientData, XtPointer call);
 GLenum SUMA_index_to_clip_plane(int iplane) ;
@@ -148,6 +149,7 @@ SUMA_Boolean SUMA_RenderToPixMap (SUMA_SurfaceViewer *csv, SUMA_DO* dov);
 void SUMA_context_Init(SUMA_SurfaceViewer *sv);
 SUMA_Boolean SUMA_GetSelectionLine (SUMA_SurfaceViewer *sv, int x, int y, GLdouble *Pick0, GLdouble *Pick1, 
                                     int N_List, int *xList, int *yList, GLdouble *Pick0List);
+int SUMA_viewSurfaceCont(Widget w, SUMA_SurfaceObject *SO, SUMA_SurfaceViewer *sv);
 void SUMA_cb_viewSurfaceCont(Widget w, XtPointer data, XtPointer callData);
 void SUMA_cb_viewViewerCont(Widget w, XtPointer data, XtPointer callData);
 void SUMA_cb_toggle_crosshair(Widget w, XtPointer data, XtPointer callData);
@@ -295,6 +297,7 @@ void SUMA_ColPlane_NewOpacity (void *data);
 void SUMA_ColPlane_NewDimFact (void *data);
 void SUMA_cb_ColPlaneShow_toggled (Widget w, XtPointer data, XtPointer client_data);
 void SUMA_cb_ColPlaneShowOne_toggled (Widget w, XtPointer data, XtPointer client_data);
+int SUMA_ColPlaneShowOne_Set (SUMA_SurfaceObject *SO, SUMA_Boolean state);
 void SUMA_cb_ColPlane_Delete(Widget w, XtPointer data, XtPointer client_data);
 void SUMA_cb_ColPlane_Load(Widget w, XtPointer data, XtPointer client_data);
 void SUMA_cb_Dset_Load(Widget w, XtPointer data, XtPointer client_data);
@@ -320,6 +323,7 @@ int SUMA_ShowVisual (Display *dpy, XVisualInfo *vi, SUMA_Boolean ShowHead);
 int SUMA_AskUser_File_replace(Widget parent, char *question, int default_ans);
 void SUMA_WidgetResize (Widget New, int width, int height);
 void SUMA_LoadVisualState(char *fname, void *csvp);
+int SUMA_ApplyVisualState(NI_element *nel, SUMA_SurfaceViewer *csv);
 void SUMA_SaveVisualState(char *fname, void *csvp);
 void SUMA_LoadSegDO (char *s, void *csvp);
 void SUMA_SiSi_I_Insist(void);
@@ -329,6 +333,8 @@ SUMA_Boolean SUMA_World2ScreenCoords (SUMA_SurfaceViewer *sv, int N_List, double
                                        double *ScreenList, int *Quad, SUMA_Boolean ApplyXform);
 SUMA_Boolean SUMA_DrawWindowLine(SUMA_SurfaceViewer *sv, int x0, int y0, int x1, int y1, int meth);
 void SUMA_cb_SetDrawROI_WhatDist(Widget widget, XtPointer client_data, XtPointer call_data);
+SUMA_Boolean SUMA_UpdateColPlaneShellAsNeeded(SUMA_SurfaceObject *SO);
+void SUMA_cb_createSurfaceCont(Widget w, XtPointer data, XtPointer callData);
 
 
 

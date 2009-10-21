@@ -256,14 +256,14 @@ void AFNI_syntax(void)
      "\n"
      " New image display options (alternatives to -im) [19 Oct 1999]:\n"
      "   -tim         These options tell AFNI to arrange the input images\n"
-     "   -tim:<nt>    into a internal time-dependent dataset.  Suppose that\n"
-     "   -zim:<nz>    there are N input 2D slices on the command line.\n"
+     "   -tim:nt      into a internal time-dependent dataset.  Suppose that\n"
+     "   -zim:nz      there are N input 2D slices on the command line.\n"
      "              * -tim alone means these are N points in time (1 slice).\n"
-     "              * -tim:<nt> means there are nt points in time (nt is\n"
+     "              * -tim:nt means there are nt points in time (nt is\n"
      "                  an integer > 1), so there are N/nt slices in space,\n"
      "                  and the images on the command line are input in\n"
      "                  time order first (like -time:tz in to3d).\n"
-     "              * -zim:<nz> means there are nz slices in space (nz is\n"
+     "              * -zim:nz means there are nz slices in space (nz is\n"
      "                  an integer > 1), so there are N/nz points in time,\n"
      "                  and the images on the command line are input in\n"
      "                  slice order first (like -time:zt in to3d).\n"
@@ -1432,7 +1432,10 @@ STATUS("default call") ;
 
          if( nosplash || nodown ) RETURN(True) ;
          if( !nodown &&
-             COX_clock_time()-eltime >= max_splash ){ AFNI_splashdown(); RETURN(True); }
+             COX_clock_time()-eltime >= max_splash ){
+
+           AFNI_splashdown(); STATUS("splashed down"); RETURN(True);
+         }
       }
       break ;
 
@@ -1823,7 +1826,7 @@ ENTRY("AFNI_quit_CB") ;
 
 void AFNI_quit_timeout_CB( XtPointer client_data , XtIntervalId * id )
 {
-   Three_D_View * im3d = (Three_D_View *) client_data ;
+   Three_D_View *im3d = (Three_D_View *) client_data ;
 ENTRY("AFNI_quit_timeout_CB") ;
    RESET_AFNI_QUIT(im3d) ;
    EXRETURN ;
@@ -1864,6 +1867,10 @@ ENTRY("AFNI_startup_timeout_CB") ;
    /* make sure help window is popped down */
 
    MCW_help_CB(NULL,NULL,NULL) ;
+
+   /* tell user if any mixed-type datasets transpired [06 Sep 2006] */
+
+   AFNI_inconstancy_check( im3d , NULL ) ;
 
    /* NIML listening on [moved here 17 Mar 2002] */
 
@@ -2158,20 +2165,21 @@ STATUS("defining surface drawing parameters") ;
 
       } else {                                   /* the old way    */
                                                  /* to set colors:  */
-        eee = getenv("AFNI_SUMA_BOXCOLOR") ;     /* from environment */
-        if( eee != NULL ){
-          if( strcmp(eee,"none") == 0 || strcmp(eee,"skip") == 0 )
-            skip_boxes = 1 ;                  /* don't do boxes */
-          else
-            DC_parse_color( im3d->dc , eee , &rr_box,&gg_box,&bb_box ) ;
+        rgbyte bcolor , lcolor ;                 /* from environment */
+        AFNI_get_suma_color( ks , &bcolor , &lcolor ) ;
+        if( bcolor.r == 1 && bcolor.g == 1 && bcolor.b == 1 ){
+          skip_boxes = 1 ;                  /* don't do boxes */
+        } else {
+          rr_box = bcolor.r / 255.0f ;
+          gg_box = bcolor.g / 255.0f ;
+          bb_box = bcolor.b / 255.0f ;
         }
-
-        eee = getenv("AFNI_SUMA_LINECOLOR") ;
-        if( eee != NULL ){
-          if( (strcmp(eee,"none")==0 || strcmp(eee,"skip")==0) )
-            skip_lines = 1 ;
-          else
-            DC_parse_color( im3d->dc , eee , &rr_lin,&gg_lin,&bb_lin ) ;
+        if( lcolor.r == 1 && lcolor.g == 1 && lcolor.b == 1 ){
+          skip_lines = 1 ;                  /* don't do lines */
+        } else {
+          rr_lin = lcolor.r / 255.0f ;
+          gg_lin = lcolor.g / 255.0f ;
+          bb_lin = lcolor.b / 255.0f ;
         }
 
         eee = getenv("AFNI_SUMA_BOXSIZE") ;  /* maybe set boxsize? */
@@ -3031,6 +3039,8 @@ ENTRY("AFNI_read_images") ;
    dset->dblk->diskptr->storage_mode = STORAGE_UNDEFINED ;
    dset->dblk->diskptr->byte_order   = THD_get_write_order() ;  /* 25 April 1998 */
 
+   dset->dblk->vedim = NULL ;  /* 05 Sep 2006 */
+
    EMPTY_STRING(dset->dblk->diskptr->prefix) ;
    EMPTY_STRING(dset->dblk->diskptr->viewcode) ;
    EMPTY_STRING(dset->dblk->diskptr->filecode) ;
@@ -3830,6 +3840,46 @@ STATUS("graCR_pickort") ;
   EXRETURN ;
 }
 
+/*----------------------------------------------------------------------*/
+/*! Report on datasets with mixed type sub-bricks,
+    as they tend to cause problems. */
+
+void AFNI_inconstancy_check( Three_D_View *im3d , THD_3dim_dataset *dset )
+{
+   static int    nbad = 0 ;
+   static char **sbad = NULL ;
+
+ENTRY("AFNI_inconstancy_check") ;
+
+   if( dset == NULL ){
+     char *msg ; int ii,nn ; Widget wp ;
+     if( nbad == 0 || sbad == NULL ) EXRETURN ; /* nothing to report */
+     if( !IM3D_OPEN(im3d) ) im3d =AFNI_find_open_controller();
+     wp = im3d->vwid->imag->crosshair_label ;
+     XBell(XtDisplay(wp),100) ;
+     STATUS("creating inconstancy message") ;
+     for(ii=nn=0;ii<nbad;ii++) nn += strlen(sbad[ii]) ;
+     nn += 255+4*nbad ; msg = malloc(nn) ;
+     sprintf(msg,
+            "\n========== Datasets With Inconstant Data Types =========\n\n");
+     for(ii=0;ii<nbad;ii++) sprintf(msg+strlen(msg)," %s\n",sbad[ii]) ;
+     sprintf(msg+strlen(msg),
+            "\n===== This is known as the Mike Beauchamp SINdrome =====\n"
+              "===== Funky things may happen with these datasets! =====\n" ) ;
+     (void)new_MCW_textwin( wp , msg , TEXT_READONLY ) ;
+     free((void *)msg) ;
+     for(ii=0;ii<nbad;ii++)free((void *)sbad[ii]);
+     free((void *)sbad) ; nbad=0 ; sbad=NULL ;
+     XBell(XtDisplay(wp),100) ;
+     EXRETURN ;
+   } else if( ISVALID_DSET(dset) && !DSET_datum_constant(dset) ){
+     char *str = DSET_BRIKNAME(dset) ;
+     sbad = (char **)realloc((void *)sbad,sizeof(char *)*(nbad+1)) ;
+     sbad[nbad++] = strdup(str) ;
+   }
+   EXRETURN ;
+}
+
 /*----------------------------------------------------------------------
    read the files specified on the command line
    and create the data structures
@@ -3921,6 +3971,8 @@ ENTRY("AFNI_read_inputs") ;
 
       eee = getenv( "AFNI_GLOBAL_SESSION" ) ;   /* where it's supposed to be */
       if( eee != NULL ){
+         THD_3dim_dataset *dset ;
+         STATUS("reading global session") ;
          gss =
           GLOBAL_library.session = THD_init_session( eee ); /* try to read datasets */
 
@@ -3928,8 +3980,12 @@ ENTRY("AFNI_read_inputs") ;
             gss->parent = NULL ;                          /* parentize them */
             for( qd=0 ; qd < gss->num_dsset ; qd++ )
               for( vv=0 ; vv <= LAST_VIEW_TYPE ; vv++ ){
-                PARENTIZE( gss->dsset[qd][vv] , NULL ) ;
-                DSET_MARK_FOR_IMMORTALITY( gss->dsset[qd][vv] ) ;
+                dset = gss->dsset[qd][vv] ;
+                if( dset != NULL ){
+                  PARENTIZE( dset , NULL ) ;
+                  DSET_MARK_FOR_IMMORTALITY( dset ) ;
+                  AFNI_inconstancy_check(NULL,dset) ; /* 06 Sep 2006 */
+                }
               }
          } else {
            sprintf(str,"\n*** No datasets in AFNI_GLOBAL_SESSION=%s",eee) ;
@@ -4017,6 +4073,7 @@ if(PRINT_TRACING)
              if( dset != NULL ){
                dss->dsset[qd][dset->view_type] = dset ;
                dss->num_dsset ++ ;
+               AFNI_inconstancy_check(NULL,dset) ; /* 06 Sep 2006 */
              } else {
                fprintf(stderr,
                        "\n** Couldn't open %s as session OR as dataset!" ,
@@ -4026,13 +4083,19 @@ if(PRINT_TRACING)
          }
 
          if( new_ss != NULL && new_ss->num_dsset > 0 ){ /* got something? */
+            THD_3dim_dataset *dset ;
 
             /* set parent pointers */
 
             new_ss->parent = NULL ;
-            for( qd=0 ; qd < new_ss->num_dsset ; qd++ )
-              for( vv=0 ; vv <= LAST_VIEW_TYPE ; vv++ )
-                PARENTIZE( new_ss->dsset[qd][vv] , NULL ) ;
+            for( qd=0 ; qd < new_ss->num_dsset ; qd++ ){
+              for( vv=0 ; vv <= LAST_VIEW_TYPE ; vv++ ){
+                dset = new_ss->dsset[qd][vv] ;
+                if( dset != NULL ){
+                  PARENTIZE( dset , NULL ) ;
+                  AFNI_inconstancy_check(NULL,dset) ; /* 06 Sep 2006 */
+                }
+            } }
 
             /* put the new session into place in the list of sessions */
 
@@ -4368,10 +4431,10 @@ STATUS("making descendant datasets") ;
 
       int nds = argc - GLOBAL_argopt.first_file_arg ;
       char str[256] ;
-      THD_3dim_dataset * dset ;
-      XtPointer_array * dsar ;
-      MRI_IMARR * webtsar ;        /* 26 Mar 2001 */
-      THD_session * new_ss ;
+      THD_3dim_dataset *dset ;
+      XtPointer_array *dsar ;
+      MRI_IMARR *webtsar ;        /* 26 Mar 2001 */
+      THD_session *new_ss ;
       int ii,nerr=0,vv,nn , dd ;
 
       if( nds <= 0 ){
@@ -4409,8 +4472,8 @@ STATUS("reading commandline dsets") ;
 
             dsar = THD_fetch_many_datasets( argv[ii] ) ;
             if( dsar == NULL || dsar->num == 0 ){
-               fprintf(stderr,"\a\n*** Can't read datasets from %s\n",argv[ii]) ;
-               nerr++ ; continue ; /* next ii */
+              fprintf(stderr,"\a\n*** Can't read datasets from %s\n",argv[ii]) ;
+              nerr++ ; continue ; /* next ii */
             }
 
          } else { /** read from one file (local or Web), make a small array **/
@@ -4420,10 +4483,11 @@ STATUS("reading commandline dsets") ;
                fprintf(stderr,"\a\n*** Can't read dataset %s\n",argv[ii]) ;
                nerr++ ; continue ; /* next ii */
             }
-            INIT_XTARR(dsar) ; ADDTO_XTARR(dsar,dset) ; XTARR_IC(dsar,0) = IC_DSET ;
+            INIT_XTARR(dsar) ; ADDTO_XTARR(dsar,dset) ;
+            XTARR_IC(dsar,0) = IC_DSET ;
          }
 
-         for( dd=0 ; dd < dsar->num ; dd++ ){  /* loop over all entries in array */
+         for( dd=0 ; dd < dsar->num ; dd++ ){  /* over all entries in array */
 
             /* 26 Mar 2001: might get some 1D files, too */
 
@@ -4433,7 +4497,7 @@ STATUS("reading commandline dsets") ;
                continue ;              /* next one */
             }
             if( XTARR_IC(dsar,dd) != IC_DSET ){
-               fprintf(stderr,"\n** Unknown filetype returned from %s\n",argv[ii]) ;
+              fprintf(stderr,"\n** Unknown filetype returned from %s\n",argv[ii]) ;
                nerr++ ; continue ;   /* bad */
             }
 
@@ -4441,6 +4505,7 @@ STATUS("reading commandline dsets") ;
 
             dset = (THD_3dim_dataset *) XTARR_XT(dsar,dd) ;
             if( !ISVALID_DSET(dset) ) continue ;            /* bad */
+            AFNI_inconstancy_check(NULL,dset) ; /* 06 Sep 2006 */
             nds++ ;   /* increment count of dataset */
             REFRESH ;
             vv = dset->view_type ;
@@ -4883,8 +4948,9 @@ ENTRY("AFNI_time_index_CB") ;
      im3d->vinfo->anat_index = DSET_NVALS(im3d->anat_now) - 1 ;
    AV_assign_ival( im3d->vwid->func->anat_buck_av , im3d->vinfo->anat_index ) ;
 
-   if( ISVALID_DSET(im3d->fim_now) &&
-       HAS_TIMEAXIS(im3d->fim_now) && !AFNI_noenv("AFNI_SLAVE_FUNCTIME") ){
+   if( ISVALID_DSET(im3d->fim_now)                                             &&
+      ( HAS_TIMEAXIS(im3d->fim_now) || AFNI_yesenv("AFNI_SLAVE_BUCKETS_TOO") ) && 
+       !AFNI_noenv("AFNI_SLAVE_FUNCTIME") ){
 
      im3d->vinfo->fim_index = ipx ;
      if( im3d->vinfo->fim_index >= DSET_NVALS(im3d->fim_now) )
@@ -5290,15 +5356,17 @@ ENTRY("AFNI_viewbut_EV") ;
 
 /*------------------------------------------------------------------------*/
 
-void AFNI_redisplay_func( Three_D_View * im3d )  /* 05 Mar 2002 */
+void AFNI_redisplay_func( Three_D_View *im3d )  /* 05 Mar 2002 */
 {
-   AFNI_set_viewpoint( im3d , -1,-1,-1 , REDISPLAY_OVERLAY ) ;
-   AFNI_process_funcdisplay( im3d ) ;
+   if( IM3D_OPEN(im3d) && IM3D_IMAGIZED(im3d) ){
+     AFNI_set_viewpoint( im3d , -1,-1,-1 , REDISPLAY_OVERLAY ) ;
+     AFNI_process_funcdisplay( im3d ) ;
+   }
 }
 
 /*------------------------------------------------------------------------*/
 
-void AFNI_do_bkgd_lab( Three_D_View * im3d )
+void AFNI_do_bkgd_lab( Three_D_View *im3d )
 {
    char str[256] ;
 
@@ -5348,6 +5416,7 @@ void AFNI_range_setter( Three_D_View *im3d , MCW_imseq *seq )
      rng[0] = ds->stats->bstat[ival].min ;
      rng[1] = ds->stats->bstat[ival].max ;
    }
+   rng[2] = 1.0f ;  /* 21 Dec 2006: do NOT redisplay image */
 
    drive_MCW_imseq( seq , isqDR_setrange , (XtPointer) rng ) ;
    return ;
@@ -5461,6 +5530,25 @@ DUMP_IVEC3("  new_id",new_id) ;
    if( do_lock || isq_driver==isqDR_display )
       im3d->vinfo->anat_val[0] = '\0';
    if( !AFNI_noenv( "AFNI_VALUE_LABEL") ) AFNI_do_bkgd_lab( im3d ) ;
+
+   /*--- 05 Sep 2006: volume edit on demand? ---*/
+
+   if( IM3D_IMAGIZED(im3d) ){
+     if( VEDIT_good(im3d->vedset) ){
+       im3d->vedset.ival = im3d->vinfo->fim_index ;
+       switch( VEDIT_CODE(im3d->vedset) ){
+         case VEDIT_CLUST:
+           im3d->vedset.param[0] = (float)im3d->vinfo->thr_index ;
+           im3d->vedset.param[1] = im3d->vinfo->func_threshold
+                                  *im3d->vinfo->func_thresh_top ;
+         break ;
+       }
+       AFNI_vedit( im3d->fim_now , im3d->vedset ) ;
+     } else {
+       AFNI_vedit_clear( im3d->fim_now ) ;
+     }
+     AFNI_set_thr_pval(im3d) ;  /* for the * marker */
+   }
 
    /*--- redraw images now ---*/
 
@@ -6640,6 +6728,8 @@ if(PRINT_TRACING)
 
    new_anat = GLOBAL_library.sslist->ssar[sss]->dsset[aaa][vvv] ;
    new_func = GLOBAL_library.sslist->ssar[sss]->dsset[fff][vvv] ;
+
+   AFNI_vedit_clear( im3d->fim_now ) ;  /* 05 Sep 2006 */
 
    /*----------------------------------------------*/
    /*--- if the old dataset has markers and the
@@ -9565,6 +9655,8 @@ STATUS("init new_dblk") ;
    new_dblk->master_nvals = 0 ;     /* 11 Jan 1999 */
    new_dblk->master_ival  = NULL ;
    new_dblk->master_bytes = NULL ;
+
+   new_dblk->vedim = NULL ;  /* 05 Sep 2006 */
 
    DSET_unlock(new_dset) ;
 

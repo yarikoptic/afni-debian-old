@@ -48,9 +48,14 @@
 
 #else
 
-# define MCHECK                           \
-   do{ char * mc = MCW_MALLOC_status ;    \
-        if( mc != NULL ) printf("** Memory usage: %s\n",mc) ; } while(0)
+# define MCHECK                                       \
+   do{ char *mc = MCW_MALLOC_status ;                 \
+        if( DBG_fp==NULL ) DBG_fp=stdout;             \
+        if( mc != NULL ){                             \
+          fprintf(DBG_fp,"** Memory usage: %s\n",mc); \
+          fflush(DBG_fp) ;                            \
+        }                                             \
+   } while(0)
 
 # define MPROBE do{ if( !DBG_trace ) (void)MCW_MALLOC_status ; } while(0)
 
@@ -65,10 +70,15 @@
 #include <signal.h>
 #include <unistd.h>
 
+#ifdef  __cplusplus
+extern "C" {
+#endif
+
 #ifdef _DEBUGTRACE_MAIN_
    char * DBG_rout[DEBUG_MAX_DEPTH] = { "Bottom of Debug Stack" } ;
    int DBG_num   = 1 ;
    int DBG_trace = 0 ;   /* turn off at start (cf. mainENTRY) */
+   FILE *DBG_fp  = NULL ;    /* 01 Sep 2006 */
 
    char * DBG_labels[3] = { "Trace=OFF " , "Trace=LOW " , "Trace=HIGH" } ;
 
@@ -76,6 +86,7 @@
 
 void DBG_traceback(void)
 { int tt ;
+  MCHECK ;
   if( last_status[0] != '\0' )
     fprintf(stderr,"Last STATUS: %s\n",last_status) ;
   for( tt=DBG_num-1; tt >= 1 ; tt-- )
@@ -93,6 +104,7 @@ void DBG_sigfunc(int sig)   /** signal handler for fatal errors **/
      case SIGSEGV: sname = "SIGSEGV" ; break ;
      case SIGBUS:  sname = "SIGBUS"  ; break ;
      case SIGINT:  sname = "SIGINT"  ; break ;
+     case SIGTERM: sname = "SIGTERM" ; break ;
    }
    fprintf(stderr,"\nFatal Signal %d (%s) received\n",sig,sname) ;
    if( last_status[0] != '\0' )
@@ -104,7 +116,7 @@ void DBG_sigfunc(int sig)   /** signal handler for fatal errors **/
      fprintf(stderr,"[No debug tracing stack: DBG_num=%d]\n",DBG_num) ;
    }
 #ifdef AFNI_VERSION_LABEL
-   fprintf(stderr,"** AFNI version = " AFNI_VERSION_LABEL 
+   fprintf(stderr,"** AFNI version = " AFNI_VERSION_LABEL
                    "  Compile date = " __DATE__ "\n" );
 #endif
 
@@ -120,6 +132,7 @@ void DBG_sigfunc(int sig)   /** signal handler for fatal errors **/
    extern char * DBG_rout[DEBUG_MAX_DEPTH] ;
    extern int DBG_num ;
    extern int DBG_trace ;
+   extern FILE *DBG_fp ;
    extern char * DBG_labels[3] ;
    extern void DBG_sigfunc(int) ;
    extern void DBG_traceback(void) ;
@@ -129,7 +142,8 @@ void DBG_sigfunc(int sig)   /** signal handler for fatal errors **/
 #define DBG_SIGNALS ( signal(SIGPIPE,DBG_sigfunc) , \
                       signal(SIGSEGV,DBG_sigfunc) , \
                       signal(SIGINT ,DBG_sigfunc) , \
-                      signal(SIGBUS ,DBG_sigfunc)  )
+                      signal(SIGBUS ,DBG_sigfunc) , \
+                      signal(SIGTERM,DBG_sigfunc) )
 /*---------------------------------------------------------------*/
 
 /* macros for entering and exiting a function */
@@ -139,40 +153,46 @@ void DBG_sigfunc(int sig)   /** signal handler for fatal errors **/
 
 #define ENTRY(rout) do{ static char * rrr = (rout) ;  DBG_rout[DBG_num++] = rrr ; \
                         if( DBG_trace ){                                         \
-                          printf("%*.*s%s [%d]: ENTRY (file=%s line=%d)\n",     \
-                                 DBG_num,DBG_num,DBG_LEADER_IN,rrr,DBG_num,    \
-                                 __FILE__ , __LINE__ ) ;                      \
-                          MCHECK ; fflush(stdout) ; }                        \
-                        last_status[0] = '\0' ;                             \
+                          if( DBG_fp == NULL ) DBG_fp = stdout ;                \
+                          fprintf(DBG_fp,                                      \
+                                  "%*.*s%s [%d]: ENTRY (file=%s line=%d)\n",  \
+                                  DBG_num,DBG_num,DBG_LEADER_IN,rrr,DBG_num, \
+                                  __FILE__ , __LINE__ ) ;                   \
+                          MCHECK ; fflush(DBG_fp) ; }                      \
+                        last_status[0] = '\0' ;                           \
                     } while(0)
 
 #define DBROUT      DBG_rout[DBG_num-1]
 
-#define DBEXIT      do{ if( DBG_trace ){                                      \
-                          printf("%*.*s%s [%d]: EXIT (file=%s line=%d)\n",     \
-                                 DBG_num,DBG_num,DBG_LEADER_OUT,DBROUT,DBG_num, \
-                                 __FILE__ , __LINE__ );                         \
-                          MCHECK ; fflush(stdout) ; }                           \
-                        DBG_num = (DBG_num>1) ? DBG_num-1 : 1 ;                 \
-                        last_status[0] = '\0' ;                                 \
+#define DBEXIT      do{ if( DBG_trace ){                                     \
+                          if( DBG_fp == NULL ) DBG_fp = stdout ;              \
+                          fprintf(DBG_fp,                                      \
+                                  "%*.*s%s [%d]: EXIT (file=%s line=%d)\n",     \
+                                  DBG_num,DBG_num,DBG_LEADER_OUT,DBROUT,DBG_num, \
+                                  __FILE__ , __LINE__ );                         \
+                          MCHECK ; fflush(DBG_fp) ; }                            \
+                        DBG_num = (DBG_num>1) ? DBG_num-1 : 1 ;                  \
+                        last_status[0] = '\0' ;                                  \
                     } while(0)
 
 /*! This macro is only to be used inside main(). */
 
-#define mainENTRY(rout)                                            \
-  do{ char *e=getenv("AFNI_TRACE");                                \
-      if( e != NULL )                                              \
-         DBG_trace = (*e=='y') ? 1 : (*e=='Y') ? 2 : 0 ;           \
-      DBG_SIGNALS ; ENTRY(rout) ;                        } while(0)
+#define mainENTRY(rout)                                               \
+  do{ char *e=getenv("AFNI_TRACE");                                   \
+      if( e != NULL ) DBG_trace = (*e=='y') ? 1 : (*e=='Y') ? 2 : 0 ; \
+      e = getenv("AFNI_TRACE_FILE") ;                                 \
+      if( e != NULL ) DBG_fp=fopen(e,"w") ;                           \
+      if( DBG_fp==NULL ) DBG_fp=stdout;                               \
+      DBG_SIGNALS ; ENTRY(rout) ; } while(0)
 
 #define PRINT_TRACING (DBG_trace > 1)
 
-#define STATUS(str)                                              \
-  do{ if(PRINT_TRACING){                                          \
-        MCHECK ;                                                   \
-        printf("%*.*s%s -- %s\n",DBG_num,DBG_num," ",DBROUT,(str)); \
-        fflush(stdout) ; }                                           \
-      strncpy(last_status,str,1023); last_status[1023]='\0';          \
+#define STATUS(str)                                                      \
+  do{ if(PRINT_TRACING){                                                  \
+        MCHECK ; if( DBG_fp==NULL ) DBG_fp=stdout;                         \
+        fprintf(DBG_fp,"%*.*s%s -- %s\n",DBG_num,DBG_num," ",DBROUT,(str)); \
+        fflush(DBG_fp) ; }                                                   \
+      strncpy(last_status,str,1023); last_status[1023]='\0';                  \
   } while(0)
 
 /*********************************************************************/
@@ -216,9 +236,19 @@ void DBG_sigfunc(int sig)   /** signal handler for fatal errors **/
 # define MCHECK /* nada */
 # define MPROBE /* nada */
 #endif
+
+#ifdef  __cplusplus
+}
+#endif
+
 /*---------------------------------------------------------------*/
 
 #include <stdarg.h>
+
+#ifdef  __cplusplus
+extern "C" {
+#endif
+
 extern void INFO_message   ( char *fmt , ... ) ;  /* 13 Jul 2005 */
 extern void ININFO_message ( char *fmt , ... ) ;
 extern void WARNING_message( char *fmt , ... ) ;
@@ -226,5 +256,8 @@ extern void ERROR_message  ( char *fmt , ... ) ;
 extern void ERROR_exit     ( char *fmt , ... ) ;
 #define FATAL_ERROR_message ERROR_exit
 
+#ifdef  __cplusplus
+}
+#endif
 
 #endif /* _MCW_DEBUGTRACE_ */

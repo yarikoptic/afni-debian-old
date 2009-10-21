@@ -251,6 +251,9 @@ void display_help_menu()
      "[-brick m fstat label]     F-stat for significance of regression      \n"
      "[-brick m rstat label]     coefficient of multiple determination R^2  \n"
      "[-brick m tstat k label]   t-stat for kth regression coefficient      \n"
+     "\n"
+     "[-datum DATUM]     write the output in DATUM format. \n"
+     "                   Choose from short (default) or float.\n" 
      "\n" );
 
   printf
@@ -281,7 +284,7 @@ do{ int pv ; (ds) = THD_open_dataset((name)) ;                                \
           fprintf(stderr,"*** Axes mismatch: %s\n",(name)) ; exit(1) ; }      \
        if( DSET_NVALS((ds)) != 1 ){                                           \
          fprintf(stderr,"*** Must specify 1 sub-brick: %s\n",(name));exit(1);}\
-       THD_load_datablock( (ds)->dblk ) ;                                     \
+       DSET_load((ds)) ;                                                      \
        pv = DSET_PRINCIPAL_VALUE((ds)) ;                                      \
        if( DSET_ARRAY((ds),pv) == NULL ){                                     \
           fprintf(stderr,"*** Can't access data: %s\n",(name)) ; exit(1); }   \
@@ -326,11 +329,7 @@ void get_dimensions
    /*----- read first dataset to get dimensions, etc. -----*/
 
    dset = THD_open_dataset( option_data->first_dataset ) ;
-   if( ! ISVALID_3DIM_DATASET(dset) ){
-      fprintf(stderr,"*** Unable to open dataset file %s\n", 
-              option_data->first_dataset);
-      exit(1) ;
-   }
+   CHECK_OPEN_ERROR(dset,option_data->first_dataset) ;
 
    /*----- data set dimensions in voxels -----*/
    option_data->nx = dset->daxes->nxx ;
@@ -992,7 +991,7 @@ void initialize_options
   option_data->tcoef_filename = NULL;
 
   option_data->numfiles = 0;
- 
+  
   /*----- allocate memory for storing data file names -----*/
   option_data->yname
       = (char **) malloc (sizeof(char *) * MAX_OBSERVATIONS);
@@ -1258,11 +1257,7 @@ void get_inputs
 	
 	/*--- check whether input files exist ---*/
 	dset = THD_open_dataset( argv[nopt] ) ;
-	if( ! ISVALID_3DIM_DATASET(dset) )
-	  {
-	    sprintf(message,"Unable to open dataset file %s\n", argv[nopt]);
-	    RA_error (message);
-	  }
+   CHECK_OPEN_ERROR(dset,argv[nopt]) ;
 	THD_delete_3dim_dataset( dset , False ) ; dset = NULL ;
 	
 	option_data->yname[irows] 
@@ -1843,11 +1838,7 @@ void check_one_output_file
   
   /*----- read first dataset -----*/
   dset = THD_open_dataset (option_data->first_dataset ) ;
-  if( ! ISVALID_3DIM_DATASET(dset) ){
-    fprintf(stderr,"*** Unable to open dataset file %s\n",
-	    option_data->first_dataset);
-    exit(1) ;
-  }
+  CHECK_OPEN_ERROR(dset,option_data->first_dataset) ;
   
   /*-- make an empty copy of this dataset, for eventual output --*/
   new_dset = EDIT_empty_copy( dset ) ;
@@ -2587,10 +2578,7 @@ void write_afni_data
   
   /*----- read first dataset -----*/
   dset = THD_open_dataset (option_data->first_dataset) ;
-  if( ! ISVALID_3DIM_DATASET(dset) ){
-    fprintf(stderr,"*** Unable to open dataset file %s\n",
-	    option_data->first_dataset);    exit(1) ;
-  }
+  CHECK_OPEN_ERROR(dset,option_data->first_dataset) ;
   
 
   /*-- make an empty copy of this dataset, for eventual output --*/
@@ -2744,6 +2732,7 @@ void write_bucket_data
   char * output_session;    /* directory for bucket dataset */
   int nbricks, ib;          /* number of sub-bricks in bucket dataset */
   short ** bar = NULL;      /* bar[ib] points to data for sub-brick #ib */
+  float ** far = NULL;
   float factor;             /* factor is new scale factor for sub-brick #ib */
   int brick_type;           /* indicates statistical type of sub-brick */
   int brick_coef;           /* regression coefficient index for sub-brick */
@@ -2754,7 +2743,6 @@ void write_bucket_data
   int num_pieces;           /* dataset is divided into this many pieces */
   float * volume = NULL;    /* volume of floating point data */
   char label[80];           /* label for output file history */ 
-
     
   /*----- initialize local variables -----*/
   p = regmodel->p;
@@ -2771,9 +2759,13 @@ void write_bucket_data
   /*----- allocate memory -----*/
   volume = (float *) malloc (sizeof(float) * nxyz);
   MTEST (volume);
-  bar  = (short **) malloc (sizeof(short *) * nbricks);
-  MTEST (bar);
-
+  if (option_data->datum == MRI_float) {
+     far  = (float **) malloc (sizeof(float *) * nbricks);
+     MTEST (far);
+   } else  {
+    bar  = (short **) malloc (sizeof(short *) * nbricks);
+    MTEST (bar);
+   }
  
   /*----- read first dataset -----*/
   old_dset = THD_open_dataset (option_data->first_dataset) ;
@@ -2853,25 +2845,32 @@ void write_bucket_data
 	}
 
       /*----- allocate memory for output sub-brick -----*/
-      bar[ib]  = (short *) malloc (sizeof(short) * nxyz);
-      MTEST (bar[ib]);
-      
       read_volume (filename, volume, nxyz, piece_size, num_pieces);
       delete_volume (filename, nxyz, piece_size, num_pieces);
 
-      factor = EDIT_coerce_autoscale_new (nxyz, MRI_float, volume,
-					  MRI_short, bar[ib]);
+      if (option_data->datum == MRI_float) {
+         far[ib]  = (float *) malloc (sizeof(float) * nxyz);
+         MTEST (far[ib]);
+         memcpy((void *)far[ib], (void *)volume, sizeof(float) * nxyz);
+         /*----- attach far[ib] to be sub-brick #ib -----*/
+         EDIT_substitute_brick (new_dset, ib, MRI_float, far[ib]);
+      } else {
+         bar[ib]  = (short *) malloc (sizeof(short) * nxyz);
+         MTEST (bar[ib]);
+         factor = EDIT_coerce_autoscale_new (nxyz, MRI_float, volume,
+					     MRI_short, bar[ib]);
 
-      if (factor < EPSILON)  factor = 0.0;
-      else factor = 1.0 / factor;
+         if (factor < EPSILON)  factor = 0.0;
+         else factor = 1.0 / factor;
+         EDIT_BRICK_FACTOR (new_dset, ib, factor);
+         /*----- attach bar[ib] to be sub-brick #ib -----*/
+         EDIT_substitute_brick (new_dset, ib, MRI_short, bar[ib]);
+      }
 
       /*----- edit the sub-brick -----*/
       EDIT_BRICK_LABEL (new_dset, ib, brick_label);
-      EDIT_BRICK_FACTOR (new_dset, ib, factor);
 
       
-      /*----- attach bar[ib] to be sub-brick #ib -----*/
-      EDIT_substitute_brick (new_dset, ib, MRI_short, bar[ib]);
 
     }
 

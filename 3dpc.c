@@ -244,11 +244,7 @@ void PC_read_opts( int argc , char * argv[] )
          exit(1) ;
       }
 
-      DSET_load( PC_dset[kk] ) ;
-      if( !DSET_LOADED( PC_dset[kk] ) ){
-         fprintf(stderr,"\n*** Can't load dataset %s BRIK from disk!\n",PC_dsname[kk]) ;
-         exit(1) ;
-      }
+      DSET_load( PC_dset[kk] ) ;  CHECK_LOAD_ERROR(PC_dset[kk]) ;
       if( !PC_be_quiet ){ printf("+"); fflush(stdout); }
 
       /* copy brick data into float storage */
@@ -593,7 +589,7 @@ int main( int argc , char * argv[] )
 
    perc = (float *) malloc( sizeof(float) * PC_lprin_calc ) ;
 
-   printf("Num.  --Eigenvalue--  -Var.Fraction-  -Cumul.Fract.-\n") ;
+   printf("#Num.  --Eigenvalue--  -Var.Fraction-  -Cumul.Fract.-\n") ;
    for( jj=0 ; jj < PC_lprin_calc ; jj++ ){
       ll = PC_lprin_calc - 1-jj ;      /* reversed order of eigensolution! */
       perc[jj] = wout[ll]/atrace ;

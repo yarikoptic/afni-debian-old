@@ -58,9 +58,7 @@ static struct {
    float gsfac ;      /* -gsfac    */
    int   datum_all ;  /* -datum    */
 
-#ifdef USE_MRI_DELAY
    int delay_input ;  /* -in:1     */
-#endif
 
    int editing ;      /* -edit     */
 
@@ -185,9 +183,8 @@ int main( int argc , char * argv[] )
    argopt.xtwarns   = False ;         /* don't show Xt warnings */
    argopt.gsfac     = 0.0 ;           /* no global scaling factor */
    argopt.datum_all = ILLEGAL_TYPE ;  /* use first image type */
-#ifdef USE_MRI_DELAY
+
    argopt.delay_input = FALSE ;
-#endif
    argopt.editing     = FALSE ;
 
    argopt.swap_two = argopt.swap_four = 0 ;  /* 14 Sep 1998 */
@@ -2055,14 +2052,12 @@ ENTRY("T3D_initialize_user_data") ;
          af_type_set = 1 ; nopt++ ; continue ;
       }
 
-#ifdef USE_MRI_DELAY
       /*--- -in:1 ---*/
 
       if( strncmp(Argv[nopt],"-in:1",5) == 0 ){
          argopt.delay_input = TRUE ;
          nopt++ ; continue ;
       }
-#endif
 
       /*--- -view type ---*/
 
@@ -3109,14 +3104,14 @@ void Syntax()
    printf(
      "\n"
      "COMMAND LINE GEOMETRY SPECIFICATION [* NEW IN 1996 *]\n"
-     "   -xFOV   <dimen1><direc1>-<dimen2><direc2>\n"
+     "   -xFOV   [dimen1][direc1]-[dimen2][direc2]\n"
      "     or       or\n"
-     "   -xSLAB  <dimen1><direc1>-<direc2>\n"
+     "   -xSLAB  [dimen1][direc1]-[direc2]\n"
      "\n"
      "   (Similar -yFOV, -ySLAB, -zFOV and -zSLAB option are also present.)\n"
      "\n"
      " These options specify the size and orientation of the x-axis extent\n"
-     " of the dataset.  <dimen#> means a dimension (in mm); <direc> is\n"
+     " of the dataset.  [dimen#] means a dimension (in mm); [direc] is\n"
      " an anatomical direction code, chosen from\n"
      "      A (Anterior)    P (Posterior)    L (Left)\n"
      "      I (Inferior)    S (Superior)     R (Right)\n"
@@ -3366,7 +3361,6 @@ void Syntax()
     "     tells to3d NOT to scan input float and complex data files for\n"
     "     illegal values - the default is to scan and replace illegal\n"
     "     floating point values with zeros (cf. program float_scan).\n"
-#ifdef USE_MRI_DELAY
     "\n"
     "  -in:1\n"
     "     Input of huge 3D: files (with all the data from a 3D+time run, say)\n"
@@ -3376,7 +3370,6 @@ void Syntax()
     "     dataset brick.  This switch will cause the images from a 3D: file\n"
     "     to be read and processed one slice at a time, which will lower the\n"
     "     amount of memory needed.  The penalty is somewhat more I/O overhead.\n"
-#endif
    ) ;
 
    printf(
@@ -3949,7 +3942,7 @@ printf("T3D_read_images: input file count = %d; expanded = %d\n",nim,gnim) ;
 
    /** 31 Mar 2006: check for .img and .hdr goofup [the JW error] **/
 
-   if( STRING_HAS_SUFFIX(gname[0],".img") ){
+   if( STRING_HAS_SUFFIX_CASE(gname[0],".img") ){
      char *hn=strdup(gname[0]) ;
      strcpy(hn+strlen(hn)-3,"hdr") ;
      if( THD_is_file(hn) )
@@ -4027,11 +4020,9 @@ printf("T3D_read_images: input file count = %d; expanded = %d\n",nim,gnim) ;
 
    CLEAR_MRILIB_globals ;  /* 12 Mar 2001 */
 
-#ifdef USE_MRI_DELAY
    if( argopt.delay_input )
       arr = mri_read_file_delay( gname[0] ) ;
    else
-#endif
       arr = mri_read_file( gname[0] ) ;
 
    if( arr == NULL || arr->num == 0 )
@@ -4091,11 +4082,9 @@ printf("T3D_read_images: input file count = %d; expanded = %d\n",nim,gnim) ;
       /*--- open this file, if not the first (which we read in a minute ago) ---*/
 
       if( lf != 0 ){
-#ifdef USE_MRI_DELAY
          if( argopt.delay_input )
             arr = mri_read_file_delay( gname[0] ) ;
          else
-#endif
             arr = mri_read_file( gname[lf] ) ;
 
          if( arr == NULL || arr->num == 0 ){
@@ -4130,10 +4119,8 @@ printf("T3D_read_images: file %d (%s) has #im=%d\n",lf,gname[lf],arr->num) ;
            exit(1) ;
          }
 
-#ifdef USE_MRI_DELAY
          if( argopt.delay_input )
             (void) mri_data_pointer( im ) ;  /* force load of image from disk */
-#endif
 
          /* 14 Sep 1998: swap bytes if ordered */
          /* 07 Mar 2002: but only if it wasn't already swapped */
@@ -4463,6 +4450,8 @@ printf("T3D_read_images: nvals set to %d\n",nvals) ;
    dblk->brick       = NULL ;
    dblk->brick_fac   = NULL ;
    dblk->brick_bytes = NULL ;
+
+   dblk->vedim = NULL ; /* 05 Sep 2006 */
 
    THD_init_datablock_brick( dblk , argopt.datum_all , NULL ) ;
    THD_null_datablock_auxdata( dblk ) ;

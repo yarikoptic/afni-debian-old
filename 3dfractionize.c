@@ -115,7 +115,7 @@ int main( int argc , char * argv[] )
              "                        since a separate loop is made through the\n"
              "                        input dataset for each distinct value found.\n"
              "                   ** Combining this with the -warp option does NOT\n"
-             "                        make a general +trlc to +orig transformer!\n"
+             "                        make a general +tlrc to +orig transformer!\n"
              "                        This is because for any value to survive the\n"
              "                        vote, its fraction in the output voxel must be\n"
              "                        >= clip fraction, regardless of other values\n"
@@ -284,10 +284,7 @@ int main( int argc , char * argv[] )
 
    /* load the input dataset */
 
-   DSET_load( iset ) ;
-   if( ! DSET_LOADED(iset) ){
-      fprintf(stderr,"** Can't read input dataset brick!\n") ; exit(1) ;
-   }
+   DSET_load( iset ) ; CHECK_LOAD_ERROR(iset) ;
    voxin = DSET_ARRAY(iset,0) ; vtype = DSET_BRICK_TYPE(iset,0) ;
    switch( vtype ){
       default: fprintf(stderr,"** Illegal brick type in input dataset!\n"); exit(1);

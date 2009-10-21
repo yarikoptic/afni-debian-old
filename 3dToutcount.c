@@ -152,7 +152,7 @@ int main( int argc , char *argv[] )
    if( !ISVALID_DSET(dset) ){
       fprintf(stderr,"** Can't open dataset %s\n",argv[iarg]); exit(1);
    }
-   nvals = DSET_NUM_TIMES(dset) ;
+   nvals = DSET_NVALS(dset) ;
    if( nvals < 5 ){
       fprintf(stderr,"** Can't use dataset with < 5 time points per voxel!\n") ;
       exit(1) ;
@@ -162,11 +162,7 @@ int main( int argc , char *argv[] )
       fprintf(stderr,"** Mask and input datasets not the same size!\n") ;
       exit(1) ;
    }
-   DSET_load(dset) ;
-   if( !DSET_LOADED(dset) ){
-      fprintf(stderr,"** Can't read dataset from disk!\n") ;
-      exit(1) ;
-   }
+   DSET_load(dset) ; CHECK_LOAD_ERROR(dset) ;
 
    /*-- 12 Aug 2001: compute clip, if desired --*/
 

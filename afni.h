@@ -126,6 +126,10 @@ static char * UNDERLAY_typestr[] =
 #include "AFNI_label.h"
 #define VERSION AFNI_VERSION_LABEL    /* 21 chars long */
 
+#ifdef  __cplusplus
+extern "C" {
+#endif
+
 #ifdef MAIN
 #define AFNI_about \
      "************************************************\n"  \
@@ -468,6 +472,8 @@ typedef struct {
 
       Widget thr_rowcol , thr_label , thr_scale , thr_pval_label ;
       MCW_arrowval * thr_top_av ;
+
+      Widget thr_menu , thr_clear_pb , thr_cluster_pb ;  /* 05 Sep 2006 */
 
       Widget inten_rowcol , inten_label ;
       MCW_pbar     * inten_pbar ;
@@ -849,7 +855,29 @@ typedef struct {
       THD_warp * fim_selfwarp ;                 /* 27 Aug 2002 */
 
       int dummied ;                             /* 27 Jan 2004 */
+
+      VEDIT_settings vedset ;                   /* 05 Sep 2006 */
 } Three_D_View ;
+
+/*! Is any image viewer window open? */
+
+#define IM3D_IMAGIZED(iq) \
+ ( (iq)->s123 != NULL || (iq)->s231 != NULL || (iq)->s312 != NULL )
+
+/*! Is any graph viewer window open? */
+
+#define IM3D_GRAPHIZED(iq) \
+ ( (iq)->g123 != NULL || (iq)->g231 != NULL || (iq)->g312 != NULL )
+
+/*! Is any image or graph viewer doing a timer thing? [21 Dec 2006] */
+
+#define IM3D_TIMERIZED(iq)                              \
+ ( ((iq)->s123 != NULL && (iq)->s123->timer_id > 0) ||  \
+   ((iq)->s231 != NULL && (iq)->s231->timer_id > 0) ||  \
+   ((iq)->s312 != NULL && (iq)->s312->timer_id > 0) ||  \
+   ((iq)->g123 != NULL && (iq)->g123->timer_id > 0) ||  \
+   ((iq)->g231 != NULL && (iq)->g231->timer_id > 0) ||  \
+   ((iq)->g312 != NULL && (iq)->g312->timer_id > 0)   )
 
 /* 02 Nov 1996: macro to load current viewing data into current datasets */
 
@@ -877,6 +905,8 @@ extern void AFNI_initialize_controller( Three_D_View * ) ;
 extern void AFNI_purge_dsets(int) ;
 extern void AFNI_purge_unused_dsets(void) ;
 extern int AFNI_controller_index( Three_D_View * ) ;
+
+extern void AFNI_inconstancy_check( Three_D_View *, THD_3dim_dataset * ); /* 06 Sep 2006 */
 
 extern Three_D_View * AFNI_find_open_controller(void) ; /* 05 Mar 2002 */
 extern void AFNI_popup_message( char * ) ;
@@ -925,7 +955,16 @@ extern char * AFNI_get_date_trivia(void) ; /* 25 Nov 2002 */
 /*-----------------------------------------------------------------------------*/
 /*---------------------------- Global library data ----------------------------*/
 
+#ifdef  __cplusplus
+}
+#endif
+
 #include "afni_plugin.h"
+
+#ifdef  __cplusplus
+extern "C" {
+#endif
+
 #ifdef ALLOW_PLUGINS
 
    /*-- pseudo-plugin functions --*/
@@ -952,7 +991,15 @@ typedef struct {                 /* windows and widgets */
 
 /*-------------- Here there be global variables.  So shoot me. --------------*/
 
+#ifdef  __cplusplus
+}
+#endif
+
 #include "afni_setup.h"  /* 19 Dec 1997 */
+
+#ifdef  __cplusplus
+extern "C" {
+#endif
 
 typedef struct {
    MCW_DC * dc ;                                  /* display context for everyone */
@@ -1331,13 +1378,24 @@ extern void AFNI_choose_surface_CB( Widget , XtPointer , XtPointer ) ; /* 19 Aug
 extern void AFNI_update_surface_widgets( Three_D_View * ) ;
 extern void AFNI_update_all_surface_widgets( THD_session * ) ;
 
+extern void AFNI_init_suma_color( int, char *, char * ) ;   /* 06 Sep 2006 */
+extern void AFNI_get_suma_color( int, rgbyte *, rgbyte * ); /* 07 Sep 2006 */
+
 extern void AFNI_disable_suma_overlay( int ) ;  /* 16 Jun 2003 */
+
+#ifdef  __cplusplus
+}
+#endif
 
 /*-------------------------------------------------------------------
   Include prototypes for actual data warping and slicing here.
 --------------------------------------------------------------------*/
 
 #include "afni_warp.h"
+
+#ifdef  __cplusplus
+extern "C" {
+#endif
 
 /*------------------------------------------------------------------*/
 
@@ -1793,6 +1851,10 @@ extern int   INIT_ovin_pos[NPANE_MAX+1][NPANE_MAX+1] ;
 
 extern float INIT_pval_sgn[NPANE_MAX+1][NPANE_MAX+1] ;
 extern int   INIT_ovin_sgn[NPANE_MAX+1][NPANE_MAX+1] ;
+#endif
+
+#ifdef  __cplusplus
+}
 #endif
 
 #endif /* _AFNI_HEADER_ */

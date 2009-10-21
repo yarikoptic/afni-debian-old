@@ -237,6 +237,58 @@ SUMA_handleRedisplay(XtPointer closure)
 }
 
 /*!
+   \brief, set culling for viewer:
+   action takes one of: "Apply" or "Restore": Settings based on sv->BF_Cull
+                                             With Apply, you get a notice on the screen,
+                                             use it sparingly
+                        "Off" or "Hold": Turn off culling, regardless of sv->BF_Cull
+                        "Front": Turn on front face culling, regardless of sv->BF_Cull
+                        "Back": Turn on back face culling, regardless of sv->BF_Cull
+*/
+void SUMA_CullOption(SUMA_SurfaceViewer *sv, const char *action)
+{
+   static char FuncName[]={"SUMA_CullOption"};
+   char ac;
+   
+   SUMA_ENTRY;
+   
+   if (!action) {
+      SUMA_S_Err("NULL action!");
+      SUMA_RETURNe;
+   }
+   
+   ac = SUMA_TO_LOWER_C(action[0]);
+   
+   if (ac == 'o' || ac == 'h') {
+      glDisable(GL_CULL_FACE);   
+   } else if ( ac == 'b') {
+      glCullFace (GL_BACK);
+      glEnable (GL_CULL_FACE);
+   } else if ( ac == 'f') {
+      glCullFace (GL_FRONT);
+      glEnable (GL_CULL_FACE);
+   } else if ( ac == 'a' || ac == 'r') {   
+      switch (sv->BF_Cull) {
+         case 0:
+            glDisable(GL_CULL_FACE);
+            if (ac == 'a') { SUMA_SLP_Note ("Culling disabled."); }
+            break;
+         case 1:
+            glCullFace (GL_BACK);
+            glEnable (GL_CULL_FACE);
+            if (ac == 'a') { SUMA_SLP_Note ("BackFace Culling enabled."); }
+            break;
+         case 2:
+            glCullFace (GL_FRONT);
+            glEnable (GL_CULL_FACE);
+            if (ac == 'a') { SUMA_SLP_Note ("FrontFace Culling enabled."); }
+            break;
+      }
+   }
+
+   SUMA_RETURNe;
+}
+/*!
 
 Only w is used consistently, the other input varaibles may be null at times
 always send GLXAREA widget in w otherwise you won't know what pointer to use with 
@@ -296,22 +348,43 @@ void SUMA_LoadSegDO (char *s, void *csvp )
    }
    
    switch (dotp) {
+      case ONBV_type:
       case NBV_type:
          if (!(SO = (SUMA_SurfaceObject *)SUMAg_DOv[sv->Focus_SO_ID].OP)) {
             SUMA_SL_Err("No surface in focus to which the vector would be attached.\n");
             SUMA_RETURNe;
          }
-         if (!(SDO = SUMA_ReadNBVecDO(s, 1, SO->idcode_str))) {
-            SUMA_SL_Err("Failed to read segments file.\n");
+         if (dotp == NBV_type) {
+            if (!(SDO = SUMA_ReadNBVecDO(s, 0, SO->idcode_str))) {
+               SUMA_SL_Err("Failed to read segments file.\n");
+               SUMA_RETURNe;
+            }
+         } else {
+            if (!(SDO = SUMA_ReadNBVecDO(s, 1, SO->idcode_str))) {
+               SUMA_SL_Err("Failed to read segments file.\n");
+               SUMA_RETURNe;
+            }
+         }
+         SDO->do_type = dotp;
+         VDO = (void *)SDO;
+         break;
+      case NBSP_type:
+         if (!(SO = (SUMA_SurfaceObject *)SUMAg_DOv[sv->Focus_SO_ID].OP)) {
+            SUMA_SL_Err("No surface in focus to which the spheres would be attached.\n");
             SUMA_RETURNe;
          }
-         VDO = (void *)SDO;
+         if (!(VDO = (void*)SUMA_ReadNBSphDO(s, SO->idcode_str))) {
+            SUMA_SL_Err("Failed to read spheres file.\n");
+            SUMA_RETURNe;
+         }
+         ((SUMA_SphereDO * )VDO)->do_type = dotp;
          break;
       case OLS_type:
          if (!(SDO = SUMA_ReadSegDO(s, 1, NULL))) {
             SUMA_SL_Err("Failed to read segments file.\n");
             SUMA_RETURNe;
          }
+         SDO->do_type = dotp;
          VDO = (void *)SDO;
          break;
       case LS_type:
@@ -319,19 +392,50 @@ void SUMA_LoadSegDO (char *s, void *csvp )
             SUMA_SL_Err("Failed to read segments file.\n");
             SUMA_RETURNe;
          }
+         SDO->do_type = dotp;
          VDO = (void *)SDO;
          break;
+      
       case SP_type:
          if (!(VDO = (void *)SUMA_ReadSphDO(s))) {
             SUMA_SL_Err("Failed to read spheres file.\n");
             SUMA_RETURNe;
          }
+         ((SUMA_SphereDO * )VDO)->do_type = dotp;
+         break;
+      case PL_type:
+         if (!(VDO = (void *)SUMA_ReadPlaneDO(s))) {
+            SUMA_SL_Err("Failed to read spheres file.\n");
+            SUMA_RETURNe;
+         }
+         ((SUMA_SphereDO * )VDO)->do_type = dotp;
          break;
       default:
          SUMA_SL_Err("Should not get here");
          SUMA_RETURNe;
          break;
    }
+   
+   #if 0 
+   { /* a test for changing SDO formats */
+      if (SDO) {
+         NI_group *ngr = SUMA_SDO2niSDO(SDO);
+         int suc;
+         NEL_WRITE_TX(ngr, "file:mess.niml.SDO", suc);
+         SUMA_S_Note("Wrote mess to disk");
+         /* Now free SDO and reload from disk */
+         SUMA_free_SegmentDO(SDO);
+         SDO = SUMA_niSDO2SDO(ngr);
+         NI_free(ngr); ngr = NULL;
+         /* now repeat xformation and see what you get */
+         ngr = SUMA_SDO2niSDO(SDO);
+         NEL_WRITE_TX(ngr, "file:mess2.niml.SDO", suc);
+         SUMA_S_Note("Wrote mess2 to disk");
+         NI_free(ngr); ngr = NULL;
+         VDO = (void *)SDO;
+      }
+   }
+   #endif
    
    /* addDO */
    if (!SUMA_AddDO(SUMAg_DOv, &SUMAg_N_DOv, VDO, dotp, SUMA_LOCAL)) {
@@ -492,6 +596,69 @@ void SUMA_SaveVisualState(char *fname, void *csvp )
    SUMA_RETURNe;
 }
 
+int SUMA_ApplyVisualState(NI_element *nel, SUMA_SurfaceViewer *csv)
+{
+   static char FuncName[]={"SUMA_ApplyVisualState"};
+   int feyl;
+   char *fnamestmp=NULL, *fnamestmp2=NULL;
+   float quat[4], Aspect[1], FOV[1], tran[2],
+         WindWidth[1], WindHeight[1], clear_color[4], 
+         BF_Cull[1], Back_Modfact[1], PolyMode[1], ShowEyeAxis[1], ShowWorldAxis[1],
+         ShowMeshAxis[1], ShowCrossHair[1], ShowForeground[1], 
+         ShowBackground[1];   char *atmp;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!nel || !csv) {
+      SUMA_S_Err("NULL input");
+      SUMA_RETURN(0);
+   }
+   
+   /* don't crash if you fail here and there, try your best ...*/
+   SUMA_S2FV_ATTR(nel, "currentQuat", quat, 4, feyl); if (feyl) {SUMA_BEEP};
+   SUMA_S2FV_ATTR(nel, "translateVec", tran, 2, feyl); if (feyl) {SUMA_BEEP};
+   SUMA_S2FV_ATTR(nel, "FOV", FOV, 1, feyl); if (feyl) {SUMA_BEEP};
+   SUMA_S2FV_ATTR(nel, "Aspect", Aspect, 1, feyl); if (feyl) {SUMA_BEEP};
+   SUMA_S2FV_ATTR(nel, "WindWidth", WindWidth, 1, feyl); if (feyl) {SUMA_BEEP};
+   SUMA_S2FV_ATTR(nel, "WindHeight", WindHeight, 1, feyl); if (feyl) {SUMA_BEEP};
+   SUMA_S2FV_ATTR(nel, "clear_color", clear_color, 4, feyl); if (feyl) {SUMA_BEEP};
+   SUMA_S2FV_ATTR(nel, "BF_Cull", BF_Cull, 1, feyl); if (feyl) {SUMA_BEEP};
+   SUMA_S2FV_ATTR(nel, "Back_Modfact", Back_Modfact, 1, feyl); if (feyl) {SUMA_BEEP};
+   SUMA_S2FV_ATTR(nel, "PolyMode", PolyMode, 1, feyl); if (feyl) {SUMA_BEEP};
+   SUMA_S2FV_ATTR(nel, "ShowEyeAxis", ShowEyeAxis, 1, feyl); if (feyl) {SUMA_BEEP};
+   SUMA_S2FV_ATTR(nel, "ShowMeshAxis", ShowMeshAxis, 1, feyl); if (feyl) {SUMA_BEEP};
+   SUMA_S2FV_ATTR(nel, "ShowWorldAxis", ShowWorldAxis, 1, feyl); if (feyl) {SUMA_BEEP};
+   SUMA_S2FV_ATTR(nel, "ShowCrossHair", ShowCrossHair, 1, feyl); if (feyl) {SUMA_BEEP};
+   SUMA_S2FV_ATTR(nel, "ShowForeground", ShowForeground, 1, feyl); if (feyl) {SUMA_BEEP};
+   SUMA_S2FV_ATTR(nel, "ShowBackground", ShowBackground, 1, feyl); if (feyl) {SUMA_BEEP};
+   
+   /* set the values */
+   SUMA_COPY_VEC(quat, csv->GVS[csv->StdView].currentQuat, 4, float, float);
+   SUMA_COPY_VEC(tran, csv->GVS[csv->StdView].translateVec, 2, float, float);
+   csv->FOV[csv->iState] = FOV[0];
+   csv->Aspect = Aspect[0]; /* That gets recalculated when SUMA_resize is called */
+   csv->WindWidth = (int)WindWidth[0]; /* That gets recalculated when SUMA_resize is called */
+   csv->WindHeight = (int)WindHeight[0]; /* That gets recalculated when SUMA_resize is called */
+   SUMA_COPY_VEC(clear_color, csv->clear_color, 4, float, float);
+   csv->BF_Cull = (SUMA_Boolean)BF_Cull[0];
+   csv->Back_Modfact = Back_Modfact[0];
+   csv->PolyMode = (SUMA_RENDER_MODES)PolyMode[0];
+   csv->ShowEyeAxis = (int)ShowEyeAxis[0];
+   csv->ShowMeshAxis = (int)ShowMeshAxis[0];
+   csv->ShowWorldAxis = (int)ShowWorldAxis[0];
+   csv->ShowCrossHair = (int)ShowCrossHair[0];
+   csv->ShowForeground = (SUMA_Boolean)ShowForeground[0];
+   csv->ShowForeground = (SUMA_Boolean)ShowForeground[0];
+   
+   /* do a resize (does not matter if dimensions did not change, call is simple.
+   This call will also generate a SUMA_resize call */
+   SUMA_WidgetResize (csv->X->TOPLEVEL , csv->WindWidth, csv->WindHeight); 
+
+   
+   SUMA_RETURN(1);   
+   
+}
 /*!
    \brief function to load a viewer's visual state
 */
@@ -533,50 +700,15 @@ void SUMA_LoadVisualState(char *fname, void *csvp)
       SUMA_SL_Err("Failed to read nel.\n");
       SUMA_RETURNe;
    }
-
-   /* don't crash if you fail here and there, try your best ...*/
-   SUMA_S2FV_ATTR(nel, "currentQuat", quat, 4, feyl); if (feyl) {SUMA_BEEP};
-   SUMA_S2FV_ATTR(nel, "translateVec", tran, 2, feyl); if (feyl) {SUMA_BEEP};
-   SUMA_S2FV_ATTR(nel, "FOV", FOV, 1, feyl); if (feyl) {SUMA_BEEP};
-   SUMA_S2FV_ATTR(nel, "Aspect", Aspect, 1, feyl); if (feyl) {SUMA_BEEP};
-   SUMA_S2FV_ATTR(nel, "WindWidth", WindWidth, 1, feyl); if (feyl) {SUMA_BEEP};
-   SUMA_S2FV_ATTR(nel, "WindHeight", WindHeight, 1, feyl); if (feyl) {SUMA_BEEP};
-   SUMA_S2FV_ATTR(nel, "clear_color", clear_color, 4, feyl); if (feyl) {SUMA_BEEP};
-   SUMA_S2FV_ATTR(nel, "BF_Cull", BF_Cull, 1, feyl); if (feyl) {SUMA_BEEP};
-   SUMA_S2FV_ATTR(nel, "Back_Modfact", Back_Modfact, 1, feyl); if (feyl) {SUMA_BEEP};
-   SUMA_S2FV_ATTR(nel, "PolyMode", PolyMode, 1, feyl); if (feyl) {SUMA_BEEP};
-   SUMA_S2FV_ATTR(nel, "ShowEyeAxis", ShowEyeAxis, 1, feyl); if (feyl) {SUMA_BEEP};
-   SUMA_S2FV_ATTR(nel, "ShowMeshAxis", ShowMeshAxis, 1, feyl); if (feyl) {SUMA_BEEP};
-   SUMA_S2FV_ATTR(nel, "ShowWorldAxis", ShowWorldAxis, 1, feyl); if (feyl) {SUMA_BEEP};
-   SUMA_S2FV_ATTR(nel, "ShowCrossHair", ShowCrossHair, 1, feyl); if (feyl) {SUMA_BEEP};
-   SUMA_S2FV_ATTR(nel, "ShowForeground", ShowForeground, 1, feyl); if (feyl) {SUMA_BEEP};
-   SUMA_S2FV_ATTR(nel, "ShowBackground", ShowBackground, 1, feyl); if (feyl) {SUMA_BEEP};
+   
+   if (!SUMA_ApplyVisualState(nel, csv)) {
+      SUMA_S_Err("Failed to apply state");
+      SUMA_RETURNe;
+   }
    
    NI_free_element(nel); nel = NULL;
    NI_stream_close(nstdin); 
    
-   /* set the values */
-   SUMA_COPY_VEC(quat, csv->GVS[csv->StdView].currentQuat, 4, float, float);
-   SUMA_COPY_VEC(tran, csv->GVS[csv->StdView].translateVec, 2, float, float);
-   csv->FOV[csv->iState] = FOV[0];
-   csv->Aspect = Aspect[0]; /* That gets recalculated when SUMA_resize is called */
-   csv->WindWidth = (int)WindWidth[0]; /* That gets recalculated when SUMA_resize is called */
-   csv->WindHeight = (int)WindHeight[0]; /* That gets recalculated when SUMA_resize is called */
-   SUMA_COPY_VEC(clear_color, csv->clear_color, 4, float, float);
-   csv->BF_Cull = (SUMA_Boolean)BF_Cull[0];
-   csv->Back_Modfact = Back_Modfact[0];
-   csv->PolyMode = (SUMA_RENDER_MODES)PolyMode[0];
-   csv->ShowEyeAxis = (int)ShowEyeAxis[0];
-   csv->ShowMeshAxis = (int)ShowMeshAxis[0];
-   csv->ShowWorldAxis = (int)ShowWorldAxis[0];
-   csv->ShowCrossHair = (int)ShowCrossHair[0];
-   csv->ShowForeground = (SUMA_Boolean)ShowForeground[0];
-   csv->ShowForeground = (SUMA_Boolean)ShowForeground[0];
-   
-   /* do a resize (does not matter if dimensions did not change, call is simple.
-   This call will also generate a SUMA_resize call */
-   SUMA_WidgetResize (csv->X->TOPLEVEL , csv->WindWidth, csv->WindHeight); 
-
 
    SUMA_RETURNe;
 }
@@ -680,9 +812,11 @@ void SUMA_display(SUMA_SurfaceViewer *csv, SUMA_DO *dov)
    while (i < csv->N_DO) {
       if (dov[csv->RegisteredDO[i]].CoordType == SUMA_SCREEN) {
          switch (dov[csv->RegisteredDO[i]].ObjectType) {
+            case type_not_set:
             case no_type:
                SUMA_SL_Err("Should not be doing this buidness");
                break;
+            case NBSP_type:
             case SP_type:
                SUMA_SL_Warn("Not ready yet!");
                break;
@@ -703,12 +837,16 @@ void SUMA_display(SUMA_SurfaceViewer *csv, SUMA_DO *dov)
             case ROIO_type:
                /* those are drawn by SUMA_DrawMesh */
                break;
+            case ONBV_type:
             case NBV_type:
             case OLS_type:
             case LS_type:
                if (!SUMA_DrawSegmentDO ((SUMA_SegmentDO *)dov[csv->RegisteredDO[i]].OP, csv)) {
                   fprintf(SUMA_STDERR, "Error %s: Failed in SUMA_DrawSegmentDO.\n", FuncName);
                }
+               break;
+            case PL_type:
+               SUMA_SL_Warn("Not ready yet!");
                break;
          }
       }
@@ -759,6 +897,7 @@ void SUMA_display(SUMA_SurfaceViewer *csv, SUMA_DO *dov)
             case ROIO_type:
                /* those are drawn by SUMA_DrawMesh */
                break;
+            case ONBV_type:
             case NBV_type:
                /* those are drawn by SUMA_DrawMesh */
                break;
@@ -768,11 +907,20 @@ void SUMA_display(SUMA_SurfaceViewer *csv, SUMA_DO *dov)
                   fprintf(SUMA_STDERR, "Error %s: Failed in SUMA_DrawSegmentDO.\n", FuncName);
                }
                break;
+            case NBSP_type:
+               /* those are drawn by SUMA_DrawMesh */
+               break;
             case SP_type:
-               if (!SUMA_DrawSphereDO ((SUMA_SphereDO *)dov[csv->RegisteredDO[i]].OP)) {
+               if (!SUMA_DrawSphereDO ((SUMA_SphereDO *)dov[csv->RegisteredDO[i]].OP, csv)) {
                   fprintf(SUMA_STDERR, "Error %s: Failed in SUMA_DrawSphereDO.\n", FuncName);
                }
                break;
+            case PL_type:
+               if (!SUMA_DrawPlaneDO ((SUMA_PlaneDO *)dov[csv->RegisteredDO[i]].OP, csv)) {
+                  fprintf(SUMA_STDERR, "Error %s: Failed in SUMA_DrawPlaneDO.\n", FuncName);
+               }
+               break;
+            case type_not_set:
             case no_type:
                SUMA_SL_Err("What's cracking?");
                break;
@@ -1013,6 +1161,8 @@ SUMA_expose(Widget w,
   SUMA_SurfaceViewer *sv;
   SUMA_Boolean LocalHead = NOPE;
   
+  SUMA_ENTRY;
+  
    SUMA_LH("Called");
   /*glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);*/ /* No need for that, done in display */
   
@@ -1029,7 +1179,8 @@ SUMA_expose(Widget w,
    /* When using multiple viewers, you must reset the OpenGL state variables or risk having abrupt changes with the first click */
    sv->ResetGLStateVariables = YUP;
    SUMA_postRedisplay(w, NULL, NULL);
-
+   
+   SUMA_RETURNe;
 }
 
 void
@@ -2822,6 +2973,44 @@ void SUMA_cb_viewSumaCont(Widget w, XtPointer data, XtPointer callData)
 
    SUMA_RETURNe;
 }
+
+/*! if calling this function from outside interface, set w to NULL 
+*/
+int SUMA_viewSurfaceCont(Widget w, SUMA_SurfaceObject *SO, SUMA_SurfaceViewer *sv) 
+{
+   static char FuncName[]={"SUMA_viewSurfaceCont"};
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!SO || !SO->SurfCont) {
+      SUMA_RETURN(0);
+   }
+   
+   if (!SO->SurfCont->TopLevelShell) {
+      if (LocalHead) fprintf (SUMA_STDERR,"%s: Calling SUMA_cb_createSurfaceCont.\n", FuncName);
+      if (w) SUMA_cb_createSurfaceCont( w, (XtPointer)SO, NULL);
+      else SUMA_cb_createSurfaceCont( sv->X->TOPLEVEL, (XtPointer)SO, NULL);
+   }else {
+      /* controller already created, need to bring it up again */
+      #ifdef SUMA_USE_WITHDRAW
+         if (LocalHead) fprintf (SUMA_STDERR,"%s: Controller already created, Raising it.\n", FuncName);
+         XMapRaised(SUMAg_CF->X->DPY_controller1, XtWindow(SO->SurfCont->TopLevelShell));      
+      #endif
+
+   }
+   
+   SUMA_Init_SurfCont_SurfParam(SO);
+   SUMA_Init_SurfCont_CrossHair(SO);
+   
+   if (SO->SurfCont->PosRef != sv->X->TOPLEVEL) {
+      SO->SurfCont->PosRef = sv->X->TOPLEVEL;
+      SUMA_PositionWindowRelative (SO->SurfCont->TopLevelShell, SO->SurfCont->PosRef, SWP_TOP_RIGHT);   
+   }
+   
+   SUMA_RETURN(1); 
+}
+
 /*!
    \brief SUMA_cb_viewSurfaceCont(Widget w, XtPointer data, XtPointer callData);
    opens the surface controller for the surface in focus. 
@@ -2851,29 +3040,14 @@ void SUMA_cb_viewSurfaceCont(Widget w, XtPointer data, XtPointer callData)
       SUMA_RETURNe;
    }
    
-   
-   if (!SO->SurfCont->TopLevelShell) {
-      if (LocalHead) fprintf (SUMA_STDERR,"%s: Calling SUMA_cb_createSurfaceCont.\n", FuncName);
-      SUMA_cb_createSurfaceCont( w, (XtPointer)SO, callData);
-   }else {
-      /* controller already created, need to bring it up again */
-      #ifdef SUMA_USE_WITHDRAW
-         if (LocalHead) fprintf (SUMA_STDERR,"%s: Controller already created, Raising it.\n", FuncName);
-         XMapRaised(SUMAg_CF->X->DPY_controller1, XtWindow(SO->SurfCont->TopLevelShell));      
-      #endif
-
+   if (!SUMA_viewSurfaceCont(w, SO, sv)) {
+      SUMA_S_Err("Failed in SUMA_viewSurfaceCont");
+      SUMA_RETURNe;
    }
-   
-   SUMA_Init_SurfCont_SurfParam(SO);
-   SUMA_Init_SurfCont_CrossHair(SO);
-   
-   if (SO->SurfCont->PosRef != sv->X->TOPLEVEL) {
-      SO->SurfCont->PosRef = sv->X->TOPLEVEL;
-      SUMA_PositionWindowRelative (SO->SurfCont->TopLevelShell, SO->SurfCont->PosRef, SWP_TOP_RIGHT);   
-   } 
 
    SUMA_RETURNe;
 }
+
 /*! \brief SUMA_cb_viewViewerCont(Widget w, XtPointer data, XtPointer callData)
       opens the viewer controller. 
       \param data index of widget into sv->X->ViewMenu 
@@ -4119,6 +4293,7 @@ SUMA_Boolean SUMA_InitializeColPlaneShell(SUMA_SurfaceObject *SO, SUMA_OVERLAYS 
       SUMA_SET_TEXT_FIELD(SO->SurfCont->ColPlaneOrder->textfield, "-");
       SUMA_SET_TEXT_FIELD(SO->SurfCont->ColPlaneOpacity->textfield,"-");
       SUMA_SET_TEXT_FIELD(SO->SurfCont->ColPlaneDimFact->textfield,"-");
+      SUMA_RETURN (YUP);
    }else {
       SUMA_LH("Initializing for real");
       if (ColPlane->dset_link) { /* get the parent surface of the colorplane */
@@ -5678,6 +5853,27 @@ void SUMA_cb_ColPlaneShowOne_toggled (Widget w, XtPointer data, XtPointer client
    SUMA_UpdateNodeLblField(SO);
    
    SUMA_RETURNe;
+}
+
+int SUMA_ColPlaneShowOne_Set (SUMA_SurfaceObject *SO, SUMA_Boolean state) 
+{
+   static char FuncName[]={"SUMA_ColPlaneShowOne_Set"};
+   
+   SUMA_ENTRY;
+
+   if (!SO->SurfCont) SUMA_RETURN(0);
+   if (!SO->SurfCont->TopLevelShell) SUMA_RETURN(0);
+   
+   SO->SurfCont->ShowCurOnly = state;
+   XmToggleButtonSetState (SO->SurfCont->ColPlaneShowOne_tb, SO->SurfCont->ShowCurOnly, NOPE);   
+   
+   SUMA_UpdateColPlaneShellAsNeeded(SO); /* update other open ColPlaneShells */
+
+   SUMA_RemixRedisplay(SO);
+   SUMA_UpdateNodeLblField(SO);
+   
+   SUMA_RETURN(1);
+   
 }
 /*!
  \brief Function based on arrow_time.c program from Motif Programing Manual

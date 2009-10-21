@@ -53,6 +53,10 @@ struct THD_3dim_dataset ;  /* incomplete definition */
 #include "niml.h"          /* NIML */
 #include "afni_suma.h"     /* SUrface MApper */
 
+#ifdef  __cplusplus
+extern "C" {
+#endif
+
 /*! Enables compilation of the MINC dataset code. */
 
 #define ALLOW_MINC   /* 29 Oct 2001 */
@@ -63,6 +67,11 @@ struct THD_3dim_dataset ;  /* incomplete definition */
   ((ss != NULL) && (suf != NULL) &&            \
    (strlen(ss) >= strlen(suf))   &&            \
    (strcmp(ss+strlen(ss)-strlen(suf),suf) == 0))
+
+#define STRING_HAS_SUFFIX_CASE(ss,suf)         \
+  ((ss != NULL) && (suf != NULL) &&            \
+   (strlen(ss) >= strlen(suf))   &&            \
+   (strcasecmp(ss+strlen(ss)-strlen(suf),suf) == 0))
 
 /***************************** dimensions ***************************/
 
@@ -466,8 +475,11 @@ typedef struct {
 } ATR_string ;
 
 #define ZBLOCK 126
+#define ZSBLOCK 59  /* kurukuru pa */
 extern void THD_zblock(int,char *) ;   /* replace zeros with ZBLOCKs */
 extern void THD_unzblock(int,char *) ; /* undo the above */
+extern void THD_zblock_ch(int,char *,char) ;   /* 12 Jul 2006 [rickr] */
+extern void THD_unzblock_ch(int,char *,char) ; /* undo the above      */
 
 /*! Union type to hold an arbitrary attribute. */
 
@@ -1023,6 +1035,33 @@ extern void THD_delete_diskptr( THD_diskptr * ) ;
 #  define MMAP_THRESHOLD 999999
 #endif
 
+/*------------------------------------------------------------------*/
+/* Stuff for volume-editing on demand.  [05 Sep 2006] */
+
+typedef struct {
+  int code , ival ;
+  float param[9] ;
+} VEDIT_settings ;
+
+#define VEDIT_CLUST  1   /* param= ithr,thr,rmm,vmul */
+#define VEDIT_LASTCODE 1
+
+#define VEDIT_IVAL(vv)      ((vv).ival)
+#define DBLK_VEDIT_IVAL(db) VEDIT_IVAL((db)->vedset)
+#define DSET_VEDIT_IVAL(ds) DBLK_VEDIT_IVAL((ds)->dblk)
+
+#define VEDIT_CODE(vv)      ((vv).code)
+#define DBLK_VEDIT_CODE(db) VEDIT_CODE((db)->vedset)
+#define DSET_VEDIT_CODE(ds) DBLK_VEDIT_CODE((ds)->dblk)
+
+#define VEDIT_good(vv)                                            \
+   ( (vv).code>0 && (vv).code<=VEDIT_LASTCODE )
+#define DBLK_VEDIT_good(db)                                       \
+   ( VEDIT_good((db)->vedset) && (db)->vedset.ival >= 0 &&        \
+                                 (db)->vedset.ival < (db)->nvals )
+#define DSET_VEDIT_good(ds) DBLK_VEDIT_good((ds)->dblk)
+/*------------------------------------------------------------------*/
+
 /*!  All subvolumes are stored in an array of MRI_IMAGE (the "brick").
      - If mmap is used, then the whole external file is mmap()-ed in one
        block and the data pointers for each image computed from this base.
@@ -1078,6 +1117,10 @@ typedef struct {
 
       char shm_idcode[32] ;   /*!< Idcode for shared memory buffer, if any [02 May 2003]. */
       int  shm_idint ;        /*!< Integer id for shared memory buffer. */
+
+      VEDIT_settings vedset ; /*!< Volume edit-on-the-fly settings */
+      MRI_IMAGE *vedim ;      /*!< Volume edit-on-the-fly result */
+
 } THD_datablock ;
 
 /*! Force bricks to be allocated with malloc(). */
@@ -1387,12 +1430,18 @@ extern mat44 THD_resample_mat44( mat44 , int,int,int ,
       mat33 nifti_mat33_mul    ( mat33 A, mat33 B ) ;  == matrix multiply
 *******/
 
-/******* Not in nifti1_io.c, due to some oversight *******/
+/******* Function below is not in nifti1_io.c, due to some oversight ******/
 
 extern mat44 THD_mat44_mul( mat44 A , mat44 B ) ;      /* matrix multiply */
 
+#undef  MAT44_MUL
+#define MAT44_MUL THD_mat44_mul
+
+#undef  MAT44_INV
+#define MAT44_INV nifti_mat44_inverse
+
 #undef  ISVALID_MAT44
-#define ISVALID_MAT44(AA) (AA.m[3][3] != 0.0f)
+#define ISVALID_MAT44(AA) ((AA).m[3][3] != 0.0f)
 
 /* load the top 3 rows of a mat44 matrix,
    and set the 4th row to [ 0 0 0 1], as required */
@@ -1403,6 +1452,16 @@ extern mat44 THD_mat44_mul( mat44 A , mat44 B ) ;      /* matrix multiply */
     AA.m[1][0]=a21 , AA.m[1][1]=a22 , AA.m[1][2]=a23 , AA.m[1][3]=a24 ,   \
     AA.m[2][0]=a31 , AA.m[2][1]=a32 , AA.m[2][2]=a33 , AA.m[2][3]=a34 ,   \
     AA.m[3][0]=AA.m[3][1]=AA.m[3][2]=0.0f , AA.m[3][3]=1.0f            )
+
+#undef  LOAD_DIAG_MAT44
+#define LOAD_DIAG_MAT44(AA,a,b,c)                                         \
+  LOAD_MAT44( AA , (a),0,0,0 , 0,(b),0,0 , 0,0,(c),0 )
+
+#undef  ZERO_MAT44
+#define ZERO_MAT44(AA) LOAD_DIAG_MAT44(AA,0.0,0.0,0.0)
+
+#undef  LOAD_MAT44_VEC
+#define LOAD_MAT44_VEC(AA,x,y,z) ( AA.m[0][3]=x , AA.m[1][3]=y , AA.m[2][3]=z )
 
 #undef  UNLOAD_MAT44
 #define UNLOAD_MAT44(AA,a11,a12,a13,a14,a21,a22,a23,a24,a31,a32,a33,a34)  \
@@ -1444,6 +1503,14 @@ extern mat44 THD_mat44_mul( mat44 A , mat44 B ) ;      /* matrix multiply */
                  AA.m[1][0],AA.m[1][1],AA.m[1][2],0.0f,  \
                  AA.m[2][0],AA.m[2][1],AA.m[2][2],0.0f )
 
+/* cf. vecmat.h */
+
+#undef  VECMAT_TO_MAT44
+#define VECMAT_TO_MAT44(vm,AA)                                                \
+ LOAD_MAT44(AA,vm.mm.mat[0][0],vm.mm.mat[0][1],vm.mm.mat[0][2],vm.vv.xyz[0],  \
+               vm.mm.mat[1][0],vm.mm.mat[1][1],vm.mm.mat[1][2],vm.vv.xyz[1],  \
+               vm.mm.mat[2][0],vm.mm.mat[2][1],vm.mm.mat[2][2],vm.vv.xyz[2] )
+
 /* apply a mat44 matrix to a 3 vector (x,y,z) to produce (a,b,c) */
 
 #undef  MAT44_VEC
@@ -1479,6 +1546,64 @@ extern mat44 THD_mat44_mul( mat44 A , mat44 B ) ;      /* matrix multiply */
   SS, AA.m[0][0], AA.m[0][1], AA.m[0][2], AA.m[0][3],  \
       AA.m[1][0], AA.m[1][1], AA.m[1][2], AA.m[1][3],  \
       AA.m[2][0], AA.m[2][1], AA.m[2][2], AA.m[2][3] )
+
+/* modify the last column of a mat44 struct so that the
+   same spatial coords apply to an image with pp,qq,rr
+   elements added at the lower edges [01 Sep 2006 - RWCox] */
+
+#undef  MAT44_EXTEND_IJK
+#define MAT44_EXTEND_IJK(AA,pp,qq,rr)                              \
+ ( AA.m[0][3] -= AA.m[0][0]*(pp)+AA.m[0][1]*(qq)+AA.m[0][2]*(rr) , \
+   AA.m[1][3] -= AA.m[1][0]*(pp)+AA.m[1][1]*(qq)+AA.m[1][2]*(rr) , \
+   AA.m[2][3] -= AA.m[2][0]*(pp)+AA.m[2][1]*(qq)+AA.m[2][2]*(rr)  )
+
+/* elementary rotation matrices:
+   rotate about axis #ff, from axis #aa toward #bb,
+   where ff, aa, and bb are a permutation of {0,1,2} */
+
+#undef  LOAD_ROTGEN_MAT44
+#define LOAD_ROTGEN_MAT44(AA,th,ff,aa,bb)                             \
+ ( AA.m[aa][aa] = AA.m[bb][bb] = cos((th)) ,                          \
+   AA.m[aa][bb] = sin((th)) ,                                         \
+   AA.m[bb][aa] = -AA.m[aa][bb] ,                                     \
+   AA.m[ff][ff] = 1.0f ,                                              \
+   AA.m[aa][ff] = AA.m[bb][ff] = AA.m[ff][aa] = AA.m[ff][bb] = 0.0f , \
+   AA.m[0][3]   = AA.m[1][3]   = AA.m[2][3]   =                       \
+   AA.m[3][0]   = AA.m[3][1]   = AA.m[3][2]   = 0.0f , AA.m[3][3]=1.0f  )
+
+
+/* rotations about x,y,z axes, respectively */
+
+#undef  LOAD_ROTX_MAT44
+#undef  LOAD_ROTY_MAT44
+#undef  LOAD_ROTZ_MAT44
+#define LOAD_ROTX_MAT44(A,th) LOAD_ROTGEN_MAT44(A,th,0,1,2)
+#define LOAD_ROTY_MAT44(A,th) LOAD_ROTGEN_MAT44(A,th,1,2,0)
+#define LOAD_ROTZ_MAT44(A,th) LOAD_ROTGEN_MAT44(A,th,2,0,1)
+
+/* rotation about axis #i, for i=0,1,2 (x,y,z) */
+
+#undef  LOAD_ROT_MAT44
+#define LOAD_ROT_MAT44(A,th,i)                    \
+  do{ switch( (i) ){                              \
+        case 0: LOAD_ROTX_MAT44(A,th)   ; break ; \
+        case 1: LOAD_ROTY_MAT44(A,th)   ; break ; \
+        case 2: LOAD_ROTZ_MAT44(A,th)   ; break ; \
+       default: LOAD_DIAG_MAT44(A,1,1,1); break ; \
+      } } while(0)
+
+/* determinant (could be used on a mat44 or mat33 struct) */
+
+#undef  MAT44_DET
+#define MAT44_DET(AA)                                                   \
+ (  AA.m[0][0]*AA.m[1][1]*AA.m[2][2] - AA.m[0][0]*AA.m[1][2]*AA.m[2][1] \
+  - AA.m[1][0]*AA.m[0][1]*AA.m[2][2] + AA.m[1][0]*AA.m[0][2]*AA.m[2][1] \
+  + AA.m[2][0]*AA.m[0][1]*AA.m[1][2] - AA.m[2][0]*AA.m[0][2]*AA.m[1][1]   )
+
+/* trace */
+
+#undef  MAT44_TRACE
+#define MAT44_TRACE(AA) ( AA.m[0][0] + AA.m[1][1] + AA.m[2][2] )
 
 /*---------------------------------------------------------------------*/
 /*--- data structure for information about time axis of 3D dataset ----*/
@@ -2362,6 +2487,23 @@ typedef struct THD_3dim_dataset {
                            ISVALID_DISKPTR((ds)->dblk->diskptr) &&               \
                            (ds)->dblk->diskptr->storage_mode == STORAGE_BY_MPEG )
 
+/*! Determine if dataset is valid, but has a non-AFNI storage mode */
+
+#define IS_VALID_NON_AFNI_DSET(ds)                                           \
+        ( ISVALID_DSET(ds) && ISVALID_DBLK((ds)->dblk) &&                    \
+          ISVALID_DISKPTR((ds)->dblk->diskptr) &&                            \
+          ( (ds)->dblk->diskptr->storage_mode == STORAGE_BY_MINC         ||  \
+            (ds)->dblk->diskptr->storage_mode == STORAGE_BY_ANALYZE      ||  \
+            (ds)->dblk->diskptr->storage_mode == STORAGE_BY_CTFMRI       ||  \
+            (ds)->dblk->diskptr->storage_mode == STORAGE_BY_CTFSAM       ||  \
+            (ds)->dblk->diskptr->storage_mode == STORAGE_BY_1D           ||  \
+            (ds)->dblk->diskptr->storage_mode == STORAGE_BY_3D           ||  \
+            (ds)->dblk->diskptr->storage_mode == STORAGE_BY_NIFTI        ||  \
+            (ds)->dblk->diskptr->storage_mode == STORAGE_BY_MPEG         ||  \
+            (ds)->dblk->diskptr->storage_mode == STORAGE_BY_NIML         ||  \
+            (ds)->dblk->diskptr->storage_mode == STORAGE_BY_NI_SURF_DSET     \
+          ) )
+
 /*! Determine if AFNI is allowed to over-write dataset ds */
 
 #define DSET_WRITEABLE(ds)       \
@@ -3228,8 +3370,17 @@ typedef struct {
 
 #define ATRNAME_KEYWORDS       "DATASET_KEYWORDS"
 
+#ifdef  __cplusplus
+}
+#endif
+
 /************************************************************************/
 /******************* rest of prototypes *********************************/
+
+#include <stdarg.h>
+#ifdef  __cplusplus
+extern "C" {
+#endif
 
 #ifndef DONT_USE_SCANDIR
 #ifdef SCANDIR_WANTS_CONST
@@ -3338,6 +3489,7 @@ extern int    storage_mode_from_niml( void * ) ;
 
 extern int storage_mode_from_filename( char * fname );      /* 20 Apr 2006 */
 extern int has_known_non_afni_extension( char * fname ) ;   /*     [rickr] */
+extern char * find_filename_extension( char * fname );
 
 extern void THD_datablock_apply_atr( THD_3dim_dataset * ) ; /* 09 May 2005 */
 
@@ -3347,6 +3499,7 @@ extern MRI_IMAGE *        THD_fetch_1D           (char *) ; /* 26 Mar 2001 */
 
 extern void THD_set_storage_mode( THD_3dim_dataset *,int ); /* 21 Mar 2003 */
 
+extern int * get_count_intlist ( char *str , int *nret); 
 extern int * MCW_get_intlist( int , char * ) ;
 extern void MCW_intlist_allow_negative( int ) ;             /* 22 Nov 1999 */
 
@@ -3468,7 +3621,13 @@ extern THD_3dim_dataset * THD_copy_dset_subs( THD_3dim_dataset * , int * ) ;
    "example\n"                                                                \
    "   -a '1D:5@0,10@1,5@0,10@1,5@0'\n"                                       \
    "specifies that variable 'a' be assigned to a 1D time series of 35,\n"     \
-   "alternating in blocks between values 0 and value 1.\n"
+   "alternating in blocks between values 0 and value 1.\n"                    \
+   "\n"                                                                       \
+   "Finally, you can force most AFNI programs to tranpose a 1D file on\n"     \
+   "input by appending a single ' character at the end of the filename.\n"    \
+   "N.B.: Since the ' character is also special to the shell, you'll\n"       \
+   "      probably have to put a \\ character before it. Examples:\n"         \
+   "       1dcat 1D:3,4,5   and   1dcat 1D:3,4,5\\'\n"
 
 extern void THD_delete_3dim_dataset( THD_3dim_dataset * , Boolean ) ;
 extern THD_3dim_dataset * THD_3dim_from_block( THD_datablock * ) ;
@@ -3517,6 +3676,7 @@ extern int     THD_load_niml   ( THD_datablock * ) ;         /* 12 Jun 2006 */
 
 extern void    THD_zerofill_dataset( THD_3dim_dataset * ) ;  /* 18 Mar 2005 */
 extern int     THD_apply_master_subrange( THD_datablock * ); /* 14 Apr 2006 */
+extern void    THD_patch_brickim( THD_3dim_dataset * ) ;     /* 20 Oct 2006 */
 
 extern int THD_datum_constant( THD_datablock * ) ;           /* 30 Aug 2002 */
 #define DSET_datum_constant(ds) THD_datum_constant((ds)->dblk)
@@ -3528,7 +3688,7 @@ extern int THD_write_minc( char *, THD_3dim_dataset * , int) ; /* 11 Apr 2002 */
 
 extern void THD_write_1D( char *, char *, THD_3dim_dataset *); /* 04 Mar 2003 */
 extern void THD_write_3D( char *, char *, THD_3dim_dataset *); /* 21 Mar 2003 */
-extern int  THD_write_niml( THD_3dim_dataset *, int);
+extern Boolean THD_write_niml( THD_3dim_dataset *, int);
 
 extern int  write_niml_file( char *, NI_group *);      /* 12 Jun 2006 [rickr] */
 
@@ -3696,12 +3856,20 @@ extern void   THD_automask_extclip( int ) ;
 extern byte * mri_automask_image( MRI_IMAGE * ) ;          /* 05 Mar 2003 */
 extern byte * mri_automask_imarr( MRI_IMARR * ) ;          /* 18 Nov 2004 */
 
+                                                   /* 13 Nov 2006 [rickr] */
+extern int    thd_mask_from_brick(THD_3dim_dataset *, int, float, byte **, int);
+extern int    thd_multi_mask_from_brick(THD_3dim_dataset *, int, byte **);
+
+
 extern void THD_autobbox( THD_3dim_dataset * ,             /* 06 Jun 2002 */
                           int *, int * , int *, int * , int *, int * ) ;
 extern void MRI_autobbox( MRI_IMAGE * ,
                           int *, int * , int *, int * , int *, int * ) ;
+extern void MRI_autobbox_clust( int ) ;                    /* 20 Sep 2006 */
 
 extern void THD_automask_set_clipfrac( float f ) ;         /* 20 Mar 2006 */
+extern void THD_automask_set_peelcounts( int,int ) ;       /* 24 Oct 2006 */
+extern void THD_automask_set_gradualize( int ) ;
 
 extern int THD_mask_fillin_completely( int,int,int, byte *, int ) ; /* 19 Apr 2002 */
 extern int THD_mask_fillin_once      ( int,int,int, byte *, int ) ;
@@ -3710,15 +3878,26 @@ extern int THD_mask_clip_neighbors( int,int,int, byte *, float,float,float *) ; 
 
 extern void THD_mask_clust( int nx, int ny, int nz, byte *mmm ) ;
 extern void THD_mask_erode( int nx, int ny, int nz, byte *mmm, int redilate ) ;
+extern void THD_mask_erodemany( int nx, int ny, int nz, byte *mmm, int npeel ) ; /* 24 Oct 2006 */
 
 extern int THD_peel_mask( int nx, int ny, int nz , byte *mmm, int pdepth ) ;
 
 extern void THD_mask_dilate( int, int, int, byte *, int ) ;  /* 30 Aug 2002 */
 
 extern float THD_cliplevel( MRI_IMAGE * , float ) ;          /* 12 Aug 2001 */
+extern float mri_topclip( MRI_IMAGE * ) ;                    /* 28 Sep 2006 */
 extern MRI_IMAGE * THD_median_brick( THD_3dim_dataset * ) ;  /* 12 Aug 2001 */
+extern MRI_IMAGE * THD_mad_brick   ( THD_3dim_dataset * ) ;  /* 07 Dec 2006 */
 extern MRI_IMAGE * THD_mean_brick  ( THD_3dim_dataset * ) ;  /* 15 Apr 2005 */
 extern MRI_IMAGE * THD_rms_brick   ( THD_3dim_dataset * ) ;  /* 15 Apr 2005 */
+
+extern MRI_IMARR * THD_medmad_bricks   (THD_3dim_dataset *); /* 07 Dec 2006 */
+extern MRI_IMARR * THD_meansigma_bricks(THD_3dim_dataset *); /* 07 Dec 2006 */
+extern MRI_IMARR * IMARR_medmad_bricks ( MRI_IMARR * )     ; /* 11 Dec 2006 */
+
+extern float THD_cliplevel_partial( MRI_IMAGE *im , float mfrac ,
+                                    int xa,int xb, int ya,int yb, int za,int zb ) ;
+extern MRI_IMAGE * THD_cliplevel_gradual( MRI_IMAGE *im , float mfrac ) ;
 
  /* 08 Mar 2001 - functions for dealing with rows */
 
@@ -3873,10 +4052,13 @@ extern void mri_3dalign_initvals( float,float,float,float,float,float ) ;
 
   /*-- see mri_warp3D_align.c for these routines --*/
 
+#undef  PARAM_MAXTRIAL
+#define PARAM_MAXTRIAL 7
 typedef struct {
-  float min, max, ident, delta, toler ;
-  float val_init , val_out , val_fixed ;
+  float min, max, siz, ident, delta, toler ;
+  float val_init , val_out , val_fixed , val_pinit ;
   int fixed ;
+  float val_trial[PARAM_MAXTRIAL] ;
   char name[32] ;
 } MRI_warp3D_param_def ;
 
@@ -3992,6 +4174,9 @@ extern double ENTROPY_compute   (void) ;
 extern double ENTROPY_dataset   (THD_3dim_dataset *) ;
 extern double ENTROPY_datablock (THD_datablock *) ;
 
+extern void AFNI_vedit( THD_3dim_dataset *dset , VEDIT_settings vednew ) ;
+extern void AFNI_vedit_clear( THD_3dim_dataset *dset ) ;
+
 /*--------------------------------------------------------------------------*/
 
 /*--- Stuff for Tom Ross's NOTES ---*/
@@ -4036,7 +4221,6 @@ extern void   tross_Replace_History( THD_3dim_dataset * , char * ) ;
 
 extern char * tross_breakup_string( char *, int , int ) ;
 
-#include <stdarg.h>
 void tross_multi_Append_History( THD_3dim_dataset * , ... ) ;
 
 /*-----------------------------------------------------------------------*/
@@ -4088,6 +4272,51 @@ extern float THD_spearman_corr( int,float *,float *) ;  /* 23 Aug 2001 */
 extern float THD_quadrant_corr( int,float *,float *) ;
 extern float THD_pearson_corr ( int,float *,float *) ;
 
+extern float THD_pearson_corr_wt( int,float *,float *,float *) ; /* 13 Sep 2006 */
+
+extern float THD_spearman_corr_nd( int,float *,float *) ;  /* 23 Aug 2006 */
+extern float THD_quadrant_corr_nd( int,float *,float *) ;
+#define THD_pearson_corr_nd THD_pearson_corr
+
+extern void  rank_order_float     ( int , float * );
+extern float spearman_rank_prepare( int , float * );
+extern float quadrant_corr_prepare( int , float * );
+extern float spearman_rank_corr   ( int , float * , float , float * );
+extern float quadrant_corr        ( int , float * , float , float * );
+
+extern float THD_mutual_info_scl( int, float,float,float *,    /* 16 Aug 2006 */
+                                       float,float,float *, float * ) ;
+extern float THD_mutual_info( int , float *, float * ) ;
+
+extern float THD_corr_ratio_scl( int, float,float,float *,     /* 23 Aug 2006 */
+                                      float,float,float *, float * ) ;
+extern float THD_corr_ratio( int , float *, float * ) ;
+extern void  THD_corr_ratio_mode( int ) ;                      /* 11 Oct 2006 */
+#define THD_corr_ratio_sym_not THD_corr_ratio_mode(0)
+#define THD_corr_ratio_sym_mul THD_corr_ratio_mode(1)
+#define THD_corr_ratio_sym_add THD_corr_ratio_mode(2)
+
+extern float THD_norm_mutinf_scl( int, float,float,float *,    /* 25 Sep 2006 */
+                                       float,float,float *, float * ) ;
+extern float THD_norm_mutinf( int , float *, float * ) ;
+
+extern float THD_jointentrop_scl( int, float,float,float *,    /* 25 Sep 2006 */
+                                       float,float,float *, float * ) ;
+extern float THD_jointentrop( int , float *, float * ) ;
+
+extern float THD_hellinger_scl( int, float,float,float *,      /* 26 Sep 2006 */
+                                     float,float,float *, float * ) ;
+extern float THD_hellinger( int , float *, float * ) ;
+
+extern int retrieve_2Dhist   ( float **xyhist ) ; /* 28 Sep 2006 */
+extern void set_2Dhist_hpower( double ) ;         /* 03 Oct 2006 */
+extern void set_2Dhist_hbin  ( int  ) ;
+extern void clear_2Dhist     ( void ) ;
+extern void build_2Dhist( int n , float xbot,float xtop,float *x ,
+                          float ybot,float ytop,float *y , float *w ) ;
+
+/*------------------------------------------------------------------------*/
+
 extern THD_fvec3 THD_autonudge( THD_3dim_dataset *dsepi, int ivepi,
                                 THD_3dim_dataset *dsant, int ivant,
                                 float step,
@@ -4118,11 +4347,25 @@ extern float THD_BN_rat (void);
 /* 09 May 2005: stuff for converting a dataset to from a NIML group.      */
 
 extern NI_group * THD_nimlize_dsetatr( THD_3dim_dataset *) ;
+extern NI_group * THD_dset_to_ni_surf_dset( THD_3dim_dataset * , int ) ;
 extern void       THD_dblkatr_from_niml( NI_group *, THD_datablock * ) ;
 extern void       THD_set_dataset_attributes( THD_3dim_dataset * ) ;
 
 extern THD_3dim_dataset * THD_niml_to_dataset( NI_group * , int ) ;
 extern int THD_add_bricks( THD_3dim_dataset * , void * ) ;
+extern int THD_add_sparse_data( THD_3dim_dataset * , NI_group * ) ;
+
+extern int  NI_get_byte_order(NI_element *) ;    /* 29 Aug 2006 [rickr] */
+
+extern int  get_gni_debug(void) ;                /*  3 Aug 2006 [rickr] */
+extern int  get_gni_to_float(void) ;
+extern int  get_gni_write_mode(void) ;
+extern void set_gni_debug(int) ;
+extern void set_gni_to_float(int) ;
+extern void set_gni_write_mode(int) ;
+extern int  set_ni_globs_from_env(void) ;
+extern int  set_sparse_data_attribs(NI_element *, THD_3dim_dataset *, int) ;
+
 
 #define SBFLAG_INDEX    (1<<0)
 #define SBFLAG_FACTOR   (1<<1)
@@ -4133,5 +4376,9 @@ extern NI_group * THD_dataset_to_niml( THD_3dim_dataset * ) ;
 
 extern MRI_IMAGE  * niml_to_mri( NI_element * ) ;
 extern NI_element * mri_to_niml( MRI_IMAGE *  ) ;
+
+#ifdef  __cplusplus
+}
+#endif
 
 #endif /* _MCW_3DDATASET_ */

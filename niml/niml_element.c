@@ -15,7 +15,7 @@
 NI_element * make_empty_data_element( header_stuff *hs )
 {
    NI_element *nel ;
-   int ii , qq ;
+   int ii ;
 
    if( hs == NULL || hs->name == NULL ) return NULL ;
 
@@ -197,7 +197,6 @@ NI_dpr("ENTER make_empty_data_element\n") ;
 NI_group * make_empty_group_element( header_stuff *hs )
 {
    NI_group *ngr ;
-   int ii , qq ;
 
    if( hs == NULL || hs->name == NULL ) return NULL ;
 
@@ -293,7 +292,7 @@ char * NI_element_name( void *nini )
 
 void NI_free_element( void *nini )
 {
-   int ii , tt=NI_element_type(nini) , jj ;
+   int ii , tt=NI_element_type(nini) ;
 
    if( tt < 0 ) return ; /* bad input */
 
@@ -365,6 +364,45 @@ void NI_free_element( void *nini )
       NI_free( npi->name ) ;    /* 03 Jun 2002 */
       NI_free( npi ) ;
    }
+
+   return ;
+}
+
+/*-----------------------------------------------------------------------*/
+/*! Expunge all data from element or group.           17 Jul 2006 [rickr]
+-------------------------------------------------------------------------*/
+
+void NI_free_element_data( void *nini )
+{
+   int ii , tt=NI_element_type(nini) ;
+
+   if( tt < 0 ) return ; /* bad input */
+
+   /*-- if element, nuke data --*/
+
+   if( tt == NI_ELEMENT_TYPE ){
+      NI_element *nel = (NI_element *)nini ;
+
+      if( nel->vec != NULL ){
+        for( ii=0 ; ii < nel->vec_num ; ii++ )
+           NI_free_column( NI_rowtype_find_code(nel->vec_typ[ii]) ,
+                           nel->vec_len , nel->vec[ii]             ) ;
+         NI_free( nel->vec ) ;
+         nel->vec = NULL ;
+      }
+
+   /*-- if group, recur --*/
+
+   } else if( tt == NI_GROUP_TYPE ){
+      NI_group *ngr = (NI_group *)nini ;
+
+      if( ngr->part != NULL ){
+        for( ii=0 ; ii < ngr->part_num ; ii++ )
+          NI_free_element_data( ngr->part[ii] ) ;     /* recursion */
+      }
+   }
+
+   /*-- no other cases for data --*/
 
    return ;
 }
@@ -470,6 +508,11 @@ void NI_add_column( NI_element *nel , int typ , void *arr )
    /* add 1 to the count of vectors */
 
    nel->vec_num = nn+1 ;
+
+   /* if element has "ni_type" attribute, adjust it   14 Jul 2006 [rickr] */
+   if( NI_get_attribute(nel, "ni_type") )
+      NI_set_ni_type_atr(nel) ;
+
    return ;
 }
 
@@ -1034,7 +1077,8 @@ int NI_search_group_shallow( NI_group *ngr , char *enam , void ***nipt )
      nini = ngr->part[ii] ;
      nm   = NI_element_name( nini ) ;
      if( nm != NULL && strcmp(nm,enam) == 0 ){
-       nelar = (void **) NI_realloc(nelar,void*,nn+1) ;
+                                  /* added *size  11 Jul 2006 [rickr] */
+       nelar = (void **) NI_realloc(nelar,void*,(nn+1)*sizeof(void *)) ;
        nelar[nn++] = nini ;
      }
    }
@@ -1075,14 +1119,14 @@ int NI_search_group_deep( NI_group *ngr , char *enam , void ***nipt )
      nini = ngr->part[ii] ;
      nm   = NI_element_name( nini ) ;
      if( nm != NULL && strcmp(nm,enam) == 0 ){
-       nelar = (void **) NI_realloc(nelar,void*,nn+1) ;
+       nelar = (void **) NI_realloc(nelar,void*,(nn+1)*sizeof(void *)) ;
        nelar[nn++] = nini ;
      }
      if( NI_element_type(nini) == NI_GROUP_TYPE ){  /* recursion */
        int nsub , jj ; void **esub ;
        nsub = NI_search_group_deep( nini , enam , &esub ) ;
        if( nsub > 0 ){
-         nelar = (void **) NI_realloc(nelar,void*,nn+nsub) ;
+         nelar = (void **) NI_realloc(nelar,void*,(nn+nsub)*sizeof(void *)) ;
          for( jj=0 ; jj < nsub ; jj++ ) nelar[nn++] = esub[jj] ;
          NI_free(esub) ;
        }
@@ -1092,3 +1136,56 @@ int NI_search_group_deep( NI_group *ngr , char *enam , void ***nipt )
    if( nn > 0 ) *nipt = nelar ;
    return nn ;
 }
+
+/*-----------------------------------------------------------------------*/
+/*! add a ni_type attribute to the element            14 Jul 2006 [rickr]
+    (based on NI_write_element())
+-------------------------------------------------------------------------*/
+void NI_set_ni_type_atr( NI_element * nel )
+{
+   char * buf ;  /* alloc in blocks of ~1K (bob noted names up to 255 chars) */
+   char * posn ;
+   int    ii, prev, count=0 ;
+   int    req_len, total_len=1024 ;
+
+   if( ! nel || nel->vec_num <= 0 ) return ;
+
+   /* make enough space for a list of buffers, and init. to empty */
+   /* -- NI_rowtype_define uses 255 as a max rowtype name length  */
+   buf = (char *)NI_malloc(char, total_len * sizeof(char)) ;
+   buf[0] = '\0' ;
+
+   for( prev=-1, ii=0; ii < nel->vec_num; ii++ ){
+      if( nel->vec_typ[ii] != prev ){   /* not the previous type */
+         if( prev >= 0 ){               /* apply previous type now */
+            posn = buf + strlen(buf);
+            if( count > 1 ) sprintf(posn, "%d*%s,", count, NI_type_name(prev));
+            else            sprintf(posn, "%s,",           NI_type_name(prev));
+         }
+         prev = nel->vec_typ[ii] ;   /* save new type code */
+         count = 1 ;                 /* have 1 such type   */
+
+         /* make sure there is enough space for the new code        */
+         /* (old, new, and space for "5280*")   17 Jul 2006 [rickr] */
+         req_len = strlen(buf) + strlen(NI_type_name(prev)) + 10 ;
+         if( total_len < req_len )
+            buf = (char *)NI_realloc(buf, char, (req_len+1024) * sizeof(char)) ;
+
+      } else {                       /* same as previous type  */
+         count++ ;                   /* so increment its count */
+      }
+   }
+
+   /* now write the last type found */
+   posn = buf + strlen(buf) ;
+   if( count > 1 ) sprintf(posn, "%d*%s", count, NI_type_name(prev));
+   else            sprintf(posn, "%s",           NI_type_name(prev));
+
+   /* now add the string as an attribute, and nuke the old string */
+   NI_set_attribute(nel, "ni_type", buf) ;
+
+   NI_free(buf) ;
+
+   return ;
+}
+

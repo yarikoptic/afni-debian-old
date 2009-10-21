@@ -2,6 +2,9 @@
 
 #define SKIPVOX(i) ( mask != NULL && !mask[i] )
 
+static int use_dxyz = 0 ;
+void mri_medianfilter_usedxyz( int i ){ use_dxyz = i; }
+
 /*-----------------------------------------------------------------------*/
 /*! Compute the median filter of an input image.
     Output image is always in float format.
@@ -15,10 +18,11 @@ MRI_IMAGE *mri_medianfilter( MRI_IMAGE *imin, float irad, byte *mask, int verb )
    short *di , *dj , *dk ;
    int nd, ii,jj,kk, ip,jp,kp, nx,ny,nz, nxy, ijk, dd,nt,pjk, kd  ;
    MCW_cluster *cl ;
+   float dz ;
 
 ENTRY("mri_medianfilter") ;
 
-   if( imin == NULL || irad < 1.0 ) RETURN(NULL) ;
+   if( imin == NULL || irad <= 0.0f ) RETURN(NULL) ;
 
    /** if not a good input data type, floatize and try again **/
 
@@ -35,8 +39,19 @@ ENTRY("mri_medianfilter") ;
 
    /** build cluster of points for median-izing **/
 
-   if( irad < 1.01 ) irad = 1.01 ;
-   cl = MCW_build_mask( 1.0,1.0,1.0 , irad ) ;
+   if( use_dxyz ){
+     if( irad < 1.01f ) irad = 1.01f ;
+     dz = (imin->nz == 1) ? 666.0f : 1.0f ;
+     cl = MCW_build_mask( 1.0f,1.0f,dz , irad ) ;
+   } else {
+     float dm ;
+     dz = (imin->nz == 1) ? 666.0f : imin->dz ;
+     dm = MIN(imin->dx,imin->dy) ;
+     if( imin->nz == 1 ){ dz = 666.0f ; }
+     else               { dz = imin->dz ; dm = MIN(dm,dz) ; }
+     dm *= 1.01f ; if( irad < dm ) irad = dm ;
+     cl = MCW_build_mask( imin->dx,imin->dy,dz , irad ) ;
+   }
 
    if( cl == NULL || cl->num_pt < 6 ){ KILL_CLUSTER(cl); RETURN(NULL); }
 

@@ -5,7 +5,7 @@ int main( int argc , char *argv[] )
 {
    THD_3dim_dataset *dset ;
    char *prefix=NULL , *fname ;
-   int narg=1 , flags=0 , ii , verb=0 , newid=1 , denote=0 , floatize=0 ;
+   int narg=1 , flags=0 , ii , verb=0 , newid=1 , denote=0 , floatize=0, cmode ;
    niftiwr_opts_t options ;
 
    PRINT_VERSION("3dAFNItoNIFTI");
@@ -113,9 +113,7 @@ int main( int argc , char *argv[] )
    if( narg >= argc )
      ERROR_exit("No dataset on command line?\n");
 
-   dset = THD_open_dataset( argv[narg] ) ;
-   if( !ISVALID_DSET(dset) )
-     ERROR_exit("Can't open dataset %s\n",argv[narg]);
+   dset = THD_open_dataset( argv[narg] ); CHECK_OPEN_ERROR(dset,argv[narg]) ;
 
    /*--- deal with the filename ---*/
 
@@ -137,8 +135,7 @@ int main( int argc , char *argv[] )
      int nvals=DSET_NVALS(dset) , nxyz=DSET_NVOX(dset) , tt ;
      float fac , *far ;
 
-     DSET_mallocize(dset); DSET_load(dset);
-     if( !DSET_LOADED(dset) ) ERROR_exit("Can't load input dataset from disk") ;
+     DSET_mallocize(dset); DSET_load(dset); CHECK_LOAD_ERROR(dset);
      if( verb ) INFO_message("Converting dataset to floats (in memory)") ;
 
      /* loop over sub-bricks */
@@ -171,7 +168,8 @@ int main( int argc , char *argv[] )
    /*--- Go Baby, Go! ---*/
 
 #ifdef HAVE_ZLIB                                            /* 21 Sep 2005 */
-     if( AFNI_yesenv("AFNI_AUTOGZIP")                  &&
+     cmode = THD_get_write_compression();
+     if( cmode==COMPRESS_GZIP                  &&
          STRING_HAS_SUFFIX(options.infile_name,".nii")   )
        strcat(options.infile_name,".gz") ;
 #else
@@ -183,6 +181,6 @@ int main( int argc , char *argv[] )
 #endif
 
    if( denote ) THD_anonymize_write(1) ; /* sets a flag for attribute output */
-   ii = THD_write_nifti( dset , options ) ; /* actually write the damn thing */
+   ii = THD_write_nifti( dset , options ) ; /* actually write the darn thing */
    exit(0) ;
 }

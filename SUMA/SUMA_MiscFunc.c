@@ -1,4 +1,5 @@
 #include "SUMA_suma.h"
+#include "../matrix.c"
 
 extern SUMA_CommonFields *SUMAg_CF; 
 
@@ -230,7 +231,7 @@ SUMA_MEMTRACE_STRUCT * SUMA_Create_MemTrace (void) {
  
    #ifdef USE_SUMA_MALLOC
    SUMA_SL_Err("NO LONGER SUPPORTED");
-   SUMA_RETURN(NULL);
+   return(NULL);
    /* you cannot use SUMAg_CF here because the function that allocates for SUMAg_CF calls that one */
    
    /* DO NOT USE SUMA_malloc function here ! */
@@ -251,7 +252,1471 @@ SUMA_MEMTRACE_STRUCT * SUMA_Create_MemTrace (void) {
    return(NULL);
    #endif
 }
+
+/*!
+   \brief Calculate factorial
+*/
+double SUMA_factorial (int n)
+{
+   static char FuncName[]={"SUMA_factorial"};
+   double f;
+   int c;
+   
+   SUMA_ENTRY;
+   
+   if (n<0) { SUMA_S_Errv("Factorial of negative number (%d)!\n", n); SUMA_RETURN(0); }
+   if (n==0) SUMA_RETURN(1);
+   f = 1;
+   c = 1;
+   do {
+      f *= c; 
+      ++c;  
+   } while (c<=n);
+   
+   SUMA_RETURN(f);
+}
+
+/*!
+   \brief Calculate factorials from [0 to n]
+   results are retuned in a long long vector (n+1) elements long long
+*/
+double *SUMA_factorial_array (int n)
+{
+   static char FuncName[]={"SUMA_factorial_array"};
+   double *f;
+   int c;
+   SUMA_ENTRY;
+   if (n<0) { SUMA_S_Errv("Factorial of negative number (%d)!\n", n); SUMA_RETURN(NULL); }
+   f = (double *)SUMA_calloc(n+1, sizeof(double));
+   if (!f) {
+      SUMA_S_Crit("Failed to allocate");
+      SUMA_RETURN(NULL); 
+   }
+   f[0] = 1;
+   c = 1;
+   while (c<=n) {
+      f[c] = c*f[c-1]; 
+      ++c;  
+   } 
+   
+   SUMA_RETURN(f);
+}
+
+/*!
+   \brief Kronecker product
+*/
+SUMA_MX_VEC *SUMA_KronProd(SUMA_MX_VEC *A, SUMA_MX_VEC *B)
+{
+   static char FuncName[]={"SUMA_KronProd"};
+   SUMA_MX_VEC *P = NULL;
+   int pdims[2], a0, a1, b0, b1, p0, p1;
+   
+   SUMA_ENTRY;
+   
+   if (!A || !B) {
+      SUMA_S_Err("NULL input");
+      SUMA_RETURN(NULL);
+   }
+   if (A->N_dims != B->N_dims || A->N_dims != 2) {
+      SUMA_S_Err("Bad input matrix ndims");
+      SUMA_RETURN(NULL);
+   }
+   if (A->tp != SUMA_double || A->tp != B->tp) {
+      SUMA_S_Err("Only for SUMA_double matrices for the moment.");
+      SUMA_RETURN(NULL);
+   }
+   pdims[0] = A->dims[0] * B->dims[0];
+   pdims[1] = A->dims[1] * B->dims[1];
+   
+   
+   if (!(P = SUMA_NewMxVec(A->tp, 2, pdims, 1))) {
+      SUMA_S_Err("Failed to create output matrix.");
+      SUMA_RETURN(NULL);
+   }
+   
+   if (P->tp == SUMA_double) {
+      double Aij, Bij;
+      for (a0=0; a0<A->dims[0]; ++a0) {
+         for (a1=0; a1<A->dims[1]; ++a1) {
+            Aij = mxvd2(A, a0, a1);
+            for (b0=0; b0<B->dims[0]; ++b0) {
+               for (b1=0; b1<B->dims[1]; ++b1) {
+                  Bij = mxvd2(B, b0, b1);
+                  p0 = B->dims[0]*a0+b0;
+                  p1 = B->dims[1]*a1+b1;
+                  mxvd2(P, p0, p1) = Aij*Bij;   
+               }
+            }
+         }
+      }
+   }
+   
+   SUMA_RETURN(P);
+} 
+
+/*!
+   \brief turn a SUMA_MX_VEC into an equivalent matrix
+   
+*/ 
+int SUMA_MxVecBuildMat(SUMA_MX_VEC *mxv)
+{
+   static char FuncName[]={"SUMA_MxVecBuildMat"};
+   int i = 0, j=0;
+   
+   SUMA_ENTRY;
+   
+   if (!mxv) {
+      SUMA_S_Err("NULL mxv");
+      SUMA_RETURN(0);
+   }
+   if (mxv->tp != SUMA_double) {
+      SUMA_S_Err("This function is only for double types");
+   }
+   
+   if (!mxv->fdf) {
+      SUMA_S_Err("Will not work if fdf != 1");
+      SUMA_RETURN(0);
+   }
+   if (!mxv->N_dims || mxv->N_dims > 2) {
+      SUMA_S_Err("MxVec not in matriceable form!");
+      SUMA_RETURN(0);
+   }
+   
+   if (mxv->m) {
+      SUMA_S_Err("m is not null here");
+      SUMA_RETURN(0);
+   } 
+   
+   mxv->m = (matrix *)SUMA_malloc(sizeof(matrix));
+   matrix_initialize(mxv->m);
+    
+   /* create matrix using trickery to avoid duplicating data(reflects matrix_create)*/
+   mxv->m->rows = mxv->dims[0];
+   if (mxv->N_dims == 2) mxv->m->cols = mxv->dims[1];
+   else mxv->m->cols = 1;
+   
+   mxv->m->elts = (double **) malloc (sizeof(double *) * mxv->m->rows);
+   if (mxv->m->elts == NULL) {
+      SUMA_S_Err("Failed to allocate for elts");
+      SUMA_RETURN(0);
+   }
+   
+   for (i = 0;  i < mxv->m->rows;  i++) {
+      mxv->m->elts[i] = (double *)malloc(sizeof(double)*mxv->m->cols);
+      if (mxv->m->elts[i] == NULL) {
+         SUMA_S_Err("Failed to allocate for elts[i]");
+         SUMA_RETURN(0);
+      }
+   }
+
+   /* fill it up , explicit copy! MxVec does not store matrices row by row*/
+   for (i = 0;  i < mxv->m->rows;  i++) {
+      for (j = 0;  j < mxv->m->cols;  j++) {   
+         mxv->m->elts[i][j] = mxvd2(mxv, i,j);
+      }
+   }
+   
+   SUMA_RETURN(1);
+}
+
+/*!
+   Note: contents of input matrix c are destroyed here
+   ONLY works for double matrices
+*/
+SUMA_MX_VEC *SUMA_matrix2MxVec(matrix c) 
+{
+   static char FuncName[]={"SUMA_matrix2MxVec"};
+   SUMA_MX_VEC *mxv;
+   int N_dims=2, dims[2], i, j;
+   SUMA_Boolean LocalHead = NOPE;
+
+   SUMA_ENTRY;
+   
+   dims[0] = c.rows; dims[1] = c.cols;
+   mxv = SUMA_NewMxNullVec(SUMA_double, N_dims,  dims,  1);
+   /* have to create a new vector, MxVec does not store row by row*/
+   mxv->dv = (double *)SUMA_malloc(c.cols*c.rows*sizeof(double));
+   mxv->v = (void*)mxv->dv;
+   if (!mxv->dv) {
+         SUMA_S_Crit("Failed to allocate");
+         SUMA_RETURN(NULL);
+   }
+   
+   SUMA_LHv("Filling %d rows, %d cols", c.rows, c.cols);
+   for (i=0; i<c.rows; ++i) {
+      for (j=0; j<c.cols; ++j) {
+         mxvd2(mxv,i,j) = c.elts[i][j];
+      }  
+   }
+
+   matrix_destroy(&c);
+   
+   SUMA_RETURN(mxv);
+}
+
+SUMA_MX_VEC *SUMA_CoerceMxVec(SUMA_MX_VEC *va, SUMA_VARTYPE tp, int abs, SUMA_MX_VEC *recycle) 
+{
+   static char FuncName[]={"SUMA_CoerceMxVec"};
+   SUMA_MX_VEC *vt=NULL;
+   int i;
+   
+   SUMA_ENTRY;
+   
+   if (  (va->tp != SUMA_double && va->tp != SUMA_complex) ||
+         (tp != SUMA_double && tp != SUMA_complex) ) {
+      SUMA_S_Err("Only complex and double types allowed.");
+      SUMA_RETURN(NULL);     
+   }
+   
+   if (recycle) {
+      if (!SUMA_MxVecSameDims(va, recycle)) {
+         SUMA_S_Err("Bad recycle");
+         SUMA_RETURN(NULL);
+      }
+      if (recycle->tp != tp) {
+         SUMA_S_Errv("Mismatch between recycle->tp=%d and tp=%d\n", recycle->tp , tp);
+         SUMA_RETURN(NULL);
+      }
+      vt = recycle;
+   } else {
+      if (!(vt = SUMA_NewMxVec(tp, va->N_dims, va->dims, 1))) {
+         SUMA_S_Err("Failed to allocate");
+         SUMA_RETURN(NULL);
+      }
+   }
+   
+   if (va->tp == SUMA_complex  && tp == SUMA_double) {
+       if (abs) {
+         for (i=0; i<va->N_vals; ++i) {
+            mxvd1(vt, i) = (double)SUMA_COMPLEX_ABS(mxvc1(va,i));
+         }
+       } else {
+         for (i=0; i<va->N_vals; ++i) {
+            mxvd1(vt, i) = (double)mxvc1(va,i).r;
+         }  
+       }
+   } else if (va->tp == SUMA_double  && tp == SUMA_complex) {
+      if (abs) {
+         for (i=0; i<va->N_vals; ++i) {
+            mxvc1(vt, i).r = (float)SUMA_ABS(mxvd1(va,i));
+            mxvc1(vt, i).i = 0.0;
+         }
+      } else {
+         for (i=0; i<va->N_vals; ++i) {
+            mxvc1(vt, i).r = (float)(mxvd1(va,i));
+            mxvc1(vt, i).i = 0.0;
+         }
+      }
+   } else {
+      SUMA_S_Err("Type combo not supported, should not be here");
+      vt = SUMA_FreeMxVec(vt); 
+   }
+   
+   SUMA_RETURN(vt);
+}
+
+SUMA_MX_VEC *SUMA_MxVecAdd(SUMA_MX_VEC *va, SUMA_MX_VEC *vb, int sign, SUMA_MX_VEC *recycle)
+{
+   static char FuncName[]={"SUMA_MxVecAdd"};
+   SUMA_MX_VEC *vt=NULL;
+   int i, j;
+   SUMA_VARTYPE tp;
+   int dims[SUMA_MX_VEC_MAX_DIMS];
+   
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+
+   if (va->N_dims != vb->N_dims) {
+      SUMA_S_Err("Mismatch in N_dims");
+      SUMA_RETURN(vt);
+   }
+   if (va->N_vals != vb->N_vals) {
+      SUMA_S_Err("Mismatch in N_vals");
+      SUMA_RETURN(vt);
+   }
+   for (i=0; i<va->N_dims; ++i) {
+      dims[i] = va->dims[i];
+      if (va->dims[i] != vb->dims[i]) {
+         SUMA_S_Err("Mismatch in dims of va and vb\n");
+         SUMA_RETURN(vt);
+      }
+   }
+   if (  (va->tp != SUMA_complex && va->tp != SUMA_double) ||
+         (vb->tp != SUMA_complex && vb->tp != SUMA_double)  ) {
+      SUMA_S_Err("Only complex and double allowed.");
+      SUMA_RETURN(vt);      
+   }
+   if (va->tp == SUMA_complex || vb->tp == SUMA_complex) tp = SUMA_complex;
+   else tp = SUMA_double;
+   
+   if (recycle ) {
+      if (recycle->tp != tp) {
+         SUMA_S_Errv("Recycled vector of type %d, type %d needed.\n", recycle->tp, va->tp);
+         SUMA_RETURN(vt);
+      }
+      if (recycle->N_vals != va->N_vals) {
+         SUMA_S_Errv("Recycled vector of N_vals %d, N_vals %d needed.\n", recycle->N_vals, va->N_vals);
+         SUMA_RETURN(vt);
+      }
+      if (recycle->N_dims != va->N_dims) {
+         SUMA_S_Errv("Recycled vector of N_dims %d, N_dims of %d needed.\n", recycle->N_dims, va->N_dims);
+         SUMA_RETURN(vt);
+      }
+      for (i=0; i<va->N_dims; ++i) {
+         if (recycle->dims[i] != dims[i]) {
+            SUMA_S_Errv("Recycled vector dims[%d]=%d, dims[%d]=%d needed.\n", i, recycle->dims[i], i, dims[i]);
+            SUMA_RETURN(vt);
+         }
+      }
+      vt = recycle;
+   } else {
+      vt = SUMA_NewMxVec(tp, va->N_dims, dims, 1);
+   }
+   
+   /* here goes */
+   if (va->tp == SUMA_complex && vb->tp == SUMA_complex) {
+      if (sign > 0){ for (i=0; i<va->N_vals; ++i) { 
+                        mxvc1(vt, i).r = mxvc1(va, i).r + mxvc1(vb, i).r;
+                        mxvc1(vt, i).i = mxvc1(va, i).i + mxvc1(vb, i).i;
+                     }
+      } else  {      for (i=0; i<va->N_vals; ++i) { 
+                        mxvc1(vt, i).r = mxvc1(va, i).r - mxvc1(vb, i).r;
+                        mxvc1(vt, i).i = mxvc1(va, i).i - mxvc1(vb, i).i;
+                     } 
+      }
+   } else if (va->tp == SUMA_complex && vb->tp == SUMA_double) {
+      if (sign > 0){ for (i=0; i<va->N_vals; ++i) { 
+                        mxvc1(vt, i).r = mxvc1(va, i).r + mxvd1(vb, i);
+                        mxvc1(vt, i).i = mxvc1(va, i).i ;
+                     }
+      } else  {      for (i=0; i<va->N_vals; ++i) { 
+                        mxvc1(vt, i).r = mxvc1(va, i).r - mxvd1(vb, i);
+                        mxvc1(vt, i).i = mxvc1(va, i).i ;
+                     } 
+      }
+   } else if (va->tp == SUMA_double && vb->tp == SUMA_complex) {
+      if (sign > 0){ for (i=0; i<va->N_vals; ++i) { 
+                        mxvc1(vt, i).r = mxvd1(va, i)   + mxvc1(vb, i).r;
+                        mxvc1(vt, i).i =                  mxvc1(vb, i).i;
+                     }
+      } else  {      for (i=0; i<va->N_vals; ++i) { 
+                        mxvc1(vt, i).r = mxvd1(va, i)   - mxvc1(vb, i).r;
+                        mxvc1(vt, i).i =                - mxvc1(vb, i).i;
+                     } 
+      }
+   } else if (va->tp == SUMA_double && vb->tp == SUMA_double) {
+      if (sign > 0){ for (i=0; i<va->N_vals; ++i) { 
+                        mxvd1(vt, i)   = mxvd1(va, i)   + mxvd1(vb, i)  ;
+                     }
+      } else  {      for (i=0; i<va->N_vals; ++i) { 
+                        mxvd1(vt, i)   = mxvd1(va, i)   - mxvd1(vb, i)  ;
+                     } 
+      }
+   } else {
+      SUMA_S_Err("Bad combo");
+      vt = SUMA_FreeMxVec(vt); 
+   } 
+   
+   SUMA_RETURN(vt);   
+}
+
+/*!
+   \brief Return the transpose of MxVec
+*/
+SUMA_MX_VEC * SUMA_MxVecTranspose(SUMA_MX_VEC *va, SUMA_MX_VEC *recycle)
+{
+   static char FuncName[]={"SUMA_MxVecTranspose"};
+   SUMA_MX_VEC *vt=NULL;
+   int i, j;
+   int dims[2];
+   
+   SUMA_Boolean LocalHead = NOPE;
+   SUMA_ENTRY;
+   
+   if (va->N_dims > 2 || va->N_dims < 0) {
+      SUMA_S_Errv("Bad N_dims (%d)\n", va->N_dims);
+   }
+   if (va->N_dims == 1) va->dims[1] = 1;
+   dims[0] = va->dims[1];
+   dims[1] = va->dims[0];
+   if (recycle ) {
+      if (recycle->tp != va->tp) {
+         SUMA_S_Errv("Recycled vector of type %d, type %d needed.\n", recycle->tp, va->tp);
+         SUMA_RETURN(vt);
+      }
+      if (recycle->dims[0] != dims[0]) {
+         SUMA_S_Errv("Recycled vector dims[0]=%d, dims[0]=%d needed.\n", recycle->dims[0], dims[0]);
+         SUMA_RETURN(vt);
+      }
+      if (recycle->dims[1] != dims[1]) {
+         SUMA_S_Errv("Recycled vector dims[1]=%d, dims[1]=%d needed.\n", recycle->dims[1], dims[1]);
+         SUMA_RETURN(vt);
+      }
+      vt = recycle;
+   } else {
+      vt = SUMA_NewMxVec(va->tp, 2, dims, 1);
+   }
+   switch (va->tp) {
+      case SUMA_double:
+         if (va->dims[0] > va->dims[1]){  /* an optimization that is significant for stretched matrices */
+            for (i=0;i<va->dims[0];++i) {    
+               for (j=0; j<va->dims[1]; ++j) {
+                  mxvd2(vt,j,i) = mxvd2(va,i,j);
+               }
+            }
+         } else {
+            for (j=0; j<va->dims[1]; ++j) {
+               for (i=0;i<va->dims[0];++i) {
+                  mxvd2(vt,j,i) = mxvd2(va,i,j);
+               }
+            }
+         }
+         break;
+      case SUMA_complex:
+         if (va->dims[0] > va->dims[1]){  /* an optimization that is significant for stretched matrices */
+            for (i=0;i<va->dims[0];++i) {
+               for (j=0; j<va->dims[1]; ++j) {
+                  mxvc2(vt,j,i).r = mxvc2(va,i,j).r;
+                  mxvc2(vt,j,i).i = -mxvc2(va,i,j).i;
+               }
+            }
+         } else {
+            for (j=0; j<va->dims[1]; ++j) {
+               for (i=0;i<va->dims[0];++i) {
+                  mxvc2(vt,j,i).r = mxvc2(va,i,j).r;
+                  mxvc2(vt,j,i).i = -mxvc2(va,i,j).i;
+               }
+            }
+         }
+         break;     
+      default:
+         SUMA_S_Err("Lazy did not implement this one.\n");
+         SUMA_RETURN(NULL);
+         break;
+   }
+   SUMA_RETURN(vt);
+}
+
+SUMA_MX_VEC * SUMA_MxVecSetIdentity(SUMA_MX_VEC *thisone)
+{
+   static char FuncName[]={"SUMA_MxVecSetIdentity"};
+   SUMA_ENTRY;
+   SUMA_RETURN(SUMA_MxVecIdentity(thisone->tp, thisone->N_dims, thisone->dims, thisone));
+}
+
+SUMA_MX_VEC * SUMA_MxVecIdentity(SUMA_VARTYPE tp, int n, int dims[], SUMA_MX_VEC *thisone)
+{
+   static char FuncName[]={"SUMA_MxVecIdentity"};
+   SUMA_MX_VEC *vi=NULL;
+   int i,j;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (n != 2) {
+      SUMA_S_Err("Function only for matrices");
+      SUMA_RETURN(vi);
+   }
+   if (tp != SUMA_double && tp != SUMA_complex) {
+      SUMA_S_Err("Function only for double or complex matrices");
+      SUMA_RETURN(vi);
+   }
+   
+   if (thisone) {
+      if (thisone->tp != tp) {
+         SUMA_S_Err("Incompatible type for recycled vector");
+         SUMA_RETURN(vi);
+      }
+      if (thisone->N_dims != n) {
+         SUMA_S_Err("Incompatible number of dimensions for recycled vector");
+         SUMA_RETURN(vi);
+      }
+      if (thisone->dims[0] != dims[0]) {
+         SUMA_S_Err("Incompatible 0th dimensions for recycled vector");
+         SUMA_RETURN(vi);
+      }
+      if (thisone->dims[1] != dims[1]) {
+         SUMA_S_Err("Incompatible 1st dimensions for recycled vector");
+         SUMA_RETURN(vi);
+      }
+      vi = thisone;
+   } else {
+      vi = SUMA_NewMxVec(tp, n, dims, 1);
+   }
+   switch (tp) {
+      case SUMA_double:
+         for (i=0; i<dims[0]; ++i) {
+            for (j=0; j<dims[0]; ++j) {
+               if (i==j) mxvd2(vi, i, j) = 1.0;
+               else mxvd2(vi, i, j) = 0.0;
+            }
+         }
+         break;
+      case SUMA_complex:
+         for (i=0; i<dims[0]; ++i) {
+            for (j=0; j<dims[0]; ++j) {
+               if (i==j) mxvc2(vi, i, j).r = 1.0;
+               else mxvc2(vi, i, j).r = 0.0;
+               mxvc2(vi, i, j).i = 0.0;
+            }
+         }
+         break;
+      default:
+         SUMA_S_Err("Bad type Raul");
+         break;
+   }
+   
+   SUMA_RETURN(vi);
+}
+
+int SUMA_MxVecSameDims(SUMA_MX_VEC *va,SUMA_MX_VEC *vb)
+{
+   static char FuncName[]={"SUMA_MxVecSameDims"};
+   int i;
+   SUMA_ENTRY;
+   if (va->N_dims != vb->N_dims) SUMA_RETURN(0);
+   for (i=0;i<va->N_dims; ++i) if (va->dims[i]!=vb->dims[i]) SUMA_RETURN(0);
+   SUMA_RETURN(1);
+}
+int SUMA_MxVecSameDims2(int N_dims, int *dims, SUMA_MX_VEC *va)
+{
+   static char FuncName[]={"SUMA_MxVecSameDims2"};
+   int i;
+   SUMA_ENTRY;
+   if (va->N_dims != N_dims) SUMA_RETURN(0);
+   for (i=0;i<va->N_dims; ++i) if (va->dims[i]!=dims[i]) SUMA_RETURN(0);
+   SUMA_RETURN(1);
+}
+
+SUMA_MX_VEC * SUMA_MxVecCopy(SUMA_MX_VEC *va, SUMA_MX_VEC *recycle)
+{
+   static char FuncName[]={"SUMA_MxVecCopy"};
+   SUMA_MX_VEC *vi=NULL;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (recycle) {
+      if (recycle->tp != va->tp || !SUMA_MxVecSameDims(va,recycle)) {
+         SUMA_S_Err("Bad recycled MxVec");
+         SUMA_RETURN(NULL);
+      }
+      vi = recycle;
+   } else {
+      vi = SUMA_NewMxVec(va->tp, va->N_dims, va->dims, 1);
+   }
+   memcpy(vi->v, va->v, va->N_vals*SUMA_SizeOf(va->tp)); 
+   
+   SUMA_RETURN(vi);
+}
+
+SUMA_MX_VEC * SUMA_MxVecRand(SUMA_VARTYPE tp, int N_dims, int *dims, SUMA_MX_VEC *recycle)
+{
+   static char FuncName[]={"SUMA_MxVecRand"};
+   SUMA_MX_VEC *vi=NULL;
+   int i;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+      
+   if (recycle) {
+      if (recycle->tp != tp || !SUMA_MxVecSameDims2(N_dims, dims,recycle)) {
+         SUMA_S_Err("Bad recycled MxVec");
+         SUMA_RETURN(NULL);
+      }
+      vi = recycle;
+   } else {
+      vi = SUMA_NewMxVec(tp, N_dims, dims, 1);
+   }
+
+   switch (tp){
+      case SUMA_complex:
+         for (i=0; i<vi->N_vals; ++i) { mxvc1(vi, i).r = (float)rand()/(float)RAND_MAX; mxvc1(vi, i).i = (float)rand()/(float)RAND_MAX; }
+         break;        
+      case SUMA_double: 
+         for (i=0; i<vi->N_vals; ++i) mxvd1(vi, i) = (double)rand()/(double)RAND_MAX;
+         break; 
+      default:
+         SUMA_S_Err("Type not supported");
+         vi = SUMA_FreeMxVec(vi);
+         break;
+   }  
+   SUMA_RETURN(vi);
+}
+
+/*!
+   \brief swap two rows in a matrix (not very efficient because matrix is stored column_major (fdf = 1)
+*/
+int SUMA_MxVecSwapRows(SUMA_MX_VEC *va, int r1, int r2) 
+{
+   static char FuncName[]={"SUMA_MxVecSwapRows"};  
+   int j;
+   double d;
+   complex c;
+
+   SUMA_ENTRY;
+
+   if (r1 >= va->dims[0] || r2 >= va->dims[0]) {
+      SUMA_S_Err("Rows exceed matrix dimension");
+      SUMA_RETURN(0);
+   }
+
+   if (va->tp != SUMA_double && va->tp != SUMA_complex) {
+      SUMA_S_Err("No type support");
+      SUMA_RETURN(0);
+   }
+
+
+   switch(va->tp) {
+      case SUMA_double:
+         for (j=0;j<va->dims[1];++j) {
+            d = mxvd2(va, r1, j);
+            mxvd2(va, r1, j) = mxvd2(va, r2, j);
+            mxvd2(va, r2, j) = d;
+         }
+         break;
+      case SUMA_complex:
+         for (j=0;j<va->dims[1];++j) {
+            c.r = mxvc2(va, r1, j).r;
+            c.i = mxvc2(va, r1, j).i;
+            mxvc2(va, r1, j).r = mxvc2(va, r2, j).r;
+            mxvc2(va, r1, j).i = mxvc2(va, r2, j).i;
+            mxvc2(va, r2, j).r = c.r;
+            mxvc2(va, r2, j).i = c.i;
+         }
+         break;
+      default:
+         SUMA_S_Err("Should not be here");
+         SUMA_RETURN(0);
+         break;
+   }
+
+   SUMA_RETURN(1); 
+}
+
+/*!
+   \brief Return the inverse of MxVec
+*/
+SUMA_MX_VEC * SUMA_MxVecInverse(SUMA_MX_VEC *va, SUMA_MX_VEC *recycle)
+{
+   static char FuncName[]={"SUMA_MxVecInverse"};
+   SUMA_MX_VEC *ainv=NULL, *tmp=NULL;
+   matrix a, c;
+   int i, j=0, ii, n;
+   double fmax, fval;
+   const double epsilon = 1.0e-10;
+   complex cval, cmult;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY; 
+   
+   if (LocalHead) SUMA_etime2(FuncName, NULL, NULL);
+   
+   if (va->dims[0] != va->dims[1]) {
+      SUMA_S_Err("Cannot invert non square matrix");
+      SUMA_RETURN(ainv);
+   }
+   
+   #if 0    /* not much faster using matrix functions...*/
+   if (recycle) {
+      SUMA_S_Err("No recycling in this case");
+      SUMA_RETURN(ainv);
+   }
+   if (va->tp == SUMA_double) {
+      if (!va->m) {
+         SUMA_MxVecBuildMat(va);
+         if (LocalHead) SUMA_ShowMxVec(va,va->N_vals, NULL, "\ndbg va\n");
+      }
+      if (LocalHead) SUMA_etime2(FuncName, "Matrix build time",FuncName);
+      if (!va->m) {
+         SUMA_S_Err("Failed to create matrix");
+         SUMA_RETURN(ainv);
+      }
+      a = *(va->m);
+      matrix_initialize (&c);
+      if (!matrix_inverse (a,&c)) {
+         SUMA_S_Err("Failed in inverse");
+         SUMA_RETURN(ainv);
+      }
+      if (LocalHead) SUMA_etime2(FuncName, "Matrix inverse time",FuncName);
+      SUMA_LH("Going from matrix to vector");
+      ainv = SUMA_matrix2MxVec(c); /* c is destroyed inside SUMA_matrix2MxVec */
+      if (LocalHead) SUMA_etime2(FuncName, "Matrix copy time",FuncName);
+      SUMA_S_Note("va now contains duplicate of vector data in m");
+   } else {
+      SUMA_S_Err("Not ready yet ");
+   }
+   SUMA_RETURN(ainv);
+   #else
+   /* do it in house (after matrix_inverse)*/
+   n = va->dims[0];
+   if (recycle) {
+      SUMA_LH("Reusing vector");
+      if (recycle->tp != va->tp) {
+         SUMA_S_Errv("Recycled vector of type %d, type %d needed.\n", recycle->tp, va->tp);
+         SUMA_RETURN(ainv);
+      }
+      if (recycle->dims[0] != va->dims[0]) {
+         SUMA_S_Errv("Recycled vector dims[0]=%d, dims[0]=%d needed.\n", recycle->dims[0], va->dims[0]);
+         SUMA_RETURN(ainv);
+      }
+      if (recycle->dims[1] != va->dims[1]) {
+         SUMA_S_Errv("Recycled vector dims[1]=%d, dims[1]=%d needed.\n", recycle->dims[1], va->dims[1]);
+         SUMA_RETURN(ainv);
+      }
+      ainv = recycle;
+      if (!(ainv = SUMA_MxVecSetIdentity(ainv))) {
+         SUMA_S_Err("Failed to set identity");
+         SUMA_RETURN(ainv);
+      }
+   } else {
+      ainv = SUMA_MxVecIdentity(va->tp, 2, va->dims, NULL);
+   } 
+   tmp = SUMA_MxVecCopy(va, NULL);
+
+   switch (va->tp) {
+      case SUMA_double:
+         for (i = 0;  i < n;  i++) {
+            fmax = fabs(mxvd2(tmp,i,i));
+            for (j = i+1;  j < n;  j++) {
+               if (fabs(mxvd2(tmp,j,i)) > fmax) {
+                  fmax = fabs(mxvd2(tmp,j,i));
+                  SUMA_MxVecSwapRows(tmp, i, j); 
+                  SUMA_MxVecSwapRows(ainv, i, j);
+               }
+            }
+            if (fmax < epsilon) {
+               SUMA_S_Err("Near singular or badly scaled");
+               ainv = SUMA_FreeMxVec(ainv);
+               SUMA_RETURN(ainv);
+            }
+            fval = 1.0 / mxvd2(tmp,i,i);   /* RWCox: change division by this to */
+            for (j = 0;  j < n;  j++)  {   /*        multiplication by 1.0/this */
+	            mxvd2(tmp,i,j) *= fval;
+	            mxvd2(ainv,i,j) *= fval;
+	         }
+            for (ii = 0;  ii < n;  ii++) {
+	            if (ii != i) {
+	               fval = mxvd2(tmp,ii,i);
+	               for (j = 0;  j < n;  j++) {
+		               mxvd2(tmp,ii,j) -= fval*mxvd2(tmp,i,j);
+		               mxvd2(ainv,ii,j) -= fval*mxvd2(ainv,i,j);
+	               }
+	            }
+            }	
+         }
+         break;
+      case SUMA_complex:
+         for (i = 0;  i < n;  i++) {
+            fmax = SUMA_COMPLEX_ABS(mxvc2(tmp,i,i));
+            for (j = i+1;  j < n;  j++) {
+               if (SUMA_COMPLEX_ABS(mxvc2(tmp,j,i)) > fmax) {
+                  fmax = SUMA_COMPLEX_ABS(mxvc2(tmp,j,i));
+                  SUMA_MxVecSwapRows(tmp, i, j); 
+                  SUMA_MxVecSwapRows(ainv, i, j);
+               }
+            }
+            if (fmax < epsilon) {
+               SUMA_S_Err("Near singular or badly scaled");
+               ainv = SUMA_FreeMxVec(ainv);
+               SUMA_RETURN(ainv);
+            }
+            SUMA_COMPLEX_INV(mxvc2(tmp,i,i), cval);
+            for (j = 0;  j < n;  j++)  {   
+	            cmult.r = mxvc2(tmp,i,j).r;
+               cmult.i = mxvc2(tmp,i,j).i;
+               SUMA_COMPLEX_MULT(cmult, cval, mxvc2(tmp,i,j));
+	            cmult.r = mxvc2(ainv,i,j).r;
+               cmult.i = mxvc2(ainv,i,j).i;
+               SUMA_COMPLEX_MULT(cmult, cval, mxvc2(ainv,i,j));
+	         }
+            for (ii = 0;  ii < n;  ii++) {
+	            if (ii != i) {
+	               cval = mxvc2(tmp,ii,i);
+	               for (j = 0;  j < n;  j++) {
+		               SUMA_COMPLEX_MULT(cval, mxvc2(tmp,i,j), cmult);
+                     mxvc2(tmp,ii,j).r = mxvc2(tmp,ii,j).r - cmult.r;
+                     mxvc2(tmp,ii,j).i = mxvc2(tmp,ii,j).i - cmult.i;
+		               SUMA_COMPLEX_MULT(cval, mxvc2(ainv,i,j), cmult);
+                     mxvc2(ainv,ii,j).r = mxvc2(ainv,ii,j).r - cmult.r;
+                     mxvc2(ainv,ii,j).i = mxvc2(ainv,ii,j).i - cmult.i;
+	               }
+	            }
+            }	
+         }
+         break;
+      default:
+         SUMA_S_Err("Unsupported type");
+         SUMA_RETURN(SUMA_FreeMxVec(ainv));
+         break;
+   }
+   tmp = SUMA_FreeMxVec(tmp);
+   if (LocalHead) SUMA_etime2(FuncName, "Matrix inverse time", FuncName);
+   SUMA_RETURN(ainv);
+   #endif
+}
  
+/*!
+   \brief Multiply two MX_VEC matrices where one dimension is much larger than the other
+   Main difference with SUMA_MxVecMult is that here, the sum is 
+   mxvd2(vp, i,j) += mxvd2(vt,k,i) * mxvd2(vb, k,j);
+   instead of
+   mxvd2(vp, i,j) += mxvd2(va,i,k) * mxvd2(vb, k,j);
+   
+*/
+SUMA_MX_VEC *SUMA_MxVecMultRect(SUMA_MX_VEC *va, SUMA_MX_VEC *vb, SUMA_MX_VEC *recycle, int InfoMask)
+{
+   static char FuncName[]={"SUMA_MxVecMultRect"};
+   SUMA_ENTRY;
+   SUMA_RETURN(SUMA_MxVecMultRect_Engine(va, vb, recycle, NULL, NULL, InfoMask));   
+}
+/*! Passing transpose of va (if you need it elsewhere) would save on waisted computations. vbt is useless */
+SUMA_MX_VEC *SUMA_MxVecMultRect_Engine(SUMA_MX_VEC *va, SUMA_MX_VEC *vb, SUMA_MX_VEC *recycle, SUMA_MX_VEC *vat, SUMA_MX_VEC *vbt, int InfoMask)
+{
+   static char FuncName[]={"SUMA_MxVecMultRect_Engine"};
+   SUMA_MX_VEC *vp=NULL, *vt=NULL;
+   SUMA_VARTYPE tp=SUMA_notypeset;
+   int dims[2], N_dims, i, j, k;
+   complex ctmp;
+   struct timeval tt;
+   int symm = 0;
+   matrix a, b, c;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!va || va->N_dims != 2 || !vb || vb->N_dims != 2) {
+      SUMA_S_Err("inappropriate");
+      SUMA_RETURN(NULL);
+   }
+   
+   SUMA_LHv("Fast rectangular matrix multiplication mode. va is %d x %d\n", va->dims[0], va->dims[1]);
+   
+   SUMA_etime2(FuncName, NULL, NULL);
+   
+   if (!vat && InfoMask & MATRIX_B_IS_AT) vat = vb;
+   
+   if (!vat) vt = SUMA_MxVecTranspose(va, NULL);
+   else vt = vat;
+   
+   if (InfoMask & MATRIX_B_IS_AT || InfoMask & MATRIX_OUT_SYMMETRIC) {
+      symm = 1;
+   } else {
+      symm = 0;
+   }
+   
+   if (  va->N_dims > 2 || va->N_dims < 1 || 
+         vb->N_dims > 2 || vb->N_dims < 1 ) {
+      SUMA_S_Err("Bad N_dims");
+      if (vt != vat) vt = SUMA_FreeMxVec(vt);
+      SUMA_RETURN(vp);
+   }
+   if (va->fdf != 1 || vb->fdf != 1) {
+      SUMA_S_Err("Only first dimension first");
+      if (vt != vat) vt = SUMA_FreeMxVec(vt);
+      SUMA_RETURN(vp);
+   }
+   if (va->N_dims == 1) va->dims[1] = 1;
+   if (vb->N_dims == 1) vb->dims[1] = 1;
+   if (va->dims[1] != vb->dims[0]) {
+      SUMA_S_Err("Incompatible dimensions for matrix multiplications");
+      if (vt != vat) vt = SUMA_FreeMxVec(vt);
+      SUMA_RETURN(vp);
+   }
+   if (  (vb->tp != SUMA_complex && vb->tp != SUMA_double) ||
+         (va->tp != SUMA_complex && va->tp != SUMA_double) ) {
+      SUMA_S_Err("vectors must either be complex or double");
+      if (vt != vat) vt = SUMA_FreeMxVec(vt);
+      SUMA_RETURN(vp);
+   }  
+   
+   dims[0] = va->dims[0]; dims[1] = vb->dims[1];
+   if (va->tp == SUMA_complex || vb->tp == SUMA_complex) {
+      tp = SUMA_complex;
+   } else if (va->tp == SUMA_double && vb->tp == SUMA_double) {
+      tp = SUMA_double;
+   } else {
+      SUMA_S_Err("vectors must either be complex or double");
+      if (vt != vat) vt = SUMA_FreeMxVec(vt);
+      SUMA_RETURN(vp);
+   }
+   SUMA_LHv("tp=%d, dims[0]=%d, dims[1]=%d\n", tp, dims[0], dims[1]);
+   if (recycle) {
+      SUMA_LH("Reusing vector");
+      if (recycle->tp != tp) {
+         SUMA_S_Errv("Recycled vector of type %d, type %d needed.\n", recycle->tp, tp);
+         if (vt != vat) vt = SUMA_FreeMxVec(vt);
+         SUMA_RETURN(vp);
+      }
+      if (recycle->dims[0] != dims[0]) {
+         SUMA_S_Errv("Recycled vector dims[0]=%d, dims[0]=%d needed.\n", recycle->dims[0], dims[0]);
+         if (vt != vat) vt = SUMA_FreeMxVec(vt);
+         SUMA_RETURN(vp);
+      }
+      if (recycle->dims[1] != dims[1]) {
+         SUMA_S_Errv("Recycled vector dims[1]=%d, dims[1]=%d needed.\n", recycle->dims[1], dims[1]);
+         if (vt != vat) vt = SUMA_FreeMxVec(vt);
+         SUMA_RETURN(vp);
+      }
+      vp = recycle;
+   } else {
+      vp = SUMA_NewMxVec(tp, 2, dims, 1); 
+   } 
+   if (!vp) {
+      SUMA_S_Err("Failed to create output vector");
+      if (vt != vat) vt = SUMA_FreeMxVec(vt);
+      SUMA_RETURN(vp);
+   }
+   switch(tp) {
+      case SUMA_complex:
+         if (vb->tp == va->tp) { /* both are complex */
+            SUMA_LH("Both complex");
+            if (symm) {
+               for (i = 0;  i < vp->dims[0];  i++) {
+                  for (j = 0;  j < vp->dims[1];  j++) {
+                     if (j<i) {
+                        mxvc2(vp, i,j).r = mxvc2(vp, j,i).r ;
+                        mxvc2(vp, i,j).i = mxvc2(vp, j,i).i ;
+                     } else {
+                        mxvc2(vp, i,j).r = 0.0 ;
+                        mxvc2(vp, i,j).i = 0.0 ;
+	                     for (k = 0;  k < va->dims[1];  k++) {
+	                        SUMA_COMPLEX_MULT(mxvc2(vt,k,i), mxvc2(vb, k,j), ctmp);
+                           mxvc2(vp, i,j).r += ctmp.r;
+                           mxvc2(vp, i,j).i += ctmp.i;
+                        }
+                     }
+                  }
+               }
+            } else {
+               for (i = 0;  i < vp->dims[0];  i++) {
+                  for (j = 0;  j < vp->dims[1];  j++) {
+                     mxvc2(vp, i,j).r = 0.0 ;
+                     mxvc2(vp, i,j).i = 0.0 ;
+	                  for (k = 0;  k < va->dims[1];  k++) {
+	                     SUMA_COMPLEX_MULT(mxvc2(vt,k,i), mxvc2(vb, k,j), ctmp);
+                        mxvc2(vp, i,j).r += ctmp.r;
+                        mxvc2(vp, i,j).i += ctmp.i;
+                     }
+                  }
+               }
+            }
+         } else { /* only one is complex */
+            if (va->tp == SUMA_complex) {
+               SUMA_LH("va complex");
+               if (symm) {
+                  for (i = 0;  i < vp->dims[0];  i++) {
+                     for (j = 0;  j < vp->dims[1];  j++) {
+                        if (j<i) {
+                           mxvc2(vp, i,j).r = mxvc2(vp, j,i).r ;
+                           mxvc2(vp, i,j).i = mxvc2(vp, j,i).i ;
+                        } else {
+                           mxvc2(vp, i,j).r = 0.0 ;
+                           mxvc2(vp, i,j).i = 0.0 ;
+	                        for (k = 0;  k < va->dims[1];  k++) {
+	                           SUMA_COMPLEX_SCALE(mxvc2(vt,k,i), mxvd2(vb, k,j), ctmp);
+                              mxvc2(vp, i,j).r += ctmp.r;
+                              mxvc2(vp, i,j).i += ctmp.i;
+                           }
+                        }
+                     }
+                  }
+               } else {
+                  for (i = 0;  i < vp->dims[0];  i++) {
+                     for (j = 0;  j < vp->dims[1];  j++) {
+                        mxvc2(vp, i,j).r = 0.0 ;
+                        mxvc2(vp, i,j).i = 0.0 ;
+	                     for (k = 0;  k < va->dims[1];  k++) {
+	                        SUMA_COMPLEX_SCALE(mxvc2(vt,k,i), mxvd2(vb, k,j), ctmp);
+                           mxvc2(vp, i,j).r += ctmp.r;
+                           mxvc2(vp, i,j).i += ctmp.i;
+                        }
+                     }
+                  }
+               }
+            } else {
+               SUMA_LH("vb complex");
+               if (symm) {
+                  for (i = 0;  i < vp->dims[0];  i++) {
+                     for (j = 0;  j < vp->dims[1];  j++) {
+                        if (j<i) {
+                           mxvc2(vp, i,j).r =  mxvc2(vp, j,i).r;
+                           mxvc2(vp, i,j).i =  mxvc2(vp, j,i).i;
+                        } else {
+                           mxvc2(vp, i,j).r = 0.0 ;
+                           mxvc2(vp, i,j).i = 0.0 ;
+	                        for (k = 0;  k < va->dims[1];  k++) {
+	                           SUMA_COMPLEX_SCALE(mxvc2(vb, k,j), mxvd2(vt,k,i), ctmp);
+                              mxvc2(vp, i,j).r += ctmp.r;
+                              mxvc2(vp, i,j).i += ctmp.i;
+                           }
+                        }
+                     }
+                  }
+               } else {
+                  for (i = 0;  i < vp->dims[0];  i++) {
+                     for (j = 0;  j < vp->dims[1];  j++) {
+                        mxvc2(vp, i,j).r = 0.0 ;
+                        mxvc2(vp, i,j).i = 0.0 ;
+	                     for (k = 0;  k < va->dims[1];  k++) {
+	                        SUMA_COMPLEX_SCALE(mxvc2(vb, k,j), mxvd2(vt,k,i), ctmp);
+                           mxvc2(vp, i,j).r += ctmp.r;
+                           mxvc2(vp, i,j).i += ctmp.i;
+                        }
+                     }
+                  }
+               }
+            }
+         }
+         break;
+      case SUMA_double:
+         {
+            {
+                  if (LocalHead) SUMA_etime2(FuncName, "Fast Matrix transpose time", FuncName);
+                  if (symm) {
+                     for (i = 0;  i < vp->dims[0];  i++) {
+                        for (j = 0;  j < vp->dims[1];  j++) {
+                           if(j<i) {   
+                              mxvd2(vp, i,j) = mxvd2(vp, j,i); 
+                           } else {
+                              mxvd2(vp, i,j) = 0.0 ;
+	                           for (k = 0;  k < va->dims[1];  k++) {
+                                 mxvd2(vp, i,j) += mxvd2(vt,k,i) * mxvd2(vb, k,j);
+                              }
+                           }
+                        }
+                     }   
+                  } else {
+                     for (i = 0;  i < vp->dims[0];  i++) {
+                        for (j = 0;  j < vp->dims[1];  j++) {
+                           mxvd2(vp, i,j) = 0.0 ;
+	                        for (k = 0;  k < va->dims[1];  k++) {
+                              mxvd2(vp, i,j) += mxvd2(vt,k,i) * mxvd2(vb, k,j);
+                           }
+                        }
+                     }  
+                  }
+                  
+                  if (LocalHead) SUMA_etime2(FuncName, "Fast Matrix Mult. time", FuncName);
+            }
+         }
+
+         break;
+      default:
+         SUMA_S_Err("Bad types");
+         SUMA_RETURN(NULL);
+   }
+
+   if (vt != vat) vt = SUMA_FreeMxVec(vt);
+   
+   SUMA_RETURN(vp);
+}
+
+/*!
+   \brief Multiply two MX_VEC matrices
+*/
+SUMA_MX_VEC *SUMA_MxVecMult(SUMA_MX_VEC *va, SUMA_MX_VEC *vb, SUMA_MX_VEC *recycle, int InfoMask)
+{
+   static char FuncName[]={"SUMA_MxVecMult"};
+   SUMA_ENTRY;
+   SUMA_RETURN(SUMA_MxVecMult_Engine(va, vb, recycle, NULL, NULL, InfoMask));
+}
+/*!
+   if va->dims[0] << va->dims[1], passing vat also would speed things up . vbt is useless
+*/   
+SUMA_MX_VEC *SUMA_MxVecMult_Engine(SUMA_MX_VEC *va, SUMA_MX_VEC *vb, SUMA_MX_VEC *recycle, SUMA_MX_VEC *vat, SUMA_MX_VEC *vbt, int InfoMask)
+{
+   static char FuncName[]={"SUMA_MxVecMult_Engine"};
+   SUMA_MX_VEC *vp=NULL;
+   SUMA_VARTYPE tp=SUMA_notypeset;
+   int dims[2], symm, N_dims, i, j, k, ij, ik, kj;
+   complex ctmp;
+   struct timeval tt;
+   matrix a, b, c;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if ( va->N_dims == 2 && ((float)va->dims[1]/(float)va->dims[0] > 100 && va->dims[1] > 1000)) {  
+      SUMA_LH("The fast mode");
+      SUMA_RETURN(SUMA_MxVecMultRect_Engine(va, vb,recycle, vat, vbt, InfoMask));
+      SUMA_LH("***************OUT");
+   }
+   
+   if (InfoMask & MATRIX_B_IS_AT || InfoMask & MATRIX_OUT_SYMMETRIC) {
+      symm = 1;
+      SUMA_S_Note("No optimization for symmetric output yet!");
+   } else {
+      symm = 0;
+   }
+   if (!vb) {
+      SUMA_S_Err("NULL input");
+      SUMA_RETURN(NULL);
+   }
+   if (LocalHead) SUMA_etime2(FuncName, NULL, NULL);
+   
+   if (  va->N_dims > 2 || va->N_dims < 1 || 
+         vb->N_dims > 2 || vb->N_dims < 1 ) {
+      SUMA_S_Err("Bad N_dims");
+      SUMA_RETURN(vp);
+   }
+   if (va->fdf != 1 || vb->fdf != 1) {
+      SUMA_S_Err("Only first dimension first");
+      SUMA_RETURN(vp);
+   }
+   if (va->N_dims == 1) va->dims[1] = 1;
+   if (vb->N_dims == 1) vb->dims[1] = 1;
+   if (va->dims[1] != vb->dims[0]) {
+      SUMA_S_Err("Incompatible dimensions for matrix multiplications");
+      SUMA_RETURN(vp);
+   }
+   if (  (vb->tp != SUMA_complex && vb->tp != SUMA_double) ||
+         (va->tp != SUMA_complex && va->tp != SUMA_double) ) {
+      SUMA_S_Err("vectors must either be complex or double");
+      SUMA_RETURN(vp);
+   }  
+   
+   dims[0] = va->dims[0]; dims[1] = vb->dims[1];
+   if (va->tp == SUMA_complex || vb->tp == SUMA_complex) {
+      tp = SUMA_complex;
+   } else if (va->tp == SUMA_double && vb->tp == SUMA_double) {
+      tp = SUMA_double;
+   } else {
+      SUMA_S_Err("vectors must either be complex or double");
+      SUMA_RETURN(vp);
+   }
+   SUMA_LHv("tp=%d, dims[0]=%d, dims[1]=%d\n", tp, dims[0], dims[1]);
+   if (recycle) {
+      SUMA_LH("Reusing vector");
+      if (recycle->tp != tp) {
+         SUMA_S_Errv("Recycled vector of type %d, type %d needed.\n", recycle->tp, tp);
+         SUMA_RETURN(vp);
+      }
+      if (recycle->dims[0] != dims[0]) {
+         SUMA_S_Errv("Recycled vector dims[0]=%d, dims[0]=%d needed.\n", recycle->dims[0], dims[0]);
+         SUMA_RETURN(vp);
+      }
+      if (recycle->dims[1] != dims[1]) {
+         SUMA_S_Errv("Recycled vector dims[1]=%d, dims[1]=%d needed.\n", recycle->dims[1], dims[1]);
+         SUMA_RETURN(vp);
+      }
+      vp = recycle;
+   } else {
+      vp = SUMA_NewMxVec(tp, 2, dims, 1); 
+   } 
+   if (!vp) {
+      SUMA_S_Err("Failed to create output vector");
+      SUMA_RETURN(vp);
+   }
+   switch(tp) {
+      case SUMA_complex:
+         if (vb->tp == va->tp) { /* both are complex */
+            SUMA_LH("Both complex");
+            for (j = 0;  j < vp->dims[1];  j++) {
+               for (i = 0;  i < vp->dims[0];  i++) {
+                  mxvc2(vp, i,j).r = 0.0 ;
+                  mxvc2(vp, i,j).i = 0.0 ;
+	               for (k = 0;  k < va->dims[1];  k++) {
+	                  SUMA_COMPLEX_MULT(mxvc2(va,i,k), mxvc2(vb, k,j), ctmp);
+                     mxvc2(vp, i,j).r += ctmp.r;
+                     mxvc2(vp, i,j).i += ctmp.i;
+                  }
+               }
+            }
+         } else { /* only one is complex */
+            if (va->tp == SUMA_complex) {
+               SUMA_LH("va complex");
+               for (j = 0;  j < vp->dims[1];  j++) {
+                  for (i = 0;  i < vp->dims[0];  i++) {
+                     mxvc2(vp, i,j).r = 0.0 ;
+                     mxvc2(vp, i,j).i = 0.0 ;
+	                  for (k = 0;  k < va->dims[1];  k++) {
+	                     SUMA_COMPLEX_SCALE(mxvc2(va,i,k), mxvd2(vb, k,j), ctmp);
+                        mxvc2(vp, i,j).r += ctmp.r;
+                        mxvc2(vp, i,j).i += ctmp.i;
+                     }
+                  }
+               }
+            } else {
+               SUMA_LH("vb complex");
+               for (j = 0;  j < vp->dims[1];  j++) {
+                  for (i = 0;  i < vp->dims[0];  i++) {
+                     mxvc2(vp, i,j).r = 0.0 ;
+                     mxvc2(vp, i,j).i = 0.0 ;
+	                  for (k = 0;  k < va->dims[1];  k++) {
+	                     SUMA_COMPLEX_SCALE(mxvc2(vb, k,j), mxvd2(va,i,k), ctmp);
+                        mxvc2(vp, i,j).r += ctmp.r;
+                        mxvc2(vp, i,j).i += ctmp.i;
+                     }
+                  }
+               }
+            }
+         }
+         break;
+      case SUMA_double:
+         #if 0 /* using matrix functions, not much faster */
+         if (recycle) {
+            /* kill the recycled puppy BAD BAD BAD */
+            SUMA_S_Warn("Carefull, with that one! Caller may not know this happened");
+            vp = SUMA_FreeMxVec(vp);
+         }
+         if (!va->m) {
+            SUMA_MxVecBuildMat(va);
+            if (LocalHead) SUMA_ShowMxVec(va,va->N_vals, NULL, "\ndbg va\n");
+         }
+         if (!vb->m) {
+            SUMA_MxVecBuildMat(vb);
+            if (LocalHead) SUMA_ShowMxVec(vb,vb->N_vals, NULL, "\ndbg vb\n");
+         }
+         if (LocalHead) SUMA_etime2(FuncName, "Matrix build time",FuncName);
+         if (!vb->m || !va->m) {
+            SUMA_S_Err("Failed to create matrix");
+            SUMA_RETURN(NULL);
+         }
+         a = *(va->m); b = *(vb->m);
+         matrix_initialize(&c);
+         matrix_multiply (a,b, &c);
+         if (LocalHead) SUMA_etime2(FuncName, "Matrix multiply time",FuncName);
+         SUMA_LH("Going from matrix to vector");
+         vp = SUMA_matrix2MxVec(c); /* c is destroyed inside SUMA_matrix2MxVec */
+         if (LocalHead) SUMA_etime2(FuncName, "Matrix copy time",FuncName);
+         SUMA_S_Note("va and vb now contain duplicates of vector data in m");
+         #else
+         {  
+            for (j = 0;  j < vp->dims[1];  j++) {     /* j, then i is faster on mac OS X G5, at least for spharm computations */
+               for (i = 0;  i < vp->dims[0];  i++) {
+                  mxvd2(vp, i,j) = 0.0 ;
+                  ij = i+vp->dims[0]*j;
+	               for (k = 0;  k < va->dims[1];  k++) {
+                     ik = i+va->dims[0]*k;
+                     kj = k+vb->dims[0]*j;
+                     vp->dv[ij] += va->dv[ik] * vb->dv[kj];
+                  }
+               }
+            }
+         } 
+         #endif
+         break;
+      default:
+         SUMA_S_Err("Bad types");
+         SUMA_RETURN(NULL);
+   }
+   
+   SUMA_RETURN(vp);
+}
+
+/* 
+   a function to test matrix operations using MxVec structures 
+*/
+void SUMA_TestMxVecMatOps(void)
+{
+   static char FuncName[]={"SUMA_TestMxVecMatOps"};
+   SUMA_MX_VEC *da, *db, *dc, *dat, *dbt, *dct;
+   int dd[2]={2,3}, N_dims, dims[50];
+   struct timeval tt;
+   int i, j;
+   char stmp[100];
+   matrix a, b, c;
+   
+   SUMA_ENTRY;
+   SUMA_S_Note("Testing matrix speed");
+   
+   
+   matrix_initialize(&a);
+   matrix_create(60, 40962, &a);
+   matrix_initialize(&b);
+   matrix_create(40962, 60, &b);
+   srand(123);
+   for (i=0; i<40962; ++i) {
+      for (j=0; j<60;++j) {
+         a.elts[j][i] = (double)rand()/(double)RAND_MAX;
+         b.elts[i][j] = a.elts[j][i];
+      }
+   }
+   da = SUMA_matrix2MxVec(a);
+   db = SUMA_matrix2MxVec(b);
+   SUMA_ShowMxVec(da, 1, NULL, "\nInitial da\n");
+   SUMA_etime2(FuncName, NULL, NULL);
+   dat = SUMA_MxVecTranspose(da, NULL);
+   da = SUMA_FreeMxVec(da);
+   SUMA_etime2(FuncName, "Vector Transpose 1(60*40962)", FuncName);
+   da = SUMA_MxVecTranspose(dat, NULL);
+   dat = SUMA_FreeMxVec(dat);
+   SUMA_etime2(FuncName, "Vector Transpose 2(40962*60)", FuncName);
+   SUMA_ShowMxVec(da, 1, NULL, "\n(da')'\n");
+   SUMA_etime2(FuncName, "Next is multiplication.", FuncName);
+   dc = SUMA_MxVecMult(da, db, NULL, MATRIX_B_IS_AT);
+   SUMA_etime2(FuncName, "Vector multiplication test (60*40962 X 40962 * 60)", FuncName);
+   SUMA_ShowMxVec(dc, 1, NULL, "\nMult via MxVec\n");    
+   dc = SUMA_FreeMxVec(dc);
+   dc = SUMA_MxVecMult(da, db, NULL, MATRIX_OUT_SYMMETRIC);   /* try the a ainv trick */
+   SUMA_etime2(FuncName, "Vector multiplication test (60*40962 X 40962 * 60)", FuncName);
+   SUMA_ShowMxVec(dc, 1, NULL, "\nMult via MxVec, mode 2\n");    
+   
+   matrix_initialize(&c);
+   SUMA_S_Note("Testing matrix speed with 'matrix' calls");
+   if (!da->m) SUMA_MxVecBuildMat(da);
+   if (!db->m) SUMA_MxVecBuildMat(db);
+   a = *(da->m); b = *(db->m);
+   matrix_multiply(a, b, &c);
+   SUMA_etime2(FuncName, "Vector multiplication test 2 (60*40962 X 40962 * 60)", FuncName);
+   SUMA_S_Notev("c is (%d x %d)\n", c.rows, c.cols);
+   da = SUMA_FreeMxVec(da);
+   db = SUMA_FreeMxVec(db);
+   dc = SUMA_FreeMxVec(dc);
+   dc = SUMA_matrix2MxVec(c);
+   SUMA_ShowMxVec(dc, 1, NULL, "\nMult via 'matrix'\n");    
+   dc = SUMA_FreeMxVec(dc);
+   
+   matrix_initialize(&a);
+   matrix_create(129, 129, &a);
+   matrix_initialize(&b);
+   matrix_create(129, 40962, &b);
+   srand(123);
+   for (i=0; i<129; ++i) {
+      for (j=0; j<129;++j) {
+         a.elts[i][j] = (double)rand()/(double)RAND_MAX;
+      }
+   }
+   for (i=0; i<40962; ++i) {
+      for (j=0; j<129;++j) {
+         b.elts[j][i] = (double)rand()/(double)RAND_MAX;
+      }
+   }
+   da = SUMA_matrix2MxVec(a);
+   db = SUMA_matrix2MxVec(b);
+   SUMA_etime2(FuncName, NULL, NULL);
+   dc = SUMA_MxVecMult(da, db, NULL, 0);
+   SUMA_etime2(FuncName, "Vector multiplication test 3 (129*129 X 129 * 40962 )", FuncName);
+   SUMA_ShowMxVec(dc, 1, NULL, "\nMult via MxVec\n");    
+   dc = SUMA_FreeMxVec(dc);
+   dbt = SUMA_MxVecTranspose(db, NULL);
+   dat = SUMA_MxVecTranspose(da, NULL);
+   SUMA_etime2(FuncName, "Vector multiplication test 4 (built transposes)(129*129 X 129 * 40962 )", FuncName);
+   dct = SUMA_MxVecMult(dbt, dat, NULL, 0);
+   dc = SUMA_MxVecTranspose(dct, NULL);
+   SUMA_etime2(FuncName, "Vector multiplication test 4 (129*129 X 129 * 40962 )", FuncName);
+   SUMA_ShowMxVec(dc, 1, NULL, "\nMult via tranposed MxVec\n");    
+   da = SUMA_FreeMxVec(da);
+   db = SUMA_FreeMxVec(db);
+   dc = SUMA_FreeMxVec(dc);
+   dat = SUMA_FreeMxVec(dat);
+   dbt = SUMA_FreeMxVec(dbt);
+   dct = SUMA_FreeMxVec(dct);
+
+
+   SUMA_RETURNe;
+  
+   SUMA_S_Note("Testing transpose");
+   da = SUMA_NewMxVec(SUMA_double, 2, dd, 1);
+   mxvd2(da,0,0) = 1.0;
+   mxvd2(da,0,1) = 2.0;
+   mxvd2(da,0,2) = 3.0;
+   mxvd2(da,1,0) = -1.0;
+   mxvd2(da,1,1) = -4.0;
+   mxvd2(da,1,2) = -3.0;
+   db = SUMA_MxVecTranspose(da, NULL);
+   SUMA_ShowMxVec(da, da->N_vals, NULL, "\nda\n");
+   SUMA_ShowMxVec(db, db->N_vals, NULL, "\ntransp(da)\n");
+   
+   SUMA_S_Note("Testing multiplication");
+   mxvd2(db,0,0) = 1.5;
+   mxvd2(db,0,1) = 2.3;
+   mxvd2(db,1,0) = 3.1;
+   mxvd2(db,1,1) = -1.3;
+   mxvd2(db,2,0) = -2.8;
+   mxvd2(db,2,1) = -3.1;
+   SUMA_ShowMxVec(da, da->N_vals, NULL, "\nda\n");
+   SUMA_ShowMxVec(db, db->N_vals, NULL, "\ndb\n");
+   dc = SUMA_MxVecMult(da, db, NULL, 0);
+   SUMA_ShowMxVec(dc, dc->N_vals, NULL, "\nda*db\n");
+
+   SUMA_S_Note("Testing Real Inversion\n");
+   db = SUMA_FreeMxVec(db);
+   db = SUMA_MxVecInverse(dc, NULL);
+   SUMA_ShowMxVec(dc, dc->N_vals, NULL, "\ndc\n");
+   SUMA_ShowMxVec(db, db->N_vals, NULL, "\ninv(dc)\n");
+   
+   SUMA_S_Note("Testing complex multiplication, b complex");
+   db = SUMA_FreeMxVec(db);
+   dc = SUMA_FreeMxVec(dc);
+   dd[0]= 3; dd[1] = 2;
+   db = SUMA_NewMxVec(SUMA_complex, 2, dd, 1);
+   mxvc2(db,0,0).r = 1.5;
+   mxvc2(db,0,1).r = 2.3;
+   mxvc2(db,1,0).r = 3.1;
+   mxvc2(db,1,1).r = -1.3;
+   mxvc2(db,2,0).r = -2.8;
+   mxvc2(db,2,1).r = -3.1;
+   mxvc2(db,0,0).i = 3.5;
+   mxvc2(db,0,1).i = 6.3;
+   mxvc2(db,1,0).i = 9.1;
+   mxvc2(db,1,1).i = 3.3;
+   mxvc2(db,2,0).i = 2.8;
+   mxvc2(db,2,1).i = -6.1;
+   SUMA_ShowMxVec(da, da->N_vals, NULL, "\nda\n");
+   SUMA_ShowMxVec(db, db->N_vals, NULL, "\ndb\n");
+   dc = SUMA_MxVecMult(da, db, NULL,0);
+   SUMA_ShowMxVec(dc, dc->N_vals, NULL, "\nda*db\n");
+   
+   SUMA_S_Note("Testing complex multiplication, a,b complex");
+   da = SUMA_FreeMxVec(da); 
+   dc = SUMA_FreeMxVec(dc);
+   dd[0]= 2; dd[1] = 3;
+   da = SUMA_NewMxVec(SUMA_complex, 2, dd, 1);
+   mxvc2(da,0,0).r = 1.0;
+   mxvc2(da,0,1).r = 2.0;
+   mxvc2(da,0,2).r = 3.0;
+   mxvc2(da,1,0).r = -1.0;
+   mxvc2(da,1,1).r = -2.0;
+   mxvc2(da,1,2).r = -3.0;
+   mxvc2(da,0,0).i = 3.0;
+   mxvc2(da,0,1).i = -2.0;
+   mxvc2(da,0,2).i = 6.0;
+   mxvc2(da,1,0).i = -0.20;
+   mxvc2(da,1,1).i = 3.0;
+   mxvc2(da,1,2).i = 9.0;
+   SUMA_ShowMxVec(da, da->N_vals, NULL, "\nda\n");
+   SUMA_ShowMxVec(db, db->N_vals, NULL, "\ndb\n");
+   dc = SUMA_MxVecMult(da, db, NULL, 0);
+   SUMA_ShowMxVec(dc, dc->N_vals, NULL, "\nda*db\n");
+   
+   SUMA_S_Note("Testing Complex Inversion\n");
+   db = SUMA_FreeMxVec(db);
+   db = SUMA_MxVecInverse(dc, NULL);
+   SUMA_ShowMxVec(dc, dc->N_vals, NULL, "\ndc\n");
+   SUMA_ShowMxVec(db, db->N_vals, NULL, "\ninv(dc)\n");
+
+   SUMA_S_Note("Testing complex multiplication, a complex");
+   db = SUMA_FreeMxVec(db); 
+   dc = SUMA_FreeMxVec(dc);
+   dd[0]= 3; dd[1] = 2;
+   db = SUMA_NewMxVec(SUMA_double, 2, dd, 1);
+   mxvd2(db,0,0) = 4.0;
+   mxvd2(db,0,1) = 2.0;
+   mxvd2(db,1,0) = 6.0;
+   mxvd2(db,1,1) = -9.0;
+   mxvd2(db,2,0) = -1.0;
+   mxvd2(db,2,1) = -2.0;
+   SUMA_ShowMxVec(da, da->N_vals, NULL, "\nda\n");
+   SUMA_ShowMxVec(db, db->N_vals, NULL, "\ndb\n");
+   dc = SUMA_MxVecMult(da, db, NULL, 0);
+   SUMA_ShowMxVec(dc, dc->N_vals, NULL, "\nda*db\n");
+   
+   SUMA_S_Note("Testing complex transpose\n");
+   dc = SUMA_FreeMxVec(dc);
+   dc = SUMA_MxVecTranspose(da, NULL);
+   SUMA_ShowMxVec(da, da->N_vals, NULL, "\nda\n");
+   SUMA_ShowMxVec(dc, dc->N_vals, NULL, "\nTranspose(da)\n");
+   
+   
+   da = SUMA_FreeMxVec(da);
+   db = SUMA_FreeMxVec(db);
+   dc = SUMA_FreeMxVec(dc);
+   SUMA_RETURNe;
+}
+
 /*!
    \brief Function to change a bunch of spherical coordinates to
     cartesian ones
@@ -264,10 +1729,10 @@ SUMA_MEMTRACE_STRUCT * SUMA_Create_MemTrace (void) {
    
    \sa SUMA_SPH_2_CART
 */
-float * SUMA_Sph2Cart (float *sph, int Nval, float *center ) 
+float * SUMA_Sph2Cart (double *sph, int Nval, float *center ) 
 {
    static char FuncName[]={"SUMA_Sph2Cart"};
-   float v[3], *f;
+   double v[3], *f;
    int i, i3;
    float *coord=NULL;
    
@@ -316,12 +1781,12 @@ float * SUMA_Sph2Cart (float *sph, int Nval, float *center )
    
    \sa SUMA_CART_2_SPH
 */
-float * SUMA_Cart2Sph (float *coord, int Nval, float *center ) 
+double * SUMA_Cart2Sph (float *coord, int Nval, float *center ) 
 {
    static char FuncName[]={"SUMA_Cart2Sph"};
-   float v[3], *f;
+   double v[3], *f;
    int i, i3;
-   float *sph=NULL;
+   double *sph=NULL;
    
    SUMA_ENTRY;
    
@@ -329,7 +1794,7 @@ float * SUMA_Cart2Sph (float *coord, int Nval, float *center )
       SUMA_RETURN(NULL);
    }
    
-   sph = (float *)SUMA_malloc(Nval*sizeof(float)*3);
+   sph = (double *)SUMA_malloc(Nval*sizeof(double)*3);
    if (!sph) {
       SUMA_SL_Crit("Failed to allocate");
       SUMA_RETURN(NULL);
@@ -869,9 +2334,15 @@ char **SUMA_allocate2D (int rows,int cols,int element_size)
    int i;
    char **A;
    static char FuncName[]={"SUMA_allocate2D"};
-
+   SUMA_Boolean LocalHead = NOPE;
+   
    SUMA_ENTRY;
    
+   if (rows <= 0 || cols < 0) {
+      SUMA_S_Errv("Allocate2D with rows = %d and cols = %d!\n", rows, cols);
+      SUMA_RETURN(NULL);
+   }
+   SUMA_LHv("nrows = %d, ncols = %d\n", rows, cols);
    #ifdef USE_SUMA_MALLOC
       SUMA_SL_Err("NO LONGER SUPPORTED");
       SUMA_RETURN(NULL);
@@ -1139,6 +2610,30 @@ int SUMA_iswordin_ci ( const char *sbig, const char *ssub)
    SUMA_RETURN(ans);
    
 } 
+/*!
+   \brief case insensitive version of SUMA_iswordsame 
+*/
+int SUMA_iswordsame_ci ( const char *sbig, const char *ssub)
+{
+   static char FuncName[]={"SUMA_iswordsame_ci"};
+   int ans;
+   
+   SUMA_ENTRY;
+   if ( (ans = SUMA_iswordin_ci(sbig, ssub)) == 1 && strlen(sbig) != strlen(ssub) ) ans = 0;
+   
+   SUMA_RETURN(ans);
+}
+
+int SUMA_iswordsame ( const char *sbig, const char *ssub)
+{
+   static char FuncName[]={"SUMA_iswordsame"};
+   int ans;
+   
+   SUMA_ENTRY;
+   if ( (ans = SUMA_iswordin(sbig, ssub)) == 1 && strlen(sbig) != strlen(ssub) ) ans = 0;
+   
+   SUMA_RETURN(ans);
+}
 
 /*!
  
@@ -1201,7 +2696,7 @@ int SUMA_iswordin (const char *sbig, const char *ssub)
    }
 
    if (j == strlen (ssub)) {
-      SUMA_RETURN (1);
+      SUMA_RETURN (1); 
    }
    else {
       SUMA_RETURN (0);
@@ -1319,6 +2814,312 @@ void SUMA_disp_mat (float **v,int nr, int nc , int SpcOpt)
 }/*SUMA_disp_mat*/
 
 /*!**
+Purpose : 
+   Displays on the terminal a 2D double matrix stored in a vector
+ 
+ 
+Usage : 
+       SUMA_disp_vecdoubmat (double *v,int nr, int nc, int SpcOpt, d_order, Out )
+ 
+ 
+Input paramters : 
+    v (double *) (nr x nc) vector containing the 2D matrix to display
+   nr (int) the number of rows in v
+   nc (int) the number of columns
+   SpcOpt (int) : spacing option (0 for space, 1 for tab and 2 for comma)
+   d_order (SUMA_INDEXING_ORDER): Indicates how multiple values per node are stored in fin
+                        SUMA_ROW_MAJOR: The data in fin is stored in *** Row Major *** order.
+                        The ith value (start at 0) for node n is at index fin[vpn*n+i]
+                        SUMA_COLUMN_MAJOR: The data in fin is stored in *** Column Major *** order.
+                        The ith (start at 0) value for node n is at index fin[n+SO->N_Node*i]; 
+                        etc...
+   AddRowInd (SUMA_Boolean) YUP  = add the row index in the first column
+   Out (FILE *) pointer to output file. If NULL then output is to stdout.
+ 
+ 
+*/ 
+void SUMA_disp_vecdoubmat (double *v,int nr, int nc , int SpcOpt, 
+                        SUMA_INDEXING_ORDER d_order, FILE *fout, SUMA_Boolean AddRowInd)
+{/*SUMA_disp_vecdoubmat*/
+   char spc [40]; 
+   int i,j;
+   FILE *foutp;
+   static char FuncName[]={"SUMA_disp_vecdoubmat"};
+   SUMA_Boolean LocalHead = NOPE;
+      
+   SUMA_ENTRY;
+
+   if (!fout) foutp = stdout;
+   else foutp = fout;
+   
+   if (LocalHead) fprintf(SUMA_STDERR,"%s:\nExpecting to write %d rows/%d columns\n", FuncName, nr, nc);
+   
+   if (!SpcOpt)
+      sprintf(spc," ");
+   else if (SpcOpt == 1)
+      sprintf(spc,"\t");
+   else
+      sprintf(spc," , ");
+   
+   if (!fout) fprintf (SUMA_STDOUT,"\n"); /* a blank 1st line when writing to screen */
+   switch (d_order) {
+      case SUMA_ROW_MAJOR:
+         for (i=0; i < nr; ++i) {
+            if (AddRowInd) fprintf (foutp, "%d%s", i, spc);
+            for (j=0; j < nc; ++j) fprintf (foutp, "%lf%s",v[i*nc+j],spc);
+            fprintf (foutp,"\n");
+         }
+         break;
+      case SUMA_COLUMN_MAJOR:
+         for (i=0; i < nr; ++i) {
+            if (AddRowInd) fprintf (foutp, "%d%s", i, spc);
+            for (j=0; j < nc; ++j) fprintf (foutp, "%lf%s",v[i+j*nr],spc);
+            fprintf (foutp,"\n");
+         }
+         break;
+      default:
+         SUMA_SL_Err("Bad order.\n");
+         SUMA_RETURNe;
+         break;
+   }
+
+   SUMA_RETURNe;
+}/*SUMA_disp_vecdoubmat*/
+
+/*!**
+ 
+File : SUMA_MiscFunc.c
+Author : Ziad Saad
+Date : Tue Nov 17 13:19:26 CST 1998, modified Tue Aug 20 11:11:29 EDT 2002
+ 
+Purpose : 
+   Displays on the terminal a 2D byte matrix stored in a vector
+ 
+ 
+Usage : 
+       SUMA_disp_vecbytemat (byte *v,int nr, int nc, int SpcOpt, d_order, Out )
+ 
+ 
+Input paramters : 
+    v (byte *) (nr x nc) vector containing the 2D matrix to display
+   nr (int) the number of rows in v
+   nc (int) the number of columns
+   SpcOpt (int) : spacing option (0 for space, 1 for tab and 2 for comma)
+   d_order (SUMA_INDEXING_ORDER): Indicates how multiple values per node are stored in fin
+                        SUMA_ROW_MAJOR: The data in fin is stored in *** Row Major *** order.
+                        The ith value (start at 0) for node n is at index fin[vpn*n+i]
+                        SUMA_COLUMN_MAJOR: The data in fin is stored in *** Column Major *** order.
+                        The ith (start at 0) value for node n is at index fin[n+SO->N_Node*i]; 
+                        etc...
+   AddRowInd (SUMA_Boolean) YUP  = add the row index in the first column
+   Out (FILE *) pointer to output file. If NULL then output is to stdout.
+ 
+ 
+*/ 
+void SUMA_disp_vecbytemat (byte *v,int nr, int nc , int SpcOpt, 
+                        SUMA_INDEXING_ORDER d_order, FILE *fout, SUMA_Boolean AddRowInd)
+{/*SUMA_disp_vecbytemat*/
+   char spc [40]; 
+   int i,j;
+   FILE *foutp;
+   static char FuncName[]={"SUMA_disp_vecbytemat"};
+   SUMA_Boolean LocalHead = NOPE;
+      
+   SUMA_ENTRY;
+
+   if (!fout) foutp = stdout;
+   else foutp = fout;
+   
+   if (LocalHead) fprintf(SUMA_STDERR,"%s:\nExpecting to write %d rows/%d columns\n", FuncName, nr, nc);
+   
+   if (!SpcOpt)
+      sprintf(spc," ");
+   else if (SpcOpt == 1)
+      sprintf(spc,"\t");
+   else
+      sprintf(spc," , ");
+   
+   if (!fout) fprintf (SUMA_STDOUT,"\n"); /* a blank 1st line when writing to screen */
+   switch (d_order) {
+      case SUMA_ROW_MAJOR:
+         for (i=0; i < nr; ++i) {
+            if (AddRowInd) fprintf (foutp, "%d%s", i, spc);
+            for (j=0; j < nc; ++j) fprintf (foutp, "%d%s",v[i*nc+j],spc);
+            fprintf (foutp,"\n");
+         }
+         break;
+      case SUMA_COLUMN_MAJOR:
+         for (i=0; i < nr; ++i) {
+            if (AddRowInd) fprintf (foutp, "%d%s", i, spc);
+            for (j=0; j < nc; ++j) fprintf (foutp, "%d%s",v[i+j*nr],spc);
+            fprintf (foutp,"\n");
+         }
+         break;
+      default:
+         SUMA_SL_Err("Bad order.\n");
+         SUMA_RETURNe;
+         break;
+   }
+
+   SUMA_RETURNe;
+}/*SUMA_disp_vecbytemat*/
+
+/*!**
+ 
+File : SUMA_MiscFunc.c
+Author : Ziad Saad
+Date : Tue Nov 17 13:19:26 CST 1998, modified Tue Aug 20 11:11:29 EDT 2002
+ 
+Purpose : 
+   Displays on the terminal a 2D short matrix stored in a vector
+ 
+ 
+Usage : 
+       SUMA_disp_vecshortmat (short *v,int nr, int nc, int SpcOpt, d_order, Out )
+ 
+ 
+Input paramters : 
+    v (short *) (nr x nc) vector containing the 2D matrix to display
+   nr (int) the number of rows in v
+   nc (int) the number of columns
+   SpcOpt (int) : spacing option (0 for space, 1 for tab and 2 for comma)
+   d_order (SUMA_INDEXING_ORDER): Indicates how multiple values per node are stored in fin
+                        SUMA_ROW_MAJOR: The data in fin is stored in *** Row Major *** order.
+                        The ith value (start at 0) for node n is at index fin[vpn*n+i]
+                        SUMA_COLUMN_MAJOR: The data in fin is stored in *** Column Major *** order.
+                        The ith (start at 0) value for node n is at index fin[n+SO->N_Node*i]; 
+                        etc...
+   AddRowInd (SUMA_Boolean) YUP  = add the row index in the first column
+   Out (FILE *) pointer to output file. If NULL then output is to stdout.
+ 
+ 
+*/ 
+void SUMA_disp_vecshortmat (short *v,int nr, int nc , int SpcOpt, 
+                        SUMA_INDEXING_ORDER d_order, FILE *fout, SUMA_Boolean AddRowInd)
+{/*SUMA_disp_vecshortmat*/
+   char spc [40]; 
+   int i,j;
+   FILE *foutp;
+   static char FuncName[]={"SUMA_disp_vecshortmat"};
+   SUMA_Boolean LocalHead = NOPE;
+      
+   SUMA_ENTRY;
+
+   if (!fout) foutp = stdout;
+   else foutp = fout;
+   
+   if (LocalHead) fprintf(SUMA_STDERR,"%s:\nExpecting to write %d rows/%d columns\n", FuncName, nr, nc);
+   
+   if (!SpcOpt)
+      sprintf(spc," ");
+   else if (SpcOpt == 1)
+      sprintf(spc,"\t");
+   else
+      sprintf(spc," , ");
+   
+   if (!fout) fprintf (SUMA_STDOUT,"\n"); /* a blank 1st line when writing to screen */
+   switch (d_order) {
+      case SUMA_ROW_MAJOR:
+         for (i=0; i < nr; ++i) {
+            if (AddRowInd) fprintf (foutp, "%d%s", i, spc);
+            for (j=0; j < nc; ++j) fprintf (foutp, "%d%s",v[i*nc+j],spc);
+            fprintf (foutp,"\n");
+         }
+         break;
+      case SUMA_COLUMN_MAJOR:
+         for (i=0; i < nr; ++i) {
+            if (AddRowInd) fprintf (foutp, "%d%s", i, spc);
+            for (j=0; j < nc; ++j) fprintf (foutp, "%d%s",v[i+j*nr],spc);
+            fprintf (foutp,"\n");
+         }
+         break;
+      default:
+         SUMA_SL_Err("Bad order.\n");
+         SUMA_RETURNe;
+         break;
+   }
+
+   SUMA_RETURNe;
+}/*SUMA_disp_vecshortmat*/
+/*!**
+ 
+File : SUMA_MiscFunc.c
+Author : Ziad Saad
+Date : Tue Nov 17 13:19:26 CST 1998, modified Tue Aug 20 11:11:29 EDT 2002
+ 
+Purpose : 
+   Displays on the terminal a 2D complex matrix stored in a vector
+ 
+ 
+Usage : 
+       SUMA_disp_veccompmat (complex *v,int nr, int nc, int SpcOpt, d_order, Out )
+ 
+ 
+Input paramters : 
+    v (complex *) (nr x nc) vector containing the 2D matrix to display
+   nr (int) the number of rows in v
+   nc (int) the number of columns
+   SpcOpt (int) : spacing option (0 for space, 1 for tab and 2 for comma)
+   d_order (SUMA_INDEXING_ORDER): Indicates how multiple values per node are stored in fin
+                        SUMA_ROW_MAJOR: The data in fin is stored in *** Row Major *** order.
+                        The ith value (start at 0) for node n is at index fin[vpn*n+i]
+                        SUMA_COLUMN_MAJOR: The data in fin is stored in *** Column Major *** order.
+                        The ith (start at 0) value for node n is at index fin[n+SO->N_Node*i]; 
+                        etc...
+   AddRowInd (SUMA_Boolean) YUP  = add the row index in the first column
+   Out (FILE *) pointer to output file. If NULL then output is to stdout.
+ 
+ 
+*/
+void SUMA_disp_veccompmat (complex *v,int nr, int nc , int SpcOpt, 
+                        SUMA_INDEXING_ORDER d_order, FILE *fout, SUMA_Boolean AddRowInd)
+{/*SUMA_disp_veccompmat*/
+   char spc [40]; 
+   int i,j;
+   FILE *foutp;
+   static char FuncName[]={"SUMA_disp_veccompmat"};
+   SUMA_Boolean LocalHead = NOPE;
+      
+   SUMA_ENTRY;
+
+   if (!fout) foutp = stdout;
+   else foutp = fout;
+   
+   if (LocalHead) fprintf(SUMA_STDERR,"%s:\nExpecting to write %d rows/%d columns\n", FuncName, nr, nc);
+   
+   if (!SpcOpt)
+      sprintf(spc," ");
+   else if (SpcOpt == 1)
+      sprintf(spc,"\t");
+   else
+      sprintf(spc," , ");
+   
+   if (!fout) fprintf (SUMA_STDOUT,"\n"); /* a blank 1st line when writing to screen */
+   switch (d_order) {
+      case SUMA_ROW_MAJOR:
+         for (i=0; i < nr; ++i) {
+            if (AddRowInd) fprintf (foutp, "%d%s", i, spc);
+            for (j=0; j < nc; ++j) fprintf (foutp, "%f %+fi%s",v[i*nc+j].r, v[i*nc+j].i,spc);
+            fprintf (foutp,"\n");
+         }
+         break;
+      case SUMA_COLUMN_MAJOR:
+         for (i=0; i < nr; ++i) {
+            if (AddRowInd) fprintf (foutp, "%d%s", i, spc);
+            for (j=0; j < nc; ++j) fprintf (foutp, "%f %+fi%s",v[i+j*nr].r, v[i+j*nr].i,spc);
+            fprintf (foutp,"\n");
+         }
+         break;
+      default:
+         SUMA_SL_Err("Bad order.\n");
+         SUMA_RETURNe;
+         break;
+   }
+
+   SUMA_RETURNe;
+}/*SUMA_disp_veccompmat*/
+
+/*!**
  
 File : SUMA_MiscFunc.c
 Author : Ziad Saad
@@ -1395,8 +3196,6 @@ void SUMA_disp_vecmat (float *v,int nr, int nc , int SpcOpt,
 
    SUMA_RETURNe;
 }/*SUMA_disp_vecmat*/
-
-
 /*!**
  
 File : SUMA_MiscFunc.c
@@ -1434,7 +3233,7 @@ void SUMA_disp_vecdmat (int *v,int nr, int nc , int SpcOpt,
    char spc [40]; 
    int i,j;
    FILE *foutp;
-   static char FuncName[]={"SUMA_disp_vectdmat"};
+   static char FuncName[]={"SUMA_disp_vecdmat"};
       
    SUMA_ENTRY;
 
@@ -1520,6 +3319,177 @@ void SUMA_disp_vecucmat (unsigned char *v,int nr, int nc , int SpcOpt,
 }/*SUMA_disp_vecucmat*/
 
 /*!
+   Set *N_dims to -1 if you don't have dims setup and are willing to take whatever is in Name
+*/
+SUMA_MX_VEC *SUMA_Read1DMxVec(SUMA_VARTYPE tp, char *Name, int *dims, int *N_dims)
+{
+   static char FuncName[]={"SUMA_Read1DMxVec"};
+   SUMA_MX_VEC *v=NULL;
+   float *fv=NULL;
+   double *dv = NULL;
+   int ncol, nrow, i, nvals;
+   complex *cv = NULL;
+   
+   SUMA_ENTRY;
+   
+   if (*N_dims) {
+      /* user has format in mind */
+      nvals = dims[0];
+      for (i=1;i<*N_dims;++i) nvals = nvals * dims[i];
+   } else {
+      nvals = -1;
+   }
+   switch (tp) {
+      case SUMA_complex:
+         cv = SUMA_LoadComplex1D_eng (Name, &ncol, &nrow, 0, 0);
+         if (!cv) {
+            SUMA_S_Errv("Failed to load %s\n", Name);
+            SUMA_RETURN(v);
+         } 
+         if (nvals >= 0) {
+            if (ncol*nrow != nvals) {
+               SUMA_S_Errv("User wants a total of %d values, %d found in file.\n", nvals, ncol*nrow);
+               SUMA_RETURN(v);
+            } 
+         } else {
+            nvals = ncol*nrow;
+            dims[0] = nrow; dims[1] = ncol;
+            *N_dims = ncol;
+         }
+         
+         v = SUMA_VecToMxVec(SUMA_complex, *N_dims, dims, 1, (void *)cv); cv = NULL; /* cv should be nulled, pointer copied into output*/
+         break;
+      
+      #if 0
+      case SUMA_double:
+         fv = SUMA_Load1D_eng (Name, &ncol, &nrow, 0, 0);
+         if (!fv) {
+            SUMA_S_Errv("Failed to load %s\n", Name);
+            SUMA_RETURN(v);
+         } 
+         if (nvals >= 0) {
+            if (ncol*nrow != nvals) {
+               SUMA_S_Errv("User wants a total of %d values, %d (%dx%d) found in file.\n", nvals, ncol*nrow, ncol, nrow);
+               SUMA_RETURN(v);
+            } 
+         } else {
+            nvals = ncol*nrow;
+            dims[0] = nrow; dims[1] = ncol;
+            *N_dims = ncol;
+         }
+         v = SUMA_NewMxVec(tp, *N_dims,  dims,  1);
+         for (i=0; i<nvals; ++i) {
+            mxvd1(v,i) = (double)fv[i];
+         }
+         SUMA_free(fv); fv = NULL;
+         break;
+      #else
+      case SUMA_double:
+         dv = SUMA_LoadDouble1D_eng(Name, &ncol, &nrow, 0, 0);
+         if (!dv) {
+            SUMA_S_Errv("Failed to load %s\n", Name);
+            SUMA_RETURN(v);
+         } 
+         if (nvals >= 0) {
+            if (ncol*nrow != nvals) {
+               SUMA_S_Errv("User wants a total of %d values, %d found in file.\n", nvals, ncol*nrow);
+               SUMA_RETURN(v);
+            } 
+         } else {
+            nvals = ncol*nrow;
+            dims[0] = nrow; dims[1] = ncol;
+            *N_dims = ncol;
+         }
+         
+         v = SUMA_VecToMxVec(SUMA_double, *N_dims, dims, 1, (void *)dv); dv = NULL; /* dv should be nulled, pointer copied into output*/
+         break;
+      #endif
+      default:
+         SUMA_S_Err("Not ready for this type");
+         break;
+   }
+   
+   SUMA_RETURN(v);
+}
+   
+/*!
+   \brief a function to write MxVec to a file, mostly
+   for debugging. No overwrite protection provided
+   If Name is NULL then output is to stdout
+*/
+int SUMA_WriteMxVec(SUMA_MX_VEC *mxv, char *Name, char *title)
+{
+   static char FuncName[]={"SUMA_WriteMxVec"};
+   FILE *out = NULL;
+   int i, d0, d1;
+   
+   SUMA_ENTRY;
+   
+   if (!Name) out = stdout;
+   else {
+      out = fopen(Name,"w");
+      if (!out) {
+         SUMA_S_Err("Could not open file for output");
+         SUMA_RETURN(0);
+      }
+   }
+   if (title) {
+      if (title[0] != '#') fprintf(out,"#");
+      fprintf(out,"%s", title);
+      if (title[strlen(title)] != '\n'); fprintf(out,"\n");
+   }
+   
+   if (mxv->N_dims > 2) {
+      fprintf(out,"#MxVec is %d dimensional, writing results in column major (first dimension first) array form.\n", mxv->N_dims);
+      d0 = mxv->N_vals;
+      d1 = 1;
+   } else if (mxv->N_dims == 1) {
+      d0 = mxv->N_vals;
+      d1 = 1;
+   } else {
+      d0 = mxv->dims[0];
+      d1 = mxv->dims[1];
+   }
+   
+   if (mxv->fdf != 1) {
+      SUMA_S_Err("Not ready for vectors that are not first dimension first");
+      SUMA_RETURN(0);
+   }
+   
+   fprintf(out,"#Dimensions are: [");
+   for (i=0;i<mxv->N_dims;++i) fprintf(out,"%d, ", mxv->dims[i]);
+   fprintf(out,"]\n");
+    
+   switch (mxv->tp) {
+      case SUMA_byte:
+         SUMA_disp_vecbytemat((byte *)mxv->v, d0, d1, 1, SUMA_COLUMN_MAJOR, out, 0);
+         break;
+      case SUMA_short:
+         SUMA_disp_vecshortmat((short *)mxv->v, d0, d1, 1, SUMA_COLUMN_MAJOR, out, 0);
+         break;
+      case SUMA_int:
+         SUMA_disp_vecdmat((int *)mxv->v, d0, d1, 1, SUMA_COLUMN_MAJOR, out, 0);
+         break;
+      case SUMA_float:
+         SUMA_disp_vecmat((float *)mxv->v, d0, d1, 1, SUMA_COLUMN_MAJOR, out, 0);
+         break;
+      case SUMA_double:
+         SUMA_disp_vecdoubmat((double *)mxv->v, d0, d1, 1, SUMA_COLUMN_MAJOR, out, 0);
+         break;
+      case SUMA_complex:
+         SUMA_disp_veccompmat((complex *)mxv->v, d0, d1, 1, SUMA_COLUMN_MAJOR, out, 0);
+         break;
+      default:
+         SUMA_SL_Err("Type not supported");
+         SUMA_RETURN(0);
+   }
+   
+   if (Name) fclose(out); out = NULL; 
+   SUMA_RETURN(1);
+}
+
+
+/*!
 File : SUMA_MiscFunc.c from disp_vect.c
 Author : Ziad Saad
 Date : 23 Oct 1996
@@ -1590,6 +3560,83 @@ void SUMA_disp_dvect (int *v,int l)
    fprintf (SUMA_STDOUT,"\n");
    }
    SUMA_RETURNe;
+}
+
+/*!
+   SUMA_etime2(char *name, char *str, char *strloc) 
+   SUMA_etime2(name, NULL, NULL) initialize time stamp
+   SUMA_etime2(name, str, strloc) show elapsed time from last call, 
+                           use strings str and strloc in report.
+                           str must be non null.
+*/           
+int SUMA_etime2(char *name, char *str, char *strloc) 
+{
+   static char FuncName[]={"SUMA_etime2"};
+   int i;
+   double dt;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!name) {
+      SUMA_LH("Resetting all timers");
+      /* reset all */
+      for (i=0; i<SUMA_MAX_N_TIMER; ++i) {
+         SUMAg_CF->Timer[i].name[0]='\0';
+         SUMAg_CF->Timer[i].lastcall = -1.0;
+      }
+      SUMAg_CF->N_Timer = 0;
+      SUMA_RETURN(-1);
+   }else {
+      /* find the time */
+      SUMA_LHv("Locating timer %s\n", name);
+      i = 0;
+      while (i < SUMAg_CF->N_Timer && strcmp(SUMAg_CF->Timer[i].name, name)) {
+         ++i;
+      } 
+      if (i+1 >= SUMA_MAX_N_TIMER) {
+         SUMA_S_Errv("Cannot add a new timer %s\n", name);
+         SUMA_RETURN(-1);
+      } else if (i == SUMAg_CF->N_Timer) { /* add the new timer */
+         SUMA_LHv("Adding new timer %s at i=%d\n", name, i);
+         sprintf(SUMAg_CF->Timer[i].name, "%s", name);
+         SUMAg_CF->Timer[i].lastcall = -1.0;
+         ++SUMAg_CF->N_Timer;
+      } else {
+         SUMA_LHv("Timer %s found at i = %d\n", SUMAg_CF->Timer[i].name, i);
+      }  
+      SUMA_LHv("Timer is %s at %d\n", SUMAg_CF->Timer[i].name, i);   
+      if (str) { /* have something to say, not first call */
+         if (SUMAg_CF->Timer[i].lastcall < 0) {
+            dt = 0.0;
+         } else {
+            dt = SUMA_etime(&(SUMAg_CF->Timer[i].tt),1) - SUMAg_CF->Timer[i].lastcall ;
+         }
+         SUMAg_CF->Timer[i].lastcall = SUMA_etime(&(SUMAg_CF->Timer[i].tt),1);
+         if (strloc) fprintf (SUMA_STDERR,"Timer %s, in %s: %s\n"
+                                          "      Time from last stamp %fs (%.2fmin)\n"
+                                          "      Total time from init. %fs (%.2fmin)\n", 
+                                                SUMAg_CF->Timer[i].name,
+                                                strloc, str, dt, dt/60.0,
+                                                SUMAg_CF->Timer[i].lastcall,
+                                                SUMAg_CF->Timer[i].lastcall/60.0);
+         else        fprintf (SUMA_STDERR,"Timer %s, %s\n"
+                                          "      Time from last stamp %fs (%.2fmin)\n"
+                                          "      Total time from init. %fs (%.2fmin)\n", 
+                                                 SUMAg_CF->Timer[i].name,
+                                                 str, dt, dt/60.0,
+                                                 SUMAg_CF->Timer[i].lastcall,
+                                                 SUMAg_CF->Timer[i].lastcall/60.0);
+           
+         SUMA_RETURN(i);
+      } else { /* Reset timer */
+         SUMA_etime(&(SUMAg_CF->Timer[i].tt), 0);      
+         SUMAg_CF->Timer[i].lastcall = -1.0;
+         SUMA_RETURN(i);
+      } 
+   }
+   SUMA_LH("Going home");
+   SUMA_RETURN(-1);
 }
 
 
@@ -1718,6 +3765,8 @@ SUMA_ISINSPHERE SUMA_isinsphere (float * NodeList, int nr, float *S_cent , float
    ND = 3;
    IsIn_strct.nIsIn = 0;
    IsIn_strct.dXYZ = NULL;
+   IsIn_strct.IsIn = NULL;
+   IsIn_strct.d = NULL;
    
    t = (float *) SUMA_calloc (nr, sizeof(float));
    IsIn = (int *) SUMA_calloc (nr, sizeof(int));
@@ -1870,6 +3919,8 @@ SUMA_ISINBOX SUMA_isinbox (float * XYZ, int nr, float *S_cent , float *S_dim , i
       
    IsIn_strct.nIsIn = 0;   
    IsIn_strct.dXYZ = NULL;
+   IsIn_strct.d = NULL;
+   IsIn_strct.IsIn = NULL;
    
    hdim0 = S_dim[0]/2;
    hdim1 = S_dim[1]/2;
@@ -3175,36 +5226,6 @@ void SUMA_Set_VoxIntersDbg(int v)
 }
 
 /*!
-   \brief find out if a point p on the line formed by points p0 and p1 is between p0 and p1
-   ans = SUMA_IS_POINT_IN_SEGMENT(p, p0, p1);
-   if ans then p is between p0 and p1
-   p, p0, p1 (float *) xyz of points
-   
-   - NOTE: macro does not check that three points are colinear (as they should be)!
-*/
-#define SUMA_IS_POINT_IN_SEGMENT(p, p0, p1)  (  (  (  \
-                                                      (p[0] >  p0[0] && p[0] <  p1[0]) ||   \
-                                                      (p[0] <  p0[0] && p[0] >  p1[0]) ||   \
-                                                      (SUMA_ABS(p[0] - p0[0]) < 0.00000001 || \
-                                                       SUMA_ABS(p[0] - p1[0]) < 0.00000001 ) \
-                                                   )\
-                                                   && \
-                                                   (  \
-                                                      (p[1] >  p0[1] && p[1] <  p1[1]) ||   \
-                                                      (p[1] <  p0[1] && p[1] >  p1[1]) ||   \
-                                                      (SUMA_ABS(p[1] - p0[1]) < 0.00000001 || \
-                                                       SUMA_ABS(p[1] - p1[1]) < 0.00000001 ) \
-                                                   )\
-                                                   && \
-                                                   (  \
-                                                      (p[2] >  p0[2] && p[2] <  p1[2]) ||   \
-                                                      (p[2] <  p0[2] && p[2] >  p1[2]) ||   \
-                                                      (SUMA_ABS(p[2] - p0[2]) < 0.00000001 || \
-                                                       SUMA_ABS(p[2] - p1[2]) < 0.00000001 ) \
-                                                   )\
-                                                   ) ? 1 : 0 )
-                                          
-/*!
    \brief does a voxel intersect a triangle ? (i.e. one of the edges intersects a triangle)
    \param center (float *) center of voxel 
    \param dxyz (float *) dimensions of voxel
@@ -4340,10 +6361,10 @@ void SUMA_Show_Edge_List (SUMA_EDGE_LIST *EL, FILE *Out)
    else fprintf(Out,"IDcode: NULL\n");
    
    fprintf(Out,"Average InterNodal Distance: %f\n", EL->AvgLe);
-   fprintf(Out,"i-\t[EL[i][0] EL[i][1]]\t[ELps[i][0] ELps[i][1] ELps[i][2] ELps[i][3]]\tLe[i]\n");
+   fprintf(Out,"i-\t[EL[i][0] EL[i][1]]\t[ELps[i][0] ELps[i][1] ELps[i][2]]\tLe[i]\n");
    for (i=0; i < EL->N_EL; ++i) {
-      fprintf(Out,"%d-\t[%d %d]\t[%d %d %d %d]\t%f\n", 
-               i, EL->EL[i][0], EL->EL[i][1], EL->ELps[i][0], EL->ELps[i][1], EL->ELps[i][2], EL->ELps[i][3], EL->Le[i]);
+      fprintf(Out,"%d-\t[%d %d]\t[%d %d %d]\t%f\n", 
+               i, EL->EL[i][0], EL->EL[i][1], EL->ELps[i][0], EL->ELps[i][1], EL->ELps[i][2], EL->Le[i]);
    
    }
    fprintf(Out,"\nTriLimb contents:\n");
@@ -4445,16 +6466,20 @@ SUMA_EDGE_LIST * SUMA_Make_Edge_List_eng (int *FL, int N_FL, int N_Node, float *
       SUMA_RETURN(NULL);
    }
    /* allocate and form the List of edges */
+   SUMA_LH("New SEL next");
    SEL = (SUMA_EDGE_LIST *) SUMA_malloc(sizeof(SUMA_EDGE_LIST));
+   SUMA_LH("New ID next");
    SEL->idcode_str = NULL;
    SUMA_NEW_ID(SEL->idcode_str, NULL); 
    SEL->N_links = 0;
+   SUMA_LH("Ownerid next");
    if (ownerid) sprintf(SEL->owner_id, "%s", ownerid);
    else SEL->owner_id[0] = '\0';
    SEL->LinkedPtrType = SUMA_LINKED_OVERLAY_TYPE;
 
    SEL->AvgLe = 0.0;
    SEL->N_EL = 3 * N_FL;
+   SUMA_LHv("N-EL = %d\n", SEL->N_EL);
    SEL->EL = (int **) SUMA_allocate2D (SEL->N_EL, 2, sizeof(int)); /* edge list */
    SEL->ELloc = (int *)SUMA_calloc(N_Node, sizeof(int));
    SEL->Le = (float *) SUMA_calloc (SEL->N_EL, sizeof(float)); /* length of each edge */
@@ -4474,7 +6499,7 @@ SUMA_EDGE_LIST * SUMA_Make_Edge_List_eng (int *FL, int N_FL, int N_Node, float *
    }
 
    /* form the edge list */
-   SUMA_LH("Forming Edge List...\n");
+   SUMA_LH("Forming Edge List...\n"); 
    for (i=0; i< N_FL; ++i) {/* begin, form edge list */
       /* first edge, 0->1*/
       ie = 3*i;
@@ -4528,7 +6553,6 @@ SUMA_EDGE_LIST * SUMA_Make_Edge_List_eng (int *FL, int N_FL, int N_Node, float *
    }/* end, form edge list */
    SUMA_LH("Edge list done.");
    
-   if (LocalHead) SUMA_Show_Edge_List(SEL,NULL);
    
    #if 0
       fprintf(SUMA_STDERR,"%s: Node1 Node2 | FlipVal Triangle\n", FuncName); 
@@ -4677,6 +6701,8 @@ SUMA_EDGE_LIST * SUMA_Make_Edge_List_eng (int *FL, int N_FL, int N_Node, float *
    
    if (iTri_limb) SUMA_free(iTri_limb); /* Thanks B. Argall */
    SUMA_LH("Done with storage, returning...\n");
+
+   if (LocalHead) SUMA_Show_Edge_List(SEL,stderr);
    
    SUMA_RETURN (SEL);
 }
@@ -4727,11 +6753,12 @@ int SUMA_FindEdgeInTri (SUMA_EDGE_LIST *EL, int n1, int n2, int Tri)
    \param n2 (int) index of node 2
    \return eloc (int) index into EL of first occurence of edge formed by nodes n1, n2
             -1 if no edge is found.
+   \sa SUMA_FIND_EDGE macro
 */
 int SUMA_FindEdge (SUMA_EDGE_LIST *EL, int n1, int n2) 
 {
    static char FuncName[]={"SUMA_FindEdge"};
-   int eloc;
+   int eloc, done;
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
@@ -4750,11 +6777,15 @@ int SUMA_FindEdge (SUMA_EDGE_LIST *EL, int n1, int n2)
    }
    
    /* from there on, look for first occurence of n2 */
+   done = 0;
    do {
       /* if (LocalHead) fprintf (SUMA_STDERR,"%s: eloc %d, N_EL %d\n", FuncName, eloc, EL->N_EL);*/
       if (EL->EL[eloc][1] == n2) SUMA_RETURN (eloc);
       ++eloc;
-   } while (eloc < EL->N_EL && EL->EL[eloc][0] == n1); 
+      if (eloc < EL->N_EL) {
+         if (EL->EL[eloc][0] != n1) done = 1;
+      } else done = 1;
+   } while (!done); 
    
    /* not found */
    SUMA_RETURN (-1);
@@ -4766,7 +6797,9 @@ int SUMA_FindEdge (SUMA_EDGE_LIST *EL, int n1, int n2)
    
    \param n1 (int) node 1
    \param SO (SUMA_SurfaceObject *) 
-   \param Incident (int *) a pre-allocated vector where incident triangle indices will be stored. MAKE SURE you allocate enough
+   \param Incident (int *) a pre-allocated vector where incident triangle indices will be stored. 
+                           MAKE SURE you allocate enough and when you call SUMA_Get_NodeIncident, 
+                           preset N_Incident to the maximum allowed.
    \param N_Incident (int *) pointer where the number of incident triangles is stored
    
    \ret ans (SUMA_Boolean) YUP/NOPE
@@ -4777,10 +6810,15 @@ int SUMA_FindEdge (SUMA_EDGE_LIST *EL, int n1, int n2)
 SUMA_Boolean SUMA_Get_NodeIncident(int n1, SUMA_SurfaceObject *SO, int *Incident, int *N_Incident)
 {
    static char FuncName[] = {"SUMA_Get_NodeIncident"};
-   int i, n3, N_Neighb;
+   int i, n3, N_Neighb, N_max;
    
    SUMA_ENTRY;
    
+   N_max = *N_Incident; 
+   if (N_max < 1 || N_max > 1000) { /* aribtrary upper limit, can be increased if necessary...*/
+      SUMA_S_Err("Likely junk (< 0 or > 1000) sent in N_Incident!, Initialize properly");
+      SUMA_RETURN(NOPE);
+   } 
    *N_Incident = 0;
    
    N_Neighb = SO->FN->N_Neighb[n1];
@@ -4794,13 +6832,18 @@ SUMA_Boolean SUMA_Get_NodeIncident(int n1, SUMA_SurfaceObject *SO, int *Incident
    while ((i < N_Neighb )) { 
       if ( i+1 == N_Neighb) n3 = SO->FN->FirstNeighb[n1][0];
       else n3 = SO->FN->FirstNeighb[n1][i+1];
-      if ((Incident[*N_Incident] = SUMA_whichTri (SO->EL, n1, SO->FN->FirstNeighb[n1][i], n3, 1)) < 0) {
-         fprintf (SUMA_STDERR, "Error %s: Triangle formed by nodes %d %d %d not found.\n", 
-            FuncName, n1, SO->FN->FirstNeighb[n1][i], n3);
-         SUMA_RETURN(NOPE);
+      if (*N_Incident < N_max) { 
+         if ((Incident[*N_Incident] = SUMA_whichTri (SO->EL, n1, SO->FN->FirstNeighb[n1][i], n3, 1)) < 0) {
+            fprintf (SUMA_STDERR, "Error %s: Triangle formed by nodes %d %d %d not found.\n", 
+               FuncName, n1, SO->FN->FirstNeighb[n1][i], n3);
+            SUMA_RETURN(NOPE);
+         }
+         ++*N_Incident;
+         ++i;
+      } else {
+         SUMA_S_Err("More incident triangles than allocated for. Increase your limit.\n");
+         SUMA_RETURN(NOPE);  
       }
-      ++*N_Incident;
-      ++i;
    }
 
    SUMA_RETURN(YUP);   
@@ -5263,10 +7306,10 @@ int main (int argc,char *argv[])
    
    \sa   SUMA_SmoothAttr_Neighb_Rec  
 */
-float * SUMA_SmoothAttr_Neighb (float *attr, int N_attr, float *attr_sm, SUMA_NODE_FIRST_NEIGHB *fn, int nr, byte *nmask)
+float * SUMA_SmoothAttr_Neighb (float *attr, int N_attr, float *attr_sm, SUMA_NODE_FIRST_NEIGHB *fn, int nr, byte *nmask, byte strict_mask)
 {
    static char FuncName[]={"SUMA_SmoothAttr_Neighb"};
-   int ni, im, offs, j;
+   int ni, im, offs, j, nj, wgt;
     
    SUMA_ENTRY;
 
@@ -5307,17 +7350,34 @@ float * SUMA_SmoothAttr_Neighb (float *attr, int N_attr, float *attr_sm, SUMA_NO
          continue;
       }
       offs = nr * ni;
-      for (im=0; im<nr; ++im) {
-         attr_sm[offs+im] = attr[offs+im];
-         if (nmask && !nmask[fn->NodeId[ni]]){
-            /* do nothing */
-         } else {
+      if (nmask) {
+         if (nmask[fn->NodeId[ni]]) {  /* the node is in the mask */
+            for (im=0; im<nr; ++im) {
+               attr_sm[offs+im] = attr[offs+im];
+               {
+                  wgt = 0;
+                  for (j=0; j < fn->N_Neighb[ni]; ++j)
+                  {
+                     nj = fn->FirstNeighb[ni][j];
+                     if (nmask[nj] || !strict_mask) { /* the neighbor is in the mask or we take in all neighbors */
+                        attr_sm[offs+im] += attr[nr*nj+im]; ++wgt;
+                     }
+                  }   
+                  attr_sm[offs+im] /= ((float)wgt+1.0);
+               }
+            }
+         } else { /* the node is not in the mask */
+            for (im=0; im<nr; ++im) attr_sm[offs+im] = attr[offs+im];
+         }
+      } else { 
+         for (im=0; im<nr; ++im) {
+            attr_sm[offs+im] = attr[offs+im];
             for (j=0; j < fn->N_Neighb[ni]; ++j)
             {
                attr_sm[offs+im] += attr[nr*fn->FirstNeighb[ni][j]+im]; 
             }   
             attr_sm[offs+im] /= (fn->N_Neighb[ni]+1);
-         }
+         }   
       }
    }
    
@@ -5358,7 +7418,7 @@ float * SUMA_SmoothAttr_Neighb_Rec (float *attr, int N_attr, float *attr_sm_orig
    curr_attr = attr; /* initialize with user's data */
    while (i < N_rep) {
       /* intermediary calls */
-      attr_sm = SUMA_SmoothAttr_Neighb (curr_attr, N_attr, NULL, fn, nr, NULL);
+      attr_sm = SUMA_SmoothAttr_Neighb (curr_attr, N_attr, NULL, fn, nr, NULL, 1);
       if (i > 1)  { /* second or more time in */
          /* free input to previous calculation */
          if (curr_attr) SUMA_free(curr_attr);
@@ -5368,7 +7428,7 @@ float * SUMA_SmoothAttr_Neighb_Rec (float *attr, int N_attr, float *attr_sm_orig
    }      
    
    /* last call, honor the user's return pointer */
-   attr_sm = SUMA_SmoothAttr_Neighb (curr_attr, N_attr, attr_sm_orig, fn, nr, NULL);
+   attr_sm = SUMA_SmoothAttr_Neighb (curr_attr, N_attr, attr_sm_orig, fn, nr, NULL, 1);
    
    /* free curr_attr if i > 1, i.e. it is not the user's original copy */
    if (i > 1) {
@@ -5442,8 +7502,16 @@ SUMA_NODE_FIRST_NEIGHB * SUMA_Build_FirstNeighb (SUMA_EDGE_LIST *el, int N_Node,
       n1 = el->EL[j][0];
       n2 = el->EL[j][1];
       
-      if (FN->N_Neighb[n1] > SUMA_MAX_NUMBER_NODE_NEIGHB || FN->N_Neighb[n2] > SUMA_MAX_NUMBER_NODE_NEIGHB) {
-         fprintf(SUMA_STDERR, "Critical Error %s\a: Maximum number of node neighbors for node %d or node %d exceeds %d (SUMA_MAX_NUMBER_NODE_NEIGHB)\n SUMA will try to launch but some functions may not work properly.\n", FuncName, n1, n2, SUMA_MAX_NUMBER_NODE_NEIGHB);
+      if (  n1 < 0 || n2 < 0 || 
+            FN->N_Neighb[n1] > SUMA_MAX_NUMBER_NODE_NEIGHB || 
+            FN->N_Neighb[n2] > SUMA_MAX_NUMBER_NODE_NEIGHB) {
+         fprintf(SUMA_STDERR, 
+            "Critical Error %s\a:"
+            "Bad node index! %d and/or %d\n"
+            "Maximum number of node neighbors for node %d or node %d exceeds %d"
+            " (SUMA_MAX_NUMBER_NODE_NEIGHB)\n "
+            "SUMA will try to launch but some functions may not work properly.\n", 
+            FuncName, n1, n2, n1, n2, SUMA_MAX_NUMBER_NODE_NEIGHB);
       }else {
          /*register the neighbors for both nodes*/
          FN->NodeId[n1] = n1; /* this field may come in handy when operations need to be performed on subsets of the nodes making up the surface */
@@ -5580,6 +7648,8 @@ SUMA_Boolean SUMA_TriNorm (float *n0, float *n1, float *n2, float *norm)
    static char FuncName[]={"SUMA_TriNorm"};
    int i;
    float d1[3], d2[3], d;
+   
+   SUMA_ENTRY;
    
    for (i=0; i<3; ++i) {
          d1[i] = n0[i] - n1[i];
@@ -5814,7 +7884,7 @@ float * SUMA_PolySurf3 (float *NodeList, int N_Node, int *FaceSets, int N_FaceSe
 
 SUMA_SURFACE_CURVATURE * SUMA_Surface_Curvature (  float *NodeList, int N_Node, float *NodeNormList, 
                                                    float *A, int N_FaceSet, SUMA_NODE_FIRST_NEIGHB *FN, SUMA_EDGE_LIST *SEL,
-                                                   char *odbg_name)
+                                                   char *odbg_name, int verb)
 { 
    static char FuncName[] = {"SUMA_Surface_Curvature"};
    int i, N_Neighb, j, ji, Incident[MAX_INCIDENT_TRI], N_Incident, kk, ii, id, ND; 
@@ -5887,14 +7957,14 @@ SUMA_SURFACE_CURVATURE * SUMA_Surface_Curvature (  float *NodeList, int N_Node, 
    SC->N_SkipNode = 0;
    SC->N_Node = N_Node;
    
-   fprintf (SUMA_STDERR, "%s: Beginning curvature computations:\n", FuncName);
+   if (verb) fprintf (SUMA_STDERR, "%s: Beginning curvature computations:\n", FuncName);
    
    ND = 3;
    SC->N_SkipNode = 0;
    for (i=0; i < N_Node; ++i) { /* for i */
       #ifdef DBG_1
          if (!(i%10000)) {
-            fprintf (SUMA_STDERR, "%s: [%d]/[%d] %.2f/100%% completed\n", FuncName, i, N_Node, (float)i / N_Node * 100);
+            if (verb) fprintf (SUMA_STDERR, "%s: [%d]/[%d] %.2f/100%% completed\n", FuncName, i, N_Node, (float)i / N_Node * 100);
          }
       #endif
       SkipNode[i] = NOPE;
@@ -5905,7 +7975,7 @@ SUMA_SURFACE_CURVATURE * SUMA_Surface_Curvature (  float *NodeList, int N_Node, 
       Nit[0][0] = NodeNormList[id]; Nit[0][1] = NodeNormList[id+1]; Nit[0][2] = NodeNormList[id+2]; /* transpose of Ni */ 
       vi[0] = NodeList[id]; vi[1] = NodeList[id+1]; vi[2] = NodeList[id+2];  /* node coordinate vector */ 
       #ifdef DBG_2
-         fprintf (SUMA_STDERR, "%s: Looping over neighbors, i = %d\n", FuncName, i);
+         if (verb > 1) fprintf (SUMA_STDERR, "%s: Looping over neighbors, i = %d\n", FuncName, i);
       #endif
       j=0;
       sWij = 0.0;
@@ -5916,7 +7986,7 @@ SUMA_SURFACE_CURVATURE * SUMA_Surface_Curvature (  float *NodeList, int N_Node, 
          
          /* calculate Tij */
          #ifdef DBG_2
-            fprintf (SUMA_STDERR, "%s: Mat Op j=%d\n", FuncName, j);
+            if (verb > 1) fprintf (SUMA_STDERR, "%s: Mat Op j=%d\n", FuncName, j);
          #endif
          
          /* fa33 = Ni*Ni' */
@@ -5935,7 +8005,7 @@ SUMA_SURFACE_CURVATURE * SUMA_Surface_Curvature (  float *NodeList, int N_Node, 
          /* Calculate Tij at this j, a 3x1 vector unit length normalized projection projection of vj-vi onto the plane perp. to Ni */
          NumNorm = (float)sqrt(Num[0]*Num[0] + Num[1]*Num[1] + Num[2]*Num[2]);
          if (NumNorm == 0) {
-            fprintf (SUMA_STDERR, "Warning %s: NumNorm = 0 for node %d.\n", FuncName, i); 
+            if (verb) fprintf (SUMA_STDERR, "Warning %s: NumNorm = 0 for node %d.\n", FuncName, i); 
             SkipNode[i] = YUP;
             SC->N_SkipNode++;
             break;
@@ -5946,7 +8016,7 @@ SUMA_SURFACE_CURVATURE * SUMA_Surface_Curvature (  float *NodeList, int N_Node, 
          Tij[j][2] = Num[2] / NumNorm;
          
          #ifdef DBG_2
-            fprintf(SUMA_STDOUT,"%s: i,j, ji =%d,%d, %d Ni = %f %f %f\n Tij(%d,:) = %f %f %f.\n", \
+            if (verb > 1) fprintf(SUMA_STDOUT,"%s: i,j, ji =%d,%d, %d Ni = %f %f %f\n Tij(%d,:) = %f %f %f.\n", \
                FuncName, i, j, ji,Ni[0][0], Ni[1][0], Ni[2][0], j, Tij[j][0], Tij[j][1], Tij[j][2]);
          #endif
           
@@ -5961,7 +8031,7 @@ SUMA_SURFACE_CURVATURE * SUMA_Surface_Curvature (  float *NodeList, int N_Node, 
          
          Kij[j] = 2 * num / denum;
          #ifdef DBG_2
-            fprintf(SUMA_STDOUT,"%s: Kij[%d] = %f\n", FuncName, j, Kij[j]);
+            if (verb > 1) fprintf(SUMA_STDOUT,"%s: Kij[%d] = %f\n", FuncName, j, Kij[j]);
          #endif
          
          /* calculate the weights for integration, Wij */
@@ -5990,16 +8060,18 @@ SUMA_SURFACE_CURVATURE * SUMA_Surface_Curvature (  float *NodeList, int N_Node, 
             }
 
             #ifdef DBG_2
-               fprintf (SUMA_STDERR,"%s: Incidents ...\n", FuncName);
-               for (kk=0; kk < N_Incident; ++kk) {
-                  fprintf (SUMA_STDERR,"\t %d", Incident[kk]);
+               if (verb > 1) {
+                  fprintf (SUMA_STDERR,"%s: Incidents ...\n", FuncName);
+                  for (kk=0; kk < N_Incident; ++kk) {
+                     fprintf (SUMA_STDERR,"\t %d", Incident[kk]);
+                  }
+                  fprintf (SUMA_STDERR,"\n");
                }
-               fprintf (SUMA_STDERR,"\n");
             #endif
 
             if (N_Incident != 2 && N_Incident != 1)
             {
-               fprintf (SUMA_STDERR,"Warning %s: Unexpected N_Incident = %d at i,j = %d,%d\n", FuncName, N_Incident, i, j);
+               if (verb) fprintf (SUMA_STDERR,"Warning %s: Unexpected N_Incident = %d at i,j = %d,%d\n", FuncName, N_Incident, i, j);
                SkipNode[i] = YUP;
                ++SC->N_SkipNode;
                break;
@@ -6010,7 +8082,7 @@ SUMA_SURFACE_CURVATURE * SUMA_Surface_Curvature (  float *NodeList, int N_Node, 
             }
             sWij += Wij[j];
             if (Wij[j] == 0.0) {
-               fprintf (SUMA_STDERR,"Warning %s: Null Wij[%d] at i,j=%d,%d\n", FuncName, j, i, j);
+               if (verb) fprintf (SUMA_STDERR,"Warning %s: Null Wij[%d] at i,j=%d,%d\n", FuncName, j, i, j);
                SkipNode[i] = YUP;
                ++SC->N_SkipNode;
                break; 
@@ -6022,14 +8094,14 @@ SUMA_SURFACE_CURVATURE * SUMA_Surface_Curvature (  float *NodeList, int N_Node, 
       if (!SkipNode[i]) {
             /* make the sum of the weights be equal to 1*/
             #ifdef DBG_2   
-               fprintf (SUMA_STDERR,"%s: Wij:\n", FuncName);
+               if (verb > 1) fprintf (SUMA_STDERR,"%s: Wij:\n", FuncName);
             #endif
             for (ii=0; ii < N_Neighb; ++ii) {
                Wij[ii] /= sWij; 
                /*   fprintf (SUMA_STDERR,"Wij[%d]=%f\t", ii, Wij[ii]);*/
             }
             #ifdef DBG_2   
-               fprintf (SUMA_STDERR,"\n");
+               if (verb > 1) fprintf (SUMA_STDERR,"\n");
             #endif
             /* calculate Mi */
             Mi[0][0] = Mi[1][0] = Mi[2][0] = Mi[0][1] = Mi[1][1] = Mi[2][1] = Mi[0][2] = Mi[1][2] = Mi[2][2] = 0.0;
@@ -6046,7 +8118,7 @@ SUMA_SURFACE_CURVATURE * SUMA_Surface_Curvature (  float *NodeList, int N_Node, 
                }
             }
             #ifdef DBG_2   
-               SUMA_disp_mat (Mi, 3, 3, 1);
+               if (verb > 1) SUMA_disp_mat (Mi, 3, 3, 1);
             #endif
             /* calculate Householder of Ni */
             Ntmp[0] = Ni[0][0]; Ntmp[1] = Ni[1][0]; Ntmp[2] = Ni[2][0];
@@ -6060,15 +8132,17 @@ SUMA_SURFACE_CURVATURE * SUMA_Surface_Curvature (  float *NodeList, int N_Node, 
                T2e[0] = Q[0][2]; T2e[1] = Q[1][2]; T2e[2] = Q[2][2];  /* T tilda 1, T tilda2 */
                SUMA_TRANSP_MAT (Q, Qt, 3, 3, float, float);
                #ifdef DBG_2   
-                  SUMA_disp_mat (Q, 3, 3, 1);
-                  SUMA_disp_mat (Qt, 3, 3, 1);
+                  if (verb > 1) {
+                     SUMA_disp_mat (Q, 3, 3, 1);
+                     SUMA_disp_mat (Qt, 3, 3, 1);
+                  }
                #endif
                
                /* Mi (aka fb33) = Q' * Mi * Q; Mi should become a 3x3 with 2x2  non zero minor in lower right */
                SUMA_MULT_MAT (Qt, Mi, fa33, 3, 3, 3, float, float, float);
                SUMA_MULT_MAT (fa33, Q, Mi, 3, 3, 3, float, float, float);
                #ifdef DBG_2   
-                  SUMA_disp_mat (Mi, 3, 3, 1);
+                  if (verb > 1) SUMA_disp_mat (Mi, 3, 3, 1);
                #endif
                mMi[0][0] = Mi[1][1]; mMi[0][1] = Mi[1][2];
                mMi[1][0] = Mi[2][1]; mMi[1][1] = Mi[2][2]; 
@@ -6082,7 +8156,7 @@ SUMA_SURFACE_CURVATURE * SUMA_Surface_Curvature (  float *NodeList, int N_Node, 
                fa22[1][0] = -s; fa22[1][1] = c; 
                SUMA_MULT_MAT(fa22, mMi, mMir, 2, 2, 2, float, float, float);
                #ifdef DBG_2   
-                  fprintf (SUMA_STDERR,"%s: mg = %f, c = %f, s = %f\n", FuncName,  mg, c, s);
+                  if (verb > 1) fprintf (SUMA_STDERR,"%s: mg = %f, c = %f, s = %f\n", FuncName,  mg, c, s);
                #endif   
                /* calculate the principal directions */
                SC->T1[i][0] = c * T1e[0] - s * T2e[0];               
@@ -6097,12 +8171,12 @@ SUMA_SURFACE_CURVATURE * SUMA_Surface_Curvature (  float *NodeList, int N_Node, 
                SC->Kp1[i] = 3 * mMir[0][0] - mMir[1][1];
                SC->Kp2[i] = 3 * mMir[1][1] - mMir[0][0];
                #ifdef DBG_2   
-                  fprintf (SUMA_STDERR,"%s: SC->Kp1[i] = %f, SC->Kp2[i] = %f, mKp[i] = %f\n", FuncName,  SC->Kp1[i], SC->Kp2[i], (SC->Kp1[i]+SC->Kp2[i])/2);
+                  if (verb > 1) fprintf (SUMA_STDERR,"%s: SC->Kp1[i] = %f, SC->Kp2[i] = %f, mKp[i] = %f\n", FuncName,  SC->Kp1[i], SC->Kp2[i], (SC->Kp1[i]+SC->Kp2[i])/2);
                #endif   
             }
             
          #ifdef DBG_3
-            SUMA_PAUSE_PROMPT("Done with node, waiting to move to next");
+            if (verb > 2) SUMA_PAUSE_PROMPT("Done with node, waiting to move to next");
          #endif
          
       } /* not skipped (yet)*/
@@ -6145,7 +8219,7 @@ SUMA_SURFACE_CURVATURE * SUMA_Surface_Curvature (  float *NodeList, int N_Node, 
    if (Qt) SUMA_free2D((char **)Qt, 3);
    if (Mi) SUMA_free2D((char **)Mi, 3);
    
-   fprintf (SUMA_STDERR, "%s: Done with curvature computations.\n", FuncName);
+   if (verb) fprintf (SUMA_STDERR, "%s: Done with curvature computations.\n", FuncName);
 
    SUMA_RETURN (SC);
 }
@@ -6373,7 +8447,8 @@ float * SUMA_Convexity_Engine (float *NL, int N_N, float *NNL, SUMA_NODE_FIRST_N
          /* as a measure of curvature, compute the sum of signed distances of negihbors to tangent plane at i.
          use distances normalized by length of segment ij to account for differences in segment length */
           
-         C[i] -= d/dij; /* used to be C[i] += d/dij; prior to May 06 04 */
+         if (dij > SUMA_EPSILON) C[i] -= d/dij; /* used to be C[i] += d/dij; prior to May 06 04 */
+         else C[i] = 0.0;
          
          if (DetailFile) fprintf(fid,"%f\t%f\t%f\t", d, dij, d/dij);
          

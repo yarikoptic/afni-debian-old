@@ -13,6 +13,7 @@ int main( int argc , char *argv[] )
    byte *mask=NULL ; int mask_nx,mask_ny,mask_nz , automask=0 ;
    char *prefix="./localstat" ;
    int ntype=0 ; float na=0.0f,nb=0.0f,nc=0.0f ;
+   int do_fwhm=0 , verb=1 ;
 
    /*---- for the clueless who wish to become clued-in ----*/
 
@@ -69,6 +70,12 @@ int main( int argc , char *argv[] )
       "                          map that size.  It may be useful if you\n"
       "                          plan to compute a t-statistic (say) from\n"
       "                          the mean and stdev outputs.\n"
+      "               * FWHM   = compute (like 3dFWHM) image smoothness\n"
+      "                          inside each voxel's neighborhood.  Results\n"
+      "                          are in 3 sub-bricks: FWHMx, FHWMy, and FWHM.\n"
+      "                          Places where an output is -1 are locations\n"
+      "                          where the FWHM value could not be computed\n"
+      "                          (e.g., outside the mask).\n"
       "               * ALL    = all of the above, in that order\n"
       "               More than one '-stat' option can be used.\n"
       "\n"
@@ -84,6 +91,8 @@ int main( int argc , char *argv[] )
       " -prefix ppp = Use string 'ppp' as the prefix for the output dataset.\n"
       "               The output dataset is always stored as floats.\n"
       "\n"
+      " -quiet      = Stop the annoying progress reports.\n"
+      "\n"
       "Author: RWCox - August 2005.  Instigator: ZSSaad.\n"
      ) ;
      exit(0) ;
@@ -92,16 +101,21 @@ int main( int argc , char *argv[] )
    /*---- official startup ---*/
 
    PRINT_VERSION("3dLocalstat"); mainENTRY("3dLocalstat main"); machdep();
+   AFNI_logger("3dLocalstat",argc,argv); AUTHOR("Emperor Zhark");
 
    /*---- loop over options ----*/
 
    while( iarg < argc && argv[iarg][0] == '-' ){
 
+     if( strncmp(argv[iarg],"-q",2) == 0 ){
+       verb = 0 ; iarg++ ; continue ;
+     }
+
      if( strcmp(argv[iarg],"-input") == 0 ){
        if( inset != NULL  ) ERROR_exit("Can't have two -input options") ;
        if( ++iarg >= argc ) ERROR_exit("Need argument after '-input'") ;
        inset = THD_open_dataset( argv[iarg] ) ;
-       if( inset == NULL  ) ERROR_exit("Can't open dataset '%s'",argv[iarg]) ;
+       CHECK_OPEN_ERROR(inset,argv[iarg]) ;
        iarg++ ; continue ;
      }
 
@@ -116,14 +130,13 @@ int main( int argc , char *argv[] )
        if( ++iarg >= argc ) ERROR_exit("Need argument after '-mask'") ;
        if( mask != NULL || automask ) ERROR_exit("Can't have two mask inputs") ;
        mset = THD_open_dataset( argv[iarg] ) ;
-       if( mset == NULL ) ERROR_exit("Can't open dataset '%s'",argv[iarg]) ;
-       DSET_load(mset) ;
-       if( !DSET_LOADED(mset) ) ERROR_exit("Can't load dataset '%s'",argv[iarg]) ;
+       CHECK_OPEN_ERROR(mset,argv[iarg]) ;
+       DSET_load(mset) ; CHECK_LOAD_ERROR(mset) ;
        mask_nx = DSET_NX(mset); mask_ny = DSET_NY(mset); mask_nz = DSET_NZ(mset);
        mask = THD_makemask( mset , 0 , 0.5f, 0.0f ) ; DSET_delete(mset) ;
        if( mask == NULL ) ERROR_exit("Can't make mask from dataset '%s'",argv[iarg]) ;
        mmm = THD_countmask( mask_nx*mask_ny*mask_nz , mask ) ;
-       INFO_message("Number of voxels in mask = %d",mmm) ;
+       if( verb ) INFO_message("Number of voxels in mask = %d",mmm) ;
        if( mmm < 2 ) ERROR_exit("Mask is too small to process") ;
        iarg++ ; continue ;
      }
@@ -149,12 +162,18 @@ int main( int argc , char *argv[] )
        else if( strcasecmp(cpt,"max")   == 0 ) code[ncode++] = NSTAT_MAX   ;
        else if( strcasecmp(cpt,"absmax")== 0 ) code[ncode++] = NSTAT_ABSMAX;
        else if( strcasecmp(cpt,"num")   == 0 ) code[ncode++] = NSTAT_NUM   ;
+       else if( strcasecmp(cpt,"fwhm")  == 0 ){code[ncode++] = NSTAT_FWHMx ;
+                                               code[ncode++] = NSTAT_FWHMy ;
+                                               code[ncode++] = NSTAT_FWHMz ;
+                                               do_fwhm++                   ;}
        else if( strcasecmp(cpt,"ALL")   == 0 ){
          code[ncode++] = NSTAT_MEAN  ; code[ncode++] = NSTAT_SIGMA ;
          code[ncode++] = NSTAT_VAR   ; code[ncode++] = NSTAT_CVAR  ;
          code[ncode++] = NSTAT_MEDIAN; code[ncode++] = NSTAT_MAD   ;
          code[ncode++] = NSTAT_MIN   ; code[ncode++] = NSTAT_MAX   ;
          code[ncode++] = NSTAT_ABSMAX; code[ncode++] = NSTAT_NUM   ;
+         code[ncode++] = NSTAT_FWHMx ; code[ncode++] = NSTAT_FWHMy ;
+         code[ncode++] = NSTAT_FWHMz ; do_fwhm++ ;
        }
        else
          ERROR_exit("-stat '%s' is an unknown statistic type",argv[iarg]) ;
@@ -189,19 +208,17 @@ int main( int argc , char *argv[] )
 
    /*---- check for stupid user inputs ----*/
 
-   if( ncode <= 0 ) ERROR_exit("No '-stat' options given?") ;
+   if( ncode <= 0 ) ERROR_exit("No '-stat' options given?");
 
    /*---- deal with input dataset ----*/
 
    if( inset == NULL ){
      if( iarg >= argc ) ERROR_exit("No input dataset on command line?") ;
      inset = THD_open_dataset( argv[iarg] ) ;
-     if( inset == NULL  ) ERROR_exit("Can't open dataset '%s'",argv[iarg]) ;
+     CHECK_OPEN_ERROR(inset,argv[iarg]) ;
    }
 
-   DSET_load(inset) ;
-   if( !DSET_LOADED(inset) )
-     ERROR_exit("Can't load input dataset '%s' from disk") ;
+   DSET_load(inset) ; CHECK_LOAD_ERROR(inset) ;
 
    if( mask != NULL ){
      if( mask_nx != DSET_NX(inset) ||
@@ -215,7 +232,7 @@ int main( int argc , char *argv[] )
      if( mask == NULL )
        ERROR_message("Can't create -automask from input dataset?") ;
      mmm = THD_countmask( DSET_NVOX(inset) , mask ) ;
-     INFO_message("Number of voxels in automask = %d",mmm) ;
+     if( verb ) INFO_message("Number of voxels in automask = %d",mmm) ;
      if( mmm < 2 ) ERROR_exit("Automask is too small to process") ;
    }
 
@@ -223,7 +240,7 @@ int main( int argc , char *argv[] )
 
    if( ntype <= 0 ){         /* default neighborhood */
      ntype = NTYPE_SPHERE ; na = -1.01f ;
-     INFO_message("Using default neighborhood = self + 6 neighbors") ;
+     if( verb ) INFO_message("Using default neighborhood = self + 6 neighbors") ;
    }
 
    switch( ntype ){
@@ -250,11 +267,14 @@ int main( int argc , char *argv[] )
      break ;
    }
 
-   INFO_message("Neighborhood comprises %d voxels",nbhd->num_pt) ;
+   if( verb ) INFO_message("Neighborhood comprises %d voxels",nbhd->num_pt) ;
+
+   if( do_fwhm && nbhd->num_pt < 19 )
+     ERROR_exit("FWHM requires neighborhood of at least 19 voxels!");
 
    /*---- actually do some work for a change ----*/
 
-   THD_localstat_verb(1) ;
+   THD_localstat_verb(verb) ;
    outset = THD_localstat( inset , mask , nbhd , ncode , code ) ;
 
    DSET_unload(inset) ;
@@ -272,6 +292,9 @@ int main( int argc , char *argv[] )
      lcode[NSTAT_MAD]    = "MAD"  ; lcode[NSTAT_MAX]    = "MAX"    ;
      lcode[NSTAT_MIN]    = "MIN"  ; lcode[NSTAT_ABSMAX] = "ABSMAX" ;
      lcode[NSTAT_VAR]    = "VAR"  ; lcode[NSTAT_NUM]    = "NUM"    ;
+     lcode[NSTAT_FWHMx]  = "FWHMx";
+     lcode[NSTAT_FWHMy]  = "FWHMy";
+     lcode[NSTAT_FWHMz]  = "FWHMz";
      if( DSET_NVALS(inset) == 1 ){
        for( ii=0 ; ii < DSET_NVALS(outset) ; ii++ )
          EDIT_dset_items( outset ,
@@ -286,6 +309,6 @@ int main( int argc , char *argv[] )
    }
 
    DSET_write( outset ) ;
-   WROTE_DSET( outset ) ;
+   if( verb ) WROTE_DSET( outset ) ;
    exit(0) ;
 }

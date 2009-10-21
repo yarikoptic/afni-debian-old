@@ -4593,7 +4593,9 @@ ENTRY("PLUTO_4D_to_typed_fbuc") ;
    RETURN(new_dset) ;
 }
 
-void PLUTO_report( PLUGIN_interface * plint , char * str )
+/*----------------------------------------------------------------------------*/
+
+void PLUTO_report( PLUGIN_interface *plint , char *str )
 {
    if( plint == NULL || str == NULL || !AFNI_VERBOSE ) return ;
    printf("\n%15.15s= %s" , plint->label , str ) ; fflush(stdout) ;
@@ -4737,6 +4739,7 @@ static vptr_func * forced_loads[] = {
    (vptr_func *) THD_average_timeseries , /* 03 Apr 2002 */
    (vptr_func *) cl1_solve ,              /* 07 Aug 2002 */
    (vptr_func *) new_Dtable ,             /* 20 Oct 2003 */
+   (vptr_func *) powell_newuoa ,          /* 24 Jul 2006 */
 #endif
 NULL } ;
 

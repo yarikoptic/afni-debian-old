@@ -17,6 +17,10 @@
 
 #include "mcw_malloc.h"
 
+#ifdef  __cplusplus
+extern "C" {
+#endif
+
 /***** Quicksort routines in various flavonoids *****/
 
 extern void qsort_floatint  ( int , float *  , int * ) ;
@@ -24,11 +28,13 @@ extern void qsort_doubleint ( int , double * , int * ) ;
 extern void qsort_intint    ( int , int *    , int * ) ;
 extern void qsort_floatfloat( int , float *  , float * ) ;  /* 30 Jan 2000 */
 extern void qsort_floatstuff( int , float *  , void ** ) ;  /* 06 Feb 2000 */
+extern void qsort_doublestuff( int, double * , void ** ) ;  /* 18 Dec 2006 */
 
 /***** Quicksort-ish median *****/
 
-extern float qmed_float( int , float * ) ;
-extern void  qmedmad_float( int,float *,float *,float * ) ; /* 08 Mar 2001 */
+extern float qmed_float     ( int , float * ) ;
+extern void  qmedmad_float  ( int,float *,float *,float * ) ; /* 08 Mar 2001 */
+extern void  meansigma_float( int,float *,float *,float * ) ; /* 07 Dec 2006 */
 
 /***** Eigensolutions *****/
 
@@ -61,6 +67,18 @@ extern float cl1_solve_res( int, int, float *, float **, float *,int, float*,int
 extern int powell_newuoa( int ndim , double *x ,
                           double rstart , double rend ,
                           int maxcall , double (*ufunc)(int,double *) ) ;
+extern void powell_set_mfac( float mm , float aa ) ;
+extern void powell_set_verbose( int ) ;
+extern int powell_newuoa_con( int ndim , double *x , double *xb, double *xt ,
+                              int nrand, double rstart , double rend ,
+                              int maxcall , double (*ufunc)(int,double *) ) ;
+
+extern int powell_newuoa_constrained(
+                               int ndim, double *x, double *cost ,
+                               double *xbot, double *xtop ,
+                               int nrand, int nkeep, int ntry ,
+                               double rstart , double rend ,
+                               int maxcall , double (*ufunc)(int,double *) ) ;
 
 extern char *approximate_number_string( double ) ;  /* 16 Jan 2004 */
 
@@ -81,5 +99,14 @@ extern int compare_float (float *a, float *b );
 extern int compare_int (int *a, int *b );
 extern int compare_short (short *a, short *b );
 extern int compare_char (char *a, char *b );
+
+/***** pca calc *****/
+double covariance(float *data_mat, double *cov_mat, unsigned char * row_mask, int num_rows, int num_cols, int norm, int remove_mean, int be_quiet);
+void pca (float *data_mat, unsigned char * row_mask, int num_rows, int num_cols, int be_quiet);
+double pca_fast3 (float *data_mat, int num_rows, int be_quiet, double *pca_vec, double *pca_eig);
+
+#ifdef  __cplusplus
+}
+#endif
 
 #endif

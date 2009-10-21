@@ -51,7 +51,7 @@
  *               -grid_par   SubjA_EPI+orig                             \
  *               -cmask      '-a SubjA.func+orig[2] -expr step(a-0.6)'  \
  *               -map_func   midpoint                                   \
- *               -out_1D     SubjA_surf_out.txt
+ *               -out_niml   SubjA_surf_out.niml.dset
  *
  *----------------------------------------------------------------------
 */
@@ -207,9 +207,21 @@ static char g_history[] =
     "\n"
     "6.3a March 22, 2005 [rickr] - removed tabs\n"
     "6.4  June   2, 2005 [rickr] - added -skip_col_non_results option\n"
+    "6.5  June  30, 2006 [rickr] - added -save_seg_coords option\n"
+    "6.6  Aug 9, 2006 [rickr]\n"
+    "  - store command-line arguments for history note\n"
+    "  - added -skip_col_NSD_format option\n"
+    "\n"
+    "6.7  Aug 23, 2006 [rickr] - added/modified output column options\n"
+    "  - changed -skip_col_results     to -outcols_1_result\n"
+    "  - changed -skip_col_non_results to -outcols_results\n"
+    "  - changed -skip_col_NSD_format  to -outcols_NSD_format\n"
+    "  - added -outcols_afni_NSD option\n"
+    "\n"
+    "6.8  Dec 15, 2006 [rickr] - added example for EPI -> surface in help\n"
     "---------------------------------------------------------------------\n";
 
-#define VERSION "version  6.4 (June 2, 2005)"
+#define VERSION "version  6.7 (Aug 23, 2006)"
 
 /*----------------------------------------------------------------------
  * todo:
@@ -257,7 +269,7 @@ int main( int argc , char * argv[] )
     if ( ( ret_val = validate_options(&opts, &params) ) != 0 )
         return ret_val;
 
-    if ( (ret_val = set_smap_opts( &opts, &params, &sopt )) != 0 )
+    if ( (ret_val = set_smap_opts( &opts, &params, &sopt, argc, argv )) != 0 )
         return ret_val;
 
     /* initialize the spec ZSS Jan 9 06*/
@@ -324,7 +336,7 @@ ENTRY("write_output");
         rv = v2s_write_outfile_1D(sopt, sd, p->surf[0].label);
 
     if ( sd && !rv && sopt->outfile_niml )
-        rv = v2s_write_outfile_niml(sopt, sd, 1); /* request to free data */
+        rv = v2s_write_outfile_NSD(sd, sopt, p, 1); /* request to free data */
 
     free_v2s_results( sd );
     sd = NULL;
@@ -776,7 +788,8 @@ ENTRY("get_mappable_surfs");
  *        -1 : error condition
  *----------------------------------------------------------------------
 */
-int set_smap_opts( opts_t * opts, v2s_param_t * p, v2s_opts_t * sopt )
+int set_smap_opts( opts_t * opts, v2s_param_t * p, v2s_opts_t * sopt,
+                   int argc, char * argv[] )
 {
     int nsurf = 1;
 
@@ -824,6 +837,7 @@ ENTRY("set_smap_opts");
     sopt->f_pn_mm      = opts->f_pn_mm;
     sopt->outfile_1D   = opts->outfile_1D;
     sopt->outfile_niml = opts->outfile_niml;
+    sopt->segc_file    = opts->seg_coords_file;
     sopt->oob          = opts->oob;             /* out of bounds info */
     sopt->oom          = opts->oom;             /* out of bounds info */
 
@@ -874,6 +888,9 @@ ENTRY("set_smap_opts");
     }
 
     p->over_steps = v2s_vals_over_steps(sopt->map);
+
+    /* include command options for history     7 Aug 2006 [rickr] */
+    sopt->cmd.fake = 0;  sopt->cmd.argc = argc;  sopt->cmd.argv = argv;
 
     if ( opts->debug > 0 )
         disp_v2s_opts_t( "++ smap opts set :", sopt );
@@ -1026,20 +1043,21 @@ ENTRY("init_options");
 
     /* clear out the options structure */
     memset( opts, 0, sizeof( opts_t) );
-    opts->gpar_file    = NULL;
-    opts->outfile_1D   = NULL;
-    opts->outfile_niml = NULL;
-    opts->spec_file    = NULL;
-    opts->sv_file      = NULL;
-    opts->cmask_cmd    = NULL;
-    opts->map_str      = NULL;
-    opts->snames[0]    = NULL;
-    opts->snames[1]    = NULL;
-    opts->f_index_str  = NULL;
+    opts->gpar_file       = NULL;
+    opts->outfile_1D      = NULL;
+    opts->outfile_niml    = NULL;
+    opts->seg_coords_file = NULL;
+    opts->spec_file       = NULL;
+    opts->sv_file         = NULL;
+    opts->cmask_cmd       = NULL;
+    opts->map_str         = NULL;
+    opts->snames[0]       = NULL;
+    opts->snames[1]       = NULL;
+    opts->f_index_str     = NULL;
 
-    opts->gp_index     = -1;            /* means none: use all       */
-    opts->norm_len     = 1.0;           /* init to 1.0 millimeter    */
-    opts->dnode        = -1;            /* init to something invalid */
+    opts->gp_index        = -1;            /* means none: use all       */
+    opts->norm_len        = 1.0;           /* init to 1.0 millimeter    */
+    opts->dnode           = -1;            /* init to something invalid */
 
     for ( ac = 1; ac < argc; ac++ )
     {
@@ -1310,7 +1328,24 @@ ENTRY("init_options");
         {
             opts->norm_dir = V2S_NORM_REVERSE;
         }
-        else if ( ! strncmp(argv[ac], "-skip_col_non_results", 15) )
+        else if ( ! strncmp(argv[ac], "-save_seg_coords", 9) ) /* 30 Jun 2006 */
+        {
+            if ( (ac+1) >= argc )
+            {
+                fputs( "option usage: -save_seg_coords OUTPUT_FILE\n\n",stderr);
+                usage( PROG_NAME, V2S_USE_SHORT );
+                RETURN(-1);
+            }
+
+            opts->seg_coords_file = argv[++ac];
+        }
+        /* added -outcols_* options  23 Aug 2006 [rickr] */
+        else if ( ! strncmp(argv[ac], "-outcols_afni_NSD", 13) )
+            opts->skip_cols = V2S_SKIP_ALL ^ V2S_SKIP_NODES;
+        else if ( ! strncmp(argv[ac], "-outcols_NSD_format", 12) )
+            opts->skip_cols = V2S_SKIP_ALL ^ V2S_SKIP_NODES ^ V2S_SKIP_VALS;
+        else if ( ! strncmp(argv[ac], "-skip_col_non_results", 15) ||
+                  ! strncmp(argv[ac], "-outcols_results", 12) )
             opts->skip_cols |= (V2S_SKIP_ALL & ~V2S_SKIP_VALS);
         else if ( ! strncmp(argv[ac], "-skip_col_nodes", 13) )
             opts->skip_cols |= V2S_SKIP_NODES;
@@ -1324,7 +1359,8 @@ ENTRY("init_options");
             opts->skip_cols |= V2S_SKIP_K;
         else if ( ! strncmp(argv[ac], "-skip_col_vals", 13) )
             opts->skip_cols |= V2S_SKIP_NVALS;
-        else if ( ! strncmp(argv[ac], "-skip_col_results", 13) )
+        else if ( ! strncmp(argv[ac], "-skip_col_results", 13) || 
+                  ! strncmp(argv[ac], "-outcols_1_result", 14) )
             opts->skip_cols |= V2S_SKIP_VALS;
         else if ( ! strncmp(argv[ac], "-spec", 3) )
         {
@@ -1484,6 +1520,13 @@ ENTRY("check_outfile");
     {
         fprintf(stderr, "** output file '%s' already exists\n",
                 opts->outfile_niml);
+        RETURN(-1);
+    }
+
+    if ( THD_is_file(opts->seg_coords_file) )
+    {
+        fprintf(stderr, "** segment coords output file '%s' already exists\n",
+                opts->seg_coords_file);
         RETURN(-1);
     }
 
@@ -1765,7 +1808,7 @@ ENTRY("usage");
             "       -map_func     mask                                     \\\n"
             "       -debug        2                                        \\\n"
             "       -dnode        1874                                     \\\n"
-            "       -out_niml     fred_epi_vals.niml\n"
+            "       -out_niml     fred_epi_vals.niml.dset\n"
             "\n"
             "    3. Given a pair of related surfaces, for each node pair,\n"
             "       break the connected line segment into 10 points, and\n"
@@ -1788,7 +1831,7 @@ ENTRY("usage");
             "       -map_func     ave                                      \\\n"
             "       -f_steps      10                                       \\\n"
             "       -f_index      nodes                                    \\\n"
-            "       -out_1D       fred_func_ave.1D\n"
+            "       -out_niml     fred_func_ave.niml.dset\n"
             "\n"
             "    4. Similar to example 3, but restrict the output columns to\n"
             "       only node indices and values (i.e. skip 1dindex, i, j, k\n"
@@ -1809,7 +1852,7 @@ ENTRY("usage");
             "       -skip_col_j                                            \\\n"
             "       -skip_col_k                                            \\\n"
             "       -skip_col_vals                                         \\\n"
-            "       -out_1D       fred_func_ave_short.1D\n"
+            "       -out_niml     fred_func_ave_short.niml.dset\n"
             "\n"
             "    5. Similar to example 3, but each of the node pair segments\n"
             "       has grown by 10%% on the inside of the first surface,\n"
@@ -1833,7 +1876,7 @@ ENTRY("usage");
             "       -f_index      voxels                                   \\\n"
             "       -f_p1_fr      -0.1                                     \\\n"
             "       -f_pn_fr      0.2                                      \\\n"
-            "       -out_1D       fred_func_ave2.1D\n"
+            "       -out_niml     fred_func_ave2.niml.dset\n"
             "\n"
             "    6. Similar to example 3, instead of computing the average\n"
             "       across each segment (one average per sub-brick), output\n"
@@ -1853,7 +1896,7 @@ ENTRY("usage");
             "       -map_func     seg_vals                                 \\\n"
             "       -f_steps      10                                       \\\n"
             "       -f_index      nodes                                    \\\n"
-            "       -out_1D       fred_func_segvals_10.1D\n"
+            "       -out_niml     fred_func_segvals_10.niml.dset\n"
             "\n"
             "    7. Similar to example 6, but make sure there is output for\n"
             "       every node pair in the surfaces.  Since it is expected\n"
@@ -1878,7 +1921,7 @@ ENTRY("usage");
             "       -f_index      nodes                                    \\\n"
             "       -oob_value    0.0                                      \\\n"
             "       -oom_value    0.0                                      \\\n"
-            "       -out_1D       fred_func_segvals_10_all.1D\n"
+            "       -out_niml     fred_func_segvals_10_all.niml.dset\n"
             "\n"
             "    8. This is a basic example of calculating the average along\n"
             "       each segment, but where the segment is produced by only\n"
@@ -1895,7 +1938,7 @@ ENTRY("usage");
             "       -map_func     ave                                      \\\n"
             "       -f_steps      10                                       \\\n"
             "       -f_index      nodes                                    \\\n"
-            "       -out_1D       fred_anat_norm_ave.2.5.1D\n"
+            "       -out_niml     fred_anat_norm_ave.2.5.niml.dset\n"
             "\n"
             "    9. This is the same as example 8, but where the surface\n"
             "       nodes are restricted to the range 1000..1999 via the\n"
@@ -1913,10 +1956,33 @@ ENTRY("usage");
             "       -map_func     ave                                      \\\n"
             "       -f_steps      10                                       \\\n"
             "       -f_index      nodes                                    \\\n"
-            "       -out_1D       fred_anat_norm_ave.2.5.1D\n"
+            "       -out_niml     fred_anat_norm_ave.2.5.niml.dset\n"
+            "\n"
+            "   10. Create an EPI time-series surface dataset, suitable for\n"
+            "       performing single-subject processing on the surface.  So\n"
+            "       map a time-series onto each surface node.\n"
+            "\n"
+            "       Note that any time shifting (3dTshift) or registration\n"
+            "       of volumes (3dvolreg) should be done before this step.\n"
+            "\n"
+            "       After this step, the user can finish pre-processing with\n"
+            "       blurring (SurfSmooth) and scaling (3dTstat, 3dcalc),\n"
+            "       before performing the regression (3dDeconvolve).\n"
+            "\n"
+            "    %s                                                \\\n"
+            "       -spec                fred.spec                         \\\n"
+            "       -surf_A              smoothwm                          \\\n"
+            "       -surf_B              pial                              \\\n"
+            "       -sv                  SurfVolAlndExp+orig               \\\n"
+            "       -grid_parent         EPI_all_runs+orig                 \\\n"
+            "       -map_func            ave                               \\\n"
+            "       -f_steps             15                                \\\n"
+            "       -f_index             nodes                             \\\n"
+            "       -outcols_NSD_format                                    \\\n"
+            "       -out_niml            EPI_runs.niml.dset\n"
             "\n"
             "  --------------------------------------------------\n",
-            prog, prog, prog, prog, prog, prog, prog, prog, prog );
+            prog, prog, prog, prog, prog, prog, prog, prog, prog, prog );
 
         printf(
             "\n"
@@ -2213,20 +2279,7 @@ ENTRY("usage");
             "\n"
             "  ------------------------------\n"
             "\n"
-            "  general options:\n"
-            "\n"
-            "    -cmask MASK_COMMAND    : (optional) command for dataset mask\n"
-            "\n"
-            "        e.g. -cmask '-a fred_func+orig[2] -expr step(a-0.8)'\n"
-            "\n"
-            "        This option will produce a mask to be applied to the\n"
-            "        input AFNI dataset.  Note that this mask should form a\n"
-            "        single sub-brick.\n"
-            "\n"
-            "        This option follows the style of 3dmaskdump (since the\n"
-            "        code for it was, uh, borrowed from there (thanks Bob!)).\n"
-            "\n"
-            "        See '3dmaskdump -help' for more information.\n"
+            "  output options:\n"
             "\n"
             "    -debug LEVEL           :  (optional) verbose output\n"
             "\n"
@@ -2255,17 +2308,34 @@ ENTRY("usage");
             "        This option is used to print out status information \n"
             "        for node NODE_NUM.\n"
             "\n"
-            "    -gp_index SUB_BRICK    : choose grid_parent sub-brick\n"
+            "    -out_1D OUTPUT_FILE    : specify a 1D file for the output\n"
             "\n"
-            "        e.g. -gp_index 3\n"
+            "        e.g. -out_1D mask_values_over_dataset.1D\n"
             "\n"
-            "        This option allows the user to choose only a single\n"
-            "        sub-brick from the grid_parent dataset for computation.\n"
-            "        Note that this option is virtually useless when using\n"
-            "        the command-line, as the user can more directly do this\n"
-            "        via brick selectors, e.g. func+orig'[3]'.\n"
-            "        \n"
-            "        This option was written for the afni interface.\n"
+            "        This is where the user will specify which file they want\n"
+            "        the output to be written to.  In this case, the output\n"
+            "        will be in readable, column-formatted ASCII text.\n"
+            "\n"
+            "        Note : the output file should not yet exist.\n"
+            "             : -out_1D or -out_niml must be used\n"
+            "\n"
+            "    -out_niml OUTPUT_FILE  : specify a niml file for the output\n"
+            "\n"
+            "        e.g. -out_niml mask_values_over_dataset.niml.dset\n"
+            "\n"
+            "        The user may use this option to get output in the form\n"
+            "        of a niml element, with binary data.  The output will\n"
+            "        contain (binary) columns of the form:\n"
+            "\n"
+            "            node_index  value_0  value_1  value_2  ...\n"
+            "\n"
+            "        A major difference between 1D output and niml output is\n"
+            "        that the value_0 column number will be 6 in the 1D case,\n"
+            "        but will be 2 in the niml case.  The index columns will\n"
+            "        not be used for niml output.\n"
+            "\n"
+            "        Note : the output file should not yet exist.\n"
+            "             : -out_1D or -out_niml must be used\n"
             "\n"
             "    -help                  : show this help\n"
             "\n"
@@ -2335,34 +2405,27 @@ ENTRY("usage");
             "\n"
             "        This option is meaningless without a '-cmask' option.\n"
             "\n"
-            "    -out_1D OUTPUT_FILE    : specify a 1D file for the output\n"
+            "    -outcols_afni_NSD      : output nodes and one result column\n"
+            "    -outcols_1_result      : output only one result column\n"
+            "    -outcols_results       : output only all result columns\n"
+            "    -outcols_NSD_format    : output nodes and all results\n"
+            "                             (NI_SURF_DSET foramt)\n"
             "\n"
-            "        e.g. -out_1D mask_values_over_dataset.1D\n"
+            "        These options are used to restrict output.  They are\n"
+            "        simlilar to the -skip_col_* options, but are used to\n"
+            "        choose columns to output (they are for convenience, so\n"
+            "        the user need not apply many -skip_col options).\n"
             "\n"
-            "        This is where the user will specify which file they want\n"
-            "        the output to be written to.  In this case, the output\n"
-            "        will be in readable, column-formatted ASCII text.\n"
+            "        see also: -skip_col_*\n"
             "\n"
-            "        Note : the output file should not yet exist.\n"
-            "             : -out_1D or -out_niml must be used\n"
+            "    -save_seg_coords FILE  : save segment coordinates to FILE\n"
             "\n"
-            "    -out_niml OUTPUT_FILE  : specify a niml file for the output\n"
+            "        e.g. -save_seg_coords seg.coords.1D\n"
             "\n"
-            "        e.g. -out_niml mask_values_over_dataset.niml\n"
-            "\n"
-            "        The user may use this option to get output in the form\n"
-            "        of a niml element, with binary data.  The output will\n"
-            "        contain (binary) columns of the form:\n"
-            "\n"
-            "            node_index  value_0  value_1  value_2  ...\n"
-            "\n"
-            "        A major difference between 1D output and niml output is\n"
-            "        that the value_0 column number will be 6 in the 1D case,\n"
-            "        but will be 2 in the niml case.  The index columns will\n"
-            "        not be used for niml output.\n"
-            "\n"
-            "        Note : the output file should not yet exist.\n"
-            "             : -out_1D or -out_niml must be used\n"
+            "        Each node that has output values computed along a valid\n"
+            "        segment (i.e. not out-of-bounds or out-of-mask) has its\n"
+            "        index written to this file, along with all applied\n"
+            "        segment coordinates.\n"
             "\n"
             "    -skip_col_nodes        : do not output node column\n"
             "    -skip_col_1dindex      : do not output 1dindex column\n"
@@ -2370,10 +2433,6 @@ ENTRY("usage");
             "    -skip_col_j            : do not output j column\n"
             "    -skip_col_k            : do not output k column\n"
             "    -skip_col_vals         : do not output vals column\n"
-            "    -skip_col_results      : only output ONE result column\n"
-            "                             (seems to make the most sense)\n"
-            "    -skip_col_non_results  : skip everything but the results\n"
-            "                             (i.e. only output result columns)\n"
             "\n"
             "        These options are used to restrict output.  Each option\n"
             "        will prevent the program from writing that column of\n"
@@ -2382,6 +2441,8 @@ ENTRY("usage");
             "        For now, the only effect that these options can have on\n"
             "        the niml output is by skipping nodes or results (all\n"
             "        other columns are skipped by default).\n"
+            "\n"
+            "        see also: -outcols_*\n"
             "\n"
             "    -v2s_hist              : show revision history for library\n"
             "\n"
@@ -2392,6 +2453,35 @@ ENTRY("usage");
             "    -version               : show version information\n"
             "\n"
             "        Show version and compile date.\n"
+            "\n"
+            "  ------------------------------\n"
+            "\n"
+            "  general options:\n"
+            "\n"
+            "    -cmask MASK_COMMAND    : (optional) command for dataset mask\n"
+            "\n"
+            "        e.g. -cmask '-a fred_func+orig[2] -expr step(a-0.8)'\n"
+            "\n"
+            "        This option will produce a mask to be applied to the\n"
+            "        input AFNI dataset.  Note that this mask should form a\n"
+            "        single sub-brick.\n"
+            "\n"
+            "        This option follows the style of 3dmaskdump (since the\n"
+            "        code for it was, uh, borrowed from there (thanks Bob!)).\n"
+            "\n"
+            "        See '3dmaskdump -help' for more information.\n"
+            "\n"
+            "    -gp_index SUB_BRICK    : choose grid_parent sub-brick\n"
+            "\n"
+            "        e.g. -gp_index 3\n"
+            "\n"
+            "        This option allows the user to choose only a single\n"
+            "        sub-brick from the grid_parent dataset for computation.\n"
+            "        Note that this option is virtually useless when using\n"
+            "        the command-line, as the user can more directly do this\n"
+            "        via brick selectors, e.g. func+orig'[3]'.\n"
+            "        \n"
+            "        This option was written for the afni interface.\n"
             "\n"
             "  --------------------------------------------------\n"
             "\n"
@@ -2536,6 +2626,7 @@ ENTRY("disp_opts_t");
             "    gpar_file              = %s\n"
             "    outfile_1D             = %s\n"
             "    outfile_niml           = %s\n"
+            "    seg_coords_file        = %s\n"
             "    spec_file              = %s\n"
             "    sv_file                = %s\n"
             "    cmask_cmd              = %s\n"
@@ -2552,6 +2643,7 @@ ENTRY("disp_opts_t");
             , opts,
             CHECK_NULL_STR(opts->gpar_file), CHECK_NULL_STR(opts->outfile_1D),
             CHECK_NULL_STR(opts->outfile_niml),
+            CHECK_NULL_STR(opts->seg_coords_file),
             CHECK_NULL_STR(opts->spec_file), CHECK_NULL_STR(opts->sv_file),
             CHECK_NULL_STR(opts->cmask_cmd), CHECK_NULL_STR(opts->map_str),
             CHECK_NULL_STR(opts->snames[0]), CHECK_NULL_STR(opts->snames[1]),

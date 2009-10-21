@@ -29,7 +29,7 @@
 #define myXtNew(type) ((type *) XtCalloc(1,(unsigned) sizeof(type)))
 #endif
 
-#define INC_CLUSTER 8
+#define INC_CLUSTER 32
 
 /*! In a cluster struct, the (i,j,k) indexes for each voxel
     are stored in a single integer ijk (to save space).
@@ -159,6 +159,10 @@ typedef struct {
 
 /*----------------------------------------------------------------------------*/
 
+#ifdef  __cplusplus
+extern "C" {
+#endif
+
 extern MCW_cluster_array * MCW_find_clusters( int,int,int , float,float,float ,
                                               int , void * , float ) ;
 
@@ -183,6 +187,7 @@ extern void MCW_erode_clusters (int, int, int, float, float, float, int,
 				  void *, float, float, int);
 
 extern void MCW_sort_cluster( MCW_cluster * ) ; /* 10 Jul 2001 */
+extern void MCW_radsort_cluster( MCW_cluster *, float, float, float ) ;
 
 /*----------------------------------------------------------------------------*/
 #undef ALLOW_SCALE_TO_MAX
@@ -372,7 +377,8 @@ extern void EDIT_add_bricklist( THD_3dim_dataset *,int,int *,float *,void *sbr[]
 
 extern void EDIT_add_brick( THD_3dim_dataset * , int , float , void * ) ;
 
-extern void EDIT_substitute_brick( THD_3dim_dataset * ,  int,int , void * ) ;
+extern void EDIT_substitute_brick( THD_3dim_dataset *,  int,int, void * ) ;
+extern void EDIT_substscale_brick( THD_3dim_dataset *,  int,int, void *, int,float ) ;
 
 /* 10 Sept 1996 */
 extern void EDIT_cluster_array (MCW_cluster_array * , int, float, float);
@@ -555,18 +561,31 @@ extern int              okay_to_add_markers(THD_3dim_dataset * dset);
 /*------------------------------------------------------------------*/
 /* 22 Aug 2005: neighborhood/local operations. */
 
+extern void SetSearchAboutMaskedVoxel(int v);  /* ZSS */
 extern MRI_IMAGE * THD_get_dset_nbhd( THD_3dim_dataset *, int, byte *,
+                                      int, int, int, MCW_cluster *    ) ;
+extern MRI_IMARR * THD_get_dset_indexed_nbhd(
+                                      THD_3dim_dataset *, int, byte *,
                                       int, int, int, MCW_cluster *    ) ;
 
 extern MRI_IMAGE * mri_get_nbhd( MRI_IMAGE *, byte *,
                                  int, int, int, MCW_cluster * ) ;
+extern MRI_IMARR * mri_get_indexed_nbhd( MRI_IMAGE *, byte *,
+                                         int, int, int, MCW_cluster * ) ;
 
 extern MRI_IMAGE * mri_localstat( MRI_IMAGE *, byte *, MCW_cluster *, int ) ;
-
 extern THD_3dim_dataset * THD_localstat( THD_3dim_dataset *, byte *,
                                          MCW_cluster *, int, int *) ;
 extern void THD_localstat_verb(int) ; 
 
-extern void SetSearchAboutMaskedVoxel(int v);
+extern MRI_IMAGE * mri_localbistat( MRI_IMAGE *, MRI_IMAGE *,
+                                    byte *, MCW_cluster *, int ) ;
+extern THD_3dim_dataset * THD_localbistat( THD_3dim_dataset *, THD_3dim_dataset *,
+                                           byte *, MCW_cluster *, int, int *) ;
+extern void THD_localbistat_verb(int) ; 
+
+#ifdef  __cplusplus
+}
+#endif
 
 #endif /* _MCW_EDITVOL_ */

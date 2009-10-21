@@ -294,6 +294,8 @@ SUMA_Boolean SUMA_PrepSO_GeomProp_GL(SUMA_SurfaceObject *SO)
    SUMA_Boolean *PatchNodeMask=NULL;
    SUMA_Boolean LocalHead = NOPE;
    
+   SUMA_ENTRY;
+   
    /* Calculate Min, Max, Mean */
    
    SUMA_MIN_MAX_SUM_VECMAT_COL (SO->NodeList, SO->N_Node, SO->NodeDim, SO->MinDims, SO->MaxDims, SO->Center);
@@ -2262,8 +2264,12 @@ SUMA_Boolean SUMA_PrepAddmappableSO(SUMA_SurfaceObject *SO, SUMA_DO *dov, int *N
       #endif
 
       /* create the surface controller */
-      SO->SurfCont = SUMA_CreateSurfContStruct(SO->idcode_str);
-
+      if (!SO->SurfCont) {
+         SO->SurfCont = SUMA_CreateSurfContStruct(SO->idcode_str);
+      } else {
+         SUMA_S_Note("Surface Controller Exists Already.");
+      }
+      
       {
          SUMA_DSET *dset=NULL;/* create the color plane for Convexity*/
 
@@ -2272,7 +2278,7 @@ SUMA_Boolean SUMA_PrepAddmappableSO(SUMA_SurfaceObject *SO, SUMA_DO *dov, int *N
             SUMA_SL_Err("Failed to find dset!");
             SUMA_RETURN (NOPE);
          }
-         NewColPlane = SUMA_CreateOverlayPointer (SO->N_Node, "Convexity", dset, SO->idcode_str);
+         NewColPlane = SUMA_CreateOverlayPointer (SO->N_Node, "Convexity", dset, SO->idcode_str, NULL);
          if (!NewColPlane) {
             fprintf (SUMA_STDERR, "Error %s: Failed in SUMA_CreateOverlayPointer.\n", FuncName);
             SUMA_RETURN (NOPE);
@@ -2301,14 +2307,14 @@ SUMA_Boolean SUMA_PrepAddmappableSO(SUMA_SurfaceObject *SO, SUMA_DO *dov, int *N
       }
 
       /* Create a Mesh Axis for the surface */
-      SO->MeshAxis = SUMA_Alloc_Axis ("Surface Mesh Axis");
+      SO->MeshAxis = SUMA_Alloc_Axis ("Surface Mesh Axis", AO_type);
       if (SO->MeshAxis == NULL) {
          fprintf(SUMA_STDERR,"Error %s: Error Allocating axis\n", FuncName);
          SUMA_RETURN(NOPE);
       }
       /* Change the defaults of Mesh axis to fit standard  */
       /* For the moment, use Box Axis */
-      SO->MeshAxis->type = SUMA_SCALE_BOX;
+      SO->MeshAxis->atype = SUMA_SCALE_BOX;
       SUMA_MeshAxisStandard (SO->MeshAxis, SO);
       /*turn on the viewing for the axis */
       SO->ShowMeshAxis = NOPE;
@@ -2454,7 +2460,7 @@ SUMA_Boolean SUMA_LoadSpec_eng (SUMA_SurfSpecFile *Spec, SUMA_DO *dov, int *N_do
          /* if the surface is loaded OK, and it has not been loaded previously, register it */
          if (SurfIn) {
             /* Create a Mesh Axis for the surface */
-            SO->MeshAxis = SUMA_Alloc_Axis ("Surface Mesh Axis");
+            SO->MeshAxis = SUMA_Alloc_Axis ("Surface Mesh Axis", AO_type);
             if (SO->MeshAxis == NULL) {
                fprintf(SUMA_STDERR,"Error %s: Error Allocating axis\n", FuncName);
                SUMA_RETURN(NOPE);
@@ -2533,14 +2539,26 @@ SUMA_Boolean SUMA_LoadSpec_eng (SUMA_SurfSpecFile *Spec, SUMA_DO *dov, int *N_do
                if (SOinh) {
                   #if SUMA_SEPARATE_SURF_CONTROLLERS
                   /* leave controllers separate */ 
-                  SO->SurfCont = SUMA_CreateSurfContStruct(SO->idcode_str); 
+                  if (!SO->SurfCont) {
+                     SO->SurfCont = SUMA_CreateSurfContStruct(SO->idcode_str); 
+                  } else {
+                     SUMA_S_Note("Surface Controller Exists Already (b)\n");
+                  }
                   #else
                   /* create a link to the surface controller pointer */
-                  SO->SurfCont = (SUMA_X_SurfCont*)SUMA_LinkToPointer((void *)SOinh->SurfCont);
+                  if (!SO->SurfCont) {
+                     SO->SurfCont = (SUMA_X_SurfCont*)SUMA_LinkToPointer((void *)SOinh->SurfCont);
+                  } else {
+                     SUMA_S_Note("Surface Controller Exists Already (c)\n");
+                  }
                   #endif
                } else {
                   /* brand new one */
-                  SO->SurfCont = SUMA_CreateSurfContStruct(SO->idcode_str);
+                  if (!SO->SurfCont) {
+                     SO->SurfCont = SUMA_CreateSurfContStruct(SO->idcode_str);
+                  } else {
+                     SUMA_S_Note("Surface Controller Exists Already (d)\n");
+                  }
                }
 
                
@@ -2852,7 +2870,7 @@ SUMA_Boolean SUMA_SurfaceMetrics_eng (SUMA_SurfaceObject *SO, const char *Metric
                                        SO->idcode_str,   /* that's the domain owner */
                                        SO->N_Node);
          SUMA_free(name_tmp); name_tmp = NULL;
-         if (!SUMA_InsertDsetPointer(dset, DsetList)) {
+         if (!SUMA_InsertDsetPointer(&dset, DsetList, 0)) {
             SUMA_SL_Err("Failed to insert dset into list");
             SUMA_RETURN(NOPE);
          }
@@ -2889,7 +2907,8 @@ SUMA_Boolean SUMA_SurfaceMetrics_eng (SUMA_SurfaceObject *SO, const char *Metric
    if (DoCurv) {
       /* calculate the curvature */
       if (LocalHead) fprintf(SUMA_STDOUT, "%s: Calculating curvature ...\n", FuncName);
-      SO->SC = SUMA_Surface_Curvature (SO->NodeList, SO->N_Node, SO->NodeNormList, SO->PolyArea, SO->N_FaceSet, SO->FN, SO->EL, NULL);
+      SO->SC = SUMA_Surface_Curvature (SO->NodeList, SO->N_Node, SO->NodeNormList, SO->PolyArea, 
+                                       SO->N_FaceSet, SO->FN, SO->EL, NULL, debug);
    }
    
    
@@ -2917,6 +2936,7 @@ void usage_SUMA_inspec()
 {
    static char FuncName[]={"usage_SUMA_inspec"};
    char * s = NULL;
+      
    printf ( "\n"
             "Usage: inspec <-spec specfile> [-detail d] [-h/-help]\n"
             "Outputs information found from specfile.\n" 
@@ -2927,14 +2947,17 @@ void usage_SUMA_inspec()
    s = SUMA_New_Additions(0, 1); printf("%s\n", s);SUMA_free(s); s = NULL;
    printf ( "      Ziad S. Saad SSCC/NIMH/NIH ziad@nih.gov \n     Dec 2 03\n"
             "\n");   
+   return;
 }
 int main (int argc,char *argv[])
 {/* Main */
-   char FuncName[]={"inspec"};
+   static char FuncName[]={"inspec"};
    int detail, kar;
    char *spec_name;
    SUMA_SurfSpecFile Spec;   
    SUMA_Boolean brk;
+   
+   SUMA_mainENTRY;
    
 	/* allocate space for CommonFields structure */
 	SUMAg_CF = SUMA_Create_CommonFields ();
@@ -3065,11 +3088,13 @@ void usage_SUMA_quickspec()
             "\n");
      s = SUMA_New_Additions(0, 1); printf("%s\n", s);SUMA_free(s); s = NULL;
      printf("      Ziad S. Saad SSCC/NIMH/NIH ziad@nih.gov \n\t\t Tue Dec 30\n"
-            "\n");   
+            "\n");
+    return;   
 }
+
 int main (int argc,char *argv[])
 {/* Main */
-   char FuncName[]={"quickspec"};
+   static char FuncName[]={"quickspec"};
    int detail, kar, i, N_surf, N_name, idefstate;
    FILE *fid = NULL;
    char *spec_name, stmp[500], *Unique_st;
@@ -3077,6 +3102,8 @@ int main (int argc,char *argv[])
    char  *State[SUMA_MAX_N_SURFACE_SPEC],
          *Name_coord[SUMA_MAX_N_SURFACE_SPEC], *Name_topo[SUMA_MAX_N_SURFACE_SPEC];
    SUMA_Boolean brk;
+   
+   SUMA_mainENTRY;
    
 	/* allocate space for CommonFields structure */
 	SUMAg_CF = SUMA_Create_CommonFields ();
@@ -3959,7 +3986,7 @@ void SUMA_Show_IO_args(SUMA_GENERIC_ARGV_PARSE *ps)
          fprintf(SUMA_STDERR,"Talking to SUMA requested.\n");
       }
    } 
-   fprintf(SUMA_STDERR,"%d arguments on command line:\n", ps->N_args);
+   fprintf(SUMA_STDERR,"%d arguments on command line (+checked, -not checked):\n", ps->N_args);
    for (i=0; i<ps->N_args; ++i) {
       if (ps->arg_checked[i]) fprintf(SUMA_STDERR," %d+   ",i);
       else fprintf(SUMA_STDERR," %d-   ",i);

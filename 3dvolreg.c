@@ -41,7 +41,7 @@ static int         VL_edperc=-1 ;
 
 static int         VL_coarse_del=10 ; /* 11 Dec 2000 */
 static int         VL_coarse_num=2  ;
-static int         VL_coarse_rot=0  ; /* 01 Dec 2005 */
+static int         VL_coarse_rot=1  ; /* 01 Dec 2005 */
 
 static THD_3dim_dataset *VL_dset = NULL ;
 static THD_3dim_dataset *VL_bset = NULL ;  /* 06 Feb 2001 */
@@ -57,6 +57,13 @@ static float VL_dph  = 0.03 ;  /* degrees */
 static float VL_del  = 0.70 ;  /* voxels */
 
 static int VL_rotcom = 0 ;     /* 04 Sep 2000: print out 3drotate commands? */
+
+static int VL_maxdisp= 1 ;     /* 03 Aug 2006: print out max displacment? */
+static THD_fvec3 *VL_dispvec=NULL ;
+static float VL_dmax = 0.0f ;
+static int   VL_dmaxi= 0 ;
+static char  VL_dmaxfile[256] = "\0" ;
+static float *VL_dmaxar  = NULL ;
 
 static THD_3dim_dataset *VL_rotpar_dset =NULL ,  /* 14 Feb 2001 */
                         *VL_gridpar_dset=NULL ;
@@ -422,6 +429,54 @@ int main( int argc , char *argv[] )
      mri_3dalign_edging(xf,yf,zf) ;
      if( VL_verbose )
         fprintf(stderr,"++ Edging: x=%d y=%d z=%d\n",xf,yf,zf) ;
+   }
+
+   /*--- 03 Aug 2006: create a set of vectors to look for maxdisp ---*/
+
+#undef  DSK
+#define DSK(i,j,k) dsk[(i)+(j)*nx+(k)*nxy]
+   if( VL_maxdisp ){
+     byte *dsk , *msk=NULL ;
+     if( VL_verbose ){
+       INFO_message("Creating mask for -maxdisp") ; THD_automask_verbose(0) ;
+     }
+     THD_automask_set_clipfrac(0.333f) ;
+     dsk = THD_automask( VL_dset ) ;
+     if( dsk != NULL ){
+       int ii,jj,kk, mm, nxy=nx*ny, nxyz=nxy*nz, ip,jp,kp, im,jm,km, nmsk=0 ;
+       THD_ivec3 iv ;
+       msk = (byte *)calloc(1,nxyz) ;
+       if( VL_verbose )
+         ININFO_message("Automask has %d voxels",THD_countmask(nxyz,dsk)) ;
+       for( mm=0 ; mm < nxyz ; mm++ ){
+         if( dsk[mm] == 0 ) continue ;
+         ii = mm % nx ; kk = mm / nxy ; jj = (mm%nxy) / nx ;
+         ip=ii+1; im=ii-1; if(ip>=nx || im<0){ msk[mm]=1; nmsk++; continue; }
+         jp=jj+1; jm=jj-1; if(jp>=ny || jm<0){ msk[mm]=1; nmsk++; continue; }
+         kp=kk+1; km=kk-1; if(kp>=nz || km<0){ msk[mm]=1; nmsk++; continue; }
+         if( DSK(ip,jj,kk) && DSK(im,jj,kk) &&
+             DSK(ii,jp,kk) && DSK(ii,jm,kk) &&
+             DSK(ii,jj,kp) && DSK(ii,jj,km)   ) continue ;  /* skip */
+         msk[mm] = 1 ; nmsk++ ;
+       }
+       if( VL_verbose )
+         ININFO_message("%d voxels left in -maxdisp mask after erosion",nmsk) ;
+       free(dsk) ;
+       VL_maxdisp = nmsk ;
+       if( nmsk > 0 ){
+         int qq ;
+         VL_dispvec = (THD_fvec3 *)malloc(sizeof(THD_fvec3)*nmsk) ;
+         for( qq=mm=0 ; mm < nxyz ; mm++ ){
+           if( msk[mm] == 0 ) continue ;
+           ii = mm % nx ; kk = mm / nxy ; jj = (mm%nxy) / nx ;
+           iv.ijk[0] = ii ; iv.ijk[1] = jj ; iv.ijk[2] = kk ;
+           VL_dispvec[qq++] = THD_3dind_to_3dmm_no_wod( VL_dset , iv ) ;
+         }
+       }
+       free(msk) ;
+     } else {
+       VL_maxdisp = 0 ; WARNING_message("Can't create -maxdisp mask?!") ;
+     }
    }
 
    /*--- 11 Sep 2000: if in twopass mode, do the first pass ---*/
@@ -983,6 +1038,16 @@ int main( int argc , char *argv[] )
 
      /* each volume's transformation parameters, matrix, and vector */
 
+     if( VL_maxdisp > 0 && VL_verbose )
+       INFO_message("Max displacements (mm) for each sub-brick:") ;
+
+     if( VL_maxdisp > 0 ){
+       if( VL_verbose )
+         INFO_message("Max displacements (mm) for each sub-brick:") ;
+       if( *VL_dmaxfile != '\0' )
+         VL_dmaxar = (float *)calloc(sizeof(float),imcount) ;
+     }
+
      for( kim=0 ; kim < imcount ; kim++ ){
         sprintf(anam,"VOLREG_ROTCOM_%06d",kim) ;
         sprintf(sbuf,"-rotate %.4fI %.4fR %.4fA -ashift %.4fS %.4fL %.4fP" ,
@@ -1008,6 +1073,42 @@ int main( int argc , char *argv[] )
         matar[3] = dy[kim] ; matar[7] = dz[kim] ; matar[11] = dx[kim] ;
         sprintf(anam,"VOLREG_MATVEC_%06d",kim) ;
         THD_set_float_atr( new_dset->dblk , anam , 12 , matar ) ;
+
+        /* 04 Aug 2006: max displacement calculation */
+
+        if( VL_maxdisp > 0 ){
+          THD_dmat33 pp,ppt ; THD_dfvec3 dv,qv,vorg ;
+          int qq ; float dmax=0.0f , xo,yo,zo , ddd ;
+          LOAD_DFVEC3(tvec,matar[3],matar[7],matar[11]) ;
+          pp   = DBLE_mat_to_dicomm( VL_dset ) ;   /* convert rmat to dataset coord order */
+          ppt  = TRANSPOSE_DMAT(pp);
+          rmat = DMAT_MUL(ppt,rmat); rmat = DMAT_MUL(rmat,pp); tvec = DMATVEC(ppt,tvec);
+          xo = VL_dset->daxes->xxorg + 0.5*(VL_dset->daxes->nxx - 1)*VL_dset->daxes->xxdel ;
+          yo = VL_dset->daxes->yyorg + 0.5*(VL_dset->daxes->nyy - 1)*VL_dset->daxes->yydel ;
+          zo = VL_dset->daxes->zzorg + 0.5*(VL_dset->daxes->nzz - 1)*VL_dset->daxes->zzdel ;
+          LOAD_DFVEC3(vorg,xo,yo,zo) ;             /* rotation is around dataset center */
+          for( qq=0 ; qq < VL_maxdisp ; qq++ ){
+            FVEC3_TO_DFVEC3( VL_dispvec[qq] , dv );
+            qv = SUB_DFVEC3(dv,vorg); qv = DMATVEC_ADD(rmat,qv,tvec); qv = ADD_DFVEC3(qv,vorg);
+            qv = SUB_DFVEC3(dv,qv); ddd = SIZE_DFVEC3(qv); if( ddd > dmax ) dmax = ddd;
+          }
+          if( VL_dmax < dmax ){ VL_dmax = dmax ; VL_dmaxi = kim ; }
+          if( VL_verbose ) fprintf(stderr," %.2f",dmax) ;
+          if( VL_dmaxar != NULL ) VL_dmaxar[kim] = dmax ;
+        }
+     }
+     if( VL_maxdisp > 0 ){
+       if( VL_verbose ) fprintf(stderr,"\n") ;
+       INFO_message("Max displacement in automask = %.2f (mm) at sub-brick %d",VL_dmax,VL_dmaxi);
+       free((void *)VL_dispvec) ;
+       if( *VL_dmaxfile != '\0' && VL_dmaxar != NULL ){
+         FILE *fp ;
+         if( THD_is_file(VL_dmaxfile) ) WARNING_message("Overwriting file %s",VL_dmaxfile);
+         fp = fopen( VL_dmaxfile , "w" ) ;
+         fprintf(fp,"# maxdisp\n") ;
+         for( kim=0 ; kim < imcount ; kim++ ) fprintf(fp,"%.4f\n",VL_dmaxar[kim]) ;
+         fclose(fp) ;
+       }
      }
    }
 
@@ -1137,7 +1238,7 @@ void VL_syntax(void)
     "       N.B.: The motion parameters are those needed to bring the sub-brick\n"
     "             back into alignment with the base.  In 3drotate, it is as if\n"
     "             the following options were applied to each input sub-brick:\n"
-    "              -rotate <roll>I <pitch>R <yaw>A  -ashift <dS>S <dL>L <dP>P\n"
+    "              -rotate 'roll'I 'pitch'R 'yaw'A  -ashift 'dS'S 'dL'L 'dP'P\n"
     "\n"
     "  -1Dfile ename   Save the motion parameters ONLY in file 'ename'.\n"
     "                    The output is in 6 ASCII formatted columns:\n"
@@ -1154,6 +1255,22 @@ void VL_syntax(void)
     "                    3drotate -rotate 7.2I 3.2R -5.7A -ashift 2.7S -3.8L 4.9P\n"
     "                  The purpose of this is to make it easier to shift other\n"
     "                  datasets using exactly the same parameters.\n"
+    "\n"
+    "  -maxdisp      = Print the maximum displacement (in mm) for brain voxels.\n"
+    "                    ('Brain' here is defined by the same algorithm as used\n"
+    "                    in the command '3dAutomask -clfrac 0.33'; the displacement\n"
+    "                    for each non-interior point in this mask is calculated.)\n"
+    "                    If '-verbose' is given, the max displacement will be\n"
+    "                    printed to the screen for each sub-brick; otherwise,\n"
+    "                    just the overall maximum displacement will get output.\n"
+    "                    [-maxdisp is turned on by default]\n"
+    "  -nomaxdisp    = Do NOT calculate and print the maximum displacement.\n"
+    "                    [maybe it offends you in some theological sense?]\n"
+    "                    [maybe you have some real 'need for speed'?]\n"
+    "  -maxdisp1D mm = Do '-maxdisp' and also write the max displacement for each\n"
+    "                    sub-brick into file 'mm' in 1D (columnar) format.\n"
+    "                    You may find that graphing this file (cf. 1dplot)\n"
+    "                    is a useful diagnostic tool for your FMRI datasets.\n"
     "\n"
     "  -tshift ii      If the input dataset is 3D+time and has slice-dependent\n"
     "                  time-offsets (cf. the output of 3dinfo -v), then this\n"
@@ -1294,9 +1411,8 @@ void VL_syntax(void)
     "                                   dataset.\n"
     "              -coarserot        Also do a coarse search in angle for the\n"
     "                                  starting point of the first pass.\n"
-    "                             N.B.: This option is experimental for now,\n"
-    "                                   but will become the default for -twopass\n"
-    "                                   in the future. [01 Dec 2005 -- RWCox]\n"
+    "              -nocoarserot      Don't search angles coarsely.\n"
+    "                                  [-coarserot is now the default - RWCox]\n"
 #if 0
     "              -wtrim          = Attempt to trim the intermediate volumes to\n"
     "                                  a smaller region (determined by the weight\n"
@@ -1343,6 +1459,17 @@ void VL_command_line(void)
    /***========= look for options on command line =========***/
 
    while( Iarg < Argc && Argv[Iarg][0] == '-' ){
+
+      if( strcmp(Argv[Iarg],"-maxdisp") == 0 ){  /* 03 Aug 2006 */
+        VL_maxdisp = 1 ; Iarg++ ; continue ;
+      }
+      if( strcmp(Argv[Iarg],"-nomaxdisp") == 0 ){
+        VL_maxdisp = 0 ; Iarg++ ; continue ;
+      }
+      if( strcmp(Argv[Iarg],"-maxdisp1D") == 0 ){
+        VL_maxdisp = 1 ; strcpy(VL_dmaxfile,Argv[++Iarg]) ;
+        Iarg++ ; continue ;
+      }
 
       /** -sinit [22 Mar 2004] **/
 
@@ -1554,12 +1681,7 @@ void VL_command_line(void)
           if( VL_verbose )
             fprintf(stderr,
                     "++ Reading in base dataset %s\n",DSET_BRIKNAME(VL_bset)) ;
-          DSET_load(VL_bset) ;
-          if( !DSET_LOADED(VL_bset) ){
-             fprintf(stderr,"** Couldn't read -base dataset %s\n",
-                     DSET_BRIKNAME(VL_bset)) ;
-             exit(1) ;
-          }
+          DSET_load(VL_bset) ; CHECK_LOAD_ERROR(VL_bset) ;
           if( DSET_NVALS(VL_bset) > 1 )
              fprintf(stderr,
                      "++ WARNING: -base dataset %s has more than 1 sub-brick\n",
@@ -1597,7 +1719,12 @@ void VL_command_line(void)
       }
 
       if( strcmp(Argv[Iarg],"-coarserot") == 0 ){  /* 01 Dec 2005 */
+         INFO_message("-coarserot is now the default") ;
          VL_coarse_rot = 1 ;
+         Iarg++ ; continue ;
+      }
+      if( strcmp(Argv[Iarg],"-nocoarserot") == 0 ){ /* 04 Aug 2006 */
+         VL_coarse_rot = 0 ;
          Iarg++ ; continue ;
       }
 
@@ -1780,7 +1907,7 @@ void VL_command_line(void)
 
    /*** Open the dataset to be registered ***/
 
-   if( Iarg > Argc ){
+   if( Iarg >= Argc ){
       fprintf(stderr,"** Too few arguments!?  Last=%s\n",Argv[Argc-1]) ; exit(1) ;
    } else if( Iarg < Argc-1 ){
       fprintf(stderr,"** Too many arguments?!  Dataset=%s?\n",Argv[Iarg]) ; exit(1) ;

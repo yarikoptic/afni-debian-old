@@ -239,6 +239,7 @@ static char *  ppmto_ppm_filter  = NULL ;
 
 static char *  ppmto_jpg75_filter = NULL ;  /* 27 Mar 2002 */
 static char *  ppmto_jpg95_filter = NULL ;  /* 28 Jul 2005 */
+static char *  ppmto_png_filter   = NULL ;  /* 07 Dec 2006 */
 
  /* the first %s will be the list of input gif filenames     */
  /* the second %s is the single output animated gif filename */
@@ -457,6 +458,7 @@ printf("\njpeg_compress %d\n", jpeg_compress);
       str = AFMALL( char, strlen(pg)+32) ;
       sprintf(str,"%s -compression 9 > %%s",pg) ;
       bv <<= 1 ; ADDTO_PPMTO(str,"png",bv) ;
+      ppmto_png_filter = strdup(str) ;  /* 07 Dec 2007 */
    }
    else { CANT_FIND("pnmtopng","PNG"); need_netpbm; }
 
@@ -2860,7 +2862,7 @@ ENTRY("ISQ_process_mri") ;
       if( lim->kind == MRI_short && clbot < cltop ){
 
          int npix = lim->nx * lim->ny , ii ;
-         short *ar = lim->im.short_data ;
+         short *ar = MRI_SHORT_PTR(lim) ;
 
          if( seq->rng_ztop == 0 ){
             for( ii=0 ; ii < npix ; ii++ )
@@ -2874,7 +2876,7 @@ ENTRY("ISQ_process_mri") ;
       } else if( lim->kind == MRI_byte && clbot < cltop ){
 
          int npix = lim->nx * lim->ny , ii ;
-         byte *ar = lim->im.byte_data ;
+         byte *ar = MRI_BYTE_PTR(lim) ;
 
          if( seq->rng_ztop == 0 ){
             for( ii=0 ; ii < npix ; ii++ )
@@ -3272,7 +3274,7 @@ ENTRY("ISQ_saver_CB") ;
                /* open a pipe to the filter function */
 
                sprintf(filt,".%s.",ppmto_suffix[ff]) ;
-               if( STRING_HAS_SUFFIX(seq->saver_prefix,filt) ){
+               if( STRING_HAS_SUFFIX_CASE(seq->saver_prefix,filt) ){
                  strcpy(fname,seq->saver_prefix) ;
                  fname[sll-1] = '\0' ;
                } else {
@@ -3280,7 +3282,10 @@ ENTRY("ISQ_saver_CB") ;
                }
                sprintf( filt , ppmto_filter[ff] , fname ) ;
                printf("Writing one image to file %s\n",fname) ;
-               signal( SIGPIPE , SIG_IGN ) ; errno = 0 ;
+#ifndef CYGWIN
+               signal( SIGPIPE , SIG_IGN ) ;
+#endif
+               errno = 0 ;
                fp = popen( filt , "w" ) ;
                if( fp == NULL ){
                   fprintf(stderr,"** Can't open output filter: %s\a\n",filt) ;
@@ -3593,7 +3598,9 @@ ENTRY("ISQ_saver_CB") ;
            if( agif_list == NULL ) INIT_SARR(agif_list) ;
            ADDTO_SARR(agif_list,fname) ;
          }
+#ifndef CYGWIN
          signal( SIGPIPE , SIG_IGN ) ;                 /* ignore broken pipe */
+#endif
          if( dbg ) fprintf(stderr,"  piping image to '%s'\n",filt) ;
          fp = popen( filt , "w" ) ;                    /* open pipe to filter */
          if( fp == NULL ){
@@ -6606,6 +6613,12 @@ ENTRY("ISQ_but_cnorm_CB") ;
 *    isqDR_keypress        (unsigned int) character or KeySym to send
 
 *    isqDR_save_jpeg       (char *) save current image to this filename
+*    isqDR_save_png        (char *) save current image to this filename
+*    isqDR_save_filtered   (char *) save current image to this filter
+*    isqDR_save_agif       (char *) save current image series to this filename
+*    isqDR_save_mpeg       (char *) save current image series to this filename
+*    isqDR_save_jpegall    (char *) save current image series to bunch of files
+*    isqDR_save_pngall     (char *) save current image series to bunch of files
 
 The Boolean return value is True for success, False for failure.
 -------------------------------------------------------------------------*/
@@ -6637,7 +6650,8 @@ ENTRY("drive_MCW_imseq") ;
         } else {
           seq->rng_bot = rng[0] ; seq->rng_top = rng[1] ; seq->rng_ztop = 0.0 ;
         }
-        ISQ_redisplay( seq , -1 , isqDR_display ) ;
+        if( rng == NULL || rng[2] == 0.0f )
+          ISQ_redisplay( seq , -1 , isqDR_display ) ;
         RETURN( True ) ;
       }
       break ;
@@ -6691,6 +6705,42 @@ ENTRY("drive_MCW_imseq") ;
         char *fname = (char *)drive_data ;
         ISQ_save_jpeg( seq , fname ) ;
         RETURN( True ) ;
+      }
+
+      case isqDR_save_png:{                  /* 11 Dec 2006 */
+        char *fname = (char *)drive_data ;
+        ISQ_save_png( seq , fname ) ;
+        RETURN( True ) ;
+      }
+
+      case isqDR_save_filtered:{             /* 14 Dec 2006 */
+        char *fname = (char *)drive_data ;
+        ISQ_save_image( seq , NULL , fname , NULL ) ;
+        RETURN( True ) ;
+      }
+
+      case isqDR_save_agif:{
+        char *fname = (char *)drive_data ;
+        ISQ_save_anim( seq , fname , 0,0, AGIF_MODE ) ;
+        RETURN(True) ;
+      }
+
+      case isqDR_save_mpeg:{
+        char *fname = (char *)drive_data ;
+        ISQ_save_anim( seq , fname , 0,0, MPEG_MODE ) ;
+        RETURN(True) ;
+      }
+
+      case isqDR_save_jpegall:{
+        char *fname = (char *)drive_data ;
+        ISQ_save_anim( seq , fname , 0,0, JPEG_MODE ) ;
+        RETURN(True) ;
+      }
+
+      case isqDR_save_pngall:{
+        char *fname = (char *)drive_data ;
+        ISQ_save_anim( seq , fname , 0,0, PNG_MODE ) ;
+        RETURN(True) ;
       }
 
       /*.....................................................*/
@@ -10645,6 +10695,50 @@ static MRI_IMARR *snap_imar = NULL ;
 
 static void SNAP_imseq_send_CB( MCW_imseq *, XtPointer, ISQ_cbs * ) ;
 
+/*------------------------------------------------------------------*/
+
+void ISQ_snap_agif( char *prefix )
+{
+   ISQ_save_anim( snap_isq , prefix , 0,0 , AGIF_MODE ) ;
+}
+void ISQ_snap_agif_rng( char *prefix , int a, int b )
+{
+   ISQ_save_anim( snap_isq , prefix , a,b , AGIF_MODE ) ;
+}
+
+/*------------------------------------------------------------------*/
+
+void ISQ_snap_mpeg( char *prefix )
+{
+   ISQ_save_anim( snap_isq , prefix , 0,0 , MPEG_MODE ) ;
+}
+void ISQ_snap_mpeg_rng( char *prefix , int a, int b )
+{
+   ISQ_save_anim( snap_isq , prefix , a,b , MPEG_MODE ) ;
+}
+
+/*------------------------------------------------------------------*/
+
+void ISQ_snap_jpeg( char *prefix )
+{
+   ISQ_save_anim( snap_isq , prefix , 0,0 , JPEG_MODE ) ;
+}
+void ISQ_snap_jpeg_rng( char *prefix , int a, int b )
+{
+   ISQ_save_anim( snap_isq , prefix , a,b , JPEG_MODE ) ;
+}
+
+/*------------------------------------------------------------------*/
+
+void ISQ_snap_png( char *prefix )
+{
+   ISQ_save_anim( snap_isq , prefix , 0,0 , PNG_MODE ) ;
+}
+void ISQ_snap_png_rng( char *prefix , int a, int b )
+{
+   ISQ_save_anim( snap_isq , prefix , a,b , PNG_MODE ) ;
+}
+
 /*------------------------------------------------------------------
    Routine to provide data to the imseq.
    Just returns the control information, or the selected image.
@@ -11278,6 +11372,21 @@ ENTRY("ISQ_handle_keypress") ;
        busy=0 ; RETURN(1) ;
      break ;
 
+#if 0
+     case 'G':
+     case 'H':
+     case 'J':
+     case 'K':{
+       int mode = (key=='G') ? AGIF_MODE
+                 :(key=='H') ? MPEG_MODE
+                 :(key=='J') ? JPEG_MODE 
+                 :             PNG_MODE  ;
+       ISQ_save_anim( seq , NULL , 0,0 , mode ) ;
+       busy=0 ; RETURN(1) ;
+     }
+     break ;
+#endif
+
    } /* end of switch on character typed */
 
    busy=0; RETURN(0);
@@ -11349,20 +11458,31 @@ ENTRY("mri_rgb_transform_nD") ;
 }
 
 /*--------------------------------------------------------------------------*/
-/*! Save the current image to a JPEG file. [28 Jul 2005] */
+/*! Save the current image to a file thru a filter.
+    - Refactored from the former ISQ_save_jpeg() - 11 Dec 2006
+    - Modified for use as a filter (no fname or suffix) - 14 Dec 2006 */
 
-void ISQ_save_jpeg( MCW_imseq *seq , char *fname )
+void ISQ_save_image( MCW_imseq *seq  , char *fname ,
+                     char *filtername, char *suffix )
 {
    MRI_IMAGE *tim , *flim ;
-   char fn[288], filt[512] ;
+   char fn[299], filt[512] ;
    FILE *fp ;
    int sll ;
 
-ENTRY("ISQ_save_jpeg") ;
+ENTRY("ISQ_save_image") ;
 
-   if( !ISQ_REALZ(seq) || fname == NULL || ppmto_jpg95_filter == NULL ) EXRETURN;
+   if( !ISQ_REALZ(seq) || filtername == NULL ) EXRETURN;
 
-   sll = strlen(fname) ; if( sll < 1 || sll > 255 ) EXRETURN ;
+   if( fname != NULL ){
+     sll = strlen(fname) ; if( sll < 1 || sll > 255 ) EXRETURN ;
+   }
+   if( filtername == NULL ){
+     if( fname == NULL ){ filtername = "cat > AFNI.ppm" ;             }
+     else               { filtername = "cat > %s" ; suffix = ".ppm" ; }
+   }
+
+   /*-- get image that's stored for display, then process it --*/
 
    reload_DC_colordef( seq->dc ) ;
    tim = XImage_to_mri( seq->dc, seq->given_xim, X2M_USE_CMAP | X2M_FORCE_RGB );
@@ -11407,14 +11527,23 @@ ENTRY("ISQ_save_jpeg") ;
 
    /** open a pipe to the filter function **/
 
-   strcpy(fn,fname) ;
-   if( !STRING_HAS_SUFFIX(fname,".jpg") && !STRING_HAS_SUFFIX(fname,".JPG") )
-     strcat(fn,".jpg") ;
+   if( fname != NULL ){
+     strcpy(fn,fname) ;
+     if( suffix != NULL && *suffix != '\0' &&
+         !STRING_HAS_SUFFIX_CASE(fname,suffix) ){
+       if( *suffix != '.' ) strcat(fn,".") ;
+       strcat(fn,suffix) ;
+     }
+     sprintf( filt , filtername , fn ) ;
+   } else {
+     strcpy( filt , filtername ) ;
+   }
+   INFO_message("Writing one %dx%d image to filter '%s'",tim->nx,tim->ny,filt) ;
 
-   sprintf( filt , ppmto_jpg95_filter , fn ) ;
-   INFO_message("Writing one %dx%d image to file %s",tim->nx,tim->ny,fn) ;
-   signal( SIGPIPE , SIG_IGN ) ; errno = 0 ;
-   fp = popen( filt , "w" ) ;
+#ifndef CYGWIN
+   signal( SIGPIPE , SIG_IGN ) ;
+#endif
+   errno = 0 ; fp = popen( filt , "w" ) ;
    if( fp == NULL ){
      ERROR_message("Can't open output filter: %s",filt) ;
      if( errno != 0 ) perror("** Unix error message") ;
@@ -11424,12 +11553,403 @@ ENTRY("ISQ_save_jpeg") ;
    /** write a PPM file to the filter pipe **/
 
    fprintf(fp,"P6\n%d %d\n255\n" , tim->nx,tim->ny ) ;
-   fwrite( MRI_RGB_PTR(tim), sizeof(byte), 3*tim->nvox, fp ) ;
+   fwrite( MRI_RGB_PTR(tim), sizeof(byte), 3*tim->nvox, fp ) ; fflush(fp) ;
    errno = 0 ; sll = pclose(fp) ;
    if( sll == -1 ){
-     ERROR_message("JPEG Filter command was %s\n",filt) ;
+     ERROR_message("Image save filter command was %s\n",filt) ;
      if( errno != 0 ) perror("** Unix error in image output pipe") ;
    }
 
    mri_free(tim) ; EXRETURN ;
+}
+
+
+void ISQ_save_jpeg( MCW_imseq *seq , char *fname )
+{
+   ISQ_save_image( seq , fname , ppmto_jpg95_filter , ".jpg" ) ;
+   return ;
+}
+
+void ISQ_save_png( MCW_imseq *seq , char *fname )  /* 11 Dec 2006 */
+{
+   ISQ_save_image( seq , fname , ppmto_png_filter , ".png" ) ;
+   return ;
+}
+
+/*--------------------------------------------------------------------------*/
+/*! Save the current images to an MPEG or AGIF file.  [06 Dec 2006] 
+   if top = 0 then top is the index of the last recorded image
+   if bot = -1 then bot is the index of the last recorded image
+   use bot = 0 and top = 0 to save everything.
+*/
+
+void ISQ_save_anim( MCW_imseq *seq, char *prefin, int bot, int top, int mode )
+{
+   int ii , kf , ll ;
+   MRI_IMAGE *tim , *flim ;
+   char fname[256] , *prefix ;
+   THD_string_array *agif_list=NULL ;
+   char tsuf[8] ;
+   float dx,dy ;
+#ifndef USE_GIFF
+   char *togif = ppmto_gif_filter ;
+#else
+   char *togif = ppmto_giff_filter ;
+#endif
+   int doanim=0 ;
+   char filt[512], *ppo = NULL; FILE *fp ; MRI_IMAGE *ovim ;
+   int nx , ny , npix , pc ;
+
+ENTRY("ISQ_save_anim") ;
+
+   if( !ISQ_REALZ(seq) ) EXRETURN ;  /* bad input */
+   switch( mode ){
+     default: EXRETURN ;             /* bad input */
+
+     case AGIF_MODE:
+       if( ppmto_agif_filter == NULL || togif == NULL ){
+         ERROR_message("Can't save AGIF - missing filter!\a") ; EXRETURN ;
+       }
+       doanim = 1 ;
+     break ;
+
+     case MPEG_MODE:
+       if( ppmto_mpeg_filter == NULL || ppmto_ppm_filter == NULL ){
+         ERROR_message("Can't save MPEG - missing filter!\a") ; EXRETURN ;
+       }
+       doanim = 1 ;
+     break ;
+
+     case JPEG_MODE:
+       if( ppmto_jpg95_filter == NULL ){
+         ERROR_message("Can't save JPEG - missing filter!\a") ; EXRETURN ;
+       }
+       doanim = 0 ;
+     break ;
+
+     case PNG_MODE:
+       if( ppmto_png_filter == NULL ){
+         ERROR_message("Can't save PNG - missing filter!\a") ; EXRETURN ;
+       }
+       doanim = 0 ;
+     break ;
+   }
+
+  if (bot == -1) { /* special case */
+      bot = seq->status->num_total-1 ;
+   } else {
+      bot = MAX(bot,0) ;
+   }
+   if( top == 0 ) top = seq->status->num_total-1 ;
+   else           top = MIN(top,seq->status->num_total-1) ;
+   if( bot > top || (bot==top && doanim) ){
+     ERROR_message("Can't save image range %d..%d!\a",bot,top) ; EXRETURN ;
+   }
+
+   /*--- setup prefix for animation filename to save ---*/
+
+   if( prefin == NULL || *prefin == '\0' ) prefin = "Anim" ;
+   if( !THD_filename_ok(prefin) ){
+     ERROR_message("Bad image save filename '%s'\a",prefin) ; EXRETURN ;
+   }
+   ll = strlen(prefin) ;
+   prefix = (char*)malloc( sizeof(char) * (ll+8) ) ;
+   strcpy( prefix , prefin ) ;
+ 
+   ppo = THD_trailname(prefix,0) ;               /* strip directory */
+
+ 
+   if( prefix[ll-1] != '.' ){  /* add a . at the end */
+     prefix[ll++] = '.' ;      /* if one isn't there */
+     prefix[ll]   = '\0' ;
+   }
+
+   tsuf[0] = (lrand48()>>5)%26 + 'A' ;   /* random suffix */
+   tsuf[1] = (lrand48()>>5)%26 + 'A' ;   /* for animation */
+   tsuf[2] = (lrand48()>>5)%26 + 'A' ;   /* temp files    */
+   tsuf[3] = '\0' ;
+
+#ifdef USE_GIFF          /* create the fixed GIF colormap for animations */
+   if( mode == AGIF_MODE ){
+     MRI_IMAGE *im = mri_colorsetup( 76 , 6,6,5 ); /* 76 grays + */
+     remove( GIFF_MAPFILE ) ;                     /* 6*red X 6*green X 5*blue */
+     mri_write_pnm( GIFF_MAPFILE , im ) ;
+     mri_free( im ) ;
+   }
+#endif
+
+   /*---- loop thru, get images, save them ----*/
+
+   if( doanim )
+     INFO_message("Starting to save images to temp files") ;
+   else
+     INFO_message("Starting to save images") ;
+
+   for( kf=bot ; kf <= top ; kf++ ){
+
+      /* get the underlay image */
+
+      tim = ISQ_getimage( kf , seq ) ;
+
+      /* if we failed to get the image? */
+
+      if( tim == NULL ) continue ;  /* skip to next one? */
+
+      /* image to save will be in flim */
+
+      flim = tim ;
+
+      /* process image to make the grayscale index */
+
+      seq->set_orim = 0 ;
+      tim  = flim ;
+      flim = ISQ_process_mri( kf , seq , tim ) ;
+      if( tim != flim ) KILL_1MRI( tim ) ;
+
+      /* get overlay and flip it */
+
+      ovim = NULL ;
+      if( !ISQ_SKIP_OVERLAY(seq) ){
+        tim = ISQ_getoverlay( kf , seq ) ;
+        if( tim != NULL && !ISQ_GOOD_OVERLAY_TYPE(tim->kind) ){
+          KILL_1MRI(tim) ;
+        }
+        if( tim != NULL )
+         ovim = mri_flippo( ISQ_TO_MRI_ROT(seq->opt.rot), seq->opt.mirror, tim );
+        if( tim != ovim ) KILL_1MRI(tim) ;
+      }
+
+      /* and perform overlay onto flim */
+
+      if( ovim != NULL ){
+        tim = flim ;
+        flim = ISQ_overlay( seq->dc , tim , ovim , seq->ov_opacity ) ;
+        if( flim == NULL ){ flim = tim ; }     /* shouldn't happen */
+        else              { KILL_1MRI(tim) ; }
+        mri_free( ovim ) ;
+      }
+
+      if( AFNI_yesenv("AFNI_IMAGE_SAVESQUARE") ){   /* 08 Jun 2004 */
+        flim->dx = seq->last_dx ; flim->dy = seq->last_dy ;
+        tim = mri_squareaspect( flim ) ;
+        if( tim != NULL ){ mri_free(flim); flim = tim; }
+      }
+
+      /* if needed, convert from indices to RGB */
+
+      if( flim->kind == MRI_short ){
+        tim = ISQ_index_to_rgb( seq->dc , 0 , flim ) ;
+        mri_free(flim) ; flim = tim ;
+      }
+
+      /* 26 Mar 2002: zoom out, and geometry overlay, maybe */
+
+      if( seq->zoom_fac > 1 && seq->mont_nx == 1 && seq->mont_ny == 1 ){
+        tim=mri_dup2D(seq->zoom_fac,flim) ;
+        mri_free(flim) ; flim = tim ;
+      }
+
+      if( MCW_val_bbox(seq->wbar_plots_bbox) != 0 ){  /* draw geometry overlay */
+        MEM_plotdata *mp ;
+        mp = ISQ_getmemplot( kf , seq ) ;
+        if( mp != NULL ){
+          flip_memplot( ISQ_TO_MRI_ROT(seq->opt.rot),seq->opt.mirror,mp );
+          memplot_to_RGB_sef( flim, mp, 0,0,MEMPLOT_FREE_ASPECT ) ;
+          delete_memplot(mp) ;
+        }
+      }
+
+      if( seq->wbar_label_av->ival != 0 ){  /* 17 Jun 2005 */
+        char *lab = ISQ_getlabel( kf , seq ) ;
+        if( lab != NULL ){
+          MEM_plotdata *mp = ISQ_plot_label( seq , lab ) ;
+          if( mp != NULL ){
+            memplot_to_RGB_sef( flim, mp, 0,0,MEMPLOT_FREE_ASPECT ) ;
+            delete_memplot(mp) ;
+          }
+          free(lab) ;
+        }
+      }
+
+      if( seq->zoom_fac > 1 &&                   /* crop zoomed image */
+          seq->mont_nx == 1 &&                   /* to displayed part? */
+          seq->mont_ny == 1 &&
+          AFNI_yesenv("AFNI_CROP_ZOOMSAVE") ) {
+
+        int xa,ya , iw=flim->nx/seq->zoom_fac , ih=flim->ny/seq->zoom_fac ;
+
+        xa = seq->zoom_hor_off * flim->nx ;
+        if( xa+iw > flim->nx ) xa = flim->nx-iw ;
+        ya = seq->zoom_ver_off * flim->nx ;
+        if( ya+ih > flim->ny ) ya = flim->ny-ih ;
+        tim = mri_cut_2D( flim , xa,xa+iw-1 , ya,ya+ih-1 ) ;
+        if( tim != NULL ){ mri_free(flim); flim = tim; }
+      }
+
+      /* image dimensions we are saving */
+
+      nx = flim->nx ; ny = flim->ny ; npix = nx*ny ;
+
+      /* create the filter command into string 'filt' */
+
+      switch( mode ){
+        case AGIF_MODE:
+          sprintf( fname, "%s%s.%05d.gif" , prefix,tsuf, kf) ;
+          sprintf( filt , togif  , fname ) ;  /* free colormap */
+          if( agif_list == NULL ) INIT_SARR(agif_list) ;
+          ADDTO_SARR(agif_list,fname) ;
+        break ;
+
+        case MPEG_MODE:
+          sprintf( fname, "%s%s.%05d.ppm" , ppo,tsuf, kf) ;
+          sprintf( filt , ppmto_ppm_filter , fname ) ;
+          if( agif_list == NULL ) INIT_SARR(agif_list) ;
+          ADDTO_SARR(agif_list,fname) ;
+        break ;
+
+        case JPEG_MODE:
+          sprintf( fname, "%s%05d.jpg" , prefix, kf) ;
+          sprintf( filt , ppmto_jpg95_filter , fname ) ;
+          if( agif_list == NULL ) INIT_SARR(agif_list) ;
+          ADDTO_SARR(agif_list,fname) ;
+        break ;
+
+        case PNG_MODE:
+          sprintf( fname, "%s%05d.png" , prefix, kf) ;
+          sprintf( filt , ppmto_png_filter , fname ) ;
+          if( agif_list == NULL ) INIT_SARR(agif_list) ;
+          ADDTO_SARR(agif_list,fname) ;
+        break ;
+      }
+#ifndef CYGWIN
+      signal( SIGPIPE , SIG_IGN ) ;                 /* ignore broken pipe */
+#endif
+      fp = popen( filt , "w" ) ;                    /* open pipe to filter */
+      if( fp == NULL ){
+        ERROR_message("Can't open output filter %s\a",filt) ;
+        continue ;  /* loop over files */
+      }
+
+      /* write RGB image to pipe as a PPM file */
+
+      fprintf(fp,"P6\n%d %d\n255\n" , nx,ny ) ;
+      fwrite( MRI_RGB_PTR(flim), sizeof(byte), 3*npix, fp ) ;
+      pc = pclose(fp) ;
+      if( pc == -1 ) perror("Error in image output pipe") ;
+
+      /* done with this image */
+
+      mri_free(flim) ; flim = NULL ;
+   }
+
+   /** post-process saved images into animation? **/
+
+   if( agif_list != NULL && agif_list->num > 0 && doanim ){
+
+     int af ;
+
+     switch( mode ){
+      /* animated GIF */
+
+      case AGIF_MODE:{
+        int alen ; char *alc , *alf , *oof ;
+#ifdef USE_GIFF
+        remove( GIFF_MAPFILE ) ;   /* don't need this any longer */
+#endif
+        for( alen=af=0 ; af < agif_list->num ; af++ ) /* size of all */
+          alen += strlen( agif_list->ar[af] ) ;       /* filenames  */
+
+        alen += 3*agif_list->num + 32 ;               /* all filenames */
+        alc = AFMALL ( char, alen) ; alc[0] = '\0' ;  /* in one string */
+        for( alen=af=0 ; af < agif_list->num ; af++ ){
+          strcat(alc," ") ; strcat(alc,agif_list->ar[af]) ;
+        }
+
+        oof  = AFMALL( char, strlen(prefix)+32 ) ; /* output fname */
+        sprintf(oof,"%sgif",prefix) ;
+
+        alen =  strlen(alc)+strlen(ppmto_agif_filter)+strlen(oof)+32 ;
+        alf  = AFMALL( char, alen) ;
+        sprintf(alf , ppmto_agif_filter, alc, oof ) ; /* command to run */
+        INFO_message("Running '%s'",alf) ;
+        if( THD_is_ondisk(oof) ) WARNING_message("Over-writing '%s'",oof);
+        system(alf) ;                                 /* so run it!    */
+        free(alf) ; free(oof) ; free(alc) ;           /* free trash   */
+      }
+      break ;
+
+      /* MPEG-1 */
+
+      case MPEG_MODE:{
+        int alen ; char *alf , *oof , *par , *frate ;
+        char *qscale , *pattrn ;
+        FILE *fpar ;
+
+        /* write mpeg_encode parameter file */
+
+        par = AFMALL( char, strlen(ppo)+32 ) ; /* param fname */
+        sprintf(par,"%s%s.PARAM",ppo,tsuf) ;
+
+        fpar = fopen( par , "w" ) ;
+        if( fpar == NULL ){ free(par) ; break ; }
+        oof = AFMALL( char, strlen(prefix)+32 ) ; /* output fname */
+        sprintf(oof,"%smpg",prefix) ;
+        qscale=getenv("AFNI_MPEG_QSCALE") ;if(qscale==NULL) qscale="11"   ;
+        pattrn=getenv("AFNI_MPEG_PATTERN");if(pattrn==NULL) pattrn="IIIII";
+        frate =getenv("AFNI_MPEG_FRAMERATE");if(frate==NULL)frate ="24"   ;
+        fprintf(fpar,
+                  "OUTPUT %s\n"             /* oof */
+                  "GOP_SIZE          5\n"
+                  "SLICES_PER_FRAME  1\n"
+                  "FRAME_RATE        %s\n"  /* frate */
+                  "BASE_FILE_FORMAT  PPM\n"
+                  "INPUT_CONVERT     *\n"
+                  "INPUT_DIR         .\n"
+                  "PATTERN           %s\n"  /* pattrn */
+                  "IQSCALE           %s\n"  /* qscale */
+                  "PQSCALE           10\n"
+                  "BQSCALE           25\n"
+                  "PIXEL             HALF\n"
+                  "RANGE             10 4\n"
+                  "PSEARCH_ALG       LOGARITHMIC\n"
+                  "BSEARCH_ALG       SIMPLE\n"
+                  "REFERENCE_FRAME   ORIGINAL\n"
+                  "INPUT\n"
+                  "%s%s.*.ppm [%05d-%05d]\n"  /* prefix, tsuf, from, to */
+                  "END_INPUT\n"
+               , oof , frate , pattrn , qscale ,
+                 ppo,tsuf,bot,top ) ;
+        fclose(fpar) ;
+
+        /* make command to run */
+
+        alen = strlen(par)+strlen(ppmto_mpeg_filter)+32 ;
+        alf  = AFMALL( char, alen) ;
+        sprintf(alf , ppmto_mpeg_filter, par ) ; /* command to run */
+        INFO_message("Running '%s' to produce %s",alf,oof) ;
+        if( THD_is_ondisk(oof) ) WARNING_message("Over-writing '%s'",oof);
+        system(alf) ;                            /* so run it!    */
+        unlink(par); free(alf); free(oof); free(par); /* free trash   */
+      }
+      break ;
+     }
+
+     /* animation is done, for good or for ill */
+
+     for( af=0 ; af < agif_list->num ; af++ )  /* erase temp files */
+       unlink( agif_list->ar[af] ) ;
+     INFO_message("Done saving images") ;
+
+   } else if( agif_list != NULL && agif_list->num > 0 ){
+     if( agif_list->num > 1 )
+       INFO_message("%d images saved in files %s .. %s",
+                    agif_list->num ,
+                    agif_list->ar[0] , agif_list->ar[agif_list->num-1] ) ;
+     else
+       INFO_message("1 image saved in file %s",agif_list->ar[0]) ;
+   }
+
+   /*--- go home ---*/
+
+   DESTROY_SARR(agif_list) ; free(prefix) ; EXRETURN ;
 }

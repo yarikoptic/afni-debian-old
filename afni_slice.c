@@ -4,6 +4,8 @@
    License, Version 2.  See the file README.Copyright for details.
 ******************************************************************************/
 
+#undef SL_DEBUG  /* 17 Oct 2006: some extra debugging stuff */
+
 #undef MAIN
 
 /*********************************************************************
@@ -14,7 +16,7 @@
    the file with the preprocessor symbol DTYPE set to one of
    the following types:
 
-      byte short int float double complex rgbyte
+      byte short int float double complex rgbyte rgba
 
       cc -c -DDTYPE=short afni_slice.c
       mv -f afni_slice.o afni_slice_short.o
@@ -43,6 +45,9 @@
 #define LMAP_ZNAME TWO_TWO(AFNI_lmap_to_zslice_,DTYPE)
 #define B2SL_NAME  TWO_TWO(AFNI_br2sl_,DTYPE)
 
+#define XSTRING(qqq) STRING(qqq)
+#define STRING(nnn)  #nnn
+
 /*******************************************************************
      To add a new DTYPE, you must add definitions in mrilib.h,
      and define the following macros for the new type:
@@ -63,6 +68,12 @@
 #define FMAD2_rgbyte(a,d1,bb,d2,e) ( (e).r = (a)*(d1).r + (bb)*(d2).r, \
                                      (e).g = (a)*(d1).g + (bb)*(d2).g, \
                                      (e).b = (a)*(d1).b + (bb)*(d2).b   )
+
+#define FMAD2_rgba(p,d1,bb,d2,e) ( (e).r = (p)*(d1).r + (bb)*(d2).r, \
+                                   (e).g = (p)*(d1).g + (bb)*(d2).g, \
+                                   (e).b = (p)*(d1).b + (bb)*(d2).b, \
+                                   (e).b = (p)*(d1).b + (bb)*(d2).a   )
+
 #define FMAD2 TWO_TWO(FMAD2_,DTYPE)
 
 /** macros for e = a*d1 + b*d2 + c*d3 + d*d3 (a-d floats; d1-d4 DTYPEs) **/
@@ -82,18 +93,27 @@
                (e).g = (a)*(d1).g + (bb)*(d2).g + (c)*(d3).g + (d)*(d4).g, \
                (e).b = (a)*(d1).b + (bb)*(d2).b + (c)*(d3).b + (d)*(d4).b   )
 
+#define FMAD4_rgba(p,d1,bb,d2,c,d3,d,d4,e)                                 \
+             ( (e).r = (p)*(d1).r + (bb)*(d2).r + (c)*(d3).r + (d)*(d4).r, \
+               (e).g = (p)*(d1).g + (bb)*(d2).g + (c)*(d3).g + (d)*(d4).g, \
+               (e).b = (p)*(d1).b + (bb)*(d2).b + (c)*(d3).b + (d)*(d4).b, \
+               (e).a = (p)*(d1).a + (bb)*(d2).a + (c)*(d3).a + (d)*(d4).a   )
+
 #define FMAD4 TWO_TWO(FMAD4_,DTYPE)
 
 /** macros to multiply float a times DTYPE b and store the result in b again **/
 
-#define FSCAL_short(a,b)           (b)*=(a)
-#define FSCAL_float                FSCAL_short
-#define FSCAL_byte                 FSCAL_short
-#define FSCAL_int                  FSCAL_short
-#define FSCAL_double               FSCAL_short
-#define FSCAL_complex(a,b)         ( (b).r *= (a) , (b).i *= (a) )
+#define FSCAL_short(a,b)    (b)*=(a)
+#define FSCAL_float         FSCAL_short
+#define FSCAL_byte          FSCAL_short
+#define FSCAL_int           FSCAL_short
+#define FSCAL_double        FSCAL_short
+#define FSCAL_complex(a,b)  ( (b).r *= (a) , (b).i *= (a) )
 
-#define FSCAL_rgbyte(a,bb)         ( (bb).r*= (a) , (bb).g*= (a) , (bb).b*= (a) )
+#define FSCAL_rgbyte(a,bb)  ( (bb).r*= (a) , (bb).g*= (a) , (bb).b*= (a) )
+
+#define FSCAL_rgba(p,bb)    ( (bb).r*=(p), (bb).g*=(p), (bb).b*=(p), (bb).a*=(p) )
+
 #define FSCAL TWO_TWO(FSCAL_,DTYPE)
 
 /** macros for assigning final result from INTYPE a to DTYPE b **/
@@ -119,6 +139,7 @@
 #define FINAL_double               FINAL_float
 #define FINAL_complex              FINAL_float
 #define FINAL_rgbyte               FINAL_float
+#define FINAL_rgba                 FINAL_float
 #define FINAL TWO_TWO(FINAL_,DTYPE)
 
 /** macros for putting a zero into DTYPE b **/
@@ -130,21 +151,23 @@
 #define FZERO_double               FZERO_float
 #define FZERO_complex(b)           ( (b).r = 0.0 , (b).i = 0.0 )
 #define FZERO_rgbyte(bb)           ( (bb).r=(bb).g=(bb).g = 0 )
+#define FZERO_rgba(bb)             ( (bb).r=(bb).g=(bb).g=(bb).a = 0 )
 #define FZERO TWO_TWO(FZERO_,DTYPE)
 
 /** macros for a zero value **/
 
-static complex complex_zero = { 0.0,0.0 } ;
-
+static complex complex_zero = { 0.0f,0.0f } ;
 static rgbyte  rgbyte_zero  = { 0,0,0 } ;
+static rgba    rgba_zero    = { 0,0,0,0 } ;
 
 #define ZERO_short    0
 #define ZERO_byte     0
 #define ZERO_int      0
-#define ZERO_float    0.0
+#define ZERO_float    0.0f
 #define ZERO_double   0.0
 #define ZERO_complex  complex_zero
 #define ZERO_rgbyte   rgbyte_zero
+#define ZERO_rgba     rgba_zero
 #define ZERO          TWO_TWO(ZERO_,DTYPE)
 
 /** macros for intermediate interpolants data type **/
@@ -156,6 +179,7 @@ static rgbyte  rgbyte_zero  = { 0,0,0 } ;
 #define INTYPE_double   double
 #define INTYPE_complex  complex
 #define INTYPE_rgbyte   rgbyte
+#define INTYPE_rgba     rgba
 #define INTYPE TWO_TWO(INTYPE_,DTYPE)
 
 /**-------------------------------------------------------------------------**/
@@ -180,10 +204,26 @@ static rgbyte  rgbyte_zero  = { 0,0,0 } ;
     _GEN:  for the general (non-parallel) case
     _PAR:  for the case when the inner loop is parallel to an input brick axis **/
 
-#define NN_ALOOP_GEN \
- (fxi_old += dfxi_inner , fyj_old += dfyj_inner , fzk_old += dfzk_inner , \
+#ifndef SL_DEBUG
+
+#define NN_ALOOP_GEN                                                            \
+ (fxi_old += dfxi_inner , fyj_old += dfyj_inner , fzk_old += dfzk_inner ,       \
   xi_old = FLOOR(fxi_old) , yj_old = FLOOR(fyj_old) , zk_old = FLOOR(fzk_old) , \
   bslice[out_ind++] = bold[ IBASE(xi_old,yj_old,zk_old) ])
+
+#else
+
+#define NN_ALOOP_GEN                                                                     \
+ do{                                                                                     \
+  fxi_old += dfxi_inner , fyj_old += dfyj_inner , fzk_old += dfzk_inner ,                \
+  xi_old = FLOOR(fxi_old) , yj_old = FLOOR(fyj_old) , zk_old = FLOOR(fzk_old) ;          \
+  if(PRINT_TRACING){ char str[256];                                                      \
+   sprintf(str,"out_ind=%d xi_old=%d yj_old=%d zk_old=%d",out_ind,xi_old,yj_old,zk_old); \
+   STATUS(str) ; }                                                                       \
+  bslice[out_ind++] = bold[ IBASE(xi_old,yj_old,zk_old) ] ;                              \
+ } while(0)
+
+#endif /* SL_DEBUG */
 
 #define NN_ALOOP_PAR(ijk) (bslice[out_ind++] = bold[ ib[ijk]+ob ])
 
@@ -314,7 +354,11 @@ void LMAP_XNAME( THD_linear_mapping * map , int resam_mode ,
    int out_ind , jstep , kstep ;
    int nxold,nyold,nzold , nxnew,nynew,nznew ;
 
+#if 0
   ENTRY("AFNI_lmap_to_xslice") ;
+#else
+  ENTRY( XSTRING(LMAP_XNAME) ) ;
+#endif
 
    /*--- set up ranges ---*/
 
@@ -324,9 +368,28 @@ void LMAP_XNAME( THD_linear_mapping * map , int resam_mode ,
 
    if( xi_fix < xi_bot || xi_fix > xi_top ) EXRETURN ;  /* map doesn't apply! */
 
+   if( bold==NULL || bslice==NULL ){ STATUS("NULL pointers?!"); EXRETURN; }
+
+#ifdef SL_DEBUG
+if(PRINT_TRACING)
+{ char str[256];
+  sprintf(str,"xi_bot=%d xi_fix=%d xi_top=%d",xi_bot,xi_fix,xi_top);
+  STATUS(str) ;
+  sprintf(str,"yj_bot=%d yj_top=%d zk_bot=%d zk_top=%d",
+          yj_bot,yj_top,zk_bot,zk_top) ; STATUS(str) ;
+}
+#endif
+
    nxold = old_daxes->nxx ;  nxnew = new_daxes->nxx ;
    nyold = old_daxes->nyy ;  nynew = new_daxes->nyy ;
    nzold = old_daxes->nzz ;  nznew = new_daxes->nzz ;
+
+#ifdef SL_DEBUG
+if(PRINT_TRACING)
+{ char str[256];
+  sprintf(str,"OLD: nx=%d ny=%d nz=%d  NEW: nx=%d ny=%d nz=%d",
+          nxold,nyold,nzold , nxnew,nynew,nznew ) ; STATUS(str); }
+#endif
 
    jstep = nxold ;
    kstep = nxold * nyold ;
@@ -361,6 +424,12 @@ void LMAP_XNAME( THD_linear_mapping * map , int resam_mode ,
    fyj_top = nyold - 0.51 ;  fyj_bot = -0.49 ;
    fzk_top = nzold - 0.51 ;  fzk_bot = -0.49 ;
 
+#ifdef SL_DEBUG
+if(PRINT_TRACING)
+{ char str[256] ;
+  sprintf(str,"switch(resam_mode=%d)",resam_mode); STATUS(str); }
+#endif
+
    switch( resam_mode ){
 
       default:
@@ -370,7 +439,8 @@ void LMAP_XNAME( THD_linear_mapping * map , int resam_mode ,
          float fxi_tmp , fyj_tmp , fzk_tmp ;
          int any_outside , all_outside ;
 
-#ifdef AFNI_DEBUG
+#ifdef SL_DEBUG
+if(PRINT_TRACING)
 { char str[256] ;
   sprintf(str,"NN inner dxyz=%g %g %g  outer dxyz=%g %g %g",
           dfxi_inner,dfyj_inner,dfzk_inner,
@@ -410,7 +480,8 @@ void LMAP_XNAME( THD_linear_mapping * map , int resam_mode ,
                                         (fyj_max < fyj_bot) || (fyj_min > fyj_top) ||
                                         (fzk_max < fzk_bot) || (fzk_min > fzk_top)
                                      : 0 ;
-#ifdef AFNI_DEBUG
+#ifdef SL_DEBUG
+if(PRINT_TRACING)
 { char str[256] ;
   sprintf(str,"fxi_bot=%g  fxi_top=%g  fxi_min=%g  fxi_max=%g",fxi_bot,fxi_top,fxi_min,fxi_max);
   STATUS(str) ;
@@ -444,7 +515,9 @@ void LMAP_XNAME( THD_linear_mapping * map , int resam_mode ,
 #define IND_top TWO_TWO(IND_NAME , _top)   /* inner loop index max  */
 
          if( all_outside ){
+#ifdef SL_DEBUG
 STATUS("NN resample has all outside") ;
+#endif
             for( OUD=OUD_bot ; OUD <= OUD_top ; OUD++ ){     /* all points are      */
                out_ind = IND_bot + OUD * IND_nnn ;           /* outside input brick */
                for( IND=IND_bot ; IND <= IND_top ; IND++ ){  /* so just load zeros  */
@@ -480,10 +553,11 @@ STATUS("NN resample has all outside") ;
             else                                                     /* treatment if outer */
                thz = NONE_ZERO ;                                     /* axes are special   */
 
-#ifdef AFNI_DEBUG
+#ifdef SL_DEBUG
+if(PRINT_TRACING)
 { char str[256] ;
-  if( any_outside ) sprintf(str,"NN resample has some outside: thz = %d",thz) ;
-  else              sprintf(str,"NN resample has all inside: thz = %d",thz) ;
+  if( any_outside ) sprintf(str,"NN resample has some outside: thz=%d tho=%d",thz,tho);
+  else              sprintf(str,"NN resample has all inside: thz=%d thd=%d",thz,tho);
   STATUS(str) ;
   sprintf(str,"OUD_bot=%d  OUD_top=%d  nxold=%d nyold=%d nzold=%d",
           OUD_bot,OUD_top,nxold,nyold,nzold ) ; STATUS(str) ;
@@ -513,11 +587,18 @@ STATUS("NN resample has all outside") ;
 
             thz += OUTADD * any_outside ;
 
+#ifdef SL_DEBUG
 STATUS("beginning NN outer loop") ;
+#endif
 
             /*** outer loop ***/
 
             for( OUD=OUD_bot ; OUD <= OUD_top ; OUD++ ){
+
+#ifdef SL_DEBUG
+if(PRINT_TRACING){
+ char str[256] ; sprintf(str,"index=%d",OUD_bot); STATUS(str); }
+#endif
 
                fxi_old = (fxi_base += dfxi_outer) ;  /* floating indexes in  */
                fyj_old = (fyj_base += dfyj_outer) ;  /* input brick at start */
@@ -960,7 +1041,11 @@ void LMAP_YNAME( THD_linear_mapping * map , int resam_mode ,
    int out_ind , jstep , kstep ;
    int nxold,nyold,nzold , nxnew,nynew,nznew ;
 
+#if 0
   ENTRY("AFNI_lmap_to_yslice") ;
+#else
+  ENTRY( XSTRING(LMAP_YNAME) ) ;
+#endif
 
    /*--- set up ranges ---*/
 
@@ -969,6 +1054,8 @@ void LMAP_YNAME( THD_linear_mapping * map , int resam_mode ,
    zk_bot = map->bot.xyz[2] ;  zk_top = map->top.xyz[2] ;
 
    if( yj_fix < yj_bot || yj_fix > yj_top ) EXRETURN ;  /* map doesn't apply! */
+
+   if( bold==NULL || bslice==NULL ){ STATUS("NULL pointers?!"); EXRETURN; }
 
    nxold = old_daxes->nxx ;  nxnew = new_daxes->nxx ;
    nyold = old_daxes->nyy ;  nynew = new_daxes->nyy ;
@@ -1016,7 +1103,8 @@ void LMAP_YNAME( THD_linear_mapping * map , int resam_mode ,
          float fxi_tmp , fyj_tmp , fzk_tmp ;
          int any_outside , all_outside ;
 
-#ifdef AFNI_DEBUG
+#ifdef SL_DEBUG
+if(PRINT_TRACING)
 { char str[256] ;
   sprintf(str,"NN inner dxyz=%g %g %g  outer dxyz=%g %g %g",
           dfxi_inner,dfyj_inner,dfzk_inner,
@@ -1057,7 +1145,8 @@ void LMAP_YNAME( THD_linear_mapping * map , int resam_mode ,
                                         (fzk_max < fzk_bot) || (fzk_min > fzk_top)
                                      : 0 ;
 
-#ifdef AFNI_DEBUG
+#ifdef SL_DEBUG
+if(PRINT_TRACING)
 { char str[256] ;
   sprintf(str,"fxi_bot=%g  fxi_top=%g  fxi_min=%g  fxi_max=%g",fxi_bot,fxi_top,fxi_min,fxi_max);
   STATUS(str) ;
@@ -1091,7 +1180,9 @@ void LMAP_YNAME( THD_linear_mapping * map , int resam_mode ,
 #define IND_top TWO_TWO(IND_NAME , _top)   /* inner loop index max  */
 
          if( all_outside ){
+#ifdef SL_DEBUG
 STATUS("NN resample has all outside") ;
+#endif
             for( OUD=OUD_bot ; OUD <= OUD_top ; OUD++ ){     /* all points are      */
                out_ind = IND_bot + OUD * IND_nnn ;           /* outside input brick */
                for( IND=IND_bot ; IND <= IND_top ; IND++ ){  /* so just load zeros  */
@@ -1127,7 +1218,8 @@ STATUS("NN resample has all outside") ;
             else                                                     /* treatment if outer */
                thz = NONE_ZERO ;                                     /* axes are special   */
 
-#ifdef AFNI_DEBUG
+#ifdef SL_DEBUG
+if(PRINT_TRACING)
 { char str[256] ;
   if( any_outside ) sprintf(str,"NN resample has some outside: thz = %d",thz) ;
   else              sprintf(str,"NN resample has all inside: thz = %d",thz) ;
@@ -1160,7 +1252,9 @@ STATUS("NN resample has all outside") ;
 
             thz += OUTADD * any_outside ;
 
+#ifdef SL_DEBUG
 STATUS("beginning NN outer loop") ;
+#endif
 
             /*** outer loop ***/
 
@@ -1585,7 +1679,11 @@ void LMAP_ZNAME( THD_linear_mapping * map , int resam_mode ,
    int out_ind , jstep , kstep ;
    int nxold,nyold,nzold , nxnew,nynew,nznew ;
 
+#if 0
   ENTRY("AFNI_lmap_to_zslice") ;
+#else
+  ENTRY( XSTRING(LMAP_ZNAME) ) ;
+#endif
 
    /*--- set up ranges ---*/
 
@@ -1594,6 +1692,8 @@ void LMAP_ZNAME( THD_linear_mapping * map , int resam_mode ,
    zk_bot = map->bot.xyz[2] ;  zk_top = map->top.xyz[2] ;
 
    if( zk_fix < zk_bot || zk_fix > zk_top ) EXRETURN ;  /* map doesn't apply! */
+
+   if( bold==NULL || bslice==NULL ){ STATUS("NULL pointers?!"); EXRETURN; }
 
    nxold = old_daxes->nxx ;  nxnew = new_daxes->nxx ;
    nyold = old_daxes->nyy ;  nynew = new_daxes->nyy ;
@@ -1641,7 +1741,8 @@ void LMAP_ZNAME( THD_linear_mapping * map , int resam_mode ,
          float fxi_tmp , fyj_tmp , fzk_tmp ;
          int any_outside , all_outside ;
 
-#ifdef AFNI_DEBUG
+#ifdef SL_DEBUG
+if(PRINT_TRACING)
 { char str[256] ;
   sprintf(str,"NN inner dxyz=%g %g %g  outer dxyz=%g %g %g",
           dfxi_inner,dfyj_inner,dfzk_inner,
@@ -1682,7 +1783,8 @@ void LMAP_ZNAME( THD_linear_mapping * map , int resam_mode ,
                                         (fzk_max < fzk_bot) || (fzk_min > fzk_top)
                                      : 0 ;
 
-#ifdef AFNI_DEBUG
+#ifdef SL_DEBUG
+if(PRINT_TRACING)
 { char str[256] ;
   sprintf(str,"fxi_bot=%g  fxi_top=%g  fxi_min=%g  fxi_max=%g",fxi_bot,fxi_top,fxi_min,fxi_max);
   STATUS(str) ;
@@ -1716,7 +1818,9 @@ void LMAP_ZNAME( THD_linear_mapping * map , int resam_mode ,
 #define IND_top TWO_TWO(IND_NAME , _top)   /* inner loop index max  */
 
          if( all_outside ){
+#ifdef SL_DEBUG
 STATUS("NN resample has all outside") ;
+#endif
             for( OUD=OUD_bot ; OUD <= OUD_top ; OUD++ ){     /* all points are      */
                out_ind = IND_bot + OUD * IND_nnn ;           /* outside input brick */
                for( IND=IND_bot ; IND <= IND_top ; IND++ ){  /* so just load zeros  */
@@ -1752,7 +1856,8 @@ STATUS("NN resample has all outside") ;
             else                                                     /* treatment if outer */
                thz = NONE_ZERO ;                                     /* axes are special   */
 
-#ifdef AFNI_DEBUG
+#ifdef SL_DEBUG
+if(PRINT_TRACING)
 { char str[256] ;
   if( any_outside ) sprintf(str,"NN resample has some outside: thz = %d",thz) ;
   else              sprintf(str,"NN resample has all inside: thz = %d",thz) ;
@@ -1785,7 +1890,9 @@ STATUS("NN resample has all outside") ;
 
             thz += OUTADD * any_outside ;
 
+#ifdef SL_DEBUG
 STATUS("beginning NN outer loop") ;
+#endif
 
             /*** outer loop ***/
 
@@ -2205,7 +2312,13 @@ void B2SL_NAME( int nxx, int nyy, int nzz ,
 {
    int ystep = nxx , zstep = nxx*nyy ;
 
-  ENTRY("AFNI_br2sl") ;
+#if 0
+   ENTRY("AFNI_br2sl") ;
+#else
+   ENTRY(XSTRING(B2SL_NAME)) ;
+#endif
+
+   if( bold == NULL || bslice == NULL ) EXRETURN ;
 
    switch( fixed_axis ){
 

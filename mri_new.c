@@ -74,12 +74,12 @@ ENTRY("mri_new_7D_generic") ;
    newim->name = NULL ;
 
    newim->dx = newim->dy = newim->dz =
-   newim->dt = newim->du = newim->dv = 1.0 ;  /* default dimensions */
+   newim->dt = newim->du = newim->dv = 1.0f;  /* default dimensions */
 
-   newim->dw = -666.0 ;  /* 05 Feb 2001 - flag that dimensions aren't set */
+   newim->dw = -666.0f;  /* 05 Feb 2001 - flag that dimensions aren't set */
 
    newim->xo = newim->yo = newim->zo =
-   newim->to = newim->uo = newim->vo = newim->wo = 0.0 ;  /* default offsets */
+   newim->to = newim->uo = newim->vo = newim->wo = 0.0f;  /* default offsets */
 
    newim->was_swapped = 0 ;  /* 07 Mar 2002 - flag that bytes were swapped */
 
@@ -93,13 +93,12 @@ ENTRY("mri_new_7D_generic") ;
    newim->wlab[0] = '\0' ;
 #endif
 
-#ifdef USE_MRI_DELAY
    newim->fname   = NULL ;
    newim->foffset = newim->fondisk = 0 ;
-#endif
 
    npix = newim->nvox ;
 
+#ifdef USE_UNION_DATA
    switch( kind ){
 
       case MRI_byte:
@@ -170,10 +169,28 @@ ENTRY("mri_new_7D_generic") ;
          fprintf( stderr , "mri_new: unrecognized image kind %d\n",(int)kind ) ;
          MRI_FATAL_ERROR ;
    }
+#else
+   switch( kind ){
+      case MRI_byte:    newim->pixel_size = sizeof(byte)     ; break ;
+      case MRI_short:   newim->pixel_size = sizeof(short)    ; break ;
+      case MRI_int:     newim->pixel_size = sizeof(int)      ; break ;
+      case MRI_float:   newim->pixel_size = sizeof(float)    ; break ;
+      case MRI_double:  newim->pixel_size = sizeof(double)   ; break ;
+      case MRI_complex: newim->pixel_size = sizeof(complex)  ; break ;
+      case MRI_rgb:     newim->pixel_size = 3 * sizeof(byte) ; break ;
+      case MRI_rgba:    newim->pixel_size = sizeof(rgba)     ; break ;
 
-   if( make_space && mri_data_pointer(newim) == NULL ){
-      fprintf( stderr , "malloc failure for image space: %d bytes\n",npix*newim->pixel_size ) ;
-      MRI_FATAL_ERROR ;
+      default:
+        fprintf( stderr , "mri_new: unrecognized image kind %d\n",(int)kind ) ;
+        MRI_FATAL_ERROR ;
+   }
+   if( make_space ) newim->im = calloc( newim->pixel_size , npix ) ;
+   else             newim->im = NULL ;
+#endif
+
+   if( make_space && mri_data_pointer_unvarnished(newim) == NULL ){
+     fprintf(stderr,"malloc failure for image space: %d bytes\n",npix*newim->pixel_size);
+     MRI_FATAL_ERROR ;
    }
 
    RETURN(newim) ;

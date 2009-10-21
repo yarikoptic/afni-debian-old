@@ -48,6 +48,58 @@ int SUMA_WhichViewerInMomentum(SUMA_SurfaceViewer *SVv, int N_SV, SUMA_SurfaceVi
    SUMA_RETURN(-1);
    
 }
+
+/*!
+   return an appropriate fov setting
+*/
+float SUMA_sv_fov_original(SUMA_SurfaceViewer *sv)
+{
+   static char FuncName[]={"SUMA_sv_fov_original"};
+   float mxdim = -1.0, fov = FOV_INITIAL, maxv[3]={-1.0, -1.0, -1.0}, minv[3]={1000000.0, 10000000.0, 1000000.0}, dxv;
+   int i, N_vis=0, *Vis_IDs=NULL, k=0;
+   SUMA_SurfaceObject *SO=NULL;
+   SUMA_Boolean LocalHead = NOPE;
+   SUMA_ENTRY;
+
+   if (sv->FOV_original > 0.0) SUMA_RETURN(sv->FOV_original);
+
+   /* automatic determination */
+   Vis_IDs = (int *)SUMA_malloc(sizeof(int)*SUMAg_N_DOv);
+   N_vis = SUMA_VisibleSOs (sv, SUMAg_DOv, Vis_IDs);
+   if (!N_vis) {
+      SUMA_LH("Nothing visible!");
+      SUMA_RETURN(FOV_INITIAL);
+   } else {
+      for (i=0; i<N_vis;++i) {
+         SO = (SUMA_SurfaceObject *)SUMAg_DOv[Vis_IDs[i]].OP;
+         for (k=0;k<2;++k) { 
+            if (SO->MaxDims[k] > maxv[k]) maxv[k] = SO->MaxDims[k] ;
+            if (SO->MinDims[k] < minv[k]) minv[k] = SO->MinDims[k] ;
+            /* if (SO->MaxDims[k] - SO->MinDims[k] > mxdim) mxdim = SO->MaxDims[k] - SO->MinDims[k]; */
+         }
+      }
+
+      dxv = 0.0;
+      for (k=0;k<2;++k) { 
+         if (maxv[k] - minv[k] > mxdim) mxdim = maxv[k] - minv[k];
+         dxv += maxv[k] - minv[k];
+      }
+      dxv /= 3.0;
+   }
+   SUMA_free(Vis_IDs); Vis_IDs= NULL;
+   if (mxdim > 0 && mxdim < 1000) {
+      if (mxdim / dxv > 2.2) { fov = 0.3*dxv; } /* just to make homer look better */
+      else { fov = 0.3*mxdim; }
+      SUMA_LHv("rat=%f, using %f\n", mxdim / dxv, fov);
+   } else {
+      fov = FOV_INITIAL;
+      SUMA_S_Errv("max dim too strange (%f)\nUsing default (%f).", mxdim, fov);
+   }
+   
+
+   SUMA_RETURN(fov);
+}
+
  
 /* This is used to hold the functions that manipulate SV, Surface Viewer Structures */
 /*! 
@@ -206,6 +258,8 @@ SUMA_SurfaceViewer *SUMA_Alloc_SurfaceViewer_Struct (int N)
       SV->light0_position[1] = 0.0;
       
       SV->light0_position[2] = 1.0 * SUMA_INTITIAL_LIGHT0_SWITCH; 
+      SV->lit_for = SUMA_INTITIAL_LIGHT0_SWITCH;
+
       SV->light0_position[3] = 0.0;
 
       SV->light1_position[0] = 1.0;
@@ -322,10 +376,11 @@ SUMA_SurfaceViewer *SUMA_Alloc_SurfaceViewer_Struct (int N)
          if (eee) {
             float fovinit = strtod(eee, NULL);
             if (fovinit > 1.0 && fovinit < 100.0)  SV->FOV_original = fovinit;
-            else  SV->FOV_original = FOV_INITIAL;
+            else  if (fovinit < 0) SV->FOV_original = -1;
+            else SV->FOV_original = FOV_INITIAL;
          } else SV->FOV_original = FOV_INITIAL;
       }
-
+      
       SV->Open = NOPE;
       
       SV->RegisteredDO = (int *)SUMA_calloc( SUMA_MAX_DISPLAYABLE_OBJECTS, sizeof(int));
@@ -351,13 +406,13 @@ SUMA_SurfaceViewer *SUMA_Alloc_SurfaceViewer_Struct (int N)
       SV->ShowWorldAxis = SUMA_NO_WAX;
       
       
-      SV->WAx = SUMA_Alloc_Axis ("Viewer World Axis");
+      SV->WAx = SUMA_Alloc_Axis ("Viewer World Axis", AO_type);
 
       if (SV->WAx == NULL) {
          fprintf(SUMA_STDERR,"Error %s: Error Allocating axis\n", FuncName);
          SUMA_RETURN(NULL);
       }
-      SV->WAx->type = SUMA_SCALE_BOX;
+      SV->WAx->atype = SUMA_SCALE_BOX;
 
       SV->Ch = SUMA_Alloc_CrossHair ();
       if (SV->Ch == NULL) {
@@ -390,6 +445,8 @@ SUMA_SurfaceViewer *SUMA_Alloc_SurfaceViewer_Struct (int N)
       SV->Focus_SO_ID = -1;
       SV->Focus_DO_ID = -1;
       
+      SV->State = NULL;
+      SV->iState = -1;
       SV->VSv = NULL;
       SV->N_VSv = 0;
       SV->LastNonMapStateID = -1;
@@ -540,6 +597,11 @@ SUMA_Boolean SUMA_FillColorList (SUMA_SurfaceViewer *sv, SUMA_SurfaceObject *SO)
       }
    }
    
+   if (sv->N_ColList >= SUMA_MAX_DISPLAYABLE_OBJECTS) {
+      SUMA_SL_Crit("sv->N_ColList >= SUMA_MAX_DISPLAYABLE_OBJECTS");
+      SUMA_RETURN (NOPE);
+   }
+   
    /* create the ColList struct */
    if (sv->ColList[sv->N_ColList].glar_ColorList) {
       fprintf (SUMA_STDERR,"Error %s: glar_ColorList is not NULL. Cannot reallocate.\n", FuncName);
@@ -591,13 +653,15 @@ GLfloat * SUMA_GetColorList (SUMA_SurfaceViewer *sv, char *DO_idstr)
    int i;
    GLfloat * glar_ColorList = NULL;
    SUMA_Boolean Found = NOPE;
+   SUMA_Boolean LocalHead = NOPE;
    
-   SUMA_ENTRY;
+   SUMA_ENTRY_LH;
    
    if (!DO_idstr) {
       fprintf (SUMA_STDERR,"Error %s: DO_idstr is NULL, this should not be.\n", FuncName);
       SUMA_RETURN (NULL);
    }
+   
    
    /* find the culprit */
    Found = NOPE;
@@ -1063,7 +1127,9 @@ char *SUMA_SurfaceViewer_StructInfo (SUMA_SurfaceViewer *SV, int detail)
    SS = SUMA_StringAppend_va(SS,"   ViewCenterOrig = [%f %f %f]\n", SV->GVS[SV->StdView].ViewCenterOrig[0], SV->GVS[SV->StdView].ViewCenterOrig[1], SV->GVS[SV->StdView].ViewCenterOrig[2]);
    SS = SUMA_StringAppend_va(SS,"   ViewCamUp = [%f %f %f]\n", SV->GVS[SV->StdView].ViewCamUp[0], SV->GVS[SV->StdView].ViewCamUp[1], SV->GVS[SV->StdView].ViewCamUp[2]);
    SS = SUMA_StringAppend_va(SS,"   RotaCenter = [%f %f %f]\n", SV->GVS[SV->StdView].RotaCenter[0], SV->GVS[SV->StdView].RotaCenter[1], SV->GVS[SV->StdView].RotaCenter[2]);
-   SS = SUMA_StringAppend_va(SS,"   light0_position = [%f %f %f %f]\n", SV->light0_position[0], SV->light0_position[1], SV->light0_position[2], SV->light0_position[3]);
+   SS = SUMA_StringAppend_va(SS,"   light0_position = [%f %f %f %f] (lit for %d)\n", 
+                                             SV->light0_position[0], SV->light0_position[1], 
+                                             SV->light0_position[2], SV->light0_position[3], SV->lit_for);
    SS = SUMA_StringAppend_va(SS,"   light1_position = [%f %f %f %f]\n", SV->light1_position[0], SV->light1_position[1], SV->light1_position[2], SV->light1_position[3]);
    SS = SUMA_StringAppend_va(SS,"   ZoomCompensate = %f\n", SV->ZoomCompensate);
    SS = SUMA_StringAppend_va(SS,"   WindWidth = %d\n", SV->WindWidth);
@@ -1084,7 +1150,7 @@ char *SUMA_SurfaceViewer_StructInfo (SUMA_SurfaceViewer *SV, int detail)
    SS = SUMA_StringAppend_va(SS,"   zoomDelta = %f, zoomBegin = %f\n", SV->GVS[SV->StdView].zoomDelta, SV->GVS[SV->StdView].zoomBegin);
    SS = SUMA_StringAppend_va(SS,"   ArrowRotationAngle=%f rad (%f deg)\n", SV->ArrowRotationAngle, SV->ArrowRotationAngle * 180.0 / SUMA_PI);
    SS = SUMA_StringAppend_va(SS,"   KeyZoomGain=%f \n", SV->KeyZoomGain);
-   SS = SUMA_StringAppend_va(SS,"   FOV_original=%f \n", SV->FOV_original);
+   SS = SUMA_StringAppend_va(SS,"   FOV_original=%f (%f)\n", SV->FOV_original, SUMA_sv_fov_original(SV));
    SS = SUMA_StringAppend_va(SS,"   spinDeltaX/Y = %.4f/%.4f\n", SV->GVS[SV->StdView].spinDeltaX, SV->GVS[SV->StdView].spinDeltaY);
    SS = SUMA_StringAppend_va(SS,"   spinBeginX/Y = %.4f/%.4f\n", SV->GVS[SV->StdView].spinBeginX, SV->GVS[SV->StdView].spinBeginY);   
    SS = SUMA_StringAppend_va(SS,"   TranslateGain = %f\n", SV->GVS[SV->StdView].TranslateGain);
@@ -1388,7 +1454,7 @@ int SUMA_WhichState (char *state, SUMA_SurfaceViewer *csv, char *ForceGroup)
                                  i, csv->VSv[i].Name);
                                  
          if (!csv->VSv[i].Name || !state) {
-            SUMA_SL_Err("Null Name or State \n");
+            SUMA_LH("Null Name or State \n");
             SUMA_RETURN (-1);
          }
          if (strcmp(csv->VSv[i].Name, state) == 0) {
@@ -1404,7 +1470,7 @@ int SUMA_WhichState (char *state, SUMA_SurfaceViewer *csv, char *ForceGroup)
          if (LocalHead) fprintf(SUMA_STDERR,"   %d? %s, %s ...\n", 
                                  i, csv->VSv[i].Name, csv->VSv[i].Group);
          if (!csv->VSv[i].Name || !state || !csv->CurGroupName) {
-            SUMA_SL_Err("Null Name or State or CurGroupName.\n");
+            SUMA_LH("Null Name or State or CurGroupName.\n");
             SUMA_RETURN (-1);
          }
          if (strcmp(csv->VSv[i].Name, state) == 0 && strcmp(csv->VSv[i].Group, ForceGroup) == 0 ) {
@@ -1496,21 +1562,6 @@ SUMA_Boolean SUMA_RegisterSpecSO (SUMA_SurfSpecFile *Spec, SUMA_SurfaceViewer *c
    
    SUMA_LH("Allocating...");   
    
-   /* allocate for FOV */
-   if (!csv->FOV) {
-      csv->FOV = (float *)SUMA_calloc(csv->N_VSv, sizeof(float));
-      for (i=0; i < csv->N_VSv; ++i) {
-         csv->FOV[i] = csv->FOV_original;
-      } 
-   } else {
-      csv->FOV = (float *)SUMA_realloc(csv->FOV, csv->N_VSv * sizeof(float));
-      for (i=old_N_VSv; i< csv->N_VSv; ++i) {
-         csv->FOV[i] = csv->FOV[0]; /*  used to be  = csv->FOV_original, 
-                           but it is best to set to 0th view, 
-                           gives user ability to set display 
-                           before auto-movie making via talk-suma */;
-      }
-   }
    
    /* allocate space for MembSOs counters will be reset for later use counting proceeds
    also initialize FOV*/
@@ -1557,12 +1608,28 @@ SUMA_Boolean SUMA_RegisterSpecSO (SUMA_SurfSpecFile *Spec, SUMA_SurfaceViewer *c
       }
    }
    
+   /* allocate for FOV */
+   if (!csv->FOV) {
+      csv->FOV = (float *)SUMA_calloc(csv->N_VSv, sizeof(float));
+      for (i=0; i < csv->N_VSv; ++i) {
+         csv->FOV[i] = csv->FOV_original; /* This will get reset in SUMA_SetupSVforDOs */
+      } 
+   } else {
+      csv->FOV = (float *)SUMA_realloc(csv->FOV, csv->N_VSv * sizeof(float));
+      for (i=old_N_VSv; i< csv->N_VSv; ++i) {
+         csv->FOV[i] = csv->FOV[0]; /*  used to be  = csv->FOV_original, 
+                           but it is best to set to 0th view, 
+                           gives user ability to set display 
+                           before auto-movie making via talk-suma */;
+      }
+   }
    /*fprintf(SUMA_STDERR,"%s: Leaving ...\n", FuncName);*/
 
    SUMA_RETURN (YUP);
 }
 
 /*! allocate and intialize SUMA_CommonFields 
+   No fancy allocation, No fancy macros.
 \sa SUMA_Free_CommonFields
 */
 SUMA_CommonFields * SUMA_Create_CommonFields ()
@@ -1572,7 +1639,7 @@ SUMA_CommonFields * SUMA_Create_CommonFields ()
    int i, portn = -1, n, portn2;
    char *eee=NULL;
    SUMA_Boolean LocalHead = NOPE;
-   
+      
    /* This is the function that creates the debugging flags, do not use them here */
    cf = NULL;
    
@@ -1582,7 +1649,7 @@ SUMA_CommonFields * SUMA_Create_CommonFields ()
    
    if (cf == NULL) {
       fprintf(SUMA_STDERR,"Error %s: Failed to allocate.\n", FuncName);
-      SUMA_RETURN (cf);
+      return (cf);
    }
    
    cf->Dev = NOPE;
@@ -1774,6 +1841,19 @@ SUMA_CommonFields * SUMA_Create_CommonFields ()
    cf->scm = NULL;
    cf->DsetList = (DList *)SUMA_malloc(sizeof(DList));
    dlist_init (cf->DsetList, SUMA_FreeDset);
+   {
+      char *eee = getenv("SUMA_AllowDsetReplacement");
+      if (eee) {
+         if (strcmp(eee,"NO") == 0) cf->Allow_Dset_Replace = NOPE;
+         else if (strcmp(eee,"YES") == 0) cf->Allow_Dset_Replace = YUP;
+         else {
+            fprintf (SUMA_STDERR,   "Warning %s:\n"
+                                    "Bad value for environment variable SUMA_AllowDsetReplacement\n"
+                                    "Assuming default of NO", FuncName);
+            cf->Allow_Dset_Replace = NOPE;
+         }
+      } else cf->Allow_Dset_Replace = NOPE;
+   }
    
    cf->IgnoreVolreg = NOPE;
    cf->isGraphical = NOPE;
@@ -1784,6 +1864,15 @@ SUMA_CommonFields * SUMA_Create_CommonFields ()
       cf->ClipPlaneType[i] = SUMA_NO_CLIP_PLANE_TYPE;
       cf->ClipPlanesLabels[i][0]='\0';
    }
+   
+   for (i=0; i<SUMA_MAX_N_TIMER;++i) {
+      cf->Timer[i].name[0] = '\0';
+      cf->Timer[i].lastcall = -1.0;
+   }
+   cf->N_Timer = 0;
+
+   cf->cwd = SUMA_getcwd();
+   
    return (cf);
 
 }
@@ -2100,6 +2189,7 @@ SUMA_Boolean SUMA_Free_CommonFields (SUMA_CommonFields *cf)
    int i;
    
    /* do not use commonfields related stuff here for obvious reasons */
+   if (cf->cwd) SUMA_free(cf->cwd); cf->cwd = NULL;
    if (cf->GroupList) {
       for (i=0; i< cf->N_Group; ++i) if (cf->GroupList[i]) SUMA_free(cf->GroupList[i]);
       SUMA_free(cf->GroupList); cf->GroupList = NULL;
@@ -2126,7 +2216,7 @@ SUMA_Boolean SUMA_Free_CommonFields (SUMA_CommonFields *cf)
    #endif
    
    /* if (cf) free(cf); */ /* don't free this stupid pointer since it is used
-                        when main returns with SUMA_RETURN. 
+                        when main returns with SUMA_ RETURN (typo on purpose to avoid upsetting AnalyzeTrace. 
                         It is not quite a leak since the OS will clean it up
                         after exit Thu Apr  8 2004*/
    
@@ -2218,6 +2308,8 @@ char * SUMA_CommonFieldsInfo (SUMA_CommonFields *cf, int detail)
    static char FuncName[]={"SUMA_CommonFieldsInfo"};
    int i;
    char *s=NULL;
+   SUMA_DSET *dset=NULL;
+   DListElmt *el=NULL;
    SUMA_STRING *SS=NULL;
    
    SUMA_ENTRY;
@@ -2230,6 +2322,8 @@ char * SUMA_CommonFieldsInfo (SUMA_CommonFields *cf, int detail)
       s = SS->s; SUMA_free(SS); SS= NULL;
       SUMA_RETURN(s);
    }
+   
+   SS = SUMA_StringAppend_va(SS,"   CWD: %s\n", cf->cwd);
    
    for (i=0; i < SUMA_MAX_STREAMS; ++i) {
       SS = SUMA_StringAppend_va(SS,"   HostName: %s\n", cf->HostName_v[i]);
@@ -2249,6 +2343,28 @@ char * SUMA_CommonFieldsInfo (SUMA_CommonFields *cf, int detail)
       SS = SUMA_StringAppend_va(SS,"   InOut_Notify = %d\n", cf->InOut_Notify);
       SS = SUMA_StringAppend_va(SS,"   MemTrace = %d\n", cf->MemTrace);
    #endif
+   
+   /* add the displayable objects Info */
+   s = SUMA_DOv_Info(SUMAg_DOv, SUMAg_N_DOv, 0);
+   SS = SUMA_StringAppend_va(SS, "%s\n", s); SUMA_free(s); s = NULL;
+   
+   if (cf->DsetList) {
+      SS = SUMA_StringAppend_va(SS, "DsetList (Allow Replacement = %d):\n", cf->Allow_Dset_Replace);
+      el = NULL;
+      do { 
+         if (!el) el = dlist_head(cf->DsetList);
+         else el = dlist_next(el);
+         dset = (SUMA_DSET *)el->data;
+         if (!dset) {
+            SUMA_SLP_Err("Unexpected NULL dset element in list!\nPlease report this occurrence to ziad@nih.gov."); 
+         } else {   
+           s = SUMA_DsetInfo (dset,0);
+           SS = SUMA_StringAppend_va(SS, "\n%s\n", s); SUMA_free(s); s = NULL;    
+         } 
+      } while ( (el != dlist_tail(cf->DsetList))); 
+   } else {
+      SS = SUMA_StringAppend_va(SS, "NULL DsetList\n");
+   }
    
    /* add the colormap info */
    if (cf->scm) {
@@ -2338,7 +2454,7 @@ SUMA_Boolean SUMA_AdoptSurfGroup(SUMA_SurfaceViewer *csv, SUMA_SurfaceObject *SO
 */
 SUMA_Boolean SUMA_AdoptGroup(SUMA_SurfaceViewer *csv, char *group)
 {
-   static char FuncName[]={"SUMA_AdoptSurfGroup"};
+   static char FuncName[]={"SUMA_AdoptGroup"};
 
    SUMA_ENTRY;
 
@@ -2352,6 +2468,45 @@ SUMA_Boolean SUMA_AdoptGroup(SUMA_SurfaceViewer *csv, char *group)
    csv->CurGroupName = SUMA_copy_string(group);
    SUMA_RETURN(YUP);
 }
+
+SUMA_Boolean SUMA_SetViewerLightsForSO(SUMA_SurfaceViewer *cSV, SUMA_SurfaceObject *SO)
+{
+   static char FuncName[]={"SUMA_SetViewerLightsForSO"};
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+
+   if (!cSV || !SO) SUMA_RETURN(NOPE);
+
+   if (cSV->lit_for == 0) { /* olde way */
+      /* if surface is SureFit , flip lights */
+      if (SO->normdir == 0 && (SO->FileType == SUMA_SUREFIT || SO->FileType == SUMA_OPENDX_MESH || SO->FileType == SUMA_BRAIN_VOYAGER)) {
+         SUMA_LH("Flippo for safety");
+         cSV->light0_position[0] *= -1;
+         cSV->light0_position[1] *= -1;      
+         cSV->light0_position[2] *= -1;
+         glLightfv(GL_LIGHT0, GL_POSITION, cSV->light0_position);
+      } else if (SO->normdir == -1) {
+         SUMA_LH("Flippo for safety");
+         cSV->light0_position[0] *= -1;
+         cSV->light0_position[1] *= -1;      
+         cSV->light0_position[2] *= -1;
+         glLightfv(GL_LIGHT0, GL_POSITION, cSV->light0_position);
+      }
+   } else {
+      SUMA_LHv("Auto Flippo for safety, %d, %d\n", cSV->lit_for , SO->normdir);
+      if (cSV->lit_for * SO->normdir < 0) {
+         cSV->light0_position[0] *= -1;
+         cSV->light0_position[1] *= -1;      
+         cSV->light0_position[2] *= -1;
+         cSV->lit_for *= -1;
+         glLightfv(GL_LIGHT0, GL_POSITION, cSV->light0_position);
+      }
+   } 
+
+   SUMA_RETURN(YUP);
+}
+   
 
 /*!
 ans = SUMA_SetupSVforDOs (Spec, DOv, N_DOv, cSV, vo);
@@ -2378,7 +2533,7 @@ if surface is SureFit, flip lights
 SUMA_Boolean SUMA_SetupSVforDOs (SUMA_SurfSpecFile Spec, SUMA_DO *DOv, int N_DOv, SUMA_SurfaceViewer *cSV, int viewopt)
 {
    static char FuncName[] = {"SUMA_SetupSVforDOs"};
-   int kar;
+   int kar, ws, i;
    SUMA_SurfaceObject *SO;
    SUMA_Axis *EyeAxis;
    int EyeAxis_ID;
@@ -2439,21 +2594,40 @@ SUMA_Boolean SUMA_SetupSVforDOs (SUMA_SurfSpecFile Spec, SUMA_DO *DOv, int N_DOv
       } 
       SUMA_LH("Done.");
 
-   /* register all SOs of the first state */   
-      if (LocalHead) {
-         fprintf(SUMA_STDERR,"%s: Registering All SO of the first group ...\n", FuncName);
-         fprintf(SUMA_STDERR,"%s: cSV->VSv[0].N_MembSOs = %d\n", FuncName, cSV->VSv[0].N_MembSOs);
+      /* register all SOs of the first state if no state is current
+         or register all surfaces if they are of the current state and group
+         (it is possible that no new surfaces are registered, but overhead is tiny)
+         
+         The logic fails when you load two different groups with the one surface in each having the same
+         state as in the other.
+         {G1, SO->State='a'} {G2, SO->State='a'} in that case both surfaces will show up at the same
+         time when first loaded. You'll need to switch groups before you see just the one surface from that group.
+         
+         For now, I don't care to set this up properly since no one uses multi-group business.
+      */   
+      if (cSV->State) { 
+         ws =  SUMA_WhichState (cSV->State, cSV, cSV->CurGroupName) ;
+      } else {
+         ws = -1;
       }
-      cSV->State = cSV->VSv[0].Name;
-      cSV->iState = 0;
-      for (kar=0; kar < cSV->VSv[0].N_MembSOs; ++ kar) {
-          if (LocalHead) fprintf(SUMA_STDERR," About to register DOv[%d] ...\n", cSV->VSv[0].MembSOs[kar]);
-            if (!SUMA_RegisterDO(cSV->VSv[0].MembSOs[kar], cSV)) {
-               SUMA_error_message (FuncName,"Failed to register DO", 1);
-               SUMA_RETURN(NOPE);
-            }
-      }
-      
+      if ( ws < 0) { /* first kiss */ ws = 0; }
+      {   
+         if (LocalHead) {
+            fprintf(SUMA_STDERR,"%s: Registering All SO of the %dth state ...\n", FuncName, ws);
+            fprintf(SUMA_STDERR,"%s: cSV->VSv[%d].N_MembSOs = %d\n", FuncName, ws, cSV->VSv[ws].N_MembSOs);
+         }
+         cSV->State = cSV->VSv[ws].Name;
+         cSV->iState = ws;
+         for (kar=0; kar < cSV->VSv[ws].N_MembSOs; ++ kar) {
+             if (LocalHead) fprintf(SUMA_STDERR," About to register DOv[%d] ...\n", cSV->VSv[ws].MembSOs[kar]);
+             SO = (SUMA_SurfaceObject *)DOv[cSV->VSv[ws].MembSOs[kar]].OP;
+             SUMA_LHv("SO->Group %s, cSV->CurGroupName %s\n", SO->Group, cSV->CurGroupName); 
+               if (!SUMA_RegisterDO(cSV->VSv[ws].MembSOs[kar], cSV)) {
+                  SUMA_error_message (FuncName,"Failed to register DO", 1);
+                  SUMA_RETURN(NOPE);
+               }
+         }
+      } 
       
    if (LocalHead)   fprintf(SUMA_STDERR,"%s: Done.\n", FuncName);
 
@@ -2513,7 +2687,7 @@ SUMA_Boolean SUMA_SetupSVforDOs (SUMA_SurfSpecFile Spec, SUMA_DO *DOv, int N_DOv
 
 
    /* Set the index Current SO pointer to the first surface object read of the first state, tiz NOT (Fri Jan 31 15:18:49 EST 2003) a surface of course*/
-   cSV->Focus_SO_ID = cSV->VSv[0].MembSOs[0];
+   cSV->Focus_SO_ID = cSV->VSv[ws].MembSOs[0];
    /*set the GroupName info of the viewer correctly */
    SO = (SUMA_SurfaceObject *)(DOv[cSV->Focus_SO_ID].OP);
    if (!SUMA_AdoptSurfGroup(cSV,SO)) {
@@ -2521,21 +2695,17 @@ SUMA_Boolean SUMA_SetupSVforDOs (SUMA_SurfSpecFile Spec, SUMA_DO *DOv, int N_DOv
       SUMA_RETURN(NOPE);
    }
    
-   /* if surface is SureFit , flip lights */
-   if (SO->normdir == 0 && (SO->FileType == SUMA_SUREFIT || SO->FileType == SUMA_OPENDX_MESH || SO->FileType == SUMA_BRAIN_VOYAGER)) {
-      SUMA_LH("Flippo for safety");
-      cSV->light0_position[0] *= -1;
-      cSV->light0_position[1] *= -1;      
-      cSV->light0_position[2] *= -1;
-   } else if (SO->normdir == -1) {
-      SUMA_LH("Flippo for safety");
-      cSV->light0_position[0] *= -1;
-      cSV->light0_position[1] *= -1;      
-      cSV->light0_position[2] *= -1;
+   if (!SUMA_SetViewerLightsForSO(cSV, SO)) {
+      SUMA_S_Warn("Failed to set viewer lights.\nUse 'F' key to flip lights in SUMA\nif necessary.");
    }
    
    /* do the axis setup */
    SUMA_WorldAxisStandard (cSV->WAx, cSV);
+
+   /* do the FOV thingy */
+   for (i=0; i < cSV->N_VSv; ++i) {
+      if (cSV->FOV[i] == cSV->FOV_original) { cSV->FOV[i] = SUMA_sv_fov_original(cSV);} 
+   } 
 
 
    SUMA_RETURN(YUP);

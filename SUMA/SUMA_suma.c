@@ -68,6 +68,11 @@ void SUMA_usage (SUMA_GENERIC_ARGV_PARSE *ps)
           sb = SUMA_help_basics();
           sio  = SUMA_help_IO_Args(ps);
           printf ("\nUsage:  \n"
+                  " Mode 0: Just type suma to see some toy surface and play\n"
+                  "         with the interface. Some surfaces are generated\n"
+                  "         using T. Lewiner's MarchingCubes library. \n"
+                  "         Use '.' and ',' keys to cycle through surfaces.\n"
+                  "\n"
                   " Mode 1: Using a spec file to specify surfaces\n"
                   "                suma -spec <Spec file> \n"
                   "                     [-sv <SurfVol>] [-ah AfniHost]\n"
@@ -148,49 +153,126 @@ void SUMA_usage (SUMA_GENERIC_ARGV_PARSE *ps)
 SUMA_SurfaceObject **SUMA_GimmeSomeSOs(int *N_SOv) 
 {
    static char FuncName[]={"SUMA_GimmeSomeSOs"};
-   SUMA_SurfaceObject **SOv=NULL;
+   SUMA_SurfaceObject **SOv=NULL, *SO=NULL;
    SUMA_GENERIC_PROG_OPTIONS_STRUCT *Opt;
-   char sid[100]; 
-   int i, N_i;
+   char sid[100];
+   int i, N_k, k, *ilist=NULL, nhjs;
+   float *vlist=NULL; 
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
    
    Opt = (SUMA_GENERIC_PROG_OPTIONS_STRUCT *)SUMA_malloc(sizeof(SUMA_GENERIC_PROG_OPTIONS_STRUCT));
 
-   N_i = 1; /* just one for now */
-   *N_SOv = N_i; 
-   SOv = (SUMA_SurfaceObject **) SUMA_calloc(*N_SOv, sizeof(SUMA_SurfaceObject *));
+   N_k = 12; /* Think of this number as the number of states, rather than individual surfaces
+               10 from isosurface (actually 9, number 6 is removed), 
+               1 from HJS collection
+               1 from head collection
+            */ 
+   vlist = (float*)SUMA_calloc(N_k, sizeof(float));
+   srand((unsigned int)time(NULL));
+   for (i=0; i<N_k; ++i) {
+      vlist[i] = rand();
+   }
+   ilist = SUMA_z_qsort(vlist, N_k);
    
-   for (i=0; i<N_i; ++i) {
-      srand((unsigned int)time(NULL));
-      do {
-         Opt->obj_type = rand() % 10;
-      } while (Opt->obj_type == 6);  /* six sucks! */
-      Opt->obj_type_res = 64;
-      Opt->debug = 0;
-      sprintf(sid, "surf_%d", Opt->obj_type);
-      SOv[i] = SUMA_MarchingCubesSurface(Opt);
-      /* assign its Group and State and Side and few other things, must look like surfaces loaded with SUMA_Load_Spec_Surf*/
-      SOv[i]->Group = SUMA_copy_string(SUMA_DEF_GROUP_NAME); /* change this in sync with string in macro SUMA_BLANK_NEW_SPEC_SURF*/
-      SOv[i]->State = SUMA_copy_string(SUMA_DEF_STATE_NAME);
-      SOv[i]->Label = SUMA_copy_string(sid);
-      SOv[i]->EmbedDim = 3;
-      SOv[i]->AnatCorrect = YUP;
-      /* make this surface friendly for suma */
-      if (!SUMA_PrepSO_GeomProp_GL(SOv[i])) {
-         SUMA_S_Err("Failed in SUMA_PrepSO_GeomProp_GL");
-         SUMA_RETURN(NULL);
+   /* remove six from ilist, bad surface ... */
+   for (i=0; i<N_k; ++i) if (ilist[i] == 6) ilist[i] = ilist[N_k-1];
+   N_k = N_k - 1; /* remove last one since it replaced 6 */
+   
+   nhjs=0;
+   *N_SOv = 0; 
+   i=-1;
+   /*       Sequence below, coupled with the use of rygbr20 colormap was necessary in reproducing a crash 
+            Crash was likely cause by uninitialized mcb->_case in MarchingCubes.c               ZSS: Oct 06 
+      ilist[0]=1;    ilist[1]=4;    ilist[2]=8;    ilist[3]=2;    ilist[4]=10;
+       ilist[5]=5;    ilist[6]=0;    ilist[7]=9;    ilist[8]=3;    ilist[9]=7; */
+   for (k=0; k<N_k; ++k) {
+      if (LocalHead) fprintf(SUMA_STDERR,"ilist[%d]=%d    ", k, ilist[k]);
+      if (ilist[k] <= 9) { /* 0 to 9 is code for MarchingCubesSurfaces */
+         Opt->obj_type = ilist[k];
+         Opt->obj_type_res = 64;
+         Opt->debug =0;
+         Opt->in_vol =0;
+         Opt->mcdatav= NULL;
+         if ((SO = SUMA_MarchingCubesSurface(Opt))) {
+            ++*N_SOv; SOv = (SUMA_SurfaceObject **) SUMA_realloc(SOv, (*N_SOv)*sizeof(SUMA_SurfaceObject *));
+            SOv[*N_SOv-1]=SO;
+            /* assign its Group and State and Side and few other things, must look like surfaces loaded with SUMA_Load_Spec_Surf*/
+            SOv[*N_SOv-1]->Group = SUMA_copy_string(SUMA_DEF_TOY_GROUP_NAME); /* change this in sync with string in macro SUMA_BLANK_NEW_SPEC_SURF*/
+            sprintf(sid, "%s_%d", SUMA_DEF_STATE_NAME, Opt->obj_type);
+            SOv[*N_SOv-1]->State = SUMA_copy_string(sid);
+            sprintf(sid, "surf_%d", Opt->obj_type);
+            SOv[*N_SOv-1]->Label = SUMA_copy_string(sid);
+            SOv[*N_SOv-1]->EmbedDim = 3;
+            SOv[*N_SOv-1]->AnatCorrect = YUP;
+            /* make this surface friendly for suma */
+            if (!SUMA_PrepSO_GeomProp_GL(SOv[*N_SOv-1])) {
+               SUMA_S_Err("Failed in SUMA_PrepSO_GeomProp_GL");
+               SUMA_RETURN(NULL);
+            }
+            /* Add this surface to SUMA's displayable objects */
+            if (!SUMA_PrepAddmappableSO(SOv[*N_SOv-1], SUMAg_DOv, &(SUMAg_N_DOv), 0, SUMAg_CF->DsetList)) {
+               SUMA_S_Err("Failed to add mappable SOs ");
+               SUMA_RETURN(NULL);
+            }
+         }
+      } else if (ilist[k] == 10) {  /* 10 is code for HJS */
+         /* HJS's turn */
+         for (nhjs=0; nhjs < 19; ++nhjs) { 
+            ++*N_SOv; SOv = (SUMA_SurfaceObject **) SUMA_realloc(SOv, (*N_SOv)*sizeof(SUMA_SurfaceObject *));
+            SOv[*N_SOv-1] = SUMA_HJS_Surface(nhjs);
+            /* assign its Group and State and Side and few other things, must look like surfaces loaded with SUMA_Load_Spec_Surf*/
+            SOv[*N_SOv-1]->Group = SUMA_copy_string(SUMA_DEF_TOY_GROUP_NAME); /* change this in sync with string in macro SUMA_BLANK_NEW_SPEC_SURF*/
+            sprintf(sid, "H.J.S.");
+            SOv[*N_SOv-1]->State = SUMA_copy_string(sid);
+            sprintf(sid, "H.J.S._%d", nhjs);
+            SOv[*N_SOv-1]->Label = SUMA_copy_string(sid);
+            SOv[*N_SOv-1]->EmbedDim = 3;
+            SOv[*N_SOv-1]->AnatCorrect = YUP;
+            /* make this surface friendly for suma */
+            if (!SUMA_PrepSO_GeomProp_GL(SOv[*N_SOv-1])) {
+               SUMA_S_Err("Failed in SUMA_PrepSO_GeomProp_GL");
+               SUMA_RETURN(NULL);
+            }
+            /* Add this surface to SUMA's displayable objects */
+            if (!SUMA_PrepAddmappableSO(SOv[*N_SOv-1], SUMAg_DOv, &(SUMAg_N_DOv), 0, SUMAg_CF->DsetList)) {
+               SUMA_S_Err("Failed to add mappable SOs ");
+               SUMA_RETURN(NULL);
+            }
+         }
+      } else if (ilist[k] == 11) {  /* 11 is code for head */
+         if ((SO = SUMA_head_01_surface())) {
+            ++*N_SOv; SOv = (SUMA_SurfaceObject **) SUMA_realloc(SOv, (*N_SOv)*sizeof(SUMA_SurfaceObject *));
+            SOv[*N_SOv-1]=SO;
+            /* assign its Group and State and Side and few other things, must look like surfaces loaded with SUMA_Load_Spec_Surf*/
+            SOv[*N_SOv-1]->Group = SUMA_copy_string(SUMA_DEF_TOY_GROUP_NAME); /* change this in sync with string in macro SUMA_BLANK_NEW_SPEC_SURF*/
+            SOv[*N_SOv-1]->State = SUMA_copy_string("head_01");
+            SOv[*N_SOv-1]->Label = SUMA_copy_string("La_Tete");
+            SOv[*N_SOv-1]->EmbedDim = 3;
+            SOv[*N_SOv-1]->AnatCorrect = YUP;
+            /* make this surface friendly for suma */
+            if (!SUMA_PrepSO_GeomProp_GL(SOv[*N_SOv-1])) {
+               SUMA_S_Err("Failed in SUMA_PrepSO_GeomProp_GL");
+               SUMA_RETURN(NULL);
+            }
+            /* Add this surface to SUMA's displayable objects */
+            if (!SUMA_PrepAddmappableSO(SOv[*N_SOv-1], SUMAg_DOv, &(SUMAg_N_DOv), 0, SUMAg_CF->DsetList)) {
+               SUMA_S_Err("Failed to add mappable SOs ");
+               SUMA_RETURN(NULL);
+            }
+         }
+      } else {
+         SUMA_S_Errv("Bad ilist number: ilist[%d]=%d\n", k, ilist[k]);
+         break;
       }
-      /* Add this surface to SUMA's displayable objects */
-      if (!SUMA_PrepAddmappableSO(SOv[i], SUMAg_DOv, &(SUMAg_N_DOv), 0, SUMAg_CF->DsetList)) {
-         SUMA_S_Err("Failed to add mappable SOs ");
-         SUMA_RETURN(NULL);
-      }
+      if (LocalHead) SUMA_Print_Surface_Object(SOv[*N_SOv-1], stderr);
    }
   
    if (Opt) SUMA_free(Opt);
-
+   if (ilist) SUMA_free(ilist);
+   if (vlist) SUMA_free(vlist);
+   
    SUMA_RETURN(SOv);
 }
 
@@ -245,12 +327,9 @@ int main (int argc,char *argv[])
    SUMA_Boolean LocalHead = NOPE;
    
     
+   SUMA_STANDALONE_INIT;
    SUMA_mainENTRY;
    
-	/* allocate space for CommonFields structure */
-	if (LocalHead) fprintf (SUMA_STDERR,"%s: Calling SUMA_Create_CommonFields ...\n", FuncName);
-   SUMA_STANDALONE_INIT;
-   if (LocalHead) fprintf (SUMA_STDERR,"%s: SUMA_Create_CommonFields Done.\n", FuncName);
 	SUMAg_CF->isGraphical = YUP;
 
    ps = SUMA_Parse_IO_Args(argc, argv, "-i;-t;");
@@ -283,7 +362,7 @@ int main (int argc,char *argv[])
       Specp[ispec] = SUMA_IO_args_2_spec (ps, &nspec); 
       if (Specp[ispec]) ++ispec;
       if (nspec != 1) {
-         SUMA_S_Err("-spec is being parsed separately here, expecting one spec only from SUMA_IO_args_2_spec");
+         SUMA_S_Errv("-spec is being parsed separately here, expecting one spec only from SUMA_IO_args_2_spec, got %d\n", nspec);
          exit (1);
       }
       
@@ -456,7 +535,12 @@ int main (int argc,char *argv[])
 	if (specfilename[0] == NULL && Specp[0] == NULL) {
       SUMA_SurfaceObject **SOv=NULL;
       int N_SOv = 0;
-      fprintf (SUMA_STDERR,"%s: No input specified, showing random surfaces.\nUse suma -help for assistance.\n", FuncName);
+      fprintf (SUMA_STDERR,"\n"
+                           "%s: \n"
+                           "     No input specified, loading some toy surfaces...\n"
+                           "     Use '.' and ',' to cycle between them.\n"
+                           "     See suma -help for assistance.\n"
+                           "\n", FuncName);
 		/* create your own surface and put it in a spec file */
       SOv = SUMA_GimmeSomeSOs(&N_SOv);
       Specp[ispec] = SUMA_SOGroup_2_Spec (SOv, N_SOv);
@@ -480,7 +564,7 @@ int main (int argc,char *argv[])
    #endif
       
 	/* create an Eye Axis DO */
-	EyeAxis = SUMA_Alloc_Axis ("Eye Axis");
+	EyeAxis = SUMA_Alloc_Axis ("Eye Axis", AO_type);
 	if (EyeAxis == NULL) {
 		SUMA_error_message (FuncName,"Error Creating Eye Axis",1);
 		exit(1);
@@ -491,8 +575,8 @@ int main (int argc,char *argv[])
 		SUMA_error_message (FuncName,"Error Adding DO", 1);
 		exit(1);
 	}
-	/*fprintf (SUMA_STDERR, "SUMAg_N_DOv = %d created\n", SUMAg_N_DOv);*/
-
+	/*fprintf (SUMA_STDERR, "SUMAg_N_DOv = %d created\n", SUMAg_N_DOv);
+   SUMA_Show_DOv(SUMAg_DOv, SUMAg_N_DOv, NULL);*/
 
 	/* Allocate space (and initialize) Surface Viewer Structure */
 	SUMAg_SVv = SUMA_Alloc_SurfaceViewer_Struct (SUMA_MAX_SURF_VIEWERS);

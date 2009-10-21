@@ -609,9 +609,7 @@ void CALC_read_opts( int argc , char * argv[] )
                            " +     ==> converting all sub-bricks to floats\n",
                           argv[nopt-1]);
 
-           DSET_mallocize(dset) ; DSET_load(dset) ;
-           if( ! DSET_LOADED(dset) )
-             ERROR_exit("can't load %s from disk!\n",argv[nopt-1]);
+           DSET_mallocize(dset) ; DSET_load(dset) ; CHECK_LOAD_ERROR(dset) ;
 
            for( ii=0 ; ii < ntime[ival] ; ii++ ){
              if( DSET_BRICK_TYPE(dset,ii) != MRI_float ){
@@ -657,9 +655,7 @@ void CALC_read_opts( int argc , char * argv[] )
          }
 
          if( ! DSET_LOADED(dset) ){
-           THD_load_datablock( dset->dblk ) ;
-           if( ! DSET_LOADED(dset) )
-             ERROR_exit("Can't read data brick for dataset %s\n",argv[nopt-1]) ;
+           DSET_load(dset) ; CHECK_LOAD_ERROR(dset) ;
          }
 
          /* set pointers for actual dataset arrays */
@@ -1385,8 +1381,18 @@ void CALC_Syntax(void)
     "  mofn(m,a,...,c) = {1 if at least 'm' arguments are nonzero, 0 otherwise}\n"
     "  argmax(a,b,...) = index of largest argument; = 0 if all args are 0\n"
     "  argnum(a,b,...) = number of nonzero arguments\n"
+    "  pairmax(a,b,...)= finds the 'paired' argument that corresponds to the\n"
+    "                    maximum of the first half of the input arguments;\n"
+    "                    for example, pairmax(a,b,c,p,q,r) determines which\n"
+    "                    of {a,b,c} is the max, then returns the corresponding\n"
+    "                    value from {p,q,r}; requires even number of arguments.\n"
+    "  pairmin(a,b,...)= Similar to pairmax, but for the minimum; for example,\n"
+    "                    pairmin(a,b,c,p,q,r} finds the minimum of {a,b,c}\n"
+    "                    and returns the corresponding value from {p,q,r};\n"
+    "                      pairmin(3,2,7,5,-1,-2,-3,-4) = -2\n"
+    "                    (The 'pair' functions are the Lukas specials!)\n"
     "\n"
-    "  [These last 5 functions take a variable number of arguments.]\n"
+    "  [These last 7 functions take a variable number of arguments.]\n"
     "\n"
     " The following 27 new [Mar 1999] functions are used for statistical\n"
     " conversions, as in the program 'cdf':\n"
@@ -1404,6 +1410,11 @@ void CALC_Syntax(void)
     " and arguments to these functions.  (After using one of these, you\n"
     " may wish to use program '3drefit' to modify the dataset statistical\n"
     " auxiliary parameters.)\n"
+    "\n"
+    " The two functions below use the NIfTI-1 statistical codes to\n"
+    " map between statistical values and cumulative distribution values:\n"
+    "   cdf2stat(val,code,p1,p2,3)\n"
+    "   stat2cdf(val,code,p1,p2,3)\n"
     "\n"
     " Computations are carried out in double precision before being\n"
     " truncated to the final output 'datum'.\n"
@@ -1577,7 +1588,7 @@ int main( int argc , char *argv[] )
 
       /* 30 April 1998: only malloc output space as it is needed */
 
-      buf[kt] = (float *) malloc(tempsiz);
+      buf[kt] = (float *)calloc(1,tempsiz);
       if( buf[kt] == NULL )
         ERROR_exit("Can't malloc output dataset sub-brick %d!\n",kt) ;
 

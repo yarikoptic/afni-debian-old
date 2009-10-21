@@ -1,8 +1,15 @@
 #ifndef SUMA_MISCFUNC_INCLUDED
 #define SUMA_MISCFUNC_INCLUDED
 
-float * SUMA_Sph2Cart (float *sph, int Nval, float *center ) ;
-float * SUMA_Cart2Sph (float *coord, int Nval, float *center ) ;      
+#define MATRIX_NO_TIP (1<<1)
+#define MATRIX_OUT_SYMMETRIC (1<<2)
+#define MATRIX_B_IS_AT (1<<2)
+
+double SUMA_factorial (int n);
+double *SUMA_factorial_array (int n);
+SUMA_MX_VEC *SUMA_KronProd(SUMA_MX_VEC *A, SUMA_MX_VEC *B);
+float * SUMA_Sph2Cart (double *sph, int Nval, float *center ) ;
+double * SUMA_Cart2Sph (float *coord, int Nval, float *center ) ;      
 void* SUMA_free_fn(const char *CallingFunc, void *ptr);
 void *SUMA_calloc_fn (const char *CallingFunc, size_t nmemb, size_t size);
 void *SUMA_malloc_fn (const char *CallingFunc, size_t size);
@@ -16,7 +23,10 @@ void SUMA_free2D(char **a,int rows);
 void SUMA_error_message (char *s1,char *s2,int ext);
 int SUMA_iswordin_ci (const char *sbig,const char *ssub);
 int SUMA_iswordin (const char *sbig,const char *ssub);
+int SUMA_iswordsame_ci (const char *sbig,const char *ssub);
+int SUMA_iswordsame (const char *sbig,const char *ssub);
 float SUMA_etime (struct  timeval  *t, int Report);
+int SUMA_etime2(char *name, char *str, char *strloc);
 byte * SUMA_isinpoly(float *P, float *NodeList, int *FaceSetList, int N_FaceSet, int FaceSetDim, int *dims, int *N_in, byte *usethis, byte *mask);
 SUMA_ISINBOX SUMA_isinbox (float * NodeList, int nr, float *S_cent , float *S_dim , int BoundIn);
 SUMA_Boolean SUMA_Free_IsInBox (SUMA_ISINBOX *IB);
@@ -40,8 +50,17 @@ void SUMA_disp_vecdmat (int *v,int nr, int nc , int SpcOpt,
                         SUMA_INDEXING_ORDER d_order, FILE *fout, SUMA_Boolean AddRowInd);
 void SUMA_disp_vecucmat (unsigned char *v,int nr, int nc , int SpcOpt, 
                         SUMA_INDEXING_ORDER d_order, FILE *fout, SUMA_Boolean AddRowInd);
+void SUMA_disp_vecdoubmat (double *v,int nr, int nc , int SpcOpt, 
+                        SUMA_INDEXING_ORDER d_order, FILE *fout, SUMA_Boolean AddRowInd);
+void SUMA_disp_veccompmat (complex *v,int nr, int nc , int SpcOpt, 
+                        SUMA_INDEXING_ORDER d_order, FILE *fout, SUMA_Boolean AddRowInd);
+void SUMA_disp_vecshortmat (short *v,int nr, int nc , int SpcOpt, 
+                        SUMA_INDEXING_ORDER d_order, FILE *fout, SUMA_Boolean AddRowInd);
+void SUMA_disp_vecbytemat (byte *v,int nr, int nc , int SpcOpt, 
+                        SUMA_INDEXING_ORDER d_order, FILE *fout, SUMA_Boolean AddRowInd);
 void SUMA_disp_dvect (int *v,int l);
 void SUMA_disp_vect (float *v,int l);
+int SUMA_WriteMxVec(SUMA_MX_VEC *mxv, char *Name, char *title);
 void SUMA_Set_VoxIntersDbg(int v);
 SUMA_Boolean SUMA_isVoxelIntersect_Triangle (float *center, float *dxzy, float *vert0, float *vert1, float *vert2);   
 SUMA_Boolean SUMA_MT_isIntersect_Triangle (float *P0, float *P1, float *vert0, float *vert1, float *vert2, float *iP, float *d, int *closest_vert);
@@ -64,7 +83,7 @@ int SUMA_isConsistent (int *T, int *t);
 int SUMA_isTriLinked (int*T, int *t, int *cn);
 SUMA_FACESET_FIRST_EDGE_NEIGHB *SUMA_allocate_FaceSet_Edge_Neighb (int N_FaceSet);
 SUMA_FACESET_FIRST_EDGE_NEIGHB *SUMA_FaceSet_Edge_Neighb (int **EL, int **ELps, int N_EL);
-float * SUMA_SmoothAttr_Neighb (float *attr,  int N_attr, float *attr_sm, SUMA_NODE_FIRST_NEIGHB *fn, int nr, byte *nmask);
+float * SUMA_SmoothAttr_Neighb (float *attr,  int N_attr, float *attr_sm, SUMA_NODE_FIRST_NEIGHB *fn, int nr, byte *nmask, byte strict_mask);
 float * SUMA_SmoothAttr_Neighb_Rec (float *attr, int N_attr, float *attr_sm_orig, 
                                     SUMA_NODE_FIRST_NEIGHB *fn, int nr, int N_rep);
 SUMA_NODE_FIRST_NEIGHB * SUMA_Build_FirstNeighb (SUMA_EDGE_LIST *el, int N_Node, char *ownerid);
@@ -74,7 +93,7 @@ float SUMA_TriSurf3 (float *n0, float *n1, float *n2);
 float * SUMA_TriSurf3v (float *NodeList, int *FaceSets, int N_FaceSet);
 SUMA_Boolean SUMA_TriNorm (float *n0, float *n1, float *n2, float *norm);
 SUMA_SURFACE_CURVATURE * SUMA_Surface_Curvature (float *NodeList, int N_Node, float *NodeNormList, float *Face_A, 
-                                                   int N_FaceSet, SUMA_NODE_FIRST_NEIGHB *FN, SUMA_EDGE_LIST *el, char *out);
+                                                   int N_FaceSet, SUMA_NODE_FIRST_NEIGHB *FN, SUMA_EDGE_LIST *el, char *out, int verb);
 SUMA_Boolean SUMA_Householder (float *Ni, float **Q);
 void SUMA_Free_SURFACE_CURVATURE (SUMA_SURFACE_CURVATURE *SC);
 float * SUMA_Convexity (float *NodeList, int N_Node, float *NodeNormList, SUMA_NODE_FIRST_NEIGHB *FN);
@@ -96,6 +115,23 @@ SUMA_Boolean SUMA_Get_NodeIncident(int n1, SUMA_SurfaceObject *SO, int *Incident
 SUMA_IRGB *SUMA_Free_IRGB(SUMA_IRGB *irgb);
 SUMA_IRGB *SUMA_Read_IRGB_file (char *f_name);
 SUMA_IRGB *SUMA_Create_IRGB(int n_el);
+SUMA_MX_VEC * SUMA_MxVecSetIdentity(SUMA_MX_VEC *thisone);
+SUMA_MX_VEC * SUMA_MxVecIdentity(SUMA_VARTYPE tp, int n, int dims[], SUMA_MX_VEC *recycle);
+SUMA_MX_VEC *SUMA_MxVecMult(SUMA_MX_VEC *va, SUMA_MX_VEC *vb, SUMA_MX_VEC *recycle, int InfoMask);
+SUMA_MX_VEC *SUMA_MxVecMult_Engine(SUMA_MX_VEC *va, SUMA_MX_VEC *vb, SUMA_MX_VEC *recycle, SUMA_MX_VEC *vat, SUMA_MX_VEC *vbt, int InfoMask);
+SUMA_MX_VEC *SUMA_MxVecMultRect_Engine(SUMA_MX_VEC *va, SUMA_MX_VEC *vb, SUMA_MX_VEC *recycle, SUMA_MX_VEC *vat, SUMA_MX_VEC *vbt, int InfoMask);
+SUMA_MX_VEC * SUMA_MxVecTranspose(SUMA_MX_VEC *va, SUMA_MX_VEC *recycle);
+SUMA_MX_VEC * SUMA_MxVecInverse(SUMA_MX_VEC *va, SUMA_MX_VEC *recycle);
+SUMA_MX_VEC *SUMA_matrix2MxVec(matrix c) ;
+SUMA_MX_VEC *SUMA_MxVecAdd(SUMA_MX_VEC *va, SUMA_MX_VEC *vb, int sign, SUMA_MX_VEC *recycle);
+SUMA_MX_VEC * SUMA_MxVecCopy(SUMA_MX_VEC *va, SUMA_MX_VEC *recycle);
+int SUMA_MxVecSameDims(SUMA_MX_VEC *va,SUMA_MX_VEC *vb);
+int SUMA_MxVecSameDims2(int N_dims, int *dims, SUMA_MX_VEC *va);
+SUMA_MX_VEC *SUMA_CoerceMxVec(SUMA_MX_VEC *va, SUMA_VARTYPE tp, int abs, SUMA_MX_VEC *recycle); 
+int SUMA_MxVecBuildMat(SUMA_MX_VEC *mxv);
+void SUMA_TestMxVecMatOps(void);
+SUMA_MX_VEC * SUMA_MxVecRand(SUMA_VARTYPE tp, int N_dims,int * dims, SUMA_MX_VEC *recycle);
+SUMA_MX_VEC *  SUMA_Read1DMxVec(SUMA_VARTYPE tp, char *Name, int *dims, int *N_dims);
 
 
 #endif

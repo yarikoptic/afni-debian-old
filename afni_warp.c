@@ -26,16 +26,16 @@
       nxx * nyy for fixed_axis = 3
 --------------------------------------------------------------------------*/
 
-MRI_IMAGE * AFNI_dataset_slice( THD_3dim_dataset * dset ,
+MRI_IMAGE * AFNI_dataset_slice( THD_3dim_dataset *dset ,
                                 int fixed_axis , int fixed_index ,
                                 int ival , int resam_mode )
 {
-   MRI_IMAGE * newim ;
-   void * sar , * bar ;
+   MRI_IMAGE *newim ;
+   void *sar , *bar ;
    int nxx,nyy,nzz ;
    MRI_TYPE typ ;
-   THD_dataxes * daxes ;
-   THD_3dim_dataset * parent_dset ;
+   THD_dataxes *daxes ;
+   THD_3dim_dataset *parent_dset ;
    THD_warp parent_to_child_warp ;
 
 ENTRY("AFNI_dataset_slice") ;
@@ -123,16 +123,26 @@ if(PRINT_TRACING)
 
    if( !dset->wod_flag && DSET_INMEMORY(dset) ){
 
-      bar = DSET_ARRAY(dset,ival) ;  /* pointer to data brick array */
+      /* 05 Sep 2006: substitution of volume edited brick, if available */
+
+      if( DSET_VEDIT_IVAL(dset) == ival && dset->dblk->vedim != NULL  &&
+                                           dset->dblk->vedim->kind == typ ){
+        STATUS("substituting vedim in dset") ;
+        bar = mri_data_pointer(dset->dblk->vedim) ;
+        if( bar == NULL ){
+          ERROR_message("vedim array is NULL?!"); bar = DSET_ARRAY(dset,ival);
+        }
+      } else
+        bar = DSET_ARRAY(dset,ival) ;  /* pointer to data brick array */
 
       if( bar == NULL ){  /* if data needs to be loaded from disk */
-         (void) THD_load_datablock( dset->dblk ) ;
-         bar = DSET_ARRAY(dset,ival) ;
-         if( bar == NULL ){
-            STATUS("couldn't load dataset!") ;
-            mri_free(newim) ;
-            RETURN(NULL) ;  /* couldn't load data --> return nothing */
-         }
+        (void) THD_load_datablock( dset->dblk ) ;
+        bar = DSET_ARRAY(dset,ival) ;
+        if( bar == NULL ){
+          STATUS("couldn't load dataset!") ;
+          mri_free(newim) ;
+          RETURN(NULL) ;  /* couldn't load data --> return nothing */
+        }
       }
 
 STATUS("reading from memory") ;
@@ -206,13 +216,19 @@ STATUS("setting parent_to_child_warp to identity") ;
       parent_to_child_warp = IDENTITY_WARP ;  /* no warp ==> use identity */
    }
 
-   if( dset->warp_parent != NULL ){
+   if( dset->warp_parent != NULL &&
+       (dset->dblk->diskptr->storage_mode == STORAGE_BY_BRICK ||
+        dset->dblk->diskptr->storage_mode == STORAGE_UNDEFINED  ) ){
 if(PRINT_TRACING)
 { char str[256] ;
   sprintf(str,"setting parent_dset to stored warp_parent=%p  this dset=%p",
-          (void *) dset->warp_parent , (void *) dset ) ; STATUS(str) ; }
+          (void *)dset->warp_parent , (void *)dset ) ; STATUS(str) ;
+  sprintf(str,"parent_dset=%s  this=%s",
+          DSET_BRICKNAME(dset->warp_parent) , DSET_BRICKNAME(dset) ) ;
+  STATUS(str) ; }
 
       parent_dset = dset->warp_parent ;
+      DSET_load(parent_dset) ;          /* 17 Oct 2006 */
    } else {
 STATUS("setting parent_dset to self, and parent_to_child_warp to identity") ;
       parent_dset = dset ;                    /* self-parenting */
@@ -248,9 +264,25 @@ STATUS("setting parent_dset to self, and parent_to_child_warp to identity") ;
       }
    }
 
-   bar = DSET_ARRAY(parent_dset,ival) ;
+   /* 05 Sep 2006: substitution of volume edited brick, if available */
 
-STATUS("warp-on-demand") ;
+   if( parent_dset == dset &&
+       DSET_VEDIT_IVAL(dset) == ival && dset->dblk->vedim != NULL  &&
+                                        dset->dblk->vedim->kind == typ ){
+     STATUS("substituting vedim in dset") ;
+     bar = mri_data_pointer(dset->dblk->vedim) ;
+     if( bar == NULL ){
+       ERROR_message("vedim array is NULL!?"); bar = DSET_ARRAY(dset,ival);
+     }
+   } else
+     bar = DSET_ARRAY(parent_dset,ival) ;  /* default brick to use */
+
+   if( bar == NULL ){
+     STATUS("failed to load parent dataset!") ;
+     mri_free(newim) ; RETURN(NULL) ;
+   }
+
+   STATUS("doing warp-on-demand data extraction") ;
 
    /******************************************************************/
    /*** Select warp routine based on data type and slice direction ***/

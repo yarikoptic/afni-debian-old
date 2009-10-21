@@ -11,6 +11,9 @@ int main( int argc , char * argv[] )
    if( argc < 2 || strcmp(argv[1],"-help") == 0 ){
       printf("Usage: 3dLRflip [-prefix ppp] dataset\n"
              "Flips the Left-to-Right rows of a dataset.\n"
+             "This is useful only in the case where you have\n"
+             "constructed a dataset with the L-R direction\n"
+             "incorrectly labeled.\n"
             ) ;
       exit(0) ;
    }
@@ -31,9 +34,8 @@ int main( int argc , char * argv[] )
    /*-- read data --*/
 
    dset = THD_open_dataset(argv[iarg]) ;
-   if( !ISVALID_DSET(dset) ){ fprintf(stderr,"** CAN'T open dataset\n");exit(1); }
-   DSET_mallocize(dset) ; DSET_load(dset) ;
-   if( !DSET_LOADED(dset) ){ fprintf(stderr,"** CAN'T load dataset\n");exit(1); }
+   CHECK_OPEN_ERROR(dset,argv[iarg]) ;
+   DSET_mallocize(dset) ; DSET_load(dset) ; CHECK_LOAD_ERROR(dset) ;
 
    nx=DSET_NX(dset); ny=DSET_NY(dset); nz=DSET_NZ(dset);
 

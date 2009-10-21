@@ -105,9 +105,7 @@ int main( int argc , char * argv[] )
    }
 
    old_dset = THD_open_dataset( argv[nopt] ) ;
-   if( !ISVALID_DSET(old_dset) ){
-      ERROR_exit("Can't open dataset %s",argv[nopt]);
-   }
+   CHECK_OPEN_ERROR(old_dset,argv[nopt]) ;
 
    /* expect 6 values per voxel - 6 sub-briks as input dataset */ 
    if( DSET_NVALS(old_dset) < 6 ){  /* allows 6 or greater sub-briks */
@@ -176,7 +174,6 @@ char *prefix;
 int output_datum;
 {
 /* takes base prefix and appends to it for eigvalues, eigvectors, FA, MD */
-   int nbriks;
    char nprefix[THD_MAX_PREFIX], tprefix[THD_MAX_PREFIX];
    char *ext, nullch; 
    
@@ -222,14 +219,11 @@ char *prefix;
 int output_datum;
 {
    THD_3dim_dataset *out_dset;
-   MRI_IMAGE *data_im = NULL;
 
    int i, ierror;
-   MRI_IMARR *fim_array;
    MRI_IMAGE *fim;
    void *dataptr;
    float *fbuf;
-   void *out_ptr;
 
    ENTRY("Copy_dset_array");
 

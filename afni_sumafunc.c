@@ -441,6 +441,98 @@ ENTRY("AFNI_find_closest_node") ;
 /*---------------------------------------------------------------------------*/
 /*-------- Stuff below here is for surface control panel [19 Aug 2002] ------*/
 
+static int  swid_ncol   = 0 ;     /* 06 Sep 2006 */
+static int *swid_boxcol = NULL ;
+static int *swid_lincol = NULL ;
+
+/*---------------------------------------------------------------------------*/
+/*! Get an initial color for surface things. */
+
+void AFNI_get_suma_color( int ss , rgbyte *bcolor , rgbyte *lcolor )
+{
+   Three_D_View *im3d = AFNI_find_open_controller() ;
+
+   if( bcolor == NULL || lcolor == NULL ) return ;
+
+   if( ss >= 0 && ss < swid_ncol ){
+     int bb , ll ;
+     bb = swid_boxcol[ss] ; ll = swid_lincol[ss] ;
+     if( bb > 0 ){
+       bcolor->r = DCOV_REDBYTE  (im3d->dc,bb) ;
+       bcolor->g = DCOV_GREENBYTE(im3d->dc,bb) ;
+       bcolor->b = DCOV_BLUEBYTE (im3d->dc,bb) ;
+     } else {
+       bcolor->r = bcolor->g = bcolor->b = 1 ;
+     }
+     if( ll > 0 ){
+       lcolor->r = DCOV_REDBYTE  (im3d->dc,ll) ;
+       lcolor->g = DCOV_GREENBYTE(im3d->dc,ll) ;
+       lcolor->b = DCOV_BLUEBYTE (im3d->dc,ll) ;
+     } else {
+       lcolor->r = lcolor->g = lcolor->b = 1 ;
+     }
+   } else {
+     char *eee ; float rr,gg,bb ;
+     eee = getenv("AFNI_SUMA_BOXCOLOR") ;
+     if( eee != NULL ){
+       if( strcmp(eee,"none") == 0 || strcmp(eee,"skip") == 0 ){
+         bcolor->r = bcolor->g = bcolor->b = 1 ;
+       } else {
+         DC_parse_color( im3d->dc , eee , &rr,&gg,&bb ) ;
+         bcolor->r = (byte)(rr*255.666f) ;
+         bcolor->g = (byte)(gg*255.666f) ;
+         bcolor->b = (byte)(bb*255.666f) ;
+       }
+     } else {
+       bcolor->r = 254 ; bcolor->g = bcolor->b = 0 ;
+     }
+     eee = getenv("AFNI_SUMA_LINECOLOR") ;
+     if( eee != NULL ){
+       if( strcmp(eee,"none") == 0 || strcmp(eee,"skip") == 0 ){
+         lcolor->r = lcolor->g = lcolor->b = 1 ;
+       } else {
+         DC_parse_color( im3d->dc , eee , &rr,&gg,&bb ) ;
+         lcolor->r = (byte)(rr*255.666f) ;
+         lcolor->g = (byte)(gg*255.666f) ;
+         lcolor->b = (byte)(bb*255.666f) ;
+       }
+     } else {
+       lcolor->r = 100 ; lcolor->g = 0 ; lcolor->b = 199 ;
+     }
+   }
+   return ;
+}
+
+/*---------------------------------------------------------------------------*/
+/*! Set initial colors for surface menu items,
+    for use later when the surface menus are actually created. */
+
+void AFNI_init_suma_color( int ss , char *bcol , char *lcol )  /* 06 Sep 2006 */
+{
+   int lin_col , box_col ;
+
+   if( ss < 0 ) return ;
+
+   box_col = DC_find_closest_overlay_color( GLOBAL_library.dc , bcol ) ;
+   if( box_col < 0 ) box_col = 0 ;  /* == "none" */
+
+   lin_col = DC_find_closest_overlay_color( GLOBAL_library.dc , lcol ) ;
+   if( lin_col < 0 ) lin_col = MIN(6,GLOBAL_library.dc->ovc->ncol_ov-1) ;
+
+   if( ss >= swid_ncol ){
+     swid_boxcol = (int *)realloc( (void *)swid_boxcol, sizeof(int)*(ss+1) ) ;
+     swid_lincol = (int *)realloc( (void *)swid_lincol, sizeof(int)*(ss+1) ) ;
+     memset( swid_boxcol+swid_ncol , 0 , sizeof(int)*(ss+1-swid_ncol) ) ;
+     memset( swid_lincol+swid_ncol , 0 , sizeof(int)*(ss+1-swid_ncol) ) ;
+     swid_ncol = ss+1 ;
+   }
+   swid_boxcol[ss] = box_col ;
+   swid_lincol[ss] = lin_col ;
+   return ;
+}
+
+/*---------------------------------------------------------------------------*/
+
 static void AFNI_surf_done_CB( Widget,XtPointer,XtPointer ) ;
 static void AFNI_surf_redraw_CB( MCW_arrowval *,XtPointer ) ;
 static AFNI_make_surface_widgets( Three_D_View *, int ) ;
@@ -516,7 +608,7 @@ static AFNI_make_surface_widgets( Three_D_View *im3d, int num )
    Widget ww , rc ;
    XmString xstr ;
    char str[32] , *eee ;
-   int ii , line_col, box_col ;
+   int ii , line_col, box_col , lincol_default , boxcol_default ;
 
    im3d->vwid->view->swid = swid = myXtNew( AFNI_surface_widgets ) ;
 
@@ -662,7 +754,11 @@ static AFNI_make_surface_widgets( Three_D_View *im3d, int num )
    box_col = DC_find_closest_overlay_color( im3d->dc, eee ) ;
    if( box_col < 0 ) box_col = 0 ;
 
+   lincol_default = line_col ; boxcol_default = box_col ;  /* 06 Sep 2006 */
+
    for( ii=0 ; ii < num ; ii++ ){
+     if( ii < swid_ncol ){ line_col = swid_lincol[ii]; box_col = swid_boxcol[ii]; }
+     else                { line_col = lincol_default ; box_col = boxcol_default ; }
      MAKE_SURF_ROW(ii) ;
    }
 
@@ -710,7 +806,6 @@ ENTRY("AFNI_update_surface_widgets") ;
      swid->surf_node_av = (MCW_arrowval **) XtRealloc( (char *)swid->surf_node_av,num*sizeof(MCW_arrowval *) );
      swid->surf_line_av = (MCW_arrowval **) XtRealloc( (char *)swid->surf_line_av,num*sizeof(MCW_arrowval *) );
      swid->surf_ledg_av = (MCW_arrowval **) XtRealloc( (char *)swid->surf_line_av,num*sizeof(MCW_arrowval *) );
-
 
      eee = getenv( "AFNI_SUMA_LINECOLOR" ) ;
      line_col = DC_find_closest_overlay_color( im3d->dc, eee ) ;

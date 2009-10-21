@@ -13,6 +13,7 @@ SUMA_Boolean SUMA_LockEnum_LockType (SUMA_LINK_TYPES i, char *Name);
 SUMA_SurfaceViewer *SUMA_Alloc_SurfaceViewer_Struct (int N);
 void SUMA_Show_SurfaceViewer_Struct (SUMA_SurfaceViewer *SV, FILE *Out, int detail);
 char *SUMA_SurfaceViewer_StructInfo (SUMA_SurfaceViewer *SV, int detail);
+SUMA_Boolean SUMA_SetViewerLightsForSO(SUMA_SurfaceViewer *cSV, SUMA_SurfaceObject *SO);
 
 SUMA_Boolean SUMA_UpdateRotaCenter (SUMA_SurfaceViewer *SV, SUMA_DO *dov, int N_dov);
 SUMA_Boolean SUMA_UpdateViewPoint (SUMA_SurfaceViewer *SV, SUMA_DO *dov, int N_dov);
@@ -64,7 +65,7 @@ SUMA_Boolean SUMA_AdoptGroup(SUMA_SurfaceViewer *csv, char *group);
 const char * SUMA_Clip_Type_to_Clip_Name (SUMA_CLIP_PLANE_TYPES tp);
 char * SUMA_Show_Clip_Planes_Info (SUMA_CommonFields *cf);
 void SUMA_Show_Clip_Planes (SUMA_CommonFields *cf, FILE *out);
-
+float SUMA_sv_fov_original(SUMA_SurfaceViewer *sv);
 
 
 

@@ -16,13 +16,36 @@ void *mri_data_pointer( MRI_IMAGE *im )
 {
    void *data ;
 
-#ifdef USE_MRI_DELAY
-   if( im->fname != NULL && (im->fondisk & INPUT_DELAY) )
-      mri_input_delay( im ) ;
-#endif
-
    if( im == NULL ) return NULL ;  /* 27 Jul 2004 */
 
+   if( im->fname != NULL && (im->fondisk & INPUT_DELAY) )
+      mri_input_delay( im ) ;
+   else if( MRI_IS_PURGED(im) ) /* 20 Dec 2006 */
+      mri_unpurge( im ) ;
+
+#ifdef USE_UNION_DATA
+   switch( im->kind ){
+      case MRI_byte:   data = im->im.byte_data   ; break ;
+      case MRI_short:  data = im->im.short_data  ; break ;
+      case MRI_int:    data = im->im.int_data    ; break ;
+      case MRI_float:  data = im->im.float_data  ; break ;
+      case MRI_double: data = im->im.double_data ; break ;
+      case MRI_complex:data = im->im.complex_data; break ;
+      case MRI_rgb:    data = im->im.rgb_data    ; break ;
+      case MRI_rgba:   data = im->im.rgba_data   ; break ;
+      default:         data = NULL               ; break ;
+   }
+#else
+   data = im->im ;
+#endif
+   return data ;
+}
+
+/*-------------------------------------------------------------------------*/
+#ifdef USE_UNION_DATA
+void *mri_data_pointer_unvarnished( MRI_IMAGE *im )
+{
+   void *data ;
    switch( im->kind ){
       case MRI_byte:   data = im->im.byte_data   ; break ;
       case MRI_short:  data = im->im.short_data  ; break ;
@@ -36,6 +59,7 @@ void *mri_data_pointer( MRI_IMAGE *im )
    }
    return data ;
 }
+#endif
 
 /*-------------------------------------------------------------------------*/
 /*! Modify the data pointer in an MRI_IMAGE struct.
@@ -44,6 +68,7 @@ void *mri_data_pointer( MRI_IMAGE *im )
 void mri_fix_data_pointer( void *ptr , MRI_IMAGE *im )
 {
    if( im == NULL ) return ;
+#ifdef USE_UNION_DATA
    switch( im->kind ){
       case MRI_byte:   im->im.byte_data   = (byte *)    ptr; break ;
       case MRI_short:  im->im.short_data  = (short *)   ptr; break ;
@@ -54,6 +79,9 @@ void mri_fix_data_pointer( void *ptr , MRI_IMAGE *im )
       case MRI_rgb:    im->im.byte_data   = (byte *)    ptr; break ;
       case MRI_rgba:   im->im.rgba_data   = (rgba *)    ptr; break ;
    }
+#else
+   im->im = ptr ;
+#endif
    return ;
 }
 
@@ -67,10 +95,9 @@ void mri_free( MRI_IMAGE *im )
 
 ENTRY("mri_free") ;
    if( im == NULL ) EXRETURN ;
-#ifdef USE_MRI_DELAY
+   mri_killpurge(im) ;  /* 20 Dec 2006 */
    if( im->fname != NULL ){ free(im->fname) ; im->fname = NULL ; }
    im->fondisk = 0 ;
-#endif
    if( im->name != NULL ){ free(im->name) ; im->name = NULL ; }
    ptr = mri_data_pointer(im) ;
    if( ptr != NULL ) free(ptr) ;
@@ -85,15 +112,15 @@ ENTRY("mri_free") ;
 int mri_datum_size( MRI_TYPE typ )
 {
    switch( typ ){
-      case MRI_byte:    return sizeof(byte) ;
-      case MRI_short:   return sizeof(short) ;
-      case MRI_int:     return sizeof(int) ;
-      case MRI_float:   return sizeof(float) ;
-      case MRI_double:  return sizeof(double) ;
-      case MRI_complex: return sizeof(complex) ;
-      case MRI_rgb:     return 3*sizeof(byte) ;
-      case MRI_rgba:    return sizeof(rgba) ;
-      default:          return 0 ;
+     case MRI_byte:    return sizeof(byte) ;
+     case MRI_short:   return sizeof(short) ;
+     case MRI_int:     return sizeof(int) ;
+     case MRI_float:   return sizeof(float) ;
+     case MRI_double:  return sizeof(double) ;
+     case MRI_complex: return sizeof(complex) ;
+     case MRI_rgb:     return 3*sizeof(byte) ;
+     case MRI_rgba:    return sizeof(rgba) ;
+     default:          return 0 ;
    }
 }
 
@@ -113,10 +140,8 @@ ENTRY("mri_move_guts") ;
 
    /* destroy the contents inside qim, if any */
 
-#ifdef USE_MRI_DELAY
    if( qim->fname != NULL ) free(qim->fname) ;
-#endif
-   if( qim->name != NULL ) free(qim->name) ;
+   if( qim->name  != NULL ) free(qim->name) ;
    ptr = mri_data_pointer(qim) ;
    if( ptr != NULL ) free(ptr) ;
 
@@ -127,10 +152,8 @@ ENTRY("mri_move_guts") ;
    /* NULL out the contents of zim, then free() it */
 
    mri_fix_data_pointer( NULL , zim ) ;
-   zim->name = NULL ;
-#ifdef USE_MRI_DELAY
+   zim->name  = NULL ;
    zim->fname = NULL ;
-#endif
    free(zim) ; EXRETURN ;
 }
 
