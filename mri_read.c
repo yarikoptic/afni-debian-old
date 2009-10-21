@@ -1406,6 +1406,78 @@ ENTRY("mri_read_many_files") ;
    RETURN( outar );
 }
 
+/*! Like mri_read_many_files(), but forces images to a certain resolution.
+
+    \param nf = Number of file names
+    \param fn = Array of file name strings
+    \param nx = number of pixels  
+    \param ny   in x and y directions
+               if nx is negative, then nx and ny are set 
+               to be the dimensions of the very first image
+               read.
+    \return An array of 2D images (NULL if nothing was found)
+
+    Added Jan 07
+*/
+MRI_IMARR * mri_read_resamp_many_files( int nf, char * fn[] , int nxnew, int nynew)
+{
+   MRI_IMARR * newar , * outar ;
+   int kf , ii, nxi, nyi ;
+   MRI_IMAGE * bim, *qim, *imin;
+   
+   ENTRY("mri_read_resamp_many_files") ;
+   
+   if( nf <= 0 ) RETURN( NULL );  /* no inputs! */
+   INIT_IMARR(outar) ;          /* initialize output array */
+
+   for( kf=0 ; kf < nf ; kf++ ){
+      newar = mri_read_file( fn[kf] ) ;  /* read all images in this file */
+
+      if( newar == NULL ){  /* none?  flush the output array! */
+         fprintf(stderr,"cannot read images from file %s\n",fn[kf]) ;
+         for( ii=0 ; ii < outar->num ; ii++ ) mri_free(outar->imarr[ii]) ;
+         FREE_IMARR(outar) ;
+         RETURN( NULL );
+      }
+      if (nxnew < 0 && kf == 0) { /* set dimensions based on 1st image */
+         nxnew = newar->imarr[0]->nx;
+         nynew = newar->imarr[0]->ny;
+      }
+      
+      for( ii=0 ; ii < newar->num ; ii++ )  {/* move images to output array */
+         imin = newar->imarr[ii];
+         nxi = imin->nx;
+         nyi = imin->ny;
+         if (nxi != nxnew || nyi != nynew) { /* resampling needed (adapted from galler.c)*/
+            float fx , fy ;
+            fx = nxnew / (float)nxi ; fy = nynew / (float)nyi ;
+            fx = MIN(fx,fy) ; 
+            /* fprintf(stderr,"Resizing from %dx%d to %dx%d.\n fx = %.3f\n", nxi, nyi, nxnew, nynew, fx); */
+            if( fx < 0.95f ){
+               float sigma = 0.3456789f/fx ;
+               /* fprintf(stderr,"sigma %f\n", sigma); */
+               if (imin->kind == MRI_rgb) {
+                  bim = mri_rgb_blur2D( sigma , imin ) ;
+               } else {
+                  bim = mri_byte_blur2D( sigma , imin ) ;
+               }
+            } else bim = imin ;
+            qim = mri_resize( bim , nxnew , nynew ) ;
+            /* fprintf(stderr,"qim now %dx%d\n", qim->nx, qim->ny); */
+            ADDTO_IMARR( outar , qim ) ;
+            if( bim != imin ) mri_free(bim) ;
+            mri_free( imin );
+         } else {
+            ADDTO_IMARR( outar , imin ) ;
+         }
+      }
+
+      FREE_IMARR(newar) ;  /* don't need this no more */
+   }
+   
+   RETURN( outar );
+}
+
 /*---------------------------------------------------------------*/
 
 /*! Read a raw PPM file into 3 byte-valued MRI_IMAGEs.
@@ -2696,8 +2768,9 @@ ENTRY("mri_read_complex_1D") ;
 }
 
 /*-----------------------------------------------------------------------------------*/
+/* Read ragged rows, with '*' being set to the filler value [28 Jul 2004] */
 
-MRI_IMAGE * mri_read_ascii_ragged( char *fname , float filler )  /* 28 Jul 2004 - ragged rows */
+MRI_IMAGE * mri_read_ascii_ragged( char *fname , float filler )
 {
    MRI_IMAGE *outim ;
    int ii,jj , ncol,nrow ;
@@ -2710,6 +2783,11 @@ MRI_IMAGE * mri_read_ascii_ragged( char *fname , float filler )  /* 28 Jul 2004 
 ENTRY("mri_read_ascii_ragged") ;
 
    if( fname == NULL || *fname == '\0' ){ FRB(buf); RETURN(NULL); }
+
+   if( strncmp(fname,"1D:",3) == 0 ){  /* 05 Jan 2007 */
+     outim = mri_read_ragged_fromstring( fname+3 , filler ) ;
+     FRB(buf); RETURN(outim) ;
+   }
 
    fts = fopen( fname , "r" ); if( fts == NULL ){ FRB(buf); RETURN(NULL); }
 

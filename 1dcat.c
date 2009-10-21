@@ -44,10 +44,11 @@ int main( int argc , char * argv[] )
    nim = argc-1 ;
    inim = (MRI_IMAGE **) malloc( sizeof(MRI_IMAGE *) * nim ) ;
    for( jj=0 ; jj < nim ; jj++ ){
-#if 0                                   /** for testing only **/
+#if 1                                   /** for testing only **/
       if( AFNI_yesenv("ragged") ){
         MRI_IMAGE *qim ;
         qim      = mri_read_ascii_ragged( argv[jj+1] , 3.e+33 ) ;
+        fprintf(stderr,"qim: nx=%d ny=%d\n",qim->nx,qim->ny) ;
         inim[jj] = mri_transpose(qim) ; mri_free(qim) ;
       } else
 #endif

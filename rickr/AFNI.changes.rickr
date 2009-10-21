@@ -1873,3 +1873,121 @@
   * modified db_mod.py: for change in 'ideal' options & -regress_no_stim_times
   * added ask_me.py: basically empty, to prompt users for options
 
+21 Dec 2006: afni_proc.py (v1.2)
+      - help, start -ask_me, updated when to use -iresp/ideal
+22 Dec 2006: modified afni_proc.py, make_stim_times.py for AFNI_data2 times
+
+25 Dec 2006:
+  * modified afni_proc.py (v1.4): updates for -ask_me
+  * modified ask_me.py: first pass, result matches ED_process
+  * modified afni_util.py: added list_to_datasets() and float test
+  * small mods to db_mod.py, option_list
+
+27 Dec 2006: afni_proc.py (1.5): ask_me help
+
+28 Dec 2006: afni_proc.py (1.6)
+  * modified afni_proc.py: added -gltsym examples
+  * modified afni_util.py: added an opt_prefix parameter to quotize_list()
+  * modified db_mod.py   : used min(200,a/b*100) in scale block
+
+03 Jan 2007: afni_proc.py (1.7)
+  * modified afni_proc.py, afni_util.py, db_mod.py:
+      - help updates, no blank '\' line from -gltsym, -copy_anat in examples
+  * modified 3dTshift.c: added -no_detrend
+
+04 Jan 2007: modified 3dTshift.c: added warning for -no_detrend and MRI_FOURIER
+
+08 Jan 2007: afni_proc.py (1.8)
+  * modified afni_proc.py, db_mod.py:
+      - changed default script name to proc.SUBJ_ID, and removed -script from
+          most examples
+      - added options '-bash', '-copy_files', '-volreg_zpad', '-tlrc_anat',
+          '-tlrc_base', '-tlrc_no_ss', '-tlrc_rmode', '-tlrc_suffix'
+
+10 Jan 2007: afni_proc.py (1.9) added aligned line wrapping
+  * modified afni_proc.py, afni_util.py
+      - new functions add_line_wrappers, align_wrappers, insert_wrappers,
+                      get_next_indentation, needs_wrapper, find_command_end,
+                      num_leading_line_spaces, find_next_space, find_last_space
+
+11 Jan 2007: modified afni_proc.py:
+      - subj = $argv[1], added index to -glt_label in -help
+      - rename glt contrast files to gltN.txt (so change AFNI_data2 files)
+
+12 Jan 2007: modified afni_proc.py (1.11), db_mod.py:
+      - added options -move_preproc_files, -regress_no_motion
+      - use $output_dir var in script, and echo version at run-time
+      - append .$subj to more output files
+
+16 Jan 2007:
+  * modified plug_crender.c: fixed use of Pos with bigmode
+  * modified db_mod.py to allow -tlrc_anat without a +view in -copy_anat
+
+17 Jan 2007: modified db_mod.py: -tlrc_anat ==> default of '-tlrc_suffix NONE'
+
+26 Jan 2007: modified afni_base.py, afni_proc.py, afni_util.py, ask_me.py
+             db_mod.py, make_stim_times.py, option_list.py
+      - changed all True/False uses to 1/0 (for older python versions)
+      - afni_proc.py: if only 1 run, warn user, do not use 3dMean
+
+02 Feb 2007:
+      - afni_proc.py: put execution command at top of script
+      - modified db_mod.py: print blur_size as float
+      - modified make_stim_times.py: added -ver, -hist, extra '*' run 1 only
+
+06 Feb 2007: added TTatlas example to 3dcalc help
+
+20 Feb 2007:
+  * modified -help of make_stim_times.c (fixing old make.stim.times)
+  * modified thd_opendset.c: made fsize unsigned (handles 4.2 GB files, now)
+
+21 Feb 2007: modified afni_proc.py (1.16), db_mod.py
+      - added optional 'despike' block
+      - added options -do_block and -despike_opts_3dDes
+  * updated nifti tree to match that of sourceforge
+      - minor changes to CMakeLists.txt DartConfig.cmake
+        examples/CMakeLists.txt niftilib/CMakeLists.txt niftilib/nifti1_io.c
+        real_easy/nifti1_read_write.c Testing/niftilib/nifti_test.c
+        utils/CMakeLists.txt znzlib/CMakeLists.txt znzlib/znzlib.h
+  * updated nifti/fsliolib/fslio.c: NULL check from David Akers
+
+23 Feb 2007:
+  * modified imseq.c to do tick div in mm for Binder
+  * modified README.environment: added AFNI_IMAGE_TICK_DIV_IN_MM variable
+
+27 Feb 2007: afni_proc.py (v 1.17)
+  * modified afni_proc.py, db_mod.py, option_list.py:
+      -volreg_align_to defaults to 'third' (was 'first')
+      -added +orig to despike input
+      -added 'empty' block type, for a placeholder
+
+28 Feb 2007: fixed fsize problem in thd_opendset.c (from change to unsigned)
+
+01 Mar 2007:
+  * modified README.environment
+      - added variables AFNI_NIML_DEBUG, AFNI_NSD_ADD_NODES,
+        AFNI_NSD_TO_FLOAT and AFNI_NIML_TEXT_DATA
+  * modified thd_niml.c: allowed sub-brick selection via thd_mastery
+  * modified thd_mastery.c: init master_bot/top for .niml.dset files
+
+02 Mar 2007:
+  * modified count.c
+      - added '-sep', same as '-suffix'
+      - extended number of strncmp() characters for many options
+  * modified option_list.py: if n_exp = -N, then at least N opts are required
+
+05 Mar 2007: per Jason Bacon and Michael Hanke:
+  * JB: modified @escape-: added '!' in #!/bin/tcsh
+  * JB: modified ask_me.py, db_mod.py, added 'env python', for crazy users
+  * MH: added nifti/nifticdf: CMakeLists.txt, Makefile, nifticdf.c, nifticdf.h
+        (separating nifti_stats.c into nifticdf.[ch])
+  * MH: modified CMakeLists.txt and utils/CMakeLists.txt for cmake
+  * MH: modified nifti_stats.c (removed all functions but main)
+  * rr: modified Makefile, README, utils/Makefile (to build without cmake)
+  * rr: modified Makefile.INCLUDE
+        - replace nifti_stats.o with nifticdf.o in CS_OBJS
+        - add nifticdf.o target and link to nifti_stats
+        - modified nifticdf.[ch]: reverted back closer to nifti_stats.c
+          (moving 7 protos to nifticdf.h, and all but main to nifticdf.c)
+          (keep all static and __COMPILE_UNUSED_FUNCTIONS__ use)
+

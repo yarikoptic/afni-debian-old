@@ -31,7 +31,7 @@ static float wt_gausmooth = 4.50f ;
 
 static int verb           = 1 ;       /* somewhat on by default */
 
-MRI_IMAGE * mri_weightize( MRI_IMAGE *, int ) ;  /* prototype */
+MRI_IMAGE * mri_weightize( MRI_IMAGE *, int , int ) ;  /* prototype */
 
 void AL_setup_warp_coords( int,int,int,int ,
                            int *, float *, mat44,
@@ -43,9 +43,13 @@ void AL_setup_warp_coords( int,int,int,int ,
 
 static int meth_visible[NMETH] =       /* 1 = show in -help; 0 = don't show */
   { 1 , 0 , 1 , 1 , 1 , 0 , 1 , 1 , 1 } ;
+/* ls  sp  mi  crM nmi je  hel crA crU */
 
 static int meth_noweight[NMETH] =      /* 1 = don't allow weights, just masks */
-  { 0 , 1 , 0 , 0 , 1 , 1 , 1 , 0 , 0 } ;
+  { 0 , 1 , 1 , 0 , 1 , 1 , 1 , 0 , 0 } ;
+/* ls  sp  mi  crM nmi je  hel crA crU */
+
+static int visible_noweights ;
 
 static char *meth_shortname[NMETH] =   /* short names for terse cryptic users */
   { "ls" , "sp" , "mi" , "crM" , "nmi" , "je" , "hel" , "crA" , "crU" } ;
@@ -75,7 +79,7 @@ int main( int argc , char *argv[] )
    MRI_IMAGE *im_base, *im_targ, *im_weig=NULL, *im_mask=NULL, *qim ;
    MRI_IMAGE *im_bset, *im_wset ;
    GA_setup stup ;
-   int iarg , ii,jj,kk , nmask=0 , nfunc , rr ;
+   int iarg , ii,jj,kk , nmask=0 , nfunc , rr , ntask ;
    int   nx_base,ny_base,nz_base , nx_targ,ny_targ,nz_targ , nxy_base ;
    float dx_base,dy_base,dz_base , dx_targ,dy_targ,dz_targ ;
    int   nxyz_base[3] , nxyz_targ[3] , nxyz_dout[3] ;
@@ -104,6 +108,7 @@ int main( int argc , char *argv[] )
    THD_3dim_dataset *dset_weig = NULL ;
    int auto_weight             = 3 ;            /* -autobbox == default */
    char *auto_string           = "-autobox" ;
+   int auto_dilation           = 0 ;            /* for -automask+N */
    float dxyz_mast             = 0.0f ;         /* not implemented */
    int meth_code               = GA_MATCH_HELLINGER_SCALAR ;
    int sm_code                 = GA_SMOOTH_GAUSSIAN ;
@@ -145,12 +150,19 @@ int main( int argc , char *argv[] )
    int replace_base            = 0 ;             /* off by default */
    int replace_meth            = 0 ;             /* off by default */
    int usetemp                 = 0 ;             /* off by default */
+   int nmatch_setup            = 23456 ;
+   int ignout                  = 0 ;             /* 28 Feb 2007 */
 
    /**----------------------------------------------------------------------*/
    /**----------------- Help the pitifully ignorant user? -----------------**/
 
    if( argc < 2 || strcmp(argv[1],"-help")==0 ||
                    strcmp(argv[1],"-HELP")==0 || strcmp(argv[1],"-POMOC")==0 ){
+
+     visible_noweights = 0 ;
+     for( ii=0 ; ii < NMETH ; ii++ )
+       if( meth_visible[ii] && meth_noweight[ii] ) visible_noweights++ ;
+
      printf(
        "Usage: 3dAllineate [options] sourcedataset\n"
        "\n"
@@ -306,27 +318,54 @@ int main( int argc , char *argv[] )
        "                 between the source and base.\n"
        "               * '-fineblur' is experimental, and if you use it, the\n"
        "                 value should probably be small (1 mm?).\n"
+      ) ;
+
+      printf(
        "\n"
        " -autoweight = Compute a weight function using the 3dAutomask\n"
        "               algorithm plus some blurring of the base image.\n"
+      ) ;
+      if( visible_noweights ){
+        printf(
        "       **N.B.: Some cost functions do not allow -autoweight, and\n"
        "               will use -automask instead.  A warning message\n"
        "               will be printed if you run into this situation.\n"
+        ) ;
+      }
+      printf(
        " -automask   = Compute a mask function, which is like -autoweight,\n"
-       "               but the weight for a voxel is either 0 or 1.\n"
+       "               but the weight for a voxel is set to either 0 or 1.\n"
+       "       **N.B.: '-automask+3' means to compute the mask function, and\n"
+       "               then dilate it outwards by 3 voxels.\n"
        " -autobox    = Expand the -automask function to enclose a rectangular\n"
        "               box that holds the irregular mask.\n"
-       "               [This is the default mode of operation.]\n"
+       "       **N.B.: This is the default mode of operation!\n"
        " -nomask     = Don't compute the autoweight/mask; if -weight is not\n"
-       "               used, then every voxel will be counted equally.\n"
+       "               also used, then every voxel will be counted equally.\n"
        " -weight www = Set the weighting for each voxel in the base dataset;\n"
        "               larger weights mean that voxel counts more in the cost\n"
        "               function.\n"
        "       **N.B.: The weight dataset must be defined on the same grid as\n"
        "               the base dataset.\n"
+       "       **N.B.: Even if a method does not allow -autoweight, you CAN\n"
+       "               use a weight dataset that is not 0/1 valued.  The\n"
+       "               risk is yours, of course (as always in AFNI).\n"
        " -wtprefix p = Write the weight volume to disk as a dataset with\n"
        "               prefix name 'p'.  Used with '-autoweight/mask', this option\n"
        "               lets you see what voxels were important in the allineation.\n"
+      ) ;
+
+      if( visible_noweights > 0 ){
+        printf("\n"
+               "    Method  Allows -autoweight\n"
+               "    ------  ------------------\n") ;
+        for( ii=0 ; ii < NMETH ; ii++ )
+          if( meth_visible[ii] )
+            printf("     %-4s   %s\n", meth_shortname[ii] ,
+                                       meth_noweight[ii] ? "NO" : "YES" ) ;
+      }
+
+      printf(
        "\n"
        " -warp xxx   = Set the warp type to 'xxx', which is one of\n"
        "                 shift_only         *OR* sho =  3 parameters\n"
@@ -369,6 +408,8 @@ int main( int argc , char *argv[] )
 #else
        "       **N.B.: '-EPI' turns on '-warpfreeze -replacebase'.\n"
 #endif
+       "               You can use '-nowarpfreeze' and/or '-noreplacebase' AFTER the\n"
+       "               '-EPI' on the command line if you do not want these options used.\n"
        "\n"
        " -parfix n v   = Fix parameter #n to be exactly at value 'v'.\n"
        " -parang n b t = Allow parameter #n to range only between 'b' and 't'.\n"
@@ -537,6 +578,8 @@ int main( int argc , char *argv[] )
         " -histbin nn   = Or you can just set the number of bins directly to 'nn'.\n"
         " -wtmrad  mm   = Set autoweight/mask median filter radius to 'mm' voxels.\n"
         " -wtgrad  gg   = Set autoweight/mask Gaussian filter radius to 'gg' voxels.\n"
+        " -nmsetup nn   = Use 'nn' points for the setup matching [default=23456]\n"
+        " -ignout       = Ignore voxels outside the warped source dataset.\n"
        ) ;
      } else {
        printf("\n"
@@ -561,6 +604,12 @@ int main( int argc , char *argv[] )
 
    iarg = 1 ;
    while( iarg < argc && argv[iarg][0] == '-' ){
+
+     /*-----*/
+
+     if( strcmp(argv[iarg],"-ignout") == 0 ){               /* SECRET OPTION */
+       GA_set_outval(1.e+33); ignout = 1; iarg++; continue; /* 28 Feb 2007  */
+     }
 
      /*-----*/
 
@@ -593,6 +642,15 @@ int main( int argc , char *argv[] )
        dxyz_mast = (float)strtod(argv[iarg],NULL) ;
        if( dxyz_mast <= 0.0f )
          ERROR_exit("Illegal value '%s' after -dxyz",argv[iarg]) ;
+       iarg++ ; continue ;
+     }
+
+     /*-----*/
+
+     if( strcmp(argv[iarg],"-nmsetup") == 0 ){
+       if( ++iarg >= argc ) ERROR_exit("no argument after '%s'!",argv[iarg-1]) ;
+       nmatch_setup = (int)strtod(argv[iarg],NULL) ;
+       if( nmatch_setup < 666 ) nmatch_setup = 23456 ;
        iarg++ ; continue ;
      }
 
@@ -640,9 +698,12 @@ int main( int argc , char *argv[] )
        auto_weight = 1 ; auto_string = "-autoweight" ; iarg++ ; continue ;
      }
 
-     if( strncmp(argv[iarg],"-automask",8) == 0 ){
+     if( strncmp(argv[iarg],"-automask",9) == 0 ){
        if( dset_weig != NULL ) ERROR_exit("Can't use -automask AND -weight!") ;
-       auto_weight = 2 ; auto_string = "-automask" ; iarg++ ; continue ;
+       auto_weight = 2 ; auto_string = argv[iarg] ;
+       if( auto_string[9] == '+' )
+         auto_dilation = (int)strtod(auto_string+10,NULL) ;
+       iarg++ ; continue ;
      }
 
      if( strncmp(argv[iarg],"-noauto",6) == 0 ||
@@ -714,7 +775,7 @@ int main( int argc , char *argv[] )
 
      if( strcmp(argv[iarg],"-usetemp") == 0 ){  /* 20 Dec 2006 */
        char *pg = mri_purge_get_tmpdir() ;
-       usetemp=1 ; iarg++ ;
+       usetemp = 1 ; iarg++ ;
        INFO_message("-usetemp: if program crashes, do /bin/rm -f %s/TIM_*",pg);
        continue ;
      }
@@ -1211,9 +1272,15 @@ int main( int argc , char *argv[] )
      if( strcmp(argv[iarg],"-replacebase") == 0 ){  /* 18 Oct 2006 */
        twofirst = replace_base = 1 ; iarg++ ; continue ;
      }
-
      if( strcmp(argv[iarg],"-warpfreeze") == 0 ){  /* 18 Oct 2006 */
        warp_freeze = 1 ; iarg++ ; continue ;
+     }
+
+     if( strcmp(argv[iarg],"-nowarpfreeze") == 0 ){  /* 01 Feb 2007 */
+       warp_freeze = 0 ; iarg++ ; continue ;
+     }
+     if( strcmp(argv[iarg],"-noreplacebase") == 0 ){  /* 01 Feb 2007 */
+       replace_base = 0 ; iarg++ ; continue ;
      }
 
      /*-----*/
@@ -1524,7 +1591,7 @@ int main( int argc , char *argv[] )
      }
      if( im_weig->nx != nx_base ||
          im_weig->ny != ny_base || im_weig->nz != nz_base )
-       ERROR_exit("-weight and base volumes don't match!") ;
+       ERROR_exit("-weight and base volumes don't match grid dimensions!") ;
 
    } else if( auto_weight ){  /* manufacture weight from the base */
      if( meth_noweight[meth_code-1] && auto_weight == 1 ){
@@ -1535,7 +1602,7 @@ int main( int argc , char *argv[] )
        INFO_message("Computing %s",auto_string) ;
      }
      if( verb > 1 ) ctim = COX_cpu_time() ;
-     im_weig = mri_weightize( im_base , auto_weight ) ;
+     im_weig = mri_weightize( im_base , auto_weight , auto_dilation ) ;
      if( verb > 1 ) INFO_message("%s CPU time = %.1f s" ,
                                  auto_string , COX_cpu_time()-ctim ) ;
    }
@@ -1579,18 +1646,15 @@ int main( int argc , char *argv[] )
 
    /* number of points to use for matching */
 
-   if( npt_match < -100 ){                              /* default */
-     npt_match = (int)(0.20*nmask) ;
-     if( npt_match > 66666 ) npt_match = 66666 ;
-   } else if( npt_match < 0 ){                          /* percentage */
-     npt_match = (int)(-0.01*npt_match*nmask) ;
-   }
+   ntask = DSET_NVOX(dset_targ) ;
+   ntask = (ntask < nmask) ? (int)sqrt(ntask*(double)nmask) : nmask ;
+   if( npt_match < 0 )   npt_match = (int)(-0.01f*npt_match*ntask) ;
    if( npt_match < 666 ) npt_match = 666 ;
    if( verb ) INFO_message("Number of points for matching = %d",npt_match) ;
 
    /*------ setup alignment structure parameters ------*/
 
-   memset(&stup,0,sizeof(GA_setup)) ;
+   memset(&stup,0,sizeof(GA_setup)) ;  /* NULL out */
 
    stup.match_code = meth_code ;
    stup.usetemp    = usetemp ;   /* 20 Dec 2006 */
@@ -1610,6 +1674,7 @@ int main( int argc , char *argv[] )
 
      if( MAT44_DET(stup.base_cmat) * MAT44_DET(stup.targ_cmat) < 0.0f )
        WARNING_message("base and source datasets have different handedness!") ;
+       WARNING_message("Alignment will proceed, but examine results carefully!");
    } else {
      stup.base_cmat = stup.targ_cmat ;
    }
@@ -1918,9 +1983,9 @@ int main( int argc , char *argv[] )
        if( verb ) INFO_message("Start coarse pass") ;
        ccode            = (interp_code == MRI_NN) ? MRI_NN : MRI_LINEAR ;
        stup.interp_code = ccode ;
-       stup.npt_match   = nmask / 20 ;
-            if( stup.npt_match <   666 ) stup.npt_match =   666 ;
-       else if( stup.npt_match > 22222 ) stup.npt_match = 23456 ;
+       stup.npt_match   = ntask / 20 ;
+            if( stup.npt_match <   666        ) stup.npt_match =   666 ;
+       else if( stup.npt_match > nmatch_setup ) stup.npt_match = nmatch_setup;
 
        stup.smooth_code        = sm_code ;
        stup.smooth_radius_base =
@@ -1939,11 +2004,18 @@ int main( int argc , char *argv[] )
          if( nbin > 0 && xyc != NULL ){
            char fname[256] ; MRI_IMAGE *fim ; double ftop ;
            fim = mri_new(nbin,nbin,MRI_float); mri_fix_data_pointer(xyc,fim);
-           ftop = mri_max(fim) ; qim = mri_to_byte_scl(255.4/ftop,0.0,fim) ;
-           mri_clear_data_pointer(fim); mri_free(fim);
-           fim = mri_flippo(MRI_ROT_90,0,qim); mri_free(qim);
-           sprintf(fname,"%s_start_%04d.pgm",save_hist,kk) ;
-           mri_write_pnm(fname,fim); mri_free(fim);
+           if( strstr(save_hist,"FF") == NULL ){
+             ftop = mri_max(fim) ; qim = mri_to_byte_scl(255.4/ftop,0.0,fim) ;
+             mri_clear_data_pointer(fim); mri_free(fim);
+             fim = mri_flippo(MRI_ROT_90,0,qim); mri_free(qim);
+             sprintf(fname,"%s_start_%04d.pgm",save_hist,kk) ;
+             mri_write_pnm(fname,fim); mri_free(fim);
+           } else {
+             qim = mri_flippo(MRI_ROT_90,0,fim);
+             mri_clear_data_pointer(fim); mri_free(fim);
+             sprintf(fname,"%s_start_%04d.mri",save_hist,kk) ;
+             mri_write(fname,qim); mri_free(qim);
+           }
            if( verb > 1 ) ININFO_message("- Saved histogram to %s",fname) ;
          }
        }
@@ -1977,7 +2049,7 @@ int main( int argc , char *argv[] )
          for( jj=0 ; jj < stup.wfunc_numpar ; jj++ )
            if( stup.wfunc_param[jj].fixed == 1 ) stup.wfunc_param[jj].fixed = 0 ;
 
-         stup.npt_match = nmask / 7 ;
+         stup.npt_match = ntask / 7 ;
               if( stup.npt_match < 666   ) stup.npt_match = 666 ;
          else if( stup.npt_match > 99999 ) stup.npt_match = 99999 ;
 
@@ -2018,7 +2090,7 @@ int main( int argc , char *argv[] )
          if( verb     ) ININFO_message("- Start coarse optimization") ;
          if( verb > 1 ) ctim = COX_cpu_time() ;
          nfunc = mri_genalign_scalar_optim( &stup , 0.05 , 0.005 , 6666 ) ;
-         stup.npt_match = nmask / 10 ;
+         stup.npt_match = ntask / 10 ;
               if( stup.npt_match < 666   ) stup.npt_match = 666 ;
          else if( stup.npt_match > 55555 ) stup.npt_match = 55555 ;
          stup.smooth_radius_base *= 0.666 ;
@@ -2166,11 +2238,18 @@ int main( int argc , char *argv[] )
        if( nbin > 0 && xyc != NULL ){
          char fname[256] ; MRI_IMAGE *fim ; double ftop ;
          fim = mri_new(nbin,nbin,MRI_float); mri_fix_data_pointer(xyc,fim);
-         ftop = mri_max(fim) ; qim = mri_to_byte_scl(255.4/ftop,0.0,fim) ;
-         mri_clear_data_pointer(fim); mri_free(fim);
-         fim = mri_flippo(MRI_ROT_90,0,qim); mri_free(qim);
-         sprintf(fname,"%s_final_%04d.pgm",save_hist,kk) ;
-         mri_write_pnm(fname,fim); mri_free(fim);
+         if( strstr(save_hist,"FF") == NULL ){
+           ftop = mri_max(fim) ; qim = mri_to_byte_scl(255.4/ftop,0.0,fim) ;
+           mri_clear_data_pointer(fim); mri_free(fim);
+           fim = mri_flippo(MRI_ROT_90,0,qim); mri_free(qim);
+           sprintf(fname,"%s_final_%04d.pgm",save_hist,kk) ;
+           mri_write_pnm(fname,fim); mri_free(fim);
+         } else {
+           qim = mri_flippo(MRI_ROT_90,0,fim);
+           mri_clear_data_pointer(fim); mri_free(fim);
+           sprintf(fname,"%s_final_%04d.mri",save_hist,kk) ;
+           mri_write(fname,qim); mri_free(qim);
+         }
          if( verb > 1 ) ININFO_message("- Saved histogram to %s",fname) ;
        }
      }
@@ -2290,7 +2369,18 @@ int main( int argc , char *argv[] )
                                             targ_kind, 1.0f ) ;
        }
        mri_free(im_targ) ; im_targ = NULL ;
+
+       if( usetemp && DSET_NVALS(dset_out) > 1 )   /* 31 Jan 2007 */
+         mri_purge( DSET_BRICK(dset_out,kk) ) ;
      }
+
+#ifdef USING_MCW_MALLOC
+     if( verb > 5 ) mcw_malloc_dump() ;
+     if( verb > 1 ){
+       long long nb = mcw_malloc_total() ;
+       if( nb > 0 ) INFO_message("Memory usage = %lld",nb) ;
+     }
+#endif
 
    } /***------------- end of loop over target sub-bricks ------------------***/
 
@@ -2301,6 +2391,14 @@ int main( int argc , char *argv[] )
    MRI_FREE(stup.ajim); MRI_FREE(stup.ajims); MRI_FREE(stup.bwght);
 
    /***--- write output dataset to disk? ---***/
+
+#ifdef USING_MCW_MALLOC
+     if( verb > 5 ) mcw_malloc_dump() ;
+     if( verb > 1 ){
+       long long nb = mcw_malloc_total() ;
+       if( nb > 0 ) INFO_message("Memory usage = %lld",nb) ;
+     }
+#endif
 
    if( dset_out != NULL ){
      DSET_write(dset_out); WROTE_DSET(dset_out); DSET_unload(dset_out);
@@ -2344,7 +2442,7 @@ int main( int argc , char *argv[] )
     If acod == 2, then make a binary mask at the end.
 -----------------------------------------------------------------------------*/
 
-MRI_IMAGE * mri_weightize( MRI_IMAGE *im , int acod )
+MRI_IMAGE * mri_weightize( MRI_IMAGE *im , int acod , int ndil )
 {
    float *wf,clip,clip2 ;
    int xfade,yfade,zfade , nx,ny,nz,nxy,nxyz , ii,jj,kk,ff ;
@@ -2420,9 +2518,20 @@ MRI_IMAGE * mri_weightize( MRI_IMAGE *im , int acod )
 
 #undef  BPAD
 #define BPAD 4
-   if( acod == 2 || acod == 3 ){
+   if( acod == 2 || acod == 3 ){  /* binary weight: mask=2 or maskbox=3 */
      if( verb > 1 ) ININFO_message("Weightize: binarizing") ;
      for( ii=0 ; ii < nxyz ; ii++ ) if( wf[ii] != 0.0f ) wf[ii] = 1.0f ;
+     if( ndil > 0 ){  /* 01 Mar 2007: dilation */
+       byte *mmm = (byte *)malloc(sizeof(byte)*nxyz) ;
+       if( verb > 1 ) ININFO_message("Weightize: dilating") ;
+       for( ii=0 ; ii < nxyz ; ii++ ) mmm[ii] = (wf[ii] != 0.0f) ;
+       for( ii=0 ; ii < ndil ; ii++ ){
+         THD_mask_dilate     ( nx,ny,nz , mmm , 3 ) ;
+         THD_mask_fillin_once( nx,ny,nz , mmm , 2 ) ;
+       }
+       for( ii=0 ; ii < nxyz ; ii++ ) wf[ii] = (float)mmm[ii] ;
+       free(mmm) ;
+     }
      if( acod == 3 ){  /* boxize */
        int xm,xp , ym,yp , zm,zp ;
        MRI_autobbox_clust(0) ;

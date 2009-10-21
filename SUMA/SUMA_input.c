@@ -80,11 +80,109 @@ int SUMA_KeyPress(char *keyin, char *keynameback)
       if (SUMA_iswordsame_ci(keyname,"down") == 1) SUMA_RETURN(XK_Down);
       if (SUMA_iswordsame_ci(keyname,"left") == 1) SUMA_RETURN(XK_Left);
       if (SUMA_iswordsame_ci(keyname,"right") == 1) SUMA_RETURN(XK_Right);
+      if (SUMA_iswordsame_ci(keyname,"f1") == 1) SUMA_RETURN(XK_F1);
+      if (SUMA_iswordsame_ci(keyname,"f2") == 1) SUMA_RETURN(XK_F2);
       
       SUMA_S_Errv("Key '%s' not yet supported, complain to author.\n", keyname);
       SUMA_RETURN(XK_VoidSymbol);
    }
    SUMA_RETURN(XK_VoidSymbol);
+}
+int SUMA_F1_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
+{
+   static char FuncName[]={"SUMA_F1_Key"};
+   char tk[]={"F1"}, keyname[100];
+   int k, nc;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   if (!sv || !key) {
+      SUMA_S_Err("Null input");
+      SUMA_RETURN(0);  
+   }
+   if (!(nc = strlen(key))) { 
+      SUMA_S_Err("Empty key");
+      SUMA_RETURN(0);  
+   }
+   
+   SUMA_LHv("Have %s, nc=%d\n", key, nc);
+   if ((k = SUMA_KeyPress(key, keyname)) == XK_VoidSymbol) {
+      SUMA_S_Errv("KeyPress for %s could not be obtained.\n", key);
+      SUMA_RETURN(0);  
+   }
+   SUMA_LHv("Have keyname = %s\n", keyname);
+   if (SUMA_iswordsame_ci(keyname,tk) != 1) {
+      SUMA_S_Errv("Expecting %s (or lower case version), got %s\n", tk, keyname );
+      SUMA_RETURN(0);  
+   }
+
+   /* do the work */
+   switch (k) {
+      case XK_F1:
+         sv->ShowEyeAxis = !sv->ShowEyeAxis;
+         SUMA_postRedisplay(sv->X->GLXAREA, NULL, NULL);
+         break;
+      default:
+         SUMA_S_Err("Il ne faut pas etre la");
+         SUMA_RETURN(0);
+         break;
+   }
+
+   SUMA_RETURN(1);
+}
+int SUMA_F2_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
+{
+   static char FuncName[]={"SUMA_F2_Key"};
+   char tk[]={"F2"}, keyname[100];
+   int k, nc;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   if (!sv || !key) {
+      SUMA_S_Err("Null input");
+      SUMA_RETURN(0);  
+   }
+   if (!(nc = strlen(key))) { 
+      SUMA_S_Err("Empty key");
+      SUMA_RETURN(0);  
+   }
+   
+   SUMA_LHv("Have %s, nc=%d\n", key, nc);
+   if ((k = SUMA_KeyPress(key, keyname)) == XK_VoidSymbol) {
+      SUMA_S_Errv("KeyPress for %s could not be obtained.\n", key);
+      SUMA_RETURN(0);  
+   }
+   SUMA_LHv("Have keyname = %s\n", keyname);
+   if (SUMA_iswordsame_ci(keyname,tk) != 1) {
+      SUMA_S_Errv("Expecting %s (or lower case version), got %s\n", tk, keyname );
+      SUMA_RETURN(0);  
+   }
+
+   /* do the work */
+   switch (k) {
+      case XK_F2:
+         {
+            int *do_id, n_do_id;
+            ++sv->ShowWorldAxis; sv->ShowWorldAxis = sv->ShowWorldAxis % SUMA_N_WAX_OPTIONS; 
+            sv->ShowMeshAxis = 0; /* used to be = !sv->ShowMeshAxis; ,  Turned off Oct 15 04 , in favor or WorldAxis */
+            do_id = SUMA_GetDO_Type(SUMAg_DOv, SUMAg_N_DOv, SO_type, &n_do_id);
+            if (n_do_id) {
+               while (n_do_id) {
+                 ((SUMA_SurfaceObject *)SUMAg_DOv[do_id[n_do_id-1]].OP)->ShowMeshAxis = sv->ShowMeshAxis;
+                  --n_do_id;
+               }
+               SUMA_free(do_id);
+            }
+         }
+         SUMA_postRedisplay(sv->X->GLXAREA, NULL, NULL);
+         break;
+      default:
+         SUMA_S_Err("Il ne faut pas etre la haut");
+         SUMA_RETURN(0);
+         break;
+   }
+
+   SUMA_RETURN(1);
 }
 
 int SUMA_M_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
@@ -364,8 +462,8 @@ int SUMA_P_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
 int SUMA_R_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
 {
    static char FuncName[]={"SUMA_R_Key"};
-   char tk[]={"R"}, keyname[100];
-   int k, nc;
+   char tk[]={"R"}, keyname[100], msg[100];
+   int k, nc, ii, jj, mm;
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
@@ -405,14 +503,100 @@ int SUMA_R_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
 
             sv->X->SetRot_prmpt = SUMA_CreatePromptDialog(sv->X->Title, sv->X->SetRot_prmpt);
 
+         } else if (SUMA_CTRL_KEY(key)) {
+            SUMAg_CF->SUMA_SnapshotOverSampling = (SUMAg_CF->SUMA_SnapshotOverSampling +1)%5;
+            if (SUMAg_CF->SUMA_SnapshotOverSampling == 0) SUMAg_CF->SUMA_SnapshotOverSampling = 1;
+            { 
+               sprintf(msg,"Oversampling now set to %d", SUMAg_CF->SUMA_SnapshotOverSampling);
+               if (callmode && strcmp(callmode, "interactive") == 0) { SUMA_SLP_Note (msg); }
+               else { SUMA_S_Note (msg); }
+            }
          } else {
             GLvoid *pixels;
-            pixels = SUMA_grabPixels(1, sv->X->WIDTH, sv->X->HEIGHT);
-            if (pixels) {
-              ISQ_snapsave (sv->X->WIDTH, -sv->X->HEIGHT, (unsigned char *)pixels, sv->X->GLXAREA ); 
-              SUMA_free(pixels);
-            }else {
-               SUMA_SLP_Err("Failed to record image.");
+            double rat;
+            int oh=-1,ow=-1;
+            /* Control for GL_MAX_VIEWPORT_DIMS */
+            if (SUMAg_CF->SUMA_SnapshotOverSampling > 1) {
+               glGetIntegerv(GL_MAX_VIEWPORT_DIMS,&k);
+               mm = SUMA_MAX_PAIR( SUMAg_CF->SUMA_SnapshotOverSampling*sv->X->HEIGHT,
+                                   SUMAg_CF->SUMA_SnapshotOverSampling*sv->X->WIDTH);
+               if (mm > k) { /* too big, find best new dimesnions */
+                  rat = (double)mm/(double)k; /*window shrinking factor to allow for stitching*/
+                  SUMA_S_Notev(  "%d/%d (H/W) Too big for oversampling\n"
+                                 " reducing resolution by %f.\n", sv->X->HEIGHT, sv->X->WIDTH, rat);
+                  /* store original size */
+                  ow = sv->X->WIDTH; oh = sv->X->HEIGHT;
+                  sv->WindHeight = sv->X->HEIGHT = (int)((double)sv->X->HEIGHT/rat)-1;
+                  sv->WindWidth = sv->X->WIDTH = (int)((double)sv->X->WIDTH/rat)-1;
+                  SUMA_WidgetResize (sv->X->TOPLEVEL , sv->X->WIDTH, sv->X->HEIGHT);
+                  sv->rdc = SUMA_RDC_X_RESIZE;
+                  glViewport( 0, 0, 
+                                 sv->X->WIDTH, sv->X->HEIGHT);  
+                  SUMA_handleRedisplay((XtPointer)sv->X->GLXAREA); 
+               } else {
+                  SUMA_S_Note("Size OK");
+               }
+            }
+            /* turn off checking for duplicates */
+            for (jj=0; jj<SUMAg_CF->SUMA_SnapshotOverSampling; ++jj) {
+               for (ii=0; ii<SUMAg_CF->SUMA_SnapshotOverSampling; ++ii) { 
+                  if (SUMAg_CF->SUMA_SnapshotOverSampling > 1) {
+                     glGetIntegerv(GL_MAX_VIEWPORT_DIMS,&k);
+                     if (ii==0 && jj == 0) {
+                        SUMA_S_Notev(  "Resampling factor of %d\n"
+                                    "If using this feature, the\n"
+                                    " sequence of %d images is saved\n"
+                                    " temporarily to disk and 'imcat'\n"
+                                    " is then used to put the images together.\n"
+                                    "(Have ViewPort GL_MAX_VIEWPORT_DIMS of %d\n"
+                                    " and max dims needed of %d.)\n",
+                                    SUMAg_CF->SUMA_SnapshotOverSampling, 
+                                    SUMAg_CF->SUMA_SnapshotOverSampling*SUMAg_CF->SUMA_SnapshotOverSampling,
+                                    k,
+                                    SUMA_MAX_PAIR( SUMAg_CF->SUMA_SnapshotOverSampling*sv->X->HEIGHT,
+                                                   SUMAg_CF->SUMA_SnapshotOverSampling*sv->X->WIDTH)  );
+                     } else {
+                        /* sometimes you have repeated black areas when oversampling, allow that after very first 'tant' */
+                        SNAP_OkDuplicates();
+                     }
+                     /* start from top left, move to right then go down one row (Row Major, starting on top left ) */
+                     glViewport(-ii*sv->X->WIDTH, -(SUMAg_CF->SUMA_SnapshotOverSampling - jj - 1)*sv->X->HEIGHT, 
+                                 SUMAg_CF->SUMA_SnapshotOverSampling*sv->X->WIDTH, SUMAg_CF->SUMA_SnapshotOverSampling*sv->X->HEIGHT);
+                     SUMA_handleRedisplay((XtPointer)sv->X->GLXAREA);
+                  }
+                  pixels = SUMA_grabPixels(1, sv->X->WIDTH, sv->X->HEIGHT);
+                  if (pixels) {
+                    ISQ_snapsave (sv->X->WIDTH, -sv->X->HEIGHT, (unsigned char *)pixels, sv->X->GLXAREA ); 
+                    SUMA_free(pixels);
+                  }else {
+                     SUMA_SLP_Err("Failed to record image.");
+                  }
+               }
+            }
+            if (SUMAg_CF->SUMA_SnapshotOverSampling > 1) {  /* Now return the window to its previous size */
+               if (ow > 0) {
+                  sv->WindHeight = sv->X->HEIGHT = oh;
+                  sv->WindWidth = sv->X->WIDTH = ow;
+                  SUMA_WidgetResize (sv->X->TOPLEVEL , ow, oh);   
+               }
+               sv->rdc = SUMA_RDC_X_RESIZE;
+               glViewport( 0, 0, 
+                           sv->X->WIDTH, sv->X->HEIGHT);
+               SUMA_handleRedisplay((XtPointer)sv->X->GLXAREA);
+            }
+            if (SUMAg_CF->NoDuplicatesInRecorder) SNAP_NoDuplicates();
+            else SNAP_OkDuplicates();
+            if (SUMAg_CF->SUMA_SnapshotOverSampling > 1) {
+               /* record the image to make life easy on user */
+               sprintf(msg,"Writing resultant image\n to HighRes_Suma_tmp.ppm ...");
+               if (callmode && strcmp(callmode, "interactive") == 0) { SUMA_SLP_Note (msg); }
+               else { SUMA_S_Note (msg); }
+               ISQ_snap_png_rng("HighRes_Photo___tmp", 
+                              -(SUMAg_CF->SUMA_SnapshotOverSampling*SUMAg_CF->SUMA_SnapshotOverSampling),
+                              0);
+               system(  "rm -f HighRes_Suma_tmp* >& /dev/null ; "
+                        "imcat -prefix HighRes_Suma_tmp HighRes_Photo___tmp* ;"
+                        "rm -f HighRes_Photo___tmp* >& /dev/null");
             }
          }
          break;
@@ -669,7 +853,7 @@ int SUMA_Left_Key(SUMA_SurfaceViewer *sv, char *key, char *caller)
             }else if (SUMA_CTRL_KEY(key)){
                float a[3], cQ[4], dQ[4];
                /* From top view, rotate about x 90 degrees.*/ 
-               a[0] = 1.0; a[1] = 0.0;
+               a[0] = 1.0; a[1] = 0.0; a[2] = 0.0;
                axis_to_quat(a, SUMA_PI/2.0, cQ);
                /* then rotate about y 90 degrees */
                a[0] = 0.0; a[1] = 1.0; a[2] = 0.0;
@@ -1473,6 +1657,10 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
                if (!SUMA_R_Key(sv, "alt+r", "interactive")) {
                   SUMA_S_Err("Failed in key func.");
                }
+            } if (Kev.state & ControlMask){
+               if (!SUMA_R_Key(sv, "ctrl+r", "interactive")) {
+                  SUMA_S_Err("Failed in key func.");
+               }
             } else {
                if (!SUMA_R_Key(sv, "r", "interactive")) {
                   SUMA_S_Err("Failed in key func.");
@@ -1960,26 +2148,17 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
 
          case XK_F1: /* F1 */
             /*printf("F1\n");*/
-            sv->ShowEyeAxis = !sv->ShowEyeAxis;
-            SUMA_postRedisplay(w, clientData, callData);
+            if (!SUMA_F1_Key(sv, "F1", "interactive")) {
+               SUMA_S_Err("Failed in key func.");
+            }
             break;
 
          case XK_F2:
             /*printf("F2\n");*/
-            {
-               int *do_id, n_do_id;
-               ++sv->ShowWorldAxis; sv->ShowWorldAxis = sv->ShowWorldAxis % SUMA_N_WAX_OPTIONS; 
-               sv->ShowMeshAxis = 0; /* used to be = !sv->ShowMeshAxis; ,  Turned off Oct 15 04 , in favor or WorldAxis */
-               do_id = SUMA_GetDO_Type(SUMAg_DOv, SUMAg_N_DOv, SO_type, &n_do_id);
-               if (n_do_id) {
-                  while (n_do_id) {
-                    ((SUMA_SurfaceObject *)SUMAg_DOv[do_id[n_do_id-1]].OP)->ShowMeshAxis = sv->ShowMeshAxis;
-                     --n_do_id;
-                  }
-                  SUMA_free(do_id);
-               }
+            if (!SUMA_F2_Key(sv, "F2", "interactive")) {
+               SUMA_S_Err("Failed in key func.");
             }
-            SUMA_postRedisplay(w, clientData, callData);
+            
             break;
 
          case XK_F3: /* F3 */
@@ -2260,8 +2439,8 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
    break;
    
    case ButtonPress:
-      if (LocalHead) fprintf(stdout,"In ButtonPress\n");      
       pButton = Bev.button;
+      if (LocalHead) fprintf(stdout,"In ButtonPress Button %d\n", pButton);      
       if (SUMAg_CF->SwapButtons_1_3 || (SUMAg_CF->ROI_mode && SUMAg_CF->Pen_mode)) {
          if (pButton == Button1) pButton = Button3;
          else if (pButton == Button3) pButton = Button1;
@@ -2410,8 +2589,8 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
       break;
       
    case ButtonRelease:
-      if (LocalHead) fprintf(SUMA_STDERR,"%s: In ButtonRelease\n", FuncName); 
       rButton = Bev.button;
+      if (LocalHead) fprintf(SUMA_STDERR,"%s: In ButtonRelease Button %d\n", FuncName, rButton); 
       if (SUMAg_CF->SwapButtons_1_3 || (SUMAg_CF->ROI_mode && SUMAg_CF->Pen_mode)) {
          if (rButton == Button1) rButton = Button3;
          else if (rButton == Button3) rButton = Button1;
@@ -2460,7 +2639,14 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
       break;
       
    case MotionNotify:
-      if (LocalHead) fprintf(stdout,"In MotionNotify\n"); 
+      if (LocalHead) {
+          fprintf(stdout,"In MotionNotify\n"); 
+              if (Mev.state & Button1MotionMask) fprintf(stdout,"   B1 mot\n");
+         else if (Mev.state & Button2MotionMask) fprintf(stdout,"   B2 mot\n");
+         else if (Mev.state & Button3MotionMask) fprintf(stdout,"   B3 mot\n");
+         else if (Mev.state & Button4MotionMask) fprintf(stdout,"   B4 mot\n");
+         else if (Mev.state & Button5MotionMask) fprintf(stdout,"   B5 mot\n");
+      }
       if (SUMAg_CF->SwapButtons_1_3 || (SUMAg_CF->ROI_mode && SUMAg_CF->Pen_mode)) {
         if (((Mev.state & Button3MotionMask) && (Mev.state & Button2MotionMask)) || ((Mev.state & Button2MotionMask) && (Mev.state & ShiftMask))) {
             mButton = SUMA_Button_12_Motion;

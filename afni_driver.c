@@ -1,12 +1,24 @@
 #include "afni.h"
 #include <X11/keysym.h>
 
-/*******************************************************************
-  Functions to drive AFNI user-interface stuff from plugouts, etc.
-  These routines take as input strings, and then call the
-  appropriate callbacks to simulate what happens when the user
-  presses various buttons.
-********************************************************************/
+/******************************************************************************
+ *       Functions to drive AFNI user-interface stuff from plugouts, etc.     *
+ *       These routines take as input strings, and then call the              *
+ *       appropriate callbacks to simulate what happens when the user         *
+ *       presses various buttons.                                             *
+*******************************************************************************/
+
+/*****-------------------------------------------------------------------------
+ To add a new command, you need to
+ (a) put a prototype for the function to implement the command here
+     - this function parses the command arguments, if any, out of
+       the command string
+     - then it calls the appropriate AFNI functions to carry out the command
+ (b) put a {string,function} initialization into the 'dpair' array below,
+     so that when the string is seen as the leading part of the command string,
+     the function will be invoked with the rest of the command string as its
+     argument.
+--------------------------------------------------------------------------*****/
 
 static int AFNI_drive_rescan_controller( char *code ) ;
 static int AFNI_drive_switch_session( char *cmd ) ;
@@ -71,8 +83,12 @@ static int AFNI_redisplay              ( char *cmd ) ;
 static int AFNI_trace                  ( char *cmd ) ; /* 04 Oct 2005 */
 
 /*-----------------------------------------------------------------
-  Drive AFNI in various (incomplete) ways.
-  Return value is 0 if good, -1 if bad.
+  Set up the {string,function} pairs that choose how the
+  different commands will be executed.  The way the strings are
+  compared means that you can't have 2 distinct commands like
+  "XXX" and "XXXYYY", since when the "XXXYYY" command was given,
+  it might instead be matched to "XXX", and then the wrong function
+  would be called, resulting in Galactic anarchy.
 -------------------------------------------------------------------*/
 
 typedef int dfunc(char *) ;  /* action functions */
@@ -167,7 +183,8 @@ static AFNI_driver_pair dpair[] = {
 } ;
 
 /*----------------------------------------------------------------------*/
-/*! Accept a command, find the corresponding action function, call it.  */
+/*! Accept a command, find the corresponding action function, call it.
+    Return value is -1 if bad things happened, otherwise return is 0.   */
 
 int AFNI_driver( char *cmdd )
 {
@@ -178,12 +195,14 @@ ENTRY("AFNI_driver") ;
 
    if( cmdd == NULL || *cmdd == '\0' ) RETURN(-1) ;  /* bad */
 
+   if( strncmp(cmdd,"DRIVE_AFNI ",11) == 0 ) cmdd += 11 ;  /* 28 Dec 2006 */
+
    dmd = cmd = strdup(cmdd) ; clen = strlen(cmd) ;
 
    /* skip leading blanks */
 
    for( ii=0 ; ii < clen ; ii++ )
-      if( !isspace(cmd[ii]) ) break ;
+     if( !isspace(cmd[ii]) ) break ;
 
    if( ii == clen ){ free(dmd); RETURN(-1); }  /* all blanks? */
 
@@ -200,19 +219,23 @@ ENTRY("AFNI_driver") ;
 
    for( dd=0 ; dpair[dd].nam != NULL ; dd++ ){
 
-      dlen = strlen(dpair[dd].nam) ;
-      if( clen >= dlen                         &&
-          strncmp(cmd,dpair[dd].nam,dlen) == 0   ){  /* found it */
+     dlen = strlen(dpair[dd].nam) ;
+     if( clen >= dlen                         &&
+         strncmp(cmd,dpair[dd].nam,dlen) == 0   ){  /* found it */
 
-         for( ii=dlen ; ii < clen ; ii++ )      /* skip blanks */
-            if( !isspace(cmd[ii]) ) break ;     /* after command name */
+       for( ii=dlen ; ii < clen ; ii++ )     /* skip blanks */
+         if( !isspace(cmd[ii]) ) break ;     /* after command name */
 
-         AFNI_block_rescan(1) ;                 /* 10 Nov 2005 */
-         rval = dpair[dd].fun( cmd+ii ) ;       /* execute command */
-         AFNI_block_rescan(0) ;
-         free(dmd) ; RETURN(rval) ;
-      }
+       AFNI_block_rescan(1) ;                /* 10 Nov 2005 */
+       rval = dpair[dd].fun( cmd+ii ) ;      /* execute command */
+       if( rval < 0 )
+         WARNING_message("Bad drive AFNI in '%s'",cmd) ;  /* 22 Feb 2007 */
+       AFNI_block_rescan(0) ;
+       free(dmd) ; RETURN(rval) ;
+     }
    }
+
+   ERROR_message("Can't drive AFNI with '%s'",cmd) ;  /* 22 Feb 2007 */
 
    free(dmd) ; RETURN(-1) ;  /* not in the list */
 }
@@ -443,7 +466,7 @@ static int AFNI_drive_set_subbricks( char *cmd )
 }
 
 /*------------------------------------------------------------------
-  Set the anatomical dataset.  Input is of the form "A.prefix".
+  Set the anatomical dataset.  Input is of the form "A.prefix n".
   Return value is 0 if good, -1 if bad.
 -------------------------------------------------------------------*/
 
@@ -502,7 +525,7 @@ ENTRY("AFNI_switch_anatomy") ;
 }
 
 /*----------------------------------------------------------------------
-  Set the functional dataset.  Input is of the form "A.prefix".
+  Set the functional dataset.  Input is of the form "A.prefix j k".
   Return value is 0 if good, -1 if bad.
 -------------------------------------------------------------------*/
 
@@ -561,17 +584,41 @@ ENTRY("AFNI_switch_function") ;
    RETURN(0) ;
 }
 
+/*---------------------------------------------------------------------*/
+/* Macros for deciding on which window is in play -- allows for
+   various mis-spellings that might naturally transpire -- 22 Feb 2007 */
+
+#define HAS_axialimage(s)                                               \
+ ( strstr((s),"axialim")!=NULL || strstr((s),"axial_im")!=NULL )
+
+#define HAS_sagittalimage(s)                                            \
+ ( strstr((s),"sagittalim")!=NULL || strstr((s),"sagittal_im")!=NULL || \
+   strstr((s),"sagitalim") !=NULL || strstr((s),"sagital_im") !=NULL   )
+
+#define HAS_coronalimage(s)                                             \
+ ( strstr((s),"coronalim")!=NULL || strstr((s),"coronal_im")!=NULL )
+
+#define HAS_axialgraph(s)                                               \
+ ( strstr((s),"axialgr")!=NULL || strstr((s),"axial_gr")!=NULL )
+
+#define HAS_sagittalgraph(s)                                            \
+ ( strstr((s),"sagittalgr")!=NULL || strstr((s),"sagittal_gr")!=NULL || \
+   strstr((s),"sagitalgr") !=NULL || strstr((s),"sagital_gr") !=NULL   )
+
+#define HAS_coronalgraph(s)                                             \
+ ( strstr((s),"coronalgr")!=NULL || strstr((s),"coronal_gr")!=NULL )
+
 /*--------------------------------------------------------------------
   Open a window in the controller.
   Input is a string of the form A.sagittalimage, etc.
   Return value is 0 if good, -1 if bad.
--------------------------------------------------------------------*/
+----------------------------------------------------------------------*/
 
 static int AFNI_drive_open_window( char *cmd )
 {
    int ic ;
    Three_D_View *im3d ;
-   char *cpt ;
+   char *cpt , *ccc ;
    int gww=-1,ghh=-1,gxx=-1,gyy=-1 ;
    MCW_imseq   *isq=NULL ;
    MCW_grapher *gra=NULL ;
@@ -603,34 +650,34 @@ ENTRY("AFNI_drive_open_window") ;
 
 #ifdef ALLOW_PLUGINS
    if( strstr(cmd,"plugin.") != NULL ){
-      ic = AFNI_drive_open_plugin( cmd ) ;
-      RETURN(ic) ;
+     ic = AFNI_drive_open_plugin( cmd ) ;
+     RETURN(ic) ;
    }
 #endif
 
    /* open a graph or image window */
 
-        if( strstr(cmd,"axialimage") != NULL ){
+        if( HAS_axialimage(cmd) ){
           AFNI_view_xyz_CB( im3d->vwid->imag->image_xyz_pb, im3d, NULL ) ;
           isq = im3d->s123 ;
 
-   } else if( strstr(cmd,"sagittalimage") != NULL ){
+   } else if( HAS_sagittalimage(cmd) ){
           AFNI_view_xyz_CB( im3d->vwid->imag->image_yzx_pb, im3d, NULL ) ;
           isq = im3d->s231 ;
 
-   } else if( strstr(cmd,"coronalimage") != NULL ){
+   } else if( HAS_coronalimage(cmd) ){
           AFNI_view_xyz_CB( im3d->vwid->imag->image_zxy_pb, im3d, NULL ) ;
           isq = im3d->s312 ;
 
-   } else if( strstr(cmd,"axialgraph") != NULL ){
+   } else if( HAS_axialgraph(cmd) ){
           AFNI_view_xyz_CB( im3d->vwid->imag->graph_xyz_pb, im3d, NULL ) ;
           gra = im3d->g123 ;
 
-   } else if( strstr(cmd,"sagittalgraph") != NULL ){
+   } else if( HAS_sagittalgraph(cmd) ){
           AFNI_view_xyz_CB( im3d->vwid->imag->graph_yzx_pb, im3d, NULL ) ;
           gra = im3d->g231 ;
 
-   } else if( strstr(cmd,"coronalgraph") != NULL ){
+   } else if( HAS_coronalgraph(cmd) ){
           AFNI_view_xyz_CB( im3d->vwid->imag->graph_zxy_pb, im3d, NULL ) ;
           gra = im3d->g312 ;
    }
@@ -703,34 +750,40 @@ ENTRY("AFNI_drive_open_window") ;
 
       /* keypress [18 Feb 2005] */
 
-      cpt = strstr(cmd,"keypress=") ;
-      if( cpt == NULL ) cpt = strstr(cmd,"keypress:") ;
-      if( cpt != NULL ){
-        unsigned long key ;
-        cpt += 9 ;
-        if( *cpt == '\'' || *cpt == '\"' ) cpt++ ;
-             if( strncmp(cpt,"XK_Left"     , 7) == 0 ) key = XK_Left     ;
-        else if( strncmp(cpt,"XK_Right"    , 8) == 0 ) key = XK_Right    ;
-        else if( strncmp(cpt,"XK_Down"     , 7) == 0 ) key = XK_Down     ;
-        else if( strncmp(cpt,"XK_Up"       , 5) == 0 ) key = XK_Up       ;
-        else if( strncmp(cpt,"XK_Page_Up"  ,10) == 0 ) key = XK_Page_Up  ;
-        else if( strncmp(cpt,"XK_Page_Down",12) == 0 ) key = XK_Page_Down;
-        else if( strncmp(cpt,"XK_Delete"   , 9) == 0 ) key = XK_Delete   ;
-        else if( strncmp(cpt,"XK_Home"     , 7) == 0 ) key = XK_Home     ;
-        else if( strncmp(cpt,"XK_F2"       , 5) == 0 ) key = XK_F2       ;
-        else if( strncmp(cpt,"XK_F3"       , 5) == 0 ) key = XK_F3       ;
-        else if( strncmp(cpt,"XK_F4"       , 5) == 0 ) key = XK_F4       ;
-        else if( strncmp(cpt,"XK_F5"       , 5) == 0 ) key = XK_F5       ;
-        else if( strncmp(cpt,"XK_F6"       , 5) == 0 ) key = XK_F6       ;
-        else if( strncmp(cpt,"XK_F7"       , 5) == 0 ) key = XK_F7       ;
-        else if( strncmp(cpt,"XK_F8"       , 5) == 0 ) key = XK_F8       ;
-        else if( strncmp(cpt,"XK_F9"       , 5) == 0 ) key = XK_F9       ;
-        else if( strncmp(cpt,"XK_F10"      , 6) == 0 ) key = XK_F10      ;
-        else if( strncmp(cpt,"XK_F11"      , 6) == 0 ) key = XK_F11      ;
-        else if( strncmp(cpt,"XK_F12"      , 6) == 0 ) key = XK_F12      ;
-        else                                           key = *cpt        ;
-        ISQ_handle_keypress( isq , key ) ;
-      }
+      ccc = cmd ;   /* 28 Dec 2006: allow multiple keypress= options */
+      while(1){
+        cpt = strstr(ccc,"keypress=") ;
+        if( cpt == NULL ) cpt = strstr(ccc,"keypress:") ;
+        if( cpt != NULL ){
+          unsigned long key ;
+          cpt += 9 ;
+          if( *cpt == '\'' || *cpt == '\"' ) cpt++ ;
+               if( strncmp(cpt,"XK_Left"     , 7) == 0 ) key = XK_Left     ;
+          else if( strncmp(cpt,"XK_Right"    , 8) == 0 ) key = XK_Right    ;
+          else if( strncmp(cpt,"XK_Down"     , 7) == 0 ) key = XK_Down     ;
+          else if( strncmp(cpt,"XK_Up"       , 5) == 0 ) key = XK_Up       ;
+          else if( strncmp(cpt,"XK_Page_Up"  ,10) == 0 ) key = XK_Page_Up  ;
+          else if( strncmp(cpt,"XK_Page_Down",12) == 0 ) key = XK_Page_Down;
+          else if( strncmp(cpt,"XK_Delete"   , 9) == 0 ) key = XK_Delete   ;
+          else if( strncmp(cpt,"XK_Home"     , 7) == 0 ) key = XK_Home     ;
+          else if( strncmp(cpt,"XK_F2"       , 5) == 0 ) key = XK_F2       ;
+          else if( strncmp(cpt,"XK_F3"       , 5) == 0 ) key = XK_F3       ;
+          else if( strncmp(cpt,"XK_F4"       , 5) == 0 ) key = XK_F4       ;
+          else if( strncmp(cpt,"XK_F5"       , 5) == 0 ) key = XK_F5       ;
+          else if( strncmp(cpt,"XK_F6"       , 5) == 0 ) key = XK_F6       ;
+          else if( strncmp(cpt,"XK_F7"       , 5) == 0 ) key = XK_F7       ;
+          else if( strncmp(cpt,"XK_F8"       , 5) == 0 ) key = XK_F8       ;
+          else if( strncmp(cpt,"XK_F9"       , 5) == 0 ) key = XK_F9       ;
+          else if( strncmp(cpt,"XK_F10"      , 6) == 0 ) key = XK_F10      ;
+          else if( strncmp(cpt,"XK_F11"      , 6) == 0 ) key = XK_F11      ;
+          else if( strncmp(cpt,"XK_F12"      , 6) == 0 ) key = XK_F12      ;
+          else                                           key = *cpt        ;
+          ISQ_handle_keypress( isq , key ) ;
+        } else {
+          break ;  /* break out of this while(1) loop */
+        }
+        ccc = cpt+1 ;  /* scan from here for the next keypress= option */
+      } ;
 
    /*--- opened a graph viewer: maybe modify it ---*/
 
@@ -786,23 +839,28 @@ ENTRY("AFNI_drive_open_window") ;
 
       /* keypress [18 Feb 2005] */
 
-      cpt = strstr(cmd,"keypress=") ;
-      if( cpt == NULL ) cpt = strstr(cmd,"keypress:") ;
-      if( cpt != NULL ){
-        char buf[2] ;
-        cpt += 9 ;
-        if( *cpt == '\'' || *cpt == '\"' ) cpt++ ;
-             if( strncmp(cpt,"XK_Left" ,7) == 0 ) buf[0] = '<'  ;
-        else if( strncmp(cpt,"XK_Right",8) == 0 ) buf[0] = '>'  ;
-        else if( strncmp(cpt,"XK_Down" ,7) == 0 ) buf[0] = 'Z'  ;
-        else if( strncmp(cpt,"XK_Up"   ,5) == 0 ) buf[0] = 'z'  ;
-        else                                      buf[0] = *cpt ;
-        if( buf[0] == 'N' ) buf[0] = '\0' ;  /* bad key for this */
-        buf[1] = '\0' ;
-        GRA_timer_stop( gra ) ;
-        GRA_handle_keypress( gra , buf , NULL ) ;
-      }
-
+      ccc = cmd ;   /* 28 Dec 2006: allow multiple keypress= options */
+      while(1){
+        cpt = strstr(ccc,"keypress=") ;
+        if( cpt == NULL ) cpt = strstr(ccc,"keypress:") ;
+        if( cpt != NULL ){
+          char buf[2] ;
+          cpt += 9 ;
+          if( *cpt == '\'' || *cpt == '\"' ) cpt++ ;
+               if( strncmp(cpt,"XK_Left" ,7) == 0 ) buf[0] = '<'  ;
+          else if( strncmp(cpt,"XK_Right",8) == 0 ) buf[0] = '>'  ;
+          else if( strncmp(cpt,"XK_Down" ,7) == 0 ) buf[0] = 'Z'  ;
+          else if( strncmp(cpt,"XK_Up"   ,5) == 0 ) buf[0] = 'z'  ;
+          else                                      buf[0] = *cpt ;
+          if( buf[0] == 'N' ) buf[0] = '\0' ;  /* bad key for this */
+          buf[1] = '\0' ;
+          GRA_timer_stop( gra ) ;
+          GRA_handle_keypress( gra , buf , NULL ) ;
+        } else {
+          break ;  /* break out of this while(1) loop */
+        }
+        ccc = cpt+1 ;  /* scan from here for the next keypress= option */
+      } ;
 
    /*--- opened the controller itself: maybe move it ---*/
 
@@ -861,22 +919,22 @@ ENTRY("AFNI_drive_close_window") ;
 
    /* close a graph or image window */
 
-        if( strstr(cmd,"axialimage") != NULL )
+        if( HAS_axialimage(cmd) )
           drive_MCW_imseq( im3d->s123 , isqDR_destroy , NULL ) ;
 
-   else if( strstr(cmd,"sagittalimage") != NULL )
+   else if( HAS_sagittalimage(cmd) )
           drive_MCW_imseq( im3d->s231 , isqDR_destroy , NULL ) ;
 
-   else if( strstr(cmd,"coronalimage") != NULL )
+   else if( HAS_coronalimage(cmd) )
           drive_MCW_imseq( im3d->s312 , isqDR_destroy , NULL ) ;
 
-   else if( strstr(cmd,"axialgraph") != NULL )
+   else if( HAS_axialgraph(cmd) )
           drive_MCW_grapher( im3d->g123 , graDR_destroy , NULL ) ;
 
-   else if( strstr(cmd,"sagittalgraph") != NULL )
+   else if( HAS_sagittalgraph(cmd) )
           drive_MCW_grapher( im3d->g231 , graDR_destroy , NULL ) ;
 
-   else if( strstr(cmd,"coronalgraph") != NULL )
+   else if( HAS_coronalgraph(cmd) )
           drive_MCW_grapher( im3d->g312 , graDR_destroy , NULL ) ;
 
    else
@@ -2359,12 +2417,12 @@ ENTRY("AFNI_drive_save_1image") ;
 
    /* find graph or image window */
 
-        if( strstr(cmd+dadd,"axialimage")    != NULL ) isq = im3d->s123 ;
-   else if( strstr(cmd+dadd,"sagittalimage") != NULL ) isq = im3d->s231 ;
-   else if( strstr(cmd+dadd,"coronalimage")  != NULL ) isq = im3d->s312 ;
-   else if( strstr(cmd+dadd,"axialgraph")    != NULL ) gra = im3d->g123 ;
-   else if( strstr(cmd+dadd,"sagittalgraph") != NULL ) gra = im3d->g231 ;
-   else if( strstr(cmd+dadd,"coronalgraph")  != NULL ) gra = im3d->g312 ;
+        if( HAS_axialimage   (cmd+dadd) ) isq = im3d->s123 ;
+   else if( HAS_sagittalimage(cmd+dadd) ) isq = im3d->s231 ;
+   else if( HAS_coronalimage (cmd+dadd) ) isq = im3d->s312 ;
+   else if( HAS_axialgraph   (cmd+dadd) ) gra = im3d->g123 ;
+   else if( HAS_sagittalgraph(cmd+dadd) ) gra = im3d->g231 ;
+   else if( HAS_coronalgraph (cmd+dadd) ) gra = im3d->g312 ;
 
    XmUpdateDisplay( im3d->vwid->top_shell ) ;
 
@@ -2460,12 +2518,12 @@ ENTRY("AFNI_drive_save_allimages") ;
 
    /* find graph or image window */
 
-        if( strstr(cmd+dadd,"axialimage")    != NULL ) isq = im3d->s123 ;
-   else if( strstr(cmd+dadd,"sagittalimage") != NULL ) isq = im3d->s231 ;
-   else if( strstr(cmd+dadd,"coronalimage")  != NULL ) isq = im3d->s312 ;
-   else if( strstr(cmd+dadd,"axialgraph")    != NULL ) gra = im3d->g123 ;
-   else if( strstr(cmd+dadd,"sagittalgraph") != NULL ) gra = im3d->g231 ;
-   else if( strstr(cmd+dadd,"coronalgraph")  != NULL ) gra = im3d->g312 ;
+        if( HAS_axialimage   (cmd+dadd) ) isq = im3d->s123 ;
+   else if( HAS_sagittalimage(cmd+dadd) ) isq = im3d->s231 ;
+   else if( HAS_coronalimage (cmd+dadd) ) isq = im3d->s312 ;
+   else if( HAS_axialgraph   (cmd+dadd) ) gra = im3d->g123 ;
+   else if( HAS_sagittalgraph(cmd+dadd) ) gra = im3d->g231 ;
+   else if( HAS_coronalgraph (cmd+dadd) ) gra = im3d->g312 ;
 
    XmUpdateDisplay( im3d->vwid->top_shell ) ;
 

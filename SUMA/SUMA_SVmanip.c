@@ -957,13 +957,14 @@ Updates the View Center and view from of SV based on the contents of RegisteredD
 
 SUMA_Boolean SUMA_UpdateViewPoint (SUMA_SurfaceViewer *SV, SUMA_DO *dov, int N_dov)
 {
+   static char FuncName[]={"SUMA_UpdateViewPoint"};
    int i, do_id, TotWeight;
    float NewCenter[3], UsedCenter[3];
    SUMA_SurfaceObject *so_op;
-   static char FuncName[]={"SUMA_UpdateViewPoint"};
+   SUMA_Boolean LocalHead = NOPE;
       
    SUMA_ENTRY;
-
+               
    NewCenter[0] = 0.0;
    NewCenter[1] = 0.0;
    NewCenter[2] = 0.0;
@@ -975,8 +976,17 @@ SUMA_Boolean SUMA_UpdateViewPoint (SUMA_SurfaceViewer *SV, SUMA_DO *dov, int N_d
       switch (dov[do_id].ObjectType) {
          case SO_type:
             so_op = (SUMA_SurfaceObject *)dov[do_id].OP;
-            if (SV->UsePatchDims) { SUMA_COPY_VEC(so_op->patchCenter, UsedCenter, 3, float, float);  } 
-            else {  SUMA_COPY_VEC(so_op->Center, UsedCenter, 3, float, float); }
+            if (SV->UsePatchDims) { 
+               SUMA_LH("Using patch center");
+               SUMA_COPY_VEC(so_op->patchCenter, UsedCenter, 3, float, float);  
+            } else {  
+               SUMA_LH("Using center of mass or sphere's center.");
+               if (!SUMA_IS_GEOM_SYMM(so_op->isSphere)) {
+                  SUMA_COPY_VEC(so_op->Center, UsedCenter, 3, float, float); 
+               } else {
+                  SUMA_COPY_VEC(so_op->SphereCenter, UsedCenter, 3, float, float); 
+               }
+            }
             if (so_op->ViewCenterWeight) {
                NewCenter[0] += so_op->ViewCenterWeight*UsedCenter[0];
                NewCenter[1] += so_op->ViewCenterWeight*UsedCenter[1];
@@ -1042,7 +1052,13 @@ SUMA_Boolean SUMA_UpdateRotaCenter (SUMA_SurfaceViewer *SV, SUMA_DO *dov, int N_
          case SO_type:
             so_op = (SUMA_SurfaceObject *)dov[do_id].OP;
             if (SV->UsePatchDims) { SUMA_COPY_VEC(so_op->patchCenter, UsedCenter, 3, float, float);  } 
-            else {  SUMA_COPY_VEC(so_op->Center, UsedCenter, 3, float, float); }
+            else {  
+               if (SUMA_IS_GEOM_SYMM(so_op->isSphere)) {
+                  SUMA_COPY_VEC(so_op->SphereCenter, UsedCenter, 3, float, float); 
+               } else {
+                  SUMA_COPY_VEC(so_op->Center, UsedCenter, 3, float, float); 
+               }
+            }
             if (so_op->RotationWeight) {
                NewCenter[0] += so_op->RotationWeight*UsedCenter[0];
                NewCenter[1] += so_op->RotationWeight*UsedCenter[1];
@@ -1132,8 +1148,8 @@ char *SUMA_SurfaceViewer_StructInfo (SUMA_SurfaceViewer *SV, int detail)
                                              SV->light0_position[2], SV->light0_position[3], SV->lit_for);
    SS = SUMA_StringAppend_va(SS,"   light1_position = [%f %f %f %f]\n", SV->light1_position[0], SV->light1_position[1], SV->light1_position[2], SV->light1_position[3]);
    SS = SUMA_StringAppend_va(SS,"   ZoomCompensate = %f\n", SV->ZoomCompensate);
-   SS = SUMA_StringAppend_va(SS,"   WindWidth = %d\n", SV->WindWidth);
-   SS = SUMA_StringAppend_va(SS,"   WindHeight = %d\n", SV->WindHeight);
+   SS = SUMA_StringAppend_va(SS,"   WindWidth/WIDTH = %d/%d\n", SV->WindWidth, SV->X->WIDTH);
+   SS = SUMA_StringAppend_va(SS,"   WindHeight/HEIGHT = %d/%d\n", SV->WindHeight, SV->X->HEIGHT);
    SS = SUMA_StringAppend_va(SS,"   ShowWorldAxis = %d\n", SV->ShowWorldAxis);
    if (SV->WAx) {
       SS = SUMA_StringAppend_va(SS,"   WorldAxis: Center = [%f %f %f] BR = [%f %f %f , %f %f %f]\n", 
@@ -1785,7 +1801,19 @@ SUMA_CommonFields * SUMA_Create_CommonFields ()
          }
       } else cf->SUMA_ThrScalePowerBias = 2; 
    }
-   
+   {
+      char *eee = getenv("SUMA_SnapshotOverSampling");
+      if (eee) {
+         cf->SUMA_SnapshotOverSampling = (int)strtod(eee, NULL);
+         if (cf->SUMA_SnapshotOverSampling < 1 || cf->SUMA_SnapshotOverSampling>10) {
+            fprintf (SUMA_STDERR,   "Warning %s:\n"
+                                    "Bad value for environment variable\n"
+                                    "SUMA_SnapshotOverSampling.\n"
+                                    "Assuming default of 1", FuncName);
+            cf->SUMA_SnapshotOverSampling = 1;
+         }
+      } else cf->SUMA_SnapshotOverSampling = 1; 
+   }
    {
       char *eee = getenv("SUMA_WarnBeforeClose");
       if (eee) {
@@ -1835,6 +1863,7 @@ SUMA_CommonFields * SUMA_Create_CommonFields ()
       cf->ColMixMode = SUMA_ORIG_MIX_MODE;
    }
    
+   
    cf->GroupList = NULL;
    cf->N_Group = -1;
    
@@ -1870,7 +1899,23 @@ SUMA_CommonFields * SUMA_Create_CommonFields ()
       cf->Timer[i].lastcall = -1.0;
    }
    cf->N_Timer = 0;
-
+   
+   {
+      char *eee = getenv("SUMA_NoDuplicatesInRecorder");
+      if (eee) {
+         if (strcmp(eee,"NO") == 0) cf->NoDuplicatesInRecorder = 0;
+         else if (strcmp(eee,"YES") == 0) cf->NoDuplicatesInRecorder = 1;
+         else {
+            fprintf (SUMA_STDERR,   "Warning %s:\n"
+                                    "Bad value for environment variable SUMA_NoDuplicatesInRecorder\n"
+                                    "Assuming default of YES", FuncName);
+            cf->NoDuplicatesInRecorder = 1;
+         }
+      } else cf->NoDuplicatesInRecorder = 1;
+   }
+   /*if (SUMAg_CF->NoDuplicatesInRecorder) SNAP_NoDuplicates();
+   else SNAP_OkDuplicates();
+*/
    cf->cwd = SUMA_getcwd();
    
    return (cf);
@@ -2356,7 +2401,7 @@ char * SUMA_CommonFieldsInfo (SUMA_CommonFields *cf, int detail)
          else el = dlist_next(el);
          dset = (SUMA_DSET *)el->data;
          if (!dset) {
-            SUMA_SLP_Err("Unexpected NULL dset element in list!\nPlease report this occurrence to ziad@nih.gov."); 
+            SUMA_SLP_Err("Unexpected NULL dset element in list!\nPlease report this occurrence to saadz@mail.nih.gov."); 
          } else {   
            s = SUMA_DsetInfo (dset,0);
            SS = SUMA_StringAppend_va(SS, "\n%s\n", s); SUMA_free(s); s = NULL;    

@@ -395,6 +395,7 @@ typedef struct {
       Widget dataset_frame , dataset_rowcol ,
              choose_sess_pb    , choose_anat_pb    , choose_func_pb   ,
              popchoose_sess_pb , popchoose_anat_pb , popchoose_func_pb ;
+      Widget choose_rowcol , rescan_pb , nimlpo_pb ;  /* 02 Feb 2007 */
 
       Boolean marks_pb_inverted , func_pb_inverted , dmode_pb_inverted ;
 
@@ -1149,6 +1150,8 @@ extern void AFNI_make_widgets  ( Three_D_View * im3d );
 extern void AFNI_closedown_3dview( Three_D_View * im3d );
 extern void AFNI_startup_3dview  ( Three_D_View * im3d ); /* 15 Jun 2000 */
 extern MRI_IMAGE * AFNI_overlay( int n , FD_brick * br );
+extern void AFNI_invert_CB( Widget, XtPointer, XtPointer ) ; /* 02 Feb 2007 */
+extern void AFNI_nimlpo_CB( Widget, XtPointer, XtPointer ) ; /* 02 Feb 2007 */
 
 extern char * AFNI_controller_label( Three_D_View * im3d ); /* 01 Apr 1999 */
 extern void AFNI_set_window_titles( Three_D_View * im3d );
@@ -1362,6 +1365,9 @@ extern void AFNI_thr_scale_CB( Widget , XtPointer , XtPointer ) ;
 extern void AFNI_set_thr_pval( Three_D_View * im3d ) ;
 extern void AFNI_thr_scale_drag_CB( Widget , XtPointer , XtPointer ) ;
 
+extern float AFNI_get_autothresh( Three_D_View * ) ;        /* 05 Mar 2007 */
+extern void AFNI_set_threshold( Three_D_View * , float  ) ;
+
 extern void AFNI_inten_pbar_CB( MCW_pbar * , XtPointer , int ) ;
 extern void AFNI_inten_av_CB( MCW_arrowval * , XtPointer ) ;
 extern char * AFNI_inten_av_texter ( MCW_arrowval *, XtPointer ) ; /* 30 Jan 2003 */
@@ -1373,6 +1379,7 @@ extern void   AFNI_thresh_top_CB( MCW_arrowval * , XtPointer ) ;
 extern void AFNI_set_valabel( FD_brick *, int, MRI_IMAGE *, char * ) ;
 
 extern void AFNI_init_niml( void ) ; /* 28 Feb 2002 */
+extern int  AFNI_have_niml( void ) ; /* 02 Feb 2007 */
 
 extern void AFNI_choose_surface_CB( Widget , XtPointer , XtPointer ) ; /* 19 Aug 2002 */
 extern void AFNI_update_surface_widgets( Three_D_View * ) ;
@@ -1429,6 +1436,7 @@ extern void AFNI_copy_statistics( THD_3dim_dataset * , THD_3dim_dataset * ) ;
 extern void AFNI_lock_button( Three_D_View * ) ;
 extern void AFNI_misc_button( Three_D_View * ) ;
 extern void AFNI_misc_CB    ( Widget , XtPointer , XtPointer );
+extern void AFNI_editenv_CB ( Widget , XtPointer , XtPointer );
 
 extern void AFNI_add_timeseries( MRI_IMAGE * ) ;
 

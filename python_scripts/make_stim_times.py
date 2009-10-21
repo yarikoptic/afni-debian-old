@@ -52,48 +52,73 @@ examples:
        3 stim_times files (stimes.01.1D, stimes.02.1D, stimes.02.1D)
        having the times, in seconds, of the stimuli, one run per row.
 
-            make.stim.files -files stimA.1D stimB.1D stimC.1D   \\
+            make_stim_files -files stimA.1D stimB.1D stimC.1D   \\
                             -prefix stimes -tr 2.5 -nruns 7 -nt 100
 
     2. Same as 1, but suppose stim_all.1D has all 3 stim types (so 3 columns).
 
-            make.stim.files -files stim_all.1D -prefix stimes -tr 2.5 \\
+            make_stim_files -files stim_all.1D -prefix stimes -tr 2.5 \\
                             -nruns 7 -nt 100
 
     3. Same as 2, but the stimuli were presented at the middle of the TR, so
        add 1.25 seconds to each stimulus time.
 
-            make.stim.files -files stim_all.1D -prefix stimes -tr 2.5 \\
+            make_stim_files -files stim_all.1D -prefix stimes -tr 2.5 \\
                             -nruns 7 -nt 100 -offset 1.25
 
     4. An appropriate conversion of stim_files to stim_times for the 
        example in AFNI_data2 (HowTo #5).
 
-            make_stim_times.py -prefix ED_times -tr 1.0 -nruns 10 -nt 272 \\
+            make_stim_times.py -prefix stim_times -tr 1.0 -nruns 10 -nt 272 \\
                                -files misc_files/all_stims.1D
 
 - R Reynolds, Nov 17, 2006
 ===========================================================================
 """
 
+g_mst_history = """
+    make_stim_times.py history:
+
+    1.0  Dec     2006: initial release
+    1.1  Feb 02, 2007:
+         - only print needed '*' (or two) for first run
+         - added options -hist, -ver
+"""
+
+g_mst_version = "version 1.1, February 2, 2007"
+
 def get_opts():
     global g_help_string
     okopts = option_list.OptionList('for input')
-    okopts.add_opt('-files', -1, [], req=True)
-    okopts.add_opt('-prefix', 1, [], req=True)
-    okopts.add_opt('-tr', 1, [], req=True)
-    okopts.add_opt('-nt', 1, [], req=True)
-    okopts.add_opt('-nruns', 1, [], req=True)
+    okopts.add_opt('-help', 0, [])
+    okopts.add_opt('-hist', 0, [])
+    okopts.add_opt('-ver', 0, [])
+
+    okopts.add_opt('-files', -1, [], req=1)
+    okopts.add_opt('-prefix', 1, [], req=1)
+    okopts.add_opt('-tr', 1, [], req=1)
+    okopts.add_opt('-nt', 1, [], req=1)
+    okopts.add_opt('-nruns', 1, [], req=1)
     okopts.add_opt('-offset', 1, [])
     okopts.add_opt('-verb', 1, [])
-    okopts.trailers = True
+    okopts.trailers = 1
 
     # if argv has only the program name, or user requests help, show it
     if len(sys.argv) <= 1 or '-help' in sys.argv:
         print g_help_string
-        return None
+        return
+
+    # check for -ver and -hist, too
+    if '-hist' in sys.argv:
+        print g_mst_history
+        return
+
+    if '-ver' in sys.argv:
+        print g_mst_version
+        return
 
     opts = option_list.read_options(sys.argv, okopts)
+
     return opts
 
 def proc_mats(uopts):
@@ -157,12 +182,13 @@ def proc_mats(uopts):
             if newfile == None: return
             fp = open(newfile, 'w')
 
-            need_ast = True         # '*' filler in case of 1 stim per run, max
+            need_ast = 1         # '*' filler in case of 1 stim per run, max
             for run in range(nruns):
                 rindex = run * nt   # point to start of run
 
                 if not 1 in row[rindex:rindex+nt]:  # no stim in this run
-                    fp.write('*\n')
+                    if run == 0: fp.write('* *\n')  # first run gets 2
+                    else:        fp.write('*\n')
                     continue
                 time = 0        # in this run
                 nstim = 0       # be sure we have more than 1 somewhere
@@ -171,10 +197,10 @@ def proc_mats(uopts):
                         nstim += 1
                         fp.write('%s ' % str(time+offset))
                     time += tr
-                if need_ast and nstim == 1: # first time of 1 stim, add '*'
-                    fp.write('*')
-                    need_ast = False
-                elif nstim > 1: need_ast = False     # no worries
+                if run == 1 and need_ast and nstim == 1:
+                    fp.write('*')   # if first time has 1 stim, add '*'
+                    need_ast = 0
+                elif nstim > 1: need_ast = 0     # no worries
                 fp.write('\n')
 
             fp.close()

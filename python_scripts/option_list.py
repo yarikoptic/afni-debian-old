@@ -4,7 +4,7 @@
 
 # do we want all of the 
 
-import sys, glob, string
+import sys
 import afni_base
 
 # ---------------------------------------------------------------------------
@@ -13,7 +13,7 @@ class OptionList:
     def __init__(self, label):
         self.label    = label
         self.olist    = []      # list of comopt elements
-        self.trailers = False   # for  read_options: no trailing args allowed
+        self.trailers = 0       # for  read_options: no trailing args allowed
                                 # from read_options: say there were such args
 
     def show(self, mesg = ''):
@@ -39,7 +39,7 @@ class OptionList:
             if com.name == name: count += 1
         return count
 
-    def add_opt(self, name, npar, defpar, acplist=[], req=False, setpar=False):
+    def add_opt(self, name, npar, defpar, acplist=[], req=0, setpar=0):
         com = afni_base.comopt(name, npar, defpar, acplist)
         com.required = req
         if setpar: com.parlist = com.deflist
@@ -121,14 +121,16 @@ def read_options(argv, oplist, verb = 1):
                 for par in parlist:
                     # check against repr(list), since par is a string
                     if par not in repr(newopt.acceptlist):  # unacceptable!!
-                        print "** option %s, param %s is not in: %s" % \
+                        print "** option %s: param '%s' is not in: %s" % \
                               (newopt.name, par, newopt.acceptlist)
                         return None  # what else can we do?
 
             # so do we still have enough parameters?
-            if len(parlist) < newopt.n_exp:
+            if newopt.n_exp < 0: nreq = abs(newopt.n_exp)
+            else:                nreq = newopt.n_exp
+            if len(parlist) < nreq:
                 print "** error: arg #%d (%s) requires %d params, found %d" % \
-                      (ac-1, newopt.name, newopt.n_exp, pc)
+                      (ac-1, newopt.name, nreq, len(parlist))
                 return None
 
             # success!  insert the remaining list
@@ -163,8 +165,8 @@ def read_options(argv, oplist, verb = 1):
             if co.required: 
                 print "** error: missing option %s" % co.name
                 return None
-            elif co.n_exp > 0 and co.n_exp == len(co.deflist):  # use it
-                newopt = afni_base.comopt(co.name, co.n_exp, co.deflist)
+            elif len(co.deflist) > 0:  # use it
+                newopt = afni_base.comopt(co.name, len(co.deflist), co.deflist)
                 newopt.parlist = newopt.deflist
                 # leave n_found at -1, so calling function knows
                 OL.olist.append(newopt) # insert newopt into our return list
@@ -183,7 +185,8 @@ def test_comopts():
     okopts.add_opt('-debug',  1, ['0'       ],     range(4) )
     okopts.add_opt('-c',      2, ['21', '24']               )
     okopts.add_opt('-d',     -1, [          ]               )
-    okopts.trailers = True # allow trailing args
+    okopts.add_opt('-e',     -2, ['21', '24', '265']        )
+    okopts.trailers = 1 # allow trailing args
 
     okopts.show('------ possible input options ------ ')
 

@@ -321,6 +321,11 @@ PARSE:
 
 
 IN_CHECK:
+if ("$suf" == '' && $KeepView == 1) then
+   echo "Cannot use -keep_view and -suffix none"
+   goto END
+endif
+
 if ( `@CheckForAfniDset ${ref_in}` != 2 ) then
    echo "Error: Template dset ${ref_in} not found."
    goto END
@@ -376,18 +381,28 @@ endif
 AUTO_TLRC_MODE:
    #Check for center differences and warn
    set dist_cent = `@Center_Distance -dset ${ref_in} ${anat_in}`
-   if (`ccalc -form int -eval "step($dist_cent - 80)"`) then
+   if (`ccalc -form int -eval "step($dist_cent - 40)"`) then
       echo ""
       echo "*********** Warning *************"
       echo "Dataset centers are $dist_cent mm"
-      echo "apart. If registration fails, try"
-      echo "recentering all the input data using"
-      echo "@Align_Centers"
+      echo "apart. If registration fails, or if"
+      echo "parts of the original anatomy gets"
+      echo "cropped, try recentering all the "
+      echo "input data using this command:"
+      echo "@Align_Centers -base ${ref_in} \"
+      echo "               -dset ${anat_in} \"
+      echo "               -child ${anat_path}/*.HEAD\"
+      echo ""
+      echo "Then rerun `basename $0` using the _shft"
+      echo "version of your datasets."
+      echo ""
       echo "*********************************"
       echo ""
-      echo "Hit Enter to proceed."
-      echo ""
-      set junk = $<
+      if (`ccalc -form int -eval "step($dist_cent - 80)"`) then
+         echo "Hit Enter to proceed."
+         echo ""
+         set junk = $<
+      endif
    else
       echo "Center distance of $dist_cent mm"   
    endif 
@@ -495,6 +510,7 @@ AUTO_TLRC_MODE:
       set rms_i = `echo "$res" | cut -d ' ' -f3`
       set rms_f = `echo "$res" | cut -d ' ' -f4`
       set rms_diff_pos = `ccalc -eval "step($rms_f - $rms_i)" | cut -d '.' -f1`
+      set rms_ratio = `ccalc -form int -eval "($rms_i - $rms_f) / $rms_i * 100"`
       set rat = `echo "$res" | cut -d ' ' -f9` 
       set niter = `echo "$rat" | cut -d '/' -f1`
       set nitermax = `echo "$rat" | cut -d '/' -f2`
@@ -562,29 +578,41 @@ AUTO_TLRC_MODE:
                set maxite = "-maxite $ans"
                set Converged = 0
                set pass = 2
-            else 
-               echo ""
-               echo "Warping used up maximum iterations"
-               echo "even after doubling number of iterations to $nitermax."
-               echo "Convergence might not have"
-               echo "been reached."
-               echo "Try rerunning the script with a transform"
-               echo "type of fewer parameters (-xform) or by using "
-               echo "an even higher number of iterations (-maxite)."
-               echo "You can also choose to continue with the"
-               echo "current result (dset: ${tmppref}_reg_warpdriveout${anat_view}"
-               echo "by using the option: -OK_maxite"
-               echo ""
-               set pass = 3
-               if ($accept_maxite == 1) then
-                  #doing nothing will proceed
-                  echo "Accepting result per user's choice."
+            else
+               if ($rms_ratio > 30) then 
                   echo ""
+                  echo "Warping used up maximum iterations even after "
+                  echo "doubling number of iterations to $nitermax."
+                  echo "However, convergence is possible, given an RMS"
+                  echo "improvement of $rms_ratio%"
+                  echo "Check results at the end"
+                  echo ""
+                  set pass = 3
                else
-                  echo "Script will stop ..."
                   echo ""
-                  set Converged = 0
-                  goto END
+                  echo "Warping used up maximum iterations"
+                  echo "even after doubling number of iterations to $nitermax."
+                  echo "Convergence might not have been reached."
+                  echo ""
+                  echo "If you find the alignment poor, try"
+                  echo "rerunning the script with a transform"
+                  echo "type of fewer parameters (-xform) or by using "
+                  echo "an even higher number of iterations (-maxite)."
+                  echo "You can also choose to continue with the"
+                  echo "current result (dset: ${tmppref}_reg_warpdriveout${anat_view}"
+                  echo "by using the option: -OK_maxite"
+                  echo ""
+                  set pass = 3
+                  if ($accept_maxite == 1) then
+                     #doing nothing will proceed
+                     echo "Accepting result per user's choice."
+                     echo ""
+                  else
+                     echo "Script will stop ..."
+                     echo ""
+                     set Converged = 0
+                     goto END
+                  endif
                endif   
             endif
          endif
@@ -606,37 +634,47 @@ AUTO_TLRC_MODE:
    UNPAD:
    #unPadding the anatomical 
    echo "Unpadding ..."
+   set tt_prefupad = ${tmppref}__upad${pd}_${tt_pref}
    3dZeropad   -I -$pd -S -$pd -A -$pd -P -$pd -L -$pd -R -$pd -mm \
-               -prefix ${tt_pref} ${tt_prefpad}${anat_view}
+               -prefix ${tt_prefupad} ${tt_prefpad}${anat_view}
    #copy the WARPDRIVE_MATVEC_ fields to the zero unpadded dude
-   3drefit -atrcopy ${tmppref}_reg_warpdriveout${anat_view} WARPDRIVE_INPUT_IDCODE ${tt_pref}${anat_view}
-   3drefit -atrcopy ${tmppref}_reg_warpdriveout${anat_view} WARPDRIVE_INPUT_NAME ${tt_pref}${anat_view}
-   3drefit -atrcopy ${tmppref}_reg_warpdriveout${anat_view} WARPDRIVE_BASE_IDCODE ${tt_pref}${anat_view}
-   3drefit -atrcopy ${tmppref}_reg_warpdriveout${anat_view} WARPDRIVE_MATVEC_FOR_000000 ${tt_pref}${anat_view}
-   3drefit -atrcopy ${tmppref}_reg_warpdriveout${anat_view} WARPDRIVE_MATVEC_INV_000000 ${tt_pref}${anat_view}
-   3dNotes -a "Dataset created via: `basename $0` $argv[*]" -h "Dataset created via: `basename $0` $argv[*]" ${tt_pref}${anat_view}
+   3drefit -atrcopy ${tmppref}_reg_warpdriveout${anat_view} WARPDRIVE_INPUT_IDCODE ${tt_prefupad}${anat_view}
+   3drefit -atrcopy ${tmppref}_reg_warpdriveout${anat_view} WARPDRIVE_INPUT_NAME ${tt_prefupad}${anat_view}
+   3drefit -atrcopy ${tmppref}_reg_warpdriveout${anat_view} WARPDRIVE_BASE_IDCODE ${tt_prefupad}${anat_view}
+   3drefit -atrcopy ${tmppref}_reg_warpdriveout${anat_view} WARPDRIVE_MATVEC_FOR_000000 ${tt_prefupad}${anat_view}
+   3drefit -atrcopy ${tmppref}_reg_warpdriveout${anat_view} WARPDRIVE_MATVEC_INV_000000 ${tt_prefupad}${anat_view}
+   3dNotes -a "Dataset created via: `basename $0` $argv[*]" -h "Dataset created via: `basename $0` $argv[*]" ${tt_prefupad}${anat_view}
    
    if ($KeepView == 0) then
       echo "Changing view of transformed anatomy"
-      3drefit -view ${ref_view} ${tt_pref}${anat_view}.HEAD
+      3drefit -view ${ref_view} ${tt_prefupad}${anat_view}.HEAD
       if ("${ref_view}" == "+tlrc" && "${anat_view}" == "+orig") then
          #Now add a 3drefit line to specify the warp parent
-         3drefit -wset ${anat_in} ${tt_pref}${ref_view}
+         echo "Setting parent with 3drefit -wset ${anat_in} ${tt_prefupad}${ref_view}"
+         3drefit -wset ${anat_in} ${tt_prefupad}${ref_view}
       endif
+      #finally, rename the damned thing
+      3drename ${tt_prefupad}${ref_view} ${tt_pref}${ref_view}
+   else
+      3drename ${tt_prefupad}${anat_view} ${tt_pref}${anat_view}
    endif
+   
    
    ACPCIATE:
    if ($acpciate == 1) then
       echo "Doing the MSB thing..."
       #create a version witout scaling
-      cat_matvec ${tt_pref}${ref_view}::WARPDRIVE_MATVEC_INV_000000 -P > ${tmppref}__MP.1D
-      3dWarp -matvec_in2out ${tmppref}__MP.1D -prefix ${tmppref}_acpciate ${ns_pref}${anat_view}
+      cat_matvec ${tt_pref}${ref_view}::WARPDRIVE_MATVEC_INV_000000 -P > ${tt_pref}_rigid_MP.1D
+      3dWarp -matvec_in2out ${tt_pref}_rigid_MP.1D -prefix ${tmppref}_acpciate ${ns_pref}${anat_view}
       if ($KeepView == 0) then
          echo "Changing view of rigid_equiv anatomy"
          3drefit -view ${ref_view} ${tmppref}_acpciate${anat_view}.HEAD
       endif
       #Now resample as +tlrc dset 
       3dresample -master ${tt_pref}${ref_view} -inset ${tmppref}_acpciate${ref_view} -prefix ${tt_pref}_rigid
+      
+      3dNotes -a "Dataset created via: `basename $0` $argv[*]" -h "Dataset created via: `basename $0` $argv[*]" ${tt_pref}${anat_view}
+      
    endif
    
    goto WRAP_UP

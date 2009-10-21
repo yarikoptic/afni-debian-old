@@ -27,8 +27,10 @@ void MCW_expose_widget( Widget w )
    XExposeEvent xev;
    Dimension ww , hh ;
 
+                               if(   w == NULL                 ) return ;
                                if( ! XtIsRealized(w)           ) return ;
                                if( ! XtIsManaged(w)            ) return ;
+                               if( ! XtIsWidget(w)             ) return ;
    xev.window  = XtWindow(w) ; if( xev.window == (Window) NULL ) return ;
    xev.type    = Expose ;
    xev.display = XtDisplay(w) ;
@@ -181,13 +183,15 @@ void MCW_set_widget_bg( Widget w , char * cname , Pixel pix )
 
 /*-------------------------------------------------------------------*/
 
-void MCW_set_widget_label( Widget w , char * str )
+void MCW_set_widget_label( Widget w , char *str )
 {
    XmString xstr ;
+   if( w == NULL || str == NULL ) return ;
    xstr = XmStringCreateLtoR( str , XmFONTLIST_DEFAULT_TAG ) ;
    XtVaSetValues( w , XmNlabelString , xstr , NULL ) ;
    XmStringFree( xstr ) ;
    MCW_expose_widget( w ) ;
+   return ;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -297,7 +301,7 @@ Widget MCW_action_area( Widget parent, MCW_action_item * action, int num_act )
                   XmNrightPosition    , ii*TIG + (TIG-1) ,
 
                   XmNrecomputeSize , False ,
-                  XmNtraversalOn   , False ,
+                  XmNtraversalOn   , True  ,
                   XmNinitialResourcesPersistent , False ,
                NULL ) ;
 
@@ -345,7 +349,7 @@ Widget MCW_popup_message( Widget wparent , char *msg , int msg_type )
 
 ENTRY("MCW_popup_message") ;
 
-   if( ! XtIsRealized( wparent ) ||
+   if( ! wparent || ! XtIsRealized( wparent ) ||
        msg == NULL               || strlen(msg) == 0 ) RETURN(NULL) ;
 
    /* set position for message box based on parent and screen geometry */
@@ -1034,7 +1038,7 @@ ENTRY("MCW_popup_meter") ;
                XmNborderWidth , 0 ,
                XmNhighlightThickness , 0 ,
                XmNshadowThickness , 0 ,
-               XmNtraversalOn , False ,
+               XmNtraversalOn , True  ,
                XmNinitialResourcesPersistent , False ,
             NULL ) ;
 
@@ -1082,10 +1086,10 @@ void MCW_set_meter( Widget wscal , int percent )
 #ifdef NCOL
    { Widget ws = XtNameToWidget(wscal,"Scrollbar") ;
      if( ws != NULL )
-     XtVaSetValues( ws ,
-                     XtVaTypedArg , XmNtroughColor , XmRString ,
-                                    cname[icol] , strlen(cname[icol])+1 ,
-                   NULL ) ;
+       XtVaSetValues( ws ,
+                       XtVaTypedArg , XmNtroughColor , XmRString ,
+                                      cname[icol] , strlen(cname[icol])+1 ,
+                      NULL ) ;
      icol = (icol+1) % NCOL ;
    }
 #endif
@@ -1093,6 +1097,18 @@ void MCW_set_meter( Widget wscal , int percent )
    XmUpdateDisplay(wscal) ;
    return ;
 }
+
+/*------------------------------------------------------------------------*/
+
+#if 0
+static void MCW_textwin_timer_CB( XtPointer client_data , XtIntervalId *id )
+{
+   Widget ws = (Widget)client_data ;
+   XtVaSetValues( ws , XmNincrement     , 1 ,
+                       XmNpageIncrement , 1 ,
+                       XmNmaximum       , 100 , NULL ) ;
+}
+#endif
 
 /*-----------------------------------------------------------------------*/
 
@@ -1113,16 +1129,16 @@ MCW_textwin * new_MCW_textwin( Widget wpar, char * msg, int type )
    Modified 10 Jul 2001 to include killing callback
 -------------------------------------------------------------------------*/
 
-MCW_textwin * new_MCW_textwin_2001( Widget wpar, char * msg, int type,
-                                    void_func * kill_func , XtPointer kill_data )
+MCW_textwin * new_MCW_textwin_2001( Widget wpar, char *msg, int type,
+                                    void_func *kill_func , XtPointer kill_data )
 {
-   MCW_textwin * tw ;
+   MCW_textwin *tw ;
    int wx,hy,xx,yy , xp,yp , scr_width,scr_height , xr,yr , xpr,ypr , ii,nact ;
    int swid , shi ;
    Position xroot , yroot ;
-   Screen * scr ;
-   Boolean editable ;
-   Arg wa[64] ; int na ;
+   Screen *scr ;
+   Boolean editable , cursorable ;
+   Arg wa[64] ; int na ; Widget ws ;
 
 ENTRY("new_MCW_textwin_2001") ;
 
@@ -1175,13 +1191,14 @@ ENTRY("new_MCW_textwin_2001") ;
                 "menu" , xmFormWidgetClass , tw->wshell ,
                   XmNborderWidth , 0 ,
                   XmNborderColor , 0 ,
-                  XmNtraversalOn , False ,
+                  XmNtraversalOn , True  ,
                   XmNinitialResourcesPersistent , False ,
                 NULL ) ;
 
    /* create action area */
 
    editable = (Boolean) (type == TEXT_EDITABLE) ;
+   cursorable = True ;  /* 26 Feb 2007 */
 
    nact = (editable) ? EDIT_NUM : RONLY_NUM ;
    for( ii=0 ; ii < nact ; ii++ ){
@@ -1220,16 +1237,16 @@ ENTRY("new_MCW_textwin_2001") ;
    tw->wtext = XtVaCreateManagedWidget(
                     "menu" , xmTextWidgetClass , tw->wscroll ,
                        XmNeditMode               , XmMULTI_LINE_EDIT ,
-                       XmNautoShowCursorPosition , editable ,
+                       XmNautoShowCursorPosition , cursorable ,
                        XmNeditable               , editable ,
-                       XmNcursorPositionVisible  , editable ,
+                       XmNcursorPositionVisible  , cursorable ,
                     NULL ) ;
 
    if( msg == NULL ) msg = "\0" ;  /* 27 Sep 2000 */
 
    if( msg != NULL ){
       int cmax = 20 , ll , nlin ;
-      char * cpt , *cold , cbuf[128] ;
+      char *cpt , *cold , cbuf[128] ;
       XmString xstr ;
       XmFontList xflist ;
 
@@ -1238,14 +1255,14 @@ ENTRY("new_MCW_textwin_2001") ;
 
       cmax = 20 ; nlin = 1 ;
       for( cpt=msg,cold=msg ; *cpt != '\0' ; cpt++ ){
-         if( *cpt == '\n' ){
-            ll = cpt - cold - 1 ; if( cmax < ll ) cmax = ll ;
-            cold = cpt ; nlin++ ;
-         }
+        if( *cpt == '\n' ){
+          ll = cpt - cold - 1 ; if( cmax < ll ) cmax = ll ;
+          cold = cpt ; nlin++ ;
+        }
       }
       ll = cpt - cold - 1 ; if( cmax < ll ) cmax = ll ;
       if( cmax > 100 ) cmax = 100 ;
-      cmax+=3 ;
+      cmax +=3 ;
       for( ll=0 ; ll < cmax ; ll++ ) cbuf[ll] = 'x' ;
       cbuf[cmax] = '\0' ;
 
@@ -1279,6 +1296,24 @@ ENTRY("new_MCW_textwin_2001") ;
    tw->shell_width = swid ; tw->shell_height = shi ; /* 10 Jul 2001 */
 
    NORMAL_cursorize( tw->wshell ) ;
+
+   ws = XtNameToWidget(tw->wscroll,"VertScrollBar") ;
+   if( ws != NULL ){
+#ifdef DARWIN
+     XtVaSetValues( ws , XmNshowArrows , XmMIN_SIDE , NULL ) ;
+#endif
+     (void)XmProcessTraversal( ws , XmTRAVERSE_CURRENT ) ;
+#if 0
+     (void)XtAppAddTimeOut( XtWidgetToApplicationContext(ws) ,
+	                         66 , MCW_textwin_timer_CB , ws   ) ;
+#endif
+   }
+#ifdef DARWIN
+   ws = XtNameToWidget(tw->wscroll,"HorScrollBar") ;
+   if( ws != NULL )
+     XtVaSetValues( ws , XmNshowArrows , XmMIN_SIDE , NULL ) ;
+#endif
+
    RETURN(tw) ;
 }
 

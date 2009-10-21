@@ -1,18 +1,5 @@
 #!/usr/bin/env python
 
-# todo: - verify whether dsets contain subj_id as sub-string
-#
-#
-# For now, do not consider re-running old process steps from
-# script dir.  Since the purpose of this python script is to
-# create a tcsh script, then that script would need to be
-# responsible for creation of the python state.  Maybe we can
-# create a state file with the subject ID, and allow the user
-# to specify it along with an execution directory.
-#
-# dset name form is index.user_prefix.run.operation
-# e.g. p02.SUBJ.r03.volreg (+orig)
-#
 # note: in the script, runs are 1-based (probably expected)
 
 import sys
@@ -33,35 +20,63 @@ g_help_string = """
     afni_proc.py        - generate a tcsh script for an AFNI process stream
 
     This python script can generate a processing script via a command-line
-    interface by a tk GUI (eventually).  The user should minimally provide
-    the input datasets (-dsets) and stimulus files (-regress_stim_*).
+    interface, with an optional question/answer session (-ask_me), or by a tk
+    GUI (eventually).
 
-    The output script will create a results directory, copy input files into
-    it, and perform all processing there.  So the user can delete the results
-    directory and re-run the script at their leisure.
+    The user should provide at least the input datasets (-dsets) and stimulus
+    files (-regress_stim_*), in order to create an output script.  See the
+    'DEFAULTS' section for a description of the default options for each block.
 
-    Note that the output script need to be ever run.  The user should feel
-    free to modify the script for their own evil purposes.
+    The output script, when executed will create a results directory, copy
+    input files into it, and perform all processing there.  So the user can
+    delete the results directory and re-run the script at their whim.
+
+    Note that the user need not actually run the output script.  The user
+    should feel free to modify the script for their own evil purposes, before
+    running it.
+
+    The text interface can be accessed via the -ask_me option.  It envokes a
+    question & answer session, during which this program sets user options on
+    the fly.  The user may elect to enter some of the options on the command
+    line, even if using -ask_me.  See "-ask_me EXAMPLES", below.
 
     --------------------------------------------------
+    TIMING FILE NOTE:
+
+    One issue that the user must be sure of is the timing of the stimulus
+    files (whether -regress_stim_files or -regress_stim_times is used).
+
+    The 'tcat' step will remove the number of pre-steady-state TRs that the
+    user specifies (defaulting to 0).  The stimulus files, provided by the
+    user, must match datasets that have had such TRs removed (i.e. the stim
+    files should start _after_ steady state has been reached).
+
+    --------------------------------------------------
+    PROCESSING STEPS (of the output script):
+
     The output script will go through the following steps, unless the user
     specifies otherwise.
 
-    automatic steps:
+    automatic steps (the tcsh script will always perform these):
 
         setup       : check subject arg, set run list, create output dir, and
                       copy stim files
         tcat        : copy input datasets and remove unwanted initial TRs
 
-    optional steps:
+    default steps (the user may skip these, or alter their order):
 
         tshift      : slice timing alignment on volumes (default is -time 0)
-        volreg      : volume registration (default to first volume)
+        volreg      : volume registration (default to third volume)
         blur        : blur each volume (default is 4mm fwhm)
         mask        : create a 'brain' mask from the EPI data (dilate 1 voxel)
         scale       : scale each run mean to 100, for each voxel (max of 200)
         regress     : regression analysis (default is GAM, peak 1, with motion
                       params)
+
+    optional steps (the default is _not_ to apply these blocks)
+
+        despike     : truncate spikes in each voxel's time series
+        empty       : placehold for some user commamd (using 3dTcat as sample)
 
     --------------------------------------------------
     EXAMPLES (options can be provided in any order):
@@ -75,81 +90,206 @@ g_help_string = """
                 afni_proc.py -dsets epiRT*.HEAD              \\
                              -regress_stim_files stims.1D
 
+           or without any wildcard, the .HEAD suffix is not needed:
+
+                afni_proc.py -dsets epiRT_r1+orig epiRT_r2+orig epiRT_r3+orig \\
+                             -regress_stim_files stims.1D
 
      ** The following examples can be run from the AFNI_data2 directory, and
         are examples of how one might process the data for subject ED.
 
         Because the stimuli are on a 1-second grid, while the EPI data is on a
-        2-second grid (TR = 2.0), we will run make_stim_times.py externally
-        (as opposed to giving stim_files to the afni_proc.py program) as
-        follows:
+        2-second grid (TR = 2.0), we ran make_stim_times.py to generate the
+        stim_times files (which are now distributed in AFNI_data2) as follows:
 
-            make_stim_times.py -prefix ED_times -tr 1.0 -nruns 10 -nt 272 \\
+            make_stim_times.py -prefix stim_times -tr 1.0 -nruns 10 -nt 272 \\
                    -files misc_files/all_stims.1D
 
-        Then we will apply misc_files/ED_times.*.1D as the stim timing files.
+        If your AFNI_data2 directory does not have misc_files/stim_times.*,
+        then you can run the make_stim_times.py command from AFNI_data2.
+
 
         2. This example shows basic usage, with the default GAM regressor.
            We specify the output script name, the subject ID, removal of the
            first 2 TRs of each run (before steady state), and volume alignment
            to the end of the runs (the anat was acquired after the EPI).
 
+           The script name will default to proc.ED, based on -subj_id.
+
                 afni_proc.py -dsets ED/ED_r??+orig.HEAD      \\
-                             -script process_ED              \\
                              -subj_id ED                     \\
                              -tcat_remove_first_trs 2        \\
                              -volreg_align_to first          \\
-                             -regress_stim_times misc_files/ED_times.*.1D
+                             -regress_stim_times misc_files/stim_times.*.1D
 
         3. Similar to #2, but add labels for the 4 stim types, and apply TENT
            as the basis function to get 14 seconds of response, on a 2-second
-           TR grid.
+           TR grid.  Also, copy the anat dataset(s) to the results directory,
+           and align volumes to the third TR, instead of the first.
 
-                afni_proc.py -dsets ED/ED_r??+orig.HEAD                    \\
-                             -script process_ED.8                          \\
-                             -subj_id ED.8                                 \\
-                             -tcat_remove_first_trs 2                      \\
-                             -volreg_align_to first                        \\
-                             -regress_stim_times misc_files/ED_times.*.1D  \\
-                             -regress_stim_labels ToolMovie HumanMovie     \\
-                                                  ToolPoint HumanPoint     \\
+                afni_proc.py -dsets ED/ED_r??+orig.HEAD                      \\
+                             -subj_id ED.8                                   \\
+                             -copy_anat ED/EDspgr                            \\
+                             -tcat_remove_first_trs 2                        \\
+                             -volreg_align_to third                          \\
+                             -regress_stim_times misc_files/stim_times.*.1D  \\
+                             -regress_stim_labels ToolMovie HumanMovie       \\
+                                                  ToolPoint HumanPoint       \\
                              -regress_basis 'TENT(0,14,8)'
 
-        4. Similar to #3, but find the response for the TENT functions on a
+        4. This is the current AFNI_data2 class example.
+
+           Similar to #3, but append a single -regress_opts_3dD option to
+           include contrasts.  The intention is to create a script very much
+           like analyze_ht05.  Note that the contrast files have been renamed
+           from contrast*.1D to glt*.txt, though the contents have not changed.
+
+           afni_proc.py -dsets ED/ED_r??+orig.HEAD                         \\
+                  -subj_id ED.8.glt                                        \\
+                  -copy_anat ED/EDspgr                                     \\
+                  -tcat_remove_first_trs 2                                 \\
+                  -volreg_align_to third                                   \\
+                  -regress_stim_times misc_files/stim_times.*.1D           \\
+                  -regress_stim_labels ToolMovie HumanMovie                \\
+                                       ToolPoint HumanPoint                \\
+                  -regress_basis 'TENT(0,14,8)'                            \\
+                  -regress_opts_3dD                                        \\
+                      -gltsym ../misc_files/glt1.txt -glt_label 1 FullF    \\
+                      -gltsym ../misc_files/glt2.txt -glt_label 2 HvsT     \\
+                      -gltsym ../misc_files/glt3.txt -glt_label 3 MvsP     \\
+                      -gltsym ../misc_files/glt4.txt -glt_label 4 HMvsHP   \\
+                      -gltsym ../misc_files/glt5.txt -glt_label 5 TMvsTP   \\
+                      -gltsym ../misc_files/glt6.txt -glt_label 6 HPvsTP   \\
+                      -gltsym ../misc_files/glt7.txt -glt_label 7 HMvsTM
+
+        5. Similar to #4, but replace some glt files with SYM, and request
+           to run @auto_tlrc.
+
+           afni_proc.py -dsets ED/ED_r??+orig.HEAD                           \\
+              -subj_id ED.8.gltsym                                           \\
+              -copy_anat ED/EDspgr                                           \\
+              -tlrc_anat                                                     \\
+              -tcat_remove_first_trs 2                                       \\
+              -volreg_align_to third                                         \\
+              -regress_stim_times misc_files/stim_times.*.1D                 \\
+              -regress_stim_labels ToolMovie HumanMovie                      \\
+                                   ToolPoint HumanPoint                      \\
+              -regress_basis 'TENT(0,14,8)'                                  \\
+              -regress_opts_3dD                                              \\
+                -gltsym 'SYM: -ToolMovie +HumanMovie -ToolPoint +HumanPoint' \\
+                -glt_label 1 HvsT                                            \\
+                -gltsym 'SYM: +HumanMovie -HumanPoint'                       \\
+                -glt_label 2 HMvsHP
+
+        6. Similar to #3, but find the response for the TENT functions on a
            1-second grid, such as how the data is processed in the class
            script, s1.analyze_ht05.  This is similar to using '-stim_nptr 2',
            and requires the addition of 3dDeconvolve option '-TR_times 1.0' to  
            see the -iresp output on a 1.0 second grid.
 
-                afni_proc.py -dsets ED/ED_r??+orig.HEAD                    \\
-                             -script process_ED.15                         \\
-                             -subj_id ED.15                                \\
-                             -tcat_remove_first_trs 2                      \\
-                             -volreg_align_to first                        \\
-                             -regress_stim_times misc_files/ED_times.*.1D  \\
-                             -regress_stim_labels ToolMovie HumanMovie     \\
-                                                  ToolPoint HumanPoint     \\
-                             -regress_basis 'TENT(0,14,15)'                \\
+                afni_proc.py -dsets ED/ED_r??+orig.HEAD                      \\
+                             -subj_id ED.15                                  \\
+                             -copy_anat ED/EDspgr                            \\
+                             -tcat_remove_first_trs 2                        \\
+                             -volreg_align_to third                          \\
+                             -regress_stim_times misc_files/stim_times.*.1D  \\
+                             -regress_stim_labels ToolMovie HumanMovie       \\
+                                                  ToolPoint HumanPoint       \\
+                             -regress_basis 'TENT(0,14,15)'                  \\
                              -regress_opts_3dD -TR_times 1.0
 
-        5. Similar to #2, but skip tshift and mask steps (so the others must
-           be specified), and apply a 4 second BLOCK response function.  Also,
-           prevent output of a fit time series dataset, and copy the anatomical
-           dataset(s) to the results directory.
+        7. Similar to #2, but add the despike block, and skip the tshift and
+           mask blocks (so the others must be specified).  The user wants to
+           apply a block that afni_proc.py does not deal with, putting it after
+           the 'despike' block.  So 'empty' is given after 'despike'.
 
-                afni_proc.py -dsets ED/ED_r??+orig.HEAD                 \\
-                         -blocks volreg blur scale regress              \\
-                         -script process_ED.b4                          \\
-                         -subj_id ED.b4                                 \\
-                         -copy_anat ED/EDspgr                           \\
-                         -tcat_remove_first_trs 2                       \\
-                         -volreg_align_to first                         \\
-                         -regress_stim_times misc_files/ED_times.*.1D   \\
-                         -regress_basis 'BLOCK(4,1)'                    \\
+           Also, apply a 4 second BLOCK response function, prevent the output
+           of a fit time series dataset, run @auto_tlrc at the end, and specify
+           an output script name.
+
+                afni_proc.py -dsets ED/ED_r??+orig.HEAD                   \\
+                         -blocks despike empty volreg blur scale regress  \\
+                         -script process_ED.b4                            \\
+                         -subj_id ED.b4                                   \\
+                         -copy_anat ED/EDspgr                             \\
+                         -tlrc_anat                                       \\
+                         -tcat_remove_first_trs 2                         \\
+                         -volreg_align_to third                           \\
+                         -regress_stim_times misc_files/stim_times.*.1D   \\
+                         -regress_basis 'BLOCK(4,1)'                      \\
                          -regress_no_fitts
 
     --------------------------------------------------
-    OPTIONS:
+    -ask_me EXAMPLES:
+
+        a1. Apply -ask_me in the most basic form, with no other options.
+
+                afni_proc.py -ask_me
+
+        a2. Supply input datasets.
+
+                afni_proc.py -ask_me -dsets ED/ED_r*.HEAD
+
+        a3. Same as a2, but supply the datasets in expanded form.
+            No suffix (.HEAD) is needed when wildcards are not used.
+
+                afni_proc.py -ask_me                          \\
+                     -dsets ED/ED_r01+orig ED/ED_r02+orig     \\
+                            ED/ED_r03+orig ED/ED_r04+orig     \\
+                            ED/ED_r05+orig ED/ED_r06+orig     \\
+                            ED/ED_r07+orig ED/ED_r08+orig     \\
+                            ED/ED_r09+orig ED/ED_r10+orig
+
+        a4. Supply datasets, stim_times files and labels.
+
+                afni_proc.py -ask_me                                    \\
+                        -dsets ED/ED_r*.HEAD                            \\
+                        -regress_stim_times misc_files/stim_times.*.1D  \\
+                        -regress_stim_labels ToolMovie HumanMovie       \\
+                                             ToolPoint HumanPoint
+
+    --------------------------------------------------
+    DEFAULTS: basic defaults for each block (not all defaults)
+
+        setup:    - use 'SUBJ' for the subject id
+                        (option: -subj_id SUBJ)
+                  - create a t-shell script called 'proc_subj'
+                        (option: -script proc_subj)
+                  - use results directory 'SUBJ.results'
+                        (option: -out_dir SUBJ.results)
+
+        tcat:     - do not remove any of the first TRs
+
+        empty:    - do nothing (just copy the data using 3dTcat)
+
+        despike:  - NOTE: by default, this block is _not_ used
+                  - use no extra options (so automask is default)
+
+        tshift:   - align slices to the beginning of the TR
+
+        volreg:   - align to third volume of first run, -zpad 1
+                        (option: -volreg_align_to third)
+                        (option: -volreg_zpad 1)
+
+        blur:     - blur data using a 4 mm FWHM filter
+                        (option: -blur_filter -1blur_fwhm)
+                        (option: -blur_size 4)
+
+        mask:     - apply union of masks from 3dAutomask on each run
+
+        scale:    - scale each voxel to mean of 100, clip values at 200
+
+        regress:  - use GAM regressor for each stim
+                        (option: -regress_basis)
+                  - use quadratic baseline for each run
+                        (option: -regress_polort 2)
+                  - output fit time series
+                  - output ideal curves for GAM/BLOCK regressors
+                  - output iresp curves for non-GAM/non-BLOCK regressors
+
+    --------------------------------------------------
+    OPTIONS: (information options, general options, block options)
+             (block options are ordered by block)
 
         ------------ information options ------------
 
@@ -157,16 +297,42 @@ g_help_string = """
         -hist                   : show the module history
         -ver                    : show the version number
 
-        ------------ general execution options ------------
+        ------------ general execution and setup options ------------
+
+        -ask_me                 : ask the user about the basic options to apply
+
+            When this option is used, the program will ask the user how they
+            wish to set the basic options.  The intention is to give the user
+            a feel for what options to apply (without using -ask_me).
+
+        -bash                   : show example execution command in bash form
+
+            After the script file is created, this program suggests how to run
+            it (piping stdout/stderr through 'tee').  If the user is running
+            the bash shell, this option will suggest the 'bash' form of a
+            command to execute the newly created script.
+
+            example of tcsh form for execution:
+
+                tcsh -x proc.ED.8.glt |& tee output.proc.ED.8.glt
+
+            example of bash form for execution:
+
+                tcsh -x proc.ED.8.glt 2>&1 | tee output.proc.ED.8.glt
+
+            Please see "man bash" or "man tee" for more information.
 
         -blocks BLOCK1 ...      : specify the processing blocks to apply
 
                 e.g. -blocks volreg blur scale regress
+                e.g. -blocks despike tshift volreg blur scale regress
                 default: tshift volreg blur mask scale regress
 
             The user may apply this option to specify which processing blocks
             are to be included in the output script.  The order of the blocks
             may be varied, and blocks may be skipped.
+
+            See also '-do_block' (e.g. '-do_block despike').
 
         -copy_anat ANAT         : copy the ANAT dataset to the results dir
 
@@ -177,6 +343,30 @@ g_help_string = """
             attempt to copy +acpc and +tlrc datasets, also.
 
             See also '3dcopy -help'.
+
+        -copy_files file1 ...   : copy file1, etc. into the results directory
+
+                e.g. -copy_files glt_AvsB.txt glt_BvsC.1D glt_eat_cheese.txt
+                e.g. -copy_files contrasts/glt_*.txt
+
+            This option allows the user to copy some list of files into the
+            results directory.  This would happen before the tcat block, so
+            such files may be used for other commands in the script (such as
+            contrast files in 3dDeconvolve, via -regress_opts_3dD).
+
+        -do_block BLOCK_NAME ...: add extra blocks in their default positions
+
+                e.g. -do_block despike
+
+            Currently, the 'despike' block is the only block not applied by
+            default (in the processing script).  Any block not included in
+            the default list can be added via this option.
+
+            The default position for 'despike' is between 'tcat' and 'tshift'.
+
+            This option should not be used with '-blocks'.
+
+            See also '-blocks'.
 
         -dsets dset1 dset2 ...  : (REQUIRED) specify EPI run datasets
 
@@ -207,6 +397,11 @@ g_help_string = """
             are deleted at the end of the script.  This option blocks that
             deletion.
 
+        -move_preproc_files     : move preprocessing files to preproc.data dir
+
+            At the end of the output script, create a 'preproc.data' directory,
+            and move most of the files there (dfile, outcount, pb*, rm*).
+
         -no_proc_command        : do not print afni_proc.py command in script
 
                 e.g. -no_proc_command
@@ -224,8 +419,8 @@ g_help_string = """
 
         -script SCRIPT_NAME     : specify the name of the resulting script
 
-                e.g. -script @ED.process.script
-                default: @proc_subj
+                e.g. -script ED.process.script
+                default: proc_subj
 
             The output of this program is a script file.  This option can be
             used to specify the name of that file.
@@ -250,6 +445,59 @@ g_help_string = """
             name (unless -out_dir is used).  This option allows the user to
             apply an appropriate naming convention.
 
+        -tlrc_anat              : run @auto_tlrc on '-copy_anat' dataset
+
+                e.g. -tlrc_anat
+
+            After the regression block, run @auto_tlrc on the anatomical
+            dataset provided by '-copy_anat'.  By default, warp the anat to
+            align with TT_N27+tlrc, unless the '-tlrc_base' option is given.
+
+            The -copy_anat option specifies which anatomy to transform.
+
+            Please see '@auto_tlrc -help' for more information.
+            See also -copy_anat, -tlrc_base, -tlrc_no_ss.
+
+        -tlrc_base BASE_DSET    : run "@auto_tlrc -base BASE_DSET"
+
+                e.g. -tlrc_base TT_icbm452+tlrc
+                default: -tlrc_base TT_N27+tlrc
+
+            This option is used to supply an alternate -base dataset for
+            @auto_tlrc.  Otherwise, TT_N27+tlrc will be used.
+
+            Note that the default operation of @auto_tlrc is to "skull strip"
+            the input dataset.  If this is not appropriate, consider also the
+            '-tlrc_no_ss' option.
+
+            Please see '@auto_tlrc -help' for more information.
+            See also -tlrc_anat, -tlrc_no_ss.
+
+        -tlrc_no_ss             : add the -no_ss option to @auto_tlrc
+
+                e.g. -tlrc_no_ss
+
+            This option is used to tell @auto_tlrc not to perform the skull
+            strip operation.
+
+            Please see '@auto_tlrc -help' for more information.
+
+        -tlrc_rmode RMODE       : apply RMODE resampling in @auto_tlrc
+
+                e.g. -tlrc_rmode NN
+
+            This option is used to apply '-rmode RMODE' in @auto_tlrc.
+
+            Please see '@auto_tlrc -help' for more information.
+
+        -tlrc_suffix SUFFIX     : apply SUFFIX to result of @auto_tlrc
+
+                e.g. -tlrc_suffix auto_tlrc
+
+            This option is used to apply '-suffix SUFFIX' in @auto_tlrc.
+
+            Please see '@auto_tlrc -help' for more information.
+
         -verb LEVEL             : specify the verbosity of this script
 
                 e.g. -verb 2
@@ -267,10 +515,25 @@ g_help_string = """
                 e.g. -tcat_remove_first_trs 3
                 default: 0
 
-            Since the scanner takes several seconds to reach a steady state,
-            the initial TRs of each run may have values that are significantly
-            greater than the later ones.  This option is used to specify how
-            many TRs to remove from the beginning of every run.
+            Since it takes several seconds for the magnetization to reach a
+            steady state (at the beginning of each run), the initial TRs of
+            each run may have values that are significantly greater than the
+            later ones.  This option is used to specify how many TRs to
+            remove from the beginning of every run.
+
+        -despike_opts_3dDes OPTS... : specify additional options for 3dDespike
+
+                e.g. -despike_opts_3dDes -nomask -ignore 2
+
+            By default, 3dDespike is used with only -prefix.  Any other options
+            must be applied via -despike_opts_3dDes.
+
+            Note that the despike block is not applied by default.  To apply
+            despike in the processing script, use either '-do_block despike' or
+            '-blocks ... despike ...'.
+
+            Please see '3dDespike -help' for more information.
+            See also '-do_blocks', '-blocks'.
 
         -tshift_align_to TSHIFT OP : specify 3dTshift alignment option
 
@@ -314,13 +577,18 @@ g_help_string = """
         -volreg_align_to POSN   : specify the base position for volume reg
 
                 e.g. -volreg_align_to last
-                default: first
+                default: third
 
-            This option takes either 'first' or 'last' as a parameter.  It
-            specifies whether the EPI volumes are registered to the first
-            volume (of the first run) or the last volume (of the last run).
-            The choice of 'first' or 'last' should corresponding to when
-            anatomical dataset was acquired.
+            This option takes 'first', 'third' or 'last' as a parameter.
+            It specifies whether the EPI volumes are registered to the first
+            or third volume (of the first run) or the last volume (of the last
+            run).  The choice of 'first' or 'third' should correspond to when
+            the anatomy was acquired before the EPI data.  The choice of 'last'
+            should correspond to when the anatomy was acquired after the EPI
+            data.
+
+            The default of 'third' was chosen to go a little farther into the
+            steady state data.
 
             Note that this is done after removing any volumes in the initial
             tcat operation.
@@ -337,7 +605,7 @@ g_help_string = """
             sub-brick to use as the base registration image.  Note that the
             SUB index applies AFTER the removal of pre-steady state images.
 
-            The RUN number is 1-based, matching the run list in the output
+          * The RUN number is 1-based, matching the run list in the output
             shell script.  The SUB index is 0-based, matching the sub-brick of
             EPI time series #RUN.  Yes, one is 1-based, the other is 0-based.
             Life is hard.
@@ -356,6 +624,14 @@ g_help_string = """
             which may be used for multiple 3dvolreg options.
 
             Please see '3dvolreg -help' for more information.
+
+        -volreg_zpad N_SLICES   : specify number of slices for -zpad
+
+                e.g. -volreg_zpad 4
+                default: -volreg_zpad 1
+
+            This option allows the user to specify the number of slices applied
+            via the -zpad option to 3dvolreg.
 
         -blur_filter FILTER     : specify 3dmerge filter option
 
@@ -556,17 +832,25 @@ g_help_string = """
 
             See also -regress_iresp_prefix, -regress_basis.
 
+        -regress_no_motion      : do not apply motion params in 3dDeconvolve
+
+                e.g. -regress_no_motion
+
+            This option prevents the program from adding the registration
+            parameters (from volreg) to the 3dDeconvolve command.
+
         -regress_opts_3dD OPTS ...   : specify extra options for 3dDeconvolve
 
-                e.g. -regress_opts_3dD -gltsym ../contr/contrast1.1D \\
-                                       -glt_label FACEvsDONUT        \\
+                e.g. -regress_opts_3dD -gltsym ../contr/contrast1.txt  \\
+                                       -glt_label 1 FACEvsDONUT        \\
                                        -xjpeg Xmat
 
             This option allows the user to add extra options to the 3dDeconvolve
             command.  Note that only one -regress_opts_3dD should be applied,
             which may be used for multiple 3dDeconvolve options.
 
-            Please see '3dDeconvolve -help' for more information.
+            Please see '3dDeconvolve -help' for more information, or the link:
+                http://afni.nimh.nih.gov/afni/doc/misc/3dDeconvolveSummer2004
 
         -regress_polort DEGREE  : specify the polynomial degree of baseline
 
@@ -578,8 +862,7 @@ g_help_string = """
             degree of polynomial.  Note that this will create DEGREE * NRUNS
             regressors.
 
-            Please see '3dDeconvolve -help' for more information, or the link:
-                http://afni.nimh.nih.gov/afni/doc/misc/3dDeconvolveSummer2004
+            Please see '3dDeconvolve -help' for more information.
 
         -regress_stim_labels LAB1 ...   : specify labels for stimulus types
 
@@ -688,22 +971,63 @@ g_history = """
 
     1.0  Dec 20, 2006 : initial release
     1.1  Dec 20, 2006 : added -regress_no_stim_times
+    1.2  Dec 21, 2006 : help, start -ask_me, updated when to use -iresp/ideal
+    1.3  Dec 22, 2006 : change help to assumme ED's stim_times files exist
+    1.4  Dec 25, 2006 : initial -ask_me
+    1.5  Dec 27, 2006 : ask_me help
+    1.6  Dec 28, 2006 : -gylsym examples, min(a,b) in scale block
+    1.7  Jan 03, 2007 : help updates, no blank '\\' line from -gltsym
+    1.8  Jan 08, 2007 :
+         - changed default script name to proc.SUBJ_ID, and removed -script
+           from most examples
+         - added options -bash, -copy_files, -volreg_zpad, -tlrc_anat,
+           -tlrc_base, -tlrc_no_ss, -tlrc_rmode, -tlrc_suffix
+    1.9  Jan 09, 2007 : added aligned line wrapping (see afni_util.py)
+    1.10 Jan 12, 2007 : set subj = $argv[1], added index to -glt_label in -help
+    1.11 Jan 12, 2007 :
+         - added options -move_preproc_files, -regress_no_motion
+         - use $output_dir var in script, and echo version at run-time
+         - append .$subj to more output files 
+    1.12 Jan 16, 2007 : allow no +view when using -tlrc_anat
+    1.13 Jan 17, 2007 : if -tlrc_anat, apply default option '-tlrc_suffix NONE'
+    1.14 Jan 26, 2007 :
+         - if only 1 run, warn user, do not use 3dMean
+         - changed all True/False uses to 1/0 (for older python versions)
+    1.15 Feb 02, 2007 :
+         - output float for -blur_size
+         - put execution command at top of script
+    1.16 Feb 21, 2007 :
+         - added optional 'despike' block
+         - added options -do_block and -despike_opts_3dDes
+    1.17 Feb 27, 2007 :
+         -volreg_align_to defaults to 'third' (was 'first')
+         -added +orig to despike input
+         -added 'empty' block type, for a placeholder
 """
 
-g_version = "version 1.1, December 20, 2006"
+g_version = "version 1.17, February 27, 2007"
 
 # ----------------------------------------------------------------------
 # dictionary of block types and modification functions
-BlockLabels  = ['tcat', 'tshift', 'volreg', 'blur', 'mask', 'scale', 'regress']
-BlockModFunc  = {'tcat'   : db_mod_tcat,     'tshift' :db_mod_tshift,
-                 'volreg' : db_mod_volreg,   'blur'   :db_mod_blur,
+
+BlockLabels  = ['tcat', 'despike', 'tshift', 'volreg',
+                'blur', 'mask', 'scale', 'regress', 'empty']
+BlockModFunc  = {'tcat'   : db_mod_tcat,     'despike': db_mod_despike,
+                 'tshift' : db_mod_tshift,
+                 'volreg' : db_mod_volreg,   'blur'   : db_mod_blur,
                  'mask'   : db_mod_mask,     'scale'  : db_mod_scale,
-                 'regress':db_mod_regress}
-BlockCmdFunc  = {'tcat'   : db_cmd_tcat,     'tshift' :db_cmd_tshift,
-                 'volreg' : db_cmd_volreg,   'blur'   :db_cmd_blur,
+                 'regress': db_mod_regress,  'empty'  : db_mod_empty}
+BlockCmdFunc  = {'tcat'   : db_cmd_tcat,     'despike': db_cmd_despike,
+                 'tshift' : db_cmd_tshift,
+                 'volreg' : db_cmd_volreg,   'blur'   : db_cmd_blur,
                  'mask'   : db_cmd_mask,     'scale'  : db_cmd_scale,
-                 'regress':db_cmd_regress}
+                 'regress': db_cmd_regress,  'empty'  : db_cmd_empty}
 AllOptionStyles = ['cmd', 'file', 'gui', 'sdir']
+
+# default block labels, and other labels (along with the label they follow)
+DefLabels   = ['tcat', 'tshift', 'volreg', 'blur', 'mask', 'scale', 'regress']
+OtherDefLabels = {'despike':'tcat'}
+OtherLabels    = ['empty']
 
 # ----------------------------------------------------------------------
 # data processing stream class
@@ -721,11 +1045,12 @@ class SubjProcSream:
         self.subj_id    = 'SUBJ'        # hopefully user will replace this
         self.subj_label = '$subj'       # replace this for execution
         self.out_dir    = ''            # output directory for use by script
-        self.script     = '@proc_subj'
-        self.overwrite  = False         # overwrite script file?
+        self.od_var     = ''            # output dir variable: $output_dir
+        self.script     = None          # script name, default proc.SUBJ
+        self.overwrite  = 0             # overwrite script file?
         self.fp         = None          # file object
         self.anat       = None          # anatomoy to copy (afni_name class)
-        self.rm_rm      = True          # remove rm.* files
+        self.rm_rm      = 1             # remove rm.* files
         self.mot_labs   = []            # labels for motion params
 
         self.verb       = 1             # verbosity level
@@ -762,6 +1087,7 @@ class SubjProcSream:
 
         # general execution options
         self.valid_opts.add_opt('-blocks', -1, [])
+        self.valid_opts.add_opt('-do_block', -1, [])
         self.valid_opts.add_opt('-dsets', -1, [])
 
         self.valid_opts.add_opt('-out_dir', 1, [])
@@ -770,20 +1096,33 @@ class SubjProcSream:
         self.valid_opts.add_opt('-subj_id', -1, [])
 
         self.valid_opts.add_opt('-ask_me', 0, [])       # QnA session
+        self.valid_opts.add_opt('-bash', 0, [])
         self.valid_opts.add_opt('-copy_anat', 1, [])
+        self.valid_opts.add_opt('-copy_files', -1, [])
         self.valid_opts.add_opt('-keep_rm_files', 0, [])
+        self.valid_opts.add_opt('-move_preproc_files', 0, [])
+        self.valid_opts.add_opt('-tlrc_anat', 0, [])
+        self.valid_opts.add_opt('-tlrc_base', 1, [])
+        self.valid_opts.add_opt('-tlrc_no_ss', 0, [])
+        self.valid_opts.add_opt('-tlrc_rmode', 1, [])
+        self.valid_opts.add_opt('-tlrc_suffix', 1, [])
+
         # self.valid_opts.add_opt('-remove_pXX_files', 0, [])
 
         # block options
         self.valid_opts.add_opt('-tcat_remove_first_trs', 1, [])
 
+        self.valid_opts.add_opt('-despike_opts_3dDes', -1, [])
+
         self.valid_opts.add_opt('-tshift_align_to', -1, [])
         self.valid_opts.add_opt('-tshift_interp', 1, [])
         self.valid_opts.add_opt('-tshift_opts_ts', -1, [])
 
-        self.valid_opts.add_opt('-volreg_align_to', 1, [], ['first','last'])
+        self.valid_opts.add_opt('-volreg_align_to', 1, [],
+                                ['first','third', 'last'])
         self.valid_opts.add_opt('-volreg_base_ind', 2, [])
         self.valid_opts.add_opt('-volreg_opts_vr', -1, [])
+        self.valid_opts.add_opt('-volreg_zpad', 1, [])
 
         self.valid_opts.add_opt('-blur_filter', 1, [])
         self.valid_opts.add_opt('-blur_size', 1, [])
@@ -809,6 +1148,7 @@ class SubjProcSream:
         self.valid_opts.add_opt('-regress_no_fitts', 0, [])
         self.valid_opts.add_opt('-regress_no_ideals', 0, [])
         self.valid_opts.add_opt('-regress_no_iresp', 0, [])
+        self.valid_opts.add_opt('-regress_no_motion', 0, [])
         self.valid_opts.add_opt('-regress_opts_3dD', -1, [])
 
 
@@ -818,7 +1158,7 @@ class SubjProcSream:
         self.valid_opts.add_opt('-ver', 0, [])
         self.valid_opts.add_opt('-verb', 1, [])
 
-        self.valid_opts.trailers = False   # do not allow unknown options
+        self.valid_opts.trailers = 0   # do not allow unknown options
         
     def get_user_opts(self):
         self.user_opts = read_options(sys.argv, self.valid_opts)
@@ -832,64 +1172,94 @@ class SubjProcSream:
             else: print "** have invalid trailing args: %s", opt.show()
             return 1  # failure
 
-        opt = self.user_opts.find_opt('-verb')    # set and use verb
+        # apply the user options
+        if self.apply_initial_opts(self.user_opts): return 1
+
+        # update out_dir now (may combine option results)
+        if self.out_dir == '': self.out_dir = '%s.results' % self.subj_label
+        self.od_var = '$output_dir'
+
+        if self.verb > 3: self.show('end get_user_opts ')
+
+    # apply the general options
+    def apply_initial_opts(self, opt_list):
+        opt = opt_list.find_opt('-verb')    # set and use verb
         if opt != None: self.verb = int(opt.parlist[0])
 
-        opt = self.user_opts.find_opt('-help')    # does the user want help?
+        opt = opt_list.find_opt('-help')    # does the user want help?
         if opt != None:
             print g_help_string
             return 1  # terminate
         
-        opt = self.user_opts.find_opt('-hist')    # print the history
+        opt = opt_list.find_opt('-hist')    # print the history
         if opt != None:
             print g_history
             return 1  # terminate
         
-        opt = self.user_opts.find_opt('-ver')    # show the version string
+        opt = opt_list.find_opt('-ver')    # show the version string
         if opt != None:
             print g_version
             return 1  # terminate
         
-        opt = self.user_opts.find_opt('-subj_id')
+        opt = opt_list.find_opt('-subj_id')
         if opt != None: self.subj_id = opt.parlist[0]
 
-        # get datasets
+        opt = opt_list.find_opt('-out_dir')
+        if opt != None: self.out_dir = opt.parlist[0]
+
+        opt = opt_list.find_opt('-script')
+        if opt != None: self.script = opt.parlist[0]
+        else:           self.script = 'proc.%s' % self.subj_id
+
+        opt = opt_list.find_opt('-scr_overwrite')
+        if opt != None: self.overwrite = 1
+
+        opt = opt_list.find_opt('-copy_anat')
+        if opt != None: self.anat = afni_name(opt.parlist[0])
+
+        opt = opt_list.find_opt('-keep_rm_files')
+        if opt != None: self.rm_rm = 0
+
+    # init blocks from command line options, then check for an
+    # alternate source       rcr - will we use 'file' as source?
+    def create_blocks(self):
+        # first, note datasets
         opt = self.user_opts.find_opt('-dsets')
         if opt != None:
             for dset in opt.parlist:
                 self.dsets.append(afni_name(dset))
 
-        opt = self.user_opts.find_opt('-out_dir')
-        if opt != None: self.out_dir = opt.parlist[0]
+        blocklist = DefLabels  # init to defaults
 
-        opt = self.user_opts.find_opt('-script')
-        if opt != None: self.script = opt.parlist[0]
+        # check for -do_block options
+        opt = self.user_opts.find_opt('-do_block')
+        if opt and opt.parlist and len(opt.parlist) > 0:
+            if self.user_opts.find_opt('-blocks'):
+                print '** error: -do_block invalid when using -blocks'
+                return 1
 
-        opt = self.user_opts.find_opt('-scr_overwrite')
-        if opt != None: self.overwrite = True
+            # check additional blocks one by one
+            errs = 0
+            for bname in opt.parlist:
+                if bname in OtherDefLabels:
+                    preindex = blocklist.index(OtherDefLabels[bname])
+                    if preindex < 0:
+                        print "** error: -do_block failure for '%s'" % bname
+                        errs += 1
+                    # so add the block to blocklist
+                    preindex += 1
+                    blocklist[preindex:preindex] = [bname]
+                else:
+                    print "** error: '%s' is invalid in '-do_block'" % bname
+                    errs += 1
+            if errs > 0 : return 1
 
-        opt = self.user_opts.find_opt('-copy_anat')
-        if opt != None: self.anat = afni_name(opt.parlist[0])
-
-        opt = self.user_opts.find_opt('-keep_rm_files')
-        if opt != None: self.rm_rm = False
-
-        # done checking options
-
-        # update out_dir now (may combine option results)
-        if self.out_dir == '': self.out_dir = '%s.results' % self.subj_label
-
-        if self.verb > 3: self.show('end get_user_opts ')
-
-    # init blocks from command line options, then check for an
-    # alternate source       rcr - will we use 'file' as source?
-    def create_blocks(self):
-        blocklist = BlockLabels
         opt = self.user_opts.find_opt('-blocks')
         if opt:  # then create blocklist from user opts (but prepend tcat)
             if opt.parlist[0] != 'tcat':
                 blocklist = ['tcat'] + opt.parlist
             else: blocklist = opt.parlist
+
         for label in blocklist:
             rv = self.add_block(label)
             if rv != None: return rv
@@ -899,6 +1269,12 @@ class SubjProcSream:
         if uopt != None:
             if ask_me.ask_me_subj_proc(self):
                 return 1
+            for label in blocklist:
+                block = self.find_block(label)
+                if not block:
+                    print "** error: missing block '%s' in ask_me update"%label
+                    return 1
+                BlockModFunc[label](block, self, self.user_opts) # modify block
 
         # rcr - if there is another place to update options from, do it
         uopt = self.user_opts.find_opt('-opt_source')
@@ -910,8 +1286,9 @@ class SubjProcSream:
         if len(self.dsets) == 0:
             print 'error: dsets have not been specified (consider -dsets)'
             return 1
-        if not uniq_list_as_dsets(self.dsets, True):
-            return 1
+
+        if not uniq_list_as_dsets(self.dsets, 1): return 1
+        if not db_tlrc_opts_okay(self.user_opts): return 1
 
     # create script from blocks and options
     def create_script(self):
@@ -929,7 +1306,7 @@ class SubjProcSream:
                 print "** script creation failure for block '%s'" % block.label
                 errs += 1
             else:
-                self.fp.write(cmd_str)
+                self.fp.write(add_line_wrappers(cmd_str))
                 if self.verb>2: block.show('+d post command creation: ')
                 if self.verb>1: print '+d %s command: %s'%(block.label, cmd_str)
 
@@ -941,9 +1318,17 @@ class SubjProcSream:
         if errs > 0: return 1    # so we print all errors before leaving
 
         if self.verb > 0:
+            if self.runs == 1:
+                print "\n-------------------------------------\n" \
+                        "** warning have only 1 run to analyze\n" \
+                        "-------------------------------------"
             print "\n--> script is file: %s" % self.script
-            print '    (consider the command "tcsh -x %s |& tee output.%s") '% \
-                  (self.script, self.script)
+            if self.user_opts.find_opt('-bash'): # give bash form
+                print '    (consider: "tcsh -x %s 2>&1 | tee output.%s") ' \
+                                % (self.script, self.script)
+            else:                                # give tcsh form
+              print '    (consider the command "tcsh -x %s |& tee output.%s")' \
+                                % (self.script, self.script)
 
         return
 
@@ -1006,55 +1391,104 @@ class SubjProcSream:
             return 1
 
         self.fp.write('#!/usr/bin/env tcsh\n\n')
-        self.fp.write('# auto-generated by afni_proc.py, %s\n\n' % asctime())
+        self.fp.write('echo "auto-generated by afni_proc.py, %s"\n' % asctime())
+        self.fp.write('echo "(%s)"\n\n'% g_version)
+
+        # include execution method in script
+        if self.user_opts.find_opt('-bash'): # give bash form
+            self.fp.write('# execute via : tcsh -x %s 2>&1 | tee output.%s\n\n'\
+                            % (self.script, self.script))
+        else:                                # give tcsh form
+            self.fp.write('# execute via : tcsh -x %s |& tee output.%s\n\n' \
+                            % (self.script, self.script))
+
         self.fp.write('# --------------------------------------------------\n'
                       '# script setup\n\n'
                       '# the user may specify a single subject to run with\n')
         self.fp.write('if ( $#argv > 0 ) then  \n'
-                      '    set subj = $argv[0] \n'
+                      '    set subj = $argv[1] \n'
                       'else                    \n'
                       '    set subj = %s       \n'
                       'endif\n\n' % self.subj_id )
+        self.fp.write('# assign output directory name\n'
+                      'set output_dir = %s\n\n' % self.out_dir)
         self.fp.write('# verify that the results directory does not yet exist\n'
                       'if ( -d %s ) then \n'
                       '    echo output dir "$subj.results" already exists\n'
                       '    exit                     \n'
-                      'endif\n\n' % self.out_dir)
+                      'endif\n\n' % self.od_var)
         self.fp.write('# set list of runs\n')
         self.fp.write('set runs = (`count -digits 2 1 %d`)\n\n' % self.runs)
 
         self.fp.write('# create results directory\n')
-        self.fp.write('mkdir %s\n\n' % self.out_dir)
-        
+        self.fp.write('mkdir %s\n\n' % self.od_var)
+
         if len(self.stims_orig) > 0: # copy stim files into script's stim dir
-            self.fp.write('# create stimuli directory, and copy stim files\n')
-            self.fp.write('mkdir %s/stimuli\ncp ' % self.out_dir)
+            str = '# create stimuli directory, and copy stim files\n' \
+                  'mkdir %s/stimuli\ncp ' % self.od_var
             for ind in range(len(self.stims)):
-                self.fp.write('%s ' % self.stims_orig[ind])
-            self.fp.write('%s/stimuli\n\n' % self.out_dir)
+                str += '%s ' % self.stims_orig[ind]
+            str += '%s/stimuli\n\n' % self.od_var
+            self.fp.write(add_line_wrappers(str))
 
         if self.anat:
-            self.fp.write('# copy anatomy to results dir\n')
-            self.fp.write('3dcopy %s %s/%s\n\n' %
-                          (self.anat.rpv(), self.out_dir, self.anat.prefix))
+            str = '# copy anatomy to results dir\n'     \
+                  '3dcopy %s %s/%s\n\n' %               \
+                      (self.anat.rpv(), self.od_var, self.anat.prefix)
+            self.fp.write(add_line_wrappers(str))
+
+        opt = self.user_opts.find_opt('-copy_files')
+        if opt and len(opt.parlist) > 0:
+            str = '# copy extra files into results dir\n' \
+                  'cp -rv %s %s\n\n' %                    \
+                      (' '.join(quotize_list(opt.parlist,'')),self.od_var)
+            self.fp.write(add_line_wrappers(str))
 
         self.fp.flush()
 
     # and last steps
     def finalize_script(self):
+        str = '# -------------------------------------------------------\n\n'
+        self.fp.write(str)
+
         if self.rm_rm:
             self.fp.write('# remove temporary rm.* files\n'
                           '\\rm -f rm.*\n\n')
+
+        if self.user_opts.find_opt('-move_preproc_files'):
+            cmd_str = \
+              "# move preprocessing files to 'preproc.data' directory\n"   \
+              "mkdir preproc.data\n"                                       \
+              "mv dfile.r??.1D outcount* pb??.$subj.r??.* rm.* preproc.data\n\n"
+            self.fp.write(add_line_wrappers(cmd_str))
+
+        if self.user_opts.find_opt('-tlrc_anat'):
+            cmd_str = db_cmd_tlrc(self.anat.pv(), self.user_opts)
+            if cmd_str == None:
+                print "** script creation failure for block 'tlrc'"
+                return 1
+            self.fp.write(add_line_wrappers(cmd_str))
+
         self.fp.write('# return to parent directory\n'
                       'cd ..\n\n')
 
         opt = self.user_opts.find_opt('-no_proc_command')
-        self.fp.write('\n\n\n'
-                  '# -------------------------------------------------------\n'
-                  '# script generated by the command:\n'
-                  '#\n'
-                  '# %s %s\n\n' % (os.path.basename(sys.argv[0]),
-                                   ' '.join(quotize_list(sys.argv[1:]))))
+        str = '\n\n\n'                                                       \
+              '# -------------------------------------------------------\n'  \
+              '# script generated by the command:\n'                         \
+              '#\n'                                                          \
+              '# %s %s\n' % (os.path.basename(sys.argv[0]),
+                                 ' '.join(quotize_list(sys.argv[1:],'')))
+        self.fp.write(add_line_wrappers(str))
+
+        if self.user_opts.find_opt('-ask_me'):
+            str = '#\n# all applied options: '
+            for opt in self.user_opts.olist:
+                if opt.name == '-ask_me': continue
+                str += opt.name+' '
+                str += ' '.join(quotize_list(opt.parlist,''))
+            str += '\n'
+            self.fp.write(add_line_wrappers(str))
 
     # given a block, run, return a prefix of the form: pNN.SUBJ.rMM.BLABEL
     #    NN = block index, SUBJ = subj label, MM = run, BLABEL = block label
@@ -1085,8 +1519,8 @@ class SubjProcSream:
 class ProcessBlock:
     def __init__(self, label, proc):
         self.label = label      # label is block type
-        self.valid = False      # block is not yet valid
-        self.apply = True       # apply block to output script
+        self.valid = 0          # block is not yet valid
+        self.apply = 1          # apply block to output script
         self.verb  = proc.verb  # verbose level
         if not label in BlockModFunc: return
 

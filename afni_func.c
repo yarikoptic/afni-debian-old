@@ -41,6 +41,81 @@ ENTRY("AFNI_see_func_CB") ;
    EXRETURN ;
 }
 
+/*-----------------------------------------------------------------------*/
+/*! Get the threshold automatically.  [05 Mar 2007]
+-------------------------------------------------------------------------*/
+
+float AFNI_get_autothresh( Three_D_View *im3d )
+{
+   MRI_IMAGE *thrim ;
+   float thrval,pval=0.0f ; int ival ;
+
+ENTRY("AFNI_get_autothresh") ;
+
+   if( !IM3D_OPEN(im3d) || im3d->fim_now == NULL ) RETURN(-1.0f) ;
+
+   ival = im3d->vinfo->thr_index ;  /* threshold sub-brick index */
+
+   if( DSET_BRICK_STATCODE(im3d->fim_now,ival) > 0 )
+     pval = THD_pval_to_stat( 1.e-3 ,
+                              DSET_BRICK_STATCODE(im3d->fim_now,ival) ,
+                              DSET_BRICK_STATAUX (im3d->fim_now,ival)  ) ;
+
+   DSET_load( im3d->fim_now ) ;
+   thrim  = DSET_BRICK(im3d->fim_now,ival) ;
+   thrval = THD_cliplevel_abs( thrim , 0.500f ) ;
+   if( DSET_BRICK_FACTOR(im3d->fim_now,ival) > 0.0f )
+     thrval *= DSET_BRICK_FACTOR(im3d->fim_now,ival) ;
+
+   if( pval > 0.0f )
+     thrval = (thrval <= 0.0f) ? pval : sqrt(thrval*pval) ;
+
+   if( thrval == 0.0f ) thrval = -1.0f ;
+   RETURN(thrval) ;
+}
+
+/*-----------------------------------------------------------------------*/
+/*! Set the threshold and slider.  [05 Mar 2007]
+-------------------------------------------------------------------------*/
+
+void AFNI_set_threshold( Three_D_View *im3d , float val )
+{
+   int olddec,newdec , smax,stop , ival ;
+   static float tval[9] = { 1.0 , 10.0 , 100.0 , 1000.0 , 10000.0 ,
+                            100000.0 , 1000000.0 , 10000000.0 , 100000000.0 } ;
+
+ENTRY("AFNI_set_threshold") ;
+
+   if( !IM3D_OPEN(im3d) || val < 0.0f || val > THR_TOP_VALUE ) EXRETURN;
+
+   /* get current scale decimal setting */
+
+   olddec = (int)rint( log10(im3d->vinfo->func_thresh_top) ) ;
+        if( olddec < 0             ) olddec = 0 ;
+   else if( olddec > THR_TOP_EXPON ) olddec = THR_TOP_EXPON ;
+   newdec = olddec ;
+
+   if( val > 0.0f ){
+     newdec = (int)( log10(val) + 1.0 ) ;
+          if( newdec < 0             ) newdec = 0 ;
+     else if( newdec > THR_TOP_EXPON ) newdec = THR_TOP_EXPON ;
+     if( newdec != olddec )
+       AFNI_set_thresh_top( im3d , tval[newdec] ) ;
+   }
+
+   smax  = (int)rint( pow(10.0,THR_TOP_EXPON) ) ;
+   stop  = smax - 1 ;                             /* max slider value */
+
+   ival = rint( val/(THR_FACTOR*tval[newdec]) ) ;
+        if( ival < 0    ) ival = 0    ;
+   else if( ival > stop ) ival = stop ;
+
+   XmScaleSetValue( im3d->vwid->func->thr_scale , ival ) ;
+   AFNI_thr_scale_CB( im3d->vwid->func->thr_scale, (XtPointer)im3d, NULL ) ;
+   AFNI_thresh_lock_carryout(im3d) ;
+   EXRETURN ;
+}
+
 /*-----------------------------------------------------------------------
    Called when the scale for the threshold is adjusted.
    30 Oct 1996: changed scale factor from slider to threshold
@@ -147,7 +222,7 @@ ENTRY("AFNI_set_thresh_top") ;
 
    decim = THR_TOP_EXPON - decim ;
    if( decim != im3d->vwid->func->thr_top_av->ival )
-      AV_assign_ival( im3d->vwid->func->thr_top_av , decim ) ;
+     AV_assign_ival( im3d->vwid->func->thr_top_av , decim ) ;
 
    EXRETURN ;
 }
@@ -1949,21 +2024,40 @@ void AFNI_choose_dataset_CB( Widget w , XtPointer cd , XtPointer cb )
    Widget wpar ;
    Three_D_View *im3d = (Three_D_View *) cd ;
    int llen , ltop ;
+   int browse_select = 0 ;
 
 ENTRY("AFNI_choose_dataset_CB") ;
 
    /*--- initialize ---*/
 
-   if( ! IM3D_VALID(im3d) ) EXRETURN ;
-   if( GLOBAL_library.have_dummy_dataset ){ BEEPIT ; EXRETURN ; }
+   if( ! IM3D_VALID(im3d) || w == (Widget)NULL ) EXRETURN ;
+
+   if( GLOBAL_library.have_dummy_dataset ){  /* 26 Feb 2007: read session? */
+     BEEPIT ;
+     if( w == im3d->vwid->view->choose_sess_pb ||
+         w == im3d->vwid->view->popchoose_sess_pb )
+       AFNI_read_sess_CB(im3d->vwid->dmode->read_sess_pb,(XtPointer)im3d,NULL);
+     EXRETURN ;
+   }
+
 #if 0
-   if( AFNI_splash_isopen() == 1         ){ BEEPIT ; EXRETURN ; }
+   if( AFNI_splash_isopen() == 1 ){ BEEPIT ; EXRETURN ; }
 #endif
 
+   /* how about a rescan ? ZSS - Fur Greg Detre */
+
+   if( AFNI_yesenv("AFNI_RESCAN_AT_SWITCH") &&
+      !(w == im3d->vwid->view->choose_sess_pb ||
+        w == im3d->vwid->view->popchoose_sess_pb) ){
+
+     STATUS("rescanning, per AFNI_RESCAN_AT_SWITCH") ;
+     AFNI_rescan_CB( w , (XtPointer)im3d , NULL ) ;
+   }
+
    if( first_call ){
-      for( ii=0 ; ii < THD_MAX_CHOICES ; ii++ )
-         strlist[ii] = (char*)XtMalloc( sizeof(char) * (STRLIST_SIZE+1) ) ;
-      first_call = 0 ;
+     for( ii=0 ; ii < THD_MAX_CHOICES ; ii++ )
+       strlist[ii] = (char*)XtMalloc( sizeof(char) * (STRLIST_SIZE+1) ) ;
+     first_call = 0 ;
    }
 
    /*--- make a list of session names ---*/
@@ -1992,6 +2086,8 @@ ENTRY("AFNI_choose_dataset_CB") ;
       wpar    = im3d->vwid->view->choose_anat_pb ;
       num_str = im3d->ss_now->num_dsset ;
       if( num_str < 1 ) EXRETURN ;
+
+      if( AFNI_yesenv("AFNI_DATASET_BROWSE") ) browse_select = 1 ;
 
       ltop = 4 ;
       for( ii=0 ; ii < num_str ; ii++ ){
@@ -2055,6 +2151,8 @@ ENTRY("AFNI_choose_dataset_CB") ;
       num_str = im3d->ss_now->num_dsset ;
       if( num_str < 1 ) EXRETURN ;
 
+      if( AFNI_yesenv("AFNI_DATASET_BROWSE") ) browse_select = 1 ;
+
       ltop = 4 ;
       for( ii=0 ; ii < num_str ; ii++ ){
          for( vv=FIRST_VIEW_TYPE ; vv <= LAST_VIEW_TYPE ; vv++ )
@@ -2111,6 +2209,8 @@ ENTRY("AFNI_choose_dataset_CB") ;
    }
 
    /*--- call the chooser ---*/
+
+   MCW_set_browse_select( browse_select ) ;
 
    MCW_choose_strlist( wpar , label , num_str , init_str , strlist ,
                        AFNI_finalize_dataset_CB , (XtPointer) im3d ) ;
@@ -2360,6 +2460,14 @@ ENTRY("AFNI_finalize_dataset_CB") ;
      }
    }
 
+   if( wcall == im3d->vwid->view->choose_func_pb &&
+       AFNI_yesenv("AFNI_THRESH_AUTO")              ){  /* 05 Mar 2007 */
+
+     float new_thresh = AFNI_get_autothresh(im3d) ;
+     if( new_thresh > 0.0f )
+       AFNI_set_threshold(im3d,new_thresh) ;
+   }
+
    EXRETURN ;
 }
 
@@ -2375,7 +2483,7 @@ void AFNI_close_file_dialog_CB( Widget w, XtPointer cd, XtPointer cb )
 ENTRY("AFNI_close_file_dialog") ;
 
    if( im3d->vwid->file_dialog != NULL )
-      RWC_XtPopdown( im3d->vwid->file_dialog ) ;
+     RWC_XtPopdown( im3d->vwid->file_dialog ) ;
 
    EXRETURN ;
 }
@@ -2387,6 +2495,7 @@ ENTRY("AFNI_close_file_dialog") ;
 
 void AFNI_make_file_dialog( Three_D_View *im3d )
 {
+   Widget www ;
 
 ENTRY("AFNI_make_file_dialog") ;
 
@@ -2403,6 +2512,7 @@ STATUS("creating new dialog") ;
               XmNtitle , "GPL AFNI" ,
               XmNdeleteResponse , XmDO_NOTHING ,
               XmNinitialResourcesPersistent , False ,
+              XmNkeyboardFocusPolicy , XmEXPLICIT ,
            NULL ) ;
 
       XmAddWMProtocolCallback(           /* make "Close" window menu work */
@@ -2421,7 +2531,7 @@ STATUS("creating new dialog") ;
               XmNfileTypeMask      , XmFILE_ANY_TYPE ,
               XmNcancelLabelString , cancellabel ,
               XmNokLabelString     , oklabel ,
-              XmNtraversalOn       , False ,
+              XmNtraversalOn       , True ,
               XmNinitialResourcesPersistent , False ,
            NULL ) ;
 
@@ -2430,15 +2540,8 @@ STATUS("creating new dialog") ;
       im3d->vwid->file_cb = NULL ;
       im3d->vwid->file_cd = NULL ;
 
-#if 1
-      { Widget www ;
-        www = XmFileSelectionBoxGetChild( im3d->vwid->file_sbox ,
-                                          XmDIALOG_TEXT ) ;
-        if( www != NULL ) MCW_set_widget_bg( www , MCW_hotcolor(www) , 0 ) ;
-      }
-#endif
-
    } else if( im3d->vwid->file_cb != NULL ){
+      Widget www ;
 
 STATUS("re-initializing old dialog") ;
 
@@ -2457,7 +2560,15 @@ STATUS("re-initializing old dialog") ;
 
       im3d->vwid->file_cb = NULL ;
       im3d->vwid->file_cd = NULL ;
+
+      XtVaSetValues(im3d->vwid->file_sbox,XmNfileTypeMask,XmFILE_ANY_TYPE,NULL);
    }
+
+#if 0  /* doesn't work, because the button is a gadget, not a widget */
+   www = XtNameToWidget( im3d->vwid->file_sbox , "OK" ) ;
+   if( www != NULL )
+     MCW_set_widget_bg( www , MCW_hotcolor(www) , 0 ) ;
+#endif
 
    EXRETURN ;
 }
@@ -2470,7 +2581,8 @@ STATUS("re-initializing old dialog") ;
 
 void AFNI_read_sess_CB( Widget w, XtPointer cd, XtPointer cb )
 {
-   Three_D_View *im3d = (Three_D_View *) cd ;
+   Three_D_View *im3d = (Three_D_View *)cd ;
+   Widget www ;
 
 ENTRY("AFNI_read_sess_CB") ;
 
@@ -2494,6 +2606,10 @@ ENTRY("AFNI_read_sess_CB") ;
 
    XtAddCallback( im3d->vwid->file_sbox , XmNhelpCallback ,
                   AFNI_finalize_read_sess_CB , cd ) ;
+
+   XtVaSetValues(im3d->vwid->file_sbox,XmNfileTypeMask,XmFILE_DIRECTORY,NULL);
+   MCW_set_widget_label( XtNameToWidget(im3d->vwid->file_sbox,"Items") ,
+                         "Sessions" ) ;
 
    im3d->vwid->file_cb = AFNI_finalize_read_sess_CB ;
    im3d->vwid->file_cd = cd ;
@@ -2706,18 +2822,25 @@ STATUS("freeing 'text' variable") ;
 
       case XmCR_HELP:
          (void) MCW_popup_message( w ,
-                    "To choose a new session, use the\n"
-                    "Directories and Files selectors,\n"
+                    "To read in a new session, use the\n"
+                    "Directories and Sessions selectors,\n"
                     "and the Filter entry and button,\n"
                     "to get the 'Selection' box correct;\n"
-                    "that is, 'Selection' should either\n"
-                    "be the name of the session directory,\n"
-                    "or the name of a file in the session\n"
-                    "directory.  Then press 'Set'.\n"
+                    "that is, 'Selection' should be the\n"
+                    "be the name of the session directory.\n"
+                    "Then press 'Set'.\n"
                     "\n"
+                    "How to Use the 'Directories' list:\n"
+                    " Click on or use arrow keys to select\n"
+                    " a directory, then press 'Enter' or\n"
+                    " double-click.  This will set the\n"
+                    " Selection to that directory name,\n"
+                    " and will show the sub-directories\n"
+                    " in the Sessions list to the right.\n"
+                    "-----------------------------------\n"
                     "N.B.: To see datasets in the new\n"
                     "      session, you must use the\n"
-                    "      'Switch Session' button."
+                    "      'Switch Session' button!\n"
                  , MCW_USER_KILL ) ;
       break ;
    }
@@ -2747,6 +2870,11 @@ ENTRY("AFNI_read_1D_CB") ;
 
    XtAddCallback( im3d->vwid->file_sbox , XmNhelpCallback ,
                   AFNI_finalize_read_1D_CB , cd ) ;
+
+   XtVaSetValues(im3d->vwid->file_sbox,XmNfileTypeMask,XmFILE_REGULAR,NULL);
+   MCW_set_widget_label( XtNameToWidget(im3d->vwid->file_sbox,"Items") ,
+                         "1D Files" ) ;
+
 
    /* 02 Feb 1998: put *.1D* in the filename pattern */
 
@@ -2823,13 +2951,22 @@ ENTRY("AFNI_finalize_read_1D_CB") ;
 
       case XmCR_HELP:
          (void) MCW_popup_message( w ,
-                    "To choose a new timeseries, use the\n"
-                    "Directories and Files selectors,\n"
+                    "To read in a new timeseries, use the\n"
+                    "Directories and '1D Files' selectors,\n"
                     "and the Filter entry and button,\n"
                     "to get the 'Selection' box correct;\n"
-                    "that is, 'Selection' should show the\n"
-                    "name of the 1D file which will be input.\n"
+                    "that is, 'Selection' should be the\n"
+                    "be the name of the 1D file to read.\n"
                     "Then press 'Set'.\n"
+                    "\n"
+                    "How to Use the 'Directories' list:\n"
+                    " Click on or use arrow keys to select\n"
+                    " a directory, then press 'Enter' or\n"
+                    " double-click.  This will set the\n"
+                    " Selection to that directory name.\n"
+                    " You must then choose the 1D file you\n"
+                    " want from the '1D Files' list at the\n"
+                    " right.\n"
                  , MCW_USER_KILL ) ;
       break ;
    }
@@ -3587,9 +3724,9 @@ ENTRY("AFNI_modify_viewing") ;
    EXRETURN ;
 }
 
-/*----------------------------------------------------------------
+/*--------------------------------------------------------------------
   23 Nov 1996: Setup to write out many datasets
-------------------------------------------------------------------*/
+----------------------------------------------------------------------*/
 
 void AFNI_write_many_dataset_CB( Widget w, XtPointer cd, XtPointer cb )
 {
@@ -3716,6 +3853,8 @@ ENTRY("AFNI_write_many_dataset_CB") ;
 
    EXRETURN ;
 }
+
+/*--------------------------------------------------------------------*/
 
 void AFNI_do_many_writes( Widget wpar , XtPointer cd , MCW_choose_cbs *cbs )
 {
@@ -4781,6 +4920,12 @@ ENTRY("AFNI_bucket_CB") ;
       SHOW_AFNI_READY ;
    }
 
+   if( AFNI_yesenv("AFNI_THRESH_AUTO") ){           /* 05 Mar 2007 */
+     float new_thresh = AFNI_get_autothresh(im3d) ;
+     if( new_thresh > 0.0f )
+       AFNI_set_threshold(im3d,new_thresh) ;
+   }
+
    EXRETURN ;
 }
 
@@ -5031,7 +5176,12 @@ STATUS("got func info") ;
    /*.........................................................*/
 
    else if( w == im3d->vwid->dmode->misc_purge_pb ){
-      AFNI_purge_dsets( 1 ) ;
+     long long mb , ma ;
+     mb = mcw_malloc_total() ;
+     AFNI_purge_dsets( 1 ) ;
+     ma = mcw_malloc_total() ;
+     if( mb > 0 && ma > 0 )
+       INFO_message("Purge: before=%lld  after=%lld  diff=%lld",mb,ma,mb-ma) ;
    }
 
    /*.........................................................*/
@@ -5229,12 +5379,16 @@ STATUS("got func info") ;
    else if( w == im3d->vwid->dmode->misc_plugout_pb ){ /* 07 Nov 2001 */
       AFNI_init_plugouts() ;
       XtSetSensitive(w,False) ;
+      if( AFNI_have_niml() )  /* 02 Feb 2007 */
+        XtSetSensitive(im3d->vwid->view->nimlpo_pb,False) ;
    }
 #endif /* ALLOW_PLUGINS */
 
    else if( w == im3d->vwid->dmode->misc_niml_pb ){ /* 02 Mar 2002 */
       AFNI_init_niml() ;
       XtSetSensitive(w,False) ;
+      if( AFNI_have_plugouts() )  /* 02 Feb 2007 */
+        XtSetSensitive(im3d->vwid->view->nimlpo_pb,False) ;
    }
 
    /*.........................................................*/
@@ -5242,6 +5396,17 @@ STATUS("got func info") ;
    /****----- Get Outta Here -----****/
 
    EXRETURN ;
+}
+
+/*---------------------------------------------------------------*/
+
+void AFNI_editenv_CB( Widget w , XtPointer cd , XtPointer cbd )
+{
+   Three_D_View *im3d = (Three_D_View *) cd ;
+
+   if( !IM3D_OPEN(im3d) ) EXRETURN ;
+   AFNI_misc_CB( im3d->vwid->dmode->misc_environ_pb ,
+                 (XtPointer) im3d , (XtPointer) NULL ) ;
 }
 
 #ifdef USE_HIDDEN
@@ -5276,7 +5441,7 @@ void AFNI_hidden_CB( Widget w , XtPointer cd , XtPointer cbs )
 
 ENTRY("AFNI_hidden_CB") ;
 
-   if( ! IM3D_OPEN(im3d) ) EXRETURN ;
+   if( ! IM3D_OPEN(im3d) || w == (Widget)NULL ) EXRETURN ;
 
 #ifdef ALLOW_DATASET_VLIST
    /****----- Read points -----****/

@@ -54,6 +54,15 @@ static String fallbackResources_default[] = {
    "*help*fontList:         9x15bold=charset1"    ,
    "*cluefont:              9x15bold"             ,
    "*help*cancelWaitPeriod: 50"                   ,
+   "*XmList.translations: #override"                /* 24 Feb 2007 */
+        "<Btn4Down>: ListPrevItem()\\n"
+        "<Btn5Down>: ListNextItem()"                  ,
+   "*XmText.translations: #override"
+        "<Btn4Down>: previous-line()\\n"
+        "<Btn5Down>: next-line()"                     ,
+   "*XmScrollBar.translations: #override"
+        "<Btn4Down>: IncrementUpOrLeft(0) IncrementUpOrLeft(1)\\n"
+        "<Btn5Down>: IncrementDownOrRight(1) IncrementDownOrRight(0)" ,
   NULL
 }; /* if you change default width and height, make sure you change SV->X->WIDTH & SV->X->HEIGHT in SUMA_SVmanip */
 
@@ -80,6 +89,15 @@ static String fallbackResources_AFNI[] = {
    "*help*fontList:         9x15bold=charset1"    ,
    "*cluefont:              9x15bold"             ,
    "*help*cancelWaitPeriod: 50"                   ,
+   "*XmList.translations: #override"                /* 24 Feb 2007 */
+        "<Btn4Down>: ListPrevItem()\\n"
+        "<Btn5Down>: ListNextItem()"                  ,
+   "*XmText.translations: #override"
+        "<Btn4Down>: previous-line()\\n"
+        "<Btn5Down>: next-line()"                     ,
+   "*XmScrollBar.translations: #override"
+        "<Btn4Down>: IncrementUpOrLeft(0) IncrementUpOrLeft(1)\\n"
+        "<Btn5Down>: IncrementDownOrRight(1) IncrementDownOrRight(0)" ,
   NULL
 }; /* if you change default width and height, make sure you change SV->X->WIDTH & SV->X->HEIGHT in SUMA_SVmanip */
 
@@ -107,6 +125,15 @@ static String fallbackResources_EURO[] = {
    "*cluefont:              9x15"             ,
    "*help*cancelWaitPeriod: 50"                   ,
    "*hotcolor:              blue2"               , 
+   "*XmList.translations: #override"                /* 24 Feb 2007 */
+        "<Btn4Down>: ListPrevItem()\\n"
+        "<Btn5Down>: ListNextItem()"                  ,
+   "*XmText.translations: #override"
+        "<Btn4Down>: previous-line()\\n"
+        "<Btn5Down>: next-line()"                     ,
+   "*XmScrollBar.translations: #override"
+        "<Btn4Down>: IncrementUpOrLeft(0) IncrementUpOrLeft(1)\\n"
+        "<Btn5Down>: IncrementDownOrRight(1) IncrementDownOrRight(0)" ,
   NULL
 }; /* if you change default width and height, make sure you change SV->X->WIDTH & SV->X->HEIGHT in SUMA_SVmanip */
 
@@ -134,8 +161,26 @@ static String fallbackResources_Bonaire[] = {
    "*cluefont:              9x15bold"             ,
    "*help*cancelWaitPeriod: 50"                   ,
    "*hotcolor:              azure"               , 
+   "*XmList.translations: #override"                /* 24 Feb 2007 */
+        "<Btn4Down>: ListPrevItem()\\n"
+        "<Btn5Down>: ListNextItem()"                  ,
+   "*XmText.translations: #override"
+        "<Btn4Down>: previous-line()\\n"
+        "<Btn5Down>: next-line()"                     ,
+   "*XmScrollBar.translations: #override"
+        "<Btn4Down>: IncrementUpOrLeft(0) IncrementUpOrLeft(1)\\n"
+        "<Btn5Down>: IncrementDownOrRight(1) IncrementDownOrRight(0)" ,
   NULL
 }; /* if you change default width and height, make sure you change SV->X->WIDTH & SV->X->HEIGHT in SUMA_SVmanip */
+
+static char SUMA_TEXT_WIDGET_TRANSLATIONS[] = 
+   "  <Btn4Down>: previous-line()   \n\
+      <Btn5Down>: next-line()       ";
+static char SUMA_SCR_LIST_WIDGET_TRANSLATIONS[] = 
+   "  <Btn4Down>: ListPrevItem() \n\
+      <Btn5Down>: ListNextItem() ";
+
+      
 
 /*!
 
@@ -753,6 +798,10 @@ void SUMA_display(SUMA_SurfaceViewer *csv, SUMA_DO *dov)
     
    SUMA_ENTRY;
    
+   if (LocalHead) {
+      SUMA_DUMP_TRACE("Trace At display call");
+   }
+   
    /* now you need to set the clear_color since it can be changed per viewer Thu Dec 12 2002 */
    glClearColor (csv->clear_color[0], csv->clear_color[1], csv->clear_color[2], csv->clear_color[3]);
    
@@ -975,10 +1024,20 @@ void SUMA_display(SUMA_SurfaceViewer *csv, SUMA_DO *dov)
   /* Avoid indirect rendering latency from queuing. */
   if (!glXIsDirect(csv->X->DPY, csv->X->GLXCONTEXT))
     glFinish();
-  
+   
   /* if recording, take a snap */
   if (csv->Record) {
       if (csv->rdc < SUMA_RDC_X_START || csv->rdc > SUMA_RDC_X_END) {
+         /*
+         Combination below helps partial coverage 
+         problem under linux when recording.
+         But it does not fix the coverage problem 
+         entirely.
+         
+         SUMA_S_Note("Raising the dead");
+         XtPopup (csv->X->TOPLEVEL, XtGrabExclusive);
+         XRaiseWindow(XtDisplay(csv->X->TOPLEVEL), XtWindow(csv->X->TOPLEVEL));
+       */  
          glFinish();
          glXWaitX();
       #ifdef DARWIN
@@ -2406,7 +2465,7 @@ SUMA_Boolean SUMA_RenderToPixMap (SUMA_SurfaceViewer *csv, SUMA_DO *dov)
    static char FuncName[]={"SUMA_RenderToPixMap"};
 
    SUMA_ENTRY;
-
+   SUMA_S_Note("CALLED!");
    dpy = XOpenDisplay(NULL);
    if (dpy == NULL)
     fprintf(SUMA_STDERR,"Error %s: could not open display", FuncName);
@@ -5092,7 +5151,6 @@ void SUMA_CreateScrolledList (    char **clist, int N_clist, SUMA_Boolean Partia
       XtSetArg (args[n], XmNitemCount,      0); n++;
       XtSetArg (args[n], XmNlistSizePolicy,   XmCONSTANT   ); n++;
       LW->list = XmCreateScrolledList (LW->rc, "Tonka", args, n);
-
       
       
       /* add the default selection callback  SEE ALSO  SUMA_UpdateScrolledListData */
@@ -5102,7 +5160,7 @@ void SUMA_CreateScrolledList (    char **clist, int N_clist, SUMA_Boolean Partia
          XtAddCallback (LW->list, XmNdefaultActionCallback, LW->Default_cb, (XtPointer)LW->Default_Data);
       }        
 
-      /* set the selection policy SEE ALSO  SUMA_UpdateScrolledListData */
+     /* set the selection policy SEE ALSO  SUMA_UpdateScrolledListData */
       switch (LW->SelectPolicy){
          case SUMA_LSP_SINGLE:
             XtVaSetValues( LW->list, XmNselectionPolicy, XmSINGLE_SELECT, NULL);
@@ -5112,12 +5170,12 @@ void SUMA_CreateScrolledList (    char **clist, int N_clist, SUMA_Boolean Partia
                XtAddCallback (LW->list, XmNsingleSelectionCallback, LW->Select_cb, (XtPointer)LW->Select_Data); 
             break;
          case SUMA_LSP_BROWSE:
+            XtVaSetValues( LW->list, XmNselectionPolicy, XmBROWSE_SELECT, NULL);
             if (!LW->Select_Data) 
                XtAddCallback (LW->list, XmNbrowseSelectionCallback, LW->Select_cb, (XtPointer)LW);
             else
                XtAddCallback (LW->list, XmNbrowseSelectionCallback, LW->Select_cb, (XtPointer)LW->Select_Data); 
             
-            XtVaSetValues( LW->list, XmNselectionPolicy, XmBROWSE_SELECT, NULL);
             break;
          case SUMA_LSP_MULTIPLE:
             if (!LW->Select_Data) 
@@ -5141,10 +5199,11 @@ void SUMA_CreateScrolledList (    char **clist, int N_clist, SUMA_Boolean Partia
             break;
       }
        
-      /* manage it */
+       /* manage it */
       if (LocalHead) fprintf(SUMA_STDERR, "%s: Managing ..\n", FuncName);
       XtManageChild (LW->list);
       XtManageChild (LW->rc);
+
 
       SUMA_PositionWindowRelative (LW->toplevel, LW->PosRef, LW->Pos);   
 
@@ -5203,6 +5262,7 @@ void SUMA_CreateScrolledList (    char **clist, int N_clist, SUMA_Boolean Partia
          XmListAddItemUnselected (LW->list, str, l_bound+1);
       }
       XmStringFree (str);
+
    }
 
 
@@ -5213,8 +5273,14 @@ void SUMA_CreateScrolledList (    char **clist, int N_clist, SUMA_Boolean Partia
 
    
    if (New) {
+      XmListSetPos(LW->list,1);
+      XmListSelectPos(LW->list,1, False); 
       /* realize the widget */
       XtRealizeWidget (LW->toplevel);
+      /* Do the wheel buidness Can't seem to get this working no matter where I put it. Best to leave it in fallback */
+      /*XtVaSetValues  (  LW->list, 
+                  XmNtranslations, XtParseTranslationTable(SUMA_SCR_LIST_WIDGET_TRANSLATIONS),
+                  NULL);  */
    }
    
    SUMA_RETURNe;
@@ -6263,7 +6329,7 @@ void SUMA_cb_SelectSwitchColPlane(Widget w, XtPointer data, XtPointer call_data)
    Found = NOPE;
    ichoice = 0;
    do {
-      if (LocalHead) fprintf (SUMA_STDERR,"%s: Comparing:\n%s\n%s", FuncName, LW->ALS->clist[ichoice], choice);
+      if (LocalHead) fprintf (SUMA_STDERR,"%s: Comparing:\t>%s<\t>%s<", FuncName, LW->ALS->clist[ichoice], choice);
       if (strncmp(LW->ALS->clist[ichoice], choice, strlen(LW->ALS->clist[ichoice])) == 0) Found = YUP; 
       else ++ichoice;
    } while (ichoice < LW->ALS->N_clist && !Found);
@@ -6372,7 +6438,7 @@ void SUMA_cb_SelectSwitchGroup(Widget w, XtPointer data, XtPointer call_data)
    Found = NOPE;
    ichoice = 0;
    do {
-      if (LocalHead) fprintf (SUMA_STDERR,"%s: Comparing:\n%s\n%s", FuncName, LW->ALS->clist[ichoice], choice);
+      if (LocalHead) fprintf (SUMA_STDERR,"%s: Comparing:\t>%s<\t>%s<", FuncName, LW->ALS->clist[ichoice], choice);
       if (strncmp(LW->ALS->clist[ichoice], choice, strlen(LW->ALS->clist[ichoice])) == 0) Found = YUP; 
       else ++ichoice;
    } while (ichoice < LW->ALS->N_clist && !Found);
@@ -6484,7 +6550,7 @@ void SUMA_cb_SelectSwitchROI(Widget w, XtPointer data, XtPointer call_data)
    Found = NOPE;
    ichoice = 0;
    do {
-      if (LocalHead) fprintf (SUMA_STDERR,"%s: Comparing:\n%s\n%s", FuncName, LW->ALS->clist[ichoice], choice);
+      if (LocalHead) fprintf (SUMA_STDERR,"%s: Comparing:\t>%s<\t>%s<", FuncName, LW->ALS->clist[ichoice], choice);
       if (strncmp(LW->ALS->clist[ichoice], choice, strlen(LW->ALS->clist[ichoice])) == 0) Found = YUP; 
       else ++ichoice;
    } while (ichoice < LW->ALS->N_clist && !Found);
@@ -7502,7 +7568,7 @@ SUMA_CREATE_TEXT_SHELL_STRUCT * SUMA_CreateTextShell (char *s, char *title, SUMA
    int n;
    SUMA_Boolean LocalHead = NOPE;
    Pixel fg_pix;
-   Arg args[20];
+   Arg args[30];
    
    SUMA_ENTRY;
 
@@ -7514,7 +7580,7 @@ SUMA_CREATE_TEXT_SHELL_STRUCT * SUMA_CreateTextShell (char *s, char *title, SUMA
    if (!TextShell->toplevel) { /* need to create window */
       if (LocalHead) fprintf (SUMA_STDERR, "%s: Creating new text shell window.\n", FuncName);
       TextShell->toplevel = XtVaAppCreateShell (title, "Suma",
-         topLevelShellWidgetClass, SUMAg_CF->X->DPY_controller1 ,
+         topLevelShellWidgetClass, SUMAg_CF->X->DPY_controller1 ,        
          XmNdeleteResponse, XmDO_NOTHING,
          NULL);  
 
@@ -7584,8 +7650,13 @@ SUMA_CREATE_TEXT_SHELL_STRUCT * SUMA_CreateTextShell (char *s, char *title, SUMA
          XmTextSetString (TextShell->text_w, s);
       }   
       XtManageChild (TextShell->text_w);
-
+      
       XtAddCallback (TextShell->search_w, XmNactivateCallback, SUMA_cb_search_text, TextShell);
+      
+      /* Setting XmNtranslations gives warning if done inside XmCreateScrolledText ror text_w */
+      XtVaSetValues  (  TextShell->text_w, 
+                        XmNtranslations, XtParseTranslationTable(SUMA_TEXT_WIDGET_TRANSLATIONS),
+                        NULL); 
 
       XtManageChild (form);
 
@@ -9747,6 +9818,83 @@ int SUMA_AskUser_File_replace(Widget parent, char *question, int default_ans)
    SUMA_RETURN(answer);
 }
 
+
+/*!
+  Supposed to behave like ForceUser function below but only for pausing.
+*/
+int SUMA_PauseForUser(Widget parent, char *question, SUMA_WINDOW_POSITION pos)
+{
+   static char FuncName[]={"SUMA_PauseForUser"};
+   static Widget dialog; /* static to avoid multiple creation */
+   Widget YesWid;
+   int ii;
+   XmString text, yes;
+   static int answer;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   if (!parent) {
+      /* look for the first non-null sv->X->TOPLEVEL */
+      ii = 0;
+      while (ii<SUMAg_N_SVv && !(parent=SUMAg_SVv[ii].X->TOPLEVEL)) {
+         ++ii;
+      }
+   }
+   if (!parent) { /* no widgets, go command line */
+      SUMA_PAUSE_PROMPT(question);
+      SUMA_RETURN(SUMA_YES);
+   }
+   
+   if (!dialog) {
+     SUMA_LH("Creating Dialog");
+     dialog = XmCreateQuestionDialog (parent, "dialog", NULL, 0);
+     XtVaSetValues (dialog,
+         XmNdialogStyle,        XmDIALOG_FULL_APPLICATION_MODAL,
+         NULL);
+     /* Don't need help and cancel buttons */
+     XtUnmanageChild (XmMessageBoxGetChild (dialog, XmDIALOG_HELP_BUTTON));
+     XtUnmanageChild (XmMessageBoxGetChild (dialog, XmDIALOG_CANCEL_BUTTON));
+     
+     XtAddCallback (dialog, XmNokCallback, SUMA_response, &answer); 
+    } else {
+      SUMA_LH("Reusing Dialog (SLOW SLOW SLOW)");
+    }
+    
+   answer = SUMA_NO_ANSWER;
+   text = XmStringCreateLocalized (question);
+   yes = XmStringCreateLocalized ("Yes");
+   XtVaSetValues (dialog,
+     XmNmessageString,      text,
+     XmNokLabelString,      yes,
+     XmNdefaultButtonType,  XmDIALOG_OK_BUTTON,
+     NULL);
+   XmStringFree (text);
+   XmStringFree (yes);
+
+   /* set the values of the standard buttons */
+   YesWid = XmMessageBoxGetChild(dialog, XmDIALOG_OK_BUTTON);
+   XtVaSetValues(YesWid, XmNuserData, SUMA_YES, NULL);
+
+   XtManageChild (dialog);
+   
+   XtPopup (XtParent (dialog), XtGrabNone);
+   
+   if (pos != SWP_DONT_CARE) SUMA_PositionWindowRelative(dialog, parent, pos);
+   
+   while (answer == SUMA_NO_ANSWER)
+     XtAppProcessEvent (SUMAg_CF->X->App, XtIMAll);
+      
+   #if 1
+      XtDestroyWidget(dialog); 
+      dialog = NULL;
+   #else /* bad, takes for ever to come back up. 
+               Same for repeated calls of ForceUser if created for the first time from DriveSuma and
+               not from the interface with, say 'shft+Esc' 
+               See bit of illustration code in SUMA_Engine where PauseForUser is called*/ 
+      XtUnmanageChild(dialog);
+   #endif
+   SUMA_RETURN(answer);
+}
 
 /*!
    \brief create a forced answer dialog YES/NO 

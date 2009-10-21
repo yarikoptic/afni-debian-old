@@ -75,17 +75,20 @@ extern "C" {
 
 /***************************** dimensions ***************************/
 
-/*! Max length of a "name" of a file, or stuff like that. */
-
-#define THD_MAX_NAME      256
-
 /*! Max length of a dataset label. */
 
 #define THD_MAX_LABEL     38
 
 /*! Max length of a dataset prefix. */
 
-#define THD_MAX_PREFIX     (127+1)  /* must be more than THD_MAX_LABEL */
+#define THD_MAX_PREFIX     (255+1)  /* must be more than THD_MAX_LABEL
+                                    (  ZSS Jan 07 need room for path specified
+                                       with prefix on command line   (why that +1,
+                                       I don't know) ) */
+
+/*! Max length of a "name" of a file, or stuff like that. */
+
+#define THD_MAX_NAME      (256+THD_MAX_PREFIX)     /* (ZSS Jan 07)*/
 
 /*! Max length of a dataset view code (+orig, etc). */
 
@@ -2310,7 +2313,9 @@ typedef struct THD_3dim_dataset {
 #define ISVALID_3DIM_DATASET(ds)                      \
    ( (ds) != NULL && (ds)->type >= FIRST_3DIM_TYPE && \
                      (ds)->type <= LAST_3DIM_TYPE  && \
-      ISVALID_DATABLOCK((ds)->dblk)                  )
+                 (ds)->view_type >= 0              && \
+                 (ds)->view_type <= LAST_VIEW_TYPE && \
+      ISVALID_DATABLOCK((ds)->dblk)                    )
 
 /*! Determine if ds is a pointer to a valid dataset. */
 
@@ -2539,6 +2544,10 @@ typedef struct THD_3dim_dataset {
 /*! Return the MRI_IMAGE * that is the iv-th volume of dataset ds */
 
 #define DSET_BRICK(ds,iv) DBLK_BRICK((ds)->dblk,(iv))
+
+/*! See if the iv-th volume is purged to disk at this moment */
+
+#define DSET_BRICK_IS_PURGED(ds,iv) MRI_IS_PURGED(DSET_BRICK((ds),(iv)))
 
 #define DBLK_BRICK_TYPE(db,iv) (DBLK_BRICK((db),(iv))->kind)
 
@@ -3499,7 +3508,7 @@ extern MRI_IMAGE *        THD_fetch_1D           (char *) ; /* 26 Mar 2001 */
 
 extern void THD_set_storage_mode( THD_3dim_dataset *,int ); /* 21 Mar 2003 */
 
-extern int * get_count_intlist ( char *str , int *nret); 
+extern int * get_count_intlist ( char *str , int *nret);
 extern int * MCW_get_intlist( int , char * ) ;
 extern void MCW_intlist_allow_negative( int ) ;             /* 22 Nov 1999 */
 
@@ -3598,6 +3607,7 @@ extern THD_3dim_dataset * THD_copy_dset_subs( THD_3dim_dataset * , int * ) ;
    "a timeseries in AFNI.  The convention is to store this type of data\n"    \
    "in a filename ending in '.1D'.\n"                                         \
    "\n"                                                                       \
+   "** COLUMN SELECTION WITH [] **\n"                                         \
    "When specifying a timeseries file to an command-line AFNI program, you\n" \
    "can select a subset of columns using the '[...]' notation:\n"             \
    "  'fred.1D[5]'            ==> use only column #5\n"                       \
@@ -3608,11 +3618,14 @@ extern THD_3dim_dataset * THD_copy_dset_subs( THD_3dim_dataset * , int * ) ;
    "to indicate the last sub-brick in a dataset; for example, you\n"          \
    "can select every third sub-brick by using the selection list\n"           \
    "  'fred.1D[0..$(3)]'      ==> use columns #0, #3, #6, #9, ....\n"         \
+   "\n"                                                                       \
+   "** ROW SELECTION WITH {} **\n"                                            \
    "Similarly, you select a subset of the rows using the '{...}' notation:\n" \
    "  'fred.1D{0..$(2)}'      ==> use rows #0, #2, #4, ....\n"                \
    "You can also use both notations together, as in\n"                        \
    "  'fred.1D[1,3]{1..$(2)}' ==> columns #1 and #3; rows #1, #3, #5, ....\n" \
    "\n"                                                                       \
+   "** DIRECT INPUT OF DATA ON THE COMMAND LINE WITH 1D: **\n"                \
    "You can also input a 1D time series 'dataset' directly on the command\n"  \
    "line, without an external file. The 'filename' for such input has the\n"  \
    "general format\n"                                                         \
@@ -3622,12 +3635,20 @@ extern THD_3dim_dataset * THD_copy_dset_subs( THD_3dim_dataset * , int * ) ;
    "   -a '1D:5@0,10@1,5@0,10@1,5@0'\n"                                       \
    "specifies that variable 'a' be assigned to a 1D time series of 35,\n"     \
    "alternating in blocks between values 0 and value 1.\n"                    \
+   " * Spaces or commas can be used to separate values.\n"                    \
+   " * A '|' character can be used to start a new input \"line\":\n"          \
+   "   Try 1dplot '1D: 3 4 3 5 | 3 5 4 3'\n"                                  \
    "\n"                                                                       \
+   "** TRANSPOSITION WITH \\' **\n"                                           \
    "Finally, you can force most AFNI programs to tranpose a 1D file on\n"     \
    "input by appending a single ' character at the end of the filename.\n"    \
    "N.B.: Since the ' character is also special to the shell, you'll\n"       \
    "      probably have to put a \\ character before it. Examples:\n"         \
-   "       1dcat 1D:3,4,5   and   1dcat 1D:3,4,5\\'\n"
+   "       1dplot '1D: 3 2 3 4 | 2 3 4 3'   and\n"                            \
+   "       1dplot '1D: 3 2 3 4 | 2 3 4 3'\\'\n"                               \
+   "When you have reached this level of understanding, you are ready to\n"    \
+   "take the AFNI Jedi Master test.  I won't insult you by telling you\n"     \
+   "where to find this examination.\n"
 
 extern void THD_delete_3dim_dataset( THD_3dim_dataset * , Boolean ) ;
 extern THD_3dim_dataset * THD_3dim_from_block( THD_datablock * ) ;
@@ -3674,6 +3695,8 @@ extern void    THD_load_mpeg   ( THD_datablock * ) ;         /* 03 Dec 2003 */
 extern void    THD_load_tcat   ( THD_datablock * ) ;         /* 04 Aug 2004 */
 extern int     THD_load_niml   ( THD_datablock * ) ;         /* 12 Jun 2006 */
 
+extern int     THD_count_potential_databricks( THD_datablock *dblk );
+
 extern void    THD_zerofill_dataset( THD_3dim_dataset * ) ;  /* 18 Mar 2005 */
 extern int     THD_apply_master_subrange( THD_datablock * ); /* 14 Apr 2006 */
 extern void    THD_patch_brickim( THD_3dim_dataset * ) ;     /* 20 Oct 2006 */
@@ -3684,6 +3707,7 @@ extern int THD_datum_constant( THD_datablock * ) ;           /* 30 Aug 2002 */
 #define ALLOW_FSL_FEAT  /* 27 Aug 2002 */
 
 #define MINC_FLOATIZE_MASK 1
+#define MINC_SWAPIZE_MASK 1<<1
 extern int THD_write_minc( char *, THD_3dim_dataset * , int) ; /* 11 Apr 2002 */
 
 extern void THD_write_1D( char *, char *, THD_3dim_dataset *); /* 04 Mar 2003 */
@@ -3813,6 +3837,7 @@ extern void THD_normalize        ( int, float * ) ;
 extern void THD_cubic_detrend    ( int, float * ) ;  /* 15 Nov 1999 */
 
 extern void THD_const_detrend    ( int, float *, float * ); /* 24 Aug 2001 */
+void THD_linear_detrend_complex  ( int, complex * ); /* 05 Mar 2007 */
 
 extern void THD_generic_detrend( int, float *, int, int, float ** ) ;
 
@@ -3844,6 +3869,11 @@ extern FD_brick * THD_oriented_brick( THD_3dim_dataset *, char *) ; /* 07 Dec 20
 
 extern int thd_floatscan  ( int , float *   ) ; /* 30 Jul 1999 */
 extern int thd_complexscan( int , complex * ) ; /* 14 Sep 1999 */
+
+extern int mri_floatscan  ( MRI_IMAGE * ) ;     /* 22 Feb 2007 */
+extern int imarr_floatscan( MRI_IMARR * ) ;
+extern int dblk_floatscan ( THD_datablock * ) ;
+extern int dset_floatscan ( THD_3dim_dataset * ) ;
 
 extern byte * THD_makemask( THD_3dim_dataset *, int,float,float) ;
 extern int    THD_makedsetmask( THD_3dim_dataset *, int,float,float, byte*cmask) ;
@@ -3885,6 +3915,7 @@ extern int THD_peel_mask( int nx, int ny, int nz , byte *mmm, int pdepth ) ;
 extern void THD_mask_dilate( int, int, int, byte *, int ) ;  /* 30 Aug 2002 */
 
 extern float THD_cliplevel( MRI_IMAGE * , float ) ;          /* 12 Aug 2001 */
+extern float THD_cliplevel_abs( MRI_IMAGE * , float ) ;      /* 05 Mar 2007 */
 extern float mri_topclip( MRI_IMAGE * ) ;                    /* 28 Sep 2006 */
 extern MRI_IMAGE * THD_median_brick( THD_3dim_dataset * ) ;  /* 12 Aug 2001 */
 extern MRI_IMAGE * THD_mad_brick   ( THD_3dim_dataset * ) ;  /* 07 Dec 2006 */
@@ -4329,7 +4360,7 @@ extern void brainnormalize_coord( float  ispat, float  jspat, float  kspat ,
                            THD_3dim_dataset *origset,
                            float *xrai_orig, float *yrai_orig, float *zrai_orig); /* ZSS */
 extern MRI_IMAGE * mri_watershedize( MRI_IMAGE * , float ) ;
-extern void mri_monkeybusiness( int ) ;
+extern void mri_speciebusiness( int ) ;
 extern void mri_brainormalize_initialize(float dx, float dy, float dz);
 extern float THD_BN_dxyz(void);
 extern int THD_BN_nx(void);

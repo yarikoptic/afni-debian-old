@@ -93,7 +93,7 @@ void SUMA_usage (SUMA_GENERIC_ARGV_PARSE *ps)
                   "                    SurfaceVolume to each surface in the spec file. \n"
                   "                    In this manner, you can have different surfaces using\n"
                   "                    different surface volumes.\n"     
-			         "   [-ah <AfniHost>]: Name (or IP address) of the computer running AFNI. This \n"     
+			         "   [-ah AfniHost]: Name (or IP address) of the computer running AFNI. This \n"     
 			         "                     parameter is optional, the default is localhost. \n"     
                   "                     When both AFNI and SUMA are on the same computer, \n"
                   "                     communication is through shared memory. You can turn that \n"
@@ -139,7 +139,7 @@ void SUMA_usage (SUMA_GENERIC_ARGV_PARSE *ps)
                   SUMA_free(sb); SUMA_free(sio);
 			 SUMA_Version(NULL);
 			 printf ("\n" 
-                  "\n    Ziad S. Saad SSCC/NIMH/NIH ziad@nih.gov \n\n");
+                  "\n    Ziad S. Saad SSCC/NIMH/NIH saadz@mail.nih.gov \n\n");
           exit (0);
   }/*Usage*/
      
@@ -322,6 +322,7 @@ int main (int argc,char *argv[])
    DListElmt *Element= NULL;
    int iv15[15], N_iv15, ispec, nspec;
    struct stat stbuf;
+   float fff=0.0;
    SUMA_Boolean Start_niml = NOPE, Domemtrace = YUP;
    SUMA_GENERIC_ARGV_PARSE *ps=NULL;
    SUMA_Boolean LocalHead = NOPE;
@@ -545,7 +546,7 @@ int main (int argc,char *argv[])
       SOv = SUMA_GimmeSomeSOs(&N_SOv);
       Specp[ispec] = SUMA_SOGroup_2_Spec (SOv, N_SOv);
       SUMA_free(SOv); SOv = NULL;
-      InMem[ispec] = 1; 
+      InMem[ispec] = 1;
       ++ispec;
 	}
 
@@ -612,8 +613,9 @@ int main (int argc,char *argv[])
          fprintf(SUMA_STDERR,"Error %s: Failed to register command\n", FuncName);
          exit (1);
       }
+      fff = (float) InMem[i];
       if (!( Element = SUMA_RegisterEngineListCommand (  list, ED, 
-                                             SEF_f, (void *)&InMem[i], 
+                                             SEF_f, (void *)&fff, 
                                              SES_Suma, NULL, NOPE, 
                                              SEI_In, Element ))) {
          fprintf(SUMA_STDERR,"Error %s: Failed to register command\n", FuncName);

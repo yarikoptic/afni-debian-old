@@ -5949,7 +5949,7 @@
      also a fix to stupid error made a couple days before.
 
 30 Oct 2006
- * Modified plut_scatplot.c to copy 'Aboot' option from plug_histog.c.
+ * Modified plug_scatplot.c to copy 'Aboot' option from plug_histog.c.
  * Modified THD_pearson() stuff in thd_correlate.c to remove mean.
  * New program 3dLocalBistat.c -- joint local statistics between 2
      datasets.
@@ -6013,3 +6013,131 @@
  * When AFNI_IMAGE_GLOBALRANGE is yes, don't do redisplay on isqDR_setrange.
      Causes an unpleasant flickering in the image viewer window.  Changes
      to afni.c (AFNI_range_setter()), imseq.c, etc.
+
+28 Dec 2006
+ * Modify afni_splash.c to save current dataset names and xyz coords in
+     the startup script.
+ * Modify afni_driver.c to allow multiple "keypress=" options to OPEN_WINDOW.
+
+05 Jan 2007
+ * Modify mri_read.c to allow 'ragged' input from "1D:" strings
+    (e.g., for use with 3dDeconvolve).
+
+10 Jan 2007
+ * Modified svd_double() in cs_symeig.c to sort singular values and vectors.
+ * Modifed 1dsvd.c to have a '-sort' option.
+
+15 Jan 2007
+ * Added mri_gamma_rgb_inplace() to mri_to_rgb.c.
+ * Modified 1dsvd.c to change Left for Right.
+
+19 Jan 2007
+ * Modified 3dDeconvolve.c and mri_fromstring.c to use '|' as a line
+     separator in 'SYM:' and '1D:' inputs (as well as '\\').
+
+26 Jan 2007
+ * Modified 3dDeconvolve.c to echo -gltsym files as well as the matrices
+     they generate.
+
+01 Feb 2007
+ * Modified mri_purger.c to use a process-specific 3 code suffix after
+     TIM_ to make it easier to clean up after a crash when multiple
+     jobs are running.
+ * Modified mri_genalign.c to patch a memory leak in some floatvec's
+     not being freed before being reused.
+ * Modified 3dAllineate.c to use mri_purge() on the output dataset's
+     sub-bricks as they are being created.
+ * Modified thd_writedblk.c to deal with datasets that have mri_purge()-ed
+     sub-bricks.  Need to do the same for NIfTI someday, I suppose.
+ * New function mri_clear() in mri_free.c, to free an MRI_IMAGE's data array
+     and get rid of it's purged TIM file, if necessary.
+
+02 Feb 2007
+ * Added a 'Rescan' button next to 'Overlay' and 'Underlay' in the main
+     AFNI controller.  At the demand of Ziad Saad.
+ * Later: and a 'NIML+PO' button below that.
+
+05 Feb 2007:
+ * Add AFNI_OVERLAY_ONTOP environment variable, to move 'Overlay' button
+     above 'Underlay'.  Also, change bg of 'Underlay' to black, to
+     distinguish it better from 'Overlay'.
+
+18 Feb 2007:
+ * When running "afni" (no directory args) and no data is found is './',
+     then afni.c will now recurse 1 level on './' to see if any datasets
+     can be found 1 level deeper.  Inspired by Korea workshop and Hame Park.
+
+20 Feb 2007
+ * Modify list choosers in bbox.c to add XmNtraversal = True, so that arrow
+     keys can be used to move around in lists.
+ * Also add TEAROFFIZE() macro to xutil.h and use it to make most popup or
+     pulldown menus in AFNI have the 'tear off' feature.
+ * When Datamode->Misc->Purge Memory is used, and mcw_malloc() is turned on,
+     prints out the before and after usage, just for fun.
+
+21 Feb 2007
+ * Modified Edit Environment pseudo-plugin (afni_pplug_env.c) to sort
+     controls by variable name.
+ * Added 'instant switch on selection' mode to 'Overlay' and 'Underlay'
+     dataset choosers, controlled by AFNI_DATASET_BROWSE variable.
+ * And to 'Talairach To' controls.
+ * Fixed bug when '-R' would fail to find any datasets, and would then
+     try to reconcile parents, look for duplicates, etc., de-referencing
+     NULL pointers.  Not sure what happened, actually, but one technique
+     was to avoid trying to read directories as regular file datasets.
+
+22 Feb 2007
+ * Modified thd_loaddblk.c to do floatscan on ANALYZE (etc.) datasets.
+ * Also modified thd_floatscan.c to add functions to scan MRI_IMAGEs
+     and other AFNI-ish assemblies of numbers.
+ * Modified afni.c to parse multiple commands in a single '-com' option,
+     separated by ';' (or by the choice in '-comsep').
+ * Modified afni_driver.c to allow use of 'axial_image' (etc.) as easy
+     typos for 'axialimage' (etc.).
+ * Modified dist_help script to include README.* files.
+
+23 Feb 2007
+ * Change XmNtraversalOn from False to True in about 1 zillion places, to
+     make keyboard focus be kept better in text widgets.
+ * Added 'dset=NULL' initializer to THD_open_one_dataset() in thd_opendset.c,
+     per Bernd Feige of Freiburg.
+ * Modified bbox.c to make AFNI_list_doubleclick default be 'Apply' rather
+     than 'Set'.
+ * Modified afni_func.c to replace 'RescanTh' button with 'EditEnv' if
+     Ziad's AFNI_RESCAN_AT_SWITCH is turned on.
+ * Modified afni_func.c to do AFNI_RESCAN_AT_SWITCH only for 'Overlay'
+     and 'Underlay' buttons.  (It's pointless for 'Switch Session'.)
+
+26 Feb 2007
+ * Modified afni_func.c to make the Session selection dialog directory-
+     specific, and the 1D selection dialog regular-file-specific.  Also
+     changed the labels on top of the file list for each case.
+ * Modified xutil.c so that MCW_expose_widget() doesn't do anything for
+     a non-widget (e.g., gadget) input.
+ * Added Ziad's Xt translations for Button4 and Button5 scrolling.
+ * Fixed mri_medianfilter.c: had logic for usedxyz exactly backwards! Oopsie.
+ * Added Button4+5 image window scrolling to imseq.c, and to afni_graph.c
+ * If only dummy dataset is present, then 'Switch Session' opens up the
+     'Read Session' dialog.
+
+27 Feb 2007
+ * AFNI_DISABLE_TEAROFF environment variable.
+
+01 Mar 2007
+ * Add dilation to -automask option in 3dAllineate.  And -ignout option.
+ * Add -CENSOR to 3dDeconvolve.c.
+
+02 Mar 2007
+ * Modified -CENSOR to -CENSORTR (for Rick's sake) and added '*' capability
+    to the run syntax.
+ * Added 3dDFT.c, from Kevin Murphy.
+
+04 Mar 2007
+ * Fixed overrun bug in THD_extract_array() for raw data -- code was never
+     tested!  Affected 3dDFT.c.
+
+05 Mar 2007
+ * Added -nfft and -detrend options to 3dDFT.
+ * Added 'u' and 'o' image viewer keypress handling to afni.c.
+ * Added Mod+Button4+5 threshold slider changing to imseq.c and afni.c.
+ * Added AFNI_THRESH_AUTO to afni_func.c.

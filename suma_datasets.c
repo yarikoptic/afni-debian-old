@@ -1470,12 +1470,24 @@ int SUMA_GetColRange(NI_element *nel, int col_index, float range[2], int loc[2])
    
    If you wish to allocate space for a column (nel->vec_len long)
    then pass NULL for col
+   
+   Can also use SUMA_InsertDsetNelCol, tiz more flexible.
 */
-
 int SUMA_AddDsetNelCol ( SUMA_DSET *dset, char *col_label, SUMA_COL_TYPE ctp, void *col, 
                      void *col_attr, int stride)
 {
    static char FuncName[]={"SUMA_AddDsetNelCol"};
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   SUMA_RETURN(SUMA_InsertDsetNelCol(dset, col_label, ctp, col, col_attr, stride, -1));
+}
+
+int SUMA_InsertDsetNelCol ( SUMA_DSET *dset, char *col_label, SUMA_COL_TYPE ctp, void *col, 
+                     void *col_attr, int stride, int icol)
+{
+   static char FuncName[]={"SUMA_InsertDsetNelCol"};
    int *iv, is_sorted;
    NI_element *nelb=NULL;
    SUMA_Boolean LocalHead = NOPE;
@@ -1484,6 +1496,10 @@ int SUMA_AddDsetNelCol ( SUMA_DSET *dset, char *col_label, SUMA_COL_TYPE ctp, vo
    
    if (ctp == SUMA_NODE_INDEX) {
       SUMA_RETURN(SUMA_AddDsetNelIndexCol ( dset, col_label, ctp, col, col_attr, stride));
+   }
+   if (icol != -1) {
+      SUMA_S_Err("Function not ready to deal with attribute insertion yet. See bottom of function");
+      SUMA_RETURN(0); 
    }
    
    if (!dset || !dset->dnel) { SUMA_SL_Err("Null input"); SUMA_RETURN(0); }
@@ -1500,19 +1516,19 @@ int SUMA_AddDsetNelCol ( SUMA_DSET *dset, char *col_label, SUMA_COL_TYPE ctp, vo
    }
    switch (SUMA_ColType2TypeCast(ctp)) {
       case SUMA_int:
-         NI_add_column_stride ( dset->dnel, NI_INT, (int *)col, stride);
+         NI_insert_column_stride ( dset->dnel, NI_INT, (int *)col, stride, icol);
          break;
       case SUMA_float:
-         NI_add_column_stride ( dset->dnel, NI_FLOAT, (float *)col, stride );      
+         NI_insert_column_stride ( dset->dnel, NI_FLOAT, (float *)col, stride, icol );      
          break;
       case SUMA_byte:
-         NI_add_column_stride ( dset->dnel, NI_BYTE, (byte *)col, stride );      
+         NI_insert_column_stride ( dset->dnel, NI_BYTE, (byte *)col, stride, icol );      
          break;
       case SUMA_double:
-         NI_add_column_stride ( dset->dnel, NI_DOUBLE, (double *)col, stride );      
+         NI_insert_column_stride ( dset->dnel, NI_DOUBLE, (double *)col, stride, icol );      
          break;
       case SUMA_string:
-         NI_add_column_stride ( dset->dnel, NI_STRING, (char **)col, stride );
+         NI_insert_column_stride ( dset->dnel, NI_STRING, (char **)col, stride, icol );
          break;
       default:
          fprintf (stderr,"Error %s: Bad column type.\n", FuncName);
@@ -1542,10 +1558,16 @@ int SUMA_AddDsetNelCol ( SUMA_DSET *dset, char *col_label, SUMA_COL_TYPE ctp, vo
    #endif
    
    SUMA_LH("Cheking generic attributes");
-   /* set some generic attributes */
-   SUMA_AddGenDsetColAttr (dset, ctp, col, stride, -1);
+   
+   /* set some generic attributes. 
+   You must redo it for all columns from icol 
+   to the very end but that is not a pleasant task 
+   because the functions below cannot insert. Only append (icol = -1)
+   or replace. You'll need to find a solution for inserts before 
+   allowing column insertion.  */
+   SUMA_AddGenDsetColAttr (dset, ctp, col, stride, icol);
    /* add the attributes of that column */
-   SUMA_AddDsetColAttr (dset, col_label, ctp, col_attr, -1);
+   SUMA_AddDsetColAttr (dset, col_label, ctp, col_attr, icol);
    
    SUMA_RETURN(1);
 }
@@ -1563,7 +1585,9 @@ int SUMA_AddDsetNelIndexCol ( SUMA_DSET *dset, char *col_label, SUMA_COL_TYPE ct
    
    SUMA_ENTRY;
    
-   
+   if (LocalHead) {
+      SUMA_DUMP_TRACE("Trace at entry");
+   }
    if (!dset || !dset->inel || !SDSET_NODEINDLEN(dset)) { 
       SUMA_SL_Err("Null input"); 
       SUMA_DUMP_TRACE("Bad dset->inel, dumping trace for debug:"); 
@@ -2928,7 +2952,7 @@ SUMA_DSET * SUMA_FindDset_eng (char *idcode, DList *DsetList)
       dset = (SUMA_DSET *)el->data;
       if (!dset) {
          SUMA_PushErrLog("SLP_Err", 
-                        "Unexpected NULL dset element in list!\nPlease report this occurrence to ziad@nih.gov.",
+                        "Unexpected NULL dset element in list!\nPlease report this occurrence to saadz@mail.nih.gov.",
                         FuncName);
       } else {   
          #ifdef OLD_DSET      /* before dsets were NI_groups */
@@ -4624,8 +4648,9 @@ byte * SUMA_load_all_command_masks(char *bmaskname, char *nmaskname, char *cmask
       }
    }
    
-   /* Remove error flag, even if nmask is NULL (no mask to speak of) */
-   *N_inmask = 0;
+   
+   if (*N_inmask < 0) *N_inmask = 0; /* Remove error flag, even if nmask is NULL (no mask to speak of) */
+   
    SUMA_RETURN(nmask);
 }
 
@@ -5391,6 +5416,9 @@ SUMA_DSET *SUMA_LoadDset_eng (char *iName, SUMA_DSET_FORMAT *form, int verb)
    SUMA_RETURN(dset);
 }
 
+static int AddIndex_1D = 0;
+void SUMA_SetAddIndex_1D(int v) { AddIndex_1D=v; return; }
+int SUMA_GetAddIndex_1D(void) { return(AddIndex_1D); }
 
 /*!
    \brief writes a dataset to disk
@@ -5490,7 +5518,7 @@ char * SUMA_WriteDset_eng (char *Name, SUMA_DSET *dset, SUMA_DSET_FORMAT form, i
             NI_set_attribute(dset->ngr,"filename", NameOut);
             strmname = SUMA_append_string("file:",NameOut);
 	         SUMA_LH("Writing 1D..."); SUMA_LH(strmname); 
-            DSET_WRITE_1D (dset, strmname, flg);
+            DSET_WRITE_1D (dset, strmname, flg, AddIndex_1D);
             if (!flg) {
                SUMA_PushErrLog("SL_Err","Output file not written", FuncName);
             } else {
@@ -5506,7 +5534,7 @@ char * SUMA_WriteDset_eng (char *Name, SUMA_DSET *dset, SUMA_DSET_FORMAT form, i
             NI_set_attribute(dset->ngr,"filename", NameOut);
             strmname = SUMA_copy_string(NameOut);
 	         SUMA_LH("Writing 1D pure..."); SUMA_LH(strmname); 
-            DSET_WRITE_1D_PURE (dset, strmname, flg);
+            DSET_WRITE_1D_PURE (dset, strmname, flg, AddIndex_1D);
             if (!flg) {
                SUMA_PushErrLog("SL_Err","Output file not written", FuncName);
             } else {
@@ -5515,7 +5543,7 @@ char * SUMA_WriteDset_eng (char *Name, SUMA_DSET *dset, SUMA_DSET_FORMAT form, i
          } 
          break;
       case SUMA_1D_STDOUT:
-         DSET_WRITE_1D (dset, "stdout:", flg);
+         DSET_WRITE_1D (dset, "stdout:", flg, AddIndex_1D);
          if (!flg) {
             SUMA_PushErrLog("SL_Err","Output file not written", FuncName);
          } else {
@@ -5523,7 +5551,7 @@ char * SUMA_WriteDset_eng (char *Name, SUMA_DSET *dset, SUMA_DSET_FORMAT form, i
          }
          break;
       case SUMA_1D_STDERR:
-         DSET_WRITE_1D (dset, "stderr:", flg);
+         DSET_WRITE_1D (dset, "stderr:", flg, AddIndex_1D);
          if (!flg) {
             SUMA_PushErrLog("SL_Err","Output file not written", FuncName);
          } else {
@@ -7914,7 +7942,8 @@ char *SUMA_Extension(char *filename, char *ext, SUMA_Boolean Remove)
    static char FuncName[]={"SUMA_Extension"}; 
    char *ans = NULL;
    int i, next, nfilename, ifile;
-   SUMA_Boolean NoMatch = NOPE, LocalHead = NOPE;
+   SUMA_Boolean NoMatch = NOPE;
+   SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
 
@@ -7928,6 +7957,11 @@ char *SUMA_Extension(char *filename, char *ext, SUMA_Boolean Remove)
    }
    next = strlen(ext);
    
+   if (next > nfilename) {
+      ans = (char *)SUMA_malloc((nfilename+1)*sizeof(char));
+      ans = strcpy(ans,filename);
+      SUMA_RETURN(ans);
+   }
    #if 0
    if (nfilename < next || next < 1 || nfilename < 1) {
       ans = (char *)SUMA_malloc((nfilename+1)*sizeof(char));
@@ -8983,7 +9017,10 @@ int SUMA_AddColAtt_CompString(NI_element *nel, int col, char *lbl, char *sep)
    nisa = SUMA_comp_str_2_NI_str_ar(cs, sep);
    if (!nisa) { SUMA_SL_Err("Failed in SUMA_comp_str_2_NI_str_ar"); SUMA_RETURN(NOPE); }
    
-   if (col > nisa->num) { SUMA_SL_Err("col > nisa->num"); SUMA_RETURN(NOPE); }
+   if (LocalHead) {
+      fprintf(SUMA_STDERR,"%s: col = %d, nisa->num = %d\n", FuncName, col, nisa->num);
+   }
+   if (col > nisa->num) { SUMA_SL_Err("col > nisa->num"); SUMA_DUMP_TRACE("nisa nisa"); SUMA_RETURN(NOPE); }
    
    if (col == nisa->num) { /* add at the end */
       if (LocalHead) fprintf(SUMA_STDERR,"%s: append %s to end of %s\n", FuncName, lbl, cs); 

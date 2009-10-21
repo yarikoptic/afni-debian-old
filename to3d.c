@@ -85,6 +85,15 @@ static char * FALLback[] =
       "AFNI*cluefont:             9x15bold"             ,
       "AFNI*help*waitPeriod:      1066"                 ,
       "AFNI*help*cancelWaitPeriod: 50"                  ,
+      "AFNI*XmList.translations: #override"                /* 24 Feb 2007 */
+           "<Btn4Down>: ListPrevItem()\\n"
+           "<Btn5Down>: ListNextItem()"                  ,
+      "AFNI*XmText.translations: #override"
+           "<Btn4Down>: previous-line()\\n"
+           "<Btn5Down>: next-line()"                     ,
+      "AFNI*XmScrollBar.translations: #override"
+           "<Btn4Down>: IncrementUpOrLeft(0) IncrementUpOrLeft(1)\\n"
+           "<Btn5Down>: IncrementDownOrRight(1) IncrementDownOrRight(0)" ,
    NULL } ;
 /*-----------------------------------------------------------------------*/
 
@@ -440,7 +449,7 @@ ENTRY("T3D_create_widgets") ;
                      "dialog" , xmFormWidgetClass , wset.topshell ,
                          XmNborderWidth , 0 ,
 #if 1
-                         XmNtraversalOn , False ,
+                         XmNtraversalOn , True  ,
 #endif
                      NULL ) ;
 

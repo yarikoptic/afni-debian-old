@@ -127,6 +127,15 @@ piles of paper in my office, though.)
  AFNI_FIM_BKTHR           = 25.0    //                       |
  AFNI_SPLASHTIME          = 3.0     //                       v
 
+------------------------------------
+Variable: AFNI_DONT_SORT_ENVIRONMENT
+------------------------------------
+If this YES/NO variable is YES, then the Edit Environment controls will
+NOT be sorted alphabetically.  The default action is to sort them
+alphabetically.  If they are unsorted, the editable environment variables
+will appear in the control panel in the order in which they were added to
+the code (that is, in an order that makes no real sense).
+
 ---------------------
 Variable: AFNI_ORIENT (editable)
 ---------------------
@@ -1745,6 +1754,13 @@ variable; for example
   setenv AFNI_THRESH_BIGSTEP 100
 will move the slider 1% of its height per PageUp/PageDown key or mouse click.
 
+--------------------------
+Variable: AFNI_THRESH_AUTO (editable)
+--------------------------
+If this YES/NO variable is set to YES, then whenever you switch overlay datasets,
+the function threshold slider will automatically change to some value that may
+be appropriate for the values in the new dataset.  [This is for Ziad!]
+
 ------------------------------
 Variable: AFNI_SNAPFILE_PREFIX
 ------------------------------
@@ -2211,6 +2227,15 @@ buttons.  Note that if AFNI_AUTO_RESCAN is enabled, then the rescan
 method will be 'Add', not 'Replace', no matter what you set variable
 AFNI_RESCAN_METHOD to.
 
+-------------------------------
+Variable: AFNI_RESCAN_AT_SWITCH
+-------------------------------
+If this YES/NO variable is set to YES, then the interactive AFNI program
+will rescan all session directories everytime you click on either of the
+'Overlay' or 'Underlay' buttons. Basically, this is just another way for
+you to avoid pressing the 'Rescan' buttons.  (Unlike with AFNI_AUTO_RESCAN,
+the AFNI_RESCAN_METHOD settings are respected.)
+
 --------------------------
 Variable: AFNI_WEB_BROWSER
 --------------------------
@@ -2226,7 +2251,7 @@ square to the right of the 'done' button) will have a menu item to open it.
 Variable: AFNI_JPEG_COMPRESS
 ----------------------------
 This variable determines the compression quality of JPEG files saved in
-the AFNI GUI and 3dDeconvolve. Its value can be set to an integer from 
+the AFNI GUI and 3dDeconvolve. Its value can be set to an integer from
 1 to 100. If not set, the default value is 95%.
 
 ---------------------------
@@ -2237,6 +2262,79 @@ Can be used to set the optimization method using in the NLfit plugin
   SIMPLEX (the default)
   POWELL  (the NEWUOA method)
   BOTH    (use both methods, choose the 'best' result)
+
+----------------------------
+Variable: AFNI_OVERLAY_ONTOP
+----------------------------
+If this variable is set to YES, then the 'Overlay' button will be above
+the 'Underlay' button on the AFNI control panel.  The default, from the
+olden days, is to have the 'Underlay' button above the 'Overlay' button,
+which some people find confusing.
+
+-----------------------------
+Variable: AFNI_DATASET_BROWSE (editable)
+-----------------------------
+If this variable is set to YES, then when you 'browse' through a dataset
+chooser ('Overlay' or 'Underlay' list) with the mouse or arrow keys, then
+as a dataset is selected in the list, AFNI will immediately switch to
+viewing that dataset.  This can be convenient for scrolling through datasets,
+but can also consume memory and CPU time very quickly.
+
+------------------------------
+Variable: AFNI_DISABLE_TEAROFF
+------------------------------
+If this variable is set to YES, then the AFNI GUI will not allow popup or
+popdown menus to be 'torn off'.  The default is to enable tear off for most
+menus, but this may cause bad things on some platforms (like program death).
+
+-------------------------------
+Variable: AFNI_PLUGOUT_TCP_BASE
+-------------------------------
+This integer will override the base TCP port used by afni to listen for
+plugouts.  This allows multiple instances of afni on one machine, where
+each can listen for plugouts.  Valid port numbers are 1024..65535.
+
+-----------------------------------
+Variable: AFNI_IMAGE_TICK_DIV_IN_MM
+-----------------------------------
+If this YES/NO variable is set to YES, then the Tick Div. value in an
+image window will be interpreted as a separation distance, in mm, as
+opposed to the number of tick divisions along each edge.  In that case,
+a larger value would produce fewer ticks, as they would be farther apart.
+
+----------------------------------------------------------------------
+--- variables specific to NIML I/O
+----------------------------------------------------------------------
+
+-----------------------------------
+Variable: AFNI_NIML_DEBUG
+-----------------------------------
+This integer sets the debugging level in some niml I/O routines, particularly
+those in thd_niml.c.  Currently used values range from 0 to 3.
+
+-----------------------------------
+Variable: AFNI_NSD_ADD_NODES
+-----------------------------------
+If this YES/NO variable is set to YES, then when a NI_SURF_DSET dataset
+is written to disk, if it has no node list attribute, a default list will
+be created.
+
+-----------------------------------
+Variable: AFNI_NSD_TO_FLOAT
+-----------------------------------
+If this YES/NO variable is set to NO, then any necessary conversion of
+NI_SURF_DSET datasets to type float will be blocked.  Otherwise, all such
+datasets will be written as float.
+
+-----------------------------------
+Variable: AFNI_NIML_TEXT_DATA
+-----------------------------------
+If this YES/NO variable is set to YES, then NI_SURF_DSET datasets will be
+written with data in text format.  Otherwise, data will be in binary.
+
+----------------------------------------------------------------------
+--- END: variables specific to NIML I/O
+----------------------------------------------------------------------
 
 =============================================
 | Robert W Cox, PhD                         |
@@ -2322,11 +2420,3 @@ Variable: AFNI_GLTSYM_PRINT
 If this YES/NO variable is set to YES, then the GLT matrices generated
 in 3dDeconvolve by the "-gltsym" option will be printed to the screen
 when the program starts up.
-
--------------------------------
-Variable: AFNI_PLUGOUT_TCP_BASE
--------------------------------
-This integer will override the base TCP port used by afni to listen for
-plugouts.  This allows multiple instances of afni on one machine, where
-each can listen for plugouts.  Valid port numbers are 1024..65535.
-

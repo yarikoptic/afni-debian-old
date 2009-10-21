@@ -1,6 +1,10 @@
 #ifndef SUMA_GEOMCOMP_INCLUDED
 #define SUMA_GEOMCOMP_INCLUDED
 
+#ifndef MAX_NCODE
+#define MAX_NCODE 111
+#endif
+
 typedef enum { SUMA_SMOOTH_NOT_SET, SUMA_EQUAL, SUMA_FUJIWARA, SUMA_DESBRUN } SUMA_TAUBIN_SMOOTH_OPTIONS;
 
 static int SUMA_SSidbg=-1; /*!< Index of node for debug */
@@ -148,6 +152,14 @@ SUMA_Boolean SUMA_Offset_Smooth_dset( SUMA_SurfaceObject *SO,
                                           SUMA_DSET *dset, 
                                           SUMA_COMM_STRUCT *cs, byte *nmask, byte strict_mask); 
 float SUMA_estimate_FWHM_1dif( SUMA_SurfaceObject *SO, float *fim , byte *nmask, int nodup );
+float *SUMA_estimate_dset_FWHM_1dif(SUMA_SurfaceObject *SO, SUMA_DSET *dset, 
+                                    int *icols, int N_icols, byte *nmask, 
+                                    int nodup, char *options);
+SUMA_Boolean SUMA_NewSurfaceRadius(SUMA_SurfaceObject *SO, double r, float *Center);
+void SUMA_SetDbgFWHM(int i);
+int SUMA_GetDbgFWHM(void);
+SUMA_Boolean SUMA_CenterOfSphere(double *p1, double *p2, double *p3, double *p4, double *c);
+SUMA_Boolean SUMA_GetCenterOfSphereSurface(SUMA_SurfaceObject *SO, int Nquads, double *cs, double *cm);
 
 /* End function prototypes for VolData.c */
 

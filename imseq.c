@@ -1514,6 +1514,7 @@ if( PRINT_TRACING ){
    SAVEUNDERIZE(XtParent(newseq->wbar_menu)) ;  /* 27 Feb 2001 */
 
    VISIBILIZE_WHEN_MAPPED(newseq->wbar_menu) ;
+   if( !AFNI_yesenv("AFNI_DISABLE_TEAROFF") ) TEAROFFIZE(newseq->wbar_menu) ;
 
    newseq->wbar_rng_but =
       XtVaCreateManagedWidget(
@@ -5034,7 +5035,7 @@ fprintf(stderr,"KeySym=%04x nbuf=%d\n",(unsigned int)ks,nbuf) ;
       /*----- take button press -----*/
 
       case ButtonPress:{
-         XButtonEvent * event = (XButtonEvent *) ev ;
+         XButtonEvent *event = (XButtonEvent *) ev ;
          int bx,by , width,height , but ;
 
 DPR(" .. ButtonPress") ;
@@ -5046,23 +5047,31 @@ DPR(" .. ButtonPress") ;
            busy=0; EXRETURN;
          }
 
+         but = event->button ;
+
          /* button press in the wbar => popup menu */
 
          if( w == seq->wbar ){          /* moved here 18 Oct 2001 */
-           if( event->button == Button1 ){ /* 21 Oct 2003 */
+           if( but == Button1 ){ /* 21 Oct 2003 */
              bx = seq->opt.free_aspect ; seq->opt.free_aspect = 0 ;
              ISQ_reset_dimen( seq, seq->last_width_mm, seq->last_height_mm ) ;
              seq->opt.free_aspect = bx ;
-           } else if( event->button == Button3 ){
+           } else if( but == Button3 ){
              XmMenuPosition( seq->wbar_menu , event ) ; /* where */
              XtManageChild ( seq->wbar_menu ) ;         /* popup */
            }
-           else
+           else if( but == Button4 || but == Button5 ){
+              int ddd = (but==Button4) ? -1 : 1 ;
+              DC_palette_squeeze( seq->dc , ddd ) ;
+              COLORMAP_CHANGE(seq) ;
+           }
+           else {
 #if 0
              XUngrabPointer( event->display , CurrentTime ) ;
 #else
              XBell(seq->dc->display,100) ;
 #endif
+           }
            busy=0; EXRETURN ;
          }
 
@@ -5071,7 +5080,24 @@ DPR(" .. ButtonPress") ;
          seq->last_bx = bx = event->x ;  /* 23 Oct 2003: save last button */
          seq->last_by = by = event->y ;  /*            press (x,y) coords */
          seq->cmap_changed = 0 ;
-         but = event->button ;
+
+         /* 26 Feb 2007: Buttons 4 and 5 = scroll wheel = change slice */
+
+         if( but == Button4 || but == Button5 ){
+           if( (event->state & (Mod1Mask|Mod2Mask)) ){  /* mod+scroll == '{}' */
+             cbs.reason = isqCR_keypress ;
+             cbs.event  = ev ;
+             cbs.key    = (but==Button4) ? '}' : '{' ;
+             cbs.nim    = seq->im_nr ;
+             SEND(seq,cbs) ;
+           } else {                           /* no modifiers == change slice */
+             int nold=seq->im_nr , nnew=(but==Button4) ? nold-1 : nold+1;
+             ISQ_timer_stop(seq) ;
+             if( nnew >= 0 && nnew < seq->status->num_total )
+               ISQ_redisplay( seq , nnew , isqDR_display ) ;
+           }
+           busy=0; EXRETURN;
+         }
 
          MCW_widget_geom( w , &width , &height , NULL,NULL ) ;
          seq->wimage_width  = width ;
@@ -5299,7 +5325,7 @@ ENTRY("ISQ_button2_EV") ;
       /*----- take button press -----*/
 
       case ButtonPress:{
-         XButtonEvent * event = (XButtonEvent *) ev ;
+         XButtonEvent *event = (XButtonEvent *) ev ;
          int bx,by , but , xim,yim,zim ;
 
          but = event->button ; if( but != Button2 ) EXRETURN ;
@@ -5309,8 +5335,8 @@ ENTRY("ISQ_button2_EV") ;
          /* 1st time in: allocate space to save points */
 
          if( bxsav == NULL ){
-            bxsav = (int *) malloc( sizeof(int) * (NPTS_MAX+1) ) ;
-            bysav = (int *) malloc( sizeof(int) * (NPTS_MAX+1) ) ;
+           bxsav = (int *) malloc( sizeof(int) * (NPTS_MAX+1) ) ;
+           bysav = (int *) malloc( sizeof(int) * (NPTS_MAX+1) ) ;
          }
 
          /* save this point */
@@ -9033,6 +9059,8 @@ char * ISQ_rowgraph_label( MCW_arrowval * av , XtPointer cd )
    return buf ;
 }
 
+/*--------------------------------------------------------------------------*/
+
 void ISQ_rowgraph_CB( MCW_arrowval * av , XtPointer cd )
 {
    MCW_imseq * seq = (MCW_imseq *) cd ;
@@ -9051,6 +9079,8 @@ ENTRY("ISQ_rowgraph_CB") ;
    ISQ_redisplay( seq , -1 , isqDR_reimage ) ;  /* redo current image */
    EXRETURN ;
 }
+
+/*--------------------------------------------------------------------------*/
 
 void ISQ_rowgraph_draw( MCW_imseq *seq )
 {
@@ -9687,6 +9717,9 @@ ENTRY("ISQ_record_button") ;
 
    menu = XmCreatePulldownMenu( mbar , "menu" , NULL,0 ) ;
    VISIBILIZE_WHEN_MAPPED(menu) ;
+#if 0  /* doesn't work well */
+   if( !AFNI_yesenv("AFNI_DISABLE_TEAROFF") ) TEAROFFIZE(menu) ;
+#endif
 
    /* the cascade button (what the user sees) */
 
@@ -10268,7 +10301,7 @@ ENTRY("ISQ_getlabel") ;
 MEM_plotdata * ISQ_getmemplot( int nn , MCW_imseq *seq )
 {
    MEM_plotdata *mp ;
-   int ntic ;
+   int           ntic ;
 
 ENTRY("ISQ_getmemplot") ;
 
@@ -10319,11 +10352,36 @@ ENTRY("ISQ_getmemplot") ;
    /*** 23 Feb 2004: tick marks around the edge of the image? ***/
 
    ntic = seq->wbar_ticnum_av->ival ;
+
    if( ntic > 0 ){
      MEM_plotdata *tp ;
      char *eee ;
-     float rr=0.8,gg=1.0,bb=0.6 , tic, fac=1.0/ntic ;
-     int it ;
+     /* float tic, fac=1.0/ntic ; */
+     float rr=0.8,gg=1.0,bb=0.6 , tic, xfac, yfac;
+     float xlen = 0.0, ylen = 0.0;  /* when ntics is in mm */
+     int it, nticx, nticy;
+
+     /* plot ntic as separation distance for J Binder  23 Feb 2006 [rickr] */
+
+     if( seq->imim && AFNI_yesenv("AFNI_IMAGE_TICK_DIV_IN_MM") ){
+         /* get image size */
+         if( mp != NULL && seq->cropit ){  /* cropped size */
+           xlen = abs(seq->crop_xb - seq->crop_xa);
+           ylen = abs(seq->crop_yb - seq->crop_ya);
+         } else {                          /* full size */
+           xlen = seq->imim->nx * seq->imim->dx;
+           ylen = seq->imim->ny * seq->imim->dy;
+         }
+
+         nticx = xlen/ntic;
+         nticy = ylen/ntic;
+         xfac=ntic/xlen;
+         yfac=ntic/ylen;
+     } else {
+         nticx = nticy = ntic;
+         xfac=1.0/ntic;
+         yfac=1.0/ntic;
+     }
 
      create_memplot_surely( "Iticplot" , 1.0 ) ;
      set_thick_memplot(0.0) ;
@@ -10334,11 +10392,14 @@ ENTRY("ISQ_getmemplot") ;
 
      tic = 0.01 * seq->wbar_ticsiz_av->ival ;  /* percent of image size */
 
-     for( it=0 ; it <= ntic ; it++ ){
-       plotpak_line( 0.0,it*fac , tic    ,it*fac ) ;
-       plotpak_line( 1.0,it*fac , 1.0-tic,it*fac ) ;
-       plotpak_line( it*fac,0.0 , it*fac ,tic    ) ;
-       plotpak_line( it*fac,1.0 , it*fac ,1.0-tic) ;
+     /* x and y are separate, in case ntic is in mm */
+     for( it=0 ; it <= nticy ; it++ ){
+       plotpak_line( 0.0,it*yfac , tic    ,it*yfac ) ;
+       plotpak_line( 1.0,it*yfac , 1.0-tic,it*yfac ) ;
+     }
+     for( it=0 ; it <= nticx ; it++ ){
+       plotpak_line( it*xfac,0.0 , it*xfac ,tic    ) ;
+       plotpak_line( it*xfac,1.0 , it*xfac ,1.0-tic) ;
      }
 
      /* append tick plot to existing plot, if any */
@@ -10828,6 +10889,10 @@ ENTRY("SNAP_make_dc") ;
    EXRETURN ;
 }
 
+static int NoDuplicates = 1;
+void SNAP_NoDuplicates (void) { NoDuplicates = 1; return; }
+void SNAP_OkDuplicates (void) { NoDuplicates = 0; return; }
+
 /*-------------------------------------------------------------------------*/
 /*! Save image into a viewer, which should be opened near the widget w. */
 
@@ -10839,7 +10904,7 @@ ENTRY("SNAP_store_image") ;
 
    if( snap_imar == NULL ) INIT_IMARR(snap_imar) ;
 
-   if( IMARR_COUNT(snap_imar) > 0 ){
+   if( NoDuplicates && IMARR_COUNT(snap_imar) > 0 ){
      MRI_IMAGE *qim = IMARR_LASTIM( snap_imar ) ;
      if( mri_equal(qim,tim) ){
        fprintf(stderr,"++ Image recorder: reject duplicate image at #%d\n",
@@ -11379,7 +11444,7 @@ ENTRY("ISQ_handle_keypress") ;
      case 'K':{
        int mode = (key=='G') ? AGIF_MODE
                  :(key=='H') ? MPEG_MODE
-                 :(key=='J') ? JPEG_MODE 
+                 :(key=='J') ? JPEG_MODE
                  :             PNG_MODE  ;
        ISQ_save_anim( seq , NULL , 0,0 , mode ) ;
        busy=0 ; RETURN(1) ;
@@ -11577,9 +11642,14 @@ void ISQ_save_png( MCW_imseq *seq , char *fname )  /* 11 Dec 2006 */
 }
 
 /*--------------------------------------------------------------------------*/
-/*! Save the current images to an MPEG or AGIF file.  [06 Dec 2006] 
-   if top = 0 then top is the index of the last recorded image
-   if bot = -1 then bot is the index of the last recorded image
+/*! Save the current images to an MPEG or AGIF file.  [06 Dec 2006]
+      Say the recorder has N images       ZSS Jan 07
+   if top < 0 then top = N +top
+      top ==0 then top = N -1
+   else top = min(top, N)
+   if bot < 0 then bot = N +bot
+   else bot = max(bot, 0)
+
    use bot = 0 and top = 0 to save everything.
 */
 
@@ -11635,17 +11705,29 @@ ENTRY("ISQ_save_anim") ;
      break ;
    }
 
-  if (bot == -1) { /* special case */
-      bot = seq->status->num_total-1 ;
+  if (bot < 0) { /* special case */
+      bot = seq->status->num_total+bot ;
+      if (bot < 0) bot = 0;
    } else {
       bot = MAX(bot,0) ;
    }
-   if( top == 0 ) top = seq->status->num_total-1 ;
-   else           top = MIN(top,seq->status->num_total-1) ;
+   if( top < 0 ) {
+      top = seq->status->num_total+top ;
+      if (top > seq->status->num_total-1) top = seq->status->num_total-1;
+   } else if (top == 0) {
+      top = seq->status->num_total -1;
+   }  else  {
+      top = MIN(top,seq->status->num_total-1) ;
+   }
    if( bot > top || (bot==top && doanim) ){
      ERROR_message("Can't save image range %d..%d!\a",bot,top) ; EXRETURN ;
    }
 
+   /*
+      fprintf(stderr,
+         "+++ Will save from %d to %d with %d images total in recorder.\n",
+               bot, top, seq->status->num_total);
+   */
    /*--- setup prefix for animation filename to save ---*/
 
    if( prefin == NULL || *prefin == '\0' ) prefin = "Anim" ;
@@ -11655,10 +11737,9 @@ ENTRY("ISQ_save_anim") ;
    ll = strlen(prefin) ;
    prefix = (char*)malloc( sizeof(char) * (ll+8) ) ;
    strcpy( prefix , prefin ) ;
- 
+
    ppo = THD_trailname(prefix,0) ;               /* strip directory */
 
- 
    if( prefix[ll-1] != '.' ){  /* add a . at the end */
      prefix[ll++] = '.' ;      /* if one isn't there */
      prefix[ll]   = '\0' ;

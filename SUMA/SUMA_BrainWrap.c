@@ -120,7 +120,9 @@ float SUMA_LoadPrepInVol (SUMA_GENERIC_PROG_OPTIONS_STRUCT *Opt, SUMA_SurfaceObj
          CoordList[3*i+1] = ndicom.xyz[1];
          CoordList[3*i+2] = ndicom.xyz[2];
       if (Opt->fvec[i] > Opt->t) {
-         mass = SUMA_MIN_PAIR(Opt->t98, Opt->fvec[i]);
+         if (!Opt->SurfaceCoil) {
+            mass = SUMA_MIN_PAIR(Opt->t98, Opt->fvec[i]);
+         } else mass = 1.0;
          Opt->cog[0] += mass * ndicom.xyz[0];
          Opt->cog[1] += mass * ndicom.xyz[1];
          Opt->cog[2] += mass * ndicom.xyz[2];
@@ -136,13 +138,18 @@ float SUMA_LoadPrepInVol (SUMA_GENERIC_PROG_OPTIONS_STRUCT *Opt, SUMA_SurfaceObj
    
    /* find the radius */
    Opt->r = pow(vol*3.0/(3.14159*4.0), 1/3.0);
-   if (LocalHead) {
+   if (Opt->debug) {
          fprintf (SUMA_STDERR,"%s: Volume %f, radius %f\n", FuncName, vol, Opt->r);
    }
-   if (Opt->monkey) {
+   if (Opt->specie == MONKEY) {
       Opt->r  = Opt->r/THD_BN_rat();
-      if (LocalHead) {
+      if (Opt->debug) {
          fprintf (SUMA_STDERR,"%s: Radius reduced to %f, less brain, more muscle.\n",  FuncName, Opt->r);
+      }
+   } else if (Opt->specie == RAT) {
+      Opt->r  = SUMA_MAX_PAIR(Opt->r/THD_BN_rat(), 6.0);       
+      if (Opt->debug) {
+         fprintf (SUMA_STDERR,"%s: Radius at %f. RATS!.\n",  FuncName, Opt->r);
       }
    }
    
@@ -3397,7 +3404,7 @@ int SUMA_Reposition_Touchup(SUMA_SurfaceObject *SO, SUMA_GENERIC_PROG_OPTIONS_ST
             fprintf (SUMA_STDERR,"%s: Touchup smoothing.\n", FuncName);
             csmooth = SUMA_Taubin_Smooth( SO, NULL,
                                           0.6307, -.6732, SO->NodeList,
-                                          20, 3, SUMA_ROW_MAJOR, csmooth, cs, fmask);    
+                                          20, 3, SUMA_ROW_MAJOR, csmooth, cs, fmask, 0);    
             memcpy((void*)SO->NodeList, (void *)csmooth, SO->N_Node * 3 * sizeof(float));
          }      
             cs->Send = Send_buf;

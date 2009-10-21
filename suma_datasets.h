@@ -204,6 +204,7 @@ typedef enum {
                           When you add a new element, modify functions
                           SUMA_Dset_Format_Name
                           SUMA_Dset_Format */ 
+#define SUMA_IS_DSET_1D_FORMAT(d) ( (d)==SUMA_1D || (d)==SUMA_1D_PURE || (d)==SUMA_1D_STDOUT || (d)==SUMA_1D_STDERR ) ? 1:0
 
 typedef enum {
    SUMA_ERROR_COL_TYPE = -1,
@@ -698,6 +699,38 @@ static byte NI_GOT;
    }  \
 }
 
+/*! Write an array to a text file, mcol consecutive values per line. 
+v is the array
+Nel is the total number of values
+m is the number of consecutive values to write per line 
+If you want to have some index before the entries, use SUMA_WRITE_IND_ARRAY_1D*/
+#define SUMA_WRITE_ARRAY_1D(v,Nel,m,name){  \
+   int m_kkk; \
+   FILE * m_fp = fopen(name,"w");  \
+   if (m_fp) { \
+      fprintf(m_fp,"# Output from %s, %d values (%d per line).\n", FuncName, Nel, 1);  \
+      for (m_kkk=0; m_kkk<Nel; ++m_kkk) { if (!(m_kkk % m)) fprintf(m_fp,"\n"); fprintf(m_fp,"%f   ", v[m_kkk]); }\
+      fclose(m_fp); \
+   }  \
+}
+/* Just like SUMA_WRITE_ARRAY_1D but ind contains indices
+to add at the beginning of each line.
+If ind is NULL, then the index will be the line number.
+*/
+#define SUMA_WRITE_IND_ARRAY_1D(v,ind,Nel,m,name){  \
+   int m_kkk; \
+   FILE * m_fp = fopen(name,"w");  \
+   if (m_fp) { \
+      fprintf(m_fp,"# Output from %s, index followed by %d values (%d per line).\n", FuncName, Nel, 1);  \
+      if (!ind) {  \
+         for (m_kkk=0; m_kkk<Nel; ++m_kkk) { if (!(m_kkk % m)) fprintf(m_fp,"\n%d   ", m_kkk/m); fprintf(m_fp,"%f   ", v[m_kkk]); }\
+      } else {\
+         for (m_kkk=0; m_kkk<Nel; ++m_kkk) { if (!(m_kkk % m)) fprintf(m_fp,"\n%d   ", ind[m_kkk/m]); fprintf(m_fp,"%f   ", v[m_kkk]); }\
+      }  \
+      fclose(m_fp); \
+   }  \
+}
+
 /*!
    NEL_WRITE_TX(nel, strm, suc)
    NEL_WRITE_BI(nel, strm, suc)
@@ -734,7 +767,7 @@ static byte NI_GOT;
 
 
 
-#define DSET_WRITE_1D(dset, frm, suc) { \
+#define DSET_WRITE_1D(dset, frm, suc, addindex) { \
    NI_stream m_ns = NULL;  \
    int m_allnum;  \
    suc = 1; \
@@ -749,16 +782,21 @@ static byte NI_GOT;
          suc = 0; \
       } else { \
          /* write out the element */   \
+         if (addindex) { \
+            if (!dset->inel) { SUMA_SL_Err ("No inel in dset! No node indices written!\n"); addindex = 0;}   \
+            else { NI_insert_column(dset->dnel, dset->inel->vec_typ[0], dset->inel->vec[0], 0);  } \
+         }  \
          if (NI_write_element( m_ns , dset->dnel , NI_TEXT_MODE | NI_HEADERSHARP_FLAG) < 0) { \
             SUMA_SL_Err ("Failed to write element");  \
             suc = 0; \
          }  \
+         if (addindex) { NI_remove_column(dset->dnel, 0); } \
       }  \
       /* close the stream */  \
       NI_stream_close( m_ns ) ; \
    }  \
 }
-#define DSET_WRITE_1D_PURE(dset, frm, suc) { \
+#define DSET_WRITE_1D_PURE(dset, frm, suc, addindex) { \
    FILE *m_fid = NULL;  \
    int m_ind, m_ival;   \
    int m_allnum;  \
@@ -773,11 +811,25 @@ static byte NI_GOT;
          SUMA_SL_Err ("Failed to open file for output");  \
          suc = 0; \
       } else { \
-         for (m_ival=0; m_ival<dset->dnel->vec_len; ++m_ival) { \
-            for (m_ind=0; m_ind<dset->dnel->vec_num; ++m_ind) { \
-               fprintf(m_fid,"%f   ", SUMA_GetDsetValInCol2(dset, m_ind, m_ival));  \
+         if (addindex) { \
+            if (!dset->inel) { SUMA_SL_Err ("No inel in dset! No node indices written!\n"); addindex = 0;}   \
+         }  \
+         if (!addindex) {  \
+            for (m_ival=0; m_ival<dset->dnel->vec_len; ++m_ival) { \
+               for (m_ind=0; m_ind<dset->dnel->vec_num; ++m_ind) { \
+                  fprintf(m_fid,"%f   ", SUMA_GetDsetValInCol2(dset, m_ind, m_ival));  \
+               }  \
+               fprintf(m_fid,"\n"); \
             }  \
-            fprintf(m_fid,"\n"); \
+         } else { \
+            int *m_n=(int *)dset->inel->vec[0];  \
+            for (m_ival=0; m_ival<dset->dnel->vec_len; ++m_ival) { \
+               fprintf(m_fid,"%d   ", m_n[m_ival]); \
+               for (m_ind=0; m_ind<dset->dnel->vec_num; ++m_ind) { \
+                  fprintf(m_fid,"%f   ", SUMA_GetDsetValInCol2(dset, m_ind, m_ival));  \
+               }  \
+               fprintf(m_fid,"\n"); \
+            }  \
          }  \
          fclose(m_fid); m_fid = NULL;  \
       }  \
@@ -961,6 +1013,8 @@ void SUMA_allow_nel_use(int al);
 int SUMA_AddDsetNelCol ( SUMA_DSET *dset, char *col_label, 
                      SUMA_COL_TYPE ctp, void *col, 
                      void *col_attr, int stride);
+int SUMA_InsertDsetNelCol ( SUMA_DSET *dset, char *col_label, SUMA_COL_TYPE ctp, void *col, 
+                     void *col_attr, int stride, int icol);
 int SUMA_AddNelCol ( NI_element *nel, char *col_label,
                      SUMA_COL_TYPE ctp, void *col, 
                      void *col_attr, int stride);
@@ -1088,6 +1142,8 @@ byte * SUMA_indexlist_2_bytemask(int *ind_list, int N_ind_list, int N_mask, int 
 byte *SUMA_load_1D_b_mask(char *name, int N_Node, byte *omask, const char *oper, int *N_inmask);
 byte *SUMA_get_c_mask(char *mask, int N_Node, byte *omask, const char *oper, int *N_inmask);
 byte * SUMA_load_all_command_masks(char *bmaskname, char *nmaskname, char *cmask, int N_Node, int *N_inmask);
+void SUMA_SetAddIndex_1D(int);
+int SUMA_GetAddIndex_1D(void);
 
 /*********************** BEGIN Miscellaneous support functions **************************** */
    #define SUMA_STANDALONE_INIT {   \
@@ -1166,7 +1222,6 @@ char * SUMA_file_suck( char *fname , int *nread );
 void *SUMA_AdvancePastNumbers(char *op, char **opend, SUMA_VARTYPE tp);
 void *SUMA_strtol_vec(char *op, int nvals, int *nread, SUMA_VARTYPE vtp);
 SUMA_Boolean SUMA_ShowParsedFname(SUMA_PARSED_NAME *pn, FILE *out);
-
 
 /*********************** END Miscellaneous support functions **************************** */
 

@@ -4,6 +4,7 @@
    License, Version 2.  See the file README.Copyright for details.
 ******************************************************************************/
 
+#include "mrilib.h"
 #include <math.h>
 #include <stdlib.h>
 
@@ -22,31 +23,68 @@
    Return the number of illegal values found.
 -----------------------------------------------------------------------*/
 
-int thd_floatscan( int nbuf , float * fbuf )
+int thd_floatscan( int nbuf , float *fbuf )
 {
    int ii , nerr ;
 
    if( nbuf <= 0 || fbuf == NULL ) return 0 ;
 
-   for( nerr=ii=0 ; ii < nbuf ; ii++ ){
-      if( !IS_GOOD_FLOAT(fbuf[ii]) ){ fbuf[ii] = 0.0 ; nerr++ ; }
-   }
+   for( nerr=ii=0 ; ii < nbuf ; ii++ )
+     if( !IS_GOOD_FLOAT(fbuf[ii]) ){ fbuf[ii] = 0.0 ; nerr++ ; }
 
    return nerr ;
 }
 
-typedef struct complex { float r , i ; } complex ;
+#if 0
+typedef struct complex { float r , i ; } complex ;  /* cf. mrilib.h */
+#endif
 
-int thd_complexscan( int nbuf , complex * cbuf )
+int thd_complexscan( int nbuf , complex *cbuf )
 {
    int ii , nerr ;
 
    if( nbuf <= 0 || cbuf == NULL ) return 0 ;
 
    for( nerr=ii=0 ; ii < nbuf ; ii++ ){
-      if( !IS_GOOD_FLOAT(cbuf[ii].r) ){ cbuf[ii].r = 0.0 ; nerr++ ; }
-      if( !IS_GOOD_FLOAT(cbuf[ii].i) ){ cbuf[ii].i = 0.0 ; nerr++ ; }
+     if( !IS_GOOD_FLOAT(cbuf[ii].r) ){ cbuf[ii].r = 0.0 ; nerr++ ; }
+     if( !IS_GOOD_FLOAT(cbuf[ii].i) ){ cbuf[ii].i = 0.0 ; nerr++ ; }
    }
 
    return nerr ;
+}
+
+/*--------------------------------------------------------------------*/
+/* Functions below added 22 Feb 2007 -- RWCox */
+
+int mri_floatscan( MRI_IMAGE *im )
+{
+   if( im == NULL ) return 0 ;
+   switch( im->kind ){
+     case MRI_float:
+       return thd_floatscan( im->nvox , MRI_FLOAT_PTR(im) ) ;
+     case MRI_complex:
+       return thd_complexscan( im->nvox , MRI_COMPLEX_PTR(im) ) ;
+   }
+   return 0 ;
+}
+
+int imarr_floatscan( MRI_IMARR *imar )
+{
+   int ii , nn ;
+   if( imar == NULL ) return 0 ;
+   for( nn=ii=0 ; ii < IMARR_COUNT(imar) ; ii++ )
+     nn += mri_floatscan( IMARR_SUBIM(imar,ii) ) ;
+   return nn ;
+}
+
+int dblk_floatscan( THD_datablock *dblk )
+{
+   if( !ISVALID_DATABLOCK(dblk) ) return 0 ;
+   return imarr_floatscan( dblk->brick ) ;
+}
+
+int dset_floatscan( THD_3dim_dataset *dset )
+{
+   if( !ISVALID_DSET(dset) ) return 0 ;
+   return dblk_floatscan( dset->dblk ) ;
 }

@@ -155,13 +155,22 @@ typedef struct {
   int  vtype ;                 /* ENV_NUMBER_* or ENV_STRING */
   int  vbot,vtop,vdecim,vdef ; /* for NUMBER */
   int  vcount ;                /* for STRING */
-  char ** vlist ;              /* for STRING */
+  char **vlist ;               /* for STRING */
   char vvalue[VAL_NMAX] ;
   generic_func *vfunc ;
 } ENV_var ;
 
 static int  NUM_env_var = 0 ;
 static ENV_var *env_var = NULL ;
+
+/*---------------------------------------------------------------------------*/
+
+int ENV_compare( const void *av , const void *bv )  /* 21 Feb 2007 */
+{
+   ENV_var *a = (ENV_var *)av ;
+   ENV_var *b = (ENV_var *)bv ;
+   return strcmp( a->vname , b->vname ) ;
+}
 
 /*----------------- prototypes for internal routines -----------------*/
 
@@ -424,13 +433,23 @@ PLUGIN_interface * ENV_init(void)
                    NUM_yesno_list , yesno_list , ENV_redisplay ) ;
 
    /* 20 Oct 2005 [RWCox] */
-   ENV_add_yesno( "AFNI_TTATLAS_CAUTION" , "Add caution to 'Where Am I' output?" ) ;
+   ENV_add_yesno("AFNI_TTATLAS_CAUTION","Add caution to 'Where Am I' output?");
 
    /* 10 May 2006 [drg] */
    ENV_add_numeric( "AFNI_JPEG_COMPRESS" ,
                     "JPEG compression quality %" ,
                     1,100,0,95 , ENV_setjpegquality ) ;
 
+   /* 21 Feb 2007 [RWCox] */
+   ENV_add_yesno( "AFNI_DATASET_BROWSE" , "Switch datasets upon selection?" ) ;
+
+   /* 05 Mar 2007 [RWCox] */
+   ENV_add_yesno( "AFNI_THRESH_AUTO" , "Reset threshold on Switch Overlay?" ) ;
+
+   /*--------- Sort list of variables [21 Feb 2007]  -----------*/
+
+   if( !AFNI_yesenv("AFNI_DONT_SORT_ENVIRONMENT") )
+     qsort( env_var , (size_t)NUM_env_var , sizeof(ENV_var) , ENV_compare ) ;
 
    /*---------------- compute helpstring -----------------------*/
 
@@ -720,6 +739,9 @@ static void ENV_globalrange( char *vname )
        AFNI_range_setter( im3d , im3d->s123 ) ;
        AFNI_range_setter( im3d , im3d->s231 ) ;
        AFNI_range_setter( im3d , im3d->s312 ) ;
+       drive_MCW_imseq( im3d->s123 , isqDR_display , (XtPointer)(-1) ) ;
+       drive_MCW_imseq( im3d->s231 , isqDR_display , (XtPointer)(-1) ) ;
+       drive_MCW_imseq( im3d->s312 , isqDR_display , (XtPointer)(-1) ) ;
      } else {
        drive_MCW_imseq( im3d->s123 , isqDR_setrange , (XtPointer)NULL ) ;
        drive_MCW_imseq( im3d->s231 , isqDR_setrange , (XtPointer)NULL ) ;

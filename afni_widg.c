@@ -338,7 +338,7 @@ STATUS("creating top_form") ;
             XmNborderWidth , 0 ,
             XmNmarginHeight , AFNI_FORM_SPACING ,
             XmNmarginWidth  , AFNI_FORM_SPACING ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -566,7 +566,7 @@ STATUS("creating control panels") ;
             XmNtopOffset      , AFNI_FORM_SPACING ,
             XmNshadowType , XmSHADOW_ETCHED_IN ,
             XmNshadowThickness , 5 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -580,7 +580,7 @@ STATUS("creating control panels") ;
             XmNtopOffset      , AFNI_FORM_SPACING ,
             XmNshadowType , XmSHADOW_ETCHED_IN ,
             XmNshadowThickness , 5 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -594,7 +594,7 @@ STATUS("creating control panels") ;
             XmNtopOffset      , AFNI_FORM_SPACING ,
             XmNshadowType , XmSHADOW_ETCHED_IN ,
             XmNshadowThickness , 5 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -608,7 +608,7 @@ STATUS("creating control panels") ;
             XmNtopOffset      , AFNI_FORM_SPACING ,
             XmNshadowType , XmSHADOW_ETCHED_IN ,
             XmNshadowThickness , 5 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -622,7 +622,7 @@ STATUS("creating control panels") ;
             XmNtopOffset        , AFNI_FORM_SPACING ,
             XmNshadowType , XmSHADOW_ETCHED_IN ,
             XmNshadowThickness , 5 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -636,7 +636,7 @@ STATUS("creating control panels") ;
             XmNtopOffset      , AFNI_FORM_SPACING ,
             XmNshadowType , XmSHADOW_ETCHED_IN ,
             XmNshadowThickness , 5 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -695,7 +695,7 @@ STATUS("making imag->rowcol") ;
          "dialog" , xmRowColumnWidgetClass , imag->frame ,
             XmNpacking      , XmPACK_TIGHT ,
             XmNorientation  , XmVERTICAL   ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -718,6 +718,9 @@ STATUS("making imag->rowcol") ;
    SAVEUNDERIZE(XtParent(imag->popmenu)) ; /* 27 Feb 2001 */
 
    VISIBILIZE_WHEN_MAPPED(imag->popmenu) ;
+#if 0
+    if( !AFNI_yesenv("AFNI_DISABLE_TEAROFF") ) TEAROFFIZE(imag->popmenu) ;
+#endif
 
 /***
    XtAddCallback( imag->popmenu ,
@@ -739,7 +742,7 @@ STATUS("making imag->rowcol") ;
          "dialog" , xmPushButtonWidgetClass , imag->popmenu ,
             LABEL_ARG("Jumpback") ,
             XmNmarginHeight , 0 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -754,7 +757,7 @@ STATUS("making imag->rowcol") ;
             "dialog" , xmPushButtonWidgetClass , imag->popmenu ,
                LABEL_ARG("Jump to (xyz)") ,
                XmNmarginHeight , 0 ,
-               XmNtraversalOn , False ,
+               XmNtraversalOn , True  ,
                XmNinitialResourcesPersistent , False ,
             NULL ) ;
 
@@ -770,7 +773,7 @@ STATUS("making imag->rowcol") ;
             "dialog" , xmPushButtonWidgetClass , imag->popmenu ,
                LABEL_ARG("Jump to (ijk)") ,
                XmNmarginHeight , 0 ,
-               XmNtraversalOn , False ,
+               XmNtraversalOn , True  ,
                XmNinitialResourcesPersistent , False ,
             NULL ) ;
 
@@ -788,7 +791,7 @@ STATUS("making imag->rowcol") ;
             "dialog" , xmPushButtonWidgetClass , imag->popmenu ,
                LABEL_ARG("Jump to (MNI)") ,
                XmNmarginHeight , 0 ,
-               XmNtraversalOn , False ,
+               XmNtraversalOn , True  ,
                XmNinitialResourcesPersistent , False ,
             NULL ) ;
 
@@ -806,7 +809,7 @@ STATUS("making imag->rowcol") ;
             "dialog" , xmPushButtonWidgetClass , imag->popmenu ,
                LABEL_ARG("SUMA to (node)") ,
                XmNmarginHeight , 0 ,
-               XmNtraversalOn , False ,
+               XmNtraversalOn , True  ,
                XmNinitialResourcesPersistent , False ,
             NULL ) ;
 
@@ -824,7 +827,7 @@ STATUS("making imag->rowcol") ;
             "dialog" , xmPushButtonWidgetClass , imag->popmenu ,
                LABEL_ARG("-Talairach to") ,
                XmNmarginHeight , 0 ,
-               XmNtraversalOn , False ,
+               XmNtraversalOn , True  ,
                XmNinitialResourcesPersistent , False ,
             NULL ) ;
 
@@ -837,7 +840,7 @@ STATUS("making imag->rowcol") ;
                "dialog" , xmPushButtonWidgetClass , imag->popmenu ,
                   LABEL_ARG("-Where Am I?") ,
                   XmNmarginHeight , 0 ,
-                  XmNtraversalOn , False ,
+                  XmNtraversalOn , True  ,
                   XmNinitialResourcesPersistent , False ,
                NULL ) ;
 
@@ -849,7 +852,7 @@ STATUS("making imag->rowcol") ;
                "dialog" , xmPushButtonWidgetClass , imag->popmenu ,
                   LABEL_ARG("-Atlas Colors") ,
                   XmNmarginHeight , 0 ,
-                  XmNtraversalOn , False ,
+                  XmNtraversalOn , True  ,
                   XmNinitialResourcesPersistent , False ,
                NULL ) ;
 
@@ -880,7 +883,7 @@ STATUS("making imag->rowcol") ;
          "dialog" , xmPushButtonWidgetClass , imag->popmenu ,
             LABEL_ARG("Image display") ,
             XmNmarginHeight , 0 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -895,7 +898,7 @@ STATUS("making imag->rowcol") ;
          "dialog" , xmPushButtonWidgetClass , imag->popmenu ,
             LABEL_ARG("Edit Environment") ,
             XmNmarginHeight , 0 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
    XtAddCallback( imag->pop_environment_pb , XmNactivateCallback ,
@@ -906,7 +909,7 @@ STATUS("making imag->rowcol") ;
          "dialog" , xmPushButtonWidgetClass , imag->popmenu ,
             LABEL_ARG("Draw ROI plugin") ,
             XmNmarginHeight , 0 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
    XtAddCallback( imag->pop_drawdataset_pb , XmNactivateCallback ,
@@ -923,7 +926,7 @@ STATUS("making imag->rowcol") ;
          "dialog" , xmFrameWidgetClass , imag->rowcol ,
             XmNshadowType , XmSHADOW_ETCHED_IN ,
             XmNshadowThickness , 2 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -934,7 +937,7 @@ STATUS("making imag->rowcol") ;
          "dialog" , xmRowColumnWidgetClass , imag->crosshair_frame ,
             XmNpacking      , XmPACK_TIGHT ,
             XmNorientation  , XmVERTICAL   ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -949,7 +952,7 @@ STATUS("making imag->rowcol") ;
          "dialog" , xmLabelWidgetClass , imag->crosshair_rowcol ,
             XmNrecomputeSize , False ,
             XmNlabelString , xstr ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -964,6 +967,7 @@ STATUS("making imag->rowcol") ;
 
     SAVEUNDERIZE(XtParent(imag->crosshair_menu)) ;
     VISIBILIZE_WHEN_MAPPED(imag->crosshair_menu) ;
+    if( !AFNI_yesenv("AFNI_DISABLE_TEAROFF") ) TEAROFFIZE(imag->crosshair_menu) ;
 
     XtInsertEventHandler( imag->crosshair_label , /* handle events in label */
                              ButtonPressMask ,    /* button presses */
@@ -989,7 +993,7 @@ STATUS("making imag->rowcol") ;
           "menu" , xmPushButtonWidgetClass , imag->crosshair_menu ,
              LABEL_ARG(" RAI=DICOM order") ,
              XmNmarginHeight , 0 ,
-             XmNtraversalOn , False ,
+             XmNtraversalOn , True  ,
              XmNinitialResourcesPersistent , False ,
           NULL ) ;
     XtAddCallback( imag->crosshair_dicom_pb , XmNactivateCallback ,
@@ -1000,7 +1004,7 @@ STATUS("making imag->rowcol") ;
           "menu" , xmPushButtonWidgetClass , imag->crosshair_menu ,
              LABEL_ARG(" LPI=SPM order") ,
              XmNmarginHeight , 0 ,
-             XmNtraversalOn , False ,
+             XmNtraversalOn , True  ,
              XmNinitialResourcesPersistent , False ,
           NULL ) ;
     XtAddCallback( imag->crosshair_spm_pb , XmNactivateCallback ,
@@ -1019,7 +1023,7 @@ STATUS("making imag->xhair_rowcol") ;
             XmNorientation , XmHORIZONTAL ,
             XmNmarginHeight, 0 ,
             XmNmarginWidth , 0 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -1144,7 +1148,7 @@ STATUS("making imag->gap_wrap_rowcol") ;
             XmNorientation , XmHORIZONTAL ,
             XmNmarginHeight, 0 ,
             XmNmarginWidth , 0 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -1253,9 +1257,9 @@ STATUS("imag->view_frame") ;
    imag->view_rowcol =
       XtVaCreateWidget(
          "dialog" , xmRowColumnWidgetClass , imag->view_frame ,
-            XmNpacking      , XmPACK_TIGHT ,
-            XmNorientation  , XmVERTICAL   ,
-            XmNtraversalOn , False ,
+            XmNpacking     , XmPACK_TIGHT ,
+            XmNorientation , XmVERTICAL   ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -1273,7 +1277,7 @@ STATUS("imag->view_frame") ;
             XmNorientation , XmHORIZONTAL ,
             XmNmarginHeight, 0 ,
             XmNmarginWidth , 0 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -1284,7 +1288,7 @@ STATUS("imag->view_frame") ;
             XmNmarginHeight, 0 ,
             XmNmarginWidth , 0 ,
             XmNrecomputeSize , False ,
-            XmNtraversalOn   , False ,
+            XmNtraversalOn   , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -1295,7 +1299,7 @@ STATUS("imag->view_frame") ;
             XmNmarginHeight, 0 ,
             XmNmarginWidth , 0 ,
             XmNrecomputeSize , False ,
-            XmNtraversalOn   , False ,
+            XmNtraversalOn   , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -1306,7 +1310,7 @@ STATUS("imag->view_frame") ;
             XmNmarginHeight, 0 ,
             XmNmarginWidth , 0 ,
             XmNrecomputeSize , False ,
-            XmNtraversalOn   , False ,
+            XmNtraversalOn   , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -1321,7 +1325,7 @@ STATUS("imag->view_frame") ;
             XmNorientation , XmHORIZONTAL ,
             XmNmarginHeight, 0 ,
             XmNmarginWidth , 0 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -1332,7 +1336,7 @@ STATUS("imag->view_frame") ;
             XmNmarginHeight, 0 ,
             XmNmarginWidth , 0 ,
             XmNrecomputeSize , False ,
-            XmNtraversalOn   , False ,
+            XmNtraversalOn   , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -1343,7 +1347,7 @@ STATUS("imag->view_frame") ;
             XmNmarginHeight, 0 ,
             XmNmarginWidth , 0 ,
             XmNrecomputeSize , False ,
-            XmNtraversalOn   , False ,
+            XmNtraversalOn   , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -1354,7 +1358,7 @@ STATUS("imag->view_frame") ;
             XmNmarginHeight, 0 ,
             XmNmarginWidth , 0 ,
             XmNrecomputeSize , False ,
-            XmNtraversalOn   , False ,
+            XmNtraversalOn   , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -1369,7 +1373,7 @@ STATUS("imag->view_frame") ;
             XmNorientation , XmHORIZONTAL ,
             XmNmarginHeight, 0 ,
             XmNmarginWidth , 0 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -1380,7 +1384,7 @@ STATUS("imag->view_frame") ;
             XmNmarginHeight, 0 ,
             XmNmarginWidth , 0 ,
             XmNrecomputeSize , False ,
-            XmNtraversalOn   , False ,
+            XmNtraversalOn   , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -1391,7 +1395,7 @@ STATUS("imag->view_frame") ;
             XmNmarginHeight, 0 ,
             XmNmarginWidth , 0 ,
             XmNrecomputeSize , False ,
-            XmNtraversalOn   , False ,
+            XmNtraversalOn   , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -1402,7 +1406,7 @@ STATUS("imag->view_frame") ;
             XmNmarginHeight, 0 ,
             XmNmarginWidth , 0 ,
             XmNrecomputeSize , False ,
-            XmNtraversalOn   , False ,
+            XmNtraversalOn   , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -1473,9 +1477,10 @@ STATUS("making view->rowcol") ;
    view->rowcol =
       XtVaCreateWidget(
          "dialog" , xmRowColumnWidgetClass , view->frame ,
-            XmNpacking      , XmPACK_TIGHT ,
-            XmNorientation  , XmVERTICAL   ,
-            XmNtraversalOn , False ,
+            XmNpacking     , XmPACK_TIGHT ,
+            XmNorientation , XmVERTICAL   ,
+            XmNisAligned   , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -1492,8 +1497,8 @@ STATUS("making view->rowcol") ;
                     AFNI_switchview_CB , (XtPointer) im3d ) ;
 
    for( id=0 ; id <= LAST_VIEW_TYPE ; id++ ){
-      if( im3d->anat_dset[id] == NULL )
-         XtSetSensitive( view->view_bbox->wbut[id] , False ) ;
+     if( im3d->anat_dset[id] == NULL )
+       XtSetSensitive( view->view_bbox->wbut[id] , False ) ;
    }
 
    MCW_set_bbox( view->view_bbox , 1 << im3d->vinfo->view_type ) ;
@@ -1519,16 +1524,17 @@ STATUS("making view->rowcol") ;
          "dialog" , xmFrameWidgetClass , view->rowcol ,
             XmNshadowType , XmSHADOW_ETCHED_IN ,
             XmNshadowThickness , 2 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
    view->marks_rowcol =
       XtVaCreateWidget(
          "dialog" , xmRowColumnWidgetClass , view->marks_frame ,
-            XmNpacking      , XmPACK_TIGHT ,
-            XmNorientation  , XmVERTICAL   ,
-            XmNtraversalOn , False ,
+            XmNpacking     , XmPACK_TIGHT ,
+            XmNorientation , XmVERTICAL   ,
+            XmNisAligned   , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -1537,9 +1543,10 @@ STATUS("making view->rowcol") ;
    view->define_marks_pb =
       XtVaCreateManagedWidget(
          "dialog" , xmPushButtonWidgetClass , view->marks_rowcol ,
-            LABEL_ARG("Define Markers") ,
+            LABEL_ARG("Define Markers ->") ,
             XmNmarginHeight , 1 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
+            XmNalignment , XmALIGNMENT_CENTER ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -1587,16 +1594,17 @@ STATUS("making view->rowcol") ;
          "dialog" , xmFrameWidgetClass , view->rowcol ,
             XmNshadowType , XmSHADOW_ETCHED_IN ,
             XmNshadowThickness , 2 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
    view->func_rowcol =
       XtVaCreateWidget(
          "dialog" , xmRowColumnWidgetClass , view->func_frame ,
-            XmNpacking      , XmPACK_TIGHT ,
-            XmNorientation  , XmVERTICAL   ,
-            XmNtraversalOn , False ,
+            XmNpacking     , XmPACK_TIGHT ,
+            XmNorientation , XmVERTICAL   ,
+            XmNisAligned   , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -1605,9 +1613,10 @@ STATUS("making view->rowcol") ;
    view->define_func_pb =
       XtVaCreateManagedWidget(
          "dialog" , xmPushButtonWidgetClass , view->func_rowcol ,
-            LABEL_ARG("Define OverLay") ,
+            LABEL_ARG("Define OverLay ->") ,
             XmNmarginHeight , 1 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
+            XmNalignment , XmALIGNMENT_CENTER ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -1651,9 +1660,10 @@ STATUS("making view->rowcol") ;
    view->define_dmode_pb =
       XtVaCreateManagedWidget(
          "dialog" , xmPushButtonWidgetClass , view->rowcol ,
-            LABEL_ARG("Define Datamode") ,
+            LABEL_ARG("Define Datamode ->") ,
             XmNmarginHeight , 1 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
+            XmNalignment , XmALIGNMENT_CENTER ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -1678,16 +1688,17 @@ STATUS("making view->rowcol") ;
          "dialog" , xmFrameWidgetClass , view->rowcol ,
             XmNshadowType , XmSHADOW_ETCHED_IN ,
             XmNshadowThickness , 2 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
    view->dataset_rowcol =
       XtVaCreateWidget(
          "dialog" , xmRowColumnWidgetClass , view->dataset_frame ,
-            XmNpacking      , XmPACK_TIGHT ,
-            XmNorientation  , XmVERTICAL   ,
-            XmNtraversalOn , False ,
+            XmNpacking     , XmPACK_TIGHT ,
+            XmNorientation , XmVERTICAL   ,
+            XmNisAligned   , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -1698,7 +1709,8 @@ STATUS("making view->rowcol") ;
          "dialog" , xmPushButtonWidgetClass , view->dataset_rowcol ,
             LABEL_ARG("Switch Session") ,
             XmNmarginHeight , 1 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
+            XmNalignment , XmALIGNMENT_CENTER ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -1713,56 +1725,146 @@ STATUS("making view->rowcol") ;
 
    view_count ++ ;
 
-   view->choose_anat_pb =
-      XtVaCreateManagedWidget(
-         "dialog" , xmPushButtonWidgetClass , view->dataset_rowcol ,
-            LABEL_ARG("Switch UnderLay") ,
-            XmNmarginHeight , 1 ,
-            XmNtraversalOn , False ,
+   /*-- 02 Feb 2007: move Underlay and Overlay choosers into a rowcol --*/
+
+   view->choose_rowcol =
+      XtVaCreateWidget(
+         "dialog" , xmRowColumnWidgetClass , view->dataset_rowcol ,
+            XmNpacking      , XmPACK_COLUMN ,
+            XmNnumColumns   , 2 ,
+            XmNorientation  , XmVERTICAL   ,
+            XmNtraversalOn  , True  ,
+            XmNmarginHeight , 0 ,
+            XmNmarginWidth  , 0 ,
+            XmNspacing      , 0 ,
+            XmNadjustLast   , False ,
+            XmNentryAlignment , XmALIGNMENT_CENTER ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
-   XtAddCallback( view->choose_anat_pb , XmNactivateCallback ,
-                  AFNI_choose_dataset_CB , im3d ) ;
+#define UNDERLAY_BUTTON                                             \
+ do{                                                                \
+   view->choose_anat_pb =                                           \
+      XtVaCreateManagedWidget(                                      \
+         "dialog" , xmPushButtonWidgetClass , view->choose_rowcol , \
+            LABEL_ARG("UnderLay") ,                                 \
+            XmNmarginHeight , 1 ,                                   \
+            XmNtraversalOn , True  ,                                \
+            XmNinitialResourcesPersistent , False ,                 \
+         NULL ) ;                                                   \
+   XtAddCallback( view->choose_anat_pb , XmNactivateCallback ,      \
+                  AFNI_choose_dataset_CB , im3d ) ;                 \
+   MCW_register_help( view->choose_anat_pb ,                        \
+        "Use this to choose which 3D\n"                             \
+        "dataset to view as the underlay\n"                         \
+        "(from the current session).\n\n"                           \
+        "N.B.: Datasets which can be\n"                             \
+        "  graphed are marked with a\n"                             \
+        "  '*' after their names.\n"                                \
+        "  Datasets that are compressed\n"                          \
+        "  have 'z' after their names."                             \
+   ) ;                                                              \
+   MCW_register_hint( view->choose_anat_pb ,                        \
+                      "Switch datasets for underlay/graphs" ) ;     \
+   MCW_set_widget_bg( view->choose_anat_pb , "black" , 0 ) ;        \
+   view_count ++ ;                                                  \
+ } while(0)
 
-   MCW_register_help( view->choose_anat_pb ,
-        "Use this to choose which 3D\n"
-        "dataset to view as the underlay\n"
-        "(from the current session).\n\n"
-        "N.B.: Datasets which can be\n"
-        "  graphed are marked with a\n"
-        "  '*' after their names.\n"
-        "  Datasets that are compressed\n"
-        "  have 'z' after their names."
-   ) ;
-   MCW_register_hint( view->choose_anat_pb ,
-                      "Switch datasets for underlay/graphs" ) ;
+#define OVERLAY_BUTTON                                              \
+ do{                                                                \
+   view->choose_func_pb =                                           \
+      XtVaCreateManagedWidget(                                      \
+         "dialog" , xmPushButtonWidgetClass , view->choose_rowcol , \
+            LABEL_ARG("OverLay") ,                                  \
+            XmNmarginHeight , 1 ,                                   \
+            XmNtraversalOn , True  ,                                \
+            XmNinitialResourcesPersistent , False ,                 \
+         NULL ) ;                                                   \
+   XtAddCallback( view->choose_func_pb , XmNactivateCallback ,      \
+                  AFNI_choose_dataset_CB , im3d ) ;                 \
+   MCW_register_help( view->choose_func_pb ,                        \
+     "Use this to choose which\n"                                   \
+     "overlay 3D dataset to view\n"                                 \
+     "(from the current session).\n"                                \
+     "N.B.: Datasets that are compressed\n"                         \
+     "  have 'z' after their names."                                \
+    ) ;                                                             \
+   MCW_register_hint( view->choose_func_pb ,                        \
+                      "Switch datasets for color overlay" ) ;       \
+   view_count ++ ;                                                  \
+ } while(0)
 
-   view_count ++ ;
+   if( AFNI_yesenv("AFNI_OVERLAY_ONTOP") ){  /* 05 Feb 2007 */
+     OVERLAY_BUTTON  ;
+     UNDERLAY_BUTTON ;
+   } else {
+     UNDERLAY_BUTTON ;
+     OVERLAY_BUTTON  ;
+   }
 
-   view->choose_func_pb =
+   /* 02 Feb 2007: new Rescan This button here */
+
+   if( !AFNI_yesenv("AFNI_RESCAN_AT_SWITCH") ){
+     view->rescan_pb =
+        XtVaCreateManagedWidget(
+           "dialog" , xmPushButtonWidgetClass , view->choose_rowcol ,
+              LABEL_ARG("RescanTh") ,
+              XmNmarginHeight , 1 ,
+              XmNtraversalOn , True  ,
+              XmNinitialResourcesPersistent , False ,
+           NULL ) ;
+     XtAddCallback( view->rescan_pb , XmNactivateCallback ,
+                    AFNI_rescan_CB , im3d ) ;
+     MCW_register_hint( view->rescan_pb ,
+                        "Read current session again" ) ;
+     MCW_register_help( view->rescan_pb ,
+                        "Read current session again\n"
+                        "to see if new datasets were\n"
+                        "added.  Exactly the same as\n"
+                        " Define Datamode->Rescan This\n"
+                        "Can also set (in .afnirc)\n"
+                        " AFNI_RESCAN_AT_SWITCH = YES\n"
+                        "to rescan each time you hit\n"
+                        "'Overlay' or 'Underlay'."     ) ;
+   } else {
+     view->rescan_pb =              /* 23 Feb 2007 */
+        XtVaCreateManagedWidget(
+           "dialog" , xmPushButtonWidgetClass , view->choose_rowcol ,
+              LABEL_ARG("EditEnv") ,
+              XmNmarginHeight , 1 ,
+              XmNtraversalOn , True  ,
+              XmNinitialResourcesPersistent , False ,
+           NULL ) ;
+     XtAddCallback( view->rescan_pb , XmNactivateCallback ,
+                    AFNI_editenv_CB , im3d ) ;
+   }
+
+   /* NIML+PO button here -- 02 Feb 2007 */
+
+   view->nimlpo_pb =
       XtVaCreateManagedWidget(
-         "dialog" , xmPushButtonWidgetClass , view->dataset_rowcol ,
-            LABEL_ARG("Switch OverLay") ,
+         "dialog" , xmPushButtonWidgetClass , view->choose_rowcol ,
+            LABEL_ARG("NIML+PO") ,
             XmNmarginHeight , 1 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
-
-   XtAddCallback( view->choose_func_pb , XmNactivateCallback ,
-                  AFNI_choose_dataset_CB , im3d ) ;
-
-   MCW_register_help( view->choose_func_pb ,
-     "Use this to choose which\n"
-     "overlay 3D dataset to view\n"
-     "(from the current session).\n"
-     "N.B.: Datasets that are compressed\n"
-     "  have 'z' after their names."
-    ) ;
-   MCW_register_hint( view->choose_func_pb ,
-                      "Switch datasets for color overlay" ) ;
-
-   view_count ++ ;
+   XtAddCallback( view->nimlpo_pb , XmNactivateCallback ,
+                  AFNI_nimlpo_CB , im3d ) ;
+   if( AFNI_have_niml() && AFNI_have_plugouts() ){
+     XtSetSensitive(view->nimlpo_pb,False) ;
+   } else {
+     MCW_register_hint( view->nimlpo_pb ,
+                        "Start NIML and Plugout TCP/IP sockets") ;
+     MCW_register_help( view->nimlpo_pb ,
+                        "Start listening for NIML\n"
+                        "and Plugout TCP/IP sockets.\n"
+                        "If you forgot to use options\n"
+                        "'-niml' and '-yesplugouts'\n"
+                        "on the command line, and\n"
+                        "are expecting AFNI to talk\n"
+                        "SUMA and/or plugout_drive."  ) ;
+   }
 
    /* 19 Aug 2002: Surface chooser! */
 
@@ -1771,10 +1873,11 @@ STATUS("making view->rowcol") ;
          "dialog" , xmPushButtonWidgetClass , view->dataset_rowcol ,
             LABEL_ARG("Control Surface") ,
             XmNmarginHeight , 1 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
+            XmNalignment , XmALIGNMENT_CENTER ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
-
+   XtSetSensitive( view->choose_surf_pb , False ) ;
    XtAddCallback( view->choose_surf_pb , XmNactivateCallback ,
                   AFNI_choose_surface_CB , im3d ) ;
 
@@ -1806,7 +1909,7 @@ STATUS("making view->rowcol") ;
          "dialog" , xmPushButtonWidgetClass , imag->popmenu ,
             LABEL_ARG("Switch Session") ,
             XmNmarginHeight , 0 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -1818,7 +1921,7 @@ STATUS("making view->rowcol") ;
          "dialog" , xmPushButtonWidgetClass , imag->popmenu ,
             LABEL_ARG("Switch UnderLay") ,
             XmNmarginHeight , 0 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -1830,7 +1933,7 @@ STATUS("making view->rowcol") ;
          "dialog" , xmPushButtonWidgetClass , imag->popmenu ,
             LABEL_ARG("Switch OverLay") ,
             XmNmarginHeight , 0 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -1855,6 +1958,7 @@ STATUS("making view->rowcol") ;
 
    XtManageChild( view->marks_rowcol ) ;
    XtManageChild( view->func_rowcol ) ;
+   XtManageChild( view->choose_rowcol ) ;
    XtManageChild( view->dataset_rowcol ) ;
    XtManageChild( view->rowcol ) ;
 
@@ -1890,7 +1994,7 @@ STATUS("making marks->rowcol") ;
          "dialog" , xmRowColumnWidgetClass , marks->frame ,
             XmNpacking     , XmPACK_TIGHT ,
             XmNorientation , XmHORIZONTAL ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -1913,7 +2017,7 @@ STATUS("making marks->rowcol") ;
          "dialog" , xmRowColumnWidgetClass , marks->tog_frame ,
             XmNpacking     , XmPACK_TIGHT ,
             XmNorientation , XmVERTICAL   ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -1954,7 +2058,7 @@ STATUS("making marks->rowcol") ;
                  XmNmarginHeight , 0 ,
                  XmNmarginWidth  , 0 ,
                  XmNselectColor  , fg_pix ,
-                 XmNtraversalOn  , False ,
+                 XmNtraversalOn  , True  ,
                  XmNinitialResourcesPersistent , False ,
               NULL ) ;
 
@@ -1973,7 +2077,7 @@ STATUS("making marks->rowcol") ;
                  XmNmarginHeight , 0 ,
                  XmNmarginWidth  , 0 ,
                  XmNselectColor  , fg_pix ,
-                 XmNtraversalOn  , False ,
+                 XmNtraversalOn  , True  ,
                  XmNinitialResourcesPersistent , False ,
               NULL ) ;
 
@@ -2010,7 +2114,7 @@ STATUS("making marks->rowcol") ;
          "dialog" , xmRowColumnWidgetClass , marks->control_frame ,
             XmNpacking     , XmPACK_TIGHT ,
             XmNorientation , XmVERTICAL   ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -2049,7 +2153,7 @@ STATUS("making marks->rowcol") ;
          "dialog" , xmRowColumnWidgetClass , marks->disp_frame ,
             XmNpacking      , XmPACK_TIGHT ,
             XmNorientation  , XmVERTICAL   ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -2206,7 +2310,7 @@ STATUS("making marks->rowcol") ;
       XtVaCreateWidget(
          "dialog" , xmRowColumnWidgetClass , marks->control_rowcol ,
             XmNorientation  , XmHORIZONTAL ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -2216,7 +2320,7 @@ STATUS("making marks->rowcol") ;
       XtVaCreateManagedWidget(
          "dialog" , xmPushButtonWidgetClass , marks->action_rowcol ,
             LABEL_ARG("Set") ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -2232,7 +2336,7 @@ STATUS("making marks->rowcol") ;
       XtVaCreateManagedWidget(
          "dialog" , xmPushButtonWidgetClass , marks->action_rowcol ,
             LABEL_ARG("Clear") ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -2256,7 +2360,7 @@ STATUS("making marks->rowcol") ;
          "dialog" , xmPushButtonWidgetClass , imag->popmenu ,
             LABEL_ARG("Set") ,
             XmNmarginHeight , 0 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -2269,7 +2373,7 @@ STATUS("making marks->rowcol") ;
          "dialog" , xmPushButtonWidgetClass , imag->popmenu ,
             LABEL_ARG("Clear") ,
             XmNmarginHeight , 0 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -2282,7 +2386,7 @@ STATUS("making marks->rowcol") ;
       XtVaCreateManagedWidget(
          "dialog" , xmPushButtonWidgetClass , marks->action_rowcol ,
             LABEL_ARG("Quality?") ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -2305,7 +2409,7 @@ STATUS("making marks->rowcol") ;
       XtVaCreateManagedWidget(
          "dialog" , xmPushButtonWidgetClass , marks->control_rowcol ,
             LABEL_ARG("Transform Data") ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -2359,7 +2463,7 @@ STATUS("making func->rowcol") ;
          "dialog" , xmRowColumnWidgetClass , func->frame ,
             XmNorientation , XmHORIZONTAL ,
             XmNpacking , XmPACK_TIGHT ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -2372,7 +2476,7 @@ STATUS("making func->rowcol") ;
             XmNpacking , XmPACK_TIGHT ,
             XmNmarginHeight, 0 ,
             XmNmarginWidth , 0 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -2420,6 +2524,7 @@ STATUS("making func->rowcol") ;
 
    SAVEUNDERIZE(XtParent(func->thr_menu)) ;
    VISIBILIZE_WHEN_MAPPED(func->thr_menu) ;
+   if( !AFNI_yesenv("AFNI_DISABLE_TEAROFF") ) TEAROFFIZE(func->thr_menu) ;
 
    XtInsertEventHandler( func->thr_label ,       /* handle events in label */
 
@@ -2448,7 +2553,7 @@ STATUS("making func->rowcol") ;
          "dialog" , xmPushButtonWidgetClass , func->thr_menu ,
             LABEL_ARG("*Clear Edit") ,
             XmNmarginHeight , 0 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
    XtAddCallback( func->thr_clear_pb , XmNactivateCallback ,
@@ -2461,7 +2566,7 @@ STATUS("making func->rowcol") ;
          "dialog" , xmPushButtonWidgetClass , func->thr_menu ,
             LABEL_ARG(" Clusterize") ,
             XmNmarginHeight , 0 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
    XtAddCallback( func->thr_cluster_pb , XmNactivateCallback ,
@@ -2492,7 +2597,7 @@ STATUS("making func->rowcol") ;
    qqq = XtVaCreateManagedWidget(
            "dialog" , xmFrameWidgetClass , func->thr_rowcol ,
             XmNshadowType , XmSHADOW_ETCHED_IN ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 #else
@@ -2515,7 +2620,7 @@ STATUS("making func->rowcol") ;
             XmNorientation , XmVERTICAL ,
             XmNheight , sel_height ,
             XmNborderWidth , 0 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -2622,7 +2727,7 @@ STATUS("making func->rowcol") ;
             XmNmarginHeight, 0 ,
             XmNmarginWidth , 0 ,
             XmNpacking , XmPACK_TIGHT ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -2642,8 +2747,8 @@ STATUS("making func->rowcol") ;
 #endif
 
    SAVEUNDERIZE(XtParent(func->pbar_menu)) ; /* 27 Feb 2001 */
-
    VISIBILIZE_WHEN_MAPPED(func->pbar_menu) ;
+   if( !AFNI_yesenv("AFNI_DISABLE_TEAROFF") ) TEAROFFIZE(func->pbar_menu) ;
 
    XtInsertEventHandler( func->inten_label ,      /* handle events in label */
 
@@ -2679,7 +2784,7 @@ STATUS("making func->rowcol") ;
          "dialog" , xmPushButtonWidgetClass , func->pbar_menu ,
             LABEL_ARG("Edit Environment") ,
             XmNmarginHeight , 0 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
    XtAddCallback( func->pbar_environment_pb , XmNactivateCallback ,
@@ -2693,7 +2798,7 @@ STATUS("making func->rowcol") ;
          "dialog" , xmPushButtonWidgetClass , func->pbar_menu ,
             LABEL_ARG("Equalize Spacing") ,
             XmNmarginHeight , 0 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -2707,7 +2812,7 @@ STATUS("making func->rowcol") ;
          "dialog" , xmPushButtonWidgetClass , func->pbar_menu ,
             LABEL_ARG("Set Top Value") ,
             XmNmarginHeight , 0 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -2725,7 +2830,7 @@ STATUS("making func->rowcol") ;
          "dialog" , xmPushButtonWidgetClass , func->pbar_menu ,
             LABEL_ARG("Read in palette") ,
             XmNmarginHeight , 0 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -2739,7 +2844,7 @@ STATUS("making func->rowcol") ;
          "dialog" , xmPushButtonWidgetClass , func->pbar_menu ,
             LABEL_ARG("Write out palette") ,
             XmNmarginHeight , 0 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -2756,7 +2861,7 @@ STATUS("making func->rowcol") ;
          "dialog" , xmPushButtonWidgetClass , func->pbar_menu ,
             LABEL_ARG("Save to PPM") ,
             XmNmarginHeight , 0 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -2771,7 +2876,7 @@ STATUS("making func->rowcol") ;
          "dialog" , xmPushButtonWidgetClass , func->pbar_menu ,
             LABEL_ARG("Show Palette Table") ,
             XmNmarginHeight , 0 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -3015,7 +3120,7 @@ STATUS("making func->rowcol") ;
             XmNpacking , XmPACK_TIGHT ,
             XmNmarginHeight, 0 ,
             XmNmarginWidth , 0 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -3060,7 +3165,7 @@ STATUS("making func->rowcol") ;
          "dialog" , xmFrameWidgetClass , func->options_rowcol ,
             XmNshadowType , XmSHADOW_ETCHED_IN ,
             XmNshadowThickness , 2 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -3069,7 +3174,7 @@ STATUS("making func->rowcol") ;
          "dialog" , xmRowColumnWidgetClass , func->buck_frame ,
             XmNorientation , XmVERTICAL ,
             XmNpacking , XmPACK_TIGHT ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -3193,7 +3298,7 @@ STATUS("making func->rowcol") ;
          "dialog" , xmFrameWidgetClass , func->options_rowcol ,
             XmNshadowType , XmSHADOW_ETCHED_IN ,
             XmNshadowThickness , 2 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -3202,7 +3307,7 @@ STATUS("making func->rowcol") ;
          "dialog" , xmRowColumnWidgetClass , func->range_frame ,
             XmNorientation , XmVERTICAL ,
             XmNpacking , XmPACK_TIGHT ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -3215,7 +3320,7 @@ STATUS("making func->rowcol") ;
          "dialog" , xmLabelWidgetClass , func->range_rowcol ,
             XmNrecomputeSize , False ,
             XmNlabelString , xstr ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -3265,7 +3370,7 @@ STATUS("making func->rowcol") ;
          "dialog" , xmRowColumnWidgetClass , func->range_rowcol ,
             XmNorientation , XmHORIZONTAL ,
             XmNpacking , XmPACK_TIGHT ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -3331,7 +3436,7 @@ STATUS("making func->rowcol") ;
          "dialog" , xmFrameWidgetClass , func->options_rowcol ,
             XmNshadowType , XmSHADOW_ETCHED_IN ,
             XmNshadowThickness , 2 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -3340,7 +3445,7 @@ STATUS("making func->rowcol") ;
          "dialog" , xmRowColumnWidgetClass , func->fim_frame ,
             XmNorientation , XmHORIZONTAL ,
             XmNpacking , XmPACK_TIGHT ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -3351,7 +3456,7 @@ STATUS("making func->rowcol") ;
                      XmNmarginHeight , 0 ,
                      XmNspacing      , 3 ,
                      XmNborderWidth  , 0 ,
-                     XmNtraversalOn  , False ,
+                     XmNtraversalOn  , True  ,
                   NULL ) ;
    XtManageChild( func->fim_mbar ) ;
 
@@ -3364,7 +3469,7 @@ STATUS("making func->rowcol") ;
          "dialog" , xmLabelWidgetClass , func->fim_rowcol ,
             XmNrecomputeSize , False ,
             XmNlabelString , xstr ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
    XmStringFree(xstr) ;
@@ -3414,7 +3519,7 @@ STATUS("making func->rowcol") ;
             XmNrecomputeSize , False ,
             XmNlabelString , xstr ,
             XmNmarginHeight, 0 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
    XmStringFree( xstr ) ;
@@ -3465,7 +3570,7 @@ STATUS("making dmode->rowcol") ;
          "dialog" , xmRowColumnWidgetClass , dmode->frame ,
             XmNorientation , XmVERTICAL ,
             XmNpacking , XmPACK_TIGHT ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -3700,7 +3805,7 @@ STATUS("making dmode->rowcol") ;
               XmNmarginHeight , 0 ,
               XmNmarginWidth  , 0 ,
               XmNspacing      , 1 ,
-              XmNtraversalOn , False ,
+              XmNtraversalOn , True  ,
               XmNinitialResourcesPersistent , False ,
            NULL ) ;
 
@@ -3711,7 +3816,7 @@ STATUS("making dmode->rowcol") ;
             LABEL_ARG("Write ") ,
             XmNalignment , XmALIGNMENT_BEGINNING ,
             XmNrecomputeSize , False ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -3721,7 +3826,7 @@ STATUS("making dmode->rowcol") ;
       XtVaCreateManagedWidget(
          "dialog" , xmPushButtonWidgetClass , dmode->write_rowcol ,
             LABEL_ARG("ULay") ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -3735,7 +3840,7 @@ STATUS("making dmode->rowcol") ;
       XtVaCreateManagedWidget(
          "dialog" , xmPushButtonWidgetClass , dmode->write_rowcol ,
             LABEL_ARG("OLay") ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -3749,7 +3854,7 @@ STATUS("making dmode->rowcol") ;
       XtVaCreateManagedWidget(
          "dialog" , xmPushButtonWidgetClass , dmode->write_rowcol ,
             LABEL_ARG("Many") ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -3789,7 +3894,7 @@ STATUS("making dmode->rowcol") ;
               XmNmarginHeight , 0 ,
               XmNmarginWidth  , 0 ,
               XmNspacing      , 1 ,
-              XmNtraversalOn , False ,
+              XmNtraversalOn , True  ,
               XmNinitialResourcesPersistent , False ,
            NULL ) ;
 
@@ -3800,7 +3905,7 @@ STATUS("making dmode->rowcol") ;
             LABEL_ARG("Rescan") ,
             XmNalignment , XmALIGNMENT_BEGINNING ,
             XmNrecomputeSize , False ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -3811,13 +3916,11 @@ STATUS("making dmode->rowcol") ;
          "dialog" , xmPushButtonWidgetClass , dmode->rescan_rowcol ,
             LABEL_ARG("This") ,
             XmNmarginHeight , 0 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
-
    XtAddCallback( dmode->rescan_pb , XmNactivateCallback ,
                   AFNI_rescan_CB , im3d ) ;
-
    MCW_register_hint( dmode->rescan_pb ,
                       "Read current session again" ) ;
 
@@ -3828,7 +3931,7 @@ STATUS("making dmode->rowcol") ;
          "dialog" , xmPushButtonWidgetClass , dmode->rescan_rowcol ,
             LABEL_ARG("All ") ,
             XmNmarginHeight , 0 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -3843,7 +3946,7 @@ STATUS("making dmode->rowcol") ;
          "dialog" , xmPushButtonWidgetClass , dmode->rescan_rowcol ,
             LABEL_ARG("*.1D") ,
             XmNmarginHeight , 0 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -3880,7 +3983,7 @@ STATUS("making dmode->rowcol") ;
               XmNmarginHeight , 0 ,
               XmNmarginWidth  , 0 ,
               XmNspacing      , 1 ,
-              XmNtraversalOn , False ,
+              XmNtraversalOn , True  ,
               XmNinitialResourcesPersistent , False ,
            NULL ) ;
 
@@ -3891,7 +3994,7 @@ STATUS("making dmode->rowcol") ;
             LABEL_ARG("Read  ") ,
             XmNalignment , XmALIGNMENT_BEGINNING ,
             XmNrecomputeSize , False ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -3902,7 +4005,7 @@ STATUS("making dmode->rowcol") ;
          "dialog" , xmPushButtonWidgetClass , dmode->read_rowcol ,
             LABEL_ARG("Sess") ,
             XmNmarginHeight , 0 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -3919,7 +4022,7 @@ STATUS("making dmode->rowcol") ;
          "dialog" , xmPushButtonWidgetClass , dmode->read_rowcol ,
             LABEL_ARG(" 1D ") ,
             XmNmarginHeight , 0 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -3936,7 +4039,7 @@ STATUS("making dmode->rowcol") ;
          "dialog" , xmPushButtonWidgetClass , dmode->read_rowcol ,
             LABEL_ARG("Web ") ,
             XmNmarginHeight , 0 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -3974,7 +4077,7 @@ STATUS("making dmode->rowcol") ;
               XmNmarginHeight , 0 ,
               XmNmarginWidth  , 0 ,
               XmNspacing      , 1 ,
-              XmNtraversalOn , False ,
+              XmNtraversalOn , True  ,
               XmNinitialResourcesPersistent , False ,
            NULL ) ;
 
@@ -4007,7 +4110,7 @@ STATUS("making prog->rowcol") ;
          "dialog" , xmRowColumnWidgetClass , prog->frame ,
             XmNpacking     , XmPACK_TIGHT ,
             XmNorientation , XmVERTICAL ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -4020,7 +4123,7 @@ STATUS("making prog->rowcol") ;
                XmNspacing     , 1 ,
                XmNmarginHeight, 0 ,
                XmNmarginWidth , 0 ,
-               XmNtraversalOn , False ,
+               XmNtraversalOn , True  ,
                XmNinitialResourcesPersistent , False ,
             NULL ) ;
 
@@ -4029,7 +4132,7 @@ STATUS("making prog->rowcol") ;
             XtVaCreateManagedWidget(
                "dialog" , xmPushButtonWidgetClass , prog->rc_top ,
                  LABEL_ARG("New  ") ,
-                 XmNtraversalOn , False ,
+                 XmNtraversalOn , True  ,
                  XmNinitialResourcesPersistent , False ,
                NULL ) ;
 
@@ -4051,7 +4154,7 @@ STATUS("making prog->rowcol") ;
          XtVaCreateManagedWidget(
             "dialog" , xmPushButtonWidgetClass , prog->rc_top ,
               LABEL_ARG("Views") ,
-              XmNtraversalOn , False ,
+              XmNtraversalOn , True  ,
               XmNinitialResourcesPersistent , False ,
             NULL ) ;
 
@@ -4083,7 +4186,7 @@ STATUS("making prog->rowcol") ;
             XmNspacing     , 1 ,
             XmNmarginHeight, 0 ,
             XmNmarginWidth , 0 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -4091,7 +4194,7 @@ STATUS("making prog->rowcol") ;
       XtVaCreateManagedWidget(
          "dialog" , xmPushButtonWidgetClass , prog->rc_bot ,
            LABEL_ARG("BHelp") ,
-           XmNtraversalOn , False ,
+           XmNtraversalOn , True  ,
            XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -4108,7 +4211,7 @@ STATUS("making prog->rowcol") ;
          "dialog" , xmPushButtonWidgetClass , prog->rc_bot ,
             LABEL_ARG("done ") ,
             XmNrecomputeSize , False ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
             XmNuserData , (XtPointer) im3d ,
          NULL ) ;
@@ -4157,7 +4260,7 @@ STATUS("making prog->rowcol") ;
             LABEL_ARG("   bkgd =xxxxxx") ,
             XmNalignment , XmALIGNMENT_BEGINNING ,
             XmNrecomputeSize , True ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -4188,7 +4291,7 @@ STATUS("making prog->rowcol") ;
                  XmNmarginWidth      , 0 ,
                  XmNmarginHeight     , 0 ,
                  XmNrecomputeSize    , False ,
-                 XmNtraversalOn      , False ,
+                 XmNtraversalOn      , True  ,
                  XmNinitialResourcesPersistent , False ,
              NULL ) ;
       MCW_register_help( vwid->picture , AFNI_abohelp ) ;
@@ -4244,6 +4347,7 @@ STATUS("making prog->rowcol") ;
       SAVEUNDERIZE(XtParent(prog->hidden_menu)) ; /* 27 Feb 2001 */
 
       VISIBILIZE_WHEN_MAPPED(prog->hidden_menu) ;
+      if( !AFNI_yesenv("AFNI_DISABLE_TEAROFF") ) TEAROFFIZE(prog->hidden_menu) ;
 
 /***
       XtAddCallback( prog->hidden_menu ,
@@ -4277,6 +4381,7 @@ STATUS("making prog->rowcol") ;
          XmCreatePulldownMenu( prog->hidden_menu , "menu" , NULL , 0 ) ;
 
       VISIBILIZE_WHEN_MAPPED(prog->hidden_pts_menu) ;
+      if( !AFNI_yesenv("AFNI_DISABLE_TEAROFF") ) TEAROFFIZE(prog->hidden_pts_menu) ;
 
       /** cascade button to bring this menu up **/
 
@@ -4285,7 +4390,7 @@ STATUS("making prog->rowcol") ;
             "dialog" , xmCascadeButtonWidgetClass , prog->hidden_menu ,
                LABEL_ARG("Points List") ,
                XmNsubMenuId , prog->hidden_pts_menu ,
-               XmNtraversalOn , False ,
+               XmNtraversalOn , True  ,
                XmNinitialResourcesPersistent , False ,
             NULL ) ;
 
@@ -4296,7 +4401,7 @@ STATUS("making prog->rowcol") ;
             "dialog" , xmPushButtonWidgetClass , prog->hidden_pts_menu ,
                LABEL_ARG("Read Pts:  IJK") ,
                XmNmarginHeight , 0 ,
-               XmNtraversalOn , False ,
+               XmNtraversalOn , True  ,
                XmNinitialResourcesPersistent , False ,
             NULL ) ;
 
@@ -4310,7 +4415,7 @@ STATUS("making prog->rowcol") ;
             "dialog" , xmPushButtonWidgetClass , prog->hidden_pts_menu ,
                LABEL_ARG("Read Pts:  XYZ") ,
                XmNmarginHeight , 0 ,
-               XmNtraversalOn , False ,
+               XmNtraversalOn , True  ,
                XmNinitialResourcesPersistent , False ,
             NULL ) ;
 
@@ -4324,7 +4429,7 @@ STATUS("making prog->rowcol") ;
             "dialog" , xmPushButtonWidgetClass , prog->hidden_pts_menu ,
                LABEL_ARG("Write Pts: IJK") ,
                XmNmarginHeight , 0 ,
-               XmNtraversalOn , False ,
+               XmNtraversalOn , True  ,
                XmNinitialResourcesPersistent , False ,
             NULL ) ;
 
@@ -4338,7 +4443,7 @@ STATUS("making prog->rowcol") ;
             "dialog" , xmPushButtonWidgetClass , prog->hidden_pts_menu ,
                LABEL_ARG("Write Pts: XYZ") ,
                XmNmarginHeight , 0 ,
-               XmNtraversalOn , False ,
+               XmNtraversalOn , True  ,
                XmNinitialResourcesPersistent , False ,
             NULL ) ;
 
@@ -4352,7 +4457,7 @@ STATUS("making prog->rowcol") ;
             "dialog" , xmPushButtonWidgetClass , prog->hidden_pts_menu ,
                LABEL_ARG("Set Pts: COLOR") ,
                XmNmarginHeight , 0 ,
-               XmNtraversalOn , False ,
+               XmNtraversalOn , True  ,
                XmNinitialResourcesPersistent , False ,
             NULL ) ;
 
@@ -4385,7 +4490,7 @@ STATUS("making prog->rowcol") ;
                "dialog" , xmPushButtonWidgetClass , prog->hidden_menu ,
                   LABEL_ARG("Mission Statement") ,
                   XmNmarginHeight , 0 ,
-                  XmNtraversalOn , False ,
+                  XmNtraversalOn , True  ,
                   XmNinitialResourcesPersistent , False ,
                NULL ) ;
       XtAddCallback( prog->hidden_mission_pb , XmNactivateCallback ,
@@ -4400,7 +4505,7 @@ STATUS("making prog->rowcol") ;
                "dialog" , xmPushButtonWidgetClass , prog->hidden_menu ,
                   LABEL_ARG("Shakespeare") ,
                   XmNmarginHeight , 0 ,
-                  XmNtraversalOn , False ,
+                  XmNtraversalOn , True  ,
                   XmNinitialResourcesPersistent , False ,
                NULL ) ;
 
@@ -4416,7 +4521,7 @@ STATUS("making prog->rowcol") ;
                "dialog" , xmPushButtonWidgetClass , prog->hidden_menu ,
                   LABEL_ARG("Gamberi Cattivi") ,
                   XmNmarginHeight , 0 ,
-                  XmNtraversalOn , False ,
+                  XmNtraversalOn , True  ,
                   XmNinitialResourcesPersistent , False ,
                NULL ) ;
       XtAddCallback( prog->hidden_gamberi_pb , XmNactivateCallback ,
@@ -4434,7 +4539,7 @@ STATUS("making prog->rowcol") ;
                "dialog" , xmPushButtonWidgetClass , prog->hidden_menu ,
                   LABEL_ARG("Random Poem") ,
                   XmNmarginHeight , 0 ,
-                  XmNtraversalOn , False ,
+                  XmNtraversalOn , True  ,
                   XmNinitialResourcesPersistent , False ,
                NULL ) ;
       XtAddCallback( prog->hidden_ranpoem_pb , XmNactivateCallback ,
@@ -4448,7 +4553,7 @@ STATUS("making prog->rowcol") ;
                "dialog" , xmPushButtonWidgetClass , prog->hidden_menu ,
                   LABEL_ARG("All AFNI Faces") ,
                   XmNmarginHeight , 0 ,
-                  XmNtraversalOn , False ,
+                  XmNtraversalOn , True  ,
                   XmNinitialResourcesPersistent , False ,
                NULL ) ;
       XtAddCallback( prog->hidden_faces_pb , XmNactivateCallback ,
@@ -4462,7 +4567,7 @@ STATUS("making prog->rowcol") ;
                "dialog" , xmPushButtonWidgetClass , prog->hidden_menu ,
                   LABEL_ARG("Brodmann Areas: imag") ,
                   XmNmarginHeight , 0 ,
-                  XmNtraversalOn , False ,
+                  XmNtraversalOn , True  ,
                   XmNinitialResourcesPersistent , False ,
                NULL ) ;
       XtAddCallback( prog->hidden_broutim_pb , XmNactivateCallback ,
@@ -4473,7 +4578,7 @@ STATUS("making prog->rowcol") ;
                "dialog" , xmPushButtonWidgetClass , prog->hidden_menu ,
                   LABEL_ARG("Brodmann Areas: text") ,
                   XmNmarginHeight , 0 ,
-                  XmNtraversalOn , False ,
+                  XmNtraversalOn , True  ,
                   XmNinitialResourcesPersistent , False ,
                NULL ) ;
       XtAddCallback( prog->hidden_broutext_pb , XmNactivateCallback ,
@@ -4492,7 +4597,7 @@ STATUS("making prog->rowcol") ;
                "dialog" , xmPushButtonWidgetClass , prog->hidden_menu ,
                   LABEL_ARG("Say Something") ,
                   XmNmarginHeight , 0 ,
-                  XmNtraversalOn , False ,
+                  XmNtraversalOn , True  ,
                   XmNinitialResourcesPersistent , False ,
                NULL ) ;
       XtAddCallback( prog->hidden_speech_pb , XmNactivateCallback ,
@@ -4523,7 +4628,7 @@ STATUS("making prog->rowcol") ;
                  "dialog" , xmPushButtonWidgetClass , prog->hidden_menu ,
                     LABEL_ARG("Web Browser") ,
                     XmNmarginHeight , 0 ,
-                    XmNtraversalOn , False ,
+                    XmNtraversalOn , True  ,
                     XmNinitialResourcesPersistent , False ,
                  NULL ) ;
         XtAddCallback( prog->hidden_browser_pb , XmNactivateCallback ,
@@ -4651,6 +4756,7 @@ ENTRY("new_AFNI_controller") ;
                                  "AFNI" , "AFNI" ,
                                     topLevelShellWidgetClass , dc->display ,
                                     XmNinitialResourcesPersistent , False ,
+              XmNkeyboardFocusPolicy , XmEXPLICIT ,
                                  NULL ) ;
    }
 
@@ -4813,13 +4919,13 @@ ENTRY("AFNI_initialize_controller") ;
 
    if( ! IM3D_VALID(im3d) ){
       fprintf(stderr,
-              "\n*** AFNI_initialize_controller: invalid input ***\n") ;
+              "\n** AFNI_initialize_controller: invalid input **\n") ;
       EXIT(1) ;
    }
 
    if( GLOBAL_library.sslist == NULL ){  /* any data to use? */
       fprintf(stderr,
-              "\n*** AFNI_initialize_controller: no sessions to view ***\n") ;
+              "\n** AFNI_initialize_controller: no sessions to view **\n") ;
       EXIT(1) ;
    }
 
@@ -4835,7 +4941,7 @@ ENTRY("AFNI_initialize_controller") ;
 
       if( im3d->ss_now == NULL ){  /* still no data? */
         fprintf(stderr,
-                "\n*** AFNI_initialize_controller: illegal initial session ***\n") ;
+                "\n** AFNI_initialize_controller: illegal initial session **\n") ;
         EXIT(1) ;
       }
    }
@@ -4883,7 +4989,7 @@ ENTRY("AFNI_initialize_controller") ;
       if( ISVALID_3DIM_DATASET(im3d->anat_dset[ii]) ) break ;
 
    if( ii > LAST_VIEW_TYPE ){
-      fprintf(stderr,"\n*** AFNI_initialize_controller: cannot initialize view ***\n") ;
+      fprintf(stderr,"\n** AFNI_initialize_controller: cannot initialize view **\n") ;
       EXIT(1) ;
    }
    im3d->vinfo->view_type = ii ;  /* first view with a good anat */
@@ -5124,7 +5230,7 @@ ENTRY("AFNI_lock_button") ;
            "dialog" , xmRowColumnWidgetClass , wpar ,
               XmNorientation , XmHORIZONTAL ,
               XmNpacking , XmPACK_TIGHT ,
-              XmNtraversalOn , False ,
+              XmNtraversalOn , True  ,
               XmNinitialResourcesPersistent , False ,
            NULL ) ;
 
@@ -5135,7 +5241,7 @@ ENTRY("AFNI_lock_button") ;
                      XmNspacing      , 3 ,
                      XmNborderWidth  , 0 ,
                      XmNborderColor  , 0 ,
-                     XmNtraversalOn  , False ,
+                     XmNtraversalOn  , True  ,
                      XmNbackground   , im3d->dc->ovc->pixov_brightest ,
                   NULL ) ;
    XtManageChild( mbar ) ;
@@ -5143,6 +5249,7 @@ ENTRY("AFNI_lock_button") ;
    menu = XmCreatePulldownMenu( mbar , "menu" , NULL,0 ) ;
 
    VISIBILIZE_WHEN_MAPPED(menu) ;
+   if( !AFNI_yesenv("AFNI_DISABLE_TEAROFF") ) TEAROFFIZE(menu) ;
 
    xstr = XmStringCreateLtoR( "Lock" , XmFONTLIST_DEFAULT_TAG ) ;
    cbut = XtVaCreateManagedWidget(
@@ -5155,7 +5262,7 @@ ENTRY("AFNI_lock_button") ;
                XmNmarginTop    , 0 ,
                XmNmarginRight  , 0 ,
                XmNmarginLeft   , 0 ,
-               XmNtraversalOn  , False ,
+               XmNtraversalOn  , True  ,
                XmNinitialResourcesPersistent , False ,
             NULL ) ;
    XmStringFree( xstr ) ;
@@ -5242,7 +5349,7 @@ ENTRY("AFNI_lock_button") ;
             "dialog" , xmPushButtonWidgetClass , menu ,
                XmNlabelString , xstr ,
                XmNmarginHeight , 0 ,
-               XmNtraversalOn , False ,
+               XmNtraversalOn , True  ,
                XmNinitialResourcesPersistent , False ,
             NULL ) ;
    XtAddCallback( dmode->lock_clear_pb , XmNactivateCallback ,
@@ -5258,7 +5365,7 @@ ENTRY("AFNI_lock_button") ;
             "dialog" , xmPushButtonWidgetClass , menu ,
                XmNlabelString , xstr ,
                XmNmarginHeight , 0 ,
-               XmNtraversalOn , False ,
+               XmNtraversalOn , True  ,
                XmNinitialResourcesPersistent , False ,
             NULL ) ;
    XtAddCallback( dmode->lock_setall_pb , XmNactivateCallback ,
@@ -5274,7 +5381,7 @@ ENTRY("AFNI_lock_button") ;
             "dialog" , xmPushButtonWidgetClass , menu ,
                XmNlabelString , xstr ,
                XmNmarginHeight , 0 ,
-               XmNtraversalOn , False ,
+               XmNtraversalOn , True  ,
                XmNinitialResourcesPersistent , False ,
             NULL ) ;
    XtAddCallback( dmode->lock_enforce_pb , XmNactivateCallback ,
@@ -5303,7 +5410,7 @@ ENTRY("AFNI_misc_button") ;
            "dialog" , xmRowColumnWidgetClass , wpar ,
               XmNorientation , XmHORIZONTAL ,
               XmNpacking , XmPACK_TIGHT ,
-              XmNtraversalOn , False ,
+              XmNtraversalOn , True  ,
               XmNinitialResourcesPersistent , False ,
            NULL ) ;
 
@@ -5314,7 +5421,7 @@ ENTRY("AFNI_misc_button") ;
                      XmNspacing      , 3 ,
                      XmNborderWidth  , 0 ,
                      XmNborderColor  , 0 ,
-                     XmNtraversalOn  , False ,
+                     XmNtraversalOn  , True  ,
                      XmNbackground   , im3d->dc->ovc->pixov_brightest ,
                   NULL ) ;
    XtManageChild( mbar ) ;
@@ -5322,6 +5429,7 @@ ENTRY("AFNI_misc_button") ;
    menu = XmCreatePulldownMenu( mbar , "menu" , NULL,0 ) ;
 
    VISIBILIZE_WHEN_MAPPED(menu) ;
+   if( !AFNI_yesenv("AFNI_DISABLE_TEAROFF") ) TEAROFFIZE(menu) ;
 
    xstr = XmStringCreateLtoR( "Misc" , XmFONTLIST_DEFAULT_TAG ) ;
    cbut = XtVaCreateManagedWidget(
@@ -5334,7 +5442,7 @@ ENTRY("AFNI_misc_button") ;
                XmNmarginTop    , 0 ,
                XmNmarginRight  , 0 ,
                XmNmarginLeft   , 0 ,
-               XmNtraversalOn  , False ,
+               XmNtraversalOn  , True  ,
                XmNinitialResourcesPersistent , False ,
             NULL ) ;
    XmStringFree( xstr ) ;
@@ -5460,7 +5568,7 @@ ENTRY("AFNI_misc_button") ;
             "dialog" , xmPushButtonWidgetClass , menu ,
                LABEL_ARG("ULay Info") ,
                XmNmarginHeight , 0 ,
-               XmNtraversalOn , False ,
+               XmNtraversalOn , True  ,
                XmNinitialResourcesPersistent , False ,
             NULL ) ;
    XtAddCallback( dmode->misc_anat_info_pb , XmNactivateCallback ,
@@ -5472,7 +5580,7 @@ ENTRY("AFNI_misc_button") ;
             "dialog" , xmPushButtonWidgetClass , menu ,
                LABEL_ARG("OLay Info") ,
                XmNmarginHeight , 0 ,
-               XmNtraversalOn , False ,
+               XmNtraversalOn , True  ,
                XmNinitialResourcesPersistent , False ,
             NULL ) ;
    XtAddCallback( dmode->misc_func_info_pb , XmNactivateCallback ,
@@ -5492,7 +5600,7 @@ ENTRY("AFNI_misc_button") ;
             "dialog" , xmPushButtonWidgetClass , menu ,
                LABEL_ARG("Edit Environment") ,
                XmNmarginHeight , 0 ,
-               XmNtraversalOn , False ,
+               XmNtraversalOn , True  ,
                XmNinitialResourcesPersistent , False ,
             NULL ) ;
    XtAddCallback( dmode->misc_environ_pb , XmNactivateCallback ,
@@ -5504,7 +5612,7 @@ ENTRY("AFNI_misc_button") ;
             "dialog" , xmPushButtonWidgetClass , menu ,
                LABEL_ARG("Edit 1DChain") ,
                XmNmarginHeight , 0 ,
-               XmNtraversalOn , False ,
+               XmNtraversalOn , True  ,
                XmNinitialResourcesPersistent , False ,
             NULL ) ;
    XtAddCallback( dmode->misc_1dchain_pb , XmNactivateCallback ,
@@ -5517,7 +5625,7 @@ ENTRY("AFNI_misc_button") ;
             "dialog" , xmPushButtonWidgetClass , menu ,
                LABEL_ARG("Edit 2DChain") ,
                XmNmarginHeight , 0 ,
-               XmNtraversalOn , False ,
+               XmNtraversalOn , True  ,
                XmNinitialResourcesPersistent , False ,
             NULL ) ;
    XtAddCallback( dmode->misc_2dchain_pb , XmNactivateCallback ,
@@ -5533,7 +5641,7 @@ ENTRY("AFNI_misc_button") ;
             "dialog" , xmPushButtonWidgetClass , menu ,
                LABEL_ARG("Save Layout") ,
                XmNmarginHeight , 0 ,
-               XmNtraversalOn , False ,
+               XmNtraversalOn , True  ,
                XmNinitialResourcesPersistent , False ,
             NULL ) ;
    XtAddCallback( dmode->misc_savelayout_pb , XmNactivateCallback ,
@@ -5547,7 +5655,7 @@ ENTRY("AFNI_misc_button") ;
             "dialog" , xmPushButtonWidgetClass , menu ,
                LABEL_ARG("Run Script") ,
                XmNmarginHeight , 0 ,
-               XmNtraversalOn , False ,
+               XmNtraversalOn , True  ,
                XmNinitialResourcesPersistent , False ,
             NULL ) ;
    XtAddCallback( dmode->misc_runscript_pb , XmNactivateCallback ,
@@ -5563,7 +5671,7 @@ ENTRY("AFNI_misc_button") ;
                "dialog" , xmPushButtonWidgetClass , menu ,
                   LABEL_ARG("Start Plugouts") ,
                   XmNmarginHeight , 0 ,
-                  XmNtraversalOn , False ,
+                  XmNtraversalOn , True  ,
                   XmNinitialResourcesPersistent , False ,
                NULL ) ;
       XtAddCallback( dmode->misc_plugout_pb , XmNactivateCallback ,
@@ -5579,18 +5687,22 @@ ENTRY("AFNI_misc_button") ;
 
    /*-- 02 Mar 2002: button to start NIML --*/
 
-   dmode->misc_niml_pb =
-         XtVaCreateManagedWidget(
-            "dialog" , xmPushButtonWidgetClass , menu ,
-               LABEL_ARG("Start NIML") ,
-               XmNmarginHeight , 0 ,
-               XmNtraversalOn , False ,
-               XmNinitialResourcesPersistent , False ,
-            NULL ) ;
-   XtAddCallback( dmode->misc_niml_pb , XmNactivateCallback ,
-                  AFNI_misc_CB , im3d ) ;
-   MCW_register_hint( dmode->misc_niml_pb ,
-                      "Start listening for NIML connections" ) ;
+   if( !AFNI_have_niml() ){
+     dmode->misc_niml_pb =
+           XtVaCreateManagedWidget(
+              "dialog" , xmPushButtonWidgetClass , menu ,
+                 LABEL_ARG("Start NIML") ,
+                 XmNmarginHeight , 0 ,
+                 XmNtraversalOn , True  ,
+                 XmNinitialResourcesPersistent , False ,
+              NULL ) ;
+     XtAddCallback( dmode->misc_niml_pb , XmNactivateCallback ,
+                    AFNI_misc_CB , im3d ) ;
+     MCW_register_hint( dmode->misc_niml_pb ,
+                        "Start listening for NIML connections" ) ;
+   } else {
+     dmode->misc_niml_pb = NULL ;
+   }
 
    /*--- Utility buttons ---*/
 
@@ -5604,7 +5716,7 @@ ENTRY("AFNI_misc_button") ;
             "dialog" , xmPushButtonWidgetClass , menu ,
                LABEL_ARG("README.environment") ,
                XmNmarginHeight , 0 ,
-               XmNtraversalOn , False ,
+               XmNtraversalOn , True  ,
                XmNinitialResourcesPersistent , False ,
             NULL ) ;
    XtAddCallback( dmode->misc_readme_env_pb , XmNactivateCallback ,
@@ -5616,7 +5728,7 @@ ENTRY("AFNI_misc_button") ;
             "dialog" , xmPushButtonWidgetClass , menu ,
                LABEL_ARG("License Info") ,
                XmNmarginHeight , 0 ,
-               XmNtraversalOn , False ,
+               XmNtraversalOn , True  ,
                XmNinitialResourcesPersistent , False ,
             NULL ) ;
    XtAddCallback( dmode->misc_license_pb , XmNactivateCallback ,
@@ -5629,7 +5741,7 @@ ENTRY("AFNI_misc_button") ;
                "dialog" , xmPushButtonWidgetClass , menu ,
                   LABEL_ARG("Version Check") ,
                   XmNmarginHeight , 0 ,
-                  XmNtraversalOn , False ,
+                  XmNtraversalOn , True  ,
                   XmNinitialResourcesPersistent , False ,
                NULL ) ;
       XtAddCallback( dmode->misc_vcheck_pb , XmNactivateCallback ,
@@ -5645,7 +5757,7 @@ ENTRY("AFNI_misc_button") ;
                "dialog" , xmPushButtonWidgetClass , menu ,
                   LABEL_ARG("Message of the Day") ,
                   XmNmarginHeight , 0 ,
-                  XmNtraversalOn , False ,
+                  XmNtraversalOn , True  ,
                   XmNinitialResourcesPersistent , False ,
                NULL ) ;
       XtAddCallback( dmode->misc_motd_pb , XmNactivateCallback ,
@@ -5662,7 +5774,7 @@ ENTRY("AFNI_misc_button") ;
             "dialog" , xmPushButtonWidgetClass , menu ,
                LABEL_ARG("Purge Memory") ,
                XmNmarginHeight , 0 ,
-               XmNtraversalOn , False ,
+               XmNtraversalOn , True  ,
                XmNinitialResourcesPersistent , False ,
             NULL ) ;
    XtAddCallback( dmode->misc_purge_pb , XmNactivateCallback ,
@@ -5685,7 +5797,7 @@ ENTRY("AFNI_misc_button") ;
               "dialog" , xmPushButtonWidgetClass , menu ,
                  LABEL_ARG( DBG_label ) ,
                  XmNmarginHeight , 0 ,
-                 XmNtraversalOn , False ,
+                 XmNtraversalOn , True  ,
                  XmNinitialResourcesPersistent , False ,
               NULL ) ;
      XtAddCallback( dmode->misc_tracing_pb , XmNactivateCallback ,
@@ -5706,7 +5818,7 @@ ENTRY("AFNI_misc_button") ;
                "dialog" , xmPushButtonWidgetClass , menu ,
                   LABEL_ARG("Malloc Summary") ,
                   XmNmarginHeight , 0 ,
-                  XmNtraversalOn , False ,
+                  XmNtraversalOn , True  ,
                   XmNinitialResourcesPersistent , False ,
                NULL ) ;
       XtAddCallback( dmode->misc_showmalloc_pb , XmNactivateCallback ,
@@ -5717,7 +5829,7 @@ ENTRY("AFNI_misc_button") ;
                "dialog" , xmPushButtonWidgetClass , menu ,
                   LABEL_ARG("Dump Malloc Table") ,
                   XmNmarginHeight , 0 ,
-                  XmNtraversalOn , False ,
+                  XmNtraversalOn , True  ,
                   XmNinitialResourcesPersistent , False ,
                NULL ) ;
       XtAddCallback( dmode->misc_dumpmalloc_pb , XmNactivateCallback ,
@@ -5736,4 +5848,21 @@ ENTRY("AFNI_misc_button") ;
 
    XtManageChild( rc ) ;
    EXRETURN ;
+}
+
+/*------------------------------------------------------------------*/
+/*! Doesn't do much. */
+
+void AFNI_invert_CB( Widget wcall , XtPointer cd , XtPointer cbs )
+{
+   if( wcall != (Widget)NULL ) MCW_invert_widget(wcall) ;
+}
+
+/*------------------------------------------------------------------*/
+
+void AFNI_nimlpo_CB( Widget wcall , XtPointer cd , XtPointer cbs )
+{
+   AFNI_init_niml() ;
+   AFNI_init_plugouts() ;
+   XtSetSensitive( wcall , False ) ;
 }

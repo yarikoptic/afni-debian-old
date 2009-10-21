@@ -10,7 +10,7 @@
  */
 
 /*----------------------------------------------------------------------
-  $Id: plug_crender.c,v 1.31 2006/04/04 17:52:48 rickr Exp $
+  $Id: plug_crender.c,v 1.36 2007/02/27 19:29:38 rwcox Exp $
   ----------------------------------------------------------------------
 */
 
@@ -60,6 +60,7 @@ static char g_cren_hist[] =
  "\n"
  " 1.9a 22 March 2005 [rickr] - removed all tabs\n"
  " 1.10  4 April 2006 [rickr] - handle NPANE_BIG > 128 for bigmode\n"
+ " 1.11 16 Jan 2007 [rickr] - Pos for bigmode had not been properly applied\n"
  "\n";
 /***********************************************************************/
 
@@ -1085,7 +1086,7 @@ ENTRY( "RCREND_make_widgets" );
                      XmNpacking      , XmPACK_TIGHT ,
                      XmNadjustLast   , False ,
                      XmNadjustMargin , False ,
-                     XmNtraversalOn  , False ,
+                     XmNtraversalOn  , True  ,
                      XmNmarginWidth  , 0 ,
                      XmNmarginHeight , 0 ,
                      XmNinitialResourcesPersistent , False ,
@@ -1097,7 +1098,7 @@ ENTRY( "RCREND_make_widgets" );
                    "AFNI" , xmFrameWidgetClass , top_rowcol ,
                       XmNshadowType , XmSHADOW_ETCHED_IN ,
                       XmNshadowThickness , 5 ,
-                      XmNtraversalOn , False ,
+                      XmNtraversalOn , True  ,
                       XmNinitialResourcesPersistent , False ,
                    NULL ) ;
 
@@ -1107,7 +1108,7 @@ ENTRY( "RCREND_make_widgets" );
                      XmNorientation , XmVERTICAL ,
                      XmNadjustLast  , False ,
                      XmNadjustMargin, False ,
-                     XmNtraversalOn , False ,
+                     XmNtraversalOn , True  ,
                      XmNinitialResourcesPersistent , False ,
                   NULL ) ;
 
@@ -1136,7 +1137,7 @@ ENTRY( "RCREND_make_widgets" );
               XmNpacking      , XmPACK_TIGHT ,
               XmNadjustLast   , False ,
               XmNadjustMargin , False ,
-              XmNtraversalOn  , False ,
+              XmNtraversalOn  , True  ,
               XmNmarginWidth  , 0 ,
               XmNmarginHeight , 0 ,
               XmNinitialResourcesPersistent , False ,
@@ -1149,7 +1150,7 @@ ENTRY( "RCREND_make_widgets" );
                   "AFNI" , xmPushButtonWidgetClass , hrc ,
                      XmNalignment   , XmALIGNMENT_CENTER ,
                      XmNlabelString , xstr ,
-                     XmNtraversalOn , False ,
+                     XmNtraversalOn , True  ,
                      XmNinitialResourcesPersistent , False ,
                   NULL ) ;
    XmStringFree(xstr) ;
@@ -1189,7 +1190,7 @@ ENTRY( "RCREND_make_widgets" );
                   "AFNI" , xmPushButtonWidgetClass , hrc ,
                      XmNalignment   , XmALIGNMENT_CENTER ,
                      XmNlabelString , xstr ,
-                     XmNtraversalOn , False ,
+                     XmNtraversalOn , True  ,
                      XmNinitialResourcesPersistent , False ,
                   NULL ) ;
    XmStringFree(xstr) ;
@@ -1209,7 +1210,7 @@ ENTRY( "RCREND_make_widgets" );
               XmNpacking      , XmPACK_TIGHT ,
               XmNadjustLast   , False ,
               XmNadjustMargin , False ,
-              XmNtraversalOn  , False ,
+              XmNtraversalOn  , True  ,
               XmNmarginWidth  , 0 ,
               XmNmarginHeight , 0 ,
               XmNinitialResourcesPersistent , False ,
@@ -1223,7 +1224,7 @@ ENTRY( "RCREND_make_widgets" );
                 XmNorientation , XmVERTICAL ,
                 XmNadjustLast  , False ,
                 XmNadjustMargin, False ,
-                XmNtraversalOn , False ,
+                XmNtraversalOn , True  ,
                 XmNmarginWidth , 0 ,
                 XmNmarginHeight, 0 ,
                 XmNinitialResourcesPersistent , False ,
@@ -1280,7 +1281,7 @@ ENTRY( "RCREND_make_widgets" );
                 XmNorientation , XmVERTICAL ,
                 XmNadjustLast  , False ,
                 XmNadjustMargin, False ,
-                XmNtraversalOn , False ,
+                XmNtraversalOn , True  ,
                 XmNmarginWidth , 0 ,
                 XmNmarginHeight, 0 ,
                 XmNinitialResourcesPersistent , False ,
@@ -1323,7 +1324,7 @@ ENTRY( "RCREND_make_widgets" );
                 XmNorientation , XmVERTICAL ,
                 XmNadjustLast  , False ,
                 XmNadjustMargin, False ,
-                XmNtraversalOn , False ,
+                XmNtraversalOn , True  ,
                 XmNmarginWidth , 0 ,
                 XmNmarginHeight, 0 ,
                 XmNinitialResourcesPersistent , False ,
@@ -1369,7 +1370,7 @@ ENTRY( "RCREND_make_widgets" );
               XmNpacking , XmPACK_TIGHT ,
               XmNadjustLast  , False ,
               XmNadjustMargin, False ,
-              XmNtraversalOn , False ,
+              XmNtraversalOn , True  ,
               XmNmarginWidth , 0 ,
               XmNmarginHeight, 0 ,
               XmNinitialResourcesPersistent , False ,
@@ -1447,7 +1448,7 @@ ENTRY( "RCREND_make_widgets" );
               XmNpacking , XmPACK_TIGHT ,
               XmNadjustLast  , False ,
               XmNadjustMargin, False ,
-              XmNtraversalOn , False ,
+              XmNtraversalOn , True  ,
               XmNmarginWidth , 0 ,
               XmNmarginHeight, 0 ,
               XmNinitialResourcesPersistent , False ,
@@ -1515,7 +1516,7 @@ ENTRY( "RCREND_make_widgets" );
               XmNpacking , XmPACK_TIGHT ,
               XmNadjustLast  , False ,
               XmNadjustMargin, False ,
-              XmNtraversalOn , False ,
+              XmNtraversalOn , True  ,
               XmNmarginWidth , 0 ,
               XmNmarginHeight, 0 ,
               XmNinitialResourcesPersistent , False ,
@@ -1556,7 +1557,7 @@ ENTRY( "RCREND_make_widgets" );
    autocompute_pb = XtVaCreateManagedWidget(
                      "AFNI" , xmPushButtonWidgetClass , hrc ,
                         XmNlabelString , xstr ,
-                        XmNtraversalOn , False ,
+                        XmNtraversalOn , True  ,
                         XmNinitialResourcesPersistent , False ,
                      NULL ) ;
    XmStringFree(xstr) ;
@@ -1571,7 +1572,7 @@ ENTRY( "RCREND_make_widgets" );
    autocancel_pb = XtVaCreateWidget(
                      "AFNI" , xmPushButtonWidgetClass , hrc ,
                         XmNlabelString , xstr ,
-                        XmNtraversalOn , False ,
+                        XmNtraversalOn , True  ,
                         XmNinitialResourcesPersistent , False ,
                      NULL ) ;
    XmStringFree(xstr) ;
@@ -1591,7 +1592,7 @@ ENTRY( "RCREND_make_widgets" );
               XmNpacking , XmPACK_TIGHT ,
               XmNadjustLast  , False ,
               XmNadjustMargin, False ,
-              XmNtraversalOn , False ,
+              XmNtraversalOn , True  ,
               XmNmarginWidth , 0 ,
               XmNmarginHeight, 0 ,
               XmNinitialResourcesPersistent , False ,
@@ -1708,7 +1709,7 @@ ENTRY( "RCREND_make_widgets" );
               XmNpacking , XmPACK_TIGHT ,
               XmNadjustLast  , False ,
               XmNadjustMargin, False ,
-              XmNtraversalOn , False ,
+              XmNtraversalOn , True  ,
               XmNmarginWidth , 0 ,
               XmNmarginHeight, 0 ,
               XmNinitialResourcesPersistent , False ,
@@ -1942,7 +1943,7 @@ ENTRY( "RCREND_make_cutout" );
                    XmNpacking , XmPACK_TIGHT ,
                    XmNadjustLast  , False ,
                    XmNadjustMargin, False ,
-                   XmNtraversalOn , False ,
+                   XmNtraversalOn , True  ,
                    XmNmarginWidth , 0 ,
                    XmNmarginHeight, 0 ,
                    XmNinitialResourcesPersistent , False ,
@@ -1988,7 +1989,7 @@ ENTRY( "RCREND_make_cutout" );
    rc->set_pb = XtVaCreateWidget(
                   "AFNI" , xmPushButtonWidgetClass , rc->hrc ,
                      XmNlabelString , xstr ,
-                     XmNtraversalOn , False ,
+                     XmNtraversalOn , True  ,
                      XmNinitialResourcesPersistent , False ,
                   NULL ) ;
    XmStringFree(xstr) ;
@@ -3823,13 +3824,13 @@ void RCREND_xhair_EV( Widget w , XtPointer cd ,
 ENTRY( "RCREND_xhair_EV" );
 
    switch( ev->type ){
-      case ButtonPress:{
-         XButtonEvent * event = (XButtonEvent *) ev ;
-         if( event->button == Button3 || event->button == Button2 ){
-            MCW_choose_ovcolor( w,dc , xhair_ovc , RCREND_xhair_ovc_CB,NULL ) ;
-         }
-      }
-      break ;
+     case ButtonPress:{
+       XButtonEvent *event = (XButtonEvent *) ev ;
+       if( event->button == Button3 || event->button == Button2 ){
+         MCW_choose_ovcolor( w,dc , xhair_ovc , RCREND_xhair_ovc_CB,NULL ) ;
+       }
+     }
+     break ;
    }
    EXRETURN ;
 }
@@ -3968,25 +3969,25 @@ ENTRY( "RCREND_xhair_recv" );
 --------------------------------------------------------------------------*/
 
 void RCREND_accum_lab_EV( Widget w , XtPointer cd ,
-                    XEvent * ev , Boolean * continue_to_dispatch )
+                    XEvent *ev , Boolean *continue_to_dispatch )
 {
 ENTRY( "RCREND_accum_lab_EV" );
 
    switch( ev->type ){
-      case ButtonPress:{
-         XButtonEvent *event = (XButtonEvent *) ev ;
+     case ButtonPress:{
+       XButtonEvent *event = (XButtonEvent *) ev ;
 
-         if( event->button == Button3 || event->button == Button2 ){
-           char *ttl ;
-           accum_lab_replace =
-             ( (event->state & ShiftMask) || (event->state & ControlMask) ) ;
+       if( event->button == Button3 || event->button == Button2 ){
+         char *ttl ;
+         accum_lab_replace =
+           ( (event->state & ShiftMask) || (event->state & ControlMask) ) ;
 
-           ttl = (accum_lab_replace) ? "Replacment Label"
-                                     : "New Overlay Label" ;
-           MCW_choose_string( w,ttl,accum_label , RCREND_accum_lab_CB,NULL ) ;
-         }
-      }
-      break ;
+         ttl = (accum_lab_replace) ? "Replacment Label"
+                                   : "New Overlay Label" ;
+         MCW_choose_string( w,ttl,accum_label , RCREND_accum_lab_CB,NULL ) ;
+       }
+     }
+     break ;
    }
    EXRETURN ;
 }
@@ -5313,7 +5314,7 @@ ENTRY( "RCREND_func_widgets" );
                    "AFNI" , xmFrameWidgetClass , top_rowcol ,
                       XmNshadowType , XmSHADOW_ETCHED_IN ,
                       XmNshadowThickness , 5 ,
-                      XmNtraversalOn , False ,
+                      XmNtraversalOn , True  ,
                       XmNinitialResourcesPersistent , False ,
                    NULL ) ;
 
@@ -5321,7 +5322,7 @@ ENTRY( "RCREND_func_widgets" );
                     "AFNI" , xmRowColumnWidgetClass , wfunc_frame ,
                        XmNorientation , XmVERTICAL ,
                        XmNpacking , XmPACK_TIGHT ,
-                       XmNtraversalOn , False ,
+                       XmNtraversalOn , True  ,
                        XmNinitialResourcesPersistent , False ,
                     NULL ) ;
 
@@ -5342,7 +5343,7 @@ ENTRY( "RCREND_func_widgets" );
                   "AFNI" , xmPushButtonWidgetClass , wfunc_uber_rowcol ,
                      XmNalignment   , XmALIGNMENT_CENTER ,
                      XmNlabelString , xstr ,
-                     XmNtraversalOn , False ,
+                     XmNtraversalOn , True ,
                      XmNinitialResourcesPersistent , False ,
                   NULL ) ;
    XmStringFree(xstr) ;
@@ -5354,7 +5355,7 @@ ENTRY( "RCREND_func_widgets" );
                     "AFNI" , xmRowColumnWidgetClass , wfunc_uber_rowcol ,
                        XmNorientation , XmHORIZONTAL ,
                        XmNpacking , XmPACK_TIGHT ,
-                       XmNtraversalOn , False ,
+                       XmNtraversalOn , True ,
                        XmNinitialResourcesPersistent , False ,
                     NULL ) ;
 
@@ -5366,7 +5367,7 @@ ENTRY( "RCREND_func_widgets" );
                            XmNpacking , XmPACK_TIGHT ,
                            XmNmarginHeight, 0 ,
                            XmNmarginWidth , 0 ,
-                           XmNtraversalOn , False ,
+                           XmNtraversalOn , True ,
                            XmNinitialResourcesPersistent , False ,
                         NULL ) ;
 
@@ -5392,7 +5393,7 @@ ENTRY( "RCREND_func_widgets" );
    wqqq = XtVaCreateManagedWidget(
            "AFNI" , xmFrameWidgetClass , wfunc_thr_rowcol ,
             XmNshadowType , XmSHADOW_ETCHED_IN ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True ,
             XmNinitialResourcesPersistent , False ,
           NULL ) ;
 #else
@@ -5418,7 +5419,7 @@ ENTRY( "RCREND_func_widgets" );
             XmNorientation , XmVERTICAL ,
             XmNheight , sel_height ,
             XmNborderWidth , 0 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
   }
@@ -5465,7 +5466,7 @@ ENTRY( "RCREND_func_widgets" );
             XmNmarginHeight, 0 ,
             XmNmarginWidth , 0 ,
             XmNpacking , XmPACK_TIGHT ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -5483,8 +5484,8 @@ ENTRY( "RCREND_func_widgets" );
    wfunc_pbar_menu = XmCreatePopupMenu( wfunc_color_label , "menu" , NULL , 0 ) ;
 
    SAVEUNDERIZE(XtParent(wfunc_pbar_menu)) ; /* 27 Feb 2001 */
-
    VISIBILIZE_WHEN_MAPPED(wfunc_pbar_menu) ;
+   if( !AFNI_yesenv("AFNI_DISABLE_TEAROFF") ) TEAROFFIZE(wfunc_pbar_menu) ;
 
    XtInsertEventHandler( wfunc_color_label ,     /* handle events in label */
 
@@ -5513,7 +5514,7 @@ ENTRY( "RCREND_func_widgets" );
          "dialog" , xmPushButtonWidgetClass , wfunc_pbar_menu ,
             LABEL_ARG("Equalize Spacing") ,
             XmNmarginHeight , 0 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -5525,7 +5526,7 @@ ENTRY( "RCREND_func_widgets" );
          "dialog" , xmPushButtonWidgetClass , wfunc_pbar_menu ,
             LABEL_ARG("Set Top Value") ,
             XmNmarginHeight , 0 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -5539,7 +5540,7 @@ ENTRY( "RCREND_func_widgets" );
          "dialog" , xmPushButtonWidgetClass , wfunc_pbar_menu ,
             LABEL_ARG("Save to PPM") ,
             XmNmarginHeight , 0 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -5672,7 +5673,7 @@ ENTRY( "RCREND_func_widgets" );
             XmNpacking , XmPACK_TIGHT ,
             XmNmarginHeight, 0 ,
             XmNmarginWidth , 0 ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -5693,7 +5694,7 @@ ENTRY( "RCREND_func_widgets" );
       XtVaCreateWidget(
          "AFNI" , xmFrameWidgetClass , wfunc_choices_rowcol ,
             XmNshadowType , XmSHADOW_ETCHED_IN ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -5702,7 +5703,7 @@ ENTRY( "RCREND_func_widgets" );
          "AFNI" , xmRowColumnWidgetClass , wfunc_buck_frame ,
             XmNorientation , XmVERTICAL ,
             XmNpacking , XmPACK_TIGHT ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -5751,7 +5752,7 @@ ENTRY( "RCREND_func_widgets" );
       XtVaCreateWidget(
          "AFNI" , xmFrameWidgetClass , wfunc_choices_rowcol ,
             XmNshadowType , XmSHADOW_ETCHED_IN ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -5760,7 +5761,7 @@ ENTRY( "RCREND_func_widgets" );
          "AFNI" , xmRowColumnWidgetClass , wfunc_opacity_frame ,
             XmNorientation , XmVERTICAL ,
             XmNpacking , XmPACK_TIGHT ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -5803,7 +5804,7 @@ ENTRY( "RCREND_func_widgets" );
                 XmNpacking, XmPACK_TIGHT,
                 XmNmarginHeight, 0,
                 XmNmarginWidth, 0,
-                XmNtraversalOn, False,
+                XmNtraversalOn, True ,
                 XmNinitialResourcesPersistent, False,
              NULL );
 
@@ -5862,7 +5863,7 @@ ENTRY( "RCREND_func_widgets" );
                 XmNpacking , XmPACK_TIGHT ,
                 XmNmarginHeight, 0 ,
                 XmNmarginWidth , 0 ,
-                XmNtraversalOn , False ,
+                XmNtraversalOn , True  ,
                 XmNinitialResourcesPersistent , False ,
              NULL ) ;
 
@@ -5922,7 +5923,7 @@ ENTRY( "RCREND_func_widgets" );
       XtVaCreateManagedWidget(
          "AFNI" , xmFrameWidgetClass , wfunc_choices_rowcol ,
             XmNshadowType , XmSHADOW_ETCHED_IN ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -5931,7 +5932,7 @@ ENTRY( "RCREND_func_widgets" );
          "AFNI" , xmRowColumnWidgetClass , wfunc_range_frame ,
             XmNorientation , XmVERTICAL ,
             XmNpacking , XmPACK_TIGHT ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -5943,7 +5944,7 @@ ENTRY( "RCREND_func_widgets" );
          "AFNI" , xmLabelWidgetClass , wfunc_range_rowcol ,
             XmNrecomputeSize , False ,
             XmNlabelString , xstr ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
    XmStringFree(xstr) ;
@@ -5972,7 +5973,7 @@ ENTRY( "RCREND_func_widgets" );
          "dialog" , xmRowColumnWidgetClass , wfunc_range_rowcol ,
             XmNorientation , XmHORIZONTAL ,
             XmNpacking , XmPACK_TIGHT ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -6646,7 +6647,7 @@ ENTRY( "RCREND_pbarmenu_EV" );
 
    switch( ev->type ){
       case ButtonPress:{
-         XButtonEvent * event = (XButtonEvent *) ev ;
+         XButtonEvent *event = (XButtonEvent *) ev ;
          if( event->button == Button3 || event->button == Button1 ){
 
             /* in case the user read in any new palette, add them to menu */
@@ -6938,7 +6939,8 @@ ENTRY( "RCREND_reload_func_dset" );
           fim_thr[lp] = scale_factor * pbar->pval[lp+1] / cfac ;
    }
 
-   if( thresh < 1.0 || !func_use_thresh ){  /*--- no thresholding needed ---*/
+   /*--- no thresholding needed ---*/
+   if( (thresh < 1.0 && cim->kind != MRI_float) || !func_use_thresh ){
       switch( cim->kind ){
 
          default: {
@@ -6952,6 +6954,8 @@ ENTRY( "RCREND_reload_func_dset" );
 
             for( ii=0 ; ii < nvox ; ii++ ){
                if( sar[ii] == 0 ){
+                  ovar[ii] = 0 ;
+               } else if( func_posfunc && sar[ii] < 0 ){
                   ovar[ii] = 0 ;
                } else if ( pbar->bigmode ) {
                    /* since 0 is considered blank, use 1 through 127 */
@@ -6977,6 +6981,8 @@ ENTRY( "RCREND_reload_func_dset" );
 
             for( ii=0 ; ii < nvox ; ii++ ){
                if( sar[ii] == 0.0 ){
+                  ovar[ii] = 0 ;
+               } else if( func_posfunc && sar[ii] < 0.0 ){
                   ovar[ii] = 0 ;
                } else if ( pbar->bigmode ) {
                    /* since 0 is considered blank, use 1 through 127 */
@@ -7039,8 +7045,10 @@ ENTRY( "RCREND_reload_func_dset" );
             int     thr = (int) thresh  ;
 
             for( ii=0 ; ii < nvox ; ii++ ){
-               if( (qar[ii] > -thr && qar[ii] < thr) || sar[ii] == 0.0 ){
+               if( (qar[ii] > -thr && qar[ii] < thr) || sar[ii] == 0 ){
                   ovar[ii] = 0 ;
+               } else if( func_posfunc && sar[ii] < 0 ){
+                  ovar[ii] = 0 ;   /* apply Pos button   16 Jan 2007 [rickr] */
                } else if ( pbar->bigmode ) {
                    /* since 0 is considered blank, use 1 through 127 */
                    bindex = (int)( (btop - sar[ii])/bdelta + 1);
@@ -7064,7 +7072,9 @@ ENTRY( "RCREND_reload_func_dset" );
             float   thr = thresh        ;
 
             for( ii=0 ; ii < nvox ; ii++ ){
-               if( (qar[ii] > -thr && qar[ii] < thr) || sar[ii] == 0 ){
+               if( (qar[ii] > -thr && qar[ii] < thr) || sar[ii] == 0.0 ){
+                  ovar[ii] = 0 ;
+               } else if( func_posfunc && sar[ii] < 0.0 ){
                   ovar[ii] = 0 ;
                } else if ( pbar->bigmode ) {
                    /* since 0 is considered blank, use 1 through 127 */
@@ -7358,7 +7368,7 @@ ENTRY( "RCREND_script_menu" );
            "dialog" , xmRowColumnWidgetClass , parent ,
               XmNorientation , XmHORIZONTAL ,
               XmNpacking , XmPACK_TIGHT ,
-              XmNtraversalOn , False ,
+              XmNtraversalOn , True  ,
               XmNinitialResourcesPersistent , False ,
            NULL ) ;
 
@@ -7369,7 +7379,7 @@ ENTRY( "RCREND_script_menu" );
                      XmNspacing      , 3 ,
                      XmNborderWidth  , 0 ,
                      XmNborderColor  , 0 ,
-                     XmNtraversalOn  , False ,
+                     XmNtraversalOn  , True  ,
                      XmNbackground   , im3d->dc->ovc->pixov_brightest ,
                   NULL ) ;
    XtManageChild( mbar ) ;
@@ -7378,6 +7388,7 @@ ENTRY( "RCREND_script_menu" );
          XmCreatePulldownMenu( mbar , "menu" , NULL,0 ) ;
 
    VISIBILIZE_WHEN_MAPPED(script_menu) ;
+   TEAROFFIZE(script_menu) ;
 
    script_cbut =
          XtVaCreateManagedWidget(
@@ -7390,7 +7401,7 @@ ENTRY( "RCREND_script_menu" );
                XmNmarginTop    , 0 ,
                XmNmarginRight  , 0 ,
                XmNmarginLeft   , 0 ,
-               XmNtraversalOn  , False ,
+               XmNtraversalOn  , True  ,
                XmNinitialResourcesPersistent , False ,
             NULL ) ;
 
@@ -7408,7 +7419,7 @@ ENTRY( "RCREND_script_menu" );
             "dialog" , xmPushButtonWidgetClass , script_menu , \
                LABEL_ARG( label ) ,                            \
                XmNmarginHeight , 0 ,                           \
-               XmNtraversalOn , False ,                        \
+               XmNtraversalOn , True  ,                        \
                XmNinitialResourcesPersistent , False ,         \
             NULL ) ;                                           \
       XtAddCallback( wname , XmNactivateCallback ,             \

@@ -10,14 +10,19 @@ class afni_name:
       self.extension = res['extension']
       self.type = res['type']
       return
-   def p(self):
-      return os.path.abspath(self.path)
+   def p(self):   #Full path 
+      pp = "%s/" % os.path.abspath('./')  #full path at this location
+      fn = string.find(pp,self.path)      #is path at end of abspath?
+      if (fn > 0 and fn+len(self.path) == len(pp)): #path is at end of abs path
+         return pp
+      else:
+         return os.path.abspath(self.path)
    def ppve(self):
-      s = "%s/%s%s%s" % (os.path.abspath(self.path), self.prefix, \
+      s = "%s/%s%s%s" % (self.p(), self.prefix, \
                          self.view, self.extension)
       return s
    def ppv(self):
-      s = "%s/%s%s" % (os.path.abspath(self.path), self.prefix, self.view)
+      s = "%s/%s%s" % (self.p(), self.prefix, self.view)
       return s
    def rpv(self): # relative path, prefix, view (no leading './')
       if self.path == './':
@@ -26,7 +31,7 @@ class afni_name:
           s = "%s%s%s" % (self.path, self.prefix, self.view)
       return s
    def pp(self):
-      return "%s/%s" % (os.path.abspath(self.path), self.prefix)
+      return "%s/%s" % (self.p(), self.prefix)
    def pv(self):
       return "%s%s" % (self.prefix, self.view)
    def pve(self):
@@ -34,7 +39,9 @@ class afni_name:
    def exist(self):
       if os.path.isfile("%s.HEAD" % self.ppv()) and \
          (os.path.isfile("%s.BRIK" % self.ppv()) or \
-          os.path.isfile("%s.BRIK.gz" % self.ppv())):
+          os.path.isfile("%s.BRIK.gz" % self.ppv()) or \
+          os.path.isfile("%s.BRIK.bz2" % self.ppv()) or \
+          os.path.isfile("%s.BRIK.Z" % self.ppv()) ):
          return 1
       else:
          return 0
@@ -45,30 +52,54 @@ class afni_name:
          shell_exec("rm %s.BRIK" % self.ppv())
       if os.path.isfile("%s.BRIK.gz" % self.ppv()):
          shell_exec("rm %s.BRIK.gz" % self.ppv())
+      if os.path.isfile("%s.BRIK.bz2" % self.ppv()):
+         shell_exec("rm %s.BRIK.bz2" % self.ppv())
+      if os.path.isfile("%s.BRIK.Z" % self.ppv()):
+         shell_exec("rm %s.BRIK.Z" % self.ppv())
       return
    def move_to_dir(self, path=""):
       #self.show()
       #print path
+      found = 0
       if os.path.isdir(path):
          if os.path.isfile("%s.HEAD" % self.ppv()):
             sv = shell_com("mv %s %s/" % (self.head(), path))
+            found = found + 1
          if os.path.isfile("%s.BRIK" % self.ppv()):           
             sv = shell_com("mv %s %s/" % (self.brick(), path))
+            found = found + 1
          if os.path.isfile("%s.BRIK.gz" % self.ppv()):
             sv = shell_com("mv %s %s/" % (self.brickgz(), path))
-         self.new_path(path)
-         if ( not self.exist() ):
-            print "Error: Move failed"
+            found = found + 1         
+         if os.path.isfile("%s.BRIK.bz2" % self.ppv()):
+            sv = shell_com("mv %s %s/" % (self.brickbz2(), path))
+            found = found + 1 
+         if os.path.isfile("%s.BRIK.Z" % self.ppv()):
+            sv = shell_com("mv %s %s/" % (self.brickZ(), path))
+            found = found + 1 
+         if (found > 0):
+            self.new_path(path)
+            if ( not self.exist() ):
+               print "Error: Move to %s failed" % (self.ppv())
+               return 0
+         else:
+            print "Error: Found no .HEAD or .BRIK or .BRIK.gz (or .bz2 or .Z) of %s" % (self.ppv())
             return 0
       else:
+         print "Error: Path %s not found for moving %s." % (path, self.ppv())
          return 0
       return 1
+      
    def head(self):
       return "%s.HEAD" % self.ppv()
    def brick(self):
       return "%s.BRIK" % self.ppv()      
    def brickgz(self):
       return "%s.BRIK.gz" % self.ppv() 
+   def brickbz2(self):
+      return "%s.BRIK.bz2" % self.ppv() 
+   def brickZ(self):
+      return "%s.BRIK.Z" % self.ppv() 
    def new_path(self,path=""):
       #give name a new path
       if len(path) == 0:
@@ -119,7 +150,7 @@ class comopt:
       self.parlist = None   # parameter strings list following option 
       self.deflist = defpar # default parameter list,if any
       self.acceptlist = acplist # acceptable values if any
-      self.required = False # is the argument required?
+      self.required = 0     # is the argument required?
       return 
 
    def show(self, mesg = ''):
@@ -167,18 +198,39 @@ class shell_com:
       self.exc = 0      #command not executed yet
       self.so = ''
       self.se = ''
+      #If command line is long, trim it, if possible
+      l1 = len(self.com)
+      if (l1 > 100):
+         self.trimcom = self.trim()
+         #if (len(self.com) < l1):
+         #print "Command trimmed to: %s" % (self.com)
+      else:
+         self.trimcom = self.com
       if eo == "echo":
-         print "#Now running:\n   cd %s\n   %s" % (self.dir, self.com)
+         if (len(self.trimcom) < len(self.com)):
+            ms = " (command trimmed)"
+         else:
+            ms = ""
+         print "#Now running%s:\n   cd %s\n   %s" % (ms, self.dir, self.trimcom)
+         #if (len(self.trimcom)):
+         #   print "#Command trimmed to:\n   %s" % (self.trimcom)
          sys.stdout.flush()
          self.run()
          self.out()
       elif eo == "dry_run":
-         print "#Would be running:\n   cd %s\n   %s" % (self.dir, self.com)
+         print "#Would be running%s:\n   cd %s\n   %s" % (ms, self.dir, self.trimcom)
          sys.stdout.flush()
          self.out()
       return
+   def trim(self):
+      #try to remove absolute path
+      if self.dir[-1] != '/':
+         tcom = string.replace(self.com, "%s/" % (self.dir), '')
+      else:
+         tcom = string.replace(self.com, self.dir, '')
+      return tcom
    def run(self):
-      so, se = shell_exec(self.com, "")
+      so, se = shell_exec(self.trimcom, "")
       self.so = so
       self.se = se
       self.exc = 1
@@ -407,7 +459,7 @@ def parse_afni_name(name):
       pr = rni[0]
       tp = 'NIFTI'
    else: 
-      rni = strip_extension(fn,['.HEAD','.BRIK','.BRIK.gz','.1D', '.',  \
+      rni = strip_extension(fn,['.HEAD','.BRIK','.BRIK.gz','.BRIK.bz2','.BRIK.Z','.1D', '.',  \
                                 '.1D.dset', '.niml.dset'])
       ex = rni[1]
       if (ex == '.1D' or ex == '.1D.dset'):

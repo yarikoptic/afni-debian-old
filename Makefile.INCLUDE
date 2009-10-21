@@ -7,7 +7,7 @@ F2C = ./f2c -A
 
 ## 07 Dec 2005: modify the include flags here
 
-INFLAGS  = $(IFLAGS) -Inifti/niftilib -Inifti/znzlib -I3DEdge/src $(USE_ZLIB)
+INFLAGS  = $(IFLAGS) -Inifti/niftilib -Inifti/nifticdf -Inifti/znzlib -I3DEdge/src $(USE_ZLIB)
 ISFLAGS  = $(IFLAGS) -I../nifti/niftilib -I../nifti/znzlib -I../3DEdge/src $(USE_ZLIB)
 
 DOCS     = ../doc/ps/*.ps ../doc/README/README* AFNI.changes.cox   \
@@ -41,7 +41,9 @@ MISC    = AFNI.Xdefaults AFNI.afnirc 3d*.lib gmovie*
 ## AFNI package, but included because they are useful.  Some of
 ## them are Open Source programs, not from the AFNI group at all.
 
-EXTRAS   = cjpeg djpeg whirlgif mpeg_encode mpegtoppm myget Xphace rmz aiv $(EXPROGS)
+EXTRAS   = cjpeg djpeg whirlgif mpeg_encode myget Xphace rmz aiv $(EXPROGS)
+
+# mpegtoppm in above list
 
 ## This list is the core AFNI package:
 ## other programs are experimental and/or outsiders.
@@ -58,7 +60,7 @@ PROGRAMS = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge count   
            3dIntracranial 24swap 3dTsmooth RSFgen float_scan 1dtranspose        \
            3dFourier 3dNotes 3dROIstats 1deval 3dStatClust 3dTstat 3dmaskdump   \
            3dTshift 3dDetrend 1dfft 1dcat 3drename 1dnorm afni_vcheck 3ddot     \
-           3dWavelets 3dfim+ imcutup 3dWinsor 3dZeropad 3dTagalign 3dUndump     \
+           3dWavelets 3dfim+ imcutup imcat 3dWinsor 3dZeropad 3dTagalign 3dUndump     \
            3dMean 3dAttribute cat_matvec 3dOverlap 3dClipLevel 3dZregrid        \
            3dEntropy 3ddelay ent16 3dRowFillin 1dgrayplot 3dToutcount 1dsum     \
            3dExtrema qhull strblast 3dConvolve 3dZcutup 3dZcat 3dTqual 3dGetrow \
@@ -73,7 +75,7 @@ PROGRAMS = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge count   
            3dMedianFilter 3dretroicor 3dAFNItoNIML 3dAFNItoRaw im2niml 3dedge3  \
            DTIStudioFibertoSegments Dimon 3dLocalstat 3danisosmooth 3dmaxima    \
            3dTwotoComplex 3dInvFMRI 3dmatcalc 3dAcost 3dLocalBistat 3dFWHMx     \
-           3dBlurToFWHM                                                         \
+           3dBlurToFWHM 1dSEM 3dDFT                                             \
            $(EXTRAS)
 
 PROGRAMS_NOPLUG = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge      \
@@ -85,7 +87,7 @@ PROGRAMS_NOPLUG = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge  
                   imstack byteorder 3dDeconvolve 3dTcat 3drotate 3dvolreg 1dplot    \
                   24swap 3dTsmooth RSFgen float_scan 3dDeconvolve_f 1ddot 1dsvd     \
                   3dFourier 3dNotes 3dROIstats 1deval 3dStatClust 3dTstat 3ddelay   \
-                  3dDTeig 3dDWItoDT 1dtranspose whereami 3dAFNItoNIML 3dcopy        \
+                  3dDTeig 3dDWItoDT 1dtranspose whereami 3dAFNItoNIML 3dcopy imcat  \
                   3dDetrend 1dfft 1dcat 3drename 1dnorm afni_vcheck 3ddot 3dBrickStat \
                   imcutup 3dMean 3dAttribute 3dZeropad 3dWinsor 3dmaskdump 3dfim+   \
                   3dUndump cat_matvec 3dOverlap 3dClipLevel 3dZregrid 3dEntropy     \
@@ -99,7 +101,7 @@ PROGRAMS_NOPLUG = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge  
                   3dAFNItoRaw DTIStudioFibertoSegments im2niml 3dLocalstat 3dGetrow \
                   Imon nifti_tool 3dAllineate nifti1_test Dimon 3danisosmooth       \
                   3dmaxima 3dTwotoComplex 3dInvFMRI 1dmatcalc 3dmatcalc 3dAcost     \
-                  3dLocalBistat 3dFWHMx 3dBlurToFWHM                                \
+                  3dLocalBistat 3dFWHMx 3dBlurToFWHM 1dSEM 3dDFT                    \
                   $(EXTRAS)
 
 # For CYGWIN (look for "exe" to find various places below)
@@ -116,7 +118,7 @@ PROGRAMS_EXE = afni.exe to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge 
                3drotate 3dvolreg 3dpc 3dfractionize 1dplot adwarp imupsam         \
                3dIntracranial 24swap 3dTsmooth RSFgen float_scan 1dtranspose      \
                3dFourier 3dNotes 3dROIstats 1deval 3dStatClust 1ddot 3dBrickStat  \
-               3dDWItoDT 3dTstat 3dDTeig 3dmaskdump 3dretroicor 3daxialize        \
+               3dDWItoDT 3dTstat 3dDTeig 3dmaskdump 3dretroicor 3daxialize imcat  \
                3dTshift 3dDetrend 1dfft 1dcat 3drename 1dnorm afni_vcheck 3ddot   \
                3dWavelets 3dfim+ imcutup 3dWinsor 3dZeropad 3dTagalign 3dUndump   \
                3dMean 3dAttribute cat_matvec 3dOverlap 3dClipLevel 3dZregrid      \
@@ -130,7 +132,7 @@ PROGRAMS_EXE = afni.exe to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge 
                file_tool.exe Imon.exe 3dresample.exe serial_helper.exe im2niml    \
                nifti_tool.exe 3dAFNItoRaw DTIStudioFibertoSegments Dimon.exe      \
                3danisosmooth 3dTwotoComplex 3dInvFMRI 3dmatcalc 3dAllineate       \
-               3dFWHMx 3dBlurToFWHM
+               3dFWHMx 3dBlurToFWHM 1dSEM 3dDFT
 
 SCRIPTS = @4Daverage @CommandGlobb @GetAfniOrient @DTI_studio_reposition          \
           @GetAfniPrefix @NoExt @UpdateAfni @RenamePanga @2dwarper                \
@@ -139,7 +141,8 @@ SCRIPTS = @4Daverage @CommandGlobb @GetAfniOrient @DTI_studio_reposition        
           @CheckForAfniDset @clip_volume @AfniOrient2RAImap @parse_afni_name      \
           @auto_align @auto_tlrc @FromRAI @ToRAI @AfniOrientSign @VolCenter       \
           @Center_Distance @fix_FSsphere @parse_name @align_partial_oblique       \
-          @np 3dMax @IsoMasks @SUMA_Make_Spec_Caret @FindAfniDsetPath
+          @np 3dMax @IsoMasks @SUMA_Make_Spec_Caret @FindAfniDsetPath @GetAfniID  \
+          @float_fix @escape-  
 
 PY_DIR = python_scripts
 PY_SCRIPTS = afni_base.py @DoPerRoi.py
@@ -242,6 +245,9 @@ impdif:impdif.c
 
 imcutup:imcutup.c
 	$(CC) -o imcutup imcutup.c $(INFLAGS) $(LFLAGS) $(LLIBS)
+
+imcat:imcat.c
+	$(CC) -o imcat imcat.c $(INFLAGS) $(LFLAGS) $(LLIBS)
 
 Vecwarp:Vecwarp.c
 	$(CC) -o Vecwarp Vecwarp.c $(INFLAGS) $(LFLAGS) -lmri -lf2c $(LLIBS)
@@ -459,6 +465,10 @@ dsetdup:dsetdup.o
 	$(RM) $@
 	$(CC) -o 3dBlurToFWHM 3dBlurToFWHM.o $(LFLAGS) $(LLIBS)
 
+3dDFT:3dDFT.o
+	$(RM) $@
+	$(CC) -o 3dDFT 3dDFT.o $(LFLAGS) $(LLIBS) -lf2c
+
 3dDTeig:3dDTeig.o libmri.a
 	$(RM) $@
 	$(CC) -o 3dDTeig 3dDTeig.o $(LFLAGS) $(LLIBS) -lf2c
@@ -466,6 +476,10 @@ dsetdup:dsetdup.o
 3dDWItoDT:3dDWItoDT.o libmri.a
 	$(RM) $@
 	$(CC) -o 3dDWItoDT 3dDWItoDT.o $(LFLAGS) $(LLIBS) -lf2c -lmri
+
+1dSEM:1dSEM.o libmri.a sqrmat.o matrix.c matrix.h
+	$(RM) $@
+	$(CC) -o 1dSEM 1dSEM.o sqrmat.o $(LFLAGS) $(LLIBS) -lf2c -lmri
 
 3dDTtoDWI:3dDTtoDWI.o libmri.a
 	$(RM) $@
@@ -784,6 +798,10 @@ rtfeedme:rtfeedme.o
 3dNLfim:3dNLfim.o NLfit.c NLfit.h NLfit_model.c NLfit_model.h simplex.c
 	$(RM) $@
 	$(CCFAST) -o 3dNLfim 3dNLfim.o $(PLFLAGS) $(LFLAGS) -lmri -lf2c $(LLIBS)
+
+3dNLfim_n:3dNLfim_n.o NLfit.c NLfit.h NLfit_model.c NLfit_model.h simplex.c
+	$(RM) $@
+	$(CC) -o 3dNLfim_n 3dNLfim_n.o $(PLFLAGS) $(LFLAGS) -lmri -lf2c $(LLIBS)
 
 3dStatClust:3dStatClust.o
 	$(RM) $@
@@ -1177,12 +1195,15 @@ afni_src.tgz:
 	$(MKDIR) afni_src
 	$(CP) -p *.c *.f *.inc *.h *.hhh Makefile.* *.xbm $(MINDOCS) $(MISC)               ./afni_src
 	$(CP) -pr coxplot volpack moveup moveAFNI* cdflib eispack $(SCRIPTS) $(PY_DIR)     ./afni_src
-	$(CP) -pr gifsicledir qhulldir f2cdir mpeg_encodedir mpegtoppm_dir                 ./afni_src
+	$(CP) -pr gifsicledir qhulldir f2cdir mpeg_encodedir ./afni_src
 	$(CP) -pr 3DEdge netcdf-3.5.0 jpeg-6b niml Makefile_* nifti dlcompat               ./afni_src
 	$(CP) -pr SUMA matlab rickr faces poems ni_test_? README.*                         ./afni_src
 	chmod -R ugo+rw                                                                    ./afni_src
 	$(TAR) cf - afni_src | $(GZIP) -9v > afni_src.tgz
 	$(RM) -r afni_src
+
+# in above list
+# mpegtoppm_dir                 ./afni_src
 
 ### Make the source of the Matlab code
 
@@ -1208,6 +1229,7 @@ install: $(INSTALLDIR) $(INSTALL_PREREQ)
 	$(MV) $(PROGRAMS) $(INSTALLDIR)
 	$(CP) $(SCRIPTS)  $(INSTALLDIR)
 	$(CP) $(PY_DIR)/*.py  $(INSTALLDIR)
+	if [ -f README.environment ]; then $(CP) README.* $(INSTALLDIR); fi;
 
 install_noplug: $(INSTALLDIR)
 	$(MV) $(PROGRAMS_NOPLUG) $(INSTALLDIR)
@@ -1332,6 +1354,11 @@ cs_sort_dv.o:cs_sort_dv.c
 3dNLfim.o:3dNLfim.c NLfit.c NLfit.h NLfit_model.c NLfit_model.h
 	$(RM) $@
 	$(CCFAST) -c 3dNLfim.c $(INFLAGS)
+
+3dNLfim_n.o:3dNLfim.c NLfit.c NLfit.h NLfit_model.c NLfit_model.h
+	$(RM) 3dNLfim.o 3dNLfim_n.o
+	$(CC) -c 3dNLfim.c $(INFLAGS)
+	$(MV) 3dNLfim.o 3dNLfim_n.o
 
 powell_newuoa.o:powell_newuoa.c
 	$(RM) $@
@@ -1478,7 +1505,7 @@ CS_OBJS  = cs_sort_fi.o cs_sort_di.o cs_symeig.o cs_sort_ii.o cs_sort_ff.o \
            cs_sort_fv.o cs_laguerre.o machdep.o cs_qhull.o afni_logger.o   \
            afni_suma.o vol2surf.o cl1.o nifti1_io.o znzlib.o cs_misc.o     \
            list_struct.o nifti_statlib.o powell_int.o powell_newuoa.o      \
-           nifti_stats.o cs_sort_dv.o
+           nifticdf.o cs_sort_dv.o
 
 EIS_OBJS = eis_bakvec.o eis_balanc.o eis_balbak.o eis_bandr.o              \
            eis_bandv.o eis_bisect.o eis_bqr.o eis_cbabk2.o eis_cbal.o      \
@@ -2129,6 +2156,10 @@ asnap:asnap.o
 	$(RM) $@
 	$(CC) -o asnap asnap.o $(LFLAGS) -lmrix -lcoxplot $(LLIBS) -lf2c
 
+galler:galler.o
+	$(RM) $@
+	$(CC) -o galler galler.o $(LFLAGS) $(LLIBS)
+
 # specifics for the nifti library files
 
 3dAFNItoNIFTI.o:3dAFNItoNIFTI.c
@@ -2149,15 +2180,19 @@ znzlib.o:nifti/znzlib/znzlib.c nifti/znzlib/znzlib.h
 
 nifti_stats.o:nifti/utils/nifti_stats.c
 	$(RM) $@
-	$(CC) -c nifti/utils/nifti_stats.c $(INFLAGS) -DOMIT_MAIN
+	$(CC) -c nifti/utils/nifti_stats.c $(INFLAGS)
+
+nifticdf.o:nifti/nifticdf/nifticdf.c
+	$(RM) $@
+	$(CC) -c nifti/nifticdf/nifticdf.c $(INFLAGS)
 
 nifti_statlib.o:nifti/utils/nifti_stats.c nifti_statlib.c
 	$(RM) $@
 	$(CC) -c nifti_statlib.c -Inifti/utils $(INFLAGS)
 
-nifti_stats:nifti_stats.o
+nifti_stats:nifti_stats.o nifticdf.o
 	$(RM) $@
-	$(CC) -o nifti_stats nifti_stats.o -lm
+	$(CC) -o nifti_stats nifti_stats.o nifticdf.o -lm
 
 nifti1_test.o:nifti/utils/nifti1_test.c
 	$(RM) $@

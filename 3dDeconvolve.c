@@ -338,9 +338,11 @@
 #ifndef FLOATIZE
 # include "matrix.h"          /* double precision */
 # define MTYPE double
+# define QEPS 1.e-6
 #else
 # include "matrix_f.h"        /* single precision */
 # define MTYPE float
+# define QEPS 1.e-4
 #endif
 
 /*------------ prototypes for routines far below (RWCox) ------------------*/
@@ -384,6 +386,9 @@ void read_glt_matrix( char *fname, int *nrows, int ncol, matrix *cmat ) ;
 static void vstep_print(void) ;
 
 static int show_singvals = 0 ;
+
+static int        num_CENSOR = 0 ;     /* 01 Mar 2007 */
+static inttriple *abc_CENSOR = NULL ;
 
 /*---------- Typedefs for basis function expansions of the IRF ----------*/
 
@@ -488,6 +493,7 @@ typedef struct DC_options
   char * input_filename;   /* input 3d+time dataset */
   char * mask_filename;    /* input mask dataset */
   char * input1D_filename; /* input fMRI measurement time series */
+  float  input1D_TR;       /* TR for input 1D time series */
   char * censor_filename;  /* input censor time series filename */
   char * concat_filename;  /* filename for list of concatenated runs */
   int nodata;              /* flag for 'no data' option */
@@ -608,11 +614,27 @@ void display_help_menu()
     "                       (catenated  in time;   if you do this, )        \n"
     "                       ('-concat' is not needed and is ignored)        \n"
     "[-input1D dname]     dname = filename of single (fMRI) .1D time series \n"
+    "[-TR_1D tr1d]        tr1d = TR for .1D time series (default 1.0 sec).  \n"
+    "                     This option has no effect without -input1D        \n"
     "[-nodata [NT [TR]]   Evaluate experimental design only (no input data) \n"
     "[-mask mname]        mname = filename of 3d mask dataset               \n"
     "[-automask]          build a mask automatically from input data        \n"
     "                      (will be slow for long time series datasets)     \n"
     "[-censor cname]      cname = filename of censor .1D time series        \n"
+    "[-CENSORTR clist]    clist = list of strings that specify time indexes \n"
+    "                       to be removed from the analysis.  Each string is\n"
+    "                       of one of the following forms:                  \n"
+    "                           37 => remove global time index #37          \n"
+    "                         2:37 => remove time index #37 in run #2       \n"
+    "                       37..47 => remove global time indexes #37-47     \n"
+    "                       37-47  => same as above                         \n"
+    "                     2:37..47 => remove time indexes #37-47 in run #2  \n"
+    "                     *:0-2    => remove time indexes #0-2 in all runs  \n"
+    "                      +Time indexes within each run start at 0.        \n"
+    "                      +Run indexes start at 1 (just be to confusing).  \n"
+    "                      +Multiple -CENSORTR options may be used, or      \n"
+    "                        multiple -CENSORTR strings can be given at     \n"
+    "                        once, separated by spaces or commas.           \n"
     "[-concat rname]      rname = filename for list of concatenated runs    \n"
     "[-nfirst fnum]       fnum = number of first dataset image to use in the\n"
     "                       deconvolution procedure. (default = max maxlag) \n"
@@ -857,6 +879,7 @@ void initialize_options
   option_data->input_filename = NULL;
   option_data->mask_filename = NULL;
   option_data->input1D_filename = NULL;
+  option_data->input1D_TR = 0.0;
   option_data->censor_filename = NULL;
   option_data->concat_filename = NULL;
   option_data->bucket_filename = NULL;
@@ -1142,6 +1165,14 @@ void get_options
         continue;
       }
 
+      /*-----   -input1D TR  --------*/
+      if (strcmp(argv[nopt], "-TR_1D") == 0)
+      {
+        nopt++;
+        if (nopt >= argc)  DC_error ("need argument after -TR_1D ");
+        option_data->input1D_TR = (float)strtod(argv[nopt++],NULL) ;
+        continue;
+      }
 
       /*-----   -censor filename   -----*/
       if (strcmp(argv[nopt], "-censor") == 0)
@@ -1156,6 +1187,64 @@ void get_options
         continue;
       }
 
+      /*-----  -CENSOR clist -----*/
+
+      if( strncmp(argv[nopt],"-CENSOR",7) == 0 ){   /* RWCox - 01 Mar 2007 */
+        NI_str_array *nsar ;
+        char *src=malloc(1), *cpt, *dpt ;
+        int ns, r,a,b, nerr=0 ; inttriple rab ;
+
+        *src = '\0' ;   /* cat all following options until starts with '-' */
+        for( nopt++ ; nopt < argc && argv[nopt][0] != '-' ; nopt++ ){
+          ns = strlen(argv[nopt]) ; if( ns == 0 ) continue ;
+          src = realloc(src,strlen(src)+ns+2) ;
+          strcat(src," ") ; strcat(src,argv[nopt]) ;
+        }
+        if( *src == '\0' ) DC_error("Bad argument after -CENSORTR") ;
+        nsar = NI_decode_string_list( src , "," ) ; /* break into substrings */
+        for( ns=0 ; ns < nsar->num ; ns++ ){ /* loop over substrings */
+          cpt = nsar->str[ns] ; dpt = strchr(cpt,':') ; r = 0 ;
+          if( *cpt == '\0' ) continue ;   /* skip an empty string */
+          if( dpt != NULL ){              /* found 'run:' */
+            if( *cpt == '*' ){ /* wildcard = all runs */
+              r = -666 ;
+            } else {
+              r = (int)strtol(cpt,NULL,10) ;
+              if( r <= 0 ){  /* skip out */
+                ERROR_message("-CENSORTR %s -- run index '%d' is bad!",nsar->str[ns],r);
+                nerr++ ; continue ;
+              }
+            }
+            cpt = dpt+1 ;  /* skip to character after ':' */
+            if( *cpt == '\0' ){  /* skip out */
+              ERROR_message("-CENSORTR %s -- no data after run index!",nsar->str[ns]);
+              nerr++ ; continue ;
+            }
+          }
+          a = (int)strtol(cpt,&dpt,10) ;    /* get first index number */
+          if( a < 0 ){  /* skip out */
+            ERROR_message("-CENSORTR %s -- time index '%d' is bad!",nsar->str[ns],a);
+            nerr++ ; continue ;
+          }
+          if( *dpt == '\0' ){  /* no second number */
+            b = a ;
+          } else {             /* get second number */
+            for( dpt++ ; *dpt != '\0' && !isdigit(*dpt) ; dpt++ ) ; /*nada*/
+            b = (int)strtol(dpt,NULL,10) ;
+            if( b < a || b < 0 ){  /* skip out */
+              ERROR_message("-CENSORTR %s -- time indexes '%d' to '%d' is bad!",
+                            nsar->str[ns],a,b);
+              nerr++ ; continue ;
+            }
+          }
+          abc_CENSOR = (inttriple *)realloc( abc_CENSOR ,
+                                             sizeof(inttriple)*(num_CENSOR+1) );
+          rab.a = r; rab.b = a; rab.c = b; abc_CENSOR[num_CENSOR++] = rab ;
+        } /* end of loop over -CENSORTR strings */
+        if( nerr > 0 ) ERROR_exit("Can't proceed after -CENSORTR errors!") ;
+        NI_delete_str_array(nsar) ; free(src) ;
+        continue ;  /* next option */
+      }
 
       /*-----   -concat filename   -----*/
       if (strcmp(argv[nopt], "-concat") == 0)
@@ -1275,6 +1364,10 @@ void get_options
         option_data->quiet = 1;  verb = 0 ;
         nopt++;
         continue;
+      }
+
+      if (strncmp(argv[nopt],"-verb",5) == 0){  /* 01 Mar 2007 */
+        verb++ ; nopt++ ; continue ;
       }
 
       /*-----   -progress n  -----*/
@@ -1862,6 +1955,11 @@ void get_options
 
   /**--- Test various combinations for legality [11 Aug 2004] ---**/
 
+  if (option_data->input1D_TR > 0.0 && !option_data->input1D_filename) {
+    option_data->input1D_TR = 0.0;
+    if( verb ) fprintf(stderr,"** WARNING: -TR_1D is meaningless without -input1D\n");
+  }
+
   if( option_data->polort < 0 ) demean_base = 0 ;  /* 12 Aug 2004 */
 
   nerr = 0 ;
@@ -2037,6 +2135,7 @@ void read_input_data
 ENTRY("read_input_data") ;
 
   /*----- Initialize local variables -----*/
+
   num_stimts = option_data->num_stimts;
   num_glt    = option_data->num_glt;
   baseline   = option_data->stim_base;
@@ -2045,6 +2144,7 @@ ENTRY("read_input_data") ;
 
 
   /*----- Read the input stimulus time series -----*/
+
   if (num_stimts > 0)
     {
       int nerr=0 ;
@@ -2121,9 +2221,9 @@ ENTRY("read_input_data") ;
   *num_blocks = 0 ;  /* 04 Aug 2004 */
 
   /*----- Read the input fMRI measurement data -----*/
-  if (option_data->nodata)
+
+  if (option_data->nodata)  /*----- No input data -----*/
     {
-      /*----- No input data -----*/
       if (num_stimts <= 0)
         DC_error ("Must have num_stimts > 0 for -nodata option");
 
@@ -2146,7 +2246,7 @@ ENTRY("read_input_data") ;
       nxyz = 0;
     }
 
-  else if (option_data->input1D_filename != NULL)
+  else if (option_data->input1D_filename != NULL) /*----- 1D input file -----*/
     {
 
       if( option_data->num_slice_base > 0 )
@@ -2164,11 +2264,14 @@ ENTRY("read_input_data") ;
       *dset_time = NULL;
       nt = *fmri_length;
       nxyz = 1;
+
+      if (option_data->input1D_TR > 0.0) basis_TR = option_data->input1D_TR;
+      if (verb) fprintf(stderr,"++ Notice: 1D TR is %.3fsec\n", basis_TR);
    }
 
-  else if (option_data->input_filename != NULL)
+  else if (option_data->input_filename != NULL) /*----- 3d+time dataset -----*/
     {
-      /*----- Read the input 3d+time dataset -----*/
+      if( verb ) INFO_message("reading dataset %s",option_data->input_filename);
       *dset_time = THD_open_dataset (option_data->input_filename);
       CHECK_OPEN_ERROR(*dset_time,option_data->input_filename);
       DSET_load(*dset_time) ; CHECK_LOAD_ERROR(*dset_time) ;
@@ -2205,8 +2308,8 @@ ENTRY("read_input_data") ;
 
       if( DSET_IS_TCAT(*dset_time) ){  /** 04 Aug 2004: manufacture block list **/
         if( option_data->concat_filename != NULL ){
-          fprintf(stderr,
-             "** WARNING: '-concat %s' ignored: input dataset is auto-catenated\n" ,
+          WARNING_message(
+             "'-concat %s' ignored: input dataset is auto-catenated\n" ,
              option_data->concat_filename ) ;
           option_data->concat_filename = NULL ;
         }
@@ -2274,7 +2377,8 @@ ENTRY("read_input_data") ;
     }
 
 
-  /*----- Check number of data points -----*/
+  /*----- Check number of data (time) points -----*/
+
   if (nt <= 0)      DC_error ("No time points?");
   option_data->nt = nt;
   if (nxyz < 0)     DC_error ("Program initialization error: nxyz < 0");
@@ -2282,8 +2386,8 @@ ENTRY("read_input_data") ;
 
   voxel_num = nxyz ;  /* 31 Aug 2004 */
 
+  /*----- Read the block list (-concat option) -----*/
 
-  /*----- Read the block list -----*/
   if (option_data->concat_filename == NULL)
     {
       if( *num_blocks <= 0 ){   /* make one big block, if not already set */
@@ -2294,7 +2398,7 @@ ENTRY("read_input_data") ;
     }
   else
     {
-      float * f = NULL;
+      float *f = NULL;
 
       f = read_time_series (option_data->concat_filename, num_blocks);
       if (*num_blocks < 1)
@@ -2434,6 +2538,7 @@ for( ii=0 ; ii < nt ; ii++ ){
 
 
   /*----- Determine total number of parameters in the model -----*/
+
   qp = (option_data->polort + 1) * (*num_blocks);
   q = qp;   /* number of baseline parameters */
   p = qp;   /* number of total parameters */
@@ -2452,7 +2557,8 @@ for( ii=0 ; ii < nt ; ii++ ){
   option_data->q  = q;   /* number of baseline parameters (polort+stim_base) */
   option_data->qp = qp;  /* number of polort baseline parameters */
 
-  /*----- Read the censorship file -----*/
+  /*----- Read the censorship file (John Ashcroft, we miss you) -----*/
+
   if (option_data->censor_filename != NULL)
     {
       /*----- Read the input censor time series array -----*/
@@ -2475,6 +2581,63 @@ for( ii=0 ; ii < nt ; ii++ ){
       (*censor_array)[it] = 1.0;
     }
 
+  /*----- 01 Mar 2007: apply the -CENSORTR commands to censor_array -----*/
+
+  if( abc_CENSOR != NULL ){
+    int ic , rr , aa,bb , nerr=0 , bbot,btop , nblk=*num_blocks ;
+    for( ic=0 ; ic < num_CENSOR ; ic++ ){  /* loop over CENSOR commands */
+      rr = abc_CENSOR[ic].a ;
+      aa = abc_CENSOR[ic].b ; if( aa < 0  ) continue ;  /* shouldn't happen */
+      bb = abc_CENSOR[ic].c ; if( bb < aa ) continue ;  /* shouldn't happen */
+      if( rr == -666 ){  /* run = wildcard ==> expand to nblk new triples */
+        inttriple rab ;
+        abc_CENSOR = (inttriple *)realloc( abc_CENSOR ,
+                                           sizeof(inttriple)*(num_CENSOR+nblk) );
+        for( rr=1 ; rr <= nblk ; rr++ ){
+          rab.a = rr; rab.b = aa; rab.c = bb; abc_CENSOR[num_CENSOR++] = rab;
+        }
+        continue ;  /* skip to next one */
+      }
+      if( rr > 0 ){       /* convert local indexes to global */
+        if( rr > nblk ){  /* stupid user */
+          ERROR_message("-CENSORTR %d:%d-%d has run index out of range 1..%d",
+                        rr,aa,bb , nblk ) ;
+          nerr++ ; aa = -66666666 ;
+        } else {
+          bbot = (*block_list)[rr-1] ;        /* start index of block #rr */
+          btop = (rr < nblk) ? (*block_list)[rr]-1 : nt-1 ; /* last index */
+          if( aa+bbot > btop ){  /* WTF? */
+            WARNING_message(
+             "-CENSORTR %d:%d-%d has start index past end of run (%d) - IGNORING",
+             rr,aa,bb,btop-bbot ) ; aa = -66666666 ;
+          } else if( bb+bbot > btop ){  /* oopsie */
+            WARNING_message(
+             "-CENSORTR %d:%d-%d has stop index past end of run (%d) - STOPPING THERE",
+             rr,aa,bb,btop-bbot ) ;
+          }
+          aa += bbot ; bb += bbot ; if( bb > btop ) bb = btop ;
+        }
+      } else {           /* global indexes: check for stupidities */
+        if( aa >= nt ){
+          WARNING_message(
+           "-CENSORTR %d..%d has start index past end of data (%d) - IGNORING",
+           rr,aa,bb,nt-1 ) ; aa = -66666666 ;
+        } else if( bb > nt ){
+          WARNING_message(
+           "-CENSORTR %d..%d has stop index past end of data (%d) - STOPPING THERE",
+           rr,aa,bb,nt-1 ) ; bb = nt-1 ;
+        }
+      }
+      if( aa < 0  || aa >= nt ) continue ;  /* nothing to do */
+      if( bb < aa || bb >= nt ) continue ;
+      if( verb > 1 )
+        ININFO_message("applying -CENSORTR global time indexes %d..%d",aa,bb) ;
+      for( it=aa ; it <= bb ; it++ ) (*censor_array)[it] = 0.0f ;
+    } /* end of loop over CENSOR commands */
+    if( nerr > 0 ) ERROR_exit("Can't continue! Fix the -CENSORTR error%s",
+                              (nerr==1) ? "." : "s." ) ;
+    free((void *)abc_CENSOR) ; abc_CENSOR = NULL ; num_CENSOR = 0 ;
+  }
 
   /*----- Build symbolic list of stim names and index ranges [29 Jul 2004] -----*/
 
@@ -2507,6 +2670,7 @@ for( ii=0 ; ii < nt ; ii++ ){
   }
 
   /*----- Read the general linear test matrices -----*/
+
   if (num_glt > 0)
     {
       *glt_cmat = (matrix *) malloc (sizeof(matrix) * num_glt);
@@ -2535,6 +2699,8 @@ for( ii=0 ; ii < nt ; ii++ ){
 #endif
       }
     }
+
+   /*----- done done done -----*/
 
    EXRETURN ;
 }
@@ -2822,7 +2988,7 @@ void check_for_valid_inputs
 
       irb = it - block_list[ib];
 
-      if ((irb >= NFirst) && (irb <= NLast) && (censor_array[it]))
+      if ((irb >= NFirst) && (irb <= NLast) && (censor_array[it] != 0.0f))
       {
         (*good_list)[N] = it;
         N++;
@@ -4208,7 +4374,7 @@ ENTRY("calculate_results") ;
   /*-- 14 Jul 2004: check matrix for bad columns - RWCox --*/
 
   { int *iar , k , nerr=0 ;
-    iar = matrix_check_columns( xdata , 1.e-7 ) ;
+    iar = matrix_check_columns( xdata , QEPS ) ;
     if( iar != NULL ){
       fprintf(stderr,"** WARNING: Problems with the X matrix columns:\n") ;
       for( k=0 ; iar[2*k] >= 0 ; k++ ){
@@ -6218,8 +6384,7 @@ void JPEG_matrix_gray( matrix X , char *fname )
          jpeg_compress = 95;
     }
    else jpeg_compress = 95;
-   
-      
+
    jpfilt = (char *)malloc( sizeof(char)*(strlen(pg)+strlen(fname)+32) ) ;
 
    sprintf( jpfilt , "%s -quality %d > %s" , pg , jpeg_compress, fname ) ;
@@ -7209,6 +7374,7 @@ ENTRY("read_glt_matrix") ;
      floatvecvec *fvv ;
      float **far=NULL ;
      int nr=0 , iv ;
+     char *str_echo=NULL ;  /* 26 Jan 2007 */
 
      if( nSymStim < 1 ){
        fprintf(stderr,"** ERROR: use of -gltsym without SymStim being defined\n");
@@ -7221,7 +7387,8 @@ ENTRY("read_glt_matrix") ;
 
        buf = fdup ;
        while(1){
-         fpt = strchr(buf,'\\') ;          /* end of 'line' */
+                           fpt = strchr(buf,'\\'); /* find end of 'line' */
+         if( fpt == NULL ) fpt = strchr(buf,'|') ;
          if( fpt != NULL ) *fpt = '\0' ;
          fvv = SYM_expand_ranges( ncol-1 , nSymStim,SymStim , buf ) ;
          if( fvv == NULL || fvv->nvec < 1 ) continue ;
@@ -7240,6 +7407,7 @@ ENTRY("read_glt_matrix") ;
        while(1){
          cpt = fgets( buf , 8192 , fp ) ;   /* read next line */
          if( cpt == NULL ) break ;          /* end of input? */
+         str_echo = THD_zzprintf(str_echo," : %s",cpt) ;
          fvv = SYM_expand_ranges( ncol-1 , nSymStim,SymStim , buf ) ;
          if( fvv == NULL || fvv->nvec < 1 ) continue ;
          far = (float **)realloc((void *)far , sizeof(float *)*(nr+fvv->nvec)) ;
@@ -7257,6 +7425,7 @@ ENTRY("read_glt_matrix") ;
 
      if( !AFNI_noenv("AFNI_GLTSYM_PRINT") ){
        printf("GLT matrix from '%s':\n",fname) ;
+       if( str_echo != NULL ){ printf("%s",str_echo); free(str_echo); }
        matrix_print( *cmat ) ;
      }
    }

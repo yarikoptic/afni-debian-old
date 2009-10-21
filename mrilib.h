@@ -93,8 +93,6 @@ extern AFD_dicom_header **MRILIB_dicom_header ;
 #  define MIN(a,b) (((a)>(b)) ? (b) : (a))
 #endif
 
-#undef DONT_USE_MEMCPY
-
 /**** define types ****/
 
 /*! The MRI_byte data type. */
@@ -192,6 +190,16 @@ typedef struct complex { float r , i ; } complex ;
 #ifndef TYPEDEF_floatpair
 #define TYPEDEF_floatpair
 typedef struct { float a,b ; } floatpair ;
+#endif
+
+#ifndef TYPEDEF_intpair
+#define TYPEDEF_intpair
+typedef struct { int i,j ; } intpair ;
+#endif
+
+#ifndef TYPEDEF_inttriple
+#define TYPEDEF_inttriple
+typedef struct { int a,b,c ; } inttriple ;
 #endif
 
 /*-------*/
@@ -588,7 +596,13 @@ extern void   mri_unpurge  ( MRI_IMAGE * ) ;
 extern void   mri_killpurge( MRI_IMAGE * ) ;
 extern char * mri_purge_get_tmpdir(void) ;    /* 21 Dec 2006 */
 
-#define MRI_IS_PURGED(iq) (((iq)->fondisk==IS_PURGED)&&(iq)->fname!=NULL)
+#define MRI_IS_PURGED(iq) \
+  ( (iq)!=NULL && (iq)->fondisk==IS_PURGED && (iq)->fname!=NULL )
+
+#define MRI_HAS_DATA(iq)                                    \
+  ( (iq)!= NULL &&                                          \
+    ( ( (iq)->fondisk==IS_PURGED && (iq)->fname!=NULL ) ||  \
+      mri_data_pointer_unvarnished(iq) != NULL         )  )
 
 extern int mri_equal( MRI_IMAGE *, MRI_IMAGE * ) ; /* 30 Jun 2003 */
 
@@ -654,6 +668,7 @@ extern void mri_fftshift( MRI_IMAGE *, float,float,float, int ) ; /* 13 May 2003
 
 extern void * mri_data_pointer( MRI_IMAGE * ) ;
 extern void mri_free( MRI_IMAGE * ) ;
+extern void mri_clear( MRI_IMAGE * ) ;  /* 31 Jan 2007 */
 extern void mri_fix_data_pointer( void * , MRI_IMAGE * ) ;
 #define mri_set_data_pointer(iq,pt) mri_fix_data_pointer((pt),(iq))
 
@@ -663,7 +678,7 @@ extern void mri_fix_data_pointer( void * , MRI_IMAGE * ) ;
   extern void * mri_data_pointer_unvarnished( MRI_IMAGE *im ) ;
 #else
 # define mri_data_pointer_unvarnished(iq) ((iq)->im)
-#endif 
+#endif
 
 extern char * mri_dicom_header( char * ) ;  /* 15 Jul 2002 */
 extern void   mri_dicom_pxlarr( off_t *, int * ) ;
@@ -726,6 +741,8 @@ extern int mri_write_ascii( char * , MRI_IMAGE * ) ;
 extern int mri_write_raw( char * , MRI_IMAGE * ) ;       /* 05 Jan 2000 */
 extern void mri_write_analyze( char * , MRI_IMAGE * ) ;  /* 29 Nov 2001 */
 
+extern MRI_IMAGE * mri_read_ragged_fromstring( char *, float); /* 05 Jan 2007 */
+
 extern MRI_IMAGE * mri_read_1D( char * ) ;               /* 16 Nov 1999 */
 extern MRI_IMAGE * mri_read_double_1D( char * ) ;
 extern MRI_IMAGE * mri_read_complex_1D( char * ) ;
@@ -762,6 +779,7 @@ extern MRI_IMARR * mri_read_3A( char * ) ;
 extern MRI_IMARR * mri_read_file( char * ) ;
 extern int mri_imcount( char * ) ;
 extern MRI_IMARR * mri_read_many_files( int nf , char * fn[] ) ;
+extern MRI_IMARR * mri_read_resamp_many_files( int nf, char * fn[] , int nxnew, int nynew);
 
 /** returns array of byte images: red, green, blue **/
 
@@ -802,6 +820,7 @@ extern MRI_IMARR * mri_rgb_to_3byte( MRI_IMAGE * ) ;
 extern MRI_IMAGE * mri_sharpen_rgb( float , MRI_IMAGE * ) ;
 extern MRI_IMAGE * mri_flatten_rgb( MRI_IMAGE * ) ;
 extern void mri_invert_inplace( MRI_IMAGE *) ;   /* 07 Apr 2003 */
+extern void mri_gamma_rgb_inplace( float gam , MRI_IMAGE *im ) ;
 
 extern MRI_IMAGE * mri_to_rgba( MRI_IMAGE * ) ;  /* 20 Mar 2002 */
 
@@ -842,6 +861,8 @@ extern float mri_warp_bicubic_point( MRI_IMAGE * , int , int ,
 
 extern float mri_rotate_point( MRI_IMAGE *im, float,float,float,float, int,int ) ;
 #endif /* WARP_POINT_ROUTINES */
+
+extern void mri_warp_setpow( float gg ) ;  /* 15 Jan 2007 */
 
 extern MRI_IMAGE *mri_resize( MRI_IMAGE * , int , int ) ;
 
@@ -913,6 +934,8 @@ extern MRI_IMAGE * mri_filt_fft( MRI_IMAGE * im , float,int,int,int ) ;
 extern MRI_IMAGE *mri_medianfilter( MRI_IMAGE *, float, byte *, int ); /* 22 Feb 2005 */
 extern void mri_medianfilter_usedxyz( int i ) ;                       /* 08 Aug 2006 */
 
+void mri_Set_KO_catwrap(void);
+void mri_Set_OK_catwrap(void);
 extern MRI_IMAGE * mri_cat2D( int,int,int,void *,MRI_IMARR *) ;
 extern MRI_IMARR * mri_uncat2D( int , int , MRI_IMAGE * im ) ; /* 09 May 2000 */
 
@@ -1117,7 +1140,7 @@ typedef struct { int nar ; double *ar ; } doublevec ;
 #define KILL_floatvec(fv)                      \
   do{ if( (fv) != NULL ){                      \
         if( (fv)->ar != NULL ) free((fv)->ar); \
-        free(fv);                              \
+        free(fv); (fv) = NULL;                 \
   }} while(0)
 #define KILL_doublevec KILL_floatvec
 
@@ -1138,7 +1161,7 @@ typedef struct { int nar ; int *ar ; } intvec ;
 #define KILL_intvec(iv)                        \
   do{ if( (iv) != NULL ){                      \
         if( (iv)->ar != NULL ) free((iv)->ar); \
-        free(iv);                              \
+        free(iv); (iv) = NULL;                 \
   } } while(0)
 
 #define MAKE_intvec(iv,n)                           \
@@ -1412,6 +1435,7 @@ extern void GA_reset_fit_callback( void (*fc)(int,double*) ) ;
 extern void GA_do_dots(int) ;
 extern void GA_do_cost(int) ;
 extern float mri_genalign_scalar_cost( GA_setup * ) ;
+extern void GA_set_outval( float ) ;   /* 28 Feb 2007 */
 
 #define MATORDER_SDU  1  /* matrix multiplication order: */
 #define MATORDER_SUD  2  /* S = shear matrix             */
@@ -1464,5 +1488,9 @@ extern THD_fvec3 mri_nstat_fwhmxyz( int,int,int ,
 extern void mri_blur3D_variable( MRI_IMAGE * , byte * ,
                                  MRI_IMAGE * , MRI_IMAGE * , MRI_IMAGE * ) ;
 
+extern MRI_IMAGE * mri_rgb_blur2D  ( float sig , MRI_IMAGE *im ) ;
+extern MRI_IMAGE * mri_byte_blur2D( float sig , MRI_IMAGE *im );
+extern MRI_IMAGE * mri_float_blur2D( float sig , MRI_IMAGE *im ) ;
+extern MRI_IMAGE * mri_float_blur3D( float sig , MRI_IMAGE *im ) ;
 
 #endif /* _MCW_MRILIB_HEADER_ */

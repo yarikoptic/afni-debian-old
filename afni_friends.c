@@ -76,7 +76,12 @@ static AFNI_friend afni_friends[] = {
   { "KR Hammett"     , (             8 |           64                   ) } ,
   { "A Clark"        , (                           64 |       512       ) } ,
   { "DS Cohen"       , ( 1 | 2                                          ) } ,
-  { "DA Jacobson"    , ( 1 | 2              | 32                        ) }
+  { "DA Jacobson"    , ( 1 | 2              | 32                        ) } ,
+  { "DR Glen"        , (         4 | 8 |           64                   ) } ,
+  { "G Chen"         , (         4 | 8 |           64                   ) } ,
+  { "M Furey"        , (             8 |                128             ) } ,
+  { "J Bodurka"      , (         4 | 8 |                      256       ) } ,
+  { "B Feige"        , ( 1 |         8                                  ) }
 } ;
 
 #define NUM_FRIENDS (sizeof(afni_friends)/sizeof(AFNI_friend))
@@ -695,7 +700,7 @@ static mday holiday[] = {
    {DEC,24,"Ignatius Loyola's birthday"                              } ,
    {DEC,24,"Kit Carson's birthday"                                   } ,
    {DEC,24,"Christmas Eve"                                           } ,
-   {DEC,25,"Christmas Day"                                           } ,
+   {DEC,25,"Christmas Day - Ho Ho Ho"                                } ,
    {DEC,25,"Sir Isaac Newton's birthday"                             } ,
    {DEC,25,"Clara Barton's birthday"                                 } ,
    {DEC,25,"Rod Serling's birthday"                                  } ,

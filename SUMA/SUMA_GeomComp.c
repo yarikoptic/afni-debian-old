@@ -1430,6 +1430,43 @@ double SUMA_NewAreaAtRadius(SUMA_SurfaceObject *SO, double r, double Rref, float
 
    SUMA_RETURN(A);
 } 
+/*!
+   \brief Change the coordinates so that the new surface has a radius r
+   \param SO: La surface
+   \param r: Le radius
+   \param Center: If not NULL then a 3x1 vector containing the Center of SO
+                  Use this when SO->Center is not OK for some reason. Else, SO->Center
+                  is used.
+*/
+SUMA_Boolean SUMA_NewSurfaceRadius(SUMA_SurfaceObject *SO, double r, float *Center)
+{
+   static char FuncName[]={"SUMA_NewSurfaceRadius"};
+   double Un, U[3], Dn, P2[2][3], c[3];
+   float *fp;
+   int i;
+   SUMA_Boolean LocalHead = NOPE;
+
+   SUMA_ENTRY;
+
+   if (!SO || !SO->NodeList) { SUMA_S_Err("Imbecile!"); SUMA_RETURN(NOPE); }
+   if (!Center) Center = SO->Center;
+   
+   /* Now loop over all the nodes in SO and add the deal */
+   for (i=0; i<SO->N_Node; ++i) {
+      /* change node coordinate of each node by Dr, along radial direction  */
+      fp = &(SO->NodeList[3*i]); SUMA_UNIT_VEC(Center, fp, U, Un);
+      if (Un) {
+         SUMA_COPY_VEC(Center, c, 3, float, double);
+         SUMA_POINT_AT_DISTANCE_NORM(U, c, r, P2);
+         SO->NodeList[3*i] = (float)P2[0][0]; SO->NodeList[3*i+1] = (float)P2[0][1]; SO->NodeList[3*i+2] = (float)P2[0][2];
+      } else {
+         SUMA_SL_Err("Identical points!\n"
+                     "No coordinates modified");
+      }
+   }
+
+   SUMA_RETURN(YUP);
+}
 
 /*!
    \brief Changes the coordinates of SO's nodes so that the new average radius of the surface
@@ -1864,6 +1901,8 @@ SUMA_Boolean SUMA_EquateSurfaceVolumes(SUMA_SurfaceObject *SO, SUMA_SurfaceObjec
    \param SOref reference SurfaceObject, used to communicate with SUMA 
    \param radius , you know what.
    \param cs the famed communication structure
+   
+   \sa SUMA_ProjectToSphere
 */
 /*
 #define FROM_THIS_NODE 0
@@ -1970,7 +2009,10 @@ SUMA_Boolean SUMA_ProjectSurfaceToSphere(SUMA_SurfaceObject *SO, SUMA_SurfaceObj
              
       
    }   
-   
+   SO->isSphere = SUMA_GEOM_SPHERE;
+   SO->SphereRadius = radius;
+   SUMA_COPY_VEC(SO->Center, SO->SphereCenter, 3, float, float);
+
    
    SUMA_RETURN(YUP);
 }
@@ -4479,6 +4521,104 @@ SUMA_Boolean SUMA_Chung_Smooth_05_dset (SUMA_SurfaceObject *SO, float **wgt,
 }
 
 /*!
+   A wrapper to make repeated calls to SUMA_estimate_FWHM_1dif for a dataset
+*/
+float *SUMA_estimate_dset_FWHM_1dif(SUMA_SurfaceObject *SO, SUMA_DSET *dset, 
+                                    int *icols, int N_icols, byte *nmask, 
+                                    int nodup, char *options)
+{
+   static char FuncName[]={"SUMA_estimate_dset_FWHM_1dif"};
+   int k, jj, N_nmask=0, n= 0;
+   float *fwhmv=NULL, *fin_orig=NULL;
+   byte *bfull=NULL;
+   SUMA_Boolean LocalHead = YUP;
+   
+   SUMA_ENTRY;
+   
+   
+   if (!dset || !SO) {
+      SUMA_S_Errv("NULL input fim=%p, SO=%p\n", dset, SO);
+      SUMA_RETURN(NULL);
+   }
+   if (!SO->FN || !SO->EL) {
+      /* do it here */
+      if (!SO->EL && !(SO->EL = SUMA_Make_Edge_List_eng (SO->FaceSetList, SO->N_FaceSet, SO->N_Node, SO->NodeList, 0, SO->idcode_str))) {
+         SUMA_S_Err("Failed to create Edge_List");
+         SUMA_RETURN(NULL);
+      }
+      if (!SO->FN && !(SO->FN = SUMA_Build_FirstNeighb( SO->EL, SO->N_Node, SO->idcode_str)) ) {
+         SUMA_S_Err("Failed to create FirstNeighb");
+         SUMA_RETURN(NULL);
+      }
+   }
+
+
+   if (!(fwhmv = (float *)SUMA_calloc(N_icols, sizeof(float)))) {
+      SUMA_S_Err("Failed to callocate");
+      SUMA_RETURN(fwhmv);
+   }
+   
+   /* Begin operation for each column */
+   for (k=0; k < N_icols; ++k) {
+      /* get a float copy of the data column */
+      fin_orig = SUMA_DsetCol2Float (dset, icols[k], 1);
+      if (!fin_orig) {
+         SUMA_SL_Crit("Failed to get copy of column. Woe to thee!");
+         SUMA_free(fwhmv); fwhmv = NULL;
+         goto CLEANUP;
+      }
+      /* make sure column is not sparse, one value per node */
+      if (k==0) {
+         SUMA_LH( "Special case k = 0, going to SUMA_MakeSparseColumnFullSorted");
+         bfull = NULL;
+         if (!SUMA_MakeSparseColumnFullSorted(&fin_orig, SDSET_VECFILLED(dset), 0.0, &bfull, dset, SO->N_Node)) {
+            SUMA_S_Err("Failed to get full column vector");
+            SUMA_free(fwhmv); fwhmv = NULL;
+            goto CLEANUP;
+         }
+         if (bfull) {
+            SUMA_LH( "Something was filled in SUMA_MakeSparseColumnFullSorted\n" );
+            /* something was filled in good old SUMA_MakeSparseColumnFullSorted */
+            if (nmask) {   /* combine bfull with nmask */
+               SUMA_LH( "Merging masks\n" );
+               for (jj=0; jj < SO->N_Node; ++jj) { if (nmask[jj] && !bfull[jj]) nmask[jj] = 0; }   
+            } else { nmask = bfull; }
+         } 
+         if (nmask) {
+            N_nmask = 0;
+            for (n=0; n<SO->N_Node; ++n) { if (nmask[n]) ++ N_nmask; }
+            SUMA_LHv("Blurring with node mask (%d nodes in mask)\n", N_nmask);
+            if (!N_nmask) {
+               SUMA_S_Warn("Empty mask, nothing to do");
+               SUMA_free(fwhmv); fwhmv = NULL; goto CLEANUP;
+            }
+         }
+      } else {
+         SUMA_LH( "going to SUMA_MakeSparseColumnFullSorted");
+         if (!SUMA_MakeSparseColumnFullSorted(&fin_orig, SDSET_VECFILLED(dset), 0.0, NULL, dset, SO->N_Node)) {
+            SUMA_S_Err("Failed to get full column vector");
+            SUMA_free(fwhmv); fwhmv = NULL;
+            goto CLEANUP;
+         }
+         /* no need for reworking nmask and bfull for each column...*/
+         
+      }
+      
+      fwhmv[k] = SUMA_estimate_FWHM_1dif( SO, fin_orig, nmask, nodup);
+      if (fin_orig) SUMA_free(fin_orig); fin_orig = NULL; /* just in case, this one's still alive from a GOTO */
+   } /* for k */
+
+   CLEANUP:
+   
+   if (fin_orig) SUMA_free(fin_orig); fin_orig = NULL; /* just in case, this one's still alive from a GOTO */
+   if (bfull) SUMA_free(bfull); bfull=NULL; 
+   SUMA_RETURN(fwhmv);
+}
+#define OK_FWHM_DBG
+static int DbgFWHM_1_dif=0;
+void SUMA_SetDbgFWHM(int i) { DbgFWHM_1_dif=i; return; }
+int SUMA_GetDbgFWHM(void) { return(DbgFWHM_1_dif); }
+/*!
    Estimate the FWHM on a surface. 
    FWHM based on implementation in mri_estimate_FWHM_1dif (Forman et. al 1995)
    SO (SUMA_SurfaceObject *) La surface
@@ -4497,15 +4637,32 @@ float SUMA_estimate_FWHM_1dif( SUMA_SurfaceObject *SO, float *fim , byte *nmask,
    int count, counts, oke, iseg, k, in, ink;
    float ss=-1.0f ;
    byte *visited = NULL;
+   FILE *fdbg=NULL;
+   SUMA_Boolean LocalHead=YUP;
    
    SUMA_ENTRY;
-   
+   #ifdef OK_FWHM_DBG
+      if (SUMA_GetDbgFWHM()) {
+         SUMA_S_Warn("Function in debug mode. File of same name created!\n");
+         fdbg = fopen(FuncName,"w");
+         fprintf(fdbg,"#--------------------\n#n1   n2  SegLen   dfds\n");
+      }
+   #endif
    if (!fim || !SO) {
       SUMA_S_Errv("NULL input fim=%p, SO=%p\n", fim, SO);
       SUMA_RETURN(ss);
    }
-   if (!SO->FN || !SO->EL) {
-      SUMA_S_Errv("J'ai besoin des voisins(%p) et des cotes (%p), cherie\n", SO->FN, SO->EL);
+   
+   if (!SO->FN || !SO->EL || !SO->MF || !SO->PolyArea) {
+      if (!SUMA_SurfaceMetrics_eng(SO, "EdgeList|MemberFace|PolyArea", NULL, 0, SUMAg_CF->DsetList)){
+         SUMA_SL_Err("Failed to create needed accessories");
+         SUMA_RETURN(ss);
+      }
+   }
+
+   if (!SO->FN || !SO->EL || !SO->MF || !SO->PolyArea) {
+      SUMA_S_Errv("J'ai besoin des voisins(%p) et des cotes (%p), cherie\nEt en plus, MF(%p) and PolyArea(%p)", 
+            SO->FN, SO->EL, SO->MF, SO->PolyArea);
       SUMA_RETURN(ss);
    }
    /*----- estimate the variance of the data -----*/
@@ -4517,7 +4674,7 @@ float SUMA_estimate_FWHM_1dif( SUMA_SurfaceObject *SO, float *fim , byte *nmask,
    if( count < 9 || fsq <= 0.0 ){     /* no data? */
       SUMA_RETURN(ss) ;
    }
-
+   
    var = (fsq - (fsum * fsum)/count) / (count-1.0);
    if( var <= 0.0 ){                  /* crappy data? */
       SUMA_RETURN(ss);
@@ -4558,6 +4715,11 @@ float SUMA_estimate_FWHM_1dif( SUMA_SurfaceObject *SO, float *fim , byte *nmask,
                   ds += SO->EL->Le[iseg];
                   dfds = (fim[ink] - arg) ;
                   dfdssum += dfds; dfdssq += dfds*dfds; 
+                  #ifdef OK_FWHM_DBG
+                     if (SUMA_GetDbgFWHM()) {
+                        fprintf(fdbg,"%5d %5d   %.3f  %.3f\n", in, ink, SO->EL->Le[iseg], dfds);      
+                     }
+                  #endif
                   counts++;
                }
             }
@@ -4572,7 +4734,7 @@ float SUMA_estimate_FWHM_1dif( SUMA_SurfaceObject *SO, float *fim , byte *nmask,
 
    varss = (counts < 36) ? 0.0
                        : (dfdssq - (dfdssum * dfdssum)/counts) / (counts-1.0);
-   ds /= counts;  /* the average segment length */
+   ds /= (double)counts;  /* the average segment length */
 
    /*----- now estimate the FWHMs -----*/
 
@@ -4581,7 +4743,13 @@ float SUMA_estimate_FWHM_1dif( SUMA_SurfaceObject *SO, float *fim , byte *nmask,
    arg = 1.0 - 0.5*(varss/var);
    ss  = ( arg <= 0.0 || arg >= 1.0 ) ? -1.0f
                                        : 2.35482*sqrt( -1.0 / (4.0*log(arg)) )*ds;
-
+   
+   #ifdef OK_FWHM_DBG
+      if (SUMA_GetDbgFWHM()) {
+         fprintf(fdbg,"#counts=%d\n#var=%f\n#varss=%f\n#ds=%.3f\n#arg=%.3f\n#ss=%f\n", counts, var, varss, ds, arg, ss);
+         fclose(fdbg);
+      }
+   #endif                  
    SUMA_RETURN(ss) ;
 }
 
@@ -7770,8 +7938,187 @@ int *SUMA_NodePath_to_TriPath_Inters_OLD (SUMA_SurfaceObject *SO, SUMA_TRI_BRANC
 }   
 
 
+SUMA_Boolean SUMA_CenterOfSphere(double *p1, double *p2, double *p3, double *p4, double *c)
+{
+   static char FuncName[]={"SUMA_CenterOfSphere"};
+   double pp1[3], pp2[3], pp3[3], pp4[3];
+   THD_dmat33  mat;
+   double n1, n2, n3, d3;
+   double x2Mx1, x3Mx1, x4Mx1;
+   double y2My1, y3My1, y4My1;
+   double z2Mz1, z3Mz1, z4Mz1;
+   double spp1, spp2, spp3, spp4;
+   int i = 0;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   /* calculate doubles */
+   for (i=0; i<3; ++i) {
+      pp1[i] = p1[i]*p1[i];
+      pp2[i] = p2[i]*p2[i];
+      pp3[i] = p3[i]*p3[i];
+      pp4[i] = p4[i]*p4[i];
+   }
+   spp1 = pp1[0] + pp1[1] + pp1[2];
+   spp2 = pp2[0] + pp2[1] + pp2[2];
+   spp3 = pp3[0] + pp3[1] + pp3[2];
+   spp4 = pp4[0] + pp4[1] + pp4[2];
+   
+   /* calculate differences */
+   x2Mx1 = p2[0] - p1[0];
+   x3Mx1 = p3[0] - p1[0];
+   x4Mx1 = p4[0] - p1[0];
+   y2My1 = p2[1] - p1[1];
+   y3My1 = p3[1] - p1[1];
+   y4My1 = p4[1] - p1[1];
+   z2Mz1 = p2[2] - p1[2];
+   z3Mz1 = p3[2] - p1[2];
+   z4Mz1 = p4[2] - p1[2];
+   
+   
+   /* calculate N1 */
+   mat.mat[0][0] = spp2 - (spp1);
+   mat.mat[1][0] = spp3 - (spp1);
+   mat.mat[2][0] = spp4 - (spp1);
+   mat.mat[0][1] = y2My1;
+   mat.mat[1][1] = y3My1;
+   mat.mat[2][1] = y4My1;
+   mat.mat[0][2] = z2Mz1;
+   mat.mat[1][2] = z3Mz1;
+   mat.mat[2][2] = z4Mz1;
+   n1 = MAT_DET(mat);
+   SUMA_LHv("n1=%f\n", n1);
+   
+   /* calculate N2 */
+   mat.mat[0][0] = x2Mx1;
+   mat.mat[1][0] = x3Mx1;
+   mat.mat[2][0] = x4Mx1;
+   mat.mat[0][1] = spp2 - (spp1);
+   mat.mat[1][1] = spp3 - (spp1);
+   mat.mat[2][1] = spp4 - (spp1);
+   mat.mat[0][2] = z2Mz1;
+   mat.mat[1][2] = z3Mz1;
+   mat.mat[2][2] = z4Mz1;
+   n2 = MAT_DET(mat);
+   SUMA_LHv("n2=%f\n", n2);
+   
+   /* calculate N3 */
+   mat.mat[0][0] = x2Mx1;
+   mat.mat[1][0] = x3Mx1;
+   mat.mat[2][0] = x4Mx1;
+   mat.mat[0][1] = y2My1;
+   mat.mat[1][1] = y3My1;
+   mat.mat[2][1] = y4My1;
+   mat.mat[0][2] = spp2 - (spp1);
+   mat.mat[1][2] = spp3 - (spp1);
+   mat.mat[2][2] = spp4 - (spp1);
+   n3 = MAT_DET(mat);
+   SUMA_LHv("n3=%f\n", n3);
+   
+   /* calculate D3 */
+   mat.mat[0][0] = x2Mx1;
+   mat.mat[1][0] = x3Mx1;
+   mat.mat[2][0] = x4Mx1;
+   mat.mat[0][1] = y2My1;
+   mat.mat[1][1] = y3My1;
+   mat.mat[2][1] = y4My1;
+   mat.mat[0][2] = z2Mz1;
+   mat.mat[1][2] = z3Mz1;
+   mat.mat[2][2] = z4Mz1;
+   d3 = MAT_DET(mat);
+   SUMA_LHv("d3=%f\n", d3);
+   
+   if (d3) {
+      /* Center */
+      c[0] = n1/(2.0*d3);
+      c[1] = n2/(2.0*d3);
+      c[2] = n3/(2.0*d3);
+      SUMA_LHv("c=[%f, %f, %f]\n", c[0], c[1], c[2]);
 
+      SUMA_RETURN(YUP);
+   } else {
+      c[0] = 1.0; c[1] = -2.0; c[2] = 3.0;
+      SUMA_LH("0 denominator, solution impossibile\n");
+      SUMA_RETURN(NOPE);
+   }
+}
 
+extern int *z_rand_order(int bot, int top, long int seed) ;
+
+SUMA_Boolean SUMA_GetCenterOfSphereSurface(SUMA_SurfaceObject *SO, int Nquads, double *cs, double *cm)
+{
+   static char FuncName[]={"SUMA_GetCenterOfSphereSurface"};
+   double  p1[3], p2[3], p3[3], p4[3], c[3];
+   double *cx=NULL, *cy=NULL, *cz=NULL;
+   int ii, nn[4], jj, Ns, nmax;
+   int *ir = NULL, cnt;
+   SUMA_Boolean LocalHead=NOPE;
+
+   SUMA_ENTRY;
+
+   c[0] = -11111.0; c[1] = -22222.0; c[2] = -33333.0;
+   cs[0] = cs[1] = cs[2] = 0.0;
+   if (!(ir = z_rand_order(0, SO->N_Node-1, 111111311))) {
+      SUMA_S_Err("Failed to get randomized list");
+      SUMA_RETURN(NOPE);
+   } else {
+      /* minimum number of distinct quads */
+      nmax = (SO->N_Node-1)/4;
+      if (Nquads < 1) Ns = SUMA_MIN_PAIR(100, nmax);
+      else Ns = SUMA_MIN_PAIR(Nquads, nmax);
+      cx = (double*)SUMA_malloc(sizeof(double)*Ns);
+      cy = (double*)SUMA_malloc(sizeof(double)*Ns);
+      cz = (double*)SUMA_malloc(sizeof(double)*Ns);
+      cs[0] = cs[1] = cs[2] = 0.0;
+      cnt = 0;
+      for (jj=0; jj<Ns; ++jj) {
+         nn[0] = ir[4*jj+0]; 
+         nn[1] = ir[4*jj+1]; 
+         nn[2] = ir[4*jj+2]; 
+         nn[3] = ir[4*jj+3];
+         for (ii=0; ii<3; ++ii) {
+            p1[ii] = (double)SO->NodeList[3*nn[0]+ii];
+            p2[ii] = (double)SO->NodeList[3*nn[1]+ii];
+            p3[ii] = (double)SO->NodeList[3*nn[2]+ii];
+            p4[ii] = (double)SO->NodeList[3*nn[3]+ii];
+         }
+         /* Find a nice center */
+         if (SUMA_CenterOfSphere( p1, p2, p3, p4, c )) {
+            SUMA_LHv(  "Center estimate %d:\n"
+                           "  [%f   %f   %f]\n", jj, c[0], c[1], c[2]);
+            for (ii=0; ii<3;++ii) {
+               cs[ii] += c[ii];
+            }
+            cx[cnt] = c[0];
+            cy[cnt] = c[1];
+            cz[cnt] = c[2];
+            ++cnt;
+         }
+      }
+      Ns = cnt;
+      for (ii=0; ii<3;++ii) {
+         cs[ii] /= (double)Ns;
+      }
+      /* sort coords */
+      qsort(cx, Ns, sizeof(double), (int(*) (const void *, const void *)) SUMA_compare_double);
+      qsort(cy, Ns, sizeof(double), (int(*) (const void *, const void *)) SUMA_compare_double);
+      qsort(cz, Ns, sizeof(double), (int(*) (const void *, const void *)) SUMA_compare_double);
+      cm[0] = cx[Ns/2];
+      cm[1] = cy[Ns/2];
+      cm[2] = cz[Ns/2];
+      SUMA_LHv(  "Average of %d center estimates:\n"
+                 "  [%f   %f   %f]\n"
+                 "Median of %d center estimates:\n"
+                 "  [%f   %f   %f]\n"
+                     , Ns, cs[0], cs[1], cs[2],
+                       Ns, cm[0], cm[1], cm[2]); 
+      SUMA_free(cx); SUMA_free(cy); SUMA_free(cz); cx = cy = cz = NULL;
+      if (ir) SUMA_free(ir); ir = NULL;
+   }
+   SUMA_RETURN(YUP);
+}
+   
 
 
 #if 0

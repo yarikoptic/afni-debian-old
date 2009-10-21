@@ -5,7 +5,7 @@
 ******************************************************************************/
 
 /**********************************************************************/
-/* GPL/NIH AFNI:                                                      */
+/* MCW/GPL/NIH AFNI:                                                  */
 /*    Analysis of Functional NeuroImages                              */
 /*                                                                    */
 /* Author: Robert W. Cox, PhD                                         */
@@ -105,7 +105,10 @@ static Boolean        MAIN_workprocess( XtPointer ) ;
 /*----- Stuff saved from the '-com' command line arguments [29 Jul 2005] -----*/
 
 static int   COM_num = 0 ;
-static char *COM_com[1024] ;  /* only 1024 commands allowed!!! */
+static char *COM_com[1024] ;  /* max of 1024 commands allowed!!! */
+static char comsep = ';' ;    /* command separator: 22 Feb 2007 */
+
+static int   recursed_ondot = 0 ;  /* 18 Feb 2007 */
 
 /********************************************************************
    Print out some help information and then quit quit quit
@@ -210,6 +213,14 @@ void AFNI_syntax(void)
      "                  the order they are given on the command line.\n"
      "            N.B.: Most commands to AFNI contain spaces, so the 'ccc'\n"
      "                  command strings will need to be enclosed in quotes.\n"
+     "   -comsep 'c'  Use character 'c' as a separator for commands.\n"
+     "                  In this way, you can put multiple commands in\n"
+     "                  a single '-com' option.  Default separator is ';'.\n"
+     "            N.B.: The command separator CANNOT be alphabetic or\n"
+     "                  numeric (a..z, A..Z, 0..9) or whitespace or a quote!\n"
+     "            N.B.: -comsep should come BEFORE any -com option that\n"
+     "                  uses a non-semicolon separator!\n"
+     "   Example: -com 'OPEN_WINDOW axialimage; SAVE_JPEG axialimage zork; QUIT'\n"
      "\n"
      " * If no session_directories are given, then the program will use\n"
      "    the current working directory (i.e., './').\n"
@@ -591,15 +602,44 @@ ENTRY("AFNI_parse_args") ;
          narg++ ; continue ;  /* go to next arg */
       }
 
+      /*---- -comsep c [22 Feb 2007] ----*/
+
+      if( strcmp(argv[narg],"-comsep") == 0 ){
+        char cc ;
+        if( ++narg >= argc ) FatalError("need an argument after -comsep") ;
+        cc = argv[narg][0] ;
+        if( cc=='\0' || isalnum(cc) || isspace(cc) || cc=='\'' || cc=='\"' )
+          ERROR_message("Illegal character after -comsep") ;
+        else
+          comsep = cc ;
+
+        narg++ ; continue ;
+      }
+
       /*---- -com ccc [29 Jul 2005] ----*/
 
       if( strcmp(argv[narg],"-com") == 0 ){
-        int ll ;
+        int ii , ll ; char *cm , *cs , *cq ;
         if( ++narg >= argc ) FatalError("need an argument after -com!");
-        ll = strlen(argv[narg]) ;
-             if( ll > 255 ) ERROR_message("argument after -com is too long!" );
-        else if( ll <   3 ) ERROR_message("argument after -com is too short!");
-        else                COM_com[ COM_num++ ] = argv[narg] ;
+        cm = argv[narg] ; ll = strlen(cm) ; cs = strchr(cm,comsep) ;
+             if( ll > 255   ) ERROR_message("argument after -com is too long" );
+        else if( ll <   3   ) ERROR_message("argument after -com is too short");
+        else if( cs == NULL ) COM_com[ COM_num++ ] = strdup(argv[narg]) ;
+        else {  /* 22 Feb 2007: break into sub-commands */
+          cq = cm = strdup(argv[narg]) ;
+          for( ii=ll-1 ; isspace(cm[ii]) ; ii-- ) cm[ii] = '\0' ; /* trim end */
+          cs = strchr(cm,comsep) ;
+          while(1){
+            *cs = '\0' ;  /* NUL terminate command at separator */
+            for( ; *cm != '\0' && isspace(*cm) ; cm++ ) ; /* trim front */
+            ll = strlen(cm) ;
+            if( ll > 2 && ll <= 255 ) COM_com[ COM_num++ ] = strdup(cm) ;
+            cm = cs+1 ; if( *cm == '\0' ) break ;  /* reached the end */
+            cs = strchr(cm,comsep) ;               /* search for next sep */
+            if( cs == NULL ) cs = cm + strlen(cm) ;
+          }
+          free(cq) ;
+        }
 
         narg++ ; continue ;  /* go to next arg */
       }
@@ -622,7 +662,7 @@ ENTRY("AFNI_parse_args") ;
          val = strtod( argv[++narg] , NULL ) ;
          if( val >= 1024 && val <= 65535 ) GLOBAL_argopt.port_niml = (int)val ;
          else fprintf(stderr,
-                "\n*** WARNING: -np %s is illegal!\n", argv[narg]);
+                "\n** WARNING: -np %s is illegal!\n", argv[narg]);
          narg++ ; continue ;  /* go to next arg */
       }
 
@@ -655,7 +695,7 @@ ENTRY("AFNI_parse_args") ;
       /*----- -destruct option -----*/
 
       if( strncmp(argv[narg],"-destruct",6) == 0 ){   /** has no effect at present **/
-         fprintf(stderr,"\n*** -destruct option not implemented at present! ***\n") ;
+         fprintf(stderr,"\n** -destruct option not implemented at present! **\n") ;
          GLOBAL_argopt.destruct = False ;
          narg++ ; continue ;  /* go to next arg */
       }
@@ -802,7 +842,7 @@ ENTRY("AFNI_parse_args") ;
          val = strtod( argv[++narg] , NULL ) ;
          if( val >= 0 ) GLOBAL_argopt.ignore = (int) val ;
          else fprintf(stderr,
-                "\n*** WARNING: -ignore value %s illegal\n", argv[narg]);
+                "\n** WARNING: -ignore value %s illegal\n", argv[narg]);
 
          narg++ ; continue ;  /* go to next arg */
       }
@@ -816,7 +856,7 @@ ENTRY("AFNI_parse_args") ;
          val = strtod( argv[++narg] , NULL ) ;
          if( val >= 1 ) GLOBAL_argopt.ignore = (int) (val-1.0) ;
          else fprintf(stderr,
-                "\n*** WARNING: -ignore value %s illegal\n", argv[narg]);
+                "\n** WARNING: -ignore value %s illegal\n", argv[narg]);
 
          narg++ ; continue ;  /* go to next arg */
       }
@@ -831,7 +871,7 @@ ENTRY("AFNI_parse_args") ;
          val = strtod( argv[++narg] , NULL ) ;
          if( val > 0 ) GLOBAL_argopt.dy = val ;
          else fprintf(stderr,
-                "\n*** WARNING: -dy value %s illegal\n", argv[narg]);
+                "\n** WARNING: -dy value %s illegal\n", argv[narg]);
 
          narg++ ; continue ;  /* go to next arg */
       }
@@ -845,7 +885,7 @@ ENTRY("AFNI_parse_args") ;
          val = strtod( argv[++narg] , NULL ) ;
          if( val > 0 ) GLOBAL_argopt.dz = val ;
          else fprintf(stderr,
-                "\n*** WARNING: -dz value %s illegal\n", argv[narg]);
+                "\n** WARNING: -dz value %s illegal\n", argv[narg]);
 
          narg++ ; continue ;  /* go to next arg */
       }
@@ -859,7 +899,7 @@ ENTRY("AFNI_parse_args") ;
          val = strtod( argv[++narg] , NULL ) ;
          if( val > 0 ) GLOBAL_argopt.gamma = val ;
          else fprintf(stderr,
-                "\n*** WARNING: -gamma value %s illegal\n", argv[narg]);
+                "\n** WARNING: -gamma value %s illegal\n", argv[narg]);
 
          narg++ ; continue ;  /* go to next arg */
       }
@@ -874,7 +914,7 @@ ENTRY("AFNI_parse_args") ;
          val = strtod( argv[++narg] , NULL ) ;
          if( val != 0 ) GLOBAL_argopt.gsfac = val ;
          else fprintf(stderr,
-                "\n*** WARNING: -gsfac value %s illegal\n", argv[narg]);
+                "\n** WARNING: -gsfac value %s illegal\n", argv[narg]);
 
          narg++ ; continue ;  /* go to next arg */
       }
@@ -911,7 +951,7 @@ ENTRY("AFNI_parse_args") ;
          val = strtod( argv[++narg] , NULL ) ;
          if( val > 2 ) GLOBAL_argopt.ncolor = val ;
          else fprintf(stderr,
-                "\n*** WARNING: -ncolor value %s illegal\n", argv[narg]);
+                "\n** WARNING: -ncolor value %s illegal\n", argv[narg]);
 
          narg++ ; continue ;  /* go to next arg */
       }
@@ -982,8 +1022,8 @@ ENTRY("AFNI_parse_args") ;
 
       /*----- if we get here, bad news for America! -----*/
 
-      fprintf(stderr,"\n*** Unknown option %s ***",argv[narg]) ;
-      fprintf(stderr,"\n*** Try 'afni -help' for a list of command line options.\n") ;
+      fprintf(stderr,"\n** Unknown option %s ***",argv[narg]) ;
+      fprintf(stderr,"\n** Try 'afni -help' for a list of command line options.\n") ;
       exit(1) ;
 
    } /* end of loop over argv's starting with '-' */
@@ -1075,7 +1115,20 @@ static char *FALLback[] =
       "AFNI*help*fontList:         9x15bold=charset1"    ,
       "AFNI*cluefont:              9x15bold"             ,
       "AFNI*help*cancelWaitPeriod: 333"                  ,
+      "AFNI*XmList.translations: #augment"                /* 24 Feb 2007 */
+           "<Btn4Down>: ListPrevItem()\\n"
+           "<Btn5Down>: ListNextItem()"                  ,
+      "AFNI*XmText.translations: #augment"
+           "<Btn4Down>: previous-line() scroll-one-line-down()\\n"
+           "<Btn5Down>: next-line() scroll-one-line-up()"          ,
+      "AFNI*XmScrollBar.translations: #augment"
+           "<Btn4Down>: IncrementUpOrLeft(0) IncrementUpOrLeft(1)\\n"
+           "<Btn5Down>: IncrementDownOrRight(1) IncrementDownOrRight(0)" ,
+
    NULL } ;
+
+/* The trick to using multiple Xt translations in the fallback resources
+   above is to separate them not with '\n' but with '\\n'.  Ugghhhhhhh.  */
 
 /*-----------------------------------------------------------------------*/
 
@@ -1098,7 +1151,7 @@ void AFNI_sigfunc(int sig)   /** signal handler for fatal errors **/
    fprintf(stderr,"\nFatal Signal %d (%s) received\n",sig,sname); fflush(stderr);
    TRACEBACK ;
    fprintf(stderr,"** AFNI version = " VERSION "  Compile date = " __DATE__ "\n" );
-   fprintf(stderr,"** Program Abort ***\n") ; fflush(stderr) ;
+   fprintf(stderr,"** Program Abort **\n") ; fflush(stderr) ;
    exit(1) ;
 }
 #endif
@@ -1296,12 +1349,13 @@ int main( int argc , char * argv[] )
                                    &argc , argv , FALLback , NULL ) ;
 
    if( MAIN_shell == NULL ){
-     fprintf(stderr,"\n*** Cannot initialize X11 ***\n") ; exit(1) ;
+     fprintf(stderr,"\n** Cannot initialize X11 **\n") ; exit(1) ;
    }
    if( DBG_trace == 2 ){                           /* 01 Dec 1999 */
      XSynchronize(XtDisplay(MAIN_shell),TRUE) ;
      STATUS("XSynchronize is enabled") ;
    }
+   XtVaSetValues( MAIN_shell, XmNkeyboardFocusPolicy,XmEXPLICIT , NULL ) ;
 
    MAIN_argc = argc ; MAIN_argv = argv ;  /* what's left after XtVaAppInit */
 
@@ -1731,7 +1785,7 @@ STATUS("call 15") ;
 
 void FatalError(char * str)
 {
-   fprintf(stderr,"\n**** Fatal Error ****\n %s\n",str) ;
+   fprintf(stderr,"\n** Fatal Error **\n %s\n",str) ;
    sleep(1) ; exit(1) ;
 }
 
@@ -1876,10 +1930,14 @@ ENTRY("AFNI_startup_timeout_CB") ;
 
    if( MAIN_im3d->type == AFNI_3DDATA_VIEW && GLOBAL_argopt.yes_niml ){
      AFNI_init_niml() ;
-     XtSetSensitive(MAIN_im3d->vwid->dmode->misc_niml_pb,False) ;
+     if( MAIN_im3d->vwid->dmode->misc_niml_pb != NULL )
+       XtSetSensitive(MAIN_im3d->vwid->dmode->misc_niml_pb,False) ;
    } else if( GLOBAL_argopt.port_niml > 0 ){  /* 10 Dec 2002 */
-     fprintf(stderr,"*** WARNING: -np was given, but NIML is turned off.\n") ;
+     fprintf(stderr,"** WARNING: -np was given, but NIML is turned off.\n") ;
    }
+
+   if( AFNI_have_niml() && AFNI_have_plugouts() )  /* 02 Feb 2007 */
+     XtSetSensitive(MAIN_im3d->vwid->view->nimlpo_pb,False) ;
 
    if( !AFNI_noenv("AFNI_STARTUP_WARNINGS") ){  /* 22 Jul 2003 */
 
@@ -1913,6 +1971,15 @@ ENTRY("AFNI_startup_timeout_CB") ;
                               MCW_USER_KILL | MCW_TIMER_KILL ) ;
 #endif
    }
+
+   if( recursed_ondot ) /* 18 Feb 2007 */
+    (void) MCW_popup_message( MAIN_im3d->vwid->picture ,
+                              " \n"
+                              "++ NOTICE:                              ++\n"
+                              "++ No data was found in './' directory, ++\n"
+                              "++ so its subdirectories were searched  ++\n"
+                              "++ for dataset files.                   ++\n" ,
+                              MCW_USER_KILL | MCW_TIMER_KILL ) ;
 
    /* 21 Nov 2002: check the AFNI version */
 
@@ -1973,7 +2040,9 @@ ENTRY("AFNI_startup_timeout_CB") ;
 
    /* 29 Jul 2005: run any driver commands from the command line */
 
-   for( vv=0 ; vv < COM_num ; vv++ ) AFNI_driver( COM_com[vv] ) ;
+   for( vv=0 ; vv < COM_num ; vv++ ){
+     AFNI_driver(COM_com[vv]) ; free(COM_com[vv]) ;
+   }
 
    /* 29 Nov 2005: Message Of The Day -- did it change? */
 
@@ -2854,18 +2923,24 @@ ENTRY("AFNI_read_images") ;
 
    /*----- see if there are any images to read! -----*/
 
-   if( nf < 1 ) FatalError("*** No images on command line!? ***") ;
+   if( nf < 1 ) FatalError("** No images on command line!? **") ;
 
    /* count total number of images */
 
    nz = 0 ;
    for( lf=0 ; lf < nf ; lf++ ){
-      ii = mri_imcount( fname[lf] ) ;
-      if( ii == 0 ){
-         sprintf(str,"*** Illegal image file specifier: %s",fname[lf]) ;
-         FatalError(str) ;
-      }
-      nz += ii ;
+     if( THD_is_directory(fname[lf]) ){  /* 21 Feb 2007 */
+       fprintf(stderr,
+               "\n** Fatal Error: %s is a directory, not an image file!",
+               fname[lf]) ;
+       exit(1) ;
+     }
+     ii = mri_imcount( fname[lf] ) ;
+     if( ii == 0 ){
+       sprintf(str,"** Illegal image file specifier: %s",fname[lf]) ;
+       FatalError(str) ;
+     }
+     nz += ii ;
    }
    if( nz == 1 ) nz = 2 ;  /* special case for just one image */
 
@@ -2873,7 +2948,7 @@ ENTRY("AFNI_read_images") ;
 
    arr = mri_read_file( fname[0] ) ;
    if( arr == NULL || arr->num == 0 ){
-      sprintf(str,"*** cannot read first image file: %s",fname[0]) ;
+      sprintf(str,"** Cannot read first image file: %s",fname[0]) ;
       FatalError(str) ;
    }
 
@@ -2887,7 +2962,7 @@ ENTRY("AFNI_read_images") ;
 
    if( datum < 0 ) datum = im->kind ;
    if( ! AFNI_GOOD_DTYPE(datum) )
-      FatalError("*** Illegal datum type found ***") ;
+      FatalError("** Illegal datum type found ***") ;
 
    dsize = mri_datum_size( (MRI_TYPE) datum ) ;
    bar   = (char *) malloc( dsize * nx*ny*nz ) ;
@@ -2906,7 +2981,7 @@ ENTRY("AFNI_read_images") ;
       if( lf != 0 ){
          arr = mri_read_file( fname[lf] ) ;
          if( arr == NULL || arr->num == 0 ){
-           sprintf(str,"*** cannot read image file: %s",fname[lf]) ;
+           sprintf(str,"** Cannot read image file: %s",fname[lf]) ;
            FatalError(str) ;
          }
       }
@@ -2920,8 +2995,8 @@ ENTRY("AFNI_read_images") ;
 
          if( im->nx != nx || im->ny != ny ){
             if( ! GLOBAL_argopt.resize_images ){
-               sprintf(str, "*** image size mismatch:\n"
-                           " *** expected nx=%d ny=%d but got nx=%d ny=%d in file %s" ,
+               sprintf(str, "** Image size mismatch:\n"
+                           " ** expected nx=%d ny=%d but got nx=%d ny=%d in file %s" ,
                            nx,ny,im->nx,im->ny , fname[lf] ) ;
                FatalError(str) ;
             } else {
@@ -2938,7 +3013,7 @@ ENTRY("AFNI_read_images") ;
             shim = im ;
          } else {
             shim = mri_to_mri( datum , im ) ;
-            if( shim == NULL ) FatalError("*** Illegal convert! ***") ;
+            if( shim == NULL ) FatalError("** Illegal convert! **") ;
             mri_free( im ) ;
          }
 
@@ -3382,7 +3457,7 @@ if(PRINT_TRACING)
       case isqCR_dyplus:
       case isqCR_dyminus:{
          THD_ivec3 ib , id ;
-         XButtonEvent * xev = (XButtonEvent *) cbs->event ;
+         XButtonEvent *xev = (XButtonEvent *) cbs->event ;
          int step = 1 ;
          THD_dataxes *daxes ;
 
@@ -3428,13 +3503,48 @@ if(PRINT_TRACING)
       break ;  /* end of arrowpad arrow press */
 
       case isqCR_keypress:{
-#if 0
-         MCW_grapher * grapher = VIEWER_TO_GRAPHER(im3d,seq) ;
-         if( grapher != NULL ){
-            char buf[2] ;
-            buf[0] = cbs->key ; buf[1] = '\0' ;
-            GRA_handle_keypress( grapher , buf , cbs->event ) ;
-         }
+#if 1
+        switch( cbs->key ){  /* 05 Mar 2007 */
+
+          case 'u':{
+            int uu = im3d->vinfo->underlay_type ;
+            uu = (uu+1) % (LAST_UNDERLAY_TYPE+1) ;
+            MCW_set_bbox( im3d->vwid->func->underlay_bbox , 1<<uu ) ;
+            AFNI_underlay_CB( im3d->vwid->func->underlay_bbox->wbut[0] ,
+                              im3d , NULL ) ;
+          }
+          break ;
+
+          case 'o':{
+            int ov = MCW_val_bbox( im3d->vwid->view->see_func_bbox ) ;
+            MCW_set_bbox( im3d->vwid->view->see_func_bbox , !ov ) ;
+            AFNI_see_func_CB( NULL , im3d , NULL ) ;
+          }
+          break ;
+
+          case '{':
+          case '}':{
+            int stt=(int)THR_TOP_VALUE , dss , scl , osc ;
+            XmScaleGetValue( im3d->vwid->func->thr_scale , &scl ) ; osc = scl ;
+            dss = (stt+1)/100 ; if( cbs->key == '{' ) dss = -dss ;
+            scl += dss ;
+            if( scl <= 0 ) scl = 0 ; else if( scl >= stt ) scl = stt ;
+            if( scl != osc ){
+              XmScaleSetValue( im3d->vwid->func->thr_scale , scl ) ;
+              AFNI_thr_scale_CB( im3d->vwid->func->thr_scale, (XtPointer)im3d, NULL ) ;
+            }
+          }
+          break ;
+
+        }
+
+#else /* OLD OLD OLD */
+        MCW_grapher *grapher = VIEWER_TO_GRAPHER(im3d,seq) ;
+        if( grapher != NULL ){
+          char buf[2] ;
+          buf[0] = cbs->key ; buf[1] = '\0' ;
+          GRA_handle_keypress( grapher , buf , cbs->event ) ;
+        }
 #endif
       }
       break ; /* end of keyboard press */
@@ -3959,7 +4069,7 @@ ENTRY("AFNI_read_inputs") ;
       char str[256] ;
       Boolean good ;
       int num_ss , qd , qs , vv=0 , no_args , jj , nskip_noanat=0 ;
-      THD_string_array *flist , *dlist=NULL ;
+      THD_string_array *flist , *dlist=NULL , *elist=NULL , *qlist ;
       char *dname , *eee ;
       THD_session *new_ss ;
       int num_dsets=0 ;       /* 04 Jan 2000 */
@@ -3988,7 +4098,7 @@ ENTRY("AFNI_read_inputs") ;
                 }
               }
          } else {
-           sprintf(str,"\n*** No datasets in AFNI_GLOBAL_SESSION=%s",eee) ;
+           sprintf(str,"\n** No datasets in AFNI_GLOBAL_SESSION=%s",eee) ;
            REPORT_PROGRESS(str) ;
          }
       }
@@ -4000,8 +4110,8 @@ ENTRY("AFNI_read_inputs") ;
       dss->type   = SESSION_TYPE ;
       dss->parent = NULL ;
       BLANK_SESSION(dss) ;
-      MCW_strncpy( dss->sessname , "from CLI" , THD_MAX_NAME ) ;
-      MCW_strncpy( dss->lastname , "from CLI" , THD_MAX_NAME ) ;
+      MCW_strncpy( dss->sessname , "fromCLI" , THD_MAX_NAME ) ;
+      MCW_strncpy( dss->lastname , "fromCLI" , THD_MAX_NAME ) ;
 
       /* now get the list of strings to read as directories */
 
@@ -4022,6 +4132,7 @@ STATUS("no args: recursion on ./") ;
          } else {
 STATUS("no args: using ./") ;
            ADDTO_SARR(dlist,"./") ;
+           elist = THD_get_all_subdirs( 1 , "./" ) ;  /* 18 Feb 2007 */
          }
       } else {
          for( id=0 ; id < num_ss ; id++ ){
@@ -4044,37 +4155,39 @@ STATUS("no args: using ./") ;
 
       /** 09 Sep 1998: eliminate duplicates from the directory list **/
 
-      { THD_string_array * qlist ;
 STATUS("normalizing directory list") ;
-        qlist = THD_normalize_flist( dlist ) ;
-        if( qlist != NULL ){ DESTROY_SARR(dlist) ; dlist = qlist ; }
-      }
+      qlist = THD_normalize_flist( dlist ) ;
+      if( qlist != NULL ){ DESTROY_SARR(dlist); dlist = qlist; }
 
       REFRESH ;
 
-      /* read each session, set parents, put into session list */
+      /*----- read each session, set parents, put into session list -----*/
 
-      num_ss = dlist->num ;
+      qlist = dlist ;
+   RESTART_DIRECTORY_SCAN:   /* 18 Feb 2007 */
+      num_ss = qlist->num ;
       for( id=0 ; id < num_ss ; id++ ){
 
 if(PRINT_TRACING)
 { char str[256] ;
-  sprintf(str,"try to read directory %s",dlist->ar[id]) ; STATUS(str) ; }
+  sprintf(str,"try to read directory %s",qlist->ar[id]) ; STATUS(str) ; }
 
-         dname  = dlist->ar[id] ;                /* try to read datasets from */
+         dname  = qlist->ar[id] ;                /* try to read datasets from */
          new_ss = THD_init_session( dname ) ;    /* this directory name       */
 
          REFRESH ;
 
-         if( new_ss == NULL ){ /* 28 Aug 2003 */
+         if( new_ss == NULL && !THD_is_directory(dname) ){ /* 28 Aug 2003 */
+           STATUS("trying to read it as a dataset file") ;
            qd = dss->num_dsset ;
            if( qd < THD_MAX_SESSION_SIZE ){
              THD_3dim_dataset *dset = THD_open_dataset( dname ) ;
-             if( dset != NULL ){
+             if( ISVALID_DSET(dset) ){
+               STATUS("it IS a dataset file!") ;
                dss->dsset[qd][dset->view_type] = dset ;
                dss->num_dsset ++ ;
                AFNI_inconstancy_check(NULL,dset) ; /* 06 Sep 2006 */
-             } else {
+             } else if( qlist == dlist ){
                fprintf(stderr,
                        "\n** Couldn't open %s as session OR as dataset!" ,
                        dname ) ;
@@ -4083,60 +4196,67 @@ if(PRINT_TRACING)
          }
 
          if( new_ss != NULL && new_ss->num_dsset > 0 ){ /* got something? */
-            THD_3dim_dataset *dset ;
+           THD_3dim_dataset *dset ;
 
-            /* set parent pointers */
+           /* set parent pointers */
 
-            new_ss->parent = NULL ;
-            for( qd=0 ; qd < new_ss->num_dsset ; qd++ ){
-              for( vv=0 ; vv <= LAST_VIEW_TYPE ; vv++ ){
-                dset = new_ss->dsset[qd][vv] ;
-                if( dset != NULL ){
-                  PARENTIZE( dset , NULL ) ;
-                  AFNI_inconstancy_check(NULL,dset) ; /* 06 Sep 2006 */
-                }
-            } }
+           new_ss->parent = NULL ;
+           for( qd=0 ; qd < new_ss->num_dsset ; qd++ ){
+             for( vv=0 ; vv <= LAST_VIEW_TYPE ; vv++ ){
+               dset = new_ss->dsset[qd][vv] ;
+               if( dset != NULL ){
+                 PARENTIZE( dset , NULL ) ;
+                 AFNI_inconstancy_check(NULL,dset) ; /* 06 Sep 2006 */
+               }
+           } }
 
-            /* put the new session into place in the list of sessions */
+           /* put the new session into place in the list of sessions */
 
-            GLOBAL_library.sslist->ssar[(GLOBAL_library.sslist->num_sess)++] = new_ss ;
+           GLOBAL_library.sslist->ssar[(GLOBAL_library.sslist->num_sess)++] = new_ss ;
+           if( qlist == elist ) recursed_ondot++ ;  /* 18 Feb 2007 */
 
-            sprintf(str,"\n session #%3d  = %s ==> %d dataset%s" ,
-                    GLOBAL_library.sslist->num_sess ,
-                    new_ss->sessname , new_ss->num_dsset ,
-                    (new_ss->num_dsset > 1) ? "s" : " " ) ;
-            REPORT_PROGRESS(str) ;
+           sprintf(str,"\n session #%3d  = %s ==> %d dataset%s" ,
+                   GLOBAL_library.sslist->num_sess ,
+                   new_ss->sessname , new_ss->num_dsset ,
+                   (new_ss->num_dsset > 1) ? "s" : " " ) ;
+           REPORT_PROGRESS(str) ;
 
-            num_dsets += new_ss->num_dsset ;
+           num_dsets += new_ss->num_dsset ;
 
-            /* 28 Aug 2002: add any inter-dataset warps to global warptable */
+           /* 28 Aug 2002: add any inter-dataset warps to global warptable */
 
-            if( new_ss->warptable != NULL ){
-              if( GLOBAL_library.warptable == NULL ) /* create global warptable */
-                GLOBAL_library.warptable = new_Htable(101) ;
-              subsume_Htable( new_ss->warptable , GLOBAL_library.warptable ) ;
-              destroy_Htable( new_ss->warptable ) ;
-              new_ss->warptable = NULL ;
-            }
+           if( new_ss->warptable != NULL ){
+             if( GLOBAL_library.warptable == NULL ) /* create global warptable */
+               GLOBAL_library.warptable = new_Htable(101) ;
+             subsume_Htable( new_ss->warptable , GLOBAL_library.warptable ) ;
+             destroy_Htable( new_ss->warptable ) ;
+             new_ss->warptable = NULL ;
+           }
 
-            /* 11 May 2002: put global datasets into session now */
+           /* 11 May 2002: put global datasets into session now */
 
-            if( new_ss != NULL && gss != NULL )
-              AFNI_append_sessions( new_ss , gss ) ;
+           if( new_ss != NULL && gss != NULL )
+             AFNI_append_sessions( new_ss , gss ) ;
 
-            /* if we've maxed out on sessions AND
-               if this isn't the last command line argument ... */
+           /* if we've maxed out on sessions AND
+              if this isn't the last command line argument ... */
 
-            if( GLOBAL_library.sslist->num_sess == THD_MAX_NUM_SESSION &&
-                id < num_ss-1 ){
-               sprintf(str,"\n *** reached max no. sessions (%d) ***",
-                       THD_MAX_NUM_SESSION) ;
-               REPORT_PROGRESS(str) ;
-               break ;                            /* exit the loop over id */
-            }
+           if( GLOBAL_library.sslist->num_sess == THD_MAX_NUM_SESSION &&
+               id < num_ss-1 ){
+             sprintf(str,"\n *** reached max no. sessions (%d) ***",
+                     THD_MAX_NUM_SESSION) ;
+             REPORT_PROGRESS(str) ;
+             break ;                            /* exit the loop over id */
+           }
+         }
+         else {   /* 18 Feb 2007: do -R1 on "./" if no data found */
+           if( qlist == dlist && elist != NULL ){
+             fprintf(stderr,"\n** Searching subdirectories of './' for data") ;
+             qlist = elist; goto RESTART_DIRECTORY_SCAN;
+           }
          }
 
-      }  /* end of id loop (over input directory names) */
+      }  /*----- end of id loop (over input directory names) -----*/
 
       /* 28 Aug 2003: if have dataset in session dss, use it */
 
@@ -4180,7 +4300,7 @@ if(PRINT_TRACING)
 #define QQ_FOV  240.0
 
       if( GLOBAL_library.sslist->num_sess <= 0 ){
-         byte * bar ;  /* as opposed to a bite bar */
+         byte *bar ;  /* as opposed to a bite bar */
          int ii , nbar , jj ;
          THD_ivec3 nxyz ;
          THD_fvec3 fxyz , oxyz ;
@@ -4188,7 +4308,7 @@ if(PRINT_TRACING)
 
          if( !THD_is_directory(snam) ) snam = "./" ;
 
-         REPORT_PROGRESS("\n*** No datasets or sessions input -- Dummy dataset created.") ;
+         REPORT_PROGRESS("\n** No datasets or sessions input -- Dummy dataset created.") ;
 
          /** manufacture a minimal session **/
 
@@ -4383,7 +4503,7 @@ STATUS("reading timeseries files") ;
       /* 27 Jan 2000: allow skipping *.1D files from dataset directories */
 
       GLOBAL_library.timeseries =
-           THD_get_many_timeseries( (GLOBAL_argopt.read_1D) ? dlist : NULL ) ;
+        THD_get_many_timeseries( (GLOBAL_argopt.read_1D) ? qlist : NULL ) ;
 
       REFRESH ;
 
@@ -4397,6 +4517,7 @@ STATUS("reading timeseries files") ;
       /*** throw away the list of directories that were scanned ***/
 
       DESTROY_SARR(dlist) ;
+      if( elist != NULL ){ DESTROY_SARR(elist); }  /* 18 Feb 2007 */
 
       /* assign the warp and anatomy parent pointers;
          then, make any datasets that don't exist but logically
@@ -4438,7 +4559,7 @@ STATUS("making descendant datasets") ;
       int ii,nerr=0,vv,nn , dd ;
 
       if( nds <= 0 ){
-         fprintf(stderr,"\a\n*** No datasets on command line?!\n"); exit(1);
+         fprintf(stderr,"\a\n** No datasets on command line?!\n"); exit(1);
       }
       nds = 0 ;
 
@@ -4472,7 +4593,7 @@ STATUS("reading commandline dsets") ;
 
             dsar = THD_fetch_many_datasets( argv[ii] ) ;
             if( dsar == NULL || dsar->num == 0 ){
-              fprintf(stderr,"\a\n*** Can't read datasets from %s\n",argv[ii]) ;
+              fprintf(stderr,"\a\n** Can't read datasets from %s\n",argv[ii]) ;
               nerr++ ; continue ; /* next ii */
             }
 
@@ -4480,7 +4601,7 @@ STATUS("reading commandline dsets") ;
 
             dset = THD_open_dataset( argv[ii] ) ;
             if( dset == NULL ){
-               fprintf(stderr,"\a\n*** Can't read dataset %s\n",argv[ii]) ;
+               fprintf(stderr,"\a\n** Can't read dataset %s\n",argv[ii]) ;
                nerr++ ; continue ; /* next ii */
             }
             INIT_XTARR(dsar) ; ADDTO_XTARR(dsar,dset) ;
@@ -4511,7 +4632,7 @@ STATUS("reading commandline dsets") ;
             vv = dset->view_type ;
             nn = new_ss->num_dsset ;
             if( nn >= THD_MAX_SESSION_SIZE ){
-              fprintf(stderr,"\a\n*** too many datasets!\n") ;
+              fprintf(stderr,"\a\n** too many datasets!\n") ;
               nerr++ ;
             } else {
               new_ss->dsset[nn][vv] = dset ;
@@ -4529,7 +4650,7 @@ STATUS("reading commandline dsets") ;
 
       sprintf(str,"\n dataset count = %d" , nds ) ;
       if( new_ss->num_dsset == 0 ){
-         fprintf(stderr,"\n*** No datasets read from the list!\n") ;
+         fprintf(stderr,"\n** No datasets read from the list!\n") ;
          exit(1) ;
       }
       REPORT_PROGRESS(str) ;
@@ -4579,7 +4700,7 @@ STATUS("forcible adoption of unparented datasets") ;
 
    else {  /* should never occur! */
 
-     fprintf(stderr,"\a\n*** Illegal Usage configuration detected!\n"); exit(1);
+     fprintf(stderr,"\a\n** Illegal Usage configuration detected!\n"); exit(1);
    }
 
    /** done at last **/
@@ -4949,7 +5070,7 @@ ENTRY("AFNI_time_index_CB") ;
    AV_assign_ival( im3d->vwid->func->anat_buck_av , im3d->vinfo->anat_index ) ;
 
    if( ISVALID_DSET(im3d->fim_now)                                             &&
-      ( HAS_TIMEAXIS(im3d->fim_now) || AFNI_yesenv("AFNI_SLAVE_BUCKETS_TOO") ) && 
+      ( HAS_TIMEAXIS(im3d->fim_now) || AFNI_yesenv("AFNI_SLAVE_BUCKETS_TOO") ) &&
        !AFNI_noenv("AFNI_SLAVE_FUNCTIME") ){
 
      im3d->vinfo->fim_index = ipx ;
@@ -5666,7 +5787,7 @@ DUMP_IVEC3("             new_ib",new_ib) ;
 
       if( tlab == NULL ){
          MCW_textwin_alter( im3d->vwid->imag->pop_whereami_twin ,
-                           "\n*** Can't compute Talairach coordinates now ***\n");
+                           "\n** Can't compute Talairach coordinates now **\n");
       } else {
          MCW_textwin_alter( im3d->vwid->imag->pop_whereami_twin , tlab ) ;
          free(tlab) ;
@@ -6705,10 +6826,10 @@ ENTRY("AFNI_purge_dsets") ;
 void AFNI_initialize_view( THD_3dim_dataset *old_anat, Three_D_View *im3d )
 {
    int vvv , itog , lll , sss , aaa , fff , id ;
-   THD_3dim_dataset     * dset , * new_anat , * new_func ;
-   THD_marker_set       * markers ;
-   AFNI_viewing_widgets * view ;
-   AFNI_marks_widgets   * marks ;
+   THD_3dim_dataset     *dset , *new_anat , *new_func ;
+   THD_marker_set       *markers ;
+   AFNI_viewing_widgets *view ;
+   AFNI_marks_widgets   *marks ;
    THD_fvec3 fv ;
    THD_ivec3 iv ;
 
@@ -6754,13 +6875,13 @@ STATUS("purging old datasets from memory (maybe)") ;
    /* set the new datasets that we will deal with from now on */
 
    for( id=0 ; id <= LAST_VIEW_TYPE ; id++ ){
-      im3d->anat_dset[id] = GLOBAL_library.sslist->ssar[sss]->dsset[aaa][id] ;
-      im3d->fim_dset[id]  = GLOBAL_library.sslist->ssar[sss]->dsset[fff][id] ;
+     im3d->anat_dset[id] = GLOBAL_library.sslist->ssar[sss]->dsset[aaa][id] ;
+     im3d->fim_dset[id]  = GLOBAL_library.sslist->ssar[sss]->dsset[fff][id] ;
 
-      if( ISVALID_3DIM_DATASET(im3d->anat_dset[id]) )
-         SENSITIZE( im3d->vwid->view->view_bbox->wbut[id], True ) ;
-      else
-         SENSITIZE( im3d->vwid->view->view_bbox->wbut[id], False) ;
+     if( ISVALID_3DIM_DATASET(im3d->anat_dset[id]) )
+       SENSITIZE( im3d->vwid->view->view_bbox->wbut[id], True ) ;
+     else
+       SENSITIZE( im3d->vwid->view->view_bbox->wbut[id], False) ;
    }
 
    im3d->anat_now = im3d->anat_dset[vvv] ;
@@ -7946,8 +8067,10 @@ ENTRY("AFNI_crosshair_EV") ;
          XtManageChild ( im3d->vwid->imag->crosshair_menu ) ;        /* popup */
        }
 
-       else {
-         (void) MCW_popup_message( im3d->vwid->imag->crosshair_label ,
+       else if( event->button == Button1 ) {
+         static int nn=0 ;
+         if( nn < 9 )
+          (void) MCW_popup_message( im3d->vwid->imag->crosshair_label ,
                                    " The road goes ever on and on\n"
                                    " Out from the door from where it began.\n"
                                    " Now, far ahead the road has gone\n"
@@ -7957,6 +8080,7 @@ ENTRY("AFNI_crosshair_EV") ;
                                    " Where many paths and errands meet\n"
                                    " And whither then I cannot say." ,
                                 MCW_USER_KILL | MCW_TIMER_KILL ) ;
+         nn++ ;
        }
      }
      break ;
@@ -8146,10 +8270,11 @@ ENTRY("AFNI_imag_pop_CB") ;
          TTO_labeled = 1 ;
       }
       if( ISQ_REALZ(seq) ){
-         MCW_choose_strlist( seq->wbar ,
-                             "Brain Structure (from San Antonio Talairach Daemon)" ,
-                             TTO_COUNT , TTO_current , TTO_labels ,
-                             AFNI_talto_CB , (XtPointer) im3d ) ;
+        if( AFNI_yesenv("AFNI_DATASET_BROWSE") ) MCW_set_browse_select(1) ;
+        MCW_choose_strlist( seq->wbar ,
+                          "Brain Structure (from San Antonio Talairach Daemon)" ,
+                          TTO_COUNT , TTO_current , TTO_labels ,
+                          AFNI_talto_CB , (XtPointer) im3d ) ;
       }
    }
 
@@ -9945,7 +10070,7 @@ void AFNI_load_defaults( Widget w )
 ENTRY("AFNI_load_defaults") ;
 
    if( w == NULL ){
-      fprintf(stderr,"\n*** AFNI_load_defaults: NULL input widget ***\n") ;
+      fprintf(stderr,"\n** AFNI_load_defaults: NULL input widget **\n") ;
       EXRETURN ;
    }
 

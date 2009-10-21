@@ -21,8 +21,8 @@ void usage_path_optimize (SUMA_GENERIC_ARGV_PARSE *ps)
       sio  = SUMA_help_IO_Args(ps);
       printf ( "\n"
                "usage:\n"
-               "  path_optimize [-ctrl CTRL_FILE] [-dom_dim DOM_DIM] [-dim DIM] [-N_sub N_SUB] [-N_step N_STEP]   \n"
-               "             [-renew_weights] [-adjust] [-dot] [-neighb_adjust] [-neighb_check] [-sigma SIGMA] \n"
+               "  path_optimize [-ctrl CTRL_FILE] [-dom_dim DOM_DIM] [-dim DIM] [-N_sub N_SUB] [-N_step N_STEP]\n"
+               "             [-renew_weights] [-adjust] [-dot] [-neighb_adjust] [-neighb_check]                \n"
                "             [-talk_pause] [-debug DEBUG] [-ouput OUTPUT] [-M_time M_TIME]                     \n"
                "                                                                                               \n"
                "  -ctrl CTRLFILE:   Control nodes 1D file.                                                     \n"
@@ -38,14 +38,15 @@ void usage_path_optimize (SUMA_GENERIC_ARGV_PARSE *ps)
                "                    Default does not renew the weights.                                        \n"
                "  -adjust:          Choose to scale displacement.                                              \n"
                "                    Default is no adjustment.                                                  \n"  
+               "  -sin_kern         Choose to use the expansion factor that includes the sine term.            \n"
+               "                    Default is without the sine component of the kernel,  but the default      \n"
+               "                       doesn't work. This option is manditory for successful deformations.     \n"
                "  -dot:             Choose to use a dot product requirment when calculated the weights         \n"
                "                    to ensure tangency.                                                        \n"
                "  -neighb_check:    Will check at each iteration if the distance to each node's nearest        \n"
                "                    neighbor is smaller than the proposed step size.  Will print results       \n"
                "                    to file, but will not make any step size adjustment.                       \n"
                "  -neighb_adjust:   Checks neighbor distances and adjusts step size accordingly.               \n"
-               "  -sigma SIGMA:     Include sigma constant when calculating weights. Set value of sigma.       \n"
-               "                    Default does not use sigma.                                                \n"
                "  -talk_pause:      For use with SUMA and -talk_suma option.  Will pause program after         \n"
                "                    intial conditions are setting, allowing user to adjust viewing window      \n"
                "                    before completing the rest of the iterations.                              \n"
@@ -102,12 +103,11 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_path_optimize_ParseInput(char *argv[], in
    popt->neighb_adjust = 0;
    popt->neighb_check = 0;
    popt->pause = 0;
-   popt->sigma = 0.0;
    popt->M_time_steps = 10;
    popt->sin_kern = 0;
-   popt->Zero = 0.0000000001;     /* Need global variable for zero. */
+   popt->Zero = 0.0000000000001;     /* Need global variable for zero. */
    popt->read_path[0] = '\0';
-   
+   popt->SO = NULL;
    popt->ControlCurve = NULL;
    popt->X_Lamda = NULL;
    popt->Lda = -1.0;
@@ -153,25 +153,12 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_path_optimize_ParseInput(char *argv[], in
          popt->dt = (double)atof(argv[kar]);               
          brk = 1;
       }
-      
-      if (!brk && (strcmp(argv[kar], "-sigma") == 0)) {
-         kar ++;
-         if (kar >= argc)  
-         {
-            fprintf (stderr, "need argument after -sigma \n");
-            exit (1);
-         }
-         popt->sigma = (double)atof(argv[kar]);               
-         brk = 1;
-      }
-      
       if (!brk && (strcmp(argv[kar], "-sin_kern") == 0))
       {
          popt->sin_kern = 1; 
          brk = 1;
       }
-      
-      
+            
       if (!brk && (strcmp(argv[kar], "-dom_dim") == 0)) {
          kar ++;
          if (kar >= argc)  
@@ -416,10 +403,9 @@ SUMA_SegmentDO *SUMA_ControlCurve2SDO(SUMA_MX_VEC *ControlCurve, char *Label)
    colv = (float *) SUMA_malloc(sizeof(float)*N_n*4);
    thickv = (float *) SUMA_malloc(sizeof(float)*N_n);
 
-   
    kcc = 0;
    for(i=0; i<ControlCurve->dims[1]; ++i) {
-      SUMA_a_good_col("roi256", i, acol);/* get a decent colormap */
+      SUMA_a_good_col("roi256", i+2, acol);/* get a decent colormap */  /* Add 2 to the color map index to avoid getting purple. */
       for (m=0; m<ControlCurve->dims[2]; ++m) {
          if(m<ControlCurve->dims[2]-1) {
             dp = mxvdp3(ControlCurve, 0, i, m);
@@ -464,9 +450,11 @@ int SUMA_Optimize_Path(MyCircleOpt *opt, SUMA_GENERIC_ARGV_PARSE *ps)
    int N_dims, dims[10], M_N_dims, M_dims[10], Perturb_N_dims, Perturb_dims[12], S_N_dims, S_dims[20], XL_N_dims, XL_dims[10]; 
    double *dp = NULL, *dp_new = NULL;
    int i, m, p, k;
-   char stmp[600], outfile_PlotPathSeg[50], outfile_PathConnected[50];
+   char stmp[600], outfile_PlotPathSeg[50], outfile_PathConnected[50], outfile_TempCC[50];
+   char outfile_Condition[50], outfile_Condition_Only[50];
    FILE *PathConnected = NULL;
    FILE *PlotPathSeg = NULL;
+   FILE *TempCC = NULL;  /* Store most recent control curve locations for debugging purposes. */
    SUMA_MX_VEC *Del_S = NULL, *mo = NULL;
    SUMA_MX_VEC *MaxStep = NULL;
    SUMA_Boolean LocalHead = NOPE;
@@ -476,6 +464,17 @@ int SUMA_Optimize_Path(MyCircleOpt *opt, SUMA_GENERIC_ARGV_PARSE *ps)
    if (opt->dbg_flag > 2) LocalHead = YUP;
      
    opt->iter_count = -1;
+   
+   /* Set up file for storing condition numbers, matrices, and eigen values. */
+   FILE *condition_num = NULL;
+   sprintf(outfile_Condition, "Kern_ConditionEigen.1D");
+   condition_num = fopen (outfile_Condition, "w"); 
+   
+    /* Set up file for storing condition numbers. */
+   FILE *condition_num_only = NULL;
+   sprintf(outfile_Condition_Only, "Kern_Condition_Num.1D");
+   condition_num_only = fopen (outfile_Condition_Only, "w"); 
+   
    
    N_dims = 3;
    dims[0] = 3;
@@ -515,8 +514,10 @@ int SUMA_Optimize_Path(MyCircleOpt *opt, SUMA_GENERIC_ARGV_PARSE *ps)
    XL_dims[1] = opt->N_ctrl_points;
    XL_dims[2] = (opt->M_time_steps+1);
    opt->X_Lamda = SUMA_NewMxVec( SUMA_double, XL_N_dims, XL_dims, 1 );
-
-   /* Find the initial control curve.  Calculated uing desired arc of travel and number of steps taken. */
+   
+   TempCC = fopen ("SUMA_TempControlCurve.1D.dset", "w"); 
+   
+   /* Find the initial control curve.  Calculated using desired arc of travel and number of steps taken. */
    Set_up_Control_Curve(opt, opt->ControlCurve);
    
    SUMA_etime2(FuncName, NULL, NULL);
@@ -534,7 +535,6 @@ int SUMA_Optimize_Path(MyCircleOpt *opt, SUMA_GENERIC_ARGV_PARSE *ps)
             fprintf(SUMA_STDERR, "\n");
          }
       }
-
    
       /* Store path as a sphere or segment file to be viewed in SUMA. */
       /* See snip2.c */
@@ -548,7 +548,6 @@ int SUMA_Optimize_Path(MyCircleOpt *opt, SUMA_GENERIC_ARGV_PARSE *ps)
          sprintf(stmp, "Done with Perturbations");
          SUMA_etime2(FuncName, stmp, "Pre-Change_in_Energy");
       }
-
       
       if (opt->dbg_flag > 2) {
          fprintf(SUMA_STDERR, "Max Allowable Movement:\n");
@@ -568,7 +567,7 @@ int SUMA_Optimize_Path(MyCircleOpt *opt, SUMA_GENERIC_ARGV_PARSE *ps)
          }
       }
 
-      Change_in_Energy(opt, opt->ControlCurve, Perturb_Vec, Del_S);
+      Change_in_Energy(opt, opt->ControlCurve, Perturb_Vec, Del_S, condition_num, condition_num_only);
       if (opt->dbg_flag) {
          sprintf(stmp, "Done with Change in Energy");
          SUMA_etime2(FuncName, stmp, "Pre-Find_Lamda");
@@ -590,7 +589,6 @@ int SUMA_Optimize_Path(MyCircleOpt *opt, SUMA_GENERIC_ARGV_PARSE *ps)
          SUMA_ShowMxVec(opt->X_Lamda, -1, NULL, "\nX_Lamda\n"); 
       }
       
-
       /* Add new path to sphere or segment file to be viewed in SUMA. */
       /* see snip3.c */
       if(LocalHead){
@@ -631,7 +629,7 @@ int SUMA_Optimize_Path(MyCircleOpt *opt, SUMA_GENERIC_ARGV_PARSE *ps)
          /* change that thing to NIML */
          ngr = SUMA_SDO2niSDO(sdo);
          #if 0
-         /* write it to diks, for kicks */
+         /* write it to disk, for kicks */
          sprintf(stmp, "file:CC_%d.niml.SDO", opt->iter_count);
          NEL_WRITE_TX(ngr, stmp, suc);
          #endif
@@ -690,13 +688,21 @@ int SUMA_Optimize_Path(MyCircleOpt *opt, SUMA_GENERIC_ARGV_PARSE *ps)
       /* Now repeat optimization.  Keep repeating until path no longer changes.  Stop when best opt->Lda is 0. */
       SUMA_S_Warn("Warning Warning Will Robinson");
       if (opt->Lda>0.0) {    /* When opt->Lda=0, no longer adjusting path.  Then want Control Curve to stay the same. */
+         fprintf(TempCC, "Number of times through optimization process = %d\n", opt->iter_count);
          for(i=0; i<opt->N_ctrl_points; ++i) {
+            fprintf(TempCC, "\n i = %d\n", i);
             for (m=0; m<opt->M_time_steps+1; ++m) {
                dp = mxvdp3(opt->ControlCurve, 0, i, m);
 
                dp[0] = mxvd3(opt->X_Lamda, 0, i, m);
                dp[1] = mxvd3(opt->X_Lamda, 1, i, m);
                dp[2] = mxvd3(opt->X_Lamda, 2, i, m);
+               
+               /* Store newest control curve locations.  This is for debugging only! */
+               fprintf(TempCC, "%f; \n", dp[0]);
+               fprintf(TempCC, "%f; \n", dp[1]);
+               fprintf(TempCC, "%f; \n", dp[2]);
+               
                dp = NULL;
             }
          }
@@ -709,6 +715,8 @@ int SUMA_Optimize_Path(MyCircleOpt *opt, SUMA_GENERIC_ARGV_PARSE *ps)
 
       ++opt->iter_count;
    } while ( opt->Lda > 0.0);
+   
+   fclose(TempCC); TempCC = NULL;
    
    /* Done, write out output */
    
@@ -781,6 +789,8 @@ int SUMA_Optimize_Path(MyCircleOpt *opt, SUMA_GENERIC_ARGV_PARSE *ps)
    }
    
    /* cleanup */
+   fclose(condition_num); condition_num = NULL;
+   fclose(condition_num_only); condition_num_only = NULL;
    mo = SUMA_FreeMxVec( mo );
    MaxStep = SUMA_FreeMxVec( MaxStep );
    Perturb_Vec = SUMA_FreeMxVec( Perturb_Vec );
@@ -805,7 +815,7 @@ int SUMA_Apply_Deformation(MyCircleOpt *opt, SUMA_GENERIC_ARGV_PARSE *ps)
    double dt = 0.0;    
    double energy, energy_sum, time_elapsed = 0;    
    double v0, v1, v2, delta_dist;
-   char outfile_SphereQuality[50], outfile_PlotPath[50];
+   char outfile_SphereQuality[50], outfile_PlotPath[50], outfile_Condition[50], outfile_Condition_Only[50];
    int too_close = 0, need_neighb_adjust = 0, need_more_adjustment = 0;
    double oxyz[3]={0.0, 0.0, 0.0}, distance;
    char *shist=NULL, stmp[600];
@@ -813,9 +823,19 @@ int SUMA_Apply_Deformation(MyCircleOpt *opt, SUMA_GENERIC_ARGV_PARSE *ps)
    byte *RiskyTrigs=NULL;
    SUMA_Boolean exists;
    SUMA_SPHERE_QUALITY SSQ;
-   SUMA_Boolean LocalHead = YUP;
+   SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
+   
+   /* Set up file for storing condition numbers for matrix used in calculating spline weights during the deformation. */
+   FILE *condition_num = NULL;
+   sprintf(outfile_Condition, "Matrix_ConditionEigen.1D");
+   condition_num = fopen (outfile_Condition, "w"); 
+   
+   /* Set up file for storing condition numbers for matrix used in calculating spline weights during the deformation. */
+   FILE *condition_num_only = NULL;
+   sprintf(outfile_Condition_Only, "Matrix_Condition_Num.1D");
+   condition_num_only = fopen (outfile_Condition_Only, "w"); 
    
    if (opt->dbg_flag) { fprintf(stderr,"%s: About to allocate (N_sub-corrected-= %d).\n", FuncName, opt->N_sub); }
    Ci = (MyCircle *)SUMA_malloc(sizeof (MyCircle)); 
@@ -825,11 +845,15 @@ int SUMA_Apply_Deformation(MyCircleOpt *opt, SUMA_GENERIC_ARGV_PARSE *ps)
       Ci->N_Node = opt->N_sub;
    } else {
       /* opt->N_sub has been taken care of */
-      Ci->N_Node =  2 + 10 * SUMA_POW2(opt->N_sub);
-      fprintf (SUMA_STDERR,"Note %s: Closest number of nodes is %d, Number of Subdivisions is %d\n", 
-         FuncName, Ci->N_Node, opt->N_sub);
+      if(!opt->SO){
+         Ci->N_Node =  2 + 10 * SUMA_POW2(opt->N_sub);
+         fprintf (SUMA_STDERR,"Note %s: Closest number of nodes is %d, Number of Subdivisions is %d\n", 
+            FuncName, Ci->N_Node, opt->N_sub);
+      } else{
+         Ci->N_Node = opt->SO->N_Node;
+      }
    }
- 
+   
    if (opt->dbg_flag) { fprintf(stderr,"%s: Object contains %d nodes.\n", FuncName, Ci->N_Node); }
    Ci->NodeList = Ci->VelocityField = Ci->Vf_Step = Ci->NewNodeList = Ci->VelocityMagnitude = Ci->NewNodeList_temp = NULL;
    Ci->Theta = NULL;
@@ -969,7 +993,7 @@ int SUMA_Apply_Deformation(MyCircleOpt *opt, SUMA_GENERIC_ARGV_PARSE *ps)
       for (i = 0; i < 3*opt->N_ctrl_points; ++i) opt->CtrlPts[i] = opt->CtrlPts_i[i]; 
 
       /* Calculate spline weights to fit velocity field. */   
-      if (!FindSplineWeights (Ci, opt)) {
+      if (!FindSplineWeights (Ci, opt, condition_num, condition_num_only)) {
          SUMA_S_Err("Failed in FindSplineWeights");
          exit(1);
       }
@@ -1033,6 +1057,8 @@ int SUMA_Apply_Deformation(MyCircleOpt *opt, SUMA_GENERIC_ARGV_PARSE *ps)
             dt = pow(dt, 0.25);*/
             fprintf(SUMA_STDERR, "Niter = %d; dtorig = %g; orig_dist = %g; dist_to_target  = %g; dt = %g;\n", 
                                  niter, dtorig, orig_dist, dist_to_target, dt);
+            fprintf(condition_num, "Niter = %d; dist_to_target  = %g; dt = %g;\n", 
+                                 niter, dist_to_target, dt);
          }else {
             fprintf(SUMA_STDERR, "           Using Adjusted dt.  Will continue from this dt. \n");
             /* fprintf(SUMA_STDERR, "Niter = %d; orig_dist = %g; dist_to_target  = %g; dt = %g;\n", 
@@ -1112,18 +1138,23 @@ int SUMA_Apply_Deformation(MyCircleOpt *opt, SUMA_GENERIC_ARGV_PARSE *ps)
             }
 
             Move_Points(Ci, opt);   
-
+            
             /* Recalculate surface normals. */
             if (ps->cs->talk_suma) {
-               for (i3=0; i3<3*opt->SO->N_Node; ++i3) opt->SO->NodeList[i3] = Ci->NewNodeList_temp[i3];
+               /* for (i3=0; i3<3*opt->SO->N_Node; ++i3) opt->SO->NodeList[i3] = Ci->NewNodeList_temp[i3]; */
+               for (i=0; i<3*opt->SO->N_Node; ++i) opt->SO->NodeList[i] = Ci->NewNodeList_temp[i];
                SUMA_RECOMPUTE_NORMALS(opt->SO); 
+               
+               if (opt->pause > 1) {
+                  SUMA_PAUSE_PROMPT("Go ye Huskies");
+               }
                if (ps->cs->Send) {
                   if (!SUMA_SendToSuma (opt->SO, ps->cs, (void *)opt->SO->NodeList, SUMA_NODE_XYZ, 1)) {
                      SUMA_SL_Warn("Failed in SUMA_SendToSuma\nCommunication halted.");
                   }
                }
             }
-
+           
             /* Check Sphere Quality.  Since want to check at the end of each iteration, need to start at niter = 1. */
                nbad = 0;
                for (i3=0; i3<3*opt->SO->N_Node; ++i3) opt->SO->NodeList[i3] = Ci->NewNodeList_temp[i3];
@@ -1236,9 +1267,9 @@ int SUMA_Apply_Deformation(MyCircleOpt *opt, SUMA_GENERIC_ARGV_PARSE *ps)
                if(LocalHead) fprintf( SUMA_STDERR, "%s: Control Point(%d) = [%11.8f;  %11.8f;   %11.8f] \n", FuncName, i, 
                                        opt->CtrlPts[i3  ], opt->CtrlPts[i3+1], opt->CtrlPts[i3+2] ); 
             }
-            FindSplineWeights(Ci, opt); 
+            FindSplineWeights(Ci, opt, condition_num, condition_num_only); 
          } 
-
+        
          /* Reset Velocity Field. */
          for (i = 0; i < 3*Ci->N_Node; ++i) Ci->VelocityField[i] = 0.0;  
          
@@ -1361,6 +1392,8 @@ int SUMA_Apply_Deformation(MyCircleOpt *opt, SUMA_GENERIC_ARGV_PARSE *ps)
 
 
    /* cleanup */
+   fclose(condition_num); condition_num = NULL;
+   fclose(condition_num_only); condition_num_only = NULL;
    vector_destroy(&(Ci->Wv));
    if (Ci->NodeList) SUMA_free(Ci->NodeList); Ci ->NodeList = NULL;
    if (Ci->VelocityField) SUMA_free(Ci->VelocityField); Ci ->VelocityField = NULL;
@@ -1403,13 +1436,17 @@ int main (int argc,char *argv[])
    MyCircleOpt myopt, *opt = NULL;
    SUMA_SPHERE_QUALITY SSQ;
    vector Wv;
-   int i, niter = 0, nbad_face, nbad_node, dims[50], N_dims;
+   int i, niter = 0, nbad_face, nbad_node, dims[50], N_dims, i3;
    FILE *SpheresAtNodes = NULL;
    void *SO_name;
    SUMA_Boolean exists;
    SUMA_MX_VEC *mo=NULL;
    float ctr[3];
+   double Rref = 0.0, mesh_area = 0.0, mag_ctrlpt, mag_nodelist;
    char *shist = NULL, stmp[600];
+   SUMA_SurfSpecFile *Spec = NULL;
+   int N_Spec;
+   SUMA_SurfaceObject *SO=NULL;
    SUMA_Boolean LocalHead = NOPE;
    
     
@@ -1421,7 +1458,7 @@ int main (int argc,char *argv[])
    
    /* Allocate space for DO structure */
 	SUMAg_DOv = SUMA_Alloc_DisplayObject_Struct (SUMA_MAX_DISPLAYABLE_OBJECTS);
-   ps = SUMA_Parse_IO_Args(argc, argv, "-o;-talk;");
+   ps = SUMA_Parse_IO_Args(argc, argv, "-o;-talk;-i;-t;-spec;-s;");
    
    if (argc < 2) {
       usage_path_optimize(ps);
@@ -1436,6 +1473,63 @@ int main (int argc,char *argv[])
       system("mkdir DBG_out");
    }
 
+   if (ps->s_N_surfnames + ps->i_N_surfnames + ps->t_N_surfnames > 1) {
+      SUMA_S_Err("Multiple surface specifications used. Only one surface allowed.");
+      exit(1);
+   }
+
+   Spec = SUMA_IO_args_2_spec(ps, &N_Spec);
+   if (N_Spec == 0) {
+      SUMA_S_Note("No surfaces found, using internal ico");
+   } else {
+      if (N_Spec != 1) {
+         SUMA_S_Err("Multiple spec at input.");
+         exit(1);
+      }
+      SUMA_LH("Loading surface...");
+      SO = SUMA_Load_Spec_Surf(Spec, 0, ps->sv[0], Opt->debug);
+      if (!SO) {
+            fprintf (SUMA_STDERR,"Error %s:\n"
+                                 "Failed to find surface\n"
+                                 "in spec file. \n",
+                                 FuncName );
+            exit(1);
+
+      }
+      opt->SO = SO;
+      opt->N_sub = -1; /*meaningless here */    
+   }
+/****** Adjust surface to be a unit sphere. ****************/   
+
+     /* When loading a spec file and not creating my own icosahedron, must adjust the sphere. */
+                 /* Need to shrink sphere to be unit sphere so assumptions still apply. */
+  if(opt->SO){    
+      fprintf(SUMA_STDERR, "VIEW CONTENTS OF SURFACE OBJECT.  BEFORE ADJUSTMENT.  RADIUS MAYBE BE >1.\n");
+      SUMA_Print_Surface_Object(opt->SO, NULL);
+
+      /* Set center to zero. */
+      SUMA_S_Warnv("Surface center set to 0.0, 0.0, 0.0\n Actual Center estimated at %f, %f, %f\n",
+                    opt->SO->Center[0],opt->SO->Center[1],opt->SO->Center[2]);
+      opt->SO->Center[0] = 0.0;
+      opt->SO->Center[1] = 0.0;
+      opt->SO->Center[2] = 0.0;
+      
+      fprintf(SUMA_STDERR,"****************\n \n \n %f %f %f\n",opt->SO->NodeList[0],opt->SO->NodeList[1],opt->SO->NodeList[2]);
+      
+      opt->Radius = 1.0;   /* radius has to be 1.0 for the optimization yall */
+      if (!SUMA_NewSurfaceRadius(opt->SO, opt->Radius, NULL)) {
+         SUMA_S_Err("Misere!");
+         exit(1);
+      }
+
+      /* Check Work. */
+      fprintf(SUMA_STDERR, "VIEW CONTENTS OF SURFACE OBJECT.  AFTER ADJUSTMENT.  RADIUS MUST BE 1.0.\n");
+      SUMA_Print_Surface_Object(opt->SO, NULL);
+      
+   }
+   
+/********************************************************/
+   
    /* Create file for plotting spheres at the nodes.  These spheres will follow the landmark movement.
       Useful for making movies. */
    sprintf(outfile_Spheres, "SUMA_Spheres.1D.dset"); 
@@ -1449,24 +1543,33 @@ int main (int argc,char *argv[])
 /******* Surface Creation section ********************/
    if (opt->dom_dim >= 3) opt->N_sub = SUMA_ROUND((sqrt((float)( opt->N_sub - 2 ) / 10.0)));   
    if (opt->dbg_flag) { fprintf(stderr,"%s: Creating icosahedron with %d subdivisions.\n", FuncName, opt->N_sub); }
-   opt->Radius= 1.0;
+   if(!opt->SO) opt->Radius= 1.0;
    opt->Center[0] = opt->Center[1] = opt->Center[2] = 0.0;
    ctr[0] = (float)opt->Center[0];
    ctr[1] = (float)opt->Center[1];
    ctr[2] = (float)opt->Center[2];
       
-   opt->SO = SUMA_CreateIcosahedron(opt->Radius, opt->N_sub, ctr, "n", 1);
-   SO_name = SUMA_Prefix2SurfaceName ("toy_ico", NULL, NULL, SUMA_VEC, &exists);
-   if (!opt->SO->State) {opt->SO->State = SUMA_copy_string("Julia"); }
-   if (!opt->SO->Group) {opt->SO->Group = SUMA_copy_string("Julia"); }
-   if (!opt->SO->Label) {opt->SO->Label = SUMA_copy_string("toy_ico"); }
-   /* make the idcode_str depend on the Label, it is convenient to send the same surface all the time to SUMA */
-   if (opt->SO->Label) {   if (opt->SO->idcode_str) SUMA_free(opt->SO->idcode_str); 
-                           opt->SO->idcode_str = NULL; 
-                           SUMA_NEW_ID(opt->SO->idcode_str, opt->SO->Label); }
-   
-   SUMA_Save_Surface_Object(SO_name, opt->SO, SUMA_VEC, SUMA_ASCII, NULL);   /*Creates .coord and .topo files for SUMA */
-      
+   if (!opt->SO) {
+      opt->SO = SUMA_CreateIcosahedron(opt->Radius, opt->N_sub, ctr, "n", 1);
+      SO_name = SUMA_Prefix2SurfaceName ("toy_ico", NULL, NULL, SUMA_VEC, &exists);
+      if (!opt->SO->State) {opt->SO->State = SUMA_copy_string("Julia"); }
+      if (!opt->SO->Group) {opt->SO->Group = SUMA_copy_string("Julia"); }
+      if (!opt->SO->Label) {opt->SO->Label = SUMA_copy_string("toy_ico"); }
+      /* make the idcode_str depend on the Label, it is convenient to send the same surface all the time to SUMA */
+      if (opt->SO->Label) {   if (opt->SO->idcode_str) SUMA_free(opt->SO->idcode_str); 
+                              opt->SO->idcode_str = NULL; 
+                              SUMA_NEW_ID(opt->SO->idcode_str, opt->SO->Label); }
+
+      SUMA_Save_Surface_Object(SO_name, opt->SO, SUMA_VEC, SUMA_ASCII, NULL);   /*Creates .coord and .topo files for SUMA */
+   } else {
+      if (!opt->SO->State) {opt->SO->State = SUMA_copy_string("Julia"); }
+      if (!opt->SO->Group) {opt->SO->Group = SUMA_copy_string("Julia"); }
+      if (!opt->SO->Label) {opt->SO->Label = SUMA_copy_string("toy_ico"); }
+      /* make the idcode_str depend on the Label, it is convenient to send the same surface all the time to SUMA */
+      if (opt->SO->Label) {   if (opt->SO->idcode_str) SUMA_free(opt->SO->idcode_str); 
+                              opt->SO->idcode_str = NULL; 
+                              SUMA_NEW_ID(opt->SO->idcode_str, opt->SO->Label); }
+   }   
    /* see if SUMA talk is turned on */
    if (ps->cs->talk_suma) {
       ps->cs->istream = SUMA_BRAINWRAP_LINE;
@@ -1482,7 +1585,6 @@ int main (int argc,char *argv[])
          SUMA_SendSumaNewSurface(opt->SO, ps ->cs);
       }
    }
-   
   
 /******* Optimization section ************************/   
 
@@ -1545,8 +1647,6 @@ int main (int argc,char *argv[])
 
 
    /*Cleanup*/
-   
-   
    if (opt->SO) SUMA_Free_Surface_Object(opt->SO); opt->SO = NULL;
    if (ps) SUMA_FreeGenericArgParse(ps); ps = NULL;
    if (Opt) Opt = SUMA_Free_Generic_Prog_Options_Struct(Opt);

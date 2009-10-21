@@ -162,7 +162,7 @@ void usage_SUMA_SurfClust ()
                -O2_NR is fast and reliable. */
        SUMA_free(s); s = NULL;        
        s = SUMA_New_Additions(0, 1); printf("%s\n", s);SUMA_free(s); s = NULL;
-       printf("       Ziad S. Saad SSCC/NIMH/NIH ziad@nih.gov     \n");
+       printf("       Ziad S. Saad SSCC/NIMH/NIH saadz@mail.nih.gov     \n");
        exit (0);
    }
 
@@ -498,7 +498,7 @@ int main (int argc,char *argv[])
       exit(1);
    }
    SO = SUMA_find_named_SOp_inDOv(Opt->surf_names[0], SUMAg_DOv, SUMAg_N_DOv);
-   NodeArea = SUMA_CalculateNodeAreas(SO);
+   NodeArea = SUMA_CalculateNodeAreas(SO, NULL);
    if (!NodeArea) {
       SUMA_S_Err("Failed to calculate Node Areas.\n");
       exit(1);

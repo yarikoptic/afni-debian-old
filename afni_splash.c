@@ -1449,7 +1449,7 @@ void AFNI_finalsave_layout_CB( Widget w , XtPointer cd , MCW_choose_cbs *cbs )
 {
    Three_D_View *im3d = (Three_D_View *) cd ;
    int cc,ww , gww,ghh,gxx,gyy ;
-   FILE *fp , *gp ;
+   FILE *fp=NULL , *gp=NULL ;
    MCW_imseq   *isq ;
    MCW_grapher *gra ;
    float ifrac ;
@@ -1462,12 +1462,12 @@ void AFNI_finalsave_layout_CB( Widget w , XtPointer cd , MCW_choose_cbs *cbs )
    int ipl , qq , ll ;
    char *plab ;
 
-   Three_D_View *qm3d         = GLOBAL_library.controllers[0]; /* already open */
+   Three_D_View *qm3d         = GLOBAL_library.controllers[0]; /* exists now */
 
 #ifdef ALLOW_PLUGINS
-   int      npbut              = qm3d->vwid->nplugbut;      /* how many plugins */
-   char **  pluglab            = qm3d->vwid->pluglab;       /* their labels     */
-   PLUGIN_interface ** plugint = qm3d->vwid->plugint;       /* their interfaces */
+   int      npbut             = qm3d->vwid->nplugbut;    /* how many plugins */
+   char **  pluglab           = qm3d->vwid->pluglab;     /* their labels     */
+   PLUGIN_interface **plugint = qm3d->vwid->plugint;     /* their interfaces */
 #endif
 
    MCW_DCOV     *ovc          = GLOBAL_library.dc->ovc ;   /* 22 Jan 2003 */
@@ -1477,25 +1477,19 @@ ENTRY("AFNI_finalsave_layout_CB") ;
 
    if( strcmp(cbs->cval,".afnirc") == 0 ){ BEEPIT; EXRETURN; } /* 12 Oct 2000 */
 
-   /*-- 23 Jan 2003: open layout file if name is "OK", else don't use it --*/
+   /*-- 23 Jan 2003: open layout file if name is OK, else don't use it --*/
 
    if( THD_filename_ok(cbs->cval) ){
      fp = fopen( cbs->cval , "w" ) ;
      if( fp == NULL ){ BEEPIT; EXRETURN; }
-   } else {
-     fp = NULL ;
    }
-
    if( fp != NULL ) fprintf(fp,"\n***LAYOUT\n") ;
 
    /*-- 22 Jan 2002: maybe write a startup script to do same things --*/
 
-   if( fp == NULL )
-     gp = fopen( ".afni.startup_script" , "w" ) ;
-   else
-     gp = NULL ;
+   if( fp == NULL ) gp = fopen( ".afni.startup_script" , "w" ) ;
 
-   if( gp != NULL ){
+   if( gp != NULL ){  /* start with a comment */
 
      fprintf(gp,"// AFNI startup script, from Datamode->Misc->Save Layout\n") ;
 
@@ -1505,10 +1499,10 @@ ENTRY("AFNI_finalsave_layout_CB") ;
        fprintf(gp,"ADD_OVERLAY_COLOR %s %s\n",
                ovc->name_ov[qq] , ovc->label_ov[qq] ) ;
    } else {
-     if( fp == NULL ){ BEEPIT; EXRETURN; }
+     if( fp == NULL ){ BEEPIT; EXRETURN; }  /* no fp and no gp == Error! */
    }
 
-   /*-- loop over controllers --*/
+   /*----- loop over open controllers -----*/
 
    for( cc=0 ; cc < MAX_CONTROLLERS ; cc++ ){
 
@@ -1516,12 +1510,11 @@ ENTRY("AFNI_finalsave_layout_CB") ;
 
       zm3d = GLOBAL_library.controllers[cc] ;
 
-      if( !IM3D_OPEN(zm3d) ) continue ; /* skip */
+      if( !IM3D_OPEN(zm3d) ) continue ; /* skip this controller */
 
       /* print controller info */
 
-      MCW_widget_geom( zm3d->vwid->top_shell ,
-                       NULL,NULL , &gxx,&gyy ) ;
+      MCW_widget_geom( zm3d->vwid->top_shell , NULL,NULL , &gxx,&gyy ) ;
 
       if( fp != NULL ) fprintf(fp,"  %c geom=+%d+%d\n" , abet[cc] , gxx,gyy ) ;
 
@@ -1566,6 +1559,21 @@ ENTRY("AFNI_finalsave_layout_CB") ;
           fprintf(gp,"SET_FUNC_RANGE %c.%f\n" , abet[cc] ,
                   im3d->vwid->func->range_av->fval        ) ;
 
+        if( ISVALID_DSET(im3d->anat_now) ){          /* 27 Dec 2006 */
+          char *pp = DSET_PREFIX(im3d->anat_now) ;
+          if( pp == NULL || *pp == '\0' ) pp = DSET_IDCODE_STR(im3d->anat_now);
+          fprintf(gp,"SET_UNDERLAY %c.%s %d\n",
+                  abet[cc], pp, im3d->vinfo->anat_index ) ;
+        }
+        if( ISVALID_DSET(im3d->fim_now) ){           /* 27 Dec 2006 */
+          char *pp = DSET_PREFIX(im3d->fim_now) ;
+          if( pp == NULL || *pp == '\0' ) pp = DSET_IDCODE_STR(im3d->fim_now);
+          fprintf(gp,"SET_OVERRLAY %c.%s %d %d\n",
+                  abet[cc], pp, im3d->vinfo->fim_index,im3d->vinfo->thr_index );
+        }
+        fprintf(gp,"SET_DICOM_XYZ %c %f %f %f\n",    /* 27 Dec 2006 */
+                abet[cc], im3d->vinfo->xi, im3d->vinfo->yj, im3d->vinfo->zk );
+
       } /* end of startup script stuff */
 
       /*-- loop over image viewers in this controller --*/
@@ -1595,10 +1603,10 @@ ENTRY("AFNI_finalsave_layout_CB") ;
          if( fp != NULL ){
            if( mont[0] == '\0' ){
               fprintf(fp, "  %c.%simage geom=%dx%d+%d+%d ifrac=%s\n" ,
-                          abet[cc] , wnam[ww] , gww,ghh,gxx,gyy , AV_uformat_fval(ifrac) ) ;
+                          abet[cc], wnam[ww], gww,ghh,gxx,gyy, AV_uformat_fval(ifrac) ) ;
            } else {
               fprintf(fp, "  %c.%simage geom=%dx%d+%d+%d ifrac=%s mont=%s\n" ,
-                          abet[cc] , wnam[ww] , gww,ghh,gxx,gyy , AV_uformat_fval(ifrac) , mont ) ;
+                          abet[cc], wnam[ww], gww,ghh,gxx,gyy, AV_uformat_fval(ifrac), mont ) ;
            }
          }
 
@@ -1606,13 +1614,13 @@ ENTRY("AFNI_finalsave_layout_CB") ;
 
          if( gp != NULL ){
            int opval=9 ;
-           drive_MCW_imseq( isq , isqDR_getopacity , &opval ) ;
+           drive_MCW_imseq( isq, isqDR_getopacity, &opval ) ;
            if( mont[0] == '\0' ){
-              fprintf(gp, "OPEN_WINDOW %c.%simage geom=+%d+%d ifrac=%s opacity=%d\n" ,
-                          abet[cc] , wnam[ww] , gxx,gyy , AV_uformat_fval(ifrac) , opval ) ;
+             fprintf(gp, "OPEN_WINDOW %c.%simage geom=+%d+%d ifrac=%s opacity=%d\n" ,
+                     abet[cc], wnam[ww], gxx,gyy, AV_uformat_fval(ifrac), opval ) ;
            } else {
-              fprintf(gp, "OPEN_WINDOW %c.%simage geom=+%d+%d ifrac=%s mont=%s opacity=%d\n" ,
-                          abet[cc] , wnam[ww] , gxx,gyy , AV_uformat_fval(ifrac) , mont , opval ) ;
+             fprintf(gp,"OPEN_WINDOW %c.%simage geom=+%d+%d ifrac=%s mont=%s opacity=%d\n",
+                     abet[cc], wnam[ww], gxx,gyy, AV_uformat_fval(ifrac), mont, opval ) ;
            }
         }
       }
@@ -1646,11 +1654,11 @@ ENTRY("AFNI_finalsave_layout_CB") ;
 
          if( gp != NULL ){
            if( pinnum > 0 ){
-              fprintf(gp , "OPEN_WINDOW %c.%sgraph geom=%dx%d+%d+%d matrix=%d pinnum=%d\n" ,
-                           abet[cc] , wnam[ww] , gww,ghh,gxx,gyy , matrix,pinnum ) ;
+             fprintf(gp,"OPEN_WINDOW %c.%sgraph geom=%dx%d+%d+%d matrix=%d pinnum=%d\n" ,
+                        abet[cc], wnam[ww], gww,ghh,gxx,gyy, matrix,pinnum ) ;
            } else {
-              fprintf(gp , "OPEN_WINDOW %c.%sgraph geom=%dx%d+%d+%d matrix=%d\n" ,
-                           abet[cc] , wnam[ww] , gww,ghh,gxx,gyy , matrix ) ;
+             fprintf(gp,"OPEN_WINDOW %c.%sgraph geom=%dx%d+%d+%d matrix=%d\n" ,
+                        abet[cc], wnam[ww], gww,ghh,gxx,gyy, matrix ) ;
            }
          }
       }
@@ -1757,4 +1765,3 @@ ENTRY("AFNI_finalrun_script_CB") ;
    AFNI_startup_script_CB( (XtPointer) cbs->cval , NULL ) ;
    EXRETURN ;
 }
-

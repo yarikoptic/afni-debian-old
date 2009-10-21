@@ -550,7 +550,7 @@ static void AFNI_surf_bbox_CB( Widget,XtPointer,XtPointer ) ; /* 19 Feb 2003 */
            "dialog" , xmRowColumnWidgetClass , swid->rowcol ,      \
               XmNpacking      , XmPACK_TIGHT ,                     \
               XmNorientation  , XmHORIZONTAL   ,                   \
-              XmNtraversalOn , False ,                             \
+              XmNtraversalOn , True  ,                             \
            NULL ) ;                                                \
      swid->surf_bbox[ii] = new_MCW_bbox( rc , 1 , str ,            \
                              MCW_BB_check, MCW_BB_noframe,         \
@@ -623,6 +623,7 @@ static AFNI_make_surface_widgets( Three_D_View *im3d, int num )
                    XmNtitle              , str ,
                    XmNmappedWhenManaged  , False ,              /* manage manually */
                    XmNdeleteResponse     , XmDO_NOTHING ,       /* deletion handled below */
+              XmNkeyboardFocusPolicy , XmEXPLICIT ,
                 NULL ) ;
    DC_yokify( swid->wtop , im3d->dc ) ;
 
@@ -642,7 +643,7 @@ static AFNI_make_surface_widgets( Three_D_View *im3d, int num )
          "dialog" , xmRowColumnWidgetClass , swid->wtop ,
             XmNpacking      , XmPACK_TIGHT ,
             XmNorientation  , XmVERTICAL   ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
          NULL ) ;
 
    /* top label to say what session we are dealing with */
@@ -653,7 +654,7 @@ static AFNI_make_surface_widgets( Three_D_View *im3d, int num )
                     "dialog" , xmLabelWidgetClass , swid->rowcol ,
                        XmNrecomputeSize , False ,
                        XmNlabelString , xstr ,
-                       XmNtraversalOn , False ,
+                       XmNtraversalOn , True  ,
                     NULL ) ;
    XmStringFree(xstr) ;
 
@@ -670,7 +671,7 @@ static AFNI_make_surface_widgets( Three_D_View *im3d, int num )
           "dialog" , xmRowColumnWidgetClass , swid->rowcol ,
              XmNpacking      , XmPACK_TIGHT ,
              XmNorientation  , XmHORIZONTAL   ,
-             XmNtraversalOn , False ,
+             XmNtraversalOn , True  ,
           NULL ) ;
 
    /* boxsize control [23 Feb 2003] */
@@ -719,7 +720,7 @@ static AFNI_make_surface_widgets( Three_D_View *im3d, int num )
      XtVaCreateManagedWidget(
            "dialog" , xmPushButtonWidgetClass , rc ,
             XmNlabelString , xstr ,
-            XmNtraversalOn , False ,
+            XmNtraversalOn , True  ,
          NULL ) ;
    XmStringFree(xstr) ;
    XtAddCallback( swid->done_pb, XmNactivateCallback, AFNI_surf_done_CB, im3d );
@@ -783,6 +784,8 @@ ENTRY("AFNI_update_surface_widgets") ;
 
    num  = im3d->ss_now->su_num ;   /* # of surfaces in current session */
    swid = im3d->vwid->view->swid ; /* pointer to surface widget struct */
+
+   STATUS("sensitizing") ;
 
    SENSITIZE( im3d->vwid->view->choose_surf_pb , (Boolean)(num > 0) ) ;
 

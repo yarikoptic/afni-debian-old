@@ -14,8 +14,8 @@ SUMA_CommonFields *SUMAg_CF = NULL; /*!< Global pointer to structure containing 
 /* NICE THINGS TO ADD 
    + support -surf_group and -switch_group
    + support view_surf (for hiding say L/R hemis)
-   + create syntax for series of repeated key strokes with delay between strokes and perhaps a forced redisplay
-   + make recorder save pictures
+   + DONE: create syntax for series of repeated key strokes with delay between strokes and perhaps a forced redisplay
+   + DONE: make recorder save pictures
    + add passing of DOs as is done in Julia's program
    + DONE: support for quit action
    + DONE: support control of intensity range
@@ -42,8 +42,9 @@ static char uDS_node_xyz[]={
 };
 static char uDS_viewer_cont[]={
                "       DriveSuma -com  viewer_cont -key R -key ctrl+right\n"
-               "       DriveSuma -com  viewer_cont -key up -key up -key up   \\\n"
-               "                       -key left -key left\n"
+               "       DriveSuma -com  viewer_cont -key:r3:s0.3 up  \\\n"
+               "                       -key:r2:p left -key:r5:d right \\\n"
+               "                       -key:r5 left\n"
                "       DriveSuma -com  viewer_cont -key m -key down \\\n"
                "                 -com  sleep 2s -com viewer_cont -key m \\\n"
                "                       -key ctrl+right\n"
@@ -62,6 +63,8 @@ static char uDS_surf_cont[]={
                "                 -tn 1d radcoord.1D.coord radcoord.1D.topo \\\n"
                "       SurfaceMetrics -curv -spec radcoord.spec \\\n"
                "                      -surf_A radcoord -prefix radcoord      \n"*/
+               "       echo 1 0 0 > bbr.1D.cmap; echo 1 1 1 >> bbr.1D.cmap; \\\n"
+               "       echo 0 0  1 >> bbr.1D.cmap\n"
                "       IsoSurface -shape 4 128 -o_ply blooby.ply\n"
                "       quickspec -spec blooby.spec -tn ply blooby.ply\n"
                "       SurfaceMetrics -curv -spec blooby.spec \\\n"
@@ -80,6 +83,7 @@ static char uDS_surf_cont[]={
                "       DriveSuma -com surf_cont -view_dset n\n"
                "       DriveSuma -com surf_cont -switch_dset blooby.curv.1D.dset \\\n"
                "                      -view_surf_cont n -I_range -0.05 0.14\n"
+               "       DriveSuma -com surf_cont -load_cmap bbr.1D.cmap\n"
 };
 static char uDS_kill_suma[]={
                "       DriveSuma -com kill_suma\n"
@@ -175,10 +179,25 @@ void usage_DriveSuma (SUMA_GENERIC_ARGV_PARSE *ps)
                "                         GUI help.\n"
                "                         ~ Using multiple keys in the same command\n"
                "                         might not result in the serial display of\n"
-               "                         the effect of each key. For example,\n"
+               "                         the effect of each key, unless 'd' modifier\n"
+               "                         is used as shown further below. For example,\n"
                "                         -key right -key right would most likely\n"
                "                         produce one image rotated twice rather than\n"
-               "                         two images, each turned right once.\n" 
+               "                         two images, each turned right once.\n"
+               "           The -key string can be followed by modifiers:\n"
+               "              For example, -key:r5:s0.2 has two modifiers,\n"
+               "              r5 and s0.2. All modifiers are separated by ':'.\n"
+               "              'r' Repeat parameter, so r5 would repeat the \n"
+               "                  same key 5 times.\n"
+               "              's' Sleep parameter, so s0.2 would sleep for 0.2\n"
+               "                  seconds between repeated keys.\n"
+               "              'd' Immediate redisplay flag. That is useful\n"
+               "                  when you are performing a succession of keys and\n"
+               "                  want to ensure each individual one gets displayed\n"
+               "                  and recorded (most likely). Otherwise, successive\n"
+               "                  keys may only display their resultant. 'd' is used\n"
+               "                  automatically with 's' modifier.\n"
+               "              'p' Pause flag. Requires user intervention to proceed.\n"
                "        -viewer VIEWER: Specify which viewer should be acted \n"
                "                        upon. Default is viewer 'A'. Viewers\n"
                "                        must be created first (ctrl+n) before\n"
@@ -199,9 +218,10 @@ void usage_DriveSuma (SUMA_GENERIC_ARGV_PARSE *ps)
                "                             mpeg or mpg: MPEG (movie)\n"
                "                             jpeg or jpg: JPEG (stills)\n"
                "                             png: PNG (stills)\n"
-               "       -save_index IND: Save one image indexed IND\n"
-               "       -save_range FROM TO: Save images from FROM to TO\n"
+               "       -save_index IND: Save one image indexed IND (start at 0)\n"
+               "       -save_range FROM TO: Save images from FROM to TO \n"
                "       -save_last: Save last image (default for still formats)\n"
+               "       -save_last_n N: Save last N images\n"
                "       -save_all: Save all images (default for movie formats)\n"
                "     + Example recorder_cont (assumes there is a recorder window)\n"
                "       currently open from SUMA.\n"
@@ -225,6 +245,8 @@ void usage_DriveSuma (SUMA_GENERIC_ARGV_PARSE *ps)
                "       -view_dset y/n: Set view toggle button of DSET\n"
                "       -1_only y/n: Set 1_only toggle button of DSET\n"
                "       -switch_cmap CMAP: switch colormap to CMAP\n"
+               "       -load_cmap CMAP.1D.cmap: load and switch colormap in \n"
+               "                                file CMAP.1D.cmap\n"
                "       -I_sb ISB: Switch intensity to ISBth column (sub-brick)\n"
                "       -I_range IR0 IR1: set intensity range from IR0 to IR1.\n"
                "                         If only one number is given, the range\n"
@@ -257,10 +279,71 @@ void usage_DriveSuma (SUMA_GENERIC_ARGV_PARSE *ps)
                "\n", uDS_show_surf, uDS_node_xyz, uDS_viewer_cont, uDS_recorder_cont, uDS_surf_cont, sio,  s);
       SUMA_free(s); s = NULL; SUMA_free(st); st = NULL; SUMA_free(sio); sio = NULL;       
       s = SUMA_New_Additions(0, 1); printf("%s\n", s);SUMA_free(s); s = NULL;
-      printf("       Ziad S. Saad SSCC/NIMH/NIH ziad@nih.gov     \n");
+      printf("       Ziad S. Saad SSCC/NIMH/NIH saadz@mail.nih.gov     \n");
       exit(0);
 }
 
+SUMA_Boolean SUMA_ParseKeyModifiers(char *keyopt, int *Key_mult, float *Key_pause, int *Key_redis)
+{
+   static char FuncName[]={"SUMA_ParseKeyModifiers"};
+   char *cccp=NULL;
+   int Found, v;
+   double dv;
+   SUMA_Boolean LocalHead = NOPE;
+   SUMA_ENTRY;
+   
+   *Key_mult = 1;
+   *Key_pause = 0.0;
+   *Key_redis = 0;
+   if (!keyopt || strncmp(keyopt,"-key", 4)) {
+      SUMA_S_Errv("NULL or bad keyopt %s", SUMA_CHECK_NULL_STR(keyopt));
+      SUMA_RETURN(NOPE);
+   }
+   Found = 1; 
+   SUMA_LHv("keyopt=%s\n", keyopt);
+   cccp = keyopt;
+   do {
+      if ((cccp = strstr(cccp,":"))) {/* found mods */
+         SUMA_LHv("Now at =%s\n", cccp);
+         /* what is it? */
+         ++cccp;
+         switch (cccp[0]) {
+            case 'r':
+               SUMA_ADVANCE_PAST_INT(cccp, v, Found);
+               if (!Found) {
+                  fprintf (SUMA_STDERR, "Failed to parse number after :r in %s\n", keyopt);
+                  SUMA_RETURN(NOPE);
+               }
+               *Key_mult = v;
+               break;
+            case 'p':
+               *Key_pause = -1; Found = 1;
+               SUMA_LH("Will pause for each rep\n");
+               break;
+            case 's':
+               ++cccp;  /* touchy for floats*/
+               SUMA_ADVANCE_PAST_NUM(cccp, dv, Found);
+               if (!Found) {
+                  fprintf (SUMA_STDERR, "Failed to parse number after :s in %s\n", keyopt);
+                  SUMA_RETURN(NOPE);
+               }
+               *Key_pause = (float)dv;
+               SUMA_LHv("Will pause for %f secs\n", *Key_pause);
+               break;
+            case 'd':
+               *Key_redis = 1;
+               SUMA_LH("Will redisplay for each rep\n");
+               break;
+            default:
+               SUMA_S_Errv("Failed to parse content of %s\n", keyopt);
+               Found = 0;
+               break;
+         }
+      }
+   } while (cccp && cccp[0] && Found);
+
+   SUMA_RETURN(YUP);   
+}
 /*
 A function for parsing command command options.
 Words recognized here are flagged with a null char at the beginning of the identified strings
@@ -327,6 +410,19 @@ int SUMA_DriveSuma_ParseCommon(NI_group *ngr, int argtc, char ** argt)
          }
          argt[kar][0] = '\0';
          NI_set_attribute(ngr, "switch_cmap", argt[++kar]);
+         argt[kar][0] = '\0';
+         brk = YUP;
+      }
+      
+      if (!brk && ( (strcmp(argt[kar], "-load_cmap") == 0) ))
+      {
+         if (kar+1 >= argtc)
+         {
+            fprintf (SUMA_STDERR, "need a cmap name after -load_cmap \n");
+            SUMA_RETURN(0);
+         }
+         argt[kar][0] = '\0';
+         NI_set_attribute(ngr, "load_cmap", argt[++kar]);
          argt[kar][0] = '\0';
          brk = YUP;
       }
@@ -542,21 +638,53 @@ int SUMA_DriveSuma_ParseCommon(NI_group *ngr, int argtc, char ** argt)
          brk = YUP;
       }
       
-      if (!brk && (strcmp(argt[kar], "-key") == 0))
+      if (!brk && (strncmp(argt[kar], "-key", 4) == 0))
       {
-         int N_Key = 0;
+         int N_Key = 0, Key_mult = 1, Key_redis= 0;
          char stmp[100];
+         float Key_pause = 0;
          if (kar+1 >= argtc)
          {
             fprintf (SUMA_STDERR, "need a key after -key \n");
             SUMA_RETURN(0);
          }
+         
+         #if 0
+         if (strlen(argt[kar]) > 4) {
+            char *cccp=argt[kar]+4;
+            int Found;
+            if (*cccp == ':') {
+               SUMA_ADVANCE_PAST_INT(cccp, Key_mult, Found);
+               if (!Found) {
+                  fprintf (SUMA_STDERR, "Failed to parse number after : in %s\n", argt[kar]);
+                  SUMA_RETURN(0);
+               }
+               SUMA_LHv("Key will be repeated %d times\n", Key_mult);
+            } else {
+               fprintf (SUMA_STDERR, "Bad flag after -key in %s\n", argt[kar]);
+               SUMA_RETURN(0);
+            }   
+         }
+         #else
+            if (!SUMA_ParseKeyModifiers(argt[kar], &Key_mult, &Key_pause, &Key_redis)) {
+               SUMA_S_Errv("Failed in parsing %s\n", argt[kar]);
+               SUMA_RETURN(0);
+            } 
+         
+         #endif
+         
          argt[kar][0] = '\0';
          ++kar;
          if (!NI_get_attribute(ngr,"N_Key")) NI_SET_INT(ngr,"N_Key", 0);
          NI_GET_INT(ngr, "N_Key", N_Key); 
          sprintf(stmp, "Key_%d", N_Key);
          NI_SET_STR(ngr, stmp, argt[kar]);
+         sprintf(stmp, "Key_rep_%d", N_Key);
+         NI_SET_INT(ngr, stmp, Key_mult);
+         sprintf(stmp, "Key_pause_%d", N_Key);
+         NI_SET_FLOAT(ngr, stmp, Key_pause);
+         sprintf(stmp, "Key_redis_%d", N_Key);
+         NI_SET_INT(ngr, stmp, Key_redis);
          argt[kar][0] = '\0';
          ++N_Key;
          NI_SET_INT(ngr,"N_Key", N_Key);
@@ -611,11 +739,12 @@ int SUMA_DriveSuma_ParseCommon(NI_group *ngr, int argtc, char ** argt)
       if (!brk && ( (strcmp(argt[kar], "-save_last") == 0) ) )
       {
          
-         NI_SET_INT(ngr, "Save_One", -1);
-         
+         NI_SET_INT(ngr, "Save_From", -1);
+         NI_SET_INT(ngr, "Save_To", 0);
          argt[kar][0] = '\0';
          brk = YUP;
       }
+      
       if (!brk && ( (strcmp(argt[kar], "-save_index") == 0) ) )
       {
          
@@ -626,7 +755,28 @@ int SUMA_DriveSuma_ParseCommon(NI_group *ngr, int argtc, char ** argt)
          }
          
          argt[kar][0] = '\0';++kar;
-         NI_SET_INT(ngr, "Save_One", atoi(argt[kar]));
+         NI_SET_INT(ngr, "Save_From", atoi(argt[kar]));
+         NI_SET_INT(ngr, "Save_To", atoi(argt[kar]));
+         
+         argt[kar][0] = '\0';
+         brk = YUP;
+      }
+      if (!brk && ( (strcmp(argt[kar], "-save_last_n") == 0) ) )
+      {
+         
+         if (kar+1 >= argtc)
+         {
+            fprintf (SUMA_STDERR, "need a number after -save_last_n \n");
+            SUMA_RETURN(0);
+         }
+         
+         argt[kar][0] = '\0';++kar;
+         if (atoi(argt[kar]) <= 0) {
+            fprintf (SUMA_STDERR, "need a number > 0 after -save_last_n\n");
+            SUMA_RETURN(0);
+         }
+         NI_SET_INT(ngr, "Save_From", -atoi(argt[kar]));
+         NI_SET_INT(ngr, "Save_To", 0);
          
          argt[kar][0] = '\0';
          brk = YUP;
