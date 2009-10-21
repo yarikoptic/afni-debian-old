@@ -1331,22 +1331,6 @@ int main( int argc , char *argv[] )
                      "            fink install netpbm\n" ) ;
 #endif
 
-   /** set default values of some environment variables [22 Jun 2004] **/
-
-   putenv("AFNI_CROSSHAIR_LINES=YES") ;
-   putenv("AFNI_ALWAYS_LOCK=YES") ;
-   putenv("AFNI_IMAGE_SAVESQUARE=YES") ;
-   putenv("AFNI_DECONFLICT=OVERWRITE") ; /* 24 Sep 2007 */
-   putenv("AFNI_X11_REDECORATE=NO") ;
-   putenv("AFNI_RESCAN_AT_SWITCH=YES") ; /* 16 Nov 2007 */
-
-#if 0
-   putenv("AFNI_IMAGE_LABEL_MODE=1") ;
-   putenv("AFNI_IMAGE_LABEL_SIZE=2") ;
-   putenv("AFNI_IMAGE_LABEL_SETBACK=01") ;
-   putenv("AFNI_IMAGE_LABEL_COLOR=yellow") ;
-#endif
-
    /** Start the debug traceback stuff **/
 
    mainENTRY("AFNI:main") ; /* 26 Jan 2001: replace ENTRY w/ mainENTRY */
@@ -1440,6 +1424,30 @@ int main( int argc , char *argv[] )
    }
 
    AFNI_load_defaults( MAIN_shell ) ;
+
+   /** set default values of some environment variables [22 Jun 2004] **/
+   /** moved here and made conditional on being empty -- 31 Jan 2008  **/
+
+#undef  PUTENV  /* 31 Jan 2008 */
+#define PUTENV(nm,val) do{ char str[256];                        \
+                           if( getenv((nm)) == NULL ){           \
+                             strcpy(str,(nm)); strcat(str,"=");  \
+                             strcat(str,val);  putenv(str);      \
+                           }} while(0)
+
+   PUTENV("AFNI_CROSSHAIR_LINES","YES") ;
+   PUTENV("AFNI_ALWAYS_LOCK","YES") ;
+   PUTENV("AFNI_IMAGE_SAVESQUARE","YES") ;
+   PUTENV("AFNI_DECONFLICT","OVERWRITE") ; /* 24 Sep 2007 */
+   PUTENV("AFNI_X11_REDECORATE","NO") ;
+   PUTENV("AFNI_RESCAN_AT_SWITCH","YES") ; /* 16 Nov 2007 */
+
+#if 0
+   PUTENV("AFNI_IMAGE_LABEL_MODE","1") ;
+   PUTENV("AFNI_IMAGE_LABEL_SIZE","2") ;
+   PUTENV("AFNI_IMAGE_LABEL_SETBACK","01") ;
+   PUTENV("AFNI_IMAGE_LABEL_COLOR","yellow") ;
+#endif
 
    if( ! GLOBAL_argopt.skip_afnirc ){          /* this line added 14 Jul 1998 */
       char *home = getenv("HOME") ; char fname[256] ;
@@ -1840,7 +1848,7 @@ STATUS("call 14") ;
           if( new_thresh > 0.0f ) AFNI_set_threshold(MAIN_im3d,new_thresh) ;
         }
 
-        putenv("AFNI_DECONFLICT=OVERWRITE") ; /* 24 Sep 2007 */
+        PUTENV("AFNI_DECONFLICT","OVERWRITE") ; /* 24 Sep 2007 */
         putenv("AFNI_IS_RUNNING=YES") ;       /* 08 Jun 2007 */
 
         memplot_topshell_setsaver( ".jpg" , memplot_to_jpg ) ; /* 05 Dec 2007 */
