@@ -133,7 +133,11 @@ typedef enum { SUMA_DONT_KNOW = 0, SUMA_IN_TRIBOX_OUTSIDE = 1, SUMA_ON_NODE, SUM
 typedef enum { SUMA_SIDE_ERROR=-1, SUMA_NO_SIDE, SUMA_LEFT, SUMA_RIGHT } SUMA_SO_SIDE; 
 typedef enum  { SUMA_NO_ANSWER, SUMA_YES, SUMA_NO, SUMA_HELP, SUMA_CANCEL, SUMA_YES_ALL, SUMA_NO_ALL, SUMA_WHAT_THE_HELL } SUMA_QUESTION_DIALOG_ANSWER; /* DO NOT CHANGE THE ORDER OF THE FIRST 4 */
 
-typedef enum  { SUMA_FT_ERROR = -1, SUMA_FT_NOT_SPECIFIED, SUMA_FREE_SURFER, SUMA_FREE_SURFER_PATCH, SUMA_SUREFIT, SUMA_INVENTOR_GENERIC, SUMA_PLY, SUMA_VEC, SUMA_CMAP_SO, SUMA_BRAIN_VOYAGER } SUMA_SO_File_Type;
+typedef enum  { SUMA_FT_ERROR = -1, SUMA_FT_NOT_SPECIFIED, 
+               SUMA_FREE_SURFER, SUMA_FREE_SURFER_PATCH, SUMA_SUREFIT, 
+               SUMA_INVENTOR_GENERIC, SUMA_PLY, SUMA_VEC, SUMA_CMAP_SO, SUMA_BRAIN_VOYAGER , 
+               SUMA_OPENDX_MESH, 
+                  SUMA_N_SO_FILE_TYPE} SUMA_SO_File_Type; /* add types always between SUMA_FT_NOT_SPECIFIED AND SUMA_N_SO_FILE_TYPE */
 typedef enum { SUMA_FF_NOT_SPECIFIED, SUMA_ASCII, SUMA_BINARY, SUMA_BINARY_BE, SUMA_BINARY_LE } SUMA_SO_File_Format;
 typedef enum {SO_type, AO_type, ROIdO_type, ROIO_type, GO_type, LS_type} SUMA_DO_Types;   /*!< Displayable Object Types 
                                                                                     S: surface, A: axis, G: grid, 
@@ -667,6 +671,7 @@ typedef struct {
    char owner_id[SUMA_IDCODE_LENGTH];   /*!< The id of whoever created that pointer. Might never get used.... */
 
 
+   char *idcode_str; /*!< identifier of element containing node's first order neighbors */
    int N_Node; /*!< Number of nodes whose neighbors are listed in this structure */
    int *NodeId; /*!< Id of each node whose neighbors are listed in this structure 
                      *** WARNING: *** A lot of functions do not use this field and assume
@@ -710,6 +715,7 @@ typedef struct {
    char owner_id[SUMA_IDCODE_LENGTH];   /*!< The id of whoever created that pointer. Might never get used.... */
 
    
+   char *idcode_str; /*!< ID of this particular edge list */
    int ** EL; /*!< pointer to where the Edge List ( N_EL x 2 ) will be placed
                         each row is an edge, i1 i2 where i1 is always <= i2
                         EL is sorted by row */
@@ -1511,6 +1517,7 @@ typedef struct {
    int N_links;   /*!< Number of links to this pointer */
    char owner_id[SUMA_IDCODE_LENGTH];   /*!< The id of whoever created that pointer. Might never get used.... */
 
+   char *idcode_str;
    int N_Memb_max;/*!< Maximum number of Facesets any node belonged to*/
    int Nnode; /*! Total number of nodes examined (0..Nnode-1) */
    int **NodeMemberOfFaceSet ; /*!< Nnode x N_Memb_max matrix containing for each row i, the indices of the facesets containing node i*/ 
@@ -1538,6 +1545,7 @@ typedef struct {
 
 /*! Structure defining the surface's volume parent info */
 typedef struct {
+   char *idcode_str; /*!< the id of the vol par element */
    int isanat; /*!< 1 if parent volume is of type anat */
    int nx, ny, nz; /*!< number of voxels in the three dimensions */
    float dx, dy, dz; /*!< delta x, y, z in mm */
@@ -1545,13 +1553,16 @@ typedef struct {
    char *prefix; /*!< parent volume prefix */
    char *filecode; /*!< parent volume prefix + view */
    char *dirname; /*!< parent volume directory name */
-   char *idcode_str; /*!< idcode string*/
-   char *idcode_date; /*!< idcode date */
+   char *vol_idcode_str; /*!< idcode string OF parent volume*/
+   char *vol_idcode_date; /*!< idcode date */
    int xxorient, yyorient, zzorient; /*!< orientation of three dimensions*/ 
    float *VOLREG_CENTER_OLD; /*!< pointer to the named attribute (3x1) in the .HEAD file of the experiment-aligned Parent Volume */
    float *VOLREG_CENTER_BASE; /*!< pointer to the named attribute (3x1) in the .HEAD file of the experiment-aligned Parent Volume */
    float *VOLREG_MATVEC; /*!< pointer to the named attribute (12x1) in the .HEAD file of the experiment-aligned Parent Volume */
    float *TAGALIGN_MATVEC; /*!< pointer to the named attribute (12x1) in the .HEAD file of the tag aligned Parent Volume */
+   float *ROTATE_MATVEC; /*!< pointer to the named attribute (12x1) in the .HEAD file of the tag aligned Parent Volume */
+   float *ROTATE_CENTER_OLD; 
+   float *ROTATE_CENTER_BASE; 
    int Hand; /*!< Handedness of axis 1 RH, -1 LH*/
 } SUMA_VOLPAR;
 
@@ -1571,10 +1582,22 @@ typedef struct {
    SUMA_FileName SpecFile; /*!< To be added for use in AFNI's mapping interface */
    
    char *idcode_str; /*!< string containing the idcode of the surface */
+   char *parent_vol_idcode_str; /*!< IDcode of the volume from which the surface was created. Called SurfVol (NOT SurfVol_AlndExp) 
+                                    That ID does not usually refer to the volume from which VolPar is created. Except in the case 
+                                    where you are viewing the surfaces on the orignal volume (SurfVol) then this field and
+                                    SurfVol (afni dset *) ->idcode.str and VolPar->vol_idcode_str should be identical*/
+   char *facesetlist_idcode_str;   /*!< ID of facesets element */
+   char *nodelist_idcode_str; /*!< ID of nodelist element */
+   char *facenormals_idcode_str; /*!< ID of facenormals element */
+   char *nodenormals_idcode_str; /*!< ID of nodenormals element */
+   char *polyarea_idcode_str; /*!< ID of polygon areas element */
    char *Label; /*!< string containing a label for the surface. Used for window titles and saved image names */
    char *Name_NodeParent; /*!< Node parent of the SO.   Node Indices of SO are into NodeList matrix of the NodeParent SO*/               
-   char *Group;   /*!< Group the surface belongs to, like Simpsons H. */
+   char *Group_idcode_str;  /*!< IDcode of group */
+   char *StandardSpace;   /*!< standard space of surface (orig, tlrc, stdxxx, etc.*/
+   char *Group;   /*!< Group the surface belongs to, like Simpsons H. (aka. SubjectLabel)*/
    char *State; /*!< State of SO (like inflated, bloated, exploded) */
+   char *ModelName; /*!< cerebellum, hippocampus, cerebrum, etc. */
    /* modifications to the lame MappingRef field */
    SUMA_SO_SIDE Side; /*!< Left/right */
    SUMA_Boolean AnatCorrect;    /*!< Does surface geometry matches anatomy ? (YUP/NOPE)*/
@@ -1582,7 +1605,8 @@ typedef struct {
    char *OriginatorID;          /*!<  ID common for surfaces from one subject that are created
                                       at one point in time. Surfaces of the same subject,
                                       created at different points in time (like in a longitudinal
-                                      study) will have differing OriginatorID fields */
+                                      study) will have differing OriginatorID fields (aka InstanceID)*/
+   char *OriginatorLabel;        /*!< aka InstanceLabel */
    char *LocalCurvatureParent;   /*!< \sa same field in SUMA_SurfSpecFile structure */
    char *LocalCurvatureParentID;        /*!< \sa idcode_str of LocalCurvatureParent*/
    char *LocalDomainParent;   /*!< \sa same field in SUMA_SurfSpecFile structure */
@@ -1596,6 +1620,7 @@ typedef struct {
    SUMA_Boolean SUMA_VolPar_Aligned; /*!< Surface aligned to Parent Volume data sets ?*/
    SUMA_Boolean VOLREG_APPLIED; /*!< YUP if VP->VOLREG_CENTER_BASE, VP->VOLREG_CENTER_OLD, VP->VOLREG_MATVEC were successfully applied*/
    SUMA_Boolean TAGALIGN_APPLIED; /*!< YUP if VP->TAGALIGN_MATVEC was successfully applied */
+   SUMA_Boolean ROTATE_APPLIED; /*!< YUP if VP->ROTATE_MATVEC was successfully applied */
    SUMA_Boolean SentToAfni; /*!< YUP if the surface has been niml-sent to AFNI */
    SUMA_Boolean Show; /*!< YUP then the surface is visible in the viewer. Not used that much I'd say*/
    
@@ -1781,18 +1806,28 @@ typedef struct {
 /* *** Niml defines */
 
 #define SUMA_TCP_PORT 53211      /*!< AFNI listens to SUMA on this port */
+#define SUMA_TCP_LISTEN_PORT0 53220 /*!< SUMA's 1st listening port */
 #define SUMA_FLAG_WAITING    1   /*!< Waiting for connection flag */
 #define SUMA_FLAG_CONNECTED  2   /*!< Connected flag */
 #define SUMA_FLAG_SKIP       4   /*!< Skip flag */
 
-#define SUMA_AFNI_STREAM_INDEX 0  /*!< Index of SUMA<-->AFNI stream */       
-#define SUMA_INITIATED_STREAMS 1  /*!< Number of streams that SUMA initiates */ 
-#define SUMA_MAX_STREAMS       5  /*!< Maximum number of streams, >= SUMA_INITIATED_STREAMS */
-#define SUMA_GEOMCOMP_LINE 1 /*!<  Using socket SUMA_TCP_PORT + SUMA_GEOMCOMP_LINE 
-                              Make sure SUMA_GEOMCOMP_LINE < SUMA_MAX_STREAMS*/
-#define SUMA_BRAINWRAP_LINE 2 /*!<  Using socket SUMA_TCP_PORT + SUMA_BRAINWRAP_LINE 
-                              Make sure SUMA_BRAINWRAP_LINE < SUMA_MAX_STREAMS*/
-
+typedef enum { SUMA_AFNI_STREAM_INDEX = 0, /*!< Index of SUMA<-->AFNI stream , afni listen line 1*/ 
+               SUMA_AFNI_STREAM_INDEX2 ,  /*!< Index of SUMA<-->AFNI 2nd stream, afni listen line 2 */  
+               SUMA_GENERIC_LISTEN_LINE, /*!< Using socket  SUMA_TCP_LISTEN_PORT0, generic suma listen line*/
+               SUMA_GEOMCOMP_LINE, /*!<  Using socket  SUMA_TCP_LISTEN_PORT0 + 1*/
+               SUMA_BRAINWRAP_LINE, /*!<  Using socket SUMA_TCP_LISTEN_PORT0 + 2*/
+               SUMA_MAX_STREAMS /*!< Maximum number of streams, KEEP AT END */
+            } SUMA_STREAM_INDICES;
+            
+#if 0
+   #define SUMA_AFNI_STREAM_INDEX 0  /*!< Index of SUMA<-->AFNI stream */ 
+   #define SUMA_AFNI_STREAM_INDEX2 1  /*!< Index of SUMA<-->AFNI stream */       
+   #define SUMA_GEOMCOMP_LINE 2 /*!<  Using socket SUMA_TCP_PORT + SUMA_GEOMCOMP_LINE 
+                                 Make sure SUMA_GEOMCOMP_LINE < SUMA_MAX_STREAMS*/
+   #define SUMA_BRAINWRAP_LINE 3 /*!<  Using socket SUMA_TCP_PORT + SUMA_BRAINWRAP_LINE 
+                                 Make sure SUMA_BRAINWRAP_LINE < SUMA_MAX_STREAMS*/
+   #define SUMA_MAX_STREAMS       5  /*!< Maximum number of streams, >= SUMA_INITIATED_STREAMS */
+#endif
 /* *** Niml defines end */
 
               
@@ -1977,8 +2012,12 @@ typedef struct {
    SUMA_Boolean GoneBad;   /*!< Flag indicating that stream went bad */
    SUMA_Boolean Send;      /*!< Flag indicating that elements should be sent 
                                 As long as GoneBad is NOPE */
+   SUMA_Boolean afni_GoneBad;
+   SUMA_Boolean afni_Send;
    int istream; /*!< index of the stream used in SUMAg_CF->ns_v */
+   int afni_istream; /*!< index of stream used to connect to afni */
    char *suma_host_name;
+   char *afni_host_name; 
    int ElInd[SUMA_N_DSET_TYPES]; /* index of elements of a certain type to be sent to SUMA */
    int kth;    /* send kth element to SUMA */
    int Feed2Afni;
@@ -2091,87 +2130,7 @@ typedef struct {
 }  SUMA_AxisSegmentInfo;
 
 
-#define SUMA_MAX_SURF_ON_COMMAND 100
-#define SUMA_N_ARGS_MAX 1000
 
-typedef struct {
-   /* spec related input */
-   char *spec_names[SUMA_MAX_SURF_ON_COMMAND];
-   int N_spec_names;
-   
-   char *s_surfnames[SUMA_MAX_SURF_ON_COMMAND];
-   char *s_surfprefix[SUMA_MAX_SURF_ON_COMMAND];
-   char *s_surfpath[SUMA_MAX_SURF_ON_COMMAND];
-   int s_N_surfnames;
-   
-   /* -i_ related input */
-   char *i_surfnames[SUMA_MAX_SURF_ON_COMMAND];
-   char *i_surftopo[SUMA_MAX_SURF_ON_COMMAND];
-   char *i_surfpath[SUMA_MAX_SURF_ON_COMMAND];
-   char *i_surfprefix[SUMA_MAX_SURF_ON_COMMAND];
-   char *i_state[SUMA_MAX_SURF_ON_COMMAND];
-   char *i_group[SUMA_MAX_SURF_ON_COMMAND];
-   int i_anatomical[SUMA_MAX_SURF_ON_COMMAND];
-   int i_N_surfnames;
-   SUMA_SO_File_Format i_FF[SUMA_MAX_SURF_ON_COMMAND];
-   SUMA_SO_File_Type i_FT[SUMA_MAX_SURF_ON_COMMAND];
-   
-   /* -ipar_ related input */
-   char *ipar_surfnames[SUMA_MAX_SURF_ON_COMMAND];
-   char *ipar_surftopo[SUMA_MAX_SURF_ON_COMMAND];
-   char *ipar_surfpath[SUMA_MAX_SURF_ON_COMMAND];
-   char *ipar_surfprefix[SUMA_MAX_SURF_ON_COMMAND];
-   char *ipar_state[SUMA_MAX_SURF_ON_COMMAND];
-   char *ipar_group[SUMA_MAX_SURF_ON_COMMAND];
-   int ipar_anatomical[SUMA_MAX_SURF_ON_COMMAND];
-   int ipar_N_surfnames;
-   SUMA_SO_File_Format ipar_FF[SUMA_MAX_SURF_ON_COMMAND];
-   SUMA_SO_File_Type ipar_FT[SUMA_MAX_SURF_ON_COMMAND];
-   
-   /* -o_related input */
-   char *o_surfnames[SUMA_MAX_SURF_ON_COMMAND];
-   char *o_surftopo[SUMA_MAX_SURF_ON_COMMAND];
-   char *o_surfpath[SUMA_MAX_SURF_ON_COMMAND];
-   char *o_surfprefix[SUMA_MAX_SURF_ON_COMMAND];
-   char *o_state[SUMA_MAX_SURF_ON_COMMAND];
-   char *o_group[SUMA_MAX_SURF_ON_COMMAND];
-   int o_anatomical[SUMA_MAX_SURF_ON_COMMAND];
-   int o_N_surfnames;
-   SUMA_SO_File_Format o_FF[SUMA_MAX_SURF_ON_COMMAND];
-   SUMA_SO_File_Type o_FT[SUMA_MAX_SURF_ON_COMMAND];
-   
-   /* -t_related input */
-   char *t_surfnames[SUMA_MAX_SURF_ON_COMMAND];
-   char *t_surftopo[SUMA_MAX_SURF_ON_COMMAND];
-   char *t_surfpath[SUMA_MAX_SURF_ON_COMMAND];
-   char *t_surfprefix[SUMA_MAX_SURF_ON_COMMAND];
-   char *t_state[SUMA_MAX_SURF_ON_COMMAND];
-   char *t_group[SUMA_MAX_SURF_ON_COMMAND];
-   int t_anatomical[SUMA_MAX_SURF_ON_COMMAND];
-   int t_N_surfnames;
-   SUMA_SO_File_Format t_FF[SUMA_MAX_SURF_ON_COMMAND];
-   SUMA_SO_File_Type t_FT[SUMA_MAX_SURF_ON_COMMAND];
-   
-   byte arg_checked[SUMA_N_ARGS_MAX];
-   int N_args;
-   char *sv[SUMA_MAX_SURF_ON_COMMAND];
-   int N_sv;
-   char *vp[SUMA_MAX_SURF_ON_COMMAND];
-   int N_vp;
-   
-   /* -talk_suma options */
-   SUMA_COMM_STRUCT *cs;
-
-   /* flags for what to read */
-   byte accept_t;
-   byte accept_s;
-   byte accept_i;
-   byte accept_o;
-   byte accept_spec;
-   byte accept_sv;
-   byte accept_talk_suma;
-   byte check_input_surf;
-} SUMA_GENERIC_ARGV_PARSE;
   
 typedef struct {
    char *master;

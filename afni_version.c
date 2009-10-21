@@ -151,8 +151,9 @@ void AFNI_start_version_check(void)
      /** 25 Mar 2005: send more info in the request header **/
 
 #ifdef USE_HTTP_10
+     ubuf.nodename[0] = ubuf.sysname[0] = ubuf.machine[0] = '\0' ;
      jj = uname( &ubuf ) ;
-     if( jj == 0 )
+     if( jj >= 0 && ubuf.nodename[0] != '\0' )
        sprintf( ua ,
                "afni (avers='%s'; prec='%s' node='%s'; sys='%s'; mach='%s')" ,
                 VERSION, PCLAB, ubuf.nodename, ubuf.sysname, ubuf.machine   ) ;
@@ -362,6 +363,7 @@ char * AFNI_make_update_script(void)
    fp = fopen( SNAME , "w" ) ; if( fp == NULL ){ chdir(cwd); return NULL; }
    fprintf( fp ,
             "#!/bin/sh\n"
+            "echo '++ FTP-ing %s from afni.nimh.nih.gov'\n"
             "%s -n afni.nimh.nih.gov << EEEEE\n"   /* FTP to get file */
             "user anonymous AFNI_UPDATER@%s\n"
             "binary\n"
@@ -369,14 +371,18 @@ char * AFNI_make_update_script(void)
             "get %s\n"
             "bye\n"
             "EEEEE\n"
+            "echo '++ Unpacking %s'\n"
             "%s -dc %s | %s xf -\n"      /* uncompress and untar .tgz file */
             "/bin/rm -f %s\n"            /* delete .tgz file */
+            "echo '++ Moving files'\n"
             "/bin/mv -f %s/* .\n"        /* move untar-ed files up to here */
             "/bin/rm -rf %s\n"           /* remove any directory leftovers */
-            "exit\n" ,
+            "echo '++ Finished'\n" ,
+            fname ,                 /* filename to get (for 'FTP-ing' echo) */
             pg_ftp ,                /* FTP program */
             hbuf ,                  /* hostname, for FTP password */
-            fname ,                 /* filename to get */
+            fname ,                 /* filename to get (for FTP) */
+            fname ,                 /* ditto (for 'Unpacking' echo) */
             pg_gzip, fname, pg_tar, /* GZIP program, filename, TAR program */
             fname ,                 /* filename to delete */
             SHSHSH(SHOWOFF) ,       /* directory to copy up */

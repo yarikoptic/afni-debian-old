@@ -2733,11 +2733,15 @@ STATUS("KeyPress event") ;
          if( grapher->fd_pxWind != (Pixmap) 0 ){
             buf[0] = '\0' ;
             nbuf = XLookupString( event , buf , 32 , &ks , NULL ) ;
-            if( nbuf == 0 ){   /* 24 Jan 2003: special keys */
+            if( nbuf == 0 ){   /* 24 Jan 2003: substitution for special keys */
               switch(ks){
+                case XK_KP_Left:
                 case XK_Left:      buf[0] = '<' ; break ;
+                case XK_KP_Right:
                 case XK_Right:     buf[0] = '>' ; break ;
+                case XK_KP_Page_Up:
                 case XK_Page_Up:   buf[0] = 'Z' ; break ;
+                case XK_KP_Page_Down:
                 case XK_Page_Down: buf[0] = 'z' ; break ;
               }
             }
@@ -5775,11 +5779,6 @@ ENTRY("GRA_saver_CB") ;
    fname = (char *) malloc( sizeof(char) * (ll+8) ) ;
    strcpy( fname , cbs->cval ) ;
 
-   if( fname[ll-1] != '.' ){  /* add a . at the end? */
-       fname[ll++] = '.' ;
-       fname[ll]   = '\0' ;
-   }
-
    for( ii=0 ; ii < ll ; ii++ )
       if( iscntrl(fname[ii]) || isspace(fname[ii]) ) break ;
 
@@ -5788,9 +5787,10 @@ ENTRY("GRA_saver_CB") ;
       free( fname ) ; EXRETURN ;
    }
 
-   ppnm = strstr( fname , ".pnm." ) ;
-   if( ppnm == fname + (ll-5) ) fname[ll-1] = '\0' ;
-   else                         strcat(fname,"pnm") ;
+                      ppnm = strstr( fname , ".ppm" ) ;
+   if( ppnm == NULL ) ppnm = strstr( fname , ".pnm" ) ;
+   if( ppnm == NULL ) ppnm = strstr( fname , ".jpg" ) ;
+   if( ppnm == NULL ) strcat(fname,".ppm") ;
 
    GRA_file_pixmap( grapher , fname ) ;
    POPDOWN_string_chooser ;

@@ -4354,6 +4354,23 @@ STATUS("making prog->rowcol") ;
       prog->hidden_speech_pb = NULL ;
 #endif
 
+      /*----------*/
+
+#if !defined(NO_FRIVOLITIES) && defined(DARWIN)
+      prog->hidden_browser_pb =
+            XtVaCreateManagedWidget(
+               "dialog" , xmPushButtonWidgetClass , prog->hidden_menu ,
+                  LABEL_ARG("Web Browser") ,
+                  XmNmarginHeight , 0 ,
+                  XmNtraversalOn , False ,
+                  XmNinitialResourcesPersistent , False ,
+               NULL ) ;
+      XtAddCallback( prog->hidden_browser_pb , XmNactivateCallback ,
+                     AFNI_hidden_CB , im3d ) ;
+#else
+      prog->hidden_browser_pb = NULL ;
+#endif
+
     } /* if prog->hidden_menu isn't NULL */
    }
 #endif  /* USE_HIDDEN */
@@ -4542,6 +4559,10 @@ ENTRY("new_AFNI_controller") ;
 
    im3d->vinfo->tempflag          = 0 ;  /* 15 Mar 2000 */
    im3d->vinfo->see_ttatlas       = 0 ;  /* 25 Jul 2001 */
+
+   im3d->vinfo->stats_anat_ok =
+    im3d->vinfo->stats_func_ok =
+     im3d->vinfo->stats_thresh_ok = 0 ; /* 29 Mar 2005 */
 
    /* Feb 1998: receive stuff, including drawing */
    /* Mar 1999: modified to allow for multiple receivers */

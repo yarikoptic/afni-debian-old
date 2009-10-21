@@ -14,6 +14,7 @@ void SUMA_alloc_problem (char *s1);
 char **SUMA_allocate2D (int rows,int cols,int element_size);
 void SUMA_free2D(char **a,int rows);
 void SUMA_error_message (char *s1,char *s2,int ext);
+int SUMA_iswordin_ci (const char *sbig,const char *ssub);
 int SUMA_iswordin (const char *sbig,const char *ssub);
 float SUMA_etime (struct  timeval  *t, int Report);
 byte * SUMA_isinpoly(float *P, float *NodeList, int *FaceSetList, int N_FaceSet, int FaceSetDim, int *dims, int *N_in, byte *usethis, byte *mask);
@@ -90,6 +91,8 @@ SUMA_Boolean SUMA_Get_NodeIncident(int n1, SUMA_SurfaceObject *SO, int *Incident
 SUMA_IRGB *SUMA_Free_IRGB(SUMA_IRGB *irgb);
 SUMA_IRGB *SUMA_Read_IRGB_file (char *f_name);
 SUMA_IRGB *SUMA_Create_IRGB(int n_el);
+int SUMA_suck_file( char *fname , char **fbuf );
+char * SUMA_file_suck( char *fname , int *nread );
 
 
 

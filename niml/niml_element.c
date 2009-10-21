@@ -27,6 +27,8 @@ NI_dpr("ENTER make_empty_data_element\n") ;
 
    nel->type = NI_ELEMENT_TYPE ;
 
+   nel->outmode = -1 ;   /* 29 Mar 2005 */
+
    /* move name and attributes from hs to new element */
 
    nel->name = hs->name ; hs->name = NULL ;
@@ -174,7 +176,8 @@ NI_dpr("ENTER make_empty_data_element\n") ;
 
      if( nel->vec_len > 0 ){
        for( ii=0 ; ii < nel->vec_num ; ii++ )
-         nel->vec[ii] = NI_malloc(void, NI_type_size(nel->vec_typ[ii])*nel->vec_len) ;
+         nel->vec[ii] = NI_malloc(void,
+                                  NI_type_size(nel->vec_typ[ii])*nel->vec_len) ;
      } else {
        for( ii=0 ; ii < nel->vec_num ; ii++ )
          nel->vec[ii] = NULL ;
@@ -203,6 +206,8 @@ NI_group * make_empty_group_element( header_stuff *hs )
    ngr->type = NI_GROUP_TYPE ;
 
    ngr->name = hs->name ; hs->name = NULL ;  /* 24 Feb 2005 */
+
+   ngr->outmode = -1 ;   /* 29 Mar 2005 */
 
    /* move attributes from hs to new element */
 
@@ -241,7 +246,6 @@ int NI_type_size( int tval )
 
 /*-----------------------------------------------------------------------*/
 /*! Return the type of something that points to a NI element.
-
     - The input should be point to a NI_element, NI_group, or NI_procins.
     - The return value is NI_ELEMENT_TYPE, NI_GROUP_TYPE, NI_PROCINS_TYPE,
       or -1 if the type is anything else or unknowable.
@@ -260,6 +264,27 @@ int NI_element_type( void *nini )
    if( npi->type == NI_PROCINS_TYPE ) return NI_PROCINS_TYPE ;
 
    return -1 ;
+}
+
+/*-----------------------------------------------------------------------*/
+/*! Return the name of a NI element.  If the input is bad, returns
+    a NULL pointer.  Do not free this pointer!  It points to the
+    name string inside the element struct.
+-------------------------------------------------------------------------*/
+
+char * NI_element_name( void *nini )
+{
+   NI_element *nel = (NI_element *) nini ;
+   NI_group   *ngr = (NI_group *)   nini ;
+   NI_procins *npi = (NI_procins *) nini ;
+
+   if( nini == NULL ) return NULL ;
+
+   if( nel->type == NI_ELEMENT_TYPE ) return nel->name ;
+   if( ngr->type == NI_GROUP_TYPE   ) return ngr->name ;
+   if( npi->type == NI_PROCINS_TYPE ) return npi->name ;
+
+   return NULL ;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -366,6 +391,8 @@ NI_element * NI_new_data_element( char *name , int veclen )
 
    nel->type = NI_ELEMENT_TYPE ;  /* mark as being a data element */
 
+   nel->outmode = -1 ;   /* 29 Mar 2005 */
+
    nel->name = NI_strdup(name) ;
    nel->attr_num = 0 ;
    nel->attr_lhs = nel->attr_rhs = NULL ;  /* no attributes yes */
@@ -429,7 +456,7 @@ void NI_add_column( NI_element *nel , int typ , void *arr )
 
    /* add 1 to the vec_typ array */
 
-   nel->vec_typ     = NI_realloc( nel->vec_typ , int, sizeof(int)*(nn+1) ) ;
+   nel->vec_typ     = NI_realloc( nel->vec_typ, int, sizeof(int)*(nn+1) ) ;
    nel->vec_typ[nn] = typ ;
 
    /* add 1 element to the vec array, and copy data into it */
@@ -444,6 +471,42 @@ void NI_add_column( NI_element *nel , int typ , void *arr )
 
    nel->vec_num = nn+1 ;
    return ;
+}
+
+/*------------------------------------------------------------------------*/
+/*! Change the length of all the columns in a data element.
+     - If the columns are longer, they will be zero filled.
+     - New values can be inserted later with NI_insert_value().
+     - If the columns are shorter, data will be lost.
+     - You cannot use this to convert an element to/from being empty;
+       that is, newlen > 0 is required, as is nel->vec_len on input.
+--------------------------------------------------------------------------*/
+
+void NI_alter_veclen( NI_element *nel , int newlen )
+{
+   int oldlen , ii ;
+   NI_rowtype *rt ;
+   char *pt ;
+
+   if( nel          == NULL || nel->type != NI_ELEMENT_TYPE ) return ;
+   if( nel->vec_len <= 0    || newlen    <= 0               ) return ;
+
+   if( nel->vec_num == 0 ){                       /* if have no data yet */
+     nel->vec_len = nel->vec_filled = newlen; return;
+   }
+
+   oldlen = nel->vec_len ; if( oldlen == newlen ) return ;
+
+   for( ii=0 ; ii < nel->vec_num ; ii++ ){
+     rt = NI_rowtype_find_code( nel->vec_typ[ii] ) ;
+     nel->vec[ii] = NI_realloc( nel->vec[ii] , void , rt->size * newlen ) ;
+     if( oldlen < newlen ){
+       pt = ((char *)nel->vec[ii]) + (rt->size * oldlen) ; /* zero fill */
+       memset( pt , 0 , (newlen-oldlen)*rt->size ) ;       /* new data! */
+     }
+   }
+
+   nel->vec_len = nel->vec_filled = newlen ; return ;
 }
 
 /*------------------------------------------------------------------------*/
@@ -466,9 +529,9 @@ void NI_add_column_stride( NI_element *nel, int typ, void *arr, int stride )
    /* add an empty column */
 
    NI_add_column( nel , typ , NULL ) ;
-   if( arr == NULL ) return ;          /* no data ==> we're done */
+   if( arr == NULL ) return ;          /* no input data ==> we're done */
 
-   /* loop over inputs and put them in */
+   /* loop over inputs and put them in one at a time */
 
    nn   = nel->vec_num-1 ;
    idat = (char *) arr ;
@@ -478,12 +541,14 @@ void NI_add_column_stride( NI_element *nel, int typ, void *arr, int stride )
 
    return ;
 }
+
 /*------------------------------------------------------------------------*/
 /*! ZSS; Fills an already created column with values up to vec_filled
          the values in arr are inserted into nel->vec[nn]
 --------------------------------------------------------------------------*/
 
-void NI_fill_column_stride( NI_element *nel, int typ, void *arr, int nn, int stride )
+void NI_fill_column_stride( NI_element *nel, int typ,
+                            void *arr, int nn, int stride )
 {
    int  ii , nf;
    NI_rowtype *rt ;
@@ -495,16 +560,20 @@ void NI_fill_column_stride( NI_element *nel, int typ, void *arr, int nn, int str
    if( nel->type != NI_ELEMENT_TYPE )                return ;
    rt = NI_rowtype_find_code(typ) ; if( rt == NULL ) return ;
 
-   /* check for NULL column */
-   if (!arr) return;
-   if (!nel->vec[nn]) return;
-   if (nn < 0 || nn >= nel->vec_num) return;
-   
+   /* check for NULL column or other similar errors*/
+
+   if( arr == NULL )                                 return ;
+   if( nel->vec[nn] == NULL )                        return ;
+   if( nn < 0 || nn >= nel->vec_num )                return ;
+   if( typ != nel->vec_typ[nn] )                     return ;
 
    /* loop over inputs and put them in */
-   if (nel->vec_filled > 0 && nel->vec_filled <= nel->vec_len) nf = nel->vec_filled;
-   else nf = nel->vec_len;
-   
+
+   if( nel->vec_filled > 0 && nel->vec_filled <= nel->vec_len )
+     nf = nel->vec_filled ;
+   else
+     nf = nel->vec_len ;
+
    idat = (char *) arr ;
 
    for( ii=0 ; ii < nf ; ii++ )
@@ -518,7 +587,21 @@ void NI_fill_column_stride( NI_element *nel, int typ, void *arr, int nn, int str
      - dat is the pointer to the data values to copy into the element.
      - The column must have been created with NI_add_column() before
        calling this function!
-     - RWCox - 03 Apr 2003
+     - NOTE WELL: When the column type is NI_STRING, it is a mistake
+       to call this function with dat being a pointer to the C string
+       to insert.  Instead, dat should be a pointer to the pointer to
+       the C string.  For example:
+        - char *me = "RWCox" ;
+        - WRONG:  NI_insert_value ( nel, 3,5,  me ) ; [Seg Fault ensues]
+        - RIGHT:  NI_insert_value ( nel, 3,5, &me ) ;
+        - RIGHT:  NI_insert_string( nel, 3,5,  me ) ;
+        - The last case illustrates the NI_insert_string() function,
+          which can be used to simplify insertion into a column
+          of Strings; that function is just a simple wrapper to call
+          NI_insert_value() properly.
+        - The reason the first example is WRONG is that dat is supposed
+          to point to the data to be stored.  In the case of a String,
+          the data is the pointer to the C string.
 --------------------------------------------------------------------------*/
 
 void NI_insert_value( NI_element *nel, int row, int col, void *dat )
@@ -529,11 +612,11 @@ void NI_insert_value( NI_element *nel, int row, int col, void *dat )
 
    /* check for reasonable inputs */
 
-   if( nel == NULL || nel->vec_len <= 0   ) return ;
+   if( nel == NULL || idat == NULL        ) return ;
+   if( nel->type    != NI_ELEMENT_TYPE    ) return ;
+   if( nel->vec_len <= 0                  ) return ;
    if( row < 0     || row >= nel->vec_len ) return ;
    if( col < 0     || col >= nel->vec_num ) return ;
-   if( nel->type   != NI_ELEMENT_TYPE     ) return ;
-   if( idat == NULL                       ) return ;
 
    rt = NI_rowtype_find_code( nel->vec_typ[col] ) ;
    if( rt == NULL )                         return ;
@@ -568,6 +651,19 @@ void NI_insert_value( NI_element *nel, int row, int col, void *dat )
 }
 
 /*------------------------------------------------------------------------*/
+
+void NI_insert_string( NI_element *nel, int row, int col, char *str )
+{
+   if( nel == NULL || str == NULL         ) return ;
+   if( nel->type   != NI_ELEMENT_TYPE     ) return ;
+   if( row < 0     || row >= nel->vec_len ) return ;
+   if( col < 0     || col >= nel->vec_num ) return ;
+   if( nel->vec_typ[col] != NI_STRING     ) return ;
+
+   NI_insert_value( nel , row,col , &str ); return ;
+}
+
+/*------------------------------------------------------------------------*/
 /*! Add an attribute to a data or group element.
     If an attribute with the same attname already exists, then
     it will be replaced with this one.
@@ -592,8 +688,8 @@ void NI_set_attribute( void *nini , char *attname , char *attvalue )
       /* if not, then add a header attribute */
 
       if( nn == nel->attr_num ){
-        nel->attr_lhs = NI_realloc( nel->attr_lhs , char*, sizeof(char *)*(nn+1) ) ;
-        nel->attr_rhs = NI_realloc( nel->attr_rhs , char*, sizeof(char *)*(nn+1) ) ;
+        nel->attr_lhs = NI_realloc( nel->attr_lhs, char*, sizeof(char *)*(nn+1) );
+        nel->attr_rhs = NI_realloc( nel->attr_rhs, char*, sizeof(char *)*(nn+1) );
         nel->attr_num = nn+1 ;
       } else {
         NI_free(nel->attr_lhs[nn]) ;  /* free old attribute */
@@ -612,8 +708,8 @@ void NI_set_attribute( void *nini , char *attname , char *attvalue )
          if( strcmp(ngr->attr_lhs[nn],attname) == 0 ) break ;
 
       if( nn == ngr->attr_num ){
-        ngr->attr_lhs = NI_realloc( ngr->attr_lhs , char*, sizeof(char *)*(nn+1) ) ;
-        ngr->attr_rhs = NI_realloc( ngr->attr_rhs , char*, sizeof(char *)*(nn+1) ) ;
+        ngr->attr_lhs = NI_realloc( ngr->attr_lhs, char*, sizeof(char *)*(nn+1) );
+        ngr->attr_rhs = NI_realloc( ngr->attr_rhs, char*, sizeof(char *)*(nn+1) );
         ngr->attr_num = nn+1 ;
       } else {
         NI_free(ngr->attr_lhs[nn]) ;
@@ -629,11 +725,11 @@ void NI_set_attribute( void *nini , char *attname , char *attvalue )
       NI_procins *npi = (NI_procins *) nini ;
 
       for( nn=0 ; nn < npi->attr_num ; nn++ )
-         if( strcmp(npi->attr_lhs[nn],attname) == 0 ) break ;
+        if( strcmp(npi->attr_lhs[nn],attname) == 0 ) break ;
 
       if( nn == npi->attr_num ){
-        npi->attr_lhs = NI_realloc( npi->attr_lhs , char*, sizeof(char *)*(nn+1) ) ;
-        npi->attr_rhs = NI_realloc( npi->attr_rhs , char*, sizeof(char *)*(nn+1) ) ;
+        npi->attr_lhs = NI_realloc( npi->attr_lhs, char*, sizeof(char *)*(nn+1) );
+        npi->attr_rhs = NI_realloc( npi->attr_rhs, char*, sizeof(char *)*(nn+1) );
         npi->attr_num = nn+1 ;
       } else {
         NI_free(npi->attr_lhs[nn]) ;
@@ -697,7 +793,7 @@ char * NI_get_attribute( void *nini , char *attname )
       NI_procins *npi = (NI_procins *) nini ;
 
       for( nn=0 ; nn < npi->attr_num ; nn++ )
-         if( strcmp(npi->attr_lhs[nn],attname) == 0 ) break ;
+        if( strcmp(npi->attr_lhs[nn],attname) == 0 ) break ;
 
       if( nn == npi->attr_num ) return NULL ;
 
@@ -819,6 +915,7 @@ NI_procins * NI_new_processing_instruction( char *name )
    npi = NI_malloc(NI_procins,sizeof(NI_procins)) ;
 
    npi->type = NI_PROCINS_TYPE ;
+   npi->name = NI_strdup(name) ;
 
    npi->attr_num = 0 ;
    npi->attr_lhs = npi->attr_rhs = NULL ;
@@ -837,6 +934,8 @@ NI_group * NI_new_group_element(void)
    ngr = NI_malloc(NI_group, sizeof(NI_group) ) ;
 
    ngr->type = NI_GROUP_TYPE ;
+
+   ngr->outmode = -1 ;   /* 29 Mar 2005 */
 
    ngr->attr_num = 0 ;
    ngr->attr_lhs = ngr->attr_rhs = NULL ;
@@ -863,9 +962,34 @@ void NI_add_to_group( NI_group *ngr , void *nini )
 
    ngr->part_typ     = NI_realloc( ngr->part_typ , int, sizeof(int)*(nn+1) ) ;
    ngr->part_typ[nn] = tt ;
-   ngr->part         = NI_realloc( ngr->part , void*, sizeof(void *)*(nn+1) ) ;
+   ngr->part         = NI_realloc( ngr->part , void*, sizeof(void *)*(nn+1) );
    ngr->part[nn]     = nini ;
    ngr->part_num     = nn+1 ;
+   return ;
+}
+
+/*-----------------------------------------------------------------------*/
+/*! Remove an element from a group.  Does NOT delete the element;
+    that is the caller's responsibility, if desired.
+-------------------------------------------------------------------------*/
+
+void NI_remove_from_group( NI_group *ngr , void *nini )  /* 16 Apr 2005 */
+{
+   int ii , nn , jj ;
+
+   if( ngr == NULL || ngr->type != NI_GROUP_TYPE || nini == NULL ) return ;
+
+   nn = ngr->part_num ;
+   for( ii=0 ; ii < nn ; ii++ )       /* search for part */
+     if( nini == ngr->part[ii] ) break ;
+   if( ii == nn ) return ;            /* not found */
+
+   for( jj=ii+1 ; jj < nn ; jj++ ){   /* move parts above down */
+     ngr->part_typ[jj-1] = ngr->part_typ[jj] ;
+     ngr->part    [jj-1] = ngr->part    [jj] ;
+   }
+   ngr->part[nn-1] = NULL ;    /* NULL-ify last part to be safe */
+   ngr->part_num -- ;          /* reduce part count */
    return ;
 }
 
@@ -879,4 +1003,92 @@ void NI_rename_group( NI_group *ngr , char *nam )
    NI_free( ngr->name ) ;
    ngr->name = NI_strdup(nam) ;
    return ;
+}
+
+/*-----------------------------------------------------------------------*/
+/*! Return a list of all elements in a group that have a given name.
+      - This is a 'shallow' search: if the group itself contains
+        groups, these sub-groups are not searched.
+      - Return value of function is number of elements found (might be 0).
+      - If something is found, then *nipt is an array of 'void *', each
+        of which points to a matching element.
+      - The returned elements might be group or data elements.
+      - Sample usage:
+          - int n,i ; void **nelar ;
+          - n = NI_search_group_shallow( ngr , "fred" , &nelar ) ;
+          - for( i=0 ; i < n ; i++ ) do_something( nelar[ii] ) ;
+          - if( n > 0 ) NI_free(nelar) ;
+-------------------------------------------------------------------------*/
+
+int NI_search_group_shallow( NI_group *ngr , char *enam , void ***nipt )
+{
+   void **nelar=NULL , *nini ;
+   int ii , nn=0 ;
+   char *nm ;
+
+   if( ngr  == NULL || ngr->type != NI_GROUP_TYPE    ) return 0 ;
+   if( enam == NULL || *enam == '\0' || nipt == NULL ) return 0 ;
+   if( ngr->part_num == 0                            ) return 0 ;
+
+   for( ii=0 ; ii < ngr->part_num ; ii++ ){
+     nini = ngr->part[ii] ;
+     nm   = NI_element_name( nini ) ;
+     if( nm != NULL && strcmp(nm,enam) == 0 ){
+       nelar = (void **) NI_realloc(nelar,void*,nn+1) ;
+       nelar[nn++] = nini ;
+     }
+   }
+
+   if( nn > 0 ) *nipt = nelar ;
+   return nn ;
+}
+
+/*-----------------------------------------------------------------------*/
+/*! Return a list of all elements in a group that have a given name.
+      - This is a 'deep' search: if the group itself contains
+        groups, these sub-groups are searched, etc.
+      - If a group element has the name 'enam' AND a data element within
+        that group has the name 'enam' as well, they will BOTH be returned
+        in this list.
+      - Return value of function is number of elements found (might be 0).
+      - If something is found, then *nipt is an array of 'void *', each
+        of which points to a matching element.
+      - The returned elements might be group or data elements.
+      - Sample usage:
+          - int n,i ; void **nelar ;
+          - n = NI_search_group_shallow( ngr , "fred" , &nelar ) ;
+          - for( i=0 ; i < n ; i++ ) do_something( nelar[ii] ) ;
+          - if( n > 0 ) NI_free(nelar) ;
+-------------------------------------------------------------------------*/
+
+int NI_search_group_deep( NI_group *ngr , char *enam , void ***nipt )
+{
+   void **nelar=NULL , *nini ;
+   int ii , nn=0 ;
+   char *nm ;
+
+   if( ngr  == NULL || ngr->type != NI_GROUP_TYPE    ) return 0 ;
+   if( enam == NULL || *enam == '\0' || nipt == NULL ) return 0 ;
+   if( ngr->part_num == 0                            ) return 0 ;
+
+   for( ii=0 ; ii < ngr->part_num ; ii++ ){
+     nini = ngr->part[ii] ;
+     nm   = NI_element_name( nini ) ;
+     if( nm != NULL && strcmp(nm,enam) == 0 ){
+       nelar = (void **) NI_realloc(nelar,void*,nn+1) ;
+       nelar[nn++] = nini ;
+     }
+     if( NI_element_type(nini) == NI_GROUP_TYPE ){  /* recursion */
+       int nsub , jj ; void **esub ;
+       nsub = NI_search_group_deep( nini , enam , &esub ) ;
+       if( nsub > 0 ){
+         nelar = (void **) NI_realloc(nelar,void*,nn+nsub) ;
+         for( jj=0 ; jj < nsub ; jj++ ) nelar[nn++] = esub[jj] ;
+         NI_free(esub) ;
+       }
+     }
+   }
+
+   if( nn > 0 ) *nipt = nelar ;
+   return nn ;
 }

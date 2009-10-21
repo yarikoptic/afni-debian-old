@@ -118,6 +118,8 @@ static char * MRI_TYPE_name[8] =
 
 #define MRI_type_name MRI_TYPE_name  /* because I forget */
 
+#define MRI_TYPE_NAME(iimm) MRI_TYPE_name[(iimm)->kind]  /* 26 Apr 2005 */
+
 /*! Max value of a byte. */
 
 #define MRI_maxbyte         255
@@ -624,6 +626,7 @@ extern MRI_IMAGE *mri_read( char * ) ;
 extern MRI_IMAGE *mri_read_ge4( char * ) ;               /* 03 Jun 2003 */
 extern int mri_write( char * , MRI_IMAGE * ) ;
 extern int mri_write_pnm( char * , MRI_IMAGE * ) ;
+extern int mri_write_jpg( char * , MRI_IMAGE * ) ;       /* 15 Apr 2005 */
 extern int mri_write_7D( char * , MRI_IMAGE * ) ;
 extern int mri_datum_size( MRI_TYPE typ ) ;
 extern MRI_IMAGE *mri_read_ascii( char * ) ;
@@ -893,7 +896,6 @@ extern MRI_IMAGE * mri_flip3D( int,int,int , MRI_IMAGE *inim ) ; /* 19 Mar 2003 
 #define BYTE_ORDER_STRING(qq) (  ((qq)==LSB_FIRST) ? LSB_FIRST_STRING \
                                : ((qq)==MSB_FIRST) ? MSB_FIRST_STRING \
                                                    : "Illegal Value" )
-
 extern int mri_short_order(void) ;
 extern int mri_int_order(void) ;
 extern void mri_swap2( int , short * ) ;
@@ -1093,5 +1095,6 @@ extern double mri_entropy8 ( MRI_IMAGE * ) ;  /* 09 Jan 2004 */
 # define RESTRICT /*nada*/
 #endif
 
+/*------------------------------------------------------------------*/
 
 #endif /* _MCW_MRILIB_HEADER_ */

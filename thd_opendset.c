@@ -8,10 +8,11 @@
 #include "thd.h"
 
 #undef  CHECK_FOR_DATA     /* 06 Jan 2005: message about empty files */
-#define CHECK_FOR_DATA(fn)                                               \
- do{ if( fsize == 0 ){                                                   \
-       fprintf(stderr,"** Can't read ANY data from file '%s'\n",(fn)) ;  \
-       RETURN(NULL) ;                                                    \
+#define CHECK_FOR_DATA(fn)                                                \
+ do{ if( fsize <= 0 ){                                                    \
+       if( fsize == 0 )                                                   \
+         fprintf(stderr,"** Can't read ANY data from file '%s'\n",(fn));  \
+       RETURN(NULL) ;                                                     \
      }} while(0)
 
 /*----------------------------------------------------------------
@@ -46,7 +47,8 @@ ENTRY("THD_open_one_dataset") ;
       RETURN( THD_open_dataset(pathname) ) ;
    }
 
-   fsize = THD_filesize(pathname) ;   /* 06 Jan 2005 */
+   fsize = THD_filesize(pathname) ;                         /* 06 Jan 2005 */
+   if( fsize == 0 && !THD_is_file(pathname) ) fsize = -1 ;  /* 31 Mar 2005 */
 
    /*-- perhaps the MINC way --*/
 
@@ -84,8 +86,9 @@ ENTRY("THD_open_one_dataset") ;
 
    /*-- 28 Aug 2003: the NIFTI way! --*/
 
-   if( STRING_HAS_SUFFIX(pathname,".nii") ||
-       STRING_HAS_SUFFIX(pathname,".nia")   ){
+   if( STRING_HAS_SUFFIX(pathname,".nii")    ||
+       STRING_HAS_SUFFIX(pathname,".nii.gz") ||
+       STRING_HAS_SUFFIX(pathname,".nia")      ){
 
      CHECK_FOR_DATA(pathname) ;               /* 06 Jan 2005 */
      RETURN( THD_open_nifti(pathname) ) ;
@@ -108,10 +111,10 @@ ENTRY("THD_open_one_dataset") ;
    for( ii=plen-1 ; ii >= 0 ; ii-- ) if( pathname[ii] == '/' ) break ;
 
    if( ii < 0 ){
-      strcpy( dirname , "./" ) ;      /* fake directory name */
+     strcpy( dirname , "./" ) ;      /* fake directory name */
    } else {
-      strcpy( dirname , pathname ) ;
-      dirname[ii+1] = '\0' ;
+     strcpy( dirname , pathname ) ;
+     dirname[ii+1] = '\0' ;
    }
    offset = ii + 1 ;  /* offset of file within pathname - rickr [20 Sep 2002] */
 
@@ -138,7 +141,8 @@ ENTRY("THD_open_one_dataset") ;
 
    /*-- open it up? --*/
 
-   fsize = THD_filesize(fullname) ;         /* 06 Jan 2005 */
+   fsize = THD_filesize(fullname) ;                         /* 06 Jan 2005 */
+   if( fsize == 0 && !THD_is_file(pathname) ) fsize = -1 ;  /* 31 Mar 2005 */
    CHECK_FOR_DATA(fullname) ;
 
    dblk = THD_init_one_datablock( dirname , fullname ) ;

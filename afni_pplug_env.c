@@ -412,6 +412,16 @@ PLUGIN_interface * ENV_init(void)
                    "Display color overlay as edges only?" ,
                    NUM_yesno_list , yesno_list , ENV_redisplay ) ;
 
+   /* 08 Apr 2005 [rickr] */
+   ENV_add_numeric( "AFNI_NIFTI_DEBUG" ,
+                    "Set nifti_io debug level (should then do Rescan:This)" ,
+                    0,5,0,0 , NULL ) ;
+
+   /* 20 Apr 2005 [RWCox] */
+   ENV_add_string( "AFNI_OVERLAY_ZERO" ,
+                   "Do 0 values get color in an Overlay?" ,
+                   NUM_yesno_list , yesno_list , ENV_redisplay ) ;
+
    /*---------------- compute helpstring -----------------------*/
 
    helpstring = THD_zzprintf( helpstring , "%s\n" , help_start ) ;
@@ -483,6 +493,7 @@ PLUGIN_interface * ENV_init(void)
                               env_var[ii].vtop  ,
                               env_var[ii].vdecim,
                               ival,(env_var[ii].vtype==ENV_NUMBER_EDITABLE) ) ;
+            PLUTO_add_hint( plint , env_var[ii].vhint ) ; /* 8 Apr 2005 rickr */
          }
          break ;
 
@@ -491,6 +502,7 @@ PLUGIN_interface * ENV_init(void)
                PLUTO_add_string( plint ,
                                  env_var[ii].vname ,
                                  0 , &ept , NAME_NMAX ) ;
+               PLUTO_add_hint( plint , env_var[ii].vhint ) ;
             } else {
                int dval , jj ;
                char ** sval ;
@@ -506,6 +518,7 @@ PLUGIN_interface * ENV_init(void)
                PLUTO_add_string( plint ,
                                  env_var[ii].vname  ,
                                  1+env_var[ii].vcount , sval , dval ) ;
+               PLUTO_add_hint( plint , env_var[ii].vhint ) ;
                free(sval) ;
             }
          }

@@ -106,7 +106,7 @@ double legendre( double x , int m )   /* Legendre polynomials over [-1,1] */
 {
    if( m < 0 ) return 1.0 ;    /* bad input */
 
-   switch( m ){
+   switch( m ){                /*** P_m(x) for m=0..20 ***/
     case 0: return 1.0 ;
     case 1: return x ;
     case 2: return (3.0*x*x-1.0)/2.0 ;
@@ -200,12 +200,24 @@ double legendre( double x , int m )   /* Legendre polynomials over [-1,1] */
             * x * x) * x * x) * x * x) * x * x) * x * x;
    }
 
+#if 0
    /* order out of range: return Chebyshev instead (it's easy) */
 
         if(  x >=  1.0 ) x = 0.0 ;
    else if ( x <= -1.0 ) x = 3.14159265358979323846 ;
    else                  x = acos(x) ;
    return cos(m*x) ;
+#else
+   /** if here, m > 20 ==> use recurrence relation **/
+
+   { double pk, pkm1, pkm2 ; int k ;
+     pkm2 = legendre( x , 19 ) ;
+     pkm1 = legendre( x , 20 ) ;
+     for( k=21 ; k <= m ; k++ , pkm2=pkm1 , pkm1=pk )
+       pk = ((2.0*k-1.0)*x*pkm1 - (k-1.0)*pkm2)/k ;
+     return pk ;
+   }
+#endif
 }
 
 /*---------------------------------------------------------------------------*/
@@ -299,7 +311,7 @@ if(PRINT_TRACING){
        } else {            /* 15 Jul 2004: the new way: Legendre - RWCox */
 
          double xx , aa=2.0/(nlast-nfirst-1.0) ; /* map nfirst..nlast-1 */
-         for( m=mfirst ; m < mlast ; m++ ){        /* to interval [-1,1] */
+         for( m=mfirst ; m < mlast ; m++ ){      /* to interval [-1,1] */
            xx = aa*(n-nfirst) - 1.0 ;
            x.elts[n][m] = legendre( xx , m-mfirst ) ;
          }
@@ -446,14 +458,14 @@ ENTRY("init_regression_analysis") ;
     {
       ibot = IBOT(is) ; itop = ITOP(is) ;
       for (im = ibot;  im <= itop;  im++)
-	{
-	  if (baseline[is])
-	    {
-	      plist[ip] = it;
-	      ip++;
-	    }
-	  it++;
-	}
+      {
+        if (baseline[is])
+        {
+          plist[ip] = it;
+          ip++;
+        }
+	     it++;
+	   }
     }
   ok = calc_matrices (xdata, ip, plist, x_base, &xtxinv_temp, xtxinvxt_base);
   if (!ok)  { matrix_destroy (&xtxinv_temp);  RETURN (0); };

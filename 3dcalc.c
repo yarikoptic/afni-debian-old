@@ -1074,12 +1074,13 @@ void CALC_Syntax(void)
     "   rect , step , astep, bool  , and   , or    , mofn ,\n"
     "   sind , cosd , tand , median, lmode , hmode , mad  ,\n"
     "   gran , uran , iran , eran  , lran  , orstat,\n"
-    "   mean , stdev, sem  ,\n"
+    "   mean , stdev, sem  , Pleg\n"
     " where\n"
     " * qg(x)    = reversed cdf of a standard normal distribution\n"
     " * qginv(x) = inverse function to qg\n"
     " * min, max, atan2 each take 2 arguments ONLY\n"
     " * J0, J1, Y0, Y1 are Bessel functions (see Watson)\n"
+    " * Pleg(m,x) is the m'th Legendre polynomial evaluated at x\n"
     " * erf, erfc are the error and complementary error functions\n"
     " * sind, cosd, tand take arguments in degrees (vs. radians)\n"
     " * median(a,b,c,...) computes the median of its arguments\n"
@@ -1769,7 +1770,7 @@ int main( int argc , char * argv[] )
    THD_load_statistics( new_dset ) ;
 
    if( CALC_verbose )
-      fprintf(stderr,"++ Writing output to disk\n") ;
+      fprintf(stderr,"++ Writing output: %s\n",DSET_BRIKNAME(new_dset)) ;
    THD_write_3dim_dataset( NULL,NULL , new_dset , True ) ;
 
    exit(0) ;

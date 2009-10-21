@@ -10,7 +10,7 @@
 # include "matrix.h"
 # include "matrix.c"
 /*#endif*/
-
+#include "afni.h"
 
 #define TINYNUMBER 1E-10
 #define SMALLNUMBER 1E-4
@@ -51,10 +51,13 @@ static int debug_briks = 0;     /* put Ed, Ed0 and Converge step sub-briks in ou
 static int verbose = 0;         /* print out info every verbose number of voxels - user option */
 static int afnitalk_flag = 0;   /* show convergence in AFNI graph - user option */
 
+static NI_stream_type * DWIstreamid = 0;     /* NIML stream ID */
+
 static void Form_R_Matrix (MRI_IMAGE * grad1Dptr);
 static void DWItoDT_tsfunc (double tzero, double tdelta, int npts, float ts[], double ts_mean, double ts_slope, void *ud, int nbriks, float *val);
 static void EIG_func (void);
 static float Calc_FA(float *val);
+static float Calc_MD(float *val);
 static void ComputeD0 (void);
 static double ComputeJ (float ts[], int npts);
 static void ComputeDeltaTau (void);
@@ -74,6 +77,9 @@ static double matrix_sumabs (matrix m);
 static double *InvertSym3 (double a, double b, double c, double e, double f,
 			   double i);
 static void matrix_copy (matrix a, matrix * b);
+static int DWI_Open_NIML_stream(void);
+static int DWI_NIML_create_graph(void);
+static void DWI_AFNI_update_graph(double *Edgraph, double *dtau, int npts);
 
 int
 main (int argc, char *argv[])
@@ -99,32 +105,37 @@ main (int argc, char *argv[])
 	      "    a 3D bucket dataset with Np+1 sub-briks where the first sub-brik is the\n"
               "    volume acquired with no diffusion weighting.\n"
 	      " Options:\n"
+              "   -prefix pname = Use 'pname' for the output dataset prefix name.\n"
+              "    [default='DT']\n"
 	      "   -automask =  mask dataset so that the tensors are computed only for\n"
 	      "    high-intensity (presumably brain) voxels.  The intensity level is\n"
               "    determined the same way that 3dClipLevel works.\n\n"
               "   -nonlinear = compute iterative solution to avoid negative eigenvalues.\n"
               "    This is the default method.\n\n"
-              "   -linear = compute simple linear solution\n\n"
+              "   -linear = compute simple linear solution.\n\n"
               "   -reweight = recompute weight factors at end of iterations and restart\n\n"
-              "   -max_iter n = maximum number of iterations for convergence (Default=10)\n"
-              "    values can range from -1 to any positive integer less than 101.\n"
+              "   -max_iter n = maximum number of iterations for convergence (Default=10).\n"
+              "    Values can range from -1 to any positive integer less than 101.\n"
 	      "    A value of -1 is equivalent to the linear solution.\n"
 	      "    A value of 0 results in only the initial estimate of the diffusion tensor\n"
 	      "    solution adjusted to avoid negative eigenvalues.\n\n"
               "   -max_iter_rw n = max number of iterations after reweighting (Default=5)\n"
               "    values can range from 1 to any positive integer less than 101.\n\n"
-              "   -eigs = compute eigenvalues, eigenvectors and fractional anisotropy in \n"
-              "    sub-briks 6-18. Computed as in 3dDTeig\n\n"
-              "   -debug_briks = add sub-briks with Ed (error functional), Ed0 (original error)\n"
-              "    and number of steps to convergence\n\n"
+              "   -eigs = compute eigenvalues, eigenvectors, fractional anisotropy and mean\n"
+              "    diffusivity in sub-briks 6-19. Computed as in 3dDTeig\n\n"
+              "   -debug_briks = add sub-briks with Ed (error functional), Ed0 (orig. error),\n"
+              "     number of steps to convergence and I0 (modeled B0 volume)\n\n"
               "   -cumulative_wts = show overall weight factors for each gradient level\n"
               "    May be useful as a quality control\n\n"
               "   -verbose nnnnn = print convergence steps every nnnnn voxels that survive to\n"
-              "    convergence loops (can be quite lengthy)\n\n"
+              "    convergence loops (can be quite lengthy).\n\n"
+              "   -drive_afni nnnnn = show convergence graphs every nnnnn voxels that survive\n"
+              "    to convergence loops. AFNI must have NIML communications on (afni -niml).\n\n"
               " Example:\n"
-              "  3dDWItoDTnoise -prefix rw01 -automask -reweight -max_iter 10 \\\n"
+              "  3dDWItoDT -prefix rw01 -automask -reweight -max_iter 10 \\\n"
               "            -max_iter_rw 10 tensor25.1D grad02+orig.\n\n"
 	      " The output is a 6 sub-brick bucket dataset containing Dxx,Dxy,Dxz,Dyy,Dyz,Dzz.\n"
+              " Additional sub-briks may be appended with the -eigs and -debug_briks options.\n"
 	      " These results are appropriate as the input to the 3dDTeig program.\n"
 	      "\n");
       printf ("\n" MASTER_SHORTHELP_STRING);
@@ -150,14 +161,14 @@ main (int argc, char *argv[])
 	{
 	  if (++nopt >= argc)
 	    {
-	      fprintf (stderr, "*** -prefix needs an argument!\n");
+	      fprintf (stderr, "*** Error - prefix needs an argument!\n");
 	      exit (1);
 	    }
 	  MCW_strncpy (prefix, argv[nopt], THD_MAX_PREFIX);	/* change name from default prefix */
           /* check file name to be sure not to overwrite - mod drg 12/9/2004 */
 	  if (!THD_filename_ok (prefix))
 	    {
-	      fprintf (stderr, "*** %s is not a valid prefix!\n", prefix);
+	      fprintf (stderr, "*** Error - %s is not a valid prefix!\n", prefix);
 	      exit (1);
 	    }
 	  nopt++;
@@ -170,7 +181,7 @@ main (int argc, char *argv[])
 	{
 	  if (++nopt >= argc)
 	    {
-	      fprintf (stderr, "*** -datum needs an argument!\n");
+	      fprintf (stderr, "*** Error - datum needs an argument!\n");
 	      exit (1);
 	    }
 	  if (strcmp (argv[nopt], "short") == 0)
@@ -205,7 +216,7 @@ main (int argc, char *argv[])
         {
           if(method==1)
             {
-              fprintf(stderr, "*** can not select both linear and non-linear methods at the same time\n");
+              fprintf(stderr, "*** Error - can not select both linear and non-linear methods at the same time\n");
               exit(1);
             }
           method = 0;
@@ -217,7 +228,7 @@ main (int argc, char *argv[])
         {
           if(method==0)
             {
-              fprintf(stderr, "*** can not select both linear and non-linear methods at the same time\n");
+              fprintf(stderr, "*** Error - can not select both linear and non-linear methods at the same time\n");
               exit(1);
             }
           method = 1;
@@ -234,12 +245,12 @@ main (int argc, char *argv[])
       if (strcmp (argv[nopt], "-max_iter") == 0)
         {
 	   if(++nopt >=argc ){
-	      fprintf(stderr,"*** need an argument after -max_iter!\n");
+	      fprintf(stderr,"*** Error - need an argument after -max_iter!\n");
 	      exit(1);
 	   }
            max_iter = strtol(argv[nopt], NULL, 10);
 	   if ((max_iter <-1)||(max_iter>100)) {
-	      fprintf(stderr, "*** max_iter must be between -1 and 100\n");
+	      fprintf(stderr, "Error - max_iter must be between -1 and 100\n");
 	      exit(1);
            }
           nopt++;
@@ -249,12 +260,12 @@ main (int argc, char *argv[])
      if (strcmp (argv[nopt], "-max_iter_rw") == 0)
         {
 	   if(++nopt >=argc ){
-	      fprintf(stderr,"*** need an argument after -max_iter_rw!\n");
+	      fprintf(stderr,"*** Error - need an argument after -max_iter_rw!\n");
 	      exit(1);
 	   }
            max_iter_rw = strtol(argv[nopt], NULL, 10);
 	   if ((max_iter_rw <=0)||(max_iter_rw>100)) {
-	      fprintf(stderr, "*** max_iter_rw must be between 1 and 100\n");
+	      fprintf(stderr, "*** Error - max_iter_rw must be between 1 and 100\n");
 	      exit(1);
            }
           nopt++;
@@ -285,23 +296,34 @@ main (int argc, char *argv[])
      if (strcmp (argv[nopt], "-verbose") == 0)
         {
 	   if(++nopt >=argc ){
-	      fprintf(stderr,"*** need an argument after -verbose!\n");
+	      fprintf(stderr,"*** Error - need an argument after -verbose!\n");
 	      exit(1);
 	   }
            verbose = strtol(argv[nopt], NULL, 10);
 	   if (verbose<=0) {
-	      fprintf(stderr, "*** verbose steps must be a positive number !\n");
+	      fprintf(stderr, "*** Error - verbose steps must be a positive number !\n");
 	      exit(1);
            }
           nopt++;
 	  continue;
         }
 
+     if (strcmp (argv[nopt], "-drive_afni") == 0)
+        {
+	   if(++nopt >=argc ){
+	      fprintf(stderr,"*** Error - need an argument after -drive_afni!\n");
+	      exit(1);
+	   }
+           afnitalk_flag = strtol(argv[nopt], NULL, 10);
+	   if (afnitalk_flag<=0) {
+	      fprintf(stderr, "*** Error - drive_afni steps must be a positive number !\n");
+	      exit(1);
+           }
+          nopt++;
+	  continue;
+        }
 
-     /*static int afnitalk_flag = 0;*/   /* show convergence in AFNI graph - user option */
-
-
-	fprintf(stderr, "*** unknown option %s\n", argv[nopt]);
+	fprintf(stderr, "*** Error - unknown option %s\n", argv[nopt]);
 	exit(1);
     }
   
@@ -310,16 +332,16 @@ main (int argc, char *argv[])
 
   if(max_iter>=-1){
      if(method==0)
-              fprintf(stderr, "*** max_iter will be ignored for linear methods.\n");
+              fprintf(stderr, "+++ Warning - max_iter will be ignored for linear methods.\n");
   }
   else
      max_iter = MAX_CONVERGE_STEPS;
 
   if(max_iter_rw>=0) {
      if(method==0)
-              fprintf(stderr, "*** max_iter_rw will be ignored for linear methods.\n");
+              fprintf(stderr, "+++ Warning - max_iter_rw will be ignored for linear methods.\n");
      if(reweight_flag==0)
-              fprintf(stderr, "*** max_iter_rw will be ignored when not reweighting.\n");
+              fprintf(stderr, "+++ Warning - max_iter_rw will be ignored when not reweighting.\n");
   }
   else
      max_iter_rw = MAX_RWCONVERGE_STEPS;
@@ -345,18 +367,23 @@ main (int argc, char *argv[])
       debug_briks = 0;
   }
 
+  if((method==0)&&(afnitalk_flag>0)) {
+      fprintf(stderr, "+++ Warning - can not graph convergence in AFNI for linear method\n");
+      afnitalk_flag = 0;
+  }
+
   if(eigs_flag)
-     nbriks += 13;
+     nbriks += 14;
 
   if(debug_briks)
-     nbriks += 3;
+     nbriks += 4;
      
 
    /*----- read input datasets -----*/
 
   if (nopt >= argc)
     {
-      fprintf (stderr, "*** No input dataset!?\n");
+      fprintf (stderr, "*** Error - No input dataset!?\n");
       exit (1);
     }
 
@@ -372,7 +399,7 @@ main (int argc, char *argv[])
 
   if (grad1Dptr->ny != 3)
     {
-      fprintf (stderr, "*** Only 3 columns of gradient vectors allowed\n");
+      fprintf (stderr, "*** Error - Only 3 columns of gradient vectors allowed\n");
       fprintf (stderr, "%d columns found\n", grad1Dptr->nx);
       mri_free (grad1Dptr);
       exit (1);
@@ -380,7 +407,7 @@ main (int argc, char *argv[])
 
   if (grad1Dptr->nx < 6)
     {
-      fprintf (stderr, "*** Must have at least 6 gradient vectors\n");
+      fprintf (stderr, "*** Error - Must have at least 6 gradient vectors\n");
       fprintf (stderr, "%d columns found\n", grad1Dptr->nx);
       mri_free (grad1Dptr);
       exit (1);
@@ -397,7 +424,7 @@ main (int argc, char *argv[])
 
   if (!ISVALID_DSET (old_dset))
     {
-      fprintf (stderr, "*** Can't open dataset %s\n", argv[nopt]);
+      fprintf (stderr, "*** Error - Can not open dataset %s\n", argv[nopt]);
       mri_free (grad1Dptr);
       exit (1);
     }
@@ -406,7 +433,7 @@ main (int argc, char *argv[])
   if (DSET_NVALS (old_dset) != (grad1Dptr->nx + 1))
     {
       fprintf (stderr,
-	       "*** Dataset must have number of sub-briks equal to one more than number\n");
+	       "*** Error - Dataset must have number of sub-briks equal to one more than number\n");
       fprintf (stderr, "  of gradient vectors (B0+Bi)!\n");
       mri_free (grad1Dptr);
       exit (1);
@@ -450,11 +477,20 @@ main (int argc, char *argv[])
 		   ADN_ttorg, 0.0,
 		   ADN_ttdel, 1.0, ADN_tunits, UNITS_SEC_TYPE, NULL);
 
-#ifdef TESTING4
-  system("plugout_drive 'OPEN_GRAPH_1D DWIEDgraph 'DWI Ed' 25 1 'Convergence' 1 0 200000 'Ed' ''");
-  system("plugout_drive 'OPEN_GRAPH_1D DWIDTgraph 'DWI \\delta \\tau' 25 1 'Convergence' 1 0 200000 '\\delta \\tau' ''");
-#endif
-
+  if(afnitalk_flag) {
+     if(DWI_Open_NIML_stream()!=0) {   /* Open NIML stream */
+       afnitalk_flag = 0;
+       fprintf(stderr,"+++could not open NIML communications with AFNI\n");
+     }
+     else
+       if(DWI_NIML_create_graph()!=0) {
+          afnitalk_flag = 0;
+          fprintf(stderr,"+++could not create graph within AFNI\n");
+          /* Close NIML stream */
+          NI_stream_close(DWIstreamid);
+          DWIstreamid = 0;
+       }
+  }
 
    /*------------- ready to compute new dataset -----------*/
 
@@ -468,6 +504,11 @@ main (int argc, char *argv[])
 				     NULL	/* data for tsfunc */
     );
 
+
+  if(afnitalk_flag && (DWIstreamid!=0)) {
+/* Close NIML stream */
+    NI_stream_close(DWIstreamid);
+  }
 
   if(cumulative_flag && reweight_flag) {
     cumulativewtptr = cumulativewt;
@@ -514,21 +555,23 @@ main (int argc, char *argv[])
         EDIT_dset_items(new_dset, eigs_brik+10,"eigvec_3[2]",ADN_none);
         EDIT_dset_items(new_dset, eigs_brik+11,"eigvec_3[3]",ADN_none);
         EDIT_dset_items(new_dset, eigs_brik+12,"FA",ADN_none);
+        EDIT_dset_items(new_dset, eigs_brik+13,"MD",ADN_none);
       }
 
       if(debug_briks) {
-        EDIT_dset_items (new_dset, ADN_brick_label_one + nbriks - 3, "Converge Step", ADN_none);
-        EDIT_dset_items (new_dset, ADN_brick_label_one + nbriks - 2, "ED", ADN_none);
-        EDIT_dset_items (new_dset, ADN_brick_label_one + nbriks - 1, "EDorig", ADN_none);
+        EDIT_dset_items (new_dset, ADN_brick_label_one + nbriks - 4, "Converge Step", ADN_none);
+        EDIT_dset_items (new_dset, ADN_brick_label_one + nbriks - 3, "ED", ADN_none);
+        EDIT_dset_items (new_dset, ADN_brick_label_one + nbriks - 2, "EDorig", ADN_none);
+        EDIT_dset_items (new_dset, ADN_brick_label_one + nbriks - 1, "I0", ADN_none);
       }
 
       tross_Make_History ("3dDWItoDT", argc, argv, new_dset);
       DSET_write (new_dset);
-      printf ("--- Output dataset %s\n", DSET_FILECODE (new_dset));
+      printf ("--- Output dataset %s\n", DSET_BRIKNAME(new_dset));
     }
   else
     {
-      fprintf (stderr, "*** Unable to compute output dataset!\n");
+      fprintf (stderr, "*** Error - Unable to compute output dataset!\n");
       exit (1);
     }
 
@@ -546,6 +589,7 @@ Form_R_Matrix (MRI_IMAGE * grad1Dptr)
   register float *imptr, *Gxptr, *Gyptr, *Gzptr;
   matrix *nullptr = NULL;
   register double Gx, Gy, Gz;
+
   ENTRY ("Form_R_Matrix");
   nrows = grad1Dptr->nx;
   matrix_initialize (&Rmat);
@@ -597,7 +641,9 @@ DWItoDT_tsfunc (double tzero, double tdelta,
   register double dv, dv0;
   vector lnvector;
   int wtflag;          /* wtflag for recomputing wtfactor*/
-  int max_converge_step;
+  int max_converge_step, graphpoint;
+  double dtau[50], Edgraph[50];
+  int graphflag;
 
   ENTRY ("DWItoDT_tsfunc");
   /* ts is input vector data of Np+1 floating point numbers.
@@ -636,7 +682,7 @@ DWItoDT_tsfunc (double tzero, double tdelta,
 	{			/* don't include this voxel for mask */
 	  for (i = 0; i < nbriks; i++)	/* faster to copy preset vector */
 	    val[i] = 0.0;	/* return 0 for all Dxx,Dxy,... */
-          val[6] = -3.0;  /* use -3 as flag for number of converge steps to mean exited for automasked voxels */
+          val[nbriks-4] = -3.0;  /* use -3 as flag for number of converge steps to mean exited for automasked voxels */
 	  EXRETURN;
 	}
     }
@@ -667,18 +713,20 @@ DWItoDT_tsfunc (double tzero, double tdelta,
      if(debug_briks) {
        InitWtfactors (npts);		/* initialize all weight factors to 1 for all gradient intensities */
        J = ComputeJ (ts, npts);	/* Ed (error) computed here */
-       val[nbriks-3] = -1.0;  /* use -1 as flag for number of converge steps to mean exited for */
+       val[nbriks-4] = -1.0;  /* use -1 as flag for number of converge steps to mean exited for */
                               /* or initial insignificant deltatau value */
-       val[nbriks-2] = ED;
-       val[nbriks-1] = ED;                  /* store original error */
+       val[nbriks-3] = ED;
+       val[nbriks-2] = ED;                  /* store original error */
+       val[nbriks-1] = J;
      }
 
      if(eigs_flag) {                            /* if user wants eigenvalues in output dataset */
         EIG_func();                              /* calculate eigenvalues, eigenvectors here */
-        for(i=0;i<12;i++)
+        for(i=0;i<12;i++) 
           val[i+6] = eigs[i];
        /* calc FA */
-       val[19] = Calc_FA(val+6);                /* calculate fractional anisotropy */
+       val[18] = Calc_FA(val+6);                /* calculate fractional anisotropy */
+       val[19] = Calc_MD(val+6);                /* calculate mean diffusivity */
      }
      EXRETURN;
   }
@@ -697,11 +745,15 @@ DWItoDT_tsfunc (double tzero, double tdelta,
   if(matrix_sumabs(Dmatrix)<=TINYNUMBER) {
     for(i=0;i<nbriks;i++)
       val[i] = 0.0;
-    if(debug_briks)
-       val[6] = -2.0;  /* use -2 as flag for number of converge steps to mean exited for insignificant D values*/
+     if(debug_briks) {
+       val[nbriks-4] = -2.0; /* use -2 as flag for number of converge steps to mean exited for insignificant D values*/
+       val[nbriks-3] = 0;
+       val[nbriks-2] = 0;                  /* store original error */
+       val[nbriks-1] = 0;
+     }
+
     EXRETURN;
   }
-
 
 
   converge_step = 0;    /* allow up to max_iter=MAX_CONVERGE_STEPS (10) deltatau steps */
@@ -715,32 +767,34 @@ DWItoDT_tsfunc (double tzero, double tdelta,
   matrix_copy (Dmatrix, &OldD);   /* store first Dmatrix in OldD too */
 
   if(debug_briks)
-     val[nbriks-1] = ED;                  /* store original error */
+     val[nbriks-2] = ED;                  /* store original error */
 
   EDold = ED;
   ComputeDeltaTau ();
   if(deltatau<=TINYNUMBER) {         /* deltatau too small, exit */
     for(i=0;i<nbriks;i++)
       val[i] = 0.0;
-    if(debug_briks)
-      val[nbriks-3] = -1.0; /* use -1 as flag for number of converge steps to mean exited for insignificant deltatau value */
+    if(debug_briks) {
+      val[nbriks-4] = -1.0; /* use -1 as flag for number of converge steps to mean exited for insignificant deltatau value */
+      val[nbriks-1] = J;
+    }
     EXRETURN;
   }
 
-  if(verbose&&(!(noisecall%verbose)))
+  if(verbose&&(!(noisecall%verbose)))   /* show verbose messages every verbose=n voxels */
      recordflag = 1;
      else
      recordflag = 0;
+
+  if(afnitalk_flag&&(!(noisecall%afnitalk_flag))) {  /* graph in AFNI convergence steps every afnitalk_flag=n voxels */
+     graphflag = 1;
+     graphpoint = 0;
+   }
+  else
+     graphflag = 0;
+
   noisecall++;
 
-#ifdef TESTING4
-      if(recordflag==1){
-	system("plugout_drive CLEAR_GRAPH_1D DWIEDgraph\n");
-        sprintf(graphstring, "ADDTO_GRAPH_1D DWIEDgraph %f\n", ED);
-	system("plugout_drive CLEAR_GRAPH_1D DWIDTgraph\n");
-        sprintf(graphstring, "ADDTO_GRAPH_1D DWIDTgraph %f\n",deltatau);
-      }      
-#endif
       ntrial = 0;
 
       while ((converge_step < max_converge_step) && (converge!=1) && (ntrial < 10) )
@@ -763,15 +817,12 @@ DWItoDT_tsfunc (double tzero, double tdelta,
 	        /* found acceptable step size of DeltaTau */
                 if(recordflag==1)
                  printf("ncall= %d, converge_step=%d, deltatau=%f, ED=%f, ntrial %d in find dtau\n", ncall, converge_step, deltatau, ED, ntrial);
-
-#ifdef TESTING4
-	    if(recordflag==1){
-            sprintf(graphstring, "ADDTO_GRAPH_1D DWIEDgraph %f\n", ED); 
-            system(graphstring);
-            sprintf(graphstring, "ADDTO_GRAPH_1D DWIDTgraph %f\n", deltatau);
-            system(graphstring);
-            }
-#endif
+                if(graphflag==1) {
+                  dtau[graphpoint] = deltatau;
+                  Edgraph[graphpoint] = ED;
+                  graphpoint++;
+                }
+                                     
 	        EDold = ED;
 	        trialstep = 0;
    	        Store_Computations (1, npts, wtflag);	/* Store current computations */
@@ -810,17 +861,14 @@ DWItoDT_tsfunc (double tzero, double tdelta,
                 Store_Computations(0, npts, wtflag);	/* Store Tau+dtau step computations */
                 EDold = ED;
 
-            if(recordflag==1)
-              printf("ncall= %d, converge_step=%d, deltatau=%f, ED=%f dt*2 best\n", ncall, converge_step, deltatau, ED);
+                if(recordflag==1)
+                  printf("ncall= %d, converge_step=%d, deltatau=%f, ED=%f dt*2 best\n", ncall, converge_step, deltatau, ED);
 
-#ifdef TESTING4
-	    if(recordflag==1){
-             sprintf(graphstring, "ADDTO_GRAPH_1D DWIEDgraph %f\n", ED); 
-             system(graphstring);
-             sprintf(graphstring, "ADDTO_GRAPH_1D DWIDTgraph %f\n", deltatau);
-             system(graphstring);
-            }
-#endif
+                if(graphflag==1) {
+                  dtau[graphpoint] = deltatau;
+                  Edgraph[graphpoint] = ED;
+                  graphpoint++;
+                }
               }
             }
           }
@@ -835,6 +883,12 @@ DWItoDT_tsfunc (double tzero, double tdelta,
          if(recordflag==1)
               printf("ncall= %d, converge_step=%d, deltatau=%f, ED=%f dt best\n", ncall, converge_step, deltatau, ED);
 
+         if(graphflag==1) {
+            dtau[graphpoint] = deltatau;
+            Edgraph[graphpoint] = ED;
+            graphpoint++;
+         }
+
 	 if (converge_step != 0) {	/* first time through recalculate*/
 	     /* now see if converged yet */
              converge = TestConvergence(Dmatrix, OldD);
@@ -843,6 +897,12 @@ DWItoDT_tsfunc (double tzero, double tdelta,
           matrix_copy (Dmatrix, &OldD);
           if(recordflag==1)
               printf("ncall= %d, converge_step=%d, deltatau=%f, ED=%f\n", ncall, converge_step, deltatau, ED);
+
+         if(graphflag==1) {
+            dtau[graphpoint] = deltatau;
+            Edgraph[graphpoint] = ED;
+            graphpoint++;
+         }
 
           converge_step++;
 	}
@@ -861,7 +921,7 @@ DWItoDT_tsfunc (double tzero, double tdelta,
              converge_step = 1;             /* start over now with computed weight factors */
              max_converge_step = max_iter_rw+1;   /* reset limit of converge steps to user option */
              wtflag = 0;                    /* only do it once - turn off next reweighting */
-             ComputeJ(ts, npts);            /* compute new Ed value */
+             J=ComputeJ(ts, npts);            /* compute new Ed value */
              EDold = ED;                    /* this avoids having to go through converge loop for two loops */
 	  }
 	}  /* end while converge loop */
@@ -882,21 +942,26 @@ DWItoDT_tsfunc (double tzero, double tdelta,
       val[i+6] = eigs[i];
     /* calc FA */
     val[18] = Calc_FA(val+6);                /* calculate fractional anisotropy */
+    val[19] = Calc_MD(val+6);               /* calculate average (mean) diffusivity */
   }
 
   /* testing information only */
   if(recordflag)
      printf("ncall= %d, converge_step=%d, deltatau=%f, ED=%f\n", ncall, converge_step, deltatau, ED);
   if(debug_briks) {
-    val[nbriks-3] = converge_step;
-    val[nbriks-2] = ED;
+    val[nbriks-4] = converge_step;
+    val[nbriks-3] = ED;
+    val[nbriks-1] = ComputeJ(ts, npts);            /* compute J value */;
+  }
+  if(graphflag==1) {
+     DWI_AFNI_update_graph(Edgraph, dtau, graphpoint);
   }
 
   EXRETURN;
 }
 
 /* taken from 3dDTeig.c */
-/* given Dij tensor data for principal directions */
+/*! given Dij tensor data for principal directions */
 /* calculate 3 principal sets of eigenvalues and eigenvectors */
 static void
 EIG_func ()
@@ -988,15 +1053,15 @@ EIG_func ()
   EXRETURN;
 }
 
+/*! calculate Fractional Anisotropy */
+/* passed float pointer to start of eigenvalues */
 static float
 Calc_FA(float *val)
-/* calculate Fractional Anisotropy */
-/* passed float pointer to start of eigenvalues */
 {
-  ENTRY("Calc_FA");
-
   float FA;
   double ssq, dv0, dv1, dv2, dsq;
+
+  ENTRY("Calc_FA");
 
   /* calculate the Fractional Anisotropy, FA */
   /*   reference, Pierpaoli C, Basser PJ. Microstructural and physiological features 
@@ -1024,13 +1089,33 @@ Calc_FA(float *val)
   RETURN(FA);
 }
 
+/*! calculate Mean Diffusivity */
+/* passed float pointer to start of eigenvalues */
+static float
+Calc_MD(float *val)
+{
+  float MD;
 
-static void
-ComputeD0 ()
-/* compute initial estimate of D0 */
+  ENTRY("Calc_MD");
+
+  /* calculate the Fractional Anisotropy, FA */
+  /*   reference, Pierpaoli C, Basser PJ. Microstructural and physiological features 
+       of tissues elucidated by quantitative-diffusion tensor MRI,J Magn Reson B 1996; 111:209-19 */
+  if((val[0]<=0.0)||(val[1]<=0.0)||(val[2]<=0.0)) {   /* any negative eigenvalues*/
+    RETURN(0.0);                                      /* should not see any for non-linear method. Set FA to 0 */  
+  }
+  MD = (val[0] + val[1] + val[2]) / 3;
+
+  RETURN(MD);
+}
+
+
+/*! compute initial estimate of D0 */
 /* D = estimated diffusion tensor matrix 
       [Dxx Dxy Dxz, Dxy Dyy Dyz, Dxz Dyz Dzz] */
 /* updates Dvector and Dmatrix */
+static void
+ComputeD0 ()
 {
   int i, j;
   /*   matrix ULmatrix, Ematrix; */
@@ -1155,9 +1240,7 @@ ComputeD0 ()
   EXRETURN;
 }
 
-static void
-Computebmatrix (MRI_IMAGE * grad1Dptr)
-/* compute the diffusion weighting matrix bmatrix for q number of gradients */
+/*! compute the diffusion weighting matrix bmatrix for q number of gradients */
 /* only need to calculate once */
 /* bq = diffusion weighting matrix of qth gradient */
 /*      GxGx GxGy GxGz
@@ -1165,6 +1248,8 @@ Computebmatrix (MRI_IMAGE * grad1Dptr)
         GxGz GyGz GzGz */
 /* b0 is 0 for all 9 elements */
 /* bmatrix is really stored as 6 x npts array */
+static void
+Computebmatrix (MRI_IMAGE * grad1Dptr)
 {
   int i, n;
   register double *bptr;
@@ -1196,10 +1281,10 @@ Computebmatrix (MRI_IMAGE * grad1Dptr)
   EXRETURN;
 }
 
+/*! compute non-gradient intensity, J, based on current calculated values of 
+   diffusion tensor matrix, D */
 static double
 ComputeJ (float ts[], int npts)
-/* compute non-gradient intensity, J, based on current calculated values of 
-   diffusion tensor matrix, D */
 {
   /* J = Sum(wq Iq exp(-bq D)) / Sum (wq exp(-2bq D)) */
   /*     estimate of b0 intensity without noise and applied gradient */
@@ -1304,9 +1389,9 @@ ComputeJ (float ts[], int npts)
   RETURN (J);
 }
 
+/*! compute initial step size for gradient descent */
 static void
 ComputeDeltaTau ()
-/*compute initial step size for gradient descent */
 {
   double sum0, sum1;
   matrix Dsqmatrix, FDsqmatrix, DsqFmatrix, Gmatrix;
@@ -1339,15 +1424,14 @@ ComputeDeltaTau ()
   EXRETURN;
 }
 
-
+/*! allocate all the global matrices and arrays once */
 static void
 InitGlobals (int npts)
-/* allocate all the global matrices and arrays once */
 {
-  ENTRY ("InitGlobals");
   int i;
   double *cumulativewtptr;
 
+  ENTRY ("InitGlobals");
   matrix_initialize (&Fmatrix);
   matrix_create (3, 3, &Fmatrix);
   matrix_initialize (&Dmatrix);
@@ -1387,13 +1471,13 @@ InitGlobals (int npts)
   EXRETURN;
 }
 
+/*! free up all the matrices and arrays */
 static void
 FreeGlobals ()
-/* free up all the matrices and arrays */
 {
-  ENTRY ("FreeGlobals");
   int i;
 
+  ENTRY ("FreeGlobals");
   matrix_destroy (&Fmatrix);
   matrix_destroy (&Dmatrix);
   matrix_destroy (&Hplusmatrix);
@@ -1424,9 +1508,9 @@ FreeGlobals ()
   EXRETURN;
 }
 
+/*! store current computed matrices D,Hp,Hm, R */
 static void
 Store_Computations (int i, int npts, int wtflag)
-/* store current computed matrices D,Hp,Hm, R */
 {
   ENTRY ("Store_Computations");
 
@@ -1439,10 +1523,9 @@ Store_Computations (int i, int npts, int wtflag)
   EXRETURN;
 }
 
-
+/*! restore old computed matrices D,Hp,Hm, R */
 static void
 Restore_Computations (int i, int npts, int wtflag)
-/* restore old computed matrices D,Hp,Hm, R */
 {
   ENTRY ("Restore_Computations");
 
@@ -1455,10 +1538,9 @@ Restore_Computations (int i, int npts, int wtflag)
   EXRETURN;
 }
 
-
+/*! set all wt factors for all gradient levels to be 1.0 the first time through */
 static void
 InitWtfactors (int npts)
-/* set all wt factors for all gradient levels to be 1.0 the first time through */
 {
   double *wtfactorptr;
   int i;
@@ -1470,9 +1552,9 @@ InitWtfactors (int npts)
   EXRETURN;
 }
 
+/*! compute wt factors for each gradient level */
 static void
 ComputeWtfactors (int npts)
-/* compute wt factors for each gradient level */
 {
   /* Residuals, rq, computed above in ComputeJ, stored in Rmatrix */
   /* unnormalized standard deviation, sigma, computed there too */
@@ -1521,10 +1603,10 @@ ComputeWtfactors (int npts)
  EXRETURN;
 }
 
+/*! compute Hplus and Hminus as a function of delta tau */
+/* H+- = I +/- 1/2 deltatau F D */
 static void
 ComputeHpHm (double deltatau)
-/* compute Hplus and Hminus as a function of delta tau */
-/* H+- = I +/- 1/2 deltatau F D */
 {
   matrix FDmatrix;
   double dtau;
@@ -1560,13 +1642,12 @@ ComputeHpHm (double deltatau)
   EXRETURN;
 }
 
-
-static void
-ComputeNewD ()
-/* compute new D matrix */
+/*! compute new D matrix */
 /* D(tau+deltatau) = H-  H+^-1  D(tau)  H+^-1 H- */
 /*                 = A          D(tau)  A^T */
 /* where A = H- H+^-1 */
+static void
+ComputeNewD ()
 {
   double *Hpinv;
   matrix Hpinvmatrix, Amatrix, ATmatrix, ADmatrix;
@@ -1599,11 +1680,12 @@ ComputeNewD ()
   EXRETURN;
 }
 
-static int
-TestConvergence(matrix NewD, matrix OldD)
-/* test convergence of calculation of D */
+/*! test convergence of calculation of D */
 /* if sum of differences hasn't changed by more than 1E-4 */
 /*  then the calculations have converged */
+/* return 1 for convergence, 0 if not converged */
+static int
+TestConvergence(matrix NewD, matrix OldD)
 { 
   int converge;
   double convergence;
@@ -1625,13 +1707,13 @@ TestConvergence(matrix NewD, matrix OldD)
   RETURN (converge);
 }
 
-static void
-udmatrix_copy (double *udptr, matrix * m)
-/* copy an upper diagonal matrix (6 point vector really) into a standard double
+/*! copy an upper diagonal matrix (6 point vector really) into a standard double
    array type matrix for n timepoints */
 /* ud0 ud1 ud2         m0 m1 m2
        ud3 ud4   -->   m3 m4 m5
            ud5         m6 m7 m8 */
+static void
+udmatrix_copy (double *udptr, matrix * m)
 {
   ENTRY ("udmatrix_copy");
 
@@ -1647,13 +1729,13 @@ udmatrix_copy (double *udptr, matrix * m)
   EXRETURN;
 }
 
-static void
-udmatrix_to_vector (matrix m, vector * v)
-/* copy upper part of 3x3 matrix elements to 6-element vector elements */
+/*! copy upper part of 3x3 matrix elements to 6-element vector elements */
 /* m1 m2 m3
       m4 m5   ->  v = [m1 m2 m3 m4 m5 m6]
          m6
 */
+static void
+udmatrix_to_vector (matrix m, vector * v)
 {
   ENTRY ("udmatrix_to_vector");
   v->elts[0] = m.elts[0][0];
@@ -1665,10 +1747,9 @@ udmatrix_to_vector (matrix m, vector * v)
   EXRETURN;
 }
 
-
+/*! sum the absolute value of all  elements of a matrix */
 static double
 matrix_sumabs (matrix m)
-/* sum the absolute value of all  elements of a matrix */
 {
   register int i, j;
   register double sum;
@@ -1683,15 +1764,14 @@ matrix_sumabs (matrix m)
   RETURN (sum);
 }
 
-
-static double *
-InvertSym3 (double a, double b, double c, double e, double f, double i)
-/* calculate inverse of a symmetric 3x3 matrix */
+/*! calculate inverse of a symmetric 3x3 matrix */
 /* returns pointer to 9 element vector corresponding to 3x3 matrix */
 /*  a b c */
 /*  b e f */
 /*  c f i */
 /* Maple generated code */
+static double *
+InvertSym3 (double a, double b, double c, double e, double f, double i)
 {
   double *symmat, *symmatptr;	/* invert matrix - actually 6 values in a vector form */
   double t2, t4, t7, t9, t12, t15, t20, t24, t30;
@@ -1722,16 +1802,17 @@ InvertSym3 (double a, double b, double c, double e, double f, double i)
   RETURN (symmat);
 }
 
-static void
-matrix_copy (matrix a, matrix * b)
-/* copy elements from matrix a to matrix b */
+/*! copy elements from matrix a to matrix b */
 /*  matrix_equate already exists but creates and initializes new matrix */
 /*  steps we don't need to do here */
 /* assumes both a and b already exist with equal dimensions */
+static void
+matrix_copy (matrix a, matrix * b)
 {
-  ENTRY ("matrix_copy");
   register int i;
   register int rows, cols;
+
+  ENTRY ("matrix_copy");
 
   rows = a.rows;
   cols = a.cols;
@@ -1751,13 +1832,181 @@ matrix_copy (matrix a, matrix * b)
 }
 
 
-#ifdef DWIAFNITALK
-/* from SUMA_NIML.c and SUMA_main.c */
-/* Open NIML stream */
-/*   open stream with tcp, reopen with shared memory */
-/*   test writing for connection and timeout */
-/* Write NIML stream */
-/*   create NIML structure - type and parameters in columns */
-/*   send structure on stream with niml write command */
-/* Kill NIML stream */
+#define DWI_WriteCheckWaitMax 2000
+#define DWI_WriteCheckWait 400
+/*-----------------------------------------------------*/
+/* Stuff for an extra NIML port for non-SUMA programs. */
+
+#ifndef NIML_TCP_FIRST_PORT
+#define NIML_TCP_FIRST_PORT 53212
 #endif
+
+/*! open NIML stream */
+static int DWI_Open_NIML_stream()
+{
+   int nn, Wait_tot, tempport;
+   char streamname[256];
+
+   ENTRY("DWI_Open_NIML_stream");
+
+   /* contact afni */
+   tempport = NIML_TCP_FIRST_PORT;
+   sprintf(streamname, "tcp:localhost:%d",tempport);
+   fprintf(stderr,"Contacting AFNI\n");
+ 
+   DWIstreamid =  NI_stream_open( streamname, "w" ) ;
+   if (DWIstreamid==0) {
+       fprintf(stderr,"+++ Warning - NI_stream_open failed\n");
+      DWIstreamid = NULL;
+      RETURN(1);
+   }
+
+   fprintf (stderr,"\nTrying shared memory...\n");
+   if (!NI_stream_reopen( DWIstreamid, "shm:DWIDT1M:1M" ))
+       fprintf (stderr, "Warning: Shared memory communcation failed.\n");
+   else
+     fprintf(stderr, "Shared memory connection OK.\n");
+   Wait_tot = 0;
+   while(Wait_tot < DWI_WriteCheckWaitMax){
+      nn = NI_stream_writecheck( DWIstreamid , DWI_WriteCheckWait) ;
+      if( nn == 1 ){ 
+         fprintf(stderr,"\n") ; 
+         RETURN(0) ; 
+      }
+      if( nn <  0 ){ 
+         fprintf(stderr,"Bad connection to AFNI\n"); 
+         DWIstreamid = NULL;
+         RETURN(1);
+      }
+      Wait_tot += DWI_WriteCheckWait;
+      fprintf(stderr,".") ;
+   }
+
+   fprintf(stderr,"+++ WriteCheck timed out (> %d ms).\n",DWI_WriteCheckWaitMax);
+   RETURN(1);
+}
+
+/*! create the initial graph in AFNI - no points yet*/
+static int DWI_NIML_create_graph()
+{
+   NI_element *nel;
+
+   ENTRY("DWI_NIML_create_graph");
+   nel = NI_new_data_element("ni_do", 0);
+   NI_set_attribute ( nel, "ni_verb", "DRIVE_AFNI");
+   NI_set_attribute ( nel, "ni_object", "OPEN_GRAPH_1D DWIConvEd 'DWI Convergence' 25 1 'converge step' 1 0 300000 Ed");
+   if (NI_write_element( DWIstreamid, nel, NI_BINARY_MODE ) < 0) {
+      fprintf(stderr,"Failed to send data to AFNI\n");
+      NI_free_element(nel) ; nel = NULL;
+      RETURN(1);
+   }
+   NI_free_element(nel) ; 
+   nel = NULL;
+   RETURN(0);
+}
+
+/*! create new graph with left and right y axes scaled from 0 to max1, max2*/
+static int DWI_NIML_create_newgraph(npts, max1, max2)
+int npts;
+double max1, max2;
+{
+   NI_element *nel;
+   char stmp[256];
+   static int nx = -1;
+
+   ENTRY("DWI_NIML_create_newgraph");
+   nel = NI_new_data_element("ni_do", 0);
+   NI_set_attribute ( nel, "ni_verb", "DRIVE_AFNI");
+   if((nx==-1) || (nx<npts))                 /* 1st time through close any existing graph by that name*/
+      NI_set_attribute ( nel, "ni_object","CLOSE_GRAPH_1D DWIConvEd\n"); /* have to close graph to change axes */
+   else
+      NI_set_attribute ( nel, "ni_object","CLEAR_GRAPH_1D DWIConvEd\n");
+
+   if (NI_write_element( DWIstreamid, nel, NI_BINARY_MODE ) < 0) {
+      fprintf(stderr,"Failed to send data to AFNI\n");
+      NI_free_element(nel) ; nel = NULL;
+      RETURN(1);
+   }
+
+   if((nx==-1) || (nx<npts)) {             /* update the graph only first time or if x-axis not big enough */
+      nx = max_iter * 4  + 10;
+      if(reweight_flag==1)
+        nx += max_iter_rw * 4 + 10;
+      if(nx<npts)                          /* fix graph to include largest number of steps */
+	nx = npts;
+      sprintf(stmp,"OPEN_GRAPH_1D DWIConvEd 'DWI Convergence' %d 1 'converge step' 2 0 100 %%Maximum Ed \\Delta\\tau\n",nx  );
+      NI_set_attribute ( nel, "ni_object", stmp);
+      if (NI_write_element( DWIstreamid, nel, NI_BINARY_MODE ) < 0) {
+        fprintf(stderr,"Failed to send data to AFNI\n");
+        NI_free_element(nel) ; nel = NULL;
+        RETURN(1);
+      }
+      NI_set_attribute ( nel, "ni_object", "SET_GRAPH_GEOM DWIConvEd geom=700x400+100+400\n");
+      if (NI_write_element( DWIstreamid, nel, NI_BINARY_MODE ) < 0) {
+        fprintf(stderr,"Failed to send data to AFNI\n");
+        NI_free_element(nel) ; nel = NULL;
+        RETURN(1);
+      }
+   }
+   NI_free_element(nel) ; 
+   nel = NULL;
+   RETURN(0);
+}
+
+/*! tell AFNI to graph data for convergence steps */
+static void DWI_AFNI_update_graph(double *Edgraph, double *dtau, int npts)
+{
+   NI_element *nel;
+   char stmp[256];
+   int i;
+   double Edmax, dtaumax;
+   double *Edptr, *dtauptr;
+   double tempEd, temptau;
+
+   ENTRY("DWI_AFNI_update_graph");
+
+   Edmax = 0.0; dtaumax = 0.0;
+   Edptr = Edgraph;
+   dtauptr = dtau;
+   for(i=0;i<npts;i++) {
+     if(*Edptr>Edmax)
+       Edmax = *Edptr;
+     if(*dtauptr>dtaumax)
+       dtaumax = *dtauptr;
+     ++Edptr; ++dtauptr;
+   }
+
+   NI_write_procins(DWIstreamid, "keep reading");
+   DWI_NIML_create_newgraph(npts, Edmax, dtaumax);
+   /* NI_sleep(250);*/
+
+   nel = NI_new_data_element("ni_do", 0);
+   NI_set_attribute ( nel, "ni_verb", "DRIVE_AFNI");
+   NI_set_attribute ( nel, "ni_object", "CLEAR_GRAPH_1D DWIConvEd\n");
+   /*      NI_sleep(25);*/
+   if (NI_write_element( DWIstreamid, nel, NI_BINARY_MODE ) < 0) {
+      fprintf(stderr,"Failed to send data to AFNI\n");
+   }
+
+
+   for(i=0;i<npts;i++){
+      if(Edmax!=0.0)
+         tempEd = 100*Edgraph[i] / Edmax;
+      else
+	tempEd = 0.0;
+      if(dtaumax!=0.0)
+        temptau = 100*dtau[i] / dtaumax;
+      else
+        temptau = 0.0;
+
+      sprintf(stmp,"ADDTO_GRAPH_1D DWIConvEd %4.2f %4.2f\n", tempEd, temptau);  /* put rel.error, Ed, and deltatau for all the convergence steps */
+      NI_set_attribute ( nel, "ni_object", stmp);  /* put command and data in stmp */
+      NI_sleep(25);    /* for dramatic effect */
+      if (NI_write_element( DWIstreamid, nel, NI_BINARY_MODE ) < 0) {
+        fprintf(stderr,"Failed to send data to AFNI\n");
+      }
+   }
+   NI_free_element(nel) ; nel = NULL;
+   EXRETURN;
+}
+

@@ -5394,5 +5394,143 @@
      than int, to better deal with huge datasets.  Modified a lot of places
      that refer to this field, especially places dealing with reading and
      writing datasets.
- * Modified thd_loaddblk.c to auto-load brick statistics for non-AFNI
+ * Modified thd_loaddblk.c to auto-update brick statistics for non-AFNI
      datasets.
+
+29 Mar 2005
+ * Modified afni_func.c to call AFNI_reset_func_range() at start of
+     AFNI_func_overlay() to make sure brick ranges are set properly
+     for display.
+ * Modified fim+.c and 3dfim+.c to allow polort > 2, by using Legendre
+     polynomials for the baseline model.
+ * Fixed bug in NIML, where the new 'outmode' field in elements wasn't
+     being initialized to -1 like it should have been.
+
+30 Mar 2005
+ * Fixed bug in AFNI_range_label() in afni_func.c about brick range
+     setup change of yesterday (forgot to initialize stats_*_ok).
+
+31 Mar 2005
+ * Oops.  Fixed bug in afni_niml.c wrt <?drive_afni ... ?> processing
+     instruction: needed to put the command into an attribute.
+ * Added a 1 ms wait to niml/niml_stream.c when a tcp: or shm: stream
+     is closed.  This is to let the application on the other end have
+     a decent interval to fetch any just-transmitted data.
+ * Modified thd_opendset.c to NOT print an error message when trying to
+     open a non-existent file -- now just prints a message if the file
+     exists but has no data.
+
+04 Apr 2005
+ * Added 'Pleg' function to parser and thence to 3dcalc, etc.
+
+06 Apr 2005
+ * Added '.nii' output feature to THD_writedset() function, and did
+     a few other similar things hither and yon.
+
+07 Apr 2005
+ * Modified thd_niftiread.c to use the NBL functions in rickr's
+     nifti1_io.c to read the data from a .nii file -- this makes
+     .nii.gz files work as well, automagically.
+ * Fixed bug in imseq.c -- logic for taking the button box value
+     for animations to/from the integer flags was bad in the case
+     where an aGif filter doesn't exist.
+ * Fixed bug in thd_niftiwrite.c -- 'if( nparam = 3)' was amended
+     to '=='.
+ * Modified thd_niftiwrite.c to allow output of func bucket as
+     the 'u' dimension.
+
+13 Apr 2005
+ * Added one to the count of the basis function -iresp and -sresp
+     counts, to ensure getting the last point!
+
+15 Apr 2005
+ * Add -automask option in 3dDeconvolve.c.
+ * Add mri_write_jpg() to mri_write.c.  Now mri_write() automatically
+     writes a .jpg file for RGB and BYTE images if the filename ends
+     in ".jpg".
+
+18 Apr 2005
+ * Modified mri_write.c functions to write to stdout if the output
+     filename is the string "-".  This mod affects mri_write_pnm(),
+     mri_write(), and mri_write_ascii().  Indirectly affects program
+     imupsam.c.
+
+19 Apr 2005
+ * Modified niml/niml_element.c to add NI_alter_veclen() function, and
+     NI_insert_string() function.
+ * Modified plug_tag.c and a couple others to allow func datasets as
+     inputs, as well as anats.
+
+20 Apr 2005
+ * Modified afni_func.c to let 0 values in the overlay image get color
+     if environment variable AFNI_OVERLAY_ZERO is set to YES.
+
+21 Apr 2005
+ * Where AFNI_COLORSCALE_0x is allowed in pbar.c, also check for
+     AFNI_COLORSCALE_x and AFNI_COLORSCALE_Ox, to allow for stupid users.
+     Similar changes in a few other places, as well.
+ * Modified niml/niml_rowtype.c and niml_stream.c to re-enable input
+     of Base64-encoded data elements (capability had been lost with
+     the advent of rowtypes and var-dim arrays).
+
+25 Apr 2005
+ * Minor changes to NIML.
+ * Gamma variation allowed for RGB display in imseq.c.
+
+26 Apr 2005
+ * Modified imseq.c to apply 0D and 2D transforms to RGB images (that is,
+     in the intensity channel).  And afni_func.c to apply to RGB overlays.
+
+27 Apr 2005
+ * Modified 3dDeconvolve.c to allow -stim_times to be used with -nodata.
+     To do this, you use '-nodata NT TR' to specify the number of time
+     points and their TR.
+ * Modified imseq.c to make up/down movement of stroking affect RGB,
+     additively, much as left/right does multiplicatively.
+
+28 Apr 2005
+ * Modified 3dDeconvolve to add -basis_normall option, and a couple of
+     other minor tweaks.
+
+29 Apr 2005
+ * Moved extras printout in 3dDeconvolve -nodata to be optional with
+     an environment variable.
+ * Fixed bug in range locking in afni_lock.c -- if range is locked but
+     only one controller open, couldn't turn autoRange on.
+
+02 May 2005
+ * Added plot of least squares overlay line to the Scatterplot plugin.
+ * 3drotate.c now records the applied matvec into the AFNI header attributes.
+
+03 May 2005
+ * More changes to 3drotate.c along the same line.
+ * Edit afni.c to set width of bucket label AVs (in Define Overlay) based on
+     max width of input sub-brick labels, for each dataset separately.
+
+04 May 2005
+ * Oops.  Fix atexit() bug in niml/niml_stream.c -- had logic inverted on
+     when to remove a stream from the 'open list'.
+
+06 May 2005
+ * non-AFNI datasets (e.g., .nii files) now have ID code set via hashing
+     their realpath, rather than a random ID code.
+ * Modify EDIT_dset_items() to change the brick_name correctly when the
+     new prefix ends in '.nii' or '.nii.gz'.
+ * Modify a bunch of programs that print "Writing dataset" messages to
+     always use the DSET_BRIKNAME() macro, for consistency.
+
+09 May 2005
+ * Modify plug_nudge.c to deal with RGB-valued datasets.
+
+10 May 2005
+ * Modify thd_initdblk.c, thd_niftiread.c, thd_niftiwrite.c to store AFNI
+     header data in a NIfTI-1.1 extension, making it more feasible to use
+     .nii datasets in AFNI as a primary storage mechanism.
+
+11 May 2005
+ * Modify the NIfTI-1.1 extension stuff to be more robust.  Also add
+     environment variable AFNI_NIFTI_NOEXT to turn extensions off, and
+     use this to provide a '-pure' option to 3dAFNItoNIFTI.c.
+
+12 May 2005
+ * Added "NIfTI_num" signature to thd_niftiwrite.c and thd_niftiread.c.

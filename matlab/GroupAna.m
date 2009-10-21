@@ -46,7 +46,7 @@ fprintf('\n\t2. We strongly suggest that factor names be labeled with short (2 o
 fprintf('\t   so that subbrik labels can be shown on AFNI viewer.\n');
 fprintf('\n\t3. With nesting, arrange your design in such a way that the last factor is nested within the 1st factor.\n');
 %fprintf('\n\t4. The program can only handle balanced design now. \n');
-fprintf('\n\t4. Each input file should include only one subbrik (we suggest files be \n');
+fprintf('\n\t4. Each input file should include only one subbrik. We suggest files be \n');
 fprintf('\t   named by reflecting the hierarchy of the experiment design.\n');
 fprintf('\n\t5. Currently all of the following terms are modeled: main effects and applicable interactions in various orders, .\n');
 fprintf('\n\t6. One covariate is currently allowed in the analysis, which should be in the format of one-column text file.\n');
@@ -102,8 +102,10 @@ switch NF
    fprintf('\n\tType 1: Factorial (crossed) design AXBXCXDXE - all 5 factors are fixed.\n');
    fprintf('\n\tType 2: Factorial (crossed) design AXBXCXDXE - only factor E is random. If E is subject it is also');
    fprintf('\n\t        called 4-way design with all 4 factors A, B, C and D varying within subject.\n');
-   fprintf('\n\tType 3: Mixed design BXCXDXE(A)- only the nested (5th) factor E (usually subject) is random.');
+   fprintf('\n\tType 3: Mixed design BXCXDXE(A) - only the nested (5th) factor E (usually subject) is random.');
    fprintf('\n\t        Also called 4-way design with factors B, C and D varying within subject and factor A between subjects.\n');
+	fprintf('\n\tType 4: Mixed design BXCXDXE(A) - the 5th factor E is nested within factor A, but factor D (usually subject)');
+   fprintf('\n\t        is random.\n');
 	
 end
 
@@ -209,22 +211,40 @@ if (unbalanced.yes == 1),
          ntot = ntot * FL(i).N_level;  %total number of combinations
  	   end  % for (i=1:1:(NF-1))
 	
-	   UL_sum = 0;		
+	   FL(NF).N_level = 0;		
 	   fprintf(2, '\nLabel for No. %i ', NF); 
 	   FL(NF).expr = input('factor: ', 's');     % Label this unbalanced factor
+%		fprintf(2, '\nNote: Since this is a nested design the label for levels (usuall subject names) of factor No. %i (%c - %s)', NF, 64+NF, FL(NF).expr);
+%		fprintf(2, '\nhas to be DIFFERENT for each level of factor %c (%s)!!!\n\n', 64+1, FL(1).expr);  
  	
- 	   for (i = 1:1:FL(1).N_level),
+ 	   flag = 0;
+		while flag == 0,
+		combine = [];
+		for (i = 1:1:FL(1).N_level),
  	      fprintf(2,'How many levels does factor %c (%s) corresponding to level %i (%s) of factor %c (%s) ', ...
  		      64+NF, FL(NF).expr, i, FL(1).level(i).expr, 64+1, FL(1).expr);
  		   FL(NF).UL(i).N_level = input('have? ');   % unbalanced levels for this factor
  		   for (j=1:1:FL(NF).UL(i).N_level),
- 		      fprintf('Label for No. %i level of factor %c (%s) in group %i of factor %c (%s)', j, 64+4, FL(NF).expr, i, 64+1, FL(1).expr);
+ 		      fprintf('Label for No. %i level of factor %c (%s) in group %i of factor %c (%s)', j, 64+NF, FL(NF).expr, i, 64+1, FL(1).expr);
  		      FL(NF).UL(i).n(j).expr = input(' is: ', 's');
+				combine = [combine {FL(NF).UL(i).n(j).expr}];  % Concatenate them to make a cell array
  		   end	
- 		   UL_sum = UL_sum + FL(NF).UL(i).N_level;
- 		   FL(NF).N_level = max([FL(NF).UL(:).N_level]);   % This is for positioning those contrast columns in the design matrix in PreProc.m
- 	   end 
- 	   ntot = ntot * UL_sum / FL(1).N_level;	
+% 		   FL(NF).N_level = FL(NF).N_level + FL(NF).UL(i).N_level;
+% 		   FL(NF).N_level = max([FL(NF).UL(:).N_level]);   % This is for positioning those contrast columns in the design matrix in PreProc.m
+ 	   end 		
+		
+		if (length(unique(combine)) == max([FL(NF).UL(:).N_level])),  % if same labels are used across groups
+		   FL(NF).N_level = max([FL(NF).UL(:).N_level]); flag = 1;    % design matrix is built based on the longest group length
+			ntot = ntot * sum([FL(NF).UL(:).N_level]) / FL(1).N_level;
+		elseif (length(unique(combine)) == sum([FL(NF).UL(:).N_level])),  % if different labels are used across groups
+		   FL(NF).N_level = sum([FL(NF).UL(:).N_level]); flag = 1;    % design matrix is built based on the total length of the groups
+			ntot = ntot * FL(NF).N_level / FL(1).N_level;
+		else 	
+		   flag = 0;
+			fprintf(2, '\nError: There is some overlap among the labels of factor %c (%s) across the groups of factor %c (%s)!\n', ...
+			   64+NF, FL(NF).expr, 64+1, FL(1).expr); 
+	   end			
+		end % while flag == 0
 		
    end   % if (((NF == 3 | NF == 4) & dsgn == 3))
 
@@ -1301,7 +1321,7 @@ switch NF
 		if (dsgn == 5), N_Brik = 9; end
 		
 	case 5,
-	   if (dsgn == 3), N_Brik = 23; end	
+	   if (dsgn == 3 | dsgn == 4), N_Brik = 23; end	
 		
 end
 
@@ -1530,18 +1550,18 @@ for (sn = 1:1:slices),
 				end	
 			case 2,
 			   switch Contr.ord2.cnt(i).idx2
-				   case 3, Contr.ord2.df(i) = dfdenom(10) * (dsgn == 1 | dsgn == 2) + dfdenom(9) * (dsgn == 3);  % MSBC
-					case 4, Contr.ord2.df(i) = dfdenom(11) * (dsgn == 1 | dsgn == 2) + dfdenom(10) * (dsgn == 3);  % Less likely occur: MSBD
-					case 5, Contr.ord2.df(i) = dfdenom(12) * (dsgn == 1 | dsgn == 2) + dfdenom(11) * (dsgn == 3);  % Less likely occur: MSBE
+				   case 3, Contr.ord2.df(i) = dfdenom(10) * (dsgn == 1 | dsgn == 2) + dfdenom(9) * (dsgn == 3 | dsgn == 4);  % MSBC
+					case 4, Contr.ord2.df(i) = dfdenom(11) * (dsgn == 1 | dsgn == 2) + dfdenom(10) * (dsgn == 3 | dsgn == 4);  % Less likely occur: MSBD
+					case 5, Contr.ord2.df(i) = dfdenom(12) * (dsgn == 1 | dsgn == 2) + dfdenom(11) * (dsgn == 3 | dsgn == 4);  % Less likely occur: MSBE
 				end		   
 			case 3,   % Less likely occur
 			   switch Contr.ord2.cnt(i).idx2
-					case 4, Contr.ord2.df(i) = dfdenom(13) * (dsgn == 1 | dsgn == 2) + dfdenom(12)*(dsgn == 3); % Less likely occur: MSCD	
-					case 5, Contr.ord2.df(i) = dfdenom(14) * (dsgn == 1 | dsgn == 2) + dfdenom(13)*(dsgn == 3); % Less likely occur: MSCE		
+					case 4, Contr.ord2.df(i) = dfdenom(13) * (dsgn == 1 | dsgn == 2) + dfdenom(12)*(dsgn == 3 | dsgn == 4); % Less likely occur: MSCD	
+					case 5, Contr.ord2.df(i) = dfdenom(14) * (dsgn == 1 | dsgn == 2) + dfdenom(13)*(dsgn == 3 | dsgn == 4); % Less likely occur: MSCE		
 		      end
 			case 4,   % Less likely occur
 			   switch Contr.ord2.cnt(i).idx2
-					case 5, Contr.ord2.df(i) = dfdenom(15) * (dsgn == 1 | dsgn == 2) + dfdenom(14)*(dsgn == 3); % Less likely occur: MSDE		
+					case 5, Contr.ord2.df(i) = dfdenom(15) * (dsgn == 1 | dsgn == 2) + dfdenom(14)*(dsgn == 3 | dsgn == 4); % Less likely occur: MSDE		
 		      end	
 		   end  % switch Contr.ord2.cnt(i).idx1
 %		end
@@ -1611,13 +1631,13 @@ for (sn = 1:1:slices),
 			   switch Contr.ord3.cnt(i).idx2
 				   case 2, 
 					   switch Contr.ord3.cnt(i).idx3
-						   case 3, Contr.ord3.df(i) = dfdenom(16)*(dsgn == 1 | dsgn == 2) + dfdenom(15)* (dsgn == 3);  % MSABC
-							case 4, Contr.ord3.df(i) = dfdenom(17)*(dsgn == 1 | dsgn == 2) + dfdenom(16)* (dsgn == 3);  % MSABD 
+						   case 3, Contr.ord3.df(i) = dfdenom(16)*(dsgn == 1 | dsgn == 2) + dfdenom(15)* (dsgn == 3 | dsgn == 4);  % MSABC
+							case 4, Contr.ord3.df(i) = dfdenom(17)*(dsgn == 1 | dsgn == 2) + dfdenom(16)* (dsgn == 3 | dsgn == 4);  % MSABD 
 							case 5, Contr.ord3.df(i) = dfdenom(18)*(dsgn == 1 | dsgn == 2);  % MSABE			
 						end	
 					case 3, 
 					   switch Contr.ord3.cnt(i).idx3
-						   case 4, Contr.ord3.df(i) = dfdenom(19)*(dsgn == 1 | dsgn == 2) + dfdenom(17)* (dsgn == 3);  % MSACD
+						   case 4, Contr.ord3.df(i) = dfdenom(19)*(dsgn == 1 | dsgn == 2) + dfdenom(17)* (dsgn == 3 | dsgn == 4);  % MSACD
 							case 5, Contr.ord3.df(i) = dfdenom(20)*(dsgn == 1 | dsgn == 2);  % MSACE
 						end
 					case 4,	
@@ -1629,11 +1649,11 @@ for (sn = 1:1:slices),
 			   switch Contr.ord3.cnt(i).idx2
 				   case 3, 
 					   switch Contr.ord3.cnt(i).idx3
-						   case 4, Contr.ord3.df(i) = dfdenom(22)*(dsgn == 1 | dsgn == 2) + dfdenom(18)* (dsgn == 3);   % MSBCD
-						   case 5, Contr.ord3.df(i) = dfdenom(23)*(dsgn == 1 | dsgn == 2) + dfdenom(19)* (dsgn == 3);   % MSBCE
+						   case 4, Contr.ord3.df(i) = dfdenom(22)*(dsgn == 1 | dsgn == 2) + dfdenom(18)* (dsgn == 3 | dsgn == 4);   % MSBCD
+						   case 5, Contr.ord3.df(i) = dfdenom(23)*(dsgn == 1 | dsgn == 2) + dfdenom(19)* (dsgn == 3 | dsgn == 4);   % MSBCE
 						end
 					case 4,	
-						if (Contr.ord3.cnt(i).idx3 == 5), Contr.ord3.df(i) = dfdenom(24)*(dsgn == 1 | dsgn == 2) + dfdenom(20)* (dsgn == 3);   % MSBDE
+						if (Contr.ord3.cnt(i).idx3 == 5), Contr.ord3.df(i) = dfdenom(24)*(dsgn == 1 | dsgn == 2) + dfdenom(20)* (dsgn == 3 | dsgn == 4);   % MSBDE
 						else fprintf('\nSomething is wrong in the contrast coding!\n'); fprintf(2,'Halted: Ctrl+c to exit'); pause;end
 				   case 4, 
 					   fprintf('\nSomething is wrong in the contrast coding!\n'); fprintf(2,'Halted: Ctrl+c to exit'); pause;	
@@ -1666,7 +1686,7 @@ for (sn = 1:1:slices),
 						   case 4, 
 							if (dsgn == 1 | dsgn == 2),
 							   Contr.ord4.df(i) = dfdenom(26);
-							elseif (dsgn == 3),
+							elseif (dsgn == 3  | dsgn == 4),
 							   Contr.ord4.df(i) = dfdenom(22);  % MSABCD
 							end	
 							case 5, 

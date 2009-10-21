@@ -175,7 +175,7 @@ extern int          NI_multival_to_binary( NI_rowtype *, int, char *, char * );
 extern int          NI_has_String        ( NI_rowtype * ) ;
 extern void         NI_swap_column       ( NI_rowtype * , int , char * ) ;
 
-extern void NI_rowtype_debug( int ) ;
+extern void         NI_rowtype_debug( int ) ;
 
 /*! Used to test if a rowtype code is a basic type. */
 
@@ -248,6 +248,8 @@ typedef struct {
    char  *name ;       /*!< The 'PItarget', as in '<?name ...?>' */
 } NI_procins ;
 #endif
+
+extern NI_procins * NI_rowtype_procins( NI_rowtype * ) ; /* 19 Apr 2005 */
 
 /*-----------------------------------------------------------------
   Stuff for shared memory transport between processes
@@ -322,7 +324,7 @@ typedef struct {
 
 /*! Size of NI_stream buffer. */
 
-#define NI_BUFSIZE (27*1024)
+#define NI_BUFSIZE (31*1024)
 
 /*! Data needed to process input stream. */
 
@@ -355,6 +357,9 @@ typedef struct {
    char orig_name[256] ;  /*!< original (input) name when opened */
 
    int goodcheck_time ;   /*!< NI_clock_time() of last NI_stream_goodcheck() */
+
+   int b64_numleft ;      /*!< For use in NI_stream_readbuf64() */
+   byte b64_left[4] ;     /*!< Leftover decoded bytes from NI_stream_readbuf64() */
 } NI_stream_type ;
 #endif
 
@@ -546,6 +551,7 @@ extern int NI_element_allsize( NI_element * ) ;
 
 extern void NI_free_element( void * ) ;
 extern int  NI_element_type( void * ) ;
+extern char * NI_element_name( void * ) ;  /* 18 Apr 2005 */
 
 extern NI_element * NI_new_data_element( char *, int ) ;
 extern void NI_add_column( NI_element *, int, void * ) ;
@@ -553,11 +559,17 @@ extern void NI_set_attribute( void *, char *, char * ) ;
 extern char * NI_get_attribute( void *, char * ) ;
 extern void NI_insert_value( NI_element *, int,int, void * );       /* 03 Apr 2003 */
 extern void NI_add_column_stride( NI_element *, int, void *, int ); /* 29 May 2003 */
-extern void NI_fill_column_stride( NI_element *, int, void *, int , int); /* ZSS Mar 23 04 */
+extern void NI_fill_column_stride( NI_element *,int,void *,int,int);/* 23 Mar 2004 */
+extern void NI_insert_string( NI_element *, int,int, char *);       /* 19 Apr 2005 */
+extern void NI_alter_veclen( NI_element * , int ) ;                 /* 19 Apr 2005 */
 
 extern NI_group * NI_new_group_element(void) ;
 extern void NI_add_to_group( NI_group *, void * ) ;
-extern void NI_rename_group( NI_group *, char * ) ;  /* 03 Jun 2002 */
+extern void NI_rename_group( NI_group *, char * ) ;                 /* 03 Jun 2002 */
+extern void NI_remove_from_group( NI_group *, void * ) ;            /* 16 Apr 2005 */
+
+extern int NI_search_group_shallow( NI_group *, char *, void *** ); /* 18 Apr 2005 */
+extern int NI_search_group_deep   ( NI_group *, char *, void *** ); /* 18 Apr 2005 */
 
 extern NI_procins * NI_new_processing_instruction( char * ) ;       /* 16 Mar 2005 */
 
@@ -584,12 +596,17 @@ extern int NI_stream_readable( NI_stream_type * ) ;
 extern int NI_stream_writeable( NI_stream_type * ) ;
 extern int NI_stream_hasinput( NI_stream_type * , int ) ;
 extern void NI_stream_seek( NI_stream_type * , int , int ) ; /* 24 Mar 2003 */
+extern int NI_stream_writestring( NI_stream_type * , char * ) ;
 
 extern int NI_stream_setbufsize( NI_stream_type *, int ) ; /* 03 Jan 2003 */
 extern int NI_stream_getbufsize( NI_stream_type * ) ;
 extern int NI_stream_readbuf( NI_stream_type *, char *, int ) ;
+extern int NI_stream_readbuf64( NI_stream_type *, char *, int ) ;  /* 20 Apr 2005 */
 extern int NI_text_to_val  ( NI_stream_type *, NI_rowtype *, void *, int );
 extern int NI_binary_to_val( NI_stream_type *, NI_rowtype *, void *, int );
+extern int NI_base64_to_val( NI_stream_type *, NI_rowtype *, void *, int );
+
+extern int NI_stream_setb64( NI_stream_type * , int ) ;   /* 20 Apr 2005 */
 
 extern int NI_stream_reopen( NI_stream_type *, char * ) ; /* 23 Aug 2002 */
 

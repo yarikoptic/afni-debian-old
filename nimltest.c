@@ -55,7 +55,7 @@ int main( int argc , char *argv[] )
         int nbyt ;
         while(1){
           nbyt = fread( lbuf , 1,1024 , stdin ) ;
-          if( nbyt <= 0 ) exit(0) ;
+          if( nbyt <= 0 ){ NI_sleep(10) ; NI_stream_close(ns) ; exit(0) ; }
           nn = NI_stream_write( ns , lbuf , nbyt ) ;
           if( nn < 0 ){
              fprintf(stderr,"NI_stream_write fails\n"); exit(1);
@@ -122,6 +122,7 @@ GetElement:
           fprintf(stderr,"  %2d: lhs=%s  rhs=%s\n",
                   nn , nel->attr_lhs[nn] , nel->attr_rhs[nn] ) ;
 
+#if 0
        for( nn=0 ; nn < nel->vec_rank ; nn++ ){
           fprintf(stderr,"  axis[%d]: len=%d delta=%f origin=%f unit=%s label=%s\n",
                   nn , nel->vec_axis_len[nn] ,
@@ -130,6 +131,7 @@ GetElement:
                   (nel->vec_axis_unit)   ? nel->vec_axis_unit[nn]   : "NULL" ,
                   (nel->vec_axis_label)  ? nel->vec_axis_label[nn]  : "NULL"  ) ;
        }
+#endif
    } else if( tt == NI_GROUP_TYPE ){
       NI_group *ngr = (NI_group *) nini ;
       fprintf(stderr,"Group element:\n"
@@ -149,6 +151,7 @@ GetElement:
                  nn , npi->attr_lhs[nn] , npi->attr_rhs[nn] ) ;
    }
 
+#if 1
    nsout = NI_stream_open( "str:" , "w" ) ;
    if( nsout == NULL ){
       fprintf(stderr,"NI_stream_open fails for output\n"); exit(1);
@@ -158,6 +161,8 @@ GetElement:
 
    fprintf(stderr,"\n------ NI_write_element = %d ------\n%s\n==========================\n" ,
            nn, NI_stream_getbuf(nsout) ) ;
+   NI_stream_close(nsout) ;
+#endif
 
    if( nsf != NULL ){
       nn = NI_write_element( nsf , nini , bmode ) ;

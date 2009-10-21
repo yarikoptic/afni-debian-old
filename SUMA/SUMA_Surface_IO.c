@@ -37,80 +37,7 @@ extern int SUMAg_N_SVv;
 extern int SUMAg_N_DOv;  
 #endif
    
-/* Swapping functions from Bob's code. He has them statically declared */
-#undef SUMA_swap_4
-#undef SUMA_swap_2
-#undef SUMA_swap_8
-/*! Swap the 4 bytes pointed to by ppp: abcd -> dcba. */
 
-static void SUMA_swap_4(void *ppp)
-{
-   unsigned char *pntr = (unsigned char *) ppp ;
-   unsigned char b0, b1, b2, b3;
-
-   b0 = *pntr; b1 = *(pntr+1); b2 = *(pntr+2); b3 = *(pntr+3);
-   *pntr = b3; *(pntr+1) = b2; *(pntr+2) = b1; *(pntr+3) = b0;
-}
-
-/*---------------------------------------------------------------*/
-
-/*! Swap the 8 bytes pointed to by ppp: abcdefgh -> hgfedcba. */
-
-static void SUMA_swap_8(void *ppp)
-{
-   unsigned char *pntr = (unsigned char *) ppp ;
-   unsigned char b0, b1, b2, b3;
-   unsigned char b4, b5, b6, b7;
-
-   b0 = *pntr    ; b1 = *(pntr+1); b2 = *(pntr+2); b3 = *(pntr+3);
-   b4 = *(pntr+4); b5 = *(pntr+5); b6 = *(pntr+6); b7 = *(pntr+7);
-
-   *pntr     = b7; *(pntr+1) = b6; *(pntr+2) = b5; *(pntr+3) = b4;
-   *(pntr+4) = b3; *(pntr+5) = b2; *(pntr+6) = b1; *(pntr+7) = b0;
-}
-
-/*---------------------------------------------------------------*/
-
-/*! Swap the 2 bytes pointed to by ppp: ab -> ba. */
-
-static void SUMA_swap_2(void *ppp)
-{
-   unsigned char *pntr = (unsigned char *) ppp ;
-   unsigned char b0, b1;
-
-   b0 = *pntr; b1 = *(pntr+1);
-   *pntr = b1; *(pntr+1) = b0;
-}
-
-   
-/*!
-   \brief a macro for reading one integer from a file pointer.
-   Assumes for swapping that int is 4 bytes 
-   
-   \param nip (int *)
-   \param bs (int) 0: no swap, 1 swap
-   \param fp (FILE *)
-   \param ex (int) value returned by fread
-*/
-#define SUMA_READ_INT(nip, bs, fp, ex)  \
-{  static int m_chnk = sizeof(int);\
-   ex = fread (nip, m_chnk, 1, fp); \
-   if (bs) {   \
-      if (m_chnk == 4) SUMA_swap_4( nip ) ;  \
-      else if (m_chnk == 8) SUMA_swap_8( nip ) ;  \
-      else if (m_chnk == 2) SUMA_swap_2( nip ) ; /* keep compiler quiet about using swap_2 */ \
-      else { SUMA_SL_Err ("No swapping performed.") } \
-   }  \
-}
-#define SUMA_READ_FLOAT(nip, bs, fp, ex)  \
-{  static int m_chnk = sizeof(float);\
-   ex = fread (nip, m_chnk, 1, fp); \
-   if (bs) {   \
-      if (m_chnk == 4) SUMA_swap_4( nip ) ;  \
-      else if (m_chnk == 8) SUMA_swap_8( nip ) ;  \
-      else { SUMA_SL_Err ("No swapping performed.") } \
-   }  \
-}
 
 /*!
    \brief a function to simplify loading surfaces the old way
@@ -163,6 +90,11 @@ SUMA_SurfaceObject *SUMA_Load_Surface_Object_Wrapper ( char *if_name, char *if_n
          else
             SO = SUMA_Load_Surface_Object_eng (SO_name, SUMA_FREE_SURFER, SUMA_BINARY_BE, sv_name, 0);
          break;  
+      case SUMA_OPENDX_MESH:
+         SO_name = (void *)if_name; 
+         fprintf (SUMA_STDOUT,"Reading %s ...\n",if_name);
+         SO = SUMA_Load_Surface_Object (SO_name, SUMA_OPENDX_MESH, SUMA_ASCII, sv_name);
+         break;  
       case SUMA_PLY:
          SO_name = (void *)if_name; 
          fprintf (SUMA_STDOUT,"Reading %s ...\n",if_name);
@@ -214,6 +146,9 @@ char *SUMA_RemoveSurfNameExtension (char*Name, SUMA_SO_File_Type oType)
       case SUMA_PLY:
          noex  =  SUMA_Extension(Name,".ply" , YUP); 
          break;  
+      case SUMA_OPENDX_MESH:
+         noex  =  SUMA_Extension(Name,".dx" , YUP); 
+         break;  
       case SUMA_INVENTOR_GENERIC:
          noex  =  SUMA_Extension(Name,".iv" , YUP); 
          break;
@@ -230,11 +165,56 @@ char *SUMA_RemoveSurfNameExtension (char*Name, SUMA_SO_File_Type oType)
 }
 
 /*!
+   \brief much like SUMA_Prefix2SurfaceName, but handles the case where namecoord and nametopo are not the same
+   consider it a more general version of SUMA_Prefix2SurfaceName
+*/
+void * SUMA_2Prefix2SurfaceName (char *namecoord, char *nametopo, char *path, char *vp_name, SUMA_SO_File_Type oType, SUMA_Boolean *exists)
+{
+   static char FuncName[]={"SUMA_2Prefix2SurfaceName"};
+   SUMA_Boolean exist1, exist2;
+   SUMA_SFname *SF_name1 = NULL, *SF_name2 = NULL;
+   
+   SUMA_ENTRY;
+   
+   if (!nametopo && !namecoord) { SUMA_RETURN(NULL); }
+   
+   if (!nametopo) SUMA_RETURN(SUMA_Prefix2SurfaceName (namecoord, path, vp_name, oType, exists));
+   if (!namecoord) SUMA_RETURN(SUMA_Prefix2SurfaceName (nametopo, path, vp_name, oType, exists));
+   
+   if (strcmp(namecoord, nametopo) == 0) SUMA_RETURN(SUMA_Prefix2SurfaceName (nametopo, path, vp_name, oType, exists));
+   if (oType != SUMA_SUREFIT && oType != SUMA_VEC) {
+      SUMA_SL_Err("Wrong usage of function, namecoord and nametopo are different but surface type is neither SUMA_SUREFIT nor SUMA_VEC");
+      SUMA_RETURN(NULL);
+   }
+   
+   /* the pain in the behind case */
+   SF_name1 = SUMA_Prefix2SurfaceName (namecoord, path, vp_name, oType, &exist1);
+   if (!SF_name1) {
+      SUMA_SL_Err("Failed to create name");
+      SUMA_RETURN(NULL);
+   }
+   SF_name2 = SUMA_Prefix2SurfaceName (nametopo, path, vp_name, oType, &exist2);
+   if (!SF_name2) {
+      SUMA_free(SF_name1); SF_name1= NULL;
+      SUMA_SL_Err("Failed to create name");
+      SUMA_RETURN(NULL);
+   }
+   
+   if (exist1 || exist2) *exists = YUP;
+   
+   sprintf(SF_name1->name_topo, "%s", SF_name2->name_topo);
+   SUMA_free(SF_name2); SF_name2= NULL;
+   
+   SUMA_RETURN(SF_name1);
+}  
+/*!
    \brief A function to take a prefix (or name) and turn it into the structure needed
           by SUMA_Save_Surface_Object   
    also sets *exists = YUP if completed filename exists on disk. For surfaces requiring
             two files, *exists = YUP if any of the files exists       
    - free returned pointer with SUMA_free
+   
+   \sa SUMA_2Prefix2SurfaceName if you have a surface with different names for coord and topo )
 */
 
 void * SUMA_Prefix2SurfaceName (char *prefix_in, char *path, char *vp_name, SUMA_SO_File_Type oType, SUMA_Boolean *exists)
@@ -298,6 +278,11 @@ void * SUMA_Prefix2SurfaceName (char *prefix_in, char *path, char *vp_name, SUMA
       case SUMA_FREE_SURFER:
       case SUMA_FREE_SURFER_PATCH:
          SO_name = (void *)SUMA_append_string(ppref,".asc"); 
+         if (SUMA_filexists((char*)SO_name)) *exists = YUP;
+         else *exists = NOPE;
+         break;  
+      case SUMA_OPENDX_MESH:
+         SO_name = (void *)SUMA_append_string(ppref,".dx"); 
          if (SUMA_filexists((char*)SO_name)) *exists = YUP;
          else *exists = NOPE;
          break;  
@@ -1320,6 +1305,7 @@ SUMA_Boolean SUMA_readFSannot (char *f_name, char *f_ROI, char *f_cmap, char *f_
                 SUMA_READ_INT (&(cte->b), bs, fl, ex);
                 SUMA_READ_INT (&(cte->flag), bs, fl, ex);
          }
+         
       }
    }             
    
@@ -1348,7 +1334,12 @@ SUMA_Boolean SUMA_readFSannot (char *f_name, char *f_ROI, char *f_cmap, char *f_
                   ++j;
                }
                if (imap < 0) {
-                  SUMA_SL_Warn("Node Color (label) not found in cmap.\nMarking with -1.");
+                  static int iwarn;
+                  if (!iwarn) {
+                     SUMA_SL_Warn("Node Color (label) not found in cmap.\nMarking with annotation value.\nFurther occurences will not be reported.");
+                     ++iwarn;
+                  }
+                  imap = anv[i];
                }
                fprintf(fr, "%d  %d  %f %f %f   \n",
                         niv[i], imap, (float)rv[i]/255.0, (float)gv[i]/255.0, (float)bv[i]/255.0);
@@ -1962,12 +1953,12 @@ Side effects :
 ***/
 SUMA_Boolean SUMA_FreeSurfer_Read_eng (char * f_name, SUMA_FreeSurfer_struct *FS, int debug)
 {/*SUMA_FreeSurfer_Read_eng*/
+	static char FuncName[]={"SUMA_FreeSurfer_Read_eng"};
    char stmp[50]; 
    FILE *fs_file;
 	int ex, cnt, jnki, amax[3], maxamax, maxamax2, id, ND, id2, NP, ip, *NodeId;
 	float jnkf, *NodeList;
 	char c;
-	static char FuncName[]={"SUMA_FreeSurfer_Read_eng"};
 	SUMA_Boolean LocalHead = NOPE;
 	   
 	SUMA_ENTRY;
@@ -2076,34 +2067,99 @@ SUMA_Boolean SUMA_FreeSurfer_Read_eng (char * f_name, SUMA_FreeSurfer_struct *FS
 		}
 	} /* read a full surface */
 	else { /* that's a patch */
-	   if (LocalHead) fprintf (SUMA_STDOUT, "%s: Reading patch ...\n", FuncName);
-		/* Node IDs are a reference to those in the parent surface */
-		cnt = 0;
-      while (ex != EOF && cnt < FS->N_Node) {
-			ex = fscanf(fs_file, "%d", &(FS->NodeId[cnt]));
-			id = 3 * cnt;
-         /* fprintf (SUMA_STDERR, "FS->NodeId[cnt] = %d: cnt = %d, id=%d, id1 = %d, id2 = %d\n", FS->NodeId[cnt], cnt, id, id+1, id+2); */ 
-			ex = fscanf(fs_file, "%f %f %f", &(FS->NodeList[id]),&(FS->NodeList[id+1]),&(FS->NodeList[id+2]));
-			++cnt;
-		}
-      if (cnt != FS->N_Node) {
-			fprintf(SUMA_STDERR,"Error %s: Expected %d nodes, %d read.\n", FuncName, FS->N_Node, cnt);
-			SUMA_RETURN (NOPE);
-		}
-		
-      if (LocalHead) fprintf (SUMA_STDOUT, "%s: Reading FaceSets...\n", FuncName);
-		/* read in the facesets */
-		cnt = 0;
-		while (ex != EOF && cnt < FS->N_FaceSet) {
-			ex = fscanf(fs_file, "%d", &(FS->FaceSetIndexInParent[cnt]));
-			ip = 3 * cnt;
-			ex = fscanf(fs_file, "%d %d %d",  &(FS->FaceSetList[ip]), &(FS->FaceSetList[ip+1]),&(FS->FaceSetList[ip+2]));
-			++cnt;
-		}
-		if (cnt != FS->N_FaceSet) {
-			fprintf(SUMA_STDERR,"Error %s: Expected %d FaceSets, %d read.\n", FuncName, FS->N_FaceSet, cnt);
-			SUMA_RETURN (NOPE);
-		}
+	   #if 0 /* old way, simple parsing ... */
+         if (LocalHead) fprintf (SUMA_STDOUT, "%s: Reading patch olde way...\n", FuncName);
+		   /* Node IDs are a reference to those in the parent surface */
+		   cnt = 0;
+         while (ex != EOF && cnt < FS->N_Node) {
+			   ex = fscanf(fs_file, "%d", &(FS->NodeId[cnt]));
+			   id = 3 * cnt;
+            /* fprintf (SUMA_STDERR, "FS->NodeId[cnt] = %d: cnt = %d, id=%d, id1 = %d, id2 = %d\n", FS->NodeId[cnt], cnt, id, id+1, id+2); */ 
+			   ex = fscanf(fs_file, "%f %f %f", &(FS->NodeList[id]),&(FS->NodeList[id+1]),&(FS->NodeList[id+2]));
+			   ++cnt;
+		   }
+         if (cnt != FS->N_Node) {
+			   fprintf(SUMA_STDERR,"Error %s: Expected %d nodes, %d read.\n", FuncName, FS->N_Node, cnt);
+			   SUMA_RETURN (NOPE);
+		   }
+
+         if (LocalHead) fprintf (SUMA_STDOUT, "%s: Reading FaceSets...\n", FuncName);
+		   /* read in the facesets */
+		   cnt = 0;
+		   while (ex != EOF && cnt < FS->N_FaceSet) {
+			   ex = fscanf(fs_file, "%d", &(FS->FaceSetIndexInParent[cnt]));
+			   ip = 3 * cnt;
+			   ex = fscanf(fs_file, "%d %d %d",  &(FS->FaceSetList[ip]), &(FS->FaceSetList[ip+1]),&(FS->FaceSetList[ip+2]));
+			   ++cnt;
+		   }
+		   if (cnt != FS->N_FaceSet) {
+			   fprintf(SUMA_STDERR,"Error %s: Expected %d FaceSets, %d read.\n", FuncName, FS->N_FaceSet, cnt);
+			   SUMA_RETURN (NOPE);
+		   }
+      #else 
+      {
+         char *fl=NULL, *eop=NULL, *florig=NULL;
+         int ans, pnodes, ptri, Found, nchar;
+         double dbuf;
+         
+         if (LocalHead) fprintf (SUMA_STDOUT, "%s: Reading patch new way...\n", FuncName);
+         /* suck in the bastard, perhaps this should be done from the start, maybe in the future */  
+         fl = florig = SUMA_file_suck(f_name, &nchar);
+         if (!nchar || !fl) { 
+            SUMA_SL_Err("Failed to read patch file.");
+            SUMA_RETURN(NOPE);
+         }
+         /* skip comment, if any */
+         SUMA_IS_COMMENT_LINE(fl, NULL, '#', ans);
+         if (ans) {  
+            SUMA_LH("Skipping comment..."); 
+            SUMA_SKIP_LINE(fl, NULL);
+         }else {
+            SUMA_SL_Err("Expected comment line....");
+         }
+         /* read in first two nums */
+         SUMA_ADVANCE_PAST_NUM(fl, dbuf, Found); pnodes = (int)dbuf;
+         SUMA_ADVANCE_PAST_NUM(fl, dbuf, Found); ptri = (int)dbuf;
+         
+         /* Node IDs are a reference to those in the parent surface */
+		   Found = 1;
+         cnt = 0;
+         while (Found && cnt < FS->N_Node) {
+			   eop = fl+50; /* don't you dare use (fl+50) instead of eop below!, else you will serch till the end all the time!
+                           Macro Danger! */
+            SUMA_ADVANCE_PAST(fl, eop,"vno=",Found,0);  /* The new patch format ... */
+            SUMA_ADVANCE_PAST_NUM(fl, dbuf, Found); FS->NodeId[cnt] = (int)dbuf;
+			   id = 3 * cnt;
+            /* fprintf (SUMA_STDERR, "FS->NodeId[cnt] = %d: cnt = %d, id=%d, id1 = %d, id2 = %d\n", FS->NodeId[cnt], cnt, id, id+1, id+2); */ 
+			   SUMA_ADVANCE_PAST_NUM(fl, dbuf, Found); FS->NodeList[id] = (float)dbuf;
+            SUMA_ADVANCE_PAST_NUM(fl, dbuf, Found); FS->NodeList[id+1] = (float)dbuf;
+            SUMA_ADVANCE_PAST_NUM(fl, dbuf, Found); FS->NodeList[id+2] = (float)dbuf;
+			   ++cnt;
+		   }
+         if (cnt != FS->N_Node) {
+			   fprintf(SUMA_STDERR,"Error %s: Expected %d nodes, %d read.\n", FuncName, FS->N_Node, cnt);
+			   SUMA_RETURN (NOPE);
+		   }
+         if (LocalHead) fprintf (SUMA_STDOUT, "%s: Reading FaceSets...\n", FuncName);
+		   /* read in the facesets */
+		   Found = 1;
+		   cnt = 0;
+         while (Found && cnt < FS->N_FaceSet) {
+			   SUMA_ADVANCE_PAST_NUM(fl, dbuf, Found); FS->FaceSetIndexInParent[cnt] = (int)dbuf;
+			   ip = 3 * cnt;
+			   SUMA_ADVANCE_PAST_NUM(fl, dbuf, Found); FS->FaceSetList[ip  ] = (int)dbuf;
+			   SUMA_ADVANCE_PAST_NUM(fl, dbuf, Found); FS->FaceSetList[ip+1] = (int)dbuf;
+			   SUMA_ADVANCE_PAST_NUM(fl, dbuf, Found); FS->FaceSetList[ip+2] = (int)dbuf;
+			   ++cnt;
+		   }
+		   if (cnt != FS->N_FaceSet) {
+			   fprintf(SUMA_STDERR,"Error %s: Expected %d FaceSets, %d read.\n", FuncName, FS->N_FaceSet, cnt);
+			   SUMA_RETURN (NOPE);
+		   }
+         SUMA_free(florig); fl = florig = NULL; /*  */
+      }   
+      #endif   
+      
 		/* The FaceSet List which will be read next, uses indices into the NodeList of the parent surface
 		This means that it expects a NodeList of the size of the NodeList in the parent surface. 
 		One could read the maximum number of nodes in the parent surface and create a NodeList of that size.
@@ -2451,10 +2507,11 @@ SUMA_Boolean SUMA_BrainVoyager_Read(char *f_name, SUMA_SurfaceObject *SO, int de
 {
    static char FuncName[]={"SUMA_BrainVoyager_Read"};
 	float FileVersion, cx, cy, cz, *fbuf = NULL;
-	int i, ii, chnk, ex, surf_type, n_neighbors;
+	int i, ii, chnk, ex, surf_type, n_neighbors, bs;
 	char buffer[256];
+   float fbuffer[256];
    FILE *fl=NULL;
-   SUMA_Boolean LocalHead = YUP;
+   SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
    
@@ -2477,30 +2534,46 @@ SUMA_Boolean SUMA_BrainVoyager_Read(char *f_name, SUMA_SurfaceObject *SO, int de
    SO->N_Node=0;
 	SO->N_FaceSet=0;
    
+   /* read version, and number of nodes and facesets, assume no swapping for the moment */
+   bs = 0;
    chnk = sizeof(float);
    ex = fread (&FileVersion, chnk, 1, fl);
-   if (FileVersion < 0 || FileVersion > 500000) { /* trouble perhaps ? */
-      SUMA_SL_Err("Version number < 0 || > 500000\nSeems like bad news to me, quitting...");
-      fclose(fl);
-      SUMA_RETURN(NOPE);
-   }
    chnk = sizeof(int);
-   ex = fread (&surf_type, chnk, 1, fl);
+   ex = fread (&surf_type, chnk, 1, fl); /* must be 0, per website www.brainvoyager.com... */
    ex = fread (&(SO->N_Node), chnk, 1, fl);
    ex = fread (&(SO->N_FaceSet), chnk, 1, fl);
+   if (FileVersion < 0 || FileVersion > 500000 || SO->N_Node < 0 || SO->N_FaceSet < 0) { /* trouble perhaps ? */
+      SUMA_LH("Byte swapping needed...");
+      bs = 1;
+   }
+   if (bs) {
+      SUMA_SWAP_THIS(&FileVersion, sizeof(float));
+      SUMA_SWAP_THIS(&surf_type, sizeof(int));
+      SUMA_SWAP_THIS(&(SO->N_Node), sizeof(int));
+      SUMA_SWAP_THIS(&(SO->N_FaceSet), sizeof(int));
+   }
+   
    if (LocalHead) {
       fprintf (SUMA_STDERR,"%s:\nSurfType is %d\nN_Node = %d, N_FaceSet = %d\n", 
                            FuncName, surf_type, SO->N_Node, SO->N_FaceSet);
    }
+   
+   if (FileVersion < 0 || FileVersion > 500000) { /* trouble perhaps ? */
+      SUMA_SL_Err("Version number < 0 || > 500000 \nSeems like bad news to me, quitting...");
+      fclose(fl);
+      SUMA_RETURN(NOPE);
+   }
+   
+   
    if (SO->N_Node < 0 || SO->N_FaceSet < 0) {
       SUMA_SL_Err("Negative values for N_Node and N_FaceSet.");
       fclose(fl);
       SUMA_RETURN(NOPE);
    } 
-   chnk = sizeof(float);
-   ex = fread (&cx, chnk, 1, fl);
-   ex = fread (&cy, chnk, 1, fl);
-   ex = fread (&cz, chnk, 1, fl);
+   
+   SUMA_READ_FLOAT(&cx, bs, fl, ex);
+   SUMA_READ_FLOAT(&cy, bs, fl, ex);
+   SUMA_READ_FLOAT(&cz, bs, fl, ex);
    if (LocalHead) {
       fprintf (SUMA_STDERR,"%s:\ncenter = [%f, %f, %f]\n(Niko adds 30 to cy ...)\n", FuncName, cx, cy, cz);
    }
@@ -2517,30 +2590,57 @@ SUMA_Boolean SUMA_BrainVoyager_Read(char *f_name, SUMA_SurfaceObject *SO, int de
    /* read the coords */
    SUMA_LH("Reading coords...");
    ex = fread(fbuf, sizeof(float), SO->N_Node, fl);
+   if (ex != SO->N_Node) { SUMA_SL_Warn("Failed to read all node X info"); }
+   if (bs) SUMA_SWAP_VEC(fbuf,SO->N_Node,sizeof(float));
    for (i=0; i<SO->N_Node; ++i) SO->NodeList[3*i] = fbuf[i];
    ex = fread(fbuf, sizeof(float), SO->N_Node, fl);
+   if (ex != SO->N_Node) { SUMA_SL_Warn("Failed to read all node Y info"); }
+   if (bs) SUMA_SWAP_VEC(fbuf,SO->N_Node,sizeof(float));
    for (i=0; i<SO->N_Node; ++i) SO->NodeList[3*i+1] = fbuf[i];
    ex = fread(fbuf, sizeof(float), SO->N_Node, fl);
+   if (ex != SO->N_Node) { SUMA_SL_Warn("Failed to read all node Z info"); }
+   if (bs) SUMA_SWAP_VEC(fbuf,SO->N_Node,sizeof(float));
    for (i=0; i<SO->N_Node; ++i) SO->NodeList[3*i+2] = fbuf[i];
    SUMA_free(fbuf); fbuf = NULL;
-   
+   if (LocalHead) { 
+      char *sdbg = SUMA_ShowMeSome((void *)SO->NodeList, SUMA_float, SUMA_MIN_PAIR(20, SO->N_Node), 20);
+      fprintf(SUMA_STDERR,"%s NodeList:\n%s\n", FuncName, sdbg);
+      SUMA_free(sdbg);sdbg = NULL;
+   }
    /* skip the node normals, which would be read much like the x y z coords*/
-   fseek(fl, SO->N_Node*SO->NodeDim*sizeof(float), SEEK_CUR);
+   fseek(fl, SO->N_Node*3*sizeof(float), SEEK_CUR);
    
    /* skip the curvature color info */
-   ex = fread(buffer, 32, 1, fl);
-   fseek(fl, SO->N_Node*4, SEEK_CUR);
+   ex = fread(fbuffer, sizeof(float), 8, fl); /* colors of convex and concave stuff */
+   if (bs) SUMA_SWAP_VEC(fbuffer,8, sizeof(float));
+   if (LocalHead) { 
+      char *sdbg = SUMA_ShowMeSome((void *)fbuffer, SUMA_float, 8,8);
+      fprintf(SUMA_STDERR,"%s colorstuff:\n%s\n", FuncName, sdbg);
+      SUMA_free(sdbg);sdbg = NULL;
+   }
+   fseek(fl, SO->N_Node*sizeof(float), SEEK_CUR); /* junp over mesh color */
    
    /* skip nearest neighbor info */
    for (i=0; i<SO->N_Node; ++i) {
       ex = fread(&n_neighbors, sizeof(int), 1, fl);
+      if (bs) SUMA_SWAP_THIS(&n_neighbors, sizeof(int));
       fseek(fl, n_neighbors*sizeof(int), SEEK_CUR);
    }
    
    /* read dems triangles */
    SUMA_LH("Reading FaceSets...");
    ex = fread(SO->FaceSetList, sizeof(int), SO->N_FaceSet * SO->FaceSetDim , fl);
+   if (ex != SO->N_FaceSet * SO->FaceSetDim) { 
+      fprintf(SUMA_STDERR,"Error %s: Failed to read all faceset info.\nRead %d values, expected %d\n", FuncName, ex, SO->N_FaceSet * SO->FaceSetDim );
+      SUMA_RETURN(NOPE);
+   }
    
+   if (bs) SUMA_SWAP_VEC(SO->FaceSetList,(SO->N_FaceSet * SO->FaceSetDim),sizeof(int));
+   if (LocalHead) { 
+      char *sdbg = SUMA_ShowMeSome((void *)SO->FaceSetList, SUMA_int, SUMA_MIN_PAIR(20, SO->N_FaceSet * SO->FaceSetDim), 20);
+      fprintf(SUMA_STDERR,"%s FaceSetList:\n%s\n", FuncName, sdbg);
+      SUMA_free(sdbg);sdbg = NULL;
+   }
    fclose(fl); fl = NULL;
    
    SO->FileType = SUMA_BRAIN_VOYAGER;
@@ -3186,6 +3286,113 @@ SUMA_Boolean SUMA_VEC_Write (SUMA_SFname *Fname, SUMA_SurfaceObject *SO)
 }
 
 /*!
+   \brief function to read 1D (vec) format surfaces
+   \sa SUMA_VEC_Write
+*/
+SUMA_Boolean SUMA_VEC_Read(SUMA_SFname *Fname, SUMA_SurfaceObject *SO)
+{
+   static char FuncName[]={"SUMA_VEC_Read"};
+   MRI_IMAGE *im = NULL;
+   float *far=NULL;
+   int icnt;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+
+   if (!SO || !Fname) {
+      SUMA_SL_Err("NULL input");
+      SUMA_RETURN(NOPE);
+   }
+   if (SO->NodeList || SO->FaceSetList) {
+      SUMA_SL_Err("Non NULL SO->NodeList || SO->FaceSetList");
+      SUMA_RETURN(NOPE);   
+   }
+
+   im = mri_read_1D (Fname->name_coord);
+   if (!im) {
+      SUMA_SLP_Err("Failed to read 1D file");
+      SUMA_RETURN(NOPE);
+   }
+   far = MRI_FLOAT_PTR(im);
+   SO->N_Node = im->nx;
+   SO->NodeDim = im->ny;
+   if (!SO->N_Node) {
+      SUMA_SL_Err("Empty file");
+      SUMA_RETURN(NOPE);
+   }
+   if (SO->NodeDim !=  3 ) {
+      SUMA_SL_Err("File must have\n"
+                  "3 columns.");
+      mri_free(im); im = NULL;   /* done with that baby */
+      SUMA_RETURN(NOPE);
+   }
+
+   SO->NodeList = (float *)SUMA_calloc (SO->N_Node*SO->NodeDim, sizeof(float));
+   if (!SO->NodeList) {
+      fprintf(SUMA_STDERR,"Error %s: Failed to allocate for NodeList.\n", FuncName);
+      if (SO->NodeList) SUMA_free(SO->NodeList);
+      if (SO->FaceSetList) SUMA_free(SO->FaceSetList);
+      SUMA_RETURN (NOPE);
+   }
+
+   for (icnt=0; icnt < SO->N_Node; ++icnt) {
+      SO->NodeList[3*icnt] = far[icnt];
+      SO->NodeList[3*icnt+1] = far[icnt+SO->N_Node];
+      SO->NodeList[3*icnt+2] = far[icnt+2*SO->N_Node];
+   }   
+   if (LocalHead) {
+      fprintf (SUMA_STDERR,"%s: SO->NodeList\n Node 0: %f, %f, %f \n Node %d: %f, %f, %f \n",
+         FuncName,
+         SO->NodeList[0], SO->NodeList[1], SO->NodeList[2], SO->N_Node -1, 
+         SO->NodeList[3*(SO->N_Node-1)], SO->NodeList[3*(SO->N_Node-1)+1], SO->NodeList[3*(SO->N_Node-1)+2]);
+   }
+   mri_free(im); im = NULL;
+
+   im = mri_read_1D (Fname->name_topo);
+   if (!im) {
+      SUMA_SL_Err("Failed to read 1D file");
+      SUMA_RETURN(NOPE);
+   }
+   far = MRI_FLOAT_PTR(im);
+   SO->N_FaceSet = im->nx;
+   SO->FaceSetDim = im->ny;
+   if (!SO->N_FaceSet) {
+      SUMA_SL_Err("Empty file");
+      SUMA_RETURN(NOPE);
+   }
+   if (SO->FaceSetDim !=  3 ) {
+      SUMA_SL_Err("File must have\n"
+                  "3 columns.");
+      mri_free(im); im = NULL;   /* done with that baby */
+      SUMA_RETURN(NOPE);
+   }
+
+   SO->FaceSetList = (int *)SUMA_calloc (SO->N_FaceSet*SO->FaceSetDim, sizeof(int));
+   if (!SO->FaceSetList) {
+      fprintf(SUMA_STDERR,"Error %s: Failed to allocate for FaceSetList.\n", FuncName);
+      if (SO->NodeList) SUMA_free(SO->NodeList);
+      if (SO->FaceSetList) SUMA_free(SO->FaceSetList);
+      SUMA_RETURN (NOPE);
+   }
+
+   for (icnt=0; icnt < SO->N_FaceSet; ++icnt) {
+      SO->FaceSetList[3*icnt] = (int)far[icnt];
+      SO->FaceSetList[3*icnt+1] = (int)far[icnt+SO->N_FaceSet];
+      SO->FaceSetList[3*icnt+2] = (int)far[icnt+2*SO->N_FaceSet];
+   }   
+
+   if (LocalHead) {
+      fprintf (SUMA_STDERR,"%s: SO->FaceSetList\n Node 0: %d, %d, %d \n Node %d: %d, %d, %d \n",
+         FuncName,
+         SO->FaceSetList[0], SO->FaceSetList[1], SO->FaceSetList[2], SO->N_FaceSet -1, 
+         SO->FaceSetList[3*(SO->N_FaceSet-1)], SO->FaceSetList[3*(SO->N_FaceSet-1)+1], SO->FaceSetList[3*(SO->N_FaceSet-1)+2]);
+   } 
+   mri_free(im); im = NULL;
+
+   SUMA_RETURN(YUP);
+}
+
+/*!
    \brief A function to write a Surface Object into a Surefit ascii format 
    \param F_prefix (char *) Prefix of surace filenames. Output will be of the form:
          Prefix.N_NODE.topo
@@ -3283,18 +3490,22 @@ int main (int argc,char *argv[])
 #endif
 
 #ifdef SUMA_ConvertSurface_STAND_ALONE
-void usage_SUMA_ConvertSurface ()
+void usage_SUMA_ConvertSurface (SUMA_GENERIC_ARGV_PARSE *ps)
    
   {/*Usage*/
           static char FuncName[]={"usage_SUMA_ConvertSurface"};
-          char * s = NULL;
+          char * s = NULL, *sio=NULL;
           
+          s = SUMA_help_basics();
+          sio  = SUMA_help_IO_Args(ps);
+         
           printf ("\nUsage:  ConvertSurface <-i_TYPE inSurf> <-o_TYPE outSurf> \n"
                   "    [<-sv SurfaceVolume [VolParam for sf surfaces]>] [-tlrc] [-MNI_rai/-MNI_lpi]\n"
                   "    reads in a surface and writes it out in another format.\n"
                   "    Note: This is a not a general utility conversion program. \n"
                   "    Only fields pertinent to SUMA are preserved.\n"
-                  "    -i_TYPE inSurf specifies the input surface, TYPE is one of the following:\n"
+                  "%s"
+/*                  "    -i_TYPE inSurf specifies the input surface, TYPE is one of the following:\n"
                   "       fs: FreeSurfer surface. \n"
                   "           If surface name has .asc it is assumed to be\n"
                   "           in ASCII format. Otherwise it is assumed to be\n"
@@ -3314,7 +3525,7 @@ void usage_SUMA_ConvertSurface ()
                   "            when -o_fsp is used, see below.\n"
                   "    -o_TYPE outSurf specifies the output surface, TYPE is one of the following:\n"
                   "       fs: FreeSurfer ascii surface. \n"
-                  "       fsp: FeeSurfer ascii patch surface. \n" /* this option is not used in all programs */
+                  "       fsp: FeeSurfer ascii patch surface. \n" 
                   "            In addition to outSurf, you need to specify\n"
                   "            the name of the parent surface for the patch.\n"
                   "            using the -ipar_TYPE option\n"
@@ -3323,15 +3534,15 @@ void usage_SUMA_ConvertSurface ()
                   "       vec (or 1D): Simple ascii matrix format. \n"
                   "            see help for vec under -i_TYPE options for format specifications.\n"
                   "       ply: PLY format, ascii or binary.\n"
-                  "    -make_consistent: Check the consistency of the surface's mesh (triangle\n"
-                  "                      winding). This option will write out a new surface even \n"
-                  "                      if the mesh was consistent.\n"
-                  "                      See SurfQual -help for mesh checks.\n"
                   "    -sv SurfaceVolume [VolParam for sf surfaces]\n"
                   "       This option must not come before the -i_TYPE option.\n"
                   "       If you supply a surface volume, the coordinates of the input surface.\n"
                   "        are modified to SUMA's convention and aligned with SurfaceVolume.\n"
-                  "        You must also specify a VolParam file for SureFit surfaces.\n"
+                  "        You must also specify a VolParam file for SureFit surfaces.\n" */
+                  "    -make_consistent: Check the consistency of the surface's mesh (triangle\n"
+                  "                      winding). This option will write out a new surface even \n"
+                  "                      if the mesh was consistent.\n"
+                  "                      See SurfQual -help for mesh checks.\n"
                   "    -acpc: Apply acpc transform (which must be in acpc version of \n"
                   "        SurfaceVolume) to the surface vertex coordinates. \n"
                   "        This option must be used with the -sv option.\n"
@@ -3360,7 +3571,9 @@ void usage_SUMA_ConvertSurface ()
                   "                  r21 r22 r23 D2\n"
                   "                  r31 r32 r33 D3\n"
                   "    -xcenter x y z: Use vector cen = [x y z]' for rotation center.\n"
-                  "                    Default is cen = [0 0 0]'\n"); 
+                  "                    Default is cen = [0 0 0]'\n"
+                  "%s\n"
+                  , sio, s); SUMA_free(sio); sio = NULL; SUMA_free(s); s = NULL; 
           s = SUMA_New_Additions(0, 1); printf("%s\n", s);SUMA_free(s); s = NULL; 
           printf ("\t\t Ziad S. Saad SSCC/NIMH/NIH ziad@nih.gov \t Wed Jan  8 13:44:29 EST 2003 \n");
           exit (0);
@@ -3369,7 +3582,7 @@ void usage_SUMA_ConvertSurface ()
 int main (int argc,char *argv[])
 {/* Main */
    static char FuncName[]={"ConvertSurface"}; 
-	int kar, i;
+	int kar, volexists, i;
    float xcen[3], M[3][4];
    char  *if_name = NULL, *of_name = NULL, *if_name2 = NULL, 
          *of_name2 = NULL, *sv_name = NULL, *vp_name = NULL,
@@ -3385,7 +3598,8 @@ int main (int argc,char *argv[])
    THD_warp *warp=NULL ;
    THD_3dim_dataset *aset=NULL;
    SUMA_Boolean brk, Do_tlrc, Do_mni_RAI, Do_mni_LPI, Do_acpc, Docen, Doxmat, Do_wind, onemore;
-   SUMA_Boolean isFSpatch = NOPE;
+   SUMA_GENERIC_ARGV_PARSE *ps=NULL;
+   SUMA_Boolean exists;
    SUMA_Boolean LocalHead = NOPE;
    
 	SUMA_mainENTRY;
@@ -3393,13 +3607,14 @@ int main (int argc,char *argv[])
 	
    /* Allocate space for DO structure */
 	SUMAg_DOv = SUMA_Alloc_DisplayObject_Struct (SUMA_MAX_DISPLAYABLE_OBJECTS);
+   ps = SUMA_Parse_IO_Args(argc, argv, "-o;-i;-sv;-ipar;");
    
-
    if (argc < 4)
        {
-          usage_SUMA_ConvertSurface ();
+          usage_SUMA_ConvertSurface (ps);
           exit (1);
        }
+   
    
    kar = 1;
    xmat_name = NULL;
@@ -3412,12 +3627,11 @@ int main (int argc,char *argv[])
    Do_mni_LPI = NOPE;
    Do_acpc = NOPE;
    Do_wind = NOPE;
-   isFSpatch = NOPE;
    onemore = NOPE;
 	while (kar < argc) { /* loop accross command ine options */
 		/*fprintf(stdout, "%s verbose: Parsing command line...\n", FuncName);*/
 		if (strcmp(argv[kar], "-h") == 0 || strcmp(argv[kar], "-help") == 0) {
-			 usage_SUMA_ConvertSurface();
+			 usage_SUMA_ConvertSurface(ps);
           exit (0);
 		}
 		
@@ -3425,6 +3639,7 @@ int main (int argc,char *argv[])
       
       SUMA_TO_LOWER(argv[kar]);
 		
+      #if 0
       if (!brk && (strcmp(argv[kar], "-i_bv") == 0)) {
          kar ++;
 			if (kar >= argc)  {
@@ -3449,35 +3664,6 @@ int main (int argc,char *argv[])
             iparForm = SUMA_ASCII;
          else
             iparForm = SUMA_BINARY_BE;
-			brk = YUP;
-		}
-      
-      if (!brk && (strcmp(argv[kar], "-xmat_1d") == 0)) {
-         kar ++;
-			if (kar >= argc)  {
-		  		fprintf (SUMA_STDERR, "need 1 argument after -xmat_1D\n");
-				exit (1);
-			}
-			xmat_name = argv[kar]; 
-         Doxmat = YUP;
-			brk = YUP;
-		}
-      
-      if (!brk && (strcmp(argv[kar], "-make_consistent") == 0)) {
-         Do_wind = YUP;
-			brk = YUP;
-		}
-      
-      if (!brk && (strcmp(argv[kar], "-xcenter") == 0)) {
-         kar ++;
-			if (kar+2>= argc)  {
-		  		fprintf (SUMA_STDERR, "need 3 arguments after -xcenter\n");
-				exit (1);
-			}
-			xcen[0] = atof(argv[kar]); ++kar;
-			xcen[1] = atof(argv[kar]); ++kar;
-			xcen[2] = atof(argv[kar]); 
-         Docen = YUP;
 			brk = YUP;
 		}
       
@@ -3637,7 +3823,6 @@ int main (int argc,char *argv[])
 				exit (1);
 			}
 			of_name = argv[kar]; 
-         isFSpatch = YUP;
          oType = SUMA_FREE_SURFER_PATCH;
 			brk = YUP;
 		}
@@ -3664,6 +3849,36 @@ int main (int argc,char *argv[])
          oType = SUMA_PLY;
 			brk = YUP;
 		}
+      #endif
+      
+      if (!brk && (strcmp(argv[kar], "-xmat_1d") == 0)) {
+         kar ++;
+			if (kar >= argc)  {
+		  		fprintf (SUMA_STDERR, "need 1 argument after -xmat_1D\n");
+				exit (1);
+			}
+			xmat_name = argv[kar]; 
+         Doxmat = YUP;
+			brk = YUP;
+		}
+      
+      if (!brk && (strcmp(argv[kar], "-make_consistent") == 0)) {
+         Do_wind = YUP;
+			brk = YUP;
+		}
+      
+      if (!brk && (strcmp(argv[kar], "-xcenter") == 0)) {
+         kar ++;
+			if (kar+2>= argc)  {
+		  		fprintf (SUMA_STDERR, "need 3 arguments after -xcenter\n");
+				exit (1);
+			}
+			xcen[0] = atof(argv[kar]); ++kar;
+			xcen[1] = atof(argv[kar]); ++kar;
+			xcen[2] = atof(argv[kar]); 
+         Docen = YUP;
+			brk = YUP;
+		}
       
       if (!brk && (strcmp(argv[kar], "-tlrc") == 0)) {
          Do_tlrc = YUP;
@@ -3685,7 +3900,7 @@ int main (int argc,char *argv[])
          brk = YUP;
       }
       
-      if (!brk) {
+      if (!brk && !ps->arg_checked[kar]) {
 			fprintf (SUMA_STDERR,"Error %s: Option %s not understood. Try -help for usage\n", FuncName, argv[kar]);
 			exit (1);
 		} else {	
@@ -3693,7 +3908,29 @@ int main (int argc,char *argv[])
 			kar ++;
 		}
    }
+   /* transfer info from ps structure (backward compat) */
 
+   if (ps->o_N_surfnames) {
+      of_name = ps->o_surfnames[0];
+      of_name2 = ps->o_surftopo[0];
+      oType = ps->o_FT[0];
+   }
+   if (ps->i_N_surfnames) {
+      if_name = ps->i_surfnames[0];
+      if_name2 = ps->i_surftopo[0];
+      iType = ps->i_FT[0];
+      iForm = ps->i_FF[0];
+   }
+   if (ps->ipar_N_surfnames) {
+      ifpar_name = ps->ipar_surfnames[0];
+      ifpar_name2 = ps->ipar_surftopo[0];
+      iparType = ps->ipar_FT[0];
+      iparForm = ps->ipar_FF[0];
+   }
+   
+   if (ps->N_sv) sv_name = ps->sv[0];
+   if (ps->N_vp) vp_name = ps->vp[0];
+         
    /* sanity checks */
    if (Do_mni_LPI && Do_mni_RAI) {
       fprintf (SUMA_STDERR,"Error %s:\nCombining -MNI_lpi and -MNI_rai options.\nNot good.", FuncName);
@@ -3801,10 +4038,13 @@ int main (int argc,char *argv[])
    }
 
    if (sv_name) {
-      if (!SUMA_filexists(sv_name)) {
-         fprintf (SUMA_STDERR,"Error %s: %s not found.\n", FuncName, sv_name);
+      char *head = NULL, view[10];
+      head = SUMA_AfniPrefix(sv_name, view, NULL, &volexists);
+      if (!SUMA_AfniExistsView(volexists, view)) {
+         fprintf (SUMA_STDERR,"Error %s: volume %s not found.\n", FuncName, head);
          exit(1);
       }
+      if (head) SUMA_free(head); head = NULL;
    }
    
    if ((Do_tlrc || Do_acpc) && (!sv_name)) {
@@ -3820,55 +4060,24 @@ int main (int argc,char *argv[])
    }
 
    /* check for existence of output files */
-   if (of_name) {
-      of_name_strip = SUMA_ParseFname (of_name);
-      OF_name = (char *) SUMA_malloc (sizeof(char)*(strlen(of_name)+20));
-   }
    if (of_name2) {
-      of_name2_strip = SUMA_ParseFname (of_name2);
-      OF_name2 = (char *) SUMA_malloc (sizeof(char)*(strlen(of_name2)+20));
-   }
+      SUMA_SFname *SFname;
 
-   if (oType == SUMA_FREE_SURFER || oType == SUMA_FREE_SURFER_PATCH) {
-      if (strcmp (of_name_strip->Ext,".asc")==0) {
-         sprintf (OF_name,"%s%s.asc", of_name_strip->Path, of_name_strip->FileName_NoExt);
-      }else {
-         sprintf (OF_name,"%s%s.asc", of_name_strip->Path, of_name_strip->FileName);
-      }
-   }else if (oType == SUMA_PLY) {
-      if (strcmp (of_name_strip->Ext,".ply")==0) {
-         sprintf (OF_name,"%s%s.ply", of_name_strip->Path, of_name_strip->FileName_NoExt);
-      }else {
-         sprintf (OF_name,"%s%s.ply", of_name_strip->Path, of_name_strip->FileName);
-      }
-   }else if (oType == SUMA_SUREFIT) {
-      if (strcmp (of_name_strip->Ext,".coord")==0) {
-         sprintf (OF_name,"%s%s.coord", of_name_strip->Path, of_name_strip->FileName_NoExt);
-      }else {
-         sprintf (OF_name,"%s%s.coord", of_name_strip->Path, of_name_strip->FileName);
-      }
-      if (strcmp (of_name2_strip->Ext,".topo")==0) {
-         sprintf (OF_name2,"%s%s.topo", of_name2_strip->Path, of_name2_strip->FileName_NoExt);
-      }else {
-         sprintf (OF_name2,"%s%s.topo", of_name2_strip->Path, of_name2_strip->FileName);
-      }
-   }else {
-      sprintf (OF_name, "%s",of_name);
-      if (of_name2) sprintf(OF_name2, "%s",of_name2);
+      SO_name = SUMA_2Prefix2SurfaceName (of_name, of_name2, NULL, vp_name, oType, &exists);
+      SFname = (SUMA_SFname *)SO_name;
+      OF_name2 = SUMA_copy_string(SFname->name_topo);
+      OF_name = SUMA_copy_string(SFname->name_coord);
+   } else {
+      SO_name = SUMA_Prefix2SurfaceName (of_name, vp_name, NULL, oType, &exists);
+      OF_name = SUMA_copy_string((char *) SO_name);
    }
-    
-   if (SUMA_filexists(OF_name)) {
-      fprintf (SUMA_STDERR,"Error %s: %s exists already.\n", FuncName, OF_name);
+   
+   if (exists) {
+      if (OF_name2) fprintf (SUMA_STDERR,"Error %s: output file(s) %s and/or %s exist already.\n", FuncName, OF_name, OF_name2);
+      else fprintf (SUMA_STDERR,"Error %s: output file %s exists already.\n", FuncName, OF_name);
       exit(1);
    }
-   
-   if (of_name2) {
-      if (SUMA_filexists(OF_name2)) {
-         fprintf (SUMA_STDERR,"Error %s: %s exists already.\n", FuncName, OF_name2);
-         exit(1);
-      }
-   }
-   
+      
    /* now for the real work */
    if (Doxmat) {
       MRI_IMAGE *im = NULL;
@@ -4047,58 +4256,40 @@ int main (int argc,char *argv[])
    
    fprintf (SUMA_STDOUT,"Writing surface...\n");
    
-
+   
    /* write the surface object */
    switch (oType) {
       case SUMA_SUREFIT:
-         if (SF_name) SUMA_free(SF_name);
-         SF_name = (SUMA_SFname *) SUMA_malloc(sizeof(SUMA_SFname));
-         snprintf(SF_name->name_coord, (SUMA_MAX_DIR_LENGTH+SUMA_MAX_NAME_LENGTH+1)*sizeof(char),
-                   "%s", of_name);
-         snprintf(SF_name->name_topo, (SUMA_MAX_DIR_LENGTH+SUMA_MAX_NAME_LENGTH+1)*sizeof(char),
-                   "%s", of_name2); 
-         if (!vp_name) { /* initialize to empty string */
-            SF_name->name_param[0] = '\0'; 
-         }
-         else {
-            snprintf(SF_name->name_param, (SUMA_MAX_DIR_LENGTH+SUMA_MAX_NAME_LENGTH+1)*sizeof(char),
-                   "%s", vp_name);
-         }
-         SO_name = (void *)SF_name;
          if (!SUMA_Save_Surface_Object (SO_name, SO,  SUMA_SUREFIT, SUMA_ASCII, NULL)) {
             fprintf (SUMA_STDERR,"Error %s: Failed to write surface object.\n", FuncName);
             exit (1);
          }
          break;
       case SUMA_VEC:
-         if (SF_name) SUMA_free(SF_name);
-         SF_name = (SUMA_SFname *) SUMA_malloc(sizeof(SUMA_SFname));
-         snprintf(SF_name->name_coord, (SUMA_MAX_DIR_LENGTH+SUMA_MAX_NAME_LENGTH+1)*sizeof(char),
-                   "%s", of_name);
-         snprintf(SF_name->name_topo, (SUMA_MAX_DIR_LENGTH+SUMA_MAX_NAME_LENGTH+1)*sizeof(char),
-                   "%s", of_name2); 
-         SO_name = (void *)SF_name;
          if (!SUMA_Save_Surface_Object (SO_name, SO, SUMA_VEC, SUMA_ASCII, NULL)) {
             fprintf (SUMA_STDERR,"Error %s: Failed to write surface object.\n", FuncName);
             exit (1);
          }
          break;
       case SUMA_FREE_SURFER:
-         SO_name = (void *)of_name; 
          if (!SUMA_Save_Surface_Object (SO_name, SO, SUMA_FREE_SURFER, SUMA_ASCII, NULL)) {
             fprintf (SUMA_STDERR,"Error %s: Failed to write surface object.\n", FuncName);
             exit (1);
          }
          break;
       case SUMA_FREE_SURFER_PATCH:
-         SO_name = (void *)of_name; 
          if (!SUMA_Save_Surface_Object (SO_name, SO, SUMA_FREE_SURFER_PATCH, SUMA_ASCII, SOpar)) {
             fprintf (SUMA_STDERR,"Error %s: Failed to write surface object.\n", FuncName);
             exit (1);
          }
          break;  
+      case SUMA_OPENDX_MESH:
+         if (!SUMA_Save_Surface_Object (SO_name, SO, SUMA_OPENDX_MESH, SUMA_ASCII, NULL)) {
+            fprintf (SUMA_STDERR,"Error %s: Failed to write surface object.\n", FuncName);
+            exit (1);
+         }
+         break;  
       case SUMA_PLY:
-         SO_name = (void *)of_name; 
          if (!SUMA_Save_Surface_Object (SO_name, SO, SUMA_PLY, SUMA_FF_NOT_SPECIFIED, NULL)) {
             fprintf (SUMA_STDERR,"Error %s: Failed to write surface object.\n", FuncName);
             exit (1);
@@ -4116,8 +4307,10 @@ int main (int argc,char *argv[])
    if (OF_name) SUMA_free(OF_name);
    if (OF_name2) SUMA_free(OF_name2);
    if (SF_name) SUMA_free(SF_name);
+   if (SO_name) SUMA_free(SO_name);
    if (SO) SUMA_Free_Surface_Object(SO);
    if (SOpar) SUMA_Free_Surface_Object(SOpar);
+   if (ps) SUMA_FreeGenericArgParse(ps); ps = NULL;
    return (0);
 }
 #endif
@@ -4571,7 +4764,8 @@ SUMA_DRAWN_ROI ** SUMA_OpenDrawnROI_NIML (char *filename, int *N_ROI, SUMA_Boole
 
          if (ForDisplay) {
             /* find out if a displayable object exists with the same idcode_str */
-            nel_idcode = NI_get_attribute( nel , "idcode_str");
+            nel_idcode = NI_get_attribute( nel , "idcode_str"); /* obsolete*/
+            if (!nel_idcode) nel_idcode = NI_get_attribute( nel , "Object_ID"); 
             if (SUMA_existDO(nel_idcode, SUMAg_DOv, SUMAg_N_DOv)) {
                if (AlwaysReplace) {
                   AddNel = YUP; 
@@ -4628,7 +4822,10 @@ SUMA_DRAWN_ROI ** SUMA_OpenDrawnROI_NIML (char *filename, int *N_ROI, SUMA_Boole
             /* make sure element's parent exists */
             if (AddNel) {
                SUMA_LH("Checking for Parent surface...");
-               if ((iDO = SUMA_whichDO(NI_get_attribute( nel , "Parent_idcode_str"), SUMAg_DOv, SUMAg_N_DOv)) < 0) {
+               iDO = SUMA_whichDO(NI_get_attribute( nel , "Parent_idcode_str"), SUMAg_DOv, SUMAg_N_DOv); /* obsolete */
+               if (iDO < 0) iDO = SUMA_whichDO(NI_get_attribute( nel , "Parent_ID"), SUMAg_DOv, SUMAg_N_DOv);
+              
+               if (iDO < 0) {
                   SUMA_SLP_Err(  "ROI's parent surface\n"
                                  "is not loaded. ROI is\n"
                                  "discarded." );
@@ -4668,15 +4865,18 @@ SUMA_DRAWN_ROI ** SUMA_OpenDrawnROI_NIML (char *filename, int *N_ROI, SUMA_Boole
    for (inel=0; inel < N_nel; ++inel) {
       if (LocalHead) fprintf (SUMA_STDERR,"%s: Processing nel %d/%d...\n", FuncName, inel, N_nel);
       nel = nelv[inel];
-      nel_idcode = NI_get_attribute( nel , "idcode_str");
+      nel_idcode = NI_get_attribute( nel , "idcode_str"); /* obsolete */
+      if (!nel_idcode) nel_idcode = NI_get_attribute( nel , "Object_ID"); 
 
       /* store nel in nimlROI struct */
 
       /* allocate for nimlROI */
       nimlROI = (SUMA_NIML_DRAWN_ROI *)SUMA_malloc(sizeof(SUMA_NIML_DRAWN_ROI));
       nimlROI->Type = (int)strtod(NI_get_attribute( nel , "Type"), NULL);
-      nimlROI->idcode_str = SUMA_copy_string(NI_get_attribute( nel , "idcode_str"));
-      nimlROI->Parent_idcode_str = SUMA_copy_string(NI_get_attribute( nel , "Parent_idcode_str"));
+      nimlROI->idcode_str = SUMA_copy_string(NI_get_attribute( nel , "idcode_str")); /* obsolete */
+      if (SUMA_IS_EMPTY_STR_ATTR(nimlROI->idcode_str)) nimlROI->idcode_str = SUMA_copy_string(NI_get_attribute( nel , "Object_ID"));
+      nimlROI->Parent_idcode_str = SUMA_copy_string(NI_get_attribute( nel , "Parent_idcode_str")); /* obsolete */
+      if (SUMA_IS_EMPTY_STR_ATTR(nimlROI->Parent_idcode_str)) nimlROI->Parent_idcode_str = SUMA_copy_string(NI_get_attribute( nel , "Parent_ID"));
       nimlROI->Label = SUMA_copy_string(NI_get_attribute( nel , "Label"));
       nimlROI->iLabel = (int)strtod(NI_get_attribute( nel , "iLabel"), NULL);
       nimlROI->N_ROI_datum = nel->vec_len;
@@ -4776,6 +4976,185 @@ SUMA_DRAWN_ROI ** SUMA_OpenDrawnROI_NIML (char *filename, int *N_ROI, SUMA_Boole
 
 /*!
    \brief turns a bunch of ROIs into a NI dataset
+            A new version of SUMA_ROIv2dataset that allows 
+            the use of dsets as groups
+   \param ROIv (SUMA_DRAWN_ROI**) vector of ROI structures
+   \param N_ROIv (int) number of ROI structures
+   \param Parent_idcode_str (char *) idcode of parent surface
+   \param Pad_to (int)  create Dset that has a full node listing 
+                        from node 0 to node Pad_to (a total of Pad_to + 1 nodes)
+                        Use -1 to turn off padding.
+   \param Pad_val (int) use this value (usually 0) to label a node being padded
+                        as oppsed to a node being a part of an ROI. This option
+                        is only useful with Pad_to
+   \return nel (NI_element *) structure to data set
+                              NULL if failed
+*/
+SUMA_DSET *SUMA_ROIv2Grpdataset (SUMA_DRAWN_ROI** ROIv, int N_ROIv, char *Parent_idcode_str, int Pad_to, int Pad_val) 
+{
+   static char FuncName[]={"SUMA_ROIv2Grpdataset"};
+   int ii, i, nn, cnt, N_NodesTotal = 0, MaxIndex = 0,
+      *ip=NULL, *NodesTotal=NULL, *LabelsTotal=NULL,
+      *NodesTotal_p=NULL, *LabelsTotal_p=NULL;
+   SUMA_DSET *dset =NULL;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   /* Now you have the ROIs, concatenate all NodesInROI vectors into 1*/
+   /* count the total number of nodes */
+   N_NodesTotal = 0;
+   for (ii=0; ii < N_ROIv; ++ii) {
+      SUMA_ROI_CRUDE_COUNT_NODES(ROIv[ii], cnt);
+      if (LocalHead) {
+         fprintf (SUMA_STDERR,"%s: ROI #%d: %d nodes\n", FuncName, ii, cnt);
+      }
+      N_NodesTotal += cnt;
+   }
+   if (LocalHead) fprintf (SUMA_STDERR,"%s: %d nodes total.\n", FuncName, N_NodesTotal);
+
+   NodesTotal = (int *)SUMA_calloc(N_NodesTotal, sizeof(int));
+   LabelsTotal = (int *)SUMA_calloc(N_NodesTotal, sizeof(int));
+
+   if (!NodesTotal || !LabelsTotal) {
+      SUMA_S_Err("Failed to allocate.");
+      SUMA_RETURN(dset);
+   }
+
+   cnt = 0;
+   N_NodesTotal = 0;
+   MaxIndex = -1;
+   for (ii=0; ii <  N_ROIv; ++ii) {
+      SUMA_LH("Appending ROI");
+      /* You do not need the Unique operation in SUMA_NodesInROI,
+      but it is nice to have so that you can report the nodes that 
+      were part of more than one ROI. If you do not Set the Unique 
+      flag in SUMA_NodesInROI you will likely get node duplication
+      but these nodes are in the same ROI and therefore are not
+      duplicates to be removed....*/
+      ip = SUMA_NodesInROI (ROIv[ii], &nn, YUP);
+      if (LocalHead) {
+         fprintf (SUMA_STDERR,"%s: Nodes in ROI #%d\n", FuncName, ii);
+         SUMA_disp_dvect (ip, nn);
+      }
+      for (i=0; i < nn; ++i) {
+         NodesTotal[cnt] = ip[i];
+         LabelsTotal[cnt] = ROIv[ii]->iLabel;
+         if (ip[i] > MaxIndex) MaxIndex = ip[i];
+         ++cnt;
+      }
+      N_NodesTotal += nn;
+      SUMA_freeDrawnROI (ROIv[ii]); ROIv[ii] = NULL; /* free the Drawn ROI */
+      SUMA_free(ip);ip=NULL;
+   }
+
+   if (LocalHead) {
+      SUMA_disp_dvect (NodesTotal, N_NodesTotal);
+   }
+
+   /* Now you want to make sure that no two nodes are listed twice */
+   /* sort NodesTotal and rearrange LabelsTotal accordingly */
+   {  int *isort = NULL, *LabelsTotal_r = NULL,
+         *NodesTotal_u = NULL, N_NodesTotal_u, *iu = NULL;
+      char report[100];
+
+      isort = SUMA_z_dqsort(NodesTotal, N_NodesTotal);
+      LabelsTotal_r = SUMA_reorder (LabelsTotal, isort, N_NodesTotal);
+      SUMA_free(LabelsTotal);
+      LabelsTotal = LabelsTotal_r; LabelsTotal_r = NULL;
+      SUMA_free(isort); isort = NULL;
+
+      /* now get the unique set of nodes */
+      NodesTotal_u = SUMA_UniqueInt_ind (NodesTotal, N_NodesTotal, &N_NodesTotal_u, &iu);
+      /* reorder LabelsTotal to contain data from the nodes left in NodesTotal_u */
+      LabelsTotal_r = SUMA_reorder (LabelsTotal, iu, N_NodesTotal_u);
+      SUMA_free(NodesTotal); NodesTotal = NULL;
+      SUMA_free(LabelsTotal); LabelsTotal = NULL;
+      SUMA_free(iu); iu = NULL;
+      NodesTotal = NodesTotal_u; NodesTotal_u = NULL;
+      LabelsTotal = LabelsTotal_r; LabelsTotal_r = NULL;
+
+      if (N_NodesTotal - N_NodesTotal_u) {
+         sprintf(report, "%d/%d nodes had duplicate entries.\n"
+                         "(ie same node part of more than 1 ROI)\n"
+                         "Duplicate entries were eliminated.", 
+                         N_NodesTotal - N_NodesTotal_u , N_NodesTotal);
+
+         N_NodesTotal = N_NodesTotal_u; N_NodesTotal_u = 0;
+         SUMA_SLP_Warn(report);
+      }
+   }
+
+   if (Pad_to > 0) {
+      SUMA_LH("Padding to desired length");
+      if (Pad_to < MaxIndex) {
+         SUMA_SL_Err("ROI contains node index > padding limit\nNo padding done.");
+         if (NodesTotal) SUMA_free(NodesTotal); NodesTotal = NULL;
+         if (LabelsTotal) SUMA_free(LabelsTotal); LabelsTotal = NULL;
+         SUMA_RETURN(NULL);
+      }else {
+         NodesTotal_p =  (int *)SUMA_calloc(Pad_to+1, sizeof(int));
+         LabelsTotal_p = (int *)SUMA_calloc(Pad_to+1, sizeof(int));
+         if (!NodesTotal_p || !LabelsTotal_p) {
+            SUMA_SL_Crit("Failed to allocate for NodesTotal_p || LabelsTotal_p");
+            if (NodesTotal) SUMA_free(NodesTotal); NodesTotal = NULL;
+            if (LabelsTotal) SUMA_free(LabelsTotal); LabelsTotal = NULL;
+            SUMA_RETURN(NULL);
+         }
+         if (Pad_val)  for(i=0; i<=Pad_to; ++i) LabelsTotal_p[i] = Pad_val;
+         for(i=0; i<=Pad_to; ++i) NodesTotal_p[i] = i;
+         for(i=0; i<N_NodesTotal; ++i) {
+            LabelsTotal_p[NodesTotal[i]] = LabelsTotal[i];
+         }
+         SUMA_free(NodesTotal); NodesTotal = NodesTotal_p; NodesTotal_p = NULL;
+         SUMA_free(LabelsTotal);  LabelsTotal = LabelsTotal_p; LabelsTotal_p = NULL;
+         N_NodesTotal = Pad_to + 1;
+      }
+   }
+   
+   /* construct a NIML data set for the output */
+   SUMA_LH("Creating dset ");
+   dset = SUMA_CreateDsetPointer(
+                                 NULL,         /* usually the filename */
+                                 SUMA_NODE_ROI,                /* mix and match */
+                                 NULL,    /* no idcode, let the function create one from the filename*/
+                                 Parent_idcode_str,       /* no domain str specified */
+                                 N_NodesTotal    /* Number of nodes allocated for */
+                                 ); /* DO NOT free dset, it is store in DsetList */
+
+   
+   
+   if (!dset) {
+      SUMA_SL_Err("Failed in SUMA_CreateDsetPointer");
+      SUMA_RETURN(NULL);
+   }
+
+   /* Add the index column */
+   SUMA_LH("Adding index column...");
+   if (!SUMA_AddDsetNelCol (dset, "node index", SUMA_NODE_INDEX, (void *)NodesTotal, NULL, 1)) {
+      SUMA_SL_Err("Failed in SUMA_AddNelCol");
+      SUMA_RETURN(dset);
+   }
+
+   /* Add the label column */
+   SUMA_LH("Adding label column...");
+   if (!SUMA_AddDsetNelCol (dset, "integer label", SUMA_NODE_ILABEL, (void *)LabelsTotal, NULL, 1)) {
+      SUMA_SL_Err("Failed in SUMA_AddNelCol");
+      SUMA_RETURN(dset);
+   }
+   
+   /* make it easy */
+   dset->dnel = SUMA_FindDsetDataAttributeElement(dset);
+
+   SUMA_LH("cleanup ...");
+   if (NodesTotal) SUMA_free(NodesTotal); NodesTotal = NULL;
+   if (LabelsTotal) SUMA_free(LabelsTotal); LabelsTotal = NULL;
+   
+   SUMA_RETURN(dset);
+}
+   
+/*!
+   \brief turns a bunch of ROIs into a NI dataset
    
    \param ROIv (SUMA_DRAWN_ROI**) vector of ROI structures
    \param N_ROIv (int) number of ROI structures
@@ -4799,6 +5178,9 @@ NI_element *SUMA_ROIv2dataset (SUMA_DRAWN_ROI** ROIv, int N_ROIv, char *Parent_i
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
+   
+   SUMA_SL_Err("Obsolete, use SUMA_ROIv2Grpdataset");
+   SUMA_RETURN(NULL);
    
    /* Now you have the ROIs, concatenate all NodesInROI vectors into 1*/
    /* count the total number of nodes */
@@ -4946,7 +5328,6 @@ NI_element *SUMA_ROIv2dataset (SUMA_DRAWN_ROI** ROIv, int N_ROIv, char *Parent_i
    SUMA_RETURN(nel);
 }
    
-   
 #ifdef SUMA_ROI2dataset_STAND_ALONE
 void usage_ROI2dataset_Main ()
    
@@ -5015,7 +5396,7 @@ int main (int argc,char *argv[])
    char  *prefix_name, **input_name_v=NULL, *out_name=NULL, 
          *Parent_idcode_str = NULL, *dummy_idcode_str = NULL, *stmp=NULL;
    int kar, brk, N_input_name, cnt = 0, N_ROIv, N_tROI, ii, i, nn, pad_to, pad_val;
-   NI_element *nel=NULL;
+   SUMA_DSET *dset=NULL;
    NI_stream ns;
    SUMA_DSET_FORMAT Out_Format = SUMA_ASCII_NIML;
    SUMA_DRAWN_ROI ** ROIv = NULL, **tROIv = NULL;
@@ -5244,8 +5625,8 @@ int main (int argc,char *argv[])
         
    }
    
-   if (!(nel = SUMA_ROIv2dataset (ROIv, N_ROIv, Parent_idcode_str, pad_to, pad_val))) {
-      SUMA_SL_Err("Failed in SUMA_ROIv2dataset");
+   if (!(dset = SUMA_ROIv2Grpdataset (ROIv, N_ROIv, Parent_idcode_str, pad_to, pad_val))) {
+      SUMA_SL_Err("Failed in SUMA_ROIv2Grpdataset");
       exit(1);
    }
    
@@ -5256,8 +5637,8 @@ int main (int argc,char *argv[])
    }
    
    /* Add the history line */
-   if (!SUMA_AddNelHist (nel, FuncName, argc, argv)) {
-      SUMA_SL_Err("Failed in SUMA_AddNelHist");
+   if (!SUMA_AddNgrHist (dset->ngr, FuncName, argc, argv)) {
+      SUMA_SL_Err("Failed in SUMA_AddNgrHist");
       exit(1);
    }
 
@@ -5280,13 +5661,13 @@ int main (int argc,char *argv[])
    /* write nel */
    switch (Out_Format) {
       case SUMA_ASCII_NIML:
-         nn = NI_write_element(  ns , nel , NI_TEXT_MODE ); 
+         nn = NI_write_element(  ns , dset->ngr , NI_TEXT_MODE ); 
          break;
       case SUMA_BINARY_NIML:
-         nn = NI_write_element(  ns , nel , NI_BINARY_MODE ); 
+         nn = NI_write_element(  ns , dset->ngr , NI_BINARY_MODE ); 
          break;
       case SUMA_1D:
-         nn = NI_write_element(  ns , nel , NI_TEXT_MODE | NI_HEADERSHARP_FLAG);  
+         nn = NI_write_element(  ns , dset->dnel , NI_TEXT_MODE | NI_HEADERSHARP_FLAG);  
          break;
       default:
          SUMA_S_Err("Output format not supported");
@@ -5303,7 +5684,7 @@ int main (int argc,char *argv[])
    NI_stream_close( ns ) ; 
    
    /* free nel */
-   NI_free_element(nel) ; nel = NULL;
+   SUMA_FreeDset(dset); dset = NULL;
    
    /* free others */
    if (stmp) SUMA_free(stmp);
@@ -5704,8 +6085,8 @@ SUMA_Boolean SUMA_Write_DrawnROI_NIML (SUMA_DRAWN_ROI **ROIv, int N_ROI, char *f
       NI_add_column( nel , SUMAg_CF->nimlROI_Datum_type, niml_ROI->ROI_datum );
 
       SUMA_LH("Setting attributes...");
-      NI_set_attribute (nel, "idcode_str", niml_ROI->idcode_str);
-      NI_set_attribute (nel, "Parent_idcode_str", niml_ROI->Parent_idcode_str);
+      NI_set_attribute (nel, "Object_ID", niml_ROI->idcode_str);
+      NI_set_attribute (nel, "Parent_ID", niml_ROI->Parent_idcode_str);
       NI_set_attribute (nel, "Label", niml_ROI->Label);
       sprintf(stmp,"%d", niml_ROI->iLabel);
       NI_set_attribute (nel, "iLabel", stmp);
@@ -6392,3 +6773,1701 @@ THD_3dim_dataset *SUMA_FormAfnidset (float *NodeList, float *vals, int N_vals, S
    SUMA_RETURN(dset);      
 }
 
+/*! 
+   \brief A function to change a SurfaceObject to niml format 
+   \param SO (SUMA_SurfaceObject *)
+   \param optlist (char *) string indicating what parts of SO to put in ngr
+                           choose any combination of: NodeList, FaceSetList, 
+                           EdgeList, MemberFace, NodeNeighb, VolPar, facenormals, 
+                           NodeNormals, PolyArea, 
+   \param No_LinksExternalElements (int) 1: Do not include IDs of elements not 
+                           created inside this group, i.e. not mentioned in optlist
+                                       0: So include IDs of elements that may reside 
+                                       on disk.
+   \return ngr (NI_group *) a NI group element formed from SO. 
+                           NOTE: That element has the SAME ID as SO!
+   \sa SUMA_nimlSO2SO
+*/
+NI_group *SUMA_SO2nimlSO(SUMA_SurfaceObject *SO, char *optlist, int nlee) 
+{
+   static char FuncName[]={"SUMA_SO2nimlSO"};
+   NI_group *ngr = NULL;
+   NI_element *nel = NULL;
+   char stmp[500];
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!SO) { 
+      SUMA_SL_Err("Null SO"); SUMA_RETURN(ngr);
+   }
+   
+   /* create group and name it */
+   ngr = NI_new_group_element();
+   NI_rename_group(ngr, "SurfaceObject");
+   
+   /** BEGIN ATTRIBUTES COMMON TO ALL OBJECTS **/ 
+   
+   /* set the object type attribute */
+   switch (SO->FaceSetDim) {
+      case 3:
+         NI_set_attribute(ngr, "Object_Type", "Triangulated_Surface");
+         break;
+      default:
+         NI_set_attribute(ngr, "Object_Type", SUMA_EMPTY_ATTR);
+         SUMA_SL_Warn("FaceSetDim not supported");
+         break;
+   }      
+   
+   /* set the object ID */
+   if (SO->idcode_str) {
+      NI_set_attribute(ngr, "Object_ID", SO->idcode_str);
+   } else {
+      NI_set_attribute(ngr, "Object_ID", SUMA_EMPTY_ATTR);
+   }  
+   
+   /* set the object Label */
+   if (SO->Label) {
+      NI_set_attribute(ngr, "Object_Label", SO->Label);
+   } else {
+      NI_set_attribute(ngr, "Object_Label", SUMA_EMPTY_ATTR);
+   }
+   
+   
+   /* set the parent ID */
+   if (SO->LocalDomainParentID) {
+      NI_set_attribute(ngr, "Parent_ID", SO->LocalDomainParentID);
+   } else {
+      NI_set_attribute(ngr, "Parent_ID", SUMA_EMPTY_ATTR);
+   }
+   
+   /* set the grand parent ID */
+   if (SO->DomainGrandParentID) {
+      NI_set_attribute(ngr, "Grand_Parent_ID", SO->DomainGrandParentID);
+   } else {
+      NI_set_attribute(ngr, "Grand_Parent_ID", SUMA_EMPTY_ATTR);
+   }
+   
+   /** END ATTRIBUTES COMMON TO ALL OBJECTS **/      
+   
+   /** BEGIN ATTRIBUTES specific to Surfaces**/
+   if (SO->Group_idcode_str) {
+      NI_set_attribute(ngr, "Subject_ID", SO->Group_idcode_str);
+   } else {
+      NI_set_attribute(ngr, "Subject_ID", SUMA_EMPTY_ATTR);
+   }
+   
+   if (SO->Group) {
+      NI_set_attribute(ngr, "Subject_Label", SO->Group);
+   } else {
+      NI_set_attribute(ngr, "Subject_Label", SUMA_EMPTY_ATTR);
+   }
+   
+   if (SO->OriginatorID) {
+      NI_set_attribute(ngr, "Instance_ID", SO->OriginatorID);
+   } else {
+      NI_set_attribute(ngr, "Instance_ID", SUMA_EMPTY_ATTR);
+   }
+   
+   if (SO->OriginatorLabel) {
+      NI_set_attribute(ngr, "Instance_Label", SO->OriginatorLabel);
+   } else {
+      NI_set_attribute(ngr, "Instance_Label", SUMA_EMPTY_ATTR);
+   }
+   
+   if (SO->ModelName) {
+      NI_set_attribute(ngr, "Model_Name", SO->ModelName);
+   } else {
+      NI_set_attribute(ngr, "Model_Name", SUMA_EMPTY_ATTR);
+   }
+   
+   switch (SO->Side) {
+      case SUMA_NO_SIDE:
+         NI_set_attribute(ngr, "Side", "none");
+         break;
+      case SUMA_LEFT:
+         NI_set_attribute(ngr, "Side", "left");
+         break;
+      case SUMA_RIGHT:
+         NI_set_attribute(ngr, "Side", "right");
+         break;
+      default:
+         NI_set_attribute(ngr, "Side", SUMA_EMPTY_ATTR);
+         break;
+   }
+   
+   if (SO->State) {
+      NI_set_attribute(ngr, "Layer_Name", SO->State);
+   } else {
+      NI_set_attribute(ngr, "Layer_Name", SUMA_EMPTY_ATTR);
+   }
+   
+   if (SO->AnatCorrect) {
+      NI_set_attribute(ngr, "Anatomically_Correct", "yes");
+   } else {
+      NI_set_attribute(ngr, "Anatomically_Correct", "no");
+   }
+   
+   sprintf(stmp,"%d", SO->EmbedDim);
+   NI_set_attribute(ngr, "Embedding_Dimension", stmp);
+   
+   if (SO->FileType >=0) {
+      sprintf(stmp,"%s", SUMA_SurfaceTypeString(SO->FileType));
+      NI_set_attribute(ngr, "Surface_Creation_Software",  stmp);
+   } else {
+      NI_set_attribute(ngr, "Surface_Creation_Software", SUMA_EMPTY_ATTR);
+   }
+   
+   NI_set_attribute(ngr, "Surface_Creation_History", SUMA_EMPTY_ATTR); 
+   
+   if (SO->StandardSpace) {
+      NI_set_attribute(ngr, "Standard_Space", SO->StandardSpace);
+   } else {
+      NI_set_attribute(ngr, "Standard_Space", SUMA_EMPTY_ATTR);
+   }
+   
+   if (!nlee || SUMA_iswordin(optlist,"FaceSetList")) {
+      if (SO->facesetlist_idcode_str) {
+         NI_set_attribute(ngr, "Mesh_Element_ID", SO->facesetlist_idcode_str);
+      } else {
+         if (SO->idcode_str) {
+            sprintf(stmp, "facesetlist_idcode_str_%s", SO->idcode_str);
+            SUMA_NEW_ID(SO->facesetlist_idcode_str, stmp);
+            NI_set_attribute(ngr, "Mesh_Element_ID", SO->facesetlist_idcode_str);
+         } else  {
+            NI_set_attribute(ngr, "Mesh_Element_ID", SUMA_EMPTY_ATTR);
+         }
+      }
+   }
+   
+   if (!nlee || SUMA_iswordin(optlist,"NodeList")) {
+      if (SO->nodelist_idcode_str) {
+         NI_set_attribute(ngr, "NodeList_Element_ID", SO->nodelist_idcode_str);
+      } else {
+         if (SO->idcode_str) {
+            sprintf(stmp, "nodelist_idcode_str_%s", SO->idcode_str);
+            SUMA_NEW_ID(SO->nodelist_idcode_str, stmp);
+            NI_set_attribute(ngr, "NodeList_Element_ID", SO->nodelist_idcode_str);
+         } else  {
+            NI_set_attribute(ngr, "NodeList_Element_ID", SUMA_EMPTY_ATTR);
+         }
+      }
+   }
+   if (!nlee || SUMA_iswordin(optlist,"facenormals")) {
+      if (SO->facenormals_idcode_str) {
+         NI_set_attribute(ngr, "Polygon_Normals_Element_ID", SO->facenormals_idcode_str);
+      } else {
+         if (SO->idcode_str) {
+            sprintf(stmp, "facenormals_idcode_str_%s", SO->idcode_str);
+            SUMA_NEW_ID(SO->facenormals_idcode_str, stmp);
+            NI_set_attribute(ngr, "Polygon_Normals_Element_ID", SO->facenormals_idcode_str);
+         } else  {
+            NI_set_attribute(ngr, "Polygon_Normals_Element_ID", SUMA_EMPTY_ATTR);
+         }
+      }
+   }
+   
+   if (!nlee || SUMA_iswordin(optlist,"NodeNormals")) {
+      if (SO->nodenormals_idcode_str) {
+         NI_set_attribute(ngr, "Node_Normals_Element_ID", SO->nodenormals_idcode_str);
+      } else {
+         if (SO->idcode_str) {
+            sprintf(stmp, "nodenormals_idcode_str_%s", SO->idcode_str);
+            SUMA_NEW_ID(SO->nodenormals_idcode_str, stmp);
+            NI_set_attribute(ngr, "Node_Normals_Element_ID", SO->nodenormals_idcode_str);
+         } else  {
+            NI_set_attribute(ngr, "Node_Normals_Element_ID", SUMA_EMPTY_ATTR);
+         }
+      }
+   }
+   
+   if (!nlee || SUMA_iswordin(optlist,"PolyArea")) {
+      if (SO->polyarea_idcode_str) {
+         NI_set_attribute(ngr, "Polygon_Area_Element_ID", SO->polyarea_idcode_str);
+      } else {
+         if (SO->idcode_str) {
+            sprintf(stmp, "polyarea_idcode_str_%s", SO->idcode_str);
+            SUMA_NEW_ID(SO->polyarea_idcode_str, stmp);
+            NI_set_attribute(ngr, "Polygon_Area_Element_ID", SO->polyarea_idcode_str);
+         } else  {
+            NI_set_attribute(ngr, "Polygon_Area_Element_ID", SUMA_EMPTY_ATTR);
+         }
+      }
+   }
+
+   if (!nlee || SUMA_iswordin(optlist,"EdgeList")) {
+      /* add here the edge list, the node neighbor list and the face neighbor list IDs*/
+      if (SO->EL && SO->EL->idcode_str) {
+         NI_set_attribute(ngr, "SUMA_Edge_List_Element_ID", SO->EL->idcode_str);
+      } else {
+         NI_set_attribute(ngr, "SUMA_Edge_List_Element_ID", SUMA_EMPTY_ATTR);
+      }
+   }
+   
+   if (!nlee || SUMA_iswordin(optlist,"MemberFace")) {
+      if (SO->MF && SO->MF->idcode_str) {
+         NI_set_attribute(ngr, "SUMA_Node_Face_Member_Element_ID", SO->MF->idcode_str);
+      } else {
+         NI_set_attribute(ngr, "SUMA_Node_Face_Member_Element_ID", SUMA_EMPTY_ATTR);
+      }
+   }
+   
+   if (!nlee || SUMA_iswordin(optlist,"NodeNeighb")) {
+      if (SO->FN && SO->FN->idcode_str) {
+         NI_set_attribute(ngr, "SUMA_Node_First_Neighb_Element_ID", SO->FN->idcode_str);
+      } else {
+         NI_set_attribute(ngr, "SUMA_Node_First_Neighb_Element_ID", SUMA_EMPTY_ATTR);
+      }
+   }
+
+   if (!nlee) {
+      /* add the parent volume (SurfVol, NOT SurfVol_AlndExp) IDcode if present. 
+        That ID does not usually refer to the volume from which VolPar is created. Except in the case 
+        where you are viewing the surfaces on the orignal volume (SurfVol) then this field and
+        SurfVol (afni dset *) ->idcode.str and VolPar->vol_idcode_str should be identical */
+      if (SO->parent_vol_idcode_str) {
+         NI_set_attribute(ngr, "SUMA_Afni_Parent_Vol_ID", SO->parent_vol_idcode_str);
+      } else {
+         NI_set_attribute(ngr, "SUMA_Afni_Parent_Vol_ID", SUMA_EMPTY_ATTR);
+      }
+   }
+   
+   /** END ATTRIBUTES specific to Surfaces**/ 
+   
+   /** BEGIN Adding data elements **/
+   
+   /* add the node list */
+   if (SUMA_iswordin(optlist,"NodeList")) {
+      SUMA_LH("Adding Nodelist nel...");
+      nel = SUMA_NodeXYZ2NodeXYZ_nel (SO, SO->NodeList, 0, SUMA_NEW_NODE_XYZ);
+      if (!nel) { SUMA_SL_Err("Failed to create nel"); NI_free_element(ngr); SUMA_RETURN(NULL); }
+      NI_add_to_group( ngr, nel); 
+   }
+   
+   /* add the faceset list */
+   if (SUMA_iswordin(optlist,"FaceSetList")) {
+      SUMA_LH("Adding Nodelist nel...");
+      nel = SUMA_Mesh_IJK2Mesh_IJK_nel (SO, SO->FaceSetList, 0, SUMA_NEW_MESH_IJK);
+      if (!nel) { SUMA_SL_Err("Failed to create nel"); NI_free_element(ngr); SUMA_RETURN(NULL); }
+      NI_add_to_group( ngr, nel); 
+   }   
+   
+   /* add the edge list */
+   if (SUMA_iswordin(optlist,"EdgeList")) {
+      SUMA_LH("Adding EdgeList nel...");
+      SUMA_SL_Warn("Option not implemented yet.");
+      if (SO->EL) {
+         /* if (!nel) { SUMA_SL_Err("Failed to create nel"); NI_free_element(ngr); SUMA_RETURN(NULL); } 
+         NI_add_to_group( ngr, nel); */
+      }
+   }
+   
+   /* add the member face list */
+   if (SUMA_iswordin(optlist,"MemberFace")) {
+      SUMA_LH("Adding Member of FaceSet nel...");
+      SUMA_SL_Warn("Option not implemented yet.");
+      if (SO->MF) {
+         /* if (!nel) { SUMA_SL_Err("Failed to create nel"); NI_free_element(ngr); SUMA_RETURN(NULL); } 
+         NI_add_to_group( ngr, nel); */
+      }
+   }
+   
+   /* add the node neighbor list */
+   if (SUMA_iswordin(optlist,"NodeNeighb")) {
+      SUMA_LH("Adding node neighbors nel...");
+      SUMA_SL_Warn("Option not implemented yet.");
+      if (SO->FN) {
+         /* if (!nel) { SUMA_SL_Err("Failed to create nel"); NI_free_element(ngr); SUMA_RETURN(NULL); } 
+         NI_add_to_group( ngr, nel); */
+      }
+   }
+   
+   /* add the VolPar element */
+   if (SUMA_iswordin(optlist,"VolPar")) {
+      SUMA_LH("Adding VolPar nel ...");
+      if (SO->VolPar) {
+         nel = SUMA_SOVolPar2VolPar_nel (SO, SO->VolPar, SUMA_SURFACE_VOLUME_PARENT);
+         if (!nel) { SUMA_SL_Err("Failed to create nel"); NI_free_element(ngr); SUMA_RETURN(NULL); } 
+         NI_add_to_group( ngr, nel); 
+      }
+   }
+   
+   /** END Adding data elements **/ 
+   if (1) {
+      int suc;
+      SUMA_SL_Warn("writing SO group to DISK!");
+      NEL_WRITE_TX(ngr, "file:Test_SO2NIML_write_asc_1D", suc);
+   }
+   
+   SUMA_RETURN(ngr);
+}
+
+SUMA_SurfaceObject *SUMA_nimlSO2SO(NI_group *ngr) 
+{
+   static char FuncName[]={"SUMA_nimlSO2SO"};
+   NI_element *nel = NULL;
+   char stmp[500], *tmp;
+   int ip;
+   SUMA_SurfaceObject *SO=NULL;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!ngr) {  SUMA_SL_Err("Null ngr"); SUMA_RETURN(SO); }
+   
+   if (strcmp(ngr->name, "SurfaceObject")) {
+      fprintf (SUMA_STDERR,"Error %s: group name (%s) is not (SUMA_SurfaceObject)\nObject does not appear to be a surface.", FuncName, ngr->name);
+   }
+   
+   /* a new surface */
+   SO = SUMA_Alloc_SurfObject_Struct(1); 
+   if (!SO) { SUMA_SL_Err("Failed to create SO."); SUMA_RETURN(SO); }
+   
+   /** BEGIN ATTRIBUTES COMMON TO ALL OBJECTS **/ 
+   tmp = SUMA_copy_string(NI_get_attribute(ngr,"Object_ID"));
+   if (SUMA_IS_EMPTY_STR_ATTR(tmp)) { 
+      SUMA_SL_Warn("No ID in nel.\nThat's not cool yall.\n I'll be adding a new one now."); SUMA_NEW_ID(SO->idcode_str, NULL); 
+      NI_set_attribute(ngr, "Group_ID", SO->idcode_str);
+   } else SO->idcode_str = SUMA_copy_string(tmp);
+   
+   tmp = NI_get_attribute(ngr, "Object_Type");
+   if (SUMA_IS_EMPTY_STR_ATTR(tmp)) { SUMA_SL_Err("Missing Object Type."); SUMA_Free_Surface_Object(SO); SO = NULL; SUMA_RETURN(SO); }
+   if (!strcmp(tmp, "Triangulated_Surface")) SO->FaceSetDim = 3;
+   else {
+      fprintf (SUMA_STDERR,"Error %s: Object_Type %s not recognized.\n", FuncName, tmp);
+      SUMA_Free_Surface_Object(SO); SO = NULL; SUMA_RETURN(SO); 
+   }   
+   
+   tmp = NI_get_attribute(ngr, "Object_Label");
+   if (!SUMA_IS_EMPTY_STR_ATTR(tmp)) SO->Label = SUMA_copy_string(tmp);  
+   
+   /* set the parent ID */
+   tmp = NI_get_attribute(ngr, "Parent_ID");
+   if (!SUMA_IS_EMPTY_STR_ATTR(tmp)) SO->LocalDomainParentID = SUMA_copy_string(tmp);  
+   
+   
+   /* set the grand parent ID */
+   tmp = NI_get_attribute(ngr, "Grand_Parent_ID");
+   if (!SUMA_IS_EMPTY_STR_ATTR(tmp)) SO->DomainGrandParentID = SUMA_copy_string(tmp);  
+   
+   
+   /** END ATTRIBUTES COMMON TO ALL OBJECTS **/      
+   
+   /** BEGIN ATTRIBUTES specific to Surfaces**/
+   tmp = NI_get_attribute(ngr, "Subject_ID");
+   if (!SUMA_IS_EMPTY_STR_ATTR(tmp)) SO->Group_idcode_str = SUMA_copy_string(tmp); 
+   
+   tmp = NI_get_attribute(ngr, "Subject_Label");
+   if (!SUMA_IS_EMPTY_STR_ATTR(tmp)) SO->Group = SUMA_copy_string(tmp); 
+   
+   tmp = NI_get_attribute(ngr, "Instance_ID");
+   if (!SUMA_IS_EMPTY_STR_ATTR(tmp)) SO->OriginatorID = SUMA_copy_string(tmp);    
+   
+   tmp = NI_get_attribute(ngr, "Instance_Label");
+   if (!SUMA_IS_EMPTY_STR_ATTR(tmp)) SO->OriginatorLabel = SUMA_copy_string(tmp); 
+   
+   tmp = NI_get_attribute(ngr, "Model_Name");
+   if (!SUMA_IS_EMPTY_STR_ATTR(tmp)) SO->ModelName = SUMA_copy_string(tmp); 
+   
+   tmp = NI_get_attribute(ngr, "Side");
+   if (!SUMA_IS_EMPTY_STR_ATTR(tmp)) {
+      if (!strcmp(tmp,"none")) SO->Side = SUMA_NO_SIDE;
+      else if (!strcmp(tmp,"left")) SO->Side = SUMA_LEFT;
+      else if (!strcmp(tmp,"right")) SO->Side = SUMA_RIGHT;
+   } 
+
+   tmp = NI_get_attribute(ngr, "Layer_Name");
+   if (!SUMA_IS_EMPTY_STR_ATTR(tmp)) SO->State = SUMA_copy_string(tmp); 
+
+   tmp = NI_get_attribute(ngr, "Anatomically_Correct");
+   if (!SUMA_IS_EMPTY_STR_ATTR(tmp)) {
+      if (!strcmp(tmp,"yes")) SO->AnatCorrect = 1; 
+      else SO->AnatCorrect = 0; 
+   }
+    
+   tmp = NI_get_attribute(ngr, "Embedding_Dimension");
+   if (!SUMA_IS_EMPTY_STR_ATTR(tmp)) SO->EmbedDim = atoi(tmp); 
+   
+   tmp = NI_get_attribute(ngr, "Surface_Creation_Software");
+   if (!SUMA_IS_EMPTY_STR_ATTR(tmp)) SO->FileType = SUMA_SurfaceTypeCode(tmp); 
+   
+   tmp = NI_get_attribute(ngr, "Standard_Space");
+   if (!SUMA_IS_EMPTY_STR_ATTR(tmp)) SO->StandardSpace = SUMA_copy_string(tmp); 
+   
+   tmp = NI_get_attribute(ngr, "SUMA_Afni_Parent_Vol_ID");
+   if (!SUMA_IS_EMPTY_STR_ATTR(tmp)) SO->parent_vol_idcode_str = SUMA_copy_string(tmp); 
+      
+   
+   /** END ATTRIBUTES specific to Surfaces**/ 
+   
+   /* now read the elements in this group */
+   for( ip=0 ; ip < ngr->part_num ; ip++ ){ /* do not free elements as you process them, free with group at end */
+      switch( ngr->part_typ[ip] ){
+         /*-- a sub-group ==> recursion! --*/
+         case NI_GROUP_TYPE:
+            SUMA_SL_Err("Not ready from groups inside surface group. Group ignored"); 
+            break ;
+         case NI_ELEMENT_TYPE:
+            nel = (NI_element *)ngr->part[ip] ;
+            if (LocalHead)  {
+               fprintf(SUMA_STDERR,"%s:     name=%s vec_len=%d vec_filled=%d, vec_num=%d\n", FuncName,\
+                        nel->name, nel->vec_len, nel->vec_filled, nel->vec_num );
+            }
+
+            /*--- NodeList ---*/
+            if( strcmp(nel->name,"Node_XYZ") == 0 || strcmp(nel->name,"NewNode_XYZ") == 0) { /* Get Da NodeList */
+               if (LocalHead) fprintf (SUMA_STDERR,"%s:\nGetting NodeList...\n", 
+                                             FuncName);
+               if (!SUMA_NodeXYZ_nel2NodeXYZ(SO, nel)) {
+                  SUMA_SL_Err("Failed in SUMA_NodeXYZ_nel2NodeXYZ");
+                  SUMA_Free_Surface_Object(SO); SO = NULL; SUMA_RETURN(SO);
+               }
+            } else if ( strcmp(nel->name,"Mesh_IJK") == 0 || strcmp(nel->name,"NewMesh_IJK") == 0) { /* Get Da FaceSetList */ 
+               if (LocalHead) fprintf (SUMA_STDERR,"%s:\nGetting FaceSetList...\n", 
+                                             FuncName);
+               if (!SUMA_Mesh_IJK_nel2Mesh_IJK(SO, nel)) {
+                  SUMA_SL_Err("Failed in SUMA_Mesh_IJK_nel2Mesh_IJK");
+                  SUMA_Free_Surface_Object(SO); SO = NULL; SUMA_RETURN(SO);
+               }
+            } else if ( strcmp(nel->name,"SurfaceVolumeParent") == 0) { /* Get Da FaceSetList */ 
+               if (LocalHead) fprintf (SUMA_STDERR,"%s:\nGetting VolPar...\n", 
+                                             FuncName);
+               if (!SUMA_VolPar_nel2SOVolPar(SO, nel)) {
+                  SUMA_SL_Err("Failed in SUMA_VolPar_nel2SOVolPar");
+                  SUMA_Free_Surface_Object(SO); SO = NULL; SUMA_RETURN(SO);
+               }
+            } else {
+               fprintf (SUMA_STDERR,"Warning %s:\n nel (%s) unknown, ignoring it.\n", FuncName, nel->name);
+            }
+            break;
+         default:
+            SUMA_SL_Err("Don't know what to make of this group element, ignoring.");
+            break;
+      }
+   }
+   
+   if (!SO->NodeList || !SO->FaceSetList) { /* perhaps you'll remove this condition in the future ...*/
+      SUMA_SL_Err("Looks like NodeList and/or FaceSetList not in group. Balking.\n");
+      SUMA_Free_Surface_Object(SO); SO = NULL; SUMA_RETURN(SO);
+   }
+   
+   /* check on all elements that need to be loaded */   
+   tmp = NI_get_attribute(ngr, "Mesh_Element_ID");
+   if (!SUMA_IS_EMPTY_STR_ATTR(tmp))  { 
+      if (!SO->FaceSetList) { /* element was not part of this group, usually recover from other files on disk, for the moment, warning */
+         fprintf (SUMA_STDERR,"Warning %s:\n group %s called for FaceSetList element_ID %s which was not found.\n", FuncName, ngr->name, tmp);  
+         /* 
+         in the future, try to load from separate file
+         nel = SUMA_Find_nel_File(tmp); (for example) SUMA_Mesh_IJK_nel2Mesh_IJK(SO, nel) ;  NI_free_nel(nel); nel = NULL; 
+         */     
+      }
+   }
+
+   tmp = NI_get_attribute(ngr, "NodeList_Element_ID");
+   if (!SUMA_IS_EMPTY_STR_ATTR(tmp))  { 
+      if (!SO->NodeList) { /* element was not part of this group, usually recover from other files on disk, for the moment, warning */
+         fprintf (SUMA_STDERR,"Warning %s:\n group %s called for NodeList element_ID %s which was not found.\n", FuncName, ngr->name, tmp);  
+         /* 
+         in the future, try to load from separate file
+         nel = SUMA_Find_nel_File(tmp); (for example) SUMA_NodeXYZ_nel2NodeXYZ(SO, nel) ;  NI_free_nel(nel); nel = NULL; 
+         */     
+      }
+   }
+   
+   tmp = NI_get_attribute(ngr, "facenormals_idcode_str");
+   if (!SUMA_IS_EMPTY_STR_ATTR(tmp))  { 
+      if (!SO->FaceNormList) { /* element was not part of this group, usually recover from other files on disk, for the moment, warning */
+         fprintf (SUMA_STDERR,"Warning %s:\n group %s called for facenormals element_ID %s which was not found.\n", FuncName, ngr->name, tmp);  
+         /* 
+         in the future, try to load from separate file
+         nel = SUMA_Find_nel_File(tmp); (for example) xxxxxx(SO, nel) ;  NI_free_nel(nel); nel = NULL; 
+         */     
+      }
+   }
+     
+   tmp = NI_get_attribute(ngr, "Node_Normals_Element_ID");
+   if (!SUMA_IS_EMPTY_STR_ATTR(tmp))  { 
+      if (!SO->NodeNormList) { /* element was not part of this group, usually recover from other files on disk, for the moment, warning */
+         fprintf (SUMA_STDERR,"Warning %s:\n group %s called for Node_Normals element_ID %s which was not found.\n", FuncName, ngr->name, tmp);  
+         /* 
+         in the future, try to load from separate file
+         nel = SUMA_Find_nel_File(tmp); (for example) xxxxxx(SO, nel) ;  NI_free_nel(nel); nel = NULL; 
+         */     
+      }
+   }
+   
+   tmp = NI_get_attribute(ngr, "Polygon_Area_Element_ID");
+   if (!SUMA_IS_EMPTY_STR_ATTR(tmp))  { 
+      if (!SO->PolyArea) { /* element was not part of this group, usually recover from other files on disk, for the moment, warning */
+         fprintf (SUMA_STDERR,"Warning %s:\n group %s called for Polygon_Area element_ID %s which was not found.\n", FuncName, ngr->name, tmp);  
+         /* 
+         in the future, try to load from separate file
+         nel = SUMA_Find_nel_File(tmp); (for example) xxxxxx(SO, nel) ;  NI_free_nel(nel); nel = NULL; 
+         */     
+      }
+   }
+   
+   tmp = NI_get_attribute(ngr, "SUMA_Edge_List_Element_ID");
+   if (!SUMA_IS_EMPTY_STR_ATTR(tmp))  { 
+      if (!SO->EL) { /* element was not part of this group, usually recover from other files on disk, for the moment, warning */
+         fprintf (SUMA_STDERR,"Warning %s:\n group %s called for Edge_List element_ID %s which was not found.\n", FuncName, ngr->name, tmp);  
+         /* 
+         in the future, try to load from separate file
+         nel = SUMA_Find_nel_File(tmp); (for example) xxxxxx(SO, nel) ;  NI_free_nel(nel); nel = NULL; 
+         */     
+      }
+   }
+
+   tmp = NI_get_attribute(ngr, "SUMA_Node_Face_Member_Element_ID");
+   if (!SUMA_IS_EMPTY_STR_ATTR(tmp))  { 
+      if (!SO->MF) { /* element was not part of this group, usually recover from other files on disk, for the moment, warning */
+         fprintf (SUMA_STDERR,"Warning %s:\n group %s called for Node_Face_Member element_ID %s which was not found.\n", FuncName, ngr->name, tmp);  
+         /* 
+         in the future, try to load from separate file
+         nel = SUMA_Find_nel_File(tmp); (for example) xxxxxx(SO, nel) ;  NI_free_nel(nel); nel = NULL; 
+         */     
+      }
+   }
+   
+   tmp = NI_get_attribute(ngr, "SUMA_Node_First_Neighb_Element_ID");
+   if (!SUMA_IS_EMPTY_STR_ATTR(tmp))  { 
+      if (!SO->FN) { /* element was not part of this group, usually recover from other files on disk, for the moment, warning */
+         fprintf (SUMA_STDERR,"Warning %s:\n group %s called for Node_First_Neighb element_ID %s which was not found.\n", FuncName, ngr->name, tmp);  
+         /* 
+         in the future, try to load from separate file
+         nel = SUMA_Find_nel_File(tmp); (for example) xxxxxx(SO, nel) ;  NI_free_nel(nel); nel = NULL; 
+         */     
+      }
+   }
+   
+   
+   if (SO->MF && SO->MF->idcode_str) {
+      NI_set_attribute(ngr, "SUMA_Node_Face_Member_Element_ID", SO->MF->idcode_str);
+   } else {
+      NI_set_attribute(ngr, "SUMA_Node_Face_Member_Element_ID", SUMA_EMPTY_ATTR);
+   }
+   
+   if (SO->FN && SO->FN->idcode_str) {
+      NI_set_attribute(ngr, "SUMA_Node_First_Neighb_Element_ID", SO->FN->idcode_str);
+   } else {
+      NI_set_attribute(ngr, "SUMA_Node_First_Neighb_Element_ID", SUMA_EMPTY_ATTR);
+   }
+   
+
+    
+   SUMA_RETURN(SO);
+}
+
+/*  >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> Begin OpenDX functions <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< */
+
+SUMA_OPEN_DX_STRUCT *SUMA_Alloc_OpenDX_Struct(void)
+{
+   static char FuncName[]={"SUMA_Alloc_OpenDX_Struct"};
+   int i;
+   SUMA_OPEN_DX_STRUCT *dx = NULL;
+   
+   SUMA_ENTRY;
+   
+   dx = (SUMA_OPEN_DX_STRUCT *)SUMA_malloc(sizeof(SUMA_OPEN_DX_STRUCT));
+   dx->rank = 0;
+   dx->shape = 0;
+   dx->items = 0;
+   dx->bad_data = 0;
+   dx->object = NULL;
+   dx->class = NULL;
+   dx->type = NULL;
+   dx->data = NULL;
+   dx->data_format = 0;
+   dx->data_off = NULL;
+   dx->datap = NULL;
+   dx->n_comp = 0;
+   dx->counts = NULL;
+   dx->n_counts = 0;
+   dx->origin = NULL;
+   dx->n_origin = 0;
+   dx->delta = NULL;
+   dx->n_delta = 0;
+   for (i=0; i<SUMA_MAX_OPEN_DX_FIELD_COMPONENTS; ++i) { dx->comp_name[i] = dx->comp_value[i] =NULL; }
+   dx->n_attr = 0;
+   for (i=0; i<SUMA_MAX_OPEN_DX_FIELD_ATTRIBUTES; ++i) { dx->attr_name[i] = dx->attr_string[i] =NULL; }
+   SUMA_RETURN(dx);
+}
+
+SUMA_OPEN_DX_STRUCT ** SUMA_Free_OpenDX_StructVec(SUMA_OPEN_DX_STRUCT **dxv, int nobj)
+{
+   static char FuncName[]={"SUMA_Free_OpenDX_StructVec"};
+   int i;
+   
+   SUMA_ENTRY;
+   
+   if (!dxv) SUMA_RETURN(NULL);
+   for (i=0; i<nobj; ++i) {
+      dxv[i] = SUMA_Free_OpenDX_Struct(dxv[i]);
+   }
+   SUMA_free(dxv); 
+   SUMA_RETURN(NULL);
+}
+
+SUMA_OPEN_DX_STRUCT *SUMA_Free_OpenDX_Struct(SUMA_OPEN_DX_STRUCT *dx)
+{
+   static char FuncName[]={"SUMA_Free_OpenDX_Struct"};
+   int i;
+   
+   SUMA_ENTRY;
+   
+   if (!dx) SUMA_RETURN(dx);
+   if (dx->object) SUMA_free(dx->object); dx->object = NULL;
+   if (dx->class) SUMA_free(dx->class); dx->class = NULL;
+   if (dx->data) SUMA_free(dx->data); dx->data = NULL;
+   if (dx->data_off) SUMA_free(dx->data_off); dx->data_off = NULL;
+   if (dx->datap) {
+      if ( SUMA_OK_OPENDX_DATA_TYPE(SUMA_VarType2TypeCast (dx->type)) ) {
+         SUMA_free(dx->datap); dx->datap = NULL;
+      } else {
+         SUMA_SL_Warn("Do not know how to free datap.\nYou now possibly have a leak on your hands.");
+      }
+   }
+   if (dx->type) SUMA_free(dx->type); dx->type = NULL;
+   for (i=0; i<SUMA_MAX_OPEN_DX_FIELD_COMPONENTS; ++i) { 
+      if (dx->comp_name[i]) SUMA_free(dx->comp_name[i]); dx->comp_name[i] = NULL;
+      if (dx->comp_value[i]) SUMA_free(dx->comp_value[i]); dx->comp_value[i] =NULL; 
+   }
+   for (i=0; i<SUMA_MAX_OPEN_DX_FIELD_ATTRIBUTES; ++i) { 
+      if (dx->attr_name[i]) SUMA_free(dx->attr_name[i]); dx->attr_name[i] = NULL;
+      if (dx->attr_string[i]) SUMA_free(dx->attr_string[i]); dx->attr_string[i] =NULL; 
+   }
+   if (dx->origin) SUMA_free(dx->origin); 
+   if (dx->delta) SUMA_free(dx->delta);
+   if (dx->counts) SUMA_free(dx->counts);
+   SUMA_free(dx); dx = NULL;
+   SUMA_RETURN(dx);
+}
+
+void SUMA_Show_OpenDX_Struct(SUMA_OPEN_DX_STRUCT **dxv, int N_dxv, FILE *out)
+{
+   static char FuncName[]={"SUMA_Show_OpenDX_Struct"};
+   int i, idx;
+   SUMA_STRING *SS=NULL;
+   char *s = NULL;
+   SUMA_OPEN_DX_STRUCT *dx=NULL;
+   
+   SUMA_ENTRY;
+   
+   SS = SUMA_StringAppend(NULL, NULL);  
+   if (!dxv) SS = SUMA_StringAppend(SS, "NULL dxv\n");
+   for (idx = 0; idx < N_dxv; ++idx) {
+      dx = dxv[idx];
+      SS = SUMA_StringAppend_va(SS, "Object Struct %d/%d\n", idx+1, N_dxv);
+      if (!dx) SS = SUMA_StringAppend(SS, "NULL dx\n");
+      else {
+         if (dx->object) SS = SUMA_StringAppend_va(SS, "object: %s\n", dx->object);
+         else SS = SUMA_StringAppend_va(SS, "object: NULL\n"); 
+         if (dx->class) SS = SUMA_StringAppend_va(SS, "class: %s\n", dx->class);
+         else SS = SUMA_StringAppend_va(SS, "class: NULL\n"); 
+         if (dx->type) SS = SUMA_StringAppend_va(SS, "type: %s\n", dx->type);
+         else SS = SUMA_StringAppend_va(SS, "type: NULL\n"); 
+         if (dx->rank) SS = SUMA_StringAppend_va(SS, "rank: %d\n", dx->rank);
+         else SS = SUMA_StringAppend_va(SS, "rank: 0\n"); 
+         if (dx->shape) SS = SUMA_StringAppend_va(SS, "shape: %d\n", dx->shape);
+         else SS = SUMA_StringAppend_va(SS, "shape: 0\n"); 
+         if (dx->items) SS = SUMA_StringAppend_va(SS, "items: %d\n", dx->items);
+         else SS = SUMA_StringAppend_va(SS, "items: 0\n"); 
+         if (dx->counts) {
+            SS = SUMA_StringAppend_va(SS, "counts: (%d vals)\n", dx->n_counts);
+            s = SUMA_ShowMeSome(dx->counts, SUMA_int, dx->n_counts, 5);
+            SS = SUMA_StringAppend_va(SS, "\t%s\n", s); SUMA_free(s); s = NULL;
+         } else SS = SUMA_StringAppend_va(SS, "counts: NULL\n");
+         if (dx->origin) {
+            SS = SUMA_StringAppend_va(SS, "origin: (%d vals)\n", dx->n_origin);
+            s = SUMA_ShowMeSome(dx->origin, SUMA_float, dx->n_origin, 5);
+            SS = SUMA_StringAppend_va(SS, "\t%s\n", s); SUMA_free(s); s = NULL;
+         } else SS = SUMA_StringAppend_va(SS, "origin: NULL\n");
+         if (dx->delta) {
+            SS = SUMA_StringAppend_va(SS, "delta: (%d vals)\n", dx->n_delta);
+            s = SUMA_ShowMeSome(dx->delta, SUMA_float, dx->n_delta, 9);
+            SS = SUMA_StringAppend_va(SS, "\t%s\n", s); SUMA_free(s); s = NULL;
+         }else SS = SUMA_StringAppend_va(SS, "delta: NULL\n");
+         
+         if (dx->data) SS = SUMA_StringAppend_va(SS, "data: %s (Data load error %d)\n", dx->data, dx->bad_data);
+         else SS = SUMA_StringAppend_va(SS, "data: NULL\n"); 
+         if (dx->data_off) SS = SUMA_StringAppend_va(SS, "data_off: %s \n", dx->data_off);
+         else SS = SUMA_StringAppend_va(SS, "data_off: NULL\n"); 
+         SS = SUMA_StringAppend_va(SS, "data_format: %d \n", dx->data_format);
+         if (dx->datap) {
+            s = SUMA_ShowMeSome(dx->datap, SUMA_VarType2TypeCast(dx->type), dx->items * SUMA_NCOL_OPENDX(dx), 5);
+            SS = SUMA_StringAppend_va(SS, "\t%s\n", s); SUMA_free(s); s = NULL;
+         }
+         if (dx->n_comp) {
+            SS = SUMA_StringAppend_va(SS, "components: %d\n", dx->n_comp);
+            for (i=0; i<dx->n_comp; ++i) {  
+               if (dx->comp_name[i]) SS = SUMA_StringAppend_va(SS, "\tname: %s\t", dx->comp_name[i]);
+               else SS = SUMA_StringAppend_va(SS, "\tname: NULL\t"); 
+               if (dx->comp_value[i]) SS = SUMA_StringAppend_va(SS, "\ttype: %s\n", dx->comp_value[i]);
+               else SS = SUMA_StringAppend_va(SS, "\ttype: NULL\n"); 
+            }    
+         } else {
+            SS = SUMA_StringAppend_va(SS, "components: %d\n", dx->n_comp); 
+         }
+         if (dx->n_attr) {
+            SS = SUMA_StringAppend_va(SS, "attributes: %d\n", dx->n_attr);
+            for (i=0; i<dx->n_attr; ++i) {  
+               if (dx->attr_name[i]) SS = SUMA_StringAppend_va(SS, "\tname: %s\t", dx->attr_name[i]);
+               else SS = SUMA_StringAppend_va(SS, "\tname: NULL\t"); 
+               if (dx->attr_string[i]) SS = SUMA_StringAppend_va(SS, "\tstring: %s\n", dx->attr_string[i]);
+               else SS = SUMA_StringAppend_va(SS, "\tstring: NULL\n"); 
+            }    
+         } else {
+            SS = SUMA_StringAppend_va(SS, "attributes: %d\n", dx->n_attr); 
+         }
+      }
+   }
+   
+   SUMA_SS2S(SS,s);
+   if (!out) fprintf(stdout, "%s", s);
+   else fprintf(out, "%s", s);
+   
+   SUMA_free(s); s = NULL;
+   
+   SUMA_RETURNe;
+}
+
+SUMA_Boolean SUMA_OpenDX_Write(char *fname, SUMA_SurfaceObject *SO)
+{
+   static char FuncName[]={"SUMA_OpenDX_Write"};
+   
+   SUMA_ENTRY;
+   
+   SUMA_SL_Err("Not supported yet");
+   
+   SUMA_RETURN(NOPE);
+}
+
+
+/*!
+   \brief get the data values 
+*/
+SUMA_Boolean SUMA_OpenDx_Object_Data(char *op, int nchar, SUMA_OPEN_DX_STRUCT *dx)
+{
+   static char FuncName[]={"SUMA_OpenDx_Object_Data"};
+   int i, Found = 0, ival;
+   char *op_end, cend, *op2, *sval;
+   char *op_orig;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   /* get the data */
+   op_orig = op; /* hide this pointer from the evils that will befall it */
+   cend = op_orig[nchar-1]; op_orig[nchar-1] = '\0';
+   op_end = op_orig + nchar - 1; 
+   if (LocalHead) { /* potential for huge dump if you set show to nchar! */
+         int j, show;
+         show = 500; /* could also use nchar */
+         fprintf(SUMA_STDERR,"%s Object\n", FuncName);
+         j=0; while (op[j] && j<500) { fprintf(SUMA_STDERR,"%c", op[j]); ++j; }
+         fprintf(SUMA_STDERR,"\n");
+   }
+   SUMA_ADVANCE_PAST(op,op_end,"data",Found,1);
+   sval = NULL;
+   if (Found) {
+      /* get the data's info */
+      SUMA_GET_BETWEEN_BLANKS(op, op_end, op2);
+      if (op2 == op) {
+         SUMA_LH("Empty data?");
+         dx->data=NULL;
+      } else {
+         SUMA_COPY_TO_STRING(op, op2, sval);
+         dx->data = sval; sval = NULL;
+      }
+      op = op2;
+      /* now fill datap if possible*/
+      if (dx->data && strstr(dx->data,"follows")){
+         int nread=0;
+         SUMA_LH("data inside");
+         if (LocalHead) { /* potential for huge dump! */
+            int j, show;
+            show = 500; /* could also use nchar */
+            fprintf(SUMA_STDERR,"%s Object\n", FuncName);
+            j=0; while (op[j] && j<500) { fprintf(SUMA_STDERR,"%c", op[j]); ++j; }
+            fprintf(SUMA_STDERR,"\n");
+         }  
+         dx->datap = SUMA_strtol_vec(op, dx->items*SUMA_NCOL_OPENDX(dx), &nread, SUMA_VarType2TypeCast (dx->type));
+         if (LocalHead) {
+            fprintf(SUMA_STDERR,"%s: Read %d/%d values\n", FuncName, nread, dx->items*SUMA_NCOL_OPENDX(dx));
+         }
+         if (nread != dx->items*SUMA_NCOL_OPENDX(dx)) {
+            fprintf(SUMA_STDERR,"Error %s: read in %d values, expected %d \n", FuncName, nread, dx->items*SUMA_NCOL_OPENDX(dx));
+            op_orig[nchar-1] =  cend;
+            SUMA_RETURN(NOPE);
+         }
+      }else {
+         SUMA_LH("data does not follow");
+         if (LocalHead) {
+            for (i=0; i < 500; ++i) { fprintf(SUMA_STDERR,"%c", op[i]); } fprintf(SUMA_STDERR,"\n"); fflush(SUMA_STDERR);
+         }
+         /* ? have file name ? */
+         if (strstr(dx->data,"file")) {
+            SUMA_GET_BETWEEN_BLANKS(op, op_end, op2);
+            if (op2 > op) {
+               SUMA_free(dx->data); /* free the "file" string */
+               SUMA_COPY_TO_STRING(op, op2, sval);
+               dx->data = sval; sval = NULL;
+               /* search backwards for a comma */
+               i=strlen(dx->data)-1; Found = -1;
+               while(i>=0 && Found <0) { if (dx->data[i] == ',') Found = i; --i; }
+               if (Found >= 0) { 
+                  dx->data_off = SUMA_copy_string(&(dx->data[Found+1]));
+                  dx->data[Found]='\0';
+               }  
+               /* see if you have some byte order or binary business */
+               dx->data_format = 0; /* ascii, default*/
+               op = op_orig; SUMA_ADVANCE_PAST(op,op_end,"binary",Found,1);
+               if (Found) {
+                  dx->data_format = MSB_FIRST; /* default */
+               }
+               /* endianness, regardless of what was above, "binary" might not occur */
+               op = op_orig; SUMA_ADVANCE_PAST(op,op_end,"msb",Found,1);
+               if (Found) { dx->data_format = MSB_FIRST; }
+               else {
+                  op = op_orig; SUMA_ADVANCE_PAST(op,op_end,"lsb",Found,1);
+                  if (Found) { dx->data_format = LSB_FIRST; }
+               }
+            }
+         }
+      }
+   } else {
+      SUMA_LH("No data for this object");
+   }
+      
+   op_orig[nchar-1] =  cend;
+   SUMA_RETURN(YUP);
+}
+
+
+/*!
+   \brief return values of an attribute from an OpenDX object string
+*/  
+SUMA_Boolean SUMA_OpenDx_Object_Attr(char *op, int nchar, SUMA_OPEN_DX_STRUCT *dx)
+{
+   static char FuncName[]={"SUMA_OpenDx_Object_Attr"};
+   int i, Found, ival,imax;
+   char *op_end, cend, *op2, *sval;
+   char *op_orig;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   /* get the attributes */
+   
+   op_orig = op; /* hide this pointer from the evils that will befall it */
+   cend = op_orig[nchar-1]; op_orig[nchar-1] = '\0';
+   op_end = op_orig + nchar - 1; 
+   
+   SUMA_ADVANCE_PAST(op,op_end,"attribute",Found, 1);
+   sval = NULL;
+   while (Found) {
+      /* get the attribute's name */
+      SUMA_GET_BETWEEN_BLANKS(op, op_end, op2);
+      if (op2 == op) {
+         SUMA_LH("Empty attribute?");
+      } else {
+         imax = op2 - op;
+         if (imax > 5000) {
+            SUMA_SL_Err("Unexpectedly large field!");
+            op_orig[nchar-1] =  cend;
+            SUMA_RETURN(NOPE);
+         }else if (imax < 0) {
+            SUMA_SL_Err("Negative imax!");
+            op_orig[nchar-1] =  cend;
+            SUMA_RETURN(NOPE);
+         }
+         sval = (char *)SUMA_calloc(imax + 2, sizeof(char));
+
+         for (i=0; i < imax; ++i) sval[i] = op[i];
+         sval[imax] = '\0';
+         dx->attr_name[dx->n_attr] = sval;
+      }
+      op = op2;
+      /* look for attribute string */
+      SUMA_ADVANCE_PAST(op,op_end,"string",Found,1);
+      if (Found) {
+         SUMA_GET_BETWEEN_BLANKS(op, op_end, op2);
+         if (op2 == op) {
+            SUMA_LH("Empty string?");
+         } else {
+            imax = op2 - op;
+            if (imax > 5000) {
+               SUMA_SL_Err("Unexpectedly large field!");
+               op_orig[nchar-1] =  cend;
+               SUMA_RETURN(NOPE);
+            }else if (imax < 0) {
+               SUMA_SL_Err("Negative imax!");
+               op_orig[nchar-1] =  cend;
+               SUMA_RETURN(NOPE);
+            }
+            sval = (char *)SUMA_calloc(imax + 2, sizeof(char));
+
+            for (i=0; i < imax; ++i) sval[i] = op[i];
+            sval[imax] = '\0';
+            dx->attr_string[dx->n_attr] = sval;
+         }   
+      }
+      ++dx->n_attr;
+      /* look for next attribute */
+      op = op2;
+      SUMA_ADVANCE_PAST(op,op_end,"attribute",Found,1);
+   }
+      
+   op_orig[nchar-1] =  cend;
+   SUMA_RETURN(YUP);
+}
+/*!
+   \brief return values of an attribute from an OpenDX object string
+*/  
+SUMA_Boolean SUMA_OpenDx_Object_Components(char *op, int nchar, SUMA_OPEN_DX_STRUCT *dx)
+{
+   static char FuncName[]={"SUMA_OpenDx_Object_Components"};
+   int i, Found, ival,imax;
+   char *op_end, cend, *op2, *sval;
+   char *op_orig;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   /* get the attributes */
+   
+   op_orig = op; /* hide this pointer from the evils that will befall it */
+   cend = op_orig[nchar-1]; op_orig[nchar-1] = '\0';
+   op_end = op_orig + nchar - 1; 
+   
+   SUMA_ADVANCE_PAST(op,op_end,"component",Found,1);
+   while (Found) {
+      /* get the attribute's name */
+      SUMA_GET_BETWEEN_BLANKS(op, op_end, op2);
+      if (op2 == op) {
+         SUMA_LH("Empty component?");
+      } else {
+         imax = op2 - op;
+         if (imax > 5000) {
+            SUMA_SL_Err("Unexpectedly large field!");
+            op_orig[nchar-1] =  cend;
+            SUMA_RETURN(NOPE);
+         }else if (imax < 0) {
+            SUMA_SL_Err("Negative imax!");
+            op_orig[nchar-1] =  cend;
+            SUMA_RETURN(NOPE);
+         }
+         sval = (char *)SUMA_calloc(imax + 2, sizeof(char));
+
+         for (i=0; i < imax; ++i) sval[i] = op[i];
+         sval[imax] = '\0';
+         dx->comp_name[dx->n_comp] = sval;
+      }
+      op = op2;
+      /* look for attribute string */
+      SUMA_ADVANCE_PAST(op,op_end,"value",Found,1);
+      if (Found) {
+         SUMA_GET_BETWEEN_BLANKS(op, op_end, op2);
+         if (op2 == op) {
+            SUMA_SL_Err("No value!");
+         } else {
+            imax = op2 - op;
+            if (imax > 5000) {
+               SUMA_SL_Err("Unexpectedly large field!");
+               op_orig[nchar-1] =  cend;
+               SUMA_RETURN(NOPE);
+            }else if (imax < 0) {
+               SUMA_SL_Err("Negative imax!");
+               op_orig[nchar-1] =  cend;
+               SUMA_RETURN(NOPE);
+            }
+            sval = (char *)SUMA_calloc(imax + 2, sizeof(char));
+
+            for (i=0; i < imax; ++i) sval[i] = op[i];
+            sval[imax] = '\0';
+            dx->comp_value[dx->n_comp] = sval;
+         }   
+      }else { /* try for non-existing "value" */
+         SUMA_GET_BETWEEN_BLANKS(op, op_end, op2);
+         if (op2 == op) {
+            SUMA_SL_Err("No value at all");
+         } else {
+            imax = op2 - op;
+            if (imax > 5000) {
+               SUMA_SL_Err("Unexpectedly large field!");
+               op_orig[nchar-1] =  cend;
+               SUMA_RETURN(NOPE);
+            }else if (imax < 0) {
+               SUMA_SL_Err("Negative imax!");
+               op_orig[nchar-1] =  cend;
+               SUMA_RETURN(NOPE);
+            }
+            sval = (char *)SUMA_calloc(imax + 2, sizeof(char));
+
+            for (i=0; i < imax; ++i) sval[i] = op[i];
+            sval[imax] = '\0';
+            dx->comp_value[dx->n_comp] = sval;
+         }   
+      }
+      ++dx->n_comp;
+      /* look for next component */
+      op = op2;
+      SUMA_ADVANCE_PAST(op,op_end,"component",Found,1);
+   }
+      
+   op_orig[nchar-1] =  cend;
+   SUMA_RETURN(YUP);
+}
+
+/*!
+   \brief return values of a header field from an OpenDX object string
+   If you expect an int back like when attr is "rank" or "shape"
+      ans should be type cast to (int *) before use: int ival; ival = *((int *)ans); 
+   If you expect a bunch of numbers like for "counts" "origin" "delta"
+      then ans is (SUMA_IVEC *) or (SUMA_FVEC*) or (SUMA_DVEC *)
+      These are freed with SUMA_free(ans->v); SUMA_free(ans);
+   else ans should be type cast to (char **) before use: 
+      char *sval; sval = *((char **)ans); then free sval with SUMA_free(sval); 
+      
+*/  
+void * SUMA_OpenDx_Object_Header_Field(char *op, int nchar, const char *attr, char **opeofield)
+{
+   static char FuncName[]={"SUMA_OpenDx_Object_Header_Field"};
+   void *ans=NULL;
+   int i, Found, ival, imax, nread;
+   char *op_end = NULL, cend, *op2, *sval, *pp1, *pp2;
+   char *op_orig;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (opeofield) *opeofield = op;
+   
+   if (!attr) SUMA_RETURN(ans);
+   op_orig = op; /* hide this pointer from the evils that will befall it */
+   cend = op_orig[nchar-1]; op_orig[nchar-1] = '\0';
+   /* do we have a data section to signal end of header? */
+   op_end = NULL;
+   pp1 = strstr(op, "data"); 
+   if (pp1) {
+      pp2 = strstr(op, "follows");
+      if (pp2) op_end = pp2;
+   }
+   if (!op_end) op_end = op_orig + nchar - 1; /* op_end all the way at end */
+   
+   if (LocalHead) {
+      fprintf(SUMA_STDERR,"%s: Object of %d chars, looking for >>>%s<<<\n", FuncName, nchar, attr );
+   }
+   
+  /* get the header field's value name */
+   SUMA_ADVANCE_PAST(op,op_end,attr,Found,1);
+   if (Found) {
+      SUMA_GET_BETWEEN_BLANKS(op, op_end, op2);
+      if (op2 == op) {
+         SUMA_LH("No field");
+      } else {
+         /* get the numeric fields changed*/
+         if (strstr(attr,"rank") || strstr(attr,"shape") || strstr(attr,"items")) { /* rank, shape (matrix's second dim) are integer vals */
+            ival = (int)strtol(op, NULL , 10);
+            ans = (void*)&ival;
+         } else if (strstr(attr,"counts")) { /* are a series integer vals */
+            ans = SUMA_AdvancePastNumbers(op, &op2, SUMA_int);
+         } else if (strstr(attr,"origin") || strstr(attr,"delta")) { /* are integer vals */
+            ans = SUMA_AdvancePastNumbers(op, &op2, SUMA_float);
+         } else  { /* strings*/
+            imax = op2 - op;
+            if (imax > 5000) {
+               SUMA_SL_Err("Unexpectedly large field!");
+               op_orig[nchar-1] =  cend;
+               SUMA_RETURN(ans);
+            }else if (imax < 0) {
+               SUMA_SL_Err("Negative imax!");
+               op_orig[nchar-1] =  cend;
+               SUMA_RETURN(ans);
+            }
+            sval = (char *)SUMA_calloc(imax + 2, sizeof(char));
+            
+            for (i=0; i < imax; ++i) sval[i] = op[i];
+            sval[imax] = '\0';
+            ans = (void*)&sval;
+         }    
+         if (LocalHead) {
+            fprintf(SUMA_STDERR,"%s: attribute >>>%s<<< is:\n", FuncName, attr);
+            i = 0;
+            while (op[i] && op+i != op2) {
+               fprintf(SUMA_STDERR,"%c", op[i]); 
+               ++i;   
+            }
+            fprintf(SUMA_STDERR,"\n");
+         }
+         
+      }
+      op = op2; /* advance op */
+   } else {
+      if (strstr(attr,"class")) {
+         /* it looks like "class" is sometimes omitted, look for string field, which is a class */
+         SUMA_ADVANCE_PAST(op,op_end,"field", Found,1);
+         if (Found) sval = SUMA_copy_string("field");
+         ans = (void*)&sval;
+      } else {
+         SUMA_LH("No such attribute");
+      }
+   }
+      
+   op_orig[nchar-1] =  cend;
+   if (opeofield) *opeofield = op; 
+   SUMA_RETURN(ans);
+}
+/*!
+   \sa http://opendx.npaci.edu/docs/html/pages/usrgu068.htm#Header_417
+*/
+SUMA_OPEN_DX_STRUCT **SUMA_OpenDX_Read(char *fname, int *nobj)
+{
+   static char FuncName[]={"SUMA_OpenDX_Read"};
+   int nread = 0, i = 0,  iop, *ivalp=NULL, shft=0;
+   char *fl=NULL, **opv = NULL, *op = NULL,*sbuf=NULL, **svalp=NULL, *ope;
+   int *nchar = NULL;
+   SUMA_OPEN_DX_STRUCT **dxv=NULL;
+   SUMA_FVEC *fvec=NULL;
+   SUMA_IVEC *ivec=NULL;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   *nobj = 0;
+   
+   SUMA_LH("Sucking file");
+   nread = SUMA_suck_file( fname , &fl ) ;
+   if (!fl) {
+      SUMA_SL_Err("Failed to read file.");
+      SUMA_RETURN(dxv);
+   }
+
+   if (LocalHead) fprintf(SUMA_STDERR,"%s: Read in %d chars\n", FuncName, nread);
+   
+   opv = (char **)SUMA_calloc(SUMA_MAX_OPEN_DX_OBJECTS, sizeof(char*));
+   nchar = (int*)SUMA_calloc(SUMA_MAX_OPEN_DX_OBJECTS, sizeof(int));
+   dxv = (SUMA_OPEN_DX_STRUCT **)SUMA_calloc(SUMA_MAX_OPEN_DX_OBJECTS, sizeof(SUMA_OPEN_DX_STRUCT *));
+   
+   /* now search for the first "object" */
+   op = fl;
+   iop = 0;
+   shft = 0;
+   do {
+      op = strstr((op+shft), "object");
+      if (op) {
+         opv[iop] = op;
+         if (iop) nchar[iop-1] = opv[iop] - opv[iop-1];
+         if (LocalHead) {
+            fprintf(SUMA_STDERR,"%s: Object found.\n", FuncName);
+            i = 0;
+            while (i<20 && op[i] !='\0') { fprintf(SUMA_STDERR,"%c",op[i]); ++i; } fprintf(SUMA_STDERR,"\n"); 
+         }
+         
+         /* must skip beyond first "object" for next pass*/
+         shft = strlen("object");
+         ++iop;
+      }
+   } while (op && iop < SUMA_MAX_OPEN_DX_OBJECTS);
+   if (iop >= SUMA_MAX_OPEN_DX_OBJECTS) {
+      SUMA_SL_Warn("Too many objects, processing first SUMA_MAX_OPEN_DX_OBJECTS only"); 
+   }
+   
+   if (iop) {/* find the length of the last object */
+      op = opv[iop-1];
+      while (*op !='\0') { ++op; }
+      nchar[iop-1] = op - opv[iop-1];
+   }
+   
+   if (LocalHead) {
+      fprintf(SUMA_STDERR,"%s: %d Objects found.\n", FuncName, iop);
+   }
+   
+   for (i=0; i<iop; ++i) { /* process each object's header field and data*/
+      if ( 0 && LocalHead) { /* potentially huge dump if nmax is not controlled*/
+         int j, nmax;
+         nmax = 500; /* could also use nchar[i]*/
+         fprintf(SUMA_STDERR,"%s Object %d\n", FuncName, i);
+         op = opv[i]; for (j=0; j<nmax; ++j) fprintf(SUMA_STDERR,"%c", op[j]);
+         fprintf(SUMA_STDERR,"\n");
+      }
+      /* get the class */
+      dxv[i] = SUMA_Alloc_OpenDX_Struct();
+      ivalp = (int *)SUMA_OpenDx_Object_Header_Field(opv[i], nchar[i], "rank", NULL);
+      if (ivalp) dxv[i]->rank = *ivalp;
+      ivalp = (int *)SUMA_OpenDx_Object_Header_Field(opv[i], nchar[i], "shape", NULL);
+      if (ivalp) dxv[i]->shape = *ivalp;
+      ivalp = (int *)SUMA_OpenDx_Object_Header_Field(opv[i], nchar[i], "items", NULL);
+      if (ivalp) dxv[i]->items = *ivalp;
+      svalp = (char **)SUMA_OpenDx_Object_Header_Field(opv[i], nchar[i], "object", NULL);
+      if (svalp) dxv[i]->object = *svalp;
+      svalp = (char **)SUMA_OpenDx_Object_Header_Field(opv[i], nchar[i], "class", NULL);
+      if (svalp) dxv[i]->class = *svalp;
+      svalp = (char **)SUMA_OpenDx_Object_Header_Field(opv[i], nchar[i], "type", NULL);
+      if (svalp) dxv[i]->type = *svalp;
+      ivec = (SUMA_IVEC*)SUMA_OpenDx_Object_Header_Field(opv[i], nchar[i], "counts", NULL);
+      if (ivec) { dxv[i]->counts = ivec->v; dxv[i]->n_counts = ivec->n; SUMA_free(ivec); ivec = NULL;} 
+      fvec = (SUMA_FVEC*)SUMA_OpenDx_Object_Header_Field(opv[i], nchar[i], "origin", NULL);
+      if (fvec) { dxv[i]->origin = fvec->v; dxv[i]->n_origin = fvec->n; SUMA_free(fvec); fvec = NULL;} 
+      { /* get the deltas */
+         int j, k;
+         char *rf=opv[i];
+         j=0; 
+         while (j<dxv[i]->n_counts) {
+            fvec = (SUMA_FVEC*)SUMA_OpenDx_Object_Header_Field(rf, nchar[i], "delta", &ope);
+            if (fvec && fvec->v) { 
+               if (fvec->n < dxv[i]->n_counts) { SUMA_SL_Warn("Bad assumption about delta field.\nExpect disasters!"); }
+               if (fvec->n > dxv[i]->n_counts) { 
+                  SUMA_SL_Err("More values in delta that counts! Limiting to counts.\nExpect tragedy."); 
+                  fvec->n = dxv[i]->n_counts;
+               }
+               if (j==0) { /* allocate */ 
+                  dxv[i]->n_delta = dxv[i]->n_counts*dxv[i]->n_counts; 
+                  dxv[i]->delta = (float *)SUMA_calloc(dxv[i]->n_delta, sizeof(float));
+               }
+               for (k=0; k<fvec->n; ++k) { 
+                  dxv[i]->delta[(j*dxv[i]->n_counts) + k] = fvec->v[k];  
+               }
+               SUMA_free(fvec->v); SUMA_free(fvec); fvec = NULL;
+            } else { /* get out */
+               if (j) {
+                  SUMA_SL_Warn("Expect as many deltas as counts!\nThat was not the case.");
+               } else { /* OK, no deltas at all */ }
+               j = dxv[i]->n_counts;
+            }
+            ++j; rf = ope;
+         }
+      } 
+      /* now for the data */
+      if (!SUMA_OpenDx_Object_Data(opv[i], nchar[i], dxv[i])) {
+         SUMA_SL_Err("Failed to get data");
+         dxv[i]->bad_data = 1;
+      }
+   }
+
+   for (i=0; i<iop; ++i) { /* process each object's attributes*/
+      if (!SUMA_OpenDx_Object_Attr(opv[i], nchar[i], dxv[i])) {
+         SUMA_SL_Err("Failed in SUMA_OpenDx_Object_Attr");
+      }
+      if (!SUMA_OpenDx_Object_Components(opv[i], nchar[i], dxv[i])) {
+         SUMA_SL_Err("Failed in SUMA_OpenDx_Object_Components");
+      }
+   }
+
+   if (LocalHead) {
+         SUMA_Show_OpenDX_Struct(dxv, iop, NULL); fflush(stdout);
+   }
+   
+   if (opv) SUMA_free(opv); opv = NULL;
+   if (nchar) SUMA_free(nchar); nchar = NULL;
+   if (fl) SUMA_free(fl); fl = NULL; /* added Mon May 9 05, ZSS */
+   *nobj = iop;
+   SUMA_RETURN(dxv); 
+}
+
+/*!
+   \brief returns structure containing object of a certain name in dxv
+   do not free returned structure since it is a copy of pointer in dxv
+*/
+SUMA_OPEN_DX_STRUCT *SUMA_Find_OpenDX_Object_Name(SUMA_OPEN_DX_STRUCT **dxv, int iop, char *nm, int *nf)
+{
+   static char FuncName[]={"SUMA_Find_OpenDX_Object_Name"};
+   int i;
+   SUMA_OPEN_DX_STRUCT *dx = NULL;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   *nf = 0;
+   for (i=0; i<iop; ++i) {
+      if (strstr(dxv[i]->object, nm)) { 
+         if (!dx) dx = dxv[i]; 
+         ++ (*nf);
+      }
+   }
+   
+   if (LocalHead) fprintf(SUMA_STDERR,"%s: Found %d objects\n", FuncName, *nf);
+   SUMA_RETURN(dx);
+}
+/*!
+   \brief returns structure containing object of a certain class in dxv
+   do not free returned structure since it is a copy of pointer in dxv
+*/
+SUMA_OPEN_DX_STRUCT *SUMA_Find_OpenDX_Object_Class(SUMA_OPEN_DX_STRUCT **dxv, int iop, char *nm, int *nf)
+{
+   static char FuncName[]={"SUMA_Find_OpenDX_Object_Class"};
+   int i;
+   SUMA_OPEN_DX_STRUCT *dx = NULL;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   *nf = 0;
+   for (i=0; i<iop; ++i) {
+      if (strstr(dxv[i]->class, nm)) { 
+         if (!dx) dx = dxv[i]; 
+         ++ (*nf);
+      }
+   }
+   
+   if (LocalHead) fprintf(SUMA_STDERR,"%s: Found %d objects\n", FuncName, *nf);
+   SUMA_RETURN(dx);
+}
+
+
+char * SUMA_OpenDX_Read_CruiseVolHead(char *fname, THD_3dim_dataset *dset, int LoadData)
+{
+   static char FuncName[]={"SUMA_OpenDX_Read_CruiseVolHead"};
+   int i = 0, nf, iop, chunk, End, bs, doff, data_type=SUMA_notypeset;
+   THD_ivec3 iv3;
+   THD_mat33 m33;
+   THD_ivec3 orixyz , nxyz ;
+   THD_fvec3 dxyz , orgxyz ;
+   float ep[3], sp[3];
+   char *scom=NULL, form[10], swp[10], orstr[10], xfov[100], yfov[100], zfov[100], *prefix = NULL, *dsetheadname = NULL;
+   SUMA_OPEN_DX_STRUCT **dxv=NULL, *dxp=NULL, *dxc=NULL, *dxf=NULL, *dxa=NULL;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!dset || !fname) {
+      SUMA_SL_Err("NULL fname || NULL dset!");
+      SUMA_RETURN(NOPE);
+   }
+   
+   prefix = SUMA_AfniPrefix(fname, NULL, NULL, NULL);
+   if( !THD_filename_ok(prefix) ) {
+      SUMA_SL_Err("Bad prefix");
+      SUMA_RETURN(NOPE);
+   } 
+   dsetheadname = SUMA_append_string(prefix,"+orig.HEAD");
+   if (SUMA_filexists(dsetheadname)) {
+      SUMA_SL_Err("Bad prefix, output dset exists");
+      SUMA_RETURN(NOPE);
+   }
+   SUMA_free(dsetheadname); dsetheadname = NULL;
+   
+   SUMA_LH("Reading objects");
+   dxv = SUMA_OpenDX_Read(fname, &iop);
+   if (!dxv) {
+      SUMA_SL_Err("Failed to read DX file.");
+      SUMA_RETURN(NOPE);
+   }
+   
+   SUMA_LH("Checking for field object");
+   dxf = SUMA_Find_OpenDX_Object_Class(dxv, iop, "field", &nf);
+   if (!dxf || nf != 1) { SUMA_SL_Err("Failed to find one and only one field object"); goto CLEAN_EXIT; }
+   dxp = dxc = NULL;   
+   for (i=0; i<dxf->n_comp; ++i) {
+      if (strstr(dxf->comp_name[i],"positions")) {
+         dxp = SUMA_Find_OpenDX_Object_Name(dxv, iop, dxf->comp_value[i], &nf); 
+         if (!dxp || nf != 1) { SUMA_SL_Err("Failed to find one and only one positions object"); goto CLEAN_EXIT; }
+      }
+      if (strstr(dxf->comp_name[i],"connections")) {
+         dxc = SUMA_Find_OpenDX_Object_Name(dxv, iop, dxf->comp_value[i], &nf); 
+         if (!dxc || nf != 1) { SUMA_SL_Err("Failed to find one and only one connections object"); goto CLEAN_EXIT; }
+      }
+      if (strstr(dxf->comp_name[i],"data")) {
+         dxa = SUMA_Find_OpenDX_Object_Name(dxv, iop, dxf->comp_value[i], &nf); 
+         if (!dxa || nf != 1) { SUMA_SL_Err("Failed to find one and only one data object"); goto CLEAN_EXIT; }
+      }
+   }
+   
+   if (!dxp || !dxv || !dxa) {
+      SUMA_SL_Err("Failed to find necessary objects"); SUMA_RETURN(NOPE);
+   }
+   
+   /* sanity */
+   SUMA_LH("Sanity checks");
+   if (!dxa->data_format) {
+      SUMA_SL_Err("Not a binary data file!");
+      goto CLEAN_EXIT; 
+   }
+   if (!dxa->data) {
+      SUMA_SL_Err("No data file!");
+      goto CLEAN_EXIT; 
+   }
+   if (dxp->n_counts != 3) {
+      SUMA_SL_Err("counts field must have 3 values");
+      goto CLEAN_EXIT; 
+   }
+   if (dxp->n_delta != 9) {
+      SUMA_SL_Err("delta must contain 9 elements!");
+      goto CLEAN_EXIT; 
+   }
+   
+   /* form the command */
+   SUMA_LH("Forming command");
+   /* 3d what? */
+   chunk = 0;
+   form[0] = '\0';
+   data_type = SUMA_VarType2TypeCast(dxa->type);
+   switch (data_type) {
+      case SUMA_float:
+         sprintf(form,"3Df");
+         chunk = sizeof(float);
+         break;
+      case SUMA_double:
+         sprintf(form,"3Dd");
+         chunk = sizeof(double);
+         break;
+      case SUMA_int:
+         sprintf(form,"3Di");
+         chunk = sizeof(int);
+         break;
+      case SUMA_short:
+         sprintf(form,"3Ds");
+         chunk = sizeof(short);
+         break;
+      case SUMA_byte:
+         sprintf(form,"3Db");
+         chunk = sizeof(byte);
+         break;
+      default:
+         SUMA_SL_Err("No support for this type");
+         goto CLEAN_EXIT; 
+         break;
+   }
+   /* byte ordering */
+   SUMA_WHAT_ENDIAN(End);
+   bs = 0;
+   swp[0] = '\0';
+   if (End != dxa->data_format) {
+      SUMA_LH("swapping needed");
+      bs = 1;
+      switch (chunk) {
+         case 1:
+            break;
+         case 2:
+            sprintf(swp,"-2swap");
+            break;
+         case 4:
+            sprintf(swp,"-4swap");
+            break;
+         case 8:
+            sprintf(swp,"-8swap");
+            break;
+         default:
+            SUMA_SL_Err("Patchunk!");
+            break;
+      }
+   }
+   if (dxa->data_off)  doff = (int)strtol(dxa->data_off,NULL, 10);
+   else doff = 0;
+   
+   /* direction that varies the fastest (x) is in the last delta
+      count is ordered like delta. I do not know about origin yet,
+      I assume that origin follows the ordering of count
+      see http://opendx.npaci.edu/docs/html/pages/usrgu068.htm 
+      for reference, someday....*/
+   
+   /* number of voxels */
+   LOAD_IVEC3( nxyz   , dxp->counts[2]    , dxp->counts[1]    , dxp->counts[0] ) ;
+   
+   /* orientation */
+   /* find closest orientation in RAI, delta matrix does allow for obliqueness (non diagonal matrix) but we ignore it */
+   LOAD_MAT(m33, 
+               dxp->delta[6], dxp->delta[7], dxp->delta[8], 
+               dxp->delta[3], dxp->delta[4], dxp->delta[5],
+               dxp->delta[0], dxp->delta[1], dxp->delta[2] );
+   orixyz = THD_matrix_to_orientation( m33 );
+
+   /* dimensions */
+   {  
+      float fb[3]; 
+      SUMA_NORM_VEC((&(dxp->delta[6])),3, fb[0]);
+      SUMA_NORM_VEC((&(dxp->delta[3])),3, fb[1]);
+      SUMA_NORM_VEC((&(dxp->delta[0])),3, fb[2]);
+      LOAD_FVEC3( dxyz   , fb[0]    , fb[1]    , fb[2]    ) ;
+      SUMA_sizeto3d_2_deltaHEAD(orixyz, &dxyz);
+   }
+   
+   /* origin , assumed to be center of first voxel*/
+   LOAD_FVEC3( orgxyz , dxp->origin[2]    , dxp->origin[1] , dxp->origin[0]  ) ;
+   SUMA_originto3d_2_originHEAD(orixyz, &orgxyz);
+    
+   /* start point (edge of origin voxel) and end point (opposite to start ) */
+   sp[0] = dxp->origin[2] + SUMA_ABS(dxyz.xyz[0]) / 2.0;
+   sp[1] = dxp->origin[1] + SUMA_ABS(dxyz.xyz[1]) / 2.0;
+   sp[2] = dxp->origin[0] + SUMA_ABS(dxyz.xyz[2]) / 2.0;
+   ep[0] = dxp->origin[2] + (nxyz.ijk[0] - 0.5) * SUMA_ABS(dxyz.xyz[0]);
+   ep[1] = dxp->origin[1] + (nxyz.ijk[1] - 0.5) * SUMA_ABS(dxyz.xyz[1]);
+   ep[2] = dxp->origin[0] + (nxyz.ijk[2] - 0.5) * SUMA_ABS(dxyz.xyz[2]);
+   SUMA_orcode_to_orstring (orixyz.ijk[0], orixyz.ijk[1], orixyz.ijk[2], orstr);
+   sprintf(xfov," -xFOV %.2f%c-%.2f%c", sp[0], orstr[0], ep[0], orstr[3]);
+   sprintf(yfov," -yFOV %.2f%c-%.2f%c", sp[1], orstr[1], ep[1], orstr[4]);
+   sprintf(zfov," -zFOV %.2f%c-%.2f%c", sp[2], orstr[2], ep[2], orstr[5]);
+  
+   
+   scom = (char *)SUMA_calloc((strlen(dxa->data)+500), sizeof(char));
+   sprintf(scom,"to3d %s %s %s %s -prefix %s %s:%d:0:%d:%d:%d:%s ", swp, xfov, yfov, zfov, prefix, form, doff, dxp->counts[2], dxp->counts[1], dxp->counts[0], dxa->data);
+   
+   
+   if (dset) { /* form the dset header */
+         int nvals_read = 0;
+         EDIT_dset_items( dset ,
+                            ADN_prefix      , prefix ,
+                            ADN_datum_all   , data_type ,
+                            ADN_nxyz        , nxyz ,
+                            ADN_xyzdel      , dxyz ,
+                            ADN_xyzorg      , orgxyz ,
+                            ADN_xyzorient   , orixyz ,
+                            ADN_malloc_type , DATABLOCK_MEM_MALLOC ,
+                            ADN_view_type   , VIEW_ORIGINAL_TYPE ,
+                            ADN_type        , HEAD_ANAT_TYPE ,
+                            ADN_func_type   , ANAT_BUCK_TYPE ,
+                          ADN_none ) ;
+
+         if (LoadData) {
+            void *vec=NULL;
+            if (!(vec = SUMA_BinarySuck(dxa->data, data_type, dxa->data_format, doff, -1, &nvals_read))) {
+               SUMA_SL_Err("Failed to read data file"); goto CLEAN_EXIT;
+            }
+            EDIT_substitute_brick( dset , 0 , data_type , vec) ;      
+            if (LocalHead) fprintf(SUMA_STDERR,"%s: Read %d values from file.\n", FuncName, nvals_read);
+            /* DSET_write(dset) ; */
+         }
+   }
+   
+
+   
+   CLEAN_EXIT:
+   dxv = SUMA_Free_OpenDX_StructVec(dxv, iop);
+   if (prefix) SUMA_free(prefix); prefix = NULL;
+   
+   SUMA_RETURN(scom);
+}
+
+/*!
+   \brief reads an OpenDX surface. Sample surfaces provided by Aaron Carass
+   
+   The following fields are set in SO:
+   SO->NodeDim
+   SO->FaceSetDim
+   SO->NodeList
+   SO->FaceSetList
+   SO->N_Node;
+   SO->N_FaceSet;
+   SO->Name;
+   SO->FileType;
+   SO->FileFormat
+
+*/
+SUMA_Boolean SUMA_OpenDX_Read_SO(char *fname, SUMA_SurfaceObject *SO)
+{
+   static char FuncName[]={"SUMA_OpenDX_Read_SO"};
+   int i = 0, nf, iop;
+   SUMA_OPEN_DX_STRUCT **dxv=NULL, *dxp=NULL, *dxc = NULL, *dxf = NULL, *dxo = NULL;
+   SUMA_Boolean ans = NOPE;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!SO || !fname) {
+      SUMA_SL_Err("NULL fname || NULL SO!");
+      SUMA_RETURN(NOPE);
+   }
+   
+   SUMA_LH("Reading objects");
+   dxv = SUMA_OpenDX_Read(fname, &iop);
+   if (!dxv) {
+      SUMA_SL_Err("Failed to read DX file.");
+      SUMA_RETURN(NOPE);
+   }
+   
+   
+   SUMA_LH("Checking for field object");
+   dxf = SUMA_Find_OpenDX_Object_Class(dxv, iop, "field", &nf);
+   if (!dxf || nf != 1) { SUMA_SL_Err("Failed to find one and only one field object"); goto CLEAN_EXIT; }
+   /* get names of objects that contain positions and connections */
+   dxp = dxc = dxo = NULL;   
+   for (i=0; i<dxf->n_comp; ++i) {
+      if (strstr(dxf->comp_name[i],"positions")) {
+         dxp = SUMA_Find_OpenDX_Object_Name(dxv, iop, dxf->comp_value[i], &nf); 
+         if (!dxp || nf != 1) { SUMA_SL_Err("Failed to find one and only one positions object"); goto CLEAN_EXIT; }
+      }
+      if (strstr(dxf->comp_name[i],"connections")) {
+         dxc = SUMA_Find_OpenDX_Object_Name(dxv, iop, dxf->comp_value[i], &nf); 
+         if (!dxc || nf != 1) { SUMA_SL_Err("Failed to find one and only one connections object"); goto CLEAN_EXIT; }
+      }
+      if (strstr(dxf->comp_name[i],"origin")) {
+         dxo = SUMA_Find_OpenDX_Object_Name(dxv, iop, dxf->comp_value[i], &nf); 
+         if (!dxo || nf != 1) { SUMA_SL_Err("Failed to find one and only one origin object.\nOrigin ignored"); }
+      }
+   }
+   
+   if (!dxp || !dxv) {
+      SUMA_SL_Err("Failed to find necessary objects"); goto CLEAN_EXIT;
+   }
+   
+   SUMA_LH("checking...");
+   if (SUMA_VarType2TypeCast (dxp->type) != SUMA_float) {
+      SUMA_SL_Err("Expected floats for positions"); goto CLEAN_EXIT;
+   }
+   if (dxp->bad_data) {
+      SUMA_SL_Err("Problem reading data for positions"); goto CLEAN_EXIT;
+   }
+   if (dxp->rank != 1) {
+      SUMA_SL_Err("Expected rank of 1 for positions"); goto CLEAN_EXIT;
+   }
+   if (dxp->shape != 3) {
+      SUMA_SL_Err("Expected rank of 3 for positions"); goto CLEAN_EXIT;
+   }
+   if (SUMA_VarType2TypeCast (dxc->type) != SUMA_int) {
+      SUMA_SL_Err("Expected ints for connections"); goto CLEAN_EXIT;
+   }
+   if (dxc->bad_data) {
+      SUMA_SL_Err("Problem reading data for connections"); goto CLEAN_EXIT;
+   }   
+   if (dxc->rank != 1) {
+      SUMA_SL_Err("Expected rank of 1 for connections"); goto CLEAN_EXIT;
+   }
+   if (dxc->shape != 3) {
+      SUMA_SL_Err("Expected rank of 3 for connections"); goto CLEAN_EXIT;
+   }
+   /* if dxo */
+   if (dxo) {
+      if (SUMA_VarType2TypeCast (dxo->type) != SUMA_float) {
+         SUMA_SL_Err("Expected floats for origin.\nOrigin ignored"); dxo = NULL;
+      }
+      if (!dxo->datap || dxo->shape * dxo->items != 3) {
+         SUMA_SL_Err("Unknown origin format, ignoring origin"); dxo = NULL;
+      }  
+   }
+   
+   SUMA_LH("Take the gold");
+   SO->FileType = SUMA_OPENDX_MESH;
+   SO->FileFormat = SUMA_ASCII;
+   
+   SO->NodeDim = dxp->shape;
+   SO->NodeList = (float *)dxp->datap; dxp->datap = NULL; /* datap will not be freed at end anymore */
+   SO->N_Node = dxp->items;
+   
+   SO->FaceSetDim = dxc->shape;
+   SO->FaceSetList = (int *)dxc->datap; dxc->datap = NULL; /* datap will not be freed at end anymore */
+   SO->N_FaceSet = dxc->items;;
+   SO->Name = SUMA_StripPath(fname);
+   
+   if (dxo) {
+      float *fvec=(float*)dxo->datap;
+      SUMA_LH("Adding origin");
+      i = 0;
+      while (i < dxp->items*dxp->shape) {
+         SO->NodeList[i] += fvec[0]; ++i;
+         SO->NodeList[i] += fvec[1]; ++i;
+         SO->NodeList[i] += fvec[2]; ++i;
+      }
+   }
+   
+   /* all is well here */
+   ans = YUP;
+
+   CLEAN_EXIT:
+   SUMA_LH("Frenching dxv");
+   for (i=0; i<iop; ++i) {
+      dxv[i] = SUMA_Free_OpenDX_Struct(dxv[i]);
+   }
+   if (dxv) SUMA_free(dxv); dxv = NULL;
+   SUMA_RETURN(YUP);
+}
+/*  >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> END OpenDX functions <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< */

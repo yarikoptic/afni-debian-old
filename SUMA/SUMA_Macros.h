@@ -1,12 +1,94 @@
 #ifndef SUMA_MACROSm_INCLUDED
 #define SUMA_MACROSm_INCLUDED
 
+
+/*!
+   Macro to create a new ID code at random (when strn = NULL) or a hash of a string
+   written mostly to allow for the allocation of newcode with SUMA's functions
+*/
+#define SUMA_NEW_ID(newcode, strn) { \
+   if ((newcode)) { SUMA_SL_Err("newcode pointer must be null"); } \
+   else if (!(strn)) { (newcode) = (char*)SUMA_calloc(SUMA_IDCODE_LENGTH, sizeof(char)); UNIQ_idcode_fill((newcode)); } \
+   else {   char *m_tmp; m_tmp = UNIQ_hashcode((strn)); (newcode) = SUMA_copy_string(m_tmp); free(m_tmp); m_tmp = NULL; }  \
+}
+
+
 #define SUMA_WHAT_ENDIAN(End){   \
    int m_one = 1;   \
    /* From RickR's Imon */ \
    End = (*(char *)&m_one == 1) ? LSB_FIRST : MSB_FIRST;   \
 }
-      
+
+#define SUMA_OTHER_ENDIAN(End){   \
+   End = (End == LSB_FIRST) ? MSB_FIRST : LSB_FIRST;   \
+}
+
+#define SUMA_SWAP_THIS(nip,chnk){   \
+   if (chnk == 4) SUMA_swap_4( nip ) ;  \
+      else if (chnk == 8) SUMA_swap_8( nip ) ;  \
+      else if (chnk == 2) SUMA_swap_2( nip ) ;  \
+      else { SUMA_SL_Err ("No swapping performed.") } \
+}   
+/*!
+   \brief a macro for reading one number at a time from a file
+   \param nip (void *) where values go
+   \param fp (FILE *)
+   \param ex (int) value returned by fread
+   \param chnk (int) sizeof(TYPE_YOU_READ)
+   
+   \sa SUMA_READ_NUM_BS
+*/   
+#define SUMA_READ_NUM(nip, fp, ex, chnk)  \
+{  \
+   ex = fread (nip, chnk, 1, fp); \
+}
+/*!
+   SUMA_READ_NUM with swapping 
+*/
+#define SUMA_READ_NUM_BS(nip, fp, ex, chnk)  \
+{  \
+   SUMA_READ_NUM(nip, fp, ex, chnk); \
+   if (chnk == 4) SUMA_swap_4( nip ) ;  \
+      else if (chnk == 8) SUMA_swap_8( nip ) ;  \
+      else if (chnk == 2) SUMA_swap_2( nip ) ;  \
+      else { SUMA_SL_Err ("No swapping performed.") } \
+}   
+/*!
+   \brief a macro for reading one integer from a file pointer.
+   
+   \param nip (int *)
+   \param bs (int) 0: no swap, 1 swap
+   \param fp (FILE *)
+   \param ex (int) value returned by fread
+*/
+#define SUMA_READ_INT(nip, bs, fp, ex)  \
+{  static int m_chnk = sizeof(int);\
+   ex = fread (nip, m_chnk, 1, fp); \
+   if (bs) {   \
+      if (m_chnk == 4) SUMA_swap_4( nip ) ;  \
+      else if (m_chnk == 8) SUMA_swap_8( nip ) ;  \
+      else if (m_chnk == 2) SUMA_swap_2( nip ) ; /* keep compiler quiet about using swap_2 */ \
+      else { SUMA_SL_Err ("No swapping performed.") } \
+   }  \
+}
+#define SUMA_READ_FLOAT(nip, bs, fp, ex)  \
+{  static int m_chnk = sizeof(float);\
+   ex = fread (nip, m_chnk, 1, fp); \
+   if (bs) {   \
+      if (m_chnk == 4) SUMA_swap_4( nip ) ;  \
+      else if (m_chnk == 8) SUMA_swap_8( nip ) ;  \
+      else { SUMA_SL_Err ("No swapping performed.") } \
+   }  \
+}
+
+#define SUMA_SWAP_VEC(vec,N_alloc,chnk) {\
+   int m_i; \
+      if (chnk == 4) { for (m_i=0; m_i<N_alloc; ++m_i) SUMA_swap_4(&(vec[m_i])); } \
+      else if (chnk == 2) { for (m_i=0; m_i<N_alloc; ++m_i) SUMA_swap_2(&(vec[m_i])); }   \
+      else if (chnk == 8) { for (m_i=0; m_i<N_alloc; ++m_i) SUMA_swap_8(&(vec[m_i])); }   \
+      else { SUMA_SL_Err("Bad chnk");   }   \
+}
+
 #define IS_STRICT_POS(a)   ( ((a) > 0) ? 1 : 0 )
 
 #define IS_POS(a)   ( ((a) >= 0) ? 1 : 0 )
@@ -252,7 +334,7 @@ if Dist = 0, point on plane, if Dist > 0 point above plane (along normal), if Di
 /*!
    Pause prompt, stdin
 */
-#define SUMA_PAUSE_PROMPT(s) { int m_jnk; fprintf(SUMA_STDOUT,"Pausing: %s  ...", s); fflush(SUMA_STDOUT); m_jnk = getchar(); fprintf(SUMA_STDOUT,"\n"); }
+#define SUMA_PAUSE_PROMPT(s) { int m_jnk; fprintf(SUMA_STDOUT,"Pausing: %s  ...", s); fflush(SUMA_STDOUT); m_jnk = getchar(); fprintf(SUMA_STDOUT,"\n"); fflush(SUMA_STDOUT);}
 
 /*!
    A macro to recalculate a surface's center and its bounding box 

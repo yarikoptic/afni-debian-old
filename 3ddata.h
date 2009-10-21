@@ -1463,9 +1463,10 @@ typedef struct {
 typedef struct {
   char str[MCW_IDSIZE] ;    /*!< Unique ID code string */
   char date[MCW_IDDATE] ;   /*!< Date string was generated */
- } MCW_idcode ;
+} MCW_idcode ;
 
-extern MCW_idcode MCW_new_idcode(void) ;
+extern MCW_idcode MCW_new_idcode (void) ;
+extern void       MCW_hash_idcode( char *, struct THD_3dim_dataset * ) ;
 
 /*! Check if 2 ID code strings are equal. */
 
@@ -1959,7 +1960,7 @@ typedef struct THD_3dim_dataset {
       int type ;        /*!< type code: HEAD_ANAT_TYPE or HEAD_FUNC_TYPE or GEN_ANAT_TYPE or GEN_FUNC_TYPE */
 
       int view_type ;   /*!< view code: VIEW_ORIGINAL_TYPE or VIEW_ACPCALIGNED_TYPE or VIEW_TALAIRACH_TYPE */
-      int func_type ;   /*!< datasset type: one of FUNC_*_TYPE or ANAT_*_TYPE codes */
+      int func_type ;   /*!< dataset type: one of FUNC_*_TYPE or ANAT_*_TYPE codes */
 
       char label1[THD_MAX_LABEL] ;  /*!< short label #1: not used for anything anymore */
       char label2[THD_MAX_LABEL] ;  /*!< short label #2: even more obsolete */
@@ -2048,9 +2049,10 @@ typedef struct THD_3dim_dataset {
 
 /*! Determine if ds is a pointer to a valid dataset. */
 
-#define ISVALID_3DIM_DATASET(ds) \
+#define ISVALID_3DIM_DATASET(ds)                      \
    ( (ds) != NULL && (ds)->type >= FIRST_3DIM_TYPE && \
-                     (ds)->type <= LAST_3DIM_TYPE )
+                     (ds)->type <= LAST_3DIM_TYPE  && \
+      ISVALID_DATABLOCK((ds)->dblk)                  )
 
 /*! Determine if ds is a pointer to a valid dataset. */
 
@@ -3144,6 +3146,8 @@ extern THD_3dim_dataset * THD_open_nifti( char * ) ;        /* 28 Aug 2003 */
 extern THD_3dim_dataset * THD_open_mpeg( char * ) ;         /* 03 Dec 2003 */
 extern THD_3dim_dataset * THD_open_tcat( char * ) ;         /* 04 Aug 2004 */
 
+extern void THD_datablock_apply_atr( THD_3dim_dataset * ) ; /* 09 May 2005 */
+
 extern THD_3dim_dataset * THD_fetch_dataset      (char *) ; /* 23 Mar 2001 */
 extern XtPointer_array *  THD_fetch_many_datasets(char *) ;
 extern MRI_IMAGE *        THD_fetch_1D           (char *) ; /* 26 Mar 2001 */
@@ -3282,7 +3286,8 @@ extern THD_3dim_dataset_array *
 extern Boolean THD_write_3dim_dataset( char *,char * ,
                                        THD_3dim_dataset * , Boolean );
 
-extern void THD_use_3D_format( int ) ;  /* 21 Mar 2003 */
+extern void THD_use_3D_format   ( int ) ;  /* 21 Mar 2003 */
+extern void THD_use_NIFTI_format( int ) ;  /* 06 Apr 2005 */
 
 extern Boolean THD_write_datablock( THD_datablock * , Boolean ) ;
 extern Boolean THD_write_atr( THD_datablock * ) ;
@@ -3337,6 +3342,7 @@ extern void THD_check_idcodes( THD_sessionlist * ) ; /* 08 Jun 1999 */
 extern void THD_load_statistics( THD_3dim_dataset * ) ;
 extern void THD_update_statistics( THD_3dim_dataset * ) ;
 extern THD_brick_stats THD_get_brick_stats( MRI_IMAGE * ) ;
+extern void THD_update_one_bstat( THD_3dim_dataset * , int ) ; /* 29 Mar 2005 */
 
 extern THD_fvec3 THD_3dind_to_3dmm( THD_3dim_dataset * , THD_ivec3 ) ;
 extern THD_fvec3 THD_3dind_to_3dmm_no_wod( THD_3dim_dataset * , THD_ivec3 ) ;
@@ -3502,10 +3508,12 @@ extern void THD_mask_erode( int nx, int ny, int nz, byte *mmm ) ;
 
 extern int THD_peel_mask( int nx, int ny, int nz , byte *mmm, int pdepth ) ;
 
-extern void THD_mask_dilate( int, int, int, byte *, int ) ; /* 30 Aug 2002 */
+extern void THD_mask_dilate( int, int, int, byte *, int ) ;  /* 30 Aug 2002 */
 
-extern float THD_cliplevel( MRI_IMAGE * , float ) ;        /* 12 Aug 2001 */
-extern MRI_IMAGE * THD_median_brick( THD_3dim_dataset * ) ;
+extern float THD_cliplevel( MRI_IMAGE * , float ) ;          /* 12 Aug 2001 */
+extern MRI_IMAGE * THD_median_brick( THD_3dim_dataset * ) ;  /* 12 Aug 2001 */
+extern MRI_IMAGE * THD_mean_brick  ( THD_3dim_dataset * ) ;  /* 15 Apr 2005 */
+extern MRI_IMAGE * THD_rms_brick   ( THD_3dim_dataset * ) ;  /* 15 Apr 2005 */
 
  /* 08 Mar 2001 - functions for dealing with rows */
 

@@ -2,7 +2,6 @@
 
 /*************************************************************************/
 /********************* Functions for NIML I/O ****************************/
-/*** See http://www.manualy.sk/sock-faq/unix-socket-faq.html for info. ***/
 /*************************************************************************/
 
 /*! To print a system error message. */
@@ -15,8 +14,8 @@
 # define PERROR(x)
 #endif
 
-#include <signal.h>
-#include <fcntl.h>
+#include <signal.h>   /* signal handler stuff */
+#include <fcntl.h>    /* file control stuff  */
 
 /*! For tcp - indicates that SIGPIPE is ignored;
     will be set the first time tcp_send is called. */
@@ -55,10 +54,24 @@ static int sigurg = 0 ;  /* 02 Jan 2004 */
 #define NEXTDMS(dm) MIN(1.1*(dm)+1.01,66.0)
 
 /*-------------------------------------------------------------------*/
-/*! List of currently open streams. */
+/*! Number of entries on the list of currently open streams.
+
+    This list is needed so we can deal with the SIGURG signal,
+    which we use as a message to shut a socket down.  The signal
+    call itself doesn't tell us which socket was the trigger,
+    so we have to search all the open sockets for a match:
+    hence, this list of open streams.
+---------------------------------------------------------------------*/
 
 static int           num_open_streams = 0 ;
+
+/*! The actual array of open NIML streams. */
+
 static NI_stream_type ** open_streams = NULL ;
+
+/*! Signal that we are doing atexit() stuff. */
+
+static volatile int doing_atexit = 0 ;  /* 05 May 2005 */
 
 /*-------------------------------------------------------------------*/
 /*! Add a stream to the open list. */
@@ -82,7 +95,7 @@ static void remove_open_stream( NI_stream_type *ns )
 {
    int nn = num_open_streams , ii,jj ;
 
-   if( nn <= 0 || ns == NULL ) return ;  /* bad input */
+   if( doing_atexit || nn <= 0 || ns == NULL ) return ;  /* bad input */
 
    for( ii=0 ; ii < nn ; ii++ )          /* find input */
      if( open_streams[ii] == ns ) break ;
@@ -95,8 +108,29 @@ static void remove_open_stream( NI_stream_type *ns )
 }
 
 /*------------------------------------------------------------------*/
+/*! At program exit, close all open streams. */
+
+static void atexit_open_streams(void)  /* 22 Apr 2005 */
+{
+   int ii ;
+   if( doing_atexit ) return ;
+   doing_atexit = 1 ;
+   for( ii=0 ; ii < num_open_streams ; ii++ ){
+     NI_sleep(2) ;
+     NI_stream_close_keep( open_streams[ii] , 5 ) ;
+   }
+   return ;
+}
+
+/*! Variable to indicate that the atexit() call has/hasn't been made */
+
+static int atexit_is_setup = 0 ;
+
+/*------------------------------------------------------------------*/
 /*! Signal handler for SIGURG -- for incoming OOB data on a socket.
-    We just close the NI_stream that the socket is attached to.     */
+    We just close the NI_stream that the socket is attached to.
+    But first we have to find it!
+--------------------------------------------------------------------*/
 
 static void tcp_sigurg_handler( int sig )
 {
@@ -108,7 +142,7 @@ static void tcp_sigurg_handler( int sig )
 
    if( sig != SIGURG         ||
        busy                  ||
-       num_open_streams <= 0 || open_streams == NULL ) return ;
+       num_open_streams <= 0 || open_streams == NULL ) return ;  /* bad */
 
    busy = 1 ;  /* prevent recursion! */
 
@@ -151,6 +185,7 @@ static void tcp_sigurg_handler( int sig )
 
 /********************************************************************
   Routines to manipulate TCP/IP stream sockets.
+  See http://www.manualy.sk/sock-faq/unix-socket-faq.html for info.
 *********************************************************************/
 
 /*-------------------------------------------------------------------*/
@@ -170,7 +205,7 @@ static int tcp_readcheck( int sd , int msec )
 {
    int ii ;
    fd_set rfds ;
-   struct timeval tv , * tvp ;
+   struct timeval tv , *tvp ;
 
    if( sd < 0 ) return -1 ;                     /* bad socket id */
 
@@ -430,11 +465,11 @@ static int tcp_listen( int port )
    sin.sin_addr.s_addr = INADDR_ANY ;  /* reader reads from anybody */
 
    if( bind(sd , (struct sockaddr *)&sin , sizeof(sin)) == -1 ){
-      PERROR("tcp_listen(bind)"); CLOSEDOWN(sd); return -1;
+     PERROR("tcp_listen(bind)"); CLOSEDOWN(sd); return -1;
    }
 
    if( listen(sd,1) == -1 ){
-      PERROR("tcp_listen(listen)"); CLOSEDOWN(sd); return -1;
+     PERROR("tcp_listen(listen)"); CLOSEDOWN(sd); return -1;
    }
 
    tcp_set_cutoff( sd ) ;
@@ -498,11 +533,11 @@ static int tcp_accept( int sd , char **hostname , char **hostaddr )
    /** get name of connector **/
 
    if( hostname != NULL ){
-      hostp = gethostbyaddr( (char *) (&pin.sin_addr) ,
-                             sizeof(struct in_addr) , AF_INET ) ;
+     hostp = gethostbyaddr( (char *) (&pin.sin_addr) ,
+                            sizeof(struct in_addr) , AF_INET ) ;
 
-      if( hostp != NULL ) *hostname = NI_strdup(hostp->h_name) ;
-      else                *hostname = NI_strdup("UNKNOWN") ;  /* bad lookup */
+     if( hostp != NULL ) *hostname = NI_strdup(hostp->h_name) ;
+     else                *hostname = NI_strdup("UNKNOWN") ;  /* bad lookup */
    }
 
    tcp_set_cutoff( sd_new ) ;  /* let it die quickly, we hope */
@@ -516,9 +551,10 @@ static int tcp_accept( int sd , char **hostname , char **hostaddr )
 static int     host_num  = 0 ;    /*!< Number of trusted hosts. */
 static char ** host_list = NULL ; /*!< IP addresses in dotted form. */
 
-static char * init_hosts[] = { /*!< Initial list of OK computers */
+static char *init_hosts[] = {  /*!< Initial list of OK computers */
     "127.0.0.1"    ,           /* localhost is always OK */
-    "192.168."                 /* private class B networks */
+    "192.168."     ,           /* private class B networks */
+    "128.231.21"               /* SSCC/NIMH/NIH/DHHS/USA */
 } ;
 #define INIT_NHO (sizeof(init_hosts)/sizeof(char *))
 #define HSIZE    32
@@ -532,8 +568,8 @@ static char * init_hosts[] = { /*!< Initial list of OK computers */
 
 char * NI_hostname_to_inet( char *host )
 {
-   struct hostent * hostp ;
-   char * iname = NULL , * str ;
+   struct hostent *hostp ;
+   char * iname = NULL , *str ;
    int ll ;
 
    if( host == NULL || host[0] == '\0' ) return NULL ;
@@ -556,7 +592,7 @@ static int hostname_dotted( char *hnam )
    if( hnam == NULL ) return 0 ;
    nh = strlen(hnam) ;
    for( ii=0 ; ii < nh ; ii++ )
-      if( !isdigit(hnam[ii]) && hnam[ii] != '.' ) return 0 ;
+     if( !isdigit(hnam[ii]) && hnam[ii] != '.' ) return 0 ;
    return 1 ;
 }
 
@@ -571,14 +607,14 @@ static void add_trusted_host( char *hnam )
 
    if( hnam == NULL || hnam[0] == '\0' ) return ;
 
-   if( !hostname_dotted(hnam) ){          /* not a dotted number */
-      hh = NI_hostname_to_inet( hnam ) ;  /* so do a lookup on it */
-      if( hh == NULL ) return ;           /* failed? */
+   if( !hostname_dotted(hnam) ){         /* not a dotted number */
+     hh = NI_hostname_to_inet( hnam ) ;  /* so do a lookup on it */
+     if( hh == NULL ) return ;           /* failed? */
 
    } else if( strlen(hnam) > HSIZE-1 ){   /* something bad? */
-      return ;
+     return ;
    } else {
-      hh = hnam ;                     /* store dotted number */
+     hh = hnam ;                     /* store dotted number */
    }
 
    host_list = NI_realloc(host_list, char*,sizeof(char *)*(host_num+1)) ;
@@ -595,22 +631,39 @@ static void add_trusted_host( char *hnam )
 static void init_trusted_list(void)
 {
    int ii ;
-   char ename[HSIZE] , * str ;
+   char ename[HSIZE] , *str ;
 
-   if( host_num == 0 ){
-      host_num = INIT_NHO ;
-      host_list = NI_malloc(char*, sizeof(char *) * INIT_NHO ) ;
-      for( ii=0 ; ii < INIT_NHO ; ii++ ){
-         host_list[ii] = NI_malloc(char, HSIZE) ;
-         strcpy( host_list[ii] , init_hosts[ii] ) ;
-      }
+   if( host_num == 0 ){      /** only execute this once **/
+     host_num = INIT_NHO ;
+     host_list = NI_malloc(char*, sizeof(char *) * INIT_NHO ) ;
+     for( ii=0 ; ii < INIT_NHO ; ii++ ){
+       host_list[ii] = NI_malloc(char, HSIZE) ;
+       strcpy( host_list[ii] , init_hosts[ii] ) ;
+     }
 
-      for( ii=0 ; ii <= 99 ; ii++ ){
-         sprintf(ename,"NIML_TRUSTHOST_%02d",ii) ;
-         str = getenv(ename) ;
-         if( str != NULL ) add_trusted_host(str) ;
-      }
+     for( ii=0 ; ii <= 99 ; ii++ ){
+       sprintf(ename,"NIML_TRUSTHOST_%02d",ii) ; str = getenv(ename) ;
+       if( str == NULL && ii <= 9 ){
+         sprintf(ename,"NIML_TRUSTHOST_%1d",ii) ; str = getenv(ename) ;
+       }
+       if( str == NULL && ii <= 9 ){
+         sprintf(ename,"NIML_TRUSTHOST_O%1d",ii) ; str = getenv(ename) ;
+       }
+       if( str != NULL ) add_trusted_host(str) ;
+     }
+
+     for( ii=0 ; ii <= 99 ; ii++ ){
+       sprintf(ename,"AFNI_TRUSTHOST_%02d",ii) ; str = getenv(ename) ;
+       if( str == NULL && ii <= 9 ){
+         sprintf(ename,"AFNI_TRUSTHOST_%1d",ii) ; str = getenv(ename) ;
+       }
+       if( str == NULL && ii <= 9 ){
+         sprintf(ename,"AFNI_TRUSTHOST_O%1d",ii) ; str = getenv(ename) ;
+       }
+       if( str != NULL ) add_trusted_host(str) ;
+     }
    }
+   return ;
 }
 
 /*--------------------------------------------------------------------------*/
@@ -676,7 +729,7 @@ int NI_trust_host( char *hostid )
 /*!  Convert a string to a key, for IPC operations.
 -----------------------------------------------------------------*/
 
-static key_t SHM_string_to_key( char * key_string )
+static key_t SHM_string_to_key( char *key_string )
 {
    int ii , sum ;
    key_t kk ;
@@ -699,7 +752,7 @@ static key_t SHM_string_to_key( char * key_string )
    Returns the shmid >= 0 if successful; returns -1 if failure.
 -----------------------------------------------------------------*/
 
-static int SHM_accept( char * key_string )
+static int SHM_accept( char *key_string )
 {
    key_t key ;
    int   shmid ;
@@ -714,7 +767,7 @@ static int SHM_accept( char * key_string )
    Returns the shmid >= 0 if successful; returns -1 if failure.
 -----------------------------------------------------------------*/
 
-static int SHM_create( char * key_string , int size )
+static int SHM_create( char *key_string , int size )
 {
    key_t key ;
    int   shmid ;
@@ -733,7 +786,7 @@ static int SHM_create( char * key_string , int size )
 
 static char * SHM_attach( int shmid )
 {
-   char * adr ;
+   char *adr ;
    adr = (char *) shmat( shmid , NULL , 0 ) ;
    if( adr == (char *) -1 ){ adr = NULL ; PERROR("SHM_attach") ; }
    return adr ;
@@ -770,7 +823,7 @@ static int SHM_nattach( int shmid )
    ii = shmctl( shmid , IPC_STAT , &buf ) ;
    if( ii < 0 ){
      if( eee != NULL ) fprintf(stderr,"SHM_nattach: trying again!\n") ;
-     NI_sleep(3) ;
+     NI_sleep(9) ;
      ii = shmctl( shmid , IPC_STAT , &buf ) ;
    }
    if( ii < 0 ){
@@ -804,12 +857,12 @@ static int SHM_nattach( int shmid )
 
 static int SHM_fill_accept( SHMioc *ioc )
 {
-   char * bbb ;
+   char *bbb ;
    int jj ;
 
    if( ioc == NULL || ioc->id < 0 ) return -1 ;      /* bad inputs?   */
 
-   NI_sleep(1) ;                                     /* wait a bit    */
+   NI_sleep(2) ;                                     /* wait a bit    */
    bbb = SHM_attach( ioc->id ) ;                     /* attach it     */
    if( bbb == NULL ) return -1 ;                     /* can't? quit   */
 
@@ -871,7 +924,7 @@ static int SHM_fill_accept( SHMioc *ioc )
  The input "name" is limited to a maximum of 127 bytes.
 -----------------------------------------------------------------*/
 
-static SHMioc * SHM_init( char * name , char * mode )
+static SHMioc * SHM_init( char *name , char *mode )
 {
    SHMioc *ioc ;
    int do_create , do_accept ;
@@ -930,7 +983,7 @@ static SHMioc * SHM_init( char * name , char * mode )
 
    if( do_accept ){
       ioc->whoami = SHM_ACCEPTOR ;
-      for( ii=0 ; ii < 3 ; ii++ ){      /* try to find segment */
+      for( ii=0 ; ii < 4 ; ii++ ){      /* try to find segment */
          ioc->id = SHM_accept( key ) ;  /* several times       */
          if( ioc->id >= 0 ) break ;     /* works? break out    */
          NI_sleep(ii+1) ;               /* wait 1 millisecond  */
@@ -959,7 +1012,7 @@ static SHMioc * SHM_init( char * name , char * mode )
    /** create a new shmem segment **/
 
    if( do_create ){
-      char * bbb ;
+      char *bbb ;
 
       ioc->whoami = SHM_CREATOR ;
       ioc->id = SHM_create( key, size1+size2+SHM_HSIZE+4 ) ; /* create it */
@@ -989,11 +1042,11 @@ static SHMioc * SHM_init( char * name , char * mode )
       *(ioc->bstart2) = 0 ;                                /* init markers 2*/
       *(ioc->bend2)   = size2-1 ;
 
-      NI_sleep(1) ;
+      NI_sleep(3) ;
       jj = SHM_nattach(ioc->id) ;                          /* # processes */
 
       if( jj < 2 ){
-        NI_sleep(2) ; jj = SHM_nattach(ioc->id) ;
+        NI_sleep(3) ; jj = SHM_nattach(ioc->id) ;
       }
 
       if( jj > 2 ){                                        /* should not  */
@@ -1038,10 +1091,10 @@ static int SHM_alivecheck( int shmid )
      + SHMioc is passed in as NULL
 ---------------------------------------------------------------------------*/
 
-static int SHM_goodcheck( SHMioc * ioc , int msec )
+static int SHM_goodcheck( SHMioc *ioc , int msec )
 {
    int ii , jj , ct ;
-   char * bbb ;
+   char *bbb ;
 
    /** check inputs for OK-osity **/
 
@@ -1586,6 +1639,10 @@ NI_stream NI_stream_open( char *name , char *mode )
 
    if( !do_create && !do_accept ) return NULL ;
 
+   if( ! atexit_is_setup ){         /* 22 Apr 2005 */
+     atexit(atexit_open_streams) ; atexit_is_setup = 1 ;
+   }
+
    /************************************/
    /***** deal with TCP/IP sockets *****/
 
@@ -1616,6 +1673,7 @@ NI_stream NI_stream_open( char *name , char *mode )
       ns->port = port ;         /* save the port #    */
       ns->nbuf = 0 ;            /* buffer is empty    */
       ns->npos = 0 ;            /* scan starts at 0   */
+      ns->b64_numleft = 0 ;
 
       ns->buf     = NI_malloc(char, NI_BUFSIZE) ;
       ns->bufsize = NI_BUFSIZE ;
@@ -1697,6 +1755,7 @@ NI_stream NI_stream_open( char *name , char *mode )
                                : NI_INPUT_MODE  ;
       ns->bad      = 0 ;
       ns->shmioc   = ioc ;
+      ns->b64_numleft = 0 ;
 
       ns->buf      = NI_malloc(char, NI_BUFSIZE) ;
       ns->bufsize  = NI_BUFSIZE ;
@@ -1738,6 +1797,7 @@ NI_stream NI_stream_open( char *name , char *mode )
       ns->io_mode  = do_create ? NI_OUTPUT_MODE
                                : NI_INPUT_MODE  ;
       ns->bad      = 0 ;
+      ns->b64_numleft = 0 ;
 
       ns->bufsize  = do_create ? 16 : NI_BUFSIZE ;
       ns->buf      = NI_malloc(char, ns->bufsize) ;
@@ -1802,6 +1862,7 @@ NI_stream NI_stream_open( char *name , char *mode )
       ns->io_mode  = do_create ? NI_OUTPUT_MODE
                                : NI_INPUT_MODE  ;
       ns->bad      = 0 ;
+      ns->b64_numleft = 0 ;
 
       ns->bufsize  = do_create ? 16 : NI_BUFSIZE ;
       ns->buf      = NI_malloc(char, ns->bufsize) ;
@@ -1831,6 +1892,7 @@ NI_stream NI_stream_open( char *name , char *mode )
                                : NI_INPUT_MODE  ;
       ns->bad      = 0 ;
       ns->npos     = 0 ;             /* scan starts at 0   */
+      ns->b64_numleft = 0 ;
 
       /* Note that bufsize == nbuf+1 for str:
          This is because we don't count the terminal NUL
@@ -1881,6 +1943,7 @@ NI_stream NI_stream_open( char *name , char *mode )
       ns->nbuf     = nn ;
       ns->bufsize  = nn ;
       ns->buf      = data ;
+      ns->b64_numleft = 0 ;
 
       NI_strncpy( ns->name , name , 256 ) ;
 
@@ -1992,7 +2055,7 @@ NI_dpr("NI_stream_reopen: opening new stream %s\n",msg) ;
    /* send message on old stream to other
       program, telling it to open the new stream */
 
-   sprintf(msg,"<ni_do ni_verb='reopen_this' ni_object='%s' />\n",nname) ;
+   sprintf(msg,"<?ni_do ni_verb='reopen_this' ni_object='%s' ?>\n",nname) ;
    kk = strlen(msg) ;
 
 #ifdef NIML_DEBUG
@@ -2312,6 +2375,7 @@ int NI_stream_goodcheck( NI_stream_type *ns , int msec )
 /*! Close a NI_stream, but don't free the insides.
     If (flag&1 != 0) send a "close_this" message to the other end.
     If (flag&2 != 0) use TCP OOB data to send a SIGURG to the other end.
+    If (flag&4 != 0) don't remove from open_stream list [from atexit()]
 -------------------------------------------------------------------------*/
 
 void NI_stream_close_keep( NI_stream_type *ns , int flag )
@@ -2323,7 +2387,8 @@ void NI_stream_close_keep( NI_stream_type *ns , int flag )
      return ;
    }
 
-   remove_open_stream( ns ) ;  /* 02 Jan 2004 */
+   if( (flag & 4) == 0 )         /* 22 Apr 2005 */
+     remove_open_stream( ns ) ;  /* 02 Jan 2004 */
 
    /*-- 20 Dec 2002: write a farewell message to the other end? --*/
 
@@ -2331,8 +2396,8 @@ void NI_stream_close_keep( NI_stream_type *ns , int flag )
        (ns->type == NI_TCP_TYPE || ns->type == NI_SHM_TYPE) &&
        NI_stream_writecheck(ns,1) > 0                          ){
 
-     NI_stream_writestring( ns , "<ni_do ni_verb='close_this' />\n" ) ;
-     NI_sleep(1) ;  /* give it a moment to read the message */
+     NI_stream_writestring( ns , "<?ni_do ni_verb='close_this' ?>\n" ) ;
+     NI_sleep(9) ;  /* give it an instant to read the message */
    }
 
    /*-- mechanics of closing for different stream types --*/
@@ -2341,6 +2406,7 @@ void NI_stream_close_keep( NI_stream_type *ns , int flag )
 
 #ifndef DONT_USE_SHM
       case NI_SHM_TYPE:
+        NI_sleep(9) ;                          /* 31 Mar 2005 */
         SHM_close( ns->shmioc ) ;              /* detach shared memory */
       break ;
 #endif
@@ -2361,8 +2427,9 @@ void NI_stream_close_keep( NI_stream_type *ns , int flag )
         if( ns->sd >= 0 ){
           if( (flag & 2) != 0 ){
             tcp_send( ns->sd , "X" , 1 , MSG_OOB ) ;   /* 02 Jan 2004 */
-            NI_sleep(1) ;
+            NI_sleep(9) ;
           }
+          NI_sleep(2) ;        /* 31 Mar 2005 */
           CLOSEDOWN(ns->sd) ;  /* close socket */
         }
       break ;
@@ -2899,7 +2966,7 @@ int NI_stream_readbuf( NI_stream_type *ns , char *buffer , int nbytes )
    while( nout < nbytes ){
 
      jj = MIN( bs , nbytes-nout ) ;         /* how much to try to read */
-     ii = NI_stream_fillbuf( ns,jj,6666 ) ; /* read into stream buffer */
+     ii = NI_stream_fillbuf( ns,jj,1666 ) ; /* read into stream buffer */
 
      if( ii > 0 ){                          /* got something */
        ii = ns->nbuf ;                      /* how much now in buffer */
@@ -2912,5 +2979,171 @@ int NI_stream_readbuf( NI_stream_type *ns , char *buffer , int nbytes )
    }
 
    if( nout == 0 && ii < 0 ) nout = -1 ;    /* no data and an I/O error */
+   return nout ;
+}
+
+/*-----------------------------------------------------------------------*/
+/*! Buffered read from a NI_stream, like NI_stream_readbuf, but also:
+      - Converts from Base64 to binary 'on the fly'.
+      - Will stop at a '<'.
+
+    Return value is number of bytes put into the buffer.  May be less than
+    nbytes if the stream closed (or was used up, or hit a '<') before
+    nbytes of data was read.  Will return -1 if something is rotten.
+-------------------------------------------------------------------------*/
+
+int NI_stream_readbuf64( NI_stream_type *ns , char *buffer , int nbytes )
+{
+   int ii , jj , bs , nout=0 ;
+   byte a ,b ,c  , w,x,y,z ;
+   byte ag,bg,cg ;
+   int num_reread , bpos ;
+
+   /** check for reasonable inputs **/
+
+   if( nbytes  == 0                        ) return  0; /* that was real easy */
+   if( buffer  == NULL || nbytes      <  0 ) return -1; /* stupid caller */
+   if( ns->buf == NULL || ns->bufsize == 0 ) return -1; /* shouldn't happen */
+   if( !NI_stream_readable(ns) )             return -1; /* stupid stream */
+
+   /* are there decoded leftover bytes from a previous call?
+      if so, use them up first */
+
+   if( ns->b64_numleft > 0 ){
+
+     if( ns->b64_numleft >= nbytes ){    /* have enough leftovers for all! */
+       memcpy( buffer , ns->b64_left , nbytes ) ;
+       ns->b64_numleft -= nbytes ;
+       if( ns->b64_numleft > 0 )   /* must shift remaining leftovers down */
+         memmove( ns->b64_left , ns->b64_left + nbytes , ns->b64_numleft ) ;
+       return nbytes ;                                 /* done done done! */
+     }
+
+     /* if here, have a few bytes leftover, but not enough */
+
+     memcpy( buffer , ns->b64_left , ns->b64_numleft ) ;
+     nout            = ns->b64_numleft ;   /* how many so far */
+     ns->b64_numleft = 0 ;                 /* have none left now */
+   }
+
+   /* now need to decode some bytes from the input stream;
+      this is done 4 input bytes at a time,
+      which are decoded to 3 output bytes                   */
+
+   load_decode_table() ;   /* prepare for Base64 decoding */
+
+   /** loopback point for reading more data from stream into internal buffer **/
+
+   num_reread = 0 ;
+ Base64Reread:
+   ag = bg = cg = 0 ;
+   num_reread++ ; if( num_reread > 5 ) goto Base64Done ; /* done waiting! */
+
+   /* read more data into buffer, if needed */
+
+   if( num_reread > 1 || ns->nbuf - ns->npos < 4 ){
+     NI_reset_buffer(ns) ;          /* discard used up data => ns->npos==0 */
+     ii = 5 - ns->nbuf ; if( ii <= 1 ) ii = 2 ;
+     ii = NI_stream_fillbuf( ns , ii , 1666 ) ;
+     if( ns->nbuf < 4 ) goto Base64Done ;     /* can't get no satisfaction! */
+   }
+
+   /*** Copy valid Base64 bytes out of buffer (skipping others),
+        converting them to binary as we get full quads,
+        putting the results into buffer.
+
+        Exit loop if we hit a '<' character (end of NIML element),
+        or hit an '=' character (end of Base64 data stream).
+
+        Jump back to Base64Reread (above) if we run out of data in the
+        buffer before we fulfill the caller's demand for nbytes of output. ***/
+
+   while( 1 ){
+     ag = bg = cg = 0 ;
+     bpos = ns->npos ;    /* scan forward in buffer using bpos */
+
+     /* get next valid Base64 character into w;
+        skip whitespaces and other non-Base64 stuff;
+        if we hit the end token '<' first, quit;
+        if we hit the end of the buffer first, need more data */
+
+     w = ns->buf[bpos++] ;
+     while( !B64_goodchar(w) && w != '<' && bpos < ns->nbuf )
+       w = ns->buf[bpos++] ;
+     ns->npos = bpos-1 ;  /** if we have to reread, will start here, at w **/
+     if( w == '<' ) goto Base64Done;
+     if( bpos == ns->nbuf ) goto Base64Reread;  /* not enuf data yet */
+
+     /* repeat to fill x */
+
+     x = ns->buf[bpos++] ;
+     while( !B64_goodchar(x) && x != '<' && bpos < ns->nbuf )
+       x = ns->buf[bpos++] ;
+     if( x == '<' ){ ns->npos = bpos-1; goto Base64Done; }
+     if( bpos == ns->nbuf ) goto Base64Reread;
+
+     /* repeat to fill y */
+
+     y = ns->buf[bpos++] ;
+     while( !B64_goodchar(y) && y != '<' && bpos < ns->nbuf )
+       y = ns->buf[bpos++] ;
+     if( y == '<' ){ ns->npos = bpos-1; goto Base64Done; }
+     if( bpos == ns->nbuf ) goto Base64Reread;
+
+     /* repeat to fill z */
+
+     z = ns->buf[bpos++] ;
+     while( !B64_goodchar(z) && z != '<' && bpos < ns->nbuf )
+       z = ns->buf[bpos++] ;
+     if( z == '<' ){ ns->npos = bpos-1; goto Base64Done; }
+
+     /* at this point, have w,x,y,z to decode */
+
+     ns->npos = bpos ;  /* scan continues at next place in buffer */
+
+     B64_decode4(w,x,y,z,a,b,c) ;  /* decode 4 bytes into 3 */
+
+     if( z == '=' ){                        /* got to the end of Base64? */
+       int nn = B64_decode_count(w,x,y,z) ; /* see how many bytes to save */
+       ag = (nn > 0) ;  /* a byte is good? */
+       bg = (nn > 1) ;  /* b byte is good? */
+       cg = 0        ;  /* c byte is bad!! */
+
+       /* save good bytes into output buffer;
+          if we reach end of the required number of bytes, we're done */
+
+       if( ag ){ buffer[nout++]=a; ag=0; if(nout >= nbytes) goto Base64Done; }
+       if( bg ){ buffer[nout++]=b; bg=0; if(nout >= nbytes) goto Base64Done; }
+       goto Base64Done ;
+     }
+
+     /* not at the end of Base64 =>
+        save bytes, and skip out if we fill up the output array */
+
+     ag = bg = cg = 1 ;  /* all 3 bytes are good */
+     buffer[nout++]=a; ag=0; if(nout >= nbytes) goto Base64Done;
+     buffer[nout++]=b; bg=0; if(nout >= nbytes) goto Base64Done;
+     buffer[nout++]=c; cg=0; if(nout >= nbytes) goto Base64Done;
+
+     /* now, loop back to decode the next 4 bytes;
+        BUT, if we don't have at least 4 bytes in the input buffer,
+             must do a re-read first!                               */
+
+     num_reread = 1 ; /* finished at least 1 quad ==> reset penalty clock */
+     if( ns->nbuf - ns->npos < 4 ) goto Base64Reread ;
+
+   } /* end of while(1) loop */
+
+  /* At this point:
+      have finished reading and decoding,
+      have nout bytes in output buffer,
+      and might have some good bytes left that need to be saved */
+
+Base64Done:
+   ns->b64_numleft = 0 ;
+   if( ag ) ns->b64_left[ ns->b64_numleft++ ] = a ;
+   if( bg ) ns->b64_left[ ns->b64_numleft++ ] = b ;
+   if( cg ) ns->b64_left[ ns->b64_numleft++ ] = c ;
+
    return nout ;
 }

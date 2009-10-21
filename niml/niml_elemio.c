@@ -114,10 +114,10 @@ void * NI_read_element_header( NI_stream_type *ns , int msec )
    bad (i.e., will return no more data ever).  To check for the latter
    case, use NI_stream_readcheck().
 
-   If a "<ni_do ... />" element is encountered, it will not be
-   returned to the caller.  Instead, the actions it orders will
-   be carried out in function NI_do(), and the function will loop
-   back to find some other input.
+   If a "<ni_do ... />" or "<?ni_do ... ?>" element is encountered,
+   it will not be returned to the caller.  Instead, the actions it
+   orders will be carried out in function NI_do(), and the function
+   will loop back to find some other input.
 ----------------------------------------------------------------------*/
 
 void * NI_read_element( NI_stream_type *ns , int msec )
@@ -163,7 +163,7 @@ NI_dpr("NI_read_element: HeadRestart scan_for_angles; num_restart=%d\n" ,
 
    if( nn < 0 ){
      if( NI_stream_readcheck(ns,0) < 0 ) return NULL ;   /* connection lost */
-     NI_sleep(1); goto HeadRestart;                      /* try again */
+     NI_sleep(2); goto HeadRestart;                      /* try again */
    }
 
 #ifdef NIML_DEBUG
@@ -214,6 +214,18 @@ NI_dpr("NI_read_element: header parsed successfully\n") ;
 
      NI_procins *npi ;
 
+     if( strcmp(hs->name,"?ni_do") == 0 ){  /* 19 Apr 2005: special case! */
+       NI_element *nel ;
+       nel = make_empty_data_element( hs ) ;         /* temporary element */
+       destroy_header_stuff( hs ) ;
+       NI_do( ns , nel ) ;                        /* do the stuff it says */
+       NI_free_element( nel ) ;                        /* then destroy it */
+       if( ns->bad == MARKED_FOR_DEATH || ns->buf == NULL ) return NULL ;
+       num_restart = 0 ; goto HeadRestart ;
+     }
+
+     /* normal case: make a procins element */
+
      npi       = NI_malloc(NI_procins,sizeof(NI_procins)) ;
      npi->type = NI_PROCINS_TYPE ;
      npi->name = NI_strdup( hs->name + 1 ) ; /* skip the '?' */
@@ -227,6 +239,7 @@ NI_dpr("NI_read_element: header parsed successfully\n") ;
      }
 
      destroy_header_stuff( hs ) ;
+
      return npi ;
 
    } /*--- end of reading a processing instruction ---*/
@@ -349,8 +362,10 @@ NI_dpr("NI_read_element: returning empty element\n") ;
 
          if( strstr(nel->attr_rhs[ii],"binary") != NULL )
             form = NI_BINARY_MODE ;
-         else if( strstr(nel->attr_rhs[ii],"base64") != NULL )
+         else if( strstr(nel->attr_rhs[ii],"base64") != NULL ){
             form = NI_BASE64_MODE ;
+            ns->b64_numleft = 0 ;    /* 21 Apr 2005: reset Base64 leftovers */
+         }
 
          /* check byteorder in header vs. this CPU */
 
@@ -431,9 +446,9 @@ NI_dpr("NI_read_element: returning filled data element\n") ;
       /*-- 23 Aug 2002: do something, instead of returning data? --*/
 
       if( strcmp(nel->name,"ni_do") == 0 ){
-         NI_do( ns , nel ) ;
-         NI_free_element( nel ) ;
-         num_restart = 0 ; goto HeadRestart ;
+        NI_do( ns , nel ) ;
+        NI_free_element( nel ) ;
+        num_restart = 0 ; goto HeadRestart ;
       }
 
       return nel ;
@@ -691,13 +706,13 @@ void NI_reset_buffer( NI_stream_type *ns )
    if( ns == NULL || ns->npos <= 0 || ns->nbuf <= 0 ) return ;
    if( ns->buf == NULL || ns->bad == MARKED_FOR_DEATH ) return ;
 
-   if( ns->npos < ns->nbuf ){           /* haven't used up all data yet */
-      memmove( ns->buf, ns->buf+ns->npos, ns->nbuf-ns->npos ) ;
-      ns->nbuf -= ns->npos ;
+   if( ns->npos < ns->nbuf ){          /* haven't used up all data yet */
+     memmove( ns->buf, ns->buf+ns->npos, ns->nbuf-ns->npos ) ;
+     ns->nbuf -= ns->npos ;
    } else {
-      ns->nbuf = 0 ;                   /* all data in buffer is used up */
+     ns->nbuf = 0 ;                   /* all data in buffer is used up */
    }
-   ns->npos = 0 ;               /* further scanning starts at beginning */
+   ns->npos = 0 ;              /* further scanning starts at beginning */
 }
 
 /*----------------------------------------------------------------------*/

@@ -263,6 +263,10 @@ typedef struct {
 
       float func_pval ;  /* 06 Feb 2004 */
 
+      int stats_anat_ok,     /* 29 Mar 2005: set in AFNI_range_label() */
+          stats_func_ok,     /*   to indicate if the sub-brick range  */
+          stats_thresh_ok ;  /*   statistics are loaded properly     */
+
 } AFNI_view_info ;
 
 #define AXIAL    1       /* 20 Feb 2003: view_setter codes */
@@ -626,10 +630,9 @@ typedef struct {
    Widget hidden_mission_pb ;  /* 06 Jun 2001 */
    Widget hidden_gamberi_pb ;  /* 14 Oct 2003 */
    Widget hidden_ranpoem_pb ;  /* 15 Oct 2003 */
-
    Widget hidden_speech_pb  ;  /* 25 Nov 2003 */
-
    Widget hidden_faces_pb   ;  /* 17 Dec 2004 */
+   Widget hidden_browser_pb ;  /* 22 Apr 2005 */
 
 #endif  /* USE_HIDDEN */
 

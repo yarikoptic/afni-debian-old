@@ -10,7 +10,7 @@
  */
 
 /*----------------------------------------------------------------------
-  $Id: plug_crender.c,v 1.24 2005/03/22 18:52:01 rickr Exp $
+  $Id: plug_crender.c,v 1.26 2005/04/20 20:29:00 rwcox Exp $
   ----------------------------------------------------------------------
 */
 
@@ -5998,6 +5998,10 @@ ENTRY( "RCREND_open_func_CB" );
       RCREND_init_cmap() ;                    /* setup the colormap */
 
       POPUP_cursorize(wfunc_color_label) ;
+      if( wfunc_color_pbar->bigmode )
+        POPUP_cursorize( wfunc_color_pbar->panew ) ;  /* 08 Apr 2005 */
+      else
+        NORMAL_cursorize( wfunc_color_pbar->panew ) ;  /* 08 Apr 2005 */
    }
 
    MCW_invert_widget(wfunc_open_pb) ;       /* a flag */
@@ -6341,9 +6345,11 @@ ENTRY( "RCREND_colornum_av_CB" );
 
       PBAR_set_bigmode( wfunc_color_pbar , 1 , pmin,pmax ) ;
       RCREND_color_pbar_CB( wfunc_color_pbar, im3d, 0 ) ;
+      POPUP_cursorize( wfunc_color_pbar->panew ) ;  /* 08 Apr 2005 */
    } else {
       wfunc_color_pbar->bigmode = 0 ;
       alter_MCW_pbar( wfunc_color_pbar , av->ival , NULL ) ;
+      NORMAL_cursorize( wfunc_color_pbar->panew ) ;  /* 08 Apr 2005 */
    }
    FIX_SCALE_SIZE ;
    INVALIDATE_OVERLAY ;
@@ -6374,10 +6380,10 @@ ENTRY( "RCREND_color_bbox_CB" );
       wfunc_color_pbar->bigset = 0 ;
       PBAR_set_bigmode( wfunc_color_pbar , 1 , pmin,pmax ) ;
       AFNI_inten_pbar_CB( wfunc_color_pbar , im3d , 0 ) ;
-
+      POPUP_cursorize( wfunc_color_pbar->panew ) ;  /* 08 Apr 2005 */
    } else {
-
-   alter_MCW_pbar( wfunc_color_pbar , wfunc_color_pbar->npan_save[jm] , NULL ) ;
+      alter_MCW_pbar( wfunc_color_pbar, wfunc_color_pbar->npan_save[jm], NULL );
+      NORMAL_cursorize( wfunc_color_pbar->panew ) ;  /* 08 Apr 2005 */
    }
    FIX_SCALE_SIZE ;
 
@@ -6702,14 +6708,15 @@ ENTRY( "RCREND_finalize_saveim_CB" );
 
                      ptr = strstr(fname,".ppm") ;
    if( ptr == NULL ) ptr = strstr(fname,".pnm") ;
+   if( ptr == NULL ) ptr = strstr(fname,".jpg") ;
    if( ptr == NULL ) strcat(fname,".ppm") ;
 
    fprintf(stderr,"Writing palette image to %s\n",fname) ;
 
    ptr = getenv( "AFNI_PBAR_IMXY" );
    if( ptr != NULL ){
-      ll = sscanf( ptr , "%dx%d" , &nx , &ny ) ;
-      if( ll < 2 || nx < 1 || ny < 32 ){ nx=20; ny=256; }
+     ll = sscanf( ptr , "%dx%d" , &nx , &ny ) ;
+     if( ll < 2 || nx < 1 || ny < 32 ){ nx=20; ny=256; }
    }
 
    im = MCW_pbar_to_mri( wfunc_color_pbar , nx,ny ) ;

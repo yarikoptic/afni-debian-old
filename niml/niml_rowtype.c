@@ -590,7 +590,7 @@ int NI_rowtype_define( char *tname , char *tdef )
                    since a recursive call via NI_rowtype_find_name()
                    might have created a new rowtype before this one.
                    An example definition: "int,VECTOR_float_32,int".  */
-                  
+
    rt->code = ROWTYPE_BASE_CODE + rowtype_num ;
 
    /** debugging printouts **/
@@ -638,6 +638,26 @@ int NI_rowtype_define( char *tname , char *tdef )
 
    ROWTYPE_register(rt) ;
    return rt->code ;
+}
+
+/*--------------------------------------------------------------------*/
+/*! Make an 'ni_do' element that defines a given rowtype. */
+
+NI_procins * NI_rowtype_procins( NI_rowtype *rt )  /* 19 Apr 2005 */
+{
+   NI_procins *npi ;
+   char *rhs ;
+
+   if( rt == NULL ) return NULL ;
+
+   npi = NI_new_processing_instruction( "ni_do" ) ;
+   NI_set_attribute( npi , "ni_verb" , "typedef" ) ;
+
+   rhs = NI_malloc(char,strlen(rt->name)+strlen(rt->userdef)+4) ;
+   sprintf( rhs , "%s %s" , rt->name , rt->userdef ) ;
+   NI_set_attribute( npi , "ni_object" , rhs ) ;
+   NI_free( rhs ) ;
+   return npi ;
 }
 
 /*--------------------------------------------------------------------*/
@@ -1092,6 +1112,10 @@ int NI_write_columns( NI_stream_type *ns,
    if( col_typ == NULL || col_dat == NULL ) return -1 ;
    if( !NI_stream_writeable(ns)           ) return -1 ;
 
+#if 0
+fprintf(stderr,"NI_write_columns: col_num=%d col_len=%d tmode=%d\n",col_num,col_len,tmode) ;
+#endif
+
    /*-- check stream --*/
 
    if( ns->bad ){                        /* not connected yet? */
@@ -1136,7 +1160,14 @@ int NI_write_columns( NI_stream_type *ns,
         and binary output ==> can write all data direct to stream at once --*/
 
    if( col_num == 1 && tmode == NI_BINARY_MODE && fsiz[0] == rt[0]->psiz ){
+#if 0
+int ct = NI_clock_time() ;
+#endif
      nout = NI_stream_write( ns , col_dat[0] , fsiz[0]*col_len ) ;
+#if 0
+ct = NI_clock_time()-ct ;
+fprintf(stderr,"NI_write_columns FAST case: %d bytes in %d ms\n",fsiz[0]*col_len,ct) ;
+#endif
      FREEUP ; return nout ;
    }
 
@@ -1154,7 +1185,7 @@ int NI_write_columns( NI_stream_type *ns,
    /* create buffers for Base64 output, if needed */
 
    if( tmode == NI_BASE64_MODE ){
-     bbuf = NI_malloc(char,  nwbuf+128) ; bb = 0 ;  /* binary buffer */
+     bbuf = NI_malloc(char,   nwbuf+128) ; bb = 0 ;  /* binary buffer */
      cbuf = NI_malloc(char, 2*nwbuf+128) ; cc = 0 ;  /* base64 buffer */
      load_encode_table() ;
    }
@@ -1164,10 +1195,10 @@ int NI_write_columns( NI_stream_type *ns,
       if all was not well with the write, then it aborts the output */
 
 # undef  ADDOUT
-# define ADDOUT                             \
-  if( nout < 0 ){                           \
-    fprintf(stderr,"NIML: write abort!\n"); \
-    FREEUP ; return -1 ;                    \
+# define ADDOUT                              \
+  if( nout < 0 ){                            \
+    fprintf(stderr,"NIML:: write abort!\n"); \
+    FREEUP ; return -1 ;                     \
   } else ntot+=nout
 
    /*-- loop over output rows,
@@ -1317,18 +1348,18 @@ if( nout != jj ) NI_dpr("NI_write_columns: col#%d sends %d bytes; nout=%d\n",col
 
    /* in Base64 mode, we might have to clean
       up if there are any leftover bytes in bbuf,
-      or at least write an end of line */
+      or at least write an end of line           */
 
    if( tmode == NI_BASE64_MODE ){
      if( bb > 0 ){                  /* num leftover bytes of data */
-       byte w,x,y,z ;
-       if( bb == 2 ) B64_encode2(bbuf[0],bbuf[1],w,x,y,z) ;
-       else          B64_encode1(bbuf[0],w,x,y,z) ;
+       byte w,x,y,z , a=bbuf[0],b=bbuf[1] ;
+       if( bb == 2 ) B64_encode2(a,b,w,x,y,z) ;
+       else          B64_encode1(a,w,x,y,z) ;
        cbuf[0] = w ; cbuf[1] = x ;
        cbuf[2] = y ; cbuf[3] = z ; cbuf[4] = B64_EOL2 ;
        nout = NI_stream_write( ns , cbuf , 5 ) ;
        ADDOUT ;
-     } else if( cc > 0 ){           /* just wrie an end of line */
+     } else if( cc > 0 ){           /* just write an end of line */
        cbuf[0] = B64_EOL2 ;
        nout = NI_stream_write( ns , cbuf , 1 ) ;
        ADDOUT ;
@@ -1458,13 +1489,27 @@ NI_dpr("ENTER NI_read_columns\n") ;
      goto ReadFinality ;    /* post-process input down below */
    }
 
+   /*-- 21 Apr 2005: repeat above for Base64 input --*/
+
+   if( col_num == 1              &&
+       fsiz[0] == rt[0]->psiz    &&    /* struct size == data size */
+       tmode   == NI_BASE64_MODE &&
+       !open_ended                 ){
+
+     nin = NI_stream_readbuf64( ns , col_dat[0] , fsiz[0]*col_len ) ;
+     if( nin < fsiz[0] ){ FREEUP; return (nin >= 0) ? 0 : -1 ; }  /* bad */
+     nin = nin / fsiz[0] ;  /* number of rows finished */
+     goto ReadFinality ;    /* post-process input down below */
+   }
+
    /*-- Choose function to read from stream and fill one struct --*/
 
    switch( tmode ){
      case NI_TEXT_MODE:   ReadFun = NI_text_to_val  ; ReadFlag = ltend; break;
      case NI_BINARY_MODE: ReadFun = NI_binary_to_val; ReadFlag = swap ; break;
+     case NI_BASE64_MODE: ReadFun = NI_base64_to_val; ReadFlag = swap ; break;
      default:
-       fprintf(stderr,"\n** NI_read_columns: Base64 not implemented!\n");
+       fprintf(stderr,"\n** NI_read_columns: unknown input tmode=%d\n",tmode);
        FREEUP ; return -1 ;
    }
 
@@ -1552,17 +1597,7 @@ int NI_binary_to_val( NI_stream_type *ns, NI_rowtype *rt, void *dpt, int swap )
    if( rt->size == rt->psiz ){        /* fixed-size type with no padding */
                                /* ==> can read directly into data struct */
 
-#ifdef NIML_DEBUG
-NI_dpr("NI_binary_to_val: ns->npos=%d ns->nbuf=%d\n",ns->npos,ns->nbuf) ;
-#endif
      jj = NI_stream_readbuf( ns , (char *)dpt , rt->size ) ;
-#ifdef NIML_DEBUG
-if( dfp != NULL ){
- char wbuf[256]="\0" ;
- NI_val_to_text( rt , (char *)dpt , wbuf ) ;
- NI_dpr("   after readbuf: ns->npos=%d ns->nbuf=%d  value=%s\n",ns->npos,ns->nbuf,wbuf) ;
-}
-#endif
      return (jj == rt->size) ;
 
    } else {                                              /* derived type */
@@ -1597,7 +1632,7 @@ if( dfp != NULL ){
                                             /* just read in a moment ago */
 
          if( dim > 0 ){                         /* need to get some data */
-           *apt = NI_malloc(char,  siz * dim );                  /* make array */
+           *apt = NI_malloc(char,  siz * dim );            /* make array */
 
            if( siz != rt->part_rtp[ii]->psiz ){     /* padded values ==> */
             for( jj=0 ; jj < dim ; jj++ ){       /* read 1 val at a time */
@@ -1608,6 +1643,95 @@ if( dfp != NULL ){
 
            } else {              /* unpadded values ==> read all at once */
              jj = NI_stream_readbuf( ns , *apt , siz*dim ) ;
+             nn = ( jj == siz*dim ) ;
+           }
+
+         } else {
+           *apt = NULL ;                    /* dim=0 ==> no array needed */
+         }
+         aaa[iaaa++] = *apt ;              /* save for possible deletion */
+                                          /* if read fails later in loop */
+       }
+
+       if( !nn ) break ;                            /* some read was bad */
+     } /* end of loop over parts */
+
+     /* bad news ==> delete any allocated var dim arrays */
+
+     if( !nn ){
+       for( ii=0 ; ii < iaaa ; ii++ ) NI_free( aaa[ii] ) ;
+     }
+     NI_free( aaa ) ;  /* don't need list of var dim arrays no more */
+   }
+
+   return nn ;
+}
+
+/*-------------------------------------------------------------------------*/
+/*! Decode Base64 data from the NI_stream ns into a rowtype struct *dpt.
+    - Note that String (aka NI_STRING) parts are illegal here.
+    - Return value is 1 if all was OK, 0 if something bad happened.
+    - Parameter swap indicates that the data coming in needs to be
+      byte-swapped.
+      - This is ONLY used to byte-swap the dimension for var-dimen arrays.
+      - Actual byte-swapping of the data is done in NI_swap_column().
+---------------------------------------------------------------------------*/
+
+int NI_base64_to_val( NI_stream_type *ns, NI_rowtype *rt, void *dpt, int swap )
+{
+   int nn , jj ;
+
+   if( rt->code == NI_STRING ) return 0 ;            /* shouldn't happen */
+
+   if( rt->size == rt->psiz ){        /* fixed-size type with no padding */
+                               /* ==> can read directly into data struct */
+
+     jj = NI_stream_readbuf64( ns , (char *)dpt , rt->size ) ;
+     return (jj == rt->size) ;
+
+   } else {                                              /* derived type */
+
+     char *dat = (char *)dpt , **aaa = NULL ;
+     int ii                  ,  naaa = 0 , iaaa = 0 ;
+
+     if( ROWTYPE_is_varsize(rt) ){         /* variable dim arrays inside */
+       for( naaa=ii=0 ; ii < rt->part_num ; ii++ )
+         if( rt->part_dim[ii] >= 0 ) naaa++ ;    /* count var dim arrays */
+       if( naaa > 0 )
+         aaa = NI_malloc(char*, sizeof(char *)*naaa) ;  /* save their addresses */
+     }                                    /* for possible deletion later */
+
+     /* loop over parts and load them;
+        set nn=0 if read fails at any part (and break out of read loop) */
+
+     for( nn=1,ii=0 ; ii < rt->part_num ; ii++ ){
+
+       if( rt->part_dim[ii] < 0 ){            /* read one fixed dim part */
+
+         nn = NI_base64_to_val( ns, rt->part_rtp[ii], dat+rt->part_off[ii], 0 );
+
+       } else {                                    /* read var dim array */
+
+         char **apt = (char **)(dat+rt->part_off[ii]); /* data in struct */
+                                                 /* will be ptr to array */
+         int dim = ROWTYPE_part_dimen(rt,dat,ii) ;  /* dimension of part */
+         int siz = rt->part_rtp[ii]->size ;          /* size of one part */
+
+         if( swap ) NI_swap4( 1 , &dim ) ;   /* byte-swap dim, which was */
+                                            /* just read in a moment ago */
+
+         if( dim > 0 ){                         /* need to get some data */
+           *apt = NI_malloc(char,  siz * dim );            /* make array */
+
+           if( siz != rt->part_rtp[ii]->psiz ){     /* padded values ==> */
+            for( jj=0 ; jj < dim ; jj++ ){       /* read 1 val at a time */
+              nn = NI_base64_to_val( ns, rt->part_rtp[ii],
+                                     *apt + siz * jj , 0  ) ;
+              if( !nn ) break ;                              /* bad read */
+            }
+
+           } else {              /* unpadded values ==> read all at once */
+             jj = NI_stream_readbuf64( ns , *apt , siz*dim ) ;
              nn = ( jj == siz*dim ) ;
            }
 
@@ -1924,10 +2048,12 @@ void * NI_copy_column( NI_rowtype *rt , int col_len , void *cpt )
 
    /* make a quick (surface) copy */
 
-   ndat = NI_malloc(char,  rt->size * col_len ) ;
-   memcpy( ndat , dat , rt->size * col_len ) ;
+   ndat = NI_malloc(char,  rt->size * col_len ) ;  /* new data column */
+   memcpy( ndat , dat , rt->size * col_len ) ;     /* the quick copying */
 
-   /* copy any var dim arrays inside */
+   /* copy any var dim arrays inside, since the pointers
+      in ndat right now still point to data in dat,
+      but we want ndat to be entirely self-contained!  */
 
    if( ROWTYPE_is_varsize(rt) ){
      for( ii=0 ; ii < col_len ; ii++ ){                 /* loop over structs */

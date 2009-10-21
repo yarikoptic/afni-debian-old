@@ -689,7 +689,7 @@ int SUMA_whichDO(char *idcode, SUMA_DO *dov, int N_dov)
    
    SUMA_ENTRY;
 
-   if (idcode == NULL) {
+   if (SUMA_IS_EMPTY_STR_ATTR(idcode)) { /* might come in as ~ at times */
       fprintf(SUMA_STDERR,"Warning %s: NULL idcode.\n", FuncName);
       SUMA_RETURN (-1);
    }
@@ -851,6 +851,7 @@ SUMA_SurfaceObject * SUMA_find_named_SOp_inDOv(char *coordname, SUMA_DO *dov, in
             case SUMA_FREE_SURFER:
             case SUMA_FREE_SURFER_PATCH:
             case SUMA_INVENTOR_GENERIC:
+            case SUMA_OPENDX_MESH:
             case SUMA_PLY: 
                if (strstr(SO->Name.FileName, coordname)) {
                   if (SOf) {

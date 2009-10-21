@@ -501,6 +501,9 @@ typedef struct MCW_imseq {
      MCW_arrowval *wbar_ticnum_av, *wbar_ticsiz_av ;  /* 23 Feb 2004 */
 
      float last_dx , last_dy ;                        /* 08 Jun 2004 */
+
+     float rgb_gamma ;                                /* 25 Apr 2005 */
+     float rgb_offset ;
 } MCW_imseq ;
 
 #define ISQ_TIMERFUNC_INDEX  701
@@ -779,5 +782,7 @@ extern void ISQ_snapshot( Widget w ) ;                 /* 18 Jun 2003 */
 extern void ISQ_snapsave( int,int, byte *, Widget ) ;  /* 03 Jul 2003 */
 
 extern int ISQ_handle_keypress( MCW_imseq * , unsigned long ); /* 18 Feb 2005 */
+
+extern void mri_rgb_transform_nD( MRI_IMAGE *, int, generic_func * ) ;
 
 #endif /* _MCW_IMSEQ_HEADER_ */

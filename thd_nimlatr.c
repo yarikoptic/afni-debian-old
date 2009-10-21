@@ -21,7 +21,10 @@ ENTRY("THD_nimlize_dsetatr") ;
 
    if( !ISVALID_DSET(dset) ) RETURN(ngr) ;
    blk = dset->dblk ;
-   if( blk == NULL || blk->natr == 0 || blk->atr == NULL ) RETURN(ngr) ;
+   if( blk == NULL )         RETURN(ngr) ;
+
+   THD_set_dataset_attributes( dset ) ;
+   if( blk->natr == 0 || blk->atr == NULL ) RETURN(ngr) ;
 
    /* create empty output group */
 
@@ -32,7 +35,8 @@ ENTRY("THD_nimlize_dsetatr") ;
    NI_set_attribute( ngr , "AFNI_idcode" , dset->idcode.str ) ;
 
    /* make a data element for each attribute ... */
-
+   THD_set_dataset_attributes( dset ) ;
+   
    for( ia=0 ; ia < blk->natr ; ia++ ){
 
      atr_any = &(blk->atr[ia]) ;
@@ -194,10 +198,9 @@ ENTRY("THD_niml_to_dataset") ;
    if( ngr                  == NULL          ||
        NI_element_type(ngr) != NI_GROUP_TYPE   ) RETURN(NULL) ;
 
-   /* create the shell of a dataset and populate it's attributes */
+   /* create the shell of a dataset's datablock and populate it's attributes */
 
-   blk  = EDIT_empty_datablock() ;
-   dset = EDIT_empty_copy(NULL) ;
+   blk = EDIT_empty_datablock() ;
 
    THD_dblkatr_from_niml( ngr , blk ) ;  /* load attributes from NIML */
 
@@ -214,9 +217,7 @@ ENTRY("THD_niml_to_dataset") ;
    THD_allow_empty_dataset(1) ;
    dset = THD_3dim_from_block( blk ) ;
    THD_allow_empty_dataset(0) ;
-   if( dset == NULL ){
-     THD_delete_datablock( blk ) ; RETURN(NULL) ;
-   }
+   if( dset == NULL ){ THD_delete_datablock( blk ); RETURN(NULL); }
 
    DSET_mallocize(dset) ;   /* just to be sure */
 

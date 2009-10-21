@@ -24,6 +24,11 @@ ENTRY("THD_open_nifti") ;
 
    /*-- open input file --*/
 
+   { /* set the nifti_io debug level       8 Apr 2005 [rickr] */
+      char * ept = my_getenv("AFNI_NIFTI_DEBUG");
+      if( ept != NULL ) nifti_set_debug_level(atoi(ept));
+   }
+
    nim = nifti_image_read( pathname, 0 ) ;
 
    if( nim == NULL || nim->nifti_type == 0 ) RETURN(NULL) ;
@@ -46,7 +51,9 @@ ENTRY("THD_open_nifti") ;
    }
    nvals = MAX(ntt,nbuc) ;
 
-   /* determine type of dataset values */
+   /* determine type of dataset values:
+      if we are scaling, or if the data type in the NIfTI file
+      is something AFNI can't handle, then the result will be floats */
 
    switch( nim->datatype ){
      default:
@@ -63,19 +70,19 @@ ENTRY("THD_open_nifti") ;
      case DT_COMPLEX64: datum = MRI_complex ; break ;
      case DT_RGB24:     datum = MRI_rgb     ; break ;
 
-     case DT_INT8:
+     case DT_INT8:      /* NIfTI-1 data types that AFNI can't handle directly */
      case DT_UINT16:
      case DT_INT32:
      case DT_UINT32:
      case DT_FLOAT64:
        fprintf(stderr,
-               "** AFNI converts NIFTI_datatype=%d (%s) in file %s to FLOAT32\n",
-               nim->datatype, nifti_datatype_string(nim->datatype), pathname );
+              "** AFNI converts NIFTI_datatype=%d (%s) in file %s to FLOAT32\n",
+              nim->datatype, nifti_datatype_string(nim->datatype), pathname );
        datum = MRI_float ;
      break ;
 
 #if 0
-     case DT_COMPLEX128:
+     case DT_COMPLEX128:  /* this case would be too much like real work */
        fprintf(stderr,
                "** AFNI convert NIFTI_datatype=%d (%s) in file %s to COMPLEX64\n",
                nim->datatype, nifti_datatype_string(nim->datatype), pathname );
@@ -130,14 +137,14 @@ ENTRY("THD_open_nifti") ;
    if( nim->xyz_units == NIFTI_UNITS_METER ){
      nim->dx *= 1000.0 ; nim->dy *= 1000.0 ; nim->dz *= 1000.0 ;
    } else if(  nim->xyz_units == NIFTI_UNITS_MICRON ){
-     nim->dx *= 0.001 ; nim->dy *= 0.001 ; nim->dz *= 0.001 ;
+     nim->dx *= 0.001  ; nim->dy *= 0.001  ; nim->dz *= 0.001  ;
    }
 
    LOAD_FVEC3( dxyz , (ORIENT_sign[orixyz.ijk[0]]=='+') ? nim->dx : -nim->dx ,
                       (ORIENT_sign[orixyz.ijk[1]]=='+') ? nim->dy : -nim->dy ,
                       (ORIENT_sign[orixyz.ijk[2]]=='+') ? nim->dz : -nim->dz  ) ;
 
-   /*-- make a dataset --*/
+   /*-- make an AFNI dataset! --*/
 
    dset = EDIT_empty_copy(NULL) ;
 
@@ -154,6 +161,8 @@ ENTRY("THD_open_nifti") ;
    dset->idcode.str[0] = 'N' ;  /* overwrite 1st 3 bytes with something special */
    dset->idcode.str[1] = 'I' ;
    dset->idcode.str[2] = 'I' ;
+
+   MCW_hash_idcode( pathname , dset ) ;  /* 06 May 2005 */
 
    EDIT_dset_items( dset ,
                       ADN_prefix      , prefix ,
@@ -173,6 +182,7 @@ ENTRY("THD_open_nifti") ;
    if( ntt < 2 ){
      EDIT_dset_items( dset ,
                         ADN_nvals     , nbuc ,
+                        ADN_datum_all , datum ,
                         ADN_func_type , (statcode != 0) ? FUNC_BUCK_TYPE
                                                         : ANAT_BUCK_TYPE ,
                       ADN_none ) ;
@@ -182,22 +192,23 @@ ENTRY("THD_open_nifti") ;
           if( nim->time_units == NIFTI_UNITS_MSEC ) nim->dt *= 0.001 ;
      else if( nim->time_units == NIFTI_UNITS_USEC ) nim->dt *= 1.e-6 ;
      EDIT_dset_items( dset ,
-                        ADN_nvals    , ntt ,
-                        ADN_ntt      , ntt ,
-                        ADN_ttorg    , 0.0 ,
-                        ADN_ttdel    , nim->dt ,
-                        ADN_ttdur    , 0.0 ,
-                        ADN_tunits   , UNITS_SEC_TYPE ,
+                        ADN_nvals     , ntt ,
+                        ADN_ntt       , ntt ,
+                        ADN_datum_all , datum ,
+                        ADN_ttorg     , 0.0 ,
+                        ADN_ttdel     , nim->dt ,
+                        ADN_ttdur     , 0.0 ,
+                        ADN_tunits    , UNITS_SEC_TYPE ,
                         ADN_func_type , (statcode != 0) ? FUNC_FIM_TYPE
                                                         : ANAT_EPI_TYPE ,
                       ADN_none ) ;
 
      /* if present, add stuff about the slice-timing offsets */
 
-     if( nim->slice_dim      == 3               &&    /* AFNI can only deal with */
-         nim->slice_code     >  0               &&    /* slice timing offsets    */
-         nim->slice_duration >  0.0             &&    /* along the k-axis of     */
-         nim->slice_start    >= 0               &&    /* the dataset volume      */
+     if( nim->slice_dim      == 3               && /* AFNI can only deal with */
+         nim->slice_code     >  0               && /* slice timing offsets    */
+         nim->slice_duration >  0.0             && /* along the k-axis of     */
+         nim->slice_start    >= 0               && /* the dataset volume      */
          nim->slice_start    < nim->nz          &&
          nim->slice_end      > nim->slice_start &&
          nim->slice_end      < nim->nz             ){
@@ -205,8 +216,8 @@ ENTRY("THD_open_nifti") ;
        float *toff=(float *)calloc(sizeof(float),nim->nz) , tsl ;
        int kk ;
 
-            if( nim->time_units == NIFTI_UNITS_MSEC ) nim->slice_duration *= 0.001 ;
-       else if( nim->time_units == NIFTI_UNITS_USEC ) nim->slice_duration *= 1.e-6 ;
+            if( nim->time_units == NIFTI_UNITS_MSEC ) nim->slice_duration *= 0.001;
+       else if( nim->time_units == NIFTI_UNITS_USEC ) nim->slice_duration *= 1.e-6;
 
        /* set up slice time offsets in the divers orders */
 
@@ -232,12 +243,30 @@ ENTRY("THD_open_nifti") ;
              toff[kk] = tsl ; tsl += nim->slice_duration ;
            }
          break ;
+         case NIFTI_SLICE_ALT_INC2:
+           tsl = 0.0 ;
+           for( kk=nim->slice_start+1 ; kk <= nim->slice_end ; kk+=2 ){
+             toff[kk] = tsl ; tsl += nim->slice_duration ;
+           }
+           for( kk=nim->slice_start ; kk <= nim->slice_end ; kk+=2 ){
+             toff[kk] = tsl ; tsl += nim->slice_duration ;
+           }
+         break ;
          case NIFTI_SLICE_ALT_DEC:
            tsl = 0.0 ;
            for( kk=nim->slice_end ; kk >= nim->slice_start ; kk-=2 ){
              toff[kk] = tsl ; tsl += nim->slice_duration ;
            }
            for( kk=nim->slice_end-1 ; kk >= nim->slice_start ; kk-=2 ){
+             toff[kk] = tsl ; tsl += nim->slice_duration ;
+           }
+         break ;
+         case NIFTI_SLICE_ALT_DEC2:
+           tsl = 0.0 ;
+           for( kk=nim->slice_end-1 ; kk >= nim->slice_start ; kk-=2 ){
+             toff[kk] = tsl ; tsl += nim->slice_duration ;
+           }
+           for( kk=nim->slice_end ; kk >= nim->slice_start ; kk-=2 ){
              toff[kk] = tsl ; tsl += nim->slice_duration ;
            }
          break ;
@@ -276,6 +305,77 @@ ENTRY("THD_open_nifti") ;
    }
 #endif
 
+   /** 10 May 2005: see if there is an AFNI extension;
+                    if so, load attributes from it and
+                    then edit the dataset appropriately **/
+
+   { int ee ;  /* extension index */
+
+     /* scan extension list to find the first AFNI extension */
+
+     for( ee=0 ; ee < nim->num_ext ; ee++ )
+       if( nim->ext_list[ee].ecode == NIFTI_ECODE_AFNI &&
+           nim->ext_list[ee].esize > 32                &&
+           nim->ext_list[ee].edata != NULL               ) break ;
+
+     /* if found an AFNI extension ... */
+
+     if( ee < nim->num_ext ){
+       char *buf = nim->ext_list[ee].edata , *rhs , *cpt ;
+       int  nbuf = nim->ext_list[ee].esize - 8 ;
+       NI_stream ns ;
+       void     *nini ;
+       NI_group *ngr , *nngr ;
+
+       /* if have data, it's long enough, and starts properly, then ... */
+
+       if( buf != NULL && nbuf > 32 && strncmp(buf,"<?xml",5)==0 ){
+         if( buf[nbuf-1] != '\0' ) buf[nbuf-1] = '\0' ;         /* for safety */
+         cpt = strstr(buf,"?>") ;                    /* find XML prolog close */
+         if( cpt != NULL ){                          /* if found it, then ... */
+           ns = NI_stream_open( "str:" , "r" ) ;
+           NI_stream_setbuf( ns , cpt+2 ) ;        /* start just after prolog */
+           nini = NI_read_element(ns,1) ;                 /* get root element */
+           NI_stream_close(ns) ;
+           if( NI_element_type(nini) == NI_GROUP_TYPE ){   /* must be a group */
+             ngr = (NI_group *)nini ;
+             if( strcmp(ngr->name,"AFNI_attributes") == 0 ){    /* root is OK */
+               nngr = ngr ;
+             } else {                   /* search in group for proper element */
+               int nn ; void **nnini ;
+               nn = NI_search_group_deep( ngr , "AFNI_attributes" , &nnini ) ;
+               if( nn <= 0 ) nngr = NULL ;
+               else        { nngr = (NI_group *)nnini[0]; NI_free(nnini); }
+             }
+
+             if( NI_element_type(nngr) == NI_GROUP_TYPE ){ /* have  good name */
+               rhs = NI_get_attribute( nngr , "AFNI_idcode" ) ;
+               if( rhs != NULL )    /* set dataset ID code from XML attribute */
+                 MCW_strncpy( dset->idcode.str , rhs , MCW_IDSIZE ) ;
+               rhs = NI_get_attribute( nngr , "NIfTI_nums" ) ;    /* check if */
+               if( rhs != NULL ){                       /* dataset dimensions */
+                 char buf[128] ;                              /* were altered */
+                 sprintf(buf,"%d,%d,%d,%d,%d,%d" ,             /* 12 May 2005 */
+                   nim->nx, nim->ny, nim->nz, nim->nt, nim->nu, nim->datatype );
+                 if( strcmp(buf,rhs) != 0 ){
+                   static int nnn=0 ;
+                   if(nnn==0){fprintf(stderr,"\n"); nnn=1;}
+                   fprintf(stderr,
+                     "** WARNING: NIfTI file %s dimensions altered since "
+                                 "AFNI extension was added\n",pathname ) ;
+                 }
+               }
+               THD_dblkatr_from_niml( nngr , dset->dblk ); /* load attributes */
+               THD_datablock_apply_atr( dset ) ;   /* apply to dataset struct */
+             }
+             NI_free_element( ngr ) ;          /* get rid of the root element */
+
+           } /* end of if found a group element at the root */
+         } /* end of if extension data array had an XML prolog close */
+       } /* end of if had a good extension data array */
+     } /* end of if had an AFNI extension */
+   } /* end of processing extensions */
+
    /* return unpopulated dataset */
 
    nifti_image_free(nim) ; RETURN(dset) ;
@@ -284,20 +384,22 @@ ENTRY("THD_open_nifti") ;
 /*-----------------------------------------------------------------
   Load a NIFTI dataset's data into memory
   (called from THD_load_datablock in thd_loaddblk.c)
+    - RWC: modified 07 Apr 2005 to read data bricks via nifti_io.c
+      'NBL' functions, rather than directly from disk
 -------------------------------------------------------------------*/
 
 void THD_load_nifti( THD_datablock *dblk )
 {
    THD_diskptr *dkptr ;
-   int nx,ny,nz,nxy,nxyz,nxyzv , nbad,ibr,nv, nslice ;
-   int datum, need_sbuf=0 , nbuf ;
-   void *ptr , *sbuf=NULL ;
+   int nx,ny,nz,nxy,nxyz,nxyzv , nerr=0,ibr,nv, nslice ;
+   int datum, need_copy=0 ;
+   void *ptr ;
    nifti_image *nim ;
-   FILE *fp ;
+   nifti_brick_list NBL ;  /* holds the data read from disk */
 
 ENTRY("THD_load_nifti") ;
 
-   /*-- open input [these errors should never occur] --*/
+   /*-- open and read input [these errors should never occur] --*/
 
    if( !ISVALID_DATABLOCK(dblk)                        ||
        dblk->diskptr->storage_mode != STORAGE_BY_NIFTI ||
@@ -305,102 +407,52 @@ ENTRY("THD_load_nifti") ;
 
    dkptr = dblk->diskptr ;
 
-   nim = nifti_image_read( dkptr->brick_name, 0 ) ;
-   if( nim == NULL ) EXRETURN ;
+   STATUS("calling nifti_image_read_bricks") ;
+   NBL.nbricks = 0 ;
+   nim = nifti_image_read_bricks( dkptr->brick_name, 0,NULL , &NBL ) ;
+   if( nim == NULL || NBL.nbricks <= 0 ) EXRETURN ;
 
-   fp = fopen( nim->iname , "rb" ) ;
-   if( fp == NULL ){ nifti_image_free(nim); EXRETURN; }
+   datum = DBLK_BRICK_TYPE(dblk,0) ;  /* destination data type */
 
-   /* negative offset ==> scan back from end of file */
+   /*-- determine if we need to copy the data from the
+        bricks as loaded above because of a type conversion --*/
 
-   if( nim->iname_offset < 0 ){
-     size_t ff = THD_filesize( nim->iname ) ;
-     size_t gg = (size_t)(nim->nbyper) * (size_t)(nim->nvox) ;
-     nim->iname_offset = (ff > gg) ? (ff-gg) : 0 ;
+   switch( nim->datatype ){
+     case DT_INT16:
+     case DT_UINT8:      need_copy = (datum == MRI_float) ; break ;
+
+     case DT_FLOAT32:
+     case DT_COMPLEX64:
+     case DT_RGB24:      need_copy = 0 ; break ;
+
+     case DT_INT8:       /* these are the cases where AFNI can't */
+     case DT_UINT16:     /* directly handle the NIFTI datatype,  */
+     case DT_INT32:      /* so we'll convert them to floats.     */
+     case DT_UINT32:
+     case DT_FLOAT64:    need_copy = 1 ; break ;
+#if 0
+     case DT_COMPLEX128: need_copy = 1 ; break ;
+#endif
    }
-   fseek( fp , nim->iname_offset , SEEK_SET ) ;  /* ready to read data */
 
-   /*-- allocate space for data --*/
+   /*-- various dimensions --*/
 
    nx = dkptr->dimsizes[0] ;
    ny = dkptr->dimsizes[1] ;  nxy   = nx * ny   ;
    nz = dkptr->dimsizes[2] ;  nxyz  = nxy * nz  ;
-   nv = dkptr->nvals       ;  nxyzv = nxyz * nv ; nslice = nz*nv ;
+   nv = dkptr->nvals       ;  if( nv > NBL.nbricks ) nv = NBL.nbricks ;
+   nxyzv = nxyz * nv ; nslice = nz*nv ;
 
    dblk->malloc_type = DATABLOCK_MEM_MALLOC ;
 
-   /** malloc space for each brick separately **/
+   /*------ don't need to copy data ==> just copy pointers from NBL ------*/
 
-   for( nbad=ibr=0 ; ibr < nv ; ibr++ ){
-     if( DBLK_ARRAY(dblk,ibr) == NULL ){
-       ptr = AFMALL(void, DBLK_BRICK_BYTES(dblk,ibr) ) ;
-       mri_fix_data_pointer( ptr ,  DBLK_BRICK(dblk,ibr) ) ;
-       if( ptr == NULL ) nbad++ ;
-     }
-   }
+   if( !need_copy ){
 
-   /** if couldn't get them all, take our ball and go home in a snit **/
-
-   if( nbad > 0 ){
-     fprintf(stderr,"\n** failed to malloc %d NIFTI bricks out of %d\n\a",nbad,nv) ;
+     STATUS("copying brick pointers directly") ;
      for( ibr=0 ; ibr < nv ; ibr++ ){
-       if( DBLK_ARRAY(dblk,ibr) != NULL ){
-         free(DBLK_ARRAY(dblk,ibr)) ;
-         mri_fix_data_pointer( NULL , DBLK_BRICK(dblk,ibr) ) ;
-       }
-     }
-     nifti_image_free(nim); fclose(fp); EXRETURN;
-   }
-
-   datum = DBLK_BRICK_TYPE(dblk,0) ;  /* destination data */
-
-   /* determine if we need a scaling buffer (sbuf)
-      for temporary staging of the input data volumes */
-
-   switch( nim->datatype ){
-      case DT_INT16:
-      case DT_UINT8:      need_sbuf = (datum == MRI_float) ; break ;
-
-      case DT_FLOAT32:
-      case DT_COMPLEX64:
-      case DT_RGB24:      need_sbuf = 0 ; break ;
-
-      case DT_INT8:       /* these are the cases where AFNI can't */
-      case DT_UINT16:     /* directly handle the NIFTI datatype,  */
-      case DT_INT32:      /* so we'll convert them to floats.     */
-      case DT_UINT32:
-      case DT_FLOAT64:    need_sbuf = 1 ; break ;
-#if 0
-      case DT_COMPLEX128: need_sbuf = 1 ; break ;
-#endif
-   }
-
-   if( need_sbuf ){
-     nbuf = nim->nbyper * nxyz ;  /* size of staging buffer */
-     sbuf = AFMALL(void, nbuf ) ;      /* make buffer */
-     if( sbuf == NULL ){
-       for( ibr=0 ; ibr < nv ; ibr++ ){
-         free(DBLK_ARRAY(dblk,ibr)) ;
-         mri_fix_data_pointer( NULL , DBLK_BRICK(dblk,ibr) ) ;
-       }
-       fprintf(stderr,"\n** failed to malloc NIFTI staging buffer!\n\a") ;
-       nifti_image_free(nim); fclose(fp); EXRETURN;
-     }
-   }
-
-   /** read data! **/
-                       /*--------------------------------------------------*/
-   if( !need_sbuf ){   /*----- read directly into dataset, no staging -----*/
-
-     int nerr=0 , norder=mri_short_order() ;
-
-     STATUS("reading bricks without sbuf") ;
-     for( ibr=0 ; ibr < nv ; ibr++ ){
-       fread( DBLK_ARRAY(dblk,ibr), 1, DBLK_BRICK_BYTES(dblk,ibr), fp ) ;
-
-       if( nim->swapsize > 1 && nim->byteorder != norder )            /* byte */
-         nifti_swap_Nbytes( DBLK_BRICK_BYTES(dblk,ibr)/nim->swapsize ,/* swap */
-                      nim->swapsize , DBLK_ARRAY(dblk,ibr)      ) ;
+       mri_fix_data_pointer( NBL.bricks[ibr] ,DBLK_BRICK(dblk,ibr) ) ;
+       NBL.bricks[ibr] = NULL ;  /* so it won't be deleted later */
 
        if( AFNI_yesenv("AFNI_FLOATSCAN") ){  /*--- check float inputs? ---*/
          if( DBLK_BRICK_TYPE(dblk,ibr) == MRI_float )
@@ -412,35 +464,32 @@ ENTRY("THD_load_nifti") ;
        }
      }
      if( nerr > 0 ) fprintf(stderr ,
-                      "** %s: found %d float errors -- see program float_scan\n" ,
-                      dkptr->brick_name , nerr ) ;
+                    "** %s: found %d float errors -- see program float_scan\n",
+                    dkptr->brick_name , nerr ) ;
 
-                  /*-----------------------------------------------------*/
-   } else {       /*----- read into sbuf, then process into dataset -----*/
+   } else { /*---------- need to copy data ==> do some more work -----------*/
 
-     int norder=mri_short_order() , ii ;
-     void *bar ;
+     register int ii ; void *nbuf ;
 
-     STATUS("reading bricks via sbuf") ;
+     STATUS("converting input bricks to floats") ;
      for( ibr=0 ; ibr < nv ; ibr++ ){
 
-       /* read data into sbuf */
+       if( DBLK_ARRAY(dblk,ibr) == NULL ){                     /* make space */
+         ptr = AFMALL(void, DBLK_BRICK_BYTES(dblk,ibr) ) ;     /* for this   */
+         mri_fix_data_pointer( ptr ,  DBLK_BRICK(dblk,ibr) ) ; /* sub-brick! */
+       }
+       ptr = DBLK_ARRAY(dblk,ibr) ; if( ptr == NULL ) break ;  /* bad news!! */
 
-       memset( sbuf , 0 , nbuf ) ;
-       fread( sbuf , 1,nbuf , fp ) ;
-       if( nim->swapsize > 1 && nim->byteorder != norder )           /* byte */
-         nifti_swap_Nbytes(nbuf/nim->swapsize ,nim->swapsize , sbuf);/* swap */
+       nbuf = NBL.bricks[ibr] ;              /* data as read from NIfTI file */
 
-       /* macro to convert data from type "ityp" in sbuf to float in dataset */
+       /* macro to convert data from type "ityp" in nbuf to float in dataset */
 
 #undef  CPF
-#define CPF(ityp) do{ ityp *sar = (ityp *)sbuf ; float *far = (float *)bar ;   \
+#define CPF(ityp) do{ ityp *sar = (ityp *)nbuf ; float *far = (float *)ptr ;   \
                       for( ii=0 ; ii < nxyz ; ii++ ) far[ii] = (float)sar[ii]; \
                   } while(0)
 
-       /* load from sbuf into brick array (will be float or complex) */
-
-       bar = DBLK_ARRAY(dblk,ibr) ;
+       /* load from nbuf into brick array (will be float or complex) */
 
        switch( nim->datatype ){
          case DT_UINT8:    CPF(unsigned char)  ; break ;
@@ -454,17 +503,17 @@ ENTRY("THD_load_nifti") ;
          case DT_COMPLEX128: break ;
 #endif
        }
-     }
 
-     free(sbuf) ;  /* done with this space */
+       free(NBL.bricks[ibr]) ; NBL.bricks[ibr] = NULL ;
+     }
    }
 
-   fclose(fp) ;  /* done with this file */
+   nifti_free_NBL( &NBL ) ;  /* done with this */
 
    /*-- scale results? ---*/
 
    if( nim->scl_slope != 0.0 ){       /*--- scale results? ---*/
-     STATUS("scaling results") ;
+     STATUS("scaling sub-bricks") ;
      for( ibr=0 ; ibr < nv ; ibr++ ){
        if( DBLK_BRICK_TYPE(dblk,ibr) == MRI_float ){
          float *far = (float *) DBLK_ARRAY(dblk,ibr) ; int ii ;

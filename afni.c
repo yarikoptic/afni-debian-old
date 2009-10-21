@@ -3710,7 +3710,7 @@ STATUS("graCR_pickort") ;
    and create the data structures
 ------------------------------------------------------------------------*/
 
-void AFNI_read_inputs( int argc , char * argv[] )
+void AFNI_read_inputs( int argc , char *argv[] )
 {
    int id , last_color ;
    Boolean isfunc ;
@@ -3733,11 +3733,11 @@ ENTRY("AFNI_read_inputs") ;
    /*--- read directly from images (the old-fashioned way) ---*/
 
    if( GLOBAL_argopt.read_images ){
-      THD_3dim_dataset * dset ;
-      THD_session * new_ss ;
+      THD_3dim_dataset *dset ;
+      THD_session *new_ss ;
       int vv ;
       int gnim ;  /* 16 Mar 1998: names from globbing */
-      char ** gname ;
+      char **gname ;
 
       MCW_warn_expand(1) ;  /* 13 Jul 2001 */
 
@@ -3784,9 +3784,9 @@ ENTRY("AFNI_read_inputs") ;
       char str[256] ;
       Boolean good ;
       int num_ss , qd , qs , vv=0 , no_args , jj , nskip_noanat=0 ;
-      THD_string_array * flist , * dlist=NULL ;
-      char * dname , *eee ;
-      THD_session * new_ss ;
+      THD_string_array *flist , *dlist=NULL ;
+      char *dname , *eee ;
+      THD_session *new_ss ;
       int num_dsets=0 ;       /* 04 Jan 2000 */
       THD_session *gss=NULL ; /* 11 May 2002: global session */
       THD_session *dss ;      /* 28 Aug 2003: session for command-line datasets */
@@ -4392,8 +4392,9 @@ STATUS("forcible adoption of unparented datasets") ;
      fprintf(stderr,"\a\n*** Illegal Usage configuration detected!\n"); exit(1);
    }
 
-   MPROBE ;
-   EXRETURN ;
+   /** done at last **/
+
+   MPROBE ; EXRETURN ;
 }
 
 /*--------------------------------------------------------------------------
@@ -4449,6 +4450,11 @@ ENTRY("AFNI_startup_3dview") ;
 
    im3d->vwid->func->pbar_transform2D_index = 0 ;
    im3d->vwid->func->pbar_transform2D_func  = NULL ;
+
+   /* 08 Apr 2005: the cursor on the pbar? */
+
+   if( im3d->vwid->func->inten_pbar->bigmode )
+     POPUP_cursorize( im3d->vwid->func->inten_pbar->panew ) ;
 
    /* Hey Rocky!  Watch me pull a rabbit out of my hat! */
 
@@ -6953,10 +6959,10 @@ STATUS(" -- set threshold to zero for FIM (once only)") ;
       /*** 29 Jul 2003: always do buckets now ***/
 
       XtManageChild( im3d->vwid->func->anat_buck_av->wrowcol ) ;
-      XtManageChild  ( im3d->vwid->func->fim_buck_av->wrowcol ) ;
-      XtManageChild  ( im3d->vwid->func->thr_buck_av->wrowcol ) ;
+      XtManageChild( im3d->vwid->func->fim_buck_av->wrowcol  ) ;
+      XtManageChild( im3d->vwid->func->thr_buck_av->wrowcol  ) ;
 
-      /* 12 Dec 2001: only refit menus if dataset has changed */
+      /** 12 Dec 2001: only refit menus if dataset has changed **/
 
       if( have_fim && (im3d->fim_now != old_fim || im3d != old_im3d) ){
         refit_MCW_optmenu( im3d->vwid->func->fim_buck_av ,
@@ -6988,7 +6994,7 @@ STATUS(" -- set threshold to zero for FIM (once only)") ;
                          ) ;
       }
 
-      XtManageChild( im3d->vwid->func->buck_rowcol ) ;
+      XtManageChild( im3d->vwid->func->buck_rowcol ) ;  /* make itvisible */
       XtManageChild( im3d->vwid->func->buck_frame ) ;
    }
 

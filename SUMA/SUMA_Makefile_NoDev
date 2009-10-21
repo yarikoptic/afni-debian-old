@@ -2,6 +2,7 @@
 
 MAKE = make
 SUMALIB = libSUMA.a
+SUMAGTSLIB = libSUMAGTS.a
 AFNILIB = -lrickr -lmrix -lcoxplot -lf2c -lmri 
 MAINCODE = SUMA
 SUMALIBLIST = libSUMA.a libglut.a libply.a 
@@ -51,6 +52,13 @@ ${SUMALIB} : libply.a libglut.a ${SUMA_OBJS}
 	ar q ${SUMALIB} ${SUMA_OBJS}
 	echo "library Rebuilt ..."
 	$(RANLIB) ${SUMALIB} 
+
+#library using GTS functions
+${SUMAGTSLIB} : libply.a libglut.a ${SUMALIB} ${SUMA_GTS_OBJS}
+	rm -f ${SUMAGTSLIB}
+	ar q ${SUMAGTSLIB} ${SUMA_GTS_OBJS}
+	echo "library GTS Rebuilt ..."
+	$(RANLIB) ${SUMAGTSLIB} 
 
 #Main objects, You don't want main functions in libSUMA.a 
 mainobj: ${SUMALIB} ${SUMA_SRCS_OBJS}
@@ -153,11 +161,11 @@ SUMA_TestDataSets: SUMA_DataSets.c
 
 SUMA_TestDsetIO: SUMA_DataSets.c
 	$(RM) $@
-	${CC} -DSUMA_Test_DSET_IO_STANDALONE ${CCOPT} ${WARNOPT} -o $@ ${AFNI_OBJS} SUMA_DataSets.c ${SUMA_INCLUDE_PATH} ${SUMA_LINK_PATH} ${SUMALIBLIST} ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB}
+	${CC} -DSUMA_COMPILED -DSUMA_Test_DSET_IO_STANDALONE ${CCOPT} ${WARNOPT} -o $@ ${AFNI_OBJS} SUMA_DataSets.c ${SUMA_INCLUDE_PATH} ${SUMA_LINK_PATH} ${SUMALIBLIST} ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB}
 
 ConvertDset: SUMA_DataSets.c
 	$(RM) $@
-	${CC} -DSUMA_ConvertDset_STANDALONE ${CCOPT} ${WARNOPT} -o $@ ${AFNI_OBJS} SUMA_DataSets.c ${SUMA_INCLUDE_PATH} ${SUMA_LINK_PATH} ${SUMALIBLIST} ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB}
+	${CC} -DSUMA_COMPILED -DSUMA_ConvertDset_STANDALONE ${CCOPT} ${WARNOPT} -o $@ ${AFNI_OBJS} SUMA_DataSets.c ${SUMA_INCLUDE_PATH} ${SUMA_LINK_PATH} ${SUMALIBLIST} ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB}
 
 ROI2dataset: SUMA_Surface_IO.c
 	$(RM) $@
@@ -198,6 +206,18 @@ ConvexHull: SUMA_ConvexHull.c
 3dSkullStrip: SUMA_3dSkullStrip.c
 	$(RM) $@
 	${CC} -DSUMA_COMPILED -DSUMA_BrainWrap_STANDALONE ${CCOPT} ${WARNOPT} -o $@ $(AFWARPOBJS) ${AFNI_OBJS} SUMA_3dSkullStrip.c ${SUMA_INCLUDE_PATH} ${SUMA_LINK_PATH} 	\
+		${AFNI_3dOBJS} MarchingCubes/debug/MarchingCubes.o			\
+		${SUMALIBLIST} ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB}
+
+3dCRUISEtoAFNI: SUMA_3dCRUISEtoAFNI.c
+	$(RM) $@
+	${CC} -DSUMA_COMPILED ${CCOPT} ${WARNOPT} -o $@ $(AFWARPOBJS) ${AFNI_OBJS} SUMA_3dCRUISEtoAFNI.c ${SUMA_INCLUDE_PATH} ${SUMA_LINK_PATH} 	\
+		${AFNI_3dOBJS} MarchingCubes/debug/MarchingCubes.o			\
+		${SUMALIBLIST} ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB}
+
+3dBRAIN_VOYAGERtoAFNI: SUMA_3dBRAIN_VOYAGERtoAFNI.c
+	$(RM) $@
+	${CC} -DSUMA_COMPILED ${CCOPT} ${WARNOPT} -o $@ $(AFWARPOBJS) ${AFNI_OBJS} SUMA_3dBRAIN_VOYAGERtoAFNI.c ${SUMA_INCLUDE_PATH} ${SUMA_LINK_PATH} 	\
 		${AFNI_3dOBJS} MarchingCubes/debug/MarchingCubes.o			\
 		${SUMALIBLIST} ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB}
        
@@ -280,16 +300,22 @@ growingsphere: SUMA_growingsphere.c ${SUMALIB}
 		${SUMALIBLIST} ${AFNILIB} ${ZLIB}			\
 		${SUMA_LINK_PATH} ${SUMA_LINK_LIB} 
 
-SurfMesh: SUMA_coarsen.c libgts.a
+SurfMesh: SUMA_coarsen.c libgts.a ${SUMAGTSLIB}
 	$(RM) $@
 	${CC} -DSUMA_COMPILED \
    	${CCOPT} ${WARNOPT} -o $@ SUMA_coarsen.c 	\
       -Igts/src -I/usr/include/glib-2.0 -I/usr/lib/glib-2.0/include/  \
       ${SUMA_INCLUDE_PATH} ${SUMA_LINK_PATH} 		\
 		${AFNI_3dOBJS} ${AFNI_OBJS} -lf2c			\
-		${SUMALIBLIST} -lglib ${AFNILIB} ${ZLIB}			\
+		libSUMAGTS.a ${SUMALIBLIST} -lglib ${AFNILIB} ${ZLIB}			\
 		${SUMA_LINK_LIB} libgts.a 
 
+SumaProgramTemplate: SUMA_ProgramTemplate.c
+	$(RM) $@
+	${CC} -DSUMA_COMPILED ${CCOPT} ${WARNOPT} -o $@ $(AFWARPOBJS) ${AFNI_OBJS} SUMA_ProgramTemplate.c ${SUMA_INCLUDE_PATH} ${SUMA_LINK_PATH} 	\
+		${AFNI_3dOBJS} MarchingCubes/debug/MarchingCubes.o			\
+		${SUMALIBLIST} ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB}
+       
 MarchingCubes.o: MarchingCubes/MarchingCubes.c
 	( cd MarchingCubes ;	\
 	  $(RM) mc	debug/*.o;	\
@@ -313,6 +339,7 @@ libgts.a:
 	  $(RANLIB) src/.libs/$@ ;	\
 	  $(CP) -p src/.libs/$@ .. ; )
 
+#remove soon
 AddGTS: ${SUMA_GTS_OBJS}
 	( echo "Adding SUMA's GTS functions to libSUMA.a";	\
 		ar q libSUMA.a ${SUMA_GTS_OBJS} ; \
@@ -363,6 +390,9 @@ install:
 	@if [ -f SurfMesh ]; then mv SurfMesh ${INSTALLDIR_SUMA}; fi;
 	@if [ -f SampBias ]; then mv SampBias ${INSTALLDIR_SUMA}; fi;
 	@if [ -f 3dSkullStrip ]; then mv 3dSkullStrip ${INSTALLDIR_SUMA}; fi;
+	@if [ -f 3dCRUISEtoAFNI ]; then mv 3dCRUISEtoAFNI ${INSTALLDIR_SUMA}; fi;
+	@if [ -f 3dBRAIN_VOYAGERtoAFNI ]; then mv 3dBRAIN_VOYAGERtoAFNI ${INSTALLDIR_SUMA}; fi;
+	@if [ -f SumaProgramTemplate ]; then mv SumaProgramTemplate ${INSTALLDIR_SUMA}; fi;
 
 packbins:
 	if [ ! -d SUMA_bin	]; then $(MKDIR) SUMA_bin; fi
@@ -404,12 +434,15 @@ packbins:
 	@if [ -f SampBias ]; then $(CP) -p SampBias SUMA_bin/; fi;	
 	@if [ -f SurfMesh ]; then $(CP) -p SurfMesh SUMA_bin/; fi;	
 	@if [ -f 3dSkullStrip ]; then $(CP) -p 3dSkullStrip SUMA_bin/; fi;
+	@if [ -f 3dCRUISEtoAFNI ]; then $(CP) -p 3dCRUISEtoAFNI SUMA_bin/; fi;
+	@if [ -f 3dBRAIN_VOYAGERtoAFNI ]; then $(CP) -p 3dBRAIN_VOYAGERtoAFNI SUMA_bin/; fi;
+	@if [ -f SumaProgramTemplate ]; then $(CP) -p SumaProgramTemplate SUMA_bin/; fi;
 
 	$(TAR) -cf $(SUMA_BIN_ARCHIVE) SUMA_bin
 	${RM} -r SUMA_bin
 	
 all: libSUMA.a mainobj suma install 
-allgts: libSUMA.a libgts.a mainobj AddGTS suma SurfMesh install 
+allgts: libSUMA.a libgts.a mainobj suma SurfMesh install 
 
 standalones: CreateIcosahedron SUMA_Map_SurfacetoSurface MapIcosahedron       \
 	SUMA_SureFit SUMA_Load_Surface_Object SUMA_Read_SpecFile	      \
@@ -417,7 +450,9 @@ standalones: CreateIcosahedron SUMA_Map_SurfacetoSurface MapIcosahedron       \
 	SUMA_inflate_compare SUMA_Ply_Read SUMA_ParseName ConvertSurface      \
 	3dVol2Surf 3dSurf2Vol SurfMeasures SurfaceMetrics    \
 	ROI2dataset SurfSmooth SurfPatch SurfQual inspec quickspec FScurv_to_1D FSread_annot	\
-   SUMA_TestDsetIO ConvertDset ShowCmap SurfClust IsoSurface 3dSkullStrip
+   SUMA_TestDsetIO ConvertDset ShowCmap SurfClust IsoSurface 3dSkullStrip \
+   3dCRUISEtoAFNI	3dBRAIN_VOYAGERtoAFNI\
+   SumaProgramTemplate 
    
 #SUMA_TestDataSets
  

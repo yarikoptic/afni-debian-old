@@ -14,7 +14,7 @@ your local Unix guru.  If you don't have one, well....
 
 You don't NEED to set any of these variables -- AFNI will still work
 correctly.  But they are an easy way to set up certain defaults to
-make AFNI a little easier on your neocortex.
+make AFNI a little easier on your neocortex and hippocampus.
 
 N.B.: Changes to environment variables AFTER you start a program will
       not be seen by that program, since each running program gets
@@ -34,6 +34,10 @@ N.B.: You can now set environment variables on the 'afni' command
         afni -DAFNI_EDGIZE_OVERLAY=YES -DAFNI_SESSTRAIL=3
       This may be useful for a 'one time' situation, or as an alias.
       -- RWCox - 22 Mar 2005
+
+N.B.: At the end of this file is a list of several environment variables
+      that affect the program 3dDeconvolve, rather than the interactive
+      AFNI program itself.
 
 ********************************************************
 June 1999: Setting environment variables in file .afnirc
@@ -1796,23 +1800,6 @@ When you 'Save' a drawn dataset from the Draw Dataset plugin, the
   .HEAD file attribute VALUE_LABEL_DTABLE will contain a table in
   exactly this XML-based format.
 
-----------------------------------
-Variable: AFNI_3dDeconvolve_extend
-----------------------------------
-If you input a stimulus time series to 3dDeconvolve that is shorter than
-needed for the regression analysis, the program will normally print a
-warning message and extend the time series with zero values to the needed
-length.  If you would rather have the program stop if it detects this
-problem (the behavior before 22 Oct 2003), then set this environment
-variable to NO.
-
----------------------------------
-Variable: AFNI_3dDeconvolve_nodup
----------------------------------
-If this variable is set to YES, then if the 3dDeconvolve program detects
-duplicate input stimulus filenames or duplicate regressors, the program
-will fail (with an error message) rather than attempt to continue.
-
 -------------------------------
 Variable: AFNI_STROKE_THRESHOLD (editable)
 -------------------------------
@@ -2054,10 +2041,12 @@ square pixels, even if they are stored with nonsquare pixels.
 -------------------------------
 Variable: AFNI_BUCKET_LABELSIZE
 -------------------------------
-Sets the width of the "ULay", "OLay", and "Thr" menu choosers on the
-"Define Overlay" control panel.  The default value is 14 characters.
-If the width of your dataset sub-brick labels is more than 14, you may
-want to increase this.  The valid range of values is 4..32 (inclusive).
+THIS VARIABLE HAS BEEN REMOVED FROM AFNI.
+
+Formerly, it was used to set the width of the "ULay", "OLay", and "Thr" menu
+choosers on the "Define Overlay" control panel.  As of 03 May 2005, AFNI now
+calculates the default width based on the longest sub-brick label input
+for each dataset.
 
 -------------------------
 Variable: AFNI_MAX_1DSIZE
@@ -2066,6 +2055,121 @@ Sets the maximum size (in bytes) of each 1D file that will be automatically
 loaded when AFNI starts.  The default is 123 Kbytes.  The intention is to
 prevent loading of very large files that are not intended to be used for
 graphing/FIMming purposes.
+
+---------------------------
+Variable: AFNI_TITLE_LABEL2 (editable)
+---------------------------
+If this YES/NO variable is YES, then the AFNI window titlebars will show
+the 'label2' field from the AFNI dataset .HEAD file, rather than the
+dataset filename.  If the label2 field is set to a nontrivial value,
+that is.  You can set the label2 field with the 3drefit command.
+
+-------------------------------
+Variable: AFNI_SHOW_SURF_POPUPS
+-------------------------------
+If this YES/NO variable is set to YES, then when AFNI receives surface
+nodes, triangles or normals from suma, a popup message will be displayed.
+Otherwise, the message will be send to stderr (on the terminal window).
+
+-------------------------------
+Variable: AFNI_KILL_SURF_POPUPS
+-------------------------------
+If this YES/NO variable is set to YES, then when AFNI receives surface
+nodes, triangles or normals from suma, no messages will be displayed,
+either in a popup or stderr.  Note that if errors occur, popups will
+still be shown; this just turns off the normal information messages.
+N.B.: If AFNI_SHOW_SURF_POPUPS is YES, then it wins over
+      AFNI_KILL_SURF_POPUPS being YES.  If neither is set, then
+      messages are displayed to stderr.
+
+-----------------------------
+Variable: AFNI_EDGIZE_OVERLAY (editable)
+-----------------------------
+If set to YES, then the color overlays in the image windows will only
+have their edge pixels displayed.  That is, each 'blob' will be hollowed
+out, leaving only its edges.  If you do this, you probably want to make
+the color overlay opaque, so that the results are easily seen.
+
+--------------------------
+Variable: AFNI_NIFTI_DEBUG (editable)
+--------------------------
+This integral variable determines the debug level used by the nifti_io
+library functions.  If set to 0, only errors are reported by the library.
+The maximum debug level used is currently 4.  Note that if this is changed
+from within AFNI, a 'Rescan: This' operation should probably be performed,
+which will force a re-reading of the datasets and so force an elicitation
+of the NIfTI debug messages (for .nii files, that is).
+
+-------------------------
+Variable AFNI_NIFTI_NOEXT
+-------------------------
+When writing a '.nii' (or '.nii.gz') file from an AFNI program, normally
+a NIfTI-1.1 extension field with some extra AFNI header information is
+written into the output file.  If you set this variable to YES, then
+this extension is not written, which will make the output be a 'pure'
+NIfTI-1.1 file.  Only use this if absolutely necessary.  You can also
+use the 'nifti_tool' program to strip extension data from a NIfTI-1.1
+dataset file.
+
+---------------------------
+Variable: AFNI_OVERLAY_ZERO (editable)
+---------------------------
+If set to YES, this variable indicates that voxels in the overlay dataset
+that have the numerical value of 0 will get colored when the Inten color
+scale on the Define Datamode panel indicates that 0 has a color that isn't
+"none".  The default way that AFNI works is NOT to colorize voxels that
+are 0, even if they should otherwise get a color.
+
+---------------------------
+Variable: NIML_TRUSTHOST_xx
+---------------------------
+These environment variables ('xx' = '01', '02', ..., '99') set the names
+and/or addresses of external computer hosts to trust with NIML TCP/IP
+connections, which are how AFNI and SUMA communicate.  Should only be
+necessary to use these if you are using AFNI and SUMA on different
+machines.  Connections from machines not on the trusted list will be
+rejected, for the sake of security.  The 'localhost' or 127.0.0.1 address
+and local class B network 192.168.0.* addresses are always trusted.
+
+=============================================
+| Robert W Cox, PhD                         |
+| Scientific and Statistical Computing Core |
+| National Institute of Mental Health       |
+| National Institutes of Health             |
+| Department of Health & Human Services     |
+| United States of America                  |
+| Earth, United Federation of Planets       |
+=============================================
+
+############################################################################
+##### Variables that Specifically Affect the Operation of 3dDeconvolve #####
+############################################################################
+
+----------------------------------
+Variable: AFNI_3dDeconvolve_extend
+----------------------------------
+If you input a stimulus time series (via the -stim_file option) to
+3dDeconvolve that is shorter than needed for the regression analysis, the
+program will normally print a warning message and extend the time series
+with zero values to the needed length.  If you would rather have the program
+stop if it detects this problem (the behavior before 22 Oct 2003), then set
+this environment variable to NO.
+
+---------------------------------
+Variable: AFNI_3dDeconvolve_nodup
+---------------------------------
+If this variable is set to YES, then if the 3dDeconvolve program detects
+duplicate input stimulus filenames or duplicate regressors, the program
+will fail (with an error message) rather than attempt to continue.
+
+-----------------------------------------
+Variable: AFNI_3dDeconvolve_nodata_extras
+-----------------------------------------
+When using the -nodata option in 3dDeconvolve, the default printout gives
+the 'normalized standard deviation' for each stimulus parameter.  If you
+set this variable to YES, then the printout will include the -polort
+baseline parameters as well, and also the L2 norm of each column in
+the regression matrix.
 
 --------------------------
 Variable: AFNI_XJPEG_COLOR
@@ -2111,47 +2215,3 @@ Variable: AFNI_GLTSYM_PRINT
 If this YES/NO variable is set to YES, then the GLT matrices generated
 in 3dDeconvolve by the "-gltsym" option will be printed to the screen
 when the program starts up.
-
----------------------------
-Variable: AFNI_TITLE_LABEL2 (editable)
----------------------------
-If this YES/NO variable is YES, then the AFNI window titlebars will show
-the 'label2' field from the AFNI dataset .HEAD file, rather than the
-dataset filename.  If the label2 field is set to a nontrivial value,
-that is.  You can set the label2 field with the 3drefit command.
-
--------------------------------
-Variable: AFNI_SHOW_SURF_POPUPS
--------------------------------
-If this YES/NO variable is set to YES, then when AFNI receives surface
-nodes, triangles or normals from suma, a popup message will be displayed.
-Otherwise, the message will be send to stderr (on the terminal window).
-
--------------------------------
-Variable: AFNI_KILL_SURF_POPUPS
--------------------------------
-If this YES/NO variable is set to YES, then when AFNI receives surface
-nodes, triangles or normals from suma, no messages will be displayed,
-either in a popup or stderr.  Note that if errors occur, popups will
-still be shown; this just turns off the normal information messages.
-N.B.: If AFNI_SHOW_SURF_POPUPS is YES, then it wins over
-      AFNI_KILL_SURF_POPUPS being YES.  If neither is set, then
-      messages are displayed to stderr.
-
------------------------------
-Variable: AFNI_EDGIZE_OVERLAY (editable)
------------------------------
-If set to YES, then the color overlays in the image windows will only
-have their edge pixels displayed.  That is, each 'blob' will be hollowed
-out, leaving only its edges.  If you do this, you probably want to make
-the color overlay opaque, so that the results are easily seen.
-
-=============================================
-| Robert W Cox, PhD                         |
-| Scientific and Statistical Computing Core |
-| National Institute of Mental Health       |
-| National Institutes of Health             |
-| Department of Health & Human Services     |
-| United States of America                  |
-| Earth, United Federation of Planets       |
-=============================================

@@ -209,9 +209,7 @@ void usage_SUMA_BrainWrap (SUMA_GENERIC_ARGV_PARSE *ps)
                "        Blurring is a lot faster than increasing mesh density.\n"
                "        + Use also a smaller -shrink_fac is you have lots of CSF between gyri.\n"
                "\n" 
-               " Eye Candy Mode: *** Only possible when input volume has been 'spatnormed'\n"
-               "                     Make sure you use -no_spatnorm option also.\n"
-               "                     In the future, this restriction will be lifted.\n"
+               " Eye Candy Mode: (previous restrictions removed)\n"
                "  You can run BrainWarp and have it send successive iterations\n"
                " to SUMA and AFNI. This is very helpful in following the\n"
                " progression of the algorithm and determining the source\n"
@@ -241,15 +239,15 @@ void usage_SUMA_BrainWrap (SUMA_GENERIC_ARGV_PARSE *ps)
    
    \param argv (char *)
    \param argc (int)
-   \return Opt (SUMA_ISOSURFACE_OPTIONS *) options structure.
+   \return Opt (SUMA_GENERIC_PROG_OPTIONS_STRUCT *) options structure.
                To free it, use 
                SUMA_free(Opt->out_name); 
                SUMA_free(Opt);
 */
-SUMA_ISOSURFACE_OPTIONS *SUMA_BrainWrap_ParseInput (char *argv[], int argc, SUMA_GENERIC_ARGV_PARSE *ps)
+SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_BrainWrap_ParseInput (char *argv[], int argc, SUMA_GENERIC_ARGV_PARSE *ps)
 {
    static char FuncName[]={"SUMA_BrainWrap_ParseInput"}; 
-   SUMA_ISOSURFACE_OPTIONS *Opt=NULL;
+   SUMA_GENERIC_PROG_OPTIONS_STRUCT *Opt=NULL;
    int kar, i, ind;
    char *outname;
    SUMA_Boolean brk = NOPE;
@@ -257,7 +255,7 @@ SUMA_ISOSURFACE_OPTIONS *SUMA_BrainWrap_ParseInput (char *argv[], int argc, SUMA
 
    SUMA_ENTRY;
    
-   Opt = (SUMA_ISOSURFACE_OPTIONS *)SUMA_malloc(sizeof(SUMA_ISOSURFACE_OPTIONS));
+   Opt = SUMA_Alloc_Generic_Prog_Options_Struct();
    
    kar = 1;
    Opt->spec_file = NULL;
@@ -268,7 +266,7 @@ SUMA_ISOSURFACE_OPTIONS *SUMA_BrainWrap_ParseInput (char *argv[], int argc, SUMA
    Opt->in_name = NULL;
    Opt->cmask = NULL;
    Opt->MaskMode = SUMA_ISO_UNDEFINED;
-   for (i=0; i<ISOSURFACE_MAX_SURF; ++i) { Opt->surf_names[i] = NULL; }
+   for (i=0; i<SUMA_GENERIC_PROG_MAX_SURF; ++i) { Opt->surf_names[i] = NULL; }
    outname = NULL;
    Opt->in_vol = NULL;
    Opt->nvox = -1;
@@ -442,6 +440,11 @@ SUMA_ISOSURFACE_OPTIONS *SUMA_BrainWrap_ParseInput (char *argv[], int argc, SUMA
       
       if (!brk && (strcmp(argv[kar], "-avoid_vent") == 0)) {
 			Opt->avoid_vent = 1;
+         brk = YUP;
+		}
+      
+      if (!brk && (strcmp(argv[kar], "-no_avoid_vent") == 0)) {
+			Opt->avoid_vent = 0;
          brk = YUP;
 		}
       
@@ -743,7 +746,7 @@ int main (int argc,char *argv[])
    void *SO_name=NULL, *SO_name_hull=NULL;
    float vol, *isin_float=NULL, pint, *dsmooth = NULL, XYZrai_shift[3];
    SUMA_SurfaceObject *SO = NULL, *SOhull=NULL;
-   SUMA_ISOSURFACE_OPTIONS *Opt;  
+   SUMA_GENERIC_PROG_OPTIONS_STRUCT *Opt;  
    char  stmp[200], stmphull[200], *hullprefix=NULL, *prefix=NULL, *spatprefix=NULL;
    SUMA_Boolean exists = NOPE;
    SUMA_GENERIC_ARGV_PARSE *ps=NULL;
@@ -863,14 +866,14 @@ int main (int argc,char *argv[])
 
          Opt->OrigSpatNormedSet = EDIT_empty_copy( NULL ) ;
          tross_Copy_History( Opt->iset , Opt->OrigSpatNormedSet ) ;
-         tross_Make_History( "3dSpatNorm" , argc,argv , Opt->OrigSpatNormedSet ) ;
+         tross_Make_History( "3dSkullStrip" , argc,argv , Opt->OrigSpatNormedSet ) ;
 
          LOAD_IVEC3( nxyz   , imout_orig->nx    , imout_orig->ny    , imout_orig->nz    ) ;
          LOAD_FVEC3( dxyz   , imout_orig->dx    , imout_orig->dy    , imout_orig->dz    ) ;
          LOAD_FVEC3( orgxyz , originRAIfv.xyz[0]    , originRAIfv.xyz[1]    , originRAIfv.xyz[2]    ) ;
          LOAD_IVEC3( orixyz , ORI_R2L_TYPE , ORI_A2P_TYPE , ORI_I2S_TYPE ) ;
 
-         prefix = SUMA_AfniPrefix(Opt->in_name, NULL); 
+         prefix = SUMA_AfniPrefix(Opt->in_name, NULL, NULL, NULL); 
          if (!prefix) { SUMA_SL_Err("Bad prefix!!!"); exit(1); }
          spatprefix = SUMA_append_string(prefix, "_SpatNorm_OrigSpace");
          EDIT_dset_items( Opt->OrigSpatNormedSet ,
@@ -907,14 +910,14 @@ int main (int argc,char *argv[])
          SUMA_SL_Note("Creating an output edge dataset ...");
          oset = EDIT_empty_copy( NULL ) ;
          tross_Copy_History( Opt->iset , oset ) ;
-         tross_Make_History( "3dSpatNorm" , argc,argv , oset ) ;
+         tross_Make_History( "3dSkullStrip" , argc,argv , oset ) ;
       
          LOAD_IVEC3( nxyz   , imout_edge->nx    , imout_edge->ny    , imout_edge->nz    ) ;
          LOAD_FVEC3( dxyz   , imout_edge->dx    , imout_edge->dy    , imout_edge->dz    ) ;
          LOAD_FVEC3( orgxyz , imout_edge->xo    , imout_edge->yo    , imout_edge->zo    ) ;
          LOAD_IVEC3( orixyz , ORI_R2L_TYPE , ORI_A2P_TYPE , ORI_I2S_TYPE ) ;
       
-         prefix = SUMA_AfniPrefix(Opt->in_name, NULL); 
+         prefix = SUMA_AfniPrefix(Opt->in_name, NULL, NULL, NULL); 
          if (!prefix) { SUMA_SL_Err("Bad prefix!!!"); exit(1); }
          spatprefix = SUMA_append_string(prefix, "_EdgeSpatNorm");
          EDIT_dset_items( oset ,
@@ -944,15 +947,18 @@ int main (int argc,char *argv[])
       }
       
       oset = EDIT_empty_copy( NULL ) ;
+      /* reset the idcode using a hash of a string formed by idcode or orig dset and _Spatnorm */
+      {  char idstr[500], *nid=NULL; sprintf(idstr,"%s_Spatnorm", Opt->iset->idcode.str); 
+         SUMA_NEW_ID(nid, idstr); strncpy(oset->idcode.str, nid, IDCODE_LEN); SUMA_free(nid); nid = NULL;}
       tross_Copy_History( Opt->iset , oset ) ;
-      tross_Make_History( "3dSpatNorm" , argc,argv , oset ) ;
+      tross_Make_History( "3dSkullStrip" , argc,argv , oset ) ;
       
       LOAD_IVEC3( nxyz   , imout->nx    , imout->ny    , imout->nz    ) ;
       LOAD_FVEC3( dxyz   , imout->dx    , imout->dy    , imout->dz    ) ;
       LOAD_FVEC3( orgxyz , imout->xo    , imout->yo    , imout->zo    ) ;
       LOAD_IVEC3( orixyz , ORI_R2L_TYPE , ORI_A2P_TYPE , ORI_I2S_TYPE ) ;
       
-      prefix = SUMA_AfniPrefix(Opt->in_name, NULL); 
+      prefix = SUMA_AfniPrefix(Opt->in_name, NULL, NULL, NULL); 
       if (!prefix) { SUMA_SL_Err("Bad prefix!!!"); exit(1); }
       spatprefix = SUMA_append_string(prefix, "_SpatNorm");
       EDIT_dset_items( oset ,
@@ -1084,7 +1090,7 @@ int main (int argc,char *argv[])
       if (!SO->Label) {SO->Label = SUMA_copy_string(stmp); }
       /* make the idcode_str depend on the Label, it is convenient to
       send the same surface all the time to SUMA */
-      if (SO->Label) { if (SO->idcode_str) SUMA_free(SO->idcode_str); SO->idcode_str = UNIQ_hashcode(SO->Label); }
+      if (SO->Label) { if (SO->idcode_str) SUMA_free(SO->idcode_str); SO->idcode_str = NULL; SUMA_NEW_ID(SO->idcode_str, SO->Label); }
       
       if (!nint && SOhull) {
          SOhull->VolPar = SUMA_VolParFromDset (Opt->in_vol);
@@ -1093,17 +1099,23 @@ int main (int argc,char *argv[])
          if (!SOhull->State) {SOhull->State = SUMA_copy_string("3dSkullStrip"); }
          if (!SOhull->Group) {SOhull->Group = SUMA_copy_string("3dSkullStrip"); }
          if (!SOhull->Label) {SOhull->Label = SUMA_copy_string(stmphull); }
-         if (SOhull->Label) { if (SOhull->idcode_str) SUMA_free(SOhull->idcode_str); SOhull->idcode_str = UNIQ_hashcode(SOhull->Label); }
+         if (SOhull->Label) { if (SOhull->idcode_str) SUMA_free(SOhull->idcode_str); SOhull->idcode_str = NULL; SUMA_NEW_ID(SOhull->idcode_str,SOhull->Label); }
       }
 
       /* see if SUMA talk is turned on */
       if (ps->cs->talk_suma) {
          ps->cs->istream = SUMA_BRAINWRAP_LINE;
+         ps->cs->afni_istream = SUMA_AFNI_STREAM_INDEX2;
          ps->cs->kth = 1; /* make sure all surfaces get sent */
          if (!SUMA_SendToSuma (NULL, ps->cs, NULL, SUMA_NO_DSET_TYPE, 0)) {
             SUMA_SL_Err("Failed to initialize SUMA_SendToSuma");
             ps->cs->Send = NOPE;
+            ps->cs->afni_Send = NOPE;
             ps->cs->talk_suma = NOPE;
+         } else if (!SUMA_SendToAfni (ps->cs, NULL,  0)) {
+            SUMA_SL_Err("Failed to initialize SUMA_SendToAfni");
+            ps->cs->afni_Send = NOPE;
+            ps->cs->Send = NOPE;
          } else {
             if (!nint && SOhull) {
                if (Opt->send_hull) {
@@ -1141,6 +1153,15 @@ int main (int argc,char *argv[])
             }
          #endif
          if (isin) SUMA_free(isin); isin = NULL;
+      }
+      
+      /* send in_vol to afni */
+      if (Opt->DoSpatNorm && ps->cs->afni_Send) {
+         SUMA_SL_Note("Sending spatnormed volume to AFNI");
+         if (!SUMA_SendToAfni(ps->cs, Opt->in_vol, 1)) {
+            SUMA_SL_Err("Failed to send volume to AFNI");
+            ps->cs->afni_Send = NOPE;
+         }
       }
             
       /* This is it baby, start walking */
@@ -1358,22 +1379,10 @@ int main (int argc,char *argv[])
    if (dsmooth) SUMA_free(dsmooth); dsmooth = NULL;
    if (OptDs) { OptDs->mset = NULL; OptDs = SUMA_Free_FormAfniDset_Opt(OptDs);  }
    if (dset) { DSET_delete(dset); dset = NULL; }
-   if (Opt->OrigSpatNormedSet && Opt->OrigSpatNormedSet != Opt->in_vol) { DSET_delete(Opt->OrigSpatNormedSet); Opt->OrigSpatNormedSet = NULL; }
-   else Opt->OrigSpatNormedSet = NULL;
    if (isin) { SUMA_free(isin); isin = NULL; }
    if (isin_float) { SUMA_free(isin_float); isin_float = NULL; }
    if (ps) SUMA_FreeGenericArgParse(ps); ps = NULL;
-   if (Opt->dbg_eyenodes) fclose(Opt->dbg_eyenodes); Opt->dbg_eyenodes = NULL;
-   if (Opt->k98mask) SUMA_free(Opt->k98mask); Opt->k98mask = NULL;
-   if (Opt->Stop) SUMA_free(Opt->Stop); Opt->Stop = NULL;
-   if (Opt->dvec) SUMA_free(Opt->dvec); Opt->dvec = NULL;
-   if (Opt->mcdatav) {SUMA_free(Opt->mcdatav); Opt->mcdatav = NULL;} 
-   if (Opt->in_vol) { DSET_delete( Opt->in_vol); Opt->in_vol = NULL;} 
-   if (Opt->out_prefix) SUMA_free(Opt->out_prefix); Opt->out_prefix = NULL;
-   if (Opt->out_vol_prefix) SUMA_free(Opt->out_vol_prefix); Opt->out_vol_prefix = NULL;
-   if (Opt->XYZ) SUMA_free(Opt->XYZ); Opt->XYZ = NULL;
-   if (Opt->ztv) SUMA_free(Opt->ztv); Opt->ztv = NULL;
-   if (Opt) SUMA_free(Opt);
+   if (Opt) Opt = SUMA_Free_Generic_Prog_Options_Struct(Opt);
    if (hullprefix) SUMA_free(hullprefix); hullprefix = NULL;
    if (SO_name_hull) SUMA_free(SO_name_hull); SO_name_hull = NULL;
    if (SO_name) SUMA_free(SO_name); SO_name = NULL;
