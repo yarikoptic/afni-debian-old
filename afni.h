@@ -1039,8 +1039,8 @@ extern void AFNI_splashup   (void) ;  /* 02 Aug 1999 */
 extern void AFNI_splashdown (void) ;
 extern void AFNI_splashraise(void) ;  /* 25 Sep 2000 */
 extern void AFNI_faceup     (void) ;  /* 17 Dec 2004 */
+extern int  AFNI_splash_isopen(void); /* 10 Nov 2005 */
 extern void AFNI_broutim_CB (Widget,XtPointer,XtPointer) ; /* 06 Jun 2005 */
-
 
 extern void AFNI_quit_CB           ( Widget wcall , XtPointer cd , XtPointer cbs );
 extern void AFNI_quit_timeout_CB   ( XtPointer , XtIntervalId * ) ;
@@ -1192,6 +1192,9 @@ extern int  AFNI_rescan_session( int ) ;
 extern void AFNI_rescan_CB( Widget , XtPointer , XtPointer ) ;
 extern void AFNI_rescan_all_CB( Widget , XtPointer , XtPointer ) ;
 extern void AFNI_rescan_timeseries_CB( Widget , XtPointer , XtPointer ) ;
+
+extern void AFNI_block_rescan( int bb ) ;    /* 09 Nov 2005 */
+extern void AFNI_rescan_timeout_CB( XtPointer , XtIntervalId * ) ;
 
 extern void AFNI_read_sess_CB( Widget , XtPointer , XtPointer ) ;
 extern void AFNI_finalize_read_sess_CB( Widget , XtPointer , XtPointer ) ;

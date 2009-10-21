@@ -1291,3 +1291,31 @@
       - nifti1_io.c:nifti_convert_nhdr2nim : use nifti_set_filenames()
       - updated Testing/niftilib/nifti_test.c with more tests
 
+02 November 2005:
+  * modified nifti1_io.[ch]: added skip_blank_ext to nifti_global_options
+      - if skip_blank_ext and no extensions, do not read/write extender
+
+04 November 2005:
+  * modified SUMA_Surface_IO.c:SUMA_2Prefix2SurfaceName() to return NOPE in
+        exists if exist1 and exist2 are false
+
+07 November 2005:
+  * checked in rhammett's mri_read_dicom.c changes for the Siemens mosaic format
+
+10 November 2005:
+  * modified mri_dicom_hdr.h
+      - In defining LONG_WORD, it was assumed that long was 4 bytes, but this
+        is not true on 64-bit solaris.  Since it was figured out in defining
+        U32, just use that type for l.
+
+18 November 2005:
+  * modified nifti1_io.c (nifti_hist -> v1.16):
+      - removed any test or access of dim[i], i>dim[0]
+        (except setting them to 0 upon reading, so garbage does not propagate)
+      - do not set pixdim for collapsed dims to 1.0, leave them
+      - added magic and dim[i] tests in nifti_hdr_looks_good()
+  * modified nifti_tool.[ch] (-> v1.10)
+      - added check_hdr and check_nim action options
+  * checked in some of Hans' changes (with some alterations)
+      - a few casts in fslio.[ch] and nifti1_io.[ch] and () in nifti_stats.c
+

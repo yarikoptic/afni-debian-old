@@ -5750,3 +5750,21 @@
 26 Oct 2005
  * Mod to symeig_3 (in cs_symeig.c) to avoid problems that are invisible.
  * Mod to plot_x11.c (in coxplot/) and 1dgrayplot.c, to plot correctly.
+
+31 Oct 2005
+ * Small changes to imseq.c, to display "Min2Max" and "s=%d" modes, and
+     to update winfo label when Keypress 'l' is used.
+
+02 Nov 2005
+ * Another small change to imseq.[ch] to the winfo label.
+
+08 Nov 2005
+ * rint(x) -> rint(x+.00001) in edt_coerce.c, to avoid an artifact in
+     3dMean.c when the number of averages is a small even integer.
+
+14 Nov 2005
+ * Changes to afni_splash.c to try to avoid the "Mr Freeze" bug (e.g.,
+     unrealize image viewer rather than destroy it).
+
+18 Nov 2005
+ * AUTHOR AUTHOR.

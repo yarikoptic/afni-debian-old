@@ -117,7 +117,7 @@
 
 #define SUMA_MEMTRACE_BLOCK 10000 /*!< Number of elements to allocate for when keeping track of allocated memory. If needed more space is reallocated with SUMA_MEMTRACE_BLOCK increments. */
 #define SUMA_MEMTRACE_FLAG 1    /*!< Flag to turn on(1) or off (0) the memory tracing capability */
-#define SUMA_PI 3.141592653589793 
+#define SUMA_PI 3.141592653589793115997963 
 #define SUMA_EPSILON 0.000001
 /*!
    Debugging flags
@@ -720,7 +720,7 @@ typedef struct {
    int ** EL; /*!< pointer to where the Edge List ( N_EL x 2 ) will be placed
                         each row is an edge, i1 i2 where i1 is always <= i2
                         EL is sorted by row */
-   int ** ELps; /*!< pointer to where the Edge List Property matrix ( N_EL x 2 )will be placed 
+   int ** ELps; /*!< pointer to where the Edge List Property matrix ( N_EL x 3 )will be placed 
                         1st column, row i = 1 means edge i: i1,i2 was encountered as i2->i1 in the triangle J (so it was flipped when stored in EL)
                                           = -1 means edge i: i1,i2 was encountered as i1->i2 in the triangle J (so no flipping was done to store it in EL)
                         2nd column, row i = J is the triangle ( FL[J] ) that the segment belongs to. 
@@ -1356,6 +1356,7 @@ typedef struct {
    int WindHeight;   /*!< Height of window */
    float ZoomCompensate; /*!< Compensate mouse movements by zoom factor */
    float *FOV; /*!< Field of View (affects zoom level, there is a separate FOV for each ViewState)*/
+   float FOV_original; /*!< Original field of view of viewer */
    float ArrowRotationAngle; /*!< Angle to rotate surface by when arrows are used.
                                  Units are in radians */
    float KeyZoomGain; /*!< gain for zooming in and out with the 'z' and 'Z' keys. Typical range from 0 to 0.5. Must be < 1*/

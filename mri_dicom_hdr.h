@@ -46,9 +46,9 @@
 **			Radiology.  It also defines unique identifiers
 **			for standard classes and objects defined by the
 **			standard.
-** Last Update:		$Author: rwcox $, $Date: 2002/10/29 20:47:44 $
+** Last Update:		$Author: rickr $, $Date: 2005/11/10 19:05:04 $
 ** Source File:		$RCSfile: mri_dicom_hdr.h,v $
-** Revision:		$Revision: 1.8 $
+** Revision:		$Revision: 1.9 $
 ** Status:		$State: Exp $
 */
 
@@ -313,9 +313,9 @@ extern "C" {
 ** Intent:		This module defines function prototypes for the
 **			CONDITION facility which is used to record status
 **			and error messages on a stack.
-** Last Update:		$Author: rwcox $, $Date: 2002/10/29 20:47:44 $
+** Last Update:		$Author: rickr $, $Date: 2005/11/10 19:05:04 $
 ** Source File:		$RCSfile: mri_dicom_hdr.h,v $
-** Revision:		$Revision: 1.8 $
+** Revision:		$Revision: 1.9 $
 ** Status:		$State: Exp $
 */
 
@@ -399,9 +399,9 @@ void COND_WriteConditions(FILE * lfp);
 ** Author, Date:	Thomas R. Leith, xx-May-92
 ** Intent:		This module defines private structures
 **			used by the LST facility.
-** Last Update:		$Author: rwcox $, $Date: 2002/10/29 20:47:44 $
+** Last Update:		$Author: rickr $, $Date: 2005/11/10 19:05:04 $
 ** Source File:		$RCSfile: mri_dicom_hdr.h,v $
-** Revision:		$Revision: 1.8 $
+** Revision:		$Revision: 1.9 $
 ** Status:		$State: Exp $
 */
 
@@ -472,9 +472,9 @@ typedef struct lst_head {
 ** Intent:		This module defines several constants and function
 **			prototypes for the LST facility which is used to
 **			manipulate objects in linked lists.
-** Last Update:		$Author: rwcox $, $Date: 2002/10/29 20:47:44 $
+** Last Update:		$Author: rickr $, $Date: 2005/11/10 19:05:04 $
 ** Source File:		$RCSfile: mri_dicom_hdr.h,v $
-** Revision:		$Revision: 1.8 $
+** Revision:		$Revision: 1.9 $
 ** Status:		$State: Exp $
 */
 
@@ -575,9 +575,9 @@ char *LST_Message(CONDITION cond);
 ** Intent:		This file contains definitions and function prototypes
 **			for the OBJECT facility which allows the user to
 **			manipulate DICOM Objects.
-** Last Update:		$Author: rwcox $, $Date: 2002/10/29 20:47:44 $
+** Last Update:		$Author: rickr $, $Date: 2005/11/10 19:05:04 $
 ** Source File:		$RCSfile: mri_dicom_hdr.h,v $
-** Revision:		$Revision: 1.8 $
+** Revision:		$Revision: 1.9 $
 ** Status:		$State: Exp $
 */
 
@@ -2282,9 +2282,9 @@ DCM_AddFragment(DCM_OBJECT** callerObject, void* fragment, U32 fragmentLength);
 **			Radiology.  It also defines unique identifiers
 **			for standard classes and objects defined by the
 **			standard.
-** Last Update:		$Author: rwcox $, $Date: 2002/10/29 20:47:44 $
+** Last Update:		$Author: rickr $, $Date: 2005/11/10 19:05:04 $
 ** Source File:		$RCSfile: mri_dicom_hdr.h,v $
-** Revision:		$Revision: 1.8 $
+** Revision:		$Revision: 1.9 $
 ** Status:		$State: Exp $
 */
 
@@ -2391,9 +2391,9 @@ typedef int CTN_SOCKET;
 ** Intent:
 **	This file defines private structures for the DICOM information
 **	object package.
-** Last Update:		$Author: rwcox $, $Date: 2002/10/29 20:47:44 $
+** Last Update:		$Author: rickr $, $Date: 2005/11/10 19:05:04 $
 ** Source File:		$RCSfile: mri_dicom_hdr.h,v $
-** Revision:		$Revision: 1.8 $
+** Revision:		$Revision: 1.9 $
 ** Status:		$State: Exp $
 */
 
@@ -2466,11 +2466,18 @@ typedef union {
 }   SHORT_WORD;
 
 typedef union {
+/* Type unsigned long is 64-bits on 64-bit Solaris, but such checks have
+   been made for defining U32, so use it.            10 Nov 2005 [rickr] */
+#if 0
 #ifdef __alpha
     unsigned int l;
 #else
     unsigned long l;
+    U32 l;
 #endif
+#endif
+
+    U32 l;
     unsigned char u[4];
 }   LONG_WORD;
 
@@ -2552,9 +2559,9 @@ typedef union {
 ** Author, Date:	Stephen M. Moore, 2-Jun-93
 ** Intent:		This include file defines constants for all of
 **			the standard UIDs defined in the DICOM standard.
-** Last Update:		$Author: rwcox $, $Date: 2002/10/29 20:47:44 $
+** Last Update:		$Author: rickr $, $Date: 2005/11/10 19:05:04 $
 ** Source File:		$RCSfile: mri_dicom_hdr.h,v $
-** Revision:		$Revision: 1.8 $
+** Revision:		$Revision: 1.9 $
 ** Status:		$State: Exp $
 */
 
@@ -2814,9 +2821,9 @@ int UID_IsStorageClass(const char* sopClassUID);
 ** Intent:		Define typedefs and function prototypes for
 **			Utility (UTL) facility (for functions which may
 **			generally useful in a number of areas).
-** Last Update:		$Author: rwcox $, $Date: 2002/10/29 20:47:44 $
+** Last Update:		$Author: rickr $, $Date: 2005/11/10 19:05:04 $
 ** Source File:		$RCSfile: mri_dicom_hdr.h,v $
-** Revision:		$Revision: 1.8 $
+** Revision:		$Revision: 1.9 $
 ** Status:		$State: Exp $
 */
 
