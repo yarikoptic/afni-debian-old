@@ -299,11 +299,13 @@ SUMA_Boolean SUMA_niml_call (SUMA_CommonFields *cf, int si, SUMA_Boolean fromSUM
      /* find out if the stream has been established already */
       if (cf->ns_v[si]) { /* stream is open, nothing to do */
          cf->ns_flags_v[si] = SUMA_FLAG_CONNECTED;
-         if (LocalHead) fprintf(SUMA_STDOUT,"%s: Stream existed, reusing.\n", FuncName);
+         if (LocalHead) 
+            fprintf(SUMA_STDOUT,"%s: Stream existed, reusing.\n", FuncName);
          fprintf(SUMA_STDOUT,"%s: Connected.\n", FuncName); fflush(SUMA_STDOUT);
       }else {   /* must open stream */              
          /* contact afni */
-            fprintf(SUMA_STDOUT,"%s: Contacting ...\n", FuncName); fflush(SUMA_STDOUT);
+            fprintf(SUMA_STDOUT,"%s: Contacting ...\n", FuncName);
+            fflush(SUMA_STDOUT);
             cf->ns_v[si] =  NI_stream_open( cf->NimlStream_v[si] , "w" ) ;
             if (!cf->ns_v[si]) {
                cf->ns_flags_v[si] = 0;
@@ -315,16 +317,20 @@ SUMA_Boolean SUMA_niml_call (SUMA_CommonFields *cf, int si, SUMA_Boolean fromSUM
                cf->Connected_v[si] = !cf->Connected_v[si];
                SUMA_RETURN(NOPE) ;
             }
-            if (!strcmp(cf->HostName_v[si],"localhost")) { /* only try shared memory when 
-                                                                  AfniHostName is localhost */
-               fprintf (SUMA_STDERR, "%s: Trying local connection...\n", FuncName);
+            if (!strcmp(cf->HostName_v[si],"localhost")) { 
+               /* only try shared memory when 
+                  AfniHostName is localhost */
+               fprintf (SUMA_STDERR, 
+                        "%s: Trying local connection...\n", FuncName);
                if( strstr( cf->NimlStream_v[si] , "tcp:localhost:" ) != NULL ) {
-                  if (!NI_stream_reopen( cf->ns_v[si] , "shm:WeLikeElvis:1M" )) {
-                     fprintf (SUMA_STDERR, "Warning %s: Shared memory communcation failed.\n", FuncName);
+                  if (!NI_stream_reopen( cf->ns_v[si] , "shm:WeLikeElvis:1M" )){
+                     fprintf (SUMA_STDERR, 
+                              "Warning %s: "
+                              "Shared memory communcation failed.\n",
+                              FuncName);
                   }
                }
             }
-            /*   cf->ns_v[si] = NI_stream_open( "tcp:128.231.212.194:53211" , "w" ) ;*/
 
             if( cf->ns_v[si] == NULL ){
                if (fromSUMA) { SUMA_SLP_Err("NI_stream_open failed (2p)");} 
@@ -2603,7 +2609,9 @@ SUMA_Boolean SUMA_NodeXYZ_nel2NodeXYZ (SUMA_SurfaceObject *SO, NI_element *nel)
    \sa SUMA_NodeXYZ_nel2NodeXYZ
    
 */
-NI_element * SUMA_NodeXYZ2NodeXYZ_nel (SUMA_SurfaceObject *SO, float *val, SUMA_Boolean cleanup, SUMA_DSET_TYPE dtype)
+NI_element * SUMA_NodeXYZ2NodeXYZ_nel (
+   SUMA_SurfaceObject *SO, float *val, 
+   SUMA_Boolean cleanup, SUMA_DSET_TYPE dtype)
 {
    static char FuncName[]={"SUMA_NodeXYZ2NodeXYZ_nel"};
    static int i_in=0;
@@ -2647,6 +2655,7 @@ NI_element * SUMA_NodeXYZ2NodeXYZ_nel (SUMA_SurfaceObject *SO, float *val, SUMA_
       SUMA_RETURN(NULL);
    }
    
+   SUMA_LH("Setting attributes");
    sprintf(stmp, "%d", SO->NodeDim);
    NI_set_attribute (nel, "Node_Dim", stmp);
 
@@ -2657,12 +2666,15 @@ NI_element * SUMA_NodeXYZ2NodeXYZ_nel (SUMA_SurfaceObject *SO, float *val, SUMA_
    
    /* set the label */
    if (SO->Label) {
+      SUMA_LH(" label");
       sprintf(stmp, "NodeList for surface %s", SO->Label);
       NI_set_attribute (nel, "Object_Label", stmp);
    } else {
+      SUMA_LH(" no label");
       NI_set_attribute (nel, "Object_Label", SUMA_EMPTY_ATTR);
    }
          
+   SUMA_LH("Adding data");
    #if 0 /* old way */
    /* Add the coordinate column */
    if (!SUMA_AddNelCol (nel, /* the famed nel */ 
@@ -2945,7 +2957,6 @@ NI_element *SUMA_SOVolPar2VolPar_nel (SUMA_SurfaceObject *SO, SUMA_VOLPAR *VolPa
 /*! Macro specific for SUMA_NodeVal2irgba_nel */
 #define SUMA_NODEVAL2IRGBA_CLEANUP { \
    if (node) SUMA_free(node); node = NULL;   \
-   if (CM) SUMA_Free_ColorMap (CM); CM = NULL;  \
    if (OptScl) SUMA_free(OptScl); OptScl = NULL;   \
    if (SV) SUMA_Free_ColorScaledVect (SV); SV = NULL; \
    if (rgba) SUMA_free(rgba); rgba = NULL;   \
@@ -2975,7 +2986,7 @@ NI_element * SUMA_NodeVal2irgba_nel (SUMA_SurfaceObject *SO, float *val, char *i
    static int i_in=0, *node=NULL;
    static SUMA_COLOR_MAP *CM=NULL;
    static SUMA_SCALE_TO_MAP_OPT * OptScl=NULL;
-   static SUMA_STANDARD_CMAP MapType;
+   static int MapType;
    static SUMA_COLOR_SCALED_VECT * SV=NULL;
    static byte *rgba=NULL;
    static char past_instance[50]={""};
@@ -3013,7 +3024,7 @@ NI_element * SUMA_NodeVal2irgba_nel (SUMA_SurfaceObject *SO, float *val, char *i
    if (!i_in) {
       /* first time around */
       /* create the color mapping of Cx (SUMA_CMAP_MATLAB_DEF_BYR64)*/
-      CM = SUMA_GetStandardMap (SUMA_CMAP_MATLAB_DEF_BYR64);
+      CM = SUMA_FindNamedColMap ("byr64");
       if (CM == NULL) {
          fprintf (SUMA_STDERR,"Error %s: Could not get standard colormap.\n", FuncName); 
          SUMA_RETURN (NULL);

@@ -187,8 +187,10 @@ class comopt:
       self.required = 0     # is the argument required?
       return 
 
-   def show(self, mesg = ''):
+   def show(self, mesg = '', short = 0):
       print "%sComopt: %s" % (mesg, self.name)
+      if short: return      # 22 Jan 2008 [rickr]
+
       print "  (i_name, n_exp, n_found) = (%d, %d, %d)" % \
                (self.i_name, self.n_exp, self.n_found)
       print "  parlist = %s" % self.parlist
@@ -321,14 +323,25 @@ class shell_com:
 def read_attribute(dset, atr):
     [so, se] = shell_exec('3dAttribute %s %s' % (atr, dset))
     if len(so) == 0:
-        print '** 3dAttribute exec failure for "%s %s":' % (atr, dset)
-        print se
+        print '** 3dAttribute exec failure for "%s %s"' % (atr, dset)
+        if len(se) > 0: print se
         return None
     list = so[0].split()
     if len(list) > 0: return list
     else:
         print '** 3dAttribute failure for "%s %s":' % (atr, dset)
         return None
+
+# return dimensions of dset, 4th dimension included
+def dset_dims(dset):
+   ld = read_attribute(dset, 'DATASET_DIMENSIONS')
+   lr = read_attribute(dset, 'DATASET_RANK')
+   dl = []
+   for dd in ld[0:3]:
+      dl.append(int(dd))
+   dl.append(int(lr[1]))
+   return dl
+   
 
 #transform a list of afni names to one string for shell script usage
 def anlist(vlst, sb=''):

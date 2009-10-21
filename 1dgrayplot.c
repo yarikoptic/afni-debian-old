@@ -137,11 +137,8 @@ int main( int argc , char * argv[] )
             "              N.B.: If you view this result in 'gv', you should\n"
             "                    turn 'anti-alias' off, and switch to\n"
             "                    landscape mode.\n"
-
-             "\n"
-             TS_HELP_STRING
            ) ;
-      exit(0) ;
+      PRINT_COMPILE_DATE ; exit(0) ;
    }
 
    machdep() ;

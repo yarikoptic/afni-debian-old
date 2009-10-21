@@ -1103,6 +1103,11 @@ ENTRY("add_timeseries_to_PLUGIN_interface") ;
    EXRETURN ;
 }
 
+/*-----------------------------------------------------------------------*/
+
+static int initcolorindex=1 ;
+void PLUTO_set_initcolorindex( int i ){ initcolorindex = i; } /* 10 Oct 2007 */
+
 /*-----------------------------------------------------------------------
    Routine to add a color overlay  "chooser" to the most recently
    created option within a plugin interface -- 11 Jul 2001 - RWCox.
@@ -1111,11 +1116,11 @@ ENTRY("add_timeseries_to_PLUGIN_interface") ;
            the color.
 -------------------------------------------------------------------------*/
 
-void add_overlaycolor_to_PLUGIN_interface( PLUGIN_interface * plint, char * label )
+void add_overlaycolor_to_PLUGIN_interface( PLUGIN_interface *plint, char *label )
 {
    int nopt , nsv , ii ;
-   PLUGIN_option * opt ;
-   PLUGIN_subvalue * sv ;
+   PLUGIN_option *opt ;
+   PLUGIN_subvalue *sv ;
 
 ENTRY("add_overlaycolor_to_PLUGIN_interface") ;
 
@@ -1130,8 +1135,8 @@ ENTRY("add_overlaycolor_to_PLUGIN_interface") ;
 
    nsv = opt->subvalue_count ;
    if( nsv == PLUGIN_MAX_SUBVALUES ){
-      fprintf(stderr,"*** Warning: maximum plugin subvalue count exceeded!\n");
-      EXRETURN ;
+     WARNING_message("maximum plugin subvalue count exceeded - overlaycolor");
+     EXRETURN ;
    }
 
    /*-- load values into next subvalue --*/
@@ -1140,6 +1145,7 @@ ENTRY("add_overlaycolor_to_PLUGIN_interface") ;
 
    sv->data_type = PLUGIN_OVERLAY_COLOR_TYPE ;
    PLUGIN_LABEL_strcpy( sv->label , label ) ;
+   sv->value_default = initcolorindex ;
 
    (opt->subvalue_count)++ ;
    EXRETURN ;
@@ -1147,7 +1153,7 @@ ENTRY("add_overlaycolor_to_PLUGIN_interface") ;
 
 /*--------------------------------------------------------------------------*/
 
-int PLUG_nonblank_len( char * str )
+int PLUG_nonblank_len( char *str )
 {
    int ii , ll ;
 
@@ -1556,10 +1562,11 @@ fprintf(stderr,"Option setup %s\n",opt->label) ;
             /** overlay color type -- 11 Jul 2001 **/
 
             case PLUGIN_OVERLAY_COLOR_TYPE:{
-               MCW_arrowval * av ;
+               MCW_arrowval *av ; int iv=sv->value_default ;
 #if 0
 fprintf(stderr,"colormenu setup %s; opt->tag=%s.\n",sv->label,opt->tag) ;
 #endif
+               if( iv < 0 || iv > dc->ovc->ncol_ov-1 ) iv = 1 ;
 
                av = new_MCW_colormenu(
                        wid->workwin ,                    /* parent */
@@ -1567,7 +1574,7 @@ fprintf(stderr,"colormenu setup %s; opt->tag=%s.\n",sv->label,opt->tag) ;
                        dc ,                              /* display context */
                        1 ,                               /* first color */
                        dc->ovc->ncol_ov - 1 ,            /* last color */
-                       1 ,                               /* initial color */
+                       iv ,                              /* initial color */
                        NULL,NULL                         /* callback func,data */
                     ) ;
 
@@ -1979,6 +1986,7 @@ fprintf(stderr,"Widget realization\n") ;
 #endif
 
    XtRealizeWidget( wid->shell ) ;  /* will not be mapped */
+   NI_sleep(1) ;
 
    /** set its width after it is mapped **/
 
@@ -2219,10 +2227,10 @@ ENTRY("PLUG_fillin_values") ;
            /** 11 Jul 2001: overlay color type; send in the color index **/
 
            case PLUGIN_OVERLAY_COLOR_TYPE:{
-              MCW_arrowval * av = (MCW_arrowval *) ow->chooser[ib] ;
-              int * iptr ;
+              MCW_arrowval *av = (MCW_arrowval *)ow->chooser[ib] ;
+              int *iptr ;
 
-              iptr  = (int *) XtMalloc( sizeof(int) ) ;
+              iptr  = (int *)XtMalloc( sizeof(int) ) ;
               *iptr = av->ival ;
               opt->callvalue[ib] = (void *) iptr ;
            }
@@ -2232,8 +2240,8 @@ ENTRY("PLUG_fillin_values") ;
                             send in the float value **/
 
            case PLUGIN_NUMBER_TYPE:{
-              MCW_arrowval * av = (MCW_arrowval *) ow->chooser[ib] ;
-              float * fptr ;
+              MCW_arrowval *av = (MCW_arrowval *) ow->chooser[ib] ;
+              float *fptr ;
 
               fptr  = (float *) XtMalloc( sizeof(float) ) ;
               *fptr = av->fval ;
@@ -2466,8 +2474,8 @@ ENTRY("PLUTO_commandstring") ;
                outbuf = THD_zzprintf( outbuf,"?" ) ; break ;
 
             case PLUGIN_OVERLAY_COLOR_TYPE:{
-               int * val = (int *) opt->callvalue[jsv] ;
-               MCW_DC * dc = plint->im3d->dc ;
+               int *val = (int *) opt->callvalue[jsv] ;
+               MCW_DC *dc = plint->im3d->dc ;
                if( val != NULL && *val >= 0 )
                  outbuf = THD_zzprintf( outbuf,"%s",dc->ovc->label_ov[*val] );
                else
@@ -3018,7 +3026,7 @@ ENTRY("PLUGIN_dset_check") ;
 
    if( ((1 << dset->func_type) & type_mask) == 0 ) RETURN(0) ;
 
-   itmp = (DSET_NUM_TIMES(dset) > 1) ? DIMEN_4D_MASK : DIMEN_3D_MASK ;
+   itmp = (DSET_NVALS(dset) > 1) ? DIMEN_4D_MASK : DIMEN_3D_MASK ;
    if( (itmp & ctrl_mask) == 0 ) RETURN(0) ;
 
    if( !DSET_INMEMORY(dset) && (ctrl_mask & WARP_ON_DEMAND_MASK) == 0 ) RETURN(0) ;
@@ -4085,74 +4093,75 @@ ENTRY("PLUGIN_seq_send_CB") ;
          XButtonEvent *xev = (XButtonEvent *) cbs->event ;
 #define NBIRN 10
          static int nold=0 ;
-         static char * birn[NBIRN] = { " \n** Don't DO That! **\n "                        ,
-                                       " \n** Stop it, Rasmus! **\n "                      ,
-                                       " \n** Do NOT read this message! **\n "             ,
-                                       " \n** Having fun yet? **\n "                       ,
-                                       " \n** What do you want NOW? **\n "                 ,
-                                       " \n** Too much time on your hands? **\n "          ,
-                                       " \n** Why are you bothering me? **\n "             ,
-                                       " \n** Danger! Danger, Will Robinson! **\n "        ,
-                                       " \n** WARNING: Planetary meltdown imminent! **\n " ,
+         static char *birn[NBIRN] = {
+           " \n** Don't DO That! **\n "                        ,
+           " \n** Stop it, Rasmus! **\n "                      ,
+           " \n** Do NOT read this message! **\n "             ,
+           " \n** Having fun yet? **\n "                       ,
+           " \n** What do you want NOW? **\n "                 ,
+           " \n** Too much time on your hands? **\n "          ,
+           " \n** Why are you bothering me? **\n "             ,
+           " \n** Danger! Danger, Will Robinson! **\n "        ,
+           " \n** WARNING: Planetary meltdown imminent! **\n " ,
 
-                                 " \n"
-                                 " God of our fathers, known of old,\n"
-                                 " Lord of our far-flung battle-line,\n"
-                                 " Beneath whose awful hand we hold\n"
-                                 " Dominion over palm and pine -\n"
-                                 " Lord God of Hosts, be with us yet,\n"
-                                 " Lest we forget - lest we forget!\n"
-                                 " \n"
-                                 " The tumult and the shouting dies;\n"
-                                 " The captains and the kings depart:\n"
-                                 " Still stands Thine ancient sacrifice,\n"
-                                 " An humble and a contrite heart.\n"
-                                 " Lord God of Hosts, be with us yet,\n"
-                                 " Lest we forget - lest we forget!\n"
-                                 " \n"
-                                 " Far-called, our navies melt away;\n"
-                                 " On dune and headland sinks the fire:\n"
-                                 " Lo, all our pomp of yesterday\n"
-                                 " Is one with Nineveh and Tyre!\n"
-                                 " Judge of the Nations, spare us yet.\n"
-                                 " Lest we forget - lest we forget!\n"
-                                 " \n"
-                                 " If, drunk with sight of power, we loose\n"
-                                 " Wild tongues that have not Thee in awe,\n"
-                                 " Such boastings as the Gentiles use,\n"
-                                 " Or lesser breeds without the Law -\n"
-                                 " Lord God of Hosts, be with us yet,\n"
-                                 " Lest we forget - lest we forget!\n"
-                                 " \n"
-                                 " For heathen heart that puts her trust\n"
-                                 " In reeking tube and iron shard,\n"
-                                 " All valiant dust that builds on dust,\n"
-                                 " And, guarding, calls not Thee to guard,\n"
-                                 " For frantic boast and foolish word -\n"
-                                 " The Mercy on Thy People, Lord!\n"
-                               } ;
+           " \n"
+           " God of our fathers, known of old,\n"
+           " Lord of our far-flung battle-line,\n"
+           " Beneath whose awful hand we hold\n"
+           " Dominion over palm and pine -\n"
+           " Lord God of Hosts, be with us yet,\n"
+           " Lest we forget - lest we forget!\n"
+           " \n"
+           " The tumult and the shouting dies;\n"
+           " The captains and the kings depart:\n"
+           " Still stands Thine ancient sacrifice,\n"
+           " An humble and a contrite heart.\n"
+           " Lord God of Hosts, be with us yet,\n"
+           " Lest we forget - lest we forget!\n"
+           " \n"
+           " Far-called, our navies melt away;\n"
+           " On dune and headland sinks the fire:\n"
+           " Lo, all our pomp of yesterday\n"
+           " Is one with Nineveh and Tyre!\n"
+           " Judge of the Nations, spare us yet.\n"
+           " Lest we forget - lest we forget!\n"
+           " \n"
+           " If, drunk with sight of power, we loose\n"
+           " Wild tongues that have not Thee in awe,\n"
+           " Such boastings as the Gentiles use,\n"
+           " Or lesser breeds without the Law -\n"
+           " Lord God of Hosts, be with us yet,\n"
+           " Lest we forget - lest we forget!\n"
+           " \n"
+           " For heathen heart that puts her trust\n"
+           " In reeking tube and iron shard,\n"
+           " All valiant dust that builds on dust,\n"
+           " And, guarding, calls not Thee to guard,\n"
+           " For frantic boast and foolish word -\n"
+           " The Mercy on Thy People, Lord!\n"
+         } ;
 
 #define NKLING 5
          static int nkl=0 ;
          static char *kling[NKLING] = {
-                                 " \n What is this talk of 'release'?\n"
-                                 " Klingons do not make software 'releases'.\n"
-                                 " Our software 'escapes', leaving a bloody trail of\n"
-                                 " designers and 'Quality Assurance' people in its wake.\n"        ,
+            " \n What is this talk of 'release'?\n"
+            " Klingons do not make software 'releases'.\n"
+            " Our software 'escapes', leaving a bloody trail of\n"
+            " designers and 'Quality Assurance' people in its wake.\n"        ,
 
-                                 " \n Debugging? Klingons do not debug.\n"
-                                 " Our software does not coddle the weak.\n"                       ,
+            " \n Debugging? Klingons do not debug.\n"
+            " Our software does not coddle the weak.\n"                       ,
 
-                                 " \n Klingon software does NOT have BUGS.\n"
-                                 " It has FEATURES, and those features are too\n"
-                                 " sophisticated for a Romulan pig like you to understand.\n"      ,
+            " \n Klingon software does NOT have BUGS.\n"
+            " It has FEATURES, and those features are too\n"
+            " sophisticated for a Romulan pig like you to understand.\n"      ,
 
-                                 " \n Our users will know fear and cower before our software!\n"
-                                 " Ship it! Ship it and let them flee like the dogs they are!\n"  ,
+            " \n Our users will know fear and cower before our software!\n"
+            " Ship it! Ship it and let them flee like the dogs they are!\n"  ,
 
-                                 " \n You question the worthiness of my code?\n"
-                                 " I should kill you where you stand!\n"
-                               } ;
+            " \n You question the worthiness of my code?\n"
+            " I should kill you where you stand!\n"
+         } ;
 
          if( xev == NULL || xev->button == Button1 ){
            if( !NO_frivolities && nold < NBIRN ){
@@ -4709,7 +4718,9 @@ int PLUTO_set_v2s_addrs(void ** vopt, char *** maps, char ** hist)
 
 /** put library routines here that must be loaded **/
 
-#include "cox_render.h"  /* 14 Feb 2002 */
+#include "cox_render.h"                 /* 14 Feb 2002 */
+
+extern void matrix_initialize(void *);  /* 30 Jul 2007 */
 
 static vptr_func * forced_loads[] = {
 #ifndef NO_DYNAMIC_LOADING
@@ -4742,6 +4753,10 @@ static vptr_func * forced_loads[] = {
    (vptr_func *) cl1_solve ,              /* 07 Aug 2002 */
    (vptr_func *) new_Dtable ,             /* 20 Oct 2003 */
    (vptr_func *) powell_newuoa ,          /* 24 Jul 2006 */
+   (vptr_func *) matrix_initialize ,      /* 30 Jul 2007 */
+   (vptr_func *) r_new_resam_dset ,       /* 31 Jul 2007 */
+   (vptr_func *) r_hex_str_to_long ,      /* 31 Jul 2007 */
+   (vptr_func *) r_idisp_vec3f ,          /* 31 Jul 2007 */
 #endif
 NULL } ;
 
@@ -4838,18 +4853,18 @@ THD_slist_find PLUTO_dset_finder( char *idc )
    Graph is popped up and then "forgotten" -- RWCox - 30 Sep 1999.
 -------------------------------------------------------------------*/
 
-void PLUTO_histoplot( int nbin, float bot, float top, int * hist ,
-                      char * xlab , char * ylab , char * tlab ,
-                      int njist , int ** jist )
+void PLUTO_histoplot_f( int nbin, float bot, float top, float *hist ,
+                        char *xlab , char *ylab , char *tlab ,
+                        int njist , float **jist )
 {
    int ii , nx , ny,jj ;
-   float * xar , * yar , * zar=NULL , ** yzar ;
+   float *xar , *yar , *zar=NULL , **yzar ;
    float dx ;
 
 ENTRY("PLUTO_histoplot") ;
 
    if( nbin < 2 || hist == NULL ) EXRETURN ;
-   if( bot >= top ){ bot = 0.0 ; top = nbin ; }
+   if( bot >= top ){ bot = 0.0f ; top = nbin ; }
 
    nx  = 2*(nbin+1) ;
    dx  = (top-bot)/nbin ;
@@ -4864,17 +4879,17 @@ ENTRY("PLUTO_histoplot") ;
    for( jj=0 ; jj < njist ; jj++ )
      yzar[jj+1] = (float *) malloc(sizeof(float)*nx) ;
 
-   xar[0] = bot ; yar[0] = 0.0 ;
+   xar[0] = bot ; yar[0] = 0.0f ;
    for( ii=0 ; ii < nbin ; ii++ ){
-     xar[2*ii+1] = bot+ii*dx     ; yar[2*ii+1] = (float) hist[ii] ;
-     xar[2*ii+2] = bot+(ii+1)*dx ; yar[2*ii+2] = (float) hist[ii] ;
+     xar[2*ii+1] = bot+ii*dx     ; yar[2*ii+1] = hist[ii] ;
+     xar[2*ii+2] = bot+(ii+1)*dx ; yar[2*ii+2] = hist[ii] ;
 
      for( jj=0 ; jj < njist ; jj++ )
-       yzar[jj+1][2*ii+1] = yzar[jj+1][2*ii+2] = (float) jist[jj][ii] ;
+       yzar[jj+1][2*ii+1] = yzar[jj+1][2*ii+2] = jist[jj][ii] ;
    }
-   xar[2*nbin+1] = top ; yar[2*nbin+1] = 0.0 ;
+   xar[2*nbin+1] = top ; yar[2*nbin+1] = 0.0f ;
    for( jj=0 ; jj < njist ; jj++ )
-     yzar[jj+1][0] = yzar[jj+1][2*nbin+1] = 0.0 ;
+     yzar[jj+1][0] = yzar[jj+1][2*nbin+1] = 0.0f ;
 
    plot_ts_lab( GLOBAL_library.dc->display ,
                 nx , xar , ny , yzar ,
@@ -4882,6 +4897,39 @@ ENTRY("PLUTO_histoplot") ;
 
    for( jj=0 ; jj < njist ; jj++ ) free(yzar[jj+1]) ;
    free(yzar) ; free(xar) ; free(yar) ;
+   EXRETURN ;
+}
+
+/*----------------------------------------------------------------------*/
+
+void PLUTO_histoplot( int nbin, float bot, float top, int *hist ,
+                      char *xlab , char *ylab , char *tlab ,
+                      int njist , int **jist )
+{
+   float *hist_f , **jist_f ;
+   int ii,jj ;
+
+ENTRY("PLUTO_histoplot") ;
+
+   if( nbin < 2 || hist == NULL ) EXRETURN ;
+
+   hist_f = (float *)malloc(sizeof(float)*nbin) ;
+   for( ii=0 ; ii < nbin ; ii++ ) hist_f[ii] = (float)hist[ii] ;
+
+   if( njist <= 0 || jist == NULL ){
+     PLUTO_histoplot_f( nbin, bot,top , hist_f , xlab,ylab,tlab , 0,NULL ) ;
+     free((void *)hist_f) ;
+     EXRETURN ;
+   }
+
+   jist_f = (float **)malloc(sizeof(float *)*njist) ;
+   for( jj=0 ; jj < njist ; jj++ ){
+     jist_f[jj] = (float *)malloc(sizeof(float)*nbin) ;
+     for( ii=0 ; ii < nbin ; ii++ ) jist_f[jj][ii] = (float)jist[jj][ii] ;
+   }
+   PLUTO_histoplot_f( nbin,bot,top , hist_f , xlab,ylab,tlab , njist,jist_f );
+   for( jj=0 ; jj < njist ; jj++ ) free((void *)jist_f[jj]) ;
+   free((void *)jist_f) ; free((void *)hist_f) ;
    EXRETURN ;
 }
 
@@ -5301,4 +5349,3 @@ double PLUTO_cpu_time(void)  /* in seconds */
    return 0.0l ;
 #endif
 }
-

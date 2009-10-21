@@ -127,7 +127,7 @@ void Syntax(char * msg)
     "-- RWCox -- October 2000\n"
    ) ;
 
-   exit(0) ;
+   PRINT_COMPILE_DATE ; exit(0) ;
 }
 
 /*---------------------------------------------------------------------------*/
@@ -419,7 +419,7 @@ int main( int argc , char * argv[] )
                     ADN_none ) ;
    }
 
-   if( THD_is_file(DSET_HEADNAME(dset)) )
+   if( THD_deathcon() && THD_is_file(DSET_HEADNAME(dset)) )
       Syntax("Output dataset already exists -- can't overwrite") ;
 
    if (do_head_only) {

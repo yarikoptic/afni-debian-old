@@ -65,6 +65,7 @@ typedef struct {
 #define INCODE_FOV   100
 #define INCODE_SLAB  200
 
+#undef  ORCODE
 #define ORCODE(aa)                         \
   ( ((aa)=='R'||(aa)=='r') ? ORI_R2L_TYPE  \
    :((aa)=='L'||(aa)=='l') ? ORI_L2R_TYPE  \
@@ -202,7 +203,7 @@ void T3D_set_dependent_geometries(void) ;
 void T3D_widgets_to_data(void) ;
 void T3D_data_to_widgets(void) ;
 
-void T3D_poperr(char *,char *) ;
+void T3D_poperr(char *,char *, Boolean) ;
 
 void T3D_fix_dataset_dimen(void) ;
 void Syntax() ;

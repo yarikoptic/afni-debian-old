@@ -1,20 +1,64 @@
 #include "mrilib.h"
 
-#define MAX_NCODE 666
+/* defines moved to editvol.h */
 
-#define NTYPE_SPHERE 1
-#define NTYPE_RECT   2
-
+int LS_decode_parameters(char *str, float *params)
+{
+   int iparams=-1;
+   int nc=0, k, icol[10], stp=0, ncol = 0, ii;
+   char strbuf[256];
+   char *ce=NULL;
+   
+   ENTRY("LS_decode_parameters");
+   
+   if (!str || !params) RETURN(iparams);
+   
+   iparams = 0;
+   
+   #if 1 /* clumsy but more flexible. */
+   /* find my ':' */
+   nc = strlen(str);
+   ncol = 0;
+   k = 0;
+   while (k<nc) {
+      if (str[k] == ':') {icol[ncol] = k; ++ncol; }
+      ++k;
+   }
+   if (!ncol) RETURN(iparams);
+   
+   for (k=0; k<ncol; ++k) {
+      if (k<ncol-1) { stp = icol[k+1]-1; }
+      else { stp = nc; }
+      for (ii=0; ii<stp-icol[k]; ++ii) strbuf[ii]=str[icol[k]+ii+1];
+      strbuf[stp-icol[k]] = '\0';
+      /* fprintf(stderr, ">>>%s<<<\n", strbuf); */
+      ++iparams; params[iparams] = strtod(strbuf, NULL);
+   }
+   #else /* would skip cases like :: which is kinda like :0.0: */
+   ce = strtok(str,":");
+   while (ce = strtok(NULL,":")) { 
+      ++iparams; params[iparams] = strtod(ce, NULL);
+      /* fprintf(stderr, ">>>%s<<<\n", ce); */
+   }
+   #endif
+   params[0] = iparams;
+   
+   RETURN(iparams);
+}
 int main( int argc , char *argv[] )
 {
    THD_3dim_dataset *inset=NULL , *outset ;
    int ncode=0 , code[MAX_NCODE] , iarg=1 , ii ;
+   float codeparams[MAX_NCODE][MAX_CODE_PARAMS+1];
    MCW_cluster *nbhd=NULL ;
    byte *mask=NULL ; int mask_nx,mask_ny,mask_nz , automask=0 ;
    char *prefix="./localstat" ;
    int ntype=0 ; float na=0.0f,nb=0.0f,nc=0.0f ;
    int do_fwhm=0 , verb=1 ;
-
+   int npv = -1; 
+   int ipv;
+   int datum = MRI_float;
+   
    /*---- for the clueless who wish to become clued-in ----*/
 
    if( argc < 2 || strcmp(argv[1],"-help") == 0 ){
@@ -72,11 +116,13 @@ int main( int argc , char *argv[] )
       "                          the mean and stdev outputs.\n"
       "               * FWHM   = compute (like 3dFWHM) image smoothness\n"
       "                          inside each voxel's neighborhood.  Results\n"
-      "                          are in 3 sub-bricks: FWHMx, FHWMy, and FWHM.\n"
+      "                          are in 3 sub-bricks: FWHMx, FHWMy, and FWHMz.\n"
       "                          Places where an output is -1 are locations\n"
       "                          where the FWHM value could not be computed\n"
       "                          (e.g., outside the mask).\n"
-      "               * ALL    = all of the above, in that order\n"
+      "               * FWHMbar= Compute just the average of the 3 FWHM values\n"
+      "                          (normally would NOT do this with FWHM also).\n"
+      "               * ALL    = all of the above, in that order (except FWHMbar).\n"
       "               More than one '-stat' option can be used.\n"
       "\n"
       " -mask mset  = Read in dataset 'mset' and use the nonzero voxels\n"
@@ -91,11 +137,14 @@ int main( int argc , char *argv[] )
       " -prefix ppp = Use string 'ppp' as the prefix for the output dataset.\n"
       "               The output dataset is always stored as floats.\n"
       "\n"
+      " -datum type = Coerce the output data to be stored as the given type, \n"
+      "               which may be byte, short, or float.\n"
+      "               Default is float\n"
       " -quiet      = Stop the annoying progress reports.\n"
       "\n"
       "Author: RWCox - August 2005.  Instigator: ZSSaad.\n"
      ) ;
-     exit(0) ;
+     PRINT_COMPILE_DATE ; exit(0) ;
    }
 
    /*---- official startup ---*/
@@ -103,6 +152,9 @@ int main( int argc , char *argv[] )
    PRINT_VERSION("3dLocalstat"); mainENTRY("3dLocalstat main"); machdep();
    AFNI_logger("3dLocalstat",argc,argv); AUTHOR("Emperor Zhark");
 
+   /* initialize codeparams */
+   for (ii=0; ii<MAX_NCODE; ++ii) codeparams[ii][0] = -1.0;
+   
    /*---- loop over options ----*/
 
    while( iarg < argc && argv[iarg][0] == '-' ){
@@ -110,7 +162,24 @@ int main( int argc , char *argv[] )
      if( strncmp(argv[iarg],"-q",2) == 0 ){
        verb = 0 ; iarg++ ; continue ;
      }
+     
+     /**** -datum type ****/
 
+     if( strncasecmp(argv[iarg],"-datum",6) == 0 ){
+        if( ++iarg >= argc )
+          ERROR_exit("need an argument after -datum!\n") ;
+        if( strcasecmp(argv[iarg],"short") == 0 ){
+           datum = MRI_short ;
+        } else if( strcasecmp(argv[iarg],"float") == 0 ){
+           datum = MRI_float ;
+        } else if( strcasecmp(argv[iarg],"byte") == 0 ){
+           datum = MRI_byte ;
+        } else {
+            ERROR_exit("-datum of type '%s' not supported in 3dLocalstat!\n",argv[iarg]) ;
+        }
+        iarg++ ; continue ;  
+     }
+     
      if( strcmp(argv[iarg],"-input") == 0 ){
        if( inset != NULL  ) ERROR_exit("Can't have two -input options") ;
        if( ++iarg >= argc ) ERROR_exit("Need argument after '-input'") ;
@@ -146,11 +215,12 @@ int main( int argc , char *argv[] )
        automask = 1 ;
        iarg++ ; continue ;
      }
-
      if( strcmp(argv[iarg],"-stat") == 0 ){
        char *cpt ;
+       float strt, stp, jmp;
+       int iizz;
        if( ++iarg >= argc ) ERROR_exit("Need argument after '-stat'") ;
-
+ 
        cpt = argv[iarg] ; if( *cpt == '-' ) cpt++ ;
             if( strcasecmp(cpt,"mean")  == 0 ) code[ncode++] = NSTAT_MEAN  ;
        else if( strcasecmp(cpt,"stdev") == 0 ) code[ncode++] = NSTAT_SIGMA ;
@@ -166,6 +236,35 @@ int main( int argc , char *argv[] )
                                                code[ncode++] = NSTAT_FWHMy ;
                                                code[ncode++] = NSTAT_FWHMz ;
                                                do_fwhm++                   ;}
+       else if( strncasecmp(cpt,"perc",4) == 0) { 
+         /* How many you say? */
+         if (LS_decode_parameters(cpt, codeparams[ncode]) <= 0) {
+            ERROR_exit("Need params with perc stat");
+         }
+         strt = codeparams[ncode][1]; stp = strt; jmp = 1.0;
+         if ((int)codeparams[ncode][0] == 2) { 
+            stp = codeparams[ncode][2]; if (stp == 0) stp = strt;
+         }else if ((int)codeparams[ncode][0] == 3) { 
+            stp = codeparams[ncode][2]; jmp = codeparams[ncode][3];
+         }
+         if (jmp == 0.0) jmp = 1.0;
+         npv = ceil((stp - strt)/jmp);
+         if (npv > MAX_CODE_PARAMS) {
+            ERROR_exit("A max of %d percentiles allowed. You have %d\n", MAX_CODE_PARAMS, npv);
+         }
+         ipv = 1;
+         codeparams[ncode][1] = strt;
+         while (codeparams[ncode][ipv]+jmp <= stp) {
+            codeparams[ncode][ipv+1] = codeparams[ncode][ipv]+jmp; ++ipv;
+         }
+         codeparams[ncode][0] = ipv;
+         iizz = (int)(codeparams[ncode][0]);
+         /* fprintf(stderr, 
+                     "Have %d percentiles (coded with %d) starting at code index %d\n",
+                      iizz, NSTAT_PERCENTILE, ncode); */
+         for (ipv=0; ipv<iizz; ++ipv)  code[ncode++] = NSTAT_PERCENTILE;
+       }                                                                           
+       else if( strcasecmp(cpt,"fwhmbar")==0 ) code[ncode++] = NSTAT_FWHMbar;
        else if( strcasecmp(cpt,"ALL")   == 0 ){
          code[ncode++] = NSTAT_MEAN  ; code[ncode++] = NSTAT_SIGMA ;
          code[ncode++] = NSTAT_VAR   ; code[ncode++] = NSTAT_CVAR  ;
@@ -202,7 +301,7 @@ int main( int argc , char *argv[] )
        iarg++ ; continue ;
      }
 
-     ERROR_exit("Uknown option '%s'",argv[iarg]) ;
+     ERROR_exit("Unknown option '%s'",argv[iarg]) ;
 
    } /*--- end of loop over options ---*/
 
@@ -275,34 +374,58 @@ int main( int argc , char *argv[] )
    /*---- actually do some work for a change ----*/
 
    THD_localstat_verb(verb) ;
-   outset = THD_localstat( inset , mask , nbhd , ncode , code ) ;
+   THD_localstat_datum(datum);
+   outset = THD_localstat( inset , mask , nbhd , ncode , code, codeparams ) ;
 
    DSET_unload(inset) ;
 
    if( outset == NULL ) ERROR_exit("Function THD_localstat() fails?!") ;
 
    EDIT_dset_items( outset , ADN_prefix,prefix , ADN_none ) ;
-
+ 
    tross_Copy_History( inset , outset ) ;
    tross_Make_History( "3dLocalstat" , argc,argv , outset ) ;
 
-   { char *lcode[66] , lll[66] ;
+   { char *lcode[MAX_NCODE] , lll[MAX_NCODE] , *slcode, pcode[MAX_NCODE];
+     int ipv = 0;
      lcode[NSTAT_MEAN]   = "MEAN" ; lcode[NSTAT_SIGMA]  = "SIGMA"  ;
      lcode[NSTAT_CVAR]   = "CVAR" ; lcode[NSTAT_MEDIAN] = "MEDIAN" ;
      lcode[NSTAT_MAD]    = "MAD"  ; lcode[NSTAT_MAX]    = "MAX"    ;
      lcode[NSTAT_MIN]    = "MIN"  ; lcode[NSTAT_ABSMAX] = "ABSMAX" ;
      lcode[NSTAT_VAR]    = "VAR"  ; lcode[NSTAT_NUM]    = "NUM"    ;
-     lcode[NSTAT_FWHMx]  = "FWHMx";
+     lcode[NSTAT_FWHMx]  = "FWHMx"; lcode[NSTAT_PERCENTILE] = "PERC";
      lcode[NSTAT_FWHMy]  = "FWHMy";
      lcode[NSTAT_FWHMz]  = "FWHMz";
      if( DSET_NVALS(inset) == 1 ){
-       for( ii=0 ; ii < DSET_NVALS(outset) ; ii++ )
+       ii=0;
+       while(ii < DSET_NVALS(outset)) {
+         if (code[ii%ncode] == NSTAT_PERCENTILE) {
+            if (ipv < 0) ipv = ii%ncode;
+            sprintf(pcode,"perc:%.2f", codeparams[ipv][1+ii%ncode-ipv]);  
+            slcode = pcode;
+         } else {
+            ipv = -1;
+            slcode = lcode[code[ii%ncode]];
+         }
+         /*fprintf(stderr,"CODE %d: %s\n", ii, slcode);*/
          EDIT_dset_items( outset ,
-                            ADN_brick_label_one+ii , lcode[code[ii%ncode]] ,
+                            ADN_brick_label_one+ii , slcode ,
                           ADN_none ) ;
+         ++ii;
+      }
+         
      } else {
        for( ii=0 ; ii < DSET_NVALS(outset) ; ii++ ){
-         sprintf(lll,"%s[%d]",lcode[code[ii%ncode]],(ii/ncode)) ;
+         if (code[ii%ncode] == NSTAT_PERCENTILE) {
+            if (ipv < 0) ipv = ii%ncode;
+            sprintf(pcode,"perc:%.2f", codeparams[ipv][1+ii%ncode-ipv]);  
+            slcode = pcode;
+         } else {
+            ipv = -1;
+            slcode = lcode[code[ii%ncode]];
+         }
+         sprintf(lll,"%s[%d]",slcode,(ii/ncode)) ;
+         /* fprintf(stderr,"CODE sb%d: %s\n", ii, lll); */
          EDIT_dset_items( outset , ADN_brick_label_one+ii,lll, ADN_none ) ;
        }
      }

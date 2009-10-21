@@ -336,7 +336,7 @@ extern "C" {                    /* care of Greg Balls    7 Aug 2006 [rickr] */
 
 /*! Size of NI_stream buffer. */
 
-#define NI_BUFSIZE (31*1024)
+#define NI_BUFSIZE (255*1024)
 
 /*! Data needed to process input stream. */
 
@@ -502,6 +502,30 @@ DIME_part    * DIME_read_part   ( NI_stream_type * , int ) ;
 
 void           DIME_destroy_message( DIME_message * ) ;
 
+/*****--------------------------------------------------------------*****/
+
+#if 0
+typedef struct { int nar ; float  *ar ; } NI_floatvec ;
+
+#define KILL_NI_floatvec(fv)                 \
+  do{ if( (fv) != NULL ){                     \
+        if( (fv)->ar != NULL ) free((fv)->ar); \
+        free(fv); (fv) = NULL;                  \
+  }} while(0)
+
+#define MAKE_NI_floatvec(fv,n)                           \
+  do{ (fv) = (NI_floatvec *)malloc(sizeof(NI_floatvec)) ; \
+      (fv)->nar = (n) ;                                    \
+      (fv)->ar  = (float *)calloc(sizeof(float),(n)) ;      \
+  } while(0)
+
+#define RESIZE_NI_floatvec(fv,m)                               \
+  do{ if( (fv)->nar != (m) ){                                   \
+        (fv)->nar = (m) ;                                        \
+        (fv)->ar  = (float *)realloc((fv)->ar,sizeof(float)*(m)); \
+  }} while(0)
+#endif
+
 /*****------------------------- prototypes -------------------------*****/
 
 /** 18 Nov 2002: replace old malloc functions with new ones **/
@@ -570,12 +594,12 @@ extern char * NI_element_name( void * ) ;  /* 18 Apr 2005 */
 extern NI_element * NI_new_data_element( char *, int ) ;
 extern void NI_add_column( NI_element *, int, void * ) ;
 extern void NI_move_column(NI_element *nel, int ibefore, int iafter);
-extern void NI_insert_column( NI_element *nel , int typ , void *arr, int icol ); 
+extern void NI_insert_column( NI_element *nel , int typ , void *arr, int icol );
 extern void NI_remove_column(NI_element *nel, int irm);
-extern void NI_set_attribute( void *, char *, char * ) ;
+extern void   NI_set_attribute( void *, char *, char * ) ;
 extern char * NI_get_attribute( void *, char * ) ;
 extern void NI_insert_value( NI_element *, int,int, void * );       /* 03 Apr 2003 */
-extern void NI_insert_column_stride( NI_element *nel, int typ, void *arr, int stride, int icol ); 
+extern void NI_insert_column_stride( NI_element *nel, int typ, void *arr, int stride, int icol );
 extern void NI_add_column_stride( NI_element *, int, void *, int ); /* 29 May 2003 */
 extern void NI_fill_column_stride( NI_element *,int,void *,int,int);/* 23 Mar 2004 */
 extern void NI_insert_string( NI_element *, int,int, char *);       /* 19 Apr 2005 */
@@ -1183,6 +1207,30 @@ typedef struct { int num; char **str;} NI_str_array ;
 
 extern NI_str_array * NI_decode_string_list( char *ss , char *sep ) ;
 #define NI_decode_str_array NI_decode_string_list
+
+/*-------------------------------------------------------------------------*/
+/*! An array of floats. */
+
+typedef struct { int num; float *ar; } NI_float_array ;
+
+#define NI_delete_float_array(far) \
+  do{ if( (far)->ar != NULL ) NI_free((far)->ar); NI_free(far); } while(0)
+
+extern NI_float_array * NI_decode_float_list( char *ss , char* sep ) ;
+extern char *           NI_encode_float_list( NI_float_array *, char * ) ;
+#define NI_decode_float_array NI_decode_float_list
+
+/*-------------------------------------------------------------------------*/
+/*! An array of ints. */
+
+typedef struct { int num; int *ar; } NI_int_array ;
+
+#define NI_delete_int_array(iar) \
+  do{ if( (iar)->ar != NULL ) NI_free((iar)->ar); NI_free(iar); } while(0)
+
+extern NI_int_array * NI_decode_int_list( char *ss , char* sep ) ;
+extern char *         NI_encode_int_list( NI_int_array * , char * ) ;
+#define NI_decode_int_array NI_decode_int_list
 
 /*-------------------------------------------------------------------------*/
 /* Registry stuff -- niml_registry.c [25 Feb 2005] */

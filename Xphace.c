@@ -284,9 +284,9 @@ static void * PH_popup_image( void * handle , MRI_IMAGE * im )
 
 static char * FALLback[] =
   {   "AFNI*fontList:             9x15bold=charset1"    ,
-      "AFNI*background:           gray40"               ,
-      "AFNI*menu*background:      gray40"               ,
-      "AFNI*borderColor:          gray40"               ,
+      "AFNI*background:           gray30"               ,
+      "AFNI*menu*background:      gray20"               ,
+      "AFNI*borderColor:          gray30"               ,
       "AFNI*foreground:           yellow"               ,
       "AFNI*borderWidth:          0"                    ,
       "AFNI*troughColor:          green"                ,
@@ -415,7 +415,7 @@ int main( int argc , char * argv[] )
    /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
    XtManageChild( MAIN_rc ) ;
-   XtRealizeWidget( MAIN_shell ) ;
+   XtRealizeWidget( MAIN_shell ) ; NI_sleep(1) ;
 
 #if 0
    XtVaSetValues( MAIN_rc     , XmNwidth , P_swide , NULL ) ;
@@ -424,9 +424,9 @@ int main( int argc , char * argv[] )
 #endif
 
    XtVaSetValues( MAIN_shell ,
-                    XmNmwmDecorations , MWM_DECOR_BORDER | MWM_DECOR_TITLE | MWM_DECOR_MENU ,
-                    XmNmwmFunctions   , MWM_FUNC_MOVE | MWM_FUNC_CLOSE ,
-                    XmNtitle          , "Xphace Controls" ,
+                    XmNmwmDecorations, MWM_DECOR_BORDER | MWM_DECOR_TITLE | MWM_DECOR_MENU ,
+                    XmNmwmFunctions  , MWM_FUNC_MOVE | MWM_FUNC_CLOSE ,
+                    XmNtitle         , "Xphace Controls" ,
                   NULL ) ;
 
    (void) XtAppAddTimeOut( MAIN_app , 1234 , PH_startup_timeout_CB , NULL ) ;

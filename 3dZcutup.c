@@ -68,7 +68,7 @@ int main( int argc , char * argv[] )
              "\n"
              "  /bin/rm -f zcut*\n"
            ) ;
-      exit(0) ;
+      PRINT_COMPILE_DATE ; exit(0) ;
    }
 
    mainENTRY("3dZcutup main") ; machdep() ; AFNI_logger("3dZcutup",argc,argv) ;
@@ -163,7 +163,7 @@ int main( int argc , char * argv[] )
 
 STATUS("checking output filename") ;
 
-   if( THD_is_file(DSET_HEADNAME(outset)) ){
+   if( THD_deathcon() && THD_is_file(DSET_HEADNAME(outset)) ){
       fprintf(stderr,
               "*** 3dZcutup: output file %s already exists - FATAL ERROR!\n",
               DSET_HEADNAME(outset) ) ;

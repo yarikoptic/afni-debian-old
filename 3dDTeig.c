@@ -44,7 +44,7 @@ int main( int argc , char * argv[] )
              " quantitative-diffusion tensor MRI, J Magn Reson B 1996; 111:209-19\n"
            ) ;
       printf("\n" MASTER_SHORTHELP_STRING ) ;
-      exit(0) ;
+      PRINT_COMPILE_DATE ; exit(0) ;
    }
 
    mainENTRY("3dDTeig main"); machdep(); AFNI_logger("3dDTeig",argc,argv);
@@ -320,12 +320,12 @@ static void EIG_tsfunc( double tzero, double tdelta ,
    if(udflag) {               /* read in as upper diagonal elements */
       a[0]=ts[0]; a[1]=ts[1]; a[2]=ts[2];  
       a[3]=ts[1]; a[4]=ts[3]; a[5]=ts[4];
-      a[6]=ts[2]; a[5]=ts[4]; a[8]=ts[5];
+      a[6]=ts[2]; a[7]=ts[4]; a[8]=ts[5];
    }
    else {         /* read D tensor in as lower diagonal elements - NIFTI standard */ 
       a[0]=ts[0]; a[1]=ts[1]; a[2]=ts[3];
       a[3]=ts[1]; a[4]=ts[2]; a[5]=ts[4];
-      a[6]=ts[3]; a[5]=ts[4]; a[8]=ts[5];
+      a[6]=ts[3]; a[7]=ts[4]; a[8]=ts[5];
    }
   symeig_double(3, a, e);    /* compute eigenvalues in e, eigenvectors in a */
  
@@ -375,7 +375,7 @@ static void EIG_tsfunc( double tzero, double tdelta ,
   /* calculate the Fractional Anisotropy, FA */
   /*   reference, Pierpaoli C, Basser PJ. Microstructural and physiological features 
        of tissues elucidated by quantitative-diffusion tensor MRI,J Magn Reson B 1996; 111:209-19 */
-  if((val[0]<=0.0)||(val[1]<=0.0)||(val[2]<=0.0)) {   /* any negative eigenvalues?*/
+  if((val[0]<=0.0)||(val[1]<0.0)||(val[2]<0.0)) {   /* any negative eigenvalues?*/
     val[12]=0.0;                                      /* set FA to 0 */  
     val[13]=0.0;                                      /* set MD to 0 */
     EXRETURN;

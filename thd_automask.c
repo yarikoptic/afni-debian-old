@@ -32,6 +32,9 @@ void THD_automask_set_peelcounts( int p , int t )
 static int gradualize = 1 ;
 void THD_automask_set_gradualize( int n ){ gradualize = n; }
 
+static int cheapo = 0 ;
+void THD_automask_set_cheapo( int n ){ cheapo = n; } /* 13 Aug 2007 */
+
 /*---------------------------------------------------------------------*/
 
 static int mask_count( int nvox , byte *mmm )
@@ -151,7 +154,7 @@ ENTRY("mri_automask_image") ;
 
    if( verb ) ININFO_message("Number voxels above clip level = %d\n",nmm) ;
    if( im != medim && (!exterior_clip || nmm==0) ){ mri_free(medim); medim=NULL; }
-   if( nmm == 0 ) RETURN(mmm) ;  /* should not happen */
+   if( nmm == 0 ){ cheapo=0; RETURN(mmm); }  /* should not happen */
 
    /*-- 10 Apr 2002: only keep the largest connected component --*/
 
@@ -186,6 +189,12 @@ ENTRY("mri_automask_image") ;
        jj += ii = THD_mask_fillin_once( nx,ny,nz , mmm , 1 ) ;
      }
    }
+
+   if( cheapo ){
+     if( medim != im ) mri_free(medim) ;  /* 13 Aug 2007 */
+     cheapo = 0 ; RETURN(mmm) ;
+   }
+
    if( jj > 0 && verb )
     ININFO_message("Filled %5d voxels in small holes; now have %d voxels\n",
             jj , mask_count(nvox,mmm) ) ;
@@ -471,7 +480,7 @@ ENTRY("THD_mask_fillin_completely") ;
   do{ ijk = THREE_TO_IJK(i,j,k,nx,nxy) ;                        \
       if( mmm[ijk] ){                                           \
         if( nnow == nall ){ /* increase array lengths */        \
-          nall += dall ;                                        \
+          nall += dall + nall/4 ;                               \
           inow = (short *) realloc(inow,sizeof(short)*nall) ;   \
           jnow = (short *) realloc(jnow,sizeof(short)*nall) ;   \
           know = (short *) realloc(know,sizeof(short)*nall) ;   \
@@ -825,6 +834,11 @@ void THD_mask_dilate( int nx, int ny, int nz, byte *mmm , int ndil )
    free(nnn) ; return ;
 }
 
+/* clip in autobox by default but allow turning it off */
+/* thanks Judd */
+static int bbox_clip=1 ;
+void THD_autobbox_clip( int c ){ bbox_clip = c; }
+
 /*---------------------------------------------------------------------*/
 /*! Find a bounding box for the main cluster of large-ish voxels.
     [xm..xp] will be box for x index, etc.
@@ -844,10 +858,11 @@ ENTRY("THD_autobbox") ;
    mar  = MRI_FLOAT_PTR(medim) ;
    nvox = medim->nvox ;
    for( ii=0 ; ii < nvox ; ii++ ) mar[ii] = fabs(mar[ii]) ;
-
-   clip_val = THD_cliplevel(medim,clfrac) ;
-   for( ii=0 ; ii < nvox ; ii++ )
-     if( mar[ii] < clip_val ) mar[ii] = 0.0 ;
+   if( bbox_clip ){
+      clip_val = THD_cliplevel(medim,clfrac) ;
+      for( ii=0 ; ii < nvox ; ii++ )
+	if( mar[ii] < clip_val ) mar[ii] = 0.0 ;
+   }
 
    MRI_autobbox( medim , xm,xp , ym,yp , zm,zp ) ;
 

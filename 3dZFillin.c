@@ -33,7 +33,7 @@ int main( int argc , char * argv[] )
              "bricks obtained from the UT San Antonio database.\n"
              "\n"
             ) ;
-      exit(0) ;
+      PRINT_COMPILE_DATE ; exit(0) ;
    }
 
    mainENTRY("3dZFillin main") ; machdep() ; AFNI_logger("3dZfillin",argc,argv) ;
@@ -85,7 +85,7 @@ int main( int argc , char * argv[] )
 
    outset = EDIT_empty_copy( inset ) ;
    EDIT_dset_items( outset , ADN_prefix , prefix , ADN_none ) ;
-   if( THD_is_file( DSET_HEADNAME(outset) ) ){
+   if( THD_deathcon() && THD_is_file( DSET_HEADNAME(outset) ) ){
       fprintf(stderr,"** Output file %s exists -- cannot overwrite!\n",
               DSET_HEADNAME(outset) ) ;
       exit(1) ;

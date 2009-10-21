@@ -585,7 +585,7 @@ static void TAG_make_widgets(void)
    XtManageChild( scrollw ) ;
    XtManageChild( thetop  ) ;
 
-   XtRealizeWidget( shell ) ;  /* will not be mapped */
+   XtRealizeWidget( shell ) ;  NI_sleep(1) ; /* will not be mapped */
 
    /** set up widths and heights **/
 
@@ -1173,6 +1173,7 @@ static void TAG_save_CB( Widget w, XtPointer client_data, XtPointer call_data )
    *(dset->tagset) = *mytagset ;  /* copy all data in one swell foop */
    *oldtagset      = *mytagset ;  /* backup copy is replaced */
 
+   putenv("AFNI_DECONFLICT=OVERWRITE") ;
    DSET_write_header(dset) ;
    TAG_redraw() ; DSET_ON ;
    return ;

@@ -20,11 +20,11 @@ static THD_3dim_dataset * THD_open_3dcalc( char * ) ;
 
 THD_3dim_dataset * THD_open_dataset( char *pathname )
 {
-   THD_3dim_dataset *dset ;
-   char dname[THD_MAX_NAME] , * subv ;            /* 8 May 2007 */
-   char *cpt , *bpt ;
+   THD_3dim_dataset *dset=NULL ;
+   char dname[THD_MAX_NAME]="\0" , *subv=NULL ;  /* 8 May 2007 */
+   char *cpt=NULL , *bpt=NULL ;
    int  *ivlist=NULL ;
-   int    ii , jj , kk ;
+   int    ii=-1, jj=-1, kk=-1;
    float  bot=1.0 , top=0.0 ;
 
 ENTRY("THD_open_dataset") ;
@@ -41,7 +41,7 @@ ENTRY("THD_open_dataset") ;
        strncmp(pathname,"ftp://" ,6) == 0   ){
 
      dset = THD_fetch_dataset( pathname ) ;
-     if( ISVALID_DSET(dset) && 
+     if( ISVALID_DSET(dset) &&
         !ISVALID_MAT44(dset->daxes->ijk_to_dicom) )  /* 15 Dec 2005 */
        THD_daxes_to_mat44(dset->daxes) ;
      THD_patch_brickim(dset) ;                       /* 20 Oct 2006 */
@@ -52,7 +52,7 @@ ENTRY("THD_open_dataset") ;
 
    if( strncmp(pathname,"3dcalc(",7)  == 0 ){
      dset = THD_open_3dcalc( pathname ) ;
-     if( ISVALID_DSET(dset) && 
+     if( ISVALID_DSET(dset) &&
         !ISVALID_MAT44(dset->daxes->ijk_to_dicom) )  /* 15 Dec 2005 */
        THD_daxes_to_mat44(dset->daxes) ;
      THD_patch_brickim(dset) ;                       /* 20 Oct 2006 */
@@ -62,19 +62,20 @@ ENTRY("THD_open_dataset") ;
    /*-- 04 Mar 2003: allow input of .1D files   --*/
    /*--              which deals with [] itself --*/
 
-   if( strstr(pathname,".1D") != NULL ){
+   if( strstr(pathname,".1D") != NULL || strncmp(pathname,"1D:",3) == 0 ){
      dset = THD_open_1D( pathname ) ;
-     if( ISVALID_DSET(dset) && 
+     if( ISVALID_DSET(dset) &&
         !ISVALID_MAT44(dset->daxes->ijk_to_dicom) )  /* 15 Dec 2005 */
        THD_daxes_to_mat44(dset->daxes) ;
      if( dset != NULL ){ THD_patch_brickim(dset); RETURN(dset); }
    }
 
    /*-- 04 Aug 2004: allow input of a list of dataset, separated by spaces --*/
-
-   if( strchr(pathname,' ') != NULL ){
+   /*  unless a count command is used inside the brackets 9 May 2007 drg*/
+   if((strchr(pathname,' ') != NULL ) && 
+      (strstr(pathname,"[count ")==NULL)){
      dset = THD_open_tcat( pathname ) ;
-     if( ISVALID_DSET(dset) && 
+     if( ISVALID_DSET(dset) &&
         !ISVALID_MAT44(dset->daxes->ijk_to_dicom) )  /* 15 Dec 2005 */
        THD_daxes_to_mat44(dset->daxes) ;
      THD_patch_brickim(dset); RETURN(dset) ;
@@ -86,7 +87,7 @@ ENTRY("THD_open_dataset") ;
    bpt = strstr(pathname,"<") ;  /* 21 Feb 2001 */
    if( cpt == NULL && bpt == NULL ){            /* no "[" or "<"  */
      dset = THD_open_one_dataset( pathname ) ;  /* ==> open      */
-     if( ISVALID_DSET(dset) && 
+     if( ISVALID_DSET(dset) &&
         !ISVALID_MAT44(dset->daxes->ijk_to_dicom) )  /* 15 Dec 2005 */
        THD_daxes_to_mat44(dset->daxes) ;
      THD_patch_brickim(dset); RETURN(dset);     /*     normally */
@@ -170,7 +171,7 @@ fprintf(stderr,"dpt=%s\n",dpt) ;
    THD_setup_mastery( dset , ivlist ) ;
    free(ivlist) ;
 
-   if( ISVALID_DSET(dset) && 
+   if( ISVALID_DSET(dset) &&
       !ISVALID_MAT44(dset->daxes->ijk_to_dicom) )  /* 15 Dec 2005 */
      THD_daxes_to_mat44(dset->daxes) ;
 
@@ -194,6 +195,7 @@ static int THD_setup_mastery( THD_3dim_dataset *dset , int *ivlist )
    char ** old_brick_keywords ;
    int *   old_brick_statcode ;
    float **old_brick_stataux ;
+   floatvec **old_brick_fdrcurve ;  /* 23 Jan 2008 */
 
 ENTRY("THD_setup_mastery") ;
 
@@ -219,6 +221,7 @@ ENTRY("THD_setup_mastery") ;
    old_brick_keywords = dblk->brick_keywords ; dblk->brick_keywords = NULL ;
    old_brick_statcode = dblk->brick_statcode ; dblk->brick_statcode = NULL ;
    old_brick_stataux  = dblk->brick_stataux  ; dblk->brick_stataux  = NULL ;
+   old_brick_fdrcurve = dblk->brick_fdrcurve ; dblk->brick_fdrcurve = NULL ;
 
    /** setup new dataset brick structure **/
 
@@ -277,6 +280,18 @@ ENTRY("THD_setup_mastery") ;
                                            999 , old_brick_stataux [ivl[ibr]]  ) ;
    }
 
+   /* redo brick_fdrcurve now */
+
+   if( old_brick_fdrcurve != NULL ){  /* 23 Jan 2008 */
+     floatvec *fv , *nv ;
+     dblk->brick_fdrcurve = (floatvec **)calloc(sizeof(floatvec *),new_nvals) ;
+     for( ibr=0 ; ibr < new_nvals ; ibr++ ){
+       fv = old_brick_fdrcurve[ivl[ibr]] ;
+       if( fv == NULL ){ nv = NULL; } else { COPY_floatvec(nv,fv); }
+       dblk->brick_fdrcurve[ibr] = nv ;
+     }
+   }
+
    /** setup master stuff now **/
 
    dblk->master_nvals = old_nvals ;
@@ -302,6 +317,12 @@ ENTRY("THD_setup_mastery") ;
    if( old_brick_stataux  != NULL ){
       for( ibr=0 ; ibr < old_nvals ; ibr++ ) myXtFree( old_brick_stataux[ibr] ) ;
       myXtFree( old_brick_stataux ) ;
+   }
+
+   if( old_brick_fdrcurve != NULL ){               /* 24 Jan 2008 */
+     for( ibr=0 ; ibr < old_nvals ; ibr++ )
+       KILL_floatvec( old_brick_fdrcurve[ibr] ) ;
+     free(old_brick_fdrcurve) ;
    }
 
    /** if dataset has statistics, rearrange them **/
@@ -487,7 +508,7 @@ for(ii=0; ii< newArgc-1; ii++) fprintf(stderr," argv[%d]=%s\n",ii,newArgv[ii]);
 
    EDIT_dset_items( dset , ADN_directory_name , "./" , ADN_none ) ;
 
-   if( ISVALID_DSET(dset) && 
+   if( ISVALID_DSET(dset) &&
       !ISVALID_MAT44(dset->daxes->ijk_to_dicom) )  /* 15 Dec 2005 */
      THD_daxes_to_mat44(dset->daxes) ;
 
@@ -512,32 +533,32 @@ ENTRY("THD_copy_dset_subs");
     /* validate inputs */
     if ( !din || !dlist )
     {
-	fprintf(stderr, "** THD_copy_dset_subs: bad input (%p,%p)\n",
-		din,dlist);
-	RETURN(NULL);
+     fprintf(stderr, "** THD_copy_dset_subs: bad input (%p,%p)\n",
+             din,dlist);
+     RETURN(NULL);
     }
 
     if ( dlist[0] <= 0 )
     {
-	fprintf(stderr,"** THD_copy_dset_subs: invalid dlist length %d\n",
-		dlist[0]);
-	RETURN(NULL);
+      fprintf(stderr,"** THD_copy_dset_subs: invalid dlist length %d\n",
+              dlist[0]);
+      RETURN(NULL);
     }
 
     dout = EDIT_empty_copy(din);
     rv = THD_setup_mastery(dout, dlist);
     if ( rv != 0 )
     {
-	fprintf(stderr, "** failure: THD_setup_mastery() returned %d\n", rv);
-	RETURN(NULL);
+      fprintf(stderr, "** failure: THD_setup_mastery() returned %d\n", rv);
+      RETURN(NULL);
     }
 
     /* be sure that we have some data to copy */
     DSET_load(din);
     if ( ! DSET_LOADED(din) )
     {
-	fprintf(stderr,"** THD_copy_dset_subs: cannot load input dataset\n");
-	RETURN(NULL);
+      fprintf(stderr,"** THD_copy_dset_subs: cannot load input dataset\n");
+      RETURN(NULL);
     }
 
     /* a basic warp is needed if header is written out - PLUTO_add_dset() */
@@ -553,22 +574,53 @@ ENTRY("THD_copy_dset_subs");
     subs = dlist[0];
     for ( sub = 0; sub < subs; sub++ )
     {
-	kind = DSET_BRICK_TYPE(dout, sub);
-	dsize = mri_datum_size( kind );
-	if ( (newdata = (char *)malloc( nxyz * dsize )) == NULL )
+      kind = DSET_BRICK_TYPE(dout, sub);
+      dsize = mri_datum_size( kind );
+      if ( (newdata = (char *)malloc( nxyz * dsize )) == NULL )
         {
             fprintf( stderr, "r frdb: alloc failure: %d bytes!\n",
                      nxyz * dsize );
-	    DSET_delete(dout);
+            DSET_delete(dout);
             RETURN(NULL);
         }
 
-	memcpy(newdata,DSET_ARRAY(din,dlist[sub+1]), nxyz*dsize);
-	EDIT_substitute_brick(dout, sub, kind, (void *)newdata);
+        memcpy(newdata,DSET_ARRAY(din,dlist[sub+1]), nxyz*dsize);
+        EDIT_substitute_brick(dout, sub, kind, (void *)newdata);
     }
 
     dout->dblk->malloc_type = DATABLOCK_MEM_MALLOC;
     dout->wod_flag = False;             /* since data is now in memory */
 
     RETURN(dout);
+}
+
+/*------------------------------------------------------------------------*/
+/* Given a dataset selector like "name[1..3]", return individual selectors
+   like "name[1]", "name[2]", "name[3]".  The reason for this is for older
+   programs like 3dttest that operate on a list of single brick datasets.
+   [19 Jul 2007 - RWCox]
+--------------------------------------------------------------------------*/
+
+THD_string_array * THD_multiplex_dataset( char *pathname )
+{
+   char *cpt , *pname , *bname ;
+   int  *ivlist=NULL , ii ;
+   THD_string_array *sar ;
+
+ENTRY("THD_multiplex_dataset") ;
+   if( pathname == NULL ) RETURN(NULL) ;
+   cpt = strstr(pathname,"[") ; if( cpt == NULL ) RETURN(NULL) ;
+
+   bname = strdup(pathname) ; cpt = strstr(bname,"[") ; *cpt = '\0' ;
+   ivlist = MCW_get_intlist( 999999 , cpt+1 ) ;
+   if( ivlist == NULL || ivlist[0] == 0 ){ free(bname); RETURN(NULL); }
+
+   INIT_SARR(sar) ;
+   pname = malloc(sizeof(char)*(strlen(bname)+16)) ;
+   for( ii=1 ; ii <= ivlist[0] ; ii++ ){
+     sprintf(pname,"%s[%d]",bname,ivlist[ii]) ;
+     ADDTO_SARR(sar,pname) ;  /* makes a copy */
+   }
+
+   free(pname); free(ivlist); free(bname); RETURN(sar);
 }

@@ -31,12 +31,12 @@ ENTRY("mri_write") ;
    if( im->kind == MRI_byte ){ RETURN(mri_write_pnm( fname , im )) ; }
 
    /* open the file for output */
-
-   if( strcmp(fname,"-") != 0 ){
+ 
+   if( !THD_ok_overwrite() && strcmp(fname,"-") != 0 ){
      imfile = fopen( fname , "r" ) ;
      if( imfile != NULL ){
        fclose( imfile ) ;
-       fprintf(stderr,"(FAILED) attempt to overwrite file %s\n",fname) ;
+       ERROR_message("(FAILED) attempt to overwrite file %s",fname) ;
        RETURN(0) ;
      }
    }
@@ -47,7 +47,7 @@ ENTRY("mri_write") ;
      imfile = stdout ;   /* 18 Apr 2005: write to stdout instead */
 
    if( imfile == NULL ){
-     fprintf( stderr , "couldn't open for output file %s\n" , fname ) ;
+     ERROR_message("Couldn't open for output file %s" , fname ) ;
      RETURN(0) ;
    }
 
@@ -117,22 +117,22 @@ ENTRY("mri_write_7D") ;
    if( im == NULL ) RETURN( 0 );
 
    imfile = fopen( fname , "r" ) ;
-   if( imfile != NULL ){
+   if( !THD_ok_overwrite() && imfile != NULL ){
       fclose( imfile ) ;
-      fprintf(stderr,"(FAILED) attempt to overwrite file %s\n",fname) ;
+      ERROR_message("(FAILED) attempt to overwrite file %s",fname) ;
       RETURN( 0 );
    }
 
    imfile = fopen( fname , "w" ) ;
 
    if( imfile == NULL ){
-      fprintf( stderr , "couldn't open for output file %s\n" , fname ) ;
+      ERROR_message("Couldn't open for output file %s" , fname ) ;
       RETURN( 0 );
    }
 
    /*** write MR7 header ***/
 
-   switch( MRI_DIMENSIONALITY(im) ){
+   switch( mri_dimensionality(im) ){
       default:
       case 1:
          fprintf( imfile , "MR1 %d %d\n" ,
@@ -201,7 +201,7 @@ ENTRY("mri_write_pnm") ;
      RETURN( mri_write_filtered(fname+1,im) ) ;
    }
 
-   if( strcmp(fname,"-") != 0 ){
+   if( !THD_ok_overwrite() && strcmp(fname,"-") != 0 ){
      imfile = fopen( fname , "r" ) ;
      if( imfile != NULL ){
        fclose( imfile ) ;
@@ -268,18 +268,18 @@ ENTRY("mri_write_ascii") ;
    if( fname == NULL || strlen(fname) == 0 ||
        im == NULL    || im->nz > 1           ) RETURN( 0 );
 
-   if( strcmp(fname,"-") == 0 ){
+   if( strcmp(fname,"-") == 0 || strcmp(fname,"stdout") == 0 ){
      imfile = stdout ;
-   } else {
+   } else if (!THD_ok_overwrite()){
      imfile = fopen( fname , "r" ) ;
      if( imfile != NULL ){
        fclose( imfile ) ;
-       fprintf(stderr,"(FAILED) attempt to overwrite file %s\n",fname) ;
+       ERROR_message("(FAILED) attempt to overwrite file %s",fname) ;
        RETURN( 0 );
      }
      imfile = fopen( fname , "w" ) ;
      if( imfile == NULL ){
-       fprintf( stderr , "couldn't open for output file %s\n" , fname ) ;
+       ERROR_message("Couldn't open for output file %s" , fname ) ;
        RETURN( 0 );
      }
    }
@@ -353,23 +353,26 @@ ENTRY("mri_write_ascii") ;
 
 int mri_write_raw( char *fname , MRI_IMAGE *im )
 {
-   FILE  *imfile ;
-   void  *data ;
-   int   dsize ;
+   FILE *imfile ;
+   void *data ;
+   int  dsize ;
 
 ENTRY("mri_write_raw") ;
 
    if( im == NULL || fname == NULL || fname[0] == '\0' ) RETURN( 0 );
 
    dsize = im->pixel_size * im->nvox ;
-   data = mri_data_pointer( im ) ;
+   data  = mri_data_pointer( im ) ;
 
    if( dsize <= 0 || data == NULL ) RETURN( 0 );
+
+   if( THD_is_file(fname) )
+     WARNING_message("Over-writing file %s",fname) ;
 
    imfile = fopen( fname , "w" ) ;
 
    if( imfile == NULL ){
-      fprintf(stderr,"** Can't open for output: %s\n",fname) ; RETURN( 0 );
+     ERROR_message("Can't open for output: %s",fname); RETURN( 0 );
    }
 
    fwrite( data , 1 , dsize , imfile ) ;
@@ -389,6 +392,10 @@ int mri_write_jpg( char *fname , MRI_IMAGE *im )  /* 15 Apr 2005 */
 
    if( fname == NULL || *fname == '\0' || im == NULL ) return 0 ;
    if( im->kind != MRI_rgb && im->kind != MRI_byte   ) return 0 ;
+
+   if( STRING_HAS_SUFFIX_CASE(fname,".png") ){  /* 07 Dec 2007 */
+     RETURN( mri_write_png(fname,im) ) ;
+   }
 
    pg = THD_find_executable( "cjpeg" ) ;
    if( pg == NULL ) return 0 ;
@@ -427,6 +434,10 @@ int mri_write_png( char *fname , MRI_IMAGE *im )  /* 11 Dec 2006 */
 
    if( fname == NULL || *fname == '\0' || im == NULL ) return 0 ;
    if( im->kind != MRI_rgb && im->kind != MRI_byte   ) return 0 ;
+
+   if( STRING_HAS_SUFFIX_CASE(fname,".jpg") ){  /* 07 Dec 2007 */
+     RETURN( mri_write_jpg(fname,im) ) ;
+   }
 
    pg = THD_find_executable( "pnmtopng" ) ; if( pg == NULL ) return 0 ;
    pgfilt = (char *)malloc( sizeof(char)*(strlen(pg)+strlen(fname)+32) ) ;

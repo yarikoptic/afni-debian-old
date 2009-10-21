@@ -384,6 +384,139 @@ NI_str_array * NI_decode_string_list( char *ss , char *sep )
 }
 
 /*--------------------------------------------------------------------*/
+/*! Decode a string that gives a list of floats [10 Jun 2007]. */
+
+NI_float_array * NI_decode_float_list( char *ss , char *sep )
+{
+   NI_float_array *far ; float *ar ; int num , jj ;
+   NI_str_array *sar ;
+
+   sar = NI_decode_string_list( ss , sep ) ;
+   if( sar == NULL ) return NULL ;
+
+   far = NI_malloc(NI_float_array,sizeof(NI_float_array)) ;
+   num = far->num = sar->num ;
+   ar  = far->ar  = NI_malloc(float,sizeof(float)*num) ;
+
+   for( jj=0 ; jj < num ; jj++ )
+     ar[jj] = (float)strtod( sar->str[jj] , NULL ) ;
+
+   NI_delete_str_array(sar) ; return far ;
+}
+
+/*--------------------------------------------------------------------*/
+
+char * NI_encode_float_list( NI_float_array *far , char *sep )
+{
+   float *ar ; int num,jj,ff ; char *car , cc='\0' , fbuf[32] ;
+
+   if( far == NULL || far->num < 1 ) return NULL ;
+   if( sep != NULL ) cc = *sep ;
+   if( cc  == '\0' ) cc = ',' ;
+
+   num = far->num ; ar = far->ar ;
+   car = NI_malloc(char,sizeof(char)*num*16) ; *car = '\0' ;
+   for( jj=0 ; jj < num ; jj++ ){
+     sprintf(fbuf,"%12.6g",ar[jj]) ;
+     for( ff=strlen(fbuf) ; fbuf[ff]==' ' ; ff-- ) fbuf[ff] = '\0' ;
+     for( ff=0 ; fbuf[ff] == ' ' ; ff++ ) ;
+     if( jj < num-1 ) sprintf(car+strlen(car),"%s%c",fbuf+ff,cc) ;
+     else             sprintf(car+strlen(car),"%s"  ,fbuf+ff   ) ;
+   }
+
+   num = strlen(car) ;
+   car = NI_realloc( car , char , sizeof(char)*(num+1) ) ;
+   return car ;
+}
+
+/*--------------------------------------------------------------------*/
+/*! Decode a string that gives a list of ints [21 Jun 2007]. */
+
+NI_int_array * NI_decode_int_list( char *ss , char *sep )
+{
+   NI_int_array *iar ; int *ar, num,jj , vv,ww,nadd,aa,da,ii; char *cc,*dd  ;
+   NI_str_array *sar ;
+
+   sar = NI_decode_string_list( ss , sep ) ;
+   if( sar == NULL ) return NULL ;
+
+   iar = NI_malloc(NI_int_array,sizeof(NI_int_array)) ;
+   num = 0 ;
+   ar  = NULL ;
+
+   for( jj=0 ; jj < sar->num ; jj++ ){
+     cc = sar->str[jj] ; dd = strstr(cc,"..") ;
+     if( dd == NULL ){
+       dd = strstr(cc,"@") ;
+       if( dd == NULL ){               /* a single number */
+         vv = (int)strtol( cc , NULL , 10 ) ;
+         nadd = 1 ; da = 0 ;
+       } else {                        /* repetitions of the same number */
+         aa = sscanf(cc,"%d@%d",&nadd,&vv) ;
+         if( nadd <= 0 ) continue ;    /* bad */
+         da = 0 ;
+       }
+     } else {                          /* a sequence of numbers */
+       vv = (int)strtol( cc  , NULL , 10 ) ;
+       ww = (int)strtol( dd+2, NULL , 10 ) ;
+       nadd = ww-vv ; da = 1 ;
+       if( nadd < 0 ){ nadd = -nadd; da = -1; }
+       nadd++ ;
+     }
+     ar = NI_realloc( ar , int , sizeof(int)*(num+nadd) ) ;
+     for( aa=vv,ii=0 ; ii < nadd ; ii++,aa+=da ) ar[num++] = aa ;
+   }
+
+   NI_delete_str_array(sar) ;
+   iar->num = num ; iar->ar = ar ; return iar ;
+}
+
+/*--------------------------------------------------------------------*/
+
+char * NI_encode_int_list( NI_int_array *iar , char *sep )
+{
+   int *ar ; int ii,num,jj ; char *car , cc='\0' , fbuf[32] ;
+
+   if( iar == NULL || iar->num < 1 ) return NULL ;
+   if( sep != NULL ) cc = *sep ;
+   if( cc  == '\0' ) cc = ',' ;
+
+   num = iar->num ; ar = iar->ar ;
+   car = NI_malloc(char,sizeof(char)*num*9) ; *car = '\0' ;
+
+   for( jj=0 ; jj < num ; ){
+
+     /** last one?  just do it and quit */
+     if( jj == num-1 ){
+       sprintf(car+strlen(car),"%d",ar[jj]) ; break ;
+     }
+
+     /* scan for identical sequence */
+     for( ii=jj+1 ; ii < num && ar[ii]-ar[ii-1]==0 ; ii++ ) ; /*nada*/
+
+     if( ii > jj+1 ){                             /* encode values [jj..ii-1] */
+       sprintf(fbuf,"%d@%d",ii-jj,ar[jj]) ;
+     } else {                                     /* scan for increasing sequence */
+       for( ii=jj+1 ; ii < num && ar[ii]-ar[ii-1]==1 ; ii++ ) ; /*nada*/
+
+       if( ii == jj+1 )
+         sprintf(fbuf,"%d",ar[jj]);                 /* encode one value */
+       else if( ii == jj+2 )
+         sprintf(fbuf,"%d%c%d",ar[jj],cc,ar[jj+1]); /* encode 2 values */
+       else
+         sprintf(fbuf,"%d..%d",ar[jj],ar[ii-1]);    /* encode values [jj..ii-1] */
+     }
+     jj = ii ;
+     if( jj < num ) sprintf(car+strlen(car),"%s%c",fbuf,cc) ;
+     else           sprintf(car+strlen(car),"%s"  ,fbuf   ) ;
+   }
+
+   num = strlen(car) ;
+   car = NI_realloc( car , char , sizeof(char)*(num+1) ) ;
+   return car ;
+}
+
+/*--------------------------------------------------------------------*/
 /*! Decode a ni_dimen string into an array of integers.
   Returns NULL if the input is bad bad bad.
 ----------------------------------------------------------------------*/

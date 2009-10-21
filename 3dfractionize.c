@@ -121,15 +121,31 @@ int main( int argc , char * argv[] )
              "                        >= clip fraction, regardless of other values\n"
              "                        present in the output voxel.\n"
              "\n"
-             "Example usage:\n"
-             " 3dfractionize -template a+orig -input b+tlrc -warp anat+tlrc -clip 0.2\n"
+             "Sample usage:\n"
+             "\n"
+             "  1. Compute the fraction of each voxel occupied by the warped input.\n"
+             "\n"
+             "          3dfractionize -template grid+orig -input data+tlrc  \\\n"
+             "                        -warp anat+tlrc -clip 0.2\n"
+             "\n"
+             "  2. Apply the (inverse) -warp tranformation to transform the -input\n"
+             "     from +tlrc space to +orig space, storing it according to the grid\n"
+             "     of the -template.\n"
+             "     A voxel in the output dataset gets the value that occupies most of\n"
+             "     its volume, providing that value occupies 20%% of the voxel.\n"
+             "\n"
+             "     Note that the essential difference from above is '-preserve'.\n"
+             "\n"
+             "          3dfractionize -template grid+orig -input data+tlrc  \\\n"
+             "                        -warp anat+tlrc -preserve -clip 0.2   \\\n"
+             "                        -prefix new_data\n"
              "\n"
              "This program will also work in going from a coarse grid to a fine grid,\n"
              "but it isn't clear that this capability has any purpose.\n"
              "-- RWCox - February 1999\n"
              "         - October 1999: added -warp and -preserve options\n"
             ) ;
-      exit(0) ;
+      PRINT_COMPILE_DATE ; exit(0) ;
    }
 
    mainENTRY("3dfractionize main"); machdep();
@@ -273,7 +289,7 @@ int main( int argc , char * argv[] )
    if( ISFUNC(dset) )
       EDIT_dset_items( dset , ADN_func_type,FUNC_FIM_TYPE , ADN_none ) ;
 
-   if( THD_is_file(dset->dblk->diskptr->header_name) ){
+   if( THD_deathcon() && THD_is_file(dset->dblk->diskptr->header_name) ){
       fprintf(stderr,
               "** Output file %s already exists -- cannot continue!\n",
               dset->dblk->diskptr->header_name ) ;

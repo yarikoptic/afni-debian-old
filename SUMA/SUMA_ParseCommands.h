@@ -103,14 +103,14 @@ typedef struct {
 
 typedef struct {
    SUMA_SO_File_Type iType;
-   char *sv_name;
-   char *surf_names[SUMA_GENERIC_PROG_MAX_SURF];
+   char *sv_name; /* do not free, argv[.] copy */
+   char *surf_names[SUMA_GENERIC_PROG_MAX_SURF];/* do not free, argv[.] copy */
    int N_surf;
-   char *spec_file;
-   char *in_name;
+   char *spec_file; /* do not free, argv[.] copy */
+   char *in_name;    /* do not free, argv[.] copy */
    char *in_namev[SUMA_GENERIC_PROG_MAX_IN_NAME]; /* a whole bunch of input files */
    int n_in_namev;
-   char *surftype;
+   char *surftype; /* do not free, argv[.] copy */
    char *out_prefix;   /* this one's dynamically allocated so you'll have to free it yourself */
    char *out_vol_prefix; /* this one's dynamically allocated so you'll have to free it yourself */
    char out_vol_view[5];
@@ -201,6 +201,7 @@ typedef struct {
    char *in_nodeindices;
    
    float *emask;
+   float efrac;
    float *fatemask;
    int Use_emask;
    byte *nmask;
@@ -230,6 +231,15 @@ typedef struct {
    char *unit_sphere_name;
    char *bases_prefix;
    
+   int dmed;
+   int unif;
+   int geom;
+   int corder;
+   int poly;
+   
+   int match_area; 
+   
+   float xyz_scale;
    SUMA_GENERIC_ARGV_PARSE *ps; /* just a holder for convenience, never free it here*/
 } SUMA_GENERIC_PROG_OPTIONS_STRUCT; /* also edit defaults in 
                                  SUMA_Alloc_Generic_Prog_Options_Struct and in 
@@ -276,6 +286,9 @@ const char *SUMA_ColMixModeString (SUMA_COL_MIX_MODE mode);
 SUMA_SO_File_Type SUMA_SurfaceTypeCode (char *cd);
 const char * SUMA_SurfaceTypeString (SUMA_SO_File_Type tp);
 SUMA_SO_File_Type SUMA_guess_surftype_argv(char *str);
+SUMA_SO_File_Type SUMA_GuessSurfFormatFromExtension_core(char *Name);
+SUMA_SO_File_Type SUMA_GuessSurfFormatFromExtension(
+   char *Name,  char *fallbackname);
 SUMA_GENERIC_ARGV_PARSE *SUMA_CreateGenericArgParse(char *optflags);
 SUMA_GENERIC_ARGV_PARSE *SUMA_FreeGenericArgParse(SUMA_GENERIC_ARGV_PARSE *ps);
 char *SUMA_help_IO_Args(SUMA_GENERIC_ARGV_PARSE *opt);
@@ -335,10 +348,10 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT * SUMA_Free_Generic_Prog_Options_Struct(SUMA_GE
 
 */
 #define SUMA_S_Err(msg) {\
-   fprintf (SUMA_STDERR, "Error %s (%s:%d):\n %s\n", FuncName, __FILE__ , __LINE__, msg);  \
+   fprintf (SUMA_STDERR, "--     Error %s (%s:%d):\n%s\n", FuncName, __FILE__ , __LINE__, msg);  \
 }
 #define SUMA_S_Errv(msg, ...) {\
-   fprintf (SUMA_STDERR, "Error %s (%s:%d):\n", FuncName, __FILE__ , __LINE__);  \
+   fprintf (SUMA_STDERR, "--     Error %s (%s:%d):\n", FuncName, __FILE__ , __LINE__);  \
    fprintf (SUMA_STDERR, msg , __VA_ARGS__);  \
 }
 
@@ -372,10 +385,10 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT * SUMA_Free_Generic_Prog_Options_Struct(SUMA_GE
 
 */
 #define SUMA_S_Note(msg) {\
-   fprintf (SUMA_STDERR, "Notice %s (%s:%d):\n %s\n", FuncName, __FILE__, __LINE__, msg);  \
+   fprintf (SUMA_STDERR, "++     Notice %s (%s:%d):\n%s\n", FuncName, __FILE__, __LINE__, msg);  \
 }
 #define SUMA_S_Notev(msg, ...) {\
-   fprintf (SUMA_STDERR, "Notice %s (%s:%d):\n", FuncName, __FILE__ , __LINE__);  \
+   fprintf (SUMA_STDERR, "++     Notice %s (%s:%d):\n", FuncName, __FILE__ , __LINE__);  \
    fprintf (SUMA_STDERR, msg , __VA_ARGS__);  \
 }
 
@@ -440,10 +453,10 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT * SUMA_Free_Generic_Prog_Options_Struct(SUMA_GE
 
 */
 #define SUMA_S_Warn(msg) {\
-   fprintf (SUMA_STDERR, "Warning %s (%s:%d):\n %s\n", FuncName, __FILE__, __LINE__, msg);  \
+   fprintf (SUMA_STDERR, "oo     Warning %s (%s:%d):\n%s\n", FuncName, __FILE__, __LINE__, msg);  \
 }
 #define SUMA_S_Warnv(msg, ...) {\
-   fprintf (SUMA_STDERR, "Warning %s (%s:%d):\n", FuncName, __FILE__ , __LINE__);  \
+   fprintf (SUMA_STDERR, "oo     Warning %s (%s:%d):\n", FuncName, __FILE__ , __LINE__);  \
    fprintf (SUMA_STDERR, msg , __VA_ARGS__);  \
 }
 /*!
@@ -475,7 +488,7 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT * SUMA_Free_Generic_Prog_Options_Struct(SUMA_GE
 
 */
 #define SUMA_S_Crit(msg) {\
-   fprintf (SUMA_STDERR, "Critical %s (%s:%d):\n %s\n", FuncName, __FILE__, __LINE__,msg);  \
+   fprintf (SUMA_STDERR, "**     Critical %s (%s:%d):\n%s\n", FuncName, __FILE__, __LINE__,msg);  \
 }
 /*!
    \brief Macro that reports a critical error to stderr and log 
@@ -501,12 +514,12 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT * SUMA_Free_Generic_Prog_Options_Struct(SUMA_GE
    \brief Macro that reports a message to SUMA_STDERR if LocalHead is set to YUP
 */
 #define SUMA_LH(msg) {\
-   if (LocalHead) fprintf (SUMA_STDERR, "%s (%s:%d):\n %s\n", FuncName, __FILE__, __LINE__,msg);  \
+   if (LocalHead) fprintf (SUMA_STDERR, "##      %s (%s:%d):\n%s\n", FuncName, __FILE__, __LINE__,msg);  \
 }
 
 #define SUMA_LHv(msg, ...) {\
    if (LocalHead) {  \
-      fprintf (SUMA_STDERR, "%s (%s:%d):\n ", FuncName, __FILE__, __LINE__);  \
+      fprintf (SUMA_STDERR, "##      %s (%s:%d):\n", FuncName, __FILE__, __LINE__);  \
       fprintf (SUMA_STDERR, msg , __VA_ARGS__);  \
    }  \
 }

@@ -157,7 +157,6 @@
 #include "simplex.h"
 #include "NLfit.h"
 
-#include "matrix.c"
 #include "simplex.c"   /* 20 Jul 2006 - now includes NEWUOA variables [N_*] */
 #include "NLfit.c"
 
@@ -330,7 +329,7 @@ void display_help_menu()
           , PROC_MAX ) ;
 #endif
   
-  exit(0);
+  PRINT_COMPILE_DATE ; exit(0);
 }
 
 
@@ -1520,7 +1519,8 @@ void check_for_valid_inputs
 
 
   /*----- check whether any of the output files already exist -----*/
-  check_output_files (freg_filename, frsqr_filename, 
+  if( THD_deathcon() )
+   check_output_files (freg_filename, frsqr_filename, 
                 fsmax_filename, ftmax_filename,
                 fpmax_filename, farea_filename, fparea_filename,
                 fncoef_filename, fscoef_filename,
@@ -2431,7 +2431,7 @@ void write_afni_data (char * input_filename, int nxyz, char * filename,
   
 
   /*----- write afni data set -----*/
-  printf("++ Writing combined dataset into %s\n",DSET_BRIKNAME(new_dset)) ;
+  INFO_message("Writing combined dataset into %s\n",DSET_BRIKNAME(new_dset)) ;
   
   fbuf[0] = numdof;   
   fbuf[1] = dendof;
@@ -2441,7 +2441,12 @@ void write_afni_data (char * input_filename, int nxyz, char * filename,
   fbuf[0] = (output_datum == MRI_short && fimfac != 1.0 ) ? fimfac : 0.0 ;
   fbuf[1] = 1.0 / func_scale_short ;
   (void) EDIT_dset_items( new_dset , ADN_brick_fac , fbuf , ADN_none ) ;
-  
+
+  if( !AFNI_noenv("AFNI_AUTOMATIC_FDR") )
+  { int ii = THD_create_all_fdrcurves( new_dset ) ;
+    if( ii > 0 ) ININFO_message("created %d FDR curves in header",ii) ;
+  }
+
   THD_load_statistics( new_dset ) ;
   THD_write_3dim_dataset( NULL,NULL , new_dset , True ) ;
   
@@ -2650,9 +2655,16 @@ void write_bucket_data
     fprintf(stderr,"++ %d bad floating point values in dataset\n",nbad);
 
   /*----- write bucket data set -----*/
+
+  INFO_message("Writing bucket dataset: %s",DSET_BRIKNAME(new_dset)) ;
+
+  if( !AFNI_noenv("AFNI_AUTOMATIC_FDR") )
+  { int ii = THD_create_all_fdrcurves( new_dset ) ;
+    if( ii > 0 ) ININFO_message("created %d FDR curves in header",ii) ;
+  }
+
   THD_load_statistics (new_dset);
   THD_write_3dim_dataset( NULL,NULL , new_dset , True ) ;
-  fprintf(stderr,"++ Wrote bucket dataset: %s\n",DSET_BRIKNAME(new_dset)) ;
   
   /*----- deallocate memory -----*/   
  /* if(output_datum==MRI_short) {*/
@@ -2787,15 +2799,16 @@ void write_3dtime
       }
     }
   if(nbad)
-    fprintf(stderr,"++ %d bad floating point values in dataset\n",nbad);
+    WARNING_message("%d bad floating point values in dataset\n",nbad);
 
   /*----- write afni data set -----*/
 
   (void) EDIT_dset_items( new_dset , ADN_brick_fac , fbuf , ADN_none ) ;
 
+  INFO_message("Writing 3D+time dataset %s\n",DSET_BRIKNAME(new_dset)) ;
+
   THD_load_statistics (new_dset);
   THD_write_3dim_dataset (NULL, NULL, new_dset, True);
-  fprintf (stderr,"++ Wrote 3D+time dataset %s\n",DSET_BRIKNAME(new_dset)) ;
 
 
   /*----- deallocate memory -----*/   

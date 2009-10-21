@@ -48,7 +48,6 @@
 #include "simplex.h"
 #include "NLfit.h"
 
-#include "matrix.c"
 #include "simplex.c"
 #include "NLfit.c"
 
@@ -123,7 +122,7 @@ void display_help_menu()
      "[-brick m ncoef k label]   kth noise parameter regression coefficient \n"
     );
   
-  exit(0);
+  PRINT_COMPILE_DATE ; exit(0);
 }
 
 
@@ -766,7 +765,8 @@ void check_for_valid_inputs
       
 
   /*----- check whether any of the output files already exist -----*/
-  check_output_files (input_filename, output_filename, 
+  if( THD_deathcon() )
+    check_output_files (input_filename, output_filename, 
 		      ncoef_filename, scoef_filename, bucket_filename);
 
 }

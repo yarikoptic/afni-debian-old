@@ -119,7 +119,7 @@ int main( int argc , char * argv[] )
              "\n"
              "Author: RWCox - 16 Jul 2000, etc.\n"
             ) ;
-      exit(0) ;
+      PRINT_COMPILE_DATE ; exit(0) ;
    }
 
    /*- scan args -*/
@@ -451,7 +451,7 @@ int main( int argc , char * argv[] )
                          ADN_label1 , prefix ,
                       ADN_none ) ;
 
-     if( THD_is_file(dset->dblk->diskptr->header_name) ){
+     if( THD_deathcon() && THD_is_file(dset->dblk->diskptr->header_name) ){
         fprintf(stderr,
                 "** Output file %s already exists -- cannot continue!\n",
                 dset->dblk->diskptr->header_name ) ;

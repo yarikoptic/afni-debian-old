@@ -33,7 +33,10 @@ N.B.: You can now set environment variables on the 'afni' command
       line; for example:
         afni -DAFNI_EDGIZE_OVERLAY=YES -DAFNI_SESSTRAIL=3
       This may be useful for a 'one time' situation, or as an alias.
+      You can also use this '-Dname=val' option in 1dplot and 3dDeconvolve.
       -- RWCox - 22 Mar 2005
+      And now you can use this feature on most program command lines.
+      -- RWCox - 13 Dec 2007
 
 N.B.: At the end of this file is a list of several environment variables
       that affect the program 3dDeconvolve, rather than the interactive
@@ -521,6 +524,12 @@ removed as soon as AFNI is ready to go.  By setting AFNI_SPLASHTIME
 to 0.0, you can have the splash screen removed as soon as possible
 (and the fade-out feature will be disabled).
 
+-----------------------------
+Variable: AFNI_SPLASH_ANIMATE
+-----------------------------
+If this variable is NO, then the splash screen animation will be disabled.
+Otherwise, it will run.
+
 --------------------------------
 Variable: AFNI_FIM_PERCENT_LIMIT (editable)
 --------------------------------
@@ -917,6 +926,19 @@ Variable: AFNI_FIM_IDEAL
 This variable specifies the filename of the initial FIM ideal timeseries.
 The main use of this would be to be able to initialize the Realtime
 plugin without direct user intervention.
+
+--------------------------
+Variable: AFNI_FIM_SAVEREF
+--------------------------
+When you run the interactive AFNI 'fim' (from the graph viewer FIM menu),
+the program saves the reference time series (and ort time series, if any)
+in the new functional dataset header, with the attribute name
+AFNI_FIM_REF (or AFNI_FIM_ORT).  If you do NOT want this information saved,
+then set this variable to NO.  Two sample ways to use this information is
+the command below:
+  1dplot "`3dAttribute -ssep ' ' AFNI_FIM_REF r1_time@1+orig`"
+  1dcat  "`3dAttribute -ssep ' ' AFNI_FIM_REF r1_time@1+orig`" > ref.1D
+The 3 different styles of Unix quotes must be used exactly as shown here!
 
 ----------------------------------
 Variable: AFNI_PLUGINS_ALPHABETIZE
@@ -1395,7 +1417,7 @@ the same session. Strange things may happen.
 ---------------------------
 Variables: AFNI_ACPC_BBOX_*
 ---------------------------
-The variables let you choose the size of the "ACPC Box", into which 
+The variables let you choose the size of the "ACPC Box", into which
 +acpc datasets are transformed. If defined, they should be positive values,
 in mm.  The 6 variables (any or all of which may be used) are:
 
@@ -1587,7 +1609,9 @@ if neither file can be read.
 You can save a file ".afni.startup_script" that will recreate the window
 layout you currently have.  Use the "Datamode->Misc->Save Layout" button
 and press "Set" on the popup control without entering any filename.  Instead
-of a Layout file (cf. AFNI_LAYOUT_FILE above), you'll get a Script file.
+of a Layout file (cf. AFNI_LAYOUT_FILE above), you'll get a Script file
+if you leave the filename blank or enter any filename with the string
+"script" included (e.g., "coolstuff.script").
 
 The capabilities of Script files are being expanded.  Not all features of
 the AFNI window setup are currently save-able this way.
@@ -1722,7 +1746,29 @@ colors, or leave them unchanged and start defining colors at 05.  The largest
 color number you define will be the last color index used; if more line colors
 are needed, they will cycle back to color 01.  If you leave a gap in the
 numbering (e.g., you define color 07 but not 05 or 06), then the undefined
-colors will be black.
+colors will be fuliginous.
+
+[Dec 2007] You can now specify the colors by using the special names 'green',
+'red', 'blue', 'gold', and 'purple'.  Also, by using 3 or 6 digit hexadecimal
+notation as in '#8888aa' for a blueish-gray color (6 digits) or '#0ac' for a
+cyanish color (3 digits).  These are intended to make life a little simpler.
+
+--------------------------
+Variable: AFNI_1DPLOT_THIK (editable)
+--------------------------
+This numeric variable lets you control the thickness of lines drawn in the
+1dplot-style windows.  The units are in terms of the width of the entire
+plot, so that a value of 0.005 is 'reasonable'; 0.01 will be fairly thick
+lines, and 0.02 will be too thick for most purposes.
+
+----------------------------
+Variable: AFNI_1DPLOT_IMSIZE
+----------------------------
+This numeric variable sets the image size (in pixels across the screen) of
+images saved via the '-png' or '-jpg' options of 1dplot, or images saved
+when giving the '.png' or '.jpg' from 1dplot-style graphs.  The default
+value is 1024.  Values over 2048 may give odd looking results, and will
+be palpably slower to render.
 
 ---------------------------------
 Variable: AFNI_SIEMENS_INTERLEAVE
@@ -1902,6 +1948,25 @@ to the "Min-to-Max" state rather than the default "2%-to-98%" state
 when they are opened.  If you set this in the "Edit Environment"
 control, it only affects image viewer windows opened after that point.
 
+----------------------------
+Variable: AFNI_IMAGE_CLIPPED (editable)
+----------------------------
+If this variable is set to YES, then image viewer windows will be set
+to the "Clipped" state rather than the default "2%-to-98%" state
+when they are opened.  If you set this in the "Edit Environment"
+control, it only affects image viewer windows opened after that point.
+
+----------------------------
+Variable: AFNI_IMAGE_CLIPBOT (editable)
+----------------------------
+In the "Clipped" mode, the top level of the grayscale image is computed
+as 3.11 times the 'cliplevel' as computed by the 3dClipLevel algorithm.
+The bottom level is then a fraction of this top level -- by default, the
+fraction is 0.25, but you can change this default by setting this variable
+to a value between 0.0 and 0.5 (inclusive).  You can also use variable
+AFNI_IMAGE_CLIPTOP to scale the default top level -- this variable can take
+values between 0.6 and 1.9 (inclusive) -- the default is 1.0.
+
 --------------------------------
 Variable: AFNI_IMAGE_GLOBALRANGE (editable)
 --------------------------------
@@ -1913,6 +1978,25 @@ the "Disp" control panel.  This setting also applies to all image
 viewers.  If you set this in the "Edit Environment" control, it will
 apply to all open image viewers immediately, as well as to any image
 viewers opened later.
+  It is important to realize that if you use the 'Display Range'
+popup to set the bot-top range for the grayscale, these settings
+will override the global range UNTIL you switch datasets or switch
+sub-bricks within a dataset.  At that point, the global range for
+the new volume will be enforced.  This change can be confusing.
+Therefore, the info label beneath the slider shows the source of
+the bot-top grayscale values:
+  [2%-98%]  = from the 2% to 98% points on the slice histogram
+  [Min2Max] = from the 0% to 100% points on the slice histogram
+  [Glob]    = set from the entire volume min and max values
+  [User]    = set by the user from 'Display Range'
+  absent    = not applicable (e.g., underlay image is RGB)
+The popup 'hint' for the grayscale bar shows the current values
+of the bot-top range, if you want to know what numbers correspond
+to the image at which you are gazing so fondly.
+  Finally, note that when a montage is built, the number-to-grayscale
+algorithm is applied to each slice separately, and then the montage
+is assembled.  For [2%-98%] and [Min2Max], this fact means that each
+slice will (probably) have a separate grayscale conversion range.
 
 ----------------------------
 Variable: AFNI_DRAW_UNDOSIZE (editable)
@@ -2004,6 +2088,13 @@ make the windows for the various controllers somewhat distinct in
 appearance.  If these color variables are not set at all, then AFNI
 uses some colors of my choosing for this purpose.
 
+----------------------------------
+Variable: AFNI_COLORIZE_CONTROLLER
+----------------------------------
+If this variable is set to YES, then the background of the AFNI controllers
+and image viewers will be colorized.  The default state is that they are not
+colorized.
+
 --------------------------
 Variable: AFNI_THRESH_LOCK (editable)
 --------------------------
@@ -2064,6 +2155,13 @@ When the underlay and overlay datasets both are time-dependent, switching
 the time index will change both the underlay and overlay sub-bricks, but
 NOT the threshold sub-brick.  If you want the time index control to change
 the threshold sub-brick, then set this variable to YES.
+
+--------------------------------
+Variable: AFNI_SLAVE_BUCKETS_TOO
+--------------------------------
+Set this to YES if you want to make changing the time index in the underlay
+dataset change the sub-brick index in the overlay dataset even when the
+overlay is a 'bucket' dataset without a time axis.
 
 ----------------------------
 Variable: AFNI_CLICK_MESSAGE
@@ -2336,6 +2434,91 @@ the front, but some window managers (I'm looking at you, FC5) don't allow
 this action.  So this provides a way to kill the window, at least, if you've
 lost it in desktop hell somewhere.
 
+-------------------------
+Variable: AFNI_DECONFLICT
+-------------------------
+When AFNI programs write datasets to disk, they will check whether the
+output filename already exists.  If it does, the AFNI programs will act
+based on the possible values of AFNI_DECONFLICT as follows:
+    NO/<none>   : do not modify the name or overwrite the file, but
+                  inform the user of the conflict, and exit
+    YES         : modify the filename, as stated below
+    OVERWRITE   : do not modify the filename, overwrite the dataset
+If AFNI_DECONFLICT is YES, then the filename will be changed to one that
+does not conflict with any existing file.  For example 'fred+orig' could
+be changed to 'fred_AA1+orig'.
+
+The default behavior is as 'NO', not to deconflict, but to exit.
+Some programs supply their own default.
+
+--------------------------
+Variable: AFNI_SEE_OVERLAY
+--------------------------
+If this variable is set to YES, then the 'See Overlay' button will be turned
+on when a new AFNI controller is opened.
+
+------------------------------
+Variable: AFNI_INDEX_SCROLLREV
+------------------------------
+If this variable is set to YES, then the default direction of image slice
+and time index scrolling will be reversed in the image and graph viewers,
+respectively.
+
+-----------------------------
+Variable: AFNI_CLUSTER_PREFIX
+-----------------------------
+This variable sets the prefix for 'Save' timeseries 1D files from the
+'Clusterize' report panel.  The default string is "Clust".  The value
+of this variable will be loaded into the cluster Rpt window text entry
+field, and the prefix can be edited there by the users when it comes
+time to save files.
+
+-----------------------------
+Variable: AFNI_CLUSTER_SCROLL
+-----------------------------
+If this variable is NO, then the 'Clusterize' report will not be given
+scrollbars.  The default is to give it scroll bars.
+
+-----------------------------
+Variable: AFNI_CLUSTER_REPMAX  (editable)
+-----------------------------
+This numeric variable (between 10 and 99, inclusive) sets the maximum
+number of clusters that will be reported in a 'Clusterize' report panel,
+if scroll bars are turned off by AFNI_CLUSTER_SCROLL. The default value
+is 15.  If scroll bars are turned on, then the maximum number of clusters
+shown is fixed at 99.
+
+----------------------------
+Variable: AFNI_STRLIST_INDEX
+----------------------------
+If this variable is set to NO, then the new [12 Oct 2007] 'Index' selector
+at the bottom of a string-list chooser (e.g., the 'Overlay' button popup
+window) will NOT be shown.
+
+-----------------------------
+Variable: AFNI_HISTOG_MAXDSET
+-----------------------------
+If this variable is set to a numeric value between 4 and 9 (inclusive),
+then the number of Source datasets in the 'Histogram: Multi' plugin
+will be set to this value.  The default number of Source datasets is 3 --
+this variable allows you to increase that setting.
+
+----------------------------
+Variable: AFNI_SIGQUIT_DELAY
+----------------------------
+This numeric variable (between 1 and 30) sets the number of seconds AFNI
+will delay before exiting after a SIGQUIT signal is delivered to the process.
+The default delay is 5 seconds.  If you deliver a SIGALRM signal, AFNI will
+exit immediately.  If you don't know what Unix signals are, then don't pay
+any attention to this subject!
+
+--------------------------------
+Variable: AFNI_NEVER_SAY_GOODBYE
+--------------------------------
+If this variable is set to YES, then the AFNI 'goodbye' messages won't
+be printed when the program exits.  For the grumpy people out there
+(you know who I'm talking about, don't you, Daniel?).
+
 ----------------------------------------------------------------------
 --- variables specific to NIML I/O
 ----------------------------------------------------------------------
@@ -2375,6 +2558,14 @@ This history can become inordinately long and pointless when 3calc is
 run in a long chain of calculations.  Setting this variable to YES will
 turn off this cumulation of all histories, and may make your dataset
 headers more manageable.
+
+-------------------------------------------
+Variable: AFNI_NIML_BUFSIZE or NIML_BUFSIZE
+-------------------------------------------
+This variable sets the number of bytes used as a memory buffer for
+NIML dataset input.  If you are inputting gigantic headers or gigantic
+String data components (I'm looking at YOU, Ziad), then you may want
+to increase this past its default size of 255*1024=261120.
 
 ----------------------------------------------------------------------
 --- END: variables specific to NIML I/O
@@ -2479,3 +2670,21 @@ Variable: AFNI_GLTSYM_PRINT
 If this YES/NO variable is set to YES, then the GLT matrices generated
 in 3dDeconvolve by the "-gltsym" option will be printed to the screen
 when the program starts up.
+
+-----------------------
+Variable: AFNI_FLOATIZE
+-----------------------
+If this YES/NO variable is set to YES, then 3dDeconvolve and 3dcalc
+will write their outputs in floating point format (unless they are
+forced to do otherwise with the '-datum short' type of option).  In
+the future, other programs may also be affected by this variable.
+
+----------------------------
+Variable: AFNI_AUTOMATIC_FDR
+----------------------------
+If this variable is set to NO, then the automatic computation of FDR
+curves into headers output by 3dDeconvolve, 3dANOVA, 3dttest, and
+3dNLfim will NOT be done.  Otherwise, the automatic FDR-ization of
+these datasets will performed when the datasets are written to disk.
+(You can always use '3drefit -addFDR' to add FDR curves to a dataset
+header, for those sub-bricks marked as statistical parameters.)

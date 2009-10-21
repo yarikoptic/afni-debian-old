@@ -11,8 +11,8 @@ int main( int argc , char *argv[] )
    int nvox , nvals , ii , polort=1 ;
    MRI_IMAGE *xsim , *ysim ;
    float     *xsar , *ysar , *car ;
-   char * prefix = "Tcorr" ;
-   byte * mmm=NULL ;
+   char *prefix = "Tcorr" ;
+   byte *mmm=NULL ;
    MRI_IMAGE *im_ort=NULL ;            /* 13 Mar 2003 */
    int nort=0 ; float **fort=NULL ;
 
@@ -59,7 +59,7 @@ int main( int argc , char *argv[] )
              "\n"
              "-- RWCox - Aug 2001\n"
             ) ;
-      exit(0) ;
+      PRINT_COMPILE_DATE ; exit(0) ;
    }
 
    mainENTRY("3dTCorrelate main"); machdep(); AFNI_logger("3dTcorrelate",argc,argv);
@@ -153,6 +153,8 @@ int main( int argc , char *argv[] )
    if( im_ort != NULL && im_ort->nx < DSET_NUM_TIMES(xset) ){
       fprintf(stderr,"** Input datsets are longer than -ort file!\n"); exit(1);
    }
+   if( !EQUIV_GRIDS(xset,yset) )
+     WARNING_message("Grid mismatch between input datasets!") ;
    DSET_load(xset) ; CHECK_LOAD_ERROR(xset) ;
    DSET_load(yset) ; CHECK_LOAD_ERROR(yset) ;
 
@@ -184,7 +186,7 @@ int main( int argc , char *argv[] )
                       ADN_func_type , FUNC_BUCK_TYPE ,
                     ADN_none ) ;
 
-   if( THD_is_file(DSET_HEADNAME(cset)) ){
+   if( THD_deathcon() && THD_is_file(DSET_HEADNAME(cset)) ){
       fprintf(stderr,"** Output dataset %s already exists!\n",
               DSET_HEADNAME(cset)) ;
       exit(1) ;

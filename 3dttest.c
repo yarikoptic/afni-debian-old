@@ -27,15 +27,17 @@ static int   TT_pooled     = 1 ;
 static float TT_pthresh    = 0.0 ;
 static int   TT_use_bval   = 0 ;
 static float TT_bval       = 0.0 ;
+static float TT_sd1        = 0.0 ; /* 10 Oct 2007 */
+static int   TT_n1         = 0.0 ; /* 10 Oct 2007 */
 static int   TT_use_editor = 0 ;
 static int   TT_be_quiet   = 0 ;
-static int   TT_workmem    = 12 ;  /* default = 12 Megabytes */
+static int   TT_workmem    = 266 ; /* default = 266 Megabytes */
 static int   TT_voxel      = -1 ;  /* 0-based (but 1-based on cmd, like ANOVA)  */
 
 #define MEGA  1048576  /* 2^20 */
 
-static THD_string_array * TT_set1 = NULL ;  /* sets of dataset names */
-static THD_string_array * TT_set2 = NULL ;
+static THD_string_array *TT_set1 = NULL ;  /* sets of dataset names */
+static THD_string_array *TT_set2 = NULL ;
 
 static char TT_session[THD_MAX_NAME]  = "./" ;
 static char TT_prefix[THD_MAX_PREFIX] = "tdif" ;
@@ -96,6 +98,7 @@ DUMP1 ;
          ival = strtol( argv[nopt] , NULL , 10 ) ;
          if( ival <= 0 ) TT_syntax("illegal argument after -workmem!") ;
          TT_workmem = ival ;
+         INFO_message("-workmem option is now obsolete\n") ;
          nopt++ ; continue ;
       }
 
@@ -193,8 +196,7 @@ DUMP2 ;
          if( *ch != '\0' || TT_pthresh <= 0.0 || TT_pthresh > 0.99999 )
             TT_syntax("value after -pthresh is illegal!") ;
 
-         fprintf(stderr,
-                 "*** -pthresh not implemented yet, will ignore!\n" ) ;
+         WARNING_message( "-pthresh not implemented yet, will ignore!") ;
          TT_pthresh = 0.0 ;
 
          nopt++ ; continue ;  /* skip to next arg */
@@ -203,10 +205,10 @@ DUMP2 ;
 
       /**** after this point, the options are no longer 'free floating' ****/
 
-      /** -base1 bval **/
+      /** -base1 bval [sd1 n1] **/
 
       if( strncmp(argv[nopt],"-base1",6) == 0 ){
-         char * ch ;
+         char *ch ;
 
          if( ++nopt >= argc )    TT_syntax("-base1 needs a value!");
          if( TT_use_bval == -1 ) TT_syntax("-base1 with -set1 illegal!");
@@ -216,49 +218,102 @@ DUMP2 ;
          nopt++ ; continue ;  /* skip to next arg */
       }
 
+      /** [10 Oct 2007] -sdn1 sd1 n1 **/
+
+      if( strncmp(argv[nopt],"-sdn1",5) == 0 ){
+        if( ++nopt >= argc-1 )  TT_syntax("-sdn1 needs 2 values!") ;
+        if( TT_use_bval == -1 ) TT_syntax("-sdn1 with -set1 illegal!") ;
+        TT_sd1 = strtod( argv[nopt]   , NULL ) ;
+        TT_n1  = strtod( argv[++nopt] , NULL ) ;
+        if( TT_sd1 <= 0.0 ) TT_syntax("Illegal sigma after -sdn1!") ;
+        if( TT_n1  <  2   ) TT_syntax("Illegal n1 after -sdn1!") ;
+        nopt++ ; continue ;
+      }
+
       /** -set1 file file ... **/
 
       if( strncmp(argv[nopt],"-set1",6) == 0 ){
+         int eee=0 ;
          if( TT_use_bval == 1 ) TT_syntax("-set1 with -base1 illegal!");
          TT_use_bval = -1 ;
          INIT_SARR( TT_set1 ) ;
          for( kk=nopt+1 ; kk < argc ; kk++ ){
+#if 1
+            if( argv[kk][0] == '-' ) break ;
+#else
             if( strncmp(argv[kk],"-set2",6) == 0 ) break ;
-            ADDTO_SARR( TT_set1 , argv[kk] ) ;
+#endif
+            if( strstr(argv[kk],"[") == NULL ){
+              ADDTO_SARR( TT_set1 , argv[kk] ) ;
+            } else {
+              THD_string_array *ss = THD_multiplex_dataset(argv[kk]); int qq;
+              if( ss == NULL ) ERROR_exit("Can't deal with '%s'",argv[kk]) ;
+              for( qq=0 ; qq < SARR_NUM(ss) ; qq++ )
+                ADDTO_SARR(TT_set1,SARR_STRING(ss,qq)) ;
+              DESTROY_SARR(ss) ; eee++ ;
+            }
          }
 
          if( kk >= argc )       TT_syntax("-set1 not followed by -set2") ;
          if( kk-1-nopt <= 0 )   TT_syntax("-set1 has no datasets after it") ;
          if( TT_set1->num < 2 ) TT_syntax("-set1 doesn't have enough datasets") ;
+         if( eee ) PRINTF_SARR(TT_set1,"++ Expanded -set1:") ;
          nopt = kk ; continue ; /* skip to arg that matched -set2 */
       }
 
       /** -set2 file file ... */
 
       if( strncmp(argv[nopt],"-set2",6) == 0 ){
+         int eee=0 ;
          INIT_SARR( TT_set2 ) ;
          for( kk=nopt+1 ; kk < argc ; kk++ ){
-            ADDTO_SARR( TT_set2 , argv[kk] ) ;
+#if 1
+            if( argv[kk][0] == '-' ) break ;
+#endif
+            if( strstr(argv[kk],"[") == NULL ){
+              ADDTO_SARR( TT_set2 , argv[kk] ) ;
+            } else {
+              THD_string_array *ss = THD_multiplex_dataset(argv[kk]); int qq;
+              if( ss == NULL ) ERROR_exit("Can't deal with '%s'",argv[kk]) ;
+              for( qq=0 ; qq < SARR_NUM(ss) ; qq++ )
+                ADDTO_SARR(TT_set2,SARR_STRING(ss,qq)) ;
+              DESTROY_SARR(ss) ; eee++ ;
+            }
          }
          if( TT_set2->num < 2 ) TT_syntax("-set2 doesn't have enough datasets") ;
+         if( eee ) PRINTF_SARR(TT_set2,"++ Expanded -set2:") ;
          break ;  /* end of possible inputs */
       }
 
       /**** unknown switch ****/
 
-      fprintf(stderr,"*** unrecognized option %s\n",argv[nopt]) ;
-      exit(1) ;
+      ERROR_exit("unrecognized option %s",argv[nopt]) ;
 
    }  /* end of loop over options */
 
    if( strlen(TT_label) == 0 ){
-      MCW_strncpy(TT_label,TT_prefix,THD_MAX_LABEL) ;
+     MCW_strncpy(TT_label,TT_prefix,THD_MAX_LABEL) ;
+   }
+
+   /*--- 30 May 2007: check TT_set? for .HEAD / .BRIK duplicates ---*/
+
+   if( TT_set1 != NULL ){
+     kk = THD_check_for_duplicates( TT_set1->num , TT_set1->ar , 1 ) ;
+     if( kk > 0 ) fprintf(stderr,"\n") ;
+   }
+
+   if( TT_set2 != NULL ){
+     kk = THD_check_for_duplicates( TT_set2->num , TT_set2->ar , 1 ) ;
+     if( kk > 0 ) fprintf(stderr,"\n") ;
    }
 
    /*--- check arguments for consistency ---*/
 
    if( TT_use_bval == 0 )
       TT_syntax("neither -base1 nor -set1 is present!") ;
+
+   if( TT_use_bval == -1 && TT_n1 > 0 )
+      TT_syntax("-sdn1 used with -set1 is illegal!") ; /* 10 Oct 2007 */
 
    if( TT_use_bval == -1 &&
        ( TT_set1 == NULL || TT_set1->num < 2 ) )
@@ -287,8 +342,13 @@ DUMP2 ;
    if( TT_pooled == 0 && TT_use_bval == 1 )
       TT_syntax("-base1 and -unpooled are mutually exclusive!") ;
 
+#if 0
+   if( TT_pooled == 0 && TT_n1 > 0 )
+      TT_syntax("-unpooled and -sdn1 are mutually exclusive!") ;
+#endif
+
    if( TT_pooled == 1 && TT_dof_prefix[0] != '\0' )  /* 27 Dec 2002 */
-      fprintf(stderr,"** WARNING: -dof_prefix is used only with -unpooled!\n");
+      WARNING_message("-dof_prefix is used only with -unpooled!");
 
 #ifdef TTDEBUG
 printf("*** finished with options\n") ;
@@ -301,10 +361,7 @@ printf("*** finished with options\n") ;
 
 void TT_syntax(char * msg)
 {
-   if( msg != NULL ){
-      fprintf(stderr,"*** %s\n",msg) ;
-      exit(1) ;
-   }
+   if( msg != NULL ) ERROR_exit("3dttest: %s",msg) ;
 
    printf(
     "Gosset (Student) t-test sets of 3D datasets\n"
@@ -335,6 +392,12 @@ void TT_syntax(char * msg)
     "                   N.B.: -set1 and -base1 are mutually exclusive!\n"
     "  -base1 bval        = 'bval' is a numerical value that the mean of set2\n"
     "                         will be tested against with a 1-sample t-test.\n"
+    "  -sdn1  sd n1       = If this option is given along with '-base1', then\n"
+    "                         'bval' is taken to have standard deviation 'sd'\n"
+    "                         computed from 'n1' samples.  In this case, each\n"
+    "                         voxel in set2 is compared to bval using a\n"
+    "                         pooled-variance unpaired 2-sample t-test.\n"
+    "                         [This is for Tom Johnstone; hope we meet someday.]\n"
     "  -set2 datasets ... = Specifies the collection of datasets to put into\n"
     "                         the second set.  There must be at least 2 datasets\n"
     "                         in each of set1 (if used) and set2.\n"
@@ -371,10 +434,12 @@ void TT_syntax(char * msg)
     "                         at which to threshold the output, per voxel.\n"
     "                         N.B.: NOT IMPLEMENTED YET!\n"
 #endif
+#if 0
     "  -workmem mega      = 'mega' specifies the number of megabytes of RAM\n"
     "                         to use for statistical workspace.  It defaults\n"
-    "                         to 12.  The program will run faster if this is\n"
+    "                         to 266.  The program will run faster if this is\n"
     "                         larger (see the NOTES section below).\n"
+#endif
     "\n"
     "  -voxel voxel       = like 3dANOVA, get screen output for a given voxel.\n"
     "                         This is 1-based, as with 3dANOVA.\n"
@@ -401,6 +466,7 @@ void TT_syntax(char * msg)
     "                       in the notes below.\n"
     "\n"
     "NOTES:\n"
+#if 0
     " ** To economize on memory, 3dttest makes multiple passes through\n"
     "      the input datasets.  On each pass, the entire editing process\n"
     "      will be carried out again.  For efficiency's sake, it is\n"
@@ -411,34 +477,44 @@ void TT_syntax(char * msg)
     "      memory in its entirety (so that the disk file is not altered).\n"
     "      This will increase the memory needs of the program far beyond\n"
     "      the level set by the -workmem option.\n"
+#endif
     " ** The input datasets are specified by their .HEAD files,\n"
     "      but their .BRIK files must exist also! This program cannot\n"
     "      'warp-on-demand' from other datasets.\n"
     " ** This program cannot deal with time-dependent or complex-valued datasets!\n"
-    "      By default, the output dataset function values will be shorts if the\n"
+    " ** By default, the output dataset function values will be shorts if the\n"
     "      first input dataset is byte- or short-valued; otherwise they will be\n"
     "      floats.  This behavior may be overridden using the -datum option.\n"
+    " ** In the -set1/-set2 input list, you can specify a collection of\n"
+    "      sub-bricks from a single dataset using a notation like\n"
+    "        datasetname+orig'[5-9]'\n"
+    "      (the single quotes are necessary).  If you want to use ALL the\n"
+    "      sub-bricks from a multi-volume dataset, you can't just give the\n"
+    "      dataset filename -- you have to use\n"
+    "        datasetname+orig'[0-$]'\n"
+    "      Otherwise, the program will reject the dataset as being too\n"
+    "      complicated for it to understand.  [New in July 2007]\n"
    ) ;
    printf("\n" MASTER_SHORTHELP_STRING ) ;
-   exit(0) ;
+   PRINT_COMPILE_DATE ; exit(0) ;
 }
 
 /*------------------------------------------------------------------*/
 
 static float ptable[] = { 0.5 , 0.2 , 0.1 , 0.05 , 0.01 , 0.001 , 0.0001 , 0.00001 } ;
 
-int main( int argc , char * argv[] )
+int main( int argc , char *argv[] )
 {
    int nx,ny,nz , nxyz , ii,kk , num1,num2 , num_tt=0 , iv ,
        piece , fim_offset;
    float dx,dy,dz , dxyz ,
          num1_inv , num2_inv , num1m1_inv , num2m1_inv , dof ,
          dd,tt,q1,q2 , f1,f2 , tt_max=0.0 ;
-   THD_3dim_dataset * dset=NULL , * new_dset=NULL ;
-   float * av1 , * av2 , * sd1 , * sd2 , * ffim , * gfim ;
+   THD_3dim_dataset *dset=NULL , *new_dset=NULL ;
+   float *av1 , *av2 , *sd1 , *sd2 , *ffim , *gfim ;
 
-   void  * vsp ;
-   void  * vdif ;           /* output mean difference */
+   void  *vsp ;
+   void  *vdif ;           /* output mean difference */
    char  cbuf[THD_MAX_NAME] ;
    float fbuf[MAX_STAT_AUX] , fimfac ;
    int   output_datum ;
@@ -470,10 +546,8 @@ int main( int argc , char * argv[] )
    /*-- read first dataset in set2 to get dimensions, etc. --*/
 
    dset = THD_open_dataset( TT_set2->ar[0] ) ;  /* 20 Dec 1999  BDW */
-   if( ! ISVALID_3DIM_DATASET(dset) ){
-      fprintf(stderr,"*** Unable to open dataset file %s\n",TT_set2->ar[0]);
-      exit(1) ;
-   }
+   if( ! ISVALID_3DIM_DATASET(dset) )
+     ERROR_exit("Unable to open dataset file %s",TT_set2->ar[0]);
 
    nx = dset->daxes->nxx ;
    ny = dset->daxes->nyy ;
@@ -519,21 +593,17 @@ printf(" ** datum = %s\n",MRI_TYPE_name[output_datum]) ;
                            ADN_type , ISHEAD(dset) ? HEAD_FUNC_TYPE : GEN_FUNC_TYPE ,
                            ADN_func_type , FUNC_TT_TYPE ,
                            ADN_nvals , FUNC_nvals[FUNC_TT_TYPE] ,
+                           ADN_ntt , 0 ,                           /* 07 Jun 2007 */
                            ADN_datum_all , output_datum ,
                          ADN_none ) ;
 
-   if( iv > 0 ){
-      fprintf(stderr,
-              "*** %d errors in attempting to create output dataset!\n",iv ) ;
-      exit(1) ;
-   }
+   if( iv > 0 )
+     ERROR_exit("%d errors in attempting to create output dataset!",iv ) ;
 
-   if( THD_is_file(new_dset->dblk->diskptr->header_name) ){
-      fprintf(stderr,
-              "*** Output dataset file %s already exists--cannot continue!\a\n",
+   if( THD_deathcon() && THD_is_file(new_dset->dblk->diskptr->header_name) )
+      ERROR_exit(
+              "Output dataset file %s already exists--cannot continue!\a",
               new_dset->dblk->diskptr->header_name ) ;
-      exit(1) ;
-   }
 
 #ifdef TTDEBUG
 printf("*** deleting exemplar dataset\n") ;
@@ -545,10 +615,7 @@ printf("*** deleting exemplar dataset\n") ;
 
 #define MTEST(ptr) \
    if((ptr)==NULL) \
-      ( fprintf(stderr,"*** Cannot allocate memory for statistics!\n"                \
-                       "*** Try using the -workmem option to reduce memory needs,\n" \
-                       "*** or create more swap space in the operating system.\n"    \
-                ), exit(0) )
+      ( fprintf(stderr,"*** Cannot allocate memory for statistics!\n"), exit(0) )
 
    /*-- make space for the t-test computations --*/
 
@@ -611,12 +678,10 @@ printf("*** malloc-ing space for statistics: %g float arrays of length %d\n",
                        ADN_datum_all , MRI_float ,
                       ADN_none ) ;
 
-     if( THD_is_file(dof_dset->dblk->diskptr->header_name) ){
-        fprintf(stderr,
-                "*** -dof_prefix dataset file %s already exists--cannot continue!\a\n",
+     if( THD_is_file(dof_dset->dblk->diskptr->header_name) )
+        ERROR_exit(
+                "-dof_prefix dataset file %s already exists--cannot continue!\a",
                 dof_dset->dblk->diskptr->header_name ) ;
-        exit(1) ;
-     }
 
      EDIT_substitute_brick( dof_dset , 0 , MRI_float , dofbrik ) ;
    }
@@ -637,11 +702,9 @@ printf("*** malloc-ing space for statistics: %g float arrays of length %d\n",
    mri_fix_data_pointer( vsp  , DSET_BRICK(new_dset,1) ) ;  /* to new dataset */
 
    /** only short and float are allowed for output **/
-   if( output_datum != MRI_short && output_datum != MRI_float ) {
-      fprintf(stderr,"Illegal output data type %d = %s!\n",
-                     output_datum , MRI_TYPE_name[output_datum] ) ;
-      exit(1) ;
-   }
+   if( output_datum != MRI_short && output_datum != MRI_float )
+      ERROR_exit("Illegal output data type %d = %s",
+                 output_datum , MRI_TYPE_name[output_datum] ) ;
 
    num2_inv = 1.0 / num2 ;  num2m1_inv = 1.0 / (num2-1) ;
    if( num1 > 0 ){
@@ -652,21 +715,23 @@ printf("*** malloc-ing space for statistics: %g float arrays of length %d\n",
 
 /** macro to open a dataset and make it ready for processing **/
 
-#define DOPEN(ds,name)                                                               \
-   do{ int pv ; (ds) = THD_open_dataset((name)) ;  /* 16 Sep 1999 */                 \
-       if( !ISVALID_3DIM_DATASET((ds)) ){                                            \
-          fprintf(stderr,"*** Can't open dataset: %s\n",(name)) ; exit(1) ; }        \
-       if( (ds)->daxes->nxx!=nx || (ds)->daxes->nyy!=ny || (ds)->daxes->nzz!=nz ){   \
-          fprintf(stderr,"*** Axes mismatch: %s\n",(name)) ; exit(1) ; }             \
-       if( DSET_NUM_TIMES((ds)) > 1 ){                                               \
-         fprintf(stderr,"*** Can't use time-dependent data: %s\n",(name));exit(1); } \
-       if( TT_use_editor ) EDIT_one_dataset( (ds), &TT_edopt ) ;                     \
-       else                DSET_load((ds)) ;                                         \
-       pv = DSET_PRINCIPAL_VALUE((ds)) ;                                             \
-       if( DSET_ARRAY((ds),pv) == NULL ){                                            \
-          fprintf(stderr,"*** Can't access data: %s\n",(name)) ; exit(1); }          \
-       if( DSET_BRICK_TYPE((ds),pv) == MRI_complex ){                                \
-          fprintf(stderr,"*** Can't use complex data: %s\n",(name)) ; exit(1); }     \
+#define DOPEN(ds,name)                                                            \
+   do{ int pv ; (ds) = THD_open_dataset((name)) ;  /* 16 Sep 1999 */              \
+       if( !ISVALID_3DIM_DATASET((ds)) )                                          \
+          ERROR_exit("Can't open dataset: %s",(name)) ;                           \
+       if( (ds)->daxes->nxx!=nx || (ds)->daxes->nyy!=ny || (ds)->daxes->nzz!=nz ) \
+          ERROR_exit("Axes size mismatch: %s",(name)) ;                           \
+       if( !EQUIV_GRIDS((ds),new_dset) )                                          \
+          WARNING_message("Grid mismatch: %s",(name)) ;                           \
+       if( DSET_NUM_TIMES((ds)) > 1 )                                             \
+         ERROR_exit("Can't use time-dependent data: %s",(name)) ;                 \
+       if( TT_use_editor ) EDIT_one_dataset( (ds), &TT_edopt ) ;                  \
+       else                DSET_load((ds)) ;                                      \
+       pv = DSET_PRINCIPAL_VALUE((ds)) ;                                          \
+       if( DSET_ARRAY((ds),pv) == NULL )                                          \
+          ERROR_exit("Can't access data: %s",(name)) ;                            \
+       if( DSET_BRICK_TYPE((ds),pv) == MRI_complex )                              \
+          ERROR_exit("Can't use complex data: %s",(name)) ;                       \
        break ; } while (0)
 
 #if 0   /* can do it directly now (without offsets)  13 Dec 2005 [rickr] */
@@ -674,7 +739,7 @@ printf("*** malloc-ing space for statistics: %g float arrays of length %d\n",
 
 #define SUB_POINTER(ds,vv,ind,ptr)                                            \
    do{ switch( DSET_BRICK_TYPE((ds),(vv)) ){                                  \
-         default: fprintf(stderr,"\n*** Illegal datum! ***\n");exit(1);       \
+         default: ERROR_exit("Illegal datum! ***");                           \
             case MRI_short:{ short * fim = (short *) DSET_ARRAY((ds),(vv)) ;  \
                             (ptr) = (void *)( fim + (ind) ) ;                 \
             } break ;                                                         \
@@ -865,8 +930,9 @@ printf(" ** forming mean and sigma of set1\n") ;
 
       if( TT_paired || TT_use_bval == 1 ){ /** case 1: paired estimate or 1-sample **/
 
-         f2 = 1.0 / sqrt( (double) num2 ) ;
-         for( ii=0 ; ii < nxyz ; ii++ ){
+        if( TT_paired || TT_n1 == 0 ){       /* the olde waye: 1 sample test */
+          f2 = 1.0 / sqrt( (double) num2 ) ;
+          for( ii=0 ; ii < nxyz ; ii++ ){
             av2[ii] -= TT_bval ;  /* final mean */
             if( sd2[ii] > 0.0 ){
                num_tt++ ;
@@ -877,11 +943,27 @@ printf(" ** forming mean and sigma of set1\n") ;
             } else {
                sd2[ii] = 0.0;
             }
-         }
+          }
+          if( TT_voxel >= 0 )
+             fprintf(stderr,"-- paired/bval mean = %g, t = %g\n",
+                     av2[TT_voxel], sd2[TT_voxel]) ;
 
-         if( TT_voxel >= 0 )
-            fprintf(stderr,"-- paired/bval mean = %g, t = %g\n",
-                    av2[TT_voxel], sd2[TT_voxel]) ;
+        } else {  /* 10 Oct 2007: -sdn1 was used with -base1: 'two' sample test */
+          f1 = (TT_n1-1.0) * (1.0/TT_n1 + 1.0/num2) / (TT_n1+num2-2.0) ;
+          f2 = (num2 -1.0) * (1.0/TT_n1 + 1.0/num2) / (TT_n1+num2-2.0) ;
+          for( ii=0 ; ii < nxyz ; ii++ ){
+            av2[ii] -= TT_bval ;  /* final mean */
+            q1 = f1 * TT_sd1*TT_sd1 + f2 * sd2[ii]*sd2[ii] ;
+            if( q1 > 0.0 ){
+              num_tt++ ;
+              tt = av2[ii] / sqrt(q1) ;
+              sd2[ii] = tt ;      /* final t-stat */
+              tt = fabs(tt) ; if( tt > tt_max ) tt_max = tt ;
+            } else {
+              sd2[ii] = 0.0 ;
+            }
+          }
+        } /* end of -sdn1 special case */
 #ifdef TTDEBUG
 printf(" ** paired or bval test: num_tt = %d\n",num_tt) ;
 #endif
@@ -954,8 +1036,13 @@ printf(" ** unpooled test: num_tt = %d\n",num_tt) ;
       printf("--- Number of degrees of freedom = %d (paired test)\n",num2-1) ;
       dof = num2 - 1 ;
    } else if( TT_use_bval == 1 ){
-      printf("--- Number of degrees of freedom = %d (1-sample test)\n",num2-1) ;
-      dof = num2 - 1 ;
+      if( TT_n1 == 0 ){
+        printf("--- Number of degrees of freedom = %d (1-sample test)\n",num2-1) ;
+        dof = num2 - 1 ;
+      } else {
+        dof = TT_n1+num2-2 ;
+        printf("--- Number of degrees of freedom = %d (-sdn1 2-sample test)\n",(int)dof) ;
+      }
    } else {
       printf("--- Number of degrees of freedom = %d (2-sample test)\n",num1+num2-2) ;
       dof = num1+num2-2 ;
@@ -982,9 +1069,10 @@ printf(" ** unpooled test: num_tt = %d\n",num_tt) ;
 
    /* if output is of type short, limit t-stat magnitude to 32.7 */
    if( output_datum == MRI_short ){
-      for( ii=0 ; ii < nxyz ; ii++ )
-        if     ( sd2[ii] >  32.7 ) sd2[ii] =  32.7 ;
-        else if( sd2[ii] < -32.7 ) sd2[ii] = -32.7 ;
+     for( ii=0 ; ii < nxyz ; ii++ ){
+       if     ( sd2[ii] >  32.7 ) sd2[ii] =  32.7 ;
+       else if( sd2[ii] < -32.7 ) sd2[ii] = -32.7 ;
+     }
    }
 
    fimfac = EDIT_convert_dtype(nxyz , MRI_float,sd2 , output_datum,vsp , 0.0) ;
@@ -995,7 +1083,7 @@ printf(" ** fimfac for mean, t-stat = %g, %g\n",dd, fimfac) ;
 #endif
    /**----------------------------------------------------------------------**/
 
-   printf("--- Writing combined dataset into %s\n", DSET_BRIKNAME(new_dset) ) ;
+   INFO_message("Writing combined dataset into %s\n", DSET_BRIKNAME(new_dset) ) ;
 
    fbuf[0] = dof ;
    for( ii=1 ; ii < MAX_STAT_AUX ; ii++ ) fbuf[ii] = 0.0 ;
@@ -1007,12 +1095,15 @@ printf(" ** fimfac for mean, t-stat = %g, %g\n",dd, fimfac) ;
    (void) EDIT_dset_items( new_dset , ADN_brick_fac , fbuf , ADN_none ) ;
 #endif
 
+   if( !AFNI_noenv("AFNI_AUTOMATIC_FDR") ) ii = THD_create_all_fdrcurves(new_dset) ;
+   else                                    ii = 0 ;
    THD_load_statistics( new_dset ) ;
    THD_write_3dim_dataset( NULL,NULL , new_dset , True ) ;
+   if( ii > 0 ) ININFO_message("created %d FDR curves in header",ii) ;
 
    if( dof_dset != NULL ){                                  /* 27 Dec 2002 */
      DSET_write( dof_dset ) ;
-     fprintf(stderr,"--- Wrote unpooled DOF dataset into %s\n", DSET_BRIKNAME(dof_dset) ) ;
+     WROTE_DSET( dof_dset ) ;
    }
 
    exit(0) ;

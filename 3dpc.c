@@ -331,7 +331,7 @@ void PC_syntax(char * msg)
 
    printf("\n" MASTER_SHORTHELP_STRING ) ;
 
-   exit(0) ;
+   PRINT_COMPILE_DATE ; exit(0) ;
 }
 
 /*------------------------------------------------------------------*/
@@ -615,7 +615,7 @@ int main( int argc , char * argv[] )
                                                     : FUNC_BUCK_TYPE ,
                     ADN_none ) ;
 
-   if( THD_is_file(DSET_HEADNAME(new_dset)) ){
+   if( THD_deathcon() && THD_is_file(DSET_HEADNAME(new_dset)) ){
       fprintf(stderr,
               "\n*** Output dataset %s already exists--will be destroyed!\n",
               DSET_HEADNAME(new_dset) ) ;

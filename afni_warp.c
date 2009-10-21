@@ -11,6 +11,11 @@
 
 #include "afni_warp.h"
 
+/*------------------------------------------------------------------------*/
+
+static int ignore_vedit = 0 ;   /* 28 Jan 2008 */
+void AFNI_set_ignore_vedit( int ii ){ ignore_vedit = ii; return; }
+
 /*------------------------------------------------------------------------
    Return a slice from a dataset, possibly to be warped on-the-fly
    from its parent:
@@ -32,7 +37,7 @@ MRI_IMAGE * AFNI_dataset_slice( THD_3dim_dataset *dset ,
 {
    MRI_IMAGE *newim ;
    void *sar , *bar ;
-   int nxx,nyy,nzz ;
+   int nxx,nyy,nzz , do_vedit ;
    MRI_TYPE typ ;
    THD_dataxes *daxes ;
    THD_3dim_dataset *parent_dset ;
@@ -121,22 +126,27 @@ if(PRINT_TRACING)
 
    /*----- if datablock exists and not forcing warp-on-demand, use it -----*/
 
-   if( !dset->wod_flag && DSET_INMEMORY(dset) ){
+   do_vedit = ( !ignore_vedit                   &&
+                DSET_VEDIT_IVAL(dset)   == ival &&
+                dset->dblk->vedim       != NULL &&
+                dset->dblk->vedim->kind == typ    ) ;  /* 16 Jan 2008 */
+
+   if( ( !dset->wod_flag && DSET_INMEMORY(dset) ) ){
 
       /* 05 Sep 2006: substitution of volume edited brick, if available */
 
-      if( DSET_VEDIT_IVAL(dset) == ival && dset->dblk->vedim != NULL  &&
-                                           dset->dblk->vedim->kind == typ ){
+      if( do_vedit ){
         STATUS("substituting vedim in dset") ;
         bar = mri_data_pointer(dset->dblk->vedim) ;
-        if( bar == NULL ){
+        if( bar == NULL ){  /* should not happen */
           ERROR_message("vedim array is NULL?!"); bar = DSET_ARRAY(dset,ival);
         }
-      } else
+      } else {
         bar = DSET_ARRAY(dset,ival) ;  /* pointer to data brick array */
+      }
 
       if( bar == NULL ){  /* if data needs to be loaded from disk */
-        (void) THD_load_datablock( dset->dblk ) ;
+        (void)THD_load_datablock( dset->dblk ) ;
         bar = DSET_ARRAY(dset,ival) ;
         if( bar == NULL ){
           STATUS("couldn't load dataset!") ;
@@ -266,16 +276,15 @@ STATUS("setting parent_dset to self, and parent_to_child_warp to identity") ;
 
    /* 05 Sep 2006: substitution of volume edited brick, if available */
 
-   if( parent_dset == dset &&
-       DSET_VEDIT_IVAL(dset) == ival && dset->dblk->vedim != NULL  &&
-                                        dset->dblk->vedim->kind == typ ){
+   if( parent_dset == dset && do_vedit ){
      STATUS("substituting vedim in dset") ;
      bar = mri_data_pointer(dset->dblk->vedim) ;
      if( bar == NULL ){
        ERROR_message("vedim array is NULL!?"); bar = DSET_ARRAY(dset,ival);
      }
-   } else
+   } else {
      bar = DSET_ARRAY(parent_dset,ival) ;  /* default brick to use */
+   }
 
    if( bar == NULL ){
      STATUS("failed to load parent dataset!") ;

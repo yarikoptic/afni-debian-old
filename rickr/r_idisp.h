@@ -6,6 +6,7 @@
 extern "C" {                    /* care of Greg Balls    7 Aug 2006 [rickr] */
 #endif
 
+#undef  CHECK_NULL_STR
 #define CHECK_NULL_STR(str) ( str ? str : "(nil)" )
 
 /*    --- 3ddata.h ---              */
@@ -31,14 +32,6 @@ int r_idisp_vec3d      ( char * info, double * vec );
 int r_idisp_vec3f      ( char * info, float  * vec );
 int r_idisp_vec3i      ( char * info, int    * vec );
 
-
-/*   ---  cox_render.h ---          */
-
-#ifdef _COX_RENDER_HEADER_
-
-int r_idisp_cren_stuff  ( char * info, CREN_stuff * cp );
-
-#endif /* _COX_RENDER_HEADER_ */
 
 #ifdef  __cplusplus
 }

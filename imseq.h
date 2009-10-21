@@ -55,9 +55,9 @@ typedef struct {
 
       void (* send_CB)() ;   /* callback, if non_NULL */
 
-      MCW_function_list * transforms0D ;
-      MCW_function_list * transforms2D ;
-      MCW_function_list * slice_proj   ;  /* 31 Jan 2002 */
+      MCW_function_list *transforms0D ;
+      MCW_function_list *transforms2D ;
+      MCW_function_list *slice_proj   ;  /* 31 Jan 2002 */
 
       XtPointer parent , aux ;
 } MCW_imseq_status ;
@@ -145,7 +145,7 @@ typedef struct {
 
 #define ISQ_RNG_MINTOMAX  1
 #define ISQ_RNG_02TO98    2
-#define ISQ_RNG_USER      4  /* 04 Nov 2003 */
+#define ISQ_RNG_CLIPPED   4
 
 #define ISQ_ASPECT 1
 
@@ -179,10 +179,15 @@ typedef struct {
 #undef  MPEG_MODE
 #undef  JPEG_MODE
 #undef  PNG_MODE
-#define AGIF_MODE 1  /* 06 Dec 2006 - for ISQ_save_anim() */
-#define MPEG_MODE 2
-#define JPEG_MODE 3
-#define PNG_MODE  4
+#undef  RAW_MODE
+#undef  RAWMONT_MODE
+
+#define AGIF_MODE     1  /* 06 Dec 2006 - for ISQ_save_anim() */
+#define MPEG_MODE     2
+#define JPEG_MODE     3
+#define PNG_MODE      4
+#define RAW_MODE      5
+#define RAWMONT_MODE  6
 
 #define ISQ_OPT_EQUAL(opta,optb)                    \
     ( ((opta).mirror      == (optb).mirror     ) && \
@@ -267,6 +272,7 @@ typedef struct {
 #define isqCR_getoverlay  402
 #define isqCR_getstatus   403
 #define isqCR_getqimage   404
+#define isqCR_getopacim   405  /* 26 Sep 2007 */
 
 #define isqCR_getxynim    411  /* 30 Dec 1998 */
 
@@ -343,9 +349,9 @@ typedef struct MCW_imseq {
 
      Boolean done_first ;    /* for the done button */
 
-     MCW_DC * dc ;           /* graphics data (copy of a pointer) */
+     MCW_DC *dc ;            /* graphics data (copy of a pointer) */
 
-     MCW_imseq_status * status ;    /* status of image sequence */
+     MCW_imseq_status *status ;    /* status of image sequence */
 
      float last_width_mm , last_height_mm ;  /* physical sizes (in mm, say)*/
 
@@ -357,18 +363,18 @@ typedef struct MCW_imseq {
      Widget wbar_menu , wbar_rng_but , wbar_zer_but  , wbar_flat_but ,
             wbar_sharp_but ;
      float  rng_bot,rng_top,rng_ztop , flat_bot,flat_top , sharp_fac ;
-     int    zer_color ;
+     int    zer_color , rng_extern ;
 
-     MCW_arrowval * arrow[NARROW] ; /* arrow controls */
+     MCW_arrowval *arrow[NARROW] ; /* arrow controls */
 
-     MCW_arrowpad * arrowpad ;      /* arrowpad in lower right corner */
+     MCW_arrowpad *arrowpad ;      /* arrowpad in lower right corner */
 
      int marg_bot , marg_rig , wf_wide , wf_high ;
 
-     int        num_bbox ;
-     MCW_bbox * bbox[NBOX_MAX] ;  /* button boxes */
-     Widget     dialog ;
-     int        dialog_starter ;
+     int       num_bbox ;
+     MCW_bbox *bbox[NBOX_MAX] ;  /* button boxes */
+     Widget    dialog ;
+     int       dialog_starter ;
      ISQ_options save_opt ;
 
      get_ptr   getim ;  /* pointer to image retrieval procedure */
@@ -386,34 +392,34 @@ typedef struct MCW_imseq {
      int mont_nx    , mont_ny    , mont_skip    , mont_gap    , mont_gapcolor    ;
      int mont_nx_old, mont_ny_old, mont_skip_old, mont_gap_old, mont_gapcolor_old;
      int mont_periodic ;
-     MCW_arrowval * mont_across_av , * mont_down_av , * mont_skip_av ,
-                  * mont_gap_av , * mont_gapcolor_av ;
+     MCW_arrowval *mont_across_av , *mont_down_av , *mont_skip_av ,
+                  *mont_gap_av , *mont_gapcolor_av ;
 
      float image_frac ;  /* 25 Oct 1996 */
 
-     MCW_arrowval * transform0D_av ;      /* 30 Oct 1996 */
-     generic_func * transform0D_func ;
-     int            transform0D_index ;
+     MCW_arrowval *transform0D_av ;      /* 30 Oct 1996 */
+     generic_func *transform0D_func ;
+     int           transform0D_index ;
 
-     MCW_arrowval * transform2D_av ;
-     generic_func * transform2D_func ;
-     int            transform2D_index ;
+     MCW_arrowval *transform2D_av ;
+     generic_func *transform2D_func ;
+     int           transform2D_index ;
 
-     MCW_arrowval * slice_proj_av ;       /* 31 Jan 2002 */
-     float_func   * slice_proj_func ;
-     int            slice_proj_index ;
-     MCW_arrowval * slice_proj_range_av ;
-     int            slice_proj_range ;
+     MCW_arrowval *slice_proj_av ;       /* 31 Jan 2002 */
+     float_func   *slice_proj_func ;
+     int           slice_proj_index ;
+     MCW_arrowval *slice_proj_range_av ;
+     int           slice_proj_range ;
 
-     MCW_arrowval *      rowgraph_av  ;   /* 30 Dec 1998 */
-     int                 rowgraph_num ;
-     MEM_topshell_data * rowgraph_mtd ;
+     MCW_arrowval      *rowgraph_av  ;   /* 30 Dec 1998 */
+     int                rowgraph_num ;
+     MEM_topshell_data *rowgraph_mtd ;
 
-     MCW_arrowval *      surfgraph_av ;   /* 21 Jan 1999 */
-     int                 surfgraph_num ;
-     MEM_topshell_data * surfgraph_mtd ;
-     MCW_arrowpad *      surfgraph_arrowpad ;
-     float               surfgraph_theta , surfgraph_phi ;
+     MCW_arrowval      *surfgraph_av ;   /* 21 Jan 1999 */
+     int                surfgraph_num ;
+     MEM_topshell_data *surfgraph_mtd ;
+     MCW_arrowpad      *surfgraph_arrowpad ;
+     float              surfgraph_theta , surfgraph_phi ;
 
      int never_drawn ;
 
@@ -423,21 +429,21 @@ typedef struct MCW_imseq {
 
      /*--- data below here should be freed before deletion ---*/
 
-     MRI_IMAGE * imim , * ovim ;  /* latest and greatest (already processed) */
+     MRI_IMAGE *imim , *ovim ;  /* latest and greatest (already processed) */
 
-     int         need_orim , set_orim ; /* flag to compute orim */
-     MRI_IMAGE * orim ;                 /* input underlay image (for rowgraphs) */
+     int        need_orim , set_orim ; /* flag to compute orim */
+     MRI_IMAGE *orim ;                 /* input underlay image (for rowgraphs) */
 
-     XImage * given_xim  , * sized_xim  ;  /* for actual displaying */
-     XImage * given_xbar , * sized_xbar ;
+     XImage *given_xim  , *sized_xim  ;  /* for actual displaying */
+     XImage *given_xbar , *sized_xbar ;
 
-     ISQ_indiv_statistics * imstat ;
-     ISQ_glob_statistics  * glstat ;
+     ISQ_indiv_statistics *imstat ;
+     ISQ_glob_statistics  *glstat ;
 
      /*--- temporary, I hope [Hah!] ---*/
 
      int saver_from , saver_to ;
-     char * saver_prefix ;
+     char *saver_prefix ;
 
      /*--- the obligatory ---*/
 
@@ -450,32 +456,33 @@ typedef struct MCW_imseq {
      /* text for sides of window in default orientation [01 Dec 1999] */
 
      char winfo_sides[4][16] ;
+     char winfo_prefix[16] ;    /* 10 Dec 2007 */
 
      /* opacity of overlay */
 
      float ov_opacity ;              /* 07 Mar 2001 */
-     MCW_arrowval * ov_opacity_av ;
+     MCW_arrowval *ov_opacity_av ;
      Widget ov_opacity_sep ;         /* 08 Mar 2001 */
 
      Widget record_rc , record_cbut; /* 24 Apr 2001: recording stuff */
-     MCW_bbox * record_status_bbox ;
-     MCW_bbox * record_method_bbox ;
+     MCW_bbox *record_status_bbox ;
+     MCW_bbox *record_method_bbox ;
      int record_status ;
      int record_method ;
      int record_mode ;
-     struct MCW_imseq * record_imseq ;
-     MRI_IMARR * record_imarr ;
-     MEM_plotdata ** record_mplot ;  /* 05 Jan 2005 */
+     struct MCW_imseq *record_imseq ;
+     MRI_IMARR        *record_imarr ;
+     MEM_plotdata    **record_mplot ;  /* 05 Jan 2005 */
 
-     MCW_bbox * save_one_bbox ;      /* 26 Jul 2001 */
-     MCW_bbox * save_agif_bbox ;     /* 27 Jul 2001 */
+     MCW_bbox *save_one_bbox ;      /* 26 Jul 2001 */
+     MCW_bbox *save_agif_bbox ;     /* 27 Jul 2001 */
 
      float clbot,cltop , barbot,bartop ; /* 29 Jul 2001 */
 
-     MEM_plotdata * mplot ;              /* 19 Sep 2001 */
-     MCW_bbox * wbar_plots_bbox ;        /* 20 Sep 2001 */
-     MCW_arrowval * wbar_label_av ;      /* 20 Sep 2001 */
-     MCW_arrowval * wbar_labsz_av ;      /* 21 Sep 2001 */
+     MEM_plotdata *mplot ;              /* 19 Sep 2001 */
+     MCW_bbox *wbar_plots_bbox ;        /* 20 Sep 2001 */
+     MCW_arrowval *wbar_label_av ;      /* 20 Sep 2001 */
+     MCW_arrowval *wbar_labsz_av ;      /* 21 Sep 2001 */
 
      Widget        zoom_sep              /* 11 Mar 2002 */;
      MCW_arrowval *zoom_val_av ;
@@ -502,7 +509,7 @@ typedef struct MCW_imseq {
      int cmap_changed ;
 
      int do_graymap ;                                 /* 24 Oct 2003 */
-     MEM_topshell_data * graymap_mtd ;
+     MEM_topshell_data *graymap_mtd ;
      Widget wbar_graymap_pb ;
 
      XtIntervalId timer_id ;                          /* 03 Dec 2003 */
@@ -518,6 +525,9 @@ typedef struct MCW_imseq {
      float rgb_offset ;
 
      char scl_label[16] ;                             /* 02 Nov 2005 */
+
+     float top_clip ;                                 /* 14 Sep 2007 */
+     int   redo_clip ;                                /* 17 Sep 2007 */
 } MCW_imseq ;
 
 #define ISQ_TIMERFUNC_INDEX  701
@@ -587,11 +597,13 @@ extern MCW_imseq * open_MCW_imseq( MCW_DC * , get_ptr , XtPointer ) ;
 #define isqDR_setifrac      130
 #define isqDR_setrange      131
 #define isqDR_bgicon        132
+#define isqDR_settopclip    133  /* 14 Sep 2007 */
 
 #define isqDR_arrowpadhint  201
 #define isqDR_winfotext     202
 #define isqDR_getoptions    203
 #define isqDR_winfosides    204
+#define isqDR_winfoprefix   205
 
 #define isqDR_destroy       666
 
@@ -634,6 +646,8 @@ extern MCW_imseq * open_MCW_imseq( MCW_DC * , get_ptr , XtPointer ) ;
 #define isqDR_save_png        707  /* 11 Dec 2006 */
 #define isqDR_save_filtered   708  /* 14 Dec 2006 */
 #define isqDR_save_pngall     709  /* 15 Dec 2006 */
+#define isqDR_save_raw        710  /* 13 Nov 2007 */
+#define isqDR_save_rawmont    711  /* 13 Nov 2007 */
 
 extern Boolean drive_MCW_imseq( MCW_imseq * , int , XtPointer ) ;
 
@@ -821,6 +835,9 @@ extern void mri_rgb_transform_nD( MRI_IMAGE *, int, generic_func * ) ;
 extern void ISQ_save_jpeg( MCW_imseq *seq , char *fname ) ;    /* 28 Jul 2005 */
 extern void ISQ_save_png ( MCW_imseq *seq , char *fname ) ;    /* 11 Dec 2006 */
 extern void ISQ_save_anim( MCW_imseq *, char *, int,int,int ); /* 06 Dec 2006 */
+
+extern void ISQ_save_raw    ( MCW_imseq *seq , char *fname ) ; /* 13 Nov 2007 */
+extern void ISQ_save_rawmont( MCW_imseq *seq , char *fname ) ; /* 13 Nov 2007 */
 
 extern void ISQ_save_image( MCW_imseq *, char *, char *, char *); /* 11 Dec 2006 */
 

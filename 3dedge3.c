@@ -44,7 +44,7 @@ int main( int argc , char * argv[] )
              "    pp 203-214, August 1991.\n"
              "\n"
             ) ;
-      exit(0) ;
+      PRINT_COMPILE_DATE ; exit(0) ;
    }
 
    /*-- 20 Apr 2001: addto the arglist, if user wants to [RWCox] --*/
@@ -65,12 +65,12 @@ int main( int argc , char * argv[] )
 
       if( strcmp(argv[nopt],"-prefix") == 0 ){
          if( ++nopt >= argc ){
-            fprintf(stderr,"** ERROR: need an argument after -prefix!\n"); exit(1);
+            fprintf(stderr,
+               "** ERROR: need an argument after -prefix!\n"); exit(1);
          }
          prefix = argv[nopt] ;
          nopt++ ; continue ;
       }
-      
       if( strcmp(argv[nopt],"-input") == 0 ){
          if( ++nopt >= argc ){
             fprintf(stderr,"** ERROR: need an argument after -input!\n"); exit(1);
@@ -161,7 +161,7 @@ int main( int argc , char * argv[] )
                              ADN_datum_all , datum ,
                           ADN_none ) ;
 
-         if( THD_is_file(outset->dblk->diskptr->header_name) ){
+         if( THD_deathcon() && THD_is_file(outset->dblk->diskptr->header_name) ){
             fprintf(stderr,
                     "*** Output file %s already exists -- cannot continue!\n",
                     outset->dblk->diskptr->header_name ) ;

@@ -284,14 +284,14 @@ int main( int argc , char * argv[] )
   "                                                                        \n"
   "   Max Int      : Maximum Intensity value for the volume cluster        \n"
   "                                                                        \n"
-  "   MI RL        : Maximum Intensity value in the Right-Left             \n"
-  "                  direction of the volume cluster                       \n"
+  "   MI RL        : Coordinate of the Maximum Intensity value in the      \n"
+  "                  Right-Left direction of the volume cluster            \n"
   "                                                                        \n"
-  "   MI AP        : Maximum Intensity value in the Anterior-Posterior     \n"
-  "                  direction of the volume cluster                       \n"
+  "   MI AP        : Coordinate of the Maximum Intensity value in the      \n"
+  "                  Anterior-Posterior direction of the volume cluster    \n"
   "                                                                        \n"
-  "   MI IS        : Maximum Intensity value in the Inferior-Superior      \n"
-  "                  direction of the volume cluster                       \n"
+  "   MI IS        : Coordinate of the Maximum Intensity value in the      \n"
+  "                  Inferior-Superior direction of the volume cluster     \n"
   "----------------------------------------------------------------------- \n"
   "                                                                        \n"
   "Nota Bene:                                                              \n"
@@ -325,7 +325,7 @@ int main( int argc , char * argv[] )
   "    set the environment variable AFNI_ORIENT to 'LPI'.  For more        \n"
   "    information, see file README.environment.                           \n"
         ) ;
-      exit(0) ;
+      PRINT_COMPILE_DATE ; exit(0) ;
    }
 
    mainENTRY("3dclust main"); machdep(); AFNI_logger("3dclust",argc,argv);
@@ -366,6 +366,9 @@ int main( int argc , char * argv[] )
    if( rmm < 0.0 ){
       fprintf(stderr,"\n*** Illegal rmm=%f \a\n",rmm) ;
       exit(1) ;
+   } else if ( rmm == 0.0f ){
+      CL_edopt.fake_dxyz = 1 ;  /* 26 Dec 2007 */
+      rmm = 1.001f ;
    }
 
    /* BDW  26 March 1999  */

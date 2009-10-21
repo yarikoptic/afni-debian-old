@@ -52,10 +52,10 @@
 typedef struct {
    int num_pt  ;    /*!< Number of points in cluster */
    int num_all ;    /*!< Number of points allocated for cluster */
-   short * i;       /*!< x index */
-   short * j;       /*!< y index */
-   short * k;       /*!< z index */
-   float * mag ;    /* stores value at each voxel in cluster */
+   short *i;        /*!< x index */
+   short *j;        /*!< y index */
+   short *k;        /*!< z index */
+   float *mag ;     /* stores value at each voxel in cluster */
 } MCW_cluster ;
 
 /*! Initialize a MCW_cluster. */
@@ -75,7 +75,7 @@ typedef struct {
          myXtFree((cc)->mag) ; \
          myXtFree((cc)) ;      \
          (cc) = NULL ;         \
-      } break ; } while(0)
+      }} while(0)
 
 #ifdef CLUST_DEBUG
 #  define DBMALL(n) printf(" -- Realloc-ing cluster: %d\n",(n))
@@ -83,21 +83,51 @@ typedef struct {
 #  define DBMALL(n)
 #endif
 
+/*! Duplicate an MCW_cluster */
+
+#define COPY_CLUSTER(dd,cc)                              \
+ do{ int nn ; INIT_CLUSTER(dd) ;                         \
+     (dd)->num_pt = (dd)->num_all = nn = (cc)->num_pt ;  \
+     (dd)->i   = (short *)XtMalloc(sizeof(short)*nn);    \
+     (dd)->j   = (short *)XtMalloc(sizeof(short)*nn);    \
+     (dd)->k   = (short *)XtMalloc(sizeof(short)*nn);    \
+     (dd)->mag = (float *)XtMalloc(sizeof(float)*nn);    \
+     memcpy((dd)->i  ,(cc)->i  ,sizeof(short)*nn);       \
+     memcpy((dd)->j  ,(cc)->j  ,sizeof(short)*nn);       \
+     memcpy((dd)->k  ,(cc)->k  ,sizeof(short)*nn);       \
+     memcpy((dd)->mag,(cc)->mag,sizeof(float)*nn);       \
+ } while(0)
+
 /*! Add point (ii,jj,kk) with magnitude mm to a MCW_cluster. */
 
-#define ADDTO_CLUSTER(cc,ii,jj,kk,m) \
-  do{ int nn ;                                              \
-      if( (cc)->num_pt == (cc)->num_all ){                  \
-         (cc)->num_all = 1.25*(cc)->num_all + INC_CLUSTER ; \
-         nn = (cc)->num_all ;                               \
-         (cc)->i=(short *)   XtRealloc((char *)(cc)->i,sizeof(short)*nn  );\
-         (cc)->j=(short *)   XtRealloc((char *)(cc)->j,sizeof(short)*nn  );\
-         (cc)->k=(short *)   XtRealloc((char *)(cc)->k,sizeof(short)*nn  );\
-         (cc)->mag=(float *) XtRealloc((char *)(cc)->mag,sizeof(float)*nn);\
-         DBMALL(nn) ; }                      \
-      nn = (cc)->num_pt ; ((cc)->num_pt)++ ; \
-      (cc)->i[nn] = (ii) ; (cc)->j[nn] = (jj) ; (cc)->k[nn] = (kk) ; \
+#define ADDTO_CLUSTER(cc,ii,jj,kk,m)                                        \
+  do{ int nn ;                                                              \
+      if( (cc)->num_pt == (cc)->num_all ){                                  \
+         (cc)->num_all = 1.25*(cc)->num_all + INC_CLUSTER ;                 \
+         nn = (cc)->num_all ;                                               \
+         (cc)->i=(short *)   XtRealloc((char *)(cc)->i,sizeof(short)*nn  ); \
+         (cc)->j=(short *)   XtRealloc((char *)(cc)->j,sizeof(short)*nn  ); \
+         (cc)->k=(short *)   XtRealloc((char *)(cc)->k,sizeof(short)*nn  ); \
+         (cc)->mag=(float *) XtRealloc((char *)(cc)->mag,sizeof(float)*nn); \
+         DBMALL(nn) ; }                                                     \
+      nn = (cc)->num_pt ; ((cc)->num_pt)++ ;                                \
+      (cc)->i[nn] = (ii) ; (cc)->j[nn] = (jj) ; (cc)->k[nn] = (kk) ;        \
       (cc)->mag[nn] = (m) ; break ; } while(0)
+
+/*! Add point (ii,jj,kk) a MCW_cluster, don't save mag. */
+
+#define ADDTO_CLUSTER_NOMAG(cc,ii,jj,kk)                               \
+  do{ int nn ;                                                         \
+      if( (cc)->num_pt == (cc)->num_all ){                             \
+         (cc)->num_all = 1.25*(cc)->num_all + INC_CLUSTER ;            \
+         nn = (cc)->num_all ;                                          \
+         (cc)->i=(short *)XtRealloc((char *)(cc)->i,sizeof(short)*nn); \
+         (cc)->j=(short *)XtRealloc((char *)(cc)->j,sizeof(short)*nn); \
+         (cc)->k=(short *)XtRealloc((char *)(cc)->k,sizeof(short)*nn); \
+      }                                                                \
+      nn = (cc)->num_pt ; ((cc)->num_pt)++ ;                           \
+      (cc)->i[nn] = (ii) ; (cc)->j[nn] = (jj) ; (cc)->k[nn] = (kk) ;   \
+   } while(0)
 
 #define ISOVALUE_MODE  1
 #define ISOMERGE_MODE  2
@@ -119,13 +149,13 @@ typedef struct {
 
 /*! Add a MCW_cluster to a MCW_cluster_array. */
 
-#define ADDTO_CLARR(cl,cc)                  \
-  do{ int nn ;                              \
-      if( (cl)->num_clu == (cl)->num_all ){ \
-         (cl)->num_all += INC_CLUSTER ; nn = (cl)->num_all ;           \
-         (cl)->clar = (MCW_cluster **) XtRealloc( (char *)(cl)->clar , \
-                                                 sizeof(MCW_cluster *) * nn ) ;\
-      } \
+#define ADDTO_CLARR(cl,cc)                                                     \
+  do{ int nn ;                                                                 \
+      if( (cl)->num_clu == (cl)->num_all ){                                    \
+         (cl)->num_all += INC_CLUSTER+(cl)->num_all/16; nn = (cl)->num_all ;   \
+         (cl)->clar = (MCW_cluster **) XtRealloc( (char *)(cl)->clar ,         \
+                                                 sizeof(MCW_cluster *) * nn ); \
+      }                                                                        \
       (cl)->clar[((cl)->num_clu)++] = (cc) ; break ; } while(0)
 
 /*! Delete a MCW_cluster_array (including all MCW_cluster inside). */
@@ -149,7 +179,7 @@ typedef struct {
 
 #define SORT_CLARR(name) \
    if( (name) != NULL && (name)->num_clu > 1 ){                             \
-      int iic , jjc , sss ; MCW_cluster * ct ;                              \
+      int iic , jjc , sss ; MCW_cluster *ct ;                               \
       for( iic=0 ; iic < (name)->num_clu ; iic++ ){                         \
          sss = 0 ;                                                          \
          for( jjc=1 ; jjc < (name)->num_clu ; jjc++ ){                      \
@@ -171,6 +201,7 @@ extern MCW_cluster_array * NIH_find_clusters( int,int,int , float,float,float ,
                                               int , void * , float , int ) ;
 
 extern void MCW_cluster_to_vol( int,int,int, int,void *, MCW_cluster * ) ;
+extern void MCW_vol_to_cluster( int,int,int, int,void *, MCW_cluster * ) ;
 
 extern void MCW_scale_to_max( int,int,int, int,void * );
 
@@ -181,6 +212,7 @@ extern MCW_cluster * MCW_build_mask(float, float, float, float);
 
 extern MCW_cluster * MCW_spheremask( float,float,float,float ) ;
 extern MCW_cluster * MCW_rectmask  ( float,float,float,float,float,float ) ;
+extern MCW_cluster * MCW_rhddmask  ( float,float,float,float ) ;
 
 /* 16 June 1998 */
 extern void MCW_erode_clusters (int, int, int, float, float, float, int,
@@ -209,6 +241,7 @@ typedef struct EDIT_options {
    int   clip_unscaled ;          /*!< clip without scaling? [09 Aug 1996]  */
 
    float thresh ;                 /*!< zero out if threshold < thresh     */
+   float thbot ;                  /*!< 26 Dec 2007 */
    float clust_rmm ;              /*!< cluster data with rmm radius       */
    float clust_vmul ;             /*!< remove clusters smaller than vmul  */
    float blur ;                   /*!< Gaussian blur data with sigma = blur */
@@ -246,12 +279,15 @@ typedef struct EDIT_options {
 
    int   verbose ;                /*!< 01 Nov 1999 --> verbose output during editing */
 
-   int   nfmask ;                 /*!< 09 Aug 2000 --> filter mask */
-   byte * fmask ;
-   char * fexpr ;                 /*!< 09 Aug 2000 --> filter expression */
+   int  nfmask ;                  /*!< 09 Aug 2000 --> filter mask */
+   byte *fmask ;
+   char *fexpr ;                  /*!< 09 Aug 2000 --> filter expression */
+   int   fmclip ;                 /*!< 11 Oct 2007 --> clip at fmask? */
 
    int fake_dxyz ;                /*!< 11 Sep 2000 -> use dx=dy=dz=1.0? */
 
+   int rank;                      /*!< 13 Nov 2007 --> ZSS: Rank dset values. */
+   char rankmapname[THD_MAX_NAME+THD_MAX_PREFIX+1];
 } EDIT_options ;
 
 /*--- cluster editing options ---*/   /* 10 Sept 1996 */
@@ -287,6 +323,7 @@ typedef struct EDIT_options {
         (edopt)->clip_bot      = 0.0 , \
         (edopt)->clip_top      = 0.0 , \
         (edopt)->thresh        = 0.0 , \
+        (edopt)->thbot         = 0.0 , \
         (edopt)->clust_rmm     = -1.0, \
         (edopt)->clust_vmul    = 0.0 , \
         (edopt)->edit_clust    = 0   , \
@@ -309,7 +346,10 @@ typedef struct EDIT_options {
         (edopt)->nfmask        = 0   , \
         (edopt)->fmask         = NULL, \
         (edopt)->fexpr         = NULL, \
+        (edopt)->fmclip        = 1,    \
         (edopt)->fake_dxyz     = 0   , \
+        (edopt)->rank          = 0,    \
+        (edopt)->rankmapname[0]= '\0', \
        0 )
 
 extern void EDIT_one_dataset( THD_3dim_dataset * dset , EDIT_options * edopt ) ;
@@ -353,7 +393,7 @@ extern void EDIT_zscore_vol( int,int,float,void *,int,float * ) ;
 
 extern void EDIT_clip_float( float , int , float * ) ;
 
-extern byte * EDT_calcmask( char * , int * ) ;  /* 16 Mar 2000 */
+extern byte * EDT_calcmask( char * , int * , int) ;  /* 16 Mar 2000 */
 
 extern void * EDIT_volpad( int,int,int,int,int,int ,
                            int,int,int , int,void * ) ; /* 09 Feb 2001 */
@@ -370,6 +410,9 @@ extern void * EDIT_volpad( int,int,int,int,int,int ,
 extern THD_3dim_dataset * EDIT_empty_copy( THD_3dim_dataset * ) ;
 extern THD_3dim_dataset * EDIT_full_copy ( THD_3dim_dataset * , char * ) ;
 extern int                EDIT_dset_items( THD_3dim_dataset * , ... ) ;
+extern int THD_volDXYZscale(  THD_dataxes  * daxes, 
+                              float xyzscale, 
+                              int reuse_shift);    /* ZSS Dec 07 */
 extern THD_3dim_dataset * EDIT_wod_copy( THD_3dim_dataset * ) ; /* 31 Jul 2002 */
 extern THD_datablock *    EDIT_empty_datablock(void) ;          /* 11 Mar 2005 */
 
@@ -385,11 +428,15 @@ extern void EDIT_cluster_array (MCW_cluster_array * , int, float, float);
 
 /* 11 Sept 1996 */
 extern void EDIT_filter_volume (int, int, int, float, float, float,
-                                int, void *, int, float , byte * , char * );
+                                int, void *, int, float, byte *, int, char * );
 
 /* 13 Sept 2005 [rickr] */
 extern THD_marker_set * create_empty_marker_set(void);
 extern int              okay_to_add_markers(THD_3dim_dataset * dset);
+
+/* 15 Jan 2007 [RWC] -- in edt_clustalpha.c */
+
+extern int cluster_alphaindex_64( int csize, int nz, float fw, float pv ) ;
 
 
 /**---------------- AFNI Dataset item Names ----------------**/
@@ -561,6 +608,11 @@ extern int              okay_to_add_markers(THD_3dim_dataset * dset);
 /*------------------------------------------------------------------*/
 /* 22 Aug 2005: neighborhood/local operations. */
 
+#define MAX_NCODE 666
+#define MAX_CODE_PARAMS 16
+#define NTYPE_SPHERE 1
+#define NTYPE_RECT   2
+
 extern void SetSearchAboutMaskedVoxel(int v);  /* ZSS */
 extern MRI_IMAGE * THD_get_dset_nbhd( THD_3dim_dataset *, int, byte *,
                                       int, int, int, MCW_cluster *    ) ;
@@ -575,14 +627,15 @@ extern MRI_IMARR * mri_get_indexed_nbhd( MRI_IMAGE *, byte *,
 
 extern MRI_IMAGE * mri_localstat( MRI_IMAGE *, byte *, MCW_cluster *, int ) ;
 extern THD_3dim_dataset * THD_localstat( THD_3dim_dataset *, byte *,
-                                         MCW_cluster *, int, int *) ;
-extern void THD_localstat_verb(int) ; 
+                                         MCW_cluster *, int, int *, float p[][MAX_CODE_PARAMS+1]) ;
+extern void THD_localstat_verb(int) ;
 
 extern MRI_IMAGE * mri_localbistat( MRI_IMAGE *, MRI_IMAGE *,
                                     byte *, MCW_cluster *, int ) ;
 extern THD_3dim_dataset * THD_localbistat( THD_3dim_dataset *, THD_3dim_dataset *,
                                            byte *, MCW_cluster *, int, int *) ;
-extern void THD_localbistat_verb(int) ; 
+extern void THD_localbistat_verb(int) ;
+
 
 #ifdef  __cplusplus
 }

@@ -1,6 +1,4 @@
 
-#define VERSION         "3.2a (March 22, 2005)"
-
 /*----------------------------------------------------------------------
  * file_tool.c  - display or modify (binary?) info in files
  *
@@ -38,6 +36,11 @@
  *        -ge4_series          display GEMS 4.x series header
  *        -ge4_image           display GEMS 4.x image header
  *
+ *     script file options:
+ *
+ *        -show_bad_backslash  show any lines with only whitespace after '\'
+ *        -show_file_type      show whether UNIX, Mac or MS file type
+ *
  *     raw ascii options:
  *
  *        -length   LENGTH     number of bytes to display/modify
@@ -63,7 +66,7 @@
  *    file_tool -offset 100 -length 32 -quiet -infiles file1 file2
  *    file_tool -disp_int2 -swap -offset 1024 -length 16 -infiles file3
  *    file_tool -mod_data "hi there" -offset 2515 -length 8 -infiles I.*
- *    file_tool -debug 1 -mod_data x -mod_type val -offset 2515 \
+ *    file_tool -debug 1 -mod_data x -mod_type char -offset 2515 \
  *              -length 21 -infiles I.*
  *----------------------------------------------------------------------
 */
@@ -73,46 +76,57 @@ static char g_history[] =
  " file_tool history:\n"
  "\n"
  " 1.0  September 11, 2002\n"
- "   - initial release\n"
+ "      - initial release\n"
  "\n"
  " 1.1  February 26, 2003\n"
- "   - added -quiet option\n"
- "   - use dynamic allocation for data to read\n"
+ "      - added -quiet option\n"
+ "      - use dynamic allocation for data to read\n"
  "\n"
  " 1.2  May 06, 2003  (will go to 2.0 after more changes are made)\n"
- "   - added interface for reading GEMS 4.x formatted image files\n"
- "   - added corresponding options -ge4_all, -ge4_image, -ge4_series\n"
- "   - added options to display raw numeric data:\n"
- "       disp_int2, disp_int4, disp_real4\n"
- "   - changed local version of l_THD_filesize to THD_filesize, as\n"
- "     the ge4_ functions may get that from mrilib.\n"
+ "      - added interface for reading GEMS 4.x formatted image files\n"
+ "      - added corresponding options -ge4_all, -ge4_image, -ge4_series\n"
+ "      - added options to display raw numeric data:\n"
+ "          disp_int2, disp_int4, disp_real4\n"
+ "      - changed local version of l_THD_filesize to THD_filesize, as\n"
+ "        the ge4_ functions may get that from mrilib.\n"
  "\n"
  " 2.0  May 29, 2003\n"
- "   - added information for ge4 study header\n"
- "   - added option -ge4_study\n"
+ "      - added information for ge4 study header\n"
+ "      - added option -ge4_study\n"
  "\n"
  " 2.1  June 02, 2003\n"
- "   - changed format of call to ge4_read_header()\n"
- "   - made swap_[24]() static\n"
+ "      - changed format of call to ge4_read_header()\n"
+ "      - made swap_[24]() static\n"
  "\n"
  " 2.2  July 27, 2003\n"
- "   - wrap unknown printed strings in NULL check\n"
+ "      - wrap unknown printed strings in NULL check\n"
  "\n"
  " 3.0  March 17, 2004\n"
- "   - added binary editing (gee, that's why I wrote it 18 months ago...)\n"
- "     (see -mod_type s/uint1, s/uint2, s/uint4, float4, float8\n"
- "   - added '-ge_off' option, to display file offsets for some GEMS fields\n"
- "   - added '-hist' option, to display this history\n"
+ "      - added binary editing (gee, that's why I wrote it 18 months ago...)\n"
+ "        (see -mod_type s/uint1, s/uint2, s/uint4, float4, float8\n"
+ "      - added '-ge_off' option, to display offsets for some GEMS fields\n"
+ "      - added '-hist' option, to display this history\n"
  "\n"
- " 3.1  March 17, 2004\n"
- "   - only check length against data_len for string mods\n"
- "\n"
+ " 3.1  March 17, 2004  - only check length against data_len for string mods\n"
  " 3.2  March 24, 2004\n"
- "   - only check max length when modifying data (thanks, PSFB)\n"
- "\n"
- " 3.2a March 22, 2005\n"
- "   - removed all tabs\n"
+ "      - only check max length when modifying data (thanks, PSFB)\n"
+ " 3.2a March 22, 2005  - removed all tabs\n"
+ " 3.3  June 8, 2007    - added -show_bad_backslash and -show_file_type\n"
+ " 3.4  June 8, 2007    - added examples for 3.3 update\n"
+ " 3.5  June 29, 2007   - added ability to work with ANALYZE files\n"
+ "      - added '-def_ana_hdr' to show the definition of an ANALYZE header\n"
+ "      - added '-diff_ana_hdrs' to show differences between 2 headers\n"
+ "      - added '-disp_ana_hdr' to display the contents of each header\n"
+ "      - added '-hex' to show field output in hexidecimal\n"
+ "      - file_tool now depends on new files fields.[ch]\n"
+ " 3.6  July 1, 2007    - added ability to modify fields of an ANALYZE file\n"
+ "      - added '-mod_ana_hdr' to modiefy fields of an ANALYZE header file\n"
+ "      - added '-mod_field' to specify a field and it value(s)\n"
+ "      - added '-overwrite' and '-prefix' to specify output\n"
+ " 3.7  August 2, 2007 - added -disp_hex, -disp_hex{1,2,4}\n"
  "----------------------------------------------------------------------\n";
+
+#define VERSION         "3.7 (August 2, 2007)"
 
 
 /* ----------------------------------------------------------------------
@@ -125,11 +139,13 @@ static char g_history[] =
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include <math.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "fields.h"
 #include "file_tool.h"
 #include "ge4_header.h"
 
@@ -171,6 +187,9 @@ attack_files( param_t * p )
 {
     int fc, rv;
 
+    if ( p->analyze >= FT_SINGLE_COMMAND )
+        return process_analyze( p, -1 );
+
     for ( fc = 0; fc < p->num_files; fc++ )
     {
         if ( p->ge_disp )
@@ -183,12 +202,400 @@ attack_files( param_t * p )
             if ( (rv = process_ge4( p->flist[fc], p )) != 0 )
                 return rv;
         }
+        else if ( p->script )
+        {
+            if ( (rv = process_script( p->flist[fc], p )) != 0 )
+                return rv;
+        }
+        else if ( p->analyze )
+        {
+            if ( (rv = process_analyze( p, fc )) != 0 )
+                return rv;
+        }
         else if ( ( rv = process_file( p->flist[fc], p) ) != 0 )
             return rv;
     }
 
     return 0;
 }
+
+
+/*------------------------------------------------------------
+ * Do the processing for script files:
+ *------------------------------------------------------------
+*/
+int
+process_script( char * filename, param_t * p )
+{
+    int rv = 0;
+
+    if (       p->script & SCR_SHOW_FILE  ) rv = scr_show_file  (filename, p);
+    if (!rv && p->script & SCR_SHOW_BAD_BS) rv = scr_show_bad_bs(filename, p);
+
+    return rv;
+}
+
+
+/*------------------------------------------------------------
+ * Scan file for: '\\' then whitespace then '\n'
+ *------------------------------------------------------------*/
+int
+scr_show_bad_bs( char * filename, param_t * p )
+{
+    static char * fdata = NULL;
+    static int    flen  = 0;
+    char        * line_start, *cp;
+    int           count, cur, bcount = 0, bad = 0;
+    int           lnum = 1;
+
+    if( read_file( filename, &fdata, &flen ) < 0 ) return -1;
+
+    if( p->debug ) fprintf(stderr,"--- file %s ---\n",filename);
+
+    line_start = fdata;
+    for( count = 0; count < flen; /* in loop */ )
+    {
+        /* note beginning of line (it's the next char) */
+        if( fdata[count] == '\n' ){  line_start = fdata+count+1;  lnum++; }
+
+        if( fdata[count] != '\\' ){ count++; continue; }
+
+        /* found a '\\' char, count it and look beyond */
+        bcount++; count++;
+
+        /* skip any whitespace */
+        cur = count;
+        while( fdata[count] != '\n' && isspace(fdata[count]) ) count++;
+
+        if( count == cur || fdata[count] != '\n' )  /* we're okay */
+            continue;
+
+        bad++;
+
+        /* this line is bad, and we're looking at '\n' */
+        if( !p->quiet )
+        {
+            printf("bad line @ %4d: ", lnum);
+            for( cp = line_start; cp <= fdata+count; cp++)
+                putchar(*cp);
+        }
+    }
+
+    if(p->debug > 0) fprintf(stderr,"file %s: %d bad lines\n",filename,bad);
+    if(bad > 255) bad = 255;  /* limit on exit status */
+
+    return bad;
+}
+
+
+/*------------------------------------------------------------
+ * Scan file for 0x0d characters ('\r').
+ *     dos:  \r\n
+ *     mac:  \r
+ *     unix: else
+ *------------------------------------------------------------*/
+int
+scr_show_file( char * filename, param_t * p )
+{
+    static char * fdata = NULL;
+    static int    flen  = 0;
+    char        * cp;
+    int           length, count, bin = 0;
+
+    if( p->debug ) fprintf(stderr,"--- file %s ---\n",filename);
+
+    if( (length = read_file( filename, &fdata, &flen )) < 0 ) return -1;
+
+    if( p->debug ) fprintf(stderr,"file length = %d\n", length);
+
+    for( cp = fdata, count = 0; count < length; count++ )
+    {
+        if( !isprint(cp[count]) && !isspace(cp[count]) )
+        {
+            if( bin == 0 )
+            {
+                bin = 1;
+                if( !p->quiet )
+                    fprintf(stderr,"file '%s' has non-printable chars",
+                            filename);
+            }
+            if( p->debug ) fprintf(stderr,": %d (0x%0x)",cp[count],cp[count]);
+            else           fputc('\n',stderr);
+        }
+
+        if( cp[count] != '\r' ) continue;
+
+        if( count <= length && cp[count+1] == '\n' )      /* dos type */
+        {
+            if( p->debug )
+                fprintf(stderr,"found 0x0d0a char pair at offset %d\n",count);
+            printf("%s file type: DOS\n", filename);
+            return 0;
+        }
+        else                                            /* mac type */
+        {
+            if( p->debug )
+                fprintf(stderr,"found 0x0d char at offset %d\n",count);
+            printf("%s file type: MAC\n", filename);
+            return 0;
+        }
+    }
+
+    printf("%s file type: UNIX\n", filename);
+    return 0;
+}
+
+
+/*------------------------------------------------------------
+ * process an ANALYZE file
+ *
+ * if index >= 0, process a single file, else process both files
+ *------------------------------------------------------------
+*/
+int
+process_analyze( param_t * p, int index )
+{
+    static field_s    * afield = NULL;
+    ft_analyze_header   hdr;
+    ft_analyze_header   hdr2;
+    int                 c, ndiff;
+
+    /* if we haven't already done so, generate the field structure */
+    if( ! afield ) {
+        set_field_verb(p->debug + 1); /* set verbose level, too */
+
+        afield = make_ana_field_array();
+        if( ! afield) {
+            fprintf(stderr,"** process_analyse: failed make_ana_field_array\n");
+            return 1;
+        }
+    }
+
+    if( p->analyze == FT_DISP_HDR ) {
+        if( index < 0 || index >= p->num_files ) {
+            fprintf(stderr,"** bad file index %d of %d\n", index, p->num_files);
+            return 1;
+        }
+
+        if( read_analyze_file(p, afield, &hdr, p->flist[index]) ) return 1;
+        disp_field("\nall fields:\n",afield, &hdr, FT_ANA_NUM_FIELDS,
+                   p->debug, p->hex);
+    }
+    else if( p->analyze == FT_DEFINE_HDR ) {
+        disp_field_s_list("analyze_fields: ", afield, FT_ANA_NUM_FIELDS);
+    }
+    else if ( p->analyze == FT_DIFF_HDRS ) {
+        if( p->num_files != 2 ) {
+            fprintf(stderr,"** -diff_ana_hdrs requires exactly 2 files\n");
+            return 1;
+        }
+        if( read_analyze_file(p, afield, &hdr, p->flist[0]) ) return 1;
+        if( read_analyze_file(p, afield, &hdr2, p->flist[1]) ) return 1;
+        if( !p->quiet )
+            fprintf(stderr, "ANALYZE diff for %s and %s:\n",
+                p->flist[0], p->flist[1]);
+        ndiff = 0;
+        for( c = 0; c < FT_ANA_NUM_FIELDS; c++ )
+            if( diff_field(afield+c, &hdr, &hdr2, 1) ) {
+                disp_field(NULL, afield+c, &hdr,  1, ndiff==0, p->hex);
+                disp_field(NULL, afield+c, &hdr2, 1, 0, p->hex);
+                ndiff++;
+            }
+    }
+    else if ( p->analyze == FT_MOD_HDR ) {
+        return mod_analyze_hdr(p, afield, index);
+    }
+
+    return 0;
+}
+
+/* perform -mod_field action on ANALYZE header */
+int mod_analyze_hdr(param_t *p, field_s * fields, int index)
+{
+    ft_analyze_header   hdr;
+    FILE              * fp = NULL;
+    char              * fname;
+    int                 nbytes;
+
+    if( !p || !fields ){ fprintf(stderr,"** MAH: bad params\n"); return 1; }
+
+    if( read_analyze_file(p, fields, &hdr, p->flist[index]) )    return 1;
+    if( modify_many_fields(&hdr, &p->mod_fields, &p->mod_list, fields,
+                           FT_ANA_NUM_FIELDS ) )                 return 1;
+
+    if( p->overwrite ){
+        fname = p->flist[index];
+        fp = fopen(fname, "r+");
+        if( !fp ) {
+            fprintf(stderr,"** failed to open '%s' for 'r+'\n",fname);
+            return 1;
+        }
+    } else {
+        fname = p->prefix;
+        if( file_exists(fname) ){
+            fprintf(stderr,"** output file '%s' already exists\n",fname);
+            return 1;
+        }
+        fp = fopen(fname, "w");
+        if( !fp ) {
+            fprintf(stderr,"** failed to open '%s' for 'w'\n",fname);
+            return 1;
+        }
+    }
+
+    /* and write results */
+    if(p->debug > 0) fprintf(stderr,"writing ANALYZE hdr to '%s'\n", fname);
+    nbytes = fwrite(&hdr,1, sizeof(hdr), fp);
+    fclose(fp);
+
+    if( nbytes != sizeof(hdr) ) {
+        fprintf(stderr,"** wrote only %d of %d bytes to %s\n",
+        nbytes, (int)sizeof(hdr), fname);
+        return 1;
+    }
+
+    return 0;
+}
+
+
+int file_exists( char * fname )
+{
+    struct stat buf;
+    if( !fname ) return 0;
+    if( stat(fname, &buf) ) return 0;
+    return (buf.st_mode & S_IFREG) != 0;
+}
+
+
+/* return 0 on success */
+int read_analyze_file(param_t * p, field_s * fields, ft_analyze_header * hdr,
+                      char * fname)
+{
+    int size = sizeof(*hdr);
+    if( read_partial_file(fname, hdr, size) < size ) {
+        fprintf(stderr,"** ft_read_analyze failure for '%s'\n", fname);
+        return 1;
+    }
+                                                                            
+    if( p->debug > 0 )
+        fprintf(stderr,"\nANALYZE header file '%s', %d fields\n",
+                fname, FT_ANA_NUM_FIELDS);
+                                                                            
+    /* check for byte-swapping */
+    if( hdr->sizeof_hdr != 348 ) {
+        if( p->debug )
+            fprintf(stderr,"+d swapping ANALYZE header in '%s'\n", fname);
+
+        swap_fields(fields, (void *)hdr, FT_ANA_NUM_FIELDS);
+
+        if( hdr->sizeof_hdr != 348 )
+        {
+            fprintf(stderr,"** swapping does not help, reverting...\n");
+            swap_fields(fields, (void *)hdr, FT_ANA_NUM_FIELDS);
+        }
+        else if( p->debug )
+            fprintf(stderr,"-d swapping was successful\n");
+    }
+
+    return 0;
+}
+
+/*------------------------------------------------------------
+ * Inhale len bytes of the file.  Return the number of bytes
+ * read (might be less than len).
+ *------------------------------------------------------------*/
+int
+read_partial_file( char * filename, void * fdata, int len )
+{
+    FILE * fp;
+    int    length, nbytes;
+
+    if( !filename || !fdata || len <= 0 )
+    {
+        fprintf(stderr,"** RPF: bad ptrs %p,%p,%d\n",filename,fdata,len);
+        return -1;
+    }
+
+    length = THD_filesize(filename);
+    if( len < length ) length = len;  /* number of bytes to attempt */
+
+    if( len > length ) {
+        fprintf(stderr,"warning: requested %d bytes of %d byte file '%s'\n",
+                len, length, filename);
+    }
+
+    /* open, read, close */
+    if ( (fp = fopen( filename, "r" )) == NULL )
+    {
+        fprintf( stderr, "RPF failure: cannot open <%s> for 'r'\n", filename );
+        return -1;
+    }
+
+    nbytes = fread( fdata, 1, length, fp );
+    fclose( fp );
+
+    if ( nbytes != length )
+    {
+        fprintf( stderr, "failure: read only %d of %d bytes from file '%s'\n",
+                 nbytes, length, filename );
+        return -1;
+    }
+
+    return length;
+}
+
+
+/*------------------------------------------------------------
+ * Inhale the file.  Update fdata and flen if need be.
+ * return the file size
+ *------------------------------------------------------------*/
+int
+read_file( char * filename, char ** fdata, int * flen )
+{
+    FILE * fp;
+    int    length, nbytes;
+
+    if( !filename || !fdata || !flen )
+    {
+        fprintf(stderr,"** read_file: bad Ptrs %p,%p,%p\n",filename,fdata,flen);
+        return -1;
+    }
+
+    length = THD_filesize(filename);
+
+    /* see if we need to update space */
+    if ( *flen < length )
+    {
+        *fdata = (char*) realloc( *fdata, length * sizeof(char) );
+        if ( *fdata == NULL )
+        {
+            fprintf( stderr, "failure: cannot allocate %d bytes for data\n",
+                     length );
+            return -1;
+        }
+        *flen = length;
+    }
+
+    /* open, read, close */
+    if ( (fp = fopen( filename, "r" )) == NULL )
+    {
+        fprintf( stderr, "failure: cannot open <%s> for 'r'\n", filename );
+        return -1;
+    }
+
+    nbytes = fread( *fdata, 1, length, fp );
+    fclose( fp );
+
+    if ( nbytes != length )
+    {
+        fprintf( stderr, "failure: read only %d of %d bytes from file '%s'\n",
+                 nbytes, length, filename );
+        return -1;
+    }
+
+    return length;
+}
+
 
 
 /*------------------------------------------------------------
@@ -284,23 +691,30 @@ process_file( char * filename, param_t * p )
 {
     FILE        * fp;
     static char * fdata = NULL;
+    static int    flen  = 0;
     int           nbytes;
+    int           length;  /* either p->length or file size */
 
+    /* if passed length was not given, init to filesize */
+    if ( p->length > 0 ) length = p->length;
+    else                 length = THD_filesize(filename);
+   
     if ( (fp = fopen( filename, "r+" )) == NULL )
     {
         fprintf( stderr, "failure: cannot open <%s> for 'rw'\n", filename );
         return -1;
     }
 
-    if ( fdata == NULL )
+    if ( flen < length )
     {
-        fdata = (char*) calloc( p->length, sizeof(char) );
+        fdata = (char*) realloc( fdata, length * sizeof(char) );
         if ( fdata == NULL )
         {
             fprintf( stderr, "failure: cannot allocate %d bytes for data\n",
-                     p->length );
+                     length );
             return -1;
         }
+        flen = length;
     }
 
     if ( fseek( fp, p->offset, SEEK_SET ) )
@@ -311,10 +725,10 @@ process_file( char * filename, param_t * p )
         return -1;
     }
 
-    if ( (nbytes = fread( fdata, 1, p->length, fp )) != p->length )
+    if ( (nbytes = fread( fdata, 1, length, fp )) != length )
     {
         fprintf( stderr, "failure: read only %d of %d bytes from file '%s'\n",
-                 nbytes, p->length, filename );
+                 nbytes, length, filename );
         fclose( fp );
         return -1;
     }
@@ -334,10 +748,10 @@ process_file( char * filename, param_t * p )
                 return -1;
             }
         }
-        else if ( (nbytes = fwrite(fdata, 1, p->length, stdout)) != p->length )
+        else if ( (nbytes = fwrite(fdata, 1, length, stdout)) != length )
         {
             fprintf( stderr, "\nfailure: wrote only %d of %d bytes to '%s'\n",
-                     nbytes, p->length, "stdout" );
+                     nbytes, length, "stdout" );
             fclose( fp );
             return -1;
         }
@@ -355,7 +769,7 @@ process_file( char * filename, param_t * p )
             return -1;
         }
 
-        if ( (nbytes = write_data_to_file( fp, filename, p ) ) < 0 )
+        if ( (nbytes = write_data_to_file( fp, filename, p, length ) ) < 0 )
         {
             fclose( fp );
             return -1;
@@ -364,7 +778,7 @@ process_file( char * filename, param_t * p )
         if ( p->debug > 0 )
         {
             printf( "wrote '%s' (%d bytes) to file '%s', position %ld\n",
-                    p->mod_data, p->length, filename, p->offset );
+                    p->mod_data, length, filename, p->offset );
         }
     }
 
@@ -381,7 +795,7 @@ process_file( char * filename, param_t * p )
  *                    -1 : on error
  *------------------------------------------------------------
 */
-int write_data_to_file( FILE * fp, char * filename, param_t * p )
+int write_data_to_file( FILE * fp, char * filename, param_t * p, int length )
 {
     double   dval;
     char   * outp, * inp, * endp;
@@ -399,7 +813,7 @@ int write_data_to_file( FILE * fp, char * filename, param_t * p )
     /* deal with characters separately */
     if ( p->mod_type == MOD_STR || p->mod_type == MOD_CHAR )
     {
-        int remaining = p->length - p->data_len; /* note remainder (if any) */
+        int remaining = length - p->data_len; /* note remainder (if any) */
 
         if ( (nbytes=fwrite(p->mod_data, 1, p->data_len, fp)) != p->data_len )
         {
@@ -413,7 +827,7 @@ int write_data_to_file( FILE * fp, char * filename, param_t * p )
         for ( c = 0; c < remaining; c++ )
             fputc( '\0', fp );
 
-        return p->length;
+        return length;
     }
 
     if ( p->debug > 1 ) fprintf(stderr,"++ values: ");
@@ -421,8 +835,8 @@ int write_data_to_file( FILE * fp, char * filename, param_t * p )
     /* now write numerical values into g_rep_output_data */
     outp = g_rep_output_data;
     inp  = p->mod_data;
-    memset(outp, 0, p->length);
-    for ( c = 0; (c+dsize) <= p->length; c += dsize, outp += dsize )
+    memset(outp, 0, length);
+    for ( c = 0; (c+dsize) <= length; c += dsize, outp += dsize )
     {
         dval = strtod( inp, &endp );
 
@@ -478,15 +892,15 @@ int write_data_to_file( FILE * fp, char * filename, param_t * p )
     if ( p->debug > 1 ) fputc('\n', stderr);
 
     /* now just write the data out */
-    nbytes = fwrite(g_rep_output_data, 1, p->length, fp);
-    if ( nbytes != p->length )
+    nbytes = fwrite(g_rep_output_data, 1, length, fp);
+    if ( nbytes != length )
     {
         fprintf(stderr,"** wrote only %d of %d bytes of binary data\n",
-                nbytes, p->length);
+                nbytes, length);
         return nbytes;
     }
 
-    return p->length;
+    return length;
 }
 
 int mtype_size( int type )
@@ -538,18 +952,17 @@ set_params( param_t * p, int argc, char * argv[] )
 
     for ( ac = 1; ac < argc; ac++ )
     {
-        /* check for -help_ge before -help, to allow for only -h */
         if ( ! strncmp(argv[ac], "-help_ge", 8 ) )
         {
             usage( argv[0], USE_GE );
             return -1;
         }
-        else if ( ! strncmp(argv[ac], "-help", 3 ) )
+        else if ( ! strncmp(argv[ac], "-help", 5 ) )
         {
             usage( argv[0], USE_LONG );
             return -1;
         }
-        else if ( ! strncmp(argv[ac], "-hist", 3 ) )
+        else if ( ! strncmp(argv[ac], "-hist", 5 ) )
         {
             usage( argv[0], USE_HISTORY );
             return -1;
@@ -566,50 +979,78 @@ set_params( param_t * p, int argc, char * argv[] )
             }
 
             p->debug = atoi(argv[++ac]);
-            if ( (p->debug < 0) || (p->debug > 2) )
+            if ( (p->debug < 0) || (p->debug > 5) )
             {
                 fprintf( stderr, "invalid debug level <%d>\n", p->debug );
                 return -1;
             }
         }
+        else if ( ! strncmp(argv[ac], "-def_ana_hdr", 12 ) )
+        {
+            p->analyze = FT_DEFINE_HDR;
+        }
+        else if ( ! strncmp(argv[ac], "-diff_ana_hdrs", 13 ) )
+        {
+            p->analyze = FT_DIFF_HDRS;
+        }
+        else if ( ! strncmp(argv[ac], "-disp_ana_hdr", 13 ) )
+        {
+            p->analyze = FT_DISP_HDR;
+        }
+        else if ( ! strcmp(argv[ac], "-disp_hex") ||
+                  ! strncmp(argv[ac], "-disp_hex1", 10 ) )
+        {
+            p->ndisp = NDISP_HEX1;
+        }
+        else if ( ! strncmp(argv[ac], "-disp_hex2", 10 ) )
+        {
+            p->ndisp = NDISP_HEX2;
+        }
+        else if ( ! strncmp(argv[ac], "-disp_hex4", 10 ) )
+        {
+            p->ndisp = NDISP_HEX4;
+        }
         else if ( ! strncmp(argv[ac], "-disp_int2", 10 ) )
         {
-            p->ndisp |= NDISP_INT2;
+            p->ndisp = NDISP_INT2;
         }
         else if ( ! strncmp(argv[ac], "-disp_int4", 10 ) )
         {
-            p->ndisp |= NDISP_INT4;
+            p->ndisp = NDISP_INT4;
         }
         else if ( ! strncmp(argv[ac], "-disp_real4", 11 ) )
         {
-            p->ndisp |= NDISP_REAL4;
+            p->ndisp = NDISP_REAL4;
         }
-        else if ( ! strncmp(argv[ac], "-mod_data", 6 ) )
+        else if ( ! strncmp(argv[ac], "-hex", 4 ) )
         {
-            if ( (ac+1) >= argc )
-            {
-                fputs( "missing option parameter: DATA\n"
-                       "option usage: -mod_data DATA\n"
-                       "    where DATA is the replacement string or numbers\n",
-                       stderr );
-                return -1; 
-            }
-
+            p->hex = 1;
+        }
+        else if ( ! strncmp(argv[ac], "-mod_data", 8 ) )
+        {
             ac++;
+            CHECK_NEXT_OPT2(ac, argc, "-mod_data", "DATA");
+
             p->mod_data = argv[ac];
         }
-        else if ( ! strncmp(argv[ac], "-mod_type", 6 ) )
+        else if( ! strncmp(argv[ac], "-mod_field", 8) )
         {
-            if ( (ac+1) >= argc )
-            {
-                fputs( "missing option parameter: TYPE\n"
-                       "option usage: -mod_type TYPE\n"
-                       "    where TYPE is 'val' or 'str'\n",
-                       stderr );
-                return -1;
-            }
-
             ac++;
+            CHECK_NEXT_OPT2(ac, argc, "-mod_field", "FIELD and VALUE");
+            if( add_string(&p->mod_fields, argv[ac]) ) return 1;
+            ac++;
+            CHECK_NEXT_OPT2(ac, argc, "-mod_field", "VALUE");
+            if( add_string(&p->mod_list, argv[ac]) ) return 1;
+        }
+        else if( ! strncmp(argv[ac], "-mod_ana_hdr", 8) )
+        {
+            p->analyze |= FT_MOD_HDR;
+        }
+        else if ( ! strncmp(argv[ac], "-mod_type", 8 ) )
+        {
+            ac++;
+            CHECK_NEXT_OPT2(ac,argc, "-mod_type", "TYPE");
+
             if ( (p->mod_type = check_mod_type(argv[ac])) == MOD_INVALID )
             {
                 fputs( "option usage: -mod_type TYPE\n", stderr );
@@ -619,16 +1060,10 @@ set_params( param_t * p, int argc, char * argv[] )
         }
         else if ( ! strncmp(argv[ac], "-offset", 4 ) )
         {
-            if ( (ac+1) >= argc )
-            {
-                fputs( "missing option parameter: OFFSET\n"
-                       "option usage: -offset OFFSET\n"
-                       "    where OFFSET is the file offset\n",
-                       stderr );
-                return -1;
-            }
+            ac++;
+            CHECK_NEXT_OPT2(ac, argc, "-offset", "OFFSET");
 
-            p->offset = atoi(argv[++ac]);
+            p->offset = atoi(argv[ac]);
             if ( p->offset < 0 )
             {
                 fprintf( stderr, "bad file OFFSET <%ld>\n", p->offset );
@@ -637,16 +1072,10 @@ set_params( param_t * p, int argc, char * argv[] )
         }
         else if ( ! strncmp(argv[ac], "-length", 4 ) )
         {
-            if ( (ac+1) >= argc )
-            {
-                fputs( "missing option parameter: LENGTH\n"
-                       "option usage: -length LENGTH\n"
-                       "    where LENGTH is the length to display or modify\n",
-                       stderr );
-                return -1;
-            }
+            ac++;
+            CHECK_NEXT_OPT2(ac, argc, "-length", "LENGTH");
 
-            p->length = atoi(argv[++ac]);
+            p->length = atoi(argv[ac]);
             if ( p->length < 0 )
             {
                 fprintf( stderr, "bad LENGTH <%d>\n", p->length );
@@ -656,6 +1085,24 @@ set_params( param_t * p, int argc, char * argv[] )
         else if ( ! strncmp(argv[ac], "-quiet", 2 ) )
         {
             p->quiet = 1;
+        }
+        else if ( ! strncmp(argv[ac], "-overwrite", 6 ) )
+        {
+            p->overwrite = 1;
+        }
+        else if ( ! strncmp(argv[ac], "-prefix", 7 ) )
+        {
+            ac++;
+            CHECK_NEXT_OPT(ac, argc, "-prefix");
+            p->prefix = argv[ac];
+        }
+        else if ( ! strncmp(argv[ac], "-show_bad_backslash", 9 ) )
+        {
+            p->script |= SCR_SHOW_BAD_BS;
+        }
+        else if ( ! strncmp(argv[ac], "-show_file_type", 10 ) )
+        {
+            p->script |= SCR_SHOW_FILE;
         }
         else if ( ! strncmp(argv[ac], "-swap_bytes", 3 ) )
         {
@@ -677,10 +1124,13 @@ set_params( param_t * p, int argc, char * argv[] )
             }
 
             ac++;
-            p->num_files = argc - ac;
-            p->flist     = argv + ac;
 
-            break;      /* input files finish the argument list */
+            p->flist = argv + ac;
+            while( ac < argc && argv[ac][0] != '-' ) {
+                p->num_files++;
+                ac++;
+            }
+            ac--;       /* back up to last good option */
         }
         /* continue with GE info displays */
         else if ( ! strncmp(argv[ac], "-ge_all", 7 ) )
@@ -733,13 +1183,58 @@ set_params( param_t * p, int argc, char * argv[] )
     if ( p->debug > 1 )
         disp_param_data( p );
 
-    if ( p->num_files <= 0 )
+    if ( p->num_files <= 0 && p->analyze != FT_DEFINE_HDR )
     {
         fputs( "error: missing '-infiles' option\n", stderr );
         return -1;
     }
 
-    /* if only displaying GE data, no further check are necessary */
+    /* if script, do not allow many other options */
+    if ( p->script && ( p->ge_disp || p->ge4_disp || p->ndisp || p->mod_data ) )
+    {
+        fputs( "error: no other operations with script\n",stderr);
+        return -1;
+    }
+    /* allow at most one action type (zero is char display) */
+    {
+        int nact = 0;
+        if( p->script )    nact++;
+        if( p->ge_disp )   nact++;
+        if( p->ge4_disp )  nact++;
+        if( p->ndisp )     nact++;
+        if( p->mod_data )  nact++;
+        if( p->analyze )   nact++;
+        if( nact > 1 ){
+            fprintf(stderr,"** only one action option allowed\n");
+            return -1;
+        }
+    }
+
+    /* check ANALYZE options separately */
+    if( p->analyze )
+    {
+        if( p->analyze == FT_MOD_HDR ) {
+            if( p->mod_list.len <= 0 ) {
+                fprintf(stderr,"** '-mod_ana_hdr' requires '-mod_field'\n");
+                return -1;
+            }
+            if( p->num_files > 1 && !p->overwrite ) {
+                fprintf(stderr,"** multiple mod files requires -overwrite\n");
+                return -1;
+            }
+            if( !p->prefix && !p->overwrite ) {
+                fprintf(stderr,"** missing '-prefix' option\n");
+                return -1;
+            }
+            if( p->prefix && p->overwrite ) {
+                fprintf(stderr,"** choose only one of -prefix/-overwrite\n");
+                return -1;
+            }
+        }
+        return 0;
+    }
+
+    /* if only displaying data, no further check are necessary */
     if ( p->ge_disp || p->ge4_disp )
         return 0;
 
@@ -753,11 +1248,8 @@ set_params( param_t * p, int argc, char * argv[] )
     else
         p->modify = 0;                             /* be explicit */
 
-    if ( p->length <= 0 )
-    {
-        fputs( "error: missing '-length' option\n", stderr );
-        return -1;
-    }
+    if ( p->length <= 0 && p->debug > 0 )
+        fputs( "warning: missing '-length' option, using file len\n", stderr );
 
     if ( p->modify )
     {
@@ -944,36 +1436,75 @@ help_full( char * prog )
         "\n"
         "   ----- GEMS 4.x and 5.x display examples -----\n"
         "\n"
-        "   3. display GE header and extras info for file I.100:\n"
+        "   1. display GE header and extras info for file I.100:\n"
         "\n"
         "      %s -ge_all -infiles I.100\n"
         "\n"
-        "   4. display GEMS 4.x series and image headers for file I.100:\n"
+        "   2. display GEMS 4.x series and image headers for file I.100:\n"
         "\n"
         "      %s -ge4_all -infiles I.100\n"
         "\n"
-        "   5. display run numbers for every 100th I-file in this directory\n"
+        "   3. display run numbers for every 100th I-file in this directory\n"
         "\n"
         "      %s -ge_uv17 -infiles I.?42\n"
         "      %s -ge_run  -infiles I.?42\n"
         "\n"
         "   ----- general value display examples -----\n"
         "\n"
-        "   6. display the 32 characters located 100 bytes into each file:\n"
+        "   1. display the 32 characters located 100 bytes into each file:\n"
         "\n"
         "      %s -offset 100 -length 32 -infiles file1 file2\n"
         "\n"
-        "   7. display the 8 4-byte reals located 100 bytes into each file:\n"
+        "   2. display the 8 4-byte reals located 100 bytes into each file:\n"
         "\n"
         "      %s -disp_real4 -offset 100 -length 32 -infiles file1 file2\n"
         "\n"
+        "   3. display 8 2-byte hex integers, 100 bytes into each file:\n"
+        "\n"
+        "      %s -disp_hex2 -offset 100 -length 16 -infiles file1 file2\n"
+        "\n"
+        "   ----- ANALYZE file checking examples -----\n"
+        "\n"
+        "   1. define the field contents of an ANALYZE header\n"
+        "\n"
+        "      %s -def_ana_hdr\n"
+        "\n"
+        "   2. display the field contents of an ANALYZE file\n"
+        "\n"
+        "      %s -disp_ana_hdr -infiles dset.hdr\n"
+        "\n"
+        "   3. display field differences between 2 ANALYZE headers\n"
+        "\n"
+        "      %s -diff_ana_hdrs -infiles dset1.hdr dset2.hdr\n"
+        "\n"
+        "   4. display field differences between 2 ANALYZE headers (in HEX)\n"
+        "\n"
+        "      %s -diff_ana_hdrs -hex -infiles dset1.hdr dset2.hdr\n"
+        "\n"
+        "   5. modify some fields of an ANALYZE file\n"
+        "\n"
+        "      %s -mod_ana_hdr -prefix new.hdr -mod_field smin 0   \\\n"
+        "         -mod_field descrip 'test ANALYZE file'           \\\n"
+        "         -mod_field pixdim '0 2.1 3.1 4 0 0 0 0 0'        \\\n"
+        "         -infiles old.hdr\n"
+        "\n"
+        "   ----- script file checking examples -----\n"
+        "\n"
+        "   1. in each file, check whether it is a UNIX file type\n"
+        "\n"
+        "      %s -show_file_type -infiles my_scripts_*.txt\n"
+        "\n"
+        "   2. in each file, look for spaces after trailing backslashes '\\'\n"
+        "\n"
+        "      %s -show_bad_backslash -infiles my_scripts_*.txt\n"
+        "\n"
         "   ----- character modification examples -----\n"
         "\n"
-        "   8. in each file, change the 8 characters at 2515 to 'hi there':\n"
+        "   1. in each file, change the 8 characters at 2515 to 'hi there':\n"
         "\n"
         "      %s -mod_data \"hi there\" -offset 2515 -length 8 -infiles I.*\n"
         "\n"
-        "   9. in each file, change the 21 characters at 2515 to all 'x's\n"
+        "   2. in each file, change the 21 characters at 2515 to all 'x's\n"
         "      (and print out extra debug info)\n"
         "\n"
         "      %s -debug 1 -mod_data x -mod_type val -offset 2515 \\\n"
@@ -981,21 +1512,21 @@ help_full( char * prog )
         "\n"
         "   ----- raw number modification examples -----\n"
         "\n"
-        "  10. in each file, change the 3 short integers starting at position\n"
-        "      2508 to '2 -419 17'\n"
+        "  1. in each file, change the 3 short integers starting at position\n"
+        "     2508 to '2 -419 17'\n"
         "\n"
         "      %s -mod_data '2 -419 17' -mod_type sint2 -offset 2508 \\\n"
         "                -length 6 -infiles I.*\n"
         "\n"
-        "  11. in each file, change the 3 binary floats starting at position\n"
-        "      2508 to '-83.4 2 17' (and set the next 8 bytes to zero by\n"
-        "      setting the length to 20, instead of just 12).\n"
+        "  2. in each file, change the 3 binary floats starting at position\n"
+        "     2508 to '-83.4 2 17' (and set the next 8 bytes to zero by\n"
+        "     setting the length to 20, instead of just 12).\n"
         "\n"
         "      %s -mod_data '-83.4 2 17' -mod_type float4 -offset 2508 \\\n"
         "                -length 20 -infiles I.*\n"
         "\n"
-        "  12. in each file, change the 3 binary floats starting at position\n"
-        "      2508 to '-83.4 2 17', and apply byte swapping\n"
+        "  3. in each file, change the 3 binary floats starting at position\n"
+        "     2508 to '-83.4 2 17', and apply byte swapping\n"
         "\n"
         "      %s -mod_data '-83.4 2 17' -mod_type float4 -offset 2508 \\\n"
         "                -length 12 -swap_bytes -infiles I.*\n"
@@ -1045,6 +1576,32 @@ help_full( char * prog )
         "      -ge4_image       : display GEMS 4.x image header\n"
         "      -ge4_series      : display GEMS 4.x series header\n"
         "      -ge4_study       : display GEMS 4.x study header\n"
+        "\n"
+        "  ANALYZE info options:\n"
+        "\n"
+        "      -def_ana_hdr     : display the definition of an ANALYZE header\n"
+        "      -diff_ana_hdrs   : display field differences between 2 headers\n"
+        "      -disp_ana_hdr    : display ANALYZE headers\n"
+        "      -hex             : display field values in hexidecimal\n"
+        "      -mod_ana_hdr     : modify ANALYZE headers\n"
+        "      -mod_field       : specify a field and value(s) to modify\n"
+        "\n"
+        "      -prefix          : specify and output filename\n"
+        "      -overwrite       : specify to overwrite the input file(s)\n"
+        "\n"
+        "  script file options:\n"
+        "\n"
+        "      -show_bad_backslash : show lines with whitespace after '\\'\n"
+        "\n"
+        "          This is meant to find problems in script files where the\n"
+        "          script programmer has spaces or tabs after a final '\\'\n"
+        "          on the line.  That would break the line continuation.\n"
+        "\n"
+        "      -show_file_type  : print file type of UNIX, Mac or DOS\n"
+        "\n"
+        "          Shell scripts need to be UNIX type files.  This option\n"
+        "          will inform the programmer if there are end of line\n"
+        "          characters that define an alternate file type.\n"
         "\n"
         "  raw ascii options:\n"
         "\n"
@@ -1120,17 +1677,17 @@ help_full( char * prog )
         "\n"
         "  numeric options:\n"
         "\n"
-        "    -disp_int2         : display 2-byte integers\n"
-        "                       : e.g. -disp_int2\n"
+        "    -disp_hex          : display bytes in hex\n"
+        "    -disp_hex1         : display bytes in hex\n"
+        "    -disp_hex2         : display 2-byte integers in hex\n"
+        "    -disp_hex4         : display 4-byte integers in hex\n"
         "\n"
+        "    -disp_int2         : display 2-byte integers\n"
         "    -disp_int4         : display 4-byte integers\n"
-        "                       : e.g. -disp_int4\n"
         "\n"
         "    -disp_real4        : display 4-byte real numbers\n"
-        "                       : e.g. -disp_real4\n"
         "\n"
         "    -swap_bytes        : use byte-swapping on numbers\n"
-        "                       : e.g. -swap_bytes\n"
         "\n"
         "          If this option is used, then byte swapping is done on any\n"
         "          multi-byte numbers read from or written to the file.\n"
@@ -1138,8 +1695,8 @@ help_full( char * prog )
         "  - R Reynolds, version: %s, compiled: %s\n"
         "\n",
         prog, prog,
-        prog, prog, prog, prog, prog, prog, prog, prog, prog,
-        prog, prog, prog, prog,
+        prog, prog, prog, prog, prog, prog, prog, prog, prog, prog, prog,
+        prog, prog, prog, prog, prog, prog, prog, prog, prog, prog,
         VERSION, __DATE__
         );
 
@@ -1412,12 +1969,38 @@ disp_numeric_data( char * data, param_t * p, FILE * fp )
     if ( p->length <= 0 || p->ndisp == 0 )
         return 0;
 
-    /* print out shorts */
-    if ( p->ndisp & NDISP_INT2 )
+    if ( p->ndisp == NDISP_HEX1 ) /* print out hex */
+    {
+        if( !p->quiet) fprintf( fp, "0x%4x : ", (unsigned int)p->offset );
+        disp_raw_data(data, 2 /* DT_UINT8 */, p->length, ' ', 1, 1);
+    }
+    else if ( p->ndisp == NDISP_HEX2 ) /* print 2 byte hex */
+    {
+        if ( p->swap ) {
+            short * ptr = (short *)data;
+            for ( c = 0; c < p->length/2; c++, ptr++ )
+                swap_2( ptr );
+        }
+
+        if( !p->quiet) fprintf( fp, "0x%4x : ", (unsigned int)p->offset );
+        disp_raw_data(data, 512 /* DT_UINT16 */, p->length/2, ' ', 1, 1);
+    }
+    else if ( p->ndisp == NDISP_HEX4 ) /* print 4 byte hex */
+    {
+        if ( p->swap ) {
+            int * ptr = (int *)data;
+            for ( c = 0; c < p->length/2; c++, ptr++ )
+                swap_4( ptr );
+        }
+
+        if( !p->quiet) fprintf( fp, "0x%4x : ", (unsigned int)p->offset );
+        disp_raw_data(data, 768 /* DT_UINT32 */, p->length/4, ' ', 1, 1);
+    }
+    else if ( p->ndisp == NDISP_INT2 ) /* print out shorts */
     {
         short * sp = (short *)data;
 
-        fprintf( fp, "0x%4x : ", (unsigned int)p->offset );
+        if( !p->quiet) fprintf( fp, "0x%4x : ", (unsigned int)p->offset );
         for ( c = 0; c < p->length/2; c++, sp++ )
         {
             if ( p->swap )
@@ -1426,13 +2009,11 @@ disp_numeric_data( char * data, param_t * p, FILE * fp )
         }
         fputc( '\n', fp );
     }
-
-    /* print out ints */
-    if ( p->ndisp & NDISP_INT4 )
+    else if ( p->ndisp == NDISP_INT4 ) /* print out ints */
     {
         int * ip = (int *)data;
 
-        fprintf( fp, "0x%4x : ", (unsigned int)p->offset );
+        if( !p->quiet) fprintf( fp, "0x%4x : ", (unsigned int)p->offset );
         for ( c = 0; c < p->length/4; c++, ip++ )
         {
             if ( p->swap )
@@ -1441,13 +2022,11 @@ disp_numeric_data( char * data, param_t * p, FILE * fp )
         }
         fputc( '\n', fp );
     }
-
-    /* print out floats */
-    if ( p->ndisp & NDISP_REAL4 )
+    else if ( p->ndisp == NDISP_REAL4 ) /* print out floats */
     {
         float * rp = (float *)data;
 
-        fprintf( fp, "0x%4x : ", (unsigned int)p->offset );
+        if( !p->quiet) fprintf( fp, "0x%4x : ", (unsigned int)p->offset );
         for ( c = 0; c < p->length/4; c++, rp++ )
         {
             if ( p->swap )

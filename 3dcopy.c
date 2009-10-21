@@ -60,7 +60,7 @@ int main( int argc , char *argv[] )
        "   program operates silently (unless an error is detected).\n"
        "* The '-denote' option will remove any Notes from the file.\n"
       ) ;
-      exit(0) ;
+      PRINT_COMPILE_DATE ; exit(0) ;
    }
 
    mainENTRY("3dcopy") ; machdep() ; AFNI_logger("3dcopy",argc,argv) ;
@@ -71,6 +71,7 @@ int main( int argc , char *argv[] )
    while( nopt < argc && argv[nopt][0] == '-' ){
      if( strcmp(argv[nopt],"-verb")   == 0 ){ verb   = 1; nopt++; continue; }
      if( strcmp(argv[nopt],"-denote") == 0 ){ denote = 1; nopt++; continue; }
+     ERROR_exit("unknown option: %s\n", argv[nopt]);
    }
    if( nopt+1 >= argc )
      ERROR_exit("3dcopy needs input AND output filenames!\n") ;

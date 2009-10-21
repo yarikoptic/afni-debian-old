@@ -324,7 +324,7 @@ void B2F_Syntax(void)
     "\n"
     ) ;
 
-   exit(0) ;
+   PRINT_COMPILE_DATE ; exit(0) ;
 }
 
 /*------------------------------------------------------------------*/
@@ -396,7 +396,7 @@ int main( int argc , char * argv[] )
                     ADN_none ) ;
 
 
-   if( THD_is_file(DSET_HEADNAME(new_dset)) ){
+   if( THD_deathcon() && THD_is_file(DSET_HEADNAME(new_dset)) ){
      fprintf(stderr,"*** Fatal error: file %s already exists!\n",
 	     DSET_HEADNAME(new_dset) ) ;
      exit(1) ;

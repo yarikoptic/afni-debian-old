@@ -38,6 +38,10 @@
 
   Mod:     Added AFNI_BLUR_* environment variable stuff.
   Date:    03 Apr 2007 [RWC]
+
+  Mod:     Add -fast and -nxyz and -dxyz options.
+  Date:    10 Jan 2008 [RWC]
+
 */
 
 
@@ -46,11 +50,15 @@
 #define PROGRAM_NAME "AlphaSim"                      /* name of this program */
 #define PROGRAM_AUTHOR "B. Douglas Ward"                   /* program author */
 #define PROGRAM_INITIAL "18 June 1997"    /* date of initial program release */
-#define PROGRAM_LATEST  "03 April 2007"   /* date of latest program revision */
+#define PROGRAM_LATEST  "10 Jan 2008"    /* date of latest program revision */
 
 /*---------------------------------------------------------------------------*/
 
 #include "mrilib.h"
+
+#include <time.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #define MAX_NAME_LENGTH THD_MAX_NAME /* max. string length for file names */
 #define MAX_CLUSTER_SIZE 10000       /* max. size of cluster for freq. table */
@@ -66,6 +74,7 @@ static int mask_ngood = 0;           /* number of good voxels in mask volume */
 /* allow updating via the -max_clust_size option         12 Apr 2006 [rickr] */
 static int g_max_cluster_size = MAX_CLUSTER_SIZE;
 
+static int use_zg = 0 ;  /* 10 Jan 2008 */
 
 /*---------------------------------------------------------------------------*/
 /*
@@ -85,32 +94,46 @@ void display_help_menu()
      "-dx d1        d1 = voxel size (mm) along x-axis                       \n"
      "-dy d2        d2 = voxel size (mm) along y-axis                       \n"
      "-dz d3        d3 = voxel size (mm) along z-axis                       \n"
+     "-nxyz n1 n2 n3   = give all 3 grid dimensions at once                 \n"
+     "-dxyz d1 d2 d3   = give all 3 voxel sizes at once                     \n"
      "[-mask mset]      Use the 0 sub-brick of dataset 'mset' as a mask     \n"
      "                    to indicate which voxels to analyze (a sub-brick  \n"
      "                    selector is allowed)  [default = use all voxels]  \n"
-     "                  Note:  The -mask command REPLACES the -nx, -ny, -nz,\n"
-     "                         -dx, -dy, and -dz commands.                  \n"
-     "[-fwhm s]     s  = Gaussian filter width (FWHM)                       \n"
+     "                  Note:  The -mask command also REPLACES the          \n"
+     "                         -nx, -ny, -nz, -dx, -dy, and -dz commands,   \n"
+     "                         and takes the volume dimensions from 'mset'. \n"
+     "[-fwhm s]     s  = Gaussian filter width (FWHM, in mm)                \n"
      "[-fwhmx sx]   sx = Gaussian filter width, x-axis (FWHM)               \n"
      "[-fwhmy sy]   sy = Gaussian filter width, y-axis (FWHM)               \n"
      "[-fwhmz sz]   sz = Gaussian filter width, z-axis (FWHM)               \n"
-     "[-sigma s]    s  = Gaussian filter width (1 sigma)                    \n"
+     "[-sigma s]    s  = Gaussian filter width (1 sigma, in mm)             \n"
      "[-sigmax sx]  sx = Gaussian filter width, x-axis (1 sigma)            \n"
      "[-sigmay sy]  sy = Gaussian filter width, y-axis (1 sigma)            \n"
      "[-sigmaz sz]  sz = Gaussian filter width, z-axis (1 sigma)            \n"
+     "\n"
      "[-power]      perform statistical power calculations                  \n"
      "[-ax n1]      n1 = extent of active region (in voxels) along x-axis   \n"
      "[-ay n2]      n2 = extent of active region (in voxels) along y-axis   \n"
      "[-az n3]      n3 = extent of active region (in voxels) along z-axis   \n"
      "[-zsep z]     z = z-score separation between signal and noise         \n"
-     "-rmm r        r  = cluster connection radius (mm)                     \n"
+     "\n"
+     "[-rmm r]      r  = cluster connection radius (mm)                     \n"
+     "                   Default is nearest neighbor connection only.       \n"
      "-pthr p       p  = individual voxel threshold probability             \n"
      "-iter n       n  = number of Monte Carlo simulations                  \n"
-     "[-quiet]     suppress screen output                                   \n"
-     "[-out file]  file = name of output file                               \n"
+     "[-quiet]      suppress lengthy per-iteration screen output            \n"
+     "[-out file]   file = name of output file [default value = screen]     \n"
      "[-max_clust_size size]  size = maximum allowed voxels in a cluster    \n"
+     "[-seed S]     S  = random number seed\n"
+     "                   default seed = 1234567\n"
+     "                   if seed=0, then program will randomize it\n"
+     "[-fast]       Use a faster random number generator:\n"
+     "                Can speed program up by about a factor of 2,\n"
+     "                but detailed results will differ slightly since\n"
+     "                a different sequence of random values will be used.\n"
      "\n"
-     "Unix environment variables:\n"
+     "Unix environment variables you can use:\n"
+     "---------------------------------------\n"
      " Set AFNI_BLUR_FFT to YES to require blurring be done with FFTs\n"
      "   (the oldest way, and slowest).\n"
      " Set AFNI_BLUR_FFT to NO and AFNI_BLUR_FIROLD to YES to require\n"
@@ -120,6 +143,32 @@ void display_help_menu()
      " Results will differ in detail depending on the blurring method\n"
      "   used to generate the simulated noise fields.\n"
      );
+
+  printf("\n"
+   "SAMPLE OUTPUT:\n"
+   "--------------\n"
+   " AlphaSim -nxyz 64 64 10 -dxyz 3 3 3 -iter 10000 -pthr 0.004 -fwhm 3 -quiet -fast\n"
+   "\n"
+   "Cl Size     Frequency    CumuProp     p/Voxel   Max Freq       Alpha\n"
+   "      1       1316125    0.898079  0.00401170          0    1.000000\n"
+   "      2        126353    0.984298  0.00079851       1023    1.000000\n"
+   "      3         18814    0.997136  0.00018155       5577    0.897700\n"
+   "      4          3317    0.999400  0.00004375       2557    0.340000\n"
+   "      5           688    0.999869  0.00001136        653    0.084300\n"
+   "      6           150    0.999971  0.00000296        148    0.019000\n"
+   "      7            29    0.999991  0.00000076         29    0.004200\n"
+   "      8             8    0.999997  0.00000027          8    0.001300\n"
+   "      9             5    1.000000  0.00000011          5    0.000500\n"
+   "\n"
+   " That is, thresholded random noise alone (no signal) would produce a\n"
+   " cluster of size 6 or larger 1.9%% (Alpha) of the time, in a 64x64x64\n"
+   " volume with cubical 3 mm voxels and a FHWM noise smoothness of 3 mm.\n"
+   "\n"
+   "N.B.: If you run the exact command above, you will get slightly\n"
+   " different results, due to variations in the random numbers generated\n"
+   " in the simulations.\n"
+   "\n"
+  ) ;
   
   exit(0);
 }
@@ -129,11 +178,15 @@ void display_help_menu()
    Routine to print error message and stop.
 */
 
+#if 0
 void AlphaSim_error (char * message)
 {
    fprintf (stderr, "%s Error: %s \n", PROGRAM_NAME, message);
    exit(1);
 }
+#else
+# define AlphaSim_error(m) ERROR_exit("AlphaSim: %s",(m))
+#endif
 
 
 /*---------------------------------------------------------------------------*/
@@ -148,7 +201,7 @@ void initialize_options (
 		 int * egfw, 
 		 int * power, int * ax, int * ay, int * az, float * zsep, 
 		 float * rmm, float * pthr, int * niter, int * quiet, 
-	         char ** outfilename)
+	         char ** outfilename, int * seed)
  
 {
   *nx = 0;                   /* number of voxels along x-axis */
@@ -167,11 +220,12 @@ void initialize_options (
   *ay = 0;                   /* number of activation voxels along y-axis */
   *az = 0;                   /* number of activation voxels along z-axis */
   *zsep = 0.0;               /* z-score signal and noise separation */
-  *rmm = 0.0;                /* cluster connection radius (mm) */
+  *rmm = -1.0 ;              /* cluster connection radius (mm) */
   *pthr = 0.0;               /* individual voxel threshold prob. */
   *niter = 0;                /* number of Monte Carlo simulations  */
   *quiet = 0;                /* generate screen output (default)  */
   *outfilename = NULL;       /* name of output file */
+  *seed = 1234567;           /* random number seed - user can override */
 }
 
 
@@ -187,12 +241,11 @@ void get_options (int argc, char ** argv,
 		  int * egfw, 
 		  int * power, int * ax, int * ay, int * az, float * zsep, 
 		  float * rmm, float * pthr, int * niter, int * quiet, 
-		  char ** outfilename)
+		  char ** outfilename, int * seed)
 {
   int nopt = 1;                  /* input option argument counter */
   int ival;                      /* integer input */
   float fval;                    /* float input */
-  char message[MAX_NAME_LENGTH];         /* error message */
   int mask_nx, mask_ny, mask_nz, mask_nvox;   /* mask dimensions */
   float  mask_dx, mask_dy, mask_dz;            
 
@@ -208,11 +261,40 @@ void get_options (int argc, char ** argv,
   /*----- initialize the input options -----*/
   initialize_options (nx, ny, nz, dx, dy, dz, filter, sigmax, sigmay, sigmaz,
 		      egfw, power, ax, ay, az, zsep, rmm, pthr, niter, quiet,
-		      outfilename); 
+		      outfilename, seed); 
 
   /*----- main loop over input options -----*/
   while (nopt < argc )
     {
+
+      /*-----  -zg [10 Jan 2008] -----*/
+
+      if( strcmp(argv[nopt],"-zg") == 0 || strcmp(argv[nopt],"-fast") == 0 ){
+        use_zg = 1 ; nopt++ ; continue ;
+      }
+      if( strcmp(argv[nopt],"-nozg") == 0 || strcmp(argv[nopt],"-nofast") == 0 ){
+        use_zg = 0 ; nopt++ ; continue ;
+      }
+
+      /*-----  -nxyz n1 n2 n3 [10 Jan 2008: RWC] -----*/
+
+      if( strcmp(argv[nopt],"-nxyz") == 0 ){
+        nopt++ ; if( nopt+2 >= argc ) AlphaSim_error ("need 3 arguments after -nxyz ") ;
+        *nx = (int)strtod(argv[nopt++],NULL); if( *nx <= 0 ) AlphaSim_error("illegal n1 value") ;
+        *ny = (int)strtod(argv[nopt++],NULL); if( *ny <= 0 ) AlphaSim_error("illegal n2 value") ;
+        *nz = (int)strtod(argv[nopt++],NULL); if( *nz <= 0 ) AlphaSim_error("illegal n3 value") ;
+        continue ;
+      }
+
+      /*-----  -dxyz d1 d2 d3 [10 Jan 2008: RWC] -----*/
+
+      if( strcmp(argv[nopt],"-dxyz") == 0 ){
+        nopt++ ; if( nopt+2 >= argc ) AlphaSim_error ("need 3 arguments after -dxyz ") ;
+        *dx = strtod(argv[nopt++],NULL); if( *dx <= 0 ) AlphaSim_error("illegal d1 value") ;
+        *dy = strtod(argv[nopt++],NULL); if( *dy <= 0 ) AlphaSim_error("illegal d2 value") ;
+        *dz = strtod(argv[nopt++],NULL); if( *dz <= 0 ) AlphaSim_error("illegal d3 value") ;
+        continue ;
+      }
       
       /*-----   -nx n  -----*/
       if (strncmp(argv[nopt], "-nx", 3) == 0)
@@ -537,8 +619,7 @@ void get_options (int argc, char ** argv,
 	  nopt++;
 	  if (nopt >= argc)  AlphaSim_error ("need argument after -rmm ");
 	  sscanf (argv[nopt], "%f", &fval);
-	  if (fval <= 0.0)
-	    AlphaSim_error ("illegal argument after -rmm ");
+	  if (fval <= 0.0) INFO_message("-rmm set to %g ==> NN clustering",fval) ;
 	  *rmm = fval;
 	  nopt++;
 	  continue;
@@ -546,7 +627,7 @@ void get_options (int argc, char ** argv,
 
 
       /*-----   -pthr p   -----*/
-      if (strncmp(argv[nopt], "-pthr", 5) == 0)
+      if (strncmp(argv[nopt], "-pthr", 5) == 0 || strcmp(argv[nopt],"-pval") == 0 )
 	{
 	  nopt++;
 	  if (nopt >= argc)  AlphaSim_error ("need argument after -pthr ");
@@ -560,7 +641,7 @@ void get_options (int argc, char ** argv,
 
       
       /*-----   -iter n  -----*/
-      if (strncmp(argv[nopt], "-iter", 5) == 0)
+      if (strncmp(argv[nopt], "-iter", 5) == 0 || strcmp(argv[nopt],"-niter") == 0 )
 	{
 	  nopt++;
 	  if (nopt >= argc)  AlphaSim_error ("need argument after -iter ");
@@ -605,8 +686,25 @@ void get_options (int argc, char ** argv,
 	}
       
 
+      /*-----   -seed S  -----*/
+      if (strncmp(argv[nopt], "-seed", 5) == 0)
+	{
+	  nopt++;
+	  if (nopt >= argc)
+             AlphaSim_error ("need argument after -seed ");
+	  *seed = atoi(argv[nopt]);
+     if( *seed == 0 ){
+       *seed = (int)time(NULL) + (int)getpid() ;
+       if( *seed < 0 ) *seed = -*seed ;
+       INFO_message("-seed 0 resets to %d",*seed) ;
+     }
+	  nopt++;
+	  continue;
+	}
+      
+
       /*----- unknown command -----*/
-      AlphaSim_error ("unrecognized command line option ");
+      ERROR_exit("AlphaSim -- unknown option '%s'",argv[nopt]) ;
     }
 
 
@@ -646,18 +744,20 @@ void check_for_valid_inputs (int nx,  int ny,  int nz,
   if (power  &&  ((ax <= 0) || (ay <= 0) || (az <= 0)))
     AlphaSim_error ("Illegal dimensions for activation region ");
   if (power && (zsep <= 0.0))  AlphaSim_error ("Illegal value for zsep ");
-  if ( (rmm < dx) && (rmm < dy) && (rmm < dz) )
-    AlphaSim_error ("Cluster connection radius is too small ");
-  if ((pthr <= 0.0) || (pthr > 1.0))  
+  if ( (rmm < dx) && (rmm < dy) && (rmm < dz) ){
+     rmm = -1.0f ; INFO_message("default NN connectivity being used") ;
+  }
+  if ((pthr <= 0.0) || (pthr >= 1.0))  
     AlphaSim_error ("Illegal value for pthr ");
   if (niter <= 0)  AlphaSim_error ("Illegal value for niter ");
 
-  if (outfilename != NULL)
+  if (outfilename != NULL && !THD_ok_overwrite())
     {
       /*----- see if output file already exists -----*/
       fout = fopen (outfilename, "r");
       if (fout != NULL)
 	{
+     fclose(fout) ;
 	  sprintf (message, "Output file %s already exists. ", outfilename); 
 	  AlphaSim_error (message);
 	}
@@ -697,7 +797,7 @@ void initialize (int argc, char ** argv,
 
   int which;
   double p, q, z, mean, sd;
-  int status;
+  int status, seed;
   double bound;
 
 
@@ -705,7 +805,7 @@ void initialize (int argc, char ** argv,
   get_options(argc, argv, 
 	      nx, ny, nz, dx, dy, dz, filter, sigmax, sigmay, sigmaz,
 	      egfw, power, ax, ay, az, zsep, rmm, pthr, niter, quiet, 
-	      outfilename);
+	      outfilename, &seed);
 
 
   /*----- check for valid inputs -----*/
@@ -778,7 +878,7 @@ void initialize (int argc, char ** argv,
     }
 
   /*----- initialize random number generator -----*/
-  srand48 (1234567);
+  srand48 (seed);
 
 }
 
@@ -799,10 +899,16 @@ float uniform ()
   Routine to generate a normal N(0,1) random variate.
 */
 
+#include "zgaussian.c"
+
 void normal (float * n1, float * n2)
 {
   float u1, u2;
   float r;
+
+  if( use_zg ){
+    *n1 = zgaussian() ; *n2 = zgaussian() ; return ;
+  }
 
 
   u1 = 0.0;
@@ -1107,7 +1213,6 @@ void threshold_data (int nx, int ny, int nz, float * fim,
 		     float pthr, long * count, double * sum, double * sumsq,
 		     int quiet, int iter)
 {
-  const float EPSILON = 1.0e-8;
   int ixyz;
   int nxyz;
   float zthr;
@@ -1211,10 +1316,8 @@ void identify_clusters (int nx,  int ny,  int nz,
   MCW_cluster_array * clar;
   MCW_cluster * cl;
   int nxy;
-  int nxyz;                     /* total number of voxels */
-  int iclu, ipt;
+  int iclu;
   int size, max_size;
-  int count;
 
 
   /*----- initialize local variables -----*/
@@ -1284,7 +1387,7 @@ void output_results (int nx, int ny, int nz, float dx, float dy, float dz,
   float * cum_prop_table;
   long total_num_clusters;
   char message[MAX_NAME_LENGTH];     /* error message */
-  FILE * fout;
+  FILE * fout=NULL;
 
   
   /*----- allocate memory space for probability table -----*/   
@@ -1341,19 +1444,23 @@ void output_results (int nx, int ny, int nz, float dx, float dy, float dz,
     fout = stdout;
   else
     {
-      /*----- see if output file already exists -----*/
-      fout = fopen (outfilename, "r");
-      if (fout != NULL)
-	{
-	  sprintf (message, "file %s already exists. ", outfilename); 
-	  AlphaSim_error (message);
-	}
+      
+      if (!THD_ok_overwrite()) {
+            /*----- see if output file already exists -----*/
+            fout = fopen (outfilename, "r");
+            if (fout != NULL)
+	      {
+           fclose(fout) ;
+	        sprintf (message, "file %s already exists. ", outfilename); 
+	        AlphaSim_error (message);
+	      }
+      }
       
       /*----- open file for output -----*/
       fout = fopen (outfilename, "w");
       if (fout == NULL)
 	{ 
-	  AlphaSim_error ("unable to write file ");
+	  AlphaSim_error ("unable to open output file ");
 	}
     }
 
@@ -1397,15 +1504,20 @@ void output_results (int nx, int ny, int nz, float dx, float dy, float dz,
       if(quiet<2)fprintf (fout, "z separation = %f \n\n", zsep);
     }
 
-  if(quiet<2)fprintf (fout, "Cluster connection radius: rmm = %5.2f \n\n", rmm);
+  if(quiet<2){
+    if( rmm > 0.0f )
+      fprintf (fout, "Cluster connection radius: rmm = %5.2f \n\n", rmm);
+    else
+      fprintf (fout, "Cluster connection = Nearest Neighbor\n") ;
+  }
   if(quiet<2)fprintf (fout, "Threshold probability: pthr = %e \n\n", pthr);
   if(quiet<2)fprintf (fout, "Number of Monte Carlo iterations = %5d \n\n", niter);
   if (!power){
-    if(quiet<2)fprintf (fout, "Cl Size     Frequency    Cum Prop     p/Voxel"
+    if(quiet<2)fprintf (fout, "Cl Size     Frequency    CumuProp     p/Voxel"
 	     "   Max Freq       Alpha\n");
   }
   else {
-    if(quiet<2)fprintf (fout, "Cl Size     Frequency    Cum Prop     p/Voxel"
+    if(quiet<2)fprintf (fout, "Cl Size     Frequency    CumuProp     p/Voxel"
 	     "   Max Freq       Power\n"); 
   }
 	     
@@ -1418,7 +1530,7 @@ void output_results (int nx, int ny, int nz, float dx, float dy, float dz,
 	       max_table[i], alpha_table[i]);
   }
 
-  fclose(fout);
+  if( fout != stdout ) fclose(fout);
 
 }
  
@@ -1558,7 +1670,6 @@ int main (int argc, char ** argv)
 
     }
   
-
   /*----- generate requested output -----*/
   output_results (nx, ny, nz, dx, dy, dz, filter, sigmax, sigmay, sigmaz,
 		  egfw, avgsx, avgsy, avgsz, power, ax, ay, az, zsep, 

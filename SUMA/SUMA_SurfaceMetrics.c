@@ -14,129 +14,152 @@ SUMA_DO *SUMAg_DOv;   /*!< Global pointer to Displayable Object structure vector
 int SUMAg_N_DOv = 0; /*!< Number of DOs stored in DOv */
 SUMA_CommonFields *SUMAg_CF; /*!< Global pointer to structure containing info common to all viewers */
 
-void usage_SUMA_SurfaceMetrics ()
+void usage_SUMA_SurfaceMetrics (SUMA_GENERIC_ARGV_PARSE *ps)
    {
       static char FuncName[]={"usage_SUMA_SurfaceMetrics"};
-      char * s = NULL;
+      char * s = NULL, *sio=NULL;
       s = SUMA_help_basics();
-      printf ( "\n"
-               "Usage: SurfaceMetrics <-Metric1> [[-Metric2] ...] \n"
-               "                  <-spec SpecFile> <-surf_A insurf> \n"
-               "                  [<-sv SurfaceVolume [VolParam for sf surfaces]>]\n"
-               "                  [-tlrc] [<-prefix prefix>]\n"
-               "\n"
-               "Outputs information about a surface's mesh\n"
-               "\n"
-               "   -Metric1: Replace -Metric1 with the following:\n"
-               "      -vol: calculates the volume of a surface.\n"
-               "            Volume unit is the cube of your surface's\n"
-               "            coordinates unit, obviously.\n"
-               "            Volume's sign depends on the orientation\n"
-               "            of the surface's mesh.\n" 
-               "            Make sure your surface is a closed one\n"
-               "            and that winding is consistent.\n"
-               "            Use SurfQual to check the surface.\n"
-               "            If your surface's mesh has problems,\n"
-               "            the result is incorrect. \n"
-               "            Volume is calculated using Gauss's theorem,\n"
-               "            see [Hughes, S.W. et al. 'Application of a new \n"
-               "            discreet form of Gauss's theorem for measuring \n"
-               "            volume' in Phys. Med. Biol. 1996].\n"
-               "      -conv: output surface convexity at each node.\n"
-               "         Output file is prefix.conv. Results in two columns:\n"
-               "         Col.0: Node Index\n"
-               "         Col.1: Convexity\n"
-               "         This is the measure used to shade sulci and gyri in SUMA.\n"
-               "         C[i] = Sum(dj/dij) over all neighbors j of i\n"
-               "         dj is the distance of neighboring node j to the tangent plane at i\n"
-               "         dij is the length of the segment ij\n"
-               "      -closest_node XYZ_LIST.1D: Find the closest node on the surface\n"
-               "                              to each XYZ triplet in XYZ_LIST.1D\n"
-               "                              Note that it is assumed that the XYZ\n"
-               "                              coordinates are in RAI (DICOM) per AFNI's\n"
-               "                              coordinate convention. For correspondence\n"
-               "                              with coordinates observed in SUMA and AFNI\n"
-               "                              be sure to use the proper -sv parameter for\n"
-               "                              the surface and XYZ coordinates in question.\n"
-               "         Output file is prefix.closest.1D. Results in 8 columns:\n"
-               "         Col.0: Index of closest node.\n"
-               "         Col.1: Distance of closest node to XYZ reference point.\n"
-               "         Col.2..4: XYZ of reference point (same as XYZ_LIST.1D, copied \n"
-               "                   here for clarity).\n"
-               "         Col.5..7: XYZ of closest node (after proper surface coordinate\n"
-               "                   transformation, including SurfaceVolume transform.\n"
-               "      -area: output area of each triangle. \n"
-               "         Output file is prefix.area. Results in two columns:\n"
-               "         Col.0: Triangle Index\n"
-               "         Col.1: Triangle Area\n"
-               "      -curv: output curvature at each node.\n"
-               "         Output file is prefix.curv. Results in nine columns:\n"
-               "         Col.0: Node Index\n"
-               "         Col.1-3: vector of 1st principal direction of surface\n"
-               "         Col.4-6: vector of 2nd principal direction of surface\n"
-               "         Col.7: Curvature along T1\n"
-               "         Col.8: Curvature along T2\n"
-               "         Curvature algorithm by G. Taubin from: \n"
-               "         'Estimating the tensor of curvature of surface \n"
-               "         from a polyhedral approximation.'\n"
-               "      -edges: outputs info on each edge. \n"
-               "         Output file is prefix.edges. Results in five columns:\n"
-               "         Col.0: Edge Index (into a SUMA structure).\n"
-               "         Col.1: Index of the first node forming the edge\n"
-               "         Col.2: Index of the second node forming the edge\n"
-               "         Col.3: Number of triangles containing edge\n"
-               "         Col.4: Length of edge.\n"
-               "      -node_normals: Outputs segments along node normals.\n"
-               "                     Segments begin at node and have a default\n"
-               "                     magnitude of 1. See option 'Alt+Ctrl+s' in \n"
-               "                     SUMA for visualization.\n"
-               "      -face_normals: Outputs segments along triangle normals.\n"
-               "                     Segments begin at centroid of triangles and \n"
-               "                     have a default magnitude of 1. See option \n"
-               "                     'Alt+Ctrl+s' in SUMA for visualization.\n"
-               "      -normals_scale SCALE: Scale the normals by SCALE (1.0 default)\n"
-               "                     For use with options -node_normals and -face_normals\n"
-               "      -coords: Output coords of each node after any transformation \n"
-               "         that is normally carried out by SUMA on such a surface.\n"
-               "         Col. 0: Node Index\n"
-               "         Col. 1: X\n"
-               "         Col. 2: Y\n"
-               "         Col. 3: Z\n"     
-               "      -sph_coords: Output spherical coords of each node.\n"
-               "      -sph_coords_center x y z: Shift each node by  x y z\n"
-               "                                before calculating spherical\n"
-               "                                coordinates. Default is the\n"
-               "                                center of the surface.\n"
-               "          Both sph_coords options output the following:\n"
-               "          Col. 0: Node Index\n"
-               "          Col. 1: R (radius)\n"
-               "          Col. 2: T (azimuth)\n"
-               "          Col. 3: P (elevation)\n"
-               "      -boundary_nodes: Output nodes that form a boundary of a surface\n"
-               "                   i.e. they form edges that belong to one and only\n"
-               "                   one triangle.\n"
-               "      -internal_nodes: Output nodes that are not a boundary.\n"
-               "                   i.e. they form edges that belong to more than\n"
-               "                   one triangle.\n"
-               "\n"
-               "      You can use any or all of these metrics simultaneously.\n"
-               "\n"
-               "   -spec SpecFile: Name of specfile containing surface of interest.\n"
-               "                   If the surface does not have a spec file, use the \n"
-               "                   program quickspec to create one.\n"
-               "   -surf_A insurf: Name of surface of interest. \n"
-               "                   NOTE: i_TYPE inSurf option is not supported for this program.\n"
-               "\n"
-               "   -sv SurfaceVolume [VolParam for sf surfaces]: Specify a surface volume\n"
-               "                   for surface alignment. See ConvertSurface -help for more info.\n"
-               "\n"
-               "   -tlrc: Apply Talairach transform to surface.\n"
-               "                   See ConvertSurface -help for more info.\n"
-               "\n"
-               "   -prefix prefix: Use prefix for output files. (default is prefix of inSurf)\n"
-               "%s"
-               "\n", s);
+      sio  = SUMA_help_IO_Args(ps);
+      printf ( 
+         "\n"
+"Usage: SurfaceMetrics <-Metric1> [[-Metric2] ...] \n"
+"                  <-SURF_1> \n"
+"                  [-tlrc] [<-prefix prefix>]\n"
+"\n"
+"Outputs information about a surface's mesh\n"
+"\n"
+"   -Metric1: Replace -Metric1 with the following:\n"
+"      -vol: calculates the volume of a surface.\n"
+"            Volume unit is the cube of your surface's\n"
+"            coordinates unit, obviously.\n"
+"            Volume's sign depends on the orientation\n"
+"            of the surface's mesh.\n" 
+"            Make sure your surface is a closed one\n"
+"            and that winding is consistent.\n"
+"            Use SurfQual to check the surface.\n"
+"            If your surface's mesh has problems,\n"
+"            the result is incorrect. \n"
+"            Volume is calculated using Gauss's theorem,\n"
+"            see [Hughes, S.W. et al. 'Application of a new \n"
+"            discreet form of Gauss's theorem for measuring \n"
+"            volume' in Phys. Med. Biol. 1996].\n"
+"      -conv: output surface convexity at each node.\n"
+"         Output file is prefix.conv. Results in two columns:\n"
+"         Col.0: Node Index\n"
+"         Col.1: Convexity\n"
+"         This is the measure used to shade sulci and gyri in SUMA.\n"
+"         C[i] = Sum(dj/dij) over all neighbors j of i\n"
+"         dj is the distance of neighboring node j to the tangent plane at i\n"
+"         dij is the length of the segment ij\n"
+"      -closest_node XYZ_LIST.1D: Find the closest node on the surface\n"
+"                              to each XYZ triplet in XYZ_LIST.1D\n"
+"                              Note that it is assumed that the XYZ\n"
+"                              coordinates are in RAI (DICOM) per AFNI's\n"
+"                              coordinate convention. For correspondence\n"
+"                              with coordinates observed in SUMA and AFNI\n"
+"                              be sure to use the proper -sv parameter for\n"
+"                              the surface and XYZ coordinates in question.\n"
+"         Output file is prefix.closest.1D. Results in 8 columns:\n"
+"         Col.0: Index of closest node.\n"
+"         Col.1: Distance of closest node to XYZ reference point.\n"
+"         Col.2..4: XYZ of reference point (same as XYZ_LIST.1D, copied \n"
+"                   here for clarity).\n"
+"         Col.5..7: XYZ of closest node (after proper surface coordinate\n"
+"                   transformation, including SurfaceVolume transform.\n"
+"      -area: output area of each triangle. \n"
+"         Output file is prefix.area. Results in two columns:\n"
+"         Col.0: Triangle Index\n"
+"         Col.1: Triangle Area\n"
+"      -tri_sines/-tri_cosines: (co)sine of angles at nodes forming\n"
+"                                   triangles.\n"
+"         Output file is prefix.(co)sine. Results in 4 columns:\n"
+"         Col.0: Triangle Index\n"
+"         Col.1: (co)sine of angle at node 0\n"
+"         Col.2: (co)sine of angle at node 1\n"
+"         Col.3: (co)sine of angle at node 2\n"
+"      -tri_CoSines: Both cosines and sines.\n"
+"      -tri_angles: Unsigned angles in radians of triangles.\n"
+"         Col.0: Triangle Index\n"
+"         Col.1: angle at node 0\n"
+"         Col.2: angle at node 1\n"
+"         Col.3: angle at node 2\n"
+"      -node_angles: Unsigned angles in radians at nodes of surface.\n"
+"         Col.0: Node Index\n"
+"         Col.1: minimum angle at node \n"
+"         Col.2: maximum angle at node \n"
+"         Col.3: average angle at node \n"
+"      -curv: output curvature at each node.\n"
+"         Output file is prefix.curv. Results in nine columns:\n"
+"         Col.0: Node Index\n"
+"         Col.1-3: vector of 1st principal direction of surface\n"
+"         Col.4-6: vector of 2nd principal direction of surface\n"
+"         Col.7: Curvature along T1\n"
+"         Col.8: Curvature along T2\n"
+"         Curvature algorithm by G. Taubin from: \n"
+"         'Estimating the tensor of curvature of surface \n"
+"         from a polyhedral approximation.'\n"
+"      -edges: outputs info on each edge. \n"
+"         Output file is prefix.edges. Results in five columns:\n"
+"         Col.0: Edge Index (into a SUMA structure).\n"
+"         Col.1: Index of the first node forming the edge\n"
+"         Col.2: Index of the second node forming the edge\n"
+"         Col.3: Number of triangles containing edge\n"
+"         Col.4: Length of edge.\n"
+"      -node_normals: Outputs segments along node normals.\n"
+"                     Segments begin at node and have a default\n"
+"                     magnitude of 1. See option 'Alt+Ctrl+s' in \n"
+"                     SUMA for visualization.\n"
+"      -face_normals: Outputs segments along triangle normals.\n"
+"                     Segments begin at centroid of triangles and \n"
+"                     have a default magnitude of 1. See option \n"
+"                     'Alt+Ctrl+s' in SUMA for visualization.\n"
+"      -normals_scale SCALE: Scale the normals by SCALE (1.0 default)\n"
+"                     For use with options -node_normals and -face_normals\n"
+"      -coords: Output coords of each node after any transformation \n"
+"         that is normally carried out by SUMA on such a surface.\n"
+"         Col. 0: Node Index\n"
+"         Col. 1: X\n"
+"         Col. 2: Y\n"
+"         Col. 3: Z\n"     
+"      -sph_coords: Output spherical coords of each node.\n"
+"      -sph_coords_center x y z: Shift each node by  x y z\n"
+"                                before calculating spherical\n"
+"                                coordinates. Default is the\n"
+"                                center of the surface.\n"
+"          Both sph_coords options output the following:\n"
+"          Col. 0: Node Index\n"
+"          Col. 1: R (radius)\n"
+"          Col. 2: T (azimuth)\n"
+"          Col. 3: P (elevation)\n"
+"      -boundary_nodes: Output nodes that form a boundary of a surface\n"
+"                   i.e. they form edges that belong to one and only\n"
+"                   one triangle.\n"
+"      -internal_nodes: Output nodes that are not a boundary.\n"
+"                   i.e. they form edges that belong to more than\n"
+"                   one triangle.\n"
+"\n"
+"      You can use any or all of these metrics simultaneously.\n"
+"\n"
+"     (-SURF_1):  An option for specifying the surface.\n"
+"                 (For option's syntax, see 'Specifying input surfaces'\n"
+"                 section below).\n"
+"\n"
+"   -sv SurfaceVolume [VolParam for sf surfaces]: Specify a surface volume\n"
+"                   for surface alignment. See ConvertSurface -help for \n"
+"                   more info.\n"
+"\n"
+"   -tlrc: Apply Talairach transform to surface.\n"
+"                   See ConvertSurface -help for more info.\n"
+"\n"
+"   -prefix prefix: Use prefix for output files. \n"
+"                   (default is prefix of inSurf)\n"
+"\n"
+"%s"
+"\n"
+"%s"
+"\n", sio, s);
       SUMA_free(s); s = NULL;
+      SUMA_free(sio); sio = NULL;
       s = SUMA_New_Additions(0, 1); printf("%s\n", s);SUMA_free(s); s = NULL;
       printf ( "       Ziad S. Saad SSCC/NIMH/NIH saadz@mail.nih.gov \n"
                "       Mon May 19 15:41:12 EDT 2003\n"
@@ -152,14 +175,14 @@ int main (int argc,char *argv[])
          *tlrc_name = NULL;
    float *Cx = NULL, sph_center[3], NormScale;
    SUMA_STRING *MetricList = NULL;
-   int i, n1, n2, n1_3, n2_3, kar, nt, SO_read;
+   int i, n1, n2, n1_3, n2_3, kar, nt, SO_read, N_Spec=0;
    double edgeL2;
    FILE *fout=NULL;
    SUMA_SO_File_Type iType = SUMA_FT_NOT_SPECIFIED;
    SUMA_SurfaceObject *SO = NULL;   
    SUMA_SFname *SF_name = NULL;
    void *SO_name = NULL;   
-   SUMA_SurfSpecFile Spec;
+   SUMA_SurfSpecFile *pSpec=NULL;
    THD_warp *warp=NULL ;
    THD_3dim_dataset *aset=NULL;
    char *surf_names[SURFACEMETRICS_MAX_SURF];
@@ -167,12 +190,17 @@ int main (int argc,char *argv[])
    char *closest_to_xyz = NULL;
    int insurf_method = 0, N_surf = 0, ind = 0;
    SUMA_Boolean   brk, Do_tlrc, Do_conv, Do_curv, 
-                  Do_area, Do_edges, Do_vol, Do_sph, NewCent, Do_cord, Do_TriNorm, 
+                  Do_area, Do_edges, Do_vol, Do_sph, NewCent, 
+                  Do_cord, Do_TriNorm, Do_TriSine, Do_TriCosine,
+                  Do_TriCoSine, Do_TriAngles,
+                  Do_NodeAngles,
                   Do_NodeNorm, Do_en, Do_in, LocalHead = NOPE;  
+   SUMA_GENERIC_ARGV_PARSE *ps=NULL;
    
 	SUMA_STANDALONE_INIT;
    SUMA_mainENTRY;
    
+   ps = SUMA_Parse_IO_Args(argc, argv, "-i;-t;-spec;-s;-sv;");
    
 	/* Allocate space for DO structure */
 	SUMAg_DOv = SUMA_Alloc_DisplayObject_Struct (SUMA_MAX_DISPLAYABLE_OBJECTS);
@@ -180,7 +208,7 @@ int main (int argc,char *argv[])
    if (argc < 4)
        {
           SUMA_S_Err("Too few parameters");
-          usage_SUMA_SurfaceMetrics ();
+          usage_SUMA_SurfaceMetrics (ps);
           exit (1);
        }
    
@@ -197,6 +225,11 @@ int main (int argc,char *argv[])
    Do_edges = NOPE;
    Do_TriNorm = NOPE;
    Do_NodeNorm = NOPE;
+   Do_TriSine = NOPE;
+   Do_TriCosine = NOPE;
+   Do_TriCoSine = NOPE;
+   Do_TriAngles = NOPE;
+   Do_NodeAngles = NOPE;
    Do_en = NOPE;
    Do_in = NOPE;
    closest_to_xyz = NULL;
@@ -209,106 +242,17 @@ int main (int argc,char *argv[])
 	while (kar < argc) { /* loop accross command ine options */
 		/* fprintf(stdout, "%s verbose: Parsing command line...\n", FuncName); */
 		if (strcmp(argv[kar], "-h") == 0 || strcmp(argv[kar], "-help") == 0) {
-			 usage_SUMA_SurfaceMetrics();
+			 usage_SUMA_SurfaceMetrics(ps);
           exit (1);
 		}
 		
       SUMA_SKIP_COMMON_OPTIONS(brk, kar);
       
-		if (!brk && (strcmp(argv[kar], "-i_fs") == 0)) {
-         SUMA_SL_Err("Option -i_fs is not supported for this program.\nUse -spec and -surf_A instead.\n");
-         exit(1);
-         kar ++;
-			if (kar >= argc)  {
-		  		fprintf (SUMA_STDERR, "need argument after -i_fs ");
-				exit (1);
-			}
-			if_name = argv[kar];
-         iType = SUMA_FREE_SURFER;
-			brk = YUP;
-		}
-      
-      if (!brk && (strcmp(argv[kar], "-i_sf") == 0)) {
-         SUMA_SL_Err("Option -i_sf is not supported for this program.\nUse -spec and -surf_A instead.\n");
-         exit(1);
-         kar ++;
-			if (kar+1 >= argc)  {
-		  		fprintf (SUMA_STDERR, "need 2 argument after -i_sf");
-				exit (1);
-			}
-			if_name = argv[kar]; kar ++;
-         if_name2 = argv[kar];
-         iType = SUMA_SUREFIT;
-			brk = YUP;
-		}
-      
-      if (!brk && (strcmp(argv[kar], "-i_vec") == 0)) {
-         SUMA_SL_Err("Option -i_vec is not supported for this program.\nUse -spec and -surf_A instead.\n");
-         exit(1);
-         kar ++;
-			if (kar+1 >= argc)  {
-		  		fprintf (SUMA_STDERR, "need 2 argument after -i_vec");
-				exit (1);
-			}
-			if_name = argv[kar]; kar ++;
-         if_name2 = argv[kar];
-         iType = SUMA_VEC;
-			brk = YUP;
-		}
-      
-      if (!brk && (strcmp(argv[kar], "-i_ply") == 0)) {
-         SUMA_SL_Err("Option -i_ply is not supported for this program.\nUse -spec and -surf_A instead.\n");
-         exit(1);
-         kar ++;
-			if (kar >= argc)  {
-		  		fprintf (SUMA_STDERR, "need argument after -i_ply ");
-				exit (1);
-			}
-			if_name = argv[kar];
-         iType = SUMA_PLY;
-			brk = YUP;
-		}
-      
-      if (!brk && (strcmp(argv[kar], "-spec") == 0)) {
-         kar ++;
-			if (kar >= argc)  {
-		  		fprintf (SUMA_STDERR, "need argument after -spec \n");
-				exit (1);
-			}
-			spec_file = argv[kar];
-         if (!insurf_method) insurf_method = 2;
-         else {
-            fprintf (SUMA_STDERR, "already specified spec file.\n");
-            exit(1);
-         }
-			brk = YUP;
-		}
-      
-      if (!brk && (strncmp(argv[kar], "-surf_", 6) == 0)) {
-			if (kar + 1>= argc)  {
-		  		fprintf (SUMA_STDERR, "need argument after -surf_X SURF_NAME \n");
-				exit (1);
-			}
-			ind = argv[kar][6] - 'A';
-         if (ind < 0 || ind >= SURFACEMETRICS_MAX_SURF) {
-            fprintf (SUMA_STDERR, "-surf_X SURF_NAME option is out of range,\n"
-                                  "   only surf_A allowed.\n");
-				exit (1);
-         }
-         kar ++;
-         surf_names[ind] = argv[kar];
-         N_surf = ind+1;
-			if (insurf_method != 2) {
-            fprintf (SUMA_STDERR, "-surf_X SURF_NAME option must be used with -spec option.\n");
-            exit(1);
-         }
-         brk = YUP;
-		}
-      
       if (!brk && (strcmp(argv[kar], "-sph_coords_center") == 0)) {
          kar ++;
 			if (kar+2 >= argc)  {
-		  		fprintf (SUMA_STDERR, "need 3 arguments after -sph_coords_center \n");
+		  		fprintf (SUMA_STDERR, 
+                     "need 3 arguments after -sph_coords_center \n");
 				exit (1);
 			}
 			sph_center[0] = atof(argv[kar]); kar ++;
@@ -316,6 +260,27 @@ int main (int argc,char *argv[])
          sph_center[2] = atof(argv[kar]);
          NewCent = YUP;
          Do_sph = YUP;
+			brk = YUP;
+		}
+      
+      if (!brk && (strcmp(argv[kar], "-tri_sines") == 0)) {
+         Do_TriSine = YUP;
+			brk = YUP;
+		}
+      if (!brk && (strcmp(argv[kar], "-tri_angles") == 0)) {
+         Do_TriAngles = YUP;
+			brk = YUP;
+		}
+      if (!brk && (strcmp(argv[kar], "-node_angles") == 0)) {
+         Do_NodeAngles = YUP;
+			brk = YUP;
+		}
+      if (!brk && (strcmp(argv[kar], "-tri_cosines") == 0)) {
+         Do_TriCosine = YUP;
+			brk = YUP;
+		}
+      if (!brk && (strcmp(argv[kar], "-tri_CoSines") == 0)) {
+         Do_TriCoSine = YUP;
 			brk = YUP;
 		}
       
@@ -432,7 +397,7 @@ int main (int argc,char *argv[])
          brk = YUP;
       }
       
-      if (!brk) {
+      if (!brk && !ps->arg_checked[kar]) {
 			fprintf (SUMA_STDERR,"Error %s: Option %s not understood. Try -help for usage\n", FuncName, argv[kar]);
 			exit (1);
 		} else {	
@@ -441,40 +406,35 @@ int main (int argc,char *argv[])
 		}
    }
    
-   if (N_surf < 1) {
-      SUMA_SL_Err("No surface specified.");
-      exit(1);
-   }
-
    /* clean MetricList */
    MetricList = SUMA_StringAppend (MetricList, NULL); 
    
    /* sanity checks */
-   if (!strlen(MetricList->s) && !Do_vol && !Do_sph && !Do_cord && !Do_TriNorm && !Do_NodeNorm && !Do_en && !Do_in && !closest_to_xyz) {
+   if (!strlen(MetricList->s) && 
+      !Do_vol && !Do_sph && !Do_cord && 
+      !Do_TriNorm && !Do_NodeNorm && 
+      !Do_en && !Do_in && !closest_to_xyz &&
+      !Do_TriSine && !Do_TriCosine && !Do_TriCoSine && 
+      !Do_TriAngles && !Do_NodeAngles) {
       SUMA_S_Err("No Metrics specified.\nNothing to do.\n");
       exit(1);
    }
    
-   if (0 && sv_name) { /* stupid check for volumes... */
-      if (!SUMA_filexists(sv_name)) {
-         fprintf (SUMA_STDERR,"Error %s: %s not found.\n", FuncName, sv_name);
-         exit(1);
-      }
-   }
-   
-   if (Do_tlrc && !sv_name) {
+   if (Do_tlrc && !ps->sv[0]) {
       fprintf (SUMA_STDERR,"Error %s: -tlrc must be used with -sv option.\n", FuncName);
       exit(1);
    }
-   
-   if (vp_name) {
-      if (!SUMA_filexists(vp_name)) {
-         fprintf (SUMA_STDERR,"Error %s: %s not found.\n", FuncName, vp_name);
-         exit(1);
-      }
+
+   #if 1
+   pSpec = SUMA_IO_args_2_spec(ps, &N_Spec);
+   if (N_Spec == 0) {
+      SUMA_S_Err("No surfaces found.");
+      exit(1);
    }
 
-   
+   SUMA_LH("Loading surface...");
+   SO = SUMA_Load_Spec_Surf(pSpec, 0, ps->sv[0], 1);
+   #else
    /* read all surfaces */
    if (!SUMA_AllocSpecFields(&Spec)) { SUMA_S_Err("Error initing"); exit(1); }
    if (!SUMA_Read_SpecFile (spec_file, &Spec)) {
@@ -490,7 +450,7 @@ int main (int argc,char *argv[])
    }
    
    /* now read into SUMAg_DOv */
-   if (!SUMA_LoadSpec_eng(&Spec, SUMAg_DOv, &SUMAg_N_DOv, sv_name, 0, SUMAg_CF->DsetList) ) {
+   if (!SUMA_LoadSpec_eng(&Spec, SUMAg_DOv, &SUMAg_N_DOv, ps->sv[0], 0, SUMAg_CF->DsetList) ) {
 	   fprintf(SUMA_STDERR,"Error %s: Failed in SUMA_LoadSpec_eng\n", FuncName);
       exit(1);
    }   SO = SUMA_find_named_SOp_inDOv(surf_names[0], SUMAg_DOv, SUMAg_N_DOv);
@@ -498,7 +458,7 @@ int main (int argc,char *argv[])
       fprintf (SUMA_STDERR,"Error %s: Failed to read input surface.\n", FuncName);
       exit (1);
    }
-   
+   #endif
    if (Do_tlrc) {
       fprintf (SUMA_STDOUT,"Performing talairach transform...\n");
 
@@ -569,7 +529,7 @@ int main (int argc,char *argv[])
    if (Do_sph) {
       double *sph=NULL;
       sprintf(OutName, "%s.sphcoord.1D.dset", OutPrefix);
-      if (SUMA_filexists(OutName)) {
+      if (!THD_ok_overwrite() && SUMA_filexists(OutName)) {
          SUMA_S_Err("Edge output file exists.\nWill not overwrite.");
          exit(1);
       }
@@ -583,12 +543,15 @@ int main (int argc,char *argv[])
 
       fout = fopen(OutName,"w");
       if (!fout) {
-         SUMA_S_Err("Failed to open file for writing.\nCheck your permissions.\n");
+         SUMA_S_Err( "Failed to open file for writing.\n"
+                     "Check your permissions.\n");
          exit(1);
       }
       
       fprintf (fout,"#Spherical coords, \n");
-      fprintf (fout,"#  cartesian coords shifted by [%f %f %f] prior to xform\n", sph_center[0], sph_center[1], sph_center[2]);
+      fprintf (fout,
+               "#  cartesian coords shifted by [%f %f %f] prior to xform\n",
+                sph_center[0], sph_center[1], sph_center[2]);
       fprintf (fout,"#nI = Node Index\n");
       fprintf (fout,"#r  = Rho (radius)\n");
       fprintf (fout,"#t  = theta(azimuth)\n");
@@ -609,13 +572,14 @@ int main (int argc,char *argv[])
    if (Do_NodeNorm) {
       float norm[3];
       sprintf(OutName, "%s.NodeNormSeg.1D", OutPrefix);
-      if (SUMA_filexists(OutName)) {
+      if (!THD_ok_overwrite() && SUMA_filexists(OutName)) {
          SUMA_S_Err("Node normals output file exists.\nWill not overwrite.");
          exit(1);
       }
       fout = fopen(OutName,"w");
       if (!fout) {
-         SUMA_S_Err("Failed to open file for writing.\nCheck your permissions.\n");
+         SUMA_S_Err( "Failed to open file for writing.\n"
+                     "Check your permissions.\n");
          exit(1);
       }
       
@@ -646,7 +610,7 @@ int main (int argc,char *argv[])
          exit(1);
       }
       sprintf(OutName, "%s.TriNormSeg.1D", OutPrefix);
-      if (SUMA_filexists(OutName)) {
+      if (!THD_ok_overwrite() && SUMA_filexists(OutName)) {
          SUMA_S_Err("Triangle normals output file exists.\nWill not overwrite.");
          exit(1);
       }
@@ -663,7 +627,9 @@ int main (int argc,char *argv[])
       if (histnote) fprintf (fout,"#History:%s\n", histnote);
       
       for (i=0; i<SO->N_FaceSet; ++i) {
-         n1 = SO->FaceSetList[3*i]; n2 = SO->FaceSetList[3*i+1]; n3 = SO->FaceSetList[3*i+2];
+         n1 = SO->FaceSetList[3*i]; 
+         n2 = SO->FaceSetList[3*i+1]; 
+         n3 = SO->FaceSetList[3*i+2];
          /* coordinate of centroid */
          tc[0] = (SO->NodeList[3*n1]   + SO->NodeList[3*n2]   + SO->NodeList[3*n3]  )/3; /* centroid of triangle */
          tc[1] = (SO->NodeList[3*n1+1] + SO->NodeList[3*n2+1] + SO->NodeList[3*n3+1])/3; 
@@ -677,9 +643,274 @@ int main (int argc,char *argv[])
       fclose(fout); fout = NULL;
    }
    
+   if (Do_TriAngles) {
+      int n1, n2, n3;
+      float *p1, *p2, *p3;
+      double s[3], c[3], a[3];
+      if (SO->FaceSetDim != 3) {
+         SUMA_S_Err("Triangular meshes only please.");
+         exit(1);
+      }
+      sprintf(OutName, "%s.TriAngles.1D", OutPrefix);
+      if (!THD_ok_overwrite() && SUMA_filexists(OutName)) {
+         SUMA_S_Err( "Triangle normals output file exists.\n"
+                     "Will not overwrite.");
+         exit(1);
+      }
+      fout = fopen(OutName,"w");
+      if (!fout) {
+         SUMA_S_Err( "Failed to open file for writing.\n"
+                     "Check your permissions.\n");
+         exit(1);
+      }
+      
+      fprintf (fout,"#Triangle Angles in radians(unsigned).\n");
+      fprintf (fout,"#Col. 0: Triangle index.\n");
+      fprintf (fout,"#Col. 1: angle at node 1\n");
+      fprintf (fout,"#Col. 2: angle at node 2\n");
+      fprintf (fout,"#Col. 3: angle at node 3\n");
+      if (histnote) fprintf (fout,"#History:%s\n", histnote);
+      
+      for (i=0; i<SO->N_FaceSet; ++i) {
+         n1 = SO->FaceSetList[3*i]; 
+         n2 = SO->FaceSetList[3*i+1]; 
+         n3 = SO->FaceSetList[3*i+2];
+         p1 = &(SO->NodeList[3*n1]);
+         p2 = &(SO->NodeList[3*n2]);
+         p3 = &(SO->NodeList[3*n3]);
+         if (!SUMA_TriTrig(p1, p2, p3, s, c, a)) {
+            SUMA_S_Err("Failed in SUMA_TriTrig");
+            exit(1);
+         }
+
+         fprintf (fout,"%d \t%f %f %f \n", i, a[0], a[1], a[2]);
+      }
+   }
+   if (Do_NodeAngles) {
+      int n1, n2, n3;
+      float *p1, *p2, *p3;
+      double s[3], c[3], a[3];
+      double *mia=NULL, *maa=NULL, *mea=NULL;
+      int *n_a=NULL;
+      if (SO->FaceSetDim != 3) {
+         SUMA_S_Err("Triangular meshes only please.");
+         exit(1);
+      }
+      sprintf(OutName, "%s.NodeAngles.1D", OutPrefix);
+      if (!THD_ok_overwrite() && SUMA_filexists(OutName)) {
+         SUMA_S_Err( "Node angles output file exists.\n"
+                     "Will not overwrite.");
+         exit(1);
+      }
+      fout = fopen(OutName,"w");
+      if (!fout) {
+         SUMA_S_Err( "Failed to open file for writing.\n"
+                     "Check your permissions.\n");
+         exit(1);
+      }
+      
+      fprintf (fout,"#Angles at nodes in radians(unsigned).\n");
+      fprintf (fout,"#Col. 0: Node index.\n");
+      fprintf (fout,"#Col. 1: minimum angle at node \n");
+      fprintf (fout,"#Col. 2: maximum angle at node \n");
+      fprintf (fout,"#Col. 3: average angle at node \n");
+      if (histnote) fprintf (fout,"#History:%s\n", histnote);
+      mea = (double *)SUMA_calloc(SO->N_Node, sizeof(double));
+      mia = (double *)SUMA_calloc(SO->N_Node, sizeof(double));
+      maa = (double *)SUMA_calloc(SO->N_Node, sizeof(double));
+      n_a = (int *)SUMA_calloc(SO->N_Node, sizeof(int));
+      if (!mea || !mia || !maa || !n_a) {
+         SUMA_S_Crit("Failed to allocate");
+         exit(1);
+      }
+      for (i=0; i<SO->N_FaceSet; ++i) {
+         n1 = SO->FaceSetList[3*i]; 
+         n2 = SO->FaceSetList[3*i+1]; 
+         n3 = SO->FaceSetList[3*i+2];
+         p1 = &(SO->NodeList[3*n1]);
+         p2 = &(SO->NodeList[3*n2]);
+         p3 = &(SO->NodeList[3*n3]);
+         if (!SUMA_TriTrig(p1, p2, p3, s, c, a)) {
+            SUMA_S_Err("Failed in SUMA_TriTrig");
+            exit(1);
+         }
+
+         if (!n_a[n1]) {
+            mea[n1] = a[0]; ++n_a[n1];
+            mia[n1] = a[0];
+            maa[n1] = a[0];
+         } else {
+            mea[n1] += a[0]; ++n_a[n1];
+            if (mia[n1] > a[0]) mia[n1] = a[0];
+            if (maa[n1] < a[0]) maa[n1] = a[0];
+         }
+         if (!n_a[n2]) {
+            mea[n2] = a[1]; ++n_a[n2];
+            mia[n2] = a[1];
+            maa[n2] = a[1];
+         } else {
+            mea[n2] += a[1]; ++n_a[n2];
+            if (mia[n2] > a[1]) mia[n2] = a[1];
+            if (maa[n2] < a[1]) maa[n2] = a[1];
+         }
+         if (!n_a[n3]) {
+            mea[n3] = a[2]; ++n_a[n3];
+            mia[n3] = a[2];
+            maa[n3] = a[2];
+         } else {
+            mea[n3] += a[2]; ++n_a[n3];
+            if (mia[n3] > a[2]) mia[n3] = a[2];
+            if (maa[n3] < a[2]) maa[n3] = a[2];
+         }
+      }
+      for (i=0; i<SO->N_Node; ++i) {
+         if (n_a[i]) {
+            fprintf (fout,"%d \t%f %f %f \n",
+                  i, mia[i], maa[i], mea[i]/(double)n_a[i]);
+         } else {
+            fprintf (fout,"%d \t%f %f %f \n",
+                  i, -1.0, -1.0, -1.0);
+         }
+      }
+      SUMA_free(mea); SUMA_free(mia); SUMA_free(n_a); SUMA_free(maa);
+   }
+   if (Do_TriSine) {
+      int n1, n2, n3;
+      float *p1, *p2, *p3;
+      double s[3], c[3], *a=NULL;
+      if (SO->FaceSetDim != 3) {
+         SUMA_S_Err("Triangular meshes only please.");
+         exit(1);
+      }
+      sprintf(OutName, "%s.TriSine.1D", OutPrefix);
+      if (!THD_ok_overwrite() && SUMA_filexists(OutName)) {
+         SUMA_S_Err( "Triangle sines output file exists.\n"
+                     "Will not overwrite.");
+         exit(1);
+      }
+      fout = fopen(OutName,"w");
+      if (!fout) {
+         SUMA_S_Err( "Failed to open file for writing.\n"
+                     "Check your permissions.\n");
+         exit(1);
+      }
+      
+      fprintf (fout,"#Triangle Sines.\n");
+      fprintf (fout,"#Col. 0: Triangle index.\n");
+      fprintf (fout,"#Col. 1: sin(angle) at node 1\n");
+      fprintf (fout,"#Col. 2: sin(angle) at node 2\n");
+      fprintf (fout,"#Col. 3: sin(angle) at node 3\n");
+      if (histnote) fprintf (fout,"#History:%s\n", histnote);
+      
+      for (i=0; i<SO->N_FaceSet; ++i) {
+         n1 = SO->FaceSetList[3*i]; 
+         n2 = SO->FaceSetList[3*i+1]; 
+         n3 = SO->FaceSetList[3*i+2];
+         p1 = &(SO->NodeList[3*n1]);
+         p2 = &(SO->NodeList[3*n2]);
+         p3 = &(SO->NodeList[3*n3]);
+         if (!SUMA_TriTrig(p1, p2, p3, s, c, a)) {
+            SUMA_S_Err("Failed in SUMA_TriTrig");
+            exit(1);
+         }
+
+         fprintf (fout,"%d \t%f %f %f \n", i, s[0], s[1], s[2]);
+      }
+   }
+   if (Do_TriCosine) {
+      int n1, n2, n3;
+      float *p1, *p2, *p3;
+      double s[3], c[3], *a=NULL;
+      if (SO->FaceSetDim != 3) {
+         SUMA_S_Err("Triangular meshes only please.");
+         exit(1);
+      }
+      sprintf(OutName, "%s.TriCosine.1D", OutPrefix);
+      if (!THD_ok_overwrite() && SUMA_filexists(OutName)) {
+         SUMA_S_Err( "Triangle cosines output file exists.\n"
+                     "Will not overwrite.");
+         exit(1);
+      }
+      fout = fopen(OutName,"w");
+      if (!fout) {
+         SUMA_S_Err( "Failed to open file for writing.\n"
+                     "Check your permissions.\n");
+         exit(1);
+      }
+      
+      fprintf (fout,"#Triangle Cosines.\n");
+      fprintf (fout,"#Col. 0: Triangle index.\n");
+      fprintf (fout,"#Col. 1: cos(angle) at node 1\n");
+      fprintf (fout,"#Col. 2: cos(angle) at node 2\n");
+      fprintf (fout,"#Col. 3: cos(angle) at node 3\n");
+      if (histnote) fprintf (fout,"#History:%s\n", histnote);
+      
+      for (i=0; i<SO->N_FaceSet; ++i) {
+         n1 = SO->FaceSetList[3*i]; 
+         n2 = SO->FaceSetList[3*i+1]; 
+         n3 = SO->FaceSetList[3*i+2];
+         p1 = &(SO->NodeList[3*n1]);
+         p2 = &(SO->NodeList[3*n2]);
+         p3 = &(SO->NodeList[3*n3]);
+         if (!SUMA_TriTrig(p1, p2, p3, s, c, a)) {
+            SUMA_S_Err("Failed in SUMA_TriTrig");
+            exit(1);
+         }
+
+         fprintf (fout,"%d \t%f %f %f \n", i, c[0], c[1], c[2]);
+      }
+   }
+   if (Do_TriCoSine) {
+      int n1, n2, n3;
+      float *p1, *p2, *p3;
+      double s[3], c[3], *a=NULL;
+      if (SO->FaceSetDim != 3) {
+         SUMA_S_Err("Triangular meshes only please.");
+         exit(1);
+      }
+      sprintf(OutName, "%s.TriCoSine.1D", OutPrefix);
+      if (!THD_ok_overwrite() && SUMA_filexists(OutName)) {
+         SUMA_S_Err( "Triangle cosines and sines output file exists.\n"
+                     "Will not overwrite.");
+         exit(1);
+      }
+      fout = fopen(OutName,"w");
+      if (!fout) {
+         SUMA_S_Err( "Failed to open file for writing.\n"
+                     "Check your permissions.\n");
+         exit(1);
+      }
+      
+      fprintf (fout,"#Triangle Cosines and Sines.\n");
+      fprintf (fout,"#Col. 0: Triangle index.\n");
+      fprintf (fout,"#Col. 1: cos(angle) at node 1\n");
+      fprintf (fout,"#Col. 2: cos(angle) at node 2\n");
+      fprintf (fout,"#Col. 3: cos(angle) at node 3\n");
+      fprintf (fout,"#Col. 4: sin(angle) at node 1\n");
+      fprintf (fout,"#Col. 5: sin(angle) at node 2\n");
+      fprintf (fout,"#Col. 6: sin(angle) at node 3\n");
+      if (histnote) fprintf (fout,"#History:%s\n", histnote);
+      
+      for (i=0; i<SO->N_FaceSet; ++i) {
+         n1 = SO->FaceSetList[3*i]; 
+         n2 = SO->FaceSetList[3*i+1]; 
+         n3 = SO->FaceSetList[3*i+2];
+         p1 = &(SO->NodeList[3*n1]);
+         p2 = &(SO->NodeList[3*n2]);
+         p3 = &(SO->NodeList[3*n3]);
+         if (!SUMA_TriTrig(p1, p2, p3, s, c, a)) {
+            SUMA_S_Err("Failed in SUMA_TriTrig");
+            exit(1);
+         }
+
+         fprintf (fout,"%d \t%f %f %f \t%f %f %f\n",
+                      i, c[0], c[1], c[2], s[0], s[1], s[2]);
+      }
+   }
+   
    if (Do_cord) {
       sprintf(OutName, "%s.coord.1D.dset", OutPrefix);
-      if (SUMA_filexists(OutName)) {
+      if (!THD_ok_overwrite() && SUMA_filexists(OutName)) {
          SUMA_S_Err("Edge output file exists.\nWill not overwrite.");
          exit(1);
       }
@@ -717,7 +948,7 @@ int main (int argc,char *argv[])
       }
       
       sprintf(OutName, "%s.edges", OutPrefix);
-      if (SUMA_filexists(OutName)) {
+      if (!THD_ok_overwrite() && SUMA_filexists(OutName)) {
          SUMA_S_Err("Edge output file exists.\nWill not overwrite.");
          exit(1);
       }
@@ -766,7 +997,7 @@ int main (int argc,char *argv[])
       }  
       
       sprintf(OutName, "%s.area", OutPrefix);
-      if (SUMA_filexists(OutName)) {
+      if (!THD_ok_overwrite() && SUMA_filexists(OutName)) {
          SUMA_S_Err("Area output file exists.\nWill not overwrite.");
          exit(1);
       }
@@ -798,7 +1029,7 @@ int main (int argc,char *argv[])
       }
       
       sprintf(OutName, "%s.curv.1D.dset", OutPrefix);
-      if (SUMA_filexists(OutName)) {
+      if (!THD_ok_overwrite() && SUMA_filexists(OutName)) {
          SUMA_S_Err("Curvature output file exists.\nWill not overwrite.");
          exit(1);
       }
@@ -837,7 +1068,7 @@ int main (int argc,char *argv[])
       }
       
       sprintf(OutName, "%s.conv.1D.dset", OutPrefix);
-      if (SUMA_filexists(OutName)) {
+      if (!THD_ok_overwrite() && SUMA_filexists(OutName)) {
          SUMA_S_Err("Convexities output file exists.\nWill not overwrite.");
          exit(1);
       }
@@ -895,7 +1126,7 @@ int main (int argc,char *argv[])
       
       if (Do_en) {
          sprintf(OutName, "%s.boundarynodes.1D.dset", OutPrefix);
-         if (SUMA_filexists(OutName)) {
+         if (!THD_ok_overwrite() && SUMA_filexists(OutName)) {
             SUMA_S_Err("Boundarynodes output file exists.\nWill not overwrite.");
             exit(1);
          }
@@ -911,7 +1142,7 @@ int main (int argc,char *argv[])
             ++i;
          }
          sprintf(OutName, "%s.internalnodes.1D.dset", OutPrefix);
-         if (SUMA_filexists(OutName)) {
+         if (!THD_ok_overwrite() && SUMA_filexists(OutName)) {
             SUMA_S_Err("Internalnodes output file exists.\nWill not overwrite.");
             exit(1);
          }
@@ -995,7 +1226,7 @@ int main (int argc,char *argv[])
 
       /* write out the results */
       sprintf(OutName, "%s.closest.1D.dset", OutPrefix);
-      if (SUMA_filexists(OutName)) {
+      if (!THD_ok_overwrite() && SUMA_filexists(OutName)) {
          SUMA_S_Err("Closest nodes output file exists.\nWill not overwrite.");
          exit(1);
       }
@@ -1039,17 +1270,19 @@ int main (int argc,char *argv[])
    
    SUMA_LH("Clean up");
    /* clean up */
-   if (!SUMA_FreeSpecFields(&Spec)) { SUMA_S_Err("Error freeing"); exit(1); }
-
    if (MetricList) SUMA_free(MetricList);
    if (OutPrefix) SUMA_free(OutPrefix);
    if (OutName) SUMA_free(OutName);   
    if (SO) SUMA_Free_Surface_Object(SO);
+   if (!SUMA_FreeSpecFields(pSpec)) {
+      SUMA_S_Err("Failed to free Spec fields");
+   } SUMA_free(pSpec); pSpec = NULL; 
+ 	if (ps) SUMA_FreeGenericArgParse(ps); ps = NULL;
    
    /* dset and its contents are freed in SUMA_Free_CommonFields */
    if (!SUMA_Free_CommonFields(SUMAg_CF)) SUMA_error_message(FuncName,"SUMAg_CF Cleanup Failed!",1);
 
    if (histnote) SUMA_free(histnote);
-   
+    
    SUMA_RETURN(0);
 } /* Main */

@@ -136,7 +136,6 @@ void SC_error (char * message)
   Include source code files.
 */
 
-#include "matrix.c"
 #include "StatClust.c"
 
 
@@ -184,7 +183,7 @@ void SC_Syntax(void)
 
    printf("\n" MASTER_SHORTHELP_STRING ) ;
 
-   exit(0) ;
+   PRINT_COMPILE_DATE ; exit(0) ;
 
 }
 
@@ -589,8 +588,8 @@ THD_3dim_dataset * form_clusters ()
 	      ierror);
       SC_error (message);
     }
-  
-  if (THD_is_file(DSET_HEADNAME(new_dset))) 
+ 
+  if ( THD_deathcon() && THD_is_file(DSET_HEADNAME(new_dset))) 
     {
       sprintf (message,
 	      " Output dataset file %s already exists--cannot continue! ",

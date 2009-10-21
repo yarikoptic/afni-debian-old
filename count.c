@@ -19,7 +19,7 @@ int main( int argc , char *argv[] )
    long int seed = 0;
    static char root[6664] , fmt[128] , suffix[6664] ;
    float sclfac = 0.0 ;
-   int comma=0 ;   /* 18 Jan 2007 */
+   int comma=0 , quiet = 0;   /* 18 Jan 2007 */
    char sep=' ' ;
    int skipn = 0; /* skip numbers that modulus m = n  08 May 2007 */
    int skipm = 0;
@@ -30,45 +30,46 @@ int main( int argc , char *argv[] )
    if( argc < 3 || strncmp(argv[1],"-help",2) == 0 ){
 
      printf(
-     "Usage: count [options] bot top [step]\n"
-     "\n"
-     "* Produces many numbered copies of the root and/or suffix,\n"
-     "    counting from 'bot' to 'top' with stride 'step'.\n"
-     "* If 'bot' > 'top', counts backwards with stride '-step'.\n"
-     "* If step is of the form 'R#', then '#' random counts are produced\n"
-     "    in the range 'bot..top' (inclusive).\n"
-     "* If step is of the form 'S', then a random sequence of unique integers\n"
-     "    in the range 'bot..top' (inclusive) is output.\n"
-     "    A number after S ('S#') indicates the number of unique integers\n"
-     "    to output. If # exceeds the number of unique values, the shuffled\n"
-     "    sequence will simply repeat itself.\n"                  
-     "* 'bot' and 'top' must not be negative; step (#) must be positive.\n"
-     "\n"
-     "Options:\n"
-     "  -seed        seed for random number generator (for S and R above)\n"
-     "  -column      writes output, one number per line\n"
-     "  -digits n    prints numbers with 'n' digits [default=4]\n"
-     "  -root rrr    prints string 'rrr' before the number [default=empty]\n"
-     "  -sep sss     prints string 'sss' between the numbers [default=none]\n"
-     "  -suffix sss  prints string 'sss' after the number [default=empty]\n"
-     "  -scale fff   multiplies each number by the factor 'fff';\n"
-     "                 if this option is used, -digits is ignored and\n"
-     "                 the floating point format '%%g' is used for output.\n"
-     "                 ('fff' can be a floating point number.)\n"
-     "  -comma       put commas between the outputs, instead of spaces\n"
-     "  -skipnmodm n m   skip over numbers with a modulus of n with m\n"
-     "                  -skipnmodm 15 16 would skip 15, 31, 47, ...\n"
-     "               not valid with random number sequence options\n"
-     "\n"
-     "The main application of this program is for use in C shell programming:\n"
-     "  foreach fred ( `count 1 20` )\n"
-     "     mv wilma.${fred} barney.${fred}\n"
-     "  end\n"
-     "The backward quote operator in the foreach statement executes the\n"
-     "count program, captures its output, and puts it on the command line.\n"
-     "The loop body renames each file wilma.0001 to wilma.0020 to barney.0001\n"
-     "to barney.0020.  Read the man page for csh to get more information.  In\n"
-     "particular, the csh built-in command '@' can be useful.\n"
+"Usage: count [options] bot top [step]\n"
+"\n"
+"* Produces many numbered copies of the root and/or suffix,\n"
+"    counting from 'bot' to 'top' with stride 'step'.\n"
+"* If 'bot' > 'top', counts backwards with stride '-step'.\n"
+"* If step is of the form 'R#', then '#' random counts are produced\n"
+"    in the range 'bot..top' (inclusive).\n"
+"* If step is of the form 'S', then a random sequence of unique integers\n"
+"    in the range 'bot..top' (inclusive) is output.\n"
+"    A number after S ('S#') indicates the number of unique integers\n"
+"    to output. If # exceeds the number of unique values, the shuffled\n"
+"    sequence will simply repeat itself.\n"                  
+"* 'bot' and 'top' must not be negative; step (#) must be positive.\n"
+"\n"
+"Options:\n"
+"  -seed        seed number for random number generator (for S and R above)\n"
+"  -sseed       seed string for random number generator (for S and R above)\n"
+"  -column      writes output, one number per line\n"
+"  -digits n    prints numbers with 'n' digits [default=4]\n"
+"  -root rrr    prints string 'rrr' before the number [default=empty]\n"
+"  -sep sss     prints string 'sss' between the numbers [default=none]\n"
+"  -suffix sss  prints string 'sss' after the number [default=empty]\n"
+"  -scale fff   multiplies each number by the factor 'fff';\n"
+"                 if this option is used, -digits is ignored and\n"
+"                 the floating point format '%%g' is used for output.\n"
+"                 ('fff' can be a floating point number.)\n"
+"  -comma       put commas between the outputs, instead of spaces\n"
+"  -skipnmodm n m   skip over numbers with a modulus of n with m\n"
+"                  -skipnmodm 15 16 would skip 15, 31, 47, ...\n"
+"               not valid with random number sequence options\n"
+"\n"
+"The main application of this program is for use in C shell programming:\n"
+"  foreach fred ( `count 1 20` )\n"
+"     mv wilma.${fred} barney.${fred}\n"
+"  end\n"
+"The backward quote operator in the foreach statement executes the\n"
+"count program, captures its output, and puts it on the command line.\n"
+"The loop body renames each file wilma.0001 to wilma.0020 to barney.0001\n"
+"to barney.0020.  Read the man page for csh to get more information.  In\n"
+"particular, the csh built-in command '@' can be useful.\n"
      ) ;
 
      exit(0) ;
@@ -82,6 +83,7 @@ int main( int argc , char *argv[] )
    col = 0;
    rando_count = 0;
    seed = 0;
+   quiet = 0;
    do {
 
    /*** switches ***/
@@ -95,11 +97,26 @@ int main( int argc , char *argv[] )
          continue ;
       }
       
+      if( strncmp(argv[narg],"-quiet",5) == 0 ){
+         quiet = 1 ;
+         continue ;
+      }
       if( strncmp(argv[narg],"-seed",5) == 0 ){
          seed = strtol( argv[++narg] , NULL , 10 ) ;
          continue ;
       }
-
+      if( strncmp(argv[narg],"-sseed",5) == 0 ){
+         char *sseed=NULL;
+         int kk;
+         if (narg+1>= argc) { 
+            fprintf(stderr,"Error: Need argument after -sseed\n");
+            exit(1);
+         }
+         sseed=argv[++narg];
+         for (kk=0;kk<strlen(sseed);++kk) 
+            seed += (int)(sseed[kk]) ;
+         continue ;
+      }
       if( strncmp(argv[narg],"-root",5) == 0 ){
          strcpy(root,argv[++narg]) ;
          continue ;
@@ -252,9 +269,12 @@ int main( int argc , char *argv[] )
       if (top < bot) nmax = bot-top+1;
       else nmax = top-bot+1;
       if (rando_num == -1) rando_num = nmax;
-      if (nmax < rando_num) {
-         fprintf(stderr,"Warning: requested %d numbers in a shuffled sequence of %d unique values.\n"
-                        "         Sequence will repeat until %d values are output.\n", rando_num, nmax, rando_num);
+      if (!quiet && nmax < rando_num) {
+         fprintf(stderr,
+            "Warning: "
+            "requested %d numbers in a shuffled sequence of %d unique values.\n"
+            "         Sequence will repeat until %d values are output.\n",
+            rando_num, nmax, rando_num);
       }
       if (ir) {
          for( ii=0 ; ii < rando_num ; ii++ ){

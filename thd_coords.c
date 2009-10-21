@@ -7,6 +7,11 @@
 #include "mrilib.h"
 #include "thd.h"
 
+static int oblique_report_index = 0;
+static int oblique_report_repeat = 20;
+static int oblique_report_repeat2 = 100;
+static int first_oblique = 1;
+
 /*====================================================================
    3D coordinate conversion routines;
      tags for coordinate systems:
@@ -541,4 +546,116 @@ void THD_dicom_card_xform (THD_3dim_dataset * dset ,
    }
    
    return  ;
+}
+
+#define MAXNUM(a,b) ( (a) > (b) ? (a):(b))
+#define MAX3(a,b,c) ( (MAXNUM(a,b)) > (MAXNUM(a,c)) ? (MAXNUM(a,b)):(MAXNUM(a,c)))
+#define MINNUM(a,b) ( (a) < (b) ? (a):(b))
+#define MIN3(a,b,c) ( (MINNUM(a,b)) < (MINNUM(a,c)) ? (MINNUM(a,b)):(MINNUM(a,c)))
+
+/* compute angle of greatest obliquity given transformation matrix */
+
+float THD_compute_oblique_angle(mat44 ijk_to_dicom44, int verbose)
+{
+   float dxtmp, dytmp, dztmp ;
+   float xmax, ymax, zmax ;
+   float fig_merit, ang_merit ;
+
+
+   dxtmp = sqrt ( ijk_to_dicom44.m[0][0] * ijk_to_dicom44.m[0][0] +
+                  ijk_to_dicom44.m[1][0] * ijk_to_dicom44.m[1][0] +
+                  ijk_to_dicom44.m[2][0] * ijk_to_dicom44.m[2][0] ) ;
+
+   xmax = MAX3(fabs(ijk_to_dicom44.m[0][0]),fabs(ijk_to_dicom44.m[1][0]),fabs(ijk_to_dicom44.m[2][0])) / dxtmp ;
+
+   dytmp = sqrt ( ijk_to_dicom44.m[0][1] * ijk_to_dicom44.m[0][1] +
+                  ijk_to_dicom44.m[1][1] * ijk_to_dicom44.m[1][1] +
+                  ijk_to_dicom44.m[2][1] * ijk_to_dicom44.m[2][1] ) ;
+
+   ymax = MAX3(fabs(ijk_to_dicom44.m[0][1]),
+               fabs(ijk_to_dicom44.m[1][1]),
+               fabs(ijk_to_dicom44.m[2][1])) / dytmp ;
+
+   dztmp = sqrt ( ijk_to_dicom44.m[0][2] * ijk_to_dicom44.m[0][2] +
+                  ijk_to_dicom44.m[1][2] * ijk_to_dicom44.m[1][2] +
+                  ijk_to_dicom44.m[2][2] * ijk_to_dicom44.m[2][2] ) ;
+
+   zmax = MAX3(fabs(ijk_to_dicom44.m[0][2]),
+               fabs(ijk_to_dicom44.m[1][2]),
+               fabs(ijk_to_dicom44.m[2][2])) / dztmp ;
+
+   fig_merit = MIN3(xmax,ymax,zmax) ;
+   ang_merit = acos (fig_merit) * 180.0 / 3.141592653 ;
+
+   if (fabs(ang_merit) > .01) {
+     if ( verbose ) INFO_message("%f degrees from plumb.\n",ang_merit ) ;
+   }
+   else 
+      ang_merit = 0.0;
+   return(ang_merit);
+}
+
+void THD_report_obliquity(THD_3dim_dataset *dset)
+{
+   double angle;
+
+   if( !ISVALID_DSET(dset) || oblique_report_repeat==0 ) return;
+
+   angle = THD_compute_oblique_angle(dset->daxes->ijk_to_dicom_real, 0);
+   if(angle == 0.0) return;
+
+   if(oblique_report_index<oblique_report_repeat) {
+      if(first_oblique) {
+         WARNING_message(
+         "  If you are performing spatial transformations on an oblique dset, \n"
+         "  such as %s,\n"
+         "  or viewing/combining it with volumes of differing obliquity,\n"
+         "  you should consider running: \n"
+         "     3dWarp -deoblique \n"
+         "  on this and  other oblique datasets in the same session.\n"
+         " See 3dWarp -help for details.\n", DSET_BRIKNAME(dset));
+         first_oblique = 0;
+      }
+
+      INFO_message("Oblique dataset:%s is %f degrees from plumb.\n",
+        DSET_BRIKNAME(dset), angle  ) ;
+      
+   }
+
+
+   oblique_report_index++;
+
+   if(oblique_report_repeat2==-1) {   /* report obliquity n times, stop */
+      if(oblique_report_index>oblique_report_repeat) 
+         oblique_report_index = oblique_report_repeat;
+      return;
+   }
+
+   /* reset counter if needed*/
+   if(oblique_report_index>=(oblique_report_repeat+oblique_report_repeat2))
+      oblique_report_index = 0;
+
+}
+
+/* set the number of times to report obliquity and 
+   the number of oblique datasets to skip.
+   If the first number is 0, don't report at all.
+   If the second number is 0 (and the first number is not), always report.
+   If the second number is -1, stop reporting after reporting the first n1
+ */
+void THD_set_oblique_report(int n1, int n2)
+{
+   oblique_report_repeat = n1;
+   oblique_report_repeat2 = n2;
+}
+
+
+int THD_get_oblique_report()
+{
+   return(oblique_report_repeat);
+}
+
+void THD_reset_oblique_report_index()
+{
+   oblique_report_index = 0;
 }

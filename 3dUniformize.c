@@ -68,7 +68,6 @@ typedef struct UN_options
   Include source code files.
 */
 
-#include "matrix.c"
 #include "estpdf3.c"
 
 
@@ -126,7 +125,7 @@ void display_help_menu()
       );
 
   printf("\n" MASTER_SHORTHELP_STRING ) ;
-  exit(0);
+  PRINT_COMPILE_DATE ; exit(0);
 }
 
 
@@ -393,8 +392,8 @@ void check_one_output_file
 	       ierror);
       UN_error (message);
     }
-  
-  if( THD_is_file(new_dset->dblk->diskptr->header_name) )
+ 
+  if( THD_deathcon() && THD_is_file(new_dset->dblk->diskptr->header_name) )
     {
       sprintf (message,
 	       "Output dataset file %s already exists"
@@ -438,7 +437,7 @@ void verify_inputs
   }
 
 
-  if( THD_is_file(option_data->new_dset->dblk->diskptr->header_name) ){
+  if( THD_deathcon() && THD_is_file(option_data->new_dset->dblk->diskptr->header_name) ){
     fprintf(stderr,
 	    "*** Output dataset file %s already exists--cannot continue!\a\n",
 	    option_data->new_dset->dblk->diskptr->header_name ) ;

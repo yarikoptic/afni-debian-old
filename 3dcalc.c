@@ -11,10 +11,10 @@ This program is revised for 3D+time data calculation,
 Added ability to use a 1D time series file as a "dataset" -- see TS variables.
   [RW Cox, April 1998]
 
-Added ability to operate on 3D bucket datasets -- see ALLOW_BUCKETS macro.
+Added ability to operate on 3D bucket datasets.
   [RW Cox, April 1998]
 
-Added ability to use sub-brick selectors on input datasets -- see ALLOW_SUBV macro.
+Added ability to use sub-brick selectors on input datasets.
   [RW Cox, Jan 1999]
 
 Modified output to scale each sub-brick to shorts/bytes separately
@@ -31,9 +31,6 @@ Added the _dshift stuff.
 Modified help menu
   [P Christidis, July 2005]
 ----------------------------------------------------------------------------*/
-
-#define ALLOW_BUCKETS
-#define ALLOW_SUBV
 
 #include "mrilib.h"
 #include "parser.h"
@@ -56,6 +53,16 @@ static int                CALC_nscale = 0 ;  /* 15 Jun 2000 */
 static int                CALC_histpar = -1; /* 22 Nov 1999 */
 
 static int                CALC_usetemp = 0 ; /* 18 Oct 2005 */
+
+#undef  ALLOW_FDR  /* this was purely experimental */
+#ifdef  ALLOW_FDR
+static int                CALC_fdrize  = 0 ; /* 17 Jan 2008 */
+#endif
+
+#define ALLOW_SORT /* this is not experimental, but is pretty useless */
+#ifdef  ALLOW_SORT
+static int                CALC_sort    = 0 ; /* 22 Jan 2008 */
+#endif
 
 /*---------- dshift stuff [22 Nov 1999] ----------*/
 
@@ -242,6 +249,25 @@ void CALC_read_opts( int argc , char * argv[] )
         continue ;
       }
 
+#ifdef ALLOW_FDR
+      /**** -fdrize ****/  /* [[ not in -help at this time !! ]] */
+
+      if( strcasecmp(argv[nopt],"-fdrize") == 0 ){  /* 17 Jan 2008 */
+        CALC_fdrize++ ; CALC_datum = MRI_float ; nopt++ ; continue ;
+      }
+#endif
+
+#ifdef ALLOW_SORT
+      /**** -sort ****/
+
+      if( strcmp(argv[nopt],"-sort") == 0 ){  /* 22 Jan 2008 */
+        CALC_sort = 1 ; nopt++ ; continue ;
+      }
+      if( strcmp(argv[nopt],"-SORT") == 0 ){
+        CALC_sort = -1 ; nopt++ ; continue ;
+      }
+#endif
+
       /**** -cx2r code [10 Mar 2006] ***/
 
       if( strncasecmp(argv[nopt],"-cx2r",5) == 0 ){
@@ -313,6 +339,18 @@ void CALC_read_opts( int argc , char * argv[] )
          nopt++ ; continue ;  /* go to next arg */
       }
 
+      /**** -float and -short and -byte [22 Jan 2008] ****/
+
+      if( strcasecmp(argv[nopt],"-float") == 0 ){
+        CALC_datum = MRI_float ; nopt++ ; continue ;
+      }
+      if( strcasecmp(argv[nopt],"-short") == 0 ){
+        CALC_datum = MRI_short ; nopt++ ; continue ;
+      }
+      if( strcasecmp(argv[nopt],"-byte") == 0 ){
+        CALC_datum = MRI_byte ; nopt++ ; continue ;
+      }
+
       /**** -datum type ****/
 
       if( strncasecmp(argv[nopt],"-datum",6) == 0 ){
@@ -374,7 +412,6 @@ void CALC_read_opts( int argc , char * argv[] )
          MCW_strncpy( CALC_output_prefix , argv[nopt++] , THD_MAX_PREFIX ) ;
          continue ;
       }
-
       /**** -session directory ****/
 
       if( strncasecmp(argv[nopt],"-session",6) == 0 ){
@@ -557,16 +594,8 @@ void CALC_read_opts( int argc , char * argv[] )
 
          /*-- meanwhile, back at the "normal" dataset opening ranch --*/
 
-#ifndef ALLOW_SUBV
-         dset = THD_open_one_dataset( argv[nopt++] ) ;
-         if( dset == NULL )
-           ERROR_exit("can't open dataset %s\n",argv[nopt-1]) ;
-         if( isub >= DSET_NVALS(dset) )
-           ERROR_exit("dataset %s only has %d sub-bricks\n",
-                      argv[nopt-1],DSET_NVALS(dset)) ;
-#else
          { char dname[512] ;                               /* 02 Nov 1999 */
-           char * fname = argv[nopt];           /* 8 May 2007 [rickr,dglen] */
+           char *fname = argv[nopt];          /* 8 May 2007 [rickr,dglen] */
 
            if( ids > 2 ){                                  /* mangle name */
               if( strstr(argv[nopt],"[") != NULL ){
@@ -585,15 +614,10 @@ void CALC_read_opts( int argc , char * argv[] )
            if( dset == NULL )
               ERROR_exit("can't open dataset %s\n",fname) ;
          }
-#endif
 
          /* set some parameters based on the dataset */
 
-#ifdef ALLOW_BUCKETS
          ntime[ival] = DSET_NVALS(dset) ;
-#else
-         ntime[ival] = DSET_NUM_TIMES(dset);
-#endif
          if ( ids > 2 ) ntime[ival] = 1 ;
          ntime_max = MAX( ntime_max, ntime[ival] );
 
@@ -742,8 +766,14 @@ DSET_DONE: continue;  /*** target for various goto statements above ***/
      ERROR_exit("-gscale and -usetemp are incompatible!") ;
 
    for( ids=0 ; ids < 26 ; ids++ ) if( CALC_dset[ids] != NULL ) break ;
-   if( ids == 26 )
-     ERROR_exit("No actual input datasets given!\n") ;
+   if( ids == 26 ){
+     for( ids=0 ; ids < 26 ; ids++ ) if( TS_flim[ids] != NULL ) break ;
+     if( ids < 26 )
+       ERROR_exit("No actual input datasets given! "
+                  "Use '1deval' for .1D file calculations.");
+     else
+       ERROR_exit("No actual input datasets given!") ;
+   }
 
    /* 22 Feb 2005: check IJKAR inputs against 1st dataset found */
 
@@ -770,11 +800,7 @@ DSET_DONE: continue;  /*** target for various goto statements above ***/
 
    for (ids=0; ids < 26; ids ++)
       if (ntime[ids] > 1 && ntime[ids] != ntime_max ) {
-#ifdef ALLOW_BUCKETS
           ERROR_exit("Multi-brick datasets don't match!\n") ;
-#else
-          ERROR_exit("3D+time datasets don't match!\n") ;
-#endif
       }
 
    /* 17 Apr 1998: if all input datasets are 3D only (no time),
@@ -837,7 +863,7 @@ void CALC_Syntax(void)
     "3dcalc - AFNI's calculator program                                      \n"
     "                                                                        \n"
     "     This program does voxel-by-voxel arithmetic on 3D datasets         \n"
-    "     (limited to inter-voxel computation).                              \n"
+    "     (only limited inter-voxel computations are possible).              \n"
     "                                                                        \n"
     "     The program assumes that the voxel-by-voxel computations are being \n"
     "     performed on datasets that occupy the same space and have the same \n"
@@ -856,6 +882,9 @@ void CALC_Syntax(void)
     "                                                                        \n"
     "     3dcalc -a fred+tlrc -b ethel+tlrc -c lucy+tlrc \\                  \n"
     "            -expr '(a+b+c)/3' -prefix subjects_mean                     \n"
+    "                                                                        \n"
+    "   Averaging datasets can also be done by programs 3dMean and 3dmerge.  \n"
+    "   Use 3dTstat to averaging across sub-bricks in a single dataset.      \n"
     "                                                                        \n"
     "2. Perform arithmetic calculations between the sub-bricks of a single   \n"
     "   dataset by noting the sub-brick number on the command line:          \n"
@@ -890,10 +919,14 @@ void CALC_Syntax(void)
     "            -expr 'step(a-4.2)*step(b-2.9)*step(c-3.1)'              \\ \n"
     "            -prefix compound_mask                                       \n"
     "                                                                        \n"
+    "   In this example, all 3 statistical criteria must be met at once for  \n"
+    "   a voxel to be selected (value of 1) in this mask.                    \n"
+    "                                                                        \n"
     "6. Same as example #5, but this time create a mask of 8 different values\n"
     "   showing all combinations of activations (i.e., not only where        \n"
     "   everything is active, but also each stimulus individually, and all   \n"
     "   combinations).  The output mask dataset labels voxel values as such: \n"
+    "                                                                        \n"
     "        0 = none active    1 = A only active    2 = B only active       \n"
     "        3 = A and B only   4 = C only active    5 = A and C only        \n"
     "        6 = B and C only   7 = all A, B, and C active                   \n"
@@ -901,6 +934,9 @@ void CALC_Syntax(void)
     "     3dcalc -a 'func+orig[12]' -b 'func+orig[15]' -c 'func+orig[18]' \\ \n"
     "            -expr 'step(a-4.2)+2*step(b-2.9)+4*step(c-3.1)'          \\ \n"
     "            -prefix mask_8                                              \n"
+    "                                                                        \n"
+    "   In displaying such a binary-encoded mask in AFNI, you would probably \n"
+    "   set the color display to have 8 discrete levels (the '#' menu).      \n"
     "                                                                        \n"
     "7. Create a region-of-interest mask comprised of a 3-dimensional sphere.\n"
     "   Values within the ROI sphere will be labeled as '1' while values     \n"
@@ -914,48 +950,57 @@ void CALC_Syntax(void)
     "            -expr 'step(9-(x-20)*(x-20)-(y-30)*(y-30)-(z-70)*(z-70))' \\\n"
     "            -prefix ball                                                \n"
     "                                                                        \n"
-    " 8. Some datsets are 'short' (16 bit) integers with a scalar attached,  \n"
-    "    which allow them to be smaller than float datasets and to contain   \n"
-    "    fractional values.                                                  \n"
+    "   The spatial meaning of (x,y,z) is discussed in the 'COORDINATES'     \n"
+    "   section of this help listing (far below).                            \n"
     "                                                                        \n"
-    "    Dataset 'a' is always used as a template for the output dataset. For\n"
-    "    the examples below, assume that datasets d1+orig and d2+orig consist\n"
-    "    of small integers.                                                  \n"
+    "8. Some datsets are 'short' (16 bit) integers with a scalar attached,   \n"
+    "   which allow them to be smaller than float datasets and to contain    \n"
+    "   fractional values.                                                   \n"
     "                                                                        \n"
-    "    a) When dividing 'a' by 'b', the result should be scaled, so that a \n"
-    "       value of 2.4 is not truncated to '2'. To avoid this truncation,  \n"
-    "       force scaling with the -fscale option:                           \n"
+    "   Dataset 'a' is always used as a template for the output dataset. For \n"
+    "   the examples below, assume that datasets d1+orig and d2+orig consist \n"
+    "   of small integers.                                                   \n"
     "                                                                        \n"
-    "          3dcalc -a d1+orig -b d2+orig -expr 'a/b' -prefix quot -fscale \n"
+    "   a) When dividing 'a' by 'b', the result should be scaled, so that a  \n"
+    "      value of 2.4 is not truncated to '2'. To avoid this truncation,   \n"
+    "      force scaling with the -fscale option:                            \n"
     "                                                                        \n"
-    "    b) If it is preferable that the result is of type 'float', then set \n"
-    "       the output data type (datum) to float:                           \n"
+    "        3dcalc -a d1+orig -b d2+orig -expr 'a/b' -prefix quot -fscale   \n"
     "                                                                        \n"
-    "          3dcalc -a d1+orig -b d2+orig -expr 'a/b' -prefix quot \\      \n"
-    "                 -datum float                                           \n"
+    "   b) If it is preferable that the result is of type 'float', then set  \n"
+    "      the output data type (datum) to float:                            \n"
     "                                                                        \n"
-    "    c) Perhaps an integral division is desired, so that 9/4=2, not 2.24.\n"
-    "       Force the results not to be scaled (opposite of example 8b) using\n"
-    "       the -nscale option:                                              \n"
+    "        3dcalc -a d1+orig -b d2+orig -expr 'a/b' -prefix quot \\        \n"
+    "                -datum float                                            \n"
     "                                                                        \n"
-    "          3dcalc -a d1+orig -b d2+orig -expr 'a/b' -prefix quot -nscale \n"
+    "   c) Perhaps an integral division is desired, so that 9/4=2, not 2.24. \n"
+    "      Force the results not to be scaled (opposite of example 8a) using \n"
+    "      the -nscale option:                                               \n"
     "                                                                        \n"
-    " 9. Compare the left and right amygdala between the Talairach atlas,    \n"
-    "    and the CA_N27_ML atlas.  The result will be 1 if TT only, 2 if CA  \n"
-    "    only, and 3 where they overlap.\n"
+    "        3dcalc -a d1+orig -b d2+orig -expr 'a/b' -prefix quot -nscale   \n"
     "                                                                        \n"
-    "          3dcalc -a 'TT_Daemon::amygdala' -b 'CA_N27_ML::amygdala' \\   \n"
-    "                 -expr 'step(a)+2*step(b)'  -prefix compare.maps        \n"
+    "9. Compare the left and right amygdala between the Talairach atlas,     \n"
+    "   and the CA_N27_ML atlas.  The result will be 1 if TT only, 2 if CA   \n"
+    "   only, and 3 where they overlap.                                      \n"
     "                                                                        \n"
-    "          (see 'whereami -help' for more information on atlases)        \n"
+    "     3dcalc -a 'TT_Daemon::amygdala' -b 'CA_N27_ML::amygdala' \\        \n"
+    "            -expr 'step(a)+2*step(b)'  -prefix compare.maps             \n"
+    "                                                                        \n"
+    "   (see 'whereami -help' for more information on atlases)               \n"
+    "                                                                        \n"
+    "10. Convert a dataset from AFNI short format storage to NIfTI-1 floating\n"
+    "    point (perhaps for input to an non-AFNI program that requires this):\n"
+    "                                                                        \n"
+    "      3dcalc -a zork+orig -prefix zfloat.nii -datum float -expr 'a'     \n"
+    "                                                                        \n"
+    "    This operation could also be performed with program 3dAFNItoNIFTI.  \n"
     "                                                                        \n"
     "------------------------------------------------------------------------\n"
-    "                                                                        \n"
     "ARGUMENTS for 3dcalc (must be included on command line):                \n"
     "---------                                                               \n"
     "                                                                        \n"
     " -a dname    = Read dataset 'dname' and call the voxel values 'a' in the\n"
-    "               expression (-expr) that is input below. Up to 24 dnames  \n"
+    "               expression (-expr) that is input below. Up to 26 dnames  \n"
     "               (-a, -b, -c, ... -z) can be included in a single 3dcalc  \n"
     "               calculation/expression.                                  \n"
     "               ** If some letter name is used in the expression, but    \n"
@@ -967,10 +1012,39 @@ void CALC_Syntax(void)
     "                     E.g., '-b3 dname' specifies that the variable 'b'  \n"
     "                     refers to sub-brick '3' of that dataset            \n"
     "                     (indexes in AFNI start at 0).                      \n"
+    "               ** However, it is better to use the subscript '[]' method\n"
+    "                  to select sub-bricks of datasets, as in               \n"
+    "                     -b dname+orig'[3]'                                 \n"
+    "                  rather than the older notation                        \n"
+    "                     -b3 dname+orig                                     \n"
+    "                  The subscript notation is more flexible, as it can    \n"
+    "                  be used to select a collection of sub-bricks.         \n"
     "                                                                        \n"
     " -expr       = Apply the expression - within quotes - to the input      \n"
     "               datasets (dnames), one voxel at time, to produce the     \n"
     "               output dataset.                                          \n"
+    "                                                                        \n"
+    " NOTE: If you want to average or sum up a lot of datasets, programs     \n"
+    "       3dTstat and/or 3dMean and/or 3dmerge are better suited for these \n"
+    "       purposes.  A common request is to increase the number of input   \n"
+    "       datasets beyond 26, but in almost all cases such users simply    \n"
+    "       want to do simple addition!                                      \n"
+    "                                                                        \n"
+    " NOTE: If you want to include shell variables in the expression (or in  \n"
+    "       the dataset sub-brick selection), then you should use double     \n"
+    "       \"quotes\" and the '$' notation for the shell variables; this    \n"
+    "       example uses csh notation to set the shell variable 'z':         \n"
+    "                                                                        \n"
+    "         set z = 3.5                                                    \n"
+    "         3dcalc -a moose.nii -prefix goose.nii -expr \"a*$z\"           \n"
+    "                                                                        \n"
+    "       The shell will not expand variables inside single 'quotes',      \n"
+    "       and 3dcalc's parser will not understand the '$' character.       \n"
+    "                                                                        \n"
+    " NOTE: You can use the ccalc program to play with the expression        \n"
+    "       evaluator, in order to get a feel for how it works and           \n"
+    "       what it accepts.                                                 \n"
+    "                                                                        \n"
     "------------------------------------------------------------------------\n"
    ) ;
    printf(
@@ -983,6 +1057,9 @@ void CALC_Syntax(void)
     "  -datum type= Coerce the output data to be stored as the given type,   \n"
     "               which may be byte, short, or float.                      \n"
     "               [default = datum of first input dataset]                 \n"
+    "  -float }                                                              \n"
+    "  -short }   = Alternative options to specify output data format.       \n"
+    "  -byte  }                                                              \n"
     "                                                                        \n"
     "  -fscale    = Force scaling of the output to the maximum integer       \n"
     "               range. This only has effect if the output datum is byte  \n"
@@ -1009,13 +1086,8 @@ void CALC_Syntax(void)
     "  -nscale    = Don't do any scaling on output to byte or short datasets.\n"
     "               This may be especially useful when operating on mask     \n"
     "               datasets whose output values are only 0's and 1's.       \n"
-#ifndef ALLOW_SUBV
-    "               ** The type and number of sub-bricks in a dataset can be \n"
-    "                  printed out using the '3dinfo' program.               \n"
-#else
     "               ** Another way to achieve the effect of '-b3' is described\n"
     "                  below in the dataset 'INPUT' specification section.   \n"
-#endif
     "                                                                        \n"
     "  -prefix pname = Use 'pname' for the output dataset prefix name.       \n"
     "                  [default='calc']                                      \n"
@@ -1085,6 +1157,15 @@ void CALC_Syntax(void)
     "                    of the input dataset and variable 'b' to the        \n"
     "                    imaginary part of the input dataset.                \n"
     "                * 3dcalc cannot be used to CREATE a complex dataset!    \n"
+    "                    [See program 3dTwotoComplex for that purpose.]      \n"
+#ifdef ALLOW_SORT
+    "                                                                        \n"
+    "  -sort         = Sort each output brick separately, before output:     \n"
+    "  -SORT           'sort' ==> increasing order, 'SORT' ==> decreasing.   \n"
+    "                  [This is useful only under unusual circumstances!]    \n"
+    "                  [Sorting is done in spatial indexes, not in time.]    \n"
+    "                  [Program 3dTsort will sort voxels along time axis]    \n"
+#endif
     "                                                                        \n"
     "------------------------------------------------------------------------\n"
     "DATASET TYPES:                                                          \n"
@@ -1126,15 +1207,12 @@ void CALC_Syntax(void)
     " treated as if the particular brick being used has the same value at each\n"
     " point in time.                                                         \n"
     "                                                                        \n"
-#ifdef ALLOW_BUCKETS
     " Multi-brick 'bucket' datasets may also be used.  Note that if multi-brick\n"
     " (bucket or 3D+time) datasets are used, the lowest letter dataset will  \n"
     " serve as the template for the output; that is, '-b fred+tlrc' takes    \n"
     " precedence over '-c wilma+tlrc'.  (The program 3drefit can be used to  \n"
     " alter the .HEAD parameters of the output dataset, if desired.)         \n"
-#endif
 
-#ifdef ALLOW_SUBV
     "                                                                        \n"
     "------------------------------------------------------------------------\n"
     MASTER_HELP_STRING
@@ -1144,7 +1222,6 @@ void CALC_Syntax(void)
     "            with sub-brick selection of the form                        \n"
     "               -b  'bambam+orig[3]'  (the new method)                   \n"
     "            If you try, the Doom of Mandos will fall upon you!          \n"
-#endif
     "                                                                        \n"
     "------------------------------------------------------------------------\n"
     "1D TIME SERIES:                                                         \n"
@@ -1177,6 +1254,9 @@ void CALC_Syntax(void)
     " for more details on these.  Note that if multiple timeseries or 3D+time\n"
     " or 3D bucket datasets are input, they must all have the same number of \n"
     " points along the 'time' dimension.                                     \n"
+    "                                                                        \n"
+    " N.B.: To perform calculations ONLY on .1D files, use program 1deval.   \n"
+    "       3dcalc takes .1D files for use in combination with 3D datasets!  \n"
     "                                                                        \n"
     "------------------------------------------------------------------------\n"
     "'1D:' INPUT:                                                            \n"
@@ -1325,123 +1405,31 @@ void CALC_Syntax(void)
     " * Differential subscripts slow the program down even more.\n"
     "\n"
     "------------------------------------------------------------------------\n"
+   ) ;
+
+   printf(
     "EXPRESSIONS:\n"
     "----------- \n"
     "\n"
-    " Arithmetic expressions are allowed, using + - * / ** and parentheses.\n"
     " As noted above, datasets are referred to by single letter variable names.\n"
-    " At this time, C relational, boolean, and conditional expressions are\n"
-    " NOT implemented.  Built in functions include:\n"
+    PARSER_HELP_STRING 
+    "** If you modify a statistical sub-brick, you may want to use program\n"
+    "  '3drefit' to modify the dataset statistical auxiliary parameters.\n"
     "\n"
-    "    sin  , cos  , tan  , asin  , acos  , atan  , atan2,       \n"
-    "    sinh , cosh , tanh , asinh , acosh , atanh , exp  ,       \n"
-    "    log  , log10, abs  , int   , sqrt  , max   , min  ,       \n"
-    "    J0   , J1   , Y0   , Y1    , erf   , erfc  , qginv, qg ,  \n"
-    "    rect , step , astep, bool  , and   , or    , mofn ,       \n"
-    "    sind , cosd , tand , median, lmode , hmode , mad  ,       \n"
-    "    gran , uran , iran , eran  , lran  , orstat,              \n"
-    "    mean , stdev, sem  , Pleg\n"
+    "** Computations are carried out in double precision before being\n"
+    "   truncated to the final output 'datum'.\n"
     "\n"
-    " where:\n"
-    " * qg(x)    = reversed cdf of a standard normal distribution\n"
-    " * qginv(x) = inverse function to qg\n"
-    " * min, max, atan2 each take 2 arguments ONLY\n"
-    " * J0, J1, Y0, Y1 are Bessel functions (see Watson)\n"
-    " * Pleg(m,x) is the m'th Legendre polynomial evaluated at x\n"
-    " * erf, erfc are the error and complementary error functions\n"
-    " * sind, cosd, tand take arguments in degrees (vs. radians)\n"
-    " * median(a,b,c,...) computes the median of its arguments\n"
-    " * mad(a,b,c,...) computes the MAD of its arguments\n"
-    " * mean(a,b,c,...) computes the mean of its arguments\n"
-    " * stdev(a,b,c,...) computes the standard deviation of its arguments\n"
-    " * sem(a,b,c,...) computes the standard error of the mean of its arguments,\n"
-    "                  where sem(n arguments) = stdev(same)/sqrt(n)\n"
-    " * orstat(n,a,b,c,...) computes the n-th order statistic of\n"
-    "    {a,b,c,...} - that is, the n-th value in size, starting\n"
-    "    at the bottom (e.g., orstat(1,a,b,c) is the minimum)\n"
-    " * lmode(a,b,c,...) and hmode(a,b,c,...) compute the mode\n"
-    "    of their arguments - lmode breaks ties by choosing the\n"
-    "    smallest value with the maximal count, hmode breaks ties by\n"
-    "    choosing the largest value with the maximal count\n"
-    "    [median,lmode,hmode take a variable number of arguments]\n"
-    " * gran(m,s) returns a Gaussian deviate with mean=m, stdev=s\n"
-    " * uran(r)   returns a uniform deviate in the range [0,r]\n"
-    " * iran(t)   returns a random integer in the range [0..t]\n"
-    " * eran(s)   returns an exponentially distributed deviate\n"
-    " * lran(t)   returns a logistically distributed deviate\n"
+    "** Note that the quotes around the expression are needed so the shell\n"
+    "   doesn't try to expand * characters, or interpret parentheses.\n"
     "\n"
-    " You may use the symbol 'PI' to refer to the constant of that name.\n"
-    " This is the only 2 letter symbol defined; all input files are\n"
-    " referred to by 1 letter symbols.  The case of the expression is\n"
-    " ignored (in fact, it is converted to uppercase as the first step\n"
-    " in the parsing algorithm).\n"
-    "\n"
-    " The following functions are designed to help implement logical\n"
-    " functions, such as masking of 3D volumes against some criterion:\n"
-    "       step(x)    = {1 if x>0        , 0 if x<=0},\n"
-    "       astep(x,y) = {1 if abs(x) > y , 0 otherwise} = step(abs(x)-y)\n"
-    "       rect(x)    = {1 if abs(x)<=0.5, 0 if abs(x)>0.5},\n"
-    "       bool(x)    = {1 if x != 0.0   , 0 if x == 0.0},\n"
-    "    notzero(x)    = bool(x),\n"
-    "     iszero(x)    = 1-bool(x) = { 0 if x != 0.0, 1 if x == 0.0 },\n"
-    "     equals(x,y)  = 1-bool(x-y) = { 1 if x == y , 0 if x != y },\n"
-    "   ispositive(x)  = { 1 if x > 0; 0 if x <= 0 },\n"
-    "   isnegative(x)  = { 1 if x < 0; 0 if x >= 0 },\n"
-    "   and(a,b,...,c) = {1 if all arguments are nonzero, 0 if any are zero}\n"
-    "    or(a,b,...,c) = {1 if any arguments are nonzero, 0 if all are zero}\n"
-    "  mofn(m,a,...,c) = {1 if at least 'm' arguments are nonzero, 0 otherwise}\n"
-    "  argmax(a,b,...) = index of largest argument; = 0 if all args are 0\n"
-    "  argnum(a,b,...) = number of nonzero arguments\n"
-    "  pairmax(a,b,...)= finds the 'paired' argument that corresponds to the\n"
-    "                    maximum of the first half of the input arguments;\n"
-    "                    for example, pairmax(a,b,c,p,q,r) determines which\n"
-    "                    of {a,b,c} is the max, then returns the corresponding\n"
-    "                    value from {p,q,r}; requires even number of arguments.\n"
-    "  pairmin(a,b,...)= Similar to pairmax, but for the minimum; for example,\n"
-    "                    pairmin(a,b,c,p,q,r} finds the minimum of {a,b,c}\n"
-    "                    and returns the corresponding value from {p,q,r};\n"
-    "                      pairmin(3,2,7,5,-1,-2,-3,-4) = -2\n"
-    "                    (The 'pair' functions are the Lukas Pezawas specials!)\n"
-    "  amongst(a,b,...)= Return value is 1 if any of the b,c,... values equals\n"
-    "                    the a value; otherwise, return value is 0.\n"
-    "\n"
-    "  [These last 8 functions take a variable number of arguments.]\n"
-    "\n"
-    " The following 27 new [Mar 1999] functions are used for statistical\n"
-    " conversions, as in the program 'cdf':\n"
-    "   fico_t2p(t,a,b,c), fico_p2t(p,a,b,c), fico_t2z(t,a,b,c),\n"
-    "   fitt_t2p(t,a)    , fitt_p2t(p,a)    , fitt_t2z(t,a)    ,\n"
-    "   fift_t2p(t,a,b)  , fift_p2t(p,a,b)  , fift_t2z(t,a,b)  ,\n"
-    "   fizt_t2p(t)      , fizt_p2t(p)      , fizt_t2z(t)      ,\n"
-    "   fict_t2p(t,a)    , fict_p2t(p,a)    , fict_t2z(t,a)    ,\n"
-    "   fibt_t2p(t,a,b)  , fibt_p2t(p,a,b)  , fibt_t2z(t,a,b)  ,\n"
-    "   fibn_t2p(t,a,b)  , fibn_p2t(p,a,b)  , fibn_t2z(t,a,b)  ,\n"
-    "   figt_t2p(t,a,b)  , figt_p2t(p,a,b)  , figt_t2z(t,a,b)  ,\n"
-    "   fipt_t2p(t,a)    , fipt_p2t(p,a)    , fipt_t2z(t,a)    .\n"
-    "\n"
-    " See the output of 'cdf -help' for documentation on the meanings of\n"
-    " and arguments to these functions.  (After using one of these, you\n"
-    " may wish to use program '3drefit' to modify the dataset statistical\n"
-    " auxiliary parameters.)\n"
-    "\n"
-    " The two functions below use the NIfTI-1 statistical codes to\n"
-    " map between statistical values and cumulative distribution values:\n"
-    "   cdf2stat(val,code,p1,p2,3)\n"
-    "   stat2cdf(val,code,p1,p2,3)\n"
-    "\n"
-    " Computations are carried out in double precision before being\n"
-    " truncated to the final output 'datum'.\n"
-    "\n"
-    " Note that the quotes around the expression are needed so the shell\n"
-    " doesn't try to expand * characters, or interpret parentheses.\n"
-    "\n"
-    " (Try the 'ccalc' program to see how the expression evaluator works.\n"
-    "  The arithmetic parser and evaluator is written in Fortran-77 and\n"
-    "  is derived from a program written long ago by RW Cox to facilitate\n"
-    "  compiling on an array processor hooked up to a VAX.  It's a mess,\n"
-    "  but it works - somewhat slowly.)\n"
+    "** Try the 'ccalc' program to see how the expression evaluator works.\n"
+    "   The arithmetic parser and evaluator is written in Fortran-77 and\n"
+    "   is derived from a program written long ago by RW Cox to facilitate\n"
+    "   compiling on an array processor hooked up to a VAX.  It's a mess, but\n"
+    "   it works - somewhat slowly - but hey, computers are fast these days.)\n"
    ) ;
-   exit(0) ;
+
+   PRINT_COMPILE_DATE ; exit(0) ;
 }
 
 /*------------------------------------------------------------------*/
@@ -1473,7 +1461,8 @@ int main( int argc , char *argv[] )
 
    /*-- 20 Apr 2001: addto the arglist, if user wants to [RWCox] --*/
 
-   mainENTRY("3dcalc main"); machdep() ; PRINT_VERSION("3dcalc") ;
+   mainENTRY("3dcalc main"); machdep() ;
+   PRINT_VERSION("3dcalc") ; AUTHOR("A cast of thousands") ;
    THD_check_AFNI_version("3dcalc") ;
 
    { int new_argc ; char ** new_argv ;
@@ -1484,6 +1473,8 @@ int main( int argc , char *argv[] )
    AFNI_logger("3dcalc",argc,argv) ;
 
    for (ii=0; ii<26; ii++) ntime[ii] = 0 ;
+
+   if( AFNI_yesenv("AFNI_FLOATIZE") ) CALC_datum = MRI_float ;
 
    CALC_read_opts( argc , argv ) ;
 
@@ -1569,7 +1560,7 @@ int main( int argc , char *argv[] )
    else if( ISANATBUCKET(new_dset) ) /* 30 Nov 1997 */
       EDIT_dset_items( new_dset , ADN_func_type , ANAT_EPI_TYPE , ADN_none ) ;
 
-   if( THD_is_file(new_dset->dblk->diskptr->header_name) )
+   if( THD_deathcon() && THD_is_file(new_dset->dblk->diskptr->header_name) )
      ERROR_exit("Output file %s already exists -- cannot continue!\n",
                 new_dset->dblk->diskptr->header_name ) ;
 
@@ -2055,6 +2046,27 @@ int main( int argc , char *argv[] )
       case MRI_float:{
         for( ii=0 ; ii < ntime_max ; ii++ ){
           TGET(ii) ;                  /* 18 Oct 2005: load from temp file? */
+
+#ifdef ALLOW_SORT
+               if( CALC_sort > 0 ) qsort_float    ( CALC_nvox, buf[ii] ) ;
+          else if( CALC_sort < 0 ) qsort_float_rev( CALC_nvox, buf[ii] ) ;
+#endif
+
+#ifdef ALLOW_FDR  /* only experimental, not useful -- cf. 3dFDR instead */
+          if( CALC_fdrize && DSET_BRICK_STATCODE(new_dset,ii) > 0 ){
+            MRI_IMAGE *qim=mri_new_vol_empty(CALC_nvox,1,1,MRI_float) ;
+            mri_fix_data_pointer( buf[ii] , qim ) ;
+            mri_fdrize(qim,DSET_BRICK_STATCODE(new_dset,ii),
+                           DSET_BRICK_STATAUX (new_dset,ii) , CALC_fdrize==2 ) ;
+            mri_clear_data_pointer(qim); mri_free(qim);
+            if( !ISFUNCBUCKET(new_dset) )
+              EDIT_dset_items( new_dset ,
+                                 ADN_type     , HEAD_FUNC_TYPE,
+                                 ADN_func_type, FUNC_BUCK_TYPE, ADN_none ) ;
+            EDIT_BRICK_TO_FIZT(new_dset,ii) ;
+          }
+#endif
+
           EDIT_substitute_brick(new_dset, ii, MRI_float, buf[ii]);
           DSET_BRICK_FACTOR(new_dset, ii) = 0.0;
         }
@@ -2087,6 +2099,11 @@ int main( int argc , char *argv[] )
          for( ii=0 ; ii < ntime_max ; ii++ ) {
 
            TGET(ii) ;   /* 18 Oct 2005: temp load */
+
+#ifdef ALLOW_SORT
+               if( CALC_sort > 0 ) qsort_float    ( CALC_nvox, buf[ii] ) ;
+          else if( CALC_sort < 0 ) qsort_float_rev( CALC_nvox, buf[ii] ) ;
+#endif
 
            /* get max of this sub-brick, if not doing global scaling */
 
@@ -2163,6 +2180,8 @@ int main( int argc , char *argv[] )
 
    if( CALC_verbose ) INFO_message("Computing output statistics\n") ;
    THD_load_statistics( new_dset ) ;
+
+   DSET_BRICK_FDRCURVE_ALLKILL(new_dset) ;  /* 24 Jan 2008 */
 
    THD_write_3dim_dataset( NULL,NULL , new_dset , True ) ;
    if( CALC_verbose ) WROTE_DSET(new_dset) ;

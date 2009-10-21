@@ -56,10 +56,10 @@ void TCAT_read_opts( int argc , char *argv[] )
    int nopt = 1 , ii ;
    char dname[THD_MAX_NAME] ;
    char subv[THD_MAX_NAME] ;
-   char * cpt ;
-   THD_3dim_dataset * dset ;
-   int * svar ;
-   char * str;
+   char *cpt ;
+   THD_3dim_dataset *dset , *fset ;
+   int *svar ;
+   char *str;
    int ok, ilen, nlen , max_nsub=0 ;
 
    INIT_3DARR(TCAT_dsar) ;  /* array of datasets */
@@ -71,14 +71,11 @@ void TCAT_read_opts( int argc , char *argv[] )
 
       if( strncmp(argv[nopt],"-prefix",6) == 0 ||
           strncmp(argv[nopt],"-output",6) == 0   ){
-        if(TCAT_glue){
-          fprintf(stderr,"*** -prefix and -glueto options are not compatible\n");
-          exit(1) ;
-        }
+        if(TCAT_glue)
+          ERROR_exit("-prefix and -glueto options are not compatible");
          nopt++ ;
-         if( nopt >= argc ){
-            fprintf(stderr,"*** need argument after -prefix!\n") ; exit(1) ;
-         }
+         if( nopt >= argc )
+           ERROR_exit("need argument after -prefix!") ;
          MCW_strncpy( TCAT_output_prefix , argv[nopt++] , THD_MAX_PREFIX ) ;
          continue ;
       }
@@ -86,17 +83,13 @@ void TCAT_read_opts( int argc , char *argv[] )
       /**** -session directory ****/
 
       if( strncmp(argv[nopt],"-session",6) == 0 ){
-        if(TCAT_glue){
-          fprintf(stderr,
-            "*** -session and -glueto options are not compatible\n");
-          exit(1) ;
-        }
-         nopt++ ;
-         if( nopt >= argc ){
-            fprintf(stderr,"*** need argument after -session!\n") ; exit(1) ;
-         }
-         MCW_strncpy( TCAT_session , argv[nopt++] , THD_MAX_NAME ) ;
-         continue ;
+        if(TCAT_glue)
+          ERROR_exit("-session and -glueto options are not compatible");
+        nopt++ ;
+        if( nopt >= argc )
+          ERROR_exit("need argument after -session!") ;
+        MCW_strncpy( TCAT_session , argv[nopt++] , THD_MAX_NAME ) ;
+        continue ;
       }
 
       /**** -dry ****/
@@ -151,20 +144,14 @@ void TCAT_read_opts( int argc , char *argv[] )
       /**** -glueto fname ****/
 
       if( strncmp(argv[nopt],"-glueto",5) == 0 ){
-	 if( strncmp(TCAT_output_prefix, "tcat", 5) != 0 ){
-            fprintf(stderr,"*** -prefix and -glueto options are not compatible\n");
-	    exit(1) ;
-	 }
-	 if( strncmp(TCAT_session, "./", 5) != 0 ){
-            fprintf(stderr,
-		    "*** -session and -glueto options are not compatible\n");
-	    exit(1) ;
-	 }
-	 TCAT_glue = 1 ;
-         nopt++ ;
-         if( nopt >= argc ){
-            fprintf(stderr,"*** need argument after -glueto!\n") ; exit(1) ;
-         }
+        if( strncmp(TCAT_output_prefix, "tcat", 5) != 0 )
+          ERROR_exit("-prefix and -glueto options are not compatible");
+        if( strncmp(TCAT_session, "./", 5) != 0 )
+          ERROR_exit("-session and -glueto options are not compatible");
+        TCAT_glue = 1 ;
+        nopt++ ;
+        if( nopt >= argc )
+          ERROR_exit("need argument after -glueto!") ;
 
 	 /*----- Verify that file name ends in View Type -----*/
 	 ok = 1;
@@ -202,11 +189,8 @@ void TCAT_read_opts( int argc , char *argv[] )
 	   }
 
 	 if (! ok)
-	   {
-	     fprintf(stderr,
-	       "*** File name must end in +orig, +acpc, or +tlrc after -glueto\n");
-	     exit(1);
-	   }
+	     ERROR_exit(
+	       "File name must end in +orig, +acpc, or +tlrc after -glueto");
 
 	 /*----- Remove View Type from string to make output prefix -----*/
          MCW_strncpy( TCAT_output_prefix , argv[nopt] , ilen+1) ;
@@ -215,9 +199,7 @@ void TCAT_read_opts( int argc , char *argv[] )
 	   be processed as an input dataset -----*/
       }
 
-      if( argv[nopt][0] == '-' ){
-         fprintf(stderr,"*** Unknown option: %s\n",argv[nopt]) ; exit(1) ;
-      }
+      if( argv[nopt][0] == '-' ) ERROR_exit("Unknown option: %s",argv[nopt]) ;
 
       /**** read dataset ****/
 
@@ -227,8 +209,7 @@ void TCAT_read_opts( int argc , char *argv[] )
          strcpy(dname,argv[nopt]) ;
          subv[0] = '\0' ;
       } else if( cpt == argv[nopt] ){ /* can't be at start!*/
-         fprintf(stderr,"*** Illegal dataset specifier: %s\n",argv[nopt]) ;
-         exit(1) ;
+         ERROR_exit("Illegal dataset specifier: %s",argv[nopt]) ;
       } else {                        /* found selector */
          ii = cpt - argv[nopt] ;
          memcpy(dname,argv[nopt],ii) ; dname[ii] = '\0' ;
@@ -237,9 +218,7 @@ void TCAT_read_opts( int argc , char *argv[] )
       nopt++ ;
 
       dset = THD_open_one_dataset( dname ) ;
-      if( dset == NULL ){
-         fprintf(stderr,"*** Can't open dataset %s\n",dname) ; exit(1) ;
-      }
+      if( dset == NULL ) ERROR_exit("Can't open dataset %s",dname) ;
       THD_force_malloc_type( dset->dblk , DATABLOCK_MEM_MALLOC ) ;
 
       if( TCAT_type < 0 ) TCAT_type = dset->type ;
@@ -248,10 +227,11 @@ void TCAT_read_opts( int argc , char *argv[] )
 
       ii = dset->daxes->nxx * dset->daxes->nyy * dset->daxes->nzz ;
       if( TCAT_nvox < 0 ){
-         TCAT_nvox = ii ;
+        TCAT_nvox = ii ; fset = dset ;
       } else if( ii != TCAT_nvox ){
-         fprintf(stderr,"*** Dataset %s differs in size from others\n",dname);
-         exit(1) ;
+        ERROR_exit("Dataset %s differs in size from first one!",dname);
+      } else if( !EQUIV_GRIDS(dset,fset) ){
+        WARNING_message("Dataset %s grid differs from first one!",dname);
       }
       ADDTO_3DARR(TCAT_dsar,dset) ;  /* list of datasets */
 
@@ -261,32 +241,30 @@ void TCAT_read_opts( int argc , char *argv[] )
            svar[j+1] = index of sub-brick #j for j=0..svar[0] */
 
       svar = TCAT_get_subv( DSET_NVALS(dset) , subv ) ;
-      if( svar == NULL || svar[0] <= 0 ){
-         fprintf(stderr,"*** Can't decipher index codes from %s%s\n",dname,subv) ;
-         exit(1) ;
-      }
+      if( svar == NULL || svar[0] <= 0 )
+        ERROR_exit("Can't decipher index codes from %s%s",dname,subv) ;
       ADDTO_XTARR(TCAT_subv,svar) ;  /* list of sub-brick selectors */
 
       max_nsub = MAX( max_nsub , svar[0] ) ;
 
       if( TCAT_rlt == 3 && svar[0] < 3 )  /* 16 Sep 1999 */
-         fprintf(stderr,
-                 "*** Warning: -rlt++ option won't work properly with\n"
-                 "             less than 3 sub-bricks per input dataset!\n") ;
+        WARNING_message(
+                 "-rlt++ option won't work properly with"
+                 " less than 3 sub-bricks per input dataset!") ;
 
    }  /* end of loop over command line arguments */
 
    /*--- final sanity checks ---*/
 
    if( max_nsub < 3 && TCAT_rlt ){
-      fprintf(stderr,"*** Warning: can't apply -rlt option -- "
-                     "Not enough points per input dataset.\n" ) ;
-      TCAT_rlt = 0 ;
+     WARNING_message("can't apply -rlt option -- "
+                     "Not enough points per input dataset." ) ;
+     TCAT_rlt = 0 ;
    }
 
    if( TCAT_rlt && TCAT_dry ){
-      fprintf(stderr,"*** Warning: -rlt option does nothing with -dry!\n") ;
-      TCAT_rlt = 0 ;
+     WARNING_message("-rlt option does nothing with -dry!") ;
+     TCAT_rlt = 0 ;
    }
 
    return ;
@@ -329,7 +307,7 @@ int * TCAT_get_subv( int nvals , char *str )
       return(get_count_intlist ( str, &ii));
    }
 
-   
+
    /*** loop through each sub-selector until end of input ***/
 
    slen = strlen(str) ;
@@ -474,7 +452,7 @@ void TCAT_Syntax(void)
     "is copied into the output).  A sub-brick selection list looks like\n"
     "one of the following forms:\n"
     "  fred+orig[5]                     ==> use only sub-brick #5\n"
-    "  fred+orig[5,9,17]                ==> use #5, #9, and #12\n"
+    "  fred+orig[5,9,17]                ==> use #5, #9, and #17\n"
     "  fred+orig[5..8]     or [5-8]     ==> use #5, #6, #7, and #8\n"
     "  fred+orig[5..13(2)] or [5-13(2)] ==> use #5, #7, #9, #11, and #13\n"
     "Sub-brick indexes start at 0.  You can use the character '$'\n"
@@ -486,7 +464,7 @@ void TCAT_Syntax(void)
     "This would be most useful when randomizing (shuffling) the order of\n"
     "the sub-bricks. Example:\n"
     "  fred+orig[count -seed 2 5 11 s] is equivalent to something like:\n"
-    "  fred+orig[ 6, 5, 11, 10, 9, 8, 7] \n" 
+    "  fred+orig[ 6, 5, 11, 10, 9, 8, 7] \n"
     "You could also do: fred+orig[`count -seed 2 -digits 1 -suffix ',' 5 11 s`]\n"
     "but if you have lots of numbers, the command line would get too\n"
     "long for the shell to process it properly. Omit the seed option if\n"
@@ -497,7 +475,7 @@ void TCAT_Syntax(void)
     "* The TR and other time-axis properties are taken from the\n"
     "  first input dataset that is itself 3D+time.  If no input\n"
     "  datasets contain such information, then TR is set to 1.0.\n"
-    "  This can be altered using the 3drefit program.\n"
+    "  This can be altered later using the 3drefit program.\n"
     "\n"
     "* The sub-bricks are output in the order specified, which may\n"
     "  not be the order in the original datasets.  For example, using\n"
@@ -518,23 +496,24 @@ void TCAT_Syntax(void)
     "  done by putting the entire dataset plus selection list inside\n"
     "  single quotes, as in 'fred+orig[5..7,9]'.\n"
     "\n"
-    "* You may wish to use the 3drefit program on the output dataset\n"
-    "  to modify some of the .HEAD file parameters.\n"
+    "* You may wish/need to use the 3drefit program on the output\n"
+    "  dataset to modify some of the .HEAD file parameters.\n"
    ) ;
 
-   exit(0) ;
+   PRINT_COMPILE_DATE ; exit(0) ;
 }
 
 /*-------------------------------------------------------------------------*/
 
-int main( int argc , char * argv[] )
+int main( int argc , char *argv[] )
 {
    int ninp , ids , nv , iv,jv,kv , ivout , new_nvals , ivbot,ivtop ;
-   THD_3dim_dataset * new_dset=NULL , * dset ;
+   THD_3dim_dataset *new_dset=NULL , * dset ;
    char buf[256] ;
-   float * rlt0=NULL , *rlt1=NULL ;
+   float *rlt0=NULL , *rlt1=NULL ;
    float *rltsum=NULL ;             /* 16 Sep 1999 */
-   int    nrltsum ;
+   int   nrltsum ;
+   float dTR , nTR ;
 
    /*** read input options ***/
 
@@ -556,27 +535,22 @@ int main( int argc , char * argv[] )
    /*** create new dataset (empty) ***/
 
    ninp = TCAT_dsar->num ;
-   if( ninp < 1 ){
-      fprintf(stderr,"*** No input datasets?\n") ; exit(1) ;
-   }
+   if( ninp < 1 ) ERROR_exit("No input datasets?") ;
 
    new_nvals = 0 ;
    for( ids=0 ; ids < ninp ; ids++ ) new_nvals += NSUBV(ids) ;
 
-   if( new_nvals < 2 ){
-      fprintf(stderr,
-              "*** Can't create 3D+time dataset with only %d sub-bricks!\n",
-              new_nvals) ;
-      exit(1) ;
-   }
+   if( new_nvals < 2 )
+     ERROR_exit("Can't create 3D+time dataset with only %d sub-bricks!",
+                new_nvals) ;
 
    if( TCAT_verb ) printf("-verb: output will have %d sub-bricks\n",new_nvals) ;
 
    /** find 1st dataset that is time dependent **/
 
    for( ids=0 ; ids < ninp ; ids++ ){
-      dset = DSUB(ids) ;
-      if( DSET_TIMESTEP(dset) > 0.0 ) break ;
+     dset = DSUB(ids) ;
+     if( DSET_TIMESTEP(dset) > 0.0 ) break ;
    }
    if( ids == ninp ){ ids = 0 ; dset = DSUB(0) ; }
 
@@ -586,7 +560,7 @@ int main( int argc , char * argv[] )
 
    for( iv=0 ; iv < ninp ; iv++ ){
      if( iv != ids && !EQUIV_DATAXES(new_dset->daxes,DSUB(iv)->daxes) )
-       fprintf(stderr,"++ WARNING: %s grid mismatch with %s\n",
+       WARNING_message("%s grid mismatch with %s",
                DSET_BRIKNAME(dset) , DSET_BRIKNAME(DSUB(iv)) ) ;
    }
 
@@ -628,15 +602,24 @@ int main( int argc , char * argv[] )
                           ADN_ttorg  , torg ,
                           ADN_ttdur  , tdur ,
                        ADN_none ) ;
+      WARNING_message("Set TR of output dataset to 1.0 s") ;
+   }
+
+   /* 10 Dec 2007: check if time steps are coherent */
+
+   nTR = DSET_TIMESTEP(new_dset) ;
+   for( ids=0 ; ids < ninp ; ids++ ){
+     dset = DSUB(ids) ; dTR = DSET_TIMESTEP(dset) ;
+     if( dTR > 0.0f && fabsf(dTR-nTR) > 0.001f )
+       WARNING_message("TR=%g in dataset %s; differs from output TR=%g",
+                       dTR , DSET_HEADNAME(dset) , nTR ) ;
    }
 
    /* can't re-write existing dataset, unless glueing is used */
 
    if (! TCAT_glue){
-     if( THD_is_file(DSET_HEADNAME(new_dset)) ){
-       fprintf(stderr,"*** Fatal error: file %s already exists!\n",
-	       DSET_HEADNAME(new_dset) ) ;
-       exit(1) ;
+     if( THD_deathcon() && THD_is_file(DSET_HEADNAME(new_dset)) ){
+       ERROR_exit("file %s already exists!", DSET_HEADNAME(new_dset) ) ;
      }
    } else {   /* if glueing is used, make the 'new'
                  dataset have the same idcode as the old one */
@@ -651,17 +634,14 @@ int main( int argc , char * argv[] )
    if( TCAT_rlt ){
       rlt0   = (float *) malloc( sizeof(float) * TCAT_nvox ) ;
       rlt1   = (float *) malloc( sizeof(float) * TCAT_nvox ) ;
-      if( rlt0 == NULL || rlt1 == NULL ){
-         fprintf(stderr,"*** Error: can't malloc memory for detrending!\n") ;
-         exit(1) ;
-      }
+      if( rlt0 == NULL || rlt1 == NULL )
+        ERROR_exit("can't malloc memory for detrending!") ;
 
       if( TCAT_rlt == 3 ){
          rltsum = (float *) malloc( sizeof(float) * TCAT_nvox ) ;
-         if( rltsum == NULL ){
-            fprintf(stderr,"*** Error: can't malloc memory for detrending!\n") ;
-            exit(1) ;
-         }
+         if( rltsum == NULL )
+           ERROR_exit("can't malloc memory for detrending!") ;
+
          for( iv=0 ; iv < TCAT_nvox ; iv++ ) rltsum[iv] = 0.0 ;
          nrltsum = 0 ;
       }
@@ -691,13 +671,13 @@ int main( int argc , char * argv[] )
             EDIT_substitute_brick( new_dset , ivout ,
                                    DSET_BRICK_TYPE(dset,jv) , DSET_ARRAY(dset,jv) ) ;
 
-	    /*----- If this sub-brick is from a bucket dataset,
+       /*----- If this sub-brick is from a bucket dataset,
                     preserve the label for this sub-brick -----*/
 
-	    if( ISBUCKET(dset) )
-	      sprintf (buf, "%s", DSET_BRICK_LABEL(dset,jv));
-	    else
-	      sprintf(buf,"%.12s[%d]",DSET_PREFIX(dset),jv) ;
+       if( ISBUCKET(dset) )
+         sprintf (buf, "%s", DSET_BRICK_LABEL(dset,jv));
+       else
+         sprintf(buf,"%.12s[%d]",DSET_PREFIX(dset),jv) ;
             EDIT_dset_items( new_dset, ADN_brick_label_one+ivout, buf, ADN_none );
 
             sprintf(buf,"%s[%d]",DSET_FILECODE(dset),jv) ;
@@ -828,8 +808,8 @@ int main( int argc , char * argv[] )
                switch( DSET_BRICK_TYPE(new_dset,kk) ){
                   default:
                      err = 1 ;
-                     fprintf(stderr,
-                             "*** Warning: -rlt can't use datum type %s from %s\n",
+                     WARNING_message(
+                             "Warning: -rlt can't use datum type %s from %s",
                              MRI_TYPE_name[DSET_BRICK_TYPE(new_dset,kk)] ,
                              DSET_FILECODE(dset) ) ;
                   break ;
@@ -910,10 +890,6 @@ int main( int argc , char * argv[] )
                         for( iv=0 ; iv < TCAT_nvox ; iv++ ){
                            val = fac*bar[iv] - rlt0[iv] - rlt1[iv]*(qq-qmid) ;
                            bar[iv] = (finv*val) ;
-#if 0
-fprintf(stderr,"kk=%d iv=%d bar=%g rlt0=%g rlt1=%g qq=%g qmid=%g val=%g\n",
-        kk,iv,bar[iv],rlt0[iv],rlt1[iv],qq,qmid,val) ;
-#endif
                         }
                      }
                      break ;
@@ -964,11 +940,11 @@ fprintf(stderr,"kk=%d iv=%d bar=%g rlt0=%g rlt1=%g qq=%g qmid=%g val=%g\n",
    if( TCAT_rlt ){ free(rlt0); free(rlt1); if(rltsum!=NULL)free(rltsum); }
 
    if( ! TCAT_dry ){
-      if( TCAT_verb ) fprintf(stderr,"-verb: computing sub-brick statistics\n") ;
+      if( TCAT_verb ) INFO_message("-verb: computing sub-brick statistics") ;
       THD_load_statistics( new_dset ) ;
-
+      if( TCAT_glue ) putenv("AFNI_DECONFLICT=OVERWRITE") ;
       THD_write_3dim_dataset( NULL,NULL , new_dset , True ) ;
-      if( TCAT_verb ) fprintf(stderr,"-verb: Wrote output to %s\n",
+      if( TCAT_verb ) INFO_message("-verb: Wrote output to %s",
                               DSET_BRIKNAME(new_dset) ) ;
    }
 

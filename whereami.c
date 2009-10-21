@@ -7,7 +7,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "thd_ttatlas_query.h"
-#include "rickr/r_new_resam_dset.h"
 
 static int           have_dseTT = -1   ;
 static THD_3dim_dataset * dseTT = NULL ;
@@ -148,7 +147,7 @@ void whereami_usage(void)
          printf(  "      %s\n" , PrettyRef(CA_EZ_REF_STR[i]));
          ++i;  
       } while (CA_EZ_REF_STR[i][0] != '\0');
-              /* "      [1] Auditory cortex (TE 1.0, TE 1.1, TE 1.2) : Morosan et al., Neuroimage, 2001\n"
+              /* "      [1] Auditory cortex (TE 1.0, TE 1.1, TE 1.2) : Morosan et al., NeuroImage, 2001\n"
                "      [2] Broca's area (BA 44, BA 45) : Amunts et al., J Comp Neurol, 1999\n"
                "      [3] Motor cortex (BA 4a, BA 4p, BA 6) : Geyer et al., Nature, 1996 ; S. Geyer, Springer press 2003\n"
                "      [4] Somatosensory cortex (BA 3a, BA 3b, BA 1 BA 2) : Geyer et al., Neuroimage, 1999 + 2000 ; Grefkes et al., Neuroimage, 2001\n"
@@ -232,7 +231,7 @@ void whereami_usage(void)
                "                     value in ORDERED_MASK. For example, if ORDERED_MASK has \n"
                "                     ROIs with values 1, 2, and 3, then you'll get three \n"
                "                     reports, one for each ROI value. Note that -omask and\n"
-               "                     -bmask are mutually exculsive.\n"
+               "                     -bmask are mutually exclusive.\n"
                " -cmask MASK_COMMAND: command for masking values in BINARY_MASK, \n"
                "                      or ORDERED_MASK on the fly.\n"
                "        e.g. whereami -bmask JoeROIs+tlrc \\\n"
@@ -278,10 +277,10 @@ void whereami_usage(void)
                "   The Anatomy Toolbox atlases are in archives called CA_EZ_v*.tgz with *\n"
                "   indicating a particular version number. Download the archive from:\n"
                "   http://afni.nimh.nih.gov/pub/dist/tgz/, unpack it and move all the \n"
-               "   files in the upacked directory into ATLAS_DIR.\n"
+               "   files in the unpacked directory into ATLAS_DIR.\n"
                "\n"
-               "How To See Atlas Data In AFNI:\n"
-               "------------------------------\n"
+               "How To See Atlas Data In AFNI as datasets:\n"
+               "------------------------------------------\n"
                "   If you want to view the atlases in the same session\n"
                "   that you are working with, choose one of options below.\n"
                "   For the sake of illustrations, I will assume that atlases\n"
@@ -319,19 +318,59 @@ void whereami_usage(void)
                "     o pick one of: CytoArch_ROI_256, CytoArch_ROI_256_gap, ROI_32. etc.\n"
                "     o set autorange off and set the range to the number of colors \n"
                "       in the chosen map (256, 32, etc.). \n"
-               "       Color maps CytoArch_ROI_256_gap was created for the proper viewing\n"
+               "       Color map CytoArch_ROI_256_gap was created for the proper viewing\n"
                "       of the Maximum Probability Maps of the Anatomy Toolbox.\n"
                "\n"
+               "How To See Atlas regions overlaid in the AFNI GUI:\n"
+               "--------------------------------------------------\n"
+               "   To see specific atlas regions overlaid on underlay and other overlay data,\n"
+               "     1. In Overlay control panel, check \"See TT Atlas Regions\" \n"
+               "     2. Switch view to Talairach in View Panel\n"
+               "     3. Right-click on image and select \"-Atlas colors\". In the Atlas colors\n"
+               "        menu, select the colors you would like and then choose Done.\n"
+               "     The images need to be redrawn to see the atlas regions, for instance,\n"
+               "        by changing slices. Additional help is available in the Atlas colors\n"
+               "        menu.\n"
+               "   For the renderer plug-in, the underlay and overlay datasets should both\n"
+               "     have Talairach view datasets actually written out to disk\n"
+               "   The whereami and \"Talairach to\" functions are also available by right-\n"
+               "     clicking in an image window.\n\n"
+               "Examples:\n"
+               "_________\n"
+               "   To find a cluster center close to the top of the brain at -12,-26, 76 (LPI),\n"
+               "   whereami, assuming the coordinates are in Talairach space, would report:\n"
+               "   > whereami -12 -26 76 -lpi\n"
+               "   > Focus point (LPI)= \n"
+               "   -12 mm [L], -26 mm [P], 76 mm [S] {T-T Atlas}\n\n"
+               "   Atlas CA_N27_MPM: Cytoarch. Max. Prob. Maps (N27)\n"
+               "   Within 4 mm: Area 6\n"
+               "   Within 7 mm: Area 4a\n"
+               "\n"
+               "   Atlas CA_N27_ML: Macro Labels (N27)\n"
+               "   Within 1 mm: Left Paracentral Lobule\n"
+               "   Within 6 mm: Left Precentral Gyrus\n"
+               "   -AND- Left Postcentral Gyrus\n"
+               "\n"
+               "   To create a mask dataset of both the left and right amygdala, you can do the\n"
+               "   following (although masks and datasets can be specified in the same way for\n"
+               "   other afni commands, so a mask, very often, is not needed as a separate\n"
+               "   dataset):\n"
+               "   > whereami -prefix amymask -mask_atlas_region 'TT_Daemon::amygdala'\n\n"
                "Questions Comments:\n"
                "-------------------\n"
-               "   Ziad S. Saad   (ziad@nih.gov)\n"
+               "   Ziad S. Saad   (saadz@mail.nih.gov)\n"
                "   SSCC/NIMH/NIH/DHHS/USA\n"
                "\n"
                "Thanks to Kristina Simonyan for feedback and testing.\n"
                "\n" 
                "\n",Init_Whereami_Max_Find(), Init_Whereami_Max_Rad());
+
+   PRINT_COMPILE_DATE ;
    EXRETURN;
 }
+
+/*----------------------------------------------------------------------------*/
+
 int main(int argc, char **argv)
 {
    float x, y, z, xi, yi, zi, tx, ty, tz;
@@ -379,7 +418,7 @@ int main(int argc, char **argv)
          /* fprintf(stderr, "Not naked!\n"); */
          /* Parse land */
          nakedland = 0;
-         #ifdef USE_TRACING
+#ifdef USE_TRACING
                if( strncmp(argv[iarg],"-trace",5) == 0 ){
                   DBG_trace = 1 ;
                   iarg++ ; continue ;
@@ -388,7 +427,7 @@ int main(int argc, char **argv)
                   DBG_trace = 2 ;
                   iarg++ ; continue ;
                }
-         #endif
+#endif
          for (i=1;i<arglen; ++i) argv[iarg][i] = tolower(argv[iarg][i]);
 
          if (strcmp(argv[iarg],"-spm") == 0 || strcmp(argv[iarg],"-lpi") == 0) { 
@@ -608,7 +647,7 @@ int main(int argc, char **argv)
                fprintf(stderr,"** Error: -cmask option requires a following argument!\n");
                exit(1) ;
             }
-            cmask = EDT_calcmask( argv[++iarg] , &ncmask ) ;
+            cmask = EDT_calcmask( argv[++iarg] , &ncmask, 0 ) ;
             if( cmask == NULL ){
                fprintf(stderr,"** Error: Can't compute -cmask!\n"); exit(1);
             }
@@ -767,10 +806,11 @@ int main(int argc, char **argv)
                           ADN_prefix    , mskpref,
                            ADN_none ) ;
                   }
-                  if( THD_is_file(DSET_HEADNAME(maskset)) ) {
+                  if( THD_deathcon() && THD_is_file(DSET_HEADNAME(maskset)) ) {
                      ERROR_message("Output dataset %s already exists -- can't overwrite", DSET_HEADNAME(maskset)) ;
                      exit(1);
                   }
+
                   if (LocalHead) {
                      fprintf(stderr,"Writing ROI mask to %s...\n", DSET_HEADNAME(maskset));
                   }
@@ -796,7 +836,7 @@ int main(int argc, char **argv)
       char tmps[20];
       
       /* load the mask dset */
-	   if (!(mset_orig = THD_open_dataset (bmsk))) {
+      if (!(mset_orig = THD_open_dataset (bmsk))) {
          fprintf(stderr,"** Error: Failed to open mask set %s.\n", bmsk);
          return(1);
       } 
@@ -837,7 +877,7 @@ int main(int argc, char **argv)
       for (iroi=0; iroi<n_unq; ++iroi) {
          if (dobin) {
             mset = mset_orig;
-	         /* turn the mask dataset to zeros and 1s */
+          /* turn the mask dataset to zeros and 1s */
             if ((nonzero = THD_makedsetmask( mset , 0 , 1.0, 0.0 , cmask)) < 0) {  /* get all non-zero values */
                   fprintf(stderr,"** Error: No mask for you.\n");
                   return(1);
@@ -874,7 +914,7 @@ int main(int argc, char **argv)
                               "What's cracking?.\n", adh.maxindexcode);
             }  
             /* resample mask per atlas, use linear interpolation, cut-off at 0.5 */
-            rset = r_new_resam_dset ( mset, adh.dset,	0,	0,	0,	NULL, MRI_LINEAR, NULL);
+            rset = r_new_resam_dset ( mset, adh.dset, 0, 0, 0, NULL, MRI_LINEAR, NULL, 1);
             if (!rset) {
                fprintf(stderr,"** Error: Failed to reslice!?\n"); return(1);
             }
@@ -1039,7 +1079,7 @@ int main(int argc, char **argv)
           return 1;
         }
 
-        #if 0 /* ZSS does not work Fri Jan 20 15:54:41 EST 2006 */
+#if 0 /* ZSS does not work Fri Jan 20 15:54:41 EST 2006 */
         if (output == 1) {
           fstring = malloc(sizeof(string));
           strncpy(fstring, "Focus point", 11);
@@ -1072,7 +1112,7 @@ int main(int argc, char **argv)
         } else {
           printf("%s\n", string);
         }
-        #else
+#else
          if (output == 1) { 
             /* ZSS: my best interpretation of the original intent of output == 1 */
             fstring = strdup(string);
@@ -1103,7 +1143,7 @@ int main(int argc, char **argv)
          } else {
             printf("%s\n", string);
          }
-        #endif
+#endif
       } /* end TT_Daemon */
 
 

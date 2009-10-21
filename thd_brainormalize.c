@@ -8,6 +8,7 @@ static int verb = 0 ;
 static int specie = HUMAN;
 void mri_brainormalize_verbose( int v ){ verb = v ; THD_automask_verbose(v); }
 
+
 #define  THD_BN_DXYZ    1.0
 #define  THD_BN_NX      167
 #define  THD_BN_NY      212
@@ -27,7 +28,8 @@ void mri_brainormalize_verbose( int v ){ verb = v ; THD_automask_verbose(v); }
 
 #define HUMAN_RAT      1.0   /* Ratio is size of human / human dimensions */
 #define MONKEY_RAT      2.0   /* Ratio is size of human / monkey dimensions */
-#define RAT_RAT         8.0
+#define MARMOSET_RAT    5.0   /* Ratio is size of human / marmoset dimensions */
+#define RAT_RAT         8.0   /* Ratio is size of human / rat dimensions */
 
 static float thd_bn_dxyz = 0.0;
 static int thd_bn_nx     = 0;
@@ -54,7 +56,8 @@ void mri_brainormalize_initialize(float dx, float dy, float dz)
 {
    
    /* set the resolution */
-   thd_bn_dxyz = MIN(fabs(dx), fabs(dy)); thd_bn_dxyz = MIN(thd_bn_dxyz, fabs(dz));
+   thd_bn_dxyz = MIN(fabs(dx), fabs(dy)); 
+   thd_bn_dxyz = MIN(thd_bn_dxyz, fabs(dz));
    
    if (specie == MONKEY) {
       /* do the monkey thing, smaller box, basically, half the size of human*/
@@ -69,8 +72,14 @@ void mri_brainormalize_initialize(float dx, float dy, float dz)
       thd_bn_ycm = THD_BN_YCM/MONKEY_RAT;
       thd_bn_zcm = THD_BN_ZCM/MONKEY_RAT;
       thd_bn_rat = MONKEY_RAT;
+   } else if (specie == MARMOSET) {
+      fprintf(
+         stderr,
+         "Error mri_brainormalize_initialize:\n"
+         "MARMOSET is handled only in 3dSkullStrip via XYZ scaling\n"
+         "and MONKEY options.\n");
+      exit(1);
    } else if (specie == RAT) {
-      /* do the monkey thing, smaller box, basically, half the size of human*/
       thd_bn_nx     = (int)(THD_BN_NX/RAT_RAT);
       thd_bn_ny     = (int)(THD_BN_NY/RAT_RAT);
       thd_bn_nz     = (int)(THD_BN_NZ/RAT_RAT);
@@ -177,7 +186,7 @@ static int mask_count( int nvox , byte *mmm )
   do{ ijk = (i)+(j)*nx+(k)*nxy ;                                    \
       if( mmm[ijk] == 0 ) break ;                                   \
       if( nnow == nall ){ /* increase array lengths */              \
-        nall += DALL ;                                              \
+        nall += DALL + nall/8 ;                                     \
         inow = (short *) realloc((void *)inow,sizeof(short)*nall) ; \
         jnow = (short *) realloc((void *)jnow,sizeof(short)*nall) ; \
         know = (short *) realloc((void *)know,sizeof(short)*nall) ; \
@@ -252,7 +261,7 @@ short * THD_mask_distize( int nx, int ny, int nz, byte *mmm, byte *ccc )
   do{ ijk = (i)+(j)*nx+(k)*nxy ;                                      \
       if( mmm[ijk] ){                                                 \
         if( nnow == nall ){ /* increase array lengths */              \
-          nall += DALL ;                                              \
+          nall += DALL + nall/4 ;                                     \
           inow = (short *) realloc((void *)inow,sizeof(short)*nall) ; \
           jnow = (short *) realloc((void *)jnow,sizeof(short)*nall) ; \
           know = (short *) realloc((void *)know,sizeof(short)*nall) ; \
@@ -741,7 +750,7 @@ typedef struct { int num, nall, depth, *ivox; } basin ;
 #define INIT_BASIN(iv)                                       \
  { register int qb=nbtop;                                    \
    if( qb >= nball ){                                        \
-     register int qqb=nball+DBALL,zb ;                       \
+     register int qqb=1.2*nball+DBALL,zb ;                   \
      baslist = (basin **)realloc((void *)baslist,            \
                                  sizeof(basin *)*qqb) ;      \
      for( zb=nball ; zb < qqb ; zb++ ) baslist[zb] = NULL ;  \
@@ -1386,10 +1395,13 @@ ENTRY("mri_brainormalize") ;
    /* apply mask to image (will also remove any negative values) */
 
    if( verb > 1)
-     fprintf(stderr,"++mri_brainormalize: applying mask to image; %d voxels\n",kk) ;
+     fprintf(stderr,
+      "++mri_brainormalize: applying mask to image; %d voxels\n",kk) ;
    for( ii=0 ; ii < nxyz ; ii++ ) if( !mask[ii] ) sar[ii] = 0 ;
 
    free((void *)mask) ;  /* done with this mask */
+   
+   if (verb > 1) WRITE_MRI_IMAGE_3D_RAI(sim,"sim");
 
    /* compute CM of masked image (indexes, not mm) */
 
@@ -1410,14 +1422,27 @@ ENTRY("mri_brainormalize") ;
        kcm += val * kk ;
    }}}
    if( sum == 0.0 ){ mri_free(sim); RETURN(NULL); }  /* huh? */
+   
+   ai = thd_bn_dxyz/dx ; 
+   bi = icm/sum - (thd_bn_xcm-thd_bn_xorg)/dx ;
+   aj = thd_bn_dxyz/dy ; 
+   bj = jcm/sum - (thd_bn_ycm-thd_bn_yorg)/dy ;
+   ak = thd_bn_dxyz/dz ; 
+   bk = kcm/sum - (thd_bn_zcm-thd_bn_zorg)/dz ;
 
-   ai = thd_bn_dxyz/dx ; bi = icm/sum - ai*(thd_bn_xcm-thd_bn_xorg)/thd_bn_dxyz ;
-   aj = thd_bn_dxyz/dy ; bj = jcm/sum - aj*(thd_bn_ycm-thd_bn_yorg)/thd_bn_dxyz ;
-   ak = thd_bn_dxyz/dz ; bk = kcm/sum - ak*(thd_bn_zcm-thd_bn_zorg)/thd_bn_dxyz ;
-
-   if( verb > 1) fprintf(stderr,"++mri_brainormalize: warping to standard grid\n a = [%f %f %f], b = [%f %f %f]\nthd_bn_nxyz=[%d %d %d]\n", 
-                           ai, aj, ak, bi, bj, bk, thd_bn_nx,thd_bn_ny,thd_bn_nz) ;
-
+   if (specie == RAT) { /* Dec 07 */
+      /* nudge center of mass up by 5 mm , lots of meat under brain */
+      bk = bk + 5.0/dz;   
+   }
+   if( verb > 1) 
+      fprintf(stderr,"++mri_brainormalize: warping to standard grid\n" 
+                     "old icm = [%f %f %f],\n"
+                     "a = [%f %f %f], b = [%f %f %f]\n"
+                     "thd_bn_nxyz=[%d %d %d]\n",
+                     icm/sum, jcm/sum, kcm/sum,
+                     ai, aj, ak, bi, bj, bk, 
+                     thd_bn_nx,thd_bn_ny,thd_bn_nz) ;
+                     
    mri_warp3D_method( MRI_CUBIC ) ;
    tim = mri_warp3D( sim , thd_bn_nx,thd_bn_ny,thd_bn_nz , ijkwarp ) ;
    mri_free(sim) ;
@@ -1429,9 +1454,15 @@ ENTRY("mri_brainormalize") ;
    
    nx = tim->nx ; ny = tim->ny ; nz = tim->nz ; nxy = nx*ny ; nxyz = nxy*nz ;
    sar = MRI_SHORT_PTR(tim) ;
-   if( verb > 1) fprintf(stderr,"++mri_brainormalize: sar points to %d values.\n", nxyz);
-   if( verb > 1) fprintf(stderr,"++mri_brainormalize: sar[%d] = %d, sar[%d]=%d, sar[%d]=%d\n", 0, sar[0], nxyz/2, sar[nxyz/2], nxyz-1, sar[nxyz-1]);
+   if( verb > 1) 
+      fprintf(stderr,"++mri_brainormalize: sar points to %d values.\n", nxyz);
+   if( verb > 1) 
+      fprintf(stderr,
+         "++mri_brainormalize: sar[%d] = %d, sar[%d]=%d, sar[%d]=%d\n",
+         0, sar[0], nxyz/2, sar[nxyz/2], nxyz-1, sar[nxyz-1]);
    
+   if (verb > 1) WRITE_MRI_IMAGE_3D_RAI(tim,"tim");
+
    
    /*-- rescale to partially uniformize --*/
 

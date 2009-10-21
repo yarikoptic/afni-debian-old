@@ -73,7 +73,7 @@ void Show_Help(void) {
 "line.  If you do something like -d 10 -d 10, it will delete both notes 10\n"
 "and 11.  Don't do that.\n\n"
    );
-   exit(0);
+   PRINT_COMPILE_DATE ; exit(0);
 }
 
 
@@ -270,6 +270,8 @@ int main (int argc, char * argv[]) {
       Display_Notes(dset);
    else {
            if(write_output) DSET_load(dset);  /* 21 Jun 2006 */
+           /* allow overwriting header for all types of output data */
+           putenv("AFNI_DECONFLICT=OVERWRITE") ;
            THD_write_3dim_dataset( NULL,NULL , dset , write_output ) ;
            THD_delete_3dim_dataset( dset , False ) ; 
    }

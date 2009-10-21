@@ -391,6 +391,7 @@ ENTRY("new_MCW_grapher") ;
                       "                 in each sub-graph box\n"
                       "Save PNM    --> Save the graph window as an\n"
                       "                 image to a PNM format file\n"
+                      "                 [or .png or .jpg]\n"
                       "Write Center--> Central voxel timeseries will\n"
                       "                 be written to a file with a\n"
                       "                 name like 'X_Y_Z.suffix.1D'\n"
@@ -524,8 +525,8 @@ ENTRY("new_MCW_grapher") ;
 
    /***** 16 June 1997: Colors submenu *****/
 
-   { static char * bbox_label[1] = { "Use Thick Lines" } ;
-     static char * pts_label[2]  = { "Graph Points" , "Points+Lines" } ;
+   { static char *bbox_label[1] = { "Use Thick Lines" } ;
+     static char *pts_label[3]  = { "Graph Points" , "Points+Lines" , "Boxes [B]" } ;
      char     toplabel[64] ;
      XmString xstr ;
 
@@ -606,12 +607,13 @@ ENTRY("new_MCW_grapher") ;
         /* 01 Aug 1998: allow points+lines to be drawn as well   */
 
         if( grapher->points_index[ii] >= 0 ){
+           int nbut = (ii==4) ? 3 : 2 ;
            grapher->opt_points_bbox[ii] =
               new_MCW_bbox( grapher->opt_colors_menu ,
-                            2 , pts_label , MCW_BB_radio_zero , MCW_BB_noframe ,
+                            nbut , pts_label , MCW_BB_radio_zero , MCW_BB_noframe ,
                             GRA_thick_CB , (XtPointer) grapher ) ;
            MCW_reghint_children(  grapher->opt_points_bbox[ii]->wrowcol ,
-                                  "Plot graph as Points only, or as Points and Lines" ) ;
+                                  "How to plot graph data" ) ;
 
            if( grapher->points_index[ii] )
               MCW_set_bbox( grapher->opt_points_bbox[ii] ,
@@ -785,6 +787,9 @@ ENTRY("new_MCW_grapher") ;
                           GRA_transform_CB , (XtPointer) grapher ,
                           GRA_transform_label , (XtPointer) grapher->status->transforms1D ) ;
 
+      /* force the optmenu to call us even if the same button is chosen twice */
+      grapher->transform1D_av->optmenu_call_if_unchanged = 1 ;  /* 10 Oct 2007 */
+
       if( grapher->status->transforms1D->num >= COLSIZE )
          AVOPT_columnize( grapher->transform1D_av ,
                           (grapher->status->transforms1D->num/COLSIZE)+1 ) ;
@@ -795,9 +800,7 @@ ENTRY("new_MCW_grapher") ;
       /* 08 Nov 1996: dplot = double plot */
       /* 07 Aug 2001: rewrite of dplot to make it have 3 states, not two */
 
-      { char * bbox_label[3] = { "DPlot Off" ,
-                                 "Overlay"   ,
-                                 "Plus/Minus" } ;
+      { char *bbox_label[3] = { "DPlot Off" , "Overlay" , "Plus/Minus" } ;
 
         OPT_MENU_PULLRIGHT(opt_dplot_menu,opt_dplot_cbut,
                            "Double Plot","Graph Dataset and Tran 1D?");
@@ -809,7 +812,7 @@ ENTRY("new_MCW_grapher") ;
         MCW_set_bbox( grapher->opt_dplot_bbox , DPLOT_OFF ) ;
 
         MCW_reghint_children( grapher->opt_dplot_bbox->wrowcol ,
-                              "How to show 2 curves" ) ;
+                              "How to show 'Double Plot' curves" ) ;
       }
 
    } else {
@@ -906,7 +909,6 @@ if(PRINT_TRACING)
 #if 0
 STATUS("realizing widgets") ;
    XtRealizeWidget( grapher->fdw_graph ) ;
-
    WAIT_for_window(grapher->form_tmp) ;
 
    XtVaSetValues( grapher->option_rowcol ,
@@ -943,14 +945,14 @@ STATUS("realizing widgets") ;
 
 void end_fd_graph_CB( Widget w , XtPointer client_data , XtPointer call_data )
 {
-   MCW_grapher * grapher = (MCW_grapher *) client_data ;
+   MCW_grapher *grapher = (MCW_grapher *) client_data ;
    int ii ;
 
 ENTRY("end_fd_graph_CB") ;
 
    if( ! GRA_VALID(grapher) ) EXRETURN ;
 
-   GRA_timer_stop( grapher ) ;  /* 04 Dec 2003 */
+   GRA_timer_stop( grapher ) ;  NI_sleep(1) ; /* 04 Dec 2003 */
 
    grapher->valid = 0 ;  /* can't do anything with this anymore */
 
@@ -1018,7 +1020,7 @@ STATUS("destroying widgets") ;
 #else
    XtUnrealizeWidget( grapher->fdw_graph ) ;
 #endif
-STATUS("widgets now destroyed") ;
+STATUS("widgets now destroyed") ; NI_sleep(1) ;
 
    /** if AFNI has a notify callback, it will free the data **/
 
@@ -1377,18 +1379,18 @@ ENTRY("redraw_graph") ;
      xd = id.ijk[0] ; yd = id.ijk[1] ; zd = id.ijk[2] ; }
 #endif
 
-   sprintf(strp,"X: %d", xd) ;
+   sprintf(strp,"I: %d", xd) ;
    fd_txt( grapher , GL_DLX+5 , 35, strp) ;
    xxx = DC_text_width(grapher->dc,strp) ;
 
-   sprintf(strp,"Y: %d", yd) ;
+   sprintf(strp,"J: %d", yd) ;
    fd_txt( grapher , GL_DLX+5 , 21, strp) ;
    www = DC_text_width(grapher->dc,strp) ; xxx = MAX(xxx,www) ;
 
    if( grapher->status->nz > 1 ){
-      sprintf(strp,"Z: %d", zd) ;
-      fd_txt( grapher , GL_DLX+5 ,  7, strp) ;
-      www = DC_text_width(grapher->dc,strp) ; xxx = MAX(xxx,www) ;
+     sprintf(strp,"K: %d", zd) ;
+     fd_txt( grapher , GL_DLX+5 ,  7, strp) ;
+     www = DC_text_width(grapher->dc,strp) ; xxx = MAX(xxx,www) ;
    }
 
    /* second column */
@@ -1673,7 +1675,7 @@ void plot_graphs( MCW_grapher *grapher , int code )
    MRI_IMAGE *tsim ;
    MRI_IMARR *tsimar ;
    float     *tsar ;
-   float       tsbot=0.0 , ftemp , tstop ;
+   float       tsbot=0.0 , ftemp,fwid,foff , tstop ;
    int i, m, index, ix, iy, xtemp,ytemp,ztemp , xoff,yoff , its,ibot,itop;
    int ptop,pbot,pnum,qnum , tbot,ttop,tnum , ntmax ;  /* 17 Mar 2004 */
 
@@ -1762,8 +1764,20 @@ ENTRY("plot_graphs") ;
    if( grapher->transform1D_func != NULL &&
        MCW_val_bbox(grapher->opt_dplot_bbox) != DPLOT_OFF ){
 
-     INIT_IMARR(dplot_imar) ;
-     dplot = MCW_val_bbox(grapher->opt_dplot_bbox) ; /* 07 Aug 2001 */
+     static int first=1 ;
+
+     if( DATA_BOXED(grapher) && first ){
+       MCW_set_bbox( grapher->opt_dplot_bbox , DPLOT_OFF ) ;
+       (void) MCW_popup_message(
+                 grapher->option_rowcol ,
+                 "'Double Plot' being turned off\n"
+                 "  in 'Boxes' graphing mode!"     ,
+                 MCW_USER_KILL | MCW_TIMER_KILL ) ;
+       first = 0 ;
+     } else {
+       INIT_IMARR(dplot_imar) ;
+       dplot = MCW_val_bbox(grapher->opt_dplot_bbox) ; /* 07 Aug 2001 */
+     }
    }
 
    GRA_CLEAR_tuser( grapher ) ;  /* 22 Apr 1997 */
@@ -1830,7 +1844,7 @@ STATUS("about to perform 0D transformation") ;
          /* 08 Nov 1996: double plotting, too */
 
          if( grapher->transform1D_func != NULL ){
-            MRI_IMAGE * qim ;                /* image to be transformed */
+            MRI_IMAGE *qim ;                /* image to be transformed */
 
             if( dplot ){                      /* copy and save original */
               qim = mri_to_float(tsim) ;       /* if double plot is on */
@@ -1843,7 +1857,7 @@ STATUS("about to perform 1D transformation") ;
 
             if( grapher->transform1D_flags & NEEDS_DSET_INDEX ){ /* 18 May 2000 */
 #ifdef BE_AFNI_AWARE
-               FD_brick *br = (FD_brick *) grapher->getaux ;
+               FD_brick *br = (FD_brick *)grapher->getaux ;
                THD_ivec3 id ;
                id = THD_fdind_to_3dind( br ,
                                         TEMP_IVEC3(xtemp,ytemp,grapher->zpoint) );
@@ -1868,7 +1882,7 @@ STATUS("about to perform 1D transformation") ;
                                         MRI_FLOAT_PTR(qim) ) ;
 #endif
               } else {
-                 char * quser = NULL ;
+                 char *quser = NULL ;
 #if 0
                  grapher->transform1D_func( qim->nx , qim->xo , qim->dx ,
                                             MRI_FLOAT_PTR(qim) , &quser ) ;
@@ -1900,9 +1914,16 @@ STATUS("about to perform 1D transformation") ;
               }
             }
 
+            /* 04 Oct 2007: discard transformations that did nothing */
+
+            if( dplot && mri_equal(tsim,qim) ){
+              mri_free(qim) ;
+              IMARR_SUBIM( dplot_imar , IMARR_COUNT(dplot_imar)-1 ) = NULL ;
+            }
+
             /* At this point, qim is transformed;
-               if dplot is on, then it is saved in dplot_imar;
-               if dplot is off, then qim == tsim, and it will be saved in tsimar, below */
+               if dplot is on, then it was saved in dplot_imar earlier;
+               if dplot is off, then qim==tsim, and it will be saved in tsimar, below */
 
          } /* end of transform1D */
 
@@ -2139,7 +2160,10 @@ STATUS("starting time series graph loop") ;
           /** Compute X11 line coords from pixel heights in plot[].
               N.B.: X11 y is DOWN the screen, but plot[] is UP the screen **/
 
-          ftemp = grapher->gx / (pnum-1.0) ;  /* x scale factor */
+          if( DATA_BOXED(grapher) )
+            ftemp = grapher->gx / (float)pnum ; /* x scale factor */
+          else
+            ftemp = grapher->gx / (pnum-1.0) ;  /* x scale factor */
 
           /* X11 box for graph:
              x = xorigin[ix][iy]          .. xorigin[ix][iy]+gx    (L..R)
@@ -2172,6 +2196,20 @@ STATUS("starting time series graph loop") ;
             XDrawLines( grapher->dc->display ,
                         grapher->fd_pxWind , grapher->dc->myGC ,
                         a_line , qnum ,  CoordModeOrigin ) ;
+          }
+          if( DATA_BOXED(grapher) ){          /* 26 Jun 2007 */
+            XPoint q_line[4] ; short xb,xt ; float delt=ftemp/tsim->ny ;
+            for( i=0 ; i < qnum ; i++ ){
+              xb = (short)(a_line[i].x + tt*delt + 0.49f) ;
+              xt = (short)(xb + delt-0.99f) ;
+              q_line[0].x = xb ; q_line[0].y = yoff ;
+              q_line[1].x = xb ; q_line[1].y = a_line[i].y ;
+              q_line[2].x = xt ; q_line[2].y = a_line[i].y ;
+              q_line[3].x = xt ; q_line[3].y = yoff ;
+              XDrawLines( grapher->dc->display ,
+                          grapher->fd_pxWind , grapher->dc->myGC ,
+                          q_line , 4 ,  CoordModeOrigin ) ;
+            }
           }
 
          /* 22 July 1996: save central graph data for later use */
@@ -2816,7 +2854,9 @@ STATUS("button press") ;
          /* 26 Feb 2007: Buttons 4 and 5 = scroll wheel = change time point */
 
          if( but == Button4 || but == Button5 ){
-           int tt = (but==Button4) ? grapher->time_index-1 : grapher->time_index+1 ;
+           int dd=(but==Button4)?-1:+1 , tt ;
+           if( AFNI_yesenv("AFNI_INDEX_SCROLLREV") ) dd = -dd ;
+           tt = grapher->time_index + dd ;
            EXRONE(grapher) ; GRA_timer_stop(grapher) ;
            if( tt >= 0 && tt < grapher->status->num_series ){
              if( grapher->status->send_CB != NULL ){
@@ -3265,7 +3305,18 @@ STATUS(str); }
       }
       break ;
 
-      case 't':{                                                  /* 22 Sep 2000 */
+      case 'B':{                                        /* 29 Jun 2007 */
+        int bbb=grapher->points_index[4] , ccc ;
+        ccc = (bbb==4) ? 0 : 4 ;
+        MCW_set_bbox( grapher->opt_points_bbox[4] , ccc ) ;
+        grapher->points_index[4] = ccc ;
+        if( DATA_BOXED(grapher) )
+          MCW_set_bbox( grapher->opt_dplot_bbox , DPLOT_OFF ) ;
+        if( !grapher->textgraph ) redraw_graph( grapher , 0 ) ;
+      }
+      break ;
+
+      case 't':{                                        /* 22 Sep 2000 */
         int bbb = ! grapher->textgraph ;
         MCW_set_bbox( grapher->opt_textgraph_bbox , bbb ) ;
         grapher->textgraph = bbb ;
@@ -3275,7 +3326,9 @@ STATUS(str); }
 
       case 'S':
         MCW_choose_string( grapher->option_rowcol ,
-                           "Save PNM Prefix:" , NULL ,
+                           "Save Image prefix:\n"
+                           "  * end in .jpg or .png *\n"
+                           "  * for those formats   *" , NULL ,
                            GRA_saver_CB , (XtPointer) grapher ) ;
       break ;
 
@@ -3578,10 +3631,10 @@ STATUS("User pressed Done button: starting timeout") ;
 
    if( w == grapher->opt_pin_choose_pb ){   /* 19 Mar 2004 */
      char *lvec[2] = { "Bot" , "Top" } ;
-     int   ivec[2] ;
-     ivec[0] = grapher->pin_bot ; ivec[1] = grapher->pin_top ;
+     float fvec[2] ;
+     fvec[0] = grapher->pin_bot ; fvec[1] = grapher->pin_top ;
      MCW_choose_vector( grapher->option_rowcol , "Graph Pins: Bot..Top-1" ,
-                        2 , lvec,ivec ,
+                        2 , lvec,fvec ,
                         GRA_pin_choose_CB , (XtPointer) grapher ) ;
      EXRETURN ;
    }
@@ -4451,7 +4504,9 @@ STATUS("replacing ort timeseries") ;
 
       case graDR_unrealize:{
          GRA_timer_stop(grapher) ;   /* 04 Dec 2003 */
-         if( GRA_REALZ(grapher) ) XtUnrealizeWidget( grapher->fdw_graph ) ;
+         if( GRA_REALZ(grapher) ){
+           XtUnrealizeWidget(grapher->fdw_graph); NI_sleep(1);
+         }
          grapher->valid = 1 ;
 
          if( grapher->fd_pxWind != (Pixmap) 0 )
@@ -4467,9 +4522,8 @@ STATUS("replacing ort timeseries") ;
 
             grapher->valid = 2 ;
 
-            XtRealizeWidget( grapher->fdw_graph ) ;
-
-            WAIT_for_window(grapher->fdw_graph) ;
+            XtRealizeWidget( grapher->fdw_graph ) ; NI_sleep(1) ;
+            WAIT_for_window( grapher->fdw_graph ) ; NI_sleep(1) ;
 
             /* 29 Sep 2000: next 2 lines of code are for the Form change */
 
@@ -4494,7 +4548,7 @@ STATUS("replacing ort timeseries") ;
 #ifdef USE_OPTMENUS
             GRA_fix_optmenus( grapher ) ;
 #endif
-            AFNI_sleep(1) ;  /* 08 Mar 2002: for good luck */
+            NI_sleep(1) ;  /* 08 Mar 2002: for good luck */
          }
          RETURN( True ) ;
       }
@@ -4751,7 +4805,7 @@ ENTRY("GRA_fim_CB") ;
    /*** 04 Jan 2000: modify the FIM+ button settings ***/
 
    else if( w == grapher->fmenu->fimp_setdefault_pb ){
-     char * ff = my_getenv( "AFNI_FIM_MASK" ) ; int mm=0 ;
+     char *ff = my_getenv( "AFNI_FIM_MASK" ) ; int mm=0 ;
      if( ff != NULL ) mm = strtol(ff,NULL,10) ;
      if( mm <= 0 ) mm = FIM_DEFAULT_MASK ;
      MCW_set_bbox( grapher->fmenu->fimp_opt_bbox , mm ) ;
@@ -5002,7 +5056,7 @@ ENTRY("GRA_setshift_startup") ;
    (void) MCW_action_area( wrc , SETSHIFT_act , NUM_SETSHIFT_ACT ) ;
 
    XtManageChild( wrc ) ;
-   XtPopup( grapher->dialog , XtGrabNone ) ; RWC_sleep(1);
+   XtPopup( grapher->dialog , XtGrabNone ) ; NI_sleep(1);
    RWC_visibilize_widget( grapher->dialog ) ; /* 09 Nov 1999 */
    NORMAL_cursorize( grapher->dialog ) ;
    EXRETURN ;
@@ -5049,7 +5103,7 @@ ENTRY("GRA_setshift_action_CB") ;
    }
 
    if( close_window ){                          /* close the window */
-      XtDestroyWidget( grapher->dialog ) ;
+      XtDestroyWidget( grapher->dialog ) ; NI_sleep(1) ;
       grapher->dialog = NULL ;
       FREE_AV( grapher->setshift_right_av ) ;
       FREE_AV( grapher->setshift_left_av )  ;
@@ -5530,9 +5584,10 @@ char * GRA_transform_label( MCW_arrowval * av , XtPointer cd )
 /*-----------------------------------------------------------------------------*/
 /*! Will be called from both the 1D and 0D menus. */
 
-void GRA_transform_CB( MCW_arrowval * av , XtPointer cd )
+void GRA_transform_CB( MCW_arrowval *av , XtPointer cd )
 {
-   MCW_grapher * grapher = (MCW_grapher *) cd ;
+   MCW_grapher *grapher = (MCW_grapher *)cd ;
+   int set_dplot = 0 ;  /* 04 Oct 2007 */
 
 ENTRY("GRA_transform_CB") ;
 
@@ -5550,6 +5605,8 @@ ENTRY("GRA_transform_CB") ;
          grapher->transform0D_func  = grapher->status->transforms0D->funcs[av->ival-1];
          grapher->transform0D_index = av->ival ;
          grapher->transform0D_flags = grapher->status->transforms0D->flags[av->ival-1];
+
+         if( grapher->transform0D_flags & SET_DPLOT_OVERLAY ) set_dplot = 1 ;
 
          /* 21 Jul 2003: call the init function, if present */
 
@@ -5571,12 +5628,17 @@ ENTRY("GRA_transform_CB") ;
          grapher->transform1D_index = av->ival ;
          grapher->transform1D_flags = grapher->status->transforms1D->flags[av->ival-1];
 
+         if( grapher->transform1D_flags & SET_DPLOT_OVERLAY ) set_dplot = 1 ;
+
          /* 21 Jul 2003: call the init function, if present */
 
          if( grapher->status->transforms1D->func_init[av->ival-1] != NULL )
           grapher->status->transforms1D->func_init[av->ival-1]() ;
       }
    }
+
+   if( set_dplot == 1 && !DATA_BOXED(grapher) )  /* 04 Oct 2007 */
+     MCW_set_bbox( grapher->opt_dplot_bbox , DPLOT_OVERLAY ) ;
 
    redraw_graph( grapher , 0 ) ;
    EXRETURN ;
@@ -5810,7 +5872,7 @@ ENTRY("GRA_color_CB") ;
 
 void GRA_thick_CB( Widget w , XtPointer cd , XtPointer call_data )
 {
-   MCW_grapher * grapher = (MCW_grapher *) cd ;
+   MCW_grapher *grapher = (MCW_grapher *) cd ;
    int ii , jj ;
 
 ENTRY("GRA_thick_CB") ;
@@ -5818,28 +5880,35 @@ ENTRY("GRA_thick_CB") ;
    if( ! GRA_VALID(grapher) ) EXRETURN ;
 
    for( ii=0 ; ii < NUM_COLOR_ITEMS ; ii++ )
-      if( grapher->opt_thick_bbox[ii] != NULL &&
-          w == grapher->opt_thick_bbox[ii]->wbut[0] ) break ;
+     if( grapher->opt_thick_bbox[ii] != NULL &&
+         w == grapher->opt_thick_bbox[ii]->wbut[0] ) break ;
 
    if( ii < NUM_COLOR_ITEMS ){
-      jj = grapher->thick_index[ii] ;
-      grapher->thick_index[ii] = MCW_val_bbox( grapher->opt_thick_bbox[ii] ) ;
-      if( jj != grapher->thick_index[ii] ) redraw_graph( grapher , 0 ) ;
-      EXRETURN ;
+     jj = grapher->thick_index[ii] ;
+     grapher->thick_index[ii] = MCW_val_bbox( grapher->opt_thick_bbox[ii] ) ;
+     if( jj != grapher->thick_index[ii] ) redraw_graph( grapher , 0 ) ;
+     EXRETURN ;
    }
 
    /* 09 Jan 1998 */
 
-   for( ii=0 ; ii < NUM_COLOR_ITEMS ; ii++ )
-      if( grapher->opt_points_bbox[ii] != NULL &&
-          ( w == grapher->opt_points_bbox[ii]->wbut[0] ||
-            w == grapher->opt_points_bbox[ii]->wbut[1]   ) ) break ;
+   for( ii=0 ; ii < NUM_COLOR_ITEMS ; ii++ ){
+     if( grapher->opt_points_bbox[ii] != NULL ){
+       for( jj=0 ; jj < grapher->opt_points_bbox[ii]->nbut ; jj++ )
+         if( w == grapher->opt_points_bbox[ii]->wbut[jj] ) break ;
+       if( jj < grapher->opt_points_bbox[ii]->nbut ) break ;
+     }
+   }
 
    if( ii < NUM_COLOR_ITEMS ){
-      jj = grapher->points_index[ii] ;
-      grapher->points_index[ii] = MCW_val_bbox( grapher->opt_points_bbox[ii] ) ;
-      if( jj != grapher->points_index[ii] ) redraw_graph( grapher , 0 ) ;
-      EXRETURN ;
+     jj = grapher->points_index[ii] ;
+     grapher->points_index[ii] = MCW_val_bbox( grapher->opt_points_bbox[ii] ) ;
+     if( jj != grapher->points_index[ii] ){
+       if( DATA_BOXED(grapher) )
+         MCW_set_bbox( grapher->opt_dplot_bbox , DPLOT_OFF ) ;
+       redraw_graph( grapher , 0 ) ;
+     }
+     EXRETURN ;
    }
 
    EXRETURN ;  /* should not be reached */
@@ -5849,11 +5918,11 @@ ENTRY("GRA_thick_CB") ;
    Save the background pixmap to a PNM file
 ----------------------------------------------------------------------------*/
 
-void GRA_saver_CB( Widget wcaller , XtPointer cd , MCW_choose_cbs * cbs )
+void GRA_saver_CB( Widget wcaller , XtPointer cd , MCW_choose_cbs *cbs )
 {
    int ll , ii ;
-   MCW_grapher * grapher = (MCW_grapher *) cd ;
-   char * fname , * ppnm ;
+   MCW_grapher *grapher = (MCW_grapher *)cd ;
+   char *fname , *ppnm ;
 
 ENTRY("GRA_saver_CB") ;
 
@@ -5869,16 +5938,19 @@ ENTRY("GRA_saver_CB") ;
    strcpy( fname , cbs->cval ) ;
 
    for( ii=0 ; ii < ll ; ii++ )
-      if( iscntrl(fname[ii]) || isspace(fname[ii]) ) break ;
+     if( iscntrl(fname[ii]) || isspace(fname[ii]) ) break ;
 
    if( ii < ll || ll < 2 || ll > 240 ){
-      XBell( XtDisplay(wcaller) , 100 ) ;
-      free( fname ) ; EXRETURN ;
+     XBell( XtDisplay(wcaller) , 100 ) ;
+     free( fname ) ; EXRETURN ;
    }
 
                       ppnm = strstr( fname , ".ppm" ) ;
    if( ppnm == NULL ) ppnm = strstr( fname , ".pnm" ) ;
    if( ppnm == NULL ) ppnm = strstr( fname , ".jpg" ) ;
+   if( ppnm == NULL ) ppnm = strstr( fname , ".JPG" ) ;
+   if( ppnm == NULL ) ppnm = strstr( fname , ".png" ) ;
+   if( ppnm == NULL ) ppnm = strstr( fname , ".PNG" ) ;
    if( ppnm == NULL ) strcat(fname,".ppm") ;
 
    GRA_file_pixmap( grapher , fname ) ;

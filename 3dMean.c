@@ -47,7 +47,7 @@ int main( int argc , char * argv[] )
              "    * The output dataset origin, time steps, etc., are taken from the\n"
              "       first input dataset.\n"
             ) ;
-      exit(0) ;
+      PRINT_COMPILE_DATE ; exit(0) ;
    }
 
    /*-- 20 Apr 2001: addto the arglist, if user wants to [RWCox] --*/
@@ -177,7 +177,7 @@ int main( int argc , char * argv[] )
                              ADN_datum_all , datum ,
                           ADN_none ) ;
 
-         if( THD_is_file(outset->dblk->diskptr->header_name) ){
+         if( THD_deathcon() && THD_is_file(outset->dblk->diskptr->header_name) ){
             fprintf(stderr,
                     "*** Output file %s already exists -- cannot continue!\n",
                     outset->dblk->diskptr->header_name ) ;

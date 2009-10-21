@@ -651,7 +651,7 @@ ENTRY("AFNI_pbar_CB") ;
    /*--- Display the palette table ---*/
 
    else if( w == im3d->vwid->func->pbar_showtable_pb ){
-      char * dum = dump_PBAR_palette_table(1) ;
+      char *dum = dump_PBAR_palette_table(1) ;
       new_MCW_textwin( im3d->vwid->func->options_label, dum, TEXT_READONLY ) ;
       free(dum) ;
    }
@@ -660,7 +660,10 @@ ENTRY("AFNI_pbar_CB") ;
 
    else if( w == im3d->vwid->func->pbar_saveim_pb ){
       MCW_choose_string( im3d->vwid->func->options_label ,
-                         "PPM file prefix" , NULL ,
+                         "PPM file prefix\n"
+                         "  * end in .jpg or .png *\n"
+                         "  * for those formats   *"
+                         , NULL ,
                          AFNI_finalize_saveim_CB , cd ) ;
    }
 
@@ -1014,127 +1017,3 @@ ENTRY("AFNI_palette_tran_CB") ;
 
    EXRETURN ;
 }
-
-/*****************************************************************************/
-/*************  Functions for all actions in the thr_label popup *************/
-
-/*---------------------------------------------------------------------*/
-/* Put a '*' next to the active item in the vedit list on the menu.    */
-
-static char *thrbutlab[] = { " Clear Edit" ,
-                             " Clusterize"  } ;
-#define NTHRBUT (sizeof(thrbutlab)/sizeof(char *))
-
-void set_vedit_label( Three_D_View *im3d , int ll )
-{
-   char lab[64] ;
-   if( !IM3D_OPEN(im3d) ) return ;
-
-   strcpy(lab,thrbutlab[0]); if( ll==0 ) lab[0] = '*' ;
-   MCW_set_widget_label( im3d->vwid->func->clu_clear_pb , lab ) ;
-
-   strcpy(lab,thrbutlab[1]); if( ll==1 ) lab[0] = '*' ;
-   MCW_set_widget_label( im3d->vwid->func->clu_cluster_pb , lab ) ;
-
-   return ;
-}
-
-/*---------------------------------------------------------------*/
-/* Callback from the clusterize parameter chooser.               */
-
-static void AFNI_cluster_choose_CB( Widget wc, XtPointer cd, MCW_choose_cbs *cbs )
-{
-   Three_D_View *im3d = (Three_D_View *)cd ;
-   float *vec = (float *)(cbs->cval) , rmm,vmul ;
-
-ENTRY("AFNI_cluster_choose_CB") ;
-
-   if( ! IM3D_OPEN(im3d) ) EXRETURN ;
-
-   rmm = vec[0] ; vmul = vec[1] ;
-   if( vmul <= 0.0 ){
-     im3d->vedset.code = 0 ;
-     AFNI_vedit_clear( im3d->fim_now ) ;
-     set_vedit_label(im3d,0) ; VEDIT_unhelpize(im3d) ;
-   } else {
-     im3d->vedset.code     = VEDIT_CLUST ;
-     im3d->vedset.param[2] = rmm ;
-     im3d->vedset.param[3] = vmul ;
-     set_vedit_label(im3d,1) ;
-   }
-   if( im3d->vinfo->func_visible ) AFNI_redisplay_func( im3d ) ;
-   EXRETURN ;
-}
-
-/*---------------------------------------------------------------*/
-/* Callback for items on the thr_label menu itself.              */
-
-void AFNI_clu_CB( Widget w , XtPointer cd , XtPointer cbs )
-{
-   Three_D_View *im3d = (Three_D_View *)cd ;
-
-ENTRY("AFNI_clu_CB") ;
-
-   if( ! IM3D_OPEN(im3d) ) EXRETURN ;
-
-   /*--- Clear editing ---*/
-
-   if( w == im3d->vwid->func->clu_clear_pb ){
-     im3d->vedset.code = 0 ;
-     AFNI_vedit_clear( im3d->fim_now ) ;
-     set_vedit_label(im3d,0) ; VEDIT_unhelpize(im3d) ;
-     if( im3d->vinfo->func_visible ) AFNI_redisplay_func( im3d ) ;
-     EXRETURN ;
-   }
-
-   /*--- Get clusterizing parameters ---*/
-
-   if( w == im3d->vwid->func->clu_cluster_pb ){
-     char *lvec[2] = { "rmm " , "vmul" } ;
-     int   ivec[2] ;
-     if( im3d->vedset.code == VEDIT_CLUST ){
-       ivec[0] = im3d->vedset.param[2] ; if( ivec[0] <= 0 ) ivec[0] = 0 ;
-       ivec[1] = im3d->vedset.param[3] ; if( ivec[1] <= 0 ) ivec[1] = 20 ;
-     } else {
-       ivec[0] = 0 ; ivec[1] = 20 ;
-     }
-     MCW_choose_vector( im3d->vwid->func->thr_label ,
-                       "Clusterize Parameters" ,
-                        2 , lvec,ivec ,
-                        AFNI_cluster_choose_CB , (XtPointer)im3d ) ;
-     EXRETURN ;
-   }
-
-   EXRETURN ;  /* should be unreachable */
-}
-
-#if 0
-/*-----------------------------------------------------------------
-  Event handler to find #3 button press for thr_label popup;
-  just pops up the menu for the user's gratification.
--------------------------------------------------------------------*/
-
-void AFNI_thr_EV( Widget w , XtPointer cd ,
-                  XEvent *ev , Boolean *continue_to_dispatch )
-{
-   Three_D_View *im3d = (Three_D_View *)cd ;
-
-ENTRY("AFNI_thr_EV") ;
-
-   if( ! IM3D_OPEN(im3d) ) EXRETURN ;
-
-   switch( ev->type ){
-      case ButtonPress:{
-         XButtonEvent *event = (XButtonEvent *) ev ;
-         im3d->vwid->butx = event->x_root ;  /* 17 May 2005 */
-         im3d->vwid->buty = event->y_root ;
-         event->button    = Button3 ;                           /* fakeout */
-         XmMenuPosition( im3d->vwid->func->thr_menu , event ) ; /* where */
-         XtManageChild ( im3d->vwid->func->thr_menu ) ;         /* popup */
-      }
-      break ;
-   }
-
-   EXRETURN ;
-}
-#endif

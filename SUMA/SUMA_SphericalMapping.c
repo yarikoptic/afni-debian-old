@@ -148,7 +148,8 @@ int SUMA_Bad_FacesetNorm_Dot_Radius(SUMA_SurfaceObject *SO, byte *FaceMask, doub
    
       
 */
-SUMA_SPHERE_QUALITY SUMA_SphereQuality(SUMA_SurfaceObject *SO, char *Froot, char *shist)
+SUMA_SPHERE_QUALITY SUMA_SphereQuality(SUMA_SurfaceObject *SO, 
+                                       char *Froot, char *shist)
 {
    static char FuncName[]={"SUMA_SphereQuality"};
    float *dist = NULL, mdist, *dot=NULL, nr, r[3], *bad_dot = NULL;
@@ -183,14 +184,16 @@ SUMA_SPHERE_QUALITY SUMA_SphereQuality(SUMA_SurfaceObject *SO, char *Froot, char
    /* get the options for creating the scaled color mapping */
    OptScl = SUMA_ScaleToMapOptInit();
    if (!OptScl) {
-      fprintf (SUMA_STDERR,"Error %s: Could not get scaling option structure.\n", FuncName);
+      fprintf (SUMA_STDERR,
+               "Error %s: Could not get scaling option structure.\n", FuncName);
       exit (1); 
    }
    
    /* get the color map */
-   CM = SUMA_GetStandardMap (SUMA_CMAP_MATLAB_DEF_BYR64);
+   CM = SUMA_FindNamedColMap ("byr64");
    if (CM == NULL) {
-      fprintf (SUMA_STDERR,"Error %s: Could not get standard colormap.\n", FuncName);
+      fprintf (SUMA_STDERR,
+               "Error %s: Could not get standard colormap.\n", FuncName);
       if (OptScl) SUMA_free(OptScl);
       exit (1); 
    }
@@ -231,7 +234,6 @@ SUMA_SPHERE_QUALITY SUMA_SphereQuality(SUMA_SurfaceObject *SO, char *Froot, char
    if (!SV) {
       fprintf (SUMA_STDERR,"Error %s: Could not allocate for SV.\n", FuncName);
       if (dist) SUMA_free(dist);
-      if (CM) SUMA_Free_ColorMap (CM);
       if (OptScl) SUMA_free(OptScl);
       exit(1);
    }
@@ -239,7 +241,6 @@ SUMA_SPHERE_QUALITY SUMA_SphereQuality(SUMA_SurfaceObject *SO, char *Froot, char
    if (!SUMA_ScaleToMap (dist, SO->N_Node, dmin, dmax, CM, OptScl, SV)) {
       fprintf (SUMA_STDERR,"Error %s: Failed in SUMA_ScaleToMap.\n", FuncName);
       if (dist) SUMA_free(dist);
-      if (CM) SUMA_Free_ColorMap (CM);
       if (OptScl) SUMA_free(OptScl);
       exit(1);
    }
@@ -367,7 +368,6 @@ SUMA_SPHERE_QUALITY SUMA_SphereQuality(SUMA_SurfaceObject *SO, char *Froot, char
          if (bad_ind) SUMA_free(bad_ind);
          if (isortdist) SUMA_free(isortdist);
          if (dist) SUMA_free(dist);
-         if (CM) SUMA_Free_ColorMap (CM);
          if (OptScl) SUMA_free(OptScl);
          exit(1);
       }
@@ -412,7 +412,6 @@ SUMA_SPHERE_QUALITY SUMA_SphereQuality(SUMA_SurfaceObject *SO, char *Froot, char
          if (bad_ind) SUMA_free(bad_ind);
          if (isortdist) SUMA_free(isortdist);
          if (dist) SUMA_free(dist);
-         if (CM) SUMA_Free_ColorMap (CM);
          if (OptScl) SUMA_free(OptScl);
          exit(1);
       }
@@ -424,7 +423,6 @@ SUMA_SPHERE_QUALITY SUMA_SphereQuality(SUMA_SurfaceObject *SO, char *Froot, char
          if (bad_ind) SUMA_free(bad_ind);
          if (isortdist) SUMA_free(isortdist);
          if (dist) SUMA_free(dist);
-         if (CM) SUMA_Free_ColorMap (CM);
          if (OptScl) SUMA_free(OptScl);
          exit(1);
       }
@@ -516,7 +514,6 @@ SUMA_SPHERE_QUALITY SUMA_SphereQuality(SUMA_SurfaceObject *SO, char *Froot, char
    if (face_bad_ind) SUMA_free(face_bad_ind); 
    if (isortdist) SUMA_free(isortdist);
    if (dist) SUMA_free(dist);
-   if (CM) SUMA_Free_ColorMap (CM);
    if (OptScl) SUMA_free(OptScl);
 
 /* CAREFUL, MIGHT HAVE CHANGED RETURN VARIABLE TO REFLECT FACET DEVIATIONS INSTEAD OF BAD NODES.  
@@ -1158,7 +1155,7 @@ SUMA_Boolean SUMA_inNodeNeighb( SUMA_SurfaceObject *surf, float *nodeList, int *
       i = 0;
       while ((i < surf->FN->N_Neighb[node[itry]] ) && !found) { 
 
-         if (!SUMA_Get_Incident( node[itry], surf->FN->FirstNeighb[node[itry]][i], surf->EL, incidentTri, &N_incident, 1)) {
+         if (!SUMA_Get_Incident( node[itry], surf->FN->FirstNeighb[node[itry]][i], surf->EL, incidentTri, &N_incident, 1, 0)) {
             fprintf (SUMA_STDERR,"Error %s: Failed in SUMA_Get_Incident.\n", FuncName);
             SUMA_RETURN (NOPE);
          }
@@ -2077,7 +2074,7 @@ SUMA_SurfaceObject* SUMA_morphToStd (SUMA_SurfaceObject *SO, SUMA_MorphInfo *MI,
    int *tmp_newFaceSetList = NULL, *newFaceSetList = NULL, *inclNodes=NULL;
    int i, j, N_FaceSet, ti;
    SUMA_SurfaceObject *SO_new=NULL;
-   SUMA_Boolean LocalHead = YUP;
+   SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
 
@@ -2160,7 +2157,7 @@ SUMA_SurfaceObject* SUMA_morphToStd (SUMA_SurfaceObject *SO, SUMA_MorphInfo *MI,
             }
          } else {
            /*otherwise, morphing for this node skipped*/
-           SUMA_LHv(    "MI->ClsNodes[%d || %d || %d] = SO->N_Node=%d", j, j+1, j+2, SO->N_Node);
+           SUMA_LHv(    "MI->ClsNodes[%d || %d || %d] = SO->N_Node=%d\n", j, j+1, j+2, SO->N_Node);
          }
       }
 

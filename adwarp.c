@@ -193,7 +193,7 @@ void display_help_menu()
       RESAM_shortstr[1]
       ) ;
 
-   exit(0) ;
+   PRINT_COMPILE_DATE ; exit(0) ;
 }
 
 
@@ -676,7 +676,7 @@ ENTRY("adwarp_refashion_dataset") ;
   dkptr->dimsizes[2] = dset->daxes->nzz ;       /* daxes don't match! */
 
   /* write the header out */
-
+ 
   good = THD_write_3dim_dataset( NULL,NULL , dset , False ) ;
   if( !good ){
     fprintf(stderr,"\a\n*** cannot write dataset header ***\n") ;
@@ -684,6 +684,10 @@ ENTRY("adwarp_refashion_dataset") ;
     RETURN(False) ;
   }
   STATUS("wrote output header file") ;
+
+  /* at this point in time, the output dataset is set and the header
+   *   has been written - so we must overwrite from now on */
+  putenv("AFNI_DECONFLICT=OVERWRITE") ;  /* 19 Nov 2007 */
 
   /* purge the datablock that now exists,
      then delete the file on disk that now exists (if any) */
@@ -866,7 +870,6 @@ STATUS("have new image") ;
   THD_load_statistics( dset ) ;
 
   STATUS("rewriting header") ;
-
   (void) THD_write_3dim_dataset( NULL,NULL , dset , False ) ;
 
   STATUS("purging datablock") ;
@@ -919,14 +922,26 @@ int main( int argc , char *argv[] )
          fprintf(stderr,
                  "++ Warning: overwriting dataset %s and %s\n",
                  DSET_HEADNAME(new_dset), DSET_BRIKNAME(new_dset) ) ;
-      } else {
+         putenv("AFNI_DECONFLICT=OVERWRITE") ;  /* 12 Nov 2007 */
+      }
+   }
+
+/* aside from -force, let the user's AFNI_DECONFLICT variable control this */
+/*                                                     19 Nov 2007 [rickr] */
+#if 0
+else if( THD_deathcon() ){
          fprintf(stderr,
                  "** Error: can't overwrite dataset %s and %s\n"
                  "          unless you use the -force option!\n" ,
                  DSET_HEADNAME(new_dset), DSET_BRIKNAME(new_dset) ) ;
          exit(1) ;
+      } else {
+         putenv("AFNI_DECONFLICT=YES") ;  /* 12 Nov 2007 */
+         THD_deconflict_prefix(new_dset) ;
+         WARNING_message("Changed dataset name to '%s' to avoid conflict",
+                         DSET_BRIKNAME(new_dset) ) ;
       }
-   }
+#endif
 
   /*----- Record history of dataset -----*/
   tross_Copy_History( option_data->dset , new_dset ) ;

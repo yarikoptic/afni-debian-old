@@ -243,7 +243,7 @@ int main( int argc , char * argv[] )
       ) ;
 
       printf("\n" MASTER_SHORTHELP_STRING ) ;
-      exit(0) ;
+      PRINT_COMPILE_DATE ; exit(0) ;
    }
 
    mainENTRY("3drotate main"); machdep(); PRINT_VERSION("3drotate"); AUTHOR("RW Cox");
@@ -910,7 +910,7 @@ fprintf(stderr,"ax1=%d ax2=%d ax3=%d\n",ax1,ax2,ax3) ;
                        ADN_prefix , new_prefix ,
                        ADN_label1 , new_prefix ,
                     ADN_none ) ;
-   if( THD_is_file(dset->dblk->diskptr->header_name) ){
+   if( THD_deathcon() && THD_is_file(dset->dblk->diskptr->header_name) ){
      fprintf(stderr,
              "** ERROR: Output file %s already exists -- cannot continue!\n",
              dset->dblk->diskptr->header_name ) ;

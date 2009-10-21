@@ -42,6 +42,11 @@ static char **yname = NULL ;
 
 void startup_timeout_CB( XtPointer client_data , XtIntervalId *id ) ;
 
+#undef  JPEG_MODE
+#undef  PNG_MODE
+#define JPEG_MODE     3
+#define PNG_MODE      4
+
 /*-----------------------------------------------------------------*/
 
 int main( int argc , char *argv[] )
@@ -58,12 +63,13 @@ int main( int argc , char *argv[] )
    int nopush   =0 ;
    int nnax=0,mmax=0 , nnay=0,mmay=0 ;
    float xbot,xtop   , ybot,ytop ;
+   int skip_x11=0 , imsave=0 ; char *imfile=NULL ;
 
    /*-- help? --*/
 
    if( argc < 2 || strcmp(argv[1],"-help") == 0 ){
      printf("Usage: 1dplot [options] tsfile ...\n"
-            "Graphs the columns of a *.1D type time series file to the screen.\n"
+            "Graphs the columns of a *.1D time series file to the X11 screen.\n"
             "\n"
             "Options:\n"
             " -install   = Install a new X11 colormap.\n"
@@ -72,10 +78,10 @@ int main( int argc , char *argv[] )
             "                [default = -sep]\n"
             " -sepscl    = Plot each column in a separate sub-graph\n"
             "              and allow each sub-graph to have a different\n"
-            "              y-scale. -sepscl is meaningless with -one.\n"
+            "              y-scale.  -sepscl is meaningless with -one!\n"
             " -x  X.1D   = Use for X axis the data in X.1D.\n"
             "              Note that X.1D should have one column\n"
-            "              of the same size as the columns in tsfile. \n"
+            "              of the same length as the columns in tsfile. \n"
             " N.B.: -x will override -dx and -xzero; -xaxis still has effects\n"
             "\n"
             " -dx xx     = Spacing between points on the x-axis is 'xx'\n"
@@ -96,21 +102,36 @@ int main( int argc , char *argv[] )
             "        echo 2 4.5 -1 | 1dplot -plabel 'test_underscore' -stdin\n"
             "              versus\n"
             "        echo 2 4.5 -1 | 1dplot -plabel 'test\\_underscore' -stdin\n"
-            " -title pp = Same as -plabel, but only works with -ps option.\n"
-            "             Consider using -plabel instead.\n"
+            " -title pp = Same as -plabel, but only works with -ps/-png/-jpg options.\n"
+            "             Use -plabel instead for full interoperability.\n"
             "             [In X11 mode, the X11 startup 'consumes' the '-title' ]\n"
             "             [before the program scans the command line for options]\n"
             "\n"
             " -stdin     = Don't read from tsfile; instead, read from\n"
             "              stdin and plot it. You cannot combine input\n"
-            "              from stdin and tsfile(s).  If you want to do\n"
-            "              so, see program 1dcat.\n"
+            "              from stdin and tsfile(s).  If you want to do so,\n"
+            "              use program 1dcat first.\n"
             "\n"
             " -ps        = Don't draw plot in a window; instead, write it\n"
             "              to stdout in PostScript format.\n"
-            "              N.B.: If you view this result in 'gv', you should\n"
-            "                    turn 'anti-alias' off, and switch to\n"
-            "                    landscape mode.\n"
+            "             * If you view the result in 'gv', you should turn\n"
+            "               'anti-alias' off, and switch to landscape mode.\n"
+            "             * You can use the 'gs' program to convert PostScript\n"
+            "               to other formats; for example, a .bmp file:\n"
+            "            1dplot -ps ~/data/verbal/cosall.1D | \n"
+            "             gs -r100 -sOutputFile=fred.bmp -sDEVICE=bmp256 -q -dBATCH -\n"
+            "\n"
+            " -jpg fname  } = Render plot to an image and save to a file named\n"
+            " -jpeg fname } = 'fname', in JPEG mode or in PNG mode.\n"
+            " -png fname  } = The default image width is 1024 pixels; to change\n"
+            "                 this value to 2000 pixels (say), do\n"
+            "                   setenv AFNI_1DPLOT_IMSIZE 2000\n"
+            "                 before running 1dplot.  Widths over 2000 may start\n"
+            "                 to look odd, and will run more slowly.\n"
+            "               * PNG files will be smaller than JPEG, and are\n"
+            "                 compressed without loss.\n"
+            "               * PNG output requires that the netpbm program\n"
+            "                 pnmtopng be installed somewhere in your PATH.\n"
             "\n"
             " -xaxis b:t:n:m    = Set the x-axis to run from value 'b' to\n"
             "                     value 't', with 'n' major divisions and\n"
@@ -147,6 +168,10 @@ int main( int argc , char *argv[] )
             "                     Roll, Pitch, Yaw, I-S, R-L, and A-P\n"
             "                     movements, in that order.\n"
             "\n"
+            " -Dname=val        = Set environment variable 'name' to 'val'\n"
+            "                     for this run of the program only:\n"
+            " 1dplot -DAFNI_1DPLOT_THIK=0.01 -DAFNI_1DPLOT_COLOR_01=blue '1D:3 4 5 3 1 0'\n"
+            "\n"
             "You may also select a subset of columns to display using\n"
             "a tsfile specification like 'fred.1D[0,3,5]', indicating\n"
             "that columns #0, #3, and #5 will be the only ones plotted.\n"
@@ -170,19 +195,32 @@ int main( int argc , char *argv[] )
             "\n"
             TS_HELP_STRING
            ) ;
-      exit(0) ;
+      PRINT_COMPILE_DATE ; exit(0) ;
    }
 
-   mainENTRY("1dplot main"); machdep(); PRINT_VERSION("1dplot");
+   mainENTRY("1dplot main"); machdep(); PRINT_VERSION("1dplot"); AUTHOR("RWC et al.");
 
-   /* 29 Nov 2002: scan for -ps */
+   /* 29 Nov 2002: scan for things that make us skip X11 */
 
-   for( ii=1 ; ii < argc ; ii++ )
-     if( strcmp(argv[ii],"-ps") == 0 ){ out_ps = 1; break; }
+   for( ii=1 ; ii < argc ; ii++ ){
+     if( strcasecmp(argv[ii],"-ps")   == 0 ){ skip_x11 = 1; break; }
+     if( strcasecmp(argv[ii],"-jpg")  == 0 ){ skip_x11 = 1; break; }
+     if( strcasecmp(argv[ii],"-jpeg") == 0 ){ skip_x11 = 1; break; }
+     if( strcasecmp(argv[ii],"-png")  == 0 ){ skip_x11 = 1; break; }
+   }
+
+   if( !skip_x11 ){
+     for( ii=1 ; ii < argc ; ii++ ){
+       if( strcmp(argv[ii],"-title") == 0 ){
+         WARNING_message("-title used with X11 plotting: use -plabel instead!") ;
+         title = argv[ii+1] ; break ;
+       }
+     }
+   }
 
    /* open X11 */
 
-   if( !out_ps ){
+   if( !skip_x11 ){
      shell = XtVaAppInitialize(
                 &app , "AFNI" , NULL , 0 , &argc , argv , NULL , NULL ) ;
      if( shell == NULL ) ERROR_exit("Cannot initialize X11!") ;
@@ -198,12 +236,12 @@ int main( int argc , char *argv[] )
      if( strcmp(argv[iarg],"-") == 0 ){  /* 23 Aug 2006: null option */
        iarg++ ; continue ;
      }
-     
+
      if( strcmp(argv[iarg],"-x") == 0 ){   /* ZSS: April 2007 */
        xfile = argv[++iarg];
        iarg++; continue;
      }
-     
+
      if( strcmp(argv[iarg],"-xaxis") == 0 ){   /* 22 Jul 2003 */
        sscanf(argv[++iarg],"%f:%f:%d:%d",&xbot,&xtop,&nnax,&mmax) ;
        if( xbot >= xtop || nnax < 0 || mmax < 1 )
@@ -227,7 +265,28 @@ int main( int argc , char *argv[] )
        iarg++ ; continue ;
      }
 
-     if( strcmp(argv[iarg],"-ps") == 0 ){   /* 29 Nov 2002: already handled above */
+     if( strcasecmp(argv[iarg],"-ps") == 0 ){
+        out_ps = 1 ; imsave = 0 ;
+        iarg++ ; continue ;
+     }
+
+     /*-- image file output --*/
+
+     if( strcasecmp(argv[iarg],"-jpeg") == 0 || strcasecmp(argv[iarg],"-jpg") == 0 ){
+        out_ps = 0 ; imsave = JPEG_MODE ;
+        iarg++ ; if( iarg >= argc ) ERROR_exit("need argument after '%s'",argv[iarg-1]) ;
+        imfile = (char *)malloc(strlen(argv[iarg])+8) ; strcpy(imfile,argv[iarg]) ;
+        if( !STRING_HAS_SUFFIX(imfile,".jpg") && !STRING_HAS_SUFFIX(imfile,".JPG") )
+          strcat(imfile,".jpg") ;
+        iarg++ ; continue ;
+     }
+
+     if( strcasecmp(argv[iarg],"-png") == 0 ){
+        out_ps = 0 ; imsave = PNG_MODE ;
+        iarg++ ; if( iarg >= argc ) ERROR_exit("need argument after '%s'",argv[iarg-1]) ;
+        imfile = (char *)malloc(strlen(argv[iarg])+8) ; strcpy(imfile,argv[iarg]) ;
+        if( !STRING_HAS_SUFFIX(imfile,".png") && !STRING_HAS_SUFFIX(imfile,".PNG") )
+          strcat(imfile,".png") ;
         iarg++ ; continue ;
      }
 
@@ -263,13 +322,13 @@ int main( int argc , char *argv[] )
         title = argv[++iarg] ;
         iarg++ ; continue ;
      }
-     
+
      if( strcmp(argv[iarg],"-title") == 0 ){ /* this option normally gets eaten by XtVaAppInitialize */
-        fprintf(stderr,                      /* unless that is one is using -ps! So keep it here, it */
-         "Consider using -plabel, -title "   /* don't hurt. */                                         
-         "only works with -ps option.\n"  ); 
-        title = argv[++iarg] ;                  
-        iarg++ ; continue ;                  
+        WARNING_message(                     /* unless that is one is using -ps! So keep it here, it */
+         "Consider using -plabel; -title "   /* don't hurt. */
+         "only works with the -ps / -jpg / -png options"  );
+        title = argv[++iarg] ;
+        iarg++ ; continue ;
      }
 
      if( strcmp(argv[iarg],"-xlabel") == 0 ){
@@ -294,13 +353,16 @@ int main( int argc , char *argv[] )
         iarg++ ; continue ;
      }
 
-     if( strcmp(argv[iarg],"-dx") == 0 ){
+     if( strcmp(argv[iarg],"-dx" ) == 0 ||
+         strcmp(argv[iarg],"-del") == 0 ||
+         strcmp(argv[iarg],"-dt" ) == 0   ){
+
         dx = strtod( argv[++iarg] , NULL ) ;
         if( dx <= 0.0 ) ERROR_exit("Illegal -dx value!\n");
         iarg++ ; continue ;
      }
 
-     if( strcmp(argv[iarg],"-xzero") == 0 ){
+     if( strcmp(argv[iarg],"-xzero") == 0 || strcmp(argv[iarg],"-start") == 0 ){
         xzero = strtod( argv[++iarg] , NULL ) ;
         iarg++ ; continue ;
      }
@@ -316,16 +378,25 @@ int main( int argc , char *argv[] )
         sep = 0 ; iarg++ ; continue ;
      }
 
+#if 0 
+     if( strncmp(argv[iarg],"-D",2) == 0 && strchr(argv[iarg],'=') != NULL ){
+       (void) AFNI_setenv( argv[iarg]+2 ) ;
+       iarg++ ; continue ;
+     }
+#endif
+
      ERROR_exit("Unknown option: %s\n",argv[iarg]) ;
    }
-   
+
    if(sepscl && sep == 0) {
       WARNING_message("Cannot use -sepscl with -one!") ; sepscl=0 ;
    }
    if( iarg >= argc && !use_stdin )
       ERROR_exit("No time series file on command line!\n") ;
 
-   if( !out_ps )
+   /*-- setup color info --*/
+
+   if( !skip_x11 )
      dc = MCW_new_DC( shell , 16 ,
                       DEFAULT_NCOLOVR , INIT_colovr , INIT_labovr ,
                       1.0 , install ) ;
@@ -398,13 +469,12 @@ int main( int argc , char *argv[] )
              /*-- 05 Mar 2003: or more than 1 file --*/
 
      if( iarg >= argc )
-       ERROR_exit("No input files on command line?!\n");
-
+       ERROR_exit("No input files on command line?!\n");  /* bad user?! */
 
      if( iarg == argc-1 ){                 /* only 1 input file */
        inim = mri_read_1D( argv[iarg] ) ;
        if( inim == NULL )
-         ERROR_exit("Can't read input file %s\n",argv[iarg]) ;
+         ERROR_exit("Can't read input file '%s'\n",argv[iarg]) ;
 
      } else {                              /* multiple inputs [05 Mar 2003] */
        MRI_IMARR *imar ;                   /* read them & glue into 1 image */
@@ -415,7 +485,11 @@ int main( int argc , char *argv[] )
        for( ; iarg < argc ; iarg++ ){
          inim = mri_read_1D( argv[iarg] ) ;
          if( inim == NULL )
-           ERROR_exit("Can't read input file %s\n",argv[iarg]) ;
+           ERROR_exit("Can't read input file '%s'\n",argv[iarg]) ;
+
+           if( inim->nx == 1 && inim->ny > 1 ){
+             flim = mri_transpose(inim); mri_free(inim); inim = flim;
+           }
 
          if( iarg == iarg_first || inim->nx < nx ) nx = inim->nx ;
          ADDTO_IMARR(imar,inim) ; nysum += inim->ny ;
@@ -424,7 +498,7 @@ int main( int argc , char *argv[] )
        for( nysum=ii=0 ; ii < imar->num ; ii++ ){
          inim = IMARR_SUBIM(imar,ii) ; iar = MRI_FLOAT_PTR(inim) ;
          for( jj=0 ; jj < inim->ny ; jj++,nysum++ ){
-           memcpy( far + nx*nysum , iar + jj*inim->nx , sizeof(float)*nx ) ;
+           memcpy( far + nx*nysum , iar + jj*inim->nx , sizeof(float)*inim->nx ) ;
          }
        }
        DESTROY_IMARR(imar) ; inim = flim ;
@@ -463,34 +537,40 @@ int main( int argc , char *argv[] )
    } else {
       /* read xfile */
       MRI_IMAGE *inimx = mri_read_1D( xfile ) ;
-      if( inimx == NULL ) 
+      if( inimx == NULL )
          ERROR_exit("Can't read x-axis '-x %s'",xfile) ;
       if (inimx->nx < flim->nx)
-         ERROR_exit("Number of rows in '-x %s' fewer than in plot data",xfile) ; 
+         ERROR_exit("Number of rows in '-x %s' fewer than in plot data",xfile) ;
       if (inimx->ny != 1)
-         WARNING_message("Using only first column from '-x %s'",xfile) ; 
+         WARNING_message("Using only first column from '-x %s'",xfile) ;
       far = MRI_FLOAT_PTR(inimx);
       xar = (float *) malloc( sizeof(float) * nx ) ;
       for( ii=0 ; ii < nx ; ii++ ) xar[ii] = far[ii+ignore] ;
       mri_free(inimx); inimx=NULL; far = NULL;
    }
-   /* start X11 */
 
-   if( !out_ps ){
+   /*--- start X11 ---*/
+
+   if( !skip_x11 ){
      (void) XtAppAddTimeOut( app , 123 , startup_timeout_CB , NULL ) ;
      XtAppMainLoop(app) ;   /* never returns */
    }
 
+   /*---------------------------------------------------*/
    /* 29 Nov 2002: if here, output PostScript to stdout */
+   /* 06 Dec 2007: or write plot to an image file       */
 
    { MEM_plotdata *mp ;
      int ymask = (sep) ? TSP_SEPARATE_YBOX : 0 ;
      if (sepscl) ymask = ymask | TSP_SEPARATE_YSCALE;
-     
+
      mp = plot_ts_mem( nx,xar , nts,ymask,yar ,
                        xlabel , ylabel , title , yname ) ;
 
-     memplot_to_postscript( "-" , mp ) ;
+          if( out_ps )              memplot_to_postscript( "-" , mp ) ;
+     else if( imsave == JPEG_MODE ) memplot_to_jpg( imfile , mp ) ;
+     else if( imsave == PNG_MODE  ) memplot_to_png( imfile , mp ) ;
+     else                           ERROR_message("You shouldn't see this message!") ;
    }
 
    exit(0) ;
@@ -505,6 +585,9 @@ void startup_timeout_CB( XtPointer client_data , XtIntervalId *id )
    int ng , ngx;
 
    /* make graph */
+
+   memplot_topshell_setsaver( ".jpg" , memplot_to_jpg ) ; /* 05 Dec 2007 */
+   memplot_topshell_setsaver( ".png" , memplot_to_png ) ;
 
    ng = (sep) ? (-nts) : (nts) ;
    ngx = (sepscl) ? (-nx) : (nx) ;

@@ -149,6 +149,8 @@ static char *threshlock_list[] = { "NO" , "VALUE" , "P-VALUE" } ;
 #define ENV_NUMBER_FIXED    2
 #define ENV_STRING          9
 
+static int enf = -1 ;
+
 typedef struct {
   char vname[NAME_NMAX] ;
   char vhint[HINT_NMAX] ;
@@ -363,8 +365,8 @@ PLUGIN_interface * ENV_init(void)
    /* 04 Nov 2003 */
 
    ENV_add_string( "AFNI_IMAGE_MINTOMAX" ,
-                   "Set image viewers to do min-to-max grayscaling?" ,
-                   NUM_yesno_list , yesno_list , NULL  ) ;
+                   "Set new image viewers to do min-to-max grayscaling?" ,
+                   NUM_yesno_list , yesno_list , ENV_redisplay  ) ;
 
    ENV_add_string( "AFNI_IMAGE_GLOBALRANGE" ,
                    "Set image viewers to use 3D global data range min-to-max?" ,
@@ -445,6 +447,34 @@ PLUGIN_interface * ENV_init(void)
 
    /* 05 Mar 2007 [RWCox] */
    ENV_add_yesno( "AFNI_THRESH_AUTO" , "Reset threshold on Switch Overlay?" ) ;
+
+   /* 18 Sep 2007 [RWCox] */
+   ENV_add_string( "AFNI_IMAGE_CLIPPED" ,
+                   "Set new image viewers to do clipped grayscaling?" ,
+                   NUM_yesno_list , yesno_list , ENV_redisplay  ) ;
+
+   ENV_add_numeric( "AFNI_IMAGE_CLIPBOT" ,
+                    "Set clipped grayscale bottom = fraction of top default" ,
+                    0,50,2,25 , ENV_redisplay ) ;
+
+   ENV_add_numeric( "AFNI_IMAGE_CLIPTOP" ,
+                    "Set clipped grayscale top = fraction of default" ,
+                    60,190,2,100 , ENV_redisplay ) ;
+
+   ENV_add_numeric( "AFNI_1DPLOT_THIK" ,
+                    "Set 1dplot-style line thickness" ,
+                    0,20,3,3 , NULL ) ;
+
+#if 0
+   /* 20 Dec 2007 [RWCox] */
+   ENV_add_string( "AFNI_CLUSTER_PREFIX" ,
+                   "Prefix for Clusterize 1D file Saves" , 0 , NULL , NULL ) ;
+#endif
+
+   /* 10 Jan 2008 [RWCox] */
+   ENV_add_numeric( "AFNI_CLUSTER_REPMAX" ,
+                    "Max number rows in Clusterize Rpt table" ,
+                    10,99,0,15 , NULL ) ;
 
    /*--------- Sort list of variables [21 Feb 2007]  -----------*/
 
@@ -576,17 +606,20 @@ void ENV_add_numeric( char *vname , char *vhint ,
    if( vbot >= vtop )                      return ;
 
    if( NUM_env_var == 0 )
-      env_var = (ENV_var *) malloc(sizeof(ENV_var)) ;
+     env_var = (ENV_var *) malloc(sizeof(ENV_var)) ;
    else
-      env_var = (ENV_var *) realloc(env_var,(NUM_env_var+1)*sizeof(ENV_var)) ;
+     env_var = (ENV_var *) realloc(env_var,(NUM_env_var+1)*sizeof(ENV_var)) ;
 
    ii = NUM_env_var ; NUM_env_var++ ;
 
    MCW_strncpy( env_var[ii].vname , vname , NAME_NMAX ) ;
    MCW_strncpy( env_var[ii].vhint , vhint , HINT_NMAX ) ;
 
-   env_var[ii].vtype = (vtop-vbot < 100) ? ENV_NUMBER_FIXED
-                                         : ENV_NUMBER_EDITABLE ;
+   if( enf > 0 )
+     env_var[ii].vtype = enf ;
+   else
+     env_var[ii].vtype = (vtop-vbot < 40) ? ENV_NUMBER_FIXED
+                                          : ENV_NUMBER_EDITABLE ;
 
    env_var[ii].vbot   = vbot ;
    env_var[ii].vtop   = vtop ;

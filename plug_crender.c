@@ -10,7 +10,7 @@
  */
 
 /*----------------------------------------------------------------------
-  $Id: plug_crender.c,v 1.37 2007/03/20 16:43:04 rwcox Exp $
+  $Id: plug_crender.c,v 1.42 2007/11/29 18:57:51 rwcox Exp $
   ----------------------------------------------------------------------
 */
 
@@ -70,7 +70,6 @@ static char g_cren_hist[] =
 #include "parser.h"
 #include <ctype.h>
 
-#include "rickr/r_new_resam_dset.h"
 #include "rickr/r_idisp.h"
 
 #ifndef ALLOW_PLUGINS
@@ -1815,8 +1814,7 @@ ENTRY( "RCREND_make_widgets" );
    XtManageChild(anat_frame) ;
 
    XtManageChild(top_rowcol) ;
-   XtRealizeWidget(shell) ;      /* will not be mapped */
-
+   XtRealizeWidget(shell) ; NI_sleep(1) ;     /* will not be mapped */
    WAIT_for_window(shell) ;
    POPUP_cursorize(xhair_bbox->wbut[0]) ;
    POPUP_cursorize(accum_bbox->wbut[0]) ;
@@ -2139,7 +2137,7 @@ ENTRY( "RCREND_reload_dataset" );
          sublist[0] = 1;  sublist[1] = dset_ival;
          fprintf(stderr, "++ reorienting underlay as rai...");
          gcr.dset_or = r_new_resam_dset(dset, NULL, 0,0,0, "rai",
-                                        RESAM_NN_TYPE, sublist);
+                                        RESAM_NN_TYPE, sublist, 1);
          fprintf(stderr, " done\n");
       }
 
@@ -4922,7 +4920,7 @@ ENTRY( "RCREND_open_imseq" );
       afni48ren_pixmap = XCreatePixmapFromBitmapData(
                             XtDisplay(shell) ,
                             RootWindowOfScreen(XtScreen(shell)) ,
-                            afni48ren_bits , afni48ren_width , afni48ren_height ,
+                            (char *)afni48ren_bits , afni48ren_width , afni48ren_height ,
                             bg_pix , fg_pix ,
                             DefaultDepthOfScreen(XtScreen(shell)) ) ;
 
@@ -6718,7 +6716,10 @@ ENTRY( "RCREND_pbarmenu_CB" );
 
    else if( w == wfunc_pbar_saveim_pb ){
       MCW_choose_string( wfunc_choices_label,
-                         "PPM file prefix" , NULL ,
+                         "PPM file prefix\n"
+                         "  * end in .jpg or .png *\n"
+                         "  * for those formats   *"
+                         , NULL ,
                          RCREND_finalize_saveim_CB , cd ) ;
    }
 
@@ -6880,7 +6881,7 @@ ENTRY( "RCREND_reload_func_dset" );
             sublist[0] = 2;     /* normal case, get 2 bricks */
 
          gcr.fset_or = r_new_resam_dset(func_dset, gcr.mset, 0,0,0, NULL,
-                                        RESAM_NN_TYPE, sublist);
+                                        RESAM_NN_TYPE, sublist, 1);
          fprintf(stderr, " done\n");
       }
 

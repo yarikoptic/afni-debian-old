@@ -1,6 +1,5 @@
 #include "mrilib.h"
 #include "thd_brainormalize.h"
-#include "rickr/r_new_resam_dset.h"
 
 int main( int argc , char *argv[] )
 {
@@ -8,7 +7,7 @@ int main( int argc , char *argv[] )
    THD_3dim_dataset *iset, *oset , *ooset;
    char *prefix = "SpatNorm" ;
    int iarg , verb=0, OrigSpace = 0 , specie = HUMAN;
-   float SpatNormDxyz= 0.0;
+   float SpatNormDxyz= 0.0, iset_scaled=1.0;
    THD_ivec3 orixyz , nxyz ;
    THD_fvec3 dxyz , orgxyz, originRAIfv, fv2;
 
@@ -26,7 +25,7 @@ int main( int argc , char *argv[] )
             "* This program is obsolete, and should not be used by most people. *\n"
             "--------------------------------------------------------------------\n"
            ) ;
-     exit(0) ;
+     PRINT_COMPILE_DATE ; exit(0) ;
    }
 
    /*--- options ---*/
@@ -66,6 +65,9 @@ int main( int argc , char *argv[] )
      if( strncmp(argv[iarg],"-monkey",5) == 0 ){
        specie = MONKEY ; iarg++ ; continue ;
      }
+     if( strncmp(argv[iarg],"-marmoset",5) == 0 ){
+       specie = MARMOSET ; iarg++ ; continue ;
+     }
      if( strncmp(argv[iarg],"-rat",5) == 0 ){
        specie = RAT ; iarg++ ; continue ;
      }
@@ -94,6 +96,11 @@ int main( int argc , char *argv[] )
 
    if( verb ) fprintf(stderr,"++3dSpatNorm: loading dataset\n") ;
 
+   if (specie == MARMOSET) {
+      iset_scaled = 2.5;
+      THD_volDXYZscale(iset->daxes, iset_scaled, 0);
+      specie = MONKEY;
+   }
    imin = THD_median_brick( iset ) ;
    if( imin == NULL ){
      fprintf(stderr,"**ERROR: can't load dataset %s\n",argv[iarg]) ;
@@ -103,13 +110,15 @@ int main( int argc , char *argv[] )
    imin->dy = fabs(iset->daxes->yydel) ;
    imin->dz = fabs(iset->daxes->zzdel) ;
    
+   
    mri_speciebusiness(specie);
    if (SpatNormDxyz) {
       if (verb) fprintf(stderr,"Overriding default resampling\n");
       mri_brainormalize_initialize(SpatNormDxyz, SpatNormDxyz, SpatNormDxyz);
    } else {
       float xxdel, yydel, zzdel, minres;
-      if (specie == MONKEY) minres = 0.3;
+      if (specie == MONKEY) minres = 0.5;
+      else if (specie == MARMOSET) minres = 0.2;
       else if (specie == RAT) minres = 0.1;
       else minres = 0.5;
       /* don't allow for too low a resolution, please */
@@ -228,12 +237,16 @@ int main( int argc , char *argv[] )
    if (OrigSpace) {
       if( verb )
          fprintf(stderr,"++3dSpatNorm: Changing orientation from RAI\n") ;
-      ooset = r_new_resam_dset ( oset, iset,	0,	0,	0,	NULL, MRI_NN, NULL);
+      ooset = r_new_resam_dset ( oset, iset, 0, 0, 0, NULL, MRI_NN, NULL, 1);
       if (!ooset) {
          fprintf(stderr,"**ERROR: Failed to reslice!?\n"); exit(1);
       }
       DSET_delete(oset); oset = ooset; ooset = NULL;
    }
+
+   if (iset_scaled != 1.0f) 
+      THD_volDXYZscale(oset->daxes,
+                      1/iset_scaled, 0);
 
    DSET_write(oset) ;
    if( verb )

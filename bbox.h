@@ -96,15 +96,15 @@ typedef struct {
 
       int old_ival ;       /* values just before the last change */
       float old_fval ;
-      char  * old_sval ;
+      char  *old_sval ;
 
       XtIntervalId timer_id ; /* id from XtAppAddTimeOut */
 
-      gen_func * dval_CB ; /* non-NULL=function to call when value changes */
+      gen_func *dval_CB ; /* non-NULL=function to call when value changes */
       XtPointer dval_data ;   /* data for call */
 
-      str_func * text_CB ; /* if non-NULL, function to call to make text */
-      XtPointer  text_data ;
+      str_func *text_CB ; /* if non-NULL, function to call to make text */
+      XtPointer text_data ;
 
       int incr , delay , fastdelay  ;  /* for the timer callback */
       int allow_wrap ;
@@ -114,6 +114,7 @@ typedef struct {
       XtPointer parent , aux ;
 
       float fstep ;  /* 16 Feb 1999 */
+      int optmenu_call_if_unchanged ;  /* 10 Oct 2007 */
 } MCW_arrowval ;
 
 /* 08 Mar 1999: this macro is defined
@@ -244,7 +245,7 @@ extern void   MCW_choose_integer( Widget , char * ,
                                   int,int,int , gen_func *, XtPointer );
 
 extern void   MCW_choose_vector ( Widget, char *,
-                                  int, char **, int *, gen_func *, XtPointer ) ;
+                                  int, char **, float *, gen_func *, XtPointer ) ;
 
 extern void   MCW_choose_string ( Widget, char *,
                                   char *, gen_func *, XtPointer );

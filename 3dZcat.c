@@ -209,7 +209,7 @@ void ZCAT_Syntax(void)
     "    new 3D datasets.\n"
    ) ;
 
-   exit(0) ;
+   PRINT_COMPILE_DATE ; exit(0) ;
 }
 
 /*-------------------------------------------------------------------------*/
@@ -296,7 +296,7 @@ int main( int argc , char * argv[] )
                     ADN_none ) ;
 
    /* can't re-write existing dataset */
-   if( THD_is_file(DSET_HEADNAME(new_dset)) ){
+   if( THD_deathcon() && THD_is_file(DSET_HEADNAME(new_dset)) ){
      fprintf(stderr,"** Fatal error: dataset %s already exists!\n",
              DSET_HEADNAME(new_dset) ) ;
      exit(1) ;

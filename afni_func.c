@@ -28,13 +28,14 @@ ENTRY("AFNI_see_func_CB") ;
    new_val = MCW_val_bbox( im3d->vwid->view->see_func_bbox ) ;
 
    if( old_val != new_val ){
-      im3d->vinfo->func_visible = (new_val == 1) ? True : False ;
-      if( ! ISVALID_3DIM_DATASET(im3d->fim_now) ){             /* 29 Apr 1997 */
-         im3d->vinfo->func_visible = False ;
-         MCW_set_bbox( im3d->vwid->view->see_func_bbox , 0 ) ; /* 29 Jan 1999 */
-      }
-      AFNI_disable_suma_overlay( 0 ) ; /* 16 Jun 2003 */
-      AFNI_redisplay_func( im3d ) ;    /* 05 Mar 2002 */
+     im3d->vinfo->func_visible = (new_val == 1) ? True : False ;
+     if( ! ISVALID_3DIM_DATASET(im3d->fim_now) ){             /* 29 Apr 1997 */
+       im3d->vinfo->func_visible = False ;
+       MCW_set_bbox( im3d->vwid->view->see_func_bbox , 0 ) ; /* 29 Jan 1999 */
+     }
+     AFNI_disable_suma_overlay( 0 ) ; /* 16 Jun 2003 */
+     AFNI_redisplay_func( im3d ) ;    /* 05 Mar 2002 */
+     im3d->vinfo->func_visible_count++ ; /* 03 Aug 2007 */
    }
 
    RESET_AFNI_QUIT(im3d) ;
@@ -75,6 +76,62 @@ ENTRY("AFNI_get_autothresh") ;
 }
 
 /*-----------------------------------------------------------------------*/
+/*! 25 Jul 2007 */
+
+void AFNI_func_autothresh_CB( Widget w, XtPointer cd, XtPointer cb)
+{
+   Three_D_View *im3d = (Three_D_View *)cd ;
+   float new_thresh ;
+
+ENTRY("AFNI_func_autothresh_CB") ;
+
+   if( !IM3D_OPEN(im3d) ) EXRETURN ;
+
+   new_thresh = AFNI_get_autothresh(im3d) ;
+   if( new_thresh > 0.0f ) AFNI_set_threshold(im3d,new_thresh) ;
+   EXRETURN ;
+}
+
+/*-----------------------------------------------------------------------*/
+/*! 29 Jan 2008 */
+
+void AFNI_func_fdr_CB( Widget w, XtPointer cd, XtPointer cb)
+{
+   Three_D_View *im3d = (Three_D_View *)cd ;
+   THD_3dim_dataset *dset ; int nf ;
+
+ENTRY("AFNI_func_fdr_CB") ;
+
+   if( !IM3D_OPEN(im3d) || !ISVALID_DSET(im3d->fim_now) ) EXRETURN ;
+   dset = im3d->fim_now ;
+   SHOW_AFNI_PAUSE ;
+   nf = THD_create_all_fdrcurves(dset) ;
+   AFNI_set_thr_pval(im3d) ;
+   INFO_message("Computed %d FDR curves in %s [but not saved on disk]" ,
+                nf , DSET_FILECODE(dset) ) ;
+   SHOW_AFNI_READY ;
+
+   EXRETURN ;
+}
+
+/*-----------------------------------------------------------------------*/
+/*! 08 Aug 2007 */
+
+void AFNI_func_thrsign_CB( MCW_arrowval *av , XtPointer cd )
+{
+   Three_D_View *im3d = (Three_D_View *) cd ;
+
+ENTRY("AFNI_func_thrsign_CB") ;
+
+   if( !IM3D_OPEN(im3d) ) EXRETURN ;
+
+   im3d->vinfo->thr_sign = av->ival ;
+   AFNI_redisplay_func( im3d ) ;
+   AFNI_set_window_titles( im3d ) ;
+   EXRETURN ;
+}
+
+/*-----------------------------------------------------------------------*/
 /*! Set the threshold and slider.  [05 Mar 2007]
 -------------------------------------------------------------------------*/
 
@@ -112,6 +169,7 @@ ENTRY("AFNI_set_threshold") ;
 
    XmScaleSetValue( im3d->vwid->func->thr_scale , ival ) ;
    AFNI_thr_scale_CB( im3d->vwid->func->thr_scale, (XtPointer)im3d, NULL ) ;
+   FIX_SCALE_SIZE(im3d) ;
    AFNI_thresh_lock_carryout(im3d) ;
    EXRETURN ;
 }
@@ -150,16 +208,19 @@ ENTRY("AFNI_thr_scale_CB") ;
    MCW_discard_events_all( w , ButtonPressMask ) ;  /* 20 Mar 2007 */
 
    if( im3d->vinfo->func_pval >= 0.0 && im3d->vinfo->func_pval <= 1.0 ){
-     char pstr[32] ;
-     sprintf( pstr , "nominal p=%.5e" , im3d->vinfo->func_pval ) ;
+     char pstr[64] ;
+     sprintf( pstr , "Nominal p=%.4e" , im3d->vinfo->func_pval ) ;
+     if( im3d->vinfo->func_qval >= 0.0 && im3d->vinfo->func_qval <= 1.0 )
+       sprintf(pstr+strlen(pstr),"; FDR q=%.4e",im3d->vinfo->func_qval) ;
+     else
+       sprintf(pstr+strlen(pstr),"; FDR q=N/A") ;
      MCW_register_hint( im3d->vwid->func->thr_pval_label , pstr ) ;
    } else {
      MCW_register_hint( im3d->vwid->func->thr_pval_label ,
                         "Nominal p-value per voxel"       ) ;
    }
 
-   if( ! DOING_REALTIME_WORK )
-     AFNI_redisplay_func( im3d ) ;
+   if( ! DOING_REALTIME_WORK ) AFNI_redisplay_func( im3d ) ;
 
    AFNI_thresh_lock_carryout(im3d) ;  /* 06 Feb 2004 */
 
@@ -255,6 +316,7 @@ ENTRY("AFNI_thresh_top_CB") ;
    if( IM3D_OPEN(im3d) && im3d->vinfo->func_thresh_top != tval[av->ival] ){
 
      AFNI_set_thresh_top( im3d , tval[av->ival] ) ;
+     FIX_SCALE_SIZE(im3d) ;
 
      if( im3d->vinfo->func_visible ) AFNI_redisplay_func( im3d ) ;
 
@@ -271,9 +333,9 @@ ENTRY("AFNI_thresh_top_CB") ;
 
 void AFNI_set_thr_pval( Three_D_View *im3d )
 {
-   float thresh , pval ;
+   float thresh , pval , zval ;
    int   dec ;
-   char  buf[16] ;
+   char  buf[32] ;
 
 ENTRY("AFNI_set_thr_pval") ;
 
@@ -290,6 +352,7 @@ ENTRY("AFNI_set_thr_pval") ;
               DSET_BRICK_STATAUX (im3d->fim_now,im3d->vinfo->thr_index)  ) ;
 
    im3d->vinfo->func_pval = pval ;  /* 06 Feb 2004 */
+   im3d->vinfo->func_qval = 0.0f ;  /* 23 Jan 2008 */
 
 if(PRINT_TRACING)
 { char buf[128] ;
@@ -297,26 +360,51 @@ if(PRINT_TRACING)
            thresh,im3d->vinfo->func_thresh_top,pval ) ; STATUS(buf) ; }
 
    if( pval < 0.0 ){
-      strcpy( buf , THR_PVAL_LABEL_NONE ) ;
+     strcpy( buf , THR_PVAL_LABEL_NONE ) ;
    } else {
-      if( pval == 0.0 ){
-         strcpy( buf , "p = 0" ) ;
-      } else if( pval >= 0.9999 ){
-         strcpy( buf , "p = 1" ) ;
-      } else if( pval >= 0.0010 ){
-         char qbuf[16] ;
-         sprintf( qbuf , "%5.4f" , pval ) ;
-         strcpy( buf , qbuf+1 ) ;
-      } else {
-         int dec = (int)(0.999 - log10(pval)) ;
-         pval = pval * pow( 10.0 , (double) dec ) ;  /* between 1 and 10 */
-         if( dec < 10 ) sprintf( buf , "%3.1f-%1d" ,           pval , dec ) ;
-         else           sprintf( buf , "%1d.-%2d"  , (int)rint(pval), dec ) ;
-      }
+     if( pval == 0.0 ){
+       strcpy( buf , "p=0" ) ;
+     } else if( pval >= 0.9999 ){
+       strcpy( buf , "p=1" ) ;
+     } else if( pval >= 0.0010 ){
+       char qbuf[16] ;
+       sprintf( qbuf , "%5.4f" , pval ) ;
+       strcpy(buf,"p=") ; strcat( buf , qbuf+1 ) ; /* qbuf+1 skips leading 0 */
+     } else {
+       int dec = (int)(0.999 - log10(pval)) ;
+       zval = pval * pow( 10.0 , (double) dec ) ;  /* between 1 and 10 */
+       if( dec < 10 ) sprintf( buf , "p=%3.1f-%1d" ,           zval , dec ) ;
+       else           sprintf( buf , "p=%1d.-%2d"  , (int)rint(zval), dec ) ;
+     }
+     if( im3d->vedset.code > 0 && im3d->fim_now->dblk->vedim != NULL )
+       strcat(buf,"*") ;  /* mark that are in clustering mode [05 Sep 2006] */
    }
-   if( im3d->vedset.code > 0 && im3d->fim_now->dblk->vedim != NULL ) /* 05 Sep 2006 */
-     strcat(buf,"*") ;
+
+   /* 23 Jan 2007: q-value from FDR curve? */
+
+   if( pval >= 0.0 ){
+     zval = THD_fdrcurve_zval( im3d->fim_now, im3d->vinfo->thr_index, thresh ) ;
+     if( zval > 0.0f ){
+       float qval = 2.0*qg(zval) ;         /* convert z back to FDR q */
+       im3d->vinfo->func_qval = qval ;
+       if( qval > 0.0f & qval < 0.9999 ){
+         char qbuf[16] ;
+         if( qval >= 0.0010 ) sprintf(qbuf,"%5.4f",qval) ;
+         else {
+           int dec = (int)(0.999 - log10(qval)) ;
+           zval = qval * pow( 10.0 , (double)dec ) ;  /* between 1 and 10 */
+           if( dec < 10 ) sprintf( qbuf, " %3.1f-%1d",            zval, dec );
+           else           sprintf( qbuf, " %1d.-%2d" , (int)rint(zval), dec );
+         }
+         strcat(buf,"\nq=") ; strcat(buf,qbuf+1) ;
+       }
+     } else {
+       strcat(buf,"\nq=N/A") ;
+     }
+   }
+
    MCW_set_widget_label( im3d->vwid->func->thr_pval_label , buf ) ;
+   FIX_SCALE_SIZE(im3d) ;
    EXRETURN ;
 }
 
@@ -1006,6 +1094,13 @@ static void mri_edgize( MRI_IMAGE *im )
 #undef  ZREG
 #define ZREJ(val) (reject_zero && (val)==0)   /* 20 Apr 2005 */
 
+#undef  THBOT
+#undef  THTOP
+#undef  THBIG
+#define THBIG    1.e+9f
+#define THBOT(t) ((thrsign==0 || thrsign==2) ? (-(t)) : (-THBIG))
+#define THTOP(t) ((thrsign==0 || thrsign==1) ? (t)    :  (THBIG))
+
 /*-----------------------------------------------------------------------*/
 /*!  Make a functional overlay -- very simple routine at present;
    n = slice index , br_fim = data structure to extract slice from.
@@ -1026,6 +1121,7 @@ MRI_IMAGE * AFNI_func_overlay( int n , FD_brick *br_fim )
    MCW_pbar *pbar ;
    int simult_thr , need_thr ;
    int reject_zero = !AFNI_yesenv("AFNI_OVERLAY_ZERO") ; /* 20 Apr 2005 */
+   int thrsign ; /* 08 Aug 2007 */
 
 ENTRY("AFNI_func_overlay") ;
 
@@ -1041,7 +1137,8 @@ ENTRY("AFNI_func_overlay") ;
 
    LOAD_DSET_VIEWS(im3d) ; /* 02 Nov 1996 */
 
-   need_thr = im3d->vinfo->func_threshold > 0.0 ;
+   need_thr = (im3d->vinfo->func_threshold > 0.0) && im3d->vinfo->thr_onoff ;
+   thrsign  = im3d->vinfo->thr_sign ; /* 08 Aug 2007 */
 
    /* 29 Mar 2005: make sure statistics of overlay dataset are ready */
 
@@ -1052,10 +1149,10 @@ ENTRY("AFNI_func_overlay") ;
    /* get the threshold image? */
 
    if( need_thr ){
-STATUS("fetch im_thr") ;
+     STATUS("fetch im_thr") ;
      im_thr = FD_warp_to_mri( n , ival , br_fim ) ;
    } else{
-STATUS("don't need im_thr") ;
+     STATUS("don't need im_thr") ;
      im_thr = NULL ;
    }
 
@@ -1075,10 +1172,10 @@ STATUS("don't need im_thr") ;
        ind = DSET_NVALS(br_fim->dset) - 1 ;
 
      if( im_thr != NULL && ind == ival ){   /* 06 Feb 2003: allow for */
-STATUS("copy im_thr to im_fim") ;
+       STATUS("copy im_thr to im_fim") ;
        im_fim = mri_copy( im_thr ) ;        /* func image = thr image */
      } else {
-STATUS("fetch im_fim") ;
+       STATUS("fetch im_fim") ;
        im_fim = FD_warp_to_mri( n, ind, br_fim ) ;  /* get func image */
      }
      scale_factor = im3d->vinfo->fim_range ;
@@ -1096,7 +1193,7 @@ STATUS("fetch im_fim") ;
                            im_thr->kind == MRI_byte    ) ){
 
      MRI_IMAGE *qim = mri_to_float(im_thr) ;
-STATUS("scaled im_thr to floats") ;
+     STATUS("scaled im_thr to floats") ;
      mri_free(im_thr) ; im_thr = qim ; scale_thr = 1.0f ;
    }
 
@@ -1105,8 +1202,8 @@ STATUS("scaled im_thr to floats") ;
    /* if component images not good, quit now */
 
    if( im_fim == NULL ){
-STATUS("couldn't get Func image!") ;
-      KILL_1MRI(im_thr) ; RETURN(NULL) ;
+     STATUS("couldn't get Func image!") ;
+     KILL_1MRI(im_thr) ; RETURN(NULL) ;
    }
 
    /* 15 Apr 2002: allow overlay image to be pure RBG (no colorscale) */
@@ -1117,7 +1214,8 @@ STATUS("couldn't get Func image!") ;
      if( im_thr != NULL && im_thr != im_fim ){     /* 20 Dec 2004: threshold */
        float thresh = im3d->vinfo->func_threshold
                     * im3d->vinfo->func_thresh_top / scale_thr ;
-       mri_threshold( -thresh,thresh , im_thr , im_fim ) ;  /* in place */
+       float thb=THBOT(thresh) , tht=THTOP(thresh) ; /* 08 Aug 2007 */
+       mri_threshold( thb,tht , im_thr , im_fim ) ;  /* in place */
      }
 
      /* 27 Apr 2005: transform RGB func image in place? */
@@ -1131,7 +1229,7 @@ STATUS("couldn't get Func image!") ;
 
    if( ! AFNI_GOOD_FUNC_DTYPE(im_fim->kind) ){   /* should never happen! */
      MRI_IMAGE *qim = mri_to_float(im_fim) ;     /* (but fix it if it does) */
-STATUS("had to convert im_fim to floats?????") ;
+     STATUS("had to convert im_fim to floats?????") ;
      mri_free(im_fim) ; im_fim = qim ;
    }
 
@@ -1172,9 +1270,9 @@ STATUS("had to convert im_fim to floats?????") ;
        then create an RGB overlay in a separate function **/
 
    if( pbar->bigmode ){
-     float thresh ;
-     thresh =  im3d->vinfo->func_threshold
-             * im3d->vinfo->func_thresh_top / scale_thr ;
+     float thresh =  im3d->vinfo->func_threshold
+                   * im3d->vinfo->func_thresh_top / scale_thr ;
+     float thb=THBOT(thresh) , tht=THTOP(thresh) ; /* 08 Aug 2007 */
 
 if( PRINT_TRACING && im_thr != NULL )
 { char str[256] ; float tmax ;
@@ -1187,7 +1285,7 @@ if( PRINT_TRACING && im_thr != NULL )
           im3d->vinfo->func_threshold,im3d->vinfo->func_thresh_top); STATUS(str);
 }
 
-     im_ov = AFNI_newfunc_overlay( im_thr , thresh ,
+     im_ov = AFNI_newfunc_overlay( im_thr , thb,tht ,
                                    im_fim ,
                                    scale_factor*pbar->bigbot ,
                                    scale_factor*pbar->bigtop ,
@@ -1233,9 +1331,10 @@ STATUS("bad im_fim->kind!") ;
          if( simult_thr ){
            float thresh = im3d->vinfo->func_threshold
                         * im3d->vinfo->func_thresh_top / scale_thr ;
+           float thb=THBOT(thresh) , tht=THTOP(thresh) ; /* 08 Aug 2007 */
            short *ar_thr = MRI_SHORT_PTR(im_thr) ;
            for( ii=0 ; ii < npix ; ii++ ){
-             if( (ar_thr[ii] > -thresh && ar_thr[ii] < thresh) || ZREJ(ar_fim[ii]) ){
+             if( (ar_thr[ii] > thb && ar_thr[ii] < tht) || ZREJ(ar_fim[ii]) ){
                ar_ov[ii] = 0 ;
              } else {
                for( lp=0 ; lp < num_lp && ar_fim[ii] < fim_thr[lp] ; lp++ ) ; /*nada*/
@@ -1266,10 +1365,11 @@ STATUS("bad im_fim->kind!") ;
          if( simult_thr ){
            float thresh = im3d->vinfo->func_threshold
                          * im3d->vinfo->func_thresh_top / scale_thr ;
+           float thb=THBOT(thresh) , tht=THTOP(thresh) ; /* 08 Aug 2007 */
            byte *ar_thr = MRI_BYTE_PTR(im_thr) ;
 
            for( ii=0 ; ii < npix ; ii++ ){
-             if( ar_thr[ii] < thresh || ZREJ(ar_fim[ii]) ){
+             if( ar_thr[ii] < tht || ZREJ(ar_fim[ii]) ){  /* assuming thb <= 0 */
                ar_ov[ii] = 0 ;
              } else {
                for( lp=0 ; lp < num_lp && ar_fim[ii] < fim_thr[lp] ; lp++ ) ; /*nada*/
@@ -1298,10 +1398,11 @@ STATUS("bad im_fim->kind!") ;
 
          if( simult_thr ){
            float thresh = im3d->vinfo->func_threshold * im3d->vinfo->func_thresh_top ;
+           float thb=THBOT(thresh) , tht=THTOP(thresh) ; /* 08 Aug 2007 */
            float *ar_thr = MRI_FLOAT_PTR(im_thr) ;
 
            for( ii=0 ; ii < npix ; ii++ ){
-             if( (ar_thr[ii] > -thresh && ar_thr[ii] < thresh) || ZREJ(ar_fim[ii])  ){
+             if( (ar_thr[ii] > thb && ar_thr[ii] < tht) || ZREJ(ar_fim[ii])  ){
                ar_ov[ii] = 0 ;
              } else {
                for( lp=0 ; lp < num_lp && ar_fim[ii] < fim_thr[lp] ; lp++ ) ; /*nada*/
@@ -1331,29 +1432,32 @@ STATUS("bad im_fim->kind!") ;
        case MRI_short:{
          float thresh = im3d->vinfo->func_threshold
                       * im3d->vinfo->func_thresh_top / scale_thr ;
+         float thb=THBOT(thresh) , tht=THTOP(thresh) ; /* 08 Aug 2007 */
          short *ar_thr = MRI_SHORT_PTR(im_thr) ;
 
          for( ii=0 ; ii < npix ; ii++ )
-           if( ar_thr[ii] > -thresh && ar_thr[ii] < thresh ) ar_ov[ii] = 0 ;
+           if( ar_thr[ii] > thb && ar_thr[ii] < tht ) ar_ov[ii] = 0 ;
        }
        break ;
 
        case MRI_byte:{
          float thresh = im3d->vinfo->func_threshold
                       * im3d->vinfo->func_thresh_top / scale_thr ;
+         float thb=THBOT(thresh) , tht=THTOP(thresh) ; /* 08 Aug 2007 */
          byte *ar_thr = MRI_BYTE_PTR(im_thr) ;
 
-         for( ii=0 ; ii < npix ; ii++ )
-           if( ar_thr[ii] < thresh ) ar_ov[ii] = 0 ;
+         for( ii=0 ; ii < npix ; ii++ )  /* assuming thb <= 0 */
+           if( ar_thr[ii] < tht ) ar_ov[ii] = 0 ;
        }
        break ;
 
        case MRI_float:{
          float thresh = im3d->vinfo->func_threshold * im3d->vinfo->func_thresh_top ;
+         float thb=THBOT(thresh) , tht=THTOP(thresh) ; /* 08 Aug 2007 */
          float *ar_thr = MRI_FLOAT_PTR(im_thr) ;
 
          for( ii=0 ; ii < npix ; ii++ )
-           if( ar_thr[ii] > -thresh && ar_thr[ii] < thresh ) ar_ov[ii] = 0 ;
+           if( ar_thr[ii] > thb && ar_thr[ii] < tht ) ar_ov[ii] = 0 ;
        }
        break ;
      }
@@ -1380,13 +1484,16 @@ CLEANUP:
 /*-----------------------------------------------------------------------*/
 /*! Make a functional overlay the new way (30 Jan 2003):
     - im_thr = threshold image (may be NULL)
-    - thresh = pixels with values in im_thr below this don't get overlay
+    - thbot  = pixels with values in im_thr in range (thbot..thtop)
+    - thtop  =  don't get overlay
     - im_fim = image to make overlay from (may not be NULL)
     - fimbot = pixel value to map to fimcolor[0]
     - fimtop = pixel value to map to fimcolor[NPANE_BIG-1]
+
+  [08 Aug 2007 -- change 'thresh' to 'thbot,thtop']
 -------------------------------------------------------------------------*/
 
-MRI_IMAGE * AFNI_newfunc_overlay( MRI_IMAGE *im_thr , float thresh ,
+MRI_IMAGE * AFNI_newfunc_overlay( MRI_IMAGE *im_thr , float thbot,float thtop,
                                   MRI_IMAGE *im_fim ,
                                   float fimbot, float fimtop, rgbyte *fimcolor )
 {
@@ -1395,6 +1502,7 @@ MRI_IMAGE * AFNI_newfunc_overlay( MRI_IMAGE *im_thr , float thresh ,
    int ii , npix , zbot , jj ;
    float fac , val ;
    int reject_zero = !AFNI_yesenv("AFNI_OVERLAY_ZERO") ; /* 20 Apr 2005 */
+   int dothr = (thbot < thtop) ;                         /* 08 Aug 2007 */
 
 ENTRY("AFNI_newfunc_overlay") ;
 
@@ -1424,7 +1532,9 @@ ENTRY("AFNI_newfunc_overlay") ;
           if( zbot && ar_fim[ii] < 0 ) continue ;
           val = fac*(fimtop-ar_fim[ii]) ;
           if( val < 0.0 ) val = 0.0;
-          jj = (int)(val+0.49); if( jj >= NPANE_BIG ) jj = NPANE_BIG-1;
+          else if (ar_fim[ii] < fimbot) val = NPANE_BIG-1; /* overflow guard */
+          jj = (int)(val+0.49);
+          if( jj >= NPANE_BIG ) jj = NPANE_BIG-1;
           ovar[3*ii  ] = fimcolor[jj].r ;
           ovar[3*ii+1] = fimcolor[jj].g ;
           ovar[3*ii+2] = fimcolor[jj].b ;
@@ -1439,7 +1549,9 @@ ENTRY("AFNI_newfunc_overlay") ;
           if( ZREJ(ar_fim[ii]) ) continue ;
           val = fac*(fimtop-ar_fim[ii]) ;
           if( val < 0.0 ) val = 0.0;
-          jj = (int)(val+0.49); if( jj >= NPANE_BIG ) jj = NPANE_BIG-1;
+          else if (ar_fim[ii] < fimbot) val = NPANE_BIG-1;
+          jj = (int)(val+0.49);
+          if( jj >= NPANE_BIG ) jj = NPANE_BIG-1;
           ovar[3*ii  ] = fimcolor[jj].r ;
           ovar[3*ii+1] = fimcolor[jj].g ;
           ovar[3*ii+2] = fimcolor[jj].b ;
@@ -1455,7 +1567,9 @@ ENTRY("AFNI_newfunc_overlay") ;
           if( zbot && ar_fim[ii] < 0.0 ) continue ;
           val = fac*(fimtop-ar_fim[ii]) ;
           if( val < 0.0 ) val = 0.0;
-          jj = (int)(val+0.49); if( jj >= NPANE_BIG ) jj = NPANE_BIG-1;
+          else if (ar_fim[ii] < fimbot) val = NPANE_BIG-1;
+          jj = (int)(val+0.49);
+          if( jj >= NPANE_BIG ) jj = NPANE_BIG-1;
           ovar[3*ii  ] = fimcolor[jj].r ;
           ovar[3*ii+1] = fimcolor[jj].g ;
           ovar[3*ii+2] = fimcolor[jj].b ;
@@ -1466,36 +1580,36 @@ ENTRY("AFNI_newfunc_overlay") ;
 
    /** now apply threshold, if any **/
 
-   if( thresh > 0.0 && im_thr != NULL ){
+   if( dothr && im_thr != NULL ){
      switch( im_thr->kind ){
 
        case MRI_short:{
-         float thr = thresh ;
-         short *ar_thr = MRI_SHORT_PTR(im_thr) ;
+         register float thb=thbot , tht=thtop ;
+         register short *ar_thr = MRI_SHORT_PTR(im_thr) ;
 
          for( ii=0 ; ii < npix ; ii++ ){
-           if( ar_thr[ii] > -thr && ar_thr[ii] < thr )
+           if( ar_thr[ii] > thb && ar_thr[ii] < tht )
              ovar[3*ii] = ovar[3*ii+1] = ovar[3*ii+2] = 0 ;
          }
        }
        break ;
 
        case MRI_byte:{
-         float thr = thresh ;
-         byte *ar_thr = MRI_BYTE_PTR(im_thr) ;
+         register float thb=thbot , tht=thtop ;
+         register byte *ar_thr = MRI_BYTE_PTR(im_thr) ;
 
-         for( ii=0 ; ii < npix ; ii++ )
-           if( ar_thr[ii] < thr )
+         for( ii=0 ; ii < npix ; ii++ )  /* assuming thb <= 0 always */
+           if( ar_thr[ii] < tht )
              ovar[3*ii] = ovar[3*ii+1] = ovar[3*ii+2] = 0 ;
        }
        break ;
 
        case MRI_float:{
-         float thr = thresh ;
-         float *ar_thr = MRI_FLOAT_PTR(im_thr) ;
+         register float thb=thbot , tht=thtop ;
+         register float *ar_thr = MRI_FLOAT_PTR(im_thr) ;
 
          for( ii=0 ; ii < npix ; ii++ )
-           if( ar_thr[ii] > -thr && ar_thr[ii] < thr )
+           if( ar_thr[ii] > thb && ar_thr[ii] < tht )
              ovar[3*ii] = ovar[3*ii+1] = ovar[3*ii+2] = 0 ;
        }
        break ;
@@ -1897,6 +2011,7 @@ STATUS("defaulted anatomy underlay") ;
    AFNI_process_alteration(im3d) ;
 
    HINTIZE_pbar(im3d) ; /* 15 Aug 2001 */
+   FIX_SCALE_SIZE(im3d) ;
 
    EXRETURN ;
 }
@@ -1910,7 +2025,7 @@ char * AFNI_controller_label( Three_D_View *im3d )
    int ic ;
 
    ic = AFNI_controller_index( im3d ) ;
-   if( ic < 0 || ic > 26 ) strcpy (str,"   ") ;
+   if( ic < 0 || ic > 26 ) strcpy (str,"    ") ;
    else                    sprintf(str,"[%c] ",clabel[ic]) ;
    return str ;
 }
@@ -1929,18 +2044,22 @@ void AFNI_set_window_titles( Three_D_View *im3d )
 {
    Boolean redo_title ;
    char ttl[THD_MAX_NAME] , nam[THD_MAX_NAME] ;
-   char *tnam ;
+   char *tnam , *clab ;
+   char signum ; /* 08 Aug 2007 */
 
 ENTRY("AFNI_set_window_titles") ;
 
    if( ! IM3D_OPEN(im3d) ) EXRETURN ;
 
+   signum  = (im3d->vinfo->thr_sign==0) ? ' '
+            :(im3d->vinfo->thr_sign==1) ? '+' : '-' ;
+   clab    = AFNI_controller_label(im3d) ;
+   clab[3] = signum ; clab[4] = '\0' ;
+
    if( im3d->anat_wod_flag )
-     sprintf(ttl , "{warp} %s%s: " ,
-             AFNI_controller_label(im3d),GLOBAL_argopt.title_name) ;
+     sprintf(ttl , "{warp} %s%s: " , clab,GLOBAL_argopt.title_name) ;
    else
-     sprintf(ttl , "%s%s: " ,
-             AFNI_controller_label(im3d),GLOBAL_argopt.title_name) ;
+     sprintf(ttl , "%s%s: " , clab,GLOBAL_argopt.title_name) ;
 
    if( USE_TITLE2(im3d->anat_now) ){
      strcat( ttl , im3d->anat_now->label2 ) ;
@@ -2010,7 +2129,7 @@ int DSET_in_global_session( THD_3dim_dataset *dset )
 
 /** labels for the chooser window **/
 
-static char *dset_choice[] = { "Session" , "Underlay" , "Overlay" } ;
+static char *dset_choice[] = { "Session" , "Underlay" , "Overlay" , "Dataset" } ;
 
 /** max size of strings in the list **/
 
@@ -2027,6 +2146,8 @@ void AFNI_choose_dataset_CB( Widget w , XtPointer cd , XtPointer cb )
    Three_D_View *im3d = (Three_D_View *) cd ;
    int llen , ltop ;
    int browse_select = 0 ;
+   int is_other = 0 ;       /* 18 Dec 2007 */
+   void (*cbfun)(Widget,XtPointer,MCW_choose_cbs *)=AFNI_finalize_dataset_CB;
 
 ENTRY("AFNI_choose_dataset_CB") ;
 
@@ -2093,6 +2214,8 @@ ENTRY("AFNI_choose_dataset_CB") ;
 
       ltop = 4 ;
       for( ii=0 ; ii < num_str ; ii++ ){
+         THD_report_obliquity(im3d->ss_now->dsset[ii][0]) ;  /* 20 Dec 2007 */
+
          for( vv=FIRST_VIEW_TYPE ; vv <= LAST_VIEW_TYPE ; vv++ )
             if( ISVALID_3DIM_DATASET(im3d->ss_now->dsset[ii][vv]) ) break ;
 
@@ -2146,68 +2269,95 @@ ENTRY("AFNI_choose_dataset_CB") ;
 
    /*--- make a list of function names ---*/
 
-   } else if( w == im3d->vwid->view->choose_func_pb ||
-              w == im3d->vwid->view->popchoose_func_pb ){
+   } else {
+      int nn=0 , ndset=0 ; THD_3dim_dataset **dset_list=NULL , *dset ;
 
-      wpar    = im3d->vwid->view->choose_func_pb ;
+      is_other = !( w == im3d->vwid->view->choose_func_pb ||
+                    w == im3d->vwid->view->popchoose_func_pb ) ;
+
       num_str = im3d->ss_now->num_dsset ;
       if( num_str < 1 ) EXRETURN ;
 
-      if( AFNI_yesenv("AFNI_DATASET_BROWSE") ) browse_select = 1 ;
+      if( is_other ){
+        AFNI_dataset_choose_stuff *cs = (AFNI_dataset_choose_stuff *)cb ;
+        if( cs == NULL ) EXRETURN ;
+        ndset = cs->ndset ; if( ndset < 1 ) EXRETURN ;
+        dset_list = cs->dset ; if( dset_list == NULL ) EXRETURN ;
+        cbfun = cs->cb ; if( cbfun == NULL ) EXRETURN ;
+        wpar = w ;
+      } else {
+        if( AFNI_yesenv("AFNI_DATASET_BROWSE") ) browse_select = 1 ;
+        wpar = im3d->vwid->view->choose_func_pb ;
+        ndset = num_str ;
+      }
 
       ltop = 4 ;
-      for( ii=0 ; ii < num_str ; ii++ ){
-         for( vv=FIRST_VIEW_TYPE ; vv <= LAST_VIEW_TYPE ; vv++ )
-            if( ISVALID_3DIM_DATASET(im3d->ss_now->dsset[ii][vv]) ) break ;
-
-         if( vv <= LAST_VIEW_TYPE ){
-            llen = strlen( im3d->ss_now->dsset[ii][vv]->dblk->diskptr->prefix ) ;
-            ltop = MAX( ltop , llen ) ;
-         }
+      for( ii=0 ; ii < ndset ; ii++ ){
+        if( is_other ){
+          dset = dset_list[ii] ;
+        } else {
+          for( vv=FIRST_VIEW_TYPE ; vv <= LAST_VIEW_TYPE ; vv++ ){
+            dset = im3d->ss_now->dsset[ii][vv]; if( ISVALID_DSET(dset) ) break;
+          }
+        }
+        if( ISVALID_DSET(dset) ){
+          llen = strlen( dset->dblk->diskptr->prefix ) ;
+          ltop = MAX( ltop , llen ) ;
+        }
       }
       ltop = MIN(ltop,STRLIST_SIZE-24) ;  /* 06 Aug 2002 */
 
-      for( ii=0 ; ii < num_str ; ii++ ){
-         for( vv=FIRST_VIEW_TYPE ; vv <= LAST_VIEW_TYPE ; vv++ )
-            if( ISVALID_3DIM_DATASET(im3d->ss_now->dsset[ii][vv]) ) break ;
+      for( ii=0 ; ii < ndset ; ii++ ){
 
-         if( vv <= LAST_VIEW_TYPE ){
-            sprintf( strlist[ii] , "%-*s" ,
-                     ltop , im3d->ss_now->dsset[ii][vv]->dblk->diskptr->prefix ) ;
+         if( is_other ){
+           dset = dset_list[ii] ; if( !ISVALID_DSET(dset) ) continue ;
+         } else {
+           for( vv=FIRST_VIEW_TYPE ; vv <= LAST_VIEW_TYPE ; vv++ ){
+             dset = im3d->ss_now->dsset[ii][vv]; if( ISVALID_DSET(dset) ) break;
+           }
+         }
 
-            strcat( strlist[ii] , " [" ) ;
-            strcat( strlist[ii] , DSET_PREFIXSTR(im3d->ss_now->dsset[ii][vv]) ) ;
+         if( ISVALID_DSET(dset) ){
+           sprintf( strlist[nn] , "%-*s" ,
+                    ltop , dset->dblk->diskptr->prefix ) ;
 
-            if( DSET_NUM_TIMES(im3d->ss_now->dsset[ii][vv]) > 1 ){
-               int ll = strlen(strlist[ii]) ;
-               sprintf( strlist[ii]+ll , ":3D+t:%d]" ,
-                        DSET_NUM_TIMES(im3d->ss_now->dsset[ii][vv]) ) ;
-            } else if( ISBUCKET(im3d->ss_now->dsset[ii][vv]) ){
-               int ll = strlen(strlist[ii]) ;
-               sprintf( strlist[ii]+ll , ":%d]" ,
-                        DSET_NVALS(im3d->ss_now->dsset[ii][vv]) ) ;
-            } else {
-               strcat( strlist[ii] , "]" ) ;
-            }
+           strcat( strlist[nn] , " [" ) ;
+           strcat( strlist[nn] , DSET_PREFIXSTR(dset) ) ;
 
-            if( DSET_COMPRESSED(im3d->ss_now->dsset[ii][vv]) )
-               strcat( strlist[ii] , "z" ) ;
+           if( DSET_NUM_TIMES(dset) > 1 ){
+             int ll = strlen(strlist[nn]) ;
+             sprintf( strlist[nn]+ll , ":3D+t:%d]" , DSET_NUM_TIMES(dset) ) ;
+           } else if( ISBUCKET(dset) ){
+             int ll = strlen(strlist[nn]) ;
+             sprintf( strlist[nn]+ll , ":%d]" , DSET_NVALS(dset) ) ;
+           } else {
+             strcat( strlist[nn] , "]" ) ;
+           }
 
-            /* 20 Dec 2001: mark if this is a global dataset */
+           if( DSET_COMPRESSED(dset) ) strcat( strlist[nn] , "z" ) ;
 
-            if( DSET_in_global_session(im3d->ss_now->dsset[ii][vv]) )
-              strcat( strlist[ii] , "G" ) ;
+           /* 20 Dec 2001: mark if this is a global dataset */
 
-         } else
-            MCW_strncpy( strlist[ii] , "**?BAD?**" , THD_MAX_PREFIX ) ;
+           if( DSET_in_global_session(dset) ) strcat( strlist[nn] , "G" ) ;
 
+         } else { /* should never happen */
+           MCW_strncpy( strlist[nn] , "**?BAD?**" , THD_MAX_PREFIX ) ;
+         }
+
+         nn++ ;
       }
 
-      init_str = im3d->vinfo->func_num ;
-      label    = dset_choice[2] ;
+      if( nn < 1 ) EXRETURN ;
 
-   } else {
-      XBell( im3d->dc->display , 100 ) ; EXRETURN ;  /* bad news! */
+      if( is_other ){
+        init_str = 0 ;
+        label    = dset_choice[3] ;
+      } else {
+        init_str = im3d->vinfo->func_num ;
+        label    = dset_choice[2] ;
+      }
+      num_str = nn ;
+
    }
 
    /*--- call the chooser ---*/
@@ -2215,7 +2365,7 @@ ENTRY("AFNI_choose_dataset_CB") ;
    MCW_set_browse_select( browse_select ) ;
 
    MCW_choose_strlist( wpar , label , num_str , init_str , strlist ,
-                       AFNI_finalize_dataset_CB , (XtPointer) im3d ) ;
+                       cbfun , (XtPointer)im3d ) ;
 
    RESET_AFNI_QUIT(im3d) ;
    EXRETURN ;
@@ -2226,7 +2376,7 @@ ENTRY("AFNI_choose_dataset_CB") ;
 void AFNI_finalize_dataset_CB( Widget wcall ,
                                XtPointer cd , MCW_choose_cbs *cbs )
 {
-   Three_D_View *im3d = (Three_D_View *) cd ;
+   Three_D_View *im3d = (Three_D_View *)cd ;
    int old_sess , old_anat , old_func , old_view ;
    int new_sess=-1 , new_anat=-1 , new_func=-1 , new_view=-1 ;
    int ii , vv , ff ;
@@ -2404,6 +2554,13 @@ ENTRY("AFNI_finalize_dataset_CB") ;
          XBell( im3d->dc->display , 100 ) ; EXRETURN ;  /* bad! */
       }
 
+      /* 03 Aug 2007: turn 'See Overlay' on? */
+
+      if( !im3d->vinfo->func_visible && im3d->vinfo->func_visible_count == 0 ){
+        MCW_set_bbox( im3d->vwid->view->see_func_bbox , 1 ) ;
+        AFNI_see_func_CB( NULL , im3d , NULL ) ;
+      }
+
    /*--- switch to Hell? ---*/
 
    } else {
@@ -2426,7 +2583,7 @@ ENTRY("AFNI_finalize_dataset_CB") ;
 
      fprintf(stderr,"** Forced switch from '%s' to '%s' **\n",
              VIEW_typestr[old_view] , VIEW_typestr[new_view] ) ;
-     for( ii=0 ; ii < 8 ; ii++ ){
+     for( ii=0 ; ii < 7 ; ii++ ){
        MCW_invert_widget(im3d->vwid->view->view_bbox->wframe ); RWC_sleep(16);
        MCW_invert_widget(im3d->vwid->view->view_bbox->wrowcol); RWC_sleep(16);
        MCW_invert_widget(wcall) ;
@@ -2449,6 +2606,7 @@ ENTRY("AFNI_finalize_dataset_CB") ;
    SHOW_AFNI_PAUSE ;
    AFNI_initialize_view( im3d->anat_now , im3d ) ;
    SHOW_AFNI_READY ;
+   FIX_SCALE_SIZE(im3d) ;
 
    if( old_view != new_view ){            /* ending flash */
      XBell( im3d->dc->display , 100 ) ;
@@ -2469,6 +2627,42 @@ ENTRY("AFNI_finalize_dataset_CB") ;
      if( new_thresh > 0.0f ) AFNI_set_threshold(im3d,new_thresh) ;
    }
 
+   /* check obliquity of overlay and underlay */
+   /* pop up warning if necessary */
+
+   if(wcall == im3d->vwid->view->choose_func_pb)
+     AFNI_check_obliquity(wcall, ss_new->dsset[new_func][0]);
+   else
+     AFNI_check_obliquity(wcall, ss_new->dsset[new_anat][0]);
+
+
+   EXRETURN ;
+}
+
+
+/*-----------------------------------------------------------*/
+/* check dataset for obliquity and pop-up warning if oblique */
+
+void AFNI_check_obliquity(Widget w, THD_3dim_dataset *dset)
+{
+   double angle;
+   char str[1024];
+
+   ENTRY("AFNI_check_obliquity");
+   if( !ISVALID_DSET(dset) ) EXRETURN ;
+   angle = THD_compute_oblique_angle(dset->daxes->ijk_to_dicom_real, 0);
+   if(angle == 0.0) EXRETURN ;
+
+   sprintf( str,
+      " You have selected an oblique dataset (%s).\n"
+      "  If you are performing spatial transformations on an oblique dset, \n"
+      "  or viewing/combining it with volumes of differing obliquity,\n"
+      "  you should consider running: \n"
+      "     3dWarp -deoblique \n"
+      "  on this and other oblique datasets in the same session.\n",
+      DSET_BRIKNAME(dset));
+
+   (void) MCW_popup_message( w , str, MCW_USER_KILL | MCW_TIMER_KILL ) ;
    EXRETURN ;
 }
 
@@ -3128,7 +3322,7 @@ ENTRY("AFNI_finalize_read_Web_CB") ;
 
 void AFNI_rescan_CB( Widget w, XtPointer cd, XtPointer cb )
 {
-   Three_D_View *im3d = (Three_D_View *) cd , *qq3d ;
+   Three_D_View *im3d = (Three_D_View *)cd , *qq3d ;
    int cc ;
    char str[256+THD_MAX_NAME] ;
 
@@ -3722,6 +3916,7 @@ ENTRY("AFNI_modify_viewing") ;
    ENABLE_LOCK ;
 
    SAVE_VPT(im3d) ;
+   FIX_SCALE_SIZE(im3d) ;
    EXRETURN ;
 }
 
@@ -4511,9 +4706,9 @@ ENTRY("AFNI_andersonville") ;
    }  /* end of loop over sessions */
 
 #ifdef AFNI_DEBUG
-{ char str[256] ;
-  sprintf(str,"total # datasets killed = %d",num_killed) ;
-  STATUS(str) ; }
+  { char str[256] ;
+    sprintf(str,"total # datasets killed = %d",num_killed) ;
+    STATUS(str) ; }
 #endif
 
    EXRETURN ;
@@ -4927,6 +5122,7 @@ ENTRY("AFNI_bucket_CB") ;
      if( new_thresh > 0.0f ) AFNI_set_threshold(im3d,new_thresh) ;
    }
 
+   FIX_SCALE_SIZE(im3d) ;
    EXRETURN ;
 }
 
@@ -5270,6 +5466,7 @@ STATUS("got func info") ;
       /*-- popup widgets --*/
 
       XtMapWidget( wpop ) ;  /* after this, is up to user */
+      AFNI_sleep(1) ;
       RWC_visibilize_widget( wpop ) ;
    }
 
@@ -5593,6 +5790,13 @@ ENTRY("AFNI_hidden_CB") ;
    else if( w == im3d->vwid->prog->hidden_faces_pb && w != NULL ){
 
      AFNI_faceup() ;
+   }
+
+   /*------ Splashes!  [12 Sep 2007] -----*/
+
+   else if( w == im3d->vwid->prog->hidden_splashes_pb && w != NULL ){
+
+     AFNI_allsplash() ;
    }
 
    /*------ Browser [22 Apr 2005] -----*/

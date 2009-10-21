@@ -138,9 +138,10 @@ Create a SurfaceViewer data structure
 */
 SUMA_SurfaceViewer *SUMA_Alloc_SurfaceViewer_Struct (int N)
 {
-   SUMA_SurfaceViewer *SV, *SVv;
+   SUMA_SurfaceViewer *SV=NULL, *SVv=NULL;
    static char FuncName[]={"SUMA_Alloc_SurfaceViewer_Struct"};
-   int i, j, n;
+   int i=-1, j=-1, n=-1, iii=-1;
+   SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
 
@@ -442,6 +443,16 @@ SUMA_SurfaceViewer *SUMA_Alloc_SurfaceViewer_Struct (int N)
       SV->X->ViewCont = SUMA_CreateViewContStruct();
       SV->X->DPY = NULL;
       SV->X->FORM = SV->X->FRAME = SV->X->GLXAREA = NULL;
+      SV->X->VISINFO = NULL;
+      SV->X->REDISPLAYID = SV->X->MOMENTUMID = 0;
+      SV->X->CMAP = 0;
+      SV->X->GLXCONTEXT=NULL;
+      SV->X->gc=NULL;
+      SV->X->ToggleCrossHair_View_tglbtn=NULL;
+      for (iii=0; iii<SW_N_Tools; ++iii) {
+         SV->X->FileMenu[iii] = SV->X->ToolsMenu[iii] = SV->X->ViewMenu[iii] = SV->X->HelpMenu[iii] = NULL;
+      }
+      
       SV->Focus_SO_ID = -1;
       SV->Focus_DO_ID = -1;
       
@@ -2239,7 +2250,10 @@ SUMA_Boolean SUMA_Free_CommonFields (SUMA_CommonFields *cf)
       for (i=0; i< cf->N_Group; ++i) if (cf->GroupList[i]) SUMA_free(cf->GroupList[i]);
       SUMA_free(cf->GroupList); cf->GroupList = NULL;
    }
-   if (cf->ROI_CM) SUMA_Free_ColorMap(cf->ROI_CM); /* free the colormap */ cf->ROI_CM = NULL;
+   #if 0 /* not anymore!, that is now a pointer copy */
+   if (cf->ROI_CM) SUMA_Free_ColorMap(cf->ROI_CM); /* free the colormap */ 
+   #endif
+   cf->ROI_CM = NULL;
    if (cf->X->FileSelectDlg) SUMA_FreeFileSelectionDialogStruct(cf->X->FileSelectDlg); cf->X->FileSelectDlg = NULL;
    if (cf->X->SumaCont) SUMA_FreeSumaContStruct (cf->X->SumaCont); cf->X->SumaCont = NULL;
    if (cf->X->DrawROI) SUMA_FreeDrawROIStruct (cf->X->DrawROI); cf->X->DrawROI = NULL;
@@ -2525,7 +2539,9 @@ SUMA_Boolean SUMA_SetViewerLightsForSO(SUMA_SurfaceViewer *cSV, SUMA_SurfaceObje
 
    if (cSV->lit_for == 0) { /* olde way */
       /* if surface is SureFit , flip lights */
-      if (SO->normdir == 0 && (SO->FileType == SUMA_SUREFIT || SO->FileType == SUMA_OPENDX_MESH || SO->FileType == SUMA_BRAIN_VOYAGER)) {
+      if (SO->normdir == 0 && (  SO->FileType == SUMA_SUREFIT || 
+                                 SO->FileType == SUMA_OPENDX_MESH || 
+                                 SO->FileType == SUMA_BRAIN_VOYAGER)) {
          SUMA_LH("Flippo for safety");
          cSV->light0_position[0] *= -1;
          cSV->light0_position[1] *= -1;      

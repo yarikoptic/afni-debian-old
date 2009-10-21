@@ -104,22 +104,24 @@ SUMA_Boolean SUMA_Engine (DList **listp)
                char sbuf[50], *stmp=NULL;
                
                if (EngineData->i_Dest != NextComCode ) {
-                  fprintf (SUMA_STDERR,"Error %s: Data not destined correctly for %s (%d).\n", \
+                  fprintf (
+                     SUMA_STDERR,
+                     "Error %s: Data not destined correctly for %s (%d).\n", \
                    FuncName, NextCom, NextComCode);
                   break;
                }
                
                /* get the CMAP */
-               if (!(cmap = SUMA_GetStandardMap (EngineData->i))) {
-                  SUMA_SLP_Err("Failed to create colormap");
+               if (!(cmap = SUMA_FindCodedColMap(EngineData->i))) {
+                  SUMA_SLP_Err("Failed to get colormap");
                   break;
                }
                
-               if (cmap->N_Col > 128) {
+               if (cmap->N_Col > 256) {
                   SUMA_SLP_Err(  "Cannot send more\n"
-                                 "than 128 colors to\n"
+                                 "than 256 colors to\n"
                                  "AFNI.");
-                  SUMA_Free_ColorMap(cmap); cmap = NULL;
+                  cmap = NULL;
                   break;
                }
                
@@ -143,7 +145,7 @@ SUMA_Boolean SUMA_Engine (DList **listp)
                   SUMA_SLP_Err("Failed to send CMAP to afni");
                   NI_free_element(nel) ; nel = NULL;
                   if (stmp) SUMA_free(stmp); stmp = NULL;
-                  SUMA_Free_ColorMap(cmap); cmap = NULL;
+                  cmap = NULL;
                   break;
                }
                
@@ -164,7 +166,7 @@ SUMA_Boolean SUMA_Engine (DList **listp)
                   SUMA_SLP_Err("Failed to send CMAP to afni");
                   NI_free_element(nel) ; nel = NULL;
                   if (stmp) SUMA_free(stmp); stmp = NULL;
-                  SUMA_Free_ColorMap(cmap); cmap = NULL;
+                  cmap = NULL;
                   break;
                }
                
@@ -178,7 +180,7 @@ SUMA_Boolean SUMA_Engine (DList **listp)
                if (NI_write_element( SUMAg_CF->ns_v[SUMA_AFNI_STREAM_INDEX] , nel, NI_BINARY_MODE ) < 0) {
                   SUMA_SLP_Err("Failed to send CMAP to afni");
                   NI_free_element(nel) ; nel = NULL;
-                  SUMA_Free_ColorMap(cmap); cmap = NULL;
+                  cmap = NULL;
                   break;
                }
                
@@ -194,13 +196,13 @@ SUMA_Boolean SUMA_Engine (DList **listp)
                   SUMA_SLP_Err("Failed to send CMAP to afni");
                   NI_free_element(nel) ; nel = NULL;
                   if (stmp) SUMA_free(stmp); stmp = NULL;
-                  SUMA_Free_ColorMap(cmap); cmap = NULL;
+                  cmap = NULL;
                   break;
                }
                NI_free_element(nel) ; nel = NULL;
                if (stmp) SUMA_free(stmp); stmp = NULL;
                
-               SUMA_Free_ColorMap(cmap); cmap = NULL;
+               cmap = NULL;
             }
             break;
          case SE_OpenDrawnROIFileSelection:
@@ -402,10 +404,13 @@ SUMA_Boolean SUMA_Engine (DList **listp)
             
          case SE_OpenDsetFileSelection:
             /* opens the dataset file selection window. 
-            Expects SO in vp and a position reference widget typecast to ip, the latter can be null.*/
+               Expects SO in vp and a position reference 
+               widget typecast to ip, the latter can be null.*/
             
-            if (EngineData->vp_Dest != NextComCode || EngineData->ip_Dest != NextComCode ) {
-               fprintf (SUMA_STDERR,"Error %s: Data not destined correctly for %s (%d).\n", \
+            if (  EngineData->vp_Dest != NextComCode || 
+                  EngineData->ip_Dest != NextComCode ) {
+               fprintf (SUMA_STDERR,
+                  "Error %s: Data not destined correctly for %s (%d).\n", 
                   FuncName, NextCom, NextComCode);
                break;
             }
@@ -413,20 +418,31 @@ SUMA_Boolean SUMA_Engine (DList **listp)
             /*Load data from file */
             if (!sv) sv = &(SUMAg_SVv[0]);
             if (!EngineData->ip) {
-               SUMAg_CF->X->FileSelectDlg = SUMA_CreateFileSelectionDialogStruct (sv->X->TOPLEVEL, SUMA_FILE_OPEN, YUP,
-                                                        SUMA_LoadDsetFile, (void *)EngineData->vp,
-                                                        NULL, NULL,
-                                                        "*.dset",
-                                                        SUMAg_CF->X->FileSelectDlg);
+               SUMAg_CF->X->FileSelectDlg = 
+                  SUMA_CreateFileSelectionDialogStruct ( 
+                     sv->X->TOPLEVEL,
+                     SUMA_FILE_OPEN, YUP,
+                     SUMA_LoadDsetFile,
+                     (void *)EngineData->vp,
+                     NULL, NULL,
+                     "*.dset",
+                     SUMAg_CF->X->FileSelectDlg);
             } else {
-               SUMAg_CF->X->FileSelectDlg = SUMA_CreateFileSelectionDialogStruct ((Widget) EngineData->ip, SUMA_FILE_OPEN, YUP,
-                                                        SUMA_LoadDsetFile, (void *)EngineData->vp,
-                                                        NULL, NULL,
-                                                        "*.dset",
-                                                        SUMAg_CF->X->FileSelectDlg);
+               SUMAg_CF->X->FileSelectDlg = 
+                  SUMA_CreateFileSelectionDialogStruct (
+                     (Widget) EngineData->ip, 
+                     SUMA_FILE_OPEN, YUP,
+                     SUMA_LoadDsetFile, 
+                     (void *)EngineData->vp,
+                     NULL, NULL,
+                     "*.dset",
+                     SUMAg_CF->X->FileSelectDlg);
             }
             
-            SUMAg_CF->X->FileSelectDlg = SUMA_CreateFileSelectionDialog ("Select Dset File", &SUMAg_CF->X->FileSelectDlg);
+            SUMAg_CF->X->FileSelectDlg = 
+               SUMA_CreateFileSelectionDialog (
+                  "Select Dset File", 
+                  &SUMAg_CF->X->FileSelectDlg);
             
             break;
             
@@ -540,7 +556,9 @@ SUMA_Boolean SUMA_Engine (DList **listp)
          case SE_SetRenderMode:
             { /* sets the rendering mode of a surface, expects SO in vp and rendering mode in i*/
                SO = (SUMA_SurfaceObject *)EngineData->vp;
-               SO->PolyMode = EngineData->i;                  
+               SO->PolyMode = EngineData->i;     
+               if (SO->PolyMode == SRM_Hide) SO->Show = NOPE;
+               else SO->Show = YUP;             
             }  
             break;
             
@@ -2745,7 +2763,7 @@ int SUMA_VisibleSOs (SUMA_SurfaceViewer *sv, SUMA_DO *dov, int *SO_IDs)
       if (SUMA_isSO_G(dov[sv->RegisteredDO[i]], sv->CurGroupName)) {
          SO = (SUMA_SurfaceObject *)dov[sv->RegisteredDO[i]].OP;
          if (SO->Show) {
-            if ( SO->Side == SUMA_NO_SIDE || SO->Side == SUMA_SIDE_ERROR ) {
+            if ( SO->Side == SUMA_NO_SIDE || SO->Side == SUMA_SIDE_ERROR  || SO->Side == SUMA_LR) {
                if (SO_IDs) {
                   SO_IDs[k] = sv->RegisteredDO[i];
                }
@@ -3809,7 +3827,9 @@ int SUMA_MapRefRelative (int cur_id, int *prec_list, int N_prec_list, SUMA_DO *d
          if (N_prec_list == 1) {
             /* if all you have is one surface in one state in SUMA then you need not worry about the rest */
          } else {
-            fprintf(SUMA_STDERR,"Error %s: Flow problem. Did not expect identical surfaces in this condition (N_prec_list = %d)\n", FuncName, N_prec_list);
+            fprintf(SUMA_STDERR, "\nError %s: Flow problem.\n"
+                                 "Did not expect identical surfaces \n"
+                                 "in this condition (N_prec_list = %d)\n", FuncName, N_prec_list);
             SUMA_BEEP; 
          }
          /* 
@@ -3889,68 +3909,6 @@ int *SUMA_FormSOListToSendToAFNI(SUMA_DO *dov, int N_dov, int *N_Send)
       }
    }
    
-   #if 0
-   for (s=0; s<3; ++s) {
-      if (s==0) side = SUMA_LEFT;
-      else if (s == 1) side = SUMA_RIGHT;
-      else side = SUMA_NO_SIDE;
-      for (j=0; j<3; ++j) {
-         for (ii=0; ii<N_dov; ++ii) {
-            if (SUMA_isSO(dov[ii])) {
-               SO = (SUMA_SurfaceObject *)(dov[ii].OP);
-               if (s==0) {
-                  if (SO->Side != side) { continue;}
-               } else if (s == 1){
-                  if (SO->Side != side) { continue;}
-               } else {
-                  /* let it proceed */
-               }
-               #if 1 
-               /* Jan. 08 04 this is the right thing to do but 
-               AFNI is not ready to deal with this
-               and things can get confusing. See 
-               confusing fat point in Readme_Modify.log,
-               date: Thu Jan  8 13:55:33 EST 2004 */
-               if (!SO->AnatCorrect) {
-                  continue;
-               }
-               #else 
-               /* Jan. 08 04 the old and not confusing way. 
-               Turn it off as soon as AFNI is ready 
-               for the option  above.
-               See labbook NIH-3 page 146 */
-               if (!SUMA_isLocalDomainParent(SO)) {
-                  continue;
-               }
-               #endif
-               if (j==0) { /* inner surfaces */
-                  if (SUMA_isTypicalSOforVolSurf(SO) != -1 ) {
-                     continue;
-                  }
-               }else if (j==1) { /* outer surfaces */
-                  if (SUMA_isTypicalSOforVolSurf(SO)  != 1 ) {
-                     continue;
-                  }
-               }else if (j==2) { /* other */
-                  if (SUMA_isTypicalSOforVolSurf(SO)  != 0 ) {
-                     continue;
-                  }
-               }
-               /* if this surface has been sent to AFNI before, bypass it */
-               if (SO->SentToAfni) {
-                  if (LocalHead) fprintf(SUMA_STDERR, "Warning %s: Surface %s has been sent to AFNI before.\n", \
-                     FuncName, SO->idcode_str);
-                  continue;
-               }else {
-                  if (LocalHead) fprintf(SUMA_STDERR, "Warning %s: Surface %s Will be sent to AFNI.\n", \
-                     FuncName, SO->idcode_str);
-               }
-               SendList[*N_Send] = ii; *N_Send = *N_Send + 1;
-            }
-         }
-      }
-   }
-   #endif
    SUMA_RETURN(SendList);
 
 }

@@ -1612,7 +1612,7 @@ int *z_idqsort (int *x , int nx )
    int *I, k;
    Z_QSORT_INT *Z_Q_fStrct;
    
-   ENTRY("z_iqsort");
+   ENTRY("z_idqsort");
 
    /* allocate for the structure */
    Z_Q_fStrct = (Z_QSORT_INT *) calloc(nx, sizeof (Z_QSORT_INT));
@@ -2304,7 +2304,7 @@ AFNI_ATLAS_REGION *ROI_String_Decode(char *str, AFNI_ATLAS_CODES *ac)
    }
    
    
-   /* by now, we have at least one column */
+   /* by now, we have at least one colon */
    /* get the atlas name, 1st item*/
    for (k=icol[0]; k<icol[1]; ++k) atlas_name[k] = str[k];
    atlas_name[icol[1]] = '\0';

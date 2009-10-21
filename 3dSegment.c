@@ -5,7 +5,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "thd_ttatlas_query.h"
-#include "rickr/r_new_resam_dset.h"
 
 #define SEG_UNKNOWN  0
 #define SEG_CSF      1
@@ -813,5 +812,5 @@ int main(int argc, char **argv)
    DSET_delete(Opt->csfinit); Opt->csfinit = NULL;
    free(Opt); Opt = NULL;
    
-   exit(0);
+   PRINT_COMPILE_DATE ; exit(0);
 }

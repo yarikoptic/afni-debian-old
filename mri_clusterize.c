@@ -1,8 +1,18 @@
 #include "mrilib.h"
 
+/*---------------------------------------------------------------------*/
 static char *report = NULL ;
-
 char * mri_clusterize_report(void){ return report; }
+
+/*---------------------------------------------------------------------*/
+static MCW_cluster_array *clarout=NULL ;
+
+MCW_cluster_array * mri_clusterize_array(int clear)
+{
+  MCW_cluster_array *cc = clarout ;
+  if( clear ) clarout = NULL ;
+  return cc ;
+}
 
 /*---------------------------------------------------------------------*/
 /*! Cluster-edit volume bim, possibly thresholding with tim, and
@@ -10,16 +20,18 @@ char * mri_clusterize_report(void){ return report; }
 -----------------------------------------------------------------------*/
 
 MRI_IMAGE * mri_clusterize( float rmm , float vmul , MRI_IMAGE *bim ,
-                                        float thr  , MRI_IMAGE *tim  )
+                            float thb , float tht  , MRI_IMAGE *tim ,
+                            int posonly )
 {
-   float dx,dy,dz , dbot ;
-   int   nx,ny,nz , ptmin,iclu , nkeep,nkill ;
+   float dx,dy,dz , dbot , vmin ;
+   int   nx,ny,nz , ptmin,iclu , nkeep,nkill,ncgood , nbot,ntop , ii ;
    MRI_IMAGE *cim ; void *car ;
-   MCW_cluster *cl ; MCW_cluster_array*clar ;
+   MCW_cluster *cl , *dl ; MCW_cluster_array *clar ;
 
 ENTRY("mri_clusterize") ;
 
-   if( report != NULL ){ free(report); report = NULL; }
+   if( report  != NULL ){ free((void *)report);  report  = NULL; }
+   if( clarout != NULL ){ DESTROY_CLARR(clarout); }
 
    if( bim == NULL || mri_data_pointer(bim) == NULL ) RETURN(NULL) ;
 
@@ -31,7 +43,7 @@ ENTRY("mri_clusterize") ;
    dbot = MIN(dx,dy) ; dbot = MIN(dbot,dz) ;
 
    if( rmm < dbot ){ dx = dy = dz = 1.0f; rmm = 1.01f; }
-   if( vmul <= 2.0*dx*dy*dz ) RETURN(NULL) ;
+   vmin = 2.0f*dx*dy*dz ; if( vmul < vmin ) vmul = vmin ;
 
    /* create copy of input image (this will be edited below) */
 
@@ -40,8 +52,11 @@ ENTRY("mri_clusterize") ;
 
    /* threshold it, if so ordered (note that tim==bim is legal) */
 
-   if( thr > 0.0f && tim != NULL )
-     mri_threshold( -thr , thr , tim , cim ) ;
+   if( tht > thb && tim != NULL )
+     mri_threshold( thb , tht , tim , cim ) ;
+
+   if( posonly )
+     mri_threshold( -1.e9 , 0.0 , cim , cim ) ;
 
    /* smallest cluster to keep */
 
@@ -54,23 +69,65 @@ ENTRY("mri_clusterize") ;
    /* put all big clusters back into the image */
 
    if( clar != NULL ){
-     nkeep = nkill = 0 ;
+     ncgood = nkeep = nkill = 0 ; nbot = 999999 ; ntop = 0 ;
      for( iclu=0 ; iclu < clar->num_clu ; iclu++ ){
        cl = clar->clar[iclu] ;
-       if( cl->num_pt >= ptmin ){  /* put back into array */
-          MCW_cluster_to_vol( nx,ny,nz , cim->kind,car , cl ) ;
-          nkeep += cl->num_pt ;
+       if( cl->num_pt >= ptmin ){  /* put back into array, get some stats */
+
+         MCW_cluster_to_vol( nx,ny,nz , cim->kind,car , cl ) ;
+
+         nkeep += cl->num_pt ; ncgood++ ;
+         nbot = MIN(nbot,cl->num_pt); ntop = MAX(ntop,cl->num_pt);
+
+         if( clarout == NULL ) INIT_CLARR(clarout) ;
+         COPY_CLUSTER(dl,cl) ; ADDTO_CLARR(clarout,dl) ;
        } else {
-          nkill += cl->num_pt ;
+         nkill += cl->num_pt ;
        }
      }
      DESTROY_CLARR(clar) ;
      report = THD_zzprintf( report ,
-                            "Voxels survived clustering = %5d\n"
-                            "Voxels edited out          = %5d\n"
-                            "Cluster size threshold     = %d"   ,
-                            nkeep , nkill , ptmin ) ;
+                            " Voxels survived clustering =%6d\n"
+                            " Voxels edited out          =%6d\n" ,
+                            nkeep , nkill ) ;
+     if( ntop >= nbot )
+       report = THD_zzprintf( report ,
+                            " Min cluster size (voxels)  =%6d\n"
+                            " Max cluster size           =%6d\n"
+                            " Number of clusters kept    =%6d\n" ,
+                            nbot , ntop , ncgood ) ;
+
    }
 
    RETURN(cim) ;
+}
+
+/*---------------------------------------------------------------------*/
+
+mri_cluster_detail mri_clusterize_detailize( MCW_cluster *cl )
+{
+   mri_cluster_detail cld ;
+   float xcm,ycm,zcm , xpk,ypk,zpk , vpk,vvv,vsum ;
+   int ii ;
+
+ENTRY("mri_clusterize_detailize") ;
+
+   if( cl == NULL || cl->num_pt <= 0 ){ cld.nvox = 0; RETURN(cld); }
+
+   cld.nvox   = cl->num_pt ;
+   cld.volume = cl->num_pt ;
+   xcm = ycm = zcm = 0.0f ; vpk = 0.0f ;
+   for( vsum=ii=0 ; ii < cl->num_pt ; ii++ ){
+     vvv = fabsf(cl->mag[ii]) ; vsum += vvv ;
+     xcm += vvv*cl->i[ii] ; ycm += vvv*cl->j[ii] ; zcm += vvv*cl->k[ii] ;
+     if( vvv > vpk ){
+       xpk = cl->i[ii]; ypk = cl->j[ii]; zpk = cl->k[ii]; vpk = vvv;
+     }
+   }
+   if( vsum > 0.0f ){
+     cld.xcm = xcm / vsum; cld.ycm = ycm / vsum; cld.zcm = zcm / vsum;
+   }
+   cld.xpk = xpk; cld.ypk = ypk; cld.zpk = zpk;
+
+   RETURN(cld) ;
 }

@@ -68,7 +68,7 @@ int main( int argc , char *argv[] )
              "NOTE: also see program 3dTqual for a similar quality check.\n"
            ) ;
       printf("\n" MASTER_SHORTHELP_STRING ) ;
-      exit(0) ;
+      PRINT_COMPILE_DATE ; exit(0) ;
    }
 
    mainENTRY("3dToutcount main"); machdep(); AFNI_logger("3dToutcount",argc,argv);
@@ -182,7 +182,7 @@ int main( int argc , char *argv[] )
                          ADN_func_type , FUNC_FIM_TYPE ,
                        ADN_none ) ;
 
-      if( THD_is_file(DSET_HEADNAME(oset)) ){
+      if( THD_deathcon() && THD_is_file(DSET_HEADNAME(oset)) ){
         fprintf(stderr,"** ERROR: -save dataset already exists!\n"); exit(1);
       }
 

@@ -44,11 +44,16 @@
 #include <math.h>
 #include "mrilib.h"
 
-#define MAX_TREATMENTS 100     /* max. number of treatments */
-#define MAX_OBSERVATIONS 100   /* max. number of observations per treatment */
+#define MAX_TREATMENTS 333     /* max. number of treatments */
+#define MAX_OBSERVATIONS 333   /* max. number of observations per treatment */
 #define MAX_NAME_LENGTH THD_MAX_NAME   /* max. string length for file names */ 
 #define MEGA  1048576          /* one megabyte */
 
+#define USE_ARRAY
+#ifdef  USE_ARRAY
+ static int   ntar = 0 ;     /* 26 Oct 2007 */
+ static float *tar = NULL ;
+#endif
 
 typedef struct NP_options
 { 
@@ -118,7 +123,7 @@ void display_help_menu()
   
    printf("\n" MASTER_SHORTHELP_STRING ) ;
   
-  exit(0);
+  PRINT_COMPILE_DATE ; exit(0);
 }
 
 
@@ -142,7 +147,7 @@ void initialize_options (NP_options * option_data)
   for (i = 0;  i < MAX_TREATMENTS;  i++)
     option_data->n[i] = 0;
 
-  option_data->workmem = 12;
+  option_data->workmem = 266;
  
   /*----- allocate memory for storing data file names -----*/
   option_data->xname = (char ***) malloc (sizeof(char **) * MAX_TREATMENTS);
@@ -380,9 +385,9 @@ void initialize
 
   /*----- check for valid inputs -----*/
   check_for_valid_inputs (*option_data);
-    
+
   /*----- check whether output files already exist -----*/
-  check_one_output_file (*option_data, (*option_data)->outfile);
+  if( THD_deathcon() ) check_one_output_file (*option_data, (*option_data)->outfile);
 
   /*----- allocate memory -----*/
   *best = (float *) malloc(sizeof(float) * (*option_data)->nxyz);
@@ -427,6 +432,9 @@ void calc_stat
   float best_rank;            /* best average rank for a treatment */
   float ** rank_array;        /* array to store ranks for all observations */
 
+#ifdef USE_ARRAY
+  int kk=0 ;
+#endif
 
 
   /*----- allocate memory for storing ranks -----*/
@@ -441,13 +449,20 @@ void calc_stat
     {
 
       /*----- enter and sort data for each treatment within block j -----*/
-      for (i = 0;  i < s;  i++)
-	node_addvalue (&head, xarray[i][j]);
+      for (i = 0;  i < s;  i++){
+#ifdef USE_ARRAY
+        tar[kk++] = xarray[i][j] ;
+#else
+        node_addvalue (&head, xarray[i][j]);
+#endif
+      }
+#ifdef USE_ARRAY
+      node_allatonce( &head , kk , tar ) ;
+#endif
 
 
       /*----- store the ranks for each treatment within block j -----*/
-      for (i = 0;  i < s;  i++)
-	rank_array[i][j] = node_get_rank (head, xarray[i][j]);
+      for (i = 0;  i < s;  i++) rank_array[i][j] = node_get_rank (head, xarray[i][j]);
 
       
       /*----- calculate the ties correction factor -----*/
@@ -460,6 +475,9 @@ void calc_stat
 	}
 
       list_delete (&head);
+#ifdef USE_ARRAY
+      kk = 0 ;
+#endif
 
     } /* j loop */
 
@@ -561,6 +579,13 @@ void process_voxel
 {
   int i;                             /* treatment index */
   int j;                             /* array index */
+
+#ifdef USE_ARRAY
+  if( ntar == 0 ){
+    ntar = s*n+1 ; tar = (float *)malloc(sizeof(float)*ntar) ;
+    if( tar == NULL ) ERROR_exit("Can't malloc 'tar[%d]'!",ntar) ;
+  }
+#endif
 
 
   /*----- check for voxel output  -----*/

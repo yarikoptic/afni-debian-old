@@ -266,7 +266,7 @@ void display_help_menu()
 
   printf("\n" MASTER_SHORTHELP_STRING ) ;
   
-  exit(0);
+  PRINT_COMPILE_DATE; exit(0);
 }
 
 /* define index into n[MAX_LEVELS][MAX_LEVELS][MAX_LEVELS] 19 Jul 2004 [rickr]*/
@@ -1624,9 +1624,9 @@ void initialize (int argc,  char ** argv,  anova_options ** option_data)
   
   /*----- check whether temporary files already exist -----*/
   check_temporary_files (*option_data);
-  
+ 
   /*----- check whether output files already exist -----*/
-  check_output_files (*option_data);
+  if( THD_deathcon() ) check_output_files (*option_data);
 
   /*----- check whether there is sufficient disk space -----*/
   if ((*option_data)->diskspace)  check_disk_space (*option_data);

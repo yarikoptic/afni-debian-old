@@ -64,6 +64,12 @@ typedef struct vector
   double * elts;
 } vector;
 
+#undef  ISVALID_MATRIX
+#define ISVALID_MATRIX(m) ((m).rows > 0 && (m).cols > 0 && (m).elts != NULL)
+
+#undef  ISVALID_VECTOR
+#define ISVALID_VECTOR(v) ((v).dim > 0 && (v).elts != NULL)
+
 /*---------------------------------------------------------------------------*/
 /*
   Routine to print an error message and stop.
@@ -162,6 +168,8 @@ void matrix_equate (matrix a, matrix * b);
 */
 
 void matrix_extract (matrix a, int p, int * list, matrix * b);
+
+#define matrix_extract_cols matrix_extract
 
 
 /*---------------------------------------------------------------------------*/
@@ -262,6 +270,12 @@ void vector_destroy (vector * v);
 */
 
 void vector_create (int dim, vector * v);
+
+/*---------------------------------------------------------------------------*/
+/*
+  Create vector v by allocating memory, but do not initialize values.
+*/
+void vector_create_noinit(int dim, vector * v);
 
 
 /*---------------------------------------------------------------------------*/

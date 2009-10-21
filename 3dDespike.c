@@ -108,7 +108,7 @@ int main( int argc , char * argv[] )
              "   registration!\n"
              "   [Hint: open 2 AFNI controllers, and turn Time Lock on.]\n"
             ) ;
-      exit(0) ;
+      PRINT_COMPILE_DATE ; exit(0) ;
    }
 
    /** AFNI package setup and logging **/
@@ -236,7 +236,7 @@ int main( int argc , char * argv[] )
                       ADN_datum_all , datum ,
                     ADN_none ) ;
 
-   if( THD_is_file(DSET_HEADNAME(oset)) )
+   if( THD_deathcon() && THD_is_file(DSET_HEADNAME(oset)) )
      ERROR_exit("output dataset already exists: %s",DSET_HEADNAME(oset));
 
    tross_Copy_History( oset , dset ) ;
@@ -286,8 +286,10 @@ int main( int argc , char * argv[] )
      tross_Copy_History( tset , dset ) ;
      tross_Make_History( "3dDespike" , argc , argv , tset ) ;
 
+#if 0
      if( THD_is_file(DSET_HEADNAME(tset)) )
        ERROR_exit("-ssave dataset already exists");
+#endif
 
      tross_Copy_History( tset , dset ) ;
      tross_Make_History( "3dDespike" , argc , argv , tset ) ;

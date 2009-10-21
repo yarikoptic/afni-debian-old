@@ -3,6 +3,8 @@
   This is for the 3-parameter DEMRI model from Bob Cox and Steve Fung,
   implemented for John Butman and Steve Fung.
 
+  Nov 09 2007: allow for nfirst == 0
+
   Author: Rick Reynolds, Daniel Glen  22 Oct 2006
  *----------------------------------------------------------------------
 */
@@ -45,6 +47,8 @@ typedef struct
     int      nfirst;            /* num TRs used to compute mean Mp,0 */
     int      ijk;               /* voxel index*/
     int      debug;
+    int      per_min;           /* are parameter rates per minute? */
+    int      counter;           /* count iterations */
 
     double * comp;              /* computation data, and elist */
     double * elist;             /* (for easy allocation, etc.) */
@@ -59,7 +63,7 @@ static int alloc_param_arrays(demri_params * P, int len);
 static int compute_ts       (demri_params *P, float *ts, int ts_len);
 static int c_from_ct_cp     (demri_params * P, int len);
 static int convert_mp_to_cp (demri_params * P, int mp_len);
-static int ct_from_cp       (demri_params * P, int len);
+static int ct_from_cp       (demri_params * P, double *, float *, int, int);
 static int disp_demri_params(char * mesg, demri_params * p );
 static int get_env_params   (demri_params * P);
 static int get_Mp_array     (demri_params * P, int * mp_len);
@@ -67,6 +71,9 @@ static int get_time_in_seconds(char * str, float * time);
 static int model_help       (void);
 static int Mx_from_R1       (demri_params * P, float * ts, int len);
 static int R1_from_c        (demri_params * P, int len);
+
+static void print_doubles(char * mesg, double * list, int len);
+static void print_floats (char * mesg, float  * list, int len);
 
 /*----------------------------------------------------------------------
 
@@ -123,7 +130,7 @@ void signal_model (
 )
 {
     static demri_params P = {0.0, 0.0, 0.0, 0.0,   0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                             0.0, 0, 0, 0,  NULL, NULL, NULL };
+                             0.0, 0, 0, 0, 0, 0,  NULL, NULL, NULL };
     static int          first_call = 1;
     int                 mp_len;      /* length of mcp list */
     int                 rv, errs = 0;
@@ -141,7 +148,7 @@ void signal_model (
 
         /* verify TR (maybe we don't need TR) */
         if( !errs && P.TR != x_array[1][1] - x_array[1][0] )
-            fprintf(stderr, "** warning: TR (%f) != x_array time (%f)\n",
+            fprintf(stderr, "warning: TR (%f) != x_array time (%f), using TR\n",
                     P.TR, x_array[1][1] - x_array[1][0]);
 
         /* verify time series length */
@@ -160,6 +167,7 @@ void signal_model (
             first_call = 2;  /* prevent progression, but don't exit */
             memset(ts_array, 0, ts_len*sizeof(float));
             fprintf(stderr,"** MD3: failing out, and clearing time series\n");
+            return;
         }
         else
             first_call = 0;
@@ -168,6 +176,8 @@ void signal_model (
     /* note passed parameters */
     P.K   = params[0];
     P.fvp = params[2];
+
+    if( P.per_min ) P.K /= 60.0;        /* then convert to per minute */
 
     if( g_use_ve )
     {
@@ -193,17 +203,26 @@ void signal_model (
             memset(ts_array, 0, ts_len*sizeof(float));
             return;
         }
+    } else {
+        P.kep = params[1];
+        if( P.per_min ) P.kep /= 60.0;
     }
-    else P.kep = params[1];
 
     if( R1I_data_ptr )
     {
+        static int bad_count = 0;       /* print warnings of powers of 10 */
+        static int obnox_level = 1;
+
         P.ijk = AFNI_needs_dset_ijk();
         P.RIT = R1I_data_ptr[P.ijk];  /*  get R1I voxelwise from dataset */
         if( P.RIT < 0.02 || P.RIT > 20 )
         {
-            if( P.debug > 1 )
-                fprintf(stderr,"** warning, bad RIT value %f\n", P.RIT);
+            bad_count++;
+            if( P.debug > 1 && bad_count == obnox_level ){
+                fprintf(stderr,"** warning, bad RIT value %f (# %d)\n",
+                        P.RIT, bad_count);
+                obnox_level *= 10;
+            }
             memset(ts_array, 0, ts_len*sizeof(float));
             return;
             /* do something here?  panic into error?? */
@@ -211,7 +230,9 @@ void signal_model (
         if(P.debug > 3) printf("Voxel index %d, R1I value %f\n", P.ijk, P.RIT); 
     }
 
+    if(P.debug>1 && P.counter==0) disp_demri_params("before compute_ts: ", &P);
     (void)compute_ts( &P, ts_array, ts_len );
+    P.counter++;  /* a valid iteration */
 
     if( (rv = thd_floatscan(ts_len, ts_array)) > 0 )
     {
@@ -238,7 +259,7 @@ void signal_model (
 */
 static int compute_ts( demri_params * P, float * ts, int ts_len )
 {
-    if( ct_from_cp(P, ts_len) ) return 1;
+    if( ct_from_cp(P, P->comp, P->mcp, P->nfirst, ts_len) ) return 1;
 
     if( c_from_ct_cp(P, ts_len) ) return 1;
 
@@ -254,10 +275,13 @@ static int compute_ts( demri_params * P, float * ts, int ts_len )
 
     Ct[n] = Ktrans * ( sum [ Cp[k] * exp( -kep(n-k)*TF )
             ------                 * ( exp(kep*TF/2) - exp(-kep*TF/2) ) ]
-             kep       + Cp[n] * (1 - exp(-kep*TF/2)) )
+             kep
+                       + (Cp[m] + Cp[n]) * (1 - exp(-kep*TF/2)) )
 
-    where sum is over k=m..n-1 (m is nfirst), and n is over 0..len-1
-    note: Cp[n] = Ct[n] = 0, for n in {0..m-1}
+    where sum is over k=m+1..n-1 (m is nfirst), and n is over m..len-1
+    note: Cp[n] = Ct[n] = 0, for n in {0..m}  (m also, since that is time=0)
+    note: (Cp[m]+Cp[n])*... reflects the first and last half intervals,
+          while the sum reflects all the interior, full intervals
 
         Let P1  = Ktrans / kep
             P2  = exp(kep*TF/2) - exp(-kep*TF/2)
@@ -266,25 +290,23 @@ static int compute_ts( demri_params * P, float * ts, int ts_len )
             P4  = 1 - exp(-kep*TF/2)
                 = 1 - exp(P3/2)
 
-    Ct[n] = P1*P2 * sum [ Cp[k] * exp(P3*(n-k)) ] + P1*P4 * Cp[n]
+    Ct[n] = P1*P2 * sum [ Cp[k] * exp(P3*(n-k)) ] + P1*P4 * (Cp[m]+Cp[n])
     note: in exp_list, max power is (P3*(len-1-m)), m is nfirst
     note: Ct is stored in P->comp
     
     ** This is the only place that the dataset TR (which we label as TF,
        the inter-frame TR) is used in this model.
 */
-static int ct_from_cp(demri_params * P, int len)
+static int ct_from_cp(demri_params * P, double * ct, float * cp,
+                      int nfirst, int len)
 {
-    static int   first = 1;
-    double     * ct = P->comp;
     double     * elist = P->elist;
     double       P12, P3, P14;
     double       dval;
-    float      * cp = P->mcp;
     int          k, n;
 
-    /* we don't need to fill with zeros every time, but be explicit */
-    if( first ){ for(n=0; n < P->nfirst; n++) ct[n] = 0.0;  first = 0; }
+    /* init first elements to 0 */
+    for(n=0; n < nfirst; n++) ct[n] = 0.0;
 
     /* assign P*, and then fill elist[] from P3 */
     P12  = P->K / P->kep;               /* P1 for now */
@@ -299,16 +321,20 @@ static int ct_from_cp(demri_params * P, int len)
     /* fill elist with powers of e(P3*i), i = 1..len-1-nfirst */
     elist[0] = 1.0;
     dval = exp(P3); /* first val, elist[i] is a power of this */
-    for( k = 1; k < len - P->nfirst; k++ )   /* fill the list */
+    for( k = 1; k < len - nfirst; k++ )   /* fill the list */
         elist[k] = dval * elist[k-1];
     
-    for( n = P->nfirst; n < len; n++ )   /* ct[k] = 0, for k < nfirst */
+    for( n = nfirst; n < len; n++ )   /* ct[k] = 0, for k < nfirst */
     {
         dval = 0.0;   /* dval is sum here */
-        for( k = P->nfirst; k < n; k++ )
+        for( k = nfirst+1; k < n; k++ )
             dval += cp[k]*elist[n-k];
-        ct[n] = P12 * dval + P14 * cp[n];
+        ct[n] = P12 * dval + P14 * (cp[n]+cp[nfirst]);
     }
+
+    /* maybe print out the array */
+    if( P->debug > 1 && P->counter == 0)
+        print_doubles("+d ct from cp : ", ct, len);
 
     /* return tissue concentration of Gd over time (in ct[] via P->comp[]) */
 
@@ -328,6 +354,11 @@ static int c_from_ct_cp(demri_params * P, int len)
     int      n;
     for( n = P->nfirst; n < len; n++ )
         C[n] += P->fvp * cp[n];         /* C already holds Ct */
+
+    /* maybe print out the array */
+    if( P->debug > 1 && P->counter == 0)
+        print_doubles("+d c from ct/cp : ", C, len);
+
     return 0;
 }
 
@@ -344,6 +375,11 @@ static int R1_from_c(demri_params * P, int len)
     
     for( n = P->nfirst; n < len; n++ ) 
         R1[n] = P->RIT + P->r1 * R1[n];
+
+    /* maybe print out the array */
+    if( P->debug > 1 && P->counter == 0)
+        print_doubles("+d R1 from C : ", R1, len);
+
     return 0;
 }
 
@@ -387,6 +423,10 @@ static int Mx_from_R1(demri_params * P, float * ts, int len)
         e = exp(-R1[n] * P->TR);
         ts[n] = (1 - e)*P1c / ( (1-cos0*e) * P1);
     }
+
+    /* maybe print out the array */
+    if( P->debug > 1 && P->counter == 0)
+        print_floats("+d Mx from R1 : ", ts, len);
 
     return 0;
 }
@@ -525,6 +565,9 @@ static int get_env_params(demri_params * P)
         }
     }
 
+    if( AFNI_yesenv("AFNI_MODEL_D3_PER_MIN") )
+        P->per_min = 1;
+
     envp = my_getenv("AFNI_MODEL_D3_DEBUG");
     if( envp ) P->debug = atoi(envp);
 
@@ -582,6 +625,16 @@ static int get_Mp_array(demri_params * P, int * mp_len)
     {
         fprintf(stderr,"** failed to open Mp file %s\n", envp);
         return 1;
+    }
+
+    /* nx == 1 and ny > 1, take the transpose */
+    if( im->nx == 1 && im->ny > 1 )
+    {
+        MRI_IMAGE * flim = mri_transpose(im);
+        mri_free(im);
+        im = flim;
+        if( !im ) { fprintf(stderr,"** MP trans failure\n"); return 1; }
+        fprintf(stderr,"+d taking transpose of MP file, new len = %d\n",im->nx);
     }
 
     P->mcp = MRI_FLOAT_PTR(im);        /* do not free this */
@@ -647,11 +700,11 @@ static int convert_mp_to_cp(demri_params * P, int mp_len)
     float  r1 = P->r1, RIB = P->RIB, TR = P->TR, cos0 = P->cos0;
     int    nfirst = P->nfirst;
 
-    /* compute m0 equal to mean of first 'nfirst' values */
+    /* compute m0 equal to mean of first 'nfirst+1' values */
     dval = 0.0;
-    for(c = 0; c < nfirst; c++)
+    for(c = 0; c <= nfirst; c++)
         dval += mp[c];
-    m0 = dval / nfirst;
+    m0 = dval / (nfirst+1);
 
     if( m0 < EPSILON ) /* negative is bad, too */
     {
@@ -677,8 +730,8 @@ static int convert_mp_to_cp(demri_params * P, int mp_len)
 
     /* we don't have to be too fast here, since this is one-time-only */
 
-    /* start with setting nfirst terms to 0 */
-    for( c = 0; c < nfirst; c++ )
+    /* start with setting nfirst+1 terms to 0 */
+    for( c = 0; c <= nfirst; c++ )
         mp[c] = 0.0;
 
     /* and compute the remainder of the array */
@@ -722,17 +775,21 @@ static int disp_demri_params( char * mesg, demri_params * p )
                     "    theta  = %f  ( degrees )\n"
                     "    TR     = %f  ( seconds (~0.007) )\n"
                     "    TF     = %f  ( seconds (~20) )\n"
-                    "    cos0   = %f  ( cos(theta) )\n"
-                    "    nfirst = %d\n\n"
-                    "    debug  = %d\n"
-                    "    ijk    = %d\n"
-                    "    comp   = %p\n"
-                    "    elist  = %p\n"
-                    "    mcp    = %p\n"
+                    "\n"
+                    "    cos0    = %f  ( cos(theta) )\n"
+                    "    nfirst  = %d\n"
+                    "    ijk     = %d\n"
+                    "    debug   = %d\n"
+                    "    per_min = %d\n"
+                    "\n"
+                    "    comp    = %p\n"
+                    "    elist   = %p\n"
+                    "    mcp     = %p\n"
             , p,
             p->K, p->kep, p->ve, p->fvp,
-            p->r1, p->RIB, p->RIT, p->theta, p->TR, p->TF, p->cos0,
-            p->nfirst, p->debug, p->ijk, p->comp, p->elist, p->mcp);
+            p->r1, p->RIB, p->RIT, p->theta, p->TR, p->TF,
+            p->cos0, p->nfirst, p->ijk, p->debug, p->per_min,
+            p->comp, p->elist, p->mcp);
 
     return 0;
 }
@@ -740,104 +797,144 @@ static int disp_demri_params( char * mesg, demri_params * p )
 static int model_help(void)
 {
     printf( 
-        "------------------------------------------------------------\n"
-        "DEMRI - Dynamic (contrast) Enhanced MRI\n"
-        "\n"
-        "   MODEL demri_3: 3-parameter DEMRI model\n"
-        "\n"
-        "   model parameters to fit:\n"
-        "       K_trans   in [0, 0.99]\n"
-        "       k_ep      in [0, 0.99]\n"
-        "       f_pv      in [0, 0.99]\n"
-        "\n"
-        "   model parameters passed via environment variables:\n"
-        "       AFNI_MODEL_D3_R1    : to set r1        in [%f, %f]\n"
-        "                             in 1/(mMol*second)\n"
-        "                             e.g. 4.8 (@ 1.5T)\n"
-        "\n"
-        "       AFNI_MODEL_D3_RIB   : to set blood R_1,i   in [%f, %f]\n"
-        "                          ** R_1,i, given as reciprocal, in seconds\n"
-        "                             e.g. 1.3 or 1.3s or 1300ms\n"
-        "\n"
-        "       AFNI_MODEL_D3_RIT   : to set tissue R_1,i  in [%f, %f]\n"
-        "                          ** R_1,i, given as reciprocal, in seconds\n"
-        "                             e.g. 0.8 or 0.8s or 800ms\n"
-        "\n"
-        "       AFNI_MODEL_D3_THETA : to set theta     in [%f, %f]\n"
-        "                             flip angle, in degrees\n"
-        "                             e.g. 30\n"
-        "\n"
-        "       AFNI_MODEL_D3_TR    : to set TR        in [%f, %f]\n"
-        "                             time between shots, in seconds\n"
-        "                             e.g. 0.0076 or 0.0076s or 7.6ms\n"
-        "\n"
-        "       AFNI_MODEL_D3_TF    : to set TF        in [%f, %f]\n"
-        "                             inter-frame TR (TR of input dataset)\n"
-        "                             e.g. 20 or 20sec\n"
-        "\n"
-        "     ** note: default units are with respect to seconds\n"
-        "\n"
-        "   environment variables to control Mp(t):\n"
-        "       AFNI_MODEL_D3_MP_FILE : file containing Mp(t) data\n"
-        "       AFNI_MODEL_D3_NFIRST  : to set nfirst (injection TR)\n"
-        "                               index of input dataset, e.g. 5\n"
-        "\n"
-        "   optional environment variables:\n"
-        "       AFNI_MODEL_HELP_DEMRI_3 (Y/N) : to get this help\n"
-        "       AFNI_MODEL_D3_USE_VE    (Y/N) : param #2 is Ve, not k_ep\n"
-        "       AFNI_MODEL_D3_DEBUG     (0..2): to set debug level\n"
-        "\n"
-        "  -----------------------------------------------\n"
-        "\n"
-        "  Assumptions:\n"
-        "\n"
-        "    - nfirst is the number of TRs before Gd injection\n"
-        "    - the input M_trans is normalized:\n"
-        "        M_trans[0] = mean( M_trans[0..nfirst-1] )\n"
-        "        M_trans[k] = M_trans[k] / M_trans[0], k=0..N-1\n"
-        "    - m0 is set to average of first nfirst Mp(t) values\n"
-        "\n"
-        "  -----------------------------------------------\n"
-        "  sample command-script:\n"
-        "\n"
-        "      setenv AFNI_MODEL_D3_R1         4.8\n"
-        "      setenv AFNI_MODEL_D3_RIB        1500ms\n"
-        "      setenv AFNI_MODEL_D3_RIT        1100ms\n"
-        "      setenv AFNI_MODEL_D3_TR         8.0ms\n"
-        "      setenv AFNI_MODEL_D3_THETA      30\n"
-        "      setenv AFNI_MODEL_D3_TF         20s\n"
-        "      \n"
-        "      setenv AFNI_MODEL_D3_MP_FILE ROI_mean.1D\n"
-        "      setenv AFNI_MODEL_D3_NFIRST 7\n"
-        "      \n"
-        "      3dNLfim -input scaled_data.nii  \\\n"
-        "          -signal demri_3             \\\n"
-        "          -noise  Zero                \\\n"
-        "          -sconstr 0 0 .95            \\\n"
-        "          -sconstr 1 0 .95            \\\n"
-        "          -sconstr 2 0 .99            \\\n"
-        "          -nconstr 0 0.0 0.0          \\\n"
-        "          -SIMPLEX                    \\\n"
-        "          -nabs                       \\\n"
-        "          -ignore 0                   \\\n"
-        "          -nrand  10000               \\\n"
-        "          -mask   my_mask+orig        \\\n"
-        "          -nbest  10                  \\\n"
-        "          -jobs 2                     \\\n"
-        "          -voxel_count                \\\n"
-        "          -sfit     subj7.sfit        \\\n"
-        "          -bucket 0 subj7.buc\n"
-        "\n"
-        "  -----------------------------------------------\n"
-        "  R Reynolds, D Glen, Oct 2006\n"
-        "  thanks to RW Cox\n"
-        "------------------------------------------------------------\n",
-        M_D3_R1_MIN,    M_D3_R1_MAX,
-        M_D3_R_MIN,     M_D3_R_MAX,
-        M_D3_R_MIN,     M_D3_R_MAX,
-        M_D3_TR_MIN,    M_D3_TR_MAX,
-        M_D3_THETA_MIN, M_D3_THETA_MAX,
-        M_D3_TF_MIN,    M_D3_TF_MAX
+    "------------------------------------------------------------\n"
+    "DEMRI - Dynamic (contrast) Enhanced MRI\n"
+    "\n"
+    "   MODEL demri_3: 3-parameter DEMRI model\n"
+    "\n"
+    "   model parameters to fit:\n"
+    "\n"
+    "       K_trans   in [0, 0.05]\n"
+    "       k_ep      in [0, 0.05]\n"
+    "       f_pv      in [0, 0.99]\n"
+    "\n"
+    "       Note that K_trans and k_ep default to rates per second.\n"
+    "       If per minute is desired, use AFNI_MODEL_D3_PER_MIN.\n"
+    "\n"
+    "   model parameters passed via environment variables:\n"
+    "\n"
+    "       --- AFNI_MODEL_D3_R1 ---------------------------------\n"
+    "\n"
+    "           This sets 'r1', the relaxivity rate for the contrast,\n"
+    "           measured in 1/(mMol*second), restricted to [%.1f, %.1f].\n"
+    "\n"
+    "           e.g. 4.8 (@ 1.5T), or 9.6 (@ 3T)\n"
+    "\n"
+    "       --- AFNI_MODEL_D3_RIB --------------------------------\n"
+    "\n"
+    "           This sets R_1,i for blood, the intrinsic relaxivity rate\n"
+    "           in 1/(mMol*sec), restricted to [%.3f, %.1f].\n"
+    "           ** specified as reciprocal, in seconds\n"
+    "\n"
+    "           e.g. 1.3 or 1.3s or 1300ms\n"
+    "\n"
+    "       --- AFNI_MODEL_D3_RIT --------------------------------\n"
+    "\n"
+    "           This sets R_1,i for tissue, the intrinsic relaxivity rate\n"
+    "           in 1/(mMol*sec), restricted to [%.3f, %.1f].\n"
+    "           ** specified as reciprocal, in seconds\n"
+    "\n"
+    "           e.g. 0.8 or 0.8s or 800ms\n"
+    "\n"
+    "       --- AFNI_MODEL_D3_R1I_DSET ---------------------------\n"
+    "\n"
+    "           ** This serves as a replacement for RIT, above.  It is\n"
+    "              specified as a dataset, where RIT can vary over time,\n"
+    "              and over voxels.\n"
+    "\n"
+    "           e.g. R1Irat+orig\n"
+    "\n"
+    "       --- AFNI_MODEL_D3_THETA ------------------------------\n"
+    "\n"
+    "           This sets theta, the flip angle, specified in degrees\n"
+    "           and restricted to [%.1f, %.1f].\n"
+    "\n"
+    "           e.g. 30\n"
+    "\n"
+    "       --- AFNI_MODEL_D3_TR --------------------------------\n"
+    "\n"
+    "           This sets the TR, the time between shots, in seconds, and\n"
+    "           restricted to [%.1f, %.1f].\n"
+    "\n"
+    "           e.g. 0.0076 or 0.0076s or 7.6ms\n"
+    "\n"
+    "       --- AFNI_MODEL_D3_TF ---------------------------------\n"
+    "\n"
+    "           Set the TF, the time between frames (volumes), in seconds\n"
+    "           restricted to [%.1f, %.1f].  This is typically called the TR\n"
+    "           in AFNI FMRI datasets.\n"
+    "\n"
+    "           e.g. 20 or 20sec\n"
+    "\n"
+    "       --- AFNI_MODEL_D3_PER_MIN ----------------------------\n"
+    "\n"
+    "           The default rate units of K_trans and k_ep are per second.\n"
+    "           If this variable is set to YES, then rates are per minute.\n"
+    "\n"
+    "     ** note: default units are with respect to seconds\n"
+    "\n"
+    "   environment variables to control Mp(t):\n"
+    "       AFNI_MODEL_D3_MP_FILE : file containing Mp(t) data\n"
+    "       AFNI_MODEL_D3_NFIRST  : to set nfirst (injection TR)\n"
+    "                               index of input dataset, e.g. 5\n"
+    "\n"
+    "   optional environment variables:\n"
+    "       AFNI_MODEL_HELP_DEMRI_3 (Y/N) : to get this help\n"
+    "       AFNI_MODEL_D3_USE_VE    (Y/N) : param #2 is Ve, not k_ep\n"
+    "       AFNI_MODEL_D3_DEBUG     (0..2): to set debug level\n"
+    "\n"
+    "  -----------------------------------------------\n"
+    "\n"
+    "  Assumptions:\n"
+    "\n"
+    "    - nfirst is the number of TRs before Gd injection\n"
+    "    - the input M_trans is normalized:\n"
+    "        M_trans[0] = mean( M_trans[0..nfirst-1] )\n"
+    "        M_trans[k] = M_trans[k] / M_trans[0], k=0..N-1\n"
+    "    - m0 is set to average of first nfirst Mp(t) values\n"
+    "\n"
+    "  -----------------------------------------------\n"
+    "  sample command-script:\n"
+    "\n"
+    "      setenv AFNI_MODEL_D3_R1         4.8\n"
+    "      setenv AFNI_MODEL_D3_RIB        1500ms\n"
+    "      setenv AFNI_MODEL_D3_RIT        1100ms\n"
+    "      setenv AFNI_MODEL_D3_TR         8.0ms\n"
+    "      setenv AFNI_MODEL_D3_THETA      30\n"
+    "      setenv AFNI_MODEL_D3_TF         20s\n"
+    "      \n"
+    "      setenv AFNI_MODEL_D3_PER_MIN    Y\n"
+    "      setenv AFNI_MODEL_D3_MP_FILE    ROI_mean.1D\n"
+    "      setenv AFNI_MODEL_D3_NFIRST     7\n"
+    "      \n"
+    "      3dNLfim -input scaled_data.nii  \\\n"
+    "          -signal demri_3             \\\n"
+    "          -noise  Zero                \\\n"
+    "          -sconstr 0 0 3              \\\n"
+    "          -sconstr 1 0 3              \\\n"
+    "          -sconstr 2 0 1              \\\n"
+    "          -nconstr 0 0.0 0.0          \\\n"
+    "          -SIMPLEX                    \\\n"
+    "          -nabs                       \\\n"
+    "          -ignore 0                   \\\n"
+    "          -nrand  10000               \\\n"
+    "          -mask   my_mask+orig        \\\n"
+    "          -nbest  10                  \\\n"
+    "          -jobs 2                     \\\n"
+    "          -voxel_count                \\\n"
+    "          -sfit     subj7.sfit        \\\n"
+    "          -bucket 0 subj7.buc\n"
+    "\n"
+    "  -----------------------------------------------\n"
+    "  R Reynolds, D Glen, Oct 2006\n"
+    "  thanks to RW Cox\n"
+    "------------------------------------------------------------\n",
+    M_D3_R1_MIN,    M_D3_R1_MAX,
+    M_D3_R_MIN,     M_D3_R_MAX,
+    M_D3_R_MIN,     M_D3_R_MAX,
+    M_D3_TR_MIN,    M_D3_TR_MAX,
+    M_D3_THETA_MIN, M_D3_THETA_MAX,
+    M_D3_TF_MIN,    M_D3_TF_MAX
     );
 
     return 0;
@@ -867,3 +964,20 @@ static int get_time_in_seconds( char * str, float * time )
     return 0;
 }
 
+static void print_doubles(char * mesg, double * list, int len)
+{
+    int c;
+    fputs(mesg, stderr);
+    for( c = 0; c < len; c++ )
+        fprintf(stderr,"  %s", MV_format_fval(list[c]));
+    fputc('\n', stderr);
+}
+
+static void print_floats(char * mesg, float * list, int len)
+{
+    int c;
+    fputs(mesg, stderr);
+    for( c = 0; c < len; c++ )
+        fprintf(stderr,"  %s", MV_format_fval(list[c]));
+    fputc('\n', stderr);
+}

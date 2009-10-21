@@ -106,6 +106,9 @@ void display_help_menu()
    "   This program will strip the scalp and other non-brain tissue from a  \n"
    "   high-resolution T1 weighted anatomical dataset.                      \n"
    "                                                                        \n"
+   "** Nota Bene: the newer program 3dSkullStrip should also be considered  \n"
+   "**            for this functionality -- it usually works better.        \n"
+   "                                                                        \n"
    "----------------------------------------------------------------------- \n"
    "                                                                        \n"
    "Usage:                                                                  \n"
@@ -152,7 +155,7 @@ void display_help_menu()
    "----------------------------------------------------------------------- \n"
       );
 
-  exit(0);
+  PRINT_COMPILE_DATE ; exit(0);
 }
 
 
@@ -607,7 +610,7 @@ void write_afni_data
   }
 
 
-  if( THD_is_file(new_dset->dblk->diskptr->header_name) ){
+  if( THD_deathcon() && THD_is_file(new_dset->dblk->diskptr->header_name) ){
     fprintf(stderr,
 	    "*** Output dataset file %s already exists--cannot continue!\a\n",
 	    new_dset->dblk->diskptr->header_name ) ;

@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import math
 import os, afni_util, afni_base
 
 # --------------- tcat ---------------
@@ -21,7 +22,7 @@ def db_mod_tcat(block, proc, user_opts):
         if errs == 0 and bopt.parlist[0] > 0:
           print                                                              \
             '-----------------------------------------------------------\n'  \
-            '** warning: removing first %d TRs from beginning of each run\n' \
+            'warning: removing first %d TRs from beginning of each run\n'    \
             '   --> it is essential that stimulus timing files match the\n'  \
             '       removal of these TRs\n'                                  \
             '-----------------------------------------------------------'    \
@@ -166,6 +167,7 @@ def db_cmd_tshift(proc, block):
 def db_mod_volreg(block, proc, user_opts):
     if len(block.opts.olist) == 0:    # then init dset/brick indices to defaults
         block.opts.add_opt('-volreg_base_ind', 2, [0, 2], setpar=1)
+        block.opts.add_opt('-volreg_interp', 1, ['-cubic'], setpar=1)
         block.opts.add_opt('-volreg_opts_vr', -1, [])
         block.opts.add_opt('-volreg_zpad', 1, [1], setpar=1)
 
@@ -205,6 +207,11 @@ def db_mod_volreg(block, proc, user_opts):
                   % aopt.parlist[0]
             return 1
 
+    uopt = user_opts.find_opt('-volreg_interp')
+    if uopt:
+        bopt = block.opts.find_opt('-volreg_interp')
+        bopt.parlist = uopt.parlist
+
     zopt = user_opts.find_opt('-volreg_zpad')
     if zopt:
         bopt = block.opts.find_opt('-volreg_zpad')
@@ -236,6 +243,10 @@ def db_cmd_volreg(proc, block):
     # get base prefix (run is index+1)
     base = proc.prev_prefix_form(dset_ind+1)
 
+    # get the interpolation value
+    opt = block.opts.find_opt('-volreg_interp')
+    resam = ' '.join(opt.parlist)     # maybe '-cubic'
+
     # get the zpad value
     opt = block.opts.find_opt('-volreg_zpad')
     if not opt or not opt.parlist: zpad = 1
@@ -251,13 +262,14 @@ def db_cmd_volreg(proc, block):
                 "foreach run ( $runs )\n"                                     \
                 "    3dvolreg -verbose -zpad %d -base %s+orig'[%d]'  \\\n"    \
                 "             -1Dfile dfile.r$run.1D -prefix %s  \\\n"        \
+                "             %s \\\n"                                        \
                 "%s"                                                          \
                 "             %s+orig\n"                                      \
                 "end\n\n"                                                     \
                 "# make a single file of registration params\n"               \
                 "cat dfile.r??.1D > dfile.rall.1D\n\n" %                      \
                     (zpad, proc.prev_prefix_form(dset_ind+1), sub, 
-                     proc.prefix_form_run(block), other_opts,
+                     proc.prefix_form_run(block), resam, other_opts,
                      proc.prev_prefix_form_run())
 
     # used 3dvolreg, so have these labels
@@ -393,6 +405,10 @@ def db_mod_scale(block, proc, user_opts):     # no options at this time
             block.valid = 0
             return 1
 
+    # if the user does not want a max, use 0
+    if user_opts.find_opt('-scale_no_max') and bopt:
+        bopt.parlist[0] = 0
+
     block.valid = 1
 
 def db_cmd_scale(proc, block):
@@ -403,7 +419,7 @@ def db_cmd_scale(proc, block):
     if max > 100: valstr = 'min(%d, a/b*100)' % max
     else:         valstr = 'a/b*100'
 
-    if proc.mask:
+    if proc.mask and proc.regmask:
         mask_dset = '           -c %s+orig \\\n' % proc.mask
         expr      = 'c * %s' % valstr
     else:
@@ -434,7 +450,7 @@ def db_cmd_scale(proc, block):
 def db_mod_regress(block, proc, user_opts):
     if len(block.opts.olist) == 0: # then init
         block.opts.add_opt('-regress_basis', 1, ['GAM'], setpar=1)
-        block.opts.add_opt('-regress_polort', 1, [2], setpar=1)
+        block.opts.add_opt('-regress_polort', 1, [-1], setpar=1)
         block.opts.add_opt('-regress_stim_files', -1, [])
         block.opts.add_opt('-regress_stim_labels', -1, [])
         block.opts.add_opt('-regress_stim_times', -1, [])
@@ -442,6 +458,7 @@ def db_mod_regress(block, proc, user_opts):
 
         block.opts.add_opt('-regress_opts_3dD', -1, [])
         block.opts.add_opt('-regress_make_ideal_sum', 1, [])
+        block.opts.add_opt('-regress_errts_prefix', 1, [])
         block.opts.add_opt('-regress_fitts_prefix', 1, ['fitts.$subj'],
                                                        setpar=1)
 
@@ -540,11 +557,29 @@ def db_mod_regress(block, proc, user_opts):
         for file in proc.stims_orig:
             proc.stims.append('stimuli/%s' % os.path.basename(file))
 
+    # check for EPI blur estimate
+    uopt = user_opts.find_opt('-regress_est_blur_epits')
+    bopt = block.opts.find_opt('-regress_est_blur_epits')
+    if uopt and not bopt:
+        block.opts.add_opt('-regress_est_blur_epits', 0, [])
+
+    # check for errts blur estimate
+    uopt = user_opts.find_opt('-regress_est_blur_errts')
+    bopt = block.opts.find_opt('-regress_est_blur_errts')
+    if uopt and not bopt:
+        block.opts.add_opt('-regress_est_blur_errts', 0, [])
+
+    # check for errts prefix
+    uopt = user_opts.find_opt('-regress_errts_prefix')
+    bopt = block.opts.find_opt('-regress_errts_prefix')
+    if uopt and bopt:
+        bopt.parlist = [uopt.parlist[0] + '.$subj']    # add $subj to prefix
+
     # check for fitts prefix
     uopt = user_opts.find_opt('-regress_fitts_prefix')
     bopt = block.opts.find_opt('-regress_fitts_prefix')
     if uopt and bopt:
-        bopt.parlist[0] = uopt.parlist[0]
+        bopt.parlist[0] = uopt.parlist[0] + '.$subj'   # add $subj to prefix
     elif not bopt: # maybe it was deleted previously (not currently possible)
         block.opts.add_opt('-regress_fitts_prefix', 1, uopt.parlist,setpar=1)
 
@@ -570,6 +605,11 @@ def db_mod_regress(block, proc, user_opts):
     uopt = user_opts.find_opt('-regress_no_iresp')
     bopt = block.opts.find_opt('-regress_iresp_prefix')
     if uopt and bopt: block.opts.del_opt('-regress_iresp_prefix')
+
+    # maybe the user does not want to apply the mask to regression
+    # (applies to other blocks, so note at the 'proc' level)
+    uopt = user_opts.find_opt('-regress_no_mask')
+    if uopt: proc.regmask = 0
 
     # maybe the user does not want to regress the motion parameters
     # apply uopt to bopt
@@ -611,6 +651,11 @@ def db_cmd_regress(proc, block):
 
     opt = block.opts.find_opt('-regress_polort')
     polort = opt.parlist[0]
+    if ( polort < 0 ) :
+        polort = get_default_polort(proc.tr, proc.reps)
+        if proc.verb > 0:
+            print "+d updating polort to %d, from run len %.1f s" %  \
+                  (polort, proc.tr*proc.reps)
 
     if len(proc.stims) <= 0:   # be sure we have some stim files
         print "** missing stim files (-regress_stim_times/-regress_stim_files)"
@@ -628,8 +673,8 @@ def db_cmd_regress(proc, block):
         if not newcmd: return
         cmd = cmd + newcmd
 
-    if proc.mask: mask = '    -mask %s+orig  \\\n' % proc.mask
-    else        : mask = ''
+    if proc.mask and proc.regmask: mask = '    -mask %s+orig  \\\n' % proc.mask
+    else                         : mask = ''
 
     cmd = cmd + '3dDeconvolve -input %s+orig.HEAD    \\\n'      \
                 '    -polort %d  \\\n'                          \
@@ -686,6 +731,17 @@ def db_cmd_regress(proc, block):
     if not opt or not opt.parlist: fitts = ''
     else: fitts = '    -fitts %s  \\\n' % opt.parlist[0]
 
+    # -- see if the user wants the error time series --
+    opt = block.opts.find_opt('-regress_errts_prefix')
+    bluropt = block.opts.find_opt('-regress_est_blur_errts')
+    # if there is no errts prefix, but the user wants to measure blur, add one
+    if not opt.parlist and bluropt:
+        opt.parlist = ['errts.$subj']
+
+    if not opt or not opt.parlist: errts = ''
+    else: errts = '    -errts %s  \\\n' % opt.parlist[0]
+    # -- end errts --
+
     # see if the user has provided other options (like GLTs)
     opt = block.opts.find_opt('-regress_opts_3dD')
     if not opt or not opt.parlist: other_opts = ''
@@ -695,14 +751,15 @@ def db_cmd_regress(proc, block):
     # add misc options
     cmd = cmd + iresp
     cmd = cmd + other_opts
-    cmd = cmd + "    -fout -tout -x1D Xmat.x1D  \\\n"
-    cmd = cmd + fitts
+    cmd = cmd + "    -fout -tout -x1D X.xmat.1D -xjpeg X.jpg \\\n"
+    cmd = cmd + fitts + errts
     cmd = cmd + "    -bucket stats.$subj\n\n\n"
 
-    if fitts != '':
-        cmd = cmd + "# create an all_runs dataset to match the fitts\n"
-        cmd = cmd + "3dTcat -prefix all_runs.$subj %s+orig.HEAD\n\n" % \
-                    proc.prev_prefix_form_rwild()
+    # create all_runs, and store name for blur_est
+    all_runs = 'all_runs.$subj'
+    cmd = cmd + "# create an all_runs dataset to match the fitts, errts, etc.\n"
+    cmd = cmd + "3dTcat -prefix %s %s+orig.HEAD\n\n" % \
+                (all_runs, proc.prev_prefix_form_rwild())
 
     opt = block.opts.find_opt('-regress_no_ideals')
     if not opt and afni_util.basis_has_known_response(basis):
@@ -710,7 +767,7 @@ def db_cmd_regress(proc, block):
         cmd = cmd + "# create ideal files for each stim type\n"
         first = (polort+1) * proc.runs
         for ind in range(len(labels)):
-            cmd = cmd + "1dcat Xmat.x1D'[%d]' > ideal_%s.1D\n" % \
+            cmd = cmd + "1dcat X.xmat.1D'[%d]' > ideal_%s.1D\n" % \
                         (first+ind, labels[ind])
         cmd = cmd + '\n'
 
@@ -719,10 +776,85 @@ def db_cmd_regress(proc, block):
         first = (polort+1) * proc.runs
         last = first + len(proc.stims) - 1
         cmd = cmd + "# create ideal file by adding ideal regressors\n"
-        cmd = cmd + "3dTstat -sum -prefix %s Xmat.x1D'[%d..%d]'\n\n" % \
+        cmd = cmd + "3dTstat -sum -prefix %s X.xmat.1D'[%d..%d]'\n\n" % \
                     (opt.parlist[0], first, last)
 
+    # check for blur estimates
+    bcmd = db_cmd_blur_est(proc, block)
+    if bcmd == None: return  # error
+    cmd = cmd + bcmd
+
     proc.pblabel = block.label  # set 'previous' block label
+
+    return cmd
+
+# might estimate blur from either all_runs or errts
+# need mask (from mask, or automask from all_runs)
+# requires 'all_runs' dataset, in case a mask is needed
+#
+# return None to fail out
+def db_cmd_blur_est(proc, block):
+    cmd = ''
+    aopt = block.opts.find_opt('-regress_est_blur_epits')
+    eopt = block.opts.find_opt('-regress_est_blur_errts')
+    if not aopt and not eopt:
+        if proc.verb > 2: print '-d no blur estimation'
+        return cmd
+
+    # set the mask (if we don't have one, bail)
+    if proc.mask: mask = '-mask %s+orig' % proc.mask
+    else:
+        print '** refusing to estimate blur without a mask dataset'
+        return
+
+    if proc.verb > 1: print 'computing blur_estimates'
+    blur_file = 'blur_est.$subj.1D'
+
+
+    # call this a new sub-block
+    cmd = cmd + '# -------------------------\n'                 \
+                '# compute blur estimates\n'                    \
+                'touch %s   # start with empty file\n\n' % blur_file
+
+
+    if aopt:    # get average across all runs
+        prev = proc.prev_prefix_form_run()
+        cmd = cmd + '# estimate blur for each run\n'                         \
+                    'touch blur.EPI.1D \n'                                   \
+                    'foreach run ( $runs )\n'                                \
+                    '    3dFWHMx -detrend %s %s+orig >> blur.EPI.1D\n'       \
+                    'end\n\n' % (mask, prev)
+        cmd = cmd +                                                          \
+                '# compute average blur, and append\n'                       \
+                'set blurs = ( `3dTstat -mean -prefix - blur.EPI.1D\\\'` )\n'\
+                'echo average EPI blurs: $blurs\n'                           \
+                'echo "$blurs   # EPI blur estimates" >> %s\n\n'         %   \
+                blur_file
+
+    if eopt:    # get errts blur estimate
+        etsopt = block.opts.find_opt('-regress_errts_prefix')
+        errts = etsopt.parlist[0] + '+orig'
+        if not etsopt or not etsopt.parlist:
+            print '** want est_blur_errts, but have no errts_prefix'
+            return
+
+        cmd = cmd + '# estimate blur for each run in errts\n'           \
+                    'touch blur.errts.1D\n\n'
+        cmd = cmd + 'set b0 = 0\n'                                      \
+                    'set b1 = %d    # nreps-1\n' % (proc.reps-1)
+        cmd = cmd + 'foreach run ( $runs )\n'                           \
+                    '    3dFWHMx -detrend %s %s"[$b0..$b1]" \\\n'       \
+                    '        >> blur.errts.1D\n'                        \
+                    '    @ b0 += %d   # add nreps\n'                    \
+                    '    @ b1 += %d\n'                                  \
+                    'end\n\n' % (mask, errts, proc.reps, proc.reps)
+
+        cmd = cmd +                                                          \
+                '\n# compute average blur, and append\n'                     \
+                'set blurs = ( `3dTstat -mean -prefix - blur.errts.1D\\\'` )\n'\
+                'echo average errts blurs: $blurs\n'                         \
+                'echo "$blurs   # errts blur estimates" >> %s\n\n'       %   \
+                blur_file
 
     return cmd
 
@@ -851,6 +983,14 @@ def db_cmd_empty(proc, block):
     proc.pblabel = block.label  # set 'previous' block label
 
     return cmd
+
+# compute a default polort, as done in 3dDeconvolve
+def get_default_polort(tr, reps):
+    if tr <= 0 or reps <= 0:
+        print "** cannot guess polort from tr = %f, reps = %d" % (tr,reps)
+        return 2        # return some default
+    run_time = tr * reps
+    return 1+math.floor(run_time/150.0)
 
 # dummy main - should not be used
 if __name__ == '__main__':

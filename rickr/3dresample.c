@@ -1,5 +1,4 @@
 #include "mrilib.h"
-#include "r_new_resam_dset.h"
 #include "r_idisp.h"
 
 #define MAIN
@@ -111,7 +110,7 @@ int main( int argc , char * argv[] )
 
     /* actually resample and/or reorient the dataset */
     dout = r_new_resam_dset( opts.dset, opts.mset, opts.dx, opts.dy, opts.dz,
-                             opts.orient, opts.resam, NULL);
+                             opts.orient, opts.resam, NULL, 1);
     if ( dout == NULL )
     {
         fprintf( stderr, "failure to resample dataset, exiting...\n" );
@@ -459,6 +458,15 @@ int usage ( char * progg, int level )
             "    Note: if both -master and -dxyz are used, the dxyz values\n"
             "          will override those from the master dataset.\n"
             "\n"
+            " ** It is important to note that once a dataset of a certain\n"
+            "    grid is created (i.e. orientation, dxyz, field of view),\n"
+            "    if other datasets are going to be resampled to match that\n"
+            "    first one, then using -master should be used, instead of\n"
+            "    -dxyz.  That will guarantee that all grids match.\n"
+            "\n"
+            "    Otherwise, even using both -orient and -dxyz, one may not\n"
+            "    be sure that the fields of view will identical, for example.\n"
+            "\n"
             " ** Warning: this program is not meant to transform datasets\n"
             "             between view types (such as '+orig' and '+tlrc').\n"
             "\n"
@@ -586,12 +594,7 @@ int write_results ( THD_3dim_dataset * dout, options_t * opts,
     /* set filename */
     EDIT_dset_items( dout, ADN_prefix, opts->prefix, ADN_none );
 
-    if ( THD_is_file(DSET_HEADNAME(dout)) )
-    {
-        fprintf( stderr, "error: cannot overwrite existing dataset <%s>\n",
-                 DSET_HEADNAME(dout) );
-        return FAIL;
-    }
+    /* don't worry about overwriting, that's AFNI_DECONFLICT's job */
 
     /* set number of time-axis slices to 0 */
     if( DSET_NUM_TTOFF(dout) > 0 )

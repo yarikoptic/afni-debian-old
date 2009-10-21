@@ -27,14 +27,15 @@ char * THD_dataset_info( THD_3dim_dataset *dset , int verbose )
    THD_dataxes      *daxes ;
    THD_fvec3 fv1 , fv2 , fv3 ;
    int ival , ntimes , nval_per , n1,n2,n3 , kv,npar ;
-   float tf ;
+   float tf, angle=0.0;
+   long long tb ;
 
    static char *RR="[R]" , *LL="[L]" ,
                *PP="[P]" , *AA="[A]" ,
                *SS="[S]" , *II="[I]" , *ZZ="   " ;
    char *xlbot , *xltop , *ylbot , *yltop , *zlbot , *zltop , *cpt ;
-   char str[256] ;
-   int nstr ;
+   char str[256], soblq[256] ;
+   int nstr , obliquity;
 
    char *outbuf = NULL ;
 
@@ -88,7 +89,7 @@ ENTRY("THD_dataset_info") ;
 
    if( dset->dblk->diskptr != NULL ){
     switch( dset->dblk->diskptr->storage_mode ){
-      default: 
+      default:
         outbuf = THD_zzprintf(outbuf,"Storage Mode:    Undefined\n") ; break ;
 
       case STORAGE_BY_BRICK:
@@ -130,6 +131,11 @@ ENTRY("THD_dataset_info") ;
     }
    }
 
+   tb = dset->dblk->total_bytes ;
+   if( tb > 0 )
+     outbuf = THD_zzprintf(outbuf,"Storage Space:   %lld (%s) bytes\n",
+                           tb , approximate_number_string(tb) ) ;
+
    /*-- keywords --*/
 
    if( verbose >= 0 ){
@@ -164,11 +170,34 @@ ENTRY("THD_dataset_info") ;
                             ns , dset->tagset->num ) ;
    }
 
+   /* are we oblique ? */
+   obliquity = -1;
+   if(ISVALID_MAT44(dset->daxes->ijk_to_dicom_real)) {
+	   angle = THD_compute_oblique_angle(dset->daxes->ijk_to_dicom_real, 0);
+	   if(angle>0.0) {
+         sprintf (soblq, 
+            "Data Axes Tilt:  Oblique (%.3f deg. from plumb)\n"
+            "Data Axes Approximate Orientation:",
+            angle);
+         obliquity = 1;
+      } else {
+         sprintf (soblq, 
+            "Data Axes Tilt:  Plumb\n"
+            "Data Axes Orientation:");
+         obliquity = 0;
+      }
+   } else {
+      sprintf (soblq, 
+            "Data Axes Tilt:  Unspecified, assumed plumb\n"
+            "Data Axes Orientation:");
+   }      
+
    outbuf = THD_zzprintf(outbuf,
-      "Data Axes Orientation:\n"
+      "%s\n"
       "  first  (x) = %s\n"
       "  second (y) = %s\n"
       "  third  (z) = %s   [-orient %c%c%c]\n" ,
+    soblq,
     ORIENT_typestr[daxes->xxorient] ,
       ORIENT_typestr[daxes->yyorient] ,
       ORIENT_typestr[daxes->zzorient] ,
@@ -227,12 +256,11 @@ ENTRY("THD_dataset_info") ;
    if( ntimes > 1 ){
 
       outbuf = THD_zzprintf(outbuf,
-         "Number of time steps = %d  Number of values at each pixel = %d\n",
-         ntimes , nval_per ) ;
+         "Number of time steps = %d" , ntimes ) ;
 
       STATUS("timestep") ;
 
-      outbuf = THD_zzprintf(outbuf, "Time step = %.3f%s  Origin = %.3f%s" ,
+      outbuf = THD_zzprintf(outbuf, "  Time step = %.3f%s  Origin = %.3f%s" ,
                  dset->taxis->ttdel ,
                  UNITS_TYPE_LABEL(dset->taxis->units_type) ,
                  dset->taxis->ttorg ,
@@ -260,7 +288,7 @@ ENTRY("THD_dataset_info") ;
    else                            nval_per = 1 ;                 /* 12 Feb 2002 */
 #else
    nval_per = dset->dblk->nvals ;
-   if( verbose < 0 ) nval_per = 1 ;                               /* 27 Mar 2002 */
+   if( verbose < 0 && nval_per > 5 ) nval_per = 3 ;
 #endif
 
    /* print out stuff for each sub-brick */
@@ -316,6 +344,10 @@ ENTRY("THD_dataset_info") ;
       if( cpt != NULL && cpt[0] != '\0' )
          outbuf = THD_zzprintf(outbuf,"     keywords = %s\n",cpt) ;
    }
+   if( verbose < 0 && nval_per < dset->dblk->nvals )  /* 21 Sep 2007 */
+     outbuf = THD_zzprintf(outbuf,
+                "** For info on all %d sub-bricks, use '3dinfo -verb' **\n",
+                dset->dblk->nvals) ;
 
    /** print out dataset global statistical parameters **/
 

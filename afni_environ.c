@@ -71,17 +71,23 @@ char * AFNI_suck_file( char *fname )
 
 static int afni_env_done = 0 ;
 
+/*---------------------------------------------------------------------------*/
+
 void AFNI_mark_environ_done(void){ afni_env_done = 1 ; return ; }
+
+/*---------------------------------------------------------------------------*/
 
 char * my_getenv( char *ename )
 {
    if( !afni_env_done ){
-      char * sysenv = getenv("AFNI_SYSTEM_AFNIRC") ;       /* 16 Apr 2000 */
-      if( sysenv != NULL ) AFNI_process_environ(sysenv) ;  /* 16 Apr 2000 */
+      char *sysenv = getenv("AFNI_SYSTEM_AFNIRC") ;       /* 16 Apr 2000 */
+      if( sysenv != NULL ) AFNI_process_environ(sysenv) ; /* 16 Apr 2000 */
       AFNI_process_environ(NULL) ;
    }
    return getenv( ename ) ;
 }
+
+/*---------------------------------------------------------------------------*/
 
 void AFNI_process_environ( char *fname )
 {
@@ -91,14 +97,18 @@ void AFNI_process_environ( char *fname )
 
 ENTRY("AFNI_process_environ") ;
    if( fname != NULL ){
-      strcpy(str,fname) ;
+     strcpy(str,fname) ;
    } else {
-      char *home ;
-      if( afni_env_done ) EXRETURN ;
-      home = getenv("HOME") ;
-      if( home != NULL ){ strcpy(str,home) ; strcat(str,"/.afnirc") ; }
-      else              { strcpy(str,".afnirc") ; }
-      afni_env_done = 1 ;
+     char *home ;
+     if( afni_env_done ) EXRETURN ;
+     home = getenv("HOME") ;
+     if( home != NULL ){ strcpy(str,home) ; strcat(str,"/.afnirc") ; }
+     else              { strcpy(str,".afnirc") ; }
+     if( !THD_is_file(str) ){                      /* 19 Sep 2007 */
+       if( home != NULL ){ strcpy(str,home) ; strcat(str,"/AFNI.afnirc") ; }
+       else              { strcpy(str,"AFNI.afnirc") ; }
+     }
+     afni_env_done = 1 ;
    }
 
    fbuf = AFNI_suck_file( str ) ; if( fbuf == NULL ) EXRETURN ;
@@ -174,13 +184,23 @@ int AFNI_noenv( char *ename )     /* 21 Jun 2000 */
 double AFNI_numenv( char *ename )  /* 23 Aug 2003 */
 {
    char *ept,*ccc ; double val ;
-   if( ename == NULL ) return 0.0l ;
+   if( ename == NULL ) return 0.0 ;
    ept = my_getenv(ename) ;
-   if( ept   == NULL ) return 0.0l ;
+   if( ept   == NULL ) return 0.0 ;
    val = strtod(ept,&ccc) ;
-        if( *ccc == 'k' || *ccc == 'K' ) val *= 1024.0l ;
-   else if( *ccc == 'm' || *ccc == 'M' ) val *= 1024.0l*1024.0l ;
-   else if( *ccc == 'g' || *ccc == 'G' ) val *= 1024.0l*1024.0l*1024.0l ;
+        if( *ccc == 'k' || *ccc == 'K' ) val *= 1024.0 ;
+   else if( *ccc == 'm' || *ccc == 'M' ) val *= 1024.0*1024.0 ;
+   else if( *ccc == 'g' || *ccc == 'G' ) val *= 1024.0*1024.0*1024.0 ;
+   return val ;
+}
+
+double AFNI_numenv_def( char *ename, double dd ) /* 18 Sep 2007 */
+{
+   char *ept,*ccc ; double val=dd ;
+   if( ename == NULL ) return val ;
+   ept = my_getenv(ename) ;
+   if( ept   == NULL ) return val ;
+   val = strtod(ept,&ccc) ; if( ccc == ept ) val = dd ;
    return val ;
 }
 
@@ -205,4 +225,97 @@ int AFNI_setenv( char *cmd )
    sprintf(eqn,"%s=%s",nam,val) ;
    eee = strdup(eqn) ; putenv(eee) ;
    return(0) ;
+}
+
+/*-------------------------------------------------------------------------*/
+
+int MRILIB_DomainMaxNodeIndex = -1;
+
+int AFNI_prefilter_args( int *argc , char **argv )
+{
+   int narg=*argc , ii,jj , nused , ttt ;
+   char *used , *eee ;
+
+   if( narg <= 1 || argv == NULL ) return(0) ;
+
+   used = (char *)calloc((size_t)narg,sizeof(char)) ;
+
+   eee = getenv("AFNI_TRACE") ; ttt = YESSISH(eee) ;
+   if( ttt )
+     fprintf(  stderr,
+               "++ AFNI_prefilter_args() processing argv[1..%d]\n",narg-1) ;
+
+   /*--- scan thru argv[];
+         see if any should be processed now and marked as 'used up' ---*/
+   
+   for( ii=1 ; ii < narg ; ii++ ){
+
+     /*** empty argument (should never happen in Unix) ***/
+
+     if( argv[ii] == NULL ){
+       if( ttt ) fprintf(stderr,"++ argv[%d] is NULL\n",ii) ;
+       used[ii] = 1 ; continue ;
+     }
+
+     /*** -Dname=val to set environment variable ***/
+
+     if( strncmp(argv[ii],"-D",2) == 0 && strchr(argv[ii],'=') != NULL ){
+       if( ttt ) fprintf(stderr,"++ argv[%d] does setenv %s\n",ii,argv[ii]) ;
+       (void)AFNI_setenv(argv[ii]+2) ; used[ii] = 1 ; continue ;
+     }
+
+     /*** -overwrite to set AFNI_DECONFLICT ***/
+
+     if( strcmp(argv[ii],"-overwrite") == 0 ){
+       if( ttt ) fprintf(stderr,"++ argv[%d] is -overwrite\n",ii) ;
+       AFNI_setenv("AFNI_DECONFLICT=OVERWRITE") ; used[ii] = 1 ; continue ;
+     }
+
+     /*** -skip_afnirc to avoid .afnirc file ***/
+
+     if( strcmp(argv[ii],"-skip_afnirc") == 0 ){
+       if( ttt ) fprintf(stderr,"++ argv[%d] is -skip_afnirc\n",ii) ;
+       AFNI_mark_environ_done() ; used[ii] = 1 ; continue ;
+     }
+
+     /*** -pad_to_node to force sparse data to a particular size ***/
+
+     if( strcmp(argv[ii],"-pad_to_node") == 0 ){
+       if( ttt ) fprintf(stderr,"++ argv[%d] is -pad_to_node\n",ii) ;
+       if (ii+1 >= narg) {
+         fprintf(stderr,"** -pad_to_node needs a positive integer.\n");
+         exit(1); 
+       }
+       used[ii] = 1 ; ii++; 
+       MRILIB_DomainMaxNodeIndex = atoi(argv[ii]);
+       if (MRILIB_DomainMaxNodeIndex < 0) { 
+         fprintf(stderr,"** parameter for -pad_to_node (%d) is negative!\n",
+                        MRILIB_DomainMaxNodeIndex);
+         exit(1); 
+       }else if (MRILIB_DomainMaxNodeIndex > 500000) {
+         fprintf(stderr,
+                  "** parameter for -pad_to_node (%d) is suspiciously large.\n"
+                  "   I hope you know what you're doing.\n", 
+                  MRILIB_DomainMaxNodeIndex );
+       }
+       used[ii] = 1; 
+       continue ;
+     }
+     
+     /*** if get to here, argv[ii] is nothing special ***/
+
+   } /* end of loop over argv[] */
+
+   /*--- compress out used up argv[] entries ---*/
+
+   for( nused=0,ii=narg-1 ; ii >= 1 ; ii-- ){
+     if( !used[ii] ) continue ;
+     for( jj=ii+1 ; jj < narg ; jj++ ) argv[jj-1] = argv[jj] ;
+     argv[narg-1] = NULL ; narg-- ; nused++ ;
+   }
+
+   if( ttt && nused > 0 )
+     fprintf(stderr,"++ 'used up' %d argv[] entries, leaving %d\n",nused,narg) ;
+
+   free((void *)used) ; *argc = narg ; return(nused);
 }

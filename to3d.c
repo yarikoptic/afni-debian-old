@@ -6,6 +6,9 @@
 
 #include "to3d.h"
 
+extern void mri_read_dicom_reset_obliquity();
+extern void mri_read_dicom_get_obliquity(float *);
+
 #define LABEL_ARG(str) \
   XtVaTypedArg , XmNlabelString , XmRString , (str) , strlen(str)+1
 
@@ -73,9 +76,9 @@ static struct {
 /*----------------------------------------------------------------------*/
 static char * FALLback[] =
   {   "AFNI*fontList:        9x15bold=charset1" ,
-      "AFNI*background:      gray40"            ,
-      "AFNI*menu*background: gray40"            ,
-      "AFNI*borderColor:     gray40"            ,
+      "AFNI*background:      gray30"            ,
+      "AFNI*menu*background: gray20"            ,
+      "AFNI*borderColor:     gray30"            ,
       "AFNI*foreground:      yellow"            ,
       "AFNI*borderWidth:     0"                 ,
       "AFNI*troughColor:     green"             ,
@@ -1933,9 +1936,8 @@ ENTRY("T3D_create_widgets") ;
 
    XtManageChild( wset.topform ) ;
 
-   XtRealizeWidget( wset.topshell ) ;
-
-   WAIT_for_window( wset.topshell ) ;  /* 10 Sep 2002 */
+   XtRealizeWidget( wset.topshell ) ; NI_sleep(1) ;
+   WAIT_for_window( wset.topshell ) ; /* 10 Sep 2002 */
    wset.good = 1 ;
 
    T3D_data_to_widgets() ;
@@ -2299,7 +2301,12 @@ ENTRY("T3D_initialize_user_data") ;
              WarningError("need 2nd orientation code in -xFOV/-xSLAB!") ;
            if( xin_top < 0.0 )
              WarningError("need nonegative 2nd dimension in -xFOV/-xSLAB!") ;
-           if( xin_top == WAY_BIG ) xin_top = xin_bot ;
+           if( xin_top == WAY_BIG ){
+             xin_top = xin_bot ;
+             if( xincode == INCODE_FOV )
+               INFO_message("%s: FOV width is %g mm",
+                            Argv[nopt-1],2*fabs(xin_bot));
+           }
          }
 #endif
 
@@ -2432,7 +2439,12 @@ printf("decoded %s to give xincode=%d bot=%f top=%f\n",Argv[nopt],
              WarningError("need 2nd orientation code in -yFOV/-ySLAB!") ;
            if( yin_top < 0.0 )
              WarningError("need nonegative 2nd dimension in -yFOV/-ySLAB!") ;
-           if( yin_top == WAY_BIG ) yin_top = yin_bot ;
+           if( yin_top == WAY_BIG ){
+             yin_top = yin_bot ;
+             if( yincode == INCODE_FOV )
+               INFO_message("%s: FOV width is %g mm",
+                            Argv[nopt-1],2*fabs(yin_bot));
+           }
          }
 #endif
 
@@ -2565,7 +2577,12 @@ printf("decoded %s to give yincode=%d bot=%f top=%f\n",Argv[nopt],
              WarningError("need 2nd orientation code in -zFOV/-zSLAB!") ;
            if( zin_top < 0.0 )
              WarningError("need nonegative 2nd dimension in -zFOV/-zSLAB!") ;
-           if( zin_top == WAY_BIG ) zin_top = zin_bot ;
+           if( zin_top == WAY_BIG ){
+             zin_top = zin_bot ;
+             if( zincode == INCODE_FOV )
+               INFO_message("%s: FOV width is %g mm",
+                            Argv[nopt-1],2*fabs(zin_bot));
+           }
          }
 #endif
 
@@ -3143,6 +3160,18 @@ void Syntax()
      " correct combination of geometry specifiers to use.  For example,\n"
      " a common type of run at MCW would be entered as\n"
      "    -xFOV 120L-R -yFOV 120A-P -zSLAB 60S-50I\n"
+     "\n"
+     " **NOTE WELL: -xFOV 240L-R does not mean a Field-of-View that is 240 mm\n"
+     "               wide!  It means one that stretches from 240R to 240L, and\n"
+     "               so is 480 mm wide.\n"
+     "              The 'FOV' indicates that this direction was acquired with\n"
+     "               with Fourier encoding, and so the distances are naturally\n"
+     "               specified from the edge of the volume.\n"
+     "              The 'SLAB' indicates that this direction was acquired with\n"
+     "               slice encoding (by the RF excitation), and so distances\n"
+     "               are naturally specified by the center of the slices.\n"
+     "              For non-MRI data (e.g., CT), I'm not sure what the correct\n"
+     "               input format to use here would be -- be careful out there!\n"
    ) ;
 
    printf(
@@ -3452,6 +3481,7 @@ void Syntax()
     INIT_ngray
    ) ;
 
+   PRINT_COMPILE_DATE ;
    exit(0) ;
 }
 
@@ -3860,7 +3890,7 @@ void T3D_type_av_CB( MCW_arrowval * av , XtPointer cd )
    if( user_inputs.ntt > 0 && nvals_new != 1 ){
       T3D_poperr("***** DATA TYPE WARNING *****\n",
                  "New data type is not allowed\n"
-                 "with time-dependent datatset!" ) ;
+                 "with time-dependent datatset!" ,1) ;
       return ;
    }
 
@@ -3869,7 +3899,7 @@ void T3D_type_av_CB( MCW_arrowval * av , XtPointer cd )
       if( nz * nvals_new != user_inputs.nimage ){
          T3D_poperr("**** DATA TYPE WARNING *****\n",
                     "Number of images not an even\n"
-                    "multiple of # of data values" ) ;
+                    "multiple of # of data values" ,1) ;
       }
 
       user_inputs.nz    = nz ;
@@ -3978,7 +4008,7 @@ printf("T3D_read_images: input file count = %d; expanded = %d\n",nim,gnim) ;
      if( ii == 0 ){
        if( mri_dicom_sexinfo() != NULL && !assume_dicom_mosaic )
          WARNING_message(
-            "Hmmm ... try using '-assume_dicom_mosaic'?") ;
+            "No images found. Hmmm ... try using '-assume_dicom_mosaic'?") ;
        ERROR_exit("bad file specifier %s\n",gname[lf]) ;
      }
      nz += ii ; nsmax = MAX(nsmax,ii) ;
@@ -4034,7 +4064,7 @@ printf("T3D_read_images: input file count = %d; expanded = %d\n",nim,gnim) ;
    /*--- read 1st file to get sizes ---*/
 
    CLEAR_MRILIB_globals ;  /* 12 Mar 2001 */
-
+   mri_read_dicom_reset_obliquity();  /* clear any previous obliquity info */
    if( argopt.delay_input )
       arr = mri_read_file_delay( gname[0] ) ;
    else
@@ -4103,7 +4133,7 @@ printf("T3D_read_images: input file count = %d; expanded = %d\n",nim,gnim) ;
             arr = mri_read_file( gname[lf] ) ;
 
          if( arr == NULL || arr->num == 0 ){
-           fprintf(stderr,"** cannot read file %s\n",gname[lf]) ; exit(1) ;
+           ERROR_exit("** cannot read file %s\n",gname[lf]) ;
          }
 #ifdef AFNI_DEBUG
 printf("T3D_read_images: file %d (%s) has #im=%d\n",lf,gname[lf],arr->num) ;
@@ -4498,13 +4528,15 @@ printf("T3D_read_images: nvals set to %d\n",nvals) ;
    daxes->yyorient = user_inputs.yorient ;
    daxes->zzorient = user_inputs.zorient ;
 
+   /*--- 18 May 2007: set obliquity coordinates in header */
+   mri_read_dicom_get_obliquity(&(daxes->ijk_to_dicom_real.m[0][0])); /*pass 16 element float */
+
    /*--- 15 Dec 2005: set the coordinate matrices in the header as well ---*/
 
    THD_set_daxes_to_dicomm(daxes) ;
-
+ 
    if( !ISVALID_MAT44(daxes->ijk_to_dicom) ) THD_daxes_to_mat44(daxes) ;
-
-   /*-----*/
+    /*-----*/
 
    dset->type      = user_inputs.dataset_type ;
    dset->view_type = user_inputs.view_type ;
@@ -5018,7 +5050,7 @@ void T3D_save_file_CB( Widget w ,
 
    if( !good ) T3D_poperr("*******************\n\n" ,
                           "Some error occurred\n"
-                          "while trying to write file") ;
+                          "while trying to write file", 1) ;
 
    else if( wset.topshell != NULL && wset.good )
       wmsg = MCW_popup_message( wset.save_file_pb ,
@@ -5264,7 +5296,7 @@ ENTRY("T3D_check_data") ;
    zlab = ORIENT_xyz[user_inputs.zorient] ;
 
    if( xlab == ylab || xlab == zlab || ylab == zlab ){
-      if(perr)T3D_poperr( OUTERR , "Axes orientations are not consistent!" ) ;
+      T3D_poperr( OUTERR , "Axes orientations are not consistent!" , perr) ;
       good = False ;
    }
 
@@ -5274,7 +5306,7 @@ STATUS("check output filename") ;
 
    ll_out = ll = strlen( user_inputs.output_filename ) ;
    if( ll == 0 ){
-      if(perr)T3D_poperr( OUTERR , "No output filename provided!" ) ;
+      T3D_poperr( OUTERR , "No output filename provided!", perr ) ;
       good = False ;
    } else {
       for( ii=0 ; ii < ll ; ii++ )
@@ -5283,8 +5315,8 @@ STATUS("check output filename") ;
              user_inputs.output_filename[ii] == '/'     ) break ;
 
       if( ii < ll ){
-         if(perr)T3D_poperr( OUTERR ,
-                             "Output filename contains illegal character!" ) ;
+         T3D_poperr( OUTERR ,
+                    "Output filename contains illegal character!", perr ) ;
          good = False ;
       }
    }
@@ -5295,7 +5327,7 @@ STATUS("check session name") ;
 
    ll_sess = ll = strlen( user_inputs.session_filename ) ;
    if( ll == 0 ){
-      if(perr)T3D_poperr( OUTERR , "No session directory name provided!" ) ;
+      T3D_poperr( OUTERR , "No session directory name provided!", perr ) ;
       good = False ;
    } else {
       for( ii=0 ; ii < ll ; ii++ )
@@ -5303,8 +5335,8 @@ STATUS("check session name") ;
              isspace(user_inputs.session_filename[ii])   ) break ;
 
       if( ii < ll ){
-         if(perr)T3D_poperr( OUTERR ,
-                             "Session filename contains illegal character!" ) ;
+         T3D_poperr( OUTERR ,
+                    "Session filename contains illegal character!", perr ) ;
          good = False ;
       }
    }
@@ -5319,7 +5351,7 @@ STATUS("check if file exists") ;
       strcat(new_name , "+orig." DATASET_HEADER_SUFFIX ) ;
       ll = THD_is_file( new_name ) || THD_is_directory( new_name ) ;
       if( ll ){
-       if(perr) T3D_poperr( OUTERR , "Output file already exists!" ) ;
+       T3D_poperr( OUTERR , "Output file already exists!", perr ) ;
        good = False ;
       }
    }
@@ -5331,7 +5363,7 @@ STATUS("check if file exists") ;
 
 #ifdef REQUIRE_ANAT_PARENT
    if( isfunc && strlen(user_inputs.anatomy_dataname) == 0 ){
-      if(perr)T3D_poperr( OUTERR , "Anatomy parent not properly set!" ) ;
+      T3D_poperr( OUTERR , "Anatomy parent not properly set!", perr ) ;
       good = False ;
    }
 #endif
@@ -5342,12 +5374,12 @@ STATUS("check data types") ;
 
    if( isfunc ){
       if( ! AFNI_GOOD_FUNC_DTYPE(argopt.datum_all) ){
-         if(perr)T3D_poperr(OUTERR , "Illegal functional datum type!" ) ;
+         T3D_poperr(OUTERR , "Illegal functional datum type!", perr ) ;
          good = False ;
       }
    } else {
       if( ! AFNI_GOOD_DTYPE(argopt.datum_all) ){
-         if(perr)T3D_poperr(OUTERR , "Illegal anatomical datum type!" ) ;
+         T3D_poperr(OUTERR , "Illegal anatomical datum type!", perr ) ;
          good = False ;
       }
    }
@@ -5356,7 +5388,8 @@ STATUS("check data types") ;
 
 #ifndef NO_NAMES
    if( strlen(user_inputs.dataset_name) == 0 ){
-      if(perr)T3D_poperr( OUTERR,"You **MUST** supply a name for the dataset!" ) ;
+      T3D_poperr( OUTERR,"You **MUST** supply a name for the dataset!", 
+            perr ) ;
       good = False ;
    }
 #endif
@@ -5372,7 +5405,7 @@ STATUS("check stat aux") ;
          if( user_inputs.stat_aux[ii] <= 0.0 ) break ;
 
       if( ii < FUNC_need_stat_aux[user_inputs.function_type] ){
-         if(perr)T3D_poperr(OUTERR , "Invalid statistical parameters!" ) ;
+         T3D_poperr(OUTERR , "Invalid statistical parameters!", perr ) ;
          good = False ;
       }
    }
@@ -5384,7 +5417,7 @@ STATUS("check stat aux") ;
 
 /*----------------------------------------------------------------*/
 
-void T3D_poperr( char * prefix_msg , char * msg )
+void T3D_poperr( char * prefix_msg , char * msg, Boolean exit_flag )
 {
    static char * total_msg = NULL ;
    static int    len_total = 0 ;
@@ -5404,9 +5437,13 @@ ENTRY("T3D_poperr") ;
       (void) MCW_popup_message( wset.action_frame,
                                 total_msg, MCW_USER_KILL | MCW_TIMER_KILL ) ;
       XFlush( XtDisplay(wset.topshell) ) ;
-      sleep(1) ;
+      NI_sleep(999) ;
    } else {
-      fprintf(stderr,"%s\n",total_msg) ;
+/*      fprintf(stderr,"%s\n",total_msg) ;*/
+     if(exit_flag)
+        ERROR_exit(total_msg);  /* exit with error message */
+     else
+        WARNING_message(total_msg); /* just show warning and continue */
    }
    EXRETURN ;
 }
@@ -5495,7 +5532,7 @@ ENTRY("T3D_geometry_parent_CB") ;
    geom_dset = THD_open_one_dataset( new_path ) ;
    if( geom_dset == NULL ){
       T3D_poperr( INERR ,
-                  "Cannot read 3D dataset\nin geometry parent file" ) ;
+                  "Cannot read 3D dataset\nin geometry parent file", 1 ) ;
       geomparent_loaded = 0 ; EXRETURN ;
    }
 
@@ -5525,14 +5562,14 @@ ENTRY("T3D_geometry_parent_CB") ;
                geom_daxes->nxx,geom_daxes->nyy,geom_daxes->nzz,zpad,
                user_inputs.nx ,user_inputs.ny ,user_inputs.nz  ) ;
 
-       T3D_poperr( INERR , msg ) ;
+       T3D_poperr( INERR , msg , 1) ;
        THD_delete_3dim_dataset( geom_dset , False ) ;
        geomparent_loaded = 0 ; EXRETURN ;
    }
 
 #ifdef ALLOW_NONCONTIG
    if( geom_daxes->xxskip != 0.0 || geom_daxes->yyskip != 0.0 ){
-      T3D_poperr( INERR , "Nonzero skip factors for x and y!" ) ;
+      T3D_poperr( INERR , "Nonzero skip factors for x and y!" , 1) ;
       THD_delete_3dim_dataset( geom_dset , False ) ;
       geomparent_loaded = 0 ; EXRETURN ;
    }
@@ -5692,14 +5729,14 @@ ENTRY("T3D_anatomy_parent_CB") ;
    anat_dset = THD_open_one_dataset( new_path ) ;
    if( anat_dset == NULL ){
       T3D_poperr( INERR ,
-                  "Cannot read 3D dataset\nin anatomy parent file" ) ;
+                  "Cannot read 3D dataset\nin anatomy parent file", 1) ;
       EXRETURN ;
    }
 
    isfunc = ISFUNC(anat_dset) ;
    if( isfunc ){
       T3D_poperr( INERR ,
-                  "Anatomy parent dataset\nis actually Function data!" ) ;
+                  "Anatomy parent dataset\nis actually Function data!",1 ) ;
       THD_delete_3dim_dataset( anat_dset , False ) ;
       EXRETURN ;
    }
@@ -5947,6 +5984,8 @@ ENTRY("T3D_check_outliers") ;
               for( iv=0 ; iv < nvals ; iv++ ){
                  y[0][iv] = out_count[iv] ; y[1][iv] = out_ctop ;
               }
+              memplot_topshell_setsaver( ".jpg", memplot_to_jpg ); /* 05 Dec 2007 */
+              memplot_topshell_setsaver( ".png", memplot_to_png );
               plot_ts_lab( XtDisplay(wset.topshell) ,              /* graph */
                            nvals , NULL , 2 , y ,
                            "Sub-brick Index" ,

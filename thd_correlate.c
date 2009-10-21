@@ -1,10 +1,5 @@
 #include "mrilib.h"
 
-#ifdef SOLARIS
-# define sqrtf sqrt
-# define logf  log
-#endif
-
 /*==============================================================================*/
 /*========== The following functions were moved from afni_fimfunc.c -===========*/
 /*==============================================================================*/
@@ -256,195 +251,9 @@ float mri_spearman_corr( MRI_IMAGE *im , MRI_IMAGE *jm )
 
 /****************************************************************************/
 /*** Histogram-based measurements of dependence between two float arrays. ***/
+/****************************************************************************/
 /*--------------------------------------------------------------------------*/
-#ifdef USE_OLD_2DHIST  /* 07 May 2007: replace with fancier code */
-/*--------------------------------------------------------------------------*/
-
-#define LINHIST                           /* do linear spread in histogram  */
-#undef  WW
-#define WW(i) ((w==NULL) ? 1.0f : w[i])   /* weight function for i'th datum */
-
-static int n_old=-1 , nbin_old=-1 ;
-static float *xc=NULL , *yc=NULL , *xyc=NULL , nww=0.0f ;
-static int nbin=0 , nbp=0 ;
-
-#undef  XYC
-#define XYC(p,q) xyc[(p)+(q)*nbp]
-
-#ifndef WAY_BIG
-#  define WAY_BIG 1.e+10
-#endif
-
-#undef  GOODVAL
-#define GOODVAL(x) ((x) < WAY_BIG)
-
-/*--------------------------------------------------------------------------*/
-
-static double hpow = 0.33333333333 ;
-void set_2Dhist_hpower( double hh )
-{
-  hpow = (hh > 0.0 && hh < 1.0) ? hh : 0.33333333333 ;
-  clear_2Dhist() ;
-}
-
-/*--------------------------------------------------------------------------*/
-
-static int nhbin = 0 ;
-void set_2Dhist_hbin( int nn ){ nhbin = nn; clear_2Dhist(); }
-
-/*--------------------------------------------------------------------------*/
-/*! Retrieve the 2D histogram built previously in build_2Dhist().
-    - Return value is the number of bins in each direction (may be 0).
-    - *xyhist is points to internal 2D array (may be NULL).
-----------------------------------------------------------------------------*/
-
-int retrieve_2Dhist( float **xyhist )
-{
-   if( xyhist == NULL ) return 0 ;
-   *xyhist = xyc ; return nbp ;
-}
-
-/*--------------------------------------------------------------------------*/
-
-int retrieve_2Dhist1( float *xh , float *yh )
-{
-   if( xh == NULL || yh == NULL ) return 0 ;
-   *xh = xc ; *yh = yc ; return nbp ;
-}
-
-/*--------------------------------------------------------------------------*/
-/*! Clear the internal 2D histogram.
-----------------------------------------------------------------------------*/
-
-void clear_2Dhist(void)
-{
-   if( xc  != NULL ){ free((void *)xc ); xc  = NULL; }
-   if( yc  != NULL ){ free((void *)yc ); yc  = NULL; }
-   if( xyc != NULL ){ free((void *)xyc); xyc = NULL; }
-   nbin = nbp = 0 ; n_old = nbin_old = -1 ;
-}
-
-/*--------------------------------------------------------------------------*/
-/*! Build 2D histogram of x[0..n-1] and y[0..n-1], each point optionally
-    weighted by w[0..n-1] (weights are all 1 if w==NULL).
-    Used in the histogram-based measures of dependence between x[] and y[i].
-    If something is bad on input, nbin is set to 0.  Otherwise, these global
-    variables are set:
-      - nbin = # of bins
-      - nbp  = nbin+1
-      - nww  = sum of the weights (will be n if w==NULL)
-      - xc   = marginal histogram of x[], for xc[0..nbin]
-      - yc   = marginal histogram of y[], for yc[0..nbin]
-      - xyc  = joint histogram of (x[],y[]), for XYC(0..nbin,0..nbin)
-      - The histograms are normalized (by 1/nww) to have sum==1.
-      - Histogram can be retrieved by retrieve_2Dhist() and can be
-        erased by clear_2Dhist().
-      - Default number of bins in each direction is n^(1/3), but the
-        exponent can be changed with set_2Dhist_hpower(), or you can
-        set the number of bins to be a fixed value with set_2Dhist_hbin().
-----------------------------------------------------------------------------*/
-
-void build_2Dhist( int n , float xbot,float xtop,float *x ,
-                           float ybot,float ytop,float *y , float *w )
-{
-   register int ii,jj,kk ;
-   float xb,xi , yb,yi , xx,yy , x1,y1 , nbb , ww ;
-   byte *good ;
-
-   /* bad inputs? */
-
-   if( n <= 1 || x == NULL || y == NULL ){ clear_2Dhist(); return; }
-
-   /* get the min..max range for x data? */
-
-   good = (byte *)malloc(sizeof(byte)*n) ;         /* 28 Feb 2007 */
-   for( ii=0 ; ii < n ; ii++ )
-     good[ii] = GOODVAL(x[ii]) && GOODVAL(y[ii]) ;
-
-   if( xbot >= xtop ){
-     xbot = WAY_BIG ; xtop = -WAY_BIG ;
-     for( ii=0 ; ii < n ; ii++ )
-       if( good[ii] ){
-              if( x[ii] > xtop ) xtop = x[ii] ;
-         else if( x[ii] < xbot ) xbot = x[ii] ;
-       }
-     if( xbot >= xtop ){ clear_2Dhist(); free(good); return; }
-   }
-
-   /* get the min..max range for y data? */
-
-   if( ybot >= ytop ){
-     ybot = WAY_BIG ; ytop = -WAY_BIG ;
-     for( ii=0 ; ii < n ; ii++ )
-       if( good[ii] ){
-              if( y[ii] > ytop ) ytop = y[ii] ;
-         else if( y[ii] < ybot ) ybot = y[ii] ;
-       }
-     if( ybot >= ytop ){ clear_2Dhist(); free(good); return; }
-   }
-
-   if( n == n_old && nbin_old > 2 ){ /* can keep old arrays */
-     nbin = nbin_old ;
-   } else {                          /* need new arrays */
-     nbin = (nhbin > 2) ? nhbin : (int)pow((double)n,hpow) ;
-     if( nbin > 255 ) nbin = 255; else if( nbin < 3 ) nbin = 3;
-     nbin_old = nbin ; n_old = n ;
-     if( xc  != NULL ){ free((void *)xc ); xc  = NULL; }
-     if( yc  != NULL ){ free((void *)yc ); yc  = NULL; }
-     if( xyc != NULL ){ free((void *)xyc); xyc = NULL; }
-   }
-   nbp = nbin+1 ; nbb = nbin-0.001f ;
-
-   if( xc  == NULL ) xc  = (float *)malloc(sizeof(float)*nbp) ;
-   if( yc  == NULL ) yc  = (float *)malloc(sizeof(float)*nbp) ;
-   if( xyc == NULL ) xyc = (float *)malloc(sizeof(float)*nbp*nbp) ;
-
-   memset( xc  , 0 , sizeof(float)*nbp     ) ;
-   memset( yc  , 0 , sizeof(float)*nbp     ) ;
-   memset( xyc , 0 , sizeof(float)*nbp*nbp ) ;
-
-   xb = xbot ; xi = nbb/(xtop-xbot) ;
-   yb = ybot ; yi = nbb/(ytop-xbot) ; nww = 0.0f ;
-   for( ii=0 ; ii < n ; ii++ ){
-     if( !good[ii] ) continue ;  /* skip this value */
-     xx = (x[ii]-xb)*xi ;
-     if( xx < 0.0f ) xx = 0.0f ; else if( xx > nbb ) xx = nbb ;
-     jj = (int)xx ; xx = xx - jj ; x1 = 1.0f-xx ;
-     yy = (y[ii]-yb)*yi ;
-     if( yy < 0.0f ) yy = 0.0f ; else if( yy > nbb ) yy = nbb ;
-     kk = (int)yy ; yy = yy - kk ; y1 = 1.0f-yy ;
-     ww = WW(ii) ; nww += ww ;
-
-#ifdef LINHIST
-     xc[jj] +=  x1*ww ; xc[jj+1] +=  xx*ww ;
-     yc[kk] += (y1*ww); yc[kk+1] += (yy*ww);
-
-     XYC(jj  ,kk  ) += x1*(y1*ww) ;
-     XYC(jj+1,kk  ) += xx*(y1*ww) ;
-     XYC(jj  ,kk+1) += x1*(yy*ww) ;
-     XYC(jj+1,kk+1) += xx*(yy*ww) ;
-#else
-     xc[jj] += ww ; yc[kk] += ww ; XYC(jj,kk) += ww ;
-#endif
-   }
-
-   /** 26 Sep 2006: scale histogram to have sum==1 **/
-
-   if( nww > 0.0f ){
-     register float ni ; register int nbq ;
-     ni = 1.0f / nww ;
-     for( ii=0 ; ii < nbp ; ii++ ){ xc[ii]  *= ni; yc[ii] *= ni; }
-     nbq = nbp*nbp ;
-     for( ii=0 ; ii < nbq ; ii++ ){ xyc[ii] *= ni; }
-   }
-
-   free(good); return;
-}
-
-/*--------------------------------------------------------------------------*/
-# else  /* don't USE_OLD_2DHIST */
-/*--------------------------------------------------------------------------*/
-/* Changes from the olde method:
+/* Extensive changes from the olde method:
     * values below bot and above top are not used
     * histogram can have bot and top bins unequal, and in-between ones
       equal (if use_xyclip != 0)
@@ -487,7 +296,7 @@ static float yclip_bot, yclip_top ;
 
 void clear_2Dhist(void)
 {
-   FREEIF(xc) ; FREEIF(yc) ; FREEIF(xyc) ; nbin = nbp = 0 ; return ;
+   FREEIF(xc); FREEIF(yc); FREEIF(xyc); nbin = nbp = 0; return;
 }
 
 /*--------------------------------------------------------------------------*/
@@ -495,7 +304,8 @@ void clear_2Dhist(void)
 static double hpow = 0.33333333333 ;
 void set_2Dhist_hpower( double hh )
 {
-  hpow = (hh > 0.0 && hh < 1.0) ? hh : 0.33333333333 ;
+  hpow = (hh > 0.0 && hh < 1.0) ? hh
+                                : 0.33333333333 ;
   clear_2Dhist() ;
 }
 
@@ -586,16 +396,22 @@ static float_pair clipate( int nval , float *xar )
 {
    MRI_IMAGE *qim; float cbot,ctop, mmm , *qar; float_pair rr; int ii,nq;
 
+ENTRY("clipate") ;
+
    qim = mri_new_vol( nval,1,1 , MRI_float ) ; qar = MRI_FLOAT_PTR(qim) ;
    for( ii=nq=0 ; ii < nval ; ii++ ) if( GOODVAL(xar[ii]) ) qar[nq++] = xar[ii];
-   qim->nx = nq ;
+   qim->nx = qim->nvox = nq ;
+   if( nq < 666 ){ rr.a = 1.0f; rr.b = 0.0f; mri_free(qim); RETURN(rr); }
    mmm  = mri_min( qim ) ;
-   cbot = THD_cliplevel( qim , 0.345f ) ;
-   ctop = mri_quantile ( qim , 0.966f ) ;
+   if( mmm >= 0.0f ){   /* for positive images */
+     cbot = THD_cliplevel( qim , 0.345f ) ;
+     ctop = mri_quantile ( qim , 0.966f ) ;
+     if( ctop > 4.321f*cbot ) ctop = 4.321f*cbot ;
+   } else {  /* for images including negative values: no go */
+     cbot = 1.0f; ctop = 0.0f;
+   }
    mri_free(qim) ;
-   if( ctop > 4.321f*cbot ) ctop = 4.321f*cbot ;
-   if( mmm < 0.0f ){ cbot = 1.0f ; ctop = 0.0f; }  /* bad */
-   rr.a = cbot ; rr.b = ctop ; return rr ;
+   rr.a = cbot ; rr.b = ctop ; RETURN(rr) ;
 }
 
 /*--------------------------------------------------------------------------*/
@@ -604,18 +420,20 @@ void set_2Dhist_xyclip( int nval , float *xval , float *yval )
 {
    float_pair xcc , ycc ;
 
+ENTRY("set_2Dhist_xyclip") ;
+
    use_xyclip = 0 ;
-   if( nval < 666 || xval == NULL || yval == NULL ) return ;
+   if( nval < 666 || xval == NULL || yval == NULL ) EXRETURN ;
 
    xcc = clipate( nval , xval ) ;
    ycc = clipate( nval , yval ) ;
 
-   if( xcc.a >= xcc.b || ycc.a >= ycc.b ) return ;
+   if( xcc.a >= xcc.b || ycc.a >= ycc.b ) EXRETURN ;
 
    use_xyclip = 1 ; nxybin = 0 ;
    xclip_bot  = xcc.a ; xclip_top = xcc.b ;
    yclip_bot  = ycc.a ; yclip_top = ycc.b ;
-   return ;
+   EXRETURN ;
 }
 
 /*--------------------------------------------------------------------------*/
@@ -738,7 +556,7 @@ void build_2Dhist( int n , float xbot,float xtop,float *x ,
                            float ybot,float ytop,float *y , float *w )
 {
    register int ii,jj,kk ;
-   float xb,xi , yb,yi , xx,yy , x1,y1 , nbb , ww ;
+   float xb,xi , yb,yi , xx,yy , x1,y1 , ww ;
    byte *good ; int ngood , xyclip , nbm ;
 
 ENTRY("build_2Dhist") ;
@@ -749,6 +567,7 @@ ENTRY("build_2Dhist") ;
 
    /* get the min..max range for x data? */
 
+   STATUS("compute good[]") ;
    good = (byte *)malloc(sizeof(byte)*n) ;         /* 28 Feb 2007 */
    for( ii=0 ; ii < n ; ii++ )
      good[ii] = GOODVAL(x[ii]) && GOODVAL(y[ii]) ;
@@ -760,6 +579,7 @@ ENTRY("build_2Dhist") ;
 #endif
    } else if( xbot >= xtop ){              /* equal bins, and must find range */
      xbot = WAY_BIG ; xtop = -WAY_BIG ;
+     STATUS("compute xbot..xtop") ;
      for( ii=0 ; ii < n ; ii++ )
        if( good[ii] ){
               if( x[ii] > xtop ) xtop = x[ii] ;
@@ -777,6 +597,7 @@ ENTRY("build_2Dhist") ;
 #endif
    } else if( ybot >= ytop ){
      ybot = WAY_BIG ; ytop = -WAY_BIG ;
+     STATUS("compute ybot..ytop") ;
      for( ii=0 ; ii < n ; ii++ )
        if( good[ii] ){
               if( y[ii] > ytop ) ytop = y[ii] ;
@@ -793,16 +614,19 @@ ENTRY("build_2Dhist") ;
      nbin = (nhbin > 2) ? nhbin : (int)pow((double)n,hpow) ;
      if( nbin > 255 ) nbin = 255; else if( nbin < 3 ) nbin = 3;
    }
-   nbb = nbin-0.0003f ; nbp = nbin+1 ; nbm = nbin-1 ;
+   nbp = nbin+1 ; nbm = nbin-1 ;
 
+   STATUS("free-ing") ;
    FREEIF(xc) ; FREEIF(yc) ; FREEIF(xyc) ;
 
+   STATUS("malloc-ing") ;
    xc  = (float *)calloc(sizeof(float),nbp) ;
    yc  = (float *)calloc(sizeof(float),nbp) ;
    xyc = (float *)calloc(sizeof(float),nbp*nbp) ;
 
    /*-- count number of good values left in range (in both x and y) --*/
 
+   STATUS("counting") ;
    memset(good,0,n) ;
    for( ngood=ii=0 ; ii < n ; ii++ ){
      if( RANGVAL(x[ii],xbot,xtop) && RANGVAL(y[ii],ybot,ytop) && WW(ii) > 0.0f ){
@@ -819,8 +643,15 @@ ENTRY("build_2Dhist") ;
 
    if( nxybin <= 0 && !xyclip ){  /*------------ equal size bins ------------*/
 
-     xb = xbot ; xi = nbb/(xtop-xbot) ;
-     yb = ybot ; yi = nbb/(ytop-xbot) ; nww = 0.0f ;
+if(PRINT_TRACING){
+  char str[256];
+  sprintf(str,"equal size bins: xbot=%g xtop=%g ybot=%g ytop=%g nbin=%d nval=%d ngood=%d",
+          xbot,xtop,ybot,ytop,nbin,n,ngood);
+  STATUS(str);
+}
+
+     xb = xbot ; xi = nbm/(xtop-xbot) ;
+     yb = ybot ; yi = nbm/(ytop-ybot) ; nww = 0.0f ;
      for( ii=0 ; ii < n ; ii++ ){
        if( !good[ii] ) continue ;
        xx = (x[ii]-xb)*xi ;
@@ -846,6 +677,13 @@ ENTRY("build_2Dhist") ;
 
      float xbc=xclip_bot , xtc=xclip_top , ybc=yclip_bot , ytc=yclip_top ;
 
+if(PRINT_TRACING){
+  char str[256];
+  sprintf(str,"mostly equal bins: xbc=%g xtc=%g ybc=%g ytc=%g nbin=%d",
+          xbc,xtc,ybc,ytc,nbin) ; STATUS(str);
+}
+
+     STATUS("mostly equal bins") ;
      xi = (nbin-2.000001f)/(xtc-xbc) ;
      yi = (nbin-2.000001f)/(ytc-ybc) ; nww = 0.0f ;
      for( ii=0 ; ii < n ; ii++ ){
@@ -892,6 +730,7 @@ ENTRY("build_2Dhist") ;
 
      /* outer loop: process points starting at index = ib */
 
+     STATUS("unequal sized bins") ;
      nww = 0.0f ;
      for( ib=0 ; ib < n ; ){
 
@@ -975,10 +814,13 @@ ENTRY("build_2Dhist") ;
 
    } /*----- end of test on equal or unequal size bins -----*/
 
+   STATUS("binning done") ;
+
    /*--- 26 Sep 2006: scale histogram to have sum==1 ---*/
 
    if( nww > 0.0f ){
      register float ni ; register int nbq ;
+     STATUS("scaling") ;
      ni = 1.0f / nww ;
      for( ii=0 ; ii < nbp ; ii++ ){ xc[ii]  *= ni; yc[ii] *= ni; }
      nbq = nbp*nbp ;
@@ -987,9 +829,7 @@ ENTRY("build_2Dhist") ;
 
    free(good); EXRETURN;
 }
-
 /*--------------------------------------------------------------------------*/
-#endif  /* USE_OLD_2DHIST */
 /*--------------------------------------------------------------------------*/
 
 static int ignore_zz = 0 ;
@@ -1215,4 +1055,63 @@ float THD_hellinger_scl( int n , float xbot,float xtop,float *x ,
 float THD_hellinger( int n , float *x , float *y )
 {
    return THD_hellinger_scl( n, 1.0f,-1.0f, x, 1.0f,-1.0f, y, NULL ) ;
+}
+
+/*--------------------------------------------------------------------------*/
+/*! Compute the Hellinger metric, mutual info, and normalized MI,
+    and return all 3 (in that order in the output vector).  Computed
+    using the 1D and 2D histograms from build_2Dhist().
+
+    These values all measure the closeness of the joint histogram to
+    the product of the marginals:
+      - Hellinger is smaller when the joint is closer to the marginals' product
+      - MI is also smaller when the joint is closer to the marginal's product
+      - NMI is larger when the joint is closer to the marginal's product
+
+    As measures of association (generalized correlation): more closely
+    associated variables correspond to larger Hellinger and MI, and to
+    smaller NMI.
+----------------------------------------------------------------------------*/
+
+THD_fvec3 THD_helnmi_scl( int n , float xbot,float xtop,float *x ,
+                                  float ybot,float ytop,float *y , float *w )
+{
+   register int ii,jj ;
+   register float hel , pq , denom,numer ;
+   float mi , nmi ;
+   THD_fvec3 hmi ;
+
+   /*-- build 2D histogram --*/
+
+   LOAD_FVEC3(hmi,0.0f,0.0f,0.0f) ;
+   build_2Dhist( n,xbot,xtop,x,ybot,ytop,y,w ) ;
+   if( nbin <= 0 || nww <= 0 ) return hmi ;  /* something bad happened! */
+
+   /*-- compute from histogram --*/
+
+   hel = denom = numer = 0.0f ;
+   for( ii=0 ; ii < nbp ; ii++ ){
+     if( xc[ii] > 0.0f ) denom += xc[ii] * logf( xc[ii] ) ;
+     if( yc[ii] > 0.0f ) denom += yc[ii] * logf( yc[ii] ) ;
+     for( jj=0 ; jj < nbp ; jj++ ){
+       /*** if( ii==0 && jj==0 && ignore_zz ) continue ; ***/
+       pq = XYC(ii,jj) ;
+       if( pq > 0.0f ){
+         hel   += sqrtf( pq * xc[ii] * yc[jj] ) ;
+         numer += pq * logf( pq );
+       }
+     }
+   }
+   hel = 1.0f-hel ;
+   nmi = (denom != 0.0f) ? numer/denom : 0.0f ;
+   mi  = numer - denom ;
+   LOAD_FVEC3( hmi , hel,mi,nmi ) ; return hmi ;
+}
+
+/*--------------------------------------------------------------------------*/
+/*! see THD_helnmi_scl(). */
+
+THD_fvec3 THD_helnmi( int n , float *x , float *y )
+{
+   return THD_helnmi_scl( n, 1.0f,-1.0f, x, 1.0f,-1.0f, y, NULL ) ;
 }

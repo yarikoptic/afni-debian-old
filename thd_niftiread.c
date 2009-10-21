@@ -19,6 +19,7 @@ THD_3dim_dataset * THD_open_nifti( char *pathname )
    THD_ivec3 orixyz , nxyz ;
    THD_fvec3 dxyz , orgxyz ;
    THD_mat33 R ;
+   mat44 ijk_to_dicom44 ;
    char *ppp , prefix[THD_MAX_PREFIX] ;
    char form_priority = 'S' ;             /* 23 Mar 2006 */
 
@@ -39,7 +40,8 @@ ENTRY("THD_open_nifti") ;
 
    /* we must have at least 2 spatial dimensions */
 
-   if( nim->nx < 2 || nim->ny < 2 ) RETURN(NULL) ;
+   /* this should be okay                 11 Jun 2007 */
+   /* if( nim->nx < 2 || nim->ny < 2 ) RETURN(NULL) ; */
 
    /* 4th dimension = time; 5th dimension = bucket:
       these are mutually exclusive in AFNI at present */
@@ -186,7 +188,7 @@ ENTRY("THD_open_nifti") ;
      else if (nim->sform_code > 0){ use_qform = 0 ; use_sform = 1 ; }
      else {
                                     use_qform = 0 ; use_sform = 0 ;
-     ERROR_message(
+     WARNING_message(
       "NO spatial transform (neither qform nor sform), in NIfTI file '%s'" ,
       pathname ) ;
    }
@@ -209,6 +211,19 @@ ENTRY("THD_open_nifti") ;
                   nim->qto_xyz.m[2][0] ,  /* [Which is my own] */
                   nim->qto_xyz.m[2][1] ,  /* [damn fault!!!!!] */
                   nim->qto_xyz.m[2][2]  ) ;
+
+     LOAD_MAT44(ijk_to_dicom44, -nim->qto_xyz.m[0][0] ,  /* negate x and y   */
+                 -nim->qto_xyz.m[0][1] ,  /* coefficients,    */
+                 -nim->qto_xyz.m[0][2] ,  /* since AFNI works */
+                 -nim->qto_xyz.m[0][3] ,
+                 -nim->qto_xyz.m[1][0] ,  /* with RAI coords, */
+                 -nim->qto_xyz.m[1][1] ,  /* but NIFTI uses   */
+                 -nim->qto_xyz.m[1][2] ,  /* LPI coordinates. */
+                 -nim->qto_xyz.m[1][3] ,
+                  nim->qto_xyz.m[2][0] ,  /* [Which is my own] */
+                  nim->qto_xyz.m[2][1] ,  /* [damn fault!!!!!] */
+                  nim->qto_xyz.m[2][2] ,  
+                  nim->qto_xyz.m[2][3] ) ;
 
      orixyz = THD_matrix_to_orientation( R ) ;   /* compute orientation codes */
 
@@ -340,12 +355,21 @@ ENTRY("THD_open_nifti") ;
 
      fig_merit = MIN3(xmax,ymax,zmax) ;
      ang_merit = acos (fig_merit) * 180.0 / 3.141592653 ;
-
+#if 0
      if (fabs(ang_merit) > .01) {
-       fprintf(stderr, "qform not present, sform used.\n"
-                       "sform was not exact, and the worst axis is\n"
-                       "%f degrees from plumb.\n",ang_merit ) ;
+       WARNING_message (
+         "qform not present in:\n"
+         "   '%s'\n"
+         "  oblique sform used, and the worst axis is\n"
+         "  %f degrees from plumb.\n"
+         "  If you are performing spatial transformations on this dset, \n"
+         "  or viewing/combining it with volumes of differing obliquity,\n"
+         "  you should consider running: \n"
+         "     3dWarp -deoblique \n"
+         "  on this and  other oblique datasets in the same session.\n"
+         ,pathname, ang_merit ) ;
      }
+#endif
 
      if( nim->xyz_units == NIFTI_UNITS_METER ){
        dxtmp *= 1000.0 ; dytmp *= 1000.0 ; dztmp *= 1000.0 ;
@@ -356,6 +380,19 @@ ENTRY("THD_open_nifti") ;
      LOAD_FVEC3( dxyz , (ORIENT_sign[orixyz.ijk[0]]=='+') ? dxtmp : -dxtmp ,
                         (ORIENT_sign[orixyz.ijk[1]]=='+') ? dytmp : -dytmp ,
                         (ORIENT_sign[orixyz.ijk[2]]=='+') ? dztmp : -dztmp ) ;
+
+     LOAD_MAT44(ijk_to_dicom44, -nim->sto_xyz.m[0][0] ,  /* negate x and y   */
+                 -nim->sto_xyz.m[0][1] ,  /* coefficients,    */
+                 -nim->sto_xyz.m[0][2] ,  /* since AFNI works */
+                 -nim->sto_xyz.m[0][3] ,
+                 -nim->sto_xyz.m[1][0] ,  /* with RAI coords, */
+                 -nim->sto_xyz.m[1][1] ,  /* but NIFTI uses   */
+                 -nim->sto_xyz.m[1][2] ,  /* LPI coordinates. */
+                 -nim->sto_xyz.m[1][3] ,
+                  nim->sto_xyz.m[2][0] ,  /* [Which is my own] */
+                  nim->sto_xyz.m[2][1] ,  /* [damn fault!!!!!] */
+                  nim->sto_xyz.m[2][2] ,  
+                  nim->sto_xyz.m[2][3] ) ;
 
    } else { /* NO SPATIAL XFORM. BAD BAD BAD BAD BAD BAD. */
 
@@ -391,12 +428,19 @@ ENTRY("THD_open_nifti") ;
      LOAD_FVEC3( orgxyz , 0 ,
                           0 ,
                           0 ) ;
+     /* put scaled identity matrix by default */
+     LOAD_MAT44(ijk_to_dicom44, dxtmp, 0.0, 0.0, 0.0,  
+                                0.0, dytmp, 0.0, 0.0,
+                                0.0, 0.0, dztmp, 0.0 );
    }
+
 
 
    /*-- make an AFNI dataset! --*/
 
    dset = EDIT_empty_copy(NULL) ;
+   /* copy transformation matrix to dataset structure */
+   dset->daxes->ijk_to_dicom_real = ijk_to_dicom44;
 
    ppp  = THD_trailname(pathname,0) ;               /* strip directory */
    MCW_strncpy( prefix , ppp , THD_MAX_PREFIX ) ;   /* to make prefix */
@@ -436,13 +480,18 @@ ENTRY("THD_open_nifti") ;
 
    } else {  /* is a time dependent dataset */
 
-          if( nim->time_units == NIFTI_UNITS_MSEC ) nim->dt *= 0.001 ;
-     else if( nim->time_units == NIFTI_UNITS_USEC ) nim->dt *= 1.e-6 ;
+     if( nim->time_units == NIFTI_UNITS_MSEC ){
+            nim->dt *= 0.001 ;
+            nim->toffset *= 0.001 ;
+     } else if( nim->time_units == NIFTI_UNITS_USEC ){
+            nim->dt *= 1.e-6 ;
+            nim->toffset *= 1.e-6 ;
+     }
      EDIT_dset_items( dset ,
                         ADN_nvals     , ntt ,
                         ADN_ntt       , ntt ,
                         ADN_datum_all , datum ,
-                        ADN_ttorg     , 0.0 ,
+                        ADN_ttorg     , nim->toffset , /* 12 Oct 2007 [rickr] */
                         ADN_ttdel     , nim->dt ,
                         ADN_ttdur     , 0.0 ,
                         ADN_tunits    , UNITS_SEC_TYPE ,

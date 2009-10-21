@@ -105,7 +105,7 @@ ENTRY("timeout_CB") ;
 
 int main( int argc , char *argv[] )
 {
-   int ii , verb=0 , iarg=1 , jj ;
+   int ii , quiet = 0, verb=0 , iarg=1 , jj ;
    MRI_IMAGE *im ;     /* 1 input image */
    MRI_IMARR *qar ;    /* all input images */
    Widget shell ;
@@ -113,7 +113,7 @@ int main( int argc , char *argv[] )
 
    if( argc < 2 || strcmp(argv[1],"-help") == 0 ){
      printf(
-      "Usage: aiv [-v] [-p xxxx ] image ...\n"
+      "Usage: aiv [-v] [-q] [-p xxxx ] image ...\n"
       "AFNI Image Viewer program.\n"
       "Shows the 2D images on the command line in an AFNI-like image viewer.\n"
       "Can also read images in NIML '<MRI_IMAGE...>' format from a TCP/IP socket.\n"
@@ -126,6 +126,8 @@ int main( int argc , char *argv[] )
       "The '-v' option will make aiv print out the image filenames\n"
       "as it reads them - this can be a useful progress meter if\n"
       "the program starts up slowly.\n"
+      "\n"
+      "The '-q' option tells the program to be very quiet.\n"
       "\n"
       "The '-p xxxx' option will make aiv listen to TCP/IP port 'xxxx'\n"
       "for incoming images in the NIML '<MRI_IMAGE...>' format.  The\n"
@@ -159,10 +161,10 @@ int main( int argc , char *argv[] )
       "\n"
       "-- Author: RW Cox\n"
      ) ;
-     exit(0) ;
+     PRINT_COMPILE_DATE ; exit(0) ;
    }
 
-   PRINT_VERSION("aiv") ; mainENTRY("aiv main") ; machdep() ;
+   mainENTRY("aiv main") ; machdep() ;
 
    /* options? */
 
@@ -171,6 +173,7 @@ int main( int argc , char *argv[] )
      /*-- verbosity --*/
 
      if( strncmp(argv[iarg],"-v",2) == 0 ){ verb=1; iarg++; continue; }
+     if( strncmp(argv[iarg],"-q",2) == 0 ){ quiet=1; iarg++; continue; }
 
      /*-- port or sherry? --*/
 
@@ -203,12 +206,14 @@ int main( int argc , char *argv[] )
 
      ERROR_message("Unknown option: %s",argv[iarg]) ;
    }
+   if (!quiet) { PRINT_VERSION("aiv") ; } 
+   
 
    /* glob filenames, read images */
 
    MCW_file_expand( argc-iarg , argv+iarg , &gnim , &gname ) ;
    if( gnim == 0 && AIVVV_stream==(NI_stream)NULL )
-     ERROR_exit("No filenames on command line?!") ;
+     ERROR_exit("No filenames on command line (after wildcard expansion)?!") ;
 
    INIT_IMARR(MAIN_imar) ;
 
@@ -226,11 +231,19 @@ int main( int argc , char *argv[] )
        fprintf(stderr,"%s",gname[ii]) ;
      }
 
+     if( IMARR_COUNT(qar) == 1 ){  /* possibly a 3D dataset from AFNI */
+       im = IMARR_SUBIM(qar,0) ;
+       if( im != NULL && im->nz > 1 ){  /* break 3D array into 2D images */
+         MRI_IMARR *zar = mri_to_imarr(im) ;
+         if( zar != NULL ){ DESTROY_IMARR(qar) ; qar = zar ; }
+       }
+     }
+
      for( jj=0 ; jj < IMARR_COUNT(qar) ; jj++ ){
        im = IMARR_SUBIM(qar,jj) ;
        if( im != NULL && im->nx > 1 && im->ny > 1 ) ADDTO_IMARR(MAIN_imar,im);
      }
-     FREE_IMARR(qar) ;
+     FREE_IMARR(qar) ;  /* just FREE, not DESTROY */
    }
 
    /* print a message about the images? */
@@ -238,11 +251,11 @@ int main( int argc , char *argv[] )
    if( IMARR_COUNT(MAIN_imar) == 0 && AIVVV_stream==(NI_stream)NULL )
      ERROR_exit("No images found on command line!?") ;
    if( IMARR_COUNT(MAIN_imar) > 0 ){
-     fprintf(stderr, (verb) ? " = " : "++ " ) ;
+     if (!quiet) fprintf(stderr, (verb) ? " = " : "++ " ) ;
      if( IMARR_COUNT(MAIN_imar) == 1 )
-       fprintf(stderr,"1 image\n") ;
+       if (!quiet) fprintf(stderr,"1 image\n") ;
      else
-       fprintf(stderr,"%d images\n",IMARR_COUNT(MAIN_imar)) ;
+       if (!quiet) fprintf(stderr,"%d images\n",IMARR_COUNT(MAIN_imar)) ;
    }
 
    if( gnim > 0 ) MCW_free_expand( gnim , gname ) ;

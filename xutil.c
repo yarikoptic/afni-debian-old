@@ -8,6 +8,9 @@
 #include "afni_environ.h"
 #include "debugtrace.h"    /* 12 Mar 2001 */
 
+#undef  SYNC
+#define SYNC(w) XSync(XtDisplay(w),False)
+
 #include "Amalloc.h"
 extern char * THD_find_executable( char * ) ;
 
@@ -34,7 +37,7 @@ void MCW_expose_widget( Widget w )
    xev.window  = XtWindow(w) ; if( xev.window == (Window) NULL ) return ;
    xev.type    = Expose ;
    xev.display = XtDisplay(w) ;
-   xev.x       = xev.y = 0 ;
+   xev.x       = xev.y = 0 ; SYNC(w) ;
    XtVaGetValues( w, XmNwidth, &ww, XmNheight, &hh, NULL ) ;
    if( ww <= 0 || hh <= 0 ) return ;
    xev.width   = ww ; xev.height  = hh ;
@@ -53,6 +56,7 @@ Colormap MCW_get_colormap( Widget w )
 
    if( w == NULL || ! XtIsWidget(w) ) return (Colormap) 0 ;
 
+   SYNC(w) ;
    XtVaGetValues( w , XmNcolormap  , &cmap , NULL ) ;
    return cmap ;
 }
@@ -64,6 +68,7 @@ int MCW_get_depth( Widget w )  /* 14 Sep 1998 */
    int depth = 0 ;
 
    if( w == NULL || ! XtIsWidget(w) ) return 0 ;
+   SYNC(w) ;
    XtVaGetValues( w , XmNdepth  , &depth , NULL ) ;
    return depth  ;
 }
@@ -72,10 +77,11 @@ int MCW_get_depth( Widget w )  /* 14 Sep 1998 */
 
 Visual * MCW_get_visual( Widget w )  /* 14 Sep 1998 */
 {
-   Visual * visual = NULL ;
+   Visual *visual = NULL ;
    Widget wpar = w ;
 
    if( w == NULL || ! XtIsWidget(w) ) return NULL ;
+   SYNC(w) ;
 
    while( XtParent(wpar) != NULL ) wpar = XtParent(wpar) ;  /* find top */
 
@@ -91,6 +97,7 @@ Visual * MCW_get_visual( Widget w )  /* 14 Sep 1998 */
 void MCW_set_colormap( Widget w , Colormap cmap )
 {
    if( w == NULL || ! XtIsWidget(w) ) return ;
+   SYNC(w) ;
    XtVaSetValues( w , XmNcolormap  , cmap , NULL ) ;
    return ;
 }
@@ -106,6 +113,7 @@ void MCW_invert_widget( Widget w )
    Colormap cmap ;
 
    if( ! XtIsWidget(w) ) return ;
+   SYNC(w) ;
 
    XtVaGetValues( w , XmNforeground , &bg_pix ,  /* foreground -> bg */
                       XmNbackground , &fg_pix ,  /* background -> fg */
@@ -137,7 +145,7 @@ void MCW_invert_widget( Widget w )
      pix   = if cname == NULL, use this pixel value
 -----------------------------------------------------------------------*/
 
-void MCW_set_widget_bg( Widget w , char * cname , Pixel pix )
+void MCW_set_widget_bg( Widget w , char *cname , Pixel pix )
 {
    Pixel bg_pix , topsh_pix , botsh_pix , fg_pix , sel_pix ;
    Colormap cmap ;
@@ -148,6 +156,7 @@ void MCW_set_widget_bg( Widget w , char * cname , Pixel pix )
    if( ! XtIsObject(w) ) return ;
 #endif
 
+   SYNC(w) ;
 
    if( cname != NULL && strlen(cname) > 0 ){
       XtVaSetValues( w ,
@@ -181,6 +190,21 @@ void MCW_set_widget_bg( Widget w , char * cname , Pixel pix )
    return ;
 }
 
+void MCW_set_widget_fg( Widget w , char *cname )
+{
+   Pixel bg_pix , topsh_pix , botsh_pix , fg_pix , sel_pix ;
+   Colormap cmap ;
+
+   if( !XtIsWidget(w) || cname == NULL || *cname == '\0' ) return ;
+
+   SYNC(w) ;
+
+   XtVaSetValues( w , XtVaTypedArg , XmNforeground , XmRString ,
+                                     cname , strlen(cname)+1 , NULL ) ;
+   return ;
+}
+
+
 /*-------------------------------------------------------------------*/
 
 void MCW_set_widget_label( Widget w , char *str )
@@ -194,6 +218,19 @@ void MCW_set_widget_label( Widget w , char *str )
    return ;
 }
 
+#if 0
+void MCW_set_widget_label_tagged( Widget w , char *str , char *tag )
+{
+   XmString xstr ;
+   if( w == NULL || str == NULL ) return ;
+   xstr = XmStringCreateLtoR( str , tag ) ;
+   XtVaSetValues( w , XmNlabelString , xstr , NULL ) ;
+   XmStringFree( xstr ) ;
+   MCW_expose_widget( w ) ;
+   return ;
+}
+#endif
+
 /*-----------------------------------------------------------------------*/
 
 void MCW_widget_geom( Widget w, int *wout, int *hout, int *xout, int *yout )
@@ -202,6 +239,7 @@ void MCW_widget_geom( Widget w, int *wout, int *hout, int *xout, int *yout )
    Position  xx , yy ;
 
    if( w == NULL ) return ;
+   SYNC(w) ; RWC_sleep(1) ;
 
    if( XtIsRealized(w) ){
       XtVaGetValues( w , XmNwidth  , &nx , XmNheight , &ny ,
@@ -265,7 +303,7 @@ char * MCW_hotcolor(Widget w)
    24 Apr 2001: manage array of widgets, some of which may be NULL
 ----------------------------------------------------------------------------*/
 
-void MCW_manage_widgets( Widget * war , int nar )
+void MCW_manage_widgets( Widget *war , int nar )
 {
    int ii ;
    if( war == NULL ) return ;
@@ -274,7 +312,7 @@ void MCW_manage_widgets( Widget * war , int nar )
    return ;
 }
 
-void MCW_unmanage_widgets( Widget * war , int nar )
+void MCW_unmanage_widgets( Widget *war , int nar )
 {
    int ii ;
    if( war == NULL ) return ;
@@ -287,10 +325,12 @@ void MCW_unmanage_widgets( Widget * war , int nar )
 
 #define TIG 25
 
-Widget MCW_action_area( Widget parent, MCW_action_item * action, int num_act )
+Widget MCW_action_area( Widget parent, MCW_action_item *action, int num_act )
 {
    Widget act_area , ww ;
    int ii ;
+
+   if( parent == NULL ) return NULL ;  /* should not happen */
 
    act_area = XtVaCreateWidget( "action_area" , xmFormWidgetClass , parent ,
                                     XmNfractionBase , TIG*num_act - 1,
@@ -304,7 +344,7 @@ Widget MCW_action_area( Widget parent, MCW_action_item * action, int num_act )
                action[ii].label , xmPushButtonWidgetClass , act_area ,
 
                   XmNleftAttachment   ,
-		       (ii) ? XmATTACH_POSITION : XmATTACH_FORM ,
+           (ii) ? XmATTACH_POSITION : XmATTACH_FORM ,
                   XmNleftPosition     , ii*TIG ,
                   XmNtopAttachment    , XmATTACH_FORM ,
                   XmNbottomAttachment , XmATTACH_FORM ,
@@ -350,20 +390,23 @@ Widget MCW_action_area( Widget parent, MCW_action_item * action, int num_act )
                   the widget to kill it.
 
       msg_type may also be OR-ed with MCW_TIMER_KILL to have the
-      message automatically killed after 30 seconds.
+      message automatically killed after 22 seconds.
 --------------------------------------------------------------------*/
 
 Widget MCW_popup_message( Widget wparent , char *msg , int msg_type )
 {
    Widget wmsg , wlab ;
-   int wx,hy,xx,yy , xp,yp , scr_width,scr_height , xr,yr , xpr,ypr ;
+   int wx,hy,xx,yy , xp,yp , scr_width,scr_height , xr,yr , xpr,ypr , lm ;
    Screen *scr ;
    XEvent ev ;
 
 ENTRY("MCW_popup_message") ;
 
-   if( ! wparent || ! XtIsRealized( wparent ) ||
-       msg == NULL               || strlen(msg) == 0 ) RETURN(NULL) ;
+   if( msg == NULL || (lm=strlen(msg)) == 0 ) RETURN(NULL) ;
+
+   if( wparent == NULL || !XtIsRealized(wparent) ){  /* 21 Aug 2007 */
+     fprintf(stderr,"%s\n",msg) ; RETURN(NULL) ;
+   }
 
    /* set position for message box based on parent and screen geometry */
 
@@ -412,7 +455,7 @@ ENTRY("MCW_popup_message") ;
 
          wlab = XtVaCreateManagedWidget(
                   "help" , xmLabelWidgetClass , wmsg ,
-                     XtVaTypedArg,XmNlabelString,XmRString,msg,strlen(msg)+1,
+                     XtVaTypedArg,XmNlabelString,XmRString,msg,lm+1,
                      XmNalignment , XmALIGNMENT_BEGINNING ,
                      XmNinitialResourcesPersistent , False ,
                   NULL ) ;
@@ -423,7 +466,7 @@ ENTRY("MCW_popup_message") ;
          static int first=1 ; char *mmsg = msg ;     /* 'first' stuff  */
          if( first ){                                /* on 06 Apr 2004 */
            if( !AFNI_noenv("AFNI_CLICK_MESSAGE") ){
-             mmsg = (char *) malloc(strlen(msg)+99) ;
+             mmsg = (char *) malloc(lm+99) ;
              strcpy(mmsg,msg) ;
              strcat(mmsg,"\n [---------------] "
                          "\n [ Click in Text ] "
@@ -433,7 +476,7 @@ ENTRY("MCW_popup_message") ;
 
          wlab = XtVaCreateManagedWidget(
                   "help" , xmPushButtonWidgetClass , wmsg ,
-                     XtVaTypedArg,XmNlabelString,XmRString,mmsg,strlen(msg)+1,
+                     XtVaTypedArg,XmNlabelString,XmRString,mmsg,lm+1,
                      XmNalignment , XmALIGNMENT_BEGINNING ,
                      XmNinitialResourcesPersistent , False ,
                   NULL ) ;
@@ -471,7 +514,7 @@ ENTRY("MCW_popup_message") ;
       XtIntervalId tid ;
 
       tid = XtAppAddTimeOut( XtWidgetToApplicationContext( wmsg ) ,
-	                     33333 , MCW_message_timer_CB , wmsg   ) ;
+                             22222 , MCW_message_timer_CB , wmsg   ) ;
 
       XtVaSetValues( wlab , XmNuserData ,  tid , NULL );/* put tid on wlab; */
    } else {                                             /* shells don't */
@@ -521,6 +564,7 @@ void MCW_message_CB( Widget w , XtPointer cd , XtPointer cbs )
    XtDestroyWidget( XtParent(w) ) ;
 
    if( tid > 0 ) XtRemoveTimeOut( tid ) ;  /* if a timer exists, kill it */
+   RWC_sleep(1) ;
 #else
    XtDestroyWidget( XtParent(w) ) ;
 #endif
@@ -530,9 +574,10 @@ void MCW_message_CB( Widget w , XtPointer cd , XtPointer cbs )
 /*--- callback when timer expires on popup message ---*/
 /*----------------------------------------------------*/
 
-void MCW_message_timer_CB( XtPointer client_data , XtIntervalId * id )
+void MCW_message_timer_CB( XtPointer client_data , XtIntervalId *id )
 {
    XtDestroyWidget( (Widget) client_data ) ;
+   RWC_sleep(1) ;
 }
 
 /*------------------------------------------------------------------
@@ -550,12 +595,12 @@ void MCW_set_widget_cursor( Widget w , int cur )
 
 /*--------------------------------------------------------------------*/
 
-void MCW_alter_widget_cursor( Widget w, int cur, char * fgname, char * bgname )
+void MCW_alter_widget_cursor( Widget w, int cur, char *fgname, char *bgname )
 {
    XColor fg , bg ;
    Cursor ccc ;
    Colormap cmap ;
-   Display  * dis ;
+   Display  *dis ;
    Boolean  good ;
    int ii ;
 
@@ -569,7 +614,8 @@ void MCW_alter_widget_cursor( Widget w, int cur, char * fgname, char * bgname )
       first = False ;
    }
 
-   if( !XtIsRealized(w) || XtWindow(w) == (Window) NULL ) return ;
+   if( w == NULL || !XtIsRealized(w) || XtWindow(w) == (Window)NULL ) return ;
+   RWC_sleep(1) ;
 
    dis = XtDisplay(w) ;
 
@@ -607,11 +653,9 @@ void MCW_click_help_CB( Widget w, XtPointer client_data, XtPointer call_data )
    XmAnyCallbackStruct cbs ;
    XEvent ev ;
    static Cursor cur = 0 ;
-   Display * dis = XtDisplay(w) ;
+   Display *dis = XtDisplay(w) ;
 
-   if( cur == 0 ){
-      cur = XCreateFontCursor( dis , XC_hand2 ) ;
-   }
+   if( cur == 0 ) cur = XCreateFontCursor( dis , XC_hand2 ) ;
 
 #ifdef USE_LOCATE  /* old version */
    whelp = XmTrackingLocate( w , cur , False ) ; /* wait for user to click */
@@ -639,8 +683,8 @@ void MCW_disable_help(void){ disable_helps = 1 ; }
 void MCW_enable_help (void){ disable_helps = 0 ; }
 
 #ifdef DONT_USE_HINTS
-void MCW_register_hint( Widget w , char * msg ) { return ; }
-void MCW_reghint_children( Widget w , char * msg ) { return ; }
+void MCW_register_hint( Widget w , char *msg ) { return ; }
+void MCW_reghint_children( Widget w , char *msg ) { return ; }
 void MCW_hint_toggle(void){ return ; }
 void MCW_unregister_hint( Widget w ){ return ; }
 #else
@@ -654,7 +698,7 @@ void MCW_hint_toggle(void)
 {
 #define PBIG 999999
    int period ;
-   char * pdef ;
+   char *pdef ;
 
    if( liteClue == NULL ) return ;
 
@@ -692,13 +736,13 @@ void MCW_unregister_hint( Widget w )    /* 11 Jul 2001 */
 #define RES_CONVERT( res_name, res_value) \
        XtVaTypedArg, (res_name), XmRString, (res_value), strlen(res_value) + 1
 
-void MCW_register_hint( Widget w , char * msg )
+void MCW_register_hint( Widget w , char *msg )
 {
    if( disable_helps ) return ;
    if( w == NULL || msg == NULL || clueless == 1 || !XtIsWidget(w) ) return ;
 
    if( clueless == -1 ){
-      char * hh = my_getenv("AFNI_HINTS") ;
+      char *hh = my_getenv("AFNI_HINTS") ;
       if( hh != NULL && ( strncmp(hh,"KILL",4)==0 ||
                           strncmp(hh,"kill",4)==0 ||
                           strncmp(hh,"Kill",4)==0 ) ){
@@ -713,7 +757,7 @@ void MCW_register_hint( Widget w , char * msg )
 
    if( liteClue == NULL ){
       Widget wpar = w ;
-      char * cfont ;
+      char *cfont ;
 
       while( XtParent(wpar) != NULL ) wpar = XtParent(wpar) ;  /* find top */
 
@@ -740,9 +784,9 @@ void MCW_register_hint( Widget w , char * msg )
 
 /*--------------------------------------------------------------------*/
 
-void MCW_reghint_children( Widget w , char * msg )
+void MCW_reghint_children( Widget w , char *msg )
 {
-   Widget * children=NULL ;
+   Widget *children=NULL ;
    int  num_children=0 , ic ;
 
    if( disable_helps ) return ;
@@ -767,15 +811,14 @@ void MCW_unregister_help( Widget w ) /* 24 Apr 2001 */
 {
    XtCallbackList hc=NULL ;
 
+   if( w == NULL ) return ;
    XtVaGetValues( w , XmNhelpCallback , &hc , NULL ) ;
-
-   if( hc != NULL )
-      XtRemoveCallbacks( w , XmNhelpCallback , hc ) ;
+   if( hc != NULL ) XtRemoveCallbacks( w , XmNhelpCallback , hc ) ;
 }
 
 /*------------------------------------------------------------------------*/
 
-void MCW_register_help( Widget w , char * msg )
+void MCW_register_help( Widget w , char *msg )
 {
    if( disable_helps ) return ;
    if( w == NULL || msg == NULL ) return ;
@@ -785,9 +828,9 @@ void MCW_register_help( Widget w , char * msg )
 
 /*--------------------------------------------------------------------*/
 
-void MCW_reghelp_children( Widget w , char * msg )
+void MCW_reghelp_children( Widget w , char *msg )
 {
-   Widget * children ;
+   Widget *children ;
    int  num_children , ic ;
 
    if( disable_helps ) return ;
@@ -807,15 +850,15 @@ void MCW_reghelp_children( Widget w , char * msg )
 
 void MCW_help_CB( Widget w , XtPointer client_data , XtPointer call_data )
 {
-   char * msg         = (char *) client_data ;
+   char *msg          = (char *) client_data ;
    static Widget wpop = NULL , wbut ;
    Position xx,yy ;
    XmString xstr ;
    int ww,hh , sw,sh ;
-   char * def ;
+   char *def ;
 
 #ifndef USE_LOCATE
-   XmAnyCallbackStruct * cbs = (XmAnyCallbackStruct *) call_data ;
+   XmAnyCallbackStruct *cbs = (XmAnyCallbackStruct *) call_data ;
 #endif
 
    if( w == NULL ){
@@ -881,7 +924,7 @@ void MCW_help_CB( Widget w , XtPointer client_data , XtPointer call_data )
 #ifndef USE_LOCATE
    if( cbs != NULL && cbs->event != NULL
                    && cbs->event->type == ButtonRelease ){
-      XButtonEvent * xev = (XButtonEvent *) cbs->event ;
+      XButtonEvent *xev = (XButtonEvent *) cbs->event ;
       xx = xev->x_root ;
       yy = xev->y_root ;
    } else
@@ -914,9 +957,9 @@ void MCW_unhelp_CB( Widget w , XtPointer client_data , XtPointer call_data )
 
 /*---------------------------------------------------------------------*/
 
-int MCW_filetype( char * fname )
+int MCW_filetype( char *fname )
 {
-   FILE * fff ;
+   FILE *fff ;
 
    if( fname == NULL || strlen(fname) == 0 ) return MCW_nofile ;
 
@@ -981,13 +1024,13 @@ Widget MCW_popup_meter( Widget wparent , int position )
 {
    Widget wmsg , wscal ;
    int wx,hy,xx,yy , xp,yp , scr_width,scr_height , xr,yr , xpr,ypr , wid ;
-   Screen * scr ;
+   Screen *scr ;
    XEvent ev ;
    Position xroot , yroot ;
 
 ENTRY("MCW_popup_meter") ;
 
-   if( wparent == NULL || ! XtIsRealized( wparent ) ) RETURN(NULL) ;
+   if( wparent == NULL || ! XtIsRealized(wparent) ) RETURN(NULL) ;
 
    /* set position parent and screen geometry */
 
@@ -1133,7 +1176,7 @@ static MCW_action_item TWIN_act[] = {
  { "Set"  , MCW_textwin_CB , NULL , NULL , "Apply choice and close window" , 0 }
 } ;
 
-MCW_textwin * new_MCW_textwin( Widget wpar, char * msg, int type )
+MCW_textwin * new_MCW_textwin( Widget wpar, char *msg, int type )
 {
    return new_MCW_textwin_2001( wpar,msg,type , NULL,NULL ) ;
 }
@@ -1157,7 +1200,7 @@ ENTRY("new_MCW_textwin_2001") ;
 
    /*-- sanity check --*/
 
-   if( ! XtIsRealized(wpar) ) RETURN(NULL) ;
+   if( wpar == NULL || !XtIsRealized(wpar) ) RETURN(NULL) ;
 
    /* set position based on parent and screen geometry */
 
@@ -1318,7 +1361,7 @@ ENTRY("new_MCW_textwin_2001") ;
      (void)XmProcessTraversal( ws , XmTRAVERSE_CURRENT ) ;
 #if 0
      (void)XtAppAddTimeOut( XtWidgetToApplicationContext(ws) ,
-	                         66 , MCW_textwin_timer_CB , ws   ) ;
+                            66 , MCW_textwin_timer_CB , ws   ) ;
 #endif
    }
 #ifdef DARWIN
@@ -1332,12 +1375,12 @@ ENTRY("new_MCW_textwin_2001") ;
 
 /*--------------------------------------------------------------------*/
 
-void MCW_textwin_alter( MCW_textwin * tw , char * mmm ) /* 10 Jul 2001 */
+void MCW_textwin_alter( MCW_textwin *tw , char *mmm ) /* 10 Jul 2001 */
 {
    int swid , shi ;
-   char * msg = mmm ;
+   char *msg = mmm ;
    int cmax = 20 , ll , nlin ;
-   char * cpt , *cold , cbuf[128] ;
+   char *cpt , *cold , cbuf[128] ;
    XmString xstr ;
    XmFontList xflist ;
 
@@ -1413,8 +1456,8 @@ ENTRY("MCW_textwin_alter") ;
 
 void MCW_textwin_CB( Widget w , XtPointer client_data , XtPointer call_data )
 {
-   MCW_textwin * tw = (MCW_textwin *) client_data ;
-   char * wname     = XtName(w) ;
+   MCW_textwin *tw = (MCW_textwin *) client_data ;
+   char *wname    = XtName(w) ;
 
    if( client_data == NULL ) return ;
 
@@ -1438,7 +1481,7 @@ void MCW_textwin_CB( Widget w , XtPointer client_data , XtPointer call_data )
 
 void MCW_textwinkill_CB( Widget w , XtPointer client_data , XtPointer call_data )
 {
-   MCW_textwin * tw = (MCW_textwin *) client_data ;
+   MCW_textwin *tw = (MCW_textwin *) client_data ;
 
    if( tw->kill_func != NULL )
 #if 0
@@ -1461,9 +1504,9 @@ int MCW_widget_visible( Widget w )
    Window ww ;
    XWindowAttributes wa ;
 
-   if( w == (Widget) NULL ) return 0 ;
+   if( w == (Widget)NULL ) return 0 ;
    ww = XtWindow(w) ;
-   if( ww == (Window) NULL ) return 0 ;
+   if( ww == (Window)NULL ) return 0 ;
 
    XGetWindowAttributes( XtDisplay(w) , ww , &wa ) ;
 
@@ -1478,9 +1521,9 @@ int MCW_widget_visible( Widget w )
 
 #include <ctype.h>
 
-char * RWC_getname( Display * display , char * name )
+char * RWC_getname( Display *display , char *name )
 {
-   char * cval , qqq[256] ;
+   char *cval , qqq[256] ;
    int nn , ii ;
 
    if( name == NULL || name[0] == '\0' ) return NULL ;
@@ -1538,7 +1581,9 @@ ENTRY("RWC_visibilize_widget") ;
    RWC_xineramize( XtDisplay(w) , xx,yy,wx,hy , &xx,&yy ); /* 27 Sep 2000 */
 
    if( xx != xo || yy != yo )
-      XtVaSetValues( w , XmNx , xx , XmNy , yy , NULL ) ;
+     XtVaSetValues( w , XmNx , xx , XmNy , yy , NULL ) ;
+
+   RWC_sleep(1) ; MCW_expose_widget(w) ;  /* 09 Nov 2007 */
 
    EXRETURN ;
 }
@@ -1547,7 +1592,7 @@ ENTRY("RWC_visibilize_widget") ;
   A callback version of the above (for use when menus are mapped, say)
 ------------------------------------------------------------------------*/
 
-static void RWC_visibilize_timeout_CB( XtPointer cd , XtIntervalId * id )
+static void RWC_visibilize_timeout_CB( XtPointer cd , XtIntervalId *id )
 {
    Widget w = (Widget) cd ;
 ENTRY("RWC_visibilize_timeout_CB") ;
@@ -1568,7 +1613,7 @@ ENTRY("RWC_visibilize_CB") ;
    /* must wait for the thing to actually appear, dammit */
 
    (void) XtAppAddTimeOut( XtWidgetToApplicationContext(wpar) ,
-                           1 , RWC_visibilize_timeout_CB , wpar ) ;
+                           3 , RWC_visibilize_timeout_CB , wpar ) ;
    EXRETURN ;
 }
 
@@ -1582,7 +1627,7 @@ ENTRY("RWC_visibilize_CB") ;
 
 #define BUF 5  /* buffer around the rectangle */
 
-void RWC_xineramize( Display * dpy,
+void RWC_xineramize( Display *dpy,
                      int xx, int yy, int ww, int hh, int *xn, int *yn )
 {
    static int first=1 ;
@@ -1597,7 +1642,7 @@ ENTRY("RWC_xineramize") ;
                         load boundaries of sub-screens from resource ---*/
 
    if( first ){
-      char * xdef , * xp ;
+      char *xdef , *xp ;
       int nn,xorg,yorg,wide,high ;
 
       first = 0 ;                         /* never again */
@@ -1796,7 +1841,6 @@ void RWC_drag_rectangle( Widget w, int x1, int y1, int *x2, int *y2 )
    XGCValues  gcv;
    GC         myGC ;
 
-
 ENTRY("RWC_drag_rectangle") ;
 
    /** make a GC for invert drawing **/
@@ -1973,6 +2017,7 @@ void RWC_XtPopdown( Widget w )
 ENTRY("RWC_XtPopdown") ;
 
    if( wpar == NULL ) EXRETURN ;
+   RWC_sleep(1) ;
    while( XtIsShell(wpar)==0 && XtParent(wpar)!=NULL ) wpar = XtParent(wpar);
    XtPopdown(wpar) ; RWC_sleep(1) ;
    EXRETURN ;

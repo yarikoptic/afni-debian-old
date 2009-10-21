@@ -1,3 +1,5 @@
+#define NSBUF 128    /* Place here because SUMA needs that baby too */
+
 /* ZSS: New 256-color maps.
    Each new color map is added with 
    a call to PBAR_define_bigmap in pbar.c
@@ -176,7 +178,37 @@ static char ROI_256_CMD[] = {
       "#5c0a08 #e3f92f #49ff00 #3ed78e #872cde "
       "#df5146 "
 };
+
 static char ROI_128_CMD[] = {  
+      "ROI_128 "
+      "#ed2b3e #67a84b #cb7941 #7a2eb0 #39af94 "
+      "#57fa28 #fb7dfd #a46b42 #13e94c #4b70f0 "
+      "#c8cf33 #02e79a #fcae11 #96d7fb #42358b "
+      "#0009fd #ff2bcf #9d9909 #173472 #fe7c31 "
+      "#3780c8 #1041fe #f0d260 #a19349 #45ff8a "
+      "#fd9376 #cf3fcc #c3c866 #059489 #3cfe59 "
+      "#ff0091 #fbb3a1 #c8f104 #d92a70 #86ef42 "
+      "#7b02ea #fde693 #b408b2 #1b52d4 #f687cd "
+      "#8257b9 #88100b #fa03cb #e85783 #045602 "
+      "#7d97fa #8cfe76 #1608a9 #fdff01 #ff56b9 "
+      "#0d359a #b41335 #7b07ab #3dc0c5 #feab3d "
+      "#6fc9af #0afdf9 #b9f760 #4cc50f #c067fe "
+      "#fffb5f #df7e05 #ba00de #3d954b #c636f6 "
+      "#05b7c2 #ac3d02 #0d7e3d #534fb4 #ac7119 "
+      "#ab0a85 #0667a5 #17b80f #494be9 #860b3b "
+      "#85c323 #6ddedd #3d888c #d5956d #378307 "
+      "#390872 #8463ff #24f0c6 #d1b100 #02fc73 "
+      "#90ffa8 #01c6fc #fd1017 #4407f2 #9b4450 "
+      "#03b24b #a0428e #02bf89 #4d96ff #79490c "
+      "#461ab6 #43d344 #b06dc9 #df4e04 #83d16f "
+      "#04f025 #a2fee4 #e80153 #ffa6f8 #96f718 "
+      "#5e83c0 #eb02f9 #bf0005 #cfa736 #0a7fdf "
+      "#f685a0 #000a7a #e12ba0 #046372 #d1eb91 "
+      "#740377 #39d6fc #708e1f #acb0fd #fd52fa "
+      "#01840a #0626d6 #5c0a08 #e3f92f #49ff00 "
+      "#3ed78e #872cde #df5146 "
+};
+static char ROI_128_256_CMD[] = {  
       "ROI_128 "
       "#ed2b3e #ed2b3e #67a84b #67a84b #cb7941 "
       "#cb7941 #7a2eb0 #7a2eb0 #39af94 #39af94 "
@@ -231,7 +263,24 @@ static char ROI_128_CMD[] = {
       "#3ed78e #3ed78e #872cde #872cde #df5146 "
       "#df5146 "
 };
+
 static char ROI_64_CMD[] = {  
+      "ROI_64 "
+      "#c636f6 #05b7c2 #ac3d02 #0d7e3d #534fb4 "
+      "#ac7119 #ab0a85 #0667a5 #17b80f #494be9 "
+      "#860b3b #85c323 #6ddedd #3d888c #d5956d "
+      "#378307 #390872 #8463ff #24f0c6 #d1b100 "
+      "#02fc73 #90ffa8 #01c6fc #fd1017 #4407f2 "
+      "#9b4450 #03b24b #a0428e #02bf89 #4d96ff "
+      "#79490c #461ab6 #43d344 #b06dc9 #df4e04 "
+      "#83d16f #04f025 #a2fee4 #e80153 #ffa6f8 "
+      "#96f718 #5e83c0 #eb02f9 #bf0005 #cfa736 "
+      "#0a7fdf #f685a0 #000a7a #e12ba0 #046372 "
+      "#d1eb91 #740377 #39d6fc #708e1f #acb0fd "
+      "#fd52fa #01840a #0626d6 #5c0a08 #e3f92f "
+      "#49ff00 #3ed78e #872cde #df5146 "
+};
+static char ROI_64_256_CMD[] = {  
       "ROI_64 "
       "#c636f6 #c636f6 #c636f6 #c636f6 #05b7c2 "
       "#05b7c2 #05b7c2 #05b7c2 #ac3d02 #ac3d02 "
@@ -288,6 +337,17 @@ static char ROI_64_CMD[] = {
 };
 
 static char ROI_32_CMD[] = {  
+      "ROI_32 "
+      "#43d344 #b06dc9 #df4e04 #83d16f #04f025 "
+      "#a2fee4 #e80153 #ffa6f8 #96f718 #5e83c0 "
+      "#eb02f9 #bf0005 #cfa736 #0a7fdf #f685a0 "
+      "#000a7a #e12ba0 #046372 #d1eb91 #740377 "
+      "#39d6fc #708e1f #acb0fd #fd52fa #01840a "
+      "#0626d6 #5c0a08 #e3f92f #49ff00 #3ed78e "
+      "#872cde #df5146 "
+};
+
+static char ROI_32_256_CMD[] = {  
       "ROI_32 "
       "#43d344 #43d344 #43d344 #43d344 #43d344 "
       "#43d344 #43d344 #43d344 #b06dc9 #b06dc9 "
@@ -416,5 +476,203 @@ static char CB_CS[] = {
       "#022036 #012131 #00212c #002127 "
       "#002022 #001f1d #001d18 #001b14 "
       "#001810 #01160c #011209 #010f07 "
-      "#010b04 #010702 #000401 #000000 "
+      "#010b04 #010702 #000401 #010101 "
+};  /* changed last index to non-zero - not transparent */
+
+/* regular gray from white to black */
+static char GRAY_CS[] = {
+   "gray_scale "
+   "#ffffff #010101 "
+};
+
+/* mirrored gray for +/- values */
+static char GRAY_CIRCLE_CS[] = {
+   "gray_circle "
+   "#ffffff #010101 #ffffff "
+};
+/* mirrored and inverted gray for +/- values */
+static char GRAY_INV_CIRCLE_CS[] = {
+   "inverted_gray_circle "
+   "#010101 #ffffff #010101 "
+};
+
+/* amber monochrome from bright orange to black */
+static char AMBER_CS[] = {
+   "amber_monochrome "
+   "#ffbf00 #010100 "
+};
+
+/* mirrored amber for +/- values */
+static char AMBER_CIRCLE_CS[] = {
+   "amber_circle "
+   "#ffbf00 #010100 #ffbf00 "
+};
+
+/* mirrored and inverted amber for +/- values */
+static char AMBER_INV_CIRCLE_CS[] = {
+   "inverted_amber_circle "
+   "#010100 #ffbf00 #010100 "
+};
+
+/* mirrored and inverted amber for +/- values */
+static char AMBER_REDTOP_BLUEBOT_CS[] = {
+   "amber_redtop_bluebot "
+" #ff0000 "
+" #febe00 #fdbd00 #fcbd00 #fbbc00 "
+" #fabb00 #f9ba00 #f8ba00 #f7b900 "
+" #f6b800 #f5b700 #f4b700 #f3b600 "
+" #f2b500 #f1b400 #f0b400 #efb300 "
+" #eeb200 #edb100 #ecb100 #ebb000 "
+" #eaaf00 #e9ae00 #e8ae00 #e7ad00 "
+" #e6ac00 #e5ab00 #e4ab00 #e3aa00 "
+" #e2a900 #e1a900 #e0a800 #dfa700 "
+" #dea600 #dda600 #dca500 #dba400 "
+" #daa300 #d9a300 #d8a200 #d7a100 "
+" #d6a000 #d5a000 #d49f00 #d39e00 "
+" #d29d00 #d19d00 #d09c00 #cf9b00 "
+" #ce9a00 #cd9a00 #cc9900 #cb9800 "
+" #ca9700 #c99700 #c89600 #c79500 "
+" #c69400 #c59400 #c49300 #c39200 "
+" #c29200 #c19100 #c09000 #bf8f00 "
+" #bf8f00 #be8e00 #bd8d00 #bc8c00 "
+" #bb8c00 #ba8b00 #b98a00 #b88900 "
+" #b78900 #b68800 #b58700 #b48600 "
+" #b38600 #b28500 #b18400 #b08300 "
+" #af8300 #ae8200 #ad8100 #ac8000 "
+" #ab8000 #aa7f00 #a97e00 #a87e00 "
+" #a77d00 #a67c00 #a57b00 #a47b00 "
+" #a37a00 #a27900 #a17800 #a07800 "
+" #9f7700 #9e7600 #9d7500 #9c7500 "
+" #9b7400 #9a7300 #997200 #987200 "
+" #977100 #967000 #956f00 #946f00 "
+" #936e00 #926d00 #916c00 #906c00 "
+" #8f6b00 #8e6a00 #8d6a00 #8c6900 "
+" #8b6800 #8a6700 #896700 #886600 "
+" #876500 #866400 #856400 #846300 "
+" #836200 #826100 #816100 #806000 "
+" #7f5f00 #7e5e00 #7d5e00 #7c5d00 "
+" #7b5c00 #7a5b00 #795b00 #785a00 "
+" #775900 #765800 #755800 #745700 "
+" #735600 #725500 #715500 #705400 "
+" #6f5300 #6e5300 #6d5200 #6c5100 #6b5000 "
+" #6a5000 #694f00 #684e00 #674d00 #664d00 "
+" #654c00 #644b00 #634a00 #624a00 #614900 "
+" #604800 #5f4700 #5e4700 #5d4600 #5c4500 "
+" #5b4400 #5a4400 #594300 #584200 #574100 "
+" #564100 #554000 #543f00 #533f00 #523e00 "
+" #513d00 #503c00 #4f3c00 #4e3b00 #4d3a00 "
+" #4c3900 #4b3900 #4a3800 #493700 #483600 "
+" #473600 #463500 #453400 #443300 #433300 "
+" #423200 #413100 #403000 #403000 #3f2f00 "
+" #3e2e00 #3d2d00 #3c2d00 #3b2c00 #3a2b00 "
+" #392b00 #382a00 #372900 #362800 #352800 "
+" #342700 #332600 #322500 #312500 #302400 "
+" #2f2300 #2e2200 #2d2200 #2c2100 #2b2000 "
+" #2a1f00 #291f00 #281e00 #271d00 #261c00 "
+" #251c00 #241b00 #231a00 #221900 #211900 "
+" #201800 #1f1700 #1e1600 #1d1600 #1c1500 "
+" #1b1400 #1a1400 #191300 #181200 #171100 "
+" #161100 #151000 #140f00 #130e00 #120e00 "
+" #110d00 #100c00 #0f0b00 #0e0b00 #0d0a00 "
+" #0c0900 #0b0800 #0a0800 #090700 #080600 "
+" #070500 #060500 #050400 #040300 "
+" #0000ff "
+};
+
+/* green monochrome from bright green to black */
+static char GREEN_CS[] = {
+   "green_monochrome "
+   "#00ff00 #000100 "
+};
+
+/* blue monochrome from bright blue to black  - really "azure" */
+static char BLUE_CS[] = {
+   "blue_monochrome "
+   "#007fff #000001 "
+};
+
+/* red monochrome from bright red to black */
+static char RED_CS[] = {
+   "red_monochrome "
+   "#ff0000 #010000 "
+};
+
+/* FreeSurfer colormap from 0 to 255
+Created from FreeSurferColorLUT.txt 
+this way:
+MakeColorMap   -fscolut 0 255 \
+               -ahc FreeSurfer_255 \
+               -flipud > fs_pal.pal
+Open fs_pal.pal, remove the zeroth color 
+   (all 0 #000000 ) from the bottom
+Add _CMD (indicating direct color
+mapping needed )to var name and add 
+  entry in pbar.c
+*/
+static char FREESURFER_SEG_255_CMD[]={
+   "FreeSurfer_Seg_255 "
+   "#8B8B8B #8B8B8B #8B8B8B #8B8B8B "
+   "#8B8B8B #8B8B8B #8B8B8B #8B8B8B "
+   "#8B8B8B #8B8B8B #8B8B8B #8B8B8B "
+   "#8B8B8B #8B8B8B #8B8B8B #8B8B8B "
+   "#8B8B8B #8B8B8B #8B8B8B #8B8B8B "
+   "#8B8B8B #8B8B8B #8B8B8B #8B8B8B "
+   "#8B8B8B #8B8B8B #8B8B8B #8B8B8B "
+   "#8B8B8B #8B8B8B #8B8B8B #8B8B8B "
+   "#8B8B8B #C596FA #C53AFA #CD3F4E "
+   "#00E200 #68FFFF #808080 #FFCC66 "
+   "#8020FF #800000 #791188 #CC99CC "
+   "#80FF80 #20C8FF #C4A080 #008000 "
+   "#8080FF #FF0000 #0000FF #400040 "
+   "#FFFF00 #FF8080 #FFCC99 #003280 "
+   "#806040 #007E4B #80C4A4 #0064FF "
+   "#C4C400 #FFA4A4 #00C4FF #8B8B8B "
+   "#8B8B8B #8B8B8B #8B8B8B #8B8B8B "
+   "#8B8B8B #8B8B8B #8B8B8B #8B8B8B "
+   "#8B8B8B #8B8B8B #8B8B8B #8B8B8B "
+   "#8B8B8B #8B8B8B #8B8B8B #8B8B8B "
+   "#8B8B8B #8B8B8B #8B8B8B #8B8B8B "
+   "#8B8B8B #8B8B8B #8B8B8B #8B8B8B "
+   "#8B8B8B #8B8B8B #8B8B8B #8B8B8B "
+   "#8B8B8B #8B8B8B #8B8B8B #8B8B8B "
+   "#8B8B8B #8B8B8B #8B8B8B #8B8B8B "
+   "#8B8B8B #EE3B3B #8B795E #EEEED1 "
+   "#CDCD00 #FF0000 #E0E0E0 #8B795E "
+   "#4682B5 #4682B4 #EFA0DF #34D1E2 "
+   "#FFFFFE #DDE244 #8B8B8B #8604A0 "
+   "#418714 #418714 #152784 #152784 "
+   "#483D8B #FF0000 #EEAEEE #DD27C8 "
+   "#EE3B3B #9313AD #1E90FF #228B22 "
+   "#1AED39 #85CBE5 #ADFF2F #00008B "
+   "#EE0000 #4AFF4A #C8C8C8 #EEEED1 "
+   "#CDB38B #FF1493 #7C8CB3 #7C90B2 "
+   "#7C8FB2 #7C8EB2 #7C8DB2 #7F8CB2 "
+   "#7E8CB2 #7D8CB2 #7C8CB2 #7C8CB3 "
+   "#7C90B2 #7C8FB2 #7C8EB2 #7C8DB2 "
+   "#7F8CB2 #7E8CB2 #7D8CB2 #7C8CB2 "
+   "#8B8B8B #A020F0 #CD0A7D #CD0A7D "
+   "#8B8B8B #8B8B8B #8B8B8B #8B8B8B "
+   "#8B8B8B #8B8B8B #8B8B8B #8B8B8B "
+   "#8B8B8B #FAFF32 #EAA91E #FFDAB9 "
+   "#FFDAB9 #A46CE2 #A46CE2 #A46CE2 "
+   "#FF940A #FF940A #C846FF #781286 "
+   "#781286 #7A8732 #7A8732 #78BE96 "
+   "#7A8732 #4A9B3C #783E2B #4A9B3C "
+   "#333287 #7A8732 #87324A #643264 "
+   "#00C8DD #A020F0 #87CEEB #A52A2A "
+   "#00FF7F #FFA500 #FFA500 #3C3AD2 "
+   "#50C462 #67FFFF #DCD814 #0D30FF "
+   "#EC0DB0 #7ABADC #00760E #00760E "
+   "#E69422 #DCF8A4 #009400 #C43AFA "
+   "#781286 #CD3E4E #00E100 #CD3E4E "
+   "#7A8732 #4A9B3C #783E2B #4A9B3C "
+   "#333287 #7A8732 #87324A #643264 "
+   "#00C8C8 #A020F0 #87CEEB #A52A2A "
+   "#00FF7F #FFA500 #FFA500 #3C3C3C "
+   "#3C3AD2 #3C3AD2 #3C3AD2 #3C3AD2 "
+   "#50C462 #67FFFF #DCD814 #779FB0 "
+   "#2ACCA4 #CCB68E #0C30FF #EC0DB0 "
+   "#7ABADC #00760E #00760E #E69422 "
+   "#DCF8A4 #009400 #C43AFA #781286 "
+   "#CD3E4E #F5F5F5 #CD3E4E "
 };

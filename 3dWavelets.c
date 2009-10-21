@@ -178,7 +178,7 @@ void display_help_menu()
     "                     for significance of the wavelet signal model.     \n"
     );
   
-  exit(0);
+  PRINT_COMPILE_DATE ; exit(0);
 }
 
 
@@ -862,7 +862,7 @@ void check_for_valid_inputs
 
 
   /*----- Check whether any of the output files already exist -----*/
-  check_output_files (option_data, dset_time);
+  if( THD_deathcon() ) check_output_files (option_data, dset_time);
 
 }
 

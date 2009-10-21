@@ -25,143 +25,147 @@ void Syntax(char *str)
          ) ;
 
    printf(
-    "Usage: 3drefit [options] dataset ...\n"
-    "where the options are\n"
-    "  -orient code    Sets the orientation of the 3D volume(s) in the .BRIK.\n"
-    "                  The code must be 3 letters, one each from the\n"
-    "                  pairs {R,L} {A,P} {I,S}.  The first letter gives\n"
-    "                  the orientation of the x-axis, the second the\n"
-    "                  orientation of the y-axis, the third the z-axis:\n"
-    "                     R = right-to-left         L = left-to-right\n"
-    "                     A = anterior-to-posterior P = posterior-to-anterior\n"
-    "                     I = inferior-to-superior  S = superior-to-inferior\n"
-    "               ** WARNING: when changing the orientation, you must be sure\n"
-    "                  to check the origins as well, to make sure that the volume\n"
-    "                  is positioned correctly in space.\n"
-    "\n"
-    "  -xorigin distx  Puts the center of the edge voxel off at the given\n"
-    "  -yorigin disty  distance, for the given axis (x,y,z); distances in mm.\n"
-    "  -zorigin distz  (x=first axis, y=second axis, z=third axis).\n"
-    "                  Usually, only -zorigin makes sense.  Note that this\n"
-    "                  distance is in the direction given by the corresponding\n"
-    "                  letter in the -orient code.  For example, '-orient RAI'\n"
-    "                  would mean that '-zorigin 30' sets the center of the\n"
-    "                  first slice at 30 mm Inferior.  See the to3d manual\n"
-    "                  for more explanations of axes origins.\n"
-    "               ** SPECIAL CASE: you can use the string 'cen' in place of\n"
-    "                  a distance to force that axis to be re-centered.\n"
-    "\n"
-    "  -xorigin_raw xx Puts the center of the edge voxel at the given COORDINATE\n"
-    "  -yorigin_raw yy rather than the given DISTANCE.  That is, these values\n"
-    "  -zorigin_raw zz directly replace the offsets in the dataset header,\n"
-    "                  without any possible sign changes.\n"
-    "\n"
-    "  -duporigin cset Copies the xorigin, yorigin, and zorigin values from\n"
-    "                  the header of dataset 'cset'.\n"
-    "\n"
-    "  -dxorigin dx    Adds distance 'dx' (or 'dy', or 'dz') to the center\n"
-    "  -dyorigin dy    coordinate of the edge voxel.  Can be used with the\n"
-    "  -dzorigin dz    values input to the 'Nudge xyz' plugin.\n"
-    "               ** WARNING: you can't use these options at the same\n"
-    "                  time you use -orient.\n"
-    "               ** WARNING: consider -shift_tags if dataset has tags\n"
-    "\n"
-    "  -xdel dimx      Makes the size of the voxel the given dimension,\n"
-    "  -ydel dimy      for the given axis (x,y,z); dimensions in mm.\n"
-    "  -zdel dimz   ** WARNING: if you change a voxel dimension, you will\n"
-    "                  probably have to change the origin as well.\n"
-    "  -keepcen        When changing a voxel dimension with -xdel (etc.),\n"
-    "                  also change the corresponding origin to keep the\n"
-    "                  center of the dataset at the same coordinate location.\n"
-    "  -xyzscale fac   Scale the size of the dataset voxels by the factor 'fac'.\n"
-    "                  This is equivalent to using -xdel, -ydel, -zdel together.\n"
-    "                  -keepcen is used on the first input dataset, and then\n"
-    "                  any others will be shifted the same amount, to maintain\n"
-    "                  their alignment with the first one.\n"
-    "               ** WARNING: -xyzscale can't be used with any of the other\n"
-    "                  options that change the dataset grid coordinates!\n"
-    "               ** N.B.: 'fac' must be positive, and using fac=1.0 is stupid.\n"
-    "\n"
-    "  -TR time        Changes the TR time to a new value (see 'to3d -help').\n"
-    "  -notoff         Removes the slice-dependent time-offsets.\n"
-    "  -Torg ttt       Set the time origin of the dataset to value 'ttt'.\n"
-    "                  (Time origins are set to 0 in to3d.)\n"
-    "               ** WARNING: These 3 options apply only to 3D+time datasets.\n"
-    "                   **N.B.: Using '-TR' on a dataset without a time axis\n"
-    "                           will add a time axis to the dataset.\n"
-    "\n"
-    "  -newid          Changes the ID code of this dataset as well.\n"
-    "\n"
-    "  -nowarp         Removes all warping information from dataset.\n"
-    "\n"
-    "  -apar aset      Set the dataset's anatomy parent dataset to 'aset'\n"
-    "               ** N.B.: The anatomy parent is the dataset from which the\n"
-    "                  transformation from +orig to +acpc and +tlrc coordinates\n"
-    "                  is taken.  It is appropriate to use -apar when there is\n"
-    "                  more than 1 anatomical dataset in a directory that has\n"
-    "                  been transformed.  In this way, you can be sure that\n"
-    "                  AFNI will choose the correct transformation.  You would\n"
-    "                  use this option on all the +orig dataset that are\n"
-    "                  aligned with 'aset' (i.e., that were acquired in the\n"
-    "                  same scanning session).\n"
-    "               ** N.B.: Special cases of 'aset'\n"
-    "                   aset = NULL --> remove the anat parent info from the dataset\n"
-    "                   aset = SELF --> set the anat parent to be the dataset itself\n"
-    "\n"
-    "  -wpar wset      Set the warp parent (the +orig version of a +tlrc dset).\n"
-    "                  This option is used by @auto_tlrc. Do not use it unless\n"
-    "                  you know what you're doing. \n"
-    "\n"
-    "  -clear_bstat    Clears the statistics (min and max) stored for each sub-brick\n"
-    "                  in the dataset.  This is useful if you have done something to\n"
-    "                  modify the contents of the .BRIK file associated with this\n"
-    "                  dataset.\n"
-    "  -redo_bstat     Re-computes the statistics for each sub-brick.  Requires\n"
-    "                  reading the .BRIK file, of course.  Also does -clear_bstat\n"
-    "                  before recomputing statistics, so that if the .BRIK read\n"
-    "                  fails for some reason, then you'll be left without stats.\n"
-    "\n"
-    "  -statpar v ...  Changes the statistical parameters stored in this\n"
-    "                  dataset.  See 'to3d -help' for more details.\n"
-    "\n"
-    "  -markers        Adds an empty set of AC-PC markers to the dataset,\n"
-    "                  if it can handle them (is anatomical, is in the +orig\n"
-    "                  view, and isn't 3D+time).\n"
-    "               ** WARNING: this will erase any markers that already exist!\n"
-    "\n"
-    "  -shift_tags     Apply -dxorigin (and y and z) changes to tags.\n"
-    "\n"
-    "  -dxtag dx       Add dx to the coordinates of all tags.\n"
-    "  -dytag dy       Add dy to the coordinates of all tags.\n"
-    "  -dztag dz       Add dz to the coordinates of all tags.\n"
-    "\n"
-    "  -view code      Changes the 'view' to be 'code', where the string 'code'\n"
-    "                  is one of 'orig', 'acpc', or 'tlrc'.\n"
-    "               ** WARNING: The program will also change the .HEAD and .BRIK\n"
-    "                  filenames to match.  If the dataset filenames already\n"
-    "                  exist in the '+code' view, then this option will fail.\n"
-    "                  You will have to rename the dataset files before trying\n"
-    "                  to use '-view'.  If you COPY the files and then use\n"
-    "                  '-view', don't forget to use '-newid' as well!\n"
-    "\n"
-    "  -label2 llll    Set the 'label2' field in a dataset .HEAD file to the\n"
-    "                  string 'llll'.  (Can be used as in AFNI window titlebars.)\n"
-    "\n"
-    "  -denote         Means to remove all possibly-identifying notes from\n"
-    "                  the header.  This includes the History Note, other text\n"
-    "                  Notes, keywords, and labels.\n"
-    "\n"
-    "  -byteorder bbb  Sets the byte order string in the header.\n"
-    "                  Allowable values for 'bbb' are:\n"
-    "                     LSB_FIRST   MSB_FIRST   NATIVE_ORDER\n"
-    "                  Note that this does not change the .BRIK file!\n"
-    "                  This is done by programs 2swap and 4swap.\n"
-    "\n"
-    "  -appkey ll      Appends the string 'll' to the keyword list for the\n"
-    "                  whole dataset.\n"
-    "  -repkey ll      Replaces the keyword list for the dataset with the\n"
-    "                  string 'll'.\n"
-    "  -empkey         Destroys the keyword list for the dataset.\n"
+"Usage: 3drefit [options] dataset ...\n"
+"where the options are\n"
+"  -orient code    Sets the orientation of the 3D volume(s) in the .BRIK.\n"
+"                  The code must be 3 letters, one each from the\n"
+"                  pairs {R,L} {A,P} {I,S}.  The first letter gives\n"
+"                  the orientation of the x-axis, the second the\n"
+"                  orientation of the y-axis, the third the z-axis:\n"
+"                     R = right-to-left         L = left-to-right\n"
+"                     A = anterior-to-posterior P = posterior-to-anterior\n"
+"                     I = inferior-to-superior  S = superior-to-inferior\n"
+"               ** WARNING: when changing the orientation, you must be sure\n"
+"                  to check the origins as well, to make sure that the volume\n"
+"                  is positioned correctly in space.\n"
+"\n"
+"  -xorigin distx  Puts the center of the edge voxel off at the given\n"
+"  -yorigin disty  distance, for the given axis (x,y,z); distances in mm.\n"
+"  -zorigin distz  (x=first axis, y=second axis, z=third axis).\n"
+"                  Usually, only -zorigin makes sense.  Note that this\n"
+"                  distance is in the direction given by the corresponding\n"
+"                  letter in the -orient code.  For example, '-orient RAI'\n"
+"                  would mean that '-zorigin 30' sets the center of the\n"
+"                  first slice at 30 mm Inferior.  See the to3d manual\n"
+"                  for more explanations of axes origins.\n"
+"               ** SPECIAL CASE: you can use the string 'cen' in place of\n"
+"                  a distance to force that axis to be re-centered.\n"
+"\n"
+"  -xorigin_raw xx Puts the center of the edge voxel at the given COORDINATE\n"
+"  -yorigin_raw yy rather than the given DISTANCE.  That is, these values\n"
+"  -zorigin_raw zz directly replace the offsets in the dataset header,\n"
+"                  without any possible sign changes.\n"
+"\n"
+"  -duporigin cset Copies the xorigin, yorigin, and zorigin values from\n"
+"                  the header of dataset 'cset'.\n"
+"\n"
+"  -dxorigin dx    Adds distance 'dx' (or 'dy', or 'dz') to the center\n"
+"  -dyorigin dy    coordinate of the edge voxel.  Can be used with the\n"
+"  -dzorigin dz    values input to the 'Nudge xyz' plugin.\n"
+"               ** WARNING: you can't use these options at the same\n"
+"                  time you use -orient.\n"
+"               ** WARNING: consider -shift_tags if dataset has tags\n"
+"\n"
+"  -xdel dimx      Makes the size of the voxel the given dimension,\n"
+"  -ydel dimy      for the given axis (x,y,z); dimensions in mm.\n"
+"  -zdel dimz   ** WARNING: if you change a voxel dimension, you will\n"
+"                  probably have to change the origin as well.\n"
+"  -keepcen        When changing a voxel dimension with -xdel (etc.),\n"
+"                  also change the corresponding origin to keep the\n"
+"                  center of the dataset at the same coordinate location.\n"
+"  -xyzscale fac   Scale the size of the dataset voxels by the factor 'fac'.\n"
+"                  This is equivalent to using -xdel, -ydel, -zdel together.\n"
+"                  -keepcen is used on the first input dataset, and then\n"
+"                  any others will be shifted the same amount, to maintain\n"
+"                  their alignment with the first one.\n"
+"               ** WARNING: -xyzscale can't be used with any of the other\n"
+"                  options that change the dataset grid coordinates!\n"
+"               ** N.B.: 'fac' must be positive, and using fac=1.0 is stupid.\n"
+"\n"
+"  -TR time        Changes the TR time to a new value (see 'to3d -help').\n"
+"  -notoff         Removes the slice-dependent time-offsets.\n"
+"  -Torg ttt       Set the time origin of the dataset to value 'ttt'.\n"
+"                  (Time origins are set to 0 in to3d.)\n"
+"               ** WARNING: These 3 options apply only to 3D+time datasets.\n"
+"                   **N.B.: Using '-TR' on a dataset without a time axis\n"
+"                           will add a time axis to the dataset.\n"
+"\n"
+"  -newid          Changes the ID code of this dataset as well.\n"
+"\n"
+"  -nowarp         Removes all warping information from dataset.\n"
+"\n"
+"  -apar aset      Set the dataset's anatomy parent dataset to 'aset'\n"
+"               ** N.B.: The anatomy parent is the dataset from which the\n"
+"                  transformation from +orig to +acpc and +tlrc coordinates\n"
+"                  is taken.  It is appropriate to use -apar when there is\n"
+"                  more than 1 anatomical dataset in a directory that has\n"
+"                  been transformed.  In this way, you can be sure that\n"
+"                  AFNI will choose the correct transformation.  You would\n"
+"                  use this option on all the +orig dataset that are\n"
+"                  aligned with 'aset' (i.e., that were acquired in the\n"
+"                  same scanning session).\n"
+"               ** N.B.: Special cases of 'aset'\n"
+"                   aset = NULL --> remove the anat parent info from the dataset\n"
+"                   aset = SELF --> set the anat parent to be the dataset itself\n"
+"\n"
+"  -wpar wset      Set the warp parent (the +orig version of a +tlrc dset).\n"
+"                  This option is used by @auto_tlrc. Do not use it unless\n"
+"                  you know what you're doing. \n"
+"\n"
+"  -clear_bstat    Clears the statistics (min and max) stored for each sub-brick\n"
+"                  in the dataset.  This is useful if you have done something to\n"
+"                  modify the contents of the .BRIK file associated with this\n"
+"                  dataset.\n"
+"  -redo_bstat     Re-computes the statistics for each sub-brick.  Requires\n"
+"                  reading the .BRIK file, of course.  Also does -clear_bstat\n"
+"                  before recomputing statistics, so that if the .BRIK read\n"
+"                  fails for some reason, then you'll be left without stats.\n"
+"\n"
+"  -statpar v ...  Changes the statistical parameters stored in this\n"
+"                  dataset.  See 'to3d -help' for more details.\n"
+"\n"
+"  -markers        Adds an empty set of AC-PC markers to the dataset,\n"
+"                  if it can handle them (is anatomical, is in the +orig\n"
+"                  view, and isn't 3D+time).\n"
+"               ** WARNING: this will erase any markers that already exist!\n"
+"\n"
+"  -shift_tags     Apply -dxorigin (and y and z) changes to tags.\n"
+"\n"
+"  -dxtag dx       Add dx to the coordinates of all tags.\n"
+"  -dytag dy       Add dy to the coordinates of all tags.\n"
+"  -dztag dz       Add dz to the coordinates of all tags.\n"
+"\n"
+"  -view code      Changes the 'view' to be 'code', where the string 'code'\n"
+"                  is one of 'orig', 'acpc', or 'tlrc'.\n"
+"               ** WARNING: The program will also change the .HEAD and .BRIK\n"
+"                  filenames to match.  If the dataset filenames already\n"
+"                  exist in the '+code' view, then this option will fail.\n"
+"                  You will have to rename the dataset files before trying\n"
+"                  to use '-view'.  If you COPY the files and then use\n"
+"                  '-view', don't forget to use '-newid' as well!\n"
+"\n"
+"  -label2 llll    Set the 'label2' field in a dataset .HEAD file to the\n"
+"                  string 'llll'.  (Can be used as in AFNI window titlebars.)\n"
+"\n"
+"  -denote         Means to remove all possibly-identifying notes from\n"
+"                  the header.  This includes the History Note, other text\n"
+"                  Notes, keywords, and labels.\n"
+"\n"
+"  -deoblique      Replace transformation matrix in header with cardinal matrix.\n"
+"                  This option DOES NOT deoblique the volume. To do so\n"
+"                  you should use 3dWarp -deoblique. This option is not \n"
+"                  to be used unless you really know what you're doing.\n\n"
+"  -byteorder bbb  Sets the byte order string in the header.\n"
+"                  Allowable values for 'bbb' are:\n"
+"                     LSB_FIRST   MSB_FIRST   NATIVE_ORDER\n"
+"                  Note that this does not change the .BRIK file!\n"
+"                  This is done by programs 2swap and 4swap.\n"
+"\n"
+"  -appkey ll      Appends the string 'll' to the keyword list for the\n"
+"                  whole dataset.\n"
+"  -repkey ll      Replaces the keyword list for the dataset with the\n"
+"                  string 'll'.\n"
+"  -empkey         Destroys the keyword list for the dataset.\n"
    ) ;
 
    printf(
@@ -236,7 +240,7 @@ void Syntax(char *str)
    if( (ii-FIRST_ANAT_TYPE)%2 == 1 ) printf("\n") ;
 
    printf(           /* 08 Jun 2004 */
-    "-copyaux auxset   Copies the 'auxiliary' data from dataset 'auxset'\n"
+    "  -copyaux auxset Copies the 'auxiliary' data from dataset 'auxset'\n"
     "                  over the auxiliary data for the dataset being\n"
     "                  modified.  Auxiliary data comprises sub-brick labels,\n"
     "                  keywords, and statistics codes.\n"
@@ -268,20 +272,47 @@ void Syntax(char *str)
               FUNC_prefixstr[ii] , FUNC_typestr[ii]+6 , FUNC_label_stat_aux[ii] ) ;
    }
    printf(
+     "\n"
+     "You can also use option '-unSTAT' to remove all statistical encodings\n"
+     "from sub-bricks in the dataset.  This operation would be desirable if\n"
+     "you modified the values in the dataset (e.g., via 3dcalc).\n"
+     " ['-unSTAT' is done BEFORE the '-substatpar' operations, so you can  ]\n"
+     " [combine these options to completely redo the sub-bricks, if needed.]\n"
+     " [Option '-unSTAT' also implies that '-unFDR' will be carried out.   ]\n"
+   ) ;
+
+   printf(
     "\n"
     "The following options allow you to modify VOLREG fields:\n"
     "  -vr_mat val1 ... val12  Use these twelve values for VOLREG_MATVEC_index.\n"
     "  -vr_mat_ind index       Index of VOLREG_MATVEC_index field to be modified.\n"
     "                          Optional, default index is 0.\n"
-    "                          NB: You can only modify one VOLREG_MATVEC_index at a time\n"
+    "NB: You can only modify one VOLREG_MATVEC_index at a time\n"
     "  -vr_center_old x y z    Use these 3 values for VOLREG_CENTER_OLD.\n"
     "  -vr_center_base x y z   Use these 3 values for VOLREG_CENTER_BASE.\n"
     "\n"
    );
 
-   printf("++ Last program update: 08 Jul 2005\n");
+   printf(
+    "\n"
+    "The following options let you modify the FDR curves stored in the header:\n"
+    " -addFDR = For each sub-brick marked with a statistical code, (re)compute\n"
+    "           the FDR curve of z(q) vs. statistic, and store in the dataset header\n"
+    "           * Since 3drefit doesn't have a '-mask' option, you will have to mask\n"
+    "             statistical sub-bricks yourself via 3dcalc (if desired):\n"
+    "              3dcalc -a stat+orig -b mask+orig -expr 'a*step(b)' -prefix statmm\n"
+    "           * '-addFDR' runs as if '-new -pmask' were given to 3dFDR, so that\n"
+    "              stat values == 0 will be ignored in the FDR algorithm.\n"
+    "\n"
+    " -unFDR  = Remove all FDR curves from the header\n"
+    "           [you will want to do this if you have done something to ]\n"
+    "           [modify the values in the dataset statistical sub-bricks]\n"
+    "\n"
+   ) ;
 
-   exit(0) ;
+   printf("++ Last program update: 23 Jan 2008\n");
+
+   PRINT_COMPILE_DATE ; exit(0) ;
 }
 
 #define ASET_NULL 1
@@ -324,7 +355,9 @@ int main( int argc , char * argv[] )
    Boolean write_output ;            /* 20 Jun 2006 [rickr] */
    int keepcen        = 0 ;          /* 17 Jul 2006 [RWCox] */
    float xyzscale     = 0.0f ;       /* 17 Jul 2006 */
-
+   int deoblique  = 0;               /* 20 Jun 2007 [drg] */
+   int do_FDR = 0 ;                  /* 23 Jan 2008 [RWCox] */
+   int do_killSTAT = 0 ;             /* 24 Jan 2008 [RWCox] */
    int   ndone=0 ;                   /* 18 Jul 2006 */
    int   verb =0 ;
 #define VINFO(x) if(verb)ININFO_message(x)
@@ -353,6 +386,9 @@ int main( int argc , char * argv[] )
    int saveatr = 1;
    int atrmod = 0;  /* if no ATR is modified, don't overwrite normal changes */
                                                       /* 28 Jul 2006 [rickr] */
+   THD_dmat33 tmat ;
+   THD_dfvec3 tvec ;
+
 
    /*-------------------------- help me if you can? --------------------------*/
 
@@ -372,6 +408,18 @@ int main( int argc , char * argv[] )
    AFNI_logger("3drefit",argc,argv) ;
 
    while( iarg < argc && argv[iarg][0] == '-' ){
+
+      /*----- -addFDR [23 Jan 2008] -----*/
+
+      if( strcasecmp(argv[iarg],"-addFDR") == 0 ){
+        do_FDR = 1 ;  new_stuff++ ; iarg++ ; continue ;
+      }
+      if( strcasecmp(argv[iarg],"-killFDR") == 0 || strcasecmp(argv[iarg],"-unFDR") == 0 ){
+        do_FDR = -1 ;  new_stuff++ ; iarg++ ; continue ;
+      }
+      if( strcasecmp(argv[iarg],"-killSTAT") == 0 || strcasecmp(argv[iarg],"-unSTAT") == 0 ){
+        do_killSTAT = 1 ; do_FDR = -1 ; new_stuff++ ; iarg++ ; continue ;
+      }
 
       /*----- -atrcopy dd nn [03 Aug 2005] -----*/
 
@@ -398,7 +446,7 @@ int main( int argc , char * argv[] )
         /* atr_print( atr, NULL , NULL, '\0', 1) ;  */
         DSET_delete(qset) ; atrmod = 1;  /* replaced new_stuff   28 Jul 2006 rcr */
 
-       atrcopy_done:
+      atrcopy_done:
         iarg++ ; continue ;
       }
 
@@ -998,6 +1046,15 @@ int main( int argc , char * argv[] )
          iarg++ ; continue ;  /* go to next arg */
       }
 
+      /*----- -deoblique option [20 Jun 2007] -----*/
+
+      if( strcmp(argv[iarg],"-deoblique") == 0 ){
+         deoblique = 1 ;
+         THD_set_oblique_report(0,0); /* turn off obliquity warning */
+         new_stuff++ ; iarg++ ; continue ;  /* go to next arg */
+      }
+
+
       /** anything else must be a -type **/
       /*  try the anatomy prefixes */
 
@@ -1216,15 +1273,15 @@ int main( int argc , char * argv[] )
           op[0] = xop = daxes->xxorg + (daxes->xxdel-dxp)*0.5f*(daxes->nxx-1) ;
           op[1] = yop = daxes->yyorg + (daxes->yydel-dyp)*0.5f*(daxes->nyy-1) ;
           op[2] = zop = daxes->zzorg + (daxes->zzdel-dzp)*0.5f*(daxes->nzz-1) ;
-          oo[0] = daxes->xxorg ; 
-          oo[1] = daxes->yyorg ; 
-          oo[2] = daxes->zzorg ; 
+          oo[0] = daxes->xxorg ;
+          oo[1] = daxes->yyorg ;
+          oo[2] = daxes->zzorg ;
           shift[0] = op[rl-1] - xyzscale * oo[rl-1] ;   /* RL shift */
           shift[1] = op[ap-1] - xyzscale * oo[ap-1] ;   /* AP shift */
           shift[2] = op[is-1] - xyzscale * oo[is-1] ;   /* IS shift */
 
         } else {           /* for later datasets */
-          
+
           xop = xyzscale * daxes->xxorg + shift[daxes->xxorient/2] ;
           yop = xyzscale * daxes->yyorg + shift[daxes->yyorient/2] ;
           zop = xyzscale * daxes->zzorg + shift[daxes->zzorient/2] ;
@@ -1303,6 +1360,16 @@ int main( int argc , char * argv[] )
       if( new_zdel || new_orient )
          daxes->zzdel = (ORIENT_sign[daxes->zzorient] == '+') ? (zdel) : (-zdel) ;
 
+      /*-- deoblique - assume the data is cardinal  6/20/2007 */
+      /* this should be after any other axis, orientation, origin, voxel size changes */
+      if(deoblique) {
+         /* replace transformation matrix with cardinal form */
+	 THD_dicom_card_xform(dset, &tmat, &tvec); 
+	 LOAD_MAT44(dset->daxes->ijk_to_dicom_real, 
+             tmat.mat[0][0], tmat.mat[0][1], tmat.mat[0][2], tvec.xyz[0],
+             tmat.mat[1][0], tmat.mat[1][1], tmat.mat[1][2], tvec.xyz[1],
+             tmat.mat[2][0], tmat.mat[2][1], tmat.mat[2][2], tvec.xyz[2]);
+      }
       /*-- change time axis --*/
 
       if( new_TR ){
@@ -1520,6 +1587,12 @@ int main( int argc , char * argv[] )
         case 3: EDIT_dset_items(dset, ADN_keywords_replace, NULL, ADN_none); break;
       }
 
+      if( do_killSTAT ){   /* 24 Jan 2008 */
+        for( iv=0 ; iv < DSET_NVALS(dset) ; iv++ ){
+          EDIT_BRICK_TO_NOSTAT(dset,iv) ;
+        }
+      }
+
       if( nsubstatpar > 0 ){
         for( ii=0 ; ii < nsubstatpar ; ii++ ){
           iv = substatpar[ii].iv ;
@@ -1539,6 +1612,16 @@ int main( int argc , char * argv[] )
         THD_insert_atr( dset->dblk , atrcopy[ii] ) ;
       }
 
+      /* 23 Jan 2008: the FDR stuff */
+
+      if( do_FDR ){
+        DSET_BRICK_FDRCURVE_ALLKILL(dset) ;
+        if( do_FDR > 0 ){
+          int nf = THD_create_all_fdrcurves(dset) ;
+          ININFO_message("created %d FDR curves in dataset header",nf) ;
+        }
+      }
+
       /* Do we want to force new attributes into output ? ZSS Jun 06*/
       /* (only if -atrcopy or -atrstring)       28 Jul 2006 [rickr] */
       if ( saveatr && atrmod )
@@ -1549,6 +1632,7 @@ int main( int argc , char * argv[] )
 
       if( write_output ) DSET_load(dset) ;    /* 20 Jun 2006 */
 
+      putenv("AFNI_DECONFLICT=OVERWRITE") ;   /* 24 Sep 2007 */
       THD_write_3dim_dataset( NULL,NULL , dset , write_output ) ;
       THD_delete_3dim_dataset( dset , False ) ;
 

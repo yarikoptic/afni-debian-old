@@ -236,10 +236,13 @@ typedef struct {
 
       Boolean    func_visible , force_anat_wod , force_func_wod ,
                  pts_visible , show_voxind ;
+      int        func_visible_count ;
       float      func_threshold , resam_vox ;
       float      func_thresh_top ;              /* 23 Jul 1997 */
       int        func_resam_mode , anat_resam_mode , pts_color ;
       int        thr_resam_mode ;               /* 09 Dec 1997 */
+      int        thr_onoff ;                    /* 28 Jun 2007 */
+      int        thr_sign ;                     /* 08 Aug 2007 */
 
       /* 3/24/95: range data for conversion of pbar
                   values to thresholding values in the data */
@@ -267,6 +270,7 @@ typedef struct {
       int view_setter ;  /* 20 Feb 2003 */
 
       float func_pval ;  /* 06 Feb 2004 */
+      float func_qval ;  /* 23 Jan 2008 */
 
       int stats_anat_ok,     /* 29 Mar 2005: set in AFNI_range_label() */
           stats_func_ok,     /*   to indicate if the sub-brick range  */
@@ -379,6 +383,38 @@ typedef struct {
 /*---*/
 
 typedef struct {
+  Widget wtop, rowcol;      /* containers */
+  Widget top_lab;           /* overall report text */
+  Widget top_menu , histrange_pb , fwhm_pb ;
+  MCW_bbox *histsqrt_bbox ;
+
+  MCW_arrowval *cmode_av ;  /* first row of controls */
+  Widget clust3d_pb, savetable_pb, index_lab, prefix_tf, done_pb ;
+
+  Widget dataset_pb ;       /* second row of controls */
+  MCW_arrowval *from_av, *to_av, *aver_av ;
+
+  Widget dset_lab ;         /* label after second row */
+
+  int nrow, nall, is_open ;
+  Widget *clu_rc ;          /* rows of widgets */
+  Widget *clu_lab ;
+  Widget *clu_jump_pb ;
+  Widget *clu_plot_pb ;
+  Widget *clu_save_pb ;
+  Widget *clu_flsh_pb ;
+  Widget *clu_alph_lab ;
+
+  THD_3dim_dataset *dset ;  /* selected from dataset_pb */
+  int coord_mode ;
+  int receive_on ;
+  float hbot,htop ;
+  float fwhm ;
+} AFNI_clu_widgets ;      /** not yet used **/
+
+/*---*/
+
+typedef struct {
       Widget     frame , rowcol ;
       MCW_bbox * view_bbox ;
 
@@ -460,7 +496,7 @@ typedef struct {
 
 /*---*/
 
-#define THR_PVAL_LABEL_NONE "[N/A]"
+#define THR_PVAL_LABEL_NONE " [N/A] "
 
 #define THR_TOP_EXPON  4         /* 30 Nov 1997 */
 #define THR_FACTOR     0.0001    /* pow(10,-THR_TOP_EXPON) */
@@ -474,48 +510,65 @@ typedef struct {
       Widget thr_rowcol , thr_label , thr_scale , thr_pval_label ;
       MCW_arrowval * thr_top_av ;
 
+      Widget thr_menu ;
+      MCW_bbox *thr_onoff_bbox ;
+      Widget thr_autothresh_pb ;
+      MCW_arrowval *thr_sign_av ;  /* 08 Aug 2007 */
+      Widget thr_fdr_pb ;          /* 29 Jan 2008 */
+
       Widget inten_rowcol , inten_label ;
-      MCW_pbar     * inten_pbar ;
-      MCW_arrowval * inten_av ;
-      MCW_bbox     * inten_bbox ;
+      MCW_pbar     *inten_pbar ;
+      MCW_arrowval *inten_av ;
+      MCW_bbox     *inten_bbox ;
 
       Widget pbar_menu , pbar_equalize_pb , pbar_settop_pb ,
              pbar_readin_pb , pbar_writeout_pb ;
-      MCW_arrowval * pbar_palette_av ;
+      MCW_arrowval *pbar_palette_av ;
       Widget pbar_showtable_pb ;
       Widget pbar_environment_pb ; /* 10 Feb 2004 */
 
       Widget pbar_saveim_pb  ;                  /* 15 Jun 2000 */
-      MCW_arrowval * pbar_transform0D_av ;
-      generic_func * pbar_transform0D_func ;
-      int            pbar_transform0D_index ;
-      MCW_arrowval * pbar_transform2D_av ;
-      generic_func * pbar_transform2D_func ;
-      int            pbar_transform2D_index ;
+      MCW_arrowval *pbar_transform0D_av ;
+      generic_func *pbar_transform0D_func ;
+      int           pbar_transform0D_index ;
+      MCW_arrowval *pbar_transform2D_av ;
+      generic_func *pbar_transform2D_func ;
+      int           pbar_transform2D_index ;
 
       Widget options_rowcol , options_label ;
       Widget ulaclu_rowcol ;
-      MCW_bbox     * underlay_bbox ;
-      Widget clu_rowcol , clu_clear_pb , clu_cluster_pb ;  /* 05 Sep 2006 */
+      MCW_bbox     *underlay_bbox ;
+      Widget clu_rowcol, clu_clear_pb, clu_cluster_pb, clu_report_pb ;  /* 05 Sep 2006 */
 
       Widget         buck_frame , buck_rowcol ;
-      MCW_arrowval * anat_buck_av , * fim_buck_av , * thr_buck_av ;  /* 30 Nov 1997 */
+      MCW_arrowval * anat_buck_av , *fim_buck_av , *thr_buck_av ;  /* 30 Nov 1997 */
 
       Widget range_frame , range_rowcol , range_label ;
-      MCW_bbox     * range_bbox ;
-      MCW_arrowval * range_av ;
+      MCW_bbox     *range_bbox ;
+      MCW_arrowval *range_av ;
 
 #ifdef USE_FUNC_FIM
       Widget fim_frame , fim_rowcol , fim_dset_label , fim_mbar ;
-      FIM_menu * fim_menu ;
+      FIM_menu *fim_menu ;
 #endif
 
       Widget bkgd_lab ;
 
-      MCW_arrowval * range_rotate_av ;  /* 30 Mar 2001 */
+      MCW_arrowval *range_rotate_av ;  /* 30 Mar 2001 */
 
-      MCW_bbox * see_ttatlas_bbox ;     /* 25 Jul 2001 */
+      MCW_bbox *see_ttatlas_bbox ;     /* 25 Jul 2001 */
+
+      AFNI_clu_widgets   *cwid ;       /* 18 Dec 2007 */
+      char               *clu_rep ;
+      MCW_cluster_array  *clu_list;
+      int                 clu_index;
+      int                 clu_num ;
+      mri_cluster_detail *clu_det ;
 } AFNI_function_widgets ;
+
+extern void AFNI_func_autothresh_CB(Widget,XtPointer,XtPointer) ; /* 25 Jul 2007 */
+extern void AFNI_func_thrsign_CB( MCW_arrowval * , XtPointer ) ;  /* 08 Aug 2007 */
+extern void AFNI_func_fdr_CB    (Widget,XtPointer,XtPointer) ;    /* 29 Jan 2008 */
 
 #define PBAR_MODEBUT  0
 #define PBAR_MODEPOS  (1 << PBAR_MODEBUT)
@@ -646,6 +699,7 @@ typedef struct {
    Widget hidden_browser_pb ;  /* 22 Apr 2005 */
    Widget hidden_broutim_pb ;  /* 06 Jun 2005 */
    Widget hidden_broutext_pb;  /* 21 Dec 2005 */
+   Widget hidden_splashes_pb;  /* 12 Sep 2007 */
 
 #endif  /* USE_HIDDEN */
 
@@ -702,20 +756,14 @@ typedef struct {
 
 /** picture controls **/
 
-#define PICTURE_ON(im)                                                      \
-   do{ if( (im)->type == AFNI_3DDATA_VIEW )                                 \
-        XtVaSetValues((im)->vwid->picture,XmNlabelPixmap,logo_pixmap,NULL); \
-   } while(0)
-
-#define PICTURE_OFF(im)                                                               \
-   do{ if( (im)->type == AFNI_3DDATA_VIEW )                                           \
-        XtVaSetValues((im)->vwid->picture,XmNlabelPixmap,XmUNSPECIFIED_PIXMAP,NULL ); \
-   } while(0)
-
 #define PICTURE_SET(im,px)                                            \
    do{ if( (im)->type == AFNI_3DDATA_VIEW )                           \
         XtVaSetValues((im)->vwid->picture,XmNlabelPixmap,(px),NULL ); \
    } while(0)
+
+#define PICTURE_ON(im)   PICTURE_SET(im,logo_pixmap)
+#define PICTURE_DEAD(im) PICTURE_SET(im,XmUNSPECIFIED_PIXMAP)
+#define PICTURE_OFF(im)  PICTURE_SET(im,pict_pixmap[AFNI_controller_index(im)%NPICT])
 
 /*-----------------------------*/
 /*----- Data for FIM-age ------*/
@@ -822,30 +870,30 @@ typedef struct {
 
 typedef struct {
       int type , opened ;
-      MCW_DC * dc ;
+      MCW_DC *dc ;
 
-      THD_session      * ss_now ;   /* session now being viewed */
-      THD_3dim_dataset * anat_dset[LAST_VIEW_TYPE+1] ,   /* datasets now */
-                       * fim_dset [LAST_VIEW_TYPE+1]  ;  /* being viewed */
-      THD_3dim_dataset * anat_now , * fim_now ;  /* REALLY now being viewed */
+      THD_session      *ss_now ;   /* session now being viewed */
+      THD_3dim_dataset *anat_dset[LAST_VIEW_TYPE+1] ,   /* datasets now */
+                       *fim_dset [LAST_VIEW_TYPE+1]  ;  /* being viewed */
+      THD_3dim_dataset *anat_now , *fim_now ;  /* REALLY now being viewed */
 
-      AFNI_view_info   * vinfo ;  /* information about what's being viewed */
+      AFNI_view_info   *vinfo ;  /* information about what's being viewed */
 
-      AFNI_fimmer_type * fimdata ; /* information about fimming */
+      AFNI_fimmer_type *fimdata ; /* information about fimming */
 
-      FD_brick  * b123_anat , * b231_anat , * b312_anat ; /* anat */
-      FD_brick  * b123_fim  , * b231_fim  , * b312_fim  ; /* funcs */
-      FD_brick  * b123_ulay , * b231_ulay , * b312_ulay ; /* underlays */
+      FD_brick  *b123_anat , *b231_anat , *b312_anat ; /* anat */
+      FD_brick  *b123_fim  , *b231_fim  , *b312_fim  ; /* funcs */
+      FD_brick  *b123_ulay , *b231_ulay , *b312_ulay ; /* underlays */
 
-      MCW_imseq   * s123    , * s231      , * s312 ;      /* viewers */
-      MCW_grapher * g123    , * g231      , * g312 ;      /* graphs */
+      MCW_imseq   *s123    , *s231      , *s312 ;      /* viewers */
+      MCW_grapher *g123    , *g231      , *g312 ;      /* graphs */
 
-      AFNI_widget_set  * vwid ;
+      AFNI_widget_set  *vwid ;
       char window_title[THD_MAX_NAME] ;
       int ignore_seq_callbacks ;
 
-      THD_dataxes * wod_daxes ;                 /* 02 Nov 1996 */
-      THD_warp * anat_voxwarp , * fim_voxwarp ;
+      THD_dataxes *wod_daxes ;                 /* 02 Nov 1996 */
+      THD_warp *anat_voxwarp , *fim_voxwarp ;
       int anat_wod_flag , fim_wod_flag ;
 
       KILL_list kl ;
@@ -853,12 +901,13 @@ typedef struct {
 
       int brand_new ;                           /* 07 Dec 2001 */
 
-      THD_warp * fim_selfwarp ;                 /* 27 Aug 2002 */
+      THD_warp *fim_selfwarp ;                 /* 27 Aug 2002 */
 
       int dummied ;                             /* 27 Jan 2004 */
 
       VEDIT_settings vedset ;                   /* 05 Sep 2006 */
-      char * vedlabel ;                         /* 27 Mar 2007 */
+      char *vedlabel ;                          /* 27 Mar 2007 */
+      int   vedskip ;
 } Three_D_View ;
 
 /*! Is any image viewer window open? */
@@ -919,6 +968,7 @@ extern char * AFNI_make_update_script (void) ;   /* 20 Nov 2003 */
 
 extern char * AFNI_get_friend(void) ;      /* 26 Feb 2001 */
 extern char * AFNI_get_date_trivia(void) ; /* 25 Nov 2002 */
+extern int AFNI_get_todays_trivia( char *** ) ; /* 27 Nov 2007 */
 
 #define OPEN_CONTROLLER(iq)                                  \
  do{ XtRealizeWidget((iq)->vwid->top_shell) ;                \
@@ -926,8 +976,10 @@ extern char * AFNI_get_date_trivia(void) ; /* 25 Nov 2002 */
      AFNI_startup_3dview(iq); (iq)->opened = 1;              \
  } while(0)
 
-#define CLOSE_CONTROLLER(iq) \
- ( AFNI_closedown_3dview(iq), XtUnrealizeWidget((iq)->vwid->top_shell), (iq)->opened = 0 )
+#define CLOSE_CONTROLLER(iq) ( AFNI_closedown_3dview(iq),                \
+                               XtUnrealizeWidget((iq)->vwid->top_shell), \
+                               AFNI_clus_popdown(iq) ,                   \
+                               (iq)->opened = 0 )
 
 #define PARENTIZE(ds,par) \
    if( ISVALID_3DIM_DATASET((ds)) ) (ds)->parent = (XtPointer) (par)
@@ -1097,6 +1149,7 @@ extern void AFNI_splashup   (void) ;  /* 02 Aug 1999 */
 extern void AFNI_splashdown (void) ;
 extern void AFNI_splashraise(void) ;  /* 25 Sep 2000 */
 extern void AFNI_faceup     (void) ;  /* 17 Dec 2004 */
+extern void AFNI_allsplash  (void) ;  /* 12 Sep 2007 */
 extern int  AFNI_splash_isopen(void); /* 10 Nov 2005 */
 extern void AFNI_broutim_CB (Widget,XtPointer,XtPointer) ; /* 06 Jun 2005 */
 extern void AFNI_broutext_CB(Widget,XtPointer,XtPointer) ; /* 21 Dec 2005 */
@@ -1162,7 +1215,10 @@ extern void AFNI_view_xyz_CB         ( Widget , XtPointer , XtPointer ) ;
 extern void AFNI_marktog_CB          ( Widget , XtPointer , XtPointer ) ;
 extern void AFNI_marks_action_CB     ( Widget , XtPointer , XtPointer ) ;
 
-extern void AFNI_viewbut_EV          ( Widget, XtPointer, XEvent *, Boolean * ) ;
+extern void AFNI_viewbut_EV( Widget, XtPointer, XEvent *, Boolean * ) ;
+extern void AFNI_cluster_EV( Widget, XtPointer, XEvent *, Boolean * ) ;
+extern void AFNI_clus_update_widgets( Three_D_View *im3d ) ;
+extern void AFNI_clus_popdown( Three_D_View *im3d ) ;
 
 #define AFNI_SEE_FUNC_ON(iq) ( MCW_set_bbox( (iq)->vwid->view->see_func_bbox, 1 ), \
                                AFNI_see_func_CB( NULL , (XtPointer)(iq) , NULL )  )
@@ -1188,6 +1244,12 @@ extern void AFNI_viewbut_EV          ( Widget, XtPointer, XEvent *, Boolean * ) 
          (iq)->vinfo->view_type = (vv) ;                           \
        } } while(0) ;
 
+typedef struct {
+  int ndset ;
+  THD_3dim_dataset **dset ;
+  void (*cb)(Widget , XtPointer , MCW_choose_cbs *) ;
+} AFNI_dataset_choose_stuff ;
+
 extern void AFNI_switchview_CB        ( Widget , XtPointer , XtPointer ) ;
 extern void AFNI_see_marks_CB         ( Widget , XtPointer , XtPointer ) ;
 extern void AFNI_see_func_CB          ( Widget , XtPointer , XtPointer ) ;
@@ -1211,6 +1273,7 @@ extern int  AFNI_jumpto_ijk          ( Three_D_View * , int, int, int  ) ;
 extern void AFNI_jumpto_ijk_CB       ( Widget , XtPointer , MCW_choose_cbs * ) ;
 extern void AFNI_sumato_CB           ( Widget , XtPointer , MCW_choose_cbs * ) ;
 extern void AFNI_mnito_CB            ( Widget , XtPointer , MCW_choose_cbs * ) ;
+extern void AFNI_check_obliquity     ( Widget , THD_3dim_dataset * ) ;
 
 extern void AFNI_crosshair_pop_CB    ( Widget , XtPointer , XtPointer ) ; /* 12 Mar 2004 */
 extern void AFNI_crosshair_EV        ( Widget , XtPointer , XEvent * , Boolean * ) ;
@@ -1417,7 +1480,7 @@ extern void AFNI_force_adoption  ( THD_session * , Boolean ) ;
 
 extern MRI_IMAGE * AFNI_func_overlay( int , FD_brick * ) ;
 
-extern MRI_IMAGE * AFNI_newfunc_overlay( MRI_IMAGE *, float ,  /* 30 Jan 2003 */
+extern MRI_IMAGE * AFNI_newfunc_overlay( MRI_IMAGE *, float,float ,  /* 30 Jan 2003 */
                                          MRI_IMAGE *,
                                          float,float, rgbyte * ) ;
 
@@ -1611,6 +1674,7 @@ extern void AFNI_set_thr_index ( Three_D_View * , int ) ; /* 30 Nov 2005 */
 extern void AFNI_set_anat_index( Three_D_View * , int ) ;
 extern void AFNI_set_fim_index ( Three_D_View * , int ) ;
 
+extern void AFNI_driver_register( char * , int (*)(char *) ) ;
 
 /*-------------------------------------------------------*/
 /*--------------  registration of functions -------------*/
@@ -1633,6 +1697,8 @@ extern float min_proj ( int, float * ) ;
 extern float mean_proj( int, float * ) ;
 
 extern float extreme_proj( int, float * ) ;  /* 02 Feb 2002 */
+extern float osfilt_proj ( int, float * ) ;  /* 07 Dec 2007 */
+extern float mad_proj    ( int, float * ) ;  /* 07 Dec 2007 */
 
 /* sample 2D transform functions */
 

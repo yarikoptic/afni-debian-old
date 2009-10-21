@@ -1065,6 +1065,28 @@ ENTRY("mri_read_file") ;
 
       newar = mri_read_3A( new_fname ) ;   /* from a 3A: file */
 
+   /*-- from a dataset? [10 Dec 2007] --*/
+
+   } else if( strstr(fname,".HEAD") != NULL || strstr(fname,".nii") != NULL ){
+
+     THD_3dim_dataset *dset = THD_open_dataset(fname) ;
+     if( dset != NULL ){
+       int ii,jj ; MRI_IMAGE *qim ; void *qar ; MRI_IMARR *qimar ;
+       DSET_load(dset) ; INIT_IMARR(newar) ;
+       for( ii=0 ; ii < DSET_NVALS(dset) ; ii++ ){
+         qim = DSET_BRICK(dset,ii) ; qar = mri_data_pointer(qim) ;
+         if( qim != NULL && qar != NULL ){
+           qimar = mri_to_imarr( qim ) ;
+           if( qimar != NULL ){
+             for( jj=0 ; jj < IMARR_COUNT(qimar) ; jj++ )
+               ADDTO_IMARR(newar,IMARR_SUBIM(qimar,jj)) ;
+             FREE_IMARR(qimar) ;
+           }
+         }
+       }
+       DSET_delete(dset) ; RETURN(newar) ;
+     }
+
    } else if( check_dicom_magic_num( new_fname ) ) { /* 10 Aug 2004 */
 
      newar = mri_read_dicom( new_fname );  tried_dicom=2 ;
@@ -1399,9 +1421,9 @@ ENTRY("mri_read_many_files") ;
 
     \param nf = Number of file names
     \param fn = Array of file name strings
-    \param nx = number of pixels  
+    \param nx = number of pixels
     \param ny   in x and y directions
-               if nx is negative, then nx and ny are set 
+               if nx is negative, then nx and ny are set
                to be the dimensions of the very first image
                read.
     \return An array of 2D images (NULL if nothing was found)
@@ -1413,9 +1435,9 @@ MRI_IMARR * mri_read_resamp_many_files( int nf, char * fn[] , int nxnew, int nyn
    MRI_IMARR * newar , * outar ;
    int kf , ii, nxi, nyi ;
    MRI_IMAGE * bim, *qim, *imin;
-   
+
    ENTRY("mri_read_resamp_many_files") ;
-   
+
    if( nf <= 0 ) RETURN( NULL );  /* no inputs! */
    INIT_IMARR(outar) ;          /* initialize output array */
 
@@ -1432,7 +1454,7 @@ MRI_IMARR * mri_read_resamp_many_files( int nf, char * fn[] , int nxnew, int nyn
          nxnew = newar->imarr[0]->nx;
          nynew = newar->imarr[0]->ny;
       }
-      
+
       for( ii=0 ; ii < newar->num ; ii++ )  {/* move images to output array */
          imin = newar->imarr[ii];
          nxi = imin->nx;
@@ -1440,7 +1462,7 @@ MRI_IMARR * mri_read_resamp_many_files( int nf, char * fn[] , int nxnew, int nyn
          if (nxi != nxnew || nyi != nynew) { /* resampling needed (adapted from galler.c)*/
             float fx , fy ;
             fx = nxnew / (float)nxi ; fy = nynew / (float)nyi ;
-            fx = MIN(fx,fy) ; 
+            fx = MIN(fx,fy) ;
             /* fprintf(stderr,"Resizing from %dx%d to %dx%d.\n fx = %.3f\n", nxi, nyi, nxnew, nynew, fx); */
             if( fx < 0.95f ){
                float sigma = 0.3456789f/fx ;
@@ -1463,7 +1485,7 @@ MRI_IMARR * mri_read_resamp_many_files( int nf, char * fn[] , int nxnew, int nyn
 
       FREE_IMARR(newar) ;  /* don't need this no more */
    }
-   
+
    RETURN( outar );
 }
 
@@ -1985,7 +2007,7 @@ static char * my_fgets( char *buf , int size , FILE *fts )
 }
 
 /*--------------------------------------------------------------*/
-static float lbfill = 0.0 ;  /* 10 Aug 2004 */
+static float lbfill = 0.0f ;  /* 10 Aug 2004 */
 
 /*--------------------------------------------------------------*/
 /*! Decode a line buffer into an array of floats.               */
@@ -1993,8 +2015,10 @@ static float lbfill = 0.0 ;  /* 10 Aug 2004 */
 static floatvec * decode_linebuf( char *buf )  /* 20 Jul 2004 */
 {
    floatvec *fv=NULL ;
-   int blen, bpos, ncol, ii, count ;
-   char sep, vbuf[64] , *cpt ;
+   int blen, bpos, ncol, ii, jj, temppos, count;
+   int alloc_chunk, alloc_unit = 10000, incr;
+   int n_alloced = 0, slowmo = 0 ; /* ZSS speedups */
+   char sep, vbuf[64] , *cpt, *ope=NULL;
    float val ;
 
    if( buf == NULL || *buf == '\0' ) return fv ;
@@ -2003,47 +2027,81 @@ static floatvec * decode_linebuf( char *buf )  /* 20 Jul 2004 */
    ncol = 0 ;
 
    /* convert commas (or 'i' for complex numbers ZSS Oct 06) to blanks */
+   /* note 'e' is commonly found in numeric files as in scientific notation*/
+   for( ii=0 ; ii < blen ; ii++ ) {
+         temppos = ii; incr = 0;
+         if(isalpha(buf[ii])){
+            /* skip past alphabetics in a row*/
+            jj = ii;
+            for( ; jj < blen && isalpha(buf[jj]) ; jj++ ) ; 
+            incr = jj - ii - 1; /* only move if more than 1 char long */
+            if(incr) ii = jj;
+        }
 
-   for( ii=0 ; ii < blen ; ii++ ) if( buf[ii] == ',' || buf[ii] == 'i') buf[ii] = ' ' ;
-   
+      /* convert some alphabetic characters to space (:,i)
+         if they are not followed by other alphabetics */
+         if((incr<=0) &&( buf[temppos] == ',' || buf[temppos] == 'i') ||
+            buf[temppos] == ':' )
+             buf[temppos] = ' ' ;
+         /* turn on "slow mo" reading if non-numeric */
+         if( !slowmo &&
+           (buf[temppos] == '*' || buf[temppos] == '@' || 
+            isalpha(buf[temppos])) ) slowmo = 1;
+   }
+
    fv = (floatvec *)malloc(sizeof(floatvec)) ;
    fv->nar = 0 ;
    fv->ar  = (float *)NULL ;
 
    for( bpos=0 ; bpos < blen ; ){
      /* skip to next nonblank character */
-
-     for( ; bpos < blen && (isspace(buf[bpos])||buf[bpos]==','||buf[bpos]=='i') ; bpos++ ) ; /* nada */
+     for( ; bpos < blen && isspace(buf[bpos]) ; bpos++ ) ; /* nada */
      if( bpos == blen ) break ;    /* end of line */
 
-     sscanf( buf+bpos , "%63s" , vbuf ) ;
 
      val = 0.0 ; count = 1 ;
-     if( vbuf[0] == '*' ){    /* 10 Aug 2004 */
-       val = lbfill ;
-     } else if( (cpt=strchr(vbuf,'@')) != NULL ){
-       sscanf( vbuf , "%d%c%f" , &count , &sep , &val ) ;
-       if( count < 1 ) count = 1 ;
-       if( *(cpt+1) == '*' ) val = lbfill ;  /* 10 Aug 2004 */
-     } else {
-       sscanf( vbuf , "%f" , &val ) ;
+     if (slowmo) {   /* trickery */
+        sscanf( buf+bpos , "%63s" , vbuf ) ;
+        if( vbuf[0] == '*' || isalpha(vbuf[0]) ){    /* 10 Aug 2004 */
+          val = lbfill ;
+        } else if( (cpt=strchr(vbuf,'@')) != NULL ){
+          sscanf( vbuf , "%d%c%f" , &count , &sep , &val ) ;
+          if( count < 1 ) count = 1 ;
+          if( *(cpt+1) == '*' ) val = lbfill ;  /* 10 Aug 2004 */
+        } else {
+          sscanf( vbuf , "%f" , &val ) ;
+        }
+        incr = strlen(vbuf) ;
+     } else {     /* no muss no fuss, take it straight */
+        /* sscanf( vbuf , "%f" , &val ) ; slow, slow, tan go close*/
+        val = strtod(buf+bpos, &ope);
+        incr = ope - (buf+bpos);
      }
-
-     fv->ar = (float *)realloc( (void *)fv->ar , sizeof(float)*(fv->nar+count) ) ;
+     if( incr <= 0 ) break ; /* 16 Oct 2007 */
+     if (fv->nar+count > n_alloced) {
+      /* fprintf(stderr,"reallocing past %d with count %d...\n", n_alloced, count); */
+      if (count > alloc_unit) alloc_chunk = count;
+      else alloc_chunk = alloc_unit;
+      fv->ar = (float *)realloc( (void *)fv->ar , sizeof(float)*(n_alloced+alloc_chunk) );
+      n_alloced = n_alloced + alloc_chunk;
+     }
      for( ii=0 ; ii < count ; ii++ ) fv->ar[ii+fv->nar] = val ;
      fv->nar += count ;
-     bpos += strlen(vbuf) ;
+     bpos += incr ;
    }
 
    if( fv->nar == 0 ){ KILL_floatvec(fv); fv = NULL; }
+   else { if (fv->nar < n_alloced) fv->ar = (float *)realloc( (void *)fv->ar , sizeof(float)*(fv->nar) ); }
    return fv ;
 }
 
 static doublevec * decode_double_linebuf( char *buf )  /* 20 Jul 2004 */
 {
    doublevec *dv=NULL ;
-   int blen, bpos, ncol, ii, count ;
-   char sep, vbuf[64] , *cpt ;
+   int blen, bpos, ncol, ii, jj, temppos, count ;
+   int alloc_chunk, alloc_unit = 10000, incr;
+   int n_alloced = 0, slowmo = 0 ; /* ZSS speedups */
+   char sep, vbuf[64] , *cpt , *ope=NULL;
    double val ;
 
    if( buf == NULL || *buf == '\0' ) return dv ;
@@ -2052,8 +2110,27 @@ static doublevec * decode_double_linebuf( char *buf )  /* 20 Jul 2004 */
    ncol = 0 ;
 
    /* convert commas (or 'i' for complex numbers ZSS Oct 06) to blanks */
+   /* note 'e' is commonly found in numeric files as in scientific notation*/
+   for( ii=0 ; ii < blen ; ii++ ) {
+         temppos = ii; incr = 0;
+         if(isalpha(buf[ii])){
+            /* skip past alphabetics in a row*/
+            jj = ii;
+            for( ; jj < blen && isalpha(buf[jj]) ; jj++ ) ; 
+            incr = jj - ii - 1; /* only move if more than 1 char long */
+            if(incr) ii = jj;
+        }
 
-   for( ii=0 ; ii < blen ; ii++ ) if( buf[ii] == ',' || buf[ii] == 'i') buf[ii] = ' ' ;
+      /* convert some alphabetic characters to space (:,i)
+         if they are not followed by other alphabetics */
+         if((incr<=0) &&( buf[temppos] == ',' || buf[temppos] == 'i') ||
+            buf[temppos] == ':' )
+             buf[temppos] = ' ' ;
+         /* turn on "slow mo" reading if non-numeric */
+         if( !slowmo &&
+           (buf[temppos] == '*' || buf[temppos] == '@' || 
+            isalpha(buf[temppos])) ) slowmo = 1;
+   }
 
    dv = (doublevec *)malloc(sizeof(doublevec)) ;
    dv->nar = 0 ;
@@ -2062,29 +2139,43 @@ static doublevec * decode_double_linebuf( char *buf )  /* 20 Jul 2004 */
    for( bpos=0 ; bpos < blen ; ){
      /* skip to next nonblank character */
 
-     for( ; bpos < blen && (isspace(buf[bpos])||buf[bpos]==','||buf[bpos]=='i') ; bpos++ ) ; /* nada */
+     for( ; bpos < blen && isspace(buf[bpos]) ; bpos++ ) ; /* nada */
      if( bpos == blen ) break ;    /* end of line */
 
-     sscanf( buf+bpos , "%63s" , vbuf ) ;
 
      val = 0.0 ; count = 1 ;
-     if( vbuf[0] == '*' ){    /* 10 Aug 2004 */
-       val = (double)lbfill ;
-     } else if( (cpt=strchr(vbuf,'@')) != NULL ){
-       sscanf( vbuf , "%d%c%lf" , &count , &sep , &val ) ;
-       if( count < 1 ) count = 1 ;
-       if( *(cpt+1) == '*' ) val = (double)lbfill ;  /* 10 Aug 2004 */
-     } else {
-       sscanf( vbuf , "%lf" , &val ) ;
+     if (slowmo) {   /* trickery */
+        sscanf( buf+bpos , "%63s" , vbuf ) ;
+        if( vbuf[0] == '*' ){    /* 10 Aug 2004 */
+          val = (double)lbfill ;
+        } else if( (cpt=strchr(vbuf,'@')) != NULL ){
+          sscanf( vbuf , "%d%c%lf" , &count , &sep , &val ) ;
+          if( count < 1 ) count = 1 ;
+          if( *(cpt+1) == '*' ) val = (double)lbfill ;  /* 10 Aug 2004 */
+        } else {
+          sscanf( vbuf , "%lf" , &val ) ;
+        }
+        incr = strlen(vbuf) ;
+     } else {     /* no muss no fuss, take it straight */
+        /* sscanf( vbuf , "%f" , &val ) ; slow, slow, tan go close*/
+        val = strtod(buf+bpos, &ope);
+        incr = ope - (buf+bpos);
+     }
+     if (dv->nar+count > n_alloced) {
+      /* fprintf(stderr,"reallocing past %d with count %d...\n", n_alloced, count); */
+      if (count > alloc_unit) alloc_chunk = count;
+      else alloc_chunk = alloc_unit;
+      dv->ar = (double *)realloc( (void *)dv->ar , sizeof(double)*(n_alloced+alloc_chunk) );
+      n_alloced = n_alloced + alloc_chunk;
      }
 
-     dv->ar = (double *)realloc( (void *)dv->ar , sizeof(double)*(dv->nar+count) ) ;
      for( ii=0 ; ii < count ; ii++ ) dv->ar[ii+dv->nar] = val ;
      dv->nar += count ;
-     bpos += strlen(vbuf) ;
+     bpos += incr ;
    }
 
    if( dv->nar == 0 ){ KILL_doublevec(dv); dv = NULL; }
+   else { if (dv->nar < n_alloced) dv->ar = (double *)realloc( (void *)dv->ar , sizeof(double)*(dv->nar) ); }
    return dv ;
 }
 
@@ -2114,14 +2205,14 @@ static doublevec * decode_double_linebuf( char *buf )  /* 20 Jul 2004 */
   20 Jun 2002: modified to use my_fgets() instead of fgets().
 */
 
-MRI_IMAGE * mri_read_ascii( char * fname )
+MRI_IMAGE * mri_read_ascii( char *fname )
 {
-   MRI_IMAGE * outim ;
+   MRI_IMAGE *outim ;
    int ii,jj,val , used_tsar , alloc_tsar ;
-   float * tsar ;
+   float *tsar ;
    float ftemp ;
-   FILE * fts ;
-   char * ptr ;
+   FILE *fts ;
+   char *ptr ;
    int  ncol , bpos , blen , nrow ;
    static char *buf=NULL ;            /* 20 Jun 2002: make a ptr */
 
@@ -2131,6 +2222,8 @@ MRI_IMAGE * mri_read_ascii( char * fname )
 ENTRY("mri_read_ascii") ;
 
    if( fname == NULL || fname[0] == '\0' ) RETURN(NULL) ;
+
+STATUS(fname) ;  /* 16 Oct 2007 */
 
    if( strncmp(fname,"1D:",3) == 0 ){         /* 28 Apr 2003 */
      MRI_IMAGE *qim = mri_1D_fromstring( fname+3 ) ;
@@ -2235,7 +2328,7 @@ ENTRY("mri_read_double_ascii") ;
    if( fname == NULL || fname[0] == '\0' ) RETURN(NULL) ;
 
    if( strncmp(fname,"1D:",3) == 0 ){         /* 28 Apr 2003 */
-     /* 
+     /*
      MRI_IMAGE *qim = mri_1D_double_fromstring( fname+3 ) ;
      if( qim != NULL ){
        outim = mri_transpose(qim); mri_free(qim); RETURN(outim);
@@ -2373,6 +2466,7 @@ ENTRY("mri_read_complex_ascii") ;
                      "\n    That is a must for complex 1D files.\n");
       RETURN(NULL);
    }
+   /* fprintf(stderr,"Have ncol = %d\n", ncol);*/
    /** At this point, ncol is the number of floats to be read from each line **/
 
    rewind( fts ) ;  /* will start over */
@@ -2382,7 +2476,7 @@ ENTRY("mri_read_complex_ascii") ;
    alloc_tsar = incts ;
    tsar       = (float *) malloc( sizeof(float) * alloc_tsar ) ;
    if( tsar == NULL ){
-      fprintf(stderr,"\n*** malloc error in mri_read_float_ascii ***\n"); EXIT(1);
+      fprintf(stderr,"\n*** malloc error in mri_read_complex_ascii ***\n"); EXIT(1);
    }
 
    /** read lines, convert to floats, store **/
@@ -2400,7 +2494,7 @@ ENTRY("mri_read_complex_ascii") ;
         alloc_tsar += incts ;
         tsar        = (float *)realloc( (void *)tsar,sizeof(float)*alloc_tsar );
         if( tsar == NULL ){
-          fprintf(stderr,"\n*** realloc error in mri_read_float_ascii ***\n"); EXIT(1);
+          fprintf(stderr,"\n*** realloc error in mri_read_complex_ascii ***\n"); EXIT(1);
         }
      }
      for( ii=0 ; ii < vec->nar && ii < ncol ; ii++ )
@@ -2420,13 +2514,13 @@ ENTRY("mri_read_complex_ascii") ;
 
    tsar = (float *) realloc( tsar , sizeof(float) * used_tsar ) ;
    if( tsar == NULL ){
-      fprintf(stderr,"\n*** final realloc error in mri_read_float_ascii ***\n"); EXIT(1);
+      fprintf(stderr,"\n*** final realloc error in mri_read_complex_ascii ***\n"); EXIT(1);
    }
-   
+
    /* now turn tsar into a complex vector */
    ctsar = (complex *) calloc(used_tsar, sizeof(complex));
    for( ii=0 ; ii < used_tsar; ii=ii+2) {
-      /* fprintf(stderr,"tsar[%d]=%f\n", ii, tsar[ii]);  */
+      /* fprintf(stderr,"tsar[%d]=%f\n", ii, tsar[ii]);   */
       ih = ii/2;
       ctsar[ih].r = tsar[ii]; ctsar[ih].i = tsar[ii+1];
    }
@@ -2437,8 +2531,17 @@ ENTRY("mri_read_complex_ascii") ;
 
    FRB(buf) ; RETURN(outim) ;
 }
+
 /*---------------------------------------------------------------------------*/
 
+static char *dname=NULL ; static size_t ndname=0 ;  /* 15 Nov 2007 */
+
+#define DNAME_FIX(fn)                                                         \
+ do{ size_t qq=strlen(fn)+7 ;                                                 \
+     if( ndname < qq ){ dname=(char *)realloc((void *)dname,qq); ndname=qq; } \
+ } while(0)
+
+/*---------------------------------------------------------------------------*/
 /*! Read an ASCII file as columns, transpose to rows, allow column selectors.
 
   \param fname = Input filename (max of 255 characters)
@@ -2454,20 +2557,36 @@ ENTRY("mri_read_complex_ascii") ;
 MRI_IMAGE * mri_read_1D( char *fname )
 {
    MRI_IMAGE *inim , *outim , *flim ;
-   char dname[1024] , *cpt , *dpt ;
+   char *cpt , *dpt ;
    int ii,jj,nx,ny,nts , *ivlist , *ivl , *sslist ;
    float *far , *oar ;
    int flip ;  /* 05 Sep 2006 */
 
 ENTRY("mri_read_1D") ;
 
-   if( fname == NULL || fname[0] == '\0' || strlen(fname) > 511 ) RETURN(NULL) ;
+   if( fname == NULL || fname[0] == '\0' ) RETURN(NULL) ;
 
+   /*-- 25 Jan 2008: read from stdin? --*/
+
+   ii = strlen(fname) ;
+   if( (ii <= 2 && fname[0] == '-')              ||
+       (ii <= 6 && strncmp(fname,"stdin",5) == 0)  ){
+     inim = mri_read_1D_stdin() ;
+     if( inim != NULL && fname[ii-1] == '\'' ){
+       flim = mri_transpose(inim); mri_free(inim); inim = flim;
+     }
+     RETURN(inim) ;
+   }
+
+   /*-- back to reading from an actual file --*/
+
+   DNAME_FIX(fname) ;
    strcpy(dname,fname); ii = strlen(dname);  /* 05 Sep 2006 */
    flip = (dname[ii-1] == '\''); if( flip ) dname[ii-1] = '\0';
 
    if( strncmp(dname,"1D:",3) == 0 ){       /* 28 Apr 2003 */
      outim = mri_1D_fromstring( dname+3 ) ;
+     /** if( outim == NULL ) ERROR_message("read of '1D:' string fails") ; **/
      if( flip ){ inim=mri_transpose(outim); mri_free(outim); outim=inim; }
      RETURN(outim) ;
    }
@@ -2553,14 +2672,15 @@ ENTRY("mri_read_1D") ;
 MRI_IMAGE * mri_read_double_1D( char *fname )
 {
    MRI_IMAGE *inim , *outim , *flim ;
-   char dname[1024] , *cpt , *dpt ;
+   char *cpt , *dpt ;
    int ii,jj,nx,ny,nts , *ivlist , *ivl , *sslist ;
    double *dar , *oar ;
    int flip ;  /* 05 Sep 2006 */
 
 ENTRY("mri_read_double_1D") ;
 
-   if( fname == NULL || fname[0] == '\0' || strlen(fname) > 511 ) RETURN(NULL) ;
+   if( fname == NULL || fname[0] == '\0' ) RETURN(NULL) ;
+   DNAME_FIX(fname) ;
    strcpy(dname,fname); ii = strlen(dname);  /* 05 Sep 2006 */
    flip = (dname[ii-1] == '\''); if( flip ) dname[ii-1] = '\0';
 
@@ -2570,7 +2690,7 @@ ENTRY("mri_read_double_1D") ;
      if( flip ){ inim=mri_transpose(outim); mri_free(outim); outim=inim; }
      RETURN(outim) ;
      */
-     fprintf(stderr,"Somebody was too lazy to allow this option here.\n"); RETURN(NULL);
+     ERROR_message("Somebody was too lazy to allow this option here."); RETURN(NULL);
    }
 
    /*-- split filename and subvector list --*/
@@ -2657,15 +2777,15 @@ ENTRY("mri_read_double_1D") ;
 MRI_IMAGE * mri_read_complex_1D( char *fname )
 {
    MRI_IMAGE *inim , *outim , *flim ;
-   char dname[1024] , *cpt , *dpt ;
+   char *cpt , *dpt ;
    int ii,jj,nx,ny,nts , *ivlist , *ivl , *sslist ;
    complex *far , *oar ;
    int flip ;  /* 05 Sep 2006 */
 
 ENTRY("mri_read_complex_1D") ;
 
-   if( fname == NULL || fname[0] == '\0' || strlen(fname) > 511 ) RETURN(NULL) ;
-
+   if( fname == NULL || fname[0] == '\0' ) RETURN(NULL) ;
+   DNAME_FIX(fname) ;
    strcpy(dname,fname); ii = strlen(dname);  /* 05 Sep 2006 */
    flip = (dname[ii-1] == '\''); if( flip ) dname[ii-1] = '\0';
 
@@ -2675,7 +2795,7 @@ ENTRY("mri_read_complex_1D") ;
      if( flip ){ inim=mri_transpose(outim); mri_free(outim); outim=inim; }
      RETURN(outim) ;
       */
-     fprintf(stderr,"Somebody was too lazy to allow this option here.\n"); RETURN(NULL);
+     ERROR_message("Somebody was too lazy to allow this option here."); RETURN(NULL);
    }
 
    /*-- split filename and subvector list --*/
@@ -2756,6 +2876,68 @@ ENTRY("mri_read_complex_1D") ;
    if( flip ){ inim=mri_transpose(flim); mri_free(flim); flim=inim; }
 
    mri_add_name(fname,flim) ; RETURN(flim) ;
+}
+
+/*-----------------------------------------------------------------------------------*/
+/* Read a 1D file from stdin; adapted from 1dplot.c */
+
+MRI_IMAGE * mri_read_1D_stdin(void)
+{
+#define SIN_NLBUF 131072
+#define SIN_NVMAX 10000
+   char *lbuf , *cpt , *dpt ;
+   int   nval , ii,nx,ny ;
+   float *val , fff , *far ;
+   MRI_IMAGE *flim , *inim ;
+
+ENTRY("mri_read_1D_stdin") ;
+
+   lbuf = (char * )malloc(sizeof(char )*SIN_NLBUF) ;
+   val  = (float *)malloc(sizeof(float)*SIN_NVMAX) ;
+
+   do{               /* read lines until 1st char is non-blank and non-# */
+     cpt = fgets(lbuf,SIN_NLBUF,stdin) ;
+     if( cpt==NULL ){ free(val);free(lbuf); RETURN(NULL); }
+     for( ii=0 ; cpt[ii] != '\0' && isspace(cpt[ii]) ; ii++ ) ; /* nada */
+   } while( cpt[ii] == '\0' || cpt[ii] == '#' ) ;
+
+   nval = 0 ; cpt = lbuf ;   /* read numbers from lbuf into val */
+   while(1){
+     fff = strtod(cpt,&dpt) ; if( dpt  == cpt       ) break ;
+     val[nval++] = fff ;      if( nval == SIN_NVMAX ) break ;
+     cpt = dpt; if( *cpt == ','  ) cpt++; if( *cpt == '\0' ) break;
+   }
+   if( nval < 1 ){ free(val);free(lbuf); RETURN(NULL); }
+
+   nx = nval ; ny = 1 ;
+   far = (float *) malloc(sizeof(float)*nx) ;
+   memcpy(far,val,sizeof(float)*nx) ;
+
+   while(1){  /* read from stdin */
+     cpt = fgets(lbuf,SIN_NLBUF,stdin) ;
+     if( cpt == NULL ) break ;            /* done */
+     for( ii=0 ; cpt[ii] != '\0' && isspace(cpt[ii]) ; ii++ ) ; /* nada */
+     if( cpt[ii] == '\0' || cpt[ii] == '#' ) continue ;         /* skip */
+
+     memset(val,0,sizeof(float)*nx) ;  /* set input buffer to zero */
+     nval = 0 ; cpt = lbuf ;   /* read numbers from lbuf into val */
+     while(1){
+       fff = strtod(cpt,&dpt) ; if( dpt  == cpt ) break ;
+       val[nval++] = fff ;      if( nval == nx  ) break ;
+       cpt = dpt; if( *cpt == ','  ) cpt++; if( *cpt == '\0' ) break;
+     }
+     far = (float *) realloc( far , sizeof(float)*(ny+1)*nx ) ;
+     memcpy(far+ny*nx,val,sizeof(float)*nx) ; ny++ ;
+   }
+
+   flim = mri_new_vol_empty( nx,ny,1 , MRI_float ) ;
+   mri_fix_data_pointer( far , flim ) ;
+   if( ny > 1 ){      /* more than one row ==> transpose (the usual case) */
+     inim = mri_transpose(flim) ; mri_free(flim) ;
+   } else {           /* only 1 row ==> am OK this way */
+     inim = flim ;
+   }
+   free((void *)val); free((void *)lbuf); RETURN(inim);
 }
 
 /*-----------------------------------------------------------------------------------*/

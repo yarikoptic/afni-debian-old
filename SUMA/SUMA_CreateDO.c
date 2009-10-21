@@ -71,26 +71,26 @@ SUMA_SurfaceObject *SUMA_NewSO(float **NodeList, int N_Node, int **FaceSetList, 
    
    SO->FileFormat = nsoopt->FileFormat;
    SO->FileType = nsoopt->FileType;
-   
+
    SUMA_LH("NodeList");
    SO->NodeDim = 3;
    SO->NodeList = *NodeList; *NodeList = NULL;  /* keeps user from freeing afterwards ... */
    SO->N_Node = N_Node;
-   
+
    if (nsoopt->DoCenter) {
       SUMA_LH("Center deal")
       SUMA_DIM_CENTER(SO);
    } else {
       SUMA_LH("Skipping Center deal")
-   }
-   
+   } 
+
    if (nsoopt->LargestBoxSize > 0.0) {
       SUMA_LH("BoxSize deal")
       SUMA_LARGEST_SIZE_SCALE(SO, nsoopt->LargestBoxSize);
    } else {
-      SUMA_LH("Skipping Center deal")
+      SUMA_LH("Skipping BoxSize deal")
    }
-   
+    
    SUMA_LH("FaceSetList");
    SO->FaceSetDim = 3;
    SO->FaceSetList = *FaceSetList; *FaceSetList = NULL;  /* keeps user from freeing afterwards ... */
@@ -2125,7 +2125,7 @@ SUMA_Boolean SUMA_DrawPlaneDO (SUMA_PlaneDO *SDO, SUMA_SurfaceViewer *sv)
       fprintf(stderr,"Error %s: NULL pointer.\n", FuncName);
       SUMA_RETURN (NOPE);
    }
-   
+   if (SDO->PolyMode == SRM_Hide || sv->PolyMode == SRM_Hide) { SUMA_RETURN(YUP); }
    /* check on rendering mode */
    if (SDO->PolyMode != SRM_ViewerDefault) {
      /* not the default, do the deed */
@@ -2477,6 +2477,8 @@ SUMA_Boolean SUMA_DrawSegmentDO (SUMA_SegmentDO *SDO, SUMA_SurfaceViewer *sv)
    SUMA_RETURN (YUP);
    
 }
+
+
 
 /*!
    A macro to be inserted into SUMA_SortedAxisSegmentList's switch statement
@@ -3591,14 +3593,17 @@ SUMA_Boolean SUMA_Paint_SO_ROIplanes ( SUMA_SurfaceObject *SO,
    int *N_ColHist = NULL, *ivect = NULL, *Nodes=NULL, *ilab=NULL, *labvect=NULL;
    float *r=NULL, *g=NULL, *b=NULL, *rvect=NULL, *gvect=NULL, *bvect=NULL;
    float FillColor[3];
-   int i, ii, N_NewNode = 0, istore, OverInd=-1, inode, i_D_ROI, LastOfPreSeg, N_Nodes=0;
+   int i, ii, N_NewNode = 0, istore, OverInd=-1, 
+      inode, i_D_ROI, LastOfPreSeg, N_Nodes=0;
    SUMA_OVERLAY_PLANE_DATA sopd;
    DListElmt *NextPlaneElm = NULL, *NextROIElm = NULL, *NextElm=NULL;
    SUMA_DRAWN_ROI *D_ROI = NULL;
    SUMA_ROI_DATUM *ROId=NULL;
    NI_element **nelv = NULL;
-   SUMA_STANDARD_CMAP mapcode;
+   char *mapname;
+   char *eee = NULL;
    DList *list=NULL;
+   static int iwarn=0;
    SUMA_EngineData *ED = NULL;
    SUMA_Boolean Unique = NOPE;
    SUMA_Boolean LocalHead = NOPE;
@@ -3608,35 +3613,47 @@ SUMA_Boolean SUMA_Paint_SO_ROIplanes ( SUMA_SurfaceObject *SO,
    SUMA_LH("Called");
    /* select the color map */
    {
-      char *eee = getenv("SUMA_ROIColorMap");
+      eee = getenv("SUMA_ROIColorMap");
       if (eee) {
-         if (strcmp (eee, "bgyr64") == 0) {
-            mapcode = SUMA_CMAP_BGYR64;
-         } else if (strcmp (eee, "ygbrp64") == 0) {
-            mapcode = SUMA_CMAP_ROI64;
-         } else if (strcmp (eee, "roi64") == 0) {
-            mapcode = SUMA_CMAP_ROI64;
-         } else if (strcmp (eee, "ygbrp128") == 0) {
-            mapcode = SUMA_CMAP_ROI128;
-         } else if (strcmp (eee, "ygbrp256") == 0) {
-            mapcode = SUMA_CMAP_ROI256;
-         } else if (strcmp (eee, "roi128") == 0) {
-            mapcode = SUMA_CMAP_ROI128;
-         } else if (strcmp (eee, "roi256") == 0) {
-            mapcode = SUMA_CMAP_ROI256;
+         if (!strcmp(eee, "roi256")) {
+            mapname = "ROI_256";
+            if (!iwarn) SUMA_S_Note( "roi256 colormap is now ROI_256\n"
+                           "To use old roi256, use ygbrp256");
+            ++iwarn;   
+         }else if (!strcmp(eee, "roi128")) {
+            mapname = "ROI_128";
+            if (!iwarn) SUMA_S_Note( "roi128 colormap is now ROI_128\n"
+                           "To use old roi128, use ygbrp128"); 
+            ++iwarn;   
+         }else if (!strcmp(eee, "roi64")) {
+            mapname = "ROI_64";
+            if (!iwarn) SUMA_S_Note( "roi64 colormap is now ROI_64\n"
+                           "To use old roi64, use ygbrp64"); 
+            ++iwarn;   
+         }else if (SUMA_StandardMapCode(eee) >= 0) {
+            mapname = eee;
          } else {
-            mapcode = SUMA_CMAP_ROI128;
-            if (LocalHead) fprintf(SUMA_STDERR,"%s: Unrecognized option. Using default\n", FuncName);
+            mapname = "ROI_64";
+            if (LocalHead) 
+               fprintf(SUMA_STDERR, "%s: Unrecognized colormap %s.\n"
+                                    " Using %s instead.\n", 
+                                    FuncName, eee, mapname);
          }
       } else {
-         mapcode = SUMA_CMAP_ROI128;
-         if (LocalHead) fprintf(SUMA_STDERR,"%s: Undefined environment. Using default\n", FuncName);
+         mapname = "ROI_64";
+         if (LocalHead) 
+            fprintf(SUMA_STDERR,
+               "%s: Undefined environment. Using default ROI colormap %s\n", 
+               FuncName, mapname);
       }
    }
    if (LocalHead) {
       int N_tmp;
-      char *nm_tmp = SUMA_StandardMapName (mapcode, &N_tmp);
-      fprintf(SUMA_STDERR,"%s: mapcode = %d, named %s %d cols\n", FuncName, mapcode, nm_tmp, N_tmp);
+      char *nm_tmp = 
+         SUMA_StandardMapName (SUMA_StandardMapCode(mapname), &N_tmp);
+         fprintf(SUMA_STDERR,
+            "%s: mapcode = %d, named %s %d cols\n", 
+            FuncName, SUMA_StandardMapCode(mapname), nm_tmp, N_tmp);
    }
    /* intilialize list */
    ROIPlaneList = SUMA_Addto_ROIplane_List (NULL, NULL, 0);
@@ -3728,19 +3745,25 @@ SUMA_Boolean SUMA_Paint_SO_ROIplanes ( SUMA_SurfaceObject *SO,
          /* Set the fillcolor */
          if (D_ROI->ColorByLabel) {
             if (!SUMAg_CF->ROI_CM) {
-               if (!(SUMAg_CF->ROI_CM = SUMA_GetStandardMap (mapcode))) {
+               if (!(SUMAg_CF->ROI_CM = SUMA_FindNamedColMap (mapname))) {
                   SUMA_SLP_Err( "Failed to create\n"
                                  "color map. Reverting\n"
                                  "to FillColors");
                   D_ROI->ColorByLabel = NOPE;
                }
                if (LocalHead) {
-                  fprintf (SUMA_STDERR,"%s:\nHave colormap of code %d, %d colors.\n", FuncName, mapcode, SUMAg_CF->ROI_CM->N_Col);
+                  fprintf (SUMA_STDERR,
+                           "%s:\nHave colormap of code %d, %d colors.\n",
+                           FuncName, SUMA_StandardMapCode(mapname),
+                           SUMAg_CF->ROI_CM->N_Col);
                }
                /* if connected to AFNI, send color map */
-               if (SUMAg_CF->Connected_v[SUMA_AFNI_STREAM_INDEX] && SUMAg_CF->ROI2afni) {
+               if (SUMAg_CF->Connected_v[SUMA_AFNI_STREAM_INDEX] &&
+                   SUMAg_CF->ROI2afni) {
+                  int mapcode = -1;
                   list = SUMA_CreateList();
                   ED = SUMA_InitializeEngineListData (SE_SendColorMapToAfni);
+                  mapcode = SUMA_StandardMapCode(mapname);
                   if (!SUMA_RegisterEngineListCommand (  list, ED, 
                                                          SEF_i, (void*)&mapcode, 
                                                          SES_SumaWidget, NULL, NOPE, 
@@ -4469,6 +4492,9 @@ void SUMA_DrawMesh(SUMA_SurfaceObject *SurfObj, SUMA_SurfaceViewer *sv)
    #endif
       
    SUMA_LH("Poly Mode");
+   
+   if (SurfObj->PolyMode == SRM_Hide || sv->PolyMode == SRM_Hide) { SUMA_LH("Hiding surface"); SUMA_RETURNe; }
+   
    /* check on rendering mode */
    if (SurfObj->PolyMode != SRM_ViewerDefault) {
      /* not the default, do the deed */
@@ -4934,6 +4960,9 @@ char *SUMA_SurfaceObject_Info (SUMA_SurfaceObject *SO, DList *DsetList)
          case SUMA_NO_SIDE:
             SS = SUMA_StringAppend (SS,"No side specified.\n");
             break;
+         case SUMA_LR:
+            SS = SUMA_StringAppend (SS,"Left and Right hemispheres.\n");
+            break;
          case SUMA_LEFT:
             SS = SUMA_StringAppend (SS,"Left hemisphere.\n");
             break;
@@ -4978,6 +5007,16 @@ char *SUMA_SurfaceObject_Info (SUMA_SurfaceObject *SO, DList *DsetList)
             break;
          case SUMA_OPENDX_MESH: 
             SS = SUMA_StringAppend_va (SS,"OpenDX surface.\n");
+            SS = SUMA_StringAppend_va (SS,"FileName: %s\n", SO->Name.FileName);
+            SS = SUMA_StringAppend_va (SS,"Path: %s\n", SO->Name.Path);
+            break;
+         case SUMA_BRAIN_VOYAGER: 
+            SS = SUMA_StringAppend_va (SS,"Brain Voyager surface.\n");
+            SS = SUMA_StringAppend_va (SS,"FileName: %s\n", SO->Name.FileName);
+            SS = SUMA_StringAppend_va (SS,"Path: %s\n", SO->Name.Path);
+            break;
+         case SUMA_BYU: 
+            SS = SUMA_StringAppend_va (SS,"BYU surface.\n");
             SS = SUMA_StringAppend_va (SS,"FileName: %s\n", SO->Name.FileName);
             SS = SUMA_StringAppend_va (SS,"Path: %s\n", SO->Name.Path);
             break;
@@ -5403,6 +5442,7 @@ void SUMA_Print_Surface_Object (SUMA_SurfaceObject *SO, FILE *Out)
 Create a Surface Object data structure 
 */
 
+
 SUMA_SurfaceObject *SUMA_Alloc_SurfObject_Struct(int N)
 {
    static char FuncName[]={"SUMA_Alloc_SurfObject_Struct"};
@@ -5426,11 +5466,11 @@ SUMA_SurfaceObject *SUMA_Alloc_SurfObject_Struct(int N)
       SO[i].Name_NodeParent = NULL;
       SO[i].Label = NULL;
       SO[i].EmbedDim = 3;
-      SO[i].Center[0] = SO[i].Center[1] = SO[i].Center[2] = 0.0;
-      SO[i].MaxDims[0] = SO[i].MaxDims[1] = SO[i].MaxDims[2] = 0.0;       
-      SO[i].MinDims[0] = SO[i].MinDims[1] = SO[i].MinDims[2] = 0.0;       
-      SO[i].aMinDims = 0.0;     
-      SO[i].aMaxDims = 0.0;
+      SO[i].Center[0] = SO[i].Center[1] = SO[i].Center[2] = 0.0;           /* the zeros in Center, MaxDims, MinDims, */ 
+      SO[i].MaxDims[0] = SO[i].MaxDims[1] = SO[i].MaxDims[2] = 0.0;        /* aMinDims and aMaxDims */
+      SO[i].MinDims[0] = SO[i].MinDims[1] = SO[i].MinDims[2] = 0.0;        /* are used to flag unitialized parameters */
+      SO[i].aMinDims = 0.0;                                                /* always keep zero for initialization */      
+      SO[i].aMaxDims = 0.0;                                                /* see SUMA_isSODimInitialized */
       SO[i].ViewCenterWeight = -1;
       SO[i].RotationWeight = -1;
       SO[i].patchaMaxDims = 0.0;
@@ -5518,6 +5558,37 @@ SUMA_SurfaceObject *SUMA_Alloc_SurfObject_Struct(int N)
      }
    SUMA_RETURN(SO);
 }/* SUMA_Alloc_SurfObject_Struct */
+
+SUMA_Boolean SUMA_isSODimInitialized(SUMA_SurfaceObject *SO) 
+{
+   if (!SO) return(NOPE);
+   
+   if (  SO->MaxDims[0] == 0.0 && SO->MaxDims[1] == 0.0 && SO->MaxDims[2] == 0.0 &&
+         SO->MinDims[0] == 0.0 && SO->MinDims[1] == 0.0 && SO->MinDims[2] == 0.0 &&
+         SO->aMinDims == 0.0 && SO->aMaxDims == 0.0) { 
+         
+         return(NOPE); 
+   }
+   return(YUP);
+}
+
+SUMA_Boolean SUMA_SetSODims(SUMA_SurfaceObject *SO)
+{
+   static char FuncName[]={"SUMA_SetSODims"};
+   
+   SUMA_ENTRY;
+   
+   if (!SO) SUMA_RETURN(NOPE);
+      SUMA_MIN_MAX_SUM_VECMAT_COL (SO->NodeList, SO->N_Node, SO->NodeDim, SO->MinDims, SO->MaxDims, SO->Center);
+
+      SO->Center[0] /= SO->N_Node;
+      SO->Center[1] /= SO->N_Node;
+      SO->Center[2] /= SO->N_Node;
+
+      SUMA_MIN_VEC (SO->MinDims, 3, SO->aMinDims );
+      SUMA_MAX_VEC (SO->MaxDims, 3, SO->aMaxDims);
+   SUMA_RETURN(YUP);
+}
 
 /*! 
    \brief function for freeing a SUMA_ROI structure.

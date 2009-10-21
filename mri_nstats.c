@@ -202,6 +202,25 @@ THD_fvec3 mri_nstat_fwhmxyz( int xx, int yy, int zz,
 }
 
 /*--------------------------------------------------------------------------*/
+
+float mri_nstat_fwhmbar( int xx, int yy, int zz,
+                         MRI_IMAGE *im, byte *mask, MCW_cluster *nbhd )
+{
+   THD_fvec3 fw ;
+   float fx,fy,fz , sum ; int nsum ;
+
+   fw = mri_nstat_fwhmxyz( xx,yy,zz , im,mask,nbhd ) ;
+   UNLOAD_FVEC3(fw,fx,fy,fz) ;
+
+   sum = 0.0f ; nsum = 0 ;
+   if( fx > 0.0f ){ sum += fx ; nsum++ ; }
+   if( fy > 0.0f ){ sum += fy ; nsum++ ; }
+   if( fz > 0.0f ){ sum += fz ; nsum++ ; }
+   if( nsum > 0 ) sum /= nsum ;
+   return sum ;
+}
+
+/*--------------------------------------------------------------------------*/
 /*! Compute a local statistic at each voxel of an image, possibly with
     a mask; 'local' is defined with a neighborhood; 'statistic' is defined
     by an NSTAT_ code.
@@ -235,6 +254,19 @@ ENTRY("mri_localstat") ;
 /*--------------------------------------------------------------------------*/
 
 static int verb=0 , vn=0 ;
+static int localstat_datum = MRI_float;
+
+void THD_localstat_datum(int i) {
+   localstat_datum=i;
+   if (  localstat_datum != MRI_byte &&
+         localstat_datum != MRI_short &&
+         localstat_datum != MRI_float) {
+      fprintf(stderr ,  "Warning: Datum can only be one of MRI_byte, MRI_short or MRI_float\n"
+                        "Setting datum to float default.\n");
+      localstat_datum = MRI_float;
+   }
+}
+
 void THD_localstat_verb(int i){ verb=i; vn=0; }
 
 static void vstep_print(void)
@@ -245,10 +277,12 @@ static void vstep_print(void)
    vn++ ;
 }
 
+
 /*--------------------------------------------------------------------------*/
 
 THD_3dim_dataset * THD_localstat( THD_3dim_dataset *dset , byte *mask ,
-                                  MCW_cluster *nbhd , int ncode, int *code )
+                                  MCW_cluster *nbhd , int ncode, int *code, 
+                                  float codeparam[][MAX_CODE_PARAMS+1] )
 {
    THD_3dim_dataset *oset ;
    MRI_IMAGE *nbim=NULL ;
@@ -256,7 +290,8 @@ THD_3dim_dataset * THD_localstat( THD_3dim_dataset *dset , byte *mask ,
    float **aar ;
    int vstep ;
    THD_fvec3 fwv ;
-   MRI_IMAGE *dsim=NULL; int need_dsim, need_nbim; float dx,dy,dz ;
+   MRI_IMAGE *dsim=NULL; 
+   int need_dsim, need_nbim; float dx,dy,dz ;
 
 ENTRY("THD_localstat") ;
 
@@ -307,15 +342,57 @@ ENTRY("THD_localstat") ;
       for( jj=0 ; jj < ny ; jj++ ){
        for( ii=0 ; ii < nx ; ii++,ijk++ ){
          if( vstep && ijk%vstep==vstep-1 ) vstep_print() ;
-         if( need_nbim )
+         if( need_nbim ) {
            nbim = THD_get_dset_nbhd( dset,iv , mask,ii,jj,kk , nbhd ) ;
+         }
          for( cc=0 ; cc < ncode ; cc++ ){
-           if( code[cc] != NSTAT_FWHMx ){
-             aar[cc][ijk] = mri_nstat( code[cc] , nbim ) ;
-           } else {
+           if( code[cc] == NSTAT_FWHMbar ){
+             aar[cc][ijk] = mri_nstat_fwhmbar( ii,jj,kk , dsim,mask,nbhd ) ;
+           } else if( code[cc] == NSTAT_FWHMx ){
              fwv = mri_nstat_fwhmxyz( ii,jj,kk , dsim,mask,nbhd ) ;
              UNLOAD_FVEC3( fwv, aar[cc][ijk],aar[cc+1][ijk],aar[cc+2][ijk] ) ;
              cc += 2 ;  /* skip FWHMy and FWHMz codes */
+           } else if( code[cc] == NSTAT_PERCENTILE ){ 
+             static double perc[MAX_CODE_PARAMS], mpv[MAX_CODE_PARAMS];
+             int N_mp, pp; 
+             float *sfar=NULL;
+             MRI_IMAGE *fim=NULL;
+                if (codeparam[cc][0] < 1) { ERROR_exit("THD_localstat: No percentile parameters set."); }
+                N_mp = (int) codeparam[cc][0];
+                if (N_mp >  MAX_CODE_PARAMS) {
+                  ERROR_exit("THD_localstat: Cannot exceed %d params.\nHave %d\n", MAX_CODE_PARAMS, N_mp);
+                }
+                for (pp=0; pp<N_mp; ++pp) {
+                  mpv[pp] = (double) codeparam[cc][1+pp]/100.0;
+                }
+                if (nbim) {  
+                  if( nbim->kind != MRI_float ) fim = mri_to_float(nbim) ;
+                  else                          fim = nbim ;
+
+                   sfar = MRI_FLOAT_PTR(fim);
+                   if (!(sfar = (float *)Percentate (MRI_FLOAT_PTR(fim), NULL, fim->nvox,
+                                    MRI_float, mpv, N_mp,
+                                    0, perc,
+                                    1, 1, 1 ))) {
+
+                     ERROR_exit("Failed to compute percentiles.");
+                  } 
+                  /*
+                  fprintf(stderr,"sar=["); 
+                  for (pp=0; pp<fim->nvox; ++pp) fprintf(stderr,"%f,", sfar[pp]);
+                  fprintf(stderr,"];\nperc=["); 
+                  for (pp=0; pp<N_mp; ++pp) fprintf(stderr,"%f,", perc[pp]);
+                  fprintf(stderr,"];\n");
+                  */
+                  for (pp=0; pp<N_mp; ++pp) aar[cc+pp][ijk] = (float)perc[pp];
+                  if( fim != nbim  ) mri_free(fim) ; fim = NULL;
+               } else {
+                  for (pp=0; pp<N_mp; ++pp) aar[cc+pp][ijk] = 0.0;
+               } 
+
+               cc += (N_mp-1);  
+           } else {
+             aar[cc][ijk] = mri_nstat( code[cc] , nbim ) ;
            }
          }
          if( nbim != NULL ){ mri_free(nbim); nbim = NULL; }
@@ -324,8 +401,10 @@ ENTRY("THD_localstat") ;
      if( vstep ) fprintf(stderr,"\n") ;
 
      if( dsim != NULL ){ mri_free(dsim); dsim = NULL; }
-     for( cc=0 ; cc < ncode ; cc++ )
-       EDIT_substitute_brick( oset , iv*ncode+cc , MRI_float , aar[cc] ) ;
+     for( cc=0 ; cc < ncode ; cc++ ) {
+       /* EDIT_substitute_brick( oset , iv*ncode+cc , MRI_float , aar[cc] ) ; */
+       EDIT_substscale_brick( oset , iv*ncode+cc , MRI_float , aar[cc], localstat_datum, -1.0);
+     }
    }
 
    free((void *)aar) ;

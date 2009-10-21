@@ -40,7 +40,7 @@ void Syntax(void)
     "   used.\n"
     "The source code is function UNIQ_idcode() in file niml.c.\n"
    ) ;
-   exit(0) ;
+   PRINT_COMPILE_DATE ; exit(0) ;
 }
 
 int main( int argc , char * argv[] )
@@ -86,6 +86,7 @@ int main( int argc , char * argv[] )
       dset->idcode = MCW_new_idcode() ;
       sprintf(str,"3dnewid %s\n",argv[iarg]) ;
       tross_Append_History( dset , str) ;
+      putenv("AFNI_DECONFLICT=OVERWRITE") ;
       THD_write_3dim_dataset( NULL , NULL , dset , False ) ;
       THD_delete_3dim_dataset( dset , False ) ;
    }

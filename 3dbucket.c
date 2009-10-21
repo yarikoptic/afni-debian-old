@@ -72,10 +72,10 @@ void BUCK_read_opts( int argc , char * argv[] )
    int nopt = 1 , ii ;
    char dname[THD_MAX_NAME] ;
    char subv[THD_MAX_NAME] ;
-   char * cpt ;
-   THD_3dim_dataset * dset ;
-   int * svar ;
-   char * str;
+   char *cpt ;
+   THD_3dim_dataset *dset , *fset ;
+   int *svar ;
+   char *str;
    int ok, ilen, nlen;
 
    INIT_3DARR(BUCK_dsar) ;
@@ -232,10 +232,11 @@ void BUCK_read_opts( int argc , char * argv[] )
 
       ii = dset->daxes->nxx * dset->daxes->nyy * dset->daxes->nzz ;
       if( BUCK_nvox < 0 ){
-         BUCK_nvox = ii ;
+        BUCK_nvox = ii ; fset = dset ;
       } else if( ii != BUCK_nvox ){
-         fprintf(stderr,"dataset %s differs in size from others\n",dname);
-         exit(1) ;
+        ERROR_exit("Dataset %s differs in size from first one",dname);
+      } else if( !EQUIV_GRIDS(dset,fset) ){
+        WARNING_message("Dataset %s grid differs from first one",dname) ;
       }
       ADDTO_3DARR(BUCK_dsar,dset) ;
 
@@ -404,7 +405,7 @@ void BUCK_Syntax(void)
     "is copied into the output).  A sub-brick selection list looks like\n"
     "one of the following forms:\n"
     "  fred+orig[5]                     ==> use only sub-brick #5\n"
-    "  fred+orig[5,9,17]                ==> use #5, #9, and #12\n"
+    "  fred+orig[5,9,17]                ==> use #5, #9, and #17\n"
     "  fred+orig[5..8]     or [5-8]     ==> use #5, #6, #7, and #8\n"
     "  fred+orig[5..13(2)] or [5-13(2)] ==> use #5, #7, #9, #11, and #13\n"
     "Sub-brick indexes start at 0.  You can use the character '$'\n"
@@ -445,7 +446,7 @@ void BUCK_Syntax(void)
     "         with such datasets!\n"
    ) ;
 
-   exit(0) ;
+   PRINT_COMPILE_DATE ; exit(0) ;
 }
 
 /*------------------------------------------------------------------*/
@@ -516,7 +517,7 @@ int main( int argc , char * argv[] )
    /* can't re-write existing dataset, unless glueing is used */
 
    if (! BUCK_glue){
-     if( THD_is_file(DSET_HEADNAME(new_dset)) ){
+     if( THD_deathcon() && THD_is_file(DSET_HEADNAME(new_dset)) ){
        fprintf(stderr,"*** Fatal error: file %s already exists!\n",
                DSET_HEADNAME(new_dset) ) ;
        exit(1) ;
@@ -651,6 +652,7 @@ int main( int argc , char * argv[] )
    if( ! BUCK_dry ){
       if( BUCK_verb ) fprintf(stderr,"-verb: loading statistics\n") ;
       THD_load_statistics( new_dset ) ;
+      if( BUCK_glue ) putenv("AFNI_DECONFLICT=OVERWRITE") ;
       THD_write_3dim_dataset( NULL,NULL , new_dset , True ) ;
       if( BUCK_verb ) fprintf(stderr,"-verb: wrote output: %s\n",DSET_BRIKNAME(new_dset)) ;
    }

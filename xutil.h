@@ -54,6 +54,7 @@ extern "C" {                    /* care of Greg Balls    7 Aug 2006 [rickr] */
 extern void MCW_expose_widget( Widget ) ;
 extern void MCW_invert_widget( Widget ) ;
 extern void MCW_set_widget_bg( Widget , char * , Pixel ) ;
+extern void MCW_set_widget_fg( Widget , char * ) ;
 
 extern Colormap MCW_get_colormap( Widget ) ;            /* 01 Sep 1998 */
 extern void     MCW_set_colormap( Widget , Colormap ) ; /* 14 Sep 1998 */
@@ -65,10 +66,11 @@ extern void MCW_alter_widget_cursor( Widget,int , char * , char * ) ;
 
 extern void RWC_sleep( int ) ;  /* 16 Aug 2002 */
 
-#define WAIT_for_window(w)                                  \
- do{ XSync( XtDisplay(w) , False ) ;                         \
-     while( XtWindow(w) == (Window) NULL ) ; /* spin */       \
-     RWC_sleep(1) ;                                            \
+#define WAIT_for_window(w)                                 \
+ do{ XSync( XtDisplay(w) , False ) ;                        \
+     while( XtWindow(w) == (Window) NULL ) ; /* spin */      \
+     XSync( XtDisplay(w) , False ) ;                          \
+     RWC_sleep(3) ;                                            \
  } while(0)
 
 #define POPUP_cursorize(w)                                        \
@@ -122,6 +124,10 @@ extern void MCW_widget_geom( Widget , int * , int * , int * , int * ) ;
 extern void MCW_discard_events( Widget , int ) ;
 extern void MCW_discard_events_all( Widget , int ) ;
 
+#if 0
+extern void MCW_set_widget_label_tagged( Widget , char * , char *) ;
+#endif
+
 typedef struct {
       char         * label ;        /* label for button       */
       XtCallbackProc func_CB ;      /* callback procedure     */
@@ -140,6 +146,7 @@ extern Widget MCW_action_area( Widget , MCW_action_item * , int ) ;
 #define MCW_CALLER_KILL 1
 #define MCW_USER_KILL   2
 #define MCW_TIMER_KILL  (1<<10)
+#define MCW_QUICK_KILL  (1<<11)
 
 extern Widget MCW_popup_message( Widget , char * , int ) ;
 extern void MCW_message_CB( Widget , XtPointer , XtPointer ) ;
@@ -229,6 +236,11 @@ extern void RWC_XtPopdown( Widget ) ; /* 30 Jun 2003 */
 
 extern void AFNI_speak( char *string , int nofork ) ;   /* 24 Nov 2003 */
 extern void AFNI_speak_setvoice( char *vvv ) ;
+
+#ifdef DONT_USE_XTDESTROY  /** bug fix for some stupid X11 distributions **/
+# undef  XtDestroyWidget
+# define XtDestroyWidget XtUnrealizeWidget
+#endif
 
 #ifdef  __cplusplus
 }

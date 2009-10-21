@@ -32,6 +32,7 @@ static char * method_strings[] = { "Seconds" , "Degrees" , "Radians"} ;
 static char * yn_strings[] = { "n" , "y" }; 
 
 /* for printing potentially NULL strings         22 July 2005 [rickr] */
+#undef  CHECK_NULL_STR
 #define CHECK_NULL_STR(str) (str) ? (str) : "(NULL)"
 
 /*#define ZDBG*/
@@ -97,13 +98,12 @@ typedef struct DELAY_options
 	int unt;			/* Delay units */
 	int wrp;			/* flag for Polar Wrap */
 	int Navg;			/* number of data sets averaged to obtain the brick (for statistical stuff) */
-	int Nort;		/* Number of nuisance parameters (orts) (for statistical stuff) */
 	int Nfit;			/* Number of fit parameters (for statistical stuff) */
 	int Nseg;			/* Number of segments */
 	int ignore;		/* number ofpoints to ignore from time courses */
 	int Pover;		/* Percent overlap */
 	int ln;			/* length of FMRI vector */
-	int dtrnd;		/* remove linear trend or just the mean */
+	/* int dtrnd; */		/* remove linear trend or just the mean */ 
 	int biasrem;		/* flag for removing delay bias */
 	int Dsamp;		/* flag for correction of non uniform sampling start time */
 	int errcode;		/* error code number returned from hdelay */
@@ -145,7 +145,7 @@ typedef struct DELAY_options
 	char * bucket_filename;             /* output bucket dataset file name */
 
 	int output_type[NBUCKETS];   /* output type options */
-
+   byte *bmask;
 } DELAY_options;
 
 
@@ -181,116 +181,148 @@ void FIM_error (char * message)
 void display_help_menu()
 {
   printf (
-	"The program estimates the time delay between each voxel time series    \n"
-	"in a 3D+time dataset and a reference time series[1][2].                \n"
-	"The estimated delays are relative to the reference time series.\n"
-	"For example, a delay of 4 seconds means that the voxel time series \n"
-	"is delayed by 4 seconds with respectto the reference time series.\n\n"
-	"                                                                       \n"
-	"Usage:                                                                 \n"
-	"3ddelay                                                                 \n"
-	"-input fname       fname = filename of input 3d+time dataset           \n"
-	"-ideal_file rname  rname = input ideal time series file name           \n"
-	"   The length of the reference time series should be equal to           \n"
-	"     that of the 3d+time data set. \n"
-	"     The reference time series vector is stored in an ascii file.        \n"
-	"     The programs assumes that there is one value per line and that all  \n"
-	"     values in the file are part of the reference vector.                \n"
-	"     PS: Unlike with 3dfim, and FIM in AFNI, values over 33333 are treated\n"
-	"     as part of the time series.                                          \n" 
-	"-fs fs             Sampling frequency in Hz. of data time series (1/TR). \n"  
-	"-T  Tstim          Stimulus period in seconds. \n"
-	"                   If the stimulus is not periodic, you can set Tstim to 0.\n"
-	"[-prefix bucket]   The prefix for the results Brick.\n"   
-	"                   The first subbrick is for Delay.\n"
-	"                   The second subbrick is for Covariance, which is an estimate\n" 
-	"                   of the power in voxel time series at the frequencies present \n"
-	"                   in the reference time series.\n"
-	"                   The third subbrick is for the Cross Correlation Coefficients between\n"
-	"                   FMRI time series and reference time series.\n"
-	"                   The fourth subbrick contains estimates of the Variance of voxel time series.\n"
-	"                   The default prefix is the prefix of the input 3D+time brick \n"
-	"                   with a '.DEL' extension appended to it.\n"
-	"[-uS/-uD/-uR]      Units for delay estimates. (Seconds/Degrees/Radians)\n"
-	"                   You can't use Degrees or Radians as units unless \n"
-	"                   you specify a value for Tstim > 0.\n"
-	"[-phzwrp]          Delay (or phase) wrap.\n"
-	"                   This switch maps delays from: \n" 
-	"                   (Seconds) 0->T/2 to 0->T/2 and T/2->T to -T/2->0\n"  
-	"                   (Degrees) 0->180 to 0->180 and 180->360 to -180->0\n"   
-	"                   (Radians) 0->pi to 0->pi and pi->2pi to -pi->0\n" 
-	"                   You can't use this option unless you specify a \n"
-	"                   value for Tstim > 0.\n\n"
-	"[-bias]            Do not correct for the bias in the estimates [1][2]\n" 
-	"[-mask mname]      mname = filename of 3d mask dataset                 \n"
-	"                   only voxels with non-zero values in the mask would be \n"
-	"                   considered.                                           \n"
-	"[-nfirst fnum]     fnum = number of first dataset image to use in      \n"
-	"                     the delay estimate. (default = 0)                 \n"
-	"[-nlast  lnum]     lnum = number of last dataset image to use in       \n"
-	"                     the delay estimate. (default = last)              \n"
-	"[-nodsamp ]        Do not correct a voxel's estimated delay by the time \n"
-	"                   at which the slice containing that voxel was acquired.\n\n"
-	"[-co CCT]          Cross Correlation Coefficient threshold value.\n"
-	"                   This is only used to limit the ascii output (see below).\n"
-   "[-nodtrnd]         Do not remove the linear trend from the data time series.\n"
-   "                   Only the mean is removed. Regardless of this option, \n"
-   "                   No detrending is done to the reference time series.\n"
-	"[-asc [out]]       Write the results to an ascii file for voxels with \n"
-	"[-ascts [out]]     cross correlation coefficients larger than CCT.\n"
-	"                   If 'out' is not specified, a default name similar \n"
-	"                   to the default output prefix is used.\n"
-	"                   -asc, only files 'out' and 'out.log' are written to disk (see ahead)\n"
-	"                   -ascts, an additional file, 'out.ts', is written to disk (see ahead)\n"
-	"                   There a 9 columns in 'out' which hold the following values:\n"
-	"                    1- Voxel Index (VI) : Each voxel in an AFNI brick has a unique index.\n"
-	"                          Indices map directly to XYZ coordinates.\n"
-	"                          See AFNI plugin documentations for more info.\n"
-	"                    2..4- Voxel coordinates (X Y Z): Those are the voxel slice coordinates.\n"
-	"                          You can see these coordinates in the upper left side of the \n"
-	"                          AFNI window.To do so, you must first switch the voxel \n"
-	"                          coordinate units from mm to slice coordinates. \n"
-	"                          Define Datamode -> Misc -> Voxel Coords ?\n"
-	"                          PS: The coords that show up in the graph window\n"
-	"                              could be different from those in the upper left side \n"
-	"                              of AFNI's main window.\n"
-	"                    5- Duff : A value of no interest to you. It is preserved for backward \n"
-	"                          compatibility.\n"
-	"                    6- Delay (Del) : The estimated voxel delay.\n"
-	"                    7- Covariance (Cov) : Covariance estimate.\n"
-	"                    8- Cross Correlation Coefficient (xCorCoef) : Cross Correlation Coefficient.\n"
-	"                    9- Variance (VTS) : Variance of voxel's time series.\n\n"
-	"                   The file 'out' can be used as an input to two plugins:\n"
-	"                     '4Ddump' and '3D+t Extract'\n\n"
-	"                   The log file 'out.log' contains all parameter settings used for generating \n"
-	"                   the output brick. It also holds any warnings generated by the plugin.\n"
-	"                   Some warnings, such as 'null time series ...' , or \n"
-	"                   'Could not find zero crossing ...' are harmless. '\n"
-	"                   I might remove them in future versions.\n\n"
-	"                   A line (L) in the file 'out.ts' contains the time series of the voxel whose\n"
-	"                   results are written on line (L) in the file 'out'.\n"
-	"                   The time series written to 'out.ts' do not contain the ignored samples,\n"
-	"                   they are detrended and have zero mean.\n\n"
-	"                                                                      \n"
-	"Random Comments/Advice:\n"
-	"   The longer you time series, the better. It is generally recomended that\n"
-	"   the largest delay be less than N/10, N being the length of the time series.\n"
-	"   The algorithm does go all the way to N/2.\n\n"
-	"   If you have/find questions/comments/bugs about the plugin, \n"
-	"   send me an E-mail: ziad@nih.gov\n\n"
-	"                          Ziad Saad Dec 8 00.\n\n"
-	"   [1] : Bendat, J. S. (1985). The Hilbert transform and applications to correlation measurements,\n"
-	"          Bruel and Kjaer Instruments Inc.\n"
-	"   [2] : Bendat, J. S. and G. A. Piersol (1986). Random Data analysis and measurement procedures, \n"
-	"          John Wiley & Sons.\n"
-   "   Author's publications on delay estimation using the Hilbert Transform:\n"
-   "   [3] : Saad, Z.S., et al., Analysis and use of FMRI response delays. \n"
-   "         Hum Brain Mapp, 2001. 13(2): p. 74-93.\n"
-   "   [4] : Saad, Z.S., E.A. DeYoe, and K.M. Ropella, Estimation of FMRI Response Delays. \n"
-   "         Neuroimage, 2003. 18(2): p. 494-504.\n\n"   
+"The program estimates the time delay between each voxel time series    \n"
+"in a 3D+time dataset and a reference time series[1][2].                \n"
+"The estimated delays are relative to the reference time series.\n"
+"For example, a delay of 4 seconds means that the voxel time series \n"
+"is delayed by 4 seconds with respect to the reference time series.\n\n"
+"                                                                       \n"
+"Usage:                                                                 \n"
+"3ddelay                                                                 \n"
+"-input fname       fname = filename of input 3d+time dataset           \n"
+"                   DO NOT USE CATENATED timeseries! Time axis is assumed\n"
+"                   to be continuous and not evil.\n"
+"-ideal_file rname  rname = input ideal time series file name           \n"
+"   The length of the reference time series should be equal to           \n"
+"     that of the 3d+time data set. \n"
+"     The reference time series vector is stored in an ascii file.        \n"
+"     The programs assumes that there is one value per line and that all  \n"
+"     values in the file are part of the reference vector.                \n"
+"     PS: Unlike with 3dfim, and FIM in AFNI, values over 33333 are treated\n"
+"     as part of the time series.                                          \n" 
+"-fs fs             Sampling frequency in Hz. of data time series (1/TR). \n"  
+"-T  Tstim          Stimulus period in seconds. \n"
+"                   If the stimulus is not periodic, you can set Tstim to 0.\n"
+"[-prefix bucket]   The prefix for the results Brick.\n"   
+"                   The first subbrick is for Delay.\n"
+"                   The second subbrick is for Covariance, which is an \n" 
+"                   estimate of the power in voxel time series at the\n"
+"                   frequencies present in the reference time series.\n"
+"                   The third subbrick is for the Cross Correlation \n"
+"                   Coefficients between FMRI time series and reference time\n"
+"                   series. The fourth subbrick contains estimates of the\n"
+"                   Variance of voxel time series. \n"
+"                   The default prefix is the prefix of the input dset \n"
+"                   with a '.DEL' extension appended to it.\n"
+"\n"
+"[-polort order]    Detrend input time series with polynomial of order\n"
+"                   'order'. If you use -1 for order then the program will\n"
+"                   suggest an order for you (about 1 for each 150 seconds)\n"
+"                   The minimum recommended is 1. The default is -1 for auto\n"
+"                   selection. This is the same as option Nort in the plugin\n"
+"                   version.\n"
+"[-nodtrnd]         Equivalent to polort 0, whereby only the mean is removed.\n"
+"           NOTE:   Regardless of these detrending options, No detrending is \n"
+"                   done to the reference time series.\n"
+"\n"
+"[-uS/-uD/-uR]      Units for delay estimates. (Seconds/Degrees/Radians)\n"
+"                   You can't use Degrees or Radians as units unless \n"
+"                   you specify a value for Tstim > 0.\n"
+"[-phzwrp]          Delay (or phase) wrap.\n"
+"                   This switch maps delays from: \n" 
+"                   (Seconds) 0->T/2 to 0->T/2 and T/2->T to -T/2->0\n"  
+"                   (Degrees) 0->180 to 0->180 and 180->360 to -180->0\n"   
+"                   (Radians) 0->pi to 0->pi and pi->2pi to -pi->0\n" 
+"                   You can't use this option unless you specify a \n"
+"                   value for Tstim > 0.\n"
+"[-nophzwrp]        Do not wrap phase (default).\n"
+"\n"
+"[-bias]            Do not correct for the bias in the estimates [1][2]\n"
+"[-nobias | -correct_bias] Do correct for the bias in the estimates\n"
+"                          (default).\n" 
+"\n"
+"[-dsamp]           Correct for slice timing differences        (default).\n"
+"[-nodsamp ]        Do not correct for slice timing differences .\n"
+"\n"
+"[-mask mname]      mname = filename of 3d mask dataset                 \n"
+"                   only voxels with non-zero values in the mask would be \n"
+"                   considered.                                           \n"
+"\n"
+"[-nfirst fnum]     fnum = number of first dataset image to use in      \n"
+"                     the delay estimate. (default = 0)                 \n"
+"[-nlast  lnum]     lnum = number of last dataset image to use in       \n"
+"                     the delay estimate. (default = last)              \n"
+"\n"
+"[-co CCT]          Cross Correlation Coefficient threshold value.\n"
+"                   This is only used to limit the ascii output (see below).\n"
+"\n"
+"[-asc [out]]       Write the results to an ascii file for voxels with \n"
+"[-ascts [out]]     cross correlation coefficients larger than CCT.\n"
+"                   If 'out' is not specified, a default name similar \n"
+"                   to the default output prefix is used.\n"
+"                   -asc, only files 'out' and 'out.log' are written to disk\n"
+"                   (see ahead)\n"
+"                   -ascts, an additional file, 'out.ts', is written to disk\n"
+"                   (see ahead)\n"
+"                   There a 9 columns in 'out' which hold the following\n"
+"                   values:\n"
+"                    1- Voxel Index (VI) : Each voxel in an AFNI brick has a\n"
+"                          unique index.\n"
+"                          Indices map directly to XYZ coordinates.\n"
+"                          See AFNI plugin documentations for more info.\n"
+"                    2..4- Voxel coordinates (X Y Z): Those are the voxel \n"
+"                          slice coordinates. You can see these coordinates\n"
+"                          in the upper left side of the AFNI window.\n"
+"                          To do so, you must first switch the voxel \n"
+"                          coordinate units from mm to slice coordinates. \n"
+"                          Define Datamode -> Misc -> Voxel Coords ?\n"
+"                          PS: The coords that show up in the graph window\n"
+"                              may be different from those in the upper left\n"
+"                              side of AFNI's main window.\n"
+"                    5- Duff : A value of no interest to you. It is preserved\n"
+"                              for backward compatibility.\n"
+"                    6- Delay (Del) : The estimated voxel delay.\n"
+"                    7- Covariance (Cov) : Covariance estimate.\n"
+"                    8- Cross Correlation Coefficient (xCorCoef) : \n"
+"                          Cross Correlation Coefficient.\n"
+"                    9- Variance (VTS) : Variance of voxel's time series.\n"
+"\n"
+"                   The file 'out' can be used as an input to two plugins:\n"
+"                     '4Ddump' and '3D+t Extract'\n\n"
+"                   The log file 'out.log' contains all parameter settings \n"
+"                   used for generating the output brick. \n"
+"                   It also holds any warnings generated by the plugin.\n"
+"                   Some warnings, such as 'null time series ...' , or \n"
+"                   'Could not find zero crossing ...' are harmless. '\n"
+"                   I might remove them in future versions.\n\n"
+"                   A line (L) in the file 'out.ts' contains the time series \n"
+"                   of the voxel whose results are written on line (L) in the\n"
+"                   file 'out'.\n"
+"                   The time series written to 'out.ts' do not contain the\n"
+"                   ignored samples, they are detrended and have zero mean.\n"
+"\n"
+"                                                                      \n"
+"Random Comments/Advice:\n"
+"   The longer you time series, the better. It is generally recomended that\n"
+"   the largest delay be less than N/10, N being time series' length.\n"
+"   The algorithm does go all the way to N/2.\n\n"
+"   If you have/find questions/comments/bugs about the plugin, \n"
+"   send me an E-mail: saadz@mail.nih.gov\n\n"
+"                          Ziad Saad Dec 8 00.\n\n"
+"   [1] : Bendat, J. S. (1985). The Hilbert transform and applications \n"
+"         to correlation measurements, Bruel and Kjaer Instruments Inc.\n"
+"          \n"
+"   [2] : Bendat, J. S. and G. A. Piersol (1986). Random Data analysis and\n"
+"         measurement procedures, John Wiley & Sons.\n"
+"   Author's publications on delay estimation using the Hilbert Transform:\n"
+"   [3] : Saad, Z.S., et al., Analysis and use of FMRI response delays. \n"
+"         Hum Brain Mapp, 2001. 13(2): p. 74-93.\n"
+"   [4] : Saad, Z.S., E.A. DeYoe, and K.M. Ropella, Estimation of FMRI \n"
+"         Response Delays.  Neuroimage, 2003. 18(2): p. 494-504.\n"
+"\n"   
     );
 
-  exit(0);
+  PRINT_COMPILE_DATE ; exit(0);
 }
 
 
@@ -361,8 +393,11 @@ void initialize_options
 )
  
 {
-  int is;                     /* index */
+  int is=-1;                     /* index */
 
+
+
+   byte *bmask;
 
   /*----- Initialize default values -----*/
   option_data->fs = 0;
@@ -371,13 +406,17 @@ void initialize_options
   option_data->unt = METH_SECONDS;
   option_data->wrp = 0;
   option_data->Navg = 1;
-  option_data->Nort = 2;
   option_data->Nfit = 2;
   option_data->Nseg = 1;
+  option_data->ignore = 0;
   option_data->Pover = 0;
-  option_data->dtrnd = 1;
+  option_data->ln = 0;
   option_data->biasrem = 1;
   option_data->Dsamp = 1;
+  option_data->errcode = 0;
+  option_data->out = 0;
+  option_data->outts = 0;
+  option_data->rvec = NULL;
   option_data->outwrite = NULL;
   option_data->outwritets = NULL;
   option_data->outlogfile = NULL;
@@ -386,11 +425,9 @@ void initialize_options
   option_data->nzz = 20;
   option_data->NFirst = 0;
   option_data->NLast  = 32767;
-  option_data->out = 0;
-  option_data->outts = 0;
+  option_data->polort = -1;
 
 	/* Left over from 3dfim+.c remove inthe future, with care !*/
-  option_data->polort = 1;
   option_data->num_ortts = 0;
   option_data->num_idealts = 0;
   option_data->N      = 0;
@@ -402,14 +439,18 @@ void initialize_options
   option_data->num_ideal_files = 0;
 
 
-
+  for (is=0; is<NBUCKETS; ++is) option_data->output_type[is] = -1;
+  
   /*----- Initialize file names -----*/
   option_data->input_filename = NULL;
   option_data->mask_filename = NULL;  
   option_data->input1D_filename = NULL;
   option_data->bucket_filename = NULL;
   option_data->outname = NULL;  
-
+  option_data->outnamets = NULL;  
+  option_data->outnamelog = NULL;  
+  option_data->bmask = NULL;
+  
   for (is = 0;  is < MAX_FILES;  is++)
     {  
       option_data->ort_filename[is] = NULL;
@@ -450,6 +491,16 @@ void get_options
   /*----- main loop over input options -----*/
   while (nopt < argc )
     {
+
+      if (strcmp(argv[nopt], "-polort") == 0 || 
+          strcmp(argv[nopt], "-Nort") == 0)
+		{
+		  nopt++;
+		  if (nopt >= argc)  FIM_error ("need argument after -polort ");
+		  option_data->polort = atoi(argv[nopt]);
+		  nopt++;
+		  continue;
+		}
 
       /*-----   -input filename   -----*/
       if (strcmp(argv[nopt], "-input") == 0)
@@ -515,6 +566,8 @@ void get_options
 		  nopt++;
 		  continue;
 		}
+      
+      
 
       /*-----   -T num  -----*/
       if (strcmp(argv[nopt], "-T") == 0)
@@ -597,11 +650,25 @@ void get_options
 		  nopt++;
 		  continue;
 		}
+      if (strcmp(argv[nopt], "-nophzwrp") == 0)
+		{
+		  option_data->wrp = 0;
+		  nopt++;
+		  continue;
+		}
 
       /*-----   -bias  -----*/
       if (strcmp(argv[nopt], "-bias") == 0)
 		{
 		  option_data->biasrem = 0;
+		  nopt++;
+		  continue;
+		}
+      if (strcmp(argv[nopt], "-nobias") == 0 || 
+          strcmp(argv[nopt], "-No_bias") == 0 || 
+          strcmp(argv[nopt], "-correct_bias") == 0)
+		{
+		  option_data->biasrem = 1;
 		  nopt++;
 		  continue;
 		}
@@ -613,11 +680,17 @@ void get_options
 		  nopt++;
 		  continue;
 		}
-
+      if (strcmp(argv[nopt], "-dsamp") == 0)
+		{
+		  option_data->Dsamp = 1;
+		  nopt++;
+		  continue;
+		}
        /*-----   -nodtrnd  -----*/
       if (strcmp(argv[nopt], "-nodtrnd") == 0)
 		{
-		  option_data->dtrnd = 0;
+		  /* option_data->dtrnd = 0; */
+        option_data->polort = 1;
 		  nopt++;
 		  continue;
 		}
@@ -839,6 +912,11 @@ void read_input_data
   int q;                   /* number of parameters in the baseline model */
   int p;                   /* number of parameters in the baseline model 
 			      				plus number of ideals */
+  int nref_in=-1  ;
+  int nmsk = 0;
+  float **ref_in=NULL  ; 
+  THD_3dim_dataset *newset=NULL;           
+  MRI_IMARR *corder_inar=NULL ;
 
 
   /*----- Initialize local variables -----*/
@@ -885,7 +963,46 @@ void read_input_data
 	      FIM_error (message);
 	    }  
 	  DSET_load(*mask_dset); CHECK_LOAD_ERROR(*mask_dset);
+     nmsk = thd_mask_from_brick(*mask_dset, 0, 0, &(option_data->bmask), 1);
+     if (!nmsk) {
+         sprintf (message,  "Empty mask from %s nothing to do", 
+		       option_data->mask_filename);
+	      FIM_error (message);
+     }
+     if (DSET_NX(*mask_dset) != DSET_NX(*dset_time) ||
+         DSET_NX(*mask_dset) != DSET_NX(*dset_time) ||
+         DSET_NX(*mask_dset) != DSET_NX(*dset_time) ) {
+         sprintf (message,  "Mask %s and Time series %s dimensions mismatch.", 
+		       option_data->mask_filename, option_data->input_filename);
+	      FIM_error (message);    
+     } 
 	}
+   
+   {
+      
+      /* detrend that baby */
+      if (option_data->polort == -1) { /* choose your goose */
+         option_data->polort = DSET_NVALS(*dset_time)/150+1;
+         fprintf(stdout,"Notice 3ddelay: Choosing polort = %d\n",
+                  option_data->polort);
+      }
+      nref_in = option_data->polort+1;
+      fprintf(stdout,"poly. detrending: "
+               "%d baseline funcs, %d time points\n",
+               nref_in, DSET_NVALS(*dset_time)) ;
+      ref_in = THD_build_polyref( nref_in , DSET_NVALS(*dset_time) ) ;
+      if( ref_in == NULL ) ERROR_exit("THD_build_trigref failed!") ;
+      if (!(newset = THD_detrend_dataset( *dset_time , nref_in ,
+                                          ref_in , 2 , 
+                                          0 , 
+                                          option_data->bmask , &corder_inar )))
+      { 
+         sprintf (message,  "detrending failed!");
+         FIM_error (message);    
+      }
+      
+      DSET_delete(*dset_time); *dset_time=newset; newset = NULL;
+   }
     }
   else
     FIM_error ("Must specify input measurement data");
@@ -1078,9 +1195,9 @@ void check_for_valid_inputs
 
 
 
- 
+
   /*----- Check whether any of the output files already exist -----*/
-  check_output_files (option_data, dset_time);
+  if( THD_deathcon() ) check_output_files (option_data, dset_time);
  
   /*----- Read in reference time series -----*/
    option_data->ln = option_data->NLast - option_data->NFirst + 1;
@@ -1348,61 +1465,64 @@ void calculate_results
   float * ts_array = NULL;    /* array of measured data for one voxel */
   float mask_val[1];          /* value of mask at current voxel */
 
-  int q;                      /* number of parameters in the baseline model */
-  int p;                      /* number of parameters in the baseline model 
+  int q=-1;                      /* number of parameters in the baseline model */
+  int p=-1;                      /* number of parameters in the baseline model 
 			         plus number of ideals */
-  int m;                      /* parameter index */
-  int n;                      /* data point index */
+  int m=-1;                      /* parameter index */
+  int n=-1;                      /* data point index */
 
 
-  matrix xdata;               /* independent variable matrix */
-  matrix x_base;              /* extracted X matrix    for baseline model */
-  matrix xtxinvxt_base;       /* matrix:  (1/(X'X))X'  for baseline model */
-  matrix x_ideal[MAX_FILES];  /* extracted X matrices  for ideal models */
-  matrix xtxinvxt_ideal[MAX_FILES];     
+   matrix xdata;               /* independent variable matrix */
+   matrix x_base;              /* extracted X matrix    for baseline model */
+   matrix xtxinvxt_base;       /* matrix:  (1/(X'X))X'  for baseline model */
+   matrix x_ideal[MAX_FILES];  /* extracted X matrices  for ideal models */
+   matrix xtxinvxt_ideal[MAX_FILES];     
                               /* matrix:  (1/(X'X))X'  for ideal models */
-  vector y;                   /* vector of measured data */       
+   vector y;                   /* vector of measured data */       
 
-  int ixyz;                   /* voxel index */
-  int nxyz;                   /* number of voxels per dataset */
+   int ixyz=-1;                   /* voxel index */
+   int nxyz=-1;                   /* number of voxels per dataset */
 
-  int nt;                  /* number of images in input 3d+time dataset */
-  int NFirst;              /* first image from input 3d+time dataset to use */
-  int NLast;               /* last image from input 3d+time dataset to use */
-  int N;                   /* number of usable data points */
+   int nt=-1;                  /* number of images in input 3d+time dataset */
+   int NFirst=-1;              /* first image from input 3d+time dataset to use */
+   int NLast=-1;               /* last image from input 3d+time dataset to use */
+   int N=-1;                   /* number of usable data points */  
 
-  int num_ort_files;       /* number of ort time series files */
-  int num_ideal_files;     /* number of ideal time series files */
-  int polort;              /* degree of polynomial ort */
-  int num_ortts;           /* number of ort time series */
-  int num_idealts;         /* number of ideal time series */
+   int num_ort_files=-1;       /* number of ort time series files */
+   int num_ideal_files=-1;     /* number of ideal time series files */
+   int polort=-1;              /* degree of polynomial ort */
+   int num_ortts=-1;           /* number of ort time series */
+   int num_idealts=-1;         /* number of ideal time series */
   
-  int i;                   /* data point index */
-  int is;                  /* ideal index */
-  int ilag;                /* time lag index */
-  float stddev;            /* normalized parameter standard deviation */
-  char * label;            /* string containing stat. summary of results */
-	int xpos, ypos, zpos; 
-   double tzero , tdelta , ts_mean , ts_slope;
-   int   ii ,  iz,izold, nxy , nuse, use_fac, kk;
-  float * x_bot = NULL;    /* minimum of stimulus time series */
-  float * x_ave = NULL;    /* average of stimulus time series */
-  float * x_top = NULL;    /* maximum of stimulus time series */
-  int * good_list = NULL;  /* list of good (usable) time points */ 
-  float ** rarray = NULL;  /* ranked arrays of ideal time series */
-  float FimParams[NBUCKETS];  /* output delay parameters */
-
+   int i=-1;                   /* data point index */
+   int is=-1;                  /* ideal index */
+   int ilag=-1;                /* time lag index */
+   float stddev=-1.0;            /* normalized parameter standard deviation */
+   char * label=NULL;            /* string containing stat. summary of results */
+   int xpos=-1, ypos=-1, zpos=-1; 
+   double tzero=0.0 , tdelta=0.0 , ts_mean=0.0 , ts_slope=0.0;
+   int   ii=-1,  iz=-1,izold=-1, nxy=-1, nuse=-1, use_fac=-1, kk=-1;
+   float * x_bot = NULL;    /* minimum of stimulus time series */
+   float * x_ave = NULL;    /* average of stimulus time series */
+   float * x_top = NULL;    /* maximum of stimulus time series */
+   int * good_list = NULL;  /* list of good (usable) time points */ 
+   float ** rarray = NULL;  /* ranked arrays of ideal time series */
+   float FimParams[NBUCKETS];  /* output delay parameters */
    float *  dtr  = NULL ;  /* will be array of detrending coeff */
    float *  fac  = NULL ;  /* array of input brick scaling factors */
-	float * vox_vect; 			/* voxel time series */
-	float *ref_ts; /*reference time series */
-	float slp, delu, del,  xcor, xcorCoef,vts, vrvec, dtx, d0fac , d1fac , x0,x1;
-	int  actv, opt, iposdbg;
+   float * vox_vect = NULL; 			/* voxel time series */
+   float *ref_ts=NULL; /*reference time series */
+   float slp=0.0, delu=0.0, del=0.0,  xcor=0.0, xcorCoef=0.0,vts=0.0,
+          vrvec=0.0, dtx=0.0, d0fac=0.0 , d1fac=0.0 , x0=0.0,x1=0.0;
+   int  actv=-1, opt=-1, iposdbg=-1;
 	
-	#ifdef ZDBG
+   for (i=0;i<NBUCKETS;++i) FimParams[i]=-1.0;
+	
+   #ifdef ZDBG
 		xyzTOindex (option_data, &iposdbg, IPOSx,  IPOSy , IPOSz);
 		printf ("Debug for %d: %d, %d, %d\n\n", iposdbg, IPOSx,  IPOSy , IPOSz);
 	#endif
+   
 
   /*----- Initialize matrices and vectors -----*/
   matrix_initialize (&xdata);
@@ -1574,43 +1694,45 @@ void calculate_results
       if( use_fac )
          for( kk=0 ; kk < nuse ; kk++ ) vox_vect[kk] *= fac[kk] ;
       
-		#ifdef ZDBG
-		if (ixyz == iposdbg)
-			{
-				printf("Before Detrending\n");
-				printf("TS: %f\t%f\t%f\t%f\t%f\n", vox_vect[0], vox_vect[1],  vox_vect[2], vox_vect[3], vox_vect[4]);
-				/*getchar ();*/
-			}
-		#endif
 
-		/** compute mean and slope **/
+      #if 0 /* now detrending is done at input, kill this block someday*/
+		   /** compute mean and slope **/
 
-      x0 = x1 = 0.0 ;
-      for( kk=0 ; kk < nuse ; kk++ ){
-         x0 += vox_vect[kk] ; x1 += vox_vect[kk] * dtr[kk] ;
-      }
+		   #ifdef ZDBG
+		   if (ixyz == iposdbg)
+			   {
+				   printf("Before Detrending\n");
+				   printf("TS: %f\t%f\t%f\t%f\t%f\n", vox_vect[0], vox_vect[1],  vox_vect[2], vox_vect[3], vox_vect[4]);
+				   /*getchar ();*/
+			   }
+		   #endif
+         x0 = x1 = 0.0 ;
+         for( kk=0 ; kk < nuse ; kk++ ){
+            x0 += vox_vect[kk] ; x1 += vox_vect[kk] * dtr[kk] ;
+         }
 
-      x0 *= d0fac ; x1 *= d1fac ;  /* factors to remove mean and trend */
+         x0 *= d0fac ; x1 *= d1fac ;  /* factors to remove mean and trend */
 
-      ts_mean  = x0 ;
-      ts_slope = x1 / tdelta ;
+         ts_mean  = x0 ;
+         ts_slope = x1 / tdelta ;
 
-      /** detrend? **/
+         /** detrend? **/
 
-      if( option_data->dtrnd )
-         for( kk=0 ; kk < nuse ; kk++ ) vox_vect[kk] -= (x0 + x1 * dtr[kk]) ;
-      else
-         for( kk=0 ; kk < nuse ; kk++ ) vox_vect[kk] -= x0;
-         
-		#ifdef ZDBG
-		if (ixyz == iposdbg)
-			{
-				printf("After Detrending (or just zero-meaning)\n");
-				printf("TS: %f\t%f\t%f\t%f\t%f\n", vox_vect[0], vox_vect[1],  vox_vect[2], vox_vect[3], vox_vect[4]);
-				/*getchar ();*/
-			}
-		#endif
+         if( option_data->dtrnd )
+            for( kk=0 ; kk < nuse ; kk++ ) vox_vect[kk] -= (x0 + x1 * dtr[kk]) ;
+         else
+            for( kk=0 ; kk < nuse ; kk++ ) vox_vect[kk] -= x0;
 
+		   #ifdef ZDBG
+		   if (ixyz == iposdbg)
+			   {
+				   printf("After Detrending (or just zero-meaning)\n");
+				   printf("TS: %f\t%f\t%f\t%f\t%f\n", vox_vect[0], vox_vect[1],  vox_vect[2], vox_vect[3], vox_vect[4]);
+				   /*getchar ();*/
+			   }
+		   #endif
+
+      #endif
 		/* calculate the T0 and Tdelta */
       /** compute start time of this timeseries **/
 
@@ -1923,7 +2045,7 @@ void write_bucket_data
       exit(1);
     }
   
-  if (THD_is_file(DSET_HEADNAME(new_dset))) 
+  if (!THD_ok_overwrite() && THD_is_file(DSET_HEADNAME(new_dset))) 
     {
       fprintf(stderr,
 	      "*** Output dataset file %s already exists--cannot continue!\n",
@@ -1941,7 +2063,7 @@ void write_bucket_data
       if (ip == COFINDX)
 			{
 			  brick_type = FUNC_COR_TYPE;
-			  nsam = option_data->ln;  nort = option_data->Nort;
+			  nsam = option_data->ln;  nort = option_data->polort;
    		  nfit = option_data->Nfit;
 			}
 		else
@@ -2030,11 +2152,15 @@ void show_ud (struct DELAY_options* option_data,int loc)
 		printf ("option_data->unt= %d\n",option_data->unt);
 		printf ("option_data->wrp= %d\n",option_data->wrp);
 		printf ("option_data->Navg= %d\n",option_data->Navg);
-		printf ("option_data->Nort= %d\n",option_data->Nort);
+		printf ("option_data->Nort (polort)= %d\n",option_data->polort);
 		printf ("option_data->Nfit= %d\n",option_data->Nfit);
 		printf ("option_data->Nseg= %d\n",option_data->Nseg);
 		printf ("option_data->Pover= %d\n",option_data->Pover);
-		printf ("option_data->dtrnd= %d\n",option_data->dtrnd);
+		if (option_data->polort > 1) {
+         printf ("option_data->dtrnd= 1\n");
+      } else {
+         printf ("option_data->dtrnd= 0\n");
+      }
 		printf ("option_data->biasrem= %d\n",option_data->biasrem);
 		printf ("option_data->Dsamp= %d\n",option_data->Dsamp);
 		printf ("option_data->co= %f\n",option_data->co);
@@ -2075,9 +2201,9 @@ void write_ud (struct DELAY_options* option_data)
 		fprintf (option_data->outlogfile,"Number of segments = %d\n",option_data->Nseg);
 		fprintf (option_data->outlogfile,"Length of reference time series = %d\n",option_data->ln);
 		fprintf (option_data->outlogfile,"Number of fit parameters = %d\n",option_data->Nfit);
-		fprintf (option_data->outlogfile,"Number of nuisance parameters (orts)= %d\n",option_data->Nort);
+		fprintf (option_data->outlogfile,"Number of nuisance parameters (orts)= %d\n",option_data->polort);
 		fprintf (option_data->outlogfile,"Percent overlap = %d\n",option_data->Pover);
-		fprintf (option_data->outlogfile,"Plugin detrending = %d (Always 0, mandatory detrending is performed)\n",option_data->dtrnd);
+		fprintf (option_data->outlogfile,"Plugin detrending = (Always 0, mandatory detrending is performed)\n");
 		fprintf (option_data->outlogfile,"Bias correction = %d\n",option_data->biasrem);
 		fprintf (option_data->outlogfile,"Acquisition time correction = %d\n",option_data->Dsamp);
 		fprintf (option_data->outlogfile,"Correlation Coefficient Threshold= %f\n",option_data->co);

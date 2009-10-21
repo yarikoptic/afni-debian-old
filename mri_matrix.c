@@ -1,5 +1,8 @@
 #include "mrilib.h"
 
+/****** functions used mostly in 1dmatcalc.c, but elsewhere as well ******/
+/***** these functions operate on matrices stored in 2D float images *****/
+
 /*-----------------------------------------------------------------------*/
 /*! Compute the product of two matrices, stored in 2D float images.
 -------------------------------------------------------------------------*/
@@ -30,7 +33,7 @@ ENTRY("mri_matrix_mult") ;
    if( imb->nx != mm ){
      ERROR_message("mri_matrix_mult( %d X %d , %d X %d )?",
                    ima->nx , ima->ny , imb->nx , imb->ny ) ;
-     RETURN( NULL);
+     RETURN( NULL );
    }
 
 #undef  A
@@ -75,7 +78,7 @@ ENTRY("mri_matrix_multranA") ;
    if( imb->nx != mm ){
      ERROR_message("mri_matrix_multranA( %d X %d , %d X %d )?",
                    ima->nx , ima->ny , imb->nx , imb->ny ) ;
-     RETURN( NULL);
+     RETURN( NULL );
    }
 
 #undef  A
@@ -120,7 +123,7 @@ ENTRY("mri_matrix_multranB") ;
    if( imb->ny != mm ){
      ERROR_message("mri_matrix_multranB( %d X %d , %d X %d )?",
                    ima->nx , ima->ny , imb->nx , imb->ny ) ;
-     RETURN( NULL);
+     RETURN( NULL );
    }
 
 #undef  A
@@ -150,6 +153,9 @@ ENTRY("mri_matrix_multranB") ;
 }
 
 /*-----------------------------------------------------------------------*/
+/*! Multiply matrix in ima by scalar fa, matrix in imb by scalar fb,
+    and add the results.  Used for general purpose matrix add/subtract.
+-------------------------------------------------------------------------*/
 
 MRI_IMAGE * mri_matrix_sadd( float fa, MRI_IMAGE *ima, float fb, MRI_IMAGE *imb )
 {
@@ -178,6 +184,7 @@ ENTRY("mri_matrix_sadd") ;
 }
 
 /*-----------------------------------------------------------------------*/
+/*! Multiply matrix in ima by scalar fa. */
 
 MRI_IMAGE * mri_matrix_scale( float fa, MRI_IMAGE *ima )
 {
@@ -202,7 +209,7 @@ ENTRY("mri_matrix_scale") ;
 /*-----------------------------------------------------------------------*/
 static int force_svd = 0 ;
 void mri_matrix_psinv_svd( int i ){ force_svd = i; }
-/*-----------------------------------------------------------------------*/
+/*----------------------------------------------------------------------------*/
 /*! Compute the pseudo-inverse of a matrix stored in a 2D float image.
     If the input is mXn, the output is nXm.  wt[] is an optional array
     of positive weights, m of them.  The result can be used to solve
@@ -213,8 +220,17 @@ void mri_matrix_psinv_svd( int i ){ force_svd = i; }
                           -1
       [imc' imc + alpha I]   imc'    (where ' = transpose)
 
-    This can be used to solve the penalized least squares problem.
--------------------------------------------------------------------------*/
+    This result can be used to solve the penalized least squares problem
+
+           (                                         )
+      min  ( LQ{ [imc] [b] - [v] } + alpha LQ{ [b] } )
+       [b] (                                         )
+
+    where LQ{ [x] } is the sum of squares of the elements of vector [x].
+    The 'penalty' consists of trying to keep the elements of [b] small.
+
+    Note that matrices are stored in column-major order in the 2D image arrays!
+------------------------------------------------------------------------------*/
 
 MRI_IMAGE * mri_matrix_psinv( MRI_IMAGE *imc , float *wt , float alpha )
 {
@@ -301,7 +317,7 @@ ENTRY("mri_matrix_psinv") ;
      }
      sum = V(ii,ii) ;
      for( kk=0 ; kk < ii ; kk++ ) sum -= V(ii,kk) * V(ii,kk) ;
-     if( sum <= 0.0 ){
+     if( sum < PSINV_EPS ){
        WARNING_message("Choleski fails in mri_matrix_psinv()!\n");
        do_svd = 1 ; goto SVD_PLACE ;
      }
@@ -399,7 +415,7 @@ ENTRY("mri_matrix_psinv") ;
      }
    }
 
-   RETURN( imp);
+   RETURN( imp );
 }
 
 /*----------------------------------------------------------------------------*/
@@ -432,8 +448,98 @@ ENTRY("mri_matrix_ortproj") ;
 }
 
 /*----------------------------------------------------------------------------*/
+/*! Return the average absolute value of the entries of the matrix. */
+
+float mri_matrix_size( MRI_IMAGE *imc )  /* 30 Jul 2007 */
+{
+   int nxy , ii ;
+   float sum , *car ;
+
+   if( imc == NULL || imc->kind != MRI_float ) RETURN(-1.0f) ;
+   nxy = imc->nx * imc->ny ; car = MRI_FLOAT_PTR(imc) ;
+   sum = 0.0f ;
+   for( ii=0 ; ii < nxy ; ii++ ) sum += fabs(car[ii]) ;
+   sum /= nxy ; return sum ;
+}
+
+/*----------------------------------------------------------------------------*/
+/*! Compute the square root of a matrix, iteratively. */
+
+MRI_IMAGE * mri_matrix_sqrt( MRI_IMAGE *imc )  /* 30 Jul 2007 */
+{
+   float gam , fa,fb , csiz ;
+   int nn , ite , ii ;
+   MRI_IMAGE *imy , *imz , *imyinv,*imzinv , *tim ;
+   float     *yar , *zar , *car ;
+
+   if( imc == NULL || imc->kind != MRI_float ) RETURN(NULL) ;
+   nn = imc->nx ; if( nn != imc->ny ) RETURN(NULL) ;
+   if( nn == 1 ){
+     car = MRI_FLOAT_PTR(imc); if( car[0] < 0.0f ) RETURN(NULL) ;
+     imz = mri_new(1,1,MRI_float); zar = MRI_FLOAT_PTR(imz);
+     zar[0] = sqrt(car[0]) ; RETURN(imz) ;
+   }
+
+   imz = mri_new(nn,nn,MRI_float) ; zar = MRI_FLOAT_PTR(imz) ;
+   csiz = mri_matrix_size(imc) ; if( csiz <= 0.0f ) RETURN(imz) ;
+   imy = mri_copy(imc) ;
+   for( ii=0 ; ii < nn ; ii++ ) zar[ii+ii*nn] = 1.0f ; /* identity */
+
+   /** start iterations: usually 3-5 is enough **/
+
+   for( ite=0 ; ite < 50 ; ite++ ){
+     imyinv = mri_matrix_psinv( imy , NULL , 0.0f ) ;
+     if( imyinv == NULL ){
+       ERROR_message("mri_matrix_sqrt() fails at ite=%d",ite);
+       mri_free(imz); mri_free(imy); RETURN(NULL);
+     }
+     if( ite == 0 ) imzinv = mri_copy(imz) ;
+     else           imzinv = mri_matrix_psinv( imz , NULL , 0.0f ) ;
+     if( imzinv == NULL ){
+       ERROR_message("mri_matrix_sqrt() fails at ite=%d",ite);
+       mri_free(imz); mri_free(imy); mri_free(imyinv); RETURN(NULL);
+     }
+     gam = 1.0f ;  /* someday, could put a scaling calculation in for gam */
+     fa = 0.5f*gam ; fb = 0.5f/gam ;
+     tim = mri_matrix_sadd( fa,imy , fb,imzinv ) ; mri_free(imy) ; imy = tim ;
+     tim = mri_matrix_sadd( fa,imz , fb,imyinv ) ; mri_free(imz) ; imz = tim ;
+     mri_free(imyinv) ; mri_free(imzinv) ;
+     if( ite > 2 ){  /* check for convergence: see if imy*imy-imc is small */
+       imyinv = mri_matrix_mult( imy , imy ) ;
+       tim    = mri_matrix_sadd( 1.0f,imyinv , -1.0f,imc ) ; mri_free(imyinv) ;
+       fa = mri_matrix_size(tim) ; mri_free(tim) ;
+       if( fa <= 5.e-5*csiz ){ mri_free(imz); RETURN(imy); }
+     }
+   }
+#if 0
+   ERROR_message("mri_matrix_sqrt() fails to converge: err=%g",fa/csiz);
+#endif
+   mri_free(imz) ; mri_free(imy) ; RETURN(NULL) ;
+}
+
+/*----------------------------------------------------------------------------*/
+/*! Square root of a mat44 struct (3x3 matrix + 3 vect). */
+
+mat44 THD_mat44_sqrt( mat44 A )  /* 30 Jul 2007 */
+{
+   MRI_IMAGE *imc, *imx ; float *far ; mat44 X ;
+
+   imc = mri_new(4,4,MRI_float) ; far = MRI_FLOAT_PTR(imc) ;
+   UNLOAD_MAT44_AR( A , far ) ;
+   far[12] = far[13] = far[14] = 0.0f ; far[15] = 1.0f ;
+   imx = mri_matrix_sqrt(imc) ; mri_free(imc) ;
+   if( imx == NULL ){
+     LOAD_DIAG_MAT44(X,0,0,0) ; /* error! */
+   } else {
+     far = MRI_FLOAT_PTR(imx) ;
+     LOAD_MAT44_AR(X,far) ; mri_free(imx) ;
+   }
+   return X ;
+}
+
+/*----------------------------------------------------------------------------*/
 /*! Legendre polynomial of non-negative order m evaluated at x;
-    x may be any real number, but the main use is for -1 <= x <= 1 (duh).
+    x may be any real number, but the main use is for -1 <= x <= 1 (duuuh).
 ------------------------------------------------------------------------------*/
 
 double Plegendre( double x , int m )
@@ -444,7 +550,7 @@ double Plegendre( double x , int m )
 
    switch( m ){                /*** direct formulas for P_m(x) for m=0..20 ***/
     case 0: return 1.0 ;       /* that was easy */
-    case 1: return x ;
+    case 1: return x ;         /* also easy */
     case 2: return (3.0*x*x-1.0)/2.0 ;
     case 3: return (5.0*x*x-3.0)*x/2.0 ;
     case 4: return ((35.0*x*x-30.0)*x*x+3.0)/8.0 ;
@@ -754,6 +860,17 @@ ENTRY("mri_matrix_evalrpn") ;
         ADDTO_IMARR(imstk,imc) ;
       }
 
+      /** matrix square root **/
+
+      else if( strncasecmp(cmd,"&Sqrt",5) == 0 ){
+        if( nstk < 1 ) ERREX("no matrix") ;
+        ima = IMARR_SUBIM(imstk,nstk-1) ;
+        imc = mri_matrix_sqrt( ima ) ;
+        if( imc == NULL ) ERREX("can't compute") ;
+        TRUNCATE_IMARR(imstk,nstk-1) ;
+        ADDTO_IMARR(imstk,imc) ;
+      }
+
       /** orthogonal projection onto column space **/
 
       else if( strncasecmp(cmd,"&Pproj",6) == 0 ){
@@ -887,15 +1004,26 @@ char * mri_matrix_evalrpn_help(void)
     "\n"
     " * The operations are on a stack, each element of which is a\n"
     "     real-valued matrix.\n"
+    "   * N.B.: This is a computer-science stack of separate matrices.\n"
+    "           If you want to join two matrices in separate files\n"
+    "           into one 'stacked' matrix, then you must use program\n"
+    "           1dcat to join them as columns, or the system program\n"
+    "           cat to join them as rows.\n"
     " * You can also save matrices by name in an internal buffer\n"
     "     using the '=NAME' operation and then retrieve them later\n"
     "     using just the same NAME.\n"
     " * You can read and write matrices from files stored in ASCII\n"
     "     columns (.1D format) using the &read and &write operations.\n"
     " * The following 5 operations, input as a single string,\n"
-    "     \"&read(V.1D) &read(U.1D) &transp * &write(VUT.1D)\"\n"
-    "   read matrices V and U from disk, and writes matrix VU' out.\n"
+    "     \'&read(V.1D) &read(U.1D) &transp * &write(VUT.1D)\'\n"
+    "   - reads matrices V and U from disk (separately),\n"
+    "   - transposes U (on top of the stack) into U',\n"
+    "   - multiplies V and U' (the two matrices on top of the stack),\n"
+    "   - and writes matrix VU' out (the matrix left on the stack by '*').\n"
     " * Calculations are carried out in single precision ('float').\n"
+    " * Operations mostly contain characters such as '&' and '*' that\n"
+    "   are special to Unix shells, so you'll probably need to put\n"
+    "   the arguments to this program in 'single quotes'.\n"
     "\n"
     " STACK OPERATIONS\n"
     " -----------------\n"
@@ -917,8 +1045,13 @@ char * mri_matrix_evalrpn_help(void)
     "                    current top matrix, OR\n"
     "                 =X to indicate the (1,1) element of the\n"
     "                    matrix named X\n"
-    " &Psinv     == replace top matrix with its pseudoinverse\n"
+    " &Psinv     == replace top matrix with its pseudo-inverse\n"
     "                 [computed via SVD, not via inv(A'*A)*A']\n"
+    " &Sqrt      == replace top matrix with its square root\n"
+    "                 [computed via Denman & Beavers iteration]\n"
+    "               N.B.: not all real matrices have real square\n"
+    "                 roots, and &Sqrt will fail if you push it\n"
+    "               N.B.: the matrix must be square!\n"
     " &Pproj     == replace top matrix with the projection onto\n"
     "                 its column space; Input=A; Output = A*Psinv(A)\n"
     "               N.B.: result P is symmetric and P*P=P\n"

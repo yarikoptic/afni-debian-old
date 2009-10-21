@@ -391,7 +391,7 @@ void DT_Syntax(void)
 
    printf("\n" MASTER_SHORTHELP_STRING ) ;
 
-   exit(0) ;
+   PRINT_COMPILE_DATE ; exit(0) ;
 }
 
 /*-------------------------------------------------------------------------*/
@@ -434,7 +434,7 @@ int main( int argc , char * argv[] )
 
    /* can't re-write existing dataset */
 
-   if( THD_is_file(DSET_HEADNAME(new_dset)) )
+   if( THD_deathcon() && THD_is_file(DSET_HEADNAME(new_dset)) )
      ERROR_exit("File %s already exists!\n",DSET_HEADNAME(new_dset) ) ;
 
    /* read input in, and attach its bricks to the output dataset */

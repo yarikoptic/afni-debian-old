@@ -373,35 +373,33 @@ STATUS("WANT_LOGO_BITMAP") ;
       if( logo_pixmap == XmUNSPECIFIED_PIXMAP ){
 
 #ifndef NO_FRIVOLITIES
-#include "lll.h"
+#include "lll.h"  /* contains the colorized image logos */
+
+#define RGB_TO_PIXMAP(data,pnam)                                           \
+ do{ mri_fix_data_pointer( data , bim ) ;                                  \
+     pnam = XCreatePixmap( im3d->dc->display ,                             \
+                           RootWindowOfScreen(im3d->dc->screen) ,          \
+                           lll_width , lll_height , im3d->dc->planes ) ;   \
+     xim = rgb_to_XImage( im3d->dc , bim ) ;                               \
+     if( xim != NULL ) XPutImage( im3d->dc->display , pnam ,               \
+                                  im3d->dc->origGC ,                       \
+                                  xim , 0,0, 0,0, lll_width,lll_height ) ; \
+     MCW_kill_XImage( xim );                                               \
+ } while(0)
+
         if( im3d->dc->visual_class == TrueColor ){  /* 23 Sep 2001 */
           MRI_IMAGE *bim ; XImage *xim ;
           bim = mri_new_vol_empty( lll_width,lll_height,1 , MRI_rgb ) ;
-          mri_fix_data_pointer( lll_rgb , bim ) ;
-          logo_pixmap = XCreatePixmap( im3d->dc->display ,
-                                       RootWindowOfScreen(im3d->dc->screen) ,
-                                       lll_width , lll_height ,
-                                       im3d->dc->planes ) ;
-          xim = rgb_to_XImage( im3d->dc , bim ) ;
-          if( xim != NULL )
-             XPutImage( im3d->dc->display ,
-                        logo_pixmap ,
-                        im3d->dc->origGC ,
-                        xim , 0,0 , 0,0 , lll_width , lll_height ) ;
-          MCW_kill_XImage( xim );
 
-          mri_fix_data_pointer( vvv_rgb , bim ) ;      /* 08 Aug 2005 */
-          vers_pixmap = XCreatePixmap( im3d->dc->display ,
-                                       RootWindowOfScreen(im3d->dc->screen) ,
-                                       lll_width , lll_height ,
-                                       im3d->dc->planes ) ;
-          xim = rgb_to_XImage( im3d->dc , bim ) ;
-          if( xim != NULL )
-             XPutImage( im3d->dc->display ,
-                        vers_pixmap ,
-                        im3d->dc->origGC ,
-                        xim , 0,0 , 0,0 , lll_width , lll_height ) ;
-          MCW_kill_XImage( xim );
+          RGB_TO_PIXMAP(lll_rgb  ,logo_pixmap   ) ;
+          RGB_TO_PIXMAP(vvv_rgb  ,vers_pixmap   ) ;  /* 08 Aug 2005 */
+          RGB_TO_PIXMAP(rhdda_rgb,pict_pixmap[0]) ;  /* 19 Oct 2007 */
+          RGB_TO_PIXMAP(sbuck_rgb,pict_pixmap[1]) ;  /* 18 Oct 2007 */
+          RGB_TO_PIXMAP(sscc_rgb ,pict_pixmap[2]) ;  /* 22 Oct 2007 */
+          RGB_TO_PIXMAP(earth_rgb,pict_pixmap[3]) ;  /* 22 Oct 2007 */
+          RGB_TO_PIXMAP(nih_rgb  ,pict_pixmap[4]) ;  /* 25 Oct 2007 */
+          RGB_TO_PIXMAP(burst_rgb,pict_pixmap[5]) ;  /* 18 Oct 2007 */
+
           mri_clear_data_pointer(bim); mri_free(bim);
         }
 #endif
@@ -509,6 +507,26 @@ STATUS("WANT_AFNI_BITMAP") ;
             mri_free(bim) ;
           }
         }
+      }
+
+      if( AFNI_yesenv("AFNI_COLORIZE_CONTROLLER") &&
+          im3d->dc->visual_class     == TrueColor &&
+          afni16_pixmap[num_entry-1] == XmUNSPECIFIED_PIXMAP ){ /* 17 Oct 2007 */
+
+        MRI_IMAGE *bim ; XImage *xim ;
+        rgbyte ccc[3]={ {0,0,66}, {55,0,0}, {0,44,0} } , col[4] ;
+
+        col[0] = ccc[ (num_entry-1)%4 ]; col[1] = ccc[ (num_entry+0)%4 ];
+        col[2] = ccc[ (num_entry+1)%4 ]; col[3] = col[0] ;
+        bim = mri_make_rainbow( 4 , 3*im3d->dc->height/4 , 4 , col ) ;
+        xim = rgb_to_XImage( im3d->dc , bim ) ;
+        afni16_pixmap[num_entry-1] = XCreatePixmap( im3d->dc->display ,
+                                      RootWindowOfScreen(im3d->dc->screen) ,
+                                      bim->nx , bim->ny , im3d->dc->planes ) ;
+        XPutImage( im3d->dc->display , afni16_pixmap[num_entry-1] ,
+                   im3d->dc->origGC , xim , 0,0 , 0,0 , bim->nx , bim->ny ) ;
+        MCW_kill_XImage( xim ) ;
+        mri_free(bim) ;
       }
 
 #if 0
@@ -1588,6 +1606,8 @@ STATUS("making view->rowcol") ;
    /*--- frame for func buttons ---*/
 
    im3d->vinfo->func_visible = False ;
+   if( AFNI_yesenv("AFNI_SEE_OVERLAY") ) im3d->vinfo->func_visible = True ;
+   im3d->vinfo->func_visible_count = 0 ;
 
    view->func_frame =
       XtVaCreateManagedWidget(
@@ -2517,8 +2537,10 @@ STATUS("making func->rowcol") ;
    MCW_register_hint( func->thr_label , "Type of threshold statistic" ) ;
 #endif
 
-#if 0
-   /**-- 05 Sep 2006: menu hidden on the thr_label --**/
+   /**--------- 05 Sep 2006: creat menu hidden on the thr_label ---------**/
+
+#if 1
+   { static char *onofflabel[] = { "Use Threshold?" } ;
 
 #ifdef BAD_BUTTON3_POPUPS
    func->thr_menu = XmCreatePopupMenu( func->thr_rowcol, "menu", NULL, 0 ) ;
@@ -2528,7 +2550,9 @@ STATUS("making func->rowcol") ;
 
    SAVEUNDERIZE(XtParent(func->thr_menu)) ;
    VISIBILIZE_WHEN_MAPPED(func->thr_menu) ;
+#if 0
    if( !AFNI_yesenv("AFNI_DISABLE_TEAROFF") ) TEAROFFIZE(func->thr_menu) ;
+#endif
 
    XtInsertEventHandler( func->thr_label ,       /* handle events in label */
 
@@ -2543,7 +2567,7 @@ STATUS("making func->rowcol") ;
 
    (void) XtVaCreateManagedWidget(
             "dialog" , xmLabelWidgetClass , func->thr_menu ,
-               LABEL_ARG("-Volume Edit-") ,
+               LABEL_ARG("--- Cancel ---") ,
                XmNrecomputeSize , False ,
                XmNinitialResourcesPersistent , False ,
             NULL ) ;
@@ -2552,33 +2576,71 @@ STATUS("making func->rowcol") ;
             "dialog" , xmSeparatorWidgetClass , func->thr_menu ,
              XmNseparatorType , XmSINGLE_LINE , NULL ) ;
 
-   func->thr_clear_pb =
+   func->thr_onoff_bbox = new_MCW_bbox( func->thr_menu ,
+                                        1 , onofflabel ,
+                                        MCW_BB_check , MCW_BB_noframe ,
+                                        AFNI_thronoff_change_CB , (XtPointer)im3d ) ;
+   im3d->vinfo->thr_onoff = 1 ;
+   MCW_set_bbox( func->thr_onoff_bbox , 1 ) ;
+   MCW_reghint_children( func->thr_onoff_bbox->wrowcol ,
+                         "Temporarily ignore threshold?" ) ;
+
+   /* AutoThreshold button */
+
+   func->thr_autothresh_pb =
       XtVaCreateManagedWidget(
          "dialog" , xmPushButtonWidgetClass , func->thr_menu ,
-            LABEL_ARG("*Clear Edit") ,
+            LABEL_ARG("AutoThreshold") ,
             XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
-   XtAddCallback( func->thr_clear_pb , XmNactivateCallback ,
-                  AFNI_thr_CB , im3d ) ;
-   MCW_register_hint( func->thr_clear_pb , "Turn off Volume Edit" ) ;
-   im3d->vedset.code = 0 ; im3d->vedset.ival = -1 ;
+   XtAddCallback( func->thr_autothresh_pb , XmNactivateCallback ,
+                  AFNI_func_autothresh_CB , im3d ) ;
+   MCW_register_hint( func->thr_autothresh_pb , "Compute threshold automatically NOW" ) ;
 
-   func->thr_cluster_pb =
+   /* Threshold sign arrowval [08 Aug 2007] */
+
+   { static char *thr_sign_label[3] = { "Pos & Neg",
+                                        "Pos only" ,
+                                        "Neg only"  } ;
+     im3d->vinfo->thr_sign = 0 ;  /* default = "Pos & Neg" */
+     func->thr_sign_av =
+        new_MCW_arrowval(
+           func->thr_menu ,        /* parent */
+           "Sign" ,                /* label */
+           AVOPT_STYLE ,           /* arrow directions */
+           0  ,                    /* min value */
+           2  ,                    /* max value */
+           im3d->vinfo->thr_sign , /* init value */
+           MCW_AV_editext ,        /* input/output text display */
+           0 ,                     /* 0 decimal shift */
+           AFNI_func_thrsign_CB ,  /* routine to call after click */
+           (XtPointer) im3d ,      /* data to pass */
+           MCW_av_substring_CB ,   /* text creation routine */
+           thr_sign_label          /* data for above */
+        ) ;
+      MCW_reghint_children( func->thr_sign_av->wrowcol ,
+                            "show Positives, Negatives, or Both?" ) ;
+    }
+
+   /* FDR button */
+
+   func->thr_fdr_pb =
       XtVaCreateManagedWidget(
          "dialog" , xmPushButtonWidgetClass , func->thr_menu ,
-            LABEL_ARG(" Clusterize") ,
+            LABEL_ARG("Add FDR Curves") ,
             XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
-   XtAddCallback( func->thr_cluster_pb , XmNactivateCallback ,
-                  AFNI_thr_CB , im3d ) ;
-   MCW_register_hint( func->thr_cluster_pb , "Cluster edit overlay" ) ;
+   XtAddCallback( func->thr_fdr_pb , XmNactivateCallback ,
+                  AFNI_func_fdr_CB , im3d ) ;
+   MCW_register_hint( func->thr_fdr_pb ,
+                      "Compute FDR curves for OLay statistical sub-bricks" ) ;
 
-   /*---- end of thr_menu creation ----*/
+   } /*---- end of thr_menu creation for top of threshold slider ----*/
 #endif
 
-   FIX_SCALE_VALUE(im3d) ;
+   FIX_SCALE_VALUE(im3d) ;  /* just in case */
 
 #define SCALE_EXTRA 66
 
@@ -2668,8 +2730,8 @@ STATUS("making func->rowcol") ;
 
    func->thr_pval_label =
       XtVaCreateManagedWidget(
-         "dialog" , xmLabelWidgetClass , func->thr_rowcol ,
-            LABEL_ARG( THR_PVAL_LABEL_NONE ) ,
+         "font8" , xmLabelWidgetClass , func->thr_rowcol ,
+            LABEL_ARG( "p=N/A   \nq=N/A   " ) ,
             XmNrecomputeSize , False ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
@@ -2682,8 +2744,13 @@ STATUS("making func->rowcol") ;
          "   '[N/A]' instead.\n"
          "* p's that display as 1.2-7 should\n"
          "   be interpreted as 1.2 x 10^(-7).\n"
-         "* This is the significance PER VOXEL." ) ;
-   MCW_register_hint( func->thr_pval_label , "Nominal p-value per voxel" ) ;
+         "* This is the significance PER VOXEL.\n"
+         "* If FDR curves are pre-computed in\n"
+         "   the dataset header, then the False\n"
+         "   Discovery Rate q-value will also\n"
+         "   be shown."
+   ) ;
+   MCW_register_hint( func->thr_pval_label , "Nominal p-value per voxel; nominal FDR q-value" ) ;
 
 #if 0
    /* 05 Sep 2006: duplicate popup from thr_label */
@@ -3136,9 +3203,13 @@ STATUS("making func->rowcol") ;
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
+   func->cwid = NULL;
+   func->clu_rep = NULL; func->clu_list = NULL; func->clu_index = -1;
+   func->clu_det = NULL; func->clu_num  = 0 ;
+
    /*-- 26 Mar 2007: rowcol for clustering stuff --*/
 
-   func->ulaclu_rowcol = 
+   func->ulaclu_rowcol =
       XtVaCreateWidget(
          "dialog" , xmRowColumnWidgetClass , func->options_rowcol ,
             XmNorientation , XmHORIZONTAL ,
@@ -3193,23 +3264,8 @@ STATUS("making func->rowcol") ;
             XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
-
-   func->clu_clear_pb =
-      XtVaCreateManagedWidget(
-         "dialog" , xmPushButtonWidgetClass , func->clu_rowcol ,
-            LABEL_ARG("*Clear Edit") ,
-            XmNmarginHeight, 0 ,
-            XmNtraversalOn , True  ,
-            XmNinitialResourcesPersistent , False ,
-         NULL ) ;
-   XtAddCallback( func->clu_clear_pb , XmNactivateCallback ,
-                  AFNI_clu_CB , im3d ) ;
-   MCW_register_hint( func->clu_clear_pb , "Turn off Cluster Edit" ) ;
-   MCW_register_help( func->clu_clear_pb , "Disable on-the-fly\n"
-                                           "clustering of the\n"
-                                           "thresholded overlay\n"
-                                           "volume." ) ;
    im3d->vedset.code = 0 ; im3d->vedset.ival = -1 ;
+   im3d->vedskip = 0 ;  /* 20 Dec 2007 */
 
    func->clu_cluster_pb =
       XtVaCreateManagedWidget(
@@ -3234,6 +3290,42 @@ STATUS("making func->rowcol") ;
                         "N.B.: Clustering cannot be done if the overlay\n"
                         "      dataset does not have a stored volume\n"
                         "      (e.g., is 'warp-on-demand' only)." ) ;
+
+   hrc = XtVaCreateWidget(
+         "dialog" , xmRowColumnWidgetClass , func->clu_rowcol ,
+            XmNorientation , XmHORIZONTAL ,
+            XmNpacking , XmPACK_TIGHT ,
+            XmNtraversalOn , True  ,
+            XmNinitialResourcesPersistent , False ,
+         NULL ) ;
+
+   func->clu_clear_pb =
+      XtVaCreateManagedWidget(
+         "dialog" , xmPushButtonWidgetClass , hrc ,
+            LABEL_ARG("*Clear") ,
+            XmNmarginHeight, 0 ,
+            XmNtraversalOn , True  ,
+            XmNinitialResourcesPersistent , False ,
+         NULL ) ;
+   XtAddCallback( func->clu_clear_pb , XmNactivateCallback ,
+                  AFNI_clu_CB , im3d ) ;
+   MCW_register_hint( func->clu_clear_pb , "Turn off Cluster Edit" ) ;
+   MCW_register_help( func->clu_clear_pb , "Disable on-the-fly\n"
+                                           "clustering of the\n"
+                                           "thresholded overlay\n"
+                                           "volume." ) ;
+   func->clu_report_pb =
+      XtVaCreateManagedWidget(
+         "dialog" , xmPushButtonWidgetClass , hrc ,
+            LABEL_ARG("Rpt") ,
+            XmNmarginHeight, 0 ,
+            XmNtraversalOn , True  ,
+            XmNinitialResourcesPersistent , False ,
+         NULL ) ;
+   XtAddCallback( func->clu_report_pb , XmNactivateCallback ,
+                  AFNI_clu_CB , im3d ) ;
+   MCW_register_hint( func->clu_report_pb , "Open cluster report window" ) ;
+   XtManageChild( hrc ) ;
 
    /*--- 30 Nov 1997: bucket managers ---*/
 
@@ -4641,6 +4733,25 @@ STATUS("making prog->rowcol") ;
       prog->hidden_faces_pb = NULL ;
 #endif
 
+      /*----------*/
+
+#if !defined(NO_FRIVOLITIES)
+      prog->hidden_splashes_pb =           /* 12 Sep 2007 */
+            XtVaCreateManagedWidget(
+               "dialog" , xmPushButtonWidgetClass , prog->hidden_menu ,
+                  LABEL_ARG("All AFNI Splashes") ,
+                  XmNmarginHeight , 0 ,
+                  XmNtraversalOn , True  ,
+                  XmNinitialResourcesPersistent , False ,
+               NULL ) ;
+      XtAddCallback( prog->hidden_splashes_pb , XmNactivateCallback ,
+                     AFNI_hidden_CB , im3d ) ;
+#else
+      prog->hidden_splashes_pb = NULL ;
+#endif
+
+      /*----------*/
+
       prog->hidden_broutim_pb =            /* 06 Jun 2005 */
             XtVaCreateManagedWidget(
                "dialog" , xmPushButtonWidgetClass , prog->hidden_menu ,
@@ -4651,6 +4762,8 @@ STATUS("making prog->rowcol") ;
                NULL ) ;
       XtAddCallback( prog->hidden_broutim_pb , XmNactivateCallback ,
                      AFNI_broutim_CB , im3d ) ;
+
+      /*----------*/
 
       prog->hidden_broutext_pb =            /* 21 Dec 2005 */
             XtVaCreateManagedWidget(
@@ -4881,7 +4994,8 @@ ENTRY("new_AFNI_controller") ;
    im3d->vinfo->underlay_type     = UNDERLAY_ANAT ;       /* show anatomy */
    im3d->vinfo->force_anat_wod    = False ;   /* don't force warp-on-demand */
    im3d->vinfo->force_func_wod    = False ;   /* don't force warp-on-demand */
-   im3d->vinfo->func_visible      = False ;   /* don't show function */
+   im3d->vinfo->func_visible      = (Boolean)AFNI_yesenv("AFNI_SEE_OVERLAY") ;
+   im3d->vinfo->func_visible_count=0 ;
 #ifdef ALLOW_DATASET_VLIST
    im3d->vinfo->pts_visible       = False ;   /* don't show points */
    im3d->vinfo->pts_color         = 0 ;
@@ -5140,13 +5254,16 @@ ENTRY("AFNI_initialize_controller") ;
 
    WAIT_for_window( im3d->vwid->top_shell ) ;
 
-#if 0
+#if 1
    POPUP_cursorize( im3d->vwid->func->thr_label ) ;       /* 05 Sep 2006 */
+#endif
+#if 0
    POPUP_cursorize( im3d->vwid->func->thr_pval_label ) ;  /* 05 Sep 2006 */
 #endif
    POPUP_cursorize( im3d->vwid->func->inten_label ) ;
    POPUP_cursorize( im3d->vwid->picture ) ;
    POPUP_cursorize( imag->crosshair_label ) ;
+   POPUP_cursorize( im3d->vwid->func->thr_label ) ;
 
    RESET_AFNI_QUIT(im3d) ;
    EXRETURN ;
@@ -5252,7 +5369,7 @@ ENTRY("AFNI_clone_controller_CB") ;
 
    AFNI_controller_clonify() ;
 
-   SHOW_AFNI_READY ; EXRETURN ;
+   PICTURE_OFF(im3d) ; SHOW_AFNI_READY ; EXRETURN ;
 }
 
 /*-----------------------------------------------------------------------
@@ -5727,7 +5844,7 @@ ENTRY("AFNI_misc_button") ;
             NULL ) ;
    XtAddCallback( dmode->misc_savelayout_pb , XmNactivateCallback ,
                   AFNI_save_layout_CB , im3d ) ;
-   MCW_register_hint( dmode->misc_savelayout_pb , "Save windows layout to file" ) ;
+   MCW_register_hint( dmode->misc_savelayout_pb , "Save layout to file (or .script)" ) ;
 
    /*--- 22 Jan 2003: Run Script [see afni_splash.c] ---*/
 

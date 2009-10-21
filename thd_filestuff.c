@@ -223,7 +223,10 @@ int THD_filename_ok( char *name )  /* 24 Apr 1997 */
 
    if( name == NULL ) return 0 ;
    ll = strlen( name ) ; if( ll == 0 ) return 0 ;
-
+   if (ll > 6 && strstr(name, "3dcalc") == name) {
+      /* have a 3dcalc command, let it be*/
+      return 1;
+   }
    for( ii=0 ; ii < ll ; ii++ )
       if( iscntrl(name[ii]) || isspace(name[ii]) ||
                                name[ii] == ';'   ||
@@ -297,4 +300,54 @@ int THD_freemegabytes( char *pathname )
 #else
    return -1 ;
 #endif
+}
+
+/*----------------------------------------------------------------------*/
+/*! Check a list of dataset names for duplicates. Return value is number
+    of duplicates found.
+     - ns   = number of strings
+     - sar  = string array
+     - flag = 1 to print warnings, 0 to be silent
+------------------------------------------------------------------------*/
+
+int THD_check_for_duplicates( int ns , char **sar , int flag )
+{
+   int verb = (flag & 1) != 0 ;
+   int ii,jj,li,lj,nw=0 ; char *di, *dj ;
+
+ENTRY("THD_check_for_duplicates") ;
+
+   if( sar == NULL ) RETURN(0) ;
+
+   for( ii=0 ; ii < ns-1 ; ii++ ){
+
+     if( sar[ii] == NULL ) continue ;
+     di = strdup(sar[ii]  ) ; li = strlen(di) ;
+          if( strcmp(di+li-5,".HEAD"   ) == 0 ) di[li-5] = '\0' ;
+     else if( strcmp(di+li-5,".BRIK"   ) == 0 ) di[li-5] = '\0' ;
+     else if( strcmp(di+li-8,".BRIK.gz") == 0 ) di[li-8] = '\0' ;
+     else if( strcmp(di+li-7,".nii.gz" ) == 0 ) di[li-3] = '\0' ;
+     else if( strcmp(di+li-1,"."       ) == 0 ) di[li-1] = '\0' ;
+
+     for( jj=ii+1 ; jj < ns ; jj++ ){
+
+       if( sar[jj] == NULL ) continue ;
+       dj = strdup(sar[jj]) ; lj = strlen(dj) ;
+            if( strcmp(dj+lj-5,".HEAD"   ) == 0 ) dj[lj-5] = '\0' ;
+       else if( strcmp(dj+lj-5,".BRIK"   ) == 0 ) dj[lj-5] = '\0' ;
+       else if( strcmp(dj+lj-8,".BRIK.gz") == 0 ) dj[lj-8] = '\0' ;
+       else if( strcmp(dj+lj-7,".nii.gz" ) == 0 ) dj[lj-3] = '\0' ;
+       else if( strcmp(dj+lj-1,"."       ) == 0 ) dj[lj-1] = '\0' ;
+
+       if( strcmp(di,dj) == 0 ){
+         nw++ ;
+         if( verb ) WARNING_message("Datasets '%s' and '%s' are the same?!?",
+                                     sar[ii] , sar[jj] ) ;
+       }
+       free(dj) ;
+     }
+     free(di) ;
+   }
+
+   RETURN(nw) ;
 }

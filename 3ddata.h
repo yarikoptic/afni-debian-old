@@ -168,6 +168,9 @@ typedef struct {
 /*! MCW_function_list possible bitmask flag */
 #define PROCESS_MRI_IMAGE 4
 
+/*! MCW_function_list possible bitmask flag */
+#define SET_DPLOT_OVERLAY 8
+
 /*! MCW_function_list possible func_code */
 #define FUNC_0D   0
 /*! MCW_function_list possible func_code */
@@ -250,7 +253,7 @@ typedef struct {
 
 #define ADDTO_XTARR(name,bblk)                                 \
    { if( (name)->num == (name)->nall ){                        \
-      (name)->nall += INC_XTARR ;                              \
+      (name)->nall += INC_XTARR + (name)->nall/8 ;             \
       (name)->ar    = (XtPointer *)                            \
                        XtRealloc( (char *) (name)->ar ,        \
                           sizeof(XtPointer) * (name)->nall ) ; \
@@ -324,12 +327,12 @@ typedef struct {
 
 #define ADDTO_SARR(name,str)                                          \
  do{ if( (name)->num == (name)->nall ){                               \
-      (name)->nall += INC_SARR ;                                      \
+      (name)->nall += INC_SARR + (name)->nall/8 ;                     \
       (name)->ar    = (char **) XtRealloc( (char *) (name)->ar ,      \
                                  sizeof(char *) * (name)->nall ) ;    \
      }                                                                \
      if( (str) != NULL ){                                             \
-      (name)->ar[(name)->num] = (char *) XtMalloc( strlen((str))+1 ) ;\
+      (name)->ar[(name)->num] = (char *) XtMalloc( strlen((str))+1 ); \
       strcpy( (name)->ar[(name)->num] , (str) ) ;                     \
       ADDTO_KILL((name)->kl,(name)->ar[(name)->num]) ;                \
       ((name)->num)++ ;                                               \
@@ -348,6 +351,13 @@ typedef struct {
      KILL_KILL((name)->kl) ;  \
      myXtFree( (name)->ar ) ; \
      myXtFree( (name) ) ; } } while(0)
+
+/*! Print all entries in a dynamic string array */
+
+#define PRINTF_SARR(name,lll)                                            \
+ do{ int qq ; printf("%s:",(lll)) ;                                      \
+     for( qq=0; qq < (name)->num; qq++ ) printf(" '%s'",(name)->ar[qq]); \
+     printf("\n") ; } while(0)
 
 extern int SARR_find_string( THD_string_array * sar , char * str ) ;
 extern int SARR_find_substring( THD_string_array * sar , char * sub ) ;
@@ -1128,6 +1138,8 @@ typedef struct {
       VEDIT_settings vedset ; /*!< Volume edit-on-the-fly settings */
       MRI_IMAGE *vedim ;      /*!< Volume edit-on-the-fly result */
 
+      floatvec **brick_fdrcurve ; /*!< FDR z(q) as a function of statistic */
+
 } THD_datablock ;
 
 /*! Force bricks to be allocated with malloc(). */
@@ -1231,7 +1243,7 @@ typedef struct {
 
 #define ADDTO_DBARR(name,bblk)                                     \
    { if( (name)->num == (name)->nall ){                            \
-      (name)->nall += INC_DBARR ;                                  \
+      (name)->nall += INC_DBARR + (name)->nall/8 ;                 \
       (name)->ar    = (THD_datablock **)                           \
                        XtRealloc( (char *) (name)->ar ,            \
                         sizeof(THD_datablock *) * (name)->nall ) ; \
@@ -1350,7 +1362,8 @@ typedef struct {
       mat44 dicom_to_ijk ;  /* inverse of above */
       float dicom_xxmin , dicom_yymin , dicom_zzmin ;
       float dicom_xxmax , dicom_yymax , dicom_zzmax ;
-
+      /*** 18 May 2007: obliquity */
+      mat44 ijk_to_dicom_real ;  /* matrix to convert ijk to DICOM for obliquity*/
    /* pointers to other stuff */
 
       XtPointer parent ;    /*!< Dataset that "owns" this struct */
@@ -1410,6 +1423,9 @@ typedef struct {
     (cax)->yyorient == (dax)->yyorient          && \
     (cax)->zzorient == (dax)->zzorient    )
 
+#define EQUIV_GRIDS(d1,d2) \
+ ( ISVALID_DSET(d1) && ISVALID_DSET(d2) && EQUIV_DATAXES((d1)->daxes,(d2)->daxes) )
+
 extern void THD_edit_dataxes( float , THD_dataxes * , THD_dataxes * ) ;
 
 extern void THD_set_daxes_bbox     ( THD_dataxes * ) ; /* 20 Dec 2005 */
@@ -1440,9 +1456,15 @@ extern mat44 THD_resample_mat44( mat44 , int,int,int ,
 /******* Function below is not in nifti1_io.c, due to some oversight ******/
 
 extern mat44 THD_mat44_mul( mat44 A , mat44 B ) ;      /* matrix multiply */
+static mat44 tempA_mat44 ;
+
+extern mat44 THD_mat44_sqrt( mat44 A ) ;  /* matrix square root [30 Jul 2007] */
 
 #undef  MAT44_MUL
 #define MAT44_MUL THD_mat44_mul
+
+#undef  MAT44_SQRT
+#define MAT44_SQRT THD_mat44_sqrt
 
 #undef  MAT44_INV
 #define MAT44_INV nifti_mat44_inverse
@@ -1468,7 +1490,10 @@ extern mat44 THD_mat44_mul( mat44 A , mat44 B ) ;      /* matrix multiply */
 #define ZERO_MAT44(AA) LOAD_DIAG_MAT44(AA,0.0,0.0,0.0)
 
 #undef  LOAD_MAT44_VEC
-#define LOAD_MAT44_VEC(AA,x,y,z) ( AA.m[0][3]=x , AA.m[1][3]=y , AA.m[2][3]=z )
+#define LOAD_MAT44_VEC(AA,x,y,z) ( AA.m[0][3]=(x) , AA.m[1][3]=(y) , AA.m[2][3]=(z) )
+
+#undef  UNLOAD_MAT44_VEC
+#define UNLOAD_MAT44_VEC(AA,x,y,z) ( (x)=AA.m[0][3] , (y)=AA.m[1][3] , (z)=AA.m[2][3] )
 
 #undef  UNLOAD_MAT44
 #define UNLOAD_MAT44(AA,a11,a12,a13,a14,a21,a22,a23,a24,a31,a32,a33,a34)  \
@@ -1477,9 +1502,14 @@ extern mat44 THD_mat44_mul( mat44 A , mat44 B ) ;      /* matrix multiply */
     a31=AA.m[2][0] , a32=AA.m[2][1] , a33=AA.m[2][2] , a34=AA.m[2][3]  )
 
 #undef  UNLOAD_MAT44_AR
-#define UNLOAD_MAT44_AR(AA,vv)                           \
- UNLOAD_MAT44(AA,vv[0],vv[1],vv[2],vv[3],vv[4 ],vv[5 ],  \
-                 vv[6],vv[7],vv[8],vv[9],vv[10],vv[11] )
+#define UNLOAD_MAT44_AR(AA,vv)                                       \
+ UNLOAD_MAT44(AA,(vv)[0],(vv)[1],(vv)[2],(vv)[3],(vv)[4 ],(vv)[5 ],  \
+                 (vv)[6],(vv)[7],(vv)[8],(vv)[9],(vv)[10],(vv)[11] )
+
+#undef  LOAD_MAT44_AR
+#define LOAD_MAT44_AR(AA,vv)                                       \
+ LOAD_MAT44(AA,(vv)[0],(vv)[1],(vv)[2],(vv)[3],(vv)[4 ],(vv)[5 ],  \
+               (vv)[6],(vv)[7],(vv)[8],(vv)[9],(vv)[10],(vv)[11] )
 
 /* negate the top 2 rows of a mat44 matrix
    (for transforming between NIfTI-1 and DICOM coord systems) */
@@ -1490,6 +1520,56 @@ extern mat44 THD_mat44_mul( mat44 A , mat44 B ) ;      /* matrix multiply */
      AA.m[0][2] = -AA.m[0][2] , AA.m[0][3] = -AA.m[0][3] ,  \
     AA.m[1][0] = -AA.m[1][0] , AA.m[1][1] = -AA.m[1][1] ,   \
      AA.m[1][2] = -AA.m[1][2] , AA.m[1][3] = -AA.m[1][3] )
+
+#undef MAT44_SUB
+#define MAT44_SUB(AA,BB)                                       \
+ ( tempA_mat44.m[0][0] = (AA).m[0][0] - (BB).m[0][0] , \
+   tempA_mat44.m[1][0] = (AA).m[1][0] - (BB).m[1][0] , \
+   tempA_mat44.m[2][0] = (AA).m[2][0] - (BB).m[2][0] , \
+   tempA_mat44.m[3][0] = (AA).m[3][0] - (BB).m[3][0] , \
+   tempA_mat44.m[0][1] = (AA).m[0][1] - (BB).m[0][1] , \
+   tempA_mat44.m[1][1] = (AA).m[1][1] - (BB).m[1][1] , \
+   tempA_mat44.m[2][1] = (AA).m[2][1] - (BB).m[2][1] , \
+   tempA_mat44.m[3][1] = (AA).m[3][1] - (BB).m[3][1] , \
+   tempA_mat44.m[0][2] = (AA).m[0][2] - (BB).m[0][2] , \
+   tempA_mat44.m[1][2] = (AA).m[1][2] - (BB).m[1][2] , \
+   tempA_mat44.m[2][2] = (AA).m[2][2] - (BB).m[2][2] , \
+   tempA_mat44.m[3][2] = (AA).m[3][2] - (BB).m[3][2] , \
+   tempA_mat44.m[0][3] = (AA).m[0][3] - (BB).m[0][3] , \
+   tempA_mat44.m[1][3] = (AA).m[1][3] - (BB).m[1][3] , \
+   tempA_mat44.m[2][3] = (AA).m[2][3] - (BB).m[2][3] , \
+   tempA_mat44.m[3][3] = (AA).m[3][3] - (BB).m[3][3] , tempA_mat44 )
+
+#undef  MAT44_NORM
+#define MAT44_NORM(AA)             \
+ sqrt( (AA).m[0][0]*(AA).m[0][0] + \
+       (AA).m[0][1]*(AA).m[0][1] + \
+       (AA).m[0][2]*(AA).m[0][2] + \
+       (AA).m[0][3]*(AA).m[0][3] + \
+       (AA).m[1][0]*(AA).m[1][0] + \
+       (AA).m[1][1]*(AA).m[1][1] + \
+       (AA).m[1][2]*(AA).m[1][2] + \
+       (AA).m[1][3]*(AA).m[1][3] + \
+       (AA).m[2][0]*(AA).m[2][0] + \
+       (AA).m[2][1]*(AA).m[2][1] + \
+       (AA).m[2][2]*(AA).m[2][2] + \
+       (AA).m[2][3]*(AA).m[2][3] + \
+       (AA).m[3][0]*(AA).m[3][0] + \
+       (AA).m[3][1]*(AA).m[3][1] + \
+       (AA).m[3][2]*(AA).m[3][2] + \
+       (AA).m[3][3]*(AA).m[3][3]  )
+
+#undef  MAT44_COLNORM
+#define MAT44_COLNORM(AA,j)            \
+ sqrt( (AA).m[0][(j)]*(AA).m[0][(j)] + \
+       (AA).m[1][(j)]*(AA).m[1][(j)] + \
+       (AA).m[2][(j)]*(AA).m[2][(j)]  )
+
+#undef  MAT44_ROWNORM
+#define MAT44_ROWNORM(i)               \
+ sqrt( (AA).m[(i)][0]*(AA).m[(i)][0] + \
+       (AA).m[(i)][1]*(AA).m[(i)][1] + \
+       (AA).m[(i)][2]*(AA).m[(i)][2]  )
 
 /* load a mat33 matrix */
 
@@ -1522,6 +1602,12 @@ extern mat44 THD_mat44_mul( mat44 A , mat44 B ) ;      /* matrix multiply */
  LOAD_MAT44(AA,vm.mm.mat[0][0],vm.mm.mat[0][1],vm.mm.mat[0][2],vm.vv.xyz[0],  \
                vm.mm.mat[1][0],vm.mm.mat[1][1],vm.mm.mat[1][2],vm.vv.xyz[1],  \
                vm.mm.mat[2][0],vm.mm.mat[2][1],vm.mm.mat[2][2],vm.vv.xyz[2] )
+
+#undef  MAT44_TO_VECMAT
+#define MAT44_TO_VECMAT(AA,vm)                                                  \
+ UNLOAD_MAT44(AA,vm.mm.mat[0][0],vm.mm.mat[0][1],vm.mm.mat[0][2],vm.vv.xyz[0],  \
+                 vm.mm.mat[1][0],vm.mm.mat[1][1],vm.mm.mat[1][2],vm.vv.xyz[1],  \
+                 vm.mm.mat[2][0],vm.mm.mat[2][1],vm.mm.mat[2][2],vm.vv.xyz[2] )
 
 /* apply a mat44 matrix to a 3 vector (x,y,z) to produce (a,b,c) */
 
@@ -1689,10 +1775,10 @@ typedef struct {
 /*! Collection of statistics about all sub-bricks. */
 
 typedef struct {
-   int type ;                     /*!< STATISTICS_TYPE */
-   int              nbstat ;      /*!< Number of entries below */
-   THD_brick_stats * bstat ;      /*!< Array of entries for all sub-bricks */
-   XtPointer parent ;             /*!< Owner of this object */
+   int type ;                    /*!< STATISTICS_TYPE */
+   int             nbstat ;      /*!< Number of entries below */
+   THD_brick_stats *bstat ;      /*!< Array of entries for all sub-bricks */
+   XtPointer parent ;            /*!< Owner of this object */
 } THD_statistics ;
 
 /*! Check if st is a valid THD_statistics struct. */
@@ -1712,6 +1798,22 @@ typedef struct {
 #define KILL_STATISTIC(st)          \
   do{ if( ISVALID_STATISTIC(st) ){  \
         XtFree((char *)(st)->bstat) ; XtFree((char *)(st)) ; } } while(0)
+
+/*--------------------------------------------------------------------*/
+
+typedef struct {
+  float hbot , htop , hdel ; int nbin ;
+  int *hist ;
+} THD_histogram ;
+
+#define HISTOGRAM_SET_TYPE 1743
+
+typedef struct {
+  int type ;
+  int           nbhist ;
+  THD_histogram *bhist ;
+  XtPointer parent ;
+} THD_histogram_set ;
 
 /*--------------------------------------------------------------------*/
 /*--------------------  Unique ID code for a 3D dataset  -------------*/
@@ -2677,6 +2779,7 @@ extern int    THD_deconflict_prefix( THD_3dim_dataset * ) ;          /* 23 Mar 2
 /*! Check if have a 3D+time dataset. */
 
 #define HAS_TIMEAXIS(ds)         ( DSET_NUM_TIMES(ds) > 1 )
+#define DSET_HAS_TIMEAXIS HAS_TIMEAXIS
 
 /*! Return number of values stored at each time point for dataset ds.
 
@@ -2716,6 +2819,19 @@ extern int    THD_deconflict_prefix( THD_3dim_dataset * ) ;          /* 23 Mar 2
 /*! Return grid spacing (voxel size) along z-axis of dataset ds */
 
 #define DSET_DZ(ds) ((ds)->daxes->zzdel)
+
+/*! Return volume of a voxel */
+
+#define DSET_VOXVOL(ds) \
+  fabsf((ds)->daxes->xxdel*(ds)->daxes->yydel*(ds)->daxes->zzdel)
+
+/*! Return minimum grid spacing in 2 dimensions for dataset ds */
+#define DSET_MIN_DELXY(ds) ((fabs(DSET_DX(ds)) < (fabs(DSET_DY(ds))) ) ?  \
+     fabs(DSET_DX(ds)) : fabs(DSET_DY(ds)) )
+
+/*! Return minimum grid spacing in 3 dimensions for dataset ds */
+#define DSET_MIN_DEL(ds) ((DSET_MIN_DELXY(ds)<fabs(DSET_DZ(ds))) ? \
+     DSET_MIN_DELXY(ds) : fabs(DSET_DZ(ds)))
 
 /*! Return grid origin along x-axis of dataset ds */
 
@@ -2903,6 +3019,34 @@ static char tmp_dblab[8] ;
 #define DSET_KEYWORDS_HAS(ds,ss) \
    THD_string_has( DSET_KEYWORDS((ds)) , (ss) )
 
+/*---- macros to get the FDR curve for a sub-brick (if any) [23 Jan 2008] ----*/
+
+#define DBLK_BRICK_FDRCURVE(db,ii) \
+ ( ((db)->brick_fdrcurve==NULL) ? NULL : (db)->brick_fdrcurve[ii] )
+
+#define DSET_BRICK_FDRCURVE(ds,ii) DBLK_BRICK_FDRCURVE((ds)->dblk,(ii))
+
+#define DBLK_BRICK_FDRCURVE_KILL(db,ii)                                      \
+ do{ if( (db)->brick_fdrcurve != NULL ){                                     \
+       floatvec *fv = (db)->brick_fdrcurve[ii] ;                             \
+       if( fv != NULL ){ KILL_floatvec(fv); (db)->brick_fdrcurve[ii]=NULL; } \
+ }} while(0)
+
+#define DSET_BRICK_FDRCURVE_KILL(ds,ii) DBLK_BRICK_FDRCURVE_KILL((ds)->dblk,(ii))
+
+#define DBLK_BRICK_FDRCURVE_ALLKILL(db)                                    \
+ do{ if( (db)->brick_fdrcurve != NULL ){                                   \
+      int qq;                                                              \
+      for( qq=0; qq < (db)->nvals; qq++ ) DBLK_BRICK_FDRCURVE_KILL(db,qq); \
+      free((db)->brick_fdrcurve) ; (db)->brick_fdrcurve = NULL ;           \
+ }} while(0)
+
+#define DSET_BRICK_FDRCURVE_ALLKILL(ds) DBLK_BRICK_FDRCURVE_ALLKILL((ds)->dblk)
+
+extern int   THD_create_one_fdrcurve( THD_3dim_dataset *, int ) ;
+extern int   THD_create_all_fdrcurves( THD_3dim_dataset * ) ;
+extern float THD_fdrcurve_zval( THD_3dim_dataset *, int, float ) ;
+
 /*! Macro to load the self_name and labels of a dataset
     with values computed from the filenames;
     replaces user control/input of these values in to3d
@@ -3003,6 +3147,9 @@ static char tmp_dblab[8] ;
 #define DSET_write(ds)  ( THD_load_statistics( (ds) ) ,                    \
                           THD_write_3dim_dataset( NULL,NULL , (ds),True ) )
 
+extern int THD_deathcon(void) ; /* 06 Jun 2007 */
+extern int THD_ok_overwrite(void) ; /* Jan 2008 */
+
 /*! Write only the dataset header to disk, for dataset ds */
 
 #define DSET_write_header(ds)  THD_write_3dim_dataset( NULL,NULL , (ds),False )
@@ -3012,6 +3159,11 @@ static char tmp_dblab[8] ;
     If return is 0 (false), you could try DSET_load(ds)
 */
 #define DSET_LOADED(ds) ( THD_count_databricks((ds)->dblk) == DSET_NVALS(ds) )
+
+/*! Check if a given brick is loaded [14 Sep 2007] */
+
+#define DSET_BRICK_LOADED(ds,iq) \
+ ( DSET_BRICK(ds,iq) != NULL && DSET_ARRAY(ds,iq) != NULL )
 
 /*! Lock dataset ds into memory */
 
@@ -3082,6 +3234,11 @@ static char tmp_dblab[8] ;
   do{ if( (db)->malloc_type==DATABLOCK_MEM_MMAP && (db)->total_bytes>TWOGIG ) \
         (db)->malloc_type = DATABLOCK_MEM_MALLOC ; } while(0)
 
+/*---------------------------------------------------------------------------*/
+
+extern void THD_patch_dxyz_all( THD_3dim_dataset * ) ;       /* 05 Jun 2007 */
+extern void THD_patch_dxyz_one( THD_3dim_dataset * , int ) ;
+
 /*------------- a dynamic array type for 3D datasets ---------------*/
 
 /*! A dynamic array type for AFNI datasets.
@@ -3110,7 +3267,7 @@ typedef struct THD_3dim_dataset_array {
 
 #define ADDTO_3DARR(name,ddset)                                       \
    { if( (name)->num == (name)->nall ){                               \
-      (name)->nall += INC_3DARR ;                                     \
+      (name)->nall += INC_3DARR + (name)->nall/8 ;                    \
       (name)->ar    = (THD_3dim_dataset **)                           \
                        XtRealloc( (char *) (name)->ar ,               \
                         sizeof(THD_3dim_dataset *) * (name)->nall ) ; \
@@ -3428,6 +3585,8 @@ extern THD_string_array * THD_get_all_subdirs( int , char * ) ;
 extern THD_string_array * THD_normalize_flist( THD_string_array * ) ;
 extern THD_string_array * THD_get_wildcard_filenames( char * ) ;
 
+extern int THD_check_for_duplicates( int, char **, int ) ; /* 31 May 2007 */
+
 extern time_t THD_file_mtime( char * ) ; /* 05 Dec 2001 */
 
 extern THD_string_array * THD_get_all_executables( char * ) ;    /* 26 Jun 2001 */
@@ -3500,6 +3659,8 @@ extern THD_3dim_dataset * THD_open_mpeg( char * ) ;         /* 03 Dec 2003 */
 extern THD_3dim_dataset * THD_open_tcat( char * ) ;         /* 04 Aug 2004 */
 extern THD_3dim_dataset * THD_open_niml( char * ) ;         /* 01 Jun 2006 */
 
+extern THD_string_array * THD_multiplex_dataset( char * ) ; /* 19 Jul 2007 */
+
 extern THD_3dim_dataset * THD_niml_3D_to_dataset( NI_element *, char * ) ;
 extern THD_3dim_dataset * THD_ni_surf_dset_to_afni( NI_group *, int ) ;
 extern void * read_niml_file( char *, int ) ;
@@ -3550,7 +3711,7 @@ extern THD_3dim_dataset * THD_copy_dset_subs( THD_3dim_dataset * , int * ) ;
     " read in (by default, all of a dataset's sub-bricks are input).\n"       \
     " A sub-brick selection list looks like one of the following forms:\n"    \
     "   fred+orig[5]                     ==> use only sub-brick #5\n"         \
-    "   fred+orig[5,9,17]                ==> use #5, #9, and #12\n"           \
+    "   fred+orig[5,9,17]                ==> use #5, #9, and #17\n"           \
     "   fred+orig[5..8]     or [5-8]     ==> use #5, #6, #7, and #8\n"        \
     "   fred+orig[5..13(2)] or [5-13(2)] ==> use #5, #7, #9, #11, and #13\n"  \
     " Sub-brick indexes start at 0.  You can use the character '$'\n"         \
@@ -3621,7 +3782,7 @@ extern THD_3dim_dataset * THD_copy_dset_subs( THD_3dim_dataset * , int * ) ;
    "When specifying a timeseries file to an command-line AFNI program, you\n" \
    "can select a subset of columns using the '[...]' notation:\n"             \
    "  'fred.1D[5]'            ==> use only column #5\n"                       \
-   "  'fred.1D[5,9,17]'       ==> use columns #5, #9, and #12\n"              \
+   "  'fred.1D[5,9,17]'       ==> use columns #5, #9, and #17\n"              \
    "  'fred.1D[5..8]'         ==> use columns #5, #6, #7, and #8\n"           \
    "  'fred.1D[5..13(2)]'     ==> use columns #5, #7, #9, #11, and #13\n"     \
    "Column indices start at 0.  You can use the character '$'\n"           \
@@ -3759,6 +3920,8 @@ extern float THD_timeof      ( int , float , THD_timeaxis * ) ;
 extern float THD_timeof_vox  ( int , int , THD_3dim_dataset * ) ;
 extern float THD_timeof_slice( int , int , THD_3dim_dataset * ) ;  /* BDW */
 
+extern float * TS_parse_tpattern( int, float, char * ) ;  /* 11 Dec 2007 */
+
 extern THD_fvec3 THD_dataset_center( THD_3dim_dataset * ) ;  /* 01 Feb 2001 */
 extern int THD_dataset_mismatch(THD_3dim_dataset *, THD_3dim_dataset *) ;
 
@@ -3855,7 +4018,7 @@ extern void THD_generic_detrend_LSQ( int, float *, int, int, float **, float *) 
 extern void THD_generic_detrend_L1 ( int, float *, int, int, float **, float *) ;
 extern void THD_generic_retrend    ( int, float *, int, int, float **, float *) ;
 
-extern MRI_IMARR * THD_time_fit_dataset( THD_3dim_dataset *, int, float **, int , byte *);
+extern MRI_IMARR * THD_time_fit_dataset( THD_3dim_dataset *, int, float **, int, byte *);
 extern void THD_extract_detrended_array( THD_3dim_dataset * ,
                                          int, float **, MRI_IMARR *,
                                          int, int, float * ) ;
@@ -3870,6 +4033,7 @@ extern int THD_retrend_dataset( THD_3dim_dataset *dset ,
                                 int scl , byte *mask , MRI_IMARR *imar ) ;
 
 extern float ** THD_build_trigref( int corder , int nvals ) ;
+extern float ** THD_build_polyref( int nref   , int nvals ) ; /* 20 Sep 2007 */
 
 #define DETREND_linear(n,f)    THD_linear_detrend(n,f,NULL,NULL)
 #define DETREND_quadratic(n,f) THD_quadratic_detrend(n,f,NULL,NULL,NULL)
@@ -3926,10 +4090,12 @@ extern void THD_autobbox( THD_3dim_dataset * ,             /* 06 Jun 2002 */
 extern void MRI_autobbox( MRI_IMAGE * ,
                           int *, int * , int *, int * , int *, int * ) ;
 extern void MRI_autobbox_clust( int ) ;                    /* 20 Sep 2006 */
+extern void THD_autobbox_clip( int ) ;                     /* 06 Aug 2007 */
 
 extern void THD_automask_set_clipfrac( float f ) ;         /* 20 Mar 2006 */
 extern void THD_automask_set_peelcounts( int,int ) ;       /* 24 Oct 2006 */
 extern void THD_automask_set_gradualize( int ) ;
+extern void THD_automask_set_cheapo( int n ) ;             /* 13 Aug 2007 */
 
 extern int THD_mask_fillin_completely( int,int,int, byte *, int ) ; /* 19 Apr 2002 */
 extern int THD_mask_fillin_once      ( int,int,int, byte *, int ) ;
@@ -3992,6 +4158,9 @@ extern THD_mat33  SNGL_mat_to_dicomm( THD_3dim_dataset * ) ; /* 28 Aug 2002 */
 
 extern THD_dvecmat THD_rotcom_to_matvec( THD_3dim_dataset * , char * ) ;
 
+extern THD_dvecmat invert_dvecmat( THD_dvecmat avm ) ; /* 24 Jul 2007 */
+extern THD_dvecmat sqrt_dvecmat( THD_dvecmat avm ) ;   /* 30 Jul 2007 */
+
   /*-- see thd_rot3d.c for these routines --*/
 
 extern void THD_rota_method( int ) ;
@@ -4019,6 +4188,20 @@ extern THD_dvecmat DLSQ_affine   ( int, THD_dfvec3 *, THD_dfvec3 *           );
 extern THD_dvecmat DLSQ_rotscl   ( int, THD_dfvec3 *, THD_dfvec3 *, int      );
 
 extern THD_dvecmat THD_read_dvecmat( char * , int ) ;  /* THD_read_vecmat.c */
+
+  /* cf. thd_coords.c for cardinal transformation matrix */
+extern void THD_dicom_card_xform (THD_3dim_dataset * dset ,
+                      THD_dmat33 *tmat, THD_dfvec3 *dics );
+extern float THD_compute_oblique_angle(mat44 ijk_to_dicom44, int verbose);
+
+extern void THD_report_obliquity(THD_3dim_dataset *dset);
+
+extern void THD_set_oblique_report(int n1, int n2);
+
+extern int THD_get_oblique_report(void);
+
+extern void THD_reset_oblique_report_index(void);
+
 
   /* cf. thd_tmask.c */
 
@@ -4235,7 +4418,7 @@ extern double ENTROPY_compute   (void) ;
 extern double ENTROPY_dataset   (THD_3dim_dataset *) ;
 extern double ENTROPY_datablock (THD_datablock *) ;
 
-extern void AFNI_vedit( THD_3dim_dataset *dset , VEDIT_settings vednew ) ;
+extern int  AFNI_vedit( THD_3dim_dataset *dset , VEDIT_settings vednew ) ;
 extern void AFNI_vedit_clear( THD_3dim_dataset *dset ) ;
 
 /*--------------------------------------------------------------------------*/
@@ -4267,6 +4450,7 @@ extern char * tross_commandline( char * , int , char ** ) ;
 extern int AFNI_logger( char * , int , char ** ) ; /* 13 Aug 2001 */
 extern void AFNI_sleep( int ) ;
 #define AFNI_log_string(ss) AFNI_logger(ss,0,NULL)
+extern long long AFNI_logfilesize(void) ;          /* 17 Oct 2007 */
 
 extern void AFNI_serverlog( char * ) ;             /* 24 Mar 2005 */
 
@@ -4355,9 +4539,9 @@ extern float THD_corr_ratio_scl( int, float,float,float *,     /* 23 Aug 2006 */
                                       float,float,float *, float * ) ;
 extern float THD_corr_ratio( int , float *, float * ) ;
 extern void  THD_corr_ratio_mode( int ) ;                      /* 11 Oct 2006 */
-#define THD_corr_ratio_sym_not THD_corr_ratio_mode(0)
-#define THD_corr_ratio_sym_mul THD_corr_ratio_mode(1)
-#define THD_corr_ratio_sym_add THD_corr_ratio_mode(2)
+#define THD_corr_ratio_sym_not THD_corr_ratio_mode(0)  /* unsymm   */
+#define THD_corr_ratio_sym_mul THD_corr_ratio_mode(1)  /* sym by * */
+#define THD_corr_ratio_sym_add THD_corr_ratio_mode(2)  /* sym by + */
 
 extern float THD_norm_mutinf_scl( int, float,float,float *,    /* 25 Sep 2006 */
                                        float,float,float *, float * ) ;
@@ -4370,6 +4554,10 @@ extern float THD_jointentrop( int , float *, float * ) ;
 extern float THD_hellinger_scl( int, float,float,float *,      /* 26 Sep 2006 */
                                      float,float,float *, float * ) ;
 extern float THD_hellinger( int , float *, float * ) ;
+
+extern THD_fvec3 THD_helnmi_scl( int, float,float,float *,
+                                 float,float,float *, float * ) ;
+extern THD_fvec3 THD_helnmi( int , float *, float * ) ;
 
 extern int retrieve_2Dhist   ( float **xyhist ) ;     /* 28 Sep 2006 */
 extern int retrieve_2Dhist1  ( float **, float ** ) ; /* 07 May 2007 */

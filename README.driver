@@ -17,7 +17,9 @@ of a sequence of command lines (without the "DRIVE_AFNI" prefix).  It is
 also possible to read in a Script file using the "Datamode->Misc->Run Script"
 button from the AFNI controller.  Some of the current state of AFNI can
 be saved to ".afni.startup_script" using the "Datamode->Misc->Save Layout"
-button (by giving a blank as the filename).
+button (by giving a blank as the filename -- or any filename containing the
+string "script" -- other filenames produce a 'layout' description which
+is intended to be included in your .afnirc file).
 
 You can also give commands to AFNI on the 'afni' command line, using the
 '-com' option.  For example:
@@ -33,6 +35,33 @@ would open up (and so X11 must be running), but no user interaction would
 actually occur -- the image opens and gets saved, and then AFNI just ends.
 N.B.: If the 'QUIT' command weren't included above, AFNI would remain open,
 ready for user interaction after the image file was saved.
+
+==============================================================================
+A programmer of a plugin can register a command string and a callback function
+to be called when that command string is 'driven' to AFNI.  For example:
+
+  static int junkfun( char *cmd )
+  {
+    fprintf(stderr,"junkfun('%s')\n",cmd) ; return 0 ;
+  }
+
+  AFNI_driver_register( "JUNK" , junkfun ) ;
+
+If the callback function return value is negative, a warning message will be
+printed to stderr; otherwise, the return value is ignored.  The string that
+is passed to the callback function is everything AFTER the initial command
+and the blank(s) that follows; in the above example, if "JUNK elvis lives"
+were the driver command, then junkfun is called with the string "elvis lives".
+
+In a plugin, the logical place to put the call to AFNI_driver_register() is
+in the PLUGIN_init() function.
+
+If you call AFNI_driver_register() with a new command name that duplicates
+an existing one, then an error message is printed to stderr and this call
+will be ignored.  For this reason, you may want to prefix your commands
+with some identifier; for example, a hypothetical diffusion tensor analysis
+plugin could give command names starting with "DTI_".  Or perhaps use your
+institution's name or your initials as a prefix, as in "NIMH_" or "RWC_".
 
 =============================================================================
 COMMANDS (in no coherent order)
@@ -240,6 +269,13 @@ SAVE_JPEG [c.]windowname filename
   ".JPG", then ".jpg" will be appended.
   ++ Saving is done via the cjpeg program, which must be in the path,
      and is included in the standard AFNI source and binary collections.
+  ++ If the dataset has non-square voxels, then the default method of
+     saving images will produce non-square pixels (as extracted from
+     the dataset) -- this will make the images look peculiar when
+     you open them later.  To avoid this peculiarity, set environment
+     variable AFNI_IMAGE_SAVESQUARE to YES (cf. SETENV below).
+     This comment applies to all image SAVE_* commands below, except
+     for SAVE_RAW* (where AFNI_IMAGE_SAVESQUARE has no effect).
 
 SAVE_PNG [c.]windowname filename
   Like SAVE_JPEG, but saves to the lossless PNG format.
@@ -269,6 +305,19 @@ SAVE_AGIF    [c].imagewindowname filename
   put a suffix like '.jpg' or '.mpg' on the filename -- it will be added.
   ++ Unlike 'SAVE_JPEG', these commands do not work with graph windows.
 
+SAVE_RAW [c.]imagewindowname filename
+  Saves the raw data from the given image viewer to a file.  This data
+  is the slice data extracted from the dataset, not further processed
+  in any way (unlike the other SAVE_* image options, which convert the
+  slice data to grayscale or colors).  This output file contains only
+  the data, with no header of any sort indicating the dimensions of the
+  image or the actual type of data stored therein.
+
+SAVE_RAWMONT [c.]imagewindowname filename
+  Saves the raw data from the given image viewer to a file, AS MONTAGED.
+    (The montage gap is ignored.)  Same as 'SAVE_RAW' if the montage
+    isn't on.
+
 SET_DICOM_XYZ [c] x y z
 SET_SPM_XYZ   [c] x y z
 SET_IJK       [c] i j k
@@ -297,6 +346,7 @@ QUIT
 SETENV name value
   Set the environment variable "name" to "value" in AFNI; for example
     SETENV AFNI_CROSSHAIR_LINES YES
+    SETENV AFNI_IMAGE_SAVESQUARE YES
   Most of the time, when you set an environment variable inside AFNI,
   just changing the variable won't have any immediate visible effect.
   Only when you instigate something that this variable controls will

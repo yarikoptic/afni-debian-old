@@ -13,7 +13,7 @@ ISFLAGS  = $(IFLAGS) -I../nifti/niftilib -I../nifti/nifticdf -I../nifti/znzlib -
 DOCS     = ../doc/ps/*.ps ../doc/README/README* AFNI.changes.cox   \
            rickr/AFNI.changes.rickr rhammett/AFNI.changes.rhammett \
            AFNI.changes.dglen
-MINDOCS  = AFNI.changes.cox
+MINDOCS  = AFNI.changes.cox rickr/AFNI.changes.rickr AFNI.changes.dglen
 
 IMOBJS  = display.o imseq.o bbox.o xim.o xutil.o LiteClue.o
 
@@ -21,7 +21,7 @@ AFOBJS  = afni.o afni_func.o afni_widg.o afni_warp.o afni_fimmer.o \
             afni_slice_short.o afni_slice_float.o                  \
             afni_slice_byte.o  afni_slice_complex.o                \
             afni_pcor.o afni_pcor_float.o afni_transforms.o        \
-            pbar.o afni_graph.o afni_plugin.o                      \
+            pbar.o afni_graph.o afni_plugin.o afni_cluster.o       \
             parser.o parser_int.o afni_plugout.o afni_fimfunc.o    \
             afni_setup.o afni_receive.o mcw_graf.o afni_splash.o   \
             afni_pplug_env.o afni_pplug_2dfunc.o afni_friends.o    \
@@ -75,8 +75,8 @@ PROGRAMS = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge count   
            3dMedianFilter 3dretroicor 3dAFNItoNIML 3dAFNItoRaw im2niml 3dedge3  \
            DTIStudioFibertoSegments Dimon 3dLocalstat 3danisosmooth 3dmaxima    \
            3dTwotoComplex 3dInvFMRI 3dmatcalc 3dAcost 3dLocalBistat 3dFWHMx     \
-           3dBlurToFWHM 1dSEM 3dDFT 3dSynthesize 1dMarry 3dEmpty                \
-           $(EXTRAS)
+           3dBlurToFWHM 1dSEM 3dDFT 3dSynthesize 1dMarry 3dEmpty 3dsvm          \
+           1dFlagMotion 3dTsort 1dTsort $(EXTRAS)
 
 PROGRAMS_NOPLUG = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge      \
                   sfim tfim ftosh 3dttest 3ddup imrotate imreg imstat 3dnoise count \
@@ -102,7 +102,7 @@ PROGRAMS_NOPLUG = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge  
                   Imon nifti_tool 3dAllineate nifti1_test Dimon 3danisosmooth       \
                   3dmaxima 3dTwotoComplex 3dInvFMRI 1dmatcalc 3dmatcalc 3dAcost     \
                   3dLocalBistat 3dFWHMx 3dBlurToFWHM 1dSEM 3dDFT 3dSynthesize       \
-                  1dMarry 3dEmpty                                                   \
+                  1dMarry 3dEmpty 3dTsort 1dTsort 1dFlagMotion                      \
                   $(EXTRAS)
 
 # For CYGWIN (look for "exe" to find various places below)
@@ -130,10 +130,11 @@ PROGRAMS_EXE = afni.exe to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge 
                3dAutoTcorrelate 3dFDR 3dAutomask 3dAFNItoMINC 3dThreetoRGB Ifile  \
                3dAutobox 3dLRflip 3dANALYZEtoAFNI dicom_hdr 3dDespike nicat       \
                dicom_to_raw rotcom 3dDeconvolve_f 3dUniformize 3dWarp 3dWarpDrive \
-               file_tool.exe Imon.exe 3dresample.exe serial_helper.exe im2niml    \
-               nifti_tool.exe 3dAFNItoRaw DTIStudioFibertoSegments Dimon.exe      \
+               file_tool Imon 3dresample serial_helper im2niml                    \
+               nifti_tool 3dAFNItoRaw DTIStudioFibertoSegments Dimon              \
                3danisosmooth 3dTwotoComplex 3dInvFMRI 3dmatcalc 3dAllineate       \
-               3dFWHMx 3dBlurToFWHM 1dSEM 3dDFT 3dSynthesize 1dMarry 3dEmpty
+               3dFWHMx 3dBlurToFWHM 1dSEM 3dDFT 3dSynthesize 1dMarry 3dEmpty      \
+               1dFlagMotion 3dTsort 1dTsort
 
 SCRIPTS = @4Daverage @CommandGlobb @GetAfniOrient @DTI_studio_reposition          \
           @GetAfniPrefix @NoExt @UpdateAfni @RenamePanga @2dwarper                \
@@ -143,10 +144,13 @@ SCRIPTS = @4Daverage @CommandGlobb @GetAfniOrient @DTI_studio_reposition        
           @auto_align @auto_tlrc @FromRAI @ToRAI @AfniOrientSign @VolCenter       \
           @Center_Distance @fix_FSsphere @parse_name @align_partial_oblique       \
           @np 3dMax @IsoMasks @SUMA_Make_Spec_Caret @FindAfniDsetPath @GetAfniID  \
-          @float_fix @escape- 3dPAR2AFNI.pl
+          @float_fix @escape- 3dPAR2AFNI.pl @DriveAfni @DriveSuma @AddEdge        \
+          @SurfSmooth.HEAT_07.examples @SUMA_FSvolToBRIK @isOblique afni_run_R    \
+          @GetAfniDims 
 
 PY_DIR = python_scripts
 PY_SCRIPTS = afni_base.py @DoPerRoi.py
+R_DIR = R_scripts
 
 LIBHEADERS = mrilib.h mcw_glob.h 3ddata.h thd_maker.h thd_iochan.h                \
              editvol.h cs.h eispack.h killer.h vecmat.h machdep.h tagset.h        \
@@ -310,9 +314,15 @@ pcorsh.o:pcor.c pcor.h
 	$(CC) -c pcorsh.c $(INFLAGS) -DREF_FLOAT_SINGLE -DVOX_SHORT
 	$(RM) pcorsh.c
 
-FD2:FD2.o ts.o mcw.o overfim.o pcorsh.o csfft_AJ.o
+# FD2:FD2.o ts.o mcw.o overfim.o pcorsh.o csfft_AJ.o
+# 	$(RM) $@
+# 	$(CC) -o FD2 FD2.o mcw.o overfim.o ts.o pcorsh.o csfft_AJ.o $(LFLAGS) $(LLIBS)
+
+FD2.o:FD2.c FD2_inc.c
+
+FD2:FD2.o ts.o mcw.o overfim.o pcorsh.o csfft_AJ.o FD2_inc.c
 	$(RM) $@
-	$(CC) -o FD2 FD2.o mcw.o overfim.o ts.o pcorsh.o csfft_AJ.o $(LFLAGS) $(LLIBS)
+	$(CC) -o FD2 FD2.o mcw.o overfim.o ts.o pcorsh.o csfft_AJ.o $(LFLAGS) -lX11 -lm -lc
 
 dFD2:dFD2.o ts.o mcw.o overfim.o pcorsh.o
 	$(RM) $@
@@ -440,11 +450,11 @@ dsetdup:dsetdup.o
 
 3dTcorrelate:3dTcorrelate.o
 	$(RM) $@
-	$(CC) -o 3dTcorrelate 3dTcorrelate.o $(LFLAGS) $(LLIBS)
+	$(CC) -o 3dTcorrelate 3dTcorrelate.o $(LFLAGS) $(LLIBS) -lf2c -lmri
 
 3dAutoTcorrelate:3dAutoTcorrelate.o
 	$(RM) $@
-	$(CC) -o 3dAutoTcorrelate 3dAutoTcorrelate.o $(LFLAGS) $(LLIBS)
+	$(CC) -o 3dAutoTcorrelate 3dAutoTcorrelate.o $(LFLAGS) $(LLIBS) -lf2c -lmri
 
 3dTagalign:3dTagalign.o
 	$(RM) $@
@@ -452,11 +462,15 @@ dsetdup:dsetdup.o
 
 3dTshift:3dTshift.o
 	$(RM) $@
-	$(CC) -o 3dTshift 3dTshift.o $(LFLAGS) $(LLIBS)
+	$(CC) -o 3dTshift 3dTshift.o $(LFLAGS) $(LLIBS) -lf2c -lmri
 
 3dTstat:3dTstat.o
 	$(RM) $@
 	$(CC) -o 3dTstat 3dTstat.o $(LFLAGS) $(LLIBS)
+
+3dTsort:3dTsort.o
+	$(RM) $@
+	$(CC) -o 3dTsort 3dTsort.o $(LFLAGS) $(LLIBS)
 
 3dLocalstat:3dLocalstat.o
 	$(RM) $@
@@ -466,9 +480,13 @@ dsetdup:dsetdup.o
 	$(RM) $@
 	$(CC) -o 3dLocalBistat 3dLocalBistat.o $(LFLAGS) $(LLIBS)
 
+3dLocalSVD:3dLocalSVD.o
+	$(RM) $@
+	$(CC) -o 3dLocalSVD 3dLocalSVD.o $(LFLAGS) $(LLIBS) -lf2c
+
 3dBlurToFWHM:3dBlurToFWHM.o
 	$(RM) $@
-	$(CC) -o 3dBlurToFWHM 3dBlurToFWHM.o $(LFLAGS) $(LLIBS)
+	$(CC) -o 3dBlurToFWHM 3dBlurToFWHM.o $(LFLAGS) $(LLIBS) -lf2c -lmri
 
 3dDFT:3dDFT.o
 	$(RM) $@
@@ -501,7 +519,7 @@ dsetdup:dsetdup.o
 
 3dTsmooth:3dTsmooth.o
 	$(RM) $@
-	$(CC) -o 3dTsmooth 3dTsmooth.o $(LFLAGS) $(LLIBS)
+	$(CC) -o 3dTsmooth 3dTsmooth.o $(LFLAGS) $(LLIBS) -lf2c -lmri
 
 3dMean:3dMean.o
 	$(RM) $@
@@ -642,13 +660,19 @@ d3dmerge:3dmerge.c
 	$(CC) -o 3dedge3 3dedge3.o -I3DEdge/src            \
               $(LFLAGS) -l3DEdge -lmri -lf2c $(LLIBS)
 
+### From Stephen Laconte
+3dsvm:svm/svm_common.c svm/svm_learn.c svm/3dsvm_common.c svm/svm_hideo.c svm/3dsvm.c
+	( cd svm/   ;  \
+	  $(CC) -o 3dsvm 3dsvm_common.c svm_common.c svm_hideo.c 3dsvm.c -I.. $(ISFLAGS) -L.. $(LFLAGS) $(LLIBS) -lf2c -lmri ;  \
+	  $(CP) 3dsvm ..  ;  \
+	  cd .. ;)
 whereami:whereami.c
 	$(RM) $@
-	$(CC) -o whereami whereami.c parser.o parser_int.o $(INFLAGS) $(LFLAGS) $(AFWARPOBJS) -lrickr -lmri -lf2c $(LLIBS)
+	$(CC) -o whereami whereami.c parser.o parser_int.o $(INFLAGS) $(LFLAGS) $(AFWARPOBJS) -lmri -lf2c $(LLIBS)
 
 3dSegment:3dSegment.c
 	$(RM) $@
-	$(CC) -o 3dSegment 3dSegment.c parser.o parser_int.o $(INFLAGS) $(LFLAGS) $(AFWARPOBJS) -lrickr -lmri -lf2c $(LLIBS)
+	$(CC) -o 3dSegment 3dSegment.c parser.o parser_int.o $(INFLAGS) $(LFLAGS) $(AFWARPOBJS) -lmri -lf2c $(LLIBS)
 
 3dUniformize:3dUniformize.o
 	$(RM) $@
@@ -752,7 +776,9 @@ qm:qm.o
 
 3dAllineate:3dAllineate.o mri_genalign.o thd_correlate.o
 	$(RM) $@
-	$(CCFAST) -o 3dAllineate 3dAllineate.o $(LFLAGS) -lmri -lf2c $(LLIBS)
+	$(CCFAST) -o 3dAllineate 3dAllineate.o \
+				afni_warp.o afni_slice_byte.o afni_slice_short.o afni_slice_float.o \
+				afni_slice_complex.o afni_slice_rgbyte.o $(LFLAGS) -lmri -lf2c $(LLIBS)
 
 3dAcost:3dAcost.o
 	$(RM) $@
@@ -808,6 +834,10 @@ rtfeedme:rtfeedme.o
 	$(RM) $@
 	$(CC) -o 3dNLfim_n 3dNLfim_n.o $(PLFLAGS) $(LFLAGS) -lmri -lf2c $(LLIBS)
 
+3dNeocon:3dNeocon.o
+	$(RM) $@
+	$(CCFAST) -o 3dNeocon 3dNeocon.o $(PLFLAGS) $(LFLAGS) -lmri -lf2c $(LLIBS)
+
 3dStatClust:3dStatClust.o
 	$(RM) $@
 	$(CC) -o 3dStatClust 3dStatClust.o $(PLFLAGS) -lmri -lf2c $(LLIBS)
@@ -830,7 +860,7 @@ AlphaSim:AlphaSim.o
 
 3dFWHMx:3dFWHMx.o
 	$(RM) $@
-	$(CC) -o 3dFWHMx 3dFWHMx.o $(LFLAGS) $(LLIBS)
+	$(CC) -o 3dFWHMx 3dFWHMx.o $(LFLAGS) $(LLIBS) -lf2c -lmri
 
 3dMannWhitney:3dMannWhitney.o
 	$(RM) $@
@@ -1038,13 +1068,25 @@ to3d:to3d.h $(T3OBJS) libcoxplot.a
 	$(RM) $@
 	$(CC) -o 1dtranspose 1dtranspose.o $(LFLAGS) $(LLIBS)
 
+1dTsort:1dTsort.o
+	$(RM) $@
+	$(CC) -o 1dTsort 1dTsort.o $(LFLAGS) $(LLIBS)
+
+1dGentimes:1dGentimes.o
+	$(RM) $@
+	$(CC) -o 1dGentimes 1dGentimes.o $(LFLAGS) $(LLIBS)
+
+1dRansplit:1dRansplit.o
+	$(RM) $@
+	$(CC) -o 1dRansplit 1dRansplit.o $(LFLAGS) $(LLIBS)
+
 afni_vcheck:afni_vcheck.o
 	$(RM) $@
 	$(CC) -o afni_vcheck afni_vcheck.o $(LFLAGS) $(LLIBS)
 
 1dfft:1dfft.o
 	$(RM) $@
-	$(CC) -o 1dfft 1dfft.o $(LFLAGS) $(LLIBS)
+	$(CC) -o 1dfft 1dfft.o $(LFLAGS) $(LLIBS) -lf2c -lmri
 
 1dcat:1dcat.o
 	$(RM) $@
@@ -1077,6 +1119,10 @@ afni_vcheck:afni_vcheck.o
 1dnorm:1dnorm.o
 	$(RM) $@
 	$(CC) -o 1dnorm 1dnorm.o $(LFLAGS) $(LLIBS)
+
+1dFlagMotion:1dFlagMotion.o
+	$(RM) $@
+	$(CC) -o 1dFlagMotion 1dFlagMotion.o $(LFLAGS) $(LLIBS)
 
 abut:abut.o
 	$(RM) $@
@@ -1150,7 +1196,7 @@ iochan_relay:iochan_relay.o
 
 3dSpatNorm:3dSpatNorm.o
 	$(RM) $@
-	$(CC) -o 3dSpatNorm 3dSpatNorm.o $(AFWARPOBJS) $(LFLAGS) -lrickr $(LLIBS)
+	$(CC) -o 3dSpatNorm 3dSpatNorm.o $(AFWARPOBJS) $(LFLAGS) $(LLIBS)
 
 ### These programs are from Fred Tam
 
@@ -1170,7 +1216,7 @@ suma_algorithms.o: suma_algorithms.c
 testdsetio: SUMA/SUMA_TestDsetIO.c suma_datasets.o suma_algorithms.o
 	$(RM) $@
 	$(CC) -o testdsetio SUMA/SUMA_TestDsetIO.c suma_datasets.o suma_algorithms.o \
-            -ISUMA/ $(INFLAGS) $(AFWARPOBJS) $(LFLAGS) -lrickr $(LLIBS)
+            -ISUMA/ $(INFLAGS) $(AFWARPOBJS) $(LFLAGS) $(LLIBS)
 
 ### Sort of clean
 
@@ -1187,7 +1233,8 @@ cleanest:
 	$(RM) `find . -name \*.o -print`
 	$(RM) `find . -name \*.so -print`
 	$(RM) `find . -name \*.a -print`
-	$(RM) $(PROGRAMS) SUMA/SUMA_MacOSX.tar
+	$(RM) $(PROGRAMS)
+	$(RM) SUMA/SUMA_*.tar
 
 # CYGWIN: remove the fixed plugins as well
 
@@ -1206,14 +1253,15 @@ backup:
 
 afni_src.tgz:
 	$(MKDIR) afni_src
-	$(CP) -p *.c *.f *.inc *.h *.hhh Makefile.* *.xbm $(MINDOCS) $(MISC)               ./afni_src
-	$(CP) -pr coxplot volpack moveup moveAFNI* cdflib eispack $(SCRIPTS) $(PY_DIR)     ./afni_src
-	$(CP) -pr gifsicledir qhulldir f2cdir mpeg_encodedir ./afni_src
-	$(CP) -pr 3DEdge netcdf-3.5.0 jpeg-6b niml Makefile_* nifti dlcompat               ./afni_src
-	$(CP) -pr SUMA matlab rickr faces poems ni_test_? README.*                         ./afni_src
-	chmod -R ugo+rw                                                                    ./afni_src
+	$(CP) -p *.c *.f *.inc *.h *.hhh Makefile.* *.xbm $(MINDOCS) $(MISC)     ./afni_src
+	$(CP) -pr coxplot volpack moveup moveAFNI* cdflib eispack                ./afni_src
+	$(CP) -pr $(SCRIPTS) $(PY_DIR) $(R_DIR)                                  ./afni_src
+	$(CP) -pr gifsicledir qhulldir f2cdir mpeg_encodedir                     ./afni_src
+	$(CP) -pr 3DEdge netcdf-3.5.0 jpeg-6b niml Makefile_* nifti dlcompat     ./afni_src
+	$(CP) -pr SUMA svm matlab rickr faces poems gifti ni_test_? README.*     ./afni_src
+	chmod -R ugo+rw                                                          ./afni_src
 	$(TAR) cf - afni_src | $(GZIP) -9v > afni_src.tgz
-	$(RM) -r afni_src
+	$(RM) -r ./afni_src
 
 # in above list
 # mpegtoppm_dir                 ./afni_src
@@ -1241,7 +1289,7 @@ afni_doc.tgz:
 install: $(INSTALLDIR) $(INSTALL_PREREQ)
 	$(MV) $(PROGRAMS) $(INSTALLDIR)
 	$(CP) $(SCRIPTS)  $(INSTALLDIR)
-	$(CP) $(PY_DIR)/*.py  $(INSTALLDIR)
+	$(CP) $(PY_DIR)/*.py  $(R_DIR)/*.R $(INSTALLDIR)
 	if [ -f README.environment ]; then $(CP) README.*    $(INSTALLDIR); fi;
 	if [ -f AFNI.afnirc        ]; then $(CP) AFNI.afnirc $(INSTALLDIR); fi;
 	if [ -f AFNI.sumarc        ]; then $(CP) AFNI.sumarc $(INSTALLDIR); fi;
@@ -1249,7 +1297,7 @@ install: $(INSTALLDIR) $(INSTALL_PREREQ)
 install_noplug: $(INSTALLDIR)
 	$(MV) $(PROGRAMS_NOPLUG) $(INSTALLDIR)
 	$(CP) $(SCRIPTS) $(INSTALLDIR)
-	$(CP) $(PY_DIR)/*.py $(INSTALLDIR)
+	$(CP) $(PY_DIR)/*.py $(R_DIR)/*.R $(INSTALLDIR)
 
 install_lib: $(LIBDIR)
 	$(CP) libmri.a libmrix.a libf2c.a libcoxplot.a libvolpack.a $(LIBHEADERS) $(LIBDIR)
@@ -1261,7 +1309,7 @@ install_exe: $(INSTALLDIR)
              qq=`basename $$pp .exe`; $(MV) $${qq}.exe $(INSTALLDIR) ; \
           done )
 	$(CP) $(SCRIPTS) $(INSTALLDIR)
-	$(CP) $(PY_DIR)/*.py $(INSTALLDIR)
+	$(CP) $(PY_DIR)/*.py $(R_DIR)/*.R $(INSTALLDIR)
 
 ###################################################################
 # some dependencies (not complete)
@@ -1317,6 +1365,10 @@ csfft.o:csfft.c
 mri_percents.o:mri_percents.c
 	$(RM) $@
 	$(CCFAST) -c mri_percents.c $(INFLAGS)
+
+edt_clustalpha.o:AlphaTab64.h edt_clustalpha.c
+	$(RM) $@
+	$(CCFAST) -c edt_clustalpha.c $(INFLAGS)
 
 mri_nstats.o:mri_nstats.c
 	$(RM) $@
@@ -1452,7 +1504,8 @@ MRI_OBJS = mri_cfft.o mri_complex_arith.o mri_fft_complex.o mri_free.o    \
            mri_entropy16.o mri_symbolize.o mri_colorsetup.o mri_warp3D_align.o \
            mri_medianfilter.o mri_nstats.o mri_scaled_diff.o mri_matrix.o      \
            mri_genalign.o mri_clusterize.o mri_nbistats.o mri_fwhm.o           \
-           mri_blur3d_variable.o mri_purger.o
+           mri_blur3d_variable.o mri_purger.o mri_counter.o mri_to_imarr.o     \
+           mri_pcvector.o mri_fdrize.o mri_floatvec.o mri_sort.o
 
 THD_OBJS = thd_atr.o thd_dsetto1D.o thd_initalldir.o thd_reconpar.o \
            thd_auxdata.o thd_editdaxes.o thd_initdblk.o thd_sarr.o  \
@@ -1480,7 +1533,7 @@ THD_OBJS = thd_atr.o thd_dsetto1D.o thd_initalldir.o thd_reconpar.o \
            thd_3Ddset.o thd_mattor.o thd_niftiread.o thd_mpegread.o       \
            thd_brainormalize.o thd_opentcat.o thd_nimlatr.o thd_dsetatr.o \
            thd_logafni.o thd_dset_nbhd.o thd_vcheck.o thd_matdaxes.o      \
-           thd_niml.o afni_vedit.o
+           thd_niml.o afni_vedit.o thd_fdrcurve.o
 
 # these are now included in NIML
 
@@ -1498,14 +1551,12 @@ EDT_OBJS = edt_addbrick.o edt_blur.o edt_buildmask.o edt_checkargv.o \
            edt_emptycopy.o edt_filtervol.o edt_help.o edt_onedset.o  \
            edt_scl2max.o edt_substbrick.o edt_volamax.o edt_zscore.o \
            edt_fullcopy.o edt_calcmask.o edt_volpad.o edt_sortmask.o \
-           edt_clust2.o edt_wodcopy.o
+           edt_clust2.o edt_wodcopy.o edt_clustalpha.o
 
 CS_OBJS  = cs_sort_fi.o cs_sort_di.o cs_symeig.o cs_sort_ii.o cs_sort_ff.o \
            cs_addto_args.o multivector.o afni_environ.o cs_qmed.o          \
            cs_sort_fv.o cs_laguerre.o machdep.o cs_qhull.o afni_logger.o   \
-           afni_suma.o vol2surf.o cl1.o nifti1_io.o znzlib.o cs_misc.o     \
-           list_struct.o nifti_statlib.o powell_int.o powell_newuoa.o      \
-           nifticdf.o cs_sort_dv.o
+           cl1.o cs_misc.o powell_int.o powell_newuoa.o cs_sort_dv.o
 
 EIS_OBJS = eis_bakvec.o eis_balanc.o eis_balbak.o eis_bandr.o              \
            eis_bandv.o eis_bisect.o eis_bqr.o eis_cbabk2.o eis_cbal.o      \
@@ -1531,18 +1582,22 @@ NETCDF_OBJS =  netcdf_attr.o   netcdf_dim.o   netcdf_error.o netcdf_libvers.o \
 
 SUMA_OBJS = suma_datasets.o suma_algorithms.o
 
+MISC_OBJS  = afni_suma.o vol2surf.o nifti1_io.o znzlib.o list_struct.o  \
+	     nifti_statlib.o nifticdf.o r_new_resam_dset.o r_idisp.o    \
+	     r_misc.o matrix.o
+
 libmri.a:$(NIML_OBJS) $(MRI_OBJS) $(THD_OBJS)                \
          $(EDT_OBJS)  $(CS_OBJS)  $(EIS_OBJS) $(NETCDF_OBJS) \
-         $(SUMA_OBJS) niml.h mrilib.h 3ddata.h
+         $(SUMA_OBJS) $(MISC_OBJS) niml.h mrilib.h 3ddata.h
 	$(RM) $@
-	$(AR) q libmri.a $(MRI_OBJS) $(THD_OBJS) $(EDT_OBJS) \
-		$(NIML_OBJS) $(CS_OBJS) $(EIS_OBJS) $(NETCDF_OBJS) $(SUMA_OBJS)
+	$(AR) q libmri.a $(MRI_OBJS) $(THD_OBJS) $(EDT_OBJS)        \
+		$(NIML_OBJS) $(CS_OBJS) $(EIS_OBJS) $(NETCDF_OBJS)  \
+		$(SUMA_OBJS) $(MISC_OBJS)
 	$(RANLIB) libmri.a
 
-libmrix.a:$(IMOBJS) imseq.h display.h xim.h bbox.h xutil.h
-	$(RM) libmrix.a
-	$(AR) q libmrix.a $(IMOBJS)
-	$(RANLIB) libmrix.a
+libmrix.so:$(IMOBJS) imseq.h display.h xim.h bbox.h xutil.h
+	$(RM) $@
+	$(CC) -shared -fPIC -o libmrix.so $(IMOBJS)
 
 ### Dependencies for above
 
@@ -1552,6 +1607,38 @@ thd_iochan.o:thd_iochan.h
 mcw_malloc.o:mcw_malloc.h
 afni_environ.o:afni_environ.h
 vol2surf.o:vol2surf.h
+
+###################################################################
+# shared objects (go into the shared_lib directory)
+
+SOMEAFOBJS = parser_int.o afni_warp.o afni_slice_byte.o afni_slice_short.o \
+	      afni_slice_float.o afni_slice_complex.o afni_slice_rgbyte.o  \
+	      parser.o
+
+# same as .a, but build as a shared object
+libmri.so:$(NIML_OBJS) $(MRI_OBJS) $(THD_OBJS)                               \
+          $(EDT_OBJS)  $(CS_OBJS)  $(EIS_OBJS) $(NETCDF_OBJS)                \
+          $(SUMA_OBJS) $(MISC_OBJS) $(SOMEAFOBJS) niml.h mrilib.h 3ddata.h   \
+          shared_netcdf_attr 
+	$(RM) $@
+	$(CC) -shared -fPIC -o libmri.so $(MRI_OBJS) $(THD_OBJS) $(EDT_OBJS) \
+		$(NIML_OBJS) $(CS_OBJS) $(EIS_OBJS) $(NETCDF_OBJS)           \
+		$(SUMA_OBJS) $(MISC_OBJS) $(SOMEAFOBJS)  
+	$(RM) netcdf_attr.o
+
+# remake netcdf objects with PIC
+shared_netcdf_attr:
+	$(RM) netcdf_attr.o
+	$(MAKE) netcdf_attr.o CCMIN="${CCMIN} -fPIC"
+
+# same as .a, but build as a shared object
+libmrix.a:$(IMOBJS) imseq.h display.h xim.h bbox.h xutil.h
+	$(RM) libmrix.a
+	$(AR) q libmrix.a $(IMOBJS)
+	$(RANLIB) libmrix.a
+
+shared_objs: $(INSTALLDIR) libmri.so libmrix.so
+	$(MV) libmri.so libmrix.so $(INSTALLDIR)
 
 ###################################################################
 # Plugin stuff
@@ -1571,7 +1658,7 @@ plugins:plug_clust.$(SO)    plug_copy.$(SO)     plug_rename.$(SO)      \
         plug_second_dataset.$(SO)               plug_betafit.$(SO)     \
         plug_zeropad.$(SO)  plug_nth_dataset.$(SO)                     \
         plug_roiplot.$(SO)  plug_ttget.$(SO)    plug_L1fit.$(SO)       \
-        plug_3ddup.$(SO)                                               \
+        plug_3ddup.$(SO)    plug_histog_multi.$(SO)                    \
         models contrib_plugins
 
 models: model_constant.$(SO) model_linear.$(SO) model_quadratic.$(SO)  \
@@ -1582,11 +1669,11 @@ models: model_constant.$(SO) model_linear.$(SO) model_quadratic.$(SO)  \
         model_diffexp.$(SO) model_gammavar.$(SO)                       \
         model_convgamma.$(SO) model_convgamma2a.$(SO)                  \
         model_michaelis_menton.$(SO) model_linplusort.$(SO)            \
-	model_zero.$(SO) model_demri_3.$(SO)
+	model_zero.$(SO) model_demri_3.$(SO) model_conv_diffgamma.$(SO)
 
 # Contributed plugins go last, since they might not compile well
 
-contrib_plugins: ziad_plugins birn_plugins kummer_plugins \
+contrib_plugins: ziad_plugins birn_plugins kummer_plugins laconte_plugins \
                  rickr_plugins tross_plugins belmonte_plugins fredtam_plugins
 
 ziad_plugins: plug_3Ddump_V2.$(SO) plug_4Ddump.$(SO) \
@@ -1605,6 +1692,8 @@ rickr_plugins: plug_roiedit.$(SO) plug_hemisub.$(SO) \
 tross_plugins: plug_fourier.$(SO)
 
 belmonte_plugins: plug_threshold.$(SO) plug_permtest.$(SO)
+
+laconte_plugins: plug_3dsvm.$(SO)
 
 install_plugins: $(INSTALLDIR)
 	$(MV) *.$(PLUGIN_SUFFIX) $(INSTALLDIR)
@@ -1627,10 +1716,10 @@ plug_drealtime.$(SO):plug_realtime.c
 	$(PLUGIN_CCD) -c plug_realtime.c $(INFLAGS)
 	$(LD) $(PLUGIN_LFLAGS) -o plug_drealtime.$(SO) plug_realtime.o
 
-plug_crender.$(SO):plug_crender.c librickr.a
+plug_crender.$(SO):plug_crender.c
 	$(RM) $@
 	$(PLUGIN_CC) -c plug_crender.c $(INFLAGS)
-	$(LD) $(PLUGIN_LFLAGS) -o plug_crender.$(SO) plug_crender.o -L. -lrickr
+	$(LD) $(PLUGIN_LFLAGS) -o plug_crender.$(SO) plug_crender.o -L. 
 
 plug_maxima.$(SO):plug_maxima.c maxima.o
 	$(RM) $@
@@ -1647,6 +1736,15 @@ plug_retroicor.$(SO):plug_retroicor.c retroicor.o
 
 plug_render.$(SO):mri_render.h
 
+### From Stephen Laconte
+plug_3dsvm.$(SO):svm/plug_3dsvm.c svm/svm_common.c svm/svm_learn.c svm/3dsvm_common.c svm/svm_hideo.c
+	(  cd svm;   \
+	   $(RM) $@ ;  \
+		$(PLUGIN_CC) -c plug_3dsvm.c 3dsvm_common.c svm_common.c svm_hideo.c $(ISFLAGS)  -I.. ;  \
+		$(LD) $(PLUGIN_LFLAGS) -o plug_3dsvm.$(SO) plug_3dsvm.o 3dsvm_common.o svm_common.o svm_hideo.o -L. -L.. ; \
+	   cp plug_3dsvm.$(SO) ..  ;  \
+	   cd .. ;  )
+      
 # Stuff for plugins on CYGWIN:
 # Each plugin must be listed here and have 2 corresponding lines in fixed_plugins.h
 #
@@ -1751,13 +1849,23 @@ coxplot.tgz:
 	$(TAR) cf - ./coxplot | $(GZIP) -9v > coxplot.tgz
 
 #######
-# rickr library
+# rickr objects
 
-librickr.a:
-	( cd rickr ; 							\
-	$(MAKE) librickr.a clean 'RM=$(RM)' 'CC=$(CC)'			\
-			      'RANLIB=$(RANLIB)' 'IFLAGS=$(ISFLAGS)' ;	\
-	$(MV) librickr.a .. ; )
+3dresample.o: rickr/3dresample.c
+	$(RM) $@
+	$(CC) -c rickr/3dresample.c $(INFLAGS)
+
+r_new_resam_dset.o: rickr/r_new_resam_dset.c rickr/r_new_resam_dset.h
+	$(RM) $@
+	$(CC) -c rickr/r_new_resam_dset.c $(INFLAGS)
+
+r_idisp.o: rickr/r_idisp.c rickr/r_idisp.h
+	$(RM) $@
+	$(CC) -c rickr/r_idisp.c $(INFLAGS)
+
+r_misc.o: rickr/r_misc.c rickr/r_misc.h
+	$(RM) $@
+	$(CC) -c rickr/r_misc.c $(INFLAGS)
 
 #######
 # rickr programs
@@ -1766,17 +1874,9 @@ librickr.a:
 	$(RM) $@
 	$(CC) -o 3dmaxima 3dmaxima.o maxima.o $(LFLAGS) $(LLIBS)
 
-3dresample: librickr.a libmri.a $(AFWARPOBJS)
-	( cd rickr ; 							\
-	$(MAKE) 3dresample 'RM=$(RM)' 'CC=$(CC)' 'IFLAGS=$(ISFLAGS)'     \
-	                'LFLAGS=$(LFLAGS)' 'LLIBS=$(LLIBS)' ;		\
-	$(MV) 3dresample .. ; )
-
-3dresample.exe: librickr.a libmri.a $(AFWARPOBJS)
-	( cd rickr ; 							\
-	$(MAKE) 3dresample 'RM=$(RM)' 'CC=$(CC)' 'IFLAGS=$(ISFLAGS)'     \
-	                'LFLAGS=$(LFLAGS)' 'LLIBS=$(LLIBS)' ;		\
-	$(MV) 3dresample.exe .. ; )
+3dresample: 3dresample.o libmri.a $(AFWARPOBJS)
+	$(RM) $@
+	$(CC) -o 3dresample 3dresample.o $(AFWARPOBJS) $(LFLAGS) $(LLIBS)
 
 file_tool: ge4_header.o
 	( cd rickr ;                                                    \
@@ -1784,23 +1884,11 @@ file_tool: ge4_header.o
 			'LFLAGS=$(LFLAGS)' 'LLIBS=$(LLIBS)' ;           \
 	$(MV) file_tool .. ; )
 
-file_tool.exe: ge4_header.o
-	( cd rickr ;                                                    \
-	$(MAKE) file_tool 'RM=$(RM)' 'CC=$(CC)' 'IFLAGS=$(ISFLAGS)'      \
-			'LFLAGS=$(LFLAGS)' 'LLIBS=$(LLIBS)' ;           \
-	$(MV) file_tool.exe .. ; )
-
 Dimon: rickr/Dimon.c rickr/Imon.h rickr/realtime.c rickr/realtime.h
 	( cd rickr ; 							\
 	$(MAKE) Dimon 'RM=$(RM)' 'CC=$(CC)' 'IFLAGS=$(ISFLAGS)'        	\
 		  'LFLAGS=$(LFLAGS)' 'EXTRA_LIBS_2=$(EXTRA_LIBS_2)' ;	\
 	$(MV) Dimon .. ; )
-
-Dimon.exe: rickr/Dimon.c rickr/Imon.h rickr/realtime.c rickr/realtime.h
-	( cd rickr ; 							\
-	$(MAKE) Dimon 'RM=$(RM)' 'CC=$(CC)' 'IFLAGS=$(ISFLAGS)'        	\
-		  'LFLAGS=$(LFLAGS)' 'EXTRA_LIBS_2=$(EXTRA_LIBS_2)' ;	\
-	$(MV) Dimon.exe .. ; )
 
 Imon: rickr/Imon.c rickr/Imon.h rickr/realtime.c rickr/realtime.h thd_iochan.o
 	( cd rickr ; 							\
@@ -1808,27 +1896,21 @@ Imon: rickr/Imon.c rickr/Imon.h rickr/realtime.c rickr/realtime.h thd_iochan.o
 		  'LFLAGS=$(LFLAGS)' 'EXTRA_LIBS_2=$(EXTRA_LIBS_2)' ;	\
 	$(MV) Imon .. ; )
 
-Imon.exe: thd_iochan.o
-	( cd rickr ; 							\
-	$(MAKE) Imon 'RM=$(RM)' 'CC=$(CC)' 'IFLAGS=$(ISFLAGS)'        	\
-		  'LFLAGS=$(LFLAGS)' 'EXTRA_LIBS_2=$(EXTRA_LIBS_2)' ;	\
-	$(MV) Imon.exe .. ; )
-
 serial_helper: rickr/serial_helper.c
 	( cd rickr ;                                                    \
 	$(MAKE) serial_helper 'RM=$(RM)' 'CC=$(CC)' 'IFLAGS=$(ISFLAGS)'  \
 		  'LFLAGS=$(LFLAGS)' 'EXTRA_LIBS_2=$(EXTRA_LIBS_2)' ;	\
 	$(MV) serial_helper .. ; )
 
-serial_helper.exe: rickr/serial_helper.c
-	( cd rickr ;                                                    \
-	$(MAKE) serial_helper 'RM=$(RM)' 'CC=$(CC)' 'IFLAGS=$(ISFLAGS)'  \
-		  'LFLAGS=$(LFLAGS)' 'EXTRA_LIBS_2=$(EXTRA_LIBS_2)' ;	\
-	$(MV) serial_helper.exe .. ; )
-
 serial_writer: rickr/serial_writer.c
 	$(RM) $@
 	$(CCMIN) -o serial_writer rickr/serial_writer.c
+
+gtest:
+	( cd gifti ; 							\
+	$(MAKE) gtest 'RM=$(RM)' 'CC=$(CC)' 'IFLAGS=$(ISFLAGS)'         \
+	                'LFLAGS=$(LFLAGS)' ;                            \
+	$(MV) gtest .. ; )
 
 #######
 # rendering library
@@ -2133,6 +2215,10 @@ nicat:nicat.o
 	$(RM) $@
 	$(CC) -o nicat nicat.o $(LFLAGS) $(LLIBS)
 
+malp:mri_alphasim.o
+	$(RM) $@
+	$(CC) -o malp mri_alphasim.o $(LFLAGS) $(LLIBS)
+
 test_rowtype:test_rowtype.o
 	$(RM) $@
 	$(CC) -o test_rowtype test_rowtype.o $(LFLAGS) $(LLIBS)
@@ -2211,6 +2297,13 @@ nifti_tool.exe:nifti_tool.o nifti1_io.o znzlib.o
 	$(RM) $@
 	$(CC) -o nifti_tool.exe nifti_tool.o nifti1_io.o znzlib.o $(LZLIB) -lm
 
+# just compile completely, removing issue of libraries
+gifti_tool:nifti1_io.o znzlib.o
+	$(RM) $@
+	$(CC) -o gifti_tool $(INFLAGS) \
+		gifti/gifti_tool.c gifti/gifti_io.c gifti/gifti_xml.c 	\
+		nifti1_io.o znzlib.o -lexpat $(LZLIB) -lm
+
 tsdsim:tsdsim.o
 	$(RM) $@
 	$(CC) -o tsdsim tsdsim.o $(LFLAGS) $(LLIBS) -lmx
@@ -2253,12 +2346,12 @@ libgts.a:
 
 ###
 #link executables but check for libraries first and create them if needed	
-suma_exec:libSUMA.a libmri.a librickr.a xutil.o LiteClue.o parser.o parser_int.o libmrix.a libcoxplot.a libf2c.a
+suma_exec:libSUMA.a libmri.a xutil.o LiteClue.o parser.o parser_int.o libmrix.a libcoxplot.a libf2c.a
 	( cd SUMA ;	\
 	$(MAKE) -f $(SUMA_MAKEFILE_NAME) testGL suma ScaleToMap CompareSurfaces MakeColorMap ROI2dataset 3dVol2Surf \
 	3dSurf2Vol SurfMeasures ConvertSurface ConvertDset SurfClust IsoSurface ConvexHull MapIcosahedron CreateIcosahedron SurfaceMetrics \
    SurfSmooth inspec quickspec FSread_annot SurfPatch SurfQual SampBias 3dSkullStrip 3dCRUISEtoAFNI 3dBRAIN_VOYAGERtoAFNI 3dSurfMask\
-   SurfToSurf ROIgrow SurfDsetInfo SurfInfo AnalyzeTrace DriveSuma packbins 'INSTALLDIR=$(INSTALLDIR)' \
+   SurfToSurf Surf2VolCoord ROIgrow SurfDsetInfo SurfInfo AnalyzeTrace DriveSuma packbins 'INSTALLDIR=$(INSTALLDIR)' \
 	'SUMA_INCLUDE_PATH=$(SUMA_INCLUDE_PATH)' \
 	'SUMA_LINK_PATH=$(SUMA_LINK_PATH)' \
 	'SUMA_LINK_LIB=$(SUMA_LINK_LIB)' \
@@ -2288,7 +2381,7 @@ suma_gts_progs: libgts.a
 
 ###
 #run make all in SUMA directory, USE FOR DEVELOPMENT ONLY	
-suma_all:libmri.a librickr.a xutil.o LiteClue.o parser.o parser_int.o libmrix.a libcoxplot.a libf2c.a
+suma_all:libmri.a xutil.o LiteClue.o parser.o parser_int.o libmrix.a libcoxplot.a libf2c.a
 	( cd SUMA ;	\
 	$(MAKE) -f $(SUMA_MAKEFILE_NAME) all 'INSTALLDIR=$(INSTALLDIR)' 'INSTALLDIR_SUMA=$(INSTALLDIR)' \
 	'SUMA_INCLUDE_PATH=$(SUMA_INCLUDE_PATH)' \
@@ -2304,7 +2397,7 @@ suma_all:libmri.a librickr.a xutil.o LiteClue.o parser.o parser_int.o libmrix.a 
 
 ###
 #run make anew in SUMA directory, USE FOR DEVELOPMENT ONLY	
-suma_anew:libmri.a librickr.a xutil.o LiteClue.o parser.o parser_int.o libmrix.a libcoxplot.a libf2c.a
+suma_anew:libmri.a xutil.o LiteClue.o parser.o parser_int.o libmrix.a libcoxplot.a libf2c.a
 	( cd SUMA ;	\
 	$(MAKE) -f $(SUMA_MAKEFILE_NAME) anew 'INSTALLDIR=$(INSTALLDIR)' 'INSTALLDIR_SUMA=$(INSTALLDIR)' \
 	'SUMA_INCLUDE_PATH=$(SUMA_INCLUDE_PATH)' \
@@ -2384,6 +2477,8 @@ suma_clean:
 	if [ -f SUMA/3dSurfMask  ]; then $(RM) SUMA/3dSurfMask ; fi;
 	if [ -f SurfToSurf   ]; then $(RM) SurfToSurf  ; fi;
 	if [ -f SUMA/SurfToSurf   ]; then $(RM) SUMA/SurfToSurf  ; fi;
+	if [ -f Surf2VolCoord    ]; then $(RM) Surf2VolCoord   ; fi;
+	if [ -f SUMA/Surf2VolCoord    ]; then $(RM) SUMA/Surf2VolCoord   ; fi;
 	if [ -f ROIgrow   ]; then $(RM) ROIgrow  ; fi;
 	if [ -f SUMA/ROIgrow   ]; then $(RM) SUMA/ROIgrow  ; fi;
 	if [ -f SurfDsetInfo    ]; then $(RM) SurfDsetInfo   ; fi;
@@ -2401,15 +2496,15 @@ suma_link:
 	( cd SUMA ;	\
 	tar -xf $(SUMA_BIN_ARCHIVE)	;\
 	touch *.a	;\
-	$(CP) libmri.a librickr.a libmrix.a libcoxplot.a libf2c.a ../	;\
+	$(CP) libmri.a libmrix.a libcoxplot.a libf2c.a ../	;\
 	$(RM) suma MakeColorMap ROI2dataset 3dVol2Surf 3dSurf2Vol SurfMeasures ScaleToMap MapIcosahedron \
    CreateIcosahedron CompareSurfaces ConvertSurface ConvertDset SurfClust IsoSurface ConvexHull SurfaceMetrics SurfSmooth inspec \
    quickspec FSread_annot SurfPatch SurfQual SampBias 3dSkullStrip 3dCRUISEtoAFNI 3dBRAIN_VOYAGERtoAFNI 3dSurfMask\
-   SurfToSurf ROIgrow SurfDsetInfo SurfInfo AnalyzeTrace DriveSuma;\
+   SurfToSurf Surf2VolCoord ROIgrow SurfDsetInfo SurfInfo AnalyzeTrace DriveSuma;\
 	$(MAKE) -f $(SUMA_MAKEFILE_NAME) testGL suma MakeColorMap ROI2dataset 3dVol2Surf 3dSurf2Vol ScaleToMap SurfMeasures \
 	MapIcosahedron CreateIcosahedron CompareSurfaces ConvertSurface ConvertDset SurfClust IsoSurface ConvexHull SurfaceMetrics SurfSmooth inspec \
    quickspec FSread_annot SurfPatch SurfQual SampBias 3dSkullStrip 3dCRUISEtoAFNI 3dBRAIN_VOYAGERtoAFNI 3dSurfMask\
-	SurfToSurf ROIgrow SurfDsetInfo SurfInfo AnalyzeTrace DriveSuma \
+	SurfToSurf Surf2VolCoord ROIgrow SurfDsetInfo SurfInfo AnalyzeTrace DriveSuma \
 	'INSTALLDIR=$(INSTALLDIR)' \
 	'SUMA_INCLUDE_PATH=$(SUMA_INCLUDE_PATH)' \
 	'SUMA_LINK_PATH=$(SUMA_LINK_PATH)' \
@@ -2431,7 +2526,7 @@ suma_install:
 	SUMA/ConvertSurface SUMA/ConvertDset SUMA/SurfClust SUMA/IsoSurface SUMA/ConvexHull SUMA/SUMA_glxdino SUMA/SUMA_pixmap2eps SUMA/SurfaceMetrics \
    SUMA/inspec SUMA/quickspec SUMA/FSread_annot SUMA/SurfPatch SUMA/SurfQual SUMA/SurfSmooth SUMA/SUMA_paperplane\
    SUMA/SampBias SUMA/3dSkullStrip SUMA/3dCRUISEtoAFNI SUMA/3dBRAIN_VOYAGERtoAFNI SUMA/3dSurfMask\
-   SUMA/SurfToSurf  SUMA/ROIgrow SUMA/SurfDsetInfo SUMA/SurfInfo SUMA/AnalyzeTrace SUMA/DriveSuma \
+   SUMA/SurfToSurf  SUMA/Surf2VolCoord  SUMA/ROIgrow SUMA/SurfDsetInfo SUMA/SurfInfo SUMA/AnalyzeTrace SUMA/DriveSuma \
    ${INSTALLDIR} ; \
 	if [ -f SUMA/SurfMesh ]; then $(CP) SUMA/SurfMesh ${INSTALLDIR} ; fi; \
 	$(CP) @SUMA_* ${INSTALLDIR} ;)

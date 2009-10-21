@@ -47,6 +47,11 @@ int main( int argc , char *argv[] )
    int bmall=0,do_unif=0 ;           /* 11 Dec 2006 */
    MRI_IMARR *imar ; MRI_IMAGE *imed, *imad ; float *imedar, *imadar, *bar ;
 
+   int corder_bm=-1 , corder_in=0 ;   /* 04 Jun 2007: detrending */
+   MRI_IMARR *corder_inar=NULL ; MRI_IMAGE *corder_invv ;
+   float **corder_inref=NULL ;
+   int corder_inrefnum=0 ;
+
    /*-- help the pitifully ignorant luser? --*/
 
    if( argc < 2 || strcmp(argv[1],"-help") == 0 ){
@@ -66,6 +71,8 @@ int main( int argc , char *argv[] )
       " -blurmaster bbb = This option specifies the dataset whose\n"
       "                   whose smoothness controls the process.\n"
       "                  **N.B.: If not given, the input dataset is used.\n"
+      "                  **N.B.: This should be one continuous run.\n"
+      "                          Do not input catenated runs!\n"
       " -prefix     ppp = Prefix for output dataset will be 'ppp'.\n"
       "                  **N.B.: Output dataset is always in float format.\n"
       " -mask       mmm = Mask dataset, if desired.  Blurring will\n"
@@ -73,7 +80,7 @@ int main( int argc , char *argv[] )
       "                   the mask will be set to zero in the output.\n"
       " -automask       = Create an automask from the input dataset.\n"
       "                  **N.B.: Not useful if the input dataset has\n"
-      "                          been detrended!\n"
+      "                          been detrended before input!\n"
       " -FWHM       f   = Blur until the 3D FWHM is 'f'.\n"
       " -FWHMxy     f   = Blur until the 2D (x,y)-plane FWHM is 'f'.\n"
       "                   No blurring is done along the z-axis.\n"
@@ -103,12 +110,14 @@ int main( int argc , char *argv[] )
       "  the residuals left over after the GLM fitted signal model is subtracted\n"
       "  out from each voxel's time series.\n"
       "You CAN give a multi-brick EPI dataset as the -blurmaster dataset; the\n"
-      "  median of each voxel's time series will be removed (like the -demed option\n"
-      "  in 3dFWHMx) which will tend to remove the spatial structure.  This makes\n"
-      "  it practicable to make the input and blurmaster datasets be the same,\n"
+      "  dataset will be detrended in time (like the -detrend option in 3dFWHMx)\n"
+      "  which will tend to remove the spatial structure.  This makes it\n"
+      "  practicable to make the input and blurmaster datasets be the same,\n"
       "  without having to create a detrended or residual dataset beforehand.\n"
       "  Considering the accuracy of blurring estimates, this is probably good\n"
-      "  enough for government work [that is an insider's joke].\n"
+      "  enough for government work [that is an insider's joke]. \n"
+      "  N.B.: Do not use catenated runs as blurmasters. There \n"
+      "  should be no discontinuities in the time axis of blurmaster.\n"
       "\n"
       "ALSO SEE:\n"
       " * 3dFWHMx, which estimates smoothness globally\n"
@@ -152,11 +161,13 @@ int main( int argc , char *argv[] )
       "ADVANCED OPTIONS:\n"
       " -maxite  ccc = Set maximum number of iterations to 'ccc' [Default=variable].\n"
       " -rate    rrr = The value of 'rrr' should be a number between\n"
-      "                0.05 and 1.0, inclusive.  It is a factor to slow\n"
-      "                down the overall blurring rate and thus require\n"
-      "                more blurring steps.  This option should only be\n"
-      "                needed if the program over-smooths significantly\n"
-      "                (e.g., it overshoots the desired FWHM in Iteration #1).\n"
+      "                0.05 and 3.5, inclusive.  It is a factor to change\n"
+      "                the overall blurring rate (slower for rrr < 1) and thus\n"
+      "                require more or less blurring steps.  This option should only\n"
+      "                be needed to slow down the program if the it over-smooths\n"
+      "                significantly (e.g., it overshoots the desired FWHM in\n"
+      "                Iteration #1 or #2).  You can increase the speed by using\n"
+      "                rrr > 1, but be careful and examine the output.\n"
       " -nbhd    nnn = As in 3dLocalstat, specifies the neighborhood\n"
       "                used to compute local smoothness.\n"
       "                [Default = 'SPHERE(-4)' in 3D, 'SPHERE(-6)' in 2D]\n"
@@ -168,14 +179,19 @@ int main( int argc , char *argv[] )
       "                with dataset prefix 'bbb' [for debugging purposes].\n"
       " -bmall       = Use all blurmaster sub-bricks.\n"
       "                [Default: a subset will be chosen, for speed]\n"
-      " -unif        = Uniformize the voxel-wise MAD in the blurmaster and\n"
+      " -unif        = Uniformize the voxel-wise MAD in the blurmaster AND\n"
       "                input datasets prior to blurring.  Will be restored\n"
       "                in the output dataset.\n"
+      " -detrend     = Detrend blurmaster dataset to order NT/30 before starting.\n"
+      " -nodetrend   = Turn off detrending of blurmaster.\n"
+      "               ** N.B.: '-detrend' is the new default [05 Jun 2007]!\n"
+      " -detin       = Also detrend input before blurring it, then retrend\n"
+      "                it afterwards. [Off by default]\n"
       " -temper      = Try harder to make the smoothness spatially uniform.\n"
       "\n"
       "-- Author: The Dreaded Emperor Zhark - Nov 2006\n"
      ) ;
-     exit(0) ;
+     PRINT_COMPILE_DATE ; exit(0) ;
    }
 
    /*---- official startup ---*/
@@ -187,10 +203,25 @@ int main( int argc , char *argv[] )
 
    while( iarg < argc && argv[iarg][0] == '-' ){
 
+     if( strcmp(argv[iarg],"-nodetrend") == 0 ){        /* 05 Jun 2007 */
+       corder_bm = corder_in = 0 ;
+       iarg++ ; continue ;
+     }
+
+     if( strcmp(argv[iarg],"-detin") == 0 ){            /* 05 Jun 2007 */
+       corder_bm = corder_in = -1 ; do_unif = 0 ;
+       iarg++ ; continue ;
+     }
+
+     if( strcmp(argv[iarg],"-detrend") == 0 ){          /* 04 Jun 2007 */
+       corder_bm = -1 ; do_unif = 0 ;
+       iarg++ ; continue ;
+     }
+
      if( strcmp(argv[iarg],"-rate") == 0 ){
        if( ++iarg >= argc ) ERROR_exit("Need argument after '-rate'") ;
        val = (float)strtod(argv[iarg],NULL) ;
-       if( val >= 0.05f && val <= 1.0f ) blurmax = BLURMAX * val ;
+       if( val >= 0.05f && val <= 3.555f ) blurmax = BLURMAX * val ;
        else ERROR_exit("Illegal value after '-rate': '%s'",argv[iarg]) ;
        iarg++ ; continue ;
      }
@@ -324,7 +355,8 @@ int main( int argc , char *argv[] )
    if( fwhm_goal == 0.0f )
      ERROR_exit("No -FWHM option given! What do you want?") ;
 
-   fwhm_subgoal = 0.95f*fwhm_goal ;
+   fwhm_subgoal = 0.95f*fwhm_goal ;  /* stop one axis if it gets 95% of the way */
+                                     /* while the other axes need to catch up   */
    blurfac      = blurmax ;
 
    if( inset == NULL ){
@@ -438,15 +470,50 @@ int main( int argc , char *argv[] )
 
    DSET_load(bmset) ; CHECK_LOAD_ERROR(bmset) ;
    INIT_IMARR(bmar) ;
+
+   if( corder_bm ) do_unif = 0 ;
+   if( corder_bm < 0 ) corder_bm = DSET_NVALS(bmset) / 30 ;
+#if 0
+   if( corder_bm > 0 && 2*corder_bm+3 >= DSET_NVALS(bmset) )
+     ERROR_exit("-corder %d is too big for blurmaster dataset",corder_bm) ;
+#endif
+
    if( DSET_NVALS(bmset) == 1 ){
-     bmed = THD_median_brick(bmset) ;
+
+     bmed = THD_median_brick(bmset) ;   /* scaled to floats, if need be */
      ADDTO_IMARR(bmar,bmed) ;
      if( do_unif )
        WARNING_message("Can't apply -unif: only 1 sub-brick in blurmaster dataset") ;
+     else if( corder_bm > 0 ){
+       WARNING_message("Can't apply -detrend: only 1 sub-brick in blurmaster dataset") ;
+       corder_bm = 0 ;
+     }
+
    } else {
+
      MRI_IMAGE *smed ;
      float *mar , *sar ;
      int ntouse , nvb=DSET_NVALS(bmset) , ibot , idel , nzs ;
+
+     if( corder_bm > 0 ){                                  /*--- 04 Jun 2007 ---*/
+       int nref=2*corder_bm+3, jj,iv,kk ;
+       float **ref , tm,fac,fq ;
+       THD_3dim_dataset *newset ;
+       INFO_message("detrending blurmaster: %d ref funcs, %d time points",nref,nvb) ;
+
+       ref = THD_build_trigref( corder_bm , nvb ) ;
+       if( ref == NULL ) ERROR_exit("THD_build_trigref failed!") ;
+
+       newset = THD_detrend_dataset( bmset, nref,ref , 2,1 , mask , NULL ) ;
+       if( newset == NULL ) ERROR_exit("detrending failed!?") ;
+
+       if( !bmeqin ) DSET_delete(bmset) ;
+       bmset = newset ;
+       ININFO_message("detrending of blurmaster complete") ;
+
+       for( jj=0 ; jj < nref ; jj++ ) free(ref[jj]) ;
+       free(ref) ;
+     }
 
      imar = THD_medmad_bricks(bmset) ;
      bmed = IMARR_SUBIM(imar,0) ;        /* 11 Dec 2006: -do_unif: */
@@ -455,8 +522,9 @@ int main( int argc , char *argv[] )
      sar  = MRI_FLOAT_PTR(smed) ;        /* spatial variability    */
 
      for( nzs=ii=0 ; ii < nvox ; ii++ )                 /* 10 May 2007 */
-       if( sar[ii] == 0.0f ){ mask[ii] = 0; nzs++ ; }
-     if( nzs > 0 ) INFO_message("Removed %d voxels with 0 variance from mask",nzs) ;
+       if( mask[ii] && sar[ii] == 0.0f ){ mask[ii] = 0; nzs++ ; }
+     if( nzs > 0 )
+       INFO_message("Removed %d voxels with 0 MAD in blurmaster from mask",nzs) ;
 
      if( do_unif )
        for( ii=0 ; ii < nvox ; ii++ ) if( sar[ii] != 0.0f ) sar[ii] = 1.0/sar[ii] ;
@@ -478,7 +546,7 @@ int main( int argc , char *argv[] )
        bar  = MRI_FLOAT_PTR(bmim) ;
        if( do_unif )
          for( ii=0 ; ii < nvox ; ii++ ) bar[ii] = (bar[ii]-mar[ii])*sar[ii] ;
-       else
+       else if( corder_bm == 0 )
          for( ii=0 ; ii < nvox ; ii++ ) bar[ii] = bar[ii]-mar[ii] ;
        ADDTO_IMARR(bmar,bmim) ;
        if( !bmeqin ) DSET_unload_one(bmset,ibm) ;
@@ -494,8 +562,50 @@ int main( int argc , char *argv[] )
 
    /*--- pre-process input dataset ---*/
 
+#if 1
+   if( corder_in < 0 ) corder_in = DSET_NVALS(inset) / 30 ;
+#else
+   corder_in = 0 ;
+#endif
+
    DSET_load(inset) ; CHECK_LOAD_ERROR(inset) ;
-   if( do_unif ){
+
+   outset = EDIT_empty_copy( inset ) ;   /* moved here 04 Jun 2007 */
+   EDIT_dset_items( outset , ADN_prefix , prefix , ADN_none ) ;
+   EDIT_dset_items( outset , ADN_brick_fac , NULL , ADN_none ) ;  /* 11 Sep 2007 */
+   tross_Copy_History( inset , outset ) ;
+   tross_Make_History( "3dBlurToFWHM" , argc,argv , outset ) ;
+
+   if( corder_in > 0 ){  /* 04 Jun 2007 -- detrend input (but don't scale) */
+
+     int jj,iv,kk , nvi = DSET_NVALS(inset) , nzs ;
+     float tm,fac,fq , *vv,*ww , vmed ;
+     THD_3dim_dataset *newset ;
+
+     corder_inrefnum = 2*corder_in+3 ;
+     INFO_message("detrending input: %d ref funcs, %d time points",corder_inrefnum,nvi) ;
+
+     corder_inref = THD_build_trigref( corder_in , nvi ) ;
+     if( corder_inref == NULL ) ERROR_exit("THD_build_trigref failed!") ;
+
+     newset = THD_detrend_dataset( inset, corder_inrefnum,corder_inref ,
+                                   2,0 , mask , &corder_inar ) ;
+     if( newset == NULL ) ERROR_exit("detrending failed!?") ;
+     corder_invv = IMARR_SUBIM(corder_inar,corder_inrefnum) ;
+     vv = MRI_FLOAT_PTR(corder_invv) ;
+     ww = (float *)malloc(sizeof(float)*nvox) ;
+     for( ii=jj=0 ; ii < nvox ; ii++ ) if( mask[ii] ) ww[jj++] = vv[ii] ;
+     vmed = 0.05 * qmed_float(jj,ww) ; free(ww) ;
+     for( nzs=ii=0 ; ii < nvox ; ii++ )
+       if( mask[ii] && vv[ii] < vmed ){ mask[ii] = 0; nzs++ ; }
+     if( nzs > 0 )
+       INFO_message("Removed %d voxels with small input stdev from mask",nzs) ;
+
+     DSET_delete(inset) ; inset = newset ;
+     ININFO_message("detrending of input complete") ;
+
+   } else if( do_unif ){
+
      int nvi = DSET_NVALS(inset) ;
      if( nvi < 3 ){
        WARNING_message(
@@ -536,20 +646,20 @@ int main( int argc , char *argv[] )
    fxim = mri_new_conforming( IMARR_SUBIM(bmar,0) , MRI_float ) ;
    fxar = MRI_FLOAT_PTR(fxim) ;
    gx   = fwhm_goal - 0.011f*dx ; numfxyz++ ;
-   hx   = 0.9f*gx ; qx = 1.0f/(gx-hx) ;
+   hx   = 0.8f*gx ; qx = 1.0f/(gx-hx) ;
 
    fyim = mri_new_conforming( IMARR_SUBIM(bmar,0) , MRI_float ) ;
    fyar = MRI_FLOAT_PTR(fyim) ;
    gy   = fwhm_goal - 0.011f*dy ; numfxyz++ ;
-   hy   = 0.9f*gy ; qy = 1.0f/(gy-hy) ;
+   hy   = 0.8f*gy ; qy = 1.0f/(gy-hy) ;
 
    if( !fwhm_2D ){
      fzim = mri_new_conforming( IMARR_SUBIM(bmar,0) , MRI_float ) ;
      fzar = MRI_FLOAT_PTR(fzim) ;
      gz   = fwhm_goal - 0.011f*dz ; numfxyz++ ;
-     hz   = 0.9f*gz ; qz = 1.0f/(gz-hz) ;
+     hz   = 0.8f*gz ; qz = 1.0f/(gz-hz) ;
    }
-   maxfxyz    = blurfac / numfxyz ;
+   maxfxyz    = blurfac / numfxyz ;  /* maximum lambda */
 #if 0
    fwhm_goal *= 0.995f ;            /* fudge factor */
 #endif
@@ -563,7 +673,7 @@ int main( int argc , char *argv[] )
 
    for( nite=1 ; nite <= maxite ; nite++ ){
 
-     /*--- global smoothness estimation ---*/
+     /*--- global smoothness estimation into bx,by,bz ---*/
 
      fw = mriarr_estimate_FWHM_1dif( bmar , mask , do_unif ) ;
 
@@ -571,6 +681,9 @@ int main( int argc , char *argv[] )
      if( bx <= 0.0f ) bx = dx ;  /* should not happen */
      if( by <= 0.0f ) by = dy ;
      if( bz <= 0.0f ) bz = dz ;
+
+     /*--- test for progress towards our goal ---*/
+
      if( fwhm_2D ){
        val = (float)sqrt(bx*by) ;
        if( verb )
@@ -580,7 +693,7 @@ int main( int argc , char *argv[] )
          if( verb ) INFO_message("** Passes 2D threshold sqrt(FWHMx*FWHMy) ==> done!");
          break;
        }
-       if( nite > 3 && bx < last_fwx && by < last_fwy ){
+       if( nite > 3 && bx < last_fwx && by < last_fwy ){  /* negative progress? */
          nbail++ ;
          if( nbail == BAILOUT ){
            if( verb ) INFO_message("** Bailing out for sluggish progress!") ;
@@ -589,14 +702,14 @@ int main( int argc , char *argv[] )
            if( verb ) INFO_message("** Progress is slow for some reason?!") ;
          }
        } else nbail = 0 ;
-       xdone   = (bx >= fwhm_goal) ;
-       ydone   = (by >= fwhm_goal) ;
+       xdone   = (bx >= fwhm_goal) ;  /* is x done? */
+       ydone   = (by >= fwhm_goal) ;  /* is y done? */
        zdone   = 1 ;
-       xalmost = (!xdone && bx >= DFGOALC*fwhm_goal) ;
-       yalmost = (!ydone && by >= DFGOALC*fwhm_goal) ;
+       xalmost = (!xdone && bx >= DFGOALC*fwhm_goal) ;  /* is x 80% done? */
+       yalmost = (!ydone && by >= DFGOALC*fwhm_goal) ;  /* is y 80% done? */
        zalmost = 0 ;
-       xstall  = (!xdone && (bx < last_fwx && nbail==BAILOUT)) ;
-       ystall  = (!ydone && (by < last_fwy && nbail==BAILOUT)) ;
+       xstall  = (!xdone && (bx < last_fwx && nbail==BAILOUT)) ;  /* is x going backwards? */
+       ystall  = (!ydone && (by < last_fwy && nbail==BAILOUT)) ;  /* is y going backwards? */
        zstall  = 1 ;
      } else {
        val = (float)cbrt(bx*by*bz) ;
@@ -608,7 +721,7 @@ int main( int argc , char *argv[] )
            INFO_message("** Passes 3D threshold cbrt(FWHMx*FWHMy*FWHMz) ==> done!");
          break;
        }
-       if( nite > 3 && bx < last_fwx && by < last_fwy && bz < last_fwz ){
+       if( nite > 3 && bx < last_fwx && by < last_fwy && bz < last_fwz ){  /* negative progress? */
          nbail++ ;
          if( nbail == BAILOUT ){
            if( verb ) INFO_message("** Bailing out for sluggish progress!") ;
@@ -617,18 +730,18 @@ int main( int argc , char *argv[] )
            if( verb ) INFO_message("** Progress is slow for some reason?!") ;
          }
        } else nbail = 0 ;
-       xdone   = (bx >= fwhm_goal) ;
-       ydone   = (by >= fwhm_goal) ;
-       zdone   = (bz >= fwhm_goal) ;
-       xalmost = (!xdone && bx >= DFGOALC*fwhm_goal) ;
-       yalmost = (!ydone && by >= DFGOALC*fwhm_goal) ;
-       zalmost = (!zdone && bz >= DFGOALC*fwhm_goal) ;
-       xstall  = (!xdone && (bx < last_fwx && nbail==BAILOUT)) ;
-       ystall  = (!ydone && (by < last_fwy && nbail==BAILOUT)) ;
-       zstall  = (!zdone && (bz < last_fwz && nbail==BAILOUT)) ;
+       xdone   = (bx >= fwhm_goal) ;                     /* is x done? */
+       ydone   = (by >= fwhm_goal) ;                     /* is y done? */
+       zdone   = (bz >= fwhm_goal) ;                     /* is z done? */
+       xalmost = (!xdone && bx >= DFGOALC*fwhm_goal) ;   /* is x 80% done? */
+       yalmost = (!ydone && by >= DFGOALC*fwhm_goal) ;   /* is y 80% done? */
+       zalmost = (!zdone && bz >= DFGOALC*fwhm_goal) ;   /* is z 80% done? */
+       xstall  = (!xdone && (bx < last_fwx && nbail==BAILOUT)) ; /* is x going backwards? */
+       ystall  = (!ydone && (by < last_fwy && nbail==BAILOUT)) ; /* is y going backwards? */
+       zstall  = (!zdone && (bz < last_fwz && nbail==BAILOUT)) ; /* is z going backwards? */
      }
 
-     /* these should not happen, but just in case ... */
+     /* these cases should not happen, but just in case ... */
      if( xdone && ydone && zdone ){
        if( verb ) INFO_message("** All axes done!") ;
        break ;
@@ -638,18 +751,19 @@ int main( int argc , char *argv[] )
        break ;
      }
 
-     /** if one axis is very close, stop it now **/
+     /** if one axis is very close but others still need work, stop that one now **/
 
      if( fwhm_2D && !xdone && !ydone ){
-            if( by > 1.01f*bx && by >= fwhm_subgoal ) ydone = 1;
-       else if( bx > 1.01f*by && bx >= fwhm_subgoal ) xdone = 1;
+            if( by > 1.01f*bx && by >= fwhm_subgoal ) ydone = 1;  /* stop y */
+       else if( bx > 1.01f*by && bx >= fwhm_subgoal ) xdone = 1;  /* stop y */
      } else if( !fwhm_2D && !xdone && !ydone && !zdone ){
-            if( bz > 1.01f*by & bz > 1.01f*bx && bz >= fwhm_subgoal ) zdone = 1;
-       else if( by > 1.01f*bx & by > 1.01f*bz && by >= fwhm_subgoal ) ydone = 1;
-       else if( bx > 1.01f*by & bx > 1.01f*bz && bx >= fwhm_subgoal ) xdone = 1;
+            if( bz > 1.01f*by & bz > 1.01f*bx && bz >= fwhm_subgoal ) zdone = 1; /* stop z */
+       else if( by > 1.01f*bx & by > 1.01f*bz && by >= fwhm_subgoal ) ydone = 1; /* stop y */
+       else if( bx > 1.01f*by & bx > 1.01f*bz && bx >= fwhm_subgoal ) xdone = 1; /* stop x */
      }
 
-     /** if global blurring is going too fast, slow it down **/
+     /** if global blurring is going too fast
+         (more than 20% progress per iteration), slow it down **/
 
      if( nite > 1 ){
        float bfac=1.0f , dfg=DFGOAL*fwhm_goal ;
@@ -667,7 +781,7 @@ int main( int argc , char *argv[] )
            ININFO_message(" Slowing overall blur rate by factor of %.3f",bfac) ;
      }
 
-     /** if near the goal, slow it down **/
+     /** if near the goal in any direction, slow that direction's blurring down **/
 
      maxfx = maxfxyz * xrat ;
      if( xdone || xstall ){
@@ -890,6 +1004,10 @@ int main( int argc , char *argv[] )
      for( ii=0 ; ii < IMARR_COUNT(dsar) ; ii++ )
        mri_blur3D_variable( IMARR_SUBIM(dsar,ii) , mask , fxim,fyim,fzim ) ;
 
+#if 0
+     (void)mriarr_estimate_FWHM_1dif( dsar , mask , do_unif ) ;
+#endif
+
    } /*-- loop back to estimate smoothness, etc --*/
 
    /*----- toss some trash ---*/
@@ -900,12 +1018,8 @@ int main( int argc , char *argv[] )
    if( fyim != NULL ) mri_free(fyim) ;
    if( fzim != NULL ) mri_free(fzim) ;
 
-   /*--- create the output dataset ---*/
+   /*--- put blurred data into the output dataset ---*/
 
-   outset = EDIT_empty_copy( inset ) ;
-   EDIT_dset_items( outset , ADN_prefix , prefix , ADN_none ) ;
-   tross_Copy_History( inset , outset ) ;
-   tross_Make_History( "3dBlurToFWHM" , argc,argv , outset ) ;
    for( ids=0 ; ids < DSET_NVALS(outset) ; ids++ ){
      bar = MRI_FLOAT_PTR( IMARR_SUBIM(dsar,ids) ) ;
      if( do_unif ){
@@ -914,6 +1028,13 @@ int main( int argc , char *argv[] )
      }
      EDIT_substitute_brick( outset , ids , MRI_float , bar ) ;
    }
+#if 1
+   if( corder_inrefnum > 0 ){
+     INFO_message("re-trending output dataset") ;
+     THD_retrend_dataset( outset , corder_inrefnum,corder_inref ,
+                          0 , mask , corder_inar ) ;
+   }
+#endif
    DSET_write(outset) ;
    WROTE_DSET(outset) ;
 
@@ -927,6 +1048,8 @@ int main( int argc , char *argv[] )
      sprintf(buf+strlen(buf)," -arith") ;
      if( do_unif )
        sprintf(buf+strlen(buf)," -unif") ;
+     else if( corder_bm > 0 )
+       sprintf(buf+strlen(buf)," -detrend") ;
      if( automask )
        sprintf(buf+strlen(buf)," -automask") ;
      else if( mset != NULL )

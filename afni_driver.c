@@ -33,6 +33,8 @@ static int AFNI_drive_set_subbricks( char *cmd ) ;  /* 30 Nov 2005 */
 
 static int AFNI_drive_save_jpeg( char *cmd ) ;      /* 28 Jul 2005 */
 static int AFNI_drive_save_png ( char *cmd ) ;      /* 11 Dec 2006 */
+static int AFNI_drive_save_raw ( char *cmd ) ;      /* 13 Nov 2007 */
+static int AFNI_drive_save_rawmont( char *cmd ) ;   /* 13 Nov 2007 */
 static int AFNI_drive_save_agif( char *cmd ) ;      /* 07 Dec 2006 */
 static int AFNI_drive_save_mpeg( char *cmd ) ;      /* 07 Dec 2006 */
 static int AFNI_drive_save_alljpeg( char *cmd ) ;   /* 07 Dec 2006 */
@@ -126,6 +128,8 @@ static AFNI_driver_pair dpair[] = {
 
  { "SAVE_JPEG"        , AFNI_drive_save_jpeg         } ,
  { "SAVE_PNG"         , AFNI_drive_save_png          } ,
+ { "SAVE_RAWMONT"     , AFNI_drive_save_rawmont      } ,
+ { "SAVE_RAW"         , AFNI_drive_save_raw          } ,
  { "SAVE_MPEG"        , AFNI_drive_save_mpeg         } ,
  { "SAVE_AGIF"        , AFNI_drive_save_agif         } ,
  { "SAVE_ALLJPEG"     , AFNI_drive_save_alljpeg      } ,
@@ -182,6 +186,18 @@ static AFNI_driver_pair dpair[] = {
  { NULL , NULL }  /* flag that we've reached the end times */
 } ;
 
+static int           num_epair = 0 ;      /* 04 Dec 2007 */
+static AFNI_driver_pair *epair = NULL ;   /* dynamic commands */
+
+/*----------------------------------------------------------------------*/
+
+#if 0
+static int junkfun( char *cmd )   /* 04 Dec 2007 */
+{
+  fprintf(stderr,"junkfun('%s')\n",cmd) ; return 0 ;
+}
+#endif
+
 /*----------------------------------------------------------------------*/
 /*! Accept a command, find the corresponding action function, call it.
     Return value is -1 if bad things happened, otherwise return is 0.   */
@@ -193,13 +209,18 @@ int AFNI_driver( char *cmdd )
 
 ENTRY("AFNI_driver") ;
 
+#if 0
+   if( num_epair == 0 )
+     AFNI_driver_register( "JUNK" , junkfun ) ;   /* 04 Dec 2007: testing */
+#endif
+
    if( cmdd == NULL || *cmdd == '\0' ) RETURN(-1) ;  /* bad */
 
    if( strncmp(cmdd,"DRIVE_AFNI ",11) == 0 ) cmdd += 11 ;  /* 28 Dec 2006 */
 
    dmd = cmd = strdup(cmdd) ; clen = strlen(cmd) ;
 
-   /* skip leading blanks */
+   /*--- skip leading blanks ---*/
 
    for( ii=0 ; ii < clen ; ii++ )
      if( !isspace(cmd[ii]) ) break ;
@@ -208,14 +229,14 @@ ENTRY("AFNI_driver") ;
 
    cmd += ii ; clen = strlen(cmd) ;
 
-   /* 19 Dec 2002: trim trailing blanks */
+   /*--- 19 Dec 2002: trim trailing blanks ---*/
 
    for( ii=clen-1 ; ii > 0 && isspace(cmd[ii]) ; ii-- )
      cmd[ii] = '\0' ;
 
    clen = strlen(cmd) ;
 
-   /* scan dpair list for command */
+   /*--- scan dpair list for command ---*/
 
    for( dd=0 ; dpair[dd].nam != NULL ; dd++ ){
 
@@ -229,15 +250,37 @@ ENTRY("AFNI_driver") ;
        AFNI_block_rescan(1) ;                /* 10 Nov 2005 */
        rval = dpair[dd].fun( cmd+ii ) ;      /* execute command */
        if( rval < 0 )
-         WARNING_message("Bad drive AFNI in '%s'",cmd) ;  /* 22 Feb 2007 */
+         WARNING_message("Bad drive AFNI result in '%s'",cmd) ;  /* 22 Feb 2007 */
        AFNI_block_rescan(0) ;
        free(dmd) ; RETURN(rval) ;
      }
    }
 
+   /*--- scan epair list for command [04 Dec 2007] ---*/
+
+   for( dd=0 ; dd < num_epair ; dd++ ){
+
+     dlen = strlen(epair[dd].nam) ;
+     if( clen >= dlen                         &&
+         strncmp(cmd,epair[dd].nam,dlen) == 0   ){  /* found it */
+
+       for( ii=dlen ; ii < clen ; ii++ )     /* skip blanks */
+         if( !isspace(cmd[ii]) ) break ;     /* after command name */
+
+       AFNI_block_rescan(1) ;                /* 10 Nov 2005 */
+       rval = epair[dd].fun( cmd+ii ) ;      /* execute command */
+       if( rval < 0 )
+         WARNING_message("Bad drive AFNI result in '%s'",cmd) ;
+       AFNI_block_rescan(0) ;
+       free(dmd) ; RETURN(rval) ;
+     }
+   }
+
+   /*--- didn't match user command to anything at all?!? ---*/
+
    ERROR_message("Can't drive AFNI with '%s'",cmd) ;  /* 22 Feb 2007 */
 
-   free(dmd) ; RETURN(-1) ;  /* not in the list */
+   free(dmd) ; RETURN(-1) ;  /* not in the lists */
 }
 
 /*---------------------------------------------------------------*/
@@ -336,7 +379,10 @@ ENTRY("AFNI_rescan_controller") ;
    if( ic < 0 ) ic = 0 ;                       /* default = A */
 
    im3d = GLOBAL_library.controllers[ic] ;
-   if( !IM3D_OPEN(im3d) ) RETURN(-1) ;
+   if( !IM3D_OPEN(im3d) ){
+     im3d = AFNI_find_open_controller() ;
+     if( im3d == NULL ) RETURN(-1) ;
+   }
 
    /* same callback as Rescan This */
 
@@ -2444,16 +2490,22 @@ ENTRY("AFNI_drive_save_1image") ;
 
    if( isq != NULL ){
      switch( mode ){
-       case PNG_MODE:  imm = isqDR_save_png     ; break ;
-       case JPEG_MODE: imm = isqDR_save_jpeg    ; break ;
-       default:        imm = isqDR_save_filtered; break ;
+       case RAWMONT_MODE:  imm = isqDR_save_rawmont ; break ;
+       case RAW_MODE:      imm = isqDR_save_raw     ; break ;
+       case PNG_MODE:      imm = isqDR_save_png     ; break ;
+       case JPEG_MODE:     imm = isqDR_save_jpeg    ; break ;
+       default:            imm = isqDR_save_filtered; break ;
      }
-     drive_MCW_imseq( isq, imm , (XtPointer)fname ) ;
+     drive_MCW_imseq( isq, imm, (XtPointer)fname ) ;
    } else if( gra != NULL ){
-     if( mode == -1 ){  /* start with '|' means a pipe */
-       memmove( fname+1, fname, strlen(fname)+1 ); fname[0] = '|';
+     if( mode == RAW_MODE || mode == RAWMONT_MODE ){
+       ERROR_message("Can't save 'raw' image from a graph!") ;
+     } else {
+       if( mode == -1 ){  /* start with '|' means a pipe */
+         memmove( fname+1, fname, strlen(fname)+1 ); fname[0] = '|';
+       }
+       GRA_file_pixmap( gra , fname ) ;
      }
-     GRA_file_pixmap( gra , fname ) ;
    } else {
      ERROR_message("Image save '%s': don't understand windowname",cmd) ;
      RETURN(-1) ;
@@ -2476,6 +2528,22 @@ static int AFNI_drive_save_jpeg( char *cmd )
 static int AFNI_drive_save_png( char *cmd )
 {
    return AFNI_drive_save_1image( cmd , PNG_MODE , ".png" ) ;
+}
+
+/*------------*/
+/*! SAVE_RAW */
+
+static int AFNI_drive_save_raw( char *cmd )
+{
+   return AFNI_drive_save_1image( cmd , RAW_MODE , NULL ) ;
+}
+
+/*------------*/
+/*! SAVE_RAWMONT */
+
+static int AFNI_drive_save_rawmont( char *cmd )
+{
+   return AFNI_drive_save_1image( cmd , RAWMONT_MODE , NULL ) ;
 }
 
 /*-----------------*/
@@ -2717,4 +2785,35 @@ static int AFNI_trace( char *cmd )
    DBG_trace = (YESSISH(cmd)) ? 2 : 0 ;
 #endif
    return 0 ;
+}
+
+/*--------------------------------------------------------------------*/
+
+void AFNI_driver_register( char *cmd , int (*cbfun)(char *) )
+{
+   int nn ; char *cpt ;
+
+   if( cmd == NULL || *cmd == '\0' || cbfun == NULL ) return ;
+   for( cpt=cmd ; *cpt != '\0' ; cpt++ ){
+     if( isspace(*cpt) ){
+       ERROR_message("Illegal driver registration '%s' (spaces not allowed)",cmd); return;
+     }
+   }
+   for( nn=0 ; dpair[nn].nam != NULL ; nn++ ){
+     if( strcmp(cmd,dpair[nn].nam) == 0 ){
+       ERROR_message("Illegal driver built-in duplication '%s'",cmd); return;
+     }
+   }
+   for( nn=0 ; nn < num_epair; nn++ ){
+     if( strcmp(cmd,epair[nn].nam) == 0 ){
+       ERROR_message("Illegal driver custom duplication '%s'",cmd); return;
+     }
+   }
+
+   nn = num_epair + 1 ;
+   epair = (AFNI_driver_pair *)realloc( (void *)epair , sizeof(AFNI_driver_pair)*nn) ;
+   epair[num_epair].nam = strdup(cmd) ;
+   epair[num_epair].fun = cbfun ;
+   num_epair            = nn ;
+   return ;
 }

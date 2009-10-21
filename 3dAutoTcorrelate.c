@@ -60,7 +60,7 @@ int main( int argc , char *argv[] )
              "\n"
              "-- RWCox - Jan 31 2002\n"
             ) ;
-      exit(0) ;
+      PRINT_COMPILE_DATE ; exit(0) ;
    }
 
    mainENTRY("3dAutoTcorrelate main"); machdep(); PRINT_VERSION("3dAutoTcorrelate");
@@ -162,7 +162,7 @@ int main( int argc , char *argv[] )
                       ADN_none ) ;
    }
 
-   if( THD_is_file(DSET_HEADNAME(cset)) ){
+   if( THD_deathcon() && THD_is_file(DSET_HEADNAME(cset)) ){
       fprintf(stderr,"** Output dataset %s already exists!\n",
               DSET_HEADNAME(cset)) ;
       exit(1) ;

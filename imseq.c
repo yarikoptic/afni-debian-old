@@ -21,7 +21,6 @@
 # define DBG_trace 2
 #endif
 
-#define DPR(st) STATUS(st)
 #define DPRI(st,ijk) \
   if(PRINT_TRACING){ char str[256]; sprintf(str,"%s %d",st,ijk); STATUS(str); }
 
@@ -56,7 +55,7 @@ static MCW_action_item ISQ_disp_act[NACT_DISP] = {
 #define NBUT_DISP1  4  /* Rotation box */
 #define NBUT_DISP2  1  /* Mirror box */
 #define NBUT_DISP3  1  /* No overlay box */
-#define NBUT_DISP4  2  /* Range scaling box */
+#define NBUT_DISP4  3  /* Range scaling box */
 #define NBUT_DISP5  2  /* Auto- or Group- scale box */
 #define NBUT_DISP6  1  /* Free aspect box */
 #define NBUT_DISP7  2  /* Save box */          /* 26 Jul 2001: was 3, now 2 */
@@ -73,11 +72,26 @@ static MCW_action_item ISQ_disp_act[NACT_DISP] = {
 #define NTOG_IMP  7
 #define NTOG_CX   8
 
+#define ALLOW_CLIPPING(ss,tt)                                    \
+ do{ int za = (int)(tt) ;                                        \
+     int zb = ( ISQ_REALZ(ss) && (ss)->dialog != NULL &&         \
+                (ss)->dialog_starter == NBUT_DISP     &&         \
+                (ss)->bbox[NTOG_RNG] != NULL            ) ;      \
+     if(zb) SENSITIZE((ss)->bbox[NTOG_RNG]->wbut[2],za) ;        \
+     if( (ss)->opt.scale_range == ISQ_RNG_CLIPPED && !za ){      \
+       (ss)->opt.scale_range = ISQ_RNG_02TO98 ;                  \
+       if(zb) MCW_set_bbox((ss)->bbox[NTOG_RNG],ISQ_RNG_02TO98); \
+     } else if( za && (ss)->redo_clip ){                         \
+       (ss)->opt.scale_range = ISQ_RNG_CLIPPED ;                 \
+       if(zb) MCW_set_bbox((ss)->bbox[NTOG_RNG],ISQ_RNG_CLIPPED);\
+     }                                                           \
+ } while(0)
+
 static char * ISQ_dl1[NBUT_DISP1] = {
    "No Rotation" , "CCW 90" , "Rot 180" , "CW 90" } ;
 static char * ISQ_dl2[NBUT_DISP2] = { "+ LR Mirror" } ;
 static char * ISQ_dl3[NBUT_DISP3] = { "No Overlay" } ;
-static char * ISQ_dl4[NBUT_DISP4] = { "Min-to-Max" , "2%-to-98%" } ;
+static char * ISQ_dl4[NBUT_DISP4] = { "Min-to-Max" , "2%-to-98%" , "Clipped" } ;
 static char * ISQ_dl5[NBUT_DISP5] = { "Autoscale" , "Groupscale" } ;
 static char * ISQ_dl6[NBUT_DISP6] = { "Free Aspect" } ;
 static char * ISQ_dl7[NBUT_DISP7] = { "Nsize Save" , "PNM Save" } ;
@@ -129,12 +143,14 @@ static char * ISQ_bb3_hint[NBUT_DISP3] = {
 
 static char * ISQ_bb4_help[NBUT_DISP4] = {
  "Intensities mapped\nover full range of data\n(min->lowest,max->highest)" ,
- "Intensities mapped\nover partial range of data\n(%ages in data histogram)"
+ "Intensities mapped\nover partial range of data\n(%ages in data histogram)" ,
+ "Intensities mapped\nover auto-clipped range\nof data in all images"
 } ;
 
 static char * ISQ_bb4_hint[NBUT_DISP4] = {
  "Background intensity = min to max pixel values" ,
- "Background intensity = 2% to 98% pixel values"
+ "Background intensity = 2% to 98% pixel values"  ,
+ "Background intensity = auto-clipped from volume"
 } ;
 
 static char * ISQ_bb5_help[NBUT_DISP5] = {
@@ -323,8 +339,7 @@ void ISQ_setup_ppmto_filters(void)
       eee = my_getenv("AFNI_JPEG_COMPRESS");
       if(eee!=NULL) {
          jpeg_compress = (int) strtod(eee, NULL);
-	 if((jpeg_compress<=0) || (jpeg_compress>100))
-            jpeg_compress = 95;
+         if((jpeg_compress<=5) || (jpeg_compress>100)) jpeg_compress = 95;
       }
       else jpeg_compress = 95;
 
@@ -536,15 +551,15 @@ static const Boolean ISQ_but_bot_dial[NBUTTON_BOT] = {  /* use seq->dialog? */
    True , False , True , False
 } ;
 
-static char * ISQ_but_done_label1 = "Done" ;
-static char * ISQ_but_done_label2 = "DONE" ;
+static char *ISQ_but_done_label1 = "Done" ;
+static char *ISQ_but_done_label2 = "DONE" ;
 #define NBUT_DONE (NBUTTON_BOT-1)
 #define NBUT_SAVE 1
 #define NBUT_DISP 0
 #define NBUT_MONT 2
 
-static char * ISQ_save_label_bg  = "Save:bkg" ;
-static char * ISQ_save_label_all = "Save:pnm" ;
+static char *ISQ_save_label_bg  = "Save:bkg" ;
+static char *ISQ_save_label_all = "Save:pnm" ;
 
 #define SET_SAVE_LABEL(seq)                                               \
   do{ char sl[16] ;                                                       \
@@ -659,23 +674,23 @@ static char * ISQ_arrow_hint[NARROW] = {
 #define DEFAULT_MAXFRAC 0.90
 
 #define OPACITY_FAC  0.11111  /* 06-07 Mar 2001: overlay opacity stuff */
-#define OPACITY_BOT  0
+#define OPACITY_BOT  1
 #define OPACITY_TOP  9
 
 #define ZOOM_BOT  1          /* 11 Mar 2002: zoom controls */
 #define ZOOM_TOP  4
 
-MCW_imseq * open_MCW_imseq( MCW_DC * dc ,
+MCW_imseq * open_MCW_imseq( MCW_DC *dc ,
                             get_ptr get_image , XtPointer aux )
 {
-   MCW_imseq        * newseq ;
-   MCW_imseq_status * imstatus ;
+   MCW_imseq        *newseq ;
+   MCW_imseq_status *imstatus ;
    int ii , xwide , yhigh , one_image ;
    float fac ;
-   MRI_IMAGE * tim ;
-   float minfrac=DEFAULT_MINFRAC ; char * eee ; /* 27 Feb 2001 */
-   Widget wtemp ;                               /* 11 Mar 2002 */
-   float maxfrac=DEFAULT_MAXFRAC ;              /* 13 Jun 2003 */
+   MRI_IMAGE *tim ;
+   float minfrac=DEFAULT_MINFRAC ; char *eee ; /* 27 Feb 2001 */
+   Widget wtemp ;                              /* 11 Mar 2002 */
+   float maxfrac=DEFAULT_MAXFRAC ;             /* 13 Jun 2003 */
 
 ENTRY("open_MCW_imseq") ;
 
@@ -1092,6 +1107,7 @@ if( PRINT_TRACING ){
 
    /* buttons on right */
 
+   STATUS("creating buttons on right") ;
    for( ii=0 ; ii < NBUTTON_RIG ; ii++){
 
       Arg wa[30] ;
@@ -1140,6 +1156,7 @@ if( PRINT_TRACING ){
 
    /* arrows on right */
 
+   STATUS("creating arrows on right") ;
    for( ii=0 ; ii < NARROW ; ii++ ){
 
       newseq->arrow[ii] = new_MCW_arrowval(
@@ -1176,10 +1193,11 @@ if( PRINT_TRACING ){
 
    if( newseq->dc->visual_class == TrueColor ){
      int iov = (int)rint(newseq->ov_opacity/OPACITY_FAC) ;
-     char * buf = ISQ_opacity_label(iov) ;
+     char *buf = ISQ_opacity_label(iov) ;
 
      /** 08 Mar 2001 - put a line between the arrows above and this control **/
 
+     STATUS("creating opacity control") ;
      newseq->ov_opacity_sep = XtVaCreateManagedWidget(
                                 "imseq" , xmSeparatorWidgetClass , newseq->wform ,
                                    XmNseparatorType , XmSINGLE_LINE ,
@@ -1230,6 +1248,7 @@ if( PRINT_TRACING ){
      newseq->ov_opacity_sep = NULL ;
    }
 
+   STATUS("creating zoom control") ;
      newseq->zoom_sep = XtVaCreateManagedWidget(
                          "imseq" , xmSeparatorWidgetClass , newseq->wform ,
                             XmNseparatorType , XmSINGLE_LINE ,
@@ -1280,6 +1299,7 @@ if( PRINT_TRACING ){
      MCW_reghint_children( newseq->zoom_val_av->wrowcol, "Image zoom factor" );
      AV_SENSITIZE_DOWN( newseq->zoom_val_av , False ) ;
 
+     STATUS("creating pan control") ;
      newseq->zoom_drag_pb =
         XtVaCreateManagedWidget(
            "imseq" , xmPushButtonWidgetClass , newseq->wform ,
@@ -1334,6 +1354,7 @@ if( PRINT_TRACING ){
 
      /* 17 Jun 2002: crop pushbutton */
 
+     STATUS("creating crop control") ;
      newseq->crop_drag_pb =
         XtVaCreateManagedWidget(
            "imseq" , xmPushButtonWidgetClass , newseq->wform ,
@@ -1388,6 +1409,7 @@ if( PRINT_TRACING ){
    /* 18 Jul 2003: toggle button for pen (drawing mode) */
 
    { char *lbl = "pen" ;
+     STATUS("creating pen control") ;
      newseq->pen_bbox = new_MCW_bbox( newseq->wform ,
                                       1 , &lbl ,
                                       MCW_BB_check , MCW_BB_noframe ,
@@ -1418,6 +1440,7 @@ if( PRINT_TRACING ){
 
    ii = (one_image) ? 1 : newseq->status->num_total - 1 ;
 
+   STATUS("creating image scale") ;
    newseq->onoff_widgets[(newseq->onoff_num)++] =
    newseq->wscale =
        XtVaCreateManagedWidget(
@@ -1450,6 +1473,7 @@ if( PRINT_TRACING ){
 
    /* arrowpad at lower right corner */
 
+   STATUS("creating arrowpad") ;
    newseq->arrowpad = new_MCW_arrowpad(
                            newseq->wform ,
                            ISQ_arrowpad_CB , (XtPointer) newseq ) ;
@@ -1466,6 +1490,7 @@ if( PRINT_TRACING ){
 
    /* drawing area for color bar */
 
+   STATUS("creating intensity bar") ;
    newseq->onoff_widgets[(newseq->onoff_num)++] =
    newseq->wbar =
        XtVaCreateManagedWidget(
@@ -1504,6 +1529,8 @@ if( PRINT_TRACING ){
                       "\n"
                       "Use Button 1 to enforce\n"
                       "image aspect ratio"       ) ;
+
+   STATUS("creating intensity bar menu") ;
 
 #ifdef BAD_BUTTON3_POPUPS   /* 21 Jul 2003 */
    newseq->wbar_menu = XmCreatePopupMenu( newseq->wscale, "menu",NULL,0 ) ;
@@ -1558,7 +1585,7 @@ if( PRINT_TRACING ){
 
    newseq->rng_bot   = newseq->rng_top = newseq->rng_ztop = 0 ;
    newseq->flat_bot  = newseq->flat_top = 0.0 ;
-   newseq->sharp_fac = 0.60 ;
+   newseq->sharp_fac = 0.60 ; newseq->rng_extern = 0 ;
 
    newseq->zer_color = 0 ;
    ii = DC_find_overlay_color( newseq->dc , getenv("AFNI_IMAGE_ZEROCOLOR") ) ;
@@ -1586,6 +1613,7 @@ if( PRINT_TRACING ){
     newseq->winfo_sides[1][0] =
      newseq->winfo_sides[2][0] =
       newseq->winfo_sides[3][0] = '\0' ; /* 01 Dec 1999 */
+   newseq->winfo_prefix[0] = '\0' ; /* 10 Dec 2007 */
 
    /***---------- all widgets now created ------------***/
 
@@ -1613,7 +1641,7 @@ STATUS("creation: widgets created") ;
    NORMAL_cursorize( newseq->wtop ) ;
 
 #else
-   newseq->valid = 1 ;  /* mark this structure as valid */
+   newseq->valid = 1 ;  /* mark this structure as valid but not realized */
 #endif
 
    newseq->ignore_redraws = 0 ;
@@ -1777,6 +1805,9 @@ STATUS("creation: widgets created") ;
    MCW_reghint_children( newseq->wbar_ticsiz_av->wrowcol ,
                          "Size of tick marks around image edges" ) ;
 
+   newseq->top_clip = 0.0f ; /* 17 Sep 2007 */
+   newseq->redo_clip = 0 ;
+
    /* 23 Jan 2003: set default save? */
 
    drive_MCW_imseq( newseq , isqDR_setimsave ,
@@ -1793,6 +1824,15 @@ STATUS("creation: widgets created") ;
    }
 
    newseq->parent = NULL ;
+
+   { static int first=1 ;
+     if( first ){
+       memplot_topshell_setsaver( ".jpg" , memplot_to_jpg ) ; /* 05 Dec 2007 */
+       memplot_topshell_setsaver( ".png" , memplot_to_png ) ;
+       first = 0 ;
+     }
+   }
+
    RETURN(newseq) ;
 }
 
@@ -1930,12 +1970,12 @@ if( PRINT_TRACING ){
    if( yy+hy/2 < 1 ) yp = 10 ; else yp = yy ;
 
    if( xp != xx || yp != yy )
-      XtVaSetValues( seq->wtop , XmNx , xp , XmNy , yp , NULL ) ;
+     XtVaSetValues( seq->wtop , XmNx , xp , XmNy , yp , NULL ) ;
 
    /* if there is a dialog, move it too [modified 05 Jan 1999] */
 
    if( seq->dialog != NULL && XtIsRealized( seq->dialog ) )
-      ISQ_place_dialog( seq ) ;
+     ISQ_place_dialog( seq ) ;
 
    EXRETURN ;
 }
@@ -1967,10 +2007,10 @@ char * ISQ_opacity_label( int val ) /* 07 Mar 2001 */
 
 /*-----------------------------------------------------------------------*/
 
-void ISQ_opacity_CB( MCW_arrowval * av , XtPointer cd ) /* 07 Mar 2001 */
+void ISQ_opacity_CB( MCW_arrowval *av , XtPointer cd ) /* 07 Mar 2001 */
 {
-   MCW_imseq * seq = (MCW_imseq *) cd ;
-   char * buf = ISQ_opacity_label(av->ival) ;
+   MCW_imseq *seq = (MCW_imseq *) cd ;
+   char *buf = ISQ_opacity_label(av->ival) ;
    XmString xstr = XmStringCreateLtoR( buf , XmFONTLIST_DEFAULT_TAG ) ;
 
    XtVaSetValues( av->wlabel , XmNlabelString , xstr , NULL ) ;
@@ -2284,7 +2324,7 @@ ENTRY("ISQ_overlay") ;
             our[jj+2] = orr[jj+2] ;
          }
       }
-   } else {                                     /* translucent overlay */
+   } else if (!my_getenv("AFNI_MIX_BY_BRIGHT")) {     /* translucent overlay */
       register float aa=alpha , bb=1.0-alpha ;
       for( jj=ii=0 ; ii < npix ; ii++,jj+=3 ){
          if( orr[jj] > 0 || orr[jj+1] > 0 || orr[jj+2] > 0 ){
@@ -2293,6 +2333,46 @@ ENTRY("ISQ_overlay") ;
             our[jj+2] = aa*orr[jj+2] + bb*our[jj+2] ;
          }
       }
+   } else {       /* mix by scaling color with brightness of background */
+      register float aa=alpha, bb,
+                     mings, maxgs, *gs=NULL,
+                     MaxGain = 2.0-alpha*alpha,
+                     MinGain = alpha*alpha ;
+      gs = (float *)malloc(sizeof(float)*npix);
+      /* calculate grey scale, keep track of range */
+      mings = 255*3.0; maxgs = 0;
+      for( jj=ii=0 ; ii < npix ; ii++,jj+=3 ){
+         if( orr[jj] > 0 || orr[jj+1] > 0 || orr[jj+2] > 0 ){
+            gs[ii] = (our[jj  ]+our[jj+1]+orr[jj+2]);
+            if (gs[ii] < mings) mings = gs[ii];
+            else if (gs[ii] > maxgs) maxgs = gs[ii];
+         } else {
+            gs[ii] = 0.0;
+         }
+      }
+      /* now scale gs values */
+      bb = (MaxGain - MinGain)/(maxgs-mings);
+      for( ii=0 ; ii < npix ; ii++ ){
+         if( gs[ii] ){
+            gs[ii] =  bb * (gs[ii]-mings)+MinGain;
+         }  
+      }
+      for( jj=ii=0 ; ii < npix ; ii++,jj+=3 ){
+         if( gs[ii] ){ /* Colors will change here, not just a brightness
+                          modulation. Need much fancier method to deal
+                          with mixing appropriately */
+               bb = (gs[ii])*orr[jj  ]  ;  /* mix colors */
+               if (bb > 255) our[jj  ] = 255;
+               else our[jj  ] = (byte)bb;
+               bb = (gs[ii])*orr[jj+1]  ;  
+               if (bb > 255) our[jj+1] = 255;
+               else our[jj+1] = (byte)bb;
+               bb = (gs[ii])*orr[jj+2]  ; 
+               if (bb > 255) our[jj+2] = 255;
+               else our[jj+2] = (byte)bb;
+         }
+      }
+      free(gs); gs=NULL;
    }
 
    if( orim != ovim ) mri_free(orim) ;  /* destroy copy of overlay, if any */
@@ -2784,7 +2864,8 @@ ENTRY("ISQ_process_mri") ;
                       seq->dc->ncol_im , seq->scl,seq->lev ) ;
            clbot = seq->clbot = seq->rng_bot ;
            cltop = seq->cltop = seq->rng_top ;
-           strcpy(seq->scl_label,"[User]") ;
+           if( seq->rng_extern ) strcpy(seq->scl_label,"[Glob]") ;
+           else                  strcpy(seq->scl_label,"[User]") ;
          }
          break ; /* end of user input range scaling */
 
@@ -2792,6 +2873,11 @@ ENTRY("ISQ_process_mri") ;
          case ISQ_SCL_AUTO:{
            ISQ_indiv_statistics *st = &( seq->imstat[nn] ) ;
            int scrang = seq->opt.scale_range ;
+
+           if( seq->top_clip <= 0.0f && scrang == ISQ_RNG_CLIPPED ){
+             ALLOW_CLIPPING( seq , 0 ) ;
+             scrang = seq->opt.scale_range ;
+           }
 
            if( must_rescale ) st->one_done = False ;
 
@@ -2824,6 +2910,22 @@ ENTRY("ISQ_process_mri") ;
                clbot = seq->clbot = st->per02 ;
                cltop = seq->cltop = st->per98 ;
                strcpy(seq->scl_label,"[2%-98%]") ;
+             break ;
+
+             case ISQ_RNG_CLIPPED:{
+               float bf=AFNI_numenv("AFNI_IMAGE_CLIPBOT") , bc ;
+               float tf=AFNI_numenv("AFNI_IMAGE_CLIPTOP") , tc ;
+               if( bf < 0.0f || bf > 0.5f ) bf = 0.25f ;
+               if( tf < 0.6f || bf > 1.9f ) tf = 1.00f ;
+               bc = bf * seq->top_clip ;
+               tc = tf * seq->top_clip ;
+               ISQ_SCLEV( bc,tc ,
+                          seq->dc->ncol_im , seq->scl,seq->lev ) ;
+               clbot = seq->clbot = bc ;
+               cltop = seq->cltop = tc ;
+               strcpy(seq->scl_label,"[clipped]") ;
+               seq->redo_clip = 1 ;
+             }
              break ;
            }
          }
@@ -2892,7 +2994,7 @@ ENTRY("ISQ_process_mri") ;
 
       /*----- next, scale image as defined above -----*/
 
-DPR("scaling to shorts") ;
+STATUS("scaling to shorts") ;
 
                                /* scaling   to zero   clip bot  clip top */
                                /* --------  --------  --------  -------- */
@@ -2905,7 +3007,7 @@ DPR("scaling to shorts") ;
       double scl , lev ;
       float hbot,htop ;
 
-DPR("begin IMPROCessing") ;
+STATUS("begin IMPROCessing") ;
 
       qim = lim ;  /* at the start of each process stage,
                       qim is the image to process;
@@ -2942,7 +3044,7 @@ DPR("begin IMPROCessing") ;
       /*** flatten ***/
 
       if( (seq->opt.improc_code & ISQ_IMPROC_FLAT) != 0 ){
-DPR("call mri_flatten") ;
+STATUS("call mri_flatten") ;
          tim = mri_flatten( qim ) ;
          if( qim != lim ) mri_free(qim) ;
          qim = tim ;
@@ -2953,7 +3055,7 @@ DPR("call mri_flatten") ;
             float *qar = MRI_FLOAT_PTR(qim) ;
             int ii , npix = qim->nx * qim->ny ;
 
-DPR("clip flattened image") ;
+STATUS("clip flattened image") ;
 
             for( ii=0 ; ii < npix ; ii++ ){
                     if( qar[ii] < seq->flat_bot ) qar[ii] = seq->flat_bot ;
@@ -2965,7 +3067,7 @@ DPR("clip flattened image") ;
       /*** sharpen ***/
 
       if( (seq->opt.improc_code & ISQ_IMPROC_SHARP) != 0 ){
-DPR("call mri_sharpen") ;
+STATUS("call mri_sharpen") ;
          tim = mri_sharpen( seq->sharp_fac , 0 , qim ) ;
          if( qim != lim ) mri_free(qim) ;
          qim = tim ;
@@ -2977,12 +3079,12 @@ DPR("call mri_sharpen") ;
          int ii , npix ;
          float *tar ;
 
-DPR("call mri_edit_image") ;
+STATUS("call mri_edit_image") ;
          tim = mri_edit_image( 0.10 , 1.0 , qim ) ;   /* soft clip small values */
          if( qim != lim ) mri_free(qim) ;
          qim = tim ;
 
-DPR("call mri_sobel") ;
+STATUS("call mri_sobel") ;
          tim  = mri_sobel( 0 , 2 , qim ) ;            /* edge detect */
 
 #if 0
@@ -3004,7 +3106,7 @@ DPR("call mri_sobel") ;
 
       hbot = mri_min(qim) ; htop = mri_max(qim) ;
 
-DPR("scale to shorts") ;
+STATUS("scale to shorts") ;
       switch( seq->opt.scale_range ){
          default:
          case ISQ_RNG_MINTOMAX:
@@ -3018,14 +3120,30 @@ DPR("scale to shorts") ;
             static int hist[NHISTOG] ;
             float h02 , h98 ;
 
-DPR("call mri_histogram") ;
+STATUS("call mri_histogram") ;
             mri_histogram( qim , hbot,htop , True , NHISTOG,hist ) ;
-DPR("call ISQ_perpoints") ;
+STATUS("call ISQ_perpoints") ;
             ISQ_perpoints( hbot,htop , hist , &h02 , &h98 ) ;
             ISQ_SCLEV( h02,h98 , seq->dc->ncol_im , scl,lev ) ;
             seq->clbot = h02 ;  /* 29 Jul 2001 */
             seq->cltop = h98 ;
             strcpy(seq->scl_label,"[2%-98%]") ;
+         }
+         break ;
+
+         case ISQ_RNG_CLIPPED:{
+           float bf=AFNI_numenv("AFNI_IMAGE_CLIPBOT") , bc ;
+           float tf=AFNI_numenv("AFNI_IMAGE_CLIPTOP") , tc ;
+           if( bf < 0.0f || bf > 0.5f ) bf = 0.25f ;
+           if( tf < 0.6f || bf > 1.9f ) tf = 1.00f ;
+           bc = bf * seq->top_clip ;
+           tc = tf * seq->top_clip ;
+           ISQ_SCLEV( bc,tc ,
+                      seq->dc->ncol_im , scl,lev ) ;
+           seq->clbot = bc ;
+           seq->cltop = tc ;
+           strcpy(seq->scl_label,"[clipped]") ;
+           seq->redo_clip = 1 ;
          }
          break ;
       }
@@ -3053,7 +3171,7 @@ DPR("call ISQ_perpoints") ;
 
    /*----- last, rotate/flip image to desired orientation -----*/
 
-DPR("call mri_flippo") ;
+STATUS("call mri_flippo") ;
    flipim = mri_flippo( ISQ_TO_MRI_ROT(seq->opt.rot) , seq->opt.mirror , newim ) ;
 
    if( newim != flipim ) KILL_1MRI(newim) ;  /* discard the trash */
@@ -3186,8 +3304,8 @@ ENTRY("ISQ_saver_CB") ;
       /*-- April 1996: Save One case here --*/
 
       if( seq->opt.save_one && !DO_ANIM(seq) ){
-         char * ppnm = strstr( seq->saver_prefix , ".pnm." ) ;
-         int    sll  = strlen( seq->saver_prefix ) ;
+         char *ppnm = strstr( seq->saver_prefix , ".pnm." ) ;
+         int   sll  = strlen( seq->saver_prefix ) ;
 
          int    mcod = X2M_USE_CMAP ;        /* 21 Sep 2001: */
          if( seq->opt.save_filter >= 0 ||
@@ -3201,7 +3319,6 @@ ENTRY("ISQ_saver_CB") ;
          reload_DC_colordef( seq->dc ) ;  /* 23 Mar 1999 */
          tim = XImage_to_mri( seq->dc , seq->given_xim , mcod ) ; /* 21 Sep 2001: */
                                                                   /* X2M_USE_CMAP -> mcod */
-
 
          if( AFNI_yesenv("AFNI_IMAGE_SAVESQUARE") ){   /* 08 Jun 2004 */
            tim->dx = seq->last_dx ; tim->dy = seq->last_dy ;
@@ -3465,7 +3582,7 @@ ENTRY("ISQ_saver_CB") ;
 
       if( seq->opt.save_filter >= 0 || DO_ANIM(seq) ){
          char filt[512] ; int ff=seq->opt.save_filter ; FILE *fp ;
-         MRI_IMAGE * ovim=NULL ;
+         MRI_IMAGE *ovim=NULL ;
          int nx , ny , npix , pc ;
 
          /* process image to make the grayscale index */
@@ -3758,8 +3875,8 @@ ENTRY("ISQ_saver_CB") ;
       } else if( ! seq->opt.save_pnm ){ /** write background only **/
 
          if( seq->opt.save_nsize ){
-            tim = mri_nsize( flim ) ;
-            if( tim != NULL && tim != flim ){ mri_free(flim) ; flim = tim ; }
+           tim = mri_nsize( flim ) ;
+           if( tim != NULL && tim != flim ){ mri_free(flim) ; flim = tim ; }
          }
 
          tim  = flim ;
@@ -3963,7 +4080,7 @@ void ISQ_but_done_reset( MCW_imseq * seq )
 void ISQ_but_done_CB( Widget w , XtPointer client_data ,
                                  XtPointer call_data    )
 {
-   MCW_imseq * seq = (MCW_imseq *) client_data ;
+   MCW_imseq *seq = (MCW_imseq *)client_data ;
 
 ENTRY("ISQ_but_done_CB") ;
 
@@ -3982,16 +4099,18 @@ ENTRY("ISQ_but_done_CB") ;
    /*-- second call: kill --*/
 
    if( seq->glstat->worker != 0 ){  /* remove work process, if started */
-      XtRemoveWorkProc( seq->glstat->worker ) ;
-      seq->glstat->worker = 0 ;
+     XtRemoveWorkProc( seq->glstat->worker ) ;
+     seq->glstat->worker = 0 ;
    }
 
    ISQ_timer_stop(seq) ;
 
-   if( seq->dialog != NULL ) XtDestroyWidget( seq->dialog ) ;  /* 13 Aug 2002 */
+   if( seq->dialog != NULL ){ /* 13 Aug 2002 */
+     XtDestroyWidget( seq->dialog ) ; NI_sleep(1) ;
+   }
 
    ISQ_free_alldata( seq ) ;
-   XtDestroyWidget( seq->wtop ) ;
+   XtDestroyWidget( seq->wtop ) ; NI_sleep(3) ;
    seq->valid = 0 ;     /* WE do not deallocate the data structure! */
 
    STATUS("IMSEQ: data destroyed!") ;
@@ -4016,7 +4135,7 @@ ENTRY("ISQ_but_done_CB") ;
    delete malloc-ed data in an imseq
 -------------------------------------------------------------------------*/
 
-void ISQ_free_alldata( MCW_imseq * seq )
+void ISQ_free_alldata( MCW_imseq *seq )
 {
    int ib ;
 
@@ -4510,7 +4629,7 @@ ENTRY("ISQ_show_image") ;
    }
 
    if( seq->sized_xim != NULL ){
-DPR("putting sized_xim to screen");
+STATUS("putting sized_xim to screen");
 
 #if 0
 if( AFNI_yesenv("AFNI_IMSEQ_DEBUG") ){
@@ -4592,16 +4711,17 @@ ENTRY("ISQ_draw_winfo") ;
 
      if( seq->last_image_type == MRI_complex ){
        switch( seq->opt.cx_code ){
-         case ISQ_CX_MAG:   strcat( buf , "[mag]"  ) ; break ;
-         case ISQ_CX_PHASE: strcat( buf , "[arg]"  ) ; break ;
-         case ISQ_CX_REAL:  strcat( buf , "[real]" ) ; break ;
-         case ISQ_CX_IMAG:  strcat( buf , "[imag]" ) ; break ;
+         case ISQ_CX_MAG:   strcat( buf , "[mag]" ) ; break ;
+         case ISQ_CX_PHASE: strcat( buf , "[arg]" ) ; break ;
+         case ISQ_CX_REAL:  strcat( buf , "[re]"  ) ; break ;
+         case ISQ_CX_IMAG:  strcat( buf , "[im]"  ) ; break ;
        }
      }
    }
    ibuf = strlen(buf) ;
 
    nn = seq->im_nr ;  if( nn < 0 ) EXRETURN ;
+
    st = &( seq->imstat[nn] ) ;
 #if 0
    if( st->one_done ){
@@ -4627,7 +4747,10 @@ ENTRY("ISQ_draw_winfo") ;
      sprintf(buf+strlen(buf)," s=%d",(int)(10.0*seq->sharp_fac+.01)) ;
 
    if( seq->im_label[0] == '\0' || strcmp(buf,seq->im_label) != 0 ){
-     char qbuf[128] ;
+     char qbuf[128] ; qbuf[0] = '\0' ;
+     if( seq->winfo_prefix[0] != '\0' ){  /* 10 Dec 2007 */
+       strcat(qbuf,seq->winfo_prefix) ; strcat(qbuf,": ") ;
+     }
      if( seq->winfo_extra[0] == '\0' ){
 
        int iw=0 ;                                   /* winfo_sides stuff */
@@ -4640,16 +4763,16 @@ ENTRY("ISQ_draw_winfo") ;
        if( seq->opt.mirror ) iw = (iw+2)%4 ;
 
        if( seq->winfo_sides[iw][0] != '\0' ){
-         strcpy(qbuf,"left=") ;
+         strcat(qbuf,"left=") ;
          strcat(qbuf,seq->winfo_sides[iw]) ;
          strcat(qbuf," ") ; strcat(qbuf,buf) ;
          MCW_set_widget_label( seq->winfo , qbuf ) ;
        } else if( seq->opt.mirror || seq->opt.rot != ISQ_ROT_0 ){
          switch( seq->opt.rot ){
-           case ISQ_ROT_0  : strcpy(qbuf,"["   ) ; break ;
-           case ISQ_ROT_90 : strcpy(qbuf,"[90" ) ; break ;
-           case ISQ_ROT_180: strcpy(qbuf,"[180") ; break ;
-           case ISQ_ROT_270: strcpy(qbuf,"[270") ; break ;
+           case ISQ_ROT_0  : strcat(qbuf,"["   ) ; break ;
+           case ISQ_ROT_90 : strcat(qbuf,"[90" ) ; break ;
+           case ISQ_ROT_180: strcat(qbuf,"[180") ; break ;
+           case ISQ_ROT_270: strcat(qbuf,"[270") ; break ;
          }
          if( seq->opt.mirror ){
            if( seq->opt.rot == ISQ_ROT_0 ) strcat(qbuf,"l] " ) ;
@@ -4752,7 +4875,7 @@ ENTRY("ISQ_show_bar") ;
 
    if( seq->sized_xbar == NULL ){
       int nx , ny ;
-DPR("making sized_xbar");
+STATUS("making sized_xbar");
 
       MCW_widget_geom( seq->wbar , &nx , &ny , NULL,NULL ) ;
 
@@ -4761,7 +4884,7 @@ DPR("making sized_xbar");
 
 
    if( seq->sized_xbar != NULL ){
-DPR("putting sized_xbar to screen");
+STATUS("putting sized_xbar to screen");
 
      XPutImage( seq->dc->display , XtWindow(seq->wbar) , seq->dc->origGC ,
                 seq->sized_xbar , 0,0,0,0,
@@ -4834,7 +4957,7 @@ ENTRY("ISQ_drawing_EV") ;
              if( seq->cmap_changed ){
                COLORMAP_CHANGE(seq); seq->cmap_changed = 0;
                if( seq->graymap_mtd != NULL && AFNI_yesenv("AFNI_STROKE_AUTOPLOT") ){
-                 RWC_sleep(456) ;     /* pop down after a short delay */
+                 NI_sleep(456) ;     /* pop down after a short delay */
                  plotkill_topshell( seq->graymap_mtd ) ;
                  seq->graymap_mtd = NULL ;
                }
@@ -4959,7 +5082,7 @@ DPRI(" .. Expose; count=",event->count) ;
                                                             /* so let's un-hide it! */
                   XConfigureEvent nev ;
 
-DPR(" .. really a hidden resize") ;
+STATUS(" .. really a hidden resize") ;
 
                   nev.type = ConfigureNotify ; nev.width = nx ; nev.height = ny ;
                   ISQ_drawing_EV( w, client_data, (XEvent *) &nev, continue_to_dispatch ) ;
@@ -4982,7 +5105,7 @@ DPR(" .. really a hidden resize") ;
          int        nbuf ;
          KeySym     ks ;
 
-DPR(" .. KeyPress") ;
+STATUS(" .. KeyPress") ;
 
          ISQ_timer_stop(seq) ;  /* 03 Dec 2003 */
 
@@ -5040,7 +5163,7 @@ fprintf(stderr,"KeySym=%04x nbuf=%d\n",(unsigned int)ks,nbuf) ;
          XButtonEvent *event = (XButtonEvent *) ev ;
          int bx,by , width,height , but ;
 
-DPR(" .. ButtonPress") ;
+STATUS(" .. ButtonPress") ;
 
          /* don't allow button presses in a recorder window, or in zoom-pan mode */
 
@@ -5090,6 +5213,7 @@ DPR(" .. ButtonPress") ;
          /* 26 Feb 2007: Buttons 4 and 5 = Scroll Wheel = change slice */
 
          if( but == Button4 || but == Button5 ){
+           if( seq->button2_enabled ){ busy=0; EXRETURN; }  /* 10 Oct 2007 */
            if( (event->state & (Mod1Mask|Mod2Mask)) ){ /* mod+scroll == '{}' */
              cbs.reason = isqCR_keypress ;
              cbs.event  = ev ;
@@ -5097,7 +5221,9 @@ DPR(" .. ButtonPress") ;
              cbs.nim    = seq->im_nr ;
              SEND(seq,cbs) ;
            } else {                           /* no modifiers == change slice */
-             int nold=seq->im_nr , nnew=(but==Button4) ? nold-1 : nold+1;
+             int nold=seq->im_nr , dd=(but==Button4)?-1:+1 , nnew ;
+             if( AFNI_yesenv("AFNI_INDEX_SCROLLREV") ) dd = -dd ;
+             nnew = nold + dd ;
              ISQ_timer_stop(seq) ;
              if( nnew >= 0 && nnew < seq->status->num_total )
                ISQ_redisplay( seq , nnew , isqDR_display ) ;
@@ -5556,7 +5682,7 @@ ENTRY("ISQ_but_disp_CB") ;
                  "menu" , xmScrolledWindowWidgetClass , seq->dialog ,
                     XmNscrollingPolicy        , XmAUTOMATIC ,
                     XmNvisualPolicy           , XmVARIABLE ,
-                    XmNscrollBarDisplayPolicy , XmSTATIC ,
+                    XmNscrollBarDisplayPolicy , XmAS_NEEDED /* XmSTATIC */ ,
                     XmNinitialResourcesPersistent , False ,
                  NULL ) ;
    } else {
@@ -5581,8 +5707,8 @@ ENTRY("ISQ_but_disp_CB") ;
 
    for( ib=0 ; ib < NBOX_DISP ; ib++ ){
       int jh ;
-      char ** bbh = ISQ_bb_allhelp[ib] ;
-      char ** cch = ISQ_bb_allhint[ib] ;
+      char **bbh = ISQ_bb_allhelp[ib] ;
+      char **cch = ISQ_bb_allhint[ib] ;
 
       /*** 30 Oct 1996: transformations just above the IMPROC buttons ***/
 
@@ -5869,7 +5995,7 @@ ENTRY("ISQ_but_disp_CB") ;
 #endif
 
    if( seq->last_image_type != MRI_complex )
-      XtUnmanageChild( seq->bbox[NTOG_CX]->wtop ) ;
+     XtUnmanageChild( seq->bbox[NTOG_CX]->wtop ) ;
 
    XtManageChild( rcboxes ) ;
 
@@ -5880,16 +6006,15 @@ ENTRY("ISQ_but_disp_CB") ;
    if( swtop != NULL ){       /* 31 Jan 2002 */
      int wx,hy , cmax ;
      MCW_widget_geom( rctop  , &wx,&hy,NULL,NULL ) ;
-
-     cmax = HeightOfScreen(XtScreen(rctop)) - 128 ;
-     if( hy > cmax ) hy = cmax ;
-
-     XtVaSetValues( seq->dialog , XmNwidth,wx+29,XmNheight,hy+19 , NULL ) ;
+     cmax = seq->dc->height-128 ; if( hy > cmax ) hy = cmax ;
+     XtVaSetValues( seq->dialog , XmNwidth,wx+33,XmNheight,hy+19 , NULL ) ;
    }
 
    ISQ_place_dialog( seq ) ;  /* 05 Jan 1999 */
 
-   XtPopup( seq->dialog , XtGrabNone ) ; RWC_sleep(1);
+   XtPopup( seq->dialog , XtGrabNone ) ; NI_sleep(1);
+
+   if( seq->top_clip <= 0.0f ) ALLOW_CLIPPING( seq , 0 ) ;
 
    ISQ_disp_options( seq , False ) ;  /* set toggles from option list */
    seq->save_opt = seq->opt ;         /* for use with Reset button */
@@ -5949,11 +6074,11 @@ ENTRY("ISQ_place_widget") ;
 
 void ISQ_disp_act_CB( Widget w, XtPointer client_data, XtPointer call_data )
 {
-   MCW_imseq * seq           = (MCW_imseq *) client_data ;
-   XmAnyCallbackStruct * cbs = (XmAnyCallbackStruct *) call_data ;
+   MCW_imseq *seq           = (MCW_imseq *)client_data ;
+   XmAnyCallbackStruct *cbs = (XmAnyCallbackStruct *)call_data ;
 
    int ib , close_window ;
-   char * wname ;
+   char *wname ;
    Boolean new_opt = False ;
 
 #ifdef FLASH_TOGGLE
@@ -5967,7 +6092,7 @@ ENTRY("ISQ_disp_act_CB") ;
    wname = XtName(w) ;
 
    for( ib=0 ; ib < NACT_DISP ; ib++ )           /* button index, if any */
-      if( strcmp(wname,ISQ_disp_act[ib].label) == 0 ) break ;
+     if( strcmp(wname,ISQ_disp_act[ib].label) == 0 ) break ;
 
    close_window = (ib == DISP_OK)  /* button to exit */
                  ||
@@ -5990,11 +6115,11 @@ ENTRY("ISQ_disp_act_CB") ;
    }
 
    if( close_window ){                          /* close the window */
-      XtDestroyWidget( seq->dialog ) ;
+      XtDestroyWidget( seq->dialog ) ; NI_sleep(1) ;
       seq->dialog = NULL ;
       for( ib=0 ; ib < NBUTTON_BOT-1 ; ib++ )       /* turn buttons back on */
          if( ISQ_but_bot_dial[ib] == True )         /* that also want to   */
-            SENSITIZE( seq->wbut_bot[ib] , True ) ; /* use seq->dialog    */
+           SENSITIZE( seq->wbut_bot[ib] , True ) ;  /* use seq->dialog    */
 
       for( ib=0 ; ib < seq->num_bbox ; ib++ ) myXtFree( seq->bbox[ib] ) ;
       seq->num_bbox = 0 ;
@@ -6007,7 +6132,7 @@ ENTRY("ISQ_disp_act_CB") ;
    }
 
    if( new_opt ){
-      ISQ_redisplay( seq , -1 , isqDR_reimage ) ;  /* redo current image */
+     ISQ_redisplay( seq , -1 , isqDR_reimage ) ;  /* redo current image */
 
       /* 01 Dec 1999: perhaps redraw winfo label */
 
@@ -6033,7 +6158,7 @@ ENTRY("ISQ_disp_act_CB") ;
   in the latter case, return False always (options ARE unchanged)
 ------------------------------------------------------------------------*/
 
-Boolean ISQ_disp_options( MCW_imseq * seq , Boolean set )
+Boolean ISQ_disp_options( MCW_imseq *seq , Boolean set )
 {
    int bval[NBOX_DISP] ;
    int ib ;
@@ -6041,14 +6166,14 @@ Boolean ISQ_disp_options( MCW_imseq * seq , Boolean set )
 ENTRY("ISQ_disp_options") ;
 
    if( !ISQ_VALID(seq) || seq->dialog==NULL || seq->dialog_starter!=NBUT_DISP )
-      RETURN(False) ;
+     RETURN(False) ;
 
-   if( set ){
+   if( set ){                         /* set structure from widgets */
       ISQ_options inopt = seq->opt ;
       Boolean changed ;
 
       for( ib=0 ; ib < NBOX_DISP ; ib++ )
-         bval[ib] = MCW_val_bbox( seq->bbox[ib] ) ;
+        bval[ib] = MCW_val_bbox( seq->bbox[ib] ) ;
 
       seq->opt.mirror      = ( bval[NTOG_MIR] & 1 ) != 0 ;
 
@@ -6100,7 +6225,7 @@ ENTRY("ISQ_disp_options") ;
 
       seq->opt.cx_code = bval[NTOG_CX] ;
 
-      /* sanity checks */
+      /*-- sanity checks --*/
 
       if( seq->opt.rot != ISQ_ROT_0   &&
           seq->opt.rot != ISQ_ROT_90  &&
@@ -6111,15 +6236,27 @@ ENTRY("ISQ_disp_options") ;
           seq->opt.scale_group != ISQ_SCL_GRP )
                                seq->opt.scale_group = inopt.scale_group ;
 
+      if( seq->opt.scale_range != ISQ_RNG_CLIPPED ) seq->redo_clip = 0 ;
+DPRI("set scale_range =",seq->opt.scale_range) ;
+
       if( seq->opt.scale_range != ISQ_RNG_MINTOMAX &&
-          seq->opt.scale_range != ISQ_RNG_02TO98 )
+          seq->opt.scale_range != ISQ_RNG_02TO98   &&
+          seq->opt.scale_range != ISQ_RNG_CLIPPED    )
                                seq->opt.scale_range = inopt.scale_range ;
+
+      if( seq->opt.scale_range == ISQ_RNG_CLIPPED ){  /* 17 Sep 2007 */
+        if( seq->top_clip <= 0.0f ){
+          ALLOW_CLIPPING( seq , 0 ) ;
+        } else {
+          seq->redo_clip = 1 ;
+        }
+      }
 
       changed = ! ISQ_OPT_EQUAL( seq->opt , inopt ) ;
 
       RETURN(changed) ;
 
-   } else {
+   } else {    /* set widgets from structure */
 
       bval[NTOG_MIR] = (seq->opt.mirror) ? 1 : 0 ;
       bval[NTOG_ROT] = seq->opt.rot ;
@@ -6128,6 +6265,13 @@ ENTRY("ISQ_disp_options") ;
 
       bval[NTOG_SCL] = seq->opt.scale_group ;
       bval[NTOG_RNG] = seq->opt.scale_range ;
+
+      if( seq->opt.scale_range == ISQ_RNG_CLIPPED &&
+          seq->top_clip <= 0.0f                     ){  /* 17 Sep 2007 */
+
+        ALLOW_CLIPPING( seq , 0 ) ;
+        bval[NTOG_RNG] = seq->opt.scale_range ;
+      }
 
       bval[NTOG_ASP] = (seq->opt.free_aspect) ? ISQ_ASPECT    : 0 ;
 
@@ -6142,7 +6286,7 @@ ENTRY("ISQ_disp_options") ;
       bval[NTOG_CX]  = seq->opt.cx_code ;
 
       for( ib=0 ; ib < NBOX_DISP ; ib++ )
-         MCW_set_bbox( seq->bbox[ib] , bval[ib] ) ;
+        MCW_set_bbox( seq->bbox[ib] , bval[ib] ) ;
 
       MCW_set_bbox( seq->save_one_bbox ,
                     (seq->opt.save_one) ? 1 : 0 ) ; /* 26 Jul 2001 */
@@ -6212,7 +6356,7 @@ ENTRY("ISQ_statify_all") ;
    } while ( ! done ) ;
    /**************************************************************/
 
-   XtDestroyWidget( wmsg ) ;
+   XtDestroyWidget( wmsg ) ; NI_sleep(1) ;
 
    NORMAL_cursorize( seq->wtop ) ;
    if( seq->dialog != NULL )
@@ -6604,7 +6748,8 @@ ENTRY("ISQ_but_cnorm_CB") ;
 
 *    isqDR_winfotext       (char *) sets the winfo extra text
 
-*    isqDR_winfosides      (char **) sets the winfo sides text
+*    isqDR_winfosides      (char **) sets the winfo_sides text
+*    isqDR_winfoprefix     (char *) set the winfo_prefix text
 
 *    isqDR_getoptions      (ISQ_options *) to get the current options
 
@@ -6642,11 +6787,14 @@ ENTRY("ISQ_but_cnorm_CB") ;
 *    isqDR_setimsave       (char *) suffix of image save mode
 
 *    isqDR_setrange        (float *) points to rng_bot,rng_top
+*    isqDR_settopclip      (float *) points to top_clip
 
 *    isqDR_keypress        (unsigned int) character or KeySym to send
 
 *    isqDR_save_jpeg       (char *) save current image to this filename
 *    isqDR_save_png        (char *) save current image to this filename
+*    isqDR_save_raw        (char *) save current image to this filename
+*    isqDR_save_rawmont    (char *) save current montage to this filename
 *    isqDR_save_filtered   (char *) save current image to this filter
 *    isqDR_save_agif       (char *) save current image series to this filename
 *    isqDR_save_mpeg       (char *) save current image series to this filename
@@ -6677,6 +6825,24 @@ ENTRY("drive_MCW_imseq") ;
       }
       break ;
 
+      /*--------- set top_clip [14 Sep 2007] ----------*/
+
+      case isqDR_settopclip:{
+        float *tc=(float *)drive_data ; int zz=0 ;
+        if( tc == NULL ){
+          seq->top_clip = 0.0f ; seq->redo_clip = 0 ;
+        } else {
+          seq->top_clip = *tc ; zz = (seq->top_clip > 0.0f) ;
+        }
+#if 0
+printf("set top_clip=%g  redo_clip=%d zz=%d\n",seq->top_clip,seq->redo_clip,zz);
+#endif
+        ALLOW_CLIPPING( seq , zz ) ;
+        if( tc == NULL ) ISQ_redisplay( seq , -1 , isqDR_display ) ;
+        RETURN( True ) ;
+      }
+      break ;
+
       /*--------- set display range [04 Nov 2003] ----------*/
 
       case isqDR_setrange:{
@@ -6685,6 +6851,7 @@ ENTRY("drive_MCW_imseq") ;
           seq->rng_bot = seq->rng_top = seq->rng_ztop = 0.0f ;
         } else {
           seq->rng_bot = rng[0] ; seq->rng_top = rng[1] ; seq->rng_ztop = 0.0 ;
+          seq->rng_extern = 1 ;
         }
         if( rng == NULL || rng[2] == 0.0f )
           ISQ_redisplay( seq , -1 , isqDR_display ) ;
@@ -6746,6 +6913,18 @@ ENTRY("drive_MCW_imseq") ;
       case isqDR_save_png:{                  /* 11 Dec 2006 */
         char *fname = (char *)drive_data ;
         ISQ_save_png( seq , fname ) ;
+        RETURN( True ) ;
+      }
+
+      case isqDR_save_raw:{                  /* 13 Nov 2007 */
+        char *fname = (char *)drive_data ;
+        ISQ_save_raw( seq , fname ) ;
+        RETURN( True ) ;
+      }
+
+      case isqDR_save_rawmont:{              /* 13 Nov 2007 */
+        char *fname = (char *)drive_data ;
+        ISQ_save_rawmont( seq , fname ) ;
         RETURN( True ) ;
       }
 
@@ -6846,7 +7025,7 @@ static unsigned char record_bits[] = {
             record_pixmap = XCreatePixmapFromBitmapData(
                               seq->dc->display ,
                               RootWindowOfScreen(seq->dc->screen) ,
-                              record_bits, record_width, record_height ,
+                              (char *)record_bits, record_width, record_height ,
                               seq->dc->ovc->pixov_brightest ,
                               seq->dc->ovc->pixov_darkest ,
                               DefaultDepthOfScreen(seq->dc->screen) ) ;
@@ -7057,7 +7236,7 @@ static unsigned char record_bits[] = {
       /* [mostly copied from ISQ_montage_action_CB()] */
 
       case isqDR_setmontage:{
-         int * mm = (int *) drive_data ;
+         int *mm = (int *) drive_data ;
 
          if( mm == NULL )                     RETURN( False );  /* sanity */
          if( mm[0] < 1 || mm[0] > MONT_NMAX ) RETURN( False );  /* checks */
@@ -7121,27 +7300,44 @@ static unsigned char record_bits[] = {
       }
       break ;
 
-      /*------- winfo sides text [01 Dec 1999] -------*/
+      /*------- winfo_prefix text [10 Dec 2007] -------*/
+
+      case isqDR_winfoprefix:{
+        char *pf=(char *)drive_data , lab[2]=" " ;
+        if( pf == NULL || *pf == '\0' ){
+          seq->winfo_prefix[0] = '\0' ;
+        } else {
+          strncpy( seq->winfo_prefix , pf , 15 ) ;
+          seq->winfo_prefix[15] = '\0' ;
+          if( isgraph(*pf) ) lab[0]=*pf ;
+        }
+        MCW_set_widget_label( seq->arrowpad->wbut[4] , lab ) ;
+        seq->im_label[0] = '\0' ;  /* will force redraw */
+        ISQ_draw_winfo( seq ) ;
+        RETURN( True );
+      }
+
+      /*------- winfo_sides text [01 Dec 1999] -------*/
 
       case isqDR_winfosides:{
-         char ** ws = (char **) drive_data ;
+         char **ws = (char **) drive_data ;
          int iw ;
 
          if( ws == NULL ){                   /* remove the label data */
-            seq->winfo_sides[0][0] =
-             seq->winfo_sides[1][0] =
-              seq->winfo_sides[2][0] =
-               seq->winfo_sides[3][0] = '\0' ;
+           seq->winfo_sides[0][0] =
+            seq->winfo_sides[1][0] =
+             seq->winfo_sides[2][0] =
+              seq->winfo_sides[3][0] = '\0' ;
 
          } else {                           /* change the label data */
-            for( iw=0 ; iw < 4 ; iw++ ){
-               if( ws[iw] == NULL || ws[iw][0] == '\0' ){
-                  seq->winfo_sides[iw][0] = '\0' ;
-               } else {
-                  strncpy( seq->winfo_sides[iw] , ws[iw] , 15 ) ;
-                  seq->winfo_sides[iw][15] = '\0' ;
-               }
-            }
+           for( iw=0 ; iw < 4 ; iw++ ){
+             if( ws[iw] == NULL || ws[iw][0] == '\0' ){
+               seq->winfo_sides[iw][0] = '\0' ;
+             } else {
+               strncpy( seq->winfo_sides[iw] , ws[iw] , 15 ) ;
+               seq->winfo_sides[iw][15] = '\0' ;
+             }
+           }
          }
          seq->im_label[0] = '\0' ;  /* will force redraw */
          ISQ_draw_winfo( seq ) ;
@@ -7413,8 +7609,8 @@ static unsigned char record_bits[] = {
       /*------- death! -------*/
 
       case isqDR_destroy:{
-         ISQ_timer_stop(seq) ;
-         ISQ_but_done_CB( NULL , (XtPointer) seq , NULL ) ;
+         ISQ_timer_stop(seq) ; NI_sleep(1) ;
+         ISQ_but_done_CB( NULL , (XtPointer)seq , NULL ) ; NI_sleep(1) ;
          RETURN( True );
       }
       break ;
@@ -7423,7 +7619,7 @@ static unsigned char record_bits[] = {
 
       case isqDR_unrealize:{
          ISQ_timer_stop(seq) ;
-         if( ISQ_REALZ(seq) ) XtUnrealizeWidget( seq->wtop ) ;
+         if( ISQ_REALZ(seq) ){ XtUnrealizeWidget(seq->wtop); NI_sleep(1); }
          seq->valid = 1 ;
          RETURN( True );
       }
@@ -7433,8 +7629,8 @@ static unsigned char record_bits[] = {
 
       case isqDR_realize:{
          if( ! ISQ_REALZ(seq) ){
-            XtRealizeWidget( seq->wtop )   ;
-            WAIT_for_window( seq->wtop )   ; RWC_sleep(1) ;
+            XtRealizeWidget( seq->wtop )   ; NI_sleep(1) ;
+            WAIT_for_window( seq->wtop )   ;
             NORMAL_cursorize( seq->wtop )  ;
             POPUP_cursorize( seq->wimage ) ;
             POPUP_cursorize( seq->wbar )   ;
@@ -7445,6 +7641,7 @@ static unsigned char record_bits[] = {
          if( seq->status->num_total == 1 )  /* 08 Aug 2001 */
            drive_MCW_imseq( seq , isqDR_onoffwid , (XtPointer) isqDR_offwid ) ;
 #endif
+         ALLOW_CLIPPING( seq , (0.0f < seq->top_clip) ) ;
          seq->valid = 2 ;
          RETURN( True );
       }
@@ -7678,9 +7875,9 @@ static unsigned char record_bits[] = {
 #define XYORG 128
 #define DXY    64
 
-void ISQ_arrowpad_CB( MCW_arrowpad * apad , XtPointer client_data )
+void ISQ_arrowpad_CB( MCW_arrowpad *apad , XtPointer client_data )
 {
-   MCW_imseq * seq = (MCW_imseq *) client_data ;
+   MCW_imseq *seq = (MCW_imseq *) client_data ;
 
    ISQ_cbs cbs ;
    int xorg,yorg , xwin,ywin , xoff,yoff ;
@@ -7853,6 +8050,10 @@ ENTRY("ISQ_setup_new") ;
 
    seq->getaux = newaux ;
 
+   seq->top_clip = 0.0f ;  /* 17 Sep 2007 */
+   if( seq->opt.scale_range == ISQ_RNG_CLIPPED ) seq->redo_clip = 1 ;
+   ALLOW_CLIPPING(seq,0) ;
+
    RETURN( True ) ;
 }
 
@@ -7935,6 +8136,7 @@ ENTRY("ISQ_set_rng_CB") ;
    if( ! ISQ_REALZ(seq) || w == NULL || ! XtIsWidget(w) ) EXRETURN ;
 
    seq->rng_bot = seq->rng_top = seq->rng_ztop = 0.0 ;
+   seq->rng_extern = 0 ;
    sscanf( cbs->cval , "%f%f%f" ,
            &(seq->rng_bot) , &(seq->rng_top) , &(seq->rng_ztop) ) ;
    ISQ_redisplay( seq , -1 , isqDR_reimage ) ;  /* redo current image */
@@ -8224,7 +8426,7 @@ fprintf(stderr,"montage: zoom_fac = %d\n",seq->zoom_fac) ;
 
    XtManageChild( wrc ) ;
    ISQ_place_dialog( seq ) ;  /* 05 Jan 1999 */
-   XtPopup( seq->dialog , XtGrabNone ) ; RWC_sleep(1);
+   XtPopup( seq->dialog , XtGrabNone ) ; NI_sleep(1);
    NORMAL_cursorize( seq->dialog ) ;
    ISQ_but_done_reset( seq ) ;
    EXRETURN ;
@@ -8330,7 +8532,7 @@ ENTRY("ISQ_montage_action_CB") ;
    /*** done -- close the window if ordered ***/
 
    if( close_window ){                          /* close the window */
-      XtDestroyWidget( seq->dialog ) ;
+      XtDestroyWidget( seq->dialog ) ; NI_sleep(1) ;
       seq->dialog = NULL ;
       for( ib=0 ; ib < NBUTTON_BOT-1 ; ib++ )       /* turn buttons back on */
          if( ISQ_but_bot_dial[ib] == True )         /* that also want to   */
@@ -8360,9 +8562,9 @@ ENTRY("ISQ_montage_action_CB") ;
    Output image is MRI_short (underlay or overlay index), or MRI_rgb.
 -----------------------------------------------------------------------------*/
 
-MRI_IMAGE * ISQ_manufacture_one( int nim , int overlay , MCW_imseq * seq )
+MRI_IMAGE * ISQ_manufacture_one( int nim , int overlay , MCW_imseq *seq )
 {
-   MRI_IMAGE * im , * ovim , * tim ;
+   MRI_IMAGE *im , *ovim , *tim ;
    int nrold ;
 
 ENTRY("ISQ_manufacture_one") ;
@@ -8370,19 +8572,19 @@ ENTRY("ISQ_manufacture_one") ;
    if( ! ISQ_VALID(seq) ) RETURN( NULL );
 
    if( seq->mont_periodic ){
-      while( nim < 0 )                       nim += seq->status->num_total ;
-      while( nim >= seq->status->num_total ) nim -= seq->status->num_total ;
+     while( nim < 0 )                       nim += seq->status->num_total ;
+     while( nim >= seq->status->num_total ) nim -= seq->status->num_total ;
    } else {
-      if( nim < 0 || nim >= seq->status->num_total ) RETURN( NULL );
+     if( nim < 0 || nim >= seq->status->num_total ) RETURN( NULL );
    }
 
    /** Not an overlay image **/
 
    if( ! overlay ){
-      tim = ISQ_getimage( nim , seq ) ;
-      if( tim == NULL ) RETURN( NULL );
-      im = ISQ_process_mri( nim , seq , tim ) ; mri_free(tim) ;
-      RETURN( im );
+     tim = ISQ_getimage( nim , seq ) ;
+     if( tim == NULL ) RETURN( NULL );
+     im = ISQ_process_mri( nim , seq , tim ) ; mri_free(tim) ;
+     RETURN( im );
    }
 
    /** Get the overlay image **/
@@ -8394,8 +8596,8 @@ ENTRY("ISQ_manufacture_one") ;
    if( tim == NULL ) RETURN( NULL );
 
    if( !ISQ_GOOD_OVERLAY_TYPE(tim->kind) ){
-      fprintf(stderr,"\a\n*** Illegal overlay image kind=%d! ***\n",tim->kind) ;
-      mri_free(tim) ; RETURN( NULL );
+     fprintf(stderr,"\a\n*** Illegal overlay image kind=%d! ***\n",tim->kind) ;
+     mri_free(tim) ; RETURN( NULL );
    }
 
    ovim = mri_flippo( ISQ_TO_MRI_ROT(seq->opt.rot),seq->opt.mirror,tim ) ;
@@ -8534,7 +8736,7 @@ DPRI(" Making underlay cat2D from",nxyim) ;
       seq->imim = im = mri_cat2D( seq->mont_nx , seq->mont_ny ,     /* save this */
                                   seq->mont_gap , gapval , mar ) ;  /* underlay  */
 
-DPR("Destroying underlay image array") ;
+STATUS("Destroying underlay image array") ;
 
       DESTROY_IMARR(mar) ;
 
@@ -8637,7 +8839,7 @@ DPRI(" Making overlay cat2D from",nov) ;
          } else
             ovim = seq->ovim = NULL ;                         /* nothing */
 
-DPR("Destroying overlay image array") ;
+STATUS("Destroying overlay image array") ;
 
          DESTROY_IMARR( mar ) ;
       }
@@ -10145,7 +10347,7 @@ ENTRY("ISQ_record_getim") ;
          (since the imseq will delete it when it is done) ---*/
 
    if( type == isqCR_getimage || type == isqCR_getqimage ){
-      MRI_IMAGE * im = NULL , * rim ;
+      MRI_IMAGE *im = NULL , *rim ;
 
       if( seq->record_imarr != NULL ){
          if( n < 0 ) n = 0 ; else if( n >= ntot ) n = ntot-1 ;
@@ -10171,7 +10373,7 @@ ENTRY("ISQ_record_send_CB") ;
    switch( cbs->reason ){
 
       case isqCR_destroy:{
-         MCW_imseq * pseq = (MCW_imseq *) seq->parent ;
+         MCW_imseq *pseq = (MCW_imseq *) seq->parent ;
 
          /* turn off recording in the parent */
 
@@ -10482,7 +10684,7 @@ ENTRY("ISQ_getoverlay") ;
 
    if( tim == NULL ) RETURN(NULL) ;
 
-   /* cut out cropped region */
+   /*--- cut out cropped region, if any ---*/
 
    if( seq->cropit ){
      MRI_IMAGE *qim = mri_cut_2D( tim, seq->crop_xa,seq->crop_xb,
@@ -10615,25 +10817,25 @@ ENTRY("ISQ_getimage") ;
    iar  = (float **) malloc( sizeof(float *) * rr ) ;
 
    for( ii=0 ; ii < rr ; ii++ )
-      iar[ii] = MRI_FLOAT_PTR(IMARR_SUBIM(imar,ii)) ;
+     iar[ii] = MRI_FLOAT_PTR(IMARR_SUBIM(imar,ii)) ;
 
    for( jj=0 ; jj < npix ; jj++ ){
 
-      for( ii=0 ; ii < rr ; ii++ ) far[ii] = iar[ii][jj] ;
+     for( ii=0 ; ii < rr ; ii++ ) far[ii] = iar[ii][jj] ;
 
 #if 0
-      val = seq->slice_proj_func( rr , far ) ;
+     val = seq->slice_proj_func( rr , far ) ;
 #else
-      AFNI_CALL_proj_function( seq->slice_proj_func , rr,far , val ) ;
+     AFNI_CALL_proj_function( seq->slice_proj_func , rr,far , val ) ;
 #endif
 
-      qar[jj] = val ;
+     qar[jj] = val ;
    }
 
    free(iar) ; free(far) ; DESTROY_IMARR(imar) ;
 
    if( ktim != MRI_float ){
-      tim = mri_to_mri(ktim,qim); mri_free(qim); qim = tim;
+     tim = mri_to_mri(ktim,qim); mri_free(qim); qim = tim;
    }
 
    RETURN(qim) ;
@@ -11301,7 +11503,7 @@ ENTRY("ISQ_handle_keypress") ;
 
      case 'q':
      case 'Q':{
-       ISQ_but_done_CB( NULL, (XtPointer)seq, NULL ) ;
+       ISQ_but_done_CB( NULL, (XtPointer)seq, NULL ) ; NI_sleep(1) ;
        busy=0; RETURN(1) ;
      }
      break ;
@@ -11426,10 +11628,18 @@ ENTRY("ISQ_handle_keypress") ;
 
      case 'm':{
        if( seq->dialog_starter==NBUT_DISP ){XBell(seq->dc->display,100); break;}
-       if( seq->opt.scale_range != ISQ_RNG_MINTOMAX )
-         seq->opt.scale_range = ISQ_RNG_MINTOMAX ;
-       else
-         seq->opt.scale_range = ISQ_RNG_02TO98 ;
+       switch( seq->opt.scale_range ){
+         default:
+         case ISQ_RNG_MINTOMAX: seq->opt.scale_range = ISQ_RNG_02TO98;  break;
+         case ISQ_RNG_CLIPPED:  seq->opt.scale_range = ISQ_RNG_MINTOMAX;break;
+         case ISQ_RNG_02TO98:
+           if( 0.0f < seq->top_clip ){
+             seq->opt.scale_range = ISQ_RNG_CLIPPED; seq->redo_clip = 1 ;
+           } else {
+             seq->opt.scale_range = ISQ_RNG_MINTOMAX;
+           }
+         break;
+       }
 
        ISQ_redisplay( seq , -1 , isqDR_display ) ;
        busy=0 ; RETURN(1) ;
@@ -11481,7 +11691,7 @@ ENTRY("ISQ_handle_keypress") ;
        cbs.key    = (key == '[') ? -1 : +1 ;
        SEND(seq,cbs) ;
      }
-     break ;
+     break ;  /** N.B.: '{' and '}' are reserved for threshold changing! **/
 
      /* 23 Aug 2005: open some windows */
 
@@ -11693,6 +11903,7 @@ ENTRY("ISQ_save_image") ;
    mri_free(tim) ; EXRETURN ;
 }
 
+/*--------------------------------------------------------------------------*/
 
 void ISQ_save_jpeg( MCW_imseq *seq , char *fname )
 {
@@ -11704,6 +11915,73 @@ void ISQ_save_png( MCW_imseq *seq , char *fname )  /* 11 Dec 2006 */
 {
    ISQ_save_image( seq , fname , ppmto_png_filter , ".png" ) ;
    return ;
+}
+
+/*--------------------------------------------------------------------------*/
+
+void ISQ_save_raw( MCW_imseq *seq , char *fname )  /* 13 Nov 2007 */
+{
+   MRI_IMAGE *im ;
+
+ENTRY("ISQ_save_raw") ;
+   if( !ISQ_REALZ(seq) ) EXRETURN ;
+   if( fname == NULL || *fname == '\0' ) fname = "image.raw" ;
+
+   im = ISQ_getimage( seq->im_nr , seq ) ;
+
+   if( im != NULL ){
+     INFO_message("Writing one %dx%d raw image (type=%s bytes=%d) to file '%s'",
+                  im->nx,im->ny,MRI_TYPE_name[im->kind],im->nvox*im->pixel_size,fname ) ;
+     mri_write_raw(fname,im); mri_free(im);
+   }
+   EXRETURN ;
+}
+
+/*--------------------------------------------------------------------------*/
+
+void ISQ_save_rawmont( MCW_imseq *seq , char *fname ) /* 13 Nov 2007 */
+{
+   MRI_IMAGE *im ;
+   MRI_IMARR *mar ;
+   int nmont=seq->mont_nx * seq->mont_ny ,ij,nim,ijcen,nxyim ;
+
+ENTRY("ISQ_save_raw_montage") ;
+   if( !ISQ_REALZ(seq) ) EXRETURN ;
+
+   if( nmont < 2 ){
+     INFO_message("save_rawmont: montage not turned on") ;
+     ISQ_save_raw(seq,fname); EXRETURN;
+   }
+
+   if( fname == NULL || *fname == '\0' ) fname = "image_montage.raw" ;
+
+   /* the following code is mostly from ISQ_make_montage() */
+
+   INIT_IMARR(mar) ;
+
+   ijcen = (seq->mont_nx)/2 + (seq->mont_ny/2) * seq->mont_nx ;
+   for( nxyim=ij=0 ; ij < nmont ; ij++ ){
+      nim = seq->im_nr + (seq->mont_skip + 1) * (ij - ijcen) ;
+      im  = ISQ_getimage( nim , seq ) ; if( im != NULL ) nxyim++ ;
+      ADDTO_IMARR(mar,im) ;
+   }
+   if( nxyim == 0 ){
+     ERROR_message("Raw montage error: no images found!") ;
+     DESTROY_IMARR(mar) ; EXRETURN ;
+   }
+
+   im = mri_cat2D( seq->mont_nx , seq->mont_ny , 0 , NULL , mar ) ;
+   DESTROY_IMARR(mar) ;
+
+   if( im != NULL ){
+     INFO_message("Writing one %dx%d raw image (type=%s bytes=%d) to file '%s'",
+                  im->nx,im->ny,MRI_TYPE_name[im->kind],im->nvox*im->pixel_size,fname ) ;
+     mri_write_raw(fname,im); mri_free(im);
+   } else {
+     ERROR_message("Can't make raw montage for some reason!") ;
+   }
+
+   EXRETURN ;
 }
 
 /*--------------------------------------------------------------------------*/

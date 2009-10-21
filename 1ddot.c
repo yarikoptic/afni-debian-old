@@ -2,12 +2,13 @@
 
 int main( int argc , char *argv[] )
 {
-   int iarg , ii,jj,kk,mm , nvec , do_one=0 , nx=0,ny , ff ;
+   int iarg , ii,jj,kk,mm , nvec , do_one=0 , nx=0,ny , ff, doterse = 0 ;
    MRI_IMAGE *tim ;
    MRI_IMARR *tar ;
-   double sum , *eval , *amat , **tvec , *bmat ;
+   double sum , *eval , *amat , **tvec , *bmat , *svec ;
    float *far ;
-   int demean=0 ;
+   int demean=0 , docov=0 ;
+   char *matname ;
 
    /* help? */
 
@@ -20,8 +21,12 @@ int main( int argc , char *argv[] )
             "Options:\n"
             " -one  =  Make 1st vector be all 1's.\n"
             " -dem  =  Remove mean from all vectors (conflicts with '-one')\n"
+            " -cov  =  Compute with covariance matrix instead of correlation\n"
+            " -inn  =  Computed with inner product matrix instead\n"
+            " -terse=  Output only the correlation or covariance matrix\n"
+            "          and without any of the garnish. \n"
            ) ;
-     exit(0) ;
+     PRINT_COMPILE_DATE ; exit(0) ;
    }
 
    /* options */
@@ -35,6 +40,18 @@ int main( int argc , char *argv[] )
 
      if( strncmp(argv[iarg],"-dem",4) == 0 ){
        demean = 1 ; do_one = 0 ; iarg++ ; continue ;
+     }
+
+     if( strncmp(argv[iarg],"-cov",4) == 0 ){
+       docov=1 ; iarg++ ; continue ;
+     }
+
+     if( strncmp(argv[iarg],"-inn",4) == 0 ){
+       docov=2 ; iarg++ ; continue ;
+     }
+
+     if( strncmp(argv[iarg],"-terse",4) == 0 ){
+       doterse = 1 ; iarg++ ; continue ;
      }
 
      fprintf(stderr,"** Unknown option: %s\n",argv[iarg]); exit(1);
@@ -63,28 +80,32 @@ int main( int argc , char *argv[] )
      ADDTO_IMARR(tar,tim) ;
    }
 
-   printf("\n") ;
-   printf("++ 1ddot input vectors:\n") ;
+   if (!doterse) {
+      printf("\n") ;
+      printf("++ 1ddot input vectors:\n") ;
+   }
    jj = 0 ;
    if( do_one ){
-     printf("00..00: all ones\n") ; jj = 1 ;
+     if (!doterse) printf("00..00: all ones\n") ;
+     jj = 1 ;
    }
    for( mm=0 ; mm < IMARR_COUNT(tar) ; mm++ ){
      tim = IMARR_SUBIM(tar,mm) ;
-     printf("%02d..%02d: %s\n", jj,jj+tim->ny-1, argv[ff+mm] ) ;
+     if (!doterse) printf("%02d..%02d: %s\n", jj,jj+tim->ny-1, argv[ff+mm] ) ;
      jj += tim->ny ;
    }
 
-   /* create normalized vectors from 1D files */
+   /* create vectors from 1D files */
 
    tvec = (double **) malloc( sizeof(double *)*nvec ) ;
+   svec = (double * ) malloc( sizeof(double  )*nvec ) ;
    for( jj=0 ; jj < nvec ; jj++ )
      tvec[jj] = (double *) malloc( sizeof(double)*nx ) ;
 
    kk = 0 ;
    if( do_one ){
-     sum = 1.0 / sqrt((double)nx) ;
-     for( ii=0 ; ii < nx ; ii++ ) tvec[0][ii] = sum ;
+     svec[0] = 1.0 / sqrt((double)nx) ;
+     for( ii=0 ; ii < nx ; ii++ ) tvec[0][ii] = 1.0 ;
      kk = 1 ;
    }
 
@@ -102,11 +123,26 @@ int main( int argc , char *argv[] )
        sum = 0.0 ;
        for( ii=0 ; ii < nx ; ii++ ) sum += tvec[kk][ii] * tvec[kk][ii] ;
        if( sum == 0.0 ) ERROR_exit("Input column %02d is all zero!",kk) ;
-       sum = 1.0 / sqrt(sum) ;
-       for( ii=0 ; ii < nx ; ii++ ) tvec[kk][ii] *= sum ;
+       svec[kk] = 1.0 / sqrt(sum) ;
      }
    }
    DESTROY_IMARR(tar) ;
+
+   /* normalize vectors? */
+
+   if( !docov ){
+     for( kk=0 ; kk < nvec ; kk++ ){
+       sum = svec[kk] ;
+       for( ii=0 ; ii < nx ; ii++ ) tvec[kk][ii] *= sum ;
+     }
+   }
+
+   switch(docov){
+     default:
+     case 2:  matname = "InnerProduct" ; break ;
+     case 1:  matname = "Covariance"   ; break ;
+     case 0:  matname = "Correlation"  ; break ;
+   }
 
    /* create matrix from dot product of vectors */
 
@@ -121,21 +157,34 @@ int main( int argc , char *argv[] )
      }
    }
 
-   for( jj=0 ; jj < nvec ; jj++ ) free(tvec[jj]) ;
-   free(tvec) ;
+   /* normalize */
+   if (docov==1) {
+      for( kk=0 ; kk < nvec ; kk++ ){
+         for( jj=0 ; jj <= kk ; jj++ ){
+            sum = amat[jj+nvec*kk] / (double) (nx-1);
+            amat[jj+nvec*kk] = sum;
+            if( jj < kk ) amat[kk+nvec*jj] = sum ;
+         }
+      }
+   }
 
    /* print matrix out */
 
-   printf("++ Correlation Matrix:\n   ") ;
-   for( jj=0 ; jj < nvec ; jj++ ) printf("    %02d    ",jj) ;
-   printf("\n   ") ;
-   for( jj=0 ; jj < nvec ; jj++ ) printf(" ---------") ;
-   printf("\n") ;
+   if (!doterse) {
+      printf("\n"
+             "++ %s Matrix:\n   ",matname) ;
+      for( jj=0 ; jj < nvec ; jj++ ) printf("    %02d    ",jj) ;
+      printf("\n   ") ;
+      for( jj=0 ; jj < nvec ; jj++ ) printf(" ---------") ;
+      printf("\n") ;
+   }
    for( kk=0 ; kk < nvec ; kk++ ){
-     printf("%02d:",kk) ;
+     if (!doterse) printf("%02d:",kk) ;
      for( jj=0 ; jj < nvec ; jj++ ) printf(" %9.5f",amat[jj+kk*nvec]) ;
      printf("\n") ;
    }
+
+   if (doterse) exit(0) ; /* au revoir */
 
    /* compute eigendecomposition */
 
@@ -143,7 +192,7 @@ int main( int argc , char *argv[] )
    symeig_double( nvec , amat , eval ) ;
 
    printf("\n"
-          "++ Eigensolution:\n   " ) ;
+          "++ Eigensolution of %s Matrix:\n   " , matname ) ;
    for( jj=0 ; jj < nvec ; jj++ ) printf(" %9.5f",eval[jj]) ;
    printf("\n   ") ;
    for( jj=0 ; jj < nvec ; jj++ ) printf(" ---------") ;
@@ -155,7 +204,11 @@ int main( int argc , char *argv[] )
    }
 
    /* compute matrix inverse */
-
+   if ( eval[0]/eval[nvec-1] < 1.0e-10) {
+      printf("\n"
+             "-- WARNING: Matrix is near singular,\n"
+             "            rubbish likely for inverses ahead.\n");
+   }
    for( jj=0 ; jj < nvec ; jj++ ) eval[jj] = 1.0 / eval[jj] ;
 
    bmat = (double *) calloc( sizeof(double) , nvec*nvec ) ;
@@ -170,7 +223,7 @@ int main( int argc , char *argv[] )
    }
 
    printf("\n") ;
-   printf("++ Correlation Matrix Inverse:\n   ") ;
+   printf("++ %s Matrix Inverse:\n   " , matname ) ;
    for( jj=0 ; jj < nvec ; jj++ ) printf("    %02d    ",jj) ;
    printf("\n   ") ;
    for( jj=0 ; jj < nvec ; jj++ ) printf(" ---------") ;
@@ -180,6 +233,13 @@ int main( int argc , char *argv[] )
      for( jj=0 ; jj < nvec ; jj++ ) printf(" %9.5f",bmat[jj+kk*nvec]) ;
      printf("\n") ;
    }
+
+   /* square roots of diagonals of the above */
+
+   printf("\n") ;
+   printf("++ %s sqrt(diagonal)\n   ",matname) ;
+   for( jj=0 ; jj < nvec ; jj++ ) printf(" %9.5f",sqrt(bmat[jj+jj*nvec])) ;
+   printf("\n") ;
 
    /* normalize matrix inverse */
 
@@ -194,7 +254,7 @@ int main( int argc , char *argv[] )
    }
 
    printf("\n") ;
-   printf("++ Correlation Matrix Inverse Normalized:\n   ") ;
+   printf("++ %s Matrix Inverse Normalized:\n   " , matname ) ;
    for( jj=0 ; jj < nvec ; jj++ ) printf("    %02d    ",jj) ;
    printf("\n   ") ;
    for( jj=0 ; jj < nvec ; jj++ ) printf(" ---------") ;

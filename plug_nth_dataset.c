@@ -94,24 +94,29 @@ static char *ez[2] = { "Extend" , "Zero" } ;
 
 static PLUGIN_interface *plint=NULL ;
 
+/*------ this function is called when the item is chosen from a menu ------*/
+
 static void DSETN_func_init(void)   /* 21 Jul 2003 */
 {
    PLUG_startup_plugin_CB( NULL , (XtPointer)plint , NULL ) ;
 }
 
+/*--------------------------------------------------------------------------*/
 
 DEFINE_PLUGIN_PROTOTYPE
 
 PLUGIN_interface * PLUGIN_init( int ncall )
 {
-   int id ;
+   int id , ic ;
+#define NCTAB 4
+   static int ctab[NCTAB] = { 6 , 7 , 14 , 16 } ;
 
 ENTRY("PLUGIN_init:Dataset#N") ;
 
    if( ncall > 0 ) RETURN( NULL );  /* only one interface */
 
    AFNI_register_nD_function ( 1 , "Dataset#N" , (generic_func *)DSETN_func ,
-                               NEEDS_DSET_INDEX|PROCESS_MRI_IMAGE ) ;
+                               NEEDS_DSET_INDEX|PROCESS_MRI_IMAGE|SET_DPLOT_OVERLAY ) ;
    AFNI_register_nD_func_init( 1 , (generic_func *) DSETN_func_init ) ;  /* 21 Jul 2003 */
 
    plint = PLUTO_new_interface( "Dataset#N", "Controls 1D function Dataset#N",
@@ -128,6 +133,8 @@ ENTRY("PLUGIN_init:Dataset#N") ;
      PLUTO_add_dataset(plint , "Dataset" ,
                                       ANAT_ALL_MASK , FUNC_ALL_MASK ,
                                       DIMEN_4D_MASK | BRICK_ALLREAL_MASK ) ;
+     ic = ctab[id%NCTAB] ;
+     PLUTO_set_initcolorindex(ic) ; /* 10 Oct 2007 */
      PLUTO_add_overlaycolor( plint , "Color" ) ;
    }
 
@@ -180,12 +187,12 @@ ENTRY( "DSETN_main" ) ;
         idc      = PLUTO_get_idcode(plint) ;
         dset[id] = PLUTO_find_dset(idc) ;
 
-	if ( ! ISVALID_DSET( dset[id] ) )
-	    RETURN("******************************\n"
-		   "DSETN_main:  bad input dataset\n"
-		   "******************************") ;
+        if ( ! ISVALID_DSET( dset[id] ) )
+         RETURN("******************************\n"
+                "DSETN_main:  bad input dataset\n"
+                "******************************") ;
 
-	g_id[id] = *idc ;
+g_id[id] = *idc ;
         ovc [id] = PLUTO_get_overlaycolor(plint) ;
         id++ ; continue ;
       }
@@ -210,19 +217,19 @@ ENTRY( "DSETN_main" ) ;
 
    }
 
-   if ( id <= 0 )			/* no data - nothing to do */
+   if ( id <= 0 )	/* no data - nothing to do */
        RETURN( NULL ) ;
 
-   g_valid_data = 1 ;			/* valid data, woohooo!    */
+   g_valid_data = 1 ;	/* valid data, woohooo!    */
 
    if ( g_dset_recv < 0 )
        g_dset_recv = AFNI_receive_init( plint->im3d, RECEIVE_DSETCHANGE_MASK,
-					DSETN_dset_recv, plint ,
-                                       "DSETN_dset_recv" ) ;
+                                        DSETN_dset_recv, plint ,
+                                        "DSETN_dset_recv" ) ;
    if ( g_dset_recv < 0 )
      RETURN("*************************************\n"
- 	    "DSETN_main:  failed AFNI_receive_init\n"
-	    "*************************************") ;
+            "DSETN_main:  failed AFNI_receive_init\n"
+            "*************************************") ;
 
    PLUTO_force_redisplay() ;
    RETURN( NULL );
@@ -238,17 +245,15 @@ ENTRY( "DSETN_dset_recv" );
 
     switch ( why )
     {
-	default:
-	{
+     default:{
 	    fprintf( stderr, "warning: DSETN_dset_recv() called with invalid "
-			     "why code, %d\n", why );
-	    EXRETURN;
-	}
+                "why code, %d\n", why );
+       EXRETURN;
+     }
 
-	case RECEIVE_ALTERATION:   /* may take effect before DSETCHANGE */
-	case RECEIVE_DSETCHANGE:
-	{
-	    /* start by noting the number of valid data sets */
+     case RECEIVE_ALTERATION:   /* may take effect before DSETCHANGE */
+     case RECEIVE_DSETCHANGE:{
+       /* start by noting the number of valid data sets */
 	    int num_valid = set_global_dsets_from_ids( );
 
 	    if ( g_valid_data != 1 || num_valid <= 0 )
@@ -333,9 +338,11 @@ ENTRY( "DSETN_func" );
    EXRETURN;
 }
 
+/*------------------------------------------------------------------------*/
+
 static int set_global_dsets_from_ids( void )
 {
-    THD_3dim_dataset * dptr;
+    THD_3dim_dataset *dptr;
     int idcount, num_valid = 0;
 
 ENTRY( "set_global_dsets_from_ids" );

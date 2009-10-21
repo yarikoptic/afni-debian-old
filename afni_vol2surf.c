@@ -135,7 +135,18 @@ ENTRY("AFNI_vol2surf_func_overlay") ;
     /*-------------------- mask from threshold --------------------*/
     go->gpt_index = -1; go->gpt_thresh = 0.0;   /* init threshold options */
     cmask = NULL;
-    if( im3d->vinfo->func_threshold > 0.0 )	/* then want a threshold */
+
+    /* if a new overlay has been created from clustering, get it as a mask
+       (for now - since it's in MRI_IMAGE, and we can't pass to v2s)
+                                                       11 Jan 2008 [rickr] */
+    if( im3d->vinfo && oset->dblk->vedim                      &&
+            (im3d->vinfo->thr_index == DSET_VEDIT_IVAL(oset)) &&
+            (oset->dblk->vedim->kind == DSET_BRICK_TYPE(oset,oind)) ) {
+        cmask = mri_to_bytemask(oset->dblk->vedim, 1.0, 0.0);
+        if( debug > 1 ) fprintf(stderr,"++ applying mask from edited image\n");
+    }
+    else if( im3d->vinfo->func_threshold > 0.0 &&
+             im3d->vinfo->thr_onoff )	            /* then want a threshold */
     {
 	MRI_IMAGE * im_thr;
         float       thresh;
@@ -173,7 +184,8 @@ ENTRY("AFNI_vol2surf_func_overlay") ;
 
         /* note mask options for v2s command output  9 Aug 2006 [rickr] */
         if( cmask ) { go->gpt_index = tind; go->gpt_thresh = thresh; }
-    }
+    } else      /* then make the mask from non-zero overlay values */
+        cmask = THD_makemask(oset, oind, 1.0, 0.0);
 
     /*-------------------- vol2surf computation --------------------*/
     results = afni_vol2surf(oset, oind, sA, sB, cmask, use_defaults);
@@ -279,7 +291,10 @@ ENTRY("map_v2s_results");
 	    if ( zbot && fval < 0 ) continue;
 
 	    /* note the color panel index, and bound it in [0,NPANE_BIG-1] */
-	    ival = (int)(fac * (btop - fval) + 0.49);
+            if( fval >= btop ) ival = 0;        /* guard against overflow */
+            else if ( fval <= bbot ) ival = NPANE_BIG - 1;
+            else ival = (int)(fac * (btop - fval) + 0.49);
+
 	    if ( ival < 0 ) ival = 0;
 	    if ( ival >= NPANE_BIG ) ival = NPANE_BIG - 1;
 
@@ -311,7 +326,7 @@ ENTRY("map_v2s_results");
 	ovc[npanes] = im3d->vinfo->use_posfunc ? 0 : ovc[npanes-1];
 
 	/* get the actual RGB colors of each pane on the pbar */
-        for( ival=0 ; ival < npanes ; ival++ )
+        for( ival=0 ; ival <= npanes ; ival++ ) /* include npanes 27 Aug 2007 */
 	{
 	    ovc_r[ival] = DCOV_REDBYTE  (im3d->dc,ovc[ival]);
 	    ovc_g[ival] = DCOV_GREENBYTE(im3d->dc,ovc[ival]);

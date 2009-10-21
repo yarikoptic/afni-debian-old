@@ -149,7 +149,8 @@ ENTRY("THD_open_niml");
             dset = THD_niml_3D_to_dataset(nel, fname);
             if(gni.debug) fprintf(stderr,"-d opening 3D dataset '%s'\n",fname);
             if( !dset && gni.debug )
-                fprintf(stderr,"** THD_niml_to_dataset failed on '%s'\n",fname);
+                fprintf(stderr,
+                        "** THD_niml_3D_to_dataset failed on '%s'\n",fname);
         break;
 
         case STORAGE_BY_NIML:
@@ -299,7 +300,9 @@ ENTRY("storage_mode_from_niml");
         if( ! strcmp(ng->name, "AFNI_dataset") )
         {
             atr = NI_get_attribute(ng, "dset_type");
-            if( atr && !strcmp(atr, "Node_Bucket") ) /* then SUMA DSET */
+            if( atr && 
+                ( !strcmp(atr, "Node_Bucket") ||
+                  !strcmp(atr, "Node_ROI")      )   ) /* then SUMA DSET */
                 RETURN(STORAGE_BY_NI_SURF_DSET);
             RETURN(STORAGE_BY_NIML);                 /* else assume AFNI */
         }
@@ -311,6 +314,8 @@ ENTRY("storage_mode_from_niml");
     RETURN(STORAGE_UNDEFINED);
 }
 
+#undef  MY_BUFSIZE
+#define MY_BUFSIZE (1024*1024)  /* 21 Nov 2007 */
 
 /*! inhale any NIML data within a file */
 void * read_niml_file( char * fname, int get_data )
@@ -340,6 +345,9 @@ ENTRY("read_niml_file");
         if(gni.debug)fprintf(stderr,"** RNF: failed to open file '%s'\n",fname);
         RETURN(NULL);
     }
+
+    if( get_data && NI_stream_getbufsize(ns) < MY_BUFSIZE ) /* 21 Nov 2007: RWCox */
+      NI_stream_setbufsize(ns,MY_BUFSIZE) ;
 
     /* read the file */
     NI_skip_procins(1);  NI_read_header_only(!get_data);
@@ -676,12 +684,17 @@ ENTRY("process_NSD_sparse_data");
         fprintf(stderr,"+d using byte order %s\n",
                 BYTE_ORDER_STRING(dkptr->byte_order));
 
-    /* verify that we have "data_type=Node_Bucket_data" */
+    /* verify that we have "data_type=Node_Bucket_data"
+       acceptable should also be Node_ROI_data but on 
+       output, all will become Node_Bucket_data ZSS: Dec 07  */
     rhs = NI_get_attribute(nel, "data_type");
-    if( !rhs || strcmp(rhs, "Node_Bucket_data") )
+    if( !rhs || 
+         (  strcmp(rhs, "Node_Bucket_data") &&
+            strcmp(rhs, "Node_ROI_data")       ) )
     {
         if(gni.debug)
-          fprintf(stderr,"** SPARSE_DATA without data_type Node_Bucket_data\n");
+          fprintf(stderr,"** SPARSE_DATA without data_type "
+                         "Node_Bucket_data or Node_ROI_data\n");
         RETURN(1);
     }
 
@@ -699,7 +712,8 @@ ENTRY("process_NSD_sparse_data");
 
     /* node index list is now in INDEX_LIST attribute  29 Aug 2006 [rickr] */
     for( ind = 0; ind < nel->vec_num; ind++ )
-        if( nel->vec_typ[ind] != NI_FLOAT )
+        if( nel->vec_typ[ind] != NI_FLOAT &&
+            nel->vec_typ[ind] != NI_INT )
         {
             if(gni.debug)
                 fprintf(stderr,"** NI_SURF_DSET has non-float type %d\n",
@@ -905,7 +919,8 @@ ENTRY("THD_add_sparse_data");
     for( ind = 0; ind < nvals; ind++ )
     {
         mind = mlist ? mlist[ind] : ind;  /* maybe use master index */
-        if( nel->vec_typ[mind] != NI_FLOAT )
+        if( nel->vec_typ[mind] != NI_FLOAT &&
+            nel->vec_typ[mind] != NI_INT )
         {
             if(gni.debug) fprintf(stderr,"** TASD: vec[%d] not float\n",mind);
             RETURN(0);
@@ -928,9 +943,28 @@ ENTRY("THD_add_sparse_data");
     {
         mind = mlist ? mlist[ind] : ind;  /* maybe use master index */
         data = (float *)XtMalloc(len * sizeof(float));
-        if(!data){fprintf(stderr,"**ASD alloc fail: %d bytes\n",len);RETURN(0);}
-        memcpy(data, nel->vec[mind], len * sizeof(float));
-        if( swap ) nifti_swap_4bytes(len, data);
+        if(!data){
+           fprintf(stderr,"**ASD alloc fail: %d bytes\n",len);
+           RETURN(0);
+        }
+        if( nel->vec_typ[mind] == NI_FLOAT ) {
+           memcpy(data, nel->vec[mind], len * sizeof(float));
+           if( swap ) nifti_swap_4bytes(len, data);
+        } else if( nel->vec_typ[mind] == NI_INT ) {/* ZSS: Dec. 07. Note that*/
+           int *idata=NULL, ii=0;                  /* int dsets become floats*/ 
+           idata = (int *)XtMalloc(len * sizeof(int));
+           if(!idata){
+              fprintf(stderr,"**ASD alloc fail: %d bytes\n",len);
+              RETURN(0);
+           }
+           memcpy(idata, nel->vec[mind], len * sizeof(int));
+           if( swap ) nifti_swap_4bytes(len, idata);
+           for(ii=0; ii<len; ++ii) data[ii] = (float)idata[ii];
+           XtFree((char*)idata); idata=NULL;
+        } else {
+           fprintf(stderr,"**ASD should never have been here.\n");
+           RETURN(0);
+        }
         mri_fix_data_pointer(data, DBLK_BRICK(blk,sub));
         sub++;
 
@@ -977,6 +1011,7 @@ ENTRY("THD_dset_to_ni_surf_dset");
     THD_set_dataset_attributes(dset);  /* load attributes for processing */
 
     /* create group element */
+    /* All gets forced into Node_Bucket for now */
     ngr = NI_new_group_element();
     NI_rename_group(ngr, "AFNI_dataset");
     NI_set_attribute(ngr, "dset_type", "Node_Bucket");
@@ -1276,8 +1311,10 @@ ENTRY("nsd_add_sparse_data");
     }
 
     if( fdata ) free(fdata);  /* fly! (thud) be free! (thud) */
-
-    NI_set_attribute(nel, "data_type", "Node_Bucket_data");
+    
+    /* Next declare output to be Node_Bucket_data always. Someday 
+    we will change that IF we ever feel the need. ZSS Dec 07 */
+    NI_set_attribute(nel, "data_type", "Node_Bucket_data"); 
 
     set_sparse_data_attribs(nel, dset, 1);
 

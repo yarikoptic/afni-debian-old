@@ -381,7 +381,8 @@ SUMA_CLUST_DATUM * SUMA_Build_Cluster_From_Node_NoRec    (  int dothisnode,
    
    \sa SUMA_Build_Cluster_From_Node
 */     
-DList *SUMA_FindClusters ( SUMA_SurfaceObject *SO, int *ni, float *nv, int N_ni, 
+DList *SUMA_FindClusters ( SUMA_SurfaceObject *SO, int *ni, 
+                           float *nv, int N_ni, 
                            int dothisnode, SUMA_SURFCLUST_OPTIONS *Opt, 
                            float *NodeArea)
 {
@@ -398,6 +399,7 @@ DList *SUMA_FindClusters ( SUMA_SurfaceObject *SO, int *ni, float *nv, int N_ni,
    
    if (!SO || !nv || !ni) {
       SUMA_S_Err("Bad parameters");
+      SUMA_RETURN(list);
    }
    if (dothisnode == -1) { /* initialize */
       SUMA_LH("Initializing");
@@ -414,7 +416,9 @@ DList *SUMA_FindClusters ( SUMA_SurfaceObject *SO, int *ni, float *nv, int N_ni,
          ToBeAssigned[ni[i]] = nv[i];
       }
       if (Opt->update) {
-         fprintf(SUMA_STDERR,"%s: Have %d nodes to work with. %d nodes have 0 value.\n", FuncName, N_n, PureNothing);
+         fprintf( SUMA_STDERR,
+                  "%s: Have %d nodes to work with. %d nodes have 0 value.\n",
+                  FuncName, N_n, PureNothing);
       }
    }
    
@@ -431,9 +435,16 @@ DList *SUMA_FindClusters ( SUMA_SurfaceObject *SO, int *ni, float *nv, int N_ni,
       } 
 
       if (BuildMethod == SUMA_OFFSETS2_NO_REC) {
-         Clust = SUMA_Build_Cluster_From_Node_NoRec(dothisnode, ToBeAssigned, &N_n, NodeArea, SO, Opt);
-      } else if (BuildMethod == SUMA_OFFSETS2 || BuildMethod == SUMA_OFFSETS_LL) {
-         Clust = SUMA_Build_Cluster_From_Node(dothisnode, NULL, ToBeAssigned, &N_n, NodeArea, SO, Opt);
+         Clust = SUMA_Build_Cluster_From_Node_NoRec(  dothisnode, 
+                                                      ToBeAssigned, 
+                                                      &N_n, NodeArea, 
+                                                      SO, Opt);
+      } else if ( BuildMethod == SUMA_OFFSETS2 || 
+                  BuildMethod == SUMA_OFFSETS_LL) {
+         Clust = SUMA_Build_Cluster_From_Node(  dothisnode, NULL, 
+                                                ToBeAssigned, 
+                                                &N_n, NodeArea, 
+                                                SO, Opt);
       } else {
          SUMA_S_Errv("No Such Method (%d)!\n", BuildMethod);
          SUMA_DUMP_TRACE(FuncName);
@@ -443,7 +454,9 @@ DList *SUMA_FindClusters ( SUMA_SurfaceObject *SO, int *ni, float *nv, int N_ni,
          SUMA_SL_Err("Failed in SUMA_Build_Cluster_From_Node*");
          SUMA_RETURN(list);
       }   
-      if (LocalHead) fprintf(SUMA_STDERR,"%s: Cluster %p is finished, %d nodes\n", FuncName, Clust, Clust->N_Node); 
+      if (LocalHead) fprintf( SUMA_STDERR,
+                              "%s: Cluster %p is finished, %d nodes\n",
+                              FuncName, Clust, Clust->N_Node); 
       
       if (Opt->AreaLim > 0 && Clust->totalarea < Opt->AreaLim) {
          SUMA_LH("Cluster less than area limit");
@@ -451,13 +464,17 @@ DList *SUMA_FindClusters ( SUMA_SurfaceObject *SO, int *ni, float *nv, int N_ni,
       } else {
          mean = Clust->totalvalue/((float)Clust->N_Node);
          for (kk=0; kk < Clust->N_Node; ++kk) {
-            Clust->varvalue += (Clust->ValueList[kk] - mean) * (Clust->ValueList[kk] - mean);   
+            Clust->varvalue += 
+               (Clust->ValueList[kk] - mean) * (Clust->ValueList[kk] - mean);   
          }
          if (Clust->N_Node > 1) Clust->varvalue /= (Clust->N_Node - 1);
          else Clust->varvalue = 0.0;
          /* reallocate to save space */
-         Clust->NodeList = (int *)SUMA_realloc(Clust->NodeList, sizeof(int)*Clust->N_Node);
-         Clust->ValueList = (float *)SUMA_realloc(Clust->ValueList, sizeof(float)*Clust->N_Node);
+         Clust->NodeList = 
+            (int *)SUMA_realloc(Clust->NodeList, sizeof(int)*Clust->N_Node);
+         Clust->ValueList = 
+            (float *)SUMA_realloc(  Clust->ValueList,
+                                    sizeof(float)*Clust->N_Node);
          if (!Clust->NodeList || !Clust->ValueList) { 
             SUMA_SL_Crit("Failed to reallocate for NodeList or ValueList");  
             SUMA_RETURN(NULL);   
@@ -465,7 +482,8 @@ DList *SUMA_FindClusters ( SUMA_SurfaceObject *SO, int *ni, float *nv, int N_ni,
          /* find the central node */
          if (Opt->DoCentrality) {
             if (Opt->update) {
-                  SUMA_SL_Note("Looking for central nodes...(use -no_cent to skip this slow step)");
+                  SUMA_SL_Note(  "Looking for central nodes...\n"
+                                 "(use -no_cent to skip this slow step)");
             } 
             if (!SUMA_ClusterCenterofMass  (SO, Clust, 1)) {
                SUMA_SL_Err("Failed to find central node");  
@@ -479,15 +497,18 @@ DList *SUMA_FindClusters ( SUMA_SurfaceObject *SO, int *ni, float *nv, int N_ni,
    }   
   
    if (N_n == 0) {
-      if (LocalHead) fprintf(SUMA_STDERR,"%s: No more nodes to consider, cleaning up.\n", FuncName);
-      if (ToBeAssigned) SUMA_free(ToBeAssigned); ToBeAssigned = NULL;   \
+      if (LocalHead) fprintf( SUMA_STDERR,
+                              "%s: No more nodes to consider, cleaning up.\n",
+                              FuncName);
+      if (ToBeAssigned) SUMA_free(ToBeAssigned); ToBeAssigned = NULL;  
    }
    
    SUMA_RETURN(list);
 } 
 
 /*! Show the ViewState structure */
-SUMA_Boolean SUMA_Show_SurfClust_list(DList *list, FILE *Out, int detail, char *params) 
+SUMA_Boolean SUMA_Show_SurfClust_list(
+                  DList *list, FILE *Out, int detail, char *params) 
 {
    static char FuncName[]={"SUMA_Show_SurfClust_list"};
    char *s = NULL;
@@ -518,19 +539,22 @@ char *SUMA_Show_SurfClust_list_Info(DList *list, int detail, char *params)
    SUMA_CLUST_DATUM *cd=NULL;
    char *s=NULL, *pad_str, str[20];   
    int lc[]= { 6, 6, 9, 9, 9, 6, 6, 9, 6, 9, 6, 9, 9 };
-   char Col[][12] = { {"# Rank"}, {"num Nd"}, {"Area"}, {"Mean"}, {"|Mean|"},{"Cent"}, {"W Cent"},{"Min V"}, {"Min Nd"}, {"Max V"}, {"Max Nd"} , {"Var"}, {"SEM"} };
+   char Col[][12] = { 
+      {"# Rank"}, {"num Nd"}, {"Area"}, {"Mean"}, 
+      {"|Mean|"},{"Cent"}, {"W Cent"},{"Min V"}, 
+      {"Min Nd"}, {"Max V"}, {"Max Nd"} , {"Var"}, {"SEM"} };
    SUMA_ENTRY;
 
    SS = SUMA_StringAppend (NULL, NULL);
    
    if (!list) {
-      SS = SUMA_StringAppend (SS,"NULL list.\n");
+      SS = SUMA_StringAppend (SS,"NULL cluster list.\n");
       SUMA_SS2S(SS,s); 
       SUMA_RETURN(s);  
    }
 
    if (!list->size) {
-      SS = SUMA_StringAppend (SS,"Empty list.\n");
+      SS = SUMA_StringAppend (SS,"Empty cluster list.\n");
       SUMA_SS2S(SS,s); 
       SUMA_RETURN(s);  
    }else{
@@ -559,13 +583,17 @@ char *SUMA_Show_SurfClust_list_Info(DList *list, int detail, char *params)
       }
       SS = SUMA_StringAppend_va (SS,"\n");
       if (detail == 1) {
-         SS = SUMA_StringAppend_va (SS,"#Other columns: list of 5 first nodes in ROI.\n");   
+         SS = SUMA_StringAppend_va (
+                  SS,"#Other columns: list of 5 first nodes in ROI.\n");   
       }
       if (detail == 2) {
-         SS = SUMA_StringAppend_va (SS,"#Other columns: list all  nodes in ROI.\n");   
+         SS = SUMA_StringAppend_va (
+                  SS,"#Other columns: list all  nodes in ROI.\n");   
       }
       if (detail > 0) {
-         SS = SUMA_StringAppend_va (SS,"#A total of %d cluster%s were found.\n", list->size, SUMA_COUNTER_PLURAL(list->size));
+         SS = SUMA_StringAppend_va (
+                  SS,"#A total of %d cluster%s were found.\n", 
+                  list->size, SUMA_COUNTER_PLURAL(list->size));
       }
    }
    
@@ -573,27 +601,34 @@ char *SUMA_Show_SurfClust_list_Info(DList *list, int detail, char *params)
    ic = 1; 
    do {
       if (!elmt) elmt = dlist_head(list); else elmt = elmt->next;
-      if (!elmt) SS = SUMA_StringAppend_va (SS,"#%d%s cluster element is NULL!\n", ic, SUMA_COUNTER_SUFFIX(ic));
+      if (!elmt) SS = SUMA_StringAppend_va (
+                           SS,"#%d%s cluster element is NULL!\n", 
+                           ic, SUMA_COUNTER_SUFFIX(ic));
       else {
          cd = (SUMA_CLUST_DATUM *)elmt->data;
-         if (detail > 0) SS = SUMA_StringAppend_va (SS,"#%d%s cluster\n", ic, SUMA_COUNTER_SUFFIX(ic));
-         SS = SUMA_StringAppend_va (SS,"%6d   %6d   %9.2f"
-                                       "   %9.3f   %9.3f"
-                                       "   %6d   %6d"
-                                       "   %9.3f   %6d"
-                                       "   %9.3f   %6d"
-                                       "   %9.3f   %9.3f"
-                                       , ic, cd->N_Node, cd->totalarea
-                                       , cd->totalvalue/((float)cd->N_Node), cd->totalabsvalue/((float)cd->N_Node)
-                                       , cd->centralnode, cd->weightedcentralnode 
-                                       , cd->minvalue, cd->minnode
-                                       , cd->maxvalue, cd->maxnode
-                                       , cd->varvalue, sqrt(cd->varvalue/cd->N_Node));
+         if (detail > 0) SS = SUMA_StringAppend_va (
+                                 SS,"#%d%s cluster\n", 
+                                 ic, SUMA_COUNTER_SUFFIX(ic));
+         SS = SUMA_StringAppend_va (SS, 
+                  "%6d   %6d   %9.2f"
+                  "   %9.3f   %9.3f"
+                  "   %6d   %6d"
+                  "   %9.3f   %6d"
+                  "   %9.3f   %6d"
+                  "   %9.3f   %9.3f"
+                  , ic, cd->N_Node, cd->totalarea
+                  , cd->totalvalue/((float)cd->N_Node)
+                  , cd->totalabsvalue/((float)cd->N_Node)
+                  , cd->centralnode, cd->weightedcentralnode 
+                  , cd->minvalue, cd->minnode
+                  , cd->maxvalue, cd->maxnode
+                  , cd->varvalue, sqrt(cd->varvalue/cd->N_Node));
          if (detail > 0) {
             if (detail == 1) {
                if (cd->N_Node < 5) max = cd->N_Node; else max = 5;
             } else max = cd->N_Node;
-            for (i=0;i<max; ++i) SS = SUMA_StringAppend_va (SS,"%d\t", cd->NodeList[i]);
+            for (i=0;i<max; ++i) 
+               SS = SUMA_StringAppend_va (SS,"%d\t", cd->NodeList[i]);
          }
          SS = SUMA_StringAppend(SS,"\n"); 
       }
@@ -606,7 +641,9 @@ char *SUMA_Show_SurfClust_list_Info(DList *list, int detail, char *params)
 }
 
 /*! Masks a data set by a clustering list*/
-SUMA_DSET *SUMA_MaskDsetByClustList(SUMA_DSET *idset, SUMA_SurfaceObject *SO, DList *list, SUMA_Boolean FullList, char *leName) 
+SUMA_DSET *SUMA_MaskDsetByClustList(
+   SUMA_DSET *idset, SUMA_SurfaceObject *SO, 
+   DList *list, SUMA_Boolean FullList, char *leName) 
 {
    static char FuncName[]={"SUMA_MaskDsetByClustList"};
    int i, j;
@@ -619,13 +656,15 @@ SUMA_DSET *SUMA_MaskDsetByClustList(SUMA_DSET *idset, SUMA_SurfaceObject *SO, DL
    
    SUMA_ENTRY;
 
-   if (!list) {
-      SUMA_SL_Err("NULL list");
+   if (!list || list->size == 0) {
+      SUMA_SL_Err("NULL or empty list");
       SUMA_RETURN(dset);  
    }
    /* which nodes in mask ? */
-   ismask = (byte *)SUMA_calloc(SO->N_Node, sizeof(byte)); /* you need to allocate for SO->N_Node, to be safe, otherwise you will need
-                                                            to search for the highest node index.. */
+   ismask = (byte *)SUMA_calloc(SO->N_Node, sizeof(byte)); 
+               /* you need to allocate for SO->N_Node, 
+                 to be safe, otherwise you will need
+                 to search for the highest node index.. */
    elmt = NULL; cnt = 0;
    do {
       if (!elmt) elmt = dlist_head(list);
@@ -637,7 +676,8 @@ SUMA_DSET *SUMA_MaskDsetByClustList(SUMA_DSET *idset, SUMA_SurfaceObject *SO, DL
             ++cnt;
       }
    } while (elmt != dlist_tail(list));
-   if (LocalHead) fprintf(SUMA_STDERR,"%s:\n%d nodes in cluster list.\n", FuncName, cnt);
+   if (LocalHead) 
+      fprintf(SUMA_STDERR,"%s:\n%d nodes in cluster list.\n", FuncName, cnt);
    
    /* now form a rowmask vector to parallel rows in idset */
    rowmask = (byte *)SUMA_calloc(SDSET_VECLEN(idset), sizeof(byte));
@@ -651,12 +691,21 @@ SUMA_DSET *SUMA_MaskDsetByClustList(SUMA_DSET *idset, SUMA_SurfaceObject *SO, DL
       SUMA_RETURN(NULL);
    }
    /* now, fill rowmask */
-   for (i=0; i<SDSET_VECLEN(idset); ++i) { if (ismask[ni[i]]) { rowmask[i]=1; if(LocalHead) fprintf (SUMA_STDERR,"%d,%d\t", ni[i], i); } }
+   for (i=0; i<SDSET_VECLEN(idset); ++i) { 
+      if (ismask[ni[i]]) { 
+         rowmask[i]=1; 
+         if(LocalHead) fprintf (SUMA_STDERR,"%d,%d\t", ni[i], i); 
+      } 
+   }
    /* fill colmask*/
    for (i=0; i<SDSET_VECNUM(idset); ++i) { 
       if (SUMA_isDsetColumn_inferred(idset, i)) {
          colmask[i]=0;
-         if (LocalHead) fprintf(SUMA_STDERR,"%s: Column %d will not be written because it is inferred.\n", FuncName, i);
+         if (LocalHead) 
+            fprintf( SUMA_STDERR,
+                     "%s: Column %d will not be written "
+                     "because it is inferred.\n",
+                     FuncName, i);
       } else colmask[i]=1;
    }
    
@@ -673,7 +722,9 @@ SUMA_DSET *SUMA_MaskDsetByClustList(SUMA_DSET *idset, SUMA_SurfaceObject *SO, DL
    SUMA_RETURN (dset);
 }
 /*! Turn the clusters to a cluster dataset mask*/
-SUMA_DSET *SUMA_SurfClust_list_2_DsetMask(SUMA_SurfaceObject *SO, DList *list, SUMA_Boolean FullList, char *leName) 
+SUMA_DSET *SUMA_SurfClust_list_2_DsetMask(
+                  SUMA_SurfaceObject *SO, DList *list, 
+                  SUMA_Boolean FullList, char *leName) 
 {
    static char FuncName[]={"SUMA_SurfClust_list_2_DsetMask"};
    int i, ic, max, j, rank;
@@ -685,8 +736,8 @@ SUMA_DSET *SUMA_SurfClust_list_2_DsetMask(SUMA_SurfaceObject *SO, DList *list, S
    
    SUMA_ENTRY;
 
-   if (!list) {
-      SUMA_SL_Err("NULL list");
+   if (!list || list->size == 0) {
+      SUMA_SL_Err("NULL or empty list");
       SUMA_RETURN(dset);  
    }
    if (FullList) N_Node = SO->N_Node;
@@ -736,16 +787,17 @@ SUMA_DSET *SUMA_SurfClust_list_2_DsetMask(SUMA_SurfaceObject *SO, DList *list, S
    
    SUMA_LH("Creating dset pointer");
    dset = SUMA_CreateDsetPointer(
-                                 leName,         /* usually the filename */
-                                 SUMA_NODE_ROI,                /* mix and match */
-                                 NULL,    /* no idcode, let the function create one from the filename*/
-                                 NULL,       /* no domain str specified */
-                                 N_Node    /* Number of nodes allocated for */
-                                 ); /* DO NOT free dset, it is store in DsetList */
+               leName,         /* usually the filename */
+               SUMA_NODE_ROI,                /* mix and match */
+               NULL,    /* no idcode, let function create one from filename*/
+               NULL,       /* no domain str specified */
+               N_Node    /* Number of nodes allocated for */
+               ); /* DO NOT free dset, it is store in DsetList */
                            
 	/* form the dataset */
    SUMA_LH("Adding NodeDef column ...");
-   if (!SUMA_AddDsetNelCol (   dset, /* the famed nel */ 
+   if (!SUMA_AddDsetNelCol (   
+                           dset,  
                            "le Node Def", 
                            SUMA_NODE_INDEX,
                            (void *)NodeIndex, 
@@ -756,7 +808,8 @@ SUMA_DSET *SUMA_SurfClust_list_2_DsetMask(SUMA_SurfaceObject *SO, DList *list, S
       SUMA_RETURN(NULL);                    
    }
   
-   if (!SUMA_AddDsetNelCol (dset, "Cluster Rank", SUMA_NODE_INT, (void *)Val, NULL ,1)) {
+   if (!SUMA_AddDsetNelCol (  dset, "Cluster Rank", 
+                              SUMA_NODE_INT, (void *)Val, NULL ,1)) {
       fprintf (stderr,"Error  %s:\nFailed in SUMA_AddNelCol", FuncName);
       SUMA_RETURN (NULL);
    }
@@ -977,50 +1030,70 @@ SUMA_Boolean SUMA_Sort_ClustersList (DList *list, SUMA_SURF_CLUST_SORT_MODES Sor
 }
 
 #define SUMA_LOCAL_STATS_NODE_DBG { \
-   if (n == ndbg) {  \
-       FILE *mf ;    \
-       char *mfname = SUMA_append_replace_num("SUMA_SurfLocalstat", "_node%ddbg_Col_", n, SUMA_int, 0);   \
-       mfname = SUMA_append_replace_string(mfname, lblcp, "", 1); \
-       mfname = SUMA_append_replace_string(mfname, ".1D.dset", "", 1); \
-       SUMA_NICEATE_FILENAME(mfname,'\0');   \
-       mf=fopen(mfname,"w");   \
-       if (!mf) { SUMA_S_Errv("Failed to open %s for writing.\n", mfname); }   \
-       else {   \
-          fprintf(mf, "#Node %d in mask, total of %d neighbs of which %d went into output of (%f).\n",    \
-                n, OffS_out[n].N_Neighb, nval-1, fout[n]);   \
-          if (nmask) {\
-            fprintf(mf, "#nmask in use, nmask[n]=%d, strict_mask = %d\n", nmask[n], strict_mask); \
-            fprintf(mf, "#Col. 0: Node index of neighbor (1st row is debug node itself)\n"); \
-            fprintf(mf, "#Col. 1: Graph distance of neighbor from debug node\n");   \
-            fprintf(mf, "#Col. 2: Neighbor value\n"); \
-            fprintf(mf, "#Col. 3: nmask value of neighbor (see strict_mask flag also)\n"); \
-            fprintf(mf, "%6d\t%+2.3f\t%+2.3f\t%2d\n", n, 0.0, fin_orig[n], nmask[n]);  \
-          } else { \
-            fprintf(mf, "#No masking\n"); \
-            fprintf(mf, "#Col. 0: Node index of neighbor (1st row is debug node itself)\n"); \
-            fprintf(mf, "#Col. 1: Graph distance of neighbor from debug node\n");   \
-            fprintf(mf, "#Col. 2: Neighbor value\n"); \
-            fprintf(mf, "%6d\t%+2.3f\t%+2.3f\n", n, 0.0, fin_orig[n]);  \
-          } \
-          if (!nmask) {  \
-             for (j=0; j<OffS_out[n].N_Neighb; ++j) {  \
-                nj = OffS_out[n].Neighb_ind[j];  \
-                if (OffS_out[n].Neighb_dist[j] <= rhood) { fprintf(mf, "%6d\t%+2.3f\t%+2.3f\n", nj, OffS_out[n].Neighb_dist[j], fin_orig[nj]);  }\
-             }/* for j*/ \
-          } else {   \
-             for (j=0; j<OffS_out[n].N_Neighb; ++j) {  \
-                nj = OffS_out[n].Neighb_ind[j];  \
-                if (nmask[nj] || !strict_mask) { \
-                  if (OffS_out[n].Neighb_dist[j] <= rhood) { fprintf(mf, "%6d\t%+2.3f\t%+2.3f\t%2d\n", nj, OffS_out[n].Neighb_dist[j], fin_orig[nj], nmask[nj]);  }\
-                }\
-             }/* for j*/ \
-          } \
-          SUMA_S_Notev("Node %d in mask, total of %d neighbs of which %d went into output of (%f).\nSee also %s\n", \
-                        n, OffS_out[n].N_Neighb, nval-1, fout[n], mfname);\
-          SUMA_free(mfname); mfname=NULL;\
-          fclose(mf); mf=NULL; \
-       }  \
-   }\
+   if (n == ndbg ) {  \
+      if (OffS_out) {  \
+          FILE *mf ;    \
+          char *mfname = SUMA_append_replace_num("SUMA_SurfLocalstat", "_node%ddbg_Col_", n, SUMA_int, 0);   \
+          mfname = SUMA_append_replace_string(mfname, lblcp, "", 1); \
+          mfname = SUMA_append_replace_string(mfname, ".1D.dset", "", 1); \
+          SUMA_NICEATE_FILENAME(mfname,'\0');   \
+          mf=fopen(mfname,"w");   \
+          if (!mf) { SUMA_S_Errv("Failed to open %s for writing.\n", mfname); }   \
+          else {   \
+             fprintf(mf, "#Node %d in mask, total of %d neighbs of which %d went into output of (%f).\n",    \
+                   n, OffS_out[n].N_Neighb, nval-1, fout[n]);   \
+             if (nmask) {\
+               fprintf(mf, "#nmask in use, nmask[n]=%d, strict_mask = %d\n", nmask[n], strict_mask); \
+               fprintf(mf, "#Col. 0: Node index of neighbor (1st row is debug node itself)\n"); \
+               fprintf(mf, "#Col. 1: Graph distance of neighbor from debug node\n");   \
+               fprintf(mf, "#Col. 2: Neighbor value\n"); \
+               fprintf(mf, "#Col. 3: nmask value of neighbor (see strict_mask flag also)\n"); \
+               fprintf(mf, "%6d\t%+2.3f\t%+2.3f\t%2d\n", n, 0.0, fin_orig[n], nmask[n]);  \
+             } else { \
+               fprintf(mf, "#No masking\n"); \
+               fprintf(mf, "#Col. 0: Node index of neighbor (1st row is debug node itself)\n"); \
+               fprintf(mf, "#Col. 1: Graph distance of neighbor from debug node\n");   \
+               fprintf(mf, "#Col. 2: Neighbor value\n"); \
+               fprintf(mf, "%6d\t%+2.3f\t%+2.3f\n", n, 0.0, fin_orig[n]);  \
+             } \
+             if (!nmask) {  \
+                for (j=0; j<OffS_out[n].N_Neighb; ++j) {  \
+                   nj = OffS_out[n].Neighb_ind[j];  \
+                   if (OffS_out[n].Neighb_dist[j] <= rhood) { fprintf(mf, "%6d\t%+2.3f\t%+2.3f\n", nj, OffS_out[n].Neighb_dist[j], fin_orig[nj]);  }\
+                }/* for j*/ \
+             } else {   \
+                for (j=0; j<OffS_out[n].N_Neighb; ++j) {  \
+                   nj = OffS_out[n].Neighb_ind[j];  \
+                   if (nmask[nj] || !strict_mask) { \
+                     if (OffS_out[n].Neighb_dist[j] <= rhood) { fprintf(mf, "%6d\t%+2.3f\t%+2.3f\t%2d\n", nj, OffS_out[n].Neighb_dist[j], fin_orig[nj], nmask[nj]);  }\
+                   }\
+                }/* for j*/ \
+             } \
+             SUMA_S_Notev("Node %d in mask, total of %d neighbs of which %d went into output of (%f).\nSee also %s\n", \
+                           n, OffS_out[n].N_Neighb, nval-1, fout[n], mfname);\
+             SUMA_free(mfname); mfname=NULL;\
+             fclose(mf); mf=NULL; \
+          }  \
+      } else { \
+         SUMA_S_Err("Ihr Idioten!\nThis debug macro is for the offset method!"); \
+         {  \
+            FILE *mf ;    \
+            char *mfname = SUMA_append_replace_num("SUMA_SurfLocalstat", "_node%ddbg_Col_", n, SUMA_int, 0);   \
+            mfname = SUMA_append_replace_string(mfname, lblcp, "", 1); \
+            mfname = SUMA_append_replace_string(mfname, ".1D.dset", "", 1); \
+            SUMA_NICEATE_FILENAME(mfname,'\0');   \
+             mf=fopen(mfname,"w");   \
+             if (!mf) { SUMA_S_Errv("Failed to open %s for writing.\n", mfname); }   \
+             else {   \
+                fprintf(mf, "#Node %d in mask, total of %d neighbs in approx mask.\n",    \
+                      n, nval);\
+                for (j=0; j<SO->N_Node; ++j) { if (fwhm_mask[j]) fprintf(mf, "%d\n", j); }   \
+            }  \
+            SUMA_free(mfname); mfname=NULL;\
+             fclose(mf); mf=NULL; \
+         }  \
+      }\
+   } \
 }
 
 static double FWHM_MinArea = -1.0; 
@@ -1034,11 +1107,13 @@ void SUMA_SetFWHM_MinArea(double MinArea)
    return; 
 }
 
+#define FAST_APPROX 1
 SUMA_DSET *SUMA_CalculateLocalStats(SUMA_SurfaceObject *SO, SUMA_DSET *din, 
                                     byte *nmask, byte strict_mask,
                                     float rhood, SUMA_OFFSET_STRUCT *UseThisOffset,
                                     int ncode, int *code, 
-                                    SUMA_DSET *UseThisDout, int ndbg)
+                                    SUMA_DSET *UseThisDout, int ndbg,
+                                    SUMA_SurfaceObject *SOf)
 {
    static char FuncName[]={"SUMA_CalculateLocalStats"};
    SUMA_DSET *dout = NULL;
@@ -1052,7 +1127,12 @@ SUMA_DSET *SUMA_CalculateLocalStats(SUMA_SurfaceObject *SO, SUMA_DSET *din,
    SUMA_OFFSET_STRUCT *OffS_out=NULL;
    byte *bfull=NULL;
    float *NodeAreaVec=NULL, ZoneArea, MinZoneArea;
-   SUMA_Boolean LocalHead = YUP;
+   int ipl;
+   float Eq[4];
+   float *SegDist = NULL;
+   int *mask_record = NULL;
+   DList *striplist_vec[3];
+   SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
       
@@ -1165,7 +1245,7 @@ SUMA_DSET *SUMA_CalculateLocalStats(SUMA_SurfaceObject *SO, SUMA_DSET *din,
                }
             }
             /* now calculate the neighbor offset structure */
-            if (!UseThisOffset) {
+            if (!UseThisOffset && code[ic] != NSTAT_FWHMx) {   /* no need for Offset with FWHMx, zones must be big, too big for this method */
                SUMA_LH("Calculating OffS_out ...");
                OffS_out = SUMA_FormNeighbOffset (SO, rhood, NULL, nmask, -1.0);
             } else {
@@ -1220,7 +1300,8 @@ SUMA_DSET *SUMA_CalculateLocalStats(SUMA_SurfaceObject *SO, SUMA_DSET *din,
                } 
                SUMA_free(lblcp); lblcp = NULL;
                break;
-            case NSTAT_FWHMx:
+            
+            case -666: /* used to be NSTAT_FWHMx: */
                lblcp = SUMA_DsetColLabelCopy(din, icols[k], 1); lblcp = SUMA_append_replace_string("fwhm_", lblcp, "", 2);
                if (!SUMA_AddDsetNelCol (dout, lblcp, SUMA_NODE_FLOAT, (void *)fout, NULL ,1)) {
                   SUMA_S_Crit("Failed to add dset column");
@@ -1231,6 +1312,19 @@ SUMA_DSET *SUMA_CalculateLocalStats(SUMA_SurfaceObject *SO, SUMA_DSET *din,
                   SUMA_S_Crit("Failed to allocate fwhm_mask");
                   SUMA_RETURN(NULL);
                }
+               /* create the slice strips, don't want to do this repeatedly */
+               if (SUMA_Get_UseSliceFWHM()) {
+                  for (ipl=0; ipl<3;++ipl) {
+                     /* get the intersection strips, start alond the various directions */
+                     Eq[0] = Eq[1]=Eq[2]=Eq[3] = 0.0;
+                     Eq[ipl] = 1.0; Eq[3] = -SO->Center[ipl];  /* 0==Saggittal, 1==Coronal, 2==Axial */
+                     SUMA_LHv("Kill me!\nEq:[%f %f %f %f], step: %f\n", Eq[0], Eq[1], Eq[2], Eq[3], SO->EL->AvgLe);
+                     if (!(striplist_vec[ipl] = SUMA_SliceAlongPlane(SO, Eq, SO->EL->AvgLe))) {
+                        SUMA_S_Err("Failed to slice along plane");
+                        SUMA_RETURN(NULL);
+                     }
+                  }               
+               }      
                if (!nmask) {
                   SUMA_LH("No mask");
                   for (n=0; n < SO->N_Node; ++n) {
@@ -1256,7 +1350,11 @@ SUMA_DSET *SUMA_CalculateLocalStats(SUMA_SurfaceObject *SO, SUMA_DSET *din,
                                     n, ZoneArea, MinZoneArea);
                            }
                            if (n==ndbg) SUMA_SetDbgFWHM(1);
-                           fout[n] = SUMA_estimate_FWHM_1dif( SO, fin_orig, fwhm_mask, 1);
+                           if (SUMA_Get_UseSliceFWHM()) {
+                              fout[n] = SUMA_estimate_slice_FWHM_1dif( SO, fin_orig, fwhm_mask, 1, NULL, striplist_vec);
+                           } else {   
+                              fout[n] = SUMA_estimate_FWHM_1dif( SO, fin_orig, fwhm_mask, 1);
+                           }
                            if (n==ndbg) SUMA_SetDbgFWHM(0);
                         }  
                      SUMA_LOCAL_STATS_NODE_DBG;
@@ -1297,7 +1395,11 @@ SUMA_DSET *SUMA_CalculateLocalStats(SUMA_SurfaceObject *SO, SUMA_DSET *din,
                                                 n, ZoneArea, MinZoneArea);
                               }
                               if (n==ndbg) SUMA_SetDbgFWHM(1);
-                              fout[n] = SUMA_estimate_FWHM_1dif( SO, fin_orig, fwhm_mask, 1);
+                              if (SUMA_Get_UseSliceFWHM()) {
+                                 fout[n] = SUMA_estimate_slice_FWHM_1dif( SO, fin_orig, fwhm_mask, 1, NULL, striplist_vec);
+                              } else {
+                                 fout[n] = SUMA_estimate_FWHM_1dif( SO, fin_orig, fwhm_mask, 1);
+                              }
                               if (n==ndbg) SUMA_SetDbgFWHM(0);
                            }  
                         SUMA_LOCAL_STATS_NODE_DBG;
@@ -1311,6 +1413,87 @@ SUMA_DSET *SUMA_CalculateLocalStats(SUMA_SurfaceObject *SO, SUMA_DSET *din,
                      }
                   } /* for n */
                }
+               if (SUMA_Get_UseSliceFWHM()) {
+                  for (ipl=0; ipl<3; ++ipl) { SUMA_FREE_DLIST(striplist_vec[ipl]); striplist_vec[ipl] = NULL; }
+               }
+               SUMA_free(fwhm_mask); fwhm_mask = NULL;
+               SUMA_free(lblcp); lblcp = NULL;
+               break;
+               
+            case NSTAT_FWHMx:
+               lblcp = SUMA_DsetColLabelCopy(din, icols[k], 1); lblcp = SUMA_append_replace_string("fwhm_", lblcp, "", 2);
+               if (!SUMA_AddDsetNelCol (dout, lblcp, SUMA_NODE_FLOAT, (void *)fout, NULL ,1)) {
+                  SUMA_S_Crit("Failed to add dset column");
+                  SUMA_RETURN(NULL);
+               }
+               /* form a mask for fwhm function */
+               if (!(fwhm_mask = (byte *)SUMA_calloc(SO->N_Node, sizeof(byte)))) {
+                  SUMA_S_Crit("Failed to allocate fwhm_mask");
+                  SUMA_RETURN(NULL);
+               }
+               
+               #if FAST_APPROX
+               if (!SOf && SO->isSphere) SOf = SO;
+               SegDist = SUMA_SegmentDistortion(SO, SOf); /* this function should return a vector of 1s if SO == SOf */
+               mask_record = (int *)SUMA_calloc(SO->N_Node,sizeof(int));
+               if (!SegDist || !mask_record) { SUMA_S_Crit("Failed to allocate"); SUMA_RETURN(NULL);}
+               nval = -1;     /* Must initialize nval this way for SUMA_APPROX_NEIGHBORS */
+               #endif
+               if (!nmask) {
+                  SUMA_LH("No mask");
+                  for (n=0; n < SO->N_Node; ++n) {
+                     #if FAST_APPROX
+                     SUMA_APPROX_NEIGHBORS(SO, SOf, n, rhood, SegDist, mask_record, fwhm_mask, nval);
+                     #else
+                     /* build thy fwhm mask (must have a clean mask here ) */
+                     nval = SUMA_ApproxNeighbors(SO, SOf, n, rhood, fwhm_mask);
+                     #endif
+                     
+                     if (n==ndbg) SUMA_SetDbgFWHM(1);
+                     if (nval > 6) fout[n] = SUMA_estimate_FWHM_1dif( SO, fin_orig, fwhm_mask, 1);
+                     else fout[n] = -1.0;
+                     if (n==ndbg) SUMA_SetDbgFWHM(0);
+                     SUMA_LOCAL_STATS_NODE_DBG;
+                     
+                  } /* for n */
+               } else {
+                  SUMA_LH("Have mask");
+                  if (!strict_mask) {
+                     SUMA_S_Warn("For fwhm, masking must be STRICT!\nProceeding with foolishness.");
+                  }
+                  for (n=0; n < SO->N_Node; ++n) {
+                     if (nmask[n]) {
+                        #if FAST_APPROX
+                        SUMA_APPROX_NEIGHBORS(SO, SOf, n, rhood, SegDist, mask_record, fwhm_mask, nval);
+                        #else
+                        /* build thy fwhm mask (must have a clean mask here ) */
+                        nval = SUMA_ApproxNeighbors(SO, SOf, n, rhood, fwhm_mask);
+                        #endif
+                        if (nval > 6) {
+                           /* Now qualify the fwhm_mask to include only nodes in nmask, if strict_mask */
+                           if (strict_mask) {
+                              for (j=0; j<SO->N_Node; ++j) {
+                                 fwhm_mask[j] *= nmask[j];
+                              }
+                           }
+                           if (n==ndbg) SUMA_SetDbgFWHM(1);
+                           fout[n] = SUMA_estimate_FWHM_1dif( SO, fin_orig, fwhm_mask, 1);
+                           if (n==ndbg) SUMA_SetDbgFWHM(0);
+                        } else {
+                           fout[n] = -1.0;
+                        }
+                        SUMA_LOCAL_STATS_NODE_DBG;
+                     } else {
+                        fout[n] = 0.0; nval = 0;/* Non, rien de rien */
+                     }
+                  } /* for n */
+               }
+               #if FAST_APPROX
+               if (SegDist) SUMA_free(SegDist); SegDist = NULL;
+               if (mask_record) SUMA_free(mask_record); mask_record = NULL;
+               #else
+               SUMA_ApproxNeighbors(NULL, NULL, -1, 0, NULL);  /* cleanup ApproxNeighbors */
+               #endif
                SUMA_free(fwhm_mask); fwhm_mask = NULL;
                SUMA_free(lblcp); lblcp = NULL;
                break;
@@ -1321,7 +1504,7 @@ SUMA_DSET *SUMA_CalculateLocalStats(SUMA_SurfaceObject *SO, SUMA_DSET *din,
          }
          
          /* add this column to the output dset */
-         if (!SUMA_Float2DsetCol (dout, icols[k], fout, 1)) {
+         if (!SUMA_Float2DsetCol (dout, icols[k], fout, 1, nmask)) {
             SUMA_S_Err("Failed to update dset's values");
             SUMA_RETURN(NOPE);      
          }

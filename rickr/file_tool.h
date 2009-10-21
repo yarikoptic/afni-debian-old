@@ -13,6 +13,12 @@
 #define MOD_F4            30            /* real mods */
 #define MOD_F8            31
 
+#define SCR_SHOW_BAD_BS 0x01            /* script display */
+#define SCR_SHOW_FILE   0x02            /* script display */
+
+#define SCR_MOD_BADBS   0x10            /* script mods  */
+#define SCR_MOD_FILE    0x20            /* script mods  */
+
 #define USE_SHORT          0
 #define USE_LONG           1
 #define USE_VERSION        2
@@ -28,12 +34,36 @@
 #define GE_OFF          0x20
 
 #define NDISP_NONE         0
-#define NDISP_INT2      0x01
-#define NDISP_INT4      0x02
-#define NDISP_REAL4     0x04
+#define NDISP_HEX1         1
+#define NDISP_HEX2         2
+#define NDISP_HEX4         3
+#define NDISP_INT2         4
+#define NDISP_INT4         5
+#define NDISP_REAL4        6
 #define NDISP_ALL       0xff
 
+#define FT_SINGLE_COMMAND   32
+/* ANALYZE values */
+#define FT_DISP_HDR          1
+#define FT_MOD_HDR           2
+#define FT_DEFINE_HDR       32  /* single commands start here */
+#define FT_DIFF_HDRS        64
+
+#undef  CHECK_NULL_STR
 #define CHECK_NULL_STR(str) ( str ? str : "(nil)" )
+#define CHECK_NEXT_OPT(n,m,str)                                     \
+   do { if ( (n) >= (m) ) {                                          \
+           fprintf(stderr,"** option '%s': missing parameter\n",str); \
+           fprintf(stderr,"   consider: 'file_tool -help'\n");         \
+           return -1;      }                                            \
+      } while(0)
+
+#define CHECK_NEXT_OPT2(n,m,s1,s2)                                           \
+   do { if ( (n) >= (m) ) {                                                  \
+           fprintf(stderr,"** option '%s': missing parameter '%s'\n",s1,s2); \
+           fprintf(stderr,"   consider: 'file_tool -help'\n");               \
+           return -1;      }                                                 \
+      } while(0)
 
                                   /* from Ifile.c ...                  */
 typedef struct                    /* stuff extracted from GE 5.x image */
@@ -63,7 +93,12 @@ typedef struct
     int     data_len;      /* bytes of data in mod_data          */
     int     ge_disp;      /* do we display ge_values            */
     int     ge4_disp;    /* option bits for GEMS 4.x type      */
-    int     ndisp;      /* option bits for numeric display    */
+    int     script;     /* inputs are scripts: bit mask       */
+    int     analyze;   /* process ANALYZE file(s)            */
+    int     ndisp;    /* option bits for numeric display    */
+
+    str_list mod_fields;         /* list of fields to modify   */
+    str_list mod_list;          /* list of values to apply    */
 
     int     swap;             /* do we need to swap bytes   */
     int     modify;          /* do we modify the data?     */
@@ -71,7 +106,10 @@ typedef struct
     long    offset;        /* starting location          */
     int     length;       /* bytes to display or modify */
     int     quiet;       /* do not display header info */
-    char  * mod_data;   /* new data                   */
+    int     hex;        /* display data values in hex */
+    int     overwrite; /* overwrite output file(s)?  */
+    char  * mod_data; /* new data (change to list?) */
+    char  * prefix;  /* prefix for any output file */
 } param_t;
 
 typedef struct                    /* file offsets for various fields   */
@@ -89,19 +127,32 @@ int  check_mod_type    ( char * name );
 int  check_usage       ( int argc, char * argv[] );
 int  disp_numeric_data ( char * data, param_t * p, FILE * fp );
 int  disp_param_data   ( param_t * p );
+int  file_exists       ( char * fname );
+int  mod_analyze_hdr   ( param_t *p, field_s * fields, int index );
 int  mtype_size        ( int type );
 
+int  read_analyze_file ( param_t * p, field_s * fields, ft_analyze_header * hdr,
+                         char * fname );
 int  read_ge_header    ( char * pathname, ge_header_info * hi, ge_extras * E,
                          ge_off * off );
+
+int  process_analyze   ( param_t * p, int index );
 int  process_file      ( char * pathname, param_t * p );
 int  process_ge        ( char * pathname, param_t * p );
 int  process_ge4       ( char * pathname, param_t * p );
+int  process_script    ( char * filename, param_t * p );
+int  read_file         ( char * filename, char ** fdata, int * flen );
+int  read_partial_file ( char * filename, void * fdata, int len );
 int  set_params        ( param_t * p, int argc, char * argv[] );
+
+int  scr_show_file     ( char * filename, param_t * p );
+int  scr_show_bad_bs   ( char * filename, param_t * p );
+
 
 int  help_full         ( char * prog );
 int  help_ge_structs   ( char * prog );
 int  usage             ( char * prog, int level );
-int  write_data_to_file( FILE * fp, char * filename, param_t * p );
+int  write_data_to_file( FILE * fp, char * filename, param_t * p, int length );
 
 unsigned long THD_filesize  ( char * pathname );
 

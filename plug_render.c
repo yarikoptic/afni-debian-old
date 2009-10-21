@@ -1613,8 +1613,7 @@ void REND_make_widgets(void)
    XtManageChild(anat_frame) ;
 
    XtManageChild(top_rowcol) ;
-   XtRealizeWidget(shell) ;      /* will not be mapped */
-
+   XtRealizeWidget(shell) ; NI_sleep(1) ;     /* will not be mapped */
    WAIT_for_window(shell) ;
    POPUP_cursorize(xhair_bbox->wbut[0]) ;
 
@@ -4463,7 +4462,7 @@ void REND_open_imseq( void )
       afni48ren_pixmap = XCreatePixmapFromBitmapData(
                             XtDisplay(shell) ,
                             RootWindowOfScreen(XtScreen(shell)) ,
-                            afni48ren_bits , afni48ren_width , afni48ren_height ,
+                            (char *)afni48ren_bits , afni48ren_width , afni48ren_height ,
                             bg_pix , fg_pix ,
                             DefaultDepthOfScreen(XtScreen(shell)) ) ;
 

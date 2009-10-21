@@ -37,7 +37,7 @@ int main( int argc , char * argv[] )
              "  3dRowFillin -maxgap 4 -dir A-P -prefix fredfill fred+orig\n"
              "\n"
             ) ;
-      exit(0) ;
+      PRINT_COMPILE_DATE ; exit(0) ;
    }
 
    mainENTRY("3dRowFillin main"); machdep(); AFNI_logger("3dRowFillin",argc,argv);
@@ -87,7 +87,7 @@ int main( int argc , char * argv[] )
 
    outset = EDIT_empty_copy( inset ) ;
    EDIT_dset_items( outset , ADN_prefix , prefix , ADN_none ) ;
-   if( THD_is_file( DSET_HEADNAME(outset) ) ){
+   if( THD_deathcon() && THD_is_file( DSET_HEADNAME(outset) ) ){
       fprintf(stderr,"** Output file %s exists -- cannot overwrite!\n",
               DSET_HEADNAME(outset) ) ;
       exit(1) ;

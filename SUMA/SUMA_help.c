@@ -129,12 +129,27 @@ char * SUMA_New_Additions_perver (int ver, SUMA_Boolean StampOnly)
             "  + AnalyzeTrace: Program to analyze the output of -trace option.\n"
             "  + DriveSuma: Program to control SUMA from the command line\n"
             "  + imcat: Program to catenate images.\n"
+            "  + Surf2VolCoord: Surface-node to voxel correspondence.\n"
             "Modifications:\n"
             "  + SUMA:\n"
             "    o Addition of new Displayable Objects (DO)(ctrl+Alt+s)\n"
             "    o Allow replacement of pre-loaded DO and Dsets\n"
             "    o Support for .niml.dset as format for surface-based anlysis\n"
             "    o High resolution image saving with ctrl+r\n"
+            "    o Bug fixes for support of niml dset format\n"
+            "    o Use of '[i]' to select node index from surface dset\n"
+            "    o Scroll lists for I T and B selectors in SUMA\n"
+            "  + ConvertDset:\n"
+            "    o Output of full dsets if needed\n"
+            "  + ROIgrow:\n"
+            "    o Grows regions separately, depending on labels.\n"
+            "  + ROI2dataset:\n"
+            "    o outputs full datasets if needed.\n"
+            "  + SurfSmooth:\n"
+            "    o Improved HEAT_05 method.\n"
+            "    o New 'blurring to' a FWHM with HEAT_07 method.\n"
+            "  + SurfFWHM:\n"
+            "    o Estimating FWHM on the surface.\n" 
             "  + MapIcosahedron:\n"
             "    o Better handling of surface centers. \n"
             );
@@ -711,7 +726,10 @@ char * SUMA_help_message_Info(void)
       "     Ctrl+n: Open a new surface viewer window.\n\n");
    SS = SUMA_StringAppend (SS, 
       "     p: Viewer rendering mode  \n"
-      "        (Fill, Line, Points), switch.\n\n");
+      "        (Fill, Line, Points, Hide), switch.\n\n");
+   SS = SUMA_StringAppend (SS, 
+      "     P: Reset viewer and all surfaces to Fill  \n"
+      "        rendering mode.\n\n");
    SS = SUMA_StringAppend (SS, 
       "     r: record current image\n"
       "        in an a la AFNI image viewer.\n"

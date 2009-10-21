@@ -274,6 +274,19 @@ ENTRY("THD_3dim_from_block") ; /* 29 Aug 2001 */
    if( !ISVALID_MAT44(daxes->ijk_to_dicom) )
      THD_daxes_to_mat44( daxes ) ;
 
+   atr_flo = THD_find_float_atr( blk, "IJK_TO_DICOM_REAL" );
+   /* load oblique transformation matrix */
+   if(atr_flo) {
+     LOAD_MAT44(daxes->ijk_to_dicom_real, \
+         atr_flo->fl[0], atr_flo->fl[1], atr_flo->fl[2], atr_flo->fl[3], \
+         atr_flo->fl[4], atr_flo->fl[5], atr_flo->fl[6], atr_flo->fl[7], \
+         atr_flo->fl[8], atr_flo->fl[9], atr_flo->fl[10], atr_flo->fl[11]);
+   }
+   else {
+     ZERO_MAT44(daxes->ijk_to_dicom_real);  /* clear values */
+     daxes->ijk_to_dicom_real.m[3][3] = 0.0;  /* and make invalid */
+   }
+
    /*------------------------------------*/
    /*-- read set of markers (optional) --*/
    /*------------------------------------*/
@@ -584,8 +597,12 @@ ENTRY("THD_3dim_from_block") ; /* 29 Aug 2001 */
      nvals  = (isfunc) ? FUNC_nvals[dset->func_type]
                        : ANAT_nvals[dset->func_type]  ;
 
-     if( nvals != 1 )
-       DSET_ERR("Illegal time-dependent dataset and func_type combination!") ;
+     if( nvals != 1 ){
+       WARNING_message("Illegal 3D+time dataset & func_type combination: '%s'" ,
+                       DSET_HEADNAME(dset) ) ;
+       if( dset->taxis->toff_sl != NULL ) myXtFree(dset->taxis->toff_sl) ;
+       myXtFree(dset->taxis) ;
+     }
 
      /** 15 Aug 2005: don't allow milliseconds on input any more **/
 
