@@ -57,7 +57,7 @@ build/afni-dev::
 
 install/afni-dev::
 	cd $(DEB_BUILDDIR_STATIC) && \
-		$(MAKE) install DESTDIR=$(CURDIR)/debian/tmp VERBOSE=1
+		$(MAKE) install DESTDIR=$(CURDIR)/debian/tmp/static VERBOSE=1
 
 clean::
 	-[ -d $(DEB_BUILDDIR_STATIC) ] && rm -rf $(DEB_BUILDDIR_STATIC)
