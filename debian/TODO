@@ -1,31 +1,5 @@
-Buildsetup
-==========
-
-Rpath setting is not functional!
-
 Duplicate files
 ===============
   eispack.h eispack/eispack.h
   coxplot.h coxplot/coxplot.h
-
-
-debdiff oldmakefile vs. cmake
-=============================
-
-Files in first .deb but not in second
--------------------------------------
--rw-r--r--  root/root   /usr/lib/afni/models/model_expMEMRI3.so
--rwxr-xr-x  root/root   /usr/lib/afni/bin/1dgenARMA11
--rwxr-xr-x  root/root   /usr/lib/afni/bin/3dFFT
--rwxr-xr-x  root/root   /usr/lib/afni/bin/3dPeriodogram
--rwxr-xr-x  root/root   /usr/lib/afni/bin/3dSurf2Vol
--rwxr-xr-x  root/root   /usr/lib/afni/bin/@SUMA_AlignToExperiment
--rwxr-xr-x  root/root   /usr/lib/afni/bin/@SUMA_FSvolToBRIK
--rwxr-xr-x  root/root   /usr/lib/afni/bin/@SUMA_Make_Spec_Caret
--rwxr-xr-x  root/root   /usr/lib/afni/bin/@SUMA_Make_Spec_FS
--rwxr-xr-x  root/root   /usr/lib/afni/bin/@SUMA_Make_Spec_SF
--rwxr-xr-x  root/root   /usr/lib/afni/bin/Surf2VolCoord
--rwxr-xr-x  root/root   /usr/lib/afni/bin/SurfInfo
--rwxr-xr-x  root/root   /usr/lib/afni/bin/balloon
--rwxr-xr-x  root/root   /usr/lib/afni/bin/whirlgif
 
