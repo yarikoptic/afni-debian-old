@@ -1,0 +1,2 @@
+debian/tmp/lib/afni/lib/*.a usr/lib/afni/lib
+debian/tmp/include/afni/* usr/include/afni
