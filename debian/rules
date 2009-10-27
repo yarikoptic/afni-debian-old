@@ -64,6 +64,8 @@ install/afni-dev::
 clean::
 	-[ -d $(DEB_BUILDDIR_STATIC) ] && rm -rf $(DEB_BUILDDIR_STATIC)
 	-rm configure-afni-dev-stamp
+	# ensure proper permissions for the wrapper
+	chmod +x debian/afni_wrapper
 
 install/afni-common::
 	# fix tcsh interpreter location
