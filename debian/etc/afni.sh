@@ -27,7 +27,7 @@ AFNI_PLUGINPATH=${AFNI_INSTALLDIR}/plugins
 AFNI_MODELPATH=${AFNI_INSTALLDIR}/models
 
 # Location of the talairach daemon database
-AFNI_TTATLAS_DATASET=/usr/share/afni/atlas
+AFNI_TTATLAS_DATASET=/usr/share/afni/atlases
 
 #
 # Runtime checks
