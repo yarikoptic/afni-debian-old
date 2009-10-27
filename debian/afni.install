@@ -3,3 +3,4 @@ debian/tmp/lib/afni/plugins/plug* usr/lib/afni/plugins/
 debian/tmp/lib/afni/plugins/model* usr/lib/afni/models/
 debian/tmp/lib/afni/lib/*.so usr/lib/afni/lib
 debian/lintian/afni usr/share/lintian/overrides
+debian/afni.desktop usr/share/applications

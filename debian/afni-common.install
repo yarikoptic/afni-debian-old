@@ -3,3 +3,4 @@ debian/tmp/share/afni/poems/* usr/share/afni/poems/
 debian/tmp/share/afni/scripts/* usr/lib/afni/bin/
 debian/lintian/afni-common usr/share/lintian/overrides
 debian/etc/* etc/afni/
+debian/afni_wrapper usr/lib/afni/bin/
