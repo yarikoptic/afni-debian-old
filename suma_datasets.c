@@ -11170,7 +11170,7 @@ float SUMA_fdrcurve_zval( SUMA_DSET *dset , int iv , float thresh )
    if HOME is not defined then try .afnirc and .sumarc
    Shameless wrapper for AFNI_process_environ
 
-   No fanices here, this function is called before CommonFields
+   No fancies here, this function is called before CommonFields
 */
 void SUMA_process_environ(void)
 {
@@ -11195,7 +11195,17 @@ void SUMA_process_environ(void)
          fprintf (SUMA_STDERR,"%s: Loading %s ...\n", FuncName, sumarc);
       AFNI_process_environ(sumarc); 
    } else {
-      if (LocalHead) fprintf (SUMA_STDERR,"%s: No rc files found.\n", FuncName);
+      if (LocalHead) 
+         fprintf (SUMA_STDERR,"%s: No sumarc file found.\n", FuncName);
+      fprintf (SUMA_STDOUT,
+   "\n"
+   "++ No sumarc file found. To create a new one, or add the latest \n"
+   " variables while preserving your settings, consider running:\n"
+   "\n"
+   "              suma -update_env\n"
+   "\n"
+   "See details on -environment and -update_env in suma -help's output.\n"
+   "\n");
    }
 
    if (!homeenv) sprintf(sumarc, ".afnirc");
@@ -11205,7 +11215,8 @@ void SUMA_process_environ(void)
          fprintf (SUMA_STDERR,"%s: Loading %s ...\n", FuncName, sumarc);
       AFNI_process_environ(sumarc); 
    } else {
-      if (LocalHead) fprintf (SUMA_STDERR,"%s: No rc files found.\n", FuncName);
+      if (LocalHead) 
+         fprintf (SUMA_STDERR,"%s: No afnirc file found.\n", FuncName);
    }   
 
    if (sumarc) free(sumarc); sumarc = NULL; /* allocated before CommonFields */
@@ -12933,10 +12944,12 @@ int SUMA_StringToNum (char *s, void *vv, int N, int prec)
    
    if (!s || prec < 1) SUMA_RETURN(0); 
      
+   if (LocalHead) fprintf (stderr, "%s: string was:%s:\n", FuncName, s);
    /* clean s by removing trailing junk then replacing non characters by space*/
    FoundTip = 0;
    for (nd=strlen(s)-1; nd >=0; --nd) {
-      if (!isdigit(s[nd]) && s[nd] != '.' && s[nd] != '-' && s[nd] != '+') {
+      if (!isdigit(s[nd]) && s[nd] != '.' && s[nd] != '-' && s[nd] != '+' && 
+                             s[nd] != 'e' && s[nd] != 'E') {
          if (!FoundTip) {
             s[nd]= '\0'; /* remove */
          } else {
@@ -12960,8 +12973,8 @@ int SUMA_StringToNum (char *s, void *vv, int N, int prec)
    while (!eos) {
       d = strtod(strtp, &endp);
       if (LocalHead) 
-         fprintf (stderr, "%s: value %f, ERANGE: %d, EDOM %d, errno %d\n", 
-                           FuncName, d, ERANGE, EDOM, errno); 
+         fprintf (stderr, "%s: %dth value %f, ERANGE: %d, EDOM %d, errno %d\n", 
+                           FuncName, nd, d, ERANGE, EDOM, errno); 
       
       if (endp == strtp && *endp=='\0') { 
          eos = 1;
