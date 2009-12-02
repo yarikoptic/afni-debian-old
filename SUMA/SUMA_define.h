@@ -1988,7 +1988,8 @@ typedef struct {
 
 typedef struct {
    SUMA_OVERLAYS *Overlay; /*!< pointer to color overlay structures */
-} SUMA_OVERLAY_LIST_DATUM;   /*!< a structure used to create linked lists of SO->Overlays and co */ 
+} SUMA_OVERLAY_LIST_DATUM;   /*!< a structure used to create linked lists 
+                                  of SO->Overlays and co */ 
 
 /*! structure defining a Surface Object */
 typedef struct {
@@ -2273,6 +2274,7 @@ typedef struct {
    int N_Node; /*!< Number of nodes */
    float *NodeList; /*!< N_Node x 3 vector containing node coordinates */
    int *NodeId; /*!< Node ID, that's normaly from 0..N_Nodes-1 but since it's in .coord file, I keep it anyway */
+   byte *allzerocoord;
    char encoding_coord[100];
    char configuration_id[100];
    char coordframe_id[100];
