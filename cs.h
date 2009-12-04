@@ -56,6 +56,18 @@ extern int symeig_irange( int n, double *a, double *e, int bb, int tt, int novec
 extern int first_principal_vectors( int n, int m, float *xx,
                                     int nvec, float *sval, float *uvec ) ;
 
+extern float principal_vector( int n , int m , int xtyp , void *xp ,
+                               float *uvec , float *tvec            ) ;
+extern float mean_vector( int n , int m , int xtyp , void *xp , float *uvec ) ;
+
+#ifndef TYPEDEF_float_pair
+#define TYPEDEF_float_pair
+typedef struct { float a,b ; } float_pair ;
+#endif
+
+extern float_pair principal_vector_pair( int n, int m, int xtyp, void *xp,
+                                        float *uvec, float *vvec, float *tvec );
+
 /***** Argument list mangling *****/
 
 extern void addto_args( int , char ** , int * , char *** ) ;
