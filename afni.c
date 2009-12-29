@@ -3627,12 +3627,12 @@ if(PRINT_TRACING)
 
                   if( xev->state&ShiftMask && xev->state&ControlMask ){
                     int qq = AFNI_icor_setref(im3d) ;
-                         if( qq < 0 ) BEEPIT ;
-                    else if( qq > 0 ){
+                    if( qq < 0 ) BEEPIT ;
+                    else {
                       im3d->vinfo->i1_icor = im3d->vinfo->i1 ;
                       im3d->vinfo->j2_icor = im3d->vinfo->j2 ;
                       im3d->vinfo->k3_icor = im3d->vinfo->k3 ;
-                      AFNI_icor_setref_locked(im3d) ;           /* 15 May 2009 */
+                      if( qq > 0 ) AFNI_icor_setref_locked(im3d) ; /* 15 May 2009 */
                     }
                   }
                }
@@ -7937,8 +7937,8 @@ STATUS(" -- managing tal_to button, etc") ;
    }
 
    if( im3d->vwid->imag->pop_instacorr_pb != NULL ){
-     if( ISVALID_ICOR_setup(im3d->iset) ) ENABLE_INSTACORR(im3d) ;
-     else                                 DISABLE_INSTACORR(im3d) ;
+     if( ISREADY_EITHER_ICOR(im3d) ) ENABLE_INSTACORR(im3d) ;
+     else                           DISABLE_INSTACORR(im3d) ;
    }
 
    /*--- 25 Jul 2001: sensitize 'See TT Atlas Regions' button ---*/
@@ -8817,19 +8817,19 @@ ENTRY("AFNI_imag_pop_CB") ;
    else if( w == im3d->vwid->imag->pop_instacorr_pb && w != NULL ){
 
      int qq = AFNI_icor_setref(im3d) ;
-          if( qq < 0 ) BEEPIT ;
-     else if( qq > 0 ){
+     if( qq < 0 ) BEEPIT ;
+     else {
        im3d->vinfo->i1_icor = im3d->vinfo->i1 ;
        im3d->vinfo->j2_icor = im3d->vinfo->j2 ;
        im3d->vinfo->k3_icor = im3d->vinfo->k3 ;
-       AFNI_icor_setref_locked(im3d) ;           /* 15 May 2009 */
+       if( qq > 0 ) AFNI_icor_setref_locked(im3d) ; /* 15 May 2009 */
      }
    }
 
    /*---- 08 May 2009: jump to InstaCorr point ----*/
 
    else if( w == im3d->vwid->imag->pop_icorrjump_pb &&
-            w != NULL && ISVALID_ICOR_setup(im3d->iset) ){
+            w != NULL && ISREADY_EITHER_ICOR(im3d) ){
      int ii,jj,kk ;
 
      ii = im3d->vinfo->i1_icor ;  /* extract icor place */
