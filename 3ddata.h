@@ -48,6 +48,14 @@
 #define myXtNew(type) ((type *) XtCalloc(1,(unsigned) sizeof(type)))
 #endif
 
+/* cast int to pointer and vice-versa without warning messages */
+
+#include <stdint.h>
+#undef  ITOP
+#define ITOP(qw) ((void *)(intptr_t)(qw))
+#undef  PTOI
+#define PTOI(qw) ((int)(intptr_t)(qw))
+
 struct THD_3dim_dataset ;  /* incomplete definition */
 
 #include "niml.h"          /* NIML */
@@ -4111,6 +4119,9 @@ extern float THD_get_voxel( THD_3dim_dataset *dset , int ijk , int ival ) ;
 extern MRI_IMAGE * THD_extract_series( int , THD_3dim_dataset * , int ) ;
 extern MRI_IMARR * THD_extract_many_series( int, int *, THD_3dim_dataset * );
 extern MRI_IMAGE * THD_dset_to_1Dmri( THD_3dim_dataset *dset ) ;
+
+extern void THD_extract_many_arrays( int ns , int *ind ,
+                                     THD_3dim_dataset *dset , float *dsar ) ;
 
 /*---------------------------------------------------------------------------*/
 

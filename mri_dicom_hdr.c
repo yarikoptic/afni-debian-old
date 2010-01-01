@@ -51,9 +51,9 @@
 **			of a file containing a DICOM stream.
 **   Usage:
 **			dcm_dump_file [-b] [-g] [-v] [-z] file [file ...]
-** Last Update:		$Author: rwcox $, $Date: 2008/09/09 15:40:48 $
+** Last Update:		$Author: rwcox $, $Date: 2009/12/31 19:36:19 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.30 $
+** Revision:		$Revision: 1.31 $
 ** Status:		$State: Exp $
 */
 
@@ -83,6 +83,13 @@
 
 #endif
 
+/* cast int to pointer and vice-versa without warning messages */
+
+#include <stdint.h>
+#undef  ITOP
+#define ITOP(qw) ((void *)(intptr_t)(qw))
+#undef  PTOI
+#define PTOI(qw) ((int)(intptr_t)(qw))
 
 /****************************************************************/
 /***** Function and variables to set byte order of this CPU *****/
@@ -369,9 +376,9 @@ STATUS("closing") ;
 **			The stack is maintained as a simple stack array.  If
 **			it overflows, we dump the stack to stdout and reset it.
 **
-** Last Update:		$Author: rwcox $, $Date: 2008/09/09 15:40:48 $
+** Last Update:		$Author: rwcox $, $Date: 2009/12/31 19:36:19 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.30 $
+** Revision:		$Revision: 1.31 $
 ** Status:		$State: Exp $
 */
 
@@ -799,9 +806,9 @@ COND_WriteConditions(FILE * lfp)
 ** Author, Date:	Steve Moore, 30-Jun-96
 ** Intent:		Provide common abstractions needed for operations
 **			in a multi-threaded environment.
-** Last Update:		$Author: rwcox $, $Date: 2008/09/09 15:40:48 $
+** Last Update:		$Author: rwcox $, $Date: 2009/12/31 19:36:19 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.30 $
+** Revision:		$Revision: 1.31 $
 ** Status:		$State: Exp $
 */
 
@@ -893,9 +900,9 @@ COND_WriteConditions(FILE * lfp)
 **	and convert the object to and from its "stream" representation.
 **	In addition, the package can parse a file which contains a stream
 **	and create its internal object.
-** Last Update:		$Author: rwcox $, $Date: 2008/09/09 15:40:48 $
+** Last Update:		$Author: rwcox $, $Date: 2009/12/31 19:36:19 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.30 $
+** Revision:		$Revision: 1.31 $
 ** Status:		$State: Exp $
 */
 
@@ -1757,12 +1764,12 @@ DCM_GetElementValue(DCM_OBJECT ** callerObject, DCM_ELEMENT * element,
 				       element->tag, "DCM_GetElementValue");
 
 	    p = *ctx;
-	    if ((U32) p > elementItem->element.length)
+	    if ((U32)PTOI(p) > elementItem->element.length)
 		return COND_PushCondition(DCM_ILLEGALCONTEXT,
 					  DCM_Message(DCM_ILLEGALCONTEXT),
 					  "DCM_GetElementValue");
 
-	    l = MIN(element->length, (elementItem->element.length - (U32) p));
+	    l = MIN(element->length, (elementItem->element.length - (U32)PTOI(p)));
 
 	    *rtnLength = l;
 	    {
@@ -1801,8 +1808,7 @@ DCM_GetElementValue(DCM_OBJECT ** callerObject, DCM_ELEMENT * element,
 		    }
 		} else {
 		    unsigned char *q;
-		    q = (unsigned char *) elementItem->element.d.ot +
-			(U32) p;
+		    q = (unsigned char *) elementItem->element.d.ot + (U32)PTOI(p);
 		    (void) memcpy(element->d.ot, q, l);
 		    if (elementItem->byteOrder == BYTEORDER_REVERSE) {
 			DCM_ELEMENT e;
@@ -1814,7 +1820,7 @@ DCM_GetElementValue(DCM_OBJECT ** callerObject, DCM_ELEMENT * element,
 		}
 		p += l;
 		*ctx = (void *) p;
-		if ((unsigned) p == elementItem->element.length)
+		if ((unsigned)PTOI(p) == elementItem->element.length)
 		    return DCM_NORMAL;
 		else
 		    return DCM_GETINCOMPLETE;
@@ -1945,7 +1951,7 @@ DCM_GetElementValueOffset(DCM_OBJECT ** callerObject, DCM_ELEMENT * element,
 				 element->tag, "DCM_GetElementValueOffset");
 
 	p = (unsigned char *) offset;;
-	if ((U32) p > elementItem->element.length)
+	if ((U32)PTOI(p) > elementItem->element.length)
 	    return COND_PushCondition(DCM_BADOFFSET,
 				      DCM_Message(DCM_BADOFFSET),
 				      (int) offset,
@@ -1995,8 +2001,7 @@ DCM_GetElementValueOffset(DCM_OBJECT ** callerObject, DCM_ELEMENT * element,
 		}
 	    } else {
 		unsigned char *q;
-		q = (unsigned char *) elementItem->element.d.ot +
-		    (U32) p;
+		q = (unsigned char *) elementItem->element.d.ot + (U32)PTOI(p);
 		(void) memcpy(element->d.ot, q, l);
 		if (elementItem->byteOrder == BYTEORDER_REVERSE) {
 		    DCM_ELEMENT e;
@@ -7507,12 +7512,11 @@ copyData(PRIVATE_OBJECT ** object, PRV_ELEMENT_ITEM * from,
 	}
     } else {
 	unsigned char *q;
-	q = (unsigned char *) from->element.d.ot +
-	    (U32) p;
+	q = (unsigned char *) from->element.d.ot + (U32)PTOI(p);
 	(void) memcpy(to->d.ot, q, l);
     }
     p += l;
-    if ((unsigned) p == from->element.length)
+    if ((unsigned)PTOI(p) == from->element.length)
 	return DCM_NORMAL;
     else
 	return DCM_GETINCOMPLETE;
@@ -8296,9 +8300,9 @@ DCM_AddFragment(DCM_OBJECT** callerObject, void* fragment, U32 fragmentLength)
 ** Intent:		Define the ASCIZ messages that go with each DCM
 **			error number and provide a function for looking up
 **			the error message.
-** Last Update:		$Author: rwcox $, $Date: 2008/09/09 15:40:48 $
+** Last Update:		$Author: rwcox $, $Date: 2009/12/31 19:36:19 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.30 $
+** Revision:		$Revision: 1.31 $
 ** Status:		$State: Exp $
 */
 
@@ -8454,9 +8458,9 @@ DCM_DumpVector()
 **			static objects are maintained which define how
 **			elements in the DICOM V3.0 standard are to be
 **			interpreted.
-** Last Update:		$Author: rwcox $, $Date: 2008/09/09 15:40:48 $
+** Last Update:		$Author: rwcox $, $Date: 2009/12/31 19:36:19 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.30 $
+** Revision:		$Revision: 1.31 $
 ** Status:		$State: Exp $
 */
 
@@ -10570,9 +10574,9 @@ DCM_ElementDictionary(DCM_TAG tag, void *ctx,
 **			as support for the DCM facility and for applications.
 **			These routines help parse strings and other data
 **			values that are encoded in DICOM objects.
-** Last Update:		$Author: rwcox $, $Date: 2008/09/09 15:40:48 $
+** Last Update:		$Author: rwcox $, $Date: 2009/12/31 19:36:19 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.30 $
+** Revision:		$Revision: 1.31 $
 ** Status:		$State: Exp $
 */
 
@@ -10778,9 +10782,9 @@ DCM_IsString(DCM_VALUEREPRESENTATION representation)
 ** Author, Date:	Thomas R. Leith, 15-Apr-93
 ** Intent:		This package implements atomic functions on
 **			linked lists.
-** Last Update:		$Author: rwcox $, $Date: 2008/09/09 15:40:48 $
+** Last Update:		$Author: rwcox $, $Date: 2009/12/31 19:36:19 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.30 $
+** Revision:		$Revision: 1.31 $
 ** Status:		$State: Exp $
 */
 
@@ -11314,9 +11318,9 @@ LST_Index(LST_HEAD ** l, int index)
 ** Intent:		Miscellaneous functions that may be useful in
 **			a number of different areas.
 **
-** Last Update:		$Author: rwcox $, $Date: 2008/09/09 15:40:48 $
+** Last Update:		$Author: rwcox $, $Date: 2009/12/31 19:36:19 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.30 $
+** Revision:		$Revision: 1.31 $
 ** Status:		$State: Exp $
 */
 

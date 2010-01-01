@@ -44,6 +44,14 @@
 afni_history_struct rwcox_history[] = {
 /*=====BELOW THIS LINE=====*/
 
+ { 31 , DEC , 2009 , RWC , "many" , MICRO , TYPE_GENERAL ,
+   "Remove 'cast ... different size' warnings" ,
+   "Macros: ITOP and PTOI to cast without warnings.  For Z." } ,
+
+ { 31 , DEC , 2009 , RWC , "3dGroupInCorr" , MAJOR , TYPE_NEW_PROG ,
+   "Group InstaCorr" ,
+   "With changes to afni and also new program 3dSetupGroupInCorr" } ,
+
  { 23 , DEC , 2009 , RWC , "afni" , MICRO , TYPE_MODIFY ,
    "Minor changes to 'DataDir' to appease DRG" ,
    NULL } ,
