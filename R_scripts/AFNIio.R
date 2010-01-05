@@ -139,7 +139,7 @@ show.AFNI.args <- function (ops) {
    }
 }
 
-check.AFNI.args <- function ( ops, params = NULL, help = NULL) {
+check.AFNI.args <- function ( ops, params = NULL) {
    if (!is.null(params) && !is.null(ops)) {
       for (i in 1:length(ops)) {
          #str(names(ops)[i])
@@ -147,7 +147,7 @@ check.AFNI.args <- function ( ops, params = NULL, help = NULL) {
          #cat('\nChecking on ', paste(ops[[i]],collapse=','),'\n');
          ipar <- which(names(ops)[i] == names(params));
          if (length(ipar)) {
-            pp <- params[ipar[1]][[1]];
+            pp <- params[ipar[1]][[1]]['count'][[1]];
             opsvec <- ops[[i]];
             if (length(pp) == 1) { #exact number 
                if (length(opsvec) !=  pp) {
@@ -194,38 +194,29 @@ check.AFNI.args <- function ( ops, params = NULL, help = NULL) {
    return(1); #all ok
 }
 
+apl <- function ( n = 0, d=NA, h=NULL, dup=FALSE ) {
+   return(list('count'=n, 'default'=d, help=h, duplicate_ok=dup));
+}
+
 parse.AFNI.args <- function ( args, params = NULL, 
-                              other_ok=TRUE, duplicate_ok=vector('character'),
-                              verb = 0, help = NULL) {
+                              other_ok=TRUE,
+                              verb = 0) {
    #for (i in 1:length(args)) {
    #   cat (i, args[[i]],'\n');
    #}
    if (!is.null(params)) {
       allowed_options <- names(params);
+      duplicate_okvec <- vector('character');
+      for (i in 1:1:length(params)) {
+         pl <- params[i][[1]];
+         if (pl['duplicate_ok'][[1]]) {
+            duplicate_okvec <- c(duplicate_okvec, names(params)[i])
+         }
+      }
    } else {
       allowed_options <- vector('character');
    }
-   #Sanity
-   { 
-      if (length(duplicate_ok) && !length(allowed_options)) {
-         warning(paste('Cannot specify duplicate_ok without params'),
-                      immediate. = TRUE);
-         return(NULL);
-      }
-      if (length(duplicate_ok) && length(allowed_options)) {
-         dd <- duplicate_ok[!(duplicate_ok %in% allowed_options)];
-         #str(dd)
-         if (length(dd) ) {
-            warning(paste('Cannot have duplicate_ok conditions for options ',
-                          'not in params.\n',
-                          '  Option(s) "', paste(dd, collapse=', '),
-                          '" in duplicate_ok and not in params.'),
-                      immediate. = TRUE);
-            return(NULL);
-         }
-      }
-   }
-
+   
    #find locations of -*
    ii <- grep ('^-.*', args);
    iflg <- vector('numeric')
@@ -256,7 +247,8 @@ parse.AFNI.args <- function ( args, params = NULL,
             newnm <- args[[iflg[i]]]
          }
          if (length(nm) && length(which(newnm == nm)) &&
-             (!length(duplicate_ok) || length(which(iflg[i] == duplicate_ok))) ){
+             (!length(duplicate_okvec) || 
+               length(which(iflg[i] == duplicate_okvec))) ){
             warning(paste('option ', newnm, 'already specified.\n'),
                      immediate. = TRUE);
             show.AFNI.args(ops)
@@ -326,6 +318,7 @@ parse.AFNI.args <- function ( args, params = NULL,
 #------------------------------------------------------------------
 #   Some utilities
 #------------------------------------------------------------------
+
 #return 1 if all strings in vector ss can be changed to numbers
 is.num.string <- function(ss) {
    if (is.null(ss) || !length(ss) || ss == '' ||
@@ -353,8 +346,8 @@ clean.args.string <- function(ss) {
    ss <- gsub('[[:space:]]*=[[:space:]]*','=',ss)
    return(ss)
 }
-
-as.num.vec <- function(ss) {
+ 
+as.num.vec <- function(ss, addcount=TRUE, sepstr='.', reset=FALSE) {
    if (is.list(ss) || length(ss) > 1) {
       warning(paste('Function only works on single strings', 
                     str(ss),'\n', sep=''),
@@ -365,16 +358,45 @@ as.num.vec <- function(ss) {
    dd <- strsplit(ss,' ')[[1]];
    nn <- vector('numeric');
    ww <- vector('character');
+   lastname <- '.v'
+   valnum <- 0
    for (ii in 1:length(dd)) {
       vv <- strsplit(dd[ii],'=')[[1]];
       if (length(vv) > 1) {
+         valnum <- valnum+1
          ll <- vv[1] 
          vv <- as.numeric(vv[length(vv)]);
          if (is.na(vv)) { return(NULL); }
+         lastname <- ll
       } else {
+         valnum <- valnum+1
          vv <- as.numeric(vv[1]);
          if (is.na(vv)) { return(NULL); }
-         ll <- paste('v',as.numeric(vv[1]), sep='')
+         if (addcount) {
+            sfnd <- paste(lastname, sepstr,'[[:digit:]]*$', sep='', collapse='')
+            if (!reset) {
+               ifnd <- grep(sfnd,ww);
+            } else {
+               ifnd <- grep(sfnd,ww[length(ww)]);
+               if (length(ifnd)) {
+                  ifnd <- length(ww);
+               } else {
+                  valnum <- 1
+               }
+            }
+            if (length(ifnd)) {
+               lastval <- strsplit(ww[ifnd[length(ifnd)]],
+                                    paste(lastname, sepstr,sep=''))[[1]];
+               if (lastval[length(lastval)] == '') {
+                  valnum <- 1
+               } else {
+                  valnum <- as.numeric(lastval[length(lastval)]) + 1
+               }
+            }  
+            ll <- paste(lastname,sepstr, as.numeric(valnum), sep='')
+         } else {
+            ll <- paste(lastname, sep='')
+         }
       }
       
       nn <- c(nn,vv)
