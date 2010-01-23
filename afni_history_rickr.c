@@ -48,6 +48,16 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 21, JAN, 2010, RCR, "afni_proc.py", MICRO, TYPE_NEW_OPT,
+   "added -tlrc_opts_at; made tiny mod to scaling operation",
+   NULL
+ } ,
+
+ { 15, JAN, 2010, RCR, "afni_proc.py", MICRO, TYPE_NEW_OPT,
+   "added -regress_fout yes/no option for G. Pagnoni",
+   NULL
+ } ,
+
  { 14, JAN, 2010, RCR, "3dVol2Surf", MINOR, TYPE_BUG_FIX,
    "Fixed crash w/labels on '-map_func seg_vals' -> NIML",
    "Found by Swaroop at Dartmouth."

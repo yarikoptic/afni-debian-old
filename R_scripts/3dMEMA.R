@@ -522,7 +522,7 @@ Usage:
  3dMEMA is a program for performing Mixed Effects Meta Analysis at group level 
  that models both within- and across- subjects variablity, thereby requiring
  both regression coefficients, or general linear contrasts among them, and the 
- corresponding t-statistics from each subject as input. It\'s required to stall 
+ corresponding t-statistics from each subject as input. It\'s required to install 
  R (http://www.r-project.org/), plus \'snow\' package if parallel computing is
  desirable. See more details at
  
@@ -539,7 +539,11 @@ contrast from each subject in a group):
                   ac   ac+tlrc\'[14]\'   ac+tlrc\'[15]\'  \\
                   ejk  ejk+tlrc\'[14]\'  ejk+tlrc\'[15]\' \\
                   ...
-                  ss   ss+tlrc\'[14]\'   ss+tlrc\'[15]\' \n"
+                  ss   ss+tlrc\'[14]\'   ss+tlrc\'[15]\' \\
+               -max_zeros 4    \\
+               -HKtest         \\        
+               -model_outliers \\        
+               -residual_Z     \n"   
 
    ex2 <-
 "Example 2 --- Paired type (two regression coefficients or general linear 
@@ -557,7 +561,8 @@ contrasts from each subject in a group):
                 ac   ac_sad_B+tlrc   ac_sad_T+tlrc   \\
                 ejk  ejk_sad_B+tlrc  ejk_sad_T+tlrc  \\
                 ...
-                ss   ss_sad_B+tlrc   ss_sad_T+tlrc \n"
+                ss   ss_sad_B+tlrc   ss_sad_T+tlrc   \\
+            -n_nonzero 10  \n"
    
    ex3 <- 
 "Example 3 --- Two-sample type (one regression coefficient or general linear
@@ -579,6 +584,7 @@ covariates centering, no payment no interest till Memorial Day next year:
                 mb   mb_sad_B+tlrc.BRIK   mb_sad_T+tlrc.BRIK  \\
                 ...
                 trr  trr_sad_B+tlrc.BRIK  trr_sad_T+tlrc.BRIK \\
+            -max_zeros 6    \\
             -HKtest         \\
             -model_outliers \\
             -residual_Z     \\

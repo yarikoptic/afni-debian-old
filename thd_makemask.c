@@ -5,6 +5,14 @@
 ******************************************************************************/
 
 #include "mrilib.h"
+#include "uthash.h"
+
+typedef struct {
+    int id;    /* keep it named 'id' to facilitate use of convenience
+                  macros in uthash . */
+    UT_hash_handle hh;  /* keep name for same reason  */
+    int index; 
+}  INT_HASH_DATUM;
 
 /*---------------------------------------------------------------------*/
 /*! Make a byte mask from mask dataset:
@@ -259,11 +267,65 @@ int THD_makedsetmask( THD_3dim_dataset *mask_dset ,
 }
 
 /*----------------------------------------------------------------------------*/
+extern int * UniqueInt (int *y, int ysz, int *kunq, int Sorted );
+
+int is_integral_sub_brick ( THD_3dim_dataset *dset, int isb, int check_values) {
+   float mfac = 0.0;
+   void *vv=NULL;
+   
+   if(   !ISVALID_DSET(dset)    ||
+            isb < 0                     ||
+            isb >= DSET_NVALS(dset)  ) {
+
+      fprintf(stderr,"** Bad dset or sub-brick index.\n");
+      return (0) ;
+
+   }
+   if( !DSET_LOADED(dset) ) DSET_load(dset);
+   
+   switch( DSET_BRICK_TYPE(dset,isb) ){
+      case MRI_short: 
+      case MRI_byte:
+         if (check_values) {
+            mfac = DSET_BRICK_FACTOR(dset,isb) ;
+            if (mfac != 0.0f && mfac != 1.0f) return(0);
+         }
+         break;
+      case MRI_double:
+      case MRI_complex:
+      case MRI_float:
+         vv = (void *)DSET_ARRAY(dset,isb);
+         mfac = DSET_BRICK_FACTOR(dset,isb) ;
+         if (mfac != 0.0f && mfac != 1.0f) return(0);
+         if (!vv) {
+            fprintf(stderr,"** NULL array!\n");
+            return(0);
+         }
+         return(is_integral_data(DSET_NVOX(dset), 
+                                 DSET_BRICK_TYPE(dset,isb),
+                                 DSET_ARRAY(dset,isb) ) );
+         break;
+      default:
+         return(0);
+   }
+   
+   return(1);  
+}
+
+int is_integral_dset ( THD_3dim_dataset *dset, int check_values) {
+   int i=0;
+   
+   if(   !ISVALID_DSET(dset)  ) return(0);
+   for (i=0; i<DSET_NVALS(dset); ++i) {
+      if (!is_integral_sub_brick(dset, i, check_values)) return(0);
+   }
+   return(1);
+}
+
 /*!
    Returns a list of the unique values in a dataset.
 */
 
-extern int * UniqueInt (int *y, int ysz, int *kunq, int Sorted );
 int *THD_unique_vals( THD_3dim_dataset *mask_dset ,
                         int miv,
                         int *n_unique ,
@@ -286,6 +348,12 @@ int *THD_unique_vals( THD_3dim_dataset *mask_dset ,
 
    DSET_load(mask_dset) ; if( !DSET_LOADED(mask_dset) ) return (unq) ;
 
+   if (!is_integral_sub_brick (mask_dset, miv, 0)) {
+      fprintf(stderr,"** Sub-brick %d of %s is not of an integral data type.\n",
+                  miv, DSET_PREFIX(mask_dset) ? DSET_PREFIX(mask_dset):"NULL");
+      return (unq) ;
+   }
+   
    vals = (int *)malloc(sizeof(int)*nvox);
    if (!vals) {
       fprintf(stderr,"** Failed to allocate.\n");
@@ -294,20 +362,18 @@ int *THD_unique_vals( THD_3dim_dataset *mask_dset ,
 
    switch( DSET_BRICK_TYPE(mask_dset,miv) ){
       default:
-         fprintf(stderr,"** Bad dset type for unique operation.\nOnly Byte and Short dsets are allowed.\n");
+         fprintf(stderr,"** Bad dset type for unique operation.\n"
+                        "Only integral valued dsets are allowed.\n");
          DSET_unload(mask_dset) ; if (vals) free(vals); return (unq) ;
 
       case MRI_short:{
          short *mar = (short *) DSET_ARRAY(mask_dset,miv) ;
-         float mfac = DSET_BRICK_FACTOR(mask_dset,miv) ;
-         if( mfac == 0.0 ) mfac = 1.0 ;
-
          if (cmask) {
             for( ii=0 ; ii < nvox ; ii++ )
-               if (cmask[ii]) vals[ii] = (int)(mar[ii]*mfac); else vals[ii] = 0;
+               if (cmask[ii]) vals[ii] = (int)(mar[ii]); else vals[ii] = 0;
          } else {
             for( ii=0 ; ii < nvox ; ii++ )
-               vals[ii] = (int)(mar[ii]*mfac);
+               vals[ii] = (int)(mar[ii]);
          }
 
       }
@@ -315,37 +381,29 @@ int *THD_unique_vals( THD_3dim_dataset *mask_dset ,
 
       case MRI_byte:{
          byte *mar = (byte *) DSET_ARRAY(mask_dset,miv) ;
-         float mfac = DSET_BRICK_FACTOR(mask_dset,miv) ;
-         if( mfac == 0.0 ) mfac = 1.0 ;
-
          if (cmask) {
             for( ii=0 ; ii < nvox ; ii++ )
-               if (cmask[ii]) vals[ii] = (int)(mar[ii]*mfac); else vals[ii] = 0;
+               if (cmask[ii]) vals[ii] = (int)(mar[ii]); else vals[ii] = 0;
          } else {
             for( ii=0 ; ii < nvox ; ii++ )
-               vals[ii] = (int)(mar[ii]*mfac);
+               vals[ii] = (int)(mar[ii]);
          }
 
       }
       break ;
 
-      #if 1 /* bad idea, but necessary in certain cases. We store ints (from NIFTI) as floats.*/
       case MRI_float:{
          float *mar = (float *) DSET_ARRAY(mask_dset,miv) ;
-         float mfac = DSET_BRICK_FACTOR(mask_dset,miv) ;
-         if( mfac == 0.0 ) mfac = 1.0 ;
-
          if (cmask) {
             for( ii=0 ; ii < nvox ; ii++ )
-               if (cmask[ii]) vals[ii] = (int)(mar[ii]*mfac); else vals[ii] = 0;
+               if (cmask[ii]) vals[ii] = (int)(mar[ii]); else vals[ii] = 0;
          } else {
             for( ii=0 ; ii < nvox ; ii++ )
-               vals[ii] = (int)(mar[ii]*mfac);
+               vals[ii] = (int)(mar[ii]);
          }
 
       }
       break ;
-      #endif
    }
 
    /* unique */
@@ -366,7 +424,8 @@ int *THD_unique_rank( THD_3dim_dataset *mask_dset ,
                         byte *cmask,
                         char *mapname)
 {
-   int nvox , ii, *unq = NULL, *vals=NULL, *rmap=NULL, imax=0;
+   int nvox , ii, *unq = NULL, *vals=NULL, imax=0;
+   INT_HASH_DATUM *rmap=NULL, *hd=NULL;
    int n_unique, r;
    FILE *fout=NULL;
 
@@ -385,6 +444,13 @@ int *THD_unique_rank( THD_3dim_dataset *mask_dset ,
 
    DSET_load(mask_dset) ; if( !DSET_LOADED(mask_dset) ) return (vals) ;
 
+   if (!is_integral_sub_brick (mask_dset, miv, 0)) {
+      fprintf(stderr,"** Sub-brick %d of %s is not integral valued.\n",
+                  miv, DSET_PREFIX(mask_dset) ? DSET_PREFIX(mask_dset):"NULL");
+      return (vals) ;
+   }
+   
+
    vals = (int *)malloc(sizeof(int)*nvox);
    if (!vals) {
       fprintf(stderr,"** Failed to allocate.\n");
@@ -401,15 +467,12 @@ int *THD_unique_rank( THD_3dim_dataset *mask_dset ,
 
       case MRI_short:{
          short *mar = (short *) DSET_ARRAY(mask_dset,miv) ;
-         float mfac = DSET_BRICK_FACTOR(mask_dset,miv) ;
-         if( mfac == 0.0 ) mfac = 1.0 ;
-
          if (cmask) {
             for( ii=0 ; ii < nvox ; ii++ )
-               if (cmask[ii]) vals[ii] = (int)(mar[ii]*mfac); else vals[ii] = 0;
+               if (cmask[ii]) vals[ii] = (int)(mar[ii]); else vals[ii] = 0;
          } else {
             for( ii=0 ; ii < nvox ; ii++ )
-               vals[ii] = (int)(mar[ii]*mfac);
+               vals[ii] = (int)(mar[ii]);
          }
 
       }
@@ -417,15 +480,12 @@ int *THD_unique_rank( THD_3dim_dataset *mask_dset ,
 
       case MRI_byte:{
          byte *mar = (byte *) DSET_ARRAY(mask_dset,miv) ;
-         float mfac = DSET_BRICK_FACTOR(mask_dset,miv) ;
-         if( mfac == 0.0 ) mfac = 1.0 ;
-
          if (cmask) {
             for( ii=0 ; ii < nvox ; ii++ )
-               if (cmask[ii]) vals[ii] = (int)(mar[ii]*mfac); else vals[ii] = 0;
+               if (cmask[ii]) vals[ii] = (int)(mar[ii]); else vals[ii] = 0;
          } else {
             for( ii=0 ; ii < nvox ; ii++ )
-               vals[ii] = (int)(mar[ii]*mfac);
+               vals[ii] = (int)(mar[ii]);
          }
 
       }
@@ -434,15 +494,12 @@ int *THD_unique_rank( THD_3dim_dataset *mask_dset ,
       case MRI_float:{ /* not an integral type but we store ints (from NIFTI)
                           as floats */
          float *mar = (float *) DSET_ARRAY(mask_dset,miv) ;
-         float mfac = DSET_BRICK_FACTOR(mask_dset,miv) ;
-         if( mfac == 0.0 ) mfac = 1.0 ;
-
          if (cmask) {
             for( ii=0 ; ii < nvox ; ii++ )
-               if (cmask[ii]) vals[ii] = (int)(mar[ii]*mfac); else vals[ii] = 0;
+               if (cmask[ii]) vals[ii] = (int)(mar[ii]); else vals[ii] = 0;
          } else {
             for( ii=0 ; ii < nvox ; ii++ )
-               vals[ii] = (int)(mar[ii]*mfac);
+               vals[ii] = (int)(mar[ii]);
          }
 
       }
@@ -481,18 +538,34 @@ int *THD_unique_rank( THD_3dim_dataset *mask_dset ,
    }
    #else /* faster approach */
    imax=0;
-   for (r=0; r<n_unique; ++r) if (imax < unq[r]) imax = unq[r];
-   if (!(rmap=(int*)calloc(imax+1, sizeof(int)))) {
-      fprintf(stderr,"** Failed to allocate\n");
-      free(vals); free(unq); return (NULL);
-   }
    for (r=0; r<n_unique; ++r) {
-      rmap[unq[r]] = r;
+      if (imax < unq[r]) imax = unq[r];
       if (fout) fprintf(fout, "%d   %d\n", r, unq[r]);
+      hd = (INT_HASH_DATUM*)calloc(1,sizeof(INT_HASH_DATUM));
+      hd->id = unq[r];
+      hd->index = r;
+      HASH_ADD_INT(rmap, id, hd); 
    }
    for (ii=0; ii<nvox; ii++)
-      if (!cmask || cmask[ii]) vals[ii] = rmap[vals[ii]];
-   free(rmap); rmap=NULL;
+      if (!cmask || cmask[ii]) {
+         HASH_FIND_INT(rmap,&(vals[ii]),hd);
+         if (hd)  vals[ii] = hd->index;
+         else {
+            fprintf(stderr,
+                     "** Failed to find key %d inhash table\n",
+                     vals[ii]);
+            free(vals); 
+            while (rmap) { hd=rmap; HASH_DEL(rmap,hd); free(hd); }
+            return (NULL);
+         }
+      }
+   /* destroy hash */
+   while (rmap) {
+      hd=rmap;
+      HASH_DEL(rmap,hd);
+      if (hd) free(hd);
+   }
+   
    #endif
 
    free(unq); unq = NULL;
@@ -500,6 +573,7 @@ int *THD_unique_rank( THD_3dim_dataset *mask_dset ,
 
    return (vals) ;
 }
+
 
 /*----------------------------------------------------------------------------*/
 /* Same as THD_unique_rank but replaces values in mask_dset with rank */
