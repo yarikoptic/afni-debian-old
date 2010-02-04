@@ -26,7 +26,22 @@ void        GRINCOR_many_ttest( int nvec , int numx , float **xxar ,
                                 int numy , float **yyar ,
                                 float *dar , float *zar  ) ;
 
-static int verb = 1 ;
+static int verb  = 1 ;
+static int debug = 0 ;
+
+typedef signed char sbyte ;  /* 02 Feb 2010 */
+
+/*----------------------------------------------------------------------------*/
+
+static int vstep_n = 0 ;
+
+static void vstep_print(void)
+{
+   static char xx[10] = "0123456789" ;
+   fprintf(stderr , "%c" , xx[vstep_n%10] ) ;
+   if( vstep_n%10 == 9) fprintf(stderr,".") ;
+   vstep_n++ ;
+}
 
 /*----------------------------------------------------------------------------*/
 /* Binary search for tt in a sorted integer array. */
@@ -69,27 +84,26 @@ typedef struct {
   int nvec  ;  /* number of vectors in a dataset */
   int ndset ;  /* number of datasets */
   int *nvals ; /* nvals[i] = number of values in a vector in i-th dataset */
+  int datum ;  /* 1 for sbyte, 2 for short */
 
   char *geometry_string ;
   THD_3dim_dataset *tdset ; /* template dataset */
   int nx,ny,nz,nvox ;       /* number of nodes in template */
 
-  char *dfname ; /* data file name */
+  char *dfname ;  /* data file name */
   int  *ivec   ;  /* ivec[i] = spatial index of i-th vector, i=0..nvec-1 */
   float *fac   ;  /* fac[i] = scale factor for i-th dataset, i=0..ndset-1 */
-  short **sv   ;  /* sv[i] = array [nvals[i]*nvec] for i-th dataset */
+  short **sv   ;  /* sv[i] = short array [nvals[i]*nvec] for i-th dataset */
+  sbyte **bv   ;  /* bv[i] = sbyte array [nvals[i]*nvec] for i-th dataset */
 
-  long long nbytes ;
+  long long nbytes ;  /* number of bytes in the data array */
 
-   /* Surface stuff        ZSS Jan 09 */
-   int nnode[2];
-   int ninmask[2];   
-} MRI_shindss ;  /* short indexed datasets */
+  /* Surface stuff  ZSS Jan 09 2010 */
 
-/*----- pointer to iv-th vector in id-th dataset of shd -----*/
+  int nnode[2]   ;
+  int ninmask[2] ;
 
-#undef  SHVEC
-#define SHVEC(shd,id,iv) ( (shd)->sv[id] + (shd)->nvals[id]*(iv) )
+} MRI_shindss ;  /* short/sbyte indexed datasets */
 
 /*----- get index in array, given voxel ijk value -----*/
 
@@ -114,7 +128,7 @@ typedef struct {
 
 static const long long twogig = 2ll * 1024ll * 1024ll * 1024ll ;  /* 2 GB */
 
-/*----- read a .grpincorr.niml file into a struct -----*/
+/*----- read a PREFIX.grpincorr.niml file into a struct -----*/
 
 MRI_shindss * GRINCOR_read_input( char *fname )
 {
@@ -124,6 +138,7 @@ MRI_shindss * GRINCOR_read_input( char *fname )
    MRI_shindss *shd ;
    long long nbytes_needed , nbytes_dfname ; int fdes ;
    void *var ; int ids ;
+   int datum , datum_size ;
 
    char *geometry_string=NULL ;
    THD_3dim_dataset *tdset=NULL; int nvox;
@@ -168,14 +183,23 @@ MRI_shindss * GRINCOR_read_input( char *fname )
      GQUIT("nvals attribute doesn't match ndset") ;
    nvals = nvar->ar ; nvar->ar = NULL ; NI_delete_int_array(nvar) ;
 
+   /* datum of datasets */
+
+   atr = NI_get_attribute(nel,"datum") ;
+   if( atr != NULL && strcasecmp(atr,"byte") == 0 ){
+     datum = 1 ; datum_size = sizeof(sbyte) ;
+   } else {
+     datum = 2 ; datum_size = sizeof(short) ;
+   }
+
    /* number of bytes needed:
-        sizeof(short) * number of vectors per dataset
+        sizeof(datum) * number of vectors per dataset
                       * number of datasets
                       * sum of per dataset vector lengths */
 
    nbytes_needed = 0 ;
    for( ids=0 ; ids < ndset ; ids++ ) nbytes_needed += nvals[ids] ;
-   nbytes_needed *= ((long long)nvec) * sizeof(short) ;
+   nbytes_needed *= ((long long)nvec) * datum_size ;
 
    if( nbytes_needed >= twogig &&
        ( sizeof(void *) < 8 || sizeof(size_t) < 8 ) ) /* too much for 32-bit */
@@ -237,7 +261,7 @@ MRI_shindss * GRINCOR_read_input( char *fname )
    if ((atr=NI_get_attribute(nel,"LRpair_ninmask"))) {
       ninmask = NI_decode_int_list(atr,",") ;
    }
-   
+
    NI_free_element(nel) ;  /* don't need this anymore */
 
    /* create output struct */
@@ -264,7 +288,7 @@ MRI_shindss * GRINCOR_read_input( char *fname )
       shd->nnode[1] = nnode->ar[1];
       NI_delete_int_array(nnode); nnode=NULL;
    } else {
-      shd->nnode[0] = shd->nnode[1] = -1;       
+      shd->nnode[0] = shd->nnode[1] = -1 ;
    }
    if (ninmask) {
       if (ninmask->num != 2) GQUIT("LRpair_ninmask must have 2 values");
@@ -272,9 +296,9 @@ MRI_shindss * GRINCOR_read_input( char *fname )
       shd->ninmask[1] = ninmask->ar[1];
       NI_delete_int_array(ninmask); ninmask=NULL;
    } else {
-      shd->ninmask[0] = shd->ninmask[1] = -1;
+      shd->ninmask[0] = shd->ninmask[1] = -1 ;
    }
-   
+
    /*--- now have to map data from disk ---*/
 
    var = mmap( 0 , (size_t)nbytes_needed ,
@@ -289,10 +313,21 @@ MRI_shindss * GRINCOR_read_input( char *fname )
 
    /*-- create array of pointers to each dataset's data array --*/
 
-   shd->sv    = (short **)malloc(sizeof(short *)*ndset) ;
-   shd->sv[0] = (short *)var ;
-   for( ids=1 ; ids < ndset ; ids++ )
-     shd->sv[ids] = shd->sv[ids-1] + nvals[ids-1]*nvec ;
+   shd->datum = datum ;
+
+   if( datum == 2 ){  /* shorts */
+     shd->sv    = (short **)malloc(sizeof(short *)*ndset) ;
+     shd->bv    = NULL ;
+     shd->sv[0] = (short *)var ;
+     for( ids=1 ; ids < ndset ; ids++ )
+       shd->sv[ids] = shd->sv[ids-1] + nvals[ids-1]*nvec ;
+   } else {           /* sbytes */
+     shd->sv    = NULL ;
+     shd->bv    = (sbyte **)malloc(sizeof(sbyte *)*ndset) ;
+     shd->bv[0] = (sbyte *)var ;
+     for( ids=1 ; ids < ndset ; ids++ )
+       shd->bv[ids] = shd->bv[ids-1] + nvals[ids-1]*nvec ;
+   }
 
    shd->nbytes = nbytes_needed ;
    return shd ;
@@ -301,22 +336,54 @@ MRI_shindss * GRINCOR_read_input( char *fname )
 #undef GQUIT
 
 /*--------------------------------------------------------------------------*/
+
+#undef  MYatanh
+#define MYatanh(x) ( ((x)<-0.999329f) ? -4.0f                \
+                    :((x)>+0.999329f) ? +4.0f : atanhf(x) )
+
+/*--------------------------------------------------------------------------*/
 /* This cute little function consumes a lot of CPU time. */
 
-void GRINCOR_dotprod( MRI_shindss *shd, int ids, float *vv, float *dp )
+void GRINCOR_dotprod_short( MRI_shindss *shd, int ids, float *vv, float *dp )
 {
    int nvec = shd->nvec , nvals = shd->nvals[ids] , iv,ii ;
-   float sum , fac = shd->fac[ids]*0.9999f , dtop=0.0f,val ;
+   float sum , fac = shd->fac[ids]*0.9999f ;
    short *sv = shd->sv[ids] , *svv ;
 
    for( iv=0 ; iv < nvec ; iv++ ){
      svv = sv + iv*nvals ;
      for( sum=0.0f,ii=0 ; ii < nvals ; ii++ ) sum += vv[ii]*svv[ii] ;
-     dp[iv] = atanhf(sum*fac) ;
-     val = fabsf(dp[iv]) ; dtop = MAX(dtop,val) ;
+     sum *= fac ; dp[iv] = MYatanh(sum) ;
    }
 
    return ;
+}
+
+/*--------------------------------------------------------------------------*/
+/* This cute little function consumes a lot of CPU time. */
+
+void GRINCOR_dotprod_sbyte( MRI_shindss *shd, int ids, float *vv, float *dp )
+{
+   int nvec = shd->nvec , nvals = shd->nvals[ids] , iv,ii ;
+   float sum , fac = shd->fac[ids]*0.9999f ;
+   sbyte *bv = shd->bv[ids] , *bvv ;
+
+   for( iv=0 ; iv < nvec ; iv++ ){
+     bvv = bv + iv*nvals ;
+     for( sum=0.0f,ii=0 ; ii < nvals ; ii++ ) sum += vv[ii]*bvv[ii] ;
+     sum *= fac ; dp[iv] = MYatanh(sum) ;
+   }
+
+   return ;
+}
+
+/*--------------------------------------------------------------------------*/
+
+void GRINCOR_dotprod( MRI_shindss *shd, int ids, float *vv, float *dp )
+{
+  if( shd->datum == 1 ) GRINCOR_dotprod_sbyte( shd, ids, vv, dp ) ;
+  else                  GRINCOR_dotprod_short( shd, ids, vv, dp ) ;
+  return ;
 }
 
 /*--------------------------------------------------------------------------*/
@@ -329,31 +396,47 @@ void GRINCOR_many_dotprod( MRI_shindss *shd , float **vv , float **ddp )
    AFNI_OMP_START ;
 #pragma omp for
    for( ids=0 ; ids < ndset ; ids++ ){
-     if( verb > 2 ) fprintf(stderr," +   start correlation on dataset #%d\n",ids) ;
+     if( verb > 3 ) fprintf(stderr," +   start correlation on dataset #%d\n",ids) ;
      GRINCOR_dotprod( shd , ids , vv[ids] , ddp[ids] ) ;
    }
    AFNI_OMP_END ;
  }
 
+   if( debug ){
+     int nvec=shd->nvec , nbad , iv , ids ;
+     for( ids=0 ; ids < shd->ndset ; ids++ ){
+       for( nbad=iv=0 ; iv < nvec ; iv++ ){
+         if( !isfinite(ddp[ids][iv]) ){ ddp[ids][iv] = 0.0f; nbad++; }
+       }
+       if( nbad > 0 ) WARNING_message("%d bad correlations in dataset #%d",nbad,ids) ;
+     }
+   }
+
    return ;
 }
 
 /*----------------------------------------------------------------------------*/
+/* Load the seed vectors from each dataset */
 
 void GRINCOR_load_seedvec( MRI_shindss *shd , MCW_cluster *nbhd ,
                            int voxijk       , float **seedvec    )
 {
    int nx,ny,nz,nxy, ndset,nvals, voxind,ii,jj,kk, aa,bb,cc,xx,yy,zz, qijk,qind ;
-   short *sv , *svv ; float *vv ;
+   short *sv=NULL , *svv=NULL ; float *vv ; sbyte *bv=NULL , *bvv=NULL ;
 
    nx = shd->nx; ny = shd->ny; nz = shd->nz; nxy = nx*ny; ndset = shd->ndset;
 
    IJK_TO_THREE(voxijk,aa,bb,cc,nx,nxy) ;
    voxind = IJK_TO_INDEX(shd,voxijk) ;
    for( kk=0 ; kk < ndset ; kk++ ){
-     nvals = shd->nvals[kk] ; sv = shd->sv[kk] ; svv = sv + voxind*nvals ;
+     nvals = shd->nvals[kk] ;
+     if( shd->datum == 1 ){ bv = shd->bv[kk] ; bvv = bv + voxind*nvals ; }
+     else                 { sv = shd->sv[kk] ; svv = sv + voxind*nvals ; }
      vv = seedvec[kk] ;
-     for( ii=0 ; ii < nvals ; ii++ ) vv[ii] = (float)svv[ii] ;
+     if( shd->datum == 1 )
+       for( ii=0 ; ii < nvals ; ii++ ) vv[ii] = (float)bvv[ii] ;
+     else
+       for( ii=0 ; ii < nvals ; ii++ ) vv[ii] = (float)svv[ii] ;
      if( nbhd != NULL ){  /* average in with nbhd */
        for( jj=1 ; jj < nbhd->num_pt ; jj++ ){
          xx = aa + nbhd->i[jj] ; if( xx < 0 || xx >= nx ) continue ;
@@ -362,8 +445,13 @@ void GRINCOR_load_seedvec( MRI_shindss *shd , MCW_cluster *nbhd ,
          qijk = THREE_TO_IJK(xx,yy,zz,nx,nxy) ;
          qind = IJK_TO_INDEX(shd,qijk) ;
          if( qind >= 0 ){
-           svv = sv + qind*nvals ;
-           for( ii=0 ; ii < nvals ; ii++ ) vv[ii] += (float)svv[ii] ;
+           if( shd->datum == 1 ){
+             bvv = bv + qind*nvals ;
+             for( ii=0 ; ii < nvals ; ii++ ) vv[ii] += (float)bvv[ii] ;
+           } else {
+             svv = sv + qind*nvals ;
+             for( ii=0 ; ii < nvals ; ii++ ) vv[ii] += (float)svv[ii] ;
+           }
          }
        }
      }
@@ -375,7 +463,7 @@ void GRINCOR_load_seedvec( MRI_shindss *shd , MCW_cluster *nbhd ,
 
 /*-----------------------------------------------------------------------------*/
 
-#define AFNI_NIML_PORT 53212            /* TCP/IP port that AFNI uses */
+#define AFNI_NIML_PORT   53212          /* TCP/IP port that AFNI uses */
 #define SUMA_GICORR_PORT 53224          /* TCP/IP port that SUMA uses */
 
 NI_stream GI_stream = (NI_stream)NULL ;
@@ -385,7 +473,7 @@ NI_stream GI_stream = (NI_stream)NULL ;
 void GI_exit(void)                   /* Function to be called to make sure */
 {                                    /* the AFNI data channel gets closed. */
    if( GI_stream != (NI_stream)NULL ){
-     fprintf(stderr,"** 3dGroupInCorr exits: closing socket to AFNI\n") ;
+     fprintf(stderr,"** 3dGroupInCorr exits: closing connection to AFNI\n") ;
      NI_stream_close(GI_stream) ;
    }
    return ;
@@ -426,7 +514,9 @@ int main( int argc , char *argv[] )
    char nsname[2048]  ; /* NIML socket name */
    NI_element *nelset ; /* NIML element with dataset to send to AFNI */
    NI_element *nelcmd ; /* NIML element with command from AFNI */
-   float *neldar , *nelzar ;
+   float *neldar          , *nelzar          ;
+   float *neldar_AAA=NULL , *nelzar_AAA=NULL ;
+   float *neldar_BBB=NULL , *nelzar_BBB=NULL ; int dosix=0 , nosix=0 ;
    char buf[1024] ;
    float seedrad=0.0f , dx,dy,dz , dmin ; int nx,ny,nz,nxy ;
    MCW_cluster *nbhd=NULL ;
@@ -434,7 +524,7 @@ int main( int argc , char *argv[] )
    int nvec , ndset_AAA=0,ndset_BBB=0 , *nvals_AAA=NULL,*nvals_BBB=NULL ;
    float **seedvec_AAA=NULL , **dotprod_AAA=NULL ;
    float **seedvec_BBB=NULL , **dotprod_BBB=NULL ;
-   int ctim,btim,atim , do_shm=1 , nsend=0 ;
+   int ctim,btim,atim , do_shm=2 , nsend=0 , shm_active=0 ;
 
    /*-- enlighten the ignorant and brutish sauvages? --*/
 
@@ -471,6 +561,11 @@ int main( int argc , char *argv[] )
       "   -- Actually, between the arctanh() of these maps (cf. RA Fisher).\n"
       " ++ The dataset returned to AFNI converts the t-statistic maps\n"
       "    to z-scores, for various reasons of convenience.\n"
+      "\n"
+      "* When the program starts up, it has to 'page fault' all the data\n"
+      "  into memory.  This can take up to a few minutes, if it is reading\n"
+      "  10 Gbytes of data from a slow disk.  After that, if your computer\n"
+      "  has enough RAM, then the program should run pretty quickly.\n"
 #ifdef USE_OMP
       "\n"
       "* One reason this program is a server (rather than being built in\n"
@@ -490,6 +585,8 @@ int main( int argc , char *argv[] )
       "  ++ This 'option' is mandatory (you have to input SOMETHING).\n"
       "  ++ Of course, 'AAA' should be replaced with the correct name of\n"
       "     your input dataset collection file!\n"
+      "  ++ 3dGroupInCorr can use byte-valued or short-valued data as\n"
+      "     produced by the '-byte' or '-short' options to 3dSetupGroupInCorr.\n"
       "\n"
       " -setB BBB.grpincorr.niml\n"
       "   = Give the setup file that describes the second dataset collection:\n"
@@ -522,8 +619,13 @@ int main( int argc , char *argv[] )
       "               must be the same, and the datasets must have been input to\n"
       "               3dSetupGroupInCorr in the same relative order when each\n"
       "               collection was created. (Duh.)\n"
-      "            ++ None of these 3 options means anything for a 1-sample t-test\n"
-      "               (i.e., where you don't use -setB).\n"
+      " -nosix    = For a 2-sample situation, the program by default computes\n"
+      "             not only the t-test for the difference between the samples,\n"
+      "             but also the individual (setA and setB) 1-sample t-tests, giving\n"
+      "             6 sub-bricks that are sent to AFNI/SUMA.  If you don't want\n"
+      "             these 4 extra 1-sample sub-bricks, use the '-nosix' option.\n"
+      "   ++ None of these 4 options means anything for a 1-sample t-test\n"
+      "      (i.e., where you don't use -setB).\n"
       "\n"
       "*** Other Options ***\n"
       " -seedrad r = Before performing the correlations, average the seed voxel time\n"
@@ -568,6 +670,7 @@ int main( int argc , char *argv[] )
       "\n"
       " -quiet = Turn off the informational messages\n"
       " -verb  = Print out extra informational messages\n"
+      " -debug = Do some internal testing (slows things down)\n"
      ) ;
      PRINT_AFNI_OMP_USAGE("3dGroupInCorr",NULL) ;
      PRINT_COMPILE_DATE ; exit(0) ;
@@ -597,9 +700,16 @@ int main( int argc , char *argv[] )
      if( strcmp(argv[nopt],"-VERB") == 0 ){
        verb += 2 ; nopt++ ; continue ;
      }
+     if( strcmp(argv[nopt],"-debug") == 0 ){
+       debug++ ; nopt++ ; continue ;
+     }
 
      if( strcmp(argv[nopt],"-suma") == 0 ){
        TalkToAfni = 0 ; nopt++ ; continue ;
+     }
+
+     if( strcasecmp(argv[nopt],"-nosix") == 0 ){
+       nosix = 1 ; nopt++ ; continue ;
      }
 
      if( strcasecmp(argv[nopt],"-seedrad") == 0 ){
@@ -671,9 +781,9 @@ int main( int argc , char *argv[] )
    ndset_AAA = shd_AAA->ndset ;
    nvals_AAA = shd_AAA->nvals ;
    if( shd_BBB != NULL ){
-     ndset_BBB = shd_BBB->ndset ; nvals_BBB = shd_BBB->nvals ;
+     ndset_BBB = shd_BBB->ndset ; nvals_BBB = shd_BBB->nvals ; dosix = !nosix ;
    } else {
-     ndset_BBB = 0 ; nvals_BBB = NULL ;
+     ndset_BBB = 0 ; nvals_BBB = NULL ; dosix = 0 ;
    }
 
    if( shd_BBB != NULL && shd_AAA->nvec != shd_BBB->nvec )
@@ -695,16 +805,32 @@ int main( int argc , char *argv[] )
       into RAM, which will make the correlation-izing process faster */
 
 #undef  BSTEP
-#define BSTEP 32768
-   { long long pp ; char *bv ; float sum=0.0f ;
+#define BSTEP 4096
+   { long long pp , vstep=9 ; char *qv ; float sum=0.0f ;
      if( verb ) INFO_message("page faulting data into memory") ;
-     bv = (char *)shd_AAA->sv[0] ;
-     for( pp=0 ; pp < shd_AAA->nbytes ; pp+=BSTEP,bv+=BSTEP ) sum += *bv ;
-     if( shd_BBB != NULL ){
-       bv = (char *)shd_BBB->sv[0] ;
-       for( pp=0 ; pp < shd_BBB->nbytes ; pp+=BSTEP,bv+=BSTEP ) sum += *bv ;
+     if( shd_AAA->datum == 1 ) qv = (char *)shd_AAA->bv[0] ;
+     else                      qv = (char *)shd_AAA->sv[0] ;
+     if( verb ){
+       vstep = (shd_AAA->nbytes / BSTEP) / 50 ; fprintf(stderr," + setA:") ;
      }
-     if( verb == 666 ) INFO_message(" data sum = %g",sum) ; /* never */
+     for( pp=0 ; pp < shd_AAA->nbytes ; pp+=BSTEP,qv+=BSTEP ){
+       sum += *qv ;
+       if( verb && (pp/BSTEP)%vstep == vstep-1 ) vstep_print() ;
+     }
+     if( verb ){ fprintf(stderr,"!\n") ; vstep_n = 0 ; }
+     if( shd_BBB != NULL ){
+       if( shd_BBB->datum == 1 ) qv = (char *)shd_BBB->bv[0] ;
+       else                      qv = (char *)shd_BBB->sv[0] ;
+       if( verb ){
+         vstep = (shd_BBB->nbytes / BSTEP) / 50 ; fprintf(stderr," + setB:") ;
+       }
+       for( pp=0 ; pp < shd_BBB->nbytes ; pp+=BSTEP,qv+=BSTEP ){
+         sum += *qv ;
+         if( verb && (pp/BSTEP)%vstep == vstep-1 ) vstep_print() ;
+       }
+       if( verb ){ fprintf(stderr,"!\n") ; vstep_n = 0 ; }
+     }
+     if( verb == 666 ) INFO_message(" data sum = %g",sum) ; /* e.g., never */
    }
 
    if( verb ){
@@ -726,6 +852,16 @@ int main( int argc , char *argv[] )
    nelzar = (float *)nelset->vec[1];  /* nelzar = Zscore sub-brick */
    if( neldar == NULL || nelzar == NULL )
      ERROR_exit("Can't setup output dataset?") ; /* should never happen */
+
+   if( dosix ){
+     NI_add_column( nelset, NI_FLOAT, NULL ); neldar_AAA = (float *)nelset->vec[2];
+     NI_add_column( nelset, NI_FLOAT, NULL ); nelzar_AAA = (float *)nelset->vec[3];
+     NI_add_column( nelset, NI_FLOAT, NULL ); neldar_BBB = (float *)nelset->vec[4];
+     NI_add_column( nelset, NI_FLOAT, NULL ); nelzar_BBB = (float *)nelset->vec[5];
+     if( neldar_AAA == NULL || nelzar_AAA == NULL ||
+         neldar_BBB == NULL || nelzar_BBB == NULL   )
+      ERROR_exit("Can't setup output dataset?") ; /* should never transpire */
+   }
 
    /*-- this stuff is one-time-only setup of the I/O to AFNI --*/
 
@@ -792,6 +928,7 @@ int main( int argc , char *argv[] )
 
    NI_set_attribute( nelcmd , "geometry_string", shd_AAA->geometry_string  ) ;
    NI_set_attribute( nelcmd , "target_name"    , "A_GRP_ICORR"             ) ;
+   NI_set_attribute( nelcmd , "target_nvals"   , dosix ? "6" : "2" ) ;
 
    if (shd_AAA->nnode[0] >= 0) {
       sprintf(buf,"%d, %d", shd_AAA->nnode[0], shd_AAA->nnode[1]);
@@ -801,7 +938,7 @@ int main( int argc , char *argv[] )
       sprintf(buf,"%d, %d", shd_AAA->ninmask[0], shd_AAA->ninmask[1]);
       NI_set_attribute( nelcmd , "LRpair_ninmask", buf);
    }
-   
+
    if( verb > 1 ) INFO_message("Sending setup information to AFNI") ;
    nn = NI_write_element( GI_stream , nelcmd , NI_BINARY_MODE ) ;
    if( nn < 0 ){
@@ -834,6 +971,17 @@ int main( int argc , char *argv[] )
      }
    }
 
+   if( verb ){
+     INFO_message("3dGroupInCorr stands ready to do thy bidding!") ;
+#ifdef USE_OMP
+#pragma omp parallel
+ {
+  if( omp_get_thread_num() == 0 )
+    ININFO_message("OpenMP thread count = %d",omp_get_num_threads()) ;
+ }
+#endif
+   }
+
    /** now wait for commands from AFNI */
 
    while(1){  /* loop forever? */
@@ -849,10 +997,9 @@ int main( int argc , char *argv[] )
          GI_stream = NI_stream_open( nsname , "w" ) ;
          kk = NI_stream_goodcheck( GI_stream , 3333 ) ; /* wait a little bit */
          if( kk == 1 ){
-           ININFO_message("TCP/IP reconnection succeeded :-)") ;
-           do_shm = 0 ;
+           ININFO_message("TCP/IP restart is good :-)") ; shm_active = 0 ;
          } else {
-           ININFO_message("Reconnection failed :-(") ;
+           ININFO_message("TCP/IP restart failed :-(") ;
            goto GetOutOfDodge ;  /* failed */
          }
        }
@@ -965,8 +1112,17 @@ int main( int argc , char *argv[] )
      }
 
      /* step 3: a lot of t-test-ification */
+
      GRINCOR_many_ttest( nvec , ndset_AAA , dotprod_AAA ,
                                 ndset_BBB , dotprod_BBB , neldar,nelzar ) ;
+
+     if( dosix ){
+       GRINCOR_many_ttest( nvec , ndset_AAA , dotprod_AAA ,
+                                  0         , NULL        , neldar_AAA,nelzar_AAA ) ;
+       GRINCOR_many_ttest( nvec , ndset_BBB , dotprod_BBB ,
+                                  0         , NULL        , neldar_BBB,nelzar_BBB ) ;
+     }
+
      if( verb > 2 ){
        ctim = NI_clock_time() ;
        ININFO_message(" finished t-test-izing: elapsed=%d ms",ctim-btim) ;
@@ -976,16 +1132,17 @@ int main( int argc , char *argv[] )
      /** re-attach to AFNI using shared memory? **/
 
 #ifndef DONT_USE_SHM
-     if( do_shm && strcmp(afnihost,"localhost") == 0 ){
-       int nmeg ; char nsnew[2048] ;
-       nmeg = 1 + (nvec * sizeof(float) * 2 + 2048)/(1024*1024) ;
-       sprintf( nsnew , "shm:GrpInCorr:%dM+10K" , nmeg ) ;
+     if( do_shm > 0 && strcmp(afnihost,"localhost") == 0 && !shm_active ){
+       char *nsnew = "shm:GrpInCorr:2M+10K" ;
        INFO_message("Reconnecting to AFNI with shared memory channel %s",nsnew) ;
-       NI_sleep(1) ;
        kk = NI_stream_reopen( GI_stream , nsnew ) ;
-       if( kk == 0 ) ININFO_message(" reconnection *FAILED* ???") ;
-       else          ININFO_message(" reconnection *ACTIVE* !!!") ;
-       do_shm = 0 ;
+       if( kk == 0 ){
+         ININFO_message(" SHM reconnection *FAILED* :-( ???") ;
+       }
+       else {
+         ININFO_message(" SHM reconnection *ACTIVE* :-) !!!") ; shm_active = 1;
+       }
+       do_shm-- ;
      }
 #endif
 
