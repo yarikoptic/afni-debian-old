@@ -1598,9 +1598,11 @@ extern void mri_metrics( MRI_IMAGE *, MRI_IMAGE *, float * ) ;
 #define GA_MATCH_PEARSON_LOCALS    11  /* experimental */
 #define GA_MATCH_PEARSON_LOCALA    12  /* experimental */
 
-#define GA_MATCH_NCDZLIB           13  /* very experimental */
+#define GA_MATCH_LPC_MICHO_SCALAR  13  /* experimental [24 Feb 2010] */
 
-#define GA_MATCH_METHNUM_SCALAR    13  /* Largest value in sequence above */
+#define GA_MATCH_NCDZLIB           14  /* very experimental */
+
+#define GA_MATCH_METHNUM_SCALAR    14  /* Largest value in sequence above */
 
  /* methods for smoothing images */
 
@@ -1653,6 +1655,8 @@ extern GA_BLOK_set * create_GA_BLOK_set( int   nx , int   ny , int   nz ,
 /** compute correlations in each blok **/
 
 extern floatvec * GA_pearson_vector( GA_BLOK_set *, float *, float *, float * );
+
+extern void GA_pearson_ignore_zero_voxels(int) ; /* 23 Feb 2010 */
 
 /******* end of BLOK-ization stuff here -- also see mri_genalign_util.c *******/
 
@@ -1761,6 +1765,7 @@ extern float mri_genalign_scalar_cost( GA_setup * , float *) ;
 extern void GA_set_outval( float ) ;
 extern float GA_get_outval(void) ;
 extern void GA_allow_ccount( int ) ; /* 22 Feb 2010 */
+extern void GA_setup_micho( double,double,double,double,double ) ; /* 24 Feb 2010 */
 
 /**------ these functions are now in mri_genalign_util.c [10 Dec 2008] ------**/
 
