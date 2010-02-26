@@ -104,7 +104,7 @@ static char *meth_username[NMETH] =    /* descriptive names */
     "Signed Pearson Correlation"            ,  /* hidden */
     "Local Pearson Correlation Signed"      ,  /* hidden */
     "Local Pearson Correlation Abs"         ,  /* hidden */
-    "Local Pearson Signed + Histogram"      ,  /* hidden */
+    "Local Pearson Signed + Others"         ,  /* hidden */
     "Normalized Compression Distance"     } ;  /* hidden */
 
 static char *meth_costfunctional[NMETH] =  /* describe cost functional */
@@ -301,9 +301,9 @@ int main( int argc , char *argv[] )
 "    if you know what you are doing (or just like to play around).\n"
 "\n"
 "====\n"
-"NOTE: If you want to align EPI volumes to a T1-weighted structural\n"
-"====  volume, the script align_epi_anat.py is recommended.  It will\n"
-"      use 3dAllineate in the recommended way for this type of problem.\n"
+"NOTE: For most 3D image registration purposes, we now recommend that you\n"
+"====  use Daniel Glen's script align_epi_anat.py (which, despite its name,\n"
+"      can do many more registration problems than EPI-to-T1-weighted).\n"
 " -->> In particular, using 3dAllineate with the 'lpc' cost functional\n"
 "      requires using a '-weight' volume to get good results, and the\n"
 "      align_epi_anat.py script will automagically generate such a\n"
@@ -312,10 +312,13 @@ int main( int argc , char *argv[] )
 "      as T1-weighted alignment between field strengths using the\n"
 "      '-lpa' cost functional.  Investigate align_epi_anat.py to\n"
 "      see if it will do what you need -- you might make your life\n"
-"      a little easier and nicer and happier.\n"
+"      a little easier and nicer and happier and more peaceful.\n"
+" -->> Also, if/when you ask for registration help on the AFNI\n"
+"      message board, we'll probably start by recommending that you\n"
+"      try align_epi_anat.py if you haven't already done so.\n"
 "\n"
-"OPTIONS:\n"
-"=======\n"
+"COMMAND LINE OPTIONS:\n"
+"====================\n"
 " -base bbb   = Set the base dataset to be the #0 sub-brick of 'bbb'.\n"
 "               If no -base option is given, then the base volume is\n"
 "               taken to be the #0 sub-brick of the source dataset.\n"
@@ -889,7 +892,7 @@ int main( int argc , char *argv[] )
         "===========================================================================\n"
         "                TOP SECRET HIDDEN OPTIONS (-HELP or -POMOC)\n"
         "---------------------------------------------------------------------------\n"
-        "                ** N.B.: Most of these are experimental! **\n"
+        "        ** N.B.: Most of these are experimental! [permanent beta] **\n"
         "===========================================================================\n"
         "\n"
         " -num_rtb n  = At the beginning of the fine pass, the best set of results\n"
@@ -1002,7 +1005,8 @@ int main( int argc , char *argv[] )
        printf("\n"
         "===========================================================================\n" );
        printf("\n"
-              " Hidden experimental cost functionals:\n") ;
+              "Hidden experimental cost functionals:\n"
+              "-------------------------------------\n" ) ;
        for( ii=0 ; ii < NMETH ; ii++ )
         if( !meth_visible[ii] )
           printf( "   %-4s *OR*  %-16s= %s\n" ,
@@ -1012,22 +1016,26 @@ int main( int argc , char *argv[] )
               "Notes for the new [Feb 2010] lpc+ cost functional:\n"
               "--------------------------------------------------\n"
               " * The cost functional named 'lpc+' is a combination of several others:\n"
-              "     lpc + hel*0.4 + crA*0.4 + nmi*0.2 + mi*0.2\n"
+              "     lpc + hel*%.1f + crA*%.1f + nmi*%.1f + mi*%.1f\n"
               " * The purpose of lpc+ is to avoid situations where the pure lpc cost\n"
               "   goes wild; this especially happens if '-source_automask' isn't used.\n"
               " * You can later the weighting of the extra functionals by giving the\n"
               "   option in the form (for example)\n"
-              "     '-lpc+hel*0.5+nmi*0+mi*0+crA*0.5'\n"
+              "     '-lpc+hel*0.5+nmi*0+mi*0+crA*1.0'\n"
               " * The quotes are needed to prevent the shell from wild-card expanding\n"
               "   the '*' character.\n"
               " * Notice the weight factors FOLLOW the name of the extra functionals.\n"
               "   ++ If you want a weight to be 0 or 1, you have to provide for that\n"
               "      explicitly -- if you leave a weight off, then it will get its\n"
-              "      default value (0.4 or 0.2).\n"
-              " * Only the 4 functionals listed here can be used with '-lpc+'.\n"
+              "      default value.\n"
+              "   ++ The order of the weight factor names is unimportant here:\n"
+              "        '-lpc+hel*0.5+nmi*0.8' == '-lpc+nmi*0.8+hel*0.5'\n"
+              " * Only the 4 functionals listed here (hel,crA,nmi,mi) can be used in '-lpc+'.\n"
               " * In addition, if you want the initial alignments to be with '-lpc+' and\n"
-              "   then do the Final alignment with pure '-lpc', you can indicate this\n"
+              "   then finish the Final alignment with pure '-lpc', you can indicate this\n"
               "   by putting 'ZZ' in the option string, as in '-lpc+ZZ'.\n"
+              " * This stuff should be considered really experimental at this moment!\n"
+             , micho_hel , micho_crA , micho_nmi , micho_mi
              ) ;
 
        printf("\n"
@@ -2765,9 +2773,9 @@ int main( int argc , char *argv[] )
 
    if( meth_code == GA_MATCH_LPC_MICHO_SCALAR ){
      if( verb )
-       INFO_message("-lpc+ parameters: hel=%.3f mi=%.3f nmi=%.3f crA=%.3f %s",
+       INFO_message("-lpc+ parameters: hel=%.2f mi=%.2f nmi=%.2f crA=%.2f %s",
                     micho_hel , micho_mi , micho_nmi , micho_crA ,
-                    micho_zfinal ? "[will be zeroed at Final iteration]" : "\0" ) ;
+                    micho_zfinal ? "[to be zeroed at Final iteration]" : "\0" ) ;
      GA_setup_micho( micho_hel , micho_mi , micho_nmi , micho_crA , 0.0 ) ;
    }
 
@@ -3738,7 +3746,7 @@ int main( int argc , char *argv[] )
          GA_setup_micho( 0.0 , 0.0 , 0.0 , 0.0 , 0.0 ) ;
          if( verb > 1 ) ININFO_message(" - Set lpc+ parameters back to pure lpc before Final") ;
        }
-       nfunc = mri_genalign_scalar_optim( &stup , 0.444f*rad, conv_rad,6666 );
+       nfunc = mri_genalign_scalar_optim( &stup , 0.666f*rad, conv_rad,6666 );
      }
 
      /*** if( powell_mm > 0.0f ) powell_set_mfac( 0.0f , 0.0f ) ; ***/
