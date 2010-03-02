@@ -1689,12 +1689,14 @@ typedef struct {
   int dim_bvec    ;
   int   nmask     ;
   int   nvox_mask ;
+  int   nbsmask   ;
   byte *bmask     ;
   MRI_IMAGE *bwght ;
 
   MRI_IMAGE *ajim , *ajims , *ajmask , *ajimor;
   float ajbot,ajtop , ajclip , aj_ubot,aj_usiz ;
-  int dim_avec , abdim ;
+  int dim_avec , abdim , najmask ;
+  int ajmask_ranfill ;
 
   int npt_match   ;            /* set by user */
   floatvec *im, *jm, *km , *bvm , *wvm ;
