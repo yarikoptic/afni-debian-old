@@ -1,4 +1,9 @@
 #------------------------------------------------------------------
+# Global Variables
+#------------------------------------------------------------------
+BATCH_MODE <<- 0  #Initialize batch mode flag to 0
+
+#------------------------------------------------------------------
 # Functions to deal with AFNI file names
 #------------------------------------------------------------------
 strip.extension <- function (filename, extvec=NULL, verb=0) {
@@ -78,7 +83,7 @@ parse.AFNI.name.selectors <- function(filename,verb=0) {
 }
 
 parse.AFNI.name <- function(filename, verb = 0) {
-  if (filename == 'self_test') { #Secret testing flag
+  if (filename == '-self_test') { #Secret testing flag
       note.AFNI('Function running in test mode');
       show.AFNI.name(parse.AFNI.name('DePath/hello.DePrefix', verb))
       show.AFNI.name(parse.AFNI.name('DePath/DePrefix+acpc', verb))
@@ -319,32 +324,47 @@ check.AFNI.args <- function ( ops, params = NULL) {
             opsvec <- ops[[i]];
             if (length(pp) == 1) { #exact number 
                if (length(opsvec) !=  pp) {
-                  warning(paste( 'Expecting ',pp, ' parameters for option "',
+                  msg <- paste( 'Expecting ',pp, ' parameters for option "',
                                  names(ops)[i], '".\n  Have ', 
                                  length(opsvec), ' parameter(s) in string "', 
                                  paste(opsvec, collapse = ' '),
-                                 '" instead.', sep = ''),
-                          immediate. = TRUE);
+                                 '" instead.', sep = '') 
+                  if (length(opsvec) > 0 && grep('^-[a-z,A-Z]', opsvec[1])) {
+                     msg <- paste( msg, '\n Also note that ', opsvec[1], 
+                                        ' is not a recognized option.',
+                                        collapse = '', sep = '' );  
+                  }
+                  err.AFNI(msg);
                   return(0);                  
                }
             } else if (length(pp) == 2) { #range
                if (length(opsvec) <  pp[1] || length(opsvec) >  pp[2]) {
                   if (pp[2] == Inf) {
-                     warning(paste( 'Expecting more than ',pp[1],  
+                     msg <- paste( 'Expecting more than ',pp[1],  
                                  ' parameters for option "',
                                  names(ops)[i], '".\n  Have ', 
                                  length(opsvec), ' parameter(s) in string "', 
                                  paste(opsvec, collapse = ' '),
-                                 '" instead.', sep = ''),
-                          immediate. = TRUE);
+                                 '" instead.', sep = '') 
+                     if (length(opsvec) > 0 && grep('^-[a-z,A-Z]', opsvec[1])) {
+                        msg <- paste( msg, '\n Also note that ', opsvec[1], 
+                                          ' is not a recognized option.',
+                                          collapse = '', sep = '' );  
+                     }
+                     err.AFNI(msg);
                   } else {
-                     warning(paste( 'Expecting ',pp[1], ' to ', pp[2], 
+                     msg <- paste( 'Expecting ',pp[1], ' to ', pp[2], 
                                  ' parameters for option "',
                                  names(ops)[i], '".\n  Have ', 
                                  length(opsvec), ' parameter(s) in string "', 
                                  paste(opsvec, collapse = ' '),
-                                 '" instead.', sep = ''),
-                          immediate. = TRUE);
+                                 '" instead.', sep = '');
+                     if (length(opsvec) > 0 && grep('^-[a-z,A-Z]', opsvec[1])) {
+                        msg <- paste( msg, '\n Also note that ', opsvec[1], 
+                                          ' is not a recognized option.',
+                                          collapse = '', sep = '' );  
+                     }
+                     err.AFNI(msg);
                   }
                   return(0);                  
                }
@@ -552,9 +572,11 @@ warn.AFNI <- function (str='Consider yourself warned',callstr=NULL,
    if (is.null(callstr)) callstr <- who.called.me()
    nnn<-''
    if (newline) nnn <- '\n'
+   if (BATCH_MODE) ff <- stderr()
+   else ff <- ''
    cat(  '\n', 'oo Warning from: ',  callstr,':\n   ', 
          paste(str, collapse=''), nnn, 
-       sep='');
+       sep='', file = ff);
 }
 
 err.AFNI <- function (str='Danger Danger Will Robinson',callstr=NULL, 
@@ -562,18 +584,22 @@ err.AFNI <- function (str='Danger Danger Will Robinson',callstr=NULL,
    if (is.null(callstr)) callstr <- who.called.me()
    nnn<-''
    if (newline) nnn <- '\n'
+   if (BATCH_MODE) ff <- stderr()
+   else ff <- ''
    cat(  '\n', '** Error from: ',  callstr,':\n   ', 
          paste(str, collapse=''), nnn, 
-       sep='');
+       sep='', file = ff);
 }
 
 note.AFNI <- function (str='May I speak frankly?',callstr=NULL, newline=TRUE) {
    if (is.null(callstr)) callstr <- who.called.me()
    nnn<-''
    if (newline) nnn <- '\n'
+   if (BATCH_MODE) ff <- stderr()
+   else ff <- ''
    cat(  '\n', '** Note from: ',  callstr,':\n   ', 
          paste(str, collapse=''),nnn, 
-       sep='');
+       sep='', file = ff);
 }
 
 errex.AFNI <- function (str='Alas this must end',callstr=NULL, newline=TRUE) {
@@ -700,73 +726,165 @@ as.char.vec <- function(ss) {
 #------------------------------------------------------------------
 #   Functions to read 1D and other tables
 #------------------------------------------------------------------
+read.AFNI.matrix.test <- function(verb=1) {
+      cat ( 'Running read.AFNI.matrix in test mode\n',
+            'See read.AFNI.matrix.test for details' )
+      i <- 0
+         mm <- paste ( 'subj age weight height\n',
+                       'joe   13  299  123   \n',
+                       'jane  22  600   234   \n',
+                       'jim   2   188   23\n',
+                      sep='', collapse='');
+         fouts <- sprintf('___fout%02d.1D', i);
+         cat (mm,file=fouts);
+         
+         comm <- 'read.AFNI.matrix(fouts, verb=verb)'
+         note.AFNI(sprintf("Working with fouts=%s:\n   %s", fouts, comm))
+         print(eval(parse(text=comm)))
+         
+         comm <- paste("read.AFNI.matrix(fouts, verb=verb,", 
+                                         "userrownames=c('jim','jane'))",
+                        sep='', collapse='')
+         note.AFNI(sprintf("Working with fouts=%s:\n   %s", fouts, comm))
+         print(eval(parse(text=comm)))
+         
+         comm <- paste("read.AFNI.matrix(fouts, verb=verb, ", 
+                                         "userrownames=c('jim','jane'),", 
+                                         "usercolnames=c('weight','age'))",
+                        sep='', collapse='')
+         print(eval(parse(text=comm)))
+         
+      i<- i+1
+         mm <- paste ( ' age weight height\n',
+                       ' 13  299  123   \n',
+                       ' 22  600   234   \n',
+                       ' 2   188   23\n',
+                      sep='', collapse='');
+         fouts <- sprintf('___fout%02d.1D', i);
+         cat (mm,file=fouts);
+         note.AFNI(sprintf("Working with %s", fouts))
+         
+         comm <- 'read.AFNI.matrix(fouts, verb=verb)'
+         note.AFNI(sprintf("Working with fouts=%s:\n   %s", fouts, comm))
+         print(eval(parse(text=comm)))
+         
+         comm <- paste("read.AFNI.matrix(fouts, verb=verb,", 
+                                   "usercolnames=c('height','weight,','age'))",
+                        sep='', collapse='')
+         note.AFNI(sprintf("Working with fouts=%s:\n   %s", fouts, comm))
+         print(eval(parse(text=comm)))
+         
+      i<- i+1
+         mm <- paste ( ' 13  299  123   \n',
+                       ' 22  600   234   \n',
+                       ' 2   188   23\n',
+                      sep='', collapse='');
+      
+         fouts <- sprintf('___fout%02d.1D', i);
+         cat (mm,file=fouts);
+         note.AFNI(sprintf("Working with %s", fouts))
+         print(read.AFNI.matrix(fouts, verb=verb))
+         print(read.AFNI.matrix(fouts, verb=verb, usercolnames=c('col02'), 
+                                 userrownames=c('row03','row01','row01')))
+                                 
+      i<- i+1
+         mm <- paste ( '  heft   \n',
+                       '  299    \n',
+                       '  600     \n',
+                       '  188     \n',
+                      sep='', collapse='');
+         fouts <- sprintf('___fout%02d.1D', i);
+         cat (mm,file=fouts);
+         note.AFNI(sprintf("Working with %s", fouts))
+         print(read.AFNI.matrix(fouts, verb=verb))
+         print(read.AFNI.matrix(fouts, verb=verb, usercolnames=c('heft')))
+         
+      i<- i+1
+         mm <- paste ( '  299    \n',
+                       '  600     \n',
+                       '  188     \n',
+                      sep='', collapse='');
+         fouts <- sprintf('___fout%02d.1D', i);
+         note.AFNI(sprintf("Working with %s", fouts))
+         cat (mm,file=fouts);
+         print(read.AFNI.matrix(fouts, verb=verb))
+         
+      for (j in 0:i) {   
+         system(sprintf('\\rm -f ___fout%02d.1D', i));
+      }
+}
 
 read.AFNI.matrix <- function (fname, 
                               usercolnames=NULL, 
                               userrownames=NULL,
                               verb = 0) {
+   if (fname == '-self_test') {
+      read.AFNI.matrix.test()
+      return(NULL);
+   }
+   if (verb) print(who.called.me())
+   
    ttt <- read.table(fname, colClasses='character');
    if ( tolower(ttt$V1[1]) == 'name' || 
         tolower(ttt$V1[1]) == 'subj' ) {
       subjCol <- ttt$V1[2:dim(ttt)[1]]; 
       covNames <- paste(ttt[1,2:dim(ttt)[2]]);
-      for (ii in 1:(dim(ttt)[2]-1)) { #Add one column at a time
-         if (ii==1) {
-            covMatrix <- cbind(
-               as.numeric(ttt[2:dim(ttt)[1],2:dim(ttt)[2]][[ii]]));
-         } else {
-            covMatrix <- cbind(covMatrix,
-               as.numeric(ttt[2:dim(ttt)[1],2:dim(ttt)[2]][[ii]]));
-         }
-      }
-      #make sure all names in userrownames are represented here
-      if (!is.null(userrownames)) {
-         dd <- userrownames[!(userrownames %in% subjCol)]
-         if (length(dd)) {
-            warning (paste('Subjects ', paste(dd,collapse=' '),
-                           ' do not a covariate entry.\n'),
-                     immediate.=TRUE);
-            return(NULL);
+      if (dim(ttt)[2]-1 == 1) {
+         covMatrix <- as.matrix(as.numeric(ttt[2:dim(ttt)[1],2]))
+      } else {
+         for (ii in 1:(dim(ttt)[2]-1)) { #Add one column at a time
+            if (ii==1) {
+               covMatrix <- cbind(
+                  as.numeric(ttt[2:dim(ttt)[1],2:dim(ttt)[2]][[ii]]));
+            } else {
+               covMatrix <- cbind(covMatrix,
+                  as.numeric(ttt[2:dim(ttt)[1],2:dim(ttt)[2]][[ii]]));
+            }
          }
       }
    }  else {
-      if (is.na(as.numeric(ttt$V1[1]))) { #Just labels
+      flg <- tryCatch({as.numeric(ttt$V1[1])}, warning=function(aa) {});
+      if (is.null(flg)) { #Just labels
          covNames <- paste(ttt[1,1:dim(ttt)[2]]);
+         subjCol <- paste('row',sprintf('%02d',c(1:(dim(ttt)[1]-1))), sep='')
          istrt<- 2
-      }else {
-         covNames <- paste('cov',c(1:dim(ttt)[2]),sep='');
+      }else {  #completely naked
+         covNames <- paste('col',sprintf('%02d',c(1:dim(ttt)[2])),sep='');
+         subjCol <- paste('row',sprintf('%02d',c(1:dim(ttt)[1])), sep='')
          istrt<- 1
       }
-      for (ii in 1:(dim(ttt)[2])) { #Add one column at a time
-         if (ii==1) {
-            covMatrix <- cbind(
-               as.numeric(ttt[istrt:dim(ttt)[1],1:dim(ttt)[2]][[ii]]));
-         } else {
-            covMatrix <- cbind(covMatrix,
-               as.numeric(ttt[istrt:dim(ttt)[1],1:dim(ttt)[2]][[ii]]));
+      if (dim(ttt)[2] == 1) {
+         covMatrix <- as.matrix(as.numeric(ttt[istrt:dim(ttt)[1],1]))
+      } else {
+         for (ii in 1:(dim(ttt)[2])) { #Add one column at a time
+            if (ii==1) {
+               covMatrix <- cbind(
+                  as.numeric(ttt[istrt:dim(ttt)[1],1:dim(ttt)[2]][[ii]]));
+            } else {
+               covMatrix <- cbind(covMatrix,
+                  as.numeric(ttt[istrt:dim(ttt)[1],1:dim(ttt)[2]][[ii]]));
+            }
          }
-      }
-      if (!is.null(userrownames)) {
-         if (dim(covMatrix)[1] != length(userrownames)) {
-            warning (paste('Have ', length(userrownames), ' subjects, ',
-                           'but ', dim(covMatrix)[1], ' covariate values.\n',
-                           'This does not float your boat\n', sep=''),
-                     immediate.=TRUE);
-            return(NULL);
-         } else {
-            warn.AFNI(paste(
-                     'Assuming covariate rows match this subject order\n',
-                     '   ', paste (userrownames,collapse=' '),sep=''));
-         }
-         subjCol <- userrownames
       }
    } 
+
+
+   if (verb>2) {
+      browser()
+   }
    rownames(covMatrix) <- subjCol;
    colnames(covMatrix) <- covNames;
-   #Now, to be safe, regenerate the covariates matrix based on
-   #the order of subjects as they occur in input, and make a data frame
-   #for 3dMEMA's liking
+   
+   #Now, reorder per user*names 
    if (!is.null(userrownames)) {
+      dd <- userrownames[!(userrownames %in% subjCol)]
+      if (length(dd)) {
+         warning (paste('Row(s) "', paste(dd,collapse=' '),
+                        '" do(es) not have an entry.\n'),
+                  immediate.=TRUE);
+         return(NULL);
+      }
+      
       for (ii in 1:1:length(userrownames)) {
          if (ii==1) {
             mm <- rbind(covMatrix[userrownames[ii],]);
@@ -775,18 +893,26 @@ read.AFNI.matrix <- function (fname,
          }
       }
       rownames(mm) <- userrownames
+      covMatrix <- mm
    }
-   covMatrix <- mm
-   if (is.null(usercolnames)) {
-      usercolnames <- colnames(covMatrix);
-   } else {
-      if (length(usercolnames) != length(colnames(covMatrix))) {
-         warning(paste( 'Mismatch between number of covariate names,\n',
-                        '  and number of columns in matrix'),
-                 immediate.=TRUE);
+   if (!is.null(usercolnames)) {
+      dd <- usercolnames[!(usercolnames %in% covNames)]
+      if (length(dd)) {
+         warning (paste('Column(s) "', paste(dd,collapse=' '),
+                        '" do(es) not have an entry.\n'),
+                  immediate.=TRUE);
          return(NULL);
       }
-      colnames(covMatrix) <- usercolnames
+      
+      for (ii in 1:1:length(usercolnames)) {
+         if (ii==1) {
+            mm <- cbind(covMatrix[,usercolnames[ii]]);
+         } else {
+            mm <- cbind(mm, covMatrix[,usercolnames[ii]]);
+         }
+      }
+      colnames(mm) <- usercolnames
+      covMatrix <- mm
    }
 
    return(covMatrix)

@@ -147,7 +147,7 @@ read.MEMA.opts.interactive <- function (verb = 0) {
       lop$bList <- vector('list', lop$nLevel)
       lop$tList <- vector('list', lop$nLevel)
       lop$varList <- vector('list', lop$nLevel)
-      print("Since the contrast between the 2 conditions will be the 1st minus the 2nd, choose")
+      print("Since the contrast between the 2 conditions will be the 2nd minus the 1st, choose")
       print("an appropriate order between the 2 conditions to get the desirable contrast.")
       lop$grpLab[[1]] <- readline("Label for the contrast? ")
       lop$nSubj[1] <- as.integer(readline("Number of subjects: "))
@@ -600,7 +600,7 @@ covariates centering, no payment no interest till Memorial Day next year:
             -HKtest         \\
             -model_outliers \\
             -residual_Z     \\
-            -covariates_file CovFile.txt \\
+            -covariates CovFile.txt \\
             -covariates_center age = 25 13 weight = 100 150  \\
             -covariates_model center=different slope=same   
    
@@ -1966,6 +1966,7 @@ tTop <- 100   # upper bound for t-statistic
    
    args = (commandArgs(TRUE))   
    if (!length(args)) {
+      BATCH_MODE <<- 0
       cat(greeting.MEMA(),
           reference.MEMA(),
       "Use CNTL-C on Unix or ESC on GUI version of R to stop at any moment.\n", 
@@ -1977,6 +1978,7 @@ tTop <- 100   # upper bound for t-statistic
          str(lop);
       }
    } else {
+      BATCH_MODE <<- 1
       if (is.null(lop <- read.MEMA.opts.batch(args, verb = 0))) {
          stop('Error parsing input');
       }
@@ -2037,7 +2039,8 @@ tTop <- 100   # upper bound for t-statistic
                                     # replace those 0 variances with a big number
          }
       }
-      contrBList <- mapply("-", lop$bList[[1]], lop$bList[[2]], SIMPLIFY = FALSE)
+      # 2nd minus 1st: keep consistent with 3dttset and the two-sample types 2 and 4
+      contrBList <- mapply("-", lop$bList[[2]], lop$bList[[1]], SIMPLIFY = FALSE)
       contrVarList <- mapply("+", lop$varList[[1]], lop$varList[[2]], 
                               SIMPLIFY = FALSE)
    }
@@ -2278,8 +2281,8 @@ tTop <- 100   # upper bound for t-statistic
    }
 
    #rm(comArr)
-   #outArr[outArr[1:(2*sum(lop$nSubj))]>tTop] <- tTop  # Avoid outflow!!!!
-   #outArr[outArr[1:(2*sum(lop$nSubj))] < (-tTop)] <- -tTop  # Avoid outflow!!!!
+   outArr[outArr[1:nBrick] > tTop] <- tTop  # Avoid outflow!!!!
+   outArr[outArr[1:nBrick] < (-tTop)] <- -tTop  # Avoid outflow!!!!
    if (lop$verb) cat ('outLabel', outLabel,'\n');
    write.AFNI(lop$outFN, outArr[,,,1:nBrick0], 
                   outLabel, note=lop$myNote, origin=lop$myOrig, 
