@@ -48,6 +48,19 @@
 
 afni_history_struct rickr_history[] = {
 
+ {  4, MAR, 2010, RCR, "GIFTI", MINOR, TYPE_MODIFY,
+   "minor changes (also see NITRC IDs 4619 and 4644)",
+   " - for integers, make default approx test to be equality\n"
+   " - small changes to zlib failure strings\n"
+   " - cast to avoid compile warning on some systems\n"
+   " - made NITRC gifti.dtd link that will not change"
+ } ,
+
+ {  3, MAR, 2010, RCR, "afni_proc.py", MICRO, TYPE_MODIFY,
+   "when censoring, create uncensored ideals and sum",
+   NULL
+ } ,
+
  { 20, FEB, 2010, RCR, "timing_tool.py", MINOR, TYPE_NEW_OPT,
    "added -timing_to_1D, -tr and -min_frac for PPI scripting (and B Benson)",
    NULL
