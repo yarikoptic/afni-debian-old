@@ -63,7 +63,8 @@ read.MEMA.opts.interactive <- function (verb = 0) {
    
    lop$nGrp <- as.integer(readline("Number of groups (1 or 2)? "))
 
-   lop$grpLab <- vector('list', lop$nGrp)
+   lop$grpName <- vector('list', lop$nGrp)
+   lop$testName <- vector('list', lop$nGrp)
    lop$nSubj <- vector('integer', lop$nGrp)
    lop$nFiles <- vector('integer', lop$nGrp) 
                         # number of input files for each group
@@ -87,12 +88,14 @@ read.MEMA.opts.interactive <- function (verb = 0) {
       for(ii in 1:lop$nGrp) {
 
   	      if(lop$nGrp==1) 
-            lop$grpLab[[ii]] <- readline("Label for the test? ") 
+            lop$grpName[[ii]] <- readline("Label for the test? ") 
          else 
-            lop$grpLab[[ii]] <- readline(sprintf("Label for group %i? ", ii))
-  	   
+            lop$grpName[[ii]] <- readline(sprintf("Label for group %i? ", ii))
+  	      
+         lop$testName[[ii]] <- lop$grpName[[ii]]
+
          lop$nSubj[ii] <- 
-            as.integer(readline(sprintf("Number of subjects in group %s (e.g., 12)? ", lop$grpLab[[ii]])))
+            as.integer(readline(sprintf("Number of subjects in group %s (e.g., 12)? ", lop$grpName[[ii]])))
   	      lop$nFiles[ii] <- 2*lop$nSubj[ii]
          lop$subjLab[[ii]] <- vector('list', lop$nSubj[ii])
   	      lop$bFN[[ii]] <- vector('integer', lop$nSubj[ii]) 
@@ -104,18 +107,18 @@ read.MEMA.opts.interactive <- function (verb = 0) {
          for(jj in 1:lop$nSubj[ii]) 
             lop$subjLab[[ii]][[jj]] <- 
                readline(sprintf("No. %i subject label in group %s: ", 
-                                 jj, lop$grpLab[[ii]]))
+                                 jj, lop$grpName[[ii]]))
       
          for(jj in 1:lop$nSubj[ii]) {
             lop$bFN[[ii]][[jj]] <- 
                readline(sprintf("No. %i subject (%s) file for beta or linear combination of betas in group %s: ",
                                 jj, lop$subjLab[[ii]][[jj]], 
-                                lop$grpLab[[ii]]))
+                                lop$grpName[[ii]]))
             # print("Now provide the corresponding t-statistic files in SAME subject order as beta files. Only one sub-brick input files are accepted!")
             lop$tFN[[ii]][[jj]] <- 
                readline(sprintf("No. %i subject (%s) file for the corresponding t-statistic in group %s: ", 
                                  jj, lop$subjLab[[ii]][[jj]], 
-                                 lop$grpLab[[ii]]))
+                                 lop$grpName[[ii]]))
             print("-----------------")
          }
          lop$bList[[ii]] <- lapply(lop$bFN[[ii]], read.AFNI); 
@@ -149,7 +152,9 @@ read.MEMA.opts.interactive <- function (verb = 0) {
       lop$varList <- vector('list', lop$nLevel)
       print("Since the contrast between the 2 conditions will be the 2nd minus the 1st, choose")
       print("an appropriate order between the 2 conditions to get the desirable contrast.")
-      lop$grpLab[[1]] <- readline("Label for the contrast? ")
+      lop$grpName[[1]] <- readline("Label for the contrast? ")
+      lop$testName[[1]] <- lop$grpName[[1]]
+
       lop$nSubj[1] <- as.integer(readline("Number of subjects: "))
       lop$nFiles[1] <- 2*lop$nSubj[1]  
                         # 2 because of 1 beta and 1 t-statistic
@@ -249,10 +254,12 @@ read.MEMA.opts.interactive <- function (verb = 0) {
       "Does this multi-column file have a header (0: no; 1: yes)? "))
          if(covHeader == 1) {
             #lop$covData <- read.table(lop$covFN, header=TRUE)
-            tmp <- read.table(lop$covFN, header=TRUE)
-            lop$covData <- cbind(tmp[,-1])
-            lop$covName <- colnames(tmp)[-1]
-            rm(tmp)
+            lop$covData <- read.AFNI.matrix(lop$covFN, userrownames=unlist(lop$subjLab))
+            lop$covName <- colnames(lop$covData)            
+            #tmp <- read.table(lop$covFN, header=TRUE)
+            #lop$covData <- cbind(tmp[,-1])
+            #lop$covName <- colnames(tmp)[-1]
+            #rm(tmp)
          } else {
             lop$covData <- read.table(lop$covFN, header=FALSE)
             if(lop$nCov!=dim(lop$covData)[2]) {
@@ -324,7 +331,7 @@ read.MEMA.opts.interactive <- function (verb = 0) {
                         as.numeric(readline(sprintf(
                 "Centering value for covariate no. %i (%s) in group %i (%s): ? ",
                                              jj, names(lop$covData)[jj], 
-                                             ii, lop$grpLab[[ii]])))
+                                             ii, lop$grpName[[ii]])))
                   }
                   covList[[ii]] <- t(apply(as.matrix(lop$covData[((ii-1)*lop$nSubj[1]+1):(lop$nSubj[1]+(ii-1)*lop$nSubj[2]),]), 1, "-", lop$centerVal))
                }
@@ -380,7 +387,7 @@ MEMA.parse.set <- function (lop, op) {
       return(NULL);
    }
    
-   #file vector names
+   #set name
    nn <- op[1];
    
    if (length(which(nn == names(lop$bFN)))) {
@@ -398,6 +405,7 @@ MEMA.parse.set <- function (lop, op) {
       lop$bFN[[nn]] <- append(lop$bFN[[nn]], op[ii]); ii<-ii+1;
       lop$tFN[[nn]] <- append(lop$tFN[[nn]], op[ii]); ii<-ii+1;
    }
+   
    return(lop);
 }
 
@@ -501,7 +509,7 @@ greeting.MEMA <- function ()
           ================== Welcome to 3dMEMA.R ==================          
              AFNI Mixed-Effects Meta-Analysis Modeling Package!
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-Version 0.1.5,  Feb. 5, 2010
+Version 0.1.6,  March 10, 2010
 Author: Gang Chen (gangchen@mail.nih.gov)
 Website - http://afni.nimh.nih.gov/sscc/gangc/MEMA.html
 SSCC/NIMH, National Institutes of Health, Bethesda MD 20892
@@ -532,7 +540,7 @@ Usage:
  both regression coefficients, or general linear contrasts among them, and the 
  corresponding t-statistics from each subject as input. It\'s required to install 
  R (http://www.r-project.org/), plus \'snow\' package if parallel computing is
- desirable. Version 0.1.5 (Feb. 5, 2010). See more details at
+ desirable. Version 0.1.6 (March 10, 2010). See more details at
  
  http://afni.nimh.nih.gov/sscc/gangc/MEMA.html'
    
@@ -806,7 +814,7 @@ read.MEMA.opts.batch <- function (args=NULL, verb = 0) {
    "    Example: If you had covariates age, and weight, you would use:\n",
    "           -covariates_center age = 78 55 weight = 165 198\n",
    "    If you want all covariates centered about their own mean, \n",
-   "    just use -covariate_center mean. Be alert: Default is no centering,\n",
+   "    just use -covariates_center mean. Be alert: Default is no centering,\n",
    "    which is NOT recommended unless you know what you're doing!!!\n"
                ) ),
                
@@ -855,8 +863,9 @@ read.MEMA.opts.batch <- function (args=NULL, verb = 0) {
       lop$homo <- 1
       lop$nLevel <- 0
       lop$test <- NULL
-      lop$grpLab <- 'G1'
+      lop$grpName <- 'G1'
       lop$conLab <- 'c1'
+      lop$testName <- NULL
       lop$nCov <- 0
       lop$covFN <- NULL
       lop$covMatrix <- NULL
@@ -875,7 +884,7 @@ read.MEMA.opts.batch <- function (args=NULL, verb = 0) {
       switch(opname,
              prefix = lop$outFN  <- prefix.AFNI.name(ops[[i]]),
              jobs   = lop$nNodes <- ops[[i]],
-             groups = lop$grpLab <- ops[[i]],
+             groups = lop$grpName <- ops[[i]],
              conditions = lop$conLab <- ops[[i]],
              set  = lop <- MEMA.parse.set(lop, ops[[i]]),
              n_nonzero = lop$nNonzero <- ops[[i]],
@@ -906,12 +915,12 @@ read.MEMA.opts.batch <- function (args=NULL, verb = 0) {
    }
 
    #No figure out some other variables 
-   lop$nGrp <- length(lop$grpLab)
+   lop$nGrp <- length(lop$grpName)
    lop$nSubj <- vector('numeric')
    for (ii in 1:lop$nGrp) {
       lop$nSubj <- c(lop$nSubj,length(lop$subjLab[[ii]]))
    } 
-   names(lop$nSubj) <- lop$grpLab
+   names(lop$nSubj) <- lop$grpName
    
    if (lop$nGrp != 1 && lop$nGrp != 2) {
      warning(paste('You must have either one or two groups'),
@@ -954,6 +963,34 @@ read.MEMA.opts.batch <- function (args=NULL, verb = 0) {
      return(NULL); 
    }
 
+   #Set the testnames
+   if (is.null(lop$testName)) {
+      if(lop$nGrp==1) {
+         if (lop$nLevel==1) {
+            lop$testName[[1]] <- names(lop$bFN)[1] 
+         } else {
+            lop$testName[[1]] <- 
+                     sprintf('%s-%s', names(lop$bFN)[2], names(lop$bFN)[1]) 
+         }
+      } else { 
+         lop$testName <- lop$grpName
+  	   }
+   }
+   #one more sanity test
+   if (lop$anaType==1 | lop$anaType==2 | lop$anaType==4) {
+      if (length(lop$testName) != length(lop$grpName)) {
+         err.AFNI(paste("Bad testName of ", paste(lop$testName, collapse=' '), 
+                  "for group", 
+                  paste(lop$grpName, collapse=' ')) );
+         return(NULL);
+      }
+   } else {
+      if (length(lop$testName) != 1) {
+         err.AFNI("Need only one string in testName");
+         return(NULL);
+      }
+   }
+   
    #Get a unique list of all subjects 
    allsubj <- AllSubj.MEMA (lop$subjLab)
    
@@ -1042,8 +1079,8 @@ process.MEMA.opts <- function (lop, verb = 0) {
    if (lop$nGrp < 1) lop$nGrp <- 1
    
    if(lop$anaType==1 | lop$anaType==2 | lop$anaType==4) {
-      if (length(lop$grpLab) != lop$nGrp) {
-         stop ('bad length for grpLab');
+      if (length(lop$grpName) != lop$nGrp) {
+         stop ('bad length for grpName');
       }
       if (length(lop$nSubj) != lop$nGrp) {
          stop ('bad length for nSubj');
@@ -1122,7 +1159,7 @@ process.MEMA.opts <- function (lop, verb = 0) {
       lop$varList <- vector('list', lop$nLevel)
 
       if (verb) {
-         cat ('Have grp Lab:', lop$grpLab[[1]],'\n');
+         cat ('Have grp Name:', lop$grpName[[1]],'\n');
          cat ('Have nSubj:', lop$nSubj[1],'\n');
       }
       lop$nFiles[1] <- 2*lop$nSubj[1]  
@@ -1975,9 +2012,13 @@ tTop <- 100   # upper bound for t-statistic
 
 #options(show.error.messages = FALSE)  # suppress error message when running with single processor
 
-   
-   args = (commandArgs(TRUE))  
-   #save(args, file="junk.txt", ascii = TRUE) 
+   if (!exists('.DBG_args')) { 
+      args = (commandArgs(TRUE))  
+      save(args, file=".3dMEMA.dbg.AFNI.args", ascii = TRUE) 
+   } else {
+      note.AFNI("Using .DBG_args resident in workspace");
+      args <- .DBG_args
+   }
    if (!length(args)) {
       BATCH_MODE <<- 0
       cat(greeting.MEMA(),
@@ -1991,7 +2032,11 @@ tTop <- 100   # upper bound for t-statistic
          str(lop);
       }
    } else {
-      BATCH_MODE <<- 1
+      if (!exists('.DBG_args')) {
+         BATCH_MODE <<- 1
+      } else {
+         BATCH_MODE <<- 0
+      }  
       if (is.null(lop <- read.MEMA.opts.batch(args, verb = 0))) {
          stop('Error parsing input');
       }
@@ -2193,26 +2238,26 @@ tTop <- 100   # upper bound for t-statistic
    print("#++++++++++++++++++++++++++++++++++++++++++++")
 
    for(ii in 1:lop$nGrp) {
-      if(ii==1) outLabel <- paste(sprintf("%s:b", lop$grpLab[[ii]])) else
-         outLabel <- append(outLabel, sprintf("%s:b", lop$grpLab[[ii]]))
-      outLabel <- append(outLabel, sprintf("%s:t", lop$grpLab[[ii]]))    
+      if(ii==1) outLabel <- paste(sprintf("%s:b", lop$testName[[ii]])) else
+         outLabel <- append(outLabel, sprintf("%s:b", lop$testName[[ii]]))
+      outLabel <- append(outLabel, sprintf("%s:t", lop$testName[[ii]]))    
       #if(lop$KHtest) {
-      #   outLabel <- append(outLabel, sprintf("%s:t", lop$grpLab[[ii]])) 
+      #   outLabel <- append(outLabel, sprintf("%s:t", lop$testName[[ii]])) 
       #} else {
-      #  outLabel <- append(outLabel, sprintf("%s:Z", lop$grpLab[[ii]]))
+      #  outLabel <- append(outLabel, sprintf("%s:Z", lop$testName[[ii]]))
       #}
    }
    if (lop$nGrp==2) {
       outLabel <- append(outLabel, sprintf("%s-%s:b", 
-                         lop$grpLab[[2]],lop$grpLab[[1]]))
-      outLabel <- append(outLabel, sprintf("%s-%s:t", lop$grpLab[[2]],
-                         lop$grpLab[[1]]))
+                         lop$testName[[2]],lop$testName[[1]]))
+      outLabel <- append(outLabel, sprintf("%s-%s:t", lop$testName[[2]],
+                         lop$testName[[1]]))
       #if(lop$KHtest) {
       #   outLabel <- append(outLabel, sprintf("%s-%s:t", 
-      #                      lop$grpLab[[2]],lop$grpLab[[1]])) 
+      #                      lop$testName[[2]],lop$testName[[1]])) 
       #} else {
       #   outLabel <- append(outLabel, sprintf("%s-%s:Z", 
-      #                      lop$grpLab[[2]],lop$grpLab[[1]]))
+      #                      lop$testName[[2]],lop$testName[[1]]))
       #}
    } # if (lop$nGrp==2)
    
@@ -2228,8 +2273,8 @@ tTop <- 100   # upper bound for t-statistic
    
    if(lop$anaType==4) {
       for(ii in 1:lop$nGrp) {
-         outLabel <- append(outLabel, sprintf("%s:tau^2", lop$grpLab[[ii]]))
-         outLabel <- append(outLabel, sprintf("%s:QE", lop$grpLab[[ii]]))
+         outLabel <- append(outLabel, sprintf("%s:tau^2", lop$testName[[ii]]))
+         outLabel <- append(outLabel, sprintf("%s:QE", lop$testName[[ii]]))
       }
       outLabel <- append(outLabel, "tau1^2>tau2^2")
       outLabel <- append(outLabel, "tau2^2>tau1^2")
