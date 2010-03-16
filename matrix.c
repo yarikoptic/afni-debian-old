@@ -199,7 +199,7 @@ void matrix_destroy (matrix *m)
 
 */
 
-void matrix_create (int rows, int cols, matrix * m)
+void matrix_create (int rows, int cols, matrix *m)
 {
   register int i ;
 
@@ -534,6 +534,33 @@ void matrix_extract_rows (matrix a, int p, int * list, matrix * b)
       b->elts[i][j] = a.elts[list[i]][j];
 }
 
+/*---------------------------------------------------------------------------*/
+/*! Return value is number of rows deleted.
+    If this is zero, the output matrix *b is not created.
+    If the output matrix would have no rows
+      (return value == number of rows input), then *b is also not created.
+*//*-------------------------------------------------------------------------*/
+
+int matrix_delete_allzero_rows( matrix a , matrix *b )
+{
+   int ii , jj , rows , cols , np=0 , *lp ;
+
+   rows = a.rows ;
+   cols = a.cols ; if( rows < 1 || cols < 1 || b == NULL ) return 0 ;
+
+   /* make list of rows to keep */
+
+   lp = (int *)malloc(sizeof(int)*rows) ;
+   for( ii=0 ; ii < rows ; ii++ ){
+     for( jj=0 ; jj < cols && a.elts[ii][jj] == 0.0 ; jj++ ) ; /*nada*/
+     if( jj < cols ) lp[np++] = ii ;
+   }
+
+   if( np > 0 && np < rows )
+     matrix_extract_rows( a , np , lp , b ) ;
+
+   free(lp) ; return (rows-np) ;
+}
 
 /*---------------------------------------------------------------------------*/
 /*!
@@ -1835,6 +1862,11 @@ int matrix_collinearity_fixup( matrix X , matrix *Xa )
 #endif
 
 /*---------------------------------------------------------------------------*/
+
+static int allow_desing = 0 ;
+void matrix_allow_desing( int ii ){ allow_desing = ii ; }
+
+/*---------------------------------------------------------------------------*/
 /*! Given MxN matrix X, compute the NxN upper triangle factor R in X = QR.
     Must have M >= N (more rows than columns).
     Q is not computed.  If you want Q, then compute it as [Q] = [X] * inv[R].
@@ -1844,7 +1876,7 @@ int matrix_collinearity_fixup( matrix X , matrix *Xa )
 
 int matrix_qrr( matrix X , matrix *R )
 {
-   int m=X.rows , n=X.cols , ii,jj,kk , m1=m-1 ;
+   int m=X.rows , n=X.cols , ii,jj,kk , m1=m-1 , nsing=0 ;
    double *amat , x1 ;
    register double alp, sum , *uvec, *Ak;
 
@@ -1860,6 +1892,9 @@ int matrix_qrr( matrix X , matrix *R )
 
    for( ii=0 ; ii < m ; ii++ )
      for( jj=0 ; jj < n ; jj++ ) A(ii,jj) = X.elts[ii][jj] ;
+
+   if( allow_desing )
+     nsing = svd_desingularize( m , n , amat ) ;  /* Ides of March, 2010 */
 
    /* Householder transform each column of A in turn */
 
@@ -1924,7 +1959,7 @@ fprintf(stderr,"\n") ;
 #endif
 
    free((void *)uvec) ; free((void *)amat) ;
-   return (0) ;
+   return (nsing) ;
 }
 
 /*----------------- below is a test program for matrix_qrr() -----------------*/
@@ -2072,3 +2107,57 @@ void matrix_rrtran_solve( matrix R , matrix B , matrix *X )
    }
    vector_destroy(&v) ; vector_destroy(&u) ; return ;
 }
+
+/*---------------------------------------------------------------------------*/
+/* not current used anywhere */
+
+#if 0
+int matrix_desingularize( matrix X )
+{
+   int m = X.rows , n = X.cols , ii,jj , nfix ;
+   double *amat , *xfac , sum ;
+
+   if( m < 1 || n < 1 ) return -1 ;
+
+   amat = (double *)calloc( sizeof(double),m*n ) ;  /* input matrix */
+   xfac = (double *)calloc( sizeof(double),n   ) ;  /* column norms of [a] */
+
+#undef  A
+#define A(i,j) amat[(i)+(j)*m]
+
+   /* copy input matrix into amat */
+
+   for( ii=0 ; ii < m ; ii++ )
+     for( jj=0 ; jj < n ; jj++ ) A(ii,jj) = X.elts[ii][jj] ;
+
+   /* scale each column to have norm 1 */
+
+   for( jj=0 ; jj < n ; jj++ ){
+#if 0
+     sum = 0.0 ;
+     for( ii=0 ; ii < m ; ii++ ) sum += A(ii,jj)*A(ii,jj) ;
+     if( sum > 0.0 ){
+       xfac[jj] = sqrt(sum) ;
+       sum      = 1.0 / sum ;
+       for( ii=0 ; ii < m ; ii++ ) A(ii,jj) *= sum ;
+     } else {
+       xfac[jj] = 1.0 ;
+     }
+#else
+     xfac[jj] = 1.0 ;
+#endif
+   }
+
+   nfix = svd_desingularize( m , n , amat ) ;
+
+   if( nfix > 0 ){ /* put fixed values back in place */
+     for( ii=0 ; ii < m ; ii++ ){
+       for( jj=0 ; jj < n ; jj++ ){
+         X.elts[ii][jj] = A(ii,jj) * xfac[jj] ;
+       }
+     }
+   }
+
+   free(xfac) ; free(amat) ; return nfix ;
+}
+#endif

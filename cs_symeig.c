@@ -1027,3 +1027,97 @@ double pca_fast3 (float *data_mat, int num_rows, int be_quiet, double *pca_mat, 
    return(atrace);
 
 }
+
+/*---------------------------------------------------------------------------*/
+
+#undef A
+#undef U
+#undef V
+#undef pseps
+
+#define A(i,j) aa[(i)+(j)*m]
+#define U(i,j) uu[(i)+(j)*m]
+#define V(i,j) vv[(i)+(j)*n]
+#define pseps  5.e-7
+
+#undef  DSDBUG
+
+int svd_desingularize( int m , int n , double *aa )
+{
+   double *uu , *vv , *ww , sum , smax ;
+   int i,j,k , nfix ;
+
+   if( aa == NULL || m < 1 || n < 1 ) return -1 ;
+
+   ww  = (double *)malloc(sizeof(double)*n) ;
+   uu  = (double *)malloc(sizeof(double)*m*n) ;
+   vv  = (double *)malloc(sizeof(double)*n*n) ;
+
+   svd_double( m , n , aa , ww , uu , vv ) ;
+
+   /* fix singular values */
+
+   smax = ww[0] ;
+   for( i=1 ; i < n ; i++ ) if( ww[i] > smax ) smax = ww[i] ;
+   if( smax < 0.0 ){  /* should not happen */
+     free(vv) ; free(uu) ; free(ww) ; return -1 ;
+   } else if( smax == 0.0 ){ /* only if input is all zero */
+     smax = 1.0 ;
+   }
+
+#ifdef DSDBUG
+fprintf(stderr,"============= Desingularization ==============\n") ;
+fprintf(stderr,"ww before =") ;
+for( i=0 ; i < n ; i++ ) fprintf(stderr," %g",ww[i]) ;
+fprintf(stderr,"\n") ;
+#endif
+
+   smax = pseps * smax ;
+   for( nfix=i=0 ; i < n ; i++ ){
+          if( ww[i] < 0.0      ){ ww[i] = smax ;                      nfix++; }
+     else if( ww[i] < 2.0*smax ){ ww[i] = smax+0.25*ww[i]*ww[i]/smax; nfix++; }
+   }
+
+#ifdef DSDBUG
+fprintf(stderr,"ww after  =") ;
+for( i=0 ; i < n ; i++ ) fprintf(stderr," %g",ww[i]) ;
+fprintf(stderr,"\n") ;
+#endif
+
+   if( nfix == 0 ){  /* no fix needed */
+#ifdef DSDBUG
+fprintf(stderr,".......... no desingularization needed ..........\n") ;
+#endif
+     free(vv) ; free(uu) ; free(ww) ; return 0 ;
+   }
+
+#ifdef DSDBUG
+fprintf(stderr,"U\n") ;
+for( i=0 ; i < m ; i++ ){
+  for( j=0 ; j < n ; j++ ) fprintf(stderr," %g",U(i,j)) ;
+  fprintf(stderr,"\n") ;
+}
+fprintf(stderr,"V\n") ;
+for( i=0 ; i < n ; i++ ){
+  for( j=0 ; j < n ; j++ ) fprintf(stderr," %g",V(i,j)) ;
+  fprintf(stderr,"\n") ;
+}
+#endif
+
+   /* otherwise, recompute [a] matrix from fixed SVD */
+
+   for( j=0 ; j < n ; j++ ){
+     for( i=0 ; i < m ; i++ ){
+       sum = 0.0 ;
+       for( k=0 ; k < n ; k++ ) sum += U(i,k)*V(j,k)*ww[k] ;
+#ifdef DSDBUG
+fprintf(stderr,"A(%d,%d): %g -> %g\n",i,j,A(i,j),sum) ;
+#endif
+       A(i,j) = sum ;
+   }}
+#ifdef DSDBUG
+fprintf(stderr,"............ end desingularization ..............\n") ;
+#endif
+
+   free(vv) ; free(uu) ; free(ww) ; return nfix ;
+}

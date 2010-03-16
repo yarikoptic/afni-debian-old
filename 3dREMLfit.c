@@ -33,7 +33,6 @@ static int goforit=0 ;
 # define MEMORY_CHECK /*nada*/
 #endif
 
-#undef PATCHX
 #undef REML_DEBUG
 
 /*---------------------------------------------------------------------------*/
@@ -194,10 +193,11 @@ void check_dataset( THD_3dim_dataset *dset )
    int nn ; static int first=1 ;
    nn = dset_floatscan( dset ) ;
    if( nn > 0 ){
-     WARNING_message("Zero-ed %d float errors in dataset %s",DSET_BRIKNAME(dset));
+     WARNING_message("Zero-ed %d float error%s in dataset %s" ,
+                     nn , (nn==1) ? "\0" : "s" , DSET_BRIKNAME(dset) ) ;
      if( first ){
-       ININFO_message(" Float errors include NaN and Infinity values") ;
-       ININFO_message(" ==> Check matrix setup! Check inputs! Check results!") ;
+       ININFO_message("   Float errors include NaN and Infinity values") ;
+       ININFO_message("   ==> Check matrix setup! Check inputs! Check results!") ;
        first = 0 ;
      }
    }
@@ -547,6 +547,11 @@ int main( int argc , char *argv[] )
    char **eglt_sym = NULL ;
    int    oglt_num = 0    ;   /* number of 'original' GLTs */
 
+   int polort = 0 ;           /* 11 Mar 2010 */
+   MRI_IMAGE *matim = NULL ;
+
+   int nallz = 0 ; int *allz = NULL ;  /* 15 Mar 2010 */
+
    /**------- Get by with a little help from your friends? -------**/
 
    Argc = argc ; Argv = argv ;
@@ -591,8 +596,7 @@ int main( int argc , char *argv[] )
       "\n"
       " -matrix mmm = Read the matrix 'mmm', which should have been\n"
       "                 output from 3dDeconvolve via the '-x1D' option.\n"
-      "            *** N.B.: 3dREMLfit will NOT work with all zero columns,\n"
-      "                       unlike 3dDeconvolve!!!\n"
+      "\n"
       "             ** N.B.: Actually, you can omit the '-matrix' option, but\n"
       "                       then the program will fabricate a matrix consisting\n"
       "                       of a single column with all 1s.  This option is\n"
@@ -601,11 +605,33 @@ int main( int argc , char *argv[] )
       "                 1deval -num 1001 -expr 'gran(0,1)+(i-i)+0.7*z' > g07.1D\n"
       "                 3dREMLfit -input g07.1D'{1..$}'\' -Rvar -.1D -grid 5 -MAXa 0.9\n"
       "\n"
-      " -mask kkk   = Read dataset 'kkk' as a mask for the input.\n"
+      "             ** N.B.: 3dREMLfit now supports all zero columns, if you use\n"
+      "                        the '-GOFORIT' option. [Ides of March, MMX A.D.]\n"
+     ) ;
+
+     if( AFNI_yesenv("AFNI_POMOC") )
+     printf(
+      "\n"
+      " SECRET ALTERNATIVE WAYS TO DEFINE THE MATRIX\n"
+      " --------------------------------------------\n"
+      " -polort P = If no -matrix option is given, AND no -matim option,\n"
+      "               create a matrix with Legendre polynomial regressors\n"
+      "               up to order 'P'.  The default value is P=0, which\n"
+      "               produces a matrix with a single column of all ones.\n"
+      " -matim M  = Read a standard .1D file as the matrix.\n"
+      "           ** N.B.: You can only use 'Col' as a name in GLTs\n"
+      "                      with these nonstandard matrix input methods.\n"
+      " -----------------------------------------------------------------\n"
+     ) ;
+
+     printf(
+      "\n"
+      " -mask kkk   = Read dataset 'kkk' as a mask for the input; voxels outside\n"
+      "                 the mask will not be fit by the regression model.\n"
       " -automask   = If you don't know what this does by now, I'm not telling.\n"
       "            *** If you don't specify ANY mask, the program will\n"
       "                 build one automatically (from each voxel's RMS)\n"
-      "                 and use this mask solely for the purpose of\n"
+      "                 and use this mask SOLELY for the purpose of\n"
       "                 computing the FDR curves in the bucket dataset's header.\n"
       "              * If you DON'T want this to happen, then use '-noFDR'\n"
       "                 and later run '3drefit -addFDR' on the bucket dataset.\n"
@@ -951,6 +977,10 @@ int main( int argc , char *argv[] )
       "                program to continue past such a failed collinearity\n"
       "                check, but you must check your results to see if they\n"
       "                make sense!\n"
+      "              ** '-GOFORIT' is required if there are all zero columns\n"
+      "                   in the regression matrix.  However, at this time\n"
+      "                   [15 Mar 2010], the all zero columns CANNOT come from\n"
+      "                   the '-slibase' inputs.\n"
       "\n"
       "---------------------\n"
       "Miscellaneous Options\n"
@@ -1097,18 +1127,10 @@ int main( int argc , char *argv[] )
       "    or '-slibase') is rank-deficient (e.g., has collinear columns),\n"
       "    then the program will print a message something like\n"
       "      ** ERROR: X matrix has 1 tiny singular value -- collinearity\n"
-#ifndef PATCHX
-      "    At this time, the program will NOT continue past this type of error.\n"
-#else
-      "    The program will still produce a solution.  However, since\n"
-      "    3dREMLfit uses a different linear algebra approach than\n"
-      "    3dDeconvolve for solving the equations, the solution for the\n"
-      "    beta-weights involved in the collinearity will probably differ\n"
-      "    from what 3dDeconvolve would produce in such a situation.\n"
-      "    If you receive such a warning, you should examine your results\n"
+      "    The program will NOT continue past this type of error, unless\n"
+      "    the '-GOFORIT' option is used.  You should examine your results\n"
       "    carefully to make sure they are reasonable (e.g., look at\n"
       "    the fitted model overlay on the input time series).\n"
-#endif
       "* Despite my best efforts, this program is somewhat slow.\n"
       "    Partly because it solves many linear systems for each voxel,\n"
       "    trying to find the 'best' ARMA(1,1) pre-whitening matrix.\n"
@@ -1122,12 +1144,10 @@ int main( int argc , char *argv[] )
       "-----------------------------------------------------------\n"
       "To Dream the Impossible Dream, to Write the Uncodeable Code\n"
       "-----------------------------------------------------------\n"
-      "* Add a -jobs option to use multiple CPUs (or multiple Steves?).\n"
-      "* Add options for -iresp/-sresp for -stim_times?\n"
-      "* Output variance estimates for the betas, to be carried to the\n"
-      "    inter-subject (group) analysis level?\n"
+      "* Add options for -iresp/-sresp for -stim_times.\n"
       "* Prevent Daniel Glen from referring to this program as 3dARMAgeddon.\n"
-      "* Establish incontrovertibly the nature of quantum mechanical observation!\n"
+      "* Establish incontrovertibly the nature of quantum mechanical observation.\n"
+      "* Create an iPad version of the AFNI software suite.\n"
       "\n"
       "----------------------------------------------------------\n"
       "* For more information, see the contents of\n"
@@ -1144,15 +1164,16 @@ int main( int argc , char *argv[] )
       , corcut
      ) ;
      PRINT_AFNI_OMP_USAGE("3dREMLfit",
-         "* The REML matrix setup and REML voxel ARMA(1,1) estimation loops are\n"
-         "   parallelized.\n"
-         "* The GLSQ and OLSQ loops are not parallelized. They are usually much\n"
-         "   faster than the REML voxel loop, and so I made no effort to speed\n"
-         "   these up (yet).\n"
-         "* '-usetemp' disables OpenMP multi-CPU usage, since the file I/O for\n"
-         "   saving and restoring various matrices and results is not easily\n"
-         "   parallelized.\n"
-       ) ;
+       "* The REML matrix setup and REML voxel ARMA(1,1) estimation loops are\n"
+       "   parallelized, across (a,b) parameter sets and across voxels, respectively.\n"
+       "* The GLSQ and OLSQ loops are not parallelized. They are usually much\n"
+       "   faster than the REML voxel loop, and so I made no effort to speed\n"
+       "   these up (now and forever).\n"
+       "* '-usetemp' disables OpenMP multi-CPU usage, since the file I/O for\n"
+       "   saving and restoring various matrices and results is not easily\n"
+       "   parallelized.  To get OpenMP speedup for large problems (just where\n"
+       "   you want it), you'll need a lot of RAM.\n"
+     ) ;
      PRINT_COMPILE_DATE ; exit(0) ;
    }
 
@@ -1392,7 +1413,24 @@ int main( int argc , char *argv[] )
        nelmat = NI_read_element_fromfile( argv[iarg] ) ; /* read NIML file */
        matname = argv[iarg];
        if( nelmat == NULL || nelmat->type != NI_ELEMENT_TYPE )
-         ERROR_exit("Can't process -matrix file!?") ;
+         ERROR_exit("Can't process -matrix file '%s'!?",matname) ;
+       iarg++ ; continue ;
+     }
+
+      /**==========   -polort P [undocumented] ===========**/
+
+     if( strcasecmp(argv[iarg],"-polort") == 0 ){
+       if( ++iarg >= argc ) ERROR_exit("Need argument after '%s'",argv[iarg-1]) ;
+       polort = (int)strtod(argv[iarg],NULL) ;
+       iarg++ ; continue ;
+     }
+
+      /**==========   -matim M [undocumented] ===========**/
+
+     if( strcasecmp(argv[iarg],"-matim") == 0 ){
+       if( ++iarg >= argc ) ERROR_exit("Need argument after '%s'",argv[iarg-1]) ;
+       matim = mri_read_1D(argv[iarg]) ;
+       if( matim == NULL ) ERROR_exit("-matim fails to read file?!") ;
        iarg++ ; continue ;
      }
 
@@ -1480,6 +1518,14 @@ int main( int argc , char *argv[] )
      ERROR_exit("Unknown option '%.33s'",argv[iarg]) ;
    }
 
+   /*------ The Ides of March 2010 ------*/
+
+   if( goforit ){
+     matrix_allow_desing(1) ;
+     if( verb > 1 )
+       INFO_message("GOFORIT ==> Enabling matrix desingularization") ;
+   }
+
 STATUS("options done") ;
 
    /**--------------- sanity checks, dataset input, maskifying --------------**/
@@ -1506,7 +1552,8 @@ STATUS("options done") ;
        WARNING_message("-usetemp disables OpenMP multi-CPU usage") ;
      } else if( nvox < 999 ){
        maxthr = 1 ;
-       WARNING_message("only %d voxels: disables OpenMP multi-CPU usage",nvox) ;
+       WARNING_message("only %d voxels: disables OpenMP multi-CPU usage in voxel loop",
+                       nvox) ;
      }
    }
 #if 0
@@ -1524,14 +1571,50 @@ STATUS("options done") ;
 #else
    if( nelmat == NULL ){  /* make up a matrix [14 Apr 2009] */
      char *str = NULL ; NI_stream ns ;
-     WARNING_message(
-       "No -matrix file! Making up a matrix with one column of %d 1s",nvals) ;
-     str = THD_zzprintf(str,
-                        "str:<matrix ni_type='double' ni_dimen='%d'\n"
-                        "            NRowFull='%d' GoodList='0..%d' >\n",
-                        nvals , nvals , nvals-1 ) ;
-     for( ii=0 ; ii < nvals ; ii++ ) str = THD_zzprintf(str," 1\n") ;
-     str = THD_zzprintf(str,"</matrix>\n") ;
+
+     if( matim != NULL ){  /* get matrix from an image */
+       int nx = matim->nx, ny = matim->ny; float *far = MRI_FLOAT_PTR(matim);
+
+       if( nx != nvals ) ERROR_exit("-matim nx=%d but nvals=%d",nx,nvals) ;
+       if( ny >= nx    ) ERROR_exit("-matim nx=%d but ny=%d"   ,nx,ny) ;
+       WARNING_message("No -matrix file: using -matim to create %d x %d matrix",
+                       nx , ny ) ;
+       str = THD_zzprintf(str,
+                          "str:<matrix ni_type='%d*double' ni_dimen='%d'\n"
+                          "            NRowFull='%d' GoodList='0..%d' >\n",
+                          ny , nvals , nvals , nvals-1 ) ;
+       for( ii=0 ; ii < nvals ; ii++ ){
+         for( jj=0 ; jj < ny ; jj++ )
+           str = THD_zzprintf(str," %g",far[ii+jj*nx]) ;
+         str = THD_zzprintf(str,"\n") ;
+       }
+       str = THD_zzprintf(str,"</matrix>\n") ;
+
+     } else {              /* just make up some crapola */
+       double fac = 2.0/(nvals-1.0) ; int kk ;
+
+       polort = MAX(polort,0) ;  /* polynomial matrix [11 Mar 2010] */
+       if( polort == 0 )
+         WARNING_message(
+           "No -matrix file! Making up a matrix with one column of %d 1s",nvals) ;
+       else
+         WARNING_message(
+           "No -matrix file! Making up a matrix %d polynomial columns of length",
+           polort+1,nvals) ;
+       str = THD_zzprintf(str,
+                          "str:<matrix ni_type='%d*double' ni_dimen='%d'\n"
+                          "            NRowFull='%d' GoodList='0..%d' >\n",
+                          polort+1 , nvals , nvals , nvals-1 ) ;
+       for( ii=0 ; ii < nvals ; ii++ ){
+         for( kk=0 ; kk <= polort ; kk++ )
+           str = THD_zzprintf(str," %g",Plegendre(fac*ii-1.0,kk)) ;
+         str = THD_zzprintf(str,"\n") ;
+       }
+       str = THD_zzprintf(str,"</matrix>\n") ;
+     }
+
+     /* convert str to nelmat */
+
      ns  = NI_stream_open( str , "r" ) ;
      if( ns == (NI_stream)NULL ) ERROR_exit("Can't fabricate matrix!?") ;
      nelmat = NI_read_element( ns , 9 ) ;
@@ -1862,9 +1945,19 @@ STATUS("process -addbase images") ;
      for( ii=0 ; ii < ntime && X.elts[ii][jj]==0.0 ; ii++ ) ; /*nada*/
      if( ii==ntime ){
        ERROR_message("matrix column #%d is all zero!?",jj) ; nbad++ ;
+       if( allz == NULL ) allz = (int *)malloc(sizeof(int)*nrega) ;
+       allz[nallz++] = jj ;
      }
    }
-   if( nbad > 0 ) ERROR_exit("Cannot continue with all zero columns!") ;
+   if( nbad > 0 ){
+     if( goforit ){
+       WARNING_message("You said to GOFORIT, so here we GO!") ;
+       allz = (int *)realloc(allz,sizeof(int)*nallz) ;
+     } else
+       ERROR_exit(
+        "Can't continue with all zero column%s without -GOFORIT option!",
+        (nbad==1) ? "\0" : "s" ) ;
+   }
 
    /****------------------ process -slibase images ------------------****/
 
@@ -1997,7 +2090,7 @@ STATUS("process -slibase images") ;
 
    /**---- check X matrices for collinearity ----**/
 
-   { char lab[32]="\0" ;
+   { char lab[32]="\0" ; int nkill ;
      for( nbad=ss=0 ; ss < nsli ; ss++ ){
        if( nsli > 1 ) sprintf(lab,"slice #%d",ss) ;
        nbad += check_matrix_condition( *(Xsli[ss]) , lab ) ;
@@ -2006,10 +2099,10 @@ STATUS("process -slibase images") ;
        if( !goforit ){
          ERROR_exit("Can't continue after matrix condition errors!\n"
                     "** you might try -GOFORIT, but be careful! (cf. '-help')");
-       } else {
-         WARNING_message("-GOFORIT ==> Continuing on despite my grave misgivings!") ;
-         ININFO_message (" Check results carefully!") ;
        }
+
+       WARNING_message("-GOFORIT ==> Charging ahead into battle!") ;
+       ININFO_message ("                  ==> Check results carefully!") ;
      }
    }
 
@@ -2206,6 +2299,46 @@ STATUS("make GLTs from matrix file") ;
 
    } /* end of GLT setup */
 
+   /**-- if have all zero matrix columns,  [15 Mar 2010]
+         set those coefficients to have zero weight in the GLT matrices --**/
+
+   if( nallz > 0 ){
+     matrix *G ; int cc ;
+     if( verb > 1 )
+       INFO_message("Editing GLT matrices for all zero X matrix column%s",
+                    (nallz==1) ? "\0" : "s" ) ;
+     for( kk=0 ; kk < glt_num ; kk++ ){
+       G = glt_mat[kk] ;
+       for( jj=0 ; jj < nallz ; jj++ ){
+         cc = allz[jj] ;
+         for( ii=0 ; ii < G->rows ; ii++ ) G->elts[ii][cc] = 0.0 ;
+       }
+     }
+   }
+
+   /**-- edit out any all zero rows in the GLT matrices [15 Mar 2010] --**/
+
+   { matrix *G , *GM ; int nrk , ndone=0 ;
+     GM = (matrix *)malloc(sizeof(matrix)) ; matrix_initialize(GM) ;
+     for( kk=0 ; kk < glt_num ; kk++ ){
+       G   = glt_mat[kk] ;
+       nrk = matrix_delete_allzero_rows( *G , GM ) ;
+       if( nrk > 0 && nrk < G->rows ){
+         ndone++ ;
+         if( verb > 1 )
+           ININFO_message("Removed %d all zero row%s from GLT matrix '%s'",
+                          nrk , (nrk==1) ? "\0" : "s" , glt_lab[kk] ) ;
+         glt_mat[kk] = GM ; matrix_destroy(G) ; glt_rtot -= nrk ;
+         GM = (matrix *)malloc(sizeof(matrix)) ; matrix_initialize(GM) ;
+       } else if( nrk == G->rows ){
+         ININFO_message("GLT matrix '%s' is all zero!",glt_lab[kk]) ;
+       }
+     }
+     free(GM) ;
+     if( ndone == 0 && verb > 1 && nallz > 0 )
+       ININFO_message("No GLT matrices neededed editing") ;
+   }
+
    /***--------- done with nelmat ---------***/
 
    NI_free_element(nelmat) ;  /* save some memory */
@@ -2220,7 +2353,7 @@ STATUS("make GLTs from matrix file") ;
 
    vector_initialize( &y ) ; vector_create_noinit( ntime , &y ) ;
    niv = (nvals+nrega+glt_num+9)*2 ;
-   iv  = (float *)malloc(sizeof(float)*(niv+1)) ;
+   iv  = (float *)malloc(sizeof(float)*(niv+1)) ; /* temp vectors */
    jv  = (float *)malloc(sizeof(float)*(niv+1)) ;
 
    for( nbad=vv=0 ; vv < nvox ; vv++ ){
@@ -2243,7 +2376,9 @@ STATUS("make GLTs from matrix file") ;
 #ifdef USE_OMP
    if( maxthr > 1 && nmask < 99*maxthr ){
      maxthr = 1 ;
-     WARNING_message("only %d voxels in mask: disables OpenMP multi-CPU usage",nmask) ;
+     WARNING_message(
+      "only %d voxels in mask: disables OpenMP multi-CPU usage for voxel loop",
+      nmask) ;
    }
 #endif
 
@@ -2408,7 +2543,7 @@ STATUS("make GLTs from matrix file") ;
 
 #pragma omp critical (MALLOC)
  {
-   iv   = (float *)malloc(sizeof(float)*(niv+1)) ;
+   iv = (float *)malloc(sizeof(float)*(niv+1)) ;
    vector_initialize(&y) ; vector_create_noinit(ntime,&y) ;
    ws = (MTYPE *)malloc(sizeof(MTYPE)*nws) ;
  }
