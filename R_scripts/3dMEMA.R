@@ -219,7 +219,7 @@ read.MEMA.opts.interactive <- function (verb = 0) {
    if(masked) {
       lop$maskFN <- 
          readline("Mask file name (suffix unnecessary, e.g., mask+tlrc): "); 
-         lop$maskData <- read.AFNI(lop$maskFN)$ttt
+         lop$maskData <- read.AFNI(lop$maskFN)$brk
    }else {
       lop$maskFN <- NULL;
    }
@@ -242,16 +242,23 @@ read.MEMA.opts.interactive <- function (verb = 0) {
       #print("multi-column files. The vertical sequence in each column has to follow the same subject order")
       #print("as the beta/t-statistic input files listed above.")
       print("Each subject is assumed to have one number per covariate. All covariates should be put into one")
-      print("file in one- or multi-column format. Header at the 1st line as labels is optional. The vertical")
-      print("sequence in each column has to follow exactly the same subject order as the beta/t-statistic")
-      print("input files listed above.")
+      print("file in a table format. It's required that both row (subject ID) and column (covariate) be put in")
+      print("the table, for instance,")
+      print("  subj  age   weight")
+      print("  Jane   25   300")
+      print("  Joe    22   313")
+      print("  ...    ..   ...")
+      
+      #print("Header at the 1st line as labels is optional. The vertical")
+      #print("sequence in each column has to follow exactly the same subject order as the beta/t-statistic")
+      #print("input files listed above.")
       #covForm <- as.integer(readline("Covariates data type (0: MULTIPLE one-column files; 1: ONE single/multi-column file)? "))
       covForm <- 1
       if (covForm) {
          lop$covFN <- readline("Covariates file name: ")
-         covHeader <- 
-            as.integer(readline(
-      "Does this multi-column file have a header (0: no; 1: yes)? "))
+         #covHeader <- as.integer(readline(
+         #"Does this multi-column file have a header (0: no; 1: yes)? "))
+         covHeader <- 1
          if(covHeader == 1) {
             #lop$covData <- read.table(lop$covFN, header=TRUE)
             lop$covData <- read.AFNI.matrix(lop$covFN, userrownames=unlist(lop$subjLab))
@@ -1218,7 +1225,7 @@ process.MEMA.opts <- function (lop, verb = 0) {
          warning("Failed to read mask", immediate.=TRUE);
          return(NULL);
       }
-      lop$maskData <- mm$ttt
+      lop$maskData <- mm$brk
       if (verb) cat ("Done read ", lop$maskFN,'\n');
    }
    if(!is.null(lop$maskFN)) 
@@ -2070,8 +2077,8 @@ tTop <- 100   # upper bound for t-statistic
    # Maybe I should avoid doing this below part for those voxels in the mask!!!
    if(lop$anaType==1 | lop$anaType==2 | lop$anaType==4) {
       for(ii in 1:lop$nGrp) {
-         lop$bList[[ii]] <- lapply(lop$bList[[ii]], function(x) x$ttt); 
-         lop$tList[[ii]] <- lapply(lop$tList[[ii]], function(x) x$ttt)
+         lop$bList[[ii]] <- lapply(lop$bList[[ii]], function(x) x$brk); 
+         lop$tList[[ii]] <- lapply(lop$tList[[ii]], function(x) x$brk)
          lop$varList[[ii]] <- mapply(function(x, y) 
                ifelse((abs(x)<tolL) | (abs(y)<tolL), 0, (x/y)^2), 
                lop$bList[[ii]], lop$tList[[ii]], SIMPLIFY = FALSE)  # variances
@@ -2086,8 +2093,8 @@ tTop <- 100   # upper bound for t-statistic
    
    if(lop$anaType==3) {
       for(ii in 1:lop$nLevel) {
-         lop$bList[[ii]] <- lapply(lop$bList[[ii]], function(x) x$ttt); 
-         lop$tList[[ii]] <- lapply(lop$tList[[ii]], function(x) x$ttt)
+         lop$bList[[ii]] <- lapply(lop$bList[[ii]], function(x) x$brk); 
+         lop$tList[[ii]] <- lapply(lop$tList[[ii]], function(x) x$brk)
          lop$varList[[ii]] <- 
             mapply(function(x, y) 
                    ifelse((abs(x)<tolL) | (abs(y)<tolL), 0, (x/y)^2), 
