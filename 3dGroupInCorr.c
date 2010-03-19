@@ -238,8 +238,9 @@ MRI_shindss * GRINCOR_read_input( char *fname )
      GQUIT("datafile is missing") ;
    else if( nbytes_dfname < nbytes_needed ){
      char str[2048] ;
-     sprintf(str,"datafile has %lld bytes but needs at least %lld",
-             nbytes_dfname , nbytes_needed ) ;
+     sprintf(str,"datafile has %s bytes but needs at least %s",
+              commaized_integer_string(nbytes_dfname) ,
+              commaized_integer_string(nbytes_needed) ) ;
      GQUIT(str) ;
    }
    fdes = open( dfname , O_RDONLY ) ;
@@ -515,6 +516,7 @@ static int ttest_opcode     = -1   ;  /* 0=pooled, 1=unpooled, 2=paired */
 static int ttest_opcode_max =  2   ;
 
 #define MAX_LABEL_SIZE 12
+#define NSEND_LIMIT     3
 
 int main( int argc , char *argv[] )
 {
@@ -534,6 +536,8 @@ int main( int argc , char *argv[] )
    float **seedvec_BBB=NULL , **dotprod_BBB=NULL ;
    int ctim,btim,atim , do_shm=2 , nsend=0 , shm_active=0 ;
    char label_AAA[MAX_LABEL_SIZE]="AAA" , label_BBB[MAX_LABEL_SIZE]="BBB" ;
+   char *qlab_AAA=NULL , *qlab_BBB=NULL ;
+   int   lset_AAA=0    ,  lset_BBB=0 ;
 
    /*-- enlighten the ignorant and brutish sauvages? --*/
 
@@ -615,7 +619,7 @@ int main( int argc , char *argv[] )
       " -setA AAA.grpincorr.niml\n"
       "   = Give the setup file (from 3dSetupGroupInCorr) that describes\n"
       "     the first dataset collection:\n"
-      "  ++ This 'option' is mandatory (you have to input SOMETHING).\n"
+      "  ++ This 'option' is MANDATORY (you have to input SOMETHING).\n"
       "  ++ Of course, 'AAA' should be replaced with the correct name of\n"
       "     your input dataset collection file!\n"
       "  ++ 3dGroupInCorr can use byte-valued or short-valued data as\n"
@@ -803,7 +807,7 @@ int main( int argc , char *argv[] )
        if( ++nopt >= argc ) ERROR_exit("need 1 argument after option '%s'",argv[nopt-1]);
        if( argv[nopt][0] != '\0' ){
          NI_strncpy(label_AAA,argv[nopt],MAX_LABEL_SIZE) ;
-         THD_filename_fix(label_AAA) ;
+         THD_filename_fix(label_AAA) ; lset_AAA = 1 ;
        }
        nopt++ ; continue ;
      }
@@ -812,13 +816,13 @@ int main( int argc , char *argv[] )
        if( ++nopt >= argc ) ERROR_exit("need 1 argument after option '%s'",argv[nopt-1]);
        if( argv[nopt][0] != '\0' ){
          NI_strncpy(label_BBB,argv[nopt],MAX_LABEL_SIZE) ;
-         THD_filename_fix(label_BBB) ;
+         THD_filename_fix(label_BBB) ; lset_BBB = 1 ;
        }
        nopt++ ; continue ;
      }
 
      if( strcasecmp(argv[nopt],"-setA") == 0 ){
-       char *fname ;
+       char *fname , *cpt ;
        if( shd_AAA != NULL ) ERROR_exit("can only use '-setA' once!") ;
        if( ++nopt >= argc ) ERROR_exit("need 1 argument after option '%s'",argv[nopt-1]);
        fname = strdup(argv[nopt]) ;
@@ -828,12 +832,15 @@ int main( int argc , char *argv[] )
        }
        shd_AAA = GRINCOR_read_input( fname ) ;
        if( shd_AAA == NULL ) ERROR_exit("Cannot continue after -setA input error") ;
-       if( verb > 1 ) INFO_message("-setA opened, contains %lld bytes",shd_AAA->nbytes);
-       free(fname) ; nopt++ ; continue ;
+       if( verb > 1 ) INFO_message("-setA opened, contains %s bytes",
+                                   commaized_integer_string(shd_AAA->nbytes));
+       qlab_AAA = fname ;
+       cpt = strchr(qlab_AAA,'.') ; if( cpt != NULL && cpt != qlab_AAA ) *cpt = '\0' ;
+       nopt++ ; continue ;
      }
 
      if( strcasecmp(argv[nopt],"-setB") == 0 ){
-       char *fname ;
+       char *fname , *cpt ;
        if( shd_BBB != NULL ) ERROR_exit("can only use '-setB' once!") ;
        if( ++nopt >= argc ) ERROR_exit("need 1 argument after option '%s'",argv[nopt-1]) ;
        fname = strdup(argv[nopt]) ;
@@ -843,8 +850,11 @@ int main( int argc , char *argv[] )
        }
        shd_BBB = GRINCOR_read_input( fname ) ;
        if( shd_BBB == NULL ) ERROR_exit("Cannot continue after -setB input error") ;
-       if( verb > 1 ) INFO_message("-setB opened, contains %lld bytes",shd_BBB->nbytes) ;
-       free(fname) ; nopt++ ; continue ;
+       if( verb > 1 ) INFO_message("-setB opened, contains %s bytes",
+                                   commaized_integer_string(shd_BBB->nbytes)) ;
+       qlab_BBB = fname ;
+       cpt = strchr(qlab_BBB,'.') ; if( cpt != NULL && cpt != qlab_BBB ) *cpt = '\0' ;
+       nopt++ ; continue ;
      }
 
      ERROR_exit("Unknown option: '%s'",argv[nopt]) ;
@@ -853,6 +863,14 @@ int main( int argc , char *argv[] )
    /*-- check inputs for OK-ness --*/
 
    if( shd_AAA == NULL ) ERROR_exit("You must use the '-setA' option!") ;
+
+   /* 18 Mar 2010: change labels */
+
+   if( !lset_AAA && qlab_AAA != NULL )
+     NI_strncpy(label_AAA,qlab_AAA,MAX_LABEL_SIZE) ;
+
+   if( !lset_BBB && qlab_BBB != NULL )
+     NI_strncpy(label_BBB,qlab_BBB,MAX_LABEL_SIZE) ;
 
    nvec      = shd_AAA->nvec  ;
    ndset_AAA = shd_AAA->ndset ;
@@ -915,8 +933,9 @@ int main( int argc , char *argv[] )
    if( verb ){
      long long nbtot = shd_AAA->nbytes ;
      if( shd_BBB != NULL ) nbtot += shd_BBB->nbytes ;
-     INFO_message("total bytes input = %lld (about %s)" ,
-                   nbtot , approximate_number_string((double)nbtot) ) ;
+     INFO_message("total bytes input = %s (about %s)" ,
+                   commaized_integer_string(nbtot) ,
+                   approximate_number_string((double)nbtot) ) ;
    }
 
    if( verb ) INFO_message  ("Be sure to start afni with the '-niml' option"        ) ;
@@ -1131,7 +1150,7 @@ int main( int argc , char *argv[] )
 
      /** start timer **/
 
-     if( verb > 1 || (verb==1 && nsend < 2) )
+     if( verb > 1 || (verb==1 && nsend < NSEND_LIMIT) )
        INFO_message("Received command %s from %s",nelcmd->name,pname) ;
 
      atim = btim = NI_clock_time() ;
@@ -1207,7 +1226,7 @@ int main( int argc , char *argv[] )
      if( shd_BBB != NULL )
        GRINCOR_load_seedvec( shd_BBB , nbhd , voxijk , seedvec_BBB ) ;
 
-     if( verb > 2 || (verb==1 && nsend < 2) ){
+     if( verb > 2 || (verb==1 && nsend < NSEND_LIMIT) ){
        ctim = NI_clock_time() ;
        ININFO_message(" loaded seed vectors: elapsed=%d ms",ctim-btim) ;
        btim = ctim ;
@@ -1222,7 +1241,7 @@ int main( int argc , char *argv[] )
        GRINCOR_many_dotprod( shd_BBB , seedvec_BBB , dotprod_BBB ) ;
      }
 
-     if( verb > 2 || (verb==1 && nsend < 2) ){
+     if( verb > 2 || (verb==1 && nsend < NSEND_LIMIT) ){
        ctim = NI_clock_time() ;
        ININFO_message(" finished correlation-izing: elapsed=%d ms",ctim-btim) ;
        btim = ctim ;
@@ -1246,7 +1265,7 @@ int main( int argc , char *argv[] )
                                   0         , NULL        , neldar_BBB,nelzar_BBB ) ;
      }
 
-     if( verb > 2 || (verb==1 && nsend < 2) ){
+     if( verb > 2 || (verb==1 && nsend < NSEND_LIMIT) ){
        ctim = NI_clock_time() ;
        ININFO_message(" finished t-test-izing: elapsed=%d ms",ctim-btim) ;
        btim = ctim ;
@@ -1257,7 +1276,7 @@ int main( int argc , char *argv[] )
 #ifndef DONT_USE_SHM
      if( do_shm > 0 && strcmp(afnihost,"localhost") == 0 && !shm_active ){
        char nsnew[128] ;
-       sprintf( nsnew , "shm:GrpInCorr:%dM+10K" , (dosix) ? 2 : 1 ) ;
+       sprintf( nsnew , "shm:GrpInCorr:%dM+10K" , (dosix) ? 3 : 1 ) ;
        INFO_message("Reconnecting to %s with shared memory channel %s",pname,nsnew) ;
        kk = NI_stream_reopen( GI_stream , nsnew ) ;
        if( kk == 0 ){
@@ -1279,10 +1298,11 @@ int main( int argc , char *argv[] )
      }
 
      ctim = NI_clock_time() ;
-     if( verb > 2 || (verb==1 && nsend < 2) )
-       ININFO_message(" sent results to %s: elapsed=%d ms",pname,ctim-btim) ;
+     if( verb > 2 || (verb==1 && nsend < NSEND_LIMIT) )
+       ININFO_message(" sent results to %s: elapsed=%d ms  bytes=%s" ,
+                      pname , ctim-btim , commaized_integer_string(kk) ) ;
 
-     if( verb > 1 || (verb==1 && nsend < 2) )
+     if( verb > 1 || (verb==1 && nsend < NSEND_LIMIT) )
        ININFO_message(" Total elapsed time = %d msec",ctim-atim) ;
 
      nsend++ ;  /* number of results sent back so far */

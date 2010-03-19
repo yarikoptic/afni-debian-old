@@ -349,11 +349,12 @@
 # define MPAIR    float_pair
 #endif
 
-#define MEM_MESSAGE                                                     \
+#define MEM_MESSAGE                                                      \
  do{ long long val = MCW_MALLOC_total ;                                  \
-     if( val > 0 )                                                        \
-       INFO_message("current memory malloc-ated = %lld bytes (about %s)" , \
-                    val , approximate_number_string((double)val) ) ;        \
+     if( val > 0 )                                                       \
+       INFO_message("current memory malloc-ated = %s bytes (about %s)" , \
+                    commaized_integer_string(val) ,                      \
+                    approximate_number_string((double)val) ) ;           \
  } while(0)
 
 
@@ -4608,8 +4609,8 @@ void zero_fill_volume (float ** fvol, int nxyz)
     if( *fvol == NULL ){  /* 04 Mar 2008 */
       MEM_MESSAGE ;
       ERROR_message("Memory allocation for output sub-bricks fails!") ;
-      ERROR_message("Have allocated %lld bytes (about %s) for output, up to now",
-                    zvf_totalbytes ,
+      ERROR_message("Have allocated %s bytes (about %s) for output, up to now",
+                    commaized_integer_string(zvf_totalbytes) ,
                     approximate_number_string((double)zvf_totalbytes) ) ;
       ERROR_message("Potential lenitives or palliatives:\n"
                     " ++ Use 3dZcutup to cut input dataset into\n"
@@ -4714,7 +4715,7 @@ void proc_finalize_shm_volumes(void)
    if( psum >= twogig )                               /* too much for shmem */
 #endif
      ERROR_exit(
-     "Total shared memory needed = %lld >= %lld (2 GB)\n"
+     "Total shared memory needed = %s >= %s (2 GB)\n"
      "** SUGGESTION 1:  Use 3dAutobox to automatically eliminate non-brain\n"
      "   areas from the 3d+time input dataset and reduce memory \n"
      "   requirements,  e.g.\n"
@@ -4725,10 +4726,11 @@ void proc_finalize_shm_volumes(void)
      "**                and then 3dZcat to glue results back together.\n"
      "\n"
      "** SUGGESTION 3:  Run on a 64-bit computer system, instead of 32-bit.\n"
-    , psum,twogig) ;
+    , commaized_integer_string(psum) , commaized_integer_string(twogig) ) ;
    else {
-     INFO_message("total shared memory needed = %lld bytes (about %s)" ,
-                  psum , approximate_number_string((double)psum) ) ;
+     INFO_message("total shared memory needed = %s bytes (about %s)" ,
+                  commaized_integer_string(psum) ,
+                  approximate_number_string((double)psum) ) ;
      if( verb ) MEM_MESSAGE ;
    }
 
@@ -4759,9 +4761,9 @@ void proc_finalize_shm_volumes(void)
    UNIQ_idcode_fill( kstr ) ;               /* unique string "key" */
    proc_shmid = shm_create( kstr , proc_shmsize ) ; /* thd_iochan.c */
    if( proc_shmid < 0 ){
-     fprintf(stderr,"\n** Can't create shared memory of size %lld!\n"
+     fprintf(stderr,"\n** Can't create shared memory of size %s!\n"
                       "** Try re-running without -jobs option!\n" ,
-             proc_shmsize ) ;
+             commaized_integer_string(proc_shmsize) ) ;
 
      /** if failed, print out some advice on how to tune SHMMAX **/
 
@@ -4806,11 +4808,12 @@ void proc_finalize_shm_volumes(void)
    atexit(proc_atexit) ;   /* or when the program exits */
 
 #ifdef MAP_ANON
-   INFO_message("mmap() memory allocated: %lld bytes (about %s)\n" ,
-                proc_shmsize, approximate_number_string((double)proc_shmsize) );
+   INFO_message("mmap() memory allocated: %s bytes (about %s)\n" ,
+                commaized_integer_string(proc_shmsize),
+                approximate_number_string((double)proc_shmsize) );
 #else
-   INFO_message("Shared memory allocated: %lld bytes at id=%d\n" ,
-                proc_shmsize , proc_shmid ) ;
+   INFO_message("Shared memory allocated: %s bytes at id=%d\n" ,
+                commaized_integer_string(proc_shmsize) , proc_shmid ) ;
 #endif
 
    /* get pointer to shared memory segment we just created */
@@ -5187,8 +5190,8 @@ ENTRY("initialize_program") ;
                  glt_coef_vol, glt_tcoef_vol, glt_fstat_vol, glt_rstat_vol,
                  fitts_vol, errts_vol);
 
-    INFO_message("Memory required for output bricks = %lld bytes (about %s)",
-                 zvf_totalbytes ,
+    INFO_message("Memory required for output bricks = %s bytes (about %s)",
+                 commaized_integer_string(zvf_totalbytes) ,
                  approximate_number_string((double)zvf_totalbytes) ) ;
   }
 

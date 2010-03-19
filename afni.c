@@ -1982,9 +1982,10 @@ STATUS("call 14") ;
         { long long lfs = AFNI_logfilesize(); /* 17 Oct 2007 */
           if( lfs > 10000000 ){
             char msg[256] ;
-            sprintf(msg,"\n++ WARNING: ~/.afni.log is now %lld (%s) bytes long!"
+            sprintf(msg,"\n++ WARNING: ~/.afni.log is now %s (%s) bytes long!"
                         "\n +          (Is that you, Kevin?)\n" ,
-                    lfs , approximate_number_string((double)lfs) ) ;
+                    commaized_integer_string(lfs) ,
+                    approximate_number_string((double)lfs) ) ;
             REPORT_PROGRESS(msg) ;
           }
         }
@@ -3579,9 +3580,11 @@ if(PRINT_TRACING)
 
         if( cbs->xim >= 0 && cbs->xim < br->n1 &&
             cbs->yim >= 0 && cbs->yim < br->n2 &&
-            cbs->nim >= 0 && cbs->nim < br->n3   ){
+            cbs->nim >= 0 && cbs->nim < br->n3   ){  /* inside brick? */
 
           THD_ivec3 id ; int qq , ii,jj,kk ;
+
+          /* find location in underlay dataset */
 
           id = THD_fdind_to_3dind(br,TEMP_IVEC3(cbs->xim,cbs->yim,cbs->nim));
           UNLOAD_IVEC3(id,ii,jj,kk) ;
@@ -3591,7 +3594,7 @@ if(PRINT_TRACING)
         }
       }
       MPROBE ;
-      break ;  /* end of button move */
+      break ;  /* end of button move (while clicked down) */
 
       case isqCR_buttonpress:{
          XButtonEvent *xev = (XButtonEvent *)cbs->event ;
