@@ -258,7 +258,8 @@ def get_truncated_grid_dim(dset, verb=1):
     for ind in range(len(dims)):
         dims[ind] = abs(dims[ind])
     md = min(dims)
-    if md >= 2.0: return math.floor(md)
+    # changed 2 -> 4  19 Mar 2010 
+    if md >= 4.0: return math.floor(md)
     if md <= 0:
         print '** failed to get truncated grid dim from %s' % dims
         return 0
@@ -754,6 +755,31 @@ def strip_list_brackets(istr, verb=1):
    if verb > 2: print "-- nothing to strip from '%s'" % istr
 
    return istr
+
+def replace_n_squeeze(instr, oldstr, newstr):
+   """like string.replace(), but remove all spaces around oldstr
+      (so probably want some space in newstr)"""
+   # while oldstr is found
+   #   find last preceeding keep posn (before oldstr and spaces)
+   #   find next following keep posn (after oldstr and spaces)
+   #   set result = result[0:first] + newstr + result[last:]
+   newlen = len(newstr)
+   result = instr
+   posn = result.find(oldstr)
+   while posn >= 0:
+      rlen = len(result)
+      start = posn-1
+      while start >= 0 and result[start] == ' ': start -= 1
+      if start >= 0: newres = result[0:start+1] + newstr
+      else:          newres = newstr
+      end = posn + newlen
+      while end < rlen and result[end] == ' ': end += 1
+      if end < rlen: newres += result[end:]
+
+      result = newres
+      posn = result.find(oldstr)
+
+   return result
 
 # ----------------------------------------------------------------------
 # line wrapper functions
