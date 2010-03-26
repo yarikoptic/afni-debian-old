@@ -10,7 +10,7 @@
  */
 
 /*----------------------------------------------------------------------
-  $Id: plug_crender.c,v 1.52 2009/12/31 19:36:19 rwcox Exp $
+  $Id: plug_crender.c,v 1.53 2010/03/25 13:49:10 rickr Exp $
   ----------------------------------------------------------------------
 */
 
@@ -173,7 +173,7 @@ PLUGIN_interface * PLUGIN_init( int ncall )
 
    if( ncall > 0 ) return(NULL);  /* only one interface */
 
-   plint = PLUTO_new_interface( "Render [new]" , NULL , NULL ,
+   plint = PLUTO_new_interface( "Render Dataset" , NULL , NULL ,
                                 PLUGIN_CALL_IMMEDIATELY , RCREND_main ) ;
 
    PLUTO_add_hint( plint , "Volume Rendering" ) ;
