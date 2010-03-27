@@ -4598,6 +4598,7 @@ STATUS("making prog->rowcol") ;
                "dialog" , xmPushButtonWidgetClass , prog->rc_top ,
                  LABEL_ARG("New  ") ,
                  XmNtraversalOn , True  ,
+                 XmNalignment   , XmALIGNMENT_CENTER ,
                  XmNinitialResourcesPersistent , False ,
                NULL ) ;
 
@@ -4620,6 +4621,7 @@ STATUS("making prog->rowcol") ;
             "dialog" , xmPushButtonWidgetClass , prog->rc_top ,
               LABEL_ARG("Views") ,
               XmNtraversalOn , True  ,
+              XmNalignment   , XmALIGNMENT_CENTER ,
               XmNinitialResourcesPersistent , False ,
             NULL ) ;
 
@@ -4660,6 +4662,7 @@ STATUS("making prog->rowcol") ;
          "dialog" , xmPushButtonWidgetClass , prog->rc_bot ,
            LABEL_ARG("BHelp") ,
            XmNtraversalOn , True  ,
+           XmNalignment   , XmALIGNMENT_CENTER ,
            XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -4677,6 +4680,7 @@ STATUS("making prog->rowcol") ;
             LABEL_ARG("done ") ,
             XmNrecomputeSize , False ,
             XmNtraversalOn , True  ,
+            XmNalignment   , XmALIGNMENT_CENTER ,
             XmNinitialResourcesPersistent , False ,
             XmNuserData , (XtPointer) im3d ,
          NULL ) ;
@@ -5114,7 +5118,7 @@ STATUS("making prog->rowcol") ;
         prog->hidden_browser_pb =
               XtVaCreateManagedWidget(
                  "dialog" , xmPushButtonWidgetClass , prog->hidden_menu ,
-                    LABEL_ARG("Web Browser") ,
+                    LABEL_ARG("Web Browser: Help") ,
                     XmNmarginHeight , 0 ,
                     XmNtraversalOn , True  ,
                     XmNinitialResourcesPersistent , False ,

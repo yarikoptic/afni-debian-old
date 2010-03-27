@@ -134,9 +134,22 @@ static int   recursed_ondot = 0 ;  /* 18 Feb 2007 */
 
 void AFNI_syntax(void)
 {
-   printf(
-     ANNOUNCEMENT
+   printf(ANNOUNCEMENT) ;
 
+   if( AFNI_yesenv("AFNI_POMOC") )  /* for the Web -help page */
+     printf(
+      " **** At the bottom of this Web page are some slide images to\n"
+      "    outline the usage of the AFNI Graphical User Interface (GUI).\n"
+      "\n"
+     ) ;
+   else
+     printf(
+      " **** Help for all AFNI programs can be found at the Web page\n"
+      "    http://afni.nimh.nih.gov/afni/doc/program_help/index.html\n"
+      "\n"
+     ) ;
+
+   printf(
      "----------------------------------------------------------------\n"
      "USAGE 1: read in sessions of 3D datasets (created by to3d, etc.)\n"
      "----------------------------------------------------------------\n"
@@ -382,7 +395,7 @@ void AFNI_syntax(void)
     "Educational and Informational Material\n"
     "--------------------------------------\n"
     "* The presentations used in our AFNI teaching classes at the NIH can\n"
-    "  all be found at\n"
+    "   all be found at\n"
     " http://afni.nimh.nih.gov/pub/dist/edu/latest/      (PowerPoint directories)\n"
     " http://afni.nimh.nih.gov/pub/dist/edu/latest/afni_handouts/ (PDF directory)\n"
     "* And for the interactive AFNI program in particular, see\n"
@@ -391,22 +404,28 @@ void AFNI_syntax(void)
     "* For the -help on all AFNI programs, plus the README files, and more, please see\n"
     " http://afni.nimh.nih.gov/afni/doc/program_help/index.html\n"
     "* For indvidualized help with AFNI problems, and to keep up with AFNI news, please\n"
-    "  use the AFNI Message Board:\n"
+    "   use the AFNI Message Board:\n"
     " http://afni.nimh.nih.gov/afni/community/board/\n"
     "* If an AFNI program crashes, please include the EXACT error messages it outputs\n"
-    "  in your message board posting, as well as any other information needed to\n"
-    "  reproduce the problem.  Just saying 'program X crashed, what's the issue?'\n"
-    "  is not helpful at all!  In all message board postings, detail is relevant.\n"
+    "   in your message board posting, as well as any other information needed to\n"
+    "   reproduce the problem.  Just saying 'program X crashed, what's the issue?'\n"
+    "   is not helpful at all!  In all message board postings, detail is relevant.\n"
+    "* Also, be sure your AFNI distribution is up-to-date.  You can check the date\n"
+    "   on your copy with the command 'afni -ver'.  If it is more than a few months\n"
+    "   old, you should update your AFNI binaries and try the problematic command\n"
+    "   again -- it is quite possible the problem you encountered was already fixed!\n"
+#if 0
     "\n"
     "* For some fun, see this image:\n"
     " http://afni.nimh.nih.gov/pub/dist/doc/program_help/images/afni_splashes.gif\n"
+#endif
    ) ;
 
    printf(
     "\n"
-    "-----------------------------------------\n"
-    "REFERENCES and some light bedtime reading\n"
-    "-----------------------------------------\n"
+    "-----------------------------------------------------------------\n"
+    "REFERENCES and some light bedtime reading (if you have insomnia)\n"
+    "-----------------------------------------------------------------\n"
     "The following papers describe some of the components of the AFNI package.\n"
     "\n"
     "RW Cox.  AFNI: Software for analysis and visualization of functional\n"
@@ -465,7 +484,33 @@ void AFNI_syntax(void)
     "  * http://afni.nimh.nih.gov/sscc/posters\n"
    ) ;
 
-   PRINT_COMPILE_DATE ; exit(0) ;
+   /*........................................................................*/
+#undef  NSLIDE
+#define NSLIDE 34
+   if( AFNI_yesenv("AFNI_POMOC") ){  /* for the Web -help page */
+     int ii ;
+     printf("\n"
+            "------------------------------------------------------------------------------------\n"
+            "                  SLIDE IMAGES to help with learning the AFNI GUI\n"
+            "           http://afni.nimh.nih.gov/pub/dist/doc/program_help/images/afni03/\n"
+            "------------------------------------------------------------------------------------\n"
+     ) ;
+     for( ii=1 ; ii <= NSLIDE ; ii++ ){
+       printf(
+        "http://afni.nimh.nih.gov/pub/dist/doc/program_help/images/afni03/Slide%02d.png\n"
+        "------------------------------------------------------------------------------------\n"
+        , ii ) ;
+     }
+   } else {
+     printf("\n"
+            "SLIDE IMAGES to help with learning the AFNI GUI can be found at\n"
+            "  * http://afni.nimh.nih.gov/pub/dist/doc/program_help/images/afni03/\n"
+     ) ;
+   }
+   printf("\n") ;
+   /*........................................................................*/
+
+   exit(0) ;
 }
 
 /*----------------------------------------------------------------------
@@ -2205,15 +2250,26 @@ ENTRY("AFNI_startup_timeout_CB") ;
                               "++ for dataset files.                   ++\n " ,
                               MCW_USER_KILL | MCW_TIMER_KILL ) ;
    else if( !ALLOW_realtime && GLOBAL_library.have_dummy_dataset ){
-    (void) MCW_popup_message( MAIN_im3d->vwid->picture ,       /* 23 Dec 2009 */
-                              " \n"
-                              "++ NOTICE:                               ++\n"
-                              "++ No valid datasets were found.         ++\n"
-                              "++ A 'dummy' dataset has been loaded     ++\n"
-                              "++ for your viewing pleasure :-)         ++\n"
-                              "++ To read in an actual data directory,  ++\n"
-                              "++ use the 'Read' button near 'DataDir'. ++\n " ,
-                              MCW_USER_KILL | MCW_TIMER_KILL ) ;
+    char hstr[1024] ;
+    sprintf( hstr ,
+             "   *** NOTICE ***                                              \n"
+             "                                                               \n"
+             "++ No valid datasets were found.  A dummy dataset has been   ++\n"
+             "++ created for your viewing pleasure :-)  To read in a real  ++\n"
+             "++ data directory, use the 'Read' button near 'DataDir'.     ++\n"
+             "                                                               \n"
+             "++ For general AFNI program help, see the Web page           ++\n"
+             "++                                                           ++\n"
+             "++ http://afni.nimh.nih.gov/afni/doc/program_help/index.html ++\n"
+             "%s" ,
+      (GLOBAL_browser == NULL)
+           ? " "
+           : "++                                                           ++\n"
+             "++ which you can open by right-clicking on the logo space to ++\n"
+             "++ the right of the 'done' button, and from the resulting    ++\n"
+             "++ popup menu, choose the 'Web Browser: Help' item.          ++\n"
+           ) ;
+    (void) MCW_popup_message( MAIN_im3d->vwid->prog->quit_pb, hstr, MCW_USER_KILL ) ;
      MCW_flash_widget_list( 9 , MAIN_im3d->vwid->view->sess_lab ,
                                 MAIN_im3d->vwid->view->choose_sess_pb ,
                                 MAIN_im3d->vwid->view->read_sess_pb ,
