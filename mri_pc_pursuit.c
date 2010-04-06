@@ -1,9 +1,63 @@
 #include "mrilib.h"
 
-/*---------------------------------------------------------------------------*/
+#ifdef USE_OMP
+# include <omp.h>
+#endif
 
 #undef  A
 #define A(i,j) asym[(i)+(j)*mm]
+
+/*---------------------------------------------------------------------------*/
+
+static MRI_IMAGE * mri_make_xxt( MRI_IMAGE *fim )
+{
+   MRI_IMAGE *aim ;
+   int nn , mm , n1 ; float *xx ;
+
+                if( fim == NULL || fim->kind != MRI_float ) return NULL ;
+   nn = fim->nx ; mm = fim->ny ;    if( nn < mm || mm < 2 ) return NULL ;
+   xx = MRI_FLOAT_PTR(fim) ;               if( xx == NULL ) return NULL ;
+   n1 = nn-1 ;
+
+   aim = mri_new( mm , mm , MRI_double ) ; asym = MRI_DOUBLE_PTR(aim) ;
+
+   /** setup m x m [A] = [X]'[X] matrix to eigensolve **/
+
+#pragma omp parallel if( mm > 7 && nn > 999 )
+ { int jj , kk , ii ; register double sum ; register float *xj,*xk ;
+   AFNI_OMP_START ;
+#pragma omp for
+   for( jj=0 ; jj < mm ; jj++ ){
+     xj = xx + jj*nn ;               /* j-th column */
+     for( kk=0 ; kk <= jj ; kk++ ){
+       sum = 0.0 ; xk = xx + kk*nn ; /* k-th column */
+       for( ii=0 ; ii < n1 ; ii+=2 ) sum += xj[ii]*xk[ii] + xj[ii+1]*xk[ii+1];
+       if( ii == n1 ) sum += xj[ii]*xk[ii] ;
+       A(jj,kk) = sum ; if( kk < jj ) A(kk,jj) = sum ;
+     }
+   }
+   AFNI_OMP_END ;
+ } /* end OpenMP */
+
+   return aim ;
+}
+
+/*----------------------------------------------------------------------------*/
+
+static float mri_svd_max( MRI_IMAGE *fim )
+{
+   MRI_IMAGE *aim ;
+   double ev=0.0 ;
+   int mm ; float sv ;
+
+   aim = mri_make_xxt( fim ) ; if( aim == NULL ) return -1.0f ;
+   mm  = aim->nx ;
+
+   (void)symeig_irange( mm, MRI_DOUBLE_PTR(aim) , &ev , mm-1,mm-1 , 1 ) ;
+   mri_free(aim) ;
+   sv = (ev > 0.0) ? (float)sqrt(ev) : 0.0f ;
+   return sv ;
+}
 
 /*----------------------------------------------------------------------------*/
 /*  - Must have fewer columns than rows [fim->nx >= fim->ny >= 2]
@@ -18,8 +72,9 @@
 int mri_svd_shrink( MRI_IMAGE *fim , float tau , float *sv )
 {
    int nn , n1 , mm , ii,jj,kk , kbot,mev ;
+   MRI_IMAGE *aim ;
    double *asym,*sval,*eval, *fv1,*fv2,*fv3,*fv4,*fv5,*fv6,*fv7,*fv8,*vv ;
-   register double sum ; register float *xj , *xk ; float *xx ;
+   register double sum ; register float *xk ; float *xx ;
    integer imm , imev , *iv1 , ierr ;
    double tcut ;
 
@@ -29,27 +84,11 @@ int mri_svd_shrink( MRI_IMAGE *fim , float tau , float *sv )
    xx = MRI_FLOAT_PTR(fim) ;                 if( xx == NULL ) return -1 ;
    n1 = nn-1 ; tcut = (double)tau ;
 
-   asym = (double *)malloc(sizeof(double)*mm*mm) ;  /* symmetric matrix */
-   eval = (double *)calloc(sizeof(double),mm) ;     /* its eigenvalues */
-   sval = (double *)malloc(sizeof(double)*mm) ;     /* scaling values */
+   aim  = mri_make_xxt( fim ) ;             if( aim == NULL ) return -1 ;
 
-   /** setup m x m [A] = [X]'[X] matrix to eigensolve **/
-
-#pragma omp parallel if( mm > 9 && nn > 999 )
- { int jj , kk , ii ; register double sum ; register float *xj,*xk ;
- AFNI_OMP_START ;
-#pragma omp for
-   for( jj=0 ; jj < mm ; jj++ ){
-     xj = xx + jj*nn ;               /* j-th column */
-     for( kk=0 ; kk <= jj ; kk++ ){
-       sum = 0.0 ; xk = xx + kk*nn ; /* k-th column */
-       for( ii=0 ; ii < n1 ; ii+=2 ) sum += xj[ii]*xk[ii] + xj[ii+1]*xk[ii+1];
-       if( ii == n1 ) sum += xj[ii]*xk[ii] ;
-       A(jj,kk) = sum ; if( kk < jj ) A(kk,jj) = sum ;
-     }
-   }
- AFNI_OMP_END ;
- } /* end OpenMP */
+   asym = MRI_DOUBLE_PTR(aim) ;                  /* symmetric matrix */
+   eval = (double *)calloc(sizeof(double),mm) ;  /* its eigenvalues */
+   sval = (double *)malloc(sizeof(double)*mm) ;  /* scaling values */
 
    /** reduction to tridiagonal form (stored in fv1..3) **/
 
@@ -89,7 +128,7 @@ int mri_svd_shrink( MRI_IMAGE *fim , float tau , float *sv )
      free(iv1) ;
      free(fv8) ; free(fv7) ; free(fv6) ; free(fv5) ;
      free(fv4) ; free(fv3) ; free(fv2) ; free(fv1) ;
-     free(sval) ; free(asym) ; return -1 ;
+     free(sval) ; mri_free(aim) ; return -1 ;
    }
 
    /** find eigenvectors, starting at the kbot-th one **/
@@ -139,7 +178,7 @@ int mri_svd_shrink( MRI_IMAGE *fim , float tau , float *sv )
 
    /** vamoose the ranch **/
 
-   free(xk) ; free(asym) ;
+   free(xk) ; mri_free(aim) ;
    return mev ;
 }
 
@@ -232,31 +271,25 @@ fprintf(stderr,"abs_shrink count = %d\n",ii) ;
 
 /*----------------------------------------------------------------------------*/
 
-MRI_IMARR * mri_pc_pursuit( MRI_IMAGE *dim , float lam , float mu )
+MRI_IMARR * mri_pc_pursuit( MRI_IMAGE *dim , float lam , float mubot )
 {
-   MRI_IMAGE *sim , *lim , *yim ;
    MRI_IMARR *lsar ;
-   float_pair lsdif ;
+   MRI_IMAGE *aim, *bim , *eim, *fim ;
+   float mu , *dar ;
    int nite ;
 
-   if( mim == NULL || mim->kind != MRI_float ||
-       mim->nx < mim->ny || mim->ny < 2         ) return NULL ;
+   if( dim == NULL || mim->kind != MRI_float ||
+       dim->nx < dim->ny || dim->ny < 2         ) return NULL ;
 
-   /* initial setup: L = M, S = Y = 0 */
+   if( lam <= 0.0f ) lam = 1.0f / sqrtf((float)dim->nx) ;
 
-   lim = mri_copy(mim) ;
-   sim = mri_new_conforming(mim,MRI_float) ;
-   yim = mri_new_conforming(mim,MRI_float) ;
+   /* get largest singular value of [dim] */
 
-   for( nite=1 ; nite <= 19 ; nite++ ){
-     lsdif = mri_pc_pursuit_step( lam , mu , mim , lim , sim, yim ) ;
-fprintf(stderr,"Iter #%02d: ldif = %g  sdif = %g\n",nite,lsdif.a,lsdif.b) ;
-   }
+   mu = mri_svd_max( dim ) ;     if( mu <= 0.0f ) return NULL ;
+   mu *= 0.911f ; if( mu < mubot ) mu = mubot ;
 
-   INIT_IMARR(lsar) ;
-   ADDTO_IMARR(lsar,lim) ;
-   ADDTO_IMARR(lsar,sim) ;
-   mri_free(yim) ;
+   /* ..... */
+
    return lsar ;
 }
 
