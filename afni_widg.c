@@ -1808,6 +1808,7 @@ STATUS("making view->rowcol") ;
                              (XtPointer)im3d ,    /* client data */
                              XtListTail           /* last in queue */
                          ) ;
+   MCW_set_widget_bg( view->sess_lab, "#553319", 0 ) ; /* brown [07 May 2010] */
 
    hstr = (horz) ? "Switch" : "Switch Directory" ;
    view->choose_sess_pb =
@@ -1846,6 +1847,11 @@ STATUS("making view->rowcol") ;
                   AFNI_read_sess_CB , im3d ) ;
    MCW_register_hint( view->read_sess_pb ,
                       "Read in a new session directory" ) ;
+   MCW_register_help( view->read_sess_pb ,
+                      "Click this button to get\n"
+                      "a 'chooser' dialog window\n"
+                      "to select a new directory\n"
+                      "from which to read datasets." ) ;
    MCW_set_widget_bg( view->read_sess_pb , "#ffddaa" , 0 ) ;
 
    view_count ++ ;
@@ -4648,7 +4654,7 @@ STATUS("making prog->rowcol") ;
       prog->panel_pb =
          XtVaCreateManagedWidget(
             "dialog" , xmPushButtonWidgetClass , prog->rc_top ,
-              LABEL_ARG("Views") ,
+              LABEL_ARG("Etc->") ,
               XmNtraversalOn , True  ,
               XmNalignment   , XmALIGNMENT_CENTER ,
               XmNinitialResourcesPersistent , False ,
@@ -5715,6 +5721,8 @@ ENTRY("AFNI_clone_controller_CB") ;
    AFNI_controller_clonify() ;
 
    AFNI_vedit_CB( im3d->vwid->func->options_vedit_av , im3d ) ;  /* 05 May 2009 */
+
+   AFNI_coord_filer_setup(im3d) ; /* 07 May 2010 */
 
    PICTURE_OFF(im3d) ; SHOW_AFNI_READY ; EXRETURN ;
 }
