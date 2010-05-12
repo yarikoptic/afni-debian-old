@@ -34,6 +34,8 @@
                        XtPointer   , (sq)->getaux ,     \
                        ISQ_cbs *   , &(cb)          )
 
+static Widget wwtem ;
+
 /************************************************************************
    Define the buttons and boxes that go in the "Disp" dialog
 *************************************************************************/
@@ -1614,7 +1616,7 @@ if( PRINT_TRACING ){
 
    newseq->onoff_widgets[(newseq->onoff_num)++] =
    newseq->winfo = XtVaCreateManagedWidget(
-                     "imseq" , xmLabelWidgetClass , newseq->wform ,
+                     "font7" , xmLabelWidgetClass , newseq->wform ,
                         XmNtopAttachment   , XmATTACH_WIDGET ,
                         XmNtopWidget       , newseq->wscale ,
                         XmNleftAttachment  , XmATTACH_FORM ,
@@ -1623,9 +1625,9 @@ if( PRINT_TRACING ){
                             (int)( 0.49 + IMAGE_FRAC * FORM_FRAC_BASE ) ,
                         XmNrecomputeSize   , False ,
                         XmNalignment       , XmALIGNMENT_END ,
-
                         XmNinitialResourcesPersistent , False ,
                      NULL ) ;
+   LABELIZE(newseq->winfo) ;
    newseq->winfo_extra[0] = '\0' ;  /* 07 Aug 1999 */
 
    newseq->winfo_sides[0][0] =
@@ -8642,12 +8644,12 @@ fprintf(stderr,"montage: zoom_fac = %d\n",seq->zoom_fac) ;
                 XmNinitialResourcesPersistent , False ,
              NULL ) ;
 
-   (void) XtVaCreateManagedWidget(
+   wwtem = XtVaCreateManagedWidget(
             "menu" , xmLabelWidgetClass , wrc ,
                LABEL_ARG("-- Montage Controls --") ,
                XmNalignment  , XmALIGNMENT_CENTER ,
                XmNinitialResourcesPersistent , False ,
-            NULL ) ;
+            NULL ) ; LABELIZE(wwtem) ;
 
    (void) XtVaCreateManagedWidget(
             "menu" , xmSeparatorWidgetClass , wrc ,
@@ -10416,13 +10418,13 @@ ENTRY("ISQ_record_button") ;
    left alone. See related comments in afni_graph.c LessTif patrol, Jan 07 09 */
 
    xstr = XmStringCreateLtoR( "-- Cancel --" , XmFONTLIST_DEFAULT_TAG ) ;
-   (void) XtVaCreateManagedWidget(
+   wwtem = XtVaCreateManagedWidget(
             "menu" , xmLabelWidgetClass , menu ,
                XmNlabelString , xstr ,
                XmNrecomputeSize , False ,
                XmNinitialResourcesPersistent , False ,
             NULL ) ;
-   XmStringFree(xstr) ;
+   XmStringFree(xstr) ; LABELIZE(wwtem) ;
 
    (void) XtVaCreateManagedWidget(
             "menu" , xmSeparatorWidgetClass , menu ,
