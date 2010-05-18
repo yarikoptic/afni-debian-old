@@ -2557,12 +2557,12 @@ STATUS("make GLTs from matrix file") ;
        if( inset_mrv != NULL ){ /* 05 Nov 2008 */
          VECTIM_extract( inset_mrv , rv , iv ) ; rv++ ;
        } else
-         (void)THD_extract_array( vv , inset , 0 , iv ) ;  /* data vector */
+         (void)THD_extract_array( vv , inset , 0 , iv ) ;      /* data vector */
        for( ii=0 ; ii < ntime ; ii++ ) y.elts[ii] = (MTYPE)iv[goodlist[ii]] ;
-       ssold = ss ; ss = vv / nsliper ;  /* slice index in Xsli and RCsli */
-       if( usetemp_rcol && ss > ssold && ssold >= 0 )  /* purge to disk */
-         reml_collection_save( RCsli[ssold] ) ;
-       if( RCsli[ss] == NULL ){                   /* create this now */
+       ssold = ss ; ss = vv / nsliper ;      /* slice index in Xsli and RCsli */
+       if( usetemp_rcol && ss > ssold && ssold >= 0 )     /* purge last slice */
+         reml_collection_save( RCsli[ssold] ) ;              /* setup to disk */
+       if( RCsli[ss] == NULL ){                     /* create this slice now? */
          if( verb > 1 && vstep ) fprintf(stderr,"+") ;
          RCsli[ss] = REML_setup_all( Xsli[ss] , tau , nlevab, rhomax,bmax ) ;
          if( RCsli[ss] == NULL ) ERROR_exit("REML setup fails for ss=%d",ss) ;
@@ -2672,7 +2672,8 @@ STATUS("make GLTs from matrix file") ;
   }
 
      if( vstep ) fprintf(stderr,"\n") ;
-     if( usetemp_rcol ) reml_collection_save( RCsli[nsli-1] ) ;  /* purge to disk */
+     if( usetemp_rcol )               /* purge final slice's setup to disk? */
+       reml_collection_save( RCsli[nsli-1] ) ;
 
      /*----- median filter (a,b)? -----*/
 
@@ -2833,6 +2834,7 @@ STATUS("setting up Rglt") ;
                (Rerrts_dset != NULL) || (Rwherr_dset != NULL) ||
                (Rglt_dset   != NULL)                             ;
 
+   /*---------------------------------------------------------------------*/
    /*---------------- and do the second (GLSQ) voxel loop ----------------*/
 
    if( do_Rstuff ){
@@ -2846,6 +2848,8 @@ STATUS("setting up Rglt") ;
      bb4 = bbar[3] ; bb5 = bbar[4] ; bb6 = bbar[5] ; bb7 = bbar[6] ;
      vector_initialize(&qq5) ; vector_create_noinit(nrega,&qq5) ;
 
+     /* ss = slice index, rv = VECTIM index, vv = voxel index */
+
      if( vstep ) fprintf(stderr,"++ GLSQ voxel loop: ") ;
      for( ss=-1,rv=vv=0 ; vv < nvox ; vv++ ){
        if( vstep && vv%vstep==vstep-1 ) vstep_print() ;
@@ -2857,42 +2861,44 @@ STATUS("setting up Rglt") ;
        memcpy( jv , iv , sizeof(float)*nfull ) ;         /* copy of data */
        for( ii=0 ; ii < ntime ; ii++ ) y.elts[ii] = iv[goodlist[ii]] ;
 
-       ssold = ss ; ss = vv / nsliper ;  /* slice index in Xsli and RCsli */
+       ssold = ss ; ss = vv / nsliper ; /* ss = slice index in Xsli and RCsli */
 
        /*=== If at a new slice:
                remove REML setups (except a=b=0 case) for previous slice;
                create new slice matrices, if they don't exist already, OR
                get new slice matrices back from disk, if they were purged
-               earlier; add GLT setups to the new slice.
+               earlier; then add GLT setups to the new slice.
+             Note that the code assumes that the slice index ss is
+               non-decreasing as the voxel index increases.
              The purpose of doing it this way is to save memory space.  ======*/
 
-       if( ss > ssold ){
+       if( ss > ssold ){                                   /* at a new slice! */
          if( ssold >= 0 ) reml_collection_destroy( RCsli[ssold] , 1 ) ;
-         if( RCsli[ss] == NULL ){                   /* create this now */
+         if( RCsli[ss] == NULL ){              /* create this slice setup now */
            if( verb > 1 && vstep ) fprintf(stderr,"+") ;
            RCsli[ss] = REML_setup_all( Xsli[ss] , tau , nlevab, rhomax,bmax ) ;
            if( RCsli[ss] == NULL ) ERROR_exit("REML setup fails for ss=%d",ss) ;
-         } else if( RC_SAVED(RCsli[ss]) ){          /* restore from disk */
+         } else if( RC_SAVED(RCsli[ss]) ){               /* restore from disk */
            if( verb > 1 && vstep ) fprintf(stderr,"+") ;
            reml_collection_restore( RCsli[ss] ) ;
          }
-         for( kk=0 ; kk < glt_num ; kk++ )
+         for( kk=0 ; kk < glt_num ; kk++ )     /* add GLT stuff to this setup */
            REML_add_glt_to_all( RCsli[ss] , glt_mat[kk] ) ;
        }
 
        if( abfixed )  /* special case */
          jj = 1 ;
        else
-         jj = IAB(RCsli[ss],aar[vv],bar[vv]) ;  /* closest point in the (a,b) grid */
+         jj = IAB(RCsli[ss],aar[vv],bar[vv]) ; /* closest point in (a,b) grid */
 
        if( RCsli[ss]->rs[jj] == NULL ){       /* try to fix up this oversight */
-         int   ia  = jj % (1+RCsli[ss]->na);
+         int   ia  = jj % (1+RCsli[ss]->na);  /* by creating needed setup now */
          int   ib  = jj / (1+RCsli[ss]->na);
          MTYPE aaa = RCsli[ss]->abot + ia * RCsli[ss]->da;
          MTYPE bbb = RCsli[ss]->bbot + ib * RCsli[ss]->db;
 
          RCsli[ss]->rs[jj] = REML_setup_one( Xsli[ss] , tau , aaa,bbb ) ;
-         for( kk=0 ; kk < glt_num ; kk++ )
+         for( kk=0 ; kk < glt_num ; kk++ )     /* make sure GLTs are included */
            REML_add_glt_to_one( RCsli[ss]->rs[jj] , glt_mat[kk] ) ;
        }
        if( RCsli[ss]->rs[jj] == NULL ){ /* should never happen */
@@ -3005,7 +3011,7 @@ STATUS("setting up Rglt") ;
        }
      } /* end of voxel loop */
 
-     reml_collection_destroy( RCsli[nsli-1] , 1 ) ;
+     reml_collection_destroy( RCsli[nsli-1] , 1 ) ;  /* keep just izero case */
      for( ii=0 ; ii < 7 ; ii++ ) free(bbar[ii]) ;
      vector_destroy(&qq5) ;
 
@@ -3073,6 +3079,7 @@ STATUS("setting up Rglt") ;
      MEMORY_CHECK ;
    }
 
+   /*-------------------------------------------------------------------------*/
    /*---------------------- create OLSQ outputs, if any ----------------------*/
 
    Obeta_dset = create_float_dataset( inset , nbetaset , Obeta_prefix,1 , &Obeta_fn,&Obeta_fp ) ;
@@ -3159,6 +3166,7 @@ STATUS("setting up Rglt") ;
                (Ofitts_dset != NULL) || (Obuckt_dset != NULL) ||
                (Oerrts_dset != NULL) || (Oglt_dset   != NULL)   ;
 
+   /*--------------------------------------------------------------------*/
    /*---------------- and do the third (OLSQ) voxel loop ----------------*/
 
    if( do_Ostuff ){
@@ -3172,6 +3180,8 @@ STATUS("setting up Rglt") ;
      bb4 = bbar[3] ; bb5 = bbar[4] ; bb6 = bbar[5] ; bb7 = bbar[6] ;
      vector_initialize(&qq5) ; vector_create_noinit(nrega,&qq5) ;
 
+     /* rv = VECTIM index, vv = voxel index */
+
      if( vstep ) fprintf(stderr,"++ OLSQ voxel loop: ") ;
      for( rv=vv=0 ; vv < nvox ; vv++ ){
        if( vstep && vv%vstep==vstep-1 ) vstep_print() ;
@@ -3184,7 +3194,7 @@ STATUS("setting up Rglt") ;
        for( ii=0 ; ii < ntime ; ii++ ) y.elts[ii] = (MTYPE)iv[goodlist[ii]] ;
 
        jj = izero ;                       /* OLSQ (a,b)=(0,0) case */
-       ss = vv / nsliper ;
+       ss = vv / nsliper ;                /* slice index */
 
        if( RCsli[ss]->rs[jj] == NULL ){       /* try to fix up this oversight */
          int   ia  = jj % (1+RCsli[ss]->na);
@@ -3193,8 +3203,6 @@ STATUS("setting up Rglt") ;
          MTYPE bbb = RCsli[ss]->bbot + ib * RCsli[ss]->db;
 
          RCsli[ss]->rs[jj] = REML_setup_one( Xsli[ss] , tau , aaa,bbb ) ;
-         for( kk=0 ; kk < glt_num ; kk++ )
-           REML_add_glt_to_one( RCsli[ss]->rs[jj] , glt_mat[kk]) ;
        }
        if( RCsli[ss]->rs[jj] == NULL ){ /* should never happen */
          ERROR_message("bad OLSQ! voxel #%d (%d,%d,%d) jj=%d",
@@ -3202,6 +3210,13 @@ STATUS("setting up Rglt") ;
                              DSET_index_to_jy(inset,vv) ,
                              DSET_index_to_kz(inset,vv) , jj ) ;
        } else {
+
+         /* 17 May 2010: if Rstuff wasn't run, have to add GLTs now */
+
+         if( RCsli[ss]->rs[jj]->nglt == 0 ){
+           for( kk=0 ; kk < glt_num ; kk++ )
+             REML_add_glt_to_one( RCsli[ss]->rs[jj] , glt_mat[kk]) ;
+         }
 
          (void)REML_func( &y , RCsli[ss]->rs[jj] , RCsli[ss]->X , RCsli[ss]->Xs ,
                           bbar , &bbsumq ) ;
@@ -3282,7 +3297,6 @@ STATUS("setting up Rglt") ;
            }
            save_series( vv , Oglt_dset , neglt , iv , Oglt_fp ) ;
          }
-
        }
      } /* end of voxel loop */
 
