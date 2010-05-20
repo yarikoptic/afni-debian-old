@@ -1787,7 +1787,7 @@ THD_OBJS = thd_atr.o thd_dsetto1D.o thd_initalldir.o thd_reconpar.o \
            thd_logafni.o thd_dset_nbhd.o thd_vcheck.o thd_matdaxes.o      \
            thd_niml.o afni_vedit.o thd_fdrcurve.o thd_dset_to_vectim.o    \
            thd_bandpass.o thd_instacorr.o thd_svdblur.o thd_satcheck.o    \
-           thd_dumdset.o ktaub.o bilinear_warp3D.o
+           thd_dumdset.o ktaub.o bilinear_warp3D.o thd_table.o
 
 # these are now included in NIML
 
@@ -2559,9 +2559,11 @@ nifti_stats.o:nifti/utils/nifti_stats.c
 	$(RM) $@
 	$(CC) -c nifti/utils/nifti_stats.c $(INFLAGS)
 
+# 64-bit gcc 4.0+ has optimization problem with this file
+# -> use 3.4 if necessary		19 May 2010 [rickr]
 nifticdf.o:nifti/nifticdf/nifticdf.c
 	$(RM) $@
-	$(CC) -D__COMPILE_UNUSED_FUNCTIONS__ -c nifti/nifticdf/nifticdf.c $(INFLAGS)
+	$(CCOLD) -D__COMPILE_UNUSED_FUNCTIONS__ -c nifti/nifticdf/nifticdf.c $(INFLAGS)
 
 nifti_statlib.o:nifti/utils/nifti_stats.c nifti_statlib.c
 	$(RM) $@
