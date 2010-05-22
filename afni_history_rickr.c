@@ -48,9 +48,19 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 20, MAY, 2010, RCR, "Makefile.NIH.CentOS.5.3_64", MICRO, TYPE_MODIFY,
+   "update CCOLD to compile with gcc verion 3.4",
+   NULL
+ } ,
+
  { 19, MAY, 2010, RCR, "Makefile.*", MINOR, TYPE_MODIFY,
    "add CCOLD to all for compiling nifticdf.o on linux_xorg7_64 using gcc v3",
-   NULL
+   "The gcc compiler versions 4.1-4.3 (at least) had an optimization bug\n"
+   "when compiling nifticdf.o.  The result was an inaccurate conversion\n"
+   "from F-stats to p-values (in some cases).\n"
+   "Test with the command:     cdf -t2p fift 1.0 10 100\n"
+   "   good result: 0.448817, bad result: 0.0472392\n"
+   "Problem found by L Thomas and B Bones."
  } ,
 
  { 13, MAY, 2010, RCR, "3dbucket", MICRO, TYPE_MODIFY,

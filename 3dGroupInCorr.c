@@ -31,6 +31,19 @@ static int debug = 0 ;  /* default non-debug mode */
 
 typedef signed char sbyte ;  /* 02 Feb 2010 */
 
+#undef  UINT32
+#undef  MAXCOV
+#define UINT32 unsigned int  /* 20 May 2010 */
+#define MAXCOV 32
+
+void regress_toz( int numA , float *zA ,
+                  int numB , float *zB , int opcode ,
+                  int mcov ,
+                  float *xA , float *psinvA , float *xtxinvA ,
+                  float *xB , float *psinvB , float *xtxinvB ,
+                  UINT32 testA , UINT32 testB , UINT32 testAB ,
+                  float *outvec , float *workspace             ) ;
+
 /*----------------------------------------------------------------------------*/
 
 static int vstep_n = 0 ;
@@ -73,6 +86,20 @@ static int mybsearch_int( int tt , int nar , int *ar )
      if( nn <  0 ) ii = kk ;    /* must be above kk */
      else          jj = kk ;    /* must be below kk */
    }
+
+   return -1 ;
+}
+
+/*--------------------------------------------------------------------------*/
+
+static int string_search( char *targ , int nstr , char **str )
+{
+   int ii ;
+
+   if( targ == NULL || *targ == '\0' || str == NULL || nstr < 1 ) return -1 ;
+
+   for( ii=0 ; ii < nstr ; ii++ )
+     if( str[ii] != NULL && strcmp(targ,str[ii]) == 0 ) return ii ;
 
    return -1 ;
 }
@@ -581,7 +608,9 @@ int main( int argc , char *argv[] )
    char *qlab_AAA=NULL , *qlab_BBB=NULL ;
    int   lset_AAA=0    ,  lset_BBB=0 ;
    int   *use_AAA=NULL ,  *use_BBB=NULL ;  /* lists of subjects to use */
-   NI_element *covnel=NULL ;       /* covariates */
+   NI_element   *covnel=NULL ;       /* covariates */
+   NI_str_array *covlab=NULL ;
+   int             mcov=0 ;
 
    /*-- enlighten the ignorant and brutish sauvages? --*/
 
@@ -850,17 +879,36 @@ int main( int argc , char *argv[] )
        ttest_opcode = 2 ; nopt++ ; continue ;
      }
 
-     if( strcasecmp(argv[nopt],"-covariates") == 0 ){
-       char *lab ;
+     if( strcasecmp(argv[nopt],"-covariates") == 0 ){  /* 20 May 2010 */
+       char *lab ; float sig ; int nbad ;
        if( ++nopt >= argc ) ERROR_exit("need 1 argument after option '%s'",argv[nopt-1]);
        if( covnel != NULL ) ERROR_exit("can't use -covariates twice!") ;
        covnel = THD_table_read( argv[nopt] ) ;
        if( covnel == NULL )
          ERROR_exit("Can't read table from -covariates file '%s'",argv[nopt]) ;
        INFO_message("Covariates file: %d columns, each with %d rows",
-                    covnel->vec_num,covnel->vec_len) ;
+                    covnel->vec_num , covnel->vec_len ) ;
+       mcov = covnel->vec_num - 1 ;
+       if( mcov < 1 )
+         ERROR_exit("Need at least 2 columns in -covariates file!") ;
        lab = NI_get_attribute( covnel , "Labels" ) ;
-       if( lab != NULL ) ININFO_message("Covariates labels: %s",lab) ;
+       if( lab != NULL ){
+         ININFO_message("Covariates labels: %s",lab) ;
+         covlab = NI_decode_string_list( lab , ";" ) ;
+         if( covlab == NULL || covlab->num < covnel->vec_num )
+           ERROR_exit("can't decode labels properly?!") ;
+       } else {
+         ERROR_exit("Can't get labels from -covariates file '%s'",argv[nopt]) ;
+       }
+       for( nbad=0,kk=1 ; kk <= mcov ; kk++ ){
+         meansigma_float(covnel->vec_len,(float *)covnel->vec[kk],NULL,&sig) ;
+         if( sig <= 0.0f ){
+           ERROR_message("Covariate '%s' is constant; how can this be used?!" ,
+                         covlab->str[kk] ) ;
+           nbad++ ;
+         }
+       }
+       if( nbad > 0 ) ERROR_exit("Cannot continue :-(") ;
        nopt++ ; continue ;
      }
 
@@ -1770,4 +1818,135 @@ float_pair ttest_toz( int numx, float *xar, int numy, float *yar, int opcode )
    result.a = delta ;
    result.b = (float)GIC_student_t2z( (double)tstat , (double)dof ) ;
    return result ;
+}
+
+/*---------------------------------------------------------------------------*/
+
+#undef  PA
+#undef  PB
+#undef  XA
+#undef  XB
+#define PA(i,j) psinvA[(i)+(j)*mm]  /* i=0..mm-1 , j=0..numA-1 */
+#define PB(i,j) psinvB[(i)+(j)*mm]
+#define XA(i,j) xA[(i)+(j)*(nA)]    /* i=0..nA-1 , j=0..mm-1 */
+#define XB(i,j) xB[(i)+(j)*(nB)]
+
+#undef  VBIG
+#define VBIG 1.0e+24f
+
+/*---------------------------------------------------------------------------*/
+/*  opcode defines what to do for 2-sample tests:
+      0 ==> unpaired, pooled variance
+      1 ==> unpaired, unpooled variance (not yet implemented)
+      2 ==> paired (numA==numB required)
+
+    xA      = numA X (mcov+1) matrix -- in column-major order
+    psinvA  = (mcov+1) X numA matrix -- in column-major order
+    xtxinvA = (mcov+1) vector = diagonal elements of inv[X'X]
+*//*-------------------------------------------------------------------------*/
+
+void regress_toz( int numA , float *zA ,
+                  int numB , float *zB , int opcode ,
+                  int mcov ,
+                  float *xA , float *psinvA , float *xtxinvA ,
+                  float *xB , float *psinvB , float *xtxinvB ,
+                  UINT32 testA , UINT32 testB , UINT32 testAB ,
+                  float *outvec , float *workspace             )
+{
+   int ii,jj,kt=0,tt,nws , mm=mcov+1 , nA=numA , nB=numB ;
+   float *betA=NULL , *betB=NULL , *zdifA=NULL , *zdifB=NULL ;
+   float ssqA=0.0f , ssqB=0.0f , varA=0.0f , varB=0.0f ;
+   register float val ;
+
+   nws = 0 ;
+   if( testA || testAB ){
+     betA  = workspace + nws ; nws += mm ;
+     zdifA = workspace + nws ; nws += nA ;
+   }
+   if( testB || testAB ){
+     betB  = workspace + nws ; nws += mm ;
+     zdifB = workspace + nws ; nws += nB ;
+   }
+
+   /* compute estimates for A parameters */
+
+   if( testA || testAB ){
+     for( ii=0 ; ii < mm ; ii++ ){
+       for( val=0.0f,jj=0 ; jj < nA ; jj++ ) val += PA(ii,jj)*zA[jj] ;
+       betA[ii] = val ;
+     }
+     for( jj=0 ; jj < nA ; jj++ ){
+       val = -zA[jj] ;
+       for( ii=0 ; ii < mm ; ii++ ) val += XA(jj,ii)*betA[ii] ;
+       zdifA[ii] = val ; ssqA += val*val ;
+     }
+     if( testA ){ varA = ssqA / (nA-mm) ; if( varA <= 0.0f ) varA = VBIG ; }
+   }
+
+   /* compute estimates for B parameters */
+
+   if( testB || testAB ){
+     for( ii=0 ; ii < mm ; ii++ ){
+       for( val=0.0f,jj=0 ; jj < nB ; jj++ ) val += PB(ii,jj)*zB[jj] ;
+       betB[ii] = val ;
+     }
+     for( jj=0 ; jj < nB ; jj++ ){
+       val = -zB[jj] ;
+       for( ii=0 ; ii < mm ; ii++ ) val += XB(jj,ii)*betB[ii] ;
+       zdifB[ii] = val ; ssqB += val*val ;
+     }
+     if( testB ){ varB = ssqB / (nB-mm) ; if( varB <= 0.0f ) varB = VBIG ; }
+   }
+
+   /* carry out 1-sample A tests, if any */
+
+   if( testA ){
+     for( tt=0 ; tt < mm ; tt++ ){
+       if( (testA & (1 << tt)) == 0 ) continue ;  /* bitwise AND */
+       outvec[kt++] = betA[tt] ;
+       outvec[kt++] = betA[tt] / sqrtf( varA * xtxinvA[tt] ) ;
+     }
+   }
+
+   /* carry out 1-sample B tests, if any */
+
+   if( testB ){
+     for( tt=0 ; tt < mm ; tt++ ){
+       if( (testB & (1 << tt)) == 0 ) continue ;  /* bitwise AND */
+       outvec[kt++] = betB[tt] ;
+       outvec[kt++] = betB[tt] / sqrtf( varB * xtxinvB[tt] ) ;
+     }
+   }
+
+   /* carry out 2-sample (A-B) tests, if any */
+
+   if( testAB ){
+     float varAB ;
+
+     if( opcode == 2 ){  /* paired (nA==nB, xA==xB, etc.) */
+
+       for( varAB=0.0f,ii=0 ; ii < nA ; ii++ ){
+         val = zdifA[ii] - zdifB[ii] ; varAB += val*val ;
+       }
+       varAB /= (nA-mm) ; if( varAB <= 0.0f ) varAB = VBIG ;
+
+       for( tt=0 ; tt < mm ; tt++ ){
+         if( (testAB & (1 << tt)) == 0 ) continue ;  /* bitwase AND */
+         outvec[kt++] = betA[ii] - betB[ii] ;
+         outvec[kt++] = outvec[kt-1] / sqrtf( varAB*xtxinvA[tt] ) ;
+       }
+
+     } else {            /* unpaired, pooled variance */
+
+       varAB = (ssqA+ssqB)/(nA+nB-2*mm) ; if( varAB <= 0.0f ) varAB = VBIG ;
+
+       for( tt=0 ; tt < mm ; tt++ ){
+         if( (testAB & (1 << tt)) == 0 ) continue ;  /* bitwase AND */
+         outvec[kt++] = betA[tt] - betB[tt] ;
+         outvec[kt++] = outvec[kt-1] / sqrtf( varAB*(xtxinvA[tt]+xtxinvB[tt]) );
+       }
+     } /* end of unpaired pooled variance */
+   }
+
+   return ;
 }

@@ -487,9 +487,12 @@ SUMA_DSET *SUMA_morphDsetToStd (SUMA_DSET *dset, SUMA_M2M_STRUCT *M2M,
    
    if (bfull) SUMA_free(bfull); bfull=NULL;
    
+   SUMA_COPY_DSET_ALL_COL_ATTRIBUTES(dset, ndset);
+
    if (LocalHead) {
       SUMA_ShowDset(ndset, 0, NULL);
    }
+   
    SUMA_RETURN(ndset);
 }
 
