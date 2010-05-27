@@ -669,6 +669,9 @@ static PLUGIN_interface *GICOR_plint = NULL ;  /* 13 May 2010 */
 
 static void GICOR_refit_stat_menus(void) ;
 
+#undef GIC_ALLOW_TTEST
+
+/*---------------------------------------------------------------------------*/
 /*-- Called from afni_niml.c when 3dGroupInCorr sends a setup NIML element --*/
 
 void GICOR_setup_func( NI_stream nsg , NI_element *nel )
@@ -733,8 +736,10 @@ ENTRY("GICOR_setup_func") ;
    atr = NI_get_attribute( nel , "seedrad" ) ;
    if( atr != NULL ) giset->seedrad = (float)strtod(atr,NULL) ;
 
+#ifdef GIC_ALLOW_TTEST
    atr = NI_get_attribute( nel , "ttest_opcode" ) ;
    if( atr != NULL ) giset->ttest_opcode = (int)strtod(atr,NULL) ;
+#endif
 
    /* create output dataset, to be filled in from 3dGroupInCorr data later */
 
@@ -795,6 +800,7 @@ ENTRY("GICOR_setup_func") ;
 
    giset->num_stat_available = 0 ;
    giset->lab_stat_available = NULL ;
+#if 0
    atr   = NI_get_attribute( nel , "stats_available" ) ;
    labar = NI_decode_string_list( atr , ";" ) ;
    if( labar != NULL && labar->num > 0 ){
@@ -804,6 +810,7 @@ ENTRY("GICOR_setup_func") ;
        giset->lab_stat_available[vv] = strdup(labar->str[vv]) ;
      NI_delete_str_array(labar) ;
    }
+#endif
 
    /* add dataset to current session (change name if necessary) */
 
@@ -1091,8 +1098,10 @@ STATUS("create NIML element to send info") ;
    sprintf( buf , "%g" , giset->seedrad ) ;
    NI_set_attribute( nel , "seedrad" , buf ) ;
 
+#ifdef GIC_ALLOW_TTEST
    sprintf( buf , "%d" , giset->ttest_opcode ) ;
    NI_set_attribute( nel , "ttest_opcode" , buf ) ;
+#endif
 
 STATUS("send NIML element") ;
 
@@ -1169,8 +1178,10 @@ ENTRY("GICOR_init") ;
    PLUTO_add_option ( plint , "Params" , "Params" , TRUE ) ;
    PLUTO_add_number ( plint , "SeedRad" , 0,16,0,(int)rint(giset->seedrad), TRUE ) ;
 
+#ifdef GIC_ALLOW_TTEST
    ntops = (giset->ndset_A == giset->ndset_B) ? 3 : 2 ;
    PLUTO_add_string ( plint , "t-test"  , ntops , topts , giset->ttest_opcode ) ;
+#endif
 
    PLUTO_add_option ( plint , "Cluster" , "Cluster" , TRUE ) ;
    PLUTO_add_number ( plint , "Voxels"  , 0,9999,0 , 0,TRUE ) ;
@@ -1267,8 +1278,10 @@ ENTRY("GICOR_main") ;
 
    PLUTO_next_option(plint) ;
    srad   = PLUTO_get_number(plint) ;
+#ifdef GIC_ALLOW_TTEST
    tch    = PLUTO_get_string(plint) ;
    topcod = PLUTO_string_index( tch , 3 , topts ) ;
+#endif
 
    PLUTO_next_option(plint) ;
    vmul   = (int)PLUTO_get_number(plint) ;
@@ -1276,8 +1289,10 @@ ENTRY("GICOR_main") ;
    /* do something with these changes */
 
    giset->seedrad      = srad ;
-   giset->ttest_opcode = topcod ;
    giset->vmul         = vmul ;
+#ifdef GIC_ALLOW_TTEST
+   giset->ttest_opcode = topcod ;
+#endif
 
    RETURN(NULL) ;
 }
