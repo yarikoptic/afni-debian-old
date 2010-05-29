@@ -177,7 +177,7 @@ PLUGIN_interface * ICOR_init( char *lab )
                                 PLUGIN_CALL_VIA_MENU ,
                                 (char *(*)())ICOR_main  ) ;
 
-   sprintf(sk,"%sSetup+Keep",lab) ; sprintf(sc,"%sSetup+Close",lab) ;
+   sprintf(sk,"%sSetup+Keep",lab) ; sprintf(sc,"%sSetup+Quit",lab) ;
    PLUTO_set_runlabels( plint , sk , sc ) ;
 
    /*--------- make interface lines -----------*/
@@ -1171,20 +1171,20 @@ ENTRY("GICOR_init") ;
                                 (char *(*)())GICOR_main  ) ;
    GICOR_plint = plint ;
 
-   PLUTO_set_runlabels( plint , "Setup+Keep" , "Setup+Close" ) ;
+   PLUTO_set_runlabels( plint , "Set+Keep" , "Set+Quit" ) ;
 
    /*--------- make interface lines -----------*/
 
-   PLUTO_add_option ( plint , "Params" , "Params" , TRUE ) ;
-   PLUTO_add_number ( plint , "SeedRad" , 0,16,0,(int)rint(giset->seedrad), TRUE ) ;
+   PLUTO_add_option ( plint , "Parameters" , "Params" , TRUE ) ;
+   PLUTO_add_number ( plint , "SeedRadius" , 0,16,0,(int)rint(giset->seedrad), TRUE ) ;
 
 #ifdef GIC_ALLOW_TTEST
    ntops = (giset->ndset_A == giset->ndset_B) ? 3 : 2 ;
    PLUTO_add_string ( plint , "t-test"  , ntops , topts , giset->ttest_opcode ) ;
 #endif
 
-   PLUTO_add_option ( plint , "Cluster" , "Cluster" , TRUE ) ;
-   PLUTO_add_number ( plint , "Voxels"  , 0,9999,0 , 0,TRUE ) ;
+   PLUTO_add_option ( plint , "Clustering" , "Cluster" , TRUE ) ;
+   PLUTO_add_number ( plint , "Voxels Min"  , 0,9999,0 , 0,TRUE ) ;
 
    if( giset->toplabel != NULL )
      PLUTO_set_toplabel( GICOR_plint , giset->toplabel ) ;
