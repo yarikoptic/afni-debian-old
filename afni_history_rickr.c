@@ -48,12 +48,26 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 10, JUN, 2010, RCR, "afni_proc.py", MICRO, TYPE_BUG_FIX,
+   "fixed copying EPI and anat as NIfTI",
+   NULL
+ } ,
+
+ { 8, JUN, 2010, RCR, "timing_tool.py", MICRO, TYPE_BUG_FIX,
+   "fixed partitioning without zeros",
+   NULL
+ } ,
+
+ { 8, JUN, 2010, RCR, "afni_proc.py", MINOR, TYPE_NEW_OPT,
+   "added -regress_censor_outliers and -regress_skip_first_outliers",
+   NULL
+ } ,
+
  { 4, JUN, 2010, RCR, "afni_proc.py", MINOR, TYPE_NEW_OPT,
    "moved outlier counting outside of tshift block",
    "- if only one regressor, use 1dcat for 'sum' ideal\n"
    "- added -count_outliers, default to 'yes'\n"
    "- outlier counting is now at end of tcat block"
-
  } ,
 
  { 4, JUN, 2010, RCR, "3dToutcount", MICRO, TYPE_NEW_OPT,

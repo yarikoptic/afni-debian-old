@@ -188,9 +188,14 @@ g_history = """
         - if only one regressor, use 1dcat for "sum" ideal
         - added -count_outliers, default to "yes"
         - outlier counting is now at end of tcat block
+    2.27 Jun 09 2010 :
+        - added -regress_censor_outliers and -regress_skip_first_outliers
+        - specified 'auto block:' in block headers for those not chosen by user
+    2.28 Jun 10 2010 : fixed copying EPI and anat as NIfTI
+          (problem noted by S Tambalo)
 """
 
-g_version = "version 2.26, June 4, 2010"
+g_version = "version 2.28, June 10, 2010"
 
 # ----------------------------------------------------------------------
 # dictionary of block types and modification functions
@@ -282,7 +287,8 @@ class SubjProcSream:
         self.mask_anat  = None          # mask dataset (from subject anat)
         self.mask_group = None          # mask dataset (from tlrc base)
         self.mask_extents = None        # mask dataset (of EPI extents)
-        self.regress_censor_file = ''   # for use as '-censor FILE' in 3dD
+        self.censor_file  = ''          # for use as '-censor FILE' in 3dD
+        self.censor_count = 0           # count times censoring
         self.exec_cmd   = ''            # script execution command string
         self.bash_cmd   = ''            # bash formatted exec_cmd
         self.tcsh_cmd   = ''            # tcsh formatted exec_cmd
@@ -308,7 +314,7 @@ class SubjProcSream:
                 print
                 for dset in self.dsets: dset.show()
             else:
-                for dset in self.dsets: print dset.pv(),
+                for dset in self.dsets: print dset.rel_input(),
                 print
         if self.verb > 3: self.valid_opts.show('valid_opts: ')
         if self.verb > 1: self.user_opts.show('user_opts: ')
@@ -493,13 +499,20 @@ class SubjProcSream:
                         helpstr="basis function to use in regression")
         self.valid_opts.add_opt('-regress_basis_normall', 1, [],
                         helpstr="specify magnitude of basis functions")
+
         self.valid_opts.add_opt('-regress_censor_motion', 1, [],
                         helpstr="censor TR if motion derivative exceeds limit")
-        self.valid_opts.add_opt('-regress_censor_first_trs', 1, [],
-                        helpstr="censor first TRs per run (if censor motion)")
         self.valid_opts.add_opt('-regress_censor_prev', 1, [],
                         acplist=['yes','no'],
                         helpstr="set whether to censor previous motion TR")
+        self.valid_opts.add_opt('-regress_censor_first_trs', 1, [],
+                        helpstr="censor first TRs per run (if censor motion)")
+
+        self.valid_opts.add_opt('-regress_censor_outliers', 1, [],
+                        helpstr="censor TR if outlier fraction exceeds limit")
+        self.valid_opts.add_opt('-regress_skip_first_outliers', 1, [],
+                        helpstr="ignore outliers in first few TRs of each run")
+
         self.valid_opts.add_opt('-regress_fout', 1, [],
                         acplist=['yes','no'],
                         helpstr="output individual F-stats? (def: yes)")
@@ -661,7 +674,7 @@ class SubjProcSream:
         if opt != None:
             for dset in opt.parlist:
                 self.dsets.append(afni_name(dset))
-            if self.dsets[0].view != self.view:
+            if self.dsets[0].view and self.dsets[0].view != self.view:
                 self.view = self.dsets[0].view
                 self.origview = self.view
                 if self.verb > 0: print '-- applying view as %s' % self.view
@@ -1120,7 +1133,7 @@ class SubjProcSream:
         else: stat_inc = '@ nerrors += $status      # accumulate error count\n'
 
         self.fp.write('# %s\n'
-                      '# script setup\n\n' % block_header('setup'))
+                      '# script setup\n\n' % block_header('auto block: setup'))
 
         if len(stat_inc) > 0:
             self.fp.write("# prepare to count setup errors\n"
@@ -1165,7 +1178,7 @@ class SubjProcSream:
         if self.anat:
             str = '# copy anatomy to results dir\n'     \
                   '3dcopy %s %s/%s\n' %                 \
-                      (self.anat.rpv(), self.od_var, self.anat.prefix)
+                      (self.anat.rel_input(), self.od_var, self.anat.prefix)
             self.fp.write(add_line_wrappers(str))
             self.fp.write("%s\n" % stat_inc)
 
@@ -1210,7 +1223,7 @@ class SubjProcSream:
 
     # and last steps
     def finalize_script(self):
-        str = '# %s\n\n' % block_header('cleanup')
+        str = '# %s\n\n' % block_header('auto block: cleanup')
         self.fp.write(str)
 
         if self.rm_rm and self.have_rm:
