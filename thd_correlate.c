@@ -2,39 +2,30 @@
 
 /*==============================================================================*/
 /*========== The following functions were moved from afni_fimfunc.c -===========*/
-/*==============================================================================*/
+/*===========================================================================*/
 
-/*------------------------------------------------------------------------------*/
+/*---------------------------------------------------------------------------*/
 /*! Rank-order a float array, with ties getting the average rank.
    The output overwrites the input.
---------------------------------------------------------------------------------*/
+   [27 Jun 2010: modified to create/destroy workspace on each call]
+*//*-------------------------------------------------------------------------*/
 
 void rank_order_float( int n , float *a )
 {
    register int ii , ns , n1 , ib ;
-   static int   nb = 0 ;
-   static int   *b = NULL ;  /* workspaces */
-   static float *c = NULL ;
+   int   *b ;  /* workspaces */
+   float *c ;
    float cs ;
 
    /*- handle special cases -*/
 
-   if( a == NULL ){
-     if( b != NULL ){ free(b); free(c); b=NULL ; c=NULL; nb=0; }  /* free workspaces */
-     return ;
-   }
+   if( a == NULL || n < 1 ) return ;        /* meaningless input */
+   if( n == 1 ){ a[0] = 0.0f ; return ; }    /* only one point!? */
 
-   if( n < 1 ) return ;                     /* meaningless input */
-   if( n == 1 ){ a[0] = 0.0 ; return ; }    /* only one point!? */
+   /*- make workspaces -*/
 
-   /*- make workspaces, if needed -*/
-
-   if( nb < n ){
-     if( b != NULL ){ free(b); free(c); }
-     b  = (int   *) malloc(sizeof(int  )*n) ;
-     c  = (float *) malloc(sizeof(float)*n) ;
-     nb = n ;
-   }
+   b = (int   *) malloc(sizeof(int  )*n) ;
+   c = (float *) malloc(sizeof(float)*n) ;
 
    for( ii=0 ; ii < n ; ii++ ) c[ii] = b[ii] = ii ;
 
@@ -55,7 +46,7 @@ void rank_order_float( int n , float *a )
 
    for( ii=0 ; ii < n ; ii++ ) a[b[ii]] = c[ii] ;
 
-   return ;
+   free(c) ; free(b) ; return ;
 }
 
 /*---------------------------------------------------------------------------*/
@@ -69,7 +60,7 @@ float spearman_rank_prepare( int n , float *a )
 
    rank_order_float( n , a ) ;
 
-   rb = 0.5*(n-1) ; rs=0.0 ;
+   rb = 0.5f*(n-1) ; rs=0.0f ;
    for( ii=0 ; ii < n ; ii++ ){
      a[ii] -= rb ;
      rs    += a[ii]*a[ii] ;
@@ -89,10 +80,10 @@ float quadrant_corr_prepare( int n , float *a )
 
    rank_order_float( n , a ) ;
 
-   rb = 0.5*(n-1) ; rs=0.0 ;
+   rb = 0.5f*(n-1) ; rs=0.0f ;
    for( ii=0 ; ii < n ; ii++ ){
      a[ii] = (a[ii] > rb) ? 1.0
-                          : (a[ii] < rb) ? -1.0 : 0.0 ;
+                          : (a[ii] < rb) ? -1.0f : 0.0f ;
      rs   += a[ii]*a[ii] ;
    }
 
@@ -112,9 +103,9 @@ float spearman_rank_corr( int n , float *x , float rv , float *r )
    register int ii ;
    register float ss ; float xv ;
 
-   xv = spearman_rank_prepare( n , x ) ; if( xv <= 0.0 ) return 0.0 ;
+   xv = spearman_rank_prepare( n , x ) ; if( xv <= 0.0f ) return 0.0f ;
 
-   for( ii=0,ss=0.0 ; ii < n ; ii++ ) ss += x[ii] * r[ii] ;
+   for( ii=0,ss=0.0f ; ii < n ; ii++ ) ss += x[ii] * r[ii] ;
 
    return ( ss/sqrtf(rv*xv) ) ;
 }
@@ -132,9 +123,9 @@ float quadrant_corr( int n , float *x , float rv , float *r )
    register int ii ;
    register float ss ; float xv ;
 
-   xv = quadrant_corr_prepare( n , x ) ; if( xv <= 0.0 ) return 0.0 ;
+   xv = quadrant_corr_prepare( n , x ) ; if( xv <= 0.0f ) return 0.0f ;
 
-   for( ii=0,ss=0.0 ; ii < n ; ii++ ) ss += x[ii] * r[ii] ;
+   for( ii=0,ss=0.0f ; ii < n ; ii++ ) ss += x[ii] * r[ii] ;
 
    return ( ss/sqrtf(rv*xv) ) ;
 }
@@ -149,7 +140,7 @@ float quadrant_corr( int n , float *x , float rv , float *r )
 float THD_spearman_corr( int n , float *x , float *y )
 {
    float xv = spearman_rank_prepare(n,x) ;
-   if( xv <= 0.0 ) return 0.0 ;
+   if( xv <= 0.0f ) return 0.0f ;
    return spearman_rank_corr( n,y,xv,x ) ;
 }
 
@@ -171,8 +162,8 @@ float THD_spearman_corr_nd( int n , float *x , float *y )
 
 float THD_ktaub_corr( int n , float *x , float *y )
 {
-   qsort_floatfloat( n , x , y ) ;
-   return kendallNlogN( x , y , n ) ;
+   qsort_floatfloat( n , x , y ) ;    /* preliminary sorting of x, carrying y */
+   return kendallNlogN( x , y , n ) ; /* the actual work */
 }
 
 /*--------------------------------------------------------------*/
@@ -181,7 +172,7 @@ float THD_ktaub_corr( int n , float *x , float *y )
 float THD_quadrant_corr( int n , float *x , float *y )
 {
    float xv = quadrant_corr_prepare(n,x) ;
-   if( xv <= 0.0 ) return 0.0 ;
+   if( xv <= 0.0f ) return 0.0f ;
    return quadrant_corr( n,y,xv,x ) ;
 }
 
@@ -206,7 +197,7 @@ float THD_quadrant_corr_nd( int n , float *x , float *y )
      qc += (x[ii] > xm) * (y[ii] > ym) ;
    qc = (4.0f*qc) / n - 1.0f ;
    if( qc < -1.0f ) qc = -1.0f; else if( qc > 1.0f ) qc = 1.0f;
-   qc = sinf(1.570796*qc) ;
+   qc = sinf(1.570796f*qc) ;  /* adjust to normal model */
    return qc ;
 }
 #else
@@ -280,6 +271,36 @@ float mri_spearman_corr( MRI_IMAGE *im , MRI_IMAGE *jm )
    gim = mri_to_float(jm) ; gar = mri_data_pointer(gim) ;
    cc  = THD_spearman_corr( fim->nvox , far , gar ) ;
    mri_free(gim) ; mri_free(fim) ; return cc ;
+}
+
+/*----------------------------------------------------------------*/
+/*! eta^2 (Cohen, NeuroImage 2008)              25 Jun 2010 [rickr]
+ *
+ *  eta^2 = 1 -  SUM[ (a_i - m_i)^2 + (b_i - m_i)^2 ]
+ *               ------------------------------------
+ *               SUM[ (a_i - M  )^2 + (b_i - M  )^2 ]
+ *
+ *  where  o  a_i and b_i are the vector elements
+ *         o  m_i = (a_i + b_i)/2
+ *         o  M = mean across both vectors
+ -----------------------------------------------------------------*/
+float THD_eta_squared( int n, float *x , float *y )
+{
+   double num=0.0f , denom = 0.0f ;
+   float gm=0.0f , lm ;
+   int ii ;
+
+   for( ii=0 ; ii < n ; ii++ ){ gm += x[ii] + y[ii] ; }
+   gm /= (2*n) ;
+
+   for( ii=0 ; ii < n ; ii++ ){
+     lm = 0.5 * ( x[ii] + y[ii] ) ;
+     num   += (x[ii]-lm)*(x[ii]-lm) + (y[ii]-lm)*(y[ii]-lm) ;
+     denom += (x[ii]-gm)*(x[ii]-gm) + (y[ii]-gm)*(y[ii]-gm) ;
+   }
+
+   if( num < 0.0f || denom <= 0.0f || num >= denom ) return 0.0f ;
+   return 1.0 - num/denom ;
 }
 
 /****************************************************************************/
