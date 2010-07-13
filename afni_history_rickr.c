@@ -48,6 +48,16 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 12, JUL, 2010, RCR, "timing_tool.py", MINOR, TYPE_NEW_OPT,
+   "added -truncate_times and -round_times for S Durgerian",
+   NULL
+ } ,
+
+ { 11, JUL, 2010, RCR, "timing_tool.py", MINOR, TYPE_ENHANCE,
+   "show TR offset stats if -tr and -show_isi_stats",
+   NULL
+ } ,
+
  { 7, JUL, 2010, RCR, "NIFTI", MICRO, TYPE_BUG_FIX,
    "fixed znzread/write to again return nmembers",
    "Also, added M Hanke's update to CMakeLists.txt for new realease number."
