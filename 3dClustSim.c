@@ -216,8 +216,8 @@ void display_help_menu()
    "-quiet         = Don't print out the progress reports, etc.\n"
    "                  * Put this option first to quiet most informational messages.\n"
    "\n"
-   "NOTE:\n"
-   "-----\n"
+   "NOTES:\n"
+   "------\n"
    "* This program is like running AlphaSim once for each '-pthr' value and then\n"
    "  extracting the relevant information from its 'Alpha' output column.\n"
    "\n"
@@ -237,7 +237,7 @@ void display_help_menu()
    "     rm -f Ctemp.NN1.niml\n"
    "  AFNI's Clusterize GUI makes use of this attribute, if stored in a statistical\n"
    "  dataset (e.g., something from 3dDeconvolve, 3dREMLfit, et cetera).\n"
-   "  [At present, AFNI only uses the NN1 method in the Clusterize GUI.\n"
+   "  [At present, AFNI only uses the NN1 method in the Clusterize GUI.]\n"
    "\n"
    "-- RW Cox -- July 2010\n"
   ) ;
@@ -1185,6 +1185,11 @@ MPROBE ;
         for( iathr=0 ; iathr < nathr ; iathr++ ) vec[iathr] = athr[iathr] ;
         nfar.num = nathr ; nfar.ar = vec ; bbb = NI_encode_float_list(&nfar,",") ;
         NI_set_attribute(nel,"athr",bbb) ; NI_free(bbb) ;
+        if( mask_dset != NULL ){
+          NI_set_attribute(nel,"mask_dset_idcode",DSET_IDCODE_STR(mask_dset)) ;
+          NI_set_attribute(nel,"mask_dset_name"  ,DSET_HEADNAME(mask_dset)) ;
+          sprintf(bbb,"%d",mask_ngood) ; NI_set_attribute(nel,"mask_count",bbb) ;
+        }
         if( prefix != NULL ) strcat(fname,"niml") ;
         else                 strcpy(fname,"stdout:") ;
         NI_write_element_tofile( fname , nel , NI_TEXT_MODE ) ;
