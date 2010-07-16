@@ -396,7 +396,7 @@ static char *commandline = NULL ;
 
 static int goforit = 0 ;  /* 07 Mar 2007 */
 static int badlev  = 0 ;
-static int floatout= 0 ;  /* 13 Mar 2007 */
+static int floatout= 1 ;  /* 13 Mar 2007 ; 15 Jul 2010: now defaults on */
 
 /* include other dset types for float output   2 Apr 2009 [rickr] */
 #define CHECK_NEEDS_FLOATS(fn)                                         \
@@ -430,6 +430,9 @@ static int_triple *abc_CENSOR = NULL ;
 static int do_FDR = 1 ;                 /* 23 Jan 2008 */
 
 static byte *gmask = NULL ;             /* 03 Feb 2009 -- global mask array */
+
+static bytevec *statmask = NULL ;       /* 15 Jul 2010 -- ditto */
+static char    *statmask_name = NULL ;
 
 /*---------- Typedefs for basis function expansions of the IRF ----------*/
 
@@ -831,8 +834,11 @@ void display_help_menu()
     "[-TR_1D tr1d]        tr1d = TR for .1D time series [default 1.0 sec].  \n"
     "                     This option has no effect without -input1D        \n"
     "[-nodata [NT [TR]]   Evaluate experimental design only (no input data) \n"
-    "[-mask mname]        mname = filename of 3d mask dataset               \n"
-    "[-automask]          build a mask automatically from input data        \n"
+    "[-mask mname]        mname = filename of 3D mask dataset               \n"
+    "                      Only data time series from within the mask       \n"
+    "                      will be analyzed; results for voxels outside     \n"
+    "                      the mask will be set to zero.                    \n"
+    "[-automask]          Build a mask automatically from input data        \n"
     "                      (will be slow for long time series datasets)     \n"
     "                  ** If you don't specify ANY mask, the program will   \n"
     "                      build one automatically (from each voxel's RMS)  \n"
@@ -848,6 +854,16 @@ void display_help_menu()
     "                   * To be precise, the above default masking only     \n"
     "                      happens when you use '-input' to run the program \n"
     "                      with a 3D+time dataset; not with '-input1D'.     \n"
+    "[-STATmask sname]    Build a mask from file 'sname', and use this      \n"
+    "                       mask for the purpose of reporting truncation-to \n"
+    "                       float issues AND for computing the FDR curves.  \n"
+    "                       The actual results ARE not masked with this     \n"
+    "                       option (only with '-mask' or '-automask' options)\n"
+    "                       * If you don't use '-STATmask', then the mask   \n"
+    "                         from '-mask' or '-automask' is used for these \n"
+    "                         purposes.  If neither of those is given, then \n"
+    "                         the automatically generated mask described    \n"
+    "                         just above is used for these purposes.        \n"
     "[-censor cname]      cname = filename of censor .1D time series        \n"
     "[-CENSORTR clist]    clist = list of strings that specify time indexes \n"
     "                       to be removed from the analysis.  Each string is\n"
@@ -1668,7 +1684,8 @@ void get_options
   /*----- initialize the input options -----*/
   initialize_options (option_data);
 
-  if( AFNI_yesenv("AFNI_FLOATIZE") ) floatout = 1 ;  /* 17 Jan 2008 */
+       if( AFNI_yesenv("AFNI_FLOATIZE") ) floatout = 1 ;  /* 17 Jan 2008 */
+  else if( AFNI_yesenv("AFNI_SHORTIZE") ) floatout = 0 ;  /* 15 Jun 2010 */
 
   if( AFNI_yesenv("AFNI_3dDeconvolve_GOFORIT") ) goforit++ ; /* 07 Mar 2007 */
 
@@ -1782,6 +1799,21 @@ void get_options
         continue;
       }
 
+      /*-----  -STATmask  fname  -----*/
+
+      if( strcasecmp(argv[nopt],"-STATmask") == 0 ||
+          strcasecmp(argv[nopt],"-FDRmask")  == 0   ){
+        nopt++ ;
+        if( statmask != NULL ) DC_error("can't use -STATmask twice") ;
+        if( nopt     >= argc ) DC_error("need argument after -STATmask") ;
+        statmask_name = strdup(argv[nopt]) ;
+        statmask = THD_create_mask_from_string(statmask_name) ;
+        if( statmask == NULL ){
+          WARNING_message("-STATmask being ignored: can't use it") ;
+          free(statmask_name) ; statmask_name = NULL ;
+        }
+        nopt++ ; continue ;
+      }
 
       /*-----   -mask filename   -----*/
       if (strcmp(argv[nopt], "-mask") == 0)
@@ -3400,13 +3432,12 @@ ENTRY("read_input_data") ;
         if( *mask_vol == NULL ){
           WARNING_message("unable to generate automask?!") ;
         } else {
-          mc = THD_countmask( DSET_NVOX(*dset_time) , *mask_vol ) ;
+          mc = THD_countmask( nxyz , *mask_vol ) ;
           if( mc <= 1 ){
             WARNING_message("automask is empty!?") ;
             free(*mask_vol) ; *mask_vol = NULL ;
           } else {
-            INFO_message("%d voxels in automask (out of %d)",
-                         mc,DSET_NVOX(*dset_time)) ;
+            INFO_message("%d voxels in automask (out of %d)", mc,nxyz) ;
           }
         }
         gmask = *mask_vol ;  /* save global mask -- 03 Feb 2009 */
@@ -3440,6 +3471,25 @@ ENTRY("read_input_data") ;
            gmask = *mask_vol ;         /* global mask save -- 03 Feb 2009 */
          }
 
+      /* 15 Jul 2010: use -STATmask? */
+
+      if( statmask != NULL ){
+        if( statmask->nar != nxyz ){
+          WARNING_message("-STATmask ignored: doesn't match -input dataset size!") ;
+          KILL_bytevec(statmask) ; free(statmask_name) ; statmask_name = NULL ;
+        } else {
+          int mc ; byte *qmask=gmask ;
+          gmask = statmask->ar ; mc = THD_countmask( nxyz , gmask ) ;
+          if( mc <= 99 ){
+            gmask = qmask ;
+            KILL_bytevec(statmask) ; free(statmask_name) ; statmask_name = NULL ;
+            WARNING_message("-STATmask ignored: only has %d nonzero voxels",mc) ;
+          } else if( verb )
+            INFO_message("-STATmask has %d voxels (out of %d = %.1f%%)",
+                         mc, nxyz, (100.0f*mc)/nxyz ) ;
+        }
+      }
+
       /* 03 Feb 2009 -- make a global mask if not provided thus far */
 
       if( gmask == NULL && nxd > 15 && nyd > 15 && nzd > 15 ){
@@ -3447,17 +3497,19 @@ ENTRY("read_input_data") ;
         qim   = THD_rms_brick( *dset_time ) ;
         gmask = mri_automask_image( qim ) ;
         mri_free( qim ) ;
-        mc = THD_countmask( DSET_NVOX(*dset_time) , gmask ) ;
+        mc = THD_countmask( nxyz , gmask ) ;
         if( mc <= 99 ){ if( gmask != NULL ){ free(gmask) ; gmask = NULL ; } }
         else if( verb && (!floatout || do_FDR) )
-          INFO_message("misfit/FDR automask has %d voxels (out of %d = %.1f%%)",
-                       mc, DSET_NVOX(*dset_time), (100.0f*mc)/DSET_NVOX(*dset_time) ) ;
+          INFO_message("STAT automask has %d voxels (out of %d = %.1f%%)",
+                       mc, nxyz, (100.0f*mc)/nxyz ) ;
       }
 
       EDIT_set_misfit_mask(gmask) ; mri_fdr_setmask(gmask) ;
 
-    } else {                                   /* no input data? */
+    } else {  /*------------------------- no input data? --------------------*/
+
       DC_error ("Must specify some sort of input data, or use '-nodata'");
+
     }
 
 
