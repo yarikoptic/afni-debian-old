@@ -10,7 +10,7 @@
  */
 
 /*----------------------------------------------------------------------
-  $Id: plug_crender.c,v 1.53 2010/03/25 13:49:10 rickr Exp $
+  $Id: plug_crender.c,v 1.54 2010/07/16 01:37:42 dglen Exp $
   ----------------------------------------------------------------------
 */
 
@@ -3295,7 +3295,8 @@ ENTRY( "RCREND_load_dsl" );
    /* scan datasets */
 
    for( id=0 ; id < ss->num_dsset ; id++ ){
-      qset = ss->dsset[id][vv] ;
+      qset = GET_SESSION_DSET(ss, id, vv);
+/*      qset = ss->dsset_xform_table[id][vv] ;*/
 
       if( ! USEFUL_DSET(qset) ) continue ;   /* skip this one */
 
