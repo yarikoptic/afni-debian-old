@@ -28,6 +28,10 @@ void Error_Exit(char *message)
 	exit(1);
 }
 
+static int    g_argc ;  /* Jul 2010 */
+static char **g_argv ;
+#define ARGC g_argc
+#define ARGV g_argv
 
 /* include the filter and filter driver */
 #include "fourier_filter.c"
@@ -42,7 +46,10 @@ void  help_message(void)
 		"by T. Ross and K. Heimerl\n"
 		"Version 0.8 last modified 8-17-99\n\n"
 		"Usage: 3dFourier [options] dataset\n\n"
-		"The paramters and options are:\n"
+      "* Program to lowpass and/or highpass each voxel time series in a\n"
+      "  dataset, via the FFT.\n"
+      "* Also see program 3dBandpass for something similar.\n\n"
+		"The parameters and options are:\n"
 		"	dataset		an afni compatible 3d+time dataset to be operated upon\n"
 		"	-prefix name	output name for new 3d+time dataset [default = fourier]\n"
 		"	-lowpass f 	low pass filter with a cutoff of f Hz\n"
@@ -56,7 +63,7 @@ void  help_message(void)
 	);
 
         printf("\n" MASTER_SHORTHELP_STRING ) ;
-
+        PRINT_COMPILE_DATE ;
 }
 
 /*--------------------------------------------------------------------------*/
@@ -68,10 +75,9 @@ int main (int argc, char *argv[])
 	float low_fc = 0.0, high_fc = 0.0;
 	THD_3dim_dataset *input=NULL;
 
-	if (argc < 2 ||  strcmp(argv[1],"-help") == 0 ) {
-		help_message();
-		exit(1);
-	}
+	if( argc < 2 || strcmp(argv[1],"-help") == 0 ){ help_message(); exit(0); }
+
+   g_argc = argc ; g_argv = argv ;  /* Jul 2010: save global copies */
 
 	/* Loop over arguements and pull out what we need */
 	while( narg < argc && argv[narg][0] == '-' ){

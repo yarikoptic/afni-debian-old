@@ -3,20 +3,41 @@
 #endif
 
 #include "mrilib.h"
+#include <sys/mman.h>
+#include <sys/types.h>
 
 #define SPEARMAN 1
 #define QUADRANT 2
 #define PEARSON  3
 #define ETA2     4
 
-#ifdef USE_OMP
-#define pearson_func my_THD_pearson_corr
-#define etasqrd_func my_THD_eta_squared
+#define ALLOW_MMAP
+
+#ifndef ALLOW_MMAP
+# define do_mmap 0
+#else
+  static int do_mmap = 0 ;
+#endif
+
 /*----------------------------------------------------------------*/
 /**** Include these here for potential optimization for OpenMP ****/
 /*----------------------------------------------------------------*/
 /*! Pearson correlation of x[] and y[] (x and y are NOT modified. */
 
+float zm_THD_pearson_corr( int n, float *x , float *y ) /* inputs are */
+{                                                       /* zero mean  */
+   register float xy ; register int ii ;                /* and norm=1 */
+   if( n%2 == 0 ){
+     xy = 0.0f ;
+     for( ii=0 ; ii < n ; ii+=2 ) xy += x[ii]*y[ii] + x[ii+1]*y[ii+1] ;
+   } else {
+     xy = x[0]*y[0] ;
+     for( ii=1 ; ii < n ; ii+=2 ) xy += x[ii]*y[ii] + x[ii+1]*y[ii+1] ;
+   }
+   return xy ;
+}
+
+#if 0
 float my_THD_pearson_corr( int n, float *x , float *y )
 {
    float xv,yv,xy , vv,ww , xm,ym ;
@@ -33,6 +54,7 @@ float my_THD_pearson_corr( int n, float *x , float *y )
    if( xv <= 0.0f || yv <= 0.0f ) return 0.0f ;
    return xy/sqrtf(xv*yv) ;
 }
+#endif
 
 /*----------------------------------------------------------------*/
 /*! eta^2 (Cohen, NeuroImage 2008)              25 Jun 2010 [rickr]
@@ -65,10 +87,6 @@ float my_THD_eta_squared( int n, float *x , float *y )
    if( num < 0.0f || denom <= 0.0f || num >= denom ) return 0.0f ;
    return (1.0f - num/denom) ;
 }
-#else
-#define pearson_func THD_pearson_corr  /* in thd_correlate.c */
-#define etasqrd_func THD_eta_squared
-#endif /* USE_OMP */
 
 /*----------------------------------------------------------------------------*/
 
@@ -77,9 +95,41 @@ static void vstep_print(void)
    static int nn=0 ;
    static char xx[10] = "0123456789" ;
    fprintf(stderr , "%c" , xx[nn%10] ) ;
-   if( nn%10 == 9) fprintf(stderr,".") ;
+   if( nn%10 == 9) fprintf(stderr,",") ;
    nn++ ;
 }
+
+/*-----------------------------------------------------------------------------*/
+
+#ifdef ALLOW_MMAP
+
+static char    *cbrik = NULL ;
+static int64_t ncbrik = 0 ;
+
+#include <signal.h>
+
+void AC_sigfunc(int sig)   /** signal handler for fatal errors **/
+{
+   char *sname ;
+   static volatile int fff=0 ;
+   if( fff ) _exit(1) ; else fff = 1 ;
+   switch(sig){
+      default:      sname = "unknown" ; break ;
+      case SIGINT:  sname = "SIGINT"  ; break ;
+      case SIGPIPE: sname = "SIGPIPE" ; break ;
+      case SIGSEGV: sname = "SIGSEGV" ; break ;
+      case SIGBUS:  sname = "SIGBUS"  ; break ;
+      case SIGTERM: sname = "SIGTERM" ; break ;
+   }
+   fprintf(stderr,"\n** 3dAutoTcorrelate: Fatal Signal %d (%s) received\n",sig,sname) ;
+   if( cbrik != NULL ){
+     fprintf(stderr,"** Un-mmap-ing .BRIK file (but not deleting it)\n") ;
+     munmap(cbrik,ncbrik) ; cbrik = NULL ;
+   }
+   exit(1) ;
+}
+
+#endif  /* ALLOW_MMAP */
 
 /*----------------------------------------------------------------------------*/
 
@@ -87,49 +137,57 @@ int main( int argc , char *argv[] )
 {
    THD_3dim_dataset *xset , *cset, *mset=NULL ;
    int nopt=1 , method=PEARSON , do_autoclip=0 ;
-   int nvox , nvals , ii,jj,kout , polort=1 , ix,jy,kz ;
-   char * prefix = "ATcorr" ;
-   byte * mmm=NULL ;
+   int nvox , nvals , ii,kout , polort=1 , ix,jy,kz ;
+   char *prefix = "ATcorr" ;
+   byte *mmm=NULL ;
    int   nmask , abuc=1 ;
    int   all_source=0;          /* output all source voxels  25 Jun 2010 [rickr] */
-   char str[32] ;
+   char str[32] , *cpt ;
    int *imap ; MRI_vectim *xvectim ;
 
    /*----*/
 
    if( argc < 2 || strcmp(argv[1],"-help") == 0 ){
       printf("Usage: 3dAutoTcorrelate [options] dset\n"
-             "Computes the correlation coefficient between each pair of\n"
-             "voxels in the input dataset, and stores the output into\n"
-             "a new anatomical bucket dataset.\n"
+             "Computes the correlation coefficient between the time series of each\n"
+             "pair of voxels in the input dataset, and stores the output into a\n"
+             "new anatomical bucket dataset [scaled to shorts to save memory space].\n"
              "\n"
              "*** Also see program 3dTcorrMap ***\n"
              "\n"
              "Options:\n"
              "  -pearson  = Correlation is the normal Pearson (product moment)\n"
-             "                correlation coefficient [default].\n"
-             "  -eta2     = Output is eta^2 measure from Cohen, NeuroImage, 2008.\n"
-             "                Note: -polort -1 is recommended with this option.\n"
+             "               correlation coefficient [default].\n"
+             "  -eta2     = Output is eta^2 measure from Cohen et al., NeuroImage, 2008:\n"
+             "               http://www.ncbi.nlm.nih.gov/pmc/articles/PMC2705206/\n"
+             "               http://dx.doi.org/10.1016/j.neuroimage.2008.01.066\n"
+             "             ** '-eta2' is intended to be used to measure the similarity\n"
+             "                 between 2 correlation maps; therefore, this option is\n"
+             "                 to be used in a second stage analysis, where the input\n"
+             "                 dataset is the output of running 3dAutoTcorrelate with\n"
+             "                 the '-pearson' option -- the voxel 'time series' from\n"
+             "                 that first stage run is the correlation map of that\n"
+             "                 voxel with all other voxels.\n"
+             "             ** '-polort -1' is recommended with this option!\n"
 #if 0
              "  -spearman = Correlation is the Spearman (rank) correlation\n"
-             "                coefficient.\n"
+             "               coefficient.\n"
              "  -quadrant = Correlation is the quadrant correlation coefficient.\n"
 #else
              "  -spearman AND -quadrant are disabled at this time :-(\n"
 #endif
              "\n"
              "  -polort m = Remove polynomical trend of order 'm', for m=-1..3.\n"
-             "                [default is m=1; removal is by least squares].\n"
-             "                Using m=-1 means no detrending; this is only useful\n"
-             "                for data/information that has been pre-processed.\n"
+             "               [default is m=1; removal is by least squares].\n"
+             "               Using m=-1 means no detrending; this is only useful\n"
+             "               for data/information that has been pre-processed.\n"
              "\n"
              "  -autoclip = Clip off low-intensity regions in the dataset,\n"
              "  -automask =  so that the correlation is only computed between\n"
              "               high-intensity (presumably brain) voxels.  The\n"
-             "               intensity level is determined the same way that\n"
-             "               3dClipLevel works.\n"
+             "               mask is determined the same way that 3dAutomask works.\n"
              "\n"
-             "  -mask MSET = Mask of both 'source' and 'target' voxels.\n"
+             "  -mask mmm = Mask of both 'source' and 'target' voxels.\n"
              "\n"
              "              Restrict computations to those in the mask.  Output\n"
              "               volumes are restricted to masked voxels.  Also, only\n"
@@ -143,21 +201,41 @@ int main( int argc , char *argv[] )
              "\n"
              "  -mask_only_targets = Provide output for all voxels.\n"
              "\n"
-             "              Used with -mask, every voxel is correlated with each\n"
-             "              of the mask voxels.  In the example above, there\n"
-             "              would be 50 useful sub-bricks for all 1000 voxels.\n"
+             "              Used with -mask, every voxel is correlated with each of\n"
+             "               the mask voxels.  In the example above, there would\n"
+             "               be 50 output sub-bricks; the n-th output sub-brick\n"
+             "               would contain the correlations of the n-th voxel in\n"
+             "               the mask with all 1000 voxels in the dataset (rather\n"
+             "               than with just the 50 voxels in the mask).\n"
              "\n"
              "  -prefix p = Save output into dataset with prefix 'p'\n"
              "               [default prefix is 'ATcorr'].\n"
              "\n"
-             "  -time     = Save output as a 3D+time dataset instead\n"
-             "               of a anat bucket.\n"
+             "  -time     = Mark output as a 3D+time dataset instead of an anat bucket.\n"
+#ifdef ALLOW_MMAP
+             "\n"
+             "  -mmap     = Write .BRIK results to disk directly using Unix mmap().\n"
+             "               This trick can speed the program up  when the amount\n"
+             "               of memory required to hold the output is very large.\n"
+             "              ** If the program crashes, you'll have to manually\n"
+             "                 remove the .BRIK file, which will have been created\n"
+             "                 before the loop over voxels and written into during\n"
+             "                 that loop, rather than being written all at once\n"
+             "                 at the end of the analysis, as is usually the case.\n"
+             "              ** If the amount of memory needed is bigger than the\n"
+             "                 RAM on your system, this program will be very slow\n"
+             "                 with or without '-mmap'.\n"
+             "              ** This option won't work with NIfTI-1 (.nii) output!\n"
+#endif
              "\n"
              "Notes:\n"
-             " * The output dataset is anatomical bucket type of shorts.\n"
+             " * The output dataset is anatomical bucket type of shorts\n"
+             "    (unless '-time' is used).\n"
+             " * Values are scaled so that a correlation (or eta-squared)\n"
+             "    of 1 corresponds to a value of 10000.\n"
              " * The output file might be gigantic and you might run out\n"
              "    of memory running this program.  Use at your own risk!\n"
-             "    * If you get an error message like\n"
+             "   ++ If you get an error message like\n"
              "        *** malloc error for dataset sub-brick\n"
              "      this means that the program ran out of memory when making\n"
              "      the output dataset.\n"
@@ -179,6 +257,12 @@ int main( int argc , char *argv[] )
    /*-- option processing --*/
 
    while( nopt < argc && argv[nopt][0] == '-' ){
+
+#ifdef ALLOW_MMAP
+      if( strcmp(argv[nopt],"-mmap") == 0 ){  /* Jul 2010 */
+        do_mmap = 1 ; nopt++ ; continue ;
+      }
+#endif
 
       if( strcmp(argv[nopt],"-time") == 0 ){
          abuc = 0 ; nopt++ ; continue ;
@@ -219,7 +303,7 @@ int main( int argc , char *argv[] )
       }
 
       if( strcmp(argv[nopt],"-prefix") == 0 ){
-         prefix = argv[++nopt] ;
+         prefix = strdup(argv[++nopt]) ;
          if( !THD_filename_ok(prefix) ){
             ERROR_exit("Illegal value after -prefix!") ;
          }
@@ -227,7 +311,6 @@ int main( int argc , char *argv[] )
       }
 
       if( strcmp(argv[nopt],"-polort") == 0 ){
-         char *cpt ;
          int val = strtod(argv[++nopt],&cpt) ;
          if( *cpt != '\0' || val < -1 || val > 3 ){
             ERROR_exit("Illegal value after -polort!") ;
@@ -237,6 +320,14 @@ int main( int argc , char *argv[] )
 
       ERROR_exit("Illegal option: %s",argv[nopt]) ;
    }
+
+#ifdef ALLOW_MMAP
+   cpt = strstr(prefix,".nii") ;  /* Jul 2010 */
+   if( do_mmap && cpt != NULL ){
+     *cpt = '\0' ; if( *prefix == '\0' ) prefix = "ATcorr" ;
+     WARNING_message("-mmap ==> can't use NIfTI-1 ==> output prefix = %s",prefix) ;
+   }
+#endif
 
    /*-- open dataset, check for legality --*/
 
@@ -274,15 +365,24 @@ int main( int argc , char *argv[] )
 
    /*-- create vectim from input dataset --*/
 
+   /**  For the case of Pearson correlation, we make sure the  **/
+   /**  data time series have their mean removed (polort >= 0) **/
+   /**  and are normalized, so that correlation = dot product, **/
+   /**  and we can use function zm_THD_pearson_corr for speed. **/
+
    INFO_message("vectim-izing input dataset") ;
    xvectim = THD_dset_to_vectim( xset , NULL , 0 ) ;
    if( xvectim == NULL ) ERROR_exit("Can't create vectim?!") ;
    DSET_unload(xset) ;
-   if( polort > 0 ){
+   if( polort < 0 && method == PEARSON ){
+     polort = 0; WARNING_message("Pearson correlation always uses polort >= 0");
+   }
+   if( polort >= 0 ){
      for( ii=0 ; ii < nvox ; ii++ ){  /* remove polynomial trend */
        DETREND_polort(polort,nvals,VECTIM_PTR(xvectim,ii)) ;
      }
    }
+   if( method == PEARSON ) THD_vectim_normalize(xvectim) ;  /* L2 norm = 1 */
 
    /*-- create output dataset --*/
 
@@ -295,6 +395,7 @@ int main( int argc , char *argv[] )
                         ADN_ntt       , 0              , /* no time axis */
                         ADN_type      , HEAD_ANAT_TYPE ,
                         ADN_func_type , ANAT_BUCK_TYPE ,
+                        ADN_datum_all , MRI_short      ,
                       ADN_none ) ;
    } else {
      EDIT_dset_items( cset ,
@@ -305,17 +406,20 @@ int main( int argc , char *argv[] )
                         ADN_nsl       , 0              ,  /* no slice offsets */
                         ADN_type      , HEAD_ANAT_TYPE ,
                         ADN_func_type , ANAT_EPI_TYPE  ,
+                        ADN_datum_all , MRI_short      ,
                       ADN_none ) ;
    }
 
    if( THD_deathcon() && THD_is_file(DSET_HEADNAME(cset)) )
-      ERROR_exit("Output dataset %s already exists!",DSET_HEADNAME(cset)) ;
+     ERROR_exit("Output dataset %s already exists!",DSET_HEADNAME(cset)) ;
 
-   { double nb = (double)(xset->dblk->total_bytes) ;
-     nb += (double)(nmask) * (double)(nvox) * sizeof(short) ;
+   { double nb = (double)(xset->dblk->total_bytes)
+                +(double)(cset->dblk->total_bytes) ;
      nb /= (1024.0*1024.0) ;
      INFO_message(
        "Memory required = %.1f Mbytes for %d output sub-bricks",nb,nmask);
+     if( nb > 2000.0 && (sizeof(void *) < 8 || sizeof(size_t) < 8) )
+       ERROR_exit("Can't run on a 32-bit system!") ;
    }
 
    tross_Make_History( "3dAutoTcorrelate" , argc,argv , cset ) ;
@@ -324,10 +428,12 @@ int main( int argc , char *argv[] )
 
    imap = (int *)calloc(sizeof(int),nmask) ;
 
+   if( !do_mmap )
+     ININFO_message("creating output dataset in memory") ;
+
    for( kout=ii=0 ; ii < nvox ; ii++ ){
       if( mmm != NULL && mmm[ii] == 0 ) continue ; /* skip it */
 
-      EDIT_substitute_brick( cset,kout, MRI_short, NULL ) ; /* make array   */
       EDIT_BRICK_TO_NOSTAT(cset,kout) ;                     /* stat params  */
       EDIT_BRICK_FACTOR(cset,kout,0.0001) ;                 /* scale factor */
 
@@ -336,14 +442,54 @@ int main( int argc , char *argv[] )
       kz = DSET_index_to_kz(cset,ii) ;
       sprintf(str,"%03d_%03d_%03d",ix,jy,kz) ;
       EDIT_BRICK_LABEL(cset,kout,str) ;
+      if( !do_mmap )
+        EDIT_substitute_brick(cset,kout,MRI_short,NULL) ;   /* make array   */
+
       imap[kout] = ii ; kout++ ;
    }
 
-   /* loop over mask voxels, correlate */
+#ifdef ALLOW_MMAP
+   if( do_mmap ){
+     FILE *fp ; int64_t qq ; char buf[2]={0,0} ;
+
+     signal(SIGINT ,AC_sigfunc) ;  /* setup signal handler */
+     signal(SIGBUS ,AC_sigfunc) ;  /* for fatal errors */
+     signal(SIGSEGV,AC_sigfunc) ;
+     signal(SIGTERM,AC_sigfunc) ;
+
+     ININFO_message("creating output file %s via mmap()",DSET_BRIKNAME(cset)) ;
+     fp = fopen( DSET_BRIKNAME(cset) , "w+" ) ;
+     if( fp == NULL )
+       ERROR_exit("Can't create output BRIK :-(") ;
+     ncbrik = cset->dblk->total_bytes ;
+     fseek( fp , ncbrik-1 , SEEK_SET ) ;
+     fwrite( &buf , 1 , 2 , fp ) ; fflush(fp) ;
+#undef MFLAG
+#if defined(MAP_NOCACHE)
+# define MFLAG (MAP_SHARED | MAP_NOCACHE)
+#elif defined(MAP_NORESERVE)
+# define MFLAG (MAP_SHARED | MAP_NORESERVE)
+#else
+# define MFLAG MAP_SHARED
+#endif
+     cbrik = mmap( 0 , (size_t)ncbrik ,
+                   PROT_READ | PROT_WRITE , MFLAG , fileno(fp) , 0 ) ;
+     fclose(fp) ;
+     if( cbrik == (char *)(-1) )
+       ERROR_exit("Can't mmap output BRIK :-(") ;
+     ININFO_message("Testing output BRIK") ;
+     for( qq=0 ; qq < ncbrik ; qq+=655360 ) cbrik[qq] = 0 ;
+     cbrik[ncbrik-1] = 0 ;
+     ININFO_message("... done with test") ;
+   }
+#endif
+
+   /*---------- loop over mask voxels, correlate ----------*/
 
 #pragma omp parallel if( nmask > 999 )
 {
-   int ii,jj,kout , ithr,nthr , vstep,vii ; float *xsar , *ysar ; short *car ;
+   int ii,jj,kout , ithr,nthr , vstep,vii ;
+   float *xsar , *ysar ; short *car ;
 
 AFNI_OMP_START ;
 
@@ -355,38 +501,46 @@ AFNI_OMP_START ;
    ithr = 0 ; nthr = 1 ;
 #endif
 
+#ifdef ALLOW_MMAP
+   if( do_mmap ) car = (short *)malloc(sizeof(short)*nvox) ;
+#endif
+
    vstep = (int)( nmask / (nthr*50.0f) + 0.901f ) ; vii = 0 ;
    if( ithr == 0 ) fprintf(stderr,"Looping:") ;
 
 #pragma omp for
-   for( kout=0 ; kout < nmask ; kout++ ){
+   for( kout=0 ; kout < nmask ; kout++ ){  /*----- outer voxel loop -----*/
 
-      ii = imap[kout] ;  /* we know that ii is in the mask */
+      ii = imap[kout] ;  /* ii= source voxel (we know that ii is in the mask) */
 
       if( ithr == 0 ){ vii++ ; if( vii%vstep == vstep/2 ) vstep_print(); }
 
       /* get ref time series from this voxel */
 
       xsar = VECTIM_PTR(xvectim,ii) ;
-      car  = DSET_ARRAY(cset,kout) ;
+      if( !do_mmap ) car = DSET_ARRAY(cset,kout) ;
 
-      for( jj=0 ; jj < nvox ; jj++ ){  /* loop over voxels, correlate w/ref */
+      for( jj=0 ; jj < nvox ; jj++ ){  /*----- inner loop over voxels -----*/
+
+         car[jj] = 0 ;  /* default value */
 
          /* skip unmasked voxels, unless want correlations from all source voxels */
 
-         if( !all_source && mmm != NULL && mmm[jj] == 0 ){  /* the easy case */
-           car[jj] = 0 ; continue ;
-         }
+         if( !all_source && mmm != NULL && mmm[jj] == 0 ) continue ;
+
+#if 0
+         if( jj == kout ){ car[jj] = 10000 ; continue ; } /* correlation = 1.0 */
+#endif
 
          ysar = VECTIM_PTR(xvectim,jj) ;
 
          switch( method ){                    /* correlate */
             default:
             case PEARSON:
-              car[jj] = (short)(10000.49f*pearson_func(nvals,xsar,ysar));
+              car[jj] = (short)(10000.49f*zm_THD_pearson_corr(nvals,xsar,ysar));
             break;
             case ETA2:
-              car[jj] = (short)(10000.49f*etasqrd_func(nvals,xsar,ysar));
+              car[jj] = (short)(10000.49f*my_THD_eta_squared(nvals,xsar,ysar));
             break;
 #if 0
             case SPEARMAN:
@@ -397,22 +551,63 @@ AFNI_OMP_START ;
             break ;
 #endif
          }
-      } /* end of loop over voxels in this sub-brick */
 
-   } /* end of loop over ref voxels */
+      } /* end of innter loop over voxels */
+
+#ifdef ALLOW_MMAP
+      if( do_mmap ){  /* copy results to disk mmap now */
+        short *cout = ((short *)(cbrik)) + (int64_t)(nvox)*(int64_t)(kout) ;
+#pragma omp critical
+        { memcpy( cout , car , sizeof(short)*nvox ) ;
+          msync(  cout , sizeof(short)*nvox , MS_ASYNC ) ;
+        }
+      }
+#endif
+
+   } /* end of outer loop over ref voxels */
+
+   if( do_mmap ) free(car) ;             /* workspace for each thread */
+   if( ithr == 0 ) fprintf(stderr,".") ;
 
 AFNI_OMP_END ;
-}
-   fprintf(stderr," Done!\n") ;
+} /* end OpenMP */
 
-   /* toss the other trash */
+   /*----------  Finish up ---------*/
+
+   /* toss the trash */
 
    free(imap); VECTIM_destroy(xvectim); if( mmm != NULL ) free(mmm);
 
+   /* if did mmap(), finish that off as well */
+
+   if( !do_mmap ){
+     fprintf(stderr,"Done..\n") ;
+   } else {
+#ifdef ALLOW_MMAP
+     char *ptr = cbrik ;
+     fprintf(stderr,"Done.[un-mmap-ing") ;
+     for( ii=0 ; ii < nmask ; ii++ ){
+       mri_fix_data_pointer( ptr , DSET_BRICK(cset,ii) ) ;
+       ptr += DSET_BRICK_BYTES(cset,ii) ;
+     }
+     THD_load_statistics(cset) ; fprintf(stderr,".") ;
+     munmap(cbrik,ncbrik) ; cbrik = NULL ;
+     fprintf(stderr,"].\n") ;
+#endif
+   }
+
    /* finito */
 
-   INFO_message("Writing output dataset to disk") ;
-   DSET_write(cset) ;
+   if( !do_mmap ){
+     INFO_message("Writing output dataset to disk [%s bytes]",
+                  commaized_integer_string(cset->dblk->total_bytes)) ;
+     THD_set_write_compression(COMPRESS_NONE) ; AFNI_setenv("AFNI_AUTOGZIP=NO") ;
+     DSET_write(cset) ;
+   } else {
+     INFO_message("Writing output dataset header") ;
+     DSET_write_header(cset) ;
+   }
    WROTE_DSET(cset) ;
+
    exit(0) ;
 }

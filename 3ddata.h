@@ -3166,8 +3166,8 @@ extern int THD_count_fdrwork( THD_3dim_dataset *dset ) ; /* 12 Nov 2008 */
     strcpy((ds)->label2   ,THD_DEFAULT_LABEL) )
 
 /*! Macro to load brick statistics of a dataset if it
-      - doesn't have statistics already, or
-      - has bad statistics from the (very) old to3d bug
+      - doesn't have statistics already, OR
+      - has bad statistics from the (very very very) old to3d bug
 */
 
 #define RELOAD_STATS(dset)                                                  \
@@ -3454,7 +3454,7 @@ typedef struct {
       char sessname[THD_MAX_NAME] ;   /*!< Name of directory datasets were read from */
       char lastname[THD_MAX_NAME] ;   /*!< Just/the/last/name of the directory */
 
-      THD_3dim_dataset *dsset[THD_MAX_SESSION_SIZE][LAST_VIEW_TYPE+1] ;
+      THD_3dim_dataset *xdsset[THD_MAX_SESSION_SIZE][LAST_VIEW_TYPE+1] ;
                                       /*!< array of datasets */
 
       Htable *warptable ;       /*!< Table of inter-dataset warps [27 Aug 2002] */
@@ -3473,9 +3473,9 @@ typedef struct {
 
 #ifdef oldsessions
    #define GET_SESSION_DSET(session, index, space) \
-        session->dsset[index][space]
+        session->xdsset[index][space]
    #define SET_SESSION_DSET(sdset, session, index, space) \
-        session->dsset[index][space] = sdset
+        session->xdsset[index][space] = sdset
 #else
    #define GET_SESSION_DSET(session, index, space) \
         get_dset_from_session(session, index, space)

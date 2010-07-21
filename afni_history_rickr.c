@@ -48,6 +48,32 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 20, JUL, 2010, RCR, "xmat_tool.py", MICRO, TYPE_MODIFY,
+   "made small improvement out text formatting for cormat and cosmat", 
+   NULL
+ } ,
+
+ { 19, JUL, 2010, RCR, "afni_proc.py", MINOR, TYPE_NEW_OPT,
+   "added -check_afni_version and -requires_afni_version",
+   "This will allow the processing script to verify that the AFNI version\n"
+   "is recent enough for the enclosed commands."
+ } ,
+
+ { 19, JUL, 2010, RCR, "@DriveAfni", MICRO, TYPE_NEW_OPT,
+   "added -help", 
+   NULL
+ } ,
+
+ { 19, JUL, 2010, RCR, "afni_history", MINOR, TYPE_NEW_OPT,
+   "added -check_date, to verify whether the distribution is current",
+   NULL
+ } ,
+
+ { 19, JUL, 2010, RCR, "3dFWHMx", MICRO, TYPE_BUG_FIX,
+   "fixed -arith mean",
+   NULL
+ } ,
+
  { 16, JUL, 2010, RCR, "afni", MICRO, TYPE_BUG_FIX,
    "added legendre to forced_loads array for plugin use",
    NULL
@@ -58,7 +84,7 @@ afni_history_struct rickr_history[] = {
    NULL
  } ,
 
- { 14, JUL, 2010, RCR, "afni_proc.py", MINOR, TYPE_ENHANCE,
+    { 14, JUL, 2010, RCR, "afni_proc.py", MINOR, TYPE_ENHANCE,
    "added -mask_test_overlap and -regress_cormat_warnigns",
    "Unless the user sets these options to 'no', the processing script\n"
    "will now use 3dABoverlap to evaluate the anat/EPI mask overlap, and\n"
