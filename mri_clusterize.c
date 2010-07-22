@@ -36,6 +36,7 @@ MRI_IMAGE * mri_clusterize( float rmm , float vmul , MRI_IMAGE *bim ,
    int   nx,ny,nz , ptmin,iclu , nkeep,nkill,ncgood , nbot,ntop , ii ;
    MRI_IMAGE *cim ; void *car ;
    MCW_cluster *cl , *dl ; MCW_cluster_array *clar ;
+   int nnlev = 0 ;
 
 ENTRY("mri_clusterize") ;
 
@@ -51,7 +52,15 @@ ENTRY("mri_clusterize") ;
    if( dz <= 0.0f ) dz = 1.0f ;
    dbot = MIN(dx,dy) ; dbot = MIN(dbot,dz) ;
 
-   if( rmm < dbot ){ dx = dy = dz = 1.0f; rmm = 1.01f; }
+   if( rmm < dbot ){
+     int irr = (int)rintf(rmm) ;
+     dx = dy = dz = 1.0f;
+     switch( irr ){
+       default:  rmm = 1.01f ; nnlev = 1 ;break ;   /* NN1 */
+       case -2:  rmm = 1.44f ; nnlev = 2 ;break ;   /* NN2 */
+       case -3:  rmm = 1.75f ; nnlev = 3 ;break ;   /* NN3 */
+     }
+   }
    vmin = 2.0f*dx*dy*dz ; if( vmul < vmin ) vmul = vmin ;
 
    /* create copy of input image (this will be edited below) */
@@ -107,7 +116,10 @@ ENTRY("mri_clusterize") ;
                             " Max cluster size           =%6d\n"
                             " Number of clusters kept    =%6d\n" ,
                             nbot , ntop , ncgood ) ;
-
+     if( nnlev > 0 )
+       report = THD_zzprintf( report ,
+                            " NN clustering level        =%6d\n" ,
+                            nnlev ) ;
    }
 
    RETURN(cim) ;
