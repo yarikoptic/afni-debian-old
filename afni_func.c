@@ -2693,7 +2693,7 @@ ENTRY("AFNI_finalize_dataset_CB") ;
       /* 03 Aug 2007: turn 'See Overlay' on? */
 
       if( !im3d->vinfo->func_visible && im3d->vinfo->func_visible_count == 0 ){
-        AFNI_SEE_FUNC_ON(im3d) ;
+        AFNI_SEE_FUNC_ON(im3d) ; OPEN_PANEL(im3d,func) ;
       }
 
    /*--- switch to Hell? ---*/
@@ -5122,9 +5122,9 @@ ENTRY("AFNI_autorange_label") ;
        iv = im3d->vinfo->fim_index ;
 
        if( DSET_VALID_BSTAT(im3d->fim_now,iv) ){
-         s1  = fabs(im3d->fim_now->stats->bstat[iv].min) ,
-         s2  = fabs(im3d->fim_now->stats->bstat[iv].max) ;
-         rrr = (s1<s2) ? s2 : s1 ;                      /* largest fim */
+         s1  = fabsf(im3d->fim_now->stats->bstat[iv].min) ,
+         s2  = fabsf(im3d->fim_now->stats->bstat[iv].max) ;
+         rrr = (s1 < s2) ? s2 : s1 ;                    /* largest fim */
        } else {
          rrr = DEFAULT_FIM_SCALE ;                      /* don't have stats */
        }
@@ -5132,6 +5132,8 @@ ENTRY("AFNI_autorange_label") ;
        rrr = DEFAULT_FIM_SCALE ;                        /* don't have stats */
      }
    }
+   if( !AFNI_noenv("AFNI_SQRT_AUTORANGE") &&
+       rrr > 1.0f && rrr < DEFAULT_FIM_SCALE ) rrr = sqrtf(rrr) ;
    im3d->vinfo->fim_autorange = rrr ;
    AV_fval_to_char( rrr , qbuf ) ;
    sprintf( buf , "autoRange:%s" , qbuf ) ;
