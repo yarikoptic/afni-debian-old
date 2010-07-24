@@ -997,7 +997,7 @@ void display_help_menu()
     "                       where g(t) = t^q * exp(-t) /(q^q*exp(-q))       \n"
     "                       and q = 4 or 5.  The case q=5 is delayed by     \n"
     "                       about 1 second from the case q=4.               \n"
-    "                    ** Despite the name, you can use 'BLOCK' for event-\n"
+    "                ==> ** Despite the name, you can use 'BLOCK' for event-\n"
     "                       related analyses just by setting the duration to\n"
     "                       a small value; e.g., 'BLOCK5(1,1)'              \n"
     "                    ** The 'p' parameter is the amplitude of the       \n"
@@ -1010,10 +1010,29 @@ void display_help_menu()
     "                       [n must be at least 2; time step is (c-b)/(n-1)]\n"
     "    'CSPLIN(b,c,n)'= n parameter cubic spline function expansion       \n"
     "                       from times b..c after stimulus time             \n"
-    "                     ** TENT and CSPLIN are 'cardinal' interpolation   \n"
-    "                        functions; CSPLIN is a drop-in upgrade of      \n"
-    "                        TENT to a differentiable set of functions.     \n"
     "                       [n must be at least 4]                          \n"
+    "                     ** CSPLIN is a drop-in upgrade of TENT to a       \n"
+    "                        differentiable set of functions.               \n"
+    "                     ** TENT and CSPLIN are 'cardinal' interpolation   \n"
+    "                        functions: their parameters are the values     \n"
+    "                        of the HRF model at the n 'knot' points        \n"
+    "                          b , b+dt , b+2*dt , ... [dt = (c-b)/(n-1)]   \n"
+    "                        In contrast, in a model such as POLY or SIN,   \n"
+    "                        the parameters output are not directly the     \n"
+    "                        hemodynamic response function values at any    \n"
+    "                        particular point.                              \n"
+    "                 ==> ** You can also use 'TENTzero' and 'CSPLINzero',  \n"
+    "                        which means to eliminate the first and last    \n"
+    "                        basis functions from each set.  The effect     \n"
+    "                        of these omissions is to force the deconvolved \n"
+    "                        HRF to be zero at t=b and t=c (to start and    \n"
+    "                        and end at zero response).  With these 'zero'  \n"
+    "                        response models, there are n-2 parameters      \n"
+    "                        (thus for 'TENTzero', n must be at least 3).   \n"
+    "                     ** These 'zero' functions will force the HRF to   \n"
+    "                        be continuous, since they will now be unable   \n"
+    "                        to suddenly rise up from 0 at t=b and/or drop  \n"
+    "                        down to 0 at t=c.                              \n"
     "     'GAM(p,q)'    = 1 parameter gamma variate                         \n"
     "                         (t/(p*q))^p * exp(p-t/q)                      \n"
     "                       Defaults: p=8.6 q=0.547 if only 'GAM' is used   \n"
@@ -1025,14 +1044,14 @@ void display_help_menu()
     "     'SPMG2'       = 2 parameter SPM: gamma variate + d/dt derivative  \n"
     "                       [For backward compatibility: 'SPMG' == 'SPMG2'] \n"
     "     'SPMG3'       = 3 parameter SPM basis function set                \n"
-    "                      * The SPMGx functions now can take an optional   \n"
+    "                     ** The SPMGx functions now can take an optional   \n"
     "                        (duration) argument, specifying that the primal\n"
     "                        SPM basis functions should be convolved with   \n"
     "                        a square wave 'duration' seconds long and then \n"
     "                        be normalized to have peak absolute value = 1; \n"
     "                        e.g., 'SPMG3(20)' for a 20 second duration with\n"
     "                        three basis function.  [28 Apr 2009]           \n"
-    "                      * Note that 'SPMG1(0)' will produce the usual    \n"
+    "                     ** Note that 'SPMG1(0)' will produce the usual    \n"
     "                        'SPMG1' wavefunction shape, but normalized to  \n"
     "                        have peak value = 1 (for example).             \n"
     "     'POLY(b,c,n)' = n parameter Legendre polynomial expansion         \n"
@@ -3729,7 +3748,7 @@ STATUS("unpacking fvect image") ;
       /** convert time in sec (tar) to time in indexes (qar) **/
 
       if( be->timetype == GLOBAL_TIMES ){  /****------ global times ------****/
-        int nbad=0 , nout=0 ;
+        int nbad=0 , nout=0 ; float *psfb=NULL ;
 
         INFO_message("%s%s %d using GLOBAL times",glprefix,be->option,is+1) ;
         tmax = (nt-1)*basis_TR ;         /* max allowed time offset */
@@ -3740,7 +3759,10 @@ STATUS("loading GLOBAL times and aux params") ;
             for( vv=0 ; vv < vmod+vfun ; vv++ ) zar[vv][ngood] = aar[vv][ii] ;
             qar[ngood++] = tt / basis_TR ;
           } else if( tt >= big_time           ) nbad++ ; /* '*' entries */
-            else                                nout++ ; /* PSFB entries */
+            else {                                       /* PSFB entries */
+              nout++ ; psfb = (float *)realloc(psfb,sizeof(float)*nout) ;
+              psfb[nout-1] = tt ;
+            }
         }
         if( nbad )          /* warn about '*' times in GLOBAL input */
           WARNING_message(
@@ -3750,11 +3772,14 @@ STATUS("loading GLOBAL times and aux params") ;
           WARNING_message(
            "'%s %d' (GLOBAL) has %d times outside range 0 .. %g [PSFB syndrome]",
            be->option , is+1 , nout , tmax ) ;
-          WARNING_message("[dataset TR being used is %g sec]",basis_TR) ;
+           ININFO_message("dataset TR being used is %g s -- unusable times follow",
+                          basis_TR) ;
+          for( ii=0 ; ii < nout ; ii++ ) fprintf(stderr," %g",psfb[ii]) ;
+          fprintf(stderr,"\n") ; free(psfb) ; psfb = NULL ;
         }
 
       } else {   /****---------- local times => 1 row per block ----------****/
-        int nout ;
+        int nout ; float *psfb=NULL ;
 
         INFO_message("%s%s %d using LOCAL times",glprefix,be->option,is+1) ;
         if( ny != nbl ){                 /* times are relative to block */
@@ -3773,15 +3798,21 @@ STATUS("loading LOCAL times and aux params") ;
             if( tt >= 0.0f && tt <= tmax ){
               for( vv=0 ; vv < vmod+vfun ; vv++ ) zar[vv][ngood] = aar[vv][ii+jj*nx] ;
               qar[ngood++] = tt / basis_TR + bst[jj] ;
-            } else if( tt < big_time ) nout++ ; /* PSFB entries */
+            } else if( tt < big_time ){         /* PSFB entries */
+              nout++ ; psfb = (float *)realloc(psfb,sizeof(float)*nout) ;
+              psfb[nout-1] = tt ;
+            }
           }
-          if( nout ){
+          if( nout ){         /* PSFB strikes again! */
             WARNING_message(
              "'%s %d' (LOCAL) run#%d has %d times outside range 0 .. %g [PSFB syndrome]",
              be->option , is+1 , jj+1 , nout , tmax ) ;
-            WARNING_message("dataset TR being used is %g s",basis_TR) ;
+            ININFO_message("dataset TR being used is %g s -- unusable times follow",
+                           basis_TR) ;
+            for( ii=0 ; ii < nout ; ii++ ) fprintf(stderr," %g",psfb[ii]) ;
+            fprintf(stderr,"\n") ; free(psfb) ; psfb = NULL ;
           }
-        }
+        } /* end of loop over row index */
 
       } /** end of converting times into indexes **/
 
@@ -9500,7 +9531,7 @@ static float hh_csplin( float y )   /* for CSPLIN */
    float yy = fabsf(y) ;
    if( yy >= 2.0f ) return 0.0f ;
    if( yy >= 1.0f ) return -CA*(-4.0f+yy*(8.0f+yy*(-5.0f+yy))) ;
-   return 1.0f+yy*yy*((2.0f-CA)*yy-(3.0f-CA)) ;
+                    return 1.0f+yy*yy*((2.0f-CA)*yy-(3.0f-CA)) ;
 }
 #undef CA
 /*--------------------------------------------------------------------------*/
@@ -10205,77 +10236,94 @@ ENTRY("basis_parser") ;
      }
      be->tbot = 0.0f ; be->ttop = be->bfunc[0].c ;
 
-   /*--- TENT(bot,top,order) ---*/
+   /*--- TENT(bot,top,order) ---*/  /*-- add TENTzero 23 Jul 2010 --*/
 
-   } else if( strcmp(scp,"TENT") == 0 ){
-     float dx ;
+   } else if( strcmp(scp,"TENT")     == 0 ||
+              strcmp(scp,"TENTzero") == 0   ){
+     float dx ; int zzz = (strstr(scp,"zero") != NULL) , bb ;
 
      if( cpt == NULL ){
-       ERROR_message("'TENT' by itself is illegal") ;
+       ERROR_message("'%s' by itself is illegal",scp) ;
        ERROR_message(
-        " Correct format: 'TENT(bot,top,n)' with bot < top and n > 0.") ;
+        " Correct format: '%s(bot,top,n)' with bot < top and n > %d.",
+        scp , (zzz) ? 2 : 1 ) ;
        free((void *)be); free(scp); RETURN(NULL);
      }
      sscanf(cpt,"%f,%f,%d",&bot,&top,&nord) ;
-     if( bot >= top || nord < 2 ){
-       ERROR_message("'TENT(%s' is illegal",cpt) ;
+     if( bot >= top || nord < 2 || (nord < 3 && zzz) ){
+       ERROR_message("'%s(%s' is illegal",scp,cpt) ;
        ERROR_message(
-        " Correct format: 'TENT(bot,top,n)' with bot < top and n > 1.") ;
+        " Correct format: '%s(bot,top,n)' with bot < top and n > %d.",
+        scp , (zzz) ? 2 : 1 ) ;
        free((void *)be); free(scp); RETURN(NULL);
      }
-     be->nfunc = nord ;
+     be->nfunc = (zzz) ? nord-2 : nord ;
      be->tbot  = bot  ; be->ttop = top ;
      be->bfunc = (basis_func *)calloc(sizeof(basis_func),be->nfunc) ;
      dx        = (top-bot) / (nord-1) ;
 
-     be->bfunc[0].f = basis_tent ;
-     be->bfunc[0].a = bot-0.001*dx ;
-     be->bfunc[0].b = bot ;
-     be->bfunc[0].c = bot+dx ;
-     for( nn=1 ; nn < nord-1 ; nn++ ){
-       be->bfunc[nn].f = basis_tent ;
-       be->bfunc[nn].a = bot + (nn-1)*dx ;
-       be->bfunc[nn].b = bot +  nn   *dx ;
-       be->bfunc[nn].c = bot + (nn+1)*dx ;
+     bb = 0 ;
+     if( !zzz ){
+       be->bfunc[bb].f = basis_tent ;
+       be->bfunc[bb].a = bot-0.001*dx ;
+       be->bfunc[bb].b = bot ;
+       be->bfunc[bb].c = bot+dx ;
+       bb++ ;
      }
-     be->bfunc[nord-1].f = basis_tent ;
-     be->bfunc[nord-1].a = bot + (nord-2)*dx ;
-     be->bfunc[nord-1].b = top ;
-     be->bfunc[nord-1].c = top + 0.001*dx ;
+     for( nn=1 ; nn < nord-1 ; nn++,bb++ ){
+       be->bfunc[bb].f = basis_tent ;
+       be->bfunc[bb].a = bot + (nn-1)*dx ;
+       be->bfunc[bb].b = bot +  nn   *dx ;
+       be->bfunc[bb].c = bot + (nn+1)*dx ;
+     }
+     if( !zzz ){
+       be->bfunc[bb].f = basis_tent ;
+       be->bfunc[bb].a = bot + (nord-2)*dx ;
+       be->bfunc[bb].b = top ;
+       be->bfunc[bb].c = top + 0.001*dx ;
+    }
 
-   /*--- CSPLIN(bot,top,order) ---*/
+   /*--- CSPLIN(bot,top,order) ---*/  /*-- add CSPLINzero 23 Jul 2010 --*/
 
-   } else if( strcmp(scp,"CSPLIN") == 0 ){   /* 15 Mar 2007 */
-     float dx ;
+   } else if( strcmp(scp,"CSPLIN")     == 0 ||   /* 15 Mar 2007 */
+              strcmp(scp,"CSPLINzero") == 0   ){
+     float dx ; int zzz = (strstr(scp,"zero") != NULL) , bb , nbot,ntop ;
 
      if( cpt == NULL ){
-       ERROR_message("'CSPLIN' by itself is illegal") ;
+       ERROR_message("'%s' by itself is illegal",scp) ;
        ERROR_message(
-        " Correct format: 'CSPLIN(bot,top,n)' with bot < top and n > 3.") ;
+        " Correct format: '%s(bot,top,n)' with bot < top and n > 3.",scp) ;
        free((void *)be); free(scp); RETURN(NULL);
      }
      sscanf(cpt,"%f,%f,%d",&bot,&top,&nord) ;
      if( bot >= top || nord < 4 ){
-       ERROR_message("'CSPLIN(%s' is illegal",cpt) ;
+       ERROR_message("'%s(%s' is illegal",scp,cpt) ;
        ERROR_message(
-        " Correct format: 'CSPLIN(bot,top,n)' with bot < top and n > 3.") ;
+        " Correct format: '%s(bot,top,n)' with bot < top and n > 3.",scp) ;
        free((void *)be); free(scp); RETURN(NULL);
      }
-     be->nfunc = nord ;
+     be->nfunc = (zzz) ? (nord-2) : nord ;
      be->tbot  = bot  ; be->ttop = top ;
      be->bfunc = (basis_func *)calloc(sizeof(basis_func),be->nfunc) ;
      dx        = (top-bot) / (nord-1) ;
 
-     for( nn=0 ; nn < nord ; nn++ ){
-       be->bfunc[nn].f = basis_csplin ;
-       be->bfunc[nn].a = bot +  nn*dx ;
-       be->bfunc[nn].b = dx ;
-       be->bfunc[nn].c = 0.0f ;
+     if( zzz ){ nbot = 1 ; ntop = nord-2 ; }
+     else     { nbot = 0 ; ntop = nord-1 ; }
+     for( bb=0,nn=nbot ; nn <= ntop ; nn++,bb++ ){
+       be->bfunc[bb].f = basis_csplin ;
+       be->bfunc[bb].a = bot +  nn*dx ;
+       be->bfunc[bb].b = dx ;
+       be->bfunc[bb].c = 0.0f ;
      }
-     be->bfunc[0].c      = -2.0f ;  /* edge markers */
-     be->bfunc[1].c      = -1.0f ;
-     be->bfunc[nord-2].c =  1.0f ;
-     be->bfunc[nord-1].c =  2.0f ;
+     if( zzz ){
+       be->bfunc[0].c      = -1.0f ;  /* edge markers */
+       be->bfunc[nord-3].c =  1.0f ;
+     } else {
+       be->bfunc[0].c      = -2.0f ;
+       be->bfunc[1].c      = -1.0f ;
+       be->bfunc[nord-2].c =  1.0f ;
+       be->bfunc[nord-1].c =  2.0f ;
+     }
 
    /*--- TRIG(bot,top,order) ---*/
 
