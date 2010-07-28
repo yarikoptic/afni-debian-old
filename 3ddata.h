@@ -3736,7 +3736,8 @@ extern char * THD_find_executable( char * ) ;
 extern int THD_is_dataset( char * , char * , int ) ; /* 17 Mar 2000 */
 extern char * THD_dataset_headname( char * , char * , int ) ;
 
-extern NI_element * THD_table_read( char *fname ) ; /* 19 May 2010 */
+extern NI_element * THD_simple_table_read( char *fname ) ; /* 19 May 2010 */
+extern NI_element * THD_mixed_table_read ( char *fname ) ; /* 26 Jul 2010 */
 
 extern MRI_IMARR * THD_get_all_timeseries( char * ) ;
 extern MRI_IMARR * THD_get_many_timeseries( THD_string_array * ) ;
@@ -4163,11 +4164,11 @@ typedef struct {
 
 #undef  MAKE_VECTIM
 #define MAKE_VECTIM(nam,nvc,nvl)                                  \
- do{ (nam) = (MRI_vectim *)malloc(sizeof(MRI_vectim)) ;           \
+ do{ (nam) = (MRI_vectim *)calloc(sizeof(MRI_vectim),1) ;         \
      (nam)->nvec  = (nvc) ;                                       \
      (nam)->nvals = (nvl) ;                                       \
-     (nam)->ivec  = (int *)  malloc(sizeof(int)  *(nvc)) ;        \
-     (nam)->fvec  = (float *)malloc(sizeof(float)*(nvc)*(nvl)) ;  \
+     (nam)->ivec  = (int *)  calloc(sizeof(int)  ,(nvc)) ;        \
+     (nam)->fvec  = (float *)calloc(sizeof(float),(nvc)*(nvl)) ;  \
  } while(0)
 
 #undef  ISVALID_VECTIM
@@ -4215,7 +4216,9 @@ extern int THD_vectim_subset_average( MRI_vectim *mrv, int nind, int *ind, float
 
 extern void THD_vectim_vectim_dot( MRI_vectim *arv, MRI_vectim *brv, float *dp ) ;
 
-extern MRI_vectim * THD_vectim_copy( MRI_vectim *mrv ) ; /* 08 Apr 2010 */
+extern MRI_vectim * THD_vectim_copy( MRI_vectim *mrv ) ;      /* 08 Apr 2010 */
+extern MRI_vectim * THD_tcat_vectims( int , MRI_vectim ** ) ; /* 26 Jul 2010 */
+extern MRI_vectim * THD_dset_list_to_vectim( int, THD_3dim_dataset **, byte * );
 
 #define ICOR_MAX_FTOP 99999  /* 26 Feb 2010 */
 
