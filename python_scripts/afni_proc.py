@@ -201,9 +201,14 @@ g_history = """
     2.31 Jul 14 2010 : added -mask_test_overlap and -regress_cormat_warnigns
     2.32 Jul 19 2010 : added -check_afni_version and -requires_afni_version
     2.33 Jul 22 2010 : added -regress_run_clustsim and -regress_opts_CS
+    2.34 Aug 02 2010 :
+        - check that stim_file/_time files match datasets
+        - check for existence of input datasets
+        - added -test_stim_files and -test_for_dsets options
+        - now depends on lib_afni1D
 """
 
-g_version = "version 2.33, July 22, 2010"
+g_version = "version 2.34, Aug 2, 2010"
 
 # version of AFNI required for script execution
 g_requires_afni = "19 Jul 2010"
@@ -276,6 +281,8 @@ class SubjProcSream:
         self.rm_rm      = 1             # remove rm.* files (user option)
         self.have_rm    = 0             # have rm.* files (such files exist)
         self.gen_review = '@epi_review.$subj' # filename for gen_epi_review.py
+        self.test_stims = 1             # test stim_files for appropriateness
+        self.test_dsets = 1             # test datasets for existence
 
         self.ricor_reg    = None        # ricor reg to apply in regress block
         self.ricor_nreg   = 0           # number of regs in ricor_reg
@@ -406,6 +413,12 @@ class SubjProcSream:
                         helpstr='3dToutcount polort (default is as with 3dD)')
         self.valid_opts.add_opt('-remove_preproc_files', 0, [],
                         helpstr='remove pb0* preprocessing files')
+        self.valid_opts.add_opt('-test_for_dsets', 1, [],
+                        acplist=['yes','no'],
+                        helpstr="test input datasets for existence (def=yes)")
+        self.valid_opts.add_opt('-test_stim_files', 1, [],
+                        acplist=['yes','no'],
+                        helpstr="test stim_files for validity (default=yes)")
         self.valid_opts.add_opt('-verb', 1, [],
                         helpstr="set the verbose level")
 
@@ -701,6 +714,17 @@ class SubjProcSream:
         opt = opt_list.find_opt('-scr_overwrite')
         if opt != None: self.overwrite = 1
 
+        # do we check input datasets for existence?  default to yes
+        opt = opt_list.find_opt('-test_for_dsets')
+        if not opt or opt_is_yes(opt): self.test_dsets = 1
+        else:                          self.test_dsets = 0
+
+        # do we test stim files for validity?  default to yes
+        opt = opt_list.find_opt('-test_stim_files')
+        if not opt or opt_is_yes(opt): self.test_stims = 1
+        else:                          self.test_stims = 0
+
+
     # init blocks from command line options, then check for an
     # alternate source       rcr - will we use 'file' as source?
     def create_blocks(self):
@@ -709,6 +733,16 @@ class SubjProcSream:
         if opt != None:
             for dset in opt.parlist:
                 self.dsets.append(afni_name(dset))
+
+            # possibly verify that all of the input datasets exist
+            if self.test_dsets:
+                missing = 0
+                for dset in self.dsets:
+                    if not dset.exist():
+                        print '** missing dataset: %s' % dset.rpv()
+                        missing = 1
+                if missing: return 1
+
             if self.dsets[0].view and self.dsets[0].view != self.view:
                 self.view = self.dsets[0].view
                 self.origview = self.view
@@ -998,6 +1032,9 @@ class SubjProcSream:
             if err: return 1
             self.reps_all.append(reps)
             if reps != self.reps: self.reps_vary = 1
+            if tr != self.tr:
+                print '** TR of %g != run #1 TR %g' % (tr, self.tr)
+                return 1
 
         # note data type and whether data is scaled
         err, vlist = get_typed_dset_attr_list(dset, "BRICK_TYPES", int)

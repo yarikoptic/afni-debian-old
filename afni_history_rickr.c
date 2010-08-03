@@ -48,6 +48,26 @@
 
 afni_history_struct rickr_history[] = {
 
+ {  2, AUG, 2010, RCR, "afni_proc.py", MINOR, TYPE_NEW_OPT,
+   "check that stim_file/_time files match datasets, and that dsets exist",
+   "- default is to check that files are appropriate for the input data\n"
+   "- default is to check that input datasets exist\n"
+   "- added options -test_stim_files and -test_for_dsets\n"
+   "- afni_proc.py now depends on lib_afni1D"
+ } ,
+
+ {  2, AUG, 2010, RCR, "1d_tool.py", MICRO, TYPE_NEW_OPT,
+   "small looks_like text change and remove TR from look_like_1D",
+   NULL
+ } ,
+
+ { 30, JUL, 2010, RCR, "1d_tool.py", MINOR, TYPE_NEW_OPT,
+   "added options to evaluate whether a file is valid as 1D or stim_times",
+   "Added -looks_like_1D, -looks_like_local_times, -looks_like_global_times\n"
+   "and -looks_like_test_all.\n"
+   "The main purpose is to have tests that afni_proc.py can apply."
+ } ,
+
  { 27, JUL, 2010, RCR, "afni-general", MINOR, TYPE_ENHANCE,
    "propagate storage_mode in THD_open_tcat",
    "This is for non-AFNI formatted datasets, and fixes the problem where\n"
