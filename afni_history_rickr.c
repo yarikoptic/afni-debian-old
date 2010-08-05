@@ -48,6 +48,12 @@
 
 afni_history_struct rickr_history[] = {
 
+ {  4, AUG, 2010, RCR, "afni_proc.py", MINOR, TYPE_NEW_OPT,
+   "added -regress_CS_NN, default to 123",
+   "Also, changed -niml to -both so that 1D files are output, and changed\n"
+   "the prefix to ClustSim (from rm.CS) so those files are not deleted."
+ } ,
+
  {  3, AUG, 2010, RCR, "afni_history", MICRO, TYPE_BUG_FIX,
    "fixed -check_date test to see if version is current",
    "This problem affects afni_proc.py script execution."
@@ -71,6 +77,16 @@ afni_history_struct rickr_history[] = {
    "Added -looks_like_1D, -looks_like_local_times, -looks_like_global_times\n"
    "and -looks_like_test_all.\n"
    "The main purpose is to have tests that afni_proc.py can apply."
+ } ,
+
+ { 28, JUL, 2010, RCR, "zfun.c", MICRO, TYPE_BUG_FIX,
+   "fixed small typos in the case of HAVE_ZLIB not being defined",
+   "- zzb64_to_array (return) and array_to_zzb64 (missing arg)"
+ } ,
+
+ { 27, JUL, 2010, RCR, "thd_table.c", MICRO, TYPE_BUG_FIX,
+   "strtod typo",
+   NULL
  } ,
 
  { 27, JUL, 2010, RCR, "afni-general", MINOR, TYPE_ENHANCE,

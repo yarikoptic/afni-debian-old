@@ -44,6 +44,15 @@
 afni_history_struct rwcox_history[] = {
 /*=====BELOW THIS LINE=====*/
 
+ { 4 , AUG , 2010 , RWC , "afni" , MICRO , TYPE_BUG_FIX ,
+   "Restore 'jump to' capability when selecting a marker" ,
+   "Removed accidentally when disabling the popup marker toggles." } ,
+
+ { 4 , AUG , 2010 , RWC , "afni" , MINOR , TYPE_GENERAL ,
+   "Add 'WamI' button to Clusterize GUI" ,
+   "Runs 'whereami -omask' and displays the output in a text window, to show\n"
+   "the user where the atlases think each cluster is located." } ,
+
  { 3 , AUG , 2010 , RWC , "afni Clusterize" , MICRO , TYPE_GENERAL ,
    "put limits on range of choosers in the popup control" ,
    "NN = 1..3   Voxels = 2..99999" } ,
