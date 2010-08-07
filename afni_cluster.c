@@ -775,13 +775,13 @@ ENTRY("AFNI_clus_make_widgets") ;
    cwid->nall = num ;
    cwid->nrow = 0 ;     /* none are managed at this time */
 
-   cwid->clu_rc      = (Widget *) XtCalloc( num , sizeof(Widget) ) ;
-   cwid->clu_lab     = (Widget *) XtCalloc( num , sizeof(Widget) ) ;
-   cwid->clu_jump_pb = (Widget *) XtCalloc( num , sizeof(Widget) ) ;
-   cwid->clu_plot_pb = (Widget *) XtCalloc( num , sizeof(Widget) ) ;
-   cwid->clu_save_pb = (Widget *) XtCalloc( num , sizeof(Widget) ) ;
-   cwid->clu_flsh_pb = (Widget *) XtCalloc( num , sizeof(Widget) ) ;
-   cwid->clu_alph_lab= (Widget *) XtCalloc( num , sizeof(Widget) ) ;
+   cwid->clu_rc      = (Widget *)XtCalloc( num , sizeof(Widget) ) ;
+   cwid->clu_lab     = (Widget *)XtCalloc( num , sizeof(Widget) ) ;
+   cwid->clu_jump_pb = (Widget *)XtCalloc( num , sizeof(Widget) ) ;
+   cwid->clu_plot_pb = (Widget *)XtCalloc( num , sizeof(Widget) ) ;
+   cwid->clu_save_pb = (Widget *)XtCalloc( num , sizeof(Widget) ) ;
+   cwid->clu_flsh_pb = (Widget *)XtCalloc( num , sizeof(Widget) ) ;
+   cwid->clu_alph_lab= (Widget *)XtCalloc( num , sizeof(Widget) ) ;
 
    for( ii=0 ; ii < num ; ii++ ){ MAKE_CLUS_ROW(ii) ; }
    for( ii=0 ; ii < num ; ii++ ){
@@ -1348,8 +1348,9 @@ ENTRY("AFNI_clus_action_CB") ;
 #undef  WSIZ
 #define WSIZ 4096
      if( do_wami ){  /* 04 Aug 2010 */
-       char *wout , ct[64] ; FILE *fp ;
-       SHOW_AFNI_PAUSE ; MCW_invert_widget(cwid->whermask_pb) ;
+       char *wout , ct[64] ; FILE *fp ; int inv ;
+       SHOW_AFNI_PAUSE ;
+       MCW_invert_widget(cwid->whermask_pb) ; inv = 1 ;
        wout = (char *)malloc(sizeof(char)*WSIZ) ;
        sprintf(wout,"%s -omask %s",wherprog,DSET_HEADNAME(mset)) ;
        if( jtop >= clar->num_clu ) strcpy (ct," ") ;
@@ -1363,13 +1364,15 @@ ENTRY("AFNI_clus_action_CB") ;
          wout[0] = '\0' ;
          while( fgets(wout+strlen(wout),WSIZ-2,fp) != NULL ){
            wout = (char *)realloc(wout,sizeof(char)*(strlen(wout)+WSIZ)) ;
+           /*** MCW_invert_widget(cwid->whermask_pb) ; inv = !inv ; ***/
          }
          (void)pclose(fp) ;
          MCW_textwin_setbig(0) ;
          (void)new_MCW_textwin(w,wout,TEXT_READONLY) ;
        }
        free(wout) ;
-       MCW_invert_widget(cwid->whermask_pb) ; SHOW_AFNI_READY ;
+       if( inv ) MCW_invert_widget(cwid->whermask_pb) ;
+       SHOW_AFNI_READY ;
      }
 
      EXRETURN ;
