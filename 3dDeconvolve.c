@@ -751,8 +751,10 @@ void display_help_menu()
    "* Preprocessing of the time series input can be done with various AFNI  \n"
    "  programs, or with the 'uber-script' afni_proc.py:                     \n"
    "    http://afni.nimh.nih.gov/pub/dist/doc/program_help/afni_proc.py.html\n"
-   "* The recommended way to use 3dDeconvolve is via afni_proc.py, especially\n"
-   "  if you are not familiar with its usage and its peculiarities.         \n"
+   "------------------------------------------------------------------------\n"
+   "****  The recommended way to use 3dDeconvolve is via afni_proc.py,  ****\n"
+   "****  which will pre-process the data, and also provide some useful ****\n"
+   "****  diagnostic tools/outputs for assessing the data quality.      ****\n"
    "------------------------------------------------------------------------\n"
    "Consider the time series model  Z(t) = K(t)*S(t) + baseline + noise,    \n"
    "where Z(t) = data                                                       \n"
@@ -779,6 +781,7 @@ void display_help_menu()
    "of the full model (all regressors) vs. the baseline model.  Thus, it    \n"
    "it common to include irregular time series, such as estimated motion    \n"
    "parameters, in the baseline model via the -stim_file/-stim_base options.\n"
+   "Thus, the 'baseline model' is really the 'null hypothesis model'.       \n"
    "------------------------------------------------------------------------\n"
    "It is VERY important to realize that statistics (F, t, R^2) computed in \n"
    "3dDeconvolve are MARGINAL (or partial) statistics.  For example, the    \n"
@@ -790,7 +793,8 @@ void display_help_menu()
    "the significance of that set of regressors (eg, a set of TENT functions)\n"
    "against the full model with just that set of regressors removed.  If    \n"
    "this explanation or its consequences are unclear, you need to consult   \n"
-   "with a statistician, or with the AFNI message board guru entities.      \n"
+   "with a statistician, or with the AFNI message board guru entities       \n"
+   "(when they can be lured down from the peak of Mt Taniquetil).           \n"
    "------------------------------------------------------------------------\n"
    "At its core, 3dDeconvolve solves a linear regression problem z = X b    \n"
    "for the parameter vector b, given the data vector z in each voxel, and  \n"
@@ -1036,6 +1040,13 @@ void display_help_menu()
     "     'GAM(p,q)'    = 1 parameter gamma variate                         \n"
     "                         (t/(p*q))^p * exp(p-t/q)                      \n"
     "                       Defaults: p=8.6 q=0.547 if only 'GAM' is used   \n"
+    "                     ** The peak of 'GAM(p,q)' is at time p*q after    \n"
+    "                        the stimulus.  The FWHM is about 2.3*sqrt(p)*q.\n"
+    "                 ==> ** If you add a third argument 'd', then the GAM  \n"
+    "                        function is convolved with a square wave of    \n"
+    "                        duration 'd' seconds; for example:             \n"
+    "                          'GAM(8.6,.547,17)'                           \n"
+    "                        for a 17 second stimulus.  [09 Aug 2010]       \n"
     "     'SPMG1'       = 1 parameter SPM gamma variate basis function      \n"
     "                         exp(-t)*(A1*t^P1-A2*t^P2) where               \n"
     "                       A1 = 0.0083333333  P1 = 5  (main positive lobe) \n"
@@ -1044,7 +1055,7 @@ void display_help_menu()
     "     'SPMG2'       = 2 parameter SPM: gamma variate + d/dt derivative  \n"
     "                       [For backward compatibility: 'SPMG' == 'SPMG2'] \n"
     "     'SPMG3'       = 3 parameter SPM basis function set                \n"
-    "                     ** The SPMGx functions now can take an optional   \n"
+    "                 ==> ** The SPMGx functions now can take an optional   \n"
     "                        (duration) argument, specifying that the primal\n"
     "                        SPM basis functions should be convolved with   \n"
     "                        a square wave 'duration' seconds long and then \n"
@@ -1090,7 +1101,7 @@ void display_help_menu()
     "                         z = time scaled to be z=-1..1 for t=bot..top  \n"
     "                      * Spatially dependent regressors are not allowed!\n"
     "                      * Other symbols are set to 0 (silently).         \n"
-    "                   **** There is no convolution of the 'EXPR' functions\n"
+    "                 ==> ** There is no convolution of the 'EXPR' functions\n"
     "                        with a square wave implied.  The expressions   \n"
     "                        you input are what you get, evaluated over     \n"
     "                        times b..c after each stimulus time.  To be    \n"
@@ -1107,8 +1118,8 @@ void display_help_menu()
     "                      FP Leite, et al.  NeuroImage 16:283-294 (2002)   \n"
     "                      http://dx.doi.org/10.1006/nimg.2002.1110         \n"
     "                  ** Note that this is a positive function, but MION   \n"
-    "                     produces a negative response, so the beta and     \n"
-    "                     t-statistic for this will generally be negative.  \n"
+    "                     produces a negative response to activation, so the\n"
+    "                     beta and t-statistic for MION are usually negative.\n"
     "                  ** After convolution with a square wave 'd' seconds  \n"
     "                     long, the resulting single-trial waveform is      \n"
     "                     scaled to have magnitude 1.  For example, try     \n"
@@ -1117,10 +1128,16 @@ void display_help_menu()
     "                            -stim_times 1 '1D: 10 150' 'MION(70)'    \\\n"
     "                            -stim_times 2 '1D: 10 150' 'BLOCK(70,1)' \\\n"
     "                            -x1D stdout: | 1dplot -stdin -one -thick   \n"
-    "                **** Note that 'MION(d)' is already convolved with a   \n"
+    "                     You will see that the MION curve rises and falls  \n"
+    "                     much more slowly than the BLOCK curve.            \n"
+    "              ==> ** Note that 'MION(d)' is already convolved with a   \n"
     "                     square wave of duration 'd' seconds.  Do not      \n"
     "                     convolve it again by putting in multiple closely  \n"
-    "                     spaced stimulus times (as has been done)!         \n"
+    "                     spaced stimulus times (this mistake has been made)!\n"
+    "                  ** Scaling the single-trial waveform to have magnitude\n"
+    "                     1 means that trials with different durations 'd'  \n"
+    "                     will have the same magnitude for their regression \n"
+    "                     models.                                           \n"
     "                                                                       \n"
     " * 3dDeconvolve does LINEAR regression, so the model parameters are    \n"
     "   amplitudes of the basis functions; 1 parameter models are 'simple'  \n"
@@ -1131,7 +1148,24 @@ void display_help_menu()
     " * If you want NONLINEAR regression, see program 3dNLfim.              \n"
     "                                                                       \n"
     " * If you want LINEAR regression with allowance for non-white noise,   \n"
-    "   use program 3dREMLfit.                                              \n"
+    "   use program 3dREMLfit, after using 3dDeconvolve to set up the       \n"
+    "   regression model.                                                   \n"
+    "                                                                       \n"
+    "** When in any doubt about the shape of the response model you are   **\n"
+    "*  asking for, you should plot the relevant columns from the X matrix *\n"
+    "*  to help develop some understanding of the analysis.  The 'MION'    *\n"
+    "*  example above can be used as a starting point for how to easily    *\n"
+    "*  setup a quick command pipeline to graph response models.  In this  *\n"
+    "*  example, '-polort -1' is used to suppress the usual baseline model *\n"
+    "*  since graphing that part of the matrix would just be confusing.    *\n"
+    "*  Another example, for example, comparing the similar models         *\n"
+    "** 'WAV(10)', 'BLOCK4(10,1)', and 'SPMG1(10)':                       **\n"
+    "     3dDeconvolve -nodata 200 1.0 -num_stimts 3 -polort -1           \\\n"
+    "                  -local_times -x1D stdout:                          \\\n"
+    "                  -stim_times 1 '1D: 10 60 110 160' 'WAV(10)'        \\\n"
+    "                  -stim_times 2 '1D: 10 60 110 160' 'BLOCK4(10,1)'   \\\n"
+    "                  -stim_times 3 '1D: 10 60 110 160' 'SPMG1(10)'      \\\n"
+    "           | 1dplot -one -stdin -xlabel Time -ynames WAV BLOCK4 SPMG1  \n"
     "                                                                       \n"
     " * For the format of the 'tname' file, see the last part of            \n"
     " http://afni.nimh.nih.gov/pub/dist/doc/misc/Decon/DeconSummer2004.html \n"
@@ -1139,25 +1173,18 @@ void display_help_menu()
     " http://afni.nimh.nih.gov/pub/dist/doc/misc/Decon/                     \n"
     "   and also read the presentation below:                               \n"
     " http://afni.nimh.nih.gov/pub/dist/edu/latest/afni_handouts/afni05_regression.pdf\n"
-    "   ** Note Well:                                                       \n"
-    "    * The contents of the 'tname' file are NOT just 0s and 1s,         \n"
-    "      but are the actual times of the stimulus events IN SECONDS.      \n"
-    "    * You can give the times on the command line by using a string     \n"
-    "      of the form '1D: 3.2 7.9 | 8.2 16.2 23.7' in place of 'tname',   \n"
-    "      where the '|' character indicates the start of a new line        \n"
-    "      (so this example is for a case with 2 catenated runs).           \n"
-    "    * You cannot use the '1D:' form of input for any of the more       \n"
-    "      complicated '-stim_times_*' options below!!                      \n"
-    "    * It is a good idea to examine the shape of the response models    \n"
-    "      if you are unsure of what the different functions will look like.\n"
-    "      You can graph columns from the .xmat.1D matrix file with 1dplot; \n"
-    "      for example, comparing 'WAV(10)', 'BLOCK4(10,1)', and 'SPMG1(10)':\n\n"
-    "       3dDeconvolve -nodata 200 1.0 -num_stimts 3 -polort -1         \\\n"
-    "                    -local_times -x1D stdout:                        \\\n"
-    "                    -stim_times 1 '1D: 10 60 110 160' 'WAV(10)'      \\\n"
-    "                    -stim_times 2 '1D: 10 60 110 160' 'BLOCK4(10,1)' \\\n"
-    "                    -stim_times 3 '1D: 10 60 110 160' 'SPMG1(10)'    \\\n"
-    "             | 1dplot -one -stdin -xlabel Time -ynames WAV BLOCK4 SPMG1\n"
+    "  ** Note Well:                                                        \n"
+    "   * The contents of the 'tname' file are NOT just 0s and 1s,          \n"
+    "     but are the actual times of the stimulus events IN SECONDS.       \n"
+    "   * You can give the times on the command line by using a string      \n"
+    "     of the form '1D: 3.2 7.9 | 8.2 16.2 23.7' in place of 'tname',    \n"
+    "     where the '|' character indicates the start of a new line         \n"
+    "     (so this example is for a case with 2 catenated runs).            \n"
+    "=> * You CANNOT USE the '1D:' form of input for any of the more        \n"
+    "     complicated '-stim_times_*' options below!!                       \n"
+    "   * The '1D:' form of input is mostly useful for quick tests, as      \n"
+    "     in the examples above, rather than for production analyses with   \n"
+    "     lots of different stimulus times and multiple imaging runs.       \n"
     "                                                                       \n"
     "[-stim_times_AM1 k tname Rmodel]                                       \n"
     "   Similar, but generates an amplitude modulated response model.       \n"
@@ -1418,13 +1445,13 @@ void display_help_menu()
     "[-xjpeg filename]    Write a JPEG file graphing the X matrix           \n"
     "                     * If filename ends in '.png', a PNG file is output\n"
     "[-x1D filename]      Save X matrix to a .xmat.1D (ASCII) file [default]\n"
-    "                     * If 'filename' is 'stdout:', the file is written \n"
+    "                    ** If 'filename' is 'stdout:', the file is written \n"
     "                       to standard output, and could be piped into     \n"
-    "                       1dplot (examples are given earlier).            \n"
+    "                       1dplot (some examples are given earlier).       \n"
     "                     * This can be used for quick checks to see if your\n"
     "                       inputs are setting up a 'reasonable' matrix.    \n"
-    "[-nox1D]             Don't save X matrix [a bad idea]                  \n"
-    "[-x1D_uncensored ff  Save X matrix to a .xmat.1D file, but WITHOUT     \n"
+    "[-nox1D]             Don't save X matrix [a very bad idea]             \n"
+    "[-x1D_uncensored ff] Save X matrix to a .xmat.1D file, but WITHOUT     \n"
     "                     ANY CENSORING.  Might be useful in 3dSynthesize.  \n"
     "[-x1D_stop]          Stop running after writing .xmat.1D files.        \n"
     "                     * Useful for testing, or if you are going to      \n"
@@ -9673,6 +9700,9 @@ static float waveform_SPMG2( float t ){ return basis_spmg2(t,0.0f,0.0f,0.0f,NULL
 static float waveform_SPMG3( float t ){ return basis_spmg3(t,0.0f,0.0f,0.0f,NULL); }
 static float waveform_MION ( float t ){ return basis_mion (t,0.0f,0.0f,0.0f,NULL); }
 
+static float GAM_p , GAM_q , GAM_top ;
+static float waveform_GAM( float t ){ return basis_gam(t,GAM_p,GAM_q,GAM_top,NULL); }
+
 /*--------------------------------------------------------------------------*/
 /*  f(t,T) = int( h(t-s) , s=0..min(t,T) )
     where h(t) = t^4 * exp(-t) /(4^4*exp(-4))
@@ -10013,6 +10043,7 @@ static float waveform_WAV( float t )
 #define WTYPE_SPMG2 2
 #define WTYPE_SPMG3 3
 
+#define WTYPE_GAM   7
 #define WTYPE_MION  8
 #define WTYPE_WAV   9
 
@@ -10053,6 +10084,8 @@ static int setup_WFUN_function( int wtyp , float dur , float *parm )
    float (*wavfun)(float) = NULL ;
    char msg[222] ;
 
+ENTRY("setup_WFUN_function") ;
+
    if( dur < 0.0f ) dur = 0.0f ;
    ws.wtype = wtyp ; ws.dur = dur ;
    ws.parm[0] = ws.parm[1] = ws.parm[2] = ws.parm[3] =
@@ -10061,7 +10094,7 @@ static int setup_WFUN_function( int wtyp , float dur , float *parm )
 
    switch( wtyp ){
 
-     default: return -1 ;  /* bad input */
+     default: RETURN(-1) ;  /* bad input */
 
      case WTYPE_WAV:
        if( parm != NULL ){
@@ -10111,12 +10144,19 @@ static int setup_WFUN_function( int wtyp , float dur , float *parm )
        sprintf(msg,"waveform setup: MION(dur=%g)",dur) ;
      break ;
 
+     case WTYPE_GAM:
+       wavfun = waveform_GAM  ;
+       ws.parm[0] = GAM_p = parm[0] ;
+       ws.parm[1] = GAM_q = parm[1] ;
+       GAM_top = GAM_p*GAM_q + 5.0f*sqrtf(GAM_p)*GAM_q ;
+       sprintf(msg,"waveform setup: GAM(p=%g,q=%g,dur=%g)",GAM_p,GAM_q,dur) ;
+     break ;
    }
 
    /* check if we have a duplicate of an existing WFUN function */
 
    for( ii=0 ; ii < nWFUNS ; ii++ )
-     if( WFUN_equals(ws,WFUNS[ii]) ) return ii ;  /* found a match */
+     if( WFUN_equals(ws,WFUNS[ii]) ) RETURN(ii) ;  /* found a match */
 
    /**** must create a new WFUN function: ****/
 
@@ -10170,7 +10210,7 @@ static int setup_WFUN_function( int wtyp , float dur , float *parm )
    memcpy( WFUNS+nWFUNS , &ws , sizeof(WFUN_storage) ) ;
    nWFUNS++ ;
 
-   return (nWFUNS-1) ;  /* index of new struct */
+   RETURN(nWFUNS-1) ;  /* index of new struct */
 }
 
 /*----------------------------------------------------------------*/
@@ -10228,24 +10268,45 @@ ENTRY("basis_parser") ;
 
      be->nfunc = 1 ;
      be->bfunc = (basis_func *)calloc(sizeof(basis_func),be->nfunc) ;
-     be->bfunc[0].f = basis_gam ;
      if( cpt == NULL ){
        be->bfunc[0].a = 8.6f ;     /* Mark Cohen's parameters */
        be->bfunc[0].b = 0.547f ;   /* t_peak=4.7 FWHM=3.7 */
        be->bfunc[0].c = 11.1f ;    /* return to zero-ish */
+       be->bfunc[0].f = basis_gam ;
+       be->tbot = 0.0f ; be->ttop = be->bfunc[0].c ;
      } else {
-       sscanf(cpt,"%f,%f",&bot,&top) ;
-       if( bot <= 0.0f || top <= 0.0f ){
+       float dur=-1.0f ;
+       sscanf(cpt,"%f,%f,%f",&bot,&top,&dur) ;
+       if( dur < 0.0f && (bot <= 0.0f || top <= 0.0f) ){
          ERROR_message("'GAM(%s' is illegal",cpt) ;
          ERROR_message(
            " Correct format: 'GAM(b,c)' with b > 0 and c > 0.");
          free((void *)be->bfunc); free((void *)be); free(scp); RETURN(NULL);
        }
-       be->bfunc[0].a = bot ;    /* t_peak = bot*top */
-       be->bfunc[0].b = top ;    /* FWHM   = 2.3*sqrt(bot)*top */
-       be->bfunc[0].c = bot*top + 4.0f*sqrt(bot)*top ;  /* long enough */
+       if( dur < 0.0f ){   /* the olden way: no duration given */
+         be->bfunc[0].a = bot ;    /* t_peak = bot*top */
+         be->bfunc[0].b = top ;    /* FWHM   = 2.3*sqrt(bot)*top */
+         be->bfunc[0].c = bot*top + 5.0f*sqrtf(bot)*top ;  /* long enough */
+         be->bfunc[0].f = basis_gam ;
+         be->tbot = 0.0f ; be->ttop = be->bfunc[0].c ;
+       } else {            /* duration given ==> integrate it */
+         int iwav ; float parm[2] ;
+         if( bot <= 0.0f ) bot = 8.6f ;
+         if( top <= 0.0f ) top = 0.547f ;
+         if( dur == 0.0f ) dur = 0.01f ;
+         parm[0] = bot ; parm[1] = top ;
+         iwav = setup_WFUN_function( WTYPE_GAM , dur , parm ) ;
+         if( iwav < 0 ){
+           ERROR_message("Can't setup GAM(%f,%f,%f) for some reason?!",bot,top,dur) ;
+           free((void *)be); free(scp); RETURN(NULL);
+         }
+         be->tbot = 0.0f ; be->ttop = WFUNDT * WFUNS[iwav].nfun ;
+         be->bfunc[0].f = basis_WFUN ;
+         be->bfunc[0].a = (float)iwav ;
+         be->bfunc[0].b = 0.0f ;
+         be->bfunc[0].c = 0.0f ;
+       }
      }
-     be->tbot = 0.0f ; be->ttop = be->bfunc[0].c ;
 
    /*--- TENT(bot,top,order) ---*/  /*-- add TENTzero 23 Jul 2010 --*/
 
