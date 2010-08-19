@@ -327,6 +327,8 @@ void usage_DriveSuma (SUMA_GENERIC_ARGV_PARSE *ps)
 "                  key option.\n"
 "Options:\n"
 "--------\n"
+"   -echo_edu: Echos the entire command line (without -echo_edu)\n"
+"              for edification purposes\n"
 "   -examples: Show all the sample commands and exit\n"
 "   -C_demo: execute a preset number of commands\n"
 "            which are meant to illustrate how one\n"
@@ -1258,6 +1260,19 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_DriveSuma_ParseInput(char *argv[], int ar
 		
 		SUMA_SKIP_COMMON_OPTIONS(brk, kar);
       
+      if (!brk && (strcmp(argv[kar], "-echo_edu") == 0)) {
+         int jj;
+         fprintf(SUMA_STDOUT,"\nNow running:\n   ");
+         for (jj=0; jj<argc; ++jj) {
+            if (jj != kar) {
+               fprintf(SUMA_STDOUT,"%s ", argv[jj]);
+            }
+         } 
+         fprintf(SUMA_STDOUT,"\n");
+         brk = YUP;   
+      }
+   
+
       if (!brk && (strcmp(argv[kar], "-debug") == 0))
       {
          if (kar+1 >= argc)
