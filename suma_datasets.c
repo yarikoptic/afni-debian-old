@@ -4391,6 +4391,28 @@ int SUMA_AddNgrHist(NI_group *ngr, char *CallingFunc, int N_arg, char **arg)
    SUMA_RETURN(1);
 }
 
+int SUMA_RemoveDsetHist(SUMA_DSET *dset) {
+   if (!dset||!dset->ngr) return(0);
+   return(SUMA_RemoveNgrHist(dset->ngr));
+}
+
+int SUMA_RemoveNgrHist(NI_group *ngr)
+{
+   static char FuncName[]={"SUMA_RemoveNgrHist"}; 
+   NI_element *nelb = NULL;
+   
+   SUMA_ENTRY;
+   
+   if (!ngr) SUMA_RETURN(0);
+   
+   /* get former history element, if any and old string */
+   nelb = SUMA_FindNgrAttributeElement(ngr, "HISTORY_NOTE");
+   if (nelb) {
+      NI_remove_from_group(ngr, nelb);
+   }
+   SUMA_RETURN(1);
+}
+
 /*!
    \brief adds a history note to the ni-element
    
@@ -12378,6 +12400,8 @@ SUMA_Boolean SUMA_ShowParsedFname(SUMA_PARSED_NAME *pn, FILE *out)
       SS = SUMA_StringAppend_va(SS, "NULL parsed name");
    } else {
       SS = SUMA_StringAppend_va(SS, "AbsPath       :%s\n", pn->AbsPath);
+      SS = SUMA_StringAppend_va(SS, "RelDir        :%s\n", pn->RelDir);
+      SS = SUMA_StringAppend_va(SS, "RelPath       :%s\n", pn->RelPath);
       SS = SUMA_StringAppend_va(SS, "Path          :%s\n", pn->Path);
       SS = SUMA_StringAppend_va(SS, "FileName      :%s\n", pn->FileName);
       SS = SUMA_StringAppend_va(SS, "Ext           :%s\n", pn->Ext);
@@ -12388,6 +12412,8 @@ SUMA_Boolean SUMA_ShowParsedFname(SUMA_PARSED_NAME *pn, FILE *out)
       SS = SUMA_StringAppend_va(SS, "Range Selector:%s\n", pn->RangeSelect);
       SS = SUMA_StringAppend_va(SS, "Only index col:%d\n", pn->only_index);
       SS = SUMA_StringAppend_va(SS, "FullName      :%s\n", pn->FullName);
+      SS = SUMA_StringAppend_va(SS, "RelName       :%s%s\n", 
+                                                    pn->RelPath,pn->FileName);
    }
 
    SUMA_SS2S(SS,s);
@@ -12579,6 +12605,34 @@ SUMA_PARSED_NAME * SUMA_ParseFname (char *FileName, char *ucwd)
          NewName->AbsPath = SUMA_append_replace_string(cwd, ptmp, "/", 0);
          ptmp = NULL;
       }
+      /* store the current directory, and put back the slash */
+      NewName->RelDir = SUMA_append_string(cwd, "/");
+      /* get the relative path (assumes both end with / )*/
+      {
+         int nback=0, imatch=0;
+         i=0; /* go as far as the directories match */
+         while (i < strlen(NewName->RelDir) &&
+                i < strlen(NewName->AbsPath) &&
+                NewName->RelDir[i] == NewName->AbsPath[i] ) ++i;
+         /* backup i until you hit the last '/' */
+         while (i>=0 && NewName->RelDir[i] != '/') --i;
+         if (NewName->RelDir[i] == '/') ++i; /* and back up one */
+         
+         /* how many extra directories do we have left in NewName->RelDir ?*/
+         imatch = i;
+         while (i < strlen(NewName->RelDir)) {
+            if (NewName->RelDir[i] == '/') ++nback;
+            ++i;
+         }
+         NewName->RelPath = SUMA_calloc(sizeof(char), 
+                                  strlen(NewName->AbsPath)-imatch+nback*3+10);
+         NewName->RelPath[0]= '\0';
+         for (i=0; i<nback; ++i) {
+            strcat(NewName->RelPath, "../");
+         }
+         strcat(NewName->RelPath,NewName->AbsPath+imatch);
+         if (!strlen(NewName->RelPath)) strcat(NewName->RelPath, "./");
+      } 
       if (FoundFile) {
          NewName->FileName = 
             (char *)SUMA_malloc(sizeof(char)*(N_FileName - iFile + 2));
@@ -12968,6 +13022,8 @@ void *SUMA_Free_Parsed_Name(SUMA_PARSED_NAME *Test)
 
    if (!Test) SUMA_RETURN (NULL);
    if (Test->AbsPath) SUMA_free(Test->AbsPath);
+   if (Test->RelPath) SUMA_free(Test->RelPath);
+   if (Test->RelDir) SUMA_free(Test->RelDir);
    if (Test->Path) SUMA_free(Test->Path);
    if (Test->FileName) SUMA_free(Test->FileName);
    if (Test->FullName) SUMA_free(Test->FullName);
