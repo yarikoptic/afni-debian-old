@@ -49,6 +49,16 @@
 
 afni_history_struct rickr_history[] = {
 
+ {  1, SEP, 2010, RCR, "afni_proc.py", MICRO, TYPE_MODIFY,
+   "tiny changes to help output (e.g. 3dAllineate options)",
+   NULL
+ } ,
+
+ { 30, AUG, 2010, RCR, "3dVol2Surf", MICRO, TYPE_BUG_FIX,
+   "check for -sv dataset before proceeding",
+   NULL
+ } ,
+
  { 30, AUG, 2010, RCR, "@CheckForAfniDset", MICRO, TYPE_BUG_FIX,
    "replaced use of {$var} with ${var}",
    "Problem noted by R Mruczek."
