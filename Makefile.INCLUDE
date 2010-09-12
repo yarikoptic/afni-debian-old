@@ -168,7 +168,7 @@ SCRIPTS = @4Daverage @CommandGlobb @GetAfniOrient @DTI_studio_reposition        
           @make_plug_diff @build_afni_Xlib @update.afni.binaries @ROI_Corr_Mat     \
           @FS_roi_label @demo_prompt @ScriptCheck @NoPound @Reorder              \
           3dMEMA @DiceMetric @R_funclist @TimeDiff @FullPath @RetinoProc          \
-          @ANATICOR @MakeLabelTable 
+          @ANATICOR 
 
 PY_DIR = python_scripts
 PY_SCRIPTS = afni_base.py @DoPerRoi.py
@@ -1830,8 +1830,7 @@ THD_OBJS = thd_atr.o thd_dsetto1D.o thd_initalldir.o thd_reconpar.o \
            thd_logafni.o thd_dset_nbhd.o thd_vcheck.o thd_matdaxes.o      \
            thd_niml.o afni_vedit.o thd_fdrcurve.o thd_dset_to_vectim.o    \
            thd_bandpass.o thd_instacorr.o thd_svdblur.o thd_satcheck.o    \
-           thd_dumdset.o ktaub.o bilinear_warp3D.o thd_table.o            \
-           thd_atlas.o thd_warp_tables.o
+           thd_dumdset.o ktaub.o bilinear_warp3D.o thd_table.o
 
 # these are now included in NIML
 

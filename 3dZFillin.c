@@ -135,13 +135,7 @@ int main( int argc , char * argv[] )
    EDIT_substitute_brick( outset , 0 , brim->kind , mri_data_pointer(brim) ) ;
    nftot = THD_dataset_zfillin( outset , 0 , dcode , maxgap ) ;
    fprintf(stderr,"++ Number of voxels filled = %d\n",nftot) ;
-   if (DSET_write(outset) != False) {
-      fprintf(stderr,"++ output dataset: %s\n",DSET_BRIKNAME(outset)) ;
-      exit(0) ;
-   } else {
-      fprintf(stderr,
-         "** 3dZFillin: Failed to write output!\n" ) ;
-      exit(1) ;
-   }
-   
+   DSET_write(outset) ;
+   fprintf(stderr,"++ output dataset: %s\n",DSET_BRIKNAME(outset)) ;
+   exit(0) ;
 }

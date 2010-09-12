@@ -435,13 +435,7 @@ int main( int argc , char * argv[] )
    tross_Copy_History( inset , outset ) ;             /* 31 Jan 2001 - RWCox */
    tross_Make_History( "3dZeropad" , argc,argv , outset ) ;
 
-   if (DSET_write(outset) != False) {
-      fprintf(stderr,"++ output dataset: %s\n",DSET_BRIKNAME(outset)) ;
-      exit(0) ;
-   } else {
-      fprintf(stderr,
-              "** 3dZeropad: Failed to write output!\n" ) ;
-      exit(1) ;
-   }
-   
+   DSET_write(outset) ;
+   fprintf(stderr,"++ output dataset: %s\n",DSET_BRIKNAME(outset)) ;
+   exit(0) ;
 }

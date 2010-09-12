@@ -1416,8 +1416,7 @@ int main( int argc , char *argv[] )
    SUMA_DSET *mxsets[2]={NULL, NULL};
    byte *nmask=NULL;
    int N_nmask=0;
-   char *nmaskname = NULL; 
-   char *prefix=NULL;
+   char *nmaskname = NULL;
    SUMA_Boolean LocalHead = NOPE;
    
 #ifdef COVTEST
@@ -1482,13 +1481,6 @@ int main( int argc , char *argv[] )
 
      if( strcmp(argv[nopt],"-suma") == 0 ){
        TalkToAfni = 0 ; nopt++ ; continue ;
-     }
-
-     if( strcmp(argv[nopt],"-prefix") == 0 ){
-       if( ++nopt >= argc ) 
-            ERROR_exit("need 1 argument after option '%s'",argv[nopt-1]) ;
-       prefix =  argv[nopt] ;
-       nopt++ ; continue ;
      }
 
      if( strcmp(argv[nopt],"-nmask") == 0 ){
@@ -2263,11 +2255,8 @@ GetOutOfDodge :
    SUMA_UpdateDsetColRange(mxsets[1],-1);
    
    /* write out results */
-   if (!prefix) prefix = "Max";
-   sprintf(buf,"%s.lh", prefix);
-   SUMA_WriteDset_s(buf,   mxsets[0], SUMA_ASCII_NIML, 1, 1);
-   sprintf(buf,"%s.rh", prefix);
-   SUMA_WriteDset_s(buf, mxsets[1], SUMA_ASCII_NIML, 1, 1);
+   SUMA_WriteDset_s("Max.lh",   mxsets[0], SUMA_ASCII_NIML, 1, 1);
+   SUMA_WriteDset_s("Max.rh", mxsets[1], SUMA_ASCII_NIML, 1, 1);
    /* NI_free_element(nelset) ; */
 
    INFO_message("Exeunt RestSym and its %s of data" ,

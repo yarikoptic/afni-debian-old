@@ -262,14 +262,7 @@ int main( int argc , char * argv[] )
    tross_Copy_History( oset , dset1 ) ;
    tross_Make_History( "3dThreetoRGB", argc,argv, oset ) ;
 
-
-   if (DSET_write( oset ) != False) {
-      fprintf(stderr,"++ output dataset: %s\n",DSET_BRIKNAME(oset)) ;
-      exit(0) ;
-   } else {
-      fprintf(stderr,
-              "** 3dThreetoRGB: Failed to write output!\n" ) ;
-      exit(1) ;
-   }
-
+   DSET_write( oset ) ;
+   fprintf(stderr,"++ output dataset: %s\n",DSET_BRIKNAME(oset)) ;
+   exit(0) ;
 }

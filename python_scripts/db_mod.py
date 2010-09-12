@@ -5017,8 +5017,7 @@ g_help_string = """
 
                 e.g. -regress_opts_3dD -gltsym ../contr/contrast1.txt  \\
                                        -glt_label 1 FACEvsDONUT        \\
-                                       -xjpeg Xmat                     \\
-                                       -GOFORIT 8
+                                       -xjpeg Xmat
 
             This option allows the user to add extra options to the 3dDeconvolve
             command.  Note that only one -regress_opts_3dD should be applied,

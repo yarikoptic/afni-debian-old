@@ -177,12 +177,7 @@ STATUS("making history") ;
 
 STATUS("writing output") ;
 
-   if (DSET_write(outset) != False) {
-      fprintf(stderr,"++ output dataset: %s\n",DSET_BRIKNAME(outset)) ;
-      exit(0) ;
-   } else {
-      fprintf(stderr,
-         "** 3dZcutup: Failed to write output!\n" ) ;
-      exit(1) ;
-   }
+   DSET_write(outset) ;
+   fprintf(stderr,"++ output dataset: %s\n",DSET_BRIKNAME(outset)) ;
+   exit(0) ;
 }

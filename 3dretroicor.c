@@ -470,14 +470,8 @@ int main(int argc, char * argv[])
 
    /*-- write out new dataset --*/
 
-   if (DSET_write(new_dset) != False) {
-      fprintf(stderr,"++ output dataset: %s\n",DSET_BRIKNAME(new_dset)) ;
-      exit(0) ;
-   } else {
-      fprintf(stderr,
-         "** 3dretroicor: Failed to write output!\n" ) ;
-      exit(1) ;
-   }
+   DSET_write(new_dset);
+   fprintf(stderr,"++ output dataset: %s\n",DSET_BRIKNAME(new_dset)) ;
 
    /*-- done successfully!!! --*/
 
