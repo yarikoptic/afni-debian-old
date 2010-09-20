@@ -1,0 +1,11 @@
+--- a/SUMA/SUMA_suma.h
++++ b/SUMA/SUMA_suma.h
+@@ -103,7 +103,7 @@
+    #include <GL/gl.h>
+    #include <GL/glu.h>
+    #include <GL/glx.h>
+-   #include <GLUT/GL/glut.h>
++   #include <GL/glut.h>
+    
+ 
+    
