@@ -90,6 +90,9 @@ rm -rf ${spath}/jpeg-6b
 #libnifti
 rm -rf ${spath}/nifti
 
+#gifti
+rm -rf ${spath}/gifti
+
 #libvolpack
 rm -rf ${spath}/{volpack,volpack.h}
 
