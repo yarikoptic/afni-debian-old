@@ -15,7 +15,6 @@ MRI_vectim * THD_dset_to_vectim( THD_3dim_dataset *dset, byte *mask , int ignore
    byte *mmm=mask ;
    MRI_vectim *mrv=NULL ;
    int kk,iv , nvals , nvox , nmask ;
-   float *var=NULL ;
 
 ENTRY("THD_dset_to_vectim") ;
 
@@ -59,23 +58,27 @@ ENTRY("THD_dset_to_vectim") ;
 
    /* store desired voxel time series */
 
-   if( ignore > 0 )
-     var = (float *)malloc(sizeof(float)*(nvals+ignore)) ;
-
    for( kk=iv=0 ; iv < nvox ; iv++ ){
-     if( mmm[iv] == 0 ) continue ;
-     mrv->ivec[kk] = iv ;
-     if( ignore > 0 ){
+     if( mmm[iv] ) mrv->ivec[kk++] = iv ;  /* build index list */
+   }
+
+   if( ignore > 0 ){  /* extract 1 at a time, save what we want */
+
+     float *var = (float *)malloc(sizeof(float)*(nvals+ignore)) ;
+     for( kk=iv=0 ; iv < nvox ; iv++ ){
+       if( mmm[iv] == 0 ) continue ;
        (void)THD_extract_array( iv , dset , 0 , var ) ;
 #pragma omp critical (MEMCPY)
        memcpy( VECTIM_PTR(mrv,kk) , var+ignore , sizeof(float)*nvals ) ;
-     } else {
-       (void)THD_extract_array( iv , dset , 0 , VECTIM_PTR(mrv,kk) ) ;
+       kk++ ;
      }
-     kk++ ;
-   }
+     free(var) ;
 
-   if( ignore > 0 ) free(var) ;
+   } else {  /* do all at once: this way is a lot faster */
+
+     THD_extract_many_arrays( nmask , mrv->ivec , dset , mrv->fvec ) ;
+
+   }
 
    mrv->nx = DSET_NX(dset) ; mrv->dx = fabs(DSET_DX(dset)) ;
    mrv->ny = DSET_NY(dset) ; mrv->dy = fabs(DSET_DY(dset)) ;
@@ -121,6 +124,25 @@ void THD_vectim_dotprod( MRI_vectim *mrv , float *vec , float *dp , int ata )
  } /* end OpenMP */
 
   return ;
+}
+
+/*-----------------------------------------------------------*/
+
+void THD_vectim_vectim_dot( MRI_vectim *arv, MRI_vectim *brv, float *dp )
+{
+   int nvec , nvals , iv , ii ; float *av , *bv , sum ;
+
+   if( arv == NULL || brv == NULL || dp == NULL ) return ;
+   if( arv->nvec != brv->nvec || arv->nvals != brv->nvals ) return ;
+
+   nvec = arv->nvec ; nvals = arv->nvals ;
+   for( iv=0 ; iv < nvec ; iv++ ){
+     av = VECTIM_PTR(arv,iv) ; bv = VECTIM_PTR(brv,iv) ;
+     for( sum=0.0f,ii=0 ; ii < nvals ; ii++ ) sum += av[ii]*bv[ii] ;
+     dp[iv] = sum ;
+   }
+
+   return ;
 }
 
 /*----------------------------------------------------------------------------*/
@@ -171,13 +193,15 @@ int64_t THD_vectim_size( THD_3dim_dataset *dset , byte *mask )
 }
 
 /*-----------------------------------------------------------------------*/
-/*! Binary search in a sorted integer array. */
+/*! Binary search in a sorted integer array;
+    return index of tt in ar if found, return -1 if not found.
+*//*---------------------------------------------------------------------*/
 
 int bsearch_int( int tt , int nar , int *ar )
 {
    int targ , ii , jj , kk , nn ;
 
-   if( nar == 0 || ar == NULL ) return -1 ; /* bad inputs */
+   if( nar <= 0 || ar == NULL ) return -1 ; /* bad inputs */
 
    targ = tt ; ii = 0 ; jj = nar-1 ;      /* setup */
 

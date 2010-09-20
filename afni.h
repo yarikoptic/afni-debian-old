@@ -363,16 +363,16 @@ typedef struct {
 
       Widget crosshair_menu, crosshair_dicom_pb, crosshair_spm_pb ; /* 12 Mar 2004 */
 
-      Widget         xhair_rowcol ;
-      MCW_arrowval * crosshair_av ;
-      MCW_bbox     * xhall_bbox ;
+      Widget        xhair_rowcol ;
+      MCW_arrowval *crosshair_av ;
+      MCW_bbox     *xhall_bbox ;
 
-      MCW_arrowval * crosshair_color_av ;
-      MCW_arrowval * time_index_av ;
+      MCW_arrowval *crosshair_color_av ;
+      MCW_arrowval *time_index_av ;
 
-      Widget         gap_wrap_rowcol ;
-      MCW_arrowval * crosshair_gap_av ;
-      MCW_bbox     * wrap_bbox ;
+      Widget        gap_wrap_rowcol ;
+      MCW_arrowval *crosshair_gap_av ;
+      MCW_bbox     *wrap_bbox ;
 
       Widget view_frame , view_rowcol ,
              xyz_rowcol   , yzx_rowcol   , zxy_rowcol   ,
@@ -383,7 +383,7 @@ typedef struct {
       Boolean do_bkgd_lab ;
 
       Widget pop_whereami_pb , pop_ttren_pb ;
-      MCW_textwin * pop_whereami_twin ;
+      MCW_textwin *pop_whereami_twin ;
 
       Widget pop_sumato_pb ;
       Widget pop_mnito_pb ;  /* 01 May 2002 */
@@ -497,14 +497,32 @@ typedef struct {
  } while(0)
 
 #undef  DESTROY_ICALC_setup
-#define DESTROY_ICALC_setup(qcs)                                  \
- do{ if( (qcs) != NULL ){                                         \
-       int aa ;                                                   \
-       XtFree((qcs)->ulay_expr) ;                                 \
-       XtFree((qcs)->olay_expr) ;                                 \
-       XtFree((qcs)->the_expr) ;                                  \
-       free((qcs)) ; (qcs) = NULL ;                               \
+#define DESTROY_ICALC_setup(qcs)     \
+ do{ if( (qcs) != NULL ){            \
+       int aa ;                      \
+       XtFree((qcs)->ulay_expr) ;    \
+       XtFree((qcs)->olay_expr) ;    \
+       XtFree((qcs)->the_expr) ;     \
+       free((qcs)) ; (qcs) = NULL ;  \
  }} while(0)
+
+/*---*/
+
+typedef struct {
+  int       ready ;
+  int       ndset_A , ndset_B , nvec ;
+  int       ttest_opcode , vmul ;
+  float     seedrad ;
+  NI_stream ns ;
+  THD_session *session ; THD_3dim_dataset *dset ;
+  int nds,nvox,nivec,*ivec ;
+} GICOR_setup ;
+
+#define DESTROY_GICOR_setup(gi)                     \
+ do{ if( (gi) != NULL ){                            \
+       if( (gi)->ivec != NULL ) free((gi)->ivec) ;  \
+       free(gi) ; (gi) = NULL ;                     \
+     } } while(0)
 
 /*---*/
 
@@ -522,10 +540,12 @@ typedef struct {
 
       Widget     define_dmode_pb ;
 
-      Widget dataset_frame , dataset_rowcol ,
-             choose_sess_pb    , choose_anat_pb    , choose_func_pb   ,
+      Widget dataset_frame     , dataset_rowcol    ,
+             choose_anat_pb    , choose_func_pb    ,
              popchoose_sess_pb , popchoose_anat_pb , popchoose_func_pb ;
-      Widget choose_rowcol , rescan_pb , nimlpo_pb ;  /* 02 Feb 2007 */
+
+      Widget choose_rowcol , rescan_pb, nimlpo_pb ;                    /* 02 Feb 2007 */
+      Widget session_rowcol, sess_lab , choose_sess_pb, read_sess_pb ; /* 03 Dec 2009 */
 
       Boolean marks_pb_inverted , func_pb_inverted , dmode_pb_inverted ;
 
@@ -635,9 +655,11 @@ typedef struct {
       MCW_bbox     *underlay_bbox ;
       Widget clu_rowcol, clu_clear_pb, clu_cluster_pb, clu_report_pb ;  /* 05 Sep 2006 */
 
-      Widget icor_rowcol, icor_pb , icor_label ; /* 05 May 2009 */
+      Widget icor_rowcol  , icor_pb  , icor_label  ; /* 05 May 2009 */
 
       Widget icalc_rowcol , icalc_pb , icalc_label ; /* 18 Sep 2009 */
+
+      Widget gicor_rowcol , gicor_pb , gicor_label ; /* 22 Dec 2009 */
 
       Widget         buck_frame , buck_rowcol ;
       MCW_arrowval * anat_buck_av , *fim_buck_av , *thr_buck_av ;  /* 30 Nov 1997 */
@@ -685,7 +707,7 @@ extern void AFNI_func_fdr_CB    (Widget,XtPointer,XtPointer) ;    /* 29 Jan 2008
      do{ int sel_height ;  XtPointer sel_ptr=NULL ;                      \
          XtVaGetValues( (iqqq)->vwid->func->thr_scale ,                  \
                            XmNuserData , &sel_ptr , NULL ) ;             \
-         sel_height = (int) sel_ptr ;                                    \
+         sel_height = PTOI(sel_ptr) ;                                    \
          XtVaSetValues( (iqqq)->vwid->func->thr_scale ,                  \
                            XmNheight , sel_height , NULL ) ;             \
          XtManageChild((iqqq)->vwid->func->thr_scale) ;                  \
@@ -1011,8 +1033,9 @@ typedef struct Three_D_View {
       char *vedlabel ;                          /* 27 Mar 2007 */
       int   vedskip ;
 
-      ICOR_setup  *iset ;                       /* 05 May 2009 */
-      ICALC_setup *icalc_setup ;                /* 18 Sep 2009 */
+      ICOR_setup   *iset ;                       /* 05 May 2009 */
+      ICALC_setup  *icalc_setup ;                /* 18 Sep 2009 */
+      GICOR_setup  *giset ;                      /* 22 Dec 2009 */
 } Three_D_View ;
 
 /*! Force re-volume-editing when this viewer is redisplayed */
@@ -1048,23 +1071,67 @@ typedef struct Three_D_View {
      MCW_set_widget_bg   ((iq)->vwid->func->icor_label,STOP_COLOR,0 ) ; \
  } while(0)
 
+/*! Change InstaCorr popup buttons status */
+
+#define SENSITIZE_INSTACORR(iq,bb)                           \
+ do{ XtSetSensitive((iq)->vwid->imag->pop_instacorr_pb,bb) ; \
+     XtSetSensitive((iq)->vwid->imag->pop_icorrjump_pb,bb) ; \
+ } while(0)
+
 /*! Allow InstaCorr in this viewer */
 
-#define ENABLE_INSTACORR(iq)                                   \
- do{ XtSetSensitive((iq)->vwid->imag->pop_instacorr_pb,True) ; \
-     XtSetSensitive((iq)->vwid->imag->pop_icorrjump_pb,True) ; \
-     INSTACORR_LABEL_ON((iq)) ;                                \
+#define ENABLE_INSTACORR(iq)           \
+ do{ SENSITIZE_INSTACORR((iq),True) ;  \
+     INSTACORR_LABEL_ON((iq)) ;        \
  } while(0)
 
 /*! Turn InstaCorr off in this viewer */
 
 #define DISABLE_INSTACORR(iq)                                                 \
- do{ XtSetSensitive((iq)->vwid->imag->pop_instacorr_pb,False) ;               \
-     XtSetSensitive((iq)->vwid->imag->pop_icorrjump_pb,False) ;               \
+ do{ SENSITIZE_INSTACORR((iq),False) ;                                        \
      INSTACORR_LABEL_OFF((iq)) ;                                              \
      (iq)->vinfo->i1_icor = (iq)->vinfo->j2_icor = (iq)->vinfo->k3_icor = -1; \
      AFNI_misc_CB((iq)->vwid->func->icor_pb,(XtPointer)(iq),NULL) ;           \
  } while(0)
+
+/*--- similar stuff for Group InstaCorr [22 Dec 2009] ---*/
+
+#define ISREADY_ICOR(iq)        ISVALID_ICOR_setup((iq)->iset)
+
+#define ISREADY_GICOR(iq)       ( (iq)->giset != NULL && (iq)->giset->ready )
+
+#define ISREADY_EITHER_ICOR(iq) ( ISREADY_ICOR(iq) || ISREADY_GICOR(iq) )
+
+#define GRPINCORR_LABEL_ON(iq)                                             \
+ do{ if( (iq)->vwid->func->gicor_rowcol != NULL ){                         \
+       MCW_set_widget_label((iq)->vwid->func->gicor_label,"** Ready **") ; \
+       MCW_set_widget_bg   ((iq)->vwid->func->gicor_label,GO_COLOR,0   ) ; \
+     } } while(0)
+
+#define GRPINCORR_LABEL_OFF(iq)                                            \
+ do{ if( (iq)->vwid->func->gicor_rowcol != NULL ){                         \
+       MCW_set_widget_label((iq)->vwid->func->gicor_label,"*NOT Ready*") ; \
+       MCW_set_widget_bg   ((iq)->vwid->func->gicor_label,STOP_COLOR,0 ) ; \
+     } } while(0)
+
+#define ENABLE_GRPINCORR(iq)          \
+ do{ SENSITIZE_INSTACORR((iq),True) ; \
+     (iq)->giset->ready = 1 ;         \
+     GRPINCORR_LABEL_ON((iq)) ;       \
+ } while(0)
+
+#define DISABLE_GRPINCORR(iq)                                                    \
+ do{ if( (iq)->vwid->func->gicor_rowcol != NULL ){                               \
+       SENSITIZE_INSTACORR((iq),False) ;                                         \
+       if( (iq)->giset != NULL ) (iq)->giset->ready = 0 ;                        \
+       GRPINCORR_LABEL_OFF((iq)) ;                                               \
+       (iq)->vinfo->i1_icor = (iq)->vinfo->j2_icor = (iq)->vinfo->k3_icor = -1;  \
+       AFNI_misc_CB((iq)->vwid->func->gicor_pb,(XtPointer)(iq),NULL) ;           \
+     }                                                                           \
+ } while(0)
+
+#define GRPINCORR_ready(iq) \
+ (IM3D_OPEN(iq) && (iq)->giset != NULL) ? (iq)->giset->ready : 0
 
 /** InstaCalc stuff [18 Sep 2009] **/
 
@@ -1208,7 +1275,11 @@ extern "C" {
    extern PLUGIN_interface * F2D_init(void) ;            /* 03 Jul 2000 */
    extern PLUGIN_interface * F1D_init(void) ;            /* 08 Aug 2001 */
    extern PLUGIN_interface * ICOR_init(char *);          /* 29 Apr 2009 */
+   extern PLUGIN_interface * GICOR_init(char *);         /* 22 Dec 2009 */
 #endif
+
+extern void GICOR_setup_func(NI_stream, NI_element *) ;        /* 22 Dec 2009 */
+extern void GICOR_process_dataset( NI_element *nel, int ct ) ; /* 23 Dec 2009 */
 
 extern void ICALC_make_widgets( Three_D_View *im3d ) ;   /* 18 Sep 2009 */
 
@@ -1318,6 +1389,7 @@ extern void AFNI_display_hist( Widget w ) ;       /* 05 Mar 2008 */
 
 #define THE_DISPLAY     (GLOBAL_library.dc->display)  /* 02 Aug 2002 */
 #define THE_TOPSHELL    (GLOBAL_library.controllers[0]->vwid->top_shell)
+#define A_CONTROLLER    (GLOBAL_library.controllers[0])
 
 # define SUMA_ENABLED   GLOBAL_argopt.enable_suma
 
@@ -1559,6 +1631,8 @@ extern char * AFNI_bucket_label_CB( MCW_arrowval * , XtPointer ) ;
 extern void   AFNI_vedit_CB       ( MCW_arrowval * , XtPointer ) ; /* 05 May 2009 */
 extern int    AFNI_icor_setref    ( Three_D_View *im3d ) ;
 extern void   AFNI_icor_setref_locked( Three_D_View *im3d ) ;      /* 15 May 2009 */
+
+extern int    AFNI_gicor_setref   ( Three_D_View *im3d ) ;         /* 23 Dec 2009 */
 
 extern Boolean AFNI_refashion_dataset( Three_D_View * ,
                                        THD_3dim_dataset *, THD_dataxes * , int ) ;

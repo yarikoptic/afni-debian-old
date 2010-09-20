@@ -22,6 +22,8 @@ void PARSER_set_printout( int p ){ printout = p ; }
    Output = structure containing information about how to
             evaluate the expression; should be free-d when unneeded;
             if NULL is returned, an error occurred.
+
+Doesn't work??
 --------------------------------------------------------------------*/
 
 PARSER_code * PARSER_generate_code( char *expression )
@@ -106,6 +108,8 @@ int PARSER_has_symbol( char *sym , PARSER_code *pc )
 
    return hh ;
 }
+
+/*------------------------------------------------------------------*/
 
 void PARSER_mark_symbols( PARSER_code *pc , int *sl )
 {

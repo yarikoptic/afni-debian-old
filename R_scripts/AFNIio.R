@@ -1,25 +1,657 @@
 #------------------------------------------------------------------
-# Extracted (and modified) from fmri library by Karsten Tabelow, 
-# tabelow@wias-berlin.de and Joerg Polzehl (polzehl@wias-berlin.de)
+# Functions to deal with AFNI file names
 #------------------------------------------------------------------
 
-
-read.AFNI <- function(filename) {
+parse.AFNI.name <- function(filename, verb = 0) {
+  an <- list()
+  an$view <- NULL
+  an$prefix <- NULL
+  an$head <- NULL
+  an$brik <- NULL
+  an$compress <- ''
+  an$brsel <- NULL;
+  an$rosel <- NULL;
+  an$rasel <- NULL;
+  
+  if (verb) { cat ('Parsing >>',filename,'<<\n', sep=''); }
+  if (!is.character(filename)) {
+   warning(paste('filename >>', filename, '<< not a character string\n', sep=''),
+              immediate. = TRUE);
+   traceback();
+   return(NULL);
+  }  
   fileparts <- strsplit(filename,"\\.")[[1]]
-  ext <- tolower(fileparts[length(fileparts)])
-
-  if (ext == "head") {
-    filename.head <- filename
-    filename.brik <- paste(c(fileparts[-length(fileparts)],"BRIK"),collapse=".")
-  } else if (ext == "brik") {
-    filename.head <- paste(c(fileparts[-length(fileparts)],"HEAD"),collapse=".")
-    filename.brik <- filename
+  ext <- fileparts[length(fileparts)]
+  if (!is.na(match(ext,"Z")) ||
+      !is.na(match(ext,"gz")) ) {
+   #bext <- paste("BRIK",ext,collapse='.') 
+   bext <- 'BRIK'
+   an$compress <- ext
+   ext <- tolower(fileparts[length(fileparts)-1])   
   } else {
-    filename.head <- paste(filename,".HEAD",sep="")
-    filename.brik <- paste(filename,".BRIK",sep="")
+    bext <- 'BRIK'
+    ext <- tolower(ext)
   }
   
-  conhead <- file(filename.head,"r")
+  #deal with sub-brick and range selectors
+  selecs <- strsplit(ext,"\\[|\\{|<")[[1]];
+  
+  ext <- selecs[1];
+  for (ss in selecs[2:length(selecs)]) {
+   if (length(grep("]",ss))) {
+      an$brsel <- strsplit(ss,"\\]")[[1]][1];
+   } else if (length(grep("}",ss))) {
+      an$rosel <- strsplit(ss,"\\}")[[1]][1];
+   } else if (length(grep(">",ss))) {
+      an$rasel <- strsplit(ss,">")[[1]][1];
+   }
+  } 
+
+  if (ext == "head") {
+    an$head <- paste(c(fileparts[-length(fileparts)],"HEAD"),collapse=".")
+    an$brik <- paste(c(fileparts[-length(fileparts)],bext),collapse=".")
+  } else if (ext == "brik") {
+    an$head <- paste(c(fileparts[-length(fileparts)],"HEAD"),collapse=".")
+    an$brik <- paste(c(fileparts[-length(fileparts)],bext),collapse=".")
+  } else {
+    an$head <- paste(filename,".HEAD",sep="")
+    an$brik <- paste(filename,".BRIK",sep="")
+  }
+  
+  
+  vp <- strsplit(an$head, ".HEAD|\\+")[[1]];
+  an$prefix <- vp[1];
+  an$view   <- paste('+',vp[2],sep='');
+  
+  return(an)
+}
+
+exists.AFNI.name <- function(an) {
+   if (is.character(an)) an <- parse.AFNI.name(an);
+   
+   ans <- 0
+   if (file.exists(an$head)) ans <- ans + 1;
+   
+   if (file.exists(an$brik) ||
+       file.exists(paste(an$brik,'.gz', sep='')) ||
+       file.exists(paste(an$brik,'.Z', sep=''))) ans <- ans + 2;
+   return(ans);
+}
+
+prefix.AFNI.name <- function(an) {
+   if (is.character(an)) an <- parse.AFNI.name(an);
+   return(an$prefix);
+}
+
+view.AFNI.name <- function(an) {
+   if (is.character(an)) an <- parse.AFNI.name(an);
+   return(an$view);
+}
+
+pv.AFNI.name <- function(an) {
+   if (is.character(an)) an <- parse.AFNI.name(an);
+   return(paste(an$prefix,an$view,sep=''));
+}
+
+head.AFNI.name <- function(an) {
+   if (is.character(an)) an <- parse.AFNI.name(an);
+   return(paste(an$head,an$view,sep=''));
+}
+
+uncompress.AFNI <- function(an, verb = 1) {
+   if (is.character(an)) an <- parse.AFNI.name(an);
+   
+   ans <- 0
+   
+   zz <- paste(an$brik,'.Z', sep='');
+   if (file.exists(zz)) {
+      if (verb) {
+         cat ('Uncompressing', zz, '\n');
+      }
+      system(paste('uncompress', zz));
+   }
+
+   zz <- paste(an$brik,'.gz', sep='');
+   if (file.exists(zz)) {
+      if (verb) {
+         cat ('gzip -d-ing', zz, '\n');
+      }
+      system(paste('gzip -d', zz));
+   }
+   
+   
+   return(an);
+}
+  
+show.AFNI.name <- function(an) {
+   cat ('\n',
+        'pref.=', an$prefix, '\n',
+        'view =', an$view, '\n',
+        'head =', an$head, '\n',
+        'brik =', an$brik, '\n',
+        'brsel=', an$brsel, '\n',
+        'rosel=', an$rosel, '\n',
+        'rasel=', an$rasel, '\n',
+        'exist=', exists.AFNI.name(an), '\n');
+}
+
+#------------------------------------------------------------------
+# Functions to parse command-line arguments
+#------------------------------------------------------------------
+value.AFNI.args <- function(name, ops) {
+   ifnd <- which(name == names(ops));
+   if (length(ifnd)) {
+      vv <- vector(typeof(ops[ifnd][[1]]));
+      for (i in 1:length(ifnd)) {
+         vv <- c (vv,ops[i][[1]])
+      }
+      return(vv);
+   } 
+   return(NULL);
+}
+
+show.AFNI.args <- function (ops, verb=0, adieu=FALSE, hstr='') {
+   if (is.null(ops)) {
+      cat ('NULL options\n');
+   } else {
+      cat (hstr,'Allowed Options:\n');
+      if (length(ops[['allowed_options']])) {
+         for (i in 1:length(ops[['allowed_options']])) {
+            cat (' ', ops[['allowed_options']][i], '\n');
+         }
+      } else {
+         cat ('whatever grinds your beans');
+      }
+      if (verb) {
+         cat (hstr, 'User options:\n');
+         for (i in 1:length(ops)) {
+            if ((names(ops)[i] != 'allowed_options')) {
+               cat (' ', names(ops)[i], ': ', ops[[i]],'\n');
+            }
+         }
+      }
+   }
+   if (adieu) exit.AFNI(0)
+}
+
+check.AFNI.args <- function ( ops, params = NULL) {
+   if (!is.null(params) && !is.null(ops)) {
+      for (i in 1:length(ops)) {
+         #str(names(ops)[i])
+         #str(params[names(ops)[i]][[1]])
+         #cat('\nChecking on ', paste(ops[[i]],collapse=','),'\n');
+         ipar <- which(names(ops)[i] == names(params));
+         if (length(ipar)) {
+            pp <- params[ipar[1]][[1]]['count'][[1]];
+            opsvec <- ops[[i]];
+            if (length(pp) == 1) { #exact number 
+               if (length(opsvec) !=  pp) {
+                  warning(paste( 'Expecting ',pp, ' parameters for option "',
+                                 names(ops)[i], '".\n  Have ', 
+                                 length(opsvec), ' parameter(s) in string "', 
+                                 paste(opsvec, collapse = ' '),
+                                 '" instead.', sep = ''),
+                          immediate. = TRUE);
+                  return(0);                  
+               }
+            } else if (length(pp) == 2) { #range
+               if (length(opsvec) <  pp[1] || length(opsvec) >  pp[2]) {
+                  if (pp[2] == Inf) {
+                     warning(paste( 'Expecting more than ',pp[1],  
+                                 ' parameters for option "',
+                                 names(ops)[i], '".\n  Have ', 
+                                 length(opsvec), ' parameter(s) in string "', 
+                                 paste(opsvec, collapse = ' '),
+                                 '" instead.', sep = ''),
+                          immediate. = TRUE);
+                  } else {
+                     warning(paste( 'Expecting ',pp[1], ' to ', pp[2], 
+                                 ' parameters for option "',
+                                 names(ops)[i], '".\n  Have ', 
+                                 length(opsvec), ' parameter(s) in string "', 
+                                 paste(opsvec, collapse = ' '),
+                                 '" instead.', sep = ''),
+                          immediate. = TRUE);
+                  }
+                  return(0);                  
+               }
+               
+            } else {
+               warning(paste( 'I do not know what to do here'),
+                        immediate. = TRUE);
+               return(0);   
+            }  
+         } else {
+            #ok
+         } 
+      }
+   }
+   return(1); #all ok
+}
+
+apl <- function ( n = 0, d=NA, h=NULL, dup=FALSE ) {
+   return(list('count'=n, 'default'=d, help=h, duplicate_ok=dup));
+}
+
+parse.AFNI.args <- function ( args, params = NULL, 
+                              other_ok=TRUE,
+                              verb = 0) {
+   #for (i in 1:length(args)) {
+   #   cat (i, args[[i]],'\n');
+   #}
+   if (!is.null(params)) {
+      allowed_options <- sort(names(params));
+      duplicate_okvec <- vector('character');
+      for (i in 1:1:length(params)) {
+         pl <- params[i][[1]];
+         if (pl['duplicate_ok'][[1]]) {
+            duplicate_okvec <- c(duplicate_okvec, names(params)[i])
+         }
+      }
+   } else {
+      allowed_options <- vector('character');
+   }
+   
+   #find locations of -*
+   ii <- grep ('^-.*', args);
+   iflg <- vector('numeric')
+   for (i in 1:length(ii)) {
+      if (!is.num.string(args[[ii[i]]])) {
+         if (!length(allowed_options)) {
+            iflg <- append(iflg, ii[i]);
+         } else { #Make sure it is an acceptable name
+            if (length(which(args[[ii[i]]] == allowed_options))) {
+               iflg <- append(iflg, ii[i]);
+            }
+         }
+      }     
+   }
+   
+   if (verb) paste(args[iflg])
+   
+   ops = list()
+   used <- vector('logical', length(args));
+   if (length(iflg)) {
+      iflg <- append(iflg,length(args)+1)
+      #store results
+      nm <- vector('character');
+      for (i in 1:(length(iflg)-1)) {
+         if (0) { # Why remove the -?, makes things inconsistent elsewhere
+            #newnm <- strsplit(args[[iflg[i]]],'-')[[1]][2] 
+         } else {
+            newnm <- args[[iflg[i]]]
+         }
+         if (length(nm) && length(which(newnm == nm)) &&
+             (!length(duplicate_okvec) || 
+               length(which(iflg[i] == duplicate_okvec))) ){
+            warning(paste('option ', newnm, 'already specified.\n'),
+                     immediate. = TRUE);
+            show.AFNI.args(ops)
+            return(NULL); 
+         }
+         nm <- append(nm, newnm)
+         
+         used[iflg[i]] <- TRUE;
+         istrt = iflg[i]+1;
+         pp <- vector('character');
+         if (istrt <= length(args) && istrt != iflg[i+1]) {
+            iend <- max(c(iflg[i+1]-1, istrt));
+            for (ii in istrt:iend) {
+               pp <- append(pp, args[[ii]]);
+               used[ii] <- TRUE;
+            }
+         }
+         #create a cleaned up string
+         pp <- paste(pp, collapse = ' ')
+         pp <- strsplit(clean.args.string(pp), ' ')
+         ops <- c(ops, (pp));
+         names(ops)[length(ops)] <- newnm;
+      }
+   }
+   
+   #cleanup
+   if (length(ops)) {
+      for (i in 1:length(ops)) {
+         #ops[[i]] <- clean.args.string(ops[[i]])
+      }
+   }
+   
+   #numeric changes 
+   if (length(ops)) {
+      for (i in 1:length(ops)) {
+         if (is.num.string(ops[[i]])) {
+            ops[[i]] <- as.numeric(ops[[i]]);
+         }
+      }
+   }
+   
+   #defaults
+   pp <- c(args[used == FALSE])
+   ops <- c (ops, list("other"=pp));
+   
+   #add allowed options
+   ops <- c (ops, list("allowed_options"=allowed_options));
+   
+   if (!other_ok) {
+      if (length(ops[['other']])) {
+         err.AFNI(paste('Illegal parameters on command line:\n',
+                        '      ', ops['other'],
+                        '\nTry -allowed_options, or -help for details\n',
+                        '\n'));
+         exit.AFNI(1); 
+      }
+   }
+   
+   #check 
+   if (!check.AFNI.args(ops, params)) {
+      return(NULL);
+   } else {
+      return(ops);
+   }
+}
+
+#------------------------------------------------------------------
+#   Some utilities
+#------------------------------------------------------------------
+
+#print warnings a la AFNI
+who.called.me <- function () {
+   caller <- as.character(sys.call(-2))
+   callstr <- paste( caller[1],'(',
+                     paste(caller[2:length(caller)], collapse=','),
+                     ')', sep='')
+   return(callstr)
+}
+
+warn.AFNI <- function (str='Consider yourself warned',callstr=NULL) {
+   if (is.null(callstr)) callstr <- who.called.me()
+   cat(  '\n', 'oo Warning from: ',  callstr,':\n   ', 
+         paste(str, collapse=''),'\n', 
+       sep='');
+}
+
+err.AFNI <- function (str='Danger Danger Will Robinson',callstr=NULL) {
+   if (is.null(callstr)) callstr <- who.called.me()
+   cat(  '\n', '** Error from: ',  callstr,':\n   ', 
+         paste(str, collapse=''),'\n', 
+       sep='');
+}
+
+note.AFNI <- function (str='May I speak frankly?',callstr=NULL) {
+   if (is.null(callstr)) callstr <- who.called.me()
+   cat(  '\n', '** Note from: ',  callstr,':\n   ', 
+         paste(str, collapse=''),'\n', 
+       sep='');
+}
+
+errex.AFNI <- function (str='Alas this must end',callstr=NULL) {
+   err.AFNI(str,callstr=who.called.me())
+   exit.AFNI(stat=1)
+}
+
+exit.AFNI <- function(str='The piano has been drinking.', stat=0) {
+   quit(save='no', status = stat);
+}
+
+#return 1 if all strings in vector ss can be changed to numbers
+is.num.string <- function(ss) {
+   if (is.null(ss) || !length(ss) || ss == '' ||
+       is.null(tryCatch(as.numeric(ss), 
+                           warning=function(ex) {}))) {
+      return(0);
+   } else {
+      return(1);
+   }
+}
+
+clean.args.string <- function(ss) {
+   if (is.list(ss) || length(ss) > 1) {
+      warning(paste('Function only works on single strings', 
+                    str(ss),'\n', sep=''),
+                  immediate.=TRUE);
+      return(NULL);
+   }
+   #remove trailing whites
+   ss <- sub('^[[:space:]]*','',ss);
+   ss <- sub('[[:space:]]*$','',ss);  
+   #remove multiple whites
+   ss <- gsub('[[:space:]]+',' ',ss);  
+   #treat = nicely
+   ss <- gsub('[[:space:]]*=[[:space:]]*','=',ss)
+   return(ss)
+}
+ 
+as.num.vec <- function(ss, addcount=TRUE, sepstr='.', reset=FALSE) {
+   if (is.list(ss) || length(ss) > 1) {
+      warning(paste('Function only works on single strings', 
+                    str(ss),'\n', sep=''),
+                  immediate.=TRUE);
+      return(NULL);
+   }
+   ss <- clean.args.string(ss)
+   dd <- strsplit(ss,' ')[[1]];
+   nn <- vector('numeric');
+   ww <- vector('character');
+   lastname <- '.v'
+   valnum <- 0
+   for (ii in 1:length(dd)) {
+      vv <- strsplit(dd[ii],'=')[[1]];
+      if (length(vv) > 1) {
+         valnum <- valnum+1
+         ll <- vv[1] 
+         vv <- as.numeric(vv[length(vv)]);
+         if (is.na(vv)) { return(NULL); }
+         lastname <- ll
+      } else {
+         valnum <- valnum+1
+         vv <- as.numeric(vv[1]);
+         if (is.na(vv)) { return(NULL); }
+         if (addcount) {
+            sfnd <- paste(lastname, sepstr,'[[:digit:]]*$', sep='', collapse='')
+            if (!reset) {
+               ifnd <- grep(sfnd,ww);
+            } else {
+               ifnd <- grep(sfnd,ww[length(ww)]);
+               if (length(ifnd)) {
+                  ifnd <- length(ww);
+               } else {
+                  valnum <- 1
+               }
+            }
+            if (length(ifnd)) {
+               lastval <- strsplit(ww[ifnd[length(ifnd)]],
+                                    paste(lastname, sepstr,sep=''))[[1]];
+               if (lastval[length(lastval)] == '') {
+                  valnum <- 1
+               } else {
+                  valnum <- as.numeric(lastval[length(lastval)]) + 1
+               }
+            }  
+            ll <- paste(lastname,sepstr, as.numeric(valnum), sep='')
+         } else {
+            ll <- paste(lastname, sep='')
+         }
+      }
+      
+      nn <- c(nn,vv)
+      ww <- c(ww,ll)
+   }
+   names(nn) <- ww
+   return(nn)
+}
+as.char.vec <- function(ss) {
+   if (is.list(ss) || length(ss) > 1) {
+      warning(paste('Function only works on single strings', 
+                    str(ss),'\n', sep=''),
+                  immediate.=TRUE);
+      return(NULL);
+   }
+   ss <- clean.args.string(ss)
+   dd <- strsplit(ss,' ')[[1]];
+   nn <- vector('character');
+   ww <- vector('character');
+   for (ii in 1:length(dd)) {
+      vv <- strsplit(dd[ii],'=')[[1]];
+      if (length(vv) > 1) ll <- vv[1] 
+      else ll <- paste('v',as.character(vv[1]), sep='')
+      
+      vv <- as.character(vv[length(vv)]);
+      if (is.na(vv)) { return(NULL); }
+      
+      nn <- c(nn,vv)
+      ww <- c(ww,ll)
+   }
+   names(nn) <- ww
+   return(nn)
+}
+
+#------------------------------------------------------------------
+#   Functions to read 1D and other tables
+#------------------------------------------------------------------
+
+read.AFNI.matrix <- function (fname, 
+                              usercolnames=NULL, 
+                              userrownames=NULL,
+                              verb = 0) {
+   ttt <- read.table(fname, colClasses='character');
+   if ( tolower(ttt$V1[1]) == 'name' || 
+        tolower(ttt$V1[1]) == 'subj' ) {
+      subjCol <- ttt$V1[2:dim(ttt)[1]]; 
+      covNames <- paste(ttt[1,2:dim(ttt)[2]]);
+      for (ii in 1:(dim(ttt)[2]-1)) { #Add one column at a time
+         if (ii==1) {
+            covMatrix <- cbind(
+               as.numeric(ttt[2:dim(ttt)[1],2:dim(ttt)[2]][[ii]]));
+         } else {
+            covMatrix <- cbind(covMatrix,
+               as.numeric(ttt[2:dim(ttt)[1],2:dim(ttt)[2]][[ii]]));
+         }
+      }
+      #make sure all names in userrownames are represented here
+      if (!is.null(userrownames)) {
+         dd <- userrownames[!(userrownames %in% subjCol)]
+         if (length(dd)) {
+            warning (paste('Subjects ', paste(dd,collapse=' '),
+                           ' do not a covariate entry.\n'),
+                     immediate.=TRUE);
+            return(NULL);
+         }
+      }
+   }  else {
+      if (is.na(as.numeric(ttt$V1[1]))) { #Just labels
+         covNames <- paste(ttt[1,1:dim(ttt)[2]]);
+         istrt<- 2
+      }else {
+         covNames <- paste('cov',c(1:dim(ttt)[2]),sep='');
+         istrt<- 1
+      }
+      for (ii in 1:(dim(ttt)[2])) { #Add one column at a time
+         if (ii==1) {
+            covMatrix <- cbind(
+               as.numeric(ttt[istrt:dim(ttt)[1],1:dim(ttt)[2]][[ii]]));
+         } else {
+            covMatrix <- cbind(covMatrix,
+               as.numeric(ttt[istrt:dim(ttt)[1],1:dim(ttt)[2]][[ii]]));
+         }
+      }
+      if (!is.null(userrownames)) {
+         if (dim(covMatrix)[1] != length(userrownames)) {
+            warning (paste('Have ', length(userrownames), ' subjects, ',
+                           'but ', dim(covMatrix)[1], ' covariate values.\n',
+                           'This does not float your boat\n', sep=''),
+                     immediate.=TRUE);
+            return(NULL);
+         } else {
+            warn.AFNI(paste(
+                     'Assuming covariate rows match this subject order\n',
+                     '   ', paste (userrownames,collapse=' '),sep=''));
+         }
+         subjCol <- userrownames
+      }
+   } 
+   rownames(covMatrix) <- subjCol;
+   colnames(covMatrix) <- covNames;
+   #Now, to be safe, regenerate the covariates matrix based on
+   #the order of subjects as they occur in input, and make a data frame
+   #for 3dMEMA's liking
+   if (!is.null(userrownames)) {
+      for (ii in 1:1:length(userrownames)) {
+         if (ii==1) {
+            mm <- rbind(covMatrix[userrownames[ii],]);
+         } else {
+            mm <- rbind(mm, covMatrix[userrownames[ii],]);
+         }
+      }
+      rownames(mm) <- userrownames
+   }
+   covMatrix <- mm
+   if (is.null(usercolnames)) {
+      usercolnames <- colnames(covMatrix);
+   } else {
+      if (length(usercolnames) != length(colnames(covMatrix))) {
+         warning(paste( 'Mismatch between number of covariate names,\n',
+                        '  and number of columns in matrix'),
+                 immediate.=TRUE);
+         return(NULL);
+      }
+      colnames(covMatrix) <- usercolnames
+   }
+
+   return(covMatrix)
+}   
+
+#------------------------------------------------------------------
+# Extracted (and modified) from fmri library by Karsten Tabelow, 
+# tabelow@wias-berlin.de and Joerg Polzehl (polzehl@wias-berlin.de)
+#
+# Updates by ZSS & GC
+#------------------------------------------------------------------
+
+read.AFNI <- function(filename, verb = 0) {
+  an <- parse.AFNI.name(filename);
+  
+  if (verb) {
+   show.AFNI.name(an);
+  }
+  
+  #If you have any selectors, use 3dbucket to get what you want, then read
+  #temp dset. This is an ugly fix for now, but will change it later if
+  #I/O is issue
+  
+  if (verb) { cat ('Need tmp?\n'); }
+  rmtmp <- 0;
+  if (!is.null(an$brsel) || !is.null(an$rosel) ||  !is.null(an$rasel)) {
+    rmtmp <- 1;
+    com <- paste ('3dcalc -overwrite -prefix ___R.read.AFNI.' ,
+               basename(an$prefix), 
+               ' -a "', filename,'" -expr "a" >& /dev/null', 
+               sep = '');
+    if (try(system(com)) != 0) {
+      warning(paste("Failed to execute:\n   ", com),
+              immediate. = TRUE);
+      return(NULL);
+    }
+    an$head <- paste('___R.read.AFNI.',basename(an$head), sep = '');
+    an$brik <- paste('___R.read.AFNI.',basename(an$brik), sep = '');
+    if (!(exists.AFNI.name(an$head))) {
+      warning(paste("Failed to create:   ", an$head, an$brik, '\n'),
+              immediate. = TRUE);
+      return(NULL);
+    }
+  }
+  
+  if (verb) { cat ('Checking existence\n'); }
+  if (!(exists.AFNI.name(an$head))) {
+    warning(paste("Failed to read:   ", an$head, an$brik, '\n'),
+              immediate. = TRUE);
+    return(NULL);
+  }
+  
+  #Cannot read compressed stuff (see size usage below)
+  if (verb) { cat ('Uncompressing\n'); }
+  uncompress.AFNI(an$head);
+  
+  conhead <- file(an$head,"r")
   header <- readLines(conhead)
   close(conhead)
 
@@ -56,7 +688,8 @@ read.AFNI <- function(filename) {
   dz <- values$DATASET_DIMENSIONS[3]
   dt <- values$DATASET_RANK[2]
   scale <- values$BRICK_FLOAT_FACS
-  size <- file.info(filename.brik)$size/(dx*dy*dz*dt)
+
+  size <- file.info(an$brik)$size/(dx*dy*dz*dt)
 
   if (regexpr("MSB",values$BYTEORDER_STRING[1]) != -1) {
     endian <- "big"
@@ -71,13 +704,20 @@ read.AFNI <- function(filename) {
     weights <- NULL
   }
 #  browser()
+  if (verb) { cat ('Reading Bin\n'); }
   if (as.integer(size) == size) {
-    conbrik <- file(filename.brik,"rb")
+    conbrik <- file(an$brik,"rb")
   # modified below by GC 12/2/2008
-  if (all(values$BRICK_TYPES==0) | all(values$BRICK_TYPES==1)) myttt<- readBin(conbrik, "int", n=dx*dy*dz*dt, size=size, signed=TRUE, endian=endian) # unsigned charater or short
-  if (all(values$BRICK_TYPES==3)) myttt<- readBin(conbrik, "numeric", n=dx*dy*dz*dt, size=size, signed=TRUE, endian=endian) # float        
-    close(conbrik)
-    dim(myttt) <- c(dx,dy,dz,dt)
+  if (all(values$BRICK_TYPES==0) | all(values$BRICK_TYPES==1)) {
+    myttt<- readBin( conbrik, "int", n=dx*dy*dz*dt, size=size, 
+                     signed=TRUE, endian=endian) # unsigned charater or short
+  }
+  if (all(values$BRICK_TYPES==3)) {
+    myttt<- readBin(conbrik, "numeric", n=dx*dy*dz*dt, size=size, 
+                    signed=TRUE, endian=endian) # float        
+  }
+  close(conbrik)
+  dim(myttt) <- c(dx,dy,dz,dt)
 #    for (k in 1:dt) {
 #      if (scale[k] != 0) {
 #        cat("scale",k,"with",scale[k],"\n")
@@ -86,22 +726,43 @@ read.AFNI <- function(filename) {
 #        cat(range(myttt[,,,k]),"\n")
 #      }
 #    }
-    for (k in 1:dt) if (scale[k] != 0) myttt[,,,k] <- scale[k] * myttt[,,,k]
+  if (verb) { cat ('Scaling\n'); }
+  for (k in 1:dt) if (scale[k] != 0) myttt[,,,k] <- scale[k] * myttt[,,,k]
 
   mask <- array(TRUE,c(dx,dy,dz))
   mask[myttt[,,,1] < quantile(myttt[,,,1],0.75)] <- FALSE
-    z <-
-      list(ttt=myttt,format="HEAD/BRIK",delta=values$DELTA,origin=values$ORIGIN,orient=values$ORIENT_SPECIFIC,dim=c(dx,dy,dz,dt),weights=weights, header=values,mask=mask)
-#      list(ttt=writeBin(as.numeric(myttt),raw(),4),format="HEAD/BRIK",delta=values$DELTA,origin=values$ORIGIN,orient=values$ORIENT_SPECIFIC,dim=c(dx,dy,dz,dt),weights=weights, header=values,mask=mask)
+  z <- list(ttt=myttt,format="HEAD/BRIK",delta=values$DELTA,
+            origin=values$ORIGIN,
+            orient=values$ORIENT_SPECIFIC,
+            dim=c(dx,dy,dz,dt),weights=weights, header=values,mask=mask)
+#      list(ttt=writeBin(as.numeric(myttt),raw(),4),
+#            format="HEAD/BRIK",delta=values$DELTA,origin=values$ORIGIN,
+#            orient=values$ORIENT_SPECIFIC,dim=c(dx,dy,dz,dt),weights=weights, 
+#            header=values,mask=mask)
 
   } else {
     warning("Error reading file: Could not detect size per voxel\n")
-    z <- list(ttt=NULL,format="HEAD/BRIK",delta=NULL,origin=NULL,orient=NULL,dim=NULL,weights=NULL,header=values,mask=NULL)    
+    z <- list(ttt=NULL,format="HEAD/BRIK",delta=NULL,
+              origin=NULL,orient=NULL,dim=NULL,weights=NULL,
+              header=values,mask=NULL)    
   }
 
   class(z) <- "fmridata"
   attr(z,"file") <- paste(filename,".HEAD/BRIK",sep="")
-  invisible(z)
+  
+  if (rmtmp == 1) {
+   if (verb) {
+      cat ('ZSS: Will remove tmp files\n');
+   }
+   system('\\rm -f ___R.read.AFNI.* >& /dev/null');
+  }else{
+   if (verb) {
+      cat ('ZSS: No temps to remove\n');
+   }
+  }
+
+  invisible(z);
+  #return(z);
 }
 
 write.AFNI <- function(filename, ttt, label, note="", origin=c(0,0,0), delta=c(4,4,4), idcode="WIAS_noid") {

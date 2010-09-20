@@ -35,10 +35,11 @@ static char * g_history[] =
   "1.0  13 May, 2008: based on release library version 1.0\n",
   "     - added -set_extern_filelist\n"
   "1.1  02 Oct, 2008: mention NITRC web site in help\n"
-  "1.2  17 Apr, 2009: added -set_extern_filelist help and more examples\n"
+  "1.2  17 Apr, 2009: added -set_extern_filelist help and more examples\n",
+  "1.3  24 Dec, 2009: added -approx_gifti option\n"
 };
 
-static char g_version[] = "gifti_tool version 1.2, 17 April 2009";
+static char g_version[] = "gifti_tool version 1.3, 24 December 2009";
 
 /* globals: verbosity, for now */
 typedef struct { int verb; } gt_globs;
@@ -127,7 +128,10 @@ static int process_opts(int argc, char *argv[], gt_opts * opts)
         }
 
         /* now alphabetical */
-        else if( !strcmp(argv[ac], "-b64_check") ) {
+        else if( !strcmp(argv[ac], "-approx_gifti") ) {
+            opts->approx_gifti = 1;
+            opts->gt_compare = 1;
+        } else if( !strcmp(argv[ac], "-b64_check") ) {
             ac++;
             CHECK_NEXT_OPT(ac, argc, "-b64_check");
             if     ( !strcmp(argv[ac], "NONE" ) )
@@ -483,8 +487,13 @@ int gt_compare(gt_opts * opts)
     gimA = gt_read_dataset(opts, opts->infiles.list[0]);
     gimB = gt_read_dataset(opts, opts->infiles.list[1]);
 
-    if( !gimA || !gimB ) rv0 = -1;  /* if failure, make no comparison */
-    else {
+    if( !gimA || !gimB ) { /* if failure, make no comparison */
+        gifti_free_image(gimA);
+        gifti_free_image(gimB);
+        return -1;
+    }
+
+    if( opts->comp_gifti || opts->comp_data ) {
         if( opts->comp_gifti ) {
             rv0 = gifti_compare_gifti_images(gimA, gimB, 0, opts->comp_verb);
             if( !rv0 && opts->comp_verb > 0 )
@@ -497,6 +506,14 @@ int gt_compare(gt_opts * opts)
         }
 
         rv0 |= rv1;
+    } 
+
+    if( opts->approx_gifti ) {
+            /* return value of approx is opposite that of compare */
+            rv0 = gifti_approx_gifti_images(gimA, gimB, 1, opts->comp_verb);
+            if( rv0 && opts->comp_verb > 0 )
+                printf("++ gifti_images are approximately equal\n");
+        rv0 = !rv0;  /* invert return value for exit status */
     }
 
     gifti_free_image(gimA);
@@ -1098,9 +1115,16 @@ static int show_help()
     );
     printf (
     "    6. compare 2 gifti datasets\n"
-    "       (compare GIFTI structures, compare data, and report all diffs)\n"
+    "\n"
+    "      a. compare GIFTI structures, compare data, and report all diffs\n"
     "\n"
     "         gifti_tool -compare_gifti -compare_data -compare_verb 3 \\\n"
+    "                    -infiles created.gii first_mod.gii\n"
+    "\n"
+    "      b. report approximate comparison: focusing on data, but allowing\n"
+    "         for small, fractional differences varying per datatype\n"
+    "\n"
+    "         gifti_tool -approx_gifti -compare_verb 3 \\\n"
     "                    -infiles created.gii first_mod.gii\n"
     "\n"
     "    7. copy MetaData from one dataset to another\n"
@@ -1440,6 +1464,15 @@ static int show_help()
     printf (
     "  ----------------------------------------\n"
     "  comparison options\n"
+    "\n"
+    "     -approx_gifti            : approximate comparison of GIFTI dsets\n"
+    "\n"
+    "           This compares all data elements of the two GIFTI structures.\n"
+    "           The attributes, MetaData, etc. are ignored if they do not\n"
+    "           pertain directly to the data.\n"
+    "\n"
+    "           The comparisons allow for small, fractional differences,\n"
+    "           which depend on the datatype.\n"
     "\n"
     "     -compare_gifti           : specifies to compare two GIFTI datasets\n"
     "\n"

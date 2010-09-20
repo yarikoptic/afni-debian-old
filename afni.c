@@ -1281,26 +1281,26 @@ void AFNI_sigfunc_alrm(int sig)
 #undef  NMSG
 #define NMSG (sizeof(msg)/sizeof(char *))
    static char *msg[] = {
-     "Farewell, my friend"                                          ,
-     "We shall meet again, when the fields are white with daisies"  ,
-     "Parting is such sweet sorrow"                                 ,
-     "Gone, and a cloud in my heart"                                ,
-     "Happy trails to you"                                          ,
-     "Be well, do good work, and keep in touch"                     ,
-     "In the hope to meet shortly again"                            ,
-     "May the wind be ever at your back"                            ,
-     "Fare thee well, and if forever, still forever fare thee well" ,
-     "Don't cry because it's over; smile because it happened"       ,
-     "Farewell! Thou art too dear for my possessing"                ,
-     "Farewell, farewell, you old rhinoceros"                       ,
-     "Is that you, Jerzy? Do widzenia"                              ,
-     "A farewell is necessary before we can meet again"             ,
-     "Absent from thee I languish"                                  ,
-     "The return makes one love the farewell"                       ,
-     "Every goodbye makes the next hello closer"                    ,
-     "The song is ended, but the melody lingers on"                 ,
-     "A star will shine upon the hour of our next meeting"          ,
-     "Au revoir, Ciao, Sayonara, Hasta luego, Czesc, and Zai jian"
+     "Farewell, my friend"                                           ,
+     "We shall meet again, when the fields are white with daisies"   ,
+     "Parting is such sweet sorrow"                                  ,
+     "Gone, and a cloud in my heart"                                 ,
+     "Happy trails to you"                                           ,
+     "Be well, do good work, and keep in touch"                      ,
+     "In the hope to meet shortly again"                             ,
+     "May the wind be ever at your back"                             ,
+     "Fare thee well, and if forever, still forever fare thee well"  ,
+     "Don't cry because it's over; smile because it happened"        ,
+     "Farewell! Thou art too dear for my possessing"                 ,
+     "Farewell, farewell, you old rhinoceros"                        ,
+     "Is that you, Jerzy? Do widzenia"                               ,
+     "A farewell is necessary before we can meet again"              ,
+     "Absent from thee I languish"                                   ,
+     "The return makes one love the farewell"                        ,
+     "Every goodbye makes the next hello closer"                     ,
+     "The song is ended, but the melody lingers on"                  ,
+     "A star will shine upon the hour of our next meeting"           ,
+     "Au revoir, Ciao, Ma'alsalam, Hasta luego, Czesc, and Zai jian"
    } ;
    int nn = (lrand48()>>3) % NMSG ;
    if( !AFNI_yesenv("AFNI_NEVER_SAY_GOODBYE") )
@@ -1771,6 +1771,8 @@ STATUS("call 12") ;
         if( GLOBAL_library.have_dummy_dataset && MAIN_im3d->type == AFNI_3DDATA_VIEW ){
           XtSetSensitive( MAIN_im3d->vwid->prog->clone_pb , False ) ;
           MAIN_im3d->dummied = 1 ;  /* 27 Jan 2004 */
+          MCW_set_widget_bg( MAIN_im3d->vwid->view->sess_lab ,
+                             MCW_hotcolor(MAIN_im3d->vwid->view->sess_lab) , 0 ) ;
         }
       }
       break ;
@@ -2199,7 +2201,16 @@ ENTRY("AFNI_startup_timeout_CB") ;
                               "++ NOTICE:                              ++\n"
                               "++ No data was found in './' directory, ++\n"
                               "++ so its subdirectories were searched  ++\n"
-                              "++ for dataset files.                   ++\n" ,
+                              "++ for dataset files.                   ++\n " ,
+                              MCW_USER_KILL | MCW_TIMER_KILL ) ;
+   else if( !ALLOW_realtime && GLOBAL_library.have_dummy_dataset ) /* 23 Dec 2009 */
+    (void) MCW_popup_message( MAIN_im3d->vwid->picture ,
+                              " \n"
+                              "++ NOTICE:                                 ++\n"
+                              "++ No valid datasets were found.           ++\n"
+                              "++ A 'dummy' dataset has been loaded.      ++\n"
+                              "++ To read in an actual data directory,    ++\n"
+                              "++ use the 'Switch' button near 'DataDir'. ++\n " ,
                               MCW_USER_KILL | MCW_TIMER_KILL ) ;
 
    /* 05 May 2009: make sure the Cluster widgets show up properly */
@@ -3616,12 +3627,12 @@ if(PRINT_TRACING)
 
                   if( xev->state&ShiftMask && xev->state&ControlMask ){
                     int qq = AFNI_icor_setref(im3d) ;
-                    if( qq == 0 ) BEEPIT ;
+                    if( qq < 0 ) BEEPIT ;
                     else {
                       im3d->vinfo->i1_icor = im3d->vinfo->i1 ;
                       im3d->vinfo->j2_icor = im3d->vinfo->j2 ;
                       im3d->vinfo->k3_icor = im3d->vinfo->k3 ;
-                      AFNI_icor_setref_locked(im3d) ;           /* 15 May 2009 */
+                      if( qq > 0 ) AFNI_icor_setref_locked(im3d) ; /* 15 May 2009 */
                     }
                   }
                }
@@ -5241,9 +5252,9 @@ ENTRY("AFNI_wrap_bbox_CB") ;
    im3d->vinfo->xhairs_periodic = (Boolean) bval ;
 
    if( w != NULL ){
-      drive_MCW_imseq( im3d->s123, isqDR_periodicmont, (XtPointer) bval );
-      drive_MCW_imseq( im3d->s231, isqDR_periodicmont, (XtPointer) bval );
-      drive_MCW_imseq( im3d->s312, isqDR_periodicmont, (XtPointer) bval );
+      drive_MCW_imseq( im3d->s123, isqDR_periodicmont, (XtPointer)ITOP(bval) );
+      drive_MCW_imseq( im3d->s231, isqDR_periodicmont, (XtPointer)ITOP(bval) );
+      drive_MCW_imseq( im3d->s312, isqDR_periodicmont, (XtPointer)ITOP(bval) );
    }
 
    RESET_AFNI_QUIT(im3d) ;
@@ -5581,7 +5592,7 @@ STATUS("realizing new image viewer") ;
       AFNI_sleep(17) ;                                                /* 17 Oct 2005 */
       drive_MCW_imseq( *snew, isqDR_title, (XtPointer) im3d->window_title ) ;
       drive_MCW_imseq( *snew, isqDR_periodicmont,
-                      (XtPointer)(int) im3d->vinfo->xhairs_periodic );
+                      (XtPointer)ITOP(im3d->vinfo->xhairs_periodic) );
 
       /* 09 Oct 1998: force L-R mirroring on axial and coronal images? */
       /* 04 Nov 2003: or min-to-max on grayscaling? */
@@ -5698,9 +5709,9 @@ STATUS("opening a graph window") ;
        gr = new_MCW_grapher( im3d->dc , AFNI_brick_to_mri , (XtPointer) brnew ) ;
        drive_MCW_grapher( gr, graDR_title, (XtPointer) im3d->window_title );
        drive_MCW_grapher( gr, graDR_addref_ts, (XtPointer) im3d->fimdata->fimref );
-       drive_MCW_grapher( gr, graDR_setignore, (XtPointer) im3d->fimdata->init_ignore );
-       drive_MCW_grapher( gr, graDR_polort, (XtPointer) im3d->fimdata->polort );
-       drive_MCW_grapher( gr, graDR_setindex , (XtPointer) im3d->vinfo->time_index );
+       drive_MCW_grapher( gr, graDR_setignore, (XtPointer)ITOP(im3d->fimdata->init_ignore) );
+       drive_MCW_grapher( gr, graDR_polort, (XtPointer)ITOP(im3d->fimdata->polort) );
+       drive_MCW_grapher( gr, graDR_setindex , (XtPointer)ITOP(im3d->vinfo->time_index) );
 
        if( im3d->type == AFNI_IMAGES_VIEW )
           drive_MCW_grapher( gr , graDR_fim_disable , NULL ) ; /* 19 Oct 1999 */
@@ -6081,7 +6092,7 @@ DUMP_IVEC3("             new_ib",new_ib) ;
 
       if( redisplay_option || old_ib.ijk[2] != new_ib.ijk[2] )
          drive_MCW_imseq( im3d->s123 ,
-                          isq_driver , (XtPointer) new_ib.ijk[2] ) ;
+                          isq_driver , (XtPointer)ITOP(new_ib.ijk[2]) ) ;
 
 
       xyzm[0] = new_ib.ijk[0] ; xyzm[1] = new_ib.ijk[1] ;
@@ -6106,7 +6117,7 @@ DUMP_IVEC3("             new_ib",new_ib) ;
 
       if( redisplay_option || old_ib.ijk[2] != new_ib.ijk[2] )
          drive_MCW_imseq( im3d->s231 ,
-                          isq_driver , (XtPointer) new_ib.ijk[2] ) ;
+                          isq_driver , (XtPointer)ITOP(new_ib.ijk[2]) ) ;
 
       xyzm[0] = new_ib.ijk[0] ; xyzm[1] = new_ib.ijk[1] ;
       xyzm[2] = new_ib.ijk[2] ; xyzm[3] = 0 ;
@@ -6130,7 +6141,7 @@ DUMP_IVEC3("             new_ib",new_ib) ;
 
       if( redisplay_option || old_ib.ijk[2] != new_ib.ijk[2] )
          drive_MCW_imseq( im3d->s312 ,
-                          isq_driver , (XtPointer) new_ib.ijk[2] ) ;
+                          isq_driver , (XtPointer)ITOP(new_ib.ijk[2]) ) ;
 
       xyzm[0] = new_ib.ijk[0] ; xyzm[1] = new_ib.ijk[1] ;
       xyzm[2] = new_ib.ijk[2] ; xyzm[3] = 0 ;
@@ -6159,9 +6170,9 @@ DUMP_IVEC3("             new_ib",new_ib) ;
       newti = im3d->vinfo->anat_index ;
 
    if( newti >= 0 ){
-     drive_MCW_grapher( im3d->g123, graDR_setindex, (XtPointer)newti );
-     drive_MCW_grapher( im3d->g231, graDR_setindex, (XtPointer)newti );
-     drive_MCW_grapher( im3d->g312, graDR_setindex, (XtPointer)newti );
+     drive_MCW_grapher( im3d->g123, graDR_setindex, (XtPointer)ITOP(newti) );
+     drive_MCW_grapher( im3d->g231, graDR_setindex, (XtPointer)ITOP(newti) );
+     drive_MCW_grapher( im3d->g312, graDR_setindex, (XtPointer)ITOP(newti) );
    }
 
    if( do_lock )                    /* 11 Nov 1996 */
@@ -7408,7 +7419,8 @@ STATUS("turning markers on") ;
    /* 27 Jan 2004: set coordinate to center of dataset
                    if we were formerly looking at the dummy dataset */
 
-   if( im3d->dummied && !GLOBAL_library.have_dummy_dataset ){
+   if( (im3d->dummied && !GLOBAL_library.have_dummy_dataset) ||
+       AFNI_yesenv("AFNI_RECENTER_VIEWING")                    ){
      im3d->dummied = 0 ;
      LOAD_IVEC3( iv , im3d->anat_now->daxes->nxx/2 ,
                       im3d->anat_now->daxes->nyy/2 ,
@@ -7925,8 +7937,8 @@ STATUS(" -- managing tal_to button, etc") ;
    }
 
    if( im3d->vwid->imag->pop_instacorr_pb != NULL ){
-     if( ISVALID_ICOR_setup(im3d->iset) ) ENABLE_INSTACORR(im3d) ;
-     else                                 DISABLE_INSTACORR(im3d) ;
+     if( ISREADY_EITHER_ICOR(im3d) ) ENABLE_INSTACORR(im3d) ;
+     else                           DISABLE_INSTACORR(im3d) ;
    }
 
    /*--- 25 Jul 2001: sensitize 'See TT Atlas Regions' button ---*/
@@ -8007,15 +8019,15 @@ STATUS(" -- turning time index control off") ;
    for some reason, the transform fails on the fim image.
    We have seen this happen when:
       1st volume in list is anat and has a +orig only.
-      2nd volume in list is anat2 and has a +orig and +tlrc 
+      2nd volume in list is anat2 and has a +orig and +tlrc
       3rd volume in list is a functional dset  (selected as overlay)
    You switch to anat2 and select TLRC view, BOOM.
    Our guess is that since the first dset has no tlrc xform,
    the third one, which is the overlay seems to get no TLRC daddy,
    even if the second anat has a tlrc xform .
-   Should be able to test this hypothesis by expressly setting the 
+   Should be able to test this hypothesis by expressly setting the
    anat parent of all volumes to that of the anat with the TLRC xform....
-   
+
       ZSS, RICKR, with no time to fix this quite yet.    July 28 2009 */
 
    /** 10 Aug 2009: the fix is below -- RWCox **/
@@ -8805,19 +8817,19 @@ ENTRY("AFNI_imag_pop_CB") ;
    else if( w == im3d->vwid->imag->pop_instacorr_pb && w != NULL ){
 
      int qq = AFNI_icor_setref(im3d) ;
-     if( qq == 0 ){ XBell( XtDisplay(w) , 100 ) ; }
+     if( qq < 0 ) BEEPIT ;
      else {
        im3d->vinfo->i1_icor = im3d->vinfo->i1 ;
        im3d->vinfo->j2_icor = im3d->vinfo->j2 ;
        im3d->vinfo->k3_icor = im3d->vinfo->k3 ;
-       AFNI_icor_setref_locked(im3d) ;           /* 15 May 2009 */
+       if( qq > 0 ) AFNI_icor_setref_locked(im3d) ; /* 15 May 2009 */
      }
    }
 
    /*---- 08 May 2009: jump to InstaCorr point ----*/
 
    else if( w == im3d->vwid->imag->pop_icorrjump_pb &&
-            w != NULL && ISVALID_ICOR_setup(im3d->iset) ){
+            w != NULL && ISREADY_EITHER_ICOR(im3d) ){
      int ii,jj,kk ;
 
      ii = im3d->vinfo->i1_icor ;  /* extract icor place */

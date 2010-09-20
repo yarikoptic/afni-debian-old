@@ -48,6 +48,16 @@
 #define myXtNew(type) ((type *) XtCalloc(1,(unsigned) sizeof(type)))
 #endif
 
+/* cast int to pointer and vice-versa without warning messages */
+
+#ifndef SOLARIS_OLD
+#include <stdint.h>
+#endif
+#undef  ITOP
+#define ITOP(qw) ((void *)(intptr_t)(qw))
+#undef  PTOI
+#define PTOI(qw) ((int)(intptr_t)(qw))
+
 struct THD_3dim_dataset ;  /* incomplete definition */
 
 #include "niml.h"          /* NIML */
@@ -522,6 +532,14 @@ typedef union {
       ATR_float    flo_atr ;
       ATR_int      int_atr ;
 } ATR_any ;
+
+#undef  ATR_COUNT
+#define ATR_COUNT(aap)                                                  \
+          ( ((aap)==NULL) ? 0                                           \
+           :((aap)->type==ATR_FLOAT_TYPE)  ? ((ATR_float  *)(aap))->nfl \
+           :((aap)->type==ATR_STRING_TYPE) ? ((ATR_string *)(aap))->nch \
+           :((aap)->type==ATR_INT_TYPE)    ? ((ATR_int    *)(aap))->nin \
+           :0 )
 
 /*---------------------------------------------------------------------*/
 /*-------------------- structure for linear mapping -------------------*/
@@ -2866,6 +2884,10 @@ extern int    THD_deconflict_prefix( THD_3dim_dataset * ) ;          /* 23 Mar 2
 
 #define DSET_DZ(ds) ((ds)->daxes->zzdel)
 
+/*! Return 1 if dset is on a volume grid, as opposed to 1D or surface-based */
+
+#define DSET_IS_VOL(ds) (((ds)->daxes->nzz == 1 && (ds)->daxes->nyy == 1) ? 0:1)
+
 /*! Return volume of a voxel */
 
 #define DSET_VOXVOL(ds) \
@@ -3780,6 +3802,8 @@ extern void THD_set_storage_mode( THD_3dim_dataset *,int ); /* 21 Mar 2003 */
 
 extern int * get_count_intlist ( char *str , int *nret);
 extern int * MCW_get_intlist( int , char * ) ;
+extern int * MCW_get_labels_intlist( char ** , int,  char * ); /* ZSS Dec 09 */
+extern int * MCW_get_thd_intlist( THD_3dim_dataset * , char * ); /* ZSS Dec 09 */
 extern void MCW_intlist_allow_negative( int ) ;             /* 22 Nov 1999 */
 
 /* copy a dataset, given a list of sub-bricks          [rickr] 26 Jul 2004 */
@@ -4098,6 +4122,9 @@ extern MRI_IMAGE * THD_extract_series( int , THD_3dim_dataset * , int ) ;
 extern MRI_IMARR * THD_extract_many_series( int, int *, THD_3dim_dataset * );
 extern MRI_IMAGE * THD_dset_to_1Dmri( THD_3dim_dataset *dset ) ;
 
+extern void THD_extract_many_arrays( int ns , int *ind ,
+                                     THD_3dim_dataset *dset , float *dsar ) ;
+
 /*---------------------------------------------------------------------------*/
 
 typedef struct {
@@ -4150,6 +4177,8 @@ extern void THD_vectim_normalize( MRI_vectim *mrv ) ;
 extern void THD_vectim_dotprod( MRI_vectim *mrv, float *vec, float *dp, int ata ) ;
 
 extern int THD_vectim_subset_average( MRI_vectim *mrv, int nind, int *ind, float *ar );
+
+extern void THD_vectim_vectim_dot( MRI_vectim *arv, MRI_vectim *brv, float *dp ) ;
 
 typedef struct {
   THD_3dim_dataset *dset , *mset ;
@@ -4215,7 +4244,7 @@ extern void get_linear_trend     ( int, float *, float *, float * ) ;
 extern void THD_linear_detrend   ( int, float *, float *, float * ) ;
 extern void get_quadratic_trend  ( int, float *, float *, float *, float * ) ;
 extern void THD_quadratic_detrend( int, float *, float *, float *, float * ) ;
-extern void THD_normalize        ( int, float * ) ;
+extern float THD_normalize       ( int, float * ) ;
 extern void THD_normRMS          ( int, float * ) ;  /* 06 Jun 2008 */
 extern void THD_normmax          ( int, float * ) ;  /* 26 Mar 2008 */
 extern void THD_normL1           ( int, float * ) ;  /* 26 Mar 2008 */
@@ -4505,6 +4534,11 @@ extern int THD_bandpass_vectors( int nlen, int nvec, float **vec, /* 30 Apr 2009
                                  float dt, float fbot, float ftop,
                                  int qdet, int nort, float **ort ) ;
 extern int THD_bandpass_OK( int nx, float dt, float fbot, float ftop, int verb ) ;
+extern int THD_bandpass_set_nfft( int n ) ;
+
+extern int THD_bandpass_vectim( MRI_vectim *mrv ,
+                                float dt , float fbot , float ftop  ,
+                                int qdet , int nort   , float **ort  ) ;
 
   /*-- see mri_3dalign.c for these routines --*/
 

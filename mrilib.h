@@ -705,9 +705,11 @@ extern MRI_IMAGE ** mri_stat_seq( MRI_IMAGE * ) ;
 #define NSTAT_ABSMAX      13
 #define NSTAT_VAR         17
 #define NSTAT_NUM         18
-#define NSTAT_PERCENTILE 19
+#define NSTAT_PERCENTILE  19
+#define NSTAT_RANK        21      /* ZSS Jan 10 */
+#define NSTAT_FRANK       22      /* ZSS Jan 10 */
 
-#define NSTAT_FWHMx      63   /* these should be after all other NSTAT_* values */
+#define NSTAT_FWHMx      63   /*these should be after all other NSTAT_* values */
 #define NSTAT_FWHMy      64
 #define NSTAT_FWHMz      65
 #define NSTAT_FWHMbar    66
@@ -726,7 +728,7 @@ extern MRI_IMAGE ** mri_stat_seq( MRI_IMAGE * ) ;
 #define NBISTAT_NUM                66611
 #define NBISTAT_NCD                66612
 
-extern float mri_nstat  ( int , int , float * ) ;  /* 19 Aug 2005 */
+extern float mri_nstat  ( int , int , float * , float) ;  /* 19 Aug 2005 */
 extern float mri_nbistat( int , MRI_IMAGE *, MRI_IMAGE * ) ; /* 26 Oct 2006 */
 extern void mri_nbistat_setclip( float, float , float, float ) ;
 extern void mri_bistat_setweight( MRI_IMAGE *wm ) ;  /* 14 Aug 2007 */
@@ -848,6 +850,7 @@ extern MRI_IMAGE * mri_read_complex_1D( char * ) ;
 extern int mri_write_1D( char * , MRI_IMAGE * ) ;        /* 16 Nov 1999 */
 extern MRI_IMAGE * mri_read_1D_stdin(void) ;             /* 25 Jan 2008 */
 
+extern MRI_IMAGE * mri_read_4x4AffXfrm_1D( char *fname );/* 24 Nov 2009 */
 extern MRI_IMAGE * mri_1D_fromstring( char * ) ;         /* 28 Apr 2003 */
 
 extern int setup_mri_write_angif( void ) ;               /* 28 Jun 2001 */
@@ -1451,6 +1454,8 @@ extern char      * mri_matrix_evalrpn_help(void) ;
 extern void        mri_matrix_evalrpn_verb(int) ;
 extern float mri_matrix_size( MRI_IMAGE * ) ;
 
+extern void mri_matrix_detrend( MRI_IMAGE *, MRI_IMAGE *, MRI_IMAGE * ) ;
+
 #define            mri_matrix_transpose(x) mri_transpose(x)
 
 extern double Plegendre( double x , int m ) ;
@@ -1972,6 +1977,16 @@ extern void RBF_setup_kranges( RBF_knots *rbk , RBF_evalgrid *rbg ) ;
      }                                                                        \
      DESTROY_IMARR(qimar) ;                                                   \
    } while(0)
+/*----------------------------------------------------------------------------*/
+
+extern THD_3dim_dataset * THD_svdblur( THD_3dim_dataset *inset, byte *mask,
+                                float rad, int pdim, int nort, float **ort ) ;
+extern MRI_IMARR * THD_get_dset_nbhd_array( THD_3dim_dataset *dset, byte *mask,
+                                            int xx, int yy, int zz, MCW_cluster *nbhd ) ;
+extern MRI_IMAGE * mri_svdproj( MRI_IMARR *imar , int nev ) ;
+extern MRI_IMAGE * mri_first_principal_vector( MRI_IMARR *imar ) ;
+extern int mri_principal_vectors( MRI_IMARR *imar, int nvec, float *sval, float *uvec ) ;
+
 /*----------------------------------------------------------------------------*/
 
 #define CPU_IS_64_BIT() ((sizeof(void *) == 8) ? 1 : 0 )

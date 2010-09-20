@@ -7,7 +7,7 @@
 #undef  MTYPE
 #define MTYPE double
 
-static MTYPE corcut = 0.0001 ;
+static MTYPE corcut = 0.00001 ;
 
 #undef  TAU
 #define TAU(i) ((tau==NULL) ? (i) : tau[i])
@@ -146,7 +146,7 @@ ENTRY("mri_genARMA11") ;
        for( ii=0 ; ii < nlen ; ii++ ) sig += rvec[ii]*rvec[ii] ;
        sig = 1.0 / sqrt(sig) ;
      }
-     for( ii=0 ; ii < nlen ; ii++ ) vv[ii] = sig * rvec[ii] ;
+     if( sig != 1.0 ){ for( ii=0 ; ii < nlen ; ii++ ) vv[ii] = sig * rvec[ii]; }
    }
 
    rcmat_destroy(rcm) ; free(rvec) ;

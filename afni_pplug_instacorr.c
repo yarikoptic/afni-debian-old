@@ -1,10 +1,21 @@
 #include "afni.h"
 #ifndef ALLOW_PLUGINS
-IPLUGIN_interface *  ICOR_init(char *lab)
+PLUGIN_interface * ICOR_init(char *lab)
 {
   MCW_popup_message( THE_TOPSHELL ,
                      " \n"
                      " InstaCorr not available\n"
+                     " since this copy of AFNI\n"
+                     "  was compiled without\n"
+                     "  support for plugins!\n " , MCW_USER_KILL ) ;
+  return NULL ;
+}
+
+PLUGIN_interface * GICOR_init(char *lab)
+{
+  MCW_popup_message( THE_TOPSHELL ,
+                     " \n"
+                     " GrpInCorr not available\n"
                      " since this copy of AFNI\n"
                      "  was compiled without\n"
                      "  support for plugins!\n " , MCW_USER_KILL ) ;
@@ -20,7 +31,7 @@ static int ncall=0 ;
 
 /*--------------------- string to 'help' the user --------------------*/
 
-static char helpstring[] =
+static char i_helpstring[] =
   "Purpose: control AFNI InstaCorr operations\n"
   "\n"
   "===================  The Two Steps to Using InstaCorr  ===================\n"
@@ -136,7 +147,7 @@ PLUGIN_interface * ICOR_init( char *lab )
    sprintf(sk,"%sSetup InstaCorr",lab) ;
    plint = PLUTO_new_interface( "InstaCorr" ,
                                 sk ,
-                                helpstring ,
+                                i_helpstring ,
                                 PLUGIN_CALL_VIA_MENU ,
                                 (char *(*)())ICOR_main  ) ;
 
@@ -343,7 +354,13 @@ int AFNI_icor_setref( Three_D_View *im3d )
 
 ENTRY("AFNI_icor_setref") ;
 
-   if( !IM3D_OPEN(im3d) || !ISVALID_ICOR_setup(im3d->iset) ) RETURN(0) ;
+   if( !IM3D_OPEN(im3d) ) RETURN(-1) ;
+
+   if( im3d->giset != NULL && im3d->giset->ready ){
+     ijk = AFNI_gicor_setref(im3d) ; RETURN(ijk) ;
+   }
+
+   if( !ISVALID_ICOR_setup(im3d->iset) ) RETURN(-1) ;
 
    /* find where we are */
 
@@ -358,7 +375,7 @@ ENTRY("AFNI_icor_setref") ;
        jv.xyz[2] > im3d->iset->dset->daxes->zzmax   ){
 
      WARNING_message("InstaCorr set point outside dataset box") ;
-     RETURN(0) ;
+     RETURN(-1) ;
    }
 
    kv  = THD_3dmm_to_3dind_no_wod( im3d->iset->dset, jv ) ;
@@ -374,7 +391,7 @@ ENTRY("AFNI_icor_setref") ;
      ININFO_message(" InstaCorr elapsed time = %.2f sec: correlations",
                     PLUTO_elapsed_time()-etim) ;
 
-   if( iim == NULL ) RETURN(0) ;  /* did it fail? */
+   if( iim == NULL ) RETURN(-1) ;  /* did it fail? */
 
    /* find the output dataset */
 
@@ -522,4 +539,426 @@ ENTRY("AFNI_icor_setref_locked") ;
    }
 
    busy = 0 ; EXRETURN ;
+}
+
+/****************************************************************************/
+/******* Group InstaCorr stuff below here! **********************************/
+/****************************************************************************/
+
+#define GIQUIT \
+ do { free(im3d->giset); im3d->giset = NULL; return; } while(0)
+
+/*--- Called (from afni_niml.c) when 3dGroupInCorr sends a setup NIML element ---*/
+
+void GICOR_setup_func( NI_stream nsg , NI_element *nel )
+{
+   GICOR_setup *giset ;
+   char *atr , *pre ;
+   Three_D_View *im3d = A_CONTROLLER ;  /* global variable */
+   THD_slist_find sf ;
+   THD_session *ss = im3d->ss_now ; int qs = ss->num_dsset , vv,qq ;
+   THD_3dim_dataset *dset ;
+
+   if( im3d->giset != NULL && im3d->giset->ready ) return ;
+
+   if( qs >= THD_MAX_SESSION_SIZE ){
+     (void) MCW_popup_message( im3d->vwid->picture ,
+                                 " \n"
+                                 " ******* AFNI: ******* \n"
+                                 "  Can't use GrpInCorr  \n"
+                                 " because dataset table \n"
+                                 " is completely full!!! \n " ,
+                               MCW_USER_KILL | MCW_TIMER_KILL ) ;
+     NI_stream_closenow(nsg) ;
+     DISABLE_GRPINCORR(im3d) ;
+     SENSITIZE_INSTACORR(im3d,False) ;
+     DESTROY_GICOR_setup(im3d->giset) ;
+   }
+
+   if( im3d->giset == NULL ){
+     im3d->giset = (GICOR_setup *)calloc(1,sizeof(GICOR_setup)) ;
+   } else {
+     memset(im3d->giset,sizeof(GICOR_setup),0) ;
+   }
+   giset = im3d->giset ;
+
+   giset->ns    = nsg ;  /* save socket for I/O back to 3dGroupInCorr */
+   giset->ready = 0 ;    /* not ready yet */
+
+   /* set various parameters from the NIML header */
+
+   atr = NI_get_attribute( nel , "ndset_A" ) ; if( atr == NULL )        GIQUIT;
+   giset->ndset_A = (int)strtod(atr,NULL) ;    if( giset->ndset_A < 2 ) GIQUIT;
+
+   atr = NI_get_attribute( nel , "ndset_B" ) ; if( atr == NULL )        GIQUIT;
+   giset->ndset_B = (int)strtod(atr,NULL) ;
+
+   atr = NI_get_attribute( nel , "nvec" ) ;    if( atr == NULL )        GIQUIT;
+   giset->nvec = (int)strtod(atr,NULL) ;       if( giset->nvec < 2 )    GIQUIT;
+
+   atr = NI_get_attribute( nel , "seedrad" ) ;
+   if( atr != NULL ) giset->seedrad = (float)strtod(atr,NULL) ;
+
+   atr = NI_get_attribute( nel , "ttest_opcode" ) ;
+   if( atr != NULL ) giset->ttest_opcode = (int)strtod(atr,NULL) ;
+
+   /* create output dataset, to be filled in from 3dGroupInCorr data later */
+
+   atr = NI_get_attribute( nel , "geometry_string" ); if( atr == NULL ) GIQUIT;
+   pre = NI_get_attribute( nel , "target_name" ) ;
+   if( pre == NULL || *pre == '\0' ) pre = "A_GRP_ICORR" ;
+   dset = giset->dset = EDIT_geometry_constructor( atr , pre ) ;
+                                                     if( dset == NULL ) GIQUIT;
+   EDIT_dset_items      ( dset , ADN_nvals     , 2 ,
+                                 ADN_view_type , VIEW_TALAIRACH_TYPE ,
+                                 ADN_brick_fac , NULL ,
+                          ADN_none ) ;
+   EDIT_BRICK_TO_FIZT   ( dset , 1 ) ;
+   EDIT_BRICK_LABEL     ( dset , 0 , "GIC_Delta"  ) ;
+   EDIT_BRICK_LABEL     ( dset , 1 , "GIC_Zscore" ) ;
+   EDIT_substitute_brick( dset , 0 , MRI_float , NULL ) ;  /* calloc-ize */
+   EDIT_substitute_brick( dset , 1 , MRI_float , NULL ) ;  /* sub-bricks */
+   DSET_superlock( dset ) ;
+   giset->nvox = DSET_NVOX(dset) ;
+
+   /* add dataset to current session (change name if necessary) */
+
+   sf = THD_dset_in_session( FIND_PREFIX , pre , ss ) ;
+   if( sf.dset != NULL ){
+     int jj,nn ; char *npre ;
+     nn = strlen(pre); npre = malloc(sizeof(char)*(nn+8)); strcpy(npre,pre);
+     for( jj=1 ; ; jj++ ){  /* loop until we find something that works */
+       sprintf(npre+nn,"_%d",jj) ;
+       sf = THD_dset_in_session( FIND_PREFIX , npre , ss ) ;
+       if( sf.dset == NULL ) break ;
+     }
+     EDIT_dset_items( dset , ADN_prefix , npre , ADN_none ) ;
+     free(npre) ;
+   }
+
+   POPDOWN_strlist_chooser ;
+
+   vv = dset->view_type ;
+   if( vv < FIRST_VIEW_TYPE || vv > LAST_VIEW_TYPE ) vv = FIRST_VIEW_TYPE;
+   for( qq=FIRST_VIEW_TYPE ; qq <= LAST_VIEW_TYPE ; qq++ )
+     ss->dsset[qs][qq] = NULL ;
+   ss->dsset[qs][vv] = dset ; ss->num_dsset++ ; giset->nds = qs ;
+   INFO_message("Added 3dGroupInCorr dataset '%s' to controller %s",
+                DSET_FILECODE(dset), AFNI_controller_label(im3d) ) ;
+   giset->session = ss ;
+
+   UNDUMMYIZE ;
+
+   /* list of voxels to expect from each 3dGroupInCorr data */
+
+   if( nel->vec_len == 0 || nel->vec_num == 0 || nel->vec == NULL ){  /* all */
+     giset->ivec = NULL ; giset->nivec = 0 ;
+/* INFO_message("DEBUG: GICOR_setup_func has ivec=NULL") ; */
+   } else {                                     /* make index list of voxels */
+     int ii , nn , *iv=(int *)nel->vec[0] ;
+     giset->ivec = (int *)calloc(sizeof(int),giset->nvec) ;
+     nn = MIN(giset->nvec,nel->vec_len) ; giset->nivec = nn ;
+     for( ii=0 ; ii < nn ; ii++ ) giset->ivec[ii] = iv[ii] ;
+/* INFO_message("DEBUG: GICOR_setup_func has ivec=int[%d]",nn) ; */
+   }
+
+   giset->ready = 1 ;
+   GRPINCORR_LABEL_ON(im3d) ;
+   SENSITIZE_INSTACORR(im3d,True) ;
+   return ;
+}
+
+/*------------------------------------------------------------------------------*/
+/* Called (from afni_niml.c) to process the received dataset from 3dGroupInCorr */
+
+void GICOR_process_dataset( NI_element *nel , int ct_start )
+{
+   Three_D_View *im3d = A_CONTROLLER ;
+   GICOR_setup *giset = im3d->giset ;
+   float *neldar , *nelzar , *dsdar , *dszar ;
+   int nvec,nn , vmul ; float thr ;
+
+   if( nel == NULL || nel->vec_num < 2 ){  /* should never happen */
+     ERROR_message("badly formatted dataset from 3dGroupInCorr!") ;
+     return ;
+   }
+
+   neldar = (float *)nel->vec[0] ;  /* delta array */
+   nelzar = (float *)nel->vec[1] ;  /* zscore array */
+   nvec   = nel->vec_len ;
+
+   if( !IM3D_OPEN(im3d)    ||
+       im3d->giset == NULL ||
+       !im3d->giset->ready   ){   /* should not happen */
+
+     GRPINCORR_LABEL_OFF(im3d) ; SENSITIZE_INSTACORR(im3d,False) ;
+     if( im3d->giset != NULL ) im3d->giset->ready = 0 ;
+     AFNI_misc_CB(im3d->vwid->func->gicor_pb,(XtPointer)im3d,NULL) ;
+     (void) MCW_popup_message( im3d->vwid->picture ,
+                                 " \n"
+                                 " ******* AFNI: *********\n"
+                                 "  3dGrpInCorr sent data \n"
+                                 "  but setup isn't ready!\n " ,
+                               MCW_USER_KILL | MCW_TIMER_KILL ) ;
+     return ;
+   }
+
+   /* copy NIML data into dataset */
+
+   dsdar = (float *)DSET_ARRAY(giset->dset,0) ;
+   dszar = (float *)DSET_ARRAY(giset->dset,1) ;
+
+   if( giset->ivec == NULL ){  /* all voxels */
+     nn = MIN( giset->nvox , nvec ) ;
+     memcpy(dsdar,neldar,sizeof(float)*nn) ;
+     memcpy(dszar,nelzar,sizeof(float)*nn) ;
+   } else {
+     int *ivec=giset->ivec , kk ;
+     nn = MIN( giset->nivec , nvec ) ;
+     for( kk=0 ; kk < nn ; kk++ ){
+       dsdar[ivec[kk]] = neldar[kk] ; dszar[ivec[kk]] = nelzar[kk] ;
+     }
+   }
+
+   /* switch to this dataset as overlay */
+
+   if( im3d->fim_now != giset->dset ){
+     MCW_choose_cbs cbs ; char cmd[32] , *cpt=AFNI_controller_label(im3d) ;
+     cbs.ival = giset->nds ;
+     AFNI_finalize_dataset_CB( im3d->vwid->view->choose_func_pb ,
+                               (XtPointer)im3d ,  &cbs           ) ;
+     AFNI_set_fim_index(im3d,0) ;
+     AFNI_set_thr_index(im3d,1) ;
+#if 1
+     sprintf(cmd,"SET_FUNC_RANGE %c 0.2"   ,cpt[1]) ; AFNI_driver(cmd) ;
+     sprintf(cmd,"SET_THRESHNEW %c 0.01 *p",cpt[1]) ; AFNI_driver(cmd) ;
+#endif
+   }
+
+   /* self-threshold and clusterize? */
+
+#undef  THBOT
+#undef  THTOP
+#undef  THBIG
+#define THBIG    1.e+9f
+#define THBOT(t) ((thrsign==0 || thrsign==2) ? (-(t)) : (-THBIG))
+#define THTOP(t) ((thrsign==0 || thrsign==1) ? (t)    :  (THBIG))
+
+   vmul = giset->vmul ;
+   thr  = im3d->vinfo->func_threshold * im3d->vinfo->func_thresh_top ;
+   if( vmul > 0 && thr > 0.0f ){
+     MRI_IMAGE *dsim , *tsim , *clim ;
+     int thrsign=im3d->vinfo->thr_sign , pfun=im3d->vinfo->use_posfunc ;
+     float thb,tht ;
+
+     thb = THBOT(thr) ; tht = THTOP(thr) ;
+
+     dsim = DSET_BRICK(giset->dset,im3d->vinfo->fim_index) ;
+     tsim = DSET_BRICK(giset->dset,im3d->vinfo->thr_index) ;
+     clim = mri_clusterize( 0.0f , vmul , dsim , thb,tht,tsim , pfun ) ;
+     if( clim != NULL ){
+       float *csar = MRI_FLOAT_PTR(clim) ;
+       memcpy( MRI_FLOAT_PTR(dsim) , csar , sizeof(float)*clim->nvox ) ;
+       mri_free(clim) ;
+     }
+   }
+   DSET_KILL_STATS(giset->dset) ; THD_load_statistics(giset->dset) ;
+   AFNI_reset_func_range(im3d) ;
+
+   /* redisplay overlay */
+
+   if( MCW_val_bbox(im3d->vwid->view->see_func_bbox) == 0 ){ /* overlay = off */
+     char cmd[32] , *cpt=AFNI_controller_label(im3d) ;
+     sprintf(cmd,"SEE_OVERLAY %c.+",cpt[1]) ;
+     AFNI_driver(cmd) ;
+   } else {                                                  /* overlay = on */
+     AFNI_redisplay_func(im3d) ;
+   }
+   AFNI_set_thr_pval(im3d) ; AFNI_process_drawnotice(im3d) ;
+
+   return ;
+}
+
+/*--------------------------------------------------------------------------*/
+/* Called to set the reference voxel,
+   and to start the calculations over in 3dGroupInCorr.
+*//*------------------------------------------------------------------------*/
+
+int AFNI_gicor_setref( Three_D_View *im3d )
+{
+   NI_element *nel ;
+   char buf[256] ;
+   GICOR_setup *giset = im3d->giset ;
+   THD_fvec3 iv,jv; THD_ivec3 kv; int ijk,ii ;
+
+   if( !IM3D_OPEN(im3d)    ||
+       im3d->giset == NULL ||
+       !im3d->giset->ready   ){   /* should not happen */
+
+     GRPINCORR_LABEL_OFF(im3d) ; SENSITIZE_INSTACORR(im3d,False) ;
+     if( im3d->giset != NULL ) im3d->giset->ready = 0 ;
+     AFNI_misc_CB(im3d->vwid->func->gicor_pb,(XtPointer)im3d,NULL) ;
+     return -1 ;
+   }
+
+   /* if socket has gone bad, we're done */
+
+   if( NI_stream_goodcheck(giset->ns,1) < 1 ){
+     GRPINCORR_LABEL_OFF(im3d) ; SENSITIZE_INSTACORR(im3d,False) ;
+     if( im3d->giset != NULL ) im3d->giset->ready = 0 ;
+     AFNI_misc_CB(im3d->vwid->func->gicor_pb,(XtPointer)im3d,NULL) ;
+     return -1 ;
+   }
+
+   /* find where we are */
+
+   LOAD_FVEC3( iv , im3d->vinfo->xi,im3d->vinfo->yj,im3d->vinfo->zk ) ;
+   jv  = THD_dicomm_to_3dmm( giset->dset, iv ) ;
+
+   if( jv.xyz[0] < giset->dset->daxes->xxmin ||
+       jv.xyz[0] > giset->dset->daxes->xxmax ||
+       jv.xyz[1] < giset->dset->daxes->yymin ||
+       jv.xyz[1] > giset->dset->daxes->yymax ||
+       jv.xyz[2] < giset->dset->daxes->zzmin ||
+       jv.xyz[2] > giset->dset->daxes->zzmax   ){
+
+     WARNING_message("GrpInCorr set point outside dataset box") ;
+     return -1 ;
+   }
+
+   kv  = THD_3dmm_to_3dind_no_wod( giset->dset, jv ) ;
+   ijk = DSET_ixyz_to_index( giset->dset, kv.ijk[0],kv.ijk[1],kv.ijk[2] ) ;
+
+   /* INFO_message("DEBUG: AFNI_gicor_setref called: ijk=%d",ijk) ; */
+
+   if( giset->ivec != NULL ){
+     ii = bsearch_int( ijk , giset->nvec , giset->ivec ) ;
+     if( ii < 0 ){
+       WARNING_message("GrpInCorr set point not in mask from 3dGroupInCorr") ;
+       return -1 ;
+     }
+   }
+
+   /* send ijk node index to 3dGroupInCorr */
+
+   nel = NI_new_data_element( "SETREF_ijk" , 0 ) ;
+
+   sprintf( buf , "%d" , ijk ) ;
+   NI_set_attribute( nel , "index" , buf ) ;
+
+   sprintf( buf , "%g" , giset->seedrad ) ;
+   NI_set_attribute( nel , "seedrad" , buf ) ;
+
+   sprintf( buf , "%d" , giset->ttest_opcode ) ;
+   NI_set_attribute( nel , "ttest_opcode" , buf ) ;
+
+   ii = NI_write_element( giset->ns , nel , NI_TEXT_MODE ) ;
+   NI_free_element( nel ) ;
+   if( ii <= 0 ){
+     ERROR_message("3dGroupInCorr connection has failed?!") ;
+     return -1 ;
+   }
+
+   return 0 ;
+}
+
+/***********************************************************************
+   Set up the interface to the user
+************************************************************************/
+
+static char g_helpstring[] =
+  "Purpose: control AFNI Group InstaCorr operations\n"
+  "\n"
+  "Author -- RW Cox -- Dec 2009\n"
+;
+
+static char *topts[3] = { "pooled" , "unpooled" , "paired" } ;
+
+static char * GICOR_main( PLUGIN_interface * ) ;
+
+PLUGIN_interface * GICOR_init( char *lab )
+{
+   int ntops ;
+   PLUGIN_interface *plint ;     /* will be the output of this routine */
+   char sk[32] ;
+   GICOR_setup *giset = A_CONTROLLER->giset ;
+
+   if( lab == NULL ) lab = "\0" ;
+
+   if( !IM3D_OPEN(A_CONTROLLER) || giset == NULL || !giset->ready )
+     return NULL ;
+
+   /*---------------- set titles and call point ----------------*/
+
+   sprintf(sk,"%sSetup Group InstaCorr",lab) ;
+   plint = PLUTO_new_interface( "GrpInCorr" ,
+                                sk ,
+                                g_helpstring ,
+                                PLUGIN_CALL_VIA_MENU ,
+                                (char *(*)())GICOR_main  ) ;
+
+   PLUTO_set_runlabels( plint , "Setup+Keep" , "Setup+Close" ) ;
+
+   /*--------- make interface lines -----------*/
+
+   PLUTO_add_option ( plint , "Params" , "Params" , TRUE ) ;
+   PLUTO_add_number ( plint , "SeedRad" , 0,16,0,(int)rint(giset->seedrad), TRUE ) ;
+
+   ntops = (giset->ndset_A == giset->ndset_B) ? 3 : 2 ;
+   PLUTO_add_string ( plint , "t-test"  , ntops , topts , giset->ttest_opcode ) ;
+
+   PLUTO_add_option ( plint , "Cluster" , "Cluster" , TRUE ) ;
+   PLUTO_add_number ( plint , "Voxels"  , 0,9999,0 , 0,TRUE ) ;
+
+   return plint ;
+}
+
+/***************************************************************************
+  Main routine for this plugin (will be called from AFNI).
+  If the return string is not NULL, some error transpired, and
+  AFNI will popup the return string in a message box.
+****************************************************************************/
+
+static char * GICOR_main( PLUGIN_interface *plint )
+{
+   Three_D_View *im3d = plint->im3d ;
+   float srad=0.0f ; int topcod=0 , vmul=0 ; char *tch ;
+   GICOR_setup *giset ;
+
+   if( !IM3D_OPEN(im3d)    ||
+       im3d->giset == NULL ||
+       !im3d->giset->ready   ){   /* should not happen */
+
+     GRPINCORR_LABEL_OFF(im3d) ; SENSITIZE_INSTACORR(im3d,False) ;
+     if( im3d->giset != NULL ) im3d->giset->ready = 0 ;
+     XtUnmapWidget(plint->wid->shell) ;
+     return " ************ AFNI: ************ \n 3dGroupInCorr is no longer enabled!? \n " ;
+   }
+
+   giset = im3d->giset ;
+
+   /* if socket has gone bad, we're done */
+
+   if( NI_stream_goodcheck(giset->ns,1) < 1 ){
+     GRPINCORR_LABEL_OFF(im3d) ; SENSITIZE_INSTACORR(im3d,False) ;
+     if( im3d->giset != NULL ) im3d->giset->ready = 0 ;
+     XtUnmapWidget(plint->wid->shell) ;
+     return " ************ AFNI: ************ \n 3dGroupInCorr is no longer connected! \n " ;
+   }
+
+   PLUTO_next_option(plint) ;
+   srad   = PLUTO_get_number(plint) ;
+   tch    = PLUTO_get_string(plint) ;
+   topcod = PLUTO_string_index( tch , 3 , topts ) ;
+
+   PLUTO_next_option(plint) ;
+   vmul   = (int)PLUTO_get_number(plint) ;
+
+   /* do something with these changes */
+
+   giset->seedrad      = srad ;
+   giset->ttest_opcode = topcod ;
+   giset->vmul         = vmul ;
+
+   return NULL ;
 }

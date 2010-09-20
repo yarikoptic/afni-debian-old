@@ -48,6 +48,68 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 14, JAN, 2010, RCR, "3dVol2Surf", MINOR, TYPE_BUG_FIX,
+   "Fixed crash w/labels on '-map_func seg_vals' -> NIML",
+   "Found by Swaroop at Dartmouth."
+ } ,
+
+ { 12, JAN, 2010, RCR, "2dImReg", MICRO, TYPE_BUG_FIX,
+   "Fixed crash if ny > nx.  Go back to failure and ponder fix.",
+   NULL
+ } ,
+
+ { 7, JAN, 2010, RCR, "afni-general", MICRO, TYPE_BUG_FIX,
+   "stdint.h should not be included on a SOLARIS_OLD system",
+   NULL
+ } ,
+
+ { 6, JAN, 2010, RCR, "thd_intlist.c", MINOR, TYPE_BUG_FIX,
+   "fixed sub-brick selection of datasets without labels (e.g. NIfTI)",
+   NULL
+ } ,
+
+ { 24, DEC, 2009, RCR, "gifti_tool", MINOR, TYPE_NEW_OPT,
+   "added -approx_gifti option",
+   NULL
+ } ,
+
+ { 24, DEC, 2009, RCR, "GIFTI", MINOR, TYPE_NEW_OPT,
+   "added approximate difference functions",
+   "- added gifti_approx_gifti_images, DA_pair, labeltables, diff_offset\n"
+   "- added gifti_triangle_diff_offset\n"
+   "- gifti_compare_coordsys takes comp_data param"
+ } ,
+
+ {  8, DEC, 2009, RCR, "GIFTI", MINOR, TYPE_NEW_OPT,
+   "added ability to read/write GIFTI LabelTables with colors in thd_gifti.c",
+   NULL
+ } ,
+
+ {  4, DEC, 2009, RCR, "3dWarp", MICRO, TYPE_MODIFY,
+   "add help example of going from +tlrc space to +orig space",
+   NULL
+ } ,
+
+ { 30, NOV, 2009, RCR, "afni-general", MINOR, TYPE_BUG_FIX,
+   "afni crashes on short ANALYZE file from double fclose()",
+   NULL
+ } ,
+
+ { 16, NOV, 2009, RCR, "afni_proc.py", MINOR, TYPE_MODIFY,
+   "allow motion censoring with varying run lengths",
+   "Also, if a max is applied in scaling, explicitly limit to [0,max].\n"
+ } ,
+
+ { 16, NOV, 2009, RCR, "1d_tool.py", MINOR, TYPE_MODIFY,
+   "allow motion censoring with varying run lengths",
+   NULL
+ } ,
+
+ {  4, NOV, 2009, RCR, "Dimon", MICRO, TYPE_MODIFY,
+   "small change to check on sort problems",
+   NULL
+ } ,
+
  { 27, OCT, 2009, RCR, "GIFTI", MINOR, TYPE_NEW_OPT,
    "added support for optional LabelTable RGBA attributes",
    NULL

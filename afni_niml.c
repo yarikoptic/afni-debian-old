@@ -208,9 +208,18 @@ int AFNI_have_niml( void ){ return started ; }  /* 02 Feb 2007 */
 
 static void AFNI_niml_atexit( void )
 {
-#if 0              /*** this stuff now handled in niml/niml_stream.c ***/
-   int cc ;
+   int cc ; NI_element *nel=NULL ;
+   
 STATUS("called AFNI_niml_atexit") ;
+
+   for( cc=0 ; cc < NUM_NIML ; cc++ ){
+     if( ns_listen[cc] ) {/* be polite and tell our customers */
+       if( nel == NULL ) nel = NI_new_data_element("AuRevoir", 0) ;
+       NI_write_element( ns_listen[cc] , nel , NI_BINARY_MODE ) ;
+     }
+   }
+
+#if 0              /*** this stuff now handled in niml/niml_stream.c ***/
    for( cc=0 ; cc < NUM_NIML ; cc++ )        /* close any open sockets */
      NI_stream_closenow( ns_listen[cc] ) ;
 #endif
@@ -230,7 +239,7 @@ ENTRY("AFNI_init_niml") ;
    if( started ) EXRETURN ;
 
    PLUTO_register_workproc( AFNI_niml_workproc , NULL ) ;
-#if 0
+#if 1 /* Turned back on to notify SUMA for a graceful exit ZSS Nov 09*/
    atexit( AFNI_niml_atexit ) ;
 #endif
 
@@ -489,8 +498,13 @@ ENTRY("AFNI_niml_workproc") ;
 }
 
 /*----------------------------------------------------------------------*/
-/*! Process NIML data.  "chan" is the type of stream it came from;
-    this is currently not used.
+/*! Process NIML data.
+    - chan is the ns_listen[] index of the stream it came from;
+      this is currently not used [22 Dec 2009: it is now].
+    - ct_start is the NI_clock_time() [msec] at the start of reading
+      this element; a function can use this info to print out some
+      timing information on how long it took to get the data and
+      do something useful with it
 ------------------------------------------------------------------------*/
 
 void AFNI_process_NIML_data( int chan, void *nini, int ct_start )
@@ -570,6 +584,14 @@ ENTRY("AFNI_process_NIML_data") ;
    } else if( strcmp(nel->name,"MRI_IMAGE") == 0 ){           /* 22 Mar 2005 */
 
      process_NIML_MRI_IMAGE( nel , ct_start ) ;       /* store as a .1D file */
+
+   } else if( strcmp(nel->name,"3dGroupInCorr_setup") == 0 ){ /* 22 Dec 2009 */
+
+     GICOR_setup_func( ns_listen[chan] , nel ) ;
+
+   } else if( strcmp(nel->name,"3dGroupInCorr_dataset") == 0 ){  /* 23 Dec 2009 */
+
+     GICOR_process_dataset( nel , ct_start ) ;
 
    } else {
      /*** If here, then name of element didn't match anything ***/
@@ -933,7 +955,8 @@ static int slist_choose_surfs(LDP_list * ldp_list, THD_session * sess,
    ldp_surf_list * lsurf;
    int           * surfs, max_surf, ldp;
    int             first, surf;
-
+   static int      nwarn=0;
+   
 ENTRY("slist_choose_surfs");
 
    /* first, decide on how much memory we need for surfs */
@@ -965,16 +988,25 @@ ENTRY("slist_choose_surfs");
 
       /* if something is discarded and using defaults or debug */
       if ( (first < lsurf->nsurf) && (! lsurf->use_v2s || po->sopt.debug > 1) ){
-         fprintf(stderr,
-           "--------------------------------------------------\n"
-           "received too many surfaces for LDP '%s'\n",
-           lsurf->full_label_ldp[0] ? lsurf->full_label_ldp : lsurf->label_ldp);
-         for ( surf = 0; surf < first; surf++ )
-            fprintf(stderr,"    using    surf #%d : %s\n",
-                    surfs[surf], sess->su_surf[surfs[surf]]->label);
-         for ( surf = first; surf < lsurf->nsurf; surf++ )
-            fprintf(stderr,"    ignoring surf #%d : %s\n",
-                    surfs[surf], sess->su_surf[surfs[surf]]->label);
+         if (po->sopt.debug > 1 || nwarn < 2 || !(nwarn % 25)) {
+            fprintf(stderr,
+              "--------------------------------------------------\n"
+              "received too many surfaces for LDP '%s'\n",
+              lsurf->full_label_ldp[0] ? 
+                           lsurf->full_label_ldp : lsurf->label_ldp);
+            for ( surf = 0; surf < first; surf++ )
+               fprintf(stderr,"    using    surf #%d : %s\n",
+                       surfs[surf], sess->su_surf[surfs[surf]]->label);
+            for ( surf = first; surf < lsurf->nsurf; surf++ )
+               fprintf(stderr,"    ignoring surf #%d : %s\n",
+                       surfs[surf], sess->su_surf[surfs[surf]]->label);
+            fprintf(stderr,
+              "%s"
+              "--------------------------------------------------\n",
+              po->sopt.debug > 1 ? "" : 
+                  "             Warning shown intermittenlty.\n");
+         }
+         ++nwarn;
       }
    }
 

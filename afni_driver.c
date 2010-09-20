@@ -546,9 +546,9 @@ static int AFNI_drive_set_subbricks( char *cmd )
 
 static int AFNI_drive_switch_anatomy( char *cmd )
 {
-   int ic , dadd=2 , nuse=0 ;
+   int ic , dadd=2 , nuse=0, sb = -1 ;
    Three_D_View *im3d ;
-   char dname[THD_MAX_NAME] ;
+   char dname[THD_MAX_NAME]={""} ;
    MCW_choose_cbs cbs ;
    THD_slist_find slf ;
 
@@ -563,17 +563,31 @@ ENTRY("AFNI_switch_anatomy") ;
    if( !IM3D_OPEN(im3d) ) RETURN(-1) ;
 
    /* get dataset name, truncate trailing blanks */
-
-   sscanf( cmd+dadd , "%244s%n" , dname , &nuse ) ;
+   if (*(cmd+dadd) != '\0') sscanf( cmd+dadd , "%244s%n" , dname , &nuse ) ;
+   else RETURN(-1) ;
    for( ic=strlen(dname)-1 ; ic >= 0 ; ic-- )
      if( isspace(dname[ic]) || iscntrl(dname[ic]) ) dname[ic] = '\0' ;
      else break ;
 
    if( strlen(dname) == 0 ) RETURN(-1) ;
 
-   if( nuse > 0 ) sscanf( cmd+dadd+nuse+1 , "%d" , &nuse ) ;  /* 30 Nov 2005 */
-   else           nuse = -1 ;
+   if( nuse > 0 && 
+       *(cmd+dadd+nuse)!= '\0' && 
+       *(cmd+dadd+nuse+1) != '\0') { 
+      sscanf( cmd+dadd+nuse+1 , "%d" , &sb ) ;  /* 30 Nov 2005 */
+               /* not checking for early string termination
+                  before sscanf was causing corruption in some cases.
+                  ZSS Nov 2009 */
+   }  else  {         
+      sb = 0 ;
+   }
 
+   if (sb < 0) {
+      WARNING_message("bad sub-brick selection %d\n"
+                     "defaulting to 0\n", sb);
+      sb = 0;
+   }
+   
    /* find this dataset in current session of this controller */
 
    slf = THD_dset_in_session( FIND_PREFIX , dname , im3d->ss_now ) ;
@@ -593,7 +607,7 @@ ENTRY("AFNI_switch_anatomy") ;
    AFNI_finalize_dataset_CB( im3d->vwid->view->choose_anat_pb ,
                              (XtPointer)im3d ,  &cbs          ) ;
 
-   AFNI_set_anat_index( im3d , nuse ) ;   /* 30 Nov 2005 */
+   AFNI_set_anat_index( im3d , sb ) ;   /* 30 Nov 2005 */
 
    RETURN(0) ;
 }
@@ -607,7 +621,7 @@ static int AFNI_drive_switch_function( char *cmd )
 {
    int ic , dadd=2 , nuse=0 , nfun=-1,nthr=-1 ;
    Three_D_View *im3d ;
-   char dname[THD_MAX_NAME] ;
+   char dname[THD_MAX_NAME]={""};
    MCW_choose_cbs cbs ;
    THD_slist_find slf ;
 
@@ -623,16 +637,32 @@ ENTRY("AFNI_switch_function") ;
 
    /* get dataset name, truncate trailing blanks */
 
-   sscanf( cmd+dadd , "%244s%n" , dname , &nuse ) ;
+   if (*(cmd+dadd) != '\0') sscanf( cmd+dadd , "%244s%n" , dname , &nuse ) ;
+   else RETURN(-1) ;
    for( ic=strlen(dname)-1 ; ic >= 0 ; ic-- )
       if( isspace(dname[ic]) || iscntrl(dname[ic]) ) dname[ic] = '\0' ;
       else break ;
 
    if( strlen(dname) == 0 ) RETURN(-1) ;
 
-   if( nuse > 0 )                                    /* 30 Nov 2005 */
+   if( nuse > 0 &&                  /* 30 Nov 2005 */
+       *(cmd+dadd+nuse)!= '\0' &&     /* See equivalent condition in */
+       *(cmd+dadd+nuse+1) != '\0')  { /* AFNI_drive_switch_anatomy   */
      sscanf( cmd+dadd+nuse+1 , "%d%d" , &nfun,&nthr ) ;
-
+   } else {
+      nfun = 0; nthr = 0;
+   }
+   
+   if (nfun < 0) {
+      WARNING_message("bad sub-brick selection %d\n"
+                     "defaulting to 0\n", nfun);
+      nfun = 0;
+   }
+   if (nthr < 0) {
+      WARNING_message("bad sub-brick selection %d\n"
+                     "defaulting to 0\n", nthr);
+      nthr = 0;
+   }
    /* find this dataset in current session of this controller */
 
    slf = THD_dset_in_session( FIND_PREFIX , dname , im3d->ss_now ) ;
@@ -819,7 +849,7 @@ ENTRY("AFNI_drive_open_window") ;
       if( cpt != NULL ){
         int opaval = -1 ;
         sscanf( cpt+8 , "%d" , &opaval ) ;
-        drive_MCW_imseq( isq , isqDR_setopacity , (XtPointer)opaval ) ;
+        drive_MCW_imseq( isq , isqDR_setopacity , (XtPointer)ITOP(opaval) ) ;
       }
 
       /* crop [03 May 2007] */
@@ -890,7 +920,7 @@ ENTRY("AFNI_drive_open_window") ;
       if( cpt != NULL ){
         int mat = (int) strtod( cpt+7 , NULL ) ;
         if( mat > 0 )
-          drive_MCW_grapher( gra , graDR_setmatrix , (XtPointer)mat ) ;
+          drive_MCW_grapher( gra , graDR_setmatrix , (XtPointer)ITOP(mat) ) ;
       }
 
       /* pinnum OR pintop */
@@ -902,7 +932,7 @@ ENTRY("AFNI_drive_open_window") ;
       if( cpt != NULL ){
         int pn = (int) strtod( cpt+7 , NULL ) ;
         if( pn >= MIN_PIN )
-          drive_MCW_grapher( gra, graDR_setpinnum, (XtPointer)pn ) ;
+          drive_MCW_grapher( gra, graDR_setpinnum, (XtPointer)ITOP(pn) ) ;
       }
 
       /* pinbot [19 Mar 2004] */
@@ -912,7 +942,7 @@ ENTRY("AFNI_drive_open_window") ;
       if( cpt != NULL ){
         int pn = (int) strtod( cpt+7 , NULL ) ;
         if( pn > 0 )
-          drive_MCW_grapher( gra, graDR_setpinbot, (XtPointer)pn ) ;
+          drive_MCW_grapher( gra, graDR_setpinbot, (XtPointer)ITOP(pn) ) ;
       }
 
       /* iconify [06 Aug 2002] */

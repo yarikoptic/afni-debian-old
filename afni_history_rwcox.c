@@ -44,6 +44,80 @@
 afni_history_struct rwcox_history[] = {
 /*=====BELOW THIS LINE=====*/
 
+ { 31 , DEC , 2009 , RWC , "many" , MICRO , TYPE_GENERAL ,
+   "Remove 'cast ... different size' warnings" ,
+   "Macros: ITOP and PTOI to cast without warnings.  For Z." } ,
+
+ { 31 , DEC , 2009 , RWC , "3dGroupInCorr" , MAJOR , TYPE_NEW_PROG ,
+   "Group InstaCorr" ,
+   "With changes to afni and also new program 3dSetupGroupInCorr" } ,
+
+ { 23 , DEC , 2009 , RWC , "afni" , MICRO , TYPE_MODIFY ,
+   "Minor changes to 'DataDir' to appease DRG" ,
+   NULL } ,
+
+ { 18 , DEC , 2009 , RWC , "3dBandpass" , MICRO , TYPE_NEW_PROG ,
+   "Finally finished this!" ,
+   NULL } ,
+
+ { 15 , DEC , 2009 , RWC , "3dmaskSVD" , MINOR , TYPE_BUG_FIX ,
+   "Fixed 2 problems with -ort option" ,
+   "1) It didn't work, since the wrong array name was used :-(\n"
+   "2) It could fail, since the detrend routine didn't like collinear orts\n"
+   "-- replaced it with one that is happier with such things." } ,
+
+ { 14 , DEC , 2009 , RWC , "afni" , MICRO , TYPE_MODIFY ,
+   "New environment variable AFNI_RECENTER_VIEWING" ,
+   NULL } ,
+
+ { 4 , DEC , 2009 , RWC , "3dLocalPV" , MICRO , TYPE_MODIFY ,
+   "OpenMP changes.  Speedup about factor of 3 using 6 CPUs." ,
+   NULL } ,
+
+ { 3 , DEC , 2009 , RWC , "3dLocalPV" , MINOR , TYPE_NEW_PROG ,
+   "Speeded up version of 3dLocalSVD" ,
+   "Speed comes with some small limitations.  About 30% faster." } ,
+
+ { 3 , DEC , 2009 , RWC , "afni" , MICRO , TYPE_GENERAL ,
+   "Modify GUI to add a Read session button next to the Switch button" ,
+   "Because of complaints that it's hard to figure out what to do if AFNI\n"
+   "doesn't start in the right directory." } ,
+
+ { 30 , NOV , 2009 , RWC , "afni" , MICRO , TYPE_GENERAL ,
+   "Modify license to specify GPL v2 OR ANY LATER VERSION" ,
+   NULL } ,
+
+ { 24 , NOV , 2009 , RWC , "thd_atr.c" , MICRO , TYPE_BUG_FIX ,
+   "Allow 'count = 0' in attributes" ,
+   "Formerly was a fatal error.  Now just skips to next attribute.  For\n"
+   "Ziad." } ,
+
+ { 23 , NOV , 2009 , RWC , "3dTcorrMap" , MICRO , TYPE_NEW_OPT ,
+   "Add various options in the last few days" ,
+   "* -seed = a different dataset for the seed time series\n"
+   "* -bpass = instead of -polort\n"
+   "* -Gblur = blurring\n"
+   "* -Mseed = extra smoothing around the seed\n"
+   "* -Hist = output the histogram of the correlations" } ,
+
+ { 23 , NOV , 2009 , RWC , "3dmaskSVD" , MICRO , TYPE_NEW_OPT ,
+   "Add -bpass option" ,
+   NULL } ,
+
+ { 18 , NOV , 2009 , RWC , "mri_read.c" , MICRO , TYPE_GENERAL ,
+   "Fix Ziad's stupid error printout in reading .1D files" ,
+   "To indicate which file is causing the trouble.\n"
+   "To limit the number of such Failure messages to a reasonable level.\n"
+   "Sheesh." } ,
+
+ { 17 , NOV , 2009 , RWC , "3dTfitter" , MICRO , TYPE_GENERAL ,
+   "Let FALTUNG kernel be longer that N/2" ,
+   "Also add synonyms '-L2' and '-L1'" } ,
+
+ { 3 , NOV , 2009 , RWC , "3dREMLfit" , MICRO , TYPE_GENERAL ,
+   "Modify default -CORcut value from 0.0025 to 0.0011" ,
+   "To reduce likelihood of Choleski failure." } ,
+
  { 21 , OCT , 2009 , RWC , "1dAstrip" , MICRO , TYPE_NEW_PROG ,
    "To remove Alpha characters from 1D-like files." ,
    "For my own ill-conceived plans for global domination.  Cheap and not\n"

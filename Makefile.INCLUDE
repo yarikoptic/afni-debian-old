@@ -85,6 +85,7 @@ PROGRAMS = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge count   
            3dLocalSVD  niml_feedme  3dErrtsCormat 3dUndump 3dREMLfit            \
            3dUpsample 3dTcorrMap 3dmatmult 3dABoverlap 3dmaskSVD 1dBandpass     \
            3dBlurInMask 3dRank 3dFFT 1dgenARMA11 3dPeriodogram 1dAstrip         \
+           3dLocalPV 3dBandpass 3dSetupGroupInCorr 3dGroupInCorr                \
            $(EXTRAS)
 
 PROGRAMS_NOPLUG = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge      \
@@ -114,7 +115,7 @@ PROGRAMS_NOPLUG = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge  
                   1dMarry 3dEmpty 3dTsort 1dTsort 1dFlagMotion 3dTfitter            \
                   3dLocalSVD 3dFFT         3dErrtsCormat 3dREMLfit 3dTcorrMap       \
                   afni_history 3dUpsample 1dUpsample 3dmatmult 3dABoverlap          \
-                  3dmaskSVD 3dRank $(EXTRAS)
+                  3dmaskSVD 3dRank 3dLocalPV $(EXTRAS)
 
 # For CYGWIN (look for "exe" to find various places below)
 #  Note that 3dNLfim and 3dTSgen are missing for now
@@ -162,7 +163,7 @@ SCRIPTS = @4Daverage @CommandGlobb @GetAfniOrient @DTI_studio_reposition        
           @ShowDynamicRange AFNI_Batch_R @DO.examples demo.fixed.niml.do          \
           demo.mobile.niml.do @Spharm.examples @GetAfniBin @fast_roi              \
           @make_plug_diff @build_afni_Xlib @update.afni.binaries @ROI_Corr_Mat    \
-          @FS_roi_label @demo_prompt @ScriptCheck @NoPound @Reorder
+          @FS_roi_label @demo_prompt @ScriptCheck @NoPound @Reorder 3dMEMA 
 
 PY_DIR = python_scripts
 PY_SCRIPTS = afni_base.py @DoPerRoi.py
@@ -823,6 +824,14 @@ qm:qm.o
 	$(RM) $@
 	$(CCFAST) -o 3dAcost 3dAcost.o $(LFLAGS) -lmri -lf2c $(LLIBS)
 
+3dSetupGroupInCorr.o:3dSetupGroupInCorr.c
+	$(RM) $@
+	$(CCFAST) -c 3dSetupGroupInCorr.c $(INFLAGS)
+
+3dSetupGroupInCorr:3dSetupGroupInCorr.o
+	$(RM) $@
+	$(CCFAST) -o 3dSetupGroupInCorr 3dSetupGroupInCorr.o $(LFLAGS) -lmri -lf2c $(LLIBS)
+
 rotcom:rotcom.o
 	$(RM) $@
 	$(CC) -o rotcom rotcom.o $(LFLAGS) -lmri -lf2c $(LLIBS)
@@ -992,6 +1001,22 @@ mri_nstats.o:mri_nstats.c
 	$(CC) -o 3dLocalSVD 3dLocalSVD.o $(LFLAGS) $(LLIBS) -lf2c
 
 ## ------- Things to be compiled or linked with OpenMP -------
+
+3dGroupInCorr.o:3dGroupInCorr.c
+	$(RM) $@
+	$(CCOMP) -c 3dGroupInCorr.c $(INFLAGS)
+
+3dGroupInCorr:3dGroupInCorr.o
+	$(RM) $@
+	$(CCOMP) -o 3dGroupInCorr 3dGroupInCorr.o $(LFLAGS) $(LLIBS) -lf2c -lmri
+
+3dLocalPV.o:3dLocalPV.c cs_pv.c
+	$(RM) $@
+	$(CCOMP) -c 3dLocalPV.c $(INFLAGS)
+
+3dLocalPV:3dLocalPV.o
+	$(RM) $@
+	$(CCOMP) -o 3dLocalPV 3dLocalPV.o $(LFLAGS) $(LLIBS) -lf2c
 
 3dLocalstat.o:3dLocalstat.c mri_nstats.c
 	$(RM) $@
@@ -1242,6 +1267,10 @@ afni_vcheck:afni_vcheck.o
 	$(RM) $@
 	$(CC) -o 1dBandpass 1dBandpass.o $(LFLAGS) $(LLIBS) -lf2c -lmri
 
+3dBandpass:3dBandpass.o
+	$(RM) $@
+	$(CC) -o 3dBandpass 3dBandpass.o $(LFLAGS) $(LLIBS) -lf2c -lmri
+
 1dcat:1dcat.o
 	$(RM) $@
 	$(CC) -o 1dcat 1dcat.o $(LFLAGS) $(LLIBS)
@@ -1422,7 +1451,7 @@ backup:
 afni_src.tgz:
 	$(MKDIR) afni_src
 	$(CP) -p *.c *.f *.inc *.h *.hhh Makefile.* *.xbm $(MINDOCS) $(MISC)     ./afni_src
-	$(CP) -pr coxplot volpack moveup moveAFNI* eispack                       ./afni_src
+	$(CP) -pr coxplot volpack moveup moveAFNI* eispack avovk                 ./afni_src
 	$(CP) -pr $(SCRIPTS) $(PY_DIR) $(R_DIR)                                  ./afni_src
 	$(CP) -pr gifsicledir qhulldir f2cdir mpeg_encodedir                     ./afni_src
 	$(CP) -pr 3DEdge netcdf-3.5.0 jpeg-6b niml Makefile_* nifti dlcompat     ./afni_src
@@ -1572,6 +1601,10 @@ cs_symeig.o:cs_symeig.c
 	$(RM) $@
 	$(CCFAST) -c cs_symeig.c $(INFLAGS)
 
+cs_pv.o:cs_pv.c
+	$(RM) $@
+	$(CCFAST) -c cs_pv.c $(INFLAGS)
+
 cs_qmed.o:cs_qmed.c
 	$(RM) $@
 	$(CCFAST) -c cs_qmed.c $(INFLAGS)
@@ -1659,6 +1692,10 @@ thd_rot3d_byte.o:thd_rot3d_byte.c
 	$(RM) $@
 	$(CCFAST) -c thd_rot3d_byte.c $(INFLAGS)
 
+thd_svdblur.o:thd_svdblur.c
+	$(RM) $@
+	$(CCFAST) -c thd_svdblur.c $(INFLAGS)
+
 cox_render.o:cox_render.h cox_render.c
 	$(RM) $@
 	$(CCFAST) -c cox_render.c $(INFLAGS)
@@ -1715,7 +1752,7 @@ THD_OBJS = thd_atr.o thd_dsetto1D.o thd_initalldir.o thd_reconpar.o \
            thd_checkidc.o thd_floatscan.o thd_notes.o thd_makemask.o \
            thd_shift2.o thd_1Dtodset.o thd_detrend.o thd_fitter.o     \
            thd_winsor.o thd_zeropad.o thd_rot3d_byte.o thd_shear3d.o   \
-           thd_tmask.o thd_rotangles.o           thd_center.o           \
+           thd_tmask.o thd_rotangles.o thd_ttest.o thd_center.o         \
            thd_mismatch.o thd_read_vecmat.o thd_tshift.o thd_newprefix.o \
            thd_entropy16.o thd_dsetrow.o thd_rowfillin.o thd_fetchdset.o  \
            thd_getpathprogs.o thd_zfillin.o thd_ttatlas_query.o           \
@@ -1727,7 +1764,7 @@ THD_OBJS = thd_atr.o thd_dsetto1D.o thd_initalldir.o thd_reconpar.o \
            thd_brainormalize.o thd_opentcat.o thd_nimlatr.o thd_dsetatr.o \
            thd_logafni.o thd_dset_nbhd.o thd_vcheck.o thd_matdaxes.o      \
            thd_niml.o afni_vedit.o thd_fdrcurve.o thd_dset_to_vectim.o    \
-           thd_bandpass.o thd_instacorr.o
+           thd_bandpass.o thd_instacorr.o thd_svdblur.o
 
 # these are now included in NIML
 
@@ -1751,7 +1788,7 @@ CS_OBJS  = cs_sort_fi.o cs_sort_di.o cs_symeig.o cs_sort_ii.o cs_sort_ff.o \
            cs_addto_args.o multivector.o afni_environ.o cs_qmed.o cl2.o    \
            cs_sort_fv.o cs_laguerre.o machdep.o cs_qhull.o afni_logger.o   \
            cl1.o cs_misc.o powell_int.o powell_newuoa.o cs_sort_dv.o       \
-           rhdd.o zfun.o
+           rhdd.o zfun.o cs_pv.o
 
 EIS_OBJS = eis_bakvec.o eis_balanc.o eis_balbak.o eis_bandr.o              \
            eis_bandv.o eis_bisect.o eis_bqr.o eis_cbabk2.o eis_cbal.o      \
@@ -2363,6 +2400,15 @@ extor.o:extor.c
 thd_detrend.o:thd_detrend.c
 	$(CCFAST) -c thd_detrend.c $(INFLAGS)
 
+thd_bandpass.o:thd_bandpass.c
+	$(CCFAST) -c thd_bandpass.c $(INFLAGS)
+
+thd_dset_to_vectim.o:thd_dset_to_vectim.c
+	$(CCFAST) -c thd_dset_to_vectim.c $(INFLAGS)
+
+thd_ttest.o:thd_ttest.c
+	$(CCFAST) -c thd_ttest.c $(INFLAGS)
+
 extor:extor.o
 	$(CC) -o extor extor.o $(INFLAGS) $(LFLAGS) $(LLIBS)
 
@@ -2398,6 +2444,9 @@ Xphace:Xphace.o
 
 3dbetafit2.o:3dbetafit2.c
 	$(CCFAST) -c 3dbetafit2.c $(INFLAGS)
+
+pv.o:pv.c
+	$(CCFAST) -c pv.c $(INFLAGS)
 
 3dbetafit2:3dbetafit2.o betafit.c
 	$(CC) -o 3dbetafit2 3dbetafit2.o $(INFLAGS) $(LFLAGS) $(LLIBS)

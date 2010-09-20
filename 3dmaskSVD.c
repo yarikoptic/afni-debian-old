@@ -23,6 +23,7 @@ int main( int argc , char *argv[] )
    int do_vmean=0 , do_vnorm=0 , sval_itop=0 ;
    int polort=-1 ; float *ev ;
    MRI_IMARR *ortar ; MRI_IMAGE *ortim ; int nyort=0 ;
+   float bpass_L=0.0f , bpass_H=0.0f , dtime ; int do_bpass=0 ;
 
    if( argc < 2 || strcmp(argv[1],"-help") == 0 ){
      printf(
@@ -69,6 +70,7 @@ int main( int argc , char *argv[] )
        " -mask mset  = define the mask [default is entire dataset == slow!]\n"
        " -automask   = you'll have to guess what this option does\n"
        " -polort p   = if you are lazy and didn't run 3dDetrend (like Zhark)\n"
+       " -bpass L H  = bandpass [mutually exclusive with -polort]\n"
        " -ort xx.1D  = time series to remove from the data before SVD-ization\n"
        "               ++ You can give more than 1 '-ort' option\n"
        "               ++ 'xx.1D' can contain more than 1 column\n"
@@ -114,6 +116,15 @@ int main( int argc , char *argv[] )
 
    while( iarg < argc && argv[iarg][0] == '-' ){
 
+     if( strcasecmp(argv[iarg],"-bpass") == 0 ){
+       if( iarg+2 >= argc ) ERROR_exit("need 2 args after -bpass") ;
+       bpass_L = (float)strtod(argv[++iarg],NULL) ;
+       bpass_H = (float)strtod(argv[++iarg],NULL) ;
+       if( bpass_L < 0.0f || bpass_H <= bpass_L )
+         ERROR_exit("Illegal values after -bpass: %g %g",bpass_L,bpass_H) ;
+       iarg++ ; continue ;
+     }
+
      if( strcmp(argv[iarg],"-ort") == 0 ){  /* 01 Oct 2009 */
        int nx,ny ;
        if( ++iarg >= argc ) ERROR_exit("Need argument after '-ort'") ;
@@ -123,7 +134,7 @@ int main( int argc , char *argv[] )
        if( nx == 1 && ny > 1 ){
          MRI_IMAGE *tim=mri_transpose(ortim); mri_free(ortim); ortim = tim; ny = 1;
        }
-       ADDTO_IMARR(ortar,ortim) ; nyort += ny ;
+       mri_add_name(argv[iarg],ortim) ; ADDTO_IMARR(ortar,ortim) ; nyort += ny ;
        iarg++ ; continue ;
      }
 
@@ -193,6 +204,16 @@ int main( int argc , char *argv[] )
    DSET_load(inset) ; CHECK_LOAD_ERROR(inset) ;
    nxyz = DSET_NVOX(inset) ;
 
+   DSET_UNMSEC(inset) ;
+   dtime = DSET_TR(inset) ;
+   if( dtime <= 0.0f ) dtime = 1.0f ;
+   do_bpass = (bpass_L < bpass_H) ;
+   if( do_bpass ){
+     kk = THD_bandpass_OK( nt , dtime , bpass_L , bpass_H , 1 ) ;
+     if( kk <= 0 ) ERROR_exit("Can't continue since -bpass setup is illegal") ;
+     polort = -1 ;
+   }
+
    /*--- deal with the masking ---*/
 
    if( mask != NULL ){
@@ -233,7 +254,7 @@ int main( int argc , char *argv[] )
 
    /*-- detrending --*/
 
-   if( polort >= 0 || nyort > 0 ){
+   if( polort >= 0 || nyort > 0 || do_bpass ){
      float **polref=NULL ; float *tsar ;
      int nort=IMARR_COUNT(ortar) , nref=0 ;
 
@@ -244,9 +265,11 @@ int main( int argc , char *argv[] )
      if( nort > 0 ){     /* other orts */
        float *oar , *par ; int nx,ny , qq,tt ;
        for( kk=0 ; kk < nort ; kk++ ){  /* loop over input -ort files */
-         ortim = IMARR_SUBIM(imar,kk) ;
+         ortim = IMARR_SUBIM(ortar,kk) ;
          nx = ortim->nx ; ny = ortim->ny ;
-         if( nx < nt ) ERROR_exit("-ort '%s' is too short for dataset",ortim->fname) ;
+         if( nx < nt )
+           ERROR_exit("-ort '%s' length %d shorter than dataset length %d" ,
+                      ortim->name , nx , nt ) ;
          polref = (float **)realloc(polref,(nref+ny)*sizeof(float *)) ;
          oar    = MRI_FLOAT_PTR(ortim) ;
          for( qq=0 ; qq < ny ; qq++,oar+=nx ){
@@ -260,10 +283,36 @@ int main( int argc , char *argv[] )
        DESTROY_IMARR(ortar) ;
      }
 
-     INFO_message("Detrending data vectors") ;
-     for( kk=0 ; kk < IMARR_COUNT(imar) ; kk++ ){
-       tsar = MRI_FLOAT_PTR(IMARR_SUBIM(imar,kk)) ;
-       THD_generic_detrend_LSQ( nt , tsar , -1 , nref , polref , NULL ) ;
+     if( !do_bpass ){            /* old style ort-ification */
+
+       MRI_IMAGE *imq , *imp ; float *qar ;
+       INFO_message("Detrending data vectors") ;
+#if 1
+       imq = mri_new( nt , nref , MRI_float) ; qar = MRI_FLOAT_PTR(imq) ;
+       for( kk=0 ; kk < nref ; kk++ )
+         memcpy( qar+kk*nt , polref[kk] , sizeof(float)*nt ) ;
+       imp = mri_matrix_psinv( imq , NULL , 1.e-8 ) ;
+       for( kk=0 ; kk < IMARR_COUNT(imar) ; kk++ ){
+         mri_matrix_detrend( IMARR_SUBIM(imar,kk) , imq , imp ) ;
+       }
+       mri_free(imp) ; mri_free(imq) ;
+#else
+       for( kk=0 ; kk < IMARR_COUNT(imar) ; kk++ ){
+         tsar = MRI_FLOAT_PTR(IMARR_SUBIM(imar,kk)) ;
+         THD_generic_detrend_LSQ( nt , tsar , -1 , nref , polref , NULL ) ;
+       }
+#endif
+
+     } else {                   /* bandpass plus (maybe) orts */
+
+       float **vec = (float **)malloc(sizeof(float *)*IMARR_COUNT(imar)) ;
+       INFO_message("Bandpassing data vectors") ;
+       for( kk=0 ; kk < IMARR_COUNT(imar) ; kk++ )
+         vec[kk] = MRI_FLOAT_PTR(IMARR_SUBIM(imar,kk)) ;
+       (void)THD_bandpass_vectors( nt    , IMARR_COUNT(imar) , vec     ,
+                                   dtime , bpass_L           , bpass_H ,
+                                   1     , nref              , polref   ) ;
+       free(vec) ;
      }
 
      for( kk=0 ; kk < nref; kk++ ) free(polref[kk]) ;
