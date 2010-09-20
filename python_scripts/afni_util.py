@@ -1,7 +1,10 @@
 #!/usr/bin/env python
 
+# afni_util.py : general utilities for python programs
+
 import sys, os, math
 import afni_base as BASE
+import lib_textdata as TD
 
 # this file contains various afni utilities   17 Nov 2006 [rickr]
 
@@ -192,7 +195,11 @@ def get_default_polort(tr, reps):
     if tr <= 0 or reps <= 0:
         print "** cannot guess polort from tr = %f, reps = %d" % (tr,reps)
         return 2        # return some default
-    run_time = tr * reps
+
+    return run_time_to_polort(tr*reps)
+
+def run_time_to_polort(run_time):
+    """direct computation: 1+floor(run_time/150)"""
     return 1+math.floor(run_time/150.0)
 
 def get_num_warp_pieces(dset, verb=1):
@@ -258,7 +265,8 @@ def get_truncated_grid_dim(dset, verb=1):
     for ind in range(len(dims)):
         dims[ind] = abs(dims[ind])
     md = min(dims)
-    if md >= 2.0: return math.floor(md)
+    # changed 2 -> 4  19 Mar 2010 
+    if md >= 4.0: return math.floor(md)
     if md <= 0:
         print '** failed to get truncated grid dim from %s' % dims
         return 0
@@ -392,60 +400,21 @@ def attr_equals_val(object, attr, val):
 # ----------------------------------------------------------------------
 # begin matrix functions
 
-def read_1D_file(filename, nlines = -1, verb = 1):
-    """read a simple 1D file into a float matrix, and return the matrix
-       - skip leading '#', return a 2D array of floats"""
-    try:
-        fp = open(filename, 'r')
-    except:
-        if verb >= 0: print "failed to open 1D file %s" % filename
-        return None
-
-    if verb > 1: print "+d opened file %s" % filename
-
-    retmat = []
-    lnum   = 0
-    data = fp.read()
-    fp.close()
-    for line in data.splitlines():
-        if 0 <= nlines <= lnum: break   # then stop early
-        if not line:
-            if verb > 0: print "skipping empty line:"
-            continue
-        if line[0] == '#' or line[0] == '\0':
-            if verb > 0: print "skipping comment line: %s" % line
-            continue
-        retmat.append([])
-        tokens = line.split()
-        for tok in tokens:
-            try: fval = float(tok)
-            except:
-                if verb >= 0:
-                    print "found bad float on line %d: '%s'" % (lnum+1,tok)
-                return None
-            retmat[lnum].append(float(tok))
-
-        if verb > 2: print "+d line %d, length %d" % (lnum, len(retmat[lnum]))
-
-        lnum += 1
-
-    return retmat
-
 def num_cols_1D(filename):
     """return the number of columns in a 1D file"""
-    mat = read_1D_file(filename)
+    mat = TD.read_1D_file(filename)
     if not mat or len(mat) == 0: return 0
     return len(mat[0])
 
 def num_rows_1D(filename):
     """return the number of columns in a 1D file"""
-    mat = read_1D_file(filename)
+    mat = TD.read_1D_file(filename)
     if not mat: return 0
     return len(mat)
 
 def max_dim_1D(filename):
     """return the larger of the number of rows or columns"""
-    mat = read_1D_file(filename)
+    mat = TD.read_1D_file(filename)
     if not mat: return 0
     rows = len(mat)
     cols = len(mat[0])
@@ -722,6 +691,31 @@ def strip_list_brackets(istr, verb=1):
 
    return istr
 
+def replace_n_squeeze(instr, oldstr, newstr):
+   """like string.replace(), but remove all spaces around oldstr
+      (so probably want some space in newstr)"""
+   # while oldstr is found
+   #   find last preceeding keep posn (before oldstr and spaces)
+   #   find next following keep posn (after oldstr and spaces)
+   #   set result = result[0:first] + newstr + result[last:]
+   newlen = len(newstr)
+   result = instr
+   posn = result.find(oldstr)
+   while posn >= 0:
+      rlen = len(result)
+      start = posn-1
+      while start >= 0 and result[start] == ' ': start -= 1
+      if start >= 0: newres = result[0:start+1] + newstr
+      else:          newres = newstr
+      end = posn + newlen
+      while end < rlen and result[end] == ' ': end += 1
+      if end < rlen: newres += result[end:]
+
+      result = newres
+      posn = result.find(oldstr)
+
+   return result
+
 # ----------------------------------------------------------------------
 # line wrapper functions
 
@@ -839,7 +833,8 @@ def get_next_indentation(command,start=0,end=-1):
     prefix = command[start:start+spaces]+'    ' # grab those spaces, plus 4
     # now check for an indention prefix
     posn = command.find('\\\n', start)
-    if posn >= 0:
+    pn = command.find('\n', start)      # but don't continue past current line
+    if posn >= 0 and posn < pn:
         spaces = num_leading_line_spaces(command,posn+2,1)
         if posn > start and spaces >= 2:
             prefix = command[posn+2:posn+2+spaces] # grab those spaces
@@ -985,7 +980,7 @@ def vals_are_multiples(num, vals, digits=4):
 
     return 1
 
-def vals_are_constant(vlist, cval=0):
+def vals_are_constant(vlist, cval=None):
    """determine whether every value in vlist is equal to cval
       (if cval == None, use vlist[0])"""
 
@@ -1004,6 +999,12 @@ def vals_are_positive(vlist):
       if val <= 0: return 0
    return 1
 
+def vals_are_0_1(vlist):
+   """determine whether every value in vlist is either 0 or 1"""
+   for val in vlist:
+      if val != 0 and val != 1: return 0
+   return 1
+
 def vals_are_sorted(vlist, reverse=0):
    """determine whether values non-decreasing (or non-inc if reverse)"""
    if vlist == None: return 1
@@ -1018,6 +1019,28 @@ def vals_are_sorted(vlist, reverse=0):
                break
          else:
             if vlist[ind] > vlist[ind+1]:
+               rval = 0
+               break
+   except:
+      print "** failed to detect sorting in list: %s" % vlist
+      rval = 0
+      
+   return rval
+
+def vals_are_increasing(vlist, reverse=0):
+   """determine whether values strictly increasing (or dec if reverse)"""
+   if vlist == None: return 1
+   if len(vlist) < 2: return 1
+
+   rval = 1
+   try:
+      for ind in range(len(vlist)-1):
+         if reverse:
+            if vlist[ind] <= vlist[ind+1]:
+               rval = 0
+               break
+         else: # verify increasing
+            if vlist[ind] >= vlist[ind+1]:
                rval = 0
                break
    except:
@@ -1134,7 +1157,101 @@ def data_to_hex_str(data):
    return retstr
 
 # ----------------------------------------------------------------------
-# matematical functions
+# wildcard construction functions
+# ----------------------------------------------------------------------
+
+def first_last_match_strs(slist):
+   """given a list of strings, return the first and last consistent strings
+      (i.e. all strings have the form first*last)
+
+        e.g. given ['subj_A1.txt', 'subj_B4.txt', 'subj_A2.txt' ]
+             return 'subj_' and '.txt'
+   """
+
+   if not slist: return '', ''
+
+   maxlen = len(slist[0])
+   hmatch = maxlen              # let them shrink
+   tmatch = maxlen
+   for sind in range(1, len(slist)):
+      if slist[0] == slist[sind]: continue
+
+      hmatch = min(hmatch, len(slist[sind]))
+      tmatch = min(tmatch, len(slist[sind]))
+
+      # find first left diff
+      i = 0
+      while i < hmatch:
+         if slist[sind][i] != slist[0][i]: break
+         i += 1
+      hmatch = min(hmatch, i)
+
+      # find first right diff (index from 1)
+      i = 1
+      while i <= tmatch:
+         if slist[sind][-i] != slist[0][-i]: break
+         i += 1
+      tmatch = min(tmatch, i-1)
+
+   if hmatch+tmatch > maxlen:           # weird, but constructable
+      tmatch = maxlen - hmatch          # so shrink to fit
+
+   return slist[0][0:hmatch], slist[0][-tmatch:]
+
+def glob_form_from_list(slist):
+   """given a list of strings, return a glob form
+
+        e.g. given ['subjA1.txt', 'subjB4.txt', 'subjA2.txt' ]
+             return 'subj*.txt'
+
+      Somewhat opposite list_minus_glob_form().
+   """
+
+   first, last = first_last_match_strs(slist)
+   globstr = '%s*%s' % (first,last)
+
+   return globstr
+
+def list_minus_glob_form(slist, hpad=0, tpad=0):
+   """given a list of strings, return the inner part of the list that varies
+      (i.e. remove the consistent head and tail elements)
+
+        e.g. given ['subjA1.txt', 'subjB4.txt', 'subjA2.txt' ]
+             return [ 'A1', 'B4', 'A2' ]
+
+      If hpad > 0, then pad with that many characters back into the head
+      element.  Similarly, tpad pads forward into the tail.
+
+        e.g. given ['subjA1.txt', 'subjB4.txt', 'subjA2.txt' ]
+             if hpad = 926 (or 4 :) and tpad = 1,
+             return [ 'subjA1.', 'subjB4.', 'subjA2.' ]
+
+      Somewhat opposite glob_form_from_list().
+   """
+
+   if hpad < 0 or tpad < 0:
+      print '** list_minus_glob_form: hpad/tpad must be non-negative'
+      return []
+
+   # get head, tail and note lengths
+   head, tail = first_last_match_strs(slist)
+   hlen = len(head)
+   tlen = len(tail)
+
+   # adjust by padding, but do not go negative
+   if hpad >= hlen: hlen = 0
+   else:            hlen -= hpad
+   if tpad >= tlen: tlen = 0
+   else:            tlen -= tpad
+
+   # and return the list of center strings
+   if tlen == 0: return [ s[hlen:]      for s in slist ]
+   else:         return [ s[hlen:-tlen] for s in slist ]
+
+# ----------------------------------------------------------------------
+# matematical functions:
+#    vector routines: sum, sum squares, mean, demean
+# ----------------------------------------------------------------------
 
 def loc_sum(vals):
    """in case 'sum' does not exist, such as on old machines"""
@@ -1145,8 +1262,15 @@ def loc_sum(vals):
       for val in vals: tot += val
    return tot
 
+def sumsq(vals):
+   """return the sum of the squared values"""
+   ssq = 0
+   for val in vals: ssq += (val*val)
+   return ssq
+
 def euclidean_norm(vals):
 
+   if len(vals) < 1: return 0.0
    return math.sqrt(loc_sum([v*v for v in vals]))
 
 def dotprod(v1,v2):
@@ -1215,6 +1339,10 @@ def demean(vec, ibot=-1, itop=-1):
 
     return 0
 
+# ----------------------------------------------------------------------
+# statistical routines - stdev, variance, ttest
+# ----------------------------------------------------------------------
+
 def min_mean_max_stdev(data):
     """return 4 values for data: min, mean, max, stdev (unbiased)"""
 
@@ -1228,6 +1356,42 @@ def min_mean_max_stdev(data):
     meanval = loc_sum(data)/float(length)
 
     return minval, meanval, maxval, stdev_ub(data)
+
+def interval_offsets(times, dur):
+    """given a list of times and an interval duration (e.g. TR), return
+       the offsets into respective intervals"""
+
+    if not times or dur <= 0:
+        print "** interval offsets: bad dur (%s) or times: %s" % (dur, times)
+        return []
+
+    length = len(times)
+    if length <  1: return []
+
+    fdur = float(dur)   # to make sure (e.g. avoid int division)
+
+    try: offlist = [math.modf(val/fdur)[0] for val in times]
+    except:
+        print "** interval offsets 2: bad dur (%s) or times: %s" % (dur, times)
+        return []
+   
+    return offlist
+
+def fractional_offsets(times, dur):
+    """given a list of times and an interval duration (e.g. TR), return
+       the fractional offsets into respective intervals
+
+       i.e. similar to interval offsets, but times are divided by dur"""
+
+    # rely on i_o for error checking
+    olist = interval_offsets(times, dur)
+    if len(olist) < 1 or dur <= 0: return []
+
+    dur = float(dur)
+    for ind, val in enumerate(olist):
+        olist[ind] = val/dur
+
+    return olist
 
 def stdev_ub(data):
     """unbiased standard deviation (divide by len-1, not just len)"""
@@ -1261,6 +1425,162 @@ def stdev(data):
     if val < 0.0 : return 0.0
     return math.sqrt(val)
 
+def variance_ub(data):
+    """unbiased variance (divide by len-1, not just len)"""
+
+    length = len(data)
+    if length <  2: return 0.0
+
+    meanval = loc_sum(data)/float(length)
+    # compute standard deviation
+    ssq = 0.0
+    for val in data: ssq += val*val
+    val = (ssq - length*meanval*meanval)/(length-1.0)
+
+    # watch for truncation artifact
+    if val < 0.0 : return 0.0
+    return val
+
+def variance(data):
+    """(biased) variance (divide by len, not len-1)"""
+
+    length = len(data)
+    if length <  2: return 0.0
+
+    meanval = loc_sum(data)/float(length)
+    # compute standard deviation
+    ssq = 0.0
+    for val in data: ssq += val*val
+    val = (ssq - length*meanval*meanval)/length
+
+    # watch for truncation artifact
+    if val < 0.0 : return 0.0
+    return val
+
+def correlation_p(vA, vB):
+    """return the Pearson correlation between the 2 vectors"""
+
+    length = len(vA)
+    if len(vB) != length:
+        print '** correlation_pearson: vectors have different lengths'
+        return 0.0
+
+    if length < 2: return 0.0
+
+    ma = mean(vA)
+    mb = mean(vB)
+
+    dA = [v-ma for v in vA]
+    dB = [v-mb for v in vB]
+
+    ssA = 0.0
+    ssB = 0.0
+    sAB = 0.0
+    for ind in range(length):
+        ssA += dA[ind]*dA[ind]
+        ssB += dB[ind]*dB[ind]
+        sAB += dA[ind]*dB[ind]
+
+    del(dA); del(dB)
+
+    if ssA <= 0.0 or ssB <= 0.0: return 0.0
+    else:                        return sAB/math.sqrt(ssA*ssB)
+
+def ttest(data0, data1=None):
+    """just a top-level function"""
+
+    if data1: return ttest_2sam(data0, data1)
+    return ttest_1sam(data0)
+
+def ttest_1sam(data, m0=0.0):
+    """return (mean-m0) / (stdev_ub(data)/sqrt(N)),
+
+              where stdev_ub = sqrt( (sumsq - N*mean^2)/(N-1) )
+
+       or faster, return: (sum-N*m0)/(sqrt(N)*stdev_ub)
+
+       note: move 1/N factor to denominator
+    """
+
+    # check for short length
+    N = len(data)
+    if N < 2: return 0.0
+
+    # check for division by 0
+    sd = stdev_ub(data)
+    if sd <= 0.0: return 0.0
+
+    # and return, based on any passed expected mean
+    if m0: t = (loc_sum(data) - N*m0)/(math.sqrt(N)*sd)
+    else:  t =  loc_sum(data)        /(math.sqrt(N)*sd)
+
+    return t
+
+def ttest_paired(data0, data1):
+    """easy: return 1 sample t-test of the difference"""
+
+    N0 = len(data0)
+    N1 = len(data1)
+    if N0 < 2 or N1 < 2: return 0.0
+    if N0 != N1:
+        print '** ttest_paired: unequal vector lengths'
+        return 0.0
+
+    return ttest_1sam([data1[i] - data0[i] for i in range(N0)])
+
+def ttest_2sam(data0, data1, pooled=1):
+    """if not pooled, return ttest_2sam_unpooled(), otherwise
+
+       return (mean1-mean0)/sqrt(PV * (1/N0 + 1/N1))
+
+              where PV (pooled_variance) = ((N0-1)*V0 + (N1-1)*V1)/(N0+N1-2)
+
+       note: these lists do not need to be of the same length
+       note: the sign is as with 3dttest (second value(s) minus first)
+    """
+
+    if not pooled: return ttest_2sam_unpooled(data0, data1)
+
+    N0 = len(data0)
+    N1 = len(data1)
+    if N0 < 2 or N1 < 2: return 0.0
+
+    m0 = loc_sum(data0)/float(N0)
+    v0 = variance_ub(data0)
+
+    m1 = loc_sum(data1)/float(N1)
+    v1 = variance_ub(data1)
+
+    pv = ((N0-1)*v0 + (N1-1)*v1) / (N0+N1-2.0)
+    if pv <= 0.0: return 0.0
+
+    return (m1-m0)/math.sqrt(pv * (1.0/N0 + 1.0/N1))
+
+def ttest_2sam_unpooled(data0, data1):
+    """return (mean1-mean0)/sqrt(var0/N0 + var1/N1)
+
+       note: these lists do not need to be of the same length
+       note: the sign is as with 3dttest (second value(s) minus first)
+    """
+
+    N0 = len(data0)
+    N1 = len(data1)
+    if N0 < 2 or N1 < 2: return 0.0
+
+    m0 = loc_sum(data0)/float(N0)
+    v0 = variance_ub(data0)
+
+    m1 = loc_sum(data1)/float(N1)
+    v1 = variance_ub(data1)
+
+    if v0 <= 0.0 or v1 <= 0.0: return 0.0
+
+    return (m1-m0)/math.sqrt(v0/N0 + v1/N1)
+
+# ----------------------------------------------------------------------
+# random list routines: shuffle, merge, swap, extreme checking
+# ----------------------------------------------------------------------
+
 def shuffle(vlist):
     """randomize the order of list elements, where each perumuation is
        equally likely
@@ -1285,6 +1605,29 @@ def shuffle(vlist):
             vlist[index] = val
 
     return
+
+def random_merge(list1, list2):
+    """randomly merge 2 lists (so each list stays in order)
+
+       shuffle a list of 0s and 1s and then fill from lists
+    """
+
+    # if we need random elsewhere, maybe do it globally
+    import random
+
+    mlist = [0 for i in range(len(list1))] + [1 for i in range(len(list2))]
+    shuffle(mlist)
+
+    i1, i2 = 0, 0
+    for ind in range(len(mlist)):
+        if mlist[ind] == 0:
+            mlist[ind] = list1[i1]
+            i1 += 1
+        else:
+            mlist[ind] = list2[i2]
+            i2 += 1
+
+    return mlist
 
 def swap2(data):
     """swap data elements in pairs"""
@@ -1377,4 +1720,33 @@ def vec_range_limit(vec, minv, maxv):
       elif vec[ind] > maxv: vec[ind] = maxv
 
    return 0
+
+# for now, make 2 vectors and return their correlation
+def test_tent_vecs(val, freq, length):
+    a = []
+    b = []
+    for i in range(length):
+        if (i%freq) == 0:
+            a.append(val)
+            b.append(1-val)
+        elif ((i-1)%freq) == 0:
+            a.append(0.0)
+            b.append(val)
+        else:
+            a.append(0.0)
+            b.append(0.0)
+
+    return correlation_p(a,b)
+
+def main():
+   if len(sys.argv) > 2:
+      if sys.argv[1] == '-eval':
+         print eval(' '.join(sys.argv[2:]))
+         return 0
+
+   print 'afni_util.py: not intended as a main program'
+   return 1
+
+if __name__ == '__main__':
+   sys.exit(main())
 

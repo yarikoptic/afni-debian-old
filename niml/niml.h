@@ -619,6 +619,10 @@ extern NI_procins * NI_new_processing_instruction( char * ) ;       /* 16 Mar 20
 
 extern void NI_swap_vector( int, int, void * ) ;
 
+#undef  NI_set_attribute_int
+#define NI_set_attribute_int(el,nm,vv)  \
+ do{ char ib[16]; sprintf(ib,"%d",(vv)); NI_set_attribute((el),(nm),ib); } while(0)
+
 /** I/O functions **/
 
 extern NI_stream NI_stream_open( char *, char * ) ;
@@ -675,6 +679,7 @@ extern void   NI_skip_procins( int ) ;                         /* 03 Jun 2005 */
 
 extern int NI_write_element_tofile( char *, void *, int ) ;    /* 07 Mar 2007 */
 extern void * NI_read_element_fromfile( char * ) ;             /* 12 Mar 2007 */
+extern void * NI_read_element_fromstring( char *nstr );     /* 26 Feb 2010 ZSS*/
 
 #define NI_SWAP_MASK  (1<<0)
 #define NI_LTEND_MASK (1<<1)
@@ -1208,6 +1213,8 @@ typedef struct { int num; char **str;} NI_str_array ;
 
 extern NI_str_array * NI_decode_string_list( char *ss , char *sep ) ;
 #define NI_decode_str_array NI_decode_string_list
+
+extern int NI_str_array_find( char *, NI_str_array *) ; /* 20 May 2010 */
 
 /*-------------------------------------------------------------------------*/
 /*! An array of floats. */

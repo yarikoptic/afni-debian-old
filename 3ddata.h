@@ -23,6 +23,8 @@
 #include <math.h>
 #include <errno.h>
 #include <ctype.h>
+#include <time.h>
+#include <sys/types.h>
 
 #include <X11/Intrinsic.h>
 
@@ -1977,9 +1979,18 @@ static char * DATASET_typestr[] = {
 #define VIEW_REGISTERED_STR   "Registered View"
 #define VIEW_REGISTERED_CODE  "rgst"
 
-#define FIRST_VIEW_TYPE 0
-#define LAST_VIEW_TYPE  2
-
+/*#define oldsessions 1*/
+#undef oldsessions
+#ifdef oldsessions
+   #define FIRST_VIEW_TYPE 0
+   #define LAST_VIEW_TYPE  2
+   #define MAX_LAST_VIEW_TYPE 2
+#else
+   #define FIRST_VIEW_TYPE 0
+   #define LAST_VIEW_TYPE \
+     (int)((int)get_nspaces()-1)
+   #define MAX_LAST_VIEW_TYPE 10
+#endif
 #define LONGEST_VIEW_TYPESTR strlen(VIEW_REGISTERED_STR)
 
 static char * VIEW_typestr[] = {
@@ -2436,6 +2447,16 @@ typedef struct THD_3dim_dataset {
       char *tcat_list ;
       int   tcat_num ;
       int  *tcat_len ;
+
+   /* 26 Feb 2010: Pointer to VALUE_LABEL_DTABLE */
+      void *Label_Dtable;
+   /* 13 Mar 2009: atlas space */
+      char atlas_space[THD_MAX_NAME] ;
+
+   /* 31 Mar 2009: integer colormap for ROIs and atlases */
+      int int_cmap ;
+   /* 04 Jul 2010: temporary index to say which space the dataset is in */
+      int space_index;
 
 } THD_3dim_dataset ;
 
@@ -3031,7 +3052,8 @@ extern int    THD_deconflict_prefix( THD_3dim_dataset * ) ;          /* 23 Mar 2
 /** 30 Nov 1997 **/
 
 static char tmp_dblab[8] ;
-#define DBLK_BRICK_LAB(db,iv) ( ((db)->brick_lab != NULL) ? ((db)->brick_lab[iv]) : "?" )
+#define NO_LAB_FLAG "?"
+#define DBLK_BRICK_LAB(db,iv) ( ((db)->brick_lab != NULL) ? ((db)->brick_lab[iv]) : NO_LAB_FLAG )
 
 /*! Return the label string for sub-brick iv of dataset ds.
 
@@ -3042,6 +3064,9 @@ static char tmp_dblab[8] ;
 /*! Synonym for DSET_BRICK_LAB */
 
 #define DSET_BRICK_LABEL      DSET_BRICK_LAB
+
+/*! Check if sub-brick has label March 2010 ZSS */
+#define DSET_HAS_LABEL(ds,iv) ( strcmp (DSET_BRICK_LABEL(ds,iv), NO_LAB_FLAG) )
 
 #define DBLK_BRICK_STATCODE(db,iv)  \
  ( ((db)->brick_statcode != NULL) ? (db)->brick_statcode[iv] : ILLEGAL_TYPE )
@@ -3158,8 +3183,8 @@ extern int THD_count_fdrwork( THD_3dim_dataset *dset ) ; /* 12 Nov 2008 */
     strcpy((ds)->label2   ,THD_DEFAULT_LABEL) )
 
 /*! Macro to load brick statistics of a dataset if it
-      - doesn't have statistics already, or
-      - has bad statistics from the (very) old to3d bug
+      - doesn't have statistics already, OR
+      - has bad statistics from the (very very very) old to3d bug
 */
 
 #define RELOAD_STATS(dset)                                                  \
@@ -3431,22 +3456,34 @@ typedef struct THD_3dim_dataset_array {
 
 #define SESSION_TYPE 97
 
-typedef struct { THD_3dim_dataset *drow[LAST_VIEW_TYPE+1] ; } THD_dsetrow ;
-
 /*! Holds all the datasets from a directory (session).
     [28 Jul 2003: modified to put elide distinction between anat and func]
     [20 Jan 2004: modified to put surfaces into here as well]
 */
+
+
+/* each session can contain a list of dataset in different views */
+/* each row can be represented by this structure showing different 
+   spaces or views for each dataset - orig, acpc, tlrc, mni,...*/
+/* the dataset may be on the disk or an on-the-fly transformed 
+   version of another dataset */
+typedef struct {
+  int nds;               /* the number of dataset spaces for this row */
+  THD_3dim_dataset **ds; /* the datasets for that "row" of spaces */
+} THD_dsarr;
 
 typedef struct {
       int type     ;                  /*!< code indicating this is a THD_session */
       int num_dsset ;                 /*!< Number of datasets. */
       char sessname[THD_MAX_NAME] ;   /*!< Name of directory datasets were read from */
       char lastname[THD_MAX_NAME] ;   /*!< Just/the/last/name of the directory */
-
-      THD_3dim_dataset *dsset[THD_MAX_SESSION_SIZE][LAST_VIEW_TYPE+1] ;
+#ifdef oldsessions
+      THD_3dim_dataset *xdsset[THD_MAX_SESSION_SIZE][LAST_VIEW_TYPE+1] ;
                                       /*!< array of datasets */
-
+#endif
+      THD_dsarr **dsrow;               /* list of pointers for dataset 
+                                         in different spaces */
+      int ndsets;                      /* number of datasets */
       Htable *warptable ;       /*!< Table of inter-dataset warps [27 Aug 2002] */
 
       /* 20 Jan 2004: put surfaces here, rather than in the datasets */
@@ -3460,6 +3497,33 @@ typedef struct {
       XtPointer parent ;        /*!< generic pointer to "owner" of session */
 } THD_session ;
 
+char * THD_get_space(THD_3dim_dataset *dset);
+int THD_space_code(char *space);
+
+
+THD_3dim_dataset *
+get_session_dset_id(THD_session *sess, MCW_idcode idcode, int space_index);
+THD_3dim_dataset *
+get_session_dset(THD_session *sess, int index, int space_index);
+int
+set_session_dset(THD_3dim_dataset *dset, THD_session *sess,
+   int index, int space_index);
+void set_nspaces(int n);
+void set_atlas_nspaces(void);
+int get_nspaces(void);
+
+#ifdef oldsessions
+   #define GET_SESSION_DSET(session, index, space) \
+        session->xdsset[index][space]
+   #define SET_SESSION_DSET(sdset, session, index, space) \
+        session->xdsset[index][space] = sdset
+#else
+   #define GET_SESSION_DSET(session, index, space) \
+        (THD_3dim_dataset *) get_session_dset(session, index, space)
+   #define SET_SESSION_DSET(sdset, session, index, space) \
+        set_session_dset(sdset, session, index, space)
+#endif
+
 /*! Determine if ss points to a valid THD_session. */
 
 #define ISVALID_SESSION(ss) ( (ss) != NULL && (ss)->type == SESSION_TYPE )
@@ -3469,12 +3533,18 @@ typedef struct {
 #define BLANK_SESSION(ss)                                                     \
   if( ISVALID_SESSION((ss)) ){                                                \
       int id , vv ;                                                           \
-      for( id=0 ; id < THD_MAX_SESSION_SIZE ; id++ )                          \
-        for( vv=0 ; vv <= LAST_VIEW_TYPE ; vv++ ) (ss)->dsset[id][vv] = NULL; \
       (ss)->num_dsset = 0 ;                                                   \
       (ss)->su_num    = 0 ; (ss)->su_surf = NULL ;                            \
       (ss)->su_numgroup = 0 ; (ss)->su_surfgroup = NULL ;                     \
-      (ss)->warptable = NULL ; }
+      (ss)->warptable = NULL ; (ss)->dsrow = NULL;                            \
+      for( id=0 ; id < THD_MAX_SESSION_SIZE ; id++ )                          \
+        for( vv=0 ; vv < get_nspaces() ; vv++ )                              \
+           SET_SESSION_DSET(NULL, ss, id, vv);                                \
+  }
+      
+/*      for( id=0 ; id < THD_MAX_SESSION_SIZE ; id++ )                          \
+        for( vv=0 ; vv <= LAST_VIEW_TYPE ; vv++ )                             \
+           SET_SESSION_DSET(NULL, ss, id, vv);                       \*/
 
 /*! Determine if session has SUMA surface data attached. */
 
@@ -3711,6 +3781,9 @@ extern char * THD_find_executable( char * ) ;
 
 extern int THD_is_dataset( char * , char * , int ) ; /* 17 Mar 2000 */
 extern char * THD_dataset_headname( char * , char * , int ) ;
+
+extern NI_element * THD_simple_table_read( char *fname ) ; /* 19 May 2010 */
+extern NI_element * THD_mixed_table_read ( char *fname ) ; /* 26 Jul 2010 */
 
 extern MRI_IMARR * THD_get_all_timeseries( char * ) ;
 extern MRI_IMARR * THD_get_many_timeseries( THD_string_array * ) ;
@@ -4137,11 +4210,11 @@ typedef struct {
 
 #undef  MAKE_VECTIM
 #define MAKE_VECTIM(nam,nvc,nvl)                                  \
- do{ (nam) = (MRI_vectim *)malloc(sizeof(MRI_vectim)) ;           \
+ do{ (nam) = (MRI_vectim *)calloc(sizeof(MRI_vectim),1) ;         \
      (nam)->nvec  = (nvc) ;                                       \
      (nam)->nvals = (nvl) ;                                       \
-     (nam)->ivec  = (int *)  malloc(sizeof(int)  *(nvc)) ;        \
-     (nam)->fvec  = (float *)malloc(sizeof(float)*(nvc)*(nvl)) ;  \
+     (nam)->ivec  = (int *)  calloc(sizeof(int)  ,(nvc)) ;        \
+     (nam)->fvec  = (float *)calloc(sizeof(float),(nvc)*(nvl)) ;  \
  } while(0)
 
 #undef  ISVALID_VECTIM
@@ -4167,6 +4240,9 @@ typedef struct {
  } while(0)
 
 extern MRI_vectim * THD_dset_to_vectim( THD_3dim_dataset *dset, byte *mask, int ignore );
+MRI_vectim * THD_2dset_to_vectim( THD_3dim_dataset *dset1, byte *mask1 ,
+                                  THD_3dim_dataset *dset2, byte *mask2 ,
+                                  int ignore );
 extern int64_t THD_vectim_size( THD_3dim_dataset *dset , byte *mask ) ;
 extern int THD_vectim_ifind( int iv , MRI_vectim *mrv ) ;
 extern int bsearch_int( int tt , int nar , int *ar ) ;
@@ -4174,11 +4250,23 @@ extern void THD_vectim_to_dset( MRI_vectim *mrv , THD_3dim_dataset *dset ) ;
 
 extern void mri_blur3D_vectim( MRI_vectim *vim , float fwhm ) ;
 extern void THD_vectim_normalize( MRI_vectim *mrv ) ;
-extern void THD_vectim_dotprod( MRI_vectim *mrv, float *vec, float *dp, int ata ) ;
+extern void THD_vectim_dotprod ( MRI_vectim *mrv, float *vec, float *dp, int ata ) ;
+extern void THD_vectim_spearman( MRI_vectim *mrv, float *vec, float *dp ) ; /* 01 Mar 2010 */
+extern void THD_vectim_quadrant( MRI_vectim *mrv, float *vec, float *dp ) ; /* 01 Mar 2010 */
+extern void THD_vectim_ktaub   ( MRI_vectim *mrv, float *vec, float *dp ) ; /* 29 Apr 2010 */
+
+extern float kendallNlogN ( float *arr1, float *arr2, int len ) ;  /* in ktaub.c */
+extern float kendallSmallN( float *arr1, float *arr2, int len ) ;
 
 extern int THD_vectim_subset_average( MRI_vectim *mrv, int nind, int *ind, float *ar );
 
 extern void THD_vectim_vectim_dot( MRI_vectim *arv, MRI_vectim *brv, float *dp ) ;
+
+extern MRI_vectim * THD_vectim_copy( MRI_vectim *mrv ) ;      /* 08 Apr 2010 */
+extern MRI_vectim * THD_tcat_vectims( int , MRI_vectim ** ) ; /* 26 Jul 2010 */
+extern MRI_vectim * THD_dset_list_to_vectim( int, THD_3dim_dataset **, byte * );
+
+#define ICOR_MAX_FTOP 99999  /* 26 Feb 2010 */
 
 typedef struct {
   THD_3dim_dataset *dset , *mset ;
@@ -4186,6 +4274,7 @@ typedef struct {
   MRI_IMAGE *gortim ;
   int ignore , automask , mindex ;
   float fbot , ftop , blur , sblur ;
+  int polort , cmeth ;                     /* 26 Feb 2010 */
   MRI_vectim *mv ;
   char *prefix ; int ndet ;
   float *tseed ;
@@ -4236,7 +4325,8 @@ extern floatvec * THD_fitter_fitts( int npt, floatvec *fv,
 
 extern void       THD_fitter_do_fitts(int qq) ;
 extern floatvec * THD_retrieve_fitts(void) ;
-extern void       THD_fitter_voxid( int i ) ;  /* 10 Sep 2008 */
+extern void       THD_fitter_voxid( int i ) ;       /* 10 Sep 2008 */
+extern void       THD_fitter_set_vthresh( float ) ; /* 18 May 2010 */
 
 /*--------------- routines that are in thd_detrend.c ---------------*/
 
@@ -4334,6 +4424,8 @@ extern byte * THD_makemask( THD_3dim_dataset *, int,float,float) ;
 extern int    THD_makedsetmask( THD_3dim_dataset *, int,float,float, byte* ) ;
 extern int *THD_unique_vals( THD_3dim_dataset *mask_dset, int miv,
                               int *n_unique, byte*cmask );
+int is_integral_dset ( THD_3dim_dataset *dset, int check_data);
+int is_integral_sub_brick ( THD_3dim_dataset *dset, int isb, int check_data);
 extern int THD_mask_remove_isolas( int nx, int ny, int nz , byte *mmm ) ;
 
 extern int    THD_countmask( int , byte * ) ;
@@ -4346,6 +4438,7 @@ extern int    mask_intersect_count( int, byte *, byte * ); /* 30 Mar 2009 */
 extern int    mask_union_count    ( int, byte *, byte * ); /* 30 Mar 2009 */
 extern int    mask_count          ( int, byte * ) ;
 extern float_triple mask_rgyrate( int nx, int ny, int nz , byte *mmm ) ;
+extern byte * mri_automask_image2D( MRI_IMAGE *im ) ;      /* 12 Mar 2010 */
 
 
                                                    /* 13 Nov 2006 [rickr] */
@@ -4377,6 +4470,9 @@ extern void THD_mask_erodemany( int nx, int ny, int nz, byte *mmm, int npeel ) ;
 extern int THD_peel_mask( int nx, int ny, int nz , byte *mmm, int pdepth ) ;
 
 extern void THD_mask_dilate( int, int, int, byte *, int ) ;  /* 30 Aug 2002 */
+extern short *THD_mask_depth (int nx, int ny, int nz, byte *mask,
+                              byte preservemask,
+                              short *usethisdepth);    /* ZSS March 02 2010 */
 
 extern float THD_cliplevel( MRI_IMAGE * , float ) ;          /* 12 Aug 2001 */
 extern float THD_cliplevel_abs( MRI_IMAGE * , float ) ;      /* 05 Mar 2007 */
@@ -4584,7 +4680,7 @@ extern MRI_IMARR * mri_3dalign_oneplus( MRI_3dalign_basis * , MRI_IMARR * ,
   /*-- see mri_warp3D_align.c for these routines --*/
 
 #undef  PARAM_MAXTRIAL
-#define PARAM_MAXTRIAL 7
+#define PARAM_MAXTRIAL 11
 typedef struct {
   float min, max, siz, ident, delta, toler ;
   float val_init , val_out , val_fixed , val_pinit ;
@@ -4634,6 +4730,11 @@ extern void        mri_warp3D_align_cleanup( MRI_warp3D_align_basis * ) ;
 extern void THD_check_AFNI_version(char *) ;  /* 26 Aug 2005 */
 extern void THD_death_setup( int msec ) ;     /* 14 Sep 2009 */
 
+extern float THD_saturation_check( THD_3dim_dataset *, byte * ) ; /* 08 Feb 2010 */
+
+extern THD_3dim_dataset * THD_dummy_N27  (void) ;  /* 12 Feb 2010 */
+extern THD_3dim_dataset * THD_dummy_RWCOX(void) ;  /* 12 Feb 2010 */
+
 /*---------------------------------------------------------------------*/
 
 #if 0
@@ -4647,6 +4748,8 @@ extern float THD_stat_to_zscore( float thr , int statcode , float * stataux ) ;
 extern int THD_filename_ok( char * ) ;   /* 24 Apr 1997 */
 extern int THD_filename_pure( char * ) ; /* 28 Feb 2001 */
 extern int THD_freemegabytes( char * ) ; /* 28 Mar 2005 */
+extern int THD_character_ok( char ) ;    /* 04 Feb 2010 */
+extern int THD_filename_fix( char * ) ;  /* 04 Feb 2010 */
 
 extern THD_warp * AFNI_make_voxwarp( THD_warp * , THD_3dim_dataset * ,
                                                   THD_3dim_dataset *  ) ;
@@ -4706,7 +4809,7 @@ extern double ENTROPY_compute   (void) ;
 extern double ENTROPY_dataset   (THD_3dim_dataset *) ;
 extern double ENTROPY_datablock (THD_datablock *) ;
 
-extern int  AFNI_vedit( THD_3dim_dataset *dset , VEDIT_settings vednew ) ;
+extern int  AFNI_vedit( THD_3dim_dataset *dset , VEDIT_settings vednew , byte *mask ) ;
 extern void AFNI_vedit_clear( THD_3dim_dataset *dset ) ;
 
 /*--------------------------------------------------------------------------*/
@@ -4813,6 +4916,8 @@ extern THD_3dim_dataset * TT_retrieve_atlas_either(void); /* 22 Aug 2001 */
 extern float THD_spearman_corr( int,float *,float *) ;  /* 23 Aug 2001 */
 extern float THD_quadrant_corr( int,float *,float *) ;
 extern float THD_pearson_corr ( int,float *,float *) ;
+extern float THD_ktaub_corr   ( int,float *,float *) ;  /* 29 Apr 2010 */
+extern float THD_eta_squared  ( int,float *,float *) ;  /* 25 Jun 2010 */
 
 extern float THD_pearson_corr_wt( int,float *,float *,float *) ; /* 13 Sep 2006 */
 
@@ -4852,9 +4957,9 @@ extern float THD_hellinger_scl( int, float,float,float *,      /* 26 Sep 2006 */
                                      float,float,float *, float * ) ;
 extern float THD_hellinger( int , float *, float * ) ;
 
-extern THD_fvec3 THD_helnmi_scl( int, float,float,float *,
-                                 float,float,float *, float * ) ;
-extern THD_fvec3 THD_helnmi( int , float *, float * ) ;
+extern float_quad THD_helmicra_scl( int, float,float,float *,
+                                    float,float,float *, float * ) ;
+extern float_quad THD_helmicra( int , float *, float * ) ;
 
 extern int retrieve_2Dhist   ( float **xyhist ) ;     /* 28 Sep 2006 */
 extern int retrieve_2Dhist1  ( float **, float ** ) ; /* 07 May 2007 */
@@ -4890,6 +4995,20 @@ extern float zz_ncd_pair( int n1 , char *s1 , int n2 , char *s2 );
 extern float THD_ncdfloat( int n , float *x , float *y );
 extern float THD_ncdfloat_scl( int n , float xbot,float xtop,float *x ,
                                        float ybot,float ytop,float *y  );
+
+/* stuff below, for masks, created Jul 2010 */
+
+extern char * array_to_zzb64( int nsrc , char *src , int linelen ) ;
+extern int    zzb64_to_array( char *zb , char **dest ) ;
+
+extern byte * mask_binarize( int , byte * ) ;
+extern byte * mask_unbinarize( int , byte * ) ;
+
+extern char * mask_to_b64string  ( int nvox  , byte *mful ) ;
+extern byte * mask_from_b64string( char *str , int *nvox  ) ;
+extern int    mask_b64string_nvox( char *str ) ;
+
+extern bytevec * THD_create_mask_from_string( char *str ) ;
 
 /*------------------------------------------------------------------------*/
 
@@ -4963,8 +5082,22 @@ extern NI_group * THD_dataset_to_niml( THD_3dim_dataset * ) ;
 extern MRI_IMAGE  * niml_to_mri( NI_element * ) ;
 extern NI_element * mri_to_niml( MRI_IMAGE *  ) ;
 
+/* a random-ish seed for a random number generator */
+
+#undef  GSEED
+#define GSEED (time(NULL) + 701*getpid())
+
 #ifdef  __cplusplus
 }
 #endif
+
+typedef struct {
+  int npthr , nathr ;
+  float *pthr , *athr ;
+  float **cluthr ;
+} CLU_threshtable ;   /* from 3dClustSim [Jul 2010] */
+
+extern char * THD_clustsim_atr_mask_dset_idcode( THD_3dim_dataset *dset ) ;
+extern float_triple THD_clustsim_atr_fwhmxyz( THD_3dim_dataset *dset ) ;
 
 #endif /* _MCW_3DDATASET_ */

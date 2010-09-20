@@ -3376,6 +3376,17 @@ SUMA_Boolean SUMA_LoadSpec_eng (
        fprintf (SUMA_STDERR, "Expecting to read %d surfaces.\n", Spec->N_Surfs);
    for (i=0; i<Spec->N_Surfs; ++i) { /* first loop across mappable surfaces */
       /*locate and load all Mappable surfaces */
+      if (Spec->LocalDomainParent[i][0] == '\0') {
+         /* assume surface is local domain parent, otherwise, 
+         surface controller would crash      ZSS  July 13 2010 */
+         if (debug) 
+            SUMA_S_Warnv(
+               "MappingRef field unavailable for %s in spec file, "
+               "Assuming MappingRef = SAME\n"
+               "You might have problems linking to volume.\n",
+                SO->Label);
+         sprintf(Spec->LocalDomainParent[i], "SAME");
+      } 
       if (SUMA_iswordin(Spec->LocalDomainParent[i],"SAME") == 1) { 
          /* Mappable surfaces */
          if ( debug || LoadPacify) { /* turned this back on as a pacifier */
@@ -3451,6 +3462,8 @@ SUMA_Boolean SUMA_LoadSpec_eng (
             }else if (  SUMA_isEnv("SUMA_ShowLabelDsetAtStartup","xxx") ||
                   SUMA_isEnv("SUMA_ShowLabelDsetAtStartup","no")) {
                NewColPlane->ShowMode = SW_SurfCont_DsetViewXXX;
+            }else{ /* show as contours only */
+               NewColPlane->ShowMode = SW_SurfCont_DsetViewCon;
             }
             /* create contours for this monster */
             SUMA_ContourateDsetOverlay(NewColPlane, NULL);
@@ -3539,8 +3552,11 @@ SUMA_Boolean SUMA_LoadSpec_eng (
             
          /* set its MappingRef id to NULL if none is specified */
             if (Spec->LocalDomainParent[i][0] == '\0') {
+               /* This should not happen after July 13 2010 fix above */
                SO->LocalDomainParentID = NULL; /* no known MapRef_idcode */
-               fprintf(SUMA_STDERR,"No Mapping Ref specified.\n");
+               SUMA_S_Warnv(
+                  "MappingRef field unavailable for %s in spec file ",
+                   SO->Label);
             } else {
                /* make sure that specified Mapping ref had been loaded */
                   int j = 0, ifound = -1;
@@ -3598,9 +3614,10 @@ SUMA_Boolean SUMA_LoadSpec_eng (
                   }
                } else {
                   if (debug) 
-                     fprintf(SUMA_STDERR,
-                             "MappingRef unavailable, "
-                             "you won't be able to link to afni.\n");
+                     SUMA_S_Warnv(
+                        "MappingRef field unavailable for %s in spec file, "
+                        "You might have problems linking to volume.\n",
+                         SO->Label);
                   SO->LocalDomainParentID = NULL;
                }
             }
@@ -3810,16 +3827,16 @@ SUMA_Boolean SUMA_SurfaceMetrics_eng (
                         "and First Neightbor.\n"
                         "Cause: idcode mismatch.\n"
                         "Independent lists will\n"
-                        "be created." );
+                        "be created.\n" );
          SOinh = NULL;
       }  else if (SO->N_Node != SOinh->N_Node || 
                   SO->N_FaceSet != SOinh->N_FaceSet) {
-         SUMA_SL_Warn(  "(IGNORE for surface patches)\n"
+         SUMA_SL_Note(  "(IGNORE for surface with cuts)\n"
                         "Cannot inherit Edge List\n"
                         "and First Neightbor.\n"
                         "Cause: Node number mismatch.\n"
                         "Independent lists will\n"
-                        "be created.");
+                        "be created.\n");
          SOinh = NULL;      
       }
    }
@@ -3829,7 +3846,7 @@ SUMA_Boolean SUMA_SurfaceMetrics_eng (
          SUMA_SL_Warn(  "Cannot inherit MemberFaceSet\n"
                         "Cause: idcode mismatch.\n"
                         "Independent lists will\n"
-                        "be created." );
+                        "be created.\n" );
          SOinh = NULL;
       } else if ( SO->N_Node != SOinh->N_Node || 
                   SO->N_FaceSet != SOinh->N_FaceSet) {
@@ -3837,7 +3854,7 @@ SUMA_Boolean SUMA_SurfaceMetrics_eng (
                         "Cannot inherit MemberFaceSet\n"
                         "Cause: Node number mismatch.\n"
                         "Independent lists will\n"
-                        "be created.");
+                        "be created.\n");
          SOinh = NULL;      
       }
    }
@@ -4348,7 +4365,7 @@ char SUMA_GuessAnatCorrect(SUMA_SurfaceObject *SO)
                SUMA_iswordin (SO->Name_coord.FileName, ".pial") == 1 ||
                SUMA_iswordin (SO->Name_coord.FileName, ".orig") == 1 ||
                SUMA_iswordin (SO->Name_coord.FileName, ".fiducial") == 1 ||
-               SUMA_iswordin (SO->Name_coord.FileName, ".Fiducial") == 1 ||
+               SUMA_iswordin_ci (SO->Name_coord.FileName, ".Fiducial") == 1 ||
                SUMA_iswordin (SO->Name_coord.FileName, ".Raw") == 1 ||
                SUMA_iswordin (SO->Name.FileName, "_WM") == 1 ||
                SUMA_iswordin (SO->Name.FileName, "_GM") == 1
@@ -4414,10 +4431,10 @@ SUMA_SO_SIDE SUMA_GuessSide(SUMA_SurfaceObject *SO)
                   }
          break;
       case SUMA_SUREFIT:
-         if (SUMA_iswordin (SO->Name_coord.FileName, "left") == 1 ||
+         if (SUMA_iswordin_ci (SO->Name_coord.FileName, "left") == 1 ||
              SUMA_iswordin (SO->Name_coord.FileName, ".L.") == 1) {
             SUMA_RETURN(SUMA_LEFT);
-         } else if (SUMA_iswordin (SO->Name_coord.FileName, "right") == 1 ||
+         } else if (SUMA_iswordin_ci (SO->Name_coord.FileName, "right") == 1 ||
              SUMA_iswordin (SO->Name_coord.FileName, ".R.") == 1) {
              SUMA_RETURN(SUMA_RIGHT);
                 }
@@ -4797,7 +4814,7 @@ int SUMA_swap_spec_entries( SUMA_SurfSpecFile * spec, int i0, int i1, int debug)
 int SUMA_copy_spec_entries( SUMA_SurfSpecFile * spec0, SUMA_SurfSpecFile *spec1,
                             int i0, int i1, int debug)
 {
-
+    static char FuncName[]={"SUMA_copy_spec_entries"};
     if ( !spec0 || !spec1 || 
          (i0 < 0) || (i0 >= spec0->N_Surfs) ||
 	      (i1 < 0) || (i1 >= spec1->N_Surfs) )
@@ -4816,38 +4833,38 @@ int SUMA_copy_spec_entries( SUMA_SurfSpecFile * spec0, SUMA_SurfSpecFile *spec1,
     copy_strings(spec0->SurfaceFormat[i0], spec1->SurfaceFormat[i1],
 	              SUMA_MAX_LABEL_LENGTH);
     copy_strings(spec0->TopoFile[i0], spec1->TopoFile[i1],
-	              SUMA_MAX_NAME_LENGTH);
+	              SUMA_MAX_FP_NAME_LENGTH);
     copy_strings(spec0->CoordFile[i0], spec1->CoordFile[i1],
 	              SUMA_MAX_NAME_LENGTH);
     copy_strings(spec0->MappingRef[i0], spec1->MappingRef[i1],
-	              SUMA_MAX_NAME_LENGTH);
+	              SUMA_MAX_FP_NAME_LENGTH);
     copy_strings(spec0->AnatCorrect[i0], spec1->AnatCorrect[i1],
-	              SUMA_MAX_NAME_LENGTH);
+	              SUMA_MAX_LABEL_LENGTH);
     copy_strings(spec0->Hemisphere[i0], spec1->Hemisphere[i1],
-	              SUMA_MAX_NAME_LENGTH);
+	              SUMA_MAX_LABEL_LENGTH);
     copy_strings(spec0->DomainGrandParentID[i0], spec1->DomainGrandParentID[i1],
-	              SUMA_MAX_NAME_LENGTH);     
+	              SUMA_MAX_LABEL_LENGTH);     
     copy_strings(spec0->OriginatorID[i0], spec1->OriginatorID[i1],
-	              SUMA_MAX_NAME_LENGTH);
+	              SUMA_MAX_LABEL_LENGTH);
     copy_strings(spec0->LocalCurvatureParent[i0],spec1->LocalCurvatureParent[i1],
-	              SUMA_MAX_NAME_LENGTH);
+	              SUMA_MAX_FP_NAME_LENGTH);
     copy_strings(spec0->LocalDomainParent[i0], spec1->LocalDomainParent[i1],
-	              SUMA_MAX_NAME_LENGTH);
+	              SUMA_MAX_FP_NAME_LENGTH);
     copy_strings(spec0->SureFitVolParam[i0], spec1->SureFitVolParam[i1],
-	              SUMA_MAX_NAME_LENGTH);
+	              SUMA_MAX_FP_NAME_LENGTH);
     copy_strings(spec0->SurfaceFile[i0], spec1->SurfaceFile[i1],
-	              SUMA_MAX_NAME_LENGTH);
+	              SUMA_MAX_FP_NAME_LENGTH);
     copy_strings(spec0->VolParName[i0], spec1->VolParName[i1],
-	              SUMA_MAX_NAME_LENGTH);
+	              SUMA_MAX_FP_NAME_LENGTH);
     
-    spec1->IDcode[i1] = spec0->IDcode[i0];
+    spec1->IDcode[i1] = spec0->IDcode[i0]; /* always pointer copy for this one */
 
     copy_strings(spec0->State[i0], spec1->State[i1],
 	              SUMA_MAX_LABEL_LENGTH);
     copy_strings(spec0->Group[i0], spec1->Group[i1],
-	              SUMA_MAX_NAME_LENGTH);
-    copy_strings(spec0->SurfaceLabel[i0], spec1->SurfaceLabel[i1],
-	              SUMA_MAX_NAME_LENGTH);
+	              SUMA_MAX_LABEL_LENGTH);
+     copy_strings(spec0->SurfaceLabel[i0], spec1->SurfaceLabel[i1],
+	              SUMA_MAX_LABEL_LENGTH);
 
     spec1->EmbedDim[i1] = spec0->EmbedDim[i0];
 

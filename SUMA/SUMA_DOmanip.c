@@ -1023,6 +1023,80 @@ SUMA_SurfaceObject * SUMA_findSOp_inDOv(char *idcode, SUMA_DO *dov, int N_dov)
    }
    SUMA_RETURN(NULL);
 }
+/*!
+   
+  SO = SUMA_FindSOp_inDOv_from_N_Node(
+                        int N_Node, SUMA_SO_SIDE side, 
+                        int check_unique, int return_parent,
+                        SUMA_DO *dov, int N_dov)
+   searches all SO_type DO objects for a surface that best accommodates
+   a mesh with N_Node node .
+   
+   \param N_Node (int) Number of nodes forming the mesh
+   \param side (SUMA_SO_SIDE) surface must be of the same side as 'side'
+   \param check_unique (int): if 1, then be sure there is only one match
+   \param return_parent (int): return local domain parent for that surface
+   \param dov (SUMA_DO*) pointer to vector of Displayable Objects, 
+                         typically SUMAg_DOv
+   \param N_dov (int) number of DOs in dov
+   \return SO (SUMA_SurfaceObject *) pointer of SO with matching criteria
+   
+   Search logic:
+      For each surface found:
+         if SO->N_Node == N_Node && same side the return 
+       
+       NULL if not found
+   \sa SUMA_findSO_inDOv
+*/
+
+SUMA_SurfaceObject *SUMA_FindSOp_inDOv_from_N_Node(
+                        int N_Node, SUMA_SO_SIDE side, 
+                        int check_unique, int return_parent,
+                        SUMA_DO *dov, int N_dov) 
+{
+   static char FuncName[]={"SUMA_FindSOp_inDOv_from_N_Node"};
+   int nFound=0, i = 0;
+   SUMA_SurfaceObject *SO=NULL, *tSO=NULL;
+   
+   SUMA_ENTRY;
+   
+   i=0;
+   while ((!nFound || check_unique) && i < N_dov) {
+      if (dov[i].ObjectType == SO_type) {
+         tSO = (SUMA_SurfaceObject *)dov[i].OP;
+         if (return_parent && 
+             !SUMA_isLocalDomainParent(tSO)) { /* Need parent only */
+            if (!(tSO = SUMA_findSOp_inDOv(
+                           tSO->LocalDomainParentID, dov, N_dov))) {
+               goto NEXT;
+            }
+         }
+         if (  tSO != SO /* Happens often if you are picking parents */&&
+               tSO->N_Node == N_Node) { /* candidate */
+            if (side == SUMA_RIGHT || side == SUMA_LEFT || side == SUMA_LR) {
+               if (tSO->Side != side) {
+                  goto NEXT;
+               } 
+            }
+            /* Looks like we made it */
+            if (!SO) SO = tSO; /* only find the first */
+            ++nFound;
+         }
+      }
+      NEXT:
+      ++i;   
+   }
+   
+   if (check_unique && nFound > 1) {
+      if (check_unique > 0) { /* error */
+         SUMA_SLP_Err("More than 1 SO candidate found"); 
+      } else { /* warning */
+         SUMA_SLP_Warn("More than 1 SO candidate found. Returning first."); 
+      }
+   }
+   
+   SUMA_RETURN(SO);
+} 
 
 SUMA_Boolean  SUMA_is_ID_4_SO(char *idcode, SUMA_SurfaceObject **SOp)
 {
@@ -1133,8 +1207,49 @@ char *SUMA_find_SOidcode_from_label (char *label, SUMA_DO *dov, int N_dov)
          if (strcmp(label, SO->Label)== 0) {
             if (!found) { found = SO->idcode_str; }
             else {
-               SUMA_S_Errv("More than one surface with label %s found.\n", label);
+               SUMA_S_Errv("More than one surface with label %s found.\n",    
+                           label);
                SUMA_RETURN(NULL);
+            }
+         }
+      }
+   }
+   
+   if (!found) { /* try less stringent search */
+      for (i=0; i<N_dov; ++i) {
+         if (dov[i].ObjectType == SO_type) {
+            SO = (SUMA_SurfaceObject *)dov[i].OP;
+            if (SUMA_iswordin(SO->Label, label)) {
+               if (!found) { found = SO->idcode_str; }
+               else {
+                  SUMA_S_Errv(
+               "Found more than one surface with labels patially matching %s.\n"
+               "For example: surfaces %s, and %s .\n",    
+                              label,
+                              SUMA_find_SOLabel_from_idcode(found, dov, N_dov),
+                              SO->Label);
+                  SUMA_RETURN(NULL);
+               }
+            }
+         }
+      }
+   }
+   
+   if (!found) { /* even less stringent search */
+      for (i=0; i<N_dov; ++i) {
+         if (dov[i].ObjectType == SO_type) {
+            SO = (SUMA_SurfaceObject *)dov[i].OP;
+            if (SUMA_iswordin_ci(SO->Label, label)) {
+               if (!found) { found = SO->idcode_str; }
+               else {
+                  SUMA_S_Errv(
+               "Found more than one surface with labels patially matching %s.\n"
+               "For example: surfaces %s, and %s .\n",    
+                              label,
+                              SUMA_find_SOLabel_from_idcode(found, dov, N_dov),
+                              SO->Label);
+                  SUMA_RETURN(NULL);
+               }
             }
          }
       }
@@ -1335,6 +1450,7 @@ SUMA_Boolean SUMA_isRelated ( SUMA_SurfaceObject *SO1,
 {
    static char FuncName[]={"SUMA_isRelated"};
    SUMA_DOMAIN_KINSHIPS kin;
+   static int iwarn=0;
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
@@ -1349,15 +1465,19 @@ SUMA_Boolean SUMA_isRelated ( SUMA_SurfaceObject *SO1,
                if ( (SO1->Side == SO2->Side) ) {
                   SUMA_RETURN(YUP);
                } else {
-                  SUMA_S_Note( "Surfaces appear related at level 2 "
-                               "but sides are not the same.\n"                                                   "Kinship level is being ignored.\n");
-                  if (SO1->Side < SUMA_LR || SO2->Side < SUMA_LR) {
+                  if (!(iwarn % 25)) {
+                     SUMA_S_Note( "Surfaces appear related at level 2 "
+                               "but sides are not the same.\n"                                                   "Kinship level is being ignored.\n"
+                               "(Message shown intermittenly)\n");
+                  } 
+                  if ((SO1->Side < SUMA_LR || SO2->Side < SUMA_LR)) {
                      SUMA_S_Note("Surface sides are not clearly defined. "
                                  "If this is in error, consider adding \n"
                                  "Hemisphere = R  (or L or B) in the spec file\n"
                                  "to make sure surfaces sides are correctly "
                                  "labeled.\n");
                   }
+                  ++iwarn;
                }
          }
          break;
@@ -1581,6 +1701,11 @@ SUMA_DOMAIN_KINSHIPS SUMA_WhatAreYouToMe (SUMA_SurfaceObject *SO1,
       }
    }
    
+   if (SO1->N_Node == SO2->N_Node) {
+      SUMA_LH(SUMA_DomainKinships_String (SUMA_N_NODE_SAME));
+      SUMA_RETURN (SUMA_N_NODE_SAME);
+   }
+   
    SUMA_LH(SUMA_DomainKinships_String (SUMA_DOMAINS_NOT_RELATED));
    SUMA_RETURN (SUMA_DOMAINS_NOT_RELATED);
    
@@ -1782,7 +1907,7 @@ SUMA_ASSEMBLE_LIST_STRUCT *SUMA_CreateAssembleListStruct(void)
    str->clist = NULL;
    str->N_clist = -1;
    str->oplist = NULL;
-   
+   str->content_id = NULL;
    SUMA_RETURN(str);
 }
 /*!
@@ -1808,6 +1933,8 @@ SUMA_ASSEMBLE_LIST_STRUCT *SUMA_FreeAssembleListStruct(SUMA_ASSEMBLE_LIST_STRUCT
       SUMA_free(str->clist);
    }
    if (str->oplist) SUMA_free(str->oplist);
+   if (str->content_id) SUMA_free(str->content_id);
+   
    SUMA_free(str);
    
    SUMA_RETURN(NULL);
@@ -2633,6 +2760,7 @@ SUMA_Boolean SUMA_SetXformActive(SUMA_XFORM *xf, int active, int fromgui)
                   XtWindow(xf->gui->AppShell));
    }
    
+                                        
    if (0 && !fromgui) { /* not sure why I have this here. 
                            SUMA_InitializeXformInterface is called in SUMA_D_Key,
                            which is the function called in both GUI and non GUI 

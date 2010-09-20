@@ -185,6 +185,7 @@ ENTRY("new_MCW_pbar") ;
                                XmNhighlightThickness , 0 ,
                                XmNshadowThickness , 0 ,
                              NULL ) ;
+      LABELIZE(pbar->labels[i]) ;
 
       if( KEEP_LABEL(i,npane) ){
          XtManageChild( pbar->labels[i] ) ;
@@ -257,6 +258,7 @@ ENTRY("new_MCW_pbar") ;
                      "menu" , xmLabelWidgetClass , pbar->big_menu ,
                         XmNinitialResourcesPersistent , False ,
                      NULL ) ;
+   LABELIZE(pbar->big_label) ;
 
    (void) XtVaCreateManagedWidget( "menu",
                                     xmSeparatorWidgetClass, pbar->big_menu ,
@@ -274,7 +276,7 @@ ENTRY("new_MCW_pbar") ;
    /*-- go home --*/
 
    XtManageChild( pbar->top ) ;
-   
+
    /* ZSS: Jan 13 Now add some funky ones */
    PBAR_define_bigmap( CB_CS_35 );
    PBAR_define_bigmap( CB_CS );
@@ -297,7 +299,7 @@ ENTRY("new_MCW_pbar") ;
    PBAR_define_bigmap( AMBER_REDTOP_BLUEBOT_CS );
    PBAR_define_bigmap( ADD_EDGE );
 
-   
+
    RETURN( pbar );
 }
 
@@ -340,6 +342,7 @@ ENTRY("PBAR_enviro_bigmaps") ;
 /*-----------------------------------------------------------------------*/
 /*! Add a color map for "big" mode.
 -------------------------------------------------------------------------*/
+
 void PBAR_add_bigmap( char *name , rgbyte *cmap )
 {
    int ii , nn , kk ;
@@ -666,6 +669,23 @@ ENTRY("PBAR_bigmap_finalize") ;
    for( ii=0 ; ii < NPANE_BIG ; ii++ )
      pbar->bigcolor[ii] = bigmap[ind][ii] ;
 
+   /* If colormap is meant for ROI data, set range
+     parameters automatically          ZSS Feb 15 2010 */
+
+   if( pbar->parent != NULL ){
+     if (strstr(pbar->bigname,"i32")) {
+        AFNI_set_func_range_nval(pbar->parent, 32.0);
+     } else if (strstr(pbar->bigname,"i64")) {
+        AFNI_set_func_range_nval(pbar->parent, 64.0);
+     } else if (strstr(pbar->bigname,"i128")) {
+        AFNI_set_func_range_nval(pbar->parent, 128.0);
+     } else if (strstr(pbar->bigname,"i255")) {
+        AFNI_set_func_range_nval(pbar->parent, 255.0);
+     } else if (strstr(pbar->bigname,"i256")) {
+        AFNI_set_func_range_nval(pbar->parent, 256.0);
+     }
+   }
+
    MCW_kill_XImage(pbar->bigxim) ; pbar->bigxim = NULL ;
    PBAR_bigexpose_CB(NULL,pbar,NULL) ;
    if( XtIsRealized(pbar->panes[0]) )
@@ -675,6 +695,18 @@ ENTRY("PBAR_bigmap_finalize") ;
 }
 
 /*--------------------------------------------------------------------*/
+
+int PBAR_get_bigmap_index ( char *bnam ) /* 26 Feb. 2010 ZSS */
+{
+   int ii;
+
+   if (!bnam) return(-1);
+
+   for( ii=0 ; ii < bigmap_num ; ii++ )
+     if( strcmp(bnam,bigmap_name[ii]) == 0 ) return(ii);
+
+   return(-1);
+}
 
 void PBAR_set_bigmap( MCW_pbar *pbar , char *bnam )  /* 03 Feb 2003 */
 {

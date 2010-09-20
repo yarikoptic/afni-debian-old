@@ -65,6 +65,415 @@
 
 afni_history_struct ziad_history[] = {
 /*=====BELOW THIS LINE=====*/
+
+ { 7, SEP , 2010 , ZSS , "3dRetinoPhase" , MINOR , TYPE_BUG_FIX,
+   "Fixed crash caused by bad function prototype.",
+   "Crash only occurred on linux. Thanks to P. J. Kohler for \n"
+   "tests and bug report.\n"
+ } ,
+
+ { 3, SEP , 2010 , ZSS , "@SUMA_Make_Spec_FS" , MINOR , TYPE_NEW_OPT,
+   "Script now process v1.label files from FreeSurfer",
+   "The output is two datasets per hemisphere, one for the ??.v1.prob.label\n"
+   "and one for the ??.v1.predict.label.\n"
+ } ,
+
+ { 3, SEP , 2010 , ZSS , "suma" , MINOR , TYPE_BUG_FIX,
+   "Fixed inappropriate read in SUMA_Draw_SO_Dset_Contours",
+   "This bug had caused a crash on one machine, but had the potential\n"
+   "for bad surprises in the future.\n"
+ } ,
+
+ { 26, AUG , 2010 , ZSS , "@auto_tlrc" , MAJOR , TYPE_BUG_FIX,
+   "Fixed bug in @auto_tlrc in usage 2 mode AND with no suffix",
+"There was a bug in @auto_tlrc  for the last 2 months: \n"
+"   from June 30, 2010 until  August 26, 2010. \n"
+"\n"
+"It occurs only when using auto_tlrc in: \n"
+"  usage 2 mode \n"
+"        AND \n"
+"  with -suffix omitted, or set to NONE.\n"
+"\n"
+"This bug does not affect your data if you had used adwarp -apar, \n"
+"  or if you put your data in TLRC space via afni_proc.py, \n"
+"  or align_epi_anat.py.\n"
+"\n"
+"The bug essentially results in a renaming of your follower dataset, \n"
+" without the spatial transformation. So, if you were applying the \n"
+" transform to epi+orig, it practically got renamed to epi+tlrc. \n"
+" Despite the +tlrc in the name, epi+tlrc would still be in +orig \n"
+" view and you no longer have epi+orig on disk. \n"
+"   \n"
+"Examples of affected commands would be:\n"
+"	@auto_tlrc  -apar anat+tlrc 	               -input epi+orig \n"
+"or\n"
+"	@auto_tlrc  -apar anat+tlrc 	-suffix NONE   -input epi+orig  \n"
+"\n"
+"The script did produce Error messages but it failed to stop.\n"
+"\n"
+"If you think you ran the buggy command (a clear symptom would be \n"
+"missing +orig datasets AND bad alignment in TLRC of course), you \n"
+"must download the latest binaries and rerun @auto_tlrc after you \n"
+"have recreated the +orig files. You can also just get @auto_tlrc \n"
+"at the link below.\n"
+"\n"
+"Sorry for this, I had tested complicated option combinations on \n"
+"the last release, but all tests had used the -suffix option.\n"
+"(<http://afni.nimh.nih.gov/afni/community/board/read.php?f=1&i=34139&t=34139>)"
+"\n"
+"\n"
+"Binaries postdating this message will contain the new script. \n"
+"You can also get a corrected version of @auto_tlrc at this link:\n"
+"<http://afni.nimh.nih.gov/sscc/staff/ziad/Misc_Download/tmp/@auto_tlrc>\n"
+"\n"
+"Thanks To James Blair for finding the bug.\n"
+ } ,
+
+ { 25, AUG , 2010 , ZSS , "ConvertDset" , MICRO , TYPE_NEW_OPT,
+   "Added -no_history option",
+   NULL
+ } ,
+
+ { 24, AUG , 2010 , ZSS , "suma" , MINOR , TYPE_MODIFY,
+   "Improved SUMA's DotXform (InstaCorr) and GroupInCorr interface",
+   "Changed interface so that shft+ctrl+right click is needed to initiate \n"
+   "callback. This makes it consistent with AFNI's interface.\n"
+   "shft+ctrl+right click and drag now a little faster.\n"
+ } ,
+
+ { 23, AUG , 2010 , ZSS , "suma" , MINOR , TYPE_MODIFY,
+   "Fixed bug in sub-brick selection lists",
+   "Before the bug fix, once a sub-brick selection list was open\n"
+   "(right-click on 'I', 'T', or 'B') for one dataset, it never got\n"
+   "updated after switching to another dataset, rendering it quite useless.\n"
+   "Thanks to Adam Greenberg for reporting the error.\n"
+ } ,
+
+ { 23, AUG , 2010 , ZSS , "suma" , MINOR , TYPE_MODIFY,
+   "SUMA now detects retinotopy results and displays them appropriately",
+   NULL
+ } ,
+ 
+ { 23, AUG , 2010 , ZSS , "suma" , MINOR , TYPE_NEW_OPT,
+   "Shift+Ctrl left, right rotates surface about Z axis",
+   "Useful for rotating flat surfaces"
+ } ,
+ 
+  { 23, AUG , 2010 , ZSS , "suma" , MINOR , TYPE_NEW_ENV,
+   "Allow users to specify colormaps for retinotopy results",
+   "See help section for variables:\n"
+   "  SUMA_RetinoAngle_DsetColorMap and SUMA_VFR_DsetColorMap\n"
+   "in your ~/.sumarc, after running suma -update_env.\n"
+ } ,
+ 
+  { 23, AUG , 2010 , ZSS , "@RetinoProc" , MAJOR , TYPE_NEW_PROG,
+   "Packages processing step for phase-based retinotopic mapping.",
+   "See @RetinoProc -help for details\n"
+ } ,
+ 
+  { 23, AUG , 2010 , ZSS , "3dRetinoPhase" , MAJOR , TYPE_NEW_PROG,
+   "Calculate visual field angle from phase-based retinotopy data.",
+   NULL
+ } ,
+
+  { 23, AUG , 2010 , ZSS , "SurfRetinoMap" , MAJOR , TYPE_NEW_PROG,
+   "Calculates Visual Field Signs from visual field angle data",
+   NULL
+  } ,
+ 
+  { 23, AUG , 2010 , ZSS , "@SUMA_Make_Spec_FS" , MICRO , TYPE_MODIFY,
+   "Script now looks for brain envelope surface from FreeSurfer",
+   "Thanks to Mike Beauchamp for the modification."
+  } ,
+ 
+ { 18, AUG , 2010 , ZSS , "@DriveSuma" , MINOR , TYPE_MODIFY,
+   "Improvements to @DriveSuma to make it more didactic",
+   NULL
+ } ,
+
+ { 18, AUG , 2010 , ZSS , "DriveSuma" , MICRO , TYPE_MODIFY,
+   "Added -echo_edu option for edification purposes",
+   NULL
+ } ,
+
+ { 9, AUG , 2010 , ZSS , "suma-general" , MICRO , TYPE_NEW_OPT,
+   "Allows reading 5-column colormaps",
+   NULL
+ } ,
+
+ { 9, AUG , 2010 , ZSS , "MapIcosahedron" , MICRO , TYPE_BUG_FIX,
+   "Changed 2 sprintf lines writing and reading from same address.",
+   NULL
+ } ,
+
+ { 6, AUG , 2010 , ZSS , "3dSetupGroupInCorr" , MINOR , TYPE_BUG_FIX,
+   "Fixed bug with LRpairs when time series had different lengths.",
+   "Also fixed minor bug with error message about data size"
+ } ,
+
+ { 6, AUG , 2010 , ZSS , "afni" , MICRO , TYPE_BUG_FIX,
+   "Tiny changes to functions prettyfying numeric output"
+   "Particularly functions approximate_number_string, and \n"
+   "commaized_integer_string, and macro MEMORY_CHECK in 3dREMLfit"
+ } ,
+
+ { 5, AUG , 2010 , ZSS , "suma" , MICRO , TYPE_BUG_FIX,
+   "Fixed crash when using group instant correlation on 1 surface.",
+   NULL
+ } ,
+
+ { 2, AUG , 2010 , ZSS , "suma" , MICRO , TYPE_BUG_FIX,
+   "Fixed default naming for interactive dsets.",
+   "The older naming, based on label, rather than filename\n"
+   "created some conflicts under certain cases.\n"
+   "Repair job in SUMA_dot_product."
+ } ,
+
+ { 28, JUL , 2010 , ZSS , "plugout_drive" , MINOR , TYPE_NEW_OPT,
+   "Added SET_INDEX to plugout_drive",
+   NULL 
+ } ,
+
+ { 26, JUL , 2010 , ZSS , "3dclust" , MINOR , TYPE_BUG_FIX,
+   "Mean calculations were off for large clusters with large values.",
+   NULL 
+ } ,
+
+ { 8, JUL , 2010 , ZSS , "suma" , MINOR , TYPE_BUG_FIX,
+   "Fixed striping with contour objects",
+   NULL 
+ } ,
+
+ { 6, JUL , 2010 , ZSS , "suma" , MINOR , TYPE_NEW_ENV,
+   "Added SUMA_Cmaps_Dir to point to directory with colormaps",
+   "With this environment variable, users can point to a \n"
+   "directory containing SUMA colormaps (*.cmap) that should\n"
+   "be made available to SUMA. For help on colormap file formats,\n"
+   "open a surface controller ('View'-->'Surface Controller'), \n"
+   "click on BHelp (bottom left) and then click on 'New' button\n"
+   "which is to the right of the colormap selector." 
+ } ,
+
+ { 1, JUL , 2010 , ZSS , "SurfToSurf" , MINOR , TYPE_NEW_OPT,
+   "Added -mapfile option, allowing SurfToSurf to reuse an existing mapping.",
+   NULL
+ } ,
+
+ { 30 , JUN , 2010 , ZSS , "@auto_tlrc" , MINOR , TYPE_MODIFY,
+   "Added -onewarp, and -init_xform to @auto_tlrc",
+"I have made some small improvements to @auto_tlrc, but avoided changing \n"
+"its default operation, except in one case.\n"
+"\n"
+"In 'Usage 2', the old version performed two resampling operations. One in \n" "3dWarp with the default quintic kernel, the other in 3dresample with the \n"
+"Bk kernel. The new version can perform only one resampling thereby  \n"
+"reducing the smoothness of the final result. To change from the default\n" 
+"behavior,use the new option -onewarp. "
+"\n"
+"The help output of the old version stated that -rmode controlled the \n"
+"interpolation kernel in 'Usage 1'. That was not the case. In Usage 1,\n"
+"interpolation was always linear. It remains so in the current version,\n"
+"but the -rmode option can now be used to change the kernel.\n"
+"\n"
+"The change in default operation between this version and the previous \n"
+"concerns 'Usage 1'. In the old version, the brain was skull stripped, AND\n"
+"its intensities adjusted by 3dSkullStrip. It was this adjusted brain that\n"
+"was then output in TLRC space. In other terms, the output was with \n"
+"no skull, but its values differed from those of the input.\n"
+"This is no longer the case. In the current version, you will \n"
+"get a skull-stripped version of the input in TLRC space \n"
+"(no intensity adjustment).\n"
+"Behavior of the -warp_orig_vol is unchanged.\n" 
+"This change in 'Usage 1' does not affect the registration transform, \n"
+"nor 'Usage 2'.\n" 
+"If you insist on the old mode of operation, then contact me and I will \n"
+"send you an older version of @auto_tlrc."
+ } ,
+
+ { 25 , MAY , 2010 , ZSS , "suma" , MINOR , TYPE_NEW_OPT,
+   "Added click and drag for third mouse button",
+   NULL
+ } ,
+
+ { 21 , MAY , 2010 , ZSS , "SurfToSurf" , MINOR , TYPE_NEW_OPT,
+   "Added -dset option to take in niml dsets",
+   NULL
+ } ,
+
+ { 4 , MAY , 2010 , ZSS , "3dROIstats" , MINOR , TYPE_NEW_OPT,
+   "Added -nzsigma to 3dROIstats",
+   NULL
+ } ,
+
+ { 4 , MAY , 2010 , ZSS , "1dtranspose" , MICRO , TYPE_NEW_OPT,
+   "Allowed 1dtranspose to accept -overwrite",
+   "The main reason for this is to allow such a command:\n"
+   "  1dtranspose -overwrite FILE.1D FILE.1D\n"
+   "without having to create temporary files."
+ } ,
+
+ { 2 , MAY , 2010 , ZSS , "afni" , MICRO , TYPE_BUG_FIX,
+   "Fixed Instacorr update failure when A_ICOR dset is present on disk.",
+   NULL
+ } ,
+
+ { 29 , APR , 2010 , ZSS , "3dMean" , MICRO , TYPE_MODIFY,
+   "Allowed program to work with only one dset for input.",
+   NULL
+ } ,
+
+ { 21 , APR , 2010 , ZSS , "3ddelay" , MINOR , TYPE_BUG_FIX,
+   "-nodtrnd option was setting polort to 1, as opposed to 0.",
+   NULL
+ } ,
+
+ { 16 , APR , 2010 , ZSS , "3dbucket" , MINOR , TYPE_NEW_OPT,
+   "-agluto option = amalgamated -prefix and -glueto",
+   NULL
+ } ,
+
+ { 12 , APR , 2010 , ZSS , "afni" , MINOR , TYPE_BUG_FIX,
+   "Added AFNI_GUI_WRITE_AS_DECONFLICT to modify interactive 'Write' overwrite.",
+   "The default is to have the interactive 'Write' buttons overwrite exisiting\n"
+   "volumes. If this env variable is set to YES, the 'Write' behaviour follows\n"
+   "env AFNI_DECONFLICT\n"
+ } ,
+
+ { 12 , APR , 2010 , ZSS , "afni" , MINOR , TYPE_BUG_FIX,
+   "Made InstaCorr SeedJump work with GroupInCorr",
+   NULL
+ } ,
+
+ { 23 , MAR , 2010 , ZSS , "1dplot" , MINOR , TYPE_NEW_OPT,
+   "Added -jpgs, and -pngs to allow easier size setup.",
+   NULL
+ } ,
+
+ { 23 , MAR , 2010 , ZSS , "1dplot" , MICRO , TYPE_BUG_FIX,
+   "Fixed unreported bug related to wintitle variable.",
+   NULL
+ } ,
+
+ { 19 , MAR , 2010 , ZSS , "SurfDist" , MINOR , TYPE_NEW_OPT,
+   "Added option to calculate Euclidian distance",
+   NULL
+ } ,
+
+ { 18 , MAR , 2010 , ZSS , "RetroTS" , MINOR , TYPE_BUG_FIX ,
+   "Fixed crash in function remove_PNduplicates",
+   NULL
+ } ,
+
+ { 16 , MAR , 2010 , ZSS , "3dcalc" , MINOR , TYPE_NEW_OPT ,
+   "-within option to test Min <= X <= Max",
+   NULL
+ } ,
+
+ { 9 , MAR , 2010 , ZSS , "3dROIstats" , MINOR , TYPE_NEW_OPT ,
+   "-nomeanout to get rid of mean in output",
+   NULL
+ } ,
+
+ { 9 , MAR , 2010 , ZSS , "3dclust" , MINOR , TYPE_BUG_FIX ,
+   "-isomerge and -isovalue options were being ignored",
+   NULL
+ } ,
+
+ { 8 , MAR , 2010 , ZSS , "3dTcat" , MINOR , TYPE_BUG_FIX ,
+   "Program was not working with string label sub-brick selection",
+   NULL
+ } ,
+
+ { 5 , MAR , 2010 , ZSS , "3dLocalstat" , MINOR , TYPE_NEW_OPT ,
+   "Added -stat P2skew to calculate Pearson's second skewness coefficient",
+   NULL
+ } ,
+
+ { 3 , MAR , 2010 , ZSS , "3dAutomask" , MINOR , TYPE_NEW_OPT ,
+   "-depth option to determine how deep voxel is in mask",
+   NULL
+ } ,
+
+ { 3 , MAR , 2010 , ZSS , "3dmerge" , MINOR , TYPE_NEW_OPT ,
+   "-isomerge and -isovalue options that mimick 3dclust's options",
+   NULL
+ } ,
+
+ { 3 , MAR , 2010 , ZSS , "3dmerge" , MINOR , TYPE_NEW_OPT ,
+   "-1clust_depth option to determine how deep voxel is in cluster",
+   NULL
+ } ,
+
+ { 1 , MAR , 2010 , ZSS , "@SUMA_Make_Spec_FS" , MINOR , TYPE_MODIFY ,
+   "Script now deals with 2009, and 2005 parcellations.",
+   NULL
+ } ,
+
+ { 1 , MAR , 2010 , ZSS , "FSread_annot" , MINOR , TYPE_MODIFY ,
+   "Allow FSread_annot to work with 2009 parcellation results.",
+   NULL
+ } ,
+
+ { 1 , MAR , 2010 , ZSS , "FSread_annot" , MINOR , TYPE_NEW_OPT ,
+   "Added -FSversoin, -hemi, and -FScmap* options for 2009 parcellations",
+   NULL
+ } ,
+
+ { 1 , MAR , 2010 , ZSS , "@FS_roi_label" , MINOR , TYPE_NEW_OPT ,
+   "Modified -name to accept 'ALL' ",
+   NULL
+ } ,
+
+ { 26 , FEB , 2010 , ZSS , "afni" , MINOR , TYPE_MODIFY ,
+   "Insert Dtable structure (Label_Dtable) in dset",
+   "Inserted Dtable structure (dset->Label_Dtable) in THD_3dim_dataset.\n"
+   "The hash table is used to report on the label corresponding to a voxel's\n"
+   "integer value. Inserting a label table into the header can be done\n"
+   "with 3drefit.\n"
+   "Labels are reported in the ULay and OLay value fields in the bottom right\n"
+   "corner of AFNI's Define Overlay panel. The hint at that location also \n"
+   "shows the labels, which could be quite long."
+ } ,
+
+ { 26 , FEB , 2010 , ZSS , "3drefit" , MINOR , TYPE_NEW_OPT ,
+   "-labeltable option to add a label table to a dataset",
+   NULL
+ } ,
+
+ { 15 , FEB , 2010 , ZSS , "afni" , MINOR , TYPE_MODIFY ,
+   "Automatically setup range and sign for ROI colorbars",
+   NULL
+ } ,
+
+ { 15 , FEB , 2010 , ZSS , "3dTstat" , MINOR , TYPE_NEW_OPT ,
+   "-arg*1 options to keep from getting 0 in arg* output",
+   NULL
+ } ,
+
+ { 15 , FEB , 2010 , ZSS , "3dTstat" , MINOR , TYPE_NEW_OPT ,
+   "-*mask options to allow masking",
+   NULL
+ } ,
+
+ { 12 , FEB , 2010 , ZSS , "MapIcosahedron" , MINOR , TYPE_NEW_OPT ,
+   "-*_cut_surfaces to deal with bad triangles on standard flat surfaces",
+   NULL
+ } ,
+
+ { 12 , FEB , 2010 , ZSS , "3dTstat" , MINOR , TYPE_NEW_OPT ,
+   "Added -argmin1, -argmax1, -argabsmax1 options to increment argument by 1",
+   NULL
+ } ,
+
+ { 12 , FEB , 2010 , ZSS , "suma" , MINOR , TYPE_MODIFY ,
+   "Better setup of left and right flat surfaces.",
+   NULL
+ } ,
+
+ { 14 , JAN , 2010 , ZSS , "3dLocalstat" , MINOR , TYPE_NEW_OPT ,
+   "Added -rank and -frank options to 3dLocalstat",
+   NULL
+ } ,
+
  { 15 , DEC , 2009 , ZSS , "afni" , MINOR , TYPE_NEW_OPT ,
    "Allow label based sub-brick selection in AFNI and SUMA",
    NULL

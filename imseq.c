@@ -34,6 +34,8 @@
                        XtPointer   , (sq)->getaux ,     \
                        ISQ_cbs *   , &(cb)          )
 
+static Widget wwtem ;
+
 /************************************************************************
    Define the buttons and boxes that go in the "Disp" dialog
 *************************************************************************/
@@ -1569,7 +1571,6 @@ if( PRINT_TRACING ){
             XmNtraversalOn , False ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
-
    XtAddCallback( newseq->wbar_rng_but, XmNactivateCallback, ISQ_wbar_menu_CB, newseq ) ;
 
    newseq->wbar_zer_but =
@@ -1579,8 +1580,15 @@ if( PRINT_TRACING ){
             XmNtraversalOn , False ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
-
    XtAddCallback( newseq->wbar_zer_but, XmNactivateCallback, ISQ_wbar_menu_CB, newseq ) ;
+
+   { char *blab[1] = { "Automask?" } ;
+     newseq->wbar_amask_bbox = new_MCW_bbox( newseq->wbar_menu ,  /* 14 Jun 2010 */
+                                             1 , blab ,
+                                             MCW_BB_check , MCW_BB_noframe ,
+                                             ISQ_wbar_amask_CB , (XtPointer)newseq ) ;
+   }
+
 
    newseq->wbar_flat_but =
       XtVaCreateManagedWidget(
@@ -1589,7 +1597,6 @@ if( PRINT_TRACING ){
             XmNtraversalOn , False ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
-
    XtAddCallback( newseq->wbar_flat_but, XmNactivateCallback, ISQ_wbar_menu_CB, newseq ) ;
 
    newseq->wbar_sharp_but =
@@ -1599,7 +1606,6 @@ if( PRINT_TRACING ){
             XmNtraversalOn , False ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
-
    XtAddCallback( newseq->wbar_sharp_but, XmNactivateCallback, ISQ_wbar_menu_CB, newseq ) ;
 
    newseq->rng_bot   = newseq->rng_top = newseq->rng_ztop = 0 ;
@@ -1614,7 +1620,7 @@ if( PRINT_TRACING ){
 
    newseq->onoff_widgets[(newseq->onoff_num)++] =
    newseq->winfo = XtVaCreateManagedWidget(
-                     "imseq" , xmLabelWidgetClass , newseq->wform ,
+                     "font7" , xmLabelWidgetClass , newseq->wform ,
                         XmNtopAttachment   , XmATTACH_WIDGET ,
                         XmNtopWidget       , newseq->wscale ,
                         XmNleftAttachment  , XmATTACH_FORM ,
@@ -1623,9 +1629,9 @@ if( PRINT_TRACING ){
                             (int)( 0.49 + IMAGE_FRAC * FORM_FRAC_BASE ) ,
                         XmNrecomputeSize   , False ,
                         XmNalignment       , XmALIGNMENT_END ,
-
                         XmNinitialResourcesPersistent , False ,
                      NULL ) ;
+   LABELIZE(newseq->winfo) ;
    newseq->winfo_extra[0] = '\0' ;  /* 07 Aug 1999 */
 
    newseq->winfo_sides[0][0] =
@@ -1687,6 +1693,8 @@ STATUS("creation: widgets created") ;
 
    newseq->graymap_mtd  = NULL ;       /* 24 Oct 2003 */
    newseq->cmap_changed = 0 ;
+
+   newseq->shft_ctrl_dragged = 0 ;     /* 17 Mar 2010 */
 
 #define DEFAULT_THETA  55.0
 #define DEFAULT_PHI   285.0
@@ -2253,7 +2261,7 @@ ENTRY("ISQ_crop_pb_CB") ;
 
    if( !ISQ_REALZ(seq)        ||
        w != seq->crop_drag_pb ||
-       ! seq->crop_allowed      ){ XBell(XtDisplay(w),100); EXRETURN; }
+       ! seq->crop_allowed      ){ /* XBell(XtDisplay(w),100); */ EXRETURN; }
 
    MCW_invert_widget( seq->crop_drag_pb ) ;
    seq->crop_drag = !seq->crop_drag ;
@@ -3423,6 +3431,31 @@ STATUS("call ISQ_perpoints") ;
 
    /**** at this point, the processed image is in "newim" ****/
 
+   /** 14 Jun 2010: automask 2D image **/
+
+   if( MCW_val_bbox(seq->wbar_amask_bbox) > 0 ){
+     byte *mmm = mri_automask_image2D(newim) ;
+     if( mmm != NULL ){
+       int npix = newim->nx * newim->ny , ii ;
+       switch( newim->kind ){
+         case MRI_short:{
+           short zz = -seq->zer_color ;
+           short *ar = MRI_SHORT_PTR(newim) ;
+           for( ii=0 ; ii < npix ; ii++ )
+             if( !mmm[ii] ) ar[ii] = zz ;
+         }
+         break ;
+
+         case MRI_rgb:{
+           byte *ar = MRI_RGB_PTR(newim) ;
+           for( ii=0 ; ii < npix ; ii++ )
+             if( !mmm[ii] ) ar[3*ii] = ar[3*ii+1] = ar[3*ii+2] = 0 ;
+         }
+         break ;
+       }
+     }
+   }
+
    /** Aug 31, 1995: put zer_color in at bottom, if nonzero **/
 
    if( newim->kind == MRI_short && seq->zer_color > 0 ){
@@ -3430,8 +3463,30 @@ STATUS("call ISQ_perpoints") ;
      short *ar = MRI_SHORT_PTR(newim) ;
      int npix = newim->nx * newim->ny , ii ;
 
+#if 0
      for( ii=0 ; ii < npix ; ii++ )
-       if( ar[ii] == seq->bot ) ar[ii] = zz ;
+       if( ar[ii] == seq->bot ) ar[ii] = zz ;   /* the olden way */
+#else
+     switch( lim->kind ){                       /* the new way: 14 Jun 2010 */
+       case MRI_short:{
+         short *lar = MRI_SHORT_PTR(lim) ;
+         for( ii=0 ; ii < npix ; ii++ ) if( lar[ii] == 0 ) ar[ii] = zz ;
+       }
+       break ;
+
+       case MRI_byte:{
+         byte *lar = MRI_BYTE_PTR(lim) ;
+         for( ii=0 ; ii < npix ; ii++ ) if( lar[ii] == 0 ) ar[ii] = zz ;
+       }
+       break ;
+
+       case MRI_float:{
+         float *lar = MRI_FLOAT_PTR(lim) ;
+         for( ii=0 ; ii < npix ; ii++ ) if( lar[ii] == 0.0f ) ar[ii] = zz ;
+       }
+       break ;
+     }
+#endif
    }
 
    /** copy pixel sizes, etc. (fixup for mrilib to be happy) **/
@@ -5158,7 +5213,7 @@ ENTRY("ISQ_set_barhint") ;
 void ISQ_set_cursor_state( MCW_imseq *seq , int cstat )  /* 10 Mar 2003 */
 {
    if( seq->zoom_button1 || seq->record_mode ){
-     XBell(seq->dc->display,100); return;
+     /* XBell(seq->dc->display,100); */ return;
    }
 
 #if 0
@@ -5273,7 +5328,7 @@ ENTRY("ISQ_drawing_EV") ;
            if( seq->button2_enabled && w == seq->wimage )
               ISQ_button2_EV( w , client_data , ev , continue_to_dispatch ) ;
            else
-              { XBell(seq->dc->display,100); busy=0;EXRETURN; }
+              { /* XBell(seq->dc->display,100); */ busy=0;EXRETURN; }
          }
 
          /* Button1 release: turn off zoom-pan mode, if it was on */
@@ -5284,14 +5339,16 @@ ENTRY("ISQ_drawing_EV") ;
              seq->zoom_button1 = 0 ;
              POPUP_cursorize( seq->wimage ) ;
              MCW_invert_widget( seq->zoom_drag_pb ) ;
-           } else if( !seq->zoom_button1 ){           /* 23 Oct 2003 */
+           } else if( !seq->zoom_button1 ){              /* 23 Oct 2003 */
              if( seq->cmap_changed ){
                COLORMAP_CHANGE(seq); seq->cmap_changed = 0;
                if( seq->graymap_mtd != NULL && AFNI_yesenv("AFNI_STROKE_AUTOPLOT") ){
-                 NI_sleep(456) ;     /* pop down after a short delay */
+                 NI_sleep(666) ;     /* pop down after a short delay */
                  plotkill_topshell( seq->graymap_mtd ) ;
                  seq->graymap_mtd = NULL ;
                }
+             } else if( seq->shft_ctrl_dragged ){        /* 17 Mar 2010 */
+               seq->shft_ctrl_dragged = 0 ;
              } else if( seq->status->send_CB != NULL ){  /* 04 Nov 2003 */
                 int imx,imy,nim;
                 seq->wimage_width = -1 ;
@@ -5310,7 +5367,7 @@ ENTRY("ISQ_drawing_EV") ;
            }
          }
       }
-      break ;
+      break ;  /*--- end of ButtonRelease ---*/
 
       /*----- motion with Button #1 pressed down -----*/
 
@@ -5318,7 +5375,7 @@ ENTRY("ISQ_drawing_EV") ;
         XMotionEvent *event = (XMotionEvent *) ev ;
         int bx,by ;
 
-        /** 03 Oct 2002: change Shift+Button1 into Button2, then send to that event handler **/
+        /** 03 Oct 2002: change Shift+Button1 into Button2, send to event handler **/
 
         if( (event->state & Button1Mask) &&
              ( seq->cursor_state == CURSOR_PENCIL ||
@@ -5327,8 +5384,23 @@ ENTRY("ISQ_drawing_EV") ;
           if( seq->button2_enabled && w == seq->wimage )
              ISQ_button2_EV( w , client_data , ev , continue_to_dispatch ) ;
           else
-             { XBell(seq->dc->display,100); busy=0;EXRETURN; }
+             { /* XBell(seq->dc->display,100); */ busy=0;EXRETURN; }
           busy=0;EXRETURN ;
+        }
+
+        /** 17 Mar 2010: Shift+Ctrl+Button1 = send to our master [InstaCorr] **/
+
+        if( (event->state & Button1Mask) && (seq->status->send_CB != NULL) &&
+            (event->state & ShiftMask)   && (event->state & ControlMask)     ){
+          int imx,imy,nim;
+          seq->wimage_width = -1 ;
+          ISQ_mapxy( seq , event->x,event->y , &imx,&imy,&nim ) ;
+          cbs.reason = isqCR_buttonmove ;
+          cbs.event  = ev ;
+          cbs.xim    = imx ;       /* delayed send of Button1 */
+          cbs.yim    = imy ;       /* event to AFNI now       */
+          cbs.nim    = nim ;
+          SEND(seq,cbs) ; busy=0 ; seq->shft_ctrl_dragged=1 ; EXRETURN ;
         }
 
         /* Button1 motion: if not panning, changing the color/gray map? */
@@ -5392,7 +5464,7 @@ ENTRY("ISQ_drawing_EV") ;
 
         busy=0; EXRETURN ;
       }
-      break ;
+      break ;  /*--- end of MotionNotify ---*/
 
       /*----- redraw -----*/
 
@@ -5426,7 +5498,7 @@ STATUS(" .. really a hidden resize") ;
 
          }
       }
-      break ;
+      break ;  /*--- end of Expose ---*/
 
       /*----- take key press -----*/
 
@@ -5443,7 +5515,7 @@ STATUS(" .. KeyPress") ;
          /* discard if a mouse button is also pressed at this time */
 
          if( event->state & (Button1Mask|Button2Mask|Button3Mask) ){
-           XBell(seq->dc->display,100); busy=0; EXRETURN;
+           /* XBell(seq->dc->display,100); */ busy=0; EXRETURN;
          }
 
          /* get the string corresponding to the key pressed */
@@ -5470,7 +5542,7 @@ fprintf(stderr,"KeySym=%04x nbuf=%d state=%u\n",(unsigned int)ks,nbuf,event->sta
          /* in special modes (record, Button2, zoom-pan) mode, this is bad */
 
          if( seq->record_mode || seq->button2_active || seq->zoom_button1 ){
-           XBell(seq->dc->display,100); busy=0; EXRETURN;
+           /* XBell(seq->dc->display,100); */ busy=0; EXRETURN;
          }
 
          /* otherwise, notify the master, if we have one */
@@ -5487,7 +5559,7 @@ fprintf(stderr,"KeySym=%04x nbuf=%d state=%u\n",(unsigned int)ks,nbuf,event->sta
 #endif
          }
       }
-      break ;  /* end of KeyPress */
+      break ;  /*--- end of KeyPress ---*/
 
       /*----- take button press -----*/
 
@@ -5500,7 +5572,7 @@ STATUS(" .. ButtonPress") ;
          /* don't allow button presses in a recorder window, or in zoom-pan mode */
 
          if( seq->record_mode || seq->zoom_button1 ){
-           if( seq->record_mode || event->button != Button1 ) XBell(seq->dc->display,100);
+           /* if( seq->record_mode || event->button != Button1 ) XBell(seq->dc->display,100); */
            busy=0; EXRETURN;
          }
 
@@ -5529,7 +5601,7 @@ STATUS(" .. ButtonPress") ;
 #if 0
              XUngrabPointer( event->display , CurrentTime ) ;
 #else
-             XBell(seq->dc->display,100) ;
+             /* XBell(seq->dc->display,100) ; */
 #endif
            }
            MCW_discard_events( w , ButtonPressMask ) ;
@@ -5627,8 +5699,8 @@ STATUS(" .. ButtonPress") ;
                          && (event->state & Mod1Mask) )
                    ISQ_but_save_CB( seq->wbut_bot[NBUT_SAVE] , seq , NULL ) ;
 
-                else
-                   XBell( seq->dc->display , 100 ) ;
+                /* else
+                   XBell( seq->dc->display , 100 ) ; */
 
               /* compute the location in the image
                  where the button event transpired, and send to AFNI */
@@ -5668,7 +5740,7 @@ STATUS(" .. ButtonPress") ;
               if( seq->button2_enabled && w == seq->wimage )
                  ISQ_button2_EV( w , client_data , ev , continue_to_dispatch ) ;
               else
-                 { XBell(seq->dc->display,100); busy=0; EXRETURN; }
+                 { /* XBell(seq->dc->display,100); */ busy=0; EXRETURN; }
             }
             break ;
 
@@ -5676,7 +5748,7 @@ STATUS(" .. ButtonPress") ;
          }
       }
       ISQ_but_done_reset( seq ) ;
-      break ;
+      break ;                     /*--- end of ButtonPress ---*/
 
       /*----- window changed size -----*/
 
@@ -5753,7 +5825,7 @@ else fprintf(stderr,"  -- too soon to enforce aspect!\n") ;
 
          am_active = 0 ;
       }
-      break ;
+      break ;  /*--- end of ConfigureNotify ---*/
 
       /*----- ignore all other events -----*/
 
@@ -6963,7 +7035,7 @@ ENTRY("ISQ_arrow_CB") ;
                           XmNrightPosition ,(int)(0.49 + nfrac * FORM_FRAC_BASE),
                         NULL ) ;
       } else {
-         XBell( seq->dc->display , 100 ) ;
+         /* XBell( seq->dc->display , 100 ) ; */
       }
    }
 
@@ -7153,7 +7225,7 @@ ENTRY("drive_MCW_imseq") ;
       default:{
          fprintf(stderr,"\a\n*** drive_MCW_imseq: code=%d illegal!\n",
                  drive_code) ;
-         XBell( seq->dc->display , 100 ) ;
+         /* XBell( seq->dc->display , 100 ) ; */
          RETURN( False );
       }
       break ;
@@ -8391,17 +8463,24 @@ ENTRY("ISQ_setup_new") ;
    RETURN( True ) ;
 }
 
-/*----------------------------------------------------------------------*/
-/*----         Stuff for the menu hidden on the color bar           ----*/
+/*----------------------------------------------------------------------------*/
+/*----            Stuff for the menu hidden on the color bar              ----*/
 
 void ISQ_wbar_plots_CB( Widget w , XtPointer cld , XtPointer cad ) /* 20 Sep 2001 */
 {
    MCW_imseq *seq = (MCW_imseq *) cld ;
-
 ENTRY("ISQ_wbar_plots_CB") ;
+   if( ISQ_REALZ(seq) ) ISQ_redisplay( seq , -1 , isqDR_display ) ;
+   EXRETURN ;
+}
 
-   if( !ISQ_REALZ(seq) ) EXRETURN ;
-   ISQ_redisplay( seq , -1 , isqDR_display ) ;
+/*----------------------------------------------------------------------------*/
+
+void ISQ_wbar_amask_CB( Widget w, XtPointer client_data, XtPointer call_data )
+{
+   MCW_imseq *seq = (MCW_imseq *)client_data ;  /* 14 Jun 2010 */
+ENTRY("ISQ_wbar_amask_CB") ;
+   if( ISQ_REALZ(seq) ) ISQ_redisplay( seq , -1 , isqDR_display ) ;
    EXRETURN ;
 }
 
@@ -8581,7 +8660,7 @@ ENTRY("ISQ_montage_CB") ;
 #if 0
 fprintf(stderr,"montage: zoom_fac = %d\n",seq->zoom_fac) ;
 #endif
-     XBell(seq->dc->display,100); EXRETURN; /* 18 Nov 2003 */
+     /* XBell(seq->dc->display,100); */ EXRETURN; /* 18 Nov 2003 */
    }
 
    for( ib=0 ; ib < NBUTTON_BOT-1 ; ib++ )       /* turn off buttons  */
@@ -8623,12 +8702,12 @@ fprintf(stderr,"montage: zoom_fac = %d\n",seq->zoom_fac) ;
                 XmNinitialResourcesPersistent , False ,
              NULL ) ;
 
-   (void) XtVaCreateManagedWidget(
+   wwtem = XtVaCreateManagedWidget(
             "menu" , xmLabelWidgetClass , wrc ,
                LABEL_ARG("-- Montage Controls --") ,
                XmNalignment  , XmALIGNMENT_CENTER ,
                XmNinitialResourcesPersistent , False ,
-            NULL ) ;
+            NULL ) ; LABELIZE(wwtem) ;
 
    (void) XtVaCreateManagedWidget(
             "menu" , xmSeparatorWidgetClass , wrc ,
@@ -10397,13 +10476,13 @@ ENTRY("ISQ_record_button") ;
    left alone. See related comments in afni_graph.c LessTif patrol, Jan 07 09 */
 
    xstr = XmStringCreateLtoR( "-- Cancel --" , XmFONTLIST_DEFAULT_TAG ) ;
-   (void) XtVaCreateManagedWidget(
+   wwtem = XtVaCreateManagedWidget(
             "menu" , xmLabelWidgetClass , menu ,
                XmNlabelString , xstr ,
                XmNrecomputeSize , False ,
                XmNinitialResourcesPersistent , False ,
             NULL ) ;
-   XmStringFree(xstr) ;
+   XmStringFree(xstr) ; LABELIZE(wwtem) ;
 
    (void) XtVaCreateManagedWidget(
             "menu" , xmSeparatorWidgetClass , menu ,

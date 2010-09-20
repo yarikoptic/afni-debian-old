@@ -8,6 +8,7 @@ import gc, math
 import option_list as OL
 import lib_timing as LT
 import afni_util as UTIL
+import lib_textdata as TD
 
 # ----------------------------------------------------------------------
 # globals
@@ -30,6 +31,7 @@ timing_tool.py    - for manipulating and evaluating stimulus timing files
 
        o reporting ISI statistics, such as min/mean/max values per run
        o reporting overall ISI statistics for a set of timing files
+       o converting stim_times format to stim_file format
        o adding a constant offset to time
        o combining multiple timing files into 1 (like '1dcat' + sort)
        o appending additional timing runs (like 'cat')
@@ -73,7 +75,7 @@ examples:
                         -add_offset -12.0                    \\
                         -write_timing stimesB1_offset12.1D
 
-   2b. Similar to 2, but scale times (multiply) by 0.975, perhaps to account
+   2b.Similar to 2, but scale times (multiply) by 0.975, perhaps to account
       for a different TR or stimulus duration.
 
          timing_tool.py -timing stimesB_01_houses.1D         \\
@@ -106,15 +108,63 @@ examples:
          timing_tool.py -timing response_times.1D       \\
                         -partition partitions.txt new_times
 
+   6a.Convert a stim_times timing file to 0/1 stim_file format.  Suppose the
+      timing is random where each event lasts 2.5 seconds and runs are of 
+      lengths 360, 360 and 400 seconds.  Convert timing.txt to sfile.1D on a TR
+      grid of 0.5 seconds (oversampling), where a TR gets an event if at least        30% of the TR is is occupied by stimulus.
+
+          timing_tool.py -timing timing.txt -timing_to_1D sfile.1D      \\
+                         -tr 0.5 -stim_dur 2.5 -min_frac 0.3            \\
+                         -run_len 360 360 400
+
+    6b.Evaluate the results.  Use waver to convolve sfile.1D with GAM and use
+       3dDeconvolve to convolve the timing file with BLOCK(2.5).
+
+          waver -GAM -TR 0.5 -peak 1 -input sfile.1D > waver.1D
+
+          3dDeconvolve -nodata 2240 0.5 -concat '1D: 0 720 1440'        \\
+                       -polort -1 -num_stimts 1                         \\
+                       -stim_times 1 timing.txt 'BLOCK(2.5)'            \\
+                       -x1D X.xmat.1D -x1D_stop
+
+          1dplot -sepscl sfile.1D waver.1D X.xmat.1D
+
+   7. Truncate stimulus times to the beginning of respective TRs.
+
+      Given a TR of 2.5 seconds and random stimulus times, truncate those times
+      to multiples of the TR (2.5).
+
+          timing_tool.py -timing timing.txt -tr 2.5 -truncate_times     \\
+                         -write_timing trunc_times.txt
+
+      Here, 11.83 would get truncated down to 10, the largest multiple of 2.5
+      less than or equal to the original time.
+
+   7b.Instead of just truncating the times, round them to the nearest TR, based
+      on some TR fraction.  In this example, round up to the next TR when a
+      stimulus occurs at least 70% into a TR, otherwise round down to the
+      beginning.
+
+          timing_tool.py -timing timing.txt -tr 2.5 -round_times 0.7    \\
+                         -write_timing round_times.txt
+
+      With no rounding, a time of 11.83 would be truncated to 10.0.  But 11.83
+      is 1.83 seconds into the TR, or is 73.2 percent into the TR.  Since it is
+      at least 70% into the TR, it is rounded up to the next one.
+
+      Here, 11.83 would get rounded up to 12.5.
+
 --------------------------------------------------------------------------
 Notes:
 
-   1. Action options are performed in the order of the options.  If
-      the -chrono option is given, everything (but -chrono) is.
+   1. Action options are performed in the order of the options.  If the -chrono
+      option is given, everything (but -chrono) is.
 
    2. Either -timing or -multi_timing is required for processing.
 
-   3. Option -run_len applies to single or multiple stimulus classes.
+   3. Option -run_len applies to single or multiple stimulus classes.  A single
+      parameter would be used for all runs.  Otherwise one duration per run
+      should be supplied.
 
 --------------------------------------------------------------------------
 basic informational options:
@@ -125,7 +175,7 @@ basic informational options:
    -ver                         : show the version number
 
 ------------------------------------------
-single/multiple timing options:
+options with both single and multi versions (all single first):
 
    -timing TIMING_FILE          : specify a stimulus timing file to load
 
@@ -138,6 +188,8 @@ single/multiple timing options:
 
         With this option, the program will display timing statistics for the
         single (possibly modified) timing element.
+
+        If -tr is included, TR offset statistics are also shown.
 
    -show_timing_ele             : display info on the main timing element
 
@@ -176,6 +228,8 @@ single/multiple timing options:
         With this option, the program will display timing statistics for the
         multiple timing files.
 
+        If -tr is included, TR offset statistics are also shown.
+
    -multi_show_timing_ele       : display info on the multiple timing elements
 
         With this option, the program will display information regarding the
@@ -209,7 +263,7 @@ action options (apply to single timing element, only):
         Use this option to add a single offset to all of the times in the main
         timing element.  For example, if the user deletes 3 4-second TRs from
         the EPI data, they may wish to subtract 12 seconds from every stimulus
-        time, so that the times match the modifed EPI data.
+        time, so that the times match the modified EPI data.
 
             Consider '-write_timing'.
 
@@ -267,6 +321,27 @@ action options (apply to single timing element, only):
                     0        0        0        84.9      116.2
                     *
 
+   -round_times FRAC            : round times to multiples of the TR
+                                  0.0 <= FRAC <= 1.0
+
+        e.g. -round_times 0.7
+
+        All stimulus times will be rounded to a multiple TR, rounding down if
+        the fraction of the TR that has passed is less than FRAC, rounding up
+        otherwise.
+
+        Using the example of FRAC=0.7, if the TR is 2.5 seconds, then times are
+        rounded down if they occur earlier than 1.75 seconds into the TR.  So
+        11.83 would get rounded up to 12.5, while 11.64 would be rounded down
+        to 10.
+
+        FRAC = 1.0 is essentially floor() (as in -truncate_times), while
+        FRAC = 0.0 is essentially ceil().
+
+        This option requires -tr.
+
+            Consider example 7b.  See also -truncate_times.
+
    -scale_data SCALAR           : multiply every stim time by SCALAR
 
         e.g. -scale_data 0.975
@@ -294,6 +369,46 @@ action options (apply to single timing element, only):
 
             Consider '-write_timing'.
 
+   -timing_to_1D output.1D      : convert stim_times format to stim_file
+
+        e.g. -timing_to_1D stim_file.1D
+
+        This action is used to convert stimulus times to set (i.e. 1) values
+        in a 1D stim_file.  
+
+        Besides an input -timing file, -tr is needed to specify the timing grid
+        of the output 1D file, -stim_dur is needed to specify the duration of
+        each stimulus (which might cross many output TRs), and -run_len is
+        needed to specify the duration of each (or all) of the runs.
+
+        The -min_frac option may be applied to give a minimum cutoff for the
+        fraction of a TR occupied by a stimulus required to label that TR as a
+        1.  If not, the default cutoff is 0.3.
+
+        For example, assume options: '-tr 2', '-stim_dur 4.2', '-min_frac 0.2'.
+        A stimulus at time 9.7 would last until 13.9.  TRs 0..4 would certainly
+        be 0, TR 5 would also be 0 as the stimulus covers only .15 of the TR
+        (.3 seconds out of 2 seconds).  TR 6 would be 1 since it is completely
+        covered, and TR 7 would be 1 since .95 (1.9/2) would be covered.
+
+        So the resulting 1D file would start with:
+
+                0
+                0
+                0
+                0
+                0
+                1
+                1
+
+        The main use of this operation is for PPI analysis, to partition the
+        time series (maybe on a fine grid) with 1D files that are 1 when the
+        given stimulus is on and 0 otherwise.
+
+            Consider -tr, -stim_dur, -min_frac, -run_len.
+
+            Consider example 6a.
+
    -transpose                   : transpose the data (only if rectangular)
 
         This works exactly like 1dtranspose, and requires each row to have
@@ -301,6 +416,22 @@ action options (apply to single timing element, only):
         be swapped with the first column, etc.
 
             Consider '-write_timing'.
+
+   -truncate_times              : truncate times to multiples of the TR
+
+        All stimulus times will be truncated to the largest multiple of the TR
+        that is less than or equal to each respective time.  That is to say,
+        shift each stimulus time to the beginning of its TR.
+
+        This is particularly important when stimulus times are at a constant
+        offset into each TR and at the same time using TENT basis functions
+        for regression (in 3dDeconvolve, say).  The shorter the (non-zero)
+        offset, the more correlated the first two tent regressors will be,
+        possibly leading to unpredictable results.
+
+        This option requires -tr.
+
+            Consider example 7.
 
    -write_timing NEW_FILE       : write the current timing to a new file
 
@@ -319,6 +450,23 @@ general options:
         -timing options are not, unless the chrono option is given.  This 
         allows one to do things like scripting a sequence of operations
         within a single command.
+
+   -min_frac FRAC               : specify minimum TR fraction
+
+        e.g. -min_frac 0.1
+
+        This option applies to the -timing_to_1D action, above.  When a random
+        timing stimulus is converted to part of a 0/1 1D file, if the stimulus
+        occupies at least FRAC of a TR, then that TR gets a 1 (meaning it is 
+        "on"), else it gets a 0 ("off").
+
+        FRAC is required to be within [0,1], though clearly 0 is not very
+        useful.  Also, 1 is not recommended unless that TR can be stored
+        precisely as a floating point number.  For example, 0.1 cannot be
+        stored exactly, so 0.999 might be safer to basically mean 1.0.
+
+            Consider -timing_to_1D.
+
 
    -nplaces NPLACES             : specify # decimal places used in printing
 
@@ -347,6 +495,18 @@ general options:
 
             Consider '-show_isi_stats' and '-multi_show_isi_stats'.
 
+   -tr TR                       : specify the time resolution in 1D output
+                                  (in seconds)
+        e.g. -tr 2.0
+        e.g. -tr 0.1
+
+        For any action that write out 1D formatted data (currently just the
+        -timing_to_1D action), this option is used to set the temporal
+        resolution of the data.  For example, given -run_len 200 and -tr 0.5,
+        one run would be 400 time points.
+
+            Consider -timing_to_1D and -run_len.
+
    -verb LEVEL                  : set the verbosity level
 
         e.g. -verb 3
@@ -365,9 +525,16 @@ g_history = """
    1.0  Dec 01, 2008 - initial/release version
    1.1  Jul 23, 2009 - added -partition option
    1.2  Sep 16, 2009 - added -scale_data
+   1.3  Feb 20, 2010 - added -timing_to_1D, -tr and -min_frac
+   1.4  Mar 17, 2010 - fixed timing_to_1D when some runs are empty
+   1.5  Jun 09, 2010 - fixed partitioning without zeros
+   1.6  Jul 11, 2010 - show TR offset stats if -tr and -show_isi_stats
+   1.7  Jul 12, 2010 - added -truncate_times and -round_times
+                       (added for S Durgerian)
+   1.8  Aug 16, 2010 - use lib_textdata for I/O
 """
 
-g_version = "timing_tool.py version 1.2, Sep 16, 2009"
+g_version = "timing_tool.py version 1.8, August 16, 2010"
 
 
 class ATInterface:
@@ -383,6 +550,9 @@ class ATInterface:
       self.nplaces         = -1         # num decimal places for writing
       self.run_len         = [0]        # time per run (for single/multi)
       self.verb            = verb
+
+      self.min_frac        = 0.3        # applies to timing_to_1D
+      self.tr              = 0          # applies to some output
 
       # user options - single var
       self.timing          = None       # main timing element
@@ -558,6 +728,9 @@ class ATInterface:
       self.valid_opts.add_opt('-partition', 2, [], 
                          helpstr='partition the events into multiple files')
 
+      self.valid_opts.add_opt('-round_times', 1, [], 
+                         helpstr='round times up if past FRAC of TR')
+
       self.valid_opts.add_opt('-scale_data', 1, [], 
                          helpstr='multiply all data by the given value')
 
@@ -567,8 +740,14 @@ class ATInterface:
       self.valid_opts.add_opt('-sort', 0, [], 
                          helpstr='sort the data, per row')
 
+      self.valid_opts.add_opt('-timing_to_1D', 1, [], 
+                         helpstr='convert stim_times to 0/1 stim_file')
+
       self.valid_opts.add_opt('-transpose', 0, [], 
                          helpstr='transpose timing data (must be rectangular)')
+
+      self.valid_opts.add_opt('-truncate_times', 0, [], 
+                         helpstr='truncation times to multiple of TR')
 
       self.valid_opts.add_opt('-write_timing', 1, [], 
                          helpstr='write timing contents to the given file')
@@ -596,10 +775,14 @@ class ATInterface:
       # general options (including multi)
       self.valid_opts.add_opt('-chrono', 0, [], 
                          helpstr='process options chronologically')
+      self.valid_opts.add_opt('-min_frac', 1, [], 
+                         helpstr='min tr fraction (in [0,1.0])')
       self.valid_opts.add_opt('-nplaces', 1, [], 
                          helpstr='set number of decimal places for printing')
       self.valid_opts.add_opt('-run_len', -1, [], 
-                         helpstr='specify the lengths of each run (in seconds)')
+                         helpstr='specify the lengths of each run (seconds)')
+      self.valid_opts.add_opt('-tr', 1, [], 
+                         helpstr='specify output timing resolution (seconds)')
       self.valid_opts.add_opt('-verb', 1, [], 
                          helpstr='set the verbose level (default is 1)')
 
@@ -646,9 +829,24 @@ class ATInterface:
          val, err = self.user_opts.get_type_opt(int, '-verb')
          if val != None and not err: self.verb = val
 
+         val, err = uopts.get_type_opt(float, '-min_frac')
+         if val and not err:
+            self.min_frac = val
+         if self.min_frac < 0.0 or self.min_frac > 1.0:
+            print '** invalid -min_frac = %g' % self.min_frac
+            print '   (should be in [0,1])'
+            return 1
+
          val, err = uopts.get_type_opt(int, '-nplaces')
          if val and not err:
             self.nplaces = val
+
+         val, err = uopts.get_type_opt(float, '-tr')
+         if val and not err:
+            self.tr = val
+            if self.tr <= 0.0:
+               print '** invalid (non-positive) -tr = %g' % self.tr
+               return 1
 
          val, err = uopts.get_type_list(float, '-run_len')
          if type(val) == type([]) and not err:
@@ -710,6 +908,14 @@ class ATInterface:
 
             # general options
 
+            val, err = uopts.get_type_opt(float, '-min_frac')
+            if val and not err:
+               self.min_frac = val
+            if self.min_frac < 0.0 or self.min_frac > 1.0:
+               print '** invalid -min_frac = %g' % self.min_frac
+               print '   (should be in [0,1])'
+               return 1
+
             elif opt.name == '-nplaces':
                val, err = self.user_opts.get_type_opt(int, '', opt=opt)
                if val != None and err: return 1
@@ -721,6 +927,13 @@ class ATInterface:
                if val != None and err: return 1
                else: self.run_len = val
                continue
+
+            val, err = uopts.get_type_opt(float, '-tr')
+            if val and not err:
+               self.tr = val
+               if self.tr <= 0.0:
+                  print '** invalid -tr = %g' % self.tr
+                  return 1
 
             elif opt.name == '-verb':
                val, err = self.user_opts.get_type_opt(int, '', opt=opt)
@@ -785,6 +998,26 @@ class ATInterface:
             if val != None and err: return 1
             self.timing.scale_val(val)
 
+         elif opt.name == '-round_times':
+            if not self.timing:
+               print "** '%s' requires -timing" % opt.name
+               return 1
+            if self.tr <= 0.0:
+               print "** '%s' requires -tr" % opt.name
+               return 1
+            val, err = uopts.get_type_opt(float, opt=opt)
+            if val != None and err: return 1
+            self.timing.round_times(self.tr, round_frac=val)
+
+         elif opt.name == '-truncate_times':
+            if not self.timing:
+               print "** '%s' requires -timing" % opt.name
+               return 1
+            if self.tr <= 0.0:
+               print "** '%s' requires -tr" % opt.name
+               return 1
+            self.timing.round_times(self.tr)
+
          elif opt.name == '-sort':
             if not self.timing:
                print "** '%s' requires -timing" % opt.name
@@ -811,6 +1044,14 @@ class ATInterface:
                return 1
             self.multi_show_isi_stats()
 
+         elif opt.name == '-timing_to_1D':
+            if not self.timing:
+               print "** '%s' requires -timing" % opt.name
+               return 1
+            val, err = uopts.get_string_opt('', opt=opt)
+            if val != None and err: return 1
+            self.write_timing_as_1D(val)
+
          elif opt.name == '-transpose':
             if not self.timing:
                print "** '%s' requires -timing" % opt.name
@@ -833,6 +1074,44 @@ class ATInterface:
 
       return 0
 
+   def write_timing_as_1D(self, fname):
+      """
+        - todo: add options -tr, -timing_to_1D, -min_frac
+      """
+      if not self.timing:
+         print '** no timing, cannot show stats'
+         return 1
+
+      if not fname:
+         print '** write_timing_as_1D: missing filename'
+         return 1
+
+      if self.stim_dur <= 0:
+         print '** error: -stim_dur must be positive'
+         return 1
+
+      if self.tr <= 0.0:
+         print '** error: -tr must be positive'
+         return 1
+
+      if len(self.run_len) < 2 and self.run_len[0] == 0:
+         print '** timing_to_1D requires -run_len'
+         return 1
+
+      if self.min_frac <= 0.0 or self.min_frac > 1.0:
+         print '** error: -min_frac must be in (0.0, 1.0]'
+         return 1
+
+      amt = LT.AfniMarriedTiming(from_at=1, at=self.timing)
+      if not amt: return 1
+
+      errstr, result = amt.timing_to_1D(self.run_len, self.tr, self.min_frac)
+      if errstr:
+         print errstr
+         return 1
+
+      TD.write_1D_file(result, fname)
+
    def show_isi_stats(self):
       if not self.timing:
          print '** no timing, cannot show stats'
@@ -840,7 +1119,8 @@ class ATInterface:
 
       amt = LT.AfniMarriedTiming(from_at=1, at=self.timing)
 
-      rv = amt.show_isi_stats(mesg='single element', run_len=self.run_len)
+      rv = amt.show_isi_stats(mesg='single element', run_len=self.run_len,
+                              tr=self.tr)
       if rv and self.verb > 2:
          amt.make_data_string(nplaces=self.nplaces,mesg='SHOW ISI FAILURE')
 
@@ -860,7 +1140,8 @@ class ATInterface:
 
       if self.verb > 2: amt.show('final AMT')
 
-      rv = amt.show_isi_stats(mesg='%d elements'%nele, run_len=self.run_len)
+      rv = amt.show_isi_stats(mesg='%d elements'%nele, run_len=self.run_len,
+                              tr=self.tr)
       if rv and self.verb > 2:
          print amt.make_data_string(nplaces=self.nplaces,mesg='ISI FAILURE')
 

@@ -68,6 +68,8 @@ int main( int argc , char * argv[] )
              "Smooths each voxel time series in a 3D+time dataset and produces\n"
              "as output a new 3D+time dataset (e.g., lowpass filter in time).\n"
              "\n"
+             "*** Also see program 3dBandpass ***\n"
+             "\n"
              "General Options:\n"
              "  -prefix ppp  = Sets the prefix of the output dataset to be 'ppp'.\n"
              "                   [default = 'smooth']\n"
@@ -410,9 +412,16 @@ int main( int argc , char * argv[] )
    }  /* end of loop over voxels */
 
    DSET_unload(old_dset) ; free(ftap) ;
-   DSET_write(new_dset) ;
-   fprintf(stderr,"++ output dataset: %s\n",DSET_BRIKNAME(new_dset)) ;
-   exit(0) ;
+   
+   if (DSET_write(new_dset) != False) {
+      fprintf(stderr,"++ output dataset: %s\n",DSET_BRIKNAME(new_dset)) ;
+      exit(0) ;
+   } else {
+      fprintf(stderr,
+         "** 3dTsmooth: Failed to write output!\n" ) ;
+      exit(1) ;
+   }            
+
 }
 
 /*--------------- Order Statistics Filter ----------------*/

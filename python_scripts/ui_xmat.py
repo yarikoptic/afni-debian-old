@@ -654,7 +654,7 @@ class XmatInterface:
          return self.test_libraries(verb=val)
 
       # attempting real work, load AM (locally)
-      self.set_afni_xmat()
+      if self.set_afni_xmat(): return 1
 
       # ------------------------------------------------------------
       # check general options, esp. chrono
@@ -942,7 +942,7 @@ class XmatInterface:
       mstr = ''
       for r in range(mat.ncols):
          for c in range(mat.ncols):
-             mstr += '%.3f  ' % mat.cormat[r,c]
+             mstr += '%6.3f  ' % mat.cormat[r,c]
          mstr += '\n'
 
       return 0, mstr
@@ -997,11 +997,11 @@ class XmatInterface:
 
          # we have an appropriately evil entry...
          if mat.labels:
-            mstr += '%s  %5.3f       %5.3f   (%2d vs. %2d)  %*s  vs.  %s\n' % \
+            mstr += '%s  %6.3f      %6.3f   (%2d vs. %2d)  %*s  vs.  %s\n' % \
                     (cs, val, abs(cval), col, row,
                      mlab, mat.labels[col], mat.labels[row])
          else:
-            mstr += '%s  %5.3f       %5.3f   #%2d  vs.  #%2d\n' %        \
+            mstr += '%s  %6.3f      %6.3f   #%2d  vs.  #%2d\n' %        \
                     (cs, val, abs(cval), col, row)
 
       return 0, mstr
@@ -1021,7 +1021,7 @@ class XmatInterface:
       mstr = ''
       for r in range(mat.ncols):
          for c in range(mat.ncols):
-             mstr += '%.3f  ' % mat.cosmat[r,c]
+             mstr += '%6.3f  ' % mat.cosmat[r,c]
          mstr += '\n'
 
       return 0, mstr
@@ -1115,7 +1115,7 @@ class XmatInterface:
       else: return 0
 
    def test(self, verb=3):
-      self.set_afni_xmat() # this might not be loaded
+      if self.set_afni_xmat(): return 1 # might not be loaded
       # init
       print '------------------------ initial reads -----------------------'
       self.verb = verb

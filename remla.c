@@ -646,18 +646,17 @@ reml_setup * setup_arma11_reml( int nt, int *tau,
        ERROR_message("matrix_qrr fails?! a=%.3f lam=%.3f",rho,lam) ;
      matrix_destroy(D) ; free((void *)D) ; rcmat_destroy(rcm) ; return NULL ;
    } else if( ii > 0 ){
-#ifndef USE_OMP
-     static int iold=0 ;
-     if( ii != iold ){
+#pragma omp critical (QRERR)
+ {  static int iold=0 ;
+     if( ii > iold ){
        WARNING_message("-----") ;
        WARNING_message(
-         "QR decomposition of X had %d tiny diagonal"
-         " element%s adjusted -- collinearity!",
+         "QR decomposition of [R]^(-1/2) [X] had %d collinearity problem%s" ,
          ii , (ii==1) ? "\0" : "s"                       ) ;
        WARNING_message("-----") ;
        iold = ii ;
      }
-#endif
+ } /* end of OpenMP critical section */
    }
 
    /* create the setup struct, save stuff into it */
@@ -1243,15 +1242,28 @@ ENTRY("REML_get_gltfactors") ;
    GT = (matrix *)malloc(sizeof(matrix)) ; matrix_initialize(GT) ;
    matrix_transpose( *G , GT ) ;         /* GT = [G'] = nn X rr matrix */
 
+/* INFO_message("GLT GT matrix") ; matrix_print( *GT ) ; */
+
    F = (matrix *)malloc(sizeof(matrix)) ; matrix_initialize(F) ;
    matrix_rrtran_solve( *D , *GT , F ) ; /* F = inv[D'] [G'] = nn X rr matrix */
    matrix_destroy(GT); free(GT);
 
    S = (vector *)malloc(sizeof(vector)) ; vector_initialize(S) ;
 
+/* INFO_message("GLT F matrix") ; matrix_print( *F ) ; */
+
    if( rr == 1 ){               /* F is really an nn-vector */
      ete = matrix_frobenius( *F ) ;        /* sum of squares */
      vector_create(rr,S) ; S->elts[0] = sqrt(ete) ; /* sigma */
+     if( ete == 0.0f ){
+#pragma omp critical (GLTZZZ)
+ {     static int first = 1 ;
+       if( first ){
+         WARNING_message( "GLT setup %dx1 matrix is all zero?" , nn ); first=0;
+       }
+       ete = 1.0 ;
+ } /* end of OpenMP critical section */
+     }
      ete = 1.0 / ete ;                       /* scale factor */
      JR = (matrix *)malloc(sizeof(matrix)) ; matrix_initialize(JR) ;
      matrix_create(rr,nn,JR) ;
@@ -1264,14 +1276,16 @@ ENTRY("REML_get_gltfactors") ;
      JR = (matrix *)malloc(sizeof(matrix)) ; matrix_initialize(JR) ;
      i = matrix_qrr( *F , E ) ;
      if( i > 0 ){
-       static int iold = 0 ;
-       if( i != iold ){
+#pragma omp critical (QRERR)
+ {     static int iold = 0 ;
+       if( i > iold ){
+         fprintf(stderr,"\n") ;
          WARNING_message(
-           "QR decomposition of GLT matrix had %d tiny diagonal"
-           " element%s adjusted -- collinearity!",
-           i , (i==1) ? "\0" : "s"                             ) ;
+           "QR decomposition of GLT setup %dx%d matrix had %d collinearity problem%s" ,
+           nn,rr, i , (i==1) ? "\0" : "s"                             ) ;
          iold = i ;
        }
+ } /* end of OpenMP critical section */
      }
      matrix_rrtran_solve( *E , *G , Z ) ;
      matrix_rr_solve( *E , *Z , JR ) ;  /* JR = inv[E] inv[E'] G = rr X nn */
@@ -1289,8 +1303,8 @@ ENTRY("REML_get_gltfactors") ;
    /* save results into struct */
 
    gf = (gltfactors *)malloc(sizeof(gltfactors)) ;
-   gf->mpar   = nn ;
-   gf->rglt   = rr ;
+   gf->mpar   = nn ;  /* number of parameters */
+   gf->rglt   = rr ;  /* number of rows in matrix */
    gf->Jright = JR ;
    gf->Jleft  = JL ;
    gf->sig    = S  ;
@@ -1348,7 +1362,8 @@ static vector *betaT = NULL ;  /* GLT t-statistics  */
 static MTYPE   betaR = 0.0  ;  /* GLT R^2 statistic */
 static MTYPE   betaF = 0.0  ;  /* GLT F statistic   */
 
-MTYPE REML_compute_gltstat( vector *y, vector *bfull, MTYPE fsumq ,
+MTYPE REML_compute_gltstat( int ddof ,
+                            vector *y, vector *bfull, MTYPE fsumq ,
                             reml_setup *rset, gltfactors *gf,
                             matrix *G, sparmat *Gs, matrix *X, sparmat *Xs )
 {
@@ -1368,6 +1383,8 @@ ENTRY("REML_compute_gltstat") ;
      free(betaG) ; free(betaT) ; betaG = betaT = NULL ; betaR = 0.0 ;
      RETURN( 0.0 );
    }
+
+   if( ddof <= 0 ) ddof = X->rows - X->cols ;  /* 16 Mar 2010 */
 
    vector_initialize(&ba); vector_initialize(&bb); vector_initialize(&br);
 
@@ -1399,20 +1416,20 @@ ENTRY("REML_compute_gltstat") ;
    /* F stat measures the improvement in sum of squares of
       residuals between this restricted model and the full model */
 
-   fstat = ( (rsumq-fsumq) / gf->rglt ) / ( fsumq / (X->rows - X->cols) ) ;
+   fstat = ( (rsumq-fsumq) / gf->rglt ) / ( fsumq / ddof ) ;
    if( fstat < 0.0 ) fstat = 0.0 ;  /* should not happen */
    betaF = fstat ;
 
    /* 23 Oct 2008: generalized correlation coefficient squared */
 
-   if( rsumq > 0.0 ) betaR = 1.0 - fsumq / rsumq ;
-   else              betaR = 0.0 ;
+   if( rsumq > fsumq ) betaR = 1.0 - fsumq / rsumq ;
+   else                betaR = 0.0 ;
 
    /* compute GLT combinations of beta coefficients, and t-statistics */
 
    if( G != NULL ){
      MTYPE fsig ; int ii ;
-     fsig = sqrt( fsumq / (X->rows - X->cols) ) ;
+     fsig = sqrt( fsumq / ddof ) ;  /* noise estimate */
      if( Gs != NULL ){
        vector_create_noinit( Gs->rows , betaG ) ;
        vector_spc_multiply( Gs , bfull->elts , betaG->elts ) ;

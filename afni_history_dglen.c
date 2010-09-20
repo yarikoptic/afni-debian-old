@@ -49,6 +49,79 @@
 
 
 afni_history_struct dglen_history[] = {
+{ 10 , SEP, 2010 , DRG , "afni_all" , 
+    MAJOR , TYPE_MODIFY, 
+    "Introduce code allowing multiple space sessions but limited to existing",
+    "spaces (ORIG, ACPC, TLRC) so should continue to be transparent.\n"
+    "Datasets are now tagged with space attribute, TLRC/MNI/MNI_ANAT,\n"
+    "and defines which kind of template a dataset has been aligned to.\n"
+    "This attribute is handled by @auto_tlrc, adwarp, 3drefit, whereami,\n"
+    "and the AFNI GUI using the whereami GUI. In the AFNI GUI, this\n"
+    "has the effect of allowing a dataset to be identified by its template\n"
+    "with the transformation to the TLRC or other atlas space handled\n"
+    "automatically. Other AFNI programs should apply the template space of\n"
+    "the master dataset or first dataset to the output.\n"
+    "cvs tag marked on code before this change as mid-atlantic"
+} ,
+{ 14 , JUL, 2010 , DRG , "afni_all" , 
+    MAJOR , TYPE_MODIFY, 
+    "Beginning to introduce code for allowing multiple spaces and atlases",
+    "These code changes should initially have no effect on functionality\n"
+    "and provide only a framework for introducing changes\n"
+    "cvs tag marked on code before this change as pre-atlantic"
+} ,
+{ 13 , JUL, 2010 , DRG , "3dresample" , 
+    MINOR , TYPE_MODIFY, 
+    "Allowed for wider range of voxel sizes"
+} ,
+
+{ 8 , JUN, 2010 , DRG , "RetroTS.m" , 
+    MINOR , TYPE_NEW_OPT, 
+    "Allowed for alt+z2 slice timing"
+} ,
+
+{ 18 , MAY , 2010 , DRG , "model_demri_3" , 
+    MINOR , TYPE_NEW_ENV, 
+    "Allowed for flip angle variation through volume with scaling dataset"
+} ,
+
+{ 11 , MAY , 2010 , DRG , "model_demri_3" , 
+    MINOR , TYPE_MODIFY, 
+    "Changed minor defaults and error handling in DEMRI model"
+} ,
+
+{ 24 , MAR , 2010 , DRG , "align_epi_anat.py" , 
+    MINOR , TYPE_MODIFY, 
+    "Some flexibility with animal alignment and giant move." ,
+    "feature_size, rat_align options used for fineblur option"
+} ,
+
+{ 15 , MAR , 2010 , DRG , "3dTstat, 3dMean" , 
+    MICRO , TYPE_MODIFY,
+    "Minor text changes to refer to the other program in help"
+} ,
+
+{ 1 , MAR , 2010 , DRG , "align_epi_anat.py" , 
+    MINOR , TYPE_MODIFY, 
+    "Changed default options used with giant_move and 3dAllineate." ,
+    "Changed with version 1.30 of align_epi_anat.py"
+} ,
+
+{ 9 , FEB , 2010 , DRG , "align_epi_anat.py" , 
+    MINOR , TYPE_BUG_FIX, 
+    "Fixed silly bug introduced in previous version" ,
+    "isdigit() method not called properly (Thanks Rick)"
+} ,
+
+{ 28 , JAN , 2010 , DRG , "align_epi_anat.py" , 
+    MINOR , TYPE_NEW_OPT, 
+    "Options for multiple cost functionals,edge control" ,
+    "multi_cost option for trying out different cost functionals.\n"
+    "check_cost option for comparing for big differences among cost\n"
+    "functionals\n"
+    "edge_erodelevel option for adjusting the number of layers to erode\n"
+    "for edge option"
+} ,
 
 { 14 , DEC , 2009 , DRG , "McRetroTS" , 
     MINOR , TYPE_BUG_FIX,   "Variable Opt parameters were not parsed correctly" ,

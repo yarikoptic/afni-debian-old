@@ -151,6 +151,8 @@ class AfniTiming:
 
       nlabr = len(labels)
 
+      if self.verb > 3: print '-- partition: %d labels: %s' % (nlabr, labels)
+
       # first test nrows, then test lengths per row
       if self.nrows != nlabr:
          print '** Timing nrows differs from partition nrows (%d, %d)' % \
@@ -166,8 +168,8 @@ class AfniTiming:
       for line in labels:
          ulabs.extend(line)
       ulabs = UTIL.get_unique_sublist(ulabs)
-      if self.verb > 2: print '-- unique label list: %s' % ulabs
-      ulabs.remove('0')
+      if self.verb > 2: print '-- partition: unique label list: %s' % ulabs
+      if ulabs.count('0'): ulabs.remove('0')
 
       if self.verb > 1: print '++ Timing: partitioning with %s' % part_file
 
@@ -265,6 +267,56 @@ class AfniTiming:
       for row in self.data:
          for ind in range(len(row)):
             row[ind] *= val
+
+      return 0
+
+   def round_times(self, tr, round_frac=1.0):
+      """round/truncate times to multiples of the TR
+
+         round_frac : fraction of TR required to "round up"
+                      e.g. 0.5  : normal rounding
+                           1.0  : never round up, floor()
+                           0.0  : always round up, ceil()
+      """
+      if not self.ready: return 1
+      if tr <= 0:
+         print "** truncate_times: invalid tr %s" % tr
+         return 1
+
+      # convert to fraction to add before truncation (and be sure of type)
+      try: rf = 1.0 - round_frac
+      except:
+         print "** truncate_times: invalid round_frac '%s'" % round_frac
+         return 1
+
+      try: tr = float(tr)
+      except:
+         print "** truncate_times: invalid tr '%s'" % tr
+         return 1
+
+      if rf < 0.0 or rf > 1.0:
+         print "** truncate_times: bad round_frac outside [0,1]: %s" % rf
+         return 1
+
+      if self.verb > 1:
+         print '-- Timing: round times to multiples of %s (frac = %s)'%(tr,rf)
+
+      # fr to use for floor and ceil (to assist with fractional TRs)
+      if tr == math.floor(tr): tiny = 0.0
+      else:                    tiny = 0.0000000001
+
+      for row in self.data:
+         for ind in range(len(row)):
+            # start with TR index
+            tind = row[ind]/tr
+            # note that rf = 0 now means floor and 1 means ceil
+
+            # add/subract a tiny fraction even for truncation
+            if rf == 1.0   :
+               if tind == 0: row[ind] = 0.0  # to avoid
+               else:         row[ind] = math.ceil(tind-tiny) * tr
+            elif rf == 0.0 : row[ind] = math.floor(tind+tiny) * tr
+            else           : row[ind] = math.floor(tind+rf) * tr
 
       return 0
 
@@ -593,11 +645,160 @@ class AfniMarriedTiming:
 
       return 0
 
-   def show_isi_stats(self, mesg='', run_len=[]):
+   def timing_to_1D(self, run_len, tr, min_frac):
+      """return a 0/1 array of trs surviving min_frac cutoff
+
+                run_len   : list of run durations, in seconds
+                            (each must encompass the last stimulus, of course)
+                tr        : time resolution of output 1D file
+                min_frac  : minimum TR fraction occupied by stimulus required
+                            for a set value in output array
+                            (must be in [0.0, 1.0])
+
+         return an error string and the 0/1 array
+                (on success, the error string is '')
+      """
+
+      errstr, result = self.timing_to_tr_frac(run_len, tr)
+
+      if errstr != '' or len(result) < 1: return errstr, result
+
+      new_res = [0 for ind in range(len(result))]
+      for ind, val in enumerate(result):
+         if val >= min_frac: new_res[ind] = 1
+
+      del(result)
+
+      return '', new_res
+
+   def timing_to_tr_frac(self, run_len, tr):
+      """return an array of stim fractions, where is value is the fraction
+         of the current TR occupied by stimulus
+
+         The output will be of length sum(TRs per run) and will be in [0,1.0].
+         Note that a single stimulus can span multiple TRs.
+
+         ** save this comment for elsewhere
+         ** save min_tr_frac for elsewhere
+                min_tr_frac     : minimum fraction of a TR required to set it
+                                  (must be in (0.0, 1.0])
+         Note that if they are not TR-locked and min_tr_frac <= 0.5, then
+         one stimulus lasting one TR but occuring on the half TR can result
+         in a pair of consecutive 1s.
+         ** end save
+
+                run_len         : list of run durations, in seconds
+                                  (each must encompass the last TR, of course)
+                tr              : time resolution of output 1D file
+
+         On success, the error string should be empty and stim_list should not.
+
+         return error string, stim list
+
+         ** testing **
+
+         import math, copy
+         import afni_util as UTIL, lib_timing as LT
+         reload LT
+         t = LT.AfniTiming('ch_fltr.txt')
+         mt = LT.AfniMarriedTiming(from_at=1, at=t)
+         mt.timing_to_tr_frac(run_len, 2.5)
+         mt.timing_to_1D(run_len, 2.5, 0.3)
+      """
+
+      if not self.ready:
+         return '** M Timing: nothing to compute ISI stats from', []
+
+      if self.mtype != MTYPE_INT:
+         return '** M Timing: cannot compute stats without interval mtype', []
+
+      if self.nrows != len(self.data):
+         return '** bad MTiming, nrows=%d, datalen=%d, failing...' % \
+               (self.nrows, len(self.data)), []
+
+      if self.nrows != len(run_len):
+         return '** run_len list is %d of %d runs in timing_to_1D: %s'   \
+               % (len(run_len), self.nrows, run_len), []
+
+      if tr <= 0.0:
+         return '** timing_to_tr, illegal TR <= 0: %g' % tr, []
+
+      # make a sorted copy
+      scopy = self.copy()
+      scopy.sort()
+
+      # recall that data is run x time x [start,end], i.e. is 3-D
+
+      if self.verb > 1:
+         print 'timing_to_tr_fr, tr = %g, nruns = %d' % (tr,len(run_len))
+
+      # need to check each run for being empty
+      for ind, data in enumerate(scopy.data):
+          if len(data) < 1: continue
+          if data[-1][1] > run_len[ind] or run_len[ind] < 0:
+              return '** run %d, stim ends after end of run' % (ind+1, [])
+          
+      result = []
+      # process one run at a time, first converting to TR indicies
+      for rind, data in enumerate(scopy.data):
+         if self.verb > 4:
+            print '\n++ stimulus on/off times, run %d :' % (rind+1)
+            print data
+
+         for tind in range(len(data)):  # convert seconds to TRs
+            data[tind][0] = round(data[tind][0]/tr,3)
+            data[tind][1] = round(data[tind][1]/tr,3)
+
+            if tind > 0 and data[tind][0] < data[tind-1][1]:
+                return '** run %d, index %d, stimulus overlap with next' \
+                       % (rind, tind), []
+         if self.verb > 4:
+            print '++ stimulus on/off TR times, run %d :' % (rind+1)
+            print data
+         if self.verb > 3:
+            print '++ tr fractions, run %d :' % (rind+1)
+            print [data[tind][1]-data[tind][0] for tind in range(len(data))]
+
+         # do the real work, for each stimulus, fill appropriate tr fractions
+         # init frac list with TR timing (and enough TRs for run)
+         num_trs = int(math.ceil( run_len[rind]/tr ))
+         rdata = [0 for i in range(num_trs)]
+         for sind in range(len(data)):
+            start  = data[sind][0]
+            end    = data[sind][1]
+            startp = int(start) # indexes
+            endp   = int(end)
+
+            # deal with easy case, else: startp, intermediates, endp
+
+            # easy case : quick process of single TR result
+            if endp == startp:
+               rdata[startp] = end-start
+               continue
+
+            # startp, intermediates (between startp, endp, exclusive), endp
+            rdata[startp] = start-startp
+            for tind in range(startp+1,endp): rdata[tind] = 1.0
+            rdata[endp] = round(1.0-(end-endp), 3)
+
+         if self.verb > 4:
+            print '\n++ timing_to_tr_fr, result for run %d:' % (rind+1)
+            print ' '.join(["%g" % rdata[ind] for ind in range(len(rdata))])
+
+         result.extend(rdata)
+
+      del(scopy)
+      del(rdata)
+
+      return '', result
+
+   def show_isi_stats(self, mesg='', run_len=[], tr=0):
       """display ISI timing statistics
 
             mesg        : display the user message first
             run_len     : can be empty, length 1 or length nrows
+            tr          : if > 0: show mean/stdev for stimuli within TRs
+                          (so 0 <= mean < tr)
 
          display these statistics:
             - total time, total stim time, total rest time
@@ -625,6 +826,7 @@ class AfniMarriedTiming:
       if self.nrows != len(self.data):
          print '** bad MTiming, nrows=%d, datalen=%d, failing...' % \
                (self.nrows, len(self.data))
+         return 1
 
       # make a sorted copy
       scopy = self.copy()
@@ -640,6 +842,7 @@ class AfniMarriedTiming:
       else:     # failure
          print '** invalid len(run_len)=%d, must be one of 0,1,%d' % \
                (len(run_len), self.nrows)
+         return 1
 
       if self.verb > 3:
          print scopy.make_data_string(nplaces=1, flag_empty=0, check_simple=0,
@@ -756,6 +959,9 @@ class AfniMarriedTiming:
             (UTIL.min_mean_max_stdev(stim_list))
       print ''
 
+      # and possibly print out offset info
+      if tr > 0: self.show_TR_offset_stats(tr, '')
+
       # clean up, just to be kind
       del(all_stim); del(all_isi); del(pre_time); del(post_time); del(run_time)
       
@@ -764,6 +970,118 @@ class AfniMarriedTiming:
 
       del(scopy)
 
+   def get_TR_offset_stats(self, tr):
+      """create a list of TR offsets (per-run and overall)
+
+            tr : must be positive
+
+         return: 6 values in a list:
+                    mean, maxabs, stdev of absolute and fractional offsets
+                 empty list on error
+      """
+
+      if not self.ready:
+         print '** M Timing: nothing to compute ISI stats from'
+         return []
+
+      if self.nrows != len(self.data):
+         print '** bad MTiming, nrows=%d, datalen=%d, failing...' % \
+               (self.nrows, len(self.data))
+         return []
+
+      if tr < 0.0:
+         print '** show_TR_offset_stats: invalid TR %s' % tr
+         return []
+
+      offsets   = []    # stim offsets within given TRs
+      for rind in range(self.nrows):
+         run  = self.data[rind]
+         if len(run) == 0: continue
+
+         roffsets = UTIL.interval_offsets([val[0] for val in run], tr)
+         offsets.extend(roffsets)
+
+      if len(offsets) < 1: return []
+
+      # get overall stats (absolute and fractional)
+      # absolute
+      m0, m1, m2, s = UTIL.min_mean_max_stdev(offsets)
+      offm = m1; offs = s
+      mn = abs(min(offsets))
+      offmax = abs(max(offsets))
+      if mn > offmax: offmax = mn       
+
+      # fractional
+      for ind, val in enumerate(offsets):
+         offsets[ind] = val/tr
+      m0, m1, m2, s = UTIL.min_mean_max_stdev(offsets)
+
+      del(offsets)
+
+      return [offm, offmax, offs, m1, offmax/tr, s]
+      
+   def show_TR_offset_stats(self, tr, mesg=''):
+      """display statistics regarding within-TR offsets of stimuli
+
+            tr          : show mean/stdev for stimuli within TRs
+                          (so 0 <= mean < tr)
+            mesg        : display the user message in the output
+      """
+
+      if not self.ready:
+         print '** M Timing: nothing to compute ISI stats from'
+         return 1
+
+      if self.nrows != len(self.data):
+         print '** bad MTiming, nrows=%d, datalen=%d, failing...' % \
+               (self.nrows, len(self.data))
+         return 1
+
+      if tr < 0.0:
+         print '** show_TR_offset_stats: invalid TR %s' % tr
+         return 1
+
+      off_means = []    # ... means per run
+      off_stdev = []    # ... stdevs per run
+      for rind in range(self.nrows):
+         run  = self.data[rind]
+         if len(run) == 0: continue
+
+         # start with list of time remainders (offsets) within each TR
+         roffsets = UTIL.interval_offsets([val[0] for val in run], tr)
+
+         m0, m1, m2, s = UTIL.min_mean_max_stdev(roffsets)
+         off_means.append(m1)
+         off_stdev.append(s)
+
+      # and get overall stats (absolute and fractional)
+      offs = self.get_TR_offset_stats(tr)
+
+      # print out offset info
+      if mesg: mstr = '(%s) ' % mesg
+      else:    mstr = ''
+
+      print '\nwithin-TR stimulus offset statistics %s:\n' % mstr
+
+      if self.nrows > 1:
+         print '                       per run'
+         print '                       ------------------------------'
+         print '    offset means       %s'%float_list_string(off_means, ndec=3)
+         print '    offset stdevs      %s'%float_list_string(off_stdev, ndec=3)
+         print ''
+         print '    overall:     mean = %.3f  maxoff = %.3f  stdev = %.4f' \
+               % (offs[0], offs[1], offs[2])
+         print '    fractional:  mean = %.3f  maxoff = %.3f  stdev = %.4f\n' \
+               % (offs[3], offs[4], offs[5])
+      else:
+         print '    one run:     mean = %.3f  maxoff = %.3f  stdev = %.4f' \
+               % (offs[0], offs[1], offs[2])
+         print '    fractional:  mean = %.3f  maxoff = %.3f  stdev = %.4f\n' \
+               % (offs[3], offs[4], offs[5])
+
+      # clean up, just to be kind
+      del(off_means); del(off_stdev)
+      
 def float_list_string(vals, nchar=7, ndec=3, nspaces=2):
    str = ''
    for val in vals: str += '%*.*f%*s' % (nchar, ndec, val, nspaces, '')

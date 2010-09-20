@@ -652,6 +652,13 @@ behaves as if the "-noqual" command line option had been included.  This
 feature was added at the request of Dr. Michael S. Beauchamp, who has a
 very rare neurological disorder called "noqaulagnosia".
 
+-----------------------------
+Variable: AFNI_ENABLE_MARKERS
+-----------------------------
+As of 28 Apr 2010, the AFNI Talairach 'Define Markers' panel will no longer
+be visible by default.  To use this old feature, you must set this variable
+to YES before running AFNI.
+
 ----------------------
 Variable: AFNI_OPTIONS
 ----------------------
@@ -1010,6 +1017,13 @@ AFNI_REALTIME_CHMERMODE = Number
         If set, this variable controls the initial setting of the
         "ChannelMerge" control, where 0=none, 1=sum, etc.  If not
         set, the default value is 0.
+
+AFNI_REALTIME_MRG_CHANLIST = String
+
+        If set, this variable specifies a list of 0-based channels to merge,
+        rather than using all channels.  The format is akin to sub-brick
+        selection.  For example '0..$' means all and '0,5..7' means 0,5,6,7.
+
 
 For detailed information about how the realtime plugin works, read the
 file README.realtime.
@@ -2301,6 +2315,14 @@ If this variable is set to YES, then the Define Overlay color bars
 coordinated.  Changes to one locked pbar will be reflected in the
 others immediately.
 
+-------------------------
+Variable: AFNI_RANGE_LOCK (editable)
+-------------------------
+If this variable is set to YES, then the OLay range values of
+different AFNI controllers that are Lock-ed together will be
+coordinated.  Changes in one controller will be reflected in
+the others immediately.
+
 ----------------------------
 Variable: AFNI_IMAGE_ZOOM_NN (editable)
 ----------------------------
@@ -2640,6 +2662,16 @@ be changed to 'fred_AA1+orig'.
 The default behavior is as 'NO', not to deconflict, but to exit.
 Some programs supply their own default.
 
+---------------------------------------
+Variable:  AFNI_GUI_WRITE_AS_DECONFLICT
+---------------------------------------
+When you use the 'Write' buttons under 'Define Datamode' Panel, the default
+is to overwrite existing datasets. However, if AFNI_GUI_WRITE_AS_DECONFLICT
+is set to YES, then the decision follows the value of AFNI_DECONFLICT
+
+The default value for this variable is NO, which means interactive 'Write'
+operates in overwrite mode.
+
 --------------------------
 Variable: AFNI_SEE_OVERLAY
 --------------------------
@@ -2668,6 +2700,12 @@ Variable: AFNI_CLUSTER_SCROLL
 If this variable is NO, then the 'Clusterize' report will not be given
 scrollbars.  The default is to give it scroll bars (i.e., YES).
 
+---------------------------
+Variable: AFNI_CLUSTER_EBAR
+---------------------------
+If this variable is YES, then the Clusterize 'Mean' and 'Medn' Plot
+graphs will have error bars plotted.
+
 -----------------------------
 Variable: AFNI_CLUSTER_REPMAX  (editable)
 -----------------------------
@@ -2679,6 +2717,15 @@ shown defaults to 999, but can be increased to 9999 if you are completely
 mad, or are named Shruti.  If scroll bars are turned off, then you probably
 don't want to make this very big, since the report window would become
 taller than your monitor, and that would be hard to deal with.
+
+------------------------------
+Variable: AFNI_CLUSTER_WAMIMAX (editable)
+------------------------------
+This variable should be set to a number indicating the maximum number
+of clusters to get a 'whereami' report when the 'WamI' button is
+pressed.  Since the querying the diverse atlas datasets is slow,
+increasing this value much past its default value of 20 is not usually
+a good plan.
 
 ----------------------------
 Variable: AFNI_STRLIST_INDEX
@@ -2799,6 +2846,50 @@ crop window to appear to move to the left; negative values cause the
 crop window to move in the opposite direction, so the visible part of
 the image appears to move to the right.  (Mutatis mutandum for the
 other directions, of course.)
+
+----------------------------
+Variable: AFNI_DUMMY_DATASET
+----------------------------
+The old 'frivolous' AFNI dummy dataset was replaced with a low-resolution
+edition of the N27 dataset on 12 Feb 2010.  If for some absurd reason you
+want the old dummy dataset back, then set this variable to OLD.  (Recall
+that the dummy dataset is only created if you start the AFNI GUI without
+any input datasets at all -- AFNI is constructed so that it needs SOME
+dataset present to be able to operate: hence, the dummy dataset concept.)
+
+----------------------------
+Variable: AFNI_DONT_COMMAIZE
+----------------------------
+When AFNI programs print out informative (and fun) messages about the
+size of files, memory space, etc., by default commas are inserted,
+as in "8,765,432".  If you want these numbers printed as "8765432"
+(for whatever hideous and twisted reason), set this variable to YES.
+
+----------------------------
+Variable: AFNI_FILE_COORDS_x
+----------------------------
+If this variable is set (where 'x' is A, B, C, ...), then for AFNI
+controller 'x', whenever the crosshair viewpoint changes, the DICOM
+order (x,y,z) coordinates and the dataset 3D index (i,j,k) will be
+written to the file whose name is given by the value of this variable.
+As a special case, if the filename is 'stdout', then the coordinates
+are written to standard output.  A sample command
+
+  afni -DAFNI_FILE_COORDS_A=stdout
+
+If the file already exists when afni starts, it will be over-written;
+that is, it is opened in "w" mode.
+
+This feature may be referred to as the Jen Evans special.
+
+-----------------------------
+Variable: AFNI_SQRT_AUTORANGE (editable)
+-----------------------------
+The functional overlay 'autoRange' value is now [22 Jul 2010] by
+default set to the square root of the largest value in the
+OLay sub-brick (if that value is > 1).  If you want the old behavior,
+where the autoRange value is set to the largest value, set this
+variable to NO.
 
 ----------------------------------------------------------------------
 --- variables specific to NIML I/O

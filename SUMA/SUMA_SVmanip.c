@@ -141,6 +141,7 @@ SUMA_SurfaceViewer *SUMA_Alloc_SurfaceViewer_Struct (int N)
    static char FuncName[]={"SUMA_Alloc_SurfaceViewer_Struct"};
    SUMA_SurfaceViewer *SV=NULL, *SVv=NULL;
    int i=-1, j=-1, n=-1, iii=-1;
+   float a[3];
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
@@ -200,11 +201,22 @@ SUMA_SurfaceViewer *SUMA_Alloc_SurfaceViewer_Struct (int N)
          memset(&(SV->GVS[j]), 0, sizeof(SUMA_GEOMVIEW_STRUCT));
          switch (j) {
             case SUMA_2D_Z0:
+            case SUMA_2D_Z0L:
+               /* Default top view, rotate by nothing */
+               #if 0 /* ZSS: Feb 2010 */
                SV->GVS[j].currentQuat[0] = 0.252199;
                SV->GVS[j].currentQuat[1] = -0.129341;
                SV->GVS[j].currentQuat[2] = -0.016295;
                SV->GVS[j].currentQuat[3] = 0.958854;
-
+               #else
+               if (j == SUMA_2D_Z0) {
+                  a[0] = 1.0; a[1] = 0.0; a[2] = 0.0;
+                  axis_to_quat(a, 0, SV->GVS[j].currentQuat);
+               } else {
+                  a[0] = 0.0; a[1] = 0.0; a[2] = 1.0;
+                  axis_to_quat(a, SUMA_PI, SV->GVS[j].currentQuat);
+               }
+               #endif
                SV->GVS[j].ApplyMomentum = False;
 
                SV->GVS[j].MinIdleDelta = 1;
@@ -261,7 +273,8 @@ SUMA_SurfaceViewer *SUMA_Alloc_SurfaceViewer_Struct (int N)
                SV->GVS[j].translateVec[1] = 0.0;
                break;
             default:
-               fprintf(SUMA_STDERR,"Error %s: Undefined viewing mode.\n", FuncName);
+               fprintf(SUMA_STDERR,
+                        "Error %s: Undefined viewing mode.\n", FuncName);
                SUMA_RETURN (NULL);
                
          }
@@ -372,9 +385,13 @@ SUMA_SurfaceViewer *SUMA_Alloc_SurfaceViewer_Struct (int N)
          char *eee = getenv("SUMA_ArrowRotAngle");
          if (eee) {
             float rotval = strtod(eee, NULL);
-            if (rotval > 0.0 && rotval < 360.0) SV->ArrowRotationAngle = SUMA_PI * rotval / 180.0;
-            else SV->ArrowRotationAngle = SUMA_PI * ARROW_ROTATION_ANGLE_DEG / 180.0;
-         } else SV->ArrowRotationAngle = SUMA_PI * ARROW_ROTATION_ANGLE_DEG / 180.0;
+            if (rotval > 0.0 && rotval < 360.0) 
+               SV->ArrowRotationAngle = SUMA_PI * rotval / 180.0;
+            else 
+               SV->ArrowRotationAngle = SUMA_PI * 
+                                    ARROW_ROTATION_ANGLE_DEG / 180.0;
+         } else 
+            SV->ArrowRotationAngle = SUMA_PI * ARROW_ROTATION_ANGLE_DEG / 180.0;
       }
       {
          char *eee = getenv("SUMA_KeyZoomGain");
@@ -1035,7 +1052,8 @@ SUMA_Boolean SUMA_UpdateViewPoint ( SUMA_SurfaceViewer *SV,
                if (!SUMA_IS_GEOM_SYMM(so_op->isSphere)) {
                   SUMA_COPY_VEC(so_op->Center, UsedCenter, 3, float, float); 
                } else {
-                  SUMA_COPY_VEC(so_op->SphereCenter, UsedCenter, 3, float, float); 
+                  SUMA_COPY_VEC( so_op->SphereCenter, UsedCenter, 3, 
+                                 float, float); 
                }
             }
             if (so_op->ViewCenterWeight) {
@@ -1056,20 +1074,28 @@ SUMA_Boolean SUMA_UpdateViewPoint ( SUMA_SurfaceViewer *SV,
       SV->GVS[SV->StdView].ViewCenter[2] = NewCenter[2]/(float)TotWeight;
       SV->GVS[SV->StdView].ViewFrom[0] = SV->GVS[SV->StdView].ViewCenter[0];
       SV->GVS[SV->StdView].ViewFrom[1] = SV->GVS[SV->StdView].ViewCenter[1];
-      SV->GVS[SV->StdView].ViewFrom[2] = SV->GVS[SV->StdView].ViewCenter[2]+SUMA_DEFAULT_VIEW_FROM;   
+      SV->GVS[SV->StdView].ViewFrom[2] = SV->GVS[SV->StdView].ViewCenter[2]+
+                                             SUMA_DEFAULT_VIEW_FROM;   
       SV->GVS[SV->StdView].ViewDistance = SUMA_DEFAULT_VIEW_FROM;   
       
    } else
    {/* default back to o.o, o.o, o.o */
-      SV->GVS[SV->StdView].ViewCenter[0] = SV->GVS[SV->StdView].ViewCenter[1] = SV->GVS[SV->StdView].ViewCenter[2] = 0.0;
-      SV->GVS[SV->StdView].ViewFrom[0] = SV->GVS[SV->StdView].ViewFrom[1] = 0.0; SV->GVS[SV->StdView].ViewFrom[2] = SUMA_DEFAULT_VIEW_FROM;
+      SV->GVS[SV->StdView].ViewCenter[0] = 
+      SV->GVS[SV->StdView].ViewCenter[1] = 
+      SV->GVS[SV->StdView].ViewCenter[2] = 0.0;
+      SV->GVS[SV->StdView].ViewFrom[0] = 
+      SV->GVS[SV->StdView].ViewFrom[1] = 0.0; 
+      SV->GVS[SV->StdView].ViewFrom[2] = SUMA_DEFAULT_VIEW_FROM;
       SV->GVS[SV->StdView].ViewDistance = SUMA_DEFAULT_VIEW_FROM;   
    }
    
       /* Store that info in case subjects change things */
-      SV->GVS[SV->StdView].ViewCenterOrig[0] = SV->GVS[SV->StdView].ViewCenter[0];
-      SV->GVS[SV->StdView].ViewCenterOrig[1] = SV->GVS[SV->StdView].ViewCenter[1];
-      SV->GVS[SV->StdView].ViewCenterOrig[2] = SV->GVS[SV->StdView].ViewCenter[2];
+      SV->GVS[SV->StdView].ViewCenterOrig[0] = 
+                              SV->GVS[SV->StdView].ViewCenter[0];
+      SV->GVS[SV->StdView].ViewCenterOrig[1] = 
+                              SV->GVS[SV->StdView].ViewCenter[1];
+      SV->GVS[SV->StdView].ViewCenterOrig[2] = 
+                              SV->GVS[SV->StdView].ViewCenter[2];
       SV->GVS[SV->StdView].ViewFromOrig[0] = SV->GVS[SV->StdView].ViewFrom[0];
       SV->GVS[SV->StdView].ViewFromOrig[1] = SV->GVS[SV->StdView].ViewFrom[1];
       SV->GVS[SV->StdView].ViewFromOrig[2] = SV->GVS[SV->StdView].ViewFrom[2];
@@ -1848,7 +1874,8 @@ SUMA_CommonFields * SUMA_Create_CommonFields ()
    float dsmw=5*60;
    SUMA_Boolean LocalHead = NOPE;
       
-   /* This is the function that creates the debugging flags, do not use them here */
+   /* This is the function that creates the debugging flags, 
+      do not use them here */
    cf = NULL;
    
    /* allocate */
@@ -1887,10 +1914,11 @@ SUMA_CommonFields * SUMA_Create_CommonFields ()
    if (eee) {
       portn = atoi(eee);
       if (portn < 1024 ||  portn > 65535) {
-         fprintf (SUMA_STDERR, "Warning %s:\n"
-                               "Environment variable SUMA_AFNI_TCP_PORT %d is invalid.\n"
-                               "port must be between 1025 and 65534.\n"
-                               "Using default of %d\n", FuncName, portn, SUMA_TCP_PORT);
+         fprintf (SUMA_STDERR, 
+                  "Warning %s:\n"
+                   "Environment variable SUMA_AFNI_TCP_PORT %d is invalid.\n"
+                   "port must be between 1025 and 65534.\n"
+                   "Using default of %d\n", FuncName, portn, SUMA_TCP_PORT);
          portn = SUMA_TCP_PORT;
       } 
    } else {
@@ -1901,10 +1929,9 @@ SUMA_CommonFields * SUMA_Create_CommonFields ()
    if (eee) {
       portn2 = atoi(eee);
       if (portn2 < 1024 ||  portn2 > 65535) {
-         fprintf (SUMA_STDERR, "Warning %s:\n"
-                               "Environment variable SUMA_AFNI_TCP_PORT2 %d is invalid.\n"
-                               "port must be between 1025 and 65534.\n"
-                               "Using default of %d\n", FuncName, portn2, portn+1);
+         SUMA_S_Warnv("Environment variable SUMA_AFNI_TCP_PORT2 %d is invalid.\n"
+                      "port must be between 1025 and 65534.\n"
+                      "Using default of %d\n", portn2, portn+1);
          portn2 = portn+1;
       } 
    } else {
@@ -1915,12 +1942,11 @@ SUMA_CommonFields * SUMA_Create_CommonFields ()
    if (eee) {
       portn3 = atoi(eee);
       if (portn3 < 1024 ||  portn3 > 65535) {
-         fprintf (SUMA_STDERR, 
-                "Warning %s:\n"
+         SUMA_S_Warnv( 
                 "Environment variable SUMA_MATLAB_LISTEN_PORT %d is invalid.\n"
                 "port must be between 1025 and 65534.\n"
                 "Using default of %d\n", 
-                FuncName, portn, SUMA_MATLAB_LISTEN_PORT);
+                portn, SUMA_MATLAB_LISTEN_PORT);
          portn3 = SUMA_MATLAB_LISTEN_PORT;
       } 
    } else {
@@ -1931,12 +1957,11 @@ SUMA_CommonFields * SUMA_Create_CommonFields ()
    if (eee) {
       dsmw = atof(eee);
       if (dsmw < 0 || dsmw > 60000) {
-         fprintf (SUMA_STDERR, 
-                "Warning %s:\n"
+         SUMA_S_Warnv( 
                 "Environment variable SUMA_DriveSumaMaxWait %f is invalid.\n"
                 "value must be between 0 and 60000 seconds.\n"
                 "Using default of %d\n", 
-                FuncName, dsmw, 5*60);
+                dsmw, 5*60);
          dsmw = (float)5*60;/* wait for 5 minutes */
       }
    } else {
@@ -1947,6 +1972,7 @@ SUMA_CommonFields * SUMA_Create_CommonFields ()
    for (i=0; i<SUMA_MAX_STREAMS; ++i) {
       cf->ns_v[i] = NULL;
       switch(i) {
+         case SUMA_GICORR_LINE:
          case SUMA_DRIVESUMA_LINE:
             cf->ns_to[i] = (int)(dsmw*1000);  
             break;
@@ -2082,7 +2108,8 @@ SUMA_CommonFields * SUMA_Create_CommonFields ()
       char *eee = getenv("SUMA_SnapshotOverSampling");
       if (eee) {
          cf->SUMA_SnapshotOverSampling = (int)strtod(eee, NULL);
-         if (cf->SUMA_SnapshotOverSampling < 1 || cf->SUMA_SnapshotOverSampling>10) {
+         if (  cf->SUMA_SnapshotOverSampling < 1 || 
+               cf->SUMA_SnapshotOverSampling>10) {
             fprintf (SUMA_STDERR,   "Warning %s:\n"
                                     "Bad value for environment variable\n"
                                     "SUMA_SnapshotOverSampling.\n"
@@ -2097,9 +2124,10 @@ SUMA_CommonFields * SUMA_Create_CommonFields ()
          if (strcmp(eee,"NO") == 0) cf->X->WarnClose = NOPE;
          else if (strcmp(eee,"YES") == 0) cf->X->WarnClose = YUP;
          else {
-            fprintf (SUMA_STDERR,   "Warning %s:\n"
-                                    "Bad value for environment variable SUMA_WarnBeforeClose\n"
-                                    "Assuming default of YES", FuncName);
+            fprintf (SUMA_STDERR,   
+                     "Warning %s:\n"
+                     "Bad value for environment variable SUMA_WarnBeforeClose\n"
+                     "Assuming default of YES", FuncName);
             cf->X->WarnClose = YUP;
          }
       } else cf->X->WarnClose = YUP;
@@ -2116,12 +2144,15 @@ SUMA_CommonFields * SUMA_Create_CommonFields ()
    cf->ROI_contmode = YUP;
    cf->Pen_mode = NOPE;
    
-   cf->nimlROI_Datum_type = NI_rowtype_define("SUMA_NIML_ROI_DATUM", "int,int,int,int[#3]");
+   cf->nimlROI_Datum_type = 
+      NI_rowtype_define("SUMA_NIML_ROI_DATUM", "int,int,int,int[#3]");
    if (cf->nimlROI_Datum_type < 0) {
       fprintf(SUMA_STDERR,"Error %s: Failed defining niml code.", FuncName);
       return(NULL);
    }
-   if (LocalHead) fprintf(SUMA_STDERR, "%s: roi_type code = %d\n", FuncName, cf->nimlROI_Datum_type) ;
+   if (LocalHead) 
+      fprintf(SUMA_STDERR, "%s: roi_type code = %d\n", 
+                  FuncName, cf->nimlROI_Datum_type) ;
    
    cf->ROI_CM = NULL;
    cf->ROI_FillMode = SUMA_ROI_FILL_TO_THISROI;
@@ -2135,7 +2166,9 @@ SUMA_CommonFields * SUMA_Create_CommonFields ()
          cf->ColMixMode = SUMA_4AML;
       } else {
          cf->ColMixMode = SUMA_ORIG_MIX_MODE;
-         fprintf(SUMA_STDERR,"%s:\nUnrecognized option %s for SUMA_ColorMixingMode.\nUsing default = ORIG\n", FuncName, eee);
+         fprintf(SUMA_STDERR,
+                  "%s:\nUnrecognized option %s for SUMA_ColorMixingMode.\n"
+                  "Using default = ORIG\n", FuncName, eee);
       } 
    } else {
       cf->ColMixMode = SUMA_ORIG_MIX_MODE;
@@ -2154,9 +2187,10 @@ SUMA_CommonFields * SUMA_Create_CommonFields ()
          if (strcmp(eee,"NO") == 0) cf->Allow_Dset_Replace = NOPE;
          else if (strcmp(eee,"YES") == 0) cf->Allow_Dset_Replace = YUP;
          else {
-            fprintf (SUMA_STDERR,   "Warning %s:\n"
-                                    "Bad value for environment variable SUMA_AllowDsetReplacement\n"
-                                    "Assuming default of NO", FuncName);
+            fprintf (SUMA_STDERR,   
+               "Warning %s:\n"
+               "Bad value for environment variable SUMA_AllowDsetReplacement\n"
+               "Assuming default of NO", FuncName);
             cf->Allow_Dset_Replace = NOPE;
          }
       } else cf->Allow_Dset_Replace = NOPE;
@@ -2167,7 +2201,10 @@ SUMA_CommonFields * SUMA_Create_CommonFields ()
    
    cf->N_ClipPlanes = 0;
    for (i=0; i<SUMA_MAX_N_CLIP_PLANES; ++i) {
-      cf->ClipPlanes[4*i] = cf->ClipPlanes[4*i+1] = cf->ClipPlanes[4*i+2] = cf->ClipPlanes[4*i+3]= 0.0;
+      cf->ClipPlanes[4*i] = 
+         cf->ClipPlanes[4*i+1] = 
+            cf->ClipPlanes[4*i+2] = 
+               cf->ClipPlanes[4*i+3]= 0.0;
       cf->ClipPlaneType[i] = SUMA_NO_CLIP_PLANE_TYPE;
       cf->ClipPlanesLabels[i][0]='\0';
    }
@@ -2192,9 +2229,10 @@ SUMA_CommonFields * SUMA_Create_CommonFields ()
          }
       } else cf->NoDuplicatesInRecorder = 1;
    }
-   /*if (SUMAg_CF->NoDuplicatesInRecorder) SNAP_NoDuplicates();
-   else SNAP_OkDuplicates();
-*/
+   /* if (SUMAg_CF->NoDuplicatesInRecorder) 
+            SNAP_NoDuplicates();
+      else SNAP_OkDuplicates();
+   */
    cf->cwd = SUMA_getcwd();
    
    {
@@ -2218,6 +2256,9 @@ SUMA_CommonFields * SUMA_Create_CommonFields ()
    cf->callbacks = (DList *)SUMA_calloc(1,sizeof(DList));
    dlist_init (cf->callbacks, SUMA_FreeCallback);
    cf->HoldClickCallbacks = 0;
+   cf->PointerLastInViewer = -1;
+   
+   cf->giset = NULL;
    
    return (cf);
 
@@ -2629,8 +2670,16 @@ SUMA_Boolean SUMA_Free_CommonFields (SUMA_CommonFields *cf)
    if (cf->Mem) SUMA_Free_MemTrace (cf->Mem); cf->Mem = NULL;/* always free this right before the end */
    #endif
    
+   
+   if (cf->giset) {
+      if (cf->giset->dset) {
+         SUMA_S_Warn("dset is not being freed");
+      }
+      DESTROY_GICOR_setup(cf->giset); cf->giset=NULL;
+   }
    /* if (cf) free(cf); */ /* don't free this stupid pointer since it is used
-                        when main returns with SUMA_ RETURN (typo on purpose to avoid upsetting AnalyzeTrace. 
+                        when main returns with SUMA_ RETURN 
+                        (typo on purpose to avoid upsetting AnalyzeTrace. 
                         It is not quite a leak since the OS will clean it up
                         after exit Thu Apr  8 2004*/
    
@@ -2799,6 +2848,12 @@ char * SUMA_CommonFieldsInfo (SUMA_CommonFields *cf, int detail)
    s = SUMA_Callbacks_Info(cf->callbacks, detail);
    SS = SUMA_StringAppend_va( SS, "%s\n",s); SUMA_free(s); s = NULL;
    
+   SS = SUMA_StringAppend_va(SS, 
+                "Pointer last seen in viewer: %d\n", cf->PointerLastInViewer);
+   
+   s = SUMA_GISET_Info(cf->giset, 0);
+   
+   SS = SUMA_StringAppend_va(SS, "%s\n",s); SUMA_free(s); s = NULL;
    
    /* clean up */
    SS = SUMA_StringAppend_va(SS, NULL);
@@ -2809,7 +2864,8 @@ char * SUMA_CommonFieldsInfo (SUMA_CommonFields *cf, int detail)
 
 /*!
    This function determines the most suitable standard view of a surface viewer
-   This is based on the surface objects being displayed and their embedding dimension.
+   This is based on the surface objects being displayed and 
+   their embedding dimension.
    The highest Embedding dimension of the lot determines what view to use 
    ans = SUMA_BestStandardView (SUMA_SurfaceViewer *sv, SUMA_DO *dov, int N_dov)
    
@@ -2819,38 +2875,48 @@ char * SUMA_CommonFieldsInfo (SUMA_CommonFields *cf, int detail)
    \ret ans (SUMA_STANDARD_VIEWS) recommended view
    
 */   
-SUMA_STANDARD_VIEWS SUMA_BestStandardView (SUMA_SurfaceViewer *sv, SUMA_DO *dov, int N_dov)
+SUMA_STANDARD_VIEWS SUMA_BestStandardView (  SUMA_SurfaceViewer *sv, 
+                                             SUMA_DO *dov, int N_dov)
 {
    static char FuncName[] = {"SUMA_BestStandardView"};
    SUMA_STANDARD_VIEWS ans;
    int i, maxdim = -1, is;
    SUMA_SurfaceObject *SO = NULL;
+   SUMA_SO_SIDE side=SUMA_NO_SIDE;
    
    SUMA_ENTRY;
 
    is = sv->iState;
    if (is < 0) {
       fprintf(SUMA_STDERR, "Error %s: sv->iState undefined.\n", FuncName);
-      SUMA_RETURN (SUMA_Dunno); 
+      SUMA_RETURN (SUMA_N_STANDARD_VIEWS); 
    }
    
+   side = SUMA_LEFT;
    for (i=0; i<sv->VSv[is].N_MembSOs; ++i) {   
       SO = (SUMA_SurfaceObject *)(dov[sv->VSv[is].MembSOs[i]].OP);
       if (SO == NULL) {
          fprintf(SUMA_STDERR,"Error %s: SO is null ???\n.", FuncName);
-         SUMA_RETURN (SUMA_Dunno);
+         SUMA_RETURN (SUMA_N_STANDARD_VIEWS);
       }
       if (SO->EmbedDim > maxdim) maxdim = SO->EmbedDim;
+      if (SO->Side != SUMA_LEFT) side = SUMA_RIGHT;
    }
    
    switch (maxdim) {
       case 2:
-         SUMA_RETURN (SUMA_2D_Z0);
+         if (side == SUMA_LEFT) { /* left flat maps*/
+            SUMA_RETURN (SUMA_2D_Z0L);
+         } else { /* default */
+            SUMA_RETURN (SUMA_2D_Z0);
+         }
       case 3:
          SUMA_RETURN(SUMA_3D);
       default:
-         fprintf(SUMA_STDERR,"Error %s: No provision for such a maximum embedding dimension of %d.\n", FuncName, maxdim);
-         SUMA_RETURN(SUMA_Dunno);
+         fprintf(SUMA_STDERR,
+            "Error %s: No provision for a maximum embedding dimension of %d.\n", 
+            FuncName, maxdim);
+         SUMA_RETURN(SUMA_N_STANDARD_VIEWS);
    }
 
 }
@@ -3061,7 +3127,8 @@ SUMA_Boolean SUMA_SetupSVforDOs (SUMA_SurfSpecFile Spec, SUMA_DO *DOv, int N_DOv
    if (LocalHead)   fprintf(SUMA_STDERR,"%s: Done.\n", FuncName);
 
    /* register all non SO objects */
-   if (LocalHead) fprintf(SUMA_STDERR,"%s: Registering All Non SO ...", FuncName);
+   if (LocalHead) 
+      fprintf(SUMA_STDERR,"%s: Registering All Non SO ...", FuncName);
       for (kar=0; kar < N_DOv; ++kar) {
          if (!SUMA_isSO(DOv[kar]))
          { 
@@ -3078,18 +3145,24 @@ SUMA_Boolean SUMA_SetupSVforDOs (SUMA_SurfSpecFile Spec, SUMA_DO *DOv, int N_DOv
    /* decide what the best state is */
    if (viewopt & UPDATE_STANDARD_VIEW_MASK) {
       cSV->StdView = SUMA_BestStandardView (cSV, DOv, N_DOv);
-      if (LocalHead) fprintf(SUMA_STDOUT,"%s: Standard View Now %d\n", FuncName, cSV->StdView);
-      if (cSV->StdView == SUMA_Dunno) {
-         fprintf(SUMA_STDERR,"Error %s: Could not determine the best standard view. Choosing default SUMA_3D\n", FuncName);
+      if (LocalHead) 
+         fprintf(SUMA_STDOUT,
+                  "%s: Standard View Now %d\n", FuncName, cSV->StdView);
+      if (cSV->StdView == SUMA_N_STANDARD_VIEWS) {
+         fprintf(SUMA_STDERR,
+                  "Error %s: Could not determine the best standard view. "
+                  "Choosing default SUMA_3D\n", FuncName);
          cSV->StdView = SUMA_3D;
       }
    }
    
    if (viewopt & UPDATE_ROT_MASK) {
       /* Set the Rotation Center  */
-      if (LocalHead) fprintf(SUMA_STDOUT,"%s: Setting the Rotation Center \n", FuncName);
+      if (LocalHead) 
+         fprintf(SUMA_STDOUT,"%s: Setting the Rotation Center \n", FuncName);
       if (!SUMA_UpdateRotaCenter(cSV, DOv, N_DOv)) {
-         fprintf (SUMA_STDERR,"Error %s: Failed to update center of rotation\n", FuncName);
+         fprintf (SUMA_STDERR,
+                  "Error %s: Failed to update center of rotation\n", FuncName);
          SUMA_RETURN(NOPE);
       }
    }
@@ -3176,7 +3249,11 @@ void SUMA_UpdateViewerCursor(SUMA_SurfaceViewer *sv)
          MCW_set_widget_cursor( sv->X->GLXAREA  , -XC_pencil ) ;
       else  MCW_set_widget_cursor( sv->X->GLXAREA  , -XC_target ) ;
    } else {
-      MCW_set_widget_cursor( sv->X->GLXAREA  , -XC_top_left_arrow ) ;
+      if (0) {
+         MCW_set_widget_cursor( sv->X->GLXAREA  , -XC_dotbox);
+      } else {
+         MCW_set_widget_cursor( sv->X->GLXAREA  , -XC_top_left_arrow ) ;
+      }
    }
    SUMA_RETURNe;
 }

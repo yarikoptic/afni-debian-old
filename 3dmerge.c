@@ -98,6 +98,7 @@ static int   MRG_ivthr = -1 ;
 static int   MRG_nscale = 0 ; /* 15 Sep 2000 */
 
 static int   MRG_rank   = 0 ; /* 13 Nov 2007: ZSS */
+
 /*--------------------------- prototypes ---------------------------*/
 int MRG_read_opts( int , char ** ) ;
 void MRG_Syntax(void) ;
@@ -557,7 +558,8 @@ DUMP1 ;
       char prefix[THD_MAX_PREFIX];
       FILENAME_TO_PREFIX(MRG_output_prefix, prefix);
       if (prefix[0] == '\0') strcpy(prefix, MRG_output_prefix);
-      /*fprintf(stderr,"Prefix >>>%s<<< >>>%s<<<\n", MRG_output_prefix, prefix); */
+      /*fprintf(stderr,"Prefix >>>%s<<< >>>%s<<<\n", 
+                       MRG_output_prefix, prefix); */
       if (PREFIX_IS_NIFTI(prefix)) {
          char *p2=NULL; 
          if (STRING_HAS_SUFFIX( prefix,".nii")) {
@@ -568,7 +570,8 @@ DUMP1 ;
             prefix[p2- prefix]='\0';
          } 
       } 
-      sprintf(MRG_edopt.rankmapname,"%s/%s.1D", MRG_output_session, prefix);
+      sprintf(MRG_edopt.rankmapname,"%s/%s.rankmap.1D", 
+                                 MRG_output_session, prefix);
    }
    
    return( nopt );
@@ -816,6 +819,11 @@ void MRG_Syntax(void)
     "     and set the colorbar range to 128.\n"
     "     The -1rank option also outputs a 1D file that contains \n"
     "     the mapping from the input dataset to the ranked output.\n"
+    "     Sub-brick float factors are ignored.\n"
+    "\n"
+    "     This option only works on datasets of integral values or \n"
+    "     of integral data types. 'float' values are typecast to 'int' \n"
+    "     before being ranked.\n"
     "\n"
     "     See also program 3dRank\n" 
     "\n"
@@ -1182,7 +1190,6 @@ int main( int argc , char * argv[] )
       if ((!MRG_be_quiet) && MRG_doall) printf ("Editing sub-brick %d\n", iv);
 
       MRG_edopt.iv_fim = iv;
-
       EDIT_one_dataset( dset , &MRG_edopt ) ;  /* all the real work */
 
       if( !MRG_be_quiet && !MRG_doall ){ printf(".") ; fflush(stdout) ; }
@@ -1786,7 +1793,8 @@ int main( int argc , char * argv[] )
    if( (rmm >= dx || rmm >= dy || rmm >= dz) && ptmin > 1 ){
       if( ! MRG_be_quiet ) printf("-- editing merger for cluster size\n") ;
 
-      clar  = MCW_find_clusters( nx,ny,nz , dx,dy,dz , MRI_float,gfim , rmm ) ;
+      
+      clar  = MCW_find_clusters( nx,ny,nz , dx,dy,dz , MRI_float,gfim , rmm) ;   
       nclu  = 0 ;
       if( clar != NULL ){
          for( iclu=0 ; iclu < clar->num_clu ; iclu++ ){

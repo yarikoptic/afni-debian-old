@@ -6,6 +6,8 @@
 
 #include "bbox.h"
 
+static Widget wtemp ;
+
 /*------------------------------------------------------------------------*/
 /*
    This function was meant to find the top parent of a widget and later 
@@ -554,7 +556,7 @@ ENTRY("new_MCW_arrowval") ;
                        XmNmarginWidth   , 0     ,
                        XmNinitialResourcesPersistent , False ,
                     NULL ) ;
-
+      LABELIZE(av->wlabel) ;
       XtVaGetValues( av->wlabel , XmNfontList , &xflist , NULL ) ;
 
       STATUS("getting label height") ;
@@ -1134,7 +1136,8 @@ rcparent = XtVaCreateWidget ("rowcolumn",
                   XmNmarginTop    , 0 ,
                   XmNmarginRight  , 0 ,
                   XmNmarginLeft   , 0 ,
-                              NULL);
+                              NULL) ;
+   LABELIZE(lb) ;
                                      
    xstr = XmStringCreateLtoR( "" , XmFONTLIST_DEFAULT_TAG ) ;
    XtSetArg( args[nargs] , XmNlabelString , xstr ) ; nargs++ ;
@@ -2351,17 +2354,24 @@ ENTRY("MCW_choose_ovcolor") ;
 }
 
 /*-------------------------------------------------------------------------*/
-/*! Get a bunch of values [19 Mar 2004].
-    Change initvec from int to float. [21 Sep 2007].
+/* Get a bunch of values [19 Mar 2004].
+   Change initvec from int to float. [21 Sep 2007].
 ---------------------------------------------------------------------------*/
+
+static int            vec_nav = 0 ;
+static MCW_arrowval **vec_av  = NULL ;
+
+MCW_arrowval ** MCW_choose_vector_avarray( int *nav )  /* 03 Aug 2010 */
+{
+   if( nav != NULL ) *nav = vec_nav ;
+   return vec_av ;
+}
 
 void MCW_choose_vector( Widget wpar , char *label ,
                         int nvec , char **labvec , float *initvec ,
                         gen_func *func , XtPointer func_data )
 {
    static Widget wpop = NULL , wrc ;
-   static MCW_arrowval **av = NULL ;
-   static int           nav = 0 ;
    static MCW_choose_data cd ;
    Position xx,yy ;
    int ib , iv ;
@@ -2392,9 +2402,9 @@ ENTRY("MCW_choose_vector") ;
       XtDestroyWidget( wpop ) ;
    }
 
-   if( nav > 0 && av != NULL ){
-     for( iv=0 ; iv < nav ; iv++ ) myXtFree( av[iv] ) ;
-     myXtFree(av) ; av = NULL ; nav = 0 ;
+   if( vec_nav > 0 && vec_av != NULL ){
+     for( iv=0 ; iv < vec_nav ; iv++ ) myXtFree( vec_av[iv] ) ;
+     myXtFree(vec_av) ; vec_av = NULL ; vec_nav = 0 ;
    }
 
    /*--- create popup widget ---*/
@@ -2429,11 +2439,11 @@ ENTRY("MCW_choose_vector") ;
              NULL ) ;
 
    if( label != NULL ){
-     (void) XtVaCreateManagedWidget(
+     wtemp = XtVaCreateManagedWidget(
                   "menu" , xmLabelWidgetClass , wrc ,
                      LABEL_ARG(label) ,
                      XmNinitialResourcesPersistent , False ,
-                  NULL ) ;
+                  NULL ) ; LABELIZE(wtemp) ;
      (void) XtVaCreateManagedWidget(
               "menu" , xmSeparatorWidgetClass , wrc ,
                   XmNseparatorType , XmSHADOW_ETCHED_IN ,
@@ -2441,20 +2451,21 @@ ENTRY("MCW_choose_vector") ;
               NULL ) ;
    }
 
-   av = (MCW_arrowval **) XtMalloc( sizeof(MCW_arrowval *) * nvec ) ;
+   vec_av  = (MCW_arrowval **) XtMalloc( sizeof(MCW_arrowval *) * nvec ) ;
+   vec_nav = nvec ;
    for( iv=0 ; iv < nvec ; iv++ ){
-     av[iv] = new_MCW_arrowval( wrc ,
-                                (labvec!=NULL) ? labvec[iv] : NULL ,
-                                MCW_AV_downup ,
-                                -99999,99999,
-                                0 ,
-                                MCW_AV_edittext , 0 ,
-                                NULL , NULL , NULL , NULL ) ;
+     vec_av[iv] = new_MCW_arrowval( wrc ,
+                                    (labvec!=NULL) ? labvec[iv] : NULL ,
+                                    MCW_AV_downup ,
+                                    -99999,99999,
+                                    0 ,
+                                    MCW_AV_edittext , 0 ,
+                                    NULL , NULL , NULL , NULL ) ;
    }
 
    cd.wpop    = wpop ;  /* data to be passed to pushbutton callback */
    cd.wcaller = wpar ;
-   cd.av      = (MCW_arrowval *)av ;  /* hack hack hack */
+   cd.av      = (MCW_arrowval *)vec_av ;  /* hack hack hack */
    cd.sel_CB  = func ;
    cd.sel_cd  = func_data ;
    cd.ctype   = mcwCT_vector ;
@@ -2474,7 +2485,7 @@ ENTRY("MCW_choose_vector") ;
    NORMAL_cursorize( wpop ) ;
 
    if( initvec != NULL ){
-     for( iv=0 ; iv < nvec ; iv++ ) AV_assign_fval( av[iv] , initvec[iv] ) ;
+     for( iv=0 ; iv < nvec ; iv++ ) AV_assign_fval(vec_av[iv],initvec[iv]) ;
    }
 
    EXRETURN ;
@@ -2885,6 +2896,7 @@ ENTRY("MCW_choose_string") ;
                   LABEL_ARG(label) ,
                   XmNinitialResourcesPersistent , False ,
                NULL ) ;
+     LABELIZE(wlab) ;
 
      cpt = strstr(label,"\n") ;
      if( cpt != NULL ) ncol = cpt-label ;  /* 01 Nov 2001 */
@@ -3152,7 +3164,7 @@ ENTRY("MCW_choose_multi_strlist") ;
                    XmNalignment     , XmALIGNMENT_CENTER ,
                    XmNinitialResourcesPersistent , False ,
                 NULL ) ;
-   myXtFree(lbuf) ; XmStringFree(xms) ;
+   myXtFree(lbuf) ; XmStringFree(xms) ; LABELIZE(wlab) ;
 
    (void) XtVaCreateManagedWidget(
             "menu" , xmSeparatorWidgetClass , wrc ,
@@ -3437,7 +3449,7 @@ if(PRINT_TRACING){
                    XmNalignment     , XmALIGNMENT_CENTER ,
                    XmNinitialResourcesPersistent , False ,
                 NULL ) ;
-   myXtFree(lbuf) ; XmStringFree(xms) ;
+   myXtFree(lbuf) ; XmStringFree(xms) ; LABELIZE(wlab) ;
 
    (void) XtVaCreateManagedWidget(
             "menu" , xmSeparatorWidgetClass , wrc ,
@@ -3663,7 +3675,7 @@ ENTRY("MCW_choose_multi_editable_strlist") ;
                    XmNalignment     , XmALIGNMENT_CENTER ,
                    XmNinitialResourcesPersistent , False ,
                 NULL ) ;
-   myXtFree(lbuf) ; XmStringFree(xms) ;
+   myXtFree(lbuf) ; XmStringFree(xms) ; LABELIZE(wlab) ;
 
    /* Separator line */
 

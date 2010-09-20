@@ -2802,6 +2802,7 @@ SUMA_Boolean SUMA_DrawSegmentDO (SUMA_SegmentDO *SDO, SUMA_SurfaceViewer *sv)
    int i, N_n3, i3, n3, n, n1=0, n13=0;
    byte *msk=NULL;
    float origwidth=0.0, rad = 0.0, gain = 1.0;
+   GLboolean ble=FALSE, dmsk=TRUE, gl_dt=TRUE;
    SUMA_SurfaceObject *SO = NULL;
    SUMA_Boolean LocalHead = NOPE;
    
@@ -2836,6 +2837,14 @@ SUMA_Boolean SUMA_DrawSegmentDO (SUMA_SegmentDO *SDO, SUMA_SurfaceViewer *sv)
          glLineStipple (1, 0x00FF); /* dashed, see OpenGL Prog guide, page 55 */
          break;
       case SUMA_SOLID_LINE:
+         glEnable (GL_LINE_SMOOTH);
+         if (0) glDepthMask(FALSE); /* Disabling depth masking makes lines 
+                              coplanar with polygons
+                              render without stitching, bleeding, or Z fighting.
+                              Problem is, that it need to be turned on for proper
+                              rendering of remaing objects, and that brings the 
+                              artifact back. */
+         glHint (GL_LINE_SMOOTH_HINT, GL_NICEST); 
          break;
       default:
          fprintf(stderr,"Error %s: Unrecognized Stipple option\n", FuncName);
@@ -2995,12 +3004,13 @@ SUMA_Boolean SUMA_DrawSegmentDO (SUMA_SegmentDO *SDO, SUMA_SurfaceViewer *sv)
          glDisable(GL_LINE_STIPPLE);
          break;
       case SUMA_SOLID_LINE:
+         glDisable(GL_LINE_SMOOTH);
          break;
    }
    
    /* draw the bottom object */
-   SUMA_LH("Drawing bottom");
    if (SDO->botobj) {
+      SUMA_LH("Drawing bottom");
       glLineWidth(0.5);
       if (!SDO->colv) {
          glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, SDO->LineCol);
@@ -5171,7 +5181,10 @@ SUMA_Boolean SUMA_Draw_SO_Dset_Contours(SUMA_SurfaceObject *SO,
                if (D_ROI->CE && D_ROI->N_CE) {
                   /* Draw the contour */
                   if (!SO->patchNodeMask) {
-                     glLineWidth(6);
+                     glLineWidth(1); /* Changed from horrible '6' 
+                                 now that glPolygonOffset is used to 
+                                 allow for proper coplanar line and
+                                 polygon rendering.  July 8th 2010 */
                      glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, 
                                   D_ROI->FillColor);
                      SUMA_LH("Drawing contour ...");
@@ -5223,7 +5236,7 @@ SUMA_Boolean SUMA_Draw_SO_Dset_Contours(SUMA_SurfaceObject *SO,
                         glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, 
                                      D_ROI->FillColor);
                      } else {
-                        glLineWidth(3);
+                        glLineWidth(1);
                         glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, 
                                      D_ROI->FillColor);   
                      }
@@ -5234,18 +5247,39 @@ SUMA_Boolean SUMA_Draw_SO_Dset_Contours(SUMA_SurfaceObject *SO,
                      if (SO->EmbedDim == 2) {
                         if (SO->NodeNormList && D_ROI->CE) {
                            /* just take a node in the ROI */
-                           id2cont = 3 * D_ROI->CE[0].n2;
-                           off[0] = 3*SO->NodeNormList[id2cont];
-                           off[1] = 3*SO->NodeNormList[id2cont+1];
-                           off[2] = 3*SO->NodeNormList[id2cont+2];
+                           icont = 0;
+                           while (  icont < D_ROI->N_CE && 
+                                    ( (D_ROI->CE[icont].n1 >= SO->N_Node || 
+                                       D_ROI->CE[icont].n2 >= SO->N_Node)  || 
+                                  (!SO->patchNodeMask[D_ROI->CE[icont].n1] &&
+                                   !SO->patchNodeMask[D_ROI->CE[icont].n2]) ) ) 
+                              ++icont;
+                           if (icont < D_ROI->N_CE && 
+                                 D_ROI->CE[icont].n1 < SO->N_Node &&
+                                 D_ROI->CE[icont].n2 < SO->N_Node )    {
+                              id2cont = 3 * D_ROI->CE[icont].n2;
+                              off[0] = 3*SO->NodeNormList[id2cont];
+                              off[1] = 3*SO->NodeNormList[id2cont+1];
+                              off[2] = 3*SO->NodeNormList[id2cont+2];
+                           } else {
+                              off[0] = off[1] = off[2] = 0.0;
+                           }
                         }
                      }
                      #if 1 /* faster but more complicated */
                      icont = 0;
-                     while (icont < D_ROI->N_CE &&
-                            !SO->patchNodeMask[D_ROI->CE[icont].n1] &&
-                            !SO->patchNodeMask[D_ROI->CE[icont].n2] ) ++icont;
-                     if (icont < D_ROI->N_CE) {
+                     while (  icont < D_ROI->N_CE && 
+                              ( (D_ROI->CE[icont].n1 >= SO->N_Node || 
+                                 D_ROI->CE[icont].n2 >= SO->N_Node)  || 
+                            (!SO->patchNodeMask[D_ROI->CE[icont].n1] &&
+                             !SO->patchNodeMask[D_ROI->CE[icont].n2]) ) ) 
+                        ++icont; /* skip if n1 or n2 exceed N_Node, 
+                                    or neither of them is in the patch. 
+                                    For patches, it is possible that 
+                                    SOpatch->N_Node < SOLDP->Parent */
+                     if (icont < D_ROI->N_CE && 
+                           D_ROI->CE[icont].n1 < SO->N_Node &&
+                           D_ROI->CE[icont].n2 < SO->N_Node ) {
                         glBegin(GL_LINE_STRIP);
                         id1cont = 3 * D_ROI->CE[icont].n1;
                         glVertex3f(SO->NodeList[id1cont]+off[0], 
@@ -5253,7 +5287,9 @@ SUMA_Boolean SUMA_Draw_SO_Dset_Contours(SUMA_SurfaceObject *SO,
                                    SO->NodeList[id1cont+2]+off[2]);
                         i2last = D_ROI->CE[icont].n1;
                         while (icont < D_ROI->N_CE) {
-                           if (SO->patchNodeMask[D_ROI->CE[icont].n1] &&
+                           if (D_ROI->CE[icont].n1 < SO->N_Node &&
+                               D_ROI->CE[icont].n2 < SO->N_Node &&
+                               SO->patchNodeMask[D_ROI->CE[icont].n1] &&
                                SO->patchNodeMask[D_ROI->CE[icont].n2] ) {
                               id2cont = 3 * D_ROI->CE[icont].n2;
                               if (i2last != D_ROI->CE[icont].n1) {
@@ -5279,7 +5315,9 @@ SUMA_Boolean SUMA_Draw_SO_Dset_Contours(SUMA_SurfaceObject *SO,
                      for (icont = 0; icont < D_ROI->N_CE; ++icont) {
                         id1cont = 3 * D_ROI->CE[icont].n1;
                         id2cont = 3 * D_ROI->CE[icont].n2;
-                        if (SO->patchNodeMask[D_ROI->CE[icont].n1] && 
+                        if (D_ROI->CE[icont].n1 < SO->N_Node &&
+                            D_ROI->CE[icont].n2 < SO->N_Node &&
+                            SO->patchNodeMask[D_ROI->CE[icont].n1] && 
                             SO->patchNodeMask[D_ROI->CE[icont].n2]) {
 
                            glBegin(GL_LINES);
@@ -5489,7 +5527,7 @@ SUMA_Boolean SUMA_Draw_SO_ROI (SUMA_SurfaceObject *SO,
                      /* Draw the contour */
                      
                      if (!SO->patchNodeMask) {
-                        glLineWidth(6);
+                        glLineWidth(2);
                         glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, 
                                      D_ROI->FillColor);
                         SUMA_LH("Drawing contour ...");
@@ -5511,7 +5549,7 @@ SUMA_Boolean SUMA_Draw_SO_ROI (SUMA_SurfaceObject *SO,
                            glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, 
                                         D_ROI->FillColor);
                         } else {
-                           glLineWidth(3);
+                           glLineWidth(2);
                            glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, 
                                         D_ROI->FillColor);   
                         }
@@ -5777,6 +5815,7 @@ SUMA_Boolean SUMA_Paint_SO_ROIplanes ( SUMA_SurfaceObject *SO,
    static int iwarn=0;
    SUMA_EngineData *ED = NULL;
    SUMA_Boolean Unique = NOPE;
+   static int iwarn2=0;
    SUMA_Boolean LocalHead = NOPE;
             
    SUMA_ENTRY;
@@ -5787,31 +5826,31 @@ SUMA_Boolean SUMA_Paint_SO_ROIplanes ( SUMA_SurfaceObject *SO,
       eee = getenv("SUMA_ROIColorMap");
       if (eee) {
          if (!strcmp(eee, "roi256")) {
-            mapname = "ROI_256";
-            if (!iwarn) SUMA_S_Note( "roi256 colormap is now ROI_256\n"
+            mapname = "ROI_i256";
+            if (!iwarn) SUMA_S_Note( "roi256 colormap is now ROI_i256\n"
                            "To use old roi256, use ygbrp256");
             ++iwarn;   
          }else if (!strcmp(eee, "roi128")) {
-            mapname = "ROI_128";
-            if (!iwarn) SUMA_S_Note( "roi128 colormap is now ROI_128\n"
+            mapname = "ROI_i128";
+            if (!iwarn) SUMA_S_Note( "roi128 colormap is now ROI_i128\n"
                            "To use old roi128, use ygbrp128"); 
             ++iwarn;   
          }else if (!strcmp(eee, "roi64")) {
-            mapname = "ROI_64";
-            if (!iwarn) SUMA_S_Note( "roi64 colormap is now ROI_64\n"
+            mapname = "ROI_i64";
+            if (!iwarn) SUMA_S_Note( "roi64 colormap is now ROI_i64\n"
                            "To use old roi64, use ygbrp64"); 
             ++iwarn;   
          }else if (SUMA_StandardMapIndex(eee) >= 0) {
             mapname = eee;
          } else {
-            mapname = "ROI_64";
+            mapname = "ROI_i64";
             if (LocalHead) 
                fprintf(SUMA_STDERR, "%s: Unrecognized colormap %s.\n"
                                     " Using %s instead.\n", 
                                     FuncName, eee, mapname);
          }
       } else {
-         mapname = "ROI_64";
+         mapname = "ROI_i64";
          if (LocalHead) 
             fprintf(SUMA_STDERR,
                "%s: Undefined environment. Using default ROI colormap %s\n", 
@@ -5925,9 +5964,12 @@ SUMA_Boolean SUMA_Paint_SO_ROIplanes ( SUMA_SurfaceObject *SO,
 
             if (!SUMAg_CF->ROI_CM) {
                if (!(SUMAg_CF->ROI_CM = SUMA_FindNamedColMap (mapname))) {
-                  SUMA_SLP_Err( "Failed to create\n"
+                  if (!iwarn2) {
+                     SUMA_SLP_Err( "Failed to create\n"
                                  "color map. Reverting\n"
-                                 "to FillColors");
+                                 "to FillColors\n This message is shown once.");
+                     ++iwarn2;
+                  }
                   D_ROI->ColorByLabel = NOPE;
                }
                if (LocalHead) {

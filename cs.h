@@ -29,6 +29,8 @@ extern void qsort_intint    ( int , int *    , int * ) ;
 extern void qsort_floatfloat( int , float *  , float * ) ;  /* 30 Jan 2000 */
 extern void qsort_floatstuff( int , float *  , void ** ) ;  /* 06 Feb 2000 */
 extern void qsort_doublestuff( int, double * , void ** ) ;  /* 18 Dec 2006 */
+extern void qsort_intstuff   ( int, int *    , void ** ) ;  /* 25 Mar 2010 */
+extern void qsort_double    ( int , double * ) ;            /* 06 Jul 2010 */
 
 /***** Quicksort-ish median *****/
 
@@ -46,6 +48,8 @@ extern void symeigval_double( int , double * , double * ) ;
 extern void svd_double( int, int, double *, double *, double *, double * ) ;
 extern void svd_float ( int, int, float *, float *, float *, float * ) ;
 extern void set_svd_sort(int) ;
+
+extern int svd_desingularize( int m , int n , double *aa ) ; /* 11 Mar 2010 */
 
 extern void symeig_3( double *, double *, int ) ;  /* 30 Sep 2005 */
 extern void symeig_2( double *, double *, int ) ;
@@ -107,7 +111,8 @@ extern int powell_newuoa_constrained(
                                double rstart , double rend ,
                                int maxcall , double (*ufunc)(int,double *) ) ;
 
-extern char *approximate_number_string( double ) ;  /* 16 Jan 2004 */
+extern char *approximate_number_string( double ) ;   /* 16 Jan 2004 */
+extern char * commaized_integer_string( long long ); /* 18 Mar 2010 */
 
 extern int strcmp_aboot( char * , char * ) ;        /* 12 Mar 2007 */
 

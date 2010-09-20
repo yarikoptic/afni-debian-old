@@ -1139,7 +1139,7 @@ char * SUMA_help_message_Info(void)
       "     c: load a node color file.\n\n");
    SS = SUMA_StringAppend (SS, 
       "     Ctrl+d: draw ROI controller.\n\n");
-   if (SUMAg_CF->Dev) SS = SUMA_StringAppend (SS, 
+   SS = SUMA_StringAppend (SS, 
       "     D: Attch to the current dataset 'parent' a dot product\n"
       "        transform. The 'child' (transformed) dataset\n"
       "        is created by calculating the dot product between\n"
@@ -1200,7 +1200,8 @@ char * SUMA_help_message_Info(void)
       "        or in AFNI\n\n");
    SS = SUMA_StringAppend_va (SS, 
       "     L: Light's XYZ coordinates.\n"
-      "        Default setting is 0.0 0.0 %.1f \n", 1.0 * SUMA_INTITIAL_LIGHT0_SWITCH);
+      "        Default setting is 0.0 0.0 %.1f \n", 
+      1.0 * SUMA_INTITIAL_LIGHT0_SWITCH);
    if (SUMAg_CF->Dev) SS = SUMA_StringAppend (SS, 
       "     Ctrl+L: Dim all lights and colors by a factor of 0.8\n" );
    SS = SUMA_StringAppend (SS, 
@@ -1232,7 +1233,11 @@ char * SUMA_help_message_Info(void)
    SS = SUMA_StringAppend (SS, 
       "     r: record current image\n"
       "        in an a la AFNI image viewer.\n"
-      "        Identical images are rejected.\n\n");
+      "        Identical images are rejected.\n"
+      "        If you just save one image, the recording\n"
+      "        window has no visible controls for saving\n"
+      "        the image. Either take another picture, or\n"
+      "        use 'Shift+right click' to get a menu.\n\n");
    if (SUMAg_CF->Dev) SS = SUMA_StringAppend (SS, 
       "     Alt+r: Set new center of rotation.\n"
       "            Enter nothing to go back to default.\n"
@@ -1426,11 +1431,14 @@ char * SUMA_help_message_Info(void)
       "     (: Compute convexity of surface, \n"
       "        results written to disk.\n\n");
    SS = SUMA_StringAppend (SS, 
-      "     ,/. (think </>): Switch to next/previous view state.\n\n");
+      "     ,/. (think </>): Switch to next/previous view state.\n"
+      "                      Viewing angle is reset only when switching to\n"
+      "                      a state with flat surfaces.\n");
    SS = SUMA_StringAppend (SS, 
       "     SPACE: Toggle between Mapping Reference and\n"
-      "            Current view state.\n\n");
-
+      "            Current view state.\n"
+      "            Viewing angle is reset only when switching to\n"
+      "                      a state with flat surfaces.\n\n");
    SS = SUMA_StringAppend (SS, 
       "     L-R arrows: rotate about screen's Y axis\n");
    SS = SUMA_StringAppend (SS, 
@@ -1447,6 +1455,8 @@ char * SUMA_help_message_Info(void)
       "     Ctrl+U-D arrows: IS cardinal views\n");
    SS = SUMA_StringAppend (SS, 
       "     Ctrl+Shift+U-D arrows: AP cardinal views\n\n");
+   SS = SUMA_StringAppend (SS, 
+      "     Ctrl+Shift+L-R arrows: rotate CCW and CW about Z screen axis\n\n");
    SS = SUMA_StringAppend (SS, 
       "     Alt+L-R arrows: Move selected node to neighboring nodes\n"
       "                     in the direction of the screen's \n"
@@ -1480,7 +1490,8 @@ char * SUMA_help_message_Info(void)
    SS = SUMA_StringAppend (SS, 
       "     F12: Time 20 scene renderings.\n\n");
    SS = SUMA_StringAppend (SS, 
-      "     HOME: reset view to startup\n\n");
+      "     HOME: reset zoom and recenter surfaces.\n"
+      "           rest view angle for flat surfaces only.\n\n");
    SS = SUMA_StringAppend (SS, 
       "     ESCAPE: close the surface viewer window.\n");
    SS = SUMA_StringAppend (SS, 
@@ -1512,12 +1523,21 @@ char * SUMA_help_message_Info(void)
       "      Shift+Button2-Motion: \n"
       "          Zoom in/out\n");
    SS = SUMA_StringAppend (SS, 
-      "     Button 3-Press: picking \n");
+      "     Button 3-Press: Node picking \n"
+      "                     Initiates a path to new node in DrawROI mode.\n"
+      "                     No calls in Dot xform mode, or GroupInCorr\n" );
    SS = SUMA_StringAppend (SS, 
-      "     shft+Button 3-Press: Pick only\n"
-      "                       Does not draw to new node in DrawROI mode.\n"
-      "                       Does not apply transforms as in Dot xform mode\n"
+      "     shft+ctrl+Button 3-Press: Pick and initiate call in Dot xform\n"
+      "                               mode, or to GroupInCorr\n"
       );
+   SS = SUMA_StringAppend (SS, 
+      "     Button 3-Motion: continuous picking\n"
+      "                      No calls for dot product (InstaCorr)\n"
+      "                           or GroupInCorr, while dragging.\n" 
+      "     shft+ctrl+Button 3-Motion: Continuous picking and calls \n"
+      "                                for dot product (InstaCorr)\n"
+      "                               or GroupInCorr, while dragging.\n"
+      ); 
    SS = SUMA_StringAppend (SS, 
       "    \n");
    SS = SUMA_StringAppend (SS, 

@@ -1773,8 +1773,12 @@ SUMA_context_Init(SUMA_SurfaceViewer *sv)
    /*GLfloat green_light[] = { 0.0, 1.0, 0.0, 1.0};*/
    
    SUMA_ENTRY;
-   if (sv->PolyMode == SRM_Hide) { SUMA_SL_Note("sv->PolyMode reset to SRM_Fill"); sv->PolyMode = SRM_Fill; }
-   glClearColor (sv->clear_color[0], sv->clear_color[1], sv->clear_color[2], sv->clear_color[3]);
+   if (sv->PolyMode == SRM_Hide) { 
+      SUMA_SL_Note("sv->PolyMode reset to SRM_Fill"); 
+      sv->PolyMode = SRM_Fill; 
+   }
+   glClearColor (sv->clear_color[0], sv->clear_color[1], 
+                 sv->clear_color[2], sv->clear_color[3]);
    glShadeModel (GL_SMOOTH);
 
    SUMA_SET_GL_RENDER_MODE(sv->PolyMode); 
@@ -3166,13 +3170,17 @@ void SUMA_SetcSV (Widget w, XtPointer clientData, XEvent * event, Boolean * cont
    if (LocalHead) fprintf(SUMA_STDERR,"%s:\n Called, w = %p\n", FuncName, w);
    
 
-   /* When using multiple viewers, you must reset the OpenGL state variables or risk having abrupt changes with the first click */
+   /* When using multiple viewers, you must reset the 
+      OpenGL state variables or risk having abrupt changes with the 
+      first click */
    SUMA_ANY_WIDGET2SV(w, sv, isv);
    if (isv < 0) {
-      fprintf (SUMA_STDERR, "Error %s: Failed in macro SUMA_ANY_WIDGET2SV.\n", FuncName);
+      fprintf (SUMA_STDERR, 
+               "Error %s: Failed in macro SUMA_ANY_WIDGET2SV.\n", FuncName);
       SUMA_RETURNe;
    }
-
+   SUMAg_CF->PointerLastInViewer = isv;
+   
    #ifdef DARWIN
       /* Set the focus manually.
       If you're not using motif widgets, window focus is not managed.
@@ -3198,7 +3206,8 @@ void SUMA_SetcSV (Widget w, XtPointer clientData, XEvent * event, Boolean * cont
 
    sv->rdc = SUMA_RDC_X_ENTER_WINDOW;
    
-   if (LocalHead) fprintf (SUMA_STDERR, "%s: in Surface Viewer #%d.\n", FuncName, isv);
+   if (LocalHead) 
+      fprintf (SUMA_STDERR, "%s: in Surface Viewer #%d.\n", FuncName, isv);
    sv->ResetGLStateVariables = YUP;  
 
    SUMA_postRedisplay(w, clientData, NULL);
@@ -3212,6 +3221,7 @@ void SUMA_unSetcSV (Widget w, XtPointer clientData, XEvent * event, Boolean * co
    static char FuncName[]={"SUMA_unSetcSV"};
    
    SUMA_ENTRY;
+   
    SUMA_RETURNe;
 }
 
@@ -4266,6 +4276,46 @@ void SUMA_cb_viewSumaCont(Widget w, XtPointer data, XtPointer callData)
    SUMA_RETURNe;
 }
 
+/* Many times you need the surface controller created but not for 
+display, create it if needed, then close it immediately afterwards*/
+int SUMA_OpenCloseSurfaceCont(Widget w, 
+                              SUMA_SurfaceObject *SO, 
+                              SUMA_SurfaceViewer *sv) 
+{
+   static char FuncName[]={"SUMA_OpenCloseSurfaceCont"};
+   SUMA_Boolean LocalHead=NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!SO || !SO->SurfCont || !SO->SurfCont->curColPlane) SUMA_RETURN(0);
+   
+   if (SO->SurfCont->TopLevelShell) SUMA_RETURN(1); /* nothing to do */
+   
+   if (w) {
+      SUMA_LH("nism");
+      SUMA_cb_createSurfaceCont( w, (XtPointer)SO, NULL);
+   } else {
+      if (!sv) {
+         if (!(sv = SUMA_BestViewerForSO(SO)) ||
+             !sv->X->TOPLEVEL) {
+            SUMA_LH("NULLity");
+            SUMA_RETURN(0);
+         }
+      }
+      SUMA_LH("Creationism");
+      SUMA_cb_createSurfaceCont( sv->X->TOPLEVEL, (XtPointer)SO, NULL);  
+   }
+   
+   SUMA_InitializeColPlaneShell(SO, SO->SurfCont->curColPlane);
+
+
+   /* Now close it quick. Maybe should put a delayed closing for nicer effect */
+   SUMA_LH("Destructurism")
+   SUMA_cb_closeSurfaceCont(NULL, (XtPointer) SO, NULL);
+   
+   SUMA_RETURN(1);
+}
+ 
 /*! if calling this function from outside interface, set w to NULL 
 */
 int SUMA_viewSurfaceCont(Widget w, SUMA_SurfaceObject *SO, 
@@ -4332,6 +4382,8 @@ int SUMA_viewSurfaceCont(Widget w, SUMA_SurfaceObject *SO,
    SUMA_Init_SurfCont_SurfParam(SO);
    SUMA_LH("Init CrossHair");
    SUMA_Init_SurfCont_CrossHair(SO);
+   SUMA_LH("Dset goodies");
+   SUMA_InitializeColPlaneShell(SO, SO->SurfCont->curColPlane);
    
    SUMA_LH("Init Position");
    if (SO->SurfCont->PosRef != sv->X->TOPLEVEL) {
@@ -5219,6 +5271,7 @@ void SUMA_cb_createSurfaceCont(Widget w, XtPointer data, XtPointer callData)
       XtManageChild (SurfFrame);
    }  
    
+   SUMA_LH("Xhair business");
    {  /* Xhair Controls */
       Widget rcv;
       /* put a frame */
@@ -5252,6 +5305,7 @@ void SUMA_cb_createSurfaceCont(Widget w, XtPointer data, XtPointer callData)
       XtManageChild(SO->SurfCont->Xhair_fr);
    }  /* Xhair Controls */
     
+   SUMA_LH("Dset Mapping");
    {  /* Dset Mapping */
       Widget rcv;
       /* put a frame */
@@ -5289,6 +5343,7 @@ void SUMA_cb_createSurfaceCont(Widget w, XtPointer data, XtPointer callData)
       XtManageChild(SO->SurfCont->DsetMap_fr);
    }
 
+   SUMA_LH("Dset Controls");
    /* Dset Controls */
    {
        Widget rc, rcv, pb;
@@ -5636,6 +5691,9 @@ void SUMA_cb_createSurfaceCont(Widget w, XtPointer data, XtPointer callData)
    #endif
 
    SUMA_LH("going home.");
+
+   SO->SurfCont->Open = 1;
+
    SUMA_RETURNe;
 }
 
@@ -6592,10 +6650,9 @@ SUMA_LIST_WIDGET * SUMA_AllocateScrolledList (
 {
    static char FuncName[]={"SUMA_AllocateScrolledList"};
    SUMA_LIST_WIDGET *LW = NULL;
-
+   
    SUMA_ENTRY;
    
-
    if (!Label) {
       SUMA_SLP_Err("Null Label");
       SUMA_RETURN(LW);
@@ -6824,7 +6881,7 @@ void SUMA_CreateScrolledList (
    }
    
    if (N_clist <= 0) {
-      SUMA_SLP_Note ("No ROIs found");
+      SUMA_SLP_Note ("No elements in list (such as ROIs) found");
       SUMA_RETURNe;
    }
    
@@ -8185,6 +8242,7 @@ void SUMA_cb_SelectSwitchColPlane(Widget w, XtPointer data, XtPointer call_data)
          SUMA_InitializeColPlaneShell(SO, ColPlane);
          SUMA_UpdateColPlaneShellAsNeeded(SO); /* update other open 
                                                    ColPlaneShells */
+         SUMA_UpdateNodeField(SO);
          /* If you're viewing one plane at a time, do a remix */
          if (SO->SurfCont->ShowCurForeOnly) SUMA_RemixRedisplay(SO);
       }

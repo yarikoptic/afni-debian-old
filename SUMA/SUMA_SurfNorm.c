@@ -204,26 +204,33 @@ SUMA_SURF_NORM SUMA_SurfNorm (float *NodeList, int N_NodeList, int *FaceSetList,
                   RetStrct.NodeNormList[id+2] /= nrm;
                } 
                
-               /* fprintf(SUMA_STDERR,"%s: Node %d, N_Memb[i] = %d, nrm = %f\n", FuncName, i, N_Memb[i], nrm); */
+               /* fprintf(SUMA_STDERR,"%s: Node %d, N_Memb[i] = %d, nrm = %f\n"
+                                       , FuncName, i, N_Memb[i], nrm); */
             }
             else
             {
                ++NotMember;
                /*
-               For some patches (Free Surfer's) such conditions are frequent, spitting out that message becomes old too quick */
+               For some patches (Free Surfer's) such conditions 
+               are frequent, spitting out that message becomes old too quick */
                /*
-               fprintf(stdout,"\n%s Warning: Node %d is not a member of any FaceSets, returning unit vector as normal.\n", FuncName, i); 
+               fprintf(stdout,
+                        "\n%s Warning: Node %d is not a member of any FaceSets,"
+                        " returning unit vector as normal.\n", FuncName, i); 
                */
-               RetStrct.NodeNormList[id] = RetStrct.NodeNormList[id+1] = RetStrct.NodeNormList[id+2] = 1.0;
+               RetStrct.NodeNormList[id] = 
+                  RetStrct.NodeNormList[id+1] = 
+                     RetStrct.NodeNormList[id+2] = 1.0;
             }
          }
       if (NotMember) {
-         sprintf (stmp, "(IGNORE for surface patches\n"
+         sprintf (stmp, "(IGNORE for surfaces with cuts\n"
                         "%d nodes (%f%% of total) are\n"
                         "not members of any FaceSets.\n"
                         "Their normals are set to the\n"
-                        "unit vector.\n", NotMember, (float)NotMember/(float)N_NodeList*100.0);
-         SUMA_SL_Warn(stmp);
+                        "unit vector.\n", 
+                        NotMember, (float)NotMember/(float)N_NodeList*100.0);
+         SUMA_SL_Note(stmp);
       }
       
    if (N_Memb) SUMA_free(N_Memb);

@@ -93,7 +93,9 @@ extern AFD_dicom_header **MRILIB_dicom_header ;
     "* This binary version of %s is compiled using OpenMP, a semi-\n"              \
     "   automatic parallelizer software toolkit, which splits the work across\n"   \
     "   multiple CPUs/cores on the same shared memory computer.\n"                 \
-    "* For implementation details, please see\n"                                   \
+    "* OpenMP is NOT like MPI -- it does not work with CPUs connected only\n"      \
+    "   by a network (e.g., OpenMP doesn't work with 'cluster' setups).\n"         \
+    "* For implementation and compilation details, please see\n"                   \
     "   http://afni.nimh.nih.gov/pub/dist/doc/misc/OpenMP.html\n"                  \
     "* The number of CPU threads used will default to the maximum number on\n"     \
     "  your system.  You can control this value by setting environment variable\n" \
@@ -104,9 +106,9 @@ extern AFD_dicom_header **MRILIB_dicom_header ;
     "  since OpenMP queries this variable before the program actually is started\n"\
     "  -- you can't usefully set this variable in your ~/.afnirc file or on the\n" \
     "  command line with the '-D' option.\n"                                       \
-    "* In my limited experience with OpenMP, using more than 4 threads doesn't\n"  \
-    "  give much gain, even on an 8 CPU system.\n"                                 \
-    "* The number of CPUs on this particular computer system is %d.\n"             \
+    "* How many threads are useful?  That varies with the program, and how well\n" \
+    "  it was coded.  You'll have to experiment on your own systems!\n"            \
+    "* The number of CPUs on this particular computer system is ...... %d.\n"      \
     "%s\n"                                                                         \
     , (pnam) , omp_get_num_procs() , (extra==NULL) ? "\0" : extra                  \
   )
@@ -119,7 +121,7 @@ extern AFD_dicom_header **MRILIB_dicom_header ;
     "   semi-automatic parallelizer software toolkit, which splits the work\n"     \
     "   across multiple CPUs/cores on the same shared memory computer.\n"          \
     "* However, the source code is modified for OpenMP, and can be compiled\n"     \
-    "   with an OpenMP-capable compiler, such as gcc 4.2, Intel's icc, and\n"      \
+    "   with an OpenMP-capable compiler, such as gcc 4.2+, Intel's icc, and\n"     \
     "   Sun Studio.\n"                                                             \
     "* If you wish to compile this program with OpenMP, see the man page for\n"    \
     "   your C compiler, and (if needed) consult the AFNI message board, and\n"    \
@@ -159,6 +161,11 @@ extern AFD_dicom_header **MRILIB_dicom_header ;
 #ifndef TYPEDEF_byte
 #define TYPEDEF_byte
 typedef unsigned char byte ;
+#endif
+
+#ifndef TYPEDEF_sbyte
+#define TYPEDEF_sbyte
+typedef signed char sbyte ;
 #endif
 
 /*! RGBA data type; not used anywhere (yet). */
@@ -610,6 +617,10 @@ static int MRI_mm ;
 #   define FALSE (0)
 #endif
 
+#ifndef MAYBE
+#   define MAYBE (-1)  /* 26 Feb 2010 */
+#endif
+
 #define MRI_BILINEAR  (1)   /* for the warping function */
 #define MRI_LINEAR    (1)
 #define MRI_BICUBIC   (2)
@@ -651,6 +662,10 @@ static int MRI_mm ;
 
 #define MRI_FATAL_ERROR \
         {fprintf(stderr,"in file: %s at line %d\n",__FILE__,__LINE__);EXIT(1);}
+
+#undef  NULL_CHECK
+#define NULL_CHECK(p) \
+ do{ if( (p)==NULL ){ ERROR_message("malloc failure: out of RAM?"); EXIT(1); } } while(0)
 
 /**** prototypes ****/
 
@@ -708,6 +723,7 @@ extern MRI_IMAGE ** mri_stat_seq( MRI_IMAGE * ) ;
 #define NSTAT_PERCENTILE  19
 #define NSTAT_RANK        21      /* ZSS Jan 10 */
 #define NSTAT_FRANK       22      /* ZSS Jan 10 */
+#define NSTAT_P2SKEW      23      /* ZSS March 04 10*/
 
 #define NSTAT_FWHMx      63   /*these should be after all other NSTAT_* values */
 #define NSTAT_FWHMy      64
@@ -727,6 +743,7 @@ extern MRI_IMAGE ** mri_stat_seq( MRI_IMAGE * ) ;
 #define NBISTAT_CORR_RATIO_U       66610
 #define NBISTAT_NUM                66611
 #define NBISTAT_NCD                66612
+#define NBISTAT_KENDALL_TAUB       66613 /* 29 Apr 2010 */
 
 extern float mri_nstat  ( int , int , float * , float) ;  /* 19 Aug 2005 */
 extern float mri_nbistat( int , MRI_IMAGE *, MRI_IMAGE * ) ; /* 26 Oct 2006 */
@@ -849,6 +866,8 @@ extern MRI_IMAGE * mri_read_double_1D( char * ) ;
 extern MRI_IMAGE * mri_read_complex_1D( char * ) ;
 extern int mri_write_1D( char * , MRI_IMAGE * ) ;        /* 16 Nov 1999 */
 extern MRI_IMAGE * mri_read_1D_stdin(void) ;             /* 25 Jan 2008 */
+extern MRI_IMAGE * mri_copy_1D_stdin(void) ;             /* 05 Mar 2010 */
+extern void        mri_clear_1D_stdin(void);
 
 extern MRI_IMAGE * mri_read_4x4AffXfrm_1D( char *fname );/* 24 Nov 2009 */
 extern MRI_IMAGE * mri_1D_fromstring( char * ) ;         /* 28 Apr 2003 */
@@ -940,6 +959,8 @@ extern MRI_IMAGE *mri_to_complex_ext( MRI_IMAGE * , int , int , int ) ;
 extern MRI_IMAGE *mri_scale_to_float( float , MRI_IMAGE * ) ;
 extern void mri_threshold( double , double , MRI_IMAGE * , MRI_IMAGE * ) ;
 extern MRI_IMAGE * mri_mult_to_float( float * , MRI_IMAGE * ) ;
+
+extern void mri_maskify( MRI_IMAGE *im , byte *mask ) ; /* Jul 2010 */
 
 extern MRI_IMAGE * mri_scalize( MRI_IMAGE *, int, float * ) ; /* 20 Oct 2003 */
 
@@ -1034,6 +1055,7 @@ extern float * delayed_lsqfit( int , float * , int , float *ref[] , double * ) ;
 
 extern MRI_IMAGE * mri_pcvector  ( MRI_IMARR *imar , int,int ) ;
 extern MRI_IMAGE * mri_meanvector( MRI_IMARR *imar , int,int ) ;
+extern MRI_IMAGE * mri_MMBvector ( MRI_IMARR *imar , int,int,int ) ; /* 05 Aug 2010 */
 
 extern MRI_IMAGE * mri_sobel( int , int , MRI_IMAGE * ) ;
 extern MRI_IMAGE * mri_sharpen( float , int , MRI_IMAGE * ) ;
@@ -1311,7 +1333,7 @@ typedef struct { int nar ; int *ar ; } intvec ;
 
 /*----------*/
 
-typedef struct { short nar ; short *ar ; } shortvec ;
+typedef struct { int nar ; short *ar ; } shortvec ;
 #define KILL_shortvec(iv)                    \
   do{ if( (iv) != NULL ){                     \
         if( (iv)->ar != NULL ) free((iv)->ar); \
@@ -1328,6 +1350,28 @@ typedef struct { short nar ; short *ar ; } shortvec ;
   do{ if( (iv)->nar != (m) ){                                   \
         (iv)->nar = (m) ;                                        \
         (iv)->ar  = (short *)realloc((iv)->ar,sizeof(short)*(m)); \
+  }} while(0)
+
+/*----------*/
+/* Jul 2010 */
+
+typedef struct { int nar ; byte *ar ; } bytevec ;
+#define KILL_bytevec(iv)                     \
+  do{ if( (iv) != NULL ){                     \
+        if( (iv)->ar != NULL ) free((iv)->ar); \
+        free(iv); (iv) = NULL;                  \
+  } } while(0)
+
+#define MAKE_bytevec(iv,n)                         \
+  do{ (iv) = (bytevec *)malloc(sizeof(bytevec)) ;   \
+      (iv)->nar = (n) ;                              \
+      (iv)->ar  = (byte *)calloc(sizeof(byte),(n)) ;  \
+  } while(0)
+
+#define RESIZE_bytevec(iv,m)                                 \
+  do{ if( (iv)->nar != (m) ){                                 \
+        (iv)->nar = (m) ;                                      \
+        (iv)->ar  = (byte *)realloc((iv)->ar,sizeof(byte)*(m)); \
   }} while(0)
 
 /*----------*/
@@ -1379,6 +1423,10 @@ extern int SYM_expand_errcount(void) ; /* 03 May 2007 */
 #include "zlib.h"             /* 02 Mar 2009 */
 #endif
 
+#include "misc_math.h"        /* 21 Jun 2010 [rickr] */
+
+THD_string_array * mri_read_1D_headerline( char *fname ) ; /* 18 May 2010 */
+
 /*------------------------------------------------------------------------*/
 /* 13 Feb 2009: generic 4x4 matrix struct stuff */
 
@@ -1424,7 +1472,7 @@ typedef struct {
 } mri_cluster_detail ;
 
 extern MRI_IMAGE * mri_clusterize( float,float, MRI_IMAGE * ,
-                                   float,float, MRI_IMAGE * , int );
+                                   float,float, MRI_IMAGE * , int , byte * );
 extern char * mri_clusterize_report(void) ;
 extern MCW_cluster_array * mri_clusterize_array(int clear) ;
 extern mri_cluster_detail mri_clusterize_detailize( MCW_cluster *cl ) ;
@@ -1453,6 +1501,9 @@ extern MRI_IMAGE * mri_matrix_evalrpn  ( char * ) ;
 extern char      * mri_matrix_evalrpn_help(void) ;
 extern void        mri_matrix_evalrpn_verb(int) ;
 extern float mri_matrix_size( MRI_IMAGE * ) ;
+
+extern MRI_IMARR * mri_matrix_psinv_pair( MRI_IMAGE *, float ) ;
+extern MRI_IMAGE * mri_matrix_singvals  ( MRI_IMAGE * ) ;
 
 extern void mri_matrix_detrend( MRI_IMAGE *, MRI_IMAGE *, MRI_IMAGE * ) ;
 
@@ -1596,9 +1647,11 @@ extern void mri_metrics( MRI_IMAGE *, MRI_IMAGE *, float * ) ;
 #define GA_MATCH_PEARSON_LOCALS    11  /* experimental */
 #define GA_MATCH_PEARSON_LOCALA    12  /* experimental */
 
-#define GA_MATCH_NCDZLIB           13  /* very experimental */
+#define GA_MATCH_LPC_MICHO_SCALAR  13  /* experimental [24 Feb 2010] */
 
-#define GA_MATCH_METHNUM_SCALAR    13  /* Largest value in sequence above */
+#define GA_MATCH_NCDZLIB           14  /* very experimental */
+
+#define GA_MATCH_METHNUM_SCALAR    14  /* Largest value in sequence above */
 
  /* methods for smoothing images */
 
@@ -1652,6 +1705,8 @@ extern GA_BLOK_set * create_GA_BLOK_set( int   nx , int   ny , int   nz ,
 
 extern floatvec * GA_pearson_vector( GA_BLOK_set *, float *, float *, float * );
 
+extern void GA_pearson_ignore_zero_voxels(int) ; /* 23 Feb 2010 */
+
 /******* end of BLOK-ization stuff here -- also see mri_genalign_util.c *******/
 
  /* struct to control mri_genalign.c optimization */
@@ -1674,17 +1729,19 @@ typedef struct {
 
   int old_sc ; float old_sr_base , old_sr_targ ;
 
-  MRI_IMAGE *bsim , *bsims ;
+  MRI_IMAGE *bsim , *bsims , *bsmask ;
   float bsbot,bstop , bsclip ;
   int dim_bvec    ;
   int   nmask     ;
   int   nvox_mask ;
+  int   nbsmask   ;
   byte *bmask     ;
   MRI_IMAGE *bwght ;
 
   MRI_IMAGE *ajim , *ajims , *ajmask , *ajimor;
   float ajbot,ajtop , ajclip , aj_ubot,aj_usiz ;
-  int dim_avec , abdim ;
+  int dim_avec , abdim , najmask ;
+  int ajmask_ranfill ;
 
   int npt_match   ;            /* set by user */
   floatvec *im, *jm, *km , *bvm , *wvm ;
@@ -1692,6 +1749,9 @@ typedef struct {
   int hist_mode ;              /* set by user */
   float hist_param ;           /* set by user */
   int need_hist_setup ;
+
+  int   ccount_do   , ccount_val  ;  /* 22 Feb 2010 */
+  float ccount_bthr , ccount_athr ;
 
 #if 0
                              /*** NOT USED YET ***/
@@ -1725,6 +1785,7 @@ typedef struct {
        KILL_floatvec((st)->km); KILL_floatvec((st)->bvm);                   \
        KILL_floatvec((st)->wvm); IFREE((st)->wfunc_param) ;                 \
        mri_free((st)->ajmask); mri_free((st)->ajimor);                      \
+       mri_free((st)->bsmask);                                              \
      }                                                                      \
  } while(0)
 
@@ -1747,6 +1808,7 @@ extern void mri_genalign_bilinear( int, float *,
                                         float *, float *, float * ) ;
 
 void mri_genalign_set_targmask( MRI_IMAGE *, GA_setup * ) ; /* 07 Aug 2007 */
+void mri_genalign_set_basemask( MRI_IMAGE *, GA_setup * ) ; /* 25 Feb 2010 */
 
 extern void GA_reset_fit_callback( void (*fc)(int,double*) ) ;
 extern void GA_do_dots(int) ;
@@ -1755,6 +1817,8 @@ extern void GA_do_params(int) ;
 extern float mri_genalign_scalar_cost( GA_setup * , float *) ;
 extern void GA_set_outval( float ) ;
 extern float GA_get_outval(void) ;
+extern void GA_allow_ccount( int ) ; /* 22 Feb 2010 */
+extern void GA_setup_micho( double,double,double,double,double ) ; /* 24 Feb 2010 */
 
 /**------ these functions are now in mri_genalign_util.c [10 Dec 2008] ------**/
 
@@ -1837,6 +1901,7 @@ extern void FHWM_1dif_dontcheckplus( int ) ;
 extern THD_fvec3 mriarr_estimate_FWHM_1dif( MRI_IMARR *, byte * , int ) ;
 
 extern THD_fvec3 mri_estimate_FWHM_12dif( MRI_IMAGE * , byte * ) ;
+extern THD_fvec3 mri_estimate_FWHM_12dif_MAD( MRI_IMAGE * , byte * ) ; /* 24 Mar 2010 */
 
 void mri_fwhm_setfester( THD_fvec3 (*func)(MRI_IMAGE *, byte *) ) ;
 

@@ -189,6 +189,8 @@ typedef struct {
 /*! filename, extension and path */
 typedef struct {
    char *AbsPath;
+   char *RelPath;
+   char *RelDir;
    char *Path;
    char *FileName;
    char *FileName_NoExt;
@@ -293,7 +295,10 @@ typedef enum {
    SUMA_NODE_STRING,   /*!< Generic String */
    SUMA_NODE_SHORT,      /*!< Generic short */
    SUMA_NODE_DOUBLE,     /*!< Generic double */
-   SUMA_NODE_XCORR      /*!< Cross Correlation Coefficient */ 
+   SUMA_NODE_XCORR,      /*!< Cross Correlation Coefficient */
+   SUMA_NODE_ZSCORE,      /*!< Zscore */
+   SUMA_NODE_VFR,       /* Visual Field Ration */
+   SUMA_NODE_PHASE     /* Phase of some sort */ 
 }  SUMA_COL_TYPE; /*!<  Column types.
                         When you add a new element, you need to modify
                         SUMA_AddColAttr
@@ -1155,11 +1160,22 @@ If ind is NULL, then the index will be the line number.
    \brief A macro to be run from main() before writing a dset.
    Changes a dset's ID, label (using prefix) and history
 */
+#define SUMA_NEWDSET_ID_LABEL(dset, prefix) {\
+   if (dset) { \
+      if (!SUMA_NewDsetID (dset))  { \
+         SUMA_SL_Err("Failed in SUMA_NewDsetID, proceeding..."); }  \
+      if (!SUMA_LabelDset(dset, prefix)) { \
+         SUMA_SL_Err("Failed in SUMA_LabelDset, proceeding..."); }  \
+   } else {\
+      SUMA_SL_Err("NULL dset");  \
+   }  \
+}
+
 #define SUMA_NEWDSET_ID_LABEL_HIST(dset, prefix) {\
    if (dset) { \
-      if (!SUMA_NewDsetID (dset))  { SUMA_SL_Err("Failed in SUMA_NewDsetID, proceeding..."); }  \
-      if (!SUMA_LabelDset(dset, prefix)) { SUMA_SL_Err("Failed in SUMA_LabelDset, proceeding..."); }  \
-      if (!SUMA_AddNgrHist (dset->ngr, FuncName, argc, argv)) { SUMA_SL_Err("Failed in SUMA_AddNgrHist, proceeding..."); } \
+      SUMA_NEWDSET_ID_LABEL(dset, prefix);   \
+      if (!SUMA_AddNgrHist (dset->ngr, FuncName, argc, argv)) { \
+         SUMA_SL_Err("Failed in SUMA_AddNgrHist, proceeding..."); } \
    } else {\
       SUMA_SL_Err("NULL dset");  \
    }  \
@@ -1174,15 +1190,25 @@ If ind is NULL, then the index will be the line number.
     COLMS_RANGE as these are handled at the moment of column creation
 */
 #define SUMA_COPY_DSET_COL_ATTRIBUTES(odset, ndset, io, in) {   \
-   char *m_ATR_LIST[64] = { \
+   static char *m_ATR_LIST[64] = { \
       "COLMS_STATSYM", "FDRCURVE",  \
        NULL }; \
    if (!SUMA_CopyDsetAttributes (odset, ndset, m_ATR_LIST, io, in)) {   \
       SUMA_S_Err("Failed to copy dset attributes");   \
    }  \
 }
+#define SUMA_COPY_DSET_ALL_COL_ATTRIBUTES(odset, ndset) {   \
+   int m_i=-1;\
+   if (SDSET_VECNUM(odset) != SDSET_VECNUM(ndset)) {\
+      SUMA_S_Err("Mismatch in number of columns");   \
+   } \
+   for (m_i=0; m_i<SDSET_VECNUM(dset); ++m_i) { \
+      SUMA_COPY_DSET_COL_ATTRIBUTES(odset, ndset, m_i, m_i);   \
+   }  \
+}
+
 #define SUMA_COPY_DSETWIDE_ATTRIBUTES(odset, ndset) {   \
-   char *m_ATR_LIST[64] = { \
+   static char *m_ATR_LIST[64] = { \
       "TR",  \
       "AFNI_labeltable",   \
        NULL }; \
@@ -1273,6 +1299,7 @@ SUMA_Boolean SUMA_isDsetwideColumnAttr(NI_element *nel);
 SUMA_Boolean SUMA_isDsetNelAttr(NI_element *nel);
 char * SUMA_CreateDsetColRangeCompString( SUMA_DSET *dset, int col_index, 
                                           SUMA_COL_TYPE ctp);
+int SUMA_UpdateDsetColRange(SUMA_DSET *dset, int icol);
 char * SUMA_GetDsetColStringAttr( SUMA_DSET *dset, int col_index, 
                                     char *attrname);
 char * SUMA_GetNgrColStringAttr( NI_group *ngr, int col_index, 
@@ -1294,6 +1321,8 @@ char * SUMA_Dset_Format_Name (SUMA_DSET_FORMAT fr);
 char *SUMA_HistString (char *CallingFunc, int N_arg, char **arg, char *sold);
 char * SUMA_GetNgrHist(NI_group *ngr);
 int SUMA_AddNgrHist(NI_group *ngr, char *CallingFunc, int N_arg, char **arg);
+int SUMA_RemoveNgrHist(NI_group *ngr);
+int SUMA_RemoveDsetHist(SUMA_DSET *dset);
 int SUMA_AddNelHist(NI_element *nel, char *CallingFunc, int N_arg, char **arg);
 void SUMA_FreeDset(void *dset);
 SUMA_DSET * SUMA_FindDset_ns (char *idcode_str, DList *DsetList);
@@ -1373,7 +1402,11 @@ SUMA_DSET * SUMA_far2dset_ns( char *FullName, char *dset_id, char *dom_id,
                                  float **farp, int vec_len, int vec_num, 
                                  int ptr_cpy);
 int SUMA_is_AllNumeric_dset(SUMA_DSET *dset);
+int SUMA_dset_to_Label_dset(SUMA_DSET *dset); 
 int SUMA_is_Label_dset(SUMA_DSET *dset, NI_group **NIcmap); 
+int SUMA_is_Phase_dset(SUMA_DSET *dset); 
+int SUMA_is_RetinoAngle_dset(SUMA_DSET *dset); 
+int SUMA_is_VFR_dset(SUMA_DSET *dset); 
 NI_group *SUMA_NICmapToNICmap(NI_group *NIcmap);
 int * SUMA_UniqueValuesInLabelDset(SUMA_DSET *dset, int *N_unq);
 int SUMA_is_AllConsistentNumeric_dset(SUMA_DSET *dset, SUMA_VARTYPE *vtpp);
@@ -1479,6 +1512,7 @@ void set_Doiotrace(int s) ;
 int get_IgnoreXforms(void);
 void setIgnoreXforms(int s) ;
 void SUMA_process_environ(void);
+int NoSumaRcFound (void);
 void SUMA_ParseInput_basics_ns (char *argv[], int argc); 
 int SUMA_ParseInput_basics_eng (char *argv[], int argc); 
 void WorkErrLog_ns(void);

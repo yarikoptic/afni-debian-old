@@ -190,6 +190,29 @@ g_help_string = """
                   very large angles and shifts. May miss finding the solution
                   in the vastness of space, so use with caution
 
+    Notes on the big_move and giant_move options:
+        "big_move" allows for a two pass alignment in 3dAllineate.
+        The two-pass method is less likely to find a false minimum 
+        cost for alignment because it does a number of coarse (blurred,
+        rigid body) alignments first and then follows the best of these
+        coarse alignments to the fine alignment stage. The big_move 
+        option should be a relatively safe option, but it adds
+        processing time.
+
+        The giant_move option expands the search parameters in space
+        from 6 degrees and 10 mm to 45 degrees and 45 mm and adds in
+        a center of mass adjustment. The giant_move option will usually
+        work well too, but it adds significant time to the processing
+        and allows for the possibility of a very bad alignment.Another cost
+        functional is available that has worked well with noisy data, "lpc+ZZ".
+        For difficult data, consider that alternative.
+
+        If your data starts out fairly close (probably the typical case
+        for EPI and anatomical data), you can use the -big_move with 
+        little problem. All these methods when used with the default
+        lpc cost function require good contrast in the EPI image so that
+        the CSF can be roughly identifiable.
+        
     -partial_coverage: indicates that the EPI dataset covers only a part of 
                   the brain. Alignment will try to guess which direction should
                   not be shifted If EPI slices are known to be a specific 
@@ -349,7 +372,20 @@ g_help_string = """
      with the bright CSF in EPI images. The more negative the correlation the
      more likely the CSF will overlay each other and carry the rest of the 
      volume along with it.
+     
+     -multi_cost cf1 cf2 ...
+     Besides cost from specified cost function or default cost function,
+     also compute alignment using other cost functionals. For example, using
+     "-cost lpa -multi_cost ls nmi" will compute an alignment for the lpa, ls
+     and nmi cost functionals. See 3dAllineate's HELP for a full list of
+     available cost functionals. Use the AFNI GUI to view differences among
+     cost functionals.
 
+     -check_cost cf1 cf2 ...
+     Verify alignment against another cost functional. If there is a large
+     difference, a warning is printed. This does not mean the alignment is
+     bad, only that it is different.
+     
      -edge       :  use edge method
      
      The Edge method
@@ -366,7 +402,7 @@ g_help_string = """
      
      The edge method prepares the image to be a local spatial variance version
      of the original image. First both input datasets are automasked with the 
-     outer five voxel layers removed. The spatial variance is computed over that
+     outer voxel layers removed. The spatial variance is computed over that
      mask. The optimal alignment is computed between the edge images. Strictly
      speaking, the datasets are not "edges" but a kind of normalized 2D
      gradient. The original datasets are then aligned using the transformation
@@ -512,7 +548,7 @@ g_help_string = """
 ## BEGIN common functions across scripts (loosely of course)
 class RegWrap:
    def __init__(self, label):
-      self.align_version = "1.26" # software version (update for changes)
+      self.align_version = "1.32" # software version (update for changes)
       self.label = label
       self.valid_opts = None
       self.user_opts = None
@@ -535,8 +571,9 @@ class RegWrap:
       self.reg_mat = "" # volume registration matrix 1D file
       self.obl_a2e_mat = ""  # oblique anat to epi matrix
       self.edge = 0        # don't use edges for alignment
+      self.edgelevels = 5  # number of outer layers to remove in edge method
       self.cost = ''       # assign cost below
-     
+
       # options for saving temporary datasets permanently
       self.save_Al_in = 0  # don't save 3dAllineate input files
       self.save_tsh = 0    # don't save tshifted epi
@@ -643,6 +680,13 @@ class RegWrap:
       self.valid_opts.add_opt('-suffix', 1,['_al'])
       self.valid_opts.add_opt('-cost', 1,[])
 #      self.valid_opts.add_opt('-fat', 1, ['1'])
+      self.valid_opts.add_opt('-multi_cost', -1,[], \
+           helpstr = "can use multiple cost functionals (lpc,lpa,nmi,....\n" \
+               "See 3dAllineate -HELP for the full list\n")
+      self.valid_opts.add_opt('-check_cost', -1,[], \
+           helpstr = "Verify alignment against another method\n"
+               "Can use multiple cost functionals (lpc,lpa,nmi,....\n" \
+               "See 3dAllineate -HELP for the full list\n")
 
       # transform anat to epi by default, but allow the other way
       # the resulting transformation will be done at the end to include
@@ -812,7 +856,8 @@ class RegWrap:
       # do edge-based alignment
       self.valid_opts.add_opt('-edge', 0, [],\
                helpstr="Use internal edges to do alignment")
-
+      self.valid_opts.add_opt('-edge_erodelevel', 1, [],\
+               helpstr="Number of layers to remove for edge method")
 
       self.valid_opts.trailers = 0   # do not allow unknown options
       
@@ -910,7 +955,7 @@ class RegWrap:
       opt = opt_list.find_opt('-cost')    
       if opt != None: self.cost = opt.parlist[0]
       else: self.cost = ''
-      
+
       opt = opt_list.find_opt('-pow_mask')    
       if opt != None: self.sqmask = opt.parlist[0]
       
@@ -1169,28 +1214,6 @@ class RegWrap:
       else:
          ps.AlOpt = ''
 
-      #big_move?
-      opt1 = self.user_opts.find_opt('-big_move')
-      #giant_move?
-      opt2 = self.user_opts.find_opt('-giant_move')
-      if(not (opt1 or opt2)):
-         ps.AlOpt = "%s -onepass " % ps.AlOpt
-      else:
-         # resampling has the potential to cut off data
-         # the cmass flag is used by 3dAllineate to align the center of mass
-         # first and then resamples
-         self.resample_flag = 0  
-         
-      if(opt1):
-         ps.AlOpt = "%s -twopass " % ps.AlOpt
-         
-      if(opt2):
-         ps.AlOpt = "-twopass -VERB -maxrot 45 -maxshf 40"
-         ps.cmass = "cmass"
-         giant_move = 1
-      else :
-         giant_move = 0
-
       opt = self.user_opts.find_opt('-feature_size')
       if opt != None:
          featuresize = float(opt.parlist[0])
@@ -1209,6 +1232,34 @@ class RegWrap:
             ps.AlOpt = "%s %s" % (ps.AlOpt, aljoin)
          ps.skullstrip_opt = "-rat"         
 
+      #big_move?
+      opt1 = self.user_opts.find_opt('-big_move')
+      #giant_move?
+      opt2 = self.user_opts.find_opt('-giant_move')
+      if(not (opt1 or opt2)):
+         ps.AlOpt = "%s -onepass " % ps.AlOpt
+      else:
+         # resampling has the potential to cut off data
+         # the cmass flag is used by 3dAllineate to align the center of mass
+         # first and then resamples
+         self.resample_flag = 0  
+         
+      if(opt1):
+         ps.AlOpt = "%s -twopass " % ps.AlOpt
+         
+      if(opt2):
+         if featuresize  == 0.0 :
+            fsize = 1
+         else:
+            fsize = featuresize
+            
+         ps.AlOpt =  \
+         "-twobest 11 -twopass -VERB -maxrot 45 -maxshf 40 " \
+         "-fineblur %s -source_automask+2" %  fsize
+         ps.cmass = "cmass"
+         giant_move = 1
+      else :
+         giant_move = 0
 
       #add edges
       opt = self.user_opts.find_opt('-AddEdge')
@@ -1592,6 +1643,12 @@ class RegWrap:
       opt = self.user_opts.find_opt('-edge')  # use internal edges to drive alignment
       if (opt != None):
          self.edge = 1
+         opt = self.user_opts.find_opt('-edge_erodelevel')
+         if opt == None:
+            ps.erodelevel = 5
+         else:
+            ps.erodelevel = opt.parlist[0]
+            
          # the cost function is not as important here because the preprocessing
          # steps accomodate for dataset differences - least squares,
          # mutual information or local pearson correlation are all good choices
@@ -1602,6 +1659,22 @@ class RegWrap:
             blursize = 2.0 * featuresize
             aljoin = '-twoblur %f -blok "RHDD(%f)"' % (blursize, featuresize)
             ps.AlOpt = "%s %s" % (ps.AlOpt, aljoin)
+
+      opt = self.user_opts.find_opt('-check_cost')    
+      if opt != None:
+      
+          self.checkcost = string.join(opt.parlist, ' ')
+      else: 
+          self.checkcost = ""
+
+      opt = self.user_opts.find_opt('-multi_cost')    
+      if opt != None:
+          self.multicost = opt.parlist
+      else: 
+          self.multicost = []
+      self.multicost.append(self.cost)         # only the original cost
+      for mcost in self.multicost:
+          self.info_msg("Multi-cost is %s" % mcost)
 
       # all inputs look okay  - this goes after all inputs. ##########
       return 1
@@ -1741,7 +1814,10 @@ class RegWrap:
             cmass = ""
          else:
             cmass = "-%s" % ps.cmass
-            
+         if(ps.checkcost==""):
+            checkstr = ""
+         else:
+            checkstr = "-check %s" % ps.checkcost
          com = shell_com(  \
             "3dAllineate -%s "  # costfunction       \
              "%s "              # weighting          \
@@ -1749,15 +1825,17 @@ class RegWrap:
              "-prefix %s -base %s "                  \
              "%s "  # center of mass options (cmass) \
              "-1Dmatrix_save %s "                    \
-             "%s %s "  # master grid, other 3dAllineate options \
+             "%s %s %s "  # master grid, other 3dAllineate options \
                        #   (may be user specified)   \
              % (costfunction, wtopt, a.input(), o.out_prefix(), e.input(),\
-               cmass, self.anat_mat, self.master_anat_3dAl_option, alopt), \
+               cmass, self.anat_mat, self.master_anat_3dAl_option, alopt, \
+               checkstr ), \
                ps.oexec)
          com.run()
          e2a_mat = self.anat_mat
  
-         # if not doing alignment for anat2epi, just return now, and use the xform matrix computed later
+         # if not doing alignment for anat2epi, just return now,
+         # and use the xform matrix computed later
          if (not(ps.anat2epi)):
             return o, ow
 
@@ -2069,6 +2147,7 @@ class RegWrap:
             else:
                tlrc_orig_dset = afni_name("%s_post%s" % (self.epi.out_prefix(), suf))
                tlrc_orig_dset.view = '+orig'
+               base_dset = a
                if(self.master_tlrc_dset=='SOURCE'):
                    tlrc_orig_dset.view = e.view
                else:
@@ -2077,6 +2156,7 @@ class RegWrap:
                    else:
                       mtlrc = afni_name(self.master_tlrc_dset)
                       tlrc_orig_dset.view = mtlrc.view
+                      base_dset = mtlrc
 
                if tlrc_orig_dset.exist():
                   tlrc_orig_dset.delete(ps.oexec)
@@ -2085,9 +2165,9 @@ class RegWrap:
                               ps.dset2_generic_name)
 
                com = shell_com( \
-                 "3dAllineate -1Dmatrix_apply %s " \
+                 "3dAllineate -base %s -1Dmatrix_apply %s " \
                  "-prefix %s -input %s -verb %s %s" % \
-                 ( epi_mat, atlrcpost.input(), e.input(),\
+                 ( base_dset.input(), epi_mat, atlrcpost.input(), e.input(),\
                    ps.master_tlrc_option, alopt), ps.oexec)
 
             com.run()
@@ -2158,15 +2238,15 @@ class RegWrap:
       return o
 
    # create edge dataset of internal brain structure edges
-   def edge_dset(self, e=None, prefix = "temp_edge", binarize=0):
+   def edge_dset(self, e=None, prefix = "temp_edge", binarize=0,erodelevel=2):
       o = e.new(prefix)
 
       o.view = e.view
       if (not o.exist() or ps.rewrite or ps.dry_run()):
          o.delete(ps.oexec)
          self.info_msg("Creating edge dataset")
-         com = shell_com("3dAutomask -overwrite -erode 5 -prefix %s_edge_mask %s" \
-                         % (prefix, e.input()), ps.oexec)
+         com = shell_com("3dAutomask -overwrite -erode %s -prefix %s_edge_mask %s" \
+                         % (erodelevel, prefix, e.input()), ps.oexec)
          com.run()
 
          if(binarize):
@@ -2365,7 +2445,7 @@ class RegWrap:
 
               ovr_alpha = e.new("%s_vr_tempalpha" % prefix)
 
-              if((vrcom != '3dvolreg') & (isdigit(volreg_base))):
+              if((vrcom != '3dvolreg') and (ps.volreg_base.isdigit())):
                  base = "%s.'[%s]'"  %  (ps.epi.input(), ps.volreg_base)
               com = shell_com(                                       \
                     "%s -prefix %s -base %s %s %s "  %               \
@@ -2652,7 +2732,8 @@ class RegWrap:
          else:
             prefix = "__tt_%s%s" % (basename,basesuff)
 
-         skullstrip_o = self.edge_dset(skullstrip_o, prefix, binarize=0)
+         skullstrip_o = self.edge_dset(skullstrip_o, prefix, binarize=0,
+            erodelevel=ps.erodelevel)
 
       return  tshift_o, volreg_o, skullstrip_o
 
@@ -2718,7 +2799,7 @@ class RegWrap:
       # use edges to match optionally
       if(self.edge):
          prefix = "%s_edge" % a.out_prefix()
-         n = self.edge_dset(n, prefix,binarize=0)
+         n = self.edge_dset(n, prefix,binarize=0, erodelevel=ps.erodelevel)
 
       #do we need to shift?
 #      optc = self.user_opts.find_opt('-align_centers')
@@ -2923,108 +3004,115 @@ if __name__ == '__main__':
       ps.ciao(0)
       
    #Do alignment to that pesky little epi
-   ps.anat_alnd, ps.anat_alndwt = \
-      ps.align_anat2epi(e, a, ps.epi_wt, ps.AlOpt, ps.suffix, ps.cost)
-   if (not ps.anat_alnd):
-      ps.ciao(1)
-   if (ps.epi2anat) :   # does the user want the epi aligned to the anat
-      # compute transformation just from applying inverse
-      a = ps.anat0      # especially important for oblique datasets
-      ps.epi_alnd = \
-         ps.align_epi2anat(ps.epi_ts, a, ps.AlOpt, suf=ps.suffix)
-      if (not ps.epi_alnd):
-         ps.ciao(1)
-   else:
-      ps.epi_alnd = ''
-      
-   if (not ps.anat2epi):
-      ps.anat_alnd = ''
-
-   if(ps.AddEdge):
-      com = shell_com(  "rm -f AddEdge/*", ps.oexec)
-      com.run()
-      # @AddEdge requires single sub-brick, resampled data (grids must match)
-      #  and skullstripped data to avoid extracranial and cranial edges
-      #  so using data as it went into 3dAllineate here
-      # check if resampling is turned off, and do that here
-      # for epi2anat, resample epi_alnd to anat
-      # if skullstripping is off, we'll have to assume it's already done
-      if(0):
-          ps.info_msg("Automasking representative EPI data for edge enhancement")
-          ps.epi_mask = e.new("__tt_%s_mask" % ps.epi.out_prefix())
-          com = shell_com("3dAutomask -prefix %s %s" % (ps.epi_mask.out_prefix(),\
-                           e.input()), ps.oexec)
-          com.run()
-          ps.epi_am = e.new("__tt_%s_am" % ps.epi.out_prefix())
-          com = shell_com("3dcalc -a %s -b %s -expr 'a*b' -prefix %s" % \
-               (e.input(), ps.epi_mask.input(), ps.epi_am.out_prefix()), ps.oexec)
-          com.run()
-
-      # Note 3dAllineate does not require resampling. This script
-      # provides an option to avoid resampling.
-      # If @AddEdge does require resampling though, so do it now if it hasn't been done yet
-      if(ps.resample_flag):
-         ein_rs = e
+   for mcost in ps.multicost:
+      if (mcost==ps.cost):
+         suff = ps.suffix
       else:
-         ein_rs = ps.resample_epi(e, "","__tt_%s_rs_in" % \
-           ps.epi.out_prefix())
+         suff = "%s_%s" % (ps.suffix, mcost)
+      ps.anat_alnd, ps.anat_alndwt = \
+         ps.align_anat2epi(e, a, ps.epi_wt, ps.AlOpt, suff, mcost)
+      if (not ps.anat_alnd):
+         ps.ciao(1)
+      if (ps.epi2anat) :   # does the user want the epi aligned to the anat
+         # compute transformation just from applying inverse
+         a = ps.anat0      # especially important for oblique datasets
+         ps.epi_alnd = \
+            ps.align_epi2anat(ps.epi_ts, a, ps.AlOpt, suf=suff)
+         if (not ps.epi_alnd):
+            ps.ciao(1)
+      else:
+         ps.epi_alnd = ''
 
-      if (ps.epi2anat and ps.anat2epi):
-         listlog_a2e = "a2e_examine_list.log"
-         listlog_e2a = "e2a_examine_list.log"
-      else :
-         listlog_a2e = ""
-         listlog_e2a = ""
-     
-      
-      if (ps.epi2anat):    # if aligning epi to anatomical
-         # for the edge image, we need a dataset at the resolution of the
-         # anatomical and the specific epi sub-brick we used as the epi_base
-         # Use 3dAllineate to create the resampled, skullstripped EPI
-         # from the same representative sub-brick used to align anat to epi
-         ps.epi_addedge = e.new("__tt_%s_addedge" % ps.epi.out_prefix())
-         epi_mat = "%s%s_mat.aff12.1D" % (ps.epi.out_prefix(), ps.suffix)
-         if((ps.volreg_flag) and (ps.epi_base.isdigit())):
-            epi_mat = "%s%s_reg_mat.aff12.1D{%s}" % \
-             (ps.epi.out_prefix(), ps.suffix, ps.epi_base)
+      if (not ps.anat2epi):
+         ps.anat_alnd = ''
 
-           # epi_mat  = "%s{%s}" % (epi_mat, ps.epi_base) 
-
-         ps.info_msg( "Applying transformation for %s to %s for @AddEdge" % \
-           (ps.dset2_generic_name, ps.dset1_generic_name ))
-
-         com = shell_com(  \
-            "3dAllineate -base %s -1Dmatrix_apply '%s' " \
-            "-prefix %s -input %s  -master BASE"   %  \
-            ( ps.anat0.input(), epi_mat, ps.epi_addedge.out_prefix(), \
-              ein_rs.input()), ps.oexec)
+      if(ps.AddEdge):
+         com = shell_com(  "rm -f AddEdge/*", ps.oexec)
          com.run()
-    
-           
-         ps.add_edges(ps.anat_ns, ein_rs, ps.epi_addedge,"%s_ns"  \
-                      % ps.anat0.out_prefix(),\
-                      "%s_ns" % ps.epi.out_prefix(), "%s%s" % \
-                       (ps.epi.out_prefix(), ps.suffix ),
-                       listlog = listlog_e2a) 
+         # @AddEdge requires single sub-brick, resampled data (grids must match)
+         #  and skullstripped data to avoid extracranial and cranial edges
+         #  so using data as it went into 3dAllineate here
+         # check if resampling is turned off, and do that here
+         # for epi2anat, resample epi_alnd to anat
+         # if skullstripping is off, we'll have to assume it's already done
+         if(0):
+             ps.info_msg("Automasking representative EPI data for edge enhancement")
+             ps.epi_mask = e.new("__tt_%s_mask" % ps.epi.out_prefix())
+             com = shell_com("3dAutomask -prefix %s %s" % 
+                             (ps.epi_mask.out_prefix(),\
+                             e.input()), ps.oexec)
+             com.run()
+             ps.epi_am = e.new("__tt_%s_am" % ps.epi.out_prefix())
+             com = shell_com("3dcalc -a %s -b %s -expr 'a*b' -prefix %s" % \
+               (e.input(), ps.epi_mask.input(), ps.epi_am.out_prefix()), \
+               ps.oexec)
+             com.run()
 
-      if (ps.anat2epi):
-         ps.add_edges(ein_rs, ps.anat_ns, ps.anat_alnd,"%s_ns" % ps.epi.out_prefix(),\
-                      "%s_ns" % ps.anat0.out_prefix(), 
-                      "%s%s" % (ps.anat0.out_prefix(), ps.suffix),
-                      listlog = listlog_a2e)
+         # Note 3dAllineate does not require resampling. This script
+         # provides an option to avoid resampling.
+         # If @AddEdge does require resampling though, so do it now if it hasn't been done yet
+         if(ps.resample_flag):
+            ein_rs = e
+         else:
+            ein_rs = ps.resample_epi(e, "","__tt_%s_rs_in" % \
+              ps.epi.out_prefix())
 
-      
-   #Create final results
-   ps.create_output(ps.anat_alnd, ps.anat_alndwt, ps.epi_alnd, \
-        "%s" % ps.suffix, e, a)
-        
-   # process the children
-   if ps.child_epis != None: 
-      for child_epi_name in ps.child_epis.parlist:
-         child_epi = afni_name(child_epi_name) 
-         ps.process_child_epi(child_epi)
-         if (ps.rmrm):  # cleanup after the children, remove any extra files
-            ps.fresh_start(child_epi.out_prefix(), apref="", rmold=0)
+         if (ps.epi2anat and ps.anat2epi):
+            listlog_a2e = "a2e_examine_list.log"
+            listlog_e2a = "e2a_examine_list.log"
+         else :
+            listlog_a2e = ""
+            listlog_e2a = ""
+
+
+         if (ps.epi2anat):    # if aligning epi to anatomical
+            # for the edge image, we need a dataset at the resolution of the
+            # anatomical and the specific epi sub-brick we used as the epi_base
+            # Use 3dAllineate to create the resampled, skullstripped EPI
+            # from the same representative sub-brick used to align anat to epi
+            ps.epi_addedge = e.new("__tt_%s_addedge" % ps.epi.out_prefix())
+            epi_mat = "%s%s_mat.aff12.1D" % (ps.epi.out_prefix(), ps.suffix)
+            if((ps.volreg_flag) and (ps.epi_base.isdigit())):
+               epi_mat = "%s%s_reg_mat.aff12.1D{%s}" % \
+                (ps.epi.out_prefix(), suff, ps.epi_base)
+
+              # epi_mat  = "%s{%s}" % (epi_mat, ps.epi_base) 
+
+            ps.info_msg( "Applying transformation for %s to %s for @AddEdge" % \
+              (ps.dset2_generic_name, ps.dset1_generic_name ))
+
+            com = shell_com(  \
+               "3dAllineate -base %s -1Dmatrix_apply '%s' " \
+               "-prefix %s -input %s  -master BASE"   %  \
+               ( ps.anat0.input(), epi_mat, ps.epi_addedge.out_prefix(), \
+                 ein_rs.input()), ps.oexec)
+            com.run()
+
+
+            ps.add_edges(ps.anat_ns, ein_rs, ps.epi_addedge,"%s_ns"  \
+                         % ps.anat0.out_prefix(),\
+                         "%s_ns" % ps.epi.out_prefix(), "%s%s" % \
+                          (ps.epi.out_prefix(), suff ),
+                          listlog = listlog_e2a) 
+
+         if (ps.anat2epi):
+            ps.add_edges(ein_rs, ps.anat_ns, ps.anat_alnd,"%s_ns" % ps.epi.out_prefix(),\
+                         "%s_ns" % ps.anat0.out_prefix(), 
+                         "%s%s" % (ps.anat0.out_prefix(), suff),
+                         listlog = listlog_a2e)
+
+
+      #Create final results
+      ps.create_output(ps.anat_alnd, ps.anat_alndwt, ps.epi_alnd, \
+           "%s" % suff, e, a)
+
+      # process the children
+      if ps.child_epis != None: 
+         for child_epi_name in ps.child_epis.parlist:
+            child_epi = afni_name(child_epi_name) 
+            ps.process_child_epi(child_epi)
+            if (ps.rmrm):  # cleanup after the children, remove any extra files
+               ps.fresh_start(child_epi.out_prefix(), apref="", rmold=0)
 
    #cleanup after the parents too?
    if (ps.rmrm):

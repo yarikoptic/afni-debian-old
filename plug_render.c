@@ -119,7 +119,7 @@ PLUGIN_interface * PLUGIN_init( int ncall )
 
    if( ncall > 0 ) return NULL ;  /* only one interface */
 
-   plint = PLUTO_new_interface( "Render Dataset" , NULL , NULL ,
+   plint = PLUTO_new_interface( "Render [old]" , NULL , NULL ,
                                 PLUGIN_CALL_IMMEDIATELY , REND_main ) ;
 
    PLUTO_add_hint( plint , "Volume Rendering" ) ;
@@ -3006,7 +3006,8 @@ void REND_load_dsl( THD_3dim_dataset * mset , int float_ok )
    /* scan datasets */
 
    for( id=0 ; id < ss->num_dsset ; id++ ){
-      qset = ss->dsset[id][vv] ;
+      qset = GET_SESSION_DSET(ss, id, vv);
+/*      qset = ss->dsset_xform_table[id][vv] ; */
 
       if( ! USEFUL_DSET(qset) ) continue ;   /* skip this one */
 
@@ -6132,8 +6133,7 @@ void REND_set_pbar_top_CB( Widget w , XtPointer cd , MCW_choose_cbs * cbs )
 
 void REND_finalize_saveim_CB( Widget wcaller, XtPointer cd, MCW_choose_cbs * cbs )
 {
-   Three_D_View * im3d = (Three_D_View *) cd ;
-   char * fname , * ptr ;
+   char *fname , *ptr ;
    int ll , nx=20 , ny=256 ;
    MRI_IMAGE * im ;
 

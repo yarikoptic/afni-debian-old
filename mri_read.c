@@ -2013,17 +2013,17 @@ static int linebufdied = 0;      /*   ZSS: Oct 19 2009 */
 static int doublelinebufdied = 0;/*   ZSS: Oct 19 2009 */
 /*--------------------------------------------------------------*/
 
-/* return a 1 if c is a not a valid first non-white char of a 
+/* return a 1 if c is a not a valid first non-white char of a
    non-comment 1D line */
-byte iznogood_1D (char c) 
+byte iznogood_1D (char c)
 {
    if ( (c < '0' || c > '9')  &&
-         c != '+' && c != '-' && c != '.' && c != 'e' && 
+         c != '+' && c != '-' && c != '.' && c != 'e' &&
          c != 'i' && c != ',' && /* allow for complex input */
          c != '@' && c != '*'  /* allow for special 1D trickery */
       ) return 1;
    else return 0;
-          
+
 }
 /*! Decode a line buffer into an array of floats.               */
 static floatvec * decode_linebuf( char *buf )  /* 20 Jul 2004 */
@@ -2034,13 +2034,13 @@ static floatvec * decode_linebuf( char *buf )  /* 20 Jul 2004 */
    int n_alloced = 0, slowmo = 0 ; /* ZSS speedups */
    char sep, vbuf[64] , *cpt, *ope=NULL;
    float val ;
-   
+
    if( buf == NULL || *buf == '\0' ) return fv ;
 
    blen = strlen(buf) ;
    ncol = 0 ;
-   linebufdied = 0;  
-   
+   linebufdied = 0;
+
    /* convert commas (or 'i' for complex numbers ZSS Oct 06) to blanks */
    /* note 'e' is commonly found in numeric files as in scientific notation*/
    for( ii=0 ; ii < blen ; ii++ ) {
@@ -2070,7 +2070,7 @@ static floatvec * decode_linebuf( char *buf )  /* 20 Jul 2004 */
 
    for( bpos=0 ; bpos < blen ; ){
      /* skip to next nonblank character */
-     
+
      for( ; bpos < blen && isspace(buf[bpos]) ; bpos++ ) ; /* nada */
      if( bpos == blen ) break ;    /* end of line */
 
@@ -2087,15 +2087,15 @@ static floatvec * decode_linebuf( char *buf )  /* 20 Jul 2004 */
                    /* AFNI_1D_ZERO_TEXT is not YES . This is more consistent */
                    /* than the alternative. For example: */
                    /* if nar is not set to 0, then a file that has */
-                   /*    1 a 3 
+                   /*    1 a 3
                          4 b 6  comes out as a 1 column vector,
-                     but 
+                     but
                          1 2 3
                          4 b 6  comes out as a 3x3 matrix            */
             }
-            break;   
+            break;
         }
-        
+
         if( vbuf[0] == '*' || isalpha(vbuf[0]) ){  /* 10 Aug 2004 */
           val = lbfill ;
         } else if( (cpt=strchr(vbuf,'@')) != NULL ){
@@ -2142,7 +2142,7 @@ static doublevec * decode_double_linebuf( char *buf )  /* 20 Jul 2004 */
 
    blen = strlen(buf) ;
    ncol = 0 ;
-   doublelinebufdied = 0;  
+   doublelinebufdied = 0;
 
    /* convert commas (or 'i' for complex numbers ZSS Oct 06) to blanks */
    /* note 'e' is commonly found in numeric files as in scientific notation*/
@@ -2186,9 +2186,9 @@ static doublevec * decode_double_linebuf( char *buf )  /* 20 Jul 2004 */
                doublelinebufdied = 1;
                dv->nar = 0; /* for comment, see same section in decode_linebuf */
             }
-            break;   
+            break;
         }
-        
+
         if( vbuf[0] == '*' || isalpha(vbuf[0]) ){    /* 10 Aug 2004 */
           val = (double)lbfill ;
         } else if( (cpt=strchr(vbuf,'@')) != NULL ){
@@ -2266,7 +2266,7 @@ ENTRY("mri_read_ascii") ;
 
    if (AFNI_yesenv("AFNI_1D_ZERO_TEXT")) oktext = 1;  /* ZSS Oct 16 09 */
    else oktext = 0;
-   
+
    if( fname == NULL || fname[0] == '\0' ) RETURN(NULL) ;
 
 STATUS(fname) ;  /* 16 Oct 2007 */
@@ -2293,16 +2293,22 @@ STATUS(fname) ;  /* 16 Oct 2007 */
 
    fvec = decode_linebuf( buf ) ;           /* 20 Jul 2004 */
    if( fvec == NULL || fvec->nar == 0 ){
-     if (strlen(buf) > 64) { 
+     if (strlen(buf) > 64) {
         buf[64]='\0'; buf[63]='.'; buf[62]='.'; buf[61]='.'; buf[60]=' ';
      }
      if (linebufdied) {/* death?  ZSS: Oct 19 2009*/
         static int nfail=0 ;
-        if( ++nfail < 9 )
-        fprintf(stderr,
+        if( ++nfail < 9 ){
+         fprintf(stderr,
                 "\n** Error: Failed parsing data row 0 of 1D file '%.44s'\n"
                 "          Check for illegal non-numeric characters in:\n"
                 "          '%s'\n", fname,buf);
+         if (nfail == 1)
+            fprintf(stderr,
+    "          You can have text entries set to 0 with -ok_1D_text or by \n"
+    "          setting environment variable AFNI_1D_ZERO_TEXT to YES.\n");
+
+        }
      }
      if( fvec != NULL ) KILL_floatvec(fvec) ;
      FRB(buf); fclose(fts); RETURN(NULL);
@@ -2353,19 +2359,24 @@ STATUS(fname) ;  /* 16 Oct 2007 */
 
    if (linebufdied) {/* death? ZSS: Oct 19 2009 */
       static int nfail=0 ;
-      if (strlen(buf) > 64) { 
+      if (strlen(buf) > 64) {
          buf[64]='\0'; buf[63]='.'; buf[62]='.'; buf[61]='.'; buf[60]=' ';
       }
-      if( ++nfail < 9 )
-      fprintf(stderr,
+      if( ++nfail < 9 ) {
+         fprintf(stderr,
                 "\n** Error: Failed parsing data row %d of 1D file '%.44s'\n"
                 "          Check for illegal non-numeric characters in:\n"
                 "          '%s'\n", nrow, fname , buf);
+         if (nfail == 1)
+            fprintf(stderr,
+    "          You can have text entries set to 0 with -ok_1D_text or by \n"
+    "          setting environment variable AFNI_1D_ZERO_TEXT to YES.\n");
+      }
       if (tsar) free(tsar); tsar = NULL;
       FRB(buf);
-      RETURN(NULL); 
+      RETURN(NULL);
    }
-   
+
    /* from <= 1 to < 1 (allow 1x1 image) 25 Jan 2006 [rickr] */
    if( used_tsar < 1 ){ FRB(buf); free(tsar); RETURN(NULL); }
 
@@ -2401,7 +2412,7 @@ ENTRY("mri_read_double_ascii") ;
 
    if (AFNI_yesenv("AFNI_1D_ZERO_TEXT")) oktext = 1;  /* ZSS Oct 16 09 */
    else oktext = 0;
-   
+
    if( fname == NULL || fname[0] == '\0' ) RETURN(NULL) ;
 
    if( strncmp(fname,"1D:",3) == 0 ){         /* 28 Apr 2003 */
@@ -2428,16 +2439,21 @@ ENTRY("mri_read_double_ascii") ;
 
    dvec = decode_double_linebuf( buf ) ;           /* 20 Jul 2004 */
    if( dvec == NULL || dvec->nar == 0 ){
-     if (strlen(buf) > 64) { 
+     if (strlen(buf) > 64) {
         buf[64]='\0'; buf[63]='.'; buf[62]='.'; buf[61]='.'; buf[60]=' ';
      }
      if (doublelinebufdied) {/* death? ZSS: Oct 19 2009 */
         static int nfail=0 ;
-        if( ++nfail < 9 )
-        fprintf(stderr,
+        if( ++nfail < 9 ) {
+           fprintf(stderr,
                 "\n** Error: Failed parsing data row 0 of 1D file '%.44s'\n"
                 "          Check for illegal non-numeric characters in:\n"
                 "          '%s'\n", fname,buf);
+         if (nfail == 1)
+            fprintf(stderr,
+    "          You can have text entries set to 0 with -ok_1D_text or by \n"
+    "          setting environment variable AFNI_1D_ZERO_TEXT to YES.\n");
+        }
      }
      if( dvec != NULL ) KILL_doublevec(dvec) ;
      FRB(buf); fclose(fts); RETURN(NULL);
@@ -2488,19 +2504,24 @@ ENTRY("mri_read_double_ascii") ;
 
    if (doublelinebufdied) {/* death? ZSS: Oct 19 2009 */
       static int nfail=0 ;
-      if (strlen(buf) > 64) { 
+      if (strlen(buf) > 64) {
          buf[64]='\0'; buf[63]='.'; buf[62]='.'; buf[61]='.'; buf[60]=' ';
       }
-      if( ++nfail < 9 )
-      fprintf(stderr,
+      if( ++nfail < 9 ) {
+         fprintf(stderr,
                 "\n** Error: Failed parsing data row %d of 1D file '%.44s'\n"
                 "          Check for illegal non-numeric characters in:\n"
                 "          '%s'\n", nrow, fname , buf);
+         if (nfail == 1)
+            fprintf(stderr,
+    "          You can have text entries set to 0 with -ok_1D_text or by \n"
+    "          setting environment variable AFNI_1D_ZERO_TEXT to YES.\n");
+      }
       if (dtsar) free(dtsar); dtsar = NULL;
       FRB(buf);
-      RETURN(NULL); 
+      RETURN(NULL);
    }
-   
+
    /* from <= 1 to < 1 (allow 1x1 image) 25 Jan 2006 [rickr] */
    if( used_tsar < 1 ){ FRB(buf); free(dtsar); RETURN(NULL); }
 
@@ -2562,16 +2583,21 @@ ENTRY("mri_read_complex_ascii") ;
 
    vec = decode_linebuf( buf ) ;           /* 20 Jul 2004 */
    if( vec == NULL || vec->nar == 0 ){
-     if (strlen(buf) > 64) { 
+     if (strlen(buf) > 64) {
         buf[64]='\0'; buf[63]='.'; buf[62]='.'; buf[61]='.'; buf[60]=' ';
      }
      if (linebufdied) {/* death?  ZSS: Oct 19 2009*/
         static int nfail=0 ;
-        if( ++nfail < 9 )
-        fprintf(stderr,
+        if( ++nfail < 9 ) {
+         fprintf(stderr,
                 "\n** Error: Failed parsing data row 0 of 1D file '%.44s'\n"
                 "          Check for illegal non-numeric characters in:\n"
                 "          '%s'\n", fname,buf);
+         if (nfail == 1)
+            fprintf(stderr,
+    "          You can have text entries set to 0 with -ok_1D_text or by \n"
+    "          setting environment variable AFNI_1D_ZERO_TEXT to YES.\n");
+        }
      }
      if( vec != NULL ) KILL_floatvec(vec) ;
      FRB(buf); fclose(fts); RETURN(NULL);
@@ -2627,19 +2653,25 @@ ENTRY("mri_read_complex_ascii") ;
 
    if (linebufdied) {/* death? ZSS: Oct 19 2009 */
       static int nfail=0 ;
-      if (strlen(buf) > 64) { 
+      if (strlen(buf) > 64) {
          buf[64]='\0'; buf[63]='.'; buf[62]='.'; buf[61]='.'; buf[60]=' ';
       }
-      if( ++nfail < 9 )
-      fprintf(stderr,
+      if( ++nfail < 9 ) {
+         fprintf(stderr,
                 "\n** Error: Failed parsing data row %d of 1D file '%.44s'\n"
                 "          Check for illegal non-numeric characters in:\n"
                 "          '%s'\n", nrow, fname,buf);
+         if (nfail == 1)
+            fprintf(stderr,
+       "          You can have text entries set to 0 with -ok_1D_text or by \n"
+       "          setting environment variable AFNI_1D_ZERO_TEXT to YES.\n");
+      }
+
       if (tsar) free(tsar); tsar = NULL;
       FRB(buf);
-      RETURN(NULL); 
+      RETURN(NULL);
    }
-   
+
    /* from <= 1 to < 1 (allow 1x1 image) 25 Jan 2006 [rickr] */
    if( used_tsar < 1 ){ FRB(buf); free(tsar); RETURN(NULL); }
 
@@ -2700,8 +2732,9 @@ ENTRY("mri_read_1D") ;
    /*-- 25 Jan 2008: read from stdin? --*/
 
    ii = strlen(fname) ;
-   if( (ii <= 2 && fname[0] == '-')              ||
-       (ii <= 6 && strncmp(fname,"stdin",5) == 0)  ){
+   if( (ii <= 2 && fname[0] == '-')                  ||
+       (ii <= 6 && strncmp(fname,"stdin"   ,5) == 0) ||
+       (ii <= 9 && strncmp(fname,"/dev/fd0",8) == 0)   ){
      inim = mri_read_1D_stdin() ;
      if( inim != NULL && fname[ii-1] == '\'' ){
        flim = mri_transpose(inim); mri_free(inim); inim = flim;
@@ -2733,13 +2766,20 @@ ENTRY("mri_read_1D") ;
    } else {                             /* got a subvector list */
       if( cpt != NULL ){ ii = cpt-fname; dname[ii] = '\0'; }
       if( dpt != NULL ){ ii = dpt-fname; dname[ii] = '\0'; }
+      ii = strlen(dname) ;
+      if( dname[ii-1] == '\'' ){ flip = 0 ; dname[ii-1] = '\0' ; }  /* 16 Jun 2010 */
    }
 
    /*-- read file in, flip it sideways --*/
 
-   inim = mri_read_ascii(dname) ;
-   if( inim == NULL ) RETURN(NULL) ;
-   flim = mri_transpose(inim) ; mri_free(inim) ;
+   if( strcmp(dname,"stdin") != 0 && strncmp(dname,"/dev/fd0",8) != 0 ){
+     inim = mri_read_ascii(dname) ;
+     if( inim == NULL ) RETURN(NULL) ;
+     flim = mri_transpose(inim) ; mri_free(inim) ;
+   } else {
+     flim = mri_read_1D_stdin() ;  /* 05 Mar 2010 */
+     if( flim == NULL ) RETURN(NULL);
+   }
 
    /*-- get the subvector and subsampling lists, if any --*/
 
@@ -2751,7 +2791,7 @@ ENTRY("mri_read_1D") ;
    /* if either columns(vectors) or rows (subsamples) are specified */
    /* make sure the lists are valid. Return null if not  */
    if( ((cpt!= NULL) && (ivlist==NULL)) ||
-       ((dpt!= NULL) && (sslist==NULL)) ) 
+       ((dpt!= NULL) && (sslist==NULL)) )
       RETURN(NULL);
 
    /* if have subvector list, extract those rows into a new image */
@@ -2820,17 +2860,17 @@ ENTRY("mri_read_1D") ;
   \date Nov 24 2009
 
    See mri_read_1D for special name modifiers.
-   
+
    The function accepts:
    one row, or one column vector of 12 or 16 elements
    one 3x4, or one 4x4 matrix
-   
+
    When a total of 16 elements are read in, the last row
    must be 0 0 0 1.
-   
+
    Transposing is allowed but I don't know why you'd want it.
-   
-   stdin input is allowed 
+
+   stdin input is allowed
 */
 
 MRI_IMAGE * mri_read_4x4AffXfrm_1D( char *fname )
@@ -2848,8 +2888,9 @@ ENTRY("mri_read_4x4AffXfrm_1D") ;
    /*-- 25 Jan 2008: read from stdin? --*/
 
    ii = strlen(fname) ;
-   if( (ii <= 2 && fname[0] == '-')              ||
-       (ii <= 6 && strncmp(fname,"stdin",5) == 0)  ){
+   if( (ii <= 2 && fname[0] == '-')                  ||
+       (ii <= 6 && strncmp(fname,"stdin"   ,5) == 0) ||
+       (ii <= 9 && strncmp(fname,"/dev/fd0",8) == 0)   ){
        inim = mri_read_1D_stdin() ;
      if (!inim) RETURN(inim);
      if( inim != NULL && fname[ii-1] == '\'' ){
@@ -2865,12 +2906,12 @@ ENTRY("mri_read_4x4AffXfrm_1D") ;
       inim = mri_read_1D(dname);
       if (!inim) RETURN(inim);
    }
-   
+
    /* check on dimensions */
-   if ( !(inim->nx == 1  && inim->ny == 12) && 
-        !(inim->nx == 12 && inim->ny == 1 ) && 
-        !(inim->nx == 1  && inim->ny == 16) && 
-        !(inim->nx == 16 && inim->ny == 1 ) && 
+   if ( !(inim->nx == 1  && inim->ny == 12) &&
+        !(inim->nx == 12 && inim->ny == 1 ) &&
+        !(inim->nx == 1  && inim->ny == 16) &&
+        !(inim->nx == 16 && inim->ny == 1 ) &&
         !(inim->nx == 3  && inim->ny == 4 ) &&
         !(inim->nx == 4  && inim->ny == 4 ) ) {
       fprintf( stderr,
@@ -2879,10 +2920,10 @@ ENTRY("mri_read_4x4AffXfrm_1D") ;
             inim->nx, inim->ny, dname) ;
       mri_free(inim); inim = NULL;
       RETURN(inim);
-   }   
-   
+   }
+
    /* fprintf(stderr,"%d x %d\n", inim->nx, inim->ny); */
-      
+
    /* prepare output */
    outim = mri_new( 4 , 4 , MRI_float ) ; /* make output image */
    far   = MRI_FLOAT_PTR( inim ) ;
@@ -2893,7 +2934,7 @@ ENTRY("mri_read_4x4AffXfrm_1D") ;
        (inim->nx == 12 && inim->ny == 1 ) ) {
       ii = 0;
       for (r=0; r<4; ++r)  {
-         for (c=0; c<4; ++c) { 
+         for (c=0; c<4; ++c) {
             if (r < 3) {
                oar[r+c*4] = far[ii]; ++ii;
             } else {
@@ -2904,9 +2945,9 @@ ENTRY("mri_read_4x4AffXfrm_1D") ;
       oar[15] = 1.0;
    } else if ((inim->nx == 3  && inim->ny == 4 ) ) {
       for (r=0; r<4; ++r)  {
-         for (c=0; c<4; ++c) { 
+         for (c=0; c<4; ++c) {
             if (r < 3) {
-               oar[r+c*4] = far[r+c*3]; 
+               oar[r+c*4] = far[r+c*3];
             } else {
                oar[r+c*4] = 0.0;
             }
@@ -2917,21 +2958,21 @@ ENTRY("mri_read_4x4AffXfrm_1D") ;
                (inim->nx == 16 && inim->ny == 1 )  ) {
       ii = 0;
       for (r=0; r<4; ++r)  {
-         for (c=0; c<4; ++c) { 
+         for (c=0; c<4; ++c) {
             oar[r+c*4] = far[ii]; ++ii;
          }
       }
    } else if ( (inim->nx == 4  && inim->ny == 4 ) ) {
       for (r=0; r<4; ++r)  {
-         for (c=0; c<4; ++c) { 
-            oar[r+c*4] = far[r+c*4]; 
+         for (c=0; c<4; ++c) {
+            oar[r+c*4] = far[r+c*4];
          }
       }
    }
 
    /* all done with input */
    mri_free(inim); inim = NULL;
-   
+
    /* final check */
    if ( oar[15] != 1.0f ||
         oar[11] != 0.0f ||
@@ -2940,15 +2981,15 @@ ENTRY("mri_read_4x4AffXfrm_1D") ;
       fprintf( stderr,
          "*** Bad 4th row values in %s.\n"
          "Expecting 0.0 0.0 0.0 1.0, \n"
-         "got %f  %f  %f  %f\n", 
+         "got %f  %f  %f  %f\n",
          dname, oar[3], oar[7], oar[11], oar[15]);
       mri_free(outim); outim = NULL;
       RETURN(outim);
    }
-   
-   if( flip ){ 
+
+   if( flip ){
       fprintf(stderr,"Transposing xform!\n");
-      inim=mri_transpose(outim); 
+      inim=mri_transpose(outim);
       mri_free(outim); outim=inim; inim=NULL;
    }
 
@@ -3165,6 +3206,21 @@ ENTRY("mri_read_complex_1D") ;
 }
 
 /*-----------------------------------------------------------------------------------*/
+
+static MRI_IMAGE *im_stdin = NULL ;
+
+MRI_IMAGE * mri_copy_1D_stdin(void)  /* 05 Mar 2010 */
+{
+  if( im_stdin == NULL ) im_stdin = mri_read_1D_stdin() ;
+  return mri_copy(im_stdin) ;
+}
+
+void mri_clear_1D_stdin(void)
+{
+  if( im_stdin != NULL ){ mri_free(im_stdin); im_stdin = NULL; }
+}
+
+/*-----------------------------------------------------------------------------------*/
 /* Read a 1D file from stdin; adapted from 1dplot.c */
 
 MRI_IMAGE * mri_read_1D_stdin(void)
@@ -3178,6 +3234,11 @@ MRI_IMAGE * mri_read_1D_stdin(void)
 
 ENTRY("mri_read_1D_stdin") ;
 
+   if( im_stdin != NULL ){
+INFO_message("copying im_stdin") ;
+ inim = mri_copy(im_stdin); RETURN(inim); }
+
+INFO_message("reading 1D_stdin") ;
    lbuf = (char * )malloc(sizeof(char )*SIN_NLBUF) ;
    val  = (float *)malloc(sizeof(float)*SIN_NVMAX) ;
 
@@ -3223,7 +3284,7 @@ ENTRY("mri_read_1D_stdin") ;
    } else {           /* only 1 row ==> am OK this way */
      inim = flim ;
    }
-   free((void *)val); free((void *)lbuf); RETURN(inim);
+   free((void *)val); free((void *)lbuf); im_stdin = mri_copy(inim); RETURN(inim);
 }
 
 /*-----------------------------------------------------------------------------------*/
@@ -4704,4 +4765,103 @@ MRI_IMARR * mri_read_3D_delay( char * tname )
    }
 
    return newar ;
+}
+
+/*----------------------------------------------------------------------------*/
+/* Read the first non-trivial line from a file and parse out the
+   sub-strings (for use as column headers later), allowing for
+   column indexes [0,3,$] -- 18 May 2010 [RWCox]
+*//*--------------------------------------------------------------------------*/
+
+#undef  NLL
+#define NLL 32222  /* lbuf length below -- should be enuf */
+
+THD_string_array * mri_read_1D_headerline( char *fname )
+{
+   THD_string_array *sar ;
+   char *dname , *cpt , *dpt , lbuf[NLL] ;
+   int ii , ibot , nlab , *ivlist ;
+   FILE *fts ;
+
+ENTRY("mri_read_1D_headerline") ;
+
+   /* check for bad-ositiness */
+
+   if( fname == NULL || *fname == '\0' )                 RETURN(NULL) ;
+   ii = strlen(fname) ;
+   if( (ii <= 2 && fname[0] == '-')                  ||
+       (ii <= 6 && strncmp(fname,"stdin"   ,5) == 0) ||
+       (ii <= 9 && strncmp(fname,"/dev/fd0",8) == 0)   ) RETURN(NULL) ;
+   if( strncmp(fname,"1D:",3) == 0 )                     RETURN(NULL) ;
+
+   /* copy filename to local variable for editing purposes */
+
+   dname = strdup(fname) ; if( dname[ii-1] == '\'' ) dname[ii-1] = '\0' ;
+
+   /*-- split filename and subvector list --*/
+
+   cpt = strstr(fname,"[") ;  /* column list */
+   dpt = strstr(fname,"{") ;  /* we don't use this row list */
+
+   if( cpt == fname || dpt == fname ){  /* can't be at start of filename! */
+     free(dname) ; RETURN(NULL) ;
+   } else {                             /* got a subvector list */
+     if( cpt != NULL ){ ii = cpt-fname; dname[ii] = '\0'; }
+     if( dpt != NULL ){ ii = dpt-fname; dname[ii] = '\0'; }
+   }
+
+   /* open input file */
+
+   fts = fopen(dname,"r") ; free(dname) ; if( fts == NULL ) RETURN(NULL) ;
+
+   /* read lines until we get a useful line */
+
+   while(1){
+     lbuf[0] = '\0' ;
+     dpt = fgets( lbuf , NLL , fts ) ;                 /* read a line of data */
+     if( dpt == NULL ){ fclose(fts); RETURN(NULL); }                 /* error */
+     ii = strlen(lbuf) ; if( ii == 0 ) continue ;         /* nada => loopback */
+     if( ii == 1 && isspace(lbuf[0]) ) continue ; /* 1 blank only => loopback */
+     ibot = (lbuf[0] == '#') ? 1 : 0 ;                   /* start of scanning */
+     for( ii=ibot ; isspace(lbuf[ii]) ; ii++ ) continue ;      /* skip blanks */
+     if( lbuf[ii] == '\0' ) continue ;              /* all blanks => loopback */
+     ibot = ii ; break ;                             /* can process this line */
+   }
+   fclose(fts) ;                  /* don't need file, no more, no how, no way */
+
+   /* scan line, break into sub-strings (at whitespace), store sub-strings */
+
+   INIT_SARR(sar) ;  /* output array of strings */
+   while(1){
+     for( ii=ibot ; lbuf[ii] != '\0' && !isspace(lbuf[ii]) ; ii++ ) ;   /*nada*/
+     if( ii == ibot ) break ;                                         /* done */
+     dpt = (char *)malloc(sizeof(char)*(ii-ibot+2)) ;          /* save result */
+     memcpy( dpt , lbuf+ibot , ii-ibot ) ; dpt[ii-ibot] = '\0' ;
+     ADDTO_SARR(sar,dpt) ;
+     if( lbuf[ii] == '\0' ) break ;              /* end of input line => done */
+     for( ; isspace(lbuf[ii]) ; ii++ ) ;     /* skip whitespace in input line */
+     if( lbuf[ii] == '\0' ) break ;               /* at end of string => done */
+     ibot = ii ; continue ;        /* otherwise, loopback for next sub-string */
+   }
+
+   /* didn't get nuthin? */
+
+   nlab = SARR_NUM(sar) ; if( nlab <= 0 ){ DESTROY_SARR(sar); RETURN(NULL); }
+
+   /* if have a [sub-column] chooser, use it now to select only some strings */
+
+   ivlist = MCW_get_intlist( nlab , cpt ) ;
+   if( ivlist != NULL && ivlist[0] > 0 ){
+     int nts=ivlist[0] , *ivl=ivlist+1 ; THD_string_array *qar ;
+     INIT_SARR(qar) ;
+     for( ii=0 ; ii < nts ; ii++ ){
+       if( ivl[ii] >= 0 && ivl[ii] < nlab ){
+         dpt = strdup( SARR_STRING(sar,ivl[ii]) ) ;
+         ADDTO_SARR(qar,dpt) ;
+       }
+     }
+     free(ivlist) ; DESTROY_SARR(sar) ; sar = qar ;
+   }
+
+   RETURN(sar) ;  /* et viola */
 }

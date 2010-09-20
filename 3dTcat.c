@@ -24,6 +24,7 @@ static int                     TCAT_dry   = 0 ;     /* dry run? */
 static int                     TCAT_verb  = 0 ;     /* verbose? */
 static int                     TCAT_type  = -1 ;    /* dataset type */
 static int                     TCAT_glue  = 0 ;     /* glueing run? */
+static int                     TCAT_ccode = COMPRESS_NONE ; /* 16 Mar 2010 */
 static int                     TCAT_rlt   = 0 ;     /* remove linear trend? */
 
 static int                     TCAT_rqt   = 0 ;     /* 15 Nov 1999 */
@@ -55,7 +56,7 @@ void TCAT_read_opts( int argc , char *argv[] )
 {
    int nopt = 1 , ii ;
    char dname[THD_MAX_NAME] ;
-   char subv[THD_MAX_NAME] ;
+   char *subv=NULL ;  /* no sub-brick length limit     17 Jun 2010 [rickr] */
    char *cpt ;
    THD_3dim_dataset *dset, *fset=NULL ;
    int *svar ;
@@ -207,13 +208,14 @@ void TCAT_read_opts( int argc , char *argv[] )
 
       if( cpt == NULL ){              /* no selector */
          strcpy(dname,argv[nopt]) ;
-         subv[0] = '\0' ;
+         /* subv[0] = '\0' ; */       /* init to NULL, above */
       } else if( cpt == argv[nopt] ){ /* can't be at start!*/
          ERROR_exit("Illegal dataset specifier: %s",argv[nopt]) ;
       } else {                        /* found selector */
          ii = cpt - argv[nopt] ;
          memcpy(dname,argv[nopt],ii) ; dname[ii] = '\0' ;
-         strcpy(subv,cpt) ;
+         /* strcpy(subv,cpt) ; */
+         subv = cpt;   /* no length limit    17 Jun 2010 [rickr] */
       }
       nopt++ ;
 
@@ -222,6 +224,8 @@ void TCAT_read_opts( int argc , char *argv[] )
       THD_force_malloc_type( dset->dblk , DATABLOCK_MEM_MALLOC ) ;
 
       if( TCAT_type < 0 ) TCAT_type = dset->type ;
+
+      TCAT_ccode = COMPRESS_filecode(dset->dblk->diskptr->brick_name) ; /* 16 Mar 2010 */
 
       /* check if voxel counts match */
 
@@ -235,14 +239,14 @@ void TCAT_read_opts( int argc , char *argv[] )
       }
       ADDTO_3DARR(TCAT_dsar,dset) ;  /* list of datasets */
 
-      /* process the sub-brick selector string,
-         returning an array of int with
-           svar[0]   = # of sub-bricks,
-           svar[j+1] = index of sub-brick #j for j=0..svar[0] */
-
-      svar = TCAT_get_subv( DSET_NVALS(dset) , subv ) ;
-      if( svar == NULL || svar[0] <= 0 )
-        ERROR_exit("Can't decipher index codes from %s%s",dname,subv) ;
+      if (subv == NULL || subv[0] == '\0') { /* lazy way for 3dTcat special */
+         svar = TCAT_get_subv( DSET_NVALS(dset) , subv ) ; /* ZSS March 2010 */
+      } else {
+         svar = MCW_get_thd_intlist (dset, subv);          /* ZSS March 2010 */
+      }
+      if( svar == NULL || svar[0] <= 0 ){
+         ERROR_exit("can't decipher index codes from %s%s\n",dname,subv) ;
+      }
       ADDTO_XTARR(TCAT_subv,svar) ;  /* list of sub-brick selectors */
 
       max_nsub = MAX( max_nsub , svar[0] ) ;
@@ -675,7 +679,7 @@ int main( int argc , char *argv[] )
        /*----- If this sub-brick is from a bucket dataset,
                     preserve the label for this sub-brick -----*/
 
-       if( ISBUCKET(dset) )
+       if( DSET_HAS_LABEL(dset,jv) )   
          sprintf (buf, "%s", DSET_BRICK_LABEL(dset,jv));
        else
          sprintf(buf,"%.12s[%d]",DSET_PREFIX(dset),jv) ;
@@ -948,6 +952,8 @@ int main( int argc , char *argv[] )
       if( TCAT_verb ) INFO_message("-verb: computing sub-brick statistics") ;
       THD_load_statistics( new_dset ) ;
       if( TCAT_glue ) putenv("AFNI_DECONFLICT=OVERWRITE") ;
+      if( TCAT_glue && TCAT_ccode >= 0 )
+        THD_set_write_compression(TCAT_ccode) ; /* 16 Mar 2010 */
       THD_write_3dim_dataset( NULL,NULL , new_dset , True ) ;
       if( TCAT_verb ) INFO_message("-verb: Wrote output to %s",
                               DSET_BRIKNAME(new_dset) ) ;

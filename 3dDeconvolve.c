@@ -349,13 +349,17 @@
 # define MPAIR    float_pair
 #endif
 
-#define MEM_MESSAGE                                                     \
+#define MEM_MESSAGE                                                      \
  do{ long long val = MCW_MALLOC_total ;                                  \
-     if( val > 0 )                                                        \
-       INFO_message("current memory malloc-ated = %lld bytes (about %s)" , \
-                    val , approximate_number_string((double)val) ) ;        \
+     if( val > 0 )                                                       \
+       INFO_message("current memory malloc-ated = %s bytes (about %s)" , \
+                    commaized_integer_string(val) ,                      \
+                    approximate_number_string((double)val) ) ;           \
  } while(0)
 
+static int aa_len_AA ;
+#undef  ALEN
+#define ALEN(na) (aa_len_AA=strlen(argv[na])+16 , MAX(aa_len_AA,THD_MAX_NAME))
 
 /*------------ prototypes for routines far below (RWCox) ------------------*/
 
@@ -392,7 +396,7 @@ static char *commandline = NULL ;
 
 static int goforit = 0 ;  /* 07 Mar 2007 */
 static int badlev  = 0 ;
-static int floatout= 0 ;  /* 13 Mar 2007 */
+static int floatout= 1 ;  /* 13 Mar 2007 ; 15 Jul 2010: now defaults on */
 
 /* include other dset types for float output   2 Apr 2009 [rickr] */
 #define CHECK_NEEDS_FLOATS(fn)                                         \
@@ -401,7 +405,7 @@ static int floatout= 0 ;  /* 13 Mar 2007 */
            strstr((fn),".gii") ) ){                                    \
        WARNING_message(                                                \
         "output prefix is '%s' ==> forcing '-float'" , (fn)) ;         \
-       floatout = 1 ;                                                  \
+       floatout = 2 ;                                                  \
    }} while(0)
 
 static int allzero_OK = 0 ;  /* 30 May 2007 */
@@ -426,6 +430,9 @@ static int_triple *abc_CENSOR = NULL ;
 static int do_FDR = 1 ;                 /* 23 Jan 2008 */
 
 static byte *gmask = NULL ;             /* 03 Feb 2009 -- global mask array */
+
+static bytevec *statmask = NULL ;       /* 15 Jul 2010 -- ditto */
+static char    *statmask_name = NULL ;
 
 /*---------- Typedefs for basis function expansions of the IRF ----------*/
 
@@ -744,8 +751,10 @@ void display_help_menu()
    "* Preprocessing of the time series input can be done with various AFNI  \n"
    "  programs, or with the 'uber-script' afni_proc.py:                     \n"
    "    http://afni.nimh.nih.gov/pub/dist/doc/program_help/afni_proc.py.html\n"
-   "* The recommended way to use 3dDeconvolve is via afni_proc.py, especially\n"
-   "  if you are not familiar with its usage and its peculiarities.         \n"
+   "------------------------------------------------------------------------\n"
+   "****  The recommended way to use 3dDeconvolve is via afni_proc.py,  ****\n"
+   "****  which will pre-process the data, and also provide some useful ****\n"
+   "****  diagnostic tools/outputs for assessing the data quality.      ****\n"
    "------------------------------------------------------------------------\n"
    "Consider the time series model  Z(t) = K(t)*S(t) + baseline + noise,    \n"
    "where Z(t) = data                                                       \n"
@@ -772,6 +781,7 @@ void display_help_menu()
    "of the full model (all regressors) vs. the baseline model.  Thus, it    \n"
    "it common to include irregular time series, such as estimated motion    \n"
    "parameters, in the baseline model via the -stim_file/-stim_base options.\n"
+   "Thus, the 'baseline model' is really the 'null hypothesis model'.       \n"
    "------------------------------------------------------------------------\n"
    "It is VERY important to realize that statistics (F, t, R^2) computed in \n"
    "3dDeconvolve are MARGINAL (or partial) statistics.  For example, the    \n"
@@ -783,7 +793,14 @@ void display_help_menu()
    "the significance of that set of regressors (eg, a set of TENT functions)\n"
    "against the full model with just that set of regressors removed.  If    \n"
    "this explanation or its consequences are unclear, you need to consult   \n"
-   "with a statistician, or with the AFNI message board guru entities.      \n"
+   "with a statistician, or with the AFNI message board guru entities       \n"
+   "(when they can be lured down from the peak of Mt Taniquetil).           \n"
+   "------------------------------------------------------------------------\n"
+   "At its core, 3dDeconvolve solves a linear regression problem z = X b    \n"
+   "for the parameter vector b, given the data vector z in each voxel, and  \n"
+   "given the SAME matrix X in each voxel.  If you want to solve a problem  \n"
+   "where some of the matrix columns in X (the regressors) are different in \n"
+   "different voxels (are spatially variable), then use program 3dTfitter,  \n"
    "------------------------------------------------------------------------\n"
   ) ;
   printf("\n"
@@ -821,16 +838,22 @@ void display_help_menu()
     "[-TR_1D tr1d]        tr1d = TR for .1D time series [default 1.0 sec].  \n"
     "                     This option has no effect without -input1D        \n"
     "[-nodata [NT [TR]]   Evaluate experimental design only (no input data) \n"
-    "[-mask mname]        mname = filename of 3d mask dataset               \n"
-    "[-automask]          build a mask automatically from input data        \n"
+    "                   * Optional, but highly recommended: follow the      \n"
+    "                     '-nodata' with two numbers, NT=number of time     \n"
+    "                     points, and TR=time spacing between points (sec)  \n"
+    "[-mask mname]        mname = filename of 3D mask dataset               \n"
+    "                      Only data time series from within the mask       \n"
+    "                      will be analyzed; results for voxels outside     \n"
+    "                      the mask will be set to zero.                    \n"
+    "[-automask]          Build a mask automatically from input data        \n"
     "                      (will be slow for long time series datasets)     \n"
     "                  ** If you don't specify ANY mask, the program will   \n"
     "                      build one automatically (from each voxel's RMS)  \n"
     "                      and use this mask solely for the purpose of      \n"
-    "                      reporting truncation-to-short errors (unless     \n"
-    "                      '-float' is used) AND for computing the FDR curves\n"
-    "                      in the bucket dataset's header (unless '-noFDR'  \n"
-    "                      is used, of course).                             \n"
+    "                      reporting truncation-to-short errors (if '-short'\n"
+    "                      is used) AND for computing the FDR curves in the \n"
+    "                      bucket dataset's header (unless '-noFDR' is used,\n"
+    "                      of course).                                      \n"
     "                   * If you don't want the FDR curves to be computed   \n"
     "                      inside this automatically generated mask, then   \n"
     "                      use '-noFDR' and later run '3drefit -addFDR' on  \n"
@@ -838,7 +861,21 @@ void display_help_menu()
     "                   * To be precise, the above default masking only     \n"
     "                      happens when you use '-input' to run the program \n"
     "                      with a 3D+time dataset; not with '-input1D'.     \n"
+    "[-STATmask sname]    Build a mask from file 'sname', and use this      \n"
+    "                       mask for the purpose of reporting truncation-to \n"
+    "                       float issues AND for computing the FDR curves.  \n"
+    "                       The actual results ARE not masked with this     \n"
+    "                       option (only with '-mask' or '-automask' options)\n"
+    "                       * If you don't use '-STATmask', then the mask   \n"
+    "                         from '-mask' or '-automask' is used for these \n"
+    "                         purposes.  If neither of those is given, then \n"
+    "                         the automatically generated mask described    \n"
+    "                         just above is used for these purposes.        \n"
     "[-censor cname]      cname = filename of censor .1D time series        \n"
+    "                   * This is a file of 1s and 0s, indicating which     \n"
+    "                     time points are to be included (1) and which are  \n"
+    "                     to be excluded (0).                               \n"
+    "                   * The option below may be simpler to use!           \n"
     "[-CENSORTR clist]    clist = list of strings that specify time indexes \n"
     "                       to be removed from the analysis.  Each string is\n"
     "                       of one of the following forms:                  \n"
@@ -871,6 +908,9 @@ void display_help_menu()
     "                    ** If you use 'A' for pnum, the program will       \n"
     "                       automatically choose a value based on the       \n"
     "                       time duration of the longest run.               \n"
+    "                    ** Use '-1' for pnum to specify not to include     \n"
+    "                       any polynomials in the baseline model.  Only    \n"
+    "                       do this if you know what this means!            \n"
     "[-legendre]          use Legendre polynomials for null hypothesis      \n"
     "                       (baseline model)                                \n"
     "[-nolegendre]        use power polynomials for null hypotheses         \n"
@@ -921,8 +961,8 @@ void display_help_menu()
     "               *N.B.: This option directly inserts a column into the   \n"
     "                      regression matrix; unless you are using the 'old'\n"
     "                      method of deconvolution (cf below), you would    \n"
-    "                      only use '-stim_file' to insert baseline model   \n"
-    "                      components such as motion parameters.            \n"
+    "                      normally only use '-stim_file' to insert baseline\n"
+    "                      model components such as motion parameters.      \n"
     "                                                                       \n"
     "[-stim_label k slabel] slabel = label for kth input stimulus           \n"
     "               *N.B.: This option is highly recommended, so that       \n"
@@ -952,16 +992,44 @@ void display_help_menu()
     "        analyzing FMRI time series data now.  The options directly     \n"
     "        above are only maintained for the sake of backwards            \n"
     "        compatibility!  For most FMRI users, the 'BLOCK' and 'TENT'    \n"
-    "        response models will serve their needs.                        \n"
+    "        (or 'CSPLIN') response models will serve their needs.  The     \n"
+    "        other models are for users with specific needs who understand  \n"
+    "        clearly what they are doing.                                   \n"
     "                                                                       \n"
     "[-stim_times k tname Rmodel]                                           \n"
     "   Generate the k-th response model from a set of stimulus times       \n"
     "   given in file 'tname'.  The response model is specified by the      \n"
     "   'Rmodel' argument, which can be one of the following:               \n"
-    "         [In the descriptions, a '1 parameter' model is a model ]      \n"
-    "         [that has a fixed shape, and only the amplitude varies.]      \n"
-    "         [Models with more than 1 parameter have multiple basis ]      \n"
-    "         [functions, and the parameters are their amplitudes.   ]      \n"
+    "    *** In the descriptions below, a '1 parameter' model has a fixed   \n"
+    "        shape, and only the amplitude varies.                          \n"
+    "    *** Models with more than 1 parameter have multiple basis          \n"
+    "        functions, and the parameters are their amplitudes.  The       \n"
+    "        estimated shape of the response to a stimulus will be different\n"
+    "        in different voxels.                                           \n"
+    "    *** Many models require the input of the start and stop times for  \n"
+    "        the response, 'b' and 'c'.  Normally, 'b' would be zero, but   \n"
+    "        in some cases, 'b' could be negative -- for example, if you    \n"
+    "        are concerned about anticipatory effects.  The stop time 'c'   \n"
+    "        should be based on how long you realistically expect the       \n"
+    "        hemodynamic response to last after the onset of the stimulus;  \n"
+    "        e.g., the duration of the stimulus plus 14 seconds.            \n"
+    "    *** If you use '-tout', each parameter will get a separate         \n"
+    "        t-statistic.  As mentioned far above, this is a marginal       \n"
+    "        statistic, measuring the impact of that model component on the \n"
+    "        regression fit, relative to the fit with that one component    \n"
+    "        (matrix column) removed.                                       \n"
+    "    *** If you use '-fout', each stimulus will also get an F-statistic,\n"
+    "        which is the collective impact of all the model components     \n"
+    "        it contains, relative to the regression fit with the entire    \n"
+    "        stimulus removed. (If there is only 1 parameter, then F = t*t.)\n"
+    "    *** Some models below are described in terms of a simple response  \n"
+    "        function that is then convolved with a square wave whose       \n"
+    "        duration is a parameter you give (duration is NOT a parameter  \n"
+    "        that will be estimated).  Read the descriptions below carefully:\n"
+    "        not all functions are (or can be) convolved in this way:       \n"
+    "        * ALWAYS convolved:      BLOCK  dmBLOCK  MION                  \n"
+    "        * NEVER convolved:       TENT   CSPLIN   POLY  SIN  EXPR       \n"
+    "        * OPTIONALLY convolved:  GAM    SPMGx    WAV                   \n"
     "                                                                       \n"
     "     'BLOCK(d,p)'  = 1 parameter block stimulus of duration 'd'        \n"
     "                    ** There are 2 variants of BLOCK:                  \n"
@@ -971,26 +1039,52 @@ void display_help_menu()
     "                       where g(t) = t^q * exp(-t) /(q^q*exp(-q))       \n"
     "                       and q = 4 or 5.  The case q=5 is delayed by     \n"
     "                       about 1 second from the case q=4.               \n"
-    "                    ** Despite the name, you can use 'BLOCK' for event-\n"
+    "                ==> ** Despite the name, you can use 'BLOCK' for event-\n"
     "                       related analyses just by setting the duration to\n"
     "                       a small value; e.g., 'BLOCK5(1,1)'              \n"
     "                    ** The 'p' parameter is the amplitude of the       \n"
     "                       basis function, and should usually be set to 1. \n"
     "                       If 'p' is omitted, the amplitude will depend on \n"
     "                       the duration 'd', which is useful only in       \n"
-    "                       special circumstances!                          \n"
+    "                       special circumstances!!                         \n"
     "     'TENT(b,c,n)' = n parameter tent function expansion from times    \n"
     "                       b..c after stimulus time [piecewise linear]     \n"
     "                       [n must be at least 2; time step is (c-b)/(n-1)]\n"
     "    'CSPLIN(b,c,n)'= n parameter cubic spline function expansion       \n"
     "                       from times b..c after stimulus time             \n"
-    "                     ** TENT and CSPLIN are 'cardinal' interpolation   \n"
-    "                        functions; CSPLIN is a drop-in upgrade of      \n"
-    "                        TENT to a differentiable set of functions.     \n"
     "                       [n must be at least 4]                          \n"
+    "                     ** CSPLIN is a drop-in upgrade of TENT to a       \n"
+    "                        differentiable set of functions.               \n"
+    "                     ** TENT and CSPLIN are 'cardinal' interpolation   \n"
+    "                        functions: their parameters are the values     \n"
+    "                        of the HRF model at the n 'knot' points        \n"
+    "                          b , b+dt , b+2*dt , ... [dt = (c-b)/(n-1)]   \n"
+    "                        In contrast, in a model such as POLY or SIN,   \n"
+    "                        the parameters output are not directly the     \n"
+    "                        hemodynamic response function values at any    \n"
+    "                        particular point.                              \n"
+    "                 ==> ** You can also use 'TENTzero' and 'CSPLINzero',  \n"
+    "                        which means to eliminate the first and last    \n"
+    "                        basis functions from each set.  The effect     \n"
+    "                        of these omissions is to force the deconvolved \n"
+    "                        HRF to be zero at t=b and t=c (to start and    \n"
+    "                        and end at zero response).  With these 'zero'  \n"
+    "                        response models, there are n-2 parameters      \n"
+    "                        (thus for 'TENTzero', n must be at least 3).   \n"
+    "                     ** These 'zero' functions will force the HRF to   \n"
+    "                        be continuous, since they will now be unable   \n"
+    "                        to suddenly rise up from 0 at t=b and/or drop  \n"
+    "                        down to 0 at t=c.                              \n"
     "     'GAM(p,q)'    = 1 parameter gamma variate                         \n"
     "                         (t/(p*q))^p * exp(p-t/q)                      \n"
     "                       Defaults: p=8.6 q=0.547 if only 'GAM' is used   \n"
+    "                     ** The peak of 'GAM(p,q)' is at time p*q after    \n"
+    "                        the stimulus.  The FWHM is about 2.3*sqrt(p)*q.\n"
+    "                 ==> ** If you add a third argument 'd', then the GAM  \n"
+    "                        function is convolved with a square wave of    \n"
+    "                        duration 'd' seconds; for example:             \n"
+    "                          'GAM(8.6,.547,17)'                           \n"
+    "                        for a 17 second stimulus.  [09 Aug 2010]       \n"
     "     'SPMG1'       = 1 parameter SPM gamma variate basis function      \n"
     "                         exp(-t)*(A1*t^P1-A2*t^P2) where               \n"
     "                       A1 = 0.0083333333  P1 = 5  (main positive lobe) \n"
@@ -999,14 +1093,14 @@ void display_help_menu()
     "     'SPMG2'       = 2 parameter SPM: gamma variate + d/dt derivative  \n"
     "                       [For backward compatibility: 'SPMG' == 'SPMG2'] \n"
     "     'SPMG3'       = 3 parameter SPM basis function set                \n"
-    "                      * The SPMGx functions now can take an optional   \n"
+    "                 ==> ** The SPMGx functions now can take an optional   \n"
     "                        (duration) argument, specifying that the primal\n"
     "                        SPM basis functions should be convolved with   \n"
     "                        a square wave 'duration' seconds long and then \n"
     "                        be normalized to have peak absolute value = 1; \n"
     "                        e.g., 'SPMG3(20)' for a 20 second duration with\n"
     "                        three basis function.  [28 Apr 2009]           \n"
-    "                      * Note that 'SPMG1(0)' will produce the usual    \n"
+    "                     ** Note that 'SPMG1(0)' will produce the usual    \n"
     "                        'SPMG1' wavefunction shape, but normalized to  \n"
     "                        have peak value = 1 (for example).             \n"
     "     'POLY(b,c,n)' = n parameter Legendre polynomial expansion         \n"
@@ -1045,6 +1139,43 @@ void display_help_menu()
     "                         z = time scaled to be z=-1..1 for t=bot..top  \n"
     "                      * Spatially dependent regressors are not allowed!\n"
     "                      * Other symbols are set to 0 (silently).         \n"
+    "                 ==> ** There is no convolution of the 'EXPR' functions\n"
+    "                        with a square wave implied.  The expressions   \n"
+    "                        you input are what you get, evaluated over     \n"
+    "                        times b..c after each stimulus time.  To be    \n"
+    "                        sure of what your response model is, you should\n"
+    "                        plot the relevant columns from the matrix      \n"
+    "                        .xmat.1D output file.                          \n"
+    "     'MION(d)'     = 1 parameter block stimulus of duration 'd',       \n"
+    "                     intended to model the response of MION.           \n"
+    "                     The zero-duration impulse response 'MION(0)' is   \n"
+    "                       h(t) = 16.4486 * ( -0.184/ 1.5 * exp(-t/ 1.5)   \n"
+    "                                          +0.330/ 4.5 * exp(-t/ 4.5)   \n"
+    "                                          +0.670/13.5 * exp(-t/13.5) ) \n"
+    "                     which is adapted from the paper                   \n"
+    "                      FP Leite, et al.  NeuroImage 16:283-294 (2002)   \n"
+    "                      http://dx.doi.org/10.1006/nimg.2002.1110         \n"
+    "                  ** Note that this is a positive function, but MION   \n"
+    "                     produces a negative response to activation, so the\n"
+    "                     beta and t-statistic for MION are usually negative.\n"
+    "                  ** After convolution with a square wave 'd' seconds  \n"
+    "                     long, the resulting single-trial waveform is      \n"
+    "                     scaled to have magnitude 1.  For example, try     \n"
+    "                     this fun command to compare BLOCK and MION:       \n"
+    "               3dDeconvolve -nodata 300 1 -polort -1 -num_stimts 2   \\\n"
+    "                            -stim_times 1 '1D: 10 150' 'MION(70)'    \\\n"
+    "                            -stim_times 2 '1D: 10 150' 'BLOCK(70,1)' \\\n"
+    "                            -x1D stdout: | 1dplot -stdin -one -thick   \n"
+    "                     You will see that the MION curve rises and falls  \n"
+    "                     much more slowly than the BLOCK curve.            \n"
+    "              ==> ** Note that 'MION(d)' is already convolved with a   \n"
+    "                     square wave of duration 'd' seconds.  Do not      \n"
+    "                     convolve it again by putting in multiple closely  \n"
+    "                     spaced stimulus times (this mistake has been made)!\n"
+    "                  ** Scaling the single-trial waveform to have magnitude\n"
+    "                     1 means that trials with different durations 'd'  \n"
+    "                     will have the same magnitude for their regression \n"
+    "                     models.                                           \n"
     "                                                                       \n"
     " * 3dDeconvolve does LINEAR regression, so the model parameters are    \n"
     "   amplitudes of the basis functions; 1 parameter models are 'simple'  \n"
@@ -1055,7 +1186,25 @@ void display_help_menu()
     " * If you want NONLINEAR regression, see program 3dNLfim.              \n"
     "                                                                       \n"
     " * If you want LINEAR regression with allowance for non-white noise,   \n"
-    "   use program 3dREMLfit.                                              \n"
+    "   use program 3dREMLfit, after using 3dDeconvolve to set up the       \n"
+    "   regression model.                                                   \n"
+    "                                                                       \n"
+    "** When in any doubt about the shape of the response model you are   **\n"
+    "*  asking for, you should plot the relevant columns from the X matrix *\n"
+    "*  to help develop some understanding of the analysis.  The 'MION'    *\n"
+    "*  example above can be used as a starting point for how to easily    *\n"
+    "*  setup a quick command pipeline to graph response models.  In this  *\n"
+    "*  example, '-polort -1' is used to suppress the usual baseline model *\n"
+    "*  since graphing that part of the matrix would just be confusing.    *\n"
+    "*  Another example, for example, comparing the similar models         *\n"
+    "** 'WAV(10)', 'BLOCK4(10,1)', and 'SPMG1(10)':                       **\n"
+    "                                                                       \n"
+    "     3dDeconvolve -nodata 100 1.0 -num_stimts 3 -polort -1   \\\n"
+    "                  -local_times -x1D stdout:                  \\\n"
+    "                  -stim_times 1 '1D: 10 60' 'WAV(10)'        \\\n"
+    "                  -stim_times 2 '1D: 10 60' 'BLOCK4(10,1)'   \\\n"
+    "                  -stim_times 3 '1D: 10 60' 'SPMG1(10)'      \\\n"
+    "      | 1dplot -thick -one -stdin -xlabel Time -ynames WAV BLOCK4 SPMG1\n"
     "                                                                       \n"
     " * For the format of the 'tname' file, see the last part of            \n"
     " http://afni.nimh.nih.gov/pub/dist/doc/misc/Decon/DeconSummer2004.html \n"
@@ -1063,25 +1212,18 @@ void display_help_menu()
     " http://afni.nimh.nih.gov/pub/dist/doc/misc/Decon/                     \n"
     "   and also read the presentation below:                               \n"
     " http://afni.nimh.nih.gov/pub/dist/edu/latest/afni_handouts/afni05_regression.pdf\n"
-    "   ** Note Well:                                                       \n"
-    "    * The contents of the 'tname' file are NOT just 0s and 1s,         \n"
-    "      but are the actual times of the stimulus events IN SECONDS.      \n"
-    "    * You can give the times on the command line by using a string     \n"
-    "      of the form '1D: 3.2 7.9 | 8.2 16.2 23.7' in place of 'tname',   \n"
-    "      where the '|' character indicates the start of a new line        \n"
-    "      (so this example is for a case with 2 catenated runs).           \n"
-    "    * You cannot use the '1D:' form of input for any of the more       \n"
-    "      complicated '-stim_times_*' options below!!                      \n"
-    "    * It is a good idea to examine the shape of the response models    \n"
-    "      if you are unsure of what the different functions will look like.\n"
-    "      You can graph columns from the .xmat.1D matrix file with 1dplot; \n"
-    "      for example, comparing 'WAV(10)', 'BLOCK4(10,1)', and 'SPMG1(10)':\n\n"
-    "       3dDeconvolve -nodata 200 1.0 -num_stimts 3 -polort -1         \\\n"
-    "                    -local_times -x1D stdout:                        \\\n"
-    "                    -stim_times 1 '1D: 10 60 110 160' 'WAV(10)'      \\\n"
-    "                    -stim_times 2 '1D: 10 60 110 160' 'BLOCK4(10,1)' \\\n"
-    "                    -stim_times 3 '1D: 10 60 110 160' 'SPMG1(10)'    \\\n"
-    "             | 1dplot -one -stdin -xlabel Time -ynames WAV BLOCK4 SPMG1\n"
+    "  ** Note Well:                                                        \n"
+    "   * The contents of the 'tname' file are NOT just 0s and 1s,          \n"
+    "     but are the actual times of the stimulus events IN SECONDS.       \n"
+    "   * You can give the times on the command line by using a string      \n"
+    "     of the form '1D: 3.2 7.9 | 8.2 16.2 23.7' in place of 'tname',    \n"
+    "     where the '|' character indicates the start of a new line         \n"
+    "     (so this example is for a case with 2 catenated runs).            \n"
+    "=> * You CANNOT USE the '1D:' form of input for any of the more        \n"
+    "     complicated '-stim_times_*' options below!!                       \n"
+    "   * The '1D:' form of input is mostly useful for quick tests, as      \n"
+    "     in the examples above, rather than for production analyses with   \n"
+    "     lots of different stimulus times and multiple imaging runs.       \n"
     "                                                                       \n"
     "[-stim_times_AM1 k tname Rmodel]                                       \n"
     "   Similar, but generates an amplitude modulated response model.       \n"
@@ -1123,7 +1265,7 @@ void display_help_menu()
     " and should be separated from the duration parameter by a ':'          \n"
     " character, as in '30*5,3:12' which means (for dmBLOCK):               \n"
     "   a block starting at 30 s,                                           \n"
-    "   with amplitude parameters 5 and 3,                                  \n"
+    "   with amplitude modulation parameters 5 and 3,                       \n"
     "   and with duration 12 s.                                             \n"
     " The unmodulated peak response of dmBLOCK is normally set to 1.        \n"
     " If you want the peak response to be a different value, use            \n"
@@ -1332,8 +1474,8 @@ void display_help_menu()
     "                     ignored.                                          \n"
     "                                                                       \n"
     "[-float]            Write output datasets in float format, instead of  \n"
-    "                    as scaled shorts [** recommended **]               \n"
-    "[-short]            Write output as scaled shorts [default, for now]   \n"
+    "                    as scaled shorts [** now the default **]           \n"
+    "[-short]            Write output as scaled shorts [no longer default]  \n"
     "                                                                       \n"
     "***** The following options control miscellanous outputs *****         \n"
     "                                                                       \n"
@@ -1342,13 +1484,13 @@ void display_help_menu()
     "[-xjpeg filename]    Write a JPEG file graphing the X matrix           \n"
     "                     * If filename ends in '.png', a PNG file is output\n"
     "[-x1D filename]      Save X matrix to a .xmat.1D (ASCII) file [default]\n"
-    "                     * If 'filename' is 'stdout:', the file is written \n"
+    "                    ** If 'filename' is 'stdout:', the file is written \n"
     "                       to standard output, and could be piped into     \n"
-    "                       1dplot (an example is given earlier).           \n"
+    "                       1dplot (some examples are given earlier).       \n"
     "                     * This can be used for quick checks to see if your\n"
     "                       inputs are setting up a 'reasonable' matrix.    \n"
-    "[-nox1D]             Don't save X matrix [a bad idea]                  \n"
-    "[-x1D_uncensored ff  Save X matrix to a .xmat.1D file, but WITHOUT     \n"
+    "[-nox1D]             Don't save X matrix [a very bad idea]             \n"
+    "[-x1D_uncensored ff] Save X matrix to a .xmat.1D file, but WITHOUT     \n"
     "                     ANY CENSORING.  Might be useful in 3dSynthesize.  \n"
     "[-x1D_stop]          Stop running after writing .xmat.1D files.        \n"
     "                     * Useful for testing, or if you are going to      \n"
@@ -1372,6 +1514,9 @@ void display_help_menu()
             "             number of CPUs sharing memory on the system.\n"
             "         * J=1 is normal (single process) operation.\n"
             "         * The maximum allowed value of J is %d.\n"
+            "         * Unlike other parallelized AFNI programs, this one\n"
+            "             does not use OpenMP; it directly uses fork()\n"
+            "             and shared memory to run multiple processes.\n"
             "         * For more information on parallelizing, see\n"
             "           http://afni.nimh.nih.gov/afni/doc/misc/afni_parallelize\n"
             "         * Also use -mask or -automask to get more speed; cf. 3dAutomask.\n"
@@ -1638,7 +1783,8 @@ void get_options
   /*----- initialize the input options -----*/
   initialize_options (option_data);
 
-  if( AFNI_yesenv("AFNI_FLOATIZE") ) floatout = 1 ;  /* 17 Jan 2008 */
+       if( AFNI_yesenv("AFNI_FLOATIZE") ) floatout = 1 ;  /* 17 Jan 2008 */
+  else if( AFNI_yesenv("AFNI_SHORTIZE") ) floatout = 0 ;  /* 15 Jun 2010 */
 
   if( AFNI_yesenv("AFNI_3dDeconvolve_GOFORIT") ) goforit++ ; /* 07 Mar 2007 */
 
@@ -1681,7 +1827,7 @@ void get_options
       {
         nopt++;
         if (nopt >= argc)  DC_error ("need argument after -xjpeg ");
-        option_data->xjpeg_filename = malloc (sizeof(char)*THD_MAX_NAME);
+        option_data->xjpeg_filename = malloc (sizeof(char)*ALEN(nopt));
         MTEST (option_data->xjpeg_filename);
         strcpy (option_data->xjpeg_filename, argv[nopt]);
         if( !STRING_HAS_SUFFIX_CASE(option_data->xjpeg_filename,".jpg") &&
@@ -1695,7 +1841,7 @@ void get_options
       {
         nopt++;
         if (nopt >= argc)  DC_error ("need argument after -x1D ");
-        option_data->x1D_filename = malloc (sizeof(char)*THD_MAX_NAME);
+        option_data->x1D_filename = malloc (sizeof(char)*ALEN(nopt));
         MTEST (option_data->x1D_filename);
         strcpy (option_data->x1D_filename, argv[nopt]);
         if( strstr(option_data->x1D_filename,"1D") == NULL )
@@ -1716,7 +1862,7 @@ void get_options
       {
         nopt++;
         if (nopt >= argc)  DC_error ("need argument after -x1D_uncensored ");
-        option_data->x1D_unc = malloc (sizeof(char)*THD_MAX_NAME);
+        option_data->x1D_unc = malloc (sizeof(char)*ALEN(nopt));
         MTEST (option_data->x1D_unc);
         strcpy (option_data->x1D_unc, argv[nopt]);
         if( strstr(option_data->x1D_unc,"1D") == NULL )
@@ -1731,7 +1877,7 @@ void get_options
         nopt++;
         if (nopt >= argc)  DC_error ("need argument after -input ");
 #if 0
-        option_data->input_filename = malloc (sizeof(char)*THD_MAX_NAME);
+        option_data->input_filename = malloc (sizeof(char)*ALEN(nopt));
         MTEST (option_data->input_filename);
         strcpy (option_data->input_filename, argv[nopt]);
         nopt++;
@@ -1752,6 +1898,21 @@ void get_options
         continue;
       }
 
+      /*-----  -STATmask  fname  -----*/
+
+      if( strcasecmp(argv[nopt],"-STATmask") == 0 ||
+          strcasecmp(argv[nopt],"-FDRmask")  == 0   ){
+        nopt++ ;
+        if( statmask != NULL ) DC_error("can't use -STATmask twice") ;
+        if( nopt     >= argc ) DC_error("need argument after -STATmask") ;
+        statmask_name = strdup(argv[nopt]) ;
+        statmask = THD_create_mask_from_string(statmask_name) ;
+        if( statmask == NULL ){
+          WARNING_message("-STATmask being ignored: can't use it") ;
+          free(statmask_name) ; statmask_name = NULL ;
+        }
+        nopt++ ; continue ;
+      }
 
       /*-----   -mask filename   -----*/
       if (strcmp(argv[nopt], "-mask") == 0)
@@ -1759,7 +1920,7 @@ void get_options
         nopt++;
         if (nopt >= argc)  DC_error ("need argument after -mask ");
         if( option_data->automask ) DC_error("can't use -mask AND -automask!") ;
-        option_data->mask_filename = malloc (sizeof(char)*THD_MAX_NAME);
+        option_data->mask_filename = malloc (sizeof(char)*ALEN(nopt));
         MTEST (option_data->mask_filename);
         strcpy (option_data->mask_filename, argv[nopt]);
         nopt++;
@@ -1781,7 +1942,7 @@ void get_options
         nopt++;
         if (nopt >= argc)  DC_error ("need argument after -input1D ");
         option_data->input1D_filename =
-          malloc (sizeof(char)*THD_MAX_NAME);
+          malloc (sizeof(char)*ALEN(nopt));
         MTEST (option_data->input1D_filename);
         strcpy (option_data->input1D_filename, argv[nopt]);
         nopt++;
@@ -1818,7 +1979,7 @@ void get_options
         nopt++;
         if (nopt >= argc)  DC_error ("need argument after -censor ");
         option_data->censor_filename =
-          malloc (sizeof(char)*THD_MAX_NAME);
+          malloc (sizeof(char)*ALEN(nopt));
         MTEST (option_data->censor_filename);
         strcpy (option_data->censor_filename, argv[nopt]);
         nopt++;
@@ -1892,7 +2053,7 @@ void get_options
         nopt++;
         if (nopt >= argc)  DC_error ("need argument after -concat ");
         option_data->concat_filename =
-          malloc (sizeof(char)*THD_MAX_NAME);
+          malloc (sizeof(char)*ALEN(nopt));
         MTEST (option_data->concat_filename);
         strcpy (option_data->concat_filename, argv[nopt]);
         nopt++;
@@ -1904,7 +2065,7 @@ void get_options
       if (strcmp(argv[nopt], "-nodata") == 0){
         option_data->nodata = 1; nopt++;
 
-     /* 27 Apr 2005: check for additional numeric values */
+        /* 27 Apr 2005: check for additional numeric values */
 
         if( nopt < argc && isdigit(argv[nopt][0]) ){  /* get NT */
           option_data->nodata_NT = (int)strtol(argv[nopt++],NULL,10) ;
@@ -2016,7 +2177,8 @@ void get_options
         floatout = 1 ; nopt++ ; continue ;
       }
       if( strcmp(argv[nopt],"-short") == 0 ){
-        floatout = 0 ; nopt++ ; continue ;
+        if( floatout < 2 ) floatout = 0 ;   /* 2 ==> floatout was forced on */
+        nopt++ ; continue ;
       }
       if( strcmp(argv[nopt],"-datum") == 0 ){
         nopt++ ;
@@ -2225,11 +2387,17 @@ void get_options
 
         } else if( strncmp(suf,"_AM",3) == 0 ){
 
-          vdim = basis_times[k]->vdim ;  /* number of values per point */
-          if( vdim < 2 )                 /* need at least 2 (time and amplitude) */
-            ERROR_exit(
+          vdim = basis_times[k]->vdim ; /* number of values per point */
+          if( vdim < 2 ){                /* need at least 2 (time & amplitude) */
+            if( strncmp(argv[nopt],"1D:",3) == 0 )
+              ERROR_exit(
+              "'%s %d' doesn't allow '1D:' type of input -- use a file [nopt=%d]",
+              sopt , ival , nopt ) ;
+            else
+              ERROR_exit(
               "'%s %d' file '%s' doesn't have auxiliary values per time point! [nopt=%d]",
               sopt , ival , argv[nopt] , nopt ) ;
+          }
           else if( vdim-1 > BASIS_MAX_VDIM ) /* over the limit */
             ERROR_exit(
               "'%s %d' file '%s' has too many auxiliary values per time point! [nopt=%d]",
@@ -2375,7 +2543,7 @@ void get_options
           ERROR_exit("'-slice_base %d' trying to overwrite previous stimulus [nopt=%d]",
                      ival , nopt ) ;
 
-        option_data->stim_filename[k] = malloc(sizeof(char)*THD_MAX_NAME);
+        option_data->stim_filename[k] = malloc(sizeof(char)*ALEN(nopt));
         MTEST(option_data->stim_filename[k]);
         strcpy(option_data->stim_filename[k], argv[nopt]);
         option_data->slice_base[k] = 1;
@@ -2399,7 +2567,7 @@ void get_options
             ERROR_exit("'-stim_file %d' trying to overwrite previous stimulus [nopt=%d]",
                     ival , nopt ) ;
 
-        option_data->stim_filename[k] = malloc (sizeof(char)*THD_MAX_NAME);
+        option_data->stim_filename[k] = malloc (sizeof(char)*ALEN(nopt));
         MTEST (option_data->stim_filename[k]);
         strcpy (option_data->stim_filename[k], argv[nopt]);
         nopt++;
@@ -2555,7 +2723,7 @@ void get_options
         option_data->glt_rows[iglt] = s;
         nopt++;
 
-        option_data->glt_filename[iglt] = malloc (sizeof(char)*THD_MAX_NAME);
+        option_data->glt_filename[iglt] = malloc (sizeof(char)*ALEN(nopt));
         MTEST (option_data->glt_filename[iglt]);
         strcpy (option_data->glt_filename[iglt], argv[nopt]);
         iglt++;
@@ -2625,7 +2793,7 @@ void get_options
         nopt++;
 
         option_data->iresp_filename[k]
-          = malloc (sizeof(char)*THD_MAX_NAME);
+          = malloc (sizeof(char)*ALEN(nopt));
         MTEST (option_data->iresp_filename[k]);
         strcpy (option_data->iresp_filename[k], argv[nopt]);
         CHECK_NEEDS_FLOATS(argv[nopt]) ;
@@ -2656,7 +2824,7 @@ void get_options
         nopt++;
 
         option_data->sresp_filename[k]
-          = malloc (sizeof(char)*THD_MAX_NAME);
+          = malloc (sizeof(char)*ALEN(nopt));
         MTEST (option_data->sresp_filename[k]);
         strcpy (option_data->sresp_filename[k], argv[nopt]);
         CHECK_NEEDS_FLOATS(argv[nopt]) ;
@@ -2745,7 +2913,7 @@ void get_options
       {
         nopt++;
         if (nopt >= argc)  DC_error ("need file prefixname after -bucket ");
-        option_data->bucket_filename = malloc (sizeof(char)*THD_MAX_NAME);
+        option_data->bucket_filename = malloc (sizeof(char)*ALEN(nopt));
         MTEST (option_data->bucket_filename);
         strcpy (option_data->bucket_filename, argv[nopt]);
         CHECK_NEEDS_FLOATS(argv[nopt]) ;
@@ -2774,7 +2942,7 @@ void get_options
       {
         nopt++;
         if (nopt >= argc)  DC_error ("need file prefixname after -fitts ");
-        option_data->fitts_filename = malloc (sizeof(char)*THD_MAX_NAME);
+        option_data->fitts_filename = malloc (sizeof(char)*ALEN(nopt));
         MTEST (option_data->fitts_filename);
         strcpy (option_data->fitts_filename, argv[nopt]);
         CHECK_NEEDS_FLOATS(argv[nopt]) ;
@@ -2788,7 +2956,7 @@ void get_options
       {
         nopt++;
         if (nopt >= argc)  DC_error ("need file prefixname after -errts ");
-        option_data->errts_filename = malloc (sizeof(char)*THD_MAX_NAME);
+        option_data->errts_filename = malloc (sizeof(char)*ALEN(nopt));
         MTEST (option_data->errts_filename);
         strcpy (option_data->errts_filename, argv[nopt]);
         CHECK_NEEDS_FLOATS(argv[nopt]) ;
@@ -2869,6 +3037,10 @@ void get_options
   }
 
   /*---- 09 Mar 2007: output -x1D file always ----*/
+
+  if( option_data->x1D_filename != NULL &&  /* 10 Aug 2010 */
+      option_data->nodata               &&
+      strncmp(option_data->x1D_filename,"stdout:",7) == 0 ) option_data->x1D_stop = 2 ;
 
   if( option_data->x1D_filename == NULL && !option_data->nox1D ){
     char *pref=NULL , *cpt ;
@@ -3272,6 +3444,8 @@ ENTRY("read_input_data") ;
 
   else if (option_data->input_filename != NULL) /*----- 3D+time dataset -----*/
     {
+      int nxd , nyd , nzd ;
+
       *dset_time = THD_open_dataset (option_data->input_filename);
       CHECK_OPEN_ERROR(*dset_time,option_data->input_filename);
       if( !option_data->x1D_stop ){
@@ -3294,6 +3468,9 @@ ENTRY("read_input_data") ;
 
       nt   = DSET_NUM_TIMES (*dset_time);
       nxyz = DSET_NVOX (*dset_time);
+      nxd  = DSET_NX(*dset_time) ;
+      nyd  = DSET_NY(*dset_time) ;
+      nzd  = DSET_NZ(*dset_time) ;
 
       DSET_UNMSEC( *dset_time ) ; /* 12 Aug 2005: surgery on the time units? */
 
@@ -3359,13 +3536,12 @@ ENTRY("read_input_data") ;
         if( *mask_vol == NULL ){
           WARNING_message("unable to generate automask?!") ;
         } else {
-          mc = THD_countmask( DSET_NVOX(*dset_time) , *mask_vol ) ;
+          mc = THD_countmask( nxyz , *mask_vol ) ;
           if( mc <= 1 ){
             WARNING_message("automask is empty!?") ;
             free(*mask_vol) ; *mask_vol = NULL ;
           } else {
-            INFO_message("%d voxels in automask (out of %d)",
-                         mc,DSET_NVOX(*dset_time)) ;
+            INFO_message("%d voxels in automask (out of %d)", mc,nxyz) ;
           }
         }
         gmask = *mask_vol ;  /* save global mask -- 03 Feb 2009 */
@@ -3399,24 +3575,45 @@ ENTRY("read_input_data") ;
            gmask = *mask_vol ;         /* global mask save -- 03 Feb 2009 */
          }
 
+      /* 15 Jul 2010: use -STATmask? */
+
+      if( statmask != NULL ){
+        if( statmask->nar != nxyz ){
+          WARNING_message("-STATmask ignored: doesn't match -input dataset size!") ;
+          KILL_bytevec(statmask) ; free(statmask_name) ; statmask_name = NULL ;
+        } else {
+          int mc ; byte *qmask=gmask ;
+          gmask = statmask->ar ; mc = THD_countmask( nxyz , gmask ) ;
+          if( mc <= 99 ){
+            gmask = qmask ;
+            KILL_bytevec(statmask) ; free(statmask_name) ; statmask_name = NULL ;
+            WARNING_message("-STATmask ignored: only has %d nonzero voxels",mc) ;
+          } else if( verb )
+            INFO_message("-STATmask has %d voxels (out of %d = %.1f%%)",
+                         mc, nxyz, (100.0f*mc)/nxyz ) ;
+        }
+      }
+
       /* 03 Feb 2009 -- make a global mask if not provided thus far */
 
-      if( gmask == NULL ){
+      if( gmask == NULL && nxd > 15 && nyd > 15 && nzd > 15 ){
         MRI_IMAGE *qim ; int mc ;
         qim   = THD_rms_brick( *dset_time ) ;
         gmask = mri_automask_image( qim ) ;
         mri_free( qim ) ;
-        mc = THD_countmask( DSET_NVOX(*dset_time) , gmask ) ;
-        if( mc <= 1 ){ free(gmask) ; gmask = NULL ; }
+        mc = THD_countmask( nxyz , gmask ) ;
+        if( mc <= 99 ){ if( gmask != NULL ){ free(gmask) ; gmask = NULL ; } }
         else if( verb && (!floatout || do_FDR) )
-          INFO_message("misfit/FDR automask has %d voxels (out of %d = %.1f%%)",
-                       mc, DSET_NVOX(*dset_time), (100.0f*mc)/DSET_NVOX(*dset_time) ) ;
+          INFO_message("STAT automask has %d voxels (out of %d = %.1f%%)",
+                       mc, nxyz, (100.0f*mc)/nxyz ) ;
       }
 
       EDIT_set_misfit_mask(gmask) ; mri_fdr_setmask(gmask) ;
 
-    } else {                                   /* no input data? */
+    } else {  /*------------------------- no input data? --------------------*/
+
       DC_error ("Must specify some sort of input data, or use '-nodata'");
+
     }
 
 
@@ -3635,7 +3832,7 @@ STATUS("unpacking fvect image") ;
       /** convert time in sec (tar) to time in indexes (qar) **/
 
       if( be->timetype == GLOBAL_TIMES ){  /****------ global times ------****/
-        int nbad=0 , nout=0 ;
+        int nbad=0 , nout=0 ; float *psfb=NULL ;
 
         INFO_message("%s%s %d using GLOBAL times",glprefix,be->option,is+1) ;
         tmax = (nt-1)*basis_TR ;         /* max allowed time offset */
@@ -3646,7 +3843,10 @@ STATUS("loading GLOBAL times and aux params") ;
             for( vv=0 ; vv < vmod+vfun ; vv++ ) zar[vv][ngood] = aar[vv][ii] ;
             qar[ngood++] = tt / basis_TR ;
           } else if( tt >= big_time           ) nbad++ ; /* '*' entries */
-            else                                nout++ ; /* PSFB entries */
+            else {                                       /* PSFB entries */
+              nout++ ; psfb = (float *)realloc(psfb,sizeof(float)*nout) ;
+              psfb[nout-1] = tt ;
+            }
         }
         if( nbad )          /* warn about '*' times in GLOBAL input */
           WARNING_message(
@@ -3656,11 +3856,14 @@ STATUS("loading GLOBAL times and aux params") ;
           WARNING_message(
            "'%s %d' (GLOBAL) has %d times outside range 0 .. %g [PSFB syndrome]",
            be->option , is+1 , nout , tmax ) ;
-          WARNING_message("[dataset TR being used is %g sec]",basis_TR) ;
+           ININFO_message("dataset TR being used is %g s -- unusable times follow",
+                          basis_TR) ;
+          for( ii=0 ; ii < nout ; ii++ ) fprintf(stderr," %g",psfb[ii]) ;
+          fprintf(stderr,"\n") ; free(psfb) ; psfb = NULL ;
         }
 
       } else {   /****---------- local times => 1 row per block ----------****/
-        int nout ;
+        int nout ; float *psfb=NULL ;
 
         INFO_message("%s%s %d using LOCAL times",glprefix,be->option,is+1) ;
         if( ny != nbl ){                 /* times are relative to block */
@@ -3679,15 +3882,21 @@ STATUS("loading LOCAL times and aux params") ;
             if( tt >= 0.0f && tt <= tmax ){
               for( vv=0 ; vv < vmod+vfun ; vv++ ) zar[vv][ngood] = aar[vv][ii+jj*nx] ;
               qar[ngood++] = tt / basis_TR + bst[jj] ;
-            } else if( tt < big_time ) nout++ ; /* PSFB entries */
+            } else if( tt < big_time ){         /* PSFB entries */
+              nout++ ; psfb = (float *)realloc(psfb,sizeof(float)*nout) ;
+              psfb[nout-1] = tt ;
+            }
           }
-          if( nout ){
+          if( nout ){         /* PSFB strikes again! */
             WARNING_message(
              "'%s %d' (LOCAL) run#%d has %d times outside range 0 .. %g [PSFB syndrome]",
              be->option , is+1 , jj+1 , nout , tmax ) ;
-            WARNING_message("dataset TR being used is %g s",basis_TR) ;
+            ININFO_message("dataset TR being used is %g s -- unusable times follow",
+                           basis_TR) ;
+            for( ii=0 ; ii < nout ; ii++ ) fprintf(stderr," %g",psfb[ii]) ;
+            fprintf(stderr,"\n") ; free(psfb) ; psfb = NULL ;
           }
-        }
+        } /* end of loop over row index */
 
       } /** end of converting times into indexes **/
 
@@ -4608,8 +4817,8 @@ void zero_fill_volume (float ** fvol, int nxyz)
     if( *fvol == NULL ){  /* 04 Mar 2008 */
       MEM_MESSAGE ;
       ERROR_message("Memory allocation for output sub-bricks fails!") ;
-      ERROR_message("Have allocated %lld bytes (about %s) for output, up to now",
-                    zvf_totalbytes ,
+      ERROR_message("Have allocated %s bytes (about %s) for output, up to now",
+                    commaized_integer_string(zvf_totalbytes) ,
                     approximate_number_string((double)zvf_totalbytes) ) ;
       ERROR_message("Potential lenitives or palliatives:\n"
                     " ++ Use 3dZcutup to cut input dataset into\n"
@@ -4714,7 +4923,7 @@ void proc_finalize_shm_volumes(void)
    if( psum >= twogig )                               /* too much for shmem */
 #endif
      ERROR_exit(
-     "Total shared memory needed = %lld >= %lld (2 GB)\n"
+     "Total shared memory needed = %s >= %s (2 GB)\n"
      "** SUGGESTION 1:  Use 3dAutobox to automatically eliminate non-brain\n"
      "   areas from the 3d+time input dataset and reduce memory \n"
      "   requirements,  e.g.\n"
@@ -4725,10 +4934,11 @@ void proc_finalize_shm_volumes(void)
      "**                and then 3dZcat to glue results back together.\n"
      "\n"
      "** SUGGESTION 3:  Run on a 64-bit computer system, instead of 32-bit.\n"
-    , psum,twogig) ;
+    , commaized_integer_string(psum) , commaized_integer_string(twogig) ) ;
    else {
-     INFO_message("total shared memory needed = %lld bytes (about %s)" ,
-                  psum , approximate_number_string((double)psum) ) ;
+     INFO_message("total shared memory needed = %s bytes (about %s)" ,
+                  commaized_integer_string(psum) ,
+                  approximate_number_string((double)psum) ) ;
      if( verb ) MEM_MESSAGE ;
    }
 
@@ -4759,9 +4969,9 @@ void proc_finalize_shm_volumes(void)
    UNIQ_idcode_fill( kstr ) ;               /* unique string "key" */
    proc_shmid = shm_create( kstr , proc_shmsize ) ; /* thd_iochan.c */
    if( proc_shmid < 0 ){
-     fprintf(stderr,"\n** Can't create shared memory of size %lld!\n"
+     fprintf(stderr,"\n** Can't create shared memory of size %s!\n"
                       "** Try re-running without -jobs option!\n" ,
-             proc_shmsize ) ;
+             commaized_integer_string(proc_shmsize) ) ;
 
      /** if failed, print out some advice on how to tune SHMMAX **/
 
@@ -4806,11 +5016,12 @@ void proc_finalize_shm_volumes(void)
    atexit(proc_atexit) ;   /* or when the program exits */
 
 #ifdef MAP_ANON
-   INFO_message("mmap() memory allocated: %lld bytes (about %s)\n" ,
-                proc_shmsize, approximate_number_string((double)proc_shmsize) );
+   INFO_message("mmap() memory allocated: %s bytes (about %s)\n" ,
+                commaized_integer_string(proc_shmsize),
+                approximate_number_string((double)proc_shmsize) );
 #else
-   INFO_message("Shared memory allocated: %lld bytes at id=%d\n" ,
-                proc_shmsize , proc_shmid ) ;
+   INFO_message("Shared memory allocated: %s bytes at id=%d\n" ,
+                commaized_integer_string(proc_shmsize) , proc_shmid ) ;
 #endif
 
    /* get pointer to shared memory segment we just created */
@@ -5187,8 +5398,8 @@ ENTRY("initialize_program") ;
                  glt_coef_vol, glt_tcoef_vol, glt_fstat_vol, glt_rstat_vol,
                  fitts_vol, errts_vol);
 
-    INFO_message("Memory required for output bricks = %lld bytes (about %s)",
-                 zvf_totalbytes ,
+    INFO_message("Memory required for output bricks = %s bytes (about %s)",
+                 commaized_integer_string(zvf_totalbytes) ,
                  approximate_number_string((double)zvf_totalbytes) ) ;
   }
 
@@ -5952,7 +6163,8 @@ ENTRY("calculate_results") ;
       fp = fopen(pref,"w") ;
       if( fp != NULL ){
         fprintf( fp, "# %s\n", (commandline!=NULL) ? commandline : PROGRAM_NAME );
-        fprintf( fp, "\n%s\n", cname ) ;
+        /* allow options (should apply to bash or tcsh)  23 Apr 2010 [rickr] */
+        fprintf( fp, "\n%s $*\n", cname ) ;
         fclose(fp) ;
         INFO_message("N.B.: 3dREMLfit command above written to file %s",pref) ;
       }
@@ -5970,11 +6182,6 @@ ENTRY("calculate_results") ;
         strstr(option_data->x1D_filename,"niml") == NULL ) cd = NULL ;
     ONED_matrix_save( xfull , option_data->x1D_unc , cd , xfull.rows,NULL , &xfull,
                       num_blocks,block_list , NULL,NULL ) ;
-  }
-
-  if( option_data->x1D_stop ){   /* 28 Jun 2007 -- my work here is done */
-    INFO_message("3dDeconvolve exits: -x1D_stop option was given") ;
-    exit(0) ;
   }
 
   /*----- 14 Jul 2004: check matrix for bad columns - RWCox -----*/
@@ -6059,7 +6266,16 @@ ENTRY("calculate_results") ;
     }
   }
 
+  /** 22 Jul 2010: move the exit to AFTER condition number reports **/
+
+  if( option_data->x1D_stop ){   /* 28 Jun 2007 -- my work here is done */
+    if( option_data->x1D_stop == 1 )
+      INFO_message("3dDeconvolve exits: -x1D_stop option was invoked") ;
+    exit(0) ;
+  }
+
   /*----- Initialization for the regression analysis -----*/
+
   init_regression_analysis (p, qp, num_stimts, baseline, min_lag, max_lag,
                       xdata, &x_full, &xtxinv_full, &xtxinvxt_full,
                       &x_base, &xtxinvxt_base, x_rdcd, xtxinvxt_rdcd);
@@ -9400,7 +9616,7 @@ static float hh_csplin( float y )   /* for CSPLIN */
    float yy = fabsf(y) ;
    if( yy >= 2.0f ) return 0.0f ;
    if( yy >= 1.0f ) return -CA*(-4.0f+yy*(8.0f+yy*(-5.0f+yy))) ;
-   return 1.0f+yy*yy*((2.0f-CA)*yy-(3.0f-CA)) ;
+                    return 1.0f+yy*yy*((2.0f-CA)*yy-(3.0f-CA)) ;
 }
 #undef CA
 /*--------------------------------------------------------------------------*/
@@ -9467,6 +9683,18 @@ static float basis_gam( float x, float b, float c, float top, void *q )
 }
 
 /*--------------------------------------------------------------------------*/
+/* MION basis function [12 Jul 2010] */
+
+static float basis_mion( float x, float b, float c, float top, void *q )
+{
+   if( x <= 0.0f || x > 60.0f ) return 0.0f ;
+
+   return 16.4486f * ( -0.184f/ 1.5f * expf(-x/ 1.5f)
+                       +0.330f/ 4.5f * expf(-x/ 4.5f)
+                       +0.670f/13.5f * expf(-x/13.5f) ) ;
+}
+
+/*--------------------------------------------------------------------------*/
 /* SPMG basis functions (corrected 29 May 2007, I hope) */
 
 #undef  SPM_A1
@@ -9517,6 +9745,10 @@ static float basis_spmg3( float x, float a, float b, float c, void *q )
 static float waveform_SPMG1( float t ){ return basis_spmg1(t,0.0f,0.0f,0.0f,NULL); }
 static float waveform_SPMG2( float t ){ return basis_spmg2(t,0.0f,0.0f,0.0f,NULL); }
 static float waveform_SPMG3( float t ){ return basis_spmg3(t,0.0f,0.0f,0.0f,NULL); }
+static float waveform_MION ( float t ){ return basis_mion (t,0.0f,0.0f,0.0f,NULL); }
+
+static float GAM_p , GAM_q , GAM_top ;
+static float waveform_GAM( float t ){ return basis_gam(t,GAM_p,GAM_q,GAM_top,NULL); }
 
 /*--------------------------------------------------------------------------*/
 /*  f(t,T) = int( h(t-s) , s=0..min(t,T) )
@@ -9766,10 +9998,9 @@ static float basis_legendre( float x, float bot, float top, float n, void *q )
 #define POLY_MAX 20  /* max order allowed in function above */
 
 /*--------------------------------------------------------------------------*/
-#define ITT 19
-#define IXX 23
-#define IZZ 25
-
+#define ITT 19  /* index for symbol 't' */
+#define IXX 23  /* 'x' */
+#define IZZ 25  /* 'z' */
 /*------------------------------------------------------*/
 /*! Basis function given by a user-supplied expression. */
 
@@ -9787,7 +10018,6 @@ static float basis_expr( float x, float bot, float top, float dtinv, void *q )
    return (float)val ;
 }
 
-#if 1
 /*==========================================================================*/
 /**---------- Implementation of the Cox WAV function from waver.c ---------**/
 /*==========================================================================*/
@@ -9858,6 +10088,8 @@ static float waveform_WAV( float t )
 #define WTYPE_SPMG2 2
 #define WTYPE_SPMG3 3
 
+#define WTYPE_GAM   7
+#define WTYPE_MION  8
 #define WTYPE_WAV   9
 
 typedef struct {
@@ -9895,6 +10127,9 @@ static int setup_WFUN_function( int wtyp , float dur , float *parm )
    WFUN_storage ws ;
    float *hhrf=NULL ; int nhrf, ahrf;
    float (*wavfun)(float) = NULL ;
+   char msg[222] ;
+
+ENTRY("setup_WFUN_function") ;
 
    if( dur < 0.0f ) dur = 0.0f ;
    ws.wtype = wtyp ; ws.dur = dur ;
@@ -9904,7 +10139,7 @@ static int setup_WFUN_function( int wtyp , float dur , float *parm )
 
    switch( wtyp ){
 
-     default: return -1 ;  /* bad input */
+     default: RETURN(-1) ;  /* bad input */
 
      case WTYPE_WAV:
        if( parm != NULL ){
@@ -9927,29 +10162,50 @@ static int setup_WFUN_function( int wtyp , float dur , float *parm )
        ws.parm[3] = WAV_restore_end ;
        wavfun     = waveform_WAV    ;  /* func to be integrated */
 
-#if 1
-       INFO_message(
-         "setup: WAV(dur=%g,delay=%g,rise=%g,fall=%g,undershoot=%g,restore=%g)" ,
+       sprintf(msg,
+         "waveform setup: WAV(dur=%g,delay=%g,rise=%g,fall=%g,undershoot=%g,restore=%g)" ,
          dur,WAV_delay_time,WAV_rise_time,
          WAV_fall_time,WAV_undershoot,WAV_restore_time) ;
-#endif
 
      break ;
 
-     case WTYPE_SPMG1: wavfun = waveform_SPMG1 ; break ; /* no params */
+     case WTYPE_SPMG1:
+       wavfun = waveform_SPMG1 ;
+       sprintf(msg,"waveform setup: SPMG1(dur=%g)",dur) ;
+     break ; /* no params */
 
-     case WTYPE_SPMG2: wavfun = waveform_SPMG2 ; break ;
+     case WTYPE_SPMG2:
+       wavfun = waveform_SPMG2 ;
+       sprintf(msg,"waveform setup: SPMG2(dur=%g)",dur) ;
+     break ;
 
-     case WTYPE_SPMG3: wavfun = waveform_SPMG3 ; break ;
+     case WTYPE_SPMG3:
+       wavfun = waveform_SPMG3 ;
+       sprintf(msg,"waveform setup: SPMG3(dur=%g)",dur) ;
+     break ;
 
+     case WTYPE_MION:
+       wavfun = waveform_MION  ;
+       sprintf(msg,"waveform setup: MION(dur=%g)",dur) ;
+     break ;
+
+     case WTYPE_GAM:
+       wavfun = waveform_GAM  ;
+       ws.parm[0] = GAM_p = parm[0] ;
+       ws.parm[1] = GAM_q = parm[1] ;
+       GAM_top = GAM_p*GAM_q + 5.0f*sqrtf(GAM_p)*GAM_q ;
+       sprintf(msg,"waveform setup: GAM(p=%g,q=%g,dur=%g)",GAM_p,GAM_q,dur) ;
+     break ;
    }
 
    /* check if we have a duplicate of an existing WFUN function */
 
    for( ii=0 ; ii < nWFUNS ; ii++ )
-     if( WFUN_equals(ws,WFUNS[ii]) ) return ii ;  /* found a match */
+     if( WFUN_equals(ws,WFUNS[ii]) ) RETURN(ii) ;  /* found a match */
 
    /**** must create a new WFUN function: ****/
+
+   INFO_message(msg) ;
 
    /* create array of basic waveformm, convolved with a square wave */
 
@@ -9999,7 +10255,7 @@ static int setup_WFUN_function( int wtyp , float dur , float *parm )
    memcpy( WFUNS+nWFUNS , &ws , sizeof(WFUN_storage) ) ;
    nWFUNS++ ;
 
-   return (nWFUNS-1) ;  /* index of new struct */
+   RETURN(nWFUNS-1) ;  /* index of new struct */
 }
 
 /*----------------------------------------------------------------*/
@@ -10024,7 +10280,6 @@ static float basis_WFUN( float t, float fwav, float junk1, float junk2, void *q 
 /*==========================================================================*/
 /*------------------------ End of WAV function stuff -----------------------*/
 /*==========================================================================*/
-#endif
 
 /*--------------------------------------------------------------------------*/
 /* Take a string and generate a basis expansion structure from it.
@@ -10037,7 +10292,9 @@ basis_expansion * basis_parser( char *sym )
    float bot=0.0f, top=0.0f ;
    int nn , nord=0 ;
 
-   if( sym == NULL ) return NULL ;
+ENTRY("basis_parser") ;
+
+   if( sym == NULL ) RETURN(NULL);
 
    scp = strdup(sym) ;                        /* duplicate, for editing */
    cpt = strchr(scp,'(') ;                    /* find opening '(' */
@@ -10055,96 +10312,134 @@ basis_expansion * basis_parser( char *sym )
 
      be->nfunc = 1 ;
      be->bfunc = (basis_func *)calloc(sizeof(basis_func),be->nfunc) ;
-     be->bfunc[0].f = basis_gam ;
      if( cpt == NULL ){
        be->bfunc[0].a = 8.6f ;     /* Mark Cohen's parameters */
        be->bfunc[0].b = 0.547f ;   /* t_peak=4.7 FWHM=3.7 */
        be->bfunc[0].c = 11.1f ;    /* return to zero-ish */
+       be->bfunc[0].f = basis_gam ;
+       be->tbot = 0.0f ; be->ttop = be->bfunc[0].c ;
      } else {
-       sscanf(cpt,"%f,%f",&bot,&top) ;
-       if( bot <= 0.0f || top <= 0.0f ){
+       float dur=-1.0f ;
+       sscanf(cpt,"%f,%f,%f",&bot,&top,&dur) ;
+       if( dur < 0.0f && (bot <= 0.0f || top <= 0.0f) ){
          ERROR_message("'GAM(%s' is illegal",cpt) ;
          ERROR_message(
            " Correct format: 'GAM(b,c)' with b > 0 and c > 0.");
-         free((void *)be->bfunc); free((void *)be); free(scp); return NULL;
+         free((void *)be->bfunc); free((void *)be); free(scp); RETURN(NULL);
        }
-       be->bfunc[0].a = bot ;    /* t_peak = bot*top */
-       be->bfunc[0].b = top ;    /* FWHM   = 2.3*sqrt(bot)*top */
-       be->bfunc[0].c = bot*top + 4.0f*sqrt(bot)*top ;  /* long enough */
+       if( dur < 0.0f ){   /* the olden way: no duration given */
+         be->bfunc[0].a = bot ;    /* t_peak = bot*top */
+         be->bfunc[0].b = top ;    /* FWHM   = 2.3*sqrt(bot)*top */
+         be->bfunc[0].c = bot*top + 5.0f*sqrtf(bot)*top ;  /* long enough */
+         be->bfunc[0].f = basis_gam ;
+         be->tbot = 0.0f ; be->ttop = be->bfunc[0].c ;
+       } else {            /* duration given ==> integrate it */
+         int iwav ; float parm[2] ;
+         if( bot <= 0.0f ) bot = 8.6f ;
+         if( top <= 0.0f ) top = 0.547f ;
+         if( dur == 0.0f ) dur = 0.01f ;
+         parm[0] = bot ; parm[1] = top ;
+         iwav = setup_WFUN_function( WTYPE_GAM , dur , parm ) ;
+         if( iwav < 0 ){
+           ERROR_message("Can't setup GAM(%f,%f,%f) for some reason?!",bot,top,dur) ;
+           free((void *)be); free(scp); RETURN(NULL);
+         }
+         be->tbot = 0.0f ; be->ttop = WFUNDT * WFUNS[iwav].nfun ;
+         be->bfunc[0].f = basis_WFUN ;
+         be->bfunc[0].a = (float)iwav ;
+         be->bfunc[0].b = 0.0f ;
+         be->bfunc[0].c = 0.0f ;
+       }
      }
-     be->tbot = 0.0f ; be->ttop = be->bfunc[0].c ;
 
-   /*--- TENT(bot,top,order) ---*/
+   /*--- TENT(bot,top,order) ---*/  /*-- add TENTzero 23 Jul 2010 --*/
 
-   } else if( strcmp(scp,"TENT") == 0 ){
-     float dx ;
+   } else if( strcmp(scp,"TENT")     == 0 ||
+              strcmp(scp,"TENTzero") == 0   ){
+     float dx ; int zzz = (strstr(scp,"zero") != NULL) , bb ;
 
      if( cpt == NULL ){
-       ERROR_message("'TENT' by itself is illegal") ;
+       ERROR_message("'%s' by itself is illegal",scp) ;
        ERROR_message(
-        " Correct format: 'TENT(bot,top,n)' with bot < top and n > 0.") ;
-       free((void *)be); free(scp); return NULL;
+        " Correct format: '%s(bot,top,n)' with bot < top and n > %d.",
+        scp , (zzz) ? 2 : 1 ) ;
+       free((void *)be); free(scp); RETURN(NULL);
      }
      sscanf(cpt,"%f,%f,%d",&bot,&top,&nord) ;
-     if( bot >= top || nord < 2 ){
-       ERROR_message("'TENT(%s' is illegal",cpt) ;
+     if( bot >= top || nord < 2 || (nord < 3 && zzz) ){
+       ERROR_message("'%s(%s' is illegal",scp,cpt) ;
        ERROR_message(
-        " Correct format: 'TENT(bot,top,n)' with bot < top and n > 1.") ;
-       free((void *)be); free(scp); return NULL;
+        " Correct format: '%s(bot,top,n)' with bot < top and n > %d.",
+        scp , (zzz) ? 2 : 1 ) ;
+       free((void *)be); free(scp); RETURN(NULL);
      }
-     be->nfunc = nord ;
+     be->nfunc = (zzz) ? nord-2 : nord ;
      be->tbot  = bot  ; be->ttop = top ;
      be->bfunc = (basis_func *)calloc(sizeof(basis_func),be->nfunc) ;
      dx        = (top-bot) / (nord-1) ;
 
-     be->bfunc[0].f = basis_tent ;
-     be->bfunc[0].a = bot-0.001*dx ;
-     be->bfunc[0].b = bot ;
-     be->bfunc[0].c = bot+dx ;
-     for( nn=1 ; nn < nord-1 ; nn++ ){
-       be->bfunc[nn].f = basis_tent ;
-       be->bfunc[nn].a = bot + (nn-1)*dx ;
-       be->bfunc[nn].b = bot +  nn   *dx ;
-       be->bfunc[nn].c = bot + (nn+1)*dx ;
+     bb = 0 ;
+     if( !zzz ){
+       be->bfunc[bb].f = basis_tent ;
+       be->bfunc[bb].a = bot-0.001*dx ;
+       be->bfunc[bb].b = bot ;
+       be->bfunc[bb].c = bot+dx ;
+       bb++ ;
      }
-     be->bfunc[nord-1].f = basis_tent ;
-     be->bfunc[nord-1].a = bot + (nord-2)*dx ;
-     be->bfunc[nord-1].b = top ;
-     be->bfunc[nord-1].c = top + 0.001*dx ;
+     for( nn=1 ; nn < nord-1 ; nn++,bb++ ){
+       be->bfunc[bb].f = basis_tent ;
+       be->bfunc[bb].a = bot + (nn-1)*dx ;
+       be->bfunc[bb].b = bot +  nn   *dx ;
+       be->bfunc[bb].c = bot + (nn+1)*dx ;
+     }
+     if( !zzz ){
+       be->bfunc[bb].f = basis_tent ;
+       be->bfunc[bb].a = bot + (nord-2)*dx ;
+       be->bfunc[bb].b = top ;
+       be->bfunc[bb].c = top + 0.001*dx ;
+    }
 
-   /*--- CSPLIN(bot,top,order) ---*/
+   /*--- CSPLIN(bot,top,order) ---*/  /*-- add CSPLINzero 23 Jul 2010 --*/
 
-   } else if( strcmp(scp,"CSPLIN") == 0 ){   /* 15 Mar 2007 */
-     float dx ;
+   } else if( strcmp(scp,"CSPLIN")     == 0 ||   /* 15 Mar 2007 */
+              strcmp(scp,"CSPLINzero") == 0   ){
+     float dx ; int zzz = (strstr(scp,"zero") != NULL) , bb , nbot,ntop ;
 
      if( cpt == NULL ){
-       ERROR_message("'CSPLIN' by itself is illegal") ;
+       ERROR_message("'%s' by itself is illegal",scp) ;
        ERROR_message(
-        " Correct format: 'CSPLIN(bot,top,n)' with bot < top and n > 3.") ;
-       free((void *)be); free(scp); return NULL;
+        " Correct format: '%s(bot,top,n)' with bot < top and n > 3.",scp) ;
+       free((void *)be); free(scp); RETURN(NULL);
      }
      sscanf(cpt,"%f,%f,%d",&bot,&top,&nord) ;
      if( bot >= top || nord < 4 ){
-       ERROR_message("'CSPLIN(%s' is illegal",cpt) ;
+       ERROR_message("'%s(%s' is illegal",scp,cpt) ;
        ERROR_message(
-        " Correct format: 'CSPLIN(bot,top,n)' with bot < top and n > 3.") ;
-       free((void *)be); free(scp); return NULL;
+        " Correct format: '%s(bot,top,n)' with bot < top and n > 3.",scp) ;
+       free((void *)be); free(scp); RETURN(NULL);
      }
-     be->nfunc = nord ;
+     be->nfunc = (zzz) ? (nord-2) : nord ;
      be->tbot  = bot  ; be->ttop = top ;
      be->bfunc = (basis_func *)calloc(sizeof(basis_func),be->nfunc) ;
      dx        = (top-bot) / (nord-1) ;
 
-     for( nn=0 ; nn < nord ; nn++ ){
-       be->bfunc[nn].f = basis_csplin ;
-       be->bfunc[nn].a = bot +  nn*dx ;
-       be->bfunc[nn].b = dx ;
-       be->bfunc[nn].c = 0.0f ;
+     if( zzz ){ nbot = 1 ; ntop = nord-2 ; }
+     else     { nbot = 0 ; ntop = nord-1 ; }
+     for( bb=0,nn=nbot ; nn <= ntop ; nn++,bb++ ){
+       be->bfunc[bb].f = basis_csplin ;
+       be->bfunc[bb].a = bot +  nn*dx ;
+       be->bfunc[bb].b = dx ;
+       be->bfunc[bb].c = 0.0f ;
      }
-     be->bfunc[0].c      = -2.0f ;  /* edge markers */
-     be->bfunc[1].c      = -1.0f ;
-     be->bfunc[nord-2].c =  1.0f ;
-     be->bfunc[nord-1].c =  2.0f ;
+     if( zzz ){
+       be->bfunc[0].c      = -1.0f ;  /* edge markers */
+       be->bfunc[nord-3].c =  1.0f ;
+     } else {
+       be->bfunc[0].c      = -2.0f ;
+       be->bfunc[1].c      = -1.0f ;
+       be->bfunc[nord-2].c =  1.0f ;
+       be->bfunc[nord-1].c =  2.0f ;
+     }
 
    /*--- TRIG(bot,top,order) ---*/
 
@@ -10154,14 +10449,14 @@ basis_expansion * basis_parser( char *sym )
        ERROR_message("'TRIG' by itself is illegal") ;
        ERROR_message(
         " Correct format: 'TRIG(bot,top,n)' with bot < top and n > 2.") ;
-       free((void *)be); free(scp); return NULL;
+       free((void *)be); free(scp); RETURN(NULL);
      }
      sscanf(cpt,"%f,%f,%d",&bot,&top,&nord) ;
      if( bot >= top || nord < 3 ){
        ERROR_message("'TRIG(%s' is illegal",cpt) ;
        ERROR_message(
         " Correct format: 'TRIG(bot,top,n)' with bot < top and n > 2.") ;
-       free((void *)be); free(scp); return NULL;
+       free((void *)be); free(scp); RETURN(NULL);
      }
      be->nfunc = nord ;
      be->tbot  = bot  ; be->ttop = top ;
@@ -10191,14 +10486,14 @@ basis_expansion * basis_parser( char *sym )
        ERROR_message("'SIN' by itself is illegal") ;
        ERROR_message(
         " Correct format: 'SIN(bot,top,n)' with bot < top and n > 0.") ;
-       free((void *)be); free(scp); return NULL;
+       free((void *)be); free(scp); RETURN(NULL);
      }
      sscanf(cpt,"%f,%f,%d",&bot,&top,&nord) ;
      if( bot >= top || nord < 1 ){
        ERROR_message("'SIN(%s' is illegal",cpt) ;
        ERROR_message(
         " Correct format: 'SIN(bot,top,n)' with bot < top and n > 0.") ;
-       free((void *)be); free(scp); return NULL;
+       free((void *)be); free(scp); RETURN(NULL);
      }
      be->nfunc = nord ;
      be->tbot  = bot  ; be->ttop = top ;
@@ -10220,7 +10515,7 @@ basis_expansion * basis_parser( char *sym )
        ERROR_message(
         " Correct format: 'POLY(bot,top,n)' with bot<top and n>0 and n<%d",
         POLY_MAX+1) ;
-       free((void *)be); free(scp); return NULL;
+       free((void *)be); free(scp); RETURN(NULL);
      }
      sscanf(cpt,"%f,%f,%d",&bot,&top,&nord) ;
      if( bot >= top || nord < 1 || nord > POLY_MAX ){
@@ -10228,7 +10523,7 @@ basis_expansion * basis_parser( char *sym )
        ERROR_message(
         " Correct format: 'POLY(bot,top,n)' with bot<top and n>0 and n<%d",
         POLY_MAX+1) ;
-       free((void *)be); free(scp); return NULL;
+       free((void *)be); free(scp); RETURN(NULL);
      }
      be->nfunc = nord ;
      be->tbot  = bot  ; be->ttop = top ;
@@ -10293,7 +10588,7 @@ basis_expansion * basis_parser( char *sym )
       iwav = setup_WFUN_function( WTYPE_SPMG1 , dur , NULL ) ;
       if( iwav < 0 ){
         ERROR_message("Can't setup SPMG1(%f) for some reason?!",dur) ;
-        free((void *)be); free(scp); return NULL;
+        free((void *)be); free(scp); RETURN(NULL);
       }
 
       be->tbot = 0.0f ; be->ttop = WFUNDT * WFUNS[iwav].nfun ;
@@ -10307,7 +10602,7 @@ basis_expansion * basis_parser( char *sym )
         iwav = setup_WFUN_function( WTYPE_SPMG2 , dur , NULL ) ;
         if( iwav < 0 ){
           ERROR_message("Can't setup SPMG2(%f) for some reason?!",dur) ;
-          free((void *)be); free(scp); return NULL;
+          free((void *)be); free(scp); RETURN(NULL);
         }
         be->bfunc[1].f = basis_WFUN ;
         be->bfunc[1].a = (float)iwav ;
@@ -10319,7 +10614,7 @@ basis_expansion * basis_parser( char *sym )
         iwav = setup_WFUN_function( WTYPE_SPMG3 , dur , NULL ) ;
         if( iwav < 0 ){
           ERROR_message("Can't setup SPMG3(%f) for some reason?!",dur) ;
-          free((void *)be); free(scp); return NULL;
+          free((void *)be); free(scp); RETURN(NULL);
         }
         be->bfunc[2].f = basis_WFUN ;
         be->bfunc[2].a = (float)iwav ;
@@ -10337,7 +10632,7 @@ basis_expansion * basis_parser( char *sym )
        nb = strtol( scp+7 , NULL , 10 ) ;
        if( nb != 4 && nb != 5 ){
          ERROR_message("'%s' has illegal power: only 4 or 5 allowed",scp) ;
-         free((void *)be); free(scp); return NULL;
+         free((void *)be); free(scp); RETURN(NULL);
        }
      }
 
@@ -10361,7 +10656,7 @@ basis_expansion * basis_parser( char *sym )
        nb = strtol( scp+5 , NULL , 10 ) ;
        if( nb != 4 && nb != 5 ){
          ERROR_message("'%s' has illegal power: only 4 or 5 allowed",scp) ;
-         free((void *)be); free(scp); return NULL;
+         free((void *)be); free(scp); RETURN(NULL);
        }
      }
 
@@ -10370,7 +10665,7 @@ basis_expansion * basis_parser( char *sym )
        ERROR_message(
         " Correct format: 'BLOCKn(dur)' with dur > 0, n=4 or 5\n"
         "                     *OR* 'BLOCKn(dur,peak)' with peak > 0 too.") ;
-       free((void *)be); free(scp); return NULL;
+       free((void *)be); free(scp); RETURN(NULL);
      }
      sscanf(cpt,"%f,%f",&top,&bot) ;  /* top = duration, bot = peak */
      if( top <= 0.0f ){
@@ -10378,7 +10673,7 @@ basis_expansion * basis_parser( char *sym )
        ERROR_message(
         " Correct format: 'BLOCKn(dur)' with dur > 0, n=4 or 4\n"
         "                      or: 'BLOCKn(dur,peak)' with peak > 0 too.") ;
-       free((void *)be); free(scp); return NULL;
+       free((void *)be); free(scp); RETURN(NULL);
      }
      if( bot < 0.0f ) bot = 0.0f ;
 
@@ -10433,7 +10728,7 @@ basis_expansion * basis_parser( char *sym )
          dpt = ept ; if( *dpt != '\0' ) dpt++ ;                   \
        } else if( *dpt == '-' ){                                  \
          ERROR_message("Can't give negative arguments to 'WAV'"); \
-         free((void *)be); free(scp); return NULL;                \
+         free((void *)be); free(scp); RETURN(NULL);               \
        } else {                                                   \
          dpt++ ;                                                  \
        }                                                          \
@@ -10456,7 +10751,7 @@ basis_expansion * basis_parser( char *sym )
      iwav = setup_WFUN_function( WTYPE_WAV , dur , parm ) ;
      if( iwav < 0 ){
        ERROR_message("Can't setup WAV for some reason?!") ;
-       free((void *)be); free(scp); return NULL;
+       free((void *)be); free(scp); RETURN(NULL);
      }
 
      be->nfunc = 1 ;
@@ -10477,22 +10772,22 @@ basis_expansion * basis_parser( char *sym )
 
      if( cpt == NULL ){
        ERROR_message("'EXPR' by itself is illegal") ;
-       free((void *)be); free(scp); return NULL;
+       free((void *)be); free(scp); RETURN(NULL);
      }
      sscanf(cpt,"%f,%f",&bot,&top) ;
      if( top <= bot ){
        ERROR_message("'EXPR(%f,%f)' has illegal time range",bot,top) ;
-       free((void *)be); free(scp); return NULL;
+       free((void *)be); free(scp); RETURN(NULL);
      }
      ept = strchr( cpt , ')' ) ;
      if( ept == NULL ){
        ERROR_message("'EXPR(%f,%f)' has no expressions!?",bot,top);
-       free((void *)be); free(scp); return NULL;
+       free((void *)be); free(scp); RETURN(NULL);
      }
      sar = NI_decode_string_list( ept+1 , "~" ) ;
      if( sar == NULL || sar->num == 0 ){
-       ERROR_message("'EXPR(%f,%f)' has no expressions!?",bot,top);
-       free((void *)be); free(scp); return NULL;
+       ERROR_message("'EXPR(%f,%f)' has no expressions after '('!?",bot,top);
+       free((void *)be); free(scp); RETURN(NULL);
      }
      be->nfunc = nexpr = sar->num ;
      be->tbot  = bot  ; be->ttop = top ;
@@ -10502,7 +10797,7 @@ basis_expansion * basis_parser( char *sym )
        pc = PARSER_generate_code( sar->str[ie] ) ;
        if( pc == NULL ){
          ERROR_message("unparsable EXPRession '%s'",sar->str[ie]) ;
-         free((void *)be); free(scp); return NULL;
+         free((void *)be); free(scp); RETURN(NULL);
        }
        if( strcmp(sar->str[ie],"1") != 0 &&    /* must either be "1" */
            !PARSER_has_symbol("t",pc)    &&    /* or contain symbol  */
@@ -10511,7 +10806,7 @@ basis_expansion * basis_parser( char *sym )
          ERROR_message(
            "illegal EXPRession '%s' lacks symbol t, x, or z",
            sar->str[ie]) ;
-         free((void *)be); free(scp); return NULL;
+         free((void *)be); free(scp); RETURN(NULL);
        }
        be->bfunc[ie].f = basis_expr ;
        be->bfunc[ie].a = bot ;
@@ -10523,11 +10818,40 @@ basis_expansion * basis_parser( char *sym )
 
      NI_delete_str_array(sar) ;
 
+   /*--- MION ---*/
+
+   } else if( strcmp(scp,"MION") == 0 ){   /* 28 Aug 2004 */
+     float dur=-1.0f ; int iwav ;
+
+     if( cpt != NULL ) sscanf(cpt,"%f",&dur) ; /* 28 Apr 2009: get duration param */
+
+     be->nfunc = 1 ;
+     be->bfunc = (basis_func *)calloc(sizeof(basis_func),be->nfunc) ;
+
+     if( dur < 0.0f ){            /* impulse response */
+       be->bfunc[0].f = basis_mion ;
+       be->bfunc[0].a = 0.0f ;    /* no parameters */
+       be->bfunc[0].b = 0.0f ;
+       be->bfunc[0].c = 0.0f ;
+       be->tbot = 0.0f ; be->ttop = 60.0f ;
+     } else {                     /* convolve with square wave */
+        iwav = setup_WFUN_function( WTYPE_MION , dur , NULL ) ;
+        if( iwav < 0 ){
+          ERROR_message("Can't setup MION(%f) for some reason?!",dur) ;
+          free((void *)be); free(scp); RETURN(NULL);
+        }
+        be->bfunc[0].f = basis_WFUN ;
+        be->bfunc[0].a = (float)iwav ;
+        be->bfunc[0].b = 0.0f ;
+        be->bfunc[0].c = 0.0f ;
+        be->tbot = 0.0f ; be->ttop = WFUNDT * WFUNS[iwav].nfun ;
+     }
+
    /*--- NO MORE BASIS FUNCTION CHOICES ---*/
 
    } else {
      ERROR_message("'%s' is unknown response function type",scp) ;
-     free((void *)be); free(scp); return NULL;
+     free((void *)be); free(scp); RETURN(NULL);
    }
 
    /* 28 Apr 2005: set scaling factors */
@@ -10558,7 +10882,7 @@ basis_expansion * basis_parser( char *sym )
      }
    }
 
-   free(scp); return be;
+   free(scp); RETURN(be);
 }
 
 /*----------------------------------------------------------------------*/

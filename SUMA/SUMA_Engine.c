@@ -1839,6 +1839,12 @@ SUMA_Boolean SUMA_Engine (DList **listp)
                      break;
                   }
                   if (SendList) SUMA_free(SendList); SendList = NULL;   
+               }else {
+                  SUMA_SLP_Warn(
+                     "None of the surfaces were marked as 'Anatomical'\n"
+                     "So none were sent to AFNI. You can label a surface\n"
+                     "as Anatomical by adding 'Anatomical = Y' where the \n"
+                     "surface is declared in the .spec file.");
                }
 
                break;
@@ -2082,13 +2088,18 @@ SUMA_Boolean SUMA_Engine (DList **listp)
             /* expects index of viewer in i to toggle its lock view */
             /* toggles the lock view button */
             if (EngineData->i_Dest != NextComCode) {
-               fprintf (SUMA_STDERR,"Error %s: Data not destined correctly for %s (%d).\n",FuncName, NextCom, NextComCode);
+               fprintf (SUMA_STDERR,
+                  "Error %s: Data not destined correctly for %s (%d).\n",
+                        FuncName, NextCom, NextComCode);
                break;
             }
-            SUMAg_CF->ViewLocked[EngineData->i] = !SUMAg_CF->ViewLocked[EngineData->i];
+            SUMAg_CF->ViewLocked[EngineData->i] = 
+                        !SUMAg_CF->ViewLocked[EngineData->i];
             /* update button if needed*/
             if (EngineData->Src != SES_SumaWidget) {
-               XmToggleButtonSetState (SUMAg_CF->X->SumaCont->LockView_tbg[EngineData->i], SUMAg_CF->ViewLocked[EngineData->i], NOPE);
+               XmToggleButtonSetState (
+                        SUMAg_CF->X->SumaCont->LockView_tbg[EngineData->i], 
+                        SUMAg_CF->ViewLocked[EngineData->i], NOPE);
             }
             
             /* call function to update the AllLock button */
@@ -2102,9 +2113,12 @@ SUMA_Boolean SUMA_Engine (DList **listp)
             /* get the current value of the button */
             {
                SUMA_Boolean CurState;
-               CurState = XmToggleButtonGetState (SUMAg_CF->X->SumaCont->LockAllView_tb);
-               for (ii=0; ii< SUMA_MAX_SURF_VIEWERS; ++ii) { /* set all buttons accrodingly */
-                  XmToggleButtonSetState (SUMAg_CF->X->SumaCont->LockView_tbg[ii], CurState, NOPE);
+               CurState = 
+                  XmToggleButtonGetState (SUMAg_CF->X->SumaCont->LockAllView_tb);
+               for (ii=0; ii< SUMA_MAX_SURF_VIEWERS; ++ii) { 
+                  /* set all buttons accrodingly */
+                  XmToggleButtonSetState (
+                     SUMAg_CF->X->SumaCont->LockView_tbg[ii], CurState, NOPE);
                   SUMAg_CF->ViewLocked[ii] = CurState;
                }
             }
@@ -2115,17 +2129,22 @@ SUMA_Boolean SUMA_Engine (DList **listp)
             {
                char LockName[100];
                SUMA_LockEnum_LockType (SUMAg_CF->Locked[0], LockName);
-               fprintf (SUMA_STDERR,"%s: Switching Locktype from %s", FuncName, LockName);
+               fprintf (SUMA_STDERR,
+                        "%s: Switching Locktype from %s", FuncName, LockName);
                /* change the locking type of viewer 0 */
-               SUMAg_CF->Locked[0] = (int)fmod(SUMAg_CF->Locked[0]+1, SUMA_N_Lock_Types);
+               SUMAg_CF->Locked[0] = (int)fmod(SUMAg_CF->Locked[0]+1, 
+                                          SUMA_N_Lock_Types);
                SUMA_LockEnum_LockType (SUMAg_CF->Locked[0], LockName);
                fprintf (SUMA_STDERR," %s\n", LockName);
                /* update the widget*/
-               SUMA_set_Lock_rb (SUMAg_CF->X->SumaCont->Lock_rbg, 0, SUMAg_CF->Locked[0]);
-               /* Change the locking type of all remaining viewers, including unopen ones */
+               SUMA_set_Lock_rb (SUMAg_CF->X->SumaCont->Lock_rbg, 0, 
+                                 SUMAg_CF->Locked[0]);
+               /* Change the locking type of all remaining viewers, 
+                  including unopen ones */
                for (ii=1; ii< SUMA_MAX_SURF_VIEWERS; ++ii) {
                   SUMAg_CF->Locked[ii] = SUMAg_CF->Locked[0];                  
-                  SUMA_set_Lock_rb (SUMAg_CF->X->SumaCont->Lock_rbg, ii, SUMAg_CF->Locked[ii]);
+                  SUMA_set_Lock_rb (SUMAg_CF->X->SumaCont->Lock_rbg, ii, 
+                                    SUMAg_CF->Locked[ii]);
                }
 
                /* now update the all lock keys */
@@ -2137,15 +2156,19 @@ SUMA_Boolean SUMA_Engine (DList **listp)
          case SE_SetLockAllCrossHair:
             /* expects a Lock value in i , sets the lock of all viewers */
             if (EngineData->i_Dest != NextComCode) {
-               fprintf (SUMA_STDERR,"Error %s: Data not destined correctly for %s (%d).\n",FuncName, NextCom, NextComCode);
+               fprintf (SUMA_STDERR,
+                  "Error %s: Data not destined correctly for %s (%d).\n",
+                  FuncName, NextCom, NextComCode);
                break;
             }
             {
                
-               /* Change the locking type of all remaining viewers, including unopen ones */
+               /* Change the locking type of all remaining viewers, 
+                     including unopen ones */
                for (ii=0; ii< SUMA_MAX_SURF_VIEWERS; ++ii) {
                   SUMAg_CF->Locked[ii] = EngineData->i;                  
-                  SUMA_set_Lock_rb (SUMAg_CF->X->SumaCont->Lock_rbg, ii, SUMAg_CF->Locked[ii]);
+                  SUMA_set_Lock_rb (SUMAg_CF->X->SumaCont->Lock_rbg, ii, 
+                                    SUMAg_CF->Locked[ii]);
                }
 
                /* now update the all lock keys */
@@ -2156,25 +2179,35 @@ SUMA_Boolean SUMA_Engine (DList **listp)
          case SE_LockCrossHair:
             /* expects nothing in EngineData */
 
-            /* calls other viewers and determine if the cross hair needs to be locked to the calling sv */
+            /* calls other viewers and determine if the cross hair 
+               needs to be locked to the calling sv */
 
             /* check to see if other viewers need to share the fate */
             ii = SUMA_WhichSV(sv, SUMAg_SVv, SUMAg_N_SVv);
             if (ii < 0) {
-               fprintf (SUMA_STDERR,"Error %s: Failed to find index of sv.\n", FuncName);
+               fprintf (SUMA_STDERR,
+                        "Error %s: Failed to find index of sv.\n", FuncName);
                break;
             }
-            if (SUMAg_CF->Locked[ii]) { /* This one's locked, find out which other viewers are locked to this one */
+            if (SUMAg_CF->Locked[ii]) { /* This one's locked, find out which 
+                                       other viewers are locked to this one */
                for (i=0; i < SUMAg_N_SVv; ++i) {
                   svi = &SUMAg_SVv[i];
                   if (i != ii) {
                      switch (SUMAg_CF->Locked[i]) { 
                         case SUMA_No_Lock:
-                           if (LocalHead) fprintf (SUMA_STDERR, "%s: No lock for viewer %d.\n", FuncName, i);
+                           if (LocalHead) 
+                              fprintf (SUMA_STDERR, 
+                                       "%s: No lock for viewer %d.\n", 
+                                       FuncName, i);
                            break;
                         case SUMA_XYZ_Lock:
-                           if (LocalHead) fprintf (SUMA_STDERR, "%s: Try to XYZ lock viewer %d.\n", FuncName, i);
-                           /* just set the XYZ, and free the binding to the surfaces */
+                           if (LocalHead) 
+                              fprintf (SUMA_STDERR, 
+                                       "%s: Try to XYZ lock viewer %d.\n", 
+                                       FuncName, i);
+                           /* just set the XYZ, and free the binding 
+                              to the surfaces */
                            svi->Ch->c[0] = sv->Ch->c[0];
                            svi->Ch->c[1] = sv->Ch->c[1];
                            svi->Ch->c[2] = sv->Ch->c[2];
@@ -2220,7 +2253,15 @@ SUMA_Boolean SUMA_Engine (DList **listp)
                                  SO2 = (SUMA_SurfaceObject *)
                                              SUMAg_DOv[SOlist[it]].OP;
                                  if (SUMA_isRelated (SO1, SO2, 2)) { 
-                                       /* high level relationship is allowed */
+                                       /* high level relationship is allowed,
+                                          but with same-side enforcement.
+                                          A level 3 returns a match based on
+                                          the number of nodes only, but that
+                                          can cause trouble between left and 
+                                          right hemisphere surfaces where the 
+                                          same node index does not refer 
+                                          necessarily to the same anatomical 
+                                          areas.   */
                                     svi->Ch->SurfaceID = SOlist[it];
                                     if (sv->Ch->NodeID > SO2->N_Node) {
                                        fprintf (SUMA_STDERR,
@@ -2300,8 +2341,23 @@ SUMA_Boolean SUMA_Engine (DList **listp)
             
             NI_free_element(nel);
 
+            
             break;
-                  
+         
+         case SE_SetGICORnode:
+            /* expects nothing in EngineData */
+            /* sends the current node to Group Icor */
+            if (SUMAg_CF->giset && SUMAg_CF->Connected_v[SUMA_GICORR_LINE] 
+                && !SUMAg_CF->HoldClickCallbacks) {
+               SUMA_LH("Sending notice to GICOR");
+               if (SUMA_AFNI_gicor_setref((SUMA_SurfaceObject *)
+                                          (SUMAg_DOv[sv->Focus_SO_ID].OP),
+                                          SO->SelectedNode) < 0) {
+                  SUMA_S_Err("Failed in SUMA_AFNI_gicor_setref");
+               } 
+            }
+            break;
+         
          case SE_SetLookAtNode:
             /* expects a center XYZ in EngineData->fv15[0 .. 2]
             expects a normal vector in EngineData->fv15[3 .. 5] */
@@ -2387,20 +2443,39 @@ SUMA_Boolean SUMA_Engine (DList **listp)
 
          case SE_Redisplay_AllVisible:
             /* expects nothing in EngineData */
-            /* post a redisplay to all visible viewers */
-            for (ii=0; ii<SUMAg_N_SVv; ++ii) {
-               if (LocalHead) 
-                  fprintf (SUMA_STDERR,
-                           "%s: Checking viewer %d.\n", FuncName, ii);
-               if (!SUMAg_SVv[ii].isShaded && SUMAg_SVv[ii].X->TOPLEVEL) {
-                  /* you must check for both conditions because by default 
-                  all viewers are initialized to isShaded = NOPE, even before 
-                  they are ever opened */
+            /* post a redisplay to all visible viewers,
+               Do the one where pointer is last */
+            {
+               int viewerorder[SUMA_MAX_SURF_VIEWERS], np = 0;
+               /* set viewer order so that the one that 
+               last had the pointer gets displayed last */
+               for (ii=0; ii<SUMAg_N_SVv; ++ii) {
+                  if (ii != SUMAg_CF->PointerLastInViewer) {
+                     viewerorder[np] = ii; ++np;     
+                  }
+               }
+               if (np < SUMAg_N_SVv) {
+                  viewerorder[np] = SUMAg_CF->PointerLastInViewer;
+                  ++np;
+               }
+               if (np != SUMAg_N_SVv) {
+                  SUMA_S_Err("WTH?");
+               }
+               for (np=0; np<SUMAg_N_SVv; ++np) {
+                  ii = viewerorder[np];
                   if (LocalHead) 
                      fprintf (SUMA_STDERR,
-                              "%s: Redisplaying viewer %d.\n", FuncName, ii);
-                  SUMAg_SVv[ii].ResetGLStateVariables = YUP;
-                  SUMA_postRedisplay(SUMAg_SVv[ii].X->GLXAREA, NULL, NULL);
+                              "%s: Checking viewer %d.\n", FuncName, ii);
+                  if (!SUMAg_SVv[ii].isShaded && SUMAg_SVv[ii].X->TOPLEVEL) {
+                     /* you must check for both conditions because by default 
+                     all viewers are initialized to isShaded = NOPE, even before 
+                     they are ever opened */
+                     if (LocalHead) 
+                        fprintf (SUMA_STDERR,
+                                 "%s: Redisplaying viewer %d.\n", FuncName, ii);
+                     SUMAg_SVv[ii].ResetGLStateVariables = YUP;
+                     SUMA_postRedisplay(SUMAg_SVv[ii].X->GLXAREA, NULL, NULL);
+                  }
                }
             }
             break;
@@ -2426,20 +2501,41 @@ SUMA_Boolean SUMA_Engine (DList **listp)
             
          case SE_RedisplayNow_AllVisible:
             /* expects nothing in EngineData */
-            /* causes  an immediate redisplay to all visible viewers */
-            for (ii=0; ii<SUMAg_N_SVv; ++ii) {
-               if (LocalHead) 
-                  fprintf (SUMA_STDERR,
-                           "%s: Checking viewer %d.\n", FuncName, ii);
-               if (!SUMAg_SVv[ii].isShaded && SUMAg_SVv[ii].X->TOPLEVEL) {
-                  /* you must check for both conditions because by default 
-                  all viewers are initialized to isShaded = NOPE, even before 
-                  they are ever opened */
+            /* causes  an immediate redisplay to all visible viewers 
+               The viewer that had the pointer last gets 
+               displayed last. This is similar in concept
+               to SE_RedisplayNow_AllOtherVisible */
+            {
+               int viewerorder[SUMA_MAX_SURF_VIEWERS], np = 0;
+               /* set viewer order so that the one that 
+               last had the pointer gets displayed last */
+               for (ii=0; ii<SUMAg_N_SVv; ++ii) {
+                  if (ii != SUMAg_CF->PointerLastInViewer) {
+                     viewerorder[np] = ii; ++np;     
+                  }
+               }
+               if (np < SUMAg_N_SVv) {
+                  viewerorder[np] = SUMAg_CF->PointerLastInViewer;
+                  ++np;
+               }
+               if (np != SUMAg_N_SVv) {
+                  SUMA_S_Err("WTH?");
+               }
+               for (np=0; np<SUMAg_N_SVv; ++np) {
+                  ii = viewerorder[np];
                   if (LocalHead) 
                      fprintf (SUMA_STDERR,
-                              "%s: Redisplaying viewer %d.\n", FuncName, ii);
-                  SUMAg_SVv[ii].ResetGLStateVariables = YUP;
-                  SUMA_handleRedisplay((XtPointer)SUMAg_SVv[ii].X->GLXAREA);
+                              "%s: Checking viewer %d.\n", FuncName, ii);
+                  if (!SUMAg_SVv[ii].isShaded && SUMAg_SVv[ii].X->TOPLEVEL) {
+                     /* you must check for both conditions because by default 
+                     all viewers are initialized to isShaded = NOPE, even before 
+                     they are ever opened */
+                     if (LocalHead) 
+                        fprintf (SUMA_STDERR,
+                                 "%s: Redisplaying viewer %d.\n", FuncName, ii);
+                     SUMAg_SVv[ii].ResetGLStateVariables = YUP;
+                     SUMA_handleRedisplay((XtPointer)SUMAg_SVv[ii].X->GLXAREA);
+                  }
                }
             }
             break;
@@ -2511,19 +2607,36 @@ SUMA_Boolean SUMA_Engine (DList **listp)
                      
          case SE_Home:
             /* expects nothing in EngineData, needs sv */
-            sv->GVS[sv->StdView].translateVec[0]=0; sv->GVS[sv->StdView].translateVec[1]=0;
+            SUMA_SET_AS_NEEDED_2D_VIEW_ANGLE(sv);
+            sv->GVS[sv->StdView].translateVec[0]=0; 
+            sv->GVS[sv->StdView].translateVec[1]=0;
             glMatrixMode(GL_PROJECTION);
-            /* sv->FOV[sv->iState] = SUMA_sv_fov_original(sv); *//* Now done in SE_FOVreset *//* reset the zooming */
-            sv->GVS[sv->StdView].ViewFrom[0] = sv->GVS[sv->StdView].ViewFromOrig[0];
-            sv->GVS[sv->StdView].ViewFrom[1] = sv->GVS[sv->StdView].ViewFromOrig[1];
-            sv->GVS[sv->StdView].ViewFrom[2] = sv->GVS[sv->StdView].ViewFromOrig[2];
-            sv->GVS[sv->StdView].ViewCenter[0] = sv->GVS[sv->StdView].ViewCenterOrig[0];
-            sv->GVS[sv->StdView].ViewCenter[1] = sv->GVS[sv->StdView].ViewCenterOrig[1];
-            sv->GVS[sv->StdView].ViewCenter[2] = sv->GVS[sv->StdView].ViewCenterOrig[2];
+            /* sv->FOV[sv->iState] = SUMA_sv_fov_original(sv); */
+                  /* Now done in SE_FOVreset *//* reset the zooming */
+            sv->GVS[sv->StdView].ViewFrom[0] = 
+               sv->GVS[sv->StdView].ViewFromOrig[0];
+            sv->GVS[sv->StdView].ViewFrom[1] = 
+               sv->GVS[sv->StdView].ViewFromOrig[1];
+            sv->GVS[sv->StdView].ViewFrom[2] = 
+               sv->GVS[sv->StdView].ViewFromOrig[2];
+            sv->GVS[sv->StdView].ViewCenter[0] = 
+               sv->GVS[sv->StdView].ViewCenterOrig[0];
+            sv->GVS[sv->StdView].ViewCenter[1] = 
+               sv->GVS[sv->StdView].ViewCenterOrig[1];
+            sv->GVS[sv->StdView].ViewCenter[2] = 
+               sv->GVS[sv->StdView].ViewCenterOrig[2];
             
             glMatrixMode(GL_MODELVIEW);
             glLoadIdentity();
-            gluLookAt (sv->GVS[sv->StdView].ViewFrom[0], sv->GVS[sv->StdView].ViewFrom[1], sv->GVS[sv->StdView].ViewFrom[2], sv->GVS[sv->StdView].ViewCenter[0], sv->GVS[sv->StdView].ViewCenter[1], sv->GVS[sv->StdView].ViewCenter[2], sv->GVS[sv->StdView].ViewCamUp[0], sv->GVS[sv->StdView].ViewCamUp[1], sv->GVS[sv->StdView].ViewCamUp[2]);
+            gluLookAt ( sv->GVS[sv->StdView].ViewFrom[0], 
+                        sv->GVS[sv->StdView].ViewFrom[1], 
+                        sv->GVS[sv->StdView].ViewFrom[2], 
+                        sv->GVS[sv->StdView].ViewCenter[0], 
+                        sv->GVS[sv->StdView].ViewCenter[1], 
+                        sv->GVS[sv->StdView].ViewCenter[2], 
+                        sv->GVS[sv->StdView].ViewCamUp[0], 
+                        sv->GVS[sv->StdView].ViewCamUp[1], 
+                        sv->GVS[sv->StdView].ViewCamUp[2]);
             break;
          
          case SE_Home_AllVisible:
@@ -4553,7 +4666,7 @@ SUMA_Boolean SUMA_SwitchState (  SUMA_DO *dov, int N_dov,
    if (LocalHead) fprintf( SUMA_STDOUT,
                            "%s: Standard View Now %d\n", 
                            FuncName, sv->StdView);
-   if (sv->StdView == SUMA_Dunno) {
+   if (sv->StdView == SUMA_N_STANDARD_VIEWS) {
       fprintf( SUMA_STDERR,
                "Error %s: Could not determine the best standard view. "
                "Choosing default SUMA_3D\n", 
@@ -4627,9 +4740,12 @@ SUMA_Boolean SUMA_NewGeometryInViewer (SUMA_DO *dov, int N_dov, SUMA_SurfaceView
    
    /* decide what the best std view is */
    sv->StdView = SUMA_BestStandardView (sv,dov, N_dov);
-   if (LocalHead) fprintf(SUMA_STDOUT,"%s: Standard View Now %d\n", FuncName, sv->StdView);
-   if (sv->StdView == SUMA_Dunno) {
-      fprintf(SUMA_STDERR,"Error %s: Could not determine the best standard view. Choosing default SUMA_3D\n", FuncName);
+   if (LocalHead) 
+      fprintf(SUMA_STDOUT,"%s: Standard View Now %d\n", FuncName, sv->StdView);
+   if (sv->StdView == SUMA_N_STANDARD_VIEWS) {
+      fprintf(SUMA_STDERR,
+               "Error %s: Could not determine the best standard view."
+               " Choosing default SUMA_3D\n", FuncName);
       sv->StdView = SUMA_3D;
    }
    
@@ -4681,6 +4797,9 @@ unpredictable results the first time you do something in one viewer after you'd 
 in another. 
 This function is a stripped down version of SUMA_SwitchState and should 
 be followed by a call to SUMA_postRedisplay for all the changes to take effect.
+
+Note that SUMA_postRedisplay may not be good enough because it posts a display request which may not execute immediately. SUMA_handleRedisplay would be the harsher, but more effective method.
+
 Do not try executing all the commands in SUMA_display that affect the modelview 
 matrix and the projection matrix without calling for a display the changes will not take effect.
 

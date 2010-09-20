@@ -5,6 +5,7 @@
 ******************************************************************************/
 
 #include "mrilib.h"
+#include "thd_atlas.h"
 
 static ATR_float *Update_float_atr(char *aname, char *fvstring);
 static ATR_int *Update_int_atr(char *aname, char *ivstring);
@@ -146,9 +147,21 @@ void Syntax(char *str)
 "                  You will have to rename the dataset files before trying\n"
 "                  to use '-view'.  If you COPY the files and then use\n"
 "                  '-view', don't forget to use '-newid' as well!\n"
+"  -space spcname  Associates the dataset with a specific template type, e.g.\n"
+"                  TLRC, MNI, ORIG. The default assumed for +tlrc datasets is\n"
+"                  'TLRC'. One use for this attribute is to use MNI space\n"
+"                  coordinates and atlases instead of the default TLRC space.\n"
+"  -cmap cmaptype  Associate colormap type with dataset. Available choices are\n"
+"                  CONT_CMAP (the default), INT_CMAP (integer colormap display)\n"
+"                  and SPARSE_CMAP (for sparse integer colormaps). INT_CMAP is\n"
+"                  appropriate for showing ROI mask datasets or Atlas datasets\n"
+"                  where the continuous color scales are not useful.\n"
 "\n"
 "  -label2 llll    Set the 'label2' field in a dataset .HEAD file to the\n"
 "                  string 'llll'.  (Can be used as in AFNI window titlebars.)\n"
+"  -labeltable TTT Inset the label table TTT in the .HEAD file.\n"
+"                  The label table format is described in README.environment\n"
+"                  under the heading: 'Variable: AFNI_VALUE_LABEL_DTABLE'\n"
 "\n"
 "  -denote         Means to remove all possibly-identifying notes from\n"
 "                  the header.  This includes the History Note, other text\n"
@@ -215,6 +228,9 @@ void Syntax(char *str)
     "                  communicating information between programs.  However,\n"
     "                  when most AFNI programs write a new dataset, they will\n"
     "                  not preserve any such non-standard attributes.\n"
+    "          **N.B.: Special case: if the string 'x' is of the form\n"
+    "                  'file:name', then the contents of the file 'name' will\n"
+    "                  be read in as a single string and stored in the attribute.\n"
     "  -atrfloat name 'values'\n"
     "  -atrint name 'values'\n"
     "                  Create or modify floating point or integer attributes.\n"
@@ -321,7 +337,7 @@ void Syntax(char *str)
     "              stat values == 0 will be ignored in the FDR algorithm.\n"
     "\n"
     " -FDRmask mset = load dataset 'mset' and use it as a mask\n"
-    "                 for the '-addFDR' calculations.\n"
+    " -STATmask mset  for the '-addFDR' calculations.\n"
     "                 * This can be useful if you ran 3dDeconvolve/3dREMLFIT\n"
     "                    without a mask, and want to apply a mask to improve\n"
     "                    the FDR estimation procedure.\n"
@@ -378,6 +394,7 @@ int main( int argc , char * argv[] )
    int copyaux        = 0 ;          /* 08 Jun 2004 */
    THD_3dim_dataset *auxset=NULL ;   /* 08 Jun 2004 */
    char *new_label2   = NULL ;       /* 21 Dec 2004 */
+   char *labeltable   = NULL;        /* 25 Feb 2010 ZSS */
    int denote         = 0 ;          /* 08 Jul 2005 */
    Boolean write_output ;            /* 20 Jun 2006 [rickr] */
    int keepcen        = 0 ;          /* 17 Jul 2006 [RWCox] */
@@ -386,10 +403,15 @@ int main( int argc , char * argv[] )
    int use_oblique_origin = 0;       /* 01 Dec 2008 */
    int do_FDR = 0 ;                  /* 23 Jan 2008 [RWCox] */
    int do_killSTAT = 0 ;             /* 24 Jan 2008 [RWCox] */
+   int space          = 0 ;          /* 16 Mar 2009 [drg]*/
+   char *spacename;
    byte *FDRmask = NULL ;            /* 27 Mar 2009 [RWcox] */
    int  nFDRmask = 0 ;
    int   ndone=0 ;                   /* 18 Jul 2006 */
    int   verb =0 ;
+   int   did_something ;             /* 30 Mar 2010 */
+   int cmap = -1;                     /* colormap handling */
+
 #define VINFO(x) if(verb)ININFO_message(x)
 
    char str[256] ;
@@ -454,21 +476,23 @@ int main( int argc , char * argv[] )
         do_killSTAT = 1 ; do_FDR = -1 ; new_stuff++ ; iarg++ ; continue ;
       }
 
-      if( strcasecmp(argv[iarg],"-FDRmask") == 0 ){   /*-- 27 Mar 2009 --*/
-        THD_3dim_dataset *fset ;
+      if( strcasecmp(argv[iarg],"-FDRmask")  == 0 ||
+          strcasecmp(argv[iarg],"-STATmask") == 0   ){   /*-- 27 Mar 2009 --*/
+
+        bytevec *bvec ;  /* 15 Jul 2010 */
+
         if( iarg+1 >= argc ) Syntax("need 1 argument after -FDRmask!") ;
         if( nFDRmask > 0 )   Syntax("can't have two -FDRmask options!") ;
-        fset = THD_open_dataset( argv[++iarg] ) ; CHECK_OPEN_ERROR(fset,argv[iarg]) ;
-        DSET_load(fset)                         ; CHECK_LOAD_ERROR(fset) ;
-        FDRmask = THD_makemask( fset , 0 , 1.0f,-1.0f ) ;
-        if( FDRmask == NULL ) Syntax("Can't use -FDRmask dataset!") ;
-        nFDRmask = DSET_NVOX(fset) ; DSET_delete(fset) ;
+        bvec = THD_create_mask_from_string(argv[++iarg]) ;
+        if( bvec == NULL ) ERROR_exit("Can't decipher %s",argv[iarg-1]) ;
+        FDRmask = bvec->ar ; nFDRmask = bvec->nar ;
         ii = THD_countmask(nFDRmask,FDRmask) ;
         if( ii < 100 ){
           WARNING_message("-FDRmask has only %d nonzero voxels: ignoring",ii) ;
-          free(FDRmask) ; FDRmask = NULL ; nFDRmask = 0 ;
+          KILL_bytevec(bvec) ; FDRmask = NULL ; nFDRmask = 0 ;
         } else {
-          INFO_message("-FDRmask has %d nonzero voxels (out of %d total)",ii,nFDRmask) ;
+          INFO_message("%s has %d nonzero voxels (out of %d total)",
+                       argv[iarg-1],ii,nFDRmask) ;
         }
         iarg++ ; continue ;
       }
@@ -506,7 +530,7 @@ int main( int argc , char * argv[] )
       /*----- -atrstring nn xx [03 Aug 2005] -----*/
 
       if( strcmp(argv[iarg],"-atrstring") == 0 ){
-        ATR_string *atr ; char *aname , *xx ;
+        ATR_string *atr ; char *aname , *xx , *yy=NULL ;
 
         if( iarg+2 >= argc ) Syntax("need 2 arguments after -atrstring!") ;
 
@@ -518,11 +542,24 @@ int main( int argc , char * argv[] )
         xx  = argv[++iarg] ;
         atr = (ATR_string *)XtMalloc(sizeof(ATR_string)) ;
 
+        if( strncmp(xx,"file:",5) == 0 && strlen(xx) > 5 ){  /* 08 Jul 2010 */
+          int ii ;
+          yy = AFNI_suck_file(xx+5) ;
+          if( yy == NULL ){
+            WARNING_message("Can't read '%s'",xx) ; goto atrstring_done ;
+          }
+          xx = yy ;
+          for( ii=strlen(yy)-1 ; ii > 0 && isspace(yy[ii]) ; ii-- )
+            yy[ii] = '\0' ;   /* truncate trailing whitespace */
+        }
+
         atr->type = ATR_STRING_TYPE ;
         atr->name = XtNewString( aname ) ;
         atr->nch  = strlen(xx)+1 ; ;
         atr->ch   = (char *)XtMalloc( sizeof(char) * atr->nch ) ;
         memcpy( atr->ch , xx , sizeof(char) * atr->nch ) ;
+
+        if( yy != NULL ) free(yy) ;  /* 08 Jul 2010 */
 
         atrcopy = (ATR_any **)realloc( (void *)atrcopy ,
                                        sizeof(ATR_any *)*(num_atrcopy+1) ) ;
@@ -1095,6 +1132,13 @@ int main( int argc , char * argv[] )
         iarg++ ; continue ;  /* go to next arg */
       }
 
+      /** -labeltable [25 Feb 2010 ZSS] **/
+
+      if( strcmp(argv[iarg],"-labeltable") == 0 ){
+        labeltable = argv[++iarg] ; new_stuff++ ;
+        iarg++ ; continue ;  /* go to next arg */
+      }
+
       /** -view code **/
 
       if( strncmp(argv[iarg],"-view",4) == 0 ){
@@ -1153,6 +1197,29 @@ int main( int argc , char * argv[] )
          new_stuff++ ; iarg++ ; continue ;  /* go to next arg */
       }
 
+      /*----- -space option [16 Mar 2009] -----*/
+
+      if( strcmp(argv[iarg],"-space") == 0 ){
+         space = 1 ;
+         spacename = argv[++iarg] ;
+         new_stuff++ ; iarg++ ; continue ;  /* go to next arg */
+      }
+
+      /*----- -cmap option [31 Mar 2009] -----*/
+      if( strcmp(argv[iarg],"-cmap") == 0 ){
+         if( ++iarg >= argc ) Syntax("need an argument after -cmap!");
+         if(strcmp(argv[iarg],"CONT_CMAP")==0)
+            cmap = CONT_CMAP;
+
+         else {
+            if(strcmp(argv[iarg],"INT_CMAP")==0) cmap = INT_CMAP;
+            else {
+               if(strcmp(argv[iarg],"SPARSE_CMAP")==0) cmap = SPARSE_CMAP;
+               else Syntax("cmap value not valid");
+            }
+         }
+         new_stuff++ ; iarg++ ; continue ;  /* go to next arg */
+      }
 
       /** anything else must be a -type **/
       /*  try the anatomy prefixes */
@@ -1230,6 +1297,7 @@ int main( int argc , char * argv[] )
    /*--- process datasets ---*/
    for( ; iarg < argc ; iarg++ ){
       write_output = False ;   /* some datasets will be overwritten */
+      did_something = 0 ;
 
       dset = THD_open_one_dataset( argv[iarg] ) ;
       if( dset == NULL ){
@@ -1271,6 +1339,28 @@ int main( int argc , char * argv[] )
       if( new_label2 != NULL ){
         EDIT_dset_items( dset , ADN_label2 , new_label2 , ADN_none ) ;
         VINFO("setting label2") ;
+        did_something++ ; /* 30 Mar 2010 */
+      }
+
+      if(labeltable != NULL) {
+         char *str = NULL;
+         Dtable *vl_dtable=NULL ;
+
+         if (dset->Label_Dtable) {
+            destroy_Dtable(dset->Label_Dtable); dset->Label_Dtable=NULL;
+         }
+         /* read the table */
+         if (!(str = AFNI_suck_file( labeltable))) {
+            ERROR_exit("Failed to read %s", labeltable);
+         }
+         if (!(vl_dtable = Dtable_from_nimlstring(str))) {
+            ERROR_exit("Could not parse labeltable");
+         }
+         destroy_Dtable(vl_dtable); vl_dtable = NULL;
+         THD_set_string_atr( dset->dblk , "VALUE_LABEL_DTABLE" , str ) ;
+         VINFO("setting labeltable") ;
+         free(str);
+        did_something++ ; /* 30 Mar 2010 */
       }
 
       /* 14 Oct 1999: change anat parent */
@@ -1279,42 +1369,51 @@ int main( int argc , char * argv[] )
       if( aset != NULL ){
          EDIT_dset_items( dset , ADN_anat_parent , aset , ADN_none ) ;
          VINFO("setting Anat parent") ;
+        did_something++ ; /* 30 Mar 2010 */
       } else if( aset_code == ASET_SELF ){
          EDIT_dset_items( dset , ADN_anat_parent , dset , ADN_none ) ;
          VINFO("setting Anat parent") ;
+        did_something++ ; /* 30 Mar 2010 */
       } else if( aset_code == ASET_NULL ){
          EDIT_ZERO_ANATOMY_PARENT_ID( dset ) ;
          dset->anat_parent_name[0] = '\0' ;
          VINFO("clearing Anat parent") ;
+        did_something++ ; /* 30 Mar 2010 */
       }
 
       /* ZSS June 06, add a warp parent field please */
       if( waset != NULL ){
          EDIT_dset_items( dset , ADN_warp_parent , waset , ADN_none ) ;
          VINFO("setting Warp parent") ;
+        did_something++ ; /* 30 Mar 2010 */
       } else if( waset_code == ASET_SELF ){
          EDIT_dset_items( dset , ADN_warp_parent , dset , ADN_none ) ;
          VINFO("setting Warp parent") ;
+        did_something++ ; /* 30 Mar 2010 */
       } else if( waset_code == ASET_NULL ){
          EDIT_ZERO_ANATOMY_PARENT_ID( dset ) ;
          dset->warp_parent_name[0] = '\0' ;
          VINFO("clearing Warp parent") ;
+        did_something++ ; /* 30 Mar 2010 */
       }
       /* Oct 04/02: zmodify volreg fields */
       if (Do_volreg_mat) {
          sprintf(str,"VOLREG_MATVEC_%06d", volreg_matind) ;
          if( verb ) ININFO_message("Modifying %s ...\n", str);
          THD_set_float_atr( dset->dblk , str , 12 , volreg_mat ) ;
+        did_something++ ; /* 30 Mar 2010 */
       }
 
       if (Do_center_old) {
          VINFO("Modifying VOLREG_CENTER_OLD ...\n");
          THD_set_float_atr( dset->dblk , "VOLREG_CENTER_OLD" , 3 , center_old ) ;
+        did_something++ ; /* 30 Mar 2010 */
       }
 
       if (Do_center_base) {
         VINFO("Modifying VOLREG_CENTER_BASE ...\n");
         THD_set_float_atr( dset->dblk , "VOLREG_CENTER_BASE" , 3 , center_base ) ;
+        did_something++ ; /* 30 Mar 2010 */
       }
 
       /* 28 May 2002: clear brick stats */
@@ -1328,17 +1427,20 @@ int main( int argc , char * argv[] )
           REMOVEFROM_KILL( dset->kl , dset->stats->bstat ) ;
           dset->stats = NULL ;
           VINFO("clearing brick statistics") ;
+        did_something++ ; /* 30 Mar 2010 */
         }
       }
 
       if( redo_bstat ){
         VINFO("reloading brick statistics") ;
         THD_load_statistics( dset ) ;   /* 01 Feb 2005 */
+        did_something++ ; /* 30 Mar 2010 */
       }
 
       if( new_byte_order > 0 ){
          VINFO("changing byte order") ;
          dset->dblk->diskptr->byte_order = new_byte_order ; /* 25 April 1998 */
+        did_something++ ; /* 30 Mar 2010 */
       }
 
       /*-- change space axes (lots of possibilities here) --*/
@@ -1350,6 +1452,7 @@ int main( int argc , char * argv[] )
          daxes->xxorient = xxor ;
          daxes->yyorient = yyor ;
          daxes->zzorient = zzor ;
+        did_something++ ; /* 30 Mar 2010 */
       }
 
       if( xyzscale > 0.0f ){  /* 18 Jul 2006 */
@@ -1388,6 +1491,7 @@ int main( int argc , char * argv[] )
 
         daxes->xxdel = dxp ; daxes->yydel = dyp ; daxes->zzdel = dzp ;
         daxes->xxorg = xop ; daxes->yyorg = yop ; daxes->zzorg = zop ;
+        did_something++ ; /* 30 Mar 2010 */
       }
 
       if( !new_xorg ) xorg = fabs(daxes->xxorg) ;
@@ -1430,52 +1534,68 @@ int main( int argc , char * argv[] )
       if( czorg ) zorg = 0.5 * (daxes->nzz - 1) * zdel ;
 
       if( dxorg )
-         daxes->xxorg += xorg ;
+      {  daxes->xxorg += xorg ; did_something++ ; }
       else if( duporg || new_xorg==2 )
-         daxes->xxorg = xorg ;
+      {  daxes->xxorg = xorg ; did_something++ ; }
       else if( new_xorg==1 || new_orient )
-         daxes->xxorg = (ORIENT_sign[daxes->xxorient] == '+') ? (-xorg) : (xorg) ;
+      {  daxes->xxorg = (ORIENT_sign[daxes->xxorient] == '+') ? (-xorg) : (xorg) ; did_something++ ; }
 
       if( dyorg )
-         daxes->yyorg += yorg ;
+      {  daxes->yyorg += yorg ; did_something++ ; }
       else if( duporg || new_yorg==2 )
-         daxes->yyorg = yorg ;
+      {  daxes->yyorg = yorg ; did_something++ ; }
       else if( new_yorg==1 || new_orient )
-         daxes->yyorg = (ORIENT_sign[daxes->yyorient] == '+') ? (-yorg) : (yorg) ;
+      {  daxes->yyorg = (ORIENT_sign[daxes->yyorient] == '+') ? (-yorg) : (yorg) ; did_something++ ; }
 
       if( dzorg )
-         daxes->zzorg += zorg ;
+      {  daxes->zzorg += zorg ; did_something++ ; }
       else if( duporg || new_zorg==2 )
-         daxes->zzorg = zorg ;
+      {  daxes->zzorg = zorg ; did_something++ ; }
       else if( new_zorg==1 || new_orient )
-         daxes->zzorg = (ORIENT_sign[daxes->zzorient] == '+') ? (-zorg) : (zorg) ;
+      {  daxes->zzorg = (ORIENT_sign[daxes->zzorient] == '+') ? (-zorg) : (zorg) ; did_something++ ; }
 
       if( new_xdel || new_orient )
-         daxes->xxdel = (ORIENT_sign[daxes->xxorient] == '+') ? (xdel) : (-xdel) ;
+      {  daxes->xxdel = (ORIENT_sign[daxes->xxorient] == '+') ? (xdel) : (-xdel) ; did_something++ ; }
 
       if( new_ydel || new_orient )
-         daxes->yydel = (ORIENT_sign[daxes->yyorient] == '+') ? (ydel) : (-ydel) ;
+      {  daxes->yydel = (ORIENT_sign[daxes->yyorient] == '+') ? (ydel) : (-ydel) ; did_something++ ; }
 
       if( new_zdel || new_orient )
-         daxes->zzdel = (ORIENT_sign[daxes->zzorient] == '+') ? (zdel) : (-zdel) ;
+      {  daxes->zzdel = (ORIENT_sign[daxes->zzorient] == '+') ? (zdel) : (-zdel) ; did_something++ ; }
 
       /*-- deoblique - assume the data is cardinal  6/20/2007 */
       /* this should be after any other axis, orientation, origin, voxel size changes */
       if(deoblique) {
          /* replace transformation matrix with cardinal form */
-	 THD_dicom_card_xform(dset, &tmat, &tvec);
-	 LOAD_MAT44(dset->daxes->ijk_to_dicom_real,
+        THD_dicom_card_xform(dset, &tmat, &tvec);
+        LOAD_MAT44(dset->daxes->ijk_to_dicom_real,
              tmat.mat[0][0], tmat.mat[0][1], tmat.mat[0][2], tvec.xyz[0],
              tmat.mat[1][0], tmat.mat[1][1], tmat.mat[1][2], tvec.xyz[1],
              tmat.mat[2][0], tmat.mat[2][1], tmat.mat[2][2], tvec.xyz[2]);
+        VINFO("deoblique") ;
+        did_something++ ; /* 30 Mar 2010 */
       }
 
 
       /* if user has selected, get origin from obliquity */
       /*   overriding all the previous command-line options */
-      if(use_oblique_origin)
+      if(use_oblique_origin){
          Obliquity_to_coords(dset);
+         VINFO("oblique origin") ;
+        did_something++ ; /* 30 Mar 2010 */
+      }
 
+      /* set the space of the dataset */
+      if(space) {
+            MCW_strncpy(dset->atlas_space, spacename, THD_MAX_NAME);
+            did_something++;
+      }
+      /* set the colormap type of the dataset */
+      if(cmap>=0)
+      {
+            dset->int_cmap = cmap;
+            did_something++;
+      }
 
       /*-- change time axis --*/
 
@@ -1491,6 +1611,7 @@ int main( int argc , char * argv[] )
                                  ADN_tunits, UNITS_SEC_TYPE ,
                                  ADN_nsl   , 0 ,
                                ADN_none ) ;
+              did_something++ ; /* 30 Mar 2010 */
             }
          } else {
             float frac = TR / dset->taxis->ttdel ;
@@ -1503,6 +1624,7 @@ int main( int argc , char * argv[] )
                for( ii=0 ; ii < dset->taxis->nsl ; ii++ )
                   dset->taxis->toff_sl[ii] *= frac ;
             }
+            did_something++ ; /* 30 Mar 2010 */
          }
       }
 
@@ -1512,6 +1634,7 @@ int main( int argc , char * argv[] )
         } else {
           VINFO("changing Torg") ;
           dset->taxis->ttorg = Torg ;
+          did_something++ ; /* 30 Mar 2010 */
         }
       }
 
@@ -1523,22 +1646,26 @@ int main( int argc , char * argv[] )
          } else {
             VINFO("clearing time-offsets") ;
             EDIT_dset_items( dset , ADN_nsl,0 , ADN_none ) ;
+            did_something++ ; /* 30 Mar 2010 */
          }
       }
 
       if( (new_orient || new_zorg) && dset->taxis != NULL && dset->taxis->nsl > 0 ){
          VINFO("changing time axis slice offset z-origin") ;
          dset->taxis->zorg_sl = daxes->zzorg ;
+         did_something++ ; /* 30 Mar 2010 */
       }
 
       if( (new_orient || new_zdel) && dset->taxis != NULL && dset->taxis->nsl > 0 ){
          VINFO("changing time axis slice offset z-spacing") ;
          dset->taxis->dz_sl = daxes->zzdel ;
+         did_something++ ; /* 30 Mar 2010 */
       }
 
       if( new_idcode ){
         VINFO("changing ID code") ;
         dset->idcode = MCW_new_idcode() ;
+        did_something++ ; /* 30 Mar 2010 */
       }
 
       if( new_nowarp ){
@@ -1546,6 +1673,7 @@ int main( int argc , char * argv[] )
          ZERO_IDCODE( dset->warp_parent_idcode ) ;
          dset->warp_parent_name[0] = '\0' ;
          dset->warp = NULL ;
+         did_something++ ; /* 30 Mar 2010 */
       }
 
       if( new_type ){
@@ -1566,6 +1694,7 @@ int main( int argc , char * argv[] )
             if( ISBUCKET(dset) && dset->taxis != NULL ){   /* 29 April 1998 */
               WARNING_message("changing 3D+time dataset to bucket\n") ;
               EDIT_dset_items( dset , ADN_ntt , 0 , ADN_none ) ;
+              did_something++ ; /* 30 Mar 2010 */
             }
 
          }
@@ -1575,6 +1704,8 @@ int main( int argc , char * argv[] )
          for( ii=0 ; ii < MAX_STAT_AUX ; ii++ ){
             dset->stat_aux[ii] = stataux[ii] ;
          }
+         did_something++ ; /* 30 Mar 2010 */
+         VINFO("new stataux") ;
       }
 
       if( new_view && dset->view_type != vtype ){
@@ -1611,6 +1742,7 @@ int main( int argc , char * argv[] )
               }
             }
             ININFO_message("Changed dataset view type and filenames.\n") ;
+            did_something++ ; /* 30 Mar 2010 */
          }
       }
 
@@ -1624,6 +1756,7 @@ int main( int argc , char * argv[] )
                tag = dset->tagset->tag + ii ;
                tag->x += dxtag;  tag->y += dytag;  tag->z += dztag;
             }
+            did_something++ ; /* 30 Mar 2010 */
          }
       } else if ( dset->tagset && ( new_xorg || new_yorg || new_zorg ||
                                     new_xdel || new_ydel || new_zdel ) )
@@ -1632,6 +1765,8 @@ int main( int argc , char * argv[] )
       /* code moved to edt_emptycopy.c                   13 Sep 2005 [rickr] */
       if( new_markers && okay_to_add_markers(dset) ){
          dset->markers = create_empty_marker_set() ;
+         did_something++ ; /* 30 Mar 2010 */
+         VINFO("empty marker set") ;
 
       } else if( new_markers ){
          WARNING_message("Can't add markers to this dataset\n") ;
@@ -1643,8 +1778,12 @@ int main( int argc , char * argv[] )
         if( auxset != NULL ){
           THD_copy_datablock_auxdata( auxset->dblk , dset->dblk );
           INIT_STAT_AUX( dset , MAX_STAT_AUX , auxset->stat_aux ) ;
+          did_something++ ; /* 30 Mar 2010 */
+          VINFO("copy auxdata") ;
         } else {
           THD_copy_datablock_auxdata( NULL , dset->dblk );
+          VINFO("null auxdata") ;
+          did_something++ ; /* 30 Mar 2010 */
         }
       }
 
@@ -1659,6 +1798,8 @@ int main( int argc , char * argv[] )
                EDIT_dset_items( dset ,
                                    ADN_brick_label_one + iv , sublab[ii].lab ,
                                 ADN_none ) ;
+               did_something++ ; /* 30 Mar 2010 */
+               VINFO("edit sub-brick label") ;
             }
          }
       }
@@ -1674,30 +1815,38 @@ int main( int argc , char * argv[] )
                                    ADN_brick_keywords_append_one + iv ,
                                    subkeyword[ii].keyword ,
                                 ADN_none ) ;
+               did_something++ ; /* 30 Mar 2010 */
+               VINFO("edit sub-brick keywords") ;
             } else if( code == 2 ){
                EDIT_dset_items( dset ,
                                    ADN_brick_keywords_replace_one + iv ,
                                    subkeyword[ii].keyword ,
                                 ADN_none ) ;
+               did_something++ ; /* 30 Mar 2010 */
+               VINFO("edit sub-brick keywords") ;
             } else if( code == 3 && dset->dblk->brick_keywords != NULL ){
                EDIT_dset_items( dset ,
                                    ADN_brick_keywords_replace_one + iv ,
                                    NULL ,
                                 ADN_none ) ;
+               VINFO("nullify sub-brick keywords") ;
+               did_something++ ; /* 30 Mar 2010 */
             }
          }
       }
 
       switch( new_key ){
-        case 1: EDIT_dset_items(dset, ADN_keywords_append , key , ADN_none); break;
-        case 2: EDIT_dset_items(dset, ADN_keywords_replace, key , ADN_none); break;
-        case 3: EDIT_dset_items(dset, ADN_keywords_replace, NULL, ADN_none); break;
+        case 1: EDIT_dset_items(dset, ADN_keywords_append , key , ADN_none); did_something++; break;
+        case 2: EDIT_dset_items(dset, ADN_keywords_replace, key , ADN_none); did_something++; break;
+        case 3: EDIT_dset_items(dset, ADN_keywords_replace, NULL, ADN_none); did_something++; break;
       }
 
       if( do_killSTAT ){   /* 24 Jan 2008 */
         for( iv=0 ; iv < DSET_NVALS(dset) ; iv++ ){
           EDIT_BRICK_TO_NOSTAT(dset,iv) ;
         }
+        VINFO("kill statistics") ;
+        did_something++ ; /* 30 Mar 2010 */
       }
 
       if( nsubstatpar > 0 ){
@@ -1709,16 +1858,21 @@ int main( int argc , char * argv[] )
             EDIT_dset_items( dset ,
                                ADN_brick_stataux_one + iv , substatpar[ii].par ,
                              ADN_none ) ;
+            did_something++ ; /* 30 Mar 2010 */
+            VINFO("edit stataux") ;
           }
         }
       }
 
       /* 03 Aug 2005: implement atrcopy */
+      if( num_atrcopy > 0 )
       {
-           ATR_any *atr;
+         ATR_any *atr;
          for( ii=0 ; ii < num_atrcopy ; ii++ ) {
            THD_insert_atr( dset->dblk , atrcopy[ii] ) ;
          }
+         did_something++ ; /* 30 Mar 2010 */
+         VINFO("atrcopy") ;
       }
       /* 23 Jan 2008: the FDR stuff */
 
@@ -1729,7 +1883,12 @@ int main( int argc , char * argv[] )
           int nf ;
           mri_fdr_setmask( (nFDRmask == DSET_NVOX(dset)) ? FDRmask : NULL ) ;
           nf = THD_create_all_fdrcurves(dset) ;
-          ININFO_message("created %d FDR curves in dataset header",nf) ;
+          if( nf > 0 ){
+            did_something += nf ; /* 30 Mar 2010 */
+            ININFO_message("created %d FDR curve%s in dataset header",nf,(nf==1)?"\0":"s") ;
+          } else {
+            ININFO_message("failed to create FDR curves in dataset header") ;
+          }
         }
       }
 
@@ -1737,18 +1896,22 @@ int main( int argc , char * argv[] )
       /* (only if -atrcopy or -atrstring)       28 Jul 2006 [rickr] */
       if ( saveatr && atrmod ){
          /* apply attributes to header - dataxes and dblk*/
-INFO_message("applying attributes");
+         INFO_message("applying attributes");
          THD_datablock_from_atr(dset->dblk , DSET_DIRNAME(dset) ,
                                   dset->dblk->diskptr->header_name);
-         THD_datablock_apply_atr(dset );
+         THD_datablock_apply_atr(dset ); 
       }
 
-      if( denote ) THD_anonymize_write(1) ;   /* 08 Jul 2005 */
+      if( denote ){ THD_anonymize_write(1); did_something++; VINFO("denote");}   /* 08 Jul 2005 */
 
-      if( write_output ) DSET_load(dset) ;    /* 20 Jun 2006 */
-
-      THD_force_ok_overwrite(1) ;             /* 24 Sep 2007 */
-      THD_write_3dim_dataset( NULL,NULL , dset , write_output ) ;
+      if( !did_something ){
+        ININFO_message("Didn't make any changes for dataset %s !",argv[iarg]) ;
+      } else {
+        if( write_output ) ININFO_message("loading and re-writing entire dataset %s",argv[iarg]) ;
+        if( write_output ) DSET_load(dset) ;    /* 20 Jun 2006 */
+        THD_force_ok_overwrite(1) ;             /* 24 Sep 2007 */
+        THD_write_3dim_dataset( NULL,NULL , dset , write_output ) ;
+      }
       THD_delete_3dim_dataset( dset , False ) ;
 
       ndone++ ;   /* 18 Jul 2006: number of datasets done */

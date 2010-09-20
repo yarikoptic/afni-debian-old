@@ -44,6 +44,7 @@ static int AFNI_drive_set_view( char *cmd ) ;       /* 28 Jul 2005 */
 static int AFNI_drive_set_dicom_xyz( char *cmd ) ;  /* 28 Jul 2005 */
 static int AFNI_drive_set_spm_xyz( char *cmd ) ;    /* 28 Jul 2005 */
 static int AFNI_drive_set_ijk( char *cmd ) ;        /* 28 Jul 2005 */
+static int AFNI_drive_set_ijk_index( char *cmd ) ;      /* 29 Jul 2010 */
 static int AFNI_drive_set_xhairs( char *cmd ) ;     /* 28 Jul 2005 */
 static int AFNI_drive_save_filtered( char *cmd ) ;  /* 14 Dec 2006 */
 static int AFNI_drive_save_allpng( char *cmd ) ;    /* 15 Dec 2006 */
@@ -144,6 +145,7 @@ static AFNI_driver_pair dpair[] = {
  { "SET_DICOM_XYZ"    , AFNI_drive_set_dicom_xyz     } ,
  { "SET_SPM_XYZ"      , AFNI_drive_set_spm_xyz       } ,
  { "SET_IJK"          , AFNI_drive_set_ijk           } ,
+ { "SET_INDEX"        , AFNI_drive_set_ijk_index     } ,
  { "SET_XHAIRS"       , AFNI_drive_set_xhairs        } ,
  { "SET_CROSSHAIRS"   , AFNI_drive_set_xhairs        } ,
 
@@ -328,9 +330,14 @@ ENTRY("AFNI_drive_purge_memory") ;
    }
 
    if( slf.sess_index >= 0 && slf.dset_index >= 0 ){
-     THD_3dim_dataset **dss =
-       GLOBAL_library.sslist->ssar[slf.sess_index]->dsset[slf.dset_index] ;
-     for( ic=0 ; ic <= LAST_VIEW_TYPE ; ic++ ) PURGE_DSET( dss[ic] ) ;
+/*     THD_3dim_dataset **dss =
+       GLOBAL_library.sslist->ssar[slf.sess_index]->dsset_xform_table[slf.dset_index] ;*/
+     THD_3dim_dataset *dss;
+     for( ic=0 ; ic <= LAST_VIEW_TYPE ; ic++ ) {
+        dss = GET_SESSION_DSET(GLOBAL_library.sslist->ssar[slf.sess_index], slf.dset_index,ic) ;
+        if (dss != NULL)
+           PURGE_DSET( dss ) ;
+     }
      RETURN(0) ;
    }
 
@@ -473,6 +480,7 @@ void AFNI_set_anat_index( Three_D_View *im3d , int nuse )
 {
    if( IM3D_OPEN(im3d)                    &&
        im3d->type == AFNI_3DDATA_VIEW     &&
+       ISVALID_DSET(im3d->anat_now)       &&
        nuse >= 0                          &&
        nuse <  DSET_NVALS(im3d->anat_now) &&
        nuse != im3d->vinfo->anat_index      ){
@@ -495,6 +503,7 @@ void AFNI_set_fim_index( Three_D_View *im3d , int nfun )
 {
    if( IM3D_OPEN(im3d)                   &&
        im3d->type == AFNI_3DDATA_VIEW    &&
+       ISVALID_DSET(im3d->fim_now)       &&
        nfun >= 0                         &&
        nfun <  DSET_NVALS(im3d->fim_now) &&
        nfun != im3d->vinfo->fim_index       ){
@@ -510,6 +519,7 @@ void AFNI_set_thr_index( Three_D_View *im3d , int nthr )
 {
    if( IM3D_OPEN(im3d)                   &&
        im3d->type == AFNI_3DDATA_VIEW    &&
+       ISVALID_DSET(im3d->fim_now)       &&
        nthr >= 0                         &&
        nthr <  DSET_NVALS(im3d->fim_now) &&
        nthr != im3d->vinfo->thr_index       ){
@@ -2824,6 +2834,28 @@ static int AFNI_drive_set_ijk( char *cmd )
    ic = sscanf( cmd+dadd , "%d%d%d" , &i,&j,&k ) ;
    if( ic < 3 ) return -1 ;
    AFNI_set_viewpoint( im3d , i,j,k , REDISPLAY_ALL ) ;
+   return 0 ;
+}
+
+/*--------------------------------------------------------------------*/
+/*! SET_INDEX [c.] ijk */
+
+static int AFNI_drive_set_ijk_index( char *cmd )
+{
+   int ic , dadd=2 ;
+   Three_D_View *im3d ;
+   int ijk ;
+
+   if( strlen(cmd) < 1 ) return -1;
+
+   ic = AFNI_controller_code_to_index( cmd ) ;
+   if( ic < 0 ){ ic = 0 ; dadd = 0 ; }
+   im3d = GLOBAL_library.controllers[ic] ;
+   if( !IM3D_OPEN(im3d) ) return -1 ;
+
+   ic = sscanf( cmd+dadd , "%d" , &ijk ) ;
+   if( ic < 1 ) return -1 ;
+   AFNI_set_index_viewpoint( im3d , ijk , REDISPLAY_ALL ) ;
    return 0 ;
 }
 

@@ -476,6 +476,11 @@ PLUGIN_interface * ENV_init(void)
                     "Max number rows in Clusterize Rpt table" ,
                     10,99,0,15 , NULL ) ;
 
+   /* 04 Aug 2010 [RWCox] */
+   ENV_add_numeric( "AFNI_CLUSTER_WAMIMAX" ,
+                    "Max clusters sent to 'whereami'" ,
+                    1,99,0,20 , NULL ) ;
+
    /* 03 Jun 2008 [RWCox] */
    ENV_add_yesno( "AFNI_IMAGE_TICK_DIV_IN_MM" ,
                   "Image tick divisions count is in mm?" ) ;
@@ -500,6 +505,10 @@ PLUGIN_interface * ENV_init(void)
    ENV_add_numeric( "AFNI_IMAGE_CROPSTEP" ,
                     "Cropped image panning step size" ,
                     -9,9,0,1 , NULL ) ;
+
+   /* 22 Jul 2010 [RWCox] */
+   ENV_add_yesno( "AFNI_SQRT_AUTORANGE" ,
+                  "Set autoRange to sqrt(largest value)?" ) ;
 
    /*--------- Sort list of variables [21 Feb 2007]  -----------*/
 
@@ -656,11 +665,15 @@ void ENV_add_numeric( char *vname , char *vhint ,
    return ;
 }
 
+/*---------------------------------------------------------------------------*/
+
 void ENV_add_yesno( char *vname , char *vhint ) /* 08 Aug 2001 */
 {
    ENV_add_string( vname , vhint ,
                    NUM_yesno_list , yesno_list , NULL  ) ;
 }
+
+/*---------------------------------------------------------------------------*/
 
 void ENV_add_string( char *vname , char *vhint ,
                      int vcount , char **vlist , generic_func *cbfunc )
@@ -946,6 +959,7 @@ static void ENV_marksquality( char *vname )
    GLOBAL_argopt.elide_quality = YESSISH(str) ;
 }
 
+/*-----------------------------------------------------------------------*/
 
 static void ENV_setjpegquality(char *vname)
 {

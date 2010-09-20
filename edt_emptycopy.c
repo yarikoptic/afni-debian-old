@@ -36,6 +36,7 @@ ENTRY("EDIT_empty_copy") ; /* 29 Aug 2001 */
    new_dblk  = new_dset->dblk    = myXtNew( THD_datablock ) ;
    new_daxes = new_dset->daxes   = myXtNew( THD_dataxes ) ;
    new_dkptr = new_dblk->diskptr = myXtNew( THD_diskptr ) ;
+   new_dset->Label_Dtable = NULL;                  /* ZSS Feb 26 2010 */
 
    INIT_KILL(new_dset->kl) ; INIT_KILL(new_dblk->kl) ;
    ADDTO_KILL(new_dset->kl,new_dblk)  ;
@@ -56,6 +57,10 @@ ENTRY("EDIT_empty_copy") ; /* 29 Aug 2001 */
       new_dset->type      = old_dset->type ;      /* data types */
       new_dset->func_type = old_dset->func_type ;
       new_dset->view_type = old_dset->view_type ;
+      /* use template space of parent to mark as TLRC/MNI/... */
+      MCW_strncpy( new_dset->atlas_space ,
+         old_dset->atlas_space , THD_MAX_NAME ) ; 
+ 
       new_nvals           = old_dset->dblk->nvals ;
    } else {
       new_dset->type      = HEAD_ANAT_TYPE ;

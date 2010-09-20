@@ -44,6 +44,441 @@
 afni_history_struct rwcox_history[] = {
 /*=====BELOW THIS LINE=====*/
 
+ { 15 , SEP , 2010 , RWC , "3dROIstats" , MICRO , TYPE_GENERAL ,
+   "Force float-to-short conversion of mask if mask is really integers" ,
+   NULL } ,
+
+ { 13 , SEP , 2010 , RWC , "3dGroupInCorr" , MICRO , TYPE_BUG_FIX ,
+   "Add missing free(xar) to 1-sample t-test loop [oops]" ,
+   NULL } ,
+
+ { 13 , AUG , 2010 , RWC , "afni" , MICRO , TYPE_GENERAL ,
+   "Add 'Thr=OLay+1' button to threshold slider popup" ,
+   "Enforces threshold sub-brick index = overlay sub-brick index + 1.\n"
+   "For David Perlman at UW Madison, who wants to lock the statistical\n"
+   "threshold to the effect of interest to which it is yoked." } ,
+
+ { 13 , AUG , 2010 , RWC , "3dFWHMx" , MICRO , TYPE_GENERAL ,
+   "Check if -detrend option is needed, if not given" ,
+   "Compare each voxel's median to its MAD -- if the median is too big, then\n"
+   "print a warning if there a lots of such voxels." } ,
+
+ { 9 , AUG , 2010 , RWC , "3dDeconvolve" , MICRO , TYPE_GENERAL ,
+   "Add duration 'd' parameter to GAM basis function." ,
+   "Also add some various comments to the help; in particular, advertising\n"
+   "afni_proc.py" } ,
+
+ { 4 , AUG , 2010 , RWC , "afni" , MICRO , TYPE_BUG_FIX ,
+   "Restore 'jump to' capability when selecting a marker" ,
+   "Removed accidentally when disabling the popup marker toggles." } ,
+
+ { 4 , AUG , 2010 , RWC , "afni" , MINOR , TYPE_GENERAL ,
+   "Add 'WamI' button to Clusterize GUI" ,
+   "Runs 'whereami -omask' and displays the output in a text window, to show\n"
+   "the user where the atlases think each cluster is located." } ,
+
+ { 3 , AUG , 2010 , RWC , "afni Clusterize" , MICRO , TYPE_GENERAL ,
+   "put limits on range of choosers in the popup control" ,
+   "NN = 1..3   Voxels = 2..99999" } ,
+
+ { 2 , AUG , 2010 , RWC , "3dGroupInCorr" , MICRO , TYPE_NEW_OPT ,
+   "Add -np option to change NIML port used to talk to AFNI" ,
+   "Per the request of Andreas Hahn." } ,
+
+ { 30 , JUL , 2010 , RWC , "3dttest++" , MINOR , TYPE_GENERAL ,
+   "Renamed from 3dttest_new" ,
+   "Because the others in the group were whining, not wining.\n"
+   "Also added '-center' option to allow user a little more control over the\n"
+   "de-meaning of the covariates." } ,
+
+ { 29 , JUL , 2010 , RWC , "3dcalc" , MICRO , TYPE_GENERAL ,
+   "Add '-n' predefined value [for Ziad].  n = voxel 1D index." ,
+   NULL } ,
+
+ { 29 , JUL , 2010 , RWC , "3dPeriodogram" , MICRO , TYPE_GENERAL ,
+   "Expand the help (again)" ,
+   NULL } ,
+
+ { 29 , JUL , 2010 , RWC , "3dttest_new" , MAJOR , TYPE_NEW_PROG ,
+   "New and improved version of 3dttest!" ,
+   "With covariates, including per-voxel covariates! It slices, it dices! \n"
+   "But wait, there's more!  For no extra charge, it masks!" } ,
+
+ { 23 , JUL , 2010 , RWC , "3dDeconvolve" , MINOR , TYPE_NEW_OPT ,
+   "Add TENTzero and CSPLINzero response models" ,
+   "To allow the HRF to be required to be zero at the start and stop times\n"
+   "(i.e., it will be continuous, not suddenly drop off to zero)." } ,
+
+ { 23 , JUL , 2010 , RWC , "3dDeconvolve" , MICRO , TYPE_GENERAL ,
+   "print out list of offending times for the PSFB syndrome" ,
+   NULL } ,
+
+ { 22 , JUL , 2010 , RWC , "3dPeriodogram" , MICRO , TYPE_GENERAL ,
+   "Add more details about what it does to -help" ,
+   NULL } ,
+
+ { 22 , JUL , 2010 , RWC , "3dDeconvolve" , MICRO , TYPE_GENERAL ,
+   "move -x1D_stop exit to AFTER the condition number stuff is output" ,
+   "Per the request of Christy Wilson" } ,
+
+ { 22 , JUL , 2010 , RWC , "afni GUI" , MICRO , TYPE_GENERAL ,
+   "Set 'autoRange' to sqrt(largest value) rather than largest value." ,
+   "To make the color scaling a little nicer, usually.\n"
+   "Can be turned off by setting environment variable AFNI_SQRT_AUTORANGE to\n"
+   "NO (this is interactively editable)." } ,
+
+ { 22 , JUL , 2010 , RWC , "3dClustSim" , MICRO , TYPE_NEW_OPT ,
+   "Add -both option (get NIML and 1D output in one run)" ,
+   NULL } ,
+
+ { 21 , JUL , 2010 , RWC , "afni Clusterize" , MICRO , TYPE_GENERAL ,
+   "Allow user to choose from NN1 or NN2 or NN3 cluster methods" ,
+   "And selects the corresponding ClustSim table, if present.  Also, modify\n"
+   "3dClustSim to output 3drefit command fragment if appropriate.  For\n"
+   "Shruti, who we all love." } ,
+
+ { 20 , JUL , 2010 , RWC , "3dAutoTcorrelate" , MICRO , TYPE_NEW_OPT ,
+   "-mmap option -- output large .BRIK file in a faster way" ,
+   NULL } ,
+
+ { 20 , JUL , 2010 , RWC , "3dFourier" , MICRO , TYPE_GENERAL ,
+   "Propagate history unto the next generation." ,
+   NULL } ,
+
+ { 16 , JUL , 2010 , RWC , "3dAutoTcorrelate" , MICRO , TYPE_GENERAL ,
+   "OpenMP-ized for HJJ" ,
+   "Required inverting dataset to MRI_vectim struct to solve memory\n"
+   "thrashing problem.  Otherwise, speedup was marginal at best." } ,
+
+ { 16 , JUL , 2010 , RWC , "afni" , MICRO , TYPE_GENERAL ,
+   "Add C(p,alpha) threshold label for alpha=0.10,0.05,0.01" ,
+   "Plus fix bug that caused crash when switching to overlay of different\n"
+   "spatial dimensions when Clusterize was on." } ,
+
+ { 15 , JUL , 2010 , RWC , "3dREMLfit+3dDeconvolve" , MICRO , TYPE_NEW_OPT ,
+   "Add -STATmask option" ,
+   "Allows user to specify mask for FDR calculations, when no -mask is used." } ,
+
+ { 15 , JUL , 2010 , RWC , "3dClustSim" , MICRO , TYPE_GENERAL ,
+   "-niml now implies -LOTS as well" ,
+   NULL } ,
+
+ { 14 , JUL , 2010 , RWC , "afni" , MICRO , TYPE_GENERAL ,
+   "Clusterize now uses the mask from 3dClustSim, if available" ,
+   NULL } ,
+
+ { 14 , JUL , 2010 , RWC , "3dClustSim" , MICRO , TYPE_GENERAL ,
+   "Changes to write mask info to output, to use in Clusterize" ,
+   NULL } ,
+
+ { 12 , JUL , 2010 , RWC , "3dDeconvolve" , MICRO , TYPE_NEW_OPT ,
+   "add MION to the -stim_times HRF repertoire" ,
+   "Now will they stop bugging me?!  (of course not)" } ,
+
+ { 12 , JUL , 2010 , RWC , "afni" , MINOR , TYPE_MODIFY ,
+   "Clusterize features modifed and enhanced" ,
+   "1) Only NN clustering is now allowed in the AFNI Clusterize GUI, and so\n"
+   "the only parameter left is the 'Voxels' count for the smallest cluster\n"
+   "to retain.\n"
+   "\n"
+   "2) If attribute AFNI_CLUSTSIM_NN1 is attached (via 3dClustSim), then the\n"
+   "Clusterize GUI will use this to show the approximate alpha level for\n"
+   "each cluster -- provided the threshold has a p-value associated with it,\n"
+   "et cetera, et cetera, et cetera." } ,
+
+ { 9 , JUL , 2010 , RWC , "afni" , MICRO , TYPE_GENERAL ,
+   "Remove marker controls from image viewer popup menu." ,
+   NULL } ,
+
+ { 9 , JUL , 2010 , RWC , "3dDeconvolve" , MICRO , TYPE_BUG_FIX ,
+   "Skip FDR masking if dataset isn't really 3D" ,
+   NULL } ,
+
+ { 9 , JUL , 2010 , RWC , "3drefit" , MICRO , TYPE_GENERAL ,
+   "add 'file:' input to -atrstring option" ,
+   "The ability to read the attribute value from a file, rather than from\n"
+   "the command line." } ,
+
+ { 8 , JUL , 2010 , RWC , "3dClustSim" , MICRO , TYPE_NEW_OPT ,
+   "Add -NN option (clustering method) and -prefix (output filename)" ,
+   NULL } ,
+
+ { 8 , JUL , 2010 , RWC , "3dClustSim" , MICRO , TYPE_GENERAL ,
+   "'LOTS' for more output; malloc tweaks for OpenMP speedup" ,
+   NULL } ,
+
+ { 7 , JUL , 2010 , RWC , "3dClustSim" , MICRO , TYPE_NEW_OPT ,
+   "Added info to output header; also, added -niml option" ,
+   NULL } ,
+
+ { 7 , JUL , 2010 , RWC , "3dClustSim" , MAJOR , TYPE_NEW_PROG ,
+   "Like AlphaSim, but faster and terser output" ,
+   "Computes C(p,a) = cluster size threshold for a range of p and a values:\n"
+   " p = per-voxel (uncorrected) threshold p-value\n"
+   " a = corrected probability level desired = probability of at least one\n"
+   "noise-only cluster happening when the cluster size threshold is C(p,a)\n"
+   "Optimized to use OpenMP for speed." } ,
+
+ { 28 , JUN , 2010 , RWC , "3dTcorr1D" , MINOR , TYPE_GENERAL ,
+   "1 output brick per column of input 1D file" ,
+   "Before: only used 1st column of 1D file.\n"
+   "Now: also uses OpenMP to parallelize across columns.\n"
+   "Also: -short and -mask options." } ,
+
+ { 18 , JUN , 2010 , RWC , "3dSimARMA11" , MICRO , TYPE_NEW_PROG ,
+   "Simulating ARMA(1,1) time series for testing 3dREMLfit + 3dMEMA" ,
+   NULL } ,
+
+ { 16 , JUN , 2010 , RWC , "mri_read_1D" , MICRO , TYPE_MODIFY ,
+   "If filename is of form xxx'[...]', quotes will be ignored." ,
+   NULL } ,
+
+ { 14 , JUN , 2010 , RWC , "AFNI GUI" , MINOR , TYPE_MODIFY ,
+   "Added 'Automask' toggle button to image viewer bar popup menu" ,
+   "In combination with 'Zero Color', provides an easy way to fill\n"
+   "the background with a solid color, such as white, as requested\n"
+   "by Adriana di Martino (among others).\n"
+   "ALSO: modified 'Zero Color' to fill zero values with that color,\n"
+   "      rather than fill pixels assigned the bottom-most color\n"
+   "      (so images with negative values can be treated properly).\n"
+   "N.B.: Automasking in the image viewer is done with a special 2D\n"
+   "      function in thd_automask.c, different than 3D Automasking.\n" } ,
+
+ { 14 , JUN , 2010 , RWC , "3dDeconvolve" , MICRO , TYPE_MODIFY ,
+   "Changed error message when user tries '1D:' with -stim_times_AM2" ,
+   NULL } ,
+
+ { 27 , MAY , 2010 , RWC , "3dGroupInCorr" , MINOR , TYPE_BUG_FIX ,
+   "Fix bug in paired t-test for covariates regression" ,
+   NULL } ,
+
+ { 26 , MAY , 2010 , RWC , "3dGroupInCorr" , MAJOR , TYPE_MODIFY ,
+   "Add -covariates option" ,
+   "With coordinated changes to AFNI to deal with the possibly more\n"
+   "complicated dataset that will arrive.  And some minor changes to\n"
+   "3dSetupGroupInCorr to match." } ,
+
+ { 19 , MAY , 2010 , RWC , "3dDeconvolve" , MICRO , TYPE_BUG_FIX ,
+   "Bug: 'filename' copy from argv[] can be too long for 1D: input" ,
+   "Especially if the user is named Handwerker.  Solution: compute length of\n"
+   "'filname' before malloc-izing, vs. fixed length THD_MAX_NAME." } ,
+
+ { 18 , MAY , 2010 , RWC , "3dTfitter" , MINOR , TYPE_NEW_OPT ,
+   "New option -vthr, to set threshold for ignoring regression vectors" ,
+   "In the olden version, vectors whose L1 norm was less than 0.000333 times\n"
+   "the largest vector's L1 norm were cast out before the analysis -- this\n"
+   "was to fix a problem of Rasmus Birn's.  However, some people whose\n"
+   "initials are HJJ want to use LHS vectors whose magnitude varies a lot. \n"
+   "So now the user has to specify the 'cast out' vector threshold with the\n"
+   "-vthr option, whose default is NOT 0.000333 but is 0.0 -- that is, only\n"
+   "exactly zero vectors will be unused by default." } ,
+
+ { 17 , MAY , 2010 , RWC , "3dREMLfit" , MINOR , TYPE_BUG_FIX ,
+   "Program would crash when only -Obuck given, no -Rstuff" ,
+   "Problem was that GLT data structure setup was done in the Rstuff loop,\n"
+   "and if no Rstuff datasets are computed, then doing GLT stuff in the\n"
+   "Ostuff loop would crash.  Fix: test if GLTs are added to the REML setup\n"
+   "structures in the Ostuff loop, and add them if they aren't already\n"
+   "there." } ,
+
+ { 14 , MAY , 2010 , RWC , "3dcalc" , MICRO , TYPE_GENERAL ,
+   "Remove '-b3' style of input from -help output." ,
+   "It's be obsolete for over 10 years -- time to be hidden from view!" } ,
+
+ { 14 , MAY , 2010 , RWC , "3dMean" , MICRO , TYPE_BUG_FIX ,
+   "Fix scaling problem" ,
+   "As in 3dcalc: if scaling is not forced (no -fscale or -gscale) but is\n"
+   "optional (no -nscale, either), then check if the values in a sub-brick\n"
+   "are non-integral -- if so, do scaling anyway to minimize truncation\n"
+   "problems." } ,
+
+ { 7 , MAY , 2010 , RWC , "afni" , MICRO , TYPE_NEW_ENV ,
+   "AFNI_FILE_COORDS_x" ,
+   "If this environment variable is set (for x=A,B,C,...), then AFNI\n"
+   "controller 'x' will write each viewpoint change xyz coordinates to the\n"
+   "file whose name is given by the variable value.  For example\n"
+   "  afni -DAFNI_FILE_COORDS_A=stdout\n"
+   "will write each new (x,y,z) triple to standard output.  Coords are\n"
+   "written in DICOM order (natch).  This feature is called the Jennifer\n"
+   "Evans special." } ,
+
+ { 7 , MAY , 2010 , RWC , "bilinear_warp3D.c" , MICRO , TYPE_MODIFY ,
+   "Minor changes and additions" ,
+   NULL } ,
+
+ { 6 , MAY , 2010 , RWC , "bilinear_warp3D" , MICRO , TYPE_GENERAL ,
+   "Add functions for manipulating bilinear warps" ,
+   "bilinear_warp3d.[ch] -- for Daniel" } ,
+
+ { 6 , MAY , 2010 , RWC , "afni" , MICRO , TYPE_BUG_FIX ,
+   "Fix NULL pointer de-reference from renderer" ,
+   "When colorscale is changed to one of the ROI colormaps, Ziad the Wise\n"
+   "added a 'feature' to automatically change the im3d viewer data range for\n"
+   "the user's convenience.  However, this doesn't work when the colorscale\n"
+   "isn't in an im3d -- such as in the renderer." } ,
+
+ { 30 , APR , 2010 , RWC , "afni" , MICRO , TYPE_GENERAL ,
+   "Right-click in DataDir label turns markers controls on/off." ,
+   NULL } ,
+
+ { 30 , APR , 2010 , RWC , "3dTcorr1D" , MINOR , TYPE_NEW_PROG ,
+   "Like 3dTcorrelate, but between a 1D file and a 3D+time dataset" ,
+   "Really a very simple program, with 4 options for the 'correlation'\n"
+   "coefficient computation: Pearson, Spearman, Quadrant, and Kendall tau_b." } ,
+
+ { 29 , APR , 2010 , RWC , "3dTcorrelate" , MICRO , TYPE_NEW_OPT ,
+   "add -ktaub option" ,
+   NULL } ,
+
+ { 29 , APR , 2010 , RWC , "InstaCorr" , MICRO , TYPE_NEW_OPT ,
+   "Add Kendall Tau_b to the correlation menu" ,
+   "For fun, and as a start towards something else." } ,
+
+ { 28 , APR , 2010 , RWC , "afni" , MINOR , TYPE_MODIFY ,
+   "Hide markers stuff from the user" ,
+   "Unless AFNI_ENABLE_MARKERS is set to YES" } ,
+
+ { 8 , APR , 2010 , RWC , "3dBandpass" , MINOR , TYPE_BUG_FIX ,
+   "Fix -localPV implementation" ,
+   NULL } ,
+
+ { 30 , MAR , 2010 , RWC , "3drefit" , MICRO , TYPE_GENERAL ,
+   "Keeps track of if it actual does something" ,
+   "And then will only re-write dataset header if a change was made.\n"
+   "Also, prints a message if it has to re-write entire dataset (e.g., .nii)" } ,
+
+ { 30 , MAR , 2010 , RWC , "3dGroupInCorr" , MICRO , TYPE_MODIFY ,
+   "Munge input filenames if user just gives prefix" ,
+   NULL } ,
+
+ { 29 , MAR , 2010 , RWC , "3dAllineate" , MICRO , TYPE_BUG_FIX ,
+   "Make sure auto_tstring is set to something reasonable" ,
+   NULL } ,
+
+ { 29 , MAR , 2010 , RWC , "afni_history" , MICRO , TYPE_MODIFY ,
+   "Add -dline option, alternative to -html option" ,
+   NULL } ,
+
+ { 25 , MAR , 2010 , RWC , "help_format" , MINOR , TYPE_MODIFY ,
+   "Hyperlink refs to other program names in -help Web pages" ,
+   NULL } ,
+
+ { 24 , MAR , 2010 , RWC , "3dFWHMx" , MICRO , TYPE_NEW_OPT ,
+   "Add -2difMAD option, for dealing with PET data, maybe." ,
+   NULL } ,
+
+ { 19 , MAR , 2010 , RWC , "3dGroupInCorr" , MICRO , TYPE_MODIFY ,
+   "Unroll correlation inner loop by 2 == speedup of 30% for this part" ,
+   NULL } ,
+
+ { 18 , MAR , 2010 , RWC , "cs_misc.c" , MICRO , TYPE_GENERAL ,
+   "Comma-ize function, and used in various places, for pretty print" ,
+   NULL } ,
+
+ { 18 , MAR , 2010 , RWC , "afni" , MINOR , TYPE_MODIFY ,
+   "Added Shft+Ctrl+click/drag to dynamic Group InstaCorr as well" ,
+   NULL } ,
+
+ { 17 , MAR , 2010 , RWC , "afni" , MINOR , TYPE_MODIFY ,
+   "Add Shift+Ctrl+Button1 seed dragging in individual InstaCorr" ,
+   NULL } ,
+
+ { 16 , MAR , 2010 , RWC , "3dbucket" , MICRO , TYPE_GENERAL ,
+   "Make -glueto keep compressed form of the first dataset" ,
+   "Same change made for 3dTcat" } ,
+
+ { 16 , MAR , 2010 , RWC , "3dREMLfit" , MINOR , TYPE_MODIFY ,
+   "Allow all zero columns in regression matrix, with -GOFORIT option" ,
+   "* Use SVD to desingularize matrix when QR factorizing (not elsewhere)\n"
+   "* Remove coefficients for all zero columns from GLT matrices\n"
+   "* Adjust DOF to compensate\n"
+   "* This is Thalia Wheatley's fault -- blame her for any problems" } ,
+
+ { 5 , MAR , 2010 , RWC , "mri_read" , MICRO , TYPE_MODIFY ,
+   "Modify to allow row and col selectors on stdin" ,
+   NULL } ,
+
+ { 4 , MAR , 2010 , RWC , "3dGroupInCorr" , MINOR , TYPE_BUG_FIX ,
+   "Fixed crash with paired t-test opcode" ,
+   "Didn't switch to 1-sample mode when opcode was for paired, but no second\n"
+   "data vector was passed in.  This, of course, is Mike Beauchamp's fault." } ,
+
+ { 3 , MAR , 2010 , RWC , "afni" , MICRO , TYPE_GENERAL ,
+   "GroupInstaCorr dataset now can be +orig" ,
+   "If user sets environment variable AFNI_GROUPINCORR_ORIG to YES, as in\n"
+   "\n"
+   "  afni -niml -DAFNI_GROUPINCORR_ORIG=YES" } ,
+
+ { 2 , MAR , 2010 , RWC , "3dAllineate" , MICRO , TYPE_GENERAL ,
+   "moved weight sum in LPC" ,
+   "* Old way: count a BLOK even if it doesn't contribute to correlation sum\n"
+   "* New way: don't count it\n"
+   "* If'n you want the old way, setenv AFNI_LPC_OLDWSUM YES\n"
+   "* Also: used OpenMP to speedup coordinate transformations" } ,
+
+ { 2 , MAR , 2010 , RWC , "3dAllineate" , MICRO , TYPE_GENERAL ,
+   "add overlap 'ov' to lpc+ functional" ,
+   "Kind of slow -- OpenMP mabye?" } ,
+
+ { 1 , MAR , 2010 , RWC , "InstaCorr" , MICRO , TYPE_NEW_OPT ,
+   "Add Spearman and Quadrant correlation options" ,
+   NULL } ,
+
+ { 26 , FEB , 2010 , RWC , "afni InstaCorr" , MICRO , TYPE_GENERAL ,
+   "Add polort option to InstaCorr setup" ,
+   "Beware the frumious Bandersnatch, Ziad." } ,
+
+ { 24 , FEB , 2010 , RWC , "3dAllineate" , MINOR , TYPE_NEW_OPT ,
+   "New cost functional -lpc+" ,
+   "Combination of lpc + hel + crA + nmi + mi.\n"
+   "Also some micro changes to allow more -twobest starting points and the\n"
+   "like." } ,
+
+ { 19 , FEB , 2010 , RWC , "3dAllineate" , MICRO , TYPE_GENERAL ,
+   "Turn up -twoblur limit from 7 to 11." ,
+   NULL } ,
+
+ { 18 , FEB , 2010 , RWC , "3dDespike" , MICRO , TYPE_MODIFY ,
+   "Add printout of Laplace distribution percentages" ,
+   "And fix normal CDF calculation" } ,
+
+ { 8 , FEB , 2010 , RWC , "3dSatCheck" , MICRO , TYPE_NEW_PROG ,
+   "Program to check for initial transients" ,
+   "i.e., if the FMRI time series has non-saturated time points at the\n"
+   "beginning (on average) -- uses the code thd_satcheck.c for the real work\n"
+   "-- the same as used in 3dBandpass.  At this time, 3dSatCheck is not\n"
+   "compiled in the binary distributions of AFNI." } ,
+
+ { 8 , FEB , 2010 , RWC , "3dBandpass" , MICRO , TYPE_MODIFY ,
+   "Check for initial transients" ,
+   "i.e., non-saturated MRI signal in the first few time points" } ,
+
+ { 8 , FEB , 2010 , RWC , "3dBandpass" , MICRO , TYPE_MODIFY ,
+   "OpenMP-ize the -blur option" ,
+   NULL } ,
+
+ { 8 , FEB , 2010 , RWC , "3dSetupGroupInCorr" , MICRO , TYPE_MODIFY ,
+   "Change default storage to -byte from -short" ,
+   NULL } ,
+
+ { 4 , FEB , 2010 , RWC , "Group InstaCorr" , MICRO , TYPE_GENERAL ,
+   "Set more informative labels for results sub-brick" ,
+   "With the addition of the -label[AB] options to 3dGroupInCorr.c, the\n"
+   "sending of labels to AFNI, and the setting of labels in\n"
+   "afni_pplug_instacorr.c" } ,
+
+ { 3 , FEB , 2010 , RWC , "Group InstaCorr" , MINOR , TYPE_GENERAL ,
+   "2-sample case now also sends back 1-sample results" ,
+   "With this, you can look at the 2-sample difference in controller A, and\n"
+   "the 2 1-sample results in controllers B and C.  This lets you see the\n"
+   "difference AND similarities at the same time." } ,
+
+ { 3 , FEB , 2010 , RWC , "Group InstaCorr" , MICRO , TYPE_GENERAL ,
+   "-byte option to save memory" ,
+   "3dSetupGroupInCorr and 3dGroupInCorr can now use bytes to store the huge\n"
+   "datasets, which will save disk space and memory.  Results are virtually\n"
+   "identical." } ,
+
  { 31 , DEC , 2009 , RWC , "many" , MICRO , TYPE_GENERAL ,
    "Remove 'cast ... different size' warnings" ,
    "Macros: ITOP and PTOI to cast without warnings.  For Z." } ,
@@ -1176,8 +1611,10 @@ afni_history_struct rwcox_history[] = {
  /*---------- The stuff below was converted from AFNI.changes.cox ----------*/
 
  { 24,JUL,1996, RWC, "Miscellaneous", SUPERDUPER, TYPE_GENERAL, "Oldest History stuff" ,
-   "AFNI was created in summer 1994 (altho some parts date to the 1980s).\n"
-   "However, no log was made of changes until this date in 1996.\n"
+   "AFNI was created in summer 1994 (but some parts date to the 1980s).\n"
+   "However, no formal log was made of changes until this date in 1996.\n"
+   "So this is the beginning of AFNI historiography.\n"
+   "  'Lately it occurs to me: What a long, strange trip it's been.'\n"
    } ,
 
  { 25,JUL,1996 , RWC , "Miscellaneous" , MICRO , TYPE_GENERAL , "Older History stuff" ,

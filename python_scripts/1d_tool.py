@@ -3,7 +3,7 @@
 # system libraries
 import sys, os
 
-if 1 :  # for testing, might add the current dir and ~/abin to the PATH
+if 0 :  # for testing, might add the current dir and ~/abin to the PATH
    try:    sys.path.extend(['.', '%s/abin' % os.getenv('HOME')])
    except: pass
 
@@ -110,7 +110,7 @@ examples (very basic for now):
  
        a. general example
 
-          1d_tool.py -infile motion.1D -set_nruns 9 -set_tr 3.0     \\
+          1d_tool.py -infile motion.1D -set_nruns 9                 \\
                      -derivative -collapse_cols euclidean_norm      \\
                      -extreme_mask -1.2 1.2                         \\
                      -show_censor_count                             \\
@@ -125,18 +125,18 @@ examples (very basic for now):
           option will also result in subjA_enorm.1D being written, which is the
           euclidean norm of the derivative, before the extreme mask is applied.
 
-          1d_tool.py -infile motion.1D -set_nruns 9 -set_tr 3.0  \\
-                     -show_censor_count                          \\
+          1d_tool.py -infile motion.1D -set_nruns 9     \\
+                     -show_censor_count                 \\
                      -censor_motion 1.2 subjA
 
        c. allow the run lengths to vary
 
-          1d_tool.py -infile motion.1D -set_tr 3.0               \\
+          1d_tool.py -infile motion.1D                           \\
                      -set_run_lengths 64 61 67 61 67 61 67 61 67 \\
                      -show_censor_count                          \\
                      -censor_motion 1.2 subjA_rlens
 
-       Consider also '-censor_prev_TR'.
+       Consider also '-censor_prev_TR' and '-censor_first_trs'.
 
   11.  Demean the data.  Use motion parameters as an example.
 
@@ -171,6 +171,32 @@ examples (very basic for now):
 
          1d_tool.py -infile sum.ideal.1D -censor_fill_parent X.xmat.1D \\
                     -write sum.ideal.uncensored.1D
+
+  13. Show whether the input file is valid as a numeric data file.
+
+       a. as any generic 1D file
+
+          1d_tool.py -infile data.txt -looks_like_1D
+
+       b. as a 1D stim_file, of 3 runs of 64 TRs (TR is irrelevant)
+
+          1d_tool.py -infile data.txt -looks_like_1D \\
+                     -set_run_lengths 64 64 64
+
+       c. as a stim_times file with local times
+
+          1d_tool.py -infile data.txt -looks_like_local_times \\
+                     -set_run_lengths 64 64 64 -set_tr 2
+
+       d. as a 1D or stim_times file with global times
+
+          1d_tool.py -infile data.txt -looks_like_global_times \\
+                     -set_run_lengths 64 64 64 -set_tr 2
+
+       e. perform all tests, reporting all errors
+
+          1d_tool.py -infile data.txt -looks_like_test_all \\
+                     -set_run_lengths 64 64 64 -set_tr 2
 
 ---------------------------------------------------------------------------
 basic informational options:
@@ -212,11 +238,10 @@ general options:
         PREFIX_CENSORTR.txt and PREFIX_enorm.1D (e.g. subj123_censor.1D,
         subj123_CENSORTR.txt and subj123_enorm.1D).
 
-        The other information necessary besides an input motion file (-infile)
-        is the number of runs (-set_nruns or -set_run_lengths) and the TR
-        (-set_tr).
+        Besides an input motion file (-infile), the number of runs is needed
+        (-set_nruns or -set_run_lengths).
 
-        Consider also '-censor_prev_TR'.
+        Consider also '-censor_prev_TR' and '-censor_first_trs'.
         See example 10.
 
    -censor_fill                 : expand data, filling censored TRs with zeros
@@ -233,6 +258,8 @@ general options:
 
         See example 12.
 
+   -censor_first_trs N          : when censoring motion, also censor the first
+                                  N TRs of each run
    -censor_prev_TR              : for each censored TR, also censor previous
    -cormat_cutoff CUTOFF        : set cutoff for cormat warnings (in [0,1])
    -demean                      : demean each run (new mean of each run = 0.0)
@@ -241,6 +268,50 @@ general options:
 
         Convert to a 0/1 mask, where 1 means the given value is in [MIN,MAX],
         and 0 means otherwise.  This is useful for censoring motion outliers.
+
+   "Looks like" options:
+
+        These are terminal options that check whether the input file seems to
+        be of type 1D, local stim_times or global stim_times formats.  The only
+        associated options are currently -input, -set_run_lens, -set_tr and
+        -verb.
+
+        They are terminal in that no other 1D-style actions are performed.
+        See 'timing_tool.py -help' for details on stim_times operations.
+
+   -looks_like_1D               : is the file in 1D format
+
+        Does the input data file seem to be in 1D format?
+
+            - must be rectangular (same number of columns per row)
+            - duration must match number of rows (if run lengths are given)
+
+   -looks_like_local_times      : is the file in local stim_times format
+
+        Does the input data file seem to be in the -stim_times format used by
+        3dDeconvolve (and timing_tool.py)?  More specifically, is it the local
+        format, with one scanning run per row.
+
+            - number of rows must match number of runs
+            - times cannot be negative
+            - times must be unique per run (per row)
+            - times cannot exceed the current run time
+
+   -looks_like_global_times     : is the file in global stim_times format
+
+        Does the input data file seem to be in the -stim_times format used by
+        3dDeconvolve (and timing_tool.py)?  More specifically, is it the global
+        format, either as one long row or one long line?
+
+            - must be one dimensional (either a single row or column)
+            - times cannot be negative
+            - times must be unique
+            - times cannot exceed total duration of all runs
+
+   -looks_like_test_all         : run all -looks_like tests
+
+        Applies all "looks like" test options: -looks_like_1D,
+        -looks_like_local_times and -looks_like_global_times.
 
    -overwrite                   : allow overwriting of any output dataset
    -reverse                     : reverse data over time
@@ -338,9 +409,17 @@ g_history = """
    0.14 Oct 15, 2009 - added -demean
    0.15 Oct 23, 2009 - added -censor_fill and -censor_fill_par
    0.16 Nov 16, 2009 - allow motion censoring with varying run lengths
+   0.17 Mar 25, 2010 - small help update
+   0.18 Mar 25, 2010 - added -censor_first_trs for A Barbey
+   0.19 Jul 30, 2010 - added "Looks like" optins
+        - added -looks_like_1D, -looks_like_local_times,
+                -looks_like_global_times, -looks_like_test_all
+   0.20 Aug 02, 2010
+        - small change to looks_like text formatting
+        - removed useless TR from looks_like_1D function
 """
 
-g_version = "1d_tool.py version 0.16, Nov 16, 2009"
+g_version = "1d_tool.py version 0.20, August 2, 2010"
 
 
 class A1DInterface:
@@ -353,11 +432,13 @@ class A1DInterface:
 
       self.infile          = None       # main input file
       self.adata           = None       # main Afni1D class instance
+      self.dtype           = 0          # 1=Afni1D, 2=AfniData
 
       # action variables
       self.add_cols_file   = None       # filename to add cols from
       self.censor_fill     = 0          # zero-fill censored TRs
       self.censor_fill_par = ''         # same, but via this parent dset
+      self.censor_first_trs= 0          # number of first TRs to also censor
       self.censor_prev_TR  = 0          # if censor, also censor previous TR
       self.collapse_method = ''         # method for collapsing columns
       self.demean          = 0          # demean the data
@@ -386,6 +467,9 @@ class A1DInterface:
       self.collapse_file   = None       # output as 1D collapse file
       self.write_file      = None       # output filename
 
+      # test variables
+      self.looks_like      = 0          # 1,2,4,8 = TEST,1D,local,global
+
       # general variables
       self.extreme_min     = 0          # minimum for extreme limit
       self.extreme_max     = 0          # maximum for extreme limit
@@ -398,7 +482,15 @@ class A1DInterface:
       """load a 1D file, and init the main class elements"""
 
       self.status = 1 # init to failure
-      adata = LAD.Afni1D(fname, verb=self.verb)
+
+      # the looks_like options imply AfniData, else use Afni1D
+      if self.looks_like:
+         adata = LAD.AfniData(fname, verb=self.verb)
+         self.dtype = 2
+      else:
+         adata = LAD.Afni1D(fname, verb=self.verb)
+         self.dtype = 1
+
       if not adata.ready:
          print "** failed to read 1D data from '%s'" % fname
          return 1
@@ -454,6 +546,9 @@ class A1DInterface:
       self.valid_opts.add_opt('-censor_fill_parent', 1, [], 
                       helpstr='-censor_fill, but via this parent dataset')
 
+      self.valid_opts.add_opt('-censor_first_trs', 1, [], 
+                      helpstr='number of initial TRs to censor, per run')
+
       self.valid_opts.add_opt('-censor_motion', 2, [], 
                       helpstr='censor motion data with LIMIT and PREFIX')
 
@@ -475,6 +570,18 @@ class A1DInterface:
 
       self.valid_opts.add_opt('-extreme_mask', 2, [], 
                       helpstr='create mask for when values are in [MIN,MAX]')
+
+      self.valid_opts.add_opt('-looks_like_1D', 0, [], 
+                      helpstr='show whether file has 1D format')
+
+      self.valid_opts.add_opt('-looks_like_local_times', 0, [], 
+                      helpstr='show whether file has local stim_times format')
+
+      self.valid_opts.add_opt('-looks_like_global_times', 0, [], 
+                      helpstr='show whether file has global stim_times format')
+
+      self.valid_opts.add_opt('-looks_like_test_all', 0, [], 
+                      helpstr='test file for all 1D and timing formats')
 
       self.valid_opts.add_opt('-overwrite', 0, [], 
                       helpstr='allow overwriting any output files')
@@ -656,6 +763,11 @@ class A1DInterface:
             self.censortr_file   = '%s_CENSORTR.txt' % val[1]
             self.collapse_file   = '%s_enorm.1D' % val[1]
 
+         elif opt.name == '-censor_first_trs':
+            val, err = uopts.get_type_opt(int, '', opt=opt)
+            if err: return 1
+            self.censor_first_trs = val
+
          elif opt.name == '-censor_prev_TR':
             self.censor_prev_TR = 1
 
@@ -688,6 +800,16 @@ class A1DInterface:
             else:
                print '** -extreme_mask: must have min <= max'
                return 1
+
+         # looks_like options, to test AfniData (not Afni1D)
+         elif opt.name == '-looks_like_1D':
+            self.looks_like |= 2
+         elif opt.name == '-looks_like_local_times':
+            self.looks_like |= 4
+         elif opt.name == '-looks_like_global_times':
+            self.looks_like |= 8
+         elif opt.name == '-looks_like_test_all':
+            self.looks_like = -1
 
          elif opt.name == '-overwrite':
             self.overwrite = 1
@@ -749,6 +871,37 @@ class A1DInterface:
 
       return
 
+   def process_afnidata(self):
+      """return None on completion, else error code (0 being okay)"""
+
+      if not self.adata.ready and self.dtype != 2:
+         print '** not ready to process AfniData'
+         return 1
+
+      if self.verb > 1:
+         print '++ process_afnidata: looks_like = %d' %  self.looks_like
+
+      if not self.looks_like:
+         print '** no looks_like action to perform on AfniData'
+         return 1
+
+      # use verb of at least 1 to print result
+      verb = self.verb
+      if verb < 1: verb = 1
+
+      if self.looks_like & 2:
+         self.adata.looks_like_1D(run_lens=self.set_run_lengths, verb=verb)
+
+      if self.looks_like & 4:
+         self.adata.looks_like_local_times(run_lens=self.set_run_lengths,
+                                           tr=self.set_tr, verb=verb)
+
+      if self.looks_like & 8:
+         self.adata.looks_like_global_times(run_lens=self.set_run_lengths,
+                                            tr=self.set_tr, verb=verb)
+
+      return 0
+
    def process_data(self):
       """return None on completion, else error code (0 being okay)"""
 
@@ -758,6 +911,9 @@ class A1DInterface:
          print '** missing -infile option'
          return 1
       elif self.init_from_file(self.infile): return 1
+
+      # process AfniData separately
+      if self.dtype == 2: return self.process_afnidata()
 
       if self.add_cols_file:
          newrd = LAD.Afni1D(self.add_cols_file,verb=self.verb)
@@ -834,6 +990,11 @@ class A1DInterface:
 
       if self.censor_prev_TR:
          if self.adata.mask_prior_TRs(): return 1
+
+      if self.censor_first_trs:
+         if self.censor_file == None: cval = 0  # censor by nuking
+         else:                        cval = 1  # will invert later
+         if self.adata.mask_first_TRs(self.censor_first_trs, cval): return 1
 
       # ---- 'show' options come after all other processing ----
 

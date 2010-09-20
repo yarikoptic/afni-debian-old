@@ -108,7 +108,6 @@
 #define SUMA_MAX_FACESET_EDGE_NEIGHB 3 /*!< Maximum number of adjoining FaceSets a triangular faceset can have.*/
 #define SUMA_MAX_DISPLAYABLE_OBJECTS 1000 /*!< Maximum number of displayable Objects */
 #define SUMA_MAX_SURF_VIEWERS 6 /*!< Maximum number of surface viewers allowed */
-#define SUMA_N_STANDARD_VIEWS 2/*!< Maximum number of standard views, see SUMA_STANDARD_VIEWS*/
 #define SUMA_DEFAULT_VIEW_FROM 300 /*!< default view from location on Z axis */
 #define SUMA_MAX_FP_NAME_LENGTH ( SUMA_MAX_DIR_LENGTH + SUMA_MAX_NAME_LENGTH )
 #define SUMA_MAX_COMMAND_LENGTH      2000/*!< Maximum number of characters in a command string */
@@ -235,7 +234,7 @@ typedef enum { SE_Empty,
                SE_SetForceAfniSurf, SE_BindCrossHair, SE_ToggleForeground, 
                SE_ToggleBackground, SE_FOVreset, SE_CloseStream4All, 
                SE_Redisplay_AllVisible, SE_RedisplayNow, SE_ResetOpenGLState, 
-               SE_LockCrossHair,
+               SE_LockCrossHair, SE_SetGICORnode, 
                SE_ToggleLockAllCrossHair, SE_SetLockAllCrossHair, 
                SE_ToggleLockView, SE_ToggleLockAllViews, 
                SE_Load_Group, SE_Home_AllVisible, SE_Help, SE_Help_Cmap, 
@@ -429,12 +428,17 @@ typedef enum { SXR_default, SXR_Euro, SXR_Afni , SXR_Bonaire} SUMA_XRESOURCES;  
 
 typedef enum { SRM_ViewerDefault, SRM_Fill, SRM_Line, SRM_Points , SRM_Hide, SRM_N_RenderModes} SUMA_RENDER_MODES; /*!< flags for various rendering modes */
 
-#define SUMA_N_STANDARD_VIEWS  2 /*!< number of useful views enumerated in SUMA_STANDARD_VIEWS */
-typedef enum {   SUMA_2D_Z0, SUMA_3D, SUMA_Dunno} SUMA_STANDARD_VIEWS; /*!< Standard viewing modes. These are used to decide what viewing parameters to carry on when switching states 
-                                                                  SUMA_2D_Z0 2D views, with Z = 0 good for flat surfaces
-                                                                  SUMA_3D standard 3D view
-                                                                  SUMA_Dunno used to flag errors leave this at the end 
-                                                                  Keep in sync with SUMA_N_STANDARD_VIEWS*/
+   /*!< number of useful views enumerated in SUMA_STANDARD_VIEWS */
+typedef enum {    SUMA_2D_Z0, SUMA_2D_Z0L, 
+                  SUMA_3D, SUMA_N_STANDARD_VIEWS } SUMA_STANDARD_VIEWS; 
+                     /*!< Standard viewing modes. These are used to decide what 
+                     viewing parameters to carry on when switching states 
+                     SUMA_2D_Z0 2D views, with Z = 0 good for flat surfaces
+                     SUMA_2D_Z0L 2D views, with Z = 0 
+                                          good for left hemi flat surfaces
+                     SUMA_3D standard 3D view
+                     SUMA_N_STANDARD_VIEWS used to flag errors leave  at the end 
+                     */
 typedef enum {   SUMA_No_Lock, SUMA_I_Lock, SUMA_XYZ_Lock, SUMA_N_Lock_Types}  SUMA_LINK_TYPES; /*!< types of viewer linking. Keep SUMA_N_Lock_Types at the end, it is used to keep track of the number of types*/
                                                                  
 typedef enum {  SWP_DONT_CARE,
@@ -1005,6 +1009,8 @@ typedef struct {
    char ** clist; /*!< strings displayed in the Scrolled list window */
    int N_clist; /*!< Number of strings in clist */
    void **oplist; /*!< list of pointers to objects in the scrolled list */
+   char *content_id; /*!< A string identifier to indicate which object
+                          provided the content of this list */
 } SUMA_ASSEMBLE_LIST_STRUCT;
 
 /*!
@@ -1775,37 +1781,51 @@ typedef struct {
    SUMA_Boolean ShowBackground; /*!< Flag for showing/not showing background colors */   
    SUMA_Boolean UsePatchDims; /*!< Flag for using patch based dimensions (rather than entire nodelist) */
    
-   int Focus_SO_ID; /*!< index into SUMAg_DOv of the surface currently in focus, -1 for nothing*/
-   int Focus_DO_ID; /*!< index into SUMAg_DOv of the Displayabl Object currently in focus -1 for nothing*/
+   int Focus_SO_ID; /*!< index into SUMAg_DOv of the surface currently in focus, 
+                        -1 for nothing*/
+   int Focus_DO_ID; /*!< index into SUMAg_DOv of the Displayable Object 
+                           currently in focus -1 for nothing*/
    
-   GLdouble Pick0[3];   /*!< Click location in World coordinates, at z = 0 (near clip plane)*/
-   GLdouble Pick1[3];   /*!< Click location in World coordinates, at z = 1.0 (far clip plane)*/
-   GLdouble Pcenter_close[3];  /*!< Center of screen in World coordinates , at z = 0 (near clip plane)*/
-   GLdouble Pcenter_far[3];    /*!< Center of screen in World coordinates , at z = 1 (near far plane)*/
-   GLdouble Plist_close[3];    /*!< lists of points on screen in world coordinates  at z = 0 
-                                    it holds N/3 points where N is the array length
-                                    At the moment, all I need is one point, the lower left
-                                    Should more be needed, I will add them to the list and
-                                    document them here.*/
+   GLdouble Pick0[3];   /*!< Click location in World coordinates, at z = 0 
+                           (near clip plane)*/
+   GLdouble Pick1[3];   /*!< Click location in World coordinates, 
+                              at z = 1.0 (far clip plane)*/
+   GLdouble Pcenter_close[3];  /*!< Center of screen in World coordinates , 
+                                    at z = 0 (near clip plane)*/
+   GLdouble Pcenter_far[3];    /*!< Center of screen in World coordinates , 
+                                    at z = 1 (near far plane)*/
+   GLdouble Plist_close[3];   /*!< lists of points on screen in world coordinates
+                  at z = 0.
+                  it holds N/3 points where N is the array length
+                  At the moment, all I need is one point, the lower left
+                  Should more be needed, I will add them to the list and
+                  document them here.*/
    SUMA_CrossHair *Ch; /*!< Pointer to Cross Hair structure */
    SUMA_Axis *WAx;  /*!< Pointer to world axis */   
    
    SUMA_ViewState *VSv; /*!< Vector of Viewing State Structures */
    int N_VSv; /*!< Number of Viewing State structures */
-   char *State; /*!< The current state of the viewer. This variable should no be freed since it points to locations within VSv*/
+   char *State; /*!< The current state of the viewer. 
+      This variable should no be freed since it points to locations within VSv*/
    int iState; /*!< index into VSv corresponding to State */
-   int LastNonMapStateID; /*!< Index into the state in VSv from which a toggle to the mappable state was initiated */ 
+   int LastNonMapStateID; /*!< Index into the state in VSv from which a 
+                              toggle to the mappable state was initiated */ 
    
-   SUMA_Boolean isShaded; /*!< YUP if the window is minimized or shaded, NOPE if you can see its contents */
+   SUMA_Boolean isShaded; /*!< YUP if the window is minimized or shaded, 
+                              NOPE if you can see its contents */
 
-   SUMA_Boolean LinkAfniCrossHair; /*!< YUP if the cross hair location is to be sent (and accepted from AFNI, when the stream is open) */
-   SUMA_Boolean ResetGLStateVariables; /*!< YUP if you need to run the function that resets the Eye Axis before display. 
-                                          see functions SUMA_display and SUMA_OpenGLStateReset for more info */
-   SUMA_Boolean NewGeom;   /*!< YUP if viewer has new geometry in it and needs to have its default viewing settings updated */                                  
+   SUMA_Boolean LinkAfniCrossHair; /*!< YUP if the cross hair location is to be 
+                        sent (and accepted from AFNI, when the stream is open) */
+   SUMA_Boolean ResetGLStateVariables; /*!< YUP if you need to run the function 
+            that resets the Eye Axis before display. 
+            see functions SUMA_display and SUMA_OpenGLStateReset for more info */
+   SUMA_Boolean NewGeom; /*!< YUP if viewer has new geometry in it and 
+                           needs to have its default viewing settings updated */
    DList *BS; /*!< The new version of BrushStroke, in doubly linked list form */
    
    char *CurGroupName; /*!< current name of group */
-   int iCurGroup; /*!< index into GroupList (stored in SUMAg_CF) of current group of Surface Viewer */
+   int iCurGroup; /*!< index into GroupList (stored in SUMAg_CF) 
+                        of current group of Surface Viewer */
    SUMA_REDISPLAY_CAUSE rdc;  /*!< Why has a redisplay been requested */
    SUMA_BLEND_MODES Blend_Mode; /*!< blending mode */
    int FreezeZoomXstates; /*!< if 1, keep zoom constant across states */
@@ -2364,6 +2384,8 @@ typedef enum { SUMA_AFNI_STREAM_INDEX = 0,
                      /*!<  Using socket SUMA_TCP_LISTEN_PORT0 + 2*/
                SUMA_DRIVESUMA_LINE, 
                      /*!<  Using socket SUMA_TCP_LISTEN_PORT0 + 3*/
+               SUMA_GICORR_LINE,
+                     /*!<  Using socket SUMA_TCP_LISTEN_PORT0 + 4*/
                SUMA_MAX_STREAMS 
                      /*!< Maximum number of streams, KEEP AT END */
             } SUMA_STREAM_INDICES;
@@ -2565,13 +2587,15 @@ typedef enum {
    SUMA_SO1_is_SO2,           /*!< Surface1 is the same as Surface2 */
    SUMA_SO1_is_LDPSO2,        /*!< SO1 is the local domain parent of SO2 */
    SUMA_SO2_is_LDPSO1,        /*!< SO2 is the local domain parent of SO1 */
-   SUMA_LDPSO1_is_LDPSO2,     /*!< SO1 and SO2 have the same local domain parent */
+   SUMA_LDPSO1_is_LDPSO2,   /*!< SO1 and SO2 have the same local domain parent */
    SUMA_NUCELAR_FAMILY,       /*!< A flag to indicate limit of immediate kinship
                                   (Don't blame me, official syntax in use) 
                                   Above that flag, kinship is distant */
    SUMA_SO1_is_GPSO2,         /*!< SO1 is the granddaddy of SO2 */
    SUMA_SO2_is_GPSO1,         /*!< SO2 is the granddaddy of SO1 */
    SUMA_GPSO1_is_GPSO2,     /*!< SO1 and SO2 have the same  granddaddy*/
+   
+   SUMA_N_NODE_SAME,        /*! SO1 and SO2 have the same number of nodes */
 } SUMA_DOMAIN_KINSHIPS; /*!< The type of relationships between surfaces, modify 
                               function SUMA_DomainKinships_String; */
 typedef struct {
@@ -2709,6 +2733,11 @@ typedef struct {
                           surfaces */
    
    SUMA_Boolean HoldClickCallbacks;
+   int PointerLastInViewer; /* index of latest viewer visited by mouse pointer
+                           -1 if unknown */
+   
+   GICOR_setup *giset; /*!< parameters for group icorr setup */
+   
 } SUMA_CommonFields;
 
 

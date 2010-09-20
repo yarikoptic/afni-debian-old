@@ -20,6 +20,7 @@
 static int show_grapher_pixmap = 1 ;
 static void fd_line( MCW_grapher *, int,int,int,int ) ;
 static byte PLOT_FORCE_AUTOSCALE = 0;
+static Widget wtemp ;
 
 /*------------------------------------------------------------*/
 /*! Macro to call the getser function with correct prototype. */
@@ -246,6 +247,7 @@ ENTRY("new_MCW_grapher") ;
             XmNtraversalOn , True ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
+   LABELIZE(grapher->but3_label) ;
 
    /*-------------------------------------*/
    /*--- RowColumn to hold all buttons ---*/
@@ -505,12 +507,12 @@ ENTRY("new_MCW_grapher") ;
                XmNinitialResourcesPersistent , False ,
             NULL ) ;
 #else
-   (void) XtVaCreateManagedWidget(
+   wtemp = XtVaCreateManagedWidget(
             "dialog" , xmLabelWidgetClass , grapher->opt_menu ,
                LABEL_ARG("--- Cancel ---") ,
                XmNrecomputeSize , False ,
                XmNinitialResourcesPersistent , False ,
-            NULL ) ;
+            NULL ) ; LABELIZE(wtemp) ;
 #endif
 
    MENU_SLINE(opt_menu) ;
@@ -576,12 +578,12 @@ ENTRY("new_MCW_grapher") ;
                     XmNinitialResourcesPersistent , False ,
                  NULL ) ;
 #else
-        (void) XtVaCreateManagedWidget(
+        wtemp = XtVaCreateManagedWidget(
                  "dialog" , xmLabelWidgetClass , grapher->opt_colors_menu ,
                     XmNlabelString , xstr ,
                     XmNrecomputeSize , False ,
                     XmNinitialResourcesPersistent , False ,
-                 NULL ) ;
+                 NULL ) ; LABELIZE(wtemp) ;
 #endif
         XmStringFree( xstr ) ;
 
@@ -754,7 +756,7 @@ ENTRY("new_MCW_grapher") ;
                     XmNtraversalOn , True  ,
                     XmNinitialResourcesPersistent , False ,
                  NULL ) ;
-     XmStringFree( xstr ) ;
+     XmStringFree( xstr ) ; LABELIZE(grapher->opt_baseline_global_label) ;
    }
 
    /* 22 Sep 2000: Text toggle */
@@ -2843,7 +2845,7 @@ STATUS(str) ; }
       /*----- redraw -----*/
 
       case Expose:{
-         XExposeEvent * event = (XExposeEvent *) ev ;
+         XExposeEvent *event = (XExposeEvent *) ev ;
 
 if(PRINT_TRACING){
 char str[256] ;
@@ -2874,10 +2876,10 @@ STATUS(str) ; }
       /*----- take key press -----*/
 
       case KeyPress:{
-         XKeyEvent * event = (XKeyEvent *) ev ;
-         char           buf[32] ;
-         KeySym         ks=0 ;
-         int            nbuf ;
+         XKeyEvent *event = (XKeyEvent *) ev ;
+         char          buf[32] ;
+         KeySym        ks=0 ;
+         int           nbuf ;
 
 STATUS("KeyPress event") ;
 
@@ -2919,13 +2921,15 @@ STATUS("KeyPress event") ;
 
 STATUS("button press") ;
 
+         GRA_timer_stop(grapher) ;  /* 31 May 2010 = Memorial Day */
+
          /* 26 Feb 2007: Buttons 4 and 5 = scroll wheel = change time point */
 
          if( but == Button4 || but == Button5 ){
            int dd=(but==Button4)?-1:+1 , tt ;
            if( AFNI_yesenv("AFNI_INDEX_SCROLLREV") ) dd = -dd ;
            tt = grapher->time_index + dd ;
-           EXRONE(grapher) ; GRA_timer_stop(grapher) ;
+           EXRONE(grapher) ;
            if( tt >= 0 && tt < grapher->status->num_series ){
              if( grapher->status->send_CB != NULL ){
                GRA_cbs cbs ;
@@ -3068,7 +3072,8 @@ STATUS("button press") ;
 
          /* Button 3 --> popup statistics of this graph */
 
-         if( but == Button3 && !ISONE(grapher) && !grapher->textgraph ){
+         if( !AFNI_noenv("AFNI_GRAPH_BUT3") &&  /* stupid Xorg bug */
+             but == Button3 && !ISONE(grapher) && !grapher->textgraph ){
             int ix , iy ;
 
             ix = xloc - grapher->xpoint + grapher->xc ;
@@ -3170,8 +3175,9 @@ STATUS("button press") ;
          int new_width , new_height ;
 
 STATUS("ConfigureNotify event") ;
-
+ 
          XSync( XtDisplay(w) , False ) ;
+         GRA_timer_stop(grapher) ;  /* 31 May 2010 = Memorial Day */
 
          new_width  = event->width ;
          new_height = event->height ;
@@ -3323,11 +3329,8 @@ STATUS(str); }
       case 'A':
         PLOT_FORCE_AUTOSCALE = !PLOT_FORCE_AUTOSCALE;
         MCW_invert_widget(grapher->opt_scale_AUTO_pb);
-        if (PLOT_FORCE_AUTOSCALE) {
-         fprintf(stdout,"++ Force Autoscale: ON\n");
-        } else {
-         fprintf(stdout,"++ Force Autoscale: OFF\n");
-        }
+        if (PLOT_FORCE_AUTOSCALE) INFO_message("Graph Viewer: Autoscale forced ON") ;
+        else                      INFO_message("Graph Viewer: Autoscale forced OFF") ;
         redraw_graph( grapher , 0);
       break;
       
@@ -5068,12 +5071,12 @@ ENTRY("GRA_setshift_startup") ;
                 XmNinitialResourcesPersistent , False ,
              NULL ) ;
 
-   (void) XtVaCreateManagedWidget(
+   wtemp = XtVaCreateManagedWidget(
             "dialog" , xmLabelWidgetClass , wrc ,
                LABEL_ARG("-- Shift Controls --") ,
                XmNalignment  , XmALIGNMENT_CENTER ,
                XmNinitialResourcesPersistent , False ,
-            NULL ) ;
+            NULL ) ; LABELIZE(wtemp) ;
 
    (void) XtVaCreateManagedWidget(
             "dialog" , xmSeparatorWidgetClass , wrc ,
@@ -5481,12 +5484,12 @@ ENTRY("AFNI_new_fim_menu") ;
                XmNinitialResourcesPersistent , False ,
             NULL ) ;
 #else
-   (void) XtVaCreateManagedWidget(
+   wtemp = XtVaCreateManagedWidget(
             "dialog" , xmLabelWidgetClass , fmenu->fim_menu ,
                LABEL_ARG("--- Cancel ---") ,
                XmNrecomputeSize , False ,
                XmNinitialResourcesPersistent , False ,
-            NULL ) ;
+            NULL ) ; LABELIZE(wtemp) ;
 #endif
 
    MENU_SLINE(fim_menu) ;
@@ -5654,12 +5657,12 @@ ENTRY("AFNI_new_fim_menu") ;
               "dialog" , xmSeparatorWidgetClass , qbut_menu ,
                XmNseparatorType , XmDOUBLE_LINE , NULL ) ;
 
-      (void) XtVaCreateManagedWidget(
+      wtemp = XtVaCreateManagedWidget(
                "dialog" , xmLabelWidgetClass , qbut_menu ,
                   LABEL_ARG("--Extra Funcs--") ,
                   XmNrecomputeSize , False ,
                   XmNinitialResourcesPersistent , False ,
-               NULL ) ;
+               NULL ) ; LABELIZE(wtemp) ;
 
       fmenu->fimp_user_bbox = new_MCW_bbox( qbut_menu,
                                             GLOBAL_library.registered_fim.num ,

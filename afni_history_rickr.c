@@ -5,7 +5,7 @@
 
 /*  basic format: 3-field date, user, program_name, impact_level,
                   short description without newline
-                  (optional) long descrption with intermediate newlines
+                  (optional) long description with intermediate newlines
   
     copy entire section: { ... } ,
   
@@ -25,9 +25,10 @@
                     TYPE_NEW_ENV    - new environment variable or change
                     TYPE_BUG_FIX    - bug fix
                     TYPE_MODIFY     - a change (not new, not a fix)
+                    TYPE_ENHANCE    - general improvement
 
            - PLEASE, stick to what fits on an 80 column terminal
-           - it may be nice to put the newest entires at the top
+           - it may be nice to put the newest entries at the top
            - leave the last "99, NULL" entry as it is
 
  -- examples (newest at top) --
@@ -48,9 +49,545 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 17, SEP, 2010, RCR, "3dttest++", MINOR, TYPE_BUG_FIX,
+   "init workspace with 0",
+   "Trouble noted by M Choi"
+ } ,
+
+ { 10, SEP, 2010, RCR, "@SUMA_Make_Spec_FS", MICRO, TYPE_BUG_FIX,
+   "removed extra endif's in case of $label_dir",
+   NULL
+ } ,
+
+ {  8, SEP, 2010, RCR, "afni_util.py", MICRO, TYPE_ENHANCE,
+   "added wildcard construction functions",
+   NULL
+ } ,
+
+ {  1, SEP, 2010, RCR, "afni_proc.py", MICRO, TYPE_MODIFY,
+   "tiny changes to help output (e.g. 3dAllineate options)",
+   NULL
+ } ,
+
+ { 30, AUG, 2010, RCR, "3dVol2Surf", MICRO, TYPE_BUG_FIX,
+   "check for -sv dataset before proceeding",
+   NULL
+ } ,
+
+ { 30, AUG, 2010, RCR, "@CheckForAfniDset", MICRO, TYPE_BUG_FIX,
+   "replaced use of {$var} with ${var}",
+   "Problem noted by R Mruczek."
+ } ,
+
+ { 25, AUG, 2010, RCR, "make_random_timing.py", MICRO, TYPE_MODIFY,
+   "update polort and write -nodata TR using 3 decimal places",
+   NULL
+ } ,
+
+ { 18, AUG, 2010, RCR, "@build_afni_Xlib", MICRO, TYPE_NEW_OPT,
+   "added -lib32 for building 32-bit on a 64-bit Linux box",
+   NULL
+ } ,
+
+ { 18, AUG, 2010, RCR, "afni-general", MINOR, TYPE_MODIFY,
+   "changed Makefile.linux_openmp (and _64) building on F10 (was F12)",
+   NULL
+ } ,
+
+ { 17, AUG, 2010, RCR, "afni_proc.py", MICRO, TYPE_NEW_OPT,
+   "allowed married timing files",
+   "Also, delete output script on failure (have -keep_script_on_err option)."
+ } ,
+
+ { 16, AUG, 2010, RCR, "lib_textdata.py", MINOR, TYPE_ENHANCE,
+   "new module to deal with reading/writing 1D/timing/married text files",
+   "heading towards handling married timing in afni_proc.py"
+ } ,
+
+ { 16, AUG, 2010, RCR, "make_stim_times.py", MICRO, TYPE_MODIFY,
+   "use lib_textdata.py for I/O",
+   NULL
+ } ,
+
+ { 16, AUG, 2010, RCR, "timing_tool.py", MICRO, TYPE_MODIFY,
+   "use lib_textdata.py for I/O",
+   NULL
+ } ,
+
+ { 16, AUG, 2010, RCR, "lib_afni1D.py", MICRO, TYPE_MODIFY,
+   "use lib_textdata.py for I/O (deleted read_1D_file)",
+   NULL
+ } ,
+
+ { 16, AUG, 2010, RCR, "afni_xmat.py", MICRO, TYPE_MODIFY,
+   "use lib_textdata.py for I/O (deleted read_1D_file)",
+   NULL
+ } ,
+
+ { 16, AUG, 2010, RCR, "afni_util.py", MICRO, TYPE_MODIFY,
+   "rewrote and moved text data I/O routines into lib_textdata.py",
+   NULL
+ } ,
+
+ { 13, AUG, 2010, RCR, "Makefile.INCLUDE", MICRO, TYPE_GENERAL,
+   "explicitly link the math library for the balloon target",
+   NULL
+ } ,
+
+ {  5, AUG, 2010, RCR, "afni-general", MICRO, TYPE_GENERAL,
+   "do not let THD_write_3dim_dataset fail silently",
+   NULL
+ } ,
+
+ {  4, AUG, 2010, RCR, "afni_proc.py", MINOR, TYPE_NEW_OPT,
+   "added -regress_CS_NN, default to 123",
+   "Also, changed -niml to -both so that 1D files are output, and changed\n"
+   "the prefix to ClustSim (from rm.CS) so those files are not deleted.\n"
+   "If ClustSim is explicitly requested, require blur estimation."
+ } ,
+
+ {  3, AUG, 2010, RCR, "afni_history", MICRO, TYPE_BUG_FIX,
+   "fixed -check_date test to see if version is current",
+   "This problem affects afni_proc.py script execution."
+ } ,
+
+ {  2, AUG, 2010, RCR, "afni_proc.py", MINOR, TYPE_NEW_OPT,
+   "check that stim_file/_time files match datasets, and that dsets exist",
+   "- default is to check that files are appropriate for the input data\n"
+   "- default is to check that input datasets exist\n"
+   "- added options -test_stim_files and -test_for_dsets\n"
+   "- afni_proc.py now depends on lib_afni1D"
+ } ,
+
+ {  2, AUG, 2010, RCR, "1d_tool.py", MICRO, TYPE_NEW_OPT,
+   "small looks_like text change and remove TR from look_like_1D",
+   NULL
+ } ,
+
+ { 30, JUL, 2010, RCR, "1d_tool.py", MINOR, TYPE_NEW_OPT,
+   "added options to evaluate whether a file is valid as 1D or stim_times",
+   "Added -looks_like_1D, -looks_like_local_times, -looks_like_global_times\n"
+   "and -looks_like_test_all.\n"
+   "The main purpose is to have tests that afni_proc.py can apply."
+ } ,
+
+ { 28, JUL, 2010, RCR, "zfun.c", MICRO, TYPE_BUG_FIX,
+   "fixed small typos in the case of HAVE_ZLIB not being defined",
+   "- zzb64_to_array (return) and array_to_zzb64 (missing arg)"
+ } ,
+
+ { 27, JUL, 2010, RCR, "thd_table.c", MICRO, TYPE_BUG_FIX,
+   "strtod typo",
+   NULL
+ } ,
+
+ { 27, JUL, 2010, RCR, "afni-general", MINOR, TYPE_ENHANCE,
+   "propagate storage_mode in THD_open_tcat",
+   "This is for non-AFNI formatted datasets, and fixes the problem where\n"
+   "3dDeconvolve would not propagate nnodes/node_list of surface datasets.\n"
+   "Problem noted by N Oosterhof."
+ } ,
+
+ { 23, JUL, 2010, RCR, "afni-general", MINOR, TYPE_ENHANCE,
+   "added Makefile.linux_openmp (and _64) for building with OpenMP support",
+   "Those distribution binaries will be built on a 64-bit Fedora 12 system."
+ } ,
+
+ { 22, JUL, 2010, RCR, "afni_proc.py", MINOR, TYPE_NEW_OPT,
+   "added options -regress_run_clustsim and -regress_opts_CS",
+   "This is to apply 3dClustSim results for multiple comparison correction\n"
+   "to the stats dataset output from 3dDeconvolve."
+ } ,
+
+ { 20, JUL, 2010, RCR, "xmat_tool.py", MICRO, TYPE_MODIFY,
+   "made small improvement out text formatting for cormat and cosmat", 
+   NULL
+ } ,
+
+ { 19, JUL, 2010, RCR, "afni_proc.py", MINOR, TYPE_NEW_OPT,
+   "added -check_afni_version and -requires_afni_version",
+   "This will allow the processing script to verify that the AFNI version\n"
+   "is recent enough for the enclosed commands."
+ } ,
+
+ { 19, JUL, 2010, RCR, "@DriveAfni", MICRO, TYPE_NEW_OPT,
+   "added -help", 
+   NULL
+ } ,
+
+ { 19, JUL, 2010, RCR, "afni_history", MINOR, TYPE_NEW_OPT,
+   "added -check_date, to verify whether the distribution is current",
+   NULL
+ } ,
+
+ { 19, JUL, 2010, RCR, "3dFWHMx", MICRO, TYPE_BUG_FIX,
+   "fixed -arith mean",
+   NULL
+ } ,
+
+ { 16, JUL, 2010, RCR, "afni", MICRO, TYPE_BUG_FIX,
+   "added legendre to forced_loads array for plugin use",
+   NULL
+ } ,
+
+ { 16, JUL, 2010, RCR, "3dMean", MINOR, TYPE_NEW_OPT,
+   "added -mask_union and -mask_inter, for creation of mask datasets",
+   NULL
+ } ,
+
+    { 14, JUL, 2010, RCR, "afni_proc.py", MINOR, TYPE_ENHANCE,
+   "added -mask_test_overlap and -regress_cormat_warnigns",
+   "Unless the user sets these options to 'no', the processing script\n"
+   "will now use 3dABoverlap to evaluate the anat/EPI mask overlap, and\n"
+   "1d_tool.py to check the X-matrix for large pairwise correlations\n"
+   "between any two regressors."
+ } ,
+
+ { 14, JUL, 2010, RCR, "3dABoverlap", MICRO, TYPE_ENHANCE,
+   "added -no_automask to allow mask datasets as input",
+   NULL
+ } ,
+
+ { 14, JUL, 2010, RCR, "Makefile.linux_gcc33_64", MICRO, TYPE_MODIFY,
+   "use staic link of SUMA programs to Motif, as AFNI programs already do",
+   NULL
+ } ,
+
+ { 13, JUL, 2010, RCR, "plug_realtime", MINOR, TYPE_ENHANCE,
+   "added channel list selection, for choosing which channels to merge",
+   NULL
+ } ,
+
+ { 12, JUL, 2010, RCR, "timing_tool.py", MINOR, TYPE_NEW_OPT,
+   "added -truncate_times and -round_times for S Durgerian",
+   NULL
+ } ,
+
+ { 11, JUL, 2010, RCR, "timing_tool.py", MINOR, TYPE_ENHANCE,
+   "show TR offset stats if -tr and -show_isi_stats",
+   NULL
+ } ,
+
+ { 7, JUL, 2010, RCR, "NIFTI", MICRO, TYPE_BUG_FIX,
+   "fixed znzread/write to again return nmembers",
+   "Also, added M Hanke's update to CMakeLists.txt for new realease number."
+ } ,
+
+ { 7, JUL, 2010, RCR, "nifti_tool", MICRO, TYPE_BUG_FIX,
+   "fixed nt_read_bricks bsize computation for large files",
+   NULL
+ } ,
+
+ { 7, JUL, 2010, RCR, "NIFTI", MINOR, TYPE_BUG_FIX,
+   "fixes for large files (noted/investigated by M Hanke and Y Halchenko)",
+   "- fixed znzread/write, noting example by M Adler\n"
+   "- changed nifti_swap_* routines/calls to take size_t"
+ } ,
+
+ { 28, JUN, 2010, RCR, "GIFTI", MICRO, TYPE_ENHANCE,
+   "applied CMakeLists.txt update from M Hanke for Debian release",
+   NULL
+ } ,
+
+ { 28, JUN, 2010, RCR, "GIFTI", MICRO, TYPE_MODIFY,
+   "the most significant dimension cannot be 1",
+   "Requested by N Schmansky"
+ } ,
+
+ { 28, JUN, 2010, RCR, "3dAutoTcorrelate", MINOR, TYPE_NEW_OPT,
+   "added -eta2 (Cohen eta squared) for HJ Jo",
+   "Also added -mask and -mask_only_targets."
+ } ,
+
+ { 22, JUN, 2010, RCR, "afni_proc.py", MINOR, TYPE_NEW_OPT,
+   "3dToutcount detrending now defaults to Legendre polynomials",
+   "  Using Legendre polynomials, 3dToutcount polort can exceed 3\n"
+   "  (limit noted by I Mukai and K Bahadur).\n"
+   "  Added options -outlier_legendre and -outlier_polort."
+ } ,
+
+ { 22, JUN, 2010, RCR, "3dToutcount", MINOR, TYPE_NEW_OPT,
+   "added -legendre option, which also allows polort > 3",
+   NULL
+ } ,
+
+ { 17, JUN, 2010, RCR, "afni_proc.py", MICRO, TYPE_ENHANCE,
+   "apply default polort in 3dToutcount",
+   NULL
+ } ,
+
+ { 17, JUN, 2010, RCR, "3dTcat", MICRO, TYPE_ENHANCE,
+   "removed sub-brick length limit",
+   NULL
+ } ,
+
+ { 10, JUN, 2010, RCR, "afni_proc.py", MICRO, TYPE_BUG_FIX,
+   "fixed copying EPI and anat as NIFTI",
+   NULL
+ } ,
+
+ { 8, JUN, 2010, RCR, "timing_tool.py", MICRO, TYPE_BUG_FIX,
+   "fixed partitioning without zeros",
+   NULL
+ } ,
+
+ { 8, JUN, 2010, RCR, "afni_proc.py", MINOR, TYPE_NEW_OPT,
+   "added -regress_censor_outliers and -regress_skip_first_outliers",
+   NULL
+ } ,
+
+ { 4, JUN, 2010, RCR, "afni_proc.py", MINOR, TYPE_NEW_OPT,
+   "moved outlier counting outside of tshift block",
+   "- if only one regressor, use 1dcat for 'sum' ideal\n"
+   "- added -count_outliers, default to 'yes'\n"
+   "- outlier counting is now at end of tcat block"
+ } ,
+
+ { 4, JUN, 2010, RCR, "3dToutcount", MICRO, TYPE_NEW_OPT,
+   "added -fraction to output fraction of bad voxels, instead of count",
+   "This will be used by afni_proc.py for censoring."
+ } ,
+
+ { 3, JUN, 2010, RCR, "plug_realtime", MAJOR, TYPE_ENHANCE,
+   "added ability to register merged data and possibly all channels",
+   "Via MergeRegister, one can request to register the ChannelMerge dataset.\n"
+   "The individual channels can also be 'registered' via the same parameters\n"
+   "as the ChannelMerge dataset.\n"
+   "Requested by J Hyde, A Jesmanowicz, D Ward of MCW."
+ } ,
+
+ { 3, JUN, 2010, RCR, "afni_history", MICRO, TYPE_ENHANCE,
+   "added TYPE_ENHANCE, often a more appropriate term",
+   NULL
+ } ,
+
+ { 1, JUN, 2010, RCR, "afni_util.py", MINOR, TYPE_ENHANCE,
+   "added variance and t-test routines (1-sample, paired, pooled, unpooled)",
+   NULL
+ } ,
+
+ { 27, MAY, 2010, RCR, "afni_proc.py", MINOR, TYPE_BUG_FIX,
+   "fixed use of -volreg_regress_per_run and -regress_censor_motion pair",
+   "Problem found by D Drake."
+ } ,
+
+ { 20, MAY, 2010, RCR, "Makefile.NIH.CentOS.5.3_64", MICRO, TYPE_MODIFY,
+   "update CCOLD to compile with gcc verion 3.4",
+   NULL
+ } ,
+
+ { 19, MAY, 2010, RCR, "Makefile.*", MINOR, TYPE_MODIFY,
+   "add CCOLD to all for compiling nifticdf.o on linux_xorg7_64 using gcc v3",
+   "The gcc compiler versions 4.1-4.3 (at least) had an optimization bug\n"
+   "when compiling nifticdf.o.  The result was an inaccurate conversion\n"
+   "from F-stats to p-values (in some cases).\n"
+   "Test with the command:     cdf -t2p fift 1.0 10 100\n"
+   "   good result: 0.448817, bad result: 0.0472392\n"
+   "Problem found by L Thomas and B Bones."
+ } ,
+
+ { 13, MAY, 2010, RCR, "3dbucket", MICRO, TYPE_GENERAL,
+   "tiny help update to clarify -glueto and -aglueto",
+   NULL
+ } ,
+
+ { 13, MAY, 2010, RCR, "ui_xmat.py", MICRO, TYPE_GENERAL,
+   "tiny update: check for set_afni_xmat() failure",
+   NULL
+ } ,
+
+ { 12, MAY, 2010, RCR, "afni_proc.py", MINOR, TYPE_NEW_OPT,
+   "added -regress_censor_first_trs for A Barbey",
+   "This is needed when also using -regress_censor_motion."
+ } ,
+
+ { 12, MAY, 2010, RCR, "1d_tool.py", MINOR, TYPE_NEW_OPT,
+   "added -censor_first_trs, to mix with -censor_motion results",
+   NULL
+ } ,
+
+ { 10, MAY, 2010, RCR, "ktaub.c", MICRO, TYPE_BUG_FIX,
+   "allow for build on SOLARIS_OLD",
+   NULL
+ } ,
+
+ { 6, MAY, 2010, RCR, "Dimon", MINOR, TYPE_ENHANCE,
+   "allow negatives in -sort_by_num_suffix, look for '0054 1330' in sorting",
+   NULL
+ } ,
+
+ { 1, MAY, 2010, RCR, "make_random_timing.py", MINOR, TYPE_NEW_OPT,
+   "added -max_consec for Liat of Cornell",
+   NULL
+ } ,
+
+ { 29, APR, 2010, RCR, "@DriveAfni", MICRO, TYPE_ENHANCE,
+   "minor updates",
+   NULL
+ } ,
+
+ { 28, APR, 2010, RCR, "NIFTI", MICRO, TYPE_ENHANCE,
+   "added NIFTI_ECODE_CARET for J. Harwell",
+   NULL
+ } ,
+
+ { 26, APR, 2010, RCR, "afni_proc.py", MINOR, TYPE_NEW_OPT,
+   "added -regress_opts_reml",
+   NULL
+ } ,
+
+ { 26, APR, 2010, RCR, "3dDeconvolve", MINOR, TYPE_ENHANCE,
+   "add $* to end of 3dREMLfit script command, for additional arguments",
+   "Finally getting around to afni_proc.py option -regress_opts_reml..."
+ } ,
+
+ { 28, MAR, 2010, RCR, "afni_proc.py", MICRO, TYPE_ENHANCE,
+   "applied fitts computation to REML case",
+   NULL
+ } ,
+
+ { 25, MAR, 2010, RCR, "1d_tool.py", MICRO, TYPE_ENHANCE,
+   "small help update",
+   NULL
+ } ,
+
+ { 25, MAR, 2010, RCR, "afni_proc.py", MICRO, TYPE_ENHANCE,
+   "small help update describing help sections",
+   NULL
+ } ,
+
+ { 25, MAR, 2010, RCR, "plug_crender", MICRO, TYPE_GENERAL,
+   "changed name in plugin list to original 'Render Dataset'",
+   "Also changed plug_render to 'Render [old]', though it is no longer\n"
+   "built by default."
+ } ,
+
+ { 25, MAR, 2010, RCR, "3dcopy", MICRO, TYPE_GENERAL,
+   "on failure, warn user that sub-brick selection is not allowed",
+   "Requested by T Nycum."
+ } ,
+
+ { 23, MAR, 2010, RCR, "afni_proc.py", MINOR, TYPE_NEW_OPT,
+   "added -regress_compute_fitts option, to save memory in 3dDeconvolve",
+   NULL
+ } ,
+
+ { 19, MAR, 2010, RCR, "afni_util.py", MICRO, TYPE_MODIFY,
+   "round to 3 bits below 4 (above, truncate to int)",
+   NULL
+ } ,
+
+ { 19, MAR, 2010, RCR, "3dfractionize", MICRO, TYPE_GENERAL,
+   "added 3dAllineate example of inverse tlrc warp",
+   NULL
+ } ,
+
+ { 18, MAR, 2010, RCR, "afni_proc.py", MINOR, TYPE_MODIFY,
+   "handle args with '\\n' in them (probably from quoted newlines)",
+   NULL
+ } ,
+
+ { 18, MAR, 2010, RCR, "afni_proc.py", MICRO, TYPE_GENERAL,
+   "small updates to help for alignment options",
+   NULL
+ } ,
+
+ { 17, MAR, 2010, RCR, "timing_tool.py", MINOR, TYPE_BUG_FIX,
+   "fixed timing_to_1D when some runs are empty",
+   "Problem found by L Thomas and B Bones."
+ } ,
+
+ { 16, MAR, 2010, RCR, "3dAttribute", MICRO, TYPE_ENHANCE,
+   "set_dataset_attributes() on read - so can use on non-AFNI datasets",
+   NULL
+ } ,
+
+ { 16, MAR, 2010, RCR, "3dbucket", MINOR, TYPE_BUG_FIX,
+   "fixed getting incorrect FDR curves (noted by D Glen)",
+   NULL
+ } ,
+
+ { 16, MAR, 2010, RCR, "NIFTI", MICRO, TYPE_ENHANCE,
+   "added NIFTI_ECODE_VOXBO for D. Kimberg",
+   NULL
+ } ,
+
+ { 11, MAR, 2010, RCR, "3dsvm_common.c", MICRO, TYPE_GENERAL,
+   "some compilers choke on mid-block variable definitions",
+   NULL
+ } ,
+
+ {  9, MAR, 2010, RCR, "3dNotes", MICRO, TYPE_GENERAL,
+   "send -help output to stdout, not stderr (req by T Nycum)",
+   NULL
+ } ,
+
+ {  9, MAR, 2010, RCR, "thd_gifti.c", MICRO, TYPE_MODIFY,
+   "init ptr and clear accidental debug output",
+   NULL
+ } ,
+
+ {  8, MAR, 2010, RCR, "afni_proc.py", MICRO, TYPE_GENERAL,
+   "modified option order in some help examples",
+   NULL
+ } ,
+
+ {  8, MAR, 2010, RCR, "thd_gifti.c", MICRO, TYPE_MODIFY,
+   "corresponding update of lt->index to lt->key",
+   NULL
+ } ,
+
+ {  8, MAR, 2010, RCR, "GIFTI", MINOR, TYPE_MODIFY,
+   "GIfTI LabelTable format change: Index to Key",
+   "modified gifti_xml.[ch], gifti_io.[ch]"
+ } ,
+
+ {  5, MAR, 2010, RCR, "thd_gifti.c", MICRO, TYPE_MODIFY,
+   "try to read gifti UINT32 as INT32 (for FreeSurfer aparc files)",
+   NULL
+ } ,
+
+ {  4, MAR, 2010, RCR, "GIFTI", MINOR, TYPE_MODIFY,
+   "minor changes (also see NITRC IDs 4619 and 4644)",
+   " - for integers, make default approx test to be equality\n"
+   " - small changes to zlib failure strings\n"
+   " - cast to avoid compile warning on some systems\n"
+   " - made NITRC gifti.dtd link that will not change"
+ } ,
+
+ {  3, MAR, 2010, RCR, "afni_proc.py", MICRO, TYPE_MODIFY,
+   "when censoring, create uncensored ideals and sum",
+   NULL
+ } ,
+
+ { 20, FEB, 2010, RCR, "timing_tool.py", MINOR, TYPE_NEW_OPT,
+   "added -timing_to_1D, -tr and -min_frac for PPI scripting (and B Benson)",
+   NULL
+ } ,
+
+ { 18, FEB, 2010, RCR, "SUMA_Makefile_NoDev", MICRO, TYPE_GENERAL,
+   "added '--includedir /usr/local/netpbm' for libgts.a build on new Linux",
+   NULL
+ } ,
+
+ { 5, FEB, 2010, RCR, "GIFTI", MINOR, TYPE_MODIFY,
+   "thd_gifti: if LabelTable use INTENT_LABEL, suma_gifti.c: no normals",
+   "done with Ziad"
+ } ,
+
+ { 21, JAN, 2010, RCR, "afni_proc.py", MICRO, TYPE_NEW_OPT,
+   "added -tlrc_opts_at; made tiny mod to scaling operation",
+   NULL
+ } ,
+
+ { 15, JAN, 2010, RCR, "afni_proc.py", MICRO, TYPE_NEW_OPT,
+   "added -regress_fout yes/no option for G. Pagnoni",
+   NULL
+ } ,
+
  { 14, JAN, 2010, RCR, "3dVol2Surf", MINOR, TYPE_BUG_FIX,
    "Fixed crash w/labels on '-map_func seg_vals' -> NIML",
-   "Found by Swaroop at Dartmouth."
+   "Problem found by Swaroop at Dartmouth."
  } ,
 
  { 12, JAN, 2010, RCR, "2dImReg", MICRO, TYPE_BUG_FIX,
@@ -73,19 +610,19 @@ afni_history_struct rickr_history[] = {
    NULL
  } ,
 
- { 24, DEC, 2009, RCR, "GIFTI", MINOR, TYPE_NEW_OPT,
+ { 24, DEC, 2009, RCR, "GIFTI", MINOR, TYPE_ENHANCE,
    "added approximate difference functions",
    "- added gifti_approx_gifti_images, DA_pair, labeltables, diff_offset\n"
    "- added gifti_triangle_diff_offset\n"
    "- gifti_compare_coordsys takes comp_data param"
  } ,
 
- {  8, DEC, 2009, RCR, "GIFTI", MINOR, TYPE_NEW_OPT,
+ {  8, DEC, 2009, RCR, "GIFTI", MINOR, TYPE_ENHANCE,
    "added ability to read/write GIFTI LabelTables with colors in thd_gifti.c",
    NULL
  } ,
 
- {  4, DEC, 2009, RCR, "3dWarp", MICRO, TYPE_MODIFY,
+ {  4, DEC, 2009, RCR, "3dWarp", MICRO, TYPE_GENERAL,
    "add help example of going from +tlrc space to +orig space",
    NULL
  } ,
@@ -95,12 +632,12 @@ afni_history_struct rickr_history[] = {
    NULL
  } ,
 
- { 16, NOV, 2009, RCR, "afni_proc.py", MINOR, TYPE_MODIFY,
+ { 16, NOV, 2009, RCR, "afni_proc.py", MINOR, TYPE_ENHANCE,
    "allow motion censoring with varying run lengths",
    "Also, if a max is applied in scaling, explicitly limit to [0,max].\n"
  } ,
 
- { 16, NOV, 2009, RCR, "1d_tool.py", MINOR, TYPE_MODIFY,
+ { 16, NOV, 2009, RCR, "1d_tool.py", MINOR, TYPE_ENHANCE,
    "allow motion censoring with varying run lengths",
    NULL
  } ,
@@ -110,7 +647,7 @@ afni_history_struct rickr_history[] = {
    NULL
  } ,
 
- { 27, OCT, 2009, RCR, "GIFTI", MINOR, TYPE_NEW_OPT,
+ { 27, OCT, 2009, RCR, "GIFTI", MINOR, TYPE_ENHANCE,
    "added support for optional LabelTable RGBA attributes",
    NULL
  } ,
@@ -132,7 +669,7 @@ afni_history_struct rickr_history[] = {
    "Useful for creating a proper polort baseline w/3dSynthesize."
  } ,
 
- { 14, OCT, 2009, RCR, "3dTcat", MICRO, TYPE_MODIFY,
+ { 14, OCT, 2009, RCR, "3dTcat", MICRO, TYPE_ENHANCE,
    "allow creation of single volume dataset",
    "as requested by N Vack (among many others)"
  } ,
@@ -142,7 +679,7 @@ afni_history_struct rickr_history[] = {
    "Added for motion censoring and run padding."
  } ,
 
- { 2, OCT, 2009, RCR, "1d_tool.py", MICRO, TYPE_MODIFY,
+ { 2, OCT, 2009, RCR, "1d_tool.py", MICRO, TYPE_ENHANCE,
    "also output cosines with -show_cormat_warnings",
    NULL
  } ,
@@ -154,7 +691,7 @@ afni_history_struct rickr_history[] = {
    "- do not call 3dTstat if only one sub-brick"
  } ,
 
- { 1, OCT, 2009, RCR, "afni-general", MICRO, TYPE_MODIFY,
+ { 1, OCT, 2009, RCR, "afni-general", MICRO, TYPE_GENERAL,
    "9/29, defined isblank() in case of SOLARIS_OLD ... and then removed it",
    NULL
  } ,
@@ -169,14 +706,14 @@ afni_history_struct rickr_history[] = {
    NULL
  } ,
 
- { 16, SEP, 2009, RCR, "plug_vol2surf", MICRO, TYPE_NEW_OPT,
+ { 16, SEP, 2009, RCR, "plug_vol2surf", MICRO, TYPE_ENHANCE,
    "can init debug level via AFNI_DEBUG_PLUG_VOL2SURF",
    NULL
  } ,
 
  { 16, SEP, 2009, RCR, "3ddot", MINOR, TYPE_BUG_FIX,
    "de-meaning data causes permission-based seg fault, apply means upon read",
-   "Found by Giuseppe Pagnoni."
+   "Problem found by Giuseppe Pagnoni."
  } ,
 
  {  8, SEP, 2009, RCR, "realtime_receiver.py", MICRO, TYPE_MODIFY,
@@ -184,7 +721,7 @@ afni_history_struct rickr_history[] = {
    NULL
  } ,
 
- {  4, SEP, 2009, RCR, "plug_realtime", MINOR, TYPE_NEW_OPT,
+ {  4, SEP, 2009, RCR, "plug_realtime", MINOR, TYPE_ENHANCE,
    "registration can now be consistent across runs",
    "Reg Base can be 'Current': to set the base volume from the current run\n"
    "(call this the old way), 'Current & Keep': use current run, but then\n"
@@ -206,7 +743,7 @@ afni_history_struct rickr_history[] = {
 
  { 27, AUG, 2009, RCR, "afni_proc.py", MICRO, TYPE_BUG_FIX,
    "fixed motion_ prefix in '3dDeconvolve -censor'",
-   "Found by B Bones."
+   "Problem found by B Bones."
  } ,
 
  { 27, AUG, 2009, RCR, "afni_proc.py", MICRO, TYPE_NEW_OPT,
@@ -221,12 +758,12 @@ afni_history_struct rickr_history[] = {
    NULL
  } ,
 
- { 25, AUG, 2009, RCR, "afni_proc.py", MINOR, TYPE_MODIFY,
+ { 25, AUG, 2009, RCR, "afni_proc.py", MINOR, TYPE_ENHANCE,
    "if volreg block, always create motion_${subj}_enorm.1D",
    NULL
  } ,
 
- { 25, AUG, 2009, RCR, "1d_tool.py", MICRO, TYPE_MODIFY,
+ { 25, AUG, 2009, RCR, "1d_tool.py", MICRO, TYPE_ENHANCE,
    "with -censor_motion, also output PREFIX_enorm.1D",
    NULL
  } ,
@@ -265,7 +802,7 @@ afni_history_struct rickr_history[] = {
    "The old default was 2 bits, -volreg_warp_dxyz overrides."
  } ,
 
- { 10, AUG, 2009, RCR, "3dSurf2Vol", MINOR, TYPE_MODIFY,
+ { 10, AUG, 2009, RCR, "3dSurf2Vol", MINOR, TYPE_ENHANCE,
    "allow processing of -overwrite and AFNI_DECONFLICT",
    NULL
  } ,
@@ -276,12 +813,12 @@ afni_history_struct rickr_history[] = {
    "- fixed blur 'averages' computation when only one run"
  } ,
 
- {  4, AUG, 2009, RCR, "realtime_receiver.py", MINOR, TYPE_NEW_OPT,
+ {  4, AUG, 2009, RCR, "realtime_receiver.py", MINOR, TYPE_ENHANCE,
    "added basic demo interface and itemized exception traps",
    NULL
  } ,
 
- { 31, JUL, 2009, RCR, "prompt_user", MICRO, TYPE_MODIFY,
+ { 31, JUL, 2009, RCR, "prompt_user", MICRO, TYPE_ENHANCE,
    "apply some escape sequences, mostly to display newlines",
    NULL
  } ,
@@ -312,17 +849,17 @@ afni_history_struct rickr_history[] = {
    "** Analysis done prior to this probably needs to be re-done."
  } ,
 
- { 27, JUL, 2009, RCR, "plug_realtime", MICRO, TYPE_NEW_OPT,
+ { 27, JUL, 2009, RCR, "plug_realtime", MICRO, TYPE_ENHANCE,
    "added Y/N AFNI_REALTIME_reset_output_index, to start each dset at 001",
-   "Also, changed prefix seperator to double underscore '__'.",
+   "Also, changed prefix separator to double underscore '__'.",
  } ,
 
- { 27, JUL, 2009, RCR, "afni-general", MICRO, TYPE_MODIFY,
+ { 27, JUL, 2009, RCR, "afni-general", MICRO, TYPE_GENERAL,
    "added SOLARIS_OLD atanhf #define to machdep.h",
    NULL
  } ,
 
- { 23, JUL, 2009, RCR, "afni_run_R", MINOR, TYPE_MODIFY,
+ { 23, JUL, 2009, RCR, "afni_run_R", MINOR, TYPE_ENHANCE,
    "allow any number of args, but where first is program, last is output",
    NULL
  } ,
@@ -332,7 +869,7 @@ afni_history_struct rickr_history[] = {
    NULL
  } ,
 
- { 22, JUL, 2009, RCR, "realtime_reaceiver.py", MAJOR, TYPE_NEW_PROG,
+ { 22, JUL, 2009, RCR, "realtime_receiver.py", MAJOR, TYPE_NEW_PROG,
    "python replacement for serial helper",
    "New 'data_choice' options can be added to compute_data_for_serial_port\n"
    "for sending results of a different computation to the serial port."
@@ -353,7 +890,7 @@ afni_history_struct rickr_history[] = {
    NULL
  } ,
 
- { 7, JUL, 2009, RCR, "afni_proc.py", MICRO, TYPE_MODIFY,
+ { 7, JUL, 2009, RCR, "afni_proc.py", MICRO, TYPE_GENERAL,
    "warn users to modify script for _AM1 in case of basis function dmBLOCK",
    NULL
  } ,
@@ -403,12 +940,12 @@ afni_history_struct rickr_history[] = {
    "- change block dividers to more visual '===' with block names"
  } ,
 
- { 15, JUN, 2009, RCR, "3dmerge", MINOR, TYPE_MODIFY,
+ { 15, JUN, 2009, RCR, "3dmerge", MINOR, TYPE_ENHANCE,
    "allowed short/byte datasets to use FIR blur, so no Fourier interpolation",
    "Also added Y/N AFNI_BLUR_INTS_AS_OLD env var to use previous method."
  } ,
 
- { 12, JUN, 2009, RCR, "xmat_tool.py", MICRO, TYPE_MODIFY,
+ { 12, JUN, 2009, RCR, "xmat_tool.py", MICRO, TYPE_GENERAL,
    "used some wx IDs, per Daniel's suggestion",
    NULL
  } ,
@@ -420,12 +957,12 @@ afni_history_struct rickr_history[] = {
    "- added -align_opts_aea, for extra opts to align_epi_anat.py"
  } ,
 
- { 8, JUN, 2009, RCR, "afni_proc.py", MICRO, TYPE_MODIFY,
+ { 8, JUN, 2009, RCR, "afni_proc.py", MICRO, TYPE_NEW_OPT,
    "added -despike_mask, fixed missing block warning, reordered terminal opts",
    NULL
  } ,
 
- { 8, JUN, 2009, RCR, "afni_base.py", MICRO, TYPE_MODIFY,
+ { 8, JUN, 2009, RCR, "afni_base.py", MICRO, TYPE_GENERAL,
    "added many afni_name descripts to __doc__ lines, check error in dset_dims",
    NULL
  } ,
@@ -455,7 +992,7 @@ afni_history_struct rickr_history[] = {
    "found by R Notestine of UCSD"
  } ,
 
- { 28, MAY, 2009, RCR, "afni_proc.py", MINOR, TYPE_MODIFY,
+ { 28, MAY, 2009, RCR, "afni_proc.py", MINOR, TYPE_GENERAL,
    "example updates for AFNI_data4 and new options",
    NULL
  } ,
@@ -475,7 +1012,7 @@ afni_history_struct rickr_history[] = {
    NULL
  } ,
 
- { 19, MAY, 2009, RCR, "3dbucket", MICRO, TYPE_MODIFY,
+ { 19, MAY, 2009, RCR, "3dbucket", MICRO, TYPE_GENERAL,
    "suggest -overwrite if -glueto is not allowed (for Mike B)",
    NULL
  } ,
@@ -593,7 +1130,7 @@ afni_history_struct rickr_history[] = {
    NULL
  } ,
 
- { 14, APR, 2009, RCR, "NIfTI", MINOR, TYPE_NEW_OPT,
+ { 14, APR, 2009, RCR, "NIFTI", MINOR, TYPE_NEW_OPT,
    "added sample nifticlib program: clib_01_read_write.c",
    NULL
  } ,
@@ -770,7 +1307,7 @@ afni_history_struct rickr_history[] = {
    "One can execute 3dREMLfit and/or 3dDeconvolve.  Error blur is from each."
  } ,
 
- { 10, MAR, 2009, RCR, "NIfTI", MICRO, TYPE_MODIFY,
+ { 10, MAR, 2009, RCR, "NIFTI", MICRO, TYPE_MODIFY,
    "added NIFTI_ECODEs 18-28 for the LONI MiND group",
    NULL
  } ,
@@ -837,7 +1374,7 @@ afni_history_struct rickr_history[] = {
  } ,
 
  { 3, MAR, 2009, RCR, "afni-general", MICRO, TYPE_MODIFY,
-   "modifed Makefile.linux_xorg7 and _64 for local X builds",
+   "modified Makefile.linux_xorg7 and _64 for local X builds",
    NULL
  } ,
 
@@ -1009,7 +1546,7 @@ afni_history_struct rickr_history[] = {
  } ,
 
  {  20, NOV, 2008, RCR, "plug_realtime", MINOR, TYPE_NEW_OPT,
-   "incorportated real-time volume writing from V. Roopchansingh of MCW",
+   "incorporated real-time volume writing from V. Roopchansingh of MCW",
    NULL
  } ,
 
@@ -1255,7 +1792,7 @@ afni_history_struct rickr_history[] = {
    "These variables can now be controlled through drive_afni 'SETENV'\n"
    "(either via 'plugout_drive' or 'Dimon -drive_afni'):\n"
    "    - AFNI_REALTIME_Mask_Vals  : specify what gets sent to serial_helper\n"
-   "    - AFNI_REALTIME_SHOW_TIMES : specify whether to show data timestampts\n"
+   "    - AFNI_REALTIME_SHOW_TIMES : specify whether to show data timestamps\n"
    "    - AFNI_REALTIME_SEND_VER   : specify whether to send comm version"
  } ,
 
@@ -1376,7 +1913,7 @@ afni_history_struct rickr_history[] = {
  } ,
 
  { 14, JUL, 2008, RCR, "afni_history", MINOR, TYPE_MODIFY,
-   "a single integer option is interpreted as with -past_entires",
+   "a single integer option is interpreted as with -past_entries",
    NULL
  } ,
 

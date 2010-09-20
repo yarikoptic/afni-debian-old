@@ -3277,7 +3277,8 @@ void SUMA_set_cmap_options(SUMA_SurfaceObject *SO, SUMA_Boolean NewDset, SUMA_Bo
       if (SwitchInt_Menu || !N_items) {
          if (SO->SurfCont->SwitchIntMenu) {
             SUMA_LH("Freeing old menu");
-            XtDestroyWidget(SO->SurfCont->SwitchIntMenu[0]); /*kill the menu widget */
+            XtDestroyWidget(SO->SurfCont->SwitchIntMenu[0]); 
+                                                   /*kill the menu widget */
             SUMA_free(SO->SurfCont->SwitchIntMenu);   /* free the vector */
          }
          /* create a new one allocate for one more spot for the parent widget. 
@@ -3291,7 +3292,8 @@ void SUMA_set_cmap_options(SUMA_SurfaceObject *SO, SUMA_Boolean NewDset, SUMA_Bo
                            "Select Intensity (I) column (BHelp for more)", 
                            SUMA_SurfContHelp_SelInt,
                            SO->SurfCont->SwitchIntMenu );
-         XtInsertEventHandler( SO->SurfCont->SwitchIntMenu[0] ,      /* handle events in optmenu */
+         XtInsertEventHandler( SO->SurfCont->SwitchIntMenu[0] , 
+                                             /* handle events in optmenu */
                         ButtonPressMask ,  /* button presses */
                         FALSE ,            /* nonmaskable events? */
                         SUMA_optmenu_EV ,  /* handler */
@@ -3303,7 +3305,8 @@ void SUMA_set_cmap_options(SUMA_SurfaceObject *SO, SUMA_Boolean NewDset, SUMA_Bo
          SwitchInt_Menu = SUMA_FreeMenuVector(SwitchInt_Menu, N_items);
          /* setup the history to the proper widget */
          XtVaSetValues( SO->SurfCont->SwitchIntMenu[0], XmNmenuHistory , 
-                        SO->SurfCont->SwitchIntMenu[SO->SurfCont->curColPlane->OptScl->find+1] , NULL ) ; 
+         SO->SurfCont->SwitchIntMenu[SO->SurfCont->curColPlane->OptScl->find+1], 
+                        NULL ) ; 
       } else {
          SUMA_SL_Err("NULL SwitchInt_Menu");
       }
@@ -3972,6 +3975,7 @@ SUMA_ASSEMBLE_LIST_STRUCT * SUMA_AssembleDsetColList(SUMA_DSET *dset)
    clist_str->clist = (char **)SUMA_calloc(SDSET_VECNUM(dset), sizeof(char *));
    clist_str->oplist = (void **)SUMA_calloc(SDSET_VECNUM(dset), sizeof(void *));
    clist_str->N_clist = SDSET_VECNUM(dset);
+   clist_str->content_id = SUMA_copy_string(SDSET_ID(dset));
    
    for (i=0; i<SDSET_VECNUM(dset); ++i) {
       clist_str->clist[SDSET_VECNUM(dset)-1-i] = 
@@ -4032,7 +4036,7 @@ SUMA_Boolean SUMA_DsetColSelectList(
             SUMA_LH("Allocating widget");
             /* need to create widget */
             LW = SUMA_AllocateScrolledList   (  
-                  "Switch Intensity", SUMA_LSP_BROWSE,
+                  "Switch Threshold", SUMA_LSP_BROWSE,
                   NOPE,          NOPE,
                   SO->SurfCont->TopLevelShell, SWP_POINTER_OFF,
                   150,
@@ -4057,7 +4061,7 @@ SUMA_Boolean SUMA_DsetColSelectList(
             SUMA_LH("Allocating widget");
             /* need to create widget */
             LW = SUMA_AllocateScrolledList   (  
-                  "Switch Intensity", SUMA_LSP_BROWSE,
+                  "Switch Brightness", SUMA_LSP_BROWSE,
                   NOPE,          NOPE,
                   SO->SurfCont->TopLevelShell, SWP_POINTER_OFF,
                   150, 
@@ -4080,7 +4084,14 @@ SUMA_Boolean SUMA_DsetColSelectList(
          SUMA_SL_Err("Unexpected type");
          SUMA_RETURN(NOPE);
    }
-   
+            
+   /* Refresh if LW exists, but request is for a new data set */
+   if (!refresh &&
+        strcmp(LW->ALS->content_id, 
+               SDSET_ID(SO->SurfCont->curColPlane->dset_link))) {
+      refresh=1;
+   } 
+  
   if (refresh) {
       /* Now creating list*/
       if (LW->ALS) {
@@ -6127,11 +6138,6 @@ void SUMA_cb_Cmap_Load(Widget w, XtPointer data, XtPointer client_data)
 }
 
 /*! Loads a colormap file and adds it to the list of colormaps */
-/*!
-   \brief Loads a Dset file and adds it to the list of datasets
-   
-   \param dlg (SUMA_SELECTION_DIALOG_STRUCT *) struture from selection dialogue
-*/
 void SUMA_LoadCmapFile (char *filename, void *data)
 {
    static char FuncName[]={"SUMA_LoadCmapFile"};
@@ -6150,11 +6156,6 @@ void SUMA_LoadCmapFile (char *filename, void *data)
       
    SUMA_ENTRY;
 
-   if (!data) {
-      SUMA_SLP_Err("Null data"); 
-      SUMA_RETURNe;
-   }
-   
    if (!SUMAg_CF->scm) {   
       SUMAg_CF->scm = SUMA_Build_Color_maps();
       if (!SUMAg_CF->scm) {
@@ -6163,12 +6164,10 @@ void SUMA_LoadCmapFile (char *filename, void *data)
       }
    }
    
-   SO = (SUMA_SurfaceObject *)data;
-   
    if (LocalHead) {
       fprintf (SUMA_STDERR,
-               "%s: Received request to load %s for surface %s.\n", 
-               FuncName, filename, SO->Label);
+               "%s: Received request to load %s \n", 
+               FuncName, filename);
    }
 
    /* find out if file exists and how many values it contains */
@@ -6224,24 +6223,36 @@ void SUMA_LoadCmapFile (char *filename, void *data)
          bringup = 1;
       }
    }
-   /* refresh the list */
-   SUMA_CmapSelectList(SO, 1, bringup);
-   
-   /* update the menu buttons */
-   SUMA_CreateUpdatableCmapMenu(SO);
-   
-   /* Set the menu button to the current choice */
-   if (!SUMA_SetCmapMenuChoice (SO, Cmap->Name)) {
-      SUMA_SL_Err("Failed in SUMA_SetCmapMenuChoice");
-   }
 
-   /* switch to the recently loaded  cmap */
-   if (!SUMA_SwitchColPlaneCmap(SO, Cmap)) {
-      SUMA_SL_Err("Failed in SUMA_SwitchColPlaneCmap");
+   if (data) {
+      SO = (SUMA_SurfaceObject *)data;
+
+      if (LocalHead) {
+         fprintf (SUMA_STDERR,
+                  "%s: bonding colormap %s to surface %s.\n", 
+                  FuncName, filename, SO->Label);
+      }
+
+      /* refresh the list */
+      SUMA_CmapSelectList(SO, 1, bringup);
+
+      /* update the menu buttons */
+      SUMA_CreateUpdatableCmapMenu(SO);
+
+      /* Set the menu button to the current choice */
+      if (!SUMA_SetCmapMenuChoice (SO, Cmap->Name)) {
+         SUMA_SL_Err("Failed in SUMA_SetCmapMenuChoice");
+      }
+
+      /* switch to the recently loaded  cmap */
+      if (!SUMA_SwitchColPlaneCmap(SO, Cmap)) {
+         SUMA_SL_Err("Failed in SUMA_SwitchColPlaneCmap");
+      }
+
+      /* update Lbl fields */
+      SUMA_UpdateNodeLblField(SO);
    }
    
-   /* update Lbl fields */
-   SUMA_UpdateNodeLblField(SO);
 
    SUMA_RETURNe;
 }

@@ -993,13 +993,18 @@ SUMA_SURFSMOOTH_OPTIONS *SUMA_SurfSmooth_ParseInput (
 
    /* check on options for HEAT budiness first */
    if (Opt->Method == SUMA_HEAT_07) {
-      if (Opt->N_iter < 0 &&  (Opt->fwhm > 0 || Opt->tfwhm > 0) && Opt->sigma < 0)  {
+      if (  Opt->N_iter < 0 &&  
+            (Opt->fwhm > 0 || Opt->tfwhm > 0) && 
+            Opt->sigma < 0)  {
          /* will make a suggestion, but after surface is read */
-      } else if (Opt->N_iter < 0 && Opt->tfwhm && Opt->fwhm < 0 && Opt->sigma < 0)  {
+      } else if ( Opt->N_iter < 0 && 
+                  Opt->tfwhm && Opt->fwhm < 0 && Opt->sigma < 0)  {
          fprintf (SUMA_STDERR,"Error %s:\n"
-                              "All blurring parameters unspecified.\n", FuncName);
+                        "All blurring parameters unspecified.\n", FuncName);
          exit (1);
-      } else if (Opt->N_iter > 0 &&  (Opt->fwhm > 0 || Opt->tfwhm > 0) &&   Opt->sigma > 0)  { 
+      } else if ( Opt->N_iter > 0 &&  
+                  (Opt->fwhm > 0 || Opt->tfwhm > 0) &&   
+                  Opt->sigma > 0)  { 
          fprintf (SUMA_STDERR,"Error %s:\n"
                               "All three parameters specified.\n", FuncName);
          exit (1);
@@ -1011,7 +1016,8 @@ SUMA_SURFSMOOTH_OPTIONS *SUMA_SurfSmooth_ParseInput (
          /* this one is OK too. */
       } else {
          fprintf (SUMA_STDERR,"Error %s:\n"
-                              "Unexpected combo.\n", FuncName);
+                           "Unexpected combo: fwhm %f, tfwhm %f , sigma %f \n", 
+                           FuncName, Opt->fwhm, Opt->tfwhm, Opt->sigma);
          exit (1);
       }
    }
@@ -2075,7 +2081,15 @@ int main (int argc,char *argv[])
                if (Opt->sigma < 0) {
                   Opt->sigma = SUMA_SigForFWHM( SO->EL->AvgLe, 
                                                 Opt->tfwhm, &(Opt->N_iter),
-                                                NULL)*SO->EL->AvgLe;  
+                                                NULL);
+                  if (Opt->sigma == -1.0f) {
+                     SUMA_S_Errv("Failed to get decent sigma (%f)\n", 
+                                  Opt->sigma);
+                     exit(1);
+                  } else {
+                     Opt->sigma = Opt->sigma*SO->EL->AvgLe;
+                  }
+                  
                   /* if specified, Opt->N_iter is taken into consideration
                    above. But it is not the condition for stopping, only for
                    setting sigma. Opt->N_iter is now of no use and 

@@ -5,7 +5,7 @@ int main( int argc , char *argv[] )
    THD_3dim_dataset *dset , *oset=NULL ;
    int nvals , iv , nxyz , ii,jj , iarg , saveit=0 , oot , ic,cc ;
    int *count ;
-   float qthr=0.001 , alph,fmed,fmad , fbot,ftop,fsig , sq2p,cls ;
+   float qthr=0.001 , alph,fmed,fmad , fbot,ftop,fsig=0 , sq2p,cls ;
    MRI_IMAGE *flim ;
    float *far , *var ;
    byte *mmm=NULL ;
@@ -14,6 +14,7 @@ int main( int argc , char *argv[] )
    int do_autoclip=0 , npass=0 , do_range=0 ;   /* 12 Aug 2001 */
 
    int polort=0 , nref , nbad=0 , nfsc=0 ;      /* 07 Aug 2002 */
+   int do_frac=0, use_legendre;                 /* 21 Jun 2010 [rickr] */
    float **ref ;
    float  *fit ;
 
@@ -32,6 +33,9 @@ int main( int argc , char *argv[] )
              " -autoclip }= Clip off 'small' voxels (as in 3dClipLevel);\n"
              " -automask }=   you can't use this with -mask!\n"
              "\n"
+             " -fraction  = Output the fraction of (masked) voxels which are\n"
+             "              outliers at each time point, instead of the count.\n"
+             "\n"
              " -range     = Print out median+3.5*MAD of outlier count with\n"
              "                each time point; use with 1dplot as in\n"
              "                3dToutcount -range fred+orig | 1dplot -stdin -one\n"
@@ -47,6 +51,8 @@ int main( int argc , char *argv[] )
              "                order 'nn' prior to outlier estimation.  Default\n"
              "                value of nn=0, which means just remove the median.\n"
              "                Detrending is done with L1 regression, not L2.\n"
+             "\n"
+             " -legendre  = Use Legendre polynomials (also allows -polort > 3).\n"
              "\n"
              "OUTLIERS are defined as follows:\n"
              " * The trend and MAD of each time series are calculated.\n"
@@ -87,6 +93,10 @@ int main( int argc , char *argv[] )
          do_autoclip = 1 ; iarg++ ; continue ;
       }
 
+      if( strncmp(argv[iarg], "-fraction", 5) == 0 ){  /* 6 Jun 2010 */
+         do_frac = 1 ; iarg++ ; continue ;
+      }
+
       if( strcmp(argv[iarg],"-range") == 0 ){  /* 12 Aug 2001 */
          do_range = 1 ; iarg++ ; continue ;
       }
@@ -105,6 +115,10 @@ int main( int argc , char *argv[] )
             fprintf(stderr,"** ERROR: -qthr value is illegal!\n"); exit(1);
          }
          iarg++ ; continue ;
+      }
+
+      if( strcmp(argv[iarg],"-legendre") == 0 ){  /* 21 Jun 2010 [rickr] */
+         use_legendre = 1 ; iarg++ ; continue ;
       }
 
       if( strcmp(argv[iarg],"-mask") == 0 ){
@@ -133,13 +147,15 @@ int main( int argc , char *argv[] )
 
       if( strcmp(argv[iarg],"-polort") == 0 ){
         polort = strtol( argv[++iarg] , NULL , 10 ) ;
-        if( polort < 0 || polort > 3 ){
-          fprintf(stderr,"** Illegal value of polort!\n"); exit(1);
-        }
         iarg++ ; continue ;
       }
 
       fprintf(stderr,"** Unknown option: %s\n",argv[iarg]) ; exit(1) ;
+   }
+
+   /* check polort level */
+   if( polort < 0 || (polort > 3 && !use_legendre) ){
+     fprintf(stderr,"** polort > 3 requires -legendre\n"); exit(1);
    }
 
    /*----- read input dataset -----*/
@@ -222,14 +238,25 @@ int main( int argc , char *argv[] )
      /* r(t) = t - tmid */
 
      float tm = 0.5 * (nvals-1.0) ; float fac = 2.0 / nvals ;
-     for( iv=0 ; iv < nvals ; iv++ ) ref[1][iv] = (iv-tm)*fac ;
+
+     if( use_legendre )                 /* 21 Jun 2010 [rickr] */
+        for( iv=0 ; iv < nvals ; iv++ ) ref[1][iv] = legendre((iv-tm)*fac, 1) ;
+     else
+        for( iv=0 ; iv < nvals ; iv++ ) ref[1][iv] = (iv-tm)*fac ;
+
      jj = 2 ;
 
      /* r(t) = (t-tmid)**jj */
 
-     for( ; jj <= polort ; jj++ )
-      for( iv=0 ; iv < nvals ; iv++ )
-       ref[jj][iv] = pow( (iv-tm)*fac , (double)jj ) ;
+     for( ; jj <= polort ; jj++ ) {
+       if( use_legendre ) {             /* 21 Jun 2010 [rickr] */
+         for( iv=0 ; iv < nvals ; iv++ )
+           ref[jj][iv] = legendre((iv-tm)*fac, jj) ;
+       } else {
+         for( iv=0 ; iv < nvals ; iv++ )
+           ref[jj][iv] = pow( (iv-tm)*fac , (double)jj ) ;
+       }
+     }
    }
 
    /*--- loop over voxels and count ---*/
@@ -307,9 +334,17 @@ int main( int argc , char *argv[] )
       for( iv=0 ; iv < nvals ; iv++ ) ff[iv] = count[iv] ;
       qmedmad_float( nvals,ff , &cmed,&cmad ) ; free(ff) ;
       ctop = (int)(cmed+3.5*cmad+0.499) ;
-      for( iv=0 ; iv < nvals ; iv++ ) printf("%6d %d\n",count[iv],ctop) ;
+      if( do_frac )     /* 04 Jun 2010 [rickr] */
+         for( iv=0 ; iv < nvals ; iv++ )
+            printf("%0.5f %d\n",(float)count[iv]/npass,ctop) ;
+      else
+         for( iv=0 ; iv < nvals ; iv++ ) printf("%6d %d\n",count[iv],ctop) ;
    } else {
-      for( iv=0 ; iv < nvals ; iv++ ) printf("%6d\n",count[iv]) ;
+      if( do_frac )     /* 04 Jun 2010 [rickr] */
+         for( iv=0 ; iv < nvals ; iv++ )
+            printf("%0.5f\n",(float)count[iv]/npass) ;
+      else
+         for( iv=0 ; iv < nvals ; iv++ ) printf("%6d\n",count[iv]) ;
    }
 
 #if 0

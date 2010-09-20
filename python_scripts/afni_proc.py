@@ -169,9 +169,57 @@ g_history = """
         - added -sep_char (which probably needs more work) for Jill Weisberg
         - added -subj_curly (applied when -sep_char is '_')
     2.14 Nov 16 2009 : allow motion censoring with varying run lengths
+    2.15 Jan 15 2010 : added -regress_fout yes/no option
+    2.16 Jan 21 2010 :
+        - added -tlrc_opts_at for adding options to @auto_tlrc
+        - changed max(0,...) to *step(a)*step(b) in scaling block
+    2.17 Mar 03 2010 : when censoring, create uncensored ideals and sum
+    2.18 Mar 08 2010 : minor: changed option order in some examples
+    2.19 Mar 18 2010 : minor: help updates to alignment options
+    2.20 Mar 18 2010 : deal with args having '\\n' (from quoted newlines)
+    2.21 Mar 23 2010 : added -regress_compute_fitts, to save memory in 3dD
+    2.22 Mar 28 2010 : applied fitts computation to REML case
+    2.23 Apr 26 2010 : added -regress_opts_reml
+    2.24 May 12 2010 : added -regress_censor_first_trs
+    2.25 May 29 2010 :
+        - fixed use of -volreg_regress_per_run and -regress_censor_motion pair
+          (problem noted by D Drake)
+    2.26 Jun 04 2010 :
+        - if only one regressor, use 1dcat for "sum" ideal
+        - added -outlier_count, default to "yes"
+        - outlier counting is now at end of tcat block
+    2.27 Jun 09 2010 :
+        - added -regress_censor_outliers and -regress_skip_first_outliers
+        - specified 'auto block:' in block headers for those not chosen by user
+    2.28 Jun 10 2010 : fixed copying EPI and anat as NIfTI
+          (problem noted by S Tambalo)
+    2.29 Jun 17 2010 : apply default polort in 3dToutcount
+    2.30 Jun 17 2010 :
+        - 3dToutcount detrending now defaults to Legendre polynomials and
+          can so exceed polort 3 (limit found by I Mukai and K Bahadur)
+        - added options -outlier_legendre and -outlier_polort
+    2.31 Jul 14 2010 : added -mask_test_overlap and -regress_cormat_warnigns
+    2.32 Jul 19 2010 : added -check_afni_version and -requires_afni_version
+    2.33 Jul 22 2010 : added -regress_run_clustsim and -regress_opts_CS
+    2.34 Aug 02 2010 :
+        - check that stim_file/_time files match datasets
+        - check for existence of input datasets
+        - added -test_stim_files and -test_for_dsets options
+        - now depends on lib_afni1D
+    2.35 Aug 04 2010 :
+        - added -regress_CS_NN, default to 123
+        - changed 3dClustSim to use -both instead of just -niml
+        - changed prefix to ClustSim (so resulting .1D files are not removed)
+        - if request for ClustSim, require blur estimation
+    2.36 Aug 04 2010 :
+        - allow married timing files (needed for -test_stim_files)
+        - added -keep_script_on_err (NEW default: delete script on error)
 """
 
-g_version = "version 2.14, November 16, 2009"
+g_version = "version 2.36, Aug 17, 2010"
+
+# version of AFNI required for script execution
+g_requires_afni = "19 Jul 2010"
 
 # ----------------------------------------------------------------------
 # dictionary of block types and modification functions
@@ -204,6 +252,8 @@ OtherLabels    = ['empty']
 class SubjProcSream:
     def __init__(self, label):
         self.label      = label         # name for stream
+                                        # copy argv, but nuke any newlines
+        self.argv = [UTIL.replace_n_squeeze(arg, '\n', ' ') for arg in sys.argv]
         self.valid_opts = None          # list of possible user options
         self.user_opts  = None          # list of given user options
         self.sep_char   = '.'           # filename separator character
@@ -239,6 +289,8 @@ class SubjProcSream:
         self.rm_rm      = 1             # remove rm.* files (user option)
         self.have_rm    = 0             # have rm.* files (such files exist)
         self.gen_review = '@epi_review.$subj' # filename for gen_epi_review.py
+        self.test_stims = 1             # test stim_files for appropriateness
+        self.test_dsets = 1             # test datasets for existence
 
         self.ricor_reg    = None        # ricor reg to apply in regress block
         self.ricor_nreg   = 0           # number of regs in ricor_reg
@@ -261,13 +313,15 @@ class SubjProcSream:
         self.mask_anat  = None          # mask dataset (from subject anat)
         self.mask_group = None          # mask dataset (from tlrc base)
         self.mask_extents = None        # mask dataset (of EPI extents)
-        self.regress_censor_file = ''   # for use as '-censor FILE' in 3dD
+        self.censor_file  = ''          # for use as '-censor FILE' in 3dD
+        self.censor_count = 0           # count times censoring
         self.exec_cmd   = ''            # script execution command string
         self.bash_cmd   = ''            # bash formatted exec_cmd
         self.tcsh_cmd   = ''            # tcsh formatted exec_cmd
         self.regmask    = 0             # apply any full_mask in regression
         self.origview   = '+orig'       # view could also be '+tlrc'
         self.view       = '+orig'       # (starting and 'current' views)
+        self.xmat       = 'X.xmat.1D'   # X-matrix file (might go uncensored)
 
         self.bindex     = 0             # current block index
         self.pblabel    = ''            # previous block label
@@ -286,7 +340,7 @@ class SubjProcSream:
                 print
                 for dset in self.dsets: dset.show()
             else:
-                for dset in self.dsets: print dset.pv(),
+                for dset in self.dsets: print dset.rel_input(),
                 print
         if self.verb > 3: self.valid_opts.show('valid_opts: ')
         if self.verb > 1: self.user_opts.show('user_opts: ')
@@ -302,6 +356,8 @@ class SubjProcSream:
                         helpstr="show this help")
         self.valid_opts.add_opt('-hist', 0, [],
                         helpstr="show revision history")
+        self.valid_opts.add_opt('-requires_afni_version', 0, [],
+                        helpstr='show which date is required of AFNI')
         self.valid_opts.add_opt('-show_valid_opts', 0, [],
                         helpstr="show all valid options")
         self.valid_opts.add_opt('-ver', 0, [],
@@ -332,6 +388,9 @@ class SubjProcSream:
                         helpstr='have afni_proc.py as the user for options')
         self.valid_opts.add_opt('-bash', 0, [],
                         helpstr='show execution help in bash syntax')
+        self.valid_opts.add_opt('-check_afni_version', 1, [],
+                        acplist=['yes','no'],
+                        helpstr='check that AFNI is current enough')
         self.valid_opts.add_opt('-check_setup_errors', 1, [],
                         acplist=['yes','no'],
                         helpstr='terminate on setup errors')
@@ -350,10 +409,27 @@ class SubjProcSream:
                         helpstr='do not generate an EPI review script')
         self.valid_opts.add_opt('-keep_rm_files', 0, [],
                         helpstr='do not delete temporary rm.* files')
+        self.valid_opts.add_opt('-keep_script_on_err', 1, [],
+                        acplist=['yes','no'],
+                        helpstr='do not delete script on failure')
         self.valid_opts.add_opt('-move_preproc_files', 0, [],
                         helpstr='move preprocessing files to preproc.data dir')
+        self.valid_opts.add_opt('-outlier_count', 1, [],
+                        acplist=['yes','no'],
+                        helpstr='run 3dToutcount?  (default=yes)')
+        self.valid_opts.add_opt('-outlier_legendre', 1, [],
+                        acplist=['yes','no'],
+                        helpstr='use -legendre in 3dToutcount?  (def=yes)')
+        self.valid_opts.add_opt('-outlier_polort', 1, [],
+                        helpstr='3dToutcount polort (default is as with 3dD)')
         self.valid_opts.add_opt('-remove_preproc_files', 0, [],
                         helpstr='remove pb0* preprocessing files')
+        self.valid_opts.add_opt('-test_for_dsets', 1, [],
+                        acplist=['yes','no'],
+                        helpstr="test input datasets for existence (def=yes)")
+        self.valid_opts.add_opt('-test_stim_files', 1, [],
+                        acplist=['yes','no'],
+                        helpstr="test stim_files for validity (default=yes)")
         self.valid_opts.add_opt('-verb', 1, [],
                         helpstr="set the verbose level")
 
@@ -392,6 +468,8 @@ class SubjProcSream:
                         helpstr='run @auto_tlrc on anat from -copy_anat')
         self.valid_opts.add_opt('-tlrc_base', 1, [],
                         helpstr='alternate @auto_tlrc base (not TT_N27, say)')
+        self.valid_opts.add_opt('-tlrc_opts_at', -1, [],
+                        helpstr='additional options supplied to @auto_tlrc')
         self.valid_opts.add_opt('-tlrc_no_ss', 0, [],
                         helpstr='do not skull-strip during @auto_tlrc')
         self.valid_opts.add_opt('-tlrc_rmode', 1, [],
@@ -449,6 +527,9 @@ class SubjProcSream:
                         helpstr="select mask to apply in regression")
         self.valid_opts.add_opt('-mask_dilate', 1, [],
                         helpstr="dilation to be applied in automask")
+        self.valid_opts.add_opt('-mask_test_overlap', 1, [],
+                        acplist=['yes','no'],
+                        helpstr='test anat/EPI mask overlap (yes/no)')
         self.valid_opts.add_opt('-mask_type', 1, [],
                         acplist=['union','intersection'],
                         helpstr="specify a 'union' or 'intersection' mask type")
@@ -466,11 +547,25 @@ class SubjProcSream:
                         helpstr="basis function to use in regression")
         self.valid_opts.add_opt('-regress_basis_normall', 1, [],
                         helpstr="specify magnitude of basis functions")
+
         self.valid_opts.add_opt('-regress_censor_motion', 1, [],
-                        helpstr="censor TRs if motion derivative exceeds limit")
+                        helpstr="censor TR if motion derivative exceeds limit")
         self.valid_opts.add_opt('-regress_censor_prev', 1, [],
                         acplist=['yes','no'],
                         helpstr="set whether to censor previous motion TR")
+        self.valid_opts.add_opt('-regress_censor_first_trs', 1, [],
+                        helpstr="censor first TRs per run (if censor motion)")
+        self.valid_opts.add_opt('-regress_censor_outliers', 1, [],
+                        helpstr="censor TR if outlier fraction exceeds limit")
+        self.valid_opts.add_opt('-regress_skip_first_outliers', 1, [],
+                        helpstr="ignore outliers in first few TRs of each run")
+
+        self.valid_opts.add_opt('-regress_cormat_warnigns', 1, [],
+                        acplist=['yes','no'],
+                        helpstr="show cormat warnings from X-matrix (def: yes)")
+        self.valid_opts.add_opt('-regress_fout', 1, [],
+                        acplist=['yes','no'],
+                        helpstr="output individual F-stats? (def: yes)")
         self.valid_opts.add_opt('-regress_polort', 1, [],
                         helpstr="baseline polynomial degree per run")
         self.valid_opts.add_opt('-regress_stim_files', -1, [],
@@ -492,6 +587,8 @@ class SubjProcSream:
         self.valid_opts.add_opt('-regress_extra_stim_labels', -1, [],
                         helpstr="labels for extra -stim_files")
 
+        self.valid_opts.add_opt('-regress_compute_fitts', 0, [],
+                        helpstr="compute fitts only after 3dDeconvolve")
         self.valid_opts.add_opt('-regress_est_blur_epits', 0, [],
                         helpstr="estimate blur from scaled EPI time series")
         self.valid_opts.add_opt('-regress_est_blur_errts', 0, [],
@@ -519,17 +616,29 @@ class SubjProcSream:
         self.valid_opts.add_opt('-regress_no_motion', 0, [],
                         helpstr="do not apply motion parameters in regression")
         self.valid_opts.add_opt('-regress_opts_3dD', -1, [],
-                        helpstr='additional options directly for 3dDeconvolve')
+                        helpstr='additional options directly to 3dDeconvolve')
+        self.valid_opts.add_opt('-regress_opts_reml', -1, [],
+                        helpstr='additional options directly to 3dREMLfit')
         self.valid_opts.add_opt('-regress_reml_exec', 0, [],
                         helpstr="execute 3dREMLfit command script")
         self.valid_opts.add_opt('-regress_RONI', -1, [],
                         helpstr="1-based list of regressors of no interest")
 
+        # 3dClustSim options
+        self.valid_opts.add_opt('-regress_CS_NN', 1, [],
+                        acplist=['1','2','3','12','13','23','123'],
+                        helpstr='specify subset of {1,2,3} (default=123)')
+        self.valid_opts.add_opt('-regress_opts_CS', -1, [],
+                        helpstr='additional options directly to 3dClustSim')
+        self.valid_opts.add_opt('-regress_run_clustsim', 1, [],
+                        acplist=['yes','no'],
+                        helpstr="add 3dClustSim attrs to regression bucket")
+
         self.valid_opts.trailers = 0   # do not allow unknown options
         
     def get_user_opts(self):
-        self.valid_opts.check_special_opts(sys.argv)
-        self.user_opts = read_options(sys.argv, self.valid_opts)
+        self.valid_opts.check_special_opts(self.argv)
+        self.user_opts = read_options(self.argv, self.valid_opts)
         if self.user_opts == None: return 1     # error condition
         if len(self.user_opts.olist) == 0:      # no options: apply -help
             print g_help_string
@@ -553,7 +662,8 @@ class SubjProcSream:
         if self.out_dir == '': self.out_dir = '%s.results' % self.subj_label
         self.od_var = '$output_dir'
 
-        if self.verb > 1: show_args_as_command(sys.argv, "executing command:")
+        if self.verb > 1: show_args_as_command(self.argv, "executing command:")
+        if self.verb > 4: show_args_as_command(sys.argv, "system command:")
         if self.verb > 1: self.show('end get_user_opts ')
 
     # apply the general options - many terminate program
@@ -567,6 +677,10 @@ class SubjProcSream:
         
         if opt_list.find_opt('-hist'):     # print the history
             print g_history
+            return 0  # gentle termination
+        
+        if opt_list.find_opt('-requires_afni_version'): # print required version
+            print g_requires_afni
             return 0  # gentle termination
         
         if opt_list.find_opt('-ver'):      # show the version string
@@ -616,6 +730,17 @@ class SubjProcSream:
         opt = opt_list.find_opt('-scr_overwrite')
         if opt != None: self.overwrite = 1
 
+        # do we check input datasets for existence?  default to yes
+        opt = opt_list.find_opt('-test_for_dsets')
+        if not opt or opt_is_yes(opt): self.test_dsets = 1
+        else:                          self.test_dsets = 0
+
+        # do we test stim files for validity?  default to yes
+        opt = opt_list.find_opt('-test_stim_files')
+        if not opt or opt_is_yes(opt): self.test_stims = 1
+        else:                          self.test_stims = 0
+
+
     # init blocks from command line options, then check for an
     # alternate source       rcr - will we use 'file' as source?
     def create_blocks(self):
@@ -624,7 +749,17 @@ class SubjProcSream:
         if opt != None:
             for dset in opt.parlist:
                 self.dsets.append(afni_name(dset))
-            if self.dsets[0].view != self.view:
+
+            # possibly verify that all of the input datasets exist
+            if self.test_dsets:
+                missing = 0
+                for dset in self.dsets:
+                    if not dset.exist():
+                        print '** missing dataset: %s' % dset.rpv()
+                        missing = 1
+                if missing: return 1
+
+            if self.dsets[0].view and self.dsets[0].view != self.view:
                 self.view = self.dsets[0].view
                 self.origview = self.view
                 if self.verb > 0: print '-- applying view as %s' % self.view
@@ -869,7 +1004,12 @@ class SubjProcSream:
 
         if self.fp: self.fp.close()
 
-        if errs > 0: return 1    # so we print all errors before leaving
+        if errs > 0:
+            # default to removing any created script
+            opt = self.user_opts.find_opt('-keep_script_on_err')
+            if not opt or opt_is_no(opt):
+                os.remove(self.script)
+            return 1    # so we print all errors before leaving
 
         if self.verb > 0:
             # last warning, if user is masking EPI data...
@@ -913,6 +1053,9 @@ class SubjProcSream:
             if err: return 1
             self.reps_all.append(reps)
             if reps != self.reps: self.reps_vary = 1
+            if tr != self.tr:
+                print '** TR of %g != run #1 TR %g' % (tr, self.tr)
+                return 1
 
         # note data type and whether data is scaled
         err, vlist = get_typed_dset_attr_list(dset, "BRICK_TYPES", int)
@@ -1083,11 +1226,23 @@ class SubjProcSream:
         else: stat_inc = '@ nerrors += $status      # accumulate error count\n'
 
         self.fp.write('# %s\n'
-                      '# script setup\n\n' % block_header('setup'))
+                      '# script setup\n\n' % block_header('auto block: setup'))
 
         if len(stat_inc) > 0:
             self.fp.write("# prepare to count setup errors\n"
                           "set nerrors = 0\n\n")
+
+        # possibly check the AFNI version (via afni_history)
+        opt = self.user_opts.find_opt('-check_afni_version')
+        if not opt or opt_is_yes(opt):
+          self.fp.write(                                                      \
+          '# check that the current AFNI version is recent enough\n'          \
+          'afni_history -check_date %s\n'                                     \
+          'if ( $status ) then\n'                                             \
+          '    echo "** this script requires newer AFNI binaries (than %s)"\n'\
+          '    echo "   (consider: @update.afni.binaries -defaults)"\n'       \
+          '    exit\n'                                                        \
+          'endif\n\n' % (g_requires_afni, g_requires_afni) )
 
         self.fp.write('# the user may specify a single subject to run with\n'\
                       'if ( $#argv > 0 ) then\n'                             \
@@ -1128,7 +1283,7 @@ class SubjProcSream:
         if self.anat:
             str = '# copy anatomy to results dir\n'     \
                   '3dcopy %s %s/%s\n' %                 \
-                      (self.anat.rpv(), self.od_var, self.anat.prefix)
+                      (self.anat.rel_input(), self.od_var, self.anat.prefix)
             self.fp.write(add_line_wrappers(str))
             self.fp.write("%s\n" % stat_inc)
 
@@ -1173,7 +1328,7 @@ class SubjProcSream:
 
     # and last steps
     def finalize_script(self):
-        str = '# %s\n\n' % block_header('cleanup')
+        str = '# %s\n\n' % block_header('auto block: cleanup')
         self.fp.write(str)
 
         if self.rm_rm and self.have_rm:
@@ -1202,8 +1357,8 @@ class SubjProcSream:
               '# script generated by the command:\n'    \
               '#\n'                                     \
               '# %s %s\n' %                             \
-                (block_header(''), os.path.basename(sys.argv[0]),
-                                 ' '.join(quotize_list(sys.argv[1:],'')))
+                (block_header(''), os.path.basename(self.argv[0]),
+                                 ' '.join(quotize_list(self.argv[1:],'')))
             self.fp.write(add_line_wrappers(str))
 
         if self.user_opts.find_opt('-ask_me'):
@@ -1319,19 +1474,19 @@ def run_proc():
     rv = ps.get_user_opts()
     if rv != None:  # 0 is a valid return
         if rv != 0:
-            show_args_as_command(sys.argv, "** failed command (get_user_opts):")
+            show_args_as_command(ps.argv, "** failed command (get_user_opts):")
         return rv
 
     # run db_mod functions, and possibly allow other mods
     if ps.create_blocks():
-        show_args_as_command(sys.argv, "** failed command (create_blocks):")
+        show_args_as_command(ps.argv, "** failed command (create_blocks):")
         return rv
 
     # run db_cm functions, to create the script
     rv = ps.create_script()
     if rv != None:  # terminal, but do not display command on 0
         if rv != 0:
-            show_args_as_command(sys.argv, "** failed command (create_script):")
+            show_args_as_command(ps.argv, "** failed command (create_script):")
         return rv
 
     # finally, execute if requested

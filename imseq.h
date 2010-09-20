@@ -266,6 +266,7 @@ typedef struct {
 #define isqCR_geometry    3   /* the display geometry altered */
 #define isqCR_newimage    4   /* moved to a new image */
 #define isqCR_newmontage  5   /* a new image montage layout */
+#define isqCR_buttonmove  6   /* button moved while pressed [17 Mar 2010] */
 #define isqCR_destroy     99  /* the MCW_imseq was destroyed */
 
 #define isqCR_getimage    401
@@ -365,6 +366,7 @@ typedef struct MCW_imseq {
 
      Widget wbar_menu , wbar_rng_but , wbar_zer_but  , wbar_flat_but ,
             wbar_sharp_but ;
+     MCW_bbox *wbar_amask_bbox ;  /* 14 Jun 2010 */
      float  rng_bot,rng_top,rng_ztop , flat_bot,flat_top , sharp_fac ;
      int    zer_color , rng_extern ;
 
@@ -536,6 +538,8 @@ typedef struct MCW_imseq {
      MCW_arrowval *wbar_checkbrd_av ;
 
      MCW_arrowval *wbar_animdup_av ;                  /* 10 Feb 2009 */
+
+     int shft_ctrl_dragged ;                          /* 17 Mar 2010 */
 } MCW_imseq ;
 
 #define RENDER_DEFAULT    0
@@ -682,6 +686,7 @@ extern void ISQ_scale_CB( Widget , XtPointer , XtPointer ) ;
 
 extern void ISQ_wbar_plots_CB( Widget , XtPointer , XtPointer ) ; /* 20 Sep 2001 */
 extern void ISQ_wbar_label_CB( MCW_arrowval * , XtPointer ) ;
+extern void ISQ_wbar_amask_CB( Widget , XtPointer , XtPointer ) ; /* 14 Jun 2010 */
 
 extern void ISQ_wbar_menu_CB( Widget , XtPointer , XtPointer ) ;
 extern void ISQ_set_rng_CB( Widget , XtPointer , MCW_choose_cbs * ) ;

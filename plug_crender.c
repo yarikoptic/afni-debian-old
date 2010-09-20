@@ -10,7 +10,7 @@
  */
 
 /*----------------------------------------------------------------------
-  $Id: plug_crender.c,v 1.52 2009/12/31 19:36:19 rwcox Exp $
+  $Id: plug_crender.c,v 1.54 2010/07/16 01:37:42 dglen Exp $
   ----------------------------------------------------------------------
 */
 
@@ -173,7 +173,7 @@ PLUGIN_interface * PLUGIN_init( int ncall )
 
    if( ncall > 0 ) return(NULL);  /* only one interface */
 
-   plint = PLUTO_new_interface( "Render [new]" , NULL , NULL ,
+   plint = PLUTO_new_interface( "Render Dataset" , NULL , NULL ,
                                 PLUGIN_CALL_IMMEDIATELY , RCREND_main ) ;
 
    PLUTO_add_hint( plint , "Volume Rendering" ) ;
@@ -3295,7 +3295,8 @@ ENTRY( "RCREND_load_dsl" );
    /* scan datasets */
 
    for( id=0 ; id < ss->num_dsset ; id++ ){
-      qset = ss->dsset[id][vv] ;
+      qset = GET_SESSION_DSET(ss, id, vv);
+/*      qset = ss->dsset_xform_table[id][vv] ;*/
 
       if( ! USEFUL_DSET(qset) ) continue ;   /* skip this one */
 

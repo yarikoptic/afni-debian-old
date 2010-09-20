@@ -608,6 +608,18 @@ ENTRY("THD_set_dataset_attributes") ;
      }
    }
 
+   /* write name of "space" if there is one */
+   THD_get_space(dset);   /* get and set the dataset space */
+   /* the space should now be set to at least ORIG */
+   if(dset->atlas_space[0]!='\0') {   
+      int tlen;
+      tlen = strlen( dset->atlas_space ) + 1; /* +1 for the '\0' */
+      THD_set_char_atr( blk , "TEMPLATE_SPACE" , tlen , dset->atlas_space ) ;
+   }
+
+   /* write whether the dataset should be displayed with an integer colormap */
+   THD_set_int_atr(blk, "INT_CMAP", 1, &dset->int_cmap);
+   
    /******/
    /****** N.B.: we do NOT set the byte order attribute here *****/
    /******/
@@ -684,3 +696,50 @@ char * THD_make_statsym_string(THD_3dim_dataset * dset, int bindex)
     RETURN(statsym);
 }
 
+/*----------------------------------------------------------------------*/
+
+float_triple THD_clustsim_atr_fwhmxyz( THD_3dim_dataset *dset )
+{
+   float_triple fv = {0.0f,0.0f,0.0f} ;
+   NI_element *nel ;
+   ATR_string *atr ;
+   char *natr ;
+
+   if( !ISVALID_DSET(dset) ) return fv ;
+
+   atr = THD_find_string_atr( dset->dblk , "AFNI_CLUSTSIM_NN1" ) ;
+   if( atr == NULL ) return fv ;
+
+   nel = NI_read_element_fromstring(atr->ch) ;
+   if( nel == NULL ) return fv ;
+
+   natr = NI_get_attribute( nel , "fwhmxyz" ) ;
+
+   if( natr != NULL )
+     sscanf(natr,"%f,%f,%f",&fv.a,&fv.b,&fv.c) ;
+
+   NI_free_element(nel) ; return fv ;
+}
+
+/*----------------------------------------------------------------------*/
+
+char * THD_clustsim_atr_mask_dset_idcode( THD_3dim_dataset *dset )
+{
+   NI_element *nel ;
+   ATR_string *atr ;
+   char *natr , *buf=NULL ;
+
+   if( !ISVALID_DSET(dset) ) return buf ;
+
+   atr = THD_find_string_atr( dset->dblk , "AFNI_CLUSTSIM_NN1" ) ;
+   if( atr == NULL ) return buf ;
+
+   nel = NI_read_element_fromstring(atr->ch) ;
+   if( nel == NULL ) return buf ;
+
+   natr = NI_get_attribute( nel , "mask_dset_idcode" ) ;
+
+   if( natr != NULL ) buf = strdup(natr) ;
+
+   NI_free_element(nel) ; return buf ;
+}

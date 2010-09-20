@@ -309,6 +309,8 @@ void AFNI_make_wid1 (Three_D_View *) ;
 void AFNI_make_wid2 (Three_D_View *) ;
 void AFNI_make_wid3 (Three_D_View *) ;
 
+static Widget wtemp ;
+
 /*--------------------------------------------------------------------*/
 
 void AFNI_make_widgets( Three_D_View *im3d )
@@ -710,6 +712,7 @@ void AFNI_raiseup_CB( Widget w , XtPointer cd , XtPointer cb )
 void AFNI_make_wid1( Three_D_View *im3d )
 {
    int ii ;
+   int show_markers = AFNI_yesenv("AFNI_ENABLE_MARKERS") ;  /* 28 Apr 2010 */
 
 ENTRY("AFNI_make_wid1") ;
 
@@ -1007,7 +1010,7 @@ STATUS("making imag->rowcol") ;
             XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
-
+   LABELIZE(imag->crosshair_label) ;
    MCW_register_help( imag->crosshair_label , AFNI_crosshair_label_help ) ;
    MCW_register_hint( imag->crosshair_label , "Coordinates of crosshair point" ) ;
 
@@ -1343,6 +1346,7 @@ STATUS("imag->view_frame") ;
             XmNtraversalOn   , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
+   LABELIZE(imag->name_xyz_lab) ;
 
    imag->image_xyz_pb =
       XtVaCreateManagedWidget(
@@ -1391,6 +1395,7 @@ STATUS("imag->view_frame") ;
             XmNtraversalOn   , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
+   LABELIZE(imag->name_yzx_lab) ;
 
    imag->image_yzx_pb =
       XtVaCreateManagedWidget(
@@ -1439,6 +1444,7 @@ STATUS("imag->view_frame") ;
             XmNtraversalOn   , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
+   LABELIZE(imag->name_zxy_lab) ;
 
    imag->image_zxy_pb =
       XtVaCreateManagedWidget(
@@ -1758,15 +1764,24 @@ STATUS("making view->rowcol") ;
 
    /*-- 03 Dec 2009: move Session change stuff to a private rowcol --*/
 
+ {
+#if 0
+  int horz = show_markers ;
+#else
+  int horz = 1 ;
+#endif
+   char *hstr ;
+
+   view->session_horz = horz ;
    view->session_rowcol =
       XtVaCreateWidget(
          "dialog" , xmRowColumnWidgetClass , view->dataset_rowcol ,
             XmNpacking      , XmPACK_TIGHT ,
-            XmNorientation  , XmHORIZONTAL ,
+            XmNorientation  , (horz) ? XmHORIZONTAL : XmVERTICAL ,
             XmNtraversalOn  , True  ,
-            XmNmarginHeight , 0 ,
-            XmNmarginWidth  , 0 ,
-            XmNspacing      , 0 ,
+            XmNmarginHeight , (horz) ? 0 : 2 ,
+            XmNmarginWidth  , (horz) ? 0 : 2 ,
+            XmNspacing      , (horz) ? 0 : 2 ,
             XmNadjustLast   , False ,
             XmNisAligned    , False ,
             XmNentryAlignment , XmALIGNMENT_CENTER ,
@@ -1775,27 +1790,39 @@ STATUS("making view->rowcol") ;
 
    /*--- pushbuttons for session choice ---*/
 
-   xstr = XmStringCreateLtoR("DataDir",XmFONTLIST_DEFAULT_TAG );
+   hstr = (horz) ? "DataDir" : "Data Directory" ;
+   xstr = XmStringCreateLtoR(hstr,XmFONTLIST_DEFAULT_TAG);
    view->sess_lab =
       XtVaCreateManagedWidget(
          "dialog" , xmLabelWidgetClass , view->session_rowcol ,
             XmNrecomputeSize , False ,
             XmNlabelString , xstr ,
             XmNtraversalOn , True  ,
-            XmNmarginHeight , 0 ,
-            XmNmarginWidth  , 0 ,
+            XmNmarginHeight , (horz) ? 0 : 2 ,
+            XmNmarginWidth  , (horz) ? 0 : 2 ,
             XmNadjustMargin , False ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
    XmStringFree( xstr ) ;
+#if 0
    MCW_register_hint( view->sess_lab ,
-                      "Switch = change dataset directory; Read = open a new dataset directory" ) ;
+    "Switch = change dataset directory; Read = open a new dataset directory" ) ;
+#endif
+   XtInsertEventHandler( view->sess_lab ,         /* handle events in label */
+                             ButtonPressMask ,    /* button presses */
+                             FALSE ,              /* nonmaskable events? */
+                             AFNI_sesslab_EV ,    /* handler */
+                             (XtPointer)im3d ,    /* client data */
+                             XtListTail           /* last in queue */
+                         ) ;
+   MCW_set_widget_bg( view->sess_lab , BROWN_COLOR , 0 ) ;
 
+   hstr = (horz) ? "Switch" : "Switch Directory" ;
    view->choose_sess_pb =
       XtVaCreateManagedWidget(
          "dialog" , xmPushButtonWidgetClass , view->session_rowcol ,
-            LABEL_ARG("Switch") ,
-            XmNmarginHeight , 0 ,
+            LABEL_ARG(hstr) ,
+            XmNmarginHeight , (horz) ? 0 : 2 ,
             XmNmarginWidth  , 1 ,
             XmNtraversalOn , True  ,
             XmNalignment , XmALIGNMENT_CENTER ,
@@ -1811,10 +1838,11 @@ STATUS("making view->rowcol") ;
    MCW_set_widget_bg( view->choose_sess_pb , "black"   , 0 ) ;
    MCW_set_widget_fg( view->choose_sess_pb , "#ffddaa" ) ;
 
+   hstr = (horz) ? "Read" : "Read New Directory" ;
    view->read_sess_pb =
       XtVaCreateManagedWidget(
          "dialog" , xmPushButtonWidgetClass , view->session_rowcol ,
-            LABEL_ARG("Read") ,
+            LABEL_ARG(hstr) ,
             XmNmarginHeight , 0 ,
             XmNmarginWidth  , 0 ,
             XmNmarginLeft   , 0 ,
@@ -1826,6 +1854,11 @@ STATUS("making view->rowcol") ;
                   AFNI_read_sess_CB , im3d ) ;
    MCW_register_hint( view->read_sess_pb ,
                       "Read in a new session directory" ) ;
+   MCW_register_help( view->read_sess_pb ,
+                      "Click this button to get\n"
+                      "a 'chooser' dialog window\n"
+                      "to select a new directory\n"
+                      "from which to read datasets." ) ;
    MCW_set_widget_bg( view->read_sess_pb , "#ffddaa" , 0 ) ;
 
    view_count ++ ;
@@ -1834,6 +1867,7 @@ STATUS("making view->rowcol") ;
             "dialog" , xmSeparatorWidgetClass , view->dataset_rowcol ,
                 XmNseparatorType , XmSHADOW_ETCHED_IN ,
             NULL ) ;
+ }
 
    /*-- 02 Feb 2007: move Underlay and Overlay choosers into a rowcol --*/
 
@@ -2079,7 +2113,15 @@ STATUS("making view->rowcol") ;
 
    /*--- all view controls made, now manage them ---*/
 
-   XtManageChild( view->marks_rowcol ) ;
+   if( show_markers ){  /* 28 Apr 2010 */
+     XtManageChild( view->marks_rowcol ) ;
+     XtManageChild( view->marks_frame ) ;
+     view->marks_enabled = 1 ;
+   } else {
+     XtUnmanageChild( view->marks_rowcol ) ;
+     XtUnmanageChild( view->marks_frame ) ;
+     view->marks_enabled = 0 ;
+   }
    XtManageChild( view->func_rowcol ) ;
    XtManageChild( view->session_rowcol ) ;
    XtManageChild( view->choose_rowcol ) ;
@@ -2193,6 +2235,13 @@ STATUS("making marks->rowcol") ;
         if( ib==0 )
            XtVaGetValues( marks->tog[0],XmNindicatorSize,&isiz,NULL ) ;
 
+        MCW_register_help( marks->tog[ib],&(marks->tog_help[ib][0]) ) ;
+
+        XtAddCallback( marks->tog[ib] ,
+                       XmNdisarmCallback ,
+                       AFNI_marktog_CB , im3d ) ;
+
+#ifdef POPTOG
         marks->sometimes_popup[(marks->num_sometimes_popup)++] =
         marks->poptog[ib] =
            XtVaCreateWidget(
@@ -2206,15 +2255,10 @@ STATUS("making marks->rowcol") ;
                  XmNinitialResourcesPersistent , False ,
               NULL ) ;
 
-        MCW_register_help( marks->tog[ib],&(marks->tog_help[ib][0]) ) ;
-
-        XtAddCallback( marks->tog[ib] ,
-                       XmNdisarmCallback ,
-                       AFNI_marktog_CB , im3d ) ;
-
         XtAddCallback( marks->poptog[ib] ,
                        XmNvalueChangedCallback ,
                        AFNI_marktog_CB , im3d ) ;
+#endif
 
         marks->inverted[ib] = False ;
      }  /* end of loop creating toggle buttons */
@@ -2473,6 +2517,7 @@ STATUS("making marks->rowcol") ;
 
    /*----- copies of these pushbuttons on the popup menu -----*/
 
+#ifdef POPTOG
    marks->always_popup[(marks->num_always_popup)++] =
       XtVaCreateManagedWidget(
              "dialog" , xmSeparatorWidgetClass , imag->popmenu ,
@@ -2504,6 +2549,7 @@ STATUS("making marks->rowcol") ;
 
    XtAddCallback( marks->pop_clear_pb , XmNactivateCallback ,
                   AFNI_marks_action_CB , im3d ) ;
+#endif
 
    /*----- a "quality" button (not on the popup menu) -----*/
 
@@ -2612,6 +2658,7 @@ STATUS("making func->rowcol") ;
             XmNrecomputeSize , False ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
+   LABELIZE(func->thr_label) ;
 
 #ifdef FIX_SCALE_VALUE_PROBLEM
    MCW_register_help( func->thr_label ,
@@ -2639,10 +2686,11 @@ STATUS("making func->rowcol") ;
    MCW_register_hint( func->thr_label , "Type of threshold statistic" ) ;
 #endif
 
-   /**--------- 05 Sep 2006: creat menu hidden on the thr_label ---------**/
+   /**--------- 05 Sep 2006: create menu hidden on the thr_label ---------**/
 
 #if 1
-   { static char *onofflabel[] = { "Use Threshold?" } ;
+   { static char *onofflabel[]    = { "Use Threshold?" } ;
+     static char *throlay1label[] = { "Thr = OLay+1 ?" } ;
 
 #ifdef BAD_BUTTON3_POPUPS
    func->thr_menu = XmCreatePopupMenu( func->thr_rowcol, "menu", NULL, 0 ) ;
@@ -2670,16 +2718,18 @@ STATUS("making func->rowcol") ;
    /* This --- Cancel --- label does not cause the hangup, so it is
    left alone. See related comments in afni_graph.c
                            LessTif patrol, Jan 07 09 */
-   (void) XtVaCreateManagedWidget(
+   wtemp = XtVaCreateManagedWidget(
             "dialog" , xmLabelWidgetClass , func->thr_menu ,
                LABEL_ARG("--- Cancel ---") ,
                XmNrecomputeSize , False ,
                XmNinitialResourcesPersistent , False ,
-            NULL ) ;
+            NULL ) ; LABELIZE(wtemp) ;
 
    (void) XtVaCreateManagedWidget(
             "dialog" , xmSeparatorWidgetClass , func->thr_menu ,
              XmNseparatorType , XmSINGLE_LINE , NULL ) ;
+
+   /*-- Threshold on/off? button --*/
 
    func->thr_onoff_bbox = new_MCW_bbox( func->thr_menu ,
                                         1 , onofflabel ,
@@ -2691,7 +2741,19 @@ STATUS("making func->rowcol") ;
    MCW_reghint_children( func->thr_onoff_bbox->wrowcol ,
                          "Temporarily ignore threshold?" ) ;
 
-   /* AutoThreshold button */
+   /*-- Thr=OLay+1? button [13 Aug 2010] --*/
+
+   func->thr_olay1_bbox = new_MCW_bbox( func->thr_menu ,
+                                        1 , throlay1label ,
+                                        MCW_BB_check , MCW_BB_noframe ,
+                                        AFNI_throlay1_change_CB ,
+                                        (XtPointer)im3d ) ;
+   im3d->vinfo->thr_olay1 = 0 ;
+   MCW_set_bbox( func->thr_olay1_bbox , 0 ) ;
+   MCW_reghint_children( func->thr_olay1_bbox->wrowcol ,
+                         "Lock Thr to be sub-brick after OLay?" ) ;
+
+   /*-- AutoThreshold button --*/
 
    func->thr_autothresh_pb =
       XtVaCreateManagedWidget(
@@ -2841,6 +2903,7 @@ STATUS("making func->rowcol") ;
             XmNrecomputeSize , False ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
+   LABELIZE(func->thr_pval_label) ;
 
    MCW_register_help( func->thr_pval_label ,
       " \n"
@@ -2919,6 +2982,7 @@ STATUS("making func->rowcol") ;
             LABEL_ARG("Inten") ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
+   LABELIZE(func->inten_label) ;
 
    /**-- 17 Dec 1997: pbar menu hidden on the inten_label --**/
 
@@ -2950,12 +3014,12 @@ STATUS("making func->rowcol") ;
    /* This --- Cancel --- label does not cause the hangup, so it is
    left alone. See related comments in afni_graph.c
                            LessTif patrol, Jan 07 09 */
-   (void) XtVaCreateManagedWidget(
+   wtemp = XtVaCreateManagedWidget(
             "dialog" , xmLabelWidgetClass , func->pbar_menu ,
                LABEL_ARG("--- Cancel ---") ,
                XmNrecomputeSize , False ,
                XmNinitialResourcesPersistent , False ,
-            NULL ) ;
+            NULL ) ; LABELIZE(wtemp) ;
 
    (void) XtVaCreateManagedWidget(
             "dialog" , xmSeparatorWidgetClass , func->pbar_menu ,
@@ -3327,12 +3391,15 @@ STATUS("making func->rowcol") ;
             LABEL_ARG("Background ") ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
+   LABELIZE(func->options_label) ;
 
-#define VEDIT_COLOR "#000088"
+#define VEDIT_COLOR_A "#000066"
+#define VEDIT_COLOR_B "#004466"
 #define VEDIT_NOPT  4
    { static char *options_vedit_label[] =
        { "Clusters" , "InstaCorr" , "InstaCalc" , "GrpInCorr" } ;
-     int nopt = (num_entry==1) ? VEDIT_NOPT : VEDIT_NOPT-1 ;
+     int nopt = (num_entry==1) ? VEDIT_NOPT : VEDIT_NOPT-1 ;  /* no GrpInCorr after [A] */
+     int ibut ;
      func->options_vedit_av = new_MCW_arrowval(
                                func->options_top_rowcol , /* parent Widget */
                                NULL ,                     /* label */
@@ -3347,7 +3414,9 @@ STATUS("making func->rowcol") ;
                                MCW_av_substring_CB ,      /* text creation routine */
                                options_vedit_label        /* data for above */
                              ) ;
-     colorize_MCW_optmenu( func->options_vedit_av , VEDIT_COLOR  , -1 ) ;
+     for( ibut=0 ; ibut < nopt ; ibut++ )
+       colorize_MCW_optmenu( func->options_vedit_av ,
+                             (ibut%2==0) ? VEDIT_COLOR_A : VEDIT_COLOR_B  , ibut ) ;
    }
    func->options_vedit_av->parent = (XtPointer)im3d ;
    MCW_reghelp_children( func->options_vedit_av->wrowcol ,
@@ -3364,6 +3433,9 @@ STATUS("making func->rowcol") ;
    func->cwid = NULL;
    func->clu_rep = NULL; func->clu_list = NULL; func->clu_index = -1;
    func->clu_det = NULL; func->clu_num  = 0 ;
+
+   func->clu_tabNN1 = func->clu_tabNN2 = func->clu_tabNN3 = NULL; /* Jul 2010 */
+   func->clu_mask = NULL ;
 
    func->iwid = NULL ;  /* 17 Sep 2009 */
 
@@ -3430,27 +3502,29 @@ STATUS("making func->rowcol") ;
    func->clu_cluster_pb =
       XtVaCreateManagedWidget(
          "dialog" , xmPushButtonWidgetClass , func->clu_rowcol ,
-            LABEL_ARG(" Clusterize") ,
+            LABEL_ARG("Clusterize ") ,
             XmNmarginHeight, 0 ,
             XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
-   MCW_set_widget_bg( func->clu_cluster_pb , VEDIT_COLOR , 0 ) ;
+   MCW_set_widget_bg( func->clu_cluster_pb , VEDIT_COLOR_A , 0 ) ;
    XtAddCallback( func->clu_cluster_pb , XmNactivateCallback ,
                   AFNI_clu_CB , im3d ) ;
    MCW_register_hint( func->clu_cluster_pb , "Set clustering parameters" ) ;
    MCW_register_help( func->clu_cluster_pb ,
                         "Cluster editing parameters:\n"
-                        "  rmm = connectivity radius (rmm=0 -> 1 voxel)\n"
-                        " vmul = minimum cluster volume (in microliters)\n"
-                        "       ** BUT, if rmm=0, vmul is in voxels,\n"
-                        "       ** not in absolute volume!\n\n"
-                        "N.B.: Clustering is done at the overlay\n"
-                        "      dataset voxel resolution, NOT at\n"
-                        "      the underlay resolution.\n\n"
-                        "N.B.: Clustering cannot be done if the overlay\n"
-                        "      dataset does not have a stored volume\n"
-                        "      (e.g., is 'warp-on-demand' only)." ) ;
+                        "NN level = how to decide if two above-threshold\n"
+                        "           voxels are neighbors to be put in\n"
+                        "           the same cluster\n"
+                        "Voxels   = minimum cluster size to be shown\n"
+                        "           in the Rpt table\n\n"
+                        "** Clustering is done at the overlay dataset\n"
+                        "    voxel resolution, NOT at the underlay\n"
+                        "    dataset's resolution.\n\n"
+                        "** Clustering cannot be done if the overlay\n"
+                        "    dataset does not have a stored volume\n"
+                        "    (e.g., is 'warp-on-demand' only)."
+                     ) ;
 
    hrc = XtVaCreateWidget(
          "dialog" , xmRowColumnWidgetClass , func->clu_rowcol ,
@@ -3513,7 +3587,7 @@ STATUS("making func->rowcol") ;
                XmNtraversalOn , True  ,
                XmNinitialResourcesPersistent , False ,
             NULL ) ;
-   MCW_set_widget_bg( func->icor_pb , VEDIT_COLOR , 0 ) ;
+   MCW_set_widget_bg( func->icor_pb , VEDIT_COLOR_B , 0 ) ;
    XtAddCallback( func->icor_pb , XmNactivateCallback , AFNI_misc_CB , im3d ) ;
    MCW_register_hint( func->icor_pb , "Control InstaCorr calculations" ) ;
 
@@ -3554,7 +3628,7 @@ STATUS("making func->rowcol") ;
                XmNtraversalOn , True  ,
                XmNinitialResourcesPersistent , False ,
             NULL ) ;
-   MCW_set_widget_bg( func->icalc_pb , VEDIT_COLOR , 0 ) ;
+   MCW_set_widget_bg( func->icalc_pb , VEDIT_COLOR_A , 0 ) ;
    XtAddCallback( func->icalc_pb , XmNactivateCallback , AFNI_misc_CB , im3d ) ;
    MCW_register_hint( func->icalc_pb , "Control InstaCalc calculations" ) ;
 
@@ -3597,7 +3671,7 @@ STATUS("making func->rowcol") ;
                  XmNtraversalOn , True  ,
                  XmNinitialResourcesPersistent , False ,
               NULL ) ;
-     MCW_set_widget_bg( func->gicor_pb , VEDIT_COLOR , 0 ) ;
+     MCW_set_widget_bg( func->gicor_pb , VEDIT_COLOR_B , 0 ) ;
      XtAddCallback( func->gicor_pb , XmNactivateCallback , AFNI_misc_CB , im3d ) ;
      MCW_register_hint( func->gicor_pb , "Control 3dGroupInCorr calculations" ) ;
 
@@ -3613,7 +3687,7 @@ STATUS("making func->rowcol") ;
            NULL ) ;
      XmStringFree(xstr) ;
      MCW_set_widget_bg(func->gicor_label,STOP_COLOR,0) ;
-     MCW_register_hint( func->gicor_label , "Will be ** Ready ** when 3dGroupInCorr is running" ) ;
+     MCW_register_hint(func->gicor_label,"Will be ** Ready ** when 3dGroupInCorr is running");
 
    } else {
 
@@ -3788,6 +3862,7 @@ STATUS("making func->rowcol") ;
             XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
+   LABELIZE(func->range_label) ;
    MCW_register_help( func->range_label ,
                         "These are the range of values in the\n"
                         "UnderLay and OverLay 3D datasets.\n"
@@ -3936,7 +4011,7 @@ STATUS("making func->rowcol") ;
             XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
-   XmStringFree(xstr) ;
+   XmStringFree(xstr) ; LABELIZE(func->fim_dset_label) ;
    MCW_register_help( func->fim_dset_label ,
          "Shows the name of the\n"
          "dataset for which FIM\n"
@@ -3986,7 +4061,7 @@ STATUS("making func->rowcol") ;
             XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
-   XmStringFree( xstr ) ;
+   XmStringFree( xstr ) ; LABELIZE(func->bkgd_lab) ;
 
    im3d->vinfo->anat_val[0] =
     im3d->vinfo->func_val[0] =
@@ -4278,14 +4353,14 @@ STATUS("making dmode->rowcol") ;
 
    /*-- 23 Nov 1996: label at left --*/
 
-   (void) XtVaCreateManagedWidget(
+   wtemp = XtVaCreateManagedWidget(
          "dialog" , xmLabelWidgetClass , dmode->write_rowcol ,
             LABEL_ARG("Write ") ,
             XmNalignment , XmALIGNMENT_BEGINNING ,
             XmNrecomputeSize , False ,
             XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
-         NULL ) ;
+         NULL ) ; LABELIZE(wtemp) ;
 
    /*--- write pushbuttons ---*/
 
@@ -4367,14 +4442,14 @@ STATUS("making dmode->rowcol") ;
 
    /*-- 23 Nov 1996: label at left --*/
 
-   (void) XtVaCreateManagedWidget(
+   wtemp = XtVaCreateManagedWidget(
          "dialog" , xmLabelWidgetClass , dmode->rescan_rowcol ,
             LABEL_ARG("Rescan") ,
             XmNalignment , XmALIGNMENT_BEGINNING ,
             XmNrecomputeSize , False ,
             XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
-         NULL ) ;
+         NULL ) ; LABELIZE(wtemp) ;
 
    /*-- pushbutton for one session rescan --*/
 
@@ -4456,14 +4531,14 @@ STATUS("making dmode->rowcol") ;
 
    /*-- label at left --*/
 
-   (void) XtVaCreateManagedWidget(
+   wtemp = XtVaCreateManagedWidget(
          "dialog" , xmLabelWidgetClass , dmode->read_rowcol ,
             LABEL_ARG("Read  ") ,
             XmNalignment , XmALIGNMENT_BEGINNING ,
             XmNrecomputeSize , False ,
             XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
-         NULL ) ;
+         NULL ) ; LABELIZE(wtemp) ;
 
    /*-- pushbutton for session input --*/
 
@@ -4598,6 +4673,7 @@ STATUS("making prog->rowcol") ;
                "dialog" , xmPushButtonWidgetClass , prog->rc_top ,
                  LABEL_ARG("New  ") ,
                  XmNtraversalOn , True  ,
+                 XmNalignment   , XmALIGNMENT_CENTER ,
                  XmNinitialResourcesPersistent , False ,
                NULL ) ;
 
@@ -4618,8 +4694,9 @@ STATUS("making prog->rowcol") ;
       prog->panel_pb =
          XtVaCreateManagedWidget(
             "dialog" , xmPushButtonWidgetClass , prog->rc_top ,
-              LABEL_ARG("Views") ,
+              LABEL_ARG("Etc->") ,
               XmNtraversalOn , True  ,
+              XmNalignment   , XmALIGNMENT_CENTER ,
               XmNinitialResourcesPersistent , False ,
             NULL ) ;
 
@@ -4660,6 +4737,7 @@ STATUS("making prog->rowcol") ;
          "dialog" , xmPushButtonWidgetClass , prog->rc_bot ,
            LABEL_ARG("BHelp") ,
            XmNtraversalOn , True  ,
+           XmNalignment   , XmALIGNMENT_CENTER ,
            XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
@@ -4677,6 +4755,7 @@ STATUS("making prog->rowcol") ;
             LABEL_ARG("done ") ,
             XmNrecomputeSize , False ,
             XmNtraversalOn , True  ,
+            XmNalignment   , XmALIGNMENT_CENTER ,
             XmNinitialResourcesPersistent , False ,
             XmNuserData , (XtPointer) im3d ,
          NULL ) ;
@@ -4730,7 +4809,7 @@ STATUS("making prog->rowcol") ;
             XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
-
+   LABELIZE(imag->pop_bkgd_lab) ;
    imag->do_bkgd_lab = False ;
 
    /*----------------------------------------------*/
@@ -4934,15 +5013,31 @@ STATUS("making prog->rowcol") ;
       /*---- END OF PTS STUFF ----*/
 #endif
 
-      /*---- Various Poetry Options ----*/
+      /*--- put build date into menu header ---*/
 
-      xstr = XmStringCreateLtoR( "---- Poetry ----" , XmFONTLIST_DEFAULT_TAG ) ;
-      (void) XtVaCreateManagedWidget(
+      xstr = XmStringCreateLtoR( "Build: " __DATE__ , XmFONTLIST_DEFAULT_TAG ) ;
+      wtemp = XtVaCreateManagedWidget(
                "dialog" , xmLabelWidgetClass , prog->hidden_menu ,
                   XmNlabelString , xstr ,
                   XmNrecomputeSize , False ,
                   XmNinitialResourcesPersistent , False ,
-               NULL ) ;
+               NULL ) ; LABELIZE(wtemp) ; MCW_invert_widget(wtemp) ;
+      XmStringFree(xstr) ;
+
+      (void) XtVaCreateManagedWidget(
+               "dialog" , xmSeparatorWidgetClass , prog->hidden_menu ,
+                  XmNseparatorType , XmSINGLE_LINE ,
+            NULL ) ;
+
+      /*---- Various Poetry Options ----*/
+
+      xstr = XmStringCreateLtoR( "---- Poetry, Etc ----" , XmFONTLIST_DEFAULT_TAG ) ;
+      wtemp = XtVaCreateManagedWidget(
+               "dialog" , xmLabelWidgetClass , prog->hidden_menu ,
+                  XmNlabelString , xstr ,
+                  XmNrecomputeSize , False ,
+                  XmNinitialResourcesPersistent , False ,
+               NULL ) ; LABELIZE(wtemp) ;
       XmStringFree(xstr) ;
 
       (void) XtVaCreateManagedWidget(
@@ -5114,7 +5209,7 @@ STATUS("making prog->rowcol") ;
         prog->hidden_browser_pb =
               XtVaCreateManagedWidget(
                  "dialog" , xmPushButtonWidgetClass , prog->hidden_menu ,
-                    LABEL_ARG("Web Browser") ,
+                    LABEL_ARG("Web Browser: Help") ,
                     XmNmarginHeight , 0 ,
                     XmNtraversalOn , True  ,
                     XmNinitialResourcesPersistent , False ,
@@ -5401,7 +5496,8 @@ void AFNI_initialize_controller( Three_D_View *im3d )
 {
    int ii , sss=0 ;
    char ttl[16] , *eee ;
-
+   THD_3dim_dataset *temp_dset = NULL;
+   
 ENTRY("AFNI_initialize_controller") ;
 
    /*--- check for various criminal behavior;
@@ -5442,15 +5538,17 @@ ENTRY("AFNI_initialize_controller") ;
      switch( sss ){
        case 2:       /* the OLD way */
          for( mm=1.e+33,jb=jj=0 ; jj < im3d->ss_now->num_dsset ; jj++ ){
-           if( ISANAT(im3d->ss_now->dsset[jj][0]) ){
-             bb = DSET_bigositiness(im3d->ss_now->dsset[jj][0]) ;
+           temp_dset = GET_SESSION_DSET(im3d->ss_now, jj,0);
+           if( ISANAT(temp_dset) ){
+             bb = DSET_bigositiness(temp_dset) ;
              if( bb > 0 && bb < mm ){ mm = bb; jb = jj; }
            }
          }
          if( mm < 1.e+33 ) im3d->vinfo->anat_num = qb = jb ;
          for( mm=1.e+33,jb=jj=0 ; jj < im3d->ss_now->num_dsset ; jj++ ){
-           if( ISFUNC(im3d->ss_now->dsset[jj][0]) ){
-             bb = DSET_bigositiness(im3d->ss_now->dsset[jj][0]) ;
+           temp_dset = GET_SESSION_DSET(im3d->ss_now, jj,0);
+           if( ISFUNC(temp_dset) ){
+             bb = DSET_bigositiness(temp_dset) ;
              if( jj != qb && bb > 0 && bb < mm ){ mm = bb; jb = jj; }
            }
          }
@@ -5459,8 +5557,9 @@ ENTRY("AFNI_initialize_controller") ;
 
        case 1:
          for( mm=1.e+33,jb=jj=0 ; jj < im3d->ss_now->num_dsset ; jj++ ){
-           if( ISVALID_DSET(im3d->ss_now->dsset[jj][0]) ){
-             bb = DSET_bigositiness(im3d->ss_now->dsset[jj][0]) ;
+           temp_dset = GET_SESSION_DSET(im3d->ss_now, jj,0);
+           if( ISVALID_DSET(temp_dset) ){
+             bb = DSET_bigositiness(temp_dset) ;
              if( bb > 0.0f && bb < mm ){ mm = bb; jb = jj; }
            }
          }
@@ -5470,19 +5569,24 @@ ENTRY("AFNI_initialize_controller") ;
 
    } else if( im3d->brand_new ){  /* 29 Jul 2003 */
      int jj ;
-     for( jj=0 ; jj < im3d->ss_now->num_dsset ; jj++ )
-       if( ISANAT(im3d->ss_now->dsset[jj][0]) ) break ;
+     for( jj=0 ; jj < im3d->ss_now->num_dsset ; jj++ ) {
+       temp_dset = GET_SESSION_DSET(im3d->ss_now, jj,0);
+       if( ISANAT(temp_dset) ) break ;
+     }  
      if( jj < im3d->ss_now->num_dsset ) im3d->vinfo->anat_num = jj ;
 
-     for( jj=0 ; jj < im3d->ss_now->num_dsset ; jj++ )
-       if( ISFUNC(im3d->ss_now->dsset[jj][0]) ) break ;
+     for( jj=0 ; jj < im3d->ss_now->num_dsset ; jj++ ) {
+       temp_dset = GET_SESSION_DSET(im3d->ss_now, jj,0);
+       if( ISFUNC(temp_dset) ) break ;
+     }
      if( jj < im3d->ss_now->num_dsset ) im3d->vinfo->func_num = jj ;
    }
 
    /* copy pointers from this session into the controller for fast access */
 
    for( ii=0 ; ii <= LAST_VIEW_TYPE ; ii++ )
-      im3d->anat_dset[ii] = im3d->ss_now->dsset[im3d->vinfo->anat_num][ii] ;
+      im3d->anat_dset[ii] = GET_SESSION_DSET(im3d->ss_now, im3d->vinfo->anat_num, ii);
+      /* im3d->ss_now->dsset_xform_table[im3d->vinfo->anat_num][ii] ; */
 
    /*--- 11/23/94 addition: scan for a good view in the
         initial setup (to allow for input of datasets w/o +orig view) */
@@ -5496,23 +5600,28 @@ ENTRY("AFNI_initialize_controller") ;
    im3d->vinfo->view_type = ii ;  /* first view with a good anat */
 
    /* now find a function that can be viewed here */
+   temp_dset = GET_SESSION_DSET(im3d->ss_now, im3d->vinfo->func_num, ii);
 
-   if( !ISVALID_DSET(im3d->ss_now->dsset[im3d->vinfo->func_num][ii]) ){
+   if( !ISVALID_DSET(temp_dset) ){
      for( ii=0 ; ii < im3d->ss_now->num_dsset ; ii++ ){
-       if(ISVALID_DSET(im3d->ss_now->dsset[ii][im3d->vinfo->view_type])){
+       temp_dset = GET_SESSION_DSET(im3d->ss_now, ii, im3d->vinfo->view_type);
+       if(ISVALID_DSET(temp_dset)){
           im3d->vinfo->func_num = ii ; break ;
        }
      }
    }
 
    for( ii=0 ; ii <= LAST_VIEW_TYPE ; ii++ )
-      im3d->fim_dset[ii] = im3d->ss_now->dsset[im3d->vinfo->func_num][ii] ;
+        im3d->fim_dset[ii] = GET_SESSION_DSET(im3d->ss_now, im3d->vinfo->func_num, ii);
+
+/*      im3d->fim_dset[ii] = im3d->ss_now->dsset_xform_table[im3d->vinfo->func_num][ii] ;*/
 
    /*--- 11/23/94 addition end */
 
    im3d->anat_now = im3d->anat_dset[im3d->vinfo->view_type] ;  /* will not be NULL */
    im3d->fim_now  = im3d->fim_dset [im3d->vinfo->view_type] ;  /* this may be NULL */
    if( !ISVALID_DSET(im3d->fim_now) ) AFNI_SEE_FUNC_OFF(im3d) ;     /* 22 May 2009 */
+   else                               CLU_setup_alpha_tables(im3d) ;   /* Jul 2010 */
 
    /* initial point of view = middle of dataset brick */
 
@@ -5683,6 +5792,8 @@ ENTRY("AFNI_clone_controller_CB") ;
 
    AFNI_vedit_CB( im3d->vwid->func->options_vedit_av , im3d ) ;  /* 05 May 2009 */
 
+   AFNI_coord_filer_setup(im3d) ; /* 07 May 2010 */
+
    PICTURE_OFF(im3d) ; SHOW_AFNI_READY ; EXRETURN ;
 }
 
@@ -5797,13 +5908,13 @@ ENTRY("AFNI_lock_button") ;
    left alone. See related comments in afni_graph.c
                            LessTif patrol, Jan 07 09 */
    xstr = XmStringCreateLtoR( "-- Cancel --" , XmFONTLIST_DEFAULT_TAG ) ;
-   (void) XtVaCreateManagedWidget(
+   wtemp = XtVaCreateManagedWidget(
             "dialog" , xmLabelWidgetClass , menu ,
                XmNlabelString , xstr ,
                XmNrecomputeSize , False ,
                XmNinitialResourcesPersistent , False ,
             NULL ) ;
-   XmStringFree(xstr) ;
+   XmStringFree(xstr) ; LABELIZE(wtemp) ;
 
    (void) XtVaCreateManagedWidget(
             "dialog" , xmSeparatorWidgetClass , menu ,
@@ -6005,13 +6116,13 @@ ENTRY("AFNI_misc_button") ;
    left alone. See related comments in afni_graph.c
                            LessTif patrol, Jan 07 09 */
    xstr = XmStringCreateLtoR( "-- Cancel --" , XmFONTLIST_DEFAULT_TAG ) ;
-   (void) XtVaCreateManagedWidget(
+   wtemp = XtVaCreateManagedWidget(
             "dialog" , xmLabelWidgetClass , menu ,
                XmNlabelString , xstr ,
                XmNrecomputeSize , False ,
                XmNinitialResourcesPersistent , False ,
             NULL ) ;
-   XmStringFree(xstr) ;
+   XmStringFree(xstr) ; LABELIZE(wtemp) ;
 
    (void) XtVaCreateManagedWidget(
             "dialog" , xmSeparatorWidgetClass , menu ,
@@ -6061,7 +6172,7 @@ ENTRY("AFNI_misc_button") ;
                      XmNmarginHeight , 0 ,
                      XmNrecomputeSize , False ,
                      XmNinitialResourcesPersistent , False ,
-                  NULL ) ;
+                  NULL ) ; LABELIZE(dmode->misc_hints_pb) ;
 
          } else {
             { char *blab[1] = { "Show Hints?" } ;
@@ -6489,4 +6600,172 @@ ENTRY("AFNI_vedit_CB") ;
    XtManageChild( im3d->vwid->func->vedit_frame ) ;
 
    FIX_SCALE_SIZE(im3d) ; FIX_SCALE_VALUE(im3d) ; EXRETURN ;
+}
+
+/*----------------------------------------------------------------------*/
+/*   Set parameters for ROI colormaps [ZSS Feb 15 2010] */
+
+int AFNI_set_func_range_nval(XtPointer *vp_im3d, float rval)
+{
+   Three_D_View *im3d=NULL;
+
+   ENTRY("AFNI_set_func_range_nval") ;
+
+   im3d = (Three_D_View *)vp_im3d;
+   if( !IM3D_OPEN(im3d) ) RETURN(0) ;
+   MCW_set_bbox( im3d->vwid->func->range_bbox , 0 ) ;   /* autoRange box off */
+   im3d->vinfo->use_autorange = 0 ;
+
+   AV_SENSITIZE( im3d->vwid->func->range_av , 1 ) ;
+   AV_assign_fval( im3d->vwid->func->range_av , rval ) ;
+   AFNI_range_av_CB( im3d->vwid->func->range_av , im3d ) ;
+
+   /* positive only */
+   MCW_set_bbox( im3d->vwid->func->inten_bbox , 1 ) ;
+   AFNI_inten_bbox_CB( im3d->vwid->func->inten_bbox->wbut[PBAR_MODEBUT] ,
+                       (XtPointer)im3d , NULL ) ;
+
+   RETURN(0) ;
+}
+
+/*----------------------------------------------------------------------*/
+
+int AFNI_set_dset_pbar(XtPointer *vp_im3d)
+{
+   Three_D_View *im3d=NULL;
+   MCW_pbar *pbar = NULL;
+   ATR_string *atr=NULL;
+   char *pbar_name=NULL;
+   byte switched = 0;
+   int icmap=-1;
+   NI_element *nel=NULL;
+
+   ENTRY("AFNI_set_dset_pbar") ;
+
+   if (!AFNI_yesenv("AFNI_CMAP_AUTO")) RETURN(0);
+
+   im3d = (Three_D_View *)vp_im3d;
+   if( !IM3D_OPEN(im3d) ) RETURN(0) ;
+
+   atr = THD_find_string_atr( im3d->fim_now->dblk ,
+                              "VALUE_LABEL_DTABLE" ) ;
+
+   if (atr) {
+      /* switch to an ROI colormap */
+      if (!(nel = NI_read_element_fromstring(atr->ch))) {
+         fprintf(stderr,"** WARNING: Poorly formatted VALUE_LABEL_DTABLE\n");
+         icmap = -1;
+      } else {
+         pbar_name = NI_get_attribute(nel,"pbar_name");
+         icmap = PBAR_get_bigmap_index(pbar_name);
+      }
+      if (icmap >=0 ) {
+         PBAR_set_bigmap( im3d->vwid->func->inten_pbar ,  pbar_name) ;
+      } else {
+         PBAR_set_bigmap( im3d->vwid->func->inten_pbar , "ROI_i256" ) ;
+      }
+      switched = 1;
+      /* Problem is that when you switch back to a non  ROI dset,
+      you are stuck with the ROI deal.
+      Perhaps one should bite the bullet and create a structure
+      that preserves the last colormap setup for a dset.
+      Hmmm, got to discuss this with Bob, Daniel, and Rick */
+   } else {
+      /*
+      Here one could guess at the moment (See is_integral_dset).
+      But that can be
+      time consuming if integer data are stored as float.
+      It is better to have the dataset flagged by a special type
+      in the header.
+      */
+   }
+
+   if (switched) {
+      AFNI_inten_pbar_CB( im3d->vwid->func->inten_pbar , im3d , 0 ) ;
+      POPUP_cursorize(im3d->vwid->func->inten_pbar->panew ) ;
+   }
+   RETURN(0);
+}
+
+/*
+   Put the label associate with value val in string str
+      (64 chars are copied into str)
+*/
+int AFNI_get_dset_val_label(THD_3dim_dataset *dset, double val, char *str)
+{
+   MCW_pbar *pbar = NULL;
+   ATR_string *atr=NULL;
+   char *pbar_name=NULL;
+   byte switched = 0;
+   int icmap=-1;
+   char *str_lab=NULL, sval[128]={""};
+   NI_element *nel=NULL;
+
+   ENTRY("AFNI_get_dset_val_label") ;
+
+   if (!str) RETURN(1);
+ 
+   str[0]='\0';
+    
+   if (!dset) RETURN(1);
+
+   if (!dset->Label_Dtable &&
+       (atr = THD_find_string_atr( dset->dblk ,
+                              "VALUE_LABEL_DTABLE" ))) {
+      dset->Label_Dtable = Dtable_from_nimlstring(atr->ch);
+   }
+ 
+   if (dset->Label_Dtable) {
+      /* Have hash, will travel */
+      sprintf(sval,"%d", (int)val);
+      str_lab = findin_Dtable_a(sval,
+                                dset->Label_Dtable);
+      /* fprintf(stderr,"ZSS: Have label '%s' for value '%s'\n",
+                     str_lab ? str_lab:"NULL", sval); */
+      if (str_lab) snprintf(str,64, "(%s)",str_lab);
+   }
+
+   RETURN(0);
+}
+
+/*-------------------------------------------------------------------------*/
+
+void AFNI_sesslab_EV( Widget w , XtPointer cd ,
+                      XEvent *ev , Boolean *continue_to_dispatch )
+{
+   Three_D_View *im3d = (Three_D_View *)cd ;
+
+ENTRY("AFNI_sesslab_EV") ;
+
+   if( ! IM3D_OPEN(im3d) ) EXRETURN ;
+
+   /*** handle events ***/
+
+   switch( ev->type ){
+
+     /*----- take button press -----*/
+
+     case ButtonPress:{
+       XButtonEvent *event = (XButtonEvent *)ev ;
+       if( event->button == Button3 ){
+         AFNI_viewing_widgets *view = im3d->vwid->view ;
+         if( view->marks_enabled ){
+           XtUnmanageChild( view->marks_rowcol ) ;
+           XtUnmanageChild( view->marks_frame ) ;
+           view->marks_enabled = 0 ;
+         } else {
+           XtManageChild( view->marks_rowcol ) ;
+           XtManageChild( view->marks_frame ) ;
+           view->marks_enabled = 1 ;
+         }
+         XWarpPointer( XtDisplay(w) , None , XtWindow(w) , 0,0,0,0,30,10 ) ;
+       } else if( event->button == Button2 ){
+         XUngrabPointer( event->display , CurrentTime ) ;
+       }
+     }
+     break ;
+
+   }
+
+   EXRETURN ;
 }

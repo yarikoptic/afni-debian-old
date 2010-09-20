@@ -1,5 +1,9 @@
 #include "mrilib.h"
 
+#ifdef USE_OMP
+#include <omp.h>
+#endif
+
 #undef  BIGVAL
 #define BIGVAL 1.e+38
 
@@ -16,17 +20,20 @@
 /* global access to setup parameters */
 
 static GA_setup *gstup = NULL ;
+static GA_setup *gstup_bk = NULL ;
+
+float GA_get_warped_overlap_fraction(void) ; /* prototype */
 
 /*---------------------------------------------------------------------------*/
-static int verb = 0 ;
-void mri_genalign_verbose(int v){ verb = v ; }
+static int mverb = 0 ;
+void mri_genalign_verbose(int v){ mverb = v ; }
 
 /*---------------------------------------------------------------------------*/
 /* 27 Aug 2008: replace use of drand48 with myunif, for inter-system control */
 
 static const unsigned long long MYa=62003 ;
 static const unsigned long long MYb=15485863 ;
-static unsigned long long MYx=15482917 ;
+static       unsigned long long MYx=15482917 ;
 INLINE float myunif(void)
 {
   MYx = MYa * MYx + MYb ;
@@ -54,7 +61,7 @@ static void myunif_reset(unsigned long long x){ MYx = x; return; }
 /* Max number of points to warp at a time */
 
 #undef  NPER
-#define NPER 131072  /* 512 Kbytes per float array */
+#define NPER 262144  /* 1 Mbyte per float array */
 
 /*--------------------------------------------------------------------*/
 /*! Interpolate target image to control points in base image space.
@@ -65,7 +72,7 @@ static void myunif_reset(unsigned long long x){ MYx = x; return; }
 
 void GA_get_warped_values( int nmpar , double *mpar , float *avm )
 {
-   int    npar , ii,jj,kk,qq,pp,npp,mm,nx,ny,nxy , clip=0 , npt ;
+   int    npar , ii,jj,kk,qq,pp,npp,mm,nx,ny,nxy , clip=0 , npt , nall ;
    float *wpar , v ;
    float *imf=NULL , *jmf=NULL , *kmf=NULL ;
    float *imw , *jmw , *kmw ;
@@ -96,19 +103,19 @@ ENTRY("GA_get_warped_values") ;
    /* create space for unwarped indexes, if none given */
 
    if( mpar == NULL || gstup->im == NULL ){
-     imf = (float *)calloc(sizeof(float),NPER) ;
-     jmf = (float *)calloc(sizeof(float),NPER) ;
-     kmf = (float *)calloc(sizeof(float),NPER) ;
-     npt = gstup->bsim->nvox ;
+     npt = gstup->bsim->nvox ; nall = MIN(NPER,npt) ;
+     imf = (float *)calloc(sizeof(float),nall) ;
+     jmf = (float *)calloc(sizeof(float),nall) ;
+     kmf = (float *)calloc(sizeof(float),nall) ;
    } else {
-     npt = gstup->npt_match ;
+     npt = gstup->npt_match ; nall = MIN(NPER,npt) ;
    }
 
    /* create space for indexes of warped control points */
 
-   imw = (float *)calloc(sizeof(float),NPER) ;
-   jmw = (float *)calloc(sizeof(float),NPER) ;
-   kmw = (float *)calloc(sizeof(float),NPER) ;
+   imw = (float *)calloc(sizeof(float),nall) ;
+   jmw = (float *)calloc(sizeof(float),nall) ;
+   kmw = (float *)calloc(sizeof(float),nall) ;
 
    nx = gstup->bsim->nx; ny = gstup->bsim->ny; nxy = nx*ny;
 
@@ -121,11 +128,11 @@ ENTRY("GA_get_warped_values") ;
    aim = (gstup->ajims != NULL && mpar != NULL ) ? gstup->ajims /* smoothed */
                                                  : gstup->ajim; /* unsmooth */
 
-   /*--- do (up to) NPER points at a time ---*/
+   /*--- do (up to) nall points at a time ---*/
 
-   for( pp=0 ; pp < npt ; pp+=NPER ){
+   for( pp=0 ; pp < npt ; pp+=nall ){
 
-     npp = MIN( NPER , npt-pp ) ;  /* number to do in this iteration */
+     npp = MIN( nall , npt-pp ) ;  /* number to do in this iteration */
 
      if( mpar == NULL || gstup->im == NULL ){  /* do all points */
        for( qq=0 ; qq < npp ; qq++ ){
@@ -251,7 +258,6 @@ void GA_do_params( int x ){
    GA_reset_fit_callback( (x)?GA_fitter_params:NULL );
 }
 
-
 /*---------------------------------------------------------------------------*/
 
 void GA_setup_2Dhistogram( float *xar , float *yar )  /* 08 May 2007 */
@@ -273,7 +279,7 @@ ENTRY("GA_setup_2Dhistogram") ;
        set_2Dhist_hbin( nbin ) ;
        set_2Dhist_xyclip( npt , xar , yar ) ;
 
-       if( verb > 1 ){
+       if( mverb > 1 ){
          (void)get_2Dhist_xyclip( &xbc,&xtc , &ybc,&ytc ) ;
          ININFO_message(" - histogram: source clip %g .. %g; base clip %g .. %g",
                         xbc,xtc , ybc,ytc ) ;
@@ -300,13 +306,13 @@ ENTRY("GA_setup_2Dhistogram") ;
          xx = xar ; yy = yar ;
        }
 
-       if( verb > 1 )
+       if( mverb > 1 )
          ININFO_message("- setting up equalized histogram bins with %d pts",npt) ;
 
        set_2Dhist_xybin_eqhigh( nbin , npt , xx , yy ) ;
        if( xx != xar ){ free(yy); free(xx); }
 
-       if( verb > 1 ){
+       if( mverb > 1 ){
          nbin = get_2Dhist_xybin( &xx , &yy ) ;
          ININFO_message("-- %d equalized histogram bins for source follow:",nbin) ;
          fprintf(stderr,"    ") ;
@@ -329,6 +335,9 @@ ENTRY("GA_setup_2Dhistogram") ;
 #undef  CMAX
 #define CMAX 0.9999f
 
+static int lpczz = 0 ;
+void GA_pearson_ignore_zero_voxels(int z){ lpczz = z; }  /* 23 Feb 2010 */
+
 /*---------------------------------------------------------------------*/
 /*! LPC = Local Pearson Correlation, as described in the famous paper. */
 
@@ -337,20 +346,24 @@ float GA_pearson_local( int npt , float *avm, float *bvm, float *wvm )
    GA_BLOK_set *gbs ;
    int nblok , nelm , *elm , dd , ii,jj , nm ;
    float xv,yv,xy,xm,ym,vv,ww,ws,wss , pcor , wt , psum=0.0f ;
-   static int uwb=-1 ;
+   static int uwb=-1 , wsold=0 ;  /* flags set by the environment */
+
+ENTRY("GA_pearson_local") ;
 
    if( gstup->blokset == NULL ){
-     float rad=gstup->blokrad , mrad ;
+     float rad=gstup->blokrad , mrad ; float *ima=NULL,*jma=NULL,*kma=NULL ;
      if( gstup->smooth_code > 0 && gstup->smooth_radius_base > 0.0f )
        rad = sqrt( rad*rad +SQR(gstup->smooth_radius_base) ) ;
      mrad = 1.2345f*(gstup->base_di + gstup->base_dj + gstup->base_dk) ;
      rad  = MAX(rad,mrad) ;
+     if( gstup->im != NULL ) ima = gstup->im->ar ;  /* 19 Feb 2010: oopsie */
+     if( gstup->jm != NULL ) jma = gstup->jm->ar ;
+     if( gstup->km != NULL ) kma = gstup->km->ar ;
      gstup->blokset = create_GA_BLOK_set(  /* cf. mri_genalign_util.c */
                             gstup->bsim->nx, gstup->bsim->ny, gstup->bsim->nz,
                             gstup->base_di , gstup->base_dj , gstup->base_dk ,
-                            gstup->npt_match ,
-                            gstup->im->ar , gstup->jm->ar , gstup->km->ar ,
-                            gstup->bloktype , rad , gstup->blokmin , 1.0f,verb ) ;
+                            gstup->npt_match , ima,jma,kma ,
+                            gstup->bloktype , rad , gstup->blokmin , 1.0f,mverb ) ;
      if( gstup->blokset == NULL )
        ERROR_exit("Can't create GA_BLOK_set?!?") ;
    }
@@ -359,10 +372,13 @@ float GA_pearson_local( int npt , float *avm, float *bvm, float *wvm )
    nblok = gbs->num ;
    if( nblok < 1 ) ERROR_exit("LPC: Bad GA_BLOK_set?!") ;
 
-   if( uwb < 0 ) uwb = AFNI_yesenv("AFNI_LPC_UNWTBLOK") ;  /* first time in */
+   if( uwb < 0 ){
+     uwb   = AFNI_yesenv("AFNI_LPC_UNWTBLOK") ;  /* first time in */
+     wsold = AFNI_yesenv("AFNI_LPC_OLDWSUM") ;   /* 02 Mar 2010 */
+   }
 
    for( wss=0.0f,dd=0 ; dd < nblok ; dd++ ){
-     nelm = gbs->nelm[dd] ; if( nelm < 9 ) continue ;
+     nelm = gbs->nelm[dd] ; if( nelm < 9 ) continue ;  /* skip this blok */
      elm = gbs->elm[dd] ;
 
      if( wvm == NULL ){   /*** unweighted correlation ***/
@@ -393,18 +409,20 @@ float GA_pearson_local( int npt , float *avm, float *bvm, float *wvm )
        }
        if( uwb ) ws = 1.0f ;
      }
-     wss += ws ;
+     if( wsold ) wss += ws ;                /* the olden way was to add first */
 
      /*** massage results to get final stretched correlation ***/
 
      if( xv <= 0.0f || yv <= 0.0f ) continue ;      /* skip this blok */
      pcor = xy/sqrtf(xv*yv) ;                       /* correlation */
-     if( pcor > CMAX ) pcor = CMAX; else if( pcor < -CMAX ) pcor = -CMAX;
+          if( pcor >  CMAX ) pcor =  CMAX ;         /* limit the range */
+     else if( pcor < -CMAX ) pcor = -CMAX ;
      pcor = logf( (1.0f+pcor)/(1.0f-pcor) ) ;       /* 2*arctanh() */
      psum += ws * pcor * fabsf(pcor) ;              /* emphasize large values */
+     if( !wsold ) wss += ws ;                       /* moved here 02 Mar 2010 */
    }
 
-   return (0.25f*psum/wss);      /* averaged stretched emphasized correlation */
+   RETURN(0.25f*psum/wss);      /* averaged stretched emphasized correlation */
 }                                /* [0.25 to compensate for the 2*arctanh()] */
 
 /*------------------------------------------------------------*/
@@ -418,17 +436,19 @@ float GA_spearman_local( int npt , float *avm, float *bvm, float *wvm )
    float *xt=NULL , *yt=NULL ; int nxt=0 ;
 
    if( gstup->blokset == NULL ){
-     float rad=gstup->blokrad , mrad ;
+     float rad=gstup->blokrad , mrad ; float *ima=NULL,*jma=NULL,*kma=NULL ;
      if( gstup->smooth_code > 0 && gstup->smooth_radius_base > 0.0f )
        rad = sqrt( rad*rad +SQR(gstup->smooth_radius_base) ) ;
      mrad = 1.2345f*(gstup->base_di + gstup->base_dj + gstup->base_dk) ;
      rad  = MAX(rad,mrad) ;
+     if( gstup->im != NULL ) ima = gstup->im->ar ;  /* 19 Feb 2010: oopsie */
+     if( gstup->jm != NULL ) jma = gstup->jm->ar ;
+     if( gstup->km != NULL ) kma = gstup->km->ar ;
      gstup->blokset = create_GA_BLOK_set(  /* cf. mri_genalign_util.c */
                             gstup->bsim->nx, gstup->bsim->ny, gstup->bsim->nz,
                             gstup->base_di , gstup->base_dj , gstup->base_dk ,
-                            gstup->npt_match ,
-                            gstup->im->ar , gstup->jm->ar , gstup->km->ar ,
-                            gstup->bloktype , rad , gstup->blokmin , 1.0f,verb ) ;
+                            gstup->npt_match , ima,jma,kma ,
+                            gstup->bloktype , rad , gstup->blokmin , 1.0f,mverb ) ;
      if( gstup->blokset == NULL )
        ERROR_exit("Can't create GA_BLOK_set?!?") ;
    }
@@ -458,6 +478,19 @@ float GA_spearman_local( int npt , float *avm, float *bvm, float *wvm )
 
    return (0.25f*psum/wss);      /* averaged stretched emphasized correlation */
 }                                /* [0.25 to compensate for the 2*arctanh()] */
+
+/*---------------------------------------------------------------------------*/
+
+static double micho_mi  = 0.1 ;  /* 24 Feb 2010 */
+static double micho_nmi = 0.1 ;
+static double micho_crA = 0.5 ;
+static double micho_hel = 0.3 ;
+static double micho_ov  = 0.0 ;
+
+void GA_setup_micho( double a, double b, double c, double d, double e )
+{
+   micho_hel = a; micho_mi = b; micho_nmi = c; micho_crA = d; micho_ov = e;
+}
 
 /*---------------------------------------------------------------------------*/
 /*! Compute a particular fit cost function
@@ -531,7 +564,7 @@ ENTRY("GA_scalar_costfun") ;
       else                                      THD_corr_ratio_sym_mul;
 
 #if 0
-      if( verb > 8 )
+      if( mverb > 8 )
        INFO_message("THD_corr_ratio_scl(%d,%g,%g,bvm,%g,%g,bvm,wvm)",
                      gstup->npt_match ,
                      gstup->bsbot , gstup->bsclip ,
@@ -548,6 +581,29 @@ ENTRY("GA_scalar_costfun") ;
       val = -THD_hellinger_scl( gstup->npt_match ,
                                 gstup->ajbot , gstup->ajclip , avm ,
                                 gstup->bsbot , gstup->bsclip , bvm , wvm ) ;
+    break ;
+
+    /* 24 Feb 2010: a combined method, using multiple functionals */
+
+    case GA_MATCH_LPC_MICHO_SCALAR:{
+      val = (double)GA_pearson_local( gstup->npt_match, avm, bvm,wvm ) ;
+
+      if( micho_hel != 0.0 || micho_mi  != 0.0 ||
+          micho_nmi != 0.0 || micho_crA != 0.0   ){
+        float_quad hmc ; float ovv ;
+        hmc = THD_helmicra_scl( gstup->npt_match ,
+                                gstup->ajbot , gstup->ajclip , avm ,
+                                gstup->bsbot , gstup->bsclip , bvm , wvm ) ;
+        val += -micho_hel * hmc.a - micho_mi  * hmc.b
+               +micho_nmi * hmc.c + micho_crA * (1.0-fabs(hmc.d)) ;
+
+        if( micho_ov != 0.0 && gstup->bsmask != NULL && gstup->ajmask != NULL ){
+          ovv = GA_get_warped_overlap_fraction() ;
+          ovv = MAX(0.0f,9.0f-10.0f*ovv) ;
+          val += micho_ov * ovv*ovv ;
+        }
+      }
+    }
     break ;
   }
 
@@ -629,7 +685,7 @@ ENTRY("mri_genalign_scalar_setup") ;
       - Must have new base image (basim) or have it previously stored in stup
       - Must have new target image (targim) or have previously stored version */
 
-   if( verb > 1 ) ININFO_message("* Enter alignment setup routine") ;
+   if( mverb > 1 ) ININFO_message("* Enter alignment setup routine") ;
 
    if( stup == NULL ) ERREX("stup is NULL") ;
    stup->setup = 0 ;  /* mark stup struct as not being ready yet */
@@ -663,7 +719,7 @@ ENTRY("mri_genalign_scalar_setup") ;
    if( basim != NULL ){
      need_pts = 1 ;              /* will need to extract match points */
      if( stup->bsim != NULL ) mri_free(stup->bsim) ;
-     if( verb > 1 ) ININFO_message("- copying base image") ;
+     if( mverb > 1 ) ININFO_message("- copying base image") ;
      stup->bsim = mri_to_float(basim) ;
      if( stup->bsim->dx <= 0.0f ) stup->bsim->dx = 1.0f ;
      if( stup->bsim->dy <= 0.0f ) stup->bsim->dy = 1.0f ;
@@ -687,7 +743,7 @@ ENTRY("mri_genalign_scalar_setup") ;
 
    if( targim != NULL ){
      if( stup->ajim != NULL ) mri_free(stup->ajim) ;
-     if( verb > 1 ) ININFO_message("- copying source image") ;
+     if( mverb > 1 ) ININFO_message("- copying source image") ;
      stup->ajim = mri_to_float(targim) ;
      if( stup->ajim->dx <= 0.0f ) stup->ajim->dx = 1.0f ;
      if( stup->ajim->dy <= 0.0f ) stup->ajim->dy = 1.0f ;
@@ -714,7 +770,7 @@ ENTRY("mri_genalign_scalar_setup") ;
        mri_free(stup->ajmask) ; stup->ajmask = NULL ;
      }
 
-     if( stup->ajmask != NULL ){ /* set aj_u??? variables for mask noise */
+     if( stup->ajmask != NULL && stup->ajmask_ranfill ){ /* set aj_u??? variables for mask noise */
        float *af, *qf ; byte *mmm ; float_pair quam ; float ubot,usiz , u1,u2;
        MRI_IMAGE *qim ; int nvox,pp ;
        stup->ajimor = mri_copy(stup->ajim) ;  /* backup of original image */
@@ -761,7 +817,7 @@ ENTRY("mri_genalign_scalar_setup") ;
    }
    if( do_smooth_base ){
      if( stup->bsims != NULL ) mri_free(stup->bsims);
-     if( verb > 1 )
+     if( mverb > 1 )
        ININFO_message("- Smoothing base; radius=%.2f",stup->smooth_radius_base);
      stup->bsims = GA_smooth( stup->bsim , stup->smooth_code ,
                                            stup->smooth_radius_base ) ;
@@ -769,7 +825,7 @@ ENTRY("mri_genalign_scalar_setup") ;
    }
    if( do_smooth_targ ){
      if( stup->ajims != NULL ) mri_free(stup->ajims);
-     if( verb > 1 )
+     if( mverb > 1 )
        ININFO_message("- Smoothing source; radius=%.2f",stup->smooth_radius_targ);
      stup->ajims = GA_smooth( stup->ajim , stup->smooth_code ,
                                            stup->smooth_radius_targ ) ;
@@ -778,20 +834,19 @@ ENTRY("mri_genalign_scalar_setup") ;
    }
 
    /* 07 Aug 2007: deal with target mask, if any [moved here 28 Aug 2008] */
+   /* that is, add noise to non-mask parts of the image, AFTER smoothing */
 
-   if( got_new_targ && stup->ajmask != NULL && stup->aj_usiz > 0.0f ){
+   if( got_new_targ && stup->ajmask != NULL && stup->aj_usiz > 0.0f && stup->ajmask_ranfill ){
      float ubot=stup->aj_ubot , usiz=stup->aj_usiz , u1,u2 ;
      float *af ; byte *mmm ; int nvox ;
      if( stup->ajims != NULL ) af = MRI_FLOAT_PTR(stup->ajims) ;
      else                      af = MRI_FLOAT_PTR(stup->ajim ) ;
-     mmm = MRI_BYTE_PTR (stup->ajmask) ;
+     mmm = MRI_BYTE_PTR(stup->ajmask) ;
      nvox = stup->ajmask->nvox ;
-     if( verb > 2 ) ININFO_message("source mask: ubot=%g usiz=%g",ubot,usiz);
-     myunif_reset(12345678) ;
+     if( mverb > 2 ) ININFO_message("!source mask fill: ubot=%g usiz=%g",ubot,usiz);
+     myunif_reset(1234567890) ;  /* to get the same numbers every time */
      for( ii=0 ; ii < nvox ; ii++ ){  /* fill non-mask voxels with noise */
-       if( !mmm[ii] ){
-         u1 = myunif(); u2 = myunif(); af[ii] = ubot + usiz*(u1+u2);
-       }
+       if( !mmm[ii] ){ u1 = myunif(); u2 = myunif(); af[ii] = ubot + usiz*(u1+u2); }
      }
    }
 
@@ -833,7 +888,7 @@ ENTRY("mri_genalign_scalar_setup") ;
      if( stup->bwght != NULL ) mri_free(stup->bwght) ;
      if( stup->bmask != NULL ) free((void *)stup->bmask) ;
 
-     if( verb > 1 ) ININFO_message("- copying weight image") ;
+     if( mverb > 1 ) ININFO_message("- copying weight image") ;
 
      stup->bwght = mri_to_float(wghtim) ; bar = MRI_FLOAT_PTR(stup->bwght) ;
      qim = mri_new_conforming(wghtim,MRI_byte); stup->bmask = MRI_BYTE_PTR(qim);
@@ -864,14 +919,14 @@ ENTRY("mri_genalign_scalar_setup") ;
        if( stup->bmask != NULL ) free((void *)stup->bmask) ;
        stup->nmask = stup->nvox_mask = 0 ;
        stup->bmask = NULL ; stup->bwght = NULL ;
-     } else if( verb > 1 )
+     } else if( mverb > 1 )
        ININFO_message("- retaining old weight image") ;
 
    } else {                           /*---- have no mask, new or old ----*/
      stup->bmask = NULL ;
      stup->bwght = NULL ;
      stup->nmask = stup->nvox_mask = 0 ;
-     if( verb > 1 ) ININFO_message("- no weight image") ;
+     if( mverb > 1 ) ININFO_message("- no weight image") ;
    }
 
    /*-- extract matching points from base image (maybe) --*/
@@ -891,7 +946,7 @@ ENTRY("mri_genalign_scalar_setup") ;
      MRI_IMAGE *bim ;
 
      stup->npt_match = nmatch ;
-     if( verb > 1 ) ININFO_message("- using %d points from base image",nmatch) ;
+     if( mverb > 1 ) ININFO_message("- using %d points from base image [use_all=%d]",nmatch,use_all) ;
 
      if( use_all == 1 ){         /*------------- all points, no mask -----------*/
 
@@ -1003,7 +1058,7 @@ ENTRY("mri_genalign_scalar_setup") ;
 
    stup->need_hist_setup = 1 ;   /* 08 May 2007 */
 
-   if( verb > 1 ) ININFO_message("* Exit alignment setup routine") ;
+   if( mverb > 1 ) ININFO_message("* Exit alignment setup routine") ;
    stup->setup = SMAGIC ;
    EXRETURN ;
 }
@@ -1017,6 +1072,7 @@ void mri_genalign_set_targmask( MRI_IMAGE *im_tmask , GA_setup *stup )
    int nmask , nvox ;
 ENTRY("mri_genalign_set_targmask") ;
    if( stup == NULL ) EXRETURN ;
+   stup->najmask = 0 ;
    if( stup->ajmask != NULL ){ mri_free(stup->ajmask); stup->ajmask = NULL; }
    if( im_tmask != NULL ){
      if( stup->ajim != NULL ){
@@ -1028,13 +1084,50 @@ ENTRY("mri_genalign_set_targmask") ;
        }
      }
      stup->ajmask = mri_to_byte(im_tmask) ;
-     nvox  = stup->ajmask->nvox ;
-     nmask = THD_countmask( nvox , MRI_BYTE_PTR(stup->ajmask) ) ;
-     if( nmask < 999 || nvox-nmask < 999 ){
+     nvox = stup->ajmask->nvox ;
+     stup->najmask = nmask = THD_countmask( nvox , MRI_BYTE_PTR(stup->ajmask) ) ;
+     if( nmask < 999 ){
        WARNING_message(
         "mri_genalign_set_targmask: mask has %d voxels out of %d total ==> ignored!",
         nmask , nvox ) ;
-       mri_free(stup->ajmask) ; stup->ajmask = NULL ;
+       mri_free(stup->ajmask) ; stup->ajmask = NULL ; stup->najmask = 0 ;
+     } else if( mverb > 2 ) {
+       ININFO_message("source mask has %d [out of %d] voxels",nmask,nvox) ;
+     }
+   }
+   EXRETURN ;
+}
+
+/*---------------------------------------------------------------------------*/
+/*! Set the byte mask for the base (or unset it).
+    Should be done BEFORE mri_genalign_scalar_setup().  [25 Feb 2010] */
+
+void mri_genalign_set_basemask( MRI_IMAGE *im_bmask , GA_setup *stup )
+{
+   int nmask , nvox ;
+ENTRY("mri_genalign_set_basemask") ;
+   if( stup == NULL ) EXRETURN ;
+   if( stup->bsmask != NULL ){ mri_free(stup->bsmask); stup->bsmask = NULL; }
+   stup->nbsmask = 0 ;
+   if( im_bmask != NULL ){
+     if( stup->ajim != NULL ){
+       if( im_bmask->nvox != stup->ajim->nvox ){
+         ERROR_message("mri_genalign_set_targmask: image mismatch!") ;
+         EXRETURN ;
+       } else {
+         WARNING_message("mri_genalign_set_targmask: called after setup()?!") ;
+       }
+     }
+     stup->bsmask = mri_to_byte(im_bmask) ;
+     nvox = stup->bsmask->nvox ;
+     stup->nbsmask = nmask = THD_countmask( nvox , MRI_BYTE_PTR(stup->bsmask) ) ;
+     if( nmask < 999 ){
+       WARNING_message(
+        "mri_genalign_set_basemask: mask has %d voxels out of %d total ==> ignored!",
+        nmask , nvox ) ;
+       mri_free(stup->bsmask) ; stup->bsmask = NULL ; stup->nbsmask = 0 ;
+     } else if( mverb > 2 ) {
+       ININFO_message("base mask has %d [out of %d] voxels",nmask,nvox) ;
      }
    }
    EXRETURN ;
@@ -1069,7 +1162,7 @@ ENTRY("GA_param_setup") ;
                                 -stup->wfunc_param[qq].min ;
 
 #if 0
-   if( verb ){
+   if( mverb ){
      fprintf(stderr," + %d free parameters:\n",stup->wfunc_numfree) ;
      for( qq=0 ; qq < stup->wfunc_numpar ; qq++ )
        fprintf(stderr,"  #%d = %s [%.2f..%.2f] (fixed=%d)\n",
@@ -1118,6 +1211,7 @@ ENTRY("mri_genalign_scalar_optim") ;
    }
 
    gstup = stup ;  /* for global access, in other functions in this file */
+   gstup_bk = stup ;
 
    if( nstep <= 4*stup->wfunc_numfree+5 ) nstep = 6666 ;
 
@@ -1185,6 +1279,7 @@ ENTRY("mri_genalign_scalar_cost") ;
    }
 
    gstup = stup ;  /* for global access, in other functions in this file */
+   gstup_bk = stup ;
 
    val = GA_scalar_fitter( stup->wfunc_numfree , wpar ) ;
 
@@ -1226,6 +1321,7 @@ ENTRY("mri_genalign_scalar_allcosts") ;
    }
 
    gstup = stup ;
+   gstup_bk = stup ;
 
    avm = (float *)calloc(stup->npt_match,sizeof(float)) ; /* target points at */
    GA_get_warped_values( stup->wfunc_numfree,wpar,avm ) ; /* warped locations */
@@ -1250,10 +1346,12 @@ ENTRY("mri_genalign_scalar_allcosts") ;
 void mri_genalign_scalar_ransetup( GA_setup *stup , int nrand )
 {
    double *wpar, *spar , val , vbest , *bpar , *qpar,*cpar , dist ;
-   int ii , qq , twof , ss , nfr , icod , nt=0 ;
-#define NKEEP 15
-   double *kpar[NKEEP] , kval[NKEEP] ; int nk,kk,jj, ngrid,ngtot ;
-   int ival[NKEEP] ; float fval[NKEEP] ;
+   int ii , qq , twof , ss , nfr , icod , nt=0 , ngood ;
+#define NKEEP (2*PARAM_MAXTRIAL+1)
+   double *kpar[NKEEP] , kval[NKEEP] , qval[NKEEP] ;
+   int nk,kk,jj, ngrid,ngtot ;
+   int ival[NKEEP] , rval[NKEEP] ; float fval[NKEEP] ;
+   char mrk[6]="*o+-." ;
 
 ENTRY("mri_genalign_scalar_ransetup") ;
 
@@ -1261,9 +1359,9 @@ ENTRY("mri_genalign_scalar_ransetup") ;
      ERROR_message("Illegal call to mri_genalign_scalar_ransetup()") ;
      EXRETURN ;
    }
-   if( nrand < NKEEP ) nrand = 2*NKEEP ;
+   if( nrand < NKEEP ) nrand = NKEEP+13 ;
 
-   GA_param_setup(stup) ; gstup = stup ;
+   GA_param_setup(stup) ; gstup = stup ; gstup_bk = stup ;
    if( stup->wfunc_numfree <= 0 ) EXRETURN ;
 
    nfr = stup->wfunc_numfree ;    /* number of free parameters */
@@ -1294,14 +1392,18 @@ ENTRY("mri_genalign_scalar_ransetup") ;
    for( qq=0 ; qq < nfr ; qq++ ) wpar[qq] = 0.5 ;
    val = GA_scalar_fitter( nfr , wpar ) ;
    memcpy(kpar[0],wpar,sizeof(double)*nfr) ;           /* saved parameters */
-   kval[0] = val ;                                     /* saved cost function */
-   for( kk=1 ; kk < NKEEP ; kk++ ) kval[kk] = BIGVAL ; /* all these are worse */
+   kval[0]  = val ;                                    /* saved cost function */
+   rval[0]  = 0 ;                                      /* not random */
+   for( kk=1 ; kk < NKEEP ; kk++ ){
+     rval[kk] = 0 ; kval[kk] = BIGVAL ;                /* all these are worse */
+   }
 
    /* try some random places, keep the best NKEEP of them */
 
    twof = 1 << nfr ;  /* 2^nfr */
 
-   if( verb ) fprintf(stderr," + - Testing %d*%d params:",nrand+ngtot,twof) ;
+   if( mverb > 1 ) ININFO_message("- number of free params = %d",nfr) ;
+   if( mverb )     fprintf(stderr," + - Testing (%d+%d)*%d params:#",ngtot,nrand,twof) ;
 
    myunif_reset(3456789) ;  /* 27 Aug 2008 */
 
@@ -1312,6 +1414,7 @@ ENTRY("mri_genalign_scalar_ransetup") ;
          kk = ss % ngrid; ss = ss / ngrid; wpar[qq] = 0.5+(kk+1)*val;
        }
      } else {                              /* pseudo-random */
+       if( mverb && ii == ngtot ) fprintf(stderr,"$") ;
        for( qq=0 ; qq < nfr ; qq++ ) wpar[qq] = 0.5*(1.05+0.90*myunif()) ;
      }
 
@@ -1324,32 +1427,44 @@ ENTRY("mri_genalign_scalar_ransetup") ;
          if( val < kval[kk] ){              /* something we've seen so far */
            for( jj=NKEEP-2 ; jj >= kk ; jj-- ){  /* push those above kk up */
              memcpy( kpar[jj+1] , kpar[jj] , sizeof(double)*nfr ) ;
-             kval[jj+1] = kval[jj] ;
+             kval[jj+1] = kval[jj]; rval[jj+1] = rval[jj];
            }
-           memcpy( kpar[kk] , spar , sizeof(double)*nfr ) ;  /* save what */
-           kval[kk] = val ;                              /* we just found */
-           if( verb && kk < 4 ) fprintf(stderr,(kk==0)?"*":".") ;
+           memcpy( kpar[kk] , spar , sizeof(double)*nfr ) ;   /* save what */
+           kval[kk]  = val ;                              /* we just found */
+           rval[kk]  = (ii >= ngtot) ;            /* is this a random set? */
+           if( mverb && kk < 5 ) fprintf(stderr,"%c",mrk[kk]) ;
            break ;
          }
        }
-     }
+     } /* end of scan over parameter reflections */
    } /* end of initial scan; should have NKEEP best results in kpar & kval */
 
-   for( kk=0 ; kk < NKEEP ; kk++ ){  /* make sure are in 0..1 range */
+   /* 23 Feb 2010: check how many are actually good */
+
+   for( ngood=kk=0 ; kk < NKEEP && kval[kk] < BIGVAL ; kk++,ngood++ ) ; /*nada*/
+   if( ngood < 1 ){  /* should never happen */
+     ERROR_message("Can't find any good starting locations!?") ;
+     free((void *)wpar) ; free((void *)spar) ;
+     for( kk=0 ; kk < NKEEP ; kk++ ) free((void *)kpar[kk]) ;
+     EXRETURN ;
+   }
+
+   for( kk=0 ; kk < ngood ; kk++ ){  /* make sure are in 0..1 range */
      for( ii=0 ; ii < nfr ; ii++ ) kpar[kk][ii] = PRED01(kpar[kk][ii]) ;
    }
 
-   if( verb ){                    /* print table of results? */
+   if( mverb ){                    /* print table of results? */
      fprintf(stderr,"\n") ;
-     fprintf(stderr," + - best %d costs found:\n",NKEEP) ;
-     for(kk=0;kk<NKEEP;kk++){
-      fprintf(stderr,"   %2d v=%.6f:",kk,kval[kk]);
+     fprintf(stderr," + - best %d costs found:\n",ngood) ;
+     for(kk=0;kk<ngood;kk++){
+      fprintf(stderr,"   %2d v=% 9.6f:",kk,kval[kk]);
       for( ii=qq=0 ; qq < stup->wfunc_numpar ; qq++ ){
        if( !stup->wfunc_param[qq].fixed ){
         val = stup->wfunc_param[qq].min+stup->wfunc_param[qq].siz*kpar[kk][ii];
-        fprintf(stderr," %.2f",val) ; ii++ ;
+        fprintf(stderr," % 6.2f",val) ; ii++ ;
        }
       }
+      fprintf(stderr,"  [%s]" , rval[kk] ? "rand" : "grid" ) ;
       fprintf(stderr,"\n") ;
      }
    }
@@ -1357,30 +1472,35 @@ ENTRY("mri_genalign_scalar_ransetup") ;
    /* try a little optimization on each of these parameter sets */
 
    vbest = BIGVAL ; jj = 0 ; if( icod != MRI_NN ) stup->interp_code = MRI_LINEAR ;
-   for( kk=0 ; kk < NKEEP ; kk++ ){
+   for( kk=0 ; kk < ngood ; kk++ ){
      if( kval[kk] >= BIGVAL ) continue ;  /* should not happen */
      (void)powell_newuoa( nfr , kpar[kk] ,
                           0.05 , 0.005 , 11*nfr+17 , GA_scalar_fitter ) ;
-     kval[kk] = GA_scalar_fitter( nfr , kpar[kk] ) ;
+     kval[kk]  = GA_scalar_fitter( nfr , kpar[kk] ) ;
      if( kval[kk] < vbest ){ vbest = kval[kk]; jj = kk; }
    }
    stup->vbest = vbest ;  /* save for user's edification */
 
-   for( kk=0 ; kk < NKEEP ; kk++ )  /* make sure are in 0..1 range */
+   for( kk=0 ; kk < ngood ; kk++ )  /* make sure are in 0..1 range */
      for( ii=0 ; ii < nfr ; ii++ ) kpar[kk][ii] = PRED01(kpar[kk][ii]) ;
+
+   /* 23 Feb 2010: cast out the bad overlap (coincidence count) guys */
+
+   for( kk=0 ; kk < ngood ; kk++ ) qval[kk] = kval[kk] ;
 
    /* at this point, smallest error is vbest and best index in kpar is jj */
 
-   if( verb ){                    /* print out optimized results? */
+   if( mverb ){                    /* print out optimized results? */
      fprintf(stderr," + - costs of the above after a little optimization:\n") ;
-     for(kk=0;kk<NKEEP;kk++){
-      fprintf(stderr,"  %c%2d v=%.6f:",(kk==jj)?'*':' ',kk,kval[kk]);
+     for( kk=0 ; kk < ngood ; kk++ ){
+      fprintf(stderr,"  %c%2d v=% 9.6f:",(kk==jj)?'*':' ',kk,qval[kk]);
       for( ii=qq=0 ; qq < stup->wfunc_numpar ; qq++ ){
        if( !stup->wfunc_param[qq].fixed ){
         val = stup->wfunc_param[qq].min+stup->wfunc_param[qq].siz*kpar[kk][ii];
-        fprintf(stderr," %.2f",val) ; ii++ ;
+        fprintf(stderr," % 6.2f",val) ; ii++ ;
        }
       }
+      fprintf(stderr,"  [%s]" , rval[kk] ? "rand" : "grid" ) ;
       fprintf(stderr,"\n") ;
      }
    }
@@ -1402,17 +1522,17 @@ ENTRY("mri_genalign_scalar_ransetup") ;
 
 #undef  DTHRESH
 #define DTHRESH 0.05
-   for( ii=0 ; ii < NKEEP ; ii++ ){ fval[ii] = kval[ii]; ival[ii] = ii; }
-   qsort_floatint( NKEEP , fval , ival ) ;
+   for( ii=0 ; ii < ngood ; ii++ ){ fval[ii] = kval[ii]; ival[ii] = ii; }
+   qsort_floatint( ngood , fval , ival ) ;
    for( qq=0 ; qq < stup->wfunc_numpar ; qq++ ){ /** save best into trial #0 **/
      if( !stup->wfunc_param[qq].fixed )
        stup->wfunc_param[qq].val_trial[0] = stup->wfunc_param[qq].val_init ;
      else
        stup->wfunc_param[qq].val_trial[0] = stup->wfunc_param[qq].val_fixed ;
    }
-   if( verb > 1 ) ININFO_message("- save #%2d for twobest",ival[0]) ;
+   if( mverb > 1 ) ININFO_message("- save #%2d for twobest",ival[0]) ;
    nt = 1 ;
-   for( jj=1 ; jj < NKEEP && nt < PARAM_MAXTRIAL ; jj++ ){
+   for( jj=1 ; jj < ngood && nt < PARAM_MAXTRIAL ; jj++ ){
      qpar = kpar[ival[jj]] ;                 /* the jj-th best param set */
      for( kk=0 ; kk < jj ; kk++ ){   /* loop over the previous best ones */
        cpar =  kpar[ival[kk]] ;
@@ -1420,13 +1540,13 @@ ENTRY("mri_genalign_scalar_ransetup") ;
          val = fabs(qpar[ii]-cpar[ii]) ; dist = MAX(dist,val) ;
        }
        if( dist < DTHRESH ){  /* too close to cpar ==> skip */
-         if( verb > 1 )
+         if( mverb > 1 )
            ININFO_message("- skip #%2d for twobest: too close to set #%2d",
                            ival[jj], ival[kk] ) ;
          goto NEXT_jj ;
        }
      }
-     if( verb > 1 ) ININFO_message("- save #%2d for twobest",ival[jj]) ;
+     if( mverb > 1 ) ININFO_message("- save #%2d for twobest",ival[jj]) ;
      for( ii=qq=0 ; qq < stup->wfunc_numpar ; qq++ ){
        if( !stup->wfunc_param[qq].fixed ){
          stup->wfunc_param[qq].val_trial[nt] = stup->wfunc_param[qq].min
@@ -1467,7 +1587,7 @@ ENTRY("mri_genalign_scalar_warpim") ;
      ERROR_message("Illegal call to mri_genalign_scalar_warpim()") ;
      RETURN(NULL) ;
    }
-   gstup = stup ;
+   gstup = stup ; gstup_bk = stup ;
 
    wim = mri_new_conforming( stup->bsim , MRI_float ) ;
    war = MRI_FLOAT_PTR(wim) ;
@@ -1495,7 +1615,7 @@ MRI_IMAGE * mri_genalign_scalar_warpone( int npar, float *wpar, GA_warpfunc *wfu
                                          MRI_IMAGE *imtarg ,
                                          int nnx , int nny , int nnz , int icode )
 {
-   int   ii,jj,kk,qq,pp,npp,mm,nx,ny,nxy,nz , npt ;
+   int   ii,jj,kk,qq,pp,npp,mm,nx,ny,nxy,nz , npt,nall ;
    float x,y,z ;
    float *imf , *jmf , *kmf ;
    float *imw , *jmw , *kmw ;
@@ -1509,7 +1629,7 @@ ENTRY("mri_genalign_scalar_warpone") ;
 
    /* send parameters to warping function, for setup */
 
-   if( verb > 1 ){
+   if( mverb > 1 ){
      fprintf(stderr,"++ image warp: parameters =") ;
      for( ii=0 ; ii < npar ; ii++ ) fprintf(stderr," %.4f",wpar[ii]) ;
      fprintf(stderr,"\n") ;
@@ -1531,22 +1651,24 @@ ENTRY("mri_genalign_scalar_warpone") ;
 
    /* ijk coordinates in base image to be warped to target ijk */
 
-   imf = (float *)calloc(sizeof(float),NPER) ;
-   jmf = (float *)calloc(sizeof(float),NPER) ;
-   kmf = (float *)calloc(sizeof(float),NPER) ;
+   nall = MIN(NPER,npt) ;
+
+   imf = (float *)calloc(sizeof(float),nall) ;
+   jmf = (float *)calloc(sizeof(float),nall) ;
+   kmf = (float *)calloc(sizeof(float),nall) ;
 
    /* ijk coordinates after warping */
 
-   imw = (float *)calloc(sizeof(float),NPER) ;
-   jmw = (float *)calloc(sizeof(float),NPER) ;
-   kmw = (float *)calloc(sizeof(float),NPER) ;
+   imw = (float *)calloc(sizeof(float),nall) ;
+   jmw = (float *)calloc(sizeof(float),nall) ;
+   kmw = (float *)calloc(sizeof(float),nall) ;
 
    oot = GA_get_outval() ; GA_set_outval(0.0f) ;
 
-   /*--- do (up to) NPER points at a time ---*/
+   /*--- do (up to) nall points at a time ---*/
 
-   for( pp=0 ; pp < npt ; pp+=NPER ){
-     npp = MIN( NPER , npt-pp ) ;      /* number to do */
+   for( pp=0 ; pp < npt ; pp+=nall ){
+     npp = MIN( nall , npt-pp ) ;      /* number to do */
 
      /* get base ijk coords */
 
@@ -1851,7 +1973,7 @@ mat44 GA_setup_affine( int npar , float *parvec )
    aff_gamijk = gam ;
 
 #if 0
-   if( verb > 1 ){
+   if( mverb > 1 ){
      if( aff_use_before ) DUMP_MAT44("before",aff_before) ;
      if( aff_use_after  ) DUMP_MAT44("after ",aff_after ) ;
                           DUMP_MAT44("gam   ",gam       ) ;
@@ -1887,8 +2009,14 @@ void mri_genalign_affine( int npar, float *wpar ,
 
    /* multiply matrix times input vectors */
 
+#pragma omp parallel if( npt > 33333 )
+ { int ii ;
+  AFNI_OMP_START ;
+#pragma omp for
    for( ii=0 ; ii < npt ; ii++ )
      MAT44_VEC( gam , xi[ii],yi[ii],zi[ii] , xo[ii],yo[ii],zo[ii] ) ;
+ AFNI_OMP_END ;
+ }
 
    return ;
 }
@@ -1918,8 +2046,13 @@ void mri_genalign_mat44( int npar, float *wpar,
 
    /* multiply matrix times input vectors */
 
+#pragma omp parallel if( npt > 33333 )
+ { int ii ;
+  AFNI_OMP_START ;
    for( ii=0 ; ii < npt ; ii++ )
      MAT44_VEC( gam , xi[ii],yi[ii],zi[ii] , xo[ii],yo[ii],zo[ii] ) ;
+ AFNI_OMP_END ;
+ }
 
    return ;
 }
@@ -1934,8 +2067,6 @@ void mri_genalign_bilinear( int npar, float *wpar ,
    static mat44 gam ;  /* saved general affine matrix */
    static float dd_for[3][3][3] , xcen,ycen,zcen,dd_fac ;
    static int ddiag=0 ;  /* is dd matrix diagonal? */
-   int ii ;
-   THD_mat33 dd,ee ; float aa,bb,cc , uu,vv,ww ;
 
    /** new parameters ==> setup matrix */
 
@@ -1996,6 +2127,10 @@ void mri_genalign_bilinear( int npar, float *wpar ,
 
    /* multiply matrix times input vectors */
 
+#pragma omp parallel if( npt > 22222 )
+ { int ii ; THD_mat33 dd,ee ; float aa,bb,cc , uu,vv,ww ;
+ AFNI_OMP_START ;
+#pragma omp for
    for( ii=0 ; ii < npt ; ii++ ){
 
      aa = xi[ii] ; bb = yi[ii] ; cc = zi[ii] ;
@@ -2041,6 +2176,8 @@ void mri_genalign_bilinear( int npar, float *wpar ,
      }
 
    } /* end of loop over input points */
+ AFNI_OMP_END ;
+ }
 
    return ;
 }
@@ -2083,13 +2220,17 @@ void mri_genalign_set_boxsize( float xbot, float xtop,
    LOAD_DIAG_MAT44(fr_cube,fr_cube_ax,fr_cube_ay,fr_cube_az) ;
    LOAD_MAT44_VEC (fr_cube,fr_cube_bx,fr_cube_by,fr_cube_bz) ;
 
-   if( verb )
+   if( mverb )
      ININFO_message("Warpfield boxsize: %.1f..%.1f X %.1f..%.1f X %.1f..%.1f",
                     xbot,xtop , ybot,ytop , zbot,ztop ) ;
 
    return ;
 }
 
+/*--------------------------------------------------------------------------*/
+#ifdef USE_OMP
+# include "mri_warpfield.c"
+#endif
 /*--------------------------------------------------------------------------*/
 
 static Warpfield *wfield = NULL ;
@@ -2160,13 +2301,25 @@ void mri_genalign_warpfield( int npar, float *wpar ,
 
    for( pp=0 ; pp < npt ; pp+=NPER ){
      npp = MIN( NPER , npt-pp ) ;  /* number to do in this iteration */
+
+#pragma omp parallel if( npp > 33333 )
+{ int ii ;
+#pragma omp for
      for( ii=0 ; ii < npp ; ii++ )
        MAT44_VEC( to_cube , xi [ii+pp],yi [ii+pp],zi [ii+pp] ,
                             xii[ii+pp],yii[ii+pp],zii[ii+pp]  ) ;
+}
+
      Warpfield_eval_array( wfield , npp , xii,yii,zii , xoo,yoo,zoo ) ;
+
+#pragma omp parallel if( npp > 33333 )
+{ int ii ;
+#pragma omp for
      for( ii=0 ; ii < npp ; ii++ )
        MAT44_VEC( fr_cube , xoo[ii+pp],yoo[ii+pp],zoo[ii+pp] ,
                             xo [ii+pp],yo [ii+pp],zo [ii+pp]  ) ;
+}
+
    }
 
    return ;
@@ -2254,3 +2407,97 @@ void mri_genalign_warpsum( int npar, float *wpar ,
    return ;
 }
 #endif
+
+/*----------------------------------------------------------------------------*/
+/* Note that the setup call to wfunc() must have been made before this call. */
+
+float GA_get_warped_overlap_fraction(void)
+{
+   int    npar , ii,jj,kk,qq,pp,nqq,mm,nx,nxy , nxt,nxyt , npt,nhit ;
+   float *imf, *jmf, *kmf, *imw, *jmw, *kmw , xx,yy,zz,nxh,nyh,nzh , frac ;
+   byte *bsar, *tgar ;
+#ifdef USE_OMP
+   byte *hhh ;
+#endif
+
+ENTRY("GA_get_warped_overlap") ;
+
+   if( gstup->bsmask == NULL || gstup->ajmask ==NULL ) RETURN(1.0f) ;
+   bsar = MRI_BYTE_PTR(gstup->bsmask) ;
+   tgar = MRI_BYTE_PTR(gstup->ajmask) ;
+
+   npar = gstup->wfunc_numpar ;
+   npt  = gstup->bsmask->nvox ;  /* number of total voxels in base */
+   nqq  = gstup->nbsmask ;       /* number of mask voxels in base */
+
+   nx = gstup->bsmask->nx; nxy = nx * gstup->bsmask->ny;
+
+   nxt = gstup->ajmask->nx ; nxyt = nxt * gstup->ajmask->ny ;
+   nxh = nxt-0.501f ; nyh = gstup->ajmask->ny-0.501f ; nzh = gstup->ajmask->nz-0.501f ;
+
+#if 0
+   /* send parameters to warping function for its setup */
+
+   gstup->wfunc( npar , wpar , 0,NULL,NULL,NULL , NULL,NULL,NULL ) ;
+#endif
+
+   /*--- load 3D indexes to transform from base to target ---*/
+
+   imf = (float *)malloc(sizeof(float)*nqq) ;
+   jmf = (float *)malloc(sizeof(float)*nqq) ;
+   kmf = (float *)malloc(sizeof(float)*nqq) ;
+
+   for( pp=qq=0 ; pp < npt ; pp++ ){
+     if( bsar[pp] ){
+       ii = pp % nx ; kk = pp / nxy ; jj = (pp-kk*nxy) / nx ;
+       imf[qq] = (float)ii ; jmf[qq] = (float)jj ; kmf[qq] = (float)kk; qq++ ;
+     }
+   }
+
+   /*--- warp to new locations ---*/
+
+   imw = (float *)malloc(sizeof(float)*nqq) ;
+   jmw = (float *)malloc(sizeof(float)*nqq) ;
+   kmw = (float *)malloc(sizeof(float)*nqq) ;
+
+   gstup->wfunc( npar , NULL , nqq , imf,jmf,kmf , imw,jmw,kmw ) ;
+
+   free(kmf); free(jmf); free(imf);
+
+   /* check target mask at warped points */
+
+#ifndef USE_OMP
+   for( nhit=qq=0 ; qq < nqq ; qq++ ){
+     xx = imw[qq] ; if( xx < -0.499f || xx > nxh ) continue ;
+     yy = jmw[qq] ; if( yy < -0.499f || yy > nyh ) continue ;
+     zz = kmw[qq] ; if( zz < -0.499f || zz > nzh ) continue ;
+     ii = (int)(xx+0.5f) ; jj = (int)(yy+0.5f) ; kk = (int)(zz+0.5f) ;
+     if( tgar[ii+jj*nxt+kk*nxyt] ) nhit++ ;
+   }
+#else
+   hhh = (byte *)calloc(sizeof(byte),nqq) ;
+#pragma omp parallel if( nqq > 33333 )
+ { int ii,jj,kk,qq ; float xx,yy,zz ;
+ AFNI_OMP_START ;
+#pragma omp for
+   for( qq=0 ; qq < nqq ; qq++ ){
+     xx = imw[qq] ; if( xx < -0.499f || xx > nxh ) continue ;
+     yy = jmw[qq] ; if( yy < -0.499f || yy > nyh ) continue ;
+     zz = kmw[qq] ; if( zz < -0.499f || zz > nzh ) continue ;
+     ii = (int)(xx+0.5f) ; jj = (int)(yy+0.5f) ; kk = (int)(zz+0.5f) ;
+     if( tgar[ii+jj*nxt+kk*nxyt] ) hhh[qq] = 1 ;
+   }
+ AFNI_OMP_END ;
+ }
+ for( nhit=qq=0 ; qq < nqq ; qq++ ) nhit += hhh[qq] ;
+ free(hhh) ;
+#endif
+
+   free((void *)kmw); free((void *)jmw); free((void *)imw);
+
+   xx = gstup->nbsmask ;
+   yy = gstup->najmask * gstup->ajim->dx * gstup->ajim->dy * gstup->ajim->dz /
+                       ( gstup->bsim->dx * gstup->bsim->dy * gstup->bsim->dz ) ;
+
+   frac = nhit / MIN(xx,yy) ; RETURN(frac) ;
+}

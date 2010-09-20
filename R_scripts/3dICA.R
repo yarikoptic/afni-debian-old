@@ -1,7 +1,7 @@
 #!/usr/bin/env afni_run_R
 #Welcome to 3dICA.R, an AFNI IVA Package!
 #-----------------------------------------------------------
-#Version 0.0.1, Feb. 29, 2007
+#Version 0.0.3, Aug 20, 2010
 #Author: Gang Chen (gangchen@mail.nih.gov)
 #Website: http://afni.nimh.nih.gov/sscc/gangc/ica.html
 #SSCC/NIMH, National Institutes of Health, Bethesda MD 20892
@@ -12,7 +12,7 @@
 
 system("rm -f .RData")
 source(file.path(Sys.getenv("AFNI_R_DIR"), "AFNIio.R"))
-#source(file.path(Sys.getenv("LME"), "AFNIio.R"))
+#source("~/abin/AFNIio.R")
 library(fastICA)
 
 # C is much faster than R!
@@ -59,9 +59,15 @@ dimx <- Data$dim[1]
 dimy <- Data$dim[2]
 dimz <- Data$dim[3]
 tp   <- Data$dim[4]
+NOTE <- Data$header$HISTORY_NOTE
+ORIG <- Data$origin
+DELTA <- Data$delta
 
 NData <- array(data=NA, dim=c(dimx, dimy, dimz, tp))
-NData <- Data$ttt
+NData <- Data$brk
+# release some memory
+rm(Data)
+
 dim(NData) <- c(prod(dimx, dimy, dimz), tp)
 
 #ww <- apply(NData, 4, rbind)
@@ -80,7 +86,7 @@ dim(MData) <- c(dimx, dimy, dimz, NoComp)
 
 MyLabel <- rep("component", NoComp)
 
-write.AFNI(OutFile, MData, MyLabel, note=Data$header$HISTORY_NOTE, origin=Data$origin, delta=Data$delta, idcode="whatever")
+write.AFNI(OutFile, MData, MyLabel, note=NOTE, origin=ORIG, delta=DELTA, idcode="whatever")
 statpar <- "3drefit"
 
 if (View == "tlrc") statpar <- paste(statpar, " -view tlrc -newid ", OutFile) else

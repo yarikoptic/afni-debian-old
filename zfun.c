@@ -15,6 +15,9 @@ float THD_ncdfloat( int n , float *x , float *y ){return -1.0f;}
 float THD_ncdfloat_scl( int n , float xbot,float xtop,float *x ,
                                 float ybot,float ytop,float *y  ){return -1.0f;}
 
+char * array_to_zzb64( int nsrc , char *src , int linelen ){ return NULL; }
+int    zzb64_to_array( char *zb , char **dest ){ return -1; }
+
 /*===========================================================================*/
 #else  /* HAVE_ZLIB */
 
@@ -169,6 +172,9 @@ int zz_compress_some( int nsrc, void *ptr )
 }
 
 /*------------------------------------------------------------------------*/
+/*! Compress all of src array into the *dest array (if not NULL).
+    Return value is size of dest array, as malloc()-ed.
+*//*----------------------------------------------------------------------*/
 
 int zz_compress_all( int nsrc , char *src , char **dest )
 {
@@ -194,7 +200,7 @@ int zz_compress_all( int nsrc , char *src , char **dest )
 int zz_uncompress_some( int nsrc, char *src, int ndest, char *dest )
 {
    static int busy=0 ; static z_stream strm;
-   int ret ;
+   int ret , done ;
 
    if( ndest <= 0 || dest == NULL ){
      ERROR_message("zz_uncompress_some: bad dest inputs!") ;
@@ -243,20 +249,27 @@ int zz_uncompress_some( int nsrc, char *src, int ndest, char *dest )
    strm.avail_out = ndest ;
    strm.next_out  = dest ;
    ret = inflate( &strm , (nsrc >= 0) ? Z_SYNC_FLUSH : Z_FINISH ) ;
+/* INFO_message("inflate ret=%d",ret) ; */
 
-   if( ret != Z_OK ){
-     ERROR_message("zz_uncompress_some: inflation fails!") ;
+   if( ret != Z_OK && ret != Z_STREAM_END ){
+     ERROR_message("zz_uncompress_some: inflation fails: %d",ret) ;
      inflateEnd(&strm) ; busy = 0 ; return -1 ;
    }
+   done = (ret == Z_STREAM_END) ;
 
    ret = ndest - strm.avail_out ;  /* number of bytes output */
+/* ININFO_message("  #bytes = %d",ret) ; */
 
    if( ret == 0 ){ inflateEnd(&strm); busy = 0; } /* finished */
 
+   if( ret == 0 && done ) ret = -1 ;
    return ret ;
 }
 
 /*------------------------------------------------------------------------*/
+/*! Uncompress all nsrc bytes in src at once, malloc()-ing *dest;
+    the number of bytes in *dest is the return value of this function.
+*//*----------------------------------------------------------------------*/
 
 int zz_uncompress_all( int nsrc , byte *src , char **dest )
 {
@@ -264,7 +277,10 @@ int zz_uncompress_all( int nsrc , byte *src , char **dest )
 
    if( nsrc <= 0 || src == NULL || dest == NULL ) return -1 ;
 
+/* INFO_message("zz_uncompress_all: nsrc=%d",nsrc) ; */
+
    nbuf = zz_uncompress_some( nsrc , src , CHUNK , buf ) ;
+/* ININFO_message("zz_uncompress_some returns %d",nbuf) ; */
    if( nbuf <= 0 ) return -1 ;
 
    nddd = nbuf ;
@@ -273,6 +289,7 @@ int zz_uncompress_all( int nsrc , byte *src , char **dest )
 
    while(1){
      nbuf = zz_uncompress_some( 0 , NULL , CHUNK , buf ) ;
+/* ININFO_message("zz_uncompress_some returns %d",nbuf) ; */
      if( nbuf <= 0 ) break ;
      ddd = (char *)realloc(ddd,sizeof(char)*(nddd+nbuf)) ;
      memcpy(ddd+nddd,buf,nbuf) ;
@@ -282,6 +299,7 @@ int zz_uncompress_all( int nsrc , byte *src , char **dest )
    if( nbuf == 0 ){
      while(1){
        nbuf = zz_uncompress_some( -1 , NULL , CHUNK , buf ) ;
+/* ININFO_message("cleanup zz_uncompress_some returns %d",nbuf) ; */
        if( nbuf <= 0 ) break ;
        ddd = (char *)realloc(ddd,sizeof(char)*(nddd+nbuf)) ;
        memcpy(ddd+nddd,buf,nbuf) ;
@@ -289,6 +307,7 @@ int zz_uncompress_all( int nsrc , byte *src , char **dest )
      }
    }
 
+/* ININFO_message("Finally: %d bytes",nddd) ; */
    *dest = ddd ; return nddd ;
 }
 
@@ -419,6 +438,49 @@ ENTRY("THD_ncdfloat_scl") ;
 float THD_ncdfloat( int n , float *x , float *y )
 {
    return THD_ncdfloat_scl( n, 1.0f,-1.0f, x, 1.0f,-1.0f, y ) ;
+}
+
+/*------------------------------------------------------------------------*/
+/*! Compress and Base64 string-ify an input array. */
+
+char * array_to_zzb64( int nsrc , char *src , int linelen )
+{
+   int nzb    ; char *zb    ;
+   int nzdest ; char *zdest ;
+
+   if( nsrc <= 0 || src == NULL ) return NULL ;
+
+   zz_compress_dosave(1) ; zz_compress_dlev(9) ;
+
+   nzdest = zz_compress_all( nsrc , src , &zdest ) ;
+   if( nzdest <= 0 ) return NULL ;
+
+   if( linelen < 4 ) B64_set_crlf(0);
+   else            { B64_set_crlf(1); B64_set_linelen(linelen); }
+
+   B64_to_base64( nzdest , (byte *)zdest , &nzb , (byte **)(&zb) ) ;
+   free(zdest) ;
+   if( nzb <= 0 ) return NULL ;
+   return zb ;
+}
+
+/*------------------------------------------------------------------------*/
+/*! Inverse to array_to_zzb64(). */
+
+int zzb64_to_array( char *zb , char **dest )
+{
+   int nzdest=0 ; byte *zdest=NULL ;
+   int nout     ; char *cout       ;
+
+   if( zb == NULL ) return 0 ;
+
+   B64_to_binary( strlen(zb) , (byte *)zb , &nzdest , &zdest ) ;
+
+   if( nzdest <= 0 ) return 0 ;
+
+   nout = zz_uncompress_all( nzdest , zdest , dest ) ;
+   free(zdest) ;
+   return nout ;
 }
 
 #endif /* HAVE_ZLIB */

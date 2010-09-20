@@ -26,6 +26,59 @@ extern int SUMAg_N_DOv;
 #endif
 
 /*!
+   \brief Find boundary triangles, 
+   those that have an edge that is shared by less than 2 triangles.
+   
+   \param SO
+   \param boundt if not NULL, it is a pre-allocated vector that will 
+                contain the boundary triangles on return
+                If bount_asmask then boundt should be SO->N_FaceSet long
+                and upon return, if bount[k] then triangle k is a boundary
+                triangle.
+                If ! boundt_asmask then boundt the 1st N_boundt values
+                of boundt contain indices to the boundary triangles.
+   \param boundt_asmask: Flag indicating how boundt is to be interpreted.
+   \return N_boundt: total number of boundary triangles 
+*/
+int SUMA_BoundaryTriangles (SUMA_SurfaceObject *SO, int *boundt,
+                            int boundt_asmask ) 
+{
+   static char FuncName[]={"SUMA_BoundaryTriangles"};
+   int k, N_boundt=0;
+   byte *visited=NULL;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!SO->EL) SUMA_SurfaceMetrics(SO, "EdgeList", NULL);
+   if (!(visited = (byte *)SUMA_calloc(SO->N_FaceSet, sizeof(byte)))) {
+      SUMA_S_Err("Failed to allocate");
+      SUMA_RETURN(0);
+   }
+   if (boundt) {
+      if (boundt_asmask) for (k=0; k<SO->N_FaceSet; ++k) boundt[k]=0;
+   }
+   N_boundt=0;
+   k=0;
+   while (k<SO->EL->N_EL) {
+      /* find edges that form boundaries */
+      if (SO->EL->ELps[k][2] == 1 && !visited[SO->EL->ELps[k][1]]) {
+         if (boundt) {
+            if (boundt_asmask) boundt[SO->EL->ELps[k][1]] = 1;
+            else  {
+               boundt[N_boundt] = SO->EL->ELps[k][1];
+            }
+         }
+         visited[SO->EL->ELps[k][1]]=1;
+         ++N_boundt; 
+      }
+      ++k;
+   }
+   if (visited) SUMA_free(visited); visited=NULL;
+   SUMA_RETURN(N_boundt);
+}
+
+/*!
    \brief Calculate the sine and cosines of angles in a triangle 
    return -2 where calculation fails
 */
@@ -5903,9 +5956,14 @@ double SUMA_SigForFWHM(float AvgLe, double dfwhm, int *niterest, double *beta)
    Sigma = -1;   
    
    if (dfwhm/AvgLe < 2) {
-      SUMA_S_Errv("FWHM desired (%.3f) is too close to average intersegment length (%.3f).\n"
-                  "The function fit is poor for this extreme.\n", dfwhm, AvgLe);
-      SUMA_RETURN(Sigma);
+      SUMA_S_Errv(
+   "FWHM desired (%.3f) is too small relative to "
+   "average intersegment length (AvgLe = %.3f).\n"
+   "Expecting a ration of FWHM/AvgLe >= 2.0\n"
+   "The automatic sigma selection is poor for this FWHM/AvgLe of %f.\n"
+   "You can set sigma manually instead.\n"
+   , dfwhm, AvgLe, dfwhm/AvgLe);
+      SUMA_RETURN(-1.0);
    }
    
    /* upper limit for Delta, not that critical */
@@ -5996,7 +6054,13 @@ SUMA_Boolean SUMA_FixNN_Oversampling ( SUMA_SurfaceObject *SO, SUMA_DSET *dset,
    SUMA_LH("Blur parameters");
    dfwhm = (double)SO->EL->AvgLe;
    N_iter = 20;
-   sigma = SUMA_SigForFWHM( SO->EL->AvgLe, dfwhm, NULL, NULL) * SO->EL->AvgLe;
+   sigma = SUMA_SigForFWHM( SO->EL->AvgLe, dfwhm, NULL, NULL);
+   if (sigma == -1.0f) {
+      SUMA_S_Err("Failed to select sigma\n");
+      SUMA_RETURN(NOPE);
+   } else {
+      sigma = sigma * SO->EL->AvgLe; 
+   }
    
    ipass = 0;
    do {

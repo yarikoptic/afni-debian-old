@@ -54,8 +54,8 @@ ENTRY("THD_reconcile_parents") ;
 
       for( idd=0 ; idd < sess->num_dsset ; idd++ ){
          for( ivv=FIRST_VIEW_TYPE ; ivv <= LAST_VIEW_TYPE ; ivv++ ){
-
-          dset_orph = sess->dsset[idd][ivv] ;
+          dset_orph = GET_SESSION_DSET(sess, idd, ivv);
+/*          dset_orph = sess->dsset_xform_table[idd][ivv] ;*/
           if( dset_orph == NULL ) continue ;
 
             /*-- if it needs an anatomy parent --*/
@@ -80,7 +80,7 @@ ENTRY("THD_reconcile_parents") ;
                if( dset_orph->anat_parent != NULL )
                   SHOW_PARENTING("(NAME) anat_parent",dset_orph,dset_orph->anat_parent) ;
             }
-            IFNOANAT(dset_orph) ;
+            /** IFNOANAT(dset_orph) ; **/
           }
 
             /*-- if it needs a warp parent --*/

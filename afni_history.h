@@ -41,7 +41,8 @@
 #define TYPE_NEW_ENV    3  /* environmental change or new env variable */
 #define TYPE_BUG_FIX    4  /* enhancement of an existing bug */
 #define TYPE_MODIFY     5  /* a change (not new, not a bug fix) */
-#define MAX_TYPE_VAL    5  /* maximum type value */
+#define TYPE_ENHANCE    6  /* general enhancement */
+#define MAX_TYPE_VAL    6  /* maximum type value */
 
 
 typedef struct {
@@ -86,7 +87,10 @@ typedef struct {
     /* user options */
     char     * author;
     char     * program;
+    int        check_date;
+    char     * cd_day, * cd_month, * cd_year;
     int        html;
+    int        dline;
     int        type;
     int        level;
     int        min_level;
@@ -127,6 +131,7 @@ typedef struct {
 /* main protos */
 int add_to_hlist        (hist_type *** hlist, hist_type * hadd,
                          int addlen, int * newlen);
+int check_date          (global_data * gd, hist_type ** hlist, int len);
 int compare_hlist       (const void *v0, const void *v1);
 int compare_hist_dates  (hist_type *h0, hist_type *h1);    /* RWC */
 int disp_global_data    (char * mesg, global_data * gd);
@@ -139,6 +144,8 @@ int restrict_by_date    (global_data * gd, hist_type *** hlist, int * len);
 int restrict_by_level   (global_data * gd, hist_type *** hlist, int * len);
 int restrict_by_program (global_data * gd, hist_type *** hlist, int * len);
 int restrict_by_type    (global_data * gd, hist_type *** hlist, int * len);
+int restrict_results    (global_data * gd, hist_type *** hlist, int * len);
+int set_dates           (global_data * gd, int * dd, int * mm, int * yy );
 int show_author_list    (void);
 int show_command        (FILE * fp, int argc, char ** argv);
 int show_help           (void);
@@ -147,6 +154,7 @@ int show_history        (global_data * gd, hist_type ** hlist, int len);
 int show_html_footer    (FILE * fp);
 int show_html_header    (global_data * gd, FILE * fp, int min_level);
 int show_html_separator (FILE * fp);
+int show_dline_separator(FILE * fp);
 int show_results        (global_data * gd);
 int show_valid_types    (void);
 int show_wrapping_line  (char * str, char * prefix, int indent, FILE * fp);
@@ -159,6 +167,7 @@ int valid_program       (char * prog);
 char * convert_author   (char * name);
 char * level_string     (int level);
 char * mm2month         (int mm);
+int    month2mm         (char * month);
 char * type_string      (int level);
 
 #endif /* _AFNI_HISTORY_HEADER_ */

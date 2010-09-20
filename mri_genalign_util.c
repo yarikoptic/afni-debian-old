@@ -4,9 +4,6 @@
 #include <omp.h>
 #endif
 
-#undef  NPER
-#define NPER 131072  /* 512 Kbytes per float array */
-
 /*---------------------------------------------------------------------------*/
 
 int GA_gcd( int m , int n )    /* Euclid's Greatest Common Denominator */
@@ -125,6 +122,11 @@ void GA_interp_linear( MRI_IMAGE *fim ,
                        int npp, float *ip, float *jp, float *kp, float *vv )
 {
 ENTRY("GA_interp_linear") ;
+
+#if 0
+  if( fim == NULL || ip == NULL || jp == NULL || kp == NULL || vv == NULL )
+    ERROR_message("NULL pointer on entry to GA_interp_linear :-(") ;
+#endif
 
 #pragma omp parallel if(npp > 9999)
  {

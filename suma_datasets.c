@@ -702,7 +702,12 @@ char *SUMA_DsetColLabelCopy(SUMA_DSET *dset, int i, int addcolnum)
    if (i < 0 || i >= SDSET_VECNUM(dset)) { SUMA_RETURN(NULL); }
    
    if (!(nelb = SUMA_FindDsetAttributeElement(dset, "COLMS_LABS"))) {
-      SUMA_RETURN(SUMA_copy_string("no_label"));
+      if (!addcolnum) {
+         SUMA_RETURN(SUMA_copy_string("no_label"));
+      } else {
+         sprintf(Name, "%d: ", i);
+         SUMA_RETURN(SUMA_append_string(Name,"no_label"));
+      }
    }
    SUMA_NEL_GET_STRING(nelb, 0, 0, lbl); 
       /* sc is a pointer copy here, do not free */
@@ -1452,7 +1457,7 @@ SUMA_Boolean SUMA_CopyDsetAttributes ( SUMA_DSET *src, SUMA_DSET *dest,
          if (LocalHead) {
                fprintf(SUMA_STDERR,
                         "%s:\n"
-                        "  Putting string %s at col %d in target's %s\n"
+                        "  Inserting string %s at col %d in target's %s\n"
                         , FuncName, src_string, idest, nmbuf2);
          }
          SUMA_AddColAtt_CompString( nelt, idest,
@@ -1702,8 +1707,13 @@ int SUMA_AddDsetColAttr (  SUMA_DSET *dset, char *col_label,
                         NI_stat_encode(NI_STAT_CORREL, 
                                        pars[0], pars[1], pars[2]));
          }
-         break;  
+         break;
+      
+      case SUMA_NODE_ZSCORE:
+         attrstr = SUMA_copy_string( 
+                        NI_stat_encode(NI_STAT_ZSCORE, 0.0 , 0.0, 0.0));  
 
+         break;
    }
    
    SUMA_AddColAtt_CompString( nelb, col_index, attrstr, 
@@ -1760,8 +1770,12 @@ int SUMA_AddColAttr (NI_element *nel, char *col_label, SUMA_COL_TYPE ctp, void *
 
    if (!nel) SUMA_RETURN(0);
    if (col_index < 0) col_index = nel->vec_num-1;
-   if (col_index < 0 || !nel->vec_num ) { SUMA_SL_Err("No columns in data set!"); SUMA_RETURN(0); }
-   if (nel->vec_num <= col_index) { SUMA_SL_Err("col_index >= nel->vec_num!"); SUMA_RETURN(0); }
+   if (col_index < 0 || !nel->vec_num ) { 
+      SUMA_SL_Err("No columns in data set!"); SUMA_RETURN(0); 
+   }
+   if (nel->vec_num <= col_index) { 
+      SUMA_SL_Err("col_index >= nel->vec_num!"); SUMA_RETURN(0); 
+   }
    
    /* if a label is specified, set it */
    if (col_label) {
@@ -1863,6 +1877,14 @@ int SUMA_AddColAttr (NI_element *nel, char *col_label, SUMA_COL_TYPE ctp, void *
          NI_set_attribute ( nel, Attr, NULL);
          break;  
       
+      case SUMA_NODE_VFR:
+         NI_set_attribute ( nel, Attr, NULL);
+         break;  
+      
+      case SUMA_NODE_PHASE:
+         NI_set_attribute ( nel, Attr, NULL);
+         break;  
+      
       default:
          NI_set_attribute ( nel, Attr, NULL);
          break;          
@@ -1944,6 +1966,37 @@ int SUMA_AddGenDsetColAttr (  SUMA_DSET *dset, SUMA_COL_TYPE ctp,
    if (LocalHead) SUMA_ShowNel((void*)nelb);
    SUMA_free(stmp); stmp = NULL;
    SUMA_RETURN(1);  
+}
+
+int SUMA_UpdateDsetColRange(SUMA_DSET *dset, int icol) 
+{
+   static char FuncName[]={"SUMA_UpdateDsetColRange"};
+   int ic=0, istrt=0, iend=0;
+   char *sbuf=NULL;
+   SUMA_Boolean LocalHead=NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!dset) SUMA_RETURN(0);
+   if (icol < 0) { istrt=0; iend=SDSET_VECNUM(dset); }
+   else { istrt = icol; iend=icol; }
+   if (istrt < 0 || istrt > SDSET_VECNUM(dset)) SUMA_RETURN(0);
+   if (iend  < 0 || iend > SDSET_VECNUM(dset)) SUMA_RETURN(0);
+   
+   for (ic=istrt; ic<iend; ++ic) {
+      if(!(sbuf = SUMA_CreateDsetColRangeCompString(dset, ic, 
+                              SUMA_TypeOfDsetColNumb(dset,ic)))) {
+         SUMA_S_Err("Failed to calculate range");
+         SUMA_RETURN(0);
+      }else {
+         NI_element *nelb = 
+            SUMA_FindDsetAttributeElement(dset, "COLMS_RANGE");
+         SUMA_LH(sbuf);
+         SUMA_AddColAtt_CompString(nelb, ic, sbuf, SUMA_NI_CSS,0);
+         SUMA_free(sbuf); sbuf=NULL;
+      }
+   }
+   SUMA_RETURN(1);
 }
 /*!
    \brief A special case of  SUMA_AddGenDsetColAttr for node indices
@@ -3712,7 +3765,10 @@ SUMA_VARTYPE SUMA_ColType2TypeCast (SUMA_COL_TYPE ctp)
       case SUMA_NODE_B:
       case SUMA_NODE_A:
       case SUMA_NODE_XCORR:
+      case SUMA_NODE_ZSCORE:
       case SUMA_NODE_3C:
+      case SUMA_NODE_VFR:
+      case SUMA_NODE_PHASE:
          SUMA_RETURN(SUMA_float);      
          break;
       case SUMA_NODE_BYTE:
@@ -4000,6 +4056,15 @@ char * SUMA_Col_Type_Name (SUMA_COL_TYPE tp)
       case SUMA_NODE_XCORR:
          SUMA_RETURN("Cross_Corr_Coeff");
          break;
+      case SUMA_NODE_ZSCORE:
+         SUMA_RETURN("Z_score");
+         break;
+      case SUMA_NODE_VFR:
+         SUMA_RETURN("VFR");
+         break;
+      case SUMA_NODE_PHASE:
+         SUMA_RETURN("Phase");
+         break;
       default:
          SUMA_RETURN("Cowabonga-Jo");
          break;
@@ -4042,6 +4107,9 @@ SUMA_COL_TYPE SUMA_Col_Type (char *Name)
    if (!strcmp(Name,"Generic_Double")) SUMA_RETURN (SUMA_NODE_DOUBLE);
    if (!strcmp(Name,"Convexity")) SUMA_RETURN (SUMA_NODE_CX);
    if (!strcmp(Name,"Cross_Corr_Coeff")) SUMA_RETURN (SUMA_NODE_XCORR);
+   if (!strcmp(Name,"Z_score")) SUMA_RETURN (SUMA_NODE_ZSCORE);
+   if (!strcmp(Name,"VFR")) SUMA_RETURN (SUMA_NODE_VFR);
+   if (!strcmp(Name,"Phase")) SUMA_RETURN (SUMA_NODE_PHASE);
    /* if (!strcmp(Name,"")) SUMA_RETURN (); */
    SUMA_RETURN (SUMA_ERROR_COL_TYPE);
 
@@ -4323,6 +4391,28 @@ int SUMA_AddNgrHist(NI_group *ngr, char *CallingFunc, int N_arg, char **arg)
    SUMA_RETURN(1);
 }
 
+int SUMA_RemoveDsetHist(SUMA_DSET *dset) {
+   if (!dset||!dset->ngr) return(0);
+   return(SUMA_RemoveNgrHist(dset->ngr));
+}
+
+int SUMA_RemoveNgrHist(NI_group *ngr)
+{
+   static char FuncName[]={"SUMA_RemoveNgrHist"}; 
+   NI_element *nelb = NULL;
+   
+   SUMA_ENTRY;
+   
+   if (!ngr) SUMA_RETURN(0);
+   
+   /* get former history element, if any and old string */
+   nelb = SUMA_FindNgrAttributeElement(ngr, "HISTORY_NOTE");
+   if (nelb) {
+      NI_remove_from_group(ngr, nelb);
+   }
+   SUMA_RETURN(1);
+}
+
 /*!
    \brief adds a history note to the ni-element
    
@@ -4469,7 +4559,7 @@ SUMA_DSET * SUMA_FindDsetLoose (
                DList *DsetList, 
                char *criteria)
 {
-   static char FuncName[]={"SUMA_FindDsetLoose_eng"};
+   static char FuncName[]={"SUMA_FindDsetLoose"};
    SUMA_DSET *dsetf = NULL, *dset= NULL;
    int ifound=0, newmatch, totmatch, icrit;
    char *dsetid=NULL, *s=NULL;
@@ -4750,6 +4840,69 @@ SUMA_DSET * SUMA_NewDsetPointer(void)
    SUMA_RETURN(dset);
 }
 
+/* Change a dataset with one integer valued column to a 
+  Label type dset. Note that dset itself is modified.
+*/
+int SUMA_dset_to_Label_dset(SUMA_DSET *dset) 
+{
+   static char FuncName[]={"SUMA_dset_to_Label_dset"};
+   int ctp, vtp, i, *unq=NULL, N_unq=0;
+   NI_group *NIcmap=NULL, *ngr=NULL;
+   char stmp[256], *lbli=NULL, *attname=NULL;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!dset || !dset->dnel || !dset->inel) SUMA_RETURN(0);
+   
+   if (SDSET_VECNUM(dset) != 1) { 
+      SUMA_LH("Too many columns");
+      SUMA_RETURN(0); 
+   }
+   
+   if (SUMA_is_Label_dset(dset, NULL)) { 
+      SUMA_LH("is label already");
+   } else {
+      /* Must have one column that is an integer value */
+      for (i=0; i<1; ++i) {
+         ctp = SUMA_TypeOfDsetColNumb(dset, i); 
+         if (LocalHead) {
+            fprintf(SUMA_STDERR,"%s: ctp(%d) = %d (%d)\n",
+                  FuncName, i, ctp, SUMA_NODE_ILABEL);
+         }
+         if (ctp != SUMA_NODE_ILABEL) {
+            if (SUMA_ColType2TypeCast(ctp) != SUMA_int) {
+               SUMA_S_Err( "Cannot make the change. "
+                           "Only integer columns supported");
+               SUMA_RETURN(0);
+            }
+            /* change the column type */
+            lbli = SUMA_DsetColLabelCopy(dset, i, 0);
+            if (!SUMA_AddDsetColAttr ( dset, lbli , 
+                                 SUMA_NODE_ILABEL, NULL, 
+                                 i, 1)) {
+               SUMA_S_Err("Failed chaning attribute");
+               SUMA_RETURN(0);
+            }
+            if (lbli) SUMA_free(lbli); lbli = NULL;
+         }
+      }
+      /* and dset_type */
+      NI_set_attribute( dset->ngr,"dset_type", 
+                        SUMA_Dset_Type_Name(SUMA_NODE_LABEL));
+      attname = SUMA_append_string(SDSET_TYPE_NAME(dset),"_data");
+      NI_set_attribute( dset->dnel,"data_type",
+                        attname);
+      SUMA_free(attname); attname = NULL;
+      attname = SUMA_append_string(SDSET_TYPE_NAME(dset),"_node_indices");
+      NI_set_attribute( dset->inel,"data_type",
+                        attname);
+      SUMA_free(attname); attname = NULL;
+   }
+      
+   SUMA_RETURN(1);
+}
+
 /*!
    \brief a function to put a ni_group (ngr) element into a SUMA_DSET pointer
    To free dset along with the ngr in it use SUMA_FreeDset.
@@ -4798,7 +4951,13 @@ SUMA_DSET * SUMA_ngr_2_dset(NI_group *nini, int warn)
          NI_add_to_group(dset->ngr, dset->inel);
       }
    }
-      
+   
+   /* Got a label table ? */
+   if (SUMA_NI_Cmap_of_Dset(dset)) { /* make sure it is a label dset then */
+      if (!SUMA_dset_to_Label_dset(dset)) {
+         SUMA_S_Err("Failed to turn dset into a labeled one.");
+      }  
+   }
 
    SUMA_RETURN(dset);
 }  
@@ -5014,9 +5173,15 @@ int SUMA_InsertDsetPointer (SUMA_DSET **dsetp, DList *DsetList, int replace)
    if (!dsetp) { SUMA_SL_Err("dsetp is NULL"); SUMA_RETURN(0); }
    else dset = *dsetp;  /* dset is the new pointer */
    
-   if (!dset->dnel) { SUMA_SL_Err("dset->nel is NULL\nNothing to do"); SUMA_RETURN(0); }
+   if (!dset->dnel) { 
+      SUMA_SL_Err("dset->nel is NULL\nNothing to do"); 
+      SUMA_RETURN(0); 
+   }
 
-   s= SDSET_ID(dset); if (!s) { SUMA_SL_Err("dset has no idcode.\n"); SUMA_RETURN(0); }
+   if (!(s= SDSET_ID(dset))) { 
+      SUMA_SL_Err("dset has no idcode.\n"); 
+      SUMA_RETURN(0); 
+   }
    
    if ((dprev = SUMA_FindDset_ns (s,  DsetList))) {
       sprintf(stmp,  "Dset with similar idcode (%s)\n"
@@ -5044,7 +5209,7 @@ int SUMA_InsertDsetPointer (SUMA_DSET **dsetp, DList *DsetList, int replace)
    } 
    if (dprev) {
       SUMA_LH("Dset exists");
-      if (replace) {
+      if (replace || AFNI_yesenv("SUMA_AllowFilenameDsetMatch")) {
          SUMA_LH("Replacing");
          SUMA_SL_Note(stmp);
          #ifdef OLD_DSET /* before ngr was used */
@@ -5238,6 +5403,7 @@ char *SUMA_DsetInfo (SUMA_DSET *dset, int detail)
    SUMA_COL_TYPE ctp;
    char *s=NULL, stmp[200];
    SUMA_STRING *SS=NULL;
+   NI_group *ngr=NULL;
    
    SUMA_ENTRY;
    
@@ -5319,19 +5485,23 @@ char *SUMA_DsetInfo (SUMA_DSET *dset, int detail)
             sprintf(stmp,"attrCol_%d", i);
             s = SUMA_AttrOfDsetColNumb(dset, i);
             if (s && s[0] != '\0') {
-               SS = SUMA_StringAppend_va(SS, "\tColumn %d's attribute: %s\n", 
+               SS = SUMA_StringAppend_va(SS, 
+                                     "\tColumn %d's attribute: %s\n", 
                                        i, s ); 
             } else {
-               SS = SUMA_StringAppend_va(SS, "\tColumn %d's attribute does not exist.\n", 
+               SS = SUMA_StringAppend_va(SS, 
+                                    "\tColumn %d's attribute does not exist.\n", 
                                        i );
             }
             if (s) SUMA_free(s); s = NULL;
             s = SUMA_DsetColLabelCopy(dset, i, 0);
             if (s && s[0] != '\0') {
-               SS = SUMA_StringAppend_va(SS, "\tColumn %d's label: %s\n", 
+               SS = SUMA_StringAppend_va(SS, 
+                                       "\tColumn %d's label: %s\n", 
                                        i, s ); 
             } else {
-               SS = SUMA_StringAppend_va(SS, "\tColumn %d's label does not exist.\n", 
+               SS = SUMA_StringAppend_va(SS, 
+                                       "\tColumn %d's label does not exist.\n", 
                                        i );
             }
             if (s) SUMA_free(s); s = NULL;
@@ -5339,7 +5509,8 @@ char *SUMA_DsetInfo (SUMA_DSET *dset, int detail)
                s = SUMA_ShowMeSome((void*)(  dset->dnel->vec[i]), 
                                              SUMA_ColType2TypeCast (ctp) 
                                              , SDSET_VECLEN(dset), 5, NULL);
-               SS = SUMA_StringAppend_va(SS, "         %s\n", s); SUMA_free(s); s = NULL;
+               SS = SUMA_StringAppend_va(SS, "         %s\n", s); 
+               SUMA_free(s); s = NULL;
             } else SS = SUMA_StringAppend_va(SS, "         NULL\n");
             #endif
          }
@@ -5347,13 +5518,25 @@ char *SUMA_DsetInfo (SUMA_DSET *dset, int detail)
             NI_stream ns = NI_stream_open("str:", "w");
             NI_write_element(ns, dset->ngr, NI_TEXT_MODE);
             SS = SUMA_StringAppend(SS, "\n Full NI group in text mode:\n"); 
-            SS = SUMA_StringAppend(SS, NI_stream_getbuf(ns)); /* don't use StringAppend_va because it does not all 
-                                                                the concatenation of very long strings. */
+            SS = SUMA_StringAppend(SS, NI_stream_getbuf(ns)); 
+               /* don't use StringAppend_va because it does not 
+                  allow very long strings. */
             SS = SUMA_StringAppend(SS, "\n");
             NI_stream_close(ns);
          }
       } else {
          SS = SUMA_StringAppend(SS, "NULL dset->dnel.");
+      }
+      /* got cmap? */
+      if ((ngr = SUMA_NI_Cmap_of_Dset(dset))) {
+            NI_stream ns = NI_stream_open("str:", "w");
+            NI_write_element(ns, ngr, NI_TEXT_MODE);
+            SS = SUMA_StringAppend(SS, "\n Internal colormap info:\n"); 
+            SS = SUMA_StringAppend(SS, NI_stream_getbuf(ns)); 
+            SS = SUMA_StringAppend(SS, "\n");
+            NI_stream_close(ns);
+      } else {
+         SS = SUMA_StringAppend(SS, "No internal colormap.");
       }
    } else {
       SS = SUMA_StringAppend(SS, "NULL dset.");
@@ -6911,7 +7094,7 @@ byte *SUMA_load_1D_n_mask(char *name, int N_Node, byte *omask, const char *oper,
 
    SUMA_ENTRY;
    
-   if (*N_inmask) *N_inmask = -1;
+   if (N_inmask) *N_inmask = -1;
    if (!name) {
       SUMA_S_Err("NULL input");
       SUMA_RETURN(NULL); 
@@ -6994,7 +7177,7 @@ byte *SUMA_load_1D_n_mask(char *name, int N_Node, byte *omask, const char *oper,
       }
    }
 
-   if (*N_inmask) {
+   if (N_inmask) {
       *N_inmask = 0;
       for (kk=0; kk<N_Node; ++kk) if (out[kk]) ++(*N_inmask);
    }
@@ -7020,7 +7203,7 @@ byte *SUMA_load_1D_b_mask(char *name, int N_Node, byte *omask, const char *oper,
 
    SUMA_ENTRY;
    
-   if (*N_inmask) *N_inmask = -1;
+   if (N_inmask) *N_inmask = -1;
    
    if (!name) {
       SUMA_S_Err("NULL input");
@@ -7085,7 +7268,7 @@ byte *SUMA_load_1D_b_mask(char *name, int N_Node, byte *omask, const char *oper,
       }
    }
    
-   if (*N_inmask) {
+   if (N_inmask) {
       *N_inmask = 0;
       for (kk=0; kk<N_Node; ++kk) if (out[kk]) ++(*N_inmask);
    }
@@ -7103,7 +7286,7 @@ byte *SUMA_get_c_mask(char *mask, int N_Node, byte *omask, const char *oper, int
    
    SUMA_ENTRY;
    
-   if (*N_inmask) *N_inmask = -1;
+   if (N_inmask) *N_inmask = -1;
    if (!mask) {
       SUMA_S_Err("NULL input");
       SUMA_RETURN(bmask);
@@ -7161,7 +7344,7 @@ byte *SUMA_get_c_mask(char *mask, int N_Node, byte *omask, const char *oper, int
       }
    }
    
-   if (*N_inmask) {
+   if (N_inmask) {
       *N_inmask = 0;
       for (kk=0; kk<N_Node; ++kk) if (out[kk]) ++(*N_inmask);
    }
@@ -9481,6 +9664,13 @@ SUMA_DSET *SUMA_LoadGIFTIDset (char *Name, int verb)
       if (verb)  { SUMA_SL_Err("Failed to read dset file."); }
       SUMA_RETURN(dset);
    }
+   
+   /* add filename and label */
+   if (!NI_get_attribute(ngr,"filename")) 
+      NI_set_attribute(ngr,"filename", FullName);
+   if (!NI_get_attribute(ngr,"label")) 
+      NI_set_attribute(ngr,"label", SUMA_FnameGet(FullName,"fne", NULL));
+   
    if (!(dset = SUMA_ngr_2_dset(ngr, 0))) {
       SUMA_SL_Err("Failed to go from ngr to dset");
       SUMA_RETURN(NULL);
@@ -10224,12 +10414,97 @@ int SUMA_is_Label_dset(SUMA_DSET *dset, NI_group **NIcmap)
    SUMA_RETURN(1);
 }
 
+/*! 
+   \brief requirements to be a VFR dset:
+   1- 1st column of data with type SUMA_NODE_VFR
+*/
+int SUMA_is_VFR_dset(SUMA_DSET *dset) 
+{
+   static char FuncName[]={"SUMA_is_VFR_dset"};
+   int ctp, vtp, i;
+   NI_group *ngr=NULL;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!dset) SUMA_RETURN(0);
+   
+   i = 0;
+   ctp = SUMA_TypeOfDsetColNumb(dset, i);    
+   if (LocalHead) {
+         fprintf(SUMA_STDERR,"%s: ctp(%d) = %d (%d)\n",
+               FuncName, i, ctp, SUMA_NODE_VFR);
+   }
+   if (ctp == SUMA_NODE_VFR) SUMA_RETURN(1);
+      
+      
+   SUMA_RETURN(0);
+}
+
+/*! 
+   \brief requirements to be a phase dset:
+   1- 1st column of data with type SUMA_NODE_PHASE
+*/
+int SUMA_is_Phase_dset(SUMA_DSET *dset) 
+{
+   static char FuncName[]={"SUMA_is_Phase_dset"};
+   int ctp, vtp, i;
+   NI_group *ngr=NULL;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!dset) SUMA_RETURN(0);
+   
+   i = 0;
+      ctp = SUMA_TypeOfDsetColNumb(dset, i); 
+      if (LocalHead) {
+         fprintf(SUMA_STDERR,"%s: ctp(%d) = %d (%d)\n",
+               FuncName, i, ctp, SUMA_NODE_PHASE);
+      }
+      if (ctp == SUMA_NODE_PHASE) SUMA_RETURN(1);
+      
+   SUMA_RETURN(0);
+}
+
+/*! 
+   \brief requirements to be a retinotopically derived angle:
+   Checks labels of columns
+*/
+int SUMA_is_RetinoAngle_dset(SUMA_DSET *dset) 
+{
+   static char FuncName[]={"SUMA_is_RetinoAngle_dset"};
+   int ctp, vtp, i;
+   NI_group *ngr=NULL;
+   char *lblcp=NULL;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!dset) SUMA_RETURN(0);
+   
+   /* check based on label, rather than column type.
+   Dset is created with 3d program and it is a pain 
+   to add the column type there at the moment */
+    
+   i = 0;   
+   lblcp = SUMA_DsetColLabelCopy(dset, 0, 0);
+   if (strstr(lblcp, "Polar Angle")) i = 1;
+   else if (strstr(lblcp, "Eccentricity")) i = 1;
+   else if (strncmp(lblcp, "Phz@", 4) == 0) i = 1;  
+   
+   SUMA_free(lblcp);
+   SUMA_RETURN(i);
+}
+
+
 
 NI_group *SUMA_NI_Cmap_of_Dset(SUMA_DSET *dset)
 {
    static char FuncName[]={"SUMA_NI_Cmap_of_Dset"};
    NI_group *ngr=NULL;
    NI_element *nel=NULL;
+   char *s=NULL;
    int ip=0;
    SUMA_Boolean LocalHead = NOPE;
    
@@ -10246,7 +10521,13 @@ NI_group *SUMA_NI_Cmap_of_Dset(SUMA_DSET *dset)
                               "%s:  Looking for %s   in group %s \n",
                               FuncName, "AFNI_labeltable", ngr->name);
             }
-            if (!strcmp("AFNI_labeltable", ngr->name)) SUMA_RETURN(ngr);
+            if (!strcmp("AFNI_labeltable", ngr->name)) {
+               if (!NI_get_attribute(ngr,"Name")) {
+                  s = SUMA_append_string("LT_", SDSET_LABEL(dset));
+                  NI_set_attribute(ngr,"Name",s); SUMA_free(s); s= NULL; 
+               }  
+               SUMA_RETURN(ngr);
+            }
             break ;
          case NI_ELEMENT_TYPE:
             nel = (NI_element *)ngr->part[ip] ;
@@ -11299,6 +11580,9 @@ float SUMA_fdrcurve_zval( SUMA_DSET *dset , int iv , float thresh )
 
 /*********************** BEGIN Miscellaneous support functions **************************** */
 /* A few functions that are useful without having to link and include all of SUMA's structures */
+static int no_suma_rc_found;
+
+int NoSumaRcFound (void) { return (no_suma_rc_found);}
 
 /*!
    \brief load the environment varaibles first from 
@@ -11315,6 +11599,8 @@ void SUMA_process_environ(void)
    char *sumarc = NULL, *homeenv=NULL;
    SUMA_Boolean LocalHead = NOPE;
 
+   no_suma_rc_found = 0;
+   
    if (LocalHead) 
          fprintf (SUMA_STDERR,"%s: Entering SUMA_process_environ\n", FuncName);
    
@@ -11333,15 +11619,7 @@ void SUMA_process_environ(void)
    } else {
       if (LocalHead) 
          fprintf (SUMA_STDERR,"%s: No sumarc file found.\n", FuncName);
-      fprintf (SUMA_STDOUT,
-   "\n"
-   "++ No sumarc file found. To create a new one, or add the latest \n"
-   " variables while preserving your settings, consider running:\n"
-   "\n"
-   "              suma -update_env\n"
-   "\n"
-   "See details on -environment and -update_env in suma -help's output.\n"
-   "\n");
+         no_suma_rc_found = 1;
    }
 
    if (!homeenv) sprintf(sumarc, ".afnirc");
@@ -11710,7 +11988,7 @@ Usage :
 		Ans = SUMA_StripPath (Name)
    
    
-Input paramters : 
+Input parameters : 
 \param   Name (char *) something like /hello/something
    
 Returns : 
@@ -11793,7 +12071,7 @@ static ENV_SPEC envlist[] = {
       "0.0,0.0,0.0" },
    {  "ROI color map (bgyr64, roi64, roi128, roi256)",
       "SUMA_ROIColorMap",
-      "ROI_256" },
+      "ROI_i256" },
    {  "Number of smoothing operations to run on convexity data",
       "SUMA_NumConvSmooth",
       "5" },
@@ -11955,13 +12233,23 @@ static ENV_SPEC envlist[] = {
       "  'C&C': Shows both colors and contours\n"
       "  'XXX'or 'No': Does not show it.\n",
       "SUMA_ShowLabelDsetAtStartup",
-      "YES" },
+      "Con" },
    {  "Initial Label Datasest opacity.",
       "SUMA_LabelDsetOpacity",
       "0.2" },
    {  "Attempt to recover from AFNI <--> SUMA disconnection bug.\n",
       "SUMA_AttemptTalkRecover",
       "Yes" }, 
+   {  "Name of directory containing user's own SUMA color maps (*.cmap)\n",
+      "SUMA_CmapsDir",
+      "" },
+   {  "Name of color map for datasets of retinotopy angles.\n"
+      "These would be produced by 3dRetinoPhase\n",
+      "SUMA_RetinoAngle_DsetColorMap",
+      "rgybr20" },
+   {  "Name of color map for VFR datasets produced by SurfRetinoMap\n",
+      "SUMA_VFR_DsetColorMap",
+      "afni_n2" }, 
    {  NULL, NULL, NULL  }
 };
       
@@ -12109,6 +12397,8 @@ SUMA_Boolean SUMA_ShowParsedFname(SUMA_PARSED_NAME *pn, FILE *out)
       SS = SUMA_StringAppend_va(SS, "NULL parsed name");
    } else {
       SS = SUMA_StringAppend_va(SS, "AbsPath       :%s\n", pn->AbsPath);
+      SS = SUMA_StringAppend_va(SS, "RelDir        :%s\n", pn->RelDir);
+      SS = SUMA_StringAppend_va(SS, "RelPath       :%s\n", pn->RelPath);
       SS = SUMA_StringAppend_va(SS, "Path          :%s\n", pn->Path);
       SS = SUMA_StringAppend_va(SS, "FileName      :%s\n", pn->FileName);
       SS = SUMA_StringAppend_va(SS, "Ext           :%s\n", pn->Ext);
@@ -12119,6 +12409,8 @@ SUMA_Boolean SUMA_ShowParsedFname(SUMA_PARSED_NAME *pn, FILE *out)
       SS = SUMA_StringAppend_va(SS, "Range Selector:%s\n", pn->RangeSelect);
       SS = SUMA_StringAppend_va(SS, "Only index col:%d\n", pn->only_index);
       SS = SUMA_StringAppend_va(SS, "FullName      :%s\n", pn->FullName);
+      SS = SUMA_StringAppend_va(SS, "RelName       :%s%s\n", 
+                                                    pn->RelPath,pn->FileName);
    }
 
    SUMA_SS2S(SS,s);
@@ -12310,6 +12602,34 @@ SUMA_PARSED_NAME * SUMA_ParseFname (char *FileName, char *ucwd)
          NewName->AbsPath = SUMA_append_replace_string(cwd, ptmp, "/", 0);
          ptmp = NULL;
       }
+      /* store the current directory, and put back the slash */
+      NewName->RelDir = SUMA_append_string(cwd, "/");
+      /* get the relative path (assumes both end with / )*/
+      {
+         int nback=0, imatch=0;
+         i=0; /* go as far as the directories match */
+         while (i < strlen(NewName->RelDir) &&
+                i < strlen(NewName->AbsPath) &&
+                NewName->RelDir[i] == NewName->AbsPath[i] ) ++i;
+         /* backup i until you hit the last '/' */
+         while (i>=0 && NewName->RelDir[i] != '/') --i;
+         if (NewName->RelDir[i] == '/') ++i; /* and back up one */
+         
+         /* how many extra directories do we have left in NewName->RelDir ?*/
+         imatch = i;
+         while (i < strlen(NewName->RelDir)) {
+            if (NewName->RelDir[i] == '/') ++nback;
+            ++i;
+         }
+         NewName->RelPath = SUMA_calloc(sizeof(char), 
+                                  strlen(NewName->AbsPath)-imatch+nback*3+10);
+         NewName->RelPath[0]= '\0';
+         for (i=0; i<nback; ++i) {
+            strcat(NewName->RelPath, "../");
+         }
+         strcat(NewName->RelPath,NewName->AbsPath+imatch);
+         if (!strlen(NewName->RelPath)) strcat(NewName->RelPath, "./");
+      } 
       if (FoundFile) {
          NewName->FileName = 
             (char *)SUMA_malloc(sizeof(char)*(N_FileName - iFile + 2));
@@ -12699,6 +13019,8 @@ void *SUMA_Free_Parsed_Name(SUMA_PARSED_NAME *Test)
 
    if (!Test) SUMA_RETURN (NULL);
    if (Test->AbsPath) SUMA_free(Test->AbsPath);
+   if (Test->RelPath) SUMA_free(Test->RelPath);
+   if (Test->RelDir) SUMA_free(Test->RelDir);
    if (Test->Path) SUMA_free(Test->Path);
    if (Test->FileName) SUMA_free(Test->FileName);
    if (Test->FullName) SUMA_free(Test->FullName);
@@ -12775,7 +13097,7 @@ int SUMA_search_file(char **fnamep, char *epath)
    pn = SUMA_Free_Parsed_Name(pn);
    #endif
    
-   /* Now work the path (based on code form get_altas function */
+   /* Now work the path (based on code form get_atlas function */
    if (!epath)    epath = getenv("PATH") ;
    if( epath == NULL ) SUMA_RETURN(NOPE) ; /* nothing left to do */
 
@@ -13595,7 +13917,8 @@ SUMA_STRING * SUMA_StringAppend_va (SUMA_STRING *SS, char *newstring, ... )
       va_start( vararg_ptr ,  newstring) ;
       if (strlen(newstring) >= MAX_APPEND -1 ) {
          SUMA_SL_Err("newstring too long.\nCannot use SUMA_StringAppend_va");
-         SUMA_RETURN(SUMA_StringAppend(SS,"Error SUMA_StringAppend_va: ***string too long to add ***"));
+         SUMA_RETURN(SUMA_StringAppend(SS,"Error SUMA_StringAppend_va: "
+                                          "***string too long to add ***"));
       }
       if (LocalHead) {
          SUMA_LH("Calling vsnprintf");
@@ -13606,7 +13929,9 @@ SUMA_STRING * SUMA_StringAppend_va (SUMA_STRING *SS, char *newstring, ... )
          }
       }
       nout = vsnprintf (sbuf, MAX_APPEND * sizeof(char), newstring, vararg_ptr); 
-      if (LocalHead) fprintf(SUMA_STDERR,"%s:\n Calling va_end, nout = %d\n", FuncName, nout);
+      if (LocalHead) 
+         fprintf(SUMA_STDERR,"%s:\n Calling va_end, nout = %d\n", 
+                  FuncName, nout);
       va_end(vararg_ptr);  /* cleanup */
       
       if (nout < 0) {
@@ -14327,7 +14652,7 @@ char * SUMA_file_suck( char *fname , int *nread )
    SUMA_ENTRY;
    
    *nread = 0;
-   if( fname == NULL || fname[0] == '\0') SUMA_RETURN(0) ;
+   if( fname == NULL || fname[0] == '\0') SUMA_RETURN(NULL) ;
 
    len = THD_filesize( fname ) ;
    if( len <= 0 ) SUMA_RETURN(buf) ;

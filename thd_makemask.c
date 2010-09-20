@@ -5,6 +5,14 @@
 ******************************************************************************/
 
 #include "mrilib.h"
+#include "uthash.h"
+
+typedef struct {
+    int id;    /* keep it named 'id' to facilitate use of convenience
+                  macros in uthash . */
+    UT_hash_handle hh;  /* keep name for same reason  */
+    int index;
+}  INT_HASH_DATUM;
 
 /*---------------------------------------------------------------------*/
 /*! Make a byte mask from mask dataset:
@@ -259,11 +267,65 @@ int THD_makedsetmask( THD_3dim_dataset *mask_dset ,
 }
 
 /*----------------------------------------------------------------------------*/
+extern int * UniqueInt (int *y, int ysz, int *kunq, int Sorted );
+
+int is_integral_sub_brick ( THD_3dim_dataset *dset, int isb, int check_values) {
+   float mfac = 0.0;
+   void *vv=NULL;
+
+   if(   !ISVALID_DSET(dset)    ||
+            isb < 0                     ||
+            isb >= DSET_NVALS(dset)  ) {
+
+      fprintf(stderr,"** Bad dset or sub-brick index.\n");
+      return (0) ;
+
+   }
+   if( !DSET_LOADED(dset) ) DSET_load(dset);
+
+   switch( DSET_BRICK_TYPE(dset,isb) ){
+      case MRI_short:
+      case MRI_byte:
+         if (check_values) {
+            mfac = DSET_BRICK_FACTOR(dset,isb) ;
+            if (mfac != 0.0f && mfac != 1.0f) return(0);
+         }
+         break;
+      case MRI_double:
+      case MRI_complex:
+      case MRI_float:
+         vv = (void *)DSET_ARRAY(dset,isb);
+         mfac = DSET_BRICK_FACTOR(dset,isb) ;
+         if (mfac != 0.0f && mfac != 1.0f) return(0);
+         if (!vv) {
+            fprintf(stderr,"** NULL array!\n");
+            return(0);
+         }
+         return(is_integral_data(DSET_NVOX(dset),
+                                 DSET_BRICK_TYPE(dset,isb),
+                                 DSET_ARRAY(dset,isb) ) );
+         break;
+      default:
+         return(0);
+   }
+
+   return(1);
+}
+
+int is_integral_dset ( THD_3dim_dataset *dset, int check_values) {
+   int i=0;
+
+   if(   !ISVALID_DSET(dset)  ) return(0);
+   for (i=0; i<DSET_NVALS(dset); ++i) {
+      if (!is_integral_sub_brick(dset, i, check_values)) return(0);
+   }
+   return(1);
+}
+
 /*!
    Returns a list of the unique values in a dataset.
 */
 
-extern int * UniqueInt (int *y, int ysz, int *kunq, int Sorted );
 int *THD_unique_vals( THD_3dim_dataset *mask_dset ,
                         int miv,
                         int *n_unique ,
@@ -286,6 +348,12 @@ int *THD_unique_vals( THD_3dim_dataset *mask_dset ,
 
    DSET_load(mask_dset) ; if( !DSET_LOADED(mask_dset) ) return (unq) ;
 
+   if (!is_integral_sub_brick (mask_dset, miv, 0)) {
+      fprintf(stderr,"** Sub-brick %d of %s is not of an integral data type.\n",
+                  miv, DSET_PREFIX(mask_dset) ? DSET_PREFIX(mask_dset):"NULL");
+      return (unq) ;
+   }
+
    vals = (int *)malloc(sizeof(int)*nvox);
    if (!vals) {
       fprintf(stderr,"** Failed to allocate.\n");
@@ -294,20 +362,18 @@ int *THD_unique_vals( THD_3dim_dataset *mask_dset ,
 
    switch( DSET_BRICK_TYPE(mask_dset,miv) ){
       default:
-         fprintf(stderr,"** Bad dset type for unique operation.\nOnly Byte and Short dsets are allowed.\n");
+         fprintf(stderr,"** Bad dset type for unique operation.\n"
+                        "Only integral valued dsets are allowed.\n");
          DSET_unload(mask_dset) ; if (vals) free(vals); return (unq) ;
 
       case MRI_short:{
          short *mar = (short *) DSET_ARRAY(mask_dset,miv) ;
-         float mfac = DSET_BRICK_FACTOR(mask_dset,miv) ;
-         if( mfac == 0.0 ) mfac = 1.0 ;
-
          if (cmask) {
             for( ii=0 ; ii < nvox ; ii++ )
-               if (cmask[ii]) vals[ii] = (int)(mar[ii]*mfac); else vals[ii] = 0;
+               if (cmask[ii]) vals[ii] = (int)(mar[ii]); else vals[ii] = 0;
          } else {
             for( ii=0 ; ii < nvox ; ii++ )
-               vals[ii] = (int)(mar[ii]*mfac);
+               vals[ii] = (int)(mar[ii]);
          }
 
       }
@@ -315,37 +381,29 @@ int *THD_unique_vals( THD_3dim_dataset *mask_dset ,
 
       case MRI_byte:{
          byte *mar = (byte *) DSET_ARRAY(mask_dset,miv) ;
-         float mfac = DSET_BRICK_FACTOR(mask_dset,miv) ;
-         if( mfac == 0.0 ) mfac = 1.0 ;
-
          if (cmask) {
             for( ii=0 ; ii < nvox ; ii++ )
-               if (cmask[ii]) vals[ii] = (int)(mar[ii]*mfac); else vals[ii] = 0;
+               if (cmask[ii]) vals[ii] = (int)(mar[ii]); else vals[ii] = 0;
          } else {
             for( ii=0 ; ii < nvox ; ii++ )
-               vals[ii] = (int)(mar[ii]*mfac);
+               vals[ii] = (int)(mar[ii]);
          }
 
       }
       break ;
 
-      #if 1 /* bad idea, but necessary in certain cases. We store ints (from NIFTI) as floats.*/
       case MRI_float:{
          float *mar = (float *) DSET_ARRAY(mask_dset,miv) ;
-         float mfac = DSET_BRICK_FACTOR(mask_dset,miv) ;
-         if( mfac == 0.0 ) mfac = 1.0 ;
-
          if (cmask) {
             for( ii=0 ; ii < nvox ; ii++ )
-               if (cmask[ii]) vals[ii] = (int)(mar[ii]*mfac); else vals[ii] = 0;
+               if (cmask[ii]) vals[ii] = (int)(mar[ii]); else vals[ii] = 0;
          } else {
             for( ii=0 ; ii < nvox ; ii++ )
-               vals[ii] = (int)(mar[ii]*mfac);
+               vals[ii] = (int)(mar[ii]);
          }
 
       }
       break ;
-      #endif
    }
 
    /* unique */
@@ -366,7 +424,8 @@ int *THD_unique_rank( THD_3dim_dataset *mask_dset ,
                         byte *cmask,
                         char *mapname)
 {
-   int nvox , ii, *unq = NULL, *vals=NULL, *rmap=NULL, imax=0;
+   int nvox , ii, *unq = NULL, *vals=NULL, imax=0;
+   INT_HASH_DATUM *rmap=NULL, *hd=NULL;
    int n_unique, r;
    FILE *fout=NULL;
 
@@ -385,6 +444,13 @@ int *THD_unique_rank( THD_3dim_dataset *mask_dset ,
 
    DSET_load(mask_dset) ; if( !DSET_LOADED(mask_dset) ) return (vals) ;
 
+   if (!is_integral_sub_brick (mask_dset, miv, 0)) {
+      fprintf(stderr,"** Sub-brick %d of %s is not integral valued.\n",
+                  miv, DSET_PREFIX(mask_dset) ? DSET_PREFIX(mask_dset):"NULL");
+      return (vals) ;
+   }
+
+
    vals = (int *)malloc(sizeof(int)*nvox);
    if (!vals) {
       fprintf(stderr,"** Failed to allocate.\n");
@@ -401,15 +467,12 @@ int *THD_unique_rank( THD_3dim_dataset *mask_dset ,
 
       case MRI_short:{
          short *mar = (short *) DSET_ARRAY(mask_dset,miv) ;
-         float mfac = DSET_BRICK_FACTOR(mask_dset,miv) ;
-         if( mfac == 0.0 ) mfac = 1.0 ;
-
          if (cmask) {
             for( ii=0 ; ii < nvox ; ii++ )
-               if (cmask[ii]) vals[ii] = (int)(mar[ii]*mfac); else vals[ii] = 0;
+               if (cmask[ii]) vals[ii] = (int)(mar[ii]); else vals[ii] = 0;
          } else {
             for( ii=0 ; ii < nvox ; ii++ )
-               vals[ii] = (int)(mar[ii]*mfac);
+               vals[ii] = (int)(mar[ii]);
          }
 
       }
@@ -417,15 +480,12 @@ int *THD_unique_rank( THD_3dim_dataset *mask_dset ,
 
       case MRI_byte:{
          byte *mar = (byte *) DSET_ARRAY(mask_dset,miv) ;
-         float mfac = DSET_BRICK_FACTOR(mask_dset,miv) ;
-         if( mfac == 0.0 ) mfac = 1.0 ;
-
          if (cmask) {
             for( ii=0 ; ii < nvox ; ii++ )
-               if (cmask[ii]) vals[ii] = (int)(mar[ii]*mfac); else vals[ii] = 0;
+               if (cmask[ii]) vals[ii] = (int)(mar[ii]); else vals[ii] = 0;
          } else {
             for( ii=0 ; ii < nvox ; ii++ )
-               vals[ii] = (int)(mar[ii]*mfac);
+               vals[ii] = (int)(mar[ii]);
          }
 
       }
@@ -434,15 +494,12 @@ int *THD_unique_rank( THD_3dim_dataset *mask_dset ,
       case MRI_float:{ /* not an integral type but we store ints (from NIFTI)
                           as floats */
          float *mar = (float *) DSET_ARRAY(mask_dset,miv) ;
-         float mfac = DSET_BRICK_FACTOR(mask_dset,miv) ;
-         if( mfac == 0.0 ) mfac = 1.0 ;
-
          if (cmask) {
             for( ii=0 ; ii < nvox ; ii++ )
-               if (cmask[ii]) vals[ii] = (int)(mar[ii]*mfac); else vals[ii] = 0;
+               if (cmask[ii]) vals[ii] = (int)(mar[ii]); else vals[ii] = 0;
          } else {
             for( ii=0 ; ii < nvox ; ii++ )
-               vals[ii] = (int)(mar[ii]*mfac);
+               vals[ii] = (int)(mar[ii]);
          }
 
       }
@@ -481,18 +538,34 @@ int *THD_unique_rank( THD_3dim_dataset *mask_dset ,
    }
    #else /* faster approach */
    imax=0;
-   for (r=0; r<n_unique; ++r) if (imax < unq[r]) imax = unq[r];
-   if (!(rmap=(int*)calloc(imax+1, sizeof(int)))) {
-      fprintf(stderr,"** Failed to allocate\n");
-      free(vals); free(unq); return (NULL);
-   }
    for (r=0; r<n_unique; ++r) {
-      rmap[unq[r]] = r;
+      if (imax < unq[r]) imax = unq[r];
       if (fout) fprintf(fout, "%d   %d\n", r, unq[r]);
+      hd = (INT_HASH_DATUM*)calloc(1,sizeof(INT_HASH_DATUM));
+      hd->id = unq[r];
+      hd->index = r;
+      HASH_ADD_INT(rmap, id, hd);
    }
    for (ii=0; ii<nvox; ii++)
-      if (!cmask || cmask[ii]) vals[ii] = rmap[vals[ii]];
-   free(rmap); rmap=NULL;
+      if (!cmask || cmask[ii]) {
+         HASH_FIND_INT(rmap,&(vals[ii]),hd);
+         if (hd)  vals[ii] = hd->index;
+         else {
+            fprintf(stderr,
+                     "** Failed to find key %d inhash table\n",
+                     vals[ii]);
+            free(vals);
+            while (rmap) { hd=rmap; HASH_DEL(rmap,hd); free(hd); }
+            return (NULL);
+         }
+      }
+   /* destroy hash */
+   while (rmap) {
+      hd=rmap;
+      HASH_DEL(rmap,hd);
+      if (hd) free(hd);
+   }
+
    #endif
 
    free(unq); unq = NULL;
@@ -500,6 +573,7 @@ int *THD_unique_rank( THD_3dim_dataset *mask_dset ,
 
    return (vals) ;
 }
+
 
 /*----------------------------------------------------------------------------*/
 /* Same as THD_unique_rank but replaces values in mask_dset with rank */
@@ -1015,4 +1089,191 @@ ENTRY("thd_mask_from_brick");
     *mask = tmask;
 
     RETURN(0);
+}
+
+/****************************************************************************
+ ** The functions below are for converting a byte-valued 0/1 mask to/from  **
+ ** an ASCII representation.  The ASCII representation is formed like so:  **
+ **    1. convert it to binary = 8 bits stored in each byte, rather than 1 **
+ **       - this takes the mask from nvox bytes to 1+(nvox-1)/8 bytes      **
+ **       - this operation is done in function mask_binarize() [below]     **
+ **    2. compress the binarized array with zlib                           **
+ **       - this step is done in function array_to_zzb64(), which uses     **
+ **         function zz_compress_all() [in zfun.c]                         **
+ **    3. express the compressed array into Base64 notation (in ASCII)     **
+ **       - this step is also done in function array_to_zzb64(), which     **
+ **         uses function B64_to_base64() [in niml/niml_b64.c]             **
+ **    4. attach at the end a string to indicate the number of voxels      **
+ **         in the mask.                                                   **
+ ** + The above steps are done in function mask_to_b64string() [below].    **
+ ** + The inverse is done in function mask_from_b64string() [below].       **
+ ** + Function mask_b64string_nvox() [below] can be used to get the voxel  **
+ **   count from the end of the string, which can be used to check if a    **
+ **   mask is compatible with a given dataset for which it is intended.    **
+ ****************************************************************************
+ * See program 3dMaskToASCII.c for sample usage of these functions.         *
+*****************************************************************************/
+
+/*-------------------------------------------------------------------------*/
+/*! Convert a byte-value 0/1 mask to an ASCII string in Base64. */
+
+char * mask_to_b64string( int nvox , byte *mful )
+{
+   byte *mbin ; char *str ; int nstr ;
+
+   if( nvox < 1 || mful == NULL ) return NULL ;          /* bad inputs */
+
+   mbin = mask_binarize( nvox , mful ) ;
+   str  = array_to_zzb64( 1+(nvox-1)/8 , mbin , 72 ) ; free(mbin) ;
+   if( str == NULL ) return NULL ;              /* should never happen */
+
+   nstr = strlen(str) ;
+   str  = (char *)realloc( str , sizeof(char)*(nstr+16) ) ;
+   sprintf( str+nstr-1 , "===%d" , nvox ) ;  /* -1 to erase last linefeed */
+
+   return str ;
+}
+
+/*-------------------------------------------------------------------------*/
+/*! Convert an ASCII string in Base64 to a byte-valued 0/1 mask. */
+
+byte * mask_from_b64string( char *str , int *nvox )
+{
+   byte *mful , *mbin=NULL ; int nvvv , nstr , ii,ibot , nbin ;
+
+   if( str == NULL || nvox == NULL ) return NULL ;    /* bad inputs */
+
+   nvvv = mask_b64string_nvox(str) ;
+   if( nvvv <= 0 ) return NULL ;                            /* WTF? */
+
+   /* decode string to binarized array */
+
+   nbin = zzb64_to_array( str , (char **)&mbin ) ;
+   if( nbin <= 0 || mbin == NULL ) return NULL ;      /* bad decode */
+
+   /* decode binarized array to byte mask */
+
+   mful = mask_unbinarize( nvvv , mbin ) ; free(mbin) ;
+
+   *nvox = nvvv ; return mful ;
+}
+
+/*-------------------------------------------------------------------------*/
+
+int mask_b64string_nvox( char *str )
+{
+   int nstr , ii , ibot ;
+
+   if( str == NULL ) return 0 ;
+   nstr = strlen(str) ; if( nstr < 7 ) return 0 ;      /* too short */
+
+   /* find the last '=' at the end of the string */
+
+   ibot = nstr-16 ; if( ibot < 3 ) ibot = 3 ;
+   for( ii=nstr-1 ; ii > ibot && str[ii] != '=' ; ii-- ) ; /*nada*/
+   if( str[ii] != '=' ) return 0 ;               /* badly formatted */
+
+   ibot = (int)strtod(str+ii+1,NULL) ;          /* number of voxels */
+   return ibot ;
+}
+
+/*-------------------------------------------------------------------------*/
+/* Input:  0/1 array of bytes, nvox long.
+   Output: compressed by a factor of 8: 1+(nvox-1)/8 bytes long.
+*//*-----------------------------------------------------------------------*/
+
+static byte binar[8] = { 1 , 1<<1 , 1<<2 , 1<<3 , 1<<4 , 1<<5 , 1<<6 , 1<<7 } ;
+
+byte * mask_binarize( int nvox , byte *mful )
+{
+   register byte *mbin ; register int ii ;
+
+   if( nvox < 1 || mful == NULL ) return NULL ;
+
+   mbin = (byte *)calloc(sizeof(byte),1+(nvox-1)/8) ;
+
+   for( ii=0 ; ii < nvox ; ii++ )
+     if( mful[ii] != 0 ) mbin[ii>>3] |= binar[ii&0x7] ;
+
+   return mbin ;
+}
+
+/*-------------------------------------------------------------------------*/
+
+byte * mask_unbinarize( int nvox , byte *mbin )
+{
+   register byte *mful ; register int ii ;
+
+   if( nvox < 1 || mbin == NULL ) return NULL ;
+
+   mful = (byte *)calloc(sizeof(byte),nvox) ;
+
+   for( ii=0 ; ii < nvox ; ii++ )
+     mful[ii] = ( mbin[ii>>3] & binar[ii&0x7] ) != 0 ;
+
+   return mful ;
+}
+
+/*===========================================================================*/
+/*! Create a binary byte-valued mask from an input string:
+      - a dataset filename
+      - a Base64 mask string
+      - filename with data containing a Base64 mask string
+      - future editions?
+*//*-------------------------------------------------------------------------*/
+
+bytevec * THD_create_mask_from_string( char *str )  /* Jul 2010 */
+{
+   bytevec *bvec ; int nstr ; char *buf=NULL ;
+
+ENTRY("THD_create_mask") ;
+
+   if( str == NULL || *str == '\0' ) RETURN(NULL) ;
+
+   nstr = strlen(str) ;
+   bvec = (bytevec *)malloc(sizeof(bytevec)) ;
+
+   /* try to read it as a dataset */
+
+   if( nstr < THD_MAX_NAME ){
+     THD_3dim_dataset *dset = THD_open_one_dataset(str) ;
+     if( dset != NULL ){
+       bvec->nar = DSET_NVOX(dset) ;
+       bvec->ar  = THD_makemask( dset , 0 , 1.0f,0.0f ) ;
+       if( bvec->ar == NULL ){
+         ERROR_message("Can't make mask from dataset '%s'",str) ;
+         free(bvec) ; bvec = NULL ;
+       }
+       RETURN(bvec) ;
+     }
+   }
+
+   /* if str is a filename, read that file;
+      otherwise, use the string itself to find the mask */
+
+   if( THD_is_file(str) ){
+     buf = AFNI_suck_file(str) ;
+     if( buf != NULL ) nstr = strlen(buf) ;
+   } else {
+     buf = str ;
+   }
+
+   /* try to read buf as a Base64 mask string */
+
+   if( strrchr(buf,'=') != NULL ){
+     int nvox ;
+     bvec->ar = mask_from_b64string( buf , &nvox ) ;
+     if( bvec->ar != NULL ){
+       bvec->nar = nvox ;
+     } else {
+       ERROR_message("Can't make mask from string '%.16s' %s",buf,(nstr<=16)?" ":"...") ;
+       free(bvec) ; bvec = NULL ;
+     }
+   } else {
+     ERROR_message("Don't understand mask string '%.16s'",buf,(nstr<=16)?" ":"...") ;
+     free(bvec) ; bvec = NULL ;
+   }
+
+   if( buf != str && buf != NULL ) free(buf) ;
+   RETURN(bvec) ;
 }

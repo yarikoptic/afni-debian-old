@@ -1,5 +1,10 @@
 #include "mrilib.h"
 
+#ifdef USE_OMP
+#include "mri_blur3d_variable.c"
+#include "thd_satcheck.c"
+#endif
+
 void THD_vectim_localpv( MRI_vectim *mrv , float rad ) ;
 int THD_vectim_subset_pv( MRI_vectim *mrv, int nind, int *ind,
                                            float *ar, unsigned short xran[] ) ;
@@ -8,7 +13,7 @@ int THD_vectim_subset_pv( MRI_vectim *mrv, int nind, int *ind,
 
 int main( int argc , char * argv[] )
 {
-   int do_norm=0 , qdet=1 , have_freq=0 , do_automask=0 ;
+   int do_norm=0 , qdet=2 , have_freq=0 , do_automask=0 ;
    float dt=0.0f , fbot=0.0f,ftop=999999.9f , blur=0.0f ;
    MRI_IMARR *ortar=NULL ; MRI_IMAGE *ortim=NULL ;
    THD_3dim_dataset **ortset=NULL ; int nortset=0 ;
@@ -18,7 +23,7 @@ int main( int argc , char * argv[] )
    int mask_nx,mask_ny,mask_nz,nmask , verb=1 , nx,ny,nz,nvox , nfft=0 , kk ;
    float **vec , **ort=NULL ; int nort=0 , vv , nopt , ntime  ;
    MRI_vectim *mrv ;
-   float pvrad=0.0f ;
+   float pvrad=0.0f ; int nosat=0 ;
 
    /*-- help? --*/
 
@@ -105,9 +110,25 @@ int main( int argc , char * argv[] )
        " -band fbot ftop = Alternative way to specify passband frequencies.\n"
        " -prefix ppp     = Set prefix name of output dataset.\n"
        " -quiet          = Turn off the fun and informative messages. (Why?)\n"
+       " -notrans        = Don't check for initial positive transients in the data:\n"
+       "                   ++ The test is a little slow, so skipping it is OK,\n"
+       "                      if you KNOW the data time series are transient-free.\n"
+       "                   ++ Initial transients won't be handled well by the\n"
+       "                      bandpassing algorithm, and in addition may seriously\n"
+       "                      contaminate any further processing, such as inter-voxel\n"
+       "                      correlations via InstaCorr.\n"
+       "                   ++ No other tests are made [yet] for non-stationary behavior\n"
+       "                      in the time series data.\n"
+     ) ;
+     PRINT_AFNI_OMP_USAGE(
+       "3dBandpass" ,
+       "* At present, the only part of 3dBandpass that is parallelized is the\n"
+       "  '-blur' option, which processes each sub-brick independently.\n"
      ) ;
      PRINT_COMPILE_DATE ; exit(0) ;
    }
+
+   /*-- startup --*/
 
    mainENTRY("3dBandpass"); machdep();
    AFNI_logger("3dBandpass",argc,argv);
@@ -172,6 +193,10 @@ int main( int argc , char * argv[] )
 
      if( strcmp(argv[nopt],"-quiet") == 0 ){
        verb = 0 ; nopt++ ; continue ;
+     }
+
+     if( strcmp(argv[nopt],"-notrans") == 0 || strcmp(argv[nopt],"-nosat") == 0 ){
+       nosat = 1 ; nopt++ ; continue ;
      }
 
      if( strcmp(argv[nopt],"-ort") == 0 ){
@@ -275,6 +300,9 @@ int main( int argc , char * argv[] )
 
    /* check mask, or create it */
 
+   if( verb ) INFO_message("Loading input dataset time series" ) ;
+   DSET_load(inset) ;
+
    if( mask != NULL ){
      if( mask_nx != nx || mask_ny != ny || mask_nz != nz )
        ERROR_exit("-mask dataset grid doesn't match input dataset") ;
@@ -293,6 +321,24 @@ int main( int argc , char * argv[] )
      if( verb ) INFO_message("No mask ==> processing all %d voxels",nvox);
    }
 
+   /* A simple check of dataset quality [08 Feb 2010] */
+
+   if( !nosat ){
+     float val ;
+     INFO_message(
+      "Checking dataset for initial transients [use '-notrans' to skip this test]") ;
+     val = THD_saturation_check(inset,mask) ; kk = (int)(val+0.54321f) ;
+     if( kk > 0 )
+       ININFO_message(
+        "Looks like there %s %d non-steady-state initial time point%s :-(" ,
+        ((kk==1) ? "is" : "are") , kk , ((kk==1) ? " " : "s") ) ;
+     else if( val > 0.3210f )  /* don't ask where this threshold comes from! */
+       ININFO_message(
+        "MAYBE there's an initial positive transient of 1 point, but it's hard to tell\n") ;
+     else
+       ININFO_message("No widespread initial positive transient detected :-)") ;
+   }
+
    /* check -dsort inputs for match to inset */
 
    for( kk=0 ; kk < nortset ; kk++ ){
@@ -306,7 +352,6 @@ int main( int argc , char * argv[] )
 
    /* convert input dataset to a vectim, which is more fun */
 
-   if( verb ) INFO_message("Loading input dataset time series" ) ;
    mrv = THD_dset_to_vectim( inset , mask , 0 ) ;
    if( mrv == NULL ) ERROR_exit("Can't load time series data!?") ;
    DSET_unload(inset) ;
@@ -363,6 +408,7 @@ int main( int argc , char * argv[] )
    if( pvrad > 0.0f ){
      if( verb )
        INFO_message("Local PV-ing time series data spatially; radius=%.2f",pvrad) ;
+     THD_vectim_normalize( mrv ) ;
      THD_vectim_localpv( mrv , pvrad ) ;
    }
    if( do_norm && pvrad <= 0.0f ){
@@ -372,15 +418,29 @@ int main( int argc , char * argv[] )
 
    /* create output dataset, populate it, write it, then quit */
 
+   if( verb ) INFO_message("Creating output dataset in memory, then writing it") ;
    outset = EDIT_empty_copy(inset) ;
    EDIT_dset_items( outset , ADN_prefix,prefix , ADN_none ) ;
    tross_Copy_History( inset , outset ) ;
    tross_Make_History( "3dBandpass" , argc,argv , outset ) ;
 
-   for( kk=0 ; kk < ntime ; kk++ )
-     EDIT_substitute_brick( outset , kk , MRI_float , NULL ) ;
+   for( vv=0 ; vv < ntime ; vv++ )
+     EDIT_substitute_brick( outset , vv , MRI_float , NULL ) ;
 
+#if 1
    THD_vectim_to_dset( mrv , outset ) ;
+#else
+#pragma omp parallel
+ { float *far , *var ; int *ivec=mrv->ivec ; int vv,kk ;
+ AFNI_OMP_START ;
+#pragma omp for
+   for( vv=0 ; vv < ntime ; vv++ ){
+     far = DSET_BRICK_ARRAY(outset,vv) ; var = mrv->fvec + vv ;
+     for( kk=0 ; kk < nmask ; kk++ ) far[ivec[kk]] = var[kk*ntime] ;
+   }
+ AFNI_OMP_END ;
+ }
+#endif
    VECTIM_destroy(mrv) ;
    DSET_write(outset) ; if( verb ) WROTE_DSET(outset) ;
 
@@ -395,11 +455,18 @@ void THD_vectim_localpv( MRI_vectim *mrv , float rad )
   MCW_cluster *nbhd ;
   int iv,kk,nn,nx,ny,nz,nxy , nind , *ind , xx,yy,zz , aa,bb,cc ;
   float *pv , *fv ;
+  MRI_vectim *qrv ;  /* workspace to hold results */
 
   nbhd = MCW_spheremask( mrv->dx,mrv->dy,mrv->dz , rad ) ;
   if( nbhd->num_pt <= 1 ){ THD_vectim_normalize(mrv); return; }
   ind = (int *)malloc(sizeof(int)*nbhd->num_pt) ;
   pv  = (float *)malloc(sizeof(float)*mrv->nvals) ;
+
+  kk = thd_floatscan( mrv->nvec*mrv->nvals , mrv->fvec ) ;
+  if( kk > 0 )
+    WARNING_message("fixed %d float error%s before localPV",kk,(kk==1)?"\0":"s");
+
+  qrv = THD_vectim_copy(mrv) ;  /* 08 Apr 2010: workspace */
 
   nx = mrv->nx ; ny = mrv->ny ; nz = mrv->nz ; nxy = nx*ny ;
   for( iv=0 ; iv < mrv->nvec ; iv++ ){
@@ -412,13 +479,20 @@ void THD_vectim_localpv( MRI_vectim *mrv , float rad )
     }
 
     nn = THD_vectim_subset_pv( mrv , nind,ind , pv , xran ) ;
-    fv = VECTIM_PTR(mrv,iv) ;
+    fv = VECTIM_PTR(qrv,iv) ; /* 08 Apr 2010: result goes in here, not mrv! */
     if( nn > 0 ){
       for( kk=0 ; kk < mrv->nvals ; kk++ ) fv[kk] = pv[kk] ;
     } else {                                             /* should not happen */
       THD_normalize( mrv->nvals , fv ) ;
     }
   }
+
+  memcpy( mrv->fvec , qrv->fvec , sizeof(float)*mrv->nvec*mrv->nvals ) ;
+  VECTIM_destroy(qrv) ;
+
+  kk = thd_floatscan( mrv->nvec*mrv->nvals , mrv->fvec ) ;
+  if( kk > 0 )
+    WARNING_message("fixed %d float error%s after localPV",kk,(kk==1)?"\0":"s");
 
   KILL_CLUSTER(nbhd) ; free(ind) ; free(pv) ; return ;
 }

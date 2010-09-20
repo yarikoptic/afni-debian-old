@@ -20,6 +20,8 @@
 
 #define COLSIZE AV_colsize()
 
+static Widget wtemp ;
+
 /***************************************************************************
    Routines to open and initialize plugins.  These should only
    be called at the very end of AFNI initialization, since they
@@ -279,7 +281,7 @@ ENTRY("PLUG_get_many_plugins") ;
 /**
 #if defined(DARWIN) && !defined(c_plusplus) && !defined(__cplusplus)
 **/
-#ifdef DARWIN
+#if 0  /* formerly ifdef DARWIN */
    if( _dyld_present() == 0 ) RETURN(NULL) ;  /* 05 Sep 2001: Mac OSX */
 #endif
 
@@ -569,6 +571,7 @@ ENTRY("new_PLUGIN_interface_1999") ;
    plint->wid          = NULL ;
    plint->im3d         = NULL ;
    plint->hint         = NULL ;
+   plint->toplabel[0]  = '\0' ;  /* 13 May 2010 */
 
    if( help == NULL || strlen(help) == 0 )
       plint->helpstring = NULL ;
@@ -664,14 +667,30 @@ ENTRY("PLUTO_set_butcolor") ;
 }
 
 /*----------------------------------------------------------------------
+  Change the top level label in a plugin [13 May 2010]
+------------------------------------------------------------------------*/
+
+void PLUTO_set_toplabel( PLUGIN_interface *plint , char *lab )
+{
+ENTRY("PLUTO_set_toplabel") ;
+   if( plint != NULL ){
+     if( plint->wid != NULL )
+       MCW_set_widget_label( plint->wid->label , lab ) ;
+     MCW_strncpy( plint->toplabel , lab , PLUGIN_STRING_SIZE ) ;
+   }
+   EXRETURN ;
+}
+
+/*---------------------------------------------------------------------------
    Routine to add a new option line to a plugin interface menu.
 
    plint      = PLUGIN_interface * which will have the option added
    label     = C string to be displayed in the menu describing this option
    tag       = C string to be passed to the plugin when this option is used
-   mandatory = TRUE  (1) if this option is always passed to the plugin
-               FALSE (0) if the user may or may not select this option
-------------------------------------------------------------------------*/
+   mandatory = TRUE  (1)  if this option is always passed to the plugin
+               FALSE (0)  if the user may or may not select this option
+               MAYBE (-1) if it is to be turned on, but it can be turned off
+-----------------------------------------------------------------------------*/
 
 void add_option_to_PLUGIN_interface( PLUGIN_interface * plint ,
                                      char * label , char * tag , int mandatory )
@@ -1254,10 +1273,10 @@ ENTRY("PLUG_setup_widgets") ;
    /**** create widgets structure ****/
 
    plint->wid = wid = myXtNew(PLUGIN_widgets) ;
-   
+
    /**** create Shell that can be opened up later ****/
-   /* 'LessTif Widormous' 
-      With 64bit LessTif, some widgets get created with 
+   /* 'LessTif Widormous'
+      With 64bit LessTif, some widgets get created with
       enormous sizes. To complicate matters, the problem
       occurred randomly so tracking it is a frustrating
       exercise. It looks like adding a few, harmless,
@@ -1265,7 +1284,7 @@ ENTRY("PLUG_setup_widgets") ;
       fixed the problem. Those parameters have no effect
       on the final plugin's look so we won't bother to find
       out which of them was necessary for fixing the problem.
-                  12 Feb 2009 9Lesstif patrol] 
+                  12 Feb 2009 9Lesstif patrol]
    */
    wid->shell =
       XtVaAppCreateShell(
@@ -1313,7 +1332,11 @@ ENTRY("PLUG_setup_widgets") ;
 
    /**** create Label at top to hold description of this program ****/
 
-   sprintf( str , "AFNI Plugin: %s" , plint->description ) ;
+   if( plint->toplabel[0] == '\0' )
+     sprintf( str , "AFNI Plugin: %s" , plint->description ) ;
+   else
+     strcpy( str , plint->toplabel ) ;  /* 13 May 2010 */
+
    xstr = XmStringCreateLtoR( str , XmFONTLIST_DEFAULT_TAG ) ;
    wid->label =
       XtVaCreateManagedWidget(
@@ -1329,7 +1352,7 @@ ENTRY("PLUG_setup_widgets") ;
                XmNwidth, 20, /*         12 Feb 2009 9Lesstif patrol] */
            XmNinitialResourcesPersistent , False ,
         NULL ) ;
-    XmStringFree( xstr ) ;
+    XmStringFree( xstr ) ; LABELIZE(wid->label) ;
 
     /* now that we have the label,
        find its sizes and make sure the shell doesn't get too small */
@@ -1481,8 +1504,8 @@ ENTRY("PLUG_setup_widgets") ;
               XmNlabelType        , XmPIXMAP ,             /* No label attached */
               XmNlabelPixmap      , XmUNSPECIFIED_PIXMAP , /* Just the toggle!  */
 
-              XmNset              , (opt->mandatory) ? True  : False ,
-              XmNsensitive        , (opt->mandatory) ? False : True  ,
+              XmNset              , (opt->mandatory != FALSE) ? True  : False ,
+              XmNsensitive        , (opt->mandatory == TRUE ) ? False : True  ,
 
               XmNindicatorSize    , hh-1 ,
               XmNmarginHeight     , 0  ,
@@ -1504,7 +1527,7 @@ ENTRY("PLUG_setup_widgets") ;
                          "toggle this button off."
                        ) ;
 
-      if( opt->mandatory )
+      if( opt->mandatory == TRUE )
          MCW_register_hint( ow->toggle ,
                             "This input line is mandatory" ) ;
       else
@@ -1514,7 +1537,7 @@ ENTRY("PLUG_setup_widgets") ;
       /* this callback will change the appearance of the
          option's row of widgets when the toggle button is pressed */
 
-      if( ! opt->mandatory )
+      if( opt->mandatory != TRUE )
          XtAddCallback( ow->toggle , XmNvalueChangedCallback ,
                         PLUG_optional_toggle_CB , (XtPointer) ow ) ;
 
@@ -1545,7 +1568,7 @@ fprintf(stderr,"Option setup %s\n",opt->label) ;
               XmNinitialResourcesPersistent , False ,
            NULL ) ;
       XmStringFree( xstr ) ;
-      if( opt->mandatory && !zlen ){
+      if( opt->mandatory == TRUE && !zlen ){
          MCW_invert_widget( ow->label ) ;
          MCW_register_help( ow->label ,
                             "This label is inverted as a\n"
@@ -1603,8 +1626,8 @@ fprintf(stderr,"colormenu setup %s; opt->tag=%s.\n",sv->label,opt->tag) ;
                ow->chtop[ib]   = av->wrowcol ;  /* get the top widget */
                #ifdef USING_LESSTIF_NOT_DOING_THIS
                   if (CPU_IS_64_BIT() ){
-                     ow->chtop[ib]   = XtParent(XtParent(av->wrowcol)); 
-                              /* get the very top rowcol holding the 
+                     ow->chtop[ib]   = XtParent(XtParent(av->wrowcol));
+                              /* get the very top rowcol holding the
                                  optmenu rowcol, see function
                                  new_MCW_optmenu_64fix   [LPatrol Feb 19 2009] */
                   }
@@ -1644,8 +1667,8 @@ fprintf(stderr,"colormenu setup %s; opt->tag=%s.\n",sv->label,opt->tag) ;
                ow->chtop[ib]   = av->wrowcol ;  /* get the top widget */
                #ifdef USING_LESSTIF_NOT_DOING_THIS
                   if (CPU_IS_64_BIT() && use_optmenu){
-                     ow->chtop[ib]   = XtParent(XtParent(av->wrowcol)); 
-                              /* get the very top rowcol holding the 
+                     ow->chtop[ib]   = XtParent(XtParent(av->wrowcol));
+                              /* get the very top rowcol holding the
                                  optmenu rowcol, see function
                                  new_MCW_optmenu_64fix [LPatrol Feb 19 2009]*/
                   }
@@ -1709,8 +1732,8 @@ fprintf(stderr,"colormenu setup %s; opt->tag=%s.\n",sv->label,opt->tag) ;
                   ow->chtop[ib]   = av->wrowcol ;  /* get the top widget */
                   #ifdef USING_LESSTIF_NOT_DOING_THIS
                   if (CPU_IS_64_BIT() && use_optmenu ){
-                     ow->chtop[ib]   = XtParent(XtParent(av->wrowcol)); 
-                              /* get the very top rowcol holding the 
+                     ow->chtop[ib]   = XtParent(XtParent(av->wrowcol));
+                              /* get the very top rowcol holding the
                                  optmenu rowcol, see function
                                  new_MCW_optmenu_64fix [LPatrol Feb 19 2009]*/
                   }
@@ -1938,7 +1961,7 @@ fprintf(stderr,"colormenu setup %s; opt->tag=%s.\n",sv->label,opt->tag) ;
                XmNtopWidget        , separator ,
             NULL ) ;
 
-         if( !opt->mandatory ) XtSetSensitive( ow->chtop[ib] , False ) ;
+         if( opt->mandatory == FALSE ) XtSetSensitive( ow->chtop[ib] , False ) ;
 
          if( sv->hint != NULL )
              MCW_reghint_children( ow->chtop[ib] , sv->hint ) ;
@@ -2097,7 +2120,7 @@ ENTRY("PLUTO_turnoff_options") ;
    /**** loop over options */
 
    for( kk=0 ; kk < plint->option_count ; kk++ ){
-      if( !plint->option[kk]->mandatory )
+      if( plint->option[kk]->mandatory != TRUE )
          XmToggleButtonSetState( plint->wid->opwid[kk]->toggle, False,True ) ;
    }
 
@@ -2417,6 +2440,8 @@ ENTRY("get_label_from_PLUGIN_interface") ;
    if( plint == NULL ) RETURN(NULL) ;
    else                RETURN(plint->label) ;
 }
+
+/*-----------------------------------------------------------------------*/
 
 char * get_description_from_PLUGIN_interface( PLUGIN_interface * plint )
 {
@@ -2824,7 +2849,9 @@ ENTRY("PLUG_choose_dataset_CB") ;
       /* check datasets in this session */
 
       for( id=0 ; id < ss->num_dsset ; id++ ){
-        dset = ss->dsset[id][vv] ;            if( dset == NULL ) continue ;
+             dset = GET_SESSION_DSET(ss, id, vv);
+        /* dset = ss->dsset_xform_table[id][vv] ; */
+        if( dset == NULL ) continue ;
 
         if( sv->dset_anat_mask != 0 && ISANAT(dset) )
           if( ! PLUGIN_dset_check( sv->dset_anat_mask ,
@@ -3226,7 +3253,9 @@ ENTRY("PLUTO_popup_dset_chooser") ;
       /* check datasets from this session */
 
       for( id=0 ; id < ss->num_dsset ; id++ ){
-         dset = ss->dsset[id][vv] ;    if( dset == NULL ) continue ;
+         dset = GET_SESSION_DSET(ss, id, vv);
+         /* dset = ss->dsset_xform_table[id][vv] ; */
+         if( dset == NULL ) continue ;
 #if 0
          if( chk_func != NULL && chk_func(dset,cd) == 0 ) continue ; /* skip */
 #else
@@ -3526,13 +3555,13 @@ ENTRY("AFNI_plugin_button") ;
    /*** top of menu = a label to click on that does nothing at all ***/
 
    xstr = XmStringCreateLtoR( "-- Cancel --" , XmFONTLIST_DEFAULT_TAG ) ;
-   (void) XtVaCreateManagedWidget(
+   wtemp = XtVaCreateManagedWidget(
             "dialog" , xmLabelWidgetClass , menu ,
                XmNlabelString , xstr ,
                XmNrecomputeSize , False ,
                XmNinitialResourcesPersistent , False ,
             NULL ) ;
-   XmStringFree(xstr) ;
+   XmStringFree(xstr) ; LABELIZE(wtemp) ;
 
    sep = XtVaCreateManagedWidget(
             "dialog" , xmSeparatorWidgetClass , menu ,
@@ -3743,7 +3772,9 @@ ENTRY("PLUTO_add_dset") ;
      fprintf(stderr,"*** Overflow session dataset limit ***\n") ;
      RETURN(1) ;
    }
-   sess->dsset[id][vv] = dset ;
+   SET_SESSION_DSET(dset, sess, id, vv);
+
+/*   sess->dsset_xform_table[id][vv] = dset ; */
    sess->num_dsset ++ ;
 
    /** make sure the dataset is properly fit into the situation **/
@@ -4653,7 +4684,8 @@ ENTRY("PLUTO_4D_to_typed_fbuc") ;
    if( ! PLUTO_prefix_ok(new_prefix) ) RETURN(NULL) ;
 
    new_dset = MAKER_4D_to_typed_fbuc( old_dset , new_prefix , new_datum ,
-                                      ignore , detrend , nbrik , user_func , user_data ) ;
+                                      ignore , detrend , nbrik , user_func ,
+                                      user_data, NULL ) ;
 
    RETURN(new_dset) ;
 }
@@ -4721,6 +4753,8 @@ ENTRY("new_PLUGIN_strval") ;
    RETURN(av) ;
 }
 
+/*----------------------------------------------------------------------------*/
+
 void destroy_PLUGIN_strval( PLUGIN_strval * av )
 {
    if( av != NULL ){
@@ -4730,12 +4764,16 @@ void destroy_PLUGIN_strval( PLUGIN_strval * av )
    return ;
 }
 
+/*----------------------------------------------------------------------------*/
+
 void alter_PLUGIN_strval_width( PLUGIN_strval * av , int nchar )
 {
    if( av != NULL && nchar > 0 )
       XtVaSetValues( av->textf , XmNcolumns , nchar , NULL ) ;
    return ;
 }
+
+/*----------------------------------------------------------------------------*/
 
 void set_PLUGIN_strval( PLUGIN_strval * av , char * str )
 {
@@ -4744,15 +4782,19 @@ void set_PLUGIN_strval( PLUGIN_strval * av , char * str )
    return ;
 }
 
+/*----------------------------------------------------------------------------*/
+
 char * get_PLUGIN_strval( PLUGIN_strval * av )   /* must be XtFree-d */
 {
    if( av == NULL ) return NULL ;
                     return XmTextFieldGetString( av->textf ) ;
 }
 
+/*----------------------------------------------------------------------------*/
+
 /* Set the addresses of the main vol2surf globals.  Note that the
  * plugin options pointer is stored as (void *) so that vol2surf.h
- * will not need to percolate up to afni.h.	09 Sep 2004 [rickr]
+ * will not need to percolate up to afni.h.  09 Sep 2004 [rickr]
  */
 #include "vol2surf.h"
 int PLUTO_set_v2s_addrs(void ** vopt, char *** maps, char ** hist)
@@ -4812,6 +4854,7 @@ static vptr_func * forced_loads[] = {
    (vptr_func *) r_hex_str_to_long ,      /* 31 Jul 2007 */
    (vptr_func *) r_idisp_vec3f ,          /* 31 Jul 2007 */
    (vptr_func *) THD_dataset_mismatch ,   /* 04 Sep 2009 */
+   (vptr_func *) legendre ,               /* 16 Jul 2010 */
 #endif
 NULL } ;
 
@@ -4832,9 +4875,9 @@ void * MCW_onen_i_estel_edain(void *n){} ;  /* dummy routine */
    a few places in AFNI that are not plugin-specific.
 ************************************************************************/
 
-void PLUTO_register_timeseries( char * cname , MRI_IMAGE * tsim )
+void PLUTO_register_timeseries( char *cname , MRI_IMAGE *tsim )
 {
-   MRI_IMAGE * qim ;
+   MRI_IMAGE *qim ;
 
 ENTRY("PLUTO_register_timeseries") ;
 
@@ -4850,7 +4893,7 @@ ENTRY("PLUTO_register_timeseries") ;
   Find a dataset, given its idcode string. [02 Mar 2002]
 ------------------------------------------------------------------------------*/
 
-THD_3dim_dataset * PLUTO_find_dset_idc( char * idc )
+THD_3dim_dataset * PLUTO_find_dset_idc( char *idc )
 {
    MCW_idcode idcode ;
    if( idc == NULL ) return NULL ;
@@ -5257,6 +5300,8 @@ fprintf(stderr,"PLUTO_register_workproc: have %d workprocs\n",num_workp) ;
    EXRETURN ;
 }
 
+/*----------------------------------------------------------------------------*/
+
 void PLUTO_remove_workproc( XtWorkProc func )
 {
    int ii , ngood ;
@@ -5290,6 +5335,8 @@ ENTRY("PLUTO_remove_workproc") ;
 
    EXRETURN ;
 }
+
+/*----------------------------------------------------------------------------*/
 
 Boolean PLUG_workprocess( XtPointer fred )
 {
@@ -5349,6 +5396,8 @@ STATUS("calling user timeout function") ;
    myXtFree(myt) ; EXRETURN ;
 }
 
+/*----------------------------------------------------------------------------*/
+
 void PLUTO_register_timeout( int msec, generic_func * func, XtPointer cd )
 {
    mytimeout * myt ;
@@ -5398,6 +5447,8 @@ double PLUTO_elapsed_time(void) /* in seconds */
                    +(new_tval.tv_usec - old_tval.tv_usec)*1.0e-6 ) ;
 }
 
+/*----------------------------------------------------------------------------*/
+
 double PLUTO_cpu_time(void)  /* in seconds */
 {
 #ifdef CLK_TCK
@@ -5409,6 +5460,6 @@ double PLUTO_cpu_time(void)  /* in seconds */
                       )
            / (double) CLK_TCK ) ;
 #else
-   return 0.0l ;
+   return 0.0 ;
 #endif
 }

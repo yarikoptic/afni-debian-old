@@ -523,6 +523,7 @@ int SUMA_period_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
                         "Error %s: Failed in SUMA_SwitchState.\n", FuncName);
                break;
             }
+            SUMA_SET_AS_NEEDED_2D_VIEW_ANGLE(sv);
 
          } while (!SUMA_VisibleSOs (sv, SUMAg_DOv, NULL) && 
                   sv->iState != origState);
@@ -1050,12 +1051,12 @@ int SUMA_D_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
                }
                SUMA_RETURN(1);
             }
-            if (SDSET_VECNUM(in_dset) < 2) {
+            if (SDSET_VECNUM(in_dset) < 3) {
                if (callmode && strcmp(callmode, "interactive") == 0) {
-                  SUMA_SLP_Warn( "Need more than 1 value per node.\n"
+                  SUMA_SLP_Warn( "Need more than 3 values per node.\n"
                                  "Nothing to dot.");
                }else{
-                  SUMA_S_Warn("Need more than 1 value per node.\n"
+                  SUMA_S_Warn("Need more than 3 values per node.\n"
                               "Nothing to dot.");
                }     
                SUMA_RETURN(1);
@@ -1169,7 +1170,8 @@ int SUMA_D_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
                                                    /* no replacement allowed 
                                                    I don't think it's necessary*/
                   if (!SUMA_InsertDsetPointer (&dot, SUMAg_CF->DsetList, 0)) {
-                     SUMA_S_Err("Failed to insert pointer");
+                     SUMA_S_Errv("Failed to insert pointer for %s\n", 
+                                 SDSET_LABEL(dot));
                      SUMA_RETURN(0);
                   }
                   
@@ -1719,10 +1721,14 @@ int SUMA_N_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
          break;
       case XK_n:
          if (SUMA_CTRL_KEY(key)) {   
-            if (LocalHead) fprintf(SUMA_STDOUT, "%s: Opening a new controller...\n", FuncName);
+            if (LocalHead) 
+               fprintf(SUMA_STDOUT, 
+                        "%s: Opening a new controller...\n", FuncName);
             /* open a new controller */
             if (!SUMA_X_SurfaceViewer_Create ()) {
-               fprintf (SUMA_STDERR,"Error %s: Failed in SUMA_X_SurfaceViewer_Create.\n", FuncName);
+               fprintf (SUMA_STDERR,
+                        "Error %s: Failed in SUMA_X_SurfaceViewer_Create.\n", 
+                        FuncName);
                SUMA_RETURN(0);
             }
          } else {
@@ -2040,28 +2046,35 @@ int SUMA_T_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
    switch (k) {
       case XK_T:
          if (!list) list = SUMA_CreateList();
-            SUMA_REGISTER_HEAD_COMMAND_NO_DATA(list, SE_StartListening, SES_Suma, sv);
+            SUMA_REGISTER_HEAD_COMMAND_NO_DATA(list, 
+                                    SE_StartListening, SES_Suma, sv);
 
          if (!SUMA_Engine (&list)) {
-               fprintf(SUMA_STDERR, "Error %s: SUMA_Engine call failed.\n", FuncName);
+               fprintf(SUMA_STDERR, 
+                        "Error %s: SUMA_Engine call failed.\n", FuncName);
          } 
          break;
       case XK_t:
          if ((SUMA_CTRL_KEY(key))){
-               if (callmode && strcmp(callmode, "interactive") == 0) { SUMA_SLP_Note("Forcing a resend of Surfaces to Afni...");}
+               if (callmode && strcmp(callmode, "interactive") == 0) {
+                     SUMA_SLP_Note("Forcing a resend of Surfaces to Afni...");}
                else { SUMA_S_Note("Forcing a resend of Surfaces to Afni..."); }
                if (!list) list = SUMA_CreateList();
-               SUMA_REGISTER_HEAD_COMMAND_NO_DATA(list, SE_SetForceAfniSurf, SES_Suma, sv);
+               SUMA_REGISTER_HEAD_COMMAND_NO_DATA(list, 
+                        SE_SetForceAfniSurf, SES_Suma, sv);
 
                if (!SUMA_Engine (&list)) {
-                  fprintf(SUMA_STDERR, "Error %s: SUMA_Engine call failed.\n", FuncName);
+                  fprintf(SUMA_STDERR, 
+                           "Error %s: SUMA_Engine call failed.\n", FuncName);
                }
          } else {
             if (!list) list = SUMA_CreateList();
-            SUMA_REGISTER_HEAD_COMMAND_NO_DATA(list, SE_ToggleConnected, SES_Suma, sv);
+            SUMA_REGISTER_HEAD_COMMAND_NO_DATA(list, 
+                           SE_ToggleConnected, SES_Suma, sv);
 
             if (!SUMA_Engine (&list)) {
-                  fprintf(SUMA_STDERR, "Error %s: SUMA_Engine call failed.\n", FuncName);
+                  fprintf(SUMA_STDERR, 
+                           "Error %s: SUMA_Engine call failed.\n", FuncName);
             }
          }
          break;
@@ -2165,13 +2178,13 @@ int SUMA_Up_Key(SUMA_SurfaceViewer *sv, char *key, char *caller)
                axis_to_quat(a, SUMA_PI/2, sv->GVS[sv->StdView].currentQuat);
                SUMA_postRedisplay(w, NULL, NULL);
             }else if (SUMA_SHIFT_KEY(key)) {
-               /*fprintf (SUMA_STDERR,"%s: Shift down\n", FuncName);*/
+               /*fprintf (SUMA_STDERR,"%s: Shift up\n", FuncName);*/
                sv->GVS[sv->StdView].translateVec[1] += 
                 (GLfloat)sv->GVS[sv->StdView].ArrowtranslateDeltaY / 
                 (float)sv->WindHeight*sv->GVS[sv->StdView].TranslateGain;
                SUMA_postRedisplay(w, NULL, NULL);
             }else if (SUMA_CTRL_KEY(key)){
-               /*fprintf (SUMA_STDERR,"%s: Control down\n", FuncName);*/
+               /*fprintf (SUMA_STDERR,"%s: Control Up\n", FuncName);*/
                /* Top view ctrl+up*/
                float a[3];
                /* Default top view, rotate by nothing */
@@ -2238,7 +2251,8 @@ int SUMA_Up_Key(SUMA_SurfaceViewer *sv, char *key, char *caller)
                   fprintf(stdout,"\n");
                }
                sv->GVS[sv->StdView].spinDeltaX = 0;
-               sv->GVS[sv->StdView].spinDeltaY = 2.0*ArrowDeltaRot*sv->WindHeight;
+               sv->GVS[sv->StdView].spinDeltaY = 
+                                    2.0*ArrowDeltaRot*sv->WindHeight;
                SUMA_postRedisplay(w, NULL, NULL);
                   
             }
@@ -2377,7 +2391,17 @@ int SUMA_Left_Key(SUMA_SurfaceViewer *sv, char *key, char *caller)
    switch (k) {
       case XK_Left:
             if ((SUMA_CTRL_KEY(key) && SUMA_SHIFT_KEY(key))) {
-               /* do nothing about ctrl+shift+this key */
+               float a[3], cQ[4];
+               /* rotate about Z axis CCW  */
+               a[0] = 0.0; a[1] = 0.0; a[2] = 1.0;
+               axis_to_quat(a, -sv->ArrowRotationAngle, cQ);
+               /*add rotation */
+               add_quats ( cQ, 
+                           sv->GVS[sv->StdView].currentQuat, 
+                           sv->GVS[sv->StdView].currentQuat);
+               sv->GVS[sv->StdView].spinDeltaX = 0;
+               sv->GVS[sv->StdView].spinDeltaY = 0;
+               SUMA_postRedisplay(w, NULL, NULL); 
             }else if (SUMA_SHIFT_KEY(key)) {
                /*fprintf (SUMA_STDERR,"%s: Shift down\n", FuncName);*/
                sv->GVS[sv->StdView].translateVec[0] -=
@@ -2472,7 +2496,17 @@ int SUMA_Right_Key(SUMA_SurfaceViewer *sv, char *key, char *caller)
    switch (k) {
       case XK_Right:
             if ((SUMA_CTRL_KEY(key) && SUMA_SHIFT_KEY(key))) {
-               /* do nothing about ctrl+shift+this key */
+               float a[3], cQ[4];
+               /* rotate about Z axis CCW  */
+               a[0] = 0.0; a[1] = 0.0; a[2] = 1.0;
+               axis_to_quat(a, sv->ArrowRotationAngle, cQ);
+               /*add rotation */
+               add_quats ( cQ, 
+                           sv->GVS[sv->StdView].currentQuat, 
+                           sv->GVS[sv->StdView].currentQuat);
+               sv->GVS[sv->StdView].spinDeltaX = 0;
+               sv->GVS[sv->StdView].spinDeltaY = 0;
+               SUMA_postRedisplay(w, NULL, NULL); 
             }else if (SUMA_SHIFT_KEY(key)) {
                /*fprintf (SUMA_STDERR,"%s: Shift down\n", FuncName);*/
                sv->GVS[sv->StdView].translateVec[0] += 
@@ -2558,7 +2592,8 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
    char buffer[10], cbuf = '\0', cbuf2='\0';
    KeySym keysym;
    int xls, ntot, id = 0, ND, ip, NP;
-   float ArrowDeltaRot = 0.05; /* The larger the value, the bigger the rotation increment */
+   float ArrowDeltaRot = 0.05; /* The larger the value, 
+                        the bigger the rotation increment */
    SUMA_EngineData *ED = NULL; 
    char CommString[SUMA_MAX_COMMAND_LENGTH];
    char s[SUMA_MAX_STRING_LENGTH], sfield[100], sdestination[100];
@@ -2579,7 +2614,8 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
    DListElmt *NextElm= NULL;
    float bevx, bevy, mevx, mevy, wwid, whei, zc_fac, mvx_fac, mvy_fac;
    static int mvxlast, mvylast, mvdeltax, mvdeltay;
-   SUMA_PROMPT_DIALOG_STRUCT *prmpt=NULL; /* Use this only to create prompt that are not to be preserved */
+   SUMA_PROMPT_DIALOG_STRUCT *prmpt=NULL; /* Use this only to create prompt 
+                                             that are not to be preserved */
    SUMA_Boolean LocalHead = NOPE; /* local debugging messages */
 
    /*float ft;
@@ -2660,7 +2696,8 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
                SUMA_S_Err("Failed in key func.");
             }
             break;
-            /* toggle between state containing mapping reference of SO in focus and other view */
+            /* toggle between state containing mapping reference 
+               of SO in focus and other view */
             {
                SUMA_SurfaceObject *SO = NULL, *SOmap = NULL;
                int curstateID = -1, nxtstateID = -1, dov_ID = -1;
@@ -2716,11 +2753,14 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
             SUMA_postRedisplay(w, clientData, callData);
             break;
 
-         case XK_Escape: /* there's more:  XK_BackSpace XK_Tab XK_Linefeed XK_Return XK_Delete */
+         case XK_Escape: /* there's more:  
+                  XK_BackSpace XK_Tab XK_Linefeed XK_Return XK_Delete */
             /* control mask and escape is grabbed by gnome window manager .... */
             if (Kev.state & ShiftMask){/* kill all */
                if( SUMAg_CF->X->WarnClose) {
-                  if (SUMA_ForceUser_YesNo(sv->X->TOPLEVEL, "Close All Viewers?", SUMA_YES, SWP_DONT_CARE) != SUMA_YES) {
+                  if (SUMA_ForceUser_YesNo(sv->X->TOPLEVEL, 
+                           "Close All Viewers?", SUMA_YES, 
+                           SWP_DONT_CARE) != SUMA_YES) {
                      break;   
                   }
                } 
@@ -2730,16 +2770,18 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
                if( SUMAg_CF->X->WarnClose) {
                   #ifdef DARWIN
                      if (SUMA_ForceUser_YesNo(sv->X->TOPLEVEL, 
-                                             "Close This Viewer?\n"
-                                             "OS-X users: If answering YES,\n"
-                                             "this prompt should not lie \n"
-                                             "over viewer to be closed.\n"
-                                             "Blame Bill Gates for this bug.",
-                                              SUMA_YES, SWP_TOP_RIGHT) != SUMA_YES) {
+                                 "Close This Viewer?\n"
+                                 "OS-X users: If answering YES,\n"
+                                 "this prompt should not lie \n"
+                                 "over viewer to be closed.\n"
+                                 "Blame Bill Gates for this bug.",
+                                  SUMA_YES, SWP_TOP_RIGHT) != SUMA_YES) {
                         break;   
                      }
                   #else
-                     if (SUMA_ForceUser_YesNo(sv->X->TOPLEVEL, "Close This Viewer?", SUMA_YES, SWP_DONT_CARE) != SUMA_YES) {
+                     if (SUMA_ForceUser_YesNo(sv->X->TOPLEVEL, 
+                                 "Close This Viewer?", SUMA_YES, 
+                                 SWP_DONT_CARE) != SUMA_YES) {
                         break;   
                      }
                   #endif
@@ -2776,29 +2818,39 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
 
          case XK_C:
             if (SUMAg_CF->Dev && (SUMA_ALTHELL)){
-               SUMAg_CF->X->ClipObj_prmpt = SUMA_CreatePromptDialogStruct (SUMA_OK_APPLY_CLEAR_CANCEL, "Enter object clip plane parameters (a,b,c,d)", 
-                                                      "A: 0,0,1,0",
-                                                      sv->X->TOPLEVEL, YUP,
-                                                      SUMA_APPLY_BUTTON,
-                                                      SUMA_SetObjectClip, (void *)sv,
-                                                      NULL, NULL,
-                                                      NULL, NULL,
-                                                      NULL, NULL,  
-                                                      SUMAg_CF->X->ClipObj_prmpt);
+               SUMAg_CF->X->ClipObj_prmpt = 
+                  SUMA_CreatePromptDialogStruct (SUMA_OK_APPLY_CLEAR_CANCEL, 
+                              "Enter object clip plane parameters (a,b,c,d)", 
+                              "A: 0,0,1,0",
+                              sv->X->TOPLEVEL, YUP,
+                              SUMA_APPLY_BUTTON,
+                              SUMA_SetObjectClip, (void *)sv,
+                              NULL, NULL,
+                              NULL, NULL,
+                              NULL, NULL,  
+                              SUMAg_CF->X->ClipObj_prmpt);
                
-               SUMAg_CF->X->ClipObj_prmpt = SUMA_CreatePromptDialog("Enter object clip plane parameters (a,b,c,d)", SUMAg_CF->X->ClipObj_prmpt);
+               SUMAg_CF->X->ClipObj_prmpt = 
+                  SUMA_CreatePromptDialog(
+                     "Enter object clip plane parameters (a,b,c,d)", 
+                     SUMAg_CF->X->ClipObj_prmpt);
             } else if (SUMAg_CF->Dev && (Kev.state & ControlMask)){
-               SUMAg_CF->X->Clip_prmpt = SUMA_CreatePromptDialogStruct (SUMA_OK_APPLY_CLEAR_CANCEL, "Enter screen clip plane parameters (a,b,c,d)", 
-                                                      "A: 0,0,1,0",
-                                                      sv->X->TOPLEVEL, YUP,
-                                                      SUMA_APPLY_BUTTON,
-                                                      SUMA_SetScreenClip, (void *)sv,
-                                                      NULL, NULL,
-                                                      NULL, NULL,
-                                                      NULL, NULL,  
-                                                      SUMAg_CF->X->Clip_prmpt);
-               
-               SUMAg_CF->X->Clip_prmpt = SUMA_CreatePromptDialog("Enter screen clip plane parameters (a,b,c,d)", SUMAg_CF->X->Clip_prmpt);
+               SUMAg_CF->X->Clip_prmpt = 
+                  SUMA_CreatePromptDialogStruct (SUMA_OK_APPLY_CLEAR_CANCEL, 
+                     "Enter screen clip plane parameters (a,b,c,d)", 
+                     "A: 0,0,1,0",
+                     sv->X->TOPLEVEL, YUP,
+                     SUMA_APPLY_BUTTON,
+                     SUMA_SetScreenClip, (void *)sv,
+                     NULL, NULL,
+                     NULL, NULL,
+                     NULL, NULL,  
+                     SUMAg_CF->X->Clip_prmpt);
+
+               SUMAg_CF->X->Clip_prmpt = 
+                  SUMA_CreatePromptDialog(
+                     "Enter screen clip plane parameters (a,b,c,d)", 
+                     SUMAg_CF->X->Clip_prmpt);
             }
             break; 
          case XK_c:
@@ -2806,28 +2858,32 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
                if (!list) list = SUMA_CreateList();
                ED = SUMA_InitializeEngineListData (SE_OpenColFileSelection);
                if (!(NextElm = SUMA_RegisterEngineListCommand (  list, ED,
-                                                      SEF_vp, (void *)(SUMAg_DOv[sv->Focus_SO_ID].OP),
-                                                      SES_Suma, (void *)sv, NOPE,
-                                                      SEI_Head, NULL))) {
-                  fprintf (SUMA_STDERR, "Error %s: Failed to register command.\n", FuncName);
+                                 SEF_vp, (void *)(SUMAg_DOv[sv->Focus_SO_ID].OP),
+                                 SES_Suma, (void *)sv, NOPE,
+                                 SEI_Head, NULL))) {
+                  fprintf (SUMA_STDERR, 
+                           "Error %s: Failed to register command.\n", FuncName);
                }
 
                if (!SUMA_RegisterEngineListCommand (  list, ED,
                                              SEF_ip, sv->X->TOPLEVEL,
                                              SES_Suma, (void *)sv, NOPE,
                                              SEI_In, NextElm)) {
-                  fprintf (SUMA_STDERR, "Error %s: Failed to register command.\n", FuncName);
+                  fprintf (SUMA_STDERR, 
+                           "Error %s: Failed to register command.\n", FuncName);
                }  
 
                if (!SUMA_Engine (&list)) {
-                  fprintf(SUMA_STDERR, "Error %s: SUMA_Engine call failed.\n", FuncName);
+                  fprintf(SUMA_STDERR, 
+                           "Error %s: SUMA_Engine call failed.\n", FuncName);
                }
             }
             
             break;
              
             #if 0
-            /* THE OLD WAY (part of it) FOR SETTING NODE COLORS DIRECTLY, Left here for documentation */
+            /* THE OLD WAY (part of it) FOR SETTING NODE COLORS DIRECTLY, 
+               Left here for documentation */
             /* allocate space */
             fm = (float **)SUMA_allocate2D (ntot/4, 4, sizeof(float));
             if (fm == NULL) {
@@ -3660,7 +3716,8 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
                   SO = (SUMA_SurfaceObject *)SUMAg_DOv[Vis_IDs[0]].OP;
                   /* Axial plane */
                   Eq[0] = Eq[1] = 0.0; Eq[2] = 1.0; Eq[3] = -SO->Center[2];
-                  SUMA_S_Warnv("Kill me!\nEq:[%f %f %f %f], step: %f\n", Eq[0], Eq[1], Eq[2], Eq[3], SO->EL->AvgLe);
+                  SUMA_S_Warnv("Kill me!\nEq:[%f %f %f %f], step: %f\n", 
+                                 Eq[0], Eq[1], Eq[2], Eq[3], SO->EL->AvgLe);
                   striplist = SUMA_SliceAlongPlane(SO, Eq, SO->EL->AvgLe);
                   SUMA_display_edge_striplist(striplist, &(SUMAg_SVv[0]), SO, 
                                              "ShowConnectedPoints");
@@ -3675,7 +3732,7 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
             SUMA_REGISTER_HEAD_COMMAND_NO_DATA(list, SE_FOVreset, SES_Suma, sv);
             SUMA_REGISTER_HEAD_COMMAND_NO_DATA(list, SE_Redisplay, SES_Suma, sv);
             if (!SUMA_Engine (&list)) {
-                  fprintf(stderr, "Error %s: SUMA_Engine call failed.\n", FuncName);
+               fprintf(stderr, "Error %s: SUMA_Engine call failed.\n", FuncName);
             }
             break;
          
@@ -3892,8 +3949,15 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
                               "viewer #%d : X=%f, Y = %f\n", 
                               FuncName, SUMA_WhichSV(sv, SUMAg_SVv, SUMAg_N_SVv),
                               (float)Bev.x, (float)Bev.y);
-               
-               if (Bev.state & ShiftMask) {
+                              
+               /* Bev.state does work in the line below, 
+                  unlike Mev.state further down.
+                  Using Kev.state anyway because it works in both cases */
+               if ((Kev.state & ShiftMask) && (Kev.state & ControlMask)) {
+                  SUMA_LH("Allowing callbacks");
+                  SUMAg_CF->HoldClickCallbacks = 0;
+               } else {
+                  SUMA_LH("Holding back callbacks");
                   SUMAg_CF->HoldClickCallbacks = 1;
                }
                
@@ -3941,7 +4005,17 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
                      break;
                   }
 
-
+                  #if 0
+                  /* Try this if you are having OpenGLStateReset problems at
+                     node selection time. It is inefficient, but helps point
+                     to the problem. 
+                     Look at recent updates to SE_Redisplay*All* for the more
+                     appropriate fix */
+                  SUMA_S_Note("Blunt fix:");
+                  SUMA_OpenGLStateReset(SUMAg_DOv, SUMAg_N_DOv, sv);
+                  SUMA_handleRedisplay((XtPointer)sv->X->GLXAREA);
+                  #endif
+                  
                   if (!SUMA_GetSelectionLine (  sv, (int)Bev.x, (int)Bev.y, 
                                                 sv->Pick0, sv->Pick1, 0, 
                                                 NULL, NULL, NULL)) {
@@ -3953,7 +4027,7 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
 
 
                   /* perform the intersection calcluation and mark the surface */
-                  hit = SUMA_MarkLineSurfaceIntersect (sv, SUMAg_DOv);
+                  hit = SUMA_MarkLineSurfaceIntersect (sv, SUMAg_DOv, 0);
                   if (hit < 0) {
                      fprintf( SUMA_STDERR,
                               "Error %s: "
@@ -3997,14 +4071,18 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
    case ButtonRelease:
       M1time = 0;
       rButton = Bev.button;
-      if (LocalHead) fprintf(SUMA_STDERR,"%s: In ButtonRelease Button %d\n", FuncName, rButton); 
-      if (SUMAg_CF->SwapButtons_1_3 || (SUMAg_CF->ROI_mode && SUMAg_CF->Pen_mode)) {
+      if (LocalHead) 
+         fprintf(SUMA_STDERR,
+                  "%s: In ButtonRelease Button %d\n", FuncName, rButton); 
+      if (SUMAg_CF->SwapButtons_1_3 || 
+          (SUMAg_CF->ROI_mode && SUMAg_CF->Pen_mode)) {
          if (rButton == Button1) rButton = Button3;
          else if (rButton == Button3) rButton = Button1;
       }
       switch (rButton) { /* switch type of button Press */
          case Button3:
-            if (LocalHead) fprintf(SUMA_STDERR,"%s: In ButtonRelease3\n", FuncName); 
+            if (LocalHead) 
+               fprintf(SUMA_STDERR,"%s: In ButtonRelease3\n", FuncName); 
             if (SUMAg_CF->ROI_mode) {
                SUMA_DRAWN_ROI *DrawnROI = NULL;
                SUMA_SurfaceObject *SO = NULL;
@@ -4167,6 +4245,8 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
                            "WindWidth %d  \n"
                            "WindHeight %d\n"
                            "ZoomCompensate %f\n"
+                           "mv[xy]last [%d %d]\n"
+                           "mvdelta[xy]last [%d %d]\n"
                            "MoveRatePixelsPerms [%f %f]\n"
                            , 
                         sv->GVS[sv->StdView].spinBeginX, 
@@ -4174,6 +4254,8 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
                         sv->GVS[sv->StdView].spinDeltaX, 
                         sv->GVS[sv->StdView].spinDeltaY, 
                         sv->WindWidth, sv->WindHeight, sv->ZoomCompensate,
+                        mvxlast, mvylast,
+                        mvdeltax, mvdeltay,
                         mvx_fac, mvy_fac
                         );
             #else
@@ -4181,23 +4263,35 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
             #endif
             /* do not use movement rate before you scale it properly */
             mvx_fac = mvy_fac = 1.0;
-            
             if (sv->GVS[sv->StdView].spinDeltaX || 
                 sv->GVS[sv->StdView].spinDeltaY){
-               trackball(  sv->GVS[sv->StdView].deltaQuat, 
-                           (2*sv->GVS[sv->StdView].spinBeginX - wwid) /
-                           wwid*zc_fac*mvx_fac, 
-                           (whei - 2*sv->GVS[sv->StdView].spinBeginY) / 
-                           whei*zc_fac*mvy_fac,
-                           (2*mevx - wwid)/wwid*zc_fac*mvx_fac, 
-                           (whei - 2*mevy)/whei*zc_fac*mvy_fac); 
-                                 /* comput the increment Quat */
-               sv->GVS[sv->StdView].spinBeginX = mevx;
-               sv->GVS[sv->StdView].spinBeginY = mevy;
-               add_quats ( sv->GVS[sv->StdView].deltaQuat, 
-                           sv->GVS[sv->StdView].currentQuat, 
-                           sv->GVS[sv->StdView].currentQuat);
-               
+               if (Mev.state & ShiftMask) {
+                  float a[3], cQ[4];
+                  /* rotate about Z axis   */
+                  a[0] = 0.0; a[1] = 0.0; a[2] = 1.0;
+                  axis_to_quat(a, 
+                              -SUMA_SIGN(mvdeltax)*sqrt(SUMA_ABS(mvdeltax))*
+                                 sv->ArrowRotationAngle, 
+                              cQ);
+                  /*add rotation */
+                  add_quats ( cQ, 
+                              sv->GVS[sv->StdView].currentQuat, 
+                              sv->GVS[sv->StdView].currentQuat);
+               } else {
+                  trackball(  sv->GVS[sv->StdView].deltaQuat, 
+                              (2*sv->GVS[sv->StdView].spinBeginX - wwid) /
+                              wwid*zc_fac*mvx_fac, 
+                              (whei - 2*sv->GVS[sv->StdView].spinBeginY) / 
+                              whei*zc_fac*mvy_fac,
+                              (2*mevx - wwid)/wwid*zc_fac*mvx_fac, 
+                              (whei - 2*mevy)/whei*zc_fac*mvy_fac); 
+                                    /* comput the increment Quat */
+                  sv->GVS[sv->StdView].spinBeginX = mevx;
+                  sv->GVS[sv->StdView].spinBeginY = mevy;
+                  add_quats ( sv->GVS[sv->StdView].deltaQuat, 
+                              sv->GVS[sv->StdView].currentQuat, 
+                              sv->GVS[sv->StdView].currentQuat);
+               }
                ii = SUMA_WhichSV(sv, SUMAg_SVv, SUMAg_N_SVv);
                if (ii < 0) {
                   fprintf (SUMA_STDERR,
@@ -4310,7 +4404,79 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
                                         SMT_Error, SMA_LogAndPopup);
                   break;
                }
+            } else {
+               /* Mev.state does not work in the line below */
+               if ((Kev.state & ShiftMask) && (Kev.state & ControlMask) ) {
+                  SUMA_LH("Allowing callbacks");
+                  SUMAg_CF->HoldClickCallbacks = 0;
+               } else {
+                  SUMA_LH("Holding back callbacks");
+                  SUMAg_CF->HoldClickCallbacks = 1;
+               }
+
+               if (SUMAg_N_SVv > 1) {
+                  ii = SUMA_WhichViewerInMomentum (SUMAg_SVv, 
+                                                   SUMAg_N_SVv, NULL);
+                  if (ii >= 0) {
+                     sprintf (s, "You cannot select or draw while viewers\n"
+                                 "(like viewer %c) are in momentum mode.\n", 
+                                 ii+65);
+                     SUMA_RegisterMessage (SUMAg_CF->MessageList, 
+                                           s, FuncName, SMT_Error, 
+                                           SMA_LogAndPopup);
+                     SUMA_RETURNe;
+                  }
+               }  
+                  
+                  
+               ii = SUMA_RegisteredSOs(sv, SUMAg_DOv, NULL);
+               if (ii == 0) { /* no surfaces, break */
+                  break;
+               }
+
+                  #if 0
+                  /* Try this if you are having OpenGLStateReset problems at
+                     node selection time. It is inefficient, but helps point
+                     to the problem. 
+                     Look at recent updates to SE_Redisplay*All* for the more
+                     appropriate fix */
+                  SUMA_S_Note("Blunt fix:");
+                  SUMA_OpenGLStateReset(SUMAg_DOv, SUMAg_N_DOv, sv);
+                  SUMA_handleRedisplay((XtPointer)sv->X->GLXAREA);
+                  #endif
+                  
+               if (!SUMA_GetSelectionLine (  sv, (int)Mev.x, (int)Mev.y, 
+                                             sv->Pick0, sv->Pick1, 0, 
+                                             NULL, NULL, NULL)) {
+                  fprintf (SUMA_STDERR, 
+                           "Error %s: Failed in SUMA_GetSelectionLine.\n", 
+                           FuncName);
+                  break;
+               } 
+
+
+               /* perform the intersection calcluation and mark the surface */
+               hit = SUMA_MarkLineSurfaceIntersect (sv, SUMAg_DOv, 1);
+               if (hit < 0) {
+                  fprintf( SUMA_STDERR,
+                           "Error %s: "
+                           "Failed in SUMA_MarkLineSurfaceIntersect.\n",
+                           FuncName);
+                  break;
+               }else if (hit == 0) { /* nothing hit, get out */
+                  break;
+               }
+               
+               /* redisplay */
+               sv->ResetGLStateVariables = YUP;
+               SUMA_handleRedisplay((XtPointer)sv->X->GLXAREA);            
+               
+               /* reset hold on xforms */
+               SUMAg_CF->HoldClickCallbacks = 0;
+
             }
+            
+            
             
             break;
       }
@@ -4378,11 +4544,14 @@ void SUMA_momentum(XtPointer clientData, XtIntervalId *id)
    ans = SUMA_MarkLineSurfaceIntersect (sv, dov);
    \param sv (SUMA_SurfaceViewer *) surface viewer pointer
    \param dov (SUMA_DO *) displayable object vector pointer
+   \param IgnoreSameNode (int) 1 do nothing if node already selected
+                               0 don't care if it was already selected
    \ret ans (int)  -1 error, 0 no hit, hit 
    
    also requires SUMAg_DOv and SUMAg_N_DOv
 */
-int SUMA_MarkLineSurfaceIntersect (SUMA_SurfaceViewer *sv, SUMA_DO *dov)
+int SUMA_MarkLineSurfaceIntersect (SUMA_SurfaceViewer *sv, SUMA_DO *dov, 
+                                    int IgnoreSameNode)
 {/* determine intersection */
    static char FuncName[]={"SUMA_MarkLineSurfaceIntersect"};
    float P0f[3], P1f[3];
@@ -4397,6 +4566,7 @@ int SUMA_MarkLineSurfaceIntersect (SUMA_SurfaceViewer *sv, SUMA_DO *dov)
    DList *list = NULL;
    DListElmt *SetNodeElem = NULL;
    SUMA_SurfaceObject *SO = NULL;
+   SUMA_Boolean NodeIgnored = NOPE;
    SUMA_Boolean LocalHead = NOPE;
 
    SUMA_ENTRY;
@@ -4413,38 +4583,56 @@ int SUMA_MarkLineSurfaceIntersect (SUMA_SurfaceViewer *sv, SUMA_DO *dov)
    imin = -1;
    dmin = 10000000.0;
    for (ii=0; ii < N_SOlist; ++ii) { /* find the closest intersection */
-      if (LocalHead) fprintf (SUMA_STDERR, "%s: working %d/%d shown surfaces ...\n", FuncName, ii, N_SOlist);
+      if (LocalHead) 
+         fprintf (SUMA_STDERR, 
+                  "%s: working %d/%d shown surfaces ...\n", 
+                  FuncName, ii, N_SOlist);
       SO = (SUMA_SurfaceObject *)dov[SOlist[ii]].OP;
       if (SO->FaceSetDim != 3) {
-         fprintf(SUMA_STDERR,"Error %s: SUMA_MT_intersect_triangle only works for triangular meshes.\n", FuncName);
+         fprintf(SUMA_STDERR,
+            "Error %s: "
+            "SUMA_MT_intersect_triangle only works for triangular meshes.\n", 
+            FuncName);
       } else {
 
          SUMA_etime (&tt_tmp, 0);
 
-         MTIi = SUMA_MT_intersect_triangle(P0f, P1f, SO->NodeList, SO->N_Node, SO->FaceSetList, SO->N_FaceSet, NULL);
+         MTIi = SUMA_MT_intersect_triangle(P0f, P1f, SO->NodeList, SO->N_Node, 
+                                           SO->FaceSetList, SO->N_FaceSet, NULL);
 
          delta_t_tmp = SUMA_etime (&tt_tmp, 1);
-         if (LocalHead) fprintf (SUMA_STDERR, "Local Debug %s: Intersection took %f seconds.\n", FuncName, delta_t_tmp);
+         if (LocalHead) 
+            fprintf (SUMA_STDERR, 
+               "Local Debug %s: Intersection took %f seconds.\n", 
+               FuncName, delta_t_tmp);
 
          if (MTIi == NULL) {
-            fprintf(SUMA_STDERR,"Error %s: SUMA_MT_intersect_triangle failed.\n", FuncName);
+            fprintf(SUMA_STDERR,
+                     "Error %s: SUMA_MT_intersect_triangle failed.\n", FuncName);
             SUMA_RETURN (-1);
          }
          
-         if (MTIi->N_hits) { /* decide on the closest surface to the clicking point */
+         if (MTIi->N_hits) { 
+            /* decide on the closest surface to the clicking point */
             if (MTIi->t[MTIi->ifacemin] < dmin) {
-               if (LocalHead) fprintf (SUMA_STDERR, "%s: A minimum for surface %d.\n", FuncName, ii);
+               if (LocalHead) 
+                  fprintf (SUMA_STDERR, "%s: A minimum for surface %d.\n", 
+                           FuncName, ii);
                dmin = MTIi->t[MTIi->ifacemin];
                imin = SOlist[ii];
                MTI = MTIi;
             }else {     
                /* not good, toss it away */
-               if (LocalHead) fprintf (SUMA_STDERR, "%s: ii=%d freeing MTIi...\n", FuncName, ii);
+               if (LocalHead) 
+                  fprintf (SUMA_STDERR, 
+                           "%s: ii=%d freeing MTIi...\n", FuncName, ii);
                MTIi = SUMA_Free_MT_intersect_triangle(MTIi); 
             }
          }else {
             /* not good, toss it away */
-           if (LocalHead) fprintf (SUMA_STDERR, "%s: ii=%d freeing MTIi no hits...\n", FuncName, ii);
+           if (LocalHead) 
+               fprintf (SUMA_STDERR, 
+                        "%s: ii=%d freeing MTIi no hits...\n", FuncName, ii);
            MTIi = SUMA_Free_MT_intersect_triangle(MTIi); 
         }
       }
@@ -4487,20 +4675,26 @@ int SUMA_MarkLineSurfaceIntersect (SUMA_SurfaceViewer *sv, SUMA_DO *dov)
       /* Set the Nodeselection at the closest node */
       it = MTI->inodemin;
       if (!list) list = SUMA_CreateList();
-      ED = SUMA_InitializeEngineListData (SE_SetSelectedNode);
-      SetNodeElem = SUMA_RegisterEngineListCommand (  list, ED, 
-                                             SEF_i, (void*)&it,
-                                             SES_Suma, (void *)sv, NOPE,
-                                             SEI_Head, NULL);
-      if (!SetNodeElem) {
-         fprintf( SUMA_STDERR,
-                  "Error %s: Failed to register SetNodeElem\n", FuncName);
-         SUMA_RETURN (-1);
+      if (IgnoreSameNode && SO->SelectedNode == MTI->inodemin) {
+         SUMA_LHv("Ignoring identical node selection %d on surface %s\n",
+                  SO->SelectedNode, SO->Label);
+         NodeIgnored = YUP;
       } else {
-         SUMA_RegisterEngineListCommand (  list, ED, 
-                                           SEF_ngr, NULL,
-                                           SES_Suma, (void *)sv, NOPE,
-                                           SEI_In, SetNodeElem);  
+         ED = SUMA_InitializeEngineListData (SE_SetSelectedNode);
+         SetNodeElem = SUMA_RegisterEngineListCommand (  list, ED, 
+                                                SEF_i, (void*)&it,
+                                                SES_Suma, (void *)sv, NOPE,
+                                                SEI_Head, NULL);
+         if (!SetNodeElem) {
+            fprintf( SUMA_STDERR,
+                     "Error %s: Failed to register SetNodeElem\n", FuncName);
+            SUMA_RETURN (-1);
+         } else {
+            SUMA_RegisterEngineListCommand (  list, ED, 
+                                              SEF_ngr, NULL,
+                                              SES_Suma, (void *)sv, NOPE,
+                                              SEI_In, SetNodeElem);  
+         }
       }
       
       
@@ -4558,7 +4752,27 @@ int SUMA_MarkLineSurfaceIntersect (SUMA_SurfaceViewer *sv, SUMA_DO *dov)
          if (LocalHead) 
             fprintf(SUMA_STDERR,"%s: No Notification to AFNI.\n", FuncName);
       }
-
+      
+      /* put in a request for GICOR if need be */
+      if (  !NodeIgnored &&
+            SUMAg_CF->Connected_v[SUMA_GICORR_LINE] && 
+            SUMAg_CF->giset && !SUMAg_CF->HoldClickCallbacks) {
+         if (LocalHead) 
+            fprintf(SUMA_STDERR,
+                     "%s: Notifying GICOR of node selection\n", FuncName);
+         /* register a call to SetGICORnode */
+         if (!list) list = SUMA_CreateList();
+         SUMA_REGISTER_TAIL_COMMAND_NO_DATA( list, SE_SetGICORnode, 
+                                             SES_Suma, sv);
+         if (!SUMA_Engine (&list)) {
+            fprintf( SUMA_STDERR, 
+                     "Error %s: SUMA_Engine call failed.\n", FuncName);
+            SUMA_RETURN (-1);
+         }
+      }else {
+         if (LocalHead) 
+            fprintf(SUMA_STDERR,"%s: No Notification to GICOR.\n", FuncName);
+      }
       /* now put in a request for locking cross hair but you must do 
          this after the node selection has been executed 
          NOTE: You do not always have SetNodeElem because the list might 
@@ -6596,9 +6810,25 @@ void SUMA_JumpIndex (char *s, void *data)
    
    /* check to see if AFNI needs to be notified */
    if (SUMAg_CF->Connected_v[SUMA_AFNI_STREAM_INDEX] && sv->LinkAfniCrossHair) {
-      if (LocalHead) fprintf(SUMA_STDERR,"%s: Notifying Afni of CrossHair XYZ\n", FuncName);
+      if (LocalHead) 
+         fprintf(SUMA_STDERR,"%s: Notifying Afni of CrossHair XYZ\n", FuncName);
       /* register a call to SetAfniCrossHair */
-      SUMA_REGISTER_TAIL_COMMAND_NO_DATA(list, SE_SetAfniCrossHair, SES_Suma, sv);
+      SUMA_REGISTER_TAIL_COMMAND_NO_DATA(list, 
+                              SE_SetAfniCrossHair, SES_Suma, sv);
+   }
+
+   /* and if GICOR needs some love */
+   if (  SUMAg_CF->Connected_v[SUMA_GICORR_LINE] && 
+         SUMAg_CF->giset && !SUMAg_CF->HoldClickCallbacks) {
+      if (LocalHead) 
+         fprintf(SUMA_STDERR,
+                  "%s: Notifying GICOR of node selection\n", FuncName);
+      /* register a call to SetGICORnode */
+      SUMA_REGISTER_TAIL_COMMAND_NO_DATA( list, SE_SetGICORnode, 
+                                          SES_Suma, sv);
+   }else {
+      SUMA_LHv("No Notification to GICOR. %d %p\n", 
+                  SUMAg_CF->Connected_v[SUMA_GICORR_LINE], SUMAg_CF->giset);
    }
 
    /* call with the list */
@@ -6677,9 +6907,11 @@ void SUMA_JumpXYZ (char *s, void *data)
    
    /* check to see if AFNI needs to be notified */
    if (SUMAg_CF->Connected_v[SUMA_AFNI_STREAM_INDEX] && sv->LinkAfniCrossHair) {
-      if (LocalHead) fprintf(SUMA_STDERR,"%s: Notifying Afni of CrossHair XYZ\n", FuncName);
+      if (LocalHead) 
+         fprintf(SUMA_STDERR,"%s: Notifying Afni of CrossHair XYZ\n", FuncName);
       /* register a call to SetAfniCrossHair */
-      SUMA_REGISTER_TAIL_COMMAND_NO_DATA(list, SE_SetAfniCrossHair, SES_Suma, sv);
+      SUMA_REGISTER_TAIL_COMMAND_NO_DATA(list, SE_SetAfniCrossHair, 
+                                         SES_Suma, sv);
    }
 
    /* call with the list */
@@ -6688,8 +6920,10 @@ void SUMA_JumpXYZ (char *s, void *data)
       SUMA_RETURNe;
    }
 
-   /* now put in a request for locking cross hair but you must do this after the node selection has been executed 
-   NOTE: You do not always have SetNodeElem because the list might get emptied in the call to AFNI notification.
+   /* now put in a request for locking cross hair but you must 
+   do this after the node selection has been executed 
+   NOTE: You do not always have SetNodeElem because the list might 
+   get emptied in the call to AFNI notification.
    You should just put the next call at the end of the list.*/
    /* NOTE2: Only viewers that are XYZ locked will be affected */
    if (!list) list = SUMA_CreateList();

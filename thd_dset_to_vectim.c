@@ -4,11 +4,11 @@
 #include <omp.h>
 #endif
 
-/*-----------------------------------------------------------------*/
+/*--------------------------------------------------------------------------*/
 /*! Convert a dataset to the MRI_vectim format, where each time
     series is a contiguous set of values in an array, and the
     voxel indexes whence came the values are also stored.
-*//*---------------------------------------------------------------*/
+*//*------------------------------------------------------------------------*/
 
 MRI_vectim * THD_dset_to_vectim( THD_3dim_dataset *dset, byte *mask , int ignore )
 {
@@ -91,7 +91,168 @@ ENTRY("THD_dset_to_vectim") ;
    RETURN(mrv) ;
 }
 
-/*-----------------------------------------------------------*/
+/*---------------------------------------------------------------------*/
+/*-------- Catenates two datasets into vectim     ZSS Jan 2010 --------*/
+MRI_vectim * THD_2dset_to_vectim( THD_3dim_dataset *dset1, byte *mask1 ,
+                                  THD_3dim_dataset *dset2, byte *mask2 ,
+                                  int ignore )
+{
+   byte *mmmv[2]={NULL, NULL}, *mmmt=NULL;
+   THD_3dim_dataset *dsetv[2]={NULL, NULL};
+   MRI_vectim *mrv=NULL ;
+   int kk2, kk,iv,id, nvals , nvoxv[2]={0,0} , nmaskv[2]={0,0} ;
+   int *ivvectmp=NULL;
+
+ENTRY("THD_2dset_to_vectim") ;
+   mmmv[0] = mask1;
+   mmmv[1] = mask2;
+   dsetv[0] = dset1;
+   dsetv[1] = dset2;
+   for (id=0; id<2;++id) {
+                             if( !ISVALID_DSET(dsetv[id]) ) RETURN(NULL) ;
+      DSET_load(dsetv[id]) ; if( !DSET_LOADED(dsetv[id])  ) RETURN(NULL) ;
+      nvoxv[id] = DSET_NVOX(dsetv[id]) ;
+   }
+   if (DSET_NVALS(dsetv[0]) != DSET_NVALS(dsetv[1])) {
+      RETURN(NULL) ;
+   }
+
+   if( ignore < 0 ) ignore = 0 ;
+   nvals  = DSET_NVALS(dsetv[0]) - ignore ; if( nvals <= 0 ) RETURN(NULL) ;
+
+   for (id=0; id<2; ++id) {
+      if( mmmv[id] != NULL ){
+         nmaskv[id] = THD_countmask( nvoxv[id] , mmmv[id] ) ;/* number to keep */
+         if( nmaskv[id] <= 0 ) RETURN(NULL) ;
+      } else {
+         nmaskv[id] = nvoxv[id] ;                         /* keep them all */
+         mmmv[id]   = (byte *)malloc(sizeof(byte)*nmaskv[id]) ;
+         if( mmmv[id] == NULL ){
+            ERROR_message("THD_2dset_to_vectim: out of memory") ;
+            RETURN(NULL) ;
+         }
+         memset( mmmv[id] , 1 , sizeof(byte)*nmaskv[id] ) ;
+      }
+   }
+
+   mrv = (MRI_vectim *)malloc(sizeof(MRI_vectim)) ;
+
+   mrv->nvec   = nmaskv[0]+nmaskv[1] ;
+   mrv->nvals  = nvals ;
+   mrv->ignore = ignore ;
+   mrv->ivec   = (int *)malloc(sizeof(int)*(nmaskv[0]+nmaskv[1])) ;
+   ivvectmp    = (int *)malloc(sizeof(int)*(nmaskv[1])) ;
+   if( mrv->ivec == NULL || ivvectmp == NULL){
+     ERROR_message("THD_2dset_to_vectim: out of memory") ;
+     if (mrv->ivec) free(mrv->ivec) ;
+     if (ivvectmp)  free(ivvectmp) ;
+     free(mrv) ;
+     if( mmmv[0] != mask1 ) free(mmmv[0]) ;
+     if( mmmv[1] != mask2 ) free(mmmv[1]) ;
+     RETURN(NULL) ;
+   }
+   mrv->fvec  = (float *)malloc(sizeof(float)*(nmaskv[0]+nmaskv[1])*nvals) ;
+   if( mrv->fvec == NULL ){
+     ERROR_message("THD_2dset_to_vectim: out of memory") ;
+     if (ivvectmp)  free(ivvectmp) ;
+     free(mrv->ivec) ; free(mrv) ;
+     if( mmmv[0] != mask1 ) free(mmmv[0]) ;
+     if( mmmv[1] != mask2 ) free(mmmv[1]) ;
+     RETURN(NULL) ;
+   }
+
+   /* store desired voxel time series */
+
+   mmmt = mmmv[0];
+   for( kk=iv=0 ; iv < nvoxv[0] ; iv++ ){
+     if( mmmt[iv] ) mrv->ivec[kk++] = iv ;  /* build index list to 1st dset */
+   }
+   mmmt = mmmv[1]; kk2 = 0;
+   for(    iv=0 ; iv < nvoxv[1] ; iv++ ){
+     if( mmmt[iv] ) {
+                        mrv->ivec[kk++] = iv + nvoxv[0] ;
+                                             /* build index list to 2nd dset*/
+                        ivvectmp[kk2++] = iv;
+     }
+   }
+
+   if( ignore > 0 ){  /* extract 1 at a time, save what we want */
+
+     float *var = (float *)malloc(sizeof(float)*(nvals+ignore)) ;
+     mmmt = mmmv[0];
+     for( kk=iv=0 ; iv < nvoxv[0] ; iv++ ){
+       if( mmmt[iv] == 0 ) continue ;
+       (void)THD_extract_array( iv , dsetv[0] , 0 , var ) ;
+#pragma omp critical (MEMCPY)
+       memcpy( VECTIM_PTR(mrv,kk) , var+ignore , sizeof(float)*nvals ) ;
+       kk++ ;
+     }
+     mmmt = mmmv[1];
+     for(    iv=0 ; iv < nvoxv[1] ; iv++ ){
+       if( mmmt[iv] == 0 ) continue ;
+       (void)THD_extract_array( iv , dsetv[1] , 0 , var ) ;
+#pragma omp critical (MEMCPY)
+       memcpy( VECTIM_PTR(mrv,kk) , var+ignore , sizeof(float)*nvals ) ;
+       kk++ ;
+     }
+
+     free(var) ;
+
+   } else {  /* do all at once: this way is a lot faster */
+
+     THD_extract_many_arrays( nmaskv[0] ,  mrv->ivec            ,
+                                dsetv[0]  ,   mrv->fvec            ) ;
+     THD_extract_many_arrays( nmaskv[1] ,  ivvectmp,
+                                dsetv[1]  ,  (mrv->fvec+nmaskv[0]*mrv->nvals) ) ;
+
+   }
+
+   mrv->nx = DSET_NX(dsetv[0]) + DSET_NX(dsetv[1]);
+   mrv->dx = fabs(DSET_DX(dsetv[0])) ;
+   mrv->ny = DSET_NY(dsetv[0]) ; mrv->dy = fabs(DSET_DY(dsetv[0])) ;
+   mrv->nz = DSET_NZ(dsetv[0]) ; mrv->dz = fabs(DSET_DZ(dsetv[0])) ;
+
+   DSET_UNMSEC(dsetv[0]) ; mrv->dt = DSET_TR(dsetv[0]) ;
+   if( mrv->dt <= 0.0f ) mrv->dt = 1.0f ;
+
+   if( mmmv[0] != mask1 ) free(mmmv[0]) ;
+   if( mmmv[1] != mask2 ) free(mmmv[1]) ;
+   if (ivvectmp)  free(ivvectmp) ;
+
+   if (0) {
+     int ShowThisTs=38001;
+     float *fff=NULL;
+     fprintf(stderr,"++ ZSS mrv->nvec = %d, mrv->nvals = %d\n",
+                    mrv->nvec, mrv->nvals);
+     for( kk=0 ; kk < mrv->nvals; ++kk) {
+      fff=mrv->fvec+(mrv->nvals*ShowThisTs);
+      fprintf(stderr," %f \t", *(fff+kk));
+     }
+   }
+
+   RETURN(mrv) ;
+}
+
+/*---------------------------------------------------------------------*/
+
+MRI_vectim * THD_vectim_copy( MRI_vectim *mrv )  /* 08 Apr 2010 */
+{
+   MRI_vectim *qrv ;
+
+   if( mrv == NULL ) return NULL ;
+
+   MAKE_VECTIM( qrv , mrv->nvec , mrv->nvals ) ;
+   qrv->ignore = mrv->ignore ;
+#pragma omp critical (MEMCPY)
+   { memcpy( qrv->ivec , mrv->ivec , sizeof(int)*mrv->nvec ) ;
+     memcpy( qrv->fvec , mrv->fvec , sizeof(float)*mrv->nvec*mrv->nvals ) ; }
+   qrv->nx = mrv->nx ; qrv->dx = mrv->dx ;
+   qrv->ny = mrv->ny ; qrv->dy = mrv->dy ;
+   qrv->nz = mrv->nz ; qrv->dz = mrv->dz ; qrv->dt = mrv->dt ;
+   return qrv ;
+}
+
+/*---------------------------------------------------------------------*/
 
 void THD_vectim_normalize( MRI_vectim *mrv )
 {
@@ -103,7 +264,7 @@ void THD_vectim_normalize( MRI_vectim *mrv )
      THD_normalize( mrv->nvals , VECTIM_PTR(mrv,iv) ) ;
 }
 
-/*-----------------------------------------------------------*/
+/*---------------------------------------------------------------------*/
 
 void THD_vectim_dotprod( MRI_vectim *mrv , float *vec , float *dp , int ata )
 {
@@ -126,7 +287,7 @@ void THD_vectim_dotprod( MRI_vectim *mrv , float *vec , float *dp , int ata )
   return ;
 }
 
-/*-----------------------------------------------------------*/
+/*---------------------------------------------------------------------*/
 
 void THD_vectim_vectim_dot( MRI_vectim *arv, MRI_vectim *brv, float *dp )
 {
@@ -143,6 +304,96 @@ void THD_vectim_vectim_dot( MRI_vectim *arv, MRI_vectim *brv, float *dp )
    }
 
    return ;
+}
+
+/*---------------------------------------------------------------------*/
+/* 01 Mar 2010: Rank correlation. */
+
+void THD_vectim_spearman( MRI_vectim *mrv , float *vec , float *dp )
+{
+   float *av , *bv , sav ;
+   int nvec, nvals, iv ;
+
+   if( mrv == NULL || vec == NULL || dp == NULL ) return ;
+
+   nvec = mrv->nvec ; nvals = mrv->nvals ;
+   av   = (float *)malloc(sizeof(float)*nvals) ;
+   bv   = (float *)malloc(sizeof(float)*nvals) ;
+
+#pragma omp critical (MEMCPY)
+   memcpy( av , vec , sizeof(float)*nvals ) ;
+   sav = spearman_rank_prepare( nvals , av ) ; if( sav <= 0.0f ) sav = 1.e+9f ;
+
+   for( iv=0 ; iv < nvec ; iv++ ){
+#pragma omp critical (MEMCPY)
+     memcpy( bv , VECTIM_PTR(mrv,iv) , sizeof(float)*nvals ) ;
+     dp[iv] = spearman_rank_corr( nvals , bv , sav , av ) ;
+   }
+
+   free(bv) ; free(av) ; return ;
+}
+
+/*---------------------------------------------------------------------*/
+/* 01 Mar 2010: Quadrant correlation. */
+
+void THD_vectim_quadrant( MRI_vectim *mrv , float *vec , float *dp )
+{
+   float *av , *bv , sav ;
+   int nvec, nvals, iv ;
+
+   if( mrv == NULL || vec == NULL || dp == NULL ) return ;
+
+   nvec = mrv->nvec ; nvals = mrv->nvals ;
+   av   = (float *)malloc(sizeof(float)*nvals) ;
+   bv   = (float *)malloc(sizeof(float)*nvals) ;
+
+#pragma omp critical (MEMCPY)
+   memcpy( av , vec , sizeof(float)*nvals ) ;
+   sav = quadrant_corr_prepare( nvals , av ) ; if( sav <= 0.0f ) sav = 1.e+9f ;
+
+   for( iv=0 ; iv < nvec ; iv++ ){
+#pragma omp critical (MEMCPY)
+     memcpy( bv , VECTIM_PTR(mrv,iv) , sizeof(float)*nvals ) ;
+     dp[iv] = quadrant_corr( nvals , bv , sav , av ) ;
+   }
+
+   free(bv) ; free(av) ; return ;
+}
+
+/*----------------------------------------------------------------------------*/
+/* 29 Apr 2010: Kendall Tau-b correlation. */
+
+void THD_vectim_ktaub( MRI_vectim *mrv , float *vec , float *dp )
+{
+   float *av , *aav , *bv , *dv ;
+   int nvec , nvals , iv , jv , *qv ;
+
+ENTRY("THD_vectim_ktaub") ;
+
+   if( mrv == NULL || vec == NULL || dp == NULL ) EXRETURN ;
+
+   nvec = mrv->nvec ; nvals = mrv->nvals ;
+   av   = (float *)malloc(sizeof(float)*nvals) ;
+   aav  = (float *)malloc(sizeof(float)*nvals) ;
+   bv   = (float *)malloc(sizeof(float)*nvals) ;
+   qv   = (int   *)malloc(sizeof(int  )*nvals) ;
+
+#pragma omp critical (MEMCPY)
+   memcpy( av , vec , sizeof(float)*nvals ) ;
+   for( jv=0 ; jv < nvals ; jv++ ) qv[jv] = jv ;
+STATUS("qsort") ;
+   qsort_floatint( nvals , av , qv ) ;
+
+STATUS("loop") ;
+   for( iv=0 ; iv < nvec ; iv++ ){
+     dv = VECTIM_PTR(mrv,iv) ;
+     for( jv=0 ; jv < nvals ; jv++ ) bv[jv] = dv[qv[jv]] ;
+#pragma omp critical (MEMCPY)
+     memcpy( aav , av , sizeof(float)*nvals) ;
+     dp[iv] = kendallNlogN( aav , bv , nvals ) ;
+   }
+
+   free(qv) ; free(bv) ; free(aav) ; free(av) ; EXRETURN ;
 }
 
 /*----------------------------------------------------------------------------*/
@@ -271,4 +522,75 @@ ENTRY("THD_vectim_to_dset") ;
    }
 
    EXRETURN ;
+}
+
+/*---------------------------------------------------------------------------*/
+
+MRI_vectim * THD_tcat_vectims( int nvim , MRI_vectim **vim )
+{
+   MRI_vectim *vout ;
+   int iv , nvec , nvsum , vv , nvals , nvv ;
+   float *vout_ptr , *vin_ptr ;
+
+   if( nvim <= 0 || vim == NULL ) return NULL ;
+
+   if( nvim == 1 ){
+     vout = THD_vectim_copy( vim[0] ) ; return vout ;
+   }
+
+   nvec  = vim[0]->nvec ;
+   nvsum = vim[0]->nvals ;
+   for( iv=1 ; iv < nvim ; iv++ ){
+     if( vim[iv]->nvec != nvec ) return NULL ;
+     nvsum += vim[iv]->nvals ;
+   }
+
+   MAKE_VECTIM(vout,nvec,nvsum) ;
+   vout->ignore = 0 ;
+   vout->nx = vim[0]->nx ; vout->dx = vim[0]->dx ;
+   vout->ny = vim[0]->ny ; vout->dy = vim[0]->dy ;
+   vout->nz = vim[0]->nz ; vout->dz = vim[0]->dz ; vout->dt = vim[0]->dt ;
+#pragma omp critical (MEMCPY)
+   { memcpy( vout->ivec , vim[0]->ivec , sizeof(int)*vim[0]->nvec ) ; }
+
+   for( nvv=iv=0 ; iv < nvim ; iv++,nvv+=nvals ){
+     nvals = vim[iv]->nvals ;
+     for( vv=0 ; vv < nvec ; vv++ ){
+       vout_ptr = VECTIM_PTR(vout,vv) + nvv ;
+       vin_ptr  = VECTIM_PTR(vim[iv],vv) ;
+#pragma omp critical (MEMCPY)
+       { memcpy( vout_ptr , vin_ptr , sizeof(float)*nvals ) ; }
+     }
+   }
+
+   return vout ;
+}
+
+/*---------------------------------------------------------------------------*/
+
+MRI_vectim * THD_dset_list_to_vectim( int nds, THD_3dim_dataset **ds, byte *mask )
+{
+   MRI_vectim *vout , **vim ;
+   int kk , jj ;
+
+   if( nds < 1 || ds == NULL ) return NULL ;
+
+   if( nds == 1 ) return THD_dset_to_vectim( ds[0] , mask , 0 ) ;
+
+   for( kk=0 ; kk < nds ; kk++ )
+     if( !ISVALID_DSET(ds[kk]) ) return NULL ;
+
+   vim = (MRI_vectim **)malloc(sizeof(MRI_vectim *)*nds) ;
+   for( kk=0 ; kk < nds ; kk++ ){
+     vim[kk] = THD_dset_to_vectim( ds[kk] , mask , 0 ) ;
+     DSET_unload( ds[kk] ) ;
+     if( vim[kk] == NULL ){
+       for( jj=0 ; jj < kk ; jj++ ) VECTIM_destroy(vim[jj]) ;
+       free(vim) ; return NULL ;
+     }
+   }
+
+   vout = THD_tcat_vectims( nds , vim ) ;
+   for( jj=0 ; jj < nds ; jj++ ) VECTIM_destroy(vim[jj]) ;
+   free(vim) ; return vout ;
 }

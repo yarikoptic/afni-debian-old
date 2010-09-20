@@ -443,7 +443,7 @@ void getvoxlclusterdist(int* count, float** cdata,
    }
 
 
-  n = 1 + strlen(jobname) + strlen("_K_G") + strlen(".ext");
+  n = 512 + strlen(jobname) + strlen("_K_G") + strlen(".ext");
   
   dummy = nclusters;
   do n++; while (dummy/=10);
@@ -572,7 +572,7 @@ void color_palette(int nclusters, char* jobname)
                                            I used 32 which is overkill but it is a nice number */
   sprintf (hexnumbers, "0123456789abcdef");
 
-  n = 1 + strlen(jobname) + strlen(".pal") + 2;
+  n = 512 + strlen(jobname) + strlen(".pal") + 2;
   filename = (char *)malloc(n*sizeof(char));
   sprintf (filename, "%s_K%d.pal", jobname,nclusters); 
   /* output file name not good ! */
@@ -733,7 +733,9 @@ void example_kmeans( int nrows, int ncols,
    for (i = 0; i < ncols; i++) weight[i] = 1.0;
 
    
-   n = 1 + strlen(jobname) + strlen("_K_G") + strlen(".ext");
+   /* ZSS: Andrej, that n was too small. I added 512 to get
+           avoid the problem. */
+   n = 512 + strlen(jobname) + strlen("_K_G") + strlen(".ext");
 
    if (dist)
    { int dummy = nclusters;
@@ -967,7 +969,7 @@ int thd_Adist (  THD_3dim_dataset *in_set,
             /* check if it is all non zero */
             for (kk=0; kk<ncol; ++kk) {
                if (asigvec[0][kk]) { /* non zero, calculate the distance */
-                  distvec[ii] = metric(ncol, afsig, asigvec, weight,0, 0, 0);
+                  distvec[ii] = metric(ncol, afsig, asigvec, weight,jj, 0, 0);
                   break; /* get out of the loop */
                }
             }

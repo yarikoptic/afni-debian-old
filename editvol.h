@@ -103,7 +103,7 @@ typedef struct {
 #define ADDTO_CLUSTER(cc,ii,jj,kk,m)                                        \
   do{ int nn ;                                                              \
       if( (cc)->num_pt == (cc)->num_all ){                                  \
-         (cc)->num_all = 1.25*(cc)->num_all + INC_CLUSTER ;                 \
+         (cc)->num_all = 2*(cc)->num_all + INC_CLUSTER ;                    \
          nn = (cc)->num_all ;                                               \
          (cc)->i=(short *)   XtRealloc((char *)(cc)->i,sizeof(short)*nn  ); \
          (cc)->j=(short *)   XtRealloc((char *)(cc)->j,sizeof(short)*nn  ); \
@@ -119,7 +119,7 @@ typedef struct {
 #define ADDTO_CLUSTER_NOMAG(cc,ii,jj,kk)                               \
   do{ int nn ;                                                         \
       if( (cc)->num_pt == (cc)->num_all ){                             \
-         (cc)->num_all = 1.25*(cc)->num_all + INC_CLUSTER ;            \
+         (cc)->num_all = 2*(cc)->num_all + INC_CLUSTER ;               \
          nn = (cc)->num_all ;                                          \
          (cc)->i=(short *)XtRealloc((char *)(cc)->i,sizeof(short)*nn); \
          (cc)->j=(short *)XtRealloc((char *)(cc)->j,sizeof(short)*nn); \
@@ -139,20 +139,22 @@ typedef struct {
 typedef struct {
    int num_clu , num_all ;
    MCW_cluster ** clar ;
+   int grid_nx, grid_ny, grid_nz;   /* ZSS March 02 2010 */
 } MCW_cluster_array ;
 
 /*! Initialize a MCW_cluster_array. */
 
 #define INIT_CLARR(cl)                \
   ( (cl) = XtNew(MCW_cluster_array) , \
-    (cl)->num_clu = (cl)->num_all = 0 , (cl)->clar = NULL )
+    (cl)->num_clu = (cl)->num_all = 0 , (cl)->clar = NULL, \
+    (cl)->grid_nz = 0, (cl)->grid_ny = 0, (cl)->grid_nz = 0)
 
 /*! Add a MCW_cluster to a MCW_cluster_array. */
 
 #define ADDTO_CLARR(cl,cc)                                                     \
   do{ int nn ;                                                                 \
       if( (cl)->num_clu == (cl)->num_all ){                                    \
-         (cl)->num_all += INC_CLUSTER+(cl)->num_all/16; nn = (cl)->num_all ;   \
+         (cl)->num_all += INC_CLUSTER+(cl)->num_all/2 ; nn = (cl)->num_all ;   \
          (cl)->clar = (MCW_cluster **) XtRealloc( (char *)(cl)->clar ,         \
                                                  sizeof(MCW_cluster *) * nn ); \
       }                                                                        \
@@ -289,6 +291,8 @@ typedef struct EDIT_options {
 
    int rank;                      /*!< 13 Nov 2007 --> ZSS: Rank dset values. */
    char rankmapname[THD_MAX_NAME+THD_MAX_PREFIX+1];
+   
+   int isomode;                  /*!< 03 March 2010, ZSS: Use value for clust */
 } EDIT_options ;
 
 /*--- cluster editing options ---*/   /* 10 Sept 1996 */
@@ -300,6 +304,7 @@ typedef struct EDIT_options {
 #define ECFLAG_SMAX   5
 #define ECFLAG_SIZE   6
 #define ECFLAG_ORDER  7         /* 09 June 1998 */
+#define ECFLAG_DEPTH  8         /* 02 March 2010 ZSS */
 
 /*--- filtering options ---*/   /* 11 Sept 1996 */
 #define FCFLAG_NONE   0
@@ -351,6 +356,7 @@ typedef struct EDIT_options {
         (edopt)->fake_dxyz     = 0   , \
         (edopt)->rank          = 0,    \
         (edopt)->rankmapname[0]= '\0', \
+        (edopt)->isomode       = 0, \
        0 )
 
 extern void EDIT_one_dataset( THD_3dim_dataset * dset , EDIT_options * edopt ) ;
@@ -563,7 +569,7 @@ extern int cluster_alphaindex_64( int csize, int nz, float fw, float pv ) ;
 /*------------------------------------------------------------------*/
 
 /*! Change statistical parameters in dataset ds, sub-brick iv,
-    to statistical type ft, with paramters a,b,c,d.
+    to statistical type ft, with parameters a,b,c,d.
 */
 
 #define EDIT_STATAUX4(ds,iv,ft,a,b,c,d)                     \
@@ -643,6 +649,20 @@ extern int cluster_alphaindex_64( int csize, int nz, float fw, float pv ) ;
 
 #define EDIT_BRICK_ADDKEY(ds,iv,str) \
      EDIT_dset_items( (ds), ADN_brick_keywords_append_one+(iv), (str), ADN_none )
+
+#if 0
+/*------------------------------------------------------------------------*/
+/*! Change the orientation of a dataset */
+
+#define EDIT_DSET_ORIENT(ds,ox,oy,oz)                              \
+ do{ THD_ivec3 orixyz ;                                            \
+     LOAD_IVEC3( orixyz , (ox),(oy),(oz) ) ;                       \
+     EDIT_dset_items( (ds) , ADN_xyzorient , orixyz , ADN_none ) ; \
+ } while(0)
+
+#define DSET_TO_RAI(ds) EDIT_DSET_ORIENT((ds),ORI_R2L_TYPE,ORI_A2P_TYPE,ORI_I2S_TYPE)
+#define DSET_TO_LPI(ds) EDIT_DSET_ORIENT((ds),ORI_L2R_TYPE,ORI_P2A_TYPE,ORI_I2S_TYPE)
+#endif
 
 /*------------------------------------------------------------------*/
 /* 22 Aug 2005: neighborhood/local operations. */

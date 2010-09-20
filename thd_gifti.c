@@ -69,6 +69,9 @@ static int set_gifti_encoding(int encoding);
 
 static gifti_image * NSD_to_gifti(NI_group * ngr, char * fname);
 
+/*--- misc routines ---*/
+static int has_negatives(void *data, long long nvals, int type);
+
 /*
  * - sub-brick selection in NI_read_gifti()?
  *
@@ -288,7 +291,7 @@ static gifti_image * NSD_to_gifti(NI_group * ngr, char * fname)
     void       ** elist = NULL;
     char        * rhs, * id = NULL, * timestr;
     int           numDA, intent, dtype, ndim, dims[GIFTI_DARRAY_DIM_LEN] = {0};
-    int           ind, rv;
+    int           ind, rv, has_lt = 0;
 
     ENTRY("NSD_to_gifti");
 
@@ -300,14 +303,22 @@ static gifti_image * NSD_to_gifti(NI_group * ngr, char * fname)
         if( GP->verb ) fprintf(stderr,"** NSD_to_gifti: missing SPARSE_DATA\n");
         RETURN(NULL);
     }
+
+    /* see if there is an AFNI_labeltable group */
+    if( NI_search_group_shallow(ngr, "AFNI_labeltable", &elist) > 0 ) {
+        has_lt = (elist[0] != NULL);
+        NI_free(elist); elist = NULL;
+    }
+
     /* ZSS: ni_timestep should be in seconds.
     Before Sep. 18/09 it may have been saved incorrectly in msec */
     timestr = NI_get_attribute(sdel, "ni_timestep");
 
     /* set basic gifti attributes */
     numDA   = sdel->vec_num;
-    intent  = (timestr && *timestr) ? NIFTI_INTENT_TIME_SERIES
-                                    : NIFTI_INTENT_NONE;
+    intent  = (timestr && *timestr) ? NIFTI_INTENT_TIME_SERIES :
+                has_lt              ? NIFTI_INTENT_LABEL       :
+                NIFTI_INTENT_NONE;
     dtype   = dtype_niml_to_nifti(sdel->vec_typ[0]);
     ndim    = 1;
     dims[0] = sdel->vec_len;
@@ -358,11 +369,13 @@ static gifti_image * NSD_to_gifti(NI_group * ngr, char * fname)
     RETURN(gim);
 }
 
-/* fill the LabelTable structure, from AFNI_labeltable->SPARSE_DATA */
+/* fill the LabelTable structure, from AFNI_labeltable->SPARSE_DATA
+ *
+ * changed lt->label to lt->key, for format change    8 Mar 2008 [rickr] */
 static int nsdg_add_label_table(NI_group * ngr, gifti_image * gim)
 {
     giiLabelTable  * lt;
-    NI_element     * nel, * tel;
+    NI_element     * nel = NULL, * tel;
     NI_group       * ltg = NULL;
     float          * rgba = NULL;
     char           * cp;
@@ -448,15 +461,15 @@ static int nsdg_add_label_table(NI_group * ngr, gifti_image * gim)
 
     /* do not steal pointers, but copy data */
     lt->length = length;
-    lt->index = (int *)malloc(length*sizeof(int));
+    lt->key = (int *)malloc(length*sizeof(int));
     lt->label = (char **)malloc(length*sizeof(char *));
-    if( !lt->index || !lt->label ) {
+    if( !lt->key || !lt->label ) {
         fprintf(stderr,"** N2G: failed to copy LabelTable of len %d\n",length);
-        if( lt->index ) free(lt->index); lt->index = NULL;
-        if( lt->label ) free(lt->label); lt->label = NULL;
-        if( rgba )      free(rgba);
+        if( lt->key )   { free(lt->key);   lt->key = NULL; }
+        if( lt->label ) { free(lt->label); lt->label = NULL; }
+        if( rgba )      { free(rgba); }
     }
-    memcpy(lt->index, nel->vec[ind], length*sizeof(int));
+    memcpy(lt->key, nel->vec[ind], length*sizeof(int));
 
     /* and duplicate all of the labels */
     for( c = 0; c < length; c++ )
@@ -855,7 +868,7 @@ static int gnsd_add_gifti_labeltable(NI_group * ngr, gifti_image * gim)
                                    lt->length, &dmin, &minp, &dmax, &maxp);
             if( append_vals(&str, &len, ";", dmin,dmax,minp,maxp) ) RETURN(1);
         }
-    nifti_get_min_max_posn(lt->index, NIFTI_TYPE_INT32,
+    nifti_get_min_max_posn(lt->key, NIFTI_TYPE_INT32,
                            lt->length, &dmin, &minp, &dmax, &maxp);
     if( append_vals(&str, &len, ";", dmin,dmax,minp,maxp) ) RETURN(1);
     if( append_vals(&str, &len, ";", 0.0, 0.0, -1, -1) ) RETURN(1);
@@ -896,7 +909,7 @@ static int gnsd_add_lt_sparse_data(NI_group * ngr, giiLabelTable * lt,
 
     ENTRY("gnsd_add_lt_sparse_data");
 
-    if( !ngr || !lt || lt->length <= 0 || !lt->index || !lt->label ) {
+    if( !ngr || !lt || lt->length <= 0 || !lt->key || !lt->label ) {
         if(GP->verb>3) fprintf(stderr,"++ gNSD: no LT sparse data to add\n");
         RETURN(0);
     } else if(GP->verb > 3) fprintf(stderr,"++ gNSD: adding LT sparse data\n");
@@ -914,8 +927,8 @@ static int gnsd_add_lt_sparse_data(NI_group * ngr, giiLabelTable * lt,
         nnew += 4;
     }
 
-    /* add index and labels */
-    NI_add_column(nel, NI_INT, lt->index);
+    /* add key and labels */
+    NI_add_column(nel, NI_INT, lt->key);
     NI_add_column(nel, NI_STRING, lt->label);
     nnew += 2;
 
@@ -1025,10 +1038,21 @@ static int gnsd_add_sparse_data(NI_group * ngr, gifti_image * gim, int add_data)
         }
         ni_type = dtype_nifti_to_niml(da->datatype);
         if( ni_type < 0 ) {
-            fprintf(stderr,"** invalid type for NIML conversion: %d = %s\n",
-                    da->datatype, nifti_datatype_string(da->datatype));
-            NI_free_element(nel);
-            RETURN(1);
+            if( da->datatype == NIFTI_TYPE_UINT32 ) {
+                if( has_negatives(da->data, da->nvals, NIFTI_TYPE_INT32) ) {
+                    fprintf(stderr,"** read UINT32 as INT32, would overflow\n");
+                    NI_free_element(nel);
+                    RETURN(1);
+                }
+                if(GP->verb>1)fprintf(stderr,"-- reading UINT32 as INT32...\n");
+                ni_type = NI_INT;
+            }
+            else {
+                fprintf(stderr,"** invalid type for NIML conversion: %d = %s\n",
+                        da->datatype, nifti_datatype_string(da->datatype));
+                NI_free_element(nel);
+                RETURN(1);
+            }
         }
 
         if( GP->verb > 4 )
@@ -1062,6 +1086,40 @@ static int gnsd_add_sparse_data(NI_group * ngr, gifti_image * gim, int add_data)
 
     if( GP->verb > 2 )
         fprintf(stderr,"++ NSD: added %d columns in SPARSE_DATA\n", nnew);
+
+    RETURN(0);
+}
+
+/* check whether there are any negatives in the data      5 Mar 2010 [rickr]
+ * (add types as needed)                                  FS annot uses UINT32
+ *
+ * return 1 if negatives, 0 if not, -1 on error */
+static int has_negatives(void *data, long long nvals, int type)
+{
+    long long ind;
+
+    ENTRY("has_negatives");
+
+    if( !data || nvals < 0 ) {
+        fprintf(stderr,"** has_negatives, bad inputs (%p,%lld)\n", data, nvals);
+        RETURN(-1);
+    }
+
+    switch( type ) {
+        default: {
+            fprintf(stderr,"** cannot evaluate type %d for negatives\n", type);
+             RETURN(-1);
+        }
+        case( NIFTI_TYPE_INT32 ): {
+            int * dptr = (int *)data;
+            if( sizeof(int) != 4*sizeof(char) ) {
+                fprintf(stderr,"** int is not 32-bits, cannot eval for negs\n");
+                RETURN(-1);
+            }
+            for( ind = 0; ind < nvals; ind++, dptr++ )
+                if( *dptr < 0 ) RETURN(1);
+        }
+    }
 
     RETURN(0);
 }
@@ -1273,6 +1331,7 @@ static char * nifti2suma_typestring(int niftitype)
         case NIFTI_TYPE_INT8:    return "Generic_Byte";
         case NIFTI_TYPE_INT16:   return "Generic_Short";
         case NIFTI_TYPE_INT32:   return "Generic_Int";
+        case NIFTI_TYPE_UINT32:  return "Generic_Int"; /* pretend, 5 Mar 2010 */
         case NIFTI_TYPE_FLOAT32: return "Generic_Float";
         case NIFTI_TYPE_FLOAT64: return "Generic_Double";
     }

@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 
-# currently, the explicitly does _not_ depend on scipy or numpy
+# currently, this explicitly does _not_ depend on scipy or numpy
 
 import os, sys
 import module_test_lib
-g_testlibs = ['sys', 'math']
+g_testlibs = ['math', 'copy']
 if module_test_lib.num_import_failures(g_testlibs): sys.exit(1)
    
 
@@ -14,6 +14,7 @@ import copy
 
 import afni_util as UTIL
 import afni_base as BASE
+import lib_textdata as TD
 
 class Afni1D:
    def __init__(self, filename="", from_mat=0, matrix=None, verb=1):
@@ -312,6 +313,30 @@ class Afni1D:
       if self.verb > 1:
          count = sum([val for val in self.mat[0] if val == 1])
          print '++ extreme_mask: removing %d of %d vals' % (count,self.nt)
+
+      return 0
+
+   def mask_first_TRs(self, nfirst, cval=0):
+      """set the first nfirst TRs to cval"""
+
+      if self.verb > 3:
+         print '-- masking first %d TRs, cval = %d ...' % (nfirst, cval)
+
+      if not self.ready:
+         print '** mask_first_TRs: Afni1D is not ready'
+         return 1
+
+      # apply derivative to each vector as one run, then clear run breaks
+      for ind in range(self.nvec):
+         offset = 0
+         for run, rlen in enumerate(self.run_len):
+            if nfirst > rlen:
+               print '** mask_first_TRs, nfirst %d > run len %d (of run %d)' \
+                     % (nfirst, rlen, run+1)
+               return 1
+            # apply censor val for first nfirst TRs
+            for tr in range(nfirst): self.mat[ind][offset+tr] = cval
+            offset += rlen
 
       return 0
 
@@ -696,21 +721,21 @@ class Afni1D:
          print '... deepcopy failure, using simplecopy()...'
          cmat = self.simplecopy()
 
-      # demean each vector (for cormat), unless it is all 1's
+      # demean each vector (for cormat), unless it is constant
       means = [UTIL.loc_sum(vec)/cmat.nt for vec in cmat.mat]
       for v in range(cmat.nvec):
          lmin = min(cmat.mat[v])
          lmax = max(cmat.mat[v])
-         if lmin != 1.0 or lmax != 1.0:
+         if lmin != lmax:
             for ind in range(cmat.nt):
                cmat.mat[v][ind] -= means[v]
 
       # and normalize
-      norms = [norm(row) for row in cmat.mat]
+      norms = [UTIL.euclidean_norm(row) for row in cmat.mat]
       for v in range(cmat.nvec):
          for ind in range(cmat.nt):
-            if norms[v] == 0: cmat.mat[v][ind] = 0
-            else:             cmat.mat[v][ind] /= norms[v]
+            if norms[v] == 0.0: cmat.mat[v][ind] = 0.0
+            else:               cmat.mat[v][ind] /= norms[v]
 
       # finally, assign cormat
       self.cormat =[[UTIL.dotprod(r1,r2) for r2 in cmat.mat] for r1 in cmat.mat]
@@ -1227,8 +1252,16 @@ class Afni1D:
 
       if self.verb > 3: print "-- Afni1D: init_from_1D '%s'" % fname
 
-      mat, clines = read_1D_file(fname)
-      if not mat: return 1
+      tmat, clines = TD.read_data_file(fname, verb=self.verb)
+      if not TD.data_is_rect(tmat):
+         print "** data is not rectangular in %s" % fname
+         return 1
+      if not tmat: return 1
+
+      # treat columns as across time
+      mat = UTIL.transpose(tmat)
+      del(tmat)
+      
       self.mat   = mat
       self.nvec  = len(mat)
       self.nt    = len(mat[0])
@@ -1303,11 +1336,8 @@ class Afni1D:
 
       return 0
 
-def norm(vec):
-   """return the euclidean norm"""
-
-   if len(vec) < 1: return 0.0
-   return UTIL.euclidean_norm(vec)
+# end Afni1D
+# ===========================================================================
 
 def c1D_line2labelNdata(cline, verb=1):
    """expect cline to be of the form: '# LABEL = "DATA"'
@@ -1334,51 +1364,6 @@ def c1D_line2labelNdata(cline, verb=1):
 
    return label, data
 
-def read_1D_file(fname):
-   """read 1D file, returning the data in a matrix, and comments in clines
-      (matrix is transposed so the columns over time are stored as rows)"""
-
-   try: fp = open(fname, 'r')
-   except:
-      print "** failed to open file '%s'" % fname
-      return None, None
-
-   fmat = []            # data lines
-   clines = []          # comment lines
-
-   lind = 0
-   nts = 0              # number of time series (cols in file, rows in fmat)
-   for line in fp.readlines():
-      lind += 1
-      lary = line.split()
-      if len(lary) == 0: continue
-      if lary[0] == '#':
-         clines.append(line)
-         continue
-
-      # so this should be data
-
-      # maybe initialize fmat
-      if nts == 0:
-         nts = len(lary)
-         fmat = [[] for ind in range(nts)]
-
-      if len(lary) != nts:
-         print "** matrix is not square at line %d of %s" % (lind,fname)
-         del(fmat)
-         del(clines)
-         return None, None
-
-      try:
-         for ind in range(nts): fmat[ind].append(float(lary[ind]))
-      except:
-         print "** failed to convert line '%s' to floats in %s" % (line,fname)
-         del(fmat)
-         del(clines)
-         return None, None
-
-   return fmat, clines
-
 def list2_is_in_list1(list1, list2, label=''):
    """return 0 or 1, based on whether every element in list2 exists
       in list1"""
@@ -1393,7 +1378,343 @@ def list2_is_in_list1(list1, list2, label=''):
 
    return 1
 
+# end Afni1D helper functions
+# ===========================================================================
+
+
+# ===========================================================================
+# begin AfniData - generic numeric sparse 2D float class
+
+g_AfniData_hist = """
+   30 Jul, 2010 : added AfniData class
+   17 Aug, 2010 : get data via lib_textdata.read_data_file()
+                  - this includes modulation and duration data
+"""
+
+# error constants for file tests
+ERR_ANY_MISC      =  1       # apply to errors that are not accumulated
+ERR_ST_NEGATIVES  =  2       # some times are negatives
+ERR_ST_NON_UNIQUE =  4       # times are not unique
+ERR_ST_NUM_RUNS   =  8       # number of runs mismatch
+ERR_ST_TOO_BIG    = 16       # val >= run length
+
+
+class AfniData:
+   def __init__(self, filename="", verb=1):
+      """akin to a 2D float class, but do not require a square matrix
+
+         init from filename
+            filename   : 1D/timing file to read
+            verb       : verbose level of operations
+      """
+
+      # main variables
+      self.fname   = filename   # name of data file
+      self.name    = "NoName"   # more personal and touchy-feely...
+      self.data    = None       # actual data (array of arrays [[]])
+      self.mdata   = None       # married data (elements are [time [mods] dur])
+      self.clines  = None       # comment lines from file
+
+      # descriptive variables, set from data
+      self.nrows     = 0
+      self.ncols     = 0        # non-zero if rectangular
+      self.row_lens  = []       # row lengths, if not rectangular
+
+      self.rect      = 0        # rectangular?
+      self.square    = 0        # square?
+      self.binary    = 0        # 0/1 file?
+      self.empty     = 0        # no data at all
+      self.married   = 0        # data has modulators or durations
+
+      self.ready     = 0        # data is ready
+
+      # passed in variables
+      self.tr        = 0        # non-zero, if it applies
+      self.nruns     = 0        # non-zero, if known
+      self.run_lens  = []       # run lengths, in seconds or TRs
+      self.verb      = verb
+      self.hist      = g_AfniData_hist
+
+      # computed variables
+      self.cormat      = None   # correlation mat (normed xtx)
+      self.cosmat      = None   # cosine mat (scaled xtx)
+      self.cormat_ready = 0     # correlation mat is set
+
+      # initialize...
+      if self.init_from_filename(self.fname): return None
+
+
+   def show(self):
+      print self.make_show_str()
+
+   def make_show_str(self):
+      if self.ready: rstr = 'ready'
+      else:          rstr = 'not ready'
+
+      mstr = "++ name     : %s (%s)\n" \
+             "   fname    : %s\n" \
+             "++ nrows    : %d\n" \
+             "   ncols    : %d\n" \
+             "   row_lens : %s\n" \
+             "++ rect     : %d\n" \
+             "   square   : %d\n" \
+             "   binary   : %d\n" \
+             "++ tr       : %g\n" \
+             "   nruns    : %d\n" \
+             % (self.name, rstr, self.fname,
+                self.nrows, self.ncols, self.row_lens,
+                self.rect, self.square, self.binary, self.tr, self.nruns)
+
+      return mstr
+
+   # some accessor functions to match Afni1D
+   def set_nruns(nruns): self.nruns = nruns
+
+   def set_run_lengths(run_lengths):
+      self.row_lens = run_lengths
+
+   def looks_like_1D(self, run_lens=[], nstim=0, verb=1):
+      """return whether data looks like 1D (stim_file) format
+                - data should be rectangular
+                  (what else can we even check?)
+         if run_lens is passed,
+                - nrows should be at least sum(run_lens)
+                - warn if too many and verb > 0
+         if nstim is passed,
+                - number of columns should equal nstim
+
+      """
+
+      if not self.ready:
+         print '** looks_like_1D: data not ready'
+         return 0
+
+      if self.empty:
+         if verb > 1: print "-- empty file %s okay as 1D file" % self.fname
+         return 1
+
+      # error occur only as singles, to test against verb > 1
+
+      errors = 0
+      if not self.rect:
+         errors |= ERR_ANY_MISC
+         if verb > 1: print "** file %s is not rectangular" % self.fname
+
+      # keep same local variable
+      rlens = run_lens
+
+      nruns = len(rlens)
+      if nruns > 0:
+         # if TR, scale it in
+         tot_dur = sum(rlens)
+
+         # if nrows is too small, error -- if too big, just warn
+         if tot_dur > self.nrows:
+            errors |= ERR_ANY_MISC
+            if verb > 1:
+               print "** file %s: nrows too small for run dur: %d < %d" \
+                               % (self.fname, self.nrows, tot_dur)
+         elif tot_dur < self.nrows:
+            if verb > 0:
+               print "** warning for 1D file %s, more rows than TRs: %d > %d" \
+                     % (self.fname, self.nrows, tot_dur)
+
+      if nstim > 0 and nstim != self.ncols:
+         errors |= ERR_ANY_MISC
+         if verb > 1: print "** file %s: ncols %d != nstim %d" \
+                            % (self.fname, self.ncols, nstim)
+
+      if errors == 0:
+         if verb > 0: print '== GOOD: %s looks like 1D' % self.fname
+         return 1
+      else:
+         if verb > 0: print '== BAD: %s does not look like 1D' % self.fname
+         return 0
+
+   def looks_like_local_times(self, run_lens=[], tr=0.0, verb=1):
+      """return whether data looks like local stim_times format
+                - times should be non-negative
+                - times should be unique per run
+         if run_lens is passed, 
+                - number of runs should match nrows
+                - maximum should be less than current run_length
+         if tr is passed, scale the run lengths
+      """
+
+      # possibly scale run_lengths
+      if tr > 0.0: rlens = [tr*rl for rl in run_lens]
+      else:        rlens = run_lens
+
+      nruns = len(rlens)
+
+      if not self.ready:
+         print '** looks_like_local_times: data not ready'
+         return 0
+
+      if self.empty:
+         if verb > 1: print "-- empty file %s okay as local_times" % self.fname
+         return 1
+
+      # in case we know nothing, just check that values are non-negative
+      # and unique
+      # - if we have run lengths, check the number of runs and maximums, too
+      errors = 0
+      if nruns > 0:
+         if nruns != self.nrows:
+            errors |= ERR_ST_NUM_RUNS
+            if verb > 2: print "** %d rows does not match %d runs" \
+                               % (self.nrows, nruns)
+      for rind in range(len(self.data)):
+         # start with row copy
+         row = self.data[rind][:]
+         if len(row) == 0: continue
+         row.sort()
+         first = row[0]
+         last = row[-1]
+         if first < 0:
+            errors |= ERR_ST_NEGATIVES
+            if verb > 2: print "** row %d has negative time %g" % (rind, first)
+         if not UTIL.vals_are_increasing(row):
+            errors |= ERR_ST_NON_UNIQUE
+            if verb > 2: print "** row %d has repetitive times" % rind
+         if nruns > 0 and rind < nruns:
+            if last >= rlens[rind]:
+               errors |= ERR_ST_TOO_BIG
+               if verb > 2:
+                  print "** row %d has time %g exceeding run duration %g" \
+                               % (rind, last, rlens[rind])
+
+         del(row)
+
+      if verb > 1:
+         if errors:
+            print "** file '%s' is not in -local_times format" % self.fname
+            if errors & ERR_ST_NEGATIVES:  print '   - has negative times'
+            if errors & ERR_ST_NON_UNIQUE: print '   - times are not unique'
+            if errors & ERR_ST_NUM_RUNS:   print '   - num rows != num runs'
+            if errors & ERR_ST_TOO_BIG:    print '   - times exceed run lengths'
+         else: print '++ data looks like stim times'
+
+      if errors == 0:
+         if verb>0: print '== GOOD: %s looks like local stim_times'%self.fname
+         return 1
+      else:
+         if verb > 0:
+            print '== BAD: %s does not look like local stim_times' % self.fname
+         return 0
+
+
+   def looks_like_global_times(self, run_lens=[], tr=0.0, verb=1):
+
+      if not self.ready:
+         print '** looks_like_1D: data not ready'
+         return 0
+
+      if self.empty:
+         if verb > 1: print "-- empty file %s okay as global_times" % self.fname
+         return 1
+
+      errors = 0
+
+      # must be one row or column
+      if self.ncols != 1 and self.nrows != 1:
+         errors |= ERR_ANY_MISC
+         if verb > 1: print "** file %s is not a single column" % self.fname
+
+      # must rectangular
+      if not self.rect:
+         errors |= ERR_ANY_MISC
+         if verb > 1: print "** file %s is not a rectangular" % self.fname
+
+      # get a single sequence of numbers, depending on the direction
+      if self.nrows == 1: data = self.data[0]
+      else:data = [row[0] for row in self.data if len(row)>0]
+
+      data.sort()
+
+      if data[0] < 0.0:
+         errors |= ERR_ANY_MISC
+         if verb > 1: print "** file %s has negative time %g" \
+                            % (self.fname, data[0])
+
+      # possibly scale run_lengths
+      if tr > 0.0: rlens = [tr*rl for rl in run_lens]
+      else:        rlens = run_lens
+
+      # note the total duration (tr == -1 implies just count TRs)
+      endoftime = sum(rlens)
+      if tr > 0.0: endoftime *= tr
+
+      if data[-1] >= endoftime:
+         errors |= ERR_ANY_MISC
+         if verb > 1: print "** file %s has time %g after all runs, %g" \
+                            % (self.fname, data[-1], endoftime)
+
+      if not UTIL.vals_are_increasing(data):
+            errors |= ERR_ANY_MISC
+            if verb > 1: print "** file %s has repeat times" % self.fname
+
+      if errors == 0:
+         if verb > 0: print '== GOOD: %s looks like global stim_times' \
+                            % self.fname
+         return 1
+      else:
+         if verb > 0: print '== BAD: %s does not look like global stim_times' \
+                            % self.fname
+         return 0
+
+   def init_from_filename(self, fname):
+      """file could be 1D, timing or married timing data
+        
+         For now, store complete result but focus on times only.
+      """
+
+      mdata, clines = TD.read_married_file(fname, verb=self.verb)
+      if mdata == None:
+         print '** A1D: failed to read data file %s' % fname
+         return 1
+
+      # note whether the data is married (modulation or duration)
+      if TD.married_type(mdata):
+         self.married = 1
+
+      # data will ignore any married information
+      self.data     = [[val[0] for val in row] for row in mdata]
+      self.mdata    = mdata
+      self.clines   = clines
+      self.fname    = fname
+      
+      self.nrows    = len(self.data)
+      self.row_lens = [len(row) for row in self.data]
+
+      # accept an empty file?
+      if self.nrows == 0:
+         self.empty = 1
+         self.ready = 1
+         return 0
+
+      # if row lengths are all the same, use ncols, instead
+      if UTIL.vals_are_constant(self.row_lens):
+         self.ncols = self.row_lens[0]
+         del(self.row_lens)
+         self.row_lens = []
+         self.rect  = 1
+
+      if self.rect and (self.nrows == self.ncols): self.square = 1
+
+      # check to see if it is a 0/1 file
+      self.binary = 1
+      for row in self.data:
+         if not UTIL.vals_are_0_1(row):
+            self.binary = 0
+            break
+
+      self.ready = 1
+      
+      return 0
+
 if __name__ == '__main__':
    print '** this is not a main module'
    sys.exit(1)
+
 

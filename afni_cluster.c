@@ -19,6 +19,14 @@ static char * AFNI_clus_3dclust( Three_D_View *im3d ) ;
 #undef  MAX_INDEX
 #define MAX_INDEX 99999
 
+static Widget wtemp ;
+
+static char *wherprog = NULL ;
+
+char * get_alpha_string( int csiz  , float pval , Three_D_View *im3d    ) ;
+int find_cluster_thresh( float athr, float pval , CLU_threshtable *ctab ) ;
+CLU_threshtable * CLU_get_thresh_table( Three_D_View *im3d ) ;
+
 /*****************************************************************************/
 /*************  Functions for all actions in the cluster group ***************/
 
@@ -56,40 +64,32 @@ ENTRY("AFNI_cluster_choose_CB") ;
 
    if( ! IM3D_OPEN(im3d) ) EXRETURN ;
 
-   rmm = vec[0] ; vmul = vec[1] ;
-   if( rmm <= 0.0f && vmul < 2.0f ){
+   rmm = -rintf(vec[0]) ;
+        if( rmm >= -1.0f ) rmm = -1.0f ;
+   else if( rmm >= -2.0f ) rmm = -2.0f ;
+   else                    rmm = -3.0f ;
+   vmul = vec[1] ;
+   if( vmul < 2.0f ){
      static int first=1 ;
-     vmul = 2.0f ; rmm = 0.0f ;
+     vmul = 2.0f ;
      if( first ){
        MCW_popup_message( im3d->vwid->func->clu_cluster_pb ,
-                           "** WARNING **\n"
-                           "** With rmm <= 0, vmul is min cluster\n"
-                           "** size in voxels, and is reset to 2\n "  ,
-                          MCW_USER_KILL | MCW_TIMER_KILL ) ;
-       first = 0 ;
-     }
-   } else if( rmm > 0.0f && vmul < 2.0f*DSET_VOXVOL(im3d->fim_now) ){
-     static int first=1 ;
-     vmul = 1.e-7 ;
-     if( first ){
-       MCW_popup_message( im3d->vwid->func->clu_cluster_pb ,
-                           "** NOTICE **\n"
-                           "** When vmul is too small, it will\n"
-                           "** be the same as setting it to be\n"
-                           "** twice the overlay dataset's\n"
-                           "** voxel volume\n " ,
+                           "** ---- WARNING ---- **\n"
+                           "** Voxels is reset to 2\n " ,
                           MCW_USER_KILL | MCW_TIMER_KILL ) ;
        first = 0 ;
      }
    }
    im3d->vedset.code     = VEDIT_CLUST ;
-   im3d->vedset.param[2] = rmm ;
+   im3d->vedset.param[2] = rmm ;   /* is -1, -2, or -3 [Jul 2010] */
    im3d->vedset.param[3] = vmul ;  /* other params set in afni.c */
    set_vedit_cluster_label(im3d,1) ;
    if( ISVALID_3DIM_DATASET(im3d->fim_now) && !im3d->vinfo->func_visible ){
      MCW_set_bbox( im3d->vwid->view->see_func_bbox , 1 ) ;
      im3d->vinfo->func_visible = True ;
    }
+
+   im3d->vwid->func->clu_nnlev = (int)(-rmm) ;
 
    if( im3d->vinfo->func_visible ) AFNI_redisplay_func( im3d ) ;
    EXRETURN ;
@@ -111,24 +111,6 @@ ENTRY("AFNI_histrange_choose_CB") ;
    hb = vec[0] ; ht = vec[1] ;
    if( hb >= ht ){ hb = ht = 0.0f ; }
    cwid->hbot = hb ; cwid->htop = ht ;
-   EXRETURN ;
-}
-
-/*---------------------------------------------------------------*/
-
-static void AFNI_fwhm_choose_CB( Widget wc, XtPointer cd, MCW_choose_cbs *cbs )
-{
-   Three_D_View *im3d = (Three_D_View *)cd ;
-   AFNI_clu_widgets *cwid ;
-   float *vec = (float *)(cbs->cval) , ff ;
-
-ENTRY("AFNI_fhwm_choose_CB") ;
-
-   if( !IM3D_OPEN(im3d) ) EXRETURN ;
-   cwid = im3d->vwid->func->cwid ; if( cwid == NULL ) EXRETURN ;
-
-   cwid->fwhm = vec[0] ;
-   AFNI_clus_update_widgets( im3d ) ;
    EXRETURN ;
 }
 
@@ -157,33 +139,38 @@ ENTRY("AFNI_clu_CB") ;
    /*--- Get clusterizing parameters ---*/
 
    if( w == im3d->vwid->func->clu_cluster_pb ){
-     char *lvec[2] = { "rmm " , "vmul" } ;
+     char *lvec[2] = { "NN level " , "Voxels   " } ;
      float fvec[2] ;
+     MCW_arrowval **vav ; int nav ;
      if( im3d->vedset.code == VEDIT_CLUST ){
-       fvec[0] = im3d->vedset.param[2]; if( fvec[0] <= 0.0f ) fvec[0] =  0.0f;
-       fvec[1] = im3d->vedset.param[3]; if( fvec[1] <= 0.0f ) fvec[1] = 20.0f;
+       fvec[0] = -im3d->vedset.param[2];
+       fvec[1] =  im3d->vedset.param[3]; if( fvec[1] < 2.0f ) fvec[1] = 20.0f;
      } else {
-       fvec[0] = 0.0f ; fvec[1] = 20.0f ;
+       fvec[0] =  1.0f ;  /* NN1 */
+       fvec[1] = 20.0f ;
      }
      MCW_choose_vector( im3d->vwid->func->thr_label ,
-                       "------ Set Clusterize Parameters ------\n"
-                       "* rmm=0 is Nearest Neighbor clustering;\n"
-                       "  then vmul is cluster volume threshold\n"
-                       "  measured in Overlay voxel count\n"
-                       "   [vmul should be at least 2 voxels]\n"
-                       "----------------------------------------\n"
-                       "* rmm>0 is clustering radius in mm; then\n"
-                       "  vmul = volume threshold in microliters\n"
-                       "   [at least 2 * dataset voxel volume]\n"
-                       "----------------------------------------\n"
+                       "------ Set Clusterize Parameter -------\n"
+                       "* NN level => NN clustering method\n"
+                       "        1 = faces must touch\n"
+                       "        2 = faces or edges touch\n"
+                       "        3 = faces or edges or corners\n"
+                       "* Voxels   => minimum cluster size that\n"
+                       "              will be kept [at least 2]\n"
+                       "---------------------------------------\n"
                        "* Use 'BHelp' on 'Cluster Edit' label\n"
                        "  to get summary of clustering results.\n"
-                       "----------------------------------------\n"
+                       "---------------------------------------\n"
                        "* Click on the 'Rpt' button to open a\n"
                        "  more complete cluster report panel.\n"
-                       "----------------------------------------"
+                       "---------------------------------------"
                        , 2 , lvec,fvec ,
                         AFNI_cluster_choose_CB , (XtPointer)im3d ) ;
+     vav = MCW_choose_vector_avarray(&nav) ;
+     if( nav > 1 && vav != NULL ){
+       vav[0]->imin = vav[0]->fmin = 1 ; vav[0]->imax = vav[0]->fmax = 3 ;
+       vav[1]->imin = vav[1]->fmin = 2 ;
+     }
      EXRETURN ;
    }
 
@@ -194,6 +181,7 @@ ENTRY("AFNI_clu_CB") ;
          im3d->vinfo->func_visible        &&
          IM3D_IMAGIZED(im3d)                ){
 
+       CLU_setup_alpha_tables(im3d) ; /* Jul 2010 */
        AFNI_cluster_widgize(im3d,1) ;
      } else {
        MCW_popup_message( im3d->vwid->func->clu_report_pb ,
@@ -305,9 +293,9 @@ static int scrolling      =  1 ;
             ff     , xmPushButtonWidgetClass , rc ,                 \
             LABEL_ARG("Save") , XmNtraversalOn , True ,             \
             XmNinitialResourcesPersistent , False , NULL ) ;        \
-     mb = cwid->clu_alph_lab[ii] = XtVaCreateWidget(                \
+     mb = cwid->clu_alph_lab[ii] = XtVaCreateManagedWidget(         \
             ff     , xmLabelWidgetClass , rc ,                      \
-            LABEL_ARG(" N/A") ,                                     \
+            LABEL_ARG("------") ,                                   \
             XmNalignment , XmALIGNMENT_BEGINNING ,                  \
             XmNrecomputeSize , False ,  XmNtraversalOn , True ,     \
             XmNinitialResourcesPersistent , False , NULL ) ;        \
@@ -322,6 +310,7 @@ static int scrolling      =  1 ;
      if( scrolling && ii%2==1 ){                                    \
        MCW_set_widget_bg(rc,"black",0);                             \
        MCW_set_widget_bg(lb,"black",0);                             \
+       MCW_set_widget_bg(mb,"black",0);                             \
      }                                                              \
   } while(0)
 
@@ -421,11 +410,11 @@ ENTRY("AFNI_clus_make_widgets") ;
                               XmFONTLIST_DEFAULT_TAG ) ;
    cwid->top_lab = XtVaCreateManagedWidget(
                     "menu" , xmLabelWidgetClass , cwid->rowcol ,
-                       XmNrecomputeSize , False ,
+                       XmNrecomputeSize , True ,
                        XmNlabelString , xstr ,
                        XmNtraversalOn , True  ,
                     NULL ) ;
-   XmStringFree(xstr) ;
+   XmStringFree(xstr) ; LABELIZE(cwid->top_lab) ;
 
    /*---- popup menu on top label ----*/
 
@@ -441,12 +430,12 @@ ENTRY("AFNI_clus_make_widgets") ;
    SAVEUNDERIZE(cwid->top_menu) ; VISIBILIZE_WHEN_MAPPED(cwid->top_menu) ;
    if( !AFNI_yesenv("AFNI_DISABLE_TEAROFF") ) TEAROFFIZE(cwid->top_menu) ;
 
-   (void) XtVaCreateManagedWidget(
+   wtemp = XtVaCreateManagedWidget(
             "dialog" , xmLabelWidgetClass , cwid->top_menu ,
                LABEL_ARG("--- Cancel ---") ,
                XmNrecomputeSize , False ,
                XmNinitialResourcesPersistent , False ,
-            NULL ) ;
+            NULL ) ; LABELIZE(wtemp) ;
 
    xstr = XmStringCreateLtoR( "Hist range" , XmFONTLIST_DEFAULT_TAG ) ;
    cwid->histrange_pb = XtVaCreateManagedWidget(
@@ -464,17 +453,6 @@ ENTRY("AFNI_clus_make_widgets") ;
                                          MCW_BB_check , MCW_BB_noframe , NULL,NULL ) ;
      MCW_reghint_children( cwid->histsqrt_bbox->wrowcol , "Plot square root of histogram?" ) ;
    }
-
-   xstr = XmStringCreateLtoR( "noise FWHM" , XmFONTLIST_DEFAULT_TAG ) ;
-   cwid->fwhm_pb = XtVaCreateManagedWidget(
-           "menu" , xmPushButtonWidgetClass , cwid->top_menu ,
-            XmNlabelString , xstr ,
-            XmNtraversalOn , True  ,
-         NULL ) ;
-   XmStringFree(xstr) ;
-   XtAddCallback( cwid->fwhm_pb, XmNactivateCallback, AFNI_clus_action_CB, im3d );
-   MCW_register_hint( cwid->fwhm_pb , "Set noise FWHM for cluster alpha calculation" ) ;
-   cwid->fwhm = -1.0f ;
 
    /*---- end of popup menu ----*/
 
@@ -507,6 +485,7 @@ ENTRY("AFNI_clus_make_widgets") ;
    /* row #1: index label */
 
    cwid->index_lab = XtVaCreateManagedWidget( "menu" , xmLabelWidgetClass , rc , NULL ) ;
+   LABELIZE(cwid->index_lab) ;
    MCW_register_hint( cwid->index_lab , "Crosshairs are in this cluster" ) ;
    MCW_register_help( cwid->index_lab , "Shows the cluster index that\n"
                                         "contains the crosshairs point.\n"
@@ -517,17 +496,22 @@ ENTRY("AFNI_clus_make_widgets") ;
    /* row #1: coord_mode chooser */
 
    { static char *clab[2] = { "Peak" , "CMass" } ;
-     cwid->cmode_av = new_MCW_optmenu( rc , "xyz" , 0,1,0,0 ,
+     cwid->cmode_av = new_MCW_optmenu( rc , "XYZ" , 0,1,0,0 ,
                         AFNI_clus_av_CB,im3d , MCW_av_substring_CB,clab ) ;
      MCW_reghint_children( cwid->cmode_av->wrowcol , "Coordinate display type" ) ;
      MCW_reghelp_children( cwid->cmode_av->wrowcol ,
                             "Choose whether to show the Peak or\n"
-                            "Center-of-Mass x,y,z coordinates\n"
+                            "Center-of-Mass X,Y,Z coordinates\n"
                             "for each cluster.\n"
                             "* The weights that define these\n"
-                            "  locations are taken from the\n"
-                            "  'OLay' sub-brick of the Overlay\n"
-                            "  dataset."
+                            "   locations are taken from the\n"
+                            "   'OLay' sub-brick of the Overlay\n"
+                            "   dataset.\n"
+                            "* The coordinate signs (DICOM or\n"
+                            "   SPM order) can be chosen in the\n"
+                            "   main AFNI controller window by\n"
+                            "   the right-click popup menu in\n"
+                            "   the upper-left coordinate label.\n"
                          ) ;
    }
 
@@ -543,12 +527,20 @@ ENTRY("AFNI_clus_make_widgets") ;
    XmStringFree(xstr) ;
    XtAddCallback( cwid->clust3d_pb, XmNactivateCallback, AFNI_clus_action_CB, im3d );
    MCW_register_hint( cwid->clust3d_pb , "Output equivalent 3dclust command" ) ;
-   MCW_register_help( cwid->clust3d_pb , "Writes the equivalent 3dclust\n"
-                                         "command to the terminal (stdout)" ) ;
+   MCW_register_help( cwid->clust3d_pb ,
+                       "Writes the equivalent 3dclust\n"
+                       "command to the terminal (stdout)\n"
+                       "* However, at this time, 3dclust\n"
+                       "   has no way to use the 3dClustSim\n"
+                       "   mask (if any) stored in the\n"
+                       "   Overlay dataset's header, so\n"
+                       "   the results might not be exactly\n"
+                       "   identical to AFNI's Clusterize."
+                    ) ;
 
-   /* row #1: SaveTable button */
+   /* row #1: SaveTabl button */
 
-   xstr = XmStringCreateLtoR( "SaveTable" , XmFONTLIST_DEFAULT_TAG ) ;
+   xstr = XmStringCreateLtoR( "SaveTabl" , XmFONTLIST_DEFAULT_TAG ) ;
    cwid->savetable_pb = XtVaCreateManagedWidget(
            "menu" , xmPushButtonWidgetClass , rc ,
             XmNlabelString , xstr ,
@@ -561,7 +553,8 @@ ENTRY("AFNI_clus_make_widgets") ;
                       "Write cluster locations (CM and Peak)\n"
                       "to a text file, whose name is of the\n"
                       "form 'NAME_table.1D', where 'NAME'\n"
-                      "is the entry in the text field.\n"
+                      "is the entry in the text field\n"
+                      "(to the right).\n"
                       "* If 'NAME' is blank, then 'Clust' is used.\n"
                       "* If 'NAME' is '-', then stdout is used."
                     ) ;
@@ -592,9 +585,9 @@ ENTRY("AFNI_clus_make_widgets") ;
                                           "for all 'Save' buttons."  ) ;
    }
 
-   /* row #1: SaveMask button [01 May 2008] */
+   /* row #1: SaveMsk button [01 May 2008] */
 
-   xstr = XmStringCreateLtoR( "SaveMask" , XmFONTLIST_DEFAULT_TAG ) ;
+   xstr = XmStringCreateLtoR( "SaveMsk" , XmFONTLIST_DEFAULT_TAG ) ;
    cwid->savemask_pb = XtVaCreateManagedWidget(
            "menu" , xmPushButtonWidgetClass , rc ,
             XmNlabelString , xstr ,
@@ -610,9 +603,43 @@ ENTRY("AFNI_clus_make_widgets") ;
                        "index (1,2,...) for that voxel,\n"
                        "or 0 if that voxel isn't in\n"
                        "any cluster.  The text field\n"
-                       "is used to set the dataset's\n"
-                       "prefix name."
+                       "(to the left) is used to set\n"
+                       "the dataset's prefix name."
                     ) ;
+
+   /* row #1: Where button [04 Aug 2010] */
+
+   wherprog = THD_find_executable("whereami") ;
+   if( wherprog != NULL ){
+     xstr = XmStringCreateLtoR( "WamI" , XmFONTLIST_DEFAULT_TAG ) ;
+     cwid->whermask_pb = XtVaCreateManagedWidget(
+             "menu" , xmPushButtonWidgetClass , rc ,
+              XmNlabelString , xstr ,
+              XmNtraversalOn , True  ,
+           NULL ) ;
+     XmStringFree(xstr) ;
+     XtAddCallback( cwid->whermask_pb, XmNactivateCallback, AFNI_clus_action_CB, im3d );
+     MCW_register_hint( cwid->whermask_pb , "SaveMsk, then 'whereami -omask'") ;
+     MCW_register_help( cwid->whermask_pb ,
+                         "Write the set of clusters to\n"
+                         "a 3D dataset, then run program\n"
+                         "       whereami -omask\n"
+                         "to get a report of atlas locations\n"
+                         "that overlap each cluster.\n"
+                         "* At most the first 20 clusters\n"
+                         "    will be passed to whereami.\n"
+                         "* To change this upper limit, set\n"
+                         "    AFNI_CLUSTER_WAMIMAX to a\n"
+                         "    value between 1 and 99.\n"
+                         "* Can only be run in Talairach View"
+                      ) ;
+     SENSITIZE(cwid->whermask_pb,
+               (im3d->vinfo->view_type == VIEW_TALAIRACH_TYPE) ) ;
+
+   } else {
+     WARNING_message("No whereami program in Unix path ==> no WamI button in Clusterize!") ;
+     cwid->whermask_pb = cwid->savemask_pb ;
+   }
 
    /* row #1: Done button */
 
@@ -647,7 +674,7 @@ ENTRY("AFNI_clus_make_widgets") ;
 
    /* row #2: dataset chooser */
 
-   xstr = XmStringCreateLtoR( "Aux Dataset" , XmFONTLIST_DEFAULT_TAG ) ;
+   xstr = XmStringCreateLtoR( "Choose Aux Dataset" , XmFONTLIST_DEFAULT_TAG ) ;
    cwid->dataset_pb = XtVaCreateManagedWidget(
            "menu" , xmPushButtonWidgetClass , rc ,
             XmNlabelString , xstr ,
@@ -664,14 +691,16 @@ ENTRY("AFNI_clus_make_widgets") ;
                        "the corresponding data from that\n"
                        "dataset and do various things with it:\n"
                        "* Average it:                        'Mean'\n"
+                       "* Pointwise median:                  'Medn'\n"
                        "* Compute first principal component: 'PC#1'\n"
                        "* Histogram it:                      'Hist'\n"
                        "And then either 'Plot' or 'Save' these\n"
                        "results.  If you 'Save' these results,\n"
-                       "the textfield is used to define the\n"
-                       "output filename.  If the text field is\n"
-                       "just the string '-', then 'Save' writes\n"
-                       "to the terminal (stdout), instead of a file."
+                       "the text field (between 'SaveTabl and\n"
+                       "'SaveMsk') is used to define the output\n"
+                       "filename.  If the text field is just the\n"
+                       "string '-', then 'Save' writes to the terminal\n"
+                       "window (stdout), instead of a file."
                     ) ;
 
    /* row #2: 'from' and 'to' choosers */
@@ -692,8 +721,8 @@ ENTRY("AFNI_clus_make_widgets") ;
 
    /* row #2: data processing method */
 
-   { static char *clab[3] = { "Mean" , "PC#1" , "Hist" } ;
-     cwid->aver_av = new_MCW_optmenu( rc , " " , 0,2,0,0 ,
+   { static char *clab[4] = { "Mean" , "Medn" , "PC#1" , "Hist" } ;
+     cwid->aver_av = new_MCW_optmenu( rc , " " , 0,3,0,0 ,
                                       NULL,NULL , MCW_av_substring_CB,clab ) ;
      MCW_reghint_children( cwid->aver_av->wrowcol ,
                            "Set data processing method for Plot/Save" ) ;
@@ -701,6 +730,7 @@ ENTRY("AFNI_clus_make_widgets") ;
                            "Defines how data extracted from the\n"
                            "Auxiliary Dataset will be processed:\n"
                            "* Mean = averaged across voxels\n"
+                           "* Medn = median across voxels\n"
                            "* PC#1 = compute first principal\n"
                            "         component vector\n"
                            "* Hist = build a histogram across\n"
@@ -723,6 +753,7 @@ ENTRY("AFNI_clus_make_widgets") ;
                       "dialog" , xmLabelWidgetClass , cwid->rowcol , NULL ) ;
    AFNI_clus_dsetlabel(im3d) ;
    MCW_set_widget_fg( cwid->dset_lab , "white" ) ;
+   LABELIZE( cwid->dset_lab ) ;
 
    /* Separator from other widgets */
 
@@ -730,34 +761,78 @@ ENTRY("AFNI_clus_make_widgets") ;
                                       XmNseparatorType   , XmSINGLE_LINE ,
                                    NULL ) ;
 
+   /* Jul 2010: header line */
+
+   ww = XtVaCreateManagedWidget( "dialog" , xmLabelWidgetClass , cwid->rowcol ,
+                                  NULL ) ;
+   MCW_set_widget_label( ww ,
+                         "##: __Size__  __X__  __Y__  __Z__                        Alpha") ;
+   MCW_set_widget_fg( ww , "white") ;
+
    /* Now create rows of widgets to display results from clusters */
 
    if( num < 2 ) num = 2 ;
    cwid->nall = num ;
    cwid->nrow = 0 ;     /* none are managed at this time */
 
-   cwid->clu_rc      = (Widget *) XtCalloc( num , sizeof(Widget) ) ;
-   cwid->clu_lab     = (Widget *) XtCalloc( num , sizeof(Widget) ) ;
-   cwid->clu_jump_pb = (Widget *) XtCalloc( num , sizeof(Widget) ) ;
-   cwid->clu_plot_pb = (Widget *) XtCalloc( num , sizeof(Widget) ) ;
-   cwid->clu_save_pb = (Widget *) XtCalloc( num , sizeof(Widget) ) ;
-   cwid->clu_flsh_pb = (Widget *) XtCalloc( num , sizeof(Widget) ) ;
-   cwid->clu_alph_lab= (Widget *) XtCalloc( num , sizeof(Widget) ) ;
+   cwid->clu_rc      = (Widget *)XtCalloc( num , sizeof(Widget) ) ;
+   cwid->clu_lab     = (Widget *)XtCalloc( num , sizeof(Widget) ) ;
+   cwid->clu_jump_pb = (Widget *)XtCalloc( num , sizeof(Widget) ) ;
+   cwid->clu_plot_pb = (Widget *)XtCalloc( num , sizeof(Widget) ) ;
+   cwid->clu_save_pb = (Widget *)XtCalloc( num , sizeof(Widget) ) ;
+   cwid->clu_flsh_pb = (Widget *)XtCalloc( num , sizeof(Widget) ) ;
+   cwid->clu_alph_lab= (Widget *)XtCalloc( num , sizeof(Widget) ) ;
 
    for( ii=0 ; ii < num ; ii++ ){ MAKE_CLUS_ROW(ii) ; }
    for( ii=0 ; ii < num ; ii++ ){
      MCW_register_hint( cwid->clu_lab[ii]     ,
                         "Coordinates of cluster (Peak or CMass)" ) ;
      MCW_register_hint( cwid->clu_jump_pb[ii] ,
-                        "Set crosshairs to these xyz coordinates" ) ;
+                        "Set crosshairs to these XYZ coordinates" ) ;
      MCW_register_hint( cwid->clu_plot_pb[ii] ,
-                        "Plot average over cluster of 3D+time Dataset" ) ;
+                        "Plot average over cluster of Auxiliary 3D+time Dataset" ) ;
      MCW_register_hint( cwid->clu_save_pb[ii] ,
-                        "Save average timeseries to 1D file" ) ;
+                        "Save average Aux dataset timeseries to 1D file" ) ;
      MCW_register_hint( cwid->clu_flsh_pb[ii] ,
                         "Flash cluster voxels in image viewers" ) ;
      MCW_register_hint( cwid->clu_alph_lab[ii] ,
-                        "Approximate alpha value for cluster" ) ;
+                        "Approximate alpha value: use BHelp for more info" ) ;
+     MCW_register_help( cwid->clu_alph_lab[ii] ,
+                        "Alpha values come from 3dClustSim (via afni_proc.py).\n"
+                        "\n"
+                        "Alpha is the probability that a noise-only random\n"
+                        "volume would produce a cluster of the given size,\n"
+                        "after thresholding at a given per-voxel p-value.\n"
+                        "\n"
+                        "Possible strings shown below the 'alpha' label are:\n"
+                        "\n"
+                        " < 0.xx  means the cluster size + threshold p-value\n"
+                        "          estimates the significance (alpha) level\n"
+                        "          to be smaller than the 0.xx value shown.\n"
+                        "\n"
+                        " <<0.01  means the cluster alpha level is markedly\n"
+                        "          below the 0.01 cutoff provided by 3dClustSim.\n"
+                        "\n"
+                        " > 0.10  means the cluster alpha level is above 0.10,\n"
+                        "          so this cluster could 'easily' arise from\n"
+                        "          pure noise.\n"
+                        "\n"
+                        " N/Csim  means that 3dClustSim results were not\n"
+                        "          available in Overlay dataset's header.\n"
+                        "\n"
+                        " N/pval  means that the p-value of the threshold\n"
+                        "          slider is too large to be used; you have\n"
+                        "          to move the threshold slider UP until\n"
+                        "          the p-value gets small enough.\n"
+                        "\n"
+                        " N/stat  means that the Overlay dataset's Threshold\n"
+                        "          sub-brick is not a statistic, so it doesn't\n"
+                        "          give a p-value to use for alpha significance.\n"
+                        "\n"
+                        "Any other string shown indicates an error in the\n"
+                        "Clusterize software logic.  If this happens, please\n"
+                        "blame anyone but RW Cox, who is completely innocent."
+                      ) ;
    }
 
    XtManageChild( cwid->rowcol ) ;
@@ -766,7 +841,7 @@ ENTRY("AFNI_clus_make_widgets") ;
      int wx,hy , cmax ;
      MCW_widget_geom( cwid->rowcol  , &wx,&hy,NULL,NULL ) ;
      hy *= 2 ; cmax = im3d->dc->height-128 ; if( hy > cmax ) hy = cmax ;
-     XtVaSetValues( cwid->wtop , XmNwidth,wx+31,XmNheight,hy+21 , NULL ) ;
+     XtVaSetValues( cwid->wtop , XmNwidth,wx+17,XmNheight,hy+21 , NULL ) ;
    }
 
    XtRealizeWidget( cwid->wtop ) ;
@@ -917,11 +992,12 @@ void AFNI_clus_update_widgets( Three_D_View *im3d )
    char *rpt , *rrr ;
    mri_cluster_detail *cld ;
    int nclu , ii ;
-   float px,py,pz , xx,yy,zz ;
+   float px,py,pz , xx,yy,zz , pval ;
    char line[128] ;
    MCW_cluster_array *clar ;
    int maxclu ;
-   int ja,nx,ny,nz ; float fwhmvox=-1.0f ;
+   CLU_threshtable *ctab=NULL ;
+   int do_wami = (wherprog != NULL) ;
 
 ENTRY("AFNI_clus_update_widgets") ;
 
@@ -963,7 +1039,37 @@ ENTRY("AFNI_clus_update_widgets") ;
 
    if( rpt == NULL || *rpt == '\0' ) rpt = " \n --- Cluster Report --- \n " ;
 
-   rrr = malloc(strlen(rpt)+8) ; strcpy(rrr," \n") ; strcat(rrr,rpt) ;
+   rrr = malloc(strlen(rpt)+256) ; strcpy(rrr,rpt) ;
+
+   pval = im3d->vinfo->func_pval ;
+   ctab = CLU_get_thresh_table( im3d ) ;
+   if( pval >= 0.0f && ctab != NULL ){
+#if 0
+     int csiz ;
+     csiz = find_cluster_thresh( 0.10f , pval , ctab ) ;
+     if( csiz > 0 ) sprintf( rrr+strlen(rrr) , " Cluster thresh(alpha=0.10) =%6d\n",csiz) ;
+     else           strcat ( rrr             , " Cluster thresh(alpha=0.10) =   N/A\n") ;
+     csiz = find_cluster_thresh( 0.05f , pval , ctab ) ;
+     if( csiz > 0 ) sprintf( rrr+strlen(rrr) , " Cluster thresh(alpha=0.05) =%6d\n",csiz) ;
+     else           strcat ( rrr             , " Cluster thresh(alpha=0.05) =   N/A\n") ;
+     csiz = find_cluster_thresh( 0.01f , pval , ctab ) ;
+     if( csiz > 0 ) sprintf( rrr+strlen(rrr) , " Cluster thresh(alpha=0.01) =%6d\n",csiz) ;
+     else           strcat ( rrr             , " Cluster thresh(alpha=0.01) =   N/A\n") ;
+#else
+     int csiz ; char ssiz10[8] , ssiz05[8] , ssiz01[8] ;
+     csiz = find_cluster_thresh( 0.10f , pval , ctab ) ;
+     if( csiz > 0 ) sprintf(ssiz10,"%d",csiz) ; else strcpy(ssiz10,"N/A") ;
+     csiz = find_cluster_thresh( 0.05f , pval , ctab ) ;
+     if( csiz > 0 ) sprintf(ssiz05,"%d",csiz) ; else strcpy(ssiz05,"N/A") ;
+     csiz = find_cluster_thresh( 0.01f , pval , ctab ) ;
+     if( csiz > 0 ) sprintf(ssiz01,"%d",csiz) ; else strcpy(ssiz01,"N/A") ;
+     sprintf( rrr+strlen(rrr) ,
+              " Alpha -> Cluster thresh: 0.10->%s : 0.05->%s : 0.01->%s" ,
+              ssiz10 , ssiz05 , ssiz01 ) ;
+#endif
+   }
+   ii = strlen(rrr) ; if( rrr[ii-1] == '\n' ) rrr[ii-1] = '\0' ;
+
    MCW_set_widget_label( cwid->top_lab , rrr ) ; free(rrr) ;
 
    /* make more widget rows? (1 per cluster is needed) */
@@ -988,17 +1094,6 @@ ENTRY("AFNI_clus_update_widgets") ;
      for( ii=nclu ; ii < cwid->nrow ; ii++ ) XtUnmanageChild( cwid->clu_rc[ii] ) ;
    }
    cwid->nrow = nclu ;  /* # of managed rows */
-
-   nx = DSET_NX(im3d->fim_now) ;
-   ny = DSET_NY(im3d->fim_now) ;
-   nz = (nx > 64 || ny > 64) ? -1 : DSET_NZ(im3d->fim_now) ;
-   if( nz > 0 && cwid->fwhm >= 0.0f ){
-     float dx = DSET_DX(im3d->fim_now) ;
-     float dy = DSET_DY(im3d->fim_now) ;
-     float dz = DSET_DZ(im3d->fim_now) ;
-     float dd = cbrtf(fabsf(dx*dy*dz)) ;
-     if( dd > 0.0f ) fwhmvox = cwid->fwhm / dd ;
-   }
 
    /* change labels for each row */
 
@@ -1029,29 +1124,21 @@ ENTRY("AFNI_clus_update_widgets") ;
                ii+1,cld[ii].nvox , px,py,pz ) ;
      MCW_set_widget_label( cwid->clu_lab[ii] , line ) ;
 
-#if 0
-     ja = cluster_alphaindex_64( cld[ii].nvox , nz ,
-                                 fwhmvox , im3d->vinfo->func_pval ) ;
-     switch( ja ){
-       default:  rrr = " N/A" ; break ;
-       case 666: rrr = ">.10" ; break ;
-       case   2: rrr = "<.10" ; break ;
-       case   1: rrr = "<.05" ; break ;
-       case   0: rrr = "<.01" ; break ;
-     }
+     rrr = get_alpha_string( cld[ii].nvox , pval , im3d ) ;
      MCW_set_widget_label( cwid->clu_alph_lab[ii] , rrr ) ;
-#else
-     XtUnmanageChild( cwid->clu_alph_lab[ii] ) ;
-#endif
-   }
+
+   } /* end of loop over widget rows */
 
    SET_INDEX_LAB(im3d) ;
 
    if( !cwid->receive_on ){
-     AFNI_receive_init( im3d, RECEIVE_VIEWPOINT_MASK,
-                        AFNI_clus_viewpoint_CB, im3d, "AFNI_clus_viewpoint_CB" ) ;
+     AFNI_receive_init(im3d, RECEIVE_VIEWPOINT_MASK,
+                       AFNI_clus_viewpoint_CB, im3d, "AFNI_clus_viewpoint_CB") ;
      cwid->receive_on = 1 ;
    }
+
+   if( do_wami ) SENSITIZE( cwid->whermask_pb ,                /* 04 Aug 2010 */
+                            (im3d->vinfo->view_type == VIEW_TALAIRACH_TYPE) ) ;
 
    EXRETURN ;
 }
@@ -1136,7 +1223,8 @@ ENTRY("AFNI_clus_action_CB") ;
                                              *im3d->ss_now->num_dsset  ) ;
      cdds.cb = AFNI_clus_finalize_dataset_CB ;
      for( ii=0 ; ii < im3d->ss_now->num_dsset ; ii++ ){
-       dset = im3d->ss_now->dsset[ii][vv] ;
+       dset = GET_SESSION_DSET(im3d->ss_now, ii, vv) ;
+/*     dset = im3d->ss_now->dsset_xform_table[ii][vv] ;*/
        if( ISVALID_DSET(dset)                          &&  /* qualifications */
            DSET_NVOX(dset) == DSET_NVOX(im3d->fim_now) &&
            DSET_INMEMORY(dset)                           )
@@ -1153,7 +1241,7 @@ ENTRY("AFNI_clus_action_CB") ;
      EXRETURN ;
    }
 
-   /*--------- SaveTable button ---------*/
+   /*--------- SaveTabl button ---------*/
 
    if( w == cwid->savetable_pb ){
      char fnam[128+THD_MAX_NAME] , *ppp ; FILE *fp ; int ff ;
@@ -1203,14 +1291,16 @@ ENTRY("AFNI_clus_action_CB") ;
      EXRETURN ;
    }
 
-   /*--------- SaveMask button ---------*/
+   /*--------- SaveMsk button ---------*/
 
-   if( w == cwid->savemask_pb ){  /* 01 May 2008 */
+   if( w == cwid->savemask_pb || w == cwid->whermask_pb ){  /* 01 May 2008 */
      char pref[128] , *ppp , *cmd ;
      THD_3dim_dataset  *fset = im3d->fim_now , *mset ;
      MCW_cluster_array *clar = im3d->vwid->func->clu_list ;
      MCW_cluster *cl ;
      short *mask ; int ii,jj,nx,ny,nxy,nz,ijk ;
+     int do_wami = (w == cwid->whermask_pb && wherprog != NULL) ;
+     int jtop ;
 
      nclu = im3d->vwid->func->clu_num ;
      cld  = im3d->vwid->func->clu_det ;
@@ -1235,7 +1325,14 @@ ENTRY("AFNI_clus_action_CB") ;
      nx = DSET_NX(mset); ny = DSET_NY(mset); nxy = nx*ny; nz = DSET_NZ(mset);
      EDIT_substitute_brick( mset , 0 , MRI_short , NULL ) ;
      mask = DSET_BRICK_ARRAY( mset , 0 ) ;
-     for( jj=0 ; jj < clar->num_clu ; jj++ ){
+     jtop = clar->num_clu ;
+     if( do_wami ){
+       int etop = (int)AFNI_numenv("AFNI_CLUSTER_WAMIMAX") ;
+            if( etop <  1 ) etop = 20 ;
+       else if( etop > 99 ) etop = 99 ;
+       if( jtop > etop ) jtop = etop ;
+     }
+     for( jj=0 ; jj < jtop ; jj++ ){
        cl = clar->clar[jj] ;
        for( ii=0 ; ii < cl->num_pt ; ii++ ){
          ijk = THREE_TO_IJK( cl->i[ii] , cl->j[ii] , cl->k[ii] , nx,nxy ) ;
@@ -1247,6 +1344,36 @@ ENTRY("AFNI_clus_action_CB") ;
      DSET_write(mset) ;
      DSET_delete(mset) ;
      THD_force_ok_overwrite(0) ;
+
+#undef  WSIZ
+#define WSIZ 4096
+     if( do_wami ){  /* 04 Aug 2010 */
+       char *wout , ct[64] ; FILE *fp ; int inv ;
+       SHOW_AFNI_PAUSE ;
+       MCW_invert_widget(cwid->whermask_pb) ; inv = 1 ;
+       wout = (char *)malloc(sizeof(char)*WSIZ) ;
+       sprintf(wout,"%s -omask %s",wherprog,DSET_HEADNAME(mset)) ;
+       if( jtop >= clar->num_clu ) strcpy (ct," ") ;
+       else                        sprintf(ct," [first %d clusters]",jtop) ;
+       INFO_message("Running '%s'%s" , wout , ct ) ;
+       fp = popen( wout , "r" ) ;
+       if( fp == NULL ){
+         (void)MCW_popup_message(w," \n*** Can't run whereami command? ***\n ",
+                                 MCW_USER_KILL) ;
+       } else {
+         wout[0] = '\0' ;
+         while( fgets(wout+strlen(wout),WSIZ-2,fp) != NULL ){
+           wout = (char *)realloc(wout,sizeof(char)*(strlen(wout)+WSIZ)) ;
+           /*** MCW_invert_widget(cwid->whermask_pb) ; inv = !inv ; ***/
+         }
+         (void)pclose(fp) ;
+         MCW_textwin_setbig(0) ;
+         (void)new_MCW_textwin(w,wout,TEXT_READONLY) ;
+       }
+       free(wout) ;
+       if( inv ) MCW_invert_widget(cwid->whermask_pb) ;
+       SHOW_AFNI_READY ;
+     }
 
      EXRETURN ;
    }
@@ -1278,20 +1405,6 @@ ENTRY("AFNI_clus_action_CB") ;
      EXRETURN ;
    }
 
-   /*------ noise FWHM button ------*/
-
-   if( w == cwid->fwhm_pb ){
-     static char *lvec[1] = { "FWHM" } ; float val=cwid->fwhm ;
-     MCW_choose_vector( cwid->top_lab ,
-                        "Set FWHM of noise\n"
-                        "for cluster alpha\n"
-                        "value calculation\n"
-                        "[in millimeters] \n"
-                        "-----------------" ,
-                        1 , lvec , &val , AFNI_fwhm_choose_CB , (XtPointer)im3d ) ;
-     EXRETURN ;
-   }
-
    /*------ scan button list, see if widget matches one of them ------*/
 
    nclu = im3d->vwid->func->clu_num ;
@@ -1318,11 +1431,13 @@ ENTRY("AFNI_clus_action_CB") ;
 
      } else if( w == cwid->clu_plot_pb[ii] || w == cwid->clu_save_pb[ii] ){
 
-       int dosave = (w == cwid->clu_save_pb[ii]) ;
+       int dosave = (w == cwid->clu_save_pb[ii]) ;  /* save OR plot */
        int domean = (cwid->aver_av->ival == 0) ;
-       int dopc   = (cwid->aver_av->ival == 1) ;
-       int dohist = (cwid->aver_av->ival == 2) ;
+       int domedn = (cwid->aver_av->ival == 1) ;
+       int dopc   = (cwid->aver_av->ival == 2) ;
+       int dohist = (cwid->aver_av->ival == 3) ;
        MRI_IMARR *imar ; MRI_IMAGE *im=NULL ; int nx,ibot,itop ;
+       MRI_IMAGE *sim=NULL ;
 
        SHOW_AFNI_PAUSE ;
 
@@ -1340,9 +1455,8 @@ ENTRY("AFNI_clus_action_CB") ;
        if( ibot >= nx ) ibot = 0 ;
        if( itop < ibot || itop >= nx ) itop = nx-1 ;
 
-
-       { static float rrr[3] = { 0.7f , 0.0f , 0.1f } ;
-         static float ggg[3] = { 0.0f , 0.6f , 0.1f } ;
+       { static float rrr[3] = { 0.6f , 0.0f , 0.1f } ;
+         static float ggg[3] = { 0.0f , 0.5f , 0.1f } ;
          static float bbb[3] = { 0.1f , 0.0f , 0.7f } ;
          plot_ts_setcolors( 3 , rrr,ggg,bbb ) ;
        }
@@ -1440,11 +1554,11 @@ ENTRY("AFNI_clus_action_CB") ;
 
        /*------------ time series processing ------------*/
 
-       if( (domean || dopc) && itop == ibot ){
+       if( (domean || dopc || domedn) && itop == ibot ){
          MCW_popup_message( w , " \n"
-                                "** Need at least two   **\n"
-                                "** time series indexes **\n"
-                                "** to do Mean or PC#1  **\n " ,
+                                "** Need at least two    **\n"
+                                "** time series indexes  **\n"
+                                "** for Mean, Medn, PC#1 **\n " ,
                             MCW_USER_KILL | MCW_TIMER_KILL ) ;
          DESTROY_IMARR(imar) ; SHOW_AFNI_READY; EXRETURN ;
        }
@@ -1457,6 +1571,12 @@ ENTRY("AFNI_clus_action_CB") ;
          im = mri_pcvector( imar , ibot,itop ) ;
        } else if( domean ){            /*-------- Mean --------*/
          im = mri_meanvector( imar , ibot,itop ) ;
+         if( !dosave && AFNI_yesenv("AFNI_CLUSTER_EBAR") )
+           sim = mri_MMBvector( imar,ibot,itop,2 ) ;
+       } else if( domedn ){            /*-------- Medn --------*/
+         im = mri_MMBvector( imar , ibot,itop,0 ) ;
+         if( !dosave && AFNI_yesenv("AFNI_CLUSTER_EBAR") )
+           sim = mri_MMBvector( imar,ibot,itop,2 ) ;
        }
        if( im != NULL ){
          if( !dosave ){                       /* Plotting (to rule the world) */
@@ -1464,16 +1584,25 @@ ENTRY("AFNI_clus_action_CB") ;
            float *far = MRI_FLOAT_PTR(im) , *xax ;
            int jj ;
            sprintf(ylab,"%s: Cluster #%d = %d voxels",
-                   (dopc) ? "PC#1" : "Mean" , ii+1 , IMARR_COUNT(imar) ) ;
+                   (dopc) ? "PC#1" : (domean) ? "Mean" : "Median" ,
+                   ii+1 , IMARR_COUNT(imar) ) ;
            sprintf(tlab,"\\noesc %s[%d..%d]",
                    THD_trailname(DSET_HEADNAME(cwid->dset),SESSTRAIL+1),
                    ibot,itop) ;
-           plot_ts_xypush(1,0) ; plot_ts_setthik(0.005f) ;
+           plot_ts_xypush(1,0) ; plot_ts_setthik(0.006f) ;
            xax = (float *)malloc(sizeof(float)*im->nx) ;
            for( jj=0 ; jj < im->nx ; jj++ ) xax[jj] = ibot+jj ;
-           plot_ts_lab( im3d->dc->display ,
-                        im->nx , xax , 1 , &far ,
-                        "TR index" , ylab , tlab , NULL , NULL ) ;
+           if( sim == NULL ){
+              plot_ts_lab( im3d->dc->display ,
+                           im->nx , xax , 1 , &far ,
+                           "TR index" , ylab , tlab , NULL , NULL ) ;
+           } else {
+              float *sar= MRI_FLOAT_PTR(sim) , fac=2.0f/sqrtf(IMARR_COUNT(imar));
+              for( jj=0 ; jj < sim->nx ; jj++ ) sar[jj] *= fac ;
+              plot_ts_ebar_win( im3d->dc->display ,
+                                im->nx , xax , far , sar ,
+                                "TR index" , ylab , tlab , NULL ) ;
+           }
            free((void *)xax) ;
 
          } else {                                       /* Saving (the world) */
@@ -1514,6 +1643,7 @@ ENTRY("AFNI_clus_action_CB") ;
            }
          }
          if( im != IMARR_SUBIM(imar,0) ) mri_free(im) ;
+         if( sim != NULL ) mri_free(sim) ;
        }
        DESTROY_IMARR(imar) ; SHOW_AFNI_READY; EXRETURN ;
 
@@ -1645,7 +1775,11 @@ static char * AFNI_clus_3dclust( Three_D_View *im3d )
      sprintf(cmd+strlen(cmd)," -2thresh %g %g",thb,tht) ;
 
    if( rmm <= 0.0f ){
-     strcat(cmd," -dxyz=1") ; rmm = 1.0f ;
+     strcat(cmd," -dxyz=1") ;
+     rmm = rintf(rmm) ;
+          if( rmm >= -1.0f ) rmm = 1.01f ;
+     else if( rmm >= -2.0f ) rmm = 1.44f ;
+     else                    rmm = 1.75f ;
      if( vmul < 2.0f ) vmul = 2.0f ;
    } else {
      float vmin=2.0f*DSET_VOXVOL(im3d->fim_now) ;
@@ -1692,6 +1826,8 @@ ENTRY("AFNI_thr_EV") ;
    EXRETURN ;
 }
 
+/*-----------------------------------------------------------------*/
+
 void AFNI_thronoff_change_CB( Widget w , XtPointer cd , XtPointer calld )
 {
    Three_D_View *im3d = (Three_D_View *)cd ;
@@ -1709,4 +1845,320 @@ ENTRY("AFNI_thronoff_change_CB") ;
      if( im3d->vinfo->func_visible ) AFNI_redisplay_func( im3d ) ;
    }
    EXRETURN ;
+}
+
+/*-----------------------------------------------------------------*/
+
+void AFNI_throlay1_change_CB( Widget w , XtPointer cd , XtPointer calld )
+{
+   Three_D_View *im3d = (Three_D_View *)cd ;
+   int qq , pp ;
+
+ENTRY("AFNI_throlay1_change_CB") ;
+
+   if( ! IM3D_VALID(im3d) ) EXRETURN ;
+
+   qq = im3d->vinfo->thr_olay1 ;
+   pp = MCW_val_bbox( im3d->vwid->func->thr_olay1_bbox ) ;
+
+   if( pp != qq ){
+     im3d->vinfo->thr_olay1 = pp ;
+     MCW_invert_widget(im3d->vwid->func->thr_buck_av->wrowcol) ;
+     AFNI_enforce_throlay1(im3d) ;
+   }
+   EXRETURN ;
+}
+
+/*-----------------------------------------------------------------*/
+
+void AFNI_enforce_throlay1( Three_D_View *im3d )
+{
+   int ithr ;
+
+ENTRY("AFNI_enforce_throlay1") ;
+
+   if( !IM3D_VALID(im3d) || !ISVALID_DSET(im3d->fim_now)
+                         || !im3d->vinfo->thr_olay1      ) EXRETURN ;
+
+   ithr = im3d->vinfo->fim_index + 1 ;
+   if( ithr >= DSET_NVALS(im3d->fim_now) ) EXRETURN ;
+   AFNI_set_thr_index(im3d,ithr) ;
+   if( im3d->vinfo->func_visible ) AFNI_redisplay_func( im3d ) ;
+   EXRETURN ;
+}
+
+/*****************************************************************************/
+/********** Stuff for cluster size statistics ********************************/
+
+/*----------------------------------------------------------------------------*/
+
+void CLU_free_table( CLU_threshtable *ctab )
+{
+ENTRY("CLU_free_table") ;
+   if( ctab != NULL ){
+     if( ctab->pthr != NULL ) free(ctab->pthr) ;
+     if( ctab->athr != NULL ) free(ctab->athr) ;
+     if( ctab->cluthr != NULL ){
+       int ii ;
+       for( ii=0 ; ii < ctab->npthr ; ii++ ) free(ctab->cluthr[ii]) ;
+       free(ctab->cluthr) ;
+     }
+     free(ctab) ;
+   }
+   EXRETURN ;
+}
+
+/*----------------------------------------------------------------------------*/
+
+static CLU_threshtable * format_cluster_table( NI_element *nel )
+{
+   CLU_threshtable *ctab ;
+   NI_float_array *flar ;
+   char *atr ; int iathr,ipthr , nathr,npthr ; float *vec ;
+
+ENTRY("format_cluster_table") ;
+
+   if( nel == NULL ) RETURN(NULL);
+
+   ctab = (CLU_threshtable *)malloc(sizeof(CLU_threshtable)) ;
+
+   atr = NI_get_attribute( nel , "pthr" ) ;
+   if( atr == NULL ){
+     free(ctab) ; NI_free_element(nel) ; RETURN(NULL);
+   }
+   flar = NI_decode_float_list(atr,",") ;
+   if( flar == NULL || flar->num < 3 ){
+     free(ctab) ; NI_free_element(nel) ; RETURN(NULL);
+   }
+   npthr = ctab->npthr = flar->num ;
+   ctab->pthr  = (float *)malloc(sizeof(float)*ctab->npthr) ;
+   memcpy( ctab->pthr , flar->ar , sizeof(float)*ctab->npthr ) ;
+   NI_delete_float_array(flar) ;
+
+   atr = NI_get_attribute( nel , "athr" ) ;
+   if( atr == NULL ){
+     free(ctab->pthr) ; free(ctab) ; NI_free_element(nel) ; RETURN(NULL);
+   }
+   flar = NI_decode_float_list(atr,",") ;
+   if( flar == NULL || flar->num < 3 ){
+     free(ctab->pthr) ; free(ctab) ; NI_free_element(nel) ; RETURN(NULL);
+   }
+   nathr = ctab->nathr = flar->num ;
+   ctab->athr  = (float *)malloc(sizeof(float)*ctab->nathr) ;
+   memcpy( ctab->athr , flar->ar , sizeof(float)*ctab->nathr ) ;
+   NI_delete_float_array(flar) ;
+
+   ctab->cluthr = (float **)malloc(sizeof(float *)*npthr) ;
+   for( ipthr=0 ; ipthr < npthr ; ipthr++ )
+     ctab->cluthr[ipthr] = (float *)malloc(sizeof(float)*nathr) ;
+
+   for( iathr=0 ; iathr < nathr ; iathr++ ){
+     vec = (float *)nel->vec[iathr] ;
+     for( ipthr=0 ; ipthr < npthr ; ipthr++ )
+       ctab->cluthr[ipthr][iathr] = vec[ipthr] ;
+   }
+
+   RETURN(ctab);
+}
+
+/*----------------------------------------------------------------------------*/
+/* Input comes from 3dClustSim -niml */
+
+void CLU_setup_alpha_tables( Three_D_View *im3d )
+{
+   THD_3dim_dataset *dset ;
+   NI_element *nel ;
+   CLU_threshtable *ctab ;
+   ATR_string *atr ;
+
+ENTRY("CLU_setup_alpha_tables") ;
+
+   if( !IM3D_VALID(im3d) ) EXRETURN ;
+
+   /* free anything we have now */
+
+   CLU_free_table( im3d->vwid->func->clu_tabNN1 ) ;
+    im3d->vwid->func->clu_tabNN1 = NULL ;
+   CLU_free_table( im3d->vwid->func->clu_tabNN2 ) ;
+    im3d->vwid->func->clu_tabNN2 = NULL ;
+   CLU_free_table( im3d->vwid->func->clu_tabNN3 ) ;
+    im3d->vwid->func->clu_tabNN3 = NULL ;
+   if( im3d->vwid->func->clu_mask != NULL ){
+     free(im3d->vwid->func->clu_mask) ; im3d->vwid->func->clu_mask = NULL ;
+   }
+
+   /* get info from the Overlay dataset header, if present */
+
+   dset = im3d->fim_now ; if( !ISVALID_DSET(dset) ) EXRETURN ;
+
+   /* NN1 cluster C(p,alpha) table */
+
+   atr = THD_find_string_atr( dset->dblk , "AFNI_CLUSTSIM_NN1" ) ;
+   if( atr != NULL ){
+     nel = NI_read_element_fromstring(atr->ch) ;  /* attribute string => NIML */
+     ctab = format_cluster_table(nel) ;           /* NIML => C(p,alpha) table */
+     im3d->vwid->func->clu_tabNN1 = ctab ;
+
+     /*  search for ASCII mask string */
+
+     atr = THD_find_string_atr( dset->dblk , "AFNI_CLUSTSIM_MASK" ) ;
+     if( atr != NULL ){
+       int nvox = mask_b64string_nvox(atr->ch) ;  /* length of mask */
+       if( nvox == DSET_NVOX(dset) ){         /* must match dataset */
+         im3d->vwid->func->clu_mask = mask_from_b64string(atr->ch,&nvox) ;
+       }
+     } else {   /* search for original mask dataset via its idcode */
+       char *idc = NI_get_attribute(nel,"mask_dset_idcode") ;
+       THD_3dim_dataset *mset = PLUTO_find_dset_idc(idc) ;
+       if( mset != NULL && DSET_NVOX(mset) == DSET_NVOX(dset) ){
+         im3d->vwid->func->clu_mask = THD_makemask(mset,0,1.0,0.0) ;
+         DSET_unload(mset) ;
+       }
+     }
+     NI_free_element(nel) ;  /* get rid of the C(p,alpha) NIML element */
+   }
+
+   /* NN2 and NN3 C(p,alpha) tables */
+
+   atr = THD_find_string_atr( dset->dblk , "AFNI_CLUSTSIM_NN2" ) ;
+   if( atr != NULL ){
+     nel = NI_read_element_fromstring(atr->ch) ;
+     ctab = format_cluster_table(nel) ; NI_free_element(nel) ;
+     im3d->vwid->func->clu_tabNN2 = ctab ;
+   }
+
+   atr = THD_find_string_atr( dset->dblk , "AFNI_CLUSTSIM_NN3" ) ;
+   if( atr != NULL ){
+     nel = NI_read_element_fromstring(atr->ch) ;
+     ctab = format_cluster_table(nel) ; NI_free_element(nel) ;
+     im3d->vwid->func->clu_tabNN3 = ctab ;
+   }
+
+   EXRETURN ;
+}
+
+/*----------------------------------------------------------------------------*/
+/* Interpolate function y(x) at x=xout, given y(xa)=ya and y(xb)=yb.
+   Assume y(x) = A * x^b, so that log(y(x)) = log(A) + b*log(x).
+   In our application, x=p and y=C(p,alpha) for a fixed alpha.
+*//*--------------------------------------------------------------------------*/
+
+#undef  loginterp
+#define loginterp(xout,xa,xb,ya,yb)                                   \
+   ( (xout)==(xa) ) ? (ya)                                            \
+ : ( (xout)==(xb) ) ? (yb)                                            \
+ : ( (ya) * powf( (xout)/(xa) , logf((yb)/(ya)) / logf((xb)/(xa)) ) )
+
+/*----------------------------------------------------------------------------*/
+/* Find the significance level of a cluster with csiz voxels, which
+   was thresholded at pval.  Return values can be
+    * x <= 0   ==> cluster alpha value is greater than |x|
+    * x == 0   ==> input error (alpha is N/A)
+    * x >  0   ==> cluster alpha value is smaller than x
+*//*--------------------------------------------------------------------------*/
+
+float find_cluster_alpha( int csiz, float pval, CLU_threshtable *ctab )
+{
+   int   ipthr , iathr ;
+   int   npthr , nathr ;
+   float *pthr , *athr , **cluthr , cval ;
+
+   if( csiz <= 1 || ctab == NULL || pval > ctab->pthr[0] ) return 0.0f ;
+
+   npthr = ctab->npthr ; nathr = ctab->nathr ;
+    pthr = ctab-> pthr ;  athr = ctab-> athr ; cluthr = ctab->cluthr ;
+
+   /* find ipthr such that pthr[ipthr-1] > pval > pthr[ipthr] */
+
+   for( ipthr=1 ; ipthr < npthr && pval <= pthr[ipthr] ; ipthr++ ) ; /*nada*/
+   if( ipthr == npthr ){
+     ipthr = npthr-1 ; pval = pthr[ipthr] ;  /* pval was too small */
+   }
+
+   /* scan in athr direction to find a C(p,alpha) value */
+
+   for( iathr=0 ; iathr < nathr ; iathr++ ){
+     cval = loginterp( pval,   pthr[ipthr-1]       ,   pthr[ipthr]       ,
+                             cluthr[ipthr-1][iathr], cluthr[ipthr][iathr] ) ;
+     if( csiz < cval ) break ;
+   }
+   if( iathr == 0 )                        return (       -athr[0]       ) ;
+   if( iathr < nathr || csiz < 2.0f*cval ) return (        athr[iathr-1] ) ;
+                                           return ( 0.1f * athr[nathr-1] ) ;
+}
+
+/*----------------------------------------------------------------------------*/
+
+int find_cluster_thresh( float aaa, float pval, CLU_threshtable *ctab )
+{
+   int ipthr , iathr , npthr , nathr ;
+   float *pthr , *athr , **cluthr , cval ;
+
+   if( aaa <= 0.0f || ctab == NULL || pval  > ctab->pthr[0] ) return 0 ;
+
+   npthr = ctab->npthr ; nathr = ctab->nathr ;
+    pthr = ctab-> pthr ;  athr = ctab-> athr ; cluthr = ctab->cluthr ;
+
+   /* find iathr to match athr */
+
+   for( iathr=0 ; iathr < nathr && athr[iathr] > aaa ; iathr++ ) /*nada*/
+   if( iathr == nathr ) return 0 ;   /* not found? */
+
+   /* find ipthr such that pthr[ipthr-1] > pval > pthr[ipthr] */
+
+   for( ipthr=1 ; ipthr < npthr && pval <= pthr[ipthr] ; ipthr++ ) ; /*nada*/
+   if( ipthr == npthr ){
+     ipthr = npthr-1 ; pval = pthr[ipthr] ;  /* pval was too small */
+   }
+   if( ipthr == npthr ){
+     ipthr = npthr-1 ; pval = pthr[ipthr] ;  /* pval was too small */
+   }
+
+   cval = loginterp( pval,   pthr[ipthr-1]       ,   pthr[ipthr]       ,
+                           cluthr[ipthr-1][iathr], cluthr[ipthr][iathr] ) ;
+
+   return (int)(cval+0.951) ;
+}
+
+/*----------------------------------------------------------------------------*/
+
+char * get_alpha_string( int csiz , float pval , Three_D_View *im3d )
+{
+   float alpha ; static char astr[32] ; CLU_threshtable *ctab ;
+
+   ctab = CLU_get_thresh_table(im3d) ;
+
+   if( ctab ==  NULL )  return "N/Csim" ;  /* no ClustSim */
+   if( pval < 0.0f )    return "N/stat" ;  /* not a statistic */
+   if( csiz <= 1 )      return "N/Clus" ;  /* not a cluster?! */
+   if( pval < 1.e-11f ) return "<<0.01" ;  /* == smallest allowed */
+
+   alpha = find_cluster_alpha( csiz , pval , ctab ) ;
+   if( alpha > 0.0f ){
+     if( alpha >= 0.01f ) sprintf(astr,"<%5.2f",alpha) ;
+     else                 strcpy (astr,"<<0.01") ;
+   } else if( alpha < 0.0f ){
+     sprintf(astr,">%5.2f",-alpha) ;
+   } else {
+     strcpy(astr,"N/pval") ;
+   }
+   return astr ;
+}
+
+/*----------------------------------------------------------------------------*/
+
+CLU_threshtable * CLU_get_thresh_table( Three_D_View *im3d )
+{
+   CLU_threshtable *ctab ;
+
+   if( !IM3D_VALID(im3d) ) return NULL ;
+   switch( im3d->vwid->func->clu_nnlev ){
+     default: ctab = im3d->vwid->func->clu_tabNN1 ; break ;
+     case 2:  ctab = im3d->vwid->func->clu_tabNN2 ; break ;
+     case 3:  ctab = im3d->vwid->func->clu_tabNN3 ; break ;
+   }
+   if( ctab == NULL ) ctab = im3d->vwid->func->clu_tabNN1 ;
+   if( ctab == NULL ) ctab = im3d->vwid->func->clu_tabNN2 ;
+   if( ctab == NULL ) ctab = im3d->vwid->func->clu_tabNN3 ;
+   return ctab ;
 }

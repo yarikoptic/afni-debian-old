@@ -15,7 +15,7 @@ SUMA_INPATH = ${SUMA_INCLUDE_PATH} -I../nifti/niftilib -I../nifti/nifticdf -I../
 SUMA_SRCS = SUMA_trackball.c SUMA_SVmanip.c SUMA_input.c \
 		 SUMA_MiscFunc.c SUMA_IV_XYZextract.c	\
 		 SUMA_IV_FaceSetsextract.c SUMA_SurfNorm.c SUMA_DOmanip.c \
-		 SUMA_StripPath.c SUMA_Load_Surface_Object.c SUMA_CreateDO.c \
+		 SUMA_ParseName.c SUMA_Load_Surface_Object.c SUMA_CreateDO.c \
 		 SUMA_help.c SUMA_display.c SUMA_ParseCommands.c	\
 		 SUMA_Engine.c SUMA_Surface_IO.c SUMA_VolData.c SUMA_niml.c \
 		 SUMA_Color.c SUMA_GeomComp.c SUMA_SphericalMapping.c SUMA_DataSets.c	\
@@ -35,7 +35,7 @@ SUMA_EXECS = CreateIcosahedron SUMA_Map_SurfacetoSurface MapIcosahedron       \
    3dCRUISEtoAFNI	3dBRAIN_VOYAGERtoAFNI 3dSurfMask Surf2VolCoord \
 	SurfToSurf ROIgrow\
    NikoMap SurfDsetInfo SurfInfo AnalyzeTrace DriveSuma SurfLocalstat SurfFWHM \
-   SpharmDeco SpharmReco SurfDist SumaProgramTemplate 
+   SpharmDeco SpharmReco SurfDist SumaProgramTemplate SurfRetinoMap ParseName
    
  
 
@@ -203,10 +203,10 @@ SUMA_Ply_Read: SUMA_Surface_IO.c
 	${CC} -DSUMA_COMPILED -DSUMA_Ply_Read_STAND_ALONE ${CCOPT} ${WARNOPT} -o $@ ${AFNI_OBJS} ${AFNI_3dOBJS} \
          SUMA_Surface_IO.c ${SUMA_INPATH} ${SUMA_LINK_PATH} ${SUMALIBLIST} ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB}
 
-SUMA_ParseName: SUMA_StripPath.c
+ParseName: SUMA_ParseName.c 
 	$(RM) $@
 	${CC} -DSUMA_COMPILED -DSUMA_ParseName_STAND_ALONE ${CCOPT} ${WARNOPT} -o $@ ${AFNI_OBJS} ${AFNI_3dOBJS} \
-         SUMA_StripPath.c ${SUMA_INPATH} ${SUMA_LINK_PATH} ${SUMALIBLIST} ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB}
+         SUMA_ParseName.c ${SUMA_INPATH} ${SUMA_LINK_PATH} ${SUMALIBLIST} ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB}
  
 ConvertSurface: SUMA_ConvertSurface.c
 	$(RM) $@
@@ -451,7 +451,15 @@ SurfToSurf: SUMA_SurfToSurf.c
        
 SumaProgramTemplate: SUMA_ProgramTemplate.c
 	$(RM) $@
-	${CC} -DSUMA_COMPILED ${CCOPT} ${WARNOPT} -o $@ $(AFWARPOBJS) ${AFNI_OBJS} SUMA_ProgramTemplate.c ${SUMA_INPATH} ${SUMA_LINK_PATH} 	\
+	${CC} -DSUMA_COMPILED ${CCOPT} ${WARNOPT} -o $@ $(AFWARPOBJS) \
+		${AFNI_OBJS} SUMA_ProgramTemplate.c ${SUMA_INPATH} ${SUMA_LINK_PATH} 	\
+		${AFNI_3dOBJS} MarchingCubes/debug/MarchingCubes.o			\
+		${SUMALIBLIST} ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB}
+
+SurfRetinoMap: SUMA_SurfRetinoMap.c
+	$(RM) $@
+	${CC} -DSUMA_COMPILED ${CCOPT} ${WARNOPT} -o $@ $(AFWARPOBJS) \
+		${AFNI_OBJS} SUMA_SurfRetinoMap.c ${SUMA_INPATH} ${SUMA_LINK_PATH} 	\
 		${AFNI_3dOBJS} MarchingCubes/debug/MarchingCubes.o			\
 		${SUMALIBLIST} ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB}
 
@@ -547,6 +555,12 @@ prompt_user: SUMA_prompt_user.c
 		${AFNI_3dOBJS} MarchingCubes/debug/MarchingCubes.o			\
 		${SUMALIBLIST} ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB}
 
+RestSym: SUMA_RestSym.c
+	$(RM) $@
+	${CC} $(OMPFLAG) -DSUMA_COMPILED ${CCOPT} ${WARNOPT} -o $@ $(AFWARPOBJS) ${AFNI_OBJS} SUMA_RestSym.c ${SUMA_INPATH} ${SUMA_LINK_PATH}  	\
+		${AFNI_3dOBJS} MarchingCubes/debug/MarchingCubes.o			\
+		${SUMALIBLIST} ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB}
+
 libply.a: 
 	( cd PLY ;	\
 	  $(MAKE) clean $@ 'CC=$(CC)' 'RM=$(RM)' 'RANLIB=$(RANLIB)' 'CCOPT=$(CCOPT)' 'WARNOPT=$(WARNOPT)' ; \
@@ -564,16 +578,16 @@ libply.a:
 #	  ./configure	;	\
 #
 # might want :                                          30 Dec 2009 [rickr]
-#   ./configure --includedir /usr/local/netpbm
+#   ./configure --includedir /usr/include/netpbm
 #
-#   - to deal with pgm.h being moved from /usr/local to /usr/local/netpbm
+#   - to deal with pgm.h being moved from /usr/include to /usr/include/netpbm
 #     in netpbm-devel version 10.47
 #   - until then: "yum downgrade netpbm netpbm-devel" to go back to 10.35
 #   - or look for corresponding GTS update
 
 libgts.a:
 	( cd gts ;	\
-	  ./configure	;	\
+	  ./configure --includedir /usr/include/netpbm ;	\
 	  $(MAKE) clean ; \
 	  $(MAKE) ; \
 	  $(RANLIB) src/.libs/$@ ;	\

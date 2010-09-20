@@ -182,6 +182,17 @@ sets the select color of the widget to its foreground color */
                   -csv->GVS[csv->StdView].RotaCenter[2]); \
 }   
 
+#define SUMA_SET_AS_NEEDED_2D_VIEW_ANGLE(sv) {  \
+   int m_j = SUMA_BestStandardView(sv, SUMAg_DOv, SUMAg_N_DOv); \
+   float m_a[3]; \
+   if (m_j == SUMA_2D_Z0) {   \
+      m_a[0] = 1.0; m_a[1] = 0.0; m_a[2] = 0.0; \
+      axis_to_quat(m_a, 0, sv->GVS[m_j].currentQuat); \
+   } else if (m_j == SUMA_2D_Z0L) { \
+      m_a[0] = 0.0; m_a[1] = 0.0; m_a[2] = 1.0; \
+      axis_to_quat(m_a, SUMA_PI, sv->GVS[m_j].currentQuat); \
+   } \
+}
 
 #define SUMA_MARGIN  1
 
@@ -210,6 +221,9 @@ SUMA_Boolean SUMA_GetSelectionLine (SUMA_SurfaceViewer *sv, int x, int y,
                                     GLdouble *Pick0, GLdouble *Pick1, 
                                     int N_List, int *xList, int *yList, 
                                     GLdouble *Pick0List);
+int SUMA_OpenCloseSurfaceCont(Widget w, 
+                              SUMA_SurfaceObject *SO, 
+                              SUMA_SurfaceViewer *sv);
 int SUMA_viewSurfaceCont(Widget w, SUMA_SurfaceObject *SO, SUMA_SurfaceViewer *sv);
 void SUMA_cb_viewSurfaceCont(Widget w, XtPointer data, XtPointer callData);
 void SUMA_cb_viewViewerCont(Widget w, XtPointer data, XtPointer callData);

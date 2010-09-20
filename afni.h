@@ -86,6 +86,8 @@ typedef struct {
 /* define this to put "chooser" controls on the popup menu */
 #undef POPUP_CHOOSERS
 
+#undef POPTOG
+
 /*-----------------------------------------------------------*/
 
 #define UNDERLAY_ANAT      0
@@ -264,6 +266,7 @@ typedef struct {
       int        func_resam_mode , anat_resam_mode , pts_color ;
       int        thr_resam_mode ;               /* 09 Dec 1997 */
       int        thr_onoff ;                    /* 28 Jun 2007 */
+      int        thr_olay1 ;                    /* 13 Aug 2010 */
       int        thr_sign ;                     /* 08 Aug 2007 */
 
       /* 3/24/95: range data for conversion of pbar
@@ -298,7 +301,8 @@ typedef struct {
           stats_func_ok,     /*   to indicate if the sub-brick range  */
           stats_thresh_ok ;  /*   statistics are loaded properly     */
 
-      int i1_icor, j2_icor, k3_icor;  /* for InstaCorr -- 08 May 2009 */
+      int   i1_icor , j2_icor , k3_icor;  /* for InstaCorr -- 08 May 2009 */
+      float xi_icor , yj_icor , zk_icor ; /* DICOM coords -- 17 Mar 2010 */
 
 } AFNI_view_info ;
 
@@ -414,12 +418,13 @@ struct Three_D_View ;  /* incomplete type definition */
 typedef struct {
   Widget wtop, rowcol;      /* containers */
   Widget top_lab;           /* overall report text */
-  Widget top_menu , histrange_pb , fwhm_pb ;
+  Widget top_menu , histrange_pb ;
   MCW_bbox *histsqrt_bbox ;
 
   MCW_arrowval *cmode_av ;  /* first row of controls */
   Widget clust3d_pb, savetable_pb, index_lab, prefix_tf, done_pb ;
   Widget savemask_pb ;      /* 01 May 2008 */
+  Widget whermask_pb ;      /* 04 Aug 2010 */
 
   Widget dataset_pb ;       /* second row of controls */
   MCW_arrowval *from_av, *to_av, *aver_av ;
@@ -439,8 +444,9 @@ typedef struct {
   int coord_mode ;
   int receive_on ;
   float hbot,htop ;
-  float fwhm ;
 } AFNI_clu_widgets ;      /** not yet used **/
+
+extern void CLU_free_table( CLU_threshtable *ctab ) ;
 
 /*---*/
 
@@ -508,21 +514,7 @@ typedef struct {
 
 /*---*/
 
-typedef struct {
-  int       ready ;
-  int       ndset_A , ndset_B , nvec ;
-  int       ttest_opcode , vmul ;
-  float     seedrad ;
-  NI_stream ns ;
-  THD_session *session ; THD_3dim_dataset *dset ;
-  int nds,nvox,nivec,*ivec ;
-} GICOR_setup ;
-
-#define DESTROY_GICOR_setup(gi)                     \
- do{ if( (gi) != NULL ){                            \
-       if( (gi)->ivec != NULL ) free((gi)->ivec) ;  \
-       free(gi) ; (gi) = NULL ;                     \
-     } } while(0)
+#include "gicor.h"   /* ZSS Jan 2010 */
 
 /*---*/
 
@@ -533,6 +525,7 @@ typedef struct {
       Widget     marks_frame , marks_rowcol ;
       Widget     define_marks_pb ;
       MCW_bbox * see_marks_bbox ;
+      int        marks_enabled ;
 
       Widget     func_frame , func_rowcol ;
       Widget     define_func_pb ;
@@ -546,12 +539,15 @@ typedef struct {
 
       Widget choose_rowcol , rescan_pb, nimlpo_pb ;                    /* 02 Feb 2007 */
       Widget session_rowcol, sess_lab , choose_sess_pb, read_sess_pb ; /* 03 Dec 2009 */
+      int    session_horz ;                                            /* 29 Apr 2010 */
 
       Boolean marks_pb_inverted , func_pb_inverted , dmode_pb_inverted ;
 
       Widget choose_surf_pb ;  /* 19 Aug 2002 */
       AFNI_surface_widgets *swid ;
 } AFNI_viewing_widgets ;
+
+extern void AFNI_sesslab_EV( Widget, XtPointer, XEvent *, Boolean * ) ; /* 30 Apr 2010 */
 
 #define OPEN_PANEL(iq,panel)                                            \
    {  XtManageChild( (iq)->vwid->  panel  ->frame ) ;                    \
@@ -626,6 +622,7 @@ typedef struct {
 
       Widget thr_menu ;
       MCW_bbox *thr_onoff_bbox ;
+      MCW_bbox *thr_olay1_bbox ;
       Widget thr_autothresh_pb ;
       MCW_arrowval *thr_sign_av ;  /* 08 Aug 2007 */
       Widget thr_fdr_pb ;          /* 29 Jan 2008 */
@@ -685,6 +682,9 @@ typedef struct {
       int                 clu_index;
       int                 clu_num ;
       mri_cluster_detail *clu_det ;
+      CLU_threshtable *clu_tabNN1, *clu_tabNN2, *clu_tabNN3 ; /* Jul 2010 */
+      byte *clu_mask ;
+      int clu_nnlev ;
 
       ICALC_widget_set   *iwid ;       /* 17 Sep 2009 */
 } AFNI_function_widgets ;
@@ -997,8 +997,8 @@ typedef struct Three_D_View {
       MCW_DC *dc ;
 
       THD_session      *ss_now ;   /* session now being viewed */
-      THD_3dim_dataset *anat_dset[LAST_VIEW_TYPE+1] ,   /* datasets now */
-                       *fim_dset [LAST_VIEW_TYPE+1]  ;  /* being viewed */
+      THD_3dim_dataset *anat_dset[MAX_LAST_VIEW_TYPE+1] ,   /* datasets now */
+                       *fim_dset [MAX_LAST_VIEW_TYPE+1]  ;  /* being viewed */
       THD_3dim_dataset *anat_now , *fim_now ;  /* REALLY now being viewed */
 
       AFNI_view_info   *vinfo ;  /* information about what's being viewed */
@@ -1053,13 +1053,22 @@ typedef struct Three_D_View {
        (iq)->vwid->func->clu_rep = NULL ; redis++ ;                        \
      }                                                                     \
      DESTROY_CLARR((iq)->vwid->func->clu_list);                            \
+     CLU_free_table((iq)->vwid->func->clu_tabNN1) ;                        \
+      CLU_free_table((iq)->vwid->func->clu_tabNN2) ;                       \
+       CLU_free_table((iq)->vwid->func->clu_tabNN3) ;                      \
+     (iq)->vwid->func->clu_tabNN1 = NULL ;                                 \
+      (iq)->vwid->func->clu_tabNN2 = NULL ;                                \
+       (iq)->vwid->func->clu_tabNN3 = NULL ;                               \
      if( (iq)->vedset.code ) redis++ ;                                     \
      (iq)->vedset.flags = (iq)->vedset.code = 0; AFNI_set_thr_pval((iq));  \
      if( (iq)->vinfo->func_visible && redis ) AFNI_redisplay_func((iq)) ;  \
  } while(0) ;
 
+extern void CLU_setup_alpha_tables( Three_D_View * ) ; /* Jul 2010 */
+
 #define STOP_COLOR "#770000"
 #define GO_COLOR   "#005500"
+#define WORK_COLOR "#888800"
 
 #define INSTACORR_LABEL_ON(iq)                                          \
  do{ MCW_set_widget_label((iq)->vwid->func->icor_label,"** Ready **") ; \
@@ -1069,6 +1078,11 @@ typedef struct Three_D_View {
 #define INSTACORR_LABEL_OFF(iq)                                         \
  do{ MCW_set_widget_label((iq)->vwid->func->icor_label,"*NOT Ready*") ; \
      MCW_set_widget_bg   ((iq)->vwid->func->icor_label,STOP_COLOR,0 ) ; \
+ } while(0)
+
+#define INSTACORR_LABEL_WORKING(iq)                                     \
+ do{ MCW_set_widget_label((iq)->vwid->func->icor_label,"..Working..") ; \
+     MCW_set_widget_bg   ((iq)->vwid->func->icor_label,WORK_COLOR,0 ) ; \
  } while(0)
 
 /*! Change InstaCorr popup buttons status */
@@ -1112,6 +1126,13 @@ typedef struct Three_D_View {
  do{ if( (iq)->vwid->func->gicor_rowcol != NULL ){                         \
        MCW_set_widget_label((iq)->vwid->func->gicor_label,"*NOT Ready*") ; \
        MCW_set_widget_bg   ((iq)->vwid->func->gicor_label,STOP_COLOR,0 ) ; \
+     } } while(0)
+
+#define GRPINCORR_LABEL_WORKING(iq)                                        \
+ do{ if( (iq)->vwid->func->gicor_rowcol != NULL ){                         \
+       MCW_set_widget_label((iq)->vwid->func->gicor_label,"..Working..") ; \
+       MCW_set_widget_bg   ((iq)->vwid->func->gicor_label,WORK_COLOR,0 ) ; \
+       MCW_set_widget_fg   ((iq)->vwid->func->gicor_label,"#000088"    ) ; \
      } } while(0)
 
 #define ENABLE_GRPINCORR(iq)          \
@@ -1358,6 +1379,8 @@ typedef struct {
    gen_func  *realtime_callback ;
 
 } AFNI_library_type ;
+
+#define BROWN_COLOR "#553319"
 
 #ifdef MAIN
    AFNI_library_type GLOBAL_library ;
@@ -1632,7 +1655,9 @@ extern void   AFNI_vedit_CB       ( MCW_arrowval * , XtPointer ) ; /* 05 May 200
 extern int    AFNI_icor_setref    ( Three_D_View *im3d ) ;
 extern void   AFNI_icor_setref_locked( Three_D_View *im3d ) ;      /* 15 May 2009 */
 
-extern int    AFNI_gicor_setref   ( Three_D_View *im3d ) ;         /* 23 Dec 2009 */
+extern int    AFNI_icor_setref_anatijk( Three_D_View *, int,int,int ) ;      /* 17 Mar 2010 */
+extern int    AFNI_icor_setref_xyz    ( Three_D_View *, float,float,float );
+extern int    AFNI_gicor_setref_xyz   ( Three_D_View *, float,float,float ); /* 23 Dec 2009 */
 
 extern Boolean AFNI_refashion_dataset( Three_D_View * ,
                                        THD_3dim_dataset *, THD_dataxes * , int ) ;
@@ -1642,9 +1667,13 @@ extern Boolean AFNI_refashion_dataset( Three_D_View * ,
 #define REDISPLAY_ALL      2
 
 extern void AFNI_set_viewpoint( Three_D_View * , int,int,int , int ) ;
+extern void AFNI_set_index_viewpoint( Three_D_View *, int, int );
+                                                            /*ZSS July 2010 */
 extern void AFNI_redisplay_func( Three_D_View * ) ; /* 05 Mar 2002 */
 extern void AFNI_view_setter( Three_D_View *, MCW_imseq *) ; /* 26 Feb 2003 */
 extern void AFNI_range_setter( Three_D_View *, MCW_imseq *); /* 04 Nov 2003 */
+
+extern void AFNI_coord_filer_setup( Three_D_View *im3d ) ; /* 07 May 2010 */
 
 extern XmString AFNI_crosshair_label( Three_D_View * ) ;
 extern XmString AFNI_range_label( Three_D_View * ) ;

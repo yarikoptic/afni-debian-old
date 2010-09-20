@@ -41,7 +41,8 @@ int main(int argc, char *argv[])
 {
     THD_3dim_dataset *mask_dset = NULL, *input_dset = NULL ;
     int mask_subbrik = 0;
-    int sigma = 0, nzmean = 0, nzcount = 0, debug = 0, quiet = 0, summary = 0;
+    int sigma = 0, nzsigma = 0, mean = 1, nzmean = 0, nzcount = 0;
+    int debug = 0, quiet = 0, summary = 0;
     int minmax = 0, nzminmax = 0, donzsum = 0;		/* 07 July, 2004 [rickr] */
     short *mask_data;
     int nvox, i, brik;
@@ -49,7 +50,7 @@ int main(int argc, char *argv[])
     int force_num_ROI = 0;	/* Added 5/00 */
     int narg = 1;
     double *sum=NULL, *sumsq=NULL, *nzsum=NULL, sig, *sumallbriks=NULL; 
-    double  *min=NULL, *max=NULL, 
+    double  *min=NULL, *max=NULL, *nzsumsq=NULL,
             *nzmin=NULL, *nzmax=NULL;		/* 07 July, 2004 [rickr] */
     long *voxels=NULL, *nzvoxels=NULL;
     float *input_data;
@@ -127,9 +128,15 @@ int main(int argc, char *argv[])
 "\n"
 "  -debug        Print out debugging information\n"
 "  -quiet        Do not print out labels for columns or rows\n"
+"  -nomeanout    Do not print out the mean column. Default is \n"
+"                to always start with the mean value.\n"
+"                This option cannot be used with -summary\n"
 "  -nobriklab    Do not print the sub-brick label next to its index\n"
 "  -1Dformat     Output results in a 1D format that includes \n"
 "                commented labels\n"
+"  -1DRformat    Output results in a 1D format that includes \n"
+"                uncommented labels. This format does not work well with \n"
+"                typical 1D programs, but it is useful for R functions.\n"
 "\n"
 "The following options specify what stats are computed.  By default\n"
 "the mean is always computed.\n"
@@ -140,12 +147,13 @@ int main(int argc, char *argv[])
 "  -nzvoxels     Compute the number of non_zero voxels\n"
 "  -minmax       Compute the min/max of all voxels\n"
 "  -nzminmax     Compute the min/max of non_zero voxels\n"
-"  -sigma        Means to compute the standard deviation as well\n"
-"                 as the mean.\n"
+"  -sigma        Compute the standard deviation of all voxels\n"
+"  -nzsigma      Compute the standard deviation of all non_zero voxels\n"
 "  -median       Compute the median of all voxels.\n"
 "  -nzmedian     Compute the median of non_zero voxels.\n"
 "  -summary      Only output a summary line with the grand mean \n"
 "                across all briks in the input dataset. \n"
+"                This option cannot be used with -nomeanout.\n"
 "\n"
 "The output is printed to stdout (the terminal), and can be\n"
 "saved to a file using the usual redirection operation '>'.\n"
@@ -169,7 +177,7 @@ int main(int argc, char *argv[])
 
     /* scan argument list */
    disp1d = 0;
-   
+   mean = 1;   /* LEAVE this as the default ZSS March 09 2010 */
     while (narg < argc && argv[narg][0] == '-') {
 
 	if (strncmp(argv[narg], "-mask_f2short", 9) == 0) {
@@ -177,6 +185,7 @@ int main(int argc, char *argv[])
 	    narg++;
 	    continue;
         }
+
 	if (strncmp(argv[narg], "-roisel", 5) == 0) {
 	   MRI_IMAGE *im = NULL;
       float *far=NULL;
@@ -241,8 +250,18 @@ int main(int argc, char *argv[])
 	    narg++;
 	    continue;
 	}
+   if (strncmp(argv[narg], "-1DRformat", 5) == 0) {
+	    disp1d = 2;
+	    narg++;
+	    continue;
+	}
 	if (strncmp(argv[narg], "-sigma", 5) == 0) {
 	    sigma = 1;
+	    narg++;
+	    continue;
+	}
+	if (strncmp(argv[narg], "-nzsigma", 5) == 0) {
+	    nzsigma = 1;
 	    narg++;
 	    continue;
 	}
@@ -297,6 +316,11 @@ int main(int argc, char *argv[])
 	    narg++;
 	    continue;
 	}
+	if (strncmp(argv[narg], "-nomeanout", 8) == 0) {  /* 09 Mar 2010 ZSS*/
+	    mean = 0;
+	    narg++;
+	    continue;
+	}
 	if (strncmp(argv[narg], "-summary", 5) == 0) {
 	    summary = 1;
 	    narg++;
@@ -321,6 +345,9 @@ int main(int argc, char *argv[])
 	Error_Exit("Unknown option");
     }
 
+   if (!mean && summary) {
+      Error_Exit("Cannot use -nomeanout with -summary");
+   }
     /* Remaining arguements are files */
 
     if (narg >= argc)
@@ -331,21 +358,25 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    if (roisel) DSET_mallocize(mask_dset); 
+    DSET_load(mask_dset);
+    if (DSET_ARRAY(mask_dset, mask_subbrik) == NULL)
+      Error_Exit("Cannot read in mask dataset BRIK!");
+
     /* check the mask dataset type */
-    if (DSET_BRICK_TYPE(mask_dset, 0) == MRI_float && mask_f2s == 0 ){
-        fprintf(stderr,"\nError: cannot deal with float-valued mask dataset\n");
-        fprintf(stderr,"(consider the -mask_f2short option)\n");
-        return 1;
+    if( DSET_BRICK_TYPE(mask_dset,mask_subbrik) == MRI_float && mask_f2s == 0 ){
+        if( !is_integral_sub_brick(mask_dset,mask_subbrik,1) ){ /* 15 Sep 2010 [RWC] */
+          ERROR_message("Cannot deal with float-valued mask dataset\n"
+                        "       [consider using the -mask_f2short option]");
+          return 1;
+        } else {
+          mask_f2s = 1 ;
+        }
     }
 
 
     /* See how many ROIS there are to deal with in the mask */
     for (i = 0; i < IMAX; non_zero[i++] = 0);
-
-    if (roisel) DSET_mallocize(mask_dset); 
-    DSET_load(mask_dset);
-    if (DSET_ARRAY(mask_dset, mask_subbrik) == NULL)
-	Error_Exit("Cannot read in mask dataset BRIK!");
 
     nvox = DSET_NVOX(mask_dset);
     if (debug)
@@ -425,25 +456,28 @@ int main(int argc, char *argv[])
 
     /* Print the header line, while we set up the index array */
     if (!quiet && !summary) {
-	   if (disp1d) fprintf(stdout, "#File\tSub-brick\n\t\t#");
+	   if (disp1d == 1) fprintf(stdout, "#File\tSub-brick\n\t\t#");
+      else if (disp1d == 2) fprintf(stdout, "name\t\t");
       else fprintf(stdout, "File\tSub-brick");
     }  
     for (i = 0, num_ROI = 0; i < IMAX; i++)
 	if (non_zero[i]) {
 	    if (force_num_ROI && (((i - 32768) < 0) || ((i - 32768) > force_num_ROI)))
 		Error_Exit("You used the numROI option, yet in the mask there was a\n"
-			   "value in the mask outside the range [1 n].\nMaybe you shouldn't use\n"
-			   "that option\n");
+			   "value in the mask outside the range [1 n].\n"
+            "Maybe you shouldn't use that option\n");
 	    non_zero[i] = num_ROI;
 	    num_ROI++;
 	    if (!quiet && !summary && !force_num_ROI) {
-		fprintf(stdout, "\tMean_%d  ", i - 32768);
+		if (mean) fprintf(stdout, "\tMean_%d  ", i - 32768);
 		if (nzmean)
 		    fprintf(stdout, "\tNZMean_%d", i - 32768);
 		if (nzcount)
 		    fprintf(stdout, "\tNZcount_%d", i - 32768);
 		if (sigma)
 		    fprintf(stdout, "\tSigma_%d", i - 32768);
+		if (nzsigma)
+		    fprintf(stdout, "\tNZSigma_%d", i - 32768);
 		if (minmax) {
 		    fprintf(stdout, "\tMin_%d   ", i - 32768);
 		    fprintf(stdout, "\tMax_%d   ", i - 32768);
@@ -468,13 +502,15 @@ int main(int argc, char *argv[])
 	for (i = 1; i <= force_num_ROI; i++) {
 	    non_zero[i + 32768] = (i - 1);
 	    if (!quiet && !summary) {
-		fprintf(stdout, "\tMean_%d  ", i );
+		if (mean) fprintf(stdout, "\tMean_%d  ", i );
 		if (nzmean)
 		    fprintf(stdout, "\tNZMean_%d", i );
 		if (nzcount)
 		    fprintf(stdout, "\tNZcount_%d", i );
 		if (sigma)
 		    fprintf(stdout, "\tSigma_%d", i );
+		if (nzsigma)
+		    fprintf(stdout, "\tNZSigma_%d", i );
 		if (minmax) {
 		    fprintf(stdout, "\tMin_%d   ", i );
 		    fprintf(stdout, "\tMax_%d   ", i );
@@ -510,7 +546,7 @@ int main(int argc, char *argv[])
 	 Error_Exit("Memory allocation error");
     if ((voxels = (long *) malloc(num_ROI * sizeof(long))) == NULL)
 	 Error_Exit("Memory allocation error");
-    if (nzmean || nzcount || nzminmax || donzsum) {
+    if (nzmean || nzcount || nzminmax || donzsum || nzsigma) {
 	if ((nzsum = (double *) malloc(num_ROI * sizeof(double))) == NULL)
 	     Error_Exit("Memory allocation error");
 	if ((nzvoxels = (long *) malloc(num_ROI * sizeof(long))) == NULL)
@@ -518,6 +554,8 @@ int main(int argc, char *argv[])
 	if ((nzmin = (double *) malloc(num_ROI * sizeof(double))) == NULL)
 	     Error_Exit("Memory allocation error");
 	if ((nzmax = (double *) malloc(num_ROI * sizeof(double))) == NULL)
+	     Error_Exit("Memory allocation error");
+	if ((nzsumsq = (double *) malloc(num_ROI * sizeof(double))) == NULL)
 	     Error_Exit("Memory allocation error");
     }
     if ( minmax ) {
@@ -562,9 +600,10 @@ int main(int argc, char *argv[])
 	    for (i = 0; i < num_ROI; i++) {
 		sum[i] = 0;
 		voxels[i] = 0;
-		if (nzmean || nzcount || donzsum) {
+		if (nzmean || nzcount || donzsum || nzsigma) {
 		    nzsum[i] = 0;
 		    nzvoxels[i] = 0;
+          nzsumsq[i] = 0;
 		}
 		if (sigma)
 		    sumsq[i] = 0;
@@ -641,7 +680,7 @@ int main(int argc, char *argv[])
 
 		    sum[ROI] += (double) input_data[i];
 		    voxels[ROI]++;
-		    if (nzmean || nzcount || nzminmax || donzsum) {
+		    if (nzmean || nzcount || nzminmax || donzsum || nzsigma) {
 			if (input_data[i] != 0.0) {
 			    nzsum[ROI] += (double) input_data[i];
 			    nzvoxels[ROI]++;
@@ -649,6 +688,8 @@ int main(int argc, char *argv[])
 				nzmin[ROI] = input_data[i];
 			    if (input_data[i] > nzmax[ROI] )
 				nzmax[ROI] = input_data[i];
+             if (nzsigma)
+			   nzsumsq[ROI] += input_data[i] * input_data[i];
 			}
 		    }
 		    if (sigma)
@@ -684,10 +725,13 @@ int main(int argc, char *argv[])
        /* print the next line of results */
 	    if (!quiet && !summary){
          if( nobriklab )
-		     if (disp1d) fprintf(stdout, "#%s\t%d\n\t\t", argv[narg], brik);
+		     if (disp1d == 1) fprintf(stdout, "#%s\t%d\n\t\t", argv[narg], brik);
+           else if (disp1d == 2) fprintf(stdout, "%s_%d\t\t", argv[narg], brik);
            else fprintf(stdout, "%s\t%d", argv[narg], brik);
          else
-           if (disp1d) fprintf(stdout, "#%s\t%d[%-.9s]\n\t\t",   
+           if (disp1d == 1) fprintf(stdout, "#%s\t%d[%-.9s]\n\t\t",   
+                           argv[narg],brik,DSET_BRICK_LABEL(input_dset,brik));
+           else if (disp1d == 2) fprintf(stdout, "%s_%d[%-.9s]\t\t",   
                            argv[narg],brik,DSET_BRICK_LABEL(input_dset,brik));
            else fprintf(stdout, "%s\t%d[%-.9s]",   /* 14 Mar 2008 */
                            argv[narg],brik,DSET_BRICK_LABEL(input_dset,brik));
@@ -695,7 +739,7 @@ int main(int argc, char *argv[])
 	    if (!summary) {
 		for (i = 0; i < num_ROI; i++) {
 		    if (voxels[i]) {	/* possible if the numROI option is used - 5/00 */
-			fprintf(stdout, "\t%f", (sum[i] / (double) voxels[i]));
+			if (mean) fprintf(stdout, "\t%f", (sum[i] / (double) voxels[i]));
 			if (nzmean)
 			    fprintf(stdout, "\t%f", nzvoxels[i] ? (nzsum[i] / (double) nzvoxels[i]) : 0.0);
 			if (nzcount)
@@ -707,6 +751,20 @@ int main(int argc, char *argv[])
 				sig = 1e30;	/* a really big number */
 			    else
 				sig = sqrt((voxels[i] / (voxels[i] - 1)) * (sumsq[i] - mean * mean));
+			    fprintf(stdout, "\t%f", sig);
+			}
+         if (nzsigma) {
+			    double mean = 0.0;
+             sig = 0.0;
+             if (nzvoxels[i]) {
+                  mean = nzsum[i] / (double) nzvoxels[i];
+			         nzsumsq[i] /= (double) nzvoxels[i];
+			       if (nzvoxels[i] == 1)
+				   sig = 1e30;	/* a really big number */
+			       else
+				   sig = sqrt( (nzvoxels[i] / (nzvoxels[i] - 1)) * 
+                           (nzsumsq[i] - mean * mean) );
+             } 
 			    fprintf(stdout, "\t%f", sig);
 			}
 			if (minmax) {
@@ -724,12 +782,14 @@ int main(int argc, char *argv[])
              fprintf(stdout, "\t%f", nzsum[i]);
 		   }
           } else {	/* no voxels, so just leave blanks */
-			fprintf(stdout, "\t%s", zerofill);
+			if (mean) fprintf(stdout, "\t%s", zerofill);
 			if (nzmean)
 			    fprintf(stdout, "\t%s", zerofill);
 			if (nzcount)
 			    fprintf(stdout, "\t%s", zerofill);
 			if (sigma)
+			    fprintf(stdout, "\t%s", zerofill);
+			if (nzsigma)
 			    fprintf(stdout, "\t%s", zerofill);
 			if (minmax) {
 			    fprintf(stdout, "\t%s", zerofill);
@@ -792,6 +852,8 @@ int main(int argc, char *argv[])
     }
     if (sigma)
 	free(sumsq);
+    if (nzsigma)
+	free(nzsumsq);
     if (perc || nzperc) {
 	if (percentile) free(percentile); percentile = NULL;
 	 }

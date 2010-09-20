@@ -17,47 +17,98 @@ int main( int argc , char *argv[] )
    /*----- Help the pitiful user? -----*/
 
    if( argc < 2 || strcmp(argv[1],"-help") == 0 ){
-      printf("Usage: 3dPeriodogram [options] dataset\n"
-             "Computes the periodogram of each voxel time series.\n"
-             "(Squared FFT = a crude estimate of the power spectrum)\n"
-             "\n"
-             "Options:\n"
-             " -prefix p = use string 'p' for the prefix of the\n"
-             "               output dataset [DEFAULT = 'pgram']\n"
-             " -taper    = fraction of data to taper [DEFAULT = 0.1]\n"
-             " -nfft L   = set FFT length to 'L' points\n"
-             "               (longer than the data ==> zero padding)\n"
-             "               (shorter than the data ==> data pruning)\n"
-             "\n"
-             "Notes:\n"
-             "* Output is in float format; number of sub-bricks will be\n"
-             "   half the FFT length; sub-brick #0 = FFT bin #1, etc.\n"
-             "* Grid spacing in the frequency (sub-brick) dimension will\n"
-             "   be 1/(nfft*TR) where nfft=FFT length, TR=dataset timestep.\n"
-             "* There is no '-mask' option.  The hyper-clever user could\n"
-             "   use something like\n"
-             "     '3dcalc( -a dset+orig -b mask+orig -expr a*b )'\n"
-             "   to apply a binary mask on the command line.\n"
-             "* Data is not scaled exactly as in the AFNI Power plugin.\n"
-             "* Each time series is linearly detrended prior to FFT-ization.\n"
-             "* FFT length defaults to be the next legal length >= input dataset.\n"
-             "* The program can only do FFT lengths that are factorable\n"
-             "   into a product of powers of 2, 3, and 5, and are even.\n"
-             "  + The largest power of 3 that is allowed is 3^3 = 27.\n"
-             "  + The largest power of 5 that is allowed is 5^3 = 125.\n"
-             "  + e.g., FFT of length 3*5*8=120 is possible.\n"
-             "  + e.g., FFT of length 4*31 =124 is not possible.\n"
-             "  + '-nfft' with an illegal value will cause the program to fail.\n"
-             "* If you want to do smaller FFTs, then average the periodograms\n"
-             "   (to reduce random fluctuations), you can use 3dPeriodogram in\n"
-             "   a script with \"[...]\" sub-brick selectors, then average\n"
-             "   the results with 3dMean.\n"
-             "* Or you could use the full-length FFT, then smooth that FFT\n"
-             "   in the frequency direction (e.g., with 3dTsmooth).\n"
-             "* This is a really quick hack for DH and PB and SfN.\n"
-             "* Author = RWCox -- who doesn't want any bribe at all for this!\n"
-             "                 -- http://ethics.od.nih.gov/topics/gifts.htm\n"
-           ) ;
+      printf(
+        "Usage: 3dPeriodogram [options] dataset\n"
+        "Computes the periodogram of each voxel time series.\n"
+        "(Squared FFT = a crude estimate of the power spectrum)\n"
+        "\n"
+        "--------\n"
+        "Options:\n"
+        "--------\n"
+        " -prefix p = use string 'p' for the prefix of the\n"
+        "               output dataset [DEFAULT = 'pgram']\n"
+        " -taper    = fraction of data to taper [DEFAULT = 0.1]\n"
+        " -nfft L   = set FFT length to 'L' points\n"
+        "               (longer than the data ==> zero padding)\n"
+        "               (shorter than the data ==> data pruning)\n"
+        "------\n"
+        "Notes:\n"
+        "------\n"
+        "* Output is in float format; number of sub-bricks will be\n"
+        "   half the FFT length; sub-brick #0 = FFT bin #1, etc.\n"
+        "* Grid spacing in the frequency (sub-brick) dimension will\n"
+        "   be 1/(nfft*TR) where nfft=FFT length, TR=dataset timestep.\n"
+        "* There is no '-mask' option.  The hyper-clever user could\n"
+        "   use something like\n"
+        "     '3dcalc( -a dset+orig -b mask+orig -expr a*b )'\n"
+        "   to apply a binary mask on the command line.\n"
+        "* Data is not scaled exactly as in the AFNI Power plugin.\n"
+        "* Each time series is linearly detrended prior to FFT-ization.\n"
+        "* FFT length defaults to be the next legal length >= input dataset.\n"
+        "* The program can only do FFT lengths that are factorable\n"
+        "   into a product of powers of 2, 3, and 5, and are even.\n"
+        "  ++ The largest power of 3 that is allowed is 3^3 = 27.\n"
+        "  ++ The largest power of 5 that is allowed is 5^3 = 125.\n"
+        "  ++ e.g., FFT of length 3*5*8=120 is possible.\n"
+        "  ++ e.g., FFT of length 4*31 =124 is not possible.\n"
+        "  ++ '-nfft' with an illegal value will cause the program to fail.\n"
+        "* If you want to do smaller FFTs, then average the periodograms\n"
+        "   (to reduce random fluctuations), you can use 3dPeriodogram in\n"
+        "   a script with \"[...]\" sub-brick selectors, then average\n"
+        "   the results with 3dMean.\n"
+        "* Or you could use the full-length FFT, then smooth that FFT\n"
+        "   in the frequency direction (e.g., with 3dTsmooth).\n"
+        "* This is a really quick hack for DH and PB and SfN.\n"
+        "\n"
+        "* Author = RWCox -- who doesn't want any bribe at all for this!\n"
+        "                 -- http://ethics.od.nih.gov/topics/gifts.htm\n"
+      ) ;
+      printf(
+        "\n"
+        "---------------------------------------------------\n"
+        "More Details About What 3dPeriodogram Actually Does\n"
+        "---------------------------------------------------\n"
+        "* Tapering is done with the Hamming window (if taper > 0):\n"
+        "    Define npts   = number of time points analyzed (<= nfft)\n"
+        "                    (i.e., the length of the input dataset)\n"
+        "           ntaper = taper * npts / 2        (0 < taper <= 1)\n"
+        "                  = number of points to taper on each end\n"
+        "           ktop   = npts - ntaper\n"
+        "           phi    = PI / ntaper\n"
+        "    Then the k-th point (k=0..nfft-1) is tapered by\n"
+        "      w(k) = 0.54 - 0.46 * cos(k*phi)           0    <= k < ntaper\n"
+        "      w(k) = 0.54 + 0.46 * cos((k-ktop+1)*phi)  ktop <= k < npts\n"
+        "      w(k) = 1.0                                otherwise\n"
+        "    Also define P = sum{ w(k)*w(k) } from k=0..npts-1\n"
+        "    (if ntaper = 0, then P = npts).\n"
+        "\n"
+        "* The result is the squared magnitude of the FFT of w(k)*data(k),\n"
+        "  divided by P.  This division makes the result be the 'power',\n"
+        "  which is to say the data's sum-of-squares ('energy') per unit\n"
+        "  time (in units of 1/TR, not 1/sec) ascribed to each FFT bin.\n"
+        "\n"
+        "* Normalizing by P also means that the values output for different\n"
+        "  amounts of tapering or different lengths of data are comparable.\n"
+        "\n"
+        "* To be as clear as I can: this program does NOT do any averaging\n"
+        "  across multiple windows of the data (such as Welch's method does)\n"
+        "  to estimate the power spectrum.  This program:\n"
+        "  ++ tapers the data,\n"
+        "  ++ zero-pads it to the FFT length,\n"
+        "  ++ FFTs it (in time),\n"
+        "  ++ squares it and divides by the P factor.\n"
+        "\n"
+        "* The number of output sub-bricks is nfft/2:\n"
+        "     sub-brick #0 = FFT bin #1 = frequency 1/(nfft*dt)\n"
+        "               #1 = FFT bin #2 = frequency 2/(nfft*dt)\n"
+        "  et cetera, et cetera, et cetera.\n"
+        "\n"
+        "* If you desire to implement Welch's method for spectrum estimation\n"
+        "  using 3dPeriodogram, you will have to run the program multiple\n"
+        "  times, using different subsets of the input data, then average\n"
+        "  the results with 3dMean.\n"
+        "  ++ http://en.wikipedia.org/wiki/Welch's_method\n"
+      ) ;
       PRINT_COMPILE_DATE ; exit(0) ;
    }
 
@@ -123,8 +174,8 @@ int main( int argc , char *argv[] )
 
    if( gfft <= 0 ) gfft = csfft_nextup_even(nvals) ;
    nbin = gfft / 2 ;
-   INFO_message("Lengths: Data=%d%s FFT=%d  Output=%d" ,
-                nvals, (nvals>gfft)?"* ":" ", gfft, nbin) ;
+   INFO_message("Dataset Lengths: Input=%d FFT=%d  Output=%d" ,
+                nvals, gfft, nbin ) ;
 
    /*------------- ready to compute new dataset -----------*/
 
@@ -136,7 +187,8 @@ int main( int argc , char *argv[] )
                     1 ,                    /* detrend (yes) */
                     nbin ,                 /* number of briks in output */
                     PGRAM_tsfunc ,         /* timeseries processor function */
-                    NULL                   /* extra data for tsfunc */
+                    NULL,                  /* extra data for tsfunc */
+                    NULL                   /* mask */
                  ) ;
 
    if( new_dset != NULL ){
@@ -206,9 +258,9 @@ ENTRY("PGRAM_tsfunc") ;
 
      cxar = (complex *)malloc(sizeof(complex)*nfft) ;
      tar  = (float *  )malloc(sizeof(float  )*nfft) ;
-     ntaper = (int)(0.5 * taper * npts + 0.49f) ; /* will taper data over */
+     ntaper = (int)(0.5f * taper * npts + 0.49f); /* will taper data over */
      phi    = PI / MAX(ntaper,1) ;                /* kk=0..ntaper-1 on left */
-     ktbot  = npts - ntaper ;                     /* kk=ktbot..npts1 on right */
+     ktbot  = npts - ntaper ;                     /* kk=ktbot..npts-1 on right */
      pfact  = 0.0f ;                              /* sum of taper**2 */
 
      for( kk=0 ; kk < npts ; kk++ ){                        /* Hamming-ize */

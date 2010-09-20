@@ -50,6 +50,7 @@ ENTRY("THD_dataset_info") ;
 
    outbuf = THD_zzprintf(outbuf,"Identifier Code: %s  Creation Date: %s\n" ,
              dset->idcode.str , dset->idcode.date ) ;
+   outbuf = THD_zzprintf(outbuf,   "Template Space:  %s\n", dset->atlas_space);
 
    if( ISANAT(dset) ){
       outbuf = THD_zzprintf(outbuf,"Dataset Type:    %s (-%s)\n",
@@ -135,8 +136,9 @@ ENTRY("THD_dataset_info") ;
 
    tb = dset->dblk->total_bytes ;
    if( tb > 0 )
-     outbuf = THD_zzprintf(outbuf,"Storage Space:   %lld (%s) bytes\n",
-                           tb , approximate_number_string(tb) ) ;
+     outbuf = THD_zzprintf(outbuf,"Storage Space:   %s (%s) bytes\n",
+                           commaized_integer_string(tb) ,
+                           approximate_number_string(tb) ) ;
 
    /*-- keywords --*/
 

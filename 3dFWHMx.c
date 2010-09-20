@@ -5,10 +5,10 @@ int main( int argc , char *argv[] )
    THD_3dim_dataset *inset=NULL ;
    int iarg=1 , ii , nvals,nvox , ncon ;
    MRI_IMAGE *outim ; float *outar ;
-   byte *mask=NULL ; int mask_nx,mask_ny,mask_nz , automask=0 ;
+   byte *mask=NULL ; int mask_nx=0,mask_ny=0,mask_nz=0 , automask=0 ;
    char *outfile = NULL ;
-   double fx,fy,fz , cx,cy,cz ; int nx,ny,nz ;
-   int geom=1 , demed=0 , unif=0 , corder=0 ;
+   double fx,fy,fz , cx,cy,cz , ccomb ; int nx,ny,nz , ncomb ;
+   int geom=1 , demed=0 , unif=0 , corder=0 , combine=0 ;
    char *newprefix=NULL ;
 
    /*---- for the clueless who wish to become clueful ----*/
@@ -57,14 +57,24 @@ int main( int argc , char *argv[] )
       "                It is already the default in program 3dBlurToFWHM.\n"
       "        **N.B.: This is the same detrending as done in 3dDespike;\n"
       "                using 2*q+3 basis functions for q > 0.\n"
+      "        ******* If you don't use '-detrend', the program now [Aug 2010]\n"
+      "                checks if a large number of voxels are have significant\n"
+      "                nonzero means. If so, the program will print a warning\n"
+      "                message suggesting the use of '-detrend', since inherent\n"
+      "                spatial structure in the image will bias the estimation\n"
+      "                of the FWHM of the image time series NOISE (which is usually\n"
+      "                the point of using 3dFWHMx).\n"
       "  -detprefix d= Save the detrended file into a dataset with prefix 'd'.\n"
       "                Used mostly to figure out what the hell is going on,\n"
-      "                when funky results transpire.\n"
+      "                when strange results transpire.\n"
       "\n"
       "  -geom      }= If the input dataset has more than one sub-brick,\n"
       "    *OR*     }= compute the final estimate as the geometric mean\n"
       "  -arith     }= or the arithmetic mean of the individual sub-brick\n"
       "                FWHM estimates. [Default = -geom, for no good reason]\n"
+      "\n"
+      "  -combine    = combine the final measurements along each axis into\n"
+      "                one result\n"
       "\n"
       "  -out ttt    = Write output to file 'ttt' (3 columns of numbers).\n"
       "                If not given, the sub-brick outputs are not written.\n"
@@ -83,31 +93,49 @@ int main( int argc , char *argv[] )
       "Captures the FWHM-x, FWHM-y, FWHM-z values into shell variable 'zork'.\n"
       "\n"
       "INPUT FILE RECOMMENDATIONS:\n"
-      "For FMRI statistical purposes, you DO NOT want the FWHM to reflect\n"
-      "the spatial structure of the underlying anatomy.  Rather, you want\n"
-      "the FWHM to reflect the spatial structure of the noise.  This means\n"
-      "that the input dataset should not have anatomical structure.  One\n"
-      "good form of input is the output of '3dDeconvolve -errts', which is\n"
-      "the residuals left over after the GLM fitted signal model is subtracted\n"
-      "out from each voxel's time series.  If you don't want to go to that\n"
-      "trouble, use '-unif' to at least partially subtract out the anatomical\n"
-      "spatial structure, or use the output of 3dDetrend for the same purpose.\n"
+      "* For FMRI statistical purposes, you DO NOT want the FWHM to reflect\n"
+      "  the spatial structure of the underlying anatomy.  Rather, you want\n"
+      "  the FWHM to reflect the spatial structure of the noise.  This means\n"
+      "  that the input dataset should not have anatomical (spatial) structure.\n"
+      "* One good form of input is the output of '3dDeconvolve -errts', which is\n"
+      "  the dataset of residuals left over after the GLM fitted signal model is\n"
+      "  subtracted out from each voxel's time series.\n"
+      "* If you don't want to go to that much trouble, use '-detrend' to approximately\n"
+      "  subtract out the anatomical spatial structure, OR use the output of 3dDetrend\n"
+      "  for the same purpose.\n"
+      "* If you do not use '-detrend', the program attempts to find non-zero spatial\n"
+      "  structure in the input, and will print a warning message if it is detected.\n"
+      "\n"
+      "IF YOUR DATA HAS SMOOTH-ISH SPATIAL STRUCTURE YOU CAN'T GET RID OF:\n"
+      "For example, you only have 1 volume, say from PET imaging.  In this case,\n"
+      "the standard estimate of the noise smoothness will be mixed in with the\n"
+      "structure of the background.  An approximate way to avoid this problem\n"
+      "is provided with the semi-secret '-2difMAD' option, which uses a combination of\n"
+      "first-neighbor and second-neighbor differences to estimate the smoothness,\n"
+      "rather than just first-neighbor differences, and uses the MAD of the differences\n"
+      "rather than the standard deviation.  (If you must know the details, read the\n"
+      "source code in mri_fwhm.c!)                    [For Jatin Vaidya, March 2010]\n"
       "\n"
       "ALSO SEE:\n"
-      " - The older program 3dFWHM is superseded by 3dFWHMx.\n"
-      " - 3dLocalstat -stat FWHM will estimate the FWHM values at each\n"
-      "   voxel, using the same algorithm as this program but applied only\n"
-      "   to a local neighborhood of each voxel in turn.\n"
-      " - 3dBlurToFWHM will blur a dataset to have a given global FWHM.\n"
+      "* The older program 3dFWHM is now superseded by 3dFWHMx.\n"
+      "* The program 3dClustSim takes as input the FHWM estimates and then\n"
+      "  estimates the cluster sizes thresholds to help you get 'corrected'\n"
+      "  (for multiple comparisons) p-values.\n"
+      "* 3dLocalstat -stat FWHM will estimate the FWHM values at each voxel,\n"
+      "  using the same first-difference algorithm as this program, but applied\n"
+      "  only to a local neighborhood of each voxel in turn.\n"
+      "* 3dBlurToFWHM will iteratively blur a dataset (inside a mask) to have a\n"
+      "  given global FWHM.\n"
+      "* 3dBlurInMask will blur a dataset inside a mask, but doesn't measure FWHM.\n"
       "\n"
-      "-- Emperor Zhark - Halloween 2006 --- BOO!\n"
+      "-- Bob Cox - Halloween 2006 --- BOO!\n"
      ) ;
      PRINT_COMPILE_DATE ; exit(0) ;
    }
 
    /*---- official startup ---*/
 
-   PRINT_VERSION("3dFWHMx"); mainENTRY("3dFWHMx main"); machdep();
+   PRINT_VERSION("3dFWHMx"); mainENTRY("3dFWHMx main"); machdep(); AUTHOR("The Bob");
 
    /*---- loop over options ----*/
 
@@ -129,6 +157,11 @@ int main( int argc , char *argv[] )
        iarg++ ; continue ;
      }
 
+     if( strcmp(argv[iarg],"-2difMAD") == 0 ){              /* 24 Mar 2010 */
+       mri_fwhm_setfester( mri_estimate_FWHM_12dif_MAD ) ;  /* secret option */
+       iarg++ ; continue ;
+     }
+
      if( strncmp(argv[iarg],"-geom",4) == 0 ){          /* 15 Nov 2006 */
        geom = 1 ; iarg++ ; continue ;
      }
@@ -140,6 +173,9 @@ int main( int argc , char *argv[] )
      }
      if( strncmp(argv[iarg],"-unif",5) == 0 ){          /* 07 Dec 2006 */
        unif = demed = 1 ; iarg++ ; continue ;
+     }
+     if( strncmp(argv[iarg],"-comb",4) == 0 ){          /* 24 Mar 2010 */
+       combine = 1 ; iarg++ ; continue ;
      }
 
      if( strncmp(argv[iarg],"-compat",6) == 0 ){        /* 09 Nov 2006 */
@@ -245,6 +281,28 @@ int main( int argc , char *argv[] )
        WARNING_message("removed %d voxels from mask because they are constant in time",ncon) ;
    }
 
+   /*-- if NOT detrending or de-median-ing, check if that's a good idea --*/
+
+   if( !(corder > 0 || demed) && nvals > 4 ){  /* 13 Aug 2010 */
+     MRI_IMARR *imar ;
+     imar = THD_medmad_bricks(inset) ;
+     if( imar != NULL ){
+       float *med , *mad ; int nchk=0,nbad=0 ;
+       med = MRI_FLOAT_PTR(IMARR_SUBIM(imar,0)) ;
+       mad = MRI_FLOAT_PTR(IMARR_SUBIM(imar,1)) ;
+       for( ii=0 ; ii < nvox ; ii++ ){
+         if( mask[ii] && mad[ii] > 0.0f ){
+           nchk++ ; if( fabsf(med[ii]) > 6.66f*mad[ii] ) nbad++ ;
+         }
+       }
+       DESTROY_IMARR(imar) ;
+       if( nbad > nchk/16 ){
+         WARNING_message("Suggestion: use the '-detrend' option:") ;
+         ININFO_message ("%d (out of %d) voxel time series have significant means",nbad,nchk) ;
+       }
+     }
+   }
+
    /*-- if detrending, do that now --*/
 
    if( corder > 0 ){
@@ -299,6 +357,12 @@ int main( int argc , char *argv[] )
      cx = (nx == 0) ? 0.0 : exp(cx/nx) ;
      cy = (ny == 0) ? 0.0 : exp(cy/ny) ;
      cz = (nz == 0) ? 0.0 : exp(cz/nz) ;
+     ccomb = 1.0 ; ncomb = 0 ;
+     if( cx > 0.0 ){ ccomb *= cx ; ncomb++ ; }
+     if( cy > 0.0 ){ ccomb *= cy ; ncomb++ ; }
+     if( cz > 0.0 ){ ccomb *= cz ; ncomb++ ; }
+          if( ncomb == 2 ) ccomb = sqrt(ccomb) ;
+     else if( ncomb == 3 ) ccomb = cbrt(ccomb) ;
    } else {
      cx = cy = cz = 0.0 ;
      for( ii=0 ; ii < nvals ; ii++ ){
@@ -310,7 +374,15 @@ int main( int argc , char *argv[] )
      cx = (nx == 0) ? 0.0 : cx/nx ;
      cy = (ny == 0) ? 0.0 : cy/ny ;
      cz = (nz == 0) ? 0.0 : cz/nz ;
+     /* fix arithmetic mean    19 Jul 2010 [rickr] */
+     ccomb = 0.0 ; ncomb = 0 ;
+     if( cx > 0.0 ){ ccomb += cx ; ncomb++ ; }
+     if( cy > 0.0 ){ ccomb += cy ; ncomb++ ; }
+     if( cz > 0.0 ){ ccomb += cz ; ncomb++ ; }
+     if( ncomb > 1 ) ccomb /= ncomb ;
    }
-   printf(" %g  %g  %g\n",cx,cy,cz) ;
+   printf(" %g  %g  %g",cx,cy,cz) ;
+   if( combine ) printf("     %g",ccomb) ;
+   printf("\n") ;
    exit(0) ;
 }

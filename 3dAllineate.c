@@ -18,6 +18,10 @@
 #include <omp.h>
 #endif
 
+#ifdef SOLARIS
+# define strcasestr strstr  /* stupid Solaris */
+#endif
+
 #define MAXPAR   199
 #define PARC_FIX 1
 #define PARC_INI 2
@@ -51,13 +55,14 @@ void AL_setup_warp_coords( int,int,int,int ,
 
 #undef MEMORY_CHECK
 #ifdef USING_MCW_MALLOC
-# define MEMORY_CHECK(mm)                                                    \
-   do{ if( verb > 5 ) mcw_malloc_dump() ;                                    \
-       if( verb > 1 ){                                                       \
-         long long nb = mcw_malloc_total() ;                                 \
-         if( nb > 0 ) INFO_message("Memory usage now = %lld (%s): %s" ,      \
-                      nb , approximate_number_string((double)nb) , (mm) ) ;  \
-       }                                                                     \
+# define MEMORY_CHECK(mm)                                               \
+   do{ if( verb > 5 ) mcw_malloc_dump() ;                               \
+       if( verb > 1 ){                                                  \
+         long long nb = mcw_malloc_total() ;                            \
+         if( nb > 0 ) INFO_message("Memory usage now = %s (%s): %s" ,   \
+                      commaized_integer_string(nb) ,                    \
+                      approximate_number_string((double)nb) , (mm) ) ;  \
+       }                                                                \
    } while(0)
 #else
 # define MEMORY_CHECK(mm) /*nada*/
@@ -70,18 +75,18 @@ void AL_setup_warp_coords( int,int,int,int ,
 #define NMETH GA_MATCH_METHNUM_SCALAR  /* cf. mrilib.h */
 
 static int meth_visible[NMETH] =       /* 1 = show in -help; 0 = don't show */
-  { 1 , 0 , 1 , 1 , 1 , 0 , 1 , 1 , 1 , 0 , 0 , 0 , 0 } ;
-/* ls  sp  mi  crM nmi je  hel crA crU lss lpc lpa ncd */
+  { 1 , 0 , 1 , 1 , 1 , 0 , 1 , 1 , 1 , 0 , 0 , 0 , 0  , 0 } ;
+/* ls  sp  mi  crM nmi je  hel crA crU lss lpc lpa lpc+ ncd */
 
 static int meth_noweight[NMETH] =      /* 1 = don't allow weights, just masks */
-  { 0 , 1 , 1 , 0 , 1 , 1 , 1 , 0 , 0 , 0 , 0 , 0 , 1 } ;
-/* ls  sp  mi  crM nmi je  hel crA crU lss lpc lpa ncd */
+  { 0 , 1 , 1 , 0 , 1 , 1 , 1 , 0 , 0 , 0 , 0 , 0 , 0  , 1 } ;
+/* ls  sp  mi  crM nmi je  hel crA crU lss lpc lpa lpc+ ncd */
 
 static int visible_noweights ;
 
 static char *meth_shortname[NMETH] =   /* short names for terse cryptic users */
-  { "ls" , "sp" , "mi" , "crM", "nmi", "je", "hel",
-    "crA", "crU", "lss", "lpc", "lpa", "ncd"       } ;
+  { "ls" , "sp" , "mi" , "crM", "nmi", "je"   , "hel",
+    "crA", "crU", "lss", "lpc", "lpa", "lpc+" , "ncd"  } ;
 
 static char *meth_longname[NMETH] =    /* long names for prolix users */
   { "leastsq"         , "spearman"     ,
@@ -89,7 +94,7 @@ static char *meth_longname[NMETH] =    /* long names for prolix users */
     "norm_mutualinfo" , "jointentropy" ,
     "hellinger"       ,
     "corratio_add"    , "corratio_uns" , "signedPcor" ,
-    "localPcorSigned" , "localPcorAbs" , "NormCompDist" } ;
+    "localPcorSigned" , "localPcorAbs" , "localPcor+Others" , "NormCompDist" } ;
 
 static char *meth_username[NMETH] =    /* descriptive names */
   { "Least Squares [Pearson Correlation]"   ,
@@ -104,6 +109,7 @@ static char *meth_username[NMETH] =    /* descriptive names */
     "Signed Pearson Correlation"            ,  /* hidden */
     "Local Pearson Correlation Signed"      ,  /* hidden */
     "Local Pearson Correlation Abs"         ,  /* hidden */
+    "Local Pearson Signed + Others"         ,  /* hidden */
     "Normalized Compression Distance"     } ;  /* hidden */
 
 static char *meth_costfunctional[NMETH] =  /* describe cost functional */
@@ -119,6 +125,7 @@ static char *meth_costfunctional[NMETH] =  /* describe cost functional */
     "Pearson correlation coefficient between image pair"       ,
     "nonlinear average of Pearson cc over local neighborhoods" ,
     "1 - abs(lpc)"                                             ,
+    "lpc + hel + mi + nmi + crA + overlap"                     ,
     "mutual compressibility (via zlib) -- doesn't work yet"
   } ;
 /*---------------------------------------------------------------------------*/
@@ -154,7 +161,7 @@ int main( int argc , char *argv[] )
    GA_setup stup ;
    int iarg , ii,jj,kk , nmask=0 , nfunc , rr , ntask , ntmask=0 ;
    int   nx_base,ny_base,nz_base , nx_targ,ny_targ,nz_targ , nxy_base ;
-   float dx_base,dy_base,dz_base , dx_targ,dy_targ,dz_targ ;
+   float dx_base,dy_base,dz_base , dx_targ,dy_targ,dz_targ , dxyz_top ;
    int   nxyz_base[3] , nxyz_targ[3] , nxyz_dout[3] ;
    float dxyz_base[3] , dxyz_targ[3] , dxyz_dout[3] ;
    int nvox_base ;
@@ -214,10 +221,11 @@ int main( int argc , char *argv[] )
    int npt_match               = -47 ;          /* 47%, that is */
    int final_interp            = MRI_CUBIC ;
    int warp_code               = WARP_AFFINE ;
+   char warp_code_string[64]   = "\0" ;         /* 22 Feb 2010 */
    int warp_freeze             = 0 ;            /* off by default */
    int nparopt                 = 0 ;
    MRI_IMAGE *matini           = NULL ;
-   int tbest                   = 4 ;            /* default=try best 4 */
+   int tbest                   = 5 ;            /* default=try best 5 */
    int num_rtb                 = 99 ;           /* 28 Aug 2008 */
    int nocast                  = 0 ;            /* 29 Aug 2008 */
    param_opt paropt[MAXPAR] ;
@@ -254,6 +262,7 @@ int main( int argc , char *argv[] )
    int auto_tdilation          = 0 ;            /* for -source_automask+N */
    int auto_tmask              = 0 ;
    char *auto_tstring          = NULL ;
+   int fill_source_mask        = 0 ;
 
    int bloktype                = GA_BLOK_RHDD ; /* 20 Aug 2007 */
    float blokrad               = 6.54321f ;
@@ -267,6 +276,13 @@ int main( int argc , char *argv[] )
    int   nwarp_pass            = 0 ;
    int   nwarp_type            = WARP_BILINEAR ;
    float nwarp_order           = 2.9f ;
+
+   int    micho_zfinal          = 0 ;            /* 24 Feb 2010 */
+   double micho_mi              = 0.2 ;          /* -lpc+ stuff */
+   double micho_nmi             = 0.2 ;
+   double micho_crA             = 0.4 ;
+   double micho_hel             = 0.4 ;
+   double micho_ov              = 0.4 ;          /* 02 Mar 2010 */
 
    /**----------------------------------------------------------------------*/
    /**----------------- Help the pitifully ignorant user? -----------------**/
@@ -291,9 +307,9 @@ int main( int argc , char *argv[] )
 "    if you know what you are doing (or just like to play around).\n"
 "\n"
 "====\n"
-"NOTE: If you want to align EPI volumes to a T1-weighted structural\n"
-"====  volume, the script align_epi_anat.py is recommended.  It will\n"
-"      use 3dAllineate in the recommended way for this type of problem.\n"
+"NOTE: For most 3D image registration purposes, we now recommend that you\n"
+"====  use Daniel Glen's script align_epi_anat.py (which, despite its name,\n"
+"      can do many more registration problems than EPI-to-T1-weighted).\n"
 " -->> In particular, using 3dAllineate with the 'lpc' cost functional\n"
 "      requires using a '-weight' volume to get good results, and the\n"
 "      align_epi_anat.py script will automagically generate such a\n"
@@ -302,10 +318,13 @@ int main( int argc , char *argv[] )
 "      as T1-weighted alignment between field strengths using the\n"
 "      '-lpa' cost functional.  Investigate align_epi_anat.py to\n"
 "      see if it will do what you need -- you might make your life\n"
-"      a little easier and nicer and happier.\n"
+"      a little easier and nicer and happier and more peaceful.\n"
+" -->> Also, if/when you ask for registration help on the AFNI\n"
+"      message board, we'll probably start by recommending that you\n"
+"      try align_epi_anat.py if you haven't already done so.\n"
 "\n"
-"OPTIONS:\n"
-"=======\n"
+"COMMAND LINE OPTIONS:\n"
+"====================\n"
 " -base bbb   = Set the base dataset to be the #0 sub-brick of 'bbb'.\n"
 "               If no -base option is given, then the base volume is\n"
 "               taken to be the #0 sub-brick of the source dataset.\n"
@@ -432,7 +451,7 @@ int main( int argc , char *argv[] )
 "               You can also specify the cost functional using an option\n"
 "               of the form '-mi' rather than '-cost mi', if you like\n"
 "               to keep things terse and cryptic (as I do).\n"
-"               [Default == '-hel' (for no good reason).]\n"
+"               [Default == '-hel' (for no good reason, but it sounds nice).]\n"
 "\n"
 " -interp iii = Defines interpolation method to use during matching\n"
 "               process, where 'iii' is one of\n"
@@ -567,12 +586,13 @@ int main( int argc , char *argv[] )
 "               points to search for the starting point for the fine\n"
 "               pass.  If bb==0, then no search is made for the best\n"
 "               starting point, and the identity transformation is\n"
-"               used as the starting point.  [Default=4; min=0 max=7]\n"
+"               used as the starting point.  [Default=%d; min=0 max=%d]\n"
 "       **N.B.: Setting bb=0 will make things run faster, but less reliably.\n"
 " -fineblur x = Set the blurring radius to use in the fine resolution\n"
 "               pass to 'x' mm.  A small amount (1-2 mm?) of blurring at\n"
 "               the fine step may help with convergence, if there is\n"
-"               some problem.  [Default == 0 mm]\n"
+"               some problem, especially if the base volume is very noisy.\n"
+"               [Default == 0 mm = no blurring at the final alignment pass]\n"
 "   **NOTES ON\n"
 "   **STRATEGY: * If you expect only small-ish (< 2 voxels?) image movement,\n"
 "                 then using '-onepass' or '-twobest 0' makes sense.\n"
@@ -585,6 +605,8 @@ int main( int argc , char *argv[] )
 "                 then the default '-twofirst' makes sense if you don't expect\n"
 "                 large movements WITHIN the source, but expect large motions\n"
 "                 between the source and base.\n"
+
+       , tbest , PARAM_MAXTRIAL  /* for -twobest */
       ) ;
 
       printf(
@@ -876,7 +898,7 @@ int main( int argc , char *argv[] )
         "===========================================================================\n"
         "                TOP SECRET HIDDEN OPTIONS (-HELP or -POMOC)\n"
         "---------------------------------------------------------------------------\n"
-        "                ** N.B.: Most of these are experimental! **\n"
+        "        ** N.B.: Most of these are experimental! [permanent beta] **\n"
         "===========================================================================\n"
         "\n"
         " -num_rtb n  = At the beginning of the fine pass, the best set of results\n"
@@ -989,24 +1011,58 @@ int main( int argc , char *argv[] )
        printf("\n"
         "===========================================================================\n" );
        printf("\n"
-              " Hidden experimental cost functionals:\n") ;
+              "Hidden experimental cost functionals:\n"
+              "-------------------------------------\n" ) ;
        for( ii=0 ; ii < NMETH ; ii++ )
         if( !meth_visible[ii] )
           printf( "   %-4s *OR*  %-16s= %s\n" ,
                   meth_shortname[ii] , meth_longname[ii] , meth_username[ii] );
 
        printf("\n"
-              " Cost functional descriptions (for use with -allcost output):\n") ;
+              "Notes for the new [Feb 2010] lpc+ cost functional:\n"
+              "--------------------------------------------------\n"
+              " * The cost functional named 'lpc+' is a combination of several others:\n"
+              "     lpc + hel*%.1f + crA*%.1f + nmi*%.1f + mi*%.1f + ov*%.1f\n"
+              "   ++ 'hel', 'crA', 'nmi', and 'mi' are the histogram-based cost\n"
+              "      functionals also available as standalone options.\n"
+              "   ++ 'ov' is a measure of the overlap of the automasks of the base and\n"
+              "      source volumes; ov is not available as a standalone option.\n"
+              " * The purpose of lpc+ is to avoid situations where the pure lpc cost\n"
+              "   goes wild; this especially happens if '-source_automask' isn't used.\n"
+              "   ++ Even with lpc+, you should use '-source_automask+2' (say) to be safe.\n"
+              " * You can later the weighting of the extra functionals by giving the\n"
+              "   option in the form (for example)\n"
+              "     '-lpc+hel*0.5+nmi*0+mi*0+crA*1.0+ov*0.5'\n"
+              " * The quotes are needed to prevent the shell from wild-card expanding\n"
+              "   the '*' character.\n"
+              " * Notice the weight factors FOLLOW the name of the extra functionals.\n"
+              "   ++ If you want a weight to be 0 or 1, you have to provide for that\n"
+              "      explicitly -- if you leave a weight off, then it will get its\n"
+              "      default value.\n"
+              "   ++ The order of the weight factor names is unimportant here:\n"
+              "        '-lpc+hel*0.5+nmi*0.8' == '-lpc+nmi*0.8+hel*0.5'\n"
+              " * Only the 5 functionals listed (hel,crA,nmi,mi,ov) can be used in '-lpc+'.\n"
+              " * In addition, if you want the initial alignments to be with '-lpc+' and\n"
+              "   then finish the Final alignment with pure '-lpc', you can indicate this\n"
+              "   by putting 'ZZ' somewhere in the option string, as in '-lpc+ZZ'.\n"
+              " * This stuff should be considered really experimental at this moment!\n"
+             , micho_hel , micho_crA , micho_nmi , micho_mi , micho_ov
+             ) ;
+
+       printf("\n"
+              "Cost functional descriptions (for use with -allcost output):\n"
+              "------------------------------------------------------------\n"
+             ) ;
        for( ii=0 ; ii < NMETH ; ii++ )
          printf("   %-4s:: %s\n",
                 meth_shortname[ii] , meth_costfunctional[ii] ) ;
 
        printf("\n") ;
-       printf(" * N.B.: Some cost functional values (as printed out herein)\n"
-              "   are negated (e.g., 'hel', 'mi'), so that the best image\n"
-              "   alignment will be found when the cost is minimized.  See\n"
-              "   the descriptions above and the references below for more\n"
-              "   details for each functional.\n");
+       printf(" * N.B.: Some cost functional values (as printed out above)\n"
+              "   are negated from their theoretical descriptions (e.g., 'hel')\n"
+              "   so that the best image alignment will be found when the cost\n"
+              "   is minimized.  See the descriptions above and the references\n"
+              "   below for more details for each functional.\n");
        printf("\n") ;
        printf(" * For more information about the 'lpc' functional, see\n"
               "     ZS Saad, DR Glen, G Chen, MS Beauchamp, R Desai, RW Cox.\n"
@@ -1166,19 +1222,19 @@ int main( int argc , char *argv[] )
          } else if( strncasecmp(argv[iarg],"bil",3) == 0 ){
            nwarp_type = WARP_BILINEAR ;
          } else {
-           WARNING_message("unknown -nwarp type '%s'",argv[iarg]) ;
+           WARNING_message("unknown -nwarp type '%s' :-(",argv[iarg]) ;
          }
          warp_code = WARP_AFFINE ; iarg++ ;
        }
 
        if( iarg < argc && isdigit(argv[iarg][0]) ){
          nwarp_order = (float)strtod(argv[iarg],NULL) ;
-         if( nwarp_order < 2.0f || nwarp_order > 5.0f ){
-           WARNING_message("illegal -nwarp order '%s'",argv[iarg]) ;
+         if( nwarp_order < 2.0f || nwarp_order > 7.0f ){
+           WARNING_message("illegal -nwarp order '%s' :-(",argv[iarg]) ;
            nwarp_order = 2.9f ;
          }
          if( nwarp_type == WARP_BILINEAR )
-           WARNING_message("'order' is meaningless for bilinear warp") ;
+           WARNING_message("'order' is meaningless for bilinear warp :-(") ;
          iarg++ ;
        }
 
@@ -1207,10 +1263,10 @@ int main( int argc , char *argv[] )
        do_allcost = -2 ;
        qim = mri_read_1D( argv[++iarg] ) ;
        if( qim == NULL )
-         ERROR_exit("Can't read -allcostX1D '%s'",argv[iarg]) ;
+         ERROR_exit("Can't read -allcostX1D '%s' :-(",argv[iarg]) ;
        allcostX1D = mri_transpose(qim) ; mri_free(qim) ;
        if( allcostX1D->nx < 12 )
-         ERROR_exit("-allcostX1D '%s' has only %d values per row!" ,
+         ERROR_exit("-allcostX1D '%s' has only %d values per row :-(" ,
                     argv[iarg] , allcostX1D->nx ) ;
        allcostX1D_outname = strdup(argv[++iarg]) ;
        ++iarg ; continue ;
@@ -1228,7 +1284,7 @@ int main( int argc , char *argv[] )
                       + 4*(strchr(argv[iarg]+6,'z') != NULL) ;
          }
          if( do_cmass == 0 )
-           ERROR_exit("Don't understand coordinates in '%s",argv[iarg]) ;
+           ERROR_exit("Don't understand coordinates in '%s :-(",argv[iarg]) ;
        } else {
          do_cmass = 7 ;  /* all coords */
        }
@@ -1247,24 +1303,24 @@ int main( int argc , char *argv[] )
      /*-----*/
 
      if( strcmp(argv[iarg],"-matini") == 0 ){
-       if( matini != NULL ) ERROR_exit("Can't have multiple %s options!",argv[iarg]) ;
-       if( ++iarg >= argc ) ERROR_exit("no argument after '%s'!",argv[iarg-1]) ;
+       if( matini != NULL ) ERROR_exit("Can't have multiple %s options :-(",argv[iarg]) ;
+       if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
        if( strncmp(argv[iarg],"1D:",3) == 0 ||
            (strchr(argv[iarg],' ') == NULL && argv[iarg][0] != '&') ){
          matini = mri_read_1D( argv[iarg] ) ;
-         if( matini == NULL ) ERROR_exit("Can't read -matini file '%s'",argv[iarg]);
+         if( matini == NULL ) ERROR_exit("Can't read -matini file '%s' :-(",argv[iarg]);
        } else {
          matini = mri_matrix_evalrpn( argv[iarg] ) ;
-         if( matini == NULL ) ERROR_exit("Can't evaluate -matini expression");
+         if( matini == NULL ) ERROR_exit("Can't evaluate -matini expression :-(");
        }
        if( matini->nx < 3 || matini->ny < 3 )
-         ERROR_exit("-matini matrix has nx=%d and ny=%d (should be at least 3)",
+         ERROR_exit("-matini matrix has nx=%d and ny=%d (should be at least 3) :-(",
                     matini->nx,matini->ny) ;
        else if( matini->nx > 3 || matini->ny > 4 )
-         WARNING_message("-matini matrix has nx=%d and ny=%d (should be 3x4)",
+         WARNING_message("-matini matrix has nx=%d and ny=%d (should be 3x4) :-(",
                     matini->nx,matini->ny) ;
 
-       WARNING_message("-matini is not yet implemented!") ;
+       WARNING_message("-matini is not yet implemented! :-(") ;
        iarg++ ; continue ;
      }
 
@@ -1274,19 +1330,19 @@ int main( int argc , char *argv[] )
          strcmp(argv[iarg],"-dxyz_mast") == 0 ||
          strcmp(argv[iarg],"-newgrid"  ) == 0   ){
 
-       if( ++iarg >= argc ) ERROR_exit("no argument after '%s'!",argv[iarg-1]) ;
+       if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
        dxyz_mast = strtod(argv[iarg],NULL) ;
        if( dxyz_mast <= 0.0 )
-         ERROR_exit("Illegal value '%s' after -mast_dxyz",argv[iarg]) ;
+         ERROR_exit("Illegal value '%s' after -mast_dxyz :-(",argv[iarg]) ;
        if( dxyz_mast <= 0.5 )
-         WARNING_message("Small value %g after -mast_dxyz",dxyz_mast) ;
+         WARNING_message("Small value %g after -mast_dxyz :-(",dxyz_mast) ;
        iarg++ ; continue ;
      }
 
      /*-----*/
 
      if( strcmp(argv[iarg],"-nmsetup") == 0 ){
-       if( ++iarg >= argc ) ERROR_exit("no argument after '%s'!",argv[iarg-1]) ;
+       if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
        nmatch_setup = (int)strtod(argv[iarg],NULL) ;
        if( nmatch_setup < 9999 ) nmatch_setup = 23456 ;
        iarg++ ; continue ;
@@ -1296,8 +1352,8 @@ int main( int argc , char *argv[] )
 
      if( strncmp(argv[iarg],"-master",6) == 0 ){
        if( dset_mast != NULL || tb_mast )
-         ERROR_exit("Can't have multiple %s options!",argv[iarg]) ;
-       if( ++iarg >= argc ) ERROR_exit("no argument after '%s'!",argv[iarg-1]) ;
+         ERROR_exit("Can't have multiple %s options :-(",argv[iarg]) ;
+       if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
        if( strcmp(argv[iarg],"SOURCE") == 0 ){  /* 19 Jul 2007 */
          tb_mast = 1 ;
        } else if( strcmp(argv[iarg],"BASE") == 0 ){
@@ -1305,7 +1361,7 @@ int main( int argc , char *argv[] )
        } else {
          dset_mast = THD_open_dataset( argv[iarg] ) ;
          if( dset_mast == NULL )
-           ERROR_exit("can't open -master dataset '%s'",argv[iarg]);
+           ERROR_exit("can't open -master dataset '%s' :-(",argv[iarg]);
        }
        iarg++ ; continue ;
      }
@@ -1313,14 +1369,14 @@ int main( int argc , char *argv[] )
      /*-----*/
 
      if( strcmp(argv[iarg],"-seed") == 0 ){   /* SECRET OPTION */
-       if( ++iarg >= argc ) ERROR_exit("no argument after '%s'!",argv[iarg-1]) ;
+       if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
        seed = (long)strtod(argv[iarg],NULL) ; iarg++ ; continue ;
      }
 
      /*-----*/
 
      if( strcmp(argv[iarg],"-powell") == 0 ){  /* SECRET OPTION */
-       if( ++iarg >= argc-1 ) ERROR_exit("no arguments after '%s'!",argv[iarg-1]) ;
+       if( ++iarg >= argc-1 ) ERROR_exit("no arguments after '%s' :-(",argv[iarg-1]) ;
        powell_mm = (float)strtod(argv[iarg++],NULL) ;
        powell_aa = (float)strtod(argv[iarg++],NULL) ;
        continue ;
@@ -1329,10 +1385,10 @@ int main( int argc , char *argv[] )
      /*-----*/
 
      if( strncmp(argv[iarg],"-weight_frac",11) == 0 ){
-       if( ++iarg >= argc ) ERROR_exit("no argument after '%s'!",argv[iarg-1]) ;
+       if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
        nmask_frac = atof( argv[iarg] ) ;
        if( nmask_frac < 0.0f || nmask_frac > 1.0f )
-         ERROR_exit("-weight_frac must be between 0.0 and 1.0 (have '%s')",argv[iarg]);
+         ERROR_exit("-weight_frac must be between 0.0 and 1.0 (have '%s') :-(",argv[iarg]);
        wtspecified = 1 ; iarg++ ; continue ;
      }
 
@@ -1340,10 +1396,10 @@ int main( int argc , char *argv[] )
 
      if( strncmp(argv[iarg],"-weight",6) == 0 ){
        auto_weight = 0 ;
-       if( dset_weig != NULL ) ERROR_exit("Can't have multiple %s options!",argv[iarg]) ;
-       if( ++iarg >= argc ) ERROR_exit("no argument after '%s'!",argv[iarg-1]) ;
+       if( dset_weig != NULL ) ERROR_exit("Can't have multiple %s options :-(",argv[iarg]) ;
+       if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
        dset_weig = THD_open_dataset( argv[iarg] ) ;
-       if( dset_weig == NULL ) ERROR_exit("can't open -weight dataset '%s'",argv[iarg]);
+       if( dset_weig == NULL ) ERROR_exit("can't open -weight dataset '%s' :-(",argv[iarg]);
        wtspecified = 1 ; iarg++ ; continue ;
      }
 
@@ -1351,7 +1407,7 @@ int main( int argc , char *argv[] )
 
      if( strncmp(argv[iarg],"-autoweight",11) == 0 ){
        char *cpt ;
-       if( dset_weig != NULL ) ERROR_exit("Can't use -autoweight AND -weight!") ;
+       if( dset_weig != NULL ) ERROR_exit("Can't use -autoweight AND -weight :-(") ;
        auto_weight = 1 ; auto_string = argv[iarg] ;
        cpt = strstr(auto_string,"+") ;
        if( cpt != NULL && *(cpt+1) != '\0' )      /* 31 Jul 2007 */
@@ -1363,7 +1419,7 @@ int main( int argc , char *argv[] )
      }
 
      if( strncmp(argv[iarg],"-automask",9) == 0 ){
-       if( dset_weig != NULL ) ERROR_exit("Can't use -automask AND -weight!") ;
+       if( dset_weig != NULL ) ERROR_exit("Can't use -automask AND -weight :-(") ;
        auto_weight = 2 ; auto_string = argv[iarg] ;
        if( auto_string[9] == '+' && auto_string[10] != '\0' )
          auto_dilation = (int)strtod(auto_string+10,NULL) ;
@@ -1385,16 +1441,16 @@ int main( int argc , char *argv[] )
      if( strcmp(argv[iarg],"-source_mask") == 0 ){  /* 07 Aug 2007 */
        byte *mmm ; THD_3dim_dataset *dset_tmask ;
        if( im_tmask != NULL )
-         ERROR_exit("Can't use -source_mask twice!") ;
+         ERROR_exit("Can't use -source_mask twice :-(") ;
        if( auto_tmask )
-         ERROR_exit("Can't use -source_mask AND -source_automask!") ;
-       if( ++iarg >= argc ) ERROR_exit("no argument after '%s'!",argv[iarg-1]) ;
+         ERROR_exit("Can't use -source_mask AND -source_automask :-(") ;
+       if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
        dset_tmask = THD_open_dataset( argv[iarg] ) ;
        if( dset_tmask == NULL )
-         ERROR_exit("can't open -source_mask dataset '%s'",argv[iarg]);
+         ERROR_exit("can't open -source_mask dataset '%s' :-(",argv[iarg]);
        mmm = THD_makemask( dset_tmask , 0 , 1.0f,-1.0f ) ;
        if( mmm == NULL )
-         ERROR_exit("Can't use -source_mask '%s' for some reason",argv[iarg]) ;
+         ERROR_exit("Can't use -source_mask '%s' for some reason :-(",argv[iarg]) ;
        im_tmask = mri_new_vol_empty(
                    DSET_NX(dset_tmask),DSET_NY(dset_tmask),DSET_NZ(dset_tmask) ,
                    MRI_byte ) ;
@@ -1403,49 +1459,49 @@ int main( int argc , char *argv[] )
        mri_fix_data_pointer( mmm , im_tmask ) ;
        ntmask = THD_countmask( im_tmask->nvox , mmm ) ;
        if( ntmask < 666 )
-         ERROR_exit("Too few (%d) voxels in -source_mask!",ntmask) ;
+         ERROR_exit("Too few (%d) voxels in -source_mask :-(",ntmask) ;
        if( verb ) INFO_message("%d voxels in -source_mask",ntmask) ;
-       iarg++ ; continue ;
+       iarg++ ; fill_source_mask = 1 ; continue ;
      }
 
      if( strncmp(argv[iarg],"-source_automask",16) == 0 ){  /* 07 Aug 2007 */
        if( im_tmask != NULL )
-         ERROR_exit("Can't use -source_automask AND -source_mask!") ;
+         ERROR_exit("Can't use -source_automask AND -source_mask :-(") ;
        auto_tmask = 1 ; auto_tstring = argv[iarg] ;
        if( auto_tstring[16] == '+' && auto_string[17] != '\0' )
          auto_tdilation = (int)strtod(auto_tstring+17,NULL) ;
-       iarg++ ; continue ;
+       iarg++ ; fill_source_mask = 1 ; continue ;
      }
 
      /*-----*/
 
      if( strncmp(argv[iarg],"-wtprefix",6) == 0 ){
-       if( ++iarg >= argc ) ERROR_exit("no argument after '%s'!",argv[iarg-1]) ;
+       if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
        if( !THD_filename_ok(argv[iarg]) )
-         ERROR_exit("badly formed filename: '%s' '%s'",argv[iarg-1],argv[iarg]) ;
+         ERROR_exit("badly formed filename: '%s' '%s' :-(",argv[iarg-1],argv[iarg]) ;
        wtprefix = argv[iarg] ; iarg++ ; continue ;
      }
 
      /*-----*/
 
      if( strcmp(argv[iarg],"-savehist") == 0 ){  /* SECRET OPTION */
-       if( ++iarg >= argc ) ERROR_exit("no argument after '%s'!",argv[iarg-1]) ;
+       if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
        if( !THD_filename_ok(argv[iarg]) )
-         ERROR_exit("badly formed filename: '%s' '%s'",argv[iarg-1],argv[iarg]) ;
+         ERROR_exit("badly formed filename: '%s' '%s' :-(",argv[iarg-1],argv[iarg]) ;
        save_hist = argv[iarg] ; iarg++ ; continue ;
      }
 
      /*-----*/
 
      if( strcmp(argv[iarg],"-histpow") == 0 ){   /* SECRET OPTION */
-       if( ++iarg >= argc ) ERROR_exit("no argument after '%s'!",argv[iarg-1]) ;
+       if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
        hist_pow = strtod(argv[iarg],NULL) ;
        set_2Dhist_hpower(hist_pow) ;
        iarg++ ; continue ;
      }
 
      if( strcmp(argv[iarg],"-histbin") == 0 ){   /* SECRET OPTION */
-       if( ++iarg >= argc ) ERROR_exit("no argument after '%s'!",argv[iarg-1]) ;
+       if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
        hist_nbin = (int)strtod(argv[iarg],NULL) ;
        hist_mode = 0 ; hist_param = 0.0f ; hist_setbyuser = 1 ;
        set_2Dhist_hbin( hist_nbin ) ;
@@ -1453,35 +1509,37 @@ int main( int argc , char *argv[] )
      }
 
      if( strcmp(argv[iarg],"-clbin") == 0 ){   /* SECRET OPTION - 08 May 2007 */
-       if( ++iarg >= argc ) ERROR_exit("no argument after '%s'!",argv[iarg-1]) ;
+       if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
        hist_mode  = GA_HIST_CLEQWD ;
        hist_param = (float)strtod(argv[iarg],NULL) ; hist_setbyuser = 1 ;
        iarg++ ; continue ;
      }
 
+#if 0
      if( strcmp(argv[iarg],"-izz") == 0 ){    /* EXPERIMENTAL!! */
        THD_correlate_ignore_zerozero(1) ; iarg++ ; continue ;
      }
+#endif
 
      if( strcmp(argv[iarg],"-eqbin") == 0 ){   /* SECRET OPTION - 08 May 2007 */
-       if( ++iarg >= argc ) ERROR_exit("no argument after '%s'!",argv[iarg-1]) ;
+       if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
        hist_mode  = GA_HIST_EQHIGH ;
        hist_param = (float)strtod(argv[iarg],NULL) ; hist_setbyuser = 1 ;
        if( hist_param < 3.0f || hist_param > 255.0f ){
-         WARNING_message("'-eqbin %f' is illegal -- ignoring",hist_param) ;
+         WARNING_message("'-eqbin %f' is illegal -- ignoring :-(",hist_param) ;
          hist_mode = 0 ; hist_param = 0.0f ; hist_setbyuser = 0 ;
        }
        iarg++ ; continue ;
      }
 
      if( strcmp(argv[iarg],"-wtmrad") == 0 ){   /* SECRET OPTION */
-       if( ++iarg >= argc ) ERROR_exit("no argument after '%s'!",argv[iarg-1]) ;
+       if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
        wt_medsmooth = (float)strtod(argv[iarg],NULL) ;
        iarg++ ; continue ;
      }
 
      if( strcmp(argv[iarg],"-wtgrad") == 0 ){   /* SECRET OPTION */
-       if( ++iarg >= argc ) ERROR_exit("no argument after '%s'!",argv[iarg-1]) ;
+       if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
        wt_gausmooth = (float)strtod(argv[iarg],NULL) ;
        iarg++ ; continue ;
      }
@@ -1540,7 +1598,7 @@ int main( int argc , char *argv[] )
      /** -cost shortname  *OR*  -cost longname **/
 
      if( strcmp(argv[iarg],"-cost") == 0 || strcmp(argv[iarg],"-meth") == 0 ){
-       if( ++iarg >= argc ) ERROR_exit("no argument after '-cost'!") ;
+       if( ++iarg >= argc ) ERROR_exit("no argument after '-cost' :-(") ;
 
        for( jj=ii=0 ; ii < NMETH ; ii++ ){
          if( strcasecmp(argv[iarg],meth_shortname[ii]) == 0 ){
@@ -1556,7 +1614,21 @@ int main( int argc , char *argv[] )
        }
        if( jj >=0 ){ iarg++ ; continue ; } /* there was a match */
 
-       ERROR_exit("Unknown code '%s' after -cost!",argv[iarg]) ;
+       ERROR_exit("Unknown code '%s' after -cost :-(",argv[iarg]) ;
+     }
+
+     /* 24 Feb 2010: special option for -lpc+stuff */
+
+     if( strlen(argv[iarg]) > 6 && strncasecmp(argv[iarg],"-lpc+",5) == 0 ){
+       char *cpt ;
+       meth_code = GA_MATCH_LPC_MICHO_SCALAR ;
+       cpt = strcasestr(argv[iarg],"+hel*"); if( cpt != NULL ) micho_hel = strtod(cpt+5,NULL);
+       cpt = strcasestr(argv[iarg],"+mi*" ); if( cpt != NULL ) micho_mi  = strtod(cpt+4,NULL);
+       cpt = strcasestr(argv[iarg],"+nmi*"); if( cpt != NULL ) micho_nmi = strtod(cpt+5,NULL);
+       cpt = strcasestr(argv[iarg],"+crA*"); if( cpt != NULL ) micho_crA = strtod(cpt+5,NULL);
+       cpt = strcasestr(argv[iarg],"+ov*" ); if( cpt != NULL ) micho_ov  = strtod(cpt+4,NULL);
+       cpt = strcasestr(argv[iarg],"ZZ")   ; micho_zfinal = (cpt != NULL) ;
+       iarg++ ; continue ;
      }
 
 #ifdef ALLOW_METH_CHECK
@@ -1564,7 +1636,7 @@ int main( int argc , char *argv[] )
 
      if( strncasecmp(argv[iarg],"-check",5) == 0 ){
        /** if( strncmp(argv[iarg],"-CHECK",5) == 0 ) meth_median_replace = 1 ; **/
-       if( ++iarg >= argc ) ERROR_exit("no argument after '%s'!",argv[iarg-1]) ;
+       if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
 
        for( ; iarg < argc && argv[iarg][0] != '-' ; iarg++ ){
          if( meth_check_count == NMETH ) continue ; /* malicious user? */
@@ -1582,7 +1654,7 @@ int main( int argc , char *argv[] )
          }
          if( jj >=0 ){ meth_check[ meth_check_count++ ] = jj; continue ;}
 
-         WARNING_message("Unknown code '%s' after -check!",argv[iarg]) ;
+         WARNING_message("Unknown code '%s' after -check :-(",argv[iarg]) ;
        }
        continue ;
      }
@@ -1597,13 +1669,13 @@ int main( int argc , char *argv[] )
      /*-----*/
 
      if( strcmp(argv[iarg],"-base") == 0 ){
-       if( dset_base != NULL ) ERROR_exit("Can't have multiple %s options!",argv[iarg]) ;
-       if( ++iarg >= argc ) ERROR_exit("no argument after '-base'!") ;
+       if( dset_base != NULL ) ERROR_exit("Can't have multiple %s options :-(",argv[iarg]) ;
+       if( ++iarg >= argc ) ERROR_exit("no argument after '-base' :-(") ;
        dset_base = THD_open_dataset( argv[iarg] ) ;
-       if( dset_base == NULL ) ERROR_exit("can't open -base dataset '%s'",argv[iarg]);
+       if( dset_base == NULL ) ERROR_exit("can't open -base dataset '%s' :-(",argv[iarg]);
        ii = (int)DSET_BRICK_TYPE(dset_base,0) ;
        if( ii != MRI_float && ii != MRI_short && ii != MRI_byte )
-         ERROR_exit("base dataset %s has non-scalar data type '%s'",
+         ERROR_exit("base dataset %s has non-scalar data type '%s' :-(",
                     DSET_BRIKNAME(dset_base) , MRI_TYPE_name[ii] ) ;
        iarg++ ; continue ;
      }
@@ -1613,11 +1685,11 @@ int main( int argc , char *argv[] )
      if( strncmp(argv[iarg],"-source",6) == 0 ||
          strncmp(argv[iarg],"-input" ,5) == 0 ||
          strncmp(argv[iarg],"-target",7) == 0   ){
-       if( dset_targ != NULL ) ERROR_exit("Can't have multiple %s options!",argv[iarg]) ;
-       if( ++iarg >= argc ) ERROR_exit("no argument after '%s'!",argv[iarg-1]) ;
+       if( dset_targ != NULL ) ERROR_exit("Can't have multiple %s options :-(",argv[iarg]) ;
+       if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
        dset_targ = THD_open_dataset( argv[iarg] ) ;
        if( dset_targ == NULL )
-         ERROR_exit("can't open -%s dataset '%s'",argv[iarg-1],argv[iarg]);
+         ERROR_exit("can't open -%s dataset '%s' :-(",argv[iarg-1],argv[iarg]);
        iarg++ ; continue ;
      }
 
@@ -1630,21 +1702,21 @@ int main( int argc , char *argv[] )
      /*-----*/
 
      if( strncmp(argv[iarg],"-twoblur",7) == 0 ){
-       if( ++iarg >= argc ) ERROR_exit("no argument after '%s'!",argv[iarg-1]) ;
+       if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
        sm_rad = (float)strtod(argv[iarg],NULL) ; twopass = 1 ;
        if( sm_rad < 0.0f ) sm_rad = 0.0f ;
        iarg++ ; continue ;
      }
 
      if( strncmp(argv[iarg],"-fineblur",8) == 0 ){
-       if( ++iarg >= argc ) ERROR_exit("no argument after '%s'!",argv[iarg-1]) ;
+       if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
        fine_rad = (float)strtod(argv[iarg],NULL) ; iarg++ ; continue ;
      }
 
      /*-----*/
 
      if( strncmp(argv[iarg],"-twobest",7) == 0 ){
-       if( ++iarg >= argc ) ERROR_exit("no argument after '%s'!",argv[iarg-1]) ;
+       if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
        tbest = (int)strtod(argv[iarg],NULL) ; twopass = 1 ;
        if( tbest < 0 ){
          WARNING_message("-twobest %d is illegal: replacing with 0",tbest) ;
@@ -1657,7 +1729,7 @@ int main( int argc , char *argv[] )
      }
 
      if( strncmp(argv[iarg],"-num_rtb",7) == 0 ){
-       if( ++iarg >= argc ) ERROR_exit("no argument after '%s'!",argv[iarg-1]) ;
+       if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
        num_rtb = (int)strtod(argv[iarg],NULL) ; twopass = 1 ;
             if( num_rtb <= 0   ) num_rtb = 0 ;
        else if( num_rtb <  66  ) num_rtb = 66 ;
@@ -1684,10 +1756,10 @@ int main( int argc , char *argv[] )
      /*-----*/
 
      if( strncmp(argv[iarg],"-output",5) == 0 || strncmp(argv[iarg],"-prefix",5) == 0 ){
-       if( prefix != NULL ) ERROR_exit("Can't have multiple %s options!",argv[iarg]) ;
-       if( ++iarg >= argc ) ERROR_exit("no argument after '%s'!",argv[iarg-1]) ;
+       if( prefix != NULL ) ERROR_exit("Can't have multiple %s options :-(",argv[iarg]) ;
+       if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
        if( !THD_filename_ok(argv[iarg]) )
-         ERROR_exit("badly formed filename: '%s' '%s'",argv[iarg-1],argv[iarg]) ;
+         ERROR_exit("badly formed filename: '%s' '%s' :-(",argv[iarg-1],argv[iarg]) ;
        if( strcmp(argv[iarg],"NULL") == 0 ) prefix = NULL ;
        else                                 prefix = argv[iarg] ;
        iarg++ ; continue ;
@@ -1696,10 +1768,10 @@ int main( int argc , char *argv[] )
      /*-----*/
 
      if( strncmp(argv[iarg],"-1Dfile",5) == 0 || strncmp(argv[iarg],"-1Dparam_save",12) == 0 ){
-       if( param_save_1D != NULL ) ERROR_exit("Can't have multiple %s options!",argv[iarg]);
-       if( ++iarg >= argc ) ERROR_exit("no argument after '%s'!",argv[iarg-1]) ;
+       if( param_save_1D != NULL ) ERROR_exit("Can't have multiple %s options :-(",argv[iarg]);
+       if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
        if( !THD_filename_ok(argv[iarg]) )
-         ERROR_exit("badly formed filename: %s '%s'",argv[iarg-1],argv[iarg]) ;
+         ERROR_exit("badly formed filename: %s '%s' :-(",argv[iarg-1],argv[iarg]) ;
        if( STRING_HAS_SUFFIX(argv[iarg],".1D") ){
          param_save_1D = argv[iarg] ;
        } else {
@@ -1712,10 +1784,10 @@ int main( int argc , char *argv[] )
      /*-----*/
 
      if( strncmp(argv[iarg],"-1Dmatrix_save",13) == 0 ){
-       if( matrix_save_1D != NULL ) ERROR_exit("Can't have multiple %s options!",argv[iarg]);
-       if( ++iarg >= argc ) ERROR_exit("no argument after '%s'!",argv[iarg-1]) ;
+       if( matrix_save_1D != NULL ) ERROR_exit("Can't have multiple %s options :-(",argv[iarg]);
+       if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
        if( !THD_filename_ok(argv[iarg]) )
-         ERROR_exit("badly formed filename: %s '%s'",argv[iarg-1],argv[iarg]) ;
+         ERROR_exit("badly formed filename: %s '%s' :-(",argv[iarg-1],argv[iarg]) ;
        if( STRING_HAS_SUFFIX(argv[iarg],".1D") ){
          matrix_save_1D = argv[iarg] ;
        } else {
@@ -1734,13 +1806,13 @@ int main( int argc , char *argv[] )
          strncmp(argv[iarg],"-1Dparam_apply",13) == 0   ){
 
        if( apply_1D != NULL || apply_mode != 0 )
-         ERROR_exit("Can't have multiple 'apply' options!") ;
-       if( ++iarg >= argc ) ERROR_exit("no argument after '%s'!",argv[iarg-1]) ;
+         ERROR_exit("Can't have multiple 'apply' options :-(") ;
+       if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
  /*      if( strncmp(argv[iarg],"1D:",3) != 0 && !THD_filename_ok(argv[iarg]) )
-         ERROR_exit("badly formed filename: %s '%s'",argv[iarg-1],argv[iarg]) ;
+         ERROR_exit("badly formed filename: %s '%s' :-(",argv[iarg-1],argv[iarg]) ;
 */
        apply_1D = argv[iarg] ; qim = mri_read_1D(apply_1D) ;
-       if( qim == NULL ) ERROR_exit("Can't read %s '%s'",argv[iarg-1],apply_1D) ;
+       if( qim == NULL ) ERROR_exit("Can't read %s '%s' :-(",argv[iarg-1],apply_1D) ;
        apply_im  = mri_transpose(qim); mri_free(qim);
        apply_far = MRI_FLOAT_PTR(apply_im) ;
        apply_nx  = apply_im->nx ;  /* # of values per row */
@@ -1753,19 +1825,19 @@ int main( int argc , char *argv[] )
 
      if( strncmp(argv[iarg],"-1Dmatrix_apply",13) == 0 ){
        if( apply_1D != NULL || apply_mode != 0 )
-         ERROR_exit("Can't have multiple 'apply' options!") ;
-       if( ++iarg >= argc ) ERROR_exit("no argument after '%s'!",argv[iarg-1]) ;
+         ERROR_exit("Can't have multiple 'apply' options :-(") ;
+       if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
        /*if( !THD_filename_ok(argv[iarg]) )
-         ERROR_exit("badly formed filename: %s '%s'",argv[iarg-1],argv[iarg]) ;*/
+         ERROR_exit("badly formed filename: %s '%s' :-(",argv[iarg-1],argv[iarg]) ;*/
        apply_1D = argv[iarg] ; qim = mri_read_1D(apply_1D) ;
-       if( qim == NULL ) ERROR_exit("Can't read -1Dmatrix_apply '%s'",apply_1D) ;
+       if( qim == NULL ) ERROR_exit("Can't read -1Dmatrix_apply '%s' :-(",apply_1D) ;
        apply_im  = mri_transpose(qim); mri_free(qim);
        apply_far = MRI_FLOAT_PTR(apply_im) ;
        apply_nx  = apply_im->nx ;  /* # of values per row */
        apply_ny  = apply_im->ny ;  /* number of rows */
        apply_mode = APPLY_AFF12 ;
        if( apply_nx < 12 )
-         ERROR_exit("Less than 12 numbers per row in -1Dmatrix_apply '%s'",apply_1D) ;
+         ERROR_exit("Less than 12 numbers per row in -1Dmatrix_apply '%s' :-(",apply_1D) ;
        else if( apply_nx > 12 )
          WARNING_message("More than 12 numbers per row in -1Dmatrix_apply '%s'",apply_1D) ;
        iarg++ ; continue ;
@@ -1794,7 +1866,7 @@ int main( int argc , char *argv[] )
      }
 #endif
      if( strncmp(argv[iarg],"-interp",5)==0 ){
-       if( ++iarg >= argc ) ERROR_exit("no argument after '%s'!",argv[iarg-1]) ;
+       if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
        if( strcmp(argv[iarg],"NN")==0 || strncmp(argv[iarg],"nearest",5)==0 )
          interp_code = MRI_NN ;
        else
@@ -1815,11 +1887,11 @@ int main( int argc , char *argv[] )
          interp_code = MRI_WSINC5 ;
 #endif
        else
-         ERROR_exit("Unknown code '%s' after '%s'!",argv[iarg],argv[iarg-1]) ;
+         ERROR_exit("Unknown code '%s' after '%s' :-(",argv[iarg],argv[iarg-1]) ;
        iarg++ ; continue ;
      }
      if( strncmp(argv[iarg],"-final",5) == 0 ){
-       if( ++iarg >= argc ) ERROR_exit("no argument after '%s'!",argv[iarg-1]) ;
+       if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
        if( strcmp(argv[iarg],"NN") == 0 || strncmp(argv[iarg],"nearest",5) == 0 )
          final_interp = MRI_NN ;
        else
@@ -1840,7 +1912,7 @@ int main( int argc , char *argv[] )
        if( strncasecmp(argv[iarg],"WSINC",5)==0 )
          final_interp = MRI_WSINC5 ;
        else
-         ERROR_exit("Unknown code '%s' after '%s'!",argv[iarg],argv[iarg-1]) ;
+         ERROR_exit("Unknown code '%s' after '%s' :-(",argv[iarg],argv[iarg-1]) ;
        iarg++ ; continue ;
      }
 
@@ -1848,7 +1920,7 @@ int main( int argc , char *argv[] )
 
      if( strncmp(argv[iarg],"-converge",5) == 0 ){
        float vv ;
-       if( ++iarg >= argc ) ERROR_exit("no argument after '%s'!",argv[iarg-1]) ;
+       if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
        vv = (float)strtod(argv[iarg],NULL) ;
        if( vv <= 0.001f || vv > 6.66f ){
          vv = 0.05f ;
@@ -1861,10 +1933,10 @@ int main( int argc , char *argv[] )
 
      if( strncmp(argv[iarg],"-nmatch",5) == 0 ){
        char *cpt ;
-       if( ++iarg >= argc ) ERROR_exit("no argument after '%s'!",argv[iarg-1]) ;
+       if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
        npt_match = (int)strtod(argv[iarg],&cpt) ;
        if( npt_match <= 0 )
-         ERROR_exit("Illegal value '%s' after '%s'!",argv[iarg],argv[iarg-1]) ;
+         ERROR_exit("Illegal value '%s' after '%s' :-(",argv[iarg],argv[iarg-1]) ;
        if( *cpt == '%' || npt_match <= 100 )
          npt_match = -npt_match ;  /* signal for % */
        iarg++ ; continue ;
@@ -1873,7 +1945,7 @@ int main( int argc , char *argv[] )
      /*-----*/
 
      if( strcmp(argv[iarg],"-warp") == 0 ){
-      if( ++iarg >= argc ) ERROR_exit("no argument after '%s'!",argv[iarg-1]) ;
+      if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
       if( strcmp(argv[iarg],"sho")     ==0 || strcmp(argv[iarg],"shift_only")        ==0 )
         warp_code = WARP_SHIFT ;
       else if( strcmp(argv[iarg],"shr")==0 || strcmp(argv[iarg],"shift_rotate")      ==0 )
@@ -1883,11 +1955,11 @@ int main( int argc , char *argv[] )
       else if( strcmp(argv[iarg],"aff")==0 || strcmp(argv[iarg],"affine_general")    ==0 )
         warp_code = WARP_AFFINE ;
       else
-        ERROR_exit("Unknown code '%s' after '%s'!",argv[iarg],argv[iarg-1]) ;
+        ERROR_exit("Unknown code '%s' after '%s' :-(",argv[iarg],argv[iarg-1]) ;
       iarg++ ; continue ;
      }
      if( strcmp(argv[iarg],"-dof") == 0 ){
-       if( ++iarg >= argc ) ERROR_exit("no argument after '%s'!",argv[iarg-1]) ;
+       if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
        ii = (int)strtod(argv[iarg],NULL) ;
        switch(ii){
          case  3: warp_code = WARP_SHIFT  ; break ;
@@ -1895,7 +1967,7 @@ int main( int argc , char *argv[] )
          case  9: warp_code = WARP_SCALE  ; break ;
          case 12: warp_code = WARP_AFFINE ; break ;
          default:
-           ERROR_exit("Unknown value '%s' after '%s'!",argv[iarg],argv[iarg-1]) ;
+           ERROR_exit("Unknown value '%s' after '%s' :-(",argv[iarg],argv[iarg-1]) ;
        }
        iarg++ ; continue ;
      }
@@ -1903,10 +1975,10 @@ int main( int argc , char *argv[] )
      /*-----*/
 
      if( strcmp(argv[iarg],"-parfix") == 0 ){
-       if( ++iarg >= argc-1 ) ERROR_exit("need 2 arguments after '%s'!",argv[iarg-1]) ;
-       if( nparopt >= MAXPAR ) ERROR_exit("too many -par... options!") ;
+       if( ++iarg >= argc-1 ) ERROR_exit("need 2 arguments after '%s' :-(",argv[iarg-1]) ;
+       if( nparopt >= MAXPAR ) ERROR_exit("too many -par... options :-(") ;
        ii = (int)strtod(argv[iarg],NULL) ;
-       if( ii <= 0 ) ERROR_exit("-parfix '%s' is illegal!",argv[iarg]) ;
+       if( ii <= 0 ) ERROR_exit("-parfix '%s' is illegal :-(",argv[iarg]) ;
        v1 = (float)strtod(argv[++iarg],NULL) ;
        paropt[nparopt].np   = ii-1 ;
        paropt[nparopt].code = PARC_FIX ;
@@ -1917,13 +1989,13 @@ int main( int argc , char *argv[] )
      /*-----*/
 
      if( strcmp(argv[iarg],"-parang") == 0 ){
-       if( ++iarg >= argc-2 ) ERROR_exit("need 3 arguments after '%s'!",argv[iarg-1]) ;
-       if( nparopt >= MAXPAR ) ERROR_exit("too many -par... options!") ;
+       if( ++iarg >= argc-2 ) ERROR_exit("need 3 arguments after '%s' :-(",argv[iarg-1]) ;
+       if( nparopt >= MAXPAR ) ERROR_exit("too many -par... options :-(") ;
        ii = (int)strtod(argv[iarg],NULL) ;
-       if( ii <= 0 ) ERROR_exit("-parang '%s' is illegal!",argv[iarg]) ;
+       if( ii <= 0 ) ERROR_exit("-parang '%s' is illegal :-(",argv[iarg]) ;
        v1 = (float)strtod(argv[++iarg],NULL) ;
        v2 = (float)strtod(argv[++iarg],NULL) ;
-       if( v1 > v2 ) ERROR_exit("-parang %d '%s' '%s' is illegal!",
+       if( v1 > v2 ) ERROR_exit("-parang %d '%s' '%s' is illegal :-(",
                      ii,argv[iarg-1],argv[iarg] ) ;
        paropt[nparopt].np   = ii-1 ;
        paropt[nparopt].code = PARC_RAN ;
@@ -1936,10 +2008,10 @@ int main( int argc , char *argv[] )
 
      if( strcmp(argv[iarg],"-maxrot") == 0 ){
        float vv ;
-       if( ++iarg >= argc ) ERROR_exit("no argument after '%s'!",argv[iarg-1]) ;
-       if( nparopt+2 >= MAXPAR ) ERROR_exit("too many -par... options!") ;
+       if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
+       if( nparopt+2 >= MAXPAR ) ERROR_exit("too many -par... options :-(") ;
        vv = (float)strtod(argv[iarg],NULL) ;
-       if( vv <= 0.0f || vv > 90.0f ) ERROR_exit("-maxrot %f is illegal!",vv) ;
+       if( vv <= 0.0f || vv > 90.0f ) ERROR_exit("-maxrot %f is illegal :-(",vv) ;
        paropt[nparopt].np   = 3 ;
        paropt[nparopt].code = PARC_RAN ;
        paropt[nparopt].vb   = -vv ;
@@ -1958,12 +2030,12 @@ int main( int argc , char *argv[] )
 
      if( strcmp(argv[iarg],"-maxscl") == 0 ){
        float vv , vvi ; char *cpt ;
-       if( ++iarg >= argc ) ERROR_exit("no argument after '%s'!",argv[iarg-1]) ;
-       if( nparopt+2 >= MAXPAR ) ERROR_exit("too many -par... options!") ;
+       if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
+       if( nparopt+2 >= MAXPAR ) ERROR_exit("too many -par... options :-(") ;
        vv = (float)strtod(argv[iarg],&cpt) ;
        if( *cpt == '%' ) vv = 1.0f + 0.01*vv ;
        if( vv == 1.0f || vv > 2.0f || vv < 0.5f )
-         ERROR_exit("-maxscl %f is illegal!",vv) ;
+         ERROR_exit("-maxscl %f is illegal :-(",vv) ;
        if( vv > 1.0f ){ vvi = 1.0f/vv; }
        else           { vvi = vv ; vv = 1.0f/vvi ; }
        paropt[nparopt].np   = 6 ;
@@ -1984,10 +2056,10 @@ int main( int argc , char *argv[] )
 
      if( strcmp(argv[iarg],"-maxshf") == 0 ){
        float vv ;
-       if( ++iarg >= argc ) ERROR_exit("no argument after '%s'!",argv[iarg-1]) ;
-       if( nparopt+2 >= MAXPAR ) ERROR_exit("too many -par... options!") ;
+       if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
+       if( nparopt+2 >= MAXPAR ) ERROR_exit("too many -par... options :-(") ;
        vv = (float)strtod(argv[iarg],NULL) ;
-       if( vv <= 0.0f ) ERROR_exit("-maxshf %f is illegal!",vv) ;
+       if( vv <= 0.0f ) ERROR_exit("-maxshf %f is illegal :-(",vv) ;
        paropt[nparopt].np   = 0 ;
        paropt[nparopt].code = PARC_RAN ;
        paropt[nparopt].vb   = -vv ;
@@ -2005,10 +2077,10 @@ int main( int argc , char *argv[] )
      /*-----*/
 
      if( strcmp(argv[iarg],"-parini") == 0 ){
-       if( ++iarg >= argc-1 ) ERROR_exit("need 2 arguments after '%s'!",argv[iarg-1]) ;
-       if( nparopt >= MAXPAR ) ERROR_exit("too many -par... options!") ;
+       if( ++iarg >= argc-1 ) ERROR_exit("need 2 arguments after '%s' :-(",argv[iarg-1]) ;
+       if( nparopt >= MAXPAR ) ERROR_exit("too many -par... options :-(") ;
        ii = (int)strtod(argv[iarg],NULL) ;
-       if( ii <= 0 ) ERROR_exit("-parini '%s' is illegal!",argv[iarg]) ;
+       if( ii <= 0 ) ERROR_exit("-parini '%s' is illegal :-(",argv[iarg]) ;
        v1 = (float)strtod(argv[++iarg],NULL) ;
        paropt[nparopt].np   = ii-1 ;
        paropt[nparopt].code = PARC_INI ;
@@ -2022,16 +2094,16 @@ int main( int argc , char *argv[] )
        int fe=-1 , pe=-1 , se=-1 ; char *fps , *aaa=argv[iarg] ;
 
        if( epi_targ >= 0 )
-         ERROR_exit("Can't have multiple '%4.4s' options!",aaa) ;
+         ERROR_exit("Can't have multiple '%4.4s' options :-(",aaa) ;
 
        /* is the EPI dataset the target (default) or base? */
 
        epi_targ = (aaa[4] != '\0' && toupper(aaa[4]) == 'B') ? 0 : 1 ;
 
        if( aaa[1] == 'F' ){   /* -FPS code */
-         if( ++iarg >= argc ) ERROR_exit("no argument after '%s'!",argv[iarg-1]);
+         if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]);
          fps = argv[iarg] ;
-         if( strlen(fps) < 3 ) ERROR_exit("Too short %4.4s codes '%s'",aaa,fps);
+         if( strlen(fps) < 3 ) ERROR_exit("Too short %4.4s codes '%s' :-(",aaa,fps);
        } else {
          fps = "123" ;        /* -EPI */
        }
@@ -2042,24 +2114,24 @@ int main( int argc , char *argv[] )
             epi_se = slice encode direction */
 
        switch( fps[0] ){
-         default: ERROR_exit("Illegal %4.4s f code '%c'" , aaa,fps[0] );
+         default: ERROR_exit("Illegal %4.4s f code '%c' :-(" , aaa,fps[0] );
          case 'i': case 'I': case 'x': case 'X': case '1':  fe = 1; break;
          case 'j': case 'J': case 'y': case 'Y': case '2':  fe = 2; break;
          case 'k': case 'K': case 'z': case 'Z': case '3':  fe = 3; break;
        }
        switch( fps[1] ){
-         default: ERROR_exit("Illegal %4.4s p code '%c'" , aaa,fps[1] );
+         default: ERROR_exit("Illegal %4.4s p code '%c' :-(" , aaa,fps[1] );
          case 'i': case 'I': case 'x': case 'X': case '1':  pe = 1; break;
          case 'j': case 'J': case 'y': case 'Y': case '2':  pe = 2; break;
          case 'k': case 'K': case 'z': case 'Z': case '3':  pe = 3; break;
        }
        switch( fps[2] ){
-         default: ERROR_exit("Illegal %4.4s s code '%c'" , aaa,fps[2] );
+         default: ERROR_exit("Illegal %4.4s s code '%c' :-(" , aaa,fps[2] );
          case 'i': case 'I': case 'x': case 'X': case '1':  se = 1; break;
          case 'j': case 'J': case 'y': case 'Y': case '2':  se = 2; break;
          case 'k': case 'K': case 'z': case 'Z': case '3':  se = 3; break;
        }
-       if( fe+pe+se != 6 ) ERROR_exit("Illegal %4.4s combination '%s'",aaa,fps);
+       if( fe+pe+se != 6 ) ERROR_exit("Illegal %4.4s combination '%s' :-(",aaa,fps);
 
        epi_fe = fe-1 ; epi_pe = pe-1 ; epi_se = se-1 ;  /* process later */
 
@@ -2115,7 +2187,7 @@ int main( int argc , char *argv[] )
      /*-----*/
 
      if( strcmp(argv[iarg],"-replacemeth") == 0 ){  /* 18 Oct 2006 */
-       if( ++iarg >= argc ) ERROR_exit("no argument after '-replacemeth'!") ;
+       if( ++iarg >= argc ) ERROR_exit("no argument after '-replacemeth' :-(") ;
 
        if( strcmp(argv[iarg],"0") == 0 ){
          replace_meth = 0 ; iarg++ ; continue ;  /* special case */
@@ -2135,14 +2207,14 @@ int main( int argc , char *argv[] )
        }
        if( jj >=0 ){ iarg++ ; continue ; }
 
-       ERROR_exit("Unknown code '%s' after -replacemeth!",argv[iarg]) ;
+       ERROR_exit("Unknown code '%s' after -replacemeth :-(",argv[iarg]) ;
        iarg++ ; continue ;
      }
 
      /*-----*/
 
      if( strcmp(argv[iarg],"-Xwarp") == 0 ){  /* 02 Oct 2006 */
-       if( XYZ_warp > 0 ) ERROR_exit("only one use of -[XYZ]warp is allowed");
+       if( XYZ_warp > 0 ) ERROR_exit("only one use of -[XYZ]warp is allowed :-(");
        matorder = MATORDER_USD ;       /* rotation after shear and scale */
 
        paropt[nparopt].np   = 7 ;      /* fix y-scale to 1 */
@@ -2162,7 +2234,7 @@ int main( int argc , char *argv[] )
      }
 
      if( strcmp(argv[iarg],"-Ywarp") == 0 ){  /* 02 Oct 2006 */
-       if( XYZ_warp > 0 ) ERROR_exit("only one use of -[XYZ]warp is allowed");
+       if( XYZ_warp > 0 ) ERROR_exit("only one use of -[XYZ]warp is allowed :-(");
        matorder = MATORDER_USD ;       /* rotation after shear and scale */
 
        paropt[nparopt].np   = 6 ;      /* fix x-scale to 1 */
@@ -2182,7 +2254,7 @@ int main( int argc , char *argv[] )
      }
 
      if( strcmp(argv[iarg],"-Zwarp") == 0 ){  /* 02 Oct 2006 */
-       if( XYZ_warp > 0 ) ERROR_exit("only one use of -[XYZ]warp is allowed");
+       if( XYZ_warp > 0 ) ERROR_exit("only one use of -[XYZ]warp is allowed :-(");
        matorder = MATORDER_USD ;       /* rotation after shear and scale */
 
        paropt[nparopt].np   = 6 ;      /* fix x-scale to 1 */
@@ -2238,7 +2310,7 @@ int main( int argc , char *argv[] )
 
      if( strcmp(argv[iarg],"-blok") == 0 ){   /* hidden */
        int ia=0 ;
-       if( ++iarg >= argc ) ERROR_exit("Need argument after -blok") ;
+       if( ++iarg >= argc ) ERROR_exit("Need argument after -blok :-(") ;
        if( strncmp(argv[iarg],"SPHERE(",7) == 0 ){
          ia = 7 ; bloktype = GA_BLOK_BALL ;
        } else if( strncmp(argv[iarg],"BALL(",5) == 0 ){
@@ -2252,7 +2324,7 @@ int main( int argc , char *argv[] )
        } else if( strncmp(argv[iarg],"TOHD(",5) == 0 ){
          ia = 5 ; bloktype = GA_BLOK_TOHD ;
        } else {
-         ERROR_exit("Illegal argument after -blok") ;
+         ERROR_exit("Illegal argument after -blok :-(") ;
        }
        blokrad = (float)strtod(argv[iarg]+ia,NULL) ;
        iarg++ ; continue ;
@@ -2260,7 +2332,7 @@ int main( int argc , char *argv[] )
 
      /*-----*/
 
-     ERROR_exit("Unknown and Illegal option '%s'",argv[iarg]) ;
+     ERROR_exit("Unknown and Illegal option '%s' :-( :-( :-(",argv[iarg]) ;
    }
 
    if( iarg < argc )
@@ -2279,11 +2351,18 @@ int main( int argc , char *argv[] )
 
    /* warn the stoopid lusers out there [01 Jun 2009] */
 
-   if( (meth_code == GA_MATCH_PEARSON_LOCALS || meth_code == GA_MATCH_PEARSON_LOCALA)
-      && dset_weig == NULL ){
-     WARNING_message(
-      "A '-weight' volume is recommended when using the -lpc or -lpa cost functional;\n"
-      "            For example, see the align_epi_anat.py script." ) ;
+   if( meth_code == GA_MATCH_PEARSON_LOCALS  ||
+       meth_code == GA_MATCH_PEARSON_LOCALA  ||
+       meth_code == GA_MATCH_LPC_MICHO_SCALAR  ){
+
+     if( dset_weig == NULL && !auto_weight )
+       WARNING_message(
+        "'-weight' or '-autoweight' is recommended when using -lpc or -lpa;\n"
+        "    For example, see the align_epi_anat.py script." ) ;
+
+     if( im_tmask == NULL && !auto_tmask )
+       WARNING_message(
+        "-source_automask is strongly recommended when using -lpc or -lpa") ;
    }
 
    if( !hist_setbyuser ){   /* 25 Jul 2007 */
@@ -2291,23 +2370,27 @@ int main( int argc , char *argv[] )
        case GA_MATCH_PEARSON_LOCALS:
        case GA_MATCH_PEARSON_LOCALA:
        case GA_MATCH_SPEARMAN_SCALAR:
-       case GA_MATCH_PEARSON_SCALAR:  hist_mode = 0 ; break ;
+       case GA_MATCH_PEARSON_SCALAR:
+         hist_mode = (do_allcost || meth_check_count) ? GA_HIST_CLEQWD : 0 ;
+       break ;
 
-       default: hist_mode  = GA_HIST_CLEQWD ; break ;
+       default:
+         hist_mode  = GA_HIST_CLEQWD ;
+       break ;
      }
    }
 
    if( do_allcost < 0 && prefix != NULL ){  /* 19 Sep 2007 */
      prefix = NULL ;
-     WARNING_message("-allcostX means -prefix is ignored!") ;
+     WARNING_message("-allcostX means -prefix is ignored :-(") ;
    }
    if( do_allcost < 0 && param_save_1D != NULL ){
      param_save_1D = NULL ;
-     WARNING_message("-allcostX means -1Dparam_save is ignored!") ;
+     WARNING_message("-allcostX means -1Dparam_save is ignored :-(") ;
    }
    if( do_allcost < 0 && matrix_save_1D != NULL ){
      matrix_save_1D = NULL ;
-     WARNING_message("-allcostX means -1Dmatrix_save is ignored!") ;
+     WARNING_message("-allcostX means -1Dmatrix_save is ignored :-(") ;
    }
 
    if( warp_freeze ) twofirst = 1 ;  /* 10 Oct 2006 */
@@ -2325,7 +2408,7 @@ int main( int argc , char *argv[] )
           apply_nx , apply_1D) ;
        }
      } else if( nwarp_pass ){
-       ERROR_exit("Can't apply -nwarp except bilinear, at this time.") ;
+       ERROR_exit("Can't apply -nwarp except bilinear, at this time :-(") ;
      }
    }
 
@@ -2341,7 +2424,7 @@ int main( int argc , char *argv[] )
    }
 
    if( nwarp_pass && DSET_NVALS(dset_targ) > 1 )
-     ERROR_exit("Can't use -nwarp on more than 1 sub-brick!") ;
+     ERROR_exit("Can't use -nwarp on more than 1 sub-brick :-(") ;
 
    switch( tb_mast ){                        /* 19 Jul 2007 */
      case 1: dset_mast = dset_targ ; break ;
@@ -2357,13 +2440,13 @@ int main( int argc , char *argv[] )
      ERROR_exit("source dataset %s has non-scalar data type '%s'",
                 DSET_BRIKNAME(dset_targ) , MRI_TYPE_name[targ_kind] ) ;
    if( !DSET_datum_constant(dset_targ) )
-     WARNING_message("source dataset %s does not have constant data type!",
+     WARNING_message("source dataset %s does not have constant data type :-(",
                      DSET_BRIKNAME(dset_targ)) ;
 
    /*-- if applying a set of parameters, some options are turned off --*/
 
    if( apply_1D != NULL ){
-     if( prefix == NULL ) ERROR_exit("-1D*_apply also needs -prefix!") ;
+     if( prefix == NULL ) ERROR_exit("-1D*_apply also needs -prefix :-(") ;
      if( param_save_1D  != NULL ) WARNING_message("-1D*_apply: Can't do -1Dparam_save") ;
      if( matrix_save_1D != NULL ) WARNING_message("-1D*_apply: Can't do -1Dmatrix_save") ;
      wtprefix = param_save_1D = matrix_save_1D = NULL ;
@@ -2415,12 +2498,12 @@ int main( int argc , char *argv[] )
 
    /*-- 07 Aug 2007: make target automask? --*/
 
-   if( auto_tmask ){
+   if( im_tmask == NULL && apply_1D == NULL ){  /* 01 Mar 2010: (almost) always make this mask */
 
      byte *mmm ; int ndil=auto_tdilation ;
      mmm = THD_automask( dset_targ ) ;
      if( mmm == NULL )
-       ERROR_exit("Can't make -source_automask for some reason!") ;
+       ERROR_exit("Can't make -source_automask for some reason :-(") ;
      im_tmask = mri_new_vol_empty( nx_targ,ny_targ,nz_targ , MRI_byte ) ;
      mri_fix_data_pointer( mmm , im_tmask ) ;
      if( ndil > 0 ){
@@ -2429,9 +2512,13 @@ int main( int argc , char *argv[] )
          THD_mask_fillin_once( nx_targ,ny_targ,nz_targ , mmm , 2 ) ;
        }
      }
+     if( auto_tstring == NULL ){
+       auto_tstring = (char *)malloc(sizeof(char)*32) ;
+       sprintf(auto_tstring,"source_automask+%d",ndil) ;
+     }
      ntmask = THD_countmask( im_tmask->nvox , mmm ) ;
-     if( ntmask < 666 )
-       ERROR_exit("Too few (%d) voxels in %s!",ntmask,auto_tstring) ;
+     if( ntmask < 666 && auto_tmask )
+       ERROR_exit("Too few (%d) voxels in %s :-(",ntmask,auto_tstring) ;
      if( verb )
        INFO_message("%d voxels in %s",ntmask,auto_tstring) ;
 
@@ -2440,7 +2527,7 @@ int main( int argc , char *argv[] )
      if( im_tmask->nx != nx_targ ||
          im_tmask->ny != ny_targ || im_tmask->nz != nz_targ )
        ERROR_exit("-source_mask and -source datasets "
-                  "have different dimensions!\n"
+                  "have different dimensions! :-(\n"
                   "Have: %d %d %d versus %d %d %d\n",
                   im_tmask->nx, im_tmask->ny , im_tmask->nz,
                   nx_targ, ny_targ, nz_targ) ;
@@ -2471,6 +2558,11 @@ int main( int argc , char *argv[] )
    nx_base = im_base->nx ;
    ny_base = im_base->ny ; nxy_base  = nx_base *ny_base ;
    nz_base = im_base->nz ; nvox_base = nxy_base*nz_base ;
+
+   dxyz_top = dx_base ;
+   dxyz_top = MAX(dxyz_top,dy_base) ; dxyz_top = MAX(dxyz_top,dz_base) ;
+   dxyz_top = MAX(dxyz_top,dx_targ) ;
+   dxyz_top = MAX(dxyz_top,dy_targ) ; dxyz_top = MAX(dxyz_top,dz_targ) ;
 
    /* find the autobbox, and setup zero-padding */
 
@@ -2539,11 +2631,11 @@ int main( int argc , char *argv[] )
    /* check for base:target dimensionality mismatch */
 
    if( nz_base >  1 && nz_targ == 1 )
-     ERROR_exit("Can't register 2D source into 3D base!") ;
+     ERROR_exit("Can't register 2D source into 3D base :-(") ;
    if( nz_base == 1 && nz_targ >  1 )
-     ERROR_exit("Can't register 3D source onto 2D base!") ;
+     ERROR_exit("Can't register 3D source onto 2D base :-(") ;
    if( nz_base == 1 && nwarp_pass )
-     ERROR_exit("Can't use -nwarp on 2D images!") ;  /* 03 Apr 2008 */
+     ERROR_exit("Can't use -nwarp on 2D images :-(") ;  /* 03 Apr 2008 */
 
    /* load weight dataset if defined */
 
@@ -2562,7 +2654,7 @@ int main( int argc , char *argv[] )
      }
      if( im_weig->nx != nx_base ||
          im_weig->ny != ny_base || im_weig->nz != nz_base )
-       ERROR_exit("-weight and base volumes don't match grid dimensions!") ;
+       ERROR_exit("-weight and base volumes don't match grid dimensions :-(") ;
 
    } else if( auto_weight ){  /* manufacture weight from the base */
      if( meth_noweight[meth_code-1] && auto_weight == 1 && auto_wclip == 0.0f ){
@@ -2677,8 +2769,9 @@ int main( int argc , char *argv[] )
    }
 
    stup.blokset = NULL ;
-   if( meth_code == GA_MATCH_PEARSON_LOCALS ||
-       meth_code == GA_MATCH_PEARSON_LOCALA || do_allcost  ){
+   if( meth_code == GA_MATCH_PEARSON_LOCALS   ||
+       meth_code == GA_MATCH_LPC_MICHO_SCALAR ||
+       meth_code == GA_MATCH_PEARSON_LOCALA   || do_allcost  ){
      float mr = 1.23f * ( MAT44_COLNORM(stup.base_cmat,0)
                          +MAT44_COLNORM(stup.base_cmat,1)
                          +MAT44_COLNORM(stup.base_cmat,2) ) ;
@@ -2686,6 +2779,14 @@ int main( int argc , char *argv[] )
      stup.bloktype = bloktype ; stup.blokrad = blokrad ; stup.blokmin = 0 ;
      if( verb ) INFO_message("Local correlation: blok type = '%s(%g)'",
                              GA_BLOK_STRING(bloktype) , blokrad        ) ;
+   }
+
+   if( meth_code == GA_MATCH_LPC_MICHO_SCALAR ){
+     if( verb )
+       INFO_message("-lpc+ parameters: hel=%.2f mi=%.2f nmi=%.2f crA=%.2f ov=%.2f %s",
+                    micho_hel , micho_mi , micho_nmi , micho_crA , micho_ov ,
+                    micho_zfinal ? "[to be zeroed at Final iteration]" : "\0" ) ;
+     GA_setup_micho( micho_hel , micho_mi , micho_nmi , micho_crA , micho_ov ) ;
    }
 
    /* modify base_cmat to allow for zeropad? */
@@ -2715,10 +2816,10 @@ int main( int argc , char *argv[] )
    }
 
    switch( warp_code ){
-     case WARP_SHIFT:   stup.wfunc_numpar =  3 ; break ;
-     case WARP_ROTATE:  stup.wfunc_numpar =  6 ; break ;
-     case WARP_SCALE:   stup.wfunc_numpar =  9 ; break ;
-     case WARP_AFFINE:  stup.wfunc_numpar = 12 ; break ;
+     case WARP_SHIFT:  stup.wfunc_numpar =  3; strcpy(warp_code_string,"shift_only")        ; break;
+     case WARP_ROTATE: stup.wfunc_numpar =  6; strcpy(warp_code_string,"shift_rotate")      ; break;
+     case WARP_SCALE:  stup.wfunc_numpar =  9; strcpy(warp_code_string,"shift_rotate_scale"); break;
+     case WARP_AFFINE: stup.wfunc_numpar = 12; strcpy(warp_code_string,"affine_general")    ; break;
    }
 
    /*-- check if -1Dapply_param is giving us enough parameters for this warp --*/
@@ -2907,7 +3008,7 @@ int main( int argc , char *argv[] )
          break;
        }
      } else {
-       WARNING_message("Can't alter parameter #%d: out of range!",jj+1) ;
+       WARNING_message("Can't alter parameter #%d: out of range :-(",jj+1) ;
      }
    }
 
@@ -2915,7 +3016,7 @@ int main( int argc , char *argv[] )
 
    for( ii=jj=0 ; jj < stup.wfunc_numpar ; jj++ )  /* count free params */
      if( !stup.wfunc_param[jj].fixed ) ii++ ;
-   if( ii == 0 ) ERROR_exit("No free parameters for aligning datasets?!!") ;
+   if( ii == 0 ) ERROR_exit("No free parameters for aligning datasets?! :-(") ;
    nparam_free = ii ;
    if( verb > 1 && apply_mode == 0 ) ININFO_message("%d free parameters",ii) ;
 
@@ -2976,7 +3077,7 @@ int main( int argc , char *argv[] )
    if( prefix == NULL ){
      WARNING_message("No output dataset will be calculated") ;
      if( dxyz_mast > 0.0 )
-       WARNING_message("-mast_dxyz %g option was meaningless!",dxyz_mast) ;
+       WARNING_message("-mast_dxyz %g option was meaningless :-(",dxyz_mast) ;
    } else {
      if( dset_mast == NULL ){
        if( dset_base != NULL ){
@@ -3134,16 +3235,36 @@ int main( int argc , char *argv[] )
    im_bset = im_base ;  /* base image for first loop */
    im_wset = im_weig ;
 
+   stup.ajmask_ranfill = 0 ;                          /* 02 Mar 2010: oops */
    if( im_tmask != NULL ){
      mri_genalign_set_targmask( im_tmask , &stup ) ;  /* 07 Aug 2007 */
      mri_free(im_tmask) ; im_tmask = NULL ;           /* is copied inside */
+     if( fill_source_mask ) stup.ajmask_ranfill = 1 ; /* 01 Mar 2010 */
+   }
+
+   if( micho_ov != 0.0 ){
+     byte *mmm ; int ndil=auto_tdilation ; MRI_IMAGE *bsm ;
+     mmm = mri_automask_image(im_base) ;
+     if( mmm != NULL ){
+       bsm = mri_new_vol_empty( nx_base,ny_base,nz_base , MRI_byte ) ;
+       mri_fix_data_pointer( mmm , bsm ) ;
+       if( ndil > 0 ){
+         for( ii=0 ; ii < ndil ; ii++ ){
+           THD_mask_dilate     ( nx_base,ny_base,nz_base , mmm , 3 ) ;
+           THD_mask_fillin_once( nx_base,ny_base,nz_base , mmm , 2 ) ;
+         }
+       }
+       mri_genalign_set_basemask( bsm , &stup ) ;
+       mri_free(bsm) ;
+     }
    }
 
    MEMORY_CHECK("about to start alignment loop") ;
 
    if( sm_rad == 0.0f &&
-       ( meth_code == GA_MATCH_PEARSON_LOCALS ||
-         meth_code == GA_MATCH_PEARSON_LOCALA   ) ) sm_rad = 2.222f ;
+       ( meth_code == GA_MATCH_PEARSON_LOCALS   ||
+         meth_code == GA_MATCH_LPC_MICHO_SCALAR ||
+         meth_code == GA_MATCH_PEARSON_LOCALA     ) ) sm_rad = MAX(2.222f,dxyz_top) ;
 
    for( kk=0 ; kk < DSET_NVALS(dset_targ) ; kk++ ){
 
@@ -3173,7 +3294,7 @@ int main( int argc , char *argv[] )
      /* make copy of target brick, and deal with that */
 
      if( verb )
-       INFO_message("========== sub-brick #%d ========== [total CPU=%.1f s]",
+       INFO_message("========== sub-brick #%d ========== [total CPU to here=%.1f s]",
                     kk , COX_cpu_time() ) ;
 
      im_targ = mri_scale_to_float( bfac , DSET_BRICK(dset_targ,kk) ) ;
@@ -3241,7 +3362,7 @@ int main( int argc , char *argv[] )
          PARINI("initial") ;
          INFO_message("allcost output: init #%d",kk) ;
          for( jj=0 ; jj < GA_MATCH_METHNUM_SCALAR ; jj++ )
-           fprintf(stderr,"   %-3s = %g\n",meth_shortname[jj],allcost->ar[jj]) ;
+           fprintf(stderr,"   %-4s = %g\n",meth_shortname[jj],allcost->ar[jj]) ;
          KILL_floatvec(allcost) ;
 
          if( save_hist != NULL ) SAVEHIST("allcost_init",0) ;
@@ -3257,14 +3378,14 @@ int main( int argc , char *argv[] )
          } else {
            fp = fopen( allcostX1D_outname , "w" ) ;
            if( fp == NULL )
-             ERROR_exit("Can't open file '%s' for -allcostX1D output!" ,
+             ERROR_exit("Can't open file '%s' for -allcostX1D output :-(" ,
                         allcostX1D_outname ) ;
          }
          INFO_message("Writing -allcostX1D results to '%s'",allcostX1D_outname) ;
          fprintf( fp , "# 3dAllineate -allcostX1D results:\n" ) ;
          fprintf( fp , "#" ) ;
          for( jj=0 ; jj < GA_MATCH_METHNUM_SCALAR ; jj++ )
-           fprintf( fp , "  ___ %-3s ___",meth_shortname[jj]) ;
+           fprintf( fp , "  ___ %-4s ___",meth_shortname[jj]) ;
          fprintf( fp , "\n") ;
          for( ii=0 ; ii < allcostX1D->ny ; ii++ ){
            allcost = mri_genalign_scalar_allcosts( &stup , av + ii*nxp ) ;
@@ -3286,7 +3407,7 @@ int main( int argc , char *argv[] )
 
      didtwo = 0 ;
      if( twopass && (!twofirst || !tfdone) ){
-       int tb , ib , ccode ;
+       int tb , ib , ccode , nrand ;
        if( verb ) INFO_message("Start coarse pass") ;
        ccode            = (interp_code == MRI_NN) ? MRI_NN : MRI_LINEAR ;
        stup.interp_code = ccode ;
@@ -3331,9 +3452,10 @@ int main( int argc , char *argv[] )
 
          if( verb > 1 ) ctim = COX_cpu_time() ;
 
-         mri_genalign_scalar_ransetup( &stup , 31 ) ;  /* the initial search! */
+         nrand = 17 + 4*tbest ; nrand = MAX(nrand,31) ;
+         mri_genalign_scalar_ransetup( &stup , nrand ) ;  /* the initial search! */
 
-         if( verb > 1 ) ININFO_message("- Search CPU time = %.1f s",COX_cpu_time()-ctim);
+         if( verb > 1 ) ININFO_message("- Coarse startup search CPU time = %.1f s",COX_cpu_time()-ctim);
 
          /* unfreeze those that were temporarily frozen above */
 
@@ -3365,8 +3487,11 @@ int main( int argc , char *argv[] )
            if( verb > 1 )
              INFO_message("Start refinement #%d on %d coarse parameter sets",rr+1,tfdone);
 
-           stup.smooth_radius_base *= 0.7071 ;  /* less smoothing */
-           stup.smooth_radius_targ *= 0.7071 ;
+           stup.smooth_radius_base *= 0.7777 ;  /* less smoothing */
+           stup.smooth_radius_targ *= 0.7777 ;
+           stup.smooth_radius_base = MAX(stup.smooth_radius_base,fine_rad) ;
+           stup.smooth_radius_targ = MAX(stup.smooth_radius_targ,fine_rad) ;
+
            stup.npt_match          *= 1.5 ;     /* more points for matching */
            mri_genalign_scalar_setup( NULL,NULL,NULL , &stup ) ;
 
@@ -3573,7 +3698,7 @@ int main( int argc , char *argv[] )
        allcost = mri_genalign_scalar_allcosts( &stup , allpar ) ;
        INFO_message("allcost output: start fine #%d",kk) ;
        for( jj=0 ; jj < GA_MATCH_METHNUM_SCALAR ; jj++ )
-         fprintf(stderr,"   %-3s = %g\n",meth_shortname[jj],allcost->ar[jj]) ;
+         fprintf(stderr,"   %-4s = %g\n",meth_shortname[jj],allcost->ar[jj]) ;
        KILL_floatvec(allcost) ;
        if( save_hist != NULL ) SAVEHIST("allcost_finestart",0) ;
      }
@@ -3628,7 +3753,7 @@ int main( int argc , char *argv[] )
          allcost = mri_genalign_scalar_allcosts( &stup , allpar ) ;
          INFO_message("allcost output: intermed fine #%d",kk) ;
          for( jj=0 ; jj < GA_MATCH_METHNUM_SCALAR ; jj++ )
-           fprintf(stderr,"   %-3s = %g\n",meth_shortname[jj],allcost->ar[jj]) ;
+           fprintf(stderr,"   %-4s = %g\n",meth_shortname[jj],allcost->ar[jj]) ;
          KILL_floatvec(allcost) ;
          if( save_hist != NULL ) SAVEHIST("allcost_fineintermed",0) ;
        }
@@ -3646,7 +3771,11 @@ int main( int argc , char *argv[] )
        for( jj=0 ; jj < stup.wfunc_numpar ; jj++ )
          stup.wfunc_param[jj].val_init = stup.wfunc_param[jj].val_out;
        stup.need_hist_setup = 1 ;
-       nfunc = mri_genalign_scalar_optim( &stup , 0.444f*rad, conv_rad,6666 );
+       if( meth_code == GA_MATCH_LPC_MICHO_SCALAR && micho_zfinal ){
+         GA_setup_micho( 0.0 , 0.0 , 0.0 , 0.0 , 0.0 ) ;
+         if( verb > 1 ) ININFO_message(" - Set lpc+ parameters back to pure lpc before Final") ;
+       }
+       nfunc = mri_genalign_scalar_optim( &stup , 0.666f*rad, conv_rad,6666 );
      }
 
      /*** if( powell_mm > 0.0f ) powell_set_mfac( 0.0f , 0.0f ) ; ***/
@@ -3658,12 +3787,15 @@ int main( int argc , char *argv[] )
 
      if( save_hist != NULL ) SAVEHIST("final",1) ;
 
+     if( meth_code == GA_MATCH_LPC_MICHO_SCALAR && micho_zfinal )  /* set them back */
+       GA_setup_micho( micho_hel , micho_mi , micho_nmi , micho_crA , micho_ov ) ;
+
      if( do_allcost != 0 ){  /*-- all costs at final affine solution? --*/
        PAR_CPY(val_out) ;    /* copy output parameters into allpar[] */
        allcost = mri_genalign_scalar_allcosts( &stup , allpar ) ;
        INFO_message("allcost output: final fine #%d",kk) ;
        for( jj=0 ; jj < GA_MATCH_METHNUM_SCALAR ; jj++ )
-         fprintf(stderr,"   %-3s = %g\n",meth_shortname[jj],allcost->ar[jj]) ;
+         fprintf(stderr,"   %-4s = %g\n",meth_shortname[jj],allcost->ar[jj]) ;
        KILL_floatvec(allcost) ;
        if( save_hist != NULL ) SAVEHIST("allcost_finefinal",0) ;
      }
@@ -3756,6 +3888,8 @@ int main( int argc , char *argv[] )
            ctim = dtim ;
          }
          if( verb > 1 ) PAROUT("- Bilinear final") ;
+
+         strcpy(warp_code_string,"bilinear") ;
 
        } else {   /*----------------------- general nonlinear expansion -----*/
 
@@ -3943,7 +4077,7 @@ int main( int argc , char *argv[] )
            allcost = mri_genalign_scalar_allcosts( &stup , allpar ) ;
            ININFO_message("allcost output: check %s",meth_shortname[mc-1]) ;
            for( jj=0 ; jj < GA_MATCH_METHNUM_SCALAR ; jj++ )
-             fprintf(stderr,"   %-3s = %g\n",meth_shortname[jj],allcost->ar[jj]) ;
+             fprintf(stderr,"   %-4s = %g\n",meth_shortname[jj],allcost->ar[jj]) ;
            KILL_floatvec(allcost) ;
            if( save_hist != NULL ){
              char fn[64] ; sprintf(fn,"allcost_check_%s",meth_shortname[mc-1]);
@@ -4099,7 +4233,7 @@ DUMP_MAT44("aff12_ijk",qmat) ;
 
        /* 04 Apr 2007: save matrix into dataset header */
 
-       { static mat44 gam , gami ; char anam[64] ; float matar[12] ;
+       { static mat44 gam , gami ; char anam[64] ; float matar[12] , *psav ;
 
          if( matsave != NULL )
            gam = matsave[kk] ;
@@ -4117,6 +4251,19 @@ DUMP_MAT44("aff12_ijk",qmat) ;
            UNLOAD_MAT44_AR(gami,matar) ;
            THD_set_float_atr( dset_out->dblk , anam , 12 , matar ) ;
          }
+
+         /* 22 Feb 2010: save parameters as well */
+
+         if( kk == 0 && *warp_code_string != '\0' )
+           THD_set_string_atr( dset_out->dblk , "ALLINEATE_WARP_TYPE" , warp_code_string ) ;
+
+         psav = (float *)malloc(sizeof(float)*stup.wfunc_numpar) ;
+         for( jj=0 ; jj < stup.wfunc_numpar ; jj++ )
+           psav[jj] = stup.wfunc_param[jj].val_out ;
+         sprintf(anam,"ALLINEATE_PARAMS_%06d",kk) ;
+         THD_set_float_atr( dset_out->dblk , anam , stup.wfunc_numpar , psav ) ;
+         free(psav) ;
+
        }
 
        /* save sub-brick without scaling factor */
@@ -4213,6 +4360,10 @@ DUMP_MAT44("aff12_ijk",qmat) ;
      INFO_message("total CPU time = %.1f sec  Elapsed = %.1f\n",
                   COX_cpu_time() , COX_clock_time() ) ;
    MEMORY_CHECK("end of program (after final cleanup)") ;
+   if( verb && apply_1D == NULL ){
+    INFO_message("###########################################################");
+    INFO_message("### Please check results visually for alignment quality ###");
+   }
    if( verb )
     INFO_message("###########################################################");
 
@@ -4353,8 +4504,9 @@ MRI_IMAGE * mri_weightize( MRI_IMAGE *im, int acod, int ndil, float aclip, float
        xp += BPAD ; if( xp > nx-2 ) xp = nx-2 ;
        yp += BPAD ; if( yp > ny-2 ) yp = ny-2 ;
        zp += BPAD ; if( zp > nz-2 ) zp = nz-2 ;
-       if( verb > 1 ) ININFO_message("Weightize: box=%d..%d X %d..%d X %d..%d",
-                                     xm,xp , ym,yp , zm,zp ) ;
+       if( verb > 1 )
+         ININFO_message("Weightize: box=%d..%d X %d..%d X %d..%d = %d voxels",
+                        xm,xp , ym,yp , zm,zp , (xp-xm+1)*(yp-ym+1)*(zp-zm+1) ) ;
        for( kk=zm ; kk <= zp ; kk++ )
         for( jj=ym ; jj <= yp ; jj++ )
          for( ii=xm ; ii <= xp ; ii++ ) WW(ii,jj,kk) = 1.0f ;
@@ -4462,6 +4614,12 @@ void AL_setup_warp_coords( int epi_targ , int epi_fe, int epi_pe, int epi_se,
 
    return ;
 }
+
+#ifdef USE_OMP
+#include "mri_genalign_util.c"
+#include "mri_genalign.c"
+#include "thd_correlate.c"
+#endif
 
 /*----------------------------------------------------------------------------*/
 #if 0
