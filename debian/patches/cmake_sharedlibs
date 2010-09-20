@@ -1210,7 +1210,7 @@
 +  ARCHIVE DESTINATION ${AFNI_INSTALL_LIB_DIR} COMPONENT Development)
 --- a/rickr/Dimon.c
 +++ b/rickr/Dimon.c
-@@ -98,11 +98,12 @@
+@@ -102,11 +102,12 @@
  #define IFM_PROG_NAME   "Dimon"
  
  #include "Imon.h"
@@ -1254,7 +1254,7 @@
     
     /* basic step - create empty image (with a version string) 
        from gifti_create_image */
-@@ -336,10 +341,15 @@
+@@ -337,10 +342,15 @@
        RETURN(gim);
     }
  
