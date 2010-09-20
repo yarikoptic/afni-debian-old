@@ -1,6 +1,6 @@
 --- a/imseq.c
 +++ b/imseq.c
-@@ -262,7 +262,7 @@
+@@ -264,7 +264,7 @@
  
  #define GIFSICLE_SUFFIX    "-O2 -d %d -k 127 -l %%s > %%s"
  #define WHIRLGIF_SUFFIX    "-time %d -loop %%s > %%s"
@@ -9,7 +9,7 @@
  
  #define DO_AGIF(sq) ((sq)->opt.save_agif)
  #define DO_MPEG(sq) ((sq)->opt.save_mpeg)
-@@ -320,15 +320,15 @@
+@@ -322,15 +322,15 @@
  
        ppmto_ppm_filter = str ;  /* save this filter string */
  
@@ -28,7 +28,7 @@
     }
     else CANT_FIND("cat","PPM") ;  /* this is the end of the world! */
  
-@@ -4061,63 +4061,33 @@
+@@ -4116,63 +4116,33 @@
              /* MPEG-1 */
  
              else if( DO_MPEG(seq) ){ /* 02 Aug 2001 */
@@ -108,7 +108,7 @@
              }
  
              /* animation is done, for good or for ill */
-@@ -6094,7 +6064,7 @@
+@@ -6166,7 +6136,7 @@
                                   "* This takes precedence over 'Save One',\n"
                                   "    if it is also turned on.\n"
                                   "* GIF animations require gifsicle.\n"
@@ -117,7 +117,7 @@
                                 ) ;
             MCW_reghint_children( seq->save_agif_bbox->wrowcol ,
                                   "Save image sequence to animation" ) ;
-@@ -12822,63 +12792,33 @@
+@@ -12901,63 +12871,33 @@
        /* MPEG-1 */
  
        case MPEG_MODE:{

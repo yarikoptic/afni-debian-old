@@ -1,6 +1,6 @@
 --- a/@auto_tlrc
 +++ b/@auto_tlrc
-@@ -280,6 +280,12 @@
+@@ -304,6 +304,12 @@
           set ss_opt = "$ss_opt -no_avoid_eyes";      
           set donext = 0      
        endif
@@ -13,7 +13,7 @@
        if ($donext == 1) then
           echo "Error: Option or parameter '$argv[$cnt]' not understood"
           goto END
-@@ -1072,6 +1078,9 @@
+@@ -1222,6 +1228,9 @@
  echo "      -no_avoid_eyes : An option that gets passed to 3dSkullStrip."
  echo "                       Use it when parts of the frontal lobes get clipped"
  echo "                       See 3dSkullStrip -help for more details."
@@ -45,7 +45,7 @@
             DTIStudioFibertoSegments Dimon 3dLocalstat 3danisosmooth 3dmaxima    \
             3dTwotoComplex 3dInvFMRI 3dmatcalc 3dAcost 3dLocalBistat 3dFWHMx     \
             3dBlurToFWHM 1dSEM 3dDFT 3dSynthesize 1dMarry 3dEmpty 3dsvm          \
-@@ -603,9 +603,10 @@
+@@ -609,9 +609,10 @@
  	$(RM) $@
  	$(CC) -o 3dvolreg 3dvolreg.o $(LFLAGS) -lmri -lf2c $(LLIBS)
  
@@ -59,9 +59,9 @@
  
  from3d:from3d.o
  	$(RM) $@
-@@ -697,10 +698,11 @@
- 	$(CC) -o 3dttest 3dttest.o parser.o parser_int.o \
-               $(LFLAGS) -lmri -lf2c $(LLIBS)
+@@ -706,10 +707,11 @@
+ 	$(RM) $@
+ 	$(CC) -o 3dttest++ 3dttest++.o $(LFLAGS) -lmri -lf2c $(LLIBS)
  
 -3dedge3:lib3DEdge.a 3dedge3.o
 -	$(RM) $@
@@ -75,7 +75,7 @@
  
  ### From Stephen Laconte
  3dsvm:svm/svm_common.c svm/svm_learn.c svm/3dsvm_common.c svm/svm_hideo.c svm/3dsvm.c
-@@ -1454,7 +1456,7 @@
+@@ -1507,7 +1509,7 @@
  	$(CP) -pr coxplot volpack moveup moveAFNI* eispack avovk                 ./afni_src
  	$(CP) -pr $(SCRIPTS) $(PY_DIR) $(R_DIR)                                  ./afni_src
  	$(CP) -pr gifsicledir qhulldir f2cdir mpeg_encodedir                     ./afni_src
@@ -84,7 +84,7 @@
  	$(CP) -pr SUMA svm matlab rickr faces poems gifti ni_test_? README.*     ./afni_src
  	chmod -R ugo+rw                                                          ./afni_src
  	$(TAR) cf - afni_src | $(GZIP) -9v > afni_src.tgz
-@@ -2182,8 +2184,9 @@
+@@ -2249,8 +2251,9 @@
  #######
  # 3DEdge library files - make them and move them up here
  
@@ -120,7 +120,7 @@
  "Usage: A program to extract the brain from surrounding.\n"
  "  tissue from MRI T1-weighted images. The fully automated\n"
  "  process consists of three steps:\n"
-@@ -1029,6 +1044,16 @@
+@@ -1033,6 +1048,16 @@
        fprintf(SUMA_STDERR,"Error %s:\nCannot use -push_to_edge without -use_edge\n", FuncName);
        exit (1);      
     }
@@ -137,7 +137,7 @@
     
     if (Opt->bot_lztclip < 0) {
        if (!Opt->Use_emask) Opt->bot_lztclip = 0.65;
-@@ -1514,6 +1539,13 @@
+@@ -1518,6 +1543,13 @@
        exit(1);
     }
  
@@ -151,7 +151,7 @@
     /* calculate an edge mask ? */
     if (Opt->Use_emask) {
        float *emask_sort = NULL, PercRange[2]= { 10, 90 }, PercRangeVal[2] = { 0.0, 0.0 }, PercTh=-1.0;
-@@ -1621,7 +1653,8 @@
+@@ -1625,7 +1657,8 @@
           }
        }
     } 
@@ -161,7 +161,7 @@
     if (Opt->blur_fwhm) {
       if (Opt->debug) fprintf (SUMA_STDERR,"%s: Blurring...\n", FuncName);
       EDIT_blur_volume(  DSET_NX(Opt->in_vol), DSET_NY(Opt->in_vol), DSET_NZ(Opt->in_vol),
-@@ -2026,6 +2059,13 @@
+@@ -2030,6 +2063,13 @@
        }
  
        PUSH_TO_EDGE:
@@ -175,7 +175,7 @@
        if (Opt->PushToEdge) {
           fprintf (SUMA_STDERR,"%s: Pushing to Edge ...\n", FuncName);
           ps->cs->kth = 1; /*make sure all gets sent at this stage */
-@@ -2078,7 +2118,7 @@
+@@ -2082,7 +2122,7 @@
           if (LocalHead) fprintf (SUMA_STDERR,"%s: Edge push correction  Done.\n", FuncName);
           ps->cs->kth = kth_buf; 
        }

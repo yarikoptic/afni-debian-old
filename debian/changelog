@@ -1,11 +1,18 @@
-afni (0.20100114~dfsg.1-1) unstable; urgency=low
+afni (0.20100917~dfsg.1-1) UNRELEASED; urgency=low
+
+  * New upstream code, and updated CMAKE setup.
+  * Switched to source package format 3.0 (quilt).
+
+ -- Michael Hanke <michael.hanke@gmail.com>  Mon, 20 Sep 2010 15:09:06 -0400
+
+afni (0.20100114~dfsg.1-1) UNRELEASED; urgency=low
 
   * New upstream code, and updated CMAKE setup.
   * Updated copyright file -- still incomplete.
 
  -- Michael Hanke <michael.hanke@gmail.com>  Sun, 17 Jan 2010 13:27:49 -0500
 
-afni (0.20091204~dfsg.1-1) unstable; urgency=low
+afni (0.20091204~dfsg.1-1) UNRELEASED; urgency=low
 
   * New upstream code.
   * Major bugfix caused by multiple, but different, versions of f2c.h --
@@ -14,14 +21,14 @@ afni (0.20091204~dfsg.1-1) unstable; urgency=low
 
  -- Michael Hanke <michael.hanke@gmail.com>  Mon, 07 Dec 2009 20:47:56 -0500
 
-afni (0.20091028~dfsg.1-1) unstable; urgency=low
+afni (0.20091028~dfsg.1-1) UNRELEASED; urgency=low
 
   * New upstream code.
   * Add patch to allow AFNI to use ffmpeg instead of the stripped mpeg_encode.
 
  -- Michael Hanke <michael.hanke@gmail.com>  Thu, 29 Oct 2009 14:29:18 -0400
 
-afni (0.20091023~dfsg.1-1) unstable; urgency=low
+afni (0.20091023~dfsg.1-1) UNRELEASED; urgency=low
 
   * New upstream code.
   * New CMake buildsystem based on an initial patch by Bernd Feige.
@@ -33,7 +40,7 @@ afni (0.20091023~dfsg.1-1) unstable; urgency=low
 
  -- Michael Hanke <michael.hanke@gmail.com>  Tue, 27 Oct 2009 09:42:40 -0400
 
-afni (0.20091009~dfsg.1-1) unstable; urgency=low
+afni (0.20091009~dfsg.1-1) UNRELEASED; urgency=low
 
   * Initial release (Closes: #409849).
 
