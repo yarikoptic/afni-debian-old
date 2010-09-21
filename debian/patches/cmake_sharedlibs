@@ -220,7 +220,7 @@
 +ENDIF(NOT AFNI_BUILD_CORELIBS_ONLY)
 --- /dev/null
 +++ b/CMakeLists_apps.txt
-@@ -0,0 +1,195 @@
+@@ -0,0 +1,202 @@
 +##
 +## This file is to be included in the toplevel CMakeLists.txt
 +##
@@ -258,7 +258,8 @@
 +  3dDeconvolve 1dGentimes 2dImReg 3dStatClust 3dDWItoDT 3dRegAna 3dTSgen
 +  3dUniformize 3ddelay 3dfim+ 3dNLfim 3dNeocon 3dConvolve RSFgen
 +  3dFFT 1dgenARMA11 3dPeriodogram 1dAstrip 3dLocalPV 3dBandpass
-+  3dSetupGroupInCorr 3dGroupInCorr
++  3dSetupGroupInCorr 3dGroupInCorr 3dSatCheck 3dTcorr1D 3dSimARMA11
++  3dClustSim 3dRetinoPhase 3dMaskToASCII 3dttest++
 +  ${EXTRAS})
 +
 +SET(SCRIPTS
@@ -276,7 +277,8 @@
 +  @ShowDynamicRange AFNI_Batch_R @DO.examples
 +  @Spharm.examples @GetAfniBin @fast_roi
 +  @make_plug_diff @build_afni_Xlib @update.afni.binaries @ROI_Corr_Mat
-+  @FS_roi_label @demo_prompt @ScriptCheck @NoPound @Reorder 3dMEMA)
++  @FS_roi_label @demo_prompt @ScriptCheck @NoPound @Reorder 3dMEMA
++  @DiceMetric @R_funclist @TimeDiff @FullPath @ANATICOR @MakeLabelTable)
 +
 +
 +##
@@ -350,17 +352,22 @@
 +TARGET_LINK_LIBRARIES(afni_history ${AFNI_LIBS})
 +LIST(APPEND PROGRAMS afni_history)
 +
++ADD_EXECUTABLE(gwarp mri_gwarp.c)
++TARGET_LINK_LIBRARIES(gwarp ${AFNI_LIBS})
++LIST(APPEND PROGRAMS gwarp)
++
 +#
 +# AFNI
 +#
 +SET(AFSRC
 +  afni.c afni_func.c afni_widg.c afni_fimmer.c afni_pcor.c
 +  afni_pcor_update.c afni_transforms.c pbar.c afni_graph.c afni_plugin.c
-+  afni_cluster.c parser.c parser_int.c afni_plugout.c afni_fimfunc.c
++  afni_cluster.c afni_plugout.c afni_fimfunc.c
 +  afni_setup.c afni_receive.c mcw_graf.c afni_splash.c afni_pplug_env.c
 +  afni_pplug_2dfunc.c afni_friends.c afni_ttren.c afni_pplug_1dfunc.c
 +  afni_driver.c afni_niml.c afni_sumafunc.c afni_version.c afni_lock.c
-+  afni_vol2surf.c afni_pplug_instacorr.c afni_pplug_instacalc.c)
++  afni_vol2surf.c afni_pplug_instacorr.c afni_pplug_instacalc.c
++  afni_filer.c)
 +# This is for compiling to an object that was called afni_pcor_float.o
 +SET_SOURCE_FILES_PROPERTIES(afni_pcor_update.c
 +                            PROPERTIES COMPILE_FLAGS "-DDTYPE=float")
@@ -418,7 +425,7 @@
 +  DESTINATION ${AFNI_INSTALL_SCRIPT_DIR} COMPONENT Runtime)
 --- /dev/null
 +++ b/CMakeLists_libs.txt
-@@ -0,0 +1,193 @@
+@@ -0,0 +1,195 @@
 +##
 +## This file is to be included in the toplevel CMakeLists.txt
 +##
@@ -453,7 +460,8 @@
 +  mri_pcvector.c mri_fdrize.c mri_floatvec.c mri_sort.c mri_warpfield.c
 +  mri_dicom_stuff.c mri_check.c mri_allzero.c mri_subset.c mri_to_fvect.c
 +  mri_genalign_util.c rcmat.c dmat44.c mri_rbfinterp.c matrix.c
-+  gifti_choice.c zfun.c cs_pv.c)
++  gifti_choice.c zfun.c cs_pv.c cs_sort_iv.c cs_sort_d misc_math.c
++  mri_genARMA11.c)
 +
 +SET(THD_SRC
 +  thd_atr.c thd_dsetto1D.c thd_initalldir.c thd_reconpar.c thd_auxdata.c
@@ -480,7 +488,8 @@
 +  thd_brainormalize.c thd_opentcat.c thd_nimlatr.c thd_dsetatr.c
 +  thd_logafni.c thd_dset_nbhd.c thd_vcheck.c thd_matdaxes.c thd_niml.c
 +  afni_vedit.c thd_fdrcurve.c thd_dset_to_vectim.c thd_bandpass.c
-+  thd_instacorr.c thd_svdblur.c thd_ttest.c )
++  thd_instacorr.c thd_svdblur.c thd_ttest.c thd_satcheck.c thd_dumdset.c
++  ktaub.c bilinear_warp3D.c thd_table.c thd_atlas.c thd_warp_tables.c)
 +
 +SET(EDT_SRC
 +  edt_addbrick.c edt_blur.c edt_buildmask.c edt_checkargv.c edt_clust.c
@@ -701,7 +710,7 @@
 +  DESTINATION ${AFNI_INSTALL_SCRIPT_DIR} COMPONENT Runtime)
 --- /dev/null
 +++ b/SUMA/CMakeLists.txt
-@@ -0,0 +1,232 @@
+@@ -0,0 +1,230 @@
 +PROJECT(SUMA)
 +
 +##
@@ -745,7 +754,7 @@
 +SET(LIBSUMA_SRCS
 +  SUMA_trackball.c SUMA_SVmanip.c SUMA_input.c SUMA_MiscFunc.c
 +  SUMA_IV_XYZextract.c SUMA_IV_FaceSetsextract.c SUMA_SurfNorm.c
-+  SUMA_DOmanip.c SUMA_StripPath.c SUMA_Load_Surface_Object.c SUMA_CreateDO.c
++  SUMA_DOmanip.c SUMA_ParseName.c SUMA_Load_Surface_Object.c SUMA_CreateDO.c
 +  SUMA_help.c SUMA_display.c SUMA_ParseCommands.c SUMA_Engine.c
 +  SUMA_Surface_IO.c SUMA_VolData.c SUMA_niml.c SUMA_Color.c SUMA_GeomComp.c
 +  SUMA_SphericalMapping.c SUMA_DataSets.c SUMA_Homer.c SUMA_xColBar.c
@@ -794,7 +803,8 @@
 +  ConvexHull 3dSkullStrip 3dCRUISEtoAFNI 3dBRAIN_VOYAGERtoAFNI 3dVol2Surf
 +  SurfMeasures FSread_annot SampBias volume_render 3dSurfMask SurfToSurf
 +  ROIgrow AnalyzeTrace DriveSuma SurfDist SpharmReco SpharmDeco SurfDsetInfo
-+  SurfLocalStat SurfFWHM NikoMap SurfInfo 3dSurf2Vol)
++  SurfLocalStat SurfFWHM NikoMap SurfInfo 3dSurf2Vol SurfRetinoMap ParseName
++  RestSym)
 +
 +# automatically add targets for all programs following to frequently used
 +# naming scheme
@@ -860,9 +870,6 @@
 +#SET_TARGET_PROPERTIES(SUMA_SurfNorm PROPERTIES COMPILE_FLAGS -DSUMA_SurfNorm_STAND_ALONE)
 +#LIST(APPEND PROGRAMS SUMA_SurfNorm)
 +
-+ADD_EXECUTABLE(SUMA_ParseName SUMA_StripPath.c)
-+LIST(APPEND PROGRAMS SUMA_ParseName)
-+
 +ADD_EXECUTABLE(ShowCmap SUMA_xColBar.c)
 +SET_TARGET_PROPERTIES(ShowCmap PROPERTIES COMPILE_FLAGS -DSUMA_SHOW_CMAP_STAND_ALONE)
 +LIST(APPEND PROGRAMS ShowCmap)
@@ -916,7 +923,7 @@
 +FOREACH(program
 +  SUMA_Read_SpecFile SUMA_FreeSurfer SUMA_SureFit SUMA_Ply_Read
 +  SUMA_Map_SurfacetoSurface SUMA_Load_Surface_Object
-+  SUMA_ParseName SUMA_Homer SUMA_inflate_compare )
++  SUMA_Homer SUMA_inflate_compare )
 +  SET_TARGET_PROPERTIES(${program} PROPERTIES
 +                        COMPILE_FLAGS -D${program}_STAND_ALONE)
 +ENDFOREACH(program)
@@ -1271,3 +1278,15 @@
     RETURN(gim);
  }
   
+--- a/mri_genalign.c
++++ b/mri_genalign.c
+@@ -2229,7 +2229,8 @@
+ 
+ /*--------------------------------------------------------------------------*/
+ #ifdef USE_OMP
+-# include "mri_warpfield.c"
++/* Not an Debian as we build proper shared libs. */
++/* # include "mri_warpfield.c" */
+ #endif
+ /*--------------------------------------------------------------------------*/
+ 
