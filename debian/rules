@@ -1,11 +1,23 @@
 #!/usr/bin/make -f
 
+
 # TODO plugins do not handle this well
 #LDFLAGS = -Wl,--no-undefined
 
+# need to do it after inclusion of cmake class to get the flag
+# appended after -Wall
+CFLAGS += -Wno-unused
+export CFLAGS
+
+# what are we doing this for
+DEB_BUILD_GNU_TYPE ?= $(shell dpkg-architecture -qDEB_BUILD_GNU_TYPE)
+# where to perform the general build
+DEB_BUILDDIR = "build-$(DEB_BUILD_GNU_TYPE)"
+# where to build the static corelibs
+DEB_BUILDDIR_STATIC = "build-$(DEB_BUILD_GNU_TYPE)-static"
+
 DEB_CMAKE_EXTRA_FLAGS = \
     -DAFNI_SHOWOFF:STRING="=Debian-$(DEB_BUILD_GNU_TYPE)" \
-    -DBUILD_SHARED_LIBS:BOOL=ON \
     -DBUILD_WITH_INSTALL_RPATH:BOOL=ON \
     -DCMAKE_SKIP_RPATH:BOOL=OFF \
     -DCMAKE_INSTALL_RPATH:STRING="/usr/lib/afni/lib" \
@@ -25,51 +37,44 @@ DEB_CMAKE_EXTRA_FLAGS = \
     -DAFNI_INSTALL_POEMS_DIR:STRING=/share/afni/poems
 
 
-include /usr/share/cdbs/1/rules/debhelper.mk
-include /usr/share/cdbs/1/class/cmake.mk
+# one ring to rule them all ...
+%:
+	dh $@ --buildsystem=cmake
 
-# need to do it after inclusion of cmake class to get the flag
-# appended after -Wall
-CFLAGS += -Wno-unused
 
-DEB_SHLIBDEPS_INCLUDE_afni = $(CURDIR)/debian/afni/usr/lib/afni/lib
-# the following does not have the desired effect to get rid of the countless
-# warnings that the private shared libs in the afni package don't have version
-# info -- determine why..
-DEB_DH_SHLIBDEPS_ARGS_afni = -u-xafni
+override_dh_auto_configure:
+	dh_auto_configure --builddirectory=$(DEB_BUILDDIR) -- \
+      $(DEB_CMAKE_EXTRA_FLAGS) \
+      -DBUILD_SHARED_LIBS:BOOL=ON \
+      -DAFNI_BUILD_CORELIBS_ONLY:BOOL=OFF
+	dh_auto_configure --builddirectory=$(DEB_BUILDDIR_STATIC) -- \
+      $(DEB_CMAKE_EXTRA_FLAGS) \
+      -DBUILD_SHARED_LIBS:BOOL=OFF \
+      -DAFNI_BUILD_CORELIBS_ONLY:BOOL=ON
 
-# where to build the static corelibs
-DEB_BUILDDIR_STATIC = $(DEB_BUILDDIR)-static
 
-# need -stamp target here, since cmake is ran over an over again for some reason
-# and claims that some variables have changed, which in turn causes the static
-# libs to be built multiple times
-configure/afni-dev:: configure-afni-dev-stamp
-configure-afni-dev-stamp:
-	-[ ! -d $(DEB_BUILDDIR_STATIC) ] && mkdir -p $(DEB_BUILDDIR_STATIC)
-	cd $(DEB_BUILDDIR_STATIC) && \
-		$(CMAKE) $(CURDIR)/$(DEB_SRCDIR) \
-			$(DEB_CMAKE_NORMAL_ARGS) $(DEB_CMAKE_EXTRA_FLAGS) \
-			-DBUILD_SHARED_LIBS:BOOL=OFF \
-			-DAFNI_BUILD_CORELIBS_ONLY:BOOL=ON
-	touch $@
+override_dh_auto_build:
+	dh_auto_build --builddirectory=$(DEB_BUILDDIR)
+	dh_auto_build --builddirectory=$(DEB_BUILDDIR_STATIC)
 
-build/afni-dev::
-	cd $(DEB_BUILDDIR_STATIC) && $(MAKE) VERBOSE=1
 
-install/afni-dev::
-	cd $(DEB_BUILDDIR_STATIC) && \
-		$(MAKE) install DESTDIR=$(CURDIR)/debian/tmp/static VERBOSE=1
-
-clean::
-	-[ -d $(DEB_BUILDDIR_STATIC) ] && rm -rf $(DEB_BUILDDIR_STATIC)
-	-rm configure-afni-dev-stamp
-	# ensure proper permissions for the wrapper
-	chmod +x debian/afni_wrapper
-
-install/afni-common::
+override_dh_auto_install:
+	dh_auto_install --builddirectory=$(DEB_BUILDDIR)
+	dh_auto_install --builddirectory=$(DEB_BUILDDIR_STATIC) -- \
+	  DESTDIR=$(CURDIR)/debian/tmp/static 
 	# fix tcsh interpreter location
 	for f in $$(egrep -lR '^#![ ]*/bin/tcsh' debian/tmp); do \
 		echo "Fixing tcsh interpreter location in '$$f'" ; \
 		sed -i -e 's|^#![ ]*/bin/tcsh|#!/usr/bin/tcsh|' $$f ; \
 	done
+	# for some reason 3dSetupGroupInCorr gets destroyed during install
+	# need to redo and fix rpath manually
+	cp $(DEB_BUILDDIR)/3dSetupGroupInCorr debian/tmp/lib/afni/bin/
+	chrpath -r /usr/lib/afni/lib debian/tmp/lib/afni/bin/3dSetupGroupInCorr
+
+
+override_dh_auto_clean:
+	dh_auto_clean --builddirectory=$(DEB_BUILDDIR)
+	dh_auto_clean --builddirectory=$(DEB_BUILDDIR_STATIC)
+	# ensure proper permissions for the wrapper
+	chmod +x debian/afni_wrapper

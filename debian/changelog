@@ -1,9 +1,10 @@
 afni (0.20100917~dfsg.1-1) UNRELEASED; urgency=low
 
   * New upstream code, and updated CMAKE setup.
-  * Switched to source package format 3.0 (quilt).
+  * Switched to source package format 3.0 (quilt) and from CDBS to debhelper's
+    "dh".
 
- -- Michael Hanke <michael.hanke@gmail.com>  Mon, 20 Sep 2010 15:09:06 -0400
+ -- Michael Hanke <michael.hanke@gmail.com>  Tue, 21 Sep 2010 11:51:13 -0400
 
 afni (0.20100114~dfsg.1-1) UNRELEASED; urgency=low
 
