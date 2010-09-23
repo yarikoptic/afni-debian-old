@@ -1,3 +1,12 @@
+Description: Replace mpeg_encode with ffmpeg
+ Rational: AFNI relies on mpeg_encode for creating video clips. However,
+ mpeg_encode is not maintained for years, has a problematic license/patent
+ situation and is not available in any recent distribution. This patch replaces
+ mpeg_encode with ffmpeg -- a more modern, maintained and available solution
+ to achieve exactly the same result.
+Forwarded: Rick Reynolds <reynoldr@mail.nih.gov>
+Author: Michael Hanke <michael.hanke@gmail.com>
+Last-Update: 2009-10-29
 --- a/imseq.c
 +++ b/imseq.c
 @@ -264,7 +264,7 @@

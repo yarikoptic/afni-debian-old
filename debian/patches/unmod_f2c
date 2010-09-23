@@ -1,3 +1,10 @@
+Description: Make AFNI compatible with an up-to-date version of F2C.
+ Removes all forked F2C-related code and replaces it with a single header
+ file that implements all changes on top of a standard f2c.h, instead
+ of an outdated copy.
+Forwarded: Rick Reynolds <reynoldr@mail.nih.gov>
+Author: Michael Hanke <michael.hanke@gmail.com>
+Last-Update: 2009-12-07
 --- a/eispack/f2c.h
 +++ b/eispack/f2c.h
 @@ -1,228 +1,16 @@

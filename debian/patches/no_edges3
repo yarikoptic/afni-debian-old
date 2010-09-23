@@ -1,3 +1,14 @@
+Description: Strip any 3DEdge-related functionality from AFNI
+ The license of this library makes it non-distributable, hence it cannot be
+ shipped with the Debian package. This patch adds switches to all affected tool
+ that allow 3DEdge-related functionality to be disabled. To maintain
+ identical default behavior of upstream AFNI and the Debian version these
+ switches are not enabled by default. That causes affected tools to fail by
+ default, but ensures user awareness of this issue until it can be resolved
+ properly.
+Forwarded: Rick Reynolds <reynoldr@mail.nih.gov>
+Author: Judd Storrs <storrsjm@email.uc.edu>, Michael Hanke <michael.hanke@gmail.com>
+Last-Update: 2009-10-21
 --- a/@auto_tlrc
 +++ b/@auto_tlrc
 @@ -304,6 +304,12 @@
