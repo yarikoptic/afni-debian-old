@@ -46,7 +46,7 @@ static NI_element         *covnel=NULL ;       /* covariates */
 static NI_str_array       *covlab=NULL ;
 
 static int        num_covset_col=0 ;
-static int             allow_cov=1 ;
+static int             allow_cov=1 ;           /* allowed by default */
 static MRI_vectim   **covvim_AAA=NULL ;
 static MRI_vectim   **covvim_BBB=NULL ;
 static floatvec     **covvec_AAA=NULL ;
@@ -91,6 +91,8 @@ static char             **name_BBB=NULL ;
 static char             **labl_BBB=NULL ;
 static THD_3dim_dataset **dset_BBB=NULL ;
 static MRI_vectim      *vectim_BBB=NULL ;
+
+static int debug = 0 ;
 
 /*--------------------------------------------------------------------------*/
 
@@ -154,9 +156,10 @@ void display_help_menu(void)
       "   which was written in 1994, \"When grass was green and grain was yellow\".\n"
       "  ++ And when the program's author still had hair.\n"
       "\n"
-      "-----------\n"
-      "SET OPTIONS\n"
-      "-----------\n"
+
+      "------------------\n"
+      "SET INPUT OPTIONS\n"
+      "------------------\n"
       "\n"
       "* At least the '-setA' option must be given.\n"
       "\n"
@@ -213,9 +216,10 @@ void display_help_menu(void)
       "  ***                and '-setA' corresponds to '-set2' in 3dttest.   ***\n"
       "  *****            This ordering of A and B matches 3dGroupInCorr.  *****\n"
       "\n"
-      "----------\n"
-      "COVARIATES\n"
-      "----------\n"
+
+      "--------------------------------------\n"
+      "COVARIATES - per dataset and per voxel\n"
+      "--------------------------------------\n"
       "\n"
       " -covariates COVAR_FILE\n"
       "\n"
@@ -240,10 +244,14 @@ void display_help_menu(void)
       "\n"
       "* If you used a short form '-setX' option, each dataset label is\n"
       "   the dataset's prefix name (truncated to 12 characters).\n"
+      "  ++ e.g.,  fred+tlrc'[3]'  ==>  fred\n"
+      "  ++ e.g.,  elvis.nii.gz    ==>  elvisn"
       "\n"
       "* '-covariates' can only be used with the short form '-setX' option\n"
       "   if each input dataset has only 1 sub-brick (so that each label\n"
       "   refers to exactly 1 volume of data).\n"
+      "  ++ Duplicate labels in the dataset list or in the covariates file\n"
+      "     will not work well!\n"
       "\n"
       "* The later columns in COVAR_FILE contain numbers (e.g., 'IQ' and 'age',\n"
       "    above), or dataset names.  In the latter case, you are specifying a\n"
@@ -271,6 +279,21 @@ void display_help_menu(void)
       "* N.B.: The simpler forms of the COVAR_FILE that 3dMEMA allows are\n"
       "        NOT supported here!\n"
       "\n"
+      "* N.B.: IF you are entering multiple sub-bricks from the same dataset in\n"
+      "        one of the '-setX' options, AND you are using covariates, then\n"
+      "        you must use the 'LONG FORM' of input for the '-setX' option,\n"
+      "        and give each sub-brick a distinct label that matches something\n"
+      "        in the covariates file.  Otherwise, the program will not know\n"
+      "        which covariate to use with which input sub-brick, and bad\n"
+      "        things will happen.\n"
+      "\n"
+      "* N.B.: Please be careful in setting up the covariates file and dataset\n"
+      "        labels, as the program only does some simple error checking.\n"
+      "        ++ If you REALLY want to see the regression matrices\n"
+      "           used with covariates, use the '-debug' option.\n"
+      "        ++ Which you give you a LOT of output (to stderr), so redirect:\n"
+      "             3dttest++ .... |& tee debug.out\n"
+      "\n"
       "***** CENTERING *******\n"
       "\n"
       " ++ This term refers to how the mean across subjects of a covariate\n"
@@ -285,8 +308,8 @@ void display_help_menu(void)
       " ++ '-center NONE' is for the case where you have pre-processed the\n"
       "    covariate values to meet your needs; otherwise, it is not recommended!\n"
       "\n"
-      " ++ Centering can be important.  For example, suppose that the average\n"
-      "    IQ in setA is higher than in setB, and that the beta\n"
+      " ++ Centering can be important.  For example, suppose that the mean\n"
+      "    IQ in setA is significantly higher than in setB, and that the beta\n"
       "    values are positively correlated with IQ.  Then the mean in\n"
       "    setA will be higher than in setB simply from the IQ effect.\n"
       "    To avoid this type of inter-group mean differences,  you\n"
@@ -305,6 +328,7 @@ void display_help_menu(void)
       " ++ (Actually, only the first letter of the argument after '-center' is)\n"
       "    (used to set the centering code, and it can be upper or lower case.)\n"
       "\n"
+
       "-------------\n"
       "OTHER OPTIONS\n"
       "-------------\n"
@@ -323,7 +347,7 @@ void display_help_menu(void)
       "                 provide some protection against heteroscedasticty\n"
       "                 (significantly different inter-subject variance\n"
       "                 between the two different collections of datasets).\n"
-      "                 Our experience is that for most FMRI data, using\n"
+      "             ++  Our experience is that for most FMRI data, using\n"
       "                 '-unpooled' is not needed.\n"
       "\n"
       " -toz      = Convert output t-statistics to z-scores\n"
@@ -334,9 +358,18 @@ void display_help_menu(void)
       " -mask mmm = Only compute results for voxels in the specified mask.\n"
       "             ++ Voxels not in the mask will be set to 0 in the output.\n"
       "             ++ If '-mask' is not used, all voxels will be tested.\n"
+      "             ++ HOWEVER: voxels whose input data is constant (in either set)\n"
+      "                 will NOT be processed and will get all zero outputs.  This\n"
+      "                 inaction happens because the variance of a constant set of\n"
+      "                 data is zero, and division by zero is forbidden by the\n"
+      "                 Deities of Mathematics.\n"
       "\n"
       " -prefix p = Gives the name of the output dataset file.\n"
       "\n"
+      " -debug    = Prints out information about the analysis, which can\n"
+      "               be VERY lengthy -- not for general usage.\n"
+      "\n"
+
       "-------------------------------\n"
       "STRUCTURE OF THE OUTPUT DATASET\n"
       "-------------------------------\n"
@@ -391,6 +424,114 @@ void display_help_menu(void)
       "* The largest Tstat that will be output is 99.\n"
       "* The largest Zscr that will be output is 13.\n"
       "\n"
+
+      "-------------------\n"
+      "HOW COVARIATES WORK\n"
+      "-------------------\n"
+      "\n"
+      "Covariates work by forming a regression problem for each voxel, to\n"
+      "estimate the mean of the input data and the slopes of the data with\n"
+      "respect to variations in the covariates.\n"
+      "\n"
+      "For each input set of sub-bricks, a matrix is assembled.  There is one\n"
+      "row for each sub-brick, and one column for each covariate, plus one\n"
+      "more column for the mean.  So if there are 5 sub-bricks and 2 covariates,\n"
+      "the matrix would look like so\n"
+      "\n"
+      "     [ 1  0.3  1.7 ]\n"
+      "     [ 1  0.5  2.2 ]\n"
+      " X = [ 1  2.3  3.3 ]\n"
+      "     [ 1  5.7  7.9 ]\n"
+      "     [ 1  1.2  4.9 ]\n"
+      "\n"
+      "The first column is all 1s, and models the mean value of the betas.\n"
+      "The remaining columns are the covariates for each sub-brick.  (The\n"
+      "numbers above are values I just made up, obviously.)\n"
+      "\n"
+      "The matrix is centered by removing the mean from each column except\n"
+      "the first one.  In the above matrix, the mean of column #2 is 2,\n"
+      "and the mean of column #3 is 4, so the centered matrix is\n"
+      "\n"
+      "      [ 1 -1.7 -2.3 ]\n"
+      "      [ 1 -1.5 -1.8 ]\n"
+      " Xc = [ 1  0.3 -0.7 ]\n"
+      "      [ 1  3.7  3.9 ]\n"
+      "      [ 1 -0.8  0.9 ]\n"
+      "\n"
+      "The set of equations to be solved is [Xc] [b] = [z], where [b] is\n"
+      "the column vector desired (first element = de-covariate-ized mean\n"
+      "of the data values, remaining elements = slopes of data values\n"
+      "with respect to the covariates), and [z] is the column vector of\n"
+      "data values extracted from the input datasets.\n"
+      "\n"
+      "This set of equations is solved by forming the pseudo-inverse of the\n"
+      "matrix [Xc]: [Xp] = inverse[Xc'Xc] [Xc'], so that [b] = [Xp] [z].\n"
+      "For the sample matrix above, we have\n"
+      "\n"
+      "      [  0.2         0.2         0.2       0.2        0.2      ]\n"
+      " Xp = [  0.0431649  -0.015954    0.252887  0.166557  -0.446654 ]\n"
+      "      [ -0.126519   -0.0590721  -0.231052  0.0219866  0.394657 ]\n"
+      "\n"
+      "Because of the centering, the first column of [Xc] is orthgonal to\n"
+      "the other columns, so the first row of [Xp] is all 1/N, where N is\n"
+      "the number of data points (here, N=5).\n"
+      "\n"
+      "In reality, the pseudo-inverse [Xp] is computed using the SVD, which\n"
+      "means that even a column of all zero covariates will not cause a\n"
+      "singular matrix problem.\n"
+      "\n"
+      "In addition, the matrix [Xi] = inverse[Xc'Xc] is computed.  Its diagonal\n"
+      "elements are needed in the t-test computations.  In the above example,\n"
+      "\n"
+      "      [ 0.2 0        0       ]\n"
+      " Xi = [ 0   0.29331 -0.23556 ]\n"
+      "      [ 0  -0.23556  0.22912 ]\n"
+      "\n"
+      "For a 1-sample t-test, the regression values computed in [b] are the\n"
+      "'_mean' values stored in output dataset.  The t-statistics are\n"
+      "computed by first calculating the regression residual vector\n"
+      "  [r] = [Xc][b] - [z]\n"
+      "and then the variance v of the residuals as\n"
+      "\n"
+      "        i=N\n"
+      "  q = sum  { r[i]*r[i] }  and then  v = q / (N-m)\n"
+      "        i=1\n"
+      "\n"
+      "where N=number of data points and m=number of matrix columns.  The\n"
+      "t-statistic for the k-th element of [b] is then given by\n"
+      "\n"
+      "  t[k] = b[k] / sqrt( v * Xi[k,k] )\n"
+      "\n"
+      "Note that for the first element, the factor Xi[1,1] is just 1/N, as\n"
+      "is the case in the simple (no covariates) t-test.\n"
+      "\n"
+      "For a 2-sample unpaired t-test, the '_mean' output for the k-th column\n"
+      "of the matrix [X] is bA[k]-bB[k] where 'A' and 'B' refer to the 2 input\n"
+      "collections of datasets.  The t-statistic is computed by\n"
+      "\n"
+      "  vAB  = (qA+qB) / (NA+NB-2*m)\n"
+      "  t[k] = (bA[k]-bB[k]) / sqrt( vAB * (XiA[k,k]+XiB[k,k]) )\n"
+      "\n"
+      "For a 2-sample paired t-test, the t-statistic is a little different:\n"
+      "\n"
+      "        i=N\n"
+      "  q = sum  { (rA[i]-rB[i])^2 }  and then  vAB = q / (N-m)\n"
+      "        i=1\n"
+      "\n"
+      "and then\n"
+      "\n"
+      "  t[k] = (bA[k]-bB[k]) / sqrt( vAB * XiA[k,k] )\n"
+      "\n"
+      "Note the central role of the diagonal elements of the [Xi] matrix.\n"
+      "These numbers are the variances of the estimates of the [b] if the\n"
+      "data [z] is corrupted by additive white noise with variance=1.\n"
+      "\n"
+      "For problems with voxel-wise covariates, each voxel gets a different\n"
+      "[X] matrix, and so the matrix inversions are carried out many many\n"
+      "times.  If the covariates are fixed values, then only one set of\n"
+      "matrix inversions needs to be carried out.\n"
+      "\n"
+
       "-------------------------\n"
       "VARIOUS LINKS OF INTEREST\n"
       "-------------------------\n"
@@ -410,7 +551,7 @@ void display_help_menu(void)
 
 int main( int argc , char *argv[] )
 {
-   int nopt , nbad , ii,jj,kk , kout,ivox , vstep ;
+   int nopt , nbad , ii,jj,kk , kout,ivox , vstep , dconst , nconst=0 ;
    MRI_vectim *vimout ;
    float *workspace=NULL , *datAAA , *datBBB=NULL , *resar ; size_t nws=0 ;
    float_pair tpair ;
@@ -435,6 +576,12 @@ int main( int argc , char *argv[] )
 
    nopt = 1 ;
    while( nopt < argc ){
+
+     /*----- debug -----*/
+
+     if( strcmp(argv[nopt],"-debug") == 0 ){  /* 22 Sep 2010 */
+       debug++ ; nopt++ ; continue ;
+     }
 
      /*----- center -----*/
 
@@ -561,7 +708,7 @@ int main( int argc , char *argv[] )
            cpt = strchr(labs[nds-1]+1,'.') ; if( cpt != NULL ) *cpt = '\0' ;
          }
 
-         if( nv > nds ) allow_cov = 0 ;
+         if( nv > nds ) allow_cov = 0 ;  /* multiple sub-bricks from 1 input */
 
          if( nv < 2 )
            ERROR_exit("Option %s (short form): need at least 2 datasets or sub-bricks",onam) ;
@@ -599,6 +746,14 @@ int main( int argc , char *argv[] )
          }
        }
        if( nbad > 0 ) ERROR_exit("Cannot go on after such an error!") ;
+
+       /* check for duplicate labels */
+
+       for( ii=0 ; ii < nds ; ii++ ){
+         for( jj=ii+1 ; jj < nds ; jj++ )
+           if( strcmp(labs[ii],labs[jj]) == 0 ) nbad++ ;
+       }
+       if( nbad > 0 ) allow_cov = -1 ;  /* duplicate labels */
 
        /* assign results to global variables */
 
@@ -684,9 +839,16 @@ int main( int argc , char *argv[] )
        ( twosam && (nval_BBB - mcov < 2) ) )
      ERROR_exit("Too many covariates compared to number of datasets") ;
 
-   if( mcov > 0 && !allow_cov )
-     ERROR_exit(
-     "-covariates not allowed with -set that has multiple sub-bricks from one dataset");
+   if( mcov > 0 && allow_cov <= 0 ){
+     switch( allow_cov ){
+       case 0:
+         ERROR_exit(
+          "-covariates not allowed with -set that has multiple sub-bricks from one dataset");
+       case -1:
+         ERROR_exit(
+          "-covariates not allowed with -set that has duplicate dataset labels") ;
+     }
+   }
 
    if( ttest_opcode == 1 && mcov > 0 ){
      WARNING_message("-covariates does not support unpooled variance") ;
@@ -1007,6 +1169,19 @@ int main( int argc , char *argv[] )
 
      resar = VECTIM_PTR(vimout,kout) ;                    /* results array */
 
+     /* skip processing for input voxels whose data is constant */
+
+     for( ii=1 ; ii < nval_AAA && datAAA[ii] == datAAA[0] ; ii++ ) ; /*nada*/
+     dconst = (ii == nval_AAA) ;
+     if( twosam && !dconst ){
+       for( ii=1 ; ii < nval_BBB && datBBB[ii] == datBBB[0] ; ii++ ) ; /*nada*/
+       dconst = (ii == nval_BBB) ;
+     }
+     if( dconst ){
+       /** if( debug ) INFO_message("skip output voxel#%d for constancy",kout) ; **/
+       memset( resar , 0 , sizeof(float)*nvout ) ; nconst++ ; kout++ ; continue ;
+     }
+
      if( mcov == 0 ){  /*--- no covariates ==> standard t-tests ---*/
 
        if( twosam ){
@@ -1043,6 +1218,10 @@ int main( int argc , char *argv[] )
    }  /* end of loop over voxels */
 
    if( vstep > 0 ){ fprintf(stderr,"!\n") ; MEMORY_CHECK ; }
+
+   if( nconst > 0 )
+     INFO_message("skipped %d voxel%s for having constant data" ,
+                  nconst , (nconst==1) ? "\0" : "s" ) ;
 
    /*-------- get rid of the input data now --------*/
 
@@ -1140,7 +1319,7 @@ void regress_toz( int numA , float *zA ,
    int kt=0,nws , mm=mcov+1 , nA=numA , nB=numB ;
    float *betA=NULL , *betB=NULL , *zdifA=NULL , *zdifB=NULL ;
    float ssqA=0.0f , ssqB=0.0f , varA=0.0f , varB=0.0f ; double dof=0.0 ;
-   register float val ; register int ii,jj,tt ;
+   register float val , den ; register int ii,jj,tt ;
 
 ENTRY("regress_toz") ;
 
@@ -1234,7 +1413,8 @@ ENTRY("regress_toz") ;
        for( tt=0 ; tt < mm ; tt++ ){
          if( (testAB & (1 << tt)) == 0 ) continue ;  /* bitwase AND */
          outvec[kt++] = betA[tt] - betB[tt] ;
-         val          = outvec[kt-1] / sqrtf( varAB*xtxA(tt) ) ;
+         den          = xtxA(tt) ; if( den <= 0.0f ) den = 1.e+9f ;
+         val          = outvec[kt-1] / sqrtf( varAB*den ) ;
          outvec[kt++] = (toz) ? (float)GIC_student_t2z( (double)val , dof )
                               : TCLIP(val) ;
        }
@@ -1247,7 +1427,8 @@ ENTRY("regress_toz") ;
        for( tt=0 ; tt < mm ; tt++ ){
          if( (testAB & (1 << tt)) == 0 ) continue ;  /* bitwase AND */
          outvec[kt++] = betA[tt] - betB[tt] ;
-         val          = outvec[kt-1] / sqrtf( varAB*(xtxA(tt)+xtxB(tt)) );
+         den          = xtxA(tt)+xtxB(tt) ; if( den <= 0.0f ) den = 1.e+9f ;
+         val          = outvec[kt-1] / sqrtf( varAB*den );
          outvec[kt++] = (toz) ? (float)GIC_student_t2z( (double)val , dof )
                               : TCLIP(val) ;
        }
@@ -1261,7 +1442,8 @@ ENTRY("regress_toz") ;
      for( tt=0 ; tt < mm ; tt++ ){
        if( (testA & (1 << tt)) == 0 ) continue ;  /* bitwise AND */
        outvec[kt++] = betA[tt] ;
-       val          = betA[tt] / sqrtf( varA * xtxA(tt) ) ;
+       den          = xtxA(tt) ; if( den <= 0.0f ) den = 1.e+9f ;
+       val          = betA[tt] / sqrtf( varA * den ) ;
        outvec[kt++] = (toz) ? (float)GIC_student_t2z( (double)val , dof )
                             : TCLIP(val) ;
      }
@@ -1274,7 +1456,8 @@ ENTRY("regress_toz") ;
      for( tt=0 ; tt < mm ; tt++ ){
        if( (testB & (1 << tt)) == 0 ) continue ;  /* bitwise AND */
        outvec[kt++] = betB[tt] ;
-       val          = betB[tt] / sqrtf( varB * xtxB(tt) ) ;
+       den          = xtxB(tt) ; if( den <= 0.0f ) den = 1.e+9f ;
+       val          = betB[tt] / sqrtf( varB * den ) ;
        outvec[kt++] = (toz) ? (float)GIC_student_t2z( (double)val , dof )
                             : TCLIP(val) ;
      }
@@ -1610,6 +1793,7 @@ void TT_matrix_setup( int kout )
 {
    int jj,kk ; float sum , *fpt ;
    static MRI_IMARR *imprA=NULL , *imprB=NULL ;
+   char label[32] ;
 
 ENTRY("TT_matrix_setup") ;
 
@@ -1635,6 +1819,15 @@ ENTRY("TT_matrix_setup") ;
 
    TT_centerize() ; /* column de-mean-ization? */
 
+   if( debug ){
+     sprintf(label,"setA voxel#%d",kout) ;
+     mri_matrix_print(stderr,Axxim,label) ;
+     if( twosam && ttest_opcode != 2 ){
+       sprintf(label,"setB voxel#%d",kout) ;
+       mri_matrix_print(stderr,Bxxim,label) ;
+     }
+   }
+
    /*-- (pseudo) invert matrices --*/
 
    /* Compute inv[X'X] and the pseudo-inverse inv[X'X]X' for setA */
@@ -1646,6 +1839,13 @@ ENTRY("TT_matrix_setup") ;
    Axx_psinv  = MRI_FLOAT_PTR(IMARR_SUBIM(imprA,0)) ;
    Axx_xtxinv = MRI_FLOAT_PTR(IMARR_SUBIM(imprA,1)) ;
 
+   if( debug ){
+     sprintf(label,"setA psinv") ;
+     mri_matrix_print(stderr,IMARR_SUBIM(imprA,0),label) ;
+     sprintf(label,"setA xtxinv") ;
+     mri_matrix_print(stderr,IMARR_SUBIM(imprA,1),label) ;
+   }
+
    /* and for setB, if needed */
 
    if( twosam && ttest_opcode != 2 ){  /* un-paired 2-sample case */
@@ -1654,6 +1854,14 @@ ENTRY("TT_matrix_setup") ;
      if( imprB == NULL ) ERROR_exit("Can't invert setB covariate matrix?! :-(") ;
      Bxx_psinv  = MRI_FLOAT_PTR(IMARR_SUBIM(imprB,0)) ;
      Bxx_xtxinv = MRI_FLOAT_PTR(IMARR_SUBIM(imprB,1)) ;
+
+     if( debug ){
+       sprintf(label,"setB psinv") ;
+       mri_matrix_print(stderr,IMARR_SUBIM(imprB,0),label) ;
+       sprintf(label,"setB xtxinv") ;
+       mri_matrix_print(stderr,IMARR_SUBIM(imprB,1),label) ;
+     }
+
    } else if( twosam && ttest_opcode == 2 ){
      Bxx_psinv = Axx_psinv ; Bxx_xtxinv = Axx_xtxinv ;
    }
