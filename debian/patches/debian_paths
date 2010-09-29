@@ -1,0 +1,47 @@
+Description: Configure Debian-specific installation paths
+  This allows for splitting libraries, plugins and pure data into /usr/lib
+  and /usr/share, instead of having to dump everything into a single directory.
+Author: Michael Hanke <michael.hanke@gmail.com>
+Last-Update: 2010-09-29
+--- a/afni_func.c
++++ b/afni_func.c
+@@ -6302,6 +6302,8 @@
+    /*----- get path to search -----*/
+ 
+                        epath = getenv("AFNI_PLUGINPATH") ;
++   /* Debian puts them into a separate dir */
++   epath = "/usr/share/afni/poems";
+    if( epath == NULL ) epath = getenv("AFNI_PLUGIN_PATH") ;
+    if( epath == NULL ) epath = getenv("PATH") ;
+    if( epath == NULL ){ num_poem=-1; EXRETURN ; }
+--- a/afni_splash.c
++++ b/afni_splash.c
+@@ -662,6 +662,8 @@
+    /*----- get path to search -----*/
+ 
+                        epath = getenv("AFNI_PLUGINPATH") ;
++   /* Debian puts them into a separate dir */
++   epath = "/usr/share/afni/pics";
+    if( epath == NULL ) epath = getenv("AFNI_PLUGIN_PATH") ;
+    if( epath == NULL ) epath = getenv("PATH") ;
+    if( epath == NULL ) epath = getenv("HOME") ;
+--- a/thd_ttatlas_query.c
++++ b/thd_ttatlas_query.c
+@@ -405,6 +405,8 @@
+    if( !first ) return adnam ;
+    first = 0 ;
+                        epath = getenv("AFNI_PLUGINPATH") ;
++   /* Debian puts them into a separate dir */
++   epath = "/usr/share/afni/atlases";
+    if( epath == NULL ) epath = getenv("AFNI_PLUGIN_PATH") ;
+    if( epath == NULL ) epath = getenv("PATH") ;
+    if( epath == NULL ) return NULL ;  /* this is bad */
+@@ -469,6 +471,8 @@
+       /*----- get path to search -----*/
+ 
+                           epath = getenv("AFNI_PLUGINPATH") ;
++      /* Debian puts them into a separate dir */
++      epath = "/usr/share/afni/atlases";
+       if( epath == NULL ) epath = getenv("AFNI_PLUGIN_PATH") ;
+       if( epath == NULL ) epath = getenv("PATH") ;
+       if( epath == NULL ) RETURN(dset) ;

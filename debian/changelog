@@ -2,8 +2,10 @@ afni (0.20100928~dfsg.1-1) UNRELEASED; urgency=low
 
   * New upstream code.
   * Update CMake patch to install lib_textdata.py that was missing before.
+  * Added netpbm as a recommended package.
+  * Added patch to set Debian-specific locations for faces, poems and atlases.
 
- -- Michael Hanke <michael.hanke@gmail.com>  Wed, 29 Sep 2010 11:48:24 -0400
+ -- Michael Hanke <michael.hanke@gmail.com>  Wed, 29 Sep 2010 15:26:27 -0400
 
 afni (0.20100917~dfsg.1-1) UNRELEASED; urgency=low
 

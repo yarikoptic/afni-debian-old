@@ -2,4 +2,5 @@ no_edges3
 ffmpeg_support
 unmod_f2c
 fixes
+debian_paths
 cmake_sharedlibs
