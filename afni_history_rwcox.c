@@ -44,6 +44,39 @@
 afni_history_struct rwcox_history[] = {
 /*=====BELOW THIS LINE=====*/
 
+ { 27 , SEP , 2010 , RWC , "small fixes" , MICRO , TYPE_GENERAL ,
+   "To patch minor problems pointed out by icc" ,
+   NULL } ,
+
+ { 24 , SEP , 2010 , RWC , "afni" , MICRO , TYPE_BUG_FIX ,
+   "Fix bug in afni_receive.c" ,
+   "When a receiver shuts down its own reception, then the pointer to the\n"
+   "receive structure is freed.  In AFNI_process_alteration(), this caused\n"
+   "the time STAMPER macro to de-ref the NULL pointer.  STAMPER was modified\n"
+   "to avoid this problem, which would cause afni to crash if the user\n"
+   "switched to +tlrc during drawing in +orig.  This, of course, is Daniel\n"
+   "Glen's fault." } ,
+
+ { 24 , SEP , 2010 , RWC , "afni" , MICRO , TYPE_NEW_ENV ,
+   "AFNI_SQRT_AUTORANGE is no more" ,
+   "Instead, AFNI_AUTORANGE_POWER is born." } ,
+
+ { 23 , SEP , 2010 , RWC , "3dUndump" , MICRO , TYPE_GENERAL ,
+   "Clarify help a little with some examples." ,
+   NULL } ,
+
+ { 22 , SEP , 2010 , RWC , "3dttest++" , MICRO , TYPE_BUG_FIX ,
+   "Ensure no division by zero if covariates matrix has all zero column" ,
+   NULL } ,
+
+ { 22 , SEP , 2010 , RWC , "3dttest++" , MICRO , TYPE_MODIFY ,
+   "Skip voxels whose data is constant" ,
+   NULL } ,
+
+ { 21 , SEP , 2010 , RWC , "3dttest++" , MINOR , TYPE_BUG_FIX ,
+   "Fix memory leak and paired t-test bug." ,
+   NULL } ,
+
  { 15 , SEP , 2010 , RWC , "3dROIstats" , MICRO , TYPE_GENERAL ,
    "Force float-to-short conversion of mask if mask is really integers" ,
    NULL } ,

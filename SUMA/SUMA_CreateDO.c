@@ -42,8 +42,10 @@ SUMA_NEW_SO_OPT *SUMA_FreeNewSOOpt(SUMA_NEW_SO_OPT *nsopt)
 
 /*!
    Creates a surface object and its normals and edge list from a list of Nodes and triangles.
-   NodeListp (float **) pointer to nodelist. This points to the vector of node coordinates.
-                        The copy into SO is done by pointer and *NodeListp is set to NULL
+   NodeListp (float **) pointer to nodelist. 
+                        This points to the vector of node coordinates.
+                        The copy into SO is done by pointer and *NodeListp 
+                        is set to NULL
                         to keep users on the straight and narrow.
    N_Node (int) number of nodes
    
@@ -6036,7 +6038,7 @@ SUMA_Boolean SUMA_Paint_SO_ROIplanes ( SUMA_SurfaceObject *SO,
             D_ROI->FillColor[2] = SUMAg_CF->ROI_CM->M[D_ROI->iLabel][2];
             if (SUMAg_CF->ROI_CM->N_M[1] == 4) 
                D_ROI->FillColor[3] = SUMAg_CF->ROI_CM->M[D_ROI->iLabel][3];
-            else D_ROI->FillColor[4] = 1.0;
+            else D_ROI->FillColor[3] = 1.0;
          } else {
             SUMA_COPY_VEC (D_ROI->FillColor, FillColor, 4,float, float);
          }
@@ -8147,11 +8149,182 @@ SUMA_Boolean SUMA_MergeAfniSO_In_SumaSO(NI_group **aSOp,
    SUMA_RETURN(YUP);
 }
 
+int SUMA_NumVE(SUMA_VolumeObject *VO) {
+   int i=0;
+   if (!VO) SUMA_RETURN(-1);
+   if (VO->VE) {
+      while (VO->VE[i]) ++i;
+   }
+   return(i);
+}
 
+SUMA_Boolean SUMA_AddDsetVolumeObject( SUMA_VolumeObject *VO, 
+                                       THD_3dim_dataset **dsetp) {
+   static char FuncName[]={"SUMA_AddDsetVolumeObject"};
+   THD_3dim_dataset *dset=NULL;
+   int n_VE=0;
+   SUMA_Boolean LocalHead=YUP;
+   
+   SUMA_ENTRY;
+   
+   if (dsetp) dset = *dsetp;
+   
+   if (!dset) {
+      SUMA_S_Err("Got nothing to work with!");
+      SUMA_RETURN(NOPE);
+   }
+   n_VE = SUMA_NumVE(VO);
+   
+   if (dset) {
+      SUMA_S_Warn("This is only setup to work with one sub-brick\n"
+                  "Need to handle RGB types also at some point");
+      SUMA_LHv("Adding dset %s in slot %d\n", DSET_HEADNAME(dset), n_VE);
+      /* initialize */
+      VO->VE[n_VE] = (SUMA_VolumeElement*)SUMA_calloc(1,
+                                       sizeof(SUMA_VolumeElement));
+      VO->VE[n_VE]->dset = dset; dset = NULL;
+      SUMA_S_Note("Copy into texture");
+      
+      if (!(VO->VE[n_VE]->texvec = 
+            SUMA_dset_to_tex3d(&(VO->VE[n_VE]->dset), (byte)n_VE))) {
+         SUMA_S_Err("Failed in dset to text3d");
+         VO = SUMA_FreeVolumeObject(VO);
+         SUMA_RETURN(NOPE);
+      }
+      SUMA_LHv("Have slot %d,%s\n", n_VE, DSET_HEADNAME(VO->VE[n_VE]->dset));
+      /* Set the box limits, assuming you are in RAI */
+      SUMA_dset_extreme_corners(VO->VE[n_VE]->dset, 
+                              VO->VE[n_VE]->vo0, VO->VE[n_VE]->voN);
+   }
+   
+   if (dsetp) { /* make sure user can't manipulate initial volume */
+      *dsetp=NULL;
+   }
+   
+   SUMA_RETURN(YUP);
+}
+    
+/*!
+Create a Volume Object data structure 
+*/
+SUMA_VolumeObject *SUMA_CreateVolumeObject(char *Label)
+{
+   static char FuncName[]={"SUMA_CreateVolumeObject"};
+   SUMA_VolumeObject *VO=NULL;
+   int i, j, newval;
+   int Texcomps=1, max3dtexdims=0;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+
+   
+   VO = (SUMA_VolumeObject *)SUMA_calloc(1,sizeof(SUMA_VolumeObject));
+   if (VO == NULL) {
+      SUMA_S_Crit("Failed to allocate");
+      SUMA_RETURN(NULL);
+   }
+   
+   
+   VO->do_type = VO_type;
+   if (Label) {
+      VO->Label = SUMA_copy_string(Label);
+   } else {
+      VO->Label = SUMA_copy_string("NoLabel");
+   }
+   VO->idcode_str = UNIQ_hashcode(VO->Label);
+   VO->VoxelMarker = NULL;
+   VO->Show = 1;
+   
+   VO->VE = (SUMA_VolumeElement **)
+      SUMA_calloc(SUMA_MAX_N_VE, sizeof(SUMA_VolumeElement *));
+
+   VO->CutPlane[0][0] = -1.0;  
+   VO->CutPlane[0][1] = 0.0; 
+   VO->CutPlane[0][2] = 0.0;     
+   VO->CutPlane[0][3] = 50.0;
+
+   VO->CutPlane[1][0] = 1.0;  
+   VO->CutPlane[1][1] = 0.0; 
+   VO->CutPlane[1][2] = 0.0;     
+   VO->CutPlane[1][3] = 50.0;
+    
+   VO->CutPlane[2][0] = 0.0;  
+   VO->CutPlane[2][1] = -1.0; 
+   VO->CutPlane[2][2] = 0.0;     
+   VO->CutPlane[2][3] = 50.0;
+    
+   VO->CutPlane[3][0] = 0.0;  
+   VO->CutPlane[3][1] = 1.0; 
+   VO->CutPlane[3][2] = 0.0;     
+   VO->CutPlane[3][3] = 50.0;
+    
+   VO->CutPlane[4][0] = 0.0;  
+   VO->CutPlane[4][1] = 0.0; 
+   VO->CutPlane[4][2] = -1.0;     
+   VO->CutPlane[4][3] = 50.0;
+
+   VO->CutPlane[5][0] = 0.0;  
+   VO->CutPlane[5][1] = 0.0; 
+   VO->CutPlane[5][2] = 1.0;     
+   VO->CutPlane[5][3] = 50.0;
+    
+   VO->UseCutPlane[0] = 1;
+   for (i=1; i<6; ++i) {
+      VO->UseCutPlane[i] = 0;
+   }
+   
+   VO->SelectedVoxel = -1;
+   VO->ShowSelectedVoxel = 0;
+
+   
+   VO->SOcut = (SUMA_SurfaceObject **)SUMA_calloc(6, 
+                                 sizeof(SUMA_SurfaceObject *));
+   SUMA_RETURN(VO);
+}/* SUMA_CreateVolumeObject */
+
+
+SUMA_VolumeObject *SUMA_FreeVolumeObject(SUMA_VolumeObject *VO) {
+   static char FuncName[]={"SUMA_FreeVolumeObject"};
+   int i;
+   SUMA_ENTRY;
+   
+   if (!VO) SUMA_RETURN(NULL);
+   
+   if (VO->VE) {
+      i = 0;
+      while (VO->VE[i]) {
+         if (VO->VE[i]->dset) {
+            DSET_delete(VO->VE[i]->dset) ;
+            VO->VE[i]->dset = NULL;     
+         }
+         if (VO->VE[i]->texName) 
+            SUMA_free(VO->VE[i]->texName); VO->VE[i]->texName = NULL;
+         if (VO->VE[i]->texvec) 
+            SUMA_free(VO->VE[i]->texvec); VO->VE[i]->texvec = NULL;
+         SUMA_free(VO->VE[i]);
+         ++i;
+      }
+      SUMA_free(VO->VE);
+   }
+   if (VO->VoxelMarker) {
+      SUMA_S_Warn("Don't know how to free this yet! Leak Leak!");
+   }
+   if (VO->idcode_str) SUMA_free(VO->idcode_str); VO->idcode_str=NULL; 
+   if (VO->Label) SUMA_free(VO->Label); VO->Label = NULL;
+   if (VO->SOcut) {
+      for (i=0; i<6; ++i) {
+         if (VO->SOcut[i]) SUMA_Free_Surface_Object(VO->SOcut[i]);
+      }
+      SUMA_free(VO->SOcut);
+   }
+   
+   SUMA_free(VO);
+   
+   SUMA_RETURN(NULL);
+}
 /*!
 Create a Surface Object data structure 
 */
-
 
 SUMA_SurfaceObject *SUMA_Alloc_SurfObject_Struct(int N)
 {
@@ -8309,8 +8482,8 @@ SUMA_Boolean SUMA_SetSODims(SUMA_SurfaceObject *SO)
    SUMA_LHv("Min:[%f %f %f]\n"
             "Max:[%f %f %f]\n"
             "aMax: %f, aMin %f\n",
-            SO->MinDims[1], SO->MinDims[2],SO->MinDims[3],
-            SO->MaxDims[1], SO->MaxDims[2],SO->MaxDims[3],
+            SO->MinDims[0], SO->MinDims[1],SO->MinDims[2],
+            SO->MaxDims[0], SO->MaxDims[1],SO->MaxDims[2],
             SO->aMaxDims, SO->aMinDims );
    SUMA_RETURN(YUP);
 }
