@@ -1,3 +1,10 @@
+afni (0.20100928~dfsg.1-1) UNRELEASED; urgency=low
+
+  * New upstream code.
+  * Update CMake patch to install lib_textdata.py that was missing before.
+
+ -- Michael Hanke <michael.hanke@gmail.com>  Wed, 29 Sep 2010 11:48:24 -0400
+
 afni (0.20100917~dfsg.1-1) UNRELEASED; urgency=low
 
   * New upstream code, and updated CMAKE setup.
