@@ -1,3 +1,9 @@
+afni (0.20100928~dfsg.1-2) UNRELEASED; urgency=low
+
+  * Load AFNI atlases in addition to the AFNI_GLOBAL_SESSION.
+
+ -- Michael Hanke <michael.hanke@gmail.com>  Sun, 03 Oct 2010 10:45:57 -0400
+
 afni (0.20100928~dfsg.1-1) UNRELEASED; urgency=low
 
   * New upstream code.
