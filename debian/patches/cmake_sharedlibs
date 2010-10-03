@@ -721,7 +721,7 @@ Last-Update: 2010-09-21
 +
 +# everything else that is not meant to be a standalone script
 +SET(MODULES
-+  1dGC.R 1dSEMr.R 3dGC.R 3dMEMA.R AFNIio.R)
++  1dGC.R 1dSEMr.R 3dGC.R 3dMEMA.R AFNIio.R 1dSVAR.R)
 +
 +INSTALL(FILES ${MODULES}
 +  DESTINATION ${AFNI_INSTALL_SCRIPT_DIR} COMPONENT Runtime
