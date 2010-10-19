@@ -279,7 +279,7 @@ Last-Update: 2010-09-21
 +  3dUniformize 3ddelay 3dfim+ 3dNLfim 3dNeocon 3dConvolve RSFgen
 +  3dFFT 1dgenARMA11 3dPeriodogram 1dAstrip 3dLocalPV 3dBandpass
 +  3dSetupGroupInCorr 3dGroupInCorr 3dSatCheck 3dTcorr1D 3dSimARMA11
-+  3dClustSim 3dRetinoPhase 3dMaskToASCII 3dttest++
++  3dClustSim 3dRetinoPhase 3dMaskToASCII 3dttest++ 3dDTtoDWI
 +  ${EXTRAS})
 +
 +SET(SCRIPTS
