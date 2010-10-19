@@ -1,8 +1,12 @@
 afni (0.20101018~dfsg.1-1) UNRELEASED; urgency=low
 
   * New upstream code. Added 3dDTtoDWI tool.
+  * Switch build-dependency from lesstif2 to openmotif. Because openmotif is
+    non-free AFNI is now a 'contrib' package. This move was necessary,
+    because AFNI doesn't play nicely with lesstif (segfaults). Upstream
+    doesn't want to support lesstif, because it is currently unmaintained.
 
- -- Michael Hanke <michael.hanke@gmail.com>  Tue, 19 Oct 2010 14:34:36 -0400
+ -- Michael Hanke <michael.hanke@gmail.com>  Tue, 19 Oct 2010 14:46:01 -0400
 
 afni (0.20101001~dfsg.1-1) UNRELEASED; urgency=low
 
