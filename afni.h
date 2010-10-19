@@ -366,6 +366,7 @@ typedef struct {
       Widget crosshair_frame , crosshair_rowcol , crosshair_label ;
 
       Widget crosshair_menu, crosshair_dicom_pb, crosshair_spm_pb ; /* 12 Mar 2004 */
+      Widget crosshair_ijk_pb ;   /* 04 Oct 2010 */
 
       Widget        xhair_rowcol ;
       MCW_arrowval *crosshair_av ;
@@ -481,6 +482,7 @@ typedef struct {
    char *olay_expr ;
    void *olay_pcode ;
    THD_3dim_dataset *dset_master ;
+   char *value_string ;
 
    int               intyp[26] ;
    THD_3dim_dataset *inset[26] ; int inidx[26] ;
@@ -502,13 +504,11 @@ typedef struct {
      for( qx=0 ; qx < 26 ; qx++ ) (qcs)->intyp[qx] = -666 ;  \
  } while(0)
 
+/* the following macro is unused (as yet) */
+
 #undef  DESTROY_ICALC_setup
 #define DESTROY_ICALC_setup(qcs)     \
  do{ if( (qcs) != NULL ){            \
-       int aa ;                      \
-       XtFree((qcs)->ulay_expr) ;    \
-       XtFree((qcs)->olay_expr) ;    \
-       XtFree((qcs)->the_expr) ;     \
        free((qcs)) ; (qcs) = NULL ;  \
  }} while(0)
 
@@ -745,6 +745,8 @@ typedef struct {
       Widget         write_rowcol , write_anat_pb , write_func_pb , write_many_pb ;
       Widget         rescan_rowcol , rescan_pb , rescan_all_pb , rescan_timeseries_pb ;
       Widget         read_rowcol , read_sess_pb , read_1D_pb , read_Web_pb ;
+
+      Widget         saveas_rowcol, saveas_anat_pb, saveas_func_pb ; /* 18 Oct 2010 */
 
       Widget         mbar_rowcol ;
       MCW_bbox     * lock_bbox ;
@@ -1563,6 +1565,9 @@ extern void AFNI_anatmode_CB          ( Widget , XtPointer , XtPointer ) ;
 extern void AFNI_funcmode_CB          ( Widget , XtPointer , XtPointer ) ;
 extern void AFNI_raiseup_CB           ( Widget , XtPointer , XtPointer ) ;
 
+extern void AFNI_saveas_dataset_CB   ( Widget , XtPointer , XtPointer ) ;  /* 18 Oct 2010 */
+extern void AFNI_saveas_finalize_CB  ( Widget , XtPointer , MCW_choose_cbs * ) ;
+
 extern void AFNI_do_many_writes      ( Widget , XtPointer , MCW_choose_cbs * ) ; /* 23 Nov 1996 */
 extern void AFNI_finalize_dataset_CB ( Widget , XtPointer , MCW_choose_cbs * ) ;
 extern void AFNI_jumpto_CB           ( Widget , XtPointer , MCW_choose_cbs * ) ;
@@ -1990,6 +1995,8 @@ extern void median3_func( int, double,double, float * ) ;
 extern void absfft_func ( int, double,double, float * ) ;
 extern void ztone_func  ( int, double,double, float * ) ; /* 02 Sep 2009 */
 extern void adpt_wt_mn9 ( int, double,double, float * ) ; /* 04 Sep 2009 */
+extern void despike7_func  (int, double,double, float *); /* 07 Oct 2010 */
+extern void despike9_func  (int, double,double, float *); /* 08 Oct 2010 */
 
 extern void L1normalize_func( int, double,double, float * ) ; /* 03 Sep 2009 */
 extern void L2normalize_func( int, double,double, float * ) ; /* 03 Sep 2009 */

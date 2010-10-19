@@ -44,6 +44,39 @@
 afni_history_struct rwcox_history[] = {
 /*=====BELOW THIS LINE=====*/
 
+ { 18 , OCT , 2010 , RWC , "afni" , MICRO , TYPE_GENERAL ,
+   "Add SaveAs buttons to Datamode panel" ,
+   NULL } ,
+
+ { 15 , OCT , 2010 , RWC , "afni InstaCald" , MICRO , TYPE_GENERAL ,
+   "Save expression info to dataset header attributes -- for Jill" ,
+   NULL } ,
+
+ { 14 , OCT , 2010 , RWC , "afni InstaCorr" , MICRO , TYPE_NEW_OPT ,
+   "Add Despike option" ,
+   NULL } ,
+
+ { 8 , OCT , 2010 , RWC , "3dBandpass", MICRO , TYPE_NEW_OPT ,
+   "Add -despike option to program." , NULL } ,
+
+ { 7 , OCT , 2010 , RWC , "afni"      , MICRO , TYPE_GENERAL ,
+   "Add Despike 1D Transformation function, just for fun." ,
+   NULL } ,
+
+ { 6 , OCT , 2010 , RWC , "afni"      , MICRO , TYPE_GENERAL ,
+   "Add AFNI_IDEAL_COLORS and AFNI_ORT_COLORS environment vars" ,
+   "For controlling the colors in the graph window overlays.\n"
+   "Per the request of Giuseppe Pagnoni." } ,
+
+ { 6 , OCT , 2010 , RWC , "3dttest++" , MINOR , TYPE_NEW_OPT ,
+   "Add -zskip option" ,
+   "Lets users skip the processing of voxel values that are\n"
+   "exactly zero -- to allow for non-overlap between subjects." } ,
+
+ { 4 , OCT , 2010 , RWC , "afni" , MICRO , TYPE_GENERAL ,
+   "Add 'Voxel Indexes' button to crosshair popup menu" ,
+   NULL } ,
+
  { 27 , SEP , 2010 , RWC , "small fixes" , MICRO , TYPE_GENERAL ,
    "To patch minor problems pointed out by icc" ,
    NULL } ,
@@ -55,7 +88,7 @@ afni_history_struct rwcox_history[] = {
    "the time STAMPER macro to de-ref the NULL pointer.  STAMPER was modified\n"
    "to avoid this problem, which would cause afni to crash if the user\n"
    "switched to +tlrc during drawing in +orig.  This, of course, is Daniel\n"
-   "Glen's fault." } ,
+   "Glen's fault (because surely I am guiltless)." } ,
 
  { 24 , SEP , 2010 , RWC , "afni" , MICRO , TYPE_NEW_ENV ,
    "AFNI_SQRT_AUTORANGE is no more" ,

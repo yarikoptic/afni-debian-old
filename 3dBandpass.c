@@ -24,6 +24,7 @@ int main( int argc , char * argv[] )
    float **vec , **ort=NULL ; int nort=0 , vv , nopt , ntime  ;
    MRI_vectim *mrv ;
    float pvrad=0.0f ; int nosat=0 ;
+   int do_despike=0 ;
 
    /*-- help? --*/
 
@@ -37,8 +38,8 @@ int main( int argc , char * argv[] )
        "* 'dataset' is a 3D+time sequence of volumes\n"
        "\n"
        "* fbot = lowest frequency in the passband, in Hz\n"
-       "   ++ fbot can be 0 if you want to do a lowpass filter only,\n"
-       "       but the mean and Nyquist freq are always removed.\n"
+       "   ++ fbot can be 0 if you want to do a lowpass filter only;\n"
+       "       HOWEVER, the mean and Nyquist freq are always removed.\n"
        "\n"
        "* ftop = highest frequency in the passband (must be > fbot)\n"
        "   ++ if ftop > Nyquist freq, then it's a highpass filter only.\n"
@@ -62,6 +63,16 @@ int main( int argc , char * argv[] )
        "  ++ The program will use a power-of-2, possibly multiplied by]\n"
        "     a single factor of 3 and/or a single factor of 5; e.g.,\n"
        "     240=16*3*5 would be chosen if there are 239 time points.\n"
+       "  ++ If you use the '-nfft' option, you can choose an FFT length\n"
+       "     that includes factors 3^2, 3^3, 5^2, and 5^3 in addition to\n"
+       "     the automatic selection list (which only allows 3^1 and 5^1).\n"
+       "     ++ Such FFT lengths are slower, and you should know what you\n"
+       "        are doing if you choose this option!\n"
+       "     ++ For example, if the input time series has length 136,\n"
+       "        the default FFT length would be 160 = 32*5, but you\n"
+       "        could legally use '-nfft 144' since 144 = 16*9.\n"
+       "     ++ Why you would want this level of control is between you and\n"
+       "        Cooley and Tukey.\n"
        "\n"
        "* Note that the results of combining 3dDetrend and 3dBandpass will\n"
        "   depend on the order in which you run these programs.  That's why\n"
@@ -70,20 +81,25 @@ int main( int argc , char * argv[] )
        "\n"
        "* The output dataset is stored in float format.\n"
        "\n"
-       "* The order of processing steps is the following:\n"
-       "  ++ Removal of a constant+linear+quadratic trend in each data time series\n"
-       "  ++ Bandpass of data time series\n"
-       "  ++ Bandpass of -ort time series, then detrending of data\n"
+       "* The order of processing steps is the following (most are optional):\n"
+       " (0) Check time series for initial transients [does not alter data]\n"
+       " (1) Despiking of each time series\n"
+       " (2) Removal of a constant+linear+quadratic trend in each time series\n"
+       " (3) Bandpass of data time series\n"
+       " (4) Bandpass of -ort time series, then detrending of data\n"
        "      with respect to the -ort time series\n"
-       "  ++ Bandpass and de-orting of the -dsort dataset,\n"
+       " (5) Bandpass and de-orting of the -dsort dataset,\n"
        "      then detrending of the data with respect to -dsort\n"
-       "  ++ Blurring inside the mask\n"
-       "  ++ Local PV calculation (this can be slow)\n"
-       "  ++ L2 normalization\n"
+       " (6) Blurring inside the mask [might be slow]\n"
+       " (7) Local PV calculation     [WILL be slow!]\n"
+       " (8) L2 normalization         [will be fast.]\n"
        "\n"
        "--------\n"
        "OPTIONS:\n"
        "--------\n"
+       " -despike        = Despike each time series before other processing.\n"
+       "                   ++ Hopefully, you don't actually need to do this,\n"
+       "                      which is why it is optional.\n"
        " -ort f.1D       = Also orthogonalize input to columns in f.1D\n"
        "                   ++ Multiple '-ort' options are allowed.\n"
        " -dsort fset     = Orthogonalize each voxel to the corresponding\n"
@@ -93,6 +109,8 @@ int main( int argc , char * argv[] )
        "                   ++ At present, only one '-dsort' option is allowed.\n"
        " -nodetrend      = Skip the quadratic detrending of the input that\n"
        "                    occurs before the FFT-based bandpassing.\n"
+       "                   ++ You would only want to do this if the dataset\n"
+       "                      had been detrended already in some other program.\n"
        " -dt dd          = set time step to 'dd' sec [default=from dataset header]\n"
        " -nfft N         = set the FFT length to 'N' [must be a legal value]\n"
        " -norm           = Make all output time series have L2 norm = 1\n"
@@ -105,14 +123,17 @@ int main( int argc , char * argv[] )
        "                    (AKA first singular vector) from a neighborhood\n"
        "                    of radius 'rrr' millimiters.\n"
        "                   ++ Note that the PV time series is L2 normalized.\n"
-       "                   ++ This option is for Bob Cox to have fun with.\n"
+       "                   ++ This option is mostly for Bob Cox to have fun with.\n"
+       "\n"
        " -input dataset  = Alternative way to specify input dataset.\n"
        " -band fbot ftop = Alternative way to specify passband frequencies.\n"
+       "\n"
        " -prefix ppp     = Set prefix name of output dataset.\n"
        " -quiet          = Turn off the fun and informative messages. (Why?)\n"
+       "\n"
        " -notrans        = Don't check for initial positive transients in the data:\n"
        "                   ++ The test is a little slow, so skipping it is OK,\n"
-       "                      if you KNOW the data time series are transient-free.\n"
+       "                      if you know the data time series are transient-free.\n"
        "                   ++ Initial transients won't be handled well by the\n"
        "                      bandpassing algorithm, and in addition may seriously\n"
        "                      contaminate any further processing, such as inter-voxel\n"
@@ -137,11 +158,17 @@ int main( int argc , char * argv[] )
    nopt = 1 ;
    while( nopt < argc && argv[nopt][0] == '-' ){
 
+     if( strcmp(argv[nopt],"-despike") == 0 ){  /* 08 Oct 2010 */
+       do_despike++ ; nopt++ ; continue ;
+     }
+
      if( strcmp(argv[nopt],"-nfft") == 0 ){
+       int nnup ;
        if( ++nopt >= argc ) ERROR_exit("need an argument after -nfft!") ;
        nfft = (int)strtod(argv[nopt],NULL) ;
-       if( nfft < 16 || nfft != csfft_nextup_one35(nfft) )
-         ERROR_exit("value after -nfft is illegal!") ;
+       nnup = csfft_nextup_even(nfft) ;
+       if( nfft < 16 || nfft != nnup )
+         ERROR_exit("value %d after -nfft is illegal! Next legal value = %d",nfft,nnup) ;
        nopt++ ; continue ;
      }
 
@@ -371,6 +398,13 @@ int main( int argc , char * argv[] )
    }
 
    /* all the real work now */
+
+   if( do_despike ){
+     int_pair nsp ;
+     if( verb ) INFO_message("Testing data time series for spikes") ;
+     nsp = THD_vectim_despike9( mrv ) ;
+     if( verb ) ININFO_message(" -- Squashed %d spikes from %d voxels",nsp.j,nsp.i) ;
+   }
 
    if( verb ) INFO_message("Bandpassing data time series") ;
    (void)THD_bandpass_vectim( mrv , dt,fbot,ftop , qdet , nort,ort ) ;

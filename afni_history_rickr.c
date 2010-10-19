@@ -49,6 +49,22 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 16, OCT, 2010, RCR, "timing_tool.py", MICRO, TYPE_BUG_FIX,
+   "fixed timing_to_1D fractions",
+   NULL
+ } ,
+
+ { 15, OCT, 2010, RCR, "timing_tool.py", MINOR, TYPE_NEW_OPT,
+   "added -multi_timing_to_events, -multi_timing_to_event_pair, -per_run",
+   "- Modified timing_tool.py, lib_timing.py, lib_textdata.py, afni_util.py.\n"
+   "- Added for N Adleman."
+ } ,
+
+ { 12, OCT, 2010, RCR, "3dREMLfit", MICRO, TYPE_GENERAL,
+   "small help update to clarify slice-based regressor warnings",
+   "Requested by D Handwerker."
+ } ,
+
  { 17, SEP, 2010, RCR, "3dttest++", MINOR, TYPE_BUG_FIX,
    "init workspace with 0",
    "Trouble noted by M Choi"

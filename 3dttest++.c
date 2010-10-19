@@ -39,8 +39,9 @@ void TT_matrix_setup( int kout ) ;  /* 30 Jul 2010 */
 #undef  MAX_LABEL_SIZE
 #define MAX_LABEL_SIZE 12
 
-static int toz = 0 ;  /* convert t-statistics to z-scores? */
+static int toz    = 0 ;  /* convert t-statistics to z-scores? */
 static int twosam = 0 ;
+static int zskip  = 0 ;  /* 06 Oct 2010 [a dark day at Weathertop] */
 
 static NI_element         *covnel=NULL ;       /* covariates */
 static NI_str_array       *covlab=NULL ;
@@ -245,7 +246,7 @@ void display_help_menu(void)
       "* If you used a short form '-setX' option, each dataset label is\n"
       "   the dataset's prefix name (truncated to 12 characters).\n"
       "  ++ e.g.,  fred+tlrc'[3]'  ==>  fred\n"
-      "  ++ e.g.,  elvis.nii.gz    ==>  elvisn"
+      "  ++ e.g.,  elvis.nii.gz    ==>  elvis\n"
       "\n"
       "* '-covariates' can only be used with the short form '-setX' option\n"
       "   if each input dataset has only 1 sub-brick (so that each label\n"
@@ -302,6 +303,7 @@ void display_help_menu(void)
       " -center NONE = Do not remove the mean of any covariate.\n"
       " -center DIFF = Each set will have the means removed separately.\n"
       " -center SAME = The means across both sets will be computed and removed.\n"
+      "                (This option only applies to a 2-sample test, obviously.)\n"
       "\n"
       " ++ The default operation is '-center DIFF'.\n"
       "\n"
@@ -312,21 +314,58 @@ void display_help_menu(void)
       "    IQ in setA is significantly higher than in setB, and that the beta\n"
       "    values are positively correlated with IQ.  Then the mean in\n"
       "    setA will be higher than in setB simply from the IQ effect.\n"
-      "    To avoid this type of inter-group mean differences,  you\n"
-      "    would have to center the two groups together, rather than\n"
+      "    To attempt to allow for this type of inter-group mean differences,\n"
+      "    you would have to center the two groups together, rather than\n"
       "    separately (i.e., '-center SAME').\n"
       "\n"
       " ++ How to choose between '-center SAME' or '-center DIFF'?  You have\n"
       "    to understand what your model is and what effect the covariates\n"
       "    are likely to have on the data.  You shouldn't just blindly us\n"
       "    covariates 'just in case'.  That way lies statistical madness.\n"
+      "  -- If the two sample don't differ much in the mean values of their\n"
+      "      covariates, then the results with '-center SAME' and '-center DIFF'\n"
+      "      should be nearly the same.\n"
+      "  -- If the two samples DO differ much in the mean values of their\n"
+      "      covariates, then you should read the next point carefully.\n"
+      "\n"
+      " ++ The principal purpose of including covariates in an analysis (ANCOVA)\n"
+      "    is to reduce the variance of the beta values due to extraneous causes.\n"
+      "    Some investigators also wish to use covariates to 'factor out' significant\n"
+      "    differences between groups.  However, there are those who argue\n"
+      "    (convincingly) that if your two groups differ markedly in their mean\n"
+      "    covariate values, then there is NO statistical test that can tell if\n"
+      "    their mean beta values (dependent variable) would be the same or\n"
+      "    different if their covariate values were all the same instead:\n"
+      "      Miller GM and Chapman JP. 'Misunderstanding analysis of covariance',\n"
+      "      J Abnormal Psych 110: 40-48 (2001) \n"
+      "      http://dx.doi.org/10.1037/0021-843X.110.1.40\n"
+      "      http://psycnet.apa.org/journals/abn/110/1/40.pdf\n"
+      "  -- For example, if all your control subjects have high IQs and all your\n"
+      "      patient subjects have normal IQs, group differences in activation can\n"
+      "      be due to either cause (IQ or disease status) and you can't turn the\n"
+      "      results from a set of high IQ controls into the results you would have\n"
+      "      gotten from a set of normal IQ controls (so you can compare them to the\n"
+      "      patients) just by linear regression and then pretending the IQ issue\n"
+      "      goes away.\n"
+      "  -- The decision as to whether a mean covariate difference between groups\n"
+      "      makes the t-test of the mean beta difference invalid or valid is\n"
+      "      not purely a statistical question.  See the Miller & Chapman paper\n"
+      "      (supra) for a lengthy discussion of this issue.\n"
+      "  -- It is not clear how much difference in covariate levels is acceptable.\n"
+      "      You could carry out a t-test on the covariate values between the\n"
+      "      2 groups and if the difference in means is not significant at some\n"
+      "      level (p > 0.05?), then accept the two groups as being 'identical'\n"
+      "      in that measured variable.\n"
+      "  -- Thanks to Andy Mayer for pointing out this article to me.\n"
       "\n"
       " ++ At this time, there is no option to force the SLOPES of the\n"
       "    regression vs. covariate values to be the same in the two-sample\n"
       "    analysis.  [Adding this feature would be too much like work.]\n"
+#if 0
       "\n"
       " ++ (Actually, only the first letter of the argument after '-center' is)\n"
       "    (used to set the centering code, and it can be upper or lower case.)\n"
+#endif
       "\n"
 
       "-------------\n"
@@ -351,9 +390,26 @@ void display_help_menu(void)
       "                 '-unpooled' is not needed.\n"
       "\n"
       " -toz      = Convert output t-statistics to z-scores\n"
-      "             ++ This might be useful for the '-unpooled' case, where\n"
-      "                 the t-statistics aren't directly comparable since\n"
-      "                 the degrees of freedom will vary between voxels.\n"
+      "             ++ -unpooled implies -toz, since t-statistics won't be\n"
+      "                 comparable between voxels as the number of degrees\n"
+      "                 of freedom will vary between voxels.\n"
+      "\n"
+      " -zskip [n]= Do not include voxel values that are zero in the analysis.\n"
+      "             ++ This option can be used when not all subjects' datasets\n"
+      "                 overlap perfectly.\n"
+      "             ++ -zskip implies -toz, since the number of samples per\n"
+      "                 voxel will now vary, so the number of degrees of\n"
+      "                 freedom will be spatially variable.\n"
+      "             ++ If you follow '-zskip' with a positive integer (> 1),\n"
+      "                 then that is the minimum number of nonzero values (in\n"
+      "                 each of setA and setB, separately) that must be present\n"
+      "                 before the t-test is carried out.  If you don't give\n"
+      "                 this value, its default is 5 (for no good reason).\n"
+      "             ++ At this time, you can't use -zskip with -covariates,\n"
+      "                 because that would require more extensive re-thinkg\n"
+      "                 and then re-programming.\n"
+      "             ++ You can't use -zskip with -paired, for obvious reasons.\n"
+      "             ++ [This option added 06 Oct 2010 -- RWCox]\n"
       "\n"
       " -mask mmm = Only compute results for voxels in the specified mask.\n"
       "             ++ Voxels not in the mask will be set to 0 in the output.\n"
@@ -561,7 +617,7 @@ void display_help_menu(void)
 
 int main( int argc , char *argv[] )
 {
-   int nopt , nbad , ii,jj,kk , kout,ivox , vstep , dconst , nconst=0 ;
+   int nopt, nbad, ii,jj,kk, kout,ivox, vstep, dconst, nconst=0, nzskip=0,nzred=0  ;
    MRI_vectim *vimout ;
    float *workspace=NULL , *datAAA , *datBBB=NULL , *resar ; size_t nws=0 ;
    float_pair tpair ;
@@ -586,6 +642,17 @@ int main( int argc , char *argv[] )
 
    nopt = 1 ;
    while( nopt < argc ){
+
+     /*----- zskip -----*/
+
+     if( strcmp(argv[nopt],"-zskip")     == 0 ||
+         strcmp(argv[nopt],"-skip_zero") == 0   ){  /* 06 Oct 2010 */
+       zskip = 5 ; nopt++ ;
+       if( nopt < argc && isdigit(argv[nopt][0]) ){
+         zskip = (int)strtod(argv[nopt++],NULL) ; if( zskip < 2 ) zskip = 2 ;
+       }
+       continue ;
+     }
 
      /*----- debug -----*/
 
@@ -845,6 +912,20 @@ int main( int argc , char *argv[] )
    if( nmask > 0 && nmask != nvox )
      ERROR_exit("-mask doesn't match datasets number of voxels") ;
 
+   if( zskip && mcov > 0 )
+     ERROR_exit("-zskip and -covariates cannot be used together [yet] :-(") ;
+
+   if( zskip && ttest_opcode == 2 )
+     ERROR_exit("-zskip and -paired cannot be used together :-(") ;
+
+   if( zskip && nval_AAA < zskip )
+     ERROR_exit("-zskip %d is more than number of data values in setA (%d)",
+                zskip , nval_AAA ) ;
+
+   if( zskip && nval_BBB > 0 && nval_BBB < zskip )
+     ERROR_exit("-zskip %d is more than number of data values in setB (%d)",
+                zskip , nval_BBB ) ;
+
    if( nval_AAA - mcov < 2 ||
        ( twosam && (nval_BBB - mcov < 2) ) )
      ERROR_exit("Too many covariates compared to number of datasets") ;
@@ -863,6 +944,13 @@ int main( int argc , char *argv[] )
    if( ttest_opcode == 1 && mcov > 0 ){
      WARNING_message("-covariates does not support unpooled variance") ;
      ttest_opcode = 0 ;
+   }
+
+   if( zskip && !toz ){
+     toz = 1 ; INFO_message("-zskip also turns on -toz") ;
+   }
+   if( ttest_opcode == 1 && !toz ){
+     toz = 1 ; INFO_message("-unpooled also turns on -toz") ;
    }
 
    if( nmask == 0 ){
@@ -1008,7 +1096,7 @@ int main( int argc , char *argv[] )
        free(qset) ;
      } /* end of AAA covariates datasets processing */
 
-     /* Alas Babylon! */
+     /*- Alas Babylon! -*/
 
      if( nbad > 0 ) ERROR_exit("Cannot continue past above ERROR%s :-(",
                                 (nbad==1) ? "\0" : "s" ) ;
@@ -1193,18 +1281,50 @@ int main( int argc , char *argv[] )
      }
 
      if( mcov == 0 ){  /*--- no covariates ==> standard t-tests ---*/
+       float *zAAA=datAAA, *zBBB=datBBB ; int nAAA=nval_AAA, nBBB=nval_BBB, nz,qq ;
+
+       if( zskip ){  /* 06 Oct 2010: skip zero values? */
+         for( ii=nz=0 ; ii < nval_AAA ; ii++ ) nz += (datAAA[ii] == 0.0f) ;
+         if( nz > 0 ){            /* copy nonzero vals to a new array */
+           nAAA = nval_AAA - nz ;
+           if( nAAA < zskip ){
+             memset( resar , 0 , sizeof(float)*nvout ) ; kout++ ; nzskip++ ; continue ;
+           }
+           zAAA = (float *)malloc(sizeof(float)*nAAA) ;
+           for( ii=qq=0 ; ii < nval_AAA ; ii++ )
+             if( datAAA[ii] != 0.0f ) zAAA[qq++] = datAAA[ii] ;
+         }
+         if( twosam ){
+           for( ii=nz=0 ; ii < nval_BBB ; ii++ ) nz += (datBBB[ii] == 0.0f) ;
+           if( nz > 0 ){            /* copy nonzero vals to a new array */
+             nBBB = nval_BBB - nz ;
+             if( nBBB < zskip ){
+               if( zAAA != datAAA && zAAA != NULL ) free(zAAA) ;
+               memset( resar , 0 , sizeof(float)*nvout ) ; kout++ ; nzskip++ ; continue ;
+             }
+             zBBB = (float *)malloc(sizeof(float)*nBBB) ;
+             for( ii=qq=0 ; ii < nval_BBB ; ii++ )
+               if( datBBB[ii] != 0.0f ) zBBB[qq++] = datBBB[ii] ;
+           }
+         }
+         if( (zAAA != datAAA && zAAA != NULL) || (zBBB != datBBB && zBBB != NULL) )
+           nzred++ ;
+       }
 
        if( twosam ){
-         tpair = ttest_toz( nval_AAA,datAAA , nval_BBB,datBBB , ttest_opcode ) ;
+         tpair = ttest_toz( nAAA,zAAA , nBBB,zBBB , ttest_opcode ) ;
          resar[0] = tpair.a ; resar[1] = tpair.b ;
-         tpair = ttest_toz( nval_AAA,datAAA , 0 ,NULL   , ttest_opcode ) ;
+         tpair = ttest_toz( nAAA,zAAA , 0 ,NULL   , ttest_opcode ) ;
          resar[2] = tpair.a ; resar[3] = tpair.b ;
-         tpair = ttest_toz( nval_BBB,datBBB , 0 ,NULL   , ttest_opcode ) ;
+         tpair = ttest_toz( nBBB,zBBB , 0 ,NULL   , ttest_opcode ) ;
          resar[4] = tpair.a ; resar[5] = tpair.b ;
        } else {
-         tpair = ttest_toz( nval_AAA,datAAA , 0 ,NULL   , ttest_opcode ) ;
+         tpair = ttest_toz( nAAA,zAAA , 0 ,NULL   , ttest_opcode ) ;
          resar[0] = tpair.a ; resar[1] = tpair.b ;
        }
+
+       if( zBBB != datBBB && zBBB != NULL ) free(zBBB) ;
+       if( zAAA != datAAA && zAAA != NULL ) free(zAAA) ;
 
      } else {          /*--- covariates ==> regression analysis ---*/
 
@@ -1232,6 +1352,14 @@ int main( int argc , char *argv[] )
    if( nconst > 0 )
      INFO_message("skipped %d voxel%s for having constant data" ,
                   nconst , (nconst==1) ? "\0" : "s" ) ;
+
+   if( nzred > 0 )
+     INFO_message("-zskip: %d voxel%s had some values skipped in the t-test",
+                  nzred , (nzred==1) ? "\0" : "s" ) ;
+
+   if( nzskip > 0 )
+     INFO_message("-zskip: skipped %d voxel%s for having fewer than %d nonzero values" ,
+                  nzskip , (nzskip==1) ? "\0" : "s" , zskip ) ;
 
    /*-------- get rid of the input data now --------*/
 
@@ -1499,7 +1627,7 @@ float_pair ttest_toz( int numx, float *xar, int numy, float *yar, int opcode )
 
 ENTRY("ttest_toz") ;
 
-#if 0
+#if 1
    /* check inputs for stoopidities or other things that need to be changed */
 
    if( numx < 2 || xar == NULL                 ) RETURN(result) ; /* bad */

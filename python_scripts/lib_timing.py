@@ -645,7 +645,7 @@ class AfniMarriedTiming:
 
       return 0
 
-   def timing_to_1D(self, run_len, tr, min_frac):
+   def timing_to_1D(self, run_len, tr, min_frac, per_run=0):
       """return a 0/1 array of trs surviving min_frac cutoff
 
                 run_len   : list of run durations, in seconds
@@ -654,26 +654,43 @@ class AfniMarriedTiming:
                 min_frac  : minimum TR fraction occupied by stimulus required
                             for a set value in output array
                             (must be in [0.0, 1.0])
+                per_run   : if set, result is list of runs, else catenated
 
          return an error string and the 0/1 array
                 (on success, the error string is '')
       """
 
-      errstr, result = self.timing_to_tr_frac(run_len, tr)
+      # maybe the user provided only one run length
+      if self.nrows > 0 and len(run_len) == 1:
+         run_len = [run_len[0]] * self.nrows
+
+      errstr, result = self.timing_to_tr_frac(run_len, tr, per_run)
 
       if errstr != '' or len(result) < 1: return errstr, result
 
-      new_res = [0 for ind in range(len(result))]
-      for ind, val in enumerate(result):
-         if val >= min_frac: new_res[ind] = 1
+      if per_run:
+         new_res = []
+         for row in result:
+            new_res.append(self.get_threshold_list(row, min_frac))
+      else:
+         new_res = self.get_threshold_list(result, min_frac)
 
       del(result)
 
       return '', new_res
 
-   def timing_to_tr_frac(self, run_len, tr):
+   def get_threshold_list(self, data, min_val):
+      """return a 0/1 copy of 'data', with each value set iff >= min_val"""
+      result = [0 for ind in range(len(data))]
+      for ind, val in enumerate(data):
+         if val >= min_val: result[ind] = 1
+      return result
+
+   def timing_to_tr_frac(self, run_len, tr, per_run=0):
       """return an array of stim fractions, where is value is the fraction
          of the current TR occupied by stimulus
+
+         --> if per_run is set, output will be one row per run
 
          The output will be of length sum(TRs per run) and will be in [0,1.0].
          Note that a single stimulus can span multiple TRs.
@@ -736,7 +753,7 @@ class AfniMarriedTiming:
       for ind, data in enumerate(scopy.data):
           if len(data) < 1: continue
           if data[-1][1] > run_len[ind] or run_len[ind] < 0:
-              return '** run %d, stim ends after end of run' % (ind+1, [])
+              return '** run %d, stim ends after end of run' % (ind+1), []
           
       result = []
       # process one run at a time, first converting to TR indicies
@@ -762,12 +779,14 @@ class AfniMarriedTiming:
          # do the real work, for each stimulus, fill appropriate tr fractions
          # init frac list with TR timing (and enough TRs for run)
          num_trs = int(math.ceil( run_len[rind]/tr ))
+         if self.verb>2: print '-- TR frac: have %d TRs and %d events over run'\
+                               % (num_trs, len(data))
          rdata = [0 for i in range(num_trs)]
          for sind in range(len(data)):
-            start  = data[sind][0]
-            end    = data[sind][1]
-            startp = int(start) # indexes
-            endp   = int(end)
+            start  = data[sind][0]      # initial TR (fractional) time
+            end    = data[sind][1]      # end TR time
+            startp = int(start)         # initial TR index
+            endp   = int(end)           # end TR index
 
             # deal with easy case, else: startp, intermediates, endp
 
@@ -777,15 +796,16 @@ class AfniMarriedTiming:
                continue
 
             # startp, intermediates (between startp, endp, exclusive), endp
-            rdata[startp] = start-startp
+            rdata[startp] = round(1-(start-startp),3)
             for tind in range(startp+1,endp): rdata[tind] = 1.0
-            rdata[endp] = round(1.0-(end-endp), 3)
+            rdata[endp] = round(end-endp, 3)
 
          if self.verb > 4:
             print '\n++ timing_to_tr_fr, result for run %d:' % (rind+1)
             print ' '.join(["%g" % rdata[ind] for ind in range(len(rdata))])
 
-         result.extend(rdata)
+         if per_run: result.append(rdata)
+         else:       result.extend(rdata)
 
       del(scopy)
       del(rdata)
