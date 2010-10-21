@@ -49,6 +49,21 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 20, OCT, 2010, RCR, "afni_proc.py", MINOR, TYPE_NEW_OPT,
+   "added -tcat_remove_last_trs, -ricor_regs_rm_nlast",
+   "Added for J Czarapata."
+ } ,
+
+ { 20, OCT, 2010, RCR, "Dimon", MINOR, TYPE_NEW_OPT,
+   "added -sort_by_acq_time for -dicom_org on Philips data",
+   "Added for Manjula."
+ } ,
+
+ { 20, OCT, 2010, RCR, "thd_niftiwrite.c", MICRO, TYPE_BUG_FIX,
+   "brick stats to intent codes was off by 1 index",
+   "Problem noted by P Kohn."
+ } ,
+
  { 16, OCT, 2010, RCR, "timing_tool.py", MICRO, TYPE_BUG_FIX,
    "fixed timing_to_1D fractions",
    NULL
