@@ -1128,7 +1128,7 @@ static void mri_edgize( MRI_IMAGE *im )
 
 /*-----------------------------------------------------------------------*/
 
-#undef  ZREG
+#undef  ZREJ
 #define ZREJ(val) (reject_zero && (val)==0)   /* 20 Apr 2005 */
 
 #undef  THBOT
@@ -1559,7 +1559,7 @@ STATUS("create output image") ;
    im_ov = mri_new_conforming( im_fim , MRI_rgb ) ;
    ovar  = MRI_RGB_PTR(im_ov) ;
    npix  = im_ov->nvox ;
-   zbot  = (fimbot == 0.0) ;             /* no color for negative values? */
+   zbot  = (fimbot == 0.0f) ;             /* no color for negative values? */
    fac   = NPANE_BIG / (fimtop-fimbot) ;
 
    /* load output image with colors */
@@ -1580,9 +1580,9 @@ STATUS("data kind = short") ;
           if( ZREJ(ar_fim[ii]) )       continue ;
           if( zbot && ar_fim[ii] < 0 ) continue ;
           val = fac*(fimtop-ar_fim[ii]) ;
-          if( val < 0.0 ) val = 0.0;
-          else if (ar_fim[ii] < fimbot) val = NPANE_BIG-1; /* overflow guard */
-          jj = (int)(val+0.49);
+               if( val        < 0.0f   ) val = 0.0f ;
+          else if( ar_fim[ii] < fimbot ) val = NPANE_BIG-1.0f;
+          jj = (int)(val+0.49f);
           if( jj >= NPANE_BIG ) jj = NPANE_BIG-1;
           ovar[3*ii  ] = fimcolor[jj].r ;
           ovar[3*ii+1] = fimcolor[jj].g ;
@@ -1599,9 +1599,9 @@ STATUS("data kind = byte") ;
         for( ii=0 ; ii < npix ; ii++ ){
           if( ZREJ(ar_fim[ii]) ) continue ;
           val = fac*(fimtop-ar_fim[ii]) ;
-          if( val < 0.0 ) val = 0.0;
-          else if (ar_fim[ii] < fimbot) val = NPANE_BIG-1;
-          jj = (int)(val+0.49);
+               if( val        < 0.0f   ) val = 0.0f ;
+          else if( ar_fim[ii] < fimbot ) val = NPANE_BIG-1.0f;
+          jj = (int)(val+0.49f);
           if( jj >= NPANE_BIG ) jj = NPANE_BIG-1;
           ovar[3*ii  ] = fimcolor[jj].r ;
           ovar[3*ii+1] = fimcolor[jj].g ;
@@ -1613,22 +1613,25 @@ STATUS("data kind = byte") ;
       case MRI_float:{
         float *ar_fim = MRI_FLOAT_PTR(im_fim) ;
 
-STATUS("data kind = float") ;
+STATUS("data kind = float") ; MPROBE ;
 
 #if 0
 INFO_message("kind = float; npix=%d",npix) ;
 #endif
         for( ii=0 ; ii < npix ; ii++ ){
 #if 0
-fprintf(stderr,"%d ",ii) ;
+fprintf(stderr,"%d;",ii) ;
 #endif
           if( ZREJ(ar_fim[ii]) )          continue ;
           if( zbot && ar_fim[ii] < 0.0f ) continue ;
           val = fac*(fimtop-ar_fim[ii]) ;
-          if( val < 0.0 ) val = 0.0;
-          else if (ar_fim[ii] < fimbot) val = NPANE_BIG-1;
-          jj = (int)(val+0.49);
+               if( val        < 0.0f   ) val = 0.0f ;
+          else if( ar_fim[ii] < fimbot ) val = NPANE_BIG-1.0f;
+          jj = (int)(val+0.49f);
           if( jj >= NPANE_BIG ) jj = NPANE_BIG-1;
+#if 0
+fprintf(stderr,";") ;
+#endif
           ovar[3*ii  ] = fimcolor[jj].r ;
           ovar[3*ii+1] = fimcolor[jj].g ;
           ovar[3*ii+2] = fimcolor[jj].b ;
@@ -1906,7 +1909,6 @@ ENTRY("AFNI_underlay_CB") ;
    switch( im3d->vinfo->underlay_type ){
 
       default:
-         XBell( im3d->dc->display , 100 ) ;  /* beep and fall through! */
 
       case UNDERLAY_ANAT:                    /* set underlay to anat */
 
@@ -1929,7 +1931,7 @@ STATUS("functional underlay") ;
 
 STATUS("defaulted anatomy underlay") ;
 
-            XBell( im3d->dc->display , 100 ) ;
+            BEEPIT ; WARNING_message("invalid Overlay dataset") ;
 
             im3d->b123_ulay = im3d->b123_anat ;
             im3d->b231_ulay = im3d->b231_anat ;
@@ -2232,10 +2234,14 @@ ENTRY("AFNI_choose_dataset_CB") ;
    if( ! IM3D_VALID(im3d) || w == (Widget)NULL ) EXRETURN ;
 
    if( GLOBAL_library.have_dummy_dataset ){  /* 26 Feb 2007: read session? */
-     BEEPIT ;
      if( w == im3d->vwid->view->choose_sess_pb ||
-         w == im3d->vwid->view->popchoose_sess_pb )
-       AFNI_read_sess_CB(im3d->vwid->dmode->read_sess_pb,(XtPointer)im3d,NULL);
+         w == im3d->vwid->view->popchoose_sess_pb ){
+
+       AFNI_read_sess_CB(im3d->vwid->dmode->read_sess_pb,(XtPointer)im3d,NULL) ;
+
+     } else {
+       BEEPIT ; WARNING_message("Can't choose dataset if all you have is Dummy") ;
+     }
      EXRETURN ;
    }
 
@@ -2525,7 +2531,9 @@ ENTRY("AFNI_finalize_dataset_CB") ;
 
       new_sess = cbs->ival ;
       if( new_sess < 0 || new_sess >= GLOBAL_library.sslist->num_sess ){
-         XBell( im3d->dc->display , 100 ) ; EXRETURN ;  /* bad! */
+         BEEPIT ;
+         WARNING_message("bad session index when finalizing choice") ;
+         EXRETURN ;  /* bad! */
       }
 
       ss_new = GLOBAL_library.sslist->ssar[new_sess] ;
@@ -2568,7 +2576,9 @@ ENTRY("AFNI_finalize_dataset_CB") ;
             if( vv <= LAST_VIEW_TYPE ){  /* found it above */
                new_view = vv ;
             } else {
-               XBell(im3d->dc->display,100) ; EXRETURN ;  /* bad news */
+               BEEPIT ;
+               WARNING_message("bad view code when finalizing choice") ;
+               EXRETURN ;  /* bad news */
             }
          }
       }
@@ -2604,7 +2614,9 @@ ENTRY("AFNI_finalize_dataset_CB") ;
 
       new_anat = cbs->ival ;
       if( new_anat < 0 || new_anat >= ss_new->num_dsset ){
-         XBell( im3d->dc->display , 100 ) ; EXRETURN ;  /* bad! */
+         BEEPIT ;
+         WARNING_message("bad anat index when finalizing choice") ;
+         EXRETURN ;  /* bad! */
       }
 
       /* find a view to fit this chosen anat */
@@ -2632,7 +2644,9 @@ ENTRY("AFNI_finalize_dataset_CB") ;
             if( vv <= LAST_VIEW_TYPE ){  /* found it above */
                new_view = vv ;
             } else {
-               XBell(im3d->dc->display,100) ; EXRETURN ;  /* bad news */
+               BEEPIT ;
+               WARNING_message("bad func index when finalizing choice") ;
+               EXRETURN ;  /* bad news */
             }
          }
       }
@@ -2667,7 +2681,9 @@ ENTRY("AFNI_finalize_dataset_CB") ;
 
       new_func = cbs->ival ;
       if( new_func < 0 || new_func >= ss_new->num_dsset ){
-         XBell( im3d->dc->display , 100 ) ; EXRETURN ;  /* bad! */
+         BEEPIT ;
+         WARNING_message("bad func index when finalizing choice!") ;
+         EXRETURN ;  /* bad! */
       }
 
       /* find a view to fit this chosen func */
@@ -2694,7 +2710,9 @@ ENTRY("AFNI_finalize_dataset_CB") ;
             if( vv <= LAST_VIEW_TYPE ){  /* found it above */
                new_view = vv ;
             } else {
-               XBell(im3d->dc->display,100) ; EXRETURN ;  /* bad news */
+               BEEPIT ;
+               WARNING_message("bad view index when finalizing choice!") ;
+               EXRETURN ;  /* bad news */
             }
          }
       }
@@ -2714,7 +2732,9 @@ ENTRY("AFNI_finalize_dataset_CB") ;
          if( ff < ss_new->num_dsset ) new_anat = ff ;  /* found one */
       }
       if( new_anat < 0 ){
-         XBell( im3d->dc->display , 100 ) ; EXRETURN ;  /* bad! */
+         BEEPIT ;
+         WARNING_message("bad anat index when finalizing choice!") ;
+         EXRETURN ;  /* bad! */
       }
 
       /* 03 Aug 2007: turn 'See Overlay' on? */
@@ -2726,7 +2746,9 @@ ENTRY("AFNI_finalize_dataset_CB") ;
    /*--- switch to Hell? ---*/
 
    } else {
-      XBell( im3d->dc->display , 100 ) ; EXRETURN ;  /* bad! */
+      BEEPIT ;
+      WARNING_message("bad switch?!") ;
+      EXRETURN ;  /* bad! */
    }
 
    /*--- make sure all values are set OK-ly ---*/
@@ -2784,7 +2806,7 @@ ENTRY("AFNI_finalize_dataset_CB") ;
    FIX_SCALE_SIZE(im3d) ;
 
    if( old_view != new_view ){            /* ending flash */
-     XBell( im3d->dc->display , 100 ) ;
+     BEEPIT ;
      for( ii=0 ; ii < 8 ; ii++ ){
        MCW_invert_widget( im3d->vwid->view->view_bbox->wframe ); RWC_sleep(16);
        MCW_invert_widget( im3d->vwid->view->view_bbox->wrowcol); RWC_sleep(16);
@@ -3114,7 +3136,7 @@ STATUS("comparing to other sessions") ;
 
                if( eq == 1 ){
 STATUS("illegal duplicate session") ;
-                  XBell(im3d->dc->display,100) ;
+                  BEEPIT ;
                   (void) MCW_popup_message( w ,
                                              "*******************************\n"
                                              "** Illegal duplicate session **\n"
@@ -3128,7 +3150,7 @@ STATUS("reading new session") ;
             } else { /** wasn't a directory!? **/
 
 STATUS("wasn't a directory") ;
-               XBell(im3d->dc->display,100) ;
+               BEEPIT ;
                (void) MCW_popup_message( w ,
                                           "***********************************\n"
                                           "** Cannot find session directory **\n"
@@ -3142,7 +3164,7 @@ STATUS("wasn't a directory") ;
             if( new_ss == NULL || new_ss->num_dsset == 0 ){ /** failed to read anything **/
 
 STATUS("failed to read new session") ;
-               XBell(im3d->dc->display,100) ;
+               BEEPIT ;
                (void) MCW_popup_message( w ,
                                            "******************************\n"
                                            "** Cannot read any datasets **\n"
@@ -3152,7 +3174,7 @@ STATUS("failed to read new session") ;
             } else if( GLOBAL_library.sslist->num_sess >= THD_MAX_NUM_SESSION ){
 
 STATUS("too many sessions") ;
-               XBell(im3d->dc->display,100) ;
+               BEEPIT ;
                (void) MCW_popup_message( w ,
                                            "****************************\n"
                                            "** Max number of sessions **\n"
@@ -3348,7 +3370,7 @@ ENTRY("AFNI_finalize_read_1D_CB") ;
          XmStringGetLtoR( cbs->value , XmFONTLIST_DEFAULT_TAG , &text ) ;
          flim = mri_read_1D( text ) ;
          if( flim == NULL || flim->nx < 2 ){
-            XBell(im3d->dc->display,100) ;
+            BEEPIT ;
             (void) MCW_popup_message( w ,
                                        "********************************\n"
                                        "** Cannot read data from file **\n"
@@ -3443,7 +3465,7 @@ ENTRY("AFNI_finalize_read_Web_CB") ;
                                   " \n** Illegal URL **\n " ,
                                 MCW_USER_KILL | MCW_TIMER_KILL      ) ;
 
-      XBell( XtDisplay(w) , 100 ) ; EXRETURN ;
+      BEEPIT ; EXRETURN ;
    }
 
    /** read a list of datasets? **/
@@ -3459,7 +3481,7 @@ ENTRY("AFNI_finalize_read_Web_CB") ;
                                      "** Can't get datasets **\n"
                                      "** from that URL!     **\n " ,
                                    MCW_USER_KILL | MCW_TIMER_KILL      ) ;
-         XBell( XtDisplay(w) , 100 ) ; EXRETURN ;
+         BEEPIT ; EXRETURN ;
       }
 
    } else {  /** read one dataset **/
@@ -3473,7 +3495,7 @@ ENTRY("AFNI_finalize_read_Web_CB") ;
                                    "** Can't get a dataset **\n"
                                    "** from that URL!      **\n " ,
                                   MCW_USER_KILL | MCW_TIMER_KILL      ) ;
-        XBell( XtDisplay(w) , 100 ) ; EXRETURN ;
+        BEEPIT ; EXRETURN ;
       }
       INIT_XTARR(dsar) ; ADDTO_XTARR(dsar,dset) ; XTARR_IC(dsar,0) = IC_DSET ;
    }
@@ -3520,7 +3542,7 @@ ENTRY("AFNI_finalize_read_Web_CB") ;
    (void) MCW_popup_message( im3d->vwid->dmode->read_Web_pb ,
                              str , MCW_USER_KILL | MCW_TIMER_KILL ) ;
 
-   if( nds == 0 ){ XBell(XtDisplay(w),100); EXRETURN; }
+   if( nds == 0 ){ EXRETURN; }
 
    /*-- prepare to switch back to AFNI --*/
 
@@ -3666,7 +3688,7 @@ static int AFNI_rescan_session_OLD( int sss )  /* the old way */
 ENTRY("AFNI_rescan_session_OLD") ;
 { char str[256]; sprintf(str,"session index %d\n",sss); STATUS(str); }
 
-   if( GLOBAL_library.have_dummy_dataset ){ BEEPIT ; RETURN(0) ; }
+   if( GLOBAL_library.have_dummy_dataset ){ RETURN(0) ; }
 
 #if 0
 fprintf(stderr,"Enter AFNI_rescan_session_OLD on session index %d\n",sss) ;
@@ -3674,10 +3696,10 @@ fprintf(stderr,"Enter AFNI_rescan_session_OLD on session index %d\n",sss) ;
 
    /*--- sanity checks ---*/
 
-   if( sss < 0 || sss >= GLOBAL_library.sslist->num_sess ){ BEEPIT ; RETURN(0) ; }
+   if( sss < 0 || sss >= GLOBAL_library.sslist->num_sess ){ RETURN(0) ; }
 
    old_ss = GLOBAL_library.sslist->ssar[sss] ;
-   if( ! ISVALID_SESSION(old_ss) ){ BEEPIT; RETURN(0); }
+   if( ! ISVALID_SESSION(old_ss) ){ RETURN(0); }
 
    if( old_ss == GLOBAL_library.session ) RETURN(0) ;  /* 21 Dec 2001 */
 
@@ -3894,7 +3916,7 @@ static int AFNI_rescan_session_NEW( int sss )   /* the new way */
 ENTRY("AFNI_rescan_session_NEW") ;
 { char str[256]; sprintf(str,"session index %d\n",sss); STATUS(str); }
 
-   if( GLOBAL_library.have_dummy_dataset ){ BEEPIT; RETURN(0); }
+   if( GLOBAL_library.have_dummy_dataset ){ RETURN(0); }
 
 #if 0
 fprintf(stderr,"Enter AFNI_rescan_session_NEW on session index %d\n",sss) ;
@@ -3902,10 +3924,10 @@ fprintf(stderr,"Enter AFNI_rescan_session_NEW on session index %d\n",sss) ;
 
    /*--- sanity checks ---*/
 
-   if( sss < 0 || sss >= GLOBAL_library.sslist->num_sess ){ BEEPIT; RETURN(0); }
+   if( sss < 0 || sss >= GLOBAL_library.sslist->num_sess ){ RETURN(0); }
 
    old_ss = GLOBAL_library.sslist->ssar[sss] ;
-   if( ! ISVALID_SESSION(old_ss) ){ BEEPIT; RETURN(0); }
+   if( ! ISVALID_SESSION(old_ss) ){ RETURN(0); }
 
                                      /* can't rescan global session */
    if( old_ss == GLOBAL_library.session ) RETURN(0); /* 21 Dec 2001 */
@@ -3916,7 +3938,7 @@ STATUS("rescanning session now:") ;
 STATUS(old_ss->sessname) ;
 
    new_ss = THD_init_session( old_ss->sessname ) ;
-   if( ! ISVALID_SESSION(new_ss) ){ BEEPIT; RETURN(0); } /* this is BAD */
+   if( ! ISVALID_SESSION(new_ss) ){ RETURN(0); } /* this is BAD */
 
    /*--- scan datasets and remove those
          that already exist in this session ---*/
@@ -4035,7 +4057,7 @@ ENTRY("AFNI_rescan_timeseries_CB") ;
 
    /** assemble list of directories **/
 
-   if( GLOBAL_library.have_dummy_dataset ){ BEEPIT ; EXRETURN ; }
+   if( GLOBAL_library.have_dummy_dataset ){ EXRETURN ; }
 
    INIT_SARR( dlist ) ;
 
@@ -4207,7 +4229,7 @@ void AFNI_write_many_dataset_CB( Widget w, XtPointer cd, XtPointer cb )
 ENTRY("AFNI_write_many_dataset_CB") ;
 
    if( ! IM3D_OPEN(im3d) ) EXRETURN ;
-   if( GLOBAL_library.have_dummy_dataset ){ BEEPIT ; EXRETURN ; }
+   if( GLOBAL_library.have_dummy_dataset ){ EXRETURN ; }
 
    if( num_dset > 0 && strlist != NULL )
       for( id=0 ; id < num_dset ; id++ ) myXtFree(strlist[id]) ;
@@ -4289,15 +4311,13 @@ ENTRY("AFNI_write_many_dataset_CB") ;
    } /* end of loop over sessions */
 
    if( num_dset <= 0 ){
-      XBell(im3d->dc->display,100) ;  /* for the fun of it! */
-
       (void) MCW_popup_message( w ,
                  "*******************************\n"
                  "** No datasets are available **\n"
                  "** to write out to disk.     **\n"
                  "*******************************"  ,
               MCW_USER_KILL | MCW_TIMER_KILL ) ;
-      EXRETURN ;
+      BEEPIT ; EXRETURN ;
    }
 
 #if 1
@@ -4445,14 +4465,14 @@ ENTRY("AFNI_saveas_dataset_CB") ;
 
    if( ! IM3D_VALID(im3d) || w == NULL ||
        ! XtIsWidget(w)    || ! XtIsRealized(w) ) EXRETURN ;
-   if( GLOBAL_library.have_dummy_dataset ){ BEEPIT ; EXRETURN ; }
+   if( GLOBAL_library.have_dummy_dataset ){ EXRETURN ; }
 
    if( w == im3d->vwid->dmode->saveas_anat_pb ){
      saveas_iset = im3d->anat_now ; label = "Underlay Prefix" ;
    } else if( w == im3d->vwid->dmode->saveas_func_pb ){
      saveas_iset = im3d->fim_now  ; label = "Overlay Prefix" ;
    } else {
-     BEEPIT ; EXRETURN ;
+     BEEPIT ; WARNING_message("SaveAs code improperly executed") ; EXRETURN ;
    }
 
    MCW_choose_string( w, label, NULL, AFNI_saveas_finalize_CB, NULL ) ;
@@ -4469,11 +4489,19 @@ void AFNI_saveas_finalize_CB( Widget w , XtPointer cd , MCW_choose_cbs *cbs )
 
 ENTRY("AFNI_saveas_finalize_CB") ;
 
-   if( cbs->reason != mcwCR_string || saveas_iset == NULL ){ BEEPIT; EXRETURN; }
+   if( cbs->reason != mcwCR_string || saveas_iset == NULL ){
+     BEEPIT; WARNING_message("SaveAs code improperly invoked"); EXRETURN;
+   }
 
-   prefix = cbs->cval ;      if( !THD_filename_ok(prefix) ){ BEEPIT; EXRETURN; }
+   prefix = cbs->cval ;
+   if( !THD_filename_ok(prefix) ){
+     BEEPIT; WARNING_message("SaveAs code improperly invoked"); EXRETURN;
+   }
 
-   DSET_load(saveas_iset) ; if( !DSET_LOADED(saveas_iset) ){ BEEPIT; EXRETURN; }
+   DSET_load(saveas_iset) ;
+   if( !DSET_LOADED(saveas_iset) ){
+     BEEPIT; WARNING_message("SaveAs code improperly invoked"); EXRETURN;
+   }
 
    MCW_invert_widget(w) ;
    oset = EDIT_full_copy( saveas_iset , prefix ) ;
@@ -4505,7 +4533,7 @@ ENTRY("AFNI_write_dataset_CB") ;
 
    if( ! IM3D_VALID(im3d) || w == NULL ||
        ! XtIsWidget(w)    || ! XtIsRealized(w) ) EXRETURN ;
-   if( GLOBAL_library.have_dummy_dataset ){ BEEPIT ; EXRETURN ; }
+   if( GLOBAL_library.have_dummy_dataset ){ EXRETURN ; }
 
    if( w == im3d->vwid->dmode->write_anat_pb ){         /* write anatomy */
       dset       = im3d->anat_now ;
@@ -4560,8 +4588,6 @@ ENTRY("AFNI_write_dataset_CB") ;
 
    if( !good ){
 
-       XBell(im3d->dc->display,100) ;  /* for the fun of it! */
-
        (void) MCW_popup_message( w ,
                  "****************************************************\n"
                  "** Cannot write dataset for one of these reasons: **\n"
@@ -4573,7 +4599,7 @@ ENTRY("AFNI_write_dataset_CB") ;
                  "****************************************************"  ,
               MCW_USER_KILL | MCW_TIMER_KILL ) ;
 
-       EXRETURN;
+       BEEPIT ; EXRETURN;
    }
 
    SHOW_AFNI_PAUSE ;
@@ -4631,7 +4657,7 @@ STATUS("resetting 'use func brick' button") ;
 
    if( ! good ){  /* bad news! */
 
-      XBell(im3d->dc->display,100) ;  /* for the fun of it! */
+      BEEPIT ;
       (void) MCW_popup_message( w ,
                 "***************************************\n"
                 "** Attempt to write dataset failed   **\n"
@@ -5628,8 +5654,9 @@ STATUS("getting anat info") ;
          }
          (void) new_MCW_textwin( im3d->vwid->imag->topper , inf , TEXT_READONLY ) ;
          free(inf) ;
-      } else
-         XBell( im3d->dc->display , 100 ) ;
+      } else {
+         BEEPIT ; WARNING_message("Can't get anat info") ;
+      }
    }
 
    /*.........................................................*/
@@ -5655,8 +5682,9 @@ STATUS("got func info") ;
          }
          (void) new_MCW_textwin( im3d->vwid->imag->topper , inf , TEXT_READONLY ) ;
          free(inf) ;
-      } else
-         XBell( im3d->dc->display , 100 ) ;
+      } else {
+         BEEPIT ; WARNING_message("Can't get func info") ;
+      }
    }
 
    /*.........................................................*/
@@ -5700,12 +5728,12 @@ STATUS("got func info") ;
    else if( w == im3d->vwid->dmode->misc_vcheck_pb ){  /* 11 Jan 2000 */
       FILE *fp = popen( "afni_vcheck" , "r" ); int vc;
       if( fp == NULL ){
+         BEEPIT ;
          (void)  MCW_popup_message( im3d->vwid->imag->topper ,
                                      " \n"
                                      "* Cannot execute *\n"
                                      "* afni_vcheck!   *\n" ,
                                     MCW_USER_KILL | MCW_TIMER_KILL ) ;
-         XBell( im3d->dc->display , 100 ) ;
       } else {
 #define ISIZE 1024
          char *info=(char *)malloc(sizeof(char)*ISIZE) ; int ninfo ;
@@ -5788,7 +5816,7 @@ STATUS("got func info") ;
 
       if( plint == NULL ){
         plint = ENV_init() ;
-        if( plint == NULL ){ XBell(im3d->dc->display,100); EXRETURN; }
+        if( plint == NULL ){ BEEPIT; WARNING_message("WTF?!"); EXRETURN; }
         PLUG_setup_widgets( plint , GLOBAL_library.dc ) ;
       }
 
@@ -5843,7 +5871,7 @@ STATUS("got func info") ;
 
       if( plint == NULL ){
          plint = F1D_init() ;
-         if( plint == NULL ){ XBell(im3d->dc->display,100); EXRETURN; }
+         if( plint == NULL ){ BEEPIT; WARNING_message("WTF?!"); EXRETURN; }
          PLUG_setup_widgets( plint , GLOBAL_library.dc ) ;
       }
 
@@ -5894,7 +5922,7 @@ STATUS("got func info") ;
 
       if( plint == NULL ){
          plint = F2D_init() ;
-         if( plint == NULL ){ XBell(im3d->dc->display,100); EXRETURN; }
+         if( plint == NULL ){ BEEPIT; WARNING_message("WTF?!"); EXRETURN; }
          PLUG_setup_widgets( plint , GLOBAL_library.dc ) ;
       }
 
@@ -5952,7 +5980,7 @@ STATUS("got func info") ;
 
       if( plint[ic] == NULL ){
          plint[ic] = ICOR_init(lc) ;
-         if( plint[ic] == NULL ){ XBell(im3d->dc->display,100); EXRETURN; }
+         if( plint[ic] == NULL ){ BEEPIT; WARNING_message("WTF?!"); EXRETURN; }
          PLUG_setup_widgets( plint[ic] , GLOBAL_library.dc ) ;
          plint[ic]->im3d = im3d ;
       }
@@ -6010,7 +6038,7 @@ STATUS("got func info") ;
 
       if( im3d->giset == NULL || !im3d->giset->ready ){
         if( cbs != NULL ){
-          XBell(im3d->dc->display,100) ;
+          BEEPIT ;
           (void)  MCW_popup_message( im3d->vwid->func->gicor_pb ,
                                      " \n"
                                      " ***** AFNI: ***** \n"
@@ -6025,7 +6053,7 @@ STATUS("got func info") ;
 
       if( plint == NULL ){
          plint = GICOR_init(lc) ;
-         if( plint == NULL ){ XBell(im3d->dc->display,100); EXRETURN; }
+         if( plint == NULL ){ BEEPIT; WARNING_message("WTF?!"); EXRETURN; }
          PLUG_setup_widgets( plint , GLOBAL_library.dc ) ;
          plint->im3d = im3d ;
       }
@@ -6073,7 +6101,7 @@ STATUS("got func info") ;
 
      if( im3d->vwid->func->iwid == NULL ){
        ICALC_make_widgets(im3d) ;
-       if( im3d->vwid->func->iwid == NULL ){ BEEPIT; EXRETURN; }
+       if( im3d->vwid->func->iwid == NULL ){ BEEPIT; WARNING_message("WTF?!"); EXRETURN; }
      }
 
      if( im3d->icalc_setup == NULL )
@@ -6199,8 +6227,7 @@ ENTRY("AFNI_hidden_CB") ;
          (void)  MCW_popup_message( im3d->vwid->picture ,
                                     "No points to write out!" ,
                                     MCW_USER_KILL | MCW_TIMER_KILL ) ;
-         XBell( im3d->dc->display , 100 ) ;
-         EXRETURN ;
+         BEEPIT ; EXRETURN ;
       }
 
       POPDOWN_ovcolor_chooser ;
@@ -6353,7 +6380,7 @@ ENTRY("AFNI_hidden_CB") ;
                               "Exercise your hippocampus daily"
                             } ;
      if( AFNI_noenv("AFNI_SPEECH") )
-       XBell( im3d->dc->display , 100 ) ;
+       BEEPIT ;
      else {
        static int nold=-1 ;
        int nn = sizeof(words)/sizeof(char *) , jj ;
@@ -6584,8 +6611,7 @@ ENTRY("AFNI_hidden_pts_CB") ;
             sprintf(buf,"Cannot open file\n %s\nfor reading!",cbs->cval) ;
             (void)  MCW_popup_message( im3d->vwid->picture , buf ,
                                        MCW_USER_KILL | MCW_TIMER_KILL ) ;
-            XBell( im3d->dc->display , 100 ) ;
-            EXRETURN ;
+            BEEPIT ; EXRETURN ;
          }
 
          POPDOWN_string_chooser ;
@@ -6617,9 +6643,8 @@ ENTRY("AFNI_hidden_pts_CB") ;
                        cbs->cval , sv->num + 1 ) ;
                (void)  MCW_popup_message( im3d->vwid->picture , buf ,
                                           MCW_USER_KILL | MCW_TIMER_KILL ) ;
-               XBell( im3d->dc->display , 100 ) ;
                DESTROY_VLIST(sv) ;
-               EXRETURN ;
+               BEEPIT ; EXRETURN ;
             }
          } while (1) ;
 
@@ -6650,8 +6675,7 @@ ENTRY("AFNI_hidden_pts_CB") ;
 
          sv = im3d->anat_now->pts ;
          if( sv == NULL || sv->num == 0 ){
-            XBell( im3d->dc->display , 100 ) ;
-            EXRETURN ;
+            BEEPIT ; WARNING_message("Can't write -- no points!") ; EXRETURN ;
          }
 
          if( cbs->cval[0] == '|' ){  /* send to standard output */
@@ -6662,8 +6686,7 @@ ENTRY("AFNI_hidden_pts_CB") ;
                sprintf(buf,"Desired output file\n %s\nalready exists!",cbs->cval);
                (void)  MCW_popup_message( im3d->vwid->picture , buf ,
                                           MCW_USER_KILL | MCW_TIMER_KILL ) ;
-               XBell( im3d->dc->display , 100 ) ;
-               EXRETURN ;
+               BEEPIT ; EXRETURN ;
             }
 
             fil = fopen( cbs->cval , "w" ) ;
@@ -6672,8 +6695,7 @@ ENTRY("AFNI_hidden_pts_CB") ;
                sprintf(buf,"Cannot open file\n %s\nfor writing!",cbs->cval) ;
                (void)  MCW_popup_message( im3d->vwid->picture , buf ,
                                           MCW_USER_KILL | MCW_TIMER_KILL ) ;
-               XBell( im3d->dc->display , 100 ) ;
-               EXRETURN ;
+               BEEPIT ; EXRETURN ;
             }
          }
 
