@@ -794,9 +794,7 @@ SUMA_Boolean SUMA_Engine (DList **listp)
             { /* sets the rendering mode of a surface, 
                expects SO in vp and rendering mode in i*/
                SO = (SUMA_SurfaceObject *)EngineData->vp;
-               SO->PolyMode = EngineData->i;     
-               if (SO->PolyMode == SRM_Hide) SO->Show = NOPE;
-               else SO->Show = YUP;             
+               SUMA_SET_SO_POLYMODE(SO,EngineData->i);
             }  
             break;
             
@@ -3200,14 +3198,39 @@ SUMA_Boolean SUMA_Engine (DList **listp)
                                  SO->SurfCont->curColPlane->ShowMode));
             }
             if (NI_get_attribute(EngineData->ngr, "view_surf")) {
-               if (NI_IS_STR_ATTR_EQUAL(EngineData->ngr, "view_surf", "y")) 
+               if (NI_IS_STR_ATTR_EQUAL(EngineData->ngr, "view_surf", "y")) {
                   SO->Show = YUP;
-               else if (NI_IS_STR_ATTR_EQUAL(EngineData->ngr, "view_surf", "n"))
+               } else if (NI_IS_STR_ATTR_EQUAL(EngineData->ngr,"view_surf","n")){
                   SO->Show = NOPE;
-               else { 
+               } else if (NI_IS_STR_ATTR_EQUAL(EngineData->ngr, 
+                                          "view_surf", "Viewer")) {
+                  SUMA_SET_SO_POLYMODE(SO,SRM_ViewerDefault);
+                  SUMA_SET_MENU( SO->SurfCont->RenderModeMenu,
+                         SUMA_RenderMode2RenderModeMenuItem(SO->PolyMode+1));
+               } else if (NI_IS_STR_ATTR_EQUAL(EngineData->ngr, 
+                                          "view_surf", "Fill")) {
+                  SUMA_SET_SO_POLYMODE(SO,SRM_Fill);
+                  SUMA_SET_MENU( SO->SurfCont->RenderModeMenu,
+                         SUMA_RenderMode2RenderModeMenuItem(SO->PolyMode+1));
+               } else if (NI_IS_STR_ATTR_EQUAL(EngineData->ngr, 
+                                          "view_surf", "Line")) {
+                  SUMA_SET_SO_POLYMODE( SO, SRM_Line );
+                  SUMA_SET_MENU( SO->SurfCont->RenderModeMenu,
+                         SUMA_RenderMode2RenderModeMenuItem(SO->PolyMode+1));
+               } else if (NI_IS_STR_ATTR_EQUAL(EngineData->ngr, 
+                                          "view_surf", "Points")) {
+                  SUMA_SET_SO_POLYMODE(SO,SRM_Points);
+                  SUMA_SET_MENU( SO->SurfCont->RenderModeMenu,
+                         SUMA_RenderMode2RenderModeMenuItem(SO->PolyMode+1));
+               } else if (NI_IS_STR_ATTR_EQUAL(EngineData->ngr, 
+                                          "view_surf", "Hide")) {
+                  SUMA_SET_SO_POLYMODE(SO,SRM_Hide);
+                  SUMA_SET_MENU( SO->SurfCont->RenderModeMenu,
+                         SUMA_RenderMode2RenderModeMenuItem(SO->PolyMode+1));
+               } else { 
                   SUMA_S_Errv("Bad value of %s for view_surf, setting to 'y'\n", 
                               NI_get_attribute(EngineData->ngr, "view_surf"));
-                  SO->Show = YUP;
+                  SO->Show = YUP; SUMA_SET_SO_POLYMODE(SO,SRM_Fill);
                }
                /* redisplay */
                SUMA_SiSi_I_Insist();   /* did not think that was necessary...
@@ -5175,10 +5198,15 @@ int SUMA_MapRefRelative (int cur_id, int *prec_list, int N_prec_list, SUMA_DO *d
          if (N_prec_list == 1) {
             /* if all you have is one surface in one state in SUMA then you need not worry about the rest */
          } else {
-            fprintf(SUMA_STDERR, "\nError %s: Flow problem.\n"
+            /* this can happen if you have multiple surfaces with each being 
+            their own mappable surfaces., so it is OK too */
+            /*
+               fprintf(SUMA_STDERR, "\nError %s: Flow problem.\n"
                                  "Did not expect identical surfaces \n"
-                                 "in this condition (N_prec_list = %d)\n", FuncName, N_prec_list);
-            SUMA_BEEP; 
+                                 "in this condition (N_prec_list = %d)\n", 
+                                 FuncName, N_prec_list);
+            SUMA_BEEP;
+            */ 
          }
          /* 
          I changed the next condition: 
