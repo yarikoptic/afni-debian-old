@@ -6,7 +6,7 @@ int main( int argc , char * argv[] )
    MRI_IMAGE *medim ;
    THD_3dim_dataset *dset ;
    char *gprefix=NULL ;
-   int iarg=1 ;
+   int iarg=1 , doall=0 ;
 
    if( argc < 2 || strcmp(argv[1],"-help") == 0 ){
      printf(
@@ -31,6 +31,8 @@ int main( int argc , char * argv[] )
        "Options:\n"
        "--------\n"
        "  -mfrac ff = Use the number ff instead of 0.50 in the algorithm.\n"
+       "  -doall    = Apply the algorithm to each sub-brick separately.\n"
+       "              [Cannot be combined with '-grad'!]\n"
        "\n"
        "  -grad ppp = In addition to using the 'one size fits all routine',\n"
        "              also compute a 'gradual' clip level as a function\n"
@@ -61,8 +63,16 @@ int main( int argc , char * argv[] )
        "\n"
        "* If the input dataset is short- or byte-valued, the output will\n"
        "    be an integer; otherwise, the output is a float value.\n"
-       "------\n"
-       "Author: Emperor Zhark -- Sadistic Galactic Domination since 1994!\n\n"
+       "\n"
+       "* Example -- Scaling a sequence of sub-bricks from a collection of\n"
+       "             anatomicals from different sites to have about the\n"
+       "             same numerical range (from 0 to 255):\n"
+       "       3dTcat -prefix input anat_*+tlrc.HEAD\n"
+       "       3dClipLevel -doall input+tlrc > clip.1D\n"
+       "       3dcalc -datum byte -nscale -a input+tlrc -b clip.1D \\\n"
+       "              -expr '255*max(0,min(1,a/(3.2*b)))' -verb -prefix scaled\n"
+       "----------------------------------------------------------------------\n"
+       "* Author: Emperor Zhark -- Sadistic Galactic Domination since 1994!\n\n"
      ) ;
      PRINT_COMPILE_DATE ; exit(0) ;
    }
@@ -72,6 +82,10 @@ int main( int argc , char * argv[] )
    /*-- options --*/
 
    while( iarg < argc && argv[iarg][0] == '-' ){
+
+     if( strcmp(argv[iarg],"-doall") == 0 ){  /* 01 Nov 2010 */
+       doall++ ; iarg++ ; continue ;
+     }
 
      if( strcmp(argv[iarg],"-mfrac") == 0 || strcmp(argv[iarg],"-clfrac") == 0 ){
        mfrac = strtod( argv[++iarg] , NULL ) ;
@@ -93,40 +107,54 @@ int main( int argc , char * argv[] )
 
    dset = THD_open_dataset(argv[iarg]) ;
    CHECK_OPEN_ERROR(dset,argv[iarg]) ;
+   DSET_load(dset) ; CHECK_LOAD_ERROR(dset) ;
 
-   /*-- get median at each voxel --*/
+   if( !doall ){
 
-   medim = THD_median_brick( dset ) ;
-   if( medim == NULL )       ERROR_exit("Can't load dataset '%s'",argv[iarg]);
+     /*-- get median at each voxel --*/
 
-   DSET_unload(dset) ;  /* no longer needed */
+     medim = THD_median_brick( dset ) ;
+     if( medim == NULL ) ERROR_exit("Can't load dataset '%s'",argv[iarg]);
 
-   val = THD_cliplevel( medim , mfrac ) ;  /* floating point clip level */
+     DSET_unload(dset) ;  /* no longer needed */
 
-   if( !THD_need_brick_factor(dset) &&     /* convert to integer? */
-       DSET_datum_constant(dset)    &&
-      (DSET_BRICK_TYPE(dset,0)==MRI_short || DSET_BRICK_TYPE(dset,0)==MRI_byte) )
+     val = THD_cliplevel( medim , mfrac ) ;  /* floating point clip level */
+
+     if( !THD_need_brick_factor(dset) &&     /* convert to integer? */
+         DSET_datum_constant(dset)    &&
+        (DSET_BRICK_TYPE(dset,0)==MRI_short || DSET_BRICK_TYPE(dset,0)==MRI_byte) )
      val = (float)rint((double)val) ;
 
-   printf("%g\n",val) ;        /***** write the output value! *****/
+     printf("%g\n",val) ;        /***** write the output value! *****/
 
    /*--- 25 Oct 2006: create the gradual clip dataset? ---*/
 
-   if( gprefix != NULL && val > 0.0f ){
-     THD_3dim_dataset *gset ;
-     MRI_IMAGE *gim ;
-     gim = THD_cliplevel_gradual( medim , mfrac ) ;
-     if( gim == NULL ) ERROR_exit("Can't compute gradual clip?!") ;
-     gset = EDIT_empty_copy(dset) ;
-     EDIT_dset_items( gset ,
-                        ADN_nvals , 1 ,
-                        ADN_ntt   , 0 ,
-                        ADN_prefix, gprefix ,
-                      ADN_none ) ;
-     EDIT_substitute_brick( gset , 0 , MRI_float , MRI_FLOAT_PTR(gim) ) ;
-     tross_Copy_History( dset , gset ) ;
-     tross_Make_History( "3dClipLevel" , argc,argv , gset ) ;
-     DSET_write(gset) ; DSET_delete(gset) ;
+     if( gprefix != NULL && val > 0.0f ){
+       THD_3dim_dataset *gset ;
+       MRI_IMAGE *gim ;
+       gim = THD_cliplevel_gradual( medim , mfrac ) ;
+       if( gim == NULL ) ERROR_exit("Can't compute gradual clip?!") ;
+       gset = EDIT_empty_copy(dset) ;
+       EDIT_dset_items( gset ,
+                          ADN_nvals , 1 ,
+                          ADN_ntt   , 0 ,
+                          ADN_prefix, gprefix ,
+                        ADN_none ) ;
+       EDIT_substitute_brick( gset , 0 , MRI_float , MRI_FLOAT_PTR(gim) ) ;
+       tross_Copy_History( dset , gset ) ;
+       tross_Make_History( "3dClipLevel" , argc,argv , gset ) ;
+       DSET_write(gset) ; DSET_delete(gset) ;
+     }
+
+   } else {  /* -doall [01 Nov 2010] */
+     int nvals=DSET_NVALS(dset) , ii ; MRI_IMAGE *bim ;
+
+     printf("# %s %d values\n",DSET_BRIKNAME(dset),nvals) ;
+     for( ii=0 ; ii < nvals ; ii++ ){
+       bim = THD_extract_float_brick(ii,dset) ; DSET_unload_one(dset,ii) ;
+       val = THD_cliplevel( bim , mfrac ) ;  /* floating point clip level */
+       printf("%g\n",val) ; mri_free(bim) ;
+     }
    }
 
    exit(0) ;
