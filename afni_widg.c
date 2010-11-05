@@ -2826,7 +2826,7 @@ STATUS("making func->rowcol") ;
    char zork[2] ;
 
    int smax , stop , decim , sstep ;                  /* 30 Nov 1997:       */
-   decim = THR_TOP_EXPON ;                            /* compute parameters */
+   decim = THR_top_expon ;                            /* compute parameters */
    smax  = (int)( pow(10.0,decim) + 0.001 ) ;         /* for scale display. */
    stop  = smax - 1 ;
    sstep = smax / 1000 ;
@@ -2954,7 +2954,7 @@ STATUS("making func->rowcol") ;
    func->thr_top_av = new_MCW_arrowval( func->thr_rowcol ,
                                         "**" ,
                                         AVOPT_STYLE ,
-                                        0,THR_TOP_EXPON,0 ,
+                                        0,THR_top_expon,0 ,
                                         MCW_AV_notext , 0 ,
                                         AFNI_thresh_top_CB , (XtPointer)im3d ,
                                         AFNI_thresh_tlabel_CB , NULL ) ;
@@ -6771,6 +6771,8 @@ int AFNI_set_dset_pbar(XtPointer *vp_im3d)
    ENTRY("AFNI_set_dset_pbar") ;
 
 /*   if (!AFNI_yesenv("AFNI_CMAP_AUTO")) RETURN(0);*/
+
+   if( AFNI_noenv("AFNI_CMAP_AUTO") || AFNI_noenv("AFNI_PBAR_AUTO") ) RETURN(0);
 
    im3d = (Three_D_View *)vp_im3d;
    if( !IM3D_OPEN(im3d) ) RETURN(0) ;

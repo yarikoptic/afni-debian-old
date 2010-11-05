@@ -1996,6 +1996,13 @@ static char * readme_env[] = {
    "the function threshold slider will automatically change to some value that may\n" ,
    "be appropriate for the values in the new dataset.  [This is for Ziad!]\n" ,
    "\n" ,
+   "-------------------------------\n" ,
+   "Variable: AFNI_THRESH_TOP_EXPON\n" ,
+   "-------------------------------\n" ,
+   "This variable defines the top value for the '**' setting underneath the Overlay\n" ,
+   "threshold slider.  By default, this value is 4, but you can change that to 5\n" ,
+   "or 6 with this variable.  [This is for Phil Kohn]\n" ,
+   "\n" ,
    "------------------------------\n" ,
    "Variable: AFNI_SNAPFILE_PREFIX\n" ,
    "------------------------------\n" ,
@@ -2317,6 +2324,12 @@ static char * readme_env[] = {
    "(the \"pbars\") of AFNI controllers that are Lock-ed together will be\n" ,
    "coordinated.  Changes to one locked pbar will be reflected in the\n" ,
    "others immediately.\n" ,
+   "\n" ,
+   "------------------------\n" ,
+   "Variable: AFNI_PBAR_AUTO  (or AFNI_CMAP_AUTO)\n" ,
+   "------------------------\n" ,
+   "If this variable is set to NO, then the automatic color bar switching\n" ,
+   "(that was introduced by Ziad Saad) will be turned off.\n" ,
    "\n" ,
    "-------------------------\n" ,
    "Variable: AFNI_RANGE_LOCK (editable)\n" ,
@@ -3118,4 +3131,4 @@ static char * readme_env[] = {
    "behavior, set this variable to YES.\n" ,
    "\n" ,
    NULL } ;
-#define NUM_readme_env 3118
+#define NUM_readme_env 3131
