@@ -98,12 +98,17 @@ Aclustering:Aclustering_floatNOMASK.c cluster_floatNOMASK.o
          ${AVOVKLIB} ${AVOVK_LINK_LIB} -lf2c -lgsl -lgslcblas 
 	
 
-progs: fit_onesign Aclustering 3dfit_onesign 3dkmeans  # 3dAclustering
+progs_exp: fit_onesign Aclustering 3dfit_onesign 3dkmeans  # 3dAclustering
 
+progs: 3dkmeans
+
+all_exp: ${AVOVKLIB} progs_exp install 
 
 all: ${AVOVKLIB} progs install 
  
-anew: clean all install 
+afni_all: clean progs
+	@if [ -f  3dkmeans ]; then mv 3dkmeans ../; fi;	
+ 
 
 install:
 	@echo Installing Binaries...
