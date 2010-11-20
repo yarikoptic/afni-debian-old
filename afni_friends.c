@@ -582,6 +582,7 @@ static mday holiday[] = {
    {OCT,15,"Pelham Grenville Wodehouse's birthday"                   } ,
    {OCT,16,"National Boss Day!"                                      } ,
    {OCT,19,"Anniversary of Cornwallis' surrender at Yorktown"        } ,
+   {OCT,20,"World Statistics Day!"                                   } ,
    {OCT,21,"Anniversary of Battle of Trafalgar"                      } ,
    {OCT,24,"Anniversary of founding of United Nations"               } ,
    {OCT,24,"Zambia Independence Day"                                 } ,
