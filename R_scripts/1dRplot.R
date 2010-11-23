@@ -42,6 +42,29 @@ reference.1dRplot <- function ()
    return(
 ""
    )
+examples.1dRplot.getdata <- function () {
+   return("
+To download demo data from AFNI's website run this command:
+-----------------------------------------------------------
+curl -o demo.xmat.1D afni.nimh.nih.gov/pub/dist/edu/data/samples/X.xmat.1D
+curl -o demo.motion.1D afni.nimh.nih.gov/pub/dist/edu/data/samples/motion.1D
+")
+}
+
+run.1dRplot.examples <- function () {
+   ii <- 1
+   while (!is.null(s <- examples.1dRplot(ii))) {
+      s <- strsplit(s,'1dRplot')[[1]][2]
+      #str(s)
+      sys.AFNI(paste('1dRplot ', s, '&'), echo=TRUE)
+      if (prompt.AFNI("Continue ?", c('y','n'))==1) {
+         ii <- ii + 1
+      } else {
+         break;
+      }      
+   }
+   return()
+}
 
 examples.1dRplot <- function (demo=0) {
    s <- vector()
@@ -51,11 +74,27 @@ examples.1dRplot <- function (demo=0) {
 "
 Example ", ii," --- :
 -------------------------------- 
-wget -O demo.X.xmat.1D afni.nimh.nih.gov/pub/dist/edu/data/samples/X.xmat.1D
-1dRplot -input demo.X.xmat.1D",
+1dRplot -input demo.X.xmat.1D'[5..10]'",
       sep = '')
    )
    
+   ii <- ii + 1; s <- c(s,paste(
+"
+Example ", ii," --- :
+-------------------------------- 
+1dRplot  -input demo.X.xmat.1D'[5..10]' \\
+         -input_type XMAT",
+      sep = '')
+   )
+   
+   ii <- ii + 1; s <- c(s,paste(
+"
+Example ", ii," --- :
+-------------------------------- 
+1dRplot  -input demo.motion.1D \\
+         -input_type VOLREG",
+      sep = '')
+   )
 
    ii <- ii + 1; s <- c(s,paste(
 "
@@ -146,8 +185,7 @@ Example ", ii," --- :
 1dRplot  -input 'R:plot.1D.testmat(100, 2)' \\
          -one \\
          -col.plot.char 2 \\
-         -col.plot.type p 
-         ",
+         -col.plot.type p  ",
       sep = '')
    )
    
@@ -158,8 +196,7 @@ Example ", ii," --- :
 1dRplot  -input 'R:plot.1D.testmat(100, 2)' \\
          -one \\
          -col.line.type 3 \\
-         -col.plot.type l 
-",
+         -col.plot.type l ",
       sep = '')
    )
    
@@ -171,8 +208,7 @@ Example ", ii," --- :
          -one \\
          -col.plot.char 2 \\
          -col.line.type 3 \\
-         -col.plot.type b 
-",
+         -col.plot.type b ",
       sep = '')
    )  
      
@@ -185,8 +221,7 @@ Example ", ii," --- :
          -col.plot.char 2 5\\
          -col.line.type 3 4\\
          -col.plot.type b \\
-         -TR 2
-",
+         -TR 2 ",
       sep = '')
    )   
 
@@ -198,13 +233,13 @@ Example ", ii," --- :
          -one -col.plot.char 2 -col.line.type 3 \\
          -col.plot.type b -TR 2 \\
          -yax.tic.text 'numa numa numa numaei' \\
-         -xax.tic.text 'Alo'  'Salut' 'sunt eu' 'un haiduc'
-",
+         -xax.tic.text 'Alo'  'Salut' 'sunt eu' 'un haiduc'",
       sep = '')
    )   
    
    if (demo==0) demo=1:length(s)
-   return (s[demo])
+   if (max(demo) > length(s)) return(NULL)
+   else return (s[demo])
 }
 
 #The help function for 1dRplot batch (command line mode)
@@ -238,7 +273,9 @@ Usage:
    }
    ss <- paste(ss, sep='\n');
    cat(intro,  
-         ss, 
+         ss,
+         eval.AFNI.string.help(),
+         examples.1dRplot.getdata(), 
          paste(examples.1dRplot(), '\n', sep='\n'),
          reference.1dRplot(), sep='\n');
    
@@ -269,12 +306,13 @@ read.1dRplot.opts.batch <- function (args=NULL, verb = 0) {
    
    params <- list (
       '-input' = apl(n = c(1, Inf), d = NA,  h = paste(
-   "-input 1D_INPUT: file to plot.\n"
+   "-input 1D_INPUT: file to plot. This field can have multiple\n",
+   "                 formats. See Data Strings section below.\n"
                      ) ),
                      
       '-input_type' = apl(n = c(1, Inf), d = NA,  h = paste(
    "-input_type 1D_TYPE: Type of data in 1D file.\n",
-   "            Choose from 'VOLREG', or 'XMAT'" 
+   "            Choose from 'VOLREG', or 'XMAT'\n" 
                      ) ),
                      
       '-input_delta' = apl(n = c(1, Inf), d = NA,  h = paste(
@@ -319,7 +357,7 @@ read.1dRplot.opts.batch <- function (args=NULL, verb = 0) {
       '-col.name' = apl(n = c(1,Inf), d = NULL, h = paste(
    "-col.name NAME1 [NAME2 ...]: Name of each column in -input. \n",
    "       Special flags:\n",
-   "            VOLREG: --> 'Roll Pitch Yaw I-S R-L A-P'"
+   "            VOLREG: --> 'Roll Pitch Yaw I-S R-L A-P'\n"
                      ) ),
 
       '-col.name.show' = apl(n = 0, d = FALSE, h = paste(
@@ -335,7 +373,7 @@ read.1dRplot.opts.batch <- function (args=NULL, verb = 0) {
    "-leg.position : Legend position. Choose from:\n",
    "                bottomright, bottom, bottomleft\n",
    "                left, topleft, top, topright, right,\n", 
-   "                and center"
+   "                and center\n"
                      ) ),
       
       '-leg.fontsize' = apl(n = 1, d = 1.0, h = paste(
@@ -351,13 +389,13 @@ read.1dRplot.opts.batch <- function (args=NULL, verb = 0) {
                      ) ),
                      
       '-nozeros' = apl (n = 0, d = FALSE, h = paste (
-   "-nozeros:  Do not plot all zeros time series"
+   "-nozeros:  Do not plot all zeros time series\n"
                         ) ),
       '-col.nozeros' = apl (n = 0, d = FALSE, h = paste (
-   "-col.nozeros:  Do not plot all zeros columns"
+   "-col.nozeros:  Do not plot all zeros columns\n"
                         ) ),
       '-zeros' = apl (n = 0, d = TRUE, h = paste (
-   "-zeros:  Do  plot all zeros time series"
+   "-zeros:  Do  plot all zeros time series\n"
                         ) ),
                         
       '-col.ystack' = apl (n = 0, d = TRUE, h = paste (
@@ -369,11 +407,11 @@ read.1dRplot.opts.batch <- function (args=NULL, verb = 0) {
                         ) ),
                               
       '-oneplot' = apl (n = 0, d = FALSE, h = paste (
-   "-oneplot:  Put all columns on one graph"
+   "-oneplot:  Put all columns on one graph\n"
                         ) ),   
                         
       '-one' = apl (n = 0, d = FALSE, h = paste (
-   "-one:  Put all columns on one graph"
+   "-one:  Put all columns on one graph\n"
                         ) ),  
                                                            
       '-col.grp' = apl(n = c(1, Inf), h = paste (
@@ -382,12 +420,16 @@ read.1dRplot.opts.batch <- function (args=NULL, verb = 0) {
                   
       '-col.text.lym' = apl(n = c(1, Inf), h = paste (
    "-col.text.lym LYM_TEXT: Text to be placed at left Y margin.\n",
-   "                              You need one string per column.\n"
+   "                        You need one string per column.\n",
+   "        Special Flags: You can also use COL.NAME to use column\n",
+   "                        names for the margin text, or you can use\n",
+   "                        COL.IND to use the colum's index in the file\n"
                   ) ), 
                   
       '-col.text.rym' = apl(n = c(1, Inf), h = paste (
    "-col.text.rym RYM_TEXT: Text to be placed at right Y margin.\n",
-   "                              You need one string per column.\n"
+   "                        You need one string per column.\n",
+   "       See also Special Flags section under -col.text.lym\n"     
                   ) ), 
                   
       '-col.plot.type' = apl(n = c(1, Inf), h = paste (
@@ -420,7 +462,7 @@ read.1dRplot.opts.batch <- function (args=NULL, verb = 0) {
                   ) ), 
                   
       '-yax.tic.text' = apl(n = c(1, Inf), h = paste (
-   "-yax.tic.text YTTEXT: Y tics text\\n"
+   "-yax.tic.text YTTEXT: Y tics text \n"
                   ) ), 
                   
       '-TR' = apl(n=1, d=0, h=paste(
@@ -432,8 +474,13 @@ read.1dRplot.opts.batch <- function (args=NULL, verb = 0) {
    "            0 for quiet (Default). 1 or more: talkative.\n"
                         ) ),
       '-help' = apl(n=0, h = '-help: this help message\n'),
+      
+      '-run_examples' = apl(n=0, h = 
+   '-run_examples: Run all examples, one after the other.\n'),
+   
       '-show_allowed_options' = apl(n=0, h=
    "-show_allowed_options: list of allowed options\n" ),
+   
       '-msg.trace' = apl(n=0, h=
    "-msg.trace: Output trace information along with errors and notices\n" )
 
@@ -502,6 +549,7 @@ read.1dRplot.opts.batch <- function (args=NULL, verb = 0) {
              msg.trace = set.AFNI.msg.trace(TRUE),
              show_allowed_options = show.AFNI.args(ops, verb=0, 
                                               hstr="1dRplot's",adieu=TRUE),
+             run_examples = run.1dRplot.examples(),
              other = {},
              allowed_options = {},
              errex.AFNI(paste("Option '", opname,"' not recognized", sep=''))  
@@ -565,7 +613,7 @@ process.1dRplot.opts <- function (lop, verb = 0) {
             col.ystack = lop$col.ystack,
             grp.label = lop$grp.label,
             ttl.main = lop$ttl.main, 
-            prefix = lop$pprefix, 
+            prefix = lop$prefix, 
             nodisp = lop$nodisp,
             oneplot = lop$oneplot,
             col.mean.line = lop$col.mean.line,
