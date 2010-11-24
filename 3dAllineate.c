@@ -747,6 +747,10 @@ int main( int argc , char *argv[] )
 "                 increase the weight of high-intensity regions).\n"
 "               These two processing steps can be combined, as in\n"
 "                 '-autoweight+100**1.5'\n"
+"               ** Note that that '**' must be enclosed in quotes;\n"
+"                  otherwise, the shell will treat it as a wildcard\n"
+"                  and you will get an error message before 3dAllineate\n"
+"                  even starts!!\n"
       ) ;
       if( visible_noweights ){
          printf(
@@ -764,6 +768,8 @@ int main( int argc , char *argv[] )
 "               but the weight for a voxel is set to either 0 or 1.\n"
 "       **N.B.: '-automask+3' means to compute the mask function, and\n"
 "               then dilate it outwards by 3 voxels (e.g.).\n"
+"               ** Note that '+' means something very different\n"
+"                  for '-automask' and '-autoweight'!!\n"
 " -autobox    = Expand the -automask function to enclose a rectangular\n"
 "               box that holds the irregular mask.\n"
 "       **N.B.: This is the default mode of operation!\n"
