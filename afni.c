@@ -2007,6 +2007,11 @@ STATUS("call 14") ;
                                   AFNI_startup_layout_CB , GLOBAL_argopt.layout_fname ) ;
 
           nodown = 1 ;  /* splashdown will be done in AFNI_startup_layout_CB */
+        } else if (MAIN_im3d->type == AFNI_3DDATA_VIEW){ /* ZSS Dec 02 2010. */
+          (void) XtAppAddTimeOut( MAIN_app , 123 ,
+                                  AFNI_startup_layout_CB , 
+                                  "GIMME_SOMETHING" ) ;
+          nodown = 1 ; 
         }
 
         /* 21 Jan 2003: this function will be called 0.246 seconds
@@ -2665,7 +2670,7 @@ STATUS("defining surface drawing parameters") ;
       /* threshold for determining which axis this slice is along */
 
       dxyz = MIN(br->del1,br->del2) ;
-      dxyz = MIN(dxyz    ,br->del3) ; dxyz *= 0.1 ;
+      dxyz = MIN(dxyz    ,br->del3) ; dxyz *= 0.1f ;
 
       set_color_memplot(rr_box,gg_box,bb_box) ;  /* box drawing colors */
       set_thick_memplot(0.0) ;
