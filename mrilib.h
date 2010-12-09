@@ -1080,6 +1080,8 @@ void mri_Set_OK_catwrap(void);
 extern MRI_IMAGE * mri_cat2D( int,int,int,void *,MRI_IMARR *) ;
 extern MRI_IMARR * mri_uncat2D( int , int , MRI_IMAGE * im ) ; /* 09 May 2000 */
 
+extern MRI_IMAGE * mri_catvol_1D( MRI_IMARR *imar , int dir ); /* 08 Dec 2010 */
+
 extern MRI_IMAGE * mri_shift_1D( MRI_IMAGE * im , float shift ) ;
 
 /*** image alignment procedures and constants ***/
@@ -1576,24 +1578,27 @@ extern float mri_scaled_diff( MRI_IMAGE *bim, MRI_IMAGE *nim, MRI_IMAGE *msk ) ;
 
 #include "AFNI_label.h"
 #undef  PRINT_VERSION
-#define PRINT_VERSION(pp)                                       \
-  INFO_message("%s: AFNI version=%s (" __DATE__ ") [%d-bit]",   \
-               (pp),AFNI_VERSION_LABEL,(int)(sizeof(void *)*8))
+#define PRINT_VERSION(pp)                                             \
+ do{ if( !machdep_be_quiet() )                                        \
+      INFO_message("%s: AFNI version=%s (" __DATE__ ") [%d-bit]",     \
+                   (pp),AFNI_VERSION_LABEL,(int)(sizeof(void *)*8)) ; \
+ } while(0)
 
 #undef  PRINT_COMPILE_DATE
 #define PRINT_COMPILE_DATE printf("\n++ Compile date = " __DATE__ "\n\n")
 
 #undef  AUTHOR
-#define AUTHOR(aa) INFO_message("Authored by: %s",aa)
+#define AUTHOR(aa) \
+ do{ if( !machdep_be_quiet() ) INFO_message("Authored by: %s",aa) ; } while(0)
 
 #undef  WROTE_DSET_MSG
-#define WROTE_DSET_MSG(dd,ss)                 \
-  do{ if( THD_is_file(DSET_BRIKNAME(dd)) )    \
+#define WROTE_DSET_MSG(dd,ss)                                        \
+  do{ if( THD_is_file(DSET_BRIKNAME(dd)) && !machdep_be_quiet() )    \
        INFO_message("Output dataset %s {%s}",DSET_BRIKNAME(dd),(ss)); } while(0)
 
 #undef  WROTE_DSET
-#define WROTE_DSET(dd)                        \
-  do{ if( THD_is_file(DSET_BRIKNAME(dd)) )    \
+#define WROTE_DSET(dd)                                                  \
+  do{ if( !machdep_be_quiet() && THD_is_file(DSET_BRIKNAME(dd)) )       \
         INFO_message("Output dataset %s",DSET_BRIKNAME(dd)); } while(0)
 
 #undef  CHECK_OPEN_ERROR
