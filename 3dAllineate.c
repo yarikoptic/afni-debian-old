@@ -419,6 +419,7 @@ int main( int argc , char *argv[] )
    int   nwarp_fixdepJ         = 0 ;
    int   nwarp_fixmotK         = 0 ;
    int   nwarp_fixdepK         = 0 ;
+   char *nwarp_save_prefix     = NULL ;          /* 10 Dec 2010 */
 
    int    micho_zfinal         = 0 ;             /* 24 Feb 2010 */
    double micho_mi             = 0.2 ;           /* -lpc+ stuff */
@@ -540,7 +541,17 @@ int main( int argc , char *argv[] )
 "\n"
 " -1Dparam_save ff   = Save the warp parameters in ASCII (.1D) format into\n"
 "                      file 'ff' (1 row per sub-brick in source).\n"
-"               *N.B.: A historical synonym for this option is '-1Dfile'.\n"
+"                    * A historical synonym for this option is '-1Dfile'.\n"
+"                    * At the top of the saved 1D file is a #comment line\n"
+"                      listing the names of the parameters; those parameters\n"
+"                      that are fixed (e.g., via '-parfix') will be marked\n"
+"                      by having their symbolic names end in the '$' character.\n"
+"                      You can use '1dcat -nonfixed' to remove these columns\n"
+"                      from the 1D file if you just to further process the\n"
+"                      varying parameters.\n"
+"                    * However, the '-1Dparam_apply' option requires the\n"
+"                      full list of parameters, including those that were\n"
+"                      fixed, in order to work properly!\n"
 "\n"
 " -1Dparam_apply aa  = Read warp parameters from file 'aa', apply them to \n"
 "                      the source dataset, and produce a new dataset.\n"
@@ -1315,7 +1326,8 @@ int main( int argc , char *argv[] )
         "              * Or you can call them 'poly3', 'poly5', 'poly7', and 'poly9',\n"
         "                  for simplicity and non-Hellenistic clarity.\n"
         "              * These names are not case sensitive: 'nonic' == 'Nonic', etc.\n"
-        "              * Higher and higher order polynomials will take longer and longer.\n"
+        "              * Higher and higher order polynomials will take longer and longer\n"
+        "                to run!\n"
         "              * If you wish to apply a nonlinear warp, you have to supply\n"
         "                a parameter file with -1Dparam_apply and also specify the\n"
         "                warp type with -nwarp.  The number of parameters in the\n"
@@ -1329,8 +1341,19 @@ int main( int argc , char *argv[] )
         "                affine parameters (shifts, rotations, etc.), and the\n"
         "                remaining parameters define the nonlinear part of the warp\n"
         "                (polynomial coefficients).\n"
+        "               * The actual polynomial functions used are products of\n"
+        "                 Legendre polynomials, but the symbolic names used in\n"
+        "                 the header line in the '-1Dparam_save' output just\n"
+        "                 express the polynomial degree involved; for example,\n"
+        "                      quint:x^2*z^3:z\n"
+        "                 is the name given to the polynomial warp basis function\n"
+        "                 whose highest power of x is 2, is independent of y, and\n"
+        "                 whose highest power of z is 3; the 'quint' indicates that\n"
+        "                 this was used in '-nwarp quintic'; the final ':z' signifies\n"
+        "                 that this function was for deformations in the (DICOM)\n"
+        "                 z-direction (+z == Superior).\n"
         "        ==>>*** You can further control the form of the polynomial warps\n"
-        "                (but not the bilinear warp) by restricting their degrees\n"
+        "                (but not the bilinear warp!) by restricting their degrees\n"
         "                of freedom in 2 different ways.\n"
         "                ++ You can remove the freedom to have the nonlinear\n"
         "                   deformation move along the DICOM x, y, and/or z axes.\n"
@@ -1471,6 +1494,17 @@ int main( int argc , char *argv[] )
 
      if( strcmp(argv[iarg],"-zclip") == 0 ){     /* 29 Oct 2010 */
        do_zclip++ ; iarg++ ; continue ;
+     }
+
+     /*-----*/
+
+     if( strncmp(argv[iarg],"-nwarp_save",11) == 0 ){  /* 10 Dec 2010 = SECRET */
+       if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
+       if( !THD_filename_ok(argv[iarg]) )
+         ERROR_exit("badly formed filename: '%s' '%s' :-(",argv[iarg-1],argv[iarg]) ;
+       if( strcmp(argv[iarg],"NULL") == 0 ) nwarp_save_prefix = NULL ;
+       else                                 nwarp_save_prefix = argv[iarg] ;
+       iarg++ ; continue ;
      }
 
      /*-----*/
@@ -2812,6 +2846,11 @@ int main( int argc , char *argv[] )
    if( nwarp_pass && DSET_NVALS(dset_targ) > 1 )
      ERROR_exit("Can't use -nwarp on more than 1 sub-brick :-(") ;
 
+   if( nwarp_save_prefix != NULL && !nwarp_pass ){
+     WARNING_message("Can't use -nwarp_save without -nwarp! :-(") ;
+     nwarp_save_prefix = NULL ;
+   }
+
    switch( tb_mast ){                        /* 19 Jul 2007 */
      case 1: dset_mast = dset_targ ; break ;
      case 2: dset_mast = dset_base ; break ;
@@ -3631,6 +3670,11 @@ STATUS("zeropad weight dataset") ;
      nzout = DSET_NZ(dset_out) ; dzout = fabsf(DSET_DZ(dset_out)) ;
      nxyz_dout[0] = nxout; nxyz_dout[1] = nyout; nxyz_dout[2] = nzout;
      dxyz_dout[0] = dxout; dxyz_dout[1] = dyout; dxyz_dout[2] = dzout;
+   }
+
+   if( dset_out == NULL && nwarp_save_prefix != NULL ){
+     WARNING_message("Can't use -nwarp_save without -prefix! :-(") ;
+     nwarp_save_prefix = NULL ;
    }
 
    /***---------------------- start alignment process ----------------------***/
@@ -4833,19 +4877,35 @@ mri_genalign_set_pgmat(1) ;
            im_targ = mri_genalign_scalar_warpone(
                                  stup.wfunc_numpar , parsave[kk] , stup.wfunc ,
                                  aim , nxout,nyout,nzout, final_interp ) ;
+
+           if( nwarp_save_prefix != NULL ){
+             THD_3dim_dataset *wset ; MRI_IMARR *wimar ;
+             wset = EDIT_empty_copy(dset_out) ;
+             EDIT_dset_items( wset ,
+                                ADN_prefix    , nwarp_save_prefix ,
+                                ADN_nvals     , 3 ,
+                                ADN_ntt       , 0 ,
+                                ADN_datum_all , MRI_float ,
+                              ADN_none ) ;
+             EDIT_BRICK_LABEL( wset , 0 , "x_delta" ) ;
+             EDIT_BRICK_LABEL( wset , 1 , "y_delta" ) ;
+             EDIT_BRICK_LABEL( wset , 2 , "z_delta" ) ;
+             wimar = mri_genalign_scalar_xyzwarp(
+                                 stup.wfunc_numpar , parsave[kk] , stup.wfunc ,
+                                 nxout , nyout , nzout ) ;
+             EDIT_substitute_brick(wset,0,MRI_float,MRI_FLOAT_PTR(IMARR_SUBIM(wimar,0))) ;
+             EDIT_substitute_brick(wset,1,MRI_float,MRI_FLOAT_PTR(IMARR_SUBIM(wimar,1))) ;
+             EDIT_substitute_brick(wset,2,MRI_float,MRI_FLOAT_PTR(IMARR_SUBIM(wimar,2))) ;
+             FREE_IMARR(wimar) ;
+             DSET_write(wset) ; WROTE_DSET(wset) ; DSET_delete(wset) ;
+           }
          break ;
 
          case APPLY_AFF12:{
            float ap[12] ;
-#if 0
-DUMP_MAT44("aff12_xyz",aff12_xyz) ;
-#endif
            wmat = MAT44_MUL(aff12_xyz,mast_cmat) ;
            qmat = MAT44_MUL(targ_cmat_inv,wmat) ;  /* index transform matrix */
            UNLOAD_MAT44_AR(qmat,ap) ;
-#if 0
-DUMP_MAT44("aff12_ijk",qmat) ;
-#endif
            im_targ = mri_genalign_scalar_warpone(
                                  12 , ap , mri_genalign_mat44 ,
                                  aim , nxout,nyout,nzout, final_interp ) ;
