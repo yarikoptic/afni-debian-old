@@ -23,4 +23,4 @@ if [ -z "${AFNI_INSTALLDIR}" ]; then
 	. /etc/afni/afni.sh
 fi
 
-exec /usr/lib/afni/bin/${0##*/} $@
+exec /usr/lib/afni/bin/${0##*/} "$@"

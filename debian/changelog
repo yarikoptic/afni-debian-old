@@ -1,3 +1,9 @@
+afni (0.20101018~dfsg.1-2) UNRELEASED; urgency=low
+
+  * Make afni_wrapper more robust. Thanks to Alex Waite for the patch.
+
+ -- Michael Hanke <mih@debian.org>  Fri, 17 Dec 2010 10:04:16 -0500
+
 afni (0.20101018~dfsg.1-1) UNRELEASED; urgency=low
 
   * New upstream code. Added 3dDTtoDWI tool.
