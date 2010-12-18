@@ -1008,8 +1008,33 @@ void display_help_menu()
     "                                                                       \n"
     "[-stim_times k tname Rmodel]                                           \n"
     "   Generate the k-th response model from a set of stimulus times       \n"
-    "   given in file 'tname'.  The response model is specified by the      \n"
-    "   'Rmodel' argument, which can be one of the following:               \n"
+    "   given in file 'tname'.                                              \n"
+    "    *** The format of file 'tname' is one line per imaging run         \n"
+    "        (cf. '-concat' above), and each line contains the list of START\n"
+    "        times (in seconds) for the stimuli in class 'k' for its        \n"
+    "        corresponding run of data; times are relative to the start of  \n"
+    "        the run (i.e., sub-brick #0 occurring at time=0).              \n"
+    "    *** The DURATION of the stimulus is encoded in the 'Rmodel         \n"
+    "        argument, described below.                                     \n"
+    "        -- If different stimuli in the same class 'k' have different   \n"
+    "           durations, you'll have to use the dmBLOCK response model    \n"
+    "           and '-stim_times_AM1' or '-stim_times_AM2', described below.\n"
+    "    *** Different lines in the 'tname' file can contain different      \n"
+    "        numbers of start times.  Each line must contain at least 1 time.\n"
+    "    *** If there is no stimulus in class 'k' in a particular imaging   \n"
+    "        run, there are two ways to indicate that:                      \n"
+    "          (a) put a single '*' on the line, or                         \n"
+    "          (b) put a very large number or a negative number             \n"
+    "              (e.g., 99999, or -1) on the line                         \n"
+    "              -- times outside the range of the imaging run will cause \n"
+    "                 a warning message, but the program will soldier on.   \n"
+    "    *** In the case where the stimulus doesn't actually exist in the   \n"
+    "        data model (e.g., every line in 'tname' is a '*'), you will    \n"
+    "        also have to use the '-allzero_OK' option to force 3dDeconvolve\n"
+    "        to run with regressor matrix columns that are filled with zeros.\n"
+    "                                                                       \n"
+    "   The response model is specified by the third argument after         \n"
+    "   '-stim_times' ('Rmodel'), and can be one of the following:          \n"
     "    *** In the descriptions below, a '1 parameter' model has a fixed   \n"
     "        shape, and only the amplitude varies.                          \n"
     "    *** Models with more than 1 parameter have multiple basis          \n"
@@ -1240,14 +1265,16 @@ void display_help_menu()
     "   The 'tname' file should consist of 'time*amplitude' pairs.          \n"
     "   As in '-stim_times', the '*' character can be used as a placeholder \n"
     "   when an imaging run doesn't have any stimulus of a given class.     \n"
-    "   *N.B.: If no run has a stimulus of a given class, then you must     \n"
-    "          have at least 1 time that is not '*' for -stim_times_* to    \n"
-    "          work.  You can use a negative time for this purpose, which   \n"
-    "          will produce a warning message and then be ignored, as in:   \n"
+    " ***N.B.: If NO run at all has a stimulus of a given class, then you   \n"
+    "          must have at least 1 time that is not '*' for -stim_times_*  \n"
+    "          to work (so that the proper number of regressors can be set  \n"
+    "          up).  You can use a negative time for this purpose, which    \n"
+    "          will produce a warning message buth otherwise will be        \n"
+    "          ignored, as in:                                              \n"
     "             -1*37                                                     \n"
     "             *                                                         \n"
     "          for a 2 run 'tname' file to be used with -stim_times_*.      \n"
-    "          In such a case, you will also need the -allzero_OK option,   \n"
+    "       ** In such a case, you will also need the -allzero_OK option,   \n"
     "          and probably -GOFORIT as well.                               \n"
     "[-stim_times_AM2 k tname Rmodel]                                       \n"
     "   Similar, but generates 2 response models: one with the mean         \n"
@@ -1299,6 +1326,12 @@ void display_help_menu()
     "        meaning a block of duration 15 seconds starting at t=30 s.     \n"
     " For some graphs of what dmBLOCK regressors look like, see             \n"
     "   http://afni.nimh.nih.gov/pub/dist/doc/misc/Decon/AMregression.pdf   \n"
+    " and/or try the following command:                                     \n"
+    "    3dDeconvolve -nodata 100 1 -polort -1 -num_stimts 1 \\             \n"
+    "                 -stim_times_AM1 1 q.1D 'dmBLOCK(1)'    \\             \n"
+    "                 -x1D stdout: | 1dplot -stdin -thick -thick            \n"
+    " where file q.1D contains the single line                              \n"
+    "    15:10 50:30                                                        \n"
     "                                                                       \n"
     "[-stim_times_IM k tname Rmodel]                                        \n"
     "   Similar, but each separate time in 'tname' will get a separate      \n"
@@ -2323,6 +2356,7 @@ void get_options
       }
 
       /*-----  -stim_times k sname rtype [10 Aug 2004]  -----*/
+
       if( strncmp(argv[nopt],"-stim_times",11) == 0 ){
         char *suf = argv[nopt]+11 , *sopt=argv[nopt] ;
         int nc=0,vdim=0,vmod=0 ; MRI_IMAGE *tim ;
@@ -2409,16 +2443,19 @@ void get_options
           if( vdim < 2 ){                /* need at least 2 (time & amplitude) */
             if( strncmp(argv[nopt],"1D:",3) == 0 )
               ERROR_exit(
-              "'%s %d' doesn't allow '1D:' type of input -- use a file [nopt=%d]",
+              "'%s %d' doesn't allow '1D:' type of input -- use a file [nopt=%d] :-(",
               sopt , ival , nopt ) ;
             else
               ERROR_exit(
-              "'%s %d' file '%s' doesn't have auxiliary values per time point! [nopt=%d]",
-              sopt , ival , argv[nopt] , nopt ) ;
+              "'%s %d' file '%s' doesn't have any auxiliary values per time point! [nopt=%d] :-(\n%s",
+              sopt , ival , argv[nopt] , nopt ,
+              (nc > 0) ? " ==> You need at least 1 extra value 'married' to each stimulus start time\n"
+                       : " ==> To have NO valid times, use a time of '-1' and 'marry' it as desired\n"
+              ) ;
           }
           else if( vdim-1 > BASIS_MAX_VDIM ) /* over the limit */
             ERROR_exit(
-              "'%s %d' file '%s' has too many auxiliary values per time point! [nopt=%d]",
+              "'%s %d' file '%s' has too many auxiliary values per time point! [nopt=%d] :-(",
               sopt , ival , argv[nopt] , nopt ) ;
           else                               /* juuusst right */
             INFO_message(
