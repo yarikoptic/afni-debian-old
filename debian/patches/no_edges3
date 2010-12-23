@@ -56,7 +56,7 @@ Last-Update: 2009-10-21
             DTIStudioFibertoSegments Dimon 3dLocalstat 3danisosmooth 3dmaxima    \
             3dTwotoComplex 3dInvFMRI 3dmatcalc 3dAcost 3dLocalBistat 3dFWHMx     \
             3dBlurToFWHM 1dSEM 3dDFT 3dSynthesize 1dMarry 3dEmpty 3dsvm          \
-@@ -609,9 +609,10 @@
+@@ -615,9 +615,10 @@
  	$(RM) $@
  	$(CC) -o 3dvolreg 3dvolreg.o $(LFLAGS) -lmri -lf2c $(LLIBS)
  
@@ -70,7 +70,7 @@ Last-Update: 2009-10-21
  
  from3d:from3d.o
  	$(RM) $@
-@@ -706,10 +707,11 @@
+@@ -716,10 +717,11 @@
  	$(RM) $@
  	$(CC) -o 3dttest++ 3dttest++.o $(LFLAGS) -lmri -lf2c $(LLIBS)
  
@@ -86,7 +86,7 @@ Last-Update: 2009-10-21
  
  ### From Stephen Laconte
  3dsvm:svm/svm_common.c svm/svm_learn.c svm/3dsvm_common.c svm/svm_hideo.c svm/3dsvm.c
-@@ -1507,7 +1509,7 @@
+@@ -1521,7 +1523,7 @@
  	$(CP) -pr coxplot volpack moveup moveAFNI* eispack avovk                 ./afni_src
  	$(CP) -pr $(SCRIPTS) $(PY_DIR) $(R_DIR)                                  ./afni_src
  	$(CP) -pr gifsicledir qhulldir f2cdir mpeg_encodedir                     ./afni_src
@@ -95,7 +95,7 @@ Last-Update: 2009-10-21
  	$(CP) -pr SUMA svm matlab rickr faces poems gifti ni_test_? README.*     ./afni_src
  	chmod -R ugo+rw                                                          ./afni_src
  	$(TAR) cf - afni_src | $(GZIP) -9v > afni_src.tgz
-@@ -2249,8 +2251,9 @@
+@@ -2267,8 +2269,9 @@
  #######
  # 3DEdge library files - make them and move them up here
  
@@ -109,7 +109,7 @@ Last-Update: 2009-10-21
  # Eispack and CDF library files - make them and move them up here
 --- a/SUMA/SUMA_3dSkullStrip.c
 +++ b/SUMA/SUMA_3dSkullStrip.c
-@@ -34,6 +34,21 @@
+@@ -13,6 +13,21 @@
        sts = SUMA_help_talk(ps);
        printf ( 
  "\n"
@@ -131,7 +131,7 @@ Last-Update: 2009-10-21
  "Usage: A program to extract the brain from surrounding.\n"
  "  tissue from MRI T1-weighted images. The fully automated\n"
  "  process consists of three steps:\n"
-@@ -1033,6 +1048,16 @@
+@@ -1012,6 +1027,16 @@
        fprintf(SUMA_STDERR,"Error %s:\nCannot use -push_to_edge without -use_edge\n", FuncName);
        exit (1);      
     }
@@ -148,7 +148,7 @@ Last-Update: 2009-10-21
     
     if (Opt->bot_lztclip < 0) {
        if (!Opt->Use_emask) Opt->bot_lztclip = 0.65;
-@@ -1518,6 +1543,13 @@
+@@ -1497,6 +1522,13 @@
        exit(1);
     }
  
@@ -162,7 +162,7 @@ Last-Update: 2009-10-21
     /* calculate an edge mask ? */
     if (Opt->Use_emask) {
        float *emask_sort = NULL, PercRange[2]= { 10, 90 }, PercRangeVal[2] = { 0.0, 0.0 }, PercTh=-1.0;
-@@ -1625,7 +1657,8 @@
+@@ -1604,7 +1636,8 @@
           }
        }
     } 
@@ -172,7 +172,7 @@ Last-Update: 2009-10-21
     if (Opt->blur_fwhm) {
       if (Opt->debug) fprintf (SUMA_STDERR,"%s: Blurring...\n", FuncName);
       EDIT_blur_volume(  DSET_NX(Opt->in_vol), DSET_NY(Opt->in_vol), DSET_NZ(Opt->in_vol),
-@@ -2030,6 +2063,13 @@
+@@ -2009,6 +2042,13 @@
        }
  
        PUSH_TO_EDGE:
@@ -186,7 +186,7 @@ Last-Update: 2009-10-21
        if (Opt->PushToEdge) {
           fprintf (SUMA_STDERR,"%s: Pushing to Edge ...\n", FuncName);
           ps->cs->kth = 1; /*make sure all gets sent at this stage */
-@@ -2082,7 +2122,7 @@
+@@ -2061,7 +2101,7 @@
           if (LocalHead) fprintf (SUMA_STDERR,"%s: Edge push correction  Done.\n", FuncName);
           ps->cs->kth = kth_buf; 
        }
@@ -204,9 +204,9 @@ Last-Update: 2009-10-21
  #include "extrema.h"
 +#endif  /* Disabled for Debian package -- license problem with 3DEdge */
  
- #undef STAND_ALONE
+ static int InteractiveQuit;
  
-@@ -3986,6 +3988,7 @@
+@@ -3962,6 +3964,7 @@
     \param poutsetp (THD_3dim_dataset **)If not null, it will point to a dataset that contains
                                          the edges.
  */
@@ -214,7 +214,7 @@ Last-Update: 2009-10-21
  SUMA_Boolean SUMA_3dedge3(THD_3dim_dataset *inset, float *emask, THD_3dim_dataset **poutsetp)
  {
     static char FuncName[]={"SUMA_3dedge3"};
-@@ -4206,3 +4209,4 @@
+@@ -4182,3 +4185,4 @@
        
     SUMA_RETURN(YUP);
  }
@@ -250,9 +250,9 @@ Last-Update: 2009-10-21
  
  SUMA_SRCS = SUMA_trackball.c SUMA_SVmanip.c SUMA_input.c \
  		 SUMA_MiscFunc.c SUMA_IV_XYZextract.c	\
-@@ -326,7 +326,7 @@
+@@ -291,7 +291,7 @@
  	$(RM) $@
- 	${CC} -DSUMA_COMPILED -DSUMA_BrainWrap_STANDALONE ${CCOPT} ${WARNOPT} -o $@ $(AFWARPOBJS) \
+ 	${CC} -DSUMA_COMPILED  ${CCOPT} ${WARNOPT} -o $@ $(AFWARPOBJS) \
  		${AFNI_OBJS} SUMA_3dSkullStrip.c ${SUMA_INPATH} ${SUMA_LINK_PATH} 	\
 -		${AFNI_3dOBJS} MarchingCubes/debug/MarchingCubes.o	-I../3DEdge/src -l3DEdge\
 +		${AFNI_3dOBJS} MarchingCubes/debug/MarchingCubes.o	\

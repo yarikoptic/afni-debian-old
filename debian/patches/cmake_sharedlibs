@@ -240,7 +240,7 @@ Last-Update: 2010-09-21
 +ENDIF(NOT AFNI_BUILD_CORELIBS_ONLY)
 --- /dev/null
 +++ b/CMakeLists_apps.txt
-@@ -0,0 +1,202 @@
+@@ -0,0 +1,204 @@
 +##
 +## This file is to be included in the toplevel CMakeLists.txt
 +##
@@ -279,7 +279,8 @@ Last-Update: 2010-09-21
 +  3dUniformize 3ddelay 3dfim+ 3dNLfim 3dNeocon 3dConvolve RSFgen
 +  3dFFT 1dgenARMA11 3dPeriodogram 1dAstrip 3dLocalPV 3dBandpass
 +  3dSetupGroupInCorr 3dGroupInCorr 3dSatCheck 3dTcorr1D 3dSimARMA11
-+  3dClustSim 3dRetinoPhase 3dMaskToASCII 3dttest++ 3dDTtoDWI
++  3dClustSim 3dRetinoPhase 3dMaskToASCII 3dttest++ 3dDTtoDWI niccc
++  3dRankizer 3dXYZcat
 +  ${EXTRAS})
 +
 +SET(SCRIPTS
@@ -298,7 +299,8 @@ Last-Update: 2010-09-21
 +  @Spharm.examples @GetAfniBin @fast_roi
 +  @make_plug_diff @build_afni_Xlib @update.afni.binaries @ROI_Corr_Mat
 +  @FS_roi_label @demo_prompt @ScriptCheck @NoPound @Reorder 3dMEMA
-+  @DiceMetric @R_funclist @TimeDiff @FullPath @ANATICOR @MakeLabelTable)
++  @DiceMetric @R_funclist @TimeDiff @FullPath @ANATICOR @MakeLabelTable
++  @ElectroGrid ExamineXmat 1dRplot @2dwarper.Allin @help.AFNI)
 +
 +
 +##
@@ -481,7 +483,7 @@ Last-Update: 2010-09-21
 +  mri_dicom_stuff.c mri_check.c mri_allzero.c mri_subset.c mri_to_fvect.c
 +  mri_genalign_util.c rcmat.c dmat44.c mri_rbfinterp.c matrix.c
 +  gifti_choice.c zfun.c cs_pv.c cs_sort_iv.c cs_sort_d misc_math.c
-+  mri_genARMA11.c)
++  mri_genARMA11.c mri_catvol.c)
 +
 +SET(THD_SRC
 +  thd_atr.c thd_dsetto1D.c thd_initalldir.c thd_reconpar.c thd_auxdata.c
@@ -643,7 +645,7 @@ Last-Update: 2010-09-21
 +  COMPONENT Development)
 --- /dev/null
 +++ b/CMakeLists_plugins.txt
-@@ -0,0 +1,66 @@
+@@ -0,0 +1,69 @@
 +##
 +## This file is to be included in the toplevel CMakeLists.txt
 +##
@@ -687,10 +689,13 @@ Last-Update: 2010-09-21
 +SET(belmonte_plugins
 +  plug_threshold plug_permtest)
 +
++SET(davidshin_plugins
++  plug_aslA3D3)
++
 +# all contributed plugins
 +SET(contrib_plugins
 +  ${ziad_plugins} ${birn_plugins} ${kummer_plugins} ${rickr_plugins}
-+  ${tross_plugins} ${belmonte_plugins} ${fredtam_plugins})
++  ${tross_plugins} ${belmonte_plugins} ${fredtam_plugins} ${davidshin_plugins})
 +
 +# all plugins
 +SET(plugins
@@ -774,14 +779,14 @@ Last-Update: 2010-09-21
 +SET(LIBSUMA_SRCS
 +  SUMA_trackball.c SUMA_SVmanip.c SUMA_input.c SUMA_MiscFunc.c
 +  SUMA_IV_XYZextract.c SUMA_IV_FaceSetsextract.c SUMA_SurfNorm.c
-+  SUMA_DOmanip.c SUMA_ParseName.c SUMA_Load_Surface_Object.c SUMA_CreateDO.c
++  SUMA_DOmanip.c SUMA_Load_Surface_Object.c SUMA_CreateDO.c
 +  SUMA_help.c SUMA_display.c SUMA_ParseCommands.c SUMA_Engine.c
 +  SUMA_Surface_IO.c SUMA_VolData.c SUMA_niml.c SUMA_Color.c SUMA_GeomComp.c
-+  SUMA_SphericalMapping.c SUMA_DataSets.c SUMA_Homer.c SUMA_xColBar.c
-+  SUMA_SurfClust.c SUMA_IsoSurface.c SUMA_ConvexHull.c SUMA_BrainWrap.c
-+  SUMA_global.c SUMA_plot.c SUMA_volume_render.c SUMA_SurfaceToSurface.c
-+  SUMA_LocalStat.c SUMA_spharm.c SUMA_dot.c PLY/plyfile.c
-+  MarchingCubes/MarchingCubes.c)
++  SUMA_SphericalMapping.c SUMA_DataSets.c SUMA_HomerFunc.c SUMA_xColBar.c
++  SUMA_IsoSurfaceFunc.c SUMA_BrainWrap.c
++  SUMA_global.c SUMA_SurfaceToSurface.c SUMA_LocalStat.c SUMA_spharm.c
++  SUMA_dot.c SUMA_plot.c SUMA_volume_render.c
++  PLY/plyfile.c MarchingCubes/MarchingCubes.c)
 +
 +# add libGLw symbols if requested
 +IF(AFNI_BUILD_LOCAL_GLW)
@@ -961,42 +966,6 @@ Last-Update: 2010-09-21
 +  RUNTIME DESTINATION ${AFNI_INSTALL_BIN_DIR} COMPONENT Runtime
 +  LIBRARY DESTINATION ${AFNI_INSTALL_LIB_DIR} COMPONENT Runtime
 +  ARCHIVE DESTINATION ${AFNI_INSTALL_LIB_DIR} COMPONENT Development)
---- a/SUMA/SUMA.c
-+++ b/SUMA/SUMA.c
-@@ -10,13 +10,15 @@
- 
- /* CODE */
- 
--
--SUMA_SurfaceViewer *SUMAg_cSV; /*!< Global pointer to current Surface Viewer structure*/
--SUMA_SurfaceViewer *SUMAg_SVv; /*!< Global pointer to the vector containing the various Surface Viewer Structures */
--int SUMAg_N_SVv; /*!< Number of SVs stored in SVv */
--SUMA_DO *SUMAg_DOv;	/*!< Global pointer to Displayable Object structure vector*/
--int SUMAg_N_DOv = 0; /*!< Number of DOs stored in DOv */
--SUMA_CommonFields *SUMAg_CF; /*!< Global pointer to structure containing info common to all viewers */
-+/* For Debian move the following globals away to be able to build a proper
-+ * shared library for SUMA. They will now reside in SUMA_global.c
-+ */
-+/*SUMA_SurfaceViewer *SUMAg_cSV; !< Global pointer to current Surface Viewer structure*/
-+/*SUMA_SurfaceViewer *SUMAg_SVv; !< Global pointer to the vector containing the various Surface Viewer Structures */
-+/*int SUMAg_N_SVv; !< Number of SVs stored in SVv */
-+/*SUMA_DO *SUMAg_DOv;	!< Global pointer to Displayable Object structure vector*/
-+/*int SUMAg_N_DOv = 0; !< Number of DOs stored in DOv */
-+/*SUMA_CommonFields *SUMAg_CF; !< Global pointer to structure containing info common to all viewers */
- 
- void SUMA_usage ()
-    
---- /dev/null
-+++ b/SUMA/SUMA_global.c
-@@ -0,0 +1,8 @@
-+#include "SUMA_suma.h"
-+
-+SUMA_SurfaceViewer *SUMAg_cSV; /*!< Global pointer to current Surface Viewer structure*/
-+SUMA_SurfaceViewer *SUMAg_SVv; /*!< Global pointer to the vector containing the various Surface Viewer Structures */
-+int SUMAg_N_SVv; /*!< Number of SVs stored in SVv */
-+SUMA_DO *SUMAg_DOv;	/*!< Global pointer to Displayable Object structure vector*/
-+int SUMAg_N_DOv = 0; /*!< Number of DOs stored in DOv */
-+SUMA_CommonFields *SUMAg_CF; /*!< Global pointer to structure containing info common to all viewers */
 --- a/SUMA/SUMA_gts.h
 +++ b/SUMA/SUMA_gts.h
 @@ -20,7 +20,6 @@
@@ -1020,7 +989,7 @@ Last-Update: 2010-09-21
     are based on 
 --- /dev/null
 +++ b/avovk/CMakeLists.txt
-@@ -0,0 +1,26 @@
+@@ -0,0 +1,27 @@
 +PROJECT(segtools)
 +
 +if (GSL_LIBRARY)
@@ -1028,12 +997,13 @@ Last-Update: 2010-09-21
 +  SET(SOURCES thd_segtools_fNM.c cluster_floatNOMASK.c)
 +  ADD_LIBRARY(segtools ${SOURCES})
 +  TARGET_LINK_LIBRARIES(segtools gsl gslcblas)
-+  SET(PROGRAMS fit_onesign Aclustering 3dfit_onesign 3dAclustering_fNM)
++  SET(PROGRAMS fit_onesign Aclustering 3dfit_onesign 3dkmeans)
 +
 +  ADD_EXECUTABLE(fit_onesign fit_onesign.c)
 +  ADD_EXECUTABLE(Aclustering Aclustering.c)
 +  ADD_EXECUTABLE(3dfit_onesign 3dfit_onesign.c)
-+  ADD_EXECUTABLE(3dAclustering_fNM 3dAclustering_floatNM.c)
++  #ADD_EXECUTABLE(3dAclustering_fNM 3dAclustering_floatNM.c)
++  ADD_EXECUTABLE(3dkmeans 3dkmeans.c)
 +
 +  SET(SEGTOOLS_LIBS ${AFNI_LIBS} segtools ${GSL_LIBRARIES})
 +  FOREACH(program ${PROGRAMS})
@@ -1238,7 +1208,7 @@ Last-Update: 2010-09-21
 +  ARCHIVE DESTINATION ${AFNI_INSTALL_LIB_DIR} COMPONENT Development)
 --- a/rickr/Dimon.c
 +++ b/rickr/Dimon.c
-@@ -102,11 +102,12 @@
+@@ -104,11 +104,12 @@
  #define IFM_PROG_NAME   "Dimon"
  
  #include "Imon.h"
@@ -1299,15 +1269,3 @@ Last-Update: 2010-09-21
     RETURN(gim);
  }
   
---- a/mri_genalign.c
-+++ b/mri_genalign.c
-@@ -2229,7 +2229,8 @@
- 
- /*--------------------------------------------------------------------------*/
- #ifdef USE_OMP
--# include "mri_warpfield.c"
-+/* Not an Debian as we build proper shared libs. */
-+/* # include "mri_warpfield.c" */
- #endif
- /*--------------------------------------------------------------------------*/
- 

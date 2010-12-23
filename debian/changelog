@@ -1,8 +1,14 @@
-afni (0.20101018~dfsg.1-2) UNRELEASED; urgency=low
+afni (0.20101222~dfsg.1-1) UNRELEASED; urgency=low
 
+  * New upstream code. Adds tools: niccc, 3dkmeans, 3dRankizer, 3dXYZcat. Adds
+    scripts: @ElectroGrid, ExamineXmat, 1dRplot, @2dwarper.Allin, @help.AFNI.
+    Adds plugin: plug_aslA3D3.
+  * Updated CMake patch.
+  * Merged some small portion of the shared libarary related patches with
+    upstream.
   * Make afni_wrapper more robust. Thanks to Alex Waite for the patch.
 
- -- Michael Hanke <mih@debian.org>  Fri, 17 Dec 2010 10:04:16 -0500
+ -- Michael Hanke <mih@debian.org>  Thu, 23 Dec 2010 11:34:20 -0500
 
 afni (0.20101018~dfsg.1-1) UNRELEASED; urgency=low
 

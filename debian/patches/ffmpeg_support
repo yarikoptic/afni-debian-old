@@ -117,7 +117,7 @@ Last-Update: 2009-10-29
              }
  
              /* animation is done, for good or for ill */
-@@ -6166,7 +6136,7 @@
+@@ -6168,7 +6138,7 @@
                                   "* This takes precedence over 'Save One',\n"
                                   "    if it is also turned on.\n"
                                   "* GIF animations require gifsicle.\n"
@@ -126,7 +126,7 @@ Last-Update: 2009-10-29
                                 ) ;
             MCW_reghint_children( seq->save_agif_bbox->wrowcol ,
                                   "Save image sequence to animation" ) ;
-@@ -12901,63 +12871,33 @@
+@@ -12903,63 +12873,33 @@
        /* MPEG-1 */
  
        case MPEG_MODE:{
