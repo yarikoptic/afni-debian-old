@@ -1,13 +1,6 @@
 #include "SUMA_suma.h"
 #include "SUMA_plot.h"
 
-/* extern SUMA_SurfaceViewer *SUMAg_cSV; */ /* no longer in use Tue Aug 13 15:55:29 EDT 2002 */
-extern int SUMAg_N_DOv; 
-extern SUMA_DO *SUMAg_DOv;
-extern SUMA_CommonFields *SUMAg_CF; 
-extern SUMA_SurfaceViewer *SUMAg_SVv;
-extern int SUMAg_N_SVv;
-
 /*!
    Return the code for the key that is specified in keyin
 */
@@ -3960,10 +3953,15 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
                for (ii=0; ii<SUMAg_N_DOv; ++ii) {
                   if (SUMA_isVO(SUMAg_DOv[ii])) {
                      VO = (SUMA_VolumeObject *)(SUMAg_DOv[ii].OP);
-                     if (!SUMA_MoveCutplane(VO, 0, 1.0)) {
-                        SUMA_SLP_Err("Bad");
+                     if (VO->SelectedCutPlane >= 0) {
+                        SUMA_LHv("Moving cut plane %d\n", 
+                                       VO->SelectedCutPlane);
+                        if (!SUMA_MoveCutplane(VO, VO->SelectedCutPlane, 1.0)) {
+                           SUMA_SLP_Err("Bad");
+                        }
                      }
-		     /* JB: only allow cutplane from 1st volume, otherwise remove 'break' */
+		     /* JB: only allow cutplane from 1st volume object, 
+                  otherwise remove 'break' */
 		     break;
                   }
                }
@@ -3977,10 +3975,14 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
                for (ii=0; ii<SUMAg_N_DOv; ++ii) {
                   if (SUMA_isVO(SUMAg_DOv[ii])) {
                      VO = (SUMA_VolumeObject *)(SUMAg_DOv[ii].OP);
-                     if (!SUMA_MoveCutplane(VO, 0, -1.0)) {
-                        SUMA_SLP_Err("Bad");
+                     if (VO->SelectedCutPlane >= 0) {
+                        SUMA_LHv("Moving cut plane %d\n", 
+                                       VO->SelectedCutPlane);
+                        if (!SUMA_MoveCutplane(VO, VO->SelectedCutPlane, -1.0)) {
+                           SUMA_SLP_Err("Bad");
+                        }
                      }
-		     /* JB: only allow cutplane from 1st volume, otherwise remove 'break' */
+		     /* JB: only allow cutplane from 1st volume object, otherwise remove 'break' */
 		     break;
                   }
                }
@@ -4902,6 +4904,7 @@ int SUMA_MarkLineCutplaneIntersect (SUMA_SurfaceViewer *sv, SUMA_DO *dov,
    DListElmt *SetNodeElem = NULL;
    SUMA_SurfaceObject *SO = NULL;
    SUMA_SurfaceObject **SOv = NULL;
+   SUMA_VolumeObject *VO=NULL;
    SUMA_Boolean NodeIgnored = NOPE;
    SUMA_Boolean LocalHead = YUP;
 
@@ -4986,10 +4989,16 @@ int SUMA_MarkLineCutplaneIntersect (SUMA_SurfaceViewer *sv, SUMA_DO *dov,
       
    /* Mark intersection Facsets */
    if (imin >= 0) {
+      if (!(VO = SUMA_VolumeObjectOfClipPlaneSurface(SO))) {
+         SUMA_S_Err("Failed to find volume object for clipped surface");
+         SUMA_RETURN(-1);
+      }
+      VO->SelectedCutPlane = imin;
+      
       ip = SO->FaceSetDim * MTI->ifacemin;
       SUMA_S_Note("Have to decide on what to do here,\n"
                   "see equivalent section in SUMA_MarkLineSurfaceIntersect");
-      
+      SUMA_S_Warn("Weird, coords all zero");
       /* print nodes about the closets faceset*/
       fprintf(SUMA_STDOUT, "\nvvvvvvvvvvvvvvvvvvvvvvvvvvvv\n");
       fprintf(SUMA_STDOUT, "Selected cutplane surface %d .\n"
@@ -4999,12 +5008,13 @@ int SUMA_MarkLineCutplaneIntersect (SUMA_SurfaceViewer *sv, SUMA_DO *dov,
       fprintf(SUMA_STDOUT, "%d, %d, %d\n", \
       SO->FaceSetList[ip], SO->FaceSetList[ip+1],SO->FaceSetList[ip+2]);
 
-      fprintf (SUMA_STDOUT,"Coordinates of Nodes forming closest FaceSet:\n");
+      fprintf (SUMA_STDOUT,"Coordinates of Nodes forming closest FaceSet:\n"
+                           "SO->NodeDim = %d \n", SO->NodeDim);
       for (it=0; it < 3; ++it) { 
-
+         
          id = SO->NodeDim * SO->FaceSetList[ip+it];
-         fprintf(SUMA_STDOUT, "%f, %f, %f\n", SO->NodeList[id],\
-                                                SO->NodeList[id+1],\
+         fprintf(SUMA_STDOUT, "%f, %f, %f\n", SO->NodeList[id],
+                                                SO->NodeList[id+1],
                                                 SO->NodeList[id+2]);
       }
       fprintf(SUMA_STDOUT, "\n^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n");

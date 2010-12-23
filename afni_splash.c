@@ -751,10 +751,10 @@ void AFNI_faceup(void)   /* 17 Dec 2004 */
 
 ENTRY("AFNI_faceup") ;
 
-   if( num_face <  0 ){ BEEPIT; EXRETURN; }
+   if( num_face <  0 ){ BEEPIT; WARNING_message("no faces!?"); EXRETURN; }
    if( num_face == 0 ){
      num_face = AFNI_find_jpegs( "face_" , &fname_face ) ;
-     if( num_face <= 0 ){ BEEPIT; EXRETURN; }
+     if( num_face <= 0 ){ BEEPIT; WARNING_message("no faces?!"); EXRETURN; }
    }
    if( face_phan != NULL ){
      PLUGIN_imseq *ph = (PLUGIN_imseq *)face_phan ;
@@ -838,10 +838,10 @@ void AFNI_allsplash(void)   /* 12 Sep 2007 */
 
 ENTRY("AFNI_allsplash") ;
 
-   if( num_splash <  0 ){ BEEPIT; EXRETURN; }
+   if( num_splash <  0 ){ BEEPIT; WARNING_message("no splashes!?"); EXRETURN; }
    if( num_splash == 0 ){
      num_splash = AFNI_find_jpegs( "splash_" , &fname_splash ) ;
-     if( num_splash <= 0 ){ BEEPIT; EXRETURN; }
+     if( num_splash <= 0 ){ BEEPIT; WARNING_message("no splashes?!"); EXRETURN; }
    }
    if( splash_phan != NULL ){
      PLUGIN_imseq *ph = (PLUGIN_imseq *)splash_phan ;
@@ -946,7 +946,7 @@ static mday facials[] = {
  {APR,27,"face_grant"   } ,
  {JUL,22,"face_rbirn"   } ,
  {SEP, 7,"face_rwcox"   } ,
- {OCT,16,"face_rwcox"   } ,
+ {OCT,17,"face_mmk"     } ,
  {NOV,17,"face_brodman" } ,
 {0,0,NULL} } ;  /* last element = flag to stop searching */
 /*---------------------------------------------------------------------------*/
@@ -1121,7 +1121,12 @@ void AFNI_startup_layout_CB( XtPointer client_data , XtIntervalId *id )
    int *  plugin_cont = NULL ;
    char **plugin_geom = NULL ;
    int ipl ;
-
+   char def_layout[]={"\n"
+                      " ***LAYOUT\n"
+                      "  A geom=+0+44\n"
+                      "  A.axialimage geom=+3+455 ifrac=0.8\n"
+                      "  A.sagittalimage geom=+311+455 ifrac=0.8\n"
+                      "\n"};
    Three_D_View *im3d         = GLOBAL_library.controllers[0] ; /* already open */
 
 #ifdef ALLOW_PLUGINS
@@ -1135,8 +1140,13 @@ ENTRY("AFNI_startup_layout_CB") ;
    if( fname == NULL || fname[0] == '\0' ){ AFNI_splashdown(); EXRETURN; }
 
    /* read layout file */
-
-   fbuf = AFNI_suck_file(fname); if( fbuf == NULL ){ AFNI_splashdown(); EXRETURN; }
+   if( strcmp(fname,"GIMME_SOMETHING") != 0 ){
+      fbuf = AFNI_suck_file(fname);
+   } else {                         /* ZSS Dec 2010. */
+      fbuf = (char *)malloc(strlen(def_layout)+1);
+      strcpy(fbuf, def_layout);
+   }
+   if( fbuf == NULL ){ AFNI_splashdown(); EXRETURN; }
    nbuf = strlen(fbuf) ;         if( nbuf == 0    ){ AFNI_splashdown(); EXRETURN; }
 
    fptr = fbuf ; linbuf = (char *) malloc(sizeof(char)*(NLBUF+1)) ;
@@ -1662,13 +1672,15 @@ void AFNI_finalsave_layout_CB( Widget w , XtPointer cd , MCW_choose_cbs *cbs )
 
 ENTRY("AFNI_finalsave_layout_CB") ;
 
-   if( strcmp(cbs->cval,".afnirc") == 0 ){ BEEPIT; EXRETURN; } /* 12 Oct 2000 */
+   if( strcmp(cbs->cval,".afnirc") == 0 ){ /* 12 Oct 2000 */
+     BEEPIT; WARNING_message("Won't over-write .afnirc"); EXRETURN;
+   }
 
    /*-- 23 Jan 2003: open layout file if name is OK, else don't use it --*/
 
    if( THD_filename_ok(cbs->cval) ){
      fp = fopen( cbs->cval , "w" ) ;
-     if( fp == NULL ){ BEEPIT; EXRETURN; }
+     if( fp == NULL ){ BEEPIT; WARNING_message("Can't open output file"); EXRETURN; }
    }
    if( fp != NULL && strstr(cbs->cval,"script") != NULL ){  /* 05 Dec 2007 */
      gp = fp ; fp = NULL ;                  /* write as a driver script */
@@ -1689,7 +1701,7 @@ ENTRY("AFNI_finalsave_layout_CB") ;
        fprintf(gp,"ADD_OVERLAY_COLOR %s %s\n",
                ovc->name_ov[qq] , ovc->label_ov[qq] ) ;
    } else {
-     if( fp == NULL ){ BEEPIT; EXRETURN; }  /* no fp and no gp == Error! */
+     if( fp == NULL ){ BEEPIT; WARNING_message("Can't open output file"); EXRETURN; }  /* no fp and no gp == Error! */
    }
 
    /*----- loop over open controllers -----*/
@@ -1719,7 +1731,7 @@ ENTRY("AFNI_finalsave_layout_CB") ;
           fprintf(gp,"OPEN_PANEL %c.Define_Overlay\n" , abet[cc] ) ;
 
         fprintf(gp,"SET_THRESHOLD %c.%04d %d\n" , abet[cc] ,
-                    (int)(zm3d->vinfo->func_threshold/THR_FACTOR) ,
+                    (int)(zm3d->vinfo->func_threshold/THR_factor) ,
                     (int)(log10(zm3d->vinfo->func_thresh_top)+.01) ) ;
 
         if( !pbar->bigmode ){

@@ -5,6 +5,7 @@
 import sys, os, math
 import afni_base as BASE
 import lib_textdata as TD
+import pdb
 
 # this file contains various afni utilities   17 Nov 2006 [rickr]
 
@@ -27,11 +28,13 @@ def write_text_to_file(fname, text, mode='w', wrap=0, wrapstr='\n'):
           mode    : optional write mode 'w' or 'a' [default='w']
           wrap    : optional wrap flag [default=0]
           wrapstr : optional wrap string: if wrap, apply this string
+
+       return 0 on success, 1 on error
     """
 
     if not text or not fname:
         print "** WTTF: missing text or filename"
-        return
+        return 1
 
     if wrap: text = add_line_wrappers(text, warpstr)
     
@@ -39,10 +42,70 @@ def write_text_to_file(fname, text, mode='w', wrap=0, wrapstr='\n'):
         fp = open(fname, mode)
     except:
         print "** failed to open text file '%s' for writing" % fname
-        return
+        return 1
 
     fp.write(text)
     fp.close()
+
+    return 0
+
+def write_to_timing_file(data, fname='', nplaces=-1, verb=1):
+   """write the data in stim_times format, over rows
+      (this is not for use with married timing, but for simple times)"""
+
+   if fname == '': return
+
+   fp = open(fname, 'w')
+   if not fp:
+      print "** failed to open '%s' for writing timing" % fname
+      return 1
+
+   if verb > 0:
+      print "++ writing %d timing rows to %s" % (len(data), fname)
+
+   fp.write(make_timing_data_string(data, nplaces=nplaces, flag_empty=1,
+                                    verb=verb))
+   fp.close()
+
+   return 0
+
+def make_timing_data_string(data, row=-1, nplaces=3, flag_empty=0,
+                            mesg='', verb=1):
+   """return a string of row data, to the given number of decimal places
+      if row is non-negative, return a string for the given row, else
+      return a string of all rows"""
+
+   if verb > 2:
+      print '++ make_data_string: row = %d, nplaces = %d, flag_empty = %d' \
+            % (row, nplaces, flag_empty)
+
+   if row >= 0:
+      return make_single_row_string(data[row], row, nplaces, flag_empty)
+
+   # make it for all rows
+   if len(mesg) > 0: rstr = "%s :\n" % mesg
+   else:             rstr = ''
+   for ind in range(len(data)):
+      rstr += make_single_row_string(data[ind], ind, nplaces, flag_empty)
+
+   return rstr
+
+def make_single_row_string(data, row, nplaces=3, flag_empty=0):
+   """return a string of row data, to the given number of decimal places
+      if row is non-negative, return a string for the given row"""
+
+   rstr = ''
+
+   # if flagging an empty run, use '*' characters
+   if len(data) == 0 and flag_empty:
+      if row == 0: rstr += '* *'
+      else:        rstr += '*'
+
+   for val in data:
+      if nplaces >= 0: rstr += '%.*f ' % (nplaces, val)
+      else:            rstr += '%g ' % (val)
+
+   return rstr + '\n'
 
 def quotize_list(list, opt_prefix, skip_first=0, quote_wild=0):
     """given a list of text elements, return a new list where any existing
@@ -720,7 +783,7 @@ def replace_n_squeeze(instr, oldstr, newstr):
 # line wrapper functions
 
 # add line wrappers ('\'), and align them all
-def add_line_wrappers(commands, wrapstr='\\\n'):
+def add_line_wrappers(commands, wrapstr='\\\n', verb=1):
     """wrap long lines with 'wrapstr' (probably '\\\n' or just '\n')
        if '\\\n', align all wrapstr strings"""
     new_cmd = ''
@@ -737,7 +800,7 @@ def add_line_wrappers(commands, wrapstr='\\\n'):
             continue
 
         # command needs wrapping
-        new_cmd += insert_wrappers(commands, posn, end, wstring=wrapstr)
+        new_cmd += insert_wrappers(commands,posn,end,wstring=wrapstr,verb=verb)
 
         posn = end + 1     # else, update posn and continue
 
@@ -785,33 +848,44 @@ def align_wrappers(command):
 
     return new_cmd
 
-def insert_wrappers(command, start=0, end=-1, wstring='\\\n'):
+def insert_wrappers(command, start=0, end=-1, wstring='\\\n', verb=1):
     """insert any '\\' chars for the given command
          - insert between start and end positions
          - apply specified wrap string wstring
        return a new string, in any case"""
 
+    global wrap_verb
+
     if end < 0: end = len(command) - start - 1
 
     nfirst = num_leading_line_spaces(command,start,1) # note initial indent
     prefix = get_next_indentation(command,start,end)
+    sskip  = nfirst             # number of init spaces expected
     plen   = len(prefix)
     maxlen = 78
     newcmd = ''
     cur    = start
+
+    if verb > 1: print "+d insert wrappers: nfirst=%d, prefix='%s', plen=%d" \
+                       % (nfirst, prefix, plen)
+
+    #pdb.set_trace()
+
     # rewrite: create new command strings after each wrap     29 May 2009
     while needs_wrapper(command,maxlen,cur,end):
         endposn = command.find('\n',cur)
         if needs_wrapper(command,maxlen,cur,endposn):  # no change on this line
 
-            lposn = find_last_space(command, cur, endposn, maxlen)
+            lposn = find_last_space(command, cur+sskip, endposn, maxlen-sskip)
 
             # if the last space is farther in than next indent, wrap
-            if nfirst+plen+cur < lposn:   # woohoo, wrap away (at lposn)
+            # (adjust initial skip for any indent)
+            if sskip+cur < lposn:   # woohoo, wrap away (at lposn)
                 newcmd = newcmd + command[cur:lposn+1] + wstring
                 # modify command to add prefix, reset end and cur
                 command = prefix + command[lposn+1:]
                 end = end + plen - (lposn+1)
+                sskip = nfirst + plen   # now there is a prefix to skip
                 cur = 0
                 continue
 
@@ -861,14 +935,16 @@ def needs_wrapper(command, maxlen=78, start=0, end=-1):
             remain = end_posn - cur_posn
             continue
 
-        # find next '\n'
+        # else find next '\n'
         posn = command.find('\n', cur_posn)
         if 0 <= posn-cur_posn <= maxlen: # adjust and continue
             cur_posn = posn + 1
             remain = end_posn - cur_posn
             continue
 
-        return 1
+        # otherwise, space means wrap, else not
+        if find_next_space(command, cur_posn, 1) > cur_posn: return 1
+        return 0
 
     return 0        # if we get here, line wrapping is not needed
 
@@ -1745,6 +1821,27 @@ def vec_range_limit(vec, minv, maxv):
       elif vec[ind] > maxv: vec[ind] = maxv
 
    return 0
+
+# for now, make 2 vectors and return their correlation
+def test_polort_const(ntrs, nruns, verb=1):
+    """compute the correlation between baseline regressors of length ntrs*nruns
+       - make vectors of 11...10000...0 and 00...011...100..0 that are as the
+         constant polort terms of the first 2 runs
+       - return their correlation
+    """
+
+    if ntrs <= 0 or nruns <= 2: return -1  # flag
+
+    # lazy way to make vectors
+    v0 = [1] * ntrs + [0] * ntrs + [0] * (ntrs * (nruns-2))
+    v1 = [0] * ntrs + [1] * ntrs + [0] * (ntrs * (nruns-2))
+
+    if verb > 1:
+        print '++ test_polort_const, vectors are:\n' \
+              '   v0 : %s \n'                        \
+              '   v1 : %s' % (v0, v1)
+
+    return correlation_p(v0, v1)
 
 # for now, make 2 vectors and return their correlation
 def test_tent_vecs(val, freq, length):

@@ -102,6 +102,8 @@ extern AFD_dicom_header **MRILIB_dicom_header ;
     "  OMP_NUM_THREADS to some smaller value (including 1).\n"                     \
     "* Un-setting OMP_NUM_THREADS resets OpenMP back to its default state of\n"    \
     "  using all CPUs available.\n"                                                \
+    "  ++ However, on some systems (such as the NIH Biowulf), it seems to be\n"    \
+    "     necessary to set OMP_NUM_THREADS explicitly, or you only get one CPU.\n" \
     "* You must set OMP_NUM_THREADS in the shell BEFORE running the program,\n"    \
     "  since OpenMP queries this variable before the program actually is started\n"\
     "  -- you can't usefully set this variable in your ~/.afnirc file or on the\n" \
@@ -868,6 +870,7 @@ extern int mri_write_1D( char * , MRI_IMAGE * ) ;        /* 16 Nov 1999 */
 extern MRI_IMAGE * mri_read_1D_stdin(void) ;             /* 25 Jan 2008 */
 extern MRI_IMAGE * mri_copy_1D_stdin(void) ;             /* 05 Mar 2010 */
 extern void        mri_clear_1D_stdin(void);
+extern char * mri_read_1D_headerlines( char * ) ;        /* 05 Dec 2010 */
 
 extern MRI_IMAGE * mri_read_4x4AffXfrm_1D( char *fname );/* 24 Nov 2009 */
 extern MRI_IMAGE * mri_1D_fromstring( char * ) ;         /* 28 Apr 2003 */
@@ -1076,6 +1079,8 @@ void mri_Set_KO_catwrap(void);
 void mri_Set_OK_catwrap(void);
 extern MRI_IMAGE * mri_cat2D( int,int,int,void *,MRI_IMARR *) ;
 extern MRI_IMARR * mri_uncat2D( int , int , MRI_IMAGE * im ) ; /* 09 May 2000 */
+
+extern MRI_IMAGE * mri_catvol_1D( MRI_IMARR *imar , int dir ); /* 08 Dec 2010 */
 
 extern MRI_IMAGE * mri_shift_1D( MRI_IMAGE * im , float shift ) ;
 
@@ -1537,7 +1542,7 @@ extern void mri_warp3D_zerout( int ) ;
 
 extern void mri_warp3D_set_womask( MRI_IMAGE * ) ;  /* 19 Nov 2004 */
 
-extern MRI_IMAGE *mri_warp3D_quintic( MRI_IMAGE *, int,int,int , /* 06 Aug 2003 */
+extern MRI_IMAGE *mri_warp3D_quintic( MRI_IMAGE *, int,int,int ,
                                       void func( float,float,float,
                                                  float *,float *,float *) ) ;
 
@@ -1573,27 +1578,34 @@ extern float mri_scaled_diff( MRI_IMAGE *bim, MRI_IMAGE *nim, MRI_IMAGE *msk ) ;
 
 #include "AFNI_label.h"
 #undef  PRINT_VERSION
-#define PRINT_VERSION(pp)                                       \
-  INFO_message("%s: AFNI version=%s (" __DATE__ ") [%d-bit]",   \
-               (pp),AFNI_VERSION_LABEL,(int)(sizeof(void *)*8))
+#define PRINT_VERSION(pp)                                             \
+ do{ if( !machdep_be_quiet() )                                        \
+      INFO_message("%s: AFNI version=%s (" __DATE__ ") [%d-bit]",     \
+                   (pp),AFNI_VERSION_LABEL,(int)(sizeof(void *)*8)) ; \
+ } while(0)
 
 #undef  PRINT_COMPILE_DATE
 #define PRINT_COMPILE_DATE printf("\n++ Compile date = " __DATE__ "\n\n")
 
 #undef  AUTHOR
-#define AUTHOR(aa) INFO_message("Authored by: %s",aa)
+#define AUTHOR(aa) \
+ do{ if( !machdep_be_quiet() ) INFO_message("Authored by: %s",aa) ; } while(0)
 
 #undef  WROTE_DSET_MSG
-#define WROTE_DSET_MSG(dd,ss) \
-  INFO_message("Output dataset %s {%s}",DSET_BRIKNAME(dd),(ss))
+#define WROTE_DSET_MSG(dd,ss)                                        \
+  do{ if( THD_is_file(DSET_BRIKNAME(dd)) && !machdep_be_quiet() )    \
+       INFO_message("Output dataset %s {%s}",DSET_BRIKNAME(dd),(ss)); } while(0)
 
 #undef  WROTE_DSET
-#define WROTE_DSET(dd) \
-  INFO_message("Output dataset %s",DSET_BRIKNAME(dd))
+#define WROTE_DSET(dd)                                                  \
+  do{ if( !machdep_be_quiet() && THD_is_file(DSET_BRIKNAME(dd)) )       \
+        INFO_message("Output dataset %s",DSET_BRIKNAME(dd)); } while(0)
 
 #undef  CHECK_OPEN_ERROR
 #define CHECK_OPEN_ERROR(dd,nn) \
  do{ if( !ISVALID_DSET(dd) ) ERROR_exit("Can't open dataset '%s'",nn); }while(0)
+
+/* note that the following is a fatal error! */
 
 #undef  CHECK_LOAD_ERROR
 #define CHECK_LOAD_ERROR(dd)                                                   \
@@ -1809,6 +1821,22 @@ extern void mri_genalign_bilinear( int, float *,
                                    int, float *, float *, float *,
                                         float *, float *, float * ) ;
 
+extern void mri_genalign_cubic( int, float *,
+                                int, float *, float *, float *,
+                                     float *, float *, float * ) ;
+extern void mri_genalign_quintic( int, float *,
+                                  int, float *, float *, float *,
+                                       float *, float *, float * ) ;
+extern void mri_genalign_heptic( int, float *,
+                                 int, float *, float *, float *,
+                                      float *, float *, float * ) ;
+extern void mri_genalign_nonic( int, float *,
+                                int, float *, float *, float *,
+                                     float *, float *, float * ) ;
+
+extern int    GA_polywarp_coordcode( int pnum ) ; /* 06 Dec 2010 */
+extern char * GA_polywarp_funcname ( int pnum ) ; /* 09 Dec 2010 */
+
 void mri_genalign_set_targmask( MRI_IMAGE *, GA_setup * ) ; /* 07 Aug 2007 */
 void mri_genalign_set_basemask( MRI_IMAGE *, GA_setup * ) ; /* 25 Feb 2010 */
 
@@ -1821,6 +1849,7 @@ extern void GA_set_outval( float ) ;
 extern float GA_get_outval(void) ;
 extern void GA_allow_ccount( int ) ; /* 22 Feb 2010 */
 extern void GA_setup_micho( double,double,double,double,double ) ; /* 24 Feb 2010 */
+extern void GA_set_nperval( int ) ; /* 15 Nov 2010 */
 
 /**------ these functions are now in mri_genalign_util.c [10 Dec 2008] ------**/
 
@@ -1847,16 +1876,6 @@ extern MRI_IMAGE * GA_indexwarp_plus( MRI_IMAGE *, int, MRI_IMAGE *,
 extern void GA_affine_edit_warp( mat44 aff , MRI_IMAGE *wpim ) ;
 /*----------------------------------------------------------------------------*/
 
-extern void mri_genalign_set_boxsize( float xbot, float xtop,
-                                      float ybot, float ytop,
-                                      float zbot, float ztop ) ;
-extern Warpfield * mri_genalign_warpfield_setup( int, float, int ) ;
-extern Warpfield * mri_genalign_warpfield_get(void) ;
-extern void mri_genalign_warpfield_set(Warpfield *) ;
-extern void mri_genalign_warpfield( int, float *,
-                                    int, float *, float *, float *,
-                                         float *, float *, float * ) ;
-
 extern floatvec * mri_genalign_scalar_allcosts( GA_setup * , float * ); /* 19 Sep 2007 */
 
 #define MATORDER_SDU  1  /* matrix multiplication order: */
@@ -1878,10 +1897,17 @@ extern void mri_genalign_affine_get_befafter( mat44 *, mat44 * ) ;
 extern void mri_genalign_affine_get_gammaijk( mat44 * ) ; /* 04 Apr 2007 */
 extern void mri_genalign_affine_get_gammaxyz( mat44 * ) ;
 
+void mri_genalign_affine_use_befafter(int,int) ; /* 10 Dec 2010 */
+
 extern MRI_IMAGE * mri_genalign_scalar_warpone(      /* 26 Sep 2006 */
                     int npar, float *wpar, GA_warpfunc *wfunc,
                     MRI_IMAGE *imtarg ,
                     int nnx , int nny , int nnz , int icode ) ;
+
+extern MRI_IMARR * mri_genalign_scalar_xyzwarp(      /* 10 Dec 2010 */
+                    int npar, float *wpar, GA_warpfunc *wfunc,
+                    int nnx , int nny , int nnz ) ;
+
 
 extern void mri_genalign_scalar_clrwght( GA_setup * ) ;  /* 18 Oct 2006 */
 

@@ -16,13 +16,18 @@
 
 #ifdef USE_OMP
 #include <omp.h>
+# if 0
+#  ifdef USING_MCW_MALLOC
+#   include "mcw_malloc.c"
+#  endif
+#endif
 #endif
 
 #ifdef SOLARIS
 # define strcasestr strstr  /* stupid Solaris */
 #endif
 
-#define MAXPAR   199
+#define MAXPAR   999
 #define PARC_FIX 1
 #define PARC_INI 2
 #define PARC_RAN 3
@@ -35,10 +40,30 @@ typedef struct { int np,code; float vb,vt ; } param_opt ;
 
 #define APPLY_PARAM   1   /* 23 Jul 2007 */
 #define APPLY_AFF12   2
-#define APPLY_BILIN   3
-#define NPBIL        39   /* plus 4 */
 
-#define WARP_BILINEAR 666
+#define NPBIL          39 /* plus 4 */
+#define WARP_BILINEAR 661
+#define APPLY_BILIN     3
+
+#define NPCUB          60 /* 3*(1+3+6+10) */
+#define WARP_CUBIC    663
+#define APPLY_CUBIC     4
+
+#define NPQUINT       168 /* 3*(1+3+6+10+15+21) */
+#define WARP_QUINT    664
+#define APPLY_QUINT     5
+
+#define NPHEPT        360 /* 3*(1+3+6+10+15+21+28+36) */
+#define WARP_HEPT     665
+#define APPLY_HEPT      6
+
+#define NPNONI        660 /* 3*(1+3+6+10+15+21+28+36+45+55) */
+#define WARP_NONI     666
+#define APPLY_NONI      7
+
+#define NONLINEAR_IS_POLY(aa) ( (aa) >= WARP_CUBIC && (aa) <= WARP_NONI )
+
+#define NONLINEAR_APPLY(aa) ( (aa) >= APPLY_BILIN )
 
 static float wt_medsmooth = 2.25f ;   /* for mri_weightize() */
 static float wt_gausmooth = 4.50f ;
@@ -128,6 +153,7 @@ static char *meth_costfunctional[NMETH] =  /* describe cost functional */
     "lpc + hel + mi + nmi + crA + overlap"                     ,
     "mutual compressibility (via zlib) -- doesn't work yet"
   } ;
+
 /*---------------------------------------------------------------------------*/
 
 #define SETUP_BILINEAR_PARAMS                                                \
@@ -150,6 +176,120 @@ static char *meth_costfunctional[NMETH] =  /* describe cost functional */
      stup.wfunc_param[NPBIL+2].fixed = 2 ;                                   \
      stup.wfunc_param[NPBIL+3].fixed = 2 ;                                   \
  } while(0)
+
+/*---------------------------------------------------------------------------*/
+
+#define OUTVAL(k) stup.wfunc_param[k].val_out
+
+static float BILINEAR_diag_norm(GA_setup stup)
+{
+   float sum ;
+   sum  = fabsf(OUTVAL(12))+fabsf(OUTVAL(13))+fabsf(OUTVAL(14)) ;
+   sum += fabsf(OUTVAL(24))+fabsf(OUTVAL(25))+fabsf(OUTVAL(26)) ;
+   sum += fabsf(OUTVAL(36))+fabsf(OUTVAL(37))+fabsf(OUTVAL(38)) ;
+   return (sum/9.0f) ;
+}
+
+static float BILINEAR_offdiag_norm(GA_setup stup)
+{
+   float dmag ;
+   dmag  = fabsf(OUTVAL(15))+fabsf(OUTVAL(16))+fabsf(OUTVAL(17)) ;
+   dmag += fabsf(OUTVAL(18))+fabsf(OUTVAL(19))+fabsf(OUTVAL(20)) ;
+   dmag += fabsf(OUTVAL(21))+fabsf(OUTVAL(22))+fabsf(OUTVAL(23)) ;
+   dmag += fabsf(OUTVAL(27))+fabsf(OUTVAL(28))+fabsf(OUTVAL(29)) ;
+   dmag += fabsf(OUTVAL(30))+fabsf(OUTVAL(31))+fabsf(OUTVAL(32)) ;
+   dmag += fabsf(OUTVAL(33))+fabsf(OUTVAL(34))+fabsf(OUTVAL(35)) ;
+   return (dmag/18.0f) ;
+}
+
+/*---------------------------------------------------------------------------*/
+
+#define SETUP_POLYNO_PARAMS(nnl,ran,nam)                                     \
+ do{ char str[32] , *spt , xyz[3] = { 'x', 'y', 'z' } ;                     \
+     stup.wfunc_numpar = 16+(nnl) ;                                          \
+     stup.wfunc        = NULL ;                                              \
+     stup.wfunc_param  = (GA_param *)realloc( (void *)stup.wfunc_param,      \
+                                              (16+(nnl))*sizeof(GA_param) ); \
+     for( jj=12 ; jj < 12+(nnl) ; jj++ ){                                    \
+       spt = GA_polywarp_funcname( (jj-12)/3 ) ;                             \
+       if( spt != NULL ) sprintf(str,"%s:%s:%c"  ,(nam),spt ,xyz[jj%3]) ;    \
+       else              sprintf(str,"%s:%03d:%c",(nam),jj+1,xyz[jj%3]) ;    \
+       DEFPAR( jj,str, -(ran),(ran) , 0.0f,0.0f,0.0f ) ;                     \
+       stup.wfunc_param[jj].fixed = 1 ;                                      \
+     }                                                                       \
+     DEFPAR(12+(nnl),"xcen" ,-1.0e9,1.0e9 , 0.0f,0.0f,0.0f ) ;               \
+     DEFPAR(13+(nnl),"ycen" ,-1.0e9,1.0e9 , 0.0f,0.0f,0.0f ) ;               \
+     DEFPAR(14+(nnl),"zcen" ,-1.0e9,1.0e9 , 0.0f,0.0f,0.0f ) ;               \
+     DEFPAR(15+(nnl),"xxfac", 0.0f ,1.0e9 , 1.0f,0.0f,0.0f ) ;               \
+     stup.wfunc_param[12+(nnl)].fixed = 2 ;                                  \
+     stup.wfunc_param[13+(nnl)].fixed = 2 ;                                  \
+     stup.wfunc_param[14+(nnl)].fixed = 2 ;                                  \
+     stup.wfunc_param[15+(nnl)].fixed = 2 ;                                  \
+ } while(0)
+
+#define SETUP_CUBIC_PARAMS do{ SETUP_POLYNO_PARAMS(48,0.10f,"cubic") ;       \
+                               stup.wfunc = mri_genalign_cubic ; } while(0)
+
+#define SETUP_QUINT_PARAMS do{ SETUP_POLYNO_PARAMS(156,0.10f,"quint") ;      \
+                               stup.wfunc = mri_genalign_quintic ; } while(0)
+
+#define SETUP_HEPT_PARAMS do{ SETUP_POLYNO_PARAMS(348,0.10f,"heptic") ;      \
+                              stup.wfunc = mri_genalign_heptic ; } while(0)
+
+#define SETUP_NONI_PARAMS do{ SETUP_POLYNO_PARAMS(648,0.10f,"nonic") ;       \
+                              stup.wfunc = mri_genalign_nonic ; } while(0)
+
+/* cc = 1,2,3 for x,y,z directions:
+   permanently freeze parameters that cause motion in that direction */
+
+#define FREEZE_POLYNO_PARAMS_MOT(cc)                           \
+  do{ int pp ;                                                 \
+      for( pp=12 ; pp < stup.wfunc_numpar ; pp++ ){            \
+        if( 1+pp%3 == (cc) ) stup.wfunc_param[pp].fixed = 2 ;  \
+      }                                                        \
+  } while(0)
+
+/* cc = 1,2,3 for x,y,z directions:
+   freeze parameters whose basis funcs are dependent on that coordinate */
+
+#define FREEZE_POLYNO_PARAMS_DEP(cc)                           \
+  do{ int pp , qq , cm=(1 << ((cc)-1)) ;                       \
+      for( pp=12 ; pp < stup.wfunc_numpar ; pp++ ){            \
+        qq = GA_polywarp_coordcode( (pp-12)/3 ) ;              \
+        if( qq & cm ) stup.wfunc_param[pp].fixed = 2 ;         \
+      }                                                        \
+  } while(0)
+
+/* overall parameter freeze box, based on user options */
+
+#define FREEZE_POLYNO_PARAMS                                   \
+ do{ if( nwarp_fixmotX ) FREEZE_POLYNO_PARAMS_MOT(1) ;         \
+     if( nwarp_fixmotY ) FREEZE_POLYNO_PARAMS_MOT(2) ;         \
+     if( nwarp_fixmotZ ) FREEZE_POLYNO_PARAMS_MOT(3) ;         \
+     if( nwarp_fixdepX ) FREEZE_POLYNO_PARAMS_DEP(1) ;         \
+     if( nwarp_fixdepY ) FREEZE_POLYNO_PARAMS_DEP(2) ;         \
+     if( nwarp_fixdepZ ) FREEZE_POLYNO_PARAMS_DEP(3) ; } while(0)
+
+/* count free params into variable 'nf' */
+
+#define COUNT_FREE_PARAMS(nf)                                  \
+ do{ int jj ;                                                  \
+     for( (nf)=jj=0 ; jj < stup.wfunc_numpar ; jj++ )          \
+       if( !stup.wfunc_param[jj].fixed ) (nf)++ ;              \
+ } while(0)
+
+/*---------------------------------------------------------------------------*/
+
+int meth_name_to_code( char *nam )  /* 15 Dec 2010 */
+{
+   int ii ;
+   if( nam == NULL || *nam == '\0' ) return 0 ;
+   for( ii=0 ; ii < NMETH ; ii++ ){
+     if( strcasecmp (nam,meth_shortname[ii])  == 0 ) return (ii+1) ;
+     if( strncasecmp(nam,meth_longname[ii],7) == 0 ) return (ii+1) ;
+   }
+   return 0 ;
+}
 
 /*---------------------------------------------------------------------------*/
 
@@ -189,6 +329,7 @@ int main( int argc , char *argv[] )
    float     allpar[MAXPAR] ;
    float xsize , ysize , zsize ;  /* 06 May 2008: box size */
    float bfac ;                   /* 14 Oct 2008: brick factor */
+   int twodim_code=0 , xx_code=0 , yy_code=0 , zz_code=0 ;
 
    /*----- input parameters, to be filled in from the options -----*/
 
@@ -203,7 +344,7 @@ int main( int argc , char *argv[] )
    char *auto_string           = "-autobox" ;
    int auto_dilation           = 0 ;            /* for -automask+N */
    int wtspecified             = 0 ;            /* 10 Sep 2007 */
-   double dxyz_mast            = 0.0f ;         /* implemented 24 Jul 2007 */
+   double dxyz_mast            = 0.0  ;         /* implemented 24 Jul 2007 */
    int meth_code               = GA_MATCH_HELLINGER_SCALAR ;
    int sm_code                 = GA_SMOOTH_GAUSSIAN ;
    float sm_rad                = 0.0f ;
@@ -276,13 +417,32 @@ int main( int argc , char *argv[] )
    int   nwarp_pass            = 0 ;
    int   nwarp_type            = WARP_BILINEAR ;
    float nwarp_order           = 2.9f ;
+   int   nwarp_flags           = 0 ;             /* 29 Oct 2010 */
+   int   nwarp_itemax          = 0 ;
+   int   nwarp_fixaff          = 1 ;             /* 26 Nov 2010 */
+   int   nwarp_fixmotX         = 0 ;             /* 07 Dec 2010 */
+   int   nwarp_fixdepX         = 0 ;
+   int   nwarp_fixmotY         = 0 ;
+   int   nwarp_fixdepY         = 0 ;
+   int   nwarp_fixmotZ         = 0 ;
+   int   nwarp_fixdepZ         = 0 ;
+   int   nwarp_fixmotI         = 0 ;
+   int   nwarp_fixdepI         = 0 ;
+   int   nwarp_fixmotJ         = 0 ;
+   int   nwarp_fixdepJ         = 0 ;
+   int   nwarp_fixmotK         = 0 ;
+   int   nwarp_fixdepK         = 0 ;
+   char *nwarp_save_prefix     = NULL ;          /* 10 Dec 2010 */
+   int   nwarp_meth_code       = 0 ;             /* 15 Dec 2010 */
 
-   int    micho_zfinal          = 0 ;            /* 24 Feb 2010 */
-   double micho_mi              = 0.2 ;          /* -lpc+ stuff */
-   double micho_nmi             = 0.2 ;
-   double micho_crA             = 0.4 ;
-   double micho_hel             = 0.4 ;
-   double micho_ov              = 0.4 ;          /* 02 Mar 2010 */
+   int    micho_zfinal         = 0 ;             /* 24 Feb 2010 */
+   double micho_mi             = 0.2 ;           /* -lpc+ stuff */
+   double micho_nmi            = 0.2 ;
+   double micho_crA            = 0.4 ;
+   double micho_hel            = 0.4 ;
+   double micho_ov             = 0.4 ;           /* 02 Mar 2010 */
+
+   int do_zclip                = 0 ;             /* 29 Oct 2010 */
 
    /**----------------------------------------------------------------------*/
    /**----------------- Help the pitifully ignorant user? -----------------**/
@@ -303,25 +463,40 @@ int main( int argc , char *argv[] )
 "    (i.e., the 'cost functional' measuring image mismatch).\n"
 " ++ How the resliced source is interpolated to the base space.\n"
 " ++ The complexity of the spatial transformation ('warp') used.\n"
-" ++ And many technical options to control the process in detail,\n"
-"    if you know what you are doing (or just like to play around).\n"
+" ++ And many many technical options to control the process in detail,\n"
+"    if you know what you are doing (or just like to fool around).\n"
 "\n"
-"====\n"
-"NOTE: For most 3D image registration purposes, we now recommend that you\n"
-"====  use Daniel Glen's script align_epi_anat.py (which, despite its name,\n"
-"      can do many more registration problems than EPI-to-T1-weighted).\n"
-" -->> In particular, using 3dAllineate with the 'lpc' cost functional\n"
-"      requires using a '-weight' volume to get good results, and the\n"
-"      align_epi_anat.py script will automagically generate such a\n"
-"      weight dataset that works well for EPI-to-structural alignment.\n"
-" -->> This script can also be used for other alignment purposes, such\n"
-"      as T1-weighted alignment between field strengths using the\n"
-"      '-lpa' cost functional.  Investigate align_epi_anat.py to\n"
-"      see if it will do what you need -- you might make your life\n"
-"      a little easier and nicer and happier and more peaceful.\n"
-" -->> Also, if/when you ask for registration help on the AFNI\n"
-"      message board, we'll probably start by recommending that you\n"
-"      try align_epi_anat.py if you haven't already done so.\n"
+"=====----------------------------------------------------------------------\n"
+"NOTES: For most 3D image registration purposes, we now recommend that you\n"
+"=====  use Daniel Glen's script align_epi_anat.py (which, despite its name,\n"
+"       can do many more registration problems than EPI-to-T1-weighted).\n"
+"  -->> In particular, using 3dAllineate with the 'lpc' cost functional\n"
+"       (to align EPI and T1-weighted volumes) requires using a '-weight'\n"
+"       volume to get good results, and the align_epi_anat.py script will\n"
+"       automagically generate such a weight dataset that works well for\n"
+"       EPI-to-structural alignment.\n"
+"  -->> This script can also be used for other alignment purposes, such\n"
+"       as T1-weighted alignment between field strengths using the\n"
+"       '-lpa' cost functional.  Investigate align_epi_anat.py to\n"
+"       see if it will do what you need -- you might make your life\n"
+"       a little easier and nicer and happier and more peaceful.\n"
+"  -->> Also, if/when you ask for registration help on the AFNI\n"
+"       message board, we'll probably start by recommending that you\n"
+"       try align_epi_anat.py if you haven't already done so.\n"
+"  -->> For aligning EPI and T1-weighted volumes, we have found that\n"
+"       using a flip angle of 50-60 degrees for the EPI works better than\n"
+"       a flip angle of 90 degrees.  The reason is that there is more\n"
+"       internal contrast in the EPI data when the flip angle is smaller,\n"
+"       so the registration has some image structure to work with.  With\n"
+"       the 90 degree flip angle, there is so little internal contrast in\n"
+"       the EPI dataset that the alignment process ends up being just\n"
+"       trying to match brain outlines -- which doesn't always give accurate\n"
+"       results (cf http://dx.doi.org/10.1016/j.neuroimage.2008.09.037 ).\n"
+"       Although the total MRI signal is reduced at a smaller flip angle,\n"
+"       there is little or no loss in FMRI/BOLD information, since the bulk\n"
+"       of the time series 'noise' is from physiological fluctuation signals,\n"
+"       which are also reduced by the lower flip angle.\n"
+"---------------------------------------------------------------------------\n"
 "\n"
 "COMMAND LINE OPTIONS:\n"
 "====================\n"
@@ -334,19 +509,29 @@ int main( int argc , char *argv[] )
 "   *OR*        (or -input) option is given, then the source dataset\n"
 " -input ttt    is the last argument on the command line.\n"
 "               (Source must be stored as floats, shorts, or bytes.)\n"
+"            ** 3dAllineate can register 2D datasets (single slice),\n"
+"               but both the base and source must be 2D -- you cannot\n"
+"               use this program to register a 2D slice into a 3D volume!\n"
+"            ** See the script @2dwarper.Allin for an example of using\n"
+"               3dAllineate to do slice-by-slice nonlinear warping to\n"
+"               align 3D volumes distorted by time-dependent magnetic\n"
+"               field inhomogeneities.\n"
 "\n"
-"  * NOTA BENE: The base and source dataset do NOT have to be defined *\n"
-"  *            on the same 3D grids; the alignment process uses the  *\n"
-"  *            coordinate systems defined in the dataset headers to  *\n"
-"  *            make the match between spatial locations.             *\n"
-"  *       -->> However, this coordinate-based matching requires that *\n"
-"  *            image volumes be defined on roughly the same patch of *\n"
-"  *            of (x,y,z) space, in order to find a decent starting  *\n"
-"  *            point for the transformation.  You might need to use  *\n"
-"  *            the script @Align_Centers to do this, if the 3D       *\n"
-"  *            spaces occupied by the images do not overlap much.    *\n"
-"  *       -->> Or the '-cmass' option to this program might be       *\n"
-"  *            sufficient to solve this problem, maybe.              *\n"
+" ** NOTA BENE: The base and source dataset do NOT have to be defined **\n"
+" **            on the same 3D grids; the alignment process uses the  **\n"
+" **            coordinate systems defined in the dataset headers to  **\n"
+" **            make the match between spatial locations, rather than **\n"
+" **            matching the 2 datasets on a voxel-by-voxel basis     **\n"
+" **            (as 3dvolreg and 3dWarpDrive do).                     **\n"
+" **       -->> However, this coordinate-based matching requires that **\n"
+" **            image volumes be defined on roughly the same patch of **\n"
+" **            of (x,y,z) space, in order to find a decent starting  **\n"
+" **            point for the transformation.  You might need to use  **\n"
+" **            the script @Align_Centers to do this, if the 3D       **\n"
+" **            spaces occupied by the images do not overlap much.    **\n"
+" **       -->> Or the '-cmass' option to this program might be       **\n"
+" **            sufficient to solve this problem, maybe, with luck.   **\n"
+" **            (Another reason why you should use align_epi_anat.py) **\n"
 "\n"
 " -prefix ppp = Output the resulting dataset to file 'ppp'.  If this\n"
 "   *OR*        option is NOT given, no dataset will be output!  The\n"
@@ -370,7 +555,17 @@ int main( int argc , char *argv[] )
 "\n"
 " -1Dparam_save ff   = Save the warp parameters in ASCII (.1D) format into\n"
 "                      file 'ff' (1 row per sub-brick in source).\n"
-"               *N.B.: A historical synonym for this option is '-1Dfile'.\n"
+"                    * A historical synonym for this option is '-1Dfile'.\n"
+"                    * At the top of the saved 1D file is a #comment line\n"
+"                      listing the names of the parameters; those parameters\n"
+"                      that are fixed (e.g., via '-parfix') will be marked\n"
+"                      by having their symbolic names end in the '$' character.\n"
+"                      You can use '1dcat -nonfixed' to remove these columns\n"
+"                      from the 1D file if you just want to further process the\n"
+"                      varying parameters somehow (e.g., 1dsvd).\n"
+"                    * However, the '-1Dparam_apply' option requires the\n"
+"                      full list of parameters, including those that were\n"
+"                      fixed, in order to work properly!\n"
 "\n"
 " -1Dparam_apply aa  = Read warp parameters from file 'aa', apply them to \n"
 "                      the source dataset, and produce a new dataset.\n"
@@ -504,6 +699,11 @@ int main( int argc , char *argv[] )
 " -nopad      = Do not use zero-padding on the base image.\n"
 "               [Default == zero-pad, if needed; -verb shows how much]\n"
 "\n"
+" -zclip      = Replace negative values in the input datasets (source & base)\n"
+"               with zero.  The intent is to clip off a small set of negative\n"
+"               values that may arise when using 3dresample (say) with\n"
+"               cubic interpolation.\n"
+"\n"
 " -conv mmm   = Convergence test is set to 'mmm' millimeters.\n"
 "               This doesn't mean that the results will be accurate\n"
 "               to 'mmm' millimeters!  It just means that the program\n"
@@ -547,7 +747,7 @@ int main( int argc , char *argv[] )
 "       **N.B.: On the other hand, some cost functionals give better\n"
 "               results than others for specific problems, and so\n"
 "               a warning that 'mi' was significantly different than\n"
-"               'hel' might not actually mean anything (e.g.).\n"
+"               'hel' might not actually mean anything useful (e.g.).\n"
 #if 0
 "       **N.B.: If you use '-CHECK' instead of '-check', AND there are\n"
 "               at least two extra check functions specified (in addition\n"
@@ -572,7 +772,7 @@ int main( int argc , char *argv[] )
 "               millimeters.  [Default == 11 mm]\n"
 "       **N.B.: You may want to change this from the default if\n"
 "               your voxels are unusually small or unusually large\n"
-"               (e.g., outside the range 1-4 mm on each axis).\n"
+"               (e.g., outside the range 1-4 mm along each axis).\n"
 " -twofirst   = Use -twopass on the first image to be registered, and\n"
 "               then on all subsequent images from the source dataset,\n"
 "               use results from the first image's coarse pass to start\n"
@@ -639,6 +839,10 @@ int main( int argc , char *argv[] )
 "                 increase the weight of high-intensity regions).\n"
 "               These two processing steps can be combined, as in\n"
 "                 '-autoweight+100**1.5'\n"
+"               ** Note that that '**' must be enclosed in quotes;\n"
+"                  otherwise, the shell will treat it as a wildcard\n"
+"                  and you will get an error message before 3dAllineate\n"
+"                  even starts!!\n"
       ) ;
       if( visible_noweights ){
          printf(
@@ -656,6 +860,8 @@ int main( int argc , char *argv[] )
 "               but the weight for a voxel is set to either 0 or 1.\n"
 "       **N.B.: '-automask+3' means to compute the mask function, and\n"
 "               then dilate it outwards by 3 voxels (e.g.).\n"
+"               ** Note that '+' means something very different\n"
+"                  for '-automask' and '-autoweight'!!\n"
 " -autobox    = Expand the -automask function to enclose a rectangular\n"
 "               box that holds the irregular mask.\n"
 "       **N.B.: This is the default mode of operation!\n"
@@ -759,12 +965,19 @@ int main( int argc , char *argv[] )
        "                 [Default=30 degrees]\n"
        " -maxshf dd    = Allow maximum shift of 'dd' millimeters.  Equivalent\n"
        "                 to '-parang 1 -dd dd -parang 2 -dd dd -parang 3 -dd dd'\n"
-       "                 [Default=33%% of the size of the base image]\n"
+       "                 [Default=32%% of the size of the base image]\n"
        "         **N.B.: This max shift setting is relative to the center-of-mass\n"
        "                 shift, if the '-cmass' option is used.\n"
        " -maxscl dd    = Allow maximum scaling factor to be 'dd'.  Equivalent\n"
        "                 to '-parang 7 1/dd dd -parang 8 1/dd dd -paran2 9 1/dd dd'\n"
        "                 [Default=1.2=image can go up or down 20%% in size]\n"
+       " -maxshr dd    = Allow maximum shearing factor to be 'dd'. Equivalent\n"
+       "                 to '-parang 10 -dd dd -parang 11 -dd dd -parang 12 -dd dd'\n"
+       "                 [Default=0.1111 for no good reason]\n"
+       "\n"
+       " NOTE: If the datasets being registered have only 1 slice, 3dAllineate\n"
+       "       will automatically fix the 6 out-of-plane motion parameters to\n"
+       "       their 'do nothing' values, so you don't have to specify '-parfix'.\n"
 #if 0
        "\n"
        " -matini mmm   = Initialize 3x4 affine transformation matrix to 'mmm',\n"
@@ -1111,15 +1324,7 @@ int main( int argc , char *argv[] )
        printf("\n"
         "===========================================================================\n"
         "\n"
-#if 0
-        " -nwarp [type [order]] = Experimental nonlinear warp\n"
-        "                         'type' = 'bilinear'  or\n"
-        "                                  'trig'      or\n"
-        "                                  'legendre'  or\n"
-        "                                  'gegenbauer'\n"
-        "                         'order'= value in range 2..5 (inclusive)\n"
-#else
-        " -nwarp type = Experimental nonlinear warp:\n"
+        " -nwarp type = Experimental nonlinear warping:\n"
         "              * At present, the only 'type' is 'bilinear',\n"
         "                as in 3dWarpDrive, with 39 parameters.\n"
         "              * I plan to implement more complicated nonlinear\n"
@@ -1128,19 +1333,113 @@ int main( int argc , char *argv[] )
         "                that has a single sub-brick!\n"
         "              * -1Dparam_save and -1Dparam_apply work with\n"
         "                bilinear warps; see the Notes for more information.\n"
+        "        ==>>*** Nov 2010: I have now added the following polynomial\n"
+        "                warps: 'cubic', 'quintic', 'heptic', 'nonic' (using\n"
+        "                3rd, 5th, 7th, and 9th order Legendre polynomials); e.g.,\n"
+        "                   -nwarp heptic\n"
+        "              * Or you can call them 'poly3', 'poly5', 'poly7', and 'poly9',\n"
+        "                  for simplicity and non-Hellenistic clarity.\n"
+        "              * These names are not case sensitive: 'nonic' == 'Nonic', etc.\n"
+        "              * Higher and higher order polynomials will take longer and longer\n"
+        "                to run!\n"
+        "              * If you wish to apply a nonlinear warp, you have to supply\n"
+        "                a parameter file with -1Dparam_apply and also specify the\n"
+        "                warp type with -nwarp.  The number of parameters in the\n"
+        "                file (per line) must match the warp type:\n"
+        "                   bilinear =  43   [for all nonlinear warps, the final]\n"
+        "                   cubic    =  64   [4 'parameters' are fixed values to]\n"
+        "                   quintic  = 172   [normalize the coordinates to -1..1]\n"
+        "                   heptic   = 364   [for the nonlinear warp functions. ]\n"
+        "                   nonic    = 664\n"
+        "                In all these cases, the first 12 parameters are the\n"
+        "                affine parameters (shifts, rotations, etc.), and the\n"
+        "                remaining parameters define the nonlinear part of the warp\n"
+        "                (polynomial coefficients); thus, the number of nonlinear\n"
+        "                parameters over which the optimization takes place is\n"
+        "                the number in the table above minus 16.\n"
+        "               * The actual polynomial functions used are products of\n"
+        "                 Legendre polynomials, but the symbolic names used in\n"
+        "                 the header line in the '-1Dparam_save' output just\n"
+        "                 express the polynomial degree involved; for example,\n"
+        "                      quint:x^2*z^3:z\n"
+        "                 is the name given to the polynomial warp basis function\n"
+        "                 whose highest power of x is 2, is independent of y, and\n"
+        "                 whose highest power of z is 3; the 'quint' indicates that\n"
+        "                 this was used in '-nwarp quintic'; the final ':z' signifies\n"
+        "                 that this function was for deformations in the (DICOM)\n"
+        "                 z-direction (+z == Superior).\n"
+        "        ==>>*** You can further control the form of the polynomial warps\n"
+        "                (but not the bilinear warp!) by restricting their degrees\n"
+        "                of freedom in 2 different ways.\n"
+        "                ++ You can remove the freedom to have the nonlinear\n"
+        "                   deformation move along the DICOM x, y, and/or z axes.\n"
+        "                ++ You can remove the dependence of the nonlinear\n"
+        "                   deformation on the DICOM x, y, and/or z coordinates.\n"
+        "                ++ To illustrate with the six second order polynomials:\n"
+        "                      p2_xx(x,y,z) = x*x  p2_xy(x,y,z) = x*y\n"
+        "                      p2_xz(x,y,z) = x*z  p2_yy(x,y,z) = y*y\n"
+        "                      p2_yz(x,y,z) = y*z  p2_zz(x,y,z) = z*z\n"
+        "                   Unrestricted, there are 18 parameters associated with\n"
+        "                   these polynomials, one for each direction of motion (x,y,z)\n"
+        "                   * If you remove the freedom of the nonlinear warp to move\n"
+        "                     data in the z-direction (say), then there would be 12\n"
+        "                     parameters left.\n"
+        "                   * If you instead remove the freedom of the nonlinear warp\n"
+        "                     to depend on the z-coordinate, you would be left with\n"
+        "                     3 basis functions (p2_xz, p2_yz, and p2_zz would be\n"
+        "                     eliminated), each of which would have x-motion, y-motion,\n"
+        "                     and z-motion parameters, so there would be 9 parameters.\n"
+        "                ++ To fix motion along the x-direction, use the option\n"
+        "                   '-nwarp_fixmotX' (and '-nwarp_fixmotY' and '-nwarp_fixmotZ).\n"
+        "                ++ To fix dependence of the polynomial warp on the x-coordinate,\n"
+        "                   use the option '-nwarp_fixdepX' (et cetera).\n"
+        "                ++ These coordinate labels in the options (X Y Z) refer to the\n"
+        "                   DICOM directions (X=R-L, Y=A-P, Z=I-S).  If you would rather\n"
+        "                   fix things along the dataset storage axes, you can use\n"
+        "                   the symbols I J K to indicate the fastest to slowest varying\n"
+        "                   array dimensions (e.g., '-nwarp_fixdepK').\n"
+        "                   * Mixing up the X Y Z and I J K forms of parameter freezing\n"
+        "                     (e.g., '-nwarp_fixmotX -nwarp_fixmotJ') may cause trouble!\n"
+        "                ++ If you input a 2D dataset (a single slice) to be registered\n"
+        "                   with '-nwarp', the program automatically assumes '-nwarp_fixmotK'\n"
+        "                   and '-nwarp_fixdepK' so there are no out-of-plane parameters\n"
+        "                   or dependence.  The number of nonlinear parameters is then:\n"
+        "                     2D: cubic = 14 ; quintic =  36 ; heptic =  66 ; nonic = 104.\n"
+        "                     3D: cubic = 48 ; quintic = 156 ; heptic = 348 ; nonic = 648.\n"
+        "                     [ n-th order: 2D = (n+4)*(n-1) ; 3D = (n*n+7*n+18)*(n-1)/2 ]\n"
+        "                ++ Note that these '-nwarp_fix' options have no effect on the\n"
+        "                   affine part of the warp -- if you want to constrain that as\n"
+        "                   well, you'll have to use the '-parfix' option.\n"
+        "                   * However, for 2D images, the affine part will automatically\n"
+        "                     be restricted to in-plane (6 parameter) 'motions'.\n"
+        "                ++ If you save the warp parameters (with '-1Dparam_save') when\n"
+        "                   doing 2D registration, all the parameters will be saved, even\n"
+        "                   the large number of them that are fixed to zero. You can use\n"
+        "                   '1dcat -nonfixed' to remove these columns from the 1D file if\n"
+        "                   you want to further process the varying parameters (e.g., 1dsvd).\n"
+        "              **++ The mapping from I J K to X Y Z (DICOM coordinates), where the\n"
+        "                   '-nwarp_fix' constraints are actually applied, is very simple:\n"
+        "                   given the command to fix K (say), the coordinate X, or Y, or Z\n"
+        "                   whose direction most closely aligns with the dataset K grid\n"
+        "                   direction is chosen.  Thus, for coronal images, K is in the A-P\n"
+        "                   direction, so '-nwarp_fixmotK' is translated to '-nwarp_fixmotY'.\n"
+        "                   * This simplicity means that using the '-nwarp_fix' commands on\n"
+        "                     oblique datasets is problematic.  Perhaps it would work in\n"
+        "                     combination with the '-EPI' option, but that has not been tested.\n"
+        "\n"
         "-nwarp NOTES:\n"
         "-------------\n"
-        "* -nwarp is slow!\n"
+        "* -nwarp is slow - reeeaaallll slow - use it with OpenMP!\n"
         "* Check the results to make sure the optimizer didn't run amok!\n"
-        "   (You should always do this with any registration software.)\n"
-        "* If you use -1Dparam_save, then you can apply the bilinear\n"
+        "   (You should ALWAYS do this with any registration software.)\n"
+        "* If you use -1Dparam_save, then you can apply the nonlinear\n"
         "   warp to another dataset using -1Dparam_apply in a later\n"
-        "   3dAllineate run. To do so, use '-nwarp bilinear' in both\n"
-        "   runs, so that the program knows what the extra parameters\n"
-        "   in the file are to be used for.\n"
-        "  ++ 43 values are saved in 1 row of the param file.\n"
+        "   3dAllineate run. To do so, use '-nwarp xxx' in both runs\n"
+        "   , so that the program knows what the extra parameters in\n"
+        "   the file are to be used for.\n"
+        "  ++ Bilinear: 43 values are saved in 1 row of the param file.\n"
         "  ++ The first 12 are the affine parameters\n"
-        "  ++ The next 27 are the D1,D2,D3 matrix parameters.\n"
+        "  ++ The next 27 are the D1,D2,D3 matrix parameters (cf. infra).\n"
         "  ++ The final 'extra' 4 values are used to specify\n"
         "      the center of coordinates (vector Xc below), and a\n"
         "      pre-computed scaling factor applied to parameters #13..39.\n"
@@ -1164,8 +1463,13 @@ int main( int argc , char *argv[] )
         "   order Taylor series, you'll see that a bilinear warp is basically\n"
         "   a quadratic warp, with the additional feature that its inverse\n"
         "   is directly computable (unlike a pure quadratic warp).\n"
+        "* 'bilinearD' means the matrices D1, D2, and D3 with be constrained\n"
+        "  to be diagonal (a total of 9 nonzero values), rather than full\n"
+        "  (a total of 27 nonzero values).  This option is much faster.\n"
         "* Is '-nwarp bilinear' useful?  Try it and tell me!\n"
-#endif
+        "* Unlike a bilinear warp, the polynomial warps cannot be exactly\n"
+        "  inverted.  At some point, I'll write a program to compute an\n"
+        "  approximate inverse, if there is enough clamor for such a toy.\n"
         "\n"
         "===========================================================================\n"
        ) ;
@@ -1194,11 +1498,15 @@ int main( int argc , char *argv[] )
 
 #if defined(USING_MCW_MALLOC) && !defined(USE_OMP)
    enable_mcw_malloc() ;
+#else
+# if 0
+   if( AFNI_yesenv("ALLIN_DEBUG") ) enable_mcw_malloc() ;
+# endif
 #endif
 
    mainENTRY("3dAllineate"); machdep();
    AFNI_logger("3dAllineate",argc,argv);
-   PRINT_VERSION("3dAllineate"); AUTHOR("Emperor Zhark");
+   PRINT_VERSION("3dAllineate"); AUTHOR("Zhark the Registrator");
    THD_check_AFNI_version("3dAllineate");
    (void)COX_clock_time() ;
 
@@ -1209,33 +1517,89 @@ int main( int argc , char *argv[] )
 
      /*-----*/
 
+     if( strcmp(argv[iarg],"-zclip") == 0 ){     /* 29 Oct 2010 */
+       do_zclip++ ; iarg++ ; continue ;
+     }
+
+     /*-----*/
+
+     if( strncmp(argv[iarg],"-nwarp_save",11) == 0 ){  /* 10 Dec 2010 = SECRET */
+       if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
+       if( !THD_filename_ok(argv[iarg]) )
+         ERROR_exit("badly formed filename: '%s' '%s' :-(",argv[iarg-1],argv[iarg]) ;
+       if( strcmp(argv[iarg],"NULL") == 0 ) nwarp_save_prefix = NULL ;
+       else                                 nwarp_save_prefix = argv[iarg] ;
+       iarg++ ; continue ;
+     }
+
+     /*-----*/
+
+     if( strncmp(argv[iarg],"-nwarp_fix",10) == 0 ){  /* 07 Dec 2010 = SECRET */
+       char *aaa = argv[iarg]+10 , dcod ;
+       if( strlen(aaa) < 4 ) ERROR_exit("don't understand option %s",argv[iarg]) ;
+       dcod = toupper(aaa[3]) ;
+       if( strncmp(aaa,"mot",3) == 0 ){            /* -nwarp_fixmot */
+         switch( dcod ){
+           case 'X': nwarp_fixmotX = 1 ; break ;
+           case 'Y': nwarp_fixmotY = 1 ; break ;
+           case 'Z': nwarp_fixmotZ = 1 ; break ;
+           case 'I': nwarp_fixmotI = 1 ; break ;
+           case 'J': nwarp_fixmotJ = 1 ; break ;
+           case 'K': nwarp_fixmotK = 1 ; break ;
+           default:  ERROR_exit("can't decode option %s",argv[iarg]) ;
+         }
+       } else if( strncmp(aaa,"dep",3) == 0 ){     /* -nwarp_fixdep */
+         switch( dcod ){
+           case 'X': nwarp_fixdepX = 1 ; break ;
+           case 'Y': nwarp_fixdepY = 1 ; break ;
+           case 'Z': nwarp_fixdepZ = 1 ; break ;
+           case 'I': nwarp_fixdepI = 1 ; break ;
+           case 'J': nwarp_fixdepJ = 1 ; break ;
+           case 'K': nwarp_fixdepK = 1 ; break ;
+           default:  ERROR_exit("can't decode option %s",argv[iarg]) ;
+         }
+       } else {
+         ERROR_exit("don't know option %s",argv[iarg]) ;
+       }
+       iarg++ ; continue ;
+     }
+
+     /*-----*/
+
      if( strcmp(argv[iarg],"-nwarp") == 0 ){     /* 03 Apr 2008 = SECRET */
        nwarp_pass = 1 ; iarg++ ;
 
-       if( iarg < argc && isalpha(argv[iarg][0]) ){
-         if( strncasecmp(argv[iarg],"tri",3) == 0 ){
-           nwarp_type = WARPFIELD_TRIG_TYPE ;
-         } else if( strncasecmp(argv[iarg],"leg",3) == 0 ){
-           nwarp_type = WARPFIELD_LEGEN_TYPE ;
-         } else if( strncasecmp(argv[iarg],"geg",3) == 0 ){
-           nwarp_type = WARPFIELD_GEGEN_TYPE ;
-         } else if( strncasecmp(argv[iarg],"bil",3) == 0 ){
-           nwarp_type = WARP_BILINEAR ;
-         } else {
-           WARNING_message("unknown -nwarp type '%s' :-(",argv[iarg]) ;
-         }
-         warp_code = WARP_AFFINE ; iarg++ ;
+       if( iarg >= argc ){
+         ERROR_exit("need a warp type after '-nwarp' :-(") ;
+       } else if( strncasecmp(argv[iarg],"bil",3) == 0 ){
+         nwarp_type = WARP_BILINEAR ;
+         if( strstr(argv[iarg],"D") != NULL ) nwarp_flags = 1 ; /* 29 Oct 2010 */
+       } else if( strncasecmp(argv[iarg],"cub",3)   == 0 ||
+                  strncasecmp(argv[iarg],"poly3",5) == 0   ){   /* 13 Nov 2010 */
+         nwarp_type = WARP_CUBIC ;
+       } else if( strncasecmp(argv[iarg],"qui",3)   == 0 ||
+                  strncasecmp(argv[iarg],"poly5",5) == 0   ){   /* 15 Nov 2010 */
+         nwarp_type = WARP_QUINT ;
+       } else if( strncasecmp(argv[iarg],"hep",3)   == 0 ||
+                  strncasecmp(argv[iarg],"poly7",5) == 0   ){   /* 15 Nov 2010 */
+         nwarp_type = WARP_HEPT ;
+       } else if( strncasecmp(argv[iarg],"non",3)   == 0 ||
+                  strncasecmp(argv[iarg],"poly9",5) == 0   ){   /* 17 Nov 2010 */
+         nwarp_type = WARP_NONI ;
+       } else {
+         ERROR_exit("unknown -nwarp type '%s' :-(",argv[iarg]) ;
+       }
+       nwarp_fixaff = ( strstr(argv[iarg],"FA") == NULL ) ;
+       warp_code = WARP_AFFINE ; iarg++ ;
+
+       if( iarg < argc && isdigit(argv[iarg][0]) ){      /** really secret **/
+         nwarp_itemax = (int)strtod(argv[iarg],NULL) ;
+         iarg++ ;
        }
 
-       if( iarg < argc && isdigit(argv[iarg][0]) ){
-         nwarp_order = (float)strtod(argv[iarg],NULL) ;
-         if( nwarp_order < 2.0f || nwarp_order > 7.0f ){
-           WARNING_message("illegal -nwarp order '%s' :-(",argv[iarg]) ;
-           nwarp_order = 2.9f ;
-         }
-         if( nwarp_type == WARP_BILINEAR )
-           WARNING_message("'order' is meaningless for bilinear warp :-(") ;
-         iarg++ ;
+       if( iarg < argc && isalpha(argv[iarg][0]) ){
+         nwarp_meth_code = meth_name_to_code(argv[iarg]) ;
+         if( nwarp_meth_code > 0 ) iarg++ ;
        }
 
        /* change some other parameters from their defaults */
@@ -1577,42 +1941,18 @@ int main( int argc , char *argv[] )
 
      /*----- Check the various cost options -----*/
 
-     /** -shortname **/
-
-     for( jj=ii=0 ; ii < NMETH ; ii++ ){
-       if( strcasecmp(argv[iarg]+1,meth_shortname[ii]) == 0 ){
-         meth_code = jj = ii+1 ; break ;
-       }
+     jj = meth_name_to_code( argv[iarg]+1 ) ; /* check for match after the '-' */
+     if( jj > 0 ){
+       meth_code = jj ; iarg++ ; continue ;   /* there was a match */
      }
-     if( jj > 0 ){ iarg++ ; continue ; }  /* there was a match */
-
-     /** -longname **/
-
-     for( jj=ii=0 ; ii < NMETH ; ii++ ){
-       if( strncasecmp(argv[iarg]+1,meth_longname[ii],7) == 0 ){
-         meth_code = jj = ii+1 ; break ;
-       }
-     }
-     if( jj > 0 ){ iarg++ ; continue ; }  /* there was a match */
 
      /** -cost shortname  *OR*  -cost longname **/
 
      if( strcmp(argv[iarg],"-cost") == 0 || strcmp(argv[iarg],"-meth") == 0 ){
        if( ++iarg >= argc ) ERROR_exit("no argument after '-cost' :-(") ;
 
-       for( jj=ii=0 ; ii < NMETH ; ii++ ){
-         if( strcasecmp(argv[iarg],meth_shortname[ii]) == 0 ){
-           meth_code = jj = ii+1 ; break ;
-         }
-       }
-       if( jj > 0 ){ iarg++ ; continue ; } /* there was a match */
-
-       for( jj=ii=0 ; ii < NMETH ; ii++ ){
-         if( strncasecmp(argv[iarg],meth_longname[ii],7) == 0 ){
-           meth_code = jj = ii+1 ; break ;
-         }
-       }
-       if( jj >=0 ){ iarg++ ; continue ; } /* there was a match */
+       jj = meth_name_to_code( argv[iarg] ) ;
+       if( jj > 0 ){ meth_code = jj ; iarg++ ; continue ; }
 
        ERROR_exit("Unknown code '%s' after -cost :-(",argv[iarg]) ;
      }
@@ -1635,25 +1975,15 @@ int main( int argc , char *argv[] )
      /*----- -check costname -----*/
 
      if( strncasecmp(argv[iarg],"-check",5) == 0 ){
-       /** if( strncmp(argv[iarg],"-CHECK",5) == 0 ) meth_median_replace = 1 ; **/
+#if 0
+       if( strncmp(argv[iarg],"-CHECK",5) == 0 ) meth_median_replace = 1 ; /* not good */
+#endif
        if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
 
        for( ; iarg < argc && argv[iarg][0] != '-' ; iarg++ ){
          if( meth_check_count == NMETH ) continue ; /* malicious user? */
-         for( jj=ii=0 ; ii < NMETH ; ii++ ){
-           if( strcasecmp(argv[iarg],meth_shortname[ii]) == 0 ){
-             jj = ii+1 ; break ;
-           }
-         }
-         if( jj > 0 ){ meth_check[ meth_check_count++ ] = jj; continue ;}
-
-         for( jj=ii=0 ; ii < NMETH ; ii++ ){
-           if( strncasecmp(argv[iarg],meth_longname[ii],7) == 0 ){
-             jj = ii+1 ; break ;
-           }
-         }
-         if( jj >=0 ){ meth_check[ meth_check_count++ ] = jj; continue ;}
-
+         jj = meth_name_to_code(argv[iarg]) ;
+         if( jj > 0 ){ meth_check[meth_check_count++] = jj; continue; }
          WARNING_message("Unknown code '%s' after -check :-(",argv[iarg]) ;
        }
        continue ;
@@ -2054,6 +2384,28 @@ int main( int argc , char *argv[] )
 
      /*-----*/
 
+     if( strcmp(argv[iarg],"-maxshr") == 0 ){  /* 03 Dec 2010 */
+       float vv ;
+       if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
+       if( nparopt+2 >= MAXPAR ) ERROR_exit("too many -par... options :-(") ;
+       vv = (float)strtod(argv[iarg],NULL) ;
+       if( vv <= 0.0f || vv > 1.0f ) ERROR_exit("-maxshr %f is illegal :-(",vv) ;
+       paropt[nparopt].np   = 9 ;
+       paropt[nparopt].code = PARC_RAN ;
+       paropt[nparopt].vb   = -vv ;
+       paropt[nparopt].vt   =  vv ; nparopt++ ;
+       paropt[nparopt].np   = 10 ;
+       paropt[nparopt].code = PARC_RAN ;
+       paropt[nparopt].vb   = -vv ;
+       paropt[nparopt].vt   =  vv ; nparopt++ ;
+       paropt[nparopt].np   = 11 ;
+       paropt[nparopt].code = PARC_RAN ;
+       paropt[nparopt].vb   = -vv ;
+       paropt[nparopt].vt   =  vv ; nparopt++ ; iarg++ ; continue ;
+     }
+
+     /*-----*/
+
      if( strcmp(argv[iarg],"-maxshf") == 0 ){
        float vv ;
        if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
@@ -2193,19 +2545,8 @@ int main( int argc , char *argv[] )
          replace_meth = 0 ; iarg++ ; continue ;  /* special case */
        }
 
-       for( jj=ii=0 ; ii < NMETH ; ii++ ){
-         if( strcasecmp(argv[iarg],meth_shortname[ii]) == 0 ){
-           replace_meth = jj = ii+1 ; break ;
-         }
-       }
-       if( jj > 0 ){ iarg++ ; continue ; }
-
-       for( jj=ii=0 ; ii < NMETH ; ii++ ){
-         if( strncasecmp(argv[iarg],meth_longname[ii],7) == 0 ){
-           replace_meth = jj = ii+1 ; break ;
-         }
-       }
-       if( jj >=0 ){ iarg++ ; continue ; }
+       jj = meth_name_to_code(argv[iarg]) ;
+       if( jj > 0 ){ replace_meth = jj ; iarg++ ; continue ; }
 
        ERROR_exit("Unknown code '%s' after -replacemeth :-(",argv[iarg]) ;
        iarg++ ; continue ;
@@ -2395,23 +2736,86 @@ int main( int argc , char *argv[] )
 
    if( warp_freeze ) twofirst = 1 ;  /* 10 Oct 2006 */
 
-   if( apply_mode > 0 ){
-     if( nwarp_pass && nwarp_type == WARP_BILINEAR ){
-       if( apply_nx >= NPBIL+4 ){
-         apply_mode = APPLY_BILIN ;
-         INFO_message(
-          "found %d param/row in param file '%s'; applying bilinear warp",
-          apply_nx , apply_1D) ;
-       } else {
-         INFO_message(
-          "found %d param/row in param file '%s'; not enough for bilinear warp",
-          apply_nx , apply_1D) ;
+   if( apply_mode > 0 && nwarp_pass ){
+     switch( nwarp_pass ){
+       default: ERROR_exit("Can't apply that nonlinear warp :-(  [%d]",nwarp_pass) ;
+
+       case WARP_BILINEAR:{
+         if( apply_nx == NPBIL+4 ){
+           apply_mode = APPLY_BILIN ;
+           INFO_message(
+            "found %d param/row in param file '%s'; applying bilinear warp",
+            apply_nx , apply_1D) ;
+         } else {
+           ERROR_exit(
+            "found %d param/row in param file '%s'; not right for bilinear warp",
+            apply_nx , apply_1D) ;
+         }
        }
-     } else if( nwarp_pass ){
-       ERROR_exit("Can't apply -nwarp except bilinear, at this time :-(") ;
-     }
+       break ;
+
+       case WARP_CUBIC:{
+         if( apply_nx == NPCUB+4 ){
+           apply_mode = APPLY_CUBIC ;
+           INFO_message(
+            "found %d param/row in param file '%s'; applying cubic/poly3 warp",
+            apply_nx , apply_1D) ;
+         } else {
+           ERROR_exit(
+            "found %d param/row in param file '%s'; not right for cubic/poly3 warp",
+            apply_nx , apply_1D) ;
+         }
+       }
+       break ;
+
+       case WARP_QUINT:{
+         if( apply_nx == NPQUINT+4 ){
+           apply_mode = APPLY_QUINT ;
+           INFO_message(
+            "found %d param/row in param file '%s'; applying quintic/poly5 warp",
+            apply_nx , apply_1D) ;
+         } else {
+           ERROR_exit(
+            "found %d param/row in param file '%s'; not right for quintic/poly5 warp",
+            apply_nx , apply_1D) ;
+         }
+       }
+       break ;
+
+       case WARP_HEPT:{
+         if( apply_nx == NPHEPT+4 ){
+           apply_mode = APPLY_HEPT ;
+           INFO_message(
+            "found %d param/row in param file '%s'; applying heptic/poly7 warp",
+            apply_nx , apply_1D) ;
+         } else {
+           ERROR_exit(
+            "found %d param/row in param file '%s'; not right for heptic/poly7 warp",
+            apply_nx , apply_1D) ;
+         }
+       }
+       break ;
+
+       case WARP_NONI:{
+         if( apply_nx == NPNONI+4 ){
+           apply_mode = APPLY_NONI ;
+           INFO_message(
+            "found %d param/row in param file '%s'; applying nonic/poly9 warp",
+            apply_nx , apply_1D) ;
+         } else {
+           ERROR_exit(
+            "found %d param/row in param file '%s'; not right for nonic/poly9 warp",
+            apply_nx , apply_1D) ;
+         }
+       }
+       break ;
+     } /* end of switch on nwarp_pass */
    }
 
+   if( nwarp_pass && meth_check_count > 0 ){  /* 15 Dec 2010 */
+     meth_check_count = 0 ;
+     if( verb ) WARNING_message("-check disabled because of -nwarp") ;
+   }
 
    /* open target from last argument, if not already open */
 
@@ -2423,8 +2827,19 @@ int main( int argc , char *argv[] )
        ERROR_exit("Can't open source dataset '%s'",argv[iarg]) ;
    }
 
+   if( verb ){
+     INFO_message("Source dataset: %s",DSET_HEADNAME(dset_targ)) ;
+     INFO_message("Base dataset:   %s",
+                  (dset_base != NULL) ? DSET_HEADNAME(dset_base) : "(not given)" ) ;
+   }
+
    if( nwarp_pass && DSET_NVALS(dset_targ) > 1 )
      ERROR_exit("Can't use -nwarp on more than 1 sub-brick :-(") ;
+
+   if( nwarp_save_prefix != NULL && !nwarp_pass ){
+     WARNING_message("Can't use -nwarp_save without -nwarp! :-(") ;
+     nwarp_save_prefix = NULL ;
+   }
 
    switch( tb_mast ){                        /* 19 Jul 2007 */
      case 1: dset_mast = dset_targ ; break ;
@@ -2559,10 +2974,18 @@ int main( int argc , char *argv[] )
    ny_base = im_base->ny ; nxy_base  = nx_base *ny_base ;
    nz_base = im_base->nz ; nvox_base = nxy_base*nz_base ;
 
+   if( nx_base < 9 || ny_base < 9 )
+     ERROR_exit("Base volume i- and/or j-axis dimension < 9") ;
+
    dxyz_top = dx_base ;
    dxyz_top = MAX(dxyz_top,dy_base) ; dxyz_top = MAX(dxyz_top,dz_base) ;
    dxyz_top = MAX(dxyz_top,dx_targ) ;
    dxyz_top = MAX(dxyz_top,dy_targ) ; dxyz_top = MAX(dxyz_top,dz_targ) ;
+
+   if( do_zclip ){
+     float *bar = MRI_FLOAT_PTR(im_base) ;
+     for( ii=0 ; ii < nvox_base ; ii++ ) if( bar[ii] < 0.0f ) bar[ii] = 0.0f ;
+   }
 
    /* find the autobbox, and setup zero-padding */
 
@@ -2605,9 +3028,9 @@ int main( int argc , char *argv[] )
          if( pad_xm > 0 || pad_xp > 0 )
            INFO_message("Zero-pad: xbot=%d xtop=%d",pad_xm,pad_xp) ;
          if( pad_ym > 0 || pad_yp > 0 )
-           INFO_message("zero-pad: ybot=%d ytop=%d",pad_ym,pad_yp) ;
+           INFO_message("Zero-pad: ybot=%d ytop=%d",pad_ym,pad_yp) ;
          if( pad_zm > 0 || pad_zp > 0 )
-           INFO_message("zero-pad: zbot=%d ztop=%d",pad_zm,pad_zp) ;
+           INFO_message("Zero-pad: zbot=%d ztop=%d",pad_zm,pad_zp) ;
        } else {
          INFO_message("Zero-pad: not needed") ;
        }
@@ -2628,18 +3051,96 @@ int main( int argc , char *argv[] )
    nxyz_base[0] = nx_base; nxyz_base[1] = ny_base; nxyz_base[2] = nz_base;
    dxyz_base[0] = dx_base; dxyz_base[1] = dy_base; dxyz_base[2] = dz_base;
 
+   { THD_3dim_dataset *qset = (dset_base != NULL) ? dset_base : dset_targ ;
+     xx_code = ORIENT_xyzint[ qset->daxes->xxorient ] ;
+     yy_code = ORIENT_xyzint[ qset->daxes->yyorient ] ;
+     zz_code = ORIENT_xyzint[ qset->daxes->zzorient ] ;
+   }
+
+   if( nz_base == 1 ){  /* 2D input image */
+     char *tnam ;
+     twodim_code = zz_code ;
+     tnam = (twodim_code == 1) ? "sagittal"         /* twodim_code = slice direction */
+           :(twodim_code == 2) ? "coronal"
+           :(twodim_code == 3) ? "axial"
+           :                     "UNKNOWABLE" ;
+     if( twodim_code < 1 || twodim_code > 3 )
+       ERROR_exit("2D image: orientation is %s",tnam) ;
+     else if( verb )
+       ININFO_message("2D image: orientation is %s",tnam) ;
+
+     if( nwarp_pass ){ nwarp_fixaff = nwarp_fixmotK = nwarp_fixdepK = 1 ; }
+   }
+
+   /* set parameter freeze directions for -nwarp_fix* now [07 Dec 2010] */
+
+   if( nwarp_pass ){
+     if( twodim_code ){ nwarp_fixmotK = nwarp_fixdepK = 1 ; }  /* 2D images: no out-of-plane stuff */
+     if( nwarp_fixmotI ){
+       switch( xx_code ){
+         case 1: nwarp_fixmotX=1;break; case 2: nwarp_fixmotY=1;break; case 3: nwarp_fixmotZ=1;break;
+       }
+     }
+     if( nwarp_fixmotJ ){
+       switch( yy_code ){
+         case 1: nwarp_fixmotX=1;break; case 2: nwarp_fixmotY=1;break; case 3: nwarp_fixmotZ=1;break;
+       }
+     }
+     if( nwarp_fixmotK ){
+       switch( zz_code ){
+         case 1: nwarp_fixmotX=1;break; case 2: nwarp_fixmotY=1;break; case 3: nwarp_fixmotZ=1;break;
+       }
+     }
+     if( nwarp_fixdepI ){
+       switch( xx_code ){
+         case 1: nwarp_fixdepX=1;break; case 2: nwarp_fixdepY=1;break; case 3: nwarp_fixdepZ=1;break;
+       }
+     }
+     if( nwarp_fixdepJ ){
+       switch( yy_code ){
+         case 1: nwarp_fixdepX=1;break; case 2: nwarp_fixdepY=1;break; case 3: nwarp_fixdepZ=1;break;
+       }
+     }
+     if( nwarp_fixdepK ){
+       switch( zz_code ){
+         case 1: nwarp_fixdepX=1;break; case 2: nwarp_fixdepY=1;break; case 3: nwarp_fixdepZ=1;break;
+       }
+     }
+
+     if( nwarp_fixmotX && nwarp_fixmotY && nwarp_fixmotZ )
+       ERROR_exit("-nwarp_fixmot has frozen all nonlinear warping parameters :-(") ;
+
+     if( nwarp_fixdepX && nwarp_fixdepY && nwarp_fixdepZ )
+       ERROR_exit("-nwarp_fixdep has frozen all nonlinear warping parameters :-(") ;
+
+     if( (nwarp_fixmotX || nwarp_fixmotY || nwarp_fixmotZ ||
+          nwarp_fixdepX || nwarp_fixdepY || nwarp_fixdepZ   ) &&
+        !NONLINEAR_IS_POLY(nwarp_type)                           )
+       ERROR_exit("-nwarp_fix... cannot be used with non-polynomial -nwarp types") ;
+
+     if( verb ){
+       if( nwarp_fixmotX ) ININFO_message("-nwarp: X motions are frozen") ;
+       if( nwarp_fixmotY ) ININFO_message("-nwarp: Y motions are frozen") ;
+       if( nwarp_fixmotZ ) ININFO_message("-nwarp: Z motions are frozen") ;
+       if( nwarp_fixdepX ) ININFO_message("-nwarp: X dependencies are frozen") ;
+       if( nwarp_fixdepY ) ININFO_message("-nwarp: Y dependencies are frozen") ;
+       if( nwarp_fixdepZ ) ININFO_message("-nwarp: Z dependencies are frozen") ;
+     }
+   }
+
    /* check for base:target dimensionality mismatch */
 
    if( nz_base >  1 && nz_targ == 1 )
      ERROR_exit("Can't register 2D source into 3D base :-(") ;
    if( nz_base == 1 && nz_targ >  1 )
      ERROR_exit("Can't register 3D source onto 2D base :-(") ;
-   if( nz_base == 1 && nwarp_pass )
-     ERROR_exit("Can't use -nwarp on 2D images :-(") ;  /* 03 Apr 2008 */
+   if( nz_base == 1 && nwarp_pass && !NONLINEAR_IS_POLY(nwarp_type) )
+     ERROR_exit("Can't use non-polynomial -nwarp on 2D images :-(") ;
 
    /* load weight dataset if defined */
 
    if( dset_weig != NULL ){
+STATUS("load weight dataset") ;
      DSET_load(dset_weig) ; CHECK_LOAD_ERROR(dset_weig) ;
      im_weig = mri_scale_to_float( DSET_BRICK_FACTOR(dset_weig,0) ,
                                    DSET_BRICK(dset_weig,0)         ) ;
@@ -2648,6 +3149,7 @@ int main( int argc , char *argv[] )
      /* zeropad weight to match base? */
 
      if( zeropad ){
+STATUS("zeropad weight dataset") ;
        qim = mri_zeropad_3D( pad_xm,pad_xp , pad_ym,pad_yp ,
                                              pad_zm,pad_zp , im_weig ) ;
        mri_free(im_weig) ; im_weig = qim ;
@@ -2666,7 +3168,7 @@ int main( int argc , char *argv[] )
      }
      if( verb > 1 ) ctim = COX_cpu_time() ;
      im_weig = mri_weightize(im_base,auto_weight,auto_dilation,auto_wclip,auto_wpow) ;
-     if( verb > 1 ) INFO_message("%s CPU time = %.1f s" ,
+     if( verb > 1 ) INFO_message("%s net CPU time = %.1f s" ,
                                  auto_string , COX_cpu_time()-ctim ) ;
    }
 
@@ -2811,7 +3313,7 @@ int main( int argc , char *argv[] )
    stup.wfunc_param = (GA_param *)calloc(12,sizeof(GA_param)) ;
 
    if( nwarp_pass && warp_code != WARP_AFFINE ){
-     WARNING_message("Use of -nwarp ==> must use all 12 affine parameters") ;
+     WARNING_message("Use of -nwarp ==> must allow all 12 affine parameters") ;
      warp_code = WARP_AFFINE ;
    }
 
@@ -2854,9 +3356,9 @@ int main( int argc , char *argv[] )
 
    /*-- compute range of shifts allowed --*/
 
-   xxx = 0.321 * (nx_base-1) ;
-   yyy = 0.321 * (ny_base-1) ;
-   zzz = 0.321 * (nz_base-1) ; xxx_m = yyy_m = zzz_m = 0.0f ;
+   xxx = 0.321f * (nx_base-1) ;
+   yyy = 0.321f * (ny_base-1) ;
+   zzz = 0.321f * (nz_base-1) ; xxx_m = yyy_m = zzz_m = 0.01f ;
    for( ii=-1 ; ii <= 1 ; ii+=2 ){
     for( jj=-1 ; jj <= 1 ; jj+=2 ){
       for( kk=-1 ; kk <= 1 ; kk+=2 ){
@@ -2948,15 +3450,26 @@ int main( int argc , char *argv[] )
    DEFPAR( 10, "z/x-shear" , -0.1111 , 0.1111 , 0.0 , 0.0 , 0.0 ) ;
    DEFPAR( 11, "z/y-shear" , -0.1111 , 0.1111 , 0.0 , 0.0 , 0.0 ) ;
 
-   if( nz_base == 1 ){                 /* 2D images */
-     stup.wfunc_param[ 2].fixed = 2 ;  /* fixed==2 means cannot be un-fixed */
-     stup.wfunc_param[ 4].fixed = 2 ;  /* fixed==1 is 'temporarily fixed'   */
-     stup.wfunc_param[ 5].fixed = 2 ;
-     stup.wfunc_param[ 8].fixed = 2 ;
-     stup.wfunc_param[10].fixed = 2 ;
-     stup.wfunc_param[11].fixed = 2 ;
-     if( verb && apply_mode == 0 )
-       INFO_message("base dataset is 2D ==> froze z-parameters") ;
+   if( twodim_code > 0 ){               /* 03 Dec 2010 */
+     int i1=0,i2=0,i3=0,i4=0,i5=0,i6=0 ;
+     switch( twodim_code ){             /* 2D images: freeze some parameters */
+       case 3:                               /* axial slice == k-axis is I-S */
+         i1=3 ; i2=5 ; i3=6 ; i4=9 ; i5=11 ; i6=12 ; break ;
+       case 2:                             /* coronal slice == k-axis is A-P */
+         i1=2 ; i2=4 ; i3=5 ; i4=8 ; i5=10 ; i6=12 ; break ;
+       case 1:                            /* sagittal slice == k-axis is L-R */
+         i1=1 ; i2=4 ; i3=6 ; i4=7 ; i5=10 ; i6=11 ; break ;
+     }
+     if( i1 > 0 ){
+       stup.wfunc_param[i1-1].fixed = 2 ; /* fixed==2 means cannot be unfixed */
+       stup.wfunc_param[i2-1].fixed = 2 ; /* fixed==1 is 'temporarily fixed'  */
+       stup.wfunc_param[i3-1].fixed = 2 ;
+       stup.wfunc_param[i4-1].fixed = 2 ;
+       stup.wfunc_param[i5-1].fixed = 2 ;
+       stup.wfunc_param[i6-1].fixed = 2 ;
+       if( verb && apply_mode == 0 )
+         INFO_message("base dataset is 2D ==> froze out-of-plane affine parameters") ;
+     }
    }
 
    /*-- apply any parameter-altering user commands --*/
@@ -2964,9 +3477,9 @@ int main( int argc , char *argv[] )
    for( ii=0 ; ii < nparopt ; ii++ ){
      jj = paropt[ii].np ;
      if( jj < stup.wfunc_numpar ){
-       if( stup.wfunc_param[jj].fixed )
-         WARNING_message("Altering fixed param#%d [%s]" ,
-                          jj+1 , stup.wfunc_param[jj].name ) ;
+       if( stup.wfunc_param[jj].fixed && verb )
+         ININFO_message("Altering fixed param#%d [%s]" ,
+                        jj+1 , stup.wfunc_param[jj].name ) ;
 
        switch( paropt[ii].code ){
          case PARC_FIX: stup.wfunc_param[jj].fixed     = 2 ; /* permanent fix */
@@ -2996,7 +3509,7 @@ int main( int argc , char *argv[] )
                case 2: vb += zc ; vt += zc ; break ;
              }
            }
-           stup.wfunc_param[jj].fixed = 0 ;
+           /** stup.wfunc_param[jj].fixed = 0 ; **/
            stup.wfunc_param[jj].min   = vb;
            stup.wfunc_param[jj].max   = vt;
            if( verb > 1 )
@@ -3068,8 +3581,13 @@ int main( int argc , char *argv[] )
 
    /*-- special case: 04 Apr 2008 --*/
 
-   if( apply_mode == APPLY_BILIN ){
-     SETUP_BILINEAR_PARAMS ;
+   switch( apply_mode ){
+     default:                                  break ;
+     case APPLY_BILIN: SETUP_BILINEAR_PARAMS ; break ;
+     case APPLY_CUBIC: SETUP_CUBIC_PARAMS    ; break ;
+     case APPLY_QUINT: SETUP_QUINT_PARAMS    ; break ;
+     case APPLY_HEPT : SETUP_HEPT_PARAMS     ; break ;
+     case APPLY_NONI : SETUP_NONI_PARAMS     ; break ;
    }
 
    /*****------ create shell of output dataset ------*****/
@@ -3079,7 +3597,7 @@ int main( int argc , char *argv[] )
      if( dxyz_mast > 0.0 )
        WARNING_message("-mast_dxyz %g option was meaningless :-(",dxyz_mast) ;
    } else {
-     if( dset_mast == NULL ){
+     if( dset_mast == NULL ){ /* pick a master dataset to control output grid */
        if( dset_base != NULL ){
          if( verb ) INFO_message("master dataset for output = base") ;
          dset_mast = dset_base ;
@@ -3088,7 +3606,7 @@ int main( int argc , char *argv[] )
          dset_mast = dset_targ ;
        }
      }
-     if( dxyz_mast > 0.0 ){   /* 24 Jul 2007 */
+     if( dxyz_mast > 0.0 ){   /* 24 Jul 2007 -- alter grid size */
        THD_3dim_dataset *qset ;
        qset = r_new_resam_dset( dset_mast , NULL ,
                                 dxyz_mast,dxyz_mast,dxyz_mast ,
@@ -3100,14 +3618,14 @@ int main( int argc , char *argv[] )
            INFO_message("changing output grid spacing to %.3f mm",dxyz_mast) ;
        }
      }
-     if( !ISVALID_MAT44(dset_mast->daxes->ijk_to_dicom) )
-       THD_daxes_to_mat44(dset_mast->daxes) ;
+     if( !ISVALID_MAT44(dset_mast->daxes->ijk_to_dicom) ) /* make sure have */
+       THD_daxes_to_mat44(dset_mast->daxes) ;      /* index-to-DICOM matrix */
 
      mast_cmat     = dset_mast->daxes->ijk_to_dicom ;  /* 24 Jul 2007 */
      mast_cmat_inv = MAT44_INV(mast_cmat) ;
 
-     dset_out = EDIT_empty_copy( dset_mast ) ;
-     EDIT_dset_items( dset_out ,
+     dset_out = EDIT_empty_copy( dset_mast ) ;  /* create the output dataset! */
+     EDIT_dset_items( dset_out ,                /* and patch it up */
                         ADN_prefix    , prefix ,
                         ADN_nvals     , DSET_NVALS(dset_targ) ,
                         ADN_datum_all , MRI_float ,
@@ -3127,14 +3645,14 @@ int main( int argc , char *argv[] )
 
      /* copy brick info into output */
 
-     THD_copy_datablock_auxdata( dset_targ->dblk , dset_out->dblk ) ; /* 20 Nov 2007 */
+     THD_copy_datablock_auxdata( dset_targ->dblk , dset_out->dblk ) ;
      for( kk=0 ; kk < DSET_NVALS(dset_out) ; kk++ )
        EDIT_BRICK_FACTOR(dset_out,kk,0.0);
 
-     tross_Copy_History( dset_targ , dset_out ) ;
+     tross_Copy_History( dset_targ , dset_out ) ;        /* historic records */
      tross_Make_History( "3dAllineate" , argc,argv , dset_out ) ;
 
-     THD_daxes_to_mat44(dset_out->daxes) ;
+     THD_daxes_to_mat44(dset_out->daxes) ;          /* save coord transforms */
      cmat_tout = dset_targ->daxes->ijk_to_dicom ;
      cmat_bout = dset_out ->daxes->ijk_to_dicom ;
      nxout = DSET_NX(dset_out) ; dxout = fabsf(DSET_DX(dset_out)) ;
@@ -3144,12 +3662,20 @@ int main( int argc , char *argv[] )
      dxyz_dout[0] = dxout; dxyz_dout[1] = dyout; dxyz_dout[2] = dzout;
    }
 
+   /* check if have dataset prefix for saving the 3D warp */
+
+   if( dset_out == NULL && nwarp_save_prefix != NULL ){
+     WARNING_message("Can't use -nwarp_save without -prefix! :-(") ;
+     nwarp_save_prefix = NULL ;
+   }
+
+   /***~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~***/
    /***---------------------- start alignment process ----------------------***/
 
 #ifdef USE_OMP
 #pragma omp parallel
  {
-  if( omp_get_thread_num() == 0 )
+  if( verb && omp_get_thread_num() == 0 )
     INFO_message("OpenMP thread count = %d",omp_get_num_threads()) ;
  }
 #endif
@@ -3183,7 +3709,7 @@ int main( int argc , char *argv[] )
         allpar[jj] = stup.wfunc_param[jj].xxx ;   \
   } while(0)
 
-   /*-- the annunciation --*/
+   /*-- the Annunciation --*/
 
    if( do_allcost >= 0 && verb ){
      if( apply_1D == NULL )
@@ -3201,7 +3727,7 @@ int main( int argc , char *argv[] )
    if( param_save_1D != NULL || apply_mode != APPLY_AFF12 )
      parsave = (float **)calloc(sizeof(float *),DSET_NVALS(dset_targ)) ;
 
-   if( apply_mode != APPLY_BILIN ){                                     /* 04 Apr 2008 */
+   if( !NONLINEAR_APPLY(apply_mode) ){                                  /* 04 Apr 2008 */
     if( matrix_save_1D != NULL || apply_mode != APPLY_AFF12  )
       matsave = (mat44 * )calloc(sizeof(mat44),DSET_NVALS(dset_targ)) ; /* 23 Jul 2007 */
    }
@@ -3299,6 +3825,11 @@ int main( int argc , char *argv[] )
 
      im_targ = mri_scale_to_float( bfac , DSET_BRICK(dset_targ,kk) ) ;
      DSET_unload_one(dset_targ,kk) ;
+
+     if( do_zclip ){
+       float *bar = MRI_FLOAT_PTR(im_targ) ;
+       for( ii=0 ; ii < nvox_base ; ii++ ) if( bar[ii] < 0.0f ) bar[ii] = 0.0f ;
+     }
 
      /*** if we are just applying input parameters, set up for that now ***/
 
@@ -3455,7 +3986,7 @@ int main( int argc , char *argv[] )
          nrand = 17 + 4*tbest ; nrand = MAX(nrand,31) ;
          mri_genalign_scalar_ransetup( &stup , nrand ) ;  /* the initial search! */
 
-         if( verb > 1 ) ININFO_message("- Coarse startup search CPU time = %.1f s",COX_cpu_time()-ctim);
+         if( verb > 1 ) ININFO_message("- Coarse startup search net CPU time = %.1f s",COX_cpu_time()-ctim);
 
          /* unfreeze those that were temporarily frozen above */
 
@@ -3548,7 +4079,7 @@ int main( int argc , char *argv[] )
          } /* end of refinement loop (rr) */
 
          if( verb > 1 )
-           ININFO_message("- Total coarse refinement CPU time = %.1f s; %d funcs",
+           ININFO_message("- Total coarse refinement net CPU time = %.1f s; %d funcs",
                           COX_cpu_time()-ctim,nfunc ) ;
 
          /* end of '-twobest x' for x > 0 */
@@ -3558,21 +4089,21 @@ int main( int argc , char *argv[] )
 
          if( verb     ) ININFO_message("- Start coarse optimization with -twobest 0") ;
          if( verb > 1 ) ctim = COX_cpu_time() ;
-         nfunc = mri_genalign_scalar_optim( &stup , 0.05 , 0.005 , 666 ) ;
+         nfunc = mri_genalign_scalar_optim( &stup , 0.05 , 0.005 , 444 ) ;
          if( verb > 2 ) PAROUT("--(a)") ;
          stup.npt_match = ntask / 7 ;
          if( stup.npt_match < nmatch_setup  ) stup.npt_match = nmatch_setup ;
          stup.smooth_radius_base *= 0.456 ;
          stup.smooth_radius_targ *= 0.456 ;
          mri_genalign_scalar_setup( NULL,NULL,NULL , &stup ) ;
-         nfunc += mri_genalign_scalar_optim( &stup , 0.0333 , 0.00333 , 666 ) ;
+         nfunc += mri_genalign_scalar_optim( &stup , 0.0333 , 0.00333 , 444 ) ;
          if( verb > 2 ) PAROUT("--(b)") ;
          stup.smooth_radius_base *= 0.456 ;
          stup.smooth_radius_targ *= 0.456 ;
          mri_genalign_scalar_setup( NULL,NULL,NULL , &stup ) ;
-         nfunc += mri_genalign_scalar_optim( &stup , 0.0166 , 0.00166 , 666 ) ;
+         nfunc += mri_genalign_scalar_optim( &stup , 0.0166 , 0.00166 , 444 ) ;
          if( verb > 2 ) PAROUT("--(c)") ;
-         if( verb > 1 ) ININFO_message("- Coarse CPU time = %.1f s; %d funcs",
+         if( verb > 1 ) ININFO_message("- Coarse net CPU time = %.1f s; %d funcs",
                                        COX_cpu_time()-ctim,nfunc) ;
          if( verb     ) ININFO_message("- Coarse optimization:  best cost=%f",
                                        stup.vbest) ;
@@ -3783,7 +4314,7 @@ int main( int argc , char *argv[] )
 
      if( verb ) ININFO_message("- Final    cost = %f ; %d funcs",stup.vbest,nfunc) ;
      if( verb > 1 && meth_check_count < 1 ) PAROUT("Final fine fit") ;
-     if( verb > 1 ) ININFO_message("- Fine CPU time = %.1f s",COX_cpu_time()-ctim) ;
+     if( verb > 1 ) ININFO_message("- Fine net CPU time = %.1f s",COX_cpu_time()-ctim) ;
 
      if( save_hist != NULL ) SAVEHIST("final",1) ;
 
@@ -3810,13 +4341,32 @@ int main( int argc , char *argv[] )
 #endif
 
      /*----------------------------------------------------------------------*/
-     /*--------------- Nonlinear warp improvement? --------------------------*/
+     /*------------ Nonlinear warp improvement to the above results? --------*/
+
+/* macro to (re)setup some parameters in the work below */
+
+#define PARAM_SETUP(pp,ff,vv)                                                          \
+ do{ if( ff ){ stup.wfunc_param[pp].fixed = ff; stup.wfunc_param[pp].val_fixed = vv; } \
+     else    { stup.wfunc_param[pp].fixed = 0; }                                       \
+     stup.wfunc_param[pp].val_init = vv;                                               \
+ } while(0)
 
      if( nwarp_pass ){
 
-       if( nwarp_type == WARP_BILINEAR ){  /*------ special case ------------*/
+       /* 15 Dec 2010: change cost functional here? */
 
-         float rr , xcen,ycen,zcen , brad ; int nbf ;
+       if( nwarp_meth_code > 0 ){
+         if( verb ) INFO_message( "-nwarp setup: switch method to '%s' from '%s'",
+                                  meth_shortname[nwarp_meth_code-1] ,
+                                  meth_shortname[stup.match_code-1]  ) ;
+         stup.match_code = nwarp_meth_code ;
+       }
+
+       /*--- different blocks of code for the different types of warps ---*/
+
+       if( nwarp_type == WARP_BILINEAR ){  /*------ special case [old] ------*/
+
+         float rr , xcen,ycen,zcen , brad,crad ; int nbf , nite ;
 
          rr = MAX(xsize,ysize) ; rr = MAX(zsize,rr) ; rr = 1.2f / rr ;
 
@@ -3852,155 +4402,277 @@ int main( int argc , char *argv[] )
          }
          if( verb ) ctim = COX_cpu_time() ;
          brad = MAX(conv_rad,0.001f) ;
-              if( rad > 33.3f*brad ) rad = 33.3f*brad ;
+              if( rad > 55.5f*brad ) rad = 55.5f*brad ;
          else if( rad < 22.2f*brad ) rad = 22.2f*brad ;
-         nbf = mri_genalign_scalar_optim( &stup , rad, 11.1f*brad, 555 );
+         crad = (nwarp_flags&1 == 0) ? (11.1f*brad) : (2.22f*brad) ;
+         nite = MAX(555,nwarp_itemax) ;
+         nbf  = mri_genalign_scalar_optim( &stup , rad, crad, nite );
          if( verb ){
            dtim = COX_cpu_time() ;
-           ININFO_message("- Bilinear#1 cost = %f ; %d funcs ; CPU = %.1f s",
+           ININFO_message("- Bilinear#1 cost = %f ; %d funcs ; net CPU = %.1f s",
                           stup.vbest,nbf,dtim-ctim) ;
            ctim = dtim ;
          }
 
          /* do the second pass, with more parameters varying */
 
-         for( jj=12 ; jj < NPBIL ; jj++ )   /* now free up all B elements */
-           stup.wfunc_param[jj].fixed = 0 ;
-         for( jj=0  ; jj < NPBIL ; jj++ )
-           stup.wfunc_param[jj].val_init = stup.wfunc_param[jj].val_out;
-         nbf = mri_genalign_scalar_optim( &stup, 22.2f*brad, 3.33f*brad,2222 );
-         if( verb ){
-           dtim = COX_cpu_time() ;
-           ININFO_message("- Bilinear#2 cost = %f ; %d funcs ; CPU = %.1f s",
-                          stup.vbest,nbf,dtim-ctim) ;
-           ctim = dtim ;
-         }
+         if( (nwarp_flags&1) == 0 ){
+           float dnor , onor ;
 
-         /* run it again to see if it improves any more */
+           for( jj=0  ; jj < NPBIL ; jj++ )
+             stup.wfunc_param[jj].val_init = stup.wfunc_param[jj].val_out;
+#if 1
+           for( jj=0 ; jj < 12 ; jj++ ){      /* fix affine params */
+             stup.wfunc_param[jj].val_fixed = stup.wfunc_param[jj].val_out ;
+             stup.wfunc_param[jj].fixed = 1 ;
+           }
+#endif
+           for( jj=12 ; jj < NPBIL ; jj++ )   /* now free up all B elements */
+             stup.wfunc_param[jj].fixed = 0 ;
+           nite = MAX(1111,nwarp_itemax) ;
+           nbf  = mri_genalign_scalar_optim( &stup, 33.3f*brad, 2.22f*brad,nite );
+           if( verb ){
+             dtim = COX_cpu_time() ;
+             ININFO_message("- Bilinear#2 cost = %f ; %d funcs ; net CPU = %.1f s",
+                            stup.vbest,nbf,dtim-ctim) ;
+             ctim = dtim ;
+           }
 
-         for( jj=0  ; jj < NPBIL ; jj++ )
-           stup.wfunc_param[jj].val_init = stup.wfunc_param[jj].val_out;
-         nbf = mri_genalign_scalar_optim( &stup, 4.44f*brad, brad, 222 );
-         if( verb ){
-           dtim = COX_cpu_time() ;
-           ININFO_message("- Bilinear#3 cost = %f ; %d funcs ; CPU = %.1f s",
-                          stup.vbest,nbf,dtim-ctim) ;
-           ctim = dtim ;
+           /* run it again to see if it improves any more? */
+
+           dnor = BILINEAR_diag_norm   (stup) ;
+           onor = BILINEAR_offdiag_norm(stup) ;
+           if( onor > 0.0333f * dnor ){
+             for( jj=0  ; jj < NPBIL ; jj++ )
+               stup.wfunc_param[jj].val_init = stup.wfunc_param[jj].val_out;
+             nbf = mri_genalign_scalar_optim( &stup, 4.44f*brad, brad, 222 );
+             if( verb ){
+               dtim = COX_cpu_time() ;
+               ININFO_message("- Bilinear#3 cost = %f ; %d funcs ; net CPU = %.1f s",
+                              stup.vbest,nbf,dtim-ctim) ;
+               ctim = dtim ;
+             }
+           }
          }
-         if( verb > 1 ) PAROUT("- Bilinear final") ;
+         /** if( verb > 1 ) PAROUT("- Bilinear final") ; **/
 
          strcpy(warp_code_string,"bilinear") ;
 
-       } else {   /*----------------------- general nonlinear expansion -----*/
+       } else if( nwarp_type == WARP_CUBIC ){  /*------ special case ------------*/
 
-#define GSIZ 3
-#define NHH  2
+         float rr , xcen,ycen,zcen , brad,crad ; int nbf , nite ;
 
-         char str[16] , xyz[4]="xyz" ;
-         Warpfield *wf ;   /* cf. mri_warpfield.[ch] */
-         int wf_nparam , nbf , ngrp , gg , hh ;
-         float xbot,ybot,zbot, xtop,ytop,ztop, xcen,ycen,zcen , brad , rr,vv ;
+         rr = MAX(xsize,ysize) ; rr = MAX(zsize,rr) ; rr = 1.2f / rr ;
+
+         SETUP_CUBIC_PARAMS ;  /* nonlinear params */
+
+         /* nonlinear transformation is centered at middle of base volume
+            indexes (xcen,ycen,zcen) and is scaled by reciprocal of size (rr) */
 
          MAT44_VEC( stup.base_cmat,
                     0.5f*nx_base, 0.5f*ny_base, 0.5f*nz_base,
                     xcen        , ycen        , zcen         ) ;
+         stup.wfunc_param[NPCUB  ].val_fixed = stup.wfunc_param[NPCUB  ].val_init = xcen;
+         stup.wfunc_param[NPCUB+1].val_fixed = stup.wfunc_param[NPCUB+1].val_init = ycen;
+         stup.wfunc_param[NPCUB+2].val_fixed = stup.wfunc_param[NPCUB+2].val_init = zcen;
+         stup.wfunc_param[NPCUB+3].val_fixed = stup.wfunc_param[NPCUB+3].val_init = rr  ;
 
-         MAT44_VEC( stup.base_cmat,
-                    0.5f*nx_base-0.5f*xsize/dx_base-0.99f ,
-                    0.5f*ny_base-0.5f*ysize/dy_base-0.99f ,
-                    0.5f*nz_base-0.5f*zsize/dz_base-0.99f ,
-                    xbot , ybot , zbot ) ;
-
-         MAT44_VEC( stup.base_cmat,
-                    0.5f*nx_base+0.5f*xsize/dx_base+0.99f ,
-                    0.5f*ny_base+0.5f*ysize/dy_base+0.99f ,
-                    0.5f*nz_base+0.5f*zsize/dz_base+0.99f ,
-                    xtop , ytop , ztop ) ;
-
-         if( xbot > xtop ){ brad=xbot ; xbot=xtop ; xtop=brad; }
-         if( ybot > ytop ){ brad=ybot ; ybot=ytop ; ytop=brad; }
-         if( zbot > ztop ){ brad=zbot ; zbot=ztop ; ztop=brad; }
-
-         wf = Warpfield_init( nwarp_type , nwarp_order , 0 , NULL ) ;
-         if( wf == NULL )
-           ERROR_exit("Can't setup nonlinear Warpfield!?") ;
-         mri_genalign_warpfield_set(wf) ;
-
-         ngrp              = (wf->nfun + GSIZ-1) / GSIZ ;
-         stup.wfunc_numpar = wf_nparam = 12 + 3*wf->nfun ;
-         stup.wfunc        = mri_genalign_warpfield ;
-         stup.wfunc_param  = (GA_param *)realloc( (void *)stup.wfunc_param ,
-                                                  wf_nparam*sizeof(GA_param) ) ;
-         for( jj=12 ; jj < wf_nparam ; jj++ ){
-           sprintf(str,"%c#%03d",xyz[jj%3],(jj-9)/3) ;
-           DEFPAR( jj,str, -0.05f,0.05f , 0.0f,0.0f,0.0f ) ;
-         }
-
-         /* affine part is fixed at results of work thus far */
+         /* affine part is copied from results of work thus far */
 
          for( jj=0 ; jj < 12 ; jj++ ){
-           stup.wfunc_param[jj].val_init =
-            stup.wfunc_param[jj].val_fixed = stup.wfunc_param[jj].val_out;
-           stup.wfunc_param[jj].fixed = 1 ;
+           nbf = (stup.wfunc_param[jj].fixed) ? stup.wfunc_param[jj].fixed : nwarp_fixaff ;
+           PARAM_SETUP( jj , nbf , stup.wfunc_param[jj].val_out ) ;
          }
 
          stup.need_hist_setup = 1 ;
          mri_genalign_scalar_setup( NULL,NULL,NULL, &stup );
 
-         if( verb > 0 ){
-           INFO_message("----------- Start Warpfield optimization -----------");
-           if( verb > 1 )
-             ININFO_message(" %d warp parameters per dimension",wf->nfun) ;
-         }
+         /* do the optimization */
 
-         mri_genalign_set_boxsize( xbot,xtop , ybot,ytop , zbot,ztop ) ;
+         /** if( verb > 1 ) PARINI("- Cubic/Poly3 initial") ; **/
+         for( jj=12 ; jj < NPCUB  ; jj++ ) stup.wfunc_param[jj].fixed = 0 ;
+         FREEZE_POLYNO_PARAMS ; /* 07 Dec 2010 */
 
-         if( verb > 1 ) PARINI("- Warpfield initial") ;
-         rr   = MAX(xsize,ysize)     ; rr = MAX(zsize,rr) ;
-         vv   = MAX(dx_base,dy_base) ; vv = MAX(vv,dz_base) ;
-         brad = 2.0f * vv / rr ;
-         if( brad < 0.003f ) brad = 0.005f ; else if( brad > 0.03f ) brad = 0.03f ;
-         rad  = 12.345f * brad ;
-         if( verb > 1 ) ININFO_message(" - convergence radius = %.4f",brad) ;
+         COUNT_FREE_PARAMS(nbf) ;
+         if( verb > 0 )
+           INFO_message("Start Cubic/Poly3 warping: %d free parameters",nbf) ;
 
-         for( hh=0 ; hh < NHH ; hh++ ){
-           for( gg=0 ; gg < ngrp ; gg++ ){
-
-             for( jj=12 ; jj < wf_nparam ; jj++ ){
-               if( (jj-12)/(3*GSIZ) == gg ){   /* activate */
-                 stup.wfunc_param[jj].fixed = 0 ;
-                 stup.wfunc_param[jj].val_init = stup.wfunc_param[jj].val_out ;
-               } else {                        /* deactivate */
-                 stup.wfunc_param[jj].fixed = 1 ;
-                 stup.wfunc_param[jj].val_fixed = stup.wfunc_param[jj].val_out ;
-               }
-             }
-
-             ctim = COX_cpu_time() ;
-             nbf  = mri_genalign_scalar_optim( &stup , rad, 2.345f*brad, 33*GSIZ );
-             dtim = COX_cpu_time() ;
-             if( verb ){
-               ININFO_message("- Warpfield#%d/%d cost = %f ; %d funcs ; CPU = %.1f s",
-                              hh*ngrp+gg+1,NHH*ngrp,stup.vbest,nbf,dtim-ctim) ;
-               if( verb > 1 ) PAROUT("- Warpfield") ;
-             }
-           }
-           rad *= 0.777f ;
-         }
-
-         for( jj=12 ; jj < wf_nparam ; jj++ ){
-           stup.wfunc_param[jj].fixed = 0 ;
-           stup.wfunc_param[jj].val_init = stup.wfunc_param[jj].val_out ;
-         }
-         if( verb ) ININFO_message("Start global Warpfield optimization") ;
-         ctim = COX_cpu_time() ;
-         nbf  = mri_genalign_scalar_optim( &stup , 6.66f*brad, brad, 11*wf->nfun );
-         dtim = COX_cpu_time() ;
+         if( verb ) ctim = COX_cpu_time() ;
+         rad  = 0.01f ; crad = 0.003f ;
+         nite = MAX(2222,nwarp_itemax) ;
+         nbf  = mri_genalign_scalar_optim( &stup , rad, crad, nite );
          if( verb ){
-           ININFO_message("- Warpfield final cost = %f ; %d funcs ; CPU = %.1f s",
+           dtim = COX_cpu_time() ;
+           ININFO_message("- Cubic/Poly3 cost = %f ; %d funcs ; net CPU = %.1f s",
                           stup.vbest,nbf,dtim-ctim) ;
-           if( verb > 1 ) PAROUT("- Warpfield final") ;
+           ctim = dtim ;
          }
+
+         /** if( verb > 1 ) PAROUT("- Cubic/Poly3 final") ; **/
+         strcpy(warp_code_string,"cubic") ;
+
+       } else if( nwarp_type == WARP_QUINT ){  /*------ special case ------------*/
+
+         float rr , xcen,ycen,zcen , brad,crad ; int nbf , nite ;
+
+         rr = MAX(xsize,ysize) ; rr = MAX(zsize,rr) ; rr = 1.2f / rr ;
+
+         SETUP_QUINT_PARAMS ;  /* nonlinear params */
+
+         /* nonlinear transformation is centered at middle of base volume
+            indexes (xcen,ycen,zcen) and is scaled by reciprocal of size (rr) */
+
+         MAT44_VEC( stup.base_cmat,
+                    0.5f*nx_base, 0.5f*ny_base, 0.5f*nz_base,
+                    xcen        , ycen        , zcen         ) ;
+         PARAM_SETUP( NPQUINT   , 2 , xcen ) ;
+         PARAM_SETUP( NPQUINT+1 , 2 , ycen ) ;
+         PARAM_SETUP( NPQUINT+2 , 2 , zcen ) ;
+         PARAM_SETUP( NPQUINT+3 , 2 , rr   ) ;
+
+         /* affine part is copied from results of work thus far */
+
+         for( jj=0 ; jj < 12 ; jj++ ){
+           nbf = (stup.wfunc_param[jj].fixed) ? stup.wfunc_param[jj].fixed : nwarp_fixaff ;
+           PARAM_SETUP( jj , nbf , stup.wfunc_param[jj].val_out ) ;
+         }
+
+         stup.need_hist_setup = 1 ;
+         mri_genalign_scalar_setup( NULL,NULL,NULL, &stup );
+         GA_set_nperval(0) ;
+
+         /* do the optimization */
+
+         for( jj=12 ; jj < NPQUINT ; jj++ ) stup.wfunc_param[jj].fixed = 0 ;
+         FREEZE_POLYNO_PARAMS ; /* 07 Dec 2010 */
+
+         COUNT_FREE_PARAMS(nbf) ;
+         if( verb > 0 )
+           INFO_message("Start Quintic/Poly5 warping: %d free parameters",nbf) ;
+
+         if( verb ) ctim = COX_cpu_time() ;
+         rad  = 0.01f ; crad = 0.003f ;
+         nite = MAX(3333,nwarp_itemax) ;
+         nbf  = mri_genalign_scalar_optim( &stup , rad, crad, nite );
+         if( verb ){
+           dtim = COX_cpu_time() ;
+           ININFO_message("- Quintic/Poly5 cost = %f ; %d funcs ; net CPU = %.1f s",
+                          stup.vbest,nbf,dtim-ctim) ;
+           ctim = dtim ;
+         }
+
+         /** if( verb > 1 ) PAROUT("- Quintic/Poly5 final") ; **/
+         strcpy(warp_code_string,"quintic") ;
+
+       } else if( nwarp_type == WARP_HEPT ){  /*------ special case ------------*/
+
+         float rr , xcen,ycen,zcen , brad,crad ; int nbf , nite ;
+
+         rr = MAX(xsize,ysize) ; rr = MAX(zsize,rr) ; rr = 1.2f / rr ;
+
+         SETUP_HEPT_PARAMS ;  /* nonlinear params */
+
+         /* nonlinear transformation is centered at middle of base volume
+            indexes (xcen,ycen,zcen) and is scaled by reciprocal of size (rr) */
+
+         MAT44_VEC( stup.base_cmat,
+                    0.5f*nx_base, 0.5f*ny_base, 0.5f*nz_base,
+                    xcen        , ycen        , zcen         ) ;
+         PARAM_SETUP( NPHEPT   , 2 , xcen ) ;
+         PARAM_SETUP( NPHEPT+1 , 2 , ycen ) ;
+         PARAM_SETUP( NPHEPT+2 , 2 , zcen ) ;
+         PARAM_SETUP( NPHEPT+3 , 2 , rr   ) ;
+
+         /* affine part is copied from results of work thus far */
+
+         for( jj=0 ; jj < 12 ; jj++ ){
+           nbf = (stup.wfunc_param[jj].fixed) ? stup.wfunc_param[jj].fixed : nwarp_fixaff ;
+           PARAM_SETUP( jj , nbf , stup.wfunc_param[jj].val_out ) ;
+         }
+
+         stup.need_hist_setup = 1 ;
+         mri_genalign_scalar_setup( NULL,NULL,NULL, &stup );
+         GA_set_nperval(0) ;
+
+         /* do the optimization */
+
+         for( jj=12 ; jj < NPHEPT ; jj++ ) stup.wfunc_param[jj].fixed = 0 ;
+         FREEZE_POLYNO_PARAMS ; /* 07 Dec 2010 */
+
+         COUNT_FREE_PARAMS(nbf) ;
+         if( verb > 0 )
+           INFO_message("Start Heptic/Poly7 warping: %d free parameters",nbf) ;
+
+         if( verb ) ctim = COX_cpu_time() ;
+         rad  = 0.01f ; crad = 0.003f ;
+         nite = MAX(4444,nwarp_itemax) ;
+         nbf  = mri_genalign_scalar_optim( &stup , rad, crad, nite );
+         if( verb ){
+           dtim = COX_cpu_time() ;
+           ININFO_message("- Heptic/Poly7 cost = %f ; %d funcs ; net CPU = %.1f s",
+                          stup.vbest,nbf,dtim-ctim) ;
+           ctim = dtim ;
+         }
+
+         /** if( verb > 1 ) PAROUT("- Heptic/Poly7 final") ; **/
+         strcpy(warp_code_string,"heptic") ;
+
+       } else if( nwarp_type == WARP_NONI ){  /*------ special case ------------*/
+
+         float rr , xcen,ycen,zcen , brad,crad ; int nbf , nite ;
+
+         rr = MAX(xsize,ysize) ; rr = MAX(zsize,rr) ; rr = 1.2f / rr ;
+
+         SETUP_NONI_PARAMS ;  /* nonlinear params */
+
+         /* nonlinear transformation is centered at middle of base volume
+            indexes (xcen,ycen,zcen) and is scaled by reciprocal of size (rr) */
+
+         MAT44_VEC( stup.base_cmat,
+                    0.5f*nx_base, 0.5f*ny_base, 0.5f*nz_base,
+                    xcen        , ycen        , zcen         ) ;
+         PARAM_SETUP( NPNONI   , 2 , xcen ) ;
+         PARAM_SETUP( NPNONI+1 , 2 , ycen ) ;
+         PARAM_SETUP( NPNONI+2 , 2 , zcen ) ;
+         PARAM_SETUP( NPNONI+3 , 2 , rr   ) ;
+
+         /* affine part is copied from results of work thus far */
+
+         for( jj=0 ; jj < 12 ; jj++ ){
+           nbf = (stup.wfunc_param[jj].fixed) ? stup.wfunc_param[jj].fixed : nwarp_fixaff ;
+           PARAM_SETUP( jj , nbf , stup.wfunc_param[jj].val_out ) ;
+         }
+
+         stup.need_hist_setup = 1 ;
+         mri_genalign_scalar_setup( NULL,NULL,NULL, &stup );
+         GA_set_nperval(0) ;
+
+         /* do the optimization */
+
+         for( jj=12 ; jj < NPNONI ; jj++ ) stup.wfunc_param[jj].fixed = 0 ;
+         FREEZE_POLYNO_PARAMS ; /* 07 Dec 2010 */
+
+         COUNT_FREE_PARAMS(nbf) ;
+         if( verb > 0 )
+           INFO_message("Start Nonic/Poly9 warping: %d free parameters",nbf) ;
+
+         if( verb ) ctim = COX_cpu_time() ;
+         rad  = 0.01f ; crad = 0.003f ;
+         nite = MAX(5555,nwarp_itemax) ;
+         nbf  = mri_genalign_scalar_optim( &stup , rad, crad, nite );
+         if( verb ){
+           dtim = COX_cpu_time() ;
+           ININFO_message("- Nonic/Poly9 cost = %f ; %d funcs ; net CPU = %.1f s",
+                          stup.vbest,nbf,dtim-ctim) ;
+           ctim = dtim ;
+         }
+
+         /** if( verb > 1 ) PAROUT("- Nonic/Poly9 final") ; **/
+         strcpy(warp_code_string,"nonic") ;
+
+       } else {   /*-------- unimplemented ----------*/
+
+         ERROR_message("Unknown nonlinear warp type!") ;
 
        } /* end of Warpfield */
 
@@ -4070,7 +4742,7 @@ int main( int argc , char *argv[] )
              meth_longname[mc-1] , meth_shortname[mc-1] , 100.0*dmax , 2000.0*conv_rad ) ;
          PAROUT("Check fit") ;
          if( verb > 1 )
-           ININFO_message("- Check CPU time=%.1f s; funcs=%d; dmax=%f jmax=%d",
+           ININFO_message("- Check net CPU time=%.1f s; funcs=%d; dmax=%f jmax=%d",
                           COX_cpu_time()-ctim , nfunc , dmax , jmax ) ;
          if( do_allcost != 0 ){
            PAR_CPY(val_out) ;  /* copy output parameters into allpar */
@@ -4202,8 +4874,6 @@ mri_genalign_set_pgmat(1) ;
 
        switch( apply_mode ){
          default:
-         case APPLY_BILIN:
-         case APPLY_PARAM:
            AL_setup_warp_coords( epi_targ,epi_fe,epi_pe,epi_se,
                                  nxyz_dout, dxyz_dout, cmat_bout,
                                  nxyz_targ, dxyz_targ, cmat_tout ) ;
@@ -4211,19 +4881,54 @@ mri_genalign_set_pgmat(1) ;
            im_targ = mri_genalign_scalar_warpone(
                                  stup.wfunc_numpar , parsave[kk] , stup.wfunc ,
                                  aim , nxout,nyout,nzout, final_interp ) ;
+
+           if( nwarp_save_prefix != NULL ){  /* 10 Dec 2010: save map of warp itself */
+             THD_3dim_dataset *wset; MRI_IMARR *wimar;
+             MRI_IMAGE *xim,*yim,*zim,*vim=NULL; int iv=0,nw;
+             wimar = mri_genalign_scalar_xyzwarp(
+                                 stup.wfunc_numpar , parsave[kk] , stup.wfunc ,
+                                 nxout , nyout , nzout ) ;
+             nw = IMARR_COUNT(wimar) ;
+             wset = EDIT_empty_copy(dset_out) ;
+             EDIT_dset_items( wset ,
+                                ADN_prefix    , nwarp_save_prefix ,
+                                ADN_nvals     , (twodim_code) ? nw-1 : nw ,
+                                ADN_ntt       , 0 ,
+                                ADN_datum_all , MRI_float ,
+                              ADN_none ) ;
+             xim = IMARR_SUBIM(wimar,0); yim = IMARR_SUBIM(wimar,1);
+             zim = IMARR_SUBIM(wimar,2); if( nw == 4 ) vim = IMARR_SUBIM(wimar,3) ;
+             FREE_IMARR(wimar) ;
+             if( twodim_code != 1 ){
+               EDIT_BRICK_LABEL( wset , iv , "x_delta" ) ;
+               EDIT_substitute_brick(wset,iv,MRI_float,MRI_FLOAT_PTR(xim)) ;
+               mri_clear_data_pointer(xim) ; iv++ ;
+             }
+             if( twodim_code != 2 ){
+               EDIT_BRICK_LABEL( wset , iv , "y_delta" ) ;
+               EDIT_substitute_brick(wset,iv,MRI_float,MRI_FLOAT_PTR(yim)) ;
+               mri_clear_data_pointer(yim) ; iv++ ;
+             }
+             if( twodim_code != 3 ){
+               EDIT_BRICK_LABEL( wset , iv , "z_delta" ) ;
+               EDIT_substitute_brick(wset,iv,MRI_float,MRI_FLOAT_PTR(zim)) ;
+               mri_clear_data_pointer(zim) ; iv++ ;
+             }
+             if( vim != NULL ){
+               EDIT_BRICK_LABEL( wset , iv , "hexvol" ) ;
+               EDIT_substitute_brick(wset,iv,MRI_float,MRI_FLOAT_PTR(vim)) ;
+               mri_clear_data_pointer(vim) ; mri_free(vim) ; iv++ ;
+             }
+             mri_free(xim) ; mri_free(yim) ; mri_free(zim) ;
+             DSET_write(wset) ; WROTE_DSET(wset) ; DSET_delete(wset) ;
+           } /* end of nwarp_save */
          break ;
 
          case APPLY_AFF12:{
            float ap[12] ;
-#if 0
-DUMP_MAT44("aff12_xyz",aff12_xyz) ;
-#endif
            wmat = MAT44_MUL(aff12_xyz,mast_cmat) ;
            qmat = MAT44_MUL(targ_cmat_inv,wmat) ;  /* index transform matrix */
            UNLOAD_MAT44_AR(qmat,ap) ;
-#if 0
-DUMP_MAT44("aff12_ijk",qmat) ;
-#endif
            im_targ = mri_genalign_scalar_warpone(
                                  12 , ap , mri_genalign_mat44 ,
                                  aim , nxout,nyout,nzout, final_interp ) ;
@@ -4313,8 +5018,9 @@ DUMP_MAT44("aff12_ijk",qmat) ;
      if( fp == NULL ) ERROR_exit("Can't open -1Dparam_save %s for output!?",param_save_1D);
      fprintf(fp,"# 3dAllineate parameters:\n") ;
      fprintf(fp,"#") ;
-     for( jj=0 ; jj < stup.wfunc_numpar ; jj++ )
-       fprintf(fp," %s",stup.wfunc_param[jj].name) ;
+     for( jj=0 ; jj < stup.wfunc_numpar ; jj++ )         /* 04 Dec 2010 */
+       fprintf(fp," %s%c" , stup.wfunc_param[jj].name ,  /* add '$' for frozen */
+                (stup.wfunc_param[jj].fixed == 2) ? '$' : ' ' ) ;
      fprintf(fp,"\n") ;
      for( kk=0 ; kk < DSET_NVALS(dset_targ) ; kk++ ){
        for( jj=0 ; jj < stup.wfunc_numpar ; jj++ )

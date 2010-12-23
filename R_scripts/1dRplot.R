@@ -28,6 +28,7 @@ first.in.path <- function(file) {
 source(first.in.path('AFNIio.R'))
 source(first.in.path('AFNIplot.R'))
 
+ExecName <- '1dRplot'
 
 
 greeting.1dRplot <- function ()
@@ -41,7 +42,205 @@ reference.1dRplot <- function ()
    return(
 ""
    )
+examples.1dRplot.getdata <- function () {
+   return("
+To download demo data from AFNI's website run this command:
+-----------------------------------------------------------
+curl -o demo.xmat.1D afni.nimh.nih.gov/pub/dist/edu/data/samples/X.xmat.1D
+curl -o demo.motion.1D afni.nimh.nih.gov/pub/dist/edu/data/samples/motion.1D
+")
+}
 
+run.1dRplot.examples <- function () {
+   ii <- 1
+   while (!is.null(s <- examples.1dRplot(ii))) {
+      s <- strsplit(s,'1dRplot')[[1]][2]
+      #str(s)
+      sys.AFNI(paste('1dRplot ', s, '&'), echo=TRUE)
+      if (prompt.AFNI("Continue ?", c('y','n'))==1) {
+         ii <- ii + 1
+      } else {
+         break;
+      }      
+   }
+   return()
+}
+
+examples.1dRplot <- function (demo=0) {
+   s <- vector()
+   ii <- 0
+
+   ii <- ii + 1; s <- c(s,paste(
+"
+Example ", ii," --- :
+-------------------------------- 
+1dRplot -input demo.X.xmat.1D'[5..10]'",
+      sep = '')
+   )
+   
+   ii <- ii + 1; s <- c(s,paste(
+"
+Example ", ii," --- :
+-------------------------------- 
+1dRplot  -input demo.X.xmat.1D'[5..10]' \\
+         -input_type XMAT",
+      sep = '')
+   )
+   
+   ii <- ii + 1; s <- c(s,paste(
+"
+Example ", ii," --- :
+-------------------------------- 
+1dRplot  -input demo.motion.1D \\
+         -input_type VOLREG",
+      sep = '')
+   )
+
+   ii <- ii + 1; s <- c(s,paste(
+"
+Example ", ii," --- :
+-------------------------------- 
+1dRplot -input 'R:plot.1D.testmat(100, 10)'",
+      sep = '')
+   )
+   
+   ii <- ii + 1; s <- c(s,paste(
+"
+Example ", ii," --- :
+-------------------------------- 
+1dRplot  -input 'R:plot.1D.testmat(100, 5)' \\
+         -one ",
+      sep = '')
+   )
+   
+   ii <- ii + 1; s <- c(s,paste(
+"
+Example ", ii," --- :
+-------------------------------- 
+1dRplot -input 'R:plot.1D.testmat(100, 10)' \\
+         -one \\
+         -col.ystack",
+      sep = '')
+   )
+   
+   ii <- ii + 1; s <- c(s,paste(
+"
+Example ", ii," --- :
+-------------------------------- 
+1dRplot -input 'R:plot.1D.testmat(100, 10)' \\
+         -one \\
+         -col.ystack \\
+         -col.grp '1D:1 1 1 2 2 2 3 3 3 3'  \\
+         -grp.label slow medium fast \\
+         -prefix ta.jpg \\
+         -yax.lim 0 18 \\
+         -leg.show \\
+         -leg.position top ",
+      sep = '')
+   )
+   
+   ii <- ii + 1; s <- c(s,paste(
+"
+Example ", ii," --- :
+-------------------------------- 
+1dRplot -input 'R:plot.1D.testmat(100, 10)' \\
+         -one \\
+         -col.ystack \\
+         -col.grp '1D:1 1 1 2 2 2 3 3 3 3'  \\
+         -grp.label slow medium fast \\
+         -prefix tb.jpg \\
+         -yax.lim 0 18 \\
+         -leg.show \\
+         -leg.position top \\
+         -nozeros \\
+         -addavg ",
+      sep = '')
+   )
+   
+   ii <- ii + 1; s <- c(s,paste(
+"
+Example ", ii," --- :
+-------------------------------- 
+1dRplot -input 'R:plot.1D.testmat(100, 10)' \\
+         -one \\
+         -col.ystack \\
+         -col.grp '1D:1 1 1 2 2 2 3 3 3 3'  \\
+         -grp.label slow medium fast \\
+         -prefix tb.jpg \\
+         -yax.lim 0 18 \\
+         -leg.show \\
+         -leg.position top \\
+         -nozeros \\
+         -addavg \\
+         -col.text.lym Tutti mi chiedono tutti mi vogliono \\
+                       Donne ragazzi vecchi fanciulle \\
+         -col.text.rym \"R:paste('Col',seq(1,10), sep='')\" ",
+      sep = '')
+   )
+   
+   ii <- ii + 1; s <- c(s,paste(
+"
+Example ", ii," --- :
+-------------------------------- 
+1dRplot  -input 'R:plot.1D.testmat(100, 2)' \\
+         -one \\
+         -col.plot.char 2 \\
+         -col.plot.type p  ",
+      sep = '')
+   )
+   
+   ii <- ii + 1; s <- c(s, paste(
+"
+Example ", ii," --- :
+-------------------------------- 
+1dRplot  -input 'R:plot.1D.testmat(100, 2)' \\
+         -one \\
+         -col.line.type 3 \\
+         -col.plot.type l ",
+      sep = '')
+   )
+   
+   ii <- ii + 1; s <- c(s, paste(
+"
+Example ", ii," --- :
+-------------------------------- 
+1dRplot  -input 'R:plot.1D.testmat(100, 2)' \\
+         -one \\
+         -col.plot.char 2 \\
+         -col.line.type 3 \\
+         -col.plot.type b ",
+      sep = '')
+   )  
+     
+   ii <- ii + 1; s <- c(s, paste(
+"
+Example ", ii," --- :
+-------------------------------- 
+1dRplot  -input 'R:plot.1D.testmat(100, 2)' \\
+         -one \\
+         -col.plot.char 2 5\\
+         -col.line.type 3 4\\
+         -col.plot.type b \\
+         -TR 2 ",
+      sep = '')
+   )   
+
+   ii <- ii + 1; s <- c(s, paste(
+"
+Example ", ii," --- :
+-------------------------------- 
+1dRplot  -input 'R:plot.1D.testmat(100, 2)' \\
+         -one -col.plot.char 2 -col.line.type 3 \\
+         -col.plot.type b -TR 2 \\
+         -yax.tic.text 'numa numa numa numaei' \\
+         -xax.tic.text 'Alo'  'Salut' 'sunt eu' 'un haiduc'",
+      sep = '')
+   )   
+   
+   if (demo==0) demo=1:length(s)
+   if (max(demo) > length(s)) return(NULL)
+   else return (s[demo])
+}
 
 #The help function for 1dRplot batch (command line mode)
 help.1dRplot.opts <- function (params, alpha = TRUE, itspace='   ', adieu=FALSE) {
@@ -52,18 +251,6 @@ Usage:
 ------ 
  1dRplot is a program for plotting a 1D file'
    
-   ex1 <- 
-"
-Example 1 --- :
---------------------------------
-      1dRplot  -input IBSR_01.SubClasses.skew.1D.repsig    
-
-      1dRplot  -input IBSR_01.SubClasses.skew.1D.repsig \\
-               -ColumnGroups 'R:c(rep(1,10), rep(2,10), rep(3,10))' \\
-               -GroupLabels CSF GM WM \\
-               -NoZeros -NoOffsetBase \\
-               -prefix ZePlotIzSaved.pdf
-"   
 
    parnames <- names(params)
    ss <- vector('character')
@@ -85,43 +272,46 @@ Example 1 --- :
       }
    }
    ss <- paste(ss, sep='\n');
-   cat(intro, ex1, ss, reference.1dRplot(), sep='\n');
+   cat(intro,  
+         ss,
+         eval.AFNI.string.help(),
+         examples.1dRplot.getdata(), 
+         paste(examples.1dRplot(), '\n', sep='\n'),
+         reference.1dRplot(), sep='\n');
    
    if (adieu) exit.AFNI();
 }
 
-parse.1dRplot.Groups <- function(op) {
-   mm <- read.AFNI.matrix(op)
-   return(mm)
+parse.1dRplot.colinput <- function(op) {
+   #If multiple entries, return them
+   if (length(op) > 1 || 
+       is.numeric(op) ) return(op)
+   
+   if (is.character(op)) {
+      if (op == "ENUM") return(op)
+   }
+   #If filename, or 1D or R expression
+   if (is.AFNI.R.string(op) || is.AFNI.1D.string(op) ||
+      file.exists(op)) {
+      mm <- read.AFNI.matrix(op)
+      return(mm)
+   } 
+   return(op)
+}
+
+parse.1dRplot.other <- function(op, ll) {
+   if (length(op)) {
+      if (is.null(ll$dmat) || is.na(ll$dmat)) {
+         ll$dmat <- op
+      } else {
+         ll$dmat <- c(ll$dmat, op)
+      }
+   }
+   return(ll)
 }
 
 init.1DRplot.lop <- function () {
-   lop <- list()
-   lop$ff = NULL;
-   lop$ffdelta = NULL;
-   lop$x = NULL;
-   lop$isel=NULL;
-   lop$NoZeros=FALSE;
-   lop$ColumnGroups=NULL;
-   lop$OffsetBase=TRUE;
-   lop$GroupLabels=NULL;
-   lop$Title=NULL
-   lop$CloseAfterSave=FALSE
-   lop$OneSubplot = FALSE
-   lop$xlim=NULL
-   lop$ylim=NULL
-   lop$addavg=FALSE
-   lop$verb=0
-   lop$xlabel=NULL
-   lop$ylabel=NULL
-   lop$ColumnSymbs=NULL
-   lop$ColumnCols=NULL
-   lop$ColumnNames=NULL
-   lop$LegendNames=NULL
-   lop$LegendPosition="topright"
-   lop$LegendFontSize = 1.0
-   lop$LegendNumColumns = 4
-   lop$ltypes=NULL
+   lop <- plot.1D.optlist()
    return(lop)
 }
 
@@ -129,124 +319,206 @@ init.1DRplot.lop <- function () {
 read.1dRplot.opts.batch <- function (args=NULL, verb = 0) {
    
    params <- list (
+      '-i' = apl(n = c(1, Inf), d = NA,  h = paste(
+   "-i 1D_INPUT: file to plot. This field can have multiple\n",
+   "                 formats. See Data Strings section below.\n"
+                     ) ),
+                     
       '-input' = apl(n = c(1, Inf), d = NA,  h = paste(
-   "-input 1Dfile: file to plot\n"
+   "-input 1D_INPUT: Same as -i\n"
+                     ) ),
+                     
+      '-input_type' = apl(n = c(1, Inf), d = NA,  h = paste(
+   "-input_type 1D_TYPE: Type of data in 1D file.\n",
+   "            Choose from 'VOLREG', or 'XMAT'\n" 
                      ) ),
                      
       '-input_delta' = apl(n = c(1, Inf), d = NA,  h = paste(
-   "-input_delta 1Dfile: file containing value for error bars\n"
+   "-input_delta 1D_INPUT: file containing value for error bars\n"
                      ) ),
                      
       '-x' = apl(n = c(1), h = paste (
-   "-x 1Dfile or Rexp: x axis\n",
-   "                For example: 1D\n"   
+   "-x 1D_INPUT: x axis. You can also use the string 'ENUM'\n",
+   "             to indicate that the x axis should go from\n",
+   "             1 to N, the number of samples in -input\n"
                   ) ), 
 
       '-save' = apl(n = 1, d = NA,  h = paste(
-   "-save SAVE_PREFIX: Save plot and quit\n"
+   "-save PREFIX: Save plot and quit\n",
+   "                   No need for -prefix with this option\n"
+                     ) ),
+                     
+      '-save.Rdat' = apl(n = 0, d = NA,  h = paste(
+   "-save.Rdat : Save data list for reproducing plot.\n",
+   "             You need to specify -prefix or -save\n",
+   "             along with this option to set the prefix."
                      ) ),
                      
       '-prefix' = apl(n = 1, d = NA,  h = paste(
-   "-prefix PREFIX: Output prefix (just prefix, no view+suffix needed)\n"
+   "-prefix PREFIX: Output prefix. See also -save. \n"
                      ) ),
 
       '-title' = apl(n = 1, d = NULL,  h = paste(
    "-title TITLE: Graph title\n"
                      ) ),
             
-      '-GroupLabels' = apl(n = c(1,Inf), d = NULL, h = paste(
-   "-GroupLabels GROUP1 [GROUP2]: Labels to column grouping.\n",
+      '-grp.label' = apl(n = c(1,Inf), d = NULL, h = paste(
+   "-grp.label GROUP1 [GROUP2 ...]: Labels assigned to each group.\n",
    "                         Default is no labeling\n"
                      ) ),
-      '-ColumnSymbs' = apl(n = c(1,Inf), d = NULL, h = paste(
-   "-ColumnSymbs : Symbols for each column.\n"
+      '-col.plot.char' = apl(n = c(1,Inf), d = NULL, h = paste(
+   "-col.plot.char CHAR1 [CHAR2 ...] : Symbols for each column in -input.\n",
+   "                            CHAR? are integers for now.\n"
                      ) ),
                      
-      '-ColumnCols' = apl(n = c(1,Inf), d = NULL, h = paste(
-   "-ColumnCols : Symbols for each column.\n"
+      '-col.color' = apl(n = c(1,Inf), d = NULL, h = paste(
+   "-col.color COL1 [COL2 ...]: Colors for each column in -input.\n",
+   "                            COL? are integers for now.\n"
                      ) ),
                      
-      '-ColumnLtypes' = apl(n = c(1,Inf), d = NULL, h = paste(
-   "-ColumnLtypes : Symbols for each column.\n"
+      '-col.line.type' = apl(n = c(1,Inf), d = NULL, h = paste(
+   "-col.line.type LT1 [LT2 ...]: Line type for each column in -input.\n",
+   "                            LT? are integers for now.\n"
                      ) ),
                      
-      '-ColumnNames' = apl(n = c(1,Inf), d = NULL, h = paste(
-   "-ColumnNames : Symbols for each column.\n"
+      '-col.name' = apl(n = c(1,Inf), d = NULL, h = paste(
+   "-col.name NAME1 [NAME2 ...]: Name of each column in -input. \n",
+   "       Special flags:\n",
+   "            VOLREG: --> 'Roll Pitch Yaw I-S R-L A-P'\n"
                      ) ),
 
-      '-LegendNames' = apl(n = c(1,Inf), d = NULL, h = paste(
-   "-LegendNames : Symbols for each column.\n"
+      '-col.name.show' = apl(n = 0, d = FALSE, h = paste(
+   "-col.name.show : Show names of column in -input.\n"
                      ) ),
 
-      '-LegendPosition' = apl(n = c(1,Inf), d = NULL, h = paste(
-   "-LegendPosition : Symbols for each column.\n"
+      '-leg.names' = apl(n = c(1,Inf), d = NULL, h = paste(
+   "-leg.names : Names to use for items in legend.\n",
+   "             Default is taken from column names.\n"
+                     ) ),
+
+      '-leg.position' = apl(n = c(1,Inf), d = NULL, h = paste(
+   "-leg.position : Legend position. Choose from:\n",
+   "                bottomright, bottom, bottomleft\n",
+   "                left, topleft, top, topright, right,\n", 
+   "                and center\n"
                      ) ),
       
-      '-LegendFontSize' = apl(n = 1, d = 1.0, h = paste(
-   "-LegendFontSize : Symbols for each column.\n"
+      '-leg.fontsize' = apl(n = 1, d = 1.0, h = paste(
+   "-leg.fontsize : fontsize for legend text.\n"
                      ) ),
 
-      '-LegendNumColumns' = apl(n = 1, d = 4, h = paste(
-   "-LegendNumColumns : Symbols for each column.\n"
+      '-leg.ncol' = apl(n = 1, d = 4, h = paste(
+   "-leg.ncol : Number of columns in legend.\n"
                      ) ),
                      
-      '-NoZeros' = apl (n = 0, d = FALSE, h = paste (
-   "-NoZeros:  Do not plot all zeros time series"
+      '-leg.show' = apl(n = 0, d = FALSE, h = paste(
+   "-leg.show : Show legend.\n"
+                     ) ),
+                     
+      '-nozeros' = apl (n = 0, d = FALSE, h = paste (
+   "-nozeros:  Do not plot all zeros time series\n"
                         ) ),
-      '-Zeros' = apl (n = 0, d = TRUE, h = paste (
-   "-Zeros:  Do  plot all zeros time series"
+      '-col.nozeros' = apl (n = 0, d = FALSE, h = paste (
+   "-col.nozeros:  Do not plot all zeros columns\n"
+                        ) ),
+      '-zeros' = apl (n = 0, d = TRUE, h = paste (
+   "-zeros:  Do  plot all zeros time series\n"
                         ) ),
                         
-      '-OffsetBase' = apl (n = 0, d = TRUE, h = paste (
-   "-OffsetBase:  "
+      '-col.ystack' = apl (n = 0, d = TRUE, h = paste (
+   "-col.ystack:  Scale each column and offset it based on its\n",
+   "               column index. This is useful for stacking\n",
+   "               a large number of columns on one plot.\n",
+   "              It is only carried out when graphing more\n",
+   "              than one series with the -one option.\n"
                         ) ),
-      '-NoOffsetBase' = apl (n = 0, d = FALSE, h = paste (
-   "-NoOffsetBase:  "
-                        ) ),
-      
-      '-OneSubplot' = apl (n = 0, d = FALSE, h = paste (
-   "-OneSubplot:  "
+                              
+      '-oneplot' = apl (n = 0, d = FALSE, h = paste (
+   "-oneplot:  Put all columns on one graph\n"
                         ) ),   
                         
       '-one' = apl (n = 0, d = FALSE, h = paste (
-   "-one:  "
-                        ) ),                                     
-      '-ColumnGroups' = apl(n = c(1), h = paste (
-   "-ColumnGroups 1Dfile or Rexp: integer labels defining column belonging\n",
-   "                For example: 1D\n"   
+   "-one:  Put all columns on one graph\n"
+                        ) ),  
+                                                           
+      '-col.grp' = apl(n = c(1, Inf), h = paste (
+   "-col.grp 1Dfile or Rexp: integer labels defining column grouping\n"
                   ) ), 
-      '-xlim' = apl(n = c(2,3), h = paste (
-   "-xlim\n",
-   "                For example: 1D\n"   
+                  
+      '-col.text.lym' = apl(n = c(1, Inf), h = paste (
+   "-col.text.lym LYM_TEXT: Text to be placed at left Y margin.\n",
+   "                        You need one string per column.\n",
+   "        Special Flags: You can also use COL.NAME to use column\n",
+   "                        names for the margin text, or you can use\n",
+   "                        COL.IND to use the colum's index in the file\n"
                   ) ), 
-      '-ylim' = apl(n = c(2,3), h = paste (
-   "-ylim\n",
-   "                For example: 1D\n"   
+                  
+      '-col.text.rym' = apl(n = c(1, Inf), h = paste (
+   "-col.text.rym RYM_TEXT: Text to be placed at right Y margin.\n",
+   "                        You need one string per column.\n",
+   "       See also Special Flags section under -col.text.lym\n"     
+                  ) ), 
+                  
+      '-col.plot.type' = apl(n = c(1, Inf), h = paste (
+   "-col.plot.type PLOT_TYPE: Column plot type. \n",
+   "                         'l' for line, 'p' for points, 'b' for both\n"   
+                  ) ), 
+                  
+      '-xax.lim' = apl(n = c(2,3), h = paste (
+   "-xax.lim MIN MAX [STEP]: Range of X axis, STEP is optional\n"
+                  ) ), 
+                  
+      '-yax.lim' = apl(n = c(2,3), h = paste (
+   "-yax.lim MIN MAX [STEP]: Range of X axis, STEP is optional\n"
                   ) ),  
+                  
       '-addavg' = apl (n = 0, d = FALSE, h = paste (
-   "-addavg:  "
+   "-addavg:  Add line at average of column\n"
                         ) ),              
       
-      '-xlabel' = apl(n = 1, h = paste (
-   "-xlabel\n",
-   "                For example: 1D\n"   
+      '-xax.label' = apl(n = 1, h = paste (
+   "-xax.label XLABEL: Label of X axis \n"
                   ) ), 
-      '-ylabel' = apl(n = 1, h = paste (
-   "-ylabel\n",
-   "                For example: 1D\n"   
+                  
+      '-xax.tic.text' = apl(n = c(1, Inf), h = paste (
+   "-xax.tic.text XTTEXT: X tics text\n"
                   ) ), 
+                  
+      '-yax.label' = apl(n = 1, h = paste (
+   "-yax.label YLABEL: Label of Y axis\n"
+                  ) ), 
+                  
+      '-yax.tic.text' = apl(n = c(1, Inf), h = paste (
+   "-yax.tic.text YTTEXT: Y tics text \n"
+                  ) ), 
+                  
+      '-TR' = apl(n=1, d=0, h=paste(
+   "-TR TR: Sampling period, in seconds. \n"
+                  ) ),
+            
+      '-grid.show' = apl(n = 0, d = FALSE, h = paste(
+   "-grid.show : Show grid.\n"
+                     ) ),
+                    
       '-verb' = apl(n=1, d = 0, h = paste(
    "-verb VERB: VERB is an integer specifying verbosity level.\n",
    "            0 for quiet (Default). 1 or more: talkative.\n"
                         ) ),
       '-help' = apl(n=0, h = '-help: this help message\n'),
+      
+      '-run_examples' = apl(n=0, h = 
+   '-run_examples: Run all examples, one after the other.\n'),
+   
       '-show_allowed_options' = apl(n=0, h=
-   "-show_allowed_options: list of allowed options\n" )
+   "-show_allowed_options: list of allowed options\n" ),
+   
+      '-msg.trace' = apl(n=0, h=
+   "-msg.trace: Output trace information along with errors and notices\n" )
 
          );
                      
    ops <- parse.AFNI.args(args,  params,
-                          other_ok=FALSE, verb=verb
+                          other_ok=TRUE, verb=verb
                           )
    if (verb) show.AFNI.args(ops, verb=verb-1, hstr='');
    if (is.null(ops)) {
@@ -261,39 +533,60 @@ read.1dRplot.opts.batch <- function (args=NULL, verb = 0) {
    for (i in 1:length(ops)) {
       opname <- strsplit(names(ops)[i],'^-')[[1]];
       opname <- opname[length(opname)];
+      
       switch(opname,
-             input = lop$ff <- ops[[i]],
-             input_delta = lop$ffdelta <- ops[[i]],
-             x = lop$x <- parse.1dRplot.Groups(ops[[i]]),
+             i = lop$dmat <- ops[[i]],
+             input = lop$dmat <- ops[[i]],
+             input_type = lop$dmat.type <- ops[[i]],
+             input_delta = lop$dmat.err <- ops[[i]],
+             x = lop$dmat.xval <- parse.1dRplot.colinput(ops[[i]]),
+             TR = lop$dmat.TR <- ops[[i]],
              prefix = lop$prefix  <- ops[[i]],
-             save = {lop$prefix <- ops[[i]]; lop$CloseAfterSave=TRUE;} ,
-             NoZeros = lop$NoZeros <- TRUE,
-             Zeros = lop$NoZeros <- FALSE,
-             OneSubplot = lop$OneSubplot <- TRUE,
-             one = lop$OneSubplot <- TRUE,
-             ColumnGroups = 
-               lop$ColumnGroups <- parse.1dRplot.Groups(ops[[i]]),
-             NoOffsetBase = lop$OffsetBase <- FALSE,
-             OffsetBase = lop$OffsetBase <- TRUE,
-             GroupLabels = lop$GroupLabels <- ops[[i]],
-             xlim = lop$xlim <- ops[[i]],
-             ylim = lop$ylim <- ops[[i]],
-             addavg = lop$addavg <- TRUE,
-             title  = lop$Title <- ops[[i]],
-             xlabel  = lop$xlabel <- ops[[i]],
-             ylabel  = lop$ylabel <- ops[[i]],
+             save = {lop$prefix <- ops[[i]]; lop$nodisp=TRUE;} ,
+             save.Rdat = {lop$save.Rdat=TRUE;} ,
+             nozeros = lop$col.nozeros <- TRUE,
+             col.nozeros = lop$col.nozeros <- TRUE,
+             zeros = lop$col.nozeros <- FALSE,
+             oneplot = lop$oneplot <- TRUE,
+             one = lop$oneplot <- TRUE,
+             col.grp = 
+               lop$col.grp <- parse.1dRplot.colinput(ops[[i]]),
+             col.ystack = lop$col.ystack <- TRUE,
+             grp.label = lop$grp.label <- ops[[i]],
+             xax.lim = lop$xax.lim <- ops[[i]],
+             yax.lim = lop$yax.lim <- ops[[i]],
+             addavg = lop$col.mean.line <- TRUE,
+             title  = lop$ttl.main <- ops[[i]],
+             xax.label  = lop$xax.label <- ops[[i]],
+             xax.tic.text = lop$xax.tic.text <- ops[[i]],
+             yax.label  = lop$yax.label <- ops[[i]],
+             yax.tic.text = lop$yax.tic.text <- ops[[i]],
              verb = lop$verb <- ops[[i]],
-             ColumnSymbs = lop$ColumnSymbs <- parse.1dRplot.Groups(ops[[i]]),
-             ColumnCols = lop$ColumnCols <- parse.1dRplot.Groups(ops[[i]]),
-             ColumnLtypes = lop$ColumnLtypes <- parse.1dRplot.Groups(ops[[i]]),
-             ColumnNames = lop$ColumnNames <- ops[[i]],
-             LegendNames = lop$LegendNames <- ops[[i]],
-             LegendPosition = lop$LegendPosition <- ops[[i]],
-             LegendFontSize = lop$LegendFontSize <- ops[[i]],
-             LegendNumColumns = lop$LegendNumColumns <- ops[[i]],
+             col.plot.char = 
+                        lop$col.plot.char <- parse.1dRplot.colinput(ops[[i]]),
+             col.color = lop$col.color <- parse.1dRplot.colinput(ops[[i]]),
+             col.line.type = lop$col.line.type <- 
+                                    parse.1dRplot.colinput(ops[[i]]),
+             col.plot.type = lop$col.plot.type <- 
+                                    parse.1dRplot.colinput(ops[[i]]),
+             col.name = lop$col.name <- ops[[i]],
+             col.name.show = lop$col.name.show <- TRUE,
+             col.text.lym = lop$col.text.lym <- parse.1dRplot.colinput(ops[[i]]),
+             col.text.rym = lop$col.text.rym <- parse.1dRplot.colinput(ops[[i]]),
+             leg.show = lop$leg.show <- TRUE,
+             leg.names = lop$leg.names <- ops[[i]],
+             leg.position = lop$leg.position <- ops[[i]],
+             leg.fontsize = lop$leg.fontsize <- ops[[i]],
+             leg.ncol = lop$leg.ncol <- ops[[i]],
+             grid.show = lop$grid.show <- TRUE,
              help = help.1dRplot.opts(params, adieu=TRUE),
+             msg.trace = set.AFNI.msg.trace(TRUE),
              show_allowed_options = show.AFNI.args(ops, verb=0, 
-                                              hstr="1dRplot's",adieu=TRUE)
+                                              hstr="1dRplot's",adieu=TRUE),
+             run_examples = run.1dRplot.examples(),
+             other = lop <- parse.1dRplot.other(ops[[i]], lop),
+             allowed_options = {},
+             errex.AFNI(paste("Option '", opname,"' not recognized", sep=''))  
              )
    }
 
@@ -317,21 +610,15 @@ process.1dRplot.opts <- function (lop, verb = 0) {
 
    if (!exists('.DBG_args')) { 
       args = (commandArgs(TRUE))  
-      save(args, file=".1dRplot.dbg.AFNI.args", ascii = TRUE) 
+      rfile <- first.in.path(sprintf('%s.R',ExecName))  
+      save(args, rfile, file=".1dRplot.dbg.AFNI.args", ascii = TRUE) 
    } else {
       note.AFNI("Using .DBG_args resident in workspace");
       args <- .DBG_args
    }
    if (!length(args)) {
       BATCH_MODE <<- 0
-      lop <- init.1DRplot.lop()
-      lop$ff = c('all.sc5.mMs.tr_s051114.tfs1.DSC.dice.03302317.1D',
-                 'all.sc5.mMs.tr_s051114.tfs1.DSC.dice.03302317.1D')
-      lop$NoZeros = TRUE
-      lop$ColumnGroups = c(rep(1,10), rep(2,10), rep(3,10))
-      lop$OffsetBase = FALSE
-      lop$GroupLabels = c('CSF','GM','WM')
-      lop$CloseAfterSave = FALSE
+      err.AFNI("No parameters");
    } else {
       if (!exists('.DBG_args')) {
          BATCH_MODE <<- 1
@@ -341,38 +628,49 @@ process.1dRplot.opts <- function (lop, verb = 0) {
       if (is.null(lop <- read.1dRplot.opts.batch(args, verb = 0))) {
          stop('Error parsing input');
       }
+      if (is.null(lop$verb) || is.na(lop$verb)) lop$verb <- 0
       #str(lop);
       if (is.null(lop <- process.1dRplot.opts(lop, verb = lop$verb))) {
          stop('Error processing input');
       }
    }
+   
    if (lop$verb) { 
       str(lop);
-   }
-   thisplot <- plot.1D( ff = lop$ff, ffd=lop$ffdelta,
-            isel = lop$isel, descr = "",  
-            NoZeros = lop$NoZeros, 
-            ColumnGroups = lop$ColumnGroups,
-            OffsetBase = lop$OffsetBase,
-            GroupLabels = lop$GroupLabels,
-            Title = lop$Title, 
-            prefix = lop$prefix, 
-            CloseAfterSave = lop$CloseAfterSave,
-            OneSubplot = lop$OneSubplot,
-            addmean = lop$addavg,
-            xlim=lop$xlim,
-            ylim=lop$ylim,
-            xlabel=lop$xlabel,
-            ylabel=lop$ylabel, 
-            symbs=lop$ColumnSymbs,
-            cols = lop$ColumnCols,
-            ltypes = lop$ColumnLtypes,
-            cnames = lop$ColumnNames,
-            leg.names = lop$LegendNames,
-            leg.position = lop$LegendPosition,
-            leg.fontsize = lop$LegendFontSize,
-            leg.ncol = lop$LegendNumColumns,
-            x = lop$x)
+   }      
+
+   thisplot <- plot.1D( dmat = lop$dmat, dmat.err=lop$dmat.err,
+            dmat.colsel = lop$dmat.colsel, dmat.xval = lop$dmat.xval,
+            dmat.TR = lop$dmat.TR, dmat.type = lop$dmat.type,
+            col.nozeros = lop$col.nozeros, 
+            col.grp = lop$col.grp,
+            col.ystack = lop$col.ystack,
+            grp.label = lop$grp.label,
+            ttl.main = lop$ttl.main, 
+            prefix = lop$prefix,
+            save.Rdat = lop$save.Rdat, 
+            nodisp = lop$nodisp,
+            oneplot = lop$oneplot,
+            col.mean.line = lop$col.mean.line,
+            xax.lim=lop$xax.lim, xax.tic.text = lop$xax.tic.text,
+            yax.lim=lop$yax.lim, yax.tic.text = lop$yax.tic.text,
+            xax.label=lop$xax.label,
+            yax.label=lop$yax.label, 
+            col.plot.char=lop$col.plot.char,
+            col.color = lop$col.color,
+            col.line.type = lop$col.line.type,
+            col.plot.type = lop$col.plot.type,
+            col.name = lop$col.name,
+            col.name.show = lop$col.name.show,
+            col.text.lym = lop$col.text.lym,
+            col.text.rym = lop$col.text.rym,
+            leg.show = lop$leg.show,
+            leg.names = lop$leg.names,
+            leg.position = lop$leg.position,
+            leg.fontsize = lop$leg.fontsize,
+            leg.ncol = lop$leg.ncol,
+            grid.show = lop$grid.show,
+            verb=lop$verb)
 
    if (BATCH_MODE) { #do not quit until device is closed
       while (length(which(dev.list()==thisplot))) Sys.sleep(0.25);

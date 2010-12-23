@@ -1,0 +1,98 @@
+#!/bin/tcsh
+
+### script to do 2D registration on each slice of a 3D+time
+### dataset, and glue the results back together at the end
+
+### This script is structured to operate only on an AFNI
+### +orig.HEAD dataset.  The one input on the command line
+### is the prefix for the dataset.
+
+### Modified 07 Dec 2010 by RWC to use 3dAllineate instead
+### of 3dWarpDrive, with nonlinear slice-wise warping.
+
+### Set prefix of input 3D+time dataset here.
+### In this example with 'wilma' as the command line
+### argument, the output dataset will be 'wilma_reg+orig'.
+### The output registration parameters files will
+### be 'wilma_param_ssss.1D', where 'ssss' is the slice number.
+
+set inp = $1
+
+### extract number of slices into nz
+
+set qq  = ( `3dAttribute DATASET_DIMENSIONS ${inp}+orig` )
+set nz  = $qq[3]
+@ nz1   = $nz - 1
+
+### number of time points into nt
+
+set nt  = `3dnvals ${inp}+orig`
+@ nt1   = $nt - 1
+
+### use quintic polynomials for spatial warping
+### change this to 'poly3' for cubic warp, if desired
+
+set meth = poly5
+
+echo "======= Slicewise $meth warping: $nz slices, $nt time points ======="
+
+### Extract mean of input time series volumes
+
+echo "========== Computing mean dataset as registration target =========="
+
+3dTstat -mean -prefix ${inp}_mean ${inp}+orig
+
+### extract each slice in turn, and register it in 2D only
+
+setenv AFNI_QUIET_STARTUP YES
+
+foreach zz ( `count 0 $nz1` )
+
+  echo "____________________ processing slice #$zz ____________________"
+
+  3dZcutup -keep $zz $zz -prefix ${inp}_${zz}      ${inp}+orig
+  3dZcutup -keep $zz $zz -prefix ${inp}_mean_${zz} ${inp}_mean+orig
+
+### process each time point in turn (-nwarp only allows 1 sub-brick)
+
+  foreach tt ( `count 0 $nt1` )
+
+    3dAllineate -warp affine_general -final quintic    \
+                -prefix ${inp}_reg_${zz}_${tt}         \
+                -base ${inp}_mean_${zz}+orig           \
+                -input ${inp}_${zz}+orig"[$tt]"        \
+                -autoweight -ls -onepass -nmatch 100%  \
+                -maxrot 10 -maxshf 10                  \
+                -maxscl 1.05 -maxshr 0.09              \
+                -overwrite -nwarp $meth -quiet         \
+                -1Dparam_save ${inp}_PP_${zz}_${tt}.1D
+  end
+
+### cat all the time points from this slice back together
+
+  3dTcat -prefix ${inp}_reg_${zz} ${inp}_reg_${zz}_????+orig.HEAD
+  \rm -f ${inp}_reg_${zz}_????+orig.*
+
+### cat the parameters together
+
+  cat ${inp}_PP_${zz}_*.1D > ${inp}_PP_${zz}-junk.1D
+  1dcat -nonfixed ${inp}_PP_${zz}-junk.1D > ${inp}_param_${zz}.1D
+  \rm -f ${inp}_PP_${zz}_*.1D ${inp}_PP_${zz}-junk.1D
+
+end
+
+### now glue the slices back together
+
+echo "======= Assembling registered 3D dataset ${inp}_reg+orig ======="
+
+3dZcat -prefix ${inp}_reg ${inp}_reg_????+orig.HEAD
+3drefit -TR ${inp}+orig ${inp}_reg+orig
+3dNotes -h "@2dwarper.Allin $inp (meth=$meth)" ${inp}_reg+orig
+
+unsetenv AFNI_QUIET_STARTUP
+
+### remove the single-slice datasets
+
+\rm -f ${inp}_*????+orig.*
+
+### Free at last!!!

@@ -46,13 +46,15 @@ static int AFNI_drive_get_dicom_xyz( char *cmd ) ;  /* 07 Oct 2010 */
 static int AFNI_drive_set_spm_xyz( char *cmd ) ;    /* 28 Jul 2005 */
 static int AFNI_drive_set_ijk( char *cmd ) ;        /* 28 Jul 2005 */
 static int AFNI_drive_get_ijk( char *cmd ) ;        /* 07 Oct 2010 */
-static int AFNI_drive_set_ijk_index( char *cmd ) ;      /* 29 Jul 2010 */
+static int AFNI_drive_set_ijk_index( char *cmd ) ;  /* 29 Jul 2010 */
 static int AFNI_drive_set_xhairs( char *cmd ) ;     /* 28 Jul 2005 */
 static int AFNI_drive_save_filtered( char *cmd ) ;  /* 14 Dec 2006 */
 static int AFNI_drive_save_allpng( char *cmd ) ;    /* 15 Dec 2006 */
 
 static int AFNI_drive_system( char *cmd ) ;         /* 19 Dec 2002 */
 static int AFNI_drive_chdir ( char *cmd ) ;         /* 19 Dec 2002 */
+
+static int AFNI_drive_instacorr( char *cmd ) ;      /* 20 Oct 2010 */
 
 #ifdef ALLOW_PLUGINS
 static int AFNI_drive_open_plugin( char *cmd ) ;    /* 13 Nov 2001 */
@@ -189,6 +191,8 @@ static AFNI_driver_pair dpair[] = {
  { "DEFINE_COLORSCALE"  , AFNI_define_colorscale       } ,
  { "DEFINE_COLOR_SCALE" , AFNI_define_colorscale       } ,
  { "OPEN_PANEL"         , AFNI_open_panel              } ,
+
+ { "INSTACORR"          , AFNI_drive_instacorr         } , /* 20 Oct 2010 */
 
  { "REDISPLAY"          , AFNI_redisplay               } ,
  { "REDRAW"             , AFNI_redisplay               } ,
@@ -547,9 +551,9 @@ static int AFNI_drive_set_subbricks( char *cmd )
    if( !IM3D_OPEN(im3d) ) RETURN(-1) ;
 
    sscanf( cmd+dadd , "%d%d%d" , &nanat,&nfun,&nthr ) ;
-   AFNI_set_anat_index( im3d , nanat ) ;
-   AFNI_set_fim_index ( im3d , nfun  ) ;
-   AFNI_set_thr_index ( im3d , nthr  ) ;
+   if( nanat >= 0 ) AFNI_set_anat_index( im3d , nanat ) ;
+   if( nfun  >= 0 ) AFNI_set_fim_index ( im3d , nfun  ) ;
+   if( nthr  >= 0 ) AFNI_set_thr_index ( im3d , nthr  ) ;
    RETURN(0) ;
 }
 
@@ -585,23 +589,14 @@ ENTRY("AFNI_switch_anatomy") ;
 
    if( strlen(dname) == 0 ) RETURN(-1) ;
 
-   if( nuse > 0 && 
-       *(cmd+dadd+nuse)!= '\0' && 
-       *(cmd+dadd+nuse+1) != '\0') { 
+   if( nuse > 0 &&
+       *(cmd+dadd+nuse)!= '\0' &&
+       *(cmd+dadd+nuse+1) != '\0') 
       sscanf( cmd+dadd+nuse+1 , "%d" , &sb ) ;  /* 30 Nov 2005 */
                /* not checking for early string termination
                   before sscanf was causing corruption in some cases.
                   ZSS Nov 2009 */
-   }  else  {         
-      sb = 0 ;
-   }
 
-   if (sb < 0) {
-      WARNING_message("bad sub-brick selection %d\n"
-                     "defaulting to 0\n", sb);
-      sb = 0;
-   }
-   
    /* find this dataset in current session of this controller */
 
    slf = THD_dset_in_session( FIND_PREFIX , dname , im3d->ss_now ) ;
@@ -621,7 +616,7 @@ ENTRY("AFNI_switch_anatomy") ;
    AFNI_finalize_dataset_CB( im3d->vwid->view->choose_anat_pb ,
                              (XtPointer)im3d ,  &cbs          ) ;
 
-   AFNI_set_anat_index( im3d , sb ) ;   /* 30 Nov 2005 */
+   if( sb >= 0 ) AFNI_set_anat_index( im3d , sb ) ;   /* 30 Nov 2005 */
 
    RETURN(0) ;
 }
@@ -659,24 +654,11 @@ ENTRY("AFNI_switch_function") ;
 
    if( strlen(dname) == 0 ) RETURN(-1) ;
 
-   if( nuse > 0 &&                  /* 30 Nov 2005 */
-       *(cmd+dadd+nuse)!= '\0' &&     /* See equivalent condition in */
-       *(cmd+dadd+nuse+1) != '\0')  { /* AFNI_drive_switch_anatomy   */
+   if( nuse > 0                   &&     /* 30 Nov 2005 */
+       *(cmd+dadd+nuse)   != '\0' &&    /* See equivalent condition in */
+       *(cmd+dadd+nuse+1) != '\0'   )  /* AFNI_drive_switch_anatomy   */
      sscanf( cmd+dadd+nuse+1 , "%d%d" , &nfun,&nthr ) ;
-   } else {
-      nfun = 0; nthr = 0;
-   }
-   
-   if (nfun < 0) {
-      WARNING_message("bad sub-brick selection %d\n"
-                     "defaulting to 0\n", nfun);
-      nfun = 0;
-   }
-   if (nthr < 0) {
-      WARNING_message("bad sub-brick selection %d\n"
-                     "defaulting to 0\n", nthr);
-      nthr = 0;
-   }
+
    /* find this dataset in current session of this controller */
 
    slf = THD_dset_in_session( FIND_PREFIX , dname , im3d->ss_now ) ;
@@ -687,7 +669,7 @@ ENTRY("AFNI_switch_function") ;
      slf = THD_dset_in_session( FIND_IDCODE , &idcode , im3d->ss_now ) ;
    }
 
-   if( slf.dset_index < 0 ) RETURN(-1) ;
+   if( slf.dset_index < 0 ) RETURN(-1) ;  /* not found */
 
    cbs.ival = slf.dset_index ;
 
@@ -696,8 +678,8 @@ ENTRY("AFNI_switch_function") ;
    AFNI_finalize_dataset_CB( im3d->vwid->view->choose_func_pb ,
                              (XtPointer)im3d ,  &cbs          ) ;
 
-   AFNI_set_fim_index( im3d , nfun ) ;   /* 30 Nov 2005 */
-   AFNI_set_thr_index( im3d , nthr ) ;
+   if( nfun >= 0 ) AFNI_set_fim_index( im3d , nfun ) ;   /* 30 Nov 2005 */
+   if( nthr >= 0 ) AFNI_set_thr_index( im3d , nthr ) ;
 
    RETURN(0) ;
 }
@@ -1829,8 +1811,8 @@ ENTRY("AFNI_drive_set_threshold") ;
 
    if( cmd[dadd] != '.' ) RETURN(-1) ;
    val = strtod( cmd+dadd , &cpt ) ;
-   ival = rint(val/THR_FACTOR) ;
-   smax = (int)( pow(10.0,THR_TOP_EXPON) + 0.001 ) - 1 ;
+   ival = rint(val/THR_factor) ;
+   smax = (int)( pow(10.0,THR_top_expon) + 0.001 ) - 1 ;
    if( ival < 0 || ival > smax ) RETURN(-1) ;
    XmScaleSetValue( im3d->vwid->func->thr_scale , ival ) ;
 
@@ -1838,7 +1820,7 @@ ENTRY("AFNI_drive_set_threshold") ;
 
    sscanf(cpt,"%d",&dec) ;
 
-   if( dec >= 0 && dec <= THR_TOP_EXPON )
+   if( dec >= 0 && dec <= THR_top_expon )
      AFNI_set_thresh_top( im3d , tval[dec] ) ;
 
    AFNI_thr_scale_CB( im3d->vwid->func->thr_scale, (XtPointer)im3d, NULL ) ;
@@ -1878,16 +1860,16 @@ ENTRY("AFNI_drive_set_threshnew") ;
    /* get val from command line */
 
    val = strtod( cmd+dadd , &cpt ) ;
-   if( val < 0.0 || val > THR_TOP_VALUE ) RETURN(-1) ; /* stupid user */
+   if( val < 0.0 || val > THR_top_value ) RETURN(-1) ; /* stupid user */
 
    /* get current scale decimal setting */
 
    olddec = (int)rint( log10(im3d->vinfo->func_thresh_top) ) ;
         if( olddec < 0             ) olddec = 0 ;
-   else if( olddec > THR_TOP_EXPON ) olddec = THR_TOP_EXPON ;
+   else if( olddec > THR_top_expon ) olddec = THR_top_expon ;
    newdec = olddec ;
 
-   smax  = (int)rint( pow(10.0,THR_TOP_EXPON) ) ;
+   smax  = (int)rint( pow(10.0,THR_top_expon) ) ;
    stop  = smax - 1 ;                             /* max slider value */
 
    dopval = (val >= 0.0) && (val <= 1.0) && (strchr(cpt,'p') != NULL) &&
@@ -1906,13 +1888,13 @@ ENTRY("AFNI_drive_set_threshnew") ;
 
      newdec = (int)( log10(val) + 1.0 ) ;
           if( newdec < 0             ) newdec = 0 ;
-     else if( newdec > THR_TOP_EXPON ) newdec = THR_TOP_EXPON ;
+     else if( newdec > THR_top_expon ) newdec = THR_top_expon ;
    }
 
    if( newdec != olddec )
      AFNI_set_thresh_top( im3d , tval[newdec] ) ;
 
-   ival = rint( val/(THR_FACTOR*tval[newdec]) ) ;
+   ival = rint( val/(THR_factor*tval[newdec]) ) ;
         if( ival < 0    ) ival = 0    ;
    else if( ival > stop ) ival = stop ;
 
@@ -2954,6 +2936,28 @@ static int AFNI_trace( char *cmd )
    DBG_trace = (YESSISH(cmd)) ? 2 : 0 ;
 #endif
    return 0 ;
+}
+
+/*--------------------------------------------------------------------*/
+/*! INSTACORR SET [x y z] */
+
+static int AFNI_drive_instacorr( char *cmd )
+{
+   float x,y,z ; int good=0 ;
+   Three_D_View *im3d = GLOBAL_library.controllers[0] ;
+
+   if( strlen(cmd) < 1 || !IM3D_OPEN(im3d) ) return -1 ; /* A only */
+
+   if( strncasecmp(cmd,"SET",3) == 0 ){
+     if( cmd[3] != '\0' ) good = sscanf(cmd+3,"%f %f %f",&x,&y,&z) ;
+     if( good < 3 ) AFNI_icor_setref    (im3d)       ;  /* no x y z */
+     else           AFNI_icor_setref_xyz(im3d,x,y,z) ;
+     good = 0 ;
+   } else {
+     good = -1 ;
+   }
+
+   return good ;
 }
 
 /*--------------------------------------------------------------------*/

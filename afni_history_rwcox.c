@@ -44,6 +44,118 @@
 afni_history_struct rwcox_history[] = {
 /*=====BELOW THIS LINE=====*/
 
+ { 16 , DEC , 2010 , RWC , "mri_read" , MICRO , TYPE_GENERAL ,
+   "Modify ragged read to allow for empty vectors" ,
+   "That is, a string like '**8' means '8 filler values'.  This is for the\n"
+   "case where someone needs to provide a -stim_times_AM2 file with all '*'\n"
+   "times (and with -allzero_OK), but with no actual stimulus times." } ,
+
+ { 13 , DEC , 2010 , RWC , "many" , MICRO , TYPE_NEW_ENV ,
+   "Add AFNI_ECHO_COMMANDLINE environment variable" ,
+   "Runs inside afni_logger, for Daniel Handwerker" } ,
+
+ { 13 , DEC , 2010 , RWC , "3dAllineate" , MICRO , TYPE_GENERAL ,
+   "Add hexahedron volume warp to output of 3D warp displacments" ,
+   NULL } ,
+
+ { 9 , DEC , 2010 , RWC , "@2dwarper.Allin" , MICRO , TYPE_GENERAL ,
+   "Added saved of warping parameters (slice-wise) to 1D files" ,
+   "Modified 3dAllineate to give meaningful-ish symbolic names to polynomial\n"
+   "warp parameters.  Modified 1dcat to use and preserve these with the\n"
+   "-nonfixed option." } ,
+
+ { 8 , DEC , 2010 , RWC , "3dXYZcat" , MINOR , TYPE_NEW_PROG ,
+   "Generalized 3dZcat." ,
+   "No generalized 3dZcutup yet, though." } ,
+
+ { 7 , DEC , 2010 , RWC , "@2dwarper" , MICRO , TYPE_GENERAL ,
+   "Various mods for David Leopold" ,
+   "(a) Modify to allow general (non-axial) orientation of slices\n"
+   "(b) new script @2dwarper.Allin that uses polynomial warping via\n"
+   "3dAllineate to try and do a better job\n"
+   "(c) modify 3drefit to allow -TR option to take a dataset name to provide\n"
+   "the new TR (rather than require a numeric value on the command line)" } ,
+
+ { 6 , DEC , 2010 , RWC , "@2dwarper" , MINOR , TYPE_GENERAL ,
+   "Modify script to deal with non-axial slices" ,
+   NULL } ,
+
+ { 18 , NOV , 2010 , RWC , "3dAllineate" , MICRO , TYPE_GENERAL ,
+   "Add 9th order (nonic) polynomial warp." ,
+   "And fixed a couple of annoying bugs in the other polynomial warp codes:\n"
+   "* Memory overrun because MAXPAR was exceeded.\n"
+   "* Indexing error because I used kk++ instead of ++kk." } ,
+
+ { 17 , NOV , 2010 , RWC , "many programs" , MICRO , TYPE_BUG_FIX ,
+   "Move AFNI_OMP_START / _END macros outside of OpenMP sections" ,
+   "Otherwise tracing control on/off doesn't work - D'oh!" } ,
+
+ { 16 , NOV , 2010 , RWC , "3dAllineate" , MICRO , TYPE_NEW_OPT ,
+   "Add cubic, quintic, and heptic polynomial warps." ,
+   NULL } ,
+
+ { 10 , NOV , 2010 , RWC , "3dttest++" , MINOR , TYPE_NEW_OPT ,
+   "Add -rankize and -no1sam options" ,
+   NULL } ,
+
+ { 8 , NOV , 2010 , RWC , "3dttest++" , MICRO , TYPE_GENERAL ,
+   "Allow -zskip option to take a fraction (or %-age)." ,
+   "Per the request of the esteemed and estimable Rick Reynolds." } ,
+
+ { 5 , NOV , 2010 , RWC , "3dttest++" , MINOR , TYPE_NEW_OPT ,
+   "New -BminusA option" ,
+   "This is Ziad's fault (again)." } ,
+
+ { 5 , NOV , 2010 , RWC , "afni" , MICRO , TYPE_GENERAL ,
+   "Make colorscale switching go to AFNI_COLORSCALE_DEFAULT" ,
+   "Rather than Ziad's pitiful fixed choice that screws up the user's setup\n"
+   "for no good reason at all." } ,
+
+ { 4 , NOV , 2010 , RWC , "afni" , MICRO , TYPE_NEW_ENV ,
+   "Re-invoked AFNI_PBAR_AUTO / AFNI_CMAP_AUTO" ,
+   "Which Ziad had commented out for reasons he won't explain." } ,
+
+ { 4 , NOV , 2010 , RWC , "afni" , MICRO , TYPE_NEW_ENV ,
+   "Add AFNI_THRESH_TOP_EXPON to allow larger range of thresholds." ,
+   "For Phil Kohn." } ,
+
+ { 1 , NOV , 2010 , RWC , "afni" , MICRO , TYPE_GENERAL ,
+   "Remove the large notice about 'Define Markers' being gone" ,
+   NULL } ,
+
+ { 1 , NOV , 2010 , RWC , "3dTstat" , MICRO , TYPE_NEW_OPT ,
+   "Add -centromean statistic to the mix" ,
+   NULL } ,
+
+ { 1 , NOV , 2010 , RWC , "3dClipLevel" , MICRO , TYPE_NEW_OPT ,
+   "Add -doall option" ,
+   NULL } ,
+
+ { 27 , OCT , 2010 , RWC , "cs_symeig" , MICRO , TYPE_BUG_FIX ,
+   "Patch failure on Mac gcc in svd_double" ,
+   "Mac OS X gcc compilation of svd function can produce bad results -- NaN\n"
+   "values -- when there are too many all zero columns.  Solution: check for\n"
+   "NaNs in the result, then switch to 'slow' mode AND fill all zero columns\n"
+   "with tiny random values." } ,
+
+ { 20 , OCT , 2010 , RWC , "afni" , MICRO , TYPE_GENERAL ,
+   "Add 'INSTACORR SET' the the drive command list" ,
+   NULL } ,
+
+ { 20 , OCT , 2010 , RWC , "afni and 3dGroupInCorr" , MICRO , TYPE_GENERAL ,
+   "Clusterize and GrpInCorr together are tricky :-(" ,
+   "(1) remove the Cluster option from the GrpInCorr setup panel, since this\n"
+   "only causes trouble (clustering was not re-done when changing thresholds\n"
+   "or sub-bricks).\n"
+   "(2) explain in the 3dGroupInCorr help text how to combine Clusterize\n"
+   "with GrpInCorr in two tricky (and slightly clumsy) ways." } ,
+
+ { 19 , OCT , 2010 , RWC , "3dttest++" , MICRO , TYPE_GENERAL ,
+   "Do t-test of covariates between groups (2-sample case)" ,
+   "Only for fixed covariates (not those from datasets, which would be a\n"
+   "per-voxel test).  Intended to help guide understanding when two groups\n"
+   "of subjects differ markedly in some input factor." } ,
+
  { 18 , OCT , 2010 , RWC , "afni" , MICRO , TYPE_GENERAL ,
    "Add SaveAs buttons to Datamode panel" ,
    NULL } ,

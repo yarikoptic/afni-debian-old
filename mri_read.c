@@ -28,6 +28,9 @@
 #include "mrilib.h"
 #include "ge4_header.h"
 
+#undef  NLL
+#define NLL 32222  /* lbuf length below -- should be enuf */
+
 /*---------------------------------------------------------------*/
 static MRI_IMAGE * mri_try_mri( FILE * , int * ) ;  /* prototypes */
 static MRI_IMAGE * mri_try_7D ( FILE * , int * ) ;
@@ -2852,6 +2855,47 @@ ENTRY("mri_read_1D") ;
 }
 
 /*---------------------------------------------------------------------------*/
+/*! Read header lines from a 1D file into a newly-malloc()-ed string. */
+
+char * mri_read_1D_headerlines( char *fname )
+{
+   int ii , nout=0 ;
+   FILE *fp ;
+   char lbuf[NLL] , *cout=NULL , *dpt ;
+
+ENTRY("mri_read_1D_headerlines") ;
+
+   if( fname == NULL || *fname == '\0' ) RETURN(NULL) ;
+   if( strncmp(fname,"1D:",3) == 0 )     RETURN(NULL) ;
+
+   ii = strlen(fname) ;
+   if( (ii <= 2 && fname[0] == '-')                  ||
+       (ii <= 6 && strncmp(fname,"stdin"   ,5) == 0) ||
+       (ii <= 9 && strncmp(fname,"/dev/fd0",8) == 0)   ){
+
+     fp = stdin ;
+   } else {
+     fp = fopen( fname , "r" ) ; if( fp == NULL ) RETURN(NULL) ;
+   }
+
+   /* read # lines, catenate them */
+
+   while(1){
+     lbuf[0] = '\0' ;
+     dpt = fgets( lbuf , NLL , fp ) ;                  /* read a line of data */
+     if( dpt == NULL ) break ;                        /* nothing more to read */
+     ii = strlen(lbuf) ; if( ii == 0 ) break ;            /* nada => finished */
+     if( lbuf[0] != '#' ) break ;                      /* not '#' => finished */
+     cout = (char *)realloc( cout , sizeof(char)*(nout+ii+2) ) ;     /* space */
+     strcpy( cout+nout , lbuf ) ;                /* copy new stuff into space */
+     nout = strlen(cout) ;                            /* length of output now */
+   }
+   if( fp != stdin ) fclose(fp) ;
+
+   RETURN(cout) ;
+}
+
+/*---------------------------------------------------------------------------*/
 /*! Read a 1D with a total of 12 or 16 numbers and return it as a 4x4 matrix
     for spatial affine transformation
 
@@ -3445,7 +3489,7 @@ ENTRY("mri_read_ascii_ragged_complex") ;
 /*---------------------------------------------------------------------------*/
 /*! Decode vectors of numbers separated by a single non-space character;
     return value is number of values actually decoded.
-    vec==NULL is OK for testing (then no values are assigned to it).
+    vec==NULL is OK for testing (then no values are assigned to it, duh).
 *//*-------------------------------------------------------------------------*/
 
 static int decode_fvect( char *str, float filler, int vdim, float *vec )
@@ -3455,7 +3499,12 @@ static int decode_fvect( char *str, float filler, int vdim, float *vec )
    if( vec != NULL ) for( ii=0 ; ii < vdim ; ii++ ) vec[ii] = filler ;
    if( str == NULL || *str == '\0' ) return 0 ;
 
-   if( *str == '*' ) return 1 ;  /* 23 Dec 2008 */
+   if( *str == '*' ){                         /* 23 Dec 2008 */
+     ii = 1 ;
+     if( str[1] == '*' && isdigit(str[2]) )   /* 16 Dec 2010 */
+       ii = (int)strtod(str+2,NULL) ;
+     return ii ;
+   }
 
    for( ii=0 ; ii < vdim ; ii++ ){
      nn = 0 ; mm = sscanf( str , "%f%n" , &aa , &nn ) ;
@@ -4772,9 +4821,6 @@ MRI_IMARR * mri_read_3D_delay( char * tname )
    sub-strings (for use as column headers later), allowing for
    column indexes [0,3,$] -- 18 May 2010 [RWCox]
 *//*--------------------------------------------------------------------------*/
-
-#undef  NLL
-#define NLL 32222  /* lbuf length below -- should be enuf */
 
 THD_string_array * mri_read_1D_headerline( char *fname )
 {

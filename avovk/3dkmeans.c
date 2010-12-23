@@ -10,10 +10,10 @@
 // from command.c file
 
 static void display_help(void)
-{ printf ("Clustering 4segmentation, command-line version.\n");
+{ printf ("3d+t Clustering segmentation, command-line version.\n");
   printf ("    Based on The C clustering library.\n");
   printf ("    Copyright (C) 2002 Michiel Jan Laurens de Hoon.\n");
-  printf ("USAGE: cluster [options]\n");
+  printf ("USAGE: 3dkmeans [options]\n");
   printf ("options:\n");
   printf ("  -v, --version Version information\n");
   printf ("  -f filename   File loading\n");
@@ -116,13 +116,13 @@ static void display_help(void)
   printf ("  -r number     For k-means clustering, the number of times the\n"
           "                k-means clustering algorithm is run\n"
           "                (default: 1)\n");
-  printf ("  -m [msca]     Specifies which hierarchical clustering method to\n"
+/*  printf ("  -m [msca]     Specifies which hierarchical clustering method to\n"
           "                use:\n"
           "                m: Pairwise complete-linkage\n"
           "                s: Pairwise single-linkage\n"
           "                c: Pairwise centroid-linkage\n"
           "                a: Pairwise average-linkage\n"
-          "                (default: m)\n");
+          "                (default: m)\n"); */
   printf ("  -rsigs SIGS   Calculate distances from each voxel's signature\n"
           "                to the signatures in SIGS. \n"
           "                SIGS is a multi-column 1D file with each column\n"
@@ -175,8 +175,9 @@ int main(int argc, char **argv)
    int n = 0, Ncoltot=0, nc0=0, nx=0, ny=0, nz=0;
    char *prefixvcd = NULL;
 
-   mainENTRY("3dAclustering_fNM"); machdep();
-   PRINT_VERSION("3dAclustering_fNM"); AUTHOR("avovk") ;
+   
+   mainENTRY("3dkmeans"); machdep();/* Used to be called 3dAclustering_fNM */
+   PRINT_VERSION("3dkmeans"); AUTHOR("avovk") ;
    
    oc.r = 1;
    oc.k = 0;
@@ -476,7 +477,7 @@ int main(int argc, char **argv)
          if( nmask <= 0 ) ERROR_exit("No voxels in the mask+cmask!\n") ;
          if( oc.verb ) INFO_message("%d voxels in the mask+cmask\n",nmask) ;
       } else {
-         mnx = -1; mny = 11; mnz = -1; /* unknown */
+         mnx = -1; mny = -1; mnz = -1; /* unknown */
          mnxyz = ncmask;
          mask = cmask ;
          nmask = THD_countmask( mnxyz , mask ) ;
@@ -523,7 +524,7 @@ int main(int argc, char **argv)
       if (dist_set) {
          EDIT_dset_items(  dist_set , ADN_prefix  , prefix, ADN_none);
          tross_Copy_History( in_set , dist_set ) ;
-         tross_Make_History( "3dAclustering_fNM" , argc, argv , dist_set ) ;
+         tross_Make_History( "3dkmeans" , argc, argv , dist_set ) ;
          DSET_write(dist_set); DSET_unload(dist_set); 
          DSET_delete(dist_set); dist_set = NULL;
       }
@@ -532,7 +533,7 @@ int main(int argc, char **argv)
       Ncoltot=0;
       /* Read in dset(s) and create D */
       for (iset = 0; iset < N_iset; ++iset) {
-         if (oc.verb) fprintf(stderr,"Patience, reading %s's header, ", 
+         if (oc.verb) fprintf(stderr,"Reading %s's header, ", 
                                     filename[iset]);
          in_set = THD_open_dataset(filename[iset]);
          CHECK_OPEN_ERROR(in_set,filename[iset]) ;
@@ -550,7 +551,9 @@ int main(int argc, char **argv)
                       (mny >= 0 && mny != DSET_NY(in_set)) || 
                       (mnz >= 0 && mnz != DSET_NZ(in_set))  )    ||
                     ( mnxyz != nx*ny*nz ) ) ) {
-               ERROR_exit("Dimension mismatch between mask and input dset");      
+               ERROR_exit("Dimension mismatch between mask (%d=%dx%dx%d)\n"
+                          "                 and input dset (%d=%dx%dx%d)",
+                          mnxyz, mnx, mny,mnz, nx*ny*nz, nx,ny,nz);      
             }
             if (!mask) nmask = DSET_NVOX(in_set);
          } else { /* check for consistency with previous input */
@@ -635,7 +638,7 @@ int main(int argc, char **argv)
       if (clust_set) {
          EDIT_dset_items(  clust_set , ADN_prefix  , prefix, ADN_none);
          tross_Copy_History( in_set , clust_set ) ;
-         tross_Make_History( "3dAclustering_fNM" , argc, argv , clust_set ) ;
+         tross_Make_History( "3dkmeans" , argc, argv , clust_set ) ;
          DSET_write(clust_set); DSET_unload(clust_set); 
          DSET_delete(clust_set); clust_set = NULL;
       }
@@ -643,15 +646,11 @@ int main(int argc, char **argv)
       if (dist_set) {
          EDIT_dset_items(  dist_set , ADN_prefix  , prefixvcd, ADN_none);
          tross_Copy_History( in_set , dist_set ) ;
-         tross_Make_History( "3dAclustering" , argc, argv , dist_set ) ;
+         tross_Make_History( "3dkmeans" , argc, argv , dist_set ) ;
          DSET_write(dist_set); 
-         ININFO_message("is it...");
          DSET_unload(dist_set); 
-         ININFO_message("or is it here...");
          DSET_delete(dist_set); 
-         ININFO_message("or at the end...");
          dist_set = NULL;
-         ININFO_message("end.");
       }
 
    }

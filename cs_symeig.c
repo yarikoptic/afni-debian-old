@@ -10,6 +10,12 @@
 #include <string.h>
 #include "eispack.h"
 
+#ifdef isfinite
+# define IS_GOOD_FLOAT(x) isfinite(x)
+#else
+# define IS_GOOD_FLOAT(x) finite(x)
+#endif
+
 /*---------------------------------------------------------------------------*/
 
 #undef  SQR
@@ -686,7 +692,7 @@ void svd_double( int m, int n, double *a, double *s, double *u, double *v )
 
    if( u == NULL ){
      matu = (logical) CHK ;
-     uu   = (doublereal *)malloc(sizeof(double)*m*n) ;
+     uu   = (doublereal *)calloc(sizeof(double),m*n) ;
    } else {
      matu = (logical) 1 ;
      uu = u ;
@@ -697,14 +703,14 @@ void svd_double( int m, int n, double *a, double *s, double *u, double *v )
 
    if( v == NULL ){
      matv = (logical) CHK ;
-     vv   = (CHK) ? (doublereal *)malloc(sizeof(double)*n*n) : NULL ;
+     vv   = (CHK) ? (doublereal *)calloc(sizeof(double),n*n) : NULL ;
    } else {
      matv = (logical) 1 ;
      vv   = v ;
    }
    ldv = n ;
 
-   rv1 = (double *) malloc(sizeof(double)*n) ;  /* workspace */
+   rv1 = (double *)calloc(sizeof(double),n) ;  /* workspace */
 
    /** the actual SVD **/
 
@@ -717,17 +723,32 @@ void svd_double( int m, int n, double *a, double *s, double *u, double *v )
        if not, compute the results in another function;
        this is needed because the svd() function compiles with
        rare computational errors on some compilers' optimizers **/
-   { register int i,j,k ; register doublereal aij ; double err ;
-     err = 0.0 ;
+   { register int i,j,k ; register doublereal aij ; double err=0.0,amag=1.e-11 ;
      for( j=0 ; j < n ; j++ ){
       for( i=0 ; i < m ; i++ ){
-        aij = A(i,j) ;
+        aij = A(i,j) ; amag += fabs(aij) ;
         for( k=0 ; k < n ; k++ ) aij -= U(i,k)*V(j,k)*ww[k] ;
         err += fabs(aij) ;
      }}
-     err /= (m*n) ;  /* average absolute error per matrix element */
-     if( err >= 1.e-5 ){
-       WARNING_message("SVD avg err=%g; recomputing ...\n",err) ;
+     amag /= (m*n) ; /* average absolute value of matrix elements */
+     err  /= (m*n) ; /* average absolute error per matrix element */
+     if( err >= 1.e-5*amag || !IS_GOOD_FLOAT(err) ){
+       fprintf(stderr,"SVD avg err=%g; recomputing ...",err) ;
+
+#if 1     /* mangle all zero columns */
+       { double arep=1.e-11*amag , *aj ;
+         for( j=0 ; j < nn ; j++ ){
+           aj = aa + j*mm ;
+           for( i=0 ; i < mm ; i++ ) if( aj[i] != 0.0 ) break ;
+           if( i == mm ){
+             for( i=0 ; i < mm ; i++ ) aj[i] = (drand48()-0.5)*arep ;
+           }
+         }
+       }
+#endif
+
+       /* svd_slow is compiled without optimization */
+
        (void) svd_slow_( &mm , &nn , &lda , aa , ww ,
                          &matu , &ldu , uu , &matv , &ldv , vv , &ierr , rv1 ) ;
        err = 0.0 ;
@@ -738,8 +759,8 @@ void svd_double( int m, int n, double *a, double *s, double *u, double *v )
           err += fabs(aij) ;
        }}
        err /= (m*n) ;
-       WARNING_message("Recomputed SVD avg err=%g %s\n",
-               err , (err >= 1.e-5) ? "**BAD**" : "**OK**"      ) ;
+       fprintf(stderr," new avg err=%g %s\n",
+               err , (err >= 1.e-5*amag || !IS_GOOD_FLOAT(err)) ? "**BAD**" : "**OK**" ) ;
      }
    }
 #endif
@@ -762,7 +783,7 @@ void svd_double( int m, int n, double *a, double *s, double *u, double *v )
      }
      qsort_doubleint( n , sv , iv ) ;
      if( u != NULL ){
-       double *cc = (double *)malloc(sizeof(double)*m*n) ;
+       double *cc = (double *)calloc(sizeof(double),m*n) ;
 #pragma omp critical (MEMCPY)
        (void)memcpy( cc , u , sizeof(double)*m*n ) ;
        for( jj=0 ; jj < n ; jj++ ){
@@ -773,7 +794,7 @@ void svd_double( int m, int n, double *a, double *s, double *u, double *v )
        free((void *)cc) ;
      }
      if( v != NULL ){
-       double *cc = (double *)malloc(sizeof(double)*n*n) ;
+       double *cc = (double *)calloc(sizeof(double),n*n) ;
 #pragma omp critical (MEMCPY)
        (void)memcpy( cc , v , sizeof(double)*n*n ) ;
        for( jj=0 ; jj < n ; jj++ ){

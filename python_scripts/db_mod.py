@@ -40,6 +40,13 @@ def db_mod_tcat(block, proc, user_opts):
             '   --> the stimulus timing files must reflect the '             \
                     'removal of these TRs' % bopt.parlist[0]
 
+    uopt = user_opts.find_opt('-tcat_remove_last_trs')
+    if uopt:
+        bopt = block.opts.find_opt('-tcat_remove_last_trs')
+        if bopt: bopt.parlist = uopt.parlist
+        else:    block.opts.add_opt('-tcat_remove_last_trs',
+                                    1, uopt.parlist, setpar=1)
+
     if errs == 0: block.valid = 1
     else        : block.valid = 0
 
@@ -50,22 +57,35 @@ def db_cmd_tcat(proc, block):
     opt = block.opts.find_opt('-tcat_remove_first_trs')
     first = opt.parlist[0]
 
+    # remove the last TRs?  set rmlast
+    val, err = proc.user_opts.get_type_opt(int, '-tcat_remove_last_trs')
+    if err: return 1, ''
+    if val == None: rmlast = 0
+    else: rmlast = val
+
     cmd = cmd + "# %s\n"                                                      \
                 "# apply 3dTcat to copy input dsets to results dir, while\n"  \
                 "# removing the first %d TRs\n"                               \
                 % (block_header('auto block: tcat'), first)
     for run in range(0, proc.runs):
-        cmd = cmd + "3dTcat -prefix %s/%s %s'[%d..$]'\n" %              \
+        if rmlast == 0: final = '$'
+        else:
+            reps = proc.reps_all[run]
+            final = '%d' % (reps-rmlast-1)
+            if reps-rmlast-1 < 0:
+                print '** run %d: have %d reps, cannot remove %d!' \
+                      % (run+1, reps, rmlast)
+        cmd = cmd + "3dTcat -prefix %s/%s %s'[%d..%s]'\n" %              \
                     (proc.od_var, proc.prefix_form(block,run+1),
-                     proc.dsets[run].rel_input(), first)
+                     proc.dsets[run].rel_input(), first, final)
 
     cmd = cmd + '\n'                                                          \
                 '# -------------------------------------------------------\n' \
                 '# enter the results directory (can begin processing data)\n' \
                 'cd %s\n\n\n' % proc.od_var
 
-    proc.reps   -= first        # update reps to account for removed TRs
-    proc.reps_all = [reps-first for reps in proc.reps_all]
+    proc.reps   -= first+rmlast # update reps to account for removed TRs
+    proc.reps_all = [reps-first-rmlast for reps in proc.reps_all]
 
     proc.bindex += 1            # increment block index
     proc.pblabel = block.label  # set 'previous' block label
@@ -112,7 +132,7 @@ def make_outlier_commands(proc):
         cs0 = '\n'                                                            \
           '    # censor outlier TRs per run, ignoring the first %d TRs\n'     \
           '    # - censor when more than %g of automask voxels are outliers\n'\
-          '    # - step() defines which TRs to remove\n'                      \
+          '    # - step() defines which TRs to remove via censoring\n'        \
           '    1deval -a outcount_r$run.1D '                                  \
           '-expr "1-step(a-%g)%s" > rm.out.cen.r$run.1D\n'                    \
           % (nskip, censor, censor, dstr)
@@ -214,8 +234,7 @@ def db_cmd_align(proc, block):
         return
 
     # first note EPI alignment base and sub-brick, as done in volreg block
-    # ## rcr: alignEA EPI and base might be given externally
-    #         via -align_epi_base_dset
+    # (alignEA EPI and base might be given externally via -align_epi_base_dset)
     if proc.align_ebase != None:
         basevol = "%s%s" % (proc.align_epre,proc.view)
         bind = 0
@@ -316,13 +335,32 @@ def copy_ricor_regs_str(proc):
     """make a string to copy the retroicor regressors to the results dir"""
     if len(proc.ricor_regs) < 1: return ''
 
-    str = '# copy slice-based regressors for RETROICOR (rm first %d TRs)\n' \
-          % proc.ricor_nfirst
+    # maybe remove final TRs as well, do a little work here...
+    trs = []
+    lstr = ''
+    if proc.ricor_nlast > 0:
+        try:
+            import lib_afni1D as LAD
+            for reg in proc.ricor_regs:
+                adata = LAD.Afni1D(reg)
+                trs.append(adata.nt)
+        except:
+            print '** failing to remove last %d TRs' % proc.ricor_nlast
+            return ''
+        lstr = 'and last %d' % proc.ricor_nlast
+
+    str = '# copy slice-based regressors for RETROICOR (rm first %d %sTRs)\n' \
+          % (proc.ricor_nfirst, lstr)
 
     if proc.ricor_nfirst > 0: offstr = "'{%d..$}'" % proc.ricor_nfirst
     else:                     offstr = ''
     
+    offstr = ''         # default
+    lstr   = '$'
     for ind in range(len(proc.ricor_regs)):
+        if proc.ricor_nfirst > 0 or proc.ricor_nlast > 0:
+            if proc.ricor_nlast > 0: lstr = '%d' % (trs[ind]-1-proc.ricor_nlast)
+            offstr = "'{%d..%s}'" % (proc.ricor_nfirst, lstr)
         str += '1dcat %s%s > %s/stimuli/ricor_orig_r%02d.1D\n' % \
                (proc.ricor_regs[ind], offstr, proc.od_var, ind+1)
 
@@ -349,6 +387,11 @@ def db_mod_ricor(block, proc, user_opts):
     val, err = user_opts.get_type_opt(int, '-ricor_regs_nfirst')
     if err: return
     elif val != None and val >= 0: proc.ricor_nfirst = val
+
+    # delete nlast trs from end of each run
+    val, err = user_opts.get_type_opt(int, '-ricor_regs_rm_nlast')
+    if err: return
+    elif val != None and val >= 0: proc.ricor_nlast = val
 
     # --------- setup options to pass to block ------------
     if len(block.opts.olist) == 0:
@@ -438,7 +481,7 @@ def db_cmd_ricor(proc, block):
     if proc.verb > 2: print '-- ricor: slice 0 labels: %s' % ' '.join(nsr_labs)
 
     # check reps against adjusted NT
-    nt = adata.nt-proc.ricor_nfirst
+    nt = adata.nt-proc.ricor_nfirst-proc.ricor_nlast
     if proc.reps != nt:
         print "** ERROR: ricor NT != dset len (%d, %d)"                 \
               "   (check -ricor_regs_nfirst/-tcat_remove_first_trs)"    \
@@ -1573,7 +1616,8 @@ def db_mod_regress(block, proc, user_opts):
 
         block.opts.add_opt('-regress_opts_3dD', -1, [])
         block.opts.add_opt('-regress_opts_reml', -1, [])
-        block.opts.add_opt('-regress_make_ideal_sum', 1, [])
+        block.opts.add_opt('-regress_make_ideal_sum', 1, ['sum_ideal.1D'],
+                                                       setpar=1)
         block.opts.add_opt('-regress_errts_prefix', 1, [])
         block.opts.add_opt('-regress_fitts_prefix', 1, ['fitts.$subj'],
                                                        setpar=1)
@@ -1585,14 +1629,36 @@ def db_mod_regress(block, proc, user_opts):
     bopt = block.opts.find_opt('-regress_basis')
     if uopt and bopt:
         bopt.parlist[0] = uopt.parlist[0]
+        # rcr - may have many basis functions, if any have unknown response
+        #       curve, set iresp prefix for them
+        # add iresp output for any unknown response curves
         if not UTIL.basis_has_known_response(bopt.parlist[0], warn=1):
             if not user_opts.find_opt('-regress_iresp_prefix'):
                 block.opts.add_opt('-regress_iresp_prefix',1,['iresp'],setpar=1)
-        uopt = user_opts.find_opt('-regress_make_ideal_sum')
-        if uopt and not UTIL.basis_has_known_response(bopt.parlist[0]):
-            print '** -regress_make_ideal_sum is inappropriate for basis %s'\
-                  % bopt.parlist[0]
-            errs += 1
+        # rcr - maybe let 1d_tool.py compute sum in any case
+        #       1d_tool -infile X.xmat.1D -show_indices_interest
+        # uopt = user_opts.find_opt('-regress_make_ideal_sum')
+        # if uopt and not UTIL.basis_has_known_response(bopt.parlist[0]):
+        #    print '** -regress_make_ideal_sum is inappropriate for basis %s'\
+        #          % bopt.parlist[0]
+        #    errs += 1
+
+    # handle processing one basis functions per class
+    uopt = user_opts.find_opt('-regress_basis_multi')
+    if uopt:
+        # either add or modify block version of option
+        bopt = block.opts.find_opt('-regress_basis_multi')
+        if bopt: bopt.parlist = uopt.parlist
+        else: block.opts.add_opt('-regress_basis_multi', -1, uopt.parlist,
+                                 setpar=1)
+        bopt = block.opts.find_opt('-regress_basis_multi')
+
+        # if any basis has unknown response curve, set iresp prefix
+        for basis in bopt.parlist:
+           if not UTIL.basis_has_known_response(basis, warn=1):
+              if not user_opts.find_opt('-regress_iresp_prefix'):
+                block.opts.add_opt('-regress_iresp_prefix',1,['iresp'],setpar=1)
+              break
 
     # set basis_normall only via user option
     uopt = user_opts.find_opt('-regress_basis_normall')
@@ -1672,6 +1738,11 @@ def db_mod_regress(block, proc, user_opts):
     bopt = block.opts.find_opt('-regress_make_ideal_sum')
     if uopt and bopt:
         bopt.parlist = uopt.parlist
+
+    uopt = user_opts.find_opt('-regress_no_ideal_sum')
+    if uopt:
+        bopt = block.opts.find_opt('-regress_no_ideal_sum')
+        if not bopt: block.opts.add_opt('-regress_no_ideal_sum', 0,[],setpar=1)
 
     uopt = user_opts.find_opt('-regress_opts_3dD')      # 3dDeconvolve
     bopt = block.opts.find_opt('-regress_opts_3dD')
@@ -1930,7 +2001,10 @@ def db_mod_regress(block, proc, user_opts):
 def db_cmd_regress(proc, block):
     cmd = ''
     opt = block.opts.find_opt('-regress_basis')
-    basis = opt.parlist[0]
+    basis = opt.parlist  # as a list, to incorporate -regress_basis_multi
+
+    opt = block.opts.find_opt('-regress_basis_multi')
+    if opt: basis = opt.parlist # override any -regress_basis
 
     opt = block.opts.find_opt('-regress_basis_normall')
     if opt: normall = '    -basis_normall %s \\\n' % opt.parlist[0]
@@ -1957,6 +2031,7 @@ def db_cmd_regress(proc, block):
                 "# run the regression analysis\n" % block_header('regress')
 
     # possibly add a make_stim_times.py command
+    # (convert -stim_file to -stim_times)
     opt = block.opts.find_opt('-regress_stim_times')
     convert = (block.opts.find_opt('-regress_no_stim_times') == None) and \
                 len(proc.stims) > 0
@@ -1964,6 +2039,18 @@ def db_cmd_regress(proc, block):
         newcmd = db_cmd_regress_sfiles2times(proc, block)
         if not newcmd: return
         cmd = cmd + newcmd
+
+    # expand the basis list to match stims
+    # (this should be done after any conversion from -stim_files)
+    if len(proc.stims) != len(basis):
+        # if just one basis function, duplicate for each stim, else error
+        if len(basis) == 1:
+            if proc.verb > 2: print '-- duplicating single basis function'
+            basis = [basis[0] for ind in range(len(proc.stims))]
+        else:
+            print '** error: have %d basis functions but %d stim classes' \
+                  % (len(basis), len(proc.stims))
+            return
 
     # if the user wants to censor large motion, create a censor.1D file
     if block.opts.find_opt('-regress_censor_motion'):
@@ -2061,24 +2148,26 @@ def db_cmd_regress(proc, block):
                   "   have: %s" % (nregs, roni_list)
             return
 
-    # we need labels for iresp
+    # add iresp options for basis functions without known response functions
     opt = block.opts.find_opt('-regress_iresp_prefix')
     if not opt or not opt.parlist: iresp = ''
     else:
         iresp = ''
         for index in range(len(labels)):
-            iresp = iresp + "    -iresp %d %s_%s.$subj \\\n" % \
-                            (index+1, opt.parlist[0], labels[index])
+            if not UTIL.basis_has_known_response(basis[index]):
+                iresp = iresp + "    -iresp %d %s_%s.$subj \\\n" % \
+                                (index+1, opt.parlist[0], labels[index])
 
     # write out stim lines (add -stim_base to any RONI)
-
     sfiles = block.opts.find_opt('-regress_no_stim_times')
     for ind in range(len(proc.stims)):
+        # rcr - allow -stim_times_AM/IM here?  make user choose one?
+        #       (so mabye -stim_times can be set from proc.stim_times_opt)
         if sfiles:  # then -stim_file and no basis function
             cmd = cmd + "    -stim_file %d %s \\\n" % (ind+1,proc.stims[ind])
         else:
             cmd = cmd + "    -stim_times %d %s '%s' \\\n"  % \
-                        (ind+1, proc.stims[ind], basis)
+                        (ind+1, proc.stims[ind], basis[ind])
         # and add the label
         if ind+1 in roni_list: rstr = '-stim_base %d ' % (ind+1)
         else:                  rstr = ''
@@ -2184,7 +2273,9 @@ def db_cmd_regress(proc, block):
     cmd = cmd + iresp
     cmd = cmd + other_opts
     cmd = cmd + "    %s-tout -x1D %s -xjpeg X.jpg \\\n" % (fout_str, proc.xmat)
-    if proc.censor_file: cmd += "    -x1D_uncensored X.uncensored.xmat.1D \\\n"
+    if proc.censor_file:
+        newmat = 'X.uncensored.xmat.1D'
+        cmd += "    -x1D_uncensored %s \\\n" % newmat
     cmd = cmd + fitts + errts + stop_opt
     cmd = cmd + "    -bucket stats.$subj\n\n\n"
 
@@ -2204,6 +2295,10 @@ def db_cmd_regress(proc, block):
                "1d_tool.py -show_cormat_warnings -infile %s"                  \
                " |& tee out.cormat_warn.txt\n\n" % proc.xmat
         cmd = cmd + rcmd
+
+    # if we have a censor file, then set it as the xmat
+    # (we waited until after the cormat warnings)
+    if proc.censor_file: proc.xmat = newmat
 
     # possibly run the REML script
     if block.opts.find_opt('-regress_reml_exec'):
@@ -2232,38 +2327,40 @@ def db_cmd_regress(proc, block):
                         "       -prefix %s\_REML\n\n"                   \
                         % (all_runs, proc.view, errts_pre, proc.view, fitts_pre)
 
-    # if censoring create an uncensored X-matrix file
-    if proc.censor_file:
-        newmat = "X.full_length.xmat.1D"
-        cmd = cmd +     \
-            "# in case of censoring, create full length X-matrix\n"     \
-            "1d_tool.py -infile %s -censor_fill -write %s\n\n"          \
-                % (proc.xmat, newmat)
-        proc.xmat = newmat
-
     # extract ideal regressors, and possibly make a sum
     opt = block.opts.find_opt('-regress_no_ideals')
-    if not opt and UTIL.basis_has_known_response(basis):
-        # then we compute individual ideal files for each stim
-        cmd = cmd + "# create ideal files for each stim type\n"
-        first = (polort+1) * proc.runs
-        for ind in range(len(labels)):
-            cmd = cmd + "1dcat %s'[%d]' > ideal_%s.1D\n" % \
-                        (proc.xmat, first+ind, labels[ind])
-        cmd = cmd + '\n'
+    if not opt and len(basis) > 0:
+        if len(labels) != len(basis):
+            print '** internal error: label and basis arrays not equal lengths'
+            print '   (%d labels, %d basis functions)'%(len(labels),len(basis))
+            return
+        # while basis functions are known, extract ideals
+        # (so no ideal after unknown, and therefore first must be known)
+        if UTIL.basis_has_known_response(basis[0]):
+            cmd = cmd + "# create ideal files for fixed response stim types\n"
+            first = (polort+1) * proc.runs
+            for ind in range(len(labels)):
+                # once unknown, quit
+                if not UTIL.basis_has_known_response(basis[ind]): break
+                cmd = cmd + "1dcat %s'[%d]' > ideal_%s.1D\n" % \
+                            (proc.xmat, first+ind, labels[ind])
+            cmd = cmd + '\n'
+        else: print '-- classes have multiple regressors, so not making ideals'
 
     opt = block.opts.find_opt('-regress_make_ideal_sum')
-    if opt and opt.parlist:
+    nopt = block.opts.find_opt('-regress_no_ideal_sum')
+    # opt should always be set, so let nopt override
+    if opt and opt.parlist and not nopt:
         first = (polort+1) * proc.runs
         last = first + len(proc.stims) - 1
-        if first == last: # use 1dcat to extract just the one column
-           cmd = cmd + '# only 1 regressor for ideal "sum", so use 1dcat\n'
-           cmd = cmd + "1dcat %s'[%d]' > %s\n\n" % \
-                       (proc.xmat, first, opt.parlist[0])
-        else:
-           cmd = cmd + "# compute sum of ideals from X-matrix\n"
-           cmd = cmd + "3dTstat -sum -prefix %s %s'[%d..%d]'\n\n" % \
-                       (opt.parlist[0], proc.xmat, first, last)
+        # get regressors of interest from X-matrix, rather than in python
+        # (this requires check_date of 2 Nov 2010)
+        cmd = cmd +                                                        \
+               "# compute sum of non-baseline regressors from the X-matrix\n" \
+               "# (use 1d_tool.py to get list of regressor colums)\n"      \
+               "set reg_cols = `1d_tool.py -infile %s -show_%s`\n"         \
+               '3dTstat -sum -prefix %s %s"[$reg_cols]"\n\n' %             \
+               (proc.xmat, "indices_interest", opt.parlist[0], proc.xmat)
 
     # check for blur estimates
     bcmd = db_cmd_blur_est(proc, block)
@@ -2695,7 +2792,9 @@ def valid_file_types(proc, stims, file_type):
          3 : global
         10 : local or global
 
-       If invalid, print messages (so run the check twice).
+       If invalid, print messages.
+       If valid, print any warning messages.
+       So checks are always run twice.
 
        return 1 if valid, 0 otherwise
     """
@@ -2720,22 +2819,36 @@ def valid_file_types(proc, stims, file_type):
         ok = 0  # prudent
         if   file_type == 1: # check 1D, just compare against total reps
             ok = adata.looks_like_1D(run_lens=proc.reps_all, verb=0)
+            if ok: adata.file_type_warnings_1D(run_lens=proc.reps_all)
         elif file_type == 2: # check local
             ok = adata.looks_like_local_times(run_lens=proc.reps_all,
                                                 tr=proc.tr, verb=0)
+            if ok: adata.file_type_warnings_local(run_lens=proc.reps_all,
+                                                tr=proc.tr)
         elif file_type == 3: # check global
             ok = adata.looks_like_global_times(run_lens=proc.reps_all,
                                                 tr=proc.tr, verb=0)
+            if ok: adata.file_type_warnings_global(run_lens=proc.reps_all,
+                                                tr=proc.tr)
         elif file_type == 10: # check both local and global
-            # if not local, check global
+            # first test as local
             ok = adata.looks_like_local_times(run_lens=proc.reps_all,
                                                 tr=proc.tr, verb=0)
+            if ok: adata.file_type_warnings_local(run_lens=proc.reps_all,
+                                                tr=proc.tr)
+            # if not local, then check as global
             if not ok:
                 ok = adata.looks_like_global_times(run_lens=proc.reps_all,
                                                 tr=proc.tr,verb=0)
+                if ok:adata.file_type_warnings_global(run_lens=proc.reps_all,
+                                                tr=proc.tr)
         else: # error
             print '** valid_file_types: bad type %d' % file_type
             return 0
+
+        # if empty, warn user (3dD will fail)
+        if ok and adata.empty:
+            print '** empty stim file %s (consider 3dD -GOFORIT ...)\n' % fname
 
         # if current file is good, move on
         if ok: continue
@@ -2750,7 +2863,7 @@ def valid_file_types(proc, stims, file_type):
         if file_type == 10: file_type = 2
 
         if file_type == 1:
-            adata.looks_like_1D(run_lens=proc.reps_all, tr=proc.tr, verb=3)
+            adata.looks_like_1D(run_lens=proc.reps_all, verb=3)
         elif file_type == 2:
             adata.looks_like_local_times(run_lens=proc.reps_all, tr=proc.tr,
                                          verb=3)
@@ -2855,8 +2968,10 @@ g_help_string = """
         DEFAULTS                : basic default operations, per block
         EXAMPLES                : various examples of running this program
         NOTE sections           : details on various topics
-            TIMING FILE NOTE, MASKING NOTE, WARP TO TLRC NOTE, RETROICOR NOTE,
-            RUNS OF DIFFERENT LENGTHS NOTE, SCRIPT EXECUTION NOTE
+            TIMING FILE NOTE, MASKING NOTE,
+            ANAT/EPI ALIGNMENT CASES NOTE, ANAT/EPI ALIGNMENT CORRECTIONS NOTE,
+            WARP TO TLRC NOTE, RETROICOR NOTE, RUNS OF DIFFERENT LENGTHS NOTE,
+            SCRIPT EXECUTION NOTE
         OPTIONS                 : desriptions of all program options
             informational       : options to get quick info and quit
             general execution   : options not specific to a processing block
@@ -3014,7 +3129,6 @@ g_help_string = """
                             -glt_label 2 face_contrast                     \\
                             -gltsym 'SYM: tpos epos fpos -tneg -eneg -fneg'\\
                             -glt_label 3 pos_vs_neg                        \\
-                        -regress_make_ideal_sum sum_ideal.1D               \\
                         -regress_est_blur_epits                            \\
                         -regress_est_blur_errts
 
@@ -3090,7 +3204,6 @@ g_help_string = """
                         -regress_stim_labels tneg tpos tneu eneg epos      \\
                                              eneu fneg fpos fneu           \\
                         -regress_basis 'BLOCK(30,1)'                       \\
-                        -regress_make_ideal_sum sum_ideal.1D               \\
                         -regress_est_blur_epits                            \\
                         -regress_est_blur_errts
 
@@ -3130,13 +3243,65 @@ g_help_string = """
                         -regress_opts_3dD                                  \\
                             -gltsym 'SYM: +eneg -fneg'                     \\
                             -glt_label 1 eneg_vs_fneg                      \\
-                        -regress_make_ideal_sum sum_ideal.1D               \\
                         -regress_est_blur_epits                            \\
                         -regress_est_blur_errts
 
            To process in orig space, remove -volreg_tlrc_warp.
            To apply manual tlrc transformation, use -volreg_tlrc_adwarp.
            To process as anat aligned to EPI, remove -volreg_align_e2a.
+
+        7. Similar to 6, but get a little more esoteric.
+
+           a. Blur only within the brain, as far as an automask can tell.  So
+              add -blur_in_automask to blur only within an automatic mask
+              created internally by 3dBlurInMask (akin to 3dAutomask).
+
+           b. Let the basis functions vary.  For some reason, we expect the
+              BOLD responses to the positive classes to vary across the brain.
+              So we have decided to use TENT functions there.  Since the TR is
+              3.0s and we might expect up to a 45 second BOLD response curve,
+              use 'TENT(0,45,16)' for those 3 out of 9 basis functions.
+
+              This means using -regress_basis_multi instead of -regress_basis,
+              and specifying all 9 basis functions appropriately.
+
+           c. Not only censor motion, but censor TRs when more than 10% of the
+              automasked brain are outliers.  So add -regress_censor_outliers.
+
+           d. Save on RAM by computing the fitts only after 3dDeconvolve.
+              So add -regress_compute_fitts.
+
+           e. Speed things up.  Have 3dDeconvolve use 4 CPUs and skip the
+              single subject 3dClustSim execution.  So add '-jobs 4' to the
+              -regress_opts_3dD option and add '-regress_run_clustsim no'.
+
+                afni_proc.py -subj_id sb23.e7.esoteric                     \\
+                        -dsets sb23/epi_r??+orig.HEAD                      \\
+                        -do_block align tlrc                               \\
+                        -copy_anat sb23/sb23_mpra+orig                     \\
+                        -tcat_remove_first_trs 3                           \\
+                        -volreg_align_to last                              \\
+                        -volreg_align_e2a                                  \\
+                        -volreg_tlrc_warp                                  \\
+                        -blur_in_automask                                  \\
+                        -regress_stim_times sb23/stim_files/blk_times.*.1D \\
+                        -regress_stim_labels tneg tpos tneu                \\
+                                             eneg epos eneu                \\
+                                             fneg fpos fneu                \\
+                        -regress_basis_multi                               \\
+                           'BLOCK(30,1)' 'TENT(0,45,16)' 'BLOCK(30,1)'     \\
+                           'BLOCK(30,1)' 'TENT(0,45,16)' 'BLOCK(30,1)'     \\
+                           'BLOCK(30,1)' 'TENT(0,45,16)' 'BLOCK(30,1)'     \\
+                        -regress_censor_motion 1.0                         \\
+                        -regress_censor_outliers 0.1                       \\
+                        -regress_compute_fitts                             \\
+                        -regress_opts_3dD                                  \\
+                            -gltsym 'SYM: +eneg -fneg'                     \\
+                            -glt_label 1 eneg_vs_fneg                      \\
+                            -jobs 4                                        \\
+                        -regress_run_clustsim no                           \\
+                        -regress_est_blur_epits                            \\
+                        -regress_est_blur_errts
 
     --------------------------------------------------
     -ask_me EXAMPLES:
@@ -3330,6 +3495,140 @@ g_help_string = """
     changes could result.  Because large values would be a detriment to the
     numerical resolution of the scaled short data, the default is to truncate
     scaled values at 200 (percent), which should not occur in the brain.
+
+    --------------------------------------------------
+    ANAT/EPI ALIGNMENT CASES NOTE:
+
+    This outlines the effects of alignment options, to help decide what options
+    seem appropriate for various cases.
+
+    1. EPI to EPI alignment (the volreg block)
+
+        Alignment of the EPI data to a single volume is based on the 3 options
+        -volreg_align_to, -volreg_base_dset and -volreg_base_ind, where the
+        first option is by far the most commonly used.
+
+        The logic of EPI alignment in afni_proc.py is:
+
+            a. if -volreg_base_dset is given, align to that
+               (this volume is copied locally as the dataset ext_align_epi)
+            b. otherwise, use the -volreg_align_to or -volreg_base_ind volume
+
+        The typical case is to align the EPI to one of the volumes used in
+        pre-processing (where the dataset is provided by -dsets and where the
+        particular TR is not removed by -tcat_remove_first_trs).  If the base
+        volume is the first or third (TR 0 or 2) from the first run, or is the
+        last TR of the last run, then -volreg_align_to can be used.
+
+        To specify a TR that is not one of the 3 just stated (first, third or
+        last), -volreg_base_ind can be used.
+
+        To specify a volume that is NOT one of those used in pre-processing
+        (such as a pre-steady state volume that will be excluded by the option
+        -tcat_remove_first_trs), use -volreg_base_dset.
+
+    2. anat to EPI alignment cases (the align block)
+
+        This is specific to the 'align' processing block, where the anatomy is
+        aligned to the EPI.  The focus is on which EPI volume the anat gets
+        aligned to.  Whether this transformation is inverted in the volreg
+        block (to instead align the EPI to the anat via -volreg_align_e2a) is
+        an independent consideration.
+
+        The logic of which volume the anatomy gets aligned to is as follows:
+            a. if -align_epi_ext_dset is given, use that for anat alignment
+            b. otherwise, if -volreg_base_dset, use that
+            c. otherwise, use the EPI base from the EPI alignment choice
+
+        To restate this: the anatomy gets aligned to the same volume the EPI
+        gets aligned to *unless* -align_epi_ext_dset is given, in which case
+        that volume is used.
+
+        The entire purpose of -align_epi_ext_dset is for the case where the
+        user might want to align the anat to a different volume than what is
+        used for the EPI (e.g. align anat to a pre-steady state TR but the EPI
+        to a steady state one).
+
+        Output:
+
+           The result of the align block is an 'anat_al' dataset.  This will be
+           in alignment with the EPI base (or -align_epi_ext_dset).
+
+           Additionally, if the -volreg_align_e2a option is used (thus aligning
+           the EPI to the original anat), then the anat_al dataset is no longer
+           very useful.  At that point the pb*.volreg.* datasets are aligned
+           with the original anat (and possibly in Talairach space, if the
+           -volreg_tlrc_warp or _adwarp option was applied).
+
+         Checking the results:
+
+           The pb*.volreg.* volumes should be aligned with the anat.  If
+           -volreg_align_e2a was used, it will be with the original anat.
+           If not, then it will be with anat_al.
+
+           So compare the volreg EPI with the appropriate anatomical dataset.
+
+    --------------------------------------------------
+    ANAT/EPI ALIGNMENT CORRECTIONS NOTE:
+
+    Aligning the anatomy and EPI is sometimes difficult, particularly depending
+    on the contrast of the EPI data (between tissue types).  If the alignment
+    fails to do a good job, it may be necessary to run align_epi_anat.py in a
+    separate location, find options that help it to succeed, and then apply
+    those options to re-process the data with afni_proc.py.
+
+    1. If the anat and EPI base do not start off fairly close in alignment,
+       the -giant_move option may be needed for align_epi_anat.py.  Pass this
+       option to AEA.py via the afni_proc.py option -align_opts_aea:
+
+            afni_proc.py ... -align_opts_aea -giant_move
+
+    2. The default cost function used by align_epi_anat.py is lpc (local
+       Pearson correlation).  If this cost function does not work (probably due
+       to poor or unusual EPI contrast), then consider cost functions such as
+       lpa (absolute lpc), lpc+ (lpc plus fractions of other cost functions) or
+       lpc+ZZ (approximate with lpc+, but finish with pure lpc).
+
+       The lpa and lpc+ZZ cost functions are common alternatives.  The 
+       -giant_move option may be necessary independently.
+
+       Examples of some helpful options:
+
+         -align_opts_aea -cost lpa
+         -align_opts_aea -giant_move
+         -align_opts_aea -cost lpc+ZZ -giant_move
+         -align_opts_aea -cost lpc+ZZ -giant_move -resample off
+
+    3. Testing alignment with align_epi_anat.py directly.
+
+       When having alignment problems, it may be more efficient to copy the
+       anat and EPI alignment base to a new directory, figure out a good cost
+       function or other options, and then apply them in a new afni_proc.py
+       command.
+
+       For testing purposes, it helps to test many cost functions at once.
+       Besides the cost specified by -cost, other cost functions can be applied
+       via -multi_cost.  This is efficient, since all of the other processing
+       does not need to be repeated.  For example:
+
+         align_epi_anat.py -anat2epi                    \\
+                -anat subj99_anat+orig                  \\
+                -epi pb01.subj99.r01.tshift+orig        \\
+                -epi_base 0 -volreg off -tshift off     \\
+                -giant_move                             \\
+                -cost lpc -multi_cost lpa lpc+ZZ mi
+                           
+       That adds -giant_move, and uses the basic lpc cost function along with
+       3 additional cost functions (lpa, lpc+ZZ, mi).  The result is 4 new
+       anatomies aligned to the EPI, 1 per cost function:
+
+               subj99_anat_al+orig         - cost func lpc      (see -cost opt)
+               subj99_anat_al_lpa+orig     - cost func lpa         (additional)
+               subj99_anat_al_lpc+ZZ+orig  - cost func lpc+ZZ      (additional)
+               subj99_anat_al_mi+orig      - cost func mi          (additional)
+
+       Also, if part of the dataset gets clipped in the case of -giant_move,
+       consider the align_epi_anat.py option '-resample off'.
 
     --------------------------------------------------
     WARP TO TLRC NOTE:
@@ -3933,6 +4232,15 @@ g_help_string = """
             later ones.  This option is used to specify how many TRs to
             remove from the beginning of every run.
 
+        -tcat_remove_last_trs NUM : specify TRs to remove from run ends
+
+                e.g. -tcat_remove_last_trs 10
+                default: 0
+
+            For when the user wants a simple way to shorten each run.
+
+            See also -ricor_regs_rm_nlast.
+
         -despike_mask           : allow Automasking in 3dDespike
 
             By default, -nomask is applied to 3dDespike.  Since anatomical
@@ -4052,6 +4360,15 @@ g_help_string = """
             -tcat_remove_first_trs.
 
             See also '-tcat_remove_first_trs', '-ricor_regs', '-dsets'.
+
+        -ricor_regs_rm_nlast NUM : remove the last NUM TRs from each regressor
+
+                e.g. -ricor_regs_rm_nlast 10
+                default: 0
+
+            For when the user wants a simple way to shorten each run.
+
+            See also -tcat_remove_last_trs.
 
         -tshift_align_to TSHIFT OP : specify 3dTshift alignment option
 
@@ -4931,19 +5248,32 @@ g_help_string = """
 
                 e.g. -regress_make_ideal_sum ideal_all.1D
 
-            If the -regress_basis function is a single parameter function
-            (either GAM or some form of BLOCK), then this option can be
-            applied to create an ideal response curve which is the sum of
-            the individual stimulus response curves.
+            By default, afni_proc.py will compute a 'sum_ideal.1D' file that
+            is the sum of non-polort and non-motion regressors from the
+            X-matrix.  This -regress_make_ideal_sum option is used to specify
+            the output file for that sum (if sum_idea.1D is not desired).
 
-            Use of this option will add a 3dTstat command to sum the regressor
-            (of interest) columns of the 1D X-matrix, output by 3dDeconvolve.
+            Note that if there is nothing in the X-matrix except for polort and
+            motion regressors, or if 1d_tool.py cannot tell what is in there
+            (if there is no header information), then all columns will be used.
 
-            This is similar to the default behavior of creating ideal_STIM.1D
-            files for each stimulus label, STIM.
+            Computing the sum means adding a 1d_tool.py command to figure out
+            which columns should be used in the sum (since mixing GAM, TENT,
+            etc., makes it harder to tell up front), and a 3dTstat command to
+            actually sum those columns of the 1D X-matrix (the X-matrix is
+            output by 3dDeconvolve).
 
-            Please see '3dDeconvolve -help' and '3dTstat -help'.
-            See also -regress_basis, -regress_no_ideals.
+            Please see '3dDeconvolve -help', '1d_tool.py -help' and
+            '3dTstat -help'.
+            See also -regress_basis, -regress_no_ideal_sum.
+
+        -regress_no_ideal_sum      : do not create sum_ideal.1D from regressors
+
+            By default, afni_proc.py will compute a 'sum_ideal.1D' file that
+            is the sum of non-polort and non-motion regressors from the
+            X-matrix.  This option prevents that step.
+
+            See also -regress_make_ideal_sum.
 
         -regress_motion_file FILE.1D  : use FILE.1D for motion parameters
 

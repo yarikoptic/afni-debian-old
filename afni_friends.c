@@ -87,13 +87,15 @@ static AFNI_friend afni_friends[] = {
   { "B Feige"        , ( 1 |         8                                  ) } ,
   { "K Murphy"       , (             8 | 16                 | 256       ) } ,
   { "A Martin"       , (     2                                          ) } ,
-  { "M Mur"          , (                                128             ) } ,
+  { "Marieke Mur"    , (                                128             ) } ,
   { "J Haxby"        , (     2                                          ) } ,
   { "I Gobbini"      , (     2                                          ) } ,
   { "SM Laconte"     , (                      32 | 64                   ) } ,
   { "L Pezawas"      , (     2 | 4 | 8                                  ) } ,
   { "W Gaggl"        , (         4 | 8                                  ) } ,
   { "V Hradil"       , (         4 | 8 | 16                             ) } ,
+  { "D Handwerker"   , (         4 | 8                                  ) } ,
+  { "J Gonzalez-Castillo" , (    4 | 8                                  ) }
 } ;
 
 #define NUM_FRIENDS (sizeof(afni_friends)/sizeof(AFNI_friend))
@@ -140,7 +142,7 @@ typedef struct { int mon,day; char *label; } mday ;
 /*-----------------------------------------*/
 /*! max # trivia elements allowed per date */
 
-#define NTMAX 9
+#define NTMAX 31
 
 char * AFNI_get_date_trivia(void) ;
 
@@ -389,6 +391,7 @@ static mday holiday[] = {
    {JUN, 8,"Frank Lloyd Wright's birthday"                           } ,
    {JUN, 9,"Anniversary of Donald Duck's debut"                      } ,
    {JUN,10,"Portugal National Day"                                   } ,
+   {JUN,10,"White Rose Day"                                          } ,
    {JUN,11,"Ben Jonson's birthday"                                   } ,
    {JUN,11,"John Constable's birthday"                               } ,
    {JUN,12,"Philippines Independence Day"                            } ,
@@ -527,12 +530,13 @@ static mday holiday[] = {
    {SEP, 3,"Anniversary of Treaty of Paris, 1783"                    } ,
    {SEP, 4,"First hard disk's birthday"                              } ,
    {SEP, 6,"Swaziland Independence Day"                              } ,
-   {SEP, 7,"Queen Elizabeth I's birthday"                            } ,
    {SEP, 7,"Brazil Independence Day"                                 } ,
+   {SEP, 7,"Anniversary of Battle of Borodino"                       } ,
+   {SEP, 7,"Queen Elizabeth I's birthday"                            } ,
    {SEP, 7,"Sinclair Lewis's birthday"                               } ,
    {SEP, 7,"Buddy Holly's birthday"                                  } ,
-   {SEP, 7,"Anniversary of Battle of Borodino"                       } ,
    {SEP, 7,"Luigi Galvani's birthday"                                } ,
+   {SEP, 7,"Birthday of Emperor Saga (Japan)"                        } ,
    {SEP, 8,"Anniversary of Star Trek TV debut"                       } ,
    {SEP, 8,"Andorra National Festival"                               } ,
    {SEP, 9,"Bulgaria Liberation Day"                                 } ,
@@ -582,6 +586,7 @@ static mday holiday[] = {
    {OCT,15,"Pelham Grenville Wodehouse's birthday"                   } ,
    {OCT,16,"National Boss Day!"                                      } ,
    {OCT,19,"Anniversary of Cornwallis' surrender at Yorktown"        } ,
+   {OCT,20,"World Statistics Day!"                                   } ,
    {OCT,21,"Anniversary of Battle of Trafalgar"                      } ,
    {OCT,24,"Anniversary of founding of United Nations"               } ,
    {OCT,24,"Zambia Independence Day"                                 } ,
@@ -620,7 +625,9 @@ static mday holiday[] = {
    {NOV, 9,"Benjamin Banneker's birthday"                            } ,
    {NOV, 9,"Cambodia Independence Day"                               } ,
    {NOV,10,"Martin Luther's birthday"                                } ,
+   {NOV,10,"Anniversary of USMC"                                     } ,
    {NOV,11,"Veteran's & Remembrance Day"                             } ,
+   {NOV,11,"Anniversary of Sherman's March to the Sea"               } ,
    {NOV,11,"Poland Independence Day"                                 } ,
    {NOV,12,"Sun Yat Sen's birthday"                                  } ,
    {NOV,12,"Elizabeth Cady Stanton's birthday"                       } ,
@@ -678,8 +685,11 @@ static mday holiday[] = {
    {DEC, 5,"Anniversary of Prohibition's end"                        } ,
    {DEC, 5,"George Armstrong Custer's birthday"                      } ,
    {DEC, 5,"Werner Karl Heisenberg's birthday"                       } ,
+   {DEC, 5,"Jozef Pilsudki's birthday"                               } ,
    {DEC, 6,"Spanish Constitution Day"                                } ,
    {DEC, 6,"Finland Independence Day"                                } ,
+   {DEC, 6,"Anniversary of the Irish Free State"                     } ,
+   {DEC, 6,"Henryk Gorecki's birthday"                               } ,
    {DEC, 7,"Anniversary of Battle of Pearl Harbor"                   } ,
    {DEC, 7,"Ivory Coast National Day"                                } ,
    {DEC, 8,"Jacques Hadamard's birthday"                             } ,
@@ -747,10 +757,11 @@ static mday holiday[] = {
    {DEC,30,"Tiger Woods' birthday"                                   } ,
    {DEC,30,"Rudyard Kipling's birthday"                              } ,
    {DEC,31,"New Year's Eve"                                          } ,
-   {DEC,31,"George Marshall's birthday"                              } ,
+   {DEC,31,"George C Marshall's birthday"                            } ,
+   {DEC,31,"Simon Wiesenthal's birthday"                             } ,
 
    /* cf. http://www.theonlinerecipebox.com/national-food-holidays/ */
-  
+
    {JAN, 1, "Celebrate National Soup Month" } ,
    {JAN, 2, "National Cream Puff Day" } ,
    {JAN, 3, "National Chocolate Covered Cherry Day" } ,
@@ -1093,7 +1104,6 @@ static mday holiday[] = {
    {DEC, 4, "National Cookie Day" } ,
    {DEC, 5, "National Sachertorte Day" } ,
    {DEC, 6, "National Microwave Oven Day" } ,
-   {DEC, 7, "National Cotton Candy Day" } ,
    {DEC, 8, "National Chocolate Brownie Day" } ,
    {DEC, 9, "National Pastry Day" } ,
    {DEC, 10, "Celebrate National Fruit Cake Month" } ,
@@ -1120,6 +1130,64 @@ static mday holiday[] = {
    {DEC, 31, "Celebrate National Egg Nog Month" } ,
 
  {0,0,NULL} } ;  /* the last element, a flag to stop searching */
+
+/*---------------- Dates of Easter thru the years ---------------*/
+
+typedef struct { int yy,mm,dd; } yymmdd ;
+
+static yymmdd EasterDate[] = {
+   {2011,4,24} , {2012,4,8}  , {2013,3,31} , {2014,4,20} , {2015,4,5}  ,
+   {2016,3,27} , {2017,4,16} , {2018,4,1}  , {2019,4,21} , {2020,4,12} ,
+   {2021,4,4}  , {2022,4,17} , {2023,4,9}  , {2024,3,31} , {2025,4,20} ,
+   {2026,4,5}  , {2027,3,28} , {2028,4,16} , {2029,4,1}  , {2030,4,21} ,
+   {2031,4,13} , {2032,3,28} , {2033,4,17} , {2034,4,9}  , {2035,3,25} ,
+   {2036,4,13} , {2037,4,5}  , {2038,4,25} , {2039,4,10} , {2040,4,1}  ,
+   {2041,4,21} , {2042,4,6}  , {2043,3,29} , {2044,4,17} , {2045,4,9}  ,
+   {2046,3,25} , {2047,4,14} , {2048,4,5}  , {2049,4,18} , {2050,4,10} ,
+   {2051,4,2}  , {2052,4,21} , {2053,4,6}  , {2054,3,29} , {2055,4,18} ,
+   {2056,4,2}  , {2057,4,22} , {2058,4,14} , {2059,3,30} , {2060,4,18} ,
+   {2061,4,10} , {2062,3,26} , {2063,4,15} , {2064,4,6}  , {2065,3,29} ,
+   {2066,4,11} , {2067,4,3}  , {2068,4,22} , {2069,4,14} , {2070,3,30} ,
+   {2071,4,19} , {2072,4,10} , {2073,3,26} , {2074,4,15} , {2075,4,7}  ,
+   {2076,4,19} , {2077,4,11} , {2078,4,3}  , {2079,4,23} , {2080,4,7}  ,
+   {2081,3,30} , {2082,4,19} , {2083,4,4}  , {2084,3,26} , {2085,4,15} ,
+   {2086,3,31} , {2087,4,20} , {2088,4,11} , {2089,4,3}  , {2090,4,16} ,
+   {2091,4,8}  , {2092,3,30} , {2093,4,12} , {2094,4,4}  , {2095,4,24} ,
+   {2096,4,15} , {2097,3,31} , {2098,4,20} , {2099,4,12} , {2100,3,28} ,
+   {2101,4,17} , {2102,4,9}  , {2103,3,25} , {2104,4,13} , {2105,4,5}  ,
+   {2106,4,18} , {2107,4,10} , {2108,4,1}  , {2109,4,21} , {2110,4,6}  ,
+   {2111,3,29} , {2112,4,17} , {2113,4,2}  , {2114,4,22} , {2115,4,14} ,
+   {2116,3,29} , {2117,4,18} , {2118,4,10} , {2119,3,26} , {2120,4,14} ,
+   {2121,4,6}  , {2122,3,29} , {2123,4,11}
+} ;
+
+#define EASTER_FIRST 2011
+#define EASTER_LAST  2123  /* if AFNI last this long -- wow! */
+
+int AFNI_is_Easter( int yy , int mm , int dd )
+{
+   if( yy < EASTER_FIRST || yy > EASTER_LAST ) return 0 ;
+   yy = yy - EASTER_FIRST ;
+   return ( mm == EasterDate[yy].mm && dd == EasterDate[yy].dd ) ;
+}
+
+/*------------------------------------------------------------------------------*/
+
+static yymmdd DiwaliDate[] = {
+ {2011,10,26} , {2012,11,13} , {2013,11,3}  , {2014,10,23} , {2015,11,11} ,
+ {2016,10,30} , {2017,10,19} , {2018,11,7}  , {2019,10,27} , {2020,11,14} ,
+ {2021,11,4}  , {2022,10,24}
+} ;
+
+#define DIWALI_FIRST 2011
+#define DIWALI_LAST  2022  /* I hope AFNI lasts until this year -- at least! */
+
+int AFNI_is_Diwali( int yy , int mm , int dd )
+{
+   if( yy < DIWALI_FIRST || yy > DIWALI_LAST ) return 0 ;
+   yy = yy - DIWALI_FIRST ;
+   return ( mm == DiwaliDate[yy].mm && dd == DiwaliDate[yy].dd ) ;
+}
 
 /*------------------------------------------------------------------------------*/
 /*! Return one of today's date trivia string. */
@@ -1158,7 +1226,7 @@ char * AFNI_get_date_trivia(void)
    /* 4th Thursday in November */
 
    if( ntar < NTMAX && lt->tm_mon+1 == NOV && lt->tm_wday == 4 &&
-                       lt->tm_mday <= 28 && lt->tm_mday >= 22 )
+                       lt->tm_mday <= 28   && lt->tm_mday >= 22  )
       tar[ntar++] = "Thanksgiving (USA)" ;
 
    /* 1st Monday in October */
@@ -1171,6 +1239,16 @@ char * AFNI_get_date_trivia(void)
    if( ntar < NTMAX && lt->tm_mon+1 == NOV && lt->tm_wday == 2 &&
                        lt->tm_mday >= 2    && lt->tm_mday <= 8   )
       tar[ntar++] = "Election Day (USA)" ;
+
+   /* Easter? */
+
+   if( ntar < NTMAX && AFNI_is_Easter(lt->tm_year+1900,lt->tm_mon+1,lt->tm_mday) )
+      tar[ntar++] = "Easter (Western rite)" ;
+
+   /* Diwali? */
+
+   if( ntar < NTMAX && AFNI_is_Diwali(lt->tm_year+1900,lt->tm_mon+1,lt->tm_mday) )
+      tar[ntar++] = "Diwali / Deepavali" ;
 
    ncall++ ;
    if( ntar == 0 || (ntar < NTMAX && ncall > 3) ){  /* 04 Oct 2007 */

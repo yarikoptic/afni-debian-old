@@ -22,37 +22,6 @@
    #define DO_SCALE 319.7   /*!< scale node coordinates by specified factor. Useful for tesscon coordinate system in iv files*/
 #endif
 
-#undef STAND_ALONE
-
-#if defined SUMA_Read_SpecFile_STAND_ALONE
-#define STAND_ALONE
-#elif defined SUMA_Load_Surface_Object_STAND_ALONE
-#define STAND_ALONE
-#elif defined SUMA_SurfaceMetrics_STAND_ALONE
-#define STAND_ALONE 
-#elif defined SUMA_inspec_STAND_ALONE
-#define STAND_ALONE 
-#elif defined SUMA_quickspec_STAND_ALONE
-#define STAND_ALONE 
-#endif
-
-#ifdef STAND_ALONE
-/* these global variables must be declared even if they will not be used by this main */
-SUMA_SurfaceViewer *SUMAg_cSV; /*!< Global pointer to current Surface Viewer structure*/
-SUMA_SurfaceViewer *SUMAg_SVv; /*!< Global pointer to the vector containing the various Surface Viewer Structures 
-                                    SUMAg_SVv contains SUMA_MAX_SURF_VIEWERS structures */
-int SUMAg_N_SVv = 0; /*!< Number of SVs realized by X */
-SUMA_DO *SUMAg_DOv;   /*!< Global pointer to Displayable Object structure vector*/
-int SUMAg_N_DOv = 0; /*!< Number of DOs stored in DOv */
-SUMA_CommonFields *SUMAg_CF; /*!< Global pointer to structure containing info common to all viewers */
-#else
-extern SUMA_CommonFields *SUMAg_CF;
-extern SUMA_DO *SUMAg_DOv;
-extern SUMA_SurfaceViewer *SUMAg_SVv;
-extern int SUMAg_N_SVv; 
-extern int SUMAg_N_DOv;  
-#endif
-
 /* CODE */
 
 /*!
@@ -175,6 +144,11 @@ SUMA_Boolean SUMA_AllocSpecFields (SUMA_SurfSpecFile *Spec)
    if (!Spec->LabelDset) { 
       SUMA_S_Err("Failed to allocate"); SUMA_RETURN(NOPE); 
    }
+   Spec->NodeMarker = (char **)SUMA_allocate2D(SUMA_MAX_N_SURFACE_SPEC, 
+                        SUMA_MAX_FP_NAME_LENGTH , sizeof(char));       
+   if (!Spec->NodeMarker) { 
+      SUMA_S_Err("Failed to allocate"); SUMA_RETURN(NOPE); 
+   }
    
 
    
@@ -280,6 +254,9 @@ SUMA_Boolean SUMA_FreeSpecFields (SUMA_SurfSpecFile *Spec)
       SUMA_free2D((char **)Spec->LabelDset, SUMA_MAX_N_SURFACE_SPEC);
       Spec->LabelDset = NULL; }
    
+   if (Spec->NodeMarker) { 
+      SUMA_free2D((char **)Spec->NodeMarker, SUMA_MAX_N_SURFACE_SPEC);
+      Spec->NodeMarker = NULL; }
 
    Spec->N_Surfs = -2; /* flag for freeing */                                                         
    Spec->N_States = 0;                                                     
@@ -1461,7 +1438,7 @@ SUMA_Boolean SUMA_Read_SpecFile (
    SUMA_Boolean   OKread_AnatCorrect, OKread_Hemisphere,
                   OKread_DomainGrandParentID, OKread_OriginatorID;
    SUMA_Boolean   OKread_LocalCurvatureParent, OKread_LocalDomainParent,
-                  OKread_LabelDset;
+                  OKread_LabelDset, OKread_NodeMarker;
    char DupWarn[]={  "Bad format in specfile "
                      "(you may need a NewSurface line). "
                      "Duplicate specification of"};
@@ -1546,7 +1523,7 @@ SUMA_Boolean SUMA_Read_SpecFile (
    OKread_AnatCorrect = OKread_Hemisphere = OKread_DomainGrandParentID =
       OKread_OriginatorID = NOPE;
    OKread_LocalCurvatureParent = OKread_LocalDomainParent = 
-      OKread_LabelDset = NOPE;
+      OKread_LabelDset = OKread_NodeMarker = NOPE;
    
    Spec->StateList[0] = '\0';
    Spec->Group[0][0] = '\0';
@@ -1592,6 +1569,7 @@ SUMA_Boolean SUMA_Read_SpecFile (
                Spec->LocalCurvatureParent[Spec->N_Surfs-1][0] = '\0'; 
                Spec->LocalDomainParent[Spec->N_Surfs-1][0] = '\0';
                Spec->LabelDset[Spec->N_Surfs-1][0] = '\0';
+               Spec->NodeMarker[Spec->N_Surfs-1][0] = '\0';
             } else { 
                /* make sure important fields have been filled */
                if (Spec->SurfaceType[Spec->N_Surfs-2][0] == '\0') {
@@ -1637,6 +1615,7 @@ SUMA_Boolean SUMA_Read_SpecFile (
                Spec->LocalCurvatureParent[Spec->N_Surfs-1][0] = '\0'; 
                Spec->LocalDomainParent[Spec->N_Surfs-1][0] = '\0';
                Spec->LabelDset[Spec->N_Surfs-1][0] = '\0';
+               Spec->NodeMarker[Spec->N_Surfs-1][0] = '\0';
                /* only Spec->CoordFile, Spec->SurfaceFile MUST be 
                   specified with a new surface */
             } 
@@ -1649,7 +1628,7 @@ SUMA_Boolean SUMA_Read_SpecFile (
             OKread_AnatCorrect = OKread_Hemisphere = 
                OKread_DomainGrandParentID = OKread_OriginatorID = YUP;
             OKread_LocalCurvatureParent = OKread_LocalDomainParent = 
-               OKread_LabelDset = YUP;
+               OKread_LabelDset = OKread_NodeMarker = YUP;
             skp = 1;
          }
          
@@ -1891,6 +1870,28 @@ SUMA_Boolean SUMA_Read_SpecFile (
                SUMA_RETURN (NOPE);
             } else  {
                OKread_LabelDset = NOPE;
+            }
+            skp = 1;
+         }
+
+         sprintf(stmp,"NodeMarker");
+         if (!skp && SUMA_iswordin (s, stmp) == 1) {
+            /* found NodeMarker  field, parse it */
+            if (!SUMA_ParseLHS_RHS (s, stmp, stmp2)) {
+               fprintf( SUMA_STDERR,
+                        "Error %s: Error in SUMA_ParseLHS_RHS.\n", FuncName);
+               SUMA_RETURN (NOPE);
+            }
+            
+            snprintf (Spec->NodeMarker[Spec->N_Surfs-1], 
+                        SUMA_MAX_FP_NAME_LENGTH * sizeof(char),
+               "%s%s", Spec->SpecFilePath, stmp2);
+            
+            if (!OKread_NodeMarker) {
+               fprintf(SUMA_STDERR,"Error %s: %s %s\n", FuncName, DupWarn, stmp);
+               SUMA_RETURN (NOPE);
+            } else  {
+               OKread_NodeMarker = NOPE;
             }
             skp = 1;
          }
@@ -2391,6 +2392,7 @@ SUMA_Boolean SUMA_Merge_SpecFiles( SUMA_SurfSpecFile *lhs,
             SUMA_COPY_SPEC_FIELD(bhs, c, vs[k], i, State);
          } 
          SUMA_COPY_SPEC_FIELD(bhs, c, vs[k], i, LabelDset);
+         SUMA_COPY_SPEC_FIELD(bhs, c, vs[k], i, NodeMarker);
          SUMA_COPY_SPEC_FIELD(bhs, c, vs[k], i, Group);
          if (strcmp(bhs->Group[0], vs[k]->Group[i])) {
             SUMA_S_Warn("Unexpected Group mismatch!\n"
@@ -2545,6 +2547,12 @@ SUMA_Boolean SUMA_Write_SpecFile ( SUMA_SurfSpecFile * Spec,
             fprintf (outFile, 
                      "\tLabelDset = %s\n", 
                    Spec->LabelDset[i] );
+         } else {
+         }
+         if (Spec->NodeMarker[i][0]) {
+            fprintf (outFile, 
+                     "\tNodeMarker = %s\n", 
+                   Spec->NodeMarker[i] );
          } else {
          }
          fprintf (outFile, "\tSurfaceState = %s\n"
@@ -2889,6 +2897,12 @@ char* SUMA_SpecStructInfo (SUMA_SurfSpecFile *Spec, int detail)
             } else SS = SUMA_StringAppend_va (SS, 
                                        "\tLabelDset: (empty)\n");
             
+            if (strlen(Spec->NodeMarker[i])) {
+               SS = SUMA_StringAppend_va (SS, 
+                                       "\tNodeMarker: %s\n", 
+                                       Spec->NodeMarker[i]);
+            } else SS = SUMA_StringAppend_va (SS, 
+                                       "\tNodeMarker: (empty)\n");
             /*
             if (strlen(Spec->[i])) {
                SS = SUMA_StringAppend_va (SS, 
@@ -3330,6 +3344,62 @@ SUMA_Boolean SUMA_PrepAddmappableSO(SUMA_SurfaceObject *SO, SUMA_DO *dov,
 
 } /* end SUMA_PrepAddmappableSO */
 
+
+SUMA_Boolean SUMA_Load_SO_NodeMarker(SUMA_SurfaceObject *SO, 
+                                     char *NodeMarker)
+{
+   static char FuncName[]={"SUMA_Load_SO_NodeMarker"};
+   SUMA_NIDO *nido=NULL;
+   int i=0;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!SO || !NodeMarker) SUMA_RETURN(NOPE);
+   
+   SUMA_LHv("Loading %s\n", NodeMarker);
+   if (!(nido = SUMA_ReadNIDO (NodeMarker, SO->idcode_str))) {
+      SUMA_S_Errv("Failed to load %s\n", NodeMarker);
+      SUMA_RETURN(NOPE);
+   }
+   nido->do_type = NIDO_type;
+   
+   if (SO->CommonNodeObject) {
+      SUMA_Free_Displayable_Object_Vect(SO->CommonNodeObject,1);
+      SO->CommonNodeObject = NULL;
+   }
+   SO->CommonNodeObject = (SUMA_DO *)SUMA_calloc(1,sizeof(SUMA_DO));
+   
+   SO->CommonNodeObject->OP = (void *)nido; 
+   SO->CommonNodeObject->ObjectType = NIDO_type;
+   SO->CommonNodeObject->CoordType = SUMA_WORLD;
+   nido = NULL;
+
+   SUMA_LH( "Need to turn SO->CommonNodeObject to "
+            "SO->NodeObjects, and SO->NodeNIDOObjects");
+   #if 0
+   /* this approach is less flexible, only one nel allowed in CommonNodeObject
+   and it is not any faster than the second approach, wich allows for any NIDO
+   to be propagated 
+   Just don't have both modes on, you'll be drawing similar objects twice */  
+   if (SO->NodeObjects) {
+      SUMA_Free_Displayable_Object_Vect(SO->NodeObjects, 1);
+   }
+   SO->NodeObjects = SUMA_Multiply_NodeObjects( SO,  SO->CommonNodeObject);
+   #else
+   if (SO->NodeNIDOObjects) {
+      for (i=0; i<SO->N_Node; ++i) 
+         if (SO->NodeNIDOObjects[i]) SUMA_free_NIDO(SO->NodeNIDOObjects[i]);
+      SUMA_free(SO->NodeNIDOObjects);   SO->NodeNIDOObjects = NULL;
+   }
+   SO->NodeNIDOObjects = SUMA_Multiply_NodeNIDOObjects( 
+                                                SO,  SO->CommonNodeObject);
+   #endif
+   
+   SUMA_RETURN(YUP);
+}
+
+
 /*! 
    Call the function engine, with debug turned on.      20 Oct 2003 [rickr]
 */
@@ -3473,6 +3543,16 @@ SUMA_Boolean SUMA_LoadSpec_eng (
             SUMA_MovePlaneDown(SO, NewColPlane->Name);
             
             NewColPlane=NULL;          /* don't let anyone here use it */
+         }
+         if (SO && Spec->NodeMarker[i][0] != '\0') {
+            SUMA_LHv("Will load NodeMarker %s for %s\n",
+                         Spec->NodeMarker[i], SO->Label);
+            if (!(SUMA_Load_SO_NodeMarker(SO, Spec->NodeMarker[i]))) {
+               SUMA_S_Errv("Failed to loa NodeMarker %s onto %s\n"
+                           "Plodding on nonetheless.\n",
+                           Spec->NodeMarker[i], SO->Label);
+            }
+            SUMA_LHv("NodeMarker %s loaded\n", Spec->NodeMarker[i]);
          }
       }/* Mappable surfaces */
    }/* first loop across mappable surfaces */
@@ -3682,6 +3762,10 @@ SUMA_Boolean SUMA_LoadSpec_eng (
                          "surfaces with LocalDomainParent = SAME).\n"
                          "LabelDset %s is ignored.\n",
                          Spec->LabelDset[i]);
+         }
+         if (SO && Spec->NodeMarker[i][0] != '\0') {
+            SUMA_S_Notev("Will need to load NodeMarker %s for non mappable %s\n",
+                         Spec->NodeMarker[i], SO->Label);
          }
       }/* Non Mappable surfaces */
 
@@ -4127,100 +4211,7 @@ SUMA_Boolean SUMA_SurfaceMetrics_eng (
 }
 
 
-#ifdef SUMA_Read_SpecFile_STAND_ALONE
 
-void usage_SUMA_Read_SpecFile ()
-   
-  {/*Usage*/
-          printf ("\nUsage:  SUMA_Read_SpecFile <fname> \n");
-          printf ("\t <fname> Filename of Surface Specs file\n");
-          printf ("To compile: \ngcc -DSUMA_Read_SpecFile_STAND_ALONE -Wall -o SUMA_Load_Surface_Object  SUMA_Load_Surface_Object.c ");
-          printf ("SUMA_lib.a libmri.a -I/usr/X11R6/include -I./ -L/usr/lib -L/usr/X11R6/lib -lm \n");
-          printf ("\t\t\t Ziad S. Saad SSCC/NIMH/NIH saadz@mail.nih.gov \n");
-          exit (0);
-  }/*Usage*/
-  
-int main (int argc,char *argv[])
-{/* Main */
-   char FuncName[]={"Main_SUMA_Read_SpecFile"};
-   SUMA_SurfSpecFile Spec;   
-   
-   if (argc < 2)
-       {
-          usage_SUMA_Read_SpecFile ();
-          exit (1);
-       }
-
-   /* allocate space for CommonFields structure */
-   SUMAg_CF = SUMA_Create_CommonFields ();
-   if (SUMAg_CF == NULL) {
-      fprintf(SUMA_STDERR,"Error %s: Failed in SUMA_Create_CommonFields\n", FuncName);
-      exit(1);
-   }
-   
-   if (!SUMA_AllocSpecFields(&Spec)) { SUMA_S_Err("Error initing"); exit(1); }
-   if (!SUMA_Read_SpecFile (argv[1], &Spec)) {
-      fprintf(SUMA_STDERR,"Error %s: Error in SUMA_Read_SpecFile\n", FuncName);
-      if (!SUMA_FreeSpecFields(&Spec)) { SUMA_S_Err("Error freeing"); return(1); }
-      if (!SUMA_Free_CommonFields(SUMAg_CF)) SUMA_error_message(FuncName,"SUMAg_CF Cleanup Failed!",1);
-      return (1);
-   }   else    {      
-      if (!SUMA_FreeSpecFields(&Spec)) { SUMA_S_Err("Error freeing"); return(1); }
-      if (!SUMA_Free_CommonFields(SUMAg_CF)) SUMA_error_message(FuncName,"SUMAg_CF Cleanup Failed!",1);
-      return (0);
-   }
-} /* Main */
-
-#endif
-
-#ifdef SUMA_Load_Surface_Object_STAND_ALONE
-
-void usage_SUMA_Load_Surface_Object_STAND_ALONE ()
-   
-  {/*Usage*/
-          printf ("\nUsage:  SUMA_Load_Surface_Object <SurfName> [<Type> <format>]\n");
-          printf ("\t <SurfName> Filename of Surface Object\n");
-          printf ("\t <Type>: 2 (hard coded at the moment for SUMA_INVENTOR_GENERIC)\n");
-          printf ("\t <format>: 0 (hard coded at the moment for SUMA_ASCII\n"); 
-          printf ("To compile: \ngcc -DSUMA_Load_Surface_Object_STAND_ALONE -Wall -o SUMA_Load_Surface_Object SUMA_Load_Surface_Object.c ");
-          printf ("SUMA_lib.a  -I/usr/X11R6/include -I./ -L/usr/lib -L/usr/X11R6/lib -lm \n");
-          printf ("-lGL -lGLU -lGLw -lXmu -lXm -lXt -lXext -lX11 -lMesaGLw -lMesaGLw\n");
-          printf ("\t\t\t Ziad S. Saad SSCC/NIMH/NIH saadz@mail.nih.gov \tWed Jan 23 15:18:12 EST 2002 \n");
-          exit (0);
-  }/*Usage*/
-   
-int main (int argc,char *argv[])
-{/* Main */
-   char FuncName[100]; 
-   SUMA_SurfaceObject *SO;
-   
-   /* allocate space for CommonFields structure */
-   SUMAg_CF = SUMA_Create_CommonFields ();
-   if (SUMAg_CF == NULL) {
-      fprintf(SUMA_STDERR,"Error %s: Failed in SUMA_Create_CommonFields\n", FuncName);
-      exit(1);
-   }
-   
-   /* initialize Main function name for verbose output */
-   sprintf (FuncName,"SUMA_Load_Surface_Object-Main-");
-   
-   
-   
-   if (argc < 2)
-       {
-          usage_SUMA_Load_Surface_Object_STAND_ALONE ();
-          exit (1);
-       }
-   
-   SO = SUMA_Load_Surface_Object((void *)argv[1], SUMA_INVENTOR_GENERIC, SUMA_ASCII, NULL);
-   SUMA_Print_Surface_Object (SO, stdout);
-   SUMA_Free_Surface_Object (SO);
-
-   if (!SUMA_Free_CommonFields(SUMAg_CF)) SUMA_error_message(FuncName,"SUMAg_CF Cleanup Failed!",1);
-
-   return (0);
-}/* Main */
-#endif
 
 /*! function to return a string containing the name of the files 
 defining a surface object

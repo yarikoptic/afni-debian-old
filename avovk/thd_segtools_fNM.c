@@ -192,7 +192,9 @@ char* clusterlib_setjobname(const char* basename, int strip)
 
 int clusterlib_readnumber(const char word[])
 { char* error = 0;
-  long value = strtol(word,&error,0);
+  long value = 0;
+  if (word[0] == '0' && word[1] != '\0') ++word;
+  value = strtol(word,&error,0);
   if (*error=='\0') return (int)value;
   else return -1;
 }
@@ -279,15 +281,15 @@ void example_hierarchical( int nrows, int ncols,
   
   char* filename;
   //char* filename2;
+  FILE *out1; int n;
 
 
   for (i = 0; i < ncols; i++) weight[i] = 1.0;
   printf("\n");
 
 
-  FILE *out1;
 
-  int n = 1 + strlen(jobname) + strlen("_C") + strlen(".ext");
+  n = 1 + strlen(jobname) + strlen("_C") + strlen(".ext");
 
   if (k)
     { int dummy = k;
@@ -750,17 +752,17 @@ void example_kmeans( int nrows, int ncols,
    filename4 = (char *)malloc((n+2)*sizeof(char));
 
    /* ZSS:  Put a .1D in the name wherever it is appropriate */
-   sprintf (filename, "%s_K%d_G%c.kgg.1D", jobname, nclusters,dist);
+   sprintf (filename, "%s_K02%d_G%c.kgg.1D", jobname, nclusters,dist);
 
    out1 = fopen( filename, "w" );
 
-   sprintf (filename2, "%s_K%d_G%c.dis.1D", jobname, nclusters,dist);
+   sprintf (filename2, "%s_K02%d_G%c.dis.1D", jobname, nclusters,dist);
 
    out2 = fopen( filename2, "w" );
 
-   sprintf (filename3, "%s_K%d_G%c.cen.1D", jobname, nclusters,dist);
+   sprintf (filename3, "%s_K%02d_G%c.cen.1D", jobname, nclusters,dist);
    out3 = fopen( filename3, "w" );
-   sprintf (filename4, "%s_K%d_G%c.info1.1D", jobname, nclusters,dist);
+   sprintf (filename4, "%s_K%02d_G%c.info1.1D", jobname, nclusters,dist);
    out4 = fopen( filename4, "w" );
 
    printf("======================== k-means clustering"

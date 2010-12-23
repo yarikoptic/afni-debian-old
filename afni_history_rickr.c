@@ -49,6 +49,131 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 16, DEC, 2010, RCR, "@ANATICOR", MICRO, TYPE_GENERAL,
+   "HJ change: small updates to the help",
+   "changes were submitted for Hang Joon Jo"
+ } ,
+
+ { 16, DEC, 2010, RCR, "afni_proc.py", MINOR, TYPE_ENHANCE,
+   "updates to file type (looks like) errors and warnings",
+   NULL
+ } ,
+
+ { 16, DEC, 2010, RCR, "1d_tool.py", MINOR, TYPE_ENHANCE,
+   "updates to file type (looks like) errors and warnings",
+   NULL
+ } ,
+
+ { 15, DEC, 2010, RCR, "timing_tool.py", MINOR, TYPE_ENHANCE,
+   "use lib_textdata.py for reading timing files, allow empty file",
+   "empty file update for C Deveney"
+ } ,
+
+ { 14, DEC, 2010, RCR, "afni_proc.py", MINOR, TYPE_BUG_FIX,
+   "fixed problem with timing file tests on 'empty' files with '*'",
+   "problem noted by C Deveney and R Momenan"
+ } ,
+
+ { 30, NOV, 2010, RCR, "afni_history", MINOR, TYPE_NEW_OPT,
+   "added option -final_sort_by_prog",
+   NULL
+ } ,
+
+ { 22, NOV, 2010, RCR, "afni_proc.py", MICRO, TYPE_GENERAL,
+   "small improvements to line wrapping",
+   NULL
+ } ,
+
+ { 19, NOV, 2010, RCR, "timing_tool.py", MINOR, TYPE_NEW_OPT,
+   "add -write_all_rest_times, moved write_to_timing_file to afni_util.py",
+   "option added for J Poore"
+ } ,
+
+ { 18, NOV, 2010, RCR, "afni_proc.py", MICRO, TYPE_BUG_FIX,
+   "fixed stim_files to stim_times conversion after multi_basis change",
+   "problem noted by M Weber"
+ } ,
+
+ { 18, NOV, 2010, RCR, "make_stim_times.py", MICRO, TYPE_BUG_FIX,
+   "fix for '*' in max 1 stim per run case",
+   NULL
+ } ,
+
+ { 10, NOV, 2010, RCR, "afni_proc.py", MICRO, TYPE_GENERAL,
+   "added new NOTE sections for ANAT/EPI ALIGNMENT to -help output",
+   NULL
+ } ,
+
+ {  8, NOV, 2010, RCR, "gen_group_command.py", MAJOR, TYPE_NEW_OPT,
+   "can now generate 3dttest++ commands",
+   NULL
+ } ,
+
+ {  4, NOV, 2010, RCR, "afni_proc.py", MICRO, TYPE_MODIFY,
+   "use X.uncensored.xmat.1D instead of X.full_length.xmat.1D",
+   NULL
+ } ,
+
+ {  4, NOV, 2010, RCR, "afni_proc.py", MINOR, TYPE_NEW_OPT,
+   "added regress_basis_multi, -regress_no_ideal_sum",
+   "One can specify either one basis function or one per stim_times file."
+ } ,
+
+ {  4, NOV, 2010, RCR, "1d_tool.py", MICRO, TYPE_BUG_FIX,
+   "fixed print problem in -show_indices",
+   "Problem noted by Mingbo Cai."
+ } ,
+
+ {  2, NOV, 2010, RCR, "3dTstat", MINOR, TYPE_ENHANCE,
+   "allow single volume input for functions mean, max, min, sum",
+   "Other functions can be added to this list as needed."
+ } ,
+
+ { 29, OCT, 2010, RCR, "1d_tool.py", MINOR, TYPE_NEW_OPT,
+   "added -show_indices_baseline, _motion and _interest",
+   NULL
+ } ,
+
+ { 28, OCT, 2010, RCR, "3dMean", MICRO, TYPE_BUG_FIX,
+   "do not proceed in case of no input datasets",
+   NULL
+ } ,
+
+ { 27, OCT, 2010, RCR, "file_tool", MINOR, TYPE_NEW_OPT,
+   "added -show_bad_char and -show_bad_all",
+   NULL
+ } ,
+
+ { 26, OCT, 2010, RCR, "gen_group_command.py", MINOR, TYPE_NEW_OPT,
+   "solidified 3dMEMA commands",
+   "This is now used to generate AFNI_data6/group_results/s4.3dMEMA.V-A."
+ } ,
+
+ { 25, OCT, 2010, RCR, "gen_group_command.py", MAJOR, TYPE_NEW_PROG,
+   "a program to generate group commands (3dMEMA for now)",
+   "Commands to come: 3dttest(++), 3dANOVA*, GroupANA."
+ } ,
+
+ { 21, OCT, 2010, RCR, "timing_tool.py", MICRO, TYPE_NEW_OPT,
+   "added -shift_to_run_offset",
+   NULL
+ } ,
+
+ { 20, OCT, 2010, RCR, "afni_proc.py", MINOR, TYPE_NEW_OPT,
+   "added -tcat_remove_last_trs, -ricor_regs_rm_nlast",
+   "Added for J Czarapata."
+ } ,
+
+ { 20, OCT, 2010, RCR, "Dimon", MINOR, TYPE_NEW_OPT,
+   "added -sort_by_acq_time for -dicom_org on Philips data",
+   "Added for Manjula."
+ } ,
+
+ { 20, OCT, 2010, RCR, "thd_niftiwrite.c", MICRO, TYPE_BUG_FIX,
+   "brick stats to intent codes was off by 1 index",
+   "Problem noted by P Kohn."
+ } ,
+
  { 16, OCT, 2010, RCR, "timing_tool.py", MICRO, TYPE_BUG_FIX,
    "fixed timing_to_1D fractions",
    NULL
@@ -392,8 +517,11 @@ afni_history_struct rickr_history[] = {
    NULL
  } ,
 
- { 19, MAY, 2010, RCR, "Makefile.*", MINOR, TYPE_MODIFY,
+ { 19, MAY, 2010, RCR, "Makefile.*", MINOR, TYPE_BUG_FIX,
    "add CCOLD to all for compiling nifticdf.o on linux_xorg7_64 using gcc v3",
+   "This is a bug in the gcc compiler code, not in AFNI.  So the workaround\n"
+   "is to compile nifticdf.o with a different version of the compiler.\n"
+   "\n"
    "The gcc compiler versions 4.1-4.3 (at least) had an optimization bug\n"
    "when compiling nifticdf.o.  The result was an inaccurate conversion\n"
    "from F-stats to p-values (in some cases).\n"

@@ -11,7 +11,7 @@ static int native_order = -1 ;
 static int no_mmap      = -1 ;
 static int floatscan    = -1 ;  /* 30 Jul 1999 */
 
-#define PRINT_SIZE 66600000
+#define PRINT_SIZE 123456789
 #define PRINT_STEP 10
 
 static int verbose = 0 ;
@@ -442,13 +442,13 @@ ENTRY("THD_load_datablock") ; /* 29 Aug 2001 */
        else if( *ept == 'M' || *ept == 'm' ) idone *= 1024*1024 ;
        print_size = idone ;
      } else {
-       print_size = 666000000 ;
+       print_size = PRINT_SIZE ;
      }
    }
 
    if( verb ) verb = (blk->total_bytes > print_size) ;
    if( verb )
-     fprintf(stderr,"reading dataset %s (%s bytes)",
+     fprintf(stderr,"reading %s(%s bytes)",
              dkptr->filecode ,
              approximate_number_string((double)blk->total_bytes) ) ;
 
@@ -826,6 +826,11 @@ ENTRY("THD_alloc_datablock") ;
       /** malloc space for each brick separately **/
 
       STATUS("trying to malloc sub-bricks") ;
+
+      if( verbose && blk->total_bytes >= 1000000000ll )
+        fprintf(stderr,"malloc(%s bytes",
+                approximate_number_string((double)blk->total_bytes) ) ;
+
       for( nbad=ibr=0 ; ibr < nv ; ibr++ ){
         if( DBLK_ARRAY(blk,ibr) == NULL ){
           ptr = AFMALL(char, DBLK_BRICK_BYTES(blk,ibr) ) ;
@@ -833,6 +838,7 @@ ENTRY("THD_alloc_datablock") ;
           if( ptr == NULL ) nbad++ ;
         }
       }
+      if( verbose && blk->total_bytes >= 1000000000ll ) fprintf(stderr,")") ;
       if( nbad == 0 ) RETURN(1) ;   /* things are cool */
 
       /* at least one malloc() failed, so possibly try to free some space */

@@ -16,6 +16,19 @@
 #define NOV 11
 #define DEC 12
 
+#define Jan  1
+#define Feb  2
+#define Mar  3
+#define Apr  4
+#define May  5
+#define Jun  6
+#define Jul  7
+#define Aug  8
+#define Sep  9
+#define Oct 10
+#define Nov 11
+#define Dec 12
+
 #define RWC "RW Cox"
 #define ZSS "ZS Saad"
 #define DRG "DR Glen"
@@ -96,9 +109,11 @@ typedef struct {
     int        min_level;
     int        past_days, past_months, past_years, past_entries;
     int        sort_dir;
+    int        final_sort_by_prog;
     int        verb;
 
     /* assigned variables */
+    int        sort_by_prog;
     int        plen;
     histpair * histpairs;
 

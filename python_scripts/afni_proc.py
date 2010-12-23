@@ -214,12 +214,27 @@ g_history = """
     2.36 Aug 04 2010 :
         - allow married timing files (needed for -test_stim_files)
         - added -keep_script_on_err (NEW default: delete script on error)
+    2.37 Oct 20 2010 : added -tcat_remove_last_trs, -ricor_regs_rm_nlast
+    2.38 Nov 04 2010 :
+        - create sum_ideal.1D is now the default
+        - allow varying basis functions (affects ideals/iresp output)
+        - added -regress_no_ideal_sum, -regress_basis_multi
+    2.39 Nov 04 2010 : no X.full_length.xmat.1D, use X.uncensored.xmat.1D
+    2.40 Nov 10 2010 : added new NOTE sections for ANAT/EPI ALIGNMENT to -help
+    2.41 Nov 18 2010 :
+        - fixed stim_files to stim_times conversion after multi_basis change
+        - problem noted by M Weber
+    2.42 Nov 22 2010 : improved line wrapping
+    2.43 Dec 14 2010 :
+        - fixed problem with timing file tests on 'empty' files with '*'
+        - problem noted by C Deveney and R Momenan
+    2.44 Dec 16 2010 : small changes to file type warnings
 """
 
-g_version = "version 2.36, Aug 17, 2010"
+g_version = "version 2.44, Dec 16, 2010"
 
 # version of AFNI required for script execution
-g_requires_afni = "19 Jul 2010"
+g_requires_afni = "4 Nov 2010"
 
 # ----------------------------------------------------------------------
 # dictionary of block types and modification functions
@@ -296,6 +311,7 @@ class SubjProcSream:
         self.ricor_nreg   = 0           # number of regs in ricor_reg
         self.ricor_regs   = []          # RETROICOR regressor files
         self.ricor_nfirst = 0           # number of TRs to remove
+        self.ricor_nlast  = 0           # number of final TRs to remove
 
         self.check_setup_errors = 0     # count init setup errors
         self.exit_on_error      = 1     # exit on any encountered error
@@ -436,6 +452,8 @@ class SubjProcSream:
         # block options
         self.valid_opts.add_opt('-tcat_remove_first_trs', 1, [],
                         helpstr='num TRs to remove from start of each run')
+        self.valid_opts.add_opt('-tcat_remove_last_trs', 1, [],
+                        helpstr='num TRs to remove from end of each run')
 
         self.valid_opts.add_opt('-despike_mask', 0, [],
                         helpstr="allow 3dDespike to automask (-dilate 4)")
@@ -456,6 +474,8 @@ class SubjProcSream:
                         helpstr='slice-based regressors for RETROICOR')
         self.valid_opts.add_opt('-ricor_regs_nfirst', 1, [],
                         helpstr='num first TRs to remove from ricor_regs')
+        self.valid_opts.add_opt('-ricor_regs_rm_nlast', 1, [],
+                        helpstr='num last TRs to remove from ricor_regs')
 
         self.valid_opts.add_opt('-tshift_align_to', -1, [],
                         helpstr='time alignment option given to 3dTshift')
@@ -545,6 +565,8 @@ class SubjProcSream:
                         helpstr="apply the mask in regression")
         self.valid_opts.add_opt('-regress_basis', 1, [],
                         helpstr="basis function to use in regression")
+        self.valid_opts.add_opt('-regress_basis_multi', -1, [],
+                        helpstr="one basis function per stimulus class")
         self.valid_opts.add_opt('-regress_basis_normall', 1, [],
                         helpstr="specify magnitude of basis functions")
 
@@ -605,6 +627,8 @@ class SubjProcSream:
                         helpstr="apply -local_times option to 3dDeconvolve")
         self.valid_opts.add_opt('-regress_make_ideal_sum', 1, [],
                         helpstr="filename for sum of ideal regressors")
+        self.valid_opts.add_opt('-regress_no_ideal_sum', 0, [],
+                        helpstr="do not compute the sum of regressors")
         self.valid_opts.add_opt('-regress_no_fitts', 0, [],
                         helpstr="do not output a fit timeseries dataset")
         self.valid_opts.add_opt('-regress_no_ideals', 0, [],

@@ -41,7 +41,6 @@ void TT_matrix_setup( int kout ) ;  /* 30 Jul 2010 */
 
 static int toz    = 0 ;  /* convert t-statistics to z-scores? */
 static int twosam = 0 ;
-static int zskip  = 0 ;  /* 06 Oct 2010 [a dark day at Weathertop] */
 
 static NI_element         *covnel=NULL ;       /* covariates */
 static NI_str_array       *covlab=NULL ;
@@ -52,6 +51,15 @@ static MRI_vectim   **covvim_AAA=NULL ;
 static MRI_vectim   **covvim_BBB=NULL ;
 static floatvec     **covvec_AAA=NULL ;
 static floatvec     **covvec_BBB=NULL ;
+
+static int   zskip_AAA = 0 ;  /* 06 Oct 2010 [a dark day at Weathertop] */
+static int   zskip_BBB = 0 ;
+static float zskip_fff = 0.0f ;
+static int   do_zskip  = 0 ;
+
+#define ALLOW_RANKS
+static int   do_ranks  = 0 ;  /* 10 Nov 2010 */
+static int   do_1sam   = 1 ;  /* 10 Nov 2010 */
 
 static unsigned int testA, testB, testAB ;
 
@@ -145,6 +153,8 @@ void display_help_menu(void)
       "* With 2 sets, the difference in means across each set is tested\n"
       "   against 0.  The 1 sample results for each set are also provided, since\n"
       "   these are often of interest to the investigator (e.g., YOU).\n"
+      "  ++ With 2 sets, the default is to produce the difference as setA - setB.\n"
+      "  ++ You can use the option '-BminusA' to get the signs reversed.\n"
       "\n"
       "* Covariates can be per-dataset (input=1 number) and/or per-voxel/per-dataset\n"
       "   (input=1 dataset sub-brick).\n"
@@ -212,12 +222,16 @@ void display_help_menu(void)
       "                   the sub-brick labels in the output dataset.  If you don't\n"
       "                   give a SETNAME, then '-setA' will be named 'SetA', etc.\n"
       "\n"
-      "  ***** NOTE WELL: The sign of a two sample test is A - B           *****\n"
+      "  ***** NOTE WELL: The sign of a two sample test is A - B.          *****\n"
       "  ***              Thus, '-setB' corresponds to '-set1' in 3dttest,   ***\n"
       "  ***                and '-setA' corresponds to '-set2' in 3dttest.   ***\n"
       "  *****            This ordering of A and B matches 3dGroupInCorr.  *****\n"
+      "  *****-------------------------------------------------------------*****\n"
+      "  ***** ALSO NOTE: You can reverse this sign by using the option    *****\n"
+      "  ***              '-BminusA', in which case the test is B - A.       ***\n"
+      "  ***              The option '-AminusB' can be used to explicitly    ***\n"
+      "  *****            specify the standard subtraction order.          *****\n"
       "\n"
-
       "--------------------------------------\n"
       "COVARIATES - per dataset and per voxel\n"
       "--------------------------------------\n"
@@ -270,6 +284,18 @@ void display_help_menu(void)
       "\n"
       "* If you use -paired, then the covariate values for setB will be the\n"
       "   same as those for setA, even if the dataset labels are different!\n"
+      "  ++ If you want to use different covariates for setA and setB in the\n"
+      "     paired test, then you'll have to subtract the setA and setB\n"
+      "     datasets (with 3dcalc), and then do a 1-sample test, using the\n"
+      "     differences of the original covariates as the covariates for\n"
+      "     this 1-sample test.\n"
+      "  ++ This subtraction technique works because a paired t-test is really\n"
+      "     the same as subtracting the paired samples and then doing a\n"
+      "     1-sample t-test on these differences.\n"
+      "  ++ For example, you do FMRI scans on a group of subjects, then\n"
+      "     train them on some task for a week, then re-scan them, and\n"
+      "     you want to use their behavioral scores on the task, pre- and\n"
+      "     post-training, as the covariates.\n"
       "\n"
       "* See the section 'STRUCTURE OF THE OUTPUT DATASET' for details of\n"
       "   what is calculated and stored by 3dttest++.\n"
@@ -325,6 +351,11 @@ void display_help_menu(void)
       "  -- If the two sample don't differ much in the mean values of their\n"
       "      covariates, then the results with '-center SAME' and '-center DIFF'\n"
       "      should be nearly the same.\n"
+      "  -- For fixed covariates (not those taken from datasets), the program\n"
+      "      prints out the results of a t-test of the between-group mean\n"
+      "      covariate values.  This test is purely informative; no action is\n"
+      "      taken if the t-test shows that the two groups are significantly\n"
+      "      different in some covariate.\n"
       "  -- If the two samples DO differ much in the mean values of their\n"
       "      covariates, then you should read the next point carefully.\n"
       "\n"
@@ -348,14 +379,16 @@ void display_help_menu(void)
       "      patients) just by linear regression and then pretending the IQ issue\n"
       "      goes away.\n"
       "  -- The decision as to whether a mean covariate difference between groups\n"
-      "      makes the t-test of the mean beta difference invalid or valid is\n"
-      "      not purely a statistical question.  See the Miller & Chapman paper\n"
-      "      (supra) for a lengthy discussion of this issue.\n"
+      "      makes the t-test of the mean beta difference invalid or valid isn't\n"
+      "      purely a statistical question; it's also a question of interpretation\n"
+      "      of the scientific issues of the study.  See the Miller & Chapman paper\n"
+      "      for a lengthy discussion of this issue.\n"
       "  -- It is not clear how much difference in covariate levels is acceptable.\n"
       "      You could carry out a t-test on the covariate values between the\n"
       "      2 groups and if the difference in means is not significant at some\n"
-      "      level (p > 0.05?), then accept the two groups as being 'identical'\n"
-      "      in that measured variable.\n"
+      "      level (i.e., if p > 0.05?), then accept the two groups as being\n"
+      "      'identical' in that variable.  But this is just a suggestion.\n"
+      "      (In fact, the program now carries out this t-test for you; cf supra.)\n"
       "  -- Thanks to Andy Mayer for pointing out this article to me.\n"
       "\n"
       " ++ At this time, there is no option to force the SLOPES of the\n"
@@ -404,12 +437,40 @@ void display_help_menu(void)
       "                 then that is the minimum number of nonzero values (in\n"
       "                 each of setA and setB, separately) that must be present\n"
       "                 before the t-test is carried out.  If you don't give\n"
-      "                 this value, its default is 5 (for no good reason).\n"
+      "                 this value, but DO use '-zskip', then its default is 5\n"
+      "                 (for no good reason).\n"
       "             ++ At this time, you can't use -zskip with -covariates,\n"
-      "                 because that would require more extensive re-thinkg\n"
+      "                 because that would require more extensive re-thinking\n"
       "                 and then re-programming.\n"
       "             ++ You can't use -zskip with -paired, for obvious reasons.\n"
       "             ++ [This option added 06 Oct 2010 -- RWCox]\n"
+      "             ++ You can also put a decimal fraction between 0 and 1 in\n"
+      "                 place of 'n' (e.g., '0.9', or '90%%').  Such a value\n"
+      "                 indicates that at least 90%% (e.g.) of the values in each\n"
+      "                 set must be nonzero for the t-test to proceed. [08 Nov 2010]\n"
+      "                 -- In no case will the number of values tested fall below 2!\n"
+      "                 -- You can use '100%' for 'n', to indicate that all data\n"
+      "                    values must be nonzero for the test to proceed.\n"
+#ifdef ALLOW_RANK
+      "\n"
+      " -rankize  = Convert the data (and covariates, if any) into ranks before\n"
+      "              doing the 2-sample analyses.  This option is intended to make\n"
+      "              the statistics more 'robust', and is inspired by the paper\n"
+      "                WJ Conover and RL Iman.\n"
+      "                Analysis of Covariance Using the Rank Transformation,\n"
+      "                Biometrics 38: 715-724 (1982).\n"
+      "                http://www.jstor.org/stable/2530051\n"
+      "                Also see http://www.jstor.org/stable/2683975\n"
+      "             ++ Using '-rankize' also implies '-no1sam' (infra), since it\n"
+      "                 doesn't make sense to do 1-sample t-tests on ranks.\n"
+      "             ++ Don't use this option unless you understand what it does!\n"
+#endif
+      "\n"
+      " -no1sam   = When you input two samples (setA and setB), normally the\n"
+      "              program outputs the 1-sample test results for each set\n"
+      "              (comparing to zero), as well as the 2-sample test results\n"
+      "              for differences between the sets.  With '-no1sam', these\n"
+      "              1-sample test results will NOT be calculated or saved.\n"
       "\n"
       " -mask mmm = Only compute results for voxels in the specified mask.\n"
       "             ++ Voxels not in the mask will be set to 0 in the output.\n"
@@ -462,6 +523,9 @@ void display_help_menu(void)
       "* In the above, 'wrt' is standard mathematical shorthand for the\n"
       "   phrase 'with respect to'.\n"
       "\n"
+      "* If option '-BminusA' is given, then the 'SetA-SetB' sub-bricks would\n"
+      "   be labeled 'SetB-SetA' instead, of course.\n"
+      "\n"
       "* If option '-toz' is used, the 'Tstat' will be replaced with 'Zscr'\n"
       "   in the statistical sub-brick labels.\n"
       "\n"
@@ -474,8 +538,9 @@ void display_help_menu(void)
       "   in non-AFNI programs will probably cause these labels to be lost\n"
       "   (along with other AFNI niceties, such as the history field).\n"
       "\n"
-      "* Although you might not care about some of the results, there is no\n"
-      "   option to turn off the output of all the sub-bricks described above.\n"
+      "* If you are doing a 2-sample run and don't want the 1-sample results,\n"
+      "   then the '-no1sam' option can be used to eliminate these sub-bricks\n"
+      "   from the output.\n"
       "\n"
       "* The largest Tstat that will be output is 99.\n"
       "* The largest Zscr that will be output is 13.\n"
@@ -624,6 +689,8 @@ int main( int argc , char *argv[] )
    THD_3dim_dataset *outset ;
    char blab[64] , *stnam ;
    float dof_AB=0.0f , dof_A=0.0f , dof_B=0.0f ;
+   int BminusA=-1 , ntwosam=0 ;  /* 05 Nov 2010 */
+   char *snam_PPP , *snam_MMM ;
 
    /*--- help the piteous luser? ---*/
 
@@ -643,13 +710,50 @@ int main( int argc , char *argv[] )
    nopt = 1 ;
    while( nopt < argc ){
 
+     /*----- no1sam -----*/
+
+     if( strcasecmp(argv[nopt],"-no1sam") == 0 ){   /* 10 Nov 2010 */
+       do_1sam = 0 ; nopt++ ; continue ;
+     }
+
+#ifdef ALLOW_RANKS
+     /*----- rankize -----*/
+
+     if( strcasecmp(argv[nopt],"-rankize") == 0 ){  /* 10 Nov 2010 */
+       do_ranks = 1 ; do_1sam = 0 ; nopt++ ; continue ;
+     }
+#endif
+
+     /*----- BminusA -----*/
+
+     if( strcasecmp(argv[nopt],"-BminusA") == 0 ){  /* 05 Nov 2010 */
+       BminusA = 1 ; nopt++ ; continue ;
+     }
+     if( strcasecmp(argv[nopt],"-AminusB") == 0 ){
+       BminusA = 0 ; nopt++ ; continue ;
+     }
+
      /*----- zskip -----*/
 
      if( strcmp(argv[nopt],"-zskip")     == 0 ||
          strcmp(argv[nopt],"-skip_zero") == 0   ){  /* 06 Oct 2010 */
-       zskip = 5 ; nopt++ ;
-       if( nopt < argc && isdigit(argv[nopt][0]) ){
-         zskip = (int)strtod(argv[nopt++],NULL) ; if( zskip < 2 ) zskip = 2 ;
+       nopt++ ;
+       if( nopt < argc && (isdigit(argv[nopt][0]) || argv[nopt][0] == '.') ){
+         float zzz ; char *cpt ;
+         zzz = (float)strtod(argv[nopt++],&cpt) ;
+         if( zzz > 1.0f && *cpt == '%' ) zzz *= 0.01f ;
+         if( zzz > 1.0f ){
+           zskip_AAA = zskip_BBB = (int)zzz ; zskip_fff = 0.0f ; do_zskip = 1 ;
+         } else {
+           if( zzz <= 0.0f || zzz > 1.0f ){
+             WARNING_message("Illegal value after '-zskip' -- ignoring this option :-(") ;
+             zskip_AAA = zskip_BBB = 0 ; zskip_fff = 0.0f ; do_zskip = 0 ;
+           } else {
+             zskip_AAA = zskip_BBB = 0 ; zskip_fff = zzz  ; do_zskip = 1 ;
+           }
+         }
+       } else {
+         zskip_AAA = zskip_BBB = 5 ; zskip_fff = 0.0f ; do_zskip = 1 ;
        }
        continue ;
      }
@@ -912,19 +1016,34 @@ int main( int argc , char *argv[] )
    if( nmask > 0 && nmask != nvox )
      ERROR_exit("-mask doesn't match datasets number of voxels") ;
 
-   if( zskip && mcov > 0 )
+   if( do_zskip && mcov > 0 )
      ERROR_exit("-zskip and -covariates cannot be used together [yet] :-(") ;
 
-   if( zskip && ttest_opcode == 2 )
+   if( do_zskip && ttest_opcode == 2 )
      ERROR_exit("-zskip and -paired cannot be used together :-(") ;
 
-   if( zskip && nval_AAA < zskip )
-     ERROR_exit("-zskip %d is more than number of data values in setA (%d)",
-                zskip , nval_AAA ) ;
+   if( do_zskip && zskip_fff > 0.0f && zskip_fff <= 1.0f ){
+     zskip_AAA = (int)(zskip_fff*nval_AAA) ; if( zskip_AAA < 2 ) zskip_AAA = 2 ;
+     if( nval_BBB > 0 ){
+       zskip_BBB = (int)(zskip_fff*nval_BBB) ; if( zskip_BBB < 2 ) zskip_BBB = 2 ;
+     }
+   }
 
-   if( zskip && nval_BBB > 0 && nval_BBB < zskip )
-     ERROR_exit("-zskip %d is more than number of data values in setB (%d)",
-                zskip , nval_BBB ) ;
+   if( do_zskip && nval_AAA < zskip_AAA )
+     ERROR_exit("-zskip (%d) is more than number of data values in setA (%d)",
+                zskip_AAA , nval_AAA ) ;
+
+   if( do_zskip && nval_BBB > 0 && nval_BBB < zskip_BBB )
+     ERROR_exit("-zskip (%d) is more than number of data values in setB (%d)",
+                nval_BBB ) ;
+
+   if( do_zskip ){
+     INFO_message("-zskip: require %d (out of %d) nonzero values for setA",
+                  zskip_AAA,nval_AAA) ;
+     if( nval_BBB > 0 )
+       ININFO_message("    and require %d (out of %d) nonzero values for setB",
+                      zskip_BBB,nval_BBB) ;
+   }
 
    if( nval_AAA - mcov < 2 ||
        ( twosam && (nval_BBB - mcov < 2) ) )
@@ -946,12 +1065,29 @@ int main( int argc , char *argv[] )
      ttest_opcode = 0 ;
    }
 
-   if( zskip && !toz ){
+   if( do_zskip && !toz ){
      toz = 1 ; INFO_message("-zskip also turns on -toz") ;
    }
    if( ttest_opcode == 1 && !toz ){
      toz = 1 ; INFO_message("-unpooled also turns on -toz") ;
    }
+
+   if( !do_1sam && !twosam ){
+     WARNING_message("-no1sam and no -setB datasets?  What do you mean?") ;
+     do_1sam = 1 ;
+   }
+
+#ifdef ALLOW_RANKS
+   if( do_ranks && !twosam ){
+     WARNING_message("-rankize only works with two-sample tests ==> ignoring") ;
+     do_ranks = 0 ; do_1sam = 1 ;
+   }
+#else
+   if( do_ranks ){
+     WARNING_message("-rankize is disabled at this time") ;
+     do_ranks = 0 ;
+   }
+#endif
 
    if( nmask == 0 ){
      INFO_message("no mask ==> processing all %d voxels",nvox) ;
@@ -962,6 +1098,21 @@ int main( int argc , char *argv[] )
      snam_AAA = (lnam_AAA != NULL) ? lnam_AAA : strdup("SetA") ;
    if( snam_BBB == NULL )
      snam_BBB = (lnam_BBB != NULL) ? lnam_BBB : strdup("SetB") ;
+
+   if( BminusA == 1 && !twosam ){
+     WARNING_message("-BminusA disabled: you didn't input setB!") ;
+     BminusA = 0 ;
+   }
+   if( BminusA == -1 ){
+     BminusA = 0 ;
+     if( twosam ) INFO_message("2-sample test: '-AminusB' option is assumed") ;
+   }
+
+   if( twosam ){
+     snam_PPP = (BminusA) ? snam_BBB : snam_AAA ;
+     snam_MMM = (BminusA) ? snam_AAA : snam_BBB ;
+     INFO_message("2-sample test: results are %s - %s",snam_PPP,snam_MMM) ;
+   }
 
    /*----- convert each input set of datasets to a vectim -----*/
 
@@ -1125,11 +1276,32 @@ int main( int argc , char *argv[] )
 
      if( num_covset_col > 0 ) MEMORY_CHECK ;
 
+     if( twosam && num_covset_col < mcov ){             /* 19 Oct 2010 */
+       int toz_sav = toz ; float pp ;         /* test covariates for equality */
+
+       toz = 1 ;
+       INFO_message(
+         "Two samples: t-testing fixed covariates for similarity between groups") ;
+       for( jj=0 ; jj < mcov ; jj++ ){
+         if( covnel->vec_typ[jj+1] == NI_STRING ){
+           ININFO_message(" %s: values come from datasets ==> skipping test" ,
+                          covlab->str[jj+1] ) ;
+         } else {
+           tpair = ttest_toz( ndset_AAA , covvec_AAA[jj]->ar ,
+                              ndset_BBB , covvec_BBB[jj]->ar , 0 ) ;
+           pp = normal_t2p( fabs((double)tpair.b) ) ;
+           ININFO_message(" %s: mean of setA-setB=%s ; 2-sided p-value=%.4f" ,
+                          covlab->str[jj+1] , MV_format_fval(tpair.a) , pp ) ;
+         }
+       }
+       toz = toz_sav ;
+     } else INFO_message("twosam=%d num_covset_col=%d mcov=%d",twosam,num_covset_col,mcov) ;
+
    }  /*-- end of covariates setup --*/
 
    /*-------------------- create empty output dataset ---------------------*/
 
-   nvout  = ((twosam) ? 6 : 2) * (mcov+1) ;  /* number of output volumes */
+   nvout  = ((twosam && do_1sam) ? 6 : 2) * (mcov+1) ; /* # of output volumes */
 
    outset = EDIT_empty_copy( dset_AAA[0] ) ;
 
@@ -1150,11 +1322,12 @@ int main( int argc , char *argv[] )
    /* make up some brick labels [[[man, this is tediously boring work]]] */
 
    if( mcov > 0 ){
-     nws       = sizeof(float)*(2*mcov+nval_AAA+nval_BBB+32) ;
+     nws       = sizeof(float)*(4*mcov+2*nval_AAA+2*nval_BBB+32) ;
      workspace = (float *)malloc(nws) ;
 
      if( twosam ){
        testAB = testA = testB = (unsigned int)(-1) ;
+       if( !do_1sam ) testA = testB = 0 ;            /* 10 Nov 2010 */
      } else {
        testAB = testB = 0 ; testA = (unsigned int)(-1) ;
      }
@@ -1174,40 +1347,44 @@ int main( int argc , char *argv[] )
           if( toz ) EDIT_BRICK_TO_FIZT(outset,1) ;
           else      EDIT_BRICK_TO_FITT(outset,1,dof_A) ;
      } else {
-       sprintf(blab,"%s-%s_mean",snam_AAA,snam_BBB)      ; EDIT_BRICK_LABEL(outset,0,blab);
-       sprintf(blab,"%s-%s_%s"  ,snam_AAA,snam_BBB,stnam); EDIT_BRICK_LABEL(outset,1,blab);
+       ntwosam = 2 ;
+       sprintf(blab,"%s-%s_mean",snam_PPP,snam_MMM)      ; EDIT_BRICK_LABEL(outset,0,blab);
+       sprintf(blab,"%s-%s_%s"  ,snam_PPP,snam_MMM,stnam); EDIT_BRICK_LABEL(outset,1,blab);
           if( toz ) EDIT_BRICK_TO_FIZT(outset,1) ;
           else      EDIT_BRICK_TO_FITT(outset,1,dof_AB) ;
-       sprintf(blab,"%s_mean",snam_AAA)                  ; EDIT_BRICK_LABEL(outset,2,blab);
-       sprintf(blab,"%s_%s"  ,snam_AAA,stnam)            ; EDIT_BRICK_LABEL(outset,3,blab);
-          if( toz ) EDIT_BRICK_TO_FIZT(outset,3) ;
-          else      EDIT_BRICK_TO_FITT(outset,3,dof_A) ;
-       sprintf(blab,"%s_mean",snam_BBB)                  ; EDIT_BRICK_LABEL(outset,4,blab);
-       sprintf(blab,"%s_%s"  ,snam_BBB,stnam)            ; EDIT_BRICK_LABEL(outset,5,blab);
-          if( toz ) EDIT_BRICK_TO_FIZT(outset,5) ;
-          else      EDIT_BRICK_TO_FITT(outset,5,dof_B) ;
+       if( do_1sam ){
+         sprintf(blab,"%s_mean",snam_AAA)                  ; EDIT_BRICK_LABEL(outset,2,blab);
+         sprintf(blab,"%s_%s"  ,snam_AAA,stnam)            ; EDIT_BRICK_LABEL(outset,3,blab);
+            if( toz ) EDIT_BRICK_TO_FIZT(outset,3) ;
+            else      EDIT_BRICK_TO_FITT(outset,3,dof_A) ;
+         sprintf(blab,"%s_mean",snam_BBB)                  ; EDIT_BRICK_LABEL(outset,4,blab);
+         sprintf(blab,"%s_%s"  ,snam_BBB,stnam)            ; EDIT_BRICK_LABEL(outset,5,blab);
+            if( toz ) EDIT_BRICK_TO_FIZT(outset,5) ;
+            else      EDIT_BRICK_TO_FITT(outset,5,dof_B) ;
+       }
      }
    } else {                            /*--- have covariates ---*/
      kk = 0 ;
-     if( testAB ){
-       sprintf(blab,"%s-%s_mean",snam_AAA,snam_BBB);
+     if( testAB ){                     /* 2-sample results */
+       ntwosam = 2*(mcov+1) ;
+       sprintf(blab,"%s-%s_mean",snam_PPP,snam_MMM);
          EDIT_BRICK_LABEL(outset,kk,blab); kk++;
-       sprintf(blab,"%s-%s_%s"  ,snam_AAA,snam_BBB,stnam);
+       sprintf(blab,"%s-%s_%s"  ,snam_PPP,snam_MMM,stnam);
          EDIT_BRICK_LABEL(outset,kk,blab);
          if( toz ) EDIT_BRICK_TO_FIZT(outset,kk) ;
          else      EDIT_BRICK_TO_FITT(outset,kk,dof_AB) ;
          kk++;
        for( jj=1 ; jj <= mcov ; jj++ ){
-         sprintf(blab,"%s-%s_%s",snam_AAA,snam_BBB,covlab->str[jj]) ;
+         sprintf(blab,"%s-%s_%s",snam_PPP,snam_MMM,covlab->str[jj]) ;
            EDIT_BRICK_LABEL(outset,kk,blab); kk++;
-         sprintf(blab,"%s-%s_%s_%s",snam_AAA,snam_BBB,covlab->str[jj],stnam) ;
+         sprintf(blab,"%s-%s_%s_%s",snam_PPP,snam_MMM,covlab->str[jj],stnam) ;
            EDIT_BRICK_LABEL(outset,kk,blab);
          if( toz ) EDIT_BRICK_TO_FIZT(outset,kk) ;
          else      EDIT_BRICK_TO_FITT(outset,kk,dof_AB) ;
          kk++;
        }
      }
-     if( testA ){
+     if( testA ){                      /* 1-sample results */
        sprintf(blab,"%s_mean",snam_AAA) ;
          EDIT_BRICK_LABEL(outset,kk,blab); kk++;
        sprintf(blab,"%s_%s",snam_AAA,stnam) ;
@@ -1225,7 +1402,7 @@ int main( int argc , char *argv[] )
            kk++;
        }
      }
-     if( testB ){
+     if( testB ){                      /* 1-sample results */
        sprintf(blab,"%s_mean",snam_BBB) ;
          EDIT_BRICK_LABEL(outset,kk,blab); kk++;
        sprintf(blab,"%s_%s",snam_BBB,stnam) ;
@@ -1283,11 +1460,11 @@ int main( int argc , char *argv[] )
      if( mcov == 0 ){  /*--- no covariates ==> standard t-tests ---*/
        float *zAAA=datAAA, *zBBB=datBBB ; int nAAA=nval_AAA, nBBB=nval_BBB, nz,qq ;
 
-       if( zskip ){  /* 06 Oct 2010: skip zero values? */
+       if( do_zskip ){  /* 06 Oct 2010: skip zero values? */
          for( ii=nz=0 ; ii < nval_AAA ; ii++ ) nz += (datAAA[ii] == 0.0f) ;
          if( nz > 0 ){            /* copy nonzero vals to a new array */
            nAAA = nval_AAA - nz ;
-           if( nAAA < zskip ){
+           if( nAAA < zskip_AAA ){
              memset( resar , 0 , sizeof(float)*nvout ) ; kout++ ; nzskip++ ; continue ;
            }
            zAAA = (float *)malloc(sizeof(float)*nAAA) ;
@@ -1298,7 +1475,7 @@ int main( int argc , char *argv[] )
            for( ii=nz=0 ; ii < nval_BBB ; ii++ ) nz += (datBBB[ii] == 0.0f) ;
            if( nz > 0 ){            /* copy nonzero vals to a new array */
              nBBB = nval_BBB - nz ;
-             if( nBBB < zskip ){
+             if( nBBB < zskip_BBB ){
                if( zAAA != datAAA && zAAA != NULL ) free(zAAA) ;
                memset( resar , 0 , sizeof(float)*nvout ) ; kout++ ; nzskip++ ; continue ;
              }
@@ -1312,12 +1489,17 @@ int main( int argc , char *argv[] )
        }
 
        if( twosam ){
+         if( do_1sam ){
+           tpair = ttest_toz( nAAA,zAAA , 0 ,NULL   , ttest_opcode ) ;
+           resar[2] = tpair.a ; resar[3] = tpair.b ;
+           tpair = ttest_toz( nBBB,zBBB , 0 ,NULL   , ttest_opcode ) ;
+           resar[4] = tpair.a ; resar[5] = tpair.b ;
+         }
+#ifdef ALLOW_RANKS
+         if( do_ranks ) rank_order_2floats( nAAA,zAAA , nBBB,zBBB ) ;
+#endif
          tpair = ttest_toz( nAAA,zAAA , nBBB,zBBB , ttest_opcode ) ;
          resar[0] = tpair.a ; resar[1] = tpair.b ;
-         tpair = ttest_toz( nAAA,zAAA , 0 ,NULL   , ttest_opcode ) ;
-         resar[2] = tpair.a ; resar[3] = tpair.b ;
-         tpair = ttest_toz( nBBB,zBBB , 0 ,NULL   , ttest_opcode ) ;
-         resar[4] = tpair.a ; resar[5] = tpair.b ;
        } else {
          tpair = ttest_toz( nAAA,zAAA , 0 ,NULL   , ttest_opcode ) ;
          resar[0] = tpair.a ; resar[1] = tpair.b ;
@@ -1337,11 +1519,17 @@ int main( int argc , char *argv[] )
 
        if( nws > 0 ) memset(workspace,0,nws) ;
 
+#ifdef ALLOW_RANKS
+       if( do_ranks ) rank_order_2floats( nval_AAA, datAAA, nval_BBB, datBBB ) ;
+#endif
        regress_toz( nval_AAA , datAAA , nval_BBB , datBBB , ttest_opcode ,
                     mcov ,
                     Axx , Axx_psinv , Axx_xtxinv ,
                     Bxx , Bxx_psinv , Bxx_xtxinv , resar , workspace ) ;
+     }
 
+     if( BminusA && ntwosam ){  /* 05 Nov 2010 */
+       for( ii=0 ; ii < ntwosam ; ii++ ) resar[ii] = -resar[ii] ;
      }
 
      kout++ ;
@@ -1350,16 +1538,16 @@ int main( int argc , char *argv[] )
    if( vstep > 0 ){ fprintf(stderr,"!\n") ; MEMORY_CHECK ; }
 
    if( nconst > 0 )
-     INFO_message("skipped %d voxel%s for having constant data" ,
+     INFO_message("skipped %d voxel%s completely for having constant data" ,
                   nconst , (nconst==1) ? "\0" : "s" ) ;
 
    if( nzred > 0 )
-     INFO_message("-zskip: %d voxel%s had some values skipped in the t-test",
+     INFO_message("-zskip: %d voxel%s had some values skipped in their t-tests",
                   nzred , (nzred==1) ? "\0" : "s" ) ;
 
    if( nzskip > 0 )
-     INFO_message("-zskip: skipped %d voxel%s for having fewer than %d nonzero values" ,
-                  nzskip , (nzskip==1) ? "\0" : "s" , zskip ) ;
+     INFO_message("-zskip: skipped %d voxel%s completely for having too few nonzero values" ,
+                  nzskip , (nzskip==1) ? "\0" : "s" ) ;
 
    /*-------- get rid of the input data now --------*/
 
@@ -1403,11 +1591,16 @@ int main( int argc , char *argv[] )
    mri_fdr_setmask(mask) ;
    kk = THD_create_all_fdrcurves(outset) ;
    if( kk > 0 )
-     INFO_message("Added %d FDR curve%s to dataset",kk,(kk==1)?"\0":"s");
+     ININFO_message("Added %d FDR curve%s to dataset",kk,(kk==1)?"\0":"s");
    else
      WARNING_message("Failed to add FDR curves to dataset?!") ;
 
-   DSET_write(outset) ; WROTE_DSET(outset) ; exit(0) ;
+   if( twosam )
+     ININFO_message("2-sample test: results are %s - %s",snam_PPP,snam_MMM) ;
+
+   DSET_write(outset) ; WROTE_DSET(outset) ;
+
+   exit(0) ;
 
 } /* end of main program */
 
@@ -1954,6 +2147,17 @@ ENTRY("TT_matrix_setup") ;
        for( kk=0 ; kk < nval_BBB ; kk++ ) BXX(kk,jj) = fpt[kk] ;
      }
    }
+
+#ifdef ALLOW_RANKS
+   if( do_ranks ){
+     for( jj=1 ; jj <= mcov ; jj++ ){
+       if( twosam && ttest_opcode != 2 )
+         rank_order_2floats( nval_AAA , &(AXX(0,jj)) , nval_BBB , &(BXX(0,jj)) ) ;
+       else
+         rank_order_float( nval_AAA , &(AXX(0,jj)) ) ;
+     }
+   }
+#endif
 
    TT_centerize() ; /* column de-mean-ization? */
 

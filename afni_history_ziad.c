@@ -65,6 +65,122 @@
 
 afni_history_struct ziad_history[] = {
 /*=====BELOW THIS LINE=====*/
+ { 21, DEC , 2010 , ZSS , "@help.AFNI" , MINOR , TYPE_NEW_PROG,
+   "A simple script to look at AFNI's all help page",
+   NULL
+ } ,
+
+ { 10, DEC , 2010 , ZSS , "3BrickStat" , MINOR , TYPE_NEW_OPT,
+   "Added -mrange and -mvalue options to 3dBrickStat",
+   NULL
+ } ,
+
+ { 9, DEC , 2010 , ZSS , "3dhistog" , MINOR , TYPE_NEW_OPT,
+   "Made 3dhistog output NIML 1D format with -prefix option",
+   "With -prefix's output users can get properly labeled \n"
+   "output with a simple command like 1dRplot -input hist.1D"
+ } ,
+
+ { 2, DEC , 2010 , ZSS , "afni" , MICRO , TYPE_MODIFY,
+   "Made afni startup with two windows when no layout is present",
+   NULL
+ } ,
+
+ { 24, NOV , 2010 , ZSS , "3dTcat" , MICRO , TYPE_BUG_FIX,
+   "3dTcat was forcing sub-brick selection at times",
+   "Say each of dset1 and dset2 has 10 subbricks. \n"
+   "A command like this:\n"
+   " 3dTcat dset1+orig[0..8] dset2+orig \n"
+   "used to produce a dataset that is 18 sub-bricks, not\n"
+   "19. That is because the [0..8] selection was applied\n"
+   "to dset1 and all subsequent dsets on the command that\n"
+   "did not explicitly have selectors in their name."
+ } ,
+
+ { 22, NOV , 2010 , ZSS , "3dRowFillin" , MINOR , TYPE_NEW_OPT,
+   "Added XYZ.OR, and XYZ.AND to 3dRowFillin",
+   NULL
+ } ,
+
+ { 16, NOV , 2010 , ZSS , "ExamineXmat" , MINOR , TYPE_NEW_OPT,
+   "A major rewrite of ExamineXmat",
+   "see ExamineXmat -help for details"
+ } ,
+
+ { 5, NOV , 2010 , ZSS , "niccc" , MINOR , TYPE_NEW_OPT,
+   "Added -attribute, -match, and -f options to niccc",
+   "See niccc -help for details."
+ } ,
+
+ { 5, NOV , 2010 , ZSS , "3dkmeans" , MAJOR , TYPE_NEW_PROG,
+   "3dkmeans is a program for performing kmeans clustering",
+   "Program was written by A. Vovk and Z. Saad, based on \n"
+   "  The C clustering library.\n"
+   "Copyright (C) 2002 Michiel Jan Laurens de Hoon.\n"
+   "See suma -sources for copyright details\n"
+   "\n"
+   "See 3dkmeans -help for usage details.\n"
+ } ,
+
+ { 1, NOV , 2010 , ZSS , "3dBrickStat" , MINOR , TYPE_BUG_FIX,
+   "3dBrickStat's precentile option did not work with byte datasets",
+   NULL
+ } ,
+
+ { 29, OCT , 2010 , ZSS , "@ElectroGrid" , MINOR , TYPE_NEW_PROG,
+   "A script for facilitating ECOG grid creation",
+   NULL
+ } ,
+
+ { 28, OCT , 2010 , ZSS , "@RegroupLabels" , MINOR , TYPE_NEW_PROG,
+   "A script for regrouping label datasets",
+   NULL
+ } ,
+
+ { 28, OCT , 2010 , ZSS , "3dcopy" , MICRO , TYPE_NEW_OPT,
+   "Support for -overwrite",
+   NULL
+ } ,
+
+ { 22, OCT , 2010 , ZSS , "suma" , MINOR , TYPE_BUG_FIX,
+   "Fixed rendering of spheres, which were affected by ambient light.",
+   "Thanks to MSB for the complaint."
+ } ,
+
+ { 22, OCT , 2010 , ZSS , "DriveSuma" , MINOR , TYPE_NEW_OPT,
+   "Added -RenderMode option to control how a surface is rendered",
+   "This option is the same as Surface Controller-->RenderMode menu"
+ } ,
+
+ { 22, OCT , 2010 , ZSS , "ConvexHull" , MINOR , TYPE_NEW_OPT,
+   "Added -q_opt option to allow for delaunay triangulation of 2D coordinates",
+   "This new option makes it easy to create a surface from a set\n"
+   "of ECOG electrodes.\n"
+ } ,
+
+ { 22, OCT , 2010 , ZSS , "suma" , MINOR , TYPE_NEW_OPT,
+   "Added NodeMarker field to the spec file",
+   "The NodeMarker is a NIDO object that gets replicated at all nodes.\n"
+   "Replicated markers inherit the color of the nodes IF the NodeMarker\n"
+   "has no color attribute.\n"
+ } ,
+
+ { 20, OCT , 2010 , ZSS , "niccc" , MICRO , TYPE_NEW_PROG,
+   "Started making niccc as part of the default compilation",
+   "The program, originally written by Bob, \n"
+   "is useful for testing NIML functions"
+ } ,
+
+ { 20, OCT , 2010 , ZSS , "afni-general" , MINOR , TYPE_MODIFY,
+   "Added NI_duplicate* functions to niml",
+   NULL
+ } ,
+
+ { 19, OCT , 2010 , ZSS , "3dcopy" , MINOR , TYPE_MODIFY,
+   "Allowed 3dcopy to take . or ./ as output options",
+   "Other changes make the error message a little more\n"
+   "informative\n"
+ } ,
 
  { 27, SEP , 2010 , ZSS , "suma" , MINOR , TYPE_NEW_OPT,
    "Began code changes to allow for volume rendering",
@@ -1024,7 +1140,7 @@ afni_history_struct ziad_history[] = {
    "The programs demonstrate time series processing and plotting in R."
  },
   
- { 29 , AUG , 2008 , ZSS , "ExamineXmatR" , MAJOR,  TYPE_NEW_PROG,
+ { 29 , AUG , 2008 , ZSS , "ExamineXmat" , MAJOR,  TYPE_NEW_PROG,
    "An interactive tool to examine a design matrix",
    NULL
  },

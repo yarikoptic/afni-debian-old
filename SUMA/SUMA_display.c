@@ -2,14 +2,6 @@
 #include "coxplot.h"
 #include "SUMA_plot.h"
  
-extern SUMA_SurfaceViewer *SUMAg_SVv; /*!< Global pointer to the vector containing the various Surface Viewer Structures 
-                                    SUMAg_SVv contains SUMA_MAX_SURF_VIEWERS structures */
-extern int SUMAg_N_SVv; /*!< Number of SVs realized by X  */
-/* extern SUMA_SurfaceViewer *SUMAg_cSV; */ /* This variable is no longer used in this file Tue Aug 13 15:27:53 EDT 2002*/ 
-extern int SUMAg_N_DOv; 
-extern SUMA_DO *SUMAg_DOv;
-extern SUMA_CommonFields *SUMAg_CF; 
-
 /*! Parts of the code in this file are based on code from the motif programming manual.
     This fact is mentioned at relevant spots in the code but the complete copyright 
     notice is only copied here for brevity:
@@ -1532,7 +1524,7 @@ void SUMA_display(SUMA_SurfaceViewer *csv, SUMA_DO *dov)
                break;
             case SO_type:
                SO = (SUMA_SurfaceObject *)dov[csv->RegisteredDO[i]].OP;
-               if (SO->Show) {
+               if (SO->Show && SO->PolyMode != SRM_Hide) {
                   if (  (SO->Side == SUMA_LEFT && csv->ShowLeft) || 
                         (SO->Side == SUMA_RIGHT && csv->ShowRight) ||
                         SO->Side == SUMA_NO_SIDE || SO->Side == SUMA_LR) {
@@ -9975,6 +9967,22 @@ void SUMA_cb_SetRenderMode(Widget widget, XtPointer client_data,
    SUMA_RETURNe;
 }
 
+int SUMA_RenderMode2RenderModeMenuItem(int Mode)
+{
+   static char FuncName[]={"SUMA_RenderMode2RenderModeMenuItem"};
+   
+   SUMA_ENTRY;
+   
+   if ((Mode) >= SW_N_SurfCont_Render || 
+       (Mode) <=  SW_SurfCont_Render) {
+      SUMA_S_Err("Bad mode, returning FILL");    
+      SUMA_RETURN(SW_SurfCont_RenderFill);
+   }
+   
+   SUMA_RETURN(Mode);
+}      
+
+
 int SUMA_ShowMode2ShowModeMenuItem(int Mode)
 {
    static char FuncName[]={"SUMA_ShowMode2ShowModeMenuItem"};
@@ -9992,6 +10000,7 @@ int SUMA_ShowMode2ShowModeMenuItem(int Mode)
       SUMA_RETURN(Mode);
    }
 }      
+
 
 int SUMA_ShowModeStr2ShowModeMenuItem(char *str) 
 {

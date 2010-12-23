@@ -476,16 +476,16 @@ void GRINCOR_dotprod( MRI_shindss *shd, int ids, float *vv, float *dp )
 void GRINCOR_many_dotprod( MRI_shindss *shd , float **vv , float **ddp )
 {
 
+ AFNI_OMP_START ;
 #pragma omp parallel
  { int ids , ndset=shd->ndset ;
-   AFNI_OMP_START ;
 #pragma omp for
    for( ids=0 ; ids < ndset ; ids++ ){
      if( verb > 3 ) fprintf(stderr," +   start correlation on dataset #%d\n",ids) ;
      GRINCOR_dotprod( shd , ids , vv[ids] , ddp[ids] ) ;
    }
-   AFNI_OMP_END ;
  }
+ AFNI_OMP_END ;
 
 #ifdef isfinite
    if( debug ){
@@ -639,6 +639,7 @@ int main( int argc , char *argv[] )
    MRI_IMAGE *axxim , *axxim_psinv , *axxim_xtxinv ;
    MRI_IMAGE *bxxim , *bxxim_psinv , *bxxim_xtxinv ;
    float **dtar=NULL ;
+   int no_ttest = 0 ;  /* 02 Nov 2010 */
 
 #ifdef COVTEST
    float *ctarA=NULL , *ctarB=NULL ; char *ctnam ;
@@ -780,6 +781,15 @@ int main( int argc , char *argv[] )
 #endif
       "   ++ None of these options means anything for a 1-sample t-test\n"
       "      (i.e., where you don't use -setB).\n"
+#if 0
+      "\n"
+      "*** Special Option for Ziad Saad (and His Ilk) ***\n"
+      "\n"
+      " -no_ttest = Don't do any t-tests at all.  Just compute the correlations\n"
+      "             at each voxel for each dataset and transmit those to the\n"
+      "             master program (AFNI or SUMA).\n"
+      "            ++ This really is a special case, and not for the normal user.\n"
+#endif
       "\n"
       "*** Dataset-Level Covariates [26 May 2010] ***\n"
       "\n"
@@ -880,9 +890,9 @@ int main( int argc , char *argv[] )
       "          each stage of the process.\n"
 #endif
       "\n"
-      " -quiet = Turn off the 'fun fun fun in the sun sun sun' informational messages\n"
-      " -verb  = Print out extra informational messages for more fun\n"
-      " -VERB  = Print out even more informational messages for even more fun!\n"
+      " -quiet = Turn off the 'fun fun fun in the sun sun sun' informational messages.\n"
+      " -verb  = Print out extra informational messages for more fun!\n"
+      " -VERB  = Print out even more informational messages for even more fun!!\n"
 #ifdef isfinite
       " -debug = Do some internal testing (slows things down a little)\n"
 #endif
@@ -895,8 +905,46 @@ int main( int argc , char *argv[] )
       "starting AFNI; for example:\n"
       "\n"
       "  afni -DAFNI_GROUPINCORR_ORIG=YES -niml\n"
+      "\n"
+      "This feature might be useful to you if you are doing a longitudinal study on\n"
+      "some subject, comparing resting state maps before and after some treatment.\n"
+      "\n"
+      "-------========= Group InstaCorr and AFNI's Clusterize function =========-------\n"
+      "\n"
+      "At this moment in history, you can't use Clusterize in the AFNI A controller at\n"
+      "the same time that 3dGroupInCorr is actively connected.  If you also want to\n"
+      "Clusterize the maps from this program, there are 2 slightly clumsy methods\n"
+      "that work reasonably well:\n"
+      "\n"
+      "(1) In the A controller, you can switch between 'Clusters' and 'GrpInCorr':\n"
+      "   -- When 'Clusters' is active, you can Clusterize, but you can't do a\n"
+      "      new 'InstaCorr Set' operation\n"
+      "   -- When 'GrpInCorr' is active, then you can do 'InstaCorr Set', but\n"
+      "      the new result won't be Clusterize-d, until you switch back to\n"
+      "      'Clusters' and then press 'Clusterize' again.\n"
+      "   -- This is clumsy because you have to keep switching between GrpInCorr\n"
+      "      and Clusterize, which quickly becomes annoying.\n"
+      "\n"
+      "(2) Alternatively, you can open up the B controller (with the 'New' button),\n"
+      "    and then view the A_GRP_ICORR dataset as the Overlay in a separate\n"
+      "    set of image viewers, which you can Clusterize.\n"
+      "   -- However, since you also have to view the un-Clusterize-d A_GRP_ICORR\n"
+      "      dataset in the AFNI A controller, it is necessary to un-Lock the\n"
+      "      viewing controls of the two controllers.  Otherwise, the 2 controllers\n"
+      "     'fight' for who controls the way the dataset is edited for presentation,\n"
+      "      and the Clusterize-ation in controller B can appear and disappear\n"
+      "      as you scroll around.\n"
+      "   -- To turn off the Lock between the A and B controllers, use the\n"
+      "      Datamode->Lock menu and select 'Clear All'.  Or start AFNI with\n"
+      "      the command line option '-DAFNI_ALWAYS_LOCK=NO' (to override the\n"
+      "      default where all controllers are locked together at startup).\n"
+      "   -- This is clumsy because you have to use two controllers, and set\n"
+      "      your GrpInCorr seed in the A image viewers but view the results\n"
+      "      you want to see in the B image viewers.  And scrolling around in\n"
+      "      the unlocked image viewers can also be annoying.\n"
      ) ;
      PRINT_AFNI_OMP_USAGE("3dGroupInCorr",NULL) ;
+     printf("++ Authors: Bob Cox and Ziad Saad\n") ;
      PRINT_COMPILE_DATE ; exit(0) ;
    }
 
@@ -2014,9 +2062,9 @@ void GRINCOR_many_ttest( int nvec , int numx , float **xxar ,
 {
    if( numy > 0 && yyar != NULL ){  /*--- 2 sample t-test ---*/
 
+ AFNI_OMP_START ;
 #pragma omp parallel
  { int ii,kk ; float *xar,*yar ; float_pair delzsc ;
-   AFNI_OMP_START ;
    xar = (float *)malloc(sizeof(float)*numx) ;
    yar = (float *)malloc(sizeof(float)*numy) ;
 #pragma omp for
@@ -2027,14 +2075,14 @@ void GRINCOR_many_ttest( int nvec , int numx , float **xxar ,
        dar[kk] = delzsc.a ; zar[kk] = delzsc.b ;
      }
    free(yar) ; free(xar) ;
-   AFNI_OMP_END ;
  }
+ AFNI_OMP_END ;
 
    } else {  /*--- 1 sample t-test ---*/
 
+ AFNI_OMP_START ;
 #pragma omp parallel
  { int kk,ii ; float *xar ; float_pair delzsc ;
-   AFNI_OMP_START ;
    xar = (float *)malloc(sizeof(float)*numx) ;
 #pragma omp for
      for( kk=0 ; kk < nvec ; kk++ ){
@@ -2043,8 +2091,8 @@ void GRINCOR_many_ttest( int nvec , int numx , float **xxar ,
        dar[kk] = delzsc.a ; zar[kk] = delzsc.b ;
      }
    free(xar) ;      /* oopsie [13 Sep 2010] */
-   AFNI_OMP_END ;
  }
+ AFNI_OMP_END ;
 
    }
 
@@ -2349,9 +2397,9 @@ void GRINCOR_many_regress( int nvec , int numx , float **xxar ,
                                       int nout , float **dtar  )
 {
    if( numy > 0 && yyar != NULL ){  /*--- 2 sample ---*/
+   AFNI_OMP_START ;
 #pragma omp parallel
    { int ii,kk ; float *xar,*yar,*var,*wss ;
-     AFNI_OMP_START ;
      xar = (float *)malloc(sizeof(float)*numx) ;
      yar = (float *)malloc(sizeof(float)*numy) ;
      var = (float *)malloc(sizeof(float)*nout) ;
@@ -2367,13 +2415,15 @@ void GRINCOR_many_regress( int nvec , int numx , float **xxar ,
        for( ii=0 ; ii < nout ; ii++ ) dtar[ii][kk] = var[ii] ;
      }
      free(wss) ; free(var) ; free(yar) ; free(xar) ;
-     AFNI_OMP_END ;
 
-   }} else {  /*--- 1 sample ---*/
+   }
+   AFNI_OMP_END ;
 
+   } else {  /*--- 1 sample ---*/
+
+   AFNI_OMP_START ;
 #pragma omp parallel
    { int ii,kk ; float *xar,*var,*wss ;
-     AFNI_OMP_START ;
      xar = (float *)malloc(sizeof(float)*numx) ;
      var = (float *)malloc(sizeof(float)*nout) ;
      wss = (float *)malloc(sizeof(float)*(2*mcov+numx+9)) ;
@@ -2387,8 +2437,10 @@ void GRINCOR_many_regress( int nvec , int numx , float **xxar ,
        for( ii=0 ; ii < nout ; ii++ ) dtar[ii][kk] = var[ii] ;
      }
      free(wss) ; free(var) ; free(xar) ;
-     AFNI_OMP_END ;
-   }}
+   }
+   AFNI_OMP_END ;
+
+   }
 
    return ;
 }

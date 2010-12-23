@@ -836,7 +836,8 @@ typedef struct {
                        into SUMA be the Parent. Use SAME for this field when
                        a surface is a LocalDomainParent.
                       */
-   
+   char **NodeMarker;  /*!< File containing node marker DO */
+
    int N_Surfs;         /*!< Number of surfaces, in the spec file */
    int N_States;                                                     
    int N_Groups;
@@ -2129,8 +2130,7 @@ typedef struct {
    SUMA_Boolean SentToAfni; /*!< YUP if the surface has been 
                                  niml-sent to AFNI */
    SUMA_Boolean Show; /*!< YUP then the surface is visible in the viewer. 
-                           Not used that much I'd say*/
-   
+                           Used in conjunction with PolyMode*/
    SUMA_RENDER_MODES PolyMode; /*!< polygon viewing mode, SRM_Fill, 
                                     SRM_Line, SRM_Points */
       
@@ -2228,6 +2228,17 @@ typedef struct {
    NI_element *texnel;  /*!< a copy of a pointer to a texture element.
                          This should be set only before drawing and turned
                          back to NULL immediately after that */
+   
+   SUMA_DO *CommonNodeObject; /*!< a node marker which can be any of the 
+                            node-based displayable objects. 
+                            The DO is for one node only, 
+                            something like a sphere say.
+                            At load time, the marker is replicated
+                            to form a DO that covers all the nodes. */
+   SUMA_DO *NodeObjects;   /*!< a replication of CommonNodeObject where
+                           each node gets a shape defined by CommonNodeObject */
+   SUMA_NIDO **NodeNIDOObjects;   /*!< a more flexible replication of NIDO 
+                           CommonNodeObject where */
 }SUMA_SurfaceObject; /*!< \sa Alloc_SurfObject_Struct in SUMA_DOmanip.c
                      \sa SUMA_Free_Surface_Object in SUMA_Load_Surface_Object.c
                      \sa SUMA_Print_Surface_Object in SUMA_Load_Surface_Object.c
@@ -2258,6 +2269,7 @@ typedef struct {
    
    GLdouble CutPlane[6][4];
    byte UseCutPlane[6];
+   int SelectedCutPlane;
    SUMA_SurfaceObject **SOcut;
    
    void *VoxelMarker; /* a TBD structure to hold object used to 
@@ -2822,4 +2834,11 @@ typedef struct {
    int exists;
 }  SUMA_FORM_AFNI_DSET_STRUCT;
  
+extern SUMA_SurfaceViewer *SUMAg_cSV; /*!< Global pointer to current Surface Viewer structure*/
+extern SUMA_SurfaceViewer *SUMAg_SVv; /*!< Global pointer to the vector containing the various Surface Viewer Structures */
+extern int SUMAg_N_SVv; /*!< Number of SVs stored in SVv */
+extern SUMA_DO *SUMAg_DOv;	/*!< Global pointer to Displayable Object structure vector*/
+extern int SUMAg_N_DOv; /*!< Number of DOs stored in DOv */
+extern SUMA_CommonFields *SUMAg_CF; /*!< Global pointer to structure containing info common to all viewers */
+
 #endif

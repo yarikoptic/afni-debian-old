@@ -1,18 +1,11 @@
 #include "SUMA_suma.h"
 
-SUMA_SurfaceViewer *SUMAg_cSV = NULL; /*!< Global pointer to current Surface Viewer structure*/
-SUMA_SurfaceViewer *SUMAg_SVv = NULL; /*!< Global pointer to the vector containing the various Surface Viewer Structures 
-                                    SUMAg_SVv contains SUMA_MAX_SURF_VIEWERS structures */
-int SUMAg_N_SVv = 0; /*!< Number of SVs realized by X */
-SUMA_DO *SUMAg_DOv = NULL;   /*!< Global pointer to Displayable Object structure vector*/
-int SUMAg_N_DOv = 0; /*!< Number of DOs stored in DOv */
-SUMA_CommonFields *SUMAg_CF = NULL; /*!< Global pointer to structure containing info common to all viewers */
-
-
-void usage_SUMA_quickspec()
+void usage_SUMA_quickspec(SUMA_GENERIC_ARGV_PARSE *ps)
 {
    static char FuncName[]={"usage_SUMA_quickspec"};
-   char * s = NULL;
+   char * s = NULL, *sio=NULL;
+   sio  = SUMA_help_IO_Args(ps);
+   
    printf ( 
 "\nUsage:  quickspec \n"
 "        <-tn TYPE NAME> ...\n"
@@ -22,20 +15,7 @@ void usage_SUMA_quickspec()
 "  loading a surface into SUMA or the command line programs.\n"
 "\n"
 "Options:\n"
-"   -tn TYPE NAME: specify surface type, and name.\n"
-"                  See below for help on the parameters.\n"
-"   -tsn TYPE STATE NAME: specify surface type, state, and name.\n"
-"        TYPE: Choose from the following (case sensitive):\n"
-"           1D: 1D format\n"
-"           FS: FreeSurfer ascii format\n"
-"           PLY: ply format\n"
-"           SF: Caret/SureFit format\n"
-"           BV: BrainVoyager format\n"
-"        STATE: State of the surface.\n"
-"           Default is S1, S2.... for each surface.\n"
-"        NAME: Name of surface file. \n"
-"           For SF and 1D formats, NAME is composed of two names\n"
-"           the coord file followed by the topo file\n"
+"%s\n"
 "   -tsnad TYPE STATE NAME ANATFLAG LDP: \n"
 "                 specify surface type, state, name, anatomical correctness, \n"
 "                 and its Local Domain Parent.\n"
@@ -43,6 +23,12 @@ void usage_SUMA_quickspec()
 "                  'N' if it is not anatomically correct.\n"
 "        LDP: Name of Local Domain Parent surface.\n"
 "             Use SAME (default) if surface is its own LDP.\n"
+"   -tsnadm TYPE STATE NAME ANATFLAG LDP MARKER: \n"
+"                 specify surface type, state, name, anatomical correctness, \n"
+"                 Local Domain Parent, and node marker file.\n"
+"        MARKER: A niml.do Displayable Object (DO) to put at every\n"
+"                node of the surface. See @DO.examples for information\n"
+"                about displayable objects\n"
 "   -spec specfile: Name of spec file output.\n"
 "                   Default is quick.spec\n"
 "                   The program will only overwrite \n"
@@ -55,7 +41,7 @@ void usage_SUMA_quickspec()
 "\n   This program was written to ward off righteous whiners and is\n"
 "  not meant to replace the venerable @SUMA_Make_Spec_XX scripts.\n"
 "\n"
-      );
+     , sio); SUMA_free(sio); sio = NULL;
      s = SUMA_New_Additions(0, 1); printf("%s\n", s);SUMA_free(s); s = NULL;
      printf("      Ziad S. Saad SSCC/NIMH/NIH saadz@mail.nih.gov \n\t\t Tue Dec 30\n"
             "\n");
@@ -74,7 +60,9 @@ int main (int argc,char *argv[])
          *Name_coord[SUMA_MAX_N_SURFACE_SPEC],
          *Name_topo[SUMA_MAX_N_SURFACE_SPEC],
          Anat[SUMA_MAX_N_SURFACE_SPEC],
-         *LDP[SUMA_MAX_N_SURFACE_SPEC];
+         *LDP[SUMA_MAX_N_SURFACE_SPEC],
+         *MARK[SUMA_MAX_N_SURFACE_SPEC];
+   SUMA_GENERIC_ARGV_PARSE *ps;
    SUMA_Boolean brk;
    
    SUMA_mainENTRY;
@@ -87,9 +75,11 @@ int main (int argc,char *argv[])
 		exit(1);
 	}
    
+   ps = SUMA_Parse_IO_Args(argc, argv, "-t;");
+   
    if (argc < 3)
        {
-          usage_SUMA_quickspec ();
+          usage_SUMA_quickspec (ps);
           exit (1);
        }
    
@@ -102,7 +92,7 @@ int main (int argc,char *argv[])
 	while (kar < argc) { /* loop accross command ine options */
 		/*fprintf(stdout, "%s verbose: Parsing command line...\n", FuncName);*/
 		if (strcmp(argv[kar], "-h") == 0 || strcmp(argv[kar], "-help") == 0) {
-			 usage_SUMA_quickspec();
+			 usage_SUMA_quickspec(ps);
           exit (1);
 		}
 		if (!brk && (strcmp(argv[kar], "-spec") == 0)) {
@@ -269,6 +259,80 @@ int main (int argc,char *argv[])
          ++N_surf; 
 			brk = YUP;
 		}
+      if (!brk && (strcmp(argv[kar], "-tsnadm") == 0)) {
+         if (N_surf >= SUMA_MAX_N_SURFACE_SPEC) {
+            SUMA_SL_Err("Exceeding maximum number of allowed surfaces...");
+            exit(1);   
+         }
+         /* get the type */
+         kar ++;
+			if (kar >= argc)  {
+		  		fprintf (SUMA_STDERR, "TYPE argument must follow -tsnad \n");
+				exit (1);
+			}
+         TypeC[N_surf] = SUMA_SurfaceTypeCode(argv[kar]);
+         if (  TypeC[N_surf] == SUMA_FT_ERROR || 
+               TypeC[N_surf] == SUMA_FT_NOT_SPECIFIED) {
+            fprintf (SUMA_STDERR, "%s is a bad file TYPE.\n", argv[kar]);
+            exit(1);
+         }
+         /* get the state */
+         kar ++;
+			if (kar >= argc)  {
+		  		fprintf (SUMA_STDERR, 
+                     "STATE argument must follow TYPE with -tsnad \n");
+				exit (1);
+			}
+         State[N_surf] = argv[kar];
+         
+         /* get the name */
+         if (  TypeC[N_surf] == SUMA_SUREFIT || 
+               TypeC[N_surf] == SUMA_VEC) N_name = 2;
+         else N_name = 1;
+         if (kar+N_name >= argc)  {
+		  		fprintf (SUMA_STDERR, "need %d elements for NAME \n", N_name);
+				exit (1);
+			}
+         kar ++; Name_coord[N_surf] = argv[kar];
+         if (N_name == 2) {
+            kar ++; Name_topo[N_surf] = argv[kar];
+         } else { 
+            Name_topo[N_surf] = NULL;
+         }
+         
+         
+         /* get the anatomical flag */
+         kar ++;
+			if (kar >= argc)  {
+		  		fprintf (SUMA_STDERR, 
+                     "Anatomical flag must follow NAME with -tsnad \n");
+				exit (1);
+			}
+         Anat[N_surf] = SUMA_TO_UPPER_C(argv[kar][0]);
+         if (Anat[N_surf] != 'Y' && Anat[N_surf] != 'N') {
+            SUMA_S_Err("Anatomical flag must be either 'y' or 'n'");
+            exit (1);
+         }
+         /* get the LDP */
+         kar ++;
+			if (kar >= argc)  {
+		  		fprintf (SUMA_STDERR, 
+                 "LocalDomainParent must follow Anatomical flag with -tsnad \n");
+				exit (1);
+			}
+         LDP[N_surf] = argv[kar];
+         
+         /* get the nodeMarker */
+         kar ++;
+			if (kar >= argc)  {
+		  		fprintf (SUMA_STDERR, 
+                 "LocalDomainParent must follow Anatomical flag with -tsnad \n");
+				exit (1);
+			}
+         MARK[N_surf] = argv[kar];
+         ++N_surf; 
+			brk = YUP;
+		}
       
       if (!brk) {
 			fprintf (SUMA_STDERR,
@@ -360,6 +424,8 @@ int main (int argc,char *argv[])
       /* add Anatomical */
       if (Anat[i]) fprintf(fid, "\tAnatomical = %c\n", Anat[i]);
       else fprintf(fid, "\tAnatomical = Y\n");
+      /* add nodeMarker */
+      if (MARK[i]) fprintf(fid, "\tNodeMarker = %s\n", MARK[i]);
       
       /* binary ? */
       switch (TypeC[i]) {
@@ -377,11 +443,12 @@ int main (int argc,char *argv[])
    
    if (Unique_st) SUMA_free(Unique_st); Unique_st = NULL;
    
+   if (ps) SUMA_FreeGenericArgParse(ps); ps = NULL;
    if (!SUMA_Free_CommonFields(SUMAg_CF)) {
       fprintf(SUMA_STDERR,"Error %s: SUMAg_CF Cleanup Failed!\n", FuncName);
       exit(1);
    }
-   
+
    SUMA_RETURN(0);
    
 }/* main quickspec */

@@ -139,7 +139,7 @@ static char *AFNI_funcmode_bbox_label[2] =
    "WARNING: if you previously executed a geometric\n"        \
    "transformation, and then re-execute it with\n"            \
    "altered markers, you will re-write the old transformed\n" \
-   "dataset, AND also destroy any `downstream' transformed\n" \
+   "dataset, AND also destroy any 'downstream' transformed\n" \
    "datasets -- for example, re-doing a AC-PC aligned view\n" \
    "will destroy the Talairach view (if any) that follows it"
 
@@ -273,7 +273,7 @@ static char *AFNI_funcmode_bbox_label[2] =
    "WARNING: if you previously executed a geometric\n"        \
    "transformation, and then re-execute it with\n"            \
    "altered markers, you will re-write the old transformed\n" \
-   "dataset, AND also destroy any `downstream' transformed\n" \
+   "dataset, AND also destroy any 'downstream' transformed\n" \
    "datasets -- for example, re-doing a AC-PC aligned view\n" \
    "will destroy the Talairach view (if any) that follows it"
 
@@ -2826,7 +2826,7 @@ STATUS("making func->rowcol") ;
    char zork[2] ;
 
    int smax , stop , decim , sstep ;                  /* 30 Nov 1997:       */
-   decim = THR_TOP_EXPON ;                            /* compute parameters */
+   decim = THR_top_expon ;                            /* compute parameters */
    smax  = (int)( pow(10.0,decim) + 0.001 ) ;         /* for scale display. */
    stop  = smax - 1 ;
    sstep = smax / 1000 ;
@@ -2954,7 +2954,7 @@ STATUS("making func->rowcol") ;
    func->thr_top_av = new_MCW_arrowval( func->thr_rowcol ,
                                         "**" ,
                                         AVOPT_STYLE ,
-                                        0,THR_TOP_EXPON,0 ,
+                                        0,THR_top_expon,0 ,
                                         MCW_AV_notext , 0 ,
                                         AFNI_thresh_top_CB , (XtPointer)im3d ,
                                         AFNI_thresh_tlabel_CB , NULL ) ;
@@ -4154,7 +4154,7 @@ STATUS("making dmode->rowcol") ;
 
    dmode->anat_resam_av = new_MCW_arrowval(
                              dmode->rowcol ,
-                             "ULay resam mode" ,
+                             "ULay Resam mode" ,
                              AVOPT_STYLE ,
                              FIRST_RESAM_TYPE ,
                              LAST_RESAM_TYPE ,
@@ -4251,7 +4251,7 @@ STATUS("making dmode->rowcol") ;
    ) ;
 
    { char *hh[] = { "View data direct from brick" ,
-                     "View data resampled to new grid" } ;
+                    "View data resampled to new grid" } ;
      MCW_bbox_hints( dmode->funcmode_bbox , 2 , hh ) ;
    }
 
@@ -4262,7 +4262,7 @@ STATUS("making dmode->rowcol") ;
    dmode->func_resam_av = new_MCW_arrowval(
                              dmode->rowcol ,
 #ifdef USE_OPTMENUS
-                             "OLay resam mode" ,
+                             "OLay Resam mode" ,
 #else
                              "OLay mode " ,
 #endif
@@ -4304,7 +4304,7 @@ STATUS("making dmode->rowcol") ;
    dmode->thr_resam_av = new_MCW_arrowval(
                              dmode->rowcol ,
 #ifdef USE_OPTMENUS
-                             "Stat resam mode" ,
+                             "Stat Resam mode" ,
 #else
                              "Stat mode " ,
 #endif
@@ -4329,7 +4329,7 @@ STATUS("making dmode->rowcol") ;
 
    MCW_reghelp_children( dmode->thr_resam_av->wrowcol ,
      "This controls the resampling mode for\n"
-     "overlay data (threshold only):\n\n"
+     "overlay data (statistics sub-bricks only):\n\n"
      "NN = nearest neighbor resampling [fastest]\n"
      "Li = linear interpolation        [OK]\n"
      "Cu = cubic interpolation         [nice but slow]\n"
@@ -4366,7 +4366,7 @@ STATUS("making dmode->rowcol") ;
 
    wtemp = XtVaCreateManagedWidget(
          "dialog" , xmLabelWidgetClass , dmode->write_rowcol ,
-            LABEL_ARG("Resam ") ,
+            LABEL_ARG("Resamp") ,
             XmNalignment , XmALIGNMENT_BEGINNING ,
             XmNrecomputeSize , False ,
             XmNtraversalOn , True  ,
@@ -4418,23 +4418,29 @@ STATUS("making dmode->rowcol") ;
                       "Write multiple datasets to disk at resampling resolution" ) ;
 
    MCW_reghelp_children( dmode->write_rowcol ,
-        "The purpose of the `Write' buttons is to recompute\n"
+        "The purpose of the 'Resamp' buttons is to recompute\n"
         "entire dataset bricks in the current coordinate\n"
-        "system (`view') and write them to disk.\n"
+        "system ('view') and write them to disk.\n"
         "\n"
-        "The `Resam' controls determine the resolution and\n"
-        "interpolation used in creating the new bricks.\n"
+        "The various 'Resam' controls (above) determine the\n"
+        "resolution and interpolation method used in creating\n"
+        "the new bricks.\n"
         "\n"
-        "ULay --> current overlay dataset brick.\n"
-        "OLay --> current underlay dataset brick.\n"
-        "Many --> select one or more datasets from a list.\n"
+        "  ULay --> write current underlay dataset brick\n"
+        "  OLay --> write current overlay dataset brick\n"
+        "  Many --> select one or more datasets from a list\n"
         "\n"
         "N.B.:\n"
-        " + Only dataset bricks that are warped from\n"
-        "    a `parent' dataset can be written out.\n"
-        "    AFNI will not destroy original data (I hope).\n"
-        " + This operation may be very time-consuming,\n"
-        "    especially for 3D+time datasets!"
+        " + Only dataset bricks that are warped from a\n"
+        "     'parent' dataset can be written out.\n"
+        " + 'Resamp' will not destroy original data (I hope).\n"
+        " + This operation might be very time-consuming,\n"
+        "    especially for big 3D+time datasets!\n"
+        " + Resampling a big 3D+time dataset to 1 mm grid\n"
+        "    size is usually pointless and will use up a\n"
+        "    LOT of disk space.\n"
+        " + You can write a dataset to disk under a new name\n"
+        "    (but not resampled) using the 'SaveAs' buttons."
       ) ;
 
    /*---- 18 Oct 2010: rowcol for SaveAs buttons ----*/
@@ -4491,6 +4497,20 @@ STATUS("making dmode->rowcol") ;
 
    MCW_register_hint( dmode->saveas_func_pb ,
                       "Write current overlay to disk at its internal resolution" ) ;
+
+   MCW_reghelp_children( dmode->saveas_rowcol ,
+                         "The 'SaveAs' buttons let you write out one\n"
+                         "of the current dataset (UnderLay or OverLay)\n"
+                         "under a new name.  These datasets will be\n"
+                         "written at the spatial resolution they are\n"
+                         "stored in -- they won't be resampled.\n\n"
+                         "+ Datasets that are 'warp-on-demand' (don't\n"
+                         "   have their own data) cannot be 'SaveAs'-ed!\n"
+                         "+ It is possible to over-write an existing\n"
+                         "   dataset with 'SaveAs' -- but this is\n"
+                         "   usually not advisable, unless you are\n"
+                         "   going to quit AFNI shortly."
+                       ) ;
 
    /*---- 23 Nov 1996: Row of Buttons for Rescan Session ----*/
 
@@ -4565,7 +4585,7 @@ STATUS("making dmode->rowcol") ;
                       "Read directories for new time series files" ) ;
 
    MCW_reghelp_children( dmode->rescan_rowcol ,
-         "The purpose of the `Rescan' buttons is to read\n"
+         "The purpose of the 'Rescan' buttons is to read\n"
          "the contents of session directories again in\n"
          "order to make newly created datasets (e.g., from\n"
          "the 3dmerge program) available for AFNI viewing.\n"
@@ -4656,8 +4676,8 @@ STATUS("making dmode->rowcol") ;
                       "Read dataset via http:// or ftp://" ) ;
 
    MCW_reghelp_children( dmode->read_rowcol ,
-         "The purpose of the `Read' buttons is to read\n"
-         "in new data.  (The `Rescan' buttons are to\n"
+         "The purpose of the 'Read' buttons is to read\n"
+         "in new data.  (The 'Rescan' buttons are to\n"
          "re-read data from old directories.)\n"
          "\n"
          "Sess --> Read a new session directory.\n\n"
@@ -5570,7 +5590,7 @@ void AFNI_initialize_controller( Three_D_View *im3d )
    int ii , sss=0 ;
    char ttl[16] , *eee ;
    THD_3dim_dataset *temp_dset = NULL;
-   
+
 ENTRY("AFNI_initialize_controller") ;
 
    /*--- check for various criminal behavior;
@@ -5645,7 +5665,7 @@ ENTRY("AFNI_initialize_controller") ;
      for( jj=0 ; jj < im3d->ss_now->num_dsset ; jj++ ) {
        temp_dset = GET_SESSION_DSET(im3d->ss_now, jj,0);
        if( ISANAT(temp_dset) ) break ;
-     }  
+     }
      if( jj < im3d->ss_now->num_dsset ) im3d->vinfo->anat_num = jj ;
 
      for( jj=0 ; jj < im3d->ss_now->num_dsset ; jj++ ) {
@@ -6681,7 +6701,7 @@ int AFNI_set_func_range_nval(XtPointer *vp_im3d, float rval)
    Three_D_View *im3d=NULL;
 
    ENTRY("AFNI_set_func_range_nval") ;
- 
+
    im3d = (Three_D_View *)vp_im3d;
    if(im3d->first_integral!=0) {
      im3d->cont_bbox = MCW_val_bbox(im3d->vwid->func->range_bbox);
@@ -6752,6 +6772,8 @@ int AFNI_set_dset_pbar(XtPointer *vp_im3d)
 
 /*   if (!AFNI_yesenv("AFNI_CMAP_AUTO")) RETURN(0);*/
 
+   if( AFNI_noenv("AFNI_CMAP_AUTO") || AFNI_noenv("AFNI_PBAR_AUTO") ) RETURN(0);
+
    im3d = (Three_D_View *)vp_im3d;
    if( !IM3D_OPEN(im3d) ) RETURN(0) ;
 
@@ -6791,21 +6813,24 @@ int AFNI_set_dset_pbar(XtPointer *vp_im3d)
          PBAR_set_bigmap( im3d->vwid->func->inten_pbar , "ROI_i256" ) ;
       }
       else {
-         PBAR_set_bigmap( im3d->vwid->func->inten_pbar , "Spectrum:red_to_blue" ) ;
-         AFNI_reset_func_range_cont((XtPointer *)im3d);
+       char *eee = getenv("AFNI_COLORSCALE_DEFAULT") ;
+       if( eee == NULL ) eee = getenv("AFNI_COLOR_SCALE_DEFAULT") ;
+       if( eee == NULL ) eee = "Spectrum:red_to_blue" ;
+       PBAR_set_bigmap( im3d->vwid->func->inten_pbar , eee ) ;
+       AFNI_reset_func_range_cont((XtPointer *)im3d);
       }
       switched = 1;
    }
 
    if (switched) {
-      AFNI_inten_pbar_CB( im3d->vwid->func->inten_pbar , im3d , 0 ) ;
-      POPUP_cursorize(im3d->vwid->func->inten_pbar->panew ) ;
+     AFNI_inten_pbar_CB( im3d->vwid->func->inten_pbar , im3d , 0 ) ;
+     POPUP_cursorize(im3d->vwid->func->inten_pbar->panew ) ;
    }
    RETURN(0);
 }
 
 /*
-   Put the label associate with value val in string str
+   Put the label associated with value val in string str
       (64 chars are copied into str)
 */
 int AFNI_get_dset_val_label(THD_3dim_dataset *dset, double val, char *str)
@@ -6818,9 +6843,9 @@ int AFNI_get_dset_val_label(THD_3dim_dataset *dset, double val, char *str)
    ENTRY("AFNI_get_dset_val_label") ;
 
    if (!str) RETURN(1);
- 
+
    str[0]='\0';
-    
+ 
    if (!dset) RETURN(1);
 
    if (!dset->Label_Dtable &&
@@ -6828,7 +6853,7 @@ int AFNI_get_dset_val_label(THD_3dim_dataset *dset, double val, char *str)
                               "VALUE_LABEL_DTABLE" ))) {
       dset->Label_Dtable = Dtable_from_nimlstring(atr->ch);
    }
- 
+
    if (dset->Label_Dtable) {
       /* Have hash, will travel */
       sprintf(sval,"%d", (int)val);
@@ -6841,6 +6866,45 @@ int AFNI_get_dset_val_label(THD_3dim_dataset *dset, double val, char *str)
 
    RETURN(0);
 }
+
+/*
+   Put the value associated with label in val
+   Unlike AFNI_get_dset_val_label,
+   This function has not been tested. 
+*/
+int AFNI_get_dset_label_val(THD_3dim_dataset *dset, double *val, char *str)
+{
+/*   MCW_pbar *pbar = NULL;*/
+   ATR_string *atr=NULL;
+/*   char *pbar_name=NULL;*/
+   char *str_lab=NULL;
+
+   ENTRY("AFNI_get_dset_label_val") ;
+
+   if (!str) RETURN(1);
+ 
+   *val = 0;
+    
+   if (!dset) RETURN(1);
+
+   if (!dset->Label_Dtable &&
+       (atr = THD_find_string_atr( dset->dblk ,
+                              "VALUE_LABEL_DTABLE" ))) {
+      dset->Label_Dtable = Dtable_from_nimlstring(atr->ch);
+   }
+ 
+   if (dset->Label_Dtable) {
+      /* Have hash, will travel */
+      str_lab = findin_Dtable_b(str,
+                                dset->Label_Dtable);
+      /* fprintf(stderr,"ZSS: Have value '%s' for label '%s'\n",
+                     str_lab ? str_lab:"NULL", str); */
+      if (str_lab) *val = strtol(str_lab,NULL, 10);
+   }
+
+   RETURN(0);
+}
+
 
 /*-------------------------------------------------------------------------*/
 

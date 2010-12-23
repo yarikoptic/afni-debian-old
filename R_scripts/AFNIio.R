@@ -11,7 +11,7 @@ strip.extension <- function (filename, extvec=NULL, verb=0) {
    if (is.null(extvec)) {
       ff <- strsplit(filename, '\\.')[[1]]
       if (length(ff) > 1) {
-         n$ext <- ff[length(ff)]
+         n$ext <- paste('.',ff[length(ff)], sep='')
          n$name_noext <- paste(ff[1:length(ff)-1],collapse='.')
       } else {
          n$ext <- ''
@@ -48,8 +48,25 @@ parse.name <- function (filename, extvec=NULL, verb=0) {
    return(n)
 }
 
+is.AFNI.1D.string <- function(t) {
+   if (length(grep('^1D:',t))) return(TRUE)
+   return(FALSE)
+}
+
+eval.AFNI.string.help <- function() {
+   return("
+Data Strings:
+-------------
+You can specify input matrices and vectors in a variety of
+ways. The simplest is by specifying a .1D file with all 
+the trimmings of column and row selectors. You can also
+specify a string that gets evaluated on the fly. 
+For example: '1D: 1 4 8' evaluates to a vector of values 1 4 and 8.
+Also, you can use R expressions such as: 'R: seq(0,10,3)'   
+")
+}
+
 eval.AFNI.1D.string <- function (t, verb=0, nmax=0) {
-   
    #remove 1D:
    t <- sub("^1D:","",t)
    #any transpose?
@@ -100,14 +117,19 @@ eval.AFNI.1D.string <- function (t, verb=0, nmax=0) {
    else return(vvf)
 }
 
+is.AFNI.R.string <- function(t) {
+   if (length(grep('^R:',t))) return(TRUE)
+   return(FALSE)
+}
+
 eval.AFNI.R.string <- function (t) {
    t <- sub("^R:","",t)
    return(eval(parse(text=t)))
 }
 
 eval.AFNI.string <- function (t) {
-   if (length(grep('^1D:',t))) return(eval.AFNI.1D.string(t))
-   else if (length(grep('^R:',t))) return(eval.AFNI.R.string(t))
+   if (is.AFNI.1D.string(t)) return(eval.AFNI.1D.string(t))
+   else if (is.AFNI.R.string(t)) return(eval.AFNI.R.string(t))
    else return(NULL)
 }
 
@@ -164,7 +186,7 @@ parse.AFNI.name <- function(filename, verb = 0) {
    }
    an <- list()
    an$view <- NULL
-   an$prefix <- NULL
+   an$pprefix <- NULL
    an$brsel <- NULL;
    an$rosel <- NULL;
    an$rasel <- NULL;
@@ -194,7 +216,7 @@ parse.AFNI.name <- function(filename, verb = 0) {
    #Deal with selectors
    n <- parse.AFNI.name.selectors(filename, verb)
    filename <- n$name
-   an$file <- n$name
+   an$file  <- n$name
    an$brsel <- n$brsel;
    an$rosel <- n$rosel;
    an$rasel <- n$rasel; 
@@ -208,7 +230,7 @@ parse.AFNI.name <- function(filename, verb = 0) {
    if (n$ext != '') {
       an$ext <- n$ext
       an$type <- 'NIFTI'
-      an$prefix <- n$name_noext
+      an$pprefix <- n$name_noext
    } else {
       #remove other extensions
       n <- strip.extension(filename, c('.HEAD','.BRIK','.BRIK.gz',
@@ -237,11 +259,18 @@ parse.AFNI.name <- function(filename, verb = 0) {
       } else {
          an$view <- NA
       }
-      an$prefix <- n$name_noext
+      an$pprefix <- n$name_noext
    }
- 
+   
+   #a prefix with no path
+   an$prefix <- basename(an$pprefix)
+   
+   #and the path
+   an$path <- dirname(an$orig_name)
+   
   if (verb > 2) {
-   browser()
+   note.AFNI("Browser not active");
+   # browser()
   }
   
   return(an)
@@ -259,6 +288,25 @@ exists.AFNI.name <- function(an) {
    return(ans);
 }
 
+used.AFNI.prefix <- function(an) {
+   if (is.character(an)) an <- parse.AFNI.name(an);
+   
+   ans <- 0
+   ans <- exists.AFNI.name(an)
+   if (ans > 0) return(1)
+   
+   if (exists.AFNI.name(sprintf('%s+orig', an$pprefix))) return(1)
+   if (exists.AFNI.name(sprintf('%s+tlrc', an$pprefix))) return(1)
+   if (exists.AFNI.name(sprintf('%s+acpc', an$pprefix))) return(1)
+   
+   return(0)
+}
+
+pprefix.AFNI.name <- function(an) {
+   if (is.character(an)) an <- parse.AFNI.name(an);
+   return(an$pprefix);
+}
+
 prefix.AFNI.name <- function(an) {
    if (is.character(an)) an <- parse.AFNI.name(an);
    return(an$prefix);
@@ -271,13 +319,13 @@ view.AFNI.name <- function(an) {
 
 pv.AFNI.name <- function(an) {
    if (is.character(an)) an <- parse.AFNI.name(an);
-   return(paste(an$prefix,an$view,sep=''));
+   return(paste(an$pprefix,an$view,sep=''));
 }
 
 head.AFNI.name <- function(an) {
    if (is.character(an)) an <- parse.AFNI.name(an);
    if (an$type == 'BRIK' && !is.na(an$view)) {
-      return(paste(an$prefix,an$view,".HEAD",sep=''));
+      return(paste(an$pprefix,an$view,".HEAD",sep=''));
    } else {
       return((an$orig_name));
    }
@@ -286,7 +334,7 @@ head.AFNI.name <- function(an) {
 brik.AFNI.name <- function(an) {
    if (is.character(an)) an <- parse.AFNI.name(an);
    if (an$type == 'BRIK' && !is.na(an$view)) {
-      return(paste(an$prefix,an$view,".BRIK",sep=''));
+      return(paste(an$pprefix,an$view,".BRIK",sep=''));
    } else {
       return((an$orig_name));
    }
@@ -305,6 +353,7 @@ compressed.AFNI.name <- function(an) {
    }
 
 }
+
 uncompress.AFNI <- function(an, verb = 1) {
    if (is.character(an)) an <- parse.AFNI.name(an);
    
@@ -329,13 +378,38 @@ uncompress.AFNI <- function(an, verb = 1) {
    
    return(an);
 }
-  
+
+copy.AFNI.dset <- function(an, ancp, overwrite=FALSE, verb = 1) {
+   if (is.character(an)) an <- parse.AFNI.name(an);
+   if (is.character(ancp)) ancp <- parse.AFNI.name(ancp);
+   
+   ans <- 0
+   
+   if (!exists.AFNI.name(an)) {
+      err.AFNI(sprintf('Dset %s not found', an$file));
+      return(ans)
+   }
+   if (exists.AFNI.name(ancp) && !overwrite) {
+      err.AFNI(sprintf('New dset %s already exists', ancp$file));
+      return(ans)
+   }
+   opt <- ''
+   if (overwrite) opt <- sprintf('%s %s', opt, -overwrite);
+   com = sprintf('3dcopy %s %s', an$file, ancp$file);
+   system(com, ignore.stderr = TRUE, intern=TRUE)
+   if (!exists.AFNI.name(ancp)) {
+      err.AFNI(sprintf('New dset %s not created', ancp$file));
+      return(ans)
+   }
+   return(1)
+}  
+
 show.AFNI.name <- function(an) {
    cat ('\n',
         'uname=', an$orig_name, '\n',
         'file=', an$file,'\n',
         'type =', an$type,'\n',
-        'pref.=', an$prefix, '\n',
+        'pref.=', an$pprefix, '\n',
         'view =', an$view, '\n',
         'head =', head.AFNI.name(an), '\n',
         'brik =', brik.AFNI.name(an), '\n',
@@ -401,14 +475,14 @@ check.AFNI.args <- function ( ops, params = NULL, verb=0) {
             if (length(pp) == 1) { #exact number 
                if (length(opsvec) !=  pp) {
                   msg <- paste( 'Expecting ',pp, ' parameters for option "',
-                                 names(ops)[i], '".\n  Have ', 
+                                 names(ops)[i], '".\n   Have ', 
                                  length(opsvec), ' parameter(s) in string "', 
                                  paste(opsvec, collapse = ' '),
                                  '" instead.', sep = '') 
-                  if (length(opsvec) > 0 && 
-                      length(grep('^-[a-z,A-Z]', opsvec[1]))) {
-                     msg <- paste( msg, '\n Also note that ', opsvec[1], 
-                                        ' is not a recognized option.',
+                  if (length(opsvec) > pp && 
+                      length(grep('^-[a-z,A-Z]', opsvec[1+pp]))) {
+                     msg <- paste( msg, '\n   NOTE that ', opsvec[1+pp], 
+                              ' in bad option above is not a recognized option.',
                                         collapse = '', sep = '' );  
                   }
                   err.AFNI(msg);
@@ -419,28 +493,28 @@ check.AFNI.args <- function ( ops, params = NULL, verb=0) {
                   if (pp[2] == Inf) {
                      msg <- paste( 'Expecting more than ',pp[1],  
                                  ' parameters for option "',
-                                 names(ops)[i], '".\n  Have ', 
+                                 names(ops)[i], '".\n   Have ', 
                                  length(opsvec), ' parameter(s) in string "', 
                                  paste(opsvec, collapse = ' '),
                                  '" instead.', sep = '') 
                      if (length(opsvec) > 0 && 
                          length(grep('^-[a-z,A-Z]', opsvec[1]))) {
-                        msg <- paste( msg, '\n Also note that ', opsvec[1], 
-                                          ' is not a recognized option.',
+                        msg <- paste( msg, '\n   NOTE that ', opsvec[1], 
+                              ' in bad option above is not a recognized option.',
                                           collapse = '', sep = '' );  
                      }
                      err.AFNI(msg);
                   } else {
                      msg <- paste( 'Expecting ',pp[1], ' to ', pp[2], 
                                  ' parameters for option "',
-                                 names(ops)[i], '".\n  Have ', 
+                                 names(ops)[i], '".\n   Have ', 
                                  length(opsvec), ' parameter(s) in string "', 
                                  paste(opsvec, collapse = ' '),
                                  '" instead.', sep = '');
-                     if (length(opsvec) > 0 && 
-                         length(grep('^-[a-z,A-Z]', opsvec[1]))) {
-                        msg <- paste( msg, '\n Also note that ', opsvec[1], 
-                                          ' is not a recognized option.',
+                     if (length(opsvec) > pp[2] && 
+                         length(grep('^-[a-z,A-Z]', opsvec[1+pp[2]]))) {
+                        msg <- paste( msg, '\n   NOTE that ', opsvec[1+pp[2]], 
+                              ' in bad option above is not a recognized option.',
                                           collapse = '', sep = '' );  
                      }
                      err.AFNI(msg);
@@ -471,19 +545,38 @@ load.debug.AFNI.args <- function ( fnm = NULL) {
    }
    if (length(fnm) > 1) {
       err.AFNI(paste("More than one argument file found:", 
-                     paste(fnm, collapse=' ', sep=' ')));
+                     paste(fnm, collapse=' ', sep=' '), ".\n",
+                     "Try one of:\n",
+                     paste("load.debug.AFNI.args('",fnm,"')", 
+                           collapse='\n', sep=''),
+                     sep = ''));
       return(FALSE);
    }else if (length(fnm) == 0) {
       err.AFNI("No files to load");
       return(FASLE);
    }
    load(fnm)
+   ok_auto <- FALSE
+   if (exists('rfile')) {
+      ss <- sprintf("\n   Start interactive code with:\n\nsource('%s')\n",
+                     rfile);
+      ok_auto <- TRUE
+   } else {
+      ss <- 
+         sprintf("\n   Start interactive code with:\n\nsource('yourRfile')\n");
+   }
    if (exists('args')) {
-      note.AFNI(sprintf("Setting .DBG_args from args in %s", fnm));
+      note.AFNI(sprintf("Setting .DBG_args from args in %s%s", fnm, ss));
       .DBG_args <<- args 
    } else {
       err.AFNI(sprintf("Variable args not in %s", fnm));
       return(FALSE)
+   }
+   
+   if (ok_auto) {
+      if (prompt.AFNI("Execute source command?", c('y','n')) == 1) {
+         source(rfile)
+      }
    }
    return(TRUE)
 }
@@ -512,16 +605,18 @@ parse.AFNI.args <- function ( args, params = NULL,
    #find locations of -*
    ii <- grep ('^-.*', args);
    iflg <- vector('numeric')
-   for (i in 1:length(ii)) {
-      if (!is.num.string(args[[ii[i]]])) {
-         if (!length(allowed_options)) {
-            iflg <- append(iflg, ii[i]);
-         } else { #Make sure it is an acceptable name
-            if (length(which(args[[ii[i]]] == allowed_options))) {
+   if (length(ii) > 0) {
+      for (i in 1:length(ii)) {
+         if (!is.num.string(args[[ii[i]]])) {
+            if (!length(allowed_options)) {
                iflg <- append(iflg, ii[i]);
+            } else { #Make sure it is an acceptable name
+               if (length(which(args[[ii[i]]] == allowed_options))) {
+                  iflg <- append(iflg, ii[i]);
+               }
             }
-         }
-      }     
+         }     
+      }
    }
    
    if (verb) note.AFNI(paste(args[iflg]))
@@ -717,46 +812,165 @@ memory.hogs <- function (n=10, top_frac=0.9, test=FALSE, msg=NULL) {
    invisible(m)
 }
 
-who.called.me <- function () {
-   if (BATCH_MODE) caller <- as.character(sys.call(-1))
-   else caller <- as.character(sys.call(-2))
-   callstr <- paste( caller[1],'(',
-                     paste(caller[2:length(caller)], collapse=','),
-                     ')', sep='')
+newid.AFNI <-function(len=26) {  
+   return(paste("XYZ_",
+            sample(c(rep(0:9,each=5),LETTERS, letters),
+            len-4, replace=TRUE), collapse=''))
+}
+
+sys.AFNI <- function(com=NULL, fout=NULL, ferr=NULL, echo=FALSE,
+                     CoS=errex.AFNI ) {
+   ss <- list(stat=1, err='', out='')
+   if (is.null(com)) return(ss)
+   rmfout <- FALSE
+   if (is.null(fout)) {
+      fout <- sprintf('/tmp/fout.%s', newid.AFNI())
+      rmfout <- TRUE
+   }
+   rmferr <- FALSE
+   if (is.null(ferr)) {
+      ferr <- sprintf('/tmp/ferr.%s', newid.AFNI())
+      rmferr <- TRUE
+   }
+   if (echo) note.AFNI(paste("Executing shell command",com))
+   ss$stat<-try(system(paste(com,' 1>', fout,' 2>', ferr, collapse='')))
+   ss$out <- readLines(fout, n=-1, ok=TRUE, warn=FALSE, encoding='unknown')
+   if (rmfout) unlink(fout); 
+   ss$err <- readLines(ferr, n=-1, ok=TRUE, warn=FALSE, encoding='unknown')
+   if (rmfout) unlink(ferr); 
+   if (ss$stat && !is.null(CoS)) CoS(paste("Error status executing:\n",com))  
+   invisible(ss)
+}
+
+who.called.me <- function (quiet_inquisitor=FALSE, trim = 0) {
+   mm <- (as.list(sys.calls()))
+   #str(mm)
+   N_mm <- length(mm)
+   callstr <- NULL
+   if (quiet_inquisitor) skp <- 2
+   else skp <- 1
+   callstr <- ''
+   for (i in (N_mm-skp):1 ) {
+      caller <- as.character(mm[i])
+      if (length(caller) == 0) {
+         caller <- 'R_prompt'
+      }
+      if (trim==-1) { #function only
+         caller <-  strsplit(caller[1],'(', fixed=TRUE)[[1]][1]
+      } else if (trim>0) {
+         fun <- strsplit(caller[1],'(', fixed=TRUE)[[1]][1]
+         par <- strsplit(caller[1],'(', fixed=TRUE)[[1]][2]
+         par <- strsplit(par,'')[[1]]
+         n_char <- min(length(par),trim)
+         if (n_char < length(par)) ell <- '...'
+         else {
+            ell <- ''
+            #and remove last parentheses
+            par <- sub(')$','',par)
+         }
+         if (is.na(par[1])) {
+            caller <-  paste(fun, collapse='', sep='')
+         } else {
+            caller <-  paste(fun, '(', paste(par[1:n_char],collapse='', sep=''),
+                          ell, ')', collapse='', sep='')
+         }
+      }
+      spc = '    '
+      if (i == N_mm-skp) {
+         callstr <- paste(callstr, caller[1])
+      } else {
+         spc <- paste(spc, '   ', sep='')
+         callstr <-paste(callstr, '\n',spc,  '-->', 
+                         caller,  
+                         sep= '') 
+      }
+   }
+   #if (BATCH_MODE) caller <- as.character(sys.call(-1))
+   #else caller <- as.character(sys.call(-2))
    return(callstr)
 }
 
 #print warnings a la AFNI
+prompt.AFNI <- function (str='I await', choices=c('y','n'), vals=NULL) {
+   if (!is.null(vals) && length(vals) != length(choices)) {
+      err.AFNI(paste("Have ", length(choices), "options, but",
+                     length(vals), "values to return"));
+      return(0)
+   }
+   choices[1]<-toupper(choices[1])
+   kk<-vector(length=0);
+   spr <- paste(str," [",paste(choices, collapse='|'),"]:", sep='')
+   if (BATCH_MODE) { #Only two choices available for this one!
+      if (length(choices)!=2) {
+         err.AFNI("This one can't run in batch mode for more than 2 choices")
+         return(0)
+      }
+      ss <- sys.AFNI(paste(
+         "prompt_user -pause '", spr,"'", sep='' ))
+      if (ss$out == "0") return(2) #The not default
+      else return(1) #The default
+   } else {
+      while (length(kk) == 0) {
+         cat(spr)
+         bb <- readLines(n=1)
+         if (bb == '') {
+            kk <- 1;
+         } else {
+            kk <-which(tolower(choices) == tolower(bb))
+         }
+      }
+      if (!is.null(vals)) {
+         return(vals[kk])
+      } else {
+         return(kk)
+      }
+   }
+   return(0)
+}
+
+SHOW_TRC <<- FALSE
+
+set.AFNI.msg.trace <- function (vv=FALSE) { SHOW_TRC <<- vv }
+
 warn.AFNI <- function (str='Consider yourself warned',
-                       callstr=who.called.me(), 
+                       callstr=NULL, 
                        newline=TRUE) {
-   if (is.null(callstr)) callstr <- sprintf('   %s',who.called.me())
+   if (is.null(callstr)) {
+      if (SHOW_TRC) callstr <- who.called.me(TRUE)
+      else callstr <- ''
+   }
    nnn<-''
    if (newline) nnn <- '\n'
    if (BATCH_MODE) ff <- stderr()
    else ff <- ''
-   cat(  '\n', 'oo Warning from: ',  callstr,':\n   ', 
+   cat(  '\n', 'oo Warning: ',  callstr,'\n   ', 
          paste(str, collapse=''), nnn, 
        sep='', file = ff);
 }
 
 err.AFNI <- function (str='Danger Danger Will Robinson',
-                        callstr=who.called.me(), 
+                        callstr=NULL, 
                       newline=TRUE) {
-   if (is.null(callstr)) callstr <- sprintf('   %s',who.called.me())
+   if (is.null(callstr)) {
+      if (SHOW_TRC) callstr <- who.called.me(TRUE)
+      else callstr <- ''
+   }
    nnn<-''
    if (newline) nnn <- '\n'
    if (BATCH_MODE) ff <- stderr()
    else ff <- ''
-   cat(  '\n', '** Error from: ',  callstr,':\n   ', 
+   cat(  '\n', '** Error: ',  callstr,'\n   ', 
          paste(str, collapse=''), nnn, 
        sep='', file = ff);
 }
 
 note.AFNI <- function (str='May I speak frankly?',
-                       callstr=who.called.me(), newline=TRUE, tic=1) {
-   if (is.null(callstr)) 
-      callstr <- sprintf('   %s',who.called.me())
+                       callstr=NULL, newline=TRUE, tic=1,
+                       trimtrace=30) {
+   if (is.null(callstr)) {
+      if (SHOW_TRC)  callstr <- who.called.me(TRUE, trim=trimtrace)
+      else callstr <- ''
+   }
    nnn<-''
    if (newline) nnn <- '\n'
    if (BATCH_MODE) ff <- stderr()
@@ -767,19 +981,29 @@ note.AFNI <- function (str='May I speak frankly?',
       tm <- format(Sys.time(), " @ %a %b %d %H:%M:%S %Y")
    } else tm <- ''
    
-   cat(  '\n', '** Note from: ',  callstr,
-         sprintf('%s:\n   ', tm), 
+   cat(  '\n', '++ Note: ',  callstr,
+         sprintf('%s\n   ', tm), 
          paste(str, collapse=''),nnn, 
        sep='', file = ff);
 }
 
-errex.AFNI <- function (str='Alas this must end',callstr=NULL, newline=TRUE) {
-   err.AFNI(str,callstr=who.called.me(), newline)
-   exit.AFNI(stat=1)
+errex.AFNI <- function (str='Alas this must end',
+                        callstr=NULL, newline=TRUE) {
+   if (is.null(callstr)) {
+      if (SHOW_TRC) callstr <- who.called.me(TRUE)
+      else callstr <- ''
+   }
+   err.AFNI(str,callstr, newline)
+   exit.AFNI(str='\n   Execution halted',stat=1)
 }
 
 exit.AFNI <- function(str='The piano has been drinking.', stat=0) {
-   quit(save='no', status = stat);
+   if (BATCH_MODE) {
+      quit(save='no', status = stat);
+   } else {
+      #note.AFNI(str)
+      stop(str)
+   }
 }
 
 #return 1 if all strings in vector ss can be changed to numbers
@@ -821,6 +1045,43 @@ deblank.string <- function(s, start=TRUE, end=TRUE, middle=FALSE) {
       s = gsub('[[:space:]]+',' ',s); 
    }
    return(s);
+}
+
+pad.string.lines <- function(s, pre='   ', post=NULL) {
+   if (!is.null(pre)) {
+      s = sub('^',pre,s);
+      s = gsub('\n',sprintf('\n%s',pre),s);
+   }
+   if (!is.null(post)) {
+      s = sub('$',post,s);
+      s = gsub('\n',sprintf('%s\n',post),s);
+   }
+   
+   return(s);
+}
+
+trim.string <- function (s, nchar=32, left=TRUE, strim='...')
+{
+   ss <- strsplit(s,'')[[1]]
+   if (length(ss)>nchar) {
+      #try deblanking
+      s <- deblank.string(s)
+      ss <- strsplit(s,'')[[1]]
+      nc <- length(ss)
+      if (nc>nchar) {
+         nstrim = length(strsplit(strim,'')[[1]])
+         if (left) {
+            ns <- nc - nchar - nstrim
+            ss <- ss[ns:nc] 
+            s<-paste(strim,paste(ss,collapse=''), sep='')
+            return(s)
+         }else {
+            ns <- nchar - nstrim
+            ss <- ss[1:ns]
+            s<-paste(paste(ss,collapse=''), strim, sep='') 
+         }
+      } else return(s)
+   } else return(s)
 }
  
 as.num.vec <- function(ss, addcount=TRUE, sepstr='.', reset=FALSE) {
@@ -910,6 +1171,340 @@ as.char.vec <- function(ss) {
 #------------------------------------------------------------------
 #   Functions to read 1D and other tables
 #------------------------------------------------------------------
+expand_1D_string <- function (t) {
+   vvf = vector(length = 0, mode="numeric")
+   #replace .. with : and split at ,
+   s = strsplit(sub("..",":",t, fixed=TRUE), ",")[[1]]
+
+   #Now loop and form vector of components
+   for (si in s) {
+      #cat ("working ", si, "\n")
+      if (length(grep(":",si))) {
+         vv <- eval(parse(text=si))
+      } else if (length(grep("@",si))) {
+         ssi = as.numeric(strsplit(si,"@")[[1]])
+         #cat ("ssi = ", ssi, "\n")
+         vv <- rep(ssi[2], ssi[1])
+      } else {
+         vv <- as.numeric(si)
+      }
+      #cat(si," = ",vv, "\n")
+      vvf <- c(vvf, vv)
+      #cat("vvnow = ",vvf, "\n")
+   }
+   return(vvf)
+}
+
+r.NI_get_attribute <- function (nel,name, brsel=NULL, 
+                                 colwise=FALSE, is1Dstr=FALSE,
+                                 sep=' ; ', num=FALSE) {
+   ffs <- NULL
+   for (i in 1:length(nel$atlist)) {
+      if (!is.na(nel$atlist[[i]]$lhs) && 
+            nel$atlist[[i]]$lhs == name) {
+         ffs <- nel$atlist[[i]]$rhs
+         break
+      }
+   }
+   
+   if (is.null(ffs)) return(NULL)
+   
+   #ffs <- gsub("[;\"]","", ffs)
+   if (colwise) { #a per column deal, process it
+      #remove bad chars and split into one for each column
+      if (is1Dstr) {
+         ffs = expand_1D_string (ffs)
+      } else {
+         ffsv <- strsplit(ffs,sep)[[1]]
+         #some components are blanks to be killed
+         ffs <- ffsv[which(nchar(ffsv)!=0)]
+      }
+      if (!is.null(brsel)) {
+         if (max(brsel+1) > length(ffs)) {
+            err.AFNI(paste("Have ", length(ffs), 
+               "attribute elements in ", paste(ffs,collapse=' '), 
+               ".\nBrick selection calls for max. of ",
+               max(brsel+1)," columns\n"
+                       ));
+         }
+         ffs <- ffs[brsel+1]
+         if (num) return(as.numeric(ffs))
+         else return(ffs)
+      } else {
+         #No selection, return all
+         if (num) return(as.numeric(ffs))
+         else return(ffs)
+      }
+   } else {
+      if (num) return(as.numeric(ffs))
+      else return(ffs)
+   }
+   return(NULL)
+}
+
+r.NI_set_attribute <- function (nel,name, val) {
+
+   nel$atlist <- c (nel$atlist,
+         list(list(lhs=deblank.string(name), 
+                   rhs=r.NI_dequotestring(val, db=TRUE))))
+   return(nel)
+}
+
+r.NI_dequotestring <- function(val, db=FALSE) {
+   if (db) val <- deblank.string(val)
+   val <- sub('^\"','', val)
+   val <- sub('\"$','', val)
+   val <- sub("^\'",'', val)
+   val <- sub("\'$",'', val)
+   return((val))
+}
+
+# A very basic parser, works only on simple elements 
+#of ascii headersharp niml files . Needs lots of work!
+r.NI_read_element <- function (fname, HeadOnly = TRUE) {
+   
+   nel <- list(atlist=NULL, dat=NULL)
+   
+   fnp <- parse.AFNI.name(fname)
+   
+   if (!file.exists(fnp$file)) {
+      return(NULL)
+   }
+   
+   ff <- scan(fnp$file, what = 'character', sep = '\n', quiet=TRUE)
+   
+   #Remove #
+   ff <- gsub('^[[:space:]]*#[[:space:]]*', '',ff)
+   if (!length(grep('^<', ff))) {
+      return(NULL)
+   }
+   #strt markers
+   strv <- grep ('<', ff)
+   #stp markers
+   stpv <- grep ('>', ff)
+   #check
+   if (length(strv) != length(stpv)) {
+      err.AFNI("Have extra brackets");
+      return(NULL)
+   }
+   if (length(strv) < 1) {
+      err.AFNI("Have nothing");
+      return(NULL)
+   }
+   #Get only the first element, for now
+   for (i in 1:1) {
+      shead <- ff[strv[i]:stpv[i]]
+      #get the name
+      nel$name <- strsplit(shead[1],'<')[[1]][2]
+      nel$atlist <- vector()
+      #remove last > from shead
+      shead[length(shead)] <- sub('>$','',shead[length(shead)]) 
+      for (j in 2:length(shead)) {
+         attr <- strsplit(shead[j],'=')[[1]]
+         if (length(attr) == 1) {
+            nel <- r.NI_set_attribute(nel, attr[1], "")
+         } else if (length(attr) == 2) {
+            nel <- r.NI_set_attribute(nel, attr[1], attr[2])
+         } else if (length(attr) > 2) {
+            err.AFNI(paste("Parse error for ", shead[j]));
+         }
+      }
+   }
+   
+   if (HeadOnly) return(nel)
+   
+   #Get the data part, the lazy way 
+   #All the content here is text. Not sure what to do with 
+   #this next. Wait till context arises
+   for (i in (stpv[1]+1):(strv[2]-1)) {
+      #browser()
+      if (is.null(nel$dat)) 
+         nel$dat <- rbind(r.NI_dequotestring(strsplit(ff[i],split=' ')[[1]]))
+      else nel$dat <- rbind(nel$dat,
+                           r.NI_dequotestring(strsplit(ff[i],split=' ')[[1]]))
+   }
+   return(nel)
+}
+
+
+is.NI.file <- function (fname, asc=TRUE, hs=TRUE) {
+   fnp <- parse.AFNI.name(fname)
+   
+   if (!file.exists(fnp$file)) {
+      return(FALSE)
+   }
+   
+   ff <- scan(fnp$file, what = 'character', nmax = 2, sep = '\n', quiet=TRUE)
+   
+   if (asc && hs) {
+      if (!length(grep('^[[:space:]]*#[[:space:]]*<', ff))) {
+         return(FALSE)
+      } else {
+         return(TRUE)
+      }
+   }
+   return(FALSE)
+}
+
+apply.AFNI.matrix.header <- function (fname, mat, 
+                              brsel=NULL, rosel=NULL,rasel=NULL, 
+                              nheadmax = 10) {
+   attr(mat,'name') <- 'noname'
+   attr(mat,'FileName') <- fname
+   
+   fnp <- parse.AFNI.name(fname)
+   
+   if (!file.exists(fnp$file)) {
+      return(mat)
+   }
+  
+   #Does this look 1D nimly?
+   if (!is.NI.file(fnp$file, asc=TRUE, hs=TRUE)) {
+      return(mat)
+   }
+   
+   nel <- r.NI_read_element(fnp$file, HeadOnly = TRUE)
+
+   # Common attributes
+   attr(mat,'name') <- nel$name
+   if (!is.null(labels <- 
+            r.NI_get_attribute(nel, 'ColumnLabels', brsel, colwise=TRUE))){
+         if (length(labels) == ncol(mat)) colnames(mat) <- labels
+   }
+   
+   if (nel$name == 'matrix') {
+      if (!is.null(colg <- 
+            r.NI_get_attribute(nel, 'ColumnGroups', brsel, 
+                                 colwise=TRUE, is1Dstr=TRUE))){
+         if (length(colg) == ncol(mat)) attr(mat,'ColumnGroups') <- colg
+         if (!is.null(labels)) {
+            llv <- vector(length=0,mode="numeric")
+            tcolg <- unique(colg)
+            for (i in tcolg) {
+               if (i>0) {
+                  ll <- which(colg == i)
+                  llv <- c(llv,ll[1])
+               }
+            }
+            tnames <-paste(strsplit(labels[llv],"#0"))
+            attr(mat,'TaskNames') <- tnames
+         }
+      }
+
+      if (!is.null(TR <- r.NI_get_attribute(nel, 'RowTR'))){
+         attr(mat, 'TR') <- as.double(TR)
+      }
+   } else if (nel$name == 'DICE') {
+   } else if (nel$name == '3dhistog') {
+      if (!is.null(bw <- r.NI_get_attribute(nel, 'BinWidth'))){
+         attr(mat, 'BinWidth') <- as.double(bw)
+      }
+   } else {
+      if (0) { #No need to whine 
+         warn.AFNI(paste(
+            "Don't know what to do with attribute of element ", nel$name));
+      }
+   }
+   
+   
+   return(mat)
+}
+
+read.AFNI.xmat <- function (xmatfile, nheadmax=10) {
+   if (!file.exists(xmatfile)) {
+      err.AFNI(paste("xmatfile ",xmatfile,"not found"));
+      return(NULL);
+   }
+
+   #Now load the whole deal, comments are skipped by defaults
+   ff <- as.matrix(read.table(xmatfile))
+   
+   #Check for attributes
+   ff <- apply.AFNI.matrix.header(xmatfile, ff)
+   
+   #Make matrix be ts
+   ff <- ts(ff, names=colnames(ff), deltat=attr(ff,"TR"))
+   
+   return(ff)
+}
+
+xmat.base.index <- function (xmat, AFNIindex = FALSE) {
+   cg <- attr(xmat,'ColumnGroups')
+   an <- which(cg == -1)
+   if (AFNIindex) an <- an -1
+   return(an)
+}
+xmat.motion.index <- function (xmat, AFNIindex = FALSE) {
+   cg <- attr(xmat,'ColumnGroups')
+   an <- which(cg == 0)
+   if (AFNIindex) an <- an -1
+   return(an)
+}
+xmat.roni.index <- function (xmat, AFNIindex = FALSE) {
+   cg <- attr(xmat,'ColumnGroups')
+   an <- which(cg <= 0)
+   if (AFNIindex) an <- an -1
+   return(an)
+}
+xmat.alltasks.index <- function (xmat, AFNIindex = FALSE) {
+   cg <- attr(xmat,'ColumnGroups')
+   an <- which(cg > 0)
+   if (AFNIindex) an <- an -1
+   return(an)
+}
+
+xmat.select.indices <- function(selstr, xmat, AFNIindex = FALSE) {
+   #paste(selstr, collapse=" ") is used because at times selstr is a vector
+   sel <- strsplit(paste(selstr, collapse=" "), 
+                     " ")[[1]]   
+   #str(sel)
+   #cat(sel, 'length:' , length(sel), '\n')
+   ilst = vector('integer');
+   if (length(sel)) {
+      for (isel in sel) {
+         #cat("processing: ",isel,'\n')
+         if (!inherits( e <- try(as.integer(eval(parse(text=isel))),
+                                 silent=TRUE),
+                        "try-error")) {
+            ilst <- append(ilst, 
+                           e+1,       
+                           after=length(ilst))
+         } else {
+            #cat("processing as string: ",isel,'\n')
+            if (isel == 'ALL') {
+               ilst <- append(ilst, seq(1,ncol(xmat)))
+            } else if (isel == 'ALL_TASKS') {
+               ilst <- append(ilst, 
+                  xmat.alltasks.index(xmat, AFNIindex=FALSE))
+            } else if (isel == 'RONI') {
+               ilst <- append(ilst, xmat.roni.index(xmat, AFNIindex=FALSE))
+            } else if (isel == 'MOTION') {
+               ilst <- append(ilst, xmat.motion.index(xmat, AFNIindex=FALSE))
+            } else if (isel == 'BASE') {
+               ilst <- append(ilst, xmat.base.index(xmat, AFNIindex=FALSE))
+            } else {
+               if (0) { #Too lose 
+                  ilst <- append(ilst, grep(isel, colnames(xmat)), 
+                              after=length(ilst))
+               } else {
+                  ilst <- append(ilst, 
+                              grep(sprintf('^%s',isel), colnames(xmat)), 
+                              after=length(ilst))
+               }
+            }
+         }
+      }
+   } else {
+      ilst = 0:(ncol(xmat)-1)
+   }
+   
+   if (length(ilst) && AFNIindex) ilst <- ilst -1
+   
+   return(ilst)
+}
+
+
+
 read.AFNI.matrix.test <- function(verb=1) {
       cat ( 'Running read.AFNI.matrix in test mode\n',
             'See read.AFNI.matrix.test for details' )
@@ -1018,10 +1613,25 @@ read.AFNI.matrix.test <- function(verb=1) {
       }
 }
 
+AFNI.matrix.input.help.string <- function() {
+   s<-
+'You specify 1D input in a variety of ways:
+FILE.1D : Name of 1D file
+1D_EXPR: A 1D expression a la AFNI "1D: 1,2,5"
+R_EXPR: An R expression, "R: rep(seq(1,3),2)"
+'
+   return(s)
+}
+
 read.AFNI.matrix <- function (fname, 
                               usercolnames=NULL, 
                               userrownames=NULL,
                               verb = 0) {
+   if (length(fname)>1) {
+      err.AFNI(paste("Cannot handle more than one name.\nHave ",
+                     paste(fname,collapse=' '), sep=''))
+      return(NULL);
+   }
    if (fname == '-self_test') {
       read.AFNI.matrix.test()
       return(NULL);
@@ -1029,14 +1639,20 @@ read.AFNI.matrix <- function (fname,
    
    if (!is.null(mm <- eval.AFNI.string(fname))) {
       #Might need to add some names someday...
+      attr(mm,'FileName') <- paste('STR<',fname,'>',sep='')
       return(as.matrix(mm))
    }
    
-   if (verb) print(who.called.me())
+   if (verb) cat(who.called.me())
    
-   if (is.character(fname)) fname <- parse.AFNI.name(fname)
-   str(fname)
-   fname$file
+   if (is.character(fname)) {
+      fname <- parse.AFNI.name(fname)
+      fnameattr <- fname$orig_name
+   }else{
+      fnameattr <- 'NONAME'
+   }
+   #str(fname)
+   #fname$file
    brk <- read.table(fname$file, colClasses='character');
    if ( tolower(brk$V1[1]) == 'name' || 
         tolower(brk$V1[1]) == 'subj' ||
@@ -1071,12 +1687,19 @@ read.AFNI.matrix <- function (fname,
          covMatrix <- as.matrix(as.numeric(brk[istrt:dim(brk)[1],1]))
       } else {
          for (ii in 1:(dim(brk)[2])) { #Add one column at a time
+            ccc <- tryCatch(
+               {as.numeric(brk[istrt:dim(brk)[1],1:dim(brk)[2]][[ii]])},
+                        warning=function(aa) {} ) 
+            if (is.null(ccc)) {
+               warn.AFNI(paste("Failed to process column ",
+                                ii-1, " in ", fnameattr,
+                                ". Using NA instead"))
+               ccc <- NA*vector(length=dim(brk)[1]-istrt+1)
+            }
             if (ii==1) {
-               covMatrix <- cbind(
-                  as.numeric(brk[istrt:dim(brk)[1],1:dim(brk)[2]][[ii]]));
+               covMatrix <- cbind(ccc);
             } else {
-               covMatrix <- cbind(covMatrix,
-                  as.numeric(brk[istrt:dim(brk)[1],1:dim(brk)[2]][[ii]]));
+               covMatrix <- cbind(covMatrix,ccc);
             }
          }
       }
@@ -1084,7 +1707,8 @@ read.AFNI.matrix <- function (fname,
 
 
    if (verb>2) {
-      browser()
+      note.AFNI("Browser here, not active");
+      #browser()
    }
    rownames(covMatrix) <- subjCol;
    colnames(covMatrix) <- covNames;
@@ -1099,7 +1723,8 @@ read.AFNI.matrix <- function (fname,
          return(NULL); 
       } 
       covMatrix <- covMatrix[,sbsel+1, drop=FALSE]
-   }
+   } else sbsel <- NULL
+   
    if (!is.null(fname$rosel)) {
       rosel <- eval.AFNI.1D.string(fname$rosel, nmax=dim(covMatrix)[1]-1)
       if (min(rosel) < 0 || max(rosel)>=dim(covMatrix)[1]) {
@@ -1108,12 +1733,13 @@ read.AFNI.matrix <- function (fname,
                     dim(covMatrix)[1]-1, fname$file));
          return(NULL); 
       } 
-      covMatrix <- covMatrix[rosel,, drop=FALSE]
-   }
+      covMatrix <- covMatrix[rosel+1,, drop=FALSE]
+   } else rosel <- NULL
+   
    if (!is.null(fname$rasel)) {
       err.AFNI('Not ready to deal with range selection');
       return(NULL); 
-   }
+   } else rasel <- NULL
    
    #Now, reorder per user*names 
    if (!is.null(userrownames)) {
@@ -1155,9 +1781,79 @@ read.AFNI.matrix <- function (fname,
       colnames(mm) <- usercolnames
       covMatrix <- mm
    }
+   
+   covMatrix <- apply.AFNI.matrix.header(fnameattr, covMatrix, 
+                            brsel=sbsel, rosel=rosel, 
+                            rasel=rasel)
 
    return(covMatrix)
 }   
+
+read.AFNI.labeltable <- function (ltfile=NULL,
+      def.grp.label = c('CSF','GM','WM','InSk','OutSk','Out')) {
+   if (!file.exists(ltfile)) {
+      err.AFNI(paste(ltfile, "does not exist"));
+      return(NULL)
+   }
+   if (is.null(lt <- r.NI_read_element(ltfile, HeadOnly=FALSE))) {
+      err.AFNI("Failed to read label table");
+      return(NULL)
+   }  
+   if (lt$name != "VALUE_LABEL_DTABLE") {
+      err.AFNI("lt file not VALUE_LABEL_DTABLE") 
+      return(NULL)
+   }
+   lt$labels <- lt$dat[,2]
+   lt$keys <- as.numeric(lt$dat[,1])
+   if (is.null(gl <- r.NI_get_attribute(lt, "grp.label", colwise=TRUE))) {
+      gl <- def.grp.label
+   } 
+   if (!is.null(gl)) {
+      lt$grp.label <- gl
+   }
+   
+   grps <- r.NI_get_attribute(lt, "grp.label", colwise=TRUE, num=TRUE) 
+   if (is.null(grps)) {
+      for (lab in lt$labels) {
+         nn <- 0
+         ig <- 0
+         for (i in 1:length(gl)) {
+            if (length(grep(gl[i],lab))) {
+               if (ig == 0) {
+                  nn <- 1
+                  ig <- i
+               } else {
+                  if (  length(gl[ig]) != length(lab) ) {
+                     if (length(gl[i]) == length(lab) ) {
+                        # A better match
+                        nn <- 1
+                        ig <- i
+                     } else {
+                        #Another partial
+                        nn <- nn + 1
+                        ig <- i
+                     }
+                  } 
+               }
+            }  
+            
+         }
+         if (nn != 1) {
+            warn.AFNI(paste(
+               "Failed to find 1 group for ",lab, ". Found ",
+               nn ,"candidates. Setting grp to",
+               length(gl)+1))
+            ig <- length(gl)+1
+         }
+         grps <- c(grps, ig) 
+      }
+   }
+   if (!is.null(grps)) {
+      lt$groups <- grps
+   }
+   return(lt)
+}
+
 
 write.AFNI.matrix <- function (m, fname='test.1D') {
    if (is.vector(m)) {
@@ -1223,6 +1919,23 @@ dset.ndim <- function (dset) {
       ndims <- 3
    }
    return(ndims)
+}
+
+dset.attr <- function (dset, name=NULL, colwise=FALSE, num=FALSE) {
+   attr <- NULL
+   if (!is.null(dset$header)) {
+      if (is.null(attr <- dset$header[name])) return(attr)
+      if (colwise) {
+         attr <- sub("^'",'', attr)
+         attr <- strsplit(attr,'~')[[1]]
+      }
+      if (num) attr <- as.numeric(attr)
+   }
+   return(attr)
+}
+
+dset.labels <- function (dset) {
+   return(dset.attr(dset, 'BRICK_LABS', colwise=TRUE))
 }
 
 dimBRKarray <- function(brk=NULL) {
@@ -1391,7 +2104,7 @@ read.AFNI <- function(filename, verb = 0, ApplyScale = 1, PercMask=0.0) {
     #because system uses sh not tcsh
     #Tx to G. Pagnoni & Co.
     com <- paste ('3dcalc -overwrite -prefix ___R.read.AFNI.' ,
-               basename(an$prefix), 
+               basename(an$pprefix), 
                ' -a "', filename,'" -expr "a" > /dev/null 2>&1', 
                sep = '');
     if (try(system(com)) != 0) {
@@ -1399,7 +2112,7 @@ read.AFNI <- function(filename, verb = 0, ApplyScale = 1, PercMask=0.0) {
               immediate. = TRUE);
       return(NULL);
     }
-    an$prefix <- paste('___R.read.AFNI.',basename(an$prefix), sep = '');
+    an$pprefix <- paste('___R.read.AFNI.',basename(an$pprefix), sep = '');
     if (!(exists.AFNI.name(head.AFNI.name(an)))) {
       warning(paste("Failed to create:   ", 
                      head.AFNI.name(an), brik.AFNI.name(an), '\n'),

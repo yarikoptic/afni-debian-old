@@ -2040,6 +2040,160 @@ SUMA_SphereDO * SUMA_ReadNBSphDO (char *s, char *parent_SO_id)
    SUMA_RETURN(SDO);
 }
 
+/* A function to take a single DO and propagate it so that it is
+reprenseted on all nodes on the surface.
+Basically, the function returns one NIDO with a element at each node.
+There can only be one element, not a whole NIDO duplicated at each node 
+
+An alternalte approach is in SUMA_Multiply_NodeNIDOObjects
+
+An alternate approach, would return a vector of NIDO* with one NIDO pointer
+for each node. This way one could put a whole lot of stuff in there.
+At rendering time, instead of making one call to DrawNIDO, one calls 
+DrawNIDO for each node that has a NIDO 
+*/
+SUMA_DO * SUMA_Multiply_NodeObjects ( SUMA_SurfaceObject *SO, 
+                                      SUMA_DO *DO )
+{
+   static char FuncName[]={"SUMA_Multiply_NodeObjects"};
+   SUMA_DO *DDO = NULL;
+   SUMA_NIDO *nido=NULL, *niout=NULL;
+   void *vel=NULL;
+   char *atr=NULL;
+   int i=0;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!SO || !DO) SUMA_RETURN(NULL);
+   
+   SUMA_LHv("Switch on DO type %s and coord type %d\n", 
+            SUMA_ObjectTypeCode2ObjectTypeName(DO->ObjectType), 
+            DO->CoordType);
+   switch(DO->ObjectType) {
+      case NIDO_type:
+         nido=(SUMA_NIDO *)DO->OP;
+         /* Easiest to duplicate the nido for each of the nodes */
+         /* although its not efficient for fast drawing, it makes */
+         /* is real easy to encode a boat load of information, and use*/
+         /* drawNIDO without much headaches */
+         if (nido->ngr->part_num != 1) {
+            SUMA_S_Errv( "CommonNodeMarker has %d elements in it.\n"
+                         "Not common I'd say.\n", nido->ngr->part_num);
+            SUMA_RETURN(DDO);
+         }
+         if (nido->ngr->part_typ[0] !=  NI_ELEMENT_TYPE) {
+            SUMA_S_Err("Not ready to duplicate anything but NI_ELEMENT_TYPE");
+            SUMA_RETURN(DDO);
+         }
+         niout = SUMA_Alloc_NIDO(NULL, "from_CommonNodeObject", SO->idcode_str);
+         if ((atr=NI_get_attribute(nido, "bond"))) 
+            NI_set_attribute(niout->ngr, "bond", atr);
+         else   NI_set_attribute(niout->ngr, "bond", "s");
+         if ((atr=NI_get_attribute(nido, "coord_type"))) 
+            NI_set_attribute(niout->ngr, "coord_type", atr);
+         else NI_set_attribute(niout->ngr, "coord_type",  
+                     SUMA_CoordTypeName(SUMA_CoordType(NULL)));
+         if ((atr=NI_get_attribute(nido, "default_font"))) 
+            NI_set_attribute(niout->ngr, "default_font", atr);
+         else NI_set_attribute(niout->ngr, "default_font",  
+                     SUMA_glutBitmapFontName(SUMA_glutBitmapFont(NULL)));
+         if ((atr=NI_get_attribute(nido, "default_color"))) 
+            NI_set_attribute(niout->ngr, "default_color", atr);
+         else NI_set_attribute(niout->ngr, "default_color",  
+                                                "1.0 1.0 1.0 1.0");
+         
+         /* Now for each node, create a new copy of that element */
+         for (i=0; i<SO->N_Node; ++i) {
+            if ((vel = NI_duplicate(nido->ngr->part[0], 1))) {
+               /* assign object to the node */
+               NI_SET_INT((NI_element *)vel, "node", i);
+               NI_add_to_group(niout->ngr, vel);
+            } else {
+               SUMA_S_Err("Failed to create duplicate element");
+               SUMA_RETURN(DDO);
+            }
+         }
+         break;
+      default:
+         SUMA_S_Errv("Sorry Chip, goose %s (%d) ain't ready to fly.\n", 
+                     SUMA_ObjectTypeCode2ObjectTypeName(DO->ObjectType),
+                     DO->ObjectType);
+         SUMA_RETURN(NULL);
+   }           
+   
+   /* Now put niout in DDO */
+   DDO = (SUMA_DO *)SUMA_calloc(1,sizeof(SUMA_DO));
+   
+   DDO->OP = (void *)niout; 
+   DDO->ObjectType = NIDO_type;
+   DDO->CoordType = SUMA_WORLD;
+   niout = NULL;
+   
+   SUMA_RETURN(DDO);
+}
+
+/*
+An alternalte approach to SUMA_Multiply_NodeObjects
+
+An alternate approach, would return a vector of NIDO* with one NIDO pointer
+for each node. This way one could put a whole lot of stuff in there.
+At rendering time, instead of making one call to DrawNIDO, one calls 
+DrawNIDO for each node that has a NIDO 
+*/
+SUMA_NIDO ** SUMA_Multiply_NodeNIDOObjects ( SUMA_SurfaceObject *SO, 
+                                      SUMA_DO *DO )
+{
+   static char FuncName[]={"SUMA_Multiply_NodeNIDOObjects"};
+   SUMA_NIDO **NIDOv = NULL;
+   SUMA_NIDO *nido=NULL, *niout=NULL;
+   void *vel=NULL;
+   char *atr=NULL;
+   int i=0;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!SO || !DO) SUMA_RETURN(NULL);
+   
+   SUMA_LHv("Switch on DO type %s and coord type %d\n", 
+            SUMA_ObjectTypeCode2ObjectTypeName(DO->ObjectType), 
+            DO->CoordType);
+   switch(DO->ObjectType) {
+      case NIDO_type:
+         nido=(SUMA_NIDO *)DO->OP;
+         
+         NIDOv = (SUMA_NIDO **)SUMA_calloc(SO->N_Node, sizeof(SUMA_NIDO*));
+         /* Easiest to duplicate the nido for each of the nodes */
+         /* although its not efficient for fast drawing, it makes */
+         /* is real easy to encode a boat load of information, and use*/
+         /* drawNIDO without much headaches */
+         
+         /* Now for each node, create a new copy of that element */
+         for (i=0; i<SO->N_Node; ++i) {
+            if ((vel = NI_duplicate(nido->ngr, 1))) {
+               /* assign object to the node */
+               NI_SET_INT((NI_element *)vel, "default_node", i);
+               niout = SUMA_Alloc_NIDO(NULL, 
+                        "from_CommonNodeObject", SO->idcode_str);
+               niout->ngr = vel;
+               NIDOv[i] = niout; niout = NULL;
+            } else {
+               SUMA_S_Err("Failed to create duplicate element");
+               SUMA_RETURN(NULL);
+            }
+         }
+         break;
+      default:
+         SUMA_S_Errv("Sorry Chip, goose %s (%d) ain't ready to fly.\n", 
+                     SUMA_ObjectTypeCode2ObjectTypeName(DO->ObjectType),
+                     DO->ObjectType);
+         SUMA_RETURN(NULL);
+   }           
+   
+   SUMA_RETURN(NIDOv);
+}
+
 
 SUMA_PlaneDO * SUMA_ReadPlaneDO (char *s)
 {
@@ -2306,6 +2460,7 @@ SUMA_Boolean SUMA_DrawSphereDO (SUMA_SphereDO *SDO, SUMA_SurfaceViewer *sv)
    static char FuncName[]={"SUMA_DrawSphereDO"};
    float origwidth=0.0;
    SUMA_SurfaceObject *SO = NULL;
+   byte AmbDiff = 0;
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
@@ -2339,7 +2494,11 @@ SUMA_Boolean SUMA_DrawSphereDO (SUMA_SphereDO *SDO, SUMA_SurfaceViewer *sv)
    comcol[3] = SDO->CommonCol[3]; /* *SUMAg_SVv[0].dim_amb;*/
    
    if (!SDO->colv) {
-      glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, comcol);
+      if (AmbDiff) {
+         glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, comcol);
+      } else {
+         glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, NoColor);
+      }
       glMaterialfv(GL_FRONT, GL_EMISSION, comcol);
    }
    if (!SDO->radv) rad = SDO->CommonRad;
@@ -2353,7 +2512,11 @@ SUMA_Boolean SUMA_DrawSphereDO (SUMA_SphereDO *SDO, SUMA_SurfaceViewer *sv)
    for (i=0; i<SDO->N_n;++i) {
       i3 = 3*i;
       if (SDO->colv) {
-         glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, &(SDO->colv[i*4]));
+         if (AmbDiff) {
+            glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, &(SDO->colv[i*4]));
+         } else {
+            glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, NoColor);
+         }
          glMaterialfv(GL_FRONT, GL_EMISSION, &(SDO->colv[i*4]));
       }
       if (SDO->radv) rad = SDO->radv[i];
@@ -2374,7 +2537,10 @@ SUMA_Boolean SUMA_DrawSphereDO (SUMA_SphereDO *SDO, SUMA_SurfaceViewer *sv)
                 SDO->CommonSlices, SDO->CommonStacks);
       glTranslatef (-cent[0], -cent[1], -cent[2]);
    }
-   glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, NoColor);
+   
+   if (AmbDiff) {
+      glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, NoColor);
+   }
    glMaterialfv(GL_FRONT, GL_EMISSION, NoColor); 
    glLineWidth(origwidth);
 
@@ -3216,7 +3382,7 @@ SUMA_Boolean SUMA_DrawImageNIDOnel( NI_element *nel,
                                     SUMA_SurfaceObject *default_SO,
                                     SUMA_DO_CoordUnits default_coord_units,
                                     float *default_color, 
-                                    void *default_font,
+                                    void *default_font, int default_node,
                                     SUMA_SurfaceViewer *sv) 
 {
    static char FuncName[]={"SUMA_DrawImageNIDOnel"};
@@ -3261,7 +3427,7 @@ SUMA_Boolean SUMA_DrawImageNIDOnel( NI_element *nel,
    }
    
    /* set up projection conditions and coordinates */
-   if (!SUMA_PrepForNIDOnelPlacement(sv, nel, default_SO, 
+   if (!SUMA_PrepForNIDOnelPlacement(sv, nel, default_SO, default_node, 
                                      txloc, NULL, sz, 
                                      &orthoreset, coord_units)) {
       SUMA_RETURN(NOPE);
@@ -3384,7 +3550,7 @@ SUMA_Boolean SUMA_DrawTextureNIDOnel( NI_element *nel,
                                     SUMA_SurfaceObject *default_SO,
                                     SUMA_DO_CoordUnits default_coord_units,
                                     float *default_color, 
-                                    void *default_font,
+                                    void *default_font, int default_node,
                                     SUMA_SurfaceViewer *sv) 
 {
    static char FuncName[]={"SUMA_DrawTextureNIDOnel"};
@@ -3435,7 +3601,7 @@ SUMA_Boolean SUMA_DrawTextureNIDOnel( NI_element *nel,
    }
    
    /* set up projection conditions and coordinates */
-   if (!SUMA_PrepForNIDOnelPlacement(sv, nel, default_SO, 
+   if (!SUMA_PrepForNIDOnelPlacement(sv, nel, default_SO, default_node, 
                                      txloc, texcoord, sz, 
                                      &orthoreset, coord_units)) {
       SUMA_RETURN(NOPE);
@@ -3530,6 +3696,7 @@ SUMA_Boolean SUMA_DrawTextureNIDOnel( NI_element *nel,
 SUMA_Boolean SUMA_PrepForNIDOnelPlacement (  SUMA_SurfaceViewer *sv,
                                              NI_element *nel, 
                                              SUMA_SurfaceObject *default_SO,
+                                             int default_node,
                                              float *txloc, float *texcoord,
                                              int *sz, 
                                              int *orthoreset,
@@ -3551,7 +3718,8 @@ SUMA_Boolean SUMA_PrepForNIDOnelPlacement (  SUMA_SurfaceViewer *sv,
    *orthoreset = 0;
    /* is this node based ?*/
    NI_GET_INT(nel, "node", id);
-   if (NI_GOT) {
+   if (!NI_GOT) id = default_node;
+   if (id >= 0) {
       if (coord_units == SUMA_NORM_SCREEN_UNIT && !(iwarn)) {
          SUMA_S_Note("It makes litle sense to specify node\n"
                      "attribute when coord_type is 'fixed'.\n"
@@ -3706,7 +3874,7 @@ SUMA_Boolean SUMA_DrawTextNIDOnel(  NI_element *nel,
                                     SUMA_SurfaceObject *default_SO,
                                     SUMA_DO_CoordUnits default_coord_units,
                                     float *default_color, 
-                                    void *default_font,
+                                    void *default_font, int default_node,
                                     SUMA_SurfaceViewer *sv) 
 {
    static char FuncName[]={"SUMA_DrawTextNIDOnel"};
@@ -3756,7 +3924,7 @@ SUMA_Boolean SUMA_DrawTextNIDOnel(  NI_element *nel,
       NI_SET_INTv(nel,"box_size", sz, 3);
    }
    /* set up projection conditions and coordinates */
-   if (!SUMA_PrepForNIDOnelPlacement(sv, nel, default_SO, 
+   if (!SUMA_PrepForNIDOnelPlacement(sv, nel, default_SO, default_node, 
                                      txloc, NULL, sz, 
                                      &orthoreset, coord_units)) {
       SUMA_RETURN(NOPE);
@@ -3806,7 +3974,7 @@ SUMA_Boolean SUMA_DrawTextNIDOnel(  NI_element *nel,
 SUMA_Boolean SUMA_DrawSphereNIDOnel(  NI_element *nel, 
                                     SUMA_SurfaceObject *default_SO,
                                     SUMA_DO_CoordUnits default_coord_units,
-                                    float *default_color, 
+                                    float *default_color, int default_node, 
                                     SUMA_SurfaceViewer *sv) 
 {
    static char FuncName[]={"SUMA_DrawSphereNIDOnel"};
@@ -3824,6 +3992,7 @@ SUMA_Boolean SUMA_DrawSphereNIDOnel(  NI_element *nel,
    SUMA_DO_CoordUnits coord_units = default_coord_units;
    static GLUquadricObj *sphobj=NULL;
    GLenum style=GLU_FILL;
+   byte AmbDiff = 0; /* Do not turn on ambient and diffuse coloring */
    SUMA_Boolean LocalHead=NOPE;
    
    SUMA_ENTRY; 
@@ -3844,10 +4013,12 @@ SUMA_Boolean SUMA_DrawSphereNIDOnel(  NI_element *nel,
       txcol[1] = default_color[1];
       txcol[2] = default_color[2];
       txcol[3] = default_color[3];
+   } else {
+      SUMA_LH("Have own color");
    }
    
    /* set up projection conditions and coordinates */
-   if (!SUMA_PrepForNIDOnelPlacement(sv, nel, default_SO, 
+   if (!SUMA_PrepForNIDOnelPlacement(sv, nel, default_SO, default_node, 
                                      txloc, NULL, sz, 
                                      &orthoreset, coord_units)) {
       SUMA_RETURN(NOPE);
@@ -3858,12 +4029,38 @@ SUMA_Boolean SUMA_DrawSphereNIDOnel(  NI_element *nel,
    if (!NI_GOT) LineWidth = 2;
    glLineWidth(LineWidth);
       
-   glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, txcol);
+   if (AmbDiff) { /* If this is on, a sphere's color would not match well
+                     because the mixing of ambient light. Keeping it off
+                     makes the colors much more consistent.
+                     Modified thanks to complaint by MSB */
+      glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, txcol);
+   }  else { /* lights out */
+      glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, NoColor); 
+   }
    glMaterialfv(GL_FRONT, GL_EMISSION, txcol);
    glColor3fv(txcol); 
    
+   SO=default_SO;
    NI_GET_FLOAT(nel,"rad", rad);
-   if (!NI_GOT) rad = 10;
+   if (!NI_GOT) {
+      NI_GET_FLOAT(nel,"rad.ef", rad);
+      if (!NI_GOT) {
+         rad = 10;
+      } else {
+         if (!SO) {
+            SUMA_S_Err("Have no surface from which to get avg edge length");
+            SUMA_RETURN(NOPE); 
+         }
+         if (!SO->EL) {
+            if (!SUMA_SurfaceMetrics(SO, "EdgeList", NULL)){
+               SUMA_S_Err("Failed to create EdgeList. Can't set radius");
+               SUMA_RETURN(NOPE); 
+            }
+         }
+
+         rad = rad*SO->EL->AvgLe;
+      }
+   }
 
    NI_GET_INT(nel,"slices", slices);
    if (!NI_GOT) slices = 10;
@@ -3883,7 +4080,7 @@ SUMA_Boolean SUMA_DrawSphereNIDOnel(  NI_element *nel,
              slices, stacks);
    glTranslatef (-txloc[0], -txloc[1], -txloc[2]);
    
-   glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, NoColor);
+   glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, NoColor); 
    glMaterialfv(GL_FRONT, GL_EMISSION, NoColor); 
    glLineWidth(origwidth);
 
@@ -3898,11 +4095,13 @@ SUMA_Boolean SUMA_DrawSphereNIDOnel(  NI_element *nel,
    SUMA_RETURN(YUP);
 }
 
+
+
 SUMA_Boolean SUMA_DrawNIDO (SUMA_NIDO *SDO, SUMA_SurfaceViewer *sv)
 {
    static char FuncName[]={"SUMA_DrawNIDO"};
    int ip=0;
-   int is;
+   int is, default_node=-1;
    byte *msk=NULL;
    SUMA_SurfaceObject *default_SO = NULL;
    NI_element *nel=NULL;
@@ -3980,6 +4179,8 @@ SUMA_Boolean SUMA_DrawNIDO (SUMA_NIDO *SDO, SUMA_SurfaceViewer *sv)
                default_font=SUMA_glutBitmapFont(NULL);
             }
          }
+         NI_GET_INT(ngr,"default_node", default_node);
+         if (!NI_GOT) default_node = -1;
          
          NI_GET_FLOATv(ngr,"default_color", txcol, 4,LocalHead);
          if (NI_GOT) {
@@ -3987,6 +4188,9 @@ SUMA_Boolean SUMA_DrawNIDO (SUMA_NIDO *SDO, SUMA_SurfaceViewer *sv)
             default_color[1] = txcol[1]; 
             default_color[2] = txcol[2]; 
             default_color[3] = txcol[3]; 
+            SUMA_LHv("default_color: [%f %f %f %f]\n",
+                     default_color[0], default_color[1], 
+                     default_color[2], default_color[3]);
          }
          if ((atr = NI_get_attribute(ngr, "coord_type"))) {
             if ((coord_type = SUMA_CoordType(atr))
@@ -4042,13 +4246,14 @@ SUMA_Boolean SUMA_DrawNIDO (SUMA_NIDO *SDO, SUMA_SurfaceViewer *sv)
             if (!SUMA_DrawTextNIDOnel( nel, default_SO, 
                                        default_coord_units,
                                        default_color, 
-                                       default_font, sv)) {
+                                       default_font, default_node,
+                                       sv)) {
                SUMA_S_Warnv("Failed to draw %s\n", nel->name);
             }
          } else if (! strcmp(nel->name,"S")) {
             if (!SUMA_DrawSphereNIDOnel( nel, default_SO, 
                                        default_coord_units,
-                                       default_color, 
+                                       default_color,  default_node,
                                        sv)) {
                SUMA_S_Warnv("Failed to draw %s\n", nel->name);
             }
@@ -4056,14 +4261,16 @@ SUMA_Boolean SUMA_DrawNIDO (SUMA_NIDO *SDO, SUMA_SurfaceViewer *sv)
             if (!SUMA_DrawImageNIDOnel(nel, default_SO, 
                                        default_coord_units,
                                        default_color, 
-                                       default_font, sv)) {
+                                       default_font, default_node,
+                                       sv)) {
                SUMA_S_Warnv("Failed to draw %s\n", nel->name);
             }
          } else if (! strcmp(nel->name,"Tex")) {
             if (!SUMA_DrawTextureNIDOnel(nel, default_SO, 
                                        default_coord_units,
                                        default_color, 
-                                       default_font, sv)) {
+                                       default_font, default_node,
+                                       sv)) {
                SUMA_S_Warnv("Failed to draw %s\n", nel->name);
             }
          } else if (! strcmp(nel->name,"3DTex")) {
@@ -4072,7 +4279,8 @@ SUMA_Boolean SUMA_DrawNIDO (SUMA_NIDO *SDO, SUMA_SurfaceViewer *sv)
                if (!SUMA_Draw3DTextureNIDOnel(nel, default_SO, 
                                           default_coord_units,
                                           default_color, 
-                                          default_font, sv)) {
+                                          default_font, default_node,
+                                          sv)) {
                   SUMA_S_Warnv("Failed to draw %s\n", nel->name);
                }
                SUMA_LH("Done drawing 3DTexture");
@@ -5049,7 +5257,8 @@ SUMA_DRAWN_ROI **SUMA_Find_ROIrelatedtoSO (SUMA_SurfaceObject *SO, SUMA_DO* dov,
 }
 
 /*! Create Node-based spheres for a particular surface */
-SUMA_Boolean SUMA_Draw_SO_NBSP (SUMA_SurfaceObject *SO, SUMA_DO* dov, int N_do, SUMA_SurfaceViewer *sv)
+SUMA_Boolean SUMA_Draw_SO_NBSP (SUMA_SurfaceObject *SO, SUMA_DO* dov, 
+                                    int N_do, SUMA_SurfaceViewer *sv)
 {
    static char FuncName[]={"SUMA_Draw_SO_NBSP"};
    int i;
@@ -5373,6 +5582,7 @@ SUMA_Boolean SUMA_Draw_SO_ROI (SUMA_SurfaceObject *SO,
    SUMA_ROI *ROI = NULL;
    DListElmt *NextElm=NULL;
    float off[3];
+   byte AmbDiff = 0;
    SUMA_Boolean LocalHead = NOPE;
     
    SUMA_ENTRY;
@@ -5442,8 +5652,16 @@ SUMA_Boolean SUMA_Draw_SO_ROI (SUMA_SurfaceObject *SO,
                            if (!N_ROId) {
                               /* draw 1st sphere */
                               SUMA_LH("First sphere");
-                              glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, 
-                                           ROI_SphCol_frst);
+                              if (AmbDiff) { 
+                                 glMaterialfv(GL_FRONT, 
+                                              GL_AMBIENT_AND_DIFFUSE, 
+                                              ROI_SphCol_frst);
+                              }  else { /* AmbDiff lights out */
+                                 glMaterialfv(GL_FRONT, 
+                                              GL_AMBIENT_AND_DIFFUSE, NoColor);
+                                 glMaterialfv(GL_FRONT, GL_EMISSION,
+                                             ROI_SphCol_frst); 
+                              }
                               idFirst = 3 * ROId->nPath[0];
                               glTranslatef ( SO->NodeList[idFirst], 
                                              SO->NodeList[idFirst+1], 
@@ -5460,8 +5678,16 @@ SUMA_Boolean SUMA_Draw_SO_ROI (SUMA_SurfaceObject *SO,
                            } 
 
                            glLineWidth(6);
-                           glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, 
-                                        ROI_SphCol);
+                           if (AmbDiff) { 
+                              glMaterialfv(GL_FRONT, 
+                                           GL_AMBIENT_AND_DIFFUSE, 
+                                           ROI_SphCol);
+                           }  else { /* AmbDiff lights out */
+                              glMaterialfv(GL_FRONT, 
+                                           GL_AMBIENT_AND_DIFFUSE, NoColor);
+                              glMaterialfv(GL_FRONT, GL_EMISSION,
+                                          ROI_SphCol); 
+                           }
                            /* always start at 1 since the 0th node was 
                               drawn at the end of the previous ROId */
                            for (ii = 1; ii < ROId->N_n; ++ii) {
@@ -5530,8 +5756,16 @@ SUMA_Boolean SUMA_Draw_SO_ROI (SUMA_SurfaceObject *SO,
                      
                      if (!SO->patchNodeMask) {
                         glLineWidth(2);
-                        glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, 
-                                     D_ROI->FillColor);
+                        if (AmbDiff) { 
+                           glMaterialfv(GL_FRONT, 
+                                        GL_AMBIENT_AND_DIFFUSE, 
+                                        D_ROI->FillColor);
+                        }  else { /* AmbDiff lights out */
+                           glMaterialfv(GL_FRONT, 
+                                        GL_AMBIENT_AND_DIFFUSE, NoColor);
+                           glMaterialfv(GL_FRONT, GL_EMISSION,
+                                       D_ROI->FillColor); 
+                        }
                         SUMA_LH("Drawing contour ...");
                         for (icont = 0; icont < D_ROI->N_CE; ++icont) {
                            id1cont = 3 * D_ROI->CE[icont].n1;
@@ -5548,13 +5782,20 @@ SUMA_Boolean SUMA_Draw_SO_ROI (SUMA_SurfaceObject *SO,
                      } else {
                         if (SO->EmbedDim == 2) {
                            glLineWidth(1);
-                           glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, 
-                                        D_ROI->FillColor);
                         } else {
                            glLineWidth(2);
-                           glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, 
-                                        D_ROI->FillColor);   
                         }
+                        if (AmbDiff) { 
+                           glMaterialfv(GL_FRONT, 
+                                        GL_AMBIENT_AND_DIFFUSE, 
+                                        D_ROI->FillColor);
+                        }  else { /* AmbDiff lights out */
+                           glMaterialfv(GL_FRONT, 
+                                        GL_AMBIENT_AND_DIFFUSE, NoColor);
+                           glMaterialfv(GL_FRONT, GL_EMISSION,
+                                       D_ROI->FillColor); 
+                        }
+
                         SUMA_LHv("Drawing contour on patch (%p)...", 
                                  SO->NodeNormList);
                                  /* set default offset to nothing*/
@@ -5602,8 +5843,16 @@ SUMA_Boolean SUMA_Draw_SO_ROI (SUMA_SurfaceObject *SO,
                            "%s: Drawing ROI %s \n", FuncName, ROI->Label);
                switch (ROI->Type) { /* ROI types */
                   case SUMA_ROI_EdgeGroup:
-                     glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, 
-                                  ROI_EdgeGroup);
+                     if (AmbDiff) { 
+                        glMaterialfv(GL_FRONT, 
+                                     GL_AMBIENT_AND_DIFFUSE, 
+                                     ROI_EdgeGroup);
+                     }  else { /* AmbDiff lights out */
+                        glMaterialfv(GL_FRONT, 
+                                     GL_AMBIENT_AND_DIFFUSE, NoColor);
+                        glMaterialfv(GL_FRONT, GL_EMISSION,
+                                    ROI_EdgeGroup); 
+                     }
                      for (ii=0; ii < ROI->N_ElInd; ++ii) {
                         EdgeIndex = ROI->ElInd[ii];
                         Node1 = SO->EL->EL[EdgeIndex][0];
@@ -5622,8 +5871,16 @@ SUMA_Boolean SUMA_Draw_SO_ROI (SUMA_SurfaceObject *SO,
                      }
                      break;
                   case SUMA_ROI_NodeGroup:
-                     glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, 
-                                  ROI_NodeGroup);
+                     if (AmbDiff) { 
+                        glMaterialfv(GL_FRONT, 
+                                     GL_AMBIENT_AND_DIFFUSE, 
+                                     ROI_NodeGroup);
+                     }  else { /* AmbDiff lights out */
+                        glMaterialfv(GL_FRONT, 
+                                     GL_AMBIENT_AND_DIFFUSE, NoColor);
+                        glMaterialfv(GL_FRONT, GL_EMISSION,
+                                    ROI_NodeGroup); 
+                     }
                      for (ii=0; ii < ROI->N_ElInd; ++ii) {
                         id = 3 * ROI->ElInd[ii];
                         glTranslatef (SO->NodeList[id], SO->NodeList[id+1], 
@@ -5637,8 +5894,17 @@ SUMA_Boolean SUMA_Draw_SO_ROI (SUMA_SurfaceObject *SO,
                      }
                      break;
                   case SUMA_ROI_FaceGroup:   
-                     glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, 
-                                  ROI_FaceGroup);
+                     if (AmbDiff) { 
+                        glMaterialfv(GL_FRONT, 
+                                     GL_AMBIENT_AND_DIFFUSE, 
+                                     ROI_FaceGroup);
+                     }  else { /* AmbDiff lights out */
+                        glMaterialfv(GL_FRONT, 
+                                     GL_AMBIENT_AND_DIFFUSE, NoColor);
+                        glMaterialfv(GL_FRONT, GL_EMISSION,
+                                    ROI_FaceGroup); 
+                     }
+                     
                      for (ii=0; ii < ROI->N_ElInd; ++ii) {
                            FaceIndex = ROI->ElInd[ii];
                            id = FaceIndex * 3;
@@ -5715,6 +5981,15 @@ SUMA_Boolean SUMA_Draw_SO_ROI (SUMA_SurfaceObject *SO,
             break;
       }/* case Object Type */
       
+   }
+   
+   /* lights out */
+   if (AmbDiff) { 
+      glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE,  NoColor);
+   }  else { 
+      glMaterialfv(GL_FRONT, 
+                   GL_AMBIENT_AND_DIFFUSE, NoColor);
+      glMaterialfv(GL_FRONT, GL_EMISSION, NoColor); 
    }
 
    SUMA_RETURN (YUP);
@@ -6816,6 +7091,100 @@ void SUMA_Free_FaceSetMarker (SUMA_FaceSetMarker* FM)
    SUMA_RETURNe;
 }
 
+/*!
+   Modify the attributes of node objects, based on the data
+*/
+SUMA_Boolean SUMA_ApplyDataToNodeObjects(
+            SUMA_SurfaceObject *SurfObj, SUMA_SurfaceViewer *sv)
+{
+   static char FuncName[]={"SUMA_ApplyDataToNodeObjects"};
+   GLfloat *colp = NULL;
+   SUMA_NIDO *nido=NULL;
+   int ip, i, node, node4;
+   float colv[4];
+   NI_element *nel=NULL;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!(colp = SUMA_GetColorList (sv, SurfObj->idcode_str))) SUMA_RETURN(NOPE);
+
+   if (! (SurfObj->NodeObjects && 
+          SurfObj->NodeObjects->ObjectType == NIDO_type) ) {
+      SUMA_RETURN(NOPE);
+   }
+   
+   if (!(nido = SurfObj->NodeObjects->OP)) SUMA_RETURN(NOPE);
+   
+   for( ip=0 ; ip < nido->ngr->part_num ; ip++ ){ 
+      nel = NULL;
+      switch( nido->ngr->part_typ[ip] ){
+         /*-- a sub-group ==> recursion! --*/
+         case NI_GROUP_TYPE:
+            SUMA_SL_Err(
+               "Don't know what to do with a group element, ignoring.");
+            break ;
+         case NI_ELEMENT_TYPE:
+            nel = (NI_element *)nido->ngr->part[ip] ;
+            if (0 && LocalHead)  {
+               SUMA_ShowNel(nel);
+            }
+            NI_GET_INT(nel, "node", node);
+            if (!NI_GOT) break;
+            node4=4*node;
+            for (i=0; i<4; ++i) colv[i]=colp[node4+i];
+            
+            /* assign the color at that node */
+            NI_SET_FLOATv(nel, "col", colv, 4);
+            
+            /* there are many more things to do depending on the type
+            of nel, but for now, leave as is */
+            
+            break;
+         default:
+            SUMA_SL_Err(
+               "Don't know what to make of this group element, ignoring.");
+            break;
+      }
+   }
+   SUMA_RETURN(YUP);
+}
+/*!
+   Modify the attributes of node objects, based on the data
+*/
+SUMA_Boolean SUMA_ApplyDataToNodeNIDOObjects(
+            SUMA_SurfaceObject *SurfObj, SUMA_SurfaceViewer *sv)
+{
+   static char FuncName[]={"SUMA_ApplyDataToNodeNIDOObjects"};
+   GLfloat *colp = NULL;
+   SUMA_NIDO *nido=NULL;
+   int ip, i, node, node4;
+   float colv[4];
+   NI_element *nel=NULL;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!(colp = SUMA_GetColorList (sv, SurfObj->idcode_str))) SUMA_RETURN(NOPE);
+
+   if (! (SurfObj->NodeNIDOObjects) ) {
+      SUMA_RETURN(NOPE);
+   }
+   
+   for( ip=0 ; ip < SurfObj->N_Node ; ip++ ){ 
+      nido = SurfObj->NodeNIDOObjects[ip];
+      if (nido) {
+         node4=4*ip; for (i=0; i<4; ++i) colv[i]=colp[node4+i];
+         NI_SET_FLOATv(nido->ngr, "default_color", colv, 4);
+         if (LocalHead && ip==0) {
+            SUMA_LHv("Node 0 markre has [%f %f %f %f]\n",
+                        colv[0], colv[1], colv[2], colv[3]);
+         }  
+      }
+   }
+   SUMA_RETURN(YUP);
+}
+
 /*! Create a tesselated mesh */
 void SUMA_DrawMesh(SUMA_SurfaceObject *SurfObj, SUMA_SurfaceViewer *sv)
 {  
@@ -6950,11 +7319,7 @@ void SUMA_DrawMesh(SUMA_SurfaceObject *SurfObj, SUMA_SurfaceViewer *sv)
             }
          } else { 
             glColorPointer (4, GL_FLOAT, 0, colp); 
-                  /* ZSS: Used to be: 
-                  glColorPointer (  4, GL_FLOAT, 0, 
-                                    SUMA_GetColorList (sv, 
-                                       SurfObj->idcode_str));
-                 A redundant call, to say the least! */
+
          }
          glVertexPointer (3, GL_FLOAT, 0, SurfObj->glar_NodeList);
          glNormalPointer (GL_FLOAT, 0, SurfObj->glar_NodeNormList);
@@ -7066,7 +7431,36 @@ void SUMA_DrawMesh(SUMA_SurfaceObject *SurfObj, SUMA_SurfaceViewer *sv)
                fprintf(SUMA_STDERR,
                   "Error SUMA_DrawMesh: Failed in SUMA_DrawFaceSetMarker\b");
             }
-         } 
+         }
+         
+         /* Draw node based markers */
+         if (SurfObj->NodeObjects && 
+             SurfObj->NodeObjects->ObjectType == NIDO_type) {
+            if (!SUMA_ApplyDataToNodeObjects(SurfObj, sv)) {
+               SUMA_S_Err("Failed to apply data to node objects");
+            }
+            if (!(SUMA_DrawNIDO ((SUMA_NIDO*)SurfObj->NodeObjects->OP, sv) ) ) {
+               SUMA_S_Err("Failed to draw NodeObjects");
+            }
+            SUMA_LH("Drew Node objects");
+         } else {
+            SUMA_LH("No Node objects");
+         }
+         
+         /* Draw node based markers2 */
+         if (SurfObj->NodeNIDOObjects) {
+            if (!SUMA_ApplyDataToNodeNIDOObjects(SurfObj, sv)) {
+               SUMA_S_Err("Failed to apply data to node objects2");
+            }
+            for (i=0; i<SurfObj->N_Node; ++i) {
+               if (!(SUMA_DrawNIDO (SurfObj->NodeNIDOObjects[i], sv) ) ) {
+                  SUMA_S_Err("Failed to draw NodeObjects");
+               }
+            }
+            SUMA_LH("Drew NodeNIDOObjects");
+         } else {
+            SUMA_LH("No NodeNIDOObjects");
+         }
          break;
 
    } /* switch DRAW_METHOD */
@@ -7231,6 +7625,19 @@ SUMA_Boolean SUMA_Free_Surface_Object (SUMA_SurfaceObject *SO)
    
    if (SO->texnel) SO->texnel = NULL;
    
+   if (SO->CommonNodeObject) 
+      SUMA_Free_Displayable_Object_Vect(SO->CommonNodeObject,1);
+      SO->CommonNodeObject = NULL;
+   if (SO->NodeObjects) 
+      SUMA_Free_Displayable_Object_Vect (SO->NodeObjects, 1);
+      SO->NodeObjects = NULL;
+
+   if (SO->NodeNIDOObjects) { 
+      for (i=0; i<SO->N_Node; ++i) {
+         if (SO->NodeNIDOObjects[i]) SUMA_free_NIDO(SO->NodeNIDOObjects[i]);
+      }
+      SUMA_free(SO->NodeNIDOObjects);
+   }
    if (SO) SUMA_free(SO);
    
    if (LocalHead) fprintf (stdout, "Done\n");
@@ -7815,6 +8222,27 @@ char *SUMA_SurfaceObject_Info (SUMA_SurfaceObject *SO, DList *DsetList)
       SS = SUMA_StringAppend (SS, stmp);
    }   
    
+   if (SO->CommonNodeObject) {
+      s = SUMA_DOv_Info(SO->CommonNodeObject, 1, 1);
+      SUMA_StringAppend (SS, s);
+      SUMA_free(s); s = NULL;
+   } else {
+      SS = SUMA_StringAppend (SS, "CommonNodeObject is NULL");
+   }
+   
+   if (SO->NodeObjects) {
+      s = SUMA_DOv_Info(SO->NodeObjects, 1, 1);
+      SUMA_StringAppend (SS, s);
+      SUMA_free(s); s = NULL;
+   } else {
+      SS = SUMA_StringAppend (SS, "NodeObjects is NULL");
+   }
+   
+   if (SO->NodeNIDOObjects) {
+      SUMA_StringAppend (SS, "NodeNIDOObjects is NOT NULL");
+   } else {
+      SS = SUMA_StringAppend (SS, "NodeNIDOObjects is NULL");
+   }
    /* clean SS */
    SS = SUMA_StringAppend (SS, NULL);
    /* copy s pointer and free SS */
@@ -8269,9 +8697,11 @@ SUMA_VolumeObject *SUMA_CreateVolumeObject(char *Label)
    VO->CutPlane[5][3] = 50.0;
     
    VO->UseCutPlane[0] = 1;
-   for (i=1; i<6; ++i) {
-      VO->UseCutPlane[i] = 0;
+   VO->UseCutPlane[1] = 1;
+   for (i=2; i<6; ++i) {
+      VO->UseCutPlane[i] = 1;
    }
+   VO->SelectedCutPlane = 0;
    
    VO->SelectedVoxel = -1;
    VO->ShowSelectedVoxel = 0;
@@ -8351,19 +8781,28 @@ SUMA_SurfaceObject *SUMA_Alloc_SurfObject_Struct(int N)
       SO[i].Name_NodeParent = NULL;
       SO[i].Label = NULL;
       SO[i].EmbedDim = 3;
-      SO[i].Center[0] = SO[i].Center[1] = SO[i].Center[2] = 0.0;           /* the zeros in Center, MaxDims, MinDims, */ 
-      SO[i].MaxDims[0] = SO[i].MaxDims[1] = SO[i].MaxDims[2] = 0.0;        /* aMinDims and aMaxDims */
-      SO[i].MinDims[0] = SO[i].MinDims[1] = SO[i].MinDims[2] = 0.0;        /* are used to flag unitialized parameters */
-      SO[i].aMinDims = 0.0;                                                /* always keep zero for initialization */      
-      SO[i].aMaxDims = 0.0;                                                /* see SUMA_isSODimInitialized */
+               /* the zeros in Center, MaxDims, MinDims, */ 
+               /* aMinDims and aMaxDims */
+               /* are used to flag unitialized parameters */
+               /* always keep zero for initialization */
+               /* see SUMA_isSODimInitialized */      
+      SO[i].Center[0] = SO[i].Center[1] = SO[i].Center[2] = 0.0;           
+      SO[i].MaxDims[0] = SO[i].MaxDims[1] = SO[i].MaxDims[2] = 0.0;        
+      SO[i].MinDims[0] = SO[i].MinDims[1] = SO[i].MinDims[2] = 0.0;        
+      SO[i].aMinDims = 0.0;                                                
+      SO[i].aMaxDims = 0.0;                                                
+      
       SO[i].ViewCenterWeight = -1;
       SO[i].RotationWeight = -1;
       SO[i].patchNodeMask = NULL;
       SO[i].patchaMaxDims = 0.0;
       SO[i].patchaMinDims = 0.0;
-      SO[i].patchMinDims[0] = SO[i].patchMinDims[1] = SO[i].patchMinDims[2] = 0.0;
-      SO[i].patchMaxDims[0] = SO[i].patchMaxDims[1] = SO[i].patchMaxDims[2] = 0.0;
-      SO[i].patchCenter[0] = SO[i].patchCenter[1] = SO[i].patchCenter[2] = 0.0;
+      SO[i].patchMinDims[0] = SO[i].patchMinDims[1] = 
+                                    SO[i].patchMinDims[2] = 0.0;
+      SO[i].patchMaxDims[0] = SO[i].patchMaxDims[1] = 
+                                    SO[i].patchMaxDims[2] = 0.0;
+      SO[i].patchCenter[0] = SO[i].patchCenter[1] = 
+                                    SO[i].patchCenter[2] = 0.0;
       SO[i].N_patchNode = 0;
       SO[i].MF = NULL;
       SO[i].FN = NULL;
@@ -8443,6 +8882,10 @@ SUMA_SurfaceObject *SUMA_Alloc_SurfObject_Struct(int N)
       SO[i].aSO = NULL;
       
       SO[i].texnel = NULL;
+      
+      SO[i].CommonNodeObject = NULL;
+      SO[i].NodeObjects = NULL;
+      SO[i].NodeNIDOObjects = NULL;
      }
    SUMA_RETURN(SO);
 }/* SUMA_Alloc_SurfObject_Struct */

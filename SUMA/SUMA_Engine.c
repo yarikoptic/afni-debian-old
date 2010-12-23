@@ -23,13 +23,6 @@
    
 #include "SUMA_suma.h"
 
-/* extern SUMA_SurfaceViewer *SUMAg_cSV; */   /* no longer used Tue Aug 13 16:07:41 EDT 2002 */
-extern SUMA_DO *SUMAg_DOv;   
-extern int SUMAg_N_DOv; 
-extern SUMA_CommonFields *SUMAg_CF;
-extern SUMA_SurfaceViewer *SUMAg_SVv;
-extern int SUMAg_N_SVv;
-
 /*!
    \brief This is the function that runs the viewers. 
    success = SUMA_Engine (listp);
@@ -794,9 +787,7 @@ SUMA_Boolean SUMA_Engine (DList **listp)
             { /* sets the rendering mode of a surface, 
                expects SO in vp and rendering mode in i*/
                SO = (SUMA_SurfaceObject *)EngineData->vp;
-               SO->PolyMode = EngineData->i;     
-               if (SO->PolyMode == SRM_Hide) SO->Show = NOPE;
-               else SO->Show = YUP;             
+               SUMA_SET_SO_POLYMODE(SO,EngineData->i);
             }  
             break;
             
@@ -3200,14 +3191,39 @@ SUMA_Boolean SUMA_Engine (DList **listp)
                                  SO->SurfCont->curColPlane->ShowMode));
             }
             if (NI_get_attribute(EngineData->ngr, "view_surf")) {
-               if (NI_IS_STR_ATTR_EQUAL(EngineData->ngr, "view_surf", "y")) 
+               if (NI_IS_STR_ATTR_EQUAL(EngineData->ngr, "view_surf", "y")) {
                   SO->Show = YUP;
-               else if (NI_IS_STR_ATTR_EQUAL(EngineData->ngr, "view_surf", "n"))
+               } else if (NI_IS_STR_ATTR_EQUAL(EngineData->ngr,"view_surf","n")){
                   SO->Show = NOPE;
-               else { 
+               } else if (NI_IS_STR_ATTR_EQUAL(EngineData->ngr, 
+                                          "view_surf", "Viewer")) {
+                  SUMA_SET_SO_POLYMODE(SO,SRM_ViewerDefault);
+                  SUMA_SET_MENU( SO->SurfCont->RenderModeMenu,
+                         SUMA_RenderMode2RenderModeMenuItem(SO->PolyMode+1));
+               } else if (NI_IS_STR_ATTR_EQUAL(EngineData->ngr, 
+                                          "view_surf", "Fill")) {
+                  SUMA_SET_SO_POLYMODE(SO,SRM_Fill);
+                  SUMA_SET_MENU( SO->SurfCont->RenderModeMenu,
+                         SUMA_RenderMode2RenderModeMenuItem(SO->PolyMode+1));
+               } else if (NI_IS_STR_ATTR_EQUAL(EngineData->ngr, 
+                                          "view_surf", "Line")) {
+                  SUMA_SET_SO_POLYMODE( SO, SRM_Line );
+                  SUMA_SET_MENU( SO->SurfCont->RenderModeMenu,
+                         SUMA_RenderMode2RenderModeMenuItem(SO->PolyMode+1));
+               } else if (NI_IS_STR_ATTR_EQUAL(EngineData->ngr, 
+                                          "view_surf", "Points")) {
+                  SUMA_SET_SO_POLYMODE(SO,SRM_Points);
+                  SUMA_SET_MENU( SO->SurfCont->RenderModeMenu,
+                         SUMA_RenderMode2RenderModeMenuItem(SO->PolyMode+1));
+               } else if (NI_IS_STR_ATTR_EQUAL(EngineData->ngr, 
+                                          "view_surf", "Hide")) {
+                  SUMA_SET_SO_POLYMODE(SO,SRM_Hide);
+                  SUMA_SET_MENU( SO->SurfCont->RenderModeMenu,
+                         SUMA_RenderMode2RenderModeMenuItem(SO->PolyMode+1));
+               } else { 
                   SUMA_S_Errv("Bad value of %s for view_surf, setting to 'y'\n", 
                               NI_get_attribute(EngineData->ngr, "view_surf"));
-                  SO->Show = YUP;
+                  SO->Show = YUP; SUMA_SET_SO_POLYMODE(SO,SRM_Fill);
                }
                /* redisplay */
                SUMA_SiSi_I_Insist();   /* did not think that was necessary...
@@ -3989,6 +4005,7 @@ int SUMA_RegisteredSOs (SUMA_SurfaceViewer *sv, SUMA_DO *dov, int *SO_IDs)
    
    \sa SUMA_isVisibleSO
 */
+
 int SUMA_VisibleSOs (SUMA_SurfaceViewer *sv, SUMA_DO *dov, int *SO_IDs)
 {
    static char FuncName[]={"SUMA_VisibleSOs"};
@@ -4002,7 +4019,7 @@ int SUMA_VisibleSOs (SUMA_SurfaceViewer *sv, SUMA_DO *dov, int *SO_IDs)
    for (i=0; i< sv->N_DO; ++i) {
       if (SUMA_isSO_G(dov[sv->RegisteredDO[i]], sv->CurGroupName)) {
          SO = (SUMA_SurfaceObject *)dov[sv->RegisteredDO[i]].OP;
-         if (SO->Show) {
+         if (SO_SHOWING(SO, sv)) {
             if (  SO->Side == SUMA_NO_SIDE || 
                   SO->Side == SUMA_SIDE_ERROR  || 
                   SO->Side == SUMA_LR) {
@@ -4041,7 +4058,7 @@ SUMA_Boolean SUMA_isVisibleSO (SUMA_SurfaceViewer *sv,
       if (SUMA_isSO_G(dov[sv->RegisteredDO[i]], sv->CurGroupName)) {
          SO = (SUMA_SurfaceObject *)dov[sv->RegisteredDO[i]].OP;
          if (curSO == SO) {
-            if (SO->Show) {
+            if (SO_SHOWING(SO, sv)) {
                if ( SO->Side == SUMA_NO_SIDE || SO->Side == SUMA_SIDE_ERROR ) {
                   SUMA_RETURN(YUP);
                   ++k;
@@ -5174,10 +5191,15 @@ int SUMA_MapRefRelative (int cur_id, int *prec_list, int N_prec_list, SUMA_DO *d
          if (N_prec_list == 1) {
             /* if all you have is one surface in one state in SUMA then you need not worry about the rest */
          } else {
-            fprintf(SUMA_STDERR, "\nError %s: Flow problem.\n"
+            /* this can happen if you have multiple surfaces with each being 
+            their own mappable surfaces., so it is OK too */
+            /*
+               fprintf(SUMA_STDERR, "\nError %s: Flow problem.\n"
                                  "Did not expect identical surfaces \n"
-                                 "in this condition (N_prec_list = %d)\n", FuncName, N_prec_list);
-            SUMA_BEEP; 
+                                 "in this condition (N_prec_list = %d)\n", 
+                                 FuncName, N_prec_list);
+            SUMA_BEEP;
+            */ 
          }
          /* 
          I changed the next condition: 

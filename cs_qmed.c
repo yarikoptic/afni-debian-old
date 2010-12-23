@@ -201,6 +201,27 @@ void qmedmadbmv_float( int n, float *ar, float *med, float *mad, float *bmv )
 
 /*---------------------------------------------------------------*/
 
+float centromean_float( int n , float *ar )  /* 01 Nov 2010 */
+{
+   int ibot, itop, ii ; float sum=0.0f ;
+
+   if( n <= 0 || ar == NULL ){
+    ; /* nada */
+   } else if( n < 6 ){
+     for( ii=0 ; ii < n ; ii++ ) sum += ar[ii] ;
+     sum /= n ;
+   } else {
+     qsort_float( n , ar ) ;
+     ibot = (int)(0.25f*n+0.49f) ;
+     itop = (int)(0.75f*n+0.49f) ;
+     for( ii=ibot ; ii <= itop ; ii++ ) sum += ar[ii] ;
+     sum /= (itop-ibot+1) ;
+   }
+   return sum ;
+}
+
+/*---------------------------------------------------------------*/
+
 static float median_float4(float a, float b, float c, float d)
 {
   register float t1,t2,t3;
@@ -355,6 +376,17 @@ int compare_char (char *a, char *b )
       return (1);
 
 }/* compare_char*/
+
+int compare_byte (byte *a, byte *b )
+{/* compare_byte*/
+    if (*a < *b)
+      return (-1);
+   else if (*a == *b)
+      return (0);
+   else
+      return (1);
+
+}/* compare_byte*/
 
 /*----------------------------------------------------------------------*/
 /*!
@@ -666,7 +698,7 @@ void *Percentate (void *vec, byte *mm, int nxyz,
    if (option != 2) { /* partial sort of vvec */
       switch (type) {
          case MRI_byte:
-            qsort(vvec, mmvox, sizeof(byte), (int(*) (const void *, const void *))compare_char);
+            qsort(vvec, mmvox, sizeof(byte), (int(*) (const void *, const void *))compare_byte);
             break;
          case MRI_short:
 #if 0
@@ -689,7 +721,7 @@ void *Percentate (void *vec, byte *mm, int nxyz,
             qsort(vvec, mmvox, sizeof(double), (int(*) (const void *, const void *))compare_double);
             break;
          default:
-            ERROR_message("Bad type! Should bot be here honhon.");
+            ERROR_message("Bad type (%d). No support in this function", type);
             RETURN(NULL);
       }
    }
