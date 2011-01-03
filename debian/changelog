@@ -1,3 +1,9 @@
+afni (0.20101222~dfsg.1-2) UNRELEASED; urgency=low
+
+  * Install @RetinoProc which has been left-out accidentally.
+
+ -- Michael Hanke <mih@debian.org>  Mon, 03 Jan 2011 15:38:58 -0500
+
 afni (0.20101222~dfsg.1-1) UNRELEASED; urgency=low
 
   * New upstream code. Adds tools: niccc, 3dkmeans, 3dRankizer, 3dXYZcat. Adds
