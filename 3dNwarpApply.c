@@ -150,7 +150,7 @@ int main( int argc , char *argv[] )
    MRI_IMARR *imar_nwarp=NULL , *im_src ;
    char *prefix     = NULL ;
    double dxyz_mast = 0.0 ;
-   int interp_code  = MRI_QUINTIC ;
+   int interp_code  = MRI_WSINC5 ;
    int iarg , kk , verb=1 , iv ;
    mat44 src_cmat, nwarp_cmat, mast_cmat ;
    THD_3dim_dataset *dset_out ;
@@ -162,7 +162,7 @@ int main( int argc , char *argv[] )
 
    if( argc < 2 || strcasecmp(argv[1],"-help") == 0 ){
      printf(
-      "Usage: 3dApplyNwarp [options] sourcedataset\n"
+      "Usage: 3dNwarpApply [options] sourcedataset\n"
       "\n"
       "Program to apply a nonlinear warp saved from 3dAllineate -nwarp_save\n"
       "to a dataset, to produce a warped version of the source dataset.\n"
@@ -181,21 +181,25 @@ int main( int argc , char *argv[] )
       "NOTES:\n"
       "------\n"
       "* At present this program doesn't work with 2D warps, only with 3D.\n"
-      "* Default interpolation mode is 'quintic'; available modes are the\n"
+      "* Default interpolation mode is 'wsinc5'; available modes are the\n"
       "   same as in 3dAllineate:  NN  linear  cubic  quintic  wsinc5\n"
       "* The same interpolation mode is used for the warp itself (if needed)\n"
       "   and then for the data being warped.\n"
       "* At present, the output is always in float format, no matter what\n"
       "   data type the input uses.\n"
+      "* Program 3dNwarpCalc could be used to operate on 3D warps:\n"
+      "  ++ Catenate them, invert them, pre- or post-apply an affine warp.\n"
+      "  ++ Alas!  3dNwarpCalc has yet to be written.  If AFNI survives the\n"
+      "     coming budget cuts, then it will be forthcoming later in 2011.\n"
      ) ;
      exit(0) ;
    }
 
    /**--- bookkeeping and marketing ---**/
 
-   mainENTRY("3dApplyNwarp"); machdep();
-   AFNI_logger("3dApplyNwarp",argc,argv);
-   PRINT_VERSION("3dApplyNwarp"); AUTHOR("Zhark the Warped");
+   mainENTRY("3dNwarpApply"); machdep();
+   AFNI_logger("3dNwarpApply",argc,argv);
+   PRINT_VERSION("3dNwarpApply"); AUTHOR("Zhark the Warped");
    (void)COX_clock_time() ;
 
    /**--- process command line options ---**/
@@ -395,7 +399,7 @@ int main( int argc , char *argv[] )
      EDIT_BRICK_FACTOR(dset_out,kk,0.0) ;
 
    tross_Copy_History( dset_src , dset_out ) ;        /* hysterical records */
-   tross_Make_History( "3dApplyNwarp" , argc,argv , dset_out ) ;
+   tross_Make_History( "3dNwarpApply" , argc,argv , dset_out ) ;
 
    THD_daxes_to_mat44(dset_out->daxes) ;           /* save coord transforms */
 
