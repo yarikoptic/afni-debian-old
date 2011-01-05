@@ -259,3 +259,13 @@ Last-Update: 2009-10-21
  		${SUMALIBLIST} ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB}
  
  3dCRUISEtoAFNI: SUMA_3dCRUISEtoAFNI.c
+--- a/@RetinoProc
++++ b/@RetinoProc
+@@ -247,6 +247,7 @@
+                         -epi  EpiAnatRef+orig   \
+                         -AddEdge -anat2epi \
+                         -epi_base 0 \
++                        -skullstrip_opts '-no_use_edge' \
+                         -suffix RetinoProc
+       3drename *RetinoProc*HEAD AVol@Epi
+    else
