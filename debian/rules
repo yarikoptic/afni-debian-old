@@ -1,5 +1,7 @@
 #!/usr/bin/make -f
 
+# get install locations for matlab packages
+include /usr/share/matlab/debian/defs.make
 
 # TODO plugins do not handle this well
 #LDFLAGS = -Wl,--no-undefined
@@ -43,6 +45,10 @@ DEB_CMAKE_EXTRA_FLAGS = \
 
 
 override_dh_auto_configure:
+	# check whether something changed in the matlab install locations
+	# in which case we'd have to adjust debhelper's .install files
+	# content
+	[ "$(MATLAB_MDIR)" = "/usr/share/matlab/site/m" ]
 	dh_auto_configure --builddirectory=$(DEB_BUILDDIR) -- \
       $(DEB_CMAKE_EXTRA_FLAGS) \
       -DBUILD_SHARED_LIBS:BOOL=ON \
@@ -71,6 +77,9 @@ override_dh_auto_install:
 	# need to redo and fix rpath manually
 	cp $(DEB_BUILDDIR)/3dSetupGroupInCorr debian/tmp/lib/afni/bin/
 	chrpath -r /usr/lib/afni/lib debian/tmp/lib/afni/bin/3dSetupGroupInCorr
+	# matlab stuff -- fix permission
+	install -d debian/tmp/matlab
+	install -m 644 -t debian/tmp/matlab matlab/*
 
 
 override_dh_auto_clean:

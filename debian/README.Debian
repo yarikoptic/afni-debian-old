@@ -18,4 +18,12 @@ of some of its dependencies. This concerns the following tools:
     functions. Please see the afni(1) manpage for more information.
 
 
- -- Michael Hanke <michael.hanke@gmail.com>  Tue, 17 Mar 2009 08:39:06 +0100
+Matlab support
+--------------
+
+AFNI's Matlab library is available at /usr/share/matlab/site/m/afni. To be able
+to use it with Matlab one needs to add this path to Matlab's search path.
+
+Unfortunately, the current code is not compatible with Octave.
+
+ -- Michael Hanke <michael.hanke@gmail.com>  Wed, 5 Jan 2011 11:44:06 -0500
