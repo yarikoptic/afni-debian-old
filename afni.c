@@ -1112,6 +1112,9 @@ ENTRY("AFNI_parse_args") ;
       /*----- -im option -----*/
 
       if( strncmp(argv[narg],"-im",3) == 0 ){
+         fprintf(stderr,
+          "\n** WARNING: option '%s' for viewing plain images is old and not very useful\n" ,
+          argv[narg] ) ;
          GLOBAL_argopt.read_images   = True ;
          GLOBAL_argopt.read_sessions = False ;
          GLOBAL_argopt.read_dsets    = False ;       /* 17 Mar 2000 */
@@ -1357,6 +1360,7 @@ void AFNI_sigfunc_alrm(int sig)
      "A star will shine upon the hour of our next meeting"           ,
      "May we meet again in happier times"                            ,
      "Adieu, auf Wiedersehen, Adios, Cheerio, and Bon Voyage"        ,
+     "Ta ta, Hooroo, Catch ya 'round"                                ,
      "Meeting again is certain for those who are friends"            ,
      "Au revoir, Ciao, Ma'alsalam, Hasta luego, Czesc, and Zai jian" ,
      "Don't cry -- a farewell is necessary before we can meet again" ,
@@ -1368,10 +1372,17 @@ void AFNI_sigfunc_alrm(int sig)
      "Let the party begin"                                           ,
      "Let us cross over the river and rest on the other side"        ,
      "Good night, Mrs Calabash, wherever you are"                    ,
+     "Onen i Estel Edain, u-chebin estel anim"                       ,
+     "I will not say 'do not weep', for not all tears are an evil"   ,
+     "Calo anor na ven -- May the sun shine upon your road"          ,
+     "Little by little, one travels far"                             ,
+     "May it be a light to you in dark places, when all other lights go out"          ,
+     "No in elenath hilar nan had gin -- May the stars shine upon your path"          ,
+     "There is a time for departure even when there is no place to go"                ,
      "Sometimes you've got to let go to see if there was anything worth holding onto" ,
      "Remember me and smile, for it's better to forget than remember me and cry"      ,
      "So now I say goodbye, but I feel sure we will meet again sometime"              ,
-     "If you're anything like me, you're both smart and incredibly good looking"
+     "If you're anything like me, you're both smart and incredibly good looking"      ,
    } ;
    int nn = (lrand48()>>3) % NMSG ;
    if( !AFNI_yesenv("AFNI_NEVER_SAY_GOODBYE") ){
@@ -2020,9 +2031,9 @@ STATUS("call 14") ;
           nodown = 1 ;  /* splashdown will be done in AFNI_startup_layout_CB */
         } else if (MAIN_im3d->type == AFNI_3DDATA_VIEW){ /* ZSS Dec 02 2010. */
           (void) XtAppAddTimeOut( MAIN_app , 123 ,
-                                  AFNI_startup_layout_CB , 
+                                  AFNI_startup_layout_CB ,
                                   "GIMME_SOMETHING" ) ;
-          nodown = 1 ; 
+          nodown = 1 ;
         }
 
         /* 21 Jan 2003: this function will be called 0.246 seconds
@@ -2084,7 +2095,8 @@ STATUS("call 14") ;
           }
         }
 
-        if( !AFNI_yesenv("AFNI_ENABLE_MARKERS") )  /* 28 Apr 2010 */
+        if( MAIN_im3d->type == AFNI_3DDATA_VIEW &&
+            !AFNI_yesenv("AFNI_ENABLE_MARKERS")    )  /* 28 Apr 2010 */
 #if 0
           REPORT_PROGRESS("\n"
                           "+++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
@@ -2314,7 +2326,9 @@ ENTRY("AFNI_startup_timeout_CB") ;
                               "++ so its subdirectories were searched  ++\n"
                               "++ for dataset files.                   ++\n " ,
                               MCW_USER_KILL | MCW_TIMER_KILL ) ;
-   else if( !ALLOW_realtime && GLOBAL_library.have_dummy_dataset ){
+   else if( !ALLOW_realtime                    &&
+            GLOBAL_library.have_dummy_dataset  &&
+            MAIN_im3d->type == AFNI_3DDATA_VIEW   ){
     int horz = MAIN_im3d->vwid->view->session_horz ; /* 29 Apr 2010 */
     char hstr[1024] ;
     sprintf( hstr ,
@@ -3306,8 +3320,7 @@ THD_3dim_dataset * AFNI_read_images( int nf , char *fname[] )
 {
    MRI_IMAGE *im , *shim ;
    char *bar ;
-   register int     npix , ii ;
-   int nx , ny , nz , lf , kz , kim ;
+   int nx , ny , nz , lf , kz , kim , npix,ii ;
    MRI_IMARR *arr ;
    char str[256] ;
    THD_3dim_dataset *dset ;
@@ -3341,9 +3354,10 @@ ENTRY("AFNI_read_images") ;
 
    /*--- read 1st file to get sizes ---*/
 
+STATUS("read first file") ;
    arr = mri_read_file( fname[0] ) ;
    if( arr == NULL || arr->num == 0 )
-      ERROR_exit("Cannot read first image file: %s",fname[0]) ;
+     ERROR_exit("Cannot read first image file: %s",fname[0]) ;
 
    im = arr->imarr[0] ;
    nx = im->nx ;
@@ -3359,19 +3373,19 @@ ENTRY("AFNI_read_images") ;
 
    dsize = mri_datum_size( (MRI_TYPE) datum ) ;
    bar   = (char *) malloc( dsize * nx*ny*nz ) ;
-   if( bar == NULL ){
-      fprintf(stderr,"\n** Can't malloc memory for image input!\a\n") ;
-      exit(1) ;
-   }
+   if( bar == NULL )
+     ERROR_exit("Can't malloc memory for image input :-( !!!") ;
 
    /*--- read all files, convert if needed, put in the cube ---*/
 
+   REPORT_PROGRESS("\nReading unoriented image data") ;
    kz = 0 ;
    for( lf=0 ; lf < nf ; lf++ ){
 
       /** read the file (except the first, which we already have **/
 
       if( lf != 0 ){
+STATUS("read next file") ;
          arr = mri_read_file( fname[lf] ) ;
          if( arr == NULL || arr->num == 0 )
            ERROR_exit("Cannot read image file: %s",fname[lf]) ;
@@ -3413,16 +3427,16 @@ ENTRY("AFNI_read_images") ;
          memcpy( bar + dsize*npix*kz , mri_data_pointer(shim) , dsize*npix ) ;
          kz++ ;
 
-         KILL_1MRI(shim) ;
-         if( kz%10 == 5 ) REPORT_PROGRESS(".") ;
+         mri_free(shim) ;
+         if( kz%100 == 1 ) REPORT_PROGRESS(".") ;
       }
       FREE_IMARR(arr) ;  /* not DESTROY_IMARR, since images are already gone */
    }
 
-   /*** special case of one input image ***/
+   /*** special case of one input image: duplicate the image data ***/
 
    if( kz == 1 && nz == 2 ){
-      memcpy( bar + dsize*npix , bar , dsize*npix ) ;
+     memcpy( bar + dsize*npix , bar , dsize*npix ) ;
    }
 
    /*** tell the user what all we've read ***/
