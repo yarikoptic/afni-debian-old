@@ -111,6 +111,8 @@ void display_help_menu()
   printf
     (
      "This program estimates the Filter Width Half Maximum (FWHM).  \n\n"
+     "3dFWHM itself will no longer be upgraded.  Any future improvements\n"
+     "will be made to 3dFWHMx.  **** PLEASE SWITCH TO THAT PROGRAM ****\n\n"
      "Usage: \n"
      "3dFWHM \n"
      "-dset file     file  = name of input AFNI 3d dataset \n"
@@ -661,7 +663,7 @@ int main (int argc, char ** argv)
   PRINT_VERSION("3dFWHM") ;
   AUTHOR(PROGRAM_AUTHOR);
   mainENTRY("3dFWHM main") ;
-  WARNING_message("This program is obsolete!  Use 3dFWHMx instead!") ;
+  WARNING_message("This program is obsolete!  Use 3dFWHMx instead!!") ;
   machdep() ;
 
   /*----- program initialization -----*/

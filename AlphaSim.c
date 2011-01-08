@@ -118,9 +118,10 @@ void display_help_menu()
      "producing a cluster of a given size after the noise is thresholded\n"
      "at a given level ('-pthr').\n"
      "\n"
-     "** You may also be interested in program 3dClustSim, which does a **\n"
-     "** similar simulation of the probability of noise-only clusters,  **\n"
-     "** but also allows multiple '-pthr' values to be used in one run. **\n"
+     " *** You may also be interested in program 3dClustSim, which does a ***\n"
+     " *** similar simulation of the probability of noise-only clusters,  ***\n"
+     " *** but also allows multiple '-pthr' values to be used in one run. ***\n"
+     " *** For most users' purposes, 3dClustSim superseded AlphaSim now!  ***\n"
      "\n"
      "Usage: \n"
      "AlphaSim \n"
@@ -871,6 +872,21 @@ void check_for_valid_inputs (int nx,  int ny,  int nz,
                g_max_cluster_size, 2, 10000000);
       AlphaSim_error (message);
   }
+
+  if( !power ){
+    INFO_message(
+     "For most purposes, program 3dClustSim should be used instead of AlphaSim") ;
+    ININFO_message(
+     "* 3dClustsim lets you run with multiple p-value thresholds at once,") ;
+    ININFO_message(
+     "  and will thus be faster than AlphaSim.") ;
+    ININFO_message(
+     "* 3dClustSim will output a table of cluster-size thresholds that can be") ;
+    ININFO_message(
+     "  used in AFNI's interactive Clusterize to see cluster alpha levels.") ;
+  }
+
+  return ;
 }
 
 
