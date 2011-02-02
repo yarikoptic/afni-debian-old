@@ -718,6 +718,12 @@ int main( int argc , char *argv[] )
       "  has enough RAM, then the program should run pretty quickly.\n"
       " ++ If your computer DOESN'T have enough RAM to hold all the data,\n"
       "    then this program will be very slow -- buy more memory!\n"
+      " ++ Note that the .data file(s) are mapped directly into memory (mmap),\n"
+      "    rather than being read with standard input methods.  This operation\n"
+      "    may not work well on network-mounted drives, in which case you\n"
+      "    will have to run 3dGroupInCorr on the same computer with the data\n"
+      "    files.  However, 3dGroupInCorr does NOT need to be run on the same\n"
+      "    computer as AFNI or SUMA: see the '-ah' option (far below).\n"
 #ifdef USE_OMP
       "\n"
       "* One reason this program is a server (rather than being built in\n"
@@ -785,7 +791,7 @@ int main( int argc , char *argv[] )
       "                 large and take up a lot of memory in AFNI.\n"
       "              ++ Use this option with some judgment and wisdom, or bad things\n"
       "                 might happen! (e.g., your computer runs out of memory.)\n"
-      "              ++ This option is known as the 'Tim Ellmore special'.\n"
+      "              ++ This option is also known as the 'Tim Ellmore special'.\n"
       "\n"
       "*** Two-Sample Options ***\n"
       "\n"
@@ -1608,6 +1614,7 @@ int main( int argc , char *argv[] )
 
    if( do_sendall ){
      char buf[32] ;
+     strcat(bricklabels,";") ;           /* 01 Feb 2011: oopsie */
      for( kk=0 ; kk < ndset_AAA ; kk++ ){
        if( shd_AAA->dslab != NULL ) sprintf(buf,"A_%.10s",shd_AAA->dslab[kk]) ;
        else                         sprintf(buf,"%.9s#%02d",label_AAA,kk) ;
