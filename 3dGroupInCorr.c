@@ -1,16 +1,17 @@
-/* Group InstaCorr == GrpInCorr */
+/*** 3dGroupIncorr == Group InstaCorr == GrpInCorr ***/
 
 /***
   Ideas for making this program more cromulently embiggened:
    ++ 2-way case: produce 1-way result sub-bricks as well -- DONE!
    ++ Rank or other robust analog to t-test
    ++ Send sub-brick data as scaled shorts to reduce transmit time
-   ++ Fix shm: bug in AFNI libray
+   ++ Fix shm: bug in AFNI libray (but how?)
    ++ Have non-server modes:
-    -- To output dataset to disk
+    -- To input a 1D file as the seed vector set
+    -- To output dataset(s) to disk
     -- 3dTcorrMap-like scan through whole brain as seed
    ++ Per-subject covariates -- DONE!
-   ++ Send per-subject correlations to AFNI (as an option)
+   ++ Send per-subject correlations to AFNI (as an option) -- DONE!
 ***/
 
 #include "mrilib.h"
@@ -611,7 +612,7 @@ static float *bxx , *bxx_psinv , *bxx_xtxinv ;
 #define MAX_LABEL_SIZE 12
 #define NSEND_LIMIT     9
 
-#undef COVTEST  /* this is for Cox ONLY */
+#undef COVTEST  /* this is for Cox ONLY -- for debugging */
 
 int main( int argc , char *argv[] )
 {
@@ -627,9 +628,11 @@ int main( int argc , char *argv[] )
    MCW_cluster *nbhd=NULL ;
    int voxijk , voxind , aa,bb,cc , xx,yy,zz , qijk,qind ; char *atr ;
    int nvec , ndset_AAA=0,ndset_BBB=0 , *nvals_AAA=NULL,*nvals_BBB=NULL ;
+   int nvals_AAA_tot=0 , nvals_BBB_tot=0 , nvals_tot=0 , ndset_tot=0 ;
+   int nvals_AAA_max=0 , nvals_BBB_max=0 , nvals_max=0 ;
    float **seedvec_AAA=NULL , **dotprod_AAA=NULL ;
    float **seedvec_BBB=NULL , **dotprod_BBB=NULL ;
-   int ctim,btim,atim , do_shm=2 , nsend=0 , shm_active=0 ;
+   int ctim,btim,atim , do_shm=2 , nsend=0 , shm_active=0 , have_seedvec=0 ;
    char label_AAA[MAX_LABEL_SIZE]="AAA" , label_BBB[MAX_LABEL_SIZE]="BBB" ;
    char *qlab_AAA=NULL , *qlab_BBB=NULL ;
    int   lset_AAA=0    ,  lset_BBB=0 ;
@@ -1071,9 +1074,9 @@ int main( int argc , char *argv[] )
        covnel = THD_simple_table_read( argv[nopt] ) ;
        if( covnel == NULL )
          ERROR_exit("Can't read table from -covariates file '%s'",argv[nopt]) ;
-       INFO_message("Covariates file: %d columns, each with %d rows",
-                    covnel->vec_num , covnel->vec_len ) ;
        mcov = covnel->vec_num - 1 ;
+       INFO_message("Covariates file: %d columns (%d covariates), each with %d rows",
+                    covnel->vec_num , mcov , covnel->vec_len ) ;
        if( mcov < 1 )
          ERROR_exit("Need at least 2 columns in -covariates file!") ;
        else if( mcov > MAXCOV )
@@ -1148,16 +1151,16 @@ int main( int argc , char *argv[] )
        } else if( STRING_HAS_SUFFIX(fname,".grpincorr") ){
          fname = (char *)realloc(fname,strlen(fname)+16) ;
          strcat(fname,".niml") ;
-         INFO_message("Added '.niml' to end of -setA filename") ;
+         if( verb ) INFO_message("Added '.niml' to end of -setA filename") ;
        } else if( STRING_HAS_SUFFIX(fname,".grpincorr.") ){
          fname = (char *)realloc(fname,strlen(fname)+16) ;
          strcat(fname,"niml") ;
-         INFO_message("Added 'niml' to end of -setA filename") ;
+         if( verb ) INFO_message("Added 'niml' to end of -setA filename") ;
        }
        shd_AAA = GRINCOR_read_input( fname ) ;
        if( shd_AAA == NULL ) ERROR_exit("Cannot continue after -setA input error") ;
        if( verb ) INFO_message("-setA opened, contains %d datasets, %d time series, %s bytes",
-                                shd_AAA->ndset , shd_AAA->nvec , commaized_integer_string(shd_AAA->nbytes));
+                               shd_AAA->ndset , shd_AAA->nvec , commaized_integer_string(shd_AAA->nbytes));
        qlab_AAA = fname ;
        cpt = strchr(qlab_AAA,'.') ; if( cpt != NULL && cpt != qlab_AAA ) *cpt = '\0' ;
        nopt++ ; continue ;
@@ -1170,20 +1173,20 @@ int main( int argc , char *argv[] )
        fname = strdup(argv[nopt]) ;
        if( STRING_HAS_SUFFIX(fname,".data") ){
          strcpy(fname+strlen(fname)-5,".niml") ;
-         WARNING_message("Replaced '.data' with '.niml' in -setA filename") ;
+         if( verb ) WARNING_message("Replaced '.data' with '.niml' in -setA filename") ;
        } else if( STRING_HAS_SUFFIX(fname,".grpincorr") ){
          fname = (char *)realloc(fname,strlen(fname)+16) ;
          strcat(fname,".niml") ;
-         INFO_message("Added '.niml' to end of -setB filename") ;
+         if( verb ) INFO_message("Added '.niml' to end of -setB filename") ;
        } else if( STRING_HAS_SUFFIX(fname,".grpincorr.") ){
          fname = (char *)realloc(fname,strlen(fname)+16) ;
          strcat(fname,"niml") ;
-         INFO_message("Added 'niml' to end of -setB filename") ;
+         if( verb ) INFO_message("Added 'niml' to end of -setB filename") ;
        }
        shd_BBB = GRINCOR_read_input( fname ) ;
        if( shd_BBB == NULL ) ERROR_exit("Cannot continue after -setB input error") ;
        if( verb ) INFO_message("-setB opened, contains %d datasets, %d time series, %s bytes",
-                                shd_BBB->ndset , shd_BBB->nvec , commaized_integer_string(shd_BBB->nbytes));
+                               shd_BBB->ndset , shd_BBB->nvec , commaized_integer_string(shd_BBB->nbytes));
        qlab_BBB = fname ;
        cpt = strchr(qlab_BBB,'.') ; if( cpt != NULL && cpt != qlab_BBB ) *cpt = '\0' ;
        nopt++ ; continue ;
@@ -1212,6 +1215,7 @@ int main( int argc , char *argv[] )
    } else {
      ndset_BBB = 0 ; nvals_BBB = NULL ; dosix = 0 ;
    }
+   ndset_tot = ndset_AAA + ndset_BBB ;
 
    if( shd_BBB != NULL && shd_AAA->nvec != shd_BBB->nvec )
      ERROR_exit("-setA and -setB don't have same number of voxels") ;
@@ -1229,7 +1233,7 @@ int main( int argc , char *argv[] )
    }
 
    if( ttest_opcode == 1 && mcov > 0 ){
-     INFO_message("-covariates does not support unpooled variance (yet)") ;
+     WARNING_message("-covariates does not support unpooled variance (yet)") ;
      ttest_opcode = 0 ;
    }
 
@@ -1280,10 +1284,16 @@ int main( int argc , char *argv[] )
      }
 
      if( ndset_AAA < mcov+3 ){
-       ERROR_message("-setA has %d datasets, but you have %d covariates!") ; nbad++ ;
+       nbad++ ;
+       ERROR_message(
+         "-setA has %d datasets, but you have %d covariates (max would be %d)",
+         ndset_AAA,mcov,ndset_AAA-3) ;
      }
      if( ndset_BBB > 0 && ndset_BBB < mcov+3 ){
-       ERROR_message("-setB has %d datasets, but you have %d covariates!") ; nbad++ ;
+       nbad++ ;
+       ERROR_message(
+         "-setB has %d datasets, but you have %d covariates (max would be %d)",
+         ndset_BBB,mcov,ndset_BBB-3) ;
      }
 
      if( nbad ) ERROR_exit("Can't continue :-(") ;
@@ -1668,6 +1678,8 @@ int main( int argc , char *argv[] )
    dotprod_AAA = (float **)malloc(sizeof(float *)*ndset_AAA) ;
    for( kk=0 ; kk < ndset_AAA ; kk++ ){
      seedvec_AAA[kk] = (float *)malloc(sizeof(float)*nvals_AAA[kk]) ;
+     nvals_AAA_tot += nvals_AAA[kk] ;
+     nvals_AAA_max  = MAX( nvals_AAA_max , nvals_AAA[kk] ) ;
      if( nsaar == 0 )
        dotprod_AAA[kk] = (float *)malloc(sizeof(float)*nvec) ;
      else
@@ -1679,15 +1691,19 @@ int main( int argc , char *argv[] )
      dotprod_BBB = (float **)malloc(sizeof(float *)*ndset_BBB) ;
      for( kk=0 ; kk < ndset_BBB ; kk++ ){
        seedvec_BBB[kk] = (float *)malloc(sizeof(float)*nvals_BBB[kk]) ;
+       nvals_BBB_tot += nvals_BBB[kk] ;
+       nvals_BBB_max  = MAX( nvals_BBB_max , nvals_BBB[kk] ) ;
        if( nsaar == 0 )
          dotprod_BBB[kk] = (float *)malloc(sizeof(float)*nvec) ;
        else
          dotprod_BBB[kk] = saar[kk+ndset_AAA] ;
      }
    }
+   nvals_tot = nvals_AAA_tot + nvals_BBB_tot ;
+   nvals_max = MAX( nvals_AAA_max , nvals_BBB_max ) ;
 
    if( verb ){
-     INFO_message("3dGroupInCorr stands ready to do thy bidding :-) !!") ;
+     INFO_message("3dGroupInCorr stands ready to do thy bidding, O Master :-) !!") ;
 #ifdef USE_OMP
 #pragma omp parallel
  {
@@ -1754,16 +1770,16 @@ int main( int argc , char *argv[] )
        goto GetOutOfDodge ;  /* failed */
      }
 
-     /** start timer **/
+     /**----- start timer, then process command -----**/
 
      if( verb > 1 || (verb==1 && nsend < NSEND_LIMIT) )
        INFO_message("Received command %s from %s",nelcmd->name,pname) ;
 
-     atim = btim = NI_clock_time() ;
-
-     /** Command = set seed voxel index **/
+     atim = btim = NI_clock_time() ; have_seedvec = 0 ;
 
      if( strcmp(nelcmd->name,"SETREF_ijk") == 0 ){
+
+     /**----- Command = set seed voxel index (and maybe radius) -----**/
 
        /* extract location of seed voxel from command */
 
@@ -1812,9 +1828,70 @@ int main( int argc , char *argv[] )
        }
 #endif
 
-     /** unknown command type **/
+     } else if( strcmp(nelcmd->name,"SETREF_vectors") == 0 ){
+       float *cv ;
+
+     /**----- command contains all the seed vectors directly [Feb 2011] -----**/
+
+       if( nelcmd->vec_num < 1 ){
+         WARNING_message("SETREF_vectors: no vectors attached!?") ;
+         NI_free_element(nelcmd) ; goto LoopBack ;
+       }
+       if( nelcmd->vec_typ[0] != NI_FLOAT ){
+         WARNING_message("SETREF_vectors: not in float format!?") ;
+         NI_free_element(nelcmd) ; goto LoopBack ;
+       }
+
+       if( nelcmd->vec_num == 1 ){  /*--- one long vector: split it up ---*/
+
+         if( nelcmd->vec_len < nvals_tot ){
+           WARNING_message("SETREF_vectors: 1 vector length=%d but should be %d",
+                           nelcmd->vec_len , nvals_tot ) ;
+           NI_free_element(nelcmd) ; goto LoopBack ;
+         }
+
+         cv = (float *)nelcmd->vec[0] ;
+         for( jj=kk=0 ; kk < ndset_AAA ; kk++ ){
+           for( ii=0 ; ii < nvals_AAA[kk] ; ii++,jj++ ) seedvec_AAA[kk][ii] = cv[jj] ;
+         }
+         for( kk=0 ; kk < ndset_BBB ; kk++ ){
+           for( ii=0 ; ii < nvals_BBB[kk] ; ii++,jj++ ) seedvec_BBB[kk][ii] = cv[jj] ;
+         }
+
+       } else if( nelcmd->vec_num >= ndset_tot ){  /*--- multiple vectors ---*/
+
+         if( nelcmd->vec_len < nvals_max ){
+           WARNING_message("SETREF_vectors: vector length=%d but should be %d",
+                           nelcmd->vec_len , nvals_max ) ;
+           NI_free_element(nelcmd) ; goto LoopBack ;
+         }
+
+         for( kk=0 ; kk < ndset_AAA ; kk++ ){
+           cv = (float *)nelcmd->vec[kk] ;
+           for( ii=0 ; ii < nvals_AAA[kk] ; ii++ ) seedvec_AAA[kk][ii] = cv[ii] ;
+         }
+         for( kk=0 ; kk < ndset_BBB ; kk++ ){
+           cv = (float *)nelcmd->vec[kk+ndset_AAA] ;
+           for( ii=0 ; ii < nvals_BBB[kk] ; ii++ ) seedvec_BBB[kk][ii] = cv[ii] ;
+         }
+
+       } else {        /*--- badly formed data element ---*/
+
+         WARNING_message("SETREF_vectors: have %d vectors but need at least %d",
+                         nelcmd->vec_num , ndset_tot ) ;
+         NI_free_element(nelcmd) ; goto LoopBack ;
+
+       }
+
+       have_seedvec = 1 ;
+       for( kk=0 ; kk < ndset_AAA ; kk++ )
+         (void)THD_normalize( nvals_AAA[kk] , seedvec_AAA[kk] ) ;
+       for( kk=0 ; kk < ndset_BBB ; kk++ )
+         (void)THD_normalize( nvals_BBB[kk] , seedvec_BBB[kk] ) ;
 
      } else {
+
+     /**----- unknown command type -----**/
 
        WARNING_message("Don't know what to do with command %s",nelcmd->name) ;
        NI_free_element(nelcmd) ;
@@ -1830,9 +1907,11 @@ int main( int argc , char *argv[] )
 
      /* step 1: for each dataset, get the seed voxel time series from voxind */
 
-     GRINCOR_load_seedvec( shd_AAA , nbhd , voxijk , seedvec_AAA ) ;
-     if( shd_BBB != NULL )
-       GRINCOR_load_seedvec( shd_BBB , nbhd , voxijk , seedvec_BBB ) ;
+     if( !have_seedvec ){
+       GRINCOR_load_seedvec( shd_AAA , nbhd , voxijk , seedvec_AAA ) ;
+       if( shd_BBB != NULL )
+         GRINCOR_load_seedvec( shd_BBB , nbhd , voxijk , seedvec_BBB ) ;
+     }
 
      if( verb > 2 || (verb==1 && nsend < NSEND_LIMIT) ){
        ctim = NI_clock_time() ;
