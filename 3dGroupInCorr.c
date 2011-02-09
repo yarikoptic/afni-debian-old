@@ -2,16 +2,16 @@
 
 /***
   Ideas for making this program more cromulently embiggened:
-   ++ 2-way case: produce 1-way result sub-bricks as well -- DONE!
+   ++ 2-way case: produce 1-way result sub-bricks as well  -- DONE!
    ++ Rank or other robust analog to t-test
-   ++ Send sub-brick data as scaled shorts to reduce transmit time
+   ++ Send sub-brick data as scaled shorts
    ++ Fix shm: bug in AFNI libray (but how?)
    ++ Have non-server modes:
-    -- To input a 1D file as the seed vector set
-    -- To input a mask file to define the seed vector set
-    -- To output dataset(s) to disk
+    -- To input a 1D file as the seed vector set           -- DONE!
+    -- To input a mask file to define the seed vector set  -- DONE!
+    -- To output dataset(s) to disk                        -- DONE!
     -- 3dTcorrMap-like scan through whole brain as seed
-   ++ Per-subject covariates -- DONE!
+   ++ Per-subject covariates                               -- DONE!
    ++ Send per-subject correlations to AFNI (as an option) -- DONE!
 ***/
 
@@ -749,7 +749,7 @@ void GRINCOR_seedvec_ijklist_pvec( MRI_shindss *shd ,
 #define AFNI_NIML_PORT   53212          /* TCP/IP port that AFNI uses */
 #define SUMA_GICORR_PORT 53224          /* TCP/IP port that SUMA uses */
 
-static int nport = -1 ;                 /* 02 Aug 2010 */
+static int nport = 0 ;                  /* 02 Aug 2010 */
 
 NI_stream GI_stream = (NI_stream)NULL ;
 
@@ -851,7 +851,7 @@ int main( int argc , char *argv[] )
    char *bricklabels=NULL ;
    float **saar=NULL ;
 
-   int   bmode=0 ;    /* 05 Feb 2011 -- stuff for batch mode */
+   int   bmode=0 , do_lpi=0 ;    /* 05 Feb 2011 -- stuff for batch mode */
    char *bname=NULL ;
    char *bfile=NULL , *bprefix=NULL ;
    FILE *bfp=NULL ;
@@ -875,6 +875,10 @@ int main( int argc , char *argv[] )
       "  connects to the AFNI or SUMA GUI program (via TCP/IP).  Then it waits\n"
       "  for a command to be sent from AFNI/SUMA before it actually does anything.\n"
       "\n"
+      " (-: However,  the new [Feb 2011] '-batch' option,  described far below, :-)\n"
+      " (-: lets you run 3dGroupInCorr by itself, without AFNI or SUMA, writing :-)\n"
+      " (-: results to disk instead of transmitting them to the client program. :-)\n"
+      "\n"
       "* At the same time as you run 3dGroupInCorr, you also have to run the\n"
       "  AFNI GUI program, with a command like 'afni -niml'.  3dGroupInCorr\n"
       "  by itself will only do something when AFNI sends it a command, which\n"
@@ -887,6 +891,12 @@ int main( int argc , char *argv[] )
       "  series, then will compute the voxel-wise collection of t-tests of\n"
       "  that bunch of correlation maps, and return the resulting 3D volumes\n"
       "  to AFNI for display.\n"
+      " ++ A lot of computing can be required if there are a lot of datasets\n"
+      "    in the input collections.  3dGroupInCorr is carefully written to\n"
+      "    be fast.  For example, on a Mac Pro with 8 3GHz CPUs, running\n"
+      "    with 1.2 GBytes of data (100 datasets each with 69K voxels), each\n"
+      "    group correlation map takes about 0.3 seconds to calculate and\n"
+      "    transmit to AFNI -- this speed is why it's called 'Insta'.\n"
       "\n"
       "* You must start AFNI with the '-niml' option to allow it to accept\n"
       "  incoming TCP/IP socket connections.\n"
@@ -954,16 +964,18 @@ int main( int argc , char *argv[] )
       " ++ However, this binary version is not compiled with OpenMP :-(\n"
       " ++ OpenMP is supported in gcc 4.2 and above (included on Mac OS X),\n"
       "    and in some commercial C compilers (e.g., Sun's, Intel's).\n"
+      " ++ If at all possible, use a version/compilation of 3dGroupInCorr\n"
+      "    with OpenMP; the speed difference is very appreciable!\n"
 #endif
       ) ;
 
       printf(
       "\n"
-      "====================\n"
-      "COMMAND LINE OPTIONS\n"
-      "====================\n"
+      "==================================================================\n"
+      "                       COMMAND LINE OPTIONS\n"
+      "==================================================================\n"
       "\n"
-      "-----------------------*** Input Files ***-----------------------\n"
+      "-----------------------*** Input Files ***------------------------\n"
       "\n"
       " -setA AAA.grpincorr.niml\n"
       "   = Give the setup file (from 3dSetupGroupInCorr) that describes\n"
@@ -1001,17 +1013,6 @@ int main( int argc , char *argv[] )
       " -labelB bbb = Label to attach (in AFNI) to sub-bricks corresponding to setB.\n"
       "              ++ At most the first 11 characters of each label will be used!\n"
       "\n"
-      " -sendall    = Send all individual subject results to AFNI, as well as the\n"
-      "               various statistics.\n"
-      "              ++ These extra sub-bricks will be labeled like 'xxx_zcorr', where\n"
-      "                 'xxx' indicates which dataset the results came from; 'zcorr'\n"
-      "                 denotes that the values are the arctanh of the correlations.\n"
-      "              ++ If there are a lot of datasets, then the results will be VERY\n"
-      "                 large and take up a lot of memory in AFNI.\n"
-      "              ++ Use this option with some judgment and wisdom, or bad things\n"
-      "                 might happen! (e.g., your computer runs out of memory.)\n"
-      "              ++ This option is also known as the 'Tim Ellmore special'.\n"
-      "\n"
       "-----------------------*** Two-Sample Options ***-----------------------\n"
       "\n"
       " -pooled   = For a two-sample un-paired t-test, use a pooled variance estimator\n"
@@ -1026,14 +1027,15 @@ int main( int argc , char *argv[] )
       "               must be the same, and the datasets must have been input to\n"
       "               3dSetupGroupInCorr in the same relative order when each\n"
       "               collection was created. (Duh.)\n"
-#if 1
       " -nosix    = For a 2-sample situation, the program by default computes\n"
       "             not only the t-test for the difference between the samples,\n"
       "             but also the individual (setA and setB) 1-sample t-tests, giving\n"
       "             6 sub-bricks that are sent to AFNI.  If you don't want\n"
       "             these 4 extra 1-sample sub-bricks, use the '-nosix' option.\n"
-#endif
-      "   ++ None of these 'two-sample' options means anything for a 1-sample\n"
+      "            ++ See the Covariates discussion, below, for an example of how\n"
+      "               '-nosix' affects which covariate sub-bricks are computed.\n"
+      "\n"
+      " **++ None of these 'two-sample' options means anything for a 1-sample\n"
       "      t-test (i.e., where you don't use -setB).\n"
 #if 0
       "\n"
@@ -1053,7 +1055,7 @@ int main( int argc , char *argv[] )
       " -covariates cf = Read file 'cf' that contains covariates values for each dataset\n"
       "                  input (in both -setA and -setB; there can only at most one\n"
       "                  -covariates option).  Format of the file\n"
-      "     FIRST LINE -->   subject IQ   age\n"
+      "     FIRST LINE  -->  subject IQ   age\n"
       "     LATER LINES -->  Elvis   143   42\n"
       "                      Fred     85   59\n"
       "                      Ethel   109   49\n"
@@ -1066,7 +1068,12 @@ int main( int argc , char *argv[] )
       "            -- If you ran 3dSetupGroupInCorr before this update, its output\n"
       "               .grpincorr.niml file will NOT have dataset labels included.\n"
       "               Such a file cannot be used with -covariates -- Sorry.\n"
-      "        ++ The later columns contain numbers.\n"
+      "        ++ The later columns contain numbers: the covariate values for each\n"
+      "            input dataset.\n"
+      "            -- 3dGroupInCorr does not allow voxel-level covariates.  If you\n"
+      "               need these, you will have to use 3dttest++ on the '-sendall'\n"
+      "               output (of individual dataset correlations), which might best\n"
+      "               be done using '-batch' mode (cf. far below).\n"
       "        ++ The first line contains column headers.  The header label for the\n"
       "            first column isn't used for anything.  The later header labels are\n"
       "            used in the sub-brick labels sent to AFNI.\n"
@@ -1090,8 +1097,30 @@ int main( int argc , char *argv[] )
       "            is treated as a special covariate whose values are all 1).\n"
       "            -- At present, there is no way to tell 3dGroupInCorr not to send\n"
       "               all this information back to AFNI/SUMA.\n"
-      "        ++ A maximum of 31 covariates are allowed.  If you need more, then please\n"
-      "            consider the possibility that you are completely deranged or demented.\n"
+      "        ++ EXAMPLE:\n"
+      "           If there are 2 groups of datasets (with setA labeled 'Pat', and setB\n"
+      "           labeled 'Ctr'), and one covariate (labeled IQ), then the following\n"
+      "           sub-bricks will be produced:\n"
+      "       # 0: Pat-Ctr_mean    = mean difference in arctanh(correlation)\n"
+      "       # 1: Pat-Ctr_Zscr    = Z score of t-statistic for above difference\n"
+      "       # 2: Pat-Ctr_IQ      = difference in slope of arctanh(correlation) vs IQ\n"
+      "       # 3: Pat-Ctr_IQ_Zscr = Z score of t-statistic for above difference\n"
+      "       # 4: Pat_mean        = mean of arctanh(correlation) for setA\n"
+      "       # 5: Pat_Zscr        = Z score of t-statistic for above mean\n"
+      "       # 6: Pat_IQ          = slope of arctanh(correlation) vs IQ for setA\n"
+      "       # 7: Pat_IQ_Zscr     = Z score of t-statistic for above slope\n"
+      "       # 8: Ctr_mean        = mean of arctanh(correlation) for setB\n"
+      "       # 9: Ctr_Zscr        = Z score of t-statistic for above mean\n"
+      "       #10: Ctr_IQ          = slope of arctanh(correlation) vs IQ for setB\n"
+      "       #11: Ctr_IQ_Zscr     = Z score of t-statistic for above slope\n"
+      "        ++ However, the single-set results (sub-bricks #4-11) will NOT be\n"
+      "           computed if the '-nosix' option is used.\n"
+      "        ++ If '-sendall' is used, the individual dataset arctanh(correlation)\n"
+      "           maps (labeled with '_zcorr' at the end) will be appended to this\n"
+      "           list.  These setA sub-brick labels will start with 'A_' and these\n"
+      "           setB labels with 'B_'.\n"
+      "    ***+++ A maximum of 31 covariates are allowed.  If you need more, then please\n"
+      "           consider the possibility that you are completely deranged or demented.\n"
       "\n"
       "---------------------------*** Other Options ***---------------------------\n"
       "\n"
@@ -1099,6 +1128,17 @@ int main( int argc , char *argv[] )
       "              series for a radius of 'r' millimeters.  This is in addition\n"
       "              to any blurring done prior to 3dSetupGroupInCorr.  The default\n"
       "              radius is 0, but the AFNI user can change this interactively.\n"
+      "\n"
+      " -sendall   = Send all individual subject results to AFNI, as well as the\n"
+      "              various group statistics.\n"
+      "             ++ These extra sub-bricks will be labeled like 'xxx_zcorr', where\n"
+      "                'xxx' indicates which dataset the results came from; 'zcorr'\n"
+      "                denotes that the values are the arctanh of the correlations.\n"
+      "             ++ If there are a lot of datasets, then the results will be VERY\n"
+      "                large and take up a lot of memory in AFNI.\n"
+      "           **++ Use this option with some judgment and wisdom, or bad things\n"
+      "                might happen! (e.g., your computer runs out of memory.)\n"
+      "             ++ This option is also known as the 'Tim Ellmore special'.\n"
       "\n"
       " -ah host = Connect to AFNI/SUMA on the computer named 'host', rather than\n"
       "            on the current computer system 'localhost'.\n"
@@ -1150,7 +1190,7 @@ int main( int argc , char *argv[] )
       "\n"
       " -quiet = Turn off the 'fun fun fun in the sun sun sun' informational messages.\n"
       " -verb  = Print out extra informational messages for more fun!\n"
-      " -VERB  = Print out even more informational messages for even more fun!!\n"
+      " -VERB  = Print out even more informational messages for even more fun fun!!\n"
 #ifdef isfinite
       " -debug = Do some internal testing (slows things down a little)\n"
 #endif
@@ -1247,11 +1287,17 @@ int main( int argc , char *argv[] )
      "                 each input dataset at that voxel and use that as the seed\n"
      "                 vector for that dataset (if '-seedrad' is given, then the\n"
      "                 seed vector will be averaged as done in interactive mode).\n"
+     "              ** This is the same mode of operation as the interactive seed\n"
+     "                 picking via AFNI's 'InstaCorr Set' menu item.\n"
      "             -- FILE line format:  prefix i j k\n"
      "\n"
      "  ++ XYZ     ==> very similar to 'IJK', but instead of voxel indexes being\n"
      " or  XYZAVE      given to specify the seed vectors, the RAI (DICOM) (x,y,z)\n"
      "                 coordinates are given ('-seedrad' also applies).\n"
+     "              ** If you insist on using LPI (neurological) coordinates, as\n"
+     "                 Some other PrograMs (which are Fine Software tooLs) do,\n"
+     "                 set environmentment variable AFNI_INSTACORR_XYZ_LPI to YES,\n"
+     "                 before running this program.\n"
      "             -- FILE line format:  prefix x y z\n"
      "\n"
      "  ++ MASKAVE ==> each line on the command file specifies a mask dataset;\n"
@@ -1290,7 +1336,7 @@ int main( int argc , char *argv[] )
 
    mainENTRY("3dGroupInCorr"); machdep();
    AFNI_logger("3dGroupInCorr",argc,argv);
-   PRINT_VERSION("3dGroupInCorr"); AUTHOR("The Mad Correlator");
+   PRINT_VERSION("3dGroupInCorr"); AUTHOR("Cox, the Mad Correlator");
 
    /*-- process command line options --*/
 
@@ -1324,11 +1370,9 @@ int main( int argc , char *argv[] )
        TalkToAfni = 0 ; nopt++ ; continue ;
      }
 
-#if 1
      if( strcasecmp(argv[nopt],"-nosix") == 0 ){
        nosix = 1 ; nopt++ ; continue ;
      }
-#endif
 
      if( strcasecmp(argv[nopt],"-batch") == 0 ){  /* Feb 2011 */
        if( bmode )            ERROR_exit("GIC: can't use '%s' twice!",argv[nopt]) ;
@@ -1521,6 +1565,8 @@ int main( int argc , char *argv[] )
    }
 
    /*-- check inputs for OK-ness --*/
+
+   do_lpi = AFNI_yesenv("AFNI_INSTACORR_XYZ_LPI") ;  /* 07 Feb 2011 */
 
    if( bmode && !TalkToAfni )
      ERROR_exit("GIC: Alas, -batch and -suma are not compatible :-(") ;
@@ -2157,8 +2203,8 @@ int main( int argc , char *argv[] )
              k = (int)strtod(bsar->str[3],NULL) ;
            } else {
              float fi,fj,fk ;
-             x = (float)strtod(bsar->str[1],NULL) ;
-             y = (float)strtod(bsar->str[2],NULL) ;
+             x = (float)strtod(bsar->str[1],NULL) ; if( do_lpi ) x = -x ;
+             y = (float)strtod(bsar->str[2],NULL) ; if( do_lpi ) y = -y ;
              z = (float)strtod(bsar->str[3],NULL) ;
              MAT44_VEC( giset->dset->daxes->dicom_to_ijk , x,y,z , fi,fj,fk ) ;
              i = (int)rintf(fi) ; j = (int)rintf(fj) ; k = (int)rintf(fk) ;
@@ -2168,8 +2214,10 @@ int main( int argc , char *argv[] )
                k < 0 || k >= nz   ){
              if( bmode == IJK_MODE || bmode == IJKPV_MODE )
                ERROR_message("GIC: bad batch command line: %s (%d,%d,%d) illegal",bname,i,j,k);
-             else
+             else {
+               if( do_lpi ){ x = -x ; y = -y ; }
                ERROR_message("GIC: bad batch command line: %s (%g,%g,%g) illegal",bname,x,y,z);
+             }
              goto LoopBack ;
            }
            qijk = THREE_TO_IJK(i,j,k,nx,nxy) ;
