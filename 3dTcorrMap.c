@@ -95,9 +95,9 @@ int main( int argc , char *argv[] )
    char *Tprefix=NULL ; THD_3dim_dataset *Tset=NULL ; float *Tar=NULL ;
    char *Pprefix=NULL ; THD_3dim_dataset *Pset=NULL ; float *Par=NULL ;
    char *COprefix=NULL; THD_3dim_dataset *COset=NULL ; short *COar=NULL ;
-      float Thresh=0.0f ;
+   float Thresh=0.0f ;
    char *Tvprefix=NULL ; THD_3dim_dataset *Tvset=NULL ;
-      float **Tvar=NULL ; float  *Threshv=NULL, *Tvcount=NULL ;
+   float **Tvar=NULL ; float *Threshv=NULL, *Tvcount=NULL ;
    char stmp[256];
    int nout=0 ;
    int isodd ;  /* 29 Apr 2009: for unrolling innermost dot product */
@@ -125,6 +125,8 @@ int main( int argc , char *argv[] )
 
    int PCortn=0 , PCnmask=0 ; byte *PCmask=NULL ; int PCnx=0, PCny=0, PCnz=0 ;
    MRI_IMARR *PCimar=NULL ;
+
+   int need_acc = 0 ;
 
    /*----*/
 
@@ -184,7 +186,8 @@ int main( int argc , char *argv[] )
        "  -polort m  = Remove polynomial trend of order 'm', for m=-1..19.\n"
        "                [default is m=1; removal is by least squares].\n"
        "             ** Using m=-1 means no detrending; this is only useful\n"
-       "                for data/information that has been pre-processed.\n"
+       "                for data/information that has been pre-processed\n"
+       "                (e.g., using the 3dBandpass program).\n"
        "\n"
        "  -bpass L H = Bandpass the data between frequencies L and H (in Hz).\n"
        "             ** If the input dataset does not have a time step defined,\n"
@@ -249,7 +252,7 @@ int main( int argc , char *argv[] )
        "              (negative correlations don't count in this calculation)\n"
        "  -Thresh tt pp\n"
        "            = Save the COUNT of how many voxels survived thresholding\n"
-       "              at level abs(correlation) >= tt.\n"
+       "              at level abs(correlation) >= tt (for some tt > 0).\n"
        "\n"
        "  -VarThresh t0 t1 dt pp\n"
        "            = Save the COUNT of how many voxels survive thresholding\n"
@@ -321,6 +324,12 @@ int main( int argc , char *argv[] )
       ) ;
 
       PRINT_AFNI_OMP_USAGE("3dTcorrMap",NULL) ;
+#ifndef USE_OMP
+      printf(" * You REALLY want to use an OpenMP version of this program,\n"
+             "    and run on a fast multi-CPU computer system!  Otherwise,\n"
+             "    you will wait a long long time for the results.\n"
+            ) ;
+#endif
       PRINT_COMPILE_DATE ; exit(0) ;
    }
 
@@ -386,9 +395,9 @@ int main( int argc , char *argv[] )
          if( !THD_filename_ok(Mprefix) ) ERROR_exit("Illegal string after -prefix!\n") ;
          nopt++ ; continue ;
       }
-      if( strcasecmp(argv[nopt],"-Mean") == 0 ){
+      if( strcasecmp(argv[nopt],"-Mean") == 0 || strcasecmp(argv[nopt],"-Mmean") == 0 ){
          Mprefix = argv[++nopt] ; nout++ ;
-         if( !THD_filename_ok(Mprefix) ) ERROR_exit("Illegal prefix after -Mean!\n") ;
+         if( !THD_filename_ok(Mprefix) ) ERROR_exit("Illegal prefix after %s!\n",argv[nopt-1]) ;
          nopt++ ; continue ;
       }
       if( strcasecmp(argv[nopt],"-Zmean") == 0 ){
@@ -413,7 +422,7 @@ int main( int argc , char *argv[] )
          Tprefix = argv[++nopt] ; nout++ ;
          if( !THD_filename_ok(Tprefix) )
            ERROR_exit("Illegal prefix after -Thresh!\n") ;
-         nopt++ ; continue ;
+         nopt++ ; need_acc = 1 ; continue ;
       }
       if( strcasecmp(argv[nopt],"-VarThresh") == 0 ||
           strcasecmp(argv[nopt],"-VarThreshN") == 0 ){
@@ -451,7 +460,7 @@ int main( int argc , char *argv[] )
          INFO_message("VarThresh mode with %d levels: %.3f .. %.3f\n",
                       N_iv , Threshv[0] , Threshv[N_iv-1] ) ;
 
-         nopt++ ; continue ;
+         nopt++ ; need_acc = 1 ; continue ;
       }
       if( strcasecmp(argv[nopt],"-CorrMap") == 0 ){
 
@@ -528,8 +537,8 @@ int main( int argc , char *argv[] )
         nopt++ ; continue ;
       }
 
-      if(   (strcasecmp(argv[nopt],"-base") == 0) || 
-            (strcasecmp(argv[nopt],"-seed") == 0)    ){ 
+      if(   (strcasecmp(argv[nopt],"-base") == 0) ||
+            (strcasecmp(argv[nopt],"-seed") == 0)    ){
                      /* Added -seed to fit with -help text. Don't know how -base
                      got in here.      ZSS: Emergency patch. Jan 25 09 */
         if( sset != NULL ) ERROR_exit("Can't use -seed twice!") ;
@@ -663,7 +672,7 @@ int main( int argc , char *argv[] )
    if( COprefix != NULL ){
      int iii, jjj, kkk, nxy, dig=0;
      float *lesfac=(float*)calloc(DSET_NVOX(xset), sizeof(float));
-     for (ii=0; ii<DSET_NVOX(xset); ++ii) lesfac[ii]=1/10000.0; 
+     for (ii=0; ii<DSET_NVOX(xset); ++ii) lesfac[ii]=1/10000.0;
      COset = EDIT_empty_copy( xset ) ;
      EDIT_dset_items( COset ,
                         ADN_prefix    , COprefix        ,
@@ -887,10 +896,10 @@ int main( int argc , char *argv[] )
    dy = fabsf(DSET_DY(xset)) ;
    dz = fabsf(DSET_DZ(xset)) ;
 
-   if ( (Mseedr > 0.0f || Mseedr < 0.0f) && 
+   if ( (Mseedr > 0.0f || Mseedr < 0.0f) &&
         !DSET_IS_VOL(xset)) {
       ERROR_exit("Can't use -Mseed with non-volumetric input datasets");
-   } 
+   }
    if( Mseedr > 0.0f){
      Mseed_nbhd = MCW_spheremask( dx,dy,dz , Mseedr ) ;
      if( Mseed_nbhd == NULL || Mseed_nbhd->num_pt < 2 )
@@ -938,7 +947,7 @@ int main( int argc , char *argv[] )
                           "input datasets");
          }
       }
-   }  
+   }
 
    /* remove trends (-polort and -ort) now (if not bandpassing later) */
 
@@ -1124,6 +1133,8 @@ int main( int argc , char *argv[] )
 #else
  INFO_message("Starting long long loop through all voxels: %s Flops" ,
               approximate_number_string(ctime) ) ;
+ ININFO_message("You would be happier if you used an OpenMP-ized version") ;
+ ININFO_message("of this program, and a multiple CPU computer system.") ;
 #endif
 
    for( ii=0 ; ii < nmask ; ii++ ){  /* outer loop over voxels: */
@@ -1132,9 +1143,10 @@ int main( int argc , char *argv[] )
      if( vstep && ii%vstep == vstep-1 ){  /* palliate the user's pain */
        if( ii < vstep ){
          dtt = etime(&tt,1) ;
-         ININFO_message("Single loop duration: %.1f mins\n"
-                     "   Remaining time estim: %.1f mins = %.2f hrs\n",
-                        dtt/60.0, dtt/60.0*49.0 , dtt/3600.0*49.0 ) ;
+         ININFO_message("Single loop (1/50) duration: %.1f secs = %.2f mins\n"
+                     "   Remaining (49/50) time est.: %.0f secs = %.1f mins = %.2f hrs = %.3f days\n",
+                        dtt,dtt/60.0, dtt*49.0 , dtt/60.0*49.0 ,
+                                      dtt/3600.0*49.0 , dtt/86400.0*49.0 ) ;
          fprintf(stderr,"++ Voxel loop: ") ;
        }
        vstep_print() ;
@@ -1195,35 +1207,37 @@ int main( int argc , char *argv[] )
      /** combine results in ccar to give output values **/
 
      Tcount = Mcsum = Zcsum = Qcsum = 0.0f ;
-     for( iv=0 ; iv < N_iv ; ++iv ) Tvcount[iv] = 0.0f ;
      Pcsum = 0.0f ; nPcsum = 0 ;
-     
+     for( iv=0 ; iv < N_iv ; ++iv ) Tvcount[iv] = 0.0f ;
+
      if (COset) {
          COar = DSET_ARRAY(COset,indx[ii]);
          for( jj=0 ; jj < nmask ; jj++ ) {
-            cc = ccar[jj] * 10000.0;   /* scale up because output is short */
-            COar[indx[jj]] = cc < 0 ? (short)(cc-0.5):(short)(cc+0.5);
+            cc = ccar[jj] * 10000.0f;   /* scale up because output is short */
+            COar[indx[jj]] = cc < 0.0f ? (short)(cc-0.5f):(short)(cc+0.5f);
          }
      }
 
      for( jj=0 ; jj < nmask ; jj++ ){
-       if( jj == ii ) continue ;
-       cc = ccar[jj] ;
+       if( jj == ii ) continue ;  /* no self dealing [we're not in Congress] */
+       cc     = ccar[jj] ;
        Mcsum += cc ;
-       Zcsum += 0.5f * logf((1.0001f+cc)/(1.0001f-cc));
        Qcsum += cc*cc ;
-       if( cc > 0.0f ){ Pcsum += cc*cc ; nPcsum++ ; }
-       acc = (cc < 0) ? -cc : cc ;
-       if( acc >= Thresh ) Tcount++ ;
-       if( Threshv ){
-          iv = N_iv - 1 ;
-          while( iv > -1 ){
-            if( acc >= Threshv[iv] ){
-              do { Tvcount[iv--]++; } while (iv > -1);
-            }
-            --iv;
-          }
-        }
+       if( Par != NULL && cc > 0.0f ){ Pcsum += cc*cc ; nPcsum++ ; }
+       if( Zar != NULL ) Zcsum += 0.5f * logf((1.0001f+cc)/(1.0001f-cc));
+       if( need_acc ){
+         acc = (cc < 0.0f) ? -cc : cc ;
+         if( acc >= Thresh ) Tcount++ ;
+         if( Threshv ){
+           iv = N_iv - 1 ;
+           while( iv > -1 ){
+             if( acc >= Threshv[iv] ){
+               do { Tvcount[iv--]++; } while (iv > -1);
+             }
+             --iv;
+           }
+         }
+       }
      } /* end of combining */
 
      if( Mar != NULL ) Mar[indx[ii]] = Mcsum / (nmask-1.0f) ;

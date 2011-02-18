@@ -49,8 +49,33 @@
 
 afni_history_struct rickr_history[] = {
 
- { 14, FEB, 2011, RCR, "uber_proc.py", MINOR, TYPE_NEW_PROG,
-   "move uber program into main repository",
+ { 17, FEB, 2011, RCR, "3dDeconvolve", MICRO, TYPE_MODIFY,
+   "make -CENSORTR run: warning more clear",
+   NULL
+ } ,
+
+ { 17, FEB, 2011, RCR, "3dROIstats", MICRO, TYPE_MODIFY,
+   "make unknown option error more clear",
+   NULL
+ } ,
+
+ { 16, FEB, 2011, RCR, "uber_subject.py", MINOR, TYPE_MODIFY,
+   "epi or stim list from command line can init order/labels; file reorg",
+   "Also, initiated regression testing tree."
+ } ,
+
+ { 16, FEB, 2011, RCR, "howto", MINOR, TYPE_MODIFY,
+   "updated the main page and basic Linux instructions",
+   NULL
+ } ,
+
+ { 15, FEB, 2011, RCR, "uber_subject.py", SUPER, TYPE_NEW_PROG,
+   "added CLI (command-line interface), generates basic afni_proc.py script",
+   "Many enhancements yet to come."
+ } ,
+
+ { 14, FEB, 2011, RCR, "uber_proc.py", MINOR, TYPE_GENERAL,
+   "moved uber program into main repository",
    NULL
  } ,
 

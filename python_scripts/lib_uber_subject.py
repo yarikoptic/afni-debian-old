@@ -11,7 +11,19 @@ import lib_subjects as SUBJ
 
 DEF_UBER_DIR = 'uber_results'        # top directory for output
 
-VERSION = '0.0'
+g_history = """
+  uber_subject.py history
+
+    0.0  Feb 14, 2011: initial revision
+         - functional GUI for anat/epi/stim, generates simple AP command
+    0.1  Feb 15, 2011:
+         - added CLI (command line interface)
+         - additional help
+    0.2  Feb 16, 2011: reorg (move files and functions around)
+    0.3  Feb 16, 2011: epi or stim list from command line can init order/labels
+"""
+
+g_version = '0.3'
 
 # ----------------------------------------------------------------------
 # global definition of default processing blocks
@@ -93,7 +105,6 @@ class AP_Subject(object):
 
       # alter ap_command, removing last '\'
       self.ap_command = self.script_ap_nuke_last_LC(self.ap_command)
-      self.ap_command += '\n'   # rcr - until we remove final line continuation
 
       if len(self.errors) > 0: return   # if any errors so far, give up
 
@@ -111,7 +122,7 @@ class AP_Subject(object):
       skipchars = [' ', '\t', '\n', '\\']
       while ind > 0 and cmd[ind] in skipchars: ind -= 1
 
-      return cmd[0:ind+1]+'\n'
+      return cmd[0:ind+1]+'\n\n'
 
    def script_ap_stim_basis(self):
       slen = len(self.svars.stim_basis)
@@ -122,7 +133,7 @@ class AP_Subject(object):
                    % (self.LV.indent, '', self.svars.stim_basis[0])
 
       if slen != len(self.svars.stim):
-         self.errors.append('** error: num stim files != num basis')
+         self.errors.append('** error: num stim files != num stim basis')
          return ''
          
       return "%*s-regress_basis_multi \\\n%*s%s \\\n" %         \
@@ -134,12 +145,12 @@ class AP_Subject(object):
       if slen == 0: return ''
 
       if slen != len(self.svars.stim):
-         self.errors.append('** error: num stim files != num labels')
+         self.errors.append('** error: num stim files != num stim labels')
          return ''
          
       return "%*s-regress_stim_labels \\\n%*s%s \\\n" %         \
                 (self.LV.indent, '', self.LV.indent+4, '',
-                 ' '.join(["'%s'"%b for b in self.svars.stim_label]))
+                 ' '.join(["%s"%b for b in self.svars.stim_label]))
 
    def script_ap_stim(self):
       """- check for existence of stimulus timing files
@@ -224,15 +235,21 @@ class AP_Subject(object):
    def script_ap_anat(self):
       if not self.svars.anat: return ''
 
-      anat = self.svars.anat[:]
+      anat = self.svars.anat
       if self.svars.get_tlrc:   # require existence and remove +orig extension
+         plus = anat.rfind('+orig')
+         if plus < 0:
+            print '** missing +orig in anat %s, cannot copy tlrc dset' % anat
+         else:
+            anat = anat[0:plus]
+         # check for +tlrc dset?  (or let afni_proc.py?)
+
          # rcr - here
          # ?? how to tell if anat+tlrc is from manual or @auto_tlrc?
-         return ''
 
       if self.LV.var_adir:
-         file = '%s/%s' % (self.LV.var_adir, os.path.basename(self.svars.anat))
-      else: file = self.svars.anat
+         file = '%s/%s' % (self.LV.var_adir, os.path.basename(anat))
+      else: file = anat
 
       return '%*s-copy_anat %s \\\n' % (self.LV.indent, '', file)
 
@@ -317,7 +334,7 @@ class AP_Subject(object):
    def script_init(self):
       return '#!/usr/bin/env tcsh\n\n'           \
              '# created by uber_subject.py: version %s, %s\n\n' \
-                % (VERSION, asctime())
+                % (g_version, asctime())
 
    def use_dir(self, dir):
       if dir and dir != '.': return 1
@@ -472,8 +489,9 @@ def get_uber_results_dir(topdir=None):
    if base == DEF_UBER_DIR: return cwd
    else:                    return '%s/%s' % (cwd, DEF_UBER_DIR)
 
-def text_rows_and_cols(text):
-   """count number of rows (newlines) and columns (max width) in text"""
+# ===========================================================================
+# end class AP_Subject
+# ===========================================================================
 
 def objs_are_equal(obj1, obj2):
    """- check for None
@@ -532,4 +550,197 @@ def missing_files(flist):
    for file in flist:
       if not os.path.isfile(file): missing.append(file)
    return missing
+
+def ap_command_from_svars(svars, verb=1):
+   """create an afni_proc.py command
+
+      This might be run from the GUI or command line.
+
+      return status, warnings and error string
+        status =  0 on success
+               =  1 if warnings
+               = -1 if errors
+   """
+
+   # create command, save it (init directory tree?), show it
+   apsubj = AP_Subject(svars, verb=verb)
+   nwarn, wstr = apsubj.get_ap_warnings()
+   status, mesg = apsubj.get_ap_command()
+
+   if status == 0:
+      if nwarn > 0: status = 1  # have warnings but no errors
+   else:
+      status = -1               # have errors
+
+   return status, wstr, mesg
+
+def update_svars_from_special(name, svars, check_sort=0):
+   """in special cases, a special svar might need updates, and might suggest
+      making other updates
+
+      if check_sort, attempt to sort known file name lists by their
+      implied indices
+
+        epi:    - sort by index list (if check_sort)
+        stim:   - sort by index list (if check_sort)
+                - if labels are not yet set, try to init from file names
+
+      return the number of applied changes
+   """
+
+   # quick check for field to work with
+   if not name in ['epi', 'stim'] : return 0
+
+   changes = 0
+
+   if name == 'epi':
+      fnames = svars.epi
+      nf = len(fnames)
+      if nf < 2: return 0       # nothing to do
+
+      if check_sort: # try to sort by implied index list
+         dir, snames, gstr = flist_to_table_pieces(fnames)
+         indlist = UTIL.list_minus_glob_form(snames)
+         apply = 0
+         try:
+            indlist = [int(val) for val in indlist]
+            apply = 1
+         except: pass
+         # might as well check if already sorted
+         if apply and UTIL.vals_are_increasing(indlist): apply = 0
+         if apply and UTIL.vals_are_unique(indlist):
+            # attach index and name in 2-D array, sort, extract names
+            vlist = [[indlist[ind], fnames[ind]] for ind in range(nf)]
+            vlist.sort()
+            svars.set_var(name, [val[1] for val in vlist])
+            changes += 1
+
+   elif name == 'stim':
+      fnames = svars.stim
+      nf = len(fnames)
+      if nf < 2: return 0               # nothing to do
+
+      # stim file names are more complex...
+      dir, snames, gstr = flist_to_table_pieces(fnames)
+      stable = UTIL.parse_as_stim_list(snames)
+
+      if len(stable) != nf: return 0    # nothing to do
+
+      # if sorting, extract and process indlist
+      if check_sort: # try to sort by implied index list
+         indlist = [entry[0] for entry in stable]
+         apply = 0
+         try:
+            indlist = [int(val) for val in indlist]
+            apply = 1
+         except: pass
+         # might as well check if already sorted
+         if apply and UTIL.vals_are_increasing(indlist): apply = 0
+         if apply and UTIL.vals_are_unique(indlist):
+            # attach index and name in 2-D array, sort, extract names
+            vlist = [[indlist[ind], fnames[ind]] for ind in range(nf)]
+            vlist.sort()
+            svars.set_var(name, [val[1] for val in vlist])
+            changes += 1
+
+      # apply labels unless some already exist
+      apply = 1
+      if svars.valid('stim_label'):
+         if len(svars.stim_label) > 0: apply = 0
+
+      if apply:
+         labs = [entry[1] for entry in stable]
+         if not '' in labs:
+            svars.set_var('stim_label', labs)
+            changes += 1
+
+   return changes
+
+def flist_to_table_pieces(flist):
+      """return:
+           - common directory name
+           - short dlist names (after removing directory name)
+           - glob string of short names
+         note: short names will be new data (not pointers to flist)
+      """
+      if len(flist) == 0: return '', [], ''
+
+      ddir = UTIL.common_dir(flist)
+      dirlen = len(ddir)
+      if dirlen > 0: snames = [dset[dirlen+1:] for dset in flist]
+      else:          snames = [dset[:]         for dset in flist]
+
+      globstr = UTIL.glob_form_from_list(snames)
+
+      return ddir, snames, globstr
+
+
+# ===========================================================================
+# help strings accessed both from command-line and GUI
+# ===========================================================================
+
+helpstr_usubj_gui = """
+===========================================================================
+uber_subject.py GUI             - a graphical interface to afni_proc.py
+
+   purposes:
+
+      o  to run a single subject analysis or generate processing scripts
+      o  to help teach users:
+            - how to process data, including new methods or tools
+            - scripting techniques
+            - where to get more help
+
+   required inputs:
+
+      o  EPI datasets (in AFNI or NIfTI format)
+      o  stimulus timing files (time=0.0 refers to start of steady state)
+
+   optional inputs:
+
+      o  anatomical dataset
+      o  stim file labels and basis functions
+      o  whether to use wildcards
+      o  many processing options
+
+---------------------------------------------------------------------------
+Overview:
+
+   One generally goes through the following steps:
+
+      0. specify overview variables (subject and group ID codes)
+      1. specify input files (anat, EPI, stim timing)
+      2. specify some additional options
+      3. view the resulting afni_proc.py command
+      4. process the subject
+
+   The graphical interface is set up for users to specify the most pertinent
+   inputs first.  In the future, one should be able to initialize the interface
+   based on a previous subject.
+
+   Step 0. Optional subject and group ID codes are specified at the very top,
+           in the 'general subject info' section.
+
+              inputs: subject ID, group ID
+
+   Step 1. Specify input files.  The anatomy, EPI and stimulus timing files can
+           be specified via file browsers.  File names can be altered after
+           being set.
+
+           Be careful of the EPI and stimulus timing file orders.  The ordering
+           can come from any column the user clicks the heading for.  If the
+           indices are found from the file names, that order is likely to be
+           appropriate.
+
+              inputs: anat, EPI, stimulus timing files
+
+   Step 2. Specify additional options as desired.  
+
+   Step 3. click to generate the afni_proc.py command
+
+   Step 4. click to process the subject (run AP command and execute proc script)
+
+- R Reynolds  Feb, 2011
+===========================================================================
+"""
 
