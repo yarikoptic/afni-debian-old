@@ -3753,7 +3753,8 @@ ENTRY("T3D_quit_CB") ;
 
      EXRETURN ;
   }
-  AFNI_speak("Done",0) ;
+  if( lrand48()%5 == 0 )
+    MCW_melt_widget( wset.topform , -666 ) ;  /* 18 Feb 2011 */
   exit(0) ;
 }
 
