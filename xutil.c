@@ -2215,7 +2215,7 @@ static int calc_xloc(int width , int twid )
    return xloc;
 }
 
-void MCW_melt_widget( Widget w , int slow )
+void MCW_melt_widget( Widget w )
 {
    Display *dpy;
    Window win , rin ;
@@ -2225,7 +2225,7 @@ void MCW_melt_widget( Widget w , int slow )
    XSetWindowAttributes xswat;
    XGCValues gcvals;
    int finished=0;
-   int width, xloc, yloc, dist, size, i;
+   int width, xloc, yloc, dist, size, i , slow ;
    short *heights;
 
                        if(   w == NULL         ) return ;
@@ -2257,16 +2257,14 @@ void MCW_melt_widget( Widget w , int slow )
                       GCForeground | GCBackground | GCGraphicsExposures,
                       &gcvals);
 
-   if( slow == 0 )
-     gcvals.foreground = (lrand48()%2==0) ? BlackPixel(dpy,screen)
-                                          : WhitePixel(dpy,screen) ;
-   else
-     gcvals.foreground = (slow > 0) ? BlackPixel(dpy,screen)
-                                    : WhitePixel(dpy,screen) ;
+   gcvals.foreground = (lrand48()%2==0) ? BlackPixel(dpy,screen)
+                                        : WhitePixel(dpy,screen) ;
 
    fillgc = XCreateGC(dpy, win, GCForeground, &gcvals);
 
-   XSync(dpy, 0); if( slow < 0 ) slow = -slow ;
+   slow = (rww*rhh) / 34567 ;  /* larger ==> faster */
+
+   XSync(dpy,0); if( slow < 0 ) slow = -slow ;
 
    heights = (short *) calloc(sizeof(short), rww+1 );
 
@@ -2284,8 +2282,8 @@ void MCW_melt_widget( Widget w , int slow )
                 xloc, yloc, width, size, xloc, yloc + dist);
       XFillRectangle(dpy, win, fillgc,
                      xloc, yloc, width, dist);
-      if( rnd(33) == 0 ) XSync(dpy,0) ;
       if( slow > 0 && rnd(slow)==0 ) RWC_sleep(1);
+      if( rnd(33) == 0 ) XSync(dpy,0) ;
       yloc += dist;
       for (i = xloc; i < (xloc + width); i++){
         if( (heights[i] < (rhh - MIN_SIZE)) && (yloc >= (rhh - MIN_SIZE)) )
@@ -2293,10 +2291,8 @@ void MCW_melt_widget( Widget w , int slow )
         heights[i] = MAX(heights[i], yloc);
       }
       if (finished >= (rww - FINISHED)){
-        XDestroyWindow(dpy,win);
-        XFreeGC(dpy,copygc); XFreeGC(dpy,fillgc);
-        XSync(dpy, 0);
-        free(heights); return;
+        XDestroyWindow(dpy,win); XFreeGC(dpy,copygc); XFreeGC(dpy,fillgc);
+        XSync(dpy,0); RWC_sleep(200); free(heights); return;
       }
 #if 0
       gcvals.foreground = (lrand48()%3) ? BlackPixel(dpy,screen) : WhitePixel(dpy,screen) ;

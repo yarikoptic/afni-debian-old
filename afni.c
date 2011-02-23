@@ -1406,8 +1406,10 @@ void AFNI_sigfunc_alrm(int sig)
 
    if( sig == 0 && !NO_frivolities ){
      Three_D_View *im3d = AFNI_find_open_controller() ;
-     if( im3d != NULL && (lrand48()%9==0 || AFNI_yesenv("AFNI_SPLASH_MELT")) )
-       MCW_melt_widget( im3d->vwid->top_form , 0 ) ;
+     char *eee = getenv("AFNI_SPLASH_MELT") ;
+     if( eee == NULL ) eee = "?" ; else eee[0] = toupper(eee[0]) ;
+     if( im3d != NULL && eee[0] != 'N' && (eee[0] == 'Y' || lrand48()%5==0) )
+       MCW_melt_widget( im3d->vwid->top_form ) ;
    }
 
    exit(sig);
@@ -5485,8 +5487,9 @@ static char * AFNI_image_help =
  "r/R = Ricochet image sequence up/down\n"
  "i/I = image fraction down/up\n"
  "z/Z = zoom out/in\n"
- "Del = drawing undo       F2 = drawing pencil\n"
- "F3  = drawing value --   F4 = drawing value ++\n"
+ "Del = drawing undo       F1 = Help!\n"
+ "F2  = drawing pencil     F3 = drawing value --\n"
+ "F4  = drawing value ++   F5 = Meltdown!!\n"
  "Left/Right/Up/Down arrow keys\n"
  "    = move crosshairs OR pan zoomed image\n"
  "Shift+keyboard arrow keys = pan crop region around\n"

@@ -218,6 +218,7 @@ ENTRY("new_MCW_grapher") ;
                        "L      = turn AFNI logo on/off\n"
                        "v/V    = Video up/down in time\n"
                        "r/R    = Video ricochet up/down in time\n"
+                       "F5     = Meltdown!\n"
                        "\n"
                        "See the 'Opt' menu for other keypress actions\n"
                        "and for other options to control graph display."
@@ -2924,7 +2925,7 @@ STATUS("KeyPress event") ;
                 case XK_KP_Page_Down:
                 case XK_Page_Down: buf[0] = 'z' ; break ;
                 case XK_F5:
-                  MCW_melt_widget( grapher->draw_fd , 0 ) ; break ;
+                  MCW_melt_widget( grapher->draw_fd ) ; break ;
               }
             }
             if( buf[0] != '\0' ) GRA_handle_keypress( grapher , buf , ev ) ;
