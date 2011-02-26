@@ -293,6 +293,7 @@ typedef struct {
 
 #define isqCR_force_redisplay 601 /* 22 Aug 1998 */
 #define isqCR_setindex        602 /* 26 Apr 2007 */
+#define isqCR_deltival        603 /* 23 Feb 2011 */
 
 #define COLORMAP_CHANGE(sq)                                          \
   do{ if( ISQ_REALZ((sq)) && (sq)->dc->visual_class == TrueColor ){  \
@@ -322,6 +323,12 @@ typedef struct {
 #ifndef MONT_GMAX
 #define MONT_GMAX 13
 #endif
+
+#define MONT_SPATIAL 0  /* mont_mode codes */
+#define MONT_ULAY    1
+#define MONT_OLAY    2
+#define MONT_UOLAY   3
+#define MONT_UOT2    4
 
 extern void ISQ_montage_CB( Widget , XtPointer , XtPointer ) ;
 extern void ISQ_montage_action_CB( Widget , XtPointer , XtPointer ) ;
@@ -396,7 +403,7 @@ typedef struct MCW_imseq {
 
      int mont_nx    , mont_ny    , mont_skip    , mont_gap    , mont_gapcolor    ;
      int mont_nx_old, mont_ny_old, mont_skip_old, mont_gap_old, mont_gapcolor_old;
-     int mont_periodic ;
+     int mont_periodic , mont_mode ;
      MCW_arrowval *mont_across_av , *mont_down_av , *mont_skip_av ,
                   *mont_gap_av , *mont_gapcolor_av ;
 
@@ -615,6 +622,7 @@ extern MCW_imseq * open_MCW_imseq( MCW_DC * , get_ptr , XtPointer ) ;
 #define isqDR_sendmontage   119
 #define isqDR_periodicmont  120
 #define isqDR_setmontage    121
+#define isqDR_montmode      122
 #define isqDR_setifrac      130
 #define isqDR_setrange      131
 #define isqDR_bgicon        132
