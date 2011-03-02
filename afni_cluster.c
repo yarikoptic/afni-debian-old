@@ -341,7 +341,7 @@ ENTRY("AFNI_clus_dsetlabel") ;
    if( !ISVALID_DSET(cwid->dset) )
      strcpy(str," [No Aux Dataset chosen]") ;
    else
-     sprintf(str,"Aux=%s",THD_trailname(DSET_HEADNAME(cwid->dset),SESSTRAIL+1)) ;
+     sprintf(str,"Aux=%s",THD_trailname(DSET_HEADNAME(cwid->dset),SESSTRAIL)) ;
 
    if( cwid->splotim != NULL )
      sprintf(str+strlen(str)," Scat.1D=%s",cwid->splotim->name) ;
@@ -477,7 +477,7 @@ ENTRY("AFNI_clus_make_widgets") ;
 #define VLINE(rr)                                                           \
      (void) XtVaCreateManagedWidget( "menu", xmSeparatorWidgetClass, (rr) , \
                                         XmNorientation   , XmVERTICAL    ,  \
-                                        XmNseparatorType , XmSINGLE_LINE ,  \
+                                        XmNseparatorType , XmDOUBLE_LINE ,  \
                                      NULL )
 #define HLINE(rr)                                                           \
    (void) XtVaCreateManagedWidget( "dialog", xmSeparatorWidgetClass, (rr) , \
@@ -711,8 +711,8 @@ ENTRY("AFNI_clus_make_widgets") ;
                        "** Pointwise median:                     'Median'\n"
                        "** Compute first principal component:    'PC#1'\n"
                        "** Histogram all the values:             'Histog'\n"
-                       "** Scatterplot mean from each sub-brick: 'S:mean'\n"
-                       "** Scatterplot all values:               'S:all'\n"
+                       "** Scatterplot MEAN from each sub-brick: 'S:mean'\n"
+                       "** Scatterplot ALL values:               'S:all'\n"
                        "   [-- Scat.1D button chooses x-axis for 'S:' --]\n"
                        "And then either 'Plot' or 'Save' these results\n"
                        "** If you 'Save' these results, the text field\n"
@@ -745,6 +745,8 @@ ENTRY("AFNI_clus_make_widgets") ;
 
    /* row #2: data processing method */
 
+   VLINE(rc) ;
+
    { static char *clab[6] = { "Mean", "Median", "PC#1", "Histog", "S:mean", "S:all" } ;
      cwid->aver_av = new_MCW_optmenu( rc , " " , 0,5,0,0 ,
                                       NULL,NULL , MCW_av_substring_CB,clab ) ;
@@ -774,7 +776,7 @@ ENTRY("AFNI_clus_make_widgets") ;
                          ) ;
    }
 
-   VLINE(rc) ; VLINE(rc) ;
+   VLINE(rc) ;
 
    /* row #2: splot choosers */
 
@@ -796,7 +798,11 @@ ENTRY("AFNI_clus_make_widgets") ;
                       "   initial 'From' lines will be skipped.\n"
                       "* The purpose is to let you plot the\n"
                       "   beta values from multiple subjects\n"
-                      "   vs. some subject-level covariate."
+                      "   vs. some subject-level covariate.\n"
+                      "* If you don't choose a Scat.1D file,\n"
+                      "   (or 'Clear' it later), then the\n"
+                      "   sub-brick index is used to define\n"
+                      "   the x-axis values."
                     ) ;
 
    xstr = XmStringCreateLtoR( "Clear" , XmFONTLIST_DEFAULT_TAG ) ;
@@ -1629,7 +1635,7 @@ ENTRY("AFNI_clus_action_CB") ;
            sprintf(ylab,"Cluster #%d = %d vox", ii+1 , IMARR_COUNT(imar) ) ;
            strcat(ylab,(dosqrt)?" [SqrtHist]" : " [Hist]") ;
            sprintf(tlab,"\\noesc %s[%d..%d]",
-                   THD_trailname(DSET_HEADNAME(cwid->dset),SESSTRAIL+1) , ibot,itop ) ;
+                   THD_trailname(DSET_HEADNAME(cwid->dset),SESSTRAIL) , ibot,itop ) ;
            plot_ts_xypush(0,-1) ; plot_ts_setthik(0.005f) ;
            PLUTO_histoplot_f( nbin,hbot,htop , hbin , xlab,ylab,tlab , 0,NULL ) ;
 
@@ -1701,7 +1707,7 @@ ENTRY("AFNI_clus_action_CB") ;
            sim = mri_MMBvector( imar,ibot,itop,2 ) ;
        } else if( doscat ){  /* scatterplot */
          float *xar, *yar ; int nix, niy, nixy, jj,kk ;
-         float a=0,b=0,pcor=0 ;
+         float a=0,b=0,pcor=0,p05=0,p95=0 ;
          char xlab[64] , ylab[64] , tlab[THD_MAX_NAME+2] ;
          if( dosmea ){
            im = mri_meanvector( imar , ibot,itop ) ; xar = MRI_FLOAT_PTR(im) ;
@@ -1728,25 +1734,23 @@ ENTRY("AFNI_clus_action_CB") ;
            for( kk=0 ; kk < niy ; kk++ )
              for( jj=0 ; jj < nix ; jj++ ) xar[jj+kk*nix] = jj+ibot ;
            strcpy(xlab,"Index") ;
+           if( cwid->splotim != NULL )
+             WARNING_message("Scat.1D file [%s] too short [%d] for dataset [%d]",
+                             cwid->splotim->name , cwid->splotim->nx , nix+ibot  ) ;
          }
-         if( niy == 1 ){
-           float xbar=0,ybar=0, xq=0,yq=0,xyq=0 ;
-           for( jj=0 ; jj < nix ; jj++ ){ xbar += xar[jj]; ybar += yar[jj]; }
-           xbar /= nix ; ybar /= nix ;
-           for( jj=0 ; jj < nix ; jj++ ){
-             xq  += (xar[jj]-xbar)*(xar[jj]-xbar) ;
-             yq  += (yar[jj]-ybar)*(yar[jj]-ybar) ;
-             xyq += (xar[jj]-xbar)*(yar[jj]-ybar) ;
-           }
-           if( xq > 0.0f && yq > 0.0f ){
-             pcor = xyq/sqrtf(xq*yq); a = xyq/xq; b = (xq*ybar-xbar*xyq)/xq;
-           }
+         if( niy == 1 && nix >= 9 ){
+           float_triple aaa,bbb,rrr ;
+           THD_pearson_corr_boot( nix,xar,yar , &rrr,&aaa,&bbb ) ;
+           pcor = rrr.a ; p05 = rrr.b ; p95 = rrr.c ; a = aaa.a ; b = bbb.a ;
          }
          sprintf(ylab,"Cluster #%d = %d voxels",ii+1,IMARR_COUNT(imar)) ;
          sprintf(tlab,"\\noesc %s[%d..%d]",
-                 THD_trailname(DSET_HEADNAME(cwid->dset),SESSTRAIL),ibot,itop);
-         if( pcor != 0.0f ) sprintf(tlab+strlen(tlab)," R=%.3f",pcor) ;
-         PLUTO_set_xypush(1,0) ;
+                 THD_trailname(DSET_HEADNAME(cwid->dset),
+                               (pcor == 0.0f) ? SESSTRAIL : 0 ) ,
+                 ibot,itop ) ;
+         if( pcor != 0.0f )
+           sprintf(tlab+strlen(tlab)," R=%.2f [%.2f..%.2f]",pcor,p05,p95) ;
+         PLUTO_set_xypush( cwid->splotim == NULL , 0 ) ;
          PLUTO_scatterplot( nixy,xar,yar , xlab,ylab,tlab , a,b ) ;
          PLUTO_set_xypush(1,1) ;
          free(xar) ; free(yar) ;
@@ -1760,7 +1764,7 @@ ENTRY("AFNI_clus_action_CB") ;
                    (dopc) ? "PC#1" : (domean) ? "Mean" : "Median" ,
                    ii+1 , IMARR_COUNT(imar) ) ;
            sprintf(tlab,"\\noesc %s[%d..%d]",
-                   THD_trailname(DSET_HEADNAME(cwid->dset),SESSTRAIL+1),
+                   THD_trailname(DSET_HEADNAME(cwid->dset),SESSTRAIL),
                    ibot,itop) ;
            plot_ts_xypush(1,0) ; plot_ts_setthik(0.006f) ;
            xax = (float *)malloc(sizeof(float)*im->nx) ;
