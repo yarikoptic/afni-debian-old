@@ -6071,8 +6071,8 @@ ENTRY("AFNI_view_setter") ;
 
 /*------------------------------------------------------------------------*/
 
-void AFNI_set_index_viewpoint ( Three_D_View *im3d ,
-                             int ijk, int redisplay_option )  /* ZSS July 2010 */
+void AFNI_set_index_viewpoint( Three_D_View *im3d ,
+                               int ijk, int redisplay_option )  /* ZSS July 2010 */
 {
    int nij, ni, ii, jj, kk;
 
@@ -6103,7 +6103,8 @@ void AFNI_set_viewpoint( Three_D_View *im3d ,
 {
    int old_i1 , old_j2 , old_k3 , i1,j2,k3 ;
    int dim1,dim2,dim3 , isq_driver , do_lock , new_xyz ;
-   int newti ; /* 24 Jan 2001 */
+   int newti ;            /* 24 Jan 2001 */
+   int ihave , doflash ;  /* 02 Mar 2011 */
 
    THD_dataxes *daxes ;
    THD_fvec3 fv ;
@@ -6149,11 +6150,12 @@ if(PRINT_TRACING)
 
    if( !redisplay_option && !new_xyz ) EXRR ;
 
+   ihave      = (im3d->s123 != NULL || im3d->s231 != NULL || im3d->s312 != NULL);
+   doflash    = (redisplay_option == REDISPLAY_FLASH) ;
    isq_driver = (redisplay_option == REDISPLAY_ALL) ? isqDR_display
                                                     : isqDR_overlay ;
 
-   if( !AFNI_noenv("AFNI_VALUE_LABEL") && new_xyz &&
-       (im3d->s123 == NULL || im3d->s231 == NULL || im3d->s312 == NULL) )
+   if( !AFNI_noenv("AFNI_VALUE_LABEL") && new_xyz && !ihave )
      isq_driver = isqDR_display ;         /* 08 Mar 2002 */
 
    LOAD_IVEC3(old_id,old_i1,old_j2,old_k3) ;
@@ -6166,11 +6168,11 @@ DUMP_IVEC3("  new_id",new_id) ;
 #endif
 
    if( im3d->type == AFNI_3DDATA_VIEW ){
-      fv = THD_3dind_to_3dmm ( im3d->anat_now , new_id ) ;
-      fv = THD_3dmm_to_dicomm( im3d->anat_now , fv     ) ;
-      im3d->vinfo->xi = fv.xyz[0] ;  /* set display coords */
-      im3d->vinfo->yj = fv.xyz[1] ;  /* to Dicom standard  */
-      im3d->vinfo->zk = fv.xyz[2] ;
+     fv = THD_3dind_to_3dmm ( im3d->anat_now , new_id ) ;
+     fv = THD_3dmm_to_dicomm( im3d->anat_now , fv     ) ;
+     im3d->vinfo->xi = fv.xyz[0] ;  /* set display coords */
+     im3d->vinfo->yj = fv.xyz[1] ;  /* to Dicom standard  */
+     im3d->vinfo->zk = fv.xyz[2] ;
    }
 
    /* clear labels */
@@ -6182,7 +6184,8 @@ DUMP_IVEC3("  new_id",new_id) ;
 
    /*--- 05 Sep 2006: volume edit on demand? ---*/
 
-   if( IM3D_IMAGIZED(im3d) && im3d->vinfo->thr_onoff ){
+   if( IM3D_IMAGIZED(im3d) && im3d->vinfo->thr_onoff    &&
+       ihave               && im3d->vinfo->func_visible && !doflash ){
      int changed=0 ;
      if( VEDIT_good(im3d->vedset) ){
        im3d->vedset.ival = im3d->vinfo->fim_index ;
@@ -6242,8 +6245,8 @@ DUMP_IVEC3("             new_ib",new_ib) ;
       xyzm[0] = new_ib.ijk[0] ; xyzm[1] = new_ib.ijk[1] ;
       xyzm[2] = new_ib.ijk[2] ; xyzm[3] = 0 ;
 
-      if( im3d->g123 != NULL && ( im3d->g123->never_drawn ||
-                                  redisplay_option == REDISPLAY_ALL || new_xyz ) )
+      if( im3d->g123 != NULL && !doflash &&
+          ( im3d->g123->never_drawn || redisplay_option == REDISPLAY_ALL || new_xyz ) )
          drive_MCW_grapher( im3d->g123 , graDR_redraw , (XtPointer) xyzm ) ;
    }
 
@@ -6266,8 +6269,8 @@ DUMP_IVEC3("             new_ib",new_ib) ;
       xyzm[0] = new_ib.ijk[0] ; xyzm[1] = new_ib.ijk[1] ;
       xyzm[2] = new_ib.ijk[2] ; xyzm[3] = 0 ;
 
-      if( im3d->g231 != NULL && ( im3d->g231->never_drawn ||
-                                  redisplay_option == REDISPLAY_ALL || new_xyz ) )
+      if( im3d->g231 != NULL && !doflash &&
+          ( im3d->g231->never_drawn || redisplay_option == REDISPLAY_ALL || new_xyz ) )
          drive_MCW_grapher( im3d->g231 , graDR_redraw , (XtPointer) xyzm ) ;
    }
 
@@ -6290,8 +6293,8 @@ DUMP_IVEC3("             new_ib",new_ib) ;
       xyzm[0] = new_ib.ijk[0] ; xyzm[1] = new_ib.ijk[1] ;
       xyzm[2] = new_ib.ijk[2] ; xyzm[3] = 0 ;
 
-      if( im3d->g312 != NULL && ( im3d->g312->never_drawn ||
-                                  redisplay_option == REDISPLAY_ALL || new_xyz ) )
+      if( im3d->g312 != NULL && !doflash &&
+          ( im3d->g312->never_drawn || redisplay_option == REDISPLAY_ALL || new_xyz ) )
          drive_MCW_grapher( im3d->g312 , graDR_redraw , (XtPointer) xyzm ) ;
    }
 
@@ -6299,37 +6302,33 @@ DUMP_IVEC3("             new_ib",new_ib) ;
 
    /*--- redraw coordinate display now ---*/
 
-   if( redisplay_option || new_xyz ){
+   if( !doflash && (redisplay_option || new_xyz) ){
       AFNI_crosshair_relabel( im3d ) ;  /* 12 Mar 2004: moved this to a function, too */
       AFNI_do_bkgd_lab( im3d ) ;        /* 08 Mar 2002: moved labelizing to function */
    }
 
    /* 24 Jan 2001: set grapher index based on type of dataset */
 
-#if 0
-   if( DSET_NUM_TIMES(im3d->anat_now) > 1 )
-      newti = im3d->vinfo->time_index ;
-   else
-#endif
-      newti = im3d->vinfo->anat_index ;
+   newti = im3d->vinfo->anat_index ;
 
-   if( newti >= 0 ){
+   if( newti >= 0 && !doflash ){
      drive_MCW_grapher( im3d->g123, graDR_setindex, (XtPointer)ITOP(newti) );
      drive_MCW_grapher( im3d->g231, graDR_setindex, (XtPointer)ITOP(newti) );
      drive_MCW_grapher( im3d->g312, graDR_setindex, (XtPointer)ITOP(newti) );
    }
 
-   if( do_lock )                    /* 11 Nov 1996 */
+   if( do_lock && !doflash )        /* 11 Nov 1996 */
       AFNI_lock_carryout( im3d ) ;  /* 04 Nov 1996 */
 
    /** Feb 1998: if desired, send coordinates to receiver **/
    /** Mar 1999: do it in an external routine, not here.  **/
 
-   if( new_xyz ) AFNI_process_viewpoint( im3d ) ;
-   else          AFNI_process_redisplay( im3d ) ;
+   if( !doflash ){
+     if( new_xyz ) AFNI_process_viewpoint( im3d ) ;
+     else          AFNI_process_redisplay( im3d ) ;
+   }
 
-/*   if( new_xyz && im3d->vwid->imag->pop_whereami_twin != NULL ){*/
-   if( im3d->vwid->imag->pop_whereami_twin != NULL ){
+   if( !doflash && im3d->vwid->imag->pop_whereami_twin != NULL ){
 
       char *tlab = AFNI_ttatlas_query( im3d ) ;
 

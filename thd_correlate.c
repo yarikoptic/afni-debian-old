@@ -235,17 +235,20 @@ float THD_pearson_corr( int n, float *x , float *y )
 
 /*----------------------------------------------------------------*/
 
-static float_triple THD_pearson_indexed( int nix, int *ix, float *x, float *y )
+#undef  IX
+#define IX(i) ( ((ix) == NULL) ? (i) : ix[(i)] )
+
+float_triple THD_pearson_indexed( int nix, int *ix, float *x, float *y )
 {
    float xbar=0,ybar=0, xq=0,yq=0,xyq=0, a=0,b=0,r=0;
    int jj,ii; float_triple abr;
 
    for( jj=0 ; jj < nix ; jj++ ){
-     ii = ix[jj]; xbar += x[ii]; ybar += y[ii];
+     ii = IX(jj); xbar += x[ii]; ybar += y[ii];
    }
    xbar /= nix ; ybar /= nix ;
    for( jj=0 ; jj < nix ; jj++ ){
-     ii   = ix[jj] ;
+     ii   = IX(jj) ;
      xq  += (x[ii]-xbar)*(x[ii]-xbar) ;
      yq  += (y[ii]-ybar)*(y[ii]-ybar) ;
      xyq += (x[ii]-xbar)*(y[ii]-ybar) ;
@@ -256,17 +259,19 @@ static float_triple THD_pearson_indexed( int nix, int *ix, float *x, float *y )
    abr.a = a ; abr.b = b ; abr.c = r ; return abr ;
 }
 
+#undef IX
+
 /*-------------------------------------------------------------------------*/
-/* Correlates and also returns 5%..95% confidence interval, via bootstrap.
-     rrr = correlation coefficient, 5% level, 95% level
+/* Correlates and also returns 2.5%..97.5% confidence interval, via bootstrap.
+     rrr = correlation coefficient, 2.5% level, 97.5% level
      aaa = regression 'a' coefficient, in y=ax+b
      bbb = regression 'b' coefficient
 *//*-----------------------------------------------------------------------*/
 
 #undef  NBOOT
 #undef  NB5
-#define NBOOT 240
-#define NB5    12  /* 5% of the above */
+#define NBOOT 600
+#define NB5    15  /* 2.5% of the above */
 
 void THD_pearson_corr_boot( int n , float *x , float *y ,
                             float_triple *rrr ,
@@ -274,13 +279,14 @@ void THD_pearson_corr_boot( int n , float *x , float *y ,
                             float_triple *bbb  )
 {
    int ii,kk ; float aa,bb,rr ; float_triple abr ;
-   int ix[NBOOT] ; float ax[NBOOT] , bx[NBOOT] , rx[NBOOT] ;
+   int *ix ; float ax[NBOOT] , bx[NBOOT] , rx[NBOOT] ;
 
    if( n < 5 || x == NULL || y == NULL ) return ;
    if( rrr == NULL && aaa == NULL && bbb == NULL ) return ;
 
    /* standard results */
 
+   ix = (int *)malloc(sizeof(int)*n) ;
    for( ii=0 ; ii < n ; ii++ ) ix[ii] = ii ;
    abr = THD_pearson_indexed( n , ix , x, y ) ;
    aa = abr.a ; bb = abr.b ; rr = abr.c ;
@@ -292,22 +298,29 @@ void THD_pearson_corr_boot( int n , float *x , float *y ,
      abr = THD_pearson_indexed( n , ix , x, y ) ;
      ax[kk] = abr.a ; bx[kk] = abr.b ; rx[kk] = abr.c ;
    }
+   free(ix) ;
 
-   /* sort, then find 5% and 95% points, save into output structs */
+   /* sort, then find 2.5% and 97.5% points, save into output structs */
 
    if( rrr != NULL ){
      qsort_float( NBOOT , rx ) ;
-     rrr->a = rr ; rrr->b = rx[NB5-1] ; rrr->c = rx[NBOOT-NB5] ;
+     rrr->a = rr ;
+     rrr->b = 0.5f * (rx[NB5-1]+rx[NB5]) ;
+     rrr->c = 0.5f * (rx[NBOOT-NB5]+rx[NBOOT-NB5-1]) ;
    }
 
    if( aaa != NULL ){
      qsort_float( NBOOT , ax ) ;
-     aaa->a = aa ; aaa->b = ax[NB5-1] ; aaa->c = ax[NBOOT-NB5] ;
+     aaa->a = aa ;
+     aaa->b = 0.5f * (ax[NB5-1]+ax[NB5]) ;
+     aaa->c = 0.5f * (ax[NBOOT-NB5]+ax[NBOOT-NB5-1]) ;
    }
 
    if( bbb != NULL ){
      qsort_float( NBOOT , bx ) ;
-     bbb->a = bb ; bbb->b = bx[NB5-1] ; bbb->c = ax[NBOOT-NB5] ;
+     bbb->a = bb ;
+     bbb->b = 0.5f * (bx[NB5-1]+bx[NB5]) ;
+     bbb->c = 0.5f * (bx[NBOOT-NB5]+bx[NBOOT-NB5-1]) ;
    }
 
    return ;
