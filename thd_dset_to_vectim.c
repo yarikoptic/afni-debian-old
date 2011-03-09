@@ -441,6 +441,89 @@ STATUS("loop") ;
    free(qv) ; free(bv) ; free(aav) ; free(av) ; EXRETURN ;
 }
 
+#define USE_VSTEP
+#ifdef  USE_VSTEP
+/*---------------------------------------------------------------------------*/
+/*! For voxel loop progress report. */
+
+static int vstep = 0 ;
+
+static void vstep_print(void)
+{
+   static char xx[10] = "0123456789" ; static int vn=0 ;
+   fprintf(stderr , "%c" , xx[vn%10] ) ;
+   if( vn%10 == 9) fprintf(stderr,".") ;
+   vn++ ;
+}
+#endif
+
+/*----------------------------------------------------------------------------*/
+
+void THD_vectim_pearsonBC( MRI_vectim *mrv, float srad, int sijk, int pv, float *par )
+{
+   MCW_cluster *smask ;
+   int sqq,qq,pp,pijk,nsar,nyar,nlen,nx,ny,nz,nxy,ii,ik,ij,qi,qj,qk,qjk,mm,nmask ;
+   float **sar, **yar ;
+
+ENTRY("THD_vectim_pearsonBC") ;
+
+   if( mrv == NULL || par == NULL ) EXRETURN ;
+   sqq = THD_vectim_ifind( sijk , mrv ) ; if( sqq < 0 ) EXRETURN ;
+   if( srad >= 0.0f ){
+     srad  = MAX(srad,mrv->dx); srad = MAX(srad,mrv->dy); srad = MAX(srad,mrv->dz);
+     smask = MCW_spheremask(mrv->dx,mrv->dy,mrv->dz,1.001f*srad) ;
+   } else {
+     srad  = MAX(-srad,1.01f) ;
+     smask = MCW_spheremask(1.0f,1.0f,1.0f,srad) ;
+   }
+   nmask = smask->num_pt ;
+   nlen = mrv->nvals ;
+
+   nx = mrv->nx ; ny = mrv->ny ; nz = mrv->nz ; nxy = nx*ny ;
+   ii = sijk % nx ; ik = sijk / nxy ; ij = (sijk-ik*nxy) / nx ;
+
+   sar = (float **)malloc(sizeof(float *)*nmask) ;
+   yar = (float **)malloc(sizeof(float *)*nmask) ;
+
+   for( nsar=mm=0 ; mm < nmask ; mm++ ){
+     qi  = ii + smask->i[mm] ; if( qi < 0 || qi >= nx ) continue ;
+     qj  = ij + smask->j[mm] ; if( qj < 0 || qj >= ny ) continue ;
+     qk  = ik + smask->k[mm] ; if( qk < 0 || qk >= nz ) continue ;
+     qjk = qi + qj*nx + qk*nxy ;
+     qq  = THD_vectim_ifind( qjk , mrv ) ;
+     if( qq >= 0 ) sar[nsar++] = VECTIM_PTR(mrv,qq) ;
+   }
+
+#ifdef USE_VSTEP
+   vstep = (mrv->nvec > 999) ? mrv->nvec/50 : 0 ;
+   if( vstep ) fprintf(stderr," + Voxel loop [nmask=%d]: ",nmask) ;
+#endif
+
+   for( pp=0 ; pp < mrv->nvec ; pp++ ){
+     if( pp == sqq ){ par[pp] = 1.0f ; continue ; }
+#ifdef USE_VSTEP
+     if( vstep && pp%vstep==vstep-1 ) vstep_print() ;
+#endif
+     pijk = mrv->ivec[pp] ;
+     ii = pijk % nx ; ik = pijk / nxy ; ij = (pijk-ik*nxy) / nx ;
+     for( nyar=mm=0 ; mm < nmask ; mm++ ){
+       qi  = ii + smask->i[mm] ; if( qi < 0 || qi >= nx ) continue ;
+       qj  = ij + smask->j[mm] ; if( qj < 0 || qj >= ny ) continue ;
+       qk  = ik + smask->k[mm] ; if( qk < 0 || qk >= nz ) continue ;
+       qjk = qi + qj*nx + qk*nxy ;
+       qq  = THD_vectim_ifind( qjk , mrv ) ;
+       if( qq >= 0 ) yar[nyar++] = VECTIM_PTR(mrv,qq) ;
+     }
+     par[pp] = THD_bootstrap_vectcorr( nlen , 50 , pv , 1 ,
+                                       nsar,sar , nyar,yar ) ;
+   }
+#ifdef USE_VSTEP
+   fprintf(stderr,"\n") ;
+#endif
+
+   EXRETURN ;
+}
+
 /*----------------------------------------------------------------------------*/
 
 int THD_vectim_subset_average( MRI_vectim *mrv, int nind, int *ind, float *ar )
