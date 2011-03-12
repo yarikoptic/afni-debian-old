@@ -53,7 +53,7 @@ ENTRY("new_lsqfit") ;
 /*------------------------------------------------------------------*/
 
 #undef  GOOD_METH
-#define GOOD_METH(m) ( (m)==1 || (m)==2 )
+#define GOOD_METH(m) ( (m)==1 || (m)==2 || (m)==-2 )
 
 /**--- 05 Mar 2008: stuff to get the fitted model back ---**/
 
@@ -74,8 +74,9 @@ void THD_fitter_set_vthresh( float vvv ){
 
 /*------------------------------------------------------------------*/
 /* Fit the npt-long vector far[] to the nref vectors in ref[].
-    - meth=1 ==> L1 fit
-    - meth=2 ==> L2 fit (any meth besides 1 or 2 is illegal)
+    - meth =  1 ==> L1 fit
+    - meth =  2 ==> L2 fit
+    - meth = -2 ==> L2 fit with LASSO [11 Mar 2011]
     - ccon != NULL ==> ccon[i] is sign constraint on coef #i
                        ccon[i] = 0 == no constraint
                                > 0 == coef #i must be >= 0
@@ -144,6 +145,16 @@ ENTRY("THD_fitter") ;
    switch( meth ){
 
      default: free(qmag) ; RETURN(NULL) ;  /* stupid user */
+
+     /*-- least squares with LASSO [experimental] --*/
+
+     case -2:{
+       floatvec *lfit ;
+       lfit = THD_lasso_L2fit( npt , far , nref , ref , NULL , ccon ) ;
+       if( lfit == NULL ){ free(qmag) ; RETURN(NULL) ; }
+       qfit = lfit->ar ; lfit->ar = NULL ; KILL_floatvec(lfit) ;
+     }
+     break ;
 
      /*-- least squares --*/
 
