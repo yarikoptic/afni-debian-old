@@ -28,8 +28,6 @@ g_style_index_def = 4
 
 g_LineEdittype = None                   # set this type later
 
-# default subj dir should read like: subject_results/group_A/SUBJ
-g_def_subj_parent  = 'subject_results'
 
 # ======================================================================
 # main module class
@@ -1127,14 +1125,23 @@ class SingleSubjectWindow(QtGui.QMainWindow):
       # add browse actions to browse sub-menu
       self.gvars.Menu_browse = self.gvars.MBar_help.addMenu("&Browse")
       act1 = self.createAction("web: all AFNI programs",
-          slot=self.cb_help_browse_progs, tip="browse AFNI program help")
+          slot=self.cb_help_browse, tip="browse AFNI program help")
       act2 = self.createAction("web: afni_proc.py help",
-          slot=self.cb_help_browse_AP, tip="browse afni_proc.py help")
+          slot=self.cb_help_browse, tip="browse afni_proc.py help")
       act3 = self.createAction("web: tutorial-single subject analysis",
-          slot=self.cb_help_browse_tutorial, tip="browse AFNI_data6 tutorial")
+          slot=self.cb_help_browse, tip="browse AFNI_data6 tutorial")
       act4 = self.createAction("web: AFNI Message Board",
-          slot=self.cb_help_browse_MBoard, tip="browse Message Board")
-      self.addActions(self.gvars.Menu_browse, [act1, act2, act3, act4])
+          slot=self.cb_help_browse, tip="browse Message Board")
+      act5 = self.createAction("web: decon updates 2004",
+          slot=self.cb_help_browse, tip="update describing GLT usage")
+
+      self.addActions(self.gvars.Menu_browse, [act1, act2, act3, act4, act5])
+
+      self.gvars.act_browse_all_progs = act1
+      self.gvars.act_browse_AP_help   = act2
+      self.gvars.act_browse_SS_tutor  = act3
+      self.gvars.act_browse_MB        = act4
+      self.gvars.act_browse_D2004_glt = act5
 
       actHelpAbout = self.createAction("about uber_subject.py",
           slot=self.cb_help_about, tip="about uber_subject.py")
@@ -1237,22 +1244,25 @@ class SingleSubjectWindow(QtGui.QMainWindow):
    def cb_help_about(self):
       """display version info in Text_Help window"""
       text = "uber_subject.py, version %s" % USUBJ.g_version
-      self.update_help_window(text, title='about uber_subject.py')
+      QLIB.guiMessage('about uber_subject.py', text, self)
 
-   def cb_help_browse_progs(self):
-      self.open_web_site('http://afni.nimh.nih.gov/afni/doc'    \
-                         '/program_help/index.html/view')
-
-   def cb_help_browse_MBoard(self):
-      self.open_web_site('http://afni.nimh.nih.gov/afni/community/board')
-
-   def cb_help_browse_AP(self):
-      self.open_web_site(
-        'http://afni.nimh.nih.gov/pub/dist/doc/program_help/afni_proc.py.html')
-
-   def cb_help_browse_tutorial(self):
-      self.open_web_site('http://afni.nimh.nih.gov/pub/dist/edu/data' \
-                         '/CD.expanded/AFNI_data6/FT_analysis/tutorial')
+   def cb_help_browse(self):
+      obj = self.sender()
+      if   obj == self.gvars.act_browse_all_progs:
+         self.open_web_site('http://afni.nimh.nih.gov/pub/dist/doc'     \
+                            '/program_help/index.html')
+      elif obj == self.gvars.act_browse_AP_help:
+         self.open_web_site('http://afni.nimh.nih.gov/pub/dist/doc'     \
+                            '/program_help/afni_proc.py.html')
+      elif obj == self.gvars.act_browse_SS_tutor:
+         self.open_web_site('http://afni.nimh.nih.gov/pub/dist/edu/data' \
+                            '/CD.expanded/AFNI_data6/FT_analysis/tutorial')
+      elif obj == self.gvars.act_browse_MB:
+         self.open_web_site('http://afni.nimh.nih.gov/afni/community/board')
+      elif obj == self.gvars.act_browse_D2004_glt:
+         self.open_web_site('http://afni.nimh.nih.gov/pub/dist/doc'     \
+                            '/misc/Decon/DeconSpring2007.html')
+      else: print '** cb_help_browse: invalid sender'
 
    def cb_show_ap_command(self):
       self.update_svars_from_tables()
@@ -1261,10 +1271,15 @@ class SingleSubjectWindow(QtGui.QMainWindow):
          QLIB.guiError('Error', "** subject and group IDs must be set", self)
          return
 
-      if self.set_sdir and self.cvars.is_empty('subj_dir'):
-         sdir =  '%s/%s/%s'%(g_def_subj_parent, self.cvars.gid, self.cvars.sid)
+      if self.set_sdir:
+         # default subj dir should read like: subject_results/group_A/SUBJ
+         sdir =  USUBJ.get_def_subj_path(gid=self.svars.gid, sid=self.svars.sid)
          print '-- setting subj_dir to %s' % sdir
          self.set_cvar('subj_dir', sdir)
+
+      # if we have a subject directory, make backup scripts
+      if self.cvars.is_non_trivial_dir('subj_dir'):
+         self.set_cvar('copy_scripts', 1)
         
       # create the subject, check warnings and either a command or errors
       self.apsubj = USUBJ.AP_Subject(self.svars, self.cvars)
