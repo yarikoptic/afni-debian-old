@@ -241,19 +241,21 @@ ENTRY("mri_read") ;
 
    /*-- 16 Aug 2006: AFNI dataset? --*/
 
-   if( strstr(fname,".HEAD") != NULL || strstr(fname,".nii") != NULL ){
+   if( strstr(fname,".HEAD") != NULL || strstr(fname,".BRIK") != NULL
+                                     || strstr(fname,".nii")  != NULL ){
      THD_3dim_dataset *dset = THD_open_dataset(fname) ;
      if( dset != NULL ){
-      if( DSET_NVALS(dset) == 1 ){
        DSET_load(dset) ;
-       if( DSET_BRICK(dset,0) != NULL && DSET_ARRAY(dset,0) != NULL )
-         im = mri_copy( DSET_BRICK(dset,0) ) ;
-         im->dx = fabs(DSET_DX(dset)) ;
-         im->dy = fabs(DSET_DY(dset)) ;
-         im->dz = fabs(DSET_DZ(dset)) ;
-      }
-      DSET_delete(dset) ;
-      if( im != NULL ) RETURN(im) ;
+       if( DSET_LOADED(dset) && DSET_datum_constant(dset) ){
+         im = mri_catvol_1D( dset->dblk->brick , 3 ) ;
+         if( im != NULL ){
+           im->dx = fabs(DSET_DX(dset)) ;
+           im->dy = fabs(DSET_DY(dset)) ;
+           im->dz = fabs(DSET_DZ(dset)) ;
+         }
+       }
+       DSET_delete(dset) ;
+       if( im != NULL ) RETURN(im) ;
      }
    }
 
@@ -1663,14 +1665,17 @@ void init_MCW_sizes(void)
 
       /* try to find environment variable with the num-th name */
 
-      sprintf( ename , "AFNI_IMSIZE_%d" , num+1 ) ;
-      str = my_getenv( ename ) ;
-
+        sprintf( ename , "AFNI_IMSIZE_%d", num+1 ) ; str = my_getenv(ename) ;
       if( str == NULL ){
-         sprintf( ename , "MCW_IMSIZE_%d" , num+1 ) ;
-         str = my_getenv( ename ) ;
-         if( str == NULL ) continue ;
+        sprintf( ename , "MCW_IMSIZE_%d" , num+1 ) ; str = my_getenv(ename) ;
       }
+      if( str == NULL ){
+        sprintf( ename, "AFNI_IMSIZE_%02d",num+1 ) ; str = my_getenv(ename) ;
+      }
+      if( str == NULL ){
+        sprintf( ename, "MCW_IMSIZE_%02d" ,num+1 ) ; str = my_getenv(ename) ;
+      }
+      if( str == NULL ) continue ;  /* no luck */
 
       imsize[num].prefix = (char *) malloc( sizeof(char) * strlen(str) ) ;
       if( imsize[num].prefix == NULL ){
