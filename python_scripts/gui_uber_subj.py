@@ -51,10 +51,10 @@ class SingleSubjectWindow(QtGui.QMainWindow):
       self.apsubj = None        # AP_Subject class element
       self.gvars  = SUBJ.VarsObject('uber_subject gui vars')
 
-      # initialize the subject variables as empty, update at the end
-      self.svars  = USUBJ.g_subj_defs.copy('uber_subject subject vars')
-      self.cvars  = USUBJ.g_ctrl_defs.copy('uber_subject control vars')
-      if self.verb < 0: self.verb = self.cvars.verb
+      # initialize the subject variables to defaults, update at the end
+      self.svars  = USUBJ.g_sdef_strs.copy('subject vars')
+      self.cvars  = USUBJ.g_cdef_strs.copy('control vars')
+      if self.verb < 0: self.verb = int(self.cvars.verb)
       self.set_sdir = set_sdir
 
       # ------------------------------
@@ -106,17 +106,28 @@ class SingleSubjectWindow(QtGui.QMainWindow):
    def reset_vars(self, svars=None, cvars=None, set_sdir=0, verb=-1):
       """replace old svars/cvars with new"""
 
-      if self.verb < 0: self.verb = self.cvars.verb
+      # get verb from one of 4 places: passed, cvars, self, init to 1
+      vv = -1
+      if cvars != None:
+         vv = cvars.val('verb')
+         if vv == None: vv = -1
+      if   verb >= 0:     self.verb = verb
+      elif vv   >= 0:     self.verb = vv
+      elif self.verb > 0: pass                  # leave unchanged
+      else:               self.verb = 1
+       
       self.set_sdir = set_sdir
 
       del(self.svars)
       del(self.cvars)
 
-      self.svars = USUBJ.g_subj_defs.copy()
-      self.cvars = USUBJ.g_ctrl_defs.copy()
+      self.svars = USUBJ.g_sdef_strs.copy()
+      self.cvars = USUBJ.g_cdef_strs.copy()
 
       self.apply_svars(svars)
       self.apply_cvars(cvars)
+
+      self.set_cvar('verb', self.verb)  # since might not come from cvars
 
    def make_l2_widgets(self):
       """create 'general subject info' box and scroll area for the
@@ -247,9 +258,20 @@ class SingleSubjectWindow(QtGui.QMainWindow):
                             % (text, ', '.join(USUBJ.g_vreg_base_list)), obj)
           
       elif obj == self.gvars.Line_motion_limit:
-
          self.update_textLine_check(obj, obj.text(), 'motion_limit',
                                     'motion censor limit', QLIB.valid_as_float)
+
+      elif obj == self.gvars.Line_outlier_limit:
+         self.update_textLine_check(obj, obj.text(), 'outlier_limit',
+                                 'outlier fraction limit', QLIB.valid_as_float)
+
+      elif obj == self.gvars.Line_regress_jobs:
+         self.update_textLine_check(obj, obj.text(), 'regress_jobs',
+                                 'CPU jobs in regression', QLIB.valid_as_int)
+
+      elif obj == self.gvars.Line_regress_GOFORIT:
+         self.update_textLine_check(obj, obj.text(), 'regress_GOFORIT',
+                                 'GOFORIT warning override', QLIB.valid_as_int)
 
       else: print '** CB_line_text: unknown sender'
 
@@ -261,12 +283,97 @@ class SingleSubjectWindow(QtGui.QMainWindow):
       self.gvars.gbox_stim = self.group_box_stim()
       self.gvars.gbox_expected = self.group_box_expected()
       self.gvars.gbox_gltsym   = self.group_box_gltsym()
+      self.gvars.gbox_regress  = self.group_box_regress_opts()
 
       self.gvars.m2_vlayout.addWidget(self.gvars.gbox_anat)
       self.gvars.m2_vlayout.addWidget(self.gvars.gbox_epi)
       self.gvars.m2_vlayout.addWidget(self.gvars.gbox_stim)
       self.gvars.m2_vlayout.addWidget(self.gvars.gbox_expected)
       self.gvars.m2_vlayout.addWidget(self.gvars.gbox_gltsym)
+      self.gvars.m2_vlayout.addWidget(self.gvars.gbox_regress)
+
+   def group_box_regress_opts(self):
+      """create a group box with a VBox layout:
+         for controlling sujbect vars:
+            outlier_limit, regress_jobs, regress_GOFORIT, compute_fitts,
+            reml_exec, run_clustsim, regress_opts_3dD
+      """
+
+      gbox = self.get_styled_group_box("extra regress options")
+
+      # put frame inside gbox, which we can hide via toggled button
+      glayout = QtGui.QVBoxLayout(gbox)
+      frame = QtGui.QFrame(gbox)
+      frame.setFrameShape(QtGui.QFrame.NoFrame)
+      gbox.frame = frame
+      self.init_gbox_viewable(gbox, False)      # default to hidden
+      gbox.toggled.connect(self.gbox_toggle_frame)
+
+      layout = QtGui.QGridLayout(frame)         # now a child of frame
+
+      # --------------------------------------------------
+
+      # rcr - here: add help buttons for expected and extra regress options
+
+      # outlier_limit
+      label = QtGui.QLabel("outlier censor limit (per TR)")
+      label.setStatusTip("censor TRs exceeding this fraction (range [0,1])")
+      self.gvars.Line_outlier_limit = QtGui.QLineEdit()
+      self.gvars.Line_outlier_limit.setText(self.svars.outlier_limit)
+      self.gvars.Line_outlier_limit.editingFinished.connect(self.CB_line_text)
+
+      layout.addWidget(label, 0, 0)
+      layout.addWidget(self.gvars.Line_outlier_limit, 0, 1)
+
+      # jobs
+      label = QtGui.QLabel("jobs for regression (num CPUs)")
+      label.setStatusTip("number of CPUs to use in 3dDeconvolve")
+      self.gvars.Line_regress_jobs = QtGui.QLineEdit()
+      self.gvars.Line_regress_jobs.setText(self.svars.regress_jobs)
+      self.gvars.Line_regress_jobs.editingFinished.connect(self.CB_line_text)
+
+      layout.addWidget(label, 1, 0)
+      layout.addWidget(self.gvars.Line_regress_jobs, 1, 1)
+
+      # GOFORIT
+      label = QtGui.QLabel("GOFORIT level (override 3dD warnings)")
+      label.setStatusTip("number of 3dDeconvolve warnings to override")
+      self.gvars.Line_regress_GOFORIT = QtGui.QLineEdit()
+      self.gvars.Line_regress_GOFORIT.setText(self.svars.regress_GOFORIT)
+      self.gvars.Line_regress_GOFORIT.editingFinished.connect(self.CB_line_text)
+
+      layout.addWidget(label, 2, 0)
+      layout.addWidget(self.gvars.Line_regress_GOFORIT, 2, 1)
+
+      # checkbox : reml_exec
+      cbox = QtGui.QCheckBox("reml_exec")
+      cbox.setStatusTip("execute 3dREMLfit regression script")
+      cbox.setChecked(self.svars.reml_exec=='yes')
+      cbox.clicked.connect(self.CB_checkbox)
+      layout.addWidget(cbox, 4, 0)
+      gbox.checkBox_reml_exec = cbox
+
+      # checkbox : run_clustsim
+      cbox = QtGui.QCheckBox("run_clustsim")
+      cbox.setStatusTip("store 3dClustSim table in stats results")
+      cbox.setChecked(self.svars.run_clustsim=='yes')
+      cbox.clicked.connect(self.CB_checkbox)
+      layout.addWidget(cbox, 5, 0)
+      gbox.checkBox_run_clustsim = cbox
+
+      # checkbox : compute_fitts
+      cbox = QtGui.QCheckBox("compute fitts dataset")
+      cbox.setStatusTip("save RAM in 3dD, compute fitts = all_runs - errts")
+      cbox.setChecked(self.svars.compute_fitts=='yes')
+      cbox.clicked.connect(self.CB_checkbox)
+      layout.addWidget(cbox, 3, 0)
+      gbox.checkBox_compute_fitts = cbox
+
+      # --------------------------------------------------
+      # and finish group box
+      glayout.addWidget(frame)
+      gbox.setLayout(glayout)
+      return gbox
 
    def group_box_expected(self):
       """create a group box with a VBox layout:
@@ -290,7 +397,7 @@ class SingleSubjectWindow(QtGui.QMainWindow):
       label = QtGui.QLabel("first TRs to remove (per run)")
       label.setToolTip("the number of pre-steady state TRs to remove")
       self.gvars.Line_tcat_nfirst = QtGui.QLineEdit()
-      self.gvars.Line_tcat_nfirst.setText('%d'%self.svars.tcat_nfirst)
+      self.gvars.Line_tcat_nfirst.setText(self.svars.tcat_nfirst)
       self.gvars.Line_tcat_nfirst.editingFinished.connect(self.CB_line_text)
 
       layout.addWidget(label, 0, 0)
@@ -317,7 +424,7 @@ class SingleSubjectWindow(QtGui.QMainWindow):
       label = QtGui.QLabel("motion censor limit (mm, per TR)")
       label.setToolTip("censor TRs with motion exceeding this mm distance")
       self.gvars.Line_motion_limit = QtGui.QLineEdit()
-      self.gvars.Line_motion_limit.setText('%g'%self.svars.motion_limit)
+      self.gvars.Line_motion_limit.setText(self.svars.motion_limit)
       self.gvars.Line_motion_limit.editingFinished.connect(self.CB_line_text)
       layout.addWidget(label, 2, 0)
       layout.addWidget(self.gvars.Line_motion_limit, 2, 2)
@@ -471,7 +578,7 @@ class SingleSubjectWindow(QtGui.QMainWindow):
       # add a checkbox for use wildcard form
       gbox.checkBox_wildcard = QtGui.QCheckBox("use wildcard form")
       gbox.checkBox_wildcard.clicked.connect(self.CB_checkbox)
-      gbox.checkBox_wildcard.setChecked(self.svars.epi_wildcard)
+      gbox.checkBox_wildcard.setChecked(self.svars.epi_wildcard=='yes')
       mainlayout.addWidget(gbox.checkBox_wildcard)
 
       # --------------------------------------------------
@@ -581,7 +688,7 @@ class SingleSubjectWindow(QtGui.QMainWindow):
       # add a checkbox for use wildcard form
       gbox.checkBox_wildcard = QtGui.QCheckBox("use wildcard form")
       gbox.checkBox_wildcard.clicked.connect(self.CB_checkbox)
-      gbox.checkBox_wildcard.setChecked(self.svars.stim_wildcard)
+      gbox.checkBox_wildcard.setChecked(self.svars.stim_wildcard=='yes')
       mainlayout.addWidget(gbox.checkBox_wildcard)
 
       # --------------------------------------------------
@@ -698,7 +805,11 @@ class SingleSubjectWindow(QtGui.QMainWindow):
       table.setRowCount(0)                      # init, add rows per file
       table.setSortingEnabled(False)            # sort only after filling table
 
-      if nrows <= 0: return
+      if nrows <= 0:    # clear extra fields (if created) and return
+         if self.gvars.valid('Label_gltsym_len'):
+            self.gvars.Label_gltsym_len.setText('0')
+            self.resize_table(table)
+         return
 
       # if we don't have the correct number of labels, start from scratch
       if len(labs) != nrows:
@@ -765,7 +876,13 @@ class SingleSubjectWindow(QtGui.QMainWindow):
       table.setRowCount(0)                      # init, add rows per file
       table.setSortingEnabled(False)            # sort only after filling table
 
-      if nrows <= 0: return
+      if nrows <= 0:    # clear extra fields (if created) and return
+         if self.gvars.valid('Label_epi_ndsets'):
+            self.gvars.Label_epi_ndsets.setText('0')
+            self.gvars.Label_epi_dir.setText('')
+            self.gvars.Label_epi_wildcard.setText('')
+            self.resize_table(table)
+         return
 
       # parse the EPI list into directory, short names, glob string
       epi_dir, short_names, globstr = USUBJ.flist_to_table_pieces(epi)
@@ -874,7 +991,13 @@ class SingleSubjectWindow(QtGui.QMainWindow):
       table.setRowCount(0)                      # init, add rows per file
       table.setSortingEnabled(False)            # sort only after filling table
 
-      if nrows <= 0: return
+      if nrows <= 0:    # clear extra fields (if created) and return
+         if self.gvars.valid('Label_stim_ndsets'):
+            self.gvars.Label_stim_ndsets.setText('0')
+            self.gvars.Label_stim_dir.setText('')
+            self.gvars.Label_stim_wildcard.setText('')
+            self.resize_table(table)
+         return
 
       # parse the stim list into directory, short names, glob string
       stim_dir, short_names, globstr = USUBJ.flist_to_table_pieces(stim)
@@ -977,11 +1100,20 @@ class SingleSubjectWindow(QtGui.QMainWindow):
          if obj.isChecked(): self.set_svar('get_tlrc', 'yes')
          else:               self.set_svar('get_tlrc', 'no')
       elif obj == self.gvars.gbox_epi.checkBox_wildcard:
-         if obj.isChecked(): self.set_svar('epi_wildcard', 1)
-         else:               self.set_svar('epi_wildcard', 0)
+         if obj.isChecked(): self.set_svar('epi_wildcard', 'yes')
+         else:               self.set_svar('epi_wildcard', 'no')
       elif obj == self.gvars.gbox_stim.checkBox_wildcard:
-         if obj.isChecked(): self.set_svar('stim_wildcard', 1)
-         else:               self.set_svar('stim_wildcard', 0)
+         if obj.isChecked(): self.set_svar('stim_wildcard', 'yes')
+         else:               self.set_svar('stim_wildcard', 'no')
+      elif obj == self.gvars.gbox_regress.checkBox_reml_exec:
+         if obj.isChecked(): self.set_svar('reml_exec', 'yes')
+         else:               self.set_svar('reml_exec', 'no')
+      elif obj == self.gvars.gbox_regress.checkBox_run_clustsim:
+         if obj.isChecked(): self.set_svar('run_clustsim', 'yes')
+         else:               self.set_svar('run_clustsim', 'no')
+      elif obj == self.gvars.gbox_regress.checkBox_compute_fitts:
+         if obj.isChecked(): self.set_svar('compute_fitts', 'yes')
+         else:               self.set_svar('compute_fitts', 'no')
       else: print "** CB_checkbox: unknown sender"
 
    def update_textLine_check(self, obj, text, attr, button_name, check_func):
@@ -989,6 +1121,8 @@ class SingleSubjectWindow(QtGui.QMainWindow):
          - this warns the user on error
          - if valid, update the attr and textLine with the text
          - else, clear object and set focus to it (and return)
+
+         return 1/0 to specify whether value was applied
       """
       
       # be sure we have a type to compare against for setting the text
@@ -1001,11 +1135,13 @@ class SingleSubjectWindow(QtGui.QMainWindow):
          self.set_svar(attr, rtext)
          if type(obj) == g_LineEdittype: obj.setText(text)
          else: print '** update_textLine_check: not a LineEdit type'
+         return 1
       else:
          # error, reset to previous attribute
          # obj.clear()
          obj.setText(self.svars.val(attr))
          obj.setFocus()
+         return 0
 
    def cb_command_window(self, cmd):
       print '++ python exec command: %s' % cmd
@@ -1240,9 +1376,20 @@ class SingleSubjectWindow(QtGui.QMainWindow):
           tip="process this subject: execute proc script",
           icon=self.style().standardIcon(QtGui.QStyle.SP_DialogYesButton))
 
-      self.gvars.act_show_ap = act1
-      self.gvars.act_exec_ap = act2
-      self.gvars.act_exec_proc = act3
+      act4 = self.createAction("clear all options",
+          slot=self.cb_clear_options,
+          tip="keep datasets: restore all GUI options to defaults",
+          icon=self.style().standardIcon(QtGui.QStyle.SP_TrashIcon))
+      act5 = self.createAction("clear all fields",
+          slot=self.cb_clear_fields,
+          tip="restore all GUI fields to defaults",
+          icon=self.style().standardIcon(QtGui.QStyle.SP_TrashIcon))
+
+      self.gvars.act_show_ap    = act1
+      self.gvars.act_exec_ap    = act2
+      self.gvars.act_exec_proc  = act3
+      self.gvars.act_clear_opts = act4
+      self.gvars.act_clear_all  = act5
 
       self.gvars.act_exec_ap.setEnabled(False)
       self.gvars.act_exec_proc.setEnabled(False)
@@ -1252,7 +1399,8 @@ class SingleSubjectWindow(QtGui.QMainWindow):
       self.gvars.MBar_file = self.menuBar().addMenu("&File")
       actFileQuit = self.createAction("&Quit", slot=self.close,
           shortcut="Ctrl+q", tip="close the application")
-      self.addActions(self.gvars.MBar_file, [act1, act2, act3, actFileQuit])
+      self.addActions(self.gvars.MBar_file, [act1, act2, act3, None,
+                                             act4, act5, None, actFileQuit])
 
       # ----------------------------------------------------------------------
       # View menu - all for static view windows
@@ -1274,7 +1422,7 @@ class SingleSubjectWindow(QtGui.QMainWindow):
           slot=self.cb_view,
           tip="show command to populate this interface")
 
-      self.addActions(self.gvars.MBar_view, [act1, act2, act3, act4])
+      self.addActions(self.gvars.MBar_view, [act1, act2, act3, None, act4])
 
       self.gvars.act_view_ap_cmd   = act1
       self.gvars.act_view_proc     = act2
@@ -1319,7 +1467,7 @@ class SingleSubjectWindow(QtGui.QMainWindow):
       self.gvars.act_view_rvars   = act5
       self.gvars.act_view_gvars   = act7
 
-      self.addActions(self.gvars.MBar_hidden, [act3, act4, act5])
+      self.addActions(self.gvars.MBar_hidden, [act3, act4, act5, None])
 
       # add show sub-menu
       self.gvars.Menu_commands = self.gvars.MBar_hidden.addMenu("&Commands")
@@ -1336,7 +1484,7 @@ class SingleSubjectWindow(QtGui.QMainWindow):
                                 tip="revert Sylte to default 'cleanlooks'"))
       self.addActions(self.gvars.Menu_format, actlist)
 
-      self.addActions(self.gvars.MBar_hidden, [act6, act7])
+      self.addActions(self.gvars.MBar_hidden, [None, act6, act7])
 
       # ----------------------------------------------------------------------
       # Help menu
@@ -1503,7 +1651,7 @@ class SingleSubjectWindow(QtGui.QMainWindow):
 
       # if we have a subject directory, make backup scripts
       if self.cvars.is_non_trivial_dir('subj_dir'):
-         self.set_cvar('copy_scripts', 1)
+         self.set_cvar('copy_scripts', 'yes')
         
       # create the subject, check warnings and either a command or errors
       self.apsubj = USUBJ.AP_Subject(self.svars, self.cvars)
@@ -1720,6 +1868,20 @@ class SingleSubjectWindow(QtGui.QMainWindow):
       self.gvars.SPW.show()
       self.gvars.ap_status = 3 
 
+   def cb_clear_options(self):
+      """set cvars, svars from defaults and redisplay GUI
+         EXCEPT: keep dataset fields from subject"""
+
+      svars = SUBJ.VarsObject()
+      for atr in ['anat', 'epi', 'stim']:
+         svars.set_var(atr, self.svars.val(atr))
+      
+      self.reset_vars(svars=svars, set_sdir=self.set_sdir)
+
+   def cb_clear_fields(self):
+      """set cvars, svars from defaults and redisplay GUI"""
+      self.reset_vars(set_sdir=self.set_sdir)
+
    def cb_view(self):
       """create permanent windows with given text"""
       obj = self.sender()
@@ -1772,7 +1934,7 @@ class SingleSubjectWindow(QtGui.QMainWindow):
       prefix = ' \\\n    -cvar '     # append before next command
       for atr in self.cvars.attributes():
          if atr == 'name': continue     # skip
-         if self.cvars.vals_are_equal(atr, USUBJ.g_ctrl_defs): continue
+         if self.cvars.vals_are_equal(atr, USUBJ.g_cdef_strs): continue
          # show this one
          val = self.cvars.val(atr)
          if self.cvars.has_simple_type(atr):
@@ -1786,7 +1948,7 @@ class SingleSubjectWindow(QtGui.QMainWindow):
       prefix = ' \\\n    -svar '     # append before next command
       for atr in self.svars.attributes():
          if atr == 'name': continue     # skip
-         if self.svars.vals_are_equal(atr, USUBJ.g_subj_defs): continue
+         if self.svars.vals_are_equal(atr, USUBJ.g_sdef_strs): continue
          # show this one
          val = self.svars.val(atr)
          
@@ -1875,8 +2037,6 @@ class SingleSubjectWindow(QtGui.QMainWindow):
          first init to defaults
          if svars is passed, make further updates"""
 
-      if svars == None: return
-
       # merge with current vars and apply everything to GUI
       self.svars.merge(svars)
       for var in self.svars.attributes():
@@ -1903,26 +2063,51 @@ class SingleSubjectWindow(QtGui.QMainWindow):
                                   obj.setChecked(self.svars.get_tlrc=='yes')
       elif svar == 'epi':         self.epi_list_to_table()
       elif svar == 'epi_wildcard':         
+                                  var = self.svars.epi_wildcard
                                   obj = self.gvars.gbox_epi.checkBox_wildcard
-                                  obj.setChecked(self.svars.epi_wildcard)
+                                  obj.setChecked(var=='yes')
       elif svar == 'stim':        self.stim_list_to_table()
       elif svar == 'stim_wildcard':        
+                                  var = self.svars.stim_wildcard
                                   obj = self.gvars.gbox_stim.checkBox_wildcard
-                                  obj.setChecked(self.svars.stim_wildcard)
+                                  obj.setChecked(var=='yes')
       elif svar == 'label':       self.stim_list_to_table()
       elif svar == 'basis':       self.stim_list_to_table()
 
       elif svar == 'tcat_nfirst': 
                                    obj = self.gvars.Line_tcat_nfirst
-                                   obj.setText('%d'%self.svars.tcat_nfirst)
+                                   obj.setText(self.svars.tcat_nfirst)
       elif svar == 'volreg_base':  
                                    obj = self.gvars.Line_volreg_base
                                    obj.setText(self.svars.volreg_base)
       elif svar == 'motion_limit':
                                    obj = self.gvars.Line_motion_limit
-                                   obj.setText('%g'%self.svars.motion_limit)
+                                   obj.setText(self.svars.motion_limit)
       elif svar == 'gltsym':       self.gltsym_list_to_table()
       elif svar == 'gltsym_label': self.gltsym_list_to_table()
+
+      elif svar == 'outlier_limit':
+                                   obj = self.gvars.Line_outlier_limit
+                                   obj.setText(self.svars.outlier_limit)
+      elif svar == 'regress_jobs':
+                                   obj = self.gvars.Line_regress_jobs
+                                   obj.setText(self.svars.regress_jobs)
+      elif svar == 'regress_GOFORIT':
+                                   obj = self.gvars.Line_regress_GOFORIT
+                                   obj.setText(self.svars.regress_GOFORIT)
+      elif svar == 'reml_exec':        
+                             var = self.svars.reml_exec
+                             obj = self.gvars.gbox_regress
+                             obj.checkBox_reml_exec.setChecked(var=='yes')
+      elif svar == 'run_clustsim':        
+                             var = self.svars.run_clustsim
+                             obj = self.gvars.gbox_regress
+                             obj.checkBox_run_clustsim.setChecked(var=='yes')
+      elif svar == 'compute_fitts':        
+                             var = self.svars.compute_fitts
+                             obj = self.gvars.gbox_regress
+                             obj.checkBox_compute_fitts.setChecked(var=='yes')
+
       else:
          if self.verb > 1: print '** apply_svar_in_gui: unhandled %s' % svar
          rv = 0
@@ -1937,11 +2122,9 @@ class SingleSubjectWindow(QtGui.QMainWindow):
          first init to defaults
          if cvars is passed, make further updates"""
 
-      if cvars == None: return
-
       # merge with current vars and apply everything to GUI
       self.cvars.merge(cvars)
-      self.set_cvar('verb', self.verb)          # to pass verb along
+      self.set_cvar('verb', str(self.verb))     # to pass verb along
       for var in self.cvars.attributes():
          self.apply_cvar_in_gui(var)
 
@@ -2145,10 +2328,12 @@ g_help_gltsym = """
 
    description:
 
-      To add a symbolic GLT, either "insert glt row" to add a blank row to
-      the table, or "init with glt examples" to add some samples from the input
+      To add a symbolic GLT, either "insert glt row" to add a blank row to the
+      table, or "init with glt examples" to add some samples from the above
       stimulus list.  Since these are symbolic GLTs, they should be expressed
       as computations on the stimulus labels.
+
+      If the table is initialized with examples, GLT labels.
 
       buttons:
 
@@ -2172,13 +2357,13 @@ g_help_gltsym = """
 
          label          symbolic GLT
          -----          ------------
-         H.vs.D         houses -donuts
-         D.vs.HF        donuts -0.5*houses -0.5*faces
+         H-D            houses -donuts
+         D-HF           donuts -0.5*houses -0.5*faces
 
       These would eventually be given to 3dDeconvolve as:
 
         -gltsym 'SYM: houses -donuts' -glt_label 1 H-D
-        -gltsym 'SYM: donuts -0.5*houses -0.5*faces' -glt_label 2 D.vs.HF
+        -gltsym 'SYM: donuts -0.5*houses -0.5*faces' -glt_label 2 D-HF
 
       Note that the leading SYM: in the symbolic GLT is applied by the program,
       and need not be specified by the user.
