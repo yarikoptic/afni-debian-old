@@ -19,7 +19,7 @@ void THD_lasso_fixlam( float x ){ if( x > 0.0f ) flam = x ; }
 
 /** set the convergence parameter (deps) **/
 
-static float deps = 0.0002f ;
+static float deps = 0.0001234567f ;
 
 void THD_lasso_setdeps( float x ){ if( x > 0.0f && x <= 0.1f ) deps = x ; }
 
@@ -30,6 +30,14 @@ void THD_lasso_setdeps( float x ){ if( x > 0.0f && x <= 0.1f ) deps = x ; }
 static int do_post = 0 ;
 
 void THD_lasso_dopost( int x ){ do_post = x ; }
+
+/*............................................................................*/
+
+/** set this to 1 to scale LASSO lambda by estimated sigma **/
+
+static int do_sigest = 0 ;
+
+void THD_lasso_dosigest( int x ){ do_sigest = x ; }
 
 /*............................................................................*/
 
@@ -49,6 +57,28 @@ ENTRY("THD_lasso_setlamvec") ;
      { memcpy(vlam->ar,lam,sizeof(float)*nref) ; }
    }
    EXRETURN ;
+}
+
+/*----------------------------------------------------------------------------*/
+
+static float estimate_sigma( int npt , float *far )
+{
+   float *dif , mad1,mad2 ; int ii ;
+
+   if( npt < 9 || far == NULL ) return 0.0f ;
+
+#pragma omp critical (MALLOC)
+   { dif = (float *)malloc(sizeof(float)*npt) ; }
+
+   for( ii=0 ; ii < npt-1 ; ii++ ) dif[ii] = far[ii+1]-far[ii] ;
+   qmedmad_float( npt-1 , dif , NULL , &mad1 ) ; mad1 *= 1.05f ;
+   for( ii=0 ; ii < npt-2 ; ii++ ) dif[ii] = 0.5f*(far[ii+2]+far[ii]) - far[ii+1] ;
+   qmedmad_float( npt-2 , dif , NULL , &mad2 ) ; mad2 *= 1.21f ;
+
+#pragma omp critical (MALLOC)
+   { free(dif) ; }
+
+   return MAX(mad1,mad2) ;
 }
 
 /*----------------------------------------------------------------------------*/
@@ -152,76 +182,24 @@ ENTRY("compute_free_param") ;
 }
 
 /*----------------------------------------------------------------------------*/
-#if 0
+
 floatvec * THD_lasso( int meth   ,
                       int npt    , float *far   ,
                       int nref   , float *ref[] ,
                       float *lam , float *ccon   )
 {
-   float **qref,*qfac, *rj,*qj, val ;
-   floatvec *qfit ;
-   int ii,jj ;
-
-ENTRY("THD_lasso") ;
-
-   /*--- check inputs for stupidities ---*/
-
-   if( npt <= 1 || far == NULL || nref <= 0 || ref == NULL ){
-     static int ncall=0 ;
-     if( ncall == 0 ){ ERROR_message("LASSO: bad data and/or model"); ncall++; }
-     RETURN(NULL) ;
-   }
-
-   for( jj=0 ; jj < nref ; jj++ ){
-     if( ref[jj] == NULL ){
-       static int ncall=0 ;
-       if( ncall == 0 ){ ERROR_message("LASSO: bad data and/or model"); ncall++; }
-       RETURN(NULL) ;
-     }
-   }
-
-   /*--- scale refs ---*/
-
-   qfac = (float * )malloc(sizeof(float)  *nref) ;
-   qref = (float **)malloc(sizeof(float *)*nref) ;
-   for( jj=0 ; jj < nref ; jj++ ){
-     rj = ref[jj] ; val = 0.0f ;
-     for( ii=0 ; ii < npt ; ii++ ) val += rj[ii]*rj[ii] ;
-     if( val > 0.0f ) val = sqrtf(npt/val) ;
-     qfac[jj] = val ;
-     qj = qref[jj] = (float * )malloc(sizeof(float)*nref) ;
-     for( ii=0 ; ii < npt ; ii++ ) qj[ii] = val * rj[ii] ;
-   }
-
-   /*--- solve ---*/
-
    switch( meth ){
+
      default:
-     case -2:
      case  2:
-       qfit = THD_lasso_L2fit( npt, far, nref, qref, lam, ccon ) ;
-     break ;
+     case -2: return THD_lasso_L2fit( npt,far , nref,ref , lam,ccon ) ;
 
-     case -1:
      case  1:
-       qfit = THD_sqrtlasso_L2fit( npt, far, nref, qref, lam, ccon ) ;
-     break ;
+     case -1: return THD_sqrtlasso_L2fit( npt,far , nref,ref , lam,ccon ) ;
+
    }
-
-   /*--- scale results the same way as refs ---*/
-
-   if( qfit != NULL ){
-     for( jj=0 ; jj < nref ; jj++ ) qfit->ar[jj] *= qfac[jj] ;
-   }
-
-   /*--- exit, pursued by a bear ---*/
-
-   for( jj=0 ; jj < nref ; jj++ ) free(qref[jj]) ;
-   free(qref) ; free(qfac) ;
-
-   RETURN(qfit) ;
+   return NULL ; /* unreachable */
 }
-#endif
 
 /*----------------------------------------------------------------------------*/
 /* LASSO (L2 fit + L1 penalty) fit a vector to a set of reference vectors.
@@ -290,6 +268,8 @@ ENTRY("THD_lasso_L2fit") ;
 
    /*--- Save 1/(sum of squares) of each ref column ---*/
 
+   dsum = (do_sigest) ? estimate_sigma(npt,far) : 1.0f ;
+
    nfree = 0 ;                    /* number of unconstrained parameters */
    for( jj=0 ; jj < nref ; jj++ ){
      rj = ref[jj] ;
@@ -298,6 +278,8 @@ ENTRY("THD_lasso_L2fit") ;
        rsq[jj] = 1.0f / pj ;
        if( mylam[jj] == 0.0f ){   /* unconstrained parameter */
          fr[jj] = 1 ;  nfree++ ;
+       } else {
+         mylam[jj] *= dsum * sqrtf(pj) ; /* scale for size of regressors */
        }
      }
    }
@@ -332,7 +314,7 @@ ENTRY("THD_lasso_L2fit") ;
 #undef  CON    /* CON(j) is true if the constraint on ppar[j] is violated */
 #define CON(j) (ccon != NULL && ppar[j]*ccon[j] < 0.0f)
 
-   nimax = 29*nref + 66 ; dsum = 1.0f ;
+   nimax = 31*nref + npt + 66 ; dsum = 1.0f ;
    for( nite=0 ; nite < nimax && dsum > deps ; nite++ ){
 
      /*-- cyclic inner loop over parameters --*/
@@ -531,7 +513,7 @@ ENTRY("THD_sqrtlasso_L2fit") ;
 #undef  CON    /* CON(j) is true if the constraint on ppar[j] is violated */
 #define CON(j) (ccon != NULL && ppar[j]*ccon[j] < 0.0f)
 
-   nimax = 29*nref + 66 ; dsum = 1.0f ;
+   nimax = 31*nref + npt + 66 ; dsum = 1.0f ;
    for( nite=0 ; nite < nimax && dsum > deps ; nite++ ){
 
      /*-- cyclic inner loop over parameters --*/
