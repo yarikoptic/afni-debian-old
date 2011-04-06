@@ -19,7 +19,7 @@ void THD_lasso_fixlam( float x ){ if( x > 0.0f ) flam = x ; }
 
 /** set the convergence parameter (deps) **/
 
-static float deps = 0.0001234567f ;
+static float deps = 0.0000654321f ;
 
 void THD_lasso_setdeps( float x ){ if( x > 0.0f && x <= 0.1f ) deps = x ; }
 
@@ -83,17 +83,34 @@ ENTRY("THD_lasso_setparvec") ;
 
 static float estimate_sigma( int npt , float *far )
 {
-   float *dif , mad1,mad2 ; int ii ;
+   float *dif , val,mad1=0.333f,mad2=0.333f ; int ii,nnz ;
 
-   if( npt < 9 || far == NULL ) return 0.0f ;
+   if( npt < 9 || far == NULL ) return 0.333f ;  /* half a milli-beast */
 
 #pragma omp critical (MALLOC)
    { dif = (float *)malloc(sizeof(float)*npt) ; }
 
-   for( ii=0 ; ii < npt-1 ; ii++ ) dif[ii] = far[ii+1]-far[ii] ;
-   qmedmad_float( npt-1 , dif , NULL , &mad1 ) ; mad1 *= 1.05f ;
-   for( ii=0 ; ii < npt-2 ; ii++ ) dif[ii] = 0.5f*(far[ii+2]+far[ii]) - far[ii+1] ;
-   qmedmad_float( npt-2 , dif , NULL , &mad2 ) ; mad2 *= 1.21f ;
+   /* MAD of 1st differences */
+
+   for( nnz=ii=0 ; ii < npt-1 ; ii++ ){
+     val = far[ii+1]-far[ii] ; if( val != 0.0f ) dif[nnz++] = val ;
+   }
+   if( nnz == 1 ){
+     mad1 = fabsf(dif[0]) ;
+   } else if( nnz > 1 ){
+     qmedmad_float( nnz , dif , NULL , &mad1 ) ; mad1 *= 0.333f ;
+   }
+
+   /* MAD of 2nd differences */
+
+   for( nnz=ii=0 ; ii < npt-2 ; ii++ ){
+     val = 0.5f*(far[ii+2]+far[ii])-far[ii+1]; if( val != 0.0f ) dif[nnz++] = val;
+   }
+   if( nnz == 1 ){
+     mad2 = fabsf(dif[0]) ;
+   } else if( nnz > 1 ){
+     qmedmad_float( nnz , dif , NULL , &mad2 ) ; mad2 *= 0.333f ;
+   }
 
 #pragma omp critical (MALLOC)
    { free(dif) ; }
@@ -265,7 +282,7 @@ floatvec * THD_lasso_L2fit( int npt    , float *far   ,
                             float *lam , float *ccon   )
 {
    int ii,jj, nfree,nite,nimax,ndel , do_slam ;
-   float *mylam, *ppar, *resd, *rsq, *rj, pj,dg,dsum,ll ;
+   float *mylam, *ppar, *resd, *rsq, *rj, pj,dg,dsum,dsumx,ll ;
    floatvec *qfit ; byte *fr ;
 
 ENTRY("THD_lasso_L2fit") ;
@@ -312,7 +329,7 @@ ENTRY("THD_lasso_L2fit") ;
          (implicitly assuming all other parameters are zero) ---*/
 
    if( vpar == NULL || vpar->nar < nref ){
-     compute_free_param( npt,far,nref,ref,2,ccon , nfree,fr , ppar ) ;
+     /* compute_free_param( npt,far,nref,ref,2,ccon , nfree,fr , ppar ) ; */
    } else {
      for( ii=0 ; ii < nref ; ii++ ) ppar[ii] = vpar->ar[ii] ;
    }
@@ -348,10 +365,12 @@ ENTRY("THD_lasso_L2fit") ;
 #define CONN(j) (ccon != NULL && ccon[j] < 0.0f)
 
    ii = MAX(nref,npt) ; jj = MIN(nref,npt) ; nimax = 17 + 5*ii + 31*jj ;
-   dsum = 1.0f ;
-   for( nite=0 ; nite < nimax && dsum > deps ; nite++ ){
+   dsumx = dsum = 1.0f ;
+   for( nite=0 ; nite < nimax && dsum+dsumx > deps ; nite++ ){
 
      /*-- cyclic inner loop over parameters --*/
+
+     dsumx = dsum ;
 
      for( dsum=ndel=jj=0 ; jj < nref ; jj++ ){  /* dsum = sum of param deltas */
 
@@ -410,7 +429,7 @@ ENTRY("THD_lasso_L2fit") ;
 #if 1
    { static int ncall=0 ;
      if( ncall < 1 ){
-       INFO_message("LASSO: nite=%d dsum=%g",nite,dsum) ; ncall++ ;
+       INFO_message("LASSO: nite=%d dsum=%g dsumx=%g",nite,dsum,dsumx) ; ncall++ ;
      }
    }
 #endif
@@ -465,7 +484,7 @@ floatvec * THD_sqrtlasso_L2fit( int npt    , float *far   ,
                                 float *lam , float *ccon   )
 {
    int ii,jj, nfree,nite,nimax,ndel ;
-   float *mylam, *ppar, *resd, *rsq, *rj, pj,dg,dsum ;
+   float *mylam, *ppar, *resd, *rsq, *rj, pj,dg,dsum,dsumx ;
    float rqsum,aa,bb,cc,ll,all , npinv , *ain,*qal ;
    floatvec *qfit ; byte *fr ;
 
@@ -491,8 +510,8 @@ ENTRY("THD_sqrtlasso_L2fit") ;
      resd = (float *)calloc(sizeof(float),npt ) ;   /* residuals */
      rsq  = (float *)calloc(sizeof(float),nref) ;   /* sums of squares */
      fr   = (byte  *)calloc(sizeof(byte) ,nref) ;   /* free list */
-     ain  = (float *)calloc(sizeof(float),nref) ;
-     qal  = (float *)calloc(sizeof(float),nref) ;
+     ain  = (float *)calloc(sizeof(float),nref) ;   /* -0.5 / rsq */
+     qal  = (float *)calloc(sizeof(float),nref) ;   /* step adjustment */
    }
 
    /*--- Save sum of squares of each ref column ---*/
@@ -501,23 +520,33 @@ ENTRY("THD_sqrtlasso_L2fit") ;
    nfree = 0 ;                    /* number of unconstrained parameters */
    for( jj=0 ; jj < nref ; jj++ ){
      rj = ref[jj] ;
-     for( pj=ii=0 ; ii < npt ; ii++ ) pj += rj[ii]*rj[ii] ;
-     rsq[jj] = pj * npinv ;
+     for( pj=ii=0 ; ii < npt ; ii++ ) pj += rj[ii]*rj[ii] ; /* sum of squares */
+     rsq[jj] = pj * npinv ;                            /* average per data pt */
      if( pj > 0.0f ){
        if( mylam[jj] == 0.0f ){ fr[jj] = 1 ; nfree++ ; }  /* unconstrained */
        ain[jj] = -0.5f / rsq[jj] ;
      }
    }
 
-   /* scale and edit mylam to make sure it isn't too big */
+   /* scale and edit mylam to make sure it isn't too big for sqrt(quadratic) */
 
-   cc = sqrtf(npinv) ;
+#undef  AFAC
+#define AFAC 0.222f
+
+   cc = sqrtf(npinv)*AFAC ;
    for( jj=0 ; jj < nref ; jj++ ){
      ll = mylam[jj] ;
      if( ll > 0.0f ){
-       aa = sqrtf(rsq[jj]); ll *= aa*npinv; if( ll > 0.666f*aa ) ll = 0.666f*aa;
+       aa = sqrtf(rsq[jj]); ll *= aa*cc; if( ll > AFAC*aa ) ll = AFAC*aa;
+#if 0
+       ININFO_message("lam[%d]=%g --> %g  aa=%g cc=%g npt=%d",jj,mylam[jj],ll,aa,cc,npt) ;
+#endif
        mylam[jj] = ll ;
        qal[jj]   = ll*ll * 4.0f*rsq[jj]/(rsq[jj]-ll*ll) ;
+     } else {
+#if 0
+       ININFO_message("lam[%d]=0",jj) ;
+#endif
      }
    }
 
@@ -526,7 +555,7 @@ ENTRY("THD_sqrtlasso_L2fit") ;
          (implicitly assuming all other parameters are zero) ---*/
 
    if( vpar == NULL || vpar->nar < nref ){
-     compute_free_param( npt,far,nref,ref,2,ccon , nfree,fr , ppar ) ;
+     /* compute_free_param( npt,far,nref,ref,2,ccon , nfree,fr , ppar ) ; */
    } else {
      for( ii=0 ; ii < nref ; ii++ ) ppar[ii] = vpar->ar[ii] ;
    }
@@ -550,10 +579,12 @@ ENTRY("THD_sqrtlasso_L2fit") ;
 #define CON(j) (ccon != NULL && ppar[j]*ccon[j] < 0.0f)
 
    ii = MAX(nref,npt) ; jj = MIN(nref,npt) ; nimax = 17 + 5*ii + 31*jj ;
-   dsum = 1.0f ;
-   for( nite=0 ; nite < nimax && dsum > deps ; nite++ ){
+   dsumx = dsum = 1.0f ;
+   for( nite=0 ; nite < nimax && dsum+dsumx > deps ; nite++ ){
 
      /*-- cyclic inner loop over parameters --*/
+
+     dsumx = dsum ;
 
      for( dsum=ndel=jj=0 ; jj < nref ; jj++ ){  /* dsum = sum of param deltas */
 
@@ -628,7 +659,7 @@ ENTRY("THD_sqrtlasso_L2fit") ;
 #if 1
    { static int ncall=0 ;
      if( ncall < 1 ){
-       INFO_message("SQRTLASSO: nite=%d dsum=%g",nite,dsum) ; ncall++ ;
+       INFO_message("SQRTLASSO: nite=%d dsum=%g dsumx=%g",nite,dsum,dsumx) ; ncall++ ;
      }
    }
 #endif
