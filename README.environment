@@ -1406,7 +1406,26 @@ Labels are drawn vertically, upwards from their starting point.  Play
 with this feature to see how it works and looks, and recall that beauty
 is in the eye of the beholder.  (If you edit this method interactively,
 the graph won't automatically be redrawn -- you'll have to force a graph
-window redraw to see the effects.)
+window redraw to see the effects.)  You can control the font for this
+text with AFNI_GRAPH_FONT (next).  Note that if you use the Dataset#N
+plugin with this feature, the labels will come from the underlay dataset
+rather than the Dataset#N datasets.  This bug is so recondite and intractable
+that I hope it will not cause too many problems for the adoring AFNI public.
+
+-------------------------
+Variable: AFNI_GRAPH_FONT
+-------------------------
+This variable is the name of a font to use for text overlays in the
+AFNI time series graph viewers.  If this variable is not set, the
+program has a list of fonts to try to load.  If none of those can
+be loaded (something I've never seen happen), text may not display.
+For best results, this should be a fixed width font.  To see a full
+list of all X11 fonts available, use the system command 'xlsfonts'
+(you probably want to pipe this output through 'more').  The first
+default font is currently [Apr 2011] set to
+  -adobe-courier-bold-r-normal--12-120-75-75-m-70-iso8859-1
+The entire list of fonts that will be tried can be found in the
+source code file display.h, in the string array tfont_hopefuls[].
 
 --------------------------
 Variable: AFNI_VALUE_LABEL (editable)

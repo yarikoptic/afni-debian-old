@@ -43,7 +43,15 @@
 
 afni_history_struct rwcox_history[] = {
 /*=====BELOW THIS LINE=====*/
-  { 18 , APR , 2011 , RWC , "afni_graph" , MICRO , TYPE_GENERAL ,
+  { 19 , APR , 2011 , RWC , "afni" , MICRO , TYPE_GENERAL ,
+   "Let user select grid spacing=1 from menu" ,
+   "Helpful for Boxes graphs" } ,
+
+ { 19 , APR , 2011 , RWC , "afni" , MICRO , TYPE_NEW_ENV ,
+   "AFNI_GRAPH_FONT lets user choose font for graph viewer text" ,
+   "9x15bold looks solid on a 100dpi screen, for example." } ,
+
+ { 18 , APR , 2011 , RWC , "afni_graph" , MICRO , TYPE_GENERAL ,
    "Box graphs get sub-brick labels" ,
    "If matrix=1 and user sets AFNI_GRAPH_BOXLAB to 'ATOP', 'MAX', or 'ZERO'.\n"
    "For Shane." } ,
