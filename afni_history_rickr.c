@@ -49,6 +49,21 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 25, APR, 2011, RCR, "Imon", MINOR, TYPE_MODIFY,
+   "Imon is getting phased out of the distribution (see 'Dimon -use_imon')",
+   NULL
+ } ,
+
+ { 25, APR, 2011, RCR, "plug_realtime", MINOR, TYPE_ENHANCE,
+   "have Dimon send 'TPATTERN explicit' with slice timing to RT plugin",
+   NULL
+ } ,
+
+ { 24, APR, 2011, RCR, "@Align_Centers", MINOR, TYPE_ENHANCE,
+   "allow -base dset to be in PATH, AFNI_PLUGINPATH, etc.",
+   NULL
+ } ,
+
  { 22, APR, 2011, RCR, "afni_proc.py", MINOR, TYPE_BUG_FIX,
    "if manual tlrc and -volreg_tlrc_adwarp, also transform extents mask",
    "Noted by J Britton.\n"
