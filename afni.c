@@ -8095,9 +8095,10 @@ STATUS(" -- processing points in this dataset") ;
    }
 
    /*-------------------------------------------------------------------*/
-   /*--- Sep 1995: turn Talairach to button on image popup on or off ---*/
+   /*--- Sep 1995: turn "Go to atlas position" button on 
+         image popup on or off ---*/
 
-STATUS(" -- managing tal_to button, etc") ;
+STATUS(" -- managing Go to atlas position button, etc") ;
 
    if( im3d->vwid->imag->pop_talto_pb != NULL ){
      if( CAN_TALTO(im3d) ){
@@ -8125,8 +8126,8 @@ STATUS(" -- managing tal_to button, etc") ;
 
 #if 1
    XtSetSensitive( im3d->vwid->func->see_ttatlas_bbox->wrowcol ,
-                   (Boolean)( im3d->anat_now->view_type == VIEW_TALAIRACH_TYPE &&
-                              TT_retrieve_atlas()       != NULL                  ) ) ;
+             (Boolean)( im3d->anat_now->view_type == VIEW_TALAIRACH_TYPE &&
+                        TT_retrieve_atlas_dset("TT_Daemon", 0)    != NULL                  ) ) ;
 #else
    XtSetSensitive( im3d->vwid->func->see_ttatlas_bbox->wrowcol , False ) ;
 #endif
@@ -8858,21 +8859,22 @@ ENTRY("AFNI_imag_pop_CB") ;
             im3d->type == AFNI_3DDATA_VIEW      &&
             CAN_TALTO(im3d)                       ){
 
-      if( ! TTO_labeled ){  /* initialize labels */
-         int ii ;
-         for( ii=0 ; ii < TTO_COUNT ; ii++ ){
-            TTO_labels[ii] = (char *) malloc( sizeof(char) * TTO_LMAX ) ;
-            sprintf( TTO_labels[ii] , TTO_FORMAT , TTO_list[ii].name ,
-                     TTO_list[ii].xx , TTO_list[ii].yy , TTO_list[ii].zz ) ;
+      {  /* initialize labels */
+         char **at_labels=NULL ;
+         int iii;
+         at_labels = atlas_chooser_formatted_labels("TT_Daemon");
+         if( ISQ_REALZ(seq) && at_labels ){
+           if( AFNI_yesenv("AFNI_DATASET_BROWSE") ) MCW_set_browse_select(1) ;
+           MCW_choose_strlist( seq->wbar ,
+                       "Brain Structure (from San Antonio Talairach Daemon)" ,
+                       atlas_n_points("TT_Daemon") , atlas_current_structure ,
+                       at_labels ,
+                       AFNI_talto_CB , (XtPointer) im3d ) ;
+            for (iii=0; iii<atlas_n_points("TT_Daemon"); ++iii) {
+               if (at_labels[iii]) free(at_labels[iii]);
+            }
+            free(at_labels); at_labels=NULL; 
          }
-         TTO_labeled = 1 ;
-      }
-      if( ISQ_REALZ(seq) ){
-        if( AFNI_yesenv("AFNI_DATASET_BROWSE") ) MCW_set_browse_select(1) ;
-        MCW_choose_strlist( seq->wbar ,
-                          "Brain Structure (from San Antonio Talairach Daemon)" ,
-                          TTO_COUNT , TTO_current , TTO_labels ,
-                          AFNI_talto_CB , (XtPointer) im3d ) ;
       }
    }
 
@@ -8947,7 +8949,8 @@ ENTRY("AFNI_imag_pop_CB") ;
           "       15,898 voxels with only a 'area' label\n"
           "      479,886 voxels with both types of labels\n"
           "A list of all the labels (of either type) is presented by the\n"
-          "'Talairach to' control.  In the database, there are\n"
+          "'Go to atlas location' control.\n"
+          "  In the TT_Daemon database,there are\n"
           "           50 'gyral' labels (times 2 for Left and Right)\n"
           "           68 'area' labels\n"
           "          355 distinct combinations of labels\n"
@@ -9046,6 +9049,7 @@ void AFNI_talto_CB( Widget w , XtPointer cd , MCW_choose_cbs *cbs )
    THD_dataxes  *daxes ;
    float xx,yy,zz ;
    int nn , ii,jj,kk ;
+   ATLAS_POINT *tto_list=NULL;
    THD_fvec3 fv,tv ; THD_ivec3 iv ;
 
 ENTRY("AFNI_talto_CB") ;
@@ -9058,17 +9062,22 @@ ENTRY("AFNI_talto_CB") ;
        cbs->reason != mcwCR_integer   ){
 
       POPDOWN_strlist_chooser ;
-      BEEPIT ; WARNING_message("Can't 'Talairach To'!?") ;
+      BEEPIT ; WARNING_message("Can't 'Go to Atlas position'!?") ;
       EXRETURN ;
    }
-
+   
+   if (!(tto_list = atlas_points("TT_Daemon"))) {
+      BEEPIT ; WARNING_message("Can't get daemon!@!#x!") ;
+      EXRETURN ;
+   }
+   
    nn = cbs->ival ;
-   if( nn < 0 || nn >= TTO_COUNT ) EXRETURN ;
-   TTO_current = nn ;
+   if( nn < 0 || nn >= atlas_n_points("TT_Daemon") ) EXRETURN ;
+   atlas_current_structure = nn ;  /* index for structure in list for atlas */
 
    /* transform point from Dicom to local coords and go there */
 
-   xx = TTO_list[nn].xx ; yy = TTO_list[nn].yy ; zz = TTO_list[nn].zz ;
+   xx = tto_list[nn].xx ; yy = tto_list[nn].yy ; zz = tto_list[nn].zz ;
 
    LOAD_ANAT_VIEW(im3d) ;  /* 02 Nov 1996 */
 
@@ -9092,7 +9101,7 @@ ENTRY("AFNI_talto_CB") ;
       SAVE_VPT(im3d) ;
       AFNI_set_viewpoint( im3d , ii,jj,kk , REDISPLAY_ALL ) ; /* jump */
    } else {
-      BEEPIT ; WARNING_message("Bad 'Talairach To' coordinates!?") ;
+      BEEPIT ; WARNING_message("Bad 'Go atlas position' coordinates!?") ;
    }
    EXRETURN ;
 }
@@ -9118,16 +9127,16 @@ char * AFNI_ttatlas_query( Three_D_View *im3d )
 {
    static int have_TT = -1 ;
    THD_3dim_dataset *dset;
-   int space_index;
 
    if( !IM3D_OPEN(im3d) || !CAN_TALTO(im3d) ) return NULL ;
 
    /*-- make sure we have the TT atlas --*/
 
-   if( have_TT == -1 ){
-      have_TT = TT_load_atlas() ;
-      if( !have_TT ) return NULL ;
+   have_TT = 0;
+   if( TT_retrieve_atlas_dset("TT_Daemon",0)){
+      have_TT = 1 ;
    }
+   if( !have_TT ) return NULL ;
 
    if( have_TT ){
      THD_fvec3 tv ; char *tlab ;
@@ -9144,16 +9153,12 @@ char * AFNI_ttatlas_query( Three_D_View *im3d )
 
      /*-- get result string --*/
      /* use space of "talairach view" dataset */
-     /* will want to change this for flexibility not to go through previous xform */
+     /* will want to change this for flexibility not to use preset xform */
      dset = im3d->anat_dset[VIEW_TALAIRACH_TYPE];
-     space_index = THD_space_code(dset->atlas_space);
-#ifdef DEBUG_SPACES
-   fprintf(stderr,"Space is %s with index %d\n",dset->atlas_space, space_index);
-#endif
 
      tlab = TT_whereami( tv.xyz[0] , tv.xyz[1] , tv.xyz[2],
-             (AFNI_STD_SPACES)space_index );
-/*     tlab = TT_whereami( tv.xyz[0] , tv.xyz[1] , tv.xyz[2], UNKNOWN_SPC ) ;*/
+                         THD_get_space(dset)  , NULL );
+                         
      return tlab ;
    }
 

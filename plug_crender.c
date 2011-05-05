@@ -10,7 +10,7 @@
  */
 
 /*----------------------------------------------------------------------
-  $Id: plug_crender.c,v 1.55 2010/11/04 19:00:41 rwcox Exp $
+  $Id: plug_crender.c,v 1.56 2011/04/26 13:12:09 ziad Exp $
   ----------------------------------------------------------------------
 */
 
@@ -2137,7 +2137,7 @@ ENTRY( "RCREND_reload_dataset" );
          sublist[0] = 1;  sublist[1] = dset_ival;
          fprintf(stderr, "++ reorienting underlay as rai...");
          gcr.dset_or = r_new_resam_dset(dset, NULL, 0,0,0, "rai",
-                                        RESAM_NN_TYPE, sublist, 1);
+                                        RESAM_NN_TYPE, sublist, 1, 0);
          fprintf(stderr, " done\n");
       }
 
@@ -6905,7 +6905,7 @@ ENTRY( "RCREND_reload_func_dset" );
             sublist[0] = 2;     /* normal case, get 2 bricks */
 
          gcr.fset_or = r_new_resam_dset(func_dset, gcr.mset, 0,0,0, NULL,
-                                        RESAM_NN_TYPE, sublist, 1);
+                                        RESAM_NN_TYPE, sublist, 1, 0);
          fprintf(stderr, " done\n");
       }
 

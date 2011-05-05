@@ -49,9 +49,39 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 4, MAY, 2011, RCR, "to3d", MICRO, TYPE_BUG_FIX,
+   "fixed case of simult tpattern (so time_dep, but ui.tpattern is not set)",
+   "Problem noted by J Ostuni."
+ } ,
+
+ { 2, MAY, 2011, RCR, "Dimon", MINOR, TYPE_BUG_FIX,
+   "added nul-termination and a.b[.d]+ rules for checking Siemens slice times",
+   "Problem noted by D Kravitz and S Lee."
+ } ,
+
+ { 29, APR, 2011, RCR, "afni_proc.py", MICRO, TYPE_MODIFY,
+   "check that processing blocks are unique",
+   NULL
+ } ,
+
+ { 28, APR, 2011, RCR, "uber_align_test.py", MAJOR, TYPE_NEW_PROG,
+   "for testing EPI/anat alignment with various align_epi_anat.py options",
+   "This is a command-line version, with a GUI to come soon."
+ } ,
+
+ { 28, APR, 2011, RCR, "uber_subject.py", MINOR, TYPE_NEW_OPT,
+   "reconcile LUS.py with LS.py in prep for uber_align_test.py",
+   NULL
+ } ,
+
+ { 28, APR, 2011, RCR, "afni_proc.py", MINOR, TYPE_NEW_OPT,
+   "added -align_epi_strip_method",
+   NULL
+ } ,
+
  { 25, APR, 2011, RCR, "Imon", MINOR, TYPE_MODIFY,
    "Imon is getting phased out of the distribution (see 'Dimon -use_imon')",
-   NULL
+   "Requires compiling alterations to be put back in (if anyone wants it)."
  } ,
 
  { 25, APR, 2011, RCR, "plug_realtime", MINOR, TYPE_ENHANCE,

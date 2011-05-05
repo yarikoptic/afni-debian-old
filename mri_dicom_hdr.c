@@ -51,9 +51,9 @@
 **			of a file containing a DICOM stream.
 **   Usage:
 **			dcm_dump_file [-b] [-g] [-v] [-z] file [file ...]
-** Last Update:		$Author: rickr $, $Date: 2011/04/15 19:40:58 $
+** Last Update:		$Author: rickr $, $Date: 2011/05/02 15:34:09 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.36 $
+** Revision:		$Revision: 1.37 $
 ** Status:		$State: Exp $
 */
 
@@ -403,9 +403,9 @@ STATUS("closing") ;
 **			The stack is maintained as a simple stack array.  If
 **			it overflows, we dump the stack to stdout and reset it.
 **
-** Last Update:		$Author: rickr $, $Date: 2011/04/15 19:40:58 $
+** Last Update:		$Author: rickr $, $Date: 2011/05/02 15:34:09 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.36 $
+** Revision:		$Revision: 1.37 $
 ** Status:		$State: Exp $
 */
 
@@ -833,9 +833,9 @@ COND_WriteConditions(FILE * lfp)
 ** Author, Date:	Steve Moore, 30-Jun-96
 ** Intent:		Provide common abstractions needed for operations
 **			in a multi-threaded environment.
-** Last Update:		$Author: rickr $, $Date: 2011/04/15 19:40:58 $
+** Last Update:		$Author: rickr $, $Date: 2011/05/02 15:34:09 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.36 $
+** Revision:		$Revision: 1.37 $
 ** Status:		$State: Exp $
 */
 
@@ -927,9 +927,9 @@ COND_WriteConditions(FILE * lfp)
 **	and convert the object to and from its "stream" representation.
 **	In addition, the package can parse a file which contains a stream
 **	and create its internal object.
-** Last Update:		$Author: rickr $, $Date: 2011/04/15 19:40:58 $
+** Last Update:		$Author: rickr $, $Date: 2011/05/02 15:34:09 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.36 $
+** Revision:		$Revision: 1.37 $
 ** Status:		$State: Exp $
 */
 
@@ -2391,24 +2391,50 @@ static char * findstr(char * instr, char * sstr, int len)
    return NULL;
 }
 
-/* return 1 if has form d+.d+ (digits, '.', digits)
- * (require at least 6 digits, total) */
-static int looks_like_float(char * str)
+/* return 0 if has form d+.d+z (digits, '.', digits, 0-byte)
+ * (require at least 6 digits, total)
+ * 
+ * return the number of bad float-ish characters processed
+ * (so 0 means we have a float)
+ *
+ * updated from 'looks_like_float'        2 May 2011 [rickr]
+ * (look for a.b.* and non-nul-termination)
+ */
+static int num_bad_float_chars(char * str)
 {
    int c = 0;
    int mindigs = 6;
 
-   if( ! isdigit(str[c++]) ) return 0;  /* must have a leading digit  */
+   if( ! isdigit(str[c++]) ) return 1;  /* must have a leading digit  */
    while( isdigit(str[c]) ) c++;
 
-   if( str[c++] != '.' ) return 0;      /* must have a decimal        */
+   if( str[c] != '.' ) return c;        /* must have a decimal        */
+   c++;
 
-   if( ! isdigit(str[c]) ) return 0;    /* must have a trailing digit */
+   if( ! isdigit(str[c]) ) return c;    /* must have a trailing digit */
 
-   while( isdigit(str[c]) && c <= mindigs ) c++; /* just count length */
+   while( isdigit(str[c]) ) c++;        /* just count length */
 
-   if( c > mindigs ) return 1;
-   else              return 0;
+   /* look for stupid case of a.b.c - that is not a float       */
+   /* --> skip "a.b.[d.]*"                                      */
+   if( str[c] == '.' ) {
+      c++;
+      while( isdigit(str[c]) || str[c] == '.' ) c++;
+      if (g_MDH_verb > 2) fprintf(stderr,"** skip bad slice time %*s\n",c,str);
+      return c;
+   }
+
+   /* only success case, enough digits and ends in zero byte */
+   if( c > mindigs && str[c] == '\0' ) return 0;
+
+   if( g_MDH_verb > 2 ) {
+      if ( c > mindigs )
+         fprintf(stderr,"** skip bad terminated slice time %*s\n", c-1, str);
+      else
+         fprintf(stderr,"** skip short slice time %*s\n", c-1, str);
+   }
+
+   return c;    /* failure */
 }
 
 static int insert_slice_time(float st)
@@ -2450,12 +2476,12 @@ static int check_for_mosaic_slice_times(PRV_ELEMENT_ITEM * elementItem)
    char     end_txt[]   = "AutoInlineImageFilterEnabled";
    siemens_slice_times_t * ST = & g_siemens_slice_times;  /* global struct */
 
-   char * instr, * mstr;  /* input string and Mosaic string addr         */
-   char * s2;             /* second search string, posn of AutoInline... */
-   char * pstr;           /* position pointer, for reading times         */
-   int    rem, rem2 = 0;  /* remainder counts                            */
-   int    off, c, diff;   /* offset and counter vars                     */
-   float  stime;          /* any read slice time                         */
+   char * instr, * mstr;    /* input string and Mosaic string addr         */
+   char * s2;               /* second search string, posn of AutoInline... */
+   char * pstr;             /* position pointer, for reading times         */
+   int    rem, rem2 = 0;    /* remainder counts                            */
+   int    off, c, rv, diff; /* offset and counter vars                     */
+   float  stime;            /* any read slice time                         */
 
 
    /* if this is not the correct element, nothing to do */
@@ -2499,10 +2525,21 @@ static int check_for_mosaic_slice_times(PRV_ELEMENT_ITEM * elementItem)
       fprintf(stderr, "(end)done\n");
    }
 
+   /* in really verbose mode, print out raw text */
+   if( g_MDH_verb > 3 ) {
+      unsigned char * ucp = (unsigned char *)mstr;
+      fprintf(stderr, "-- remaining spaced hex or digit or '.' :\n");
+      for(c=0; c<rem; c++)
+        if( isdigit(mstr[c]) || mstr[c]=='.' ) fprintf(stderr," '%c'",mstr[c]);
+        else fprintf(stderr," %02x", ucp[c]);
+      fprintf(stderr, "(end)done\n");
+   }
+
    /* actually read in the slice times */
    c = 0;
    while(c < rem) {
-      if( looks_like_float(mstr+c) ) {
+      rv = num_bad_float_chars(mstr+c);
+      if( rv == 0 ) {   /* 0 bad chars means look like a float string */
          stime = (float)strtod(mstr+c, &pstr);
          diff = pstr-mstr-c;
          if( diff > 0 ) {       /* found one */
@@ -2511,7 +2548,7 @@ static int check_for_mosaic_slice_times(PRV_ELEMENT_ITEM * elementItem)
          else break;    /* quit looking */
          c += diff;
       }
-      else c++;
+      else c += rv;     /* skip the number of bad chars found */
    }
 
    if( g_MDH_verb > 1 )
@@ -8529,9 +8566,9 @@ DCM_AddFragment(DCM_OBJECT** callerObject, void* fragment, U32 fragmentLength)
 ** Intent:		Define the ASCIZ messages that go with each DCM
 **			error number and provide a function for looking up
 **			the error message.
-** Last Update:		$Author: rickr $, $Date: 2011/04/15 19:40:58 $
+** Last Update:		$Author: rickr $, $Date: 2011/05/02 15:34:09 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.36 $
+** Revision:		$Revision: 1.37 $
 ** Status:		$State: Exp $
 */
 
@@ -8687,9 +8724,9 @@ DCM_DumpVector()
 **			static objects are maintained which define how
 **			elements in the DICOM V3.0 standard are to be
 **			interpreted.
-** Last Update:		$Author: rickr $, $Date: 2011/04/15 19:40:58 $
+** Last Update:		$Author: rickr $, $Date: 2011/05/02 15:34:09 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.36 $
+** Revision:		$Revision: 1.37 $
 ** Status:		$State: Exp $
 */
 
@@ -10803,9 +10840,9 @@ DCM_ElementDictionary(DCM_TAG tag, void *ctx,
 **			as support for the DCM facility and for applications.
 **			These routines help parse strings and other data
 **			values that are encoded in DICOM objects.
-** Last Update:		$Author: rickr $, $Date: 2011/04/15 19:40:58 $
+** Last Update:		$Author: rickr $, $Date: 2011/05/02 15:34:09 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.36 $
+** Revision:		$Revision: 1.37 $
 ** Status:		$State: Exp $
 */
 
@@ -11011,9 +11048,9 @@ DCM_IsString(DCM_VALUEREPRESENTATION representation)
 ** Author, Date:	Thomas R. Leith, 15-Apr-93
 ** Intent:		This package implements atomic functions on
 **			linked lists.
-** Last Update:		$Author: rickr $, $Date: 2011/04/15 19:40:58 $
+** Last Update:		$Author: rickr $, $Date: 2011/05/02 15:34:09 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.36 $
+** Revision:		$Revision: 1.37 $
 ** Status:		$State: Exp $
 */
 
@@ -11547,9 +11584,9 @@ LST_Index(LST_HEAD ** l, int index)
 ** Intent:		Miscellaneous functions that may be useful in
 **			a number of different areas.
 **
-** Last Update:		$Author: rickr $, $Date: 2011/04/15 19:40:58 $
+** Last Update:		$Author: rickr $, $Date: 2011/05/02 15:34:09 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.36 $
+** Revision:		$Revision: 1.37 $
 ** Status:		$State: Exp $
 */
 

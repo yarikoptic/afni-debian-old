@@ -878,20 +878,21 @@ STATUS("making imag->rowcol") ;
       imag->pop_sumato_pb = NULL ;
    }
 
-   /*--- Talairach To button in menu ---*/
+   /*--- create button to Move crosshairs to position in atlas,
+           formerly "Talairach to" ---*/
 
    if( im3d->type == AFNI_3DDATA_VIEW ){
       imag->pop_talto_pb =
          XtVaCreateManagedWidget(
             "dialog" , xmPushButtonWidgetClass , imag->popmenu ,
-               LABEL_ARG("-Talairach to") ,
+               LABEL_ARG("-Go to atlas location") ,
                XmNmarginHeight , 0 ,
                XmNtraversalOn , True  ,
                XmNinitialResourcesPersistent , False ,
             NULL ) ;
       XtAddCallback( imag->pop_talto_pb , XmNactivateCallback ,
                      AFNI_imag_pop_CB , im3d ) ;
-      if( TT_load_atlas() > 0 ){
+      if( TT_retrieve_atlas_dset("TT_Daemon",0) ){
          imag->pop_whereami_pb =        /* 10 Jul 2001 */
             XtVaCreateManagedWidget(
                "dialog" , xmPushButtonWidgetClass , imag->popmenu ,
