@@ -12,14 +12,15 @@ import copy
 
 import afni_util as UTIL
 import lib_subjects as SUBJ
-import lib_uber_align as UALIGN
+import lib_uber_skel as USKEL
 import option_list as OPT
 
 g_command_help = """
 ===========================================================================
-uber_align_test.py      - generate script to test anat/EPI alignment
+uber_skel.py      - sample uber processing program
+                    (based on uber_align_test.py, version 0.2)
 
-        usage:  uber_align_test.py
+        usage:  uber_skel.py
 
 ---
 
@@ -36,24 +37,30 @@ Examples:
 
    GUI examples:
 
-      uber_align_test.py
-      uber_align_test.py -qt_opts -style=motif
+      uber_skel.py
+      uber_skel.py -qt_opts -style=motif
 
    Informational examples:
 
-      uber_align_test.py -help
-      uber_align_test.py -help_gui
-      uber_align_test.py -hist
-      uber_align_test.py -show_valid_opts
-      uber_align_test.py -ver
+      --------------------------------------------------
+      There are some programming comments available here:
+
+            uber_skel.py -help_howto_program
+      --------------------------------------------------
+
+      uber_skel.py -help
+      uber_skel.py -help_gui
+      uber_skel.py -hist
+      uber_skel.py -show_valid_opts
+      uber_skel.py -ver
 
    Non-GUI examples (all have -no_gui):
 
-      uber_align_test.py -no_gui -print_script            \\
+      uber_skel.py -no_gui -print_script                  \\
          -uvar anat FT/FT_anat+orig                       \\
          -uvar epi  FT/FT_epi_r1+orig
 
-      uber_align_test.py -no_gui -save_script align.test  \\
+      uber_skel.py -no_gui -save_script align.test        \\
          -uvar anat FT/FT_anat+orig                       \\
          -uvar epi  FT/FT_epi_r1+orig                     \\
          -uvar epi_base 2                                 \\
@@ -65,7 +72,7 @@ Examples:
 
 ----------------------------------------------------------------------
 
-- R Reynolds  Apr, 2011
+- R Reynolds  May, 2011
 ===========================================================================
 """
 
@@ -125,23 +132,23 @@ class AlignInterface():
          return 1
 
       if '-help_gui' in argv:
-         print UALIGN.helpstr_gui
+         print USKEL.helpstr_gui
          return 1
 
       if '-help_howto_program' in argv:
-         print UALIGN.helpstr_create_program
+         print USKEL.helpstr_create_program
          return 1
 
       if '-help_todo' in argv:
-         print UALIGN.helpstr_todo
+         print USKEL.helpstr_todo
          return 1
 
       if '-hist' in argv:
-         print UALIGN.g_history
+         print USKEL.g_history
          return 1
 
       if '-show_default_vars' in argv:
-         UALIGN.g_user_defs.show('default uvars :')
+         USKEL.g_user_defs.show('default uvars :')
          return 1
 
       if '-show_valid_opts' in argv:
@@ -149,7 +156,7 @@ class AlignInterface():
          return 1
 
       if '-ver' in argv:
-         print 'uber_align_test.py: version %s' % UALIGN.g_version
+         print 'uber_skel.py: version %s' % USKEL.g_version
          return 1
 
       # ------------------------------------------------------------
@@ -161,7 +168,7 @@ class AlignInterface():
       # init subject options struct
       self.cvars = SUBJ.VarsObject('control vars from command line')
       self.uvars = SUBJ.VarsObject('user vars from command line')
-      self.guiopts = ['uber_align_test.py']
+      self.guiopts = ['uber_skel.py']
 
       # first set verbose level
       val, err = uopts.get_type_opt(int, '-verb')
@@ -169,7 +176,7 @@ class AlignInterface():
       else: self.verb = 1
 
       SUBJ.set_var_str_from_def('uvars', 'verb', ['%d'%self.verb], self.uvars,
-                                 defs=UALIGN.g_user_defs)
+                                 defs=USKEL.g_user_defs)
 
       use_gui = 1 # assume GUI unless we hear otherwise
 
@@ -201,7 +208,7 @@ class AlignInterface():
             if val != None and err: return -1
             # and set it from the form name = [value_list]
             if SUBJ.set_var_str_from_def('cvars', val[0], val[1:], self.cvars,
-                        UALIGN.g_ctrl_defs, verb=self.verb) < 0:
+                        USKEL.g_ctrl_defs, verb=self.verb) < 0:
                errs += 1
                continue
 
@@ -211,7 +218,7 @@ class AlignInterface():
             if val != None and err: return -1
             # and set it from the form name = [value_list]
             if SUBJ.set_var_str_from_def('uvars', val[0], val[1:], self.uvars,
-                        UALIGN.g_user_defs, verb=self.verb) < 0:
+                        USKEL.g_user_defs, verb=self.verb) < 0:
                errs += 1
                continue
 
@@ -245,7 +252,7 @@ class AlignInterface():
       """return the AlignTest object and script
          (print warnings and errors to screen)"""
 
-      atest = UALIGN.AlignTest(self.cvars, self.uvars)
+      atest = USKEL.AlignTest(self.cvars, self.uvars)
 
       nwarn, wstr = atest.get_warnings()
       status, mesg = atest.get_script()
@@ -269,7 +276,7 @@ class AlignInterface():
          return 1
 
       # if the above worked, let any GUI import errors show normally
-      import gui_uber_align_test as GUT
+      import gui_uber_skel as GUT
 
       app = QtGui.QApplication(self.guiopts)
       D = GUT.MainWindow(cvars=self.cvars, uvars=self.uvars, set_pdir=1)

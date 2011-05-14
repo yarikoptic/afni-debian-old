@@ -14,33 +14,18 @@ DEF_UBER_DIR = 'uber_results'        # top directory for output
 DEF_TOP_DIR  = 'tool_results'     # top subject dir under uber_results
 
 g_history = """
-  uber_align_test.py history
+  uber_skel.py history
 
-    0.0  05 Apr, 2011: initial revision
-    0.1  11 May, 2011:
-         - replaced cost/multi_cost/multi_list with just cost_list
-         - added -help_howto_program (maybe move to shell program)
-         - added basic GUI, only anat field so far...
-    0.2  12 May, 2011:
-         - added control vars object
-         - and renamed old cvars (control vars) to uvars (user vars)
-           (proc_dir is currently only cvar)
-         - added EPI line to GUI (so can actually generate basic script)
-         ==> this version will be copied off as uber_skel.py,
-             lib_uber_skel.py and gui_uber_skel.py
-    0.3  13 May, 2011: wrote functioning GUI (help still needs to be written)
+    0.0  12 Apr, 2011: initial revision (based on uber_align_test.py v. 0.2)
 """
 
-g_version = '0.3 (May 13, 2011)'
+g_version = '0.0 (May 12, 2011)'
 
 # ----------------------------------------------------------------------
 # global definition of default processing blocks
 g_tlrc_base_list  = ['TT_N27+tlrc', 'TT_avg152T1+tlrc', 'TT_icbm452+tlrc',
                      'MNI_avg152T1+tlrc']
-g_center_base_list= ['TT_N27+tlrc', 'MNI_avg152T1+tlrc']
 g_def_tlrc_base   = 'TT_N27+tlrc'
-g_def_main_costs  = ['lpc', 'lpc+ZZ', 'lpc+', 'lpa', 'nmi', 'ls']
-g_epi_strip_list  = ['3dSkullStrip', '3dAutomask', 'None']
 
 
 # ----------------------------------------------------------------------
@@ -48,19 +33,19 @@ g_epi_strip_list  = ['3dSkullStrip', '3dAutomask', 'None']
 # (as well as string versions of control and user defaults)
 
 # ---- resulting values returned after class actions ----
-g_res_defs = SUBJ.VarsObject("uber_align result variables")
+g_res_defs = SUBJ.VarsObject("uber_skel result variables")
 g_res_defs.file_proc     = ''   # file name for process script
 g_res_defs.output_proc   = ''   # output from running proc script
 
 # ---- control variables: process control, not set by user in GUI
 
-g_ctrl_defs = SUBJ.VarsObject("uber_align control defaults")
+g_ctrl_defs = SUBJ.VarsObject("uber_skel control defaults")
 g_ctrl_defs.proc_dir     = '.'  # process dir: holds scripts and result dir
 
 
 # ---- user variables: process control, alignment inputs and options ----
 
-g_user_defs = SUBJ.VarsObject("uber_align user defaults")
+g_user_defs = SUBJ.VarsObject("uber_skel user defaults")
 g_user_defs.verb           = 1          # verbose level
 g_user_defs.copy_scripts   = 'yes'      # do we make .orig copies of scripts?
 
@@ -71,7 +56,7 @@ g_user_defs.epi_base       = 0          # EPI alignment base index
 
 # options
 g_user_defs.results_dir    = 'align.results' # where script puts results
-g_user_defs.cost_list      = ['lpc', 'lpc+ZZ', 'lpa', 'nmi']
+g_user_defs.cost_list      = ['lpc', 'lpc+ZZ', 'lpc+', 'lpa', 'nmi', 'ls']
 g_user_defs.giant_move     = 'no'
 g_user_defs.align_centers  = 'no'
 g_user_defs.center_base    = 'TT_N27+tlrc'
@@ -242,8 +227,9 @@ class AlignTest(object):
              '3drefit -deoblique anat+orig epi+orig\n'                       \
              '\n'                                                            \
              '# align volume centers (we do not trust spatial locations)\n'  \
-             '@Align_Centers -no_cp -base $center_base -dset anat+orig\n'    \
-             '@Align_Centers -no_cp -base $center_base -dset epi+orig\n\n'   \
+             '@Align_Centers -no_cp -base TT_N27+tlrc -dset anat+orig\n'     \
+             '@Align_Centers -no_cp -base TT_N27+tlrc -dset epi+orig\n'      \
+             '\n'
 
       return cmd
 
@@ -268,7 +254,7 @@ class AlignTest(object):
 
    def script_init(self):
       cmd = '#!/bin/tcsh -xef\n\n'                              \
-            '# created by uber_align_test.py: version %s\n'     \
+            '# created by uber_skel.py: version %s\n'     \
             '# creation date: %s\n\n' % (g_version, asctime())
 
       return cmd
@@ -315,24 +301,11 @@ class AlignTest(object):
          astr = '$top_dir/%s' % self.LV.short_names[0][0]
          estr = '$top_dir/%s' % self.LV.short_names[0][1]
 
-      # if we are aligning centers, set center_base variable (maybe w/top_dir)
-      if self.uvars.align_centers == 'yes':
-         if self.LV.is_trivial_dir('top_dir'): cstr = self.uvars.center_base
-         else:
-            cdir = UTIL.child_dir_name(self.LV.top_dir, self.uvars.center_base)
-            if cdir == self.uvars.center_base: cstr = cdir
-            else: cstr = '$top_dir/%s' % cdir
-         ccmd = 'set center_base = %s\n' % cstr
-      else: ccmd = ''
-
-      # now set variables for inputs, possibly including center_base
       cmd += '# input dataset options (ebase is EPI index)\n'           \
-             'set in_anat     = %s\n'                                   \
-             'set in_epi      = %s\n'                                   \
-             'set in_ebase    = %d\n'                                   \
-             '%s'                                                       \
-             '\n'                                                       \
-             % (astr, estr, self.uvars.epi_base, ccmd)
+             'set in_anat  = %s\n'                                      \
+             'set in_epi   = %s\n'                                      \
+             'set in_ebase = %d\n\n'                                    \
+             % (astr, estr, self.uvars.epi_base)
 
       # note whether to use multi_cost
       cmd += '# main options\n' \
@@ -495,24 +468,17 @@ helpstr_todo = """
 ---------------------------------------------------------------------------
                         todo list:  
 
-- lots of GUI help
+- create GUI
 - test center distance in GUI to suggest align centers
 - show corresponding afni_proc.py options
 - show corresponding uber_subjec.py options?
 - show afni command to look at results (basically point to directory)
-- warn on any unknown cost functions
-- partial coverage?
 ---------------------------------------------------------------------------
 """
 
 helpstr_gui = """
 ===========================================================================
-==                                                                       ==
-==                      still under destruction                          ==
-==                                                                       ==
-===========================================================================
-
-uber_align_test.py (GUI)      - a graphical interface for testing alignment
+uber_skel.py (GUI)      - a graphical interface for testing alignment
 
    Find good alignment options, possibly to add to afni_proc.py command
    or uber_subject.py GUI options.
@@ -540,7 +506,7 @@ Some common GUI routines/classes are in lib_qt_gui.py.
 
 So the purpose of the GUI is to set user variables to pass to the library.
 
-   1. uber_align_test.py: main program
+   1. uber_skel.py: main program
       - handles just a few options
          - options for help, version, etc.
          - options to set user or other vars (for gui or library)
@@ -550,7 +516,7 @@ So the purpose of the GUI is to set user variables to pass to the library.
       - by default, start GUI (unless -no_gui)
       - give command help (this can be very simple, learning is via GUI)
 
-   2. lib_uber_align.py: main library for program
+   2. lib_uber_skel.py: main library for program
       - defines processing class that accepts user vars and generates
         processing scripts
       - main inputs:
@@ -572,7 +538,7 @@ So the purpose of the GUI is to set user variables to pass to the library.
          - get_warnings() - return warnings string
          - write_script: - go to proc dir, write script (and orig?), return
 
-   3. gui_uber_align_test.py: graphical user interface
+   3. gui_uber_skel.py: graphical user interface
       - defines main GUI class that accepts user vars
       - init user vars from library defaults, then merge with any passed
       - purpose is interface to display (string) options to user with useful
@@ -630,8 +596,8 @@ Writing the GUI
               - also, deal with table udpates (e.g. browse, clear, add, help)
               - processed in CB_gbox_PushB?
         - add var to apply_uvar_in_gui (for updating GUI from vars)
-        - add var to update_uvars_from_gui
-        - add to restoration of defaults, if necessary (cb_clear_options)
+        - add to restoration of defaults, if necessary
+          (i.e. button to clear all inputs and reset to defaults)
         - add GUI help
         - non-GUI: process in creation of script
         - add regression testing case
