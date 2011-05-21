@@ -11,11 +11,14 @@ static cfun cor_func[NCOR] =
 static float_quad Corrboot( int n , float *x , float *y ,
                             float (*cfun)(int,float *,float *) ) ;
 
+static float_pair PCorrCI( int npt , float cor , float alpha ) ;
+
 #undef  NBOOT
 #define NBOOT 4000  /* must be a integral multiple of 40 */
 
 static int   nboot = NBOOT ;
 static float alpha = 0.05f ;
+static int   doblk = 0 ;
 
 /*--------------------------------------------------------------------------------*/
 
@@ -24,33 +27,38 @@ int main( int argc , char *argv[] )
    int iarg , ii,jj,kk,mm , nvec , nx=0,ny , ff , vlen=4 ;
    MRI_IMAGE *tim ;
    MRI_IMARR *tar ;
-   float sum , **tvec ;
    char **vecnam , *tnam ;
-   float *far ;
-   int cormeth = 0 ;
+   float *far , **tvec ;
+   int cormeth=0 ;
    float (*corfun)(int,float *,float *) = NULL ;
-   float_quad qcor ; float corst , cor025, cor500 , cor975 ;
+   float_quad qcor ; float_pair pci ; float corst , cor025, cor500 , cor975 ;
    char fmt[256] ;
 
    /* help? */
 
    if( argc < 2 || strcmp(argv[1],"-help") == 0 ){
      printf("Usage: 1dCorrelate [options] 1Dfile 1Dfile ...\n"
-            " * Computes correlation coefficient of 1D column pairs.\n"
+            "------\n"
+            " * Each input 1D column is a collection of data points; the correlation\n"
+            "   coefficient between each column pair is computed, along with its\n"
+            "   confidence interval.\n"
             " * Minimum column length is 7.\n"
             " * At least 2 columns are needed [in 1 or more .1D files].\n"
+            " * If there are N input columns, there will be N*(N-1)/2 output rows.\n"
             " * Output appears on stdout; redirect as needed.\n"
-            " * There is no allowance made for any serial correlation in the data.\n"
             " * Only one correlation method can be used in one run of this program.\n"
             "\n"
             "-------\n"
-            "Options [actually, only the first letter is needed to choose a method]\n"
-            "------- [and the case doesn't matter: '-P' and '-p' both = '-pearson']\n"
-            " -pearson  = Pearson correlation              [the default method]\n"
-            " -spearman = Spearman (rank) correlation      [more robust vs. outliers]\n"
-            " -quadrant = Quadrant (binarized) correlation [most robust, but weaker]\n"
-            " -ktaub    = Kendall's tau_b 'correlation'    [popular somewhere, maybe]\n"
+            "Methods   [actually, only the first letter is needed to choose a method]\n"
+            "-------   [and the case doesn't matter: '-P' and '-p' both = '-Pearson']\n"
+            " -Pearson  = Pearson correlation                    [the default method]\n"
+            " -Spearman = Spearman (rank) correlation      [more robust vs. outliers]\n"
+            " -Quadrant = Quadrant (binarized) correlation  [most robust, but weaker]\n"
+            " -Ktaub    = Kendall's tau_b 'correlation'    [popular somewhere, maybe]\n"
             "\n"
+            "-------------\n"
+            "Other Options [these options cannot be abbreviated!]\n"
+            "-------------\n"
             " -nboot B  = Set the number of bootstrap replicates to 'B'.\n"
             "             * The default (and minimum allowed) value of B is %d.\n"
             "             * A larger number will give more accurate confidence\n"
@@ -58,8 +66,16 @@ int main( int argc , char *argv[] )
             "\n"
             " -alpha A  = Set the 2-sided confidence interval width to '100-A' percent.\n"
             "             * The default value of A is 5, giving the 2.5..97.5%% interval.\n"
-            "             * The smallest allowed A is 1 and the largest is 20.\n"
+            "             * The smallest allowed A is 1 (0.5%%..99.5%%) and the largest\n"
+            "               allowed A is 20 (10%%..90%%).\n"
             "\n"
+            " -block    = Attempt to allow for serial correlation in the data by doing\n"
+            "   *OR*      variable-length block resampling, rather than completely\n"
+            " -blk        random resampling as in the usual bootstrap.\n"
+            "             * You should NOT do this unless you believe that serial\n"
+            "               correlation (along each column) is present and significant.\n"
+            "             * Block resampling requires at least 20 data points in\n"
+            "               each input column.\n"
             "-----\n"
             "Notes\n"
             "-----\n"
@@ -72,25 +88,48 @@ int main( int argc , char *argv[] )
             "  seem to use the asymptotic normal theory to decide if a correlation is\n"
             "  'significant', and this often seems misleading to me [for short columns].\n"
             "\n"
+            "* Bootstrapping confidence intervals for the inverse correlations matrix\n"
+            "  (i.e., partial correlations) would be interesting -- anyone out there\n"
+            "  need this ability?\n"
+            "\n"
             "-------------\n"
-            "Sample output [2 columns with 64 data points: '1dCorrelate qqq.1D']\n"
+            "Sample output ['1dCorrelate -alpha 10 A2.1D B2.1D']\n"
             "-------------\n"
-            "# Pearson correlation [n=64]\n"
-            "# Name       Name        Value   BiasCorr   2.5%%    97.5%%\n"
-            "# ---------  ---------  -------- -------- -------- --------\n"
-            "  qqq.1D[0]  qqq.1D[1]  +0.19523 +0.19255 +0.01738 +0.36059\n"
+            "# Pearson correlation [n=12 #col=2]\n"
+            "# Name      Name       Value   BiasCorr   5.00%%   95.00%%  N: 5.00%% N:95.00%%\n"
+            "# --------  --------  -------- -------- -------- -------- -------- --------\n"
+            "  A2.1D[0]  B2.1D[0]  +0.57254 +0.57225 -0.03826 +0.86306 +0.10265 +0.83353\n"
             "\n"
-            "showing that the bias correction of the correlation had\n"
-            "little effect, and also showing that the correlation is\n"
-            "significant at the 5%% level [just barely].\n"
+            "* Bias correction of the correlation had little effect; this is very common.\n"
             "\n"
-            "* If there are N input columns, there will be N*(N-1)/2 output rows.\n"
+            "* The correlation is not significant at this level, since the CI (confidence\n"
+            "  interval) includes 0 in its range.\n"
             "\n"
-            "* RWCox -- 19 May 2011\n"
+            "* For the Pearson method ONLY, the last two columns ('N:', as above) also\n"
+            "  show the widely used asymptotic normal theory confidence interval.  As in\n"
+            "  the example, the bootstrap interval is often (but not always) wider than\n"
+            "  the theoretical interval.\n"
+            "\n"
+            "* In the example, the normal theory might indicate that the correlation is\n"
+            "  significant (less than a 5%% chance that the CI includes 0), but the\n"
+            "  bootstrap CI shows that is not a reasonable statistical conclusion.\n"
+            "\n"
+            "* Using the same data with the '-S' option gives the table below, again\n"
+            "  indicating that there is no significant correlation between the columns\n"
+            "  (note the lack of the 'N:' results for Spearman correlation):\n"
+            "\n"
+            "# Spearman correlation [n=12 #col=2]\n"
+            "# Name      Name       Value   BiasCorr   5.00%%   95.00%%\n"
+            "# --------  --------  -------- -------- -------- --------\n"
+            "  A2.1D[0]  B2.1D[0]  +0.46154 +0.42756 -0.23063 +0.86078\n"
+            "\n"
+            "* Written by RWCox (AKA Zhark the Correlator) -- 19 May 2011\n"
 
            , NBOOT ) ;
      PRINT_COMPILE_DATE ; exit(0) ;
    }
+
+   mainENTRY("1dCorrelate main") ; machdep() ;
 
    /* options */
 
@@ -124,8 +163,13 @@ int main( int argc , char *argv[] )
        iarg++ ; continue ;
      }
 
+     if( strcasecmp(argv[iarg],"-blk") == 0 || strcasecmp(argv[iarg],"-block") == 0 ){
+       doblk = 1 ; iarg++ ; continue ;
+     }
+
      ERROR_exit("Monstrously illegal option '%s'",argv[iarg]) ;
    }
+
    corfun = cor_func[cormeth] ;
 
    if( iarg == argc )
@@ -152,6 +196,11 @@ int main( int argc , char *argv[] )
 
    if( nvec < 2 ) ERROR_exit("Must have at least 2 input columns!") ;
 
+   if( nx < 20 && doblk ){
+     doblk = 0 ;
+     WARNING_message("Column length %d < 20 ==> cannot use block resampling",nx) ;
+   }
+
    /* create vectors from 1D files */
 
    tvec = (float **)malloc( sizeof(float *)*nvec ) ;
@@ -167,24 +216,22 @@ int main( int argc , char *argv[] )
      tnam = tim->name ; if( tnam == NULL ) tnam = "File" ;
      for( jj=0 ; jj < tim->ny ; jj++,kk++ ){
        for( ii=0 ; ii < nx ; ii++ ) tvec[kk][ii] = far[ii+jj*nx] ;
-       THD_const_detrend( nx , tvec[kk] , NULL ) ;
-       sum = THD_normalize( nx , tvec[kk] ) ;
-       if( sum == 0.0f )
-         ERROR_exit("Column #%d in file #%d is constant!",jj,mm+1) ;
        sprintf(vecnam[kk],"%s[%d]",THD_trailname(tnam,0),jj) ;
        iarg = strlen(vecnam[kk]) ; vlen = MAX(vlen,iarg) ;
+       if( THD_is_constant(nx,tvec[kk]) )
+         ERROR_exit("Column %s is constant!",vecnam[kk]) ;
      }
    }
    DESTROY_IMARR(tar) ;
 
    /* A Bunch of Correlations */
 
-   srand48((long)time(NULL)+(long)getpid()) ; /* initialize rand48 seed */
-
-   printf("# %s correlation [n=%d]\n",cor_name[cormeth],nx) ;
+   printf("# %s correlation [n=%d #col=%d]\n",cor_name[cormeth],nx,nvec) ;
    sprintf(fmt,"# %%-%ds  %%-%ds",vlen,vlen) ;
    printf(fmt,"Name","Name") ;
-   printf("   Value   BiasCorr  %5.2f%%   %5.2f%% \n",50.0f*alpha,100.0f-50.0f*alpha) ;
+   printf("   Value   BiasCorr  %5.2f%%   %5.2f%%",50.0f*alpha,100.0f-50.0f*alpha) ;
+   if( cormeth == 0 ) printf("  N:%5.2f%% N:%5.2f%%",50.0f*alpha,100.0f-50.0f*alpha) ;
+   printf("\n") ;
    printf("# ") ;
    for( ii=0 ; ii < vlen ; ii++ ) printf("-") ;
    printf("  ") ;
@@ -194,8 +241,12 @@ int main( int argc , char *argv[] )
    printf(" --------") ;
    printf(" --------") ;
    printf(" --------") ;
+   if( cormeth == 0 ){ printf(" --------") ; printf(" --------") ; }
    printf("\n") ;
-   sprintf(fmt,"  %%-%ds  %%-%ds  %%+8.5f %%+8.5f %%+8.5f %%+8.5f\n",vlen,vlen) ;
+   if( cormeth != 0 )
+     sprintf(fmt,"  %%-%ds  %%-%ds  %%+8.5f %%+8.5f %%+8.5f %%+8.5f\n",vlen,vlen) ;
+   else
+     sprintf(fmt,"  %%-%ds  %%-%ds  %%+8.5f %%+8.5f %%+8.5f %%+8.5f %%+8.5f %%+8.5f\n",vlen,vlen) ;
    for( jj=0 ; jj < nvec ; jj++ ){
      for( kk=jj+1 ; kk < nvec ; kk++ ){
 
@@ -203,7 +254,12 @@ int main( int argc , char *argv[] )
 
        corst = qcor.a ; cor025 = qcor.b ; cor500 = qcor.c ; cor975 = qcor.d ;
 
-       printf(fmt , vecnam[jj] , vecnam[kk] , corst , cor500 , cor025 , cor975 ) ;
+       if( cormeth == 0 ){
+         pci = PCorrCI( nx , corst , alpha ) ;
+         printf(fmt, vecnam[jj], vecnam[kk], corst, cor500, cor025, cor975, pci.a,pci.b ) ;
+       } else {
+         printf(fmt, vecnam[jj], vecnam[kk], corst, cor500, cor025, cor975 ) ;
+       }
      }
    }
 
@@ -227,7 +283,9 @@ static float_quad Corrboot( int n , float *x , float *y ,
    float_triple bci ;
    int ii,jj,kk , nn=n ;
 
-   if( nn < 7 || x == NULL || y == NULL || cfun == NULL ) return res ;
+ENTRY("Corrboot") ;
+
+   if( nn < 7 || x == NULL || y == NULL || cfun == NULL ) RETURN(res) ;
 
    xar = (float *)malloc(sizeof(float)*nn) ;
    yar = (float *)malloc(sizeof(float)*nn) ;
@@ -240,8 +298,21 @@ static float_quad Corrboot( int n , float *x , float *y ,
    /* compute bootstrap results */
 
    for( kk=0 ; kk < nboot ; kk++ ){
-     for( ii=0 ; ii < nn ; ii++ ){
-       jj = lrand48() % nn ; xar[ii] = x[jj] ; yar[ii] = y[jj] ;
+     if( !doblk ){
+       for( ii=0 ; ii < nn ; ii++ ){
+         jj = lrand48() % nn ; xar[ii] = x[jj] ; yar[ii] = y[jj] ;
+       }
+     } else {
+       int jold = lrand48() % nn ;
+       xar[0] = x[jold] ; yar[0] = y[jold] ;
+       for( ii=1 ; ii < nn ; ii++ ){
+         if( lrand48()%8 == 0 ){     /* 12.5% chance of random jump */
+           jj = lrand48() % nn ;
+         } else {
+           jj = jold+1 ; if( jj == nn ) jj = 0 ;
+         }
+         xar[ii] = x[jj] ; yar[ii] = y[jj] ; jold = jj ;
+       }
      }
      cbb[kk] = cfun(nn,xar,yar) ;
    }
@@ -250,8 +321,38 @@ static float_quad Corrboot( int n , float *x , float *y ,
 
    free(cbb) ; free(yar) ; free(xar) ;
 
-   if( bci.a == 0.0f && bci.b == 0.0f && bci.c == 0.0f ) return res ;
+   if( bci.a == 0.0f && bci.b == 0.0f && bci.c == 0.0f ) RETURN(res) ;
 
    res.a = corst ; res.b = bci.a ; res.c = bci.b ; res.d = bci.c ;
-   return res ;
+   RETURN(res) ;
+}
+
+/*----------------------------------------------------------------------------*/
+/* Get the bivariate normal theory confidence interval */
+
+#undef  MYatanh
+#define MYatanh(x) ( ((x)<-0.999329f) ? -4.0f                \
+                    :((x)>+0.999329f) ? +4.0f : atanhf(x) )
+
+static INLINE float MYtanh( float x )
+{
+  register float ex , exi ;
+       if( x >  7.0f ) return  1.0f ;  /* 03 Sep: check for stupid inputs */
+  else if( x < -7.0f ) return -1.0f ;
+  ex = exp(x) ; exi = 1.0f/ex ;
+  return (ex-exi)/(ex+exi) ;
+}
+
+static float_pair PCorrCI( int npt , float cor , float alph )
+{
+   float_pair ci = {-1.0f,1.0f} ;
+   float zc , zb,zt , dz ;
+
+   if( npt < 4 || cor <= -1.0f || cor >= 1.0f ) return ci ;
+
+   zc   = MYatanh(cor) ;
+   dz   = qginv(0.5*alph) / sqrt(npt-3.0) ;
+   ci.a = MYtanh(zc-dz) ;
+   ci.b = MYtanh(zc+dz) ;
+   return ci ;
 }
