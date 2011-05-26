@@ -43,7 +43,28 @@
 
 afni_history_struct rwcox_history[] = {
 /*=====BELOW THIS LINE=====*/
-  { 24 , MAY , 2011 , RWC , "1dplot" , MICRO , TYPE_NEW_OPT ,
+  { 25 , MAY , 2011 , RWC , "@1dDiffMag" , MICRO , TYPE_NEW_PROG ,
+   "Computes magnitude of 1st differences of 1D file" ,
+   NULL } ,
+
+ { 25 , MAY , 2011 , RWC , "3dTstat" , MICRO , TYPE_NEW_OPT ,
+   "Add -tdiff option == statistics on first differences of data" ,
+   NULL } ,
+
+ { 25 , MAY , 2011 , RWC , "3dDeconvolve" , MINOR , TYPE_BUG_FIX ,
+   "Fix problem with TENT and CSPLIN" ,
+   "For non-integer TR, could miss evaluating the last function in a TENT or\n"
+   "CSPLIN series because of roundoff error pushing the evaluation time\n"
+   "slightly past the 'top' value.  This is bad if the function is 1 at\n"
+   "exactly this value, as the last functions are here.  Solution was to\n"
+   "change the test to allow evaluation at values slightly larger than\n"
+   "'top'." } ,
+
+ { 25 , MAY , 2011 , RWC , "thd_zzprintf" , MICRO , TYPE_BUG_FIX ,
+   "Patched to avoid string overruns for crazy users" ,
+   NULL } ,
+
+ { 24 , MAY , 2011 , RWC , "1dplot" , MICRO , TYPE_NEW_OPT ,
    "Add -noline and -box options" ,
    "To plot markers at each point, without or with lines connecting them." } ,
 
