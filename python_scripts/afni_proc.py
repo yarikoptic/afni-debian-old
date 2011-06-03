@@ -247,9 +247,22 @@ g_history = """
         - re-worked motion as prep for more motion options
         - replaced -volreg_regress_per_run with -regress_motion_per_run
         - made uniq_list_as_dsets() a warning, not an error (for J Britton)
+    2.52 Jun 02 2011 :
+        - by default, demean and deriv motion parameters are simply created
+        - by default, demean motion parameters are applied in the regression
+          (replacing the original 'basic' parameters, which should have no
+          change in betas of interest, just the constant polort betas)
+        - added -regress_apply_mot_types to specify motion types for regression
+        - added -regress_no_motion_demean and -regress_no_motion_deriv
+    2.53 Jun 02 2011 :
+        - added -regress_make_cbucket
+        - include view in 3dcopy for single run extents mask
+          (so there are no missing view warnigns, done for J Jarcho)
+        - make TSNR datasets by default (added option -compute_tsnr)
+        
 """
 
-g_version = "version 2.51, May 31, 2011"
+g_version = "version 2.53, June 2, 2011"
 
 # version of AFNI required for script execution
 g_requires_afni = "4 Nov 2010"
@@ -335,6 +348,7 @@ class SubjProcSream:
         self.gen_review = '@epi_review.$subj' # filename for gen_epi_review.py
         self.test_stims = 1             # test stim_files for appropriateness
         self.test_dsets = 1             # test datasets for existence
+        self.comp_tsnr = 1              # compute TSNR datasets, when possible
 
         self.ricor_reg    = None        # ricor reg to apply in regress block
         self.ricor_nreg   = 0           # number of regs in ricor_reg
@@ -439,6 +453,9 @@ class SubjProcSream:
         self.valid_opts.add_opt('-check_setup_errors', 1, [],
                         acplist=['yes','no'],
                         helpstr='terminate on setup errors')
+        self.valid_opts.add_opt('-compute_tsnr', 1, [],
+                        acplist=['yes','no'],
+                        helpstr='compute TSNR datasets (yes/no)')
         self.valid_opts.add_opt('-copy_anat', 1, [],
                         helpstr='anatomy to copy to results directory')
         self.valid_opts.add_opt('-copy_files', -1, [],
@@ -601,6 +618,9 @@ class SubjProcSream:
                         helpstr="one basis function per stimulus class")
         self.valid_opts.add_opt('-regress_basis_normall', 1, [],
                         helpstr="specify magnitude of basis functions")
+        self.valid_opts.add_opt('-regress_make_cbucket', 1, [],
+                        acplist=['yes','no'],
+                        helpstr="request cbucket dataset of all betas (yes/no)")
 
         self.valid_opts.add_opt('-regress_censor_motion', 1, [],
                         helpstr="censor TR if motion derivative exceeds limit")
@@ -634,10 +654,19 @@ class SubjProcSream:
                         helpstr="add offset when converting to timing")
         self.valid_opts.add_opt('-regress_use_stim_files', 0, [],
                         helpstr="do not convert stim_files to timing")
-        self.valid_opts.add_opt('-regress_motion_file', -1, [],
-                        helpstr="files to apply as motion regressors")
+
+        self.valid_opts.add_opt('-regress_apply_mot_types', -1, [],
+                        acplist=['basic','demean','deriv'],
+                        helpstr="specify which motion parameters to apply")
+        self.valid_opts.add_opt('-regress_motion_file', 1, [],
+                        helpstr="external file to apply as motion regressors")
         self.valid_opts.add_opt('-regress_motion_per_run', 0, [],
                         helpstr="apply all motion parameters per run")
+        self.valid_opts.add_opt('-regress_no_motion_demean', 0, [],
+                        helpstr="do not compute demeaned motion params")
+        self.valid_opts.add_opt('-regress_no_motion_deriv', 0, [],
+                        helpstr="do not compute motion param derivatives")
+
         self.valid_opts.add_opt('-regress_extra_stim_files', -1, [],
                         helpstr="extra -stim_files to apply")
         self.valid_opts.add_opt('-regress_extra_stim_labels', -1, [],
@@ -752,6 +781,11 @@ class SubjProcSream:
         opt = opt_list.find_opt('-exit_on_error')
         if opt and opt.parlist[0] == 'no': self.exit_on_error = 0
         else:                              self.exit_on_error = 1
+
+        # by default, perform TSNR computation
+        opt = opt_list.find_opt('-compute_tsnr')
+        if opt and opt.parlist[0] == 'no': self.comp_tsnr = 0
+        else:                              self.comp_tsnr = 1
 
         opt = opt_list.find_opt('-copy_anat')
         if opt != None:
