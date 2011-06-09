@@ -11788,6 +11788,7 @@ char *SUMA_help_basics()
    SUMA_RETURN(s);
 }
 
+
 char *SUMA_help_talk()
 {
    SUMA_STRING *SS = NULL;
@@ -11797,24 +11798,26 @@ char *SUMA_help_talk()
    SUMA_ENTRY;
    
    SS = SUMA_StringAppend(NULL, NULL);
-   SS = SUMA_StringAppend(SS,
-                  "  SUMA communication options:\n"
-                  "      -talk_suma: Send progress with each iteration to SUMA.\n"
-                  "      -refresh_rate rps: Maximum number of updates to SUMA per second.\n"
-                  "                         The default is the maximum speed.\n"
-                  "      -send_kth kth: Send the kth element to SUMA (default is 1).\n"
-                  "                     This allows you to cut down on the number of elements\n"
-                  "                     being sent to SUMA.\n" 
-                  "      -sh <SumaHost>: Name (or IP address) of the computer running SUMA.\n"
-                  "                      This parameter is optional, the default is 127.0.0.1 \n"
-                  "      -ni_text: Use NI_TEXT_MODE for data transmission.\n"
-                  "      -ni_binary: Use NI_BINARY_MODE for data transmission.\n"
-                  "                  (default is ni_binary).\n"
-                  "      -feed_afni: Send updates to AFNI via SUMA's talk.\n"
-                  "\n");
+   SS = SUMA_StringAppend_va(SS,
+"  SUMA communication options:\n"
+"      -talk_suma: Send progress with each iteration to SUMA.\n"
+"      -refresh_rate rps: Maximum number of updates to SUMA per second.\n"
+"                         The default is the maximum speed.\n"
+"      -send_kth kth: Send the kth element to SUMA (default is 1).\n"
+"                     This allows you to cut down on the number of elements\n"
+"                     being sent to SUMA.\n" 
+"      -sh <SumaHost>: Name (or IP address) of the computer running SUMA.\n"
+"                      This parameter is optional, the default is 127.0.0.1 \n"
+"      -ni_text: Use NI_TEXT_MODE for data transmission.\n"
+"      -ni_binary: Use NI_BINARY_MODE for data transmission.\n"
+"                  (default is ni_binary).\n"
+"      -feed_afni: Send updates to AFNI via SUMA's talk.\n"
+"%s"
+"\n", get_np_help());
    SUMA_SS2S(SS,s);               
    SUMA_RETURN(s);
 }
+
 char *SUMA_help_dset()
 {
    SUMA_STRING *SS = NULL;
@@ -12206,12 +12209,12 @@ static ENV_SPEC envlist[] = {
    {  "Setup the color mixing mode (ORIG, MOD1) ",
       "SUMA_ColorMixingMode",
       "ORIG" },
-   {  "Port for communicating with AFNI\n"
-      " Listening ports are derived from SUMA_AFNI_TCP_PORT\n"
-      " Listening port i\n"
-      " SUMA_AFNI_TCP_PORT + i (i > 0)",
+   {  "** OBSOLETE: Port for communicating with AFNI\n"
+      "              Listening ports are derived from SUMA_AFNI_TCP_PORT\n"
+      "              Listening port i\n"
+      "              SUMA_AFNI_TCP_PORT + i (i > 0)",
       "SUMA_AFNI_TCP_PORT",
-      "53211" },
+      "0" /* used to be 53211 */},
    {  "Warn before closing with the Escape key (YES/NO)",
       "SUMA_WarnBeforeClose",
       "YES" },

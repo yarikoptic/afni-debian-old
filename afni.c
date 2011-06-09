@@ -233,10 +233,11 @@ void AFNI_syntax(void)
      "   -niml        If present, turns on listening for NIML-formatted\n"
      "                  data from SUMA.  Can also be turned on by setting\n"
      "                  environment variable AFNI_NIML_START to YES.\n"
-     "   -np port     If present, sets the NIML socket port number to 'port'.\n"
-     "                  This must be an integer between 1024 and 65535,\n"
-     "                  and must be the same as the '-np port' number given\n"
-     "                  to SUMA.  [default = 53211]\n"
+     "%s"
+     "   -list_ports  List all port assignments and quit\n"
+     "   -port_number PORT_NAME: Give port number for PORT_NAME and quit\n"
+     "   -port_number_quiet PORT_NAME: Same as -port_number but writes out \n"
+     "                                    number only\n"
      "\n"
      "   -com ccc     This option lets you specify 'command strings' to\n"
      "                  drive AFNI after the program startup is completed.\n"
@@ -266,7 +267,7 @@ void AFNI_syntax(void)
      " * To change these maximums, you must edit file '3ddata.h' and then\n"
      "    recompile this program.\n"
 
-     , THD_MAX_NUM_SESSION , THD_MAX_SESSION_SIZE
+     , get_np_help() , THD_MAX_NUM_SESSION , THD_MAX_SESSION_SIZE
    ) ;
 
    printf(
@@ -526,7 +527,7 @@ void AFNI_parse_args( int in_argc , char *in_argv[] )
 ENTRY("AFNI_parse_args") ;
 
    if( argc > 1 && strncmp(argv[1],"-help",2) == 0 ) AFNI_syntax() ;
-
+   
    GLOBAL_argopt.dz       = 1.0 ;          /* set up defaults */
    GLOBAL_argopt.dy       = 1.0 ;
    GLOBAL_argopt.ignore   = INIT_ignore ;
@@ -539,7 +540,7 @@ ENTRY("AFNI_parse_args") ;
    GLOBAL_argopt.disable_done   = 0 ;      /* 21 Aug 2008 */
 
    GLOBAL_argopt.yes_niml       = AFNI_yesenv("AFNI_NIML_START") ;
-   GLOBAL_argopt.port_niml      = 0 ;      /* 10 Dec 2002 */
+   /* GLOBAL_argopt.port_niml      = 0 ;      10 Dec 2002 - Blocked, ZSS 2011*/
 
 #if 0
    GLOBAL_argopt.allow_rt = 0 ;            /* April 1997 */
@@ -788,19 +789,6 @@ ENTRY("AFNI_parse_args") ;
          if( GLOBAL_argopt.yes_niml )
            fprintf(stderr,"\n-niml is already turned on\n") ;
          GLOBAL_argopt.yes_niml++ ;
-         narg++ ; continue ;  /* go to next arg */
-      }
-
-      /*---- -np port [10 Dec 2002] ----*/
-
-      if( strcmp(argv[narg],"-np") == 0 ){
-         float val ;
-         if( narg+1 >= argc ) ERROR_exit("need an argument after -np!");
-
-         val = strtod( argv[++narg] , NULL ) ;
-         if( val >= 1024 && val <= 65535 ) GLOBAL_argopt.port_niml = (int)val ;
-         else fprintf(stderr,
-                "\n** WARNING: -np %s is illegal!\n", argv[narg]);
          narg++ ; continue ;  /* go to next arg */
       }
 
@@ -1145,7 +1133,27 @@ ENTRY("AFNI_parse_args") ;
 
          narg++ ; continue ;  /* go to next arg */
       }
-
+      
+      /* -list_ports list and quit */
+      if( strncmp(argv[narg],"-list_ports", 8) == 0) {
+         show_ports_list(); exit(0);
+      }
+      
+      /* -port_number and quit */
+      if( strncmp(argv[narg],"-port_number", 8) == 0) {
+         int pp = 0;
+         if( ++narg >= argc ) 
+            ERROR_exit("need an argument after -port_number!"); 
+         pp = get_port_named(argv[narg]);
+         if (strcmp(argv[narg-1], "-port_number_quiet")) { 
+            fprintf(stdout, "\nPort %s: %d\n", argv[narg], pp); 
+         } else {
+            fprintf(stdout, "%d\n", pp); 
+         }
+         if (pp < 1) exit(1);
+         else exit(0);
+      }
+            
       /*----- -nomall option -----*/
 
       if( strncmp(argv[narg],"-nomall",5) == 0 ){    /* was handled in main() */
@@ -2286,8 +2294,11 @@ ENTRY("AFNI_startup_timeout_CB") ;
      AFNI_init_niml() ;
      if( MAIN_im3d->vwid->dmode->misc_niml_pb != NULL )
        XtSetSensitive(MAIN_im3d->vwid->dmode->misc_niml_pb,False) ;
-   } else if( GLOBAL_argopt.port_niml > 0 ){  /* 10 Dec 2002 */
-     fprintf(stderr,"** WARNING: -np was given, but NIML is turned off.\n") ;
+   } else if( 0 && get_user_np() > 0 ){  /* 10 Dec 2002 -- ZSS June 2011 */
+      /* No need to warn anymore, -np can be set by environment
+        variables too. */
+      fprintf(stderr,
+         "** WARNING: -np was given, but NIML is turned off.\n") ;
    }
 
    if( AFNI_have_niml() && AFNI_have_plugouts() )  /* 02 Feb 2007 */

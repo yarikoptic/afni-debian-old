@@ -65,6 +65,41 @@
 
 afni_history_struct ziad_history[] = {
 /*=====BELOW THIS LINE=====*/
+ { 8, JUN , 2011 , ZSS , "@FSlabel2dset" , MINOR , TYPE_NEW_PROG,
+   "Script to change FreeSurfer ascii label file to SUMA dset",
+   NULL
+  } ,
+
+ { 8, JUN , 2011 , ZSS , "afni-general" , MINOR , TYPE_NEW_OPT,
+   "Added -npb and modified title bar to reflect bloc of ports",
+   "See afni's help for -npb option."
+  } ,
+
+ { 7, JUN , 2011 , ZSS , "afni" , MINOR , TYPE_NEW_OPT,
+   "Added 'w' key for writing out colormap to disk.",
+   "See suma's help for the colormap.\n"
+   "(press ctrl+h with cursor over the colormap in the surface controller)"  
+  } ,
+
+ { 7, JUN , 2011 , ZSS , "afni-general" , MAJOR , TYPE_NEW_OPT,
+   "Allow multiple instances of communicating programs per machine.",
+   "This was done by generalizing option -np PORT_OFFSET which \n"
+   "allows users to use a different set of ports for different AFNI/SUMA/etc.\n"
+   "sessions."
+   "Port numbers should no longer be hard coded anywhere. New dedicated\n"
+   "ports should be added to then new init_ports_list() function."  
+  } ,
+
+ { 7, JUN , 2011 , ZSS , "afni" , MICRO , TYPE_NEW_OPT,
+   "-list_ports, -port_number* give port assignment information",
+   "See afni -help for details."  
+  } ,
+
+ { 7, JUN , 2011 , ZSS , "suma" , MICRO , TYPE_NEW_OPT,
+   "-np, -list_ports, -port_number* control and report port assignments",
+   "See suma -help for details."  
+  } ,
+
  { 19, MAY , 2011 , ZSS , "@RetinoProc" , MINOR , TYPE_NEW_OPT,
    "Added support for multiple reference time series.",
    "Search for -var* options in @RetinoProc -help.\n" 
