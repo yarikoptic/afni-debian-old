@@ -1,8 +1,18 @@
 #include "mrilib.h"
+#include "matrix.h"
+#include "plug_delay_V2.h"
+
 static void RP_tsfunc( double tzero, double tdelta ,
                           int npts, float ts[], 
                           double ts_mean , double ts_slope ,
                           void *ud, int nbriks, float *val  );
+
+static void DEL_tsfunc( double tzero, double tdelta ,
+                          int npts, float ts[],
+                          double ts_mean , double ts_slope ,
+                          void *ud, int nbriks, float *val  );
+
+typedef enum {  FFT_PHASE = 1, HILB_DELAY = 2 } PHASE_METHODS;
 
 typedef enum { 
    NEG=-3, CONT=-2, CCW=-1, 
@@ -15,6 +25,7 @@ typedef enum {
    ECC=0, POL=1 } FIELD_PARAMS;
    
 typedef struct {
+   int pmeth; /* 1 --> phase, 2 -->delay */
    /* to set outside of processor function */
    float ftap;    /* taper fraction at ends of data */
    float dt;      /* TR */
@@ -32,6 +43,7 @@ typedef struct {
    int n[2];           /* number of rings, wedges */
    int spectra;
    int fixsum;
+   int ort_adj; /* number of orts removed from data */
    
    /* to be set upon first calling of processor function */
    int nfft;      /* number of points in fft */
@@ -43,6 +55,12 @@ typedef struct {
    THD_3dim_dataset *amp;
    int dof[2];    
    
+   /* ops specific to hilbert phase estimation */
+   float **rvec;  /* reference time series */
+   int rvec_len; /* number of time points in rvec */
+   int rvec_num; /* number of rvecs */
+   int iref; /* which rvec are we dealing with? */
+   int Dsamp;    /* correct slice timing offset */
    
 } RP_UD;
 
@@ -78,6 +96,22 @@ int Phase_Dir_to_Type(int p) {
       default:
          return(-1);
    }
+}
+
+char * Phase_Method_string(int p) {
+   static char ps[64]={"ERROR"};
+   switch(p) {
+      case FFT_PHASE:
+         sprintf(ps,"FFT-Phase");
+         break;
+      case HILB_DELAY:
+         sprintf(ps,"Hilbert-delay");
+         break;
+      default:
+         sprintf(ps,"Calamity");
+         break;
+   }
+   return(ps);
 }
   
 char * Phase_Dirs_string(int p) {
@@ -189,7 +223,8 @@ Show_RP_UD(RP_UD *u, char *str) {
    if (str) {
       fprintf(stderr,"%s", str);
    }
-   fprintf(stderr,"     nfft=%d, fstep=%.3f\n"
+   fprintf(stderr,"Phase Method %d, %s\n"
+                  "     nfft=%d, fstep=%.3f\n"
                   "     nvals=%d\n"
                   "     stk=[%d,%d]\n"
                   "     stw=[%.3f, %.3f]\n"
@@ -197,7 +232,7 @@ Show_RP_UD(RP_UD *u, char *str) {
                   "     dt=%f, pre = %f\n"
                   "     Eccentricity: fstim=%f, fresp=%f\n"
                   "     Polar: fstim=%f, fresp=%f\n"
-                  "     dof=[%d %d]\n"
+                  "     dof=[%d %d], ort_adj=%d\n"
                   "     verb=%d, spectra=%d\n"
                   "     iset=%p\n"
                   "     vox=%p, nmask=%d\n"
@@ -207,21 +242,24 @@ Show_RP_UD(RP_UD *u, char *str) {
                   "     %d wedges, %d rings\n"
                   "     fixsum=%d\n"
                   "     This call dir=%d (%s) \n"
+                  "     Dsamp = %d, rvec=%p, %d vals, %d refs, iref = %d \n"
                   ,
+                  u->pmeth, Phase_Method_string(u->pmeth),
                   u->nfft, u->fstep, u->nvals, 
                   u->stk[0], u->stk[1],
                   u->stw[0], u->stw[1],
                   u->ftap, u->dt, u->pre,
                   u->Fstim[ECC], u->Fresp[ECC],
                   u->Fstim[POL], u->Fresp[POL], 
-                  u->dof[0], u->dof[1],
+                  u->dof[0], u->dof[1], u->ort_adj,
                   u->verb, u->spectra,
                   u->iset, u->vox, u->nmask,
                   u->amp, u->phz,
                   u->prefix ? u->prefix:"NULL", 
                   u->oext ? u->oext:"NULL", 
                   u->n[POL], u->n[ECC], u->fixsum,
-                  u->dir, Phase_Dirs_string(u->dir));
+                  u->dir, Phase_Dirs_string(u->dir),
+                  u->Dsamp, u->rvec, u->rvec_len, u->rvec_num, u->iref);
 }
 
 SetFreqBin(float fresp, float fstep, int stk[], float stw[]) {
@@ -238,7 +276,8 @@ THD_3dim_dataset * Combine_Opposites(THD_3dim_dataset *dset1,
                                      THD_3dim_dataset *dset2, 
                                      RP_UD *rpud)
 {
-   float *phi1=NULL, *phi2=NULL, *sum=NULL, *dif=NULL;    
+   float *phi1=NULL, *phi2=NULL, *xc1=NULL, *xc2=NULL, *mxxc=NULL,
+         *sum=NULL, *dif=NULL;    
    int nvox, i;
    THD_3dim_dataset *oset = NULL;
    char stmp[256+strlen(rpud->prefix)];
@@ -250,18 +289,29 @@ THD_3dim_dataset * Combine_Opposites(THD_3dim_dataset *dset1,
    
    nvox = DSET_NVOX(dset1);
    phi1 = (float *)calloc(nvox, sizeof(float));
+   xc1 = (float *)calloc(nvox, sizeof(float));
    phi2 = (float *)calloc(nvox, sizeof(float));
+   xc2 = (float *)calloc(nvox, sizeof(float));
    sum = (float *)calloc(nvox, sizeof(float));
    dif = (float *)calloc(nvox, sizeof(float));
+   mxxc = (float *)calloc(nvox, sizeof(float));
    
    EDIT_coerce_scale_type( nvox , DSET_BRICK_FACTOR(dset1,0) ,
                               DSET_BRICK_TYPE(dset1,0), 
                               DSET_ARRAY(dset1, 0) ,      /* input  */
                               MRI_float, phi1  ) ;
+   EDIT_coerce_scale_type( nvox , DSET_BRICK_FACTOR(dset1,1) ,
+                              DSET_BRICK_TYPE(dset1,1), 
+                              DSET_ARRAY(dset1, 1) ,      /* input  */
+                              MRI_float, xc1  ) ;
    EDIT_coerce_scale_type( nvox , DSET_BRICK_FACTOR(dset2,0) ,
                               DSET_BRICK_TYPE(dset2,0), 
                               DSET_ARRAY(dset2, 0) ,      /* input  */
                               MRI_float, phi2  ) ;
+   EDIT_coerce_scale_type( nvox , DSET_BRICK_FACTOR(dset2,1) ,
+                              DSET_BRICK_TYPE(dset2,1), 
+                              DSET_ARRAY(dset2, 1) ,      /* input  */
+                              MRI_float, xc2  ) ;
    
    for (i=0; i<nvox;++i) {
       dif[i] = (phi1[i]-phi2[i])/2.0;
@@ -273,9 +323,10 @@ THD_3dim_dataset * Combine_Opposites(THD_3dim_dataset *dset1,
          sum[i] = (phi1[i]+phi2[i])/2.0-180.0/n; 
          if (sum[i]<0) sum[i] = 360/n + sum[i];
       }
-      
       /* now change difference of phase from degrees to seconds for output */
       /* dif[i] /= radpersec; */
+      /* keep track of max coef == union masking */
+      if (xc2[i] > xc1[i]) mxxc[i] = xc2[i]; else mxxc[i] = xc1[i];
    }
    
    /* put the results in a dset for output */
@@ -285,11 +336,12 @@ THD_3dim_dataset * Combine_Opposites(THD_3dim_dataset *dset1,
    EDIT_dset_items( oset ,
                    ADN_prefix , stmp,
                    ADN_datum_all, MRI_float ,
-                   ADN_nvals  , 2 ,
+                   ADN_nvals  , 3 ,
                  ADN_none ) ;
                  
    EDIT_substitute_brick( oset , 0 , MRI_float  , sum ) ; /* do not free sum */
    EDIT_substitute_brick( oset , 1 , MRI_float  , dif ) ; /* do not free dif */
+   EDIT_substitute_brick( oset , 2 , MRI_float  , mxxc ) ;/* do not free dif */
    if (Dir_is_eccentricity(rpud->dir)) {
       EDIT_BRICK_LABEL(oset , 0, "Eccentricity");
    } else if (Dir_is_polar(rpud->dir)) {
@@ -298,9 +350,22 @@ THD_3dim_dataset * Combine_Opposites(THD_3dim_dataset *dset1,
       ERROR_message("rpud->dir makes no sense here");
    }
    EDIT_BRICK_LABEL(oset , 1, "Hemo. Offset");
-   
+   if (rpud->pmeth == FFT_PHASE) {
+      sprintf(stmp,"Max.PwR@%.3fHz", rpud->Fresp[Dir2Type(rpud->dir)]);
+      EDIT_BRICK_LABEL(oset , 2, stmp); 
+   } else {
+      EDIT_BRICK_LABEL(oset , 2, "Max.Corr.Coef.");
+      /* Could assume dset1 and dset2 have the same length series, and dofs 
+         and do:
+         EDIT_BRICK_TO_FICO(dset1, 2, rpud->rvec_len, 
+                                  rpud->dof[0],rpud->dof[1]);
+         But it is safer to deprive users of significance levels which
+         don't quite apply with the max operation */
+   }                               
    free(phi1); phi1 = NULL;
    free(phi2); phi2 = NULL;
+   free(xc1); xc1 = NULL;
+   free(xc2); xc2 = NULL;
    
    return(oset);
 }
@@ -329,6 +394,9 @@ static void RP_tsfunc( double tzero, double tdelta ,
          INFO_message("First call npts=%d\n", npts);
          Show_RP_UD(rpud, "Top of init:\n");
       }
+      if (rpud->pmeth != FFT_PHASE) {
+         ERROR_message("This should not happen");
+      }
       if( npts > 0 ){  /* the "start notification" */
          ncall = 0 ;
          st = Dir2Type(rpud->dir);
@@ -336,15 +404,21 @@ static void RP_tsfunc( double tzero, double tdelta ,
             ERROR_message("Bad rpud->dir, assuming POLAR stimulus");
             st = POL;
          }
-         
+         if (rpud->Dsamp) {
+            WARNING_message(
+               "Does not deal with slice timing offset correctly. Needs fixing");
+         }
          /* nfft ? */
          if (rpud->nfft == 0) rpud->nfft = csfft_nextup(rpud->nvals);
-         INFO_message("Data length = %d ; FFT length = %d; st %d, direc %d (%s)",
+         if (rpud->verb > 1) {
+            INFO_message(
+               "Data length = %d ; FFT length = %d; st %d, direc %d (%s)",
                         rpud->nvals,rpud->nfft, 
                         st, rpud->dir, Phase_Dirs_lbl(rpud->dir)) ;
+         }
 
          if( rpud->ftap > 0.0f ) {
-           xtap = mri_setup_taper( npts , rpud->ftap ) ; 
+           xtap = mri_setup_taper( rpud->nvals , rpud->ftap ) ; 
          }
          
          /* freq. step */
@@ -443,8 +517,8 @@ static void RP_tsfunc( double tzero, double tdelta ,
             rpud->amp = rpud->phz = NULL;
          }
          
-         if (rpud->verb) {
-            Show_RP_UD(rpud, "End of init:\n");
+         if (rpud->verb >1) {
+            Show_RP_UD(rpud, "@ End of init:\n");
          }
       } else {  /* the "end notification" */
          if (rpud->verb > 1) {
@@ -534,6 +608,163 @@ static void RP_tsfunc( double tzero, double tdelta ,
    ncall++ ; return ;
 }
 
+static void DEL_tsfunc( double tzero, double tdelta ,
+                          int npts, float ts[],
+                          double ts_mean , double ts_slope ,
+                          void *ud, int nbriks, float *val          )
+{
+   RP_UD *rpud = (RP_UD *)ud; 
+   static int  ncall = 0, reverse=0;
+   static float scale=0.0;
+   char * label=NULL;            /* string containing stat. summary of results */
+   int   errcode=0, ixyz=0;
+   float slp=0.0, delu=0.0, del=0.0,  xcor=0.0, xcorCoef=0.0,vts=0.0,
+         vrvec=0.0, dtx=0.0;
+   static int st = -1;
+	
+   if (!rpud) {
+      ERROR_exit("NULL rpud!!!\n"
+                 "rpud %p, ud %p\n", rpud, ud);
+   }
+   
+   /* Now intialize */
+   if( val == NULL ){
+      if (rpud->verb > 1) {
+         INFO_message("First call npts=%d\n", npts);
+         Show_RP_UD(rpud, "Top of init:\n");
+      }
+      if (rpud->pmeth != HILB_DELAY) {
+         ERROR_message("This should not happen");
+      }
+
+      if( npts > 0 ){  /* the "start notification" */
+         ncall = 0 ;
+         st = Dir2Type(rpud->dir);
+         if (st < 0) {
+            ERROR_message("Bad rpud->dir, assuming POLAR stimulus");
+            st = POL;
+         }
+         
+         if (rpud->nfft != 0) { /* should allow for this and taper, in future */
+            ERROR_message("Control of nfft not allowed for hilbert delay");
+            return;
+         }
+         if (rpud->verb > 1) {
+            INFO_message("Data length = %d (npts=%d);  st %d, direc %d (%s)",
+                        rpud->nvals, npts, 
+                        st, rpud->dir, Phase_Dirs_lbl(rpud->dir)) ;
+         }
+         /* response frequency */
+         rpud->Fresp[st] = 
+            rpud->Fstim[st]*(float)rpud->n[st];
+         
+         if (rpud->Fresp[st] <= 0.0f) {
+            ERROR_message("Bad rpud->Fresp !");
+            return;
+         }
+         if (!rpud->rvec || rpud->rvec_num < 1) {
+            ERROR_message("No reference time series");
+            return;
+         }
+         if (rpud->rvec_len != rpud->nvals) {
+            ERROR_message( "Reference time series has %d vals, "
+                           "time series has %d", rpud->rvec_len, rpud->nvals);
+            return;
+         }
+         if (rpud->Dsamp) {
+            WARNING_message(
+               "Does not deal with slice timing offset correctly. Needs fixing");
+         }
+         rpud->dof[0] = 2; /* two fit params*/
+         rpud->dof[1] = rpud->ort_adj;   /* number of orts */
+         if (rpud->dof[1] < 2) rpud->dof[1] = 2; /* always linear detrend...*/
+
+         if (rpud->dir == CLW || rpud->dir == EXP) reverse = 1;
+         else reverse = 0;
+         
+         /* initialize hilbert */
+         set_delay_verb(rpud->verb);
+         hilbertdelay_V2reset();
+         
+         if (rpud->verb > 1) {
+            Show_RP_UD(rpud, "@ End of init:\n");
+         }
+      } else {  /* the "end notification" */
+         if (rpud->verb > 1) {
+            INFO_message("Last call\n");
+         }
+         st = -1;
+      }
+      return ;
+   }
+   
+   if (rpud->verb > 3) {
+            INFO_message("call %d\n", ncall);
+   }
+   
+   /* get slice offset time 
+      WARNING: NOT ALLOWING for offset from time series cropping*/   		
+   if (rpud->Dsamp) {
+   	dtx = (float) (tzero / tdelta);
+   } else {
+   	dtx = 0.0;
+	}
+   
+   if (rpud->vox) { 
+      ixyz=rpud->vox[ncall];
+   } else {
+      ixyz=ncall;
+   }
+   
+   errcode = 
+      hilbertdelay_V2 (ts, /* voxel time series */
+                       rpud->rvec[rpud->iref], /* reference ts*/
+                       npts, /* length of time series */
+                       1, 0, /* Num. of segments and percent overlap */
+                       1 ,0, /* not cleanup mode, no detrend */   
+                       dtx, /* timing offset */
+                       1, /* remove bias */
+                       &delu,&slp,&xcor,&xcorCoef,&vts,&vrvec);	
+		
+   if (errcode == 0) { /* If there are no errors, proceed */
+      hunwrap (delu, 1.0/rpud->dt, 1.0/rpud->Fresp[st], slp, 
+               0, METH_DEGREES, reverse, 
+               1.0/rpud->n[st], &del );
+
+   } else if (errcode == ERROR_LONGDELAY) {					
+		if (0) {
+         WARNING_message("Errcode LONGDELAY at voxel %d\n", ixyz);
+      }	
+
+		del = 0.0;		/* Set all the variables to Null and don't set xcorCoef 
+                           to an impossible value*/
+   	xcorCoef = 0.0;/*  because the data might still be OK */
+   	xcor = 0.0;
+
+	} else if (errcode == ERROR_QUIT) {
+      exit(1);
+   } else {
+		if (0) {
+         WARNING_message("Errcode %d at voxel %d\n", errcode, ixyz);
+      }	
+
+		del = 0.0; /* Set all the variables to Null and set xcorCoef 
+                     to an impossible value*/
+   	xcorCoef = NOWAYXCORCOEF;						
+   	xcor = 0.0;
+	}	
+	
+	
+   /*----- Save results for this voxel -----*/
+   val[0] = del;
+	val[1] = xcorCoef;
+ 
+   
+
+   ncall++ ; return ;
+}
+
+
 byte *MaskSetup(THD_3dim_dataset *old_dset, THD_3dim_dataset *mask_dset, 
                 RP_UD *rpud, byte *cmask, int *ncmask, 
                 float mask_bot, float mask_top, int *mcount) 
@@ -599,17 +830,22 @@ byte *MaskSetup(THD_3dim_dataset *old_dset, THD_3dim_dataset *mask_dset,
 
 int main( int argc , char * argv[] )
 {
-   THD_3dim_dataset **new_dset=NULL, *old_dset=NULL, *mask_dset=NULL;
+   THD_3dim_dataset **new_dset=NULL, *old_dset=NULL, 
+                     *mask_dset=NULL, *idset=NULL;
    char stmp[1024], **in_name=NULL;
    int iarg=1 , ii, jj, kk, ll, nvox, nvals=1, isfloat=0, nset=0, stype=0;
-   int detrend=0, datum = MRI_float, mcount = 0, ncmask=0;
+   int datum = MRI_float, mcount = 0, ncmask=0, dtused = 0;
    byte *mmm=NULL, *cmask=NULL;
-   float mask_bot=1.0 , mask_top=-1.0 ;
+   float mask_bot=1.0 , mask_top=-1.0, 
+         *x0=NULL, *x1=NULL, *d0=NULL, *d1=NULL, *best=NULL ;
    RP_UD rpud; 
    
    in_name = (char **)calloc(sizeof(char*),k_N);
    new_dset = (THD_3dim_dataset **)calloc(sizeof(THD_3dim_dataset*),k_N);
    
+   rpud.pmeth = FFT_PHASE;
+   rpud.Dsamp = 0;
+   rpud.rvec = NULL; rpud.rvec_num = 0; rpud.rvec_len = 0; rpud.iref = 0; 
    rpud.ftap = 0.0f; 
    rpud.dt = 0.0f;
    rpud.Fstim[ECC] = rpud.Fstim[POL] = 0.0f;
@@ -628,58 +864,172 @@ int main( int argc , char * argv[] )
    rpud.spectra = 0;
    rpud.pre = 0.0f;
    rpud.fixsum = 1;
+   rpud.ort_adj = 0;
    
    /* rpud. = ; */
    
    
    if( argc < 2 || strcmp(argv[1],"-help") == 0 ){
      printf("Usage: 3dRetinoPhase [-prefix ppp]  dataset\n"
-            "   where dataset is a time series from a retinotpy stimulus\n"
-            "\n"
-            " -exp EXP: These four options specify the type of retinotpy \n"
-            " -con CON: stimulus. EXP and CON are for expanding and \n"
-            " -clw CLW : contracting rings, respectively. CLW and CCW are\n"
-            " -ccw CCW: for clockwise and counter clockwise moving polar\n"
-            "           polar angle mapping stimuli. You can specify one, \n"
-            "           or all stimuli in one command. When all are specified\n"
-            "           polar angle stimuli, and eccentricity stimuli of \n"
-            "           opposite directions are combined.\n"
-            " -prefix PREF: Prefix of output datasets. \n"
-            "           PREF is suffixed with the following:\n"
-            "           .ecc+ for positive (expanding) eccentricity (EXP)\n"
-            "           .ecc- for negative (contracting) eccentricity (CON)\n"
-            "           .pol+ for clockwise polar angle mapping (CLW)\n"
-            "           .pol- for counterclockwise polar angle mapping (CCW)\n"
-            " -spectra: Output amplitude and phase spectra datasets.\n"
-            " -Tstim T: Period of stimulus in seconds. This parameter does\n"
-            "           not depend on the number of wedges or rings (Nr/Nw).\n"
-            "           It is the duration of a full cycle of the stimulus.\n"
-            "           Use -Tpol TPOL, and -Tecc TECC, to specify periods\n"
-            "           for each stimulus type separately. -Tstim sets both \n"
-            "           periods to T.\n"
-            " -nrings Nr: Nr is the number of rings in the stimulus. \n"
-            "              The default is 1.\n"
-            " -nwedges Nw: Nw is the number of wedges in the stimulus. \n"
-            "              The default is 1.\n"
-            " -detrend: least-squares remove linear drift before DFT\n"
-            "             [for more complex detrending, use 3dDetrend first]\n"
-            " -pre_stim PRE: Blank period, in seconds, before stimulus began \n"
-            " -sum_adjust y/n: Adjust sum of angles for wrapping based on the\n"
-            "                  angle difference. Default is 'y'\n"
-            "\n"
-       /* options left over from 3dDFT.c     
-            " -abs     == output float dataset = abs(DFT)\n"
-            " -nfft N  == use 'N' for DFT length (must be >= #time points)\n"
-            " -taper f == taper 'f' fraction of data at ends (0 <= f <= 1).\n"
-            "             [Hamming 'raised cosine' taper of f/2 of the ]\n"
-            "             [data length at each end; default is no taper]\n" 
-          Bring them back after testing. */
+"   where dataset is a time series from a retinotpy stimulus\n"
+"\n"
+" -exp EXP: These four options specify the type of retinotpy \n"
+" -con CON: stimulus. EXP and CON are for expanding and \n"
+" -clw CLW : contracting rings, respectively. CLW and CCW are\n"
+" -ccw CCW: for clockwise and counter clockwise moving polar\n"
+"           polar angle mapping stimuli. You can specify one, \n"
+"           or all stimuli in one command. When all are specified\n"
+"           polar angle stimuli, and eccentricity stimuli of \n"
+"           opposite directions are combined.\n"
+" -prefix PREF: Prefix of output datasets. \n"
+"           PREF is suffixed with the following:\n"
+"           .ecc+ for positive (expanding) eccentricity (EXP)\n"
+"           .ecc- for negative (contracting) eccentricity (CON)\n"
+"           .pol+ for clockwise polar angle mapping (CLW)\n"
+"           .pol- for counterclockwise polar angle mapping (CCW)\n"
+"  At a minimum each input gets a phase dataset output. It contains\n"
+"     response phase (or delay) in degrees.\n"
+"     If both directions are given for polar and/or eccentricity\n"
+"     then a visual field angle data set is created.\n"
+"     The visual field angle is obtained by averaging phases of opposite\n"
+"     direction stimuli. The hemodynamic offset is half the phase difference.\n"
+"\n"  
+"  Each output also contains a thresholding sub-brick. Its type \n"
+"     depends on the phase estimation method (-phase_estimate).\n"
+"\n"
+"                 Note on the thresholding sub-bricks\n"
+"                 -----------------------------------\n"
+"  Both FFT and DELAY values of -phase_estimate produce thresholding \n"
+"     sub-bricks with the phase estimates. Those thresholds have associated \n"
+"     significance levels, but they should be taken with a grain of \n"
+"     salt. There is no correction for autocorrelation, so the DOFs \n"
+"     are generous.\n"
+"  The program also attaches a thresholding sub-brick to the\n"
+"     visual field angle datasets which are estimated by averaging the phase\n"
+"     estimates in order to remove the hemodynamic offset. This composite \n"
+"     thresholding sub-brick contains at each voxel/node, the maximum\n"
+"     threshold from the datasets of stimli of opposite direction.\n"
+"  This thresholding sub-brick is for convenience, allowing you to\n"
+"     threshold with a mask that is the union of the individual\n"
+"     thresholded maps. Significance levels are purposefully not\n"
+"     attached. I don't know how to compute them properly.\n"
+"\n"    
+" -spectra: Output amplitude and phase spectra datasets.\n"
+" -Tstim T: Period of stimulus in seconds. This parameter does\n"
+"           not depend on the number of wedges or rings (Nr/Nw).\n"
+"           It is the duration of a full cycle of the stimulus.\n"
+"           Use -Tpol TPOL, and -Tecc TECC, to specify periods\n"
+"           for each stimulus type separately. -Tstim sets both \n"
+"           periods to T.\n"
+" -nrings Nr: Nr is the number of rings in the stimulus. \n"
+"              The default is 1.\n"
+" -nwedges Nw: Nw is the number of wedges in the stimulus. \n"
+"              The default is 1.\n"
+" -ort_adjust: Number of DOF lost in detrending outside of this \n"
+"              program.\n"
+" -pre_stim PRE: Blank period, in seconds, before stimulus began \n"
+" -sum_adjust y/n: Adjust sum of angles for wrapping based on the\n"
+"                  angle difference. Default is 'y'\n"
+" -phase_estimate METH: Select method of phase estimation\n"
+"       METH == FFT  uses the phase of the fundamental frequency.\n"
+"       METH == DELAY uses the 3ddelay approach for estimating\n"
+"                     the phase. This requires the use of option\n"
+"                     -ref_ts . See references [3] and [4] below. \n"
+"       The DELAY option appears to be good as the FFT for high SNR\n"
+"          and high duty cycle. See results produced by @Proc.PK.All_D\n"
+"          in the demo archive AfniRetinoDemo.tgz.\n"
+"       However,the DELAY option seems much better for low duty cycle stimuli.\n"
+"       It is not set as the default for backward compatibility. Positive and \n"
+"          negative feedback about this option are welcome.\n"
+"\n"
+"     Thanks to Ikuko Mukai and Masaki Fukunaga for making the case \n"
+"        for DELAY's addition; they were right. \n"
+"\n"
+" -ref_ts REF_TS: 0 lag reference time series of response. This is\n"
+"                 needed for the DELAY phase estimation method.\n"
+"      With the DELAY method, the phase results are comparable to \n"
+"        what you'd get with the following 3ddelay command:\n"
+"        For illustration, say you have stimuli of 32 second periods\n"
+"        with the polar stimuli having two wedges. After creating \n"
+"        the reference time series with waver (32 sec. block period \n"
+"        eccentricity, 32/2=16 sec. block period for polar), run \n" 
+"        4 3ddelay command as such:\n"
+"                      for an expanding ring of 32 second period:\n"
+"           3ddelay  -input exp.niml.dset \\\n"
+"                    -ideal_file ECC.1D   \\\n"
+"                    -fs 0.5  -T 32 \\\n"
+"                    -uD -nodsamp \\\n"
+"                    -phzreverse -phzscale 1.0 \\\n"
+"                    -prefix ecc+.del.niml.dset\\n"
+"\n"
+"                       for contracting ring, remove -phzreverse \n"
+"\n"
+"                       for clockwise two wedge of 32 second period:\n"
+"           3ddelay  -input clw.niml.dset \\\n"
+"                    -ideal_file POL.1D   \\\n"
+"                    -fs 0.5  -T 16 \\\n"
+"                    -uD -nodsamp \\\n"
+"                    -phzreverse -phzscale 0.5 \\\n"
+"                    -prefix pol+.del.niml.dset\\n"
+"\n"
+"                       for counterclockwise remove -phzreverse \n"
+"     Instead of the 3ddelay mess, all you do is run 3dRetinoPhase with the \n"
+"        following extra options: "
+"              -phase_estimate DELAY -ref_ts ECC.1D\n"
+"        or    -phase_estimate DELAY -ref_ts POL.1D\n"  
+"\n"
+" -multi_ref_ts MULTI_REF_TS: Multiple 0 lag reference time series. \n"
+"                             This allows you to test multiple regressors.\n"
+"                             The program will run a separate analysis for \n"
+"                             each regressor (column), and combine the results\n"
+"                             in the output dataset this way:\n"
+"       ([.] denotes output sub-brick)\n"
+"       [0]: Phase from regressor that yields the highest correlation coeff.\n"
+"       [1]: Maximum correlation coefficient.\n"
+"       [2]: Number of regressor that yields the highest correlation coeff.\n"
+"            Counting begins at 1 (not 0)\n"
+"       [3]: Phase from regressor 1\n"
+"       [4]: Correlation coefficient from regressor 1\n"
+"       [5]: Phase from regressor 2\n"
+"       [6]: Correlation coefficient from regressor 2\n"
+"       ... etc.\n"
+"       In general, for regressor k (k starts at 1)\n"
+"          [2*k+1] contains the Phase and [2*k+2] the Correlation coefficient\n"
+"\n"
+"  N.B: If MULTI_REF_TS has only one timeseries, -multi_ref_ts produces\n"
+"       an output identical to that of -ref_ts. \n"
+"\n"        
+"  See usage in @RetinoProc and demo data in\n"
+"  http://afni.nimh.nih.gov/pub/dist/tgz/AfniRetinoDemo.tgz \n"
+"\n"
+"References for this program:\n"
+"   [1] RW Cox.  AFNI: Software for analysis and visualization of functional"
+"                      magnetic resonance neuroimages.  \n"
+"                      Computers and Biomedical Research, 29: 162-173, 1996.\n"
+"   [2] Saad Z.S., et al.  SUMA: An Interface For Surface-Based Intra- And\n" 
+"                      Inter-Subject Analysis With AFNI.\n"
+"     Proc. 2004 IEEE International Symposium on Biomedical Imaging, 1510-1513\n"
+"   If you use the DELAY method:\n"
+"   [3] Saad, Z.S., et al. Analysis and use of FMRI response delays. \n"
+"         Hum Brain Mapp, 2001. 13(2): p. 74-93.\n"
+"   [4] Saad, Z.S., E.A. DeYoe, and K.M. Ropella, Estimation of FMRI \n"
+"         Response Delays.  Neuroimage, 2003. 18(2): p. 494-504.\n"
+"\n"       
+/* options left over from 3dDFT.c , or not yet tested    
+" -abs     == output float dataset = abs(DFT)\n"
+" -nfft N  == use 'N' for DFT length (must be >= #time points)\n"
+" -taper f == taper 'f' fraction of data at ends (0 <= f <= 1).\n"
+"             [Hamming 'raised cosine' taper of f/2 of the ]\n"
+"             [data length at each end; default is no taper]\n" 
+" -slice_time_adjust y/n: Adjust for slice timing difference.\n"
+
+Bring them back after testing. */
            ) ;
      PRINT_COMPILE_DATE ; exit(0) ;
    }
 
    mainENTRY("3dRetinoPhase main"); machdep(); AFNI_logger("3dRetinoPhase",argc,argv);
-   AUTHOR("ZIAD") ;
+   /* AUTHOR("ZIAD") ; */
 #ifdef USING_MCW_MALLOC
    enable_mcw_malloc() ;
 #endif
@@ -749,6 +1099,78 @@ int main( int argc , char * argv[] )
          }
          iarg++ ; continue ;
       }
+      
+      if( strcmp(argv[iarg],"-slice_time_adjust") == 0 ){ 
+         if( iarg+1 >= argc )
+                  ERROR_exit("-slice_time_adjust requires an argument\n");       
+         ++iarg;
+         if (argv[iarg][0] == 'y' || argv[iarg][0] == 'Y') {
+            rpud.Dsamp = 1;
+         } else if (argv[iarg][0] == 'n' || argv[iarg][0] == 'N') {
+            rpud.Dsamp = 0;
+         } else {
+            ERROR_exit("Illegal value (%s) after -slice_time_adjust\n", 
+                        argv[iarg]);
+         }
+         iarg++ ; continue ;
+      }
+      
+      if( strcmp(argv[iarg],"-phase_estimate") == 0 ){ 
+         if( iarg+1 >= argc )
+                  ERROR_exit("-phase_estimate requires an argument\n");       
+         ++iarg;
+         if (!strcmp(argv[iarg],"FFT") || !strcmp(argv[iarg],"fft")) {
+            rpud.pmeth = FFT_PHASE;
+         } else if ( !strcmp(argv[iarg],"3DDELAY") || 
+                     !strcmp(argv[iarg],"3ddelay") ||
+                     !strcmp(argv[iarg],"delay") ||
+                     !strcmp(argv[iarg],"DELAY")) {
+            rpud.pmeth = HILB_DELAY;
+         } else {
+            ERROR_exit("Illegal value (%s) after -phase_estimate\n", 
+                        argv[iarg]);
+         }
+         iarg++ ; continue ;
+      }
+      
+      if( strcmp(argv[iarg],"-ref_ts") == 0 ||
+          strcmp(argv[iarg],"-multi_ref_ts") == 0){ 
+         MRI_IMAGE * flim=NULL;
+         float *fp=NULL;
+         int iv=0;
+         if( iarg+1 >= argc )
+               ERROR_exit("-ref_ts/-multi_ref_ts require an argument\n");       
+         ++iarg;
+         if (!(flim = mri_read_1D(argv[iarg]))) {
+            ERROR_exit("Illegal value (%s) after -phase_estimate\n", 
+                        argv[iarg]);
+         }
+         rpud.rvec_len = flim->nx;
+         rpud.rvec_num = flim->ny;
+         if (flim->ny != 1) {
+            if (!strcmp(argv[iarg-1],"-ref_ts")) { 
+               ERROR_exit("Only one column can be present in -ref_ts file.\n"
+                          "Have %d columns in %s.\n" 
+                          "If you want to run the multi_ref version use\n" 
+                          "-multi_ref_ts option instead, but understand that\n"
+                          "the output datasets have a differing content.\n"
+                           ,flim->ny, argv[iarg]);
+            } else {
+               /* multiref mode */
+            }
+         }
+         rpud.rvec = (float **)calloc(flim->ny, sizeof(float *));
+         fp = MRI_FLOAT_PTR(flim);
+         for (iv=0; iv<flim->ny; ++iv) {
+            rpud.rvec[iv] = (float *)calloc(flim->nx, sizeof(float));
+            for (ii=0; ii<flim->nx; ++ii) {
+               rpud.rvec[iv][ii] = *fp; ++fp;
+            }
+         }
+         mri_free(flim); flim = NULL;
+         iarg++ ; continue ;
+      }
+      
       
       if( strcmp(argv[iarg],"-fstim") == 0 ){  
         rpud.Fstim[ECC] = rpud.Fstim[POL] = (float)strtod(argv[++iarg],NULL) ;
@@ -888,12 +1310,18 @@ int main( int argc , char * argv[] )
          iarg++ ; continue ;
       }
 
-      if( strcmp(argv[iarg],"-detrend") == 0 ){
-        detrend = 1 ; iarg++ ; continue ;
+      if( strcmp(argv[iarg],"-ort_adjust") == 0 ){
+        rpud.ort_adj += atoi(argv[++iarg]); 
+        iarg++ ; continue ;
       }
-
+      
       if( strcmp(argv[iarg],"-spectra") == 0 ){
         rpud.spectra = 1 ; iarg++ ; continue ;
+      }
+
+      if( strcmp(argv[iarg],"-detrend") == 0 ){
+        dtused = 1;
+        iarg++ ; continue ;
       }
 
       if( strcmp(argv[iarg],"-nfft") == 0 ){
@@ -915,9 +1343,18 @@ int main( int argc , char * argv[] )
 
       ERROR_exit("ILLEGAL option: %s\n",argv[iarg]) ;
    }
-
+   
+   if (dtused && rpud.verb) {
+      INFO_message("Linear detrend is always on, -detrend is useless.") ; 
+   }
+   
    if( !in_name )
      ERROR_exit("No datasets on command line!?") ;
+   
+   if (rpud.verb && rpud.rvec && rpud.rvec_num > 1) {
+      INFO_message("Multi-ref mode with %d reference time series\n"
+                   , rpud.rvec_num);
+   }
 
    nset = 0;
    for (stype=0; stype<k_N; ++stype) {
@@ -951,7 +1388,8 @@ int main( int argc , char * argv[] )
          
          /*------------- ready to compute new dataset -----------*/
          if (rpud.verb) 
-            INFO_message("Going to meet maker for %s\n", in_name[stype]);
+            INFO_message("Processing %s, %d time points\n", 
+                           in_name[stype], DSET_NVALS(old_dset));
          
          
          rpud.oext = "";
@@ -973,35 +1411,137 @@ int main( int argc , char * argv[] )
          sprintf(stmp,"%s.%s%s",
                      rpud.prefix, Phase_Dirs_lbl(rpud.dir),rpud.oext);
          
-
-         new_dset[stype] = MAKER_4D_to_typed_fbuc(
-                       old_dset ,             /* input dataset */
-                       stmp ,               /* output prefix */
-                       datum ,                /* output datum  */
-                       0 ,                    /* ignore count  */
-                       1 ,                   /* linear detrend */
-                       2 ,                   /* number of briks */
-                       RP_tsfunc ,         /* timeseries processor */
-                       (void *)(&rpud),    /* data for tsfunc */
-                       mmm
-                    ) ;
-
-         if (rpud.verb) INFO_message("Output time\n");
-         if( new_dset[stype] != NULL ){
-            tross_Copy_History( old_dset , new_dset[stype] ) ;
-            tross_Make_History("3dRetinoPhase" , argc, argv , new_dset[stype]) ;
-            sprintf(stmp,"Phz@%.3fHz", rpud.Fresp[Dir2Type(rpud.dir)]);
-            EDIT_BRICK_LABEL(new_dset[stype], 0, stmp);
-            sprintf(stmp,"PwR@%.3fHz", rpud.Fresp[Dir2Type(rpud.dir)]);
-            EDIT_BRICK_LABEL(new_dset[stype], 1, stmp);
-            EDIT_BRICK_TO_FIFT(new_dset[stype],1,rpud.dof[0],rpud.dof[1]);
-
-            DSET_write( new_dset[stype] ) ;
-            WROTE_DSET( new_dset[stype] ) ;
-         } else {
-            ERROR_exit("Unable to compute output dataset!\n") ;
+         if (rpud.verb > 1) INFO_message("Output time\n");
+         if (rpud.pmeth == FFT_PHASE) {
+            new_dset[stype] = MAKER_4D_to_typed_fbuc(
+                          old_dset ,             /* input dataset */
+                          stmp ,               /* output prefix */
+                          datum ,                /* output datum  */
+                          0 ,                    /* ignore count  */
+                          1 ,                   /* linear detrend */
+                          2 ,                   /* number of briks */
+                          RP_tsfunc,          /* timeseries processor */
+                          (void *)(&rpud),    /* data for tsfunc */
+                          mmm
+                       ) ;
+            
+            if( new_dset[stype] != NULL ){
+               sprintf(stmp,"Phz@%.3fHz", rpud.Fresp[Dir2Type(rpud.dir)]);
+               EDIT_BRICK_LABEL(new_dset[stype], 0, stmp);
+               sprintf(stmp,"PwR@%.3fHz", rpud.Fresp[Dir2Type(rpud.dir)]);
+               EDIT_BRICK_LABEL(new_dset[stype], 1, stmp);
+               EDIT_BRICK_TO_FIFT(new_dset[stype],1,rpud.dof[0],rpud.dof[1]);
+            } else {
+               ERROR_exit("Unable to compute output dataset!\n") ;
+            }
+         } else if (rpud.pmeth == HILB_DELAY){
+            for (rpud.iref = 0; rpud.iref < rpud.rvec_num; ++rpud.iref) {
+               if (!(idset = MAKER_4D_to_typed_fbuc(
+                             old_dset ,             /* input dataset */
+                             stmp ,               /* output prefix */
+                             datum ,                /* output datum  */
+                             0 ,                    /* ignore count  */
+                             1 ,                   /* linear detrend */
+                             2 ,                   /* number of briks */
+                             DEL_tsfunc,          /* timeseries processor */
+                             (void *)(&rpud),    /* data for tsfunc */
+                             mmm
+                          ))) {
+                  ERROR_exit("Unable to compute %d output dataset!\n", 
+                              rpud.iref) ;        
+               }
+               if (rpud.verb) {
+                  INFO_message("Done with delays for %d/%d\n", 
+                               rpud.iref, rpud.rvec_num);
+               }
+               if (!new_dset[stype]) {
+                  /* first, pass, take output as is */
+                  new_dset[stype] = idset; 
+                  /* fix labels */
+                  if (rpud.rvec_num == 1) {
+                     sprintf(stmp,"Phz_Delay");
+                     EDIT_BRICK_LABEL(new_dset[stype], 0, stmp);
+                     sprintf(stmp,"Corr.Coef.");
+                     EDIT_BRICK_LABEL(new_dset[stype], 1, stmp);
+                     EDIT_BRICK_TO_FICO(new_dset[stype], 1, rpud.rvec_len, 
+                                     rpud.dof[0],rpud.dof[1]);
+                  } else {
+                     if (rpud.verb > 1) {
+                        INFO_message("Adding Summary results\n", rpud.rvec_num);
+                     }
+                     sprintf(stmp,"Phz_Delay@Max.Corr.");
+                     EDIT_BRICK_LABEL(new_dset[stype], 0, stmp);
+                     sprintf(stmp,"Max.Corr.Coef.");
+                     EDIT_BRICK_LABEL(new_dset[stype], 1, stmp);
+                     /* add the best phase winner */
+                     best = (float *)malloc(DSET_NVOX(idset)*sizeof(float));
+                     for (ii=0; ii<DSET_NVOX(idset); ++ii) best[ii] = 1;
+                     EDIT_add_brick(new_dset[stype], MRI_float, 
+                                    0.0, best);
+                     EDIT_BRICK_LABEL(new_dset[stype], 2, "best_fit_regressor");
+                     /* the bulk of idset is now in the summary output
+                        make a copy of it because we'll also append it below 
+                        Note that only idset's bricks are being transferred,
+                        so there is some leakage each time a new idset
+                        gets generated without wiping the old one clean...*/
+                     idset = EDIT_full_copy(idset,"gingrich");
+                  }
+               }
+               if (rpud.rvec_num > 1) { /* have multiple series */
+                  if (rpud.verb > 1) {
+                     INFO_message("Adding %d/%d results\n", 
+                                  rpud.iref+1,rpud.rvec_num);
+                  }
+                  /* add phase */
+                  EDIT_add_brick(new_dset[stype], DSET_BRICK_TYPE(idset,0), 0.0,
+                                 DSET_ARRAY(idset,0));
+                  sprintf(stmp,"Phz_Delay@%02d", rpud.iref+1);
+                  EDIT_BRICK_LABEL(new_dset[stype], 
+                                   DSET_NVALS(new_dset[stype])-1, stmp);
+                  /* add threshold */
+                  EDIT_add_brick(new_dset[stype], DSET_BRICK_TYPE(idset,1), 0.0,
+                                 DSET_ARRAY(idset,1));
+                  sprintf(stmp,"Corr.Coef.@%02d", rpud.iref+1);
+                  EDIT_BRICK_LABEL(new_dset[stype],
+                                   DSET_NVALS(new_dset[stype])-1, stmp);
+                  EDIT_BRICK_TO_FICO(new_dset[stype], 
+                                     DSET_NVALS(new_dset[stype])-1, 
+                                     rpud.rvec_len, 
+                                     rpud.dof[0],rpud.dof[1]);
+                  
+                  /* swap values in 1st two sets with the max. */
+                  if (rpud.iref > 0) {
+                     d0 = (float *)DSET_ARRAY(new_dset[stype], 0);
+                     x0 = (float *)DSET_ARRAY(new_dset[stype], 1);
+                     best = (float *)DSET_ARRAY(new_dset[stype], 2);
+                     d1 = (float *)DSET_ARRAY(new_dset[stype], 
+                                              DSET_NVALS(new_dset[stype])-2);
+                     x1 = (float *)DSET_ARRAY(new_dset[stype], 
+                                     DSET_NVALS(new_dset[stype])-1);
+                     for (ii=0; ii<DSET_NVOX(idset); ++ii) {
+                        if (x1[ii] > x0[ii]) {
+                           x0[ii] = x1[ii];
+                           d0[ii] = d1[ii];
+                           best[ii] = rpud.iref+1;
+                        }
+                     }                
+                  } 
+               }
+            }
          }
+         
 
+         /* write the output */
+         if (rpud.verb) {
+            INFO_message("Writing delay results");
+         }
+         tross_Copy_History( old_dset , new_dset[stype] ) ;
+         tross_Make_History("3dRetinoPhase", argc, argv ,new_dset[stype]) ;
+         /* refresh stats, what with the constant updating */
+         DSET_KILL_STATS(new_dset[stype]); THD_load_statistics(new_dset[stype]) ;
+         DSET_write( new_dset[stype] ) ;
+         WROTE_DSET( new_dset[stype] ) ;
+         
          if (rpud.amp) {
             tross_Copy_History( old_dset , rpud.amp ) ;
             tross_Make_History( "3dRetinoPhase" , argc, argv , rpud.amp ) ;
@@ -1037,7 +1577,9 @@ int main( int argc , char * argv[] )
    /* Now see if you can do combos */
    if (new_dset[k_EXP] && new_dset[k_CON]) {
       THD_3dim_dataset *cset=NULL;
-      
+      if (rpud.verb) {
+         INFO_message("Combining bidirectional eccentricity data");
+      }
       rpud.dir = CONT; /* not really, but sign does not matter at this point */
       cset = Combine_Opposites(new_dset[k_EXP], new_dset[k_CON], 
                         &rpud);
@@ -1049,7 +1591,9 @@ int main( int argc , char * argv[] )
    
    if (new_dset[k_CLW] && new_dset[k_CCW]) {
       THD_3dim_dataset *cset=NULL;
-      
+      if (rpud.verb) {
+         INFO_message("Combining bidirectional polar data");
+      }
       rpud.dir = CLW; /* not really, but sign does not matter at this point */
       cset = Combine_Opposites(new_dset[k_CLW], new_dset[k_CCW], 
                         &rpud);
@@ -1059,7 +1603,9 @@ int main( int argc , char * argv[] )
       DSET_delete(cset); cset = NULL;                  
    }
    
-   
+   if (rpud.verb>1) {
+      INFO_message("Cleanup");
+   }
    for (stype=0; stype<k_N; ++stype) 
       if (new_dset[stype]) DSET_delete(new_dset[stype]);
          

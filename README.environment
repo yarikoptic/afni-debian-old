@@ -49,6 +49,9 @@ N.B.: If you set an AFNI environment variable on the command line, or
       To turn off these warnings, set environment variable
       AFNI_ENVIRON_WARNINGS to NO.
 
+N.B.: You can allow the .afnirc file to re-set existing environment
+      variables by setting environment variable AFNI_ENVIRON_RESET to YES.
+
 ********************************************************
 June 1999: Setting environment variables in file .afnirc
 ********************************************************
@@ -538,6 +541,11 @@ Variable: AFNI_SPLASH_ANIMATE
 -----------------------------
 If this variable is NO, then the splash screen animation will be disabled.
 Otherwise, it will run.
+
+--------------------------
+Variable: AFNI_SPLASH_MELT
+--------------------------
+If this variable is YES, then the splash screen will close via 'melting'.
 
 --------------------------------
 Variable: AFNI_FIM_PERCENT_LIMIT (editable)
@@ -1372,6 +1380,56 @@ Mike Beauchamp) would be
 Of course, you can always change the global baseline from the Opt->Baseline
 menu.
 
+-------------------------
+Variable: AFNI_GRAPH_CX2R (editable)
+-------------------------
+This variable determines how the AFNI time series graphing window displays
+complex-valued datasets.  The possible values are ABS, PHASE, REAL, and IMAG.
+(Actually, only the first letter matters to the program.)  The default
+method is ABS.  (If you edit this method interactively, the graph won't
+automatically be redrawn -- you'll have to force a graph window redraw
+to see the effects.)
+
+---------------------------
+Variable: AFNI_GRAPH_BOXLAB (editable)
+---------------------------
+This variable determines if and how the AFNI grapher displays sub-brick
+labels on top of the Box graphs (from the 'Colors, Etc.' menu, or via
+the 'B' keypress).  If Box graphs are turned on, and if the graph matrix
+has only 1 graph, and if this environment variable is set properly, then
+sub-brick labels will be drawn on top of the graph boxes.  The settings
+for this variable are
+  ATOP (or A) = labels go on top of their boxes
+  MAX  (or M) = labels go at the level of the tallest box
+  ZERO (or Z) = labels go at the bottom of the graph
+Labels are drawn vertically, upwards from their starting point.  Play
+with this feature to see how it works and looks, and recall that beauty
+is in the eye of the beholder.  (If you edit this method interactively,
+the graph won't automatically be redrawn -- you'll have to force a graph
+window redraw to see the effects.)  You can control the font for this
+text with AFNI_GRAPH_FONT (next).  Note that if you use the Dataset#N
+plugin with this feature, the labels will come from the underlay dataset
+rather than the Dataset#N datasets.  This bug is so recondite and intractable
+that I hope it will not cause too many problems for the adoring AFNI public.
+
+-------------------------
+Variable: AFNI_GRAPH_FONT
+-------------------------
+This variable is the name of a font to use for text overlays in the
+AFNI time series graph viewers.  If this variable is not set, the
+program has a list of fonts to try to load.  If none of those can
+be loaded (something I've never seen happen), text may not display.
+For best results, this should be a fixed width font.  To see a full
+list of all X11 fonts available, use the system command 'xlsfonts'
+(you probably want to pipe this output through 'more').  The first
+default font is currently [Apr 2011] set to
+  -adobe-courier-bold-r-normal--12-120-75-75-m-70-iso8859-1
+For a font that is larger than the default, try 9x15bold or even
+10x20, as in the command
+  afni -DAFNI_GRAPH_FONT=9x15bold
+The entire list of fonts that will be tried can be found in the
+source code file display.h, in the string array tfont_hopefuls[].
+
 --------------------------
 Variable: AFNI_VALUE_LABEL (editable)
 --------------------------
@@ -1935,6 +1993,14 @@ when giving the '.png' or '.jpg' from 1dplot-style graphs.  The default
 value is 1024.  Values over 2048 may give odd looking results, and will
 be palpably slower to render.
 
+-----------------------------
+Variable: AFNI_1DPLOT_BOXSIZE
+-----------------------------
+This variable sets the size of the boxes that are plotted with the 1dplot
+'-box' option.  The units are in terms of the width of the entire plot;
+a value of 0.006 is the default.  The largest allowed value is 0.02 and
+the smallest is 0.001.
+
 ---------------------------------
 Variable: AFNI_SIEMENS_INTERLEAVE
 ---------------------------------
@@ -2473,6 +2539,15 @@ from within AFNI, a 'Rescan: This' operation should probably be performed,
 which will force a re-reading of the datasets and so force an elicitation
 of the NIfTI debug messages (for .nii files, that is).
 
+------------------------------
+Variable: AFNI_NIFTI_TYPE_WARN 
+------------------------------
+AFNI converts 'byte' NIFTI data types to 'short', and 'int' to 'float'.
+Programs that do so will issue a warning each time such a conversion is 
+carried out. When this variable is set to NO, as it is now by default, 
+each program would issue just one warning at the first occurrence of a type conversion. 
+Set this variable to YES if you want to see all conversion warnings.  
+
 --------------------------
 Variable: AFNI_DEBUG_PLUG_VOL2SURF
 --------------------------
@@ -2640,11 +2715,29 @@ popdown menus to be 'torn off'.  The default is to enable tear off for most
 menus, but this may cause bad things on some platforms (like program death).
 
 -------------------------------
-Variable: AFNI_PLUGOUT_TCP_BASE
+Variable: AFNI_PLUGOUT_TCP_BASE (BETTER USE AFNI_PORT_OFFSET)
 -------------------------------
 This integer will override the base TCP port used by afni to listen for
 plugouts.  This allows multiple instances of afni on one machine, where
 each can listen for plugouts.  Valid port numbers are 1024..65535.
+
+--------------------------
+Variable: AFNI_PORT_OFFSET 
+--------------------------
+This integer provides an offset for the range of port numbers used by
+AFNI and its ilk. This allows multiple instances of communicating 
+programs on one machine.  Valid port offset numbers are 1024..65000.
+See related options -np in afni -help. See also AFNI_PORT_BLOC.
+
+--------------------------
+Variable: AFNI_PORT_BLOC 
+--------------------------
+This integer selects a bloc of port numbers to be used by
+AFNI and its ilk. Much like AFNI_PORT_OFFSET, it allows multiple instances 
+of communicating programs on one machine.  However it is easier to use.
+Acceptable integer values range from 0 to a couple of thousands. 
+See related option -npb, -max_port_bloc in afni -help. 
+This environment variable takes precedence over AFNI_PORT_OFFSET.
 
 -----------------------------------
 Variable: AFNI_IMAGE_TICK_DIV_IN_MM (editable)
@@ -2849,6 +2942,16 @@ by Gaussian blurring with the chosen FWHM: "SeedBlur".  This variable
 cannot be set interactively, but can be set on the AFNI command line
 with the usual -DAFNI_INSTACORR_SEEDBLUR=YES method.
 
+--------------------------------
+Variable: AFNI_INSTACORR_XYZ_LPI
+--------------------------------
+In 3dGroupInCorr's batch mode, the XYZ method of operation sets the
+seed coordinates using AFNI's standard RAI (DICOM) order.  If you
+set this variable to YES, then the coordinates given will be
+interpreted as being in LPI (AKA 'neurological') order; that is,
+the given x and y values will be negated before being used inside
+3dGroupInCorr to pick the seed voxel.
+
 ----------------------------------
 Variable: AFNI_BLUR_INTS_AS_OLD
 ----------------------------------
@@ -2975,9 +3078,9 @@ to increase this past its default size of 255*1024=261120.
 --- END: variables specific to NIML I/O
 ----------------------------------------------------------------------
 
-----------------------------
+-------------------------
 Variable: AFNI_GIFTI_VERB
-----------------------------
+-------------------------
 This integer sets the verbose level in the gifti I/O library routines.
 Level 1 is the default, 0 is "quiet", and values go up to 7.
 
@@ -2988,9 +3091,9 @@ This numeric variable, if set, lets you expand the number of dataset
 lines in the 'Dataset#N' plugin from the default of 9 up to a max of 49.
 (This one is for Shruti.)
 
-----------------------------
+---------------------------------
 Variable: AFNI_WRITE_1D_AS_PREFIX
-----------------------------
+---------------------------------
 If this variable is set to YES, then 1D formatted files will be written
 to the file based on the given prefix, rather than to an automatic 1D file.
 This allows writing surface files to NIfTI format, for example.
@@ -3003,6 +3106,8 @@ This allows writing surface files to NIfTI format, for example.
 | Department of Health & Human Services     |
 | United States of America                  |
 | Earth, United Federation of Planets       |
+| Alpha Quadrant, Milky Way Galaxy          |
+| Local Group, Virgo Supercluster           |
 =============================================
 
 ############################################################################
@@ -3136,4 +3241,10 @@ negatives (e.g., as discussed by Storey, Benjamini, and others)
 will NOT be carried out.  As of 26 Mar 2009, this adjustment of
 q-values is the default in AFNI programs.  If you want the old
 behavior, set this variable to YES.
+
+-----------------------------------
+Variable: AFNI_WAMI_DEBUG
+-----------------------------------
+This integer sets the debugging level in whereami routines. 
+Currently used values range from 0 to 3.
 

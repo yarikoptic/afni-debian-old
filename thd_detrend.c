@@ -8,6 +8,19 @@
 
 /*-------------------------------------------------------------------------*/
 
+int THD_is_constant( int npt , float *xx )  /* 20 May 2011 */
+{
+   int ii ; float val ;
+
+   if( npt <= 1 || xx == NULL ) return 1 ;
+   
+   val = xx[0] ;
+   for( ii=1 ; ii < npt ; ii++ ) if( xx[ii] != val ) return 0 ;
+   return 1 ;
+}
+
+/*-------------------------------------------------------------------------*/
+
 void THD_const_detrend( int npt, float *xx, float *xx0 ) /* 24 Aug 2001 */
 {
    int ii ; float xbar ;
@@ -53,7 +66,7 @@ void get_linear_trend( int npt, float *xx, float *f0, float *f1 )
 void THD_linear_detrend( int npt, float *far, float *xx0, float *xx1 )
 {
    register int ii ;
-   float f0 , f1 ;
+   float f0=0.0, f1=0.0;
 
    if( npt < 3 || far == NULL ) return ;
 

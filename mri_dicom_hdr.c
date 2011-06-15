@@ -51,9 +51,9 @@
 **			of a file containing a DICOM stream.
 **   Usage:
 **			dcm_dump_file [-b] [-g] [-v] [-z] file [file ...]
-** Last Update:		$Author: rwcox $, $Date: 2010/09/27 19:50:36 $
+** Last Update:		$Author: rickr $, $Date: 2011/05/09 19:34:31 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.33 $
+** Revision:		$Revision: 1.38 $
 ** Status:		$State: Exp $
 */
 
@@ -67,6 +67,31 @@
 #include <ctype.h>
 
 #include "mri_dicom_hdr.h"
+
+/* pass private(!) Siemens slice times back, if found 
+ * nused : number of slice times read                    8 Apr 2011 [rickr] */
+typedef struct {
+   int     nalloc;              /* number of times allocated for  */
+   int     nused;               /* actual length of 'times' array */
+   float * times;               /* list of slice times            */
+} siemens_slice_times_t;
+
+siemens_slice_times_t g_siemens_slice_times = { 0, 0, NULL };
+static int g_MDH_verb = 1;             /* verbose level */
+
+int mri_sst_get_verb(void) { return g_MDH_verb; }
+int mri_sst_set_verb(int verb) { g_MDH_verb = verb; return g_MDH_verb; }
+
+/* interface to return slice timing info (calling function should copy data)
+ *                                                       12 Apr 2011 [rickr] */
+int mri_siemens_slice_times(int * nalloc, int * nused, float ** times)
+{
+   if( ! nalloc || ! nused || ! times ) return 1;
+   *nalloc = g_siemens_slice_times.nalloc;
+   *nused  = g_siemens_slice_times.nused;
+   *times  = g_siemens_slice_times.times;
+   return 0;
+}
 
 /* Dimon needs to compile without libmri     18 May 2006 */
 /* (this allows removal of rickr/l_mri_dicom_hdr.c)      */
@@ -378,9 +403,9 @@ STATUS("closing") ;
 **			The stack is maintained as a simple stack array.  If
 **			it overflows, we dump the stack to stdout and reset it.
 **
-** Last Update:		$Author: rwcox $, $Date: 2010/09/27 19:50:36 $
+** Last Update:		$Author: rickr $, $Date: 2011/05/09 19:34:31 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.33 $
+** Revision:		$Revision: 1.38 $
 ** Status:		$State: Exp $
 */
 
@@ -808,9 +833,9 @@ COND_WriteConditions(FILE * lfp)
 ** Author, Date:	Steve Moore, 30-Jun-96
 ** Intent:		Provide common abstractions needed for operations
 **			in a multi-threaded environment.
-** Last Update:		$Author: rwcox $, $Date: 2010/09/27 19:50:36 $
+** Last Update:		$Author: rickr $, $Date: 2011/05/09 19:34:31 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.33 $
+** Revision:		$Revision: 1.38 $
 ** Status:		$State: Exp $
 */
 
@@ -902,9 +927,9 @@ COND_WriteConditions(FILE * lfp)
 **	and convert the object to and from its "stream" representation.
 **	In addition, the package can parse a file which contains a stream
 **	and create its internal object.
-** Last Update:		$Author: rwcox $, $Date: 2010/09/27 19:50:36 $
+** Last Update:		$Author: rickr $, $Date: 2011/05/09 19:34:31 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.33 $
+** Revision:		$Revision: 1.38 $
 ** Status:		$State: Exp $
 */
 
@@ -2341,6 +2366,12 @@ DCM_GetObjectSize(DCM_OBJECT ** callerObject, unsigned long *returnlength)
 **	    End for
 **	End for
 */
+
+/* rcr - maybe do something better with this */
+#include "siemens_dicom_csa.c"
+
+static void dumpOB(unsigned char* c, long vm);
+
 CONDITION
 DCM_DumpElements(DCM_OBJECT ** callerObject, long vm)
 {
@@ -2555,6 +2586,11 @@ STATUS("looping over groupItem") ;
 		    dumpBinaryData(elementItem->element.d.ot,
 				       elementItem->element.representation,
 			       elementItem->element.length , MAX(rwc_vm,8));
+
+                    /* moved everything to new siemens_dicom_csa.c
+                     *                          7 May 2011 [rickr] */
+                    check_for_mosaic_slice_times(elementItem);
+
 		    break;
 
 		case DCM_OT:
@@ -6476,6 +6512,14 @@ ENTRY("readVRLength") ;
     if (e->representation == DCM_DLM) {
 	explicitVR = FALSE;	/* Special rule for delimitors */
     }
+
+    if (explicitVR && !buf[0]) {  /* if there is no vrCode, skip explicitVR */
+        explicitVR = FALSE;       /*                    22 Mar 2011 [rickr] */
+        fprintf(stderr,
+                "** DICOM WARNING, missing VR code in element (%04x,%04x)\n", 
+                DCM_TAG_GROUP(e->tag), DCM_TAG_ELEMENT(e->tag) );
+    }
+
     if (explicitVR) {
 	vrCode[0] = buf[0];
 	vrCode[1] = buf[1];
@@ -7622,11 +7666,29 @@ dumpUL(U32 * ul, long vm)
     }
     RWC_printf("\n");
 }
+
+void swap_4bytes( size_t n , void *ar )
+{
+   register size_t ii ;
+   unsigned char * cp0 = (unsigned char *)ar, * cp1, * cp2 ;
+   register unsigned char tval ;
+
+   for( ii=0 ; ii < n ; ii++ ){
+       cp1 = cp0; cp2 = cp0+3;
+       tval = *cp1;  *cp1 = *cp2;  *cp2 = tval;
+       cp1++;  cp2--;
+       tval = *cp1;  *cp1 = *cp2;  *cp2 = tval;
+       cp0 += 4;
+   }
+   return ;
+}
+
 static void
 dumpOB(unsigned char* c, long vm)
 {
   long index = 0;
-  RWC_printf("hex OB:") ;
+  RWC_printf("hex OB: (len %d)", vm) ;
+
   while (index < vm) {
     RWC_printf("%02x ", *(c++));
     if ((++index) % 8 == 0)
@@ -8303,9 +8365,9 @@ DCM_AddFragment(DCM_OBJECT** callerObject, void* fragment, U32 fragmentLength)
 ** Intent:		Define the ASCIZ messages that go with each DCM
 **			error number and provide a function for looking up
 **			the error message.
-** Last Update:		$Author: rwcox $, $Date: 2010/09/27 19:50:36 $
+** Last Update:		$Author: rickr $, $Date: 2011/05/09 19:34:31 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.33 $
+** Revision:		$Revision: 1.38 $
 ** Status:		$State: Exp $
 */
 
@@ -8461,9 +8523,9 @@ DCM_DumpVector()
 **			static objects are maintained which define how
 **			elements in the DICOM V3.0 standard are to be
 **			interpreted.
-** Last Update:		$Author: rwcox $, $Date: 2010/09/27 19:50:36 $
+** Last Update:		$Author: rickr $, $Date: 2011/05/09 19:34:31 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.33 $
+** Revision:		$Revision: 1.38 $
 ** Status:		$State: Exp $
 */
 
@@ -10577,9 +10639,9 @@ DCM_ElementDictionary(DCM_TAG tag, void *ctx,
 **			as support for the DCM facility and for applications.
 **			These routines help parse strings and other data
 **			values that are encoded in DICOM objects.
-** Last Update:		$Author: rwcox $, $Date: 2010/09/27 19:50:36 $
+** Last Update:		$Author: rickr $, $Date: 2011/05/09 19:34:31 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.33 $
+** Revision:		$Revision: 1.38 $
 ** Status:		$State: Exp $
 */
 
@@ -10785,9 +10847,9 @@ DCM_IsString(DCM_VALUEREPRESENTATION representation)
 ** Author, Date:	Thomas R. Leith, 15-Apr-93
 ** Intent:		This package implements atomic functions on
 **			linked lists.
-** Last Update:		$Author: rwcox $, $Date: 2010/09/27 19:50:36 $
+** Last Update:		$Author: rickr $, $Date: 2011/05/09 19:34:31 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.33 $
+** Revision:		$Revision: 1.38 $
 ** Status:		$State: Exp $
 */
 
@@ -11321,9 +11383,9 @@ LST_Index(LST_HEAD ** l, int index)
 ** Intent:		Miscellaneous functions that may be useful in
 **			a number of different areas.
 **
-** Last Update:		$Author: rwcox $, $Date: 2010/09/27 19:50:36 $
+** Last Update:		$Author: rickr $, $Date: 2011/05/09 19:34:31 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.33 $
+** Revision:		$Revision: 1.38 $
 ** Status:		$State: Exp $
 */
 

@@ -106,6 +106,11 @@ int main( int argc , char *argv[] )
       "* If you do not use '-detrend', the program attempts to find non-zero spatial\n"
       "  structure in the input, and will print a warning message if it is detected.\n"
       "\n"
+      " *** Do NOT use 3dFWHMx on the statistical results (e.g., '-bucket') from ***\n"
+      " *** 3dDeconvolve or 3dREMLfit!!!  The function of 3dFWHMx is to estimate ***\n"
+      " *** the smoothness of the time series NOISE, not of the statistics. This ***\n"
+      " *** proscription is especially true if you plan to use 3dClustSim next!! ***\n"
+      "\n"
       "IF YOUR DATA HAS SMOOTH-ISH SPATIAL STRUCTURE YOU CAN'T GET RID OF:\n"
       "For example, you only have 1 volume, say from PET imaging.  In this case,\n"
       "the standard estimate of the noise smoothness will be mixed in with the\n"
@@ -248,9 +253,15 @@ int main( int argc , char *argv[] )
      demed = 0 ; WARNING_message("-demed is overriden by -corder") ;
    }
 
-   if( corder < 0 ) corder = DSET_NVALS(inset) / 30 ;
-   if( corder > 0 && 2*corder+3 >= DSET_NVALS(inset) )
+   if( corder < 0 ){
+     corder = DSET_NVALS(inset) / 30 ;
+     if( corder == 0 ){
+       WARNING_message("Fewer than 30 time points ==> -corder converted to -unif") ;
+       unif = demed = 1 ;
+     }
+   } else if( corder > 0 && 2*corder+3 >= DSET_NVALS(inset) ){
      ERROR_exit("-corder %d is too big for this dataset",corder) ;
+   }
 
    DSET_load(inset) ; CHECK_LOAD_ERROR(inset) ;
 

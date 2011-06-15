@@ -15,6 +15,145 @@ extern int SUMAg_N_SVv;
 
 static int started = 0 ;
 
+int SUMA_init_ports_assignments(SUMA_CommonFields *cf) 
+{
+   static char FuncName[]={"SUMA_init_ports_assignments"};
+   int i;
+   float dsmw = 5*60;
+   char *eee=NULL;
+   
+   SUMA_ENTRY;
+   
+   if (cf->TCP_port[0]) {
+      SUMA_S_Warn("Looks like ports have been initialized. Returning.");
+      SUMA_RETURN(YUP);
+   }
+   
+   eee = getenv("SUMA_DriveSumaMaxWait");
+   if (eee) {
+      dsmw = atof(eee);
+      if (dsmw < 0 || dsmw > 60000) {
+         SUMA_S_Warnv( 
+                "Environment variable SUMA_DriveSumaMaxWait %f is invalid.\n"
+                "value must be between 0 and 60000 seconds.\n"
+                "Using default of %d\n", 
+                dsmw, 5*60);
+         dsmw = (float)5*60;/* wait for 5 minutes */
+      }
+   } else {
+      dsmw = (float)5*60;
+   } 
+    
+   for (i=0; i<SUMA_MAX_STREAMS; ++i) {
+      cf->ns_v[i] = NULL;
+      switch(i) { /* set time out */
+         case SUMA_GICORR_LINE:
+         case SUMA_DRIVESUMA_LINE:
+            cf->ns_to[i] = (int)(dsmw*1000);  
+            break;
+         default:
+            cf->ns_to[i] = SUMA_WRITECHECKWAITMAX;
+            break;
+      }
+      cf->ns_flags_v[i] = 0;
+      cf->Connected_v[i] = NOPE;
+      cf->TrackingId_v[i] = 0;
+      cf->NimlStream_v[i][0] = '\0';
+      cf->HostName_v[i][0] = '\0';
+      cf->TalkMode[i] = NI_BINARY_MODE;   
+      switch(i) { /* set port numbers */
+         case SUMA_AFNI_STREAM_INDEX: /* AFNI listening */
+            #if 0 /*ZSS June 2011. Delete useless code after dust has settled.*/
+            eee = getenv("SUMA_AFNI_TCP_PORT");
+            if (eee) {
+               pb = atoi(eee);
+               if (pb < 1024 ||  pb > 65535) {
+                  fprintf (SUMA_STDERR, 
+                     "Warning %s:\n"
+                     "Environment variable SUMA_AFNI_TCP_PORT %d is invalid.\n"
+                      "port must be between 1025 and 65534.\n"
+                      "Using default of %d\n", 
+                      FuncName, pb, get_port_named("AFNI_SUMA_NIML"));
+                  
+                  cf->TCP_port[i] = get_port_named("AFNI_SUMA_NIML");
+               }
+               cf->TCP_port[i] = pb;
+            } else {
+               cf->TCP_port[i] = get_port_named("AFNI_SUMA_NIML");
+            }
+            #else
+               cf->TCP_port[i] = get_port_named("AFNI_SUMA_NIML");
+            #endif   
+            break;
+         case SUMA_AFNI_STREAM_INDEX2:  /* AFNI listening */
+            #if 0 /*ZSS June 2011. Delete useless code after dust has settled.*/
+            eee = getenv("SUMA_AFNI_TCP_PORT2");
+            if (eee) {
+               pb = atoi(eee);
+               if (pb < 1024 ||  pb > 65535) {
+                  SUMA_S_Warnv(
+                "Environment variable SUMA_AFNI_TCP_PORT2 %d is invalid.\n"
+                "port must be between 1025 and 65534.\n"
+                "Using default of %d\n", 
+                               pb, get_port_named("AFNI_DEFAULT_LISTEN_NIML"));
+                  
+                  cf->TCP_port[i] = get_port_named("AFNI_DEFAULT_LISTEN_NIML");
+               }
+               cf->TCP_port[i] = pb; 
+            } else {
+               cf->TCP_port[i] = get_port_named("AFNI_DEFAULT_LISTEN_NIML");
+            }
+            #else
+               cf->TCP_port[i] = get_port_named("AFNI_DEFAULT_LISTEN_NIML");
+            #endif
+            break;
+         case SUMA_TO_MATLAB_STREAM_INDEX: /*Matlab listening */
+            #if 0 /*ZSS June 2011. Delete useless code after dust has settled.*/
+            eee = getenv("SUMA_MATLAB_LISTEN_PORT");
+            if (eee) {
+               pb = atoi(eee);
+               if (pb < 1024 ||  pb > 65535) {
+                  SUMA_S_Warnv( 
+                "Environment variable SUMA_MATLAB_LISTEN_PORT %d is invalid.\n"
+                "port must be between 1025 and 65534.\n"
+                "Using default of %d\n", 
+                         pb, get_port_named("MATLAB_SUMA_NIML"));
+                  
+                  cf->TCP_port[i] = get_port_named("MATLAB_SUMA_NIML");
+               }
+               cf->TCP_port[i] = pb; 
+            } else {
+               cf->TCP_port[i] = get_port_named("MATLAB_SUMA_NIML");
+            }  
+            #else
+               cf->TCP_port[i] = get_port_named("MATLAB_SUMA_NIML");
+            #endif 
+            break;
+         case SUMA_GENERIC_LISTEN_LINE: /* SUMA listening */
+            cf->TCP_port[i] = get_port_named("SUMA_DEFAULT_LISTEN_NIML");
+            break;
+         case SUMA_GEOMCOMP_LINE:
+            cf->TCP_port[i] = get_port_named("SUMA_GEOMCOMP_NIML");
+            break;
+         case SUMA_BRAINWRAP_LINE:
+            cf->TCP_port[i] = get_port_named("SUMA_BRAINWRAP_NIML");
+            break;
+         case SUMA_DRIVESUMA_LINE:
+            cf->TCP_port[i] = get_port_named("SUMA_DRIVESUMA_NIML");
+            break;
+         case SUMA_GICORR_LINE:
+            cf->TCP_port[i] = get_port_named("SUMA_GroupInCorr_NIML");
+            break;
+         default:
+            SUMA_S_Errv("Bad stream index %d. Ignoring it.\n", i);
+            break;
+      } 
+   }
+   cf->Listening = NOPE;
+   cf->niml_work_on = NOPE;
+   
+   SUMA_RETURN(YUP);   
+}
 
 /*-----------------------------------------------------------------------*/
 /*! NIML workprocess.
@@ -182,14 +321,15 @@ Boolean SUMA_niml_workproc( XtPointer thereiselvis )
      
      /* if here, stream is good;
         see if there is any data to be read */
+     if (!SUMAg_CF->TCP_port[0]) SUMA_init_ports_assignments(SUMAg_CF); 
       
-      if (SUMAg_CF->ns_flags_v[cc] & SUMA_FLAG_WAITING) {
+     if (SUMAg_CF->ns_flags_v[cc] & SUMA_FLAG_WAITING) {
          SUMAg_CF->ns_flags_v[cc] = SUMA_FLAG_CONNECTED;
          SUMA_S_Notev( 
                   "++ NIML connection opened from %s on port %d (%dth stream)\n",
                   NI_stream_name(SUMAg_CF->ns_v[cc]), 
                   SUMAg_CF->TCP_port[cc], cc) ;
-      }
+     }
    #if 0
       /* not good enough, checks socket only, not buffer */
       nn = NI_stream_readcheck( SUMAg_CF->ns , 1 ) ;
@@ -398,8 +538,9 @@ SUMA_Boolean SUMA_niml_call ( SUMA_CommonFields *cf, int si,
          /* contact afni */
             SUMA_SetWriteCheckWaitMax(cf->ns_to[si]);
             fprintf( SUMA_STDOUT,
-                     "%s: Contacting on %d, maximum wait %.3f sec\n", 
-                     FuncName, si, (float)cf->ns_to[si]/1000.0);
+                     "%s: Contacting on %s (%d), maximum wait %.3f sec\n", 
+                     FuncName, cf->NimlStream_v[si], si, 
+                     (float)cf->ns_to[si]/1000.0);
             fflush(SUMA_STDOUT);
             cf->ns_v[si] =  NI_stream_open( cf->NimlStream_v[si] , "w" ) ;
             if (!cf->ns_v[si]) {
@@ -2644,7 +2785,7 @@ SUMA_COMM_STRUCT *SUMA_Create_CommSrtuct(void)
    int i;
    
    SUMA_ENTRY;
-   
+
    cs = (SUMA_COMM_STRUCT *)SUMA_malloc(sizeof(SUMA_COMM_STRUCT));
    if (!cs) {
       SUMA_SL_Crit("Failed to allocate");
@@ -2702,7 +2843,8 @@ SUMA_COMM_STRUCT *SUMA_Free_CommSrtuct(SUMA_COMM_STRUCT *cs)
    
    
 */
-SUMA_Boolean SUMA_Assign_HostName (SUMA_CommonFields *cf, char *HostName, int istream)
+SUMA_Boolean SUMA_Assign_HostName ( SUMA_CommonFields *cf, 
+                                    char *HostName, int istream)
 {
    static char FuncName[]={"SUMA_Assign_HostName"};
    int istart = 0, istop = 0, i = 0;
@@ -2710,6 +2852,8 @@ SUMA_Boolean SUMA_Assign_HostName (SUMA_CommonFields *cf, char *HostName, int is
    
    SUMA_ENTRY;
 
+   if (!cf->TCP_port[0]) SUMA_init_ports_assignments(cf);
+   
    if (istream == -1) {
       istart = 0; istop = SUMA_MAX_STREAMS; 
    } else {
@@ -2719,23 +2863,29 @@ SUMA_Boolean SUMA_Assign_HostName (SUMA_CommonFields *cf, char *HostName, int is
    for (i = istart; i < istop; ++i) {
       if (HostName == NULL)
          if (i == SUMA_AFNI_STREAM_INDEX) {
-            sprintf(cf->HostName_v[i], "localhost"); /*  using localhost will allow the use of Shared Memory.
-                                                         That is only allowed for SUMA<-->AFNI */
+            sprintf(cf->HostName_v[i], "localhost"); 
+               /*  using localhost will allow the use of Shared Memory.
+                   That is only allowed for SUMA<-->AFNI */
          } else {
-            sprintf(cf->HostName_v[i], "127.0.0.1");  /* force TCP for the commoners */
+            sprintf(cf->HostName_v[i], "127.0.0.1");  
+                                       /* force TCP for the commoners */
          }  
       else {   
          if (strlen(HostName) > SUMA_MAX_NAME_LENGTH - 20) {
-            fprintf(SUMA_STDERR,"Error %s: too long a host name (> %d chars).\n", FuncName, SUMA_MAX_NAME_LENGTH - 20);
+            fprintf( SUMA_STDERR,
+                     "Error %s: too long a host name (> %d chars).\n", 
+                     FuncName, SUMA_MAX_NAME_LENGTH - 20);
             SUMA_RETURN (NOPE);
          }
          sprintf(cf->HostName_v[i],"%s", HostName);
       }
 
+      
       sprintf(cf->NimlStream_v[i],"tcp:%s:%d", 
             cf->HostName_v[i], cf->TCP_port[i]);
 
-      if (LocalHead) fprintf(SUMA_STDOUT, "%s: Set HostName %d to %s (stream name: %s)\n", 
+      if (LocalHead) 
+         fprintf(SUMA_STDOUT, "%s: Set HostName %d to %s (stream name: %s)\n", 
                      FuncName, i, cf->HostName_v[i], cf->NimlStream_v[i]);
    }
    
@@ -3715,10 +3865,12 @@ SUMA_Boolean SUMA_SendToSuma (SUMA_SurfaceObject *SO, SUMA_COMM_STRUCT *cs, void
       /* make sure stream is till OK */
       if (NI_stream_goodcheck ( SUMAg_CF->ns_v[cs->istream] , 1 ) < 0) {
          cs->GoneBad = YUP;
-         SUMA_SL_Warn("Communication stream gone bad.\nShutting down communication.");
+         SUMA_SL_Warn("Communication stream gone bad.\n"
+                      "Shutting down communication.");
          cs->Send = NOPE;
          SUMA_SEND_TO_SUMA_FUNC_CLEANUP;
-         SUMA_RETURN(YUP); /* returning without error since program should continue */
+         SUMA_RETURN(YUP); 
+            /* returning without error since program should continue */
       }
 
       
@@ -3728,7 +3880,8 @@ SUMA_Boolean SUMA_SendToSuma (SUMA_SurfaceObject *SO, SUMA_COMM_STRUCT *cs, void
             /* colorize data */
             nel = SUMA_NodeVal2irgba_nel (SO, f, SO->idcode_str, 0);
             if (!nel) {
-               SUMA_SL_Err("Failed in SUMA_NodeVal2irgba_nel.\nCommunication off.")
+               SUMA_SL_Err("Failed in SUMA_NodeVal2irgba_nel.\n"
+                           "Communication off.")
                cs->Send = NOPE;
                SUMA_RETURN(NOPE);
             }
@@ -3738,7 +3891,8 @@ SUMA_Boolean SUMA_SendToSuma (SUMA_SurfaceObject *SO, SUMA_COMM_STRUCT *cs, void
             /* turn XYZ to nel  */
             nel =  SUMA_NodeXYZ2NodeXYZ_nel(SO, f, NOPE, dtype);
             if (!nel) {
-               SUMA_SL_Err("Failed in SUMA_NodeXYZ2NodeXYZ_nel.\nCommunication off.")
+               SUMA_SL_Err("Failed in SUMA_NodeXYZ2NodeXYZ_nel.\n"
+                           "Communication off.")
                cs->Send = NOPE;
                SUMA_RETURN(NOPE);
             }
@@ -3749,7 +3903,8 @@ SUMA_Boolean SUMA_SendToSuma (SUMA_SurfaceObject *SO, SUMA_COMM_STRUCT *cs, void
             /* turn IJK to nel  */
             nel =  SUMA_Mesh_IJK2Mesh_IJK_nel(SO, ip, NOPE, dtype);
             if (!nel) {
-               SUMA_SL_Err("Failed in SUMA_Mesh_IJK2Mesh_IJK_nel.\nCommunication off.")
+               SUMA_SL_Err("Failed in SUMA_Mesh_IJK2Mesh_IJK_nel.\n"
+                           "Communication off.")
                cs->Send = NOPE;
                SUMA_RETURN(NOPE);
             }
@@ -3759,8 +3914,10 @@ SUMA_Boolean SUMA_SendToSuma (SUMA_SurfaceObject *SO, SUMA_COMM_STRUCT *cs, void
             NI_set_attribute (nel, "surface_idcode", SO->idcode_str);
             if (SO->VolPar) {
                char *vppref=NULL;
-               vppref = SUMA_append_replace_string(SO->VolPar->dirname, SO->VolPar->filecode, "/", 0);
-               NI_set_attribute(nel, "VolParFilecode", vppref); SUMA_free(vppref); vppref = NULL;
+               vppref = SUMA_append_replace_string(SO->VolPar->dirname, 
+                                       SO->VolPar->filecode, "/", 0);
+               NI_set_attribute(nel, "VolParFilecode", vppref); 
+               SUMA_free(vppref); vppref = NULL;
                if (cs->Feed2Afni) NI_set_attribute(nel, "Send2Afni", "DoItBaby");
             }
             break;
@@ -3991,8 +4148,10 @@ SUMA_Boolean SUMA_SendToAfni (SUMA_COMM_STRUCT *cs, void *data, int action)
       
       SUMA_LH("Setting up for communication with AFNI ...");
       cs->afni_Send = YUP;
-      if(!SUMA_Assign_HostName (SUMAg_CF, cs->afni_host_name, cs->afni_istream)) {
-		   fprintf (SUMA_STDERR, "Error %s: Failed in SUMA_Assign_HostName", FuncName);
+      if(!SUMA_Assign_HostName (SUMAg_CF, 
+                           cs->afni_host_name, cs->afni_istream)) {
+		   fprintf (SUMA_STDERR, 
+                     "Error %s: Failed in SUMA_Assign_HostName", FuncName);
 		   exit (1);
 	   }
       if (!SUMA_niml_call (SUMAg_CF, cs->afni_istream, NOPE)) {
@@ -4012,7 +4171,9 @@ SUMA_Boolean SUMA_SendToAfni (SUMA_COMM_STRUCT *cs, void *data, int action)
    
    if (action == 1) { /* action == 1,  send data mode */
       if (!i_in) {
-         SUMA_SL_Err("You must call SUMA_SendToAfni with action 0 before action 1.\nNo Communcation cleanup done.");
+         SUMA_SL_Err(
+            "You must call SUMA_SendToAfni with action 0 before action 1.\n"
+            "No Communcation cleanup done.");
          cs->afni_Send = NOPE;
          SUMA_RETURN(NOPE);
       }
@@ -4022,12 +4183,15 @@ SUMA_Boolean SUMA_SendToAfni (SUMA_COMM_STRUCT *cs, void *data, int action)
       /* make sure stream is till OK */
       if (NI_stream_goodcheck ( SUMAg_CF->ns_v[cs->afni_istream] , 1 ) < 0) {
          cs->afni_GoneBad = YUP;
-         SUMA_SL_Warn("Communication stream with afni gone bad.\nShutting down communication.");
+         SUMA_SL_Warn("Communication stream with afni gone bad.\n"
+                      "Shutting down communication.");
          cs->afni_Send = NOPE;
-         SUMA_RETURN(YUP); /* returning without error since program should continue */
+         SUMA_RETURN(YUP); /* returning without error since program 
+                                    should continue */
       }
 
-      if (!SUMA_SendDset_Afni( SUMAg_CF->ns_v[cs->afni_istream], (THD_3dim_dataset *)data, 1)) {
+      if (!SUMA_SendDset_Afni( SUMAg_CF->ns_v[cs->afni_istream], 
+                                 (SUMA_SEND_2AFNI *)data, 1)) {
          SUMA_SL_Err("Failed to send dset");
          cs->afni_Send = NOPE;
          SUMA_RETURN(NOPE);
@@ -4039,7 +4203,8 @@ SUMA_Boolean SUMA_SendToAfni (SUMA_COMM_STRUCT *cs, void *data, int action)
    
    if (action == 2) {
       if (i_in < 2) {
-         SUMA_SL_Err("You must call SUMA_SendToAfni with action 0 and 1 before action 2.\nNo Communcation cleanup done.");
+         SUMA_SL_Err("You must call SUMA_SendToAfni with action 0 and 1 "
+                     "before action 2.\nNo Communcation cleanup done.");
          cs->afni_Send = NOPE;
          SUMA_RETURN(NOPE);
       }
@@ -4068,7 +4233,7 @@ SUMA_Boolean SUMA_SendToAfni (SUMA_COMM_STRUCT *cs, void *data, int action)
    SUMA_RETURN(NOPE);
 }
 
-SUMA_Boolean SUMA_SendDset_Afni( NI_stream ns, THD_3dim_dataset *dset, int all)
+SUMA_Boolean SUMA_SendDset_Afni( NI_stream ns, SUMA_SEND_2AFNI *SS2A, int all)
 {
    static char FuncName[]={"SUMA_SendDset_Afni"};
    NI_group *ngr = NULL;
@@ -4078,27 +4243,35 @@ SUMA_Boolean SUMA_SendDset_Afni( NI_stream ns, THD_3dim_dataset *dset, int all)
    
    SUMA_ENTRY;
    
-   if (!dset) {
+   if (!SS2A->dset) {
       SUMA_SL_Warn("NULL dset, nothing to do");
       SUMA_RETURN(YUP);
    }
    
    if (all == 1) {
       SUMA_LH("Sending all dset at once");
-      ngr = THD_dataset_to_niml( dset ) ;
-      NI_set_attribute( ngr , "AFNI_prefix" , DSET_PREFIX(dset) ) ;
+      ngr = THD_dataset_to_niml( SS2A->dset ) ;
+      NI_set_attribute( ngr , "AFNI_prefix" , DSET_PREFIX(SS2A->dset) ) ;
+      if (SS2A->at_sb >= 0) {
+         if (DSET_NVALS(SS2A->dset) != 1) {
+            SUMA_S_Warn("Not sure what happens when using"
+                        "at_sb with more than one sub-brick");
+         }
+         nel = SUMA_FindNgrNamedElement(ngr, "VOLUME_DATA");
+         NI_SET_INT(nel, "AFNI_index", SS2A->at_sb);
+      }
       NI_write_element(ns, ngr, NI_BINARY_MODE);
       NI_free_element(ngr); ngr = NULL;
       SUMA_LH("Done.");
    } else {
       SUMA_SL_Warn("Sending one sub-brick at a time NOT TESTED IN SUMA YET");
-      ngr = THD_nimlize_dsetatr( dset ) ;   /* header only */
-      NI_set_attribute( ngr , "AFNI_prefix" , DSET_PREFIX(dset) ) ;
+      ngr = THD_nimlize_dsetatr( SS2A->dset ) ;   /* header only */
+      NI_set_attribute( ngr , "AFNI_prefix" , DSET_PREFIX(SS2A->dset) ) ;
       NI_write_procins( ns , "keep_reading" ) ;
       NI_write_element( ns, ngr, NI_BINARY_MODE ) ;
       NI_free_element( ngr ) ; ngr = NULL;
-      for( iv=0 ; iv < DSET_NVALS(dset) ; iv++ ){
-         nel = THD_subbrick_to_niml( dset , iv , SBFLAG_INDEX ) ;
+      for( iv=0 ; iv < DSET_NVALS(SS2A->dset) ; iv++ ){
+         nel = THD_subbrick_to_niml( SS2A->dset , iv , SBFLAG_INDEX ) ;
          NI_write_element( ns , nel , NI_BINARY_MODE ) ;
          NI_free_element(nel) ; nel = NULL;
       }

@@ -2195,3 +2195,108 @@ void AFNI_speak( char *string , int nofork ){ return; }  /* dummy function */
 void AFNI_speak_setvoice( char *vvv ){ return; }
 
 #endif
+
+/****************************************************************************/
+#define MIN_SIZE   4
+#define MAX_SIZE  26
+#define MIN_DIST   4
+#define MIN_WIDTH  8
+#define WIDTH_ADD  8
+#define FINISHED  50
+#define rnd(x)    (lrand48() % (x))
+
+/*--------------------------------------------------------------------------*/
+
+static int calc_xloc(int width , int twid )
+{
+   int xloc = rnd(twid+MIN_WIDTH) - MIN_WIDTH;
+   if ((xloc + width) >= twid ) xloc = twid - width-1;
+   else if (xloc < 0 )          xloc = 0;
+   return xloc;
+}
+
+void MCW_melt_widget( Widget w )
+{
+   Display *dpy;
+   Window win , rin ;
+   GC copygc, fillgc;
+   int screen , rww,rhh,planes ;
+   unsigned long vmask;
+   XSetWindowAttributes xswat;
+   XGCValues gcvals;
+   int finished=0;
+   int width, xloc, yloc, dist, size, i , slow ;
+   short *heights;
+
+                       if(   w == NULL         ) return ;
+                       if( ! XtIsRealized(w)   ) return ;
+                       if( ! XtIsManaged(w)    ) return ;
+                       if( ! XtIsWidget(w)     ) return ;
+   rin = XtWindow(w) ; if( rin == (Window)NULL ) return ;
+
+   MCW_widget_geom( w , &rww , &rhh , NULL,NULL ) ;
+   if( rww < MIN_WIDTH+FINISHED || rhh < 2*MIN_SIZE ) return ;
+
+   dpy = XtDisplay(w) ; screen = DefaultScreen(dpy);
+
+   planes = DefaultDepthOfScreen( XtScreen(w) ) ;
+
+   xswat.override_redirect = True;
+   xswat.do_not_propagate_mask = KeyPressMask    | KeyReleaseMask   |
+                                 ButtonPressMask | ButtonReleaseMask ;
+   vmask = CWOverrideRedirect | CWDontPropagate;
+   win = XCreateWindow( dpy, rin , 0, 0,  rww , rhh ,
+                        0, CopyFromParent, CopyFromParent, CopyFromParent,
+                        vmask, &xswat);
+   XMapWindow(dpy, win);
+
+   gcvals.graphics_exposures = False;
+   gcvals.foreground = 1;
+   gcvals.background = 0;
+   copygc = XCreateGC(dpy, win,
+                      GCForeground | GCBackground | GCGraphicsExposures,
+                      &gcvals);
+
+   gcvals.foreground = (lrand48()%2==0) ? BlackPixel(dpy,screen)
+                                        : WhitePixel(dpy,screen) ;
+
+   fillgc = XCreateGC(dpy, win, GCForeground, &gcvals);
+
+   slow = (rww*rhh) / 34567 ;  /* larger ==> faster */
+
+   XSync(dpy,0); if( slow < 0 ) slow = -slow ;
+
+   heights = (short *) calloc(sizeof(short), rww+1 );
+
+   while (1){
+      width = rnd(MIN_WIDTH) + WIDTH_ADD;
+
+      xloc = calc_xloc(width,rww); yloc = rhh ;
+      for (i = xloc; i < (xloc + width); i++) yloc = MIN(yloc, heights[i]);
+      if (yloc == rhh) continue;
+
+      dist = rnd(yloc/8 + MIN_DIST);
+      size = rnd(MAX(yloc/4 + MIN_SIZE, MAX_SIZE));
+
+      XCopyArea(dpy, win, win, copygc,
+                xloc, yloc, width, size, xloc, yloc + dist);
+      XFillRectangle(dpy, win, fillgc,
+                     xloc, yloc, width, dist);
+      if( slow > 0 && rnd(slow)==0 ) RWC_sleep(1);
+      if( rnd(33) == 0 ) XSync(dpy,0) ;
+      yloc += dist;
+      for (i = xloc; i < (xloc + width); i++){
+        if( (heights[i] < (rhh - MIN_SIZE)) && (yloc >= (rhh - MIN_SIZE)) )
+          finished++;
+        heights[i] = MAX(heights[i], yloc);
+      }
+      if (finished >= (rww - FINISHED)){
+        XDestroyWindow(dpy,win); XFreeGC(dpy,copygc); XFreeGC(dpy,fillgc);
+        XSync(dpy,0); RWC_sleep(200); free(heights); return;
+      }
+#if 0
+      gcvals.foreground = (lrand48()%3) ? BlackPixel(dpy,screen) : WhitePixel(dpy,screen) ;
+      XChangeGC(dpy, fillgc , GCForeground, &gcvals);
+#endif
+   }
+}

@@ -10,7 +10,7 @@
  */
 
 /*----------------------------------------------------------------------
-  $Id: plug_crender.c,v 1.55 2010/11/04 19:00:41 rwcox Exp $
+  $Id: plug_crender.c,v 1.57 2011/05/26 15:35:25 ziad Exp $
   ----------------------------------------------------------------------
 */
 
@@ -2137,7 +2137,7 @@ ENTRY( "RCREND_reload_dataset" );
          sublist[0] = 1;  sublist[1] = dset_ival;
          fprintf(stderr, "++ reorienting underlay as rai...");
          gcr.dset_or = r_new_resam_dset(dset, NULL, 0,0,0, "rai",
-                                        RESAM_NN_TYPE, sublist, 1);
+                                        RESAM_NN_TYPE, sublist, 1, 0);
          fprintf(stderr, " done\n");
       }
 
@@ -5900,7 +5900,7 @@ ENTRY( "RCREND_func_widgets" );
                                             MCW_BB_noframe ,
                                             RCREND_see_ttatlas_CB , NULL ) ;
 
-     if( TT_retrieve_atlas() == NULL )
+     if( TT_retrieve_atlas_dset("TT_Daemon",0) == NULL )
        XtSetSensitive( wfunc_see_ttatlas_bbox->wrowcol , False ) ;
 
      XtManageChild(wrc) ;                                          /* 24 Jul 2001 */
@@ -6905,7 +6905,7 @@ ENTRY( "RCREND_reload_func_dset" );
             sublist[0] = 2;     /* normal case, get 2 bricks */
 
          gcr.fset_or = r_new_resam_dset(func_dset, gcr.mset, 0,0,0, NULL,
-                                        RESAM_NN_TYPE, sublist, 1);
+                                        RESAM_NN_TYPE, sublist, 1, 0);
          fprintf(stderr, " done\n");
       }
 
@@ -7221,10 +7221,11 @@ ENTRY( "RCREND_overlay_ttatlas" );
 
    /* 01 Aug 2001: retrieve Atlas dataset depending on size of brick */
 #if 1
-   dseTT = TT_retrieve_atlas_nz(ovim->nz) ;
+   dseTT = TT_retrieve_atlas_dset_nz(ovim->nz) ;
                                  if( dseTT == NULL ) RET("no dataset\n") ;
 #else
-   dseTT = TT_retrieve_atlas() ; if( dseTT == NULL ) RET("no dataset\n") ;
+   dseTT = TT_retrieve_atlas_dset("TT_Daemon",0) ; 
+   if( dseTT == NULL ) RET("no dataset\n") ;
 #endif
 
    if( DSET_NVOX(dseTT) != nvox )                    RET("dataset mismatch\n");

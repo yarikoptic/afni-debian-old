@@ -70,7 +70,9 @@ typedef struct {
       int disable_done ;      /* 21 Aug 2008 [rickr] */
 
       int yes_niml ;          /* 28 Feb 2002 */
-      int port_niml ;         /* 10 Dec 2002 */
+               
+               /* port_niml no longer in use. ZSS June 2011 */
+               /* int port_niml ;         10 Dec 2002 */
 
       char * script_fname ;   /* 21 Jan 2003 */
 } AF_options ;
@@ -445,6 +447,9 @@ typedef struct {
   int coord_mode ;
   int receive_on ;
   float hbot,htop ;
+
+  Widget     splot_pb , splot_clear_pb ;
+  MRI_IMAGE *splotim ;       /* selected from spplot_pb */
 } AFNI_clu_widgets ;      /** not yet used **/
 
 extern void CLU_free_table( CLU_threshtable *ctab ) ;
@@ -519,19 +524,19 @@ typedef struct {
 /*---*/
 
 typedef struct {
-      Widget     frame , rowcol ;
-      MCW_bbox * view_bbox ;
+      Widget    frame , rowcol ;
+      MCW_bbox *view_bbox ;
 
-      Widget     marks_frame , marks_rowcol ;
-      Widget     define_marks_pb ;
-      MCW_bbox * see_marks_bbox ;
-      int        marks_enabled ;
+      Widget    marks_frame , marks_rowcol ;
+      Widget    define_marks_pb ;
+      MCW_bbox *see_marks_bbox ;
+      int       marks_enabled ;
 
-      Widget     func_frame , func_rowcol ;
-      Widget     define_func_pb ;
-      MCW_bbox * see_func_bbox ;
+      Widget    func_frame , func_rowcol ;
+      Widget    define_func_pb ;
+      MCW_bbox *see_func_bbox ;
 
-      Widget     define_dmode_pb ;
+      Widget    define_dmode_pb ;
 
       Widget dataset_frame     , dataset_rowcol    ,
              choose_anat_pb    , choose_func_pb    ,
@@ -838,6 +843,9 @@ typedef struct {
    Widget hidden_broutim_pb ;  /* 06 Jun 2005 */
    Widget hidden_broutext_pb;  /* 21 Dec 2005 */
    Widget hidden_splashes_pb;  /* 12 Sep 2007 */
+   Widget hidden_uscon_pb   ;  /* 30 Dec 2010 */
+   Widget hidden_usdecl_pb  ;  /* 06 Jan 2011 */
+   Widget hidden_melter_pb  ;  /* 18 Feb 2011 */
 
 #endif  /* USE_HIDDEN */
 
@@ -1000,6 +1008,10 @@ typedef struct {
 
 #define IM3D_OPEN(ii)  (IM3D_VALID(ii) && (ii)->opened)
 
+#define IM3D_HAVEIM(ii) ((ii)->s123 != NULL || (ii)->s231 != NULL || (ii)->s312 != NULL)
+#define IM3D_HAVEGR(ii) ((ii)->g123 != NULL || (ii)->g231 != NULL || (ii)->g312 != NULL)
+#define IM3D_FUNKY(ii)  (IM3D_OPEN(ii) && IM3D_HAVEIM(ii) && (ii)->vinfo->func_visible)
+
 #define ISVALID_IM3D(ii) IM3D_VALID(ii)
 
 #define AFNI_IGNORE_NOTHING    0
@@ -1055,6 +1067,7 @@ typedef struct Three_D_View {
       int cont_pos_only ;
       int cont_autorange;
       float cont_range_fval;
+      int cont_pbar_index, int_pbar_index;
       int first_integral;
 } Three_D_View ;
 
@@ -1239,6 +1252,10 @@ extern void AFNI_initialize_controller( Three_D_View * ) ;
 extern void AFNI_purge_dsets(int) ;
 extern void AFNI_purge_unused_dsets(void) ;
 extern int AFNI_controller_index( Three_D_View * ) ;
+
+extern void AFNI_sigfunc_alrm(int sig) ;
+#undef  AFexit
+#define AFexit AFNI_sigfunc_alrm
 
 extern void AFNI_inconstancy_check( Three_D_View *, THD_3dim_dataset * ); /* 06 Sep 2006 */
 
@@ -1688,6 +1705,7 @@ extern Boolean AFNI_refashion_dataset( Three_D_View * ,
 #define REDISPLAY_OPTIONAL 0
 #define REDISPLAY_OVERLAY  1
 #define REDISPLAY_ALL      2
+#define REDISPLAY_FLASH    3
 
 extern void AFNI_set_viewpoint( Three_D_View * , int,int,int , int ) ;
 extern void AFNI_set_index_viewpoint( Three_D_View *, int, int );
@@ -2063,7 +2081,7 @@ extern int  AFNI_needs_dset_tin(void) ;
 /*** June 1995: modified to allow input via XGetDefault ***/
 
 #define DEFAULT_NGRAY   80
-#define DEFAULT_GAMMA   1.0
+#define DEFAULT_GAMMA   1.888
 
 #define DEFAULT_NCOLOVR 40
 #define MAX_NCOLOVR     199
@@ -2082,70 +2100,13 @@ extern int  AFNI_needs_dset_tin(void) ;
 
 void AFNI_load_defaults( Widget w ) ;
 
-#ifdef MAIN
-
-/** default colors **/
-
-static char * INIT_def_colovr[DEFAULT_NCOLOVR] = {
-   "#ffff00" , "#ffcc00"   , "#ff9900"  , "#ff6900" , "#ff4400" , "#ff0000" ,
-   "#0000ff" , "#0044ff"   , "#0069ff"  , "#0099ff" , "#00ccff" , "#00ffff" ,
-   "green"   , "limegreen" , "violet"   , "hotpink" ,
-   "white"   , "#dddddd"   , "#bbbbbb"  , "#010101" ,
-
-   "#cc1033" , "#992066"   , "#663199"  , "#3341cc" ,  /* RGB cycle */
-   "#0051ff" , "#0074cc"   , "#009799"  , "#00b966" ,  /* 10 Jun 2002 */
-   "#00dc33" , "#00ff00"   , "#33ff00"  , "#66ff00" ,
-   "#99ff00" , "#ccff00"   , "#ffff00"  , "#ffcc00" ,
-   "#ff9900" , "#ff6600"   , "#ff3300"  , "#ff0000"
-} ;
-
 #define RGBCYC_COUNT  20  /* 10 Jun 2002: number in RGB cycle */
 #define RGBCYC_FIRST  20  /*              index of first one */
 
-static char * INIT_def_labovr[DEFAULT_NCOLOVR] = {
-   "yellow" , "yell-oran" , "oran-yell" , "orange"   , "oran-red" , "red"   ,
-   "dk-blue", "blue"      , "lt-blue1"  , "lt-blue2" , "blue-cyan", "cyan"  ,
-   "green"  , "limegreen" , "violet"    , "hotpink"  ,
-   "white"  , "gry-dd"    , "gry-bb"    , "black"    ,
+/** default colors **/  /* Used to be inside #ifdef MAIN */
 
-   "rbgyr20_01" , "rbgyr20_02" , "rbgyr20_03" , "rbgyr20_04" , /* RBG cycle */
-   "rbgyr20_05" , "rbgyr20_06" , "rbgyr20_07" , "rbgyr20_08" , /* 10 Jun 2002 */
-   "rbgyr20_09" , "rbgyr20_10" , "rbgyr20_11" , "rbgyr20_12" ,
-   "rbgyr20_13" , "rbgyr20_14" , "rbgyr20_15" , "rbgyr20_16" ,
-   "rbgyr20_17" , "rbgyr20_18" , "rbgyr20_19" , "rbgyr20_20"
-} ;
-
-/** actual colors (from defaults above, or from X11 resources) **/
-
-char * INIT_colovr[MAX_NCOLOVR] ;
-char * INIT_labovr[MAX_NCOLOVR] ;
-
-/** misc constants **/
-
-int INIT_ngray           = DEFAULT_NGRAY ,
-    INIT_ncolovr         = DEFAULT_NCOLOVR ,
-    INIT_crosshair_color = DEFAULT_CROSSHAIR_COLOR ,
-    INIT_marks1_color    = DEFAULT_PRIMARY_COLOR ,
-    INIT_marks2_color    = DEFAULT_SECONDARY_COLOR ,
-    INIT_marks_size      = DEFAULT_MARK_SIZE ,
-    INIT_marks_gap       = DEFAULT_MARK_GAP ,
-    INIT_crosshair_gap   = DEFAULT_CROSSHAIR_GAP ,
-    INIT_purge           = 0 ,
-    INIT_posfunc         = 0 ,
-    INIT_bigscroll       = 5 ,
-    INIT_resam_anat      = RESAM_LINEAR_TYPE ,
-    INIT_resam_func      = RESAM_NN_TYPE ,
-    INIT_resam_thr       = RESAM_NN_TYPE   ;
-
-float INIT_gamma         = DEFAULT_GAMMA ,
-      INIT_resam_vox     = DEFAULT_RESAMPLE_VOX ;
-
-int INIT_ignore           = 0 ;
-int INIT_tlrc_big         = 1 ;
-int INIT_montage_periodic = 1 ;
-int INIT_fim_polort       = 1 ; /* 30 May 1999 */
-
-#else
+extern char * INIT_def_colovr[]; /* now initialized in pbar_color_defs.c */
+extern char * INIT_def_labovr[]; /* now initialized in pbar_color_defs.c */
 
 extern int INIT_ngray           ,
            INIT_ncolovr         ,
@@ -2174,7 +2135,6 @@ extern int INIT_fim_polort ;
 extern char * INIT_colovr[] ;
 extern char * INIT_labovr[] ;
 
-#endif /* MAIN */
 
 /**********************************************/
 /***** Setup constants for the color pbar *****/
@@ -2183,78 +2143,16 @@ extern void AFNI_setup_inten_pbar( Three_D_View * ) ;
 
 #define DEFAULT_PANES_POS  8
 #define DEFAULT_PANES_SGN  9
-
-#ifdef MAIN
-int INIT_panes_pos  = DEFAULT_PANES_POS ,
-    INIT_panes_sgn  = DEFAULT_PANES_SGN ,
-    INIT_panes_hide = 0 ;
-
 #define NPANE_INIT 10
 
-float INIT_pval_pos[NPANE_MAX+1][NPANE_MAX+1] = {
-  { 0 },                                                                        /* 0 panes */
-  { 1.00, 0.00 },                                                               /* 1 */
-  { 1.00, 0.50,  0.00 },                                                        /* 2 */
-  { 1.00, 0.67,  0.33,  0.00 },                                                 /* 3 */
-  { 1.00, 0.75,  0.50,  0.25,  0.00 },                                          /* 4 */
-  { 1.00, 0.80,  0.60,  0.40,  0.20,  0.00 },                                   /* 5 */
-  { 1.00, 0.84,  0.67,  0.50,  0.33,  0.16,  0.00 },                            /* 6 */
-  { 1.00, 0.90,  0.75,  0.60,  0.45,  0.30,  0.15,  0.00 },                     /* 7 */
-  { 1.00, 0.80,  0.70,  0.60,  0.50,  0.40,  0.30,  0.15,  0.00 },              /* 8 */
-  { 1.00, 0.90,  0.80,  0.70,  0.60,  0.50,  0.25,  0.15,  0.05,  0.00 },       /* 9 */
-  { 1.00, 0.90,  0.80,  0.70,  0.60,  0.50,  0.40,  0.30,  0.20,  0.10,  0.00 } /*10 */
-} ;
-
-int INIT_ovin_pos[NPANE_MAX+1][NPANE_MAX+1] = {
-  { 0 } ,                                    /* 0 panes */
-  { 1 } ,                                    /* 1 */
-  { 1 , 0 } ,                                /* 2 */
-  { 1 , 6 , 0 } ,                            /* 3 */
-  { 1 , 4 , 6 , 0 } ,                        /* 4 */
-  { 1 , 3 , 5 , 6 , 0 } ,                    /* 5 */
-  { 1 , 2 , 3 , 5 , 6 , 0 } ,                /* 6 */
-  { 1 , 2 , 3 , 4 , 5 , 6 , 0 } ,            /* 7 */
-  { 1 , 2 , 3 , 4 , 5 , 6 ,16 , 0 } ,        /* 8 */
-  { 1 , 2 , 3 , 4 , 5 , 6 ,16 ,15 , 0 } ,    /* 9 */
-  { 1 , 2 , 3 , 5 , 5 , 6 ,16 ,15 , 7 , 0 }  /*10 */
-} ;
-
-float INIT_pval_sgn[NPANE_MAX+1][NPANE_MAX+1] = {
-  { 0 },                                                                        /* 0 panes */
-  { 1.00,-1.00 },                                                               /* 1 */
-  { 1.00, 0.00, -1.00 },                                                        /* 2 */
-  { 1.00, 0.05, -0.05, -1.00 },                                                 /* 3 */
-  { 1.00, 0.50,  0.00, -0.50, -1.00 },                                          /* 4 */
-  { 1.00, 0.50,  0.05, -0.05, -0.50, -1.00 },                                   /* 5 */
-  { 1.00, 0.66,  0.33,  0.00, -0.33, -0.66, -1.00 },                            /* 6 */
-  { 1.00, 0.66,  0.33,  0.05, -0.05, -0.33, -0.66, -1.00 },                     /* 7 */
-  { 1.00, 0.75,  0.50,  0.25,  0.00, -0.25, -0.50, -0.75, -1.00 },              /* 8 */
-  { 1.00, 0.75,  0.50,  0.25,  0.05, -0.05, -0.25, -0.50, -0.75, -1.00 },       /* 9 */
-  { 1.00, 0.80,  0.60,  0.40,  0.20,  0.00, -0.20, -0.40, -0.60, -0.80, -1.00 } /*10 */
-} ;
-
-int INIT_ovin_sgn[NPANE_MAX+1][NPANE_MAX+1] = {
-  { 0 } ,
-  { 1 } ,
-  { 1 , 11 } ,
-  { 1 , 0 , 11 } ,
-  { 1 , 4 ,  8 , 11 } ,
-  { 1 , 4 ,  0 ,  8 , 11 } ,
-  { 1 , 3 ,  5 ,  7 ,  9 , 11 } ,
-  { 1 , 3 ,  5 ,  0 ,  7 ,  9 , 11 } ,
-  { 1 , 2 ,  4 ,  5 ,  8 ,  9 , 10 , 11 } ,
-  { 1 , 2 ,  4 ,  5 ,  0 ,  8 ,  9 , 10 , 11 } ,
-  { 1 , 2 ,  3 ,  4 ,  5 ,  7 ,  8 ,  9 , 10 , 11 }
-} ;
-#else
-extern int INIT_panes_pos , INIT_panes_sgn , INIT_panes_hide ;
 
 extern float INIT_pval_pos[NPANE_MAX+1][NPANE_MAX+1] ;
 extern int   INIT_ovin_pos[NPANE_MAX+1][NPANE_MAX+1] ;
 
 extern float INIT_pval_sgn[NPANE_MAX+1][NPANE_MAX+1] ;
 extern int   INIT_ovin_sgn[NPANE_MAX+1][NPANE_MAX+1] ;
-#endif
+extern int INIT_panes_pos , INIT_panes_sgn , INIT_panes_hide ;
+
 
 #ifdef  __cplusplus
 }

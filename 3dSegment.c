@@ -4,7 +4,7 @@
 #include "afni.h"
 #include <stdio.h>
 #include <stdlib.h>
-#include "thd_ttatlas_query.h"
+#include "thd_atlas.h"
 
 #define SEG_UNKNOWN  0
 #define SEG_CSF      1
@@ -388,7 +388,10 @@ int mri_nstat_3dSeg( MRI_IMAGE *im, int *code_vec, int N_code, float *val_vec )
           }
           outval = mad;
         break ;
-
+        case NSTAT_KURT:
+          outval = 0;
+          ERROR_message("Not supported");
+          break;
         case NSTAT_P2SKEW:
             /* Pearson's second skewness coefficient */
           if (!medmaded) {

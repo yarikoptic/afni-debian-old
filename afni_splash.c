@@ -52,7 +52,7 @@ static int gcd( int m , int n ){
 }
 static int find_relprime_random( int n ) /* find one relatively prime to n */
 {
-   int dj , n5=n/5 , n2=3*n5 ;
+   int dj , n5=n/5 ;
    if( n5 < 2 ) return 1 ;
    do{ dj = lrand48() % n + 1 ; } while( gcd(n,dj) > 1 ) ;
    return dj ;
@@ -90,16 +90,20 @@ ENTRY("AFNI_splashdown") ;
    if( ppp != NULL ){
 #ifdef USE_FADING
     if( ISQ_REALZ(ppp->seq) && imspl != NULL ){  /* fade gently away */
-      byte *bspl ; int ii , nv , kk ; double et ;
-      bspl = mri_data_pointer(imspl) ;
-      nv   = (imspl->pixel_size) * (imspl->nvox) ;
-      et   = COX_clock_time() ;
-      do_write = 0 ;
-      for( kk=0 ; kk < 10 ; kk++ ){
-        for( ii=0 ; ii < nv ; ii++ ) bspl[ii] = (15*bspl[ii]) >> 4 ;
-        SPLASH_popup_image(handle,imspl) ;
-        drive_MCW_imseq( ppp->seq , isqDR_reimage , (XtPointer) 0 ) ;
-        if( COX_clock_time()-et > 1.234 ) break ;
+      if( AFNI_yesenv("AFNI_SPLASH_MELT") ){
+        MCW_melt_widget( ppp->seq->wform ) ;
+      } else {
+        byte *bspl ; int ii , nv , kk ; double et ;
+        bspl = mri_data_pointer(imspl) ;
+        nv   = (imspl->pixel_size) * (imspl->nvox) ;
+        et   = COX_clock_time() ;
+        do_write = 0 ;
+        for( kk=0 ; kk < 10 ; kk++ ){
+          for( ii=0 ; ii < nv ; ii++ ) bspl[ii] = (15*bspl[ii]) >> 4 ;
+          SPLASH_popup_image(handle,imspl) ;
+          drive_MCW_imseq( ppp->seq , isqDR_reimage , (XtPointer) 0 ) ;
+          if( COX_clock_time()-et > 1.234 ) break ;
+        }
       }
     }
 #endif
@@ -1098,7 +1102,7 @@ void AFNI_startup_layout_CB( XtPointer client_data , XtIntervalId *id )
 {
    char *fname = (char *) client_data ;
    int   nbuf , ii , goslow ;
-   char *fbuf , *fptr ;
+   char *fbuf=NULL , *fptr ;
    char lword[NWBUF] ;
 
    int  controller_mask[MAX_CONTROLLERS]           ;
@@ -1142,7 +1146,9 @@ ENTRY("AFNI_startup_layout_CB") ;
    /* read layout file */
    if( strcmp(fname,"GIMME_SOMETHING") != 0 ){
       fbuf = AFNI_suck_file(fname);
-   } else {                         /* ZSS Dec 2010. */
+   } else if ( ALLOW_realtime ) {
+      AFNI_splashdown(); EXRETURN;  /* no default in RT   4 Jan 2011 [rickr] */
+   } else {    /* ZSS Dec 2010. */
       fbuf = (char *)malloc(strlen(def_layout)+1);
       strcpy(fbuf, def_layout);
    }

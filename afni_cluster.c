@@ -331,7 +331,7 @@ static int scrolling      =  1 ;
 static void AFNI_clus_dsetlabel( Three_D_View *im3d )
 {
    AFNI_clu_widgets *cwid ;
-   char *str ;
+   char str[THD_MAX_NAME+66] ;
 
 ENTRY("AFNI_clus_dsetlabel") ;
 
@@ -339,9 +339,14 @@ ENTRY("AFNI_clus_dsetlabel") ;
    cwid = im3d->vwid->func->cwid ; if( cwid == NULL ) EXRETURN ;
 
    if( !ISVALID_DSET(cwid->dset) )
-     str = " [No Auxiliary Dataset selected yet] " ;
+     strcpy(str," [No Aux Dataset chosen]") ;
    else
-     str = THD_trailname( DSET_HEADNAME(cwid->dset) , SESSTRAIL+1 ) ;
+     sprintf(str,"Aux=%s",THD_trailname(DSET_HEADNAME(cwid->dset),SESSTRAIL)) ;
+
+   if( cwid->splotim != NULL )
+     sprintf(str+strlen(str)," Scat.1D=%s",cwid->splotim->name) ;
+   else
+     sprintf(str+strlen(str)," [Scat.1D cleared]") ;
 
    MCW_set_widget_label( cwid->dset_lab , str ) ;
    EXRETURN ;
@@ -472,7 +477,7 @@ ENTRY("AFNI_clus_make_widgets") ;
 #define VLINE(rr)                                                           \
      (void) XtVaCreateManagedWidget( "menu", xmSeparatorWidgetClass, (rr) , \
                                         XmNorientation   , XmVERTICAL    ,  \
-                                        XmNseparatorType , XmSINGLE_LINE ,  \
+                                        XmNseparatorType , XmDOUBLE_LINE ,  \
                                      NULL )
 #define HLINE(rr)                                                           \
    (void) XtVaCreateManagedWidget( "dialog", xmSeparatorWidgetClass, (rr) , \
@@ -685,7 +690,7 @@ ENTRY("AFNI_clus_make_widgets") ;
 
    /* row #2: dataset chooser */
 
-   xstr = XmStringCreateLtoR( "Choose Aux Dataset" , XmFONTLIST_DEFAULT_TAG ) ;
+   xstr = XmStringCreateLtoR( "Aux.Dset" , XmFONTLIST_DEFAULT_TAG ) ;
    cwid->dataset_pb = XtVaCreateManagedWidget(
            "menu" , xmPushButtonWidgetClass , rc ,
             XmNlabelString , xstr ,
@@ -695,23 +700,31 @@ ENTRY("AFNI_clus_make_widgets") ;
    XtAddCallback( cwid->dataset_pb, XmNactivateCallback, AFNI_clus_action_CB, im3d );
    MCW_register_hint( cwid->dataset_pb , "data for Plot/Save from cluster" ) ;
    MCW_register_help( cwid->dataset_pb ,
-                       "If you define an auxiliary dataset\n"
-                       "-- which must have the same grid\n"
-                       "   dimensions as the Overlay dataset --\n"
+                       "If you choose an Auxiliary Dataset\n"
+                       "  -- which must have the same grid     --\n"
+                       "  -- dimensions as the Overlay dataset --\n"
                        "then for each cluster, you can extract\n"
-                       "the corresponding data from that\n"
-                       "dataset and do various things with it:\n"
-                       "* Average it:                        'Mean'\n"
-                       "* Pointwise median:                  'Medn'\n"
-                       "* Compute first principal component: 'PC#1'\n"
-                       "* Histogram it:                      'Hist'\n"
-                       "And then either 'Plot' or 'Save' these\n"
-                       "results.  If you 'Save' these results,\n"
-                       "the text field (between 'SaveTabl and\n"
-                       "'SaveMsk') is used to define the output\n"
-                       "filename.  If the text field is just the\n"
-                       "string '-', then 'Save' writes to the terminal\n"
-                       "window (stdout), instead of a file."
+                       "the corresponding data from that dataset\n"
+                       "(sub-bricks 'From' until 'To') and do various\n"
+                       "things with these numbers:\n"
+                       "** Average them at each time-point:      'Mean'\n"
+                       "** Pointwise median:                     'Median'\n"
+                       "** Compute first principal component:    'PC#1'\n"
+                       "** Histogram all the values:             'Histog'\n"
+                       "** Scatterplot MEAN from each sub-brick: 'S:mean'\n"
+                       "** Scatterplot ALL values:               'S:all'\n"
+                       "   [-- Scat.1D button chooses x-axis for 'S:' --]\n"
+                       "And then either 'Plot' or 'Save' these results\n"
+                       "** If you 'Save' these results, the text field\n"
+                       "   (between 'SaveTabl and 'SaveMsk') is used to\n"
+                       "   define the output filename.\n"
+                       "** If this text field is just the string '-',\n"
+                       "   then 'Save' writes to the terminal window\n"
+                       "   (stdout), instead of a file.\n"
+                       "** If you set environment variable\n"
+                       "   AFNI_CLUSTER_EBAR to YES, then the 'Mean'\n"
+                       "   and 'Median' plots will also show error bars\n"
+                       "   (the biweight midvariance)."
                     ) ;
 
    /* row #2: 'from' and 'to' choosers */
@@ -721,37 +734,101 @@ ENTRY("AFNI_clus_make_widgets") ;
                                      NULL,NULL , NULL,NULL ) ;
    MCW_reghint_children( cwid->from_av->wrowcol ,
                          "first sub-brick to use from Aux Dataset" ) ;
-   XtVaSetValues( cwid->from_av->wtext , XmNcolumns , 6 , NULL ) ;
+   XtVaSetValues( cwid->from_av->wtext , XmNcolumns , 5 , NULL ) ;
 
    cwid->to_av = new_MCW_arrowval( rc , "To" , MCW_AV_downup ,
                                      0,MAX_INDEX,MAX_INDEX,MCW_AV_editext,0 ,
                                      NULL,NULL , NULL,NULL ) ;
    MCW_reghint_children( cwid->to_av->wrowcol ,
                          "last sub-brick to use from Aux Dataset" ) ;
-   XtVaSetValues( cwid->to_av->wtext , XmNcolumns , 6 , NULL ) ;
+   XtVaSetValues( cwid->to_av->wtext , XmNcolumns , 5 , NULL ) ;
 
    /* row #2: data processing method */
 
-   { static char *clab[4] = { "Mean" , "Medn" , "PC#1" , "Hist" } ;
-     cwid->aver_av = new_MCW_optmenu( rc , " " , 0,3,0,0 ,
+   VLINE(rc) ;
+
+   { static char *clab[6] = { "Mean", "Median", "PC#1", "Histog", "S:mean", "S:all" } ;
+     cwid->aver_av = new_MCW_optmenu( rc , " " , 0,5,0,0 ,
                                       NULL,NULL , MCW_av_substring_CB,clab ) ;
      MCW_reghint_children( cwid->aver_av->wrowcol ,
                            "Set data processing method for Plot/Save" ) ;
      MCW_reghelp_children( cwid->aver_av->wrowcol ,
                            "Defines how data extracted from the\n"
                            "Auxiliary Dataset will be processed:\n"
-                           "* Mean = averaged across voxels\n"
-                           "* Medn = median across voxels\n"
-                           "* PC#1 = compute first principal\n"
+                           "* Mean   = averaged across voxels\n"
+                           "* Median = median across voxels\n"
+                           "* PC#1   = compute first principal\n"
                            "         component vector\n"
-                           "* Hist = build a histogram across\n"
-                           "         voxels and sub-bricks\n"
+                           "* Histog = build a histogram across\n"
+                           "           voxels and sub-bricks\n"
+                           "* Error bars will be shown for 'Mean'\n"
+                           "  and 'Median' if environment variable\n"
+                           "  AFNI_CLUSTER_EBAR is set to YES.\n"
                            "* A hidden Button-3 popup menu on the\n"
                            "  cluster summary report label atop this\n"
                            "  window will let you choose the range\n"
-                           "  of data to be histogram-ized."
+                           "  of data to be histogram-ized.\n"
+                           "* The options 'S:all' and 'S:mean' allow\n"
+                           "  you to scatter plot all the data values\n"
+                           "  from the cluster -- or just the mean from\n"
+                           "  each sub-brick -- vs. an external 1D file,\n"
+                           "  which is chosen with the 'Scat.1D' button."
                          ) ;
    }
+
+   VLINE(rc) ;
+
+   /* row #2: splot choosers */
+
+   xstr = XmStringCreateLtoR( "Scat.1D" , XmFONTLIST_DEFAULT_TAG ) ;
+   cwid->splot_pb = XtVaCreateManagedWidget(
+           "menu" , xmPushButtonWidgetClass , rc ,
+            XmNlabelString , xstr ,
+            XmNtraversalOn , True  ,
+         NULL ) ;
+   XmStringFree(xstr) ;
+   XtAddCallback( cwid->splot_pb, XmNactivateCallback, AFNI_clus_action_CB, im3d );
+   MCW_register_hint( cwid->splot_pb , "pick ScatterPlot x-axis file" ) ;
+   MCW_register_help( cwid->splot_pb ,
+                      "* This button lets you choose a 1D file\n"
+                      "   to use as the x-axis values for the\n"
+                      "   scatterplot 'S:all' and 'S:mean' options.\n"
+                      "* This 1D file should have as many lines\n"
+                      "   as the Aux.Dset has sub-bricks; the\n"
+                      "   initial 'From' lines will be skipped.\n"
+                      "* The purpose is to let you plot the\n"
+                      "   beta values from multiple subjects\n"
+                      "   vs. some subject-level covariate.\n"
+                      "* If you don't choose a Scat.1D file,\n"
+                      "   (or 'Clear' it later), then the\n"
+                      "   sub-brick index is used to define\n"
+                      "   the x-axis values.\n"
+                      "* For the 'S:mean' option, the program\n"
+                      "   computes the correlation coefficient\n"
+                      "   between the x-axis and y-axis values\n"
+                      "   (R) and displays that on top of the\n"
+                      "   scatterplot.  It also shows a\n"
+                      "   95%% confidence interval for R,\n"
+                      "   computed via a bias-corrected\n"
+                      "   (BC) bootstrap method."
+                    ) ;
+
+   xstr = XmStringCreateLtoR( "Clear" , XmFONTLIST_DEFAULT_TAG ) ;
+   cwid->splot_clear_pb = XtVaCreateManagedWidget(
+           "menu" , xmPushButtonWidgetClass , rc ,
+            XmNlabelString , xstr ,
+            XmNtraversalOn , True  ,
+         NULL ) ;
+   XmStringFree(xstr) ;
+   XtAddCallback( cwid->splot_clear_pb, XmNactivateCallback, AFNI_clus_action_CB, im3d );
+   MCW_register_hint( cwid->splot_clear_pb , "clear ScatterPlot x-axis file" ) ;
+   MCW_register_help( cwid->splot_clear_pb ,
+                      "Erase the Scat.1D file and\n"
+                      "just use the sub-brick index\n"
+                      "as the x-axis for the various\n"
+                      "scatterplot options."
+                    ) ;
+   cwid->splotim = NULL ;
 
    XtManageChild(rc) ;  /* row #2 is finished */
 
@@ -1196,14 +1273,34 @@ static void AFNI_clus_finalize_dataset_CB( Widget w, XtPointer cd, MCW_choose_cb
    int ival ;
 
 ENTRY("AFNI_clus_finalize_dataset_CB") ;
-   if( !IM3D_OPEN(im3d) || cbs == NULL ) EXRETURN ;
+   if( !IM3D_OPEN(im3d) || cbs == NULL ){ POPDOWN_strlist_chooser; EXRETURN; }
    cwid = im3d->vwid->func->cwid ;
-   if( cwid == NULL || !cwid->is_open ){ POPDOWN_strlist_chooser; EXRETURN; }
+   if( cwid == NULL || !cwid->is_open ) { POPDOWN_strlist_chooser; EXRETURN; }
 
    ival = cbs->ival ;
    if( ival < 0 || ival >= cdds.ndset ) EXRETURN ;
    dset = cdds.dset[ival] ;
    cwid->dset = ISVALID_DSET(dset) ? dset : NULL ;
+   AFNI_clus_dsetlabel(im3d) ;
+   EXRETURN ;
+}
+
+/*---------------------------------------------------------------------------*/
+
+static void AFNI_clus_finalize_scat1D_CB( Widget w, XtPointer cd, MCW_choose_cbs *cbs )
+{
+   Three_D_View *im3d = (Three_D_View *)cd ;
+   AFNI_clu_widgets *cwid ;
+   MRI_IMAGE *tim ; int ival ;
+
+ENTRY("AFNI_clus_finalize_scat1D_CB") ;
+   if( !IM3D_OPEN(im3d) || cbs == NULL ){ POPDOWN_timeseries_chooser; EXRETURN; }
+   cwid = im3d->vwid->func->cwid ;
+   if( cwid == NULL || !cwid->is_open ) { POPDOWN_timeseries_chooser; EXRETURN; }
+
+   ival = cbs->ival ;
+   if( ival >= 0 && ival < IMARR_COUNT(GLOBAL_library.timeseries) )
+     cwid->splotim = IMARR_SUBIMAGE(GLOBAL_library.timeseries,ival) ;
    AFNI_clus_dsetlabel(im3d) ;
    EXRETURN ;
 }
@@ -1249,6 +1346,22 @@ ENTRY("AFNI_clus_action_CB") ;
                                           "** available to graph **\n " ,
                           MCW_USER_KILL | MCW_TIMER_KILL ) ;
 
+     EXRETURN ;
+   }
+
+   /*--------- Scat.1D button ----------*/
+
+   if( w == cwid->splot_pb && IMARR_COUNT(GLOBAL_library.timeseries) > 0 ){
+     int init_ts = AFNI_ts_in_library( cwid->splotim ) ;
+     MCW_choose_timeseries( cwid->top_lab , "Scatterplot x-axis" ,
+                                   GLOBAL_library.timeseries , init_ts ,
+                                   AFNI_clus_finalize_scat1D_CB , (XtPointer)im3d ) ;
+     EXRETURN ;
+   }
+
+   if( w == cwid->splot_clear_pb ){
+     cwid->splotim = NULL ;
+     AFNI_clus_dsetlabel(im3d) ;
      EXRETURN ;
    }
 
@@ -1447,6 +1560,9 @@ ENTRY("AFNI_clus_action_CB") ;
        int domedn = (cwid->aver_av->ival == 1) ;
        int dopc   = (cwid->aver_av->ival == 2) ;
        int dohist = (cwid->aver_av->ival == 3) ;
+       int dosmea = (cwid->aver_av->ival == 4) ;
+       int dosall = (cwid->aver_av->ival == 5) ;
+       int doscat = (dosall || dosmea) ;
        MRI_IMARR *imar ; MRI_IMAGE *im=NULL ; int nx,ibot,itop ;
        MRI_IMAGE *sim=NULL ;
 
@@ -1457,6 +1573,14 @@ ENTRY("AFNI_clus_action_CB") ;
          MCW_popup_message( w , " \n"
                                 "** Can't get data!!! **\n"
                                 "** Need Aux Dataset! **\n " ,
+                            MCW_USER_KILL | MCW_TIMER_KILL ) ;
+         SHOW_AFNI_READY; EXRETURN ;
+       }
+
+       if( doscat && dosave ){
+         MCW_popup_message( w , " \n"
+                                "** Can't use Scatterplot **\n"
+                                "** and Save together :-( **\n " ,
                             MCW_USER_KILL | MCW_TIMER_KILL ) ;
          SHOW_AFNI_READY; EXRETURN ;
        }
@@ -1519,7 +1643,7 @@ ENTRY("AFNI_clus_action_CB") ;
            sprintf(ylab,"Cluster #%d = %d vox", ii+1 , IMARR_COUNT(imar) ) ;
            strcat(ylab,(dosqrt)?" [SqrtHist]" : " [Hist]") ;
            sprintf(tlab,"\\noesc %s[%d..%d]",
-                   THD_trailname(DSET_HEADNAME(cwid->dset),SESSTRAIL+1) , ibot,itop ) ;
+                   THD_trailname(DSET_HEADNAME(cwid->dset),SESSTRAIL) , ibot,itop ) ;
            plot_ts_xypush(0,-1) ; plot_ts_setthik(0.005f) ;
            PLUTO_histoplot_f( nbin,hbot,htop , hbin , xlab,ylab,tlab , 0,NULL ) ;
 
@@ -1561,15 +1685,16 @@ ENTRY("AFNI_clus_action_CB") ;
          }
 
          free((void *)hbin); DESTROY_IMARR(imar); SHOW_AFNI_READY; EXRETURN;
-       }
+
+       } /* done with histogram-ification */
 
        /*------------ time series processing ------------*/
 
-       if( (domean || dopc || domedn) && itop == ibot ){
+       if( (domean || dopc || domedn || dosmea) && itop <= ibot ){
          MCW_popup_message( w , " \n"
-                                "** Need at least two    **\n"
-                                "** time series indexes  **\n"
-                                "** for Mean, Medn, PC#1 **\n " ,
+                                "** Need at least two   **\n"
+                                "** time series indexes **\n"
+                                "** for graphing that!  **\n " ,
                             MCW_USER_KILL | MCW_TIMER_KILL ) ;
          DESTROY_IMARR(imar) ; SHOW_AFNI_READY; EXRETURN ;
        }
@@ -1584,11 +1709,71 @@ ENTRY("AFNI_clus_action_CB") ;
          im = mri_meanvector( imar , ibot,itop ) ;
          if( !dosave && AFNI_yesenv("AFNI_CLUSTER_EBAR") )
            sim = mri_MMBvector( imar,ibot,itop,2 ) ;
-       } else if( domedn ){            /*-------- Medn --------*/
+       } else if( domedn ){            /*-------- Median --------*/
          im = mri_MMBvector( imar , ibot,itop,0 ) ;
          if( !dosave && AFNI_yesenv("AFNI_CLUSTER_EBAR") )
            sim = mri_MMBvector( imar,ibot,itop,2 ) ;
-       }
+       } else if( doscat ){  /* scatterplot */
+         float *xar, *yar ; int nix, niy, nixy, jj,kk ;
+         float a=0,b=0,pcor=0,p025=0,p975=0 ;
+         char xlab[64] , ylab[64] , tlab[THD_MAX_NAME+2] ;
+         if( dosmea ){
+           im = mri_meanvector( imar , ibot,itop ) ; xar = MRI_FLOAT_PTR(im) ;
+           nix = im->nx ; niy = 1 ; nixy = nix*niy ;
+           yar = (float *)malloc(sizeof(float)*nixy) ;
+           for( jj=0 ; jj < nix ; jj ++ ) yar[jj] = xar[jj] ;
+           mri_free(im) ; im = NULL ;
+         } else if( dosall ){
+           nix = (itop-ibot+1) ; niy = IMARR_COUNT(imar) ; nixy = nix*niy ;
+           yar = (float *)malloc(sizeof(float)*nixy) ;
+           for( kk=0 ; kk < niy ; kk++ ){
+             xar= MRI_FLOAT_PTR(IMARR_SUBIM(imar,kk)) ;
+             for( jj=0 ; jj < nix ; jj++ ) yar[jj+kk*nix] = xar[jj] ;
+           }
+         }
+         xar = (float *)malloc(sizeof(float)*nixy) ;
+         if( cwid->splotim != NULL && cwid->splotim->nx >= nix+ibot ){
+           float *spar = MRI_FLOAT_PTR(cwid->splotim) ;
+           for( kk=0 ; kk < niy ; kk++ ){
+             for( jj=0 ; jj < nix ; jj++ ) xar[jj+kk*nix] = spar[jj+ibot] ;
+           }
+           sprintf(xlab,"%.62s",cwid->splotim->name) ;
+         } else {
+           for( kk=0 ; kk < niy ; kk++ )
+             for( jj=0 ; jj < nix ; jj++ ) xar[jj+kk*nix] = jj+ibot ;
+           strcpy(xlab,"Index") ;
+           if( cwid->splotim != NULL )
+             WARNING_message("Scat.1D file [%s] too short [%d] for dataset [%d]",
+                             cwid->splotim->name , cwid->splotim->nx , nix+ibot  ) ;
+         }
+         if( niy == 1 && nix >= 9 ){
+           float_triple aaa,bbb,rrr ;
+           THD_pearson_corr_boot( nix,xar,yar , &rrr,&aaa,&bbb ) ;
+           pcor = rrr.a ; p025 = rrr.b ; p975 = rrr.c ; a = aaa.a ; b = bbb.a ;
+         }
+         sprintf(ylab,"Cluster #%d = %d voxels",ii+1,IMARR_COUNT(imar)) ;
+         sprintf(tlab,"\\noesc %s[%d..%d]",
+                 DSET_FILECODE(cwid->dset), ibot,itop ) ;
+         if( pcor != 0.0f ){
+           if( p025 < pcor && p975 > pcor ){
+             if( strlen(tlab) > 30 )
+               sprintf(tlab+strlen(tlab),
+                       "\\esc\\red  R=%.2f\\in[%.2f..%.2f]_{95%%}",pcor,p025,p975) ;
+             else
+               sprintf(tlab+strlen(tlab),
+                       "\\esc\\red  R=%.3f\\in[%.3f..%.3f]_{95%%}",pcor,p025,p975) ;
+             if( p025*p975 > 0.0f )
+               strcat(tlab,"^{*}") ;
+           } else {
+               sprintf(tlab+strlen(tlab),"\\esc\\red  R=%.3f\\black",pcor) ;
+           }
+           strcat(tlab,"\\black") ;
+         }
+         PLUTO_set_xypush( cwid->splotim == NULL , 0 ) ;
+         PLUTO_scatterplot( nixy,xar,yar , xlab,ylab,tlab , a,b ) ;
+         PLUTO_set_xypush(1,1) ;
+         free(xar) ; free(yar) ;
+       }  /* end of scatterplot */
        if( im != NULL ){
          if( !dosave ){                       /* Plotting (to rule the world) */
            char ylab[64] , tlab[THD_MAX_NAME+2] ;
@@ -1598,7 +1783,7 @@ ENTRY("AFNI_clus_action_CB") ;
                    (dopc) ? "PC#1" : (domean) ? "Mean" : "Median" ,
                    ii+1 , IMARR_COUNT(imar) ) ;
            sprintf(tlab,"\\noesc %s[%d..%d]",
-                   THD_trailname(DSET_HEADNAME(cwid->dset),SESSTRAIL+1),
+                   THD_trailname(DSET_HEADNAME(cwid->dset),SESSTRAIL),
                    ibot,itop) ;
            plot_ts_xypush(1,0) ; plot_ts_setthik(0.006f) ;
            xax = (float *)malloc(sizeof(float)*im->nx) ;
@@ -1665,6 +1850,16 @@ ENTRY("AFNI_clus_action_CB") ;
        THD_3dim_dataset  *fset = im3d->fim_now ;
        MCW_cluster_array *clar = im3d->vwid->func->clu_list ; int jj ;
        STATUS("flashing") ;
+       if( ISVALID_DSET(fset) && fset->dblk->vedim == NULL ){
+         im3d->vedset.ival     = im3d->vinfo->fim_index ;
+         im3d->vedset.param[0] = (float)im3d->vinfo->thr_index ;
+         im3d->vedset.param[1] = im3d->vinfo->func_threshold
+                                *im3d->vinfo->func_thresh_top ;
+         im3d->vedset.param[4] = im3d->vinfo->thr_sign ;
+         im3d->vedset.param[5] = im3d->vinfo->use_posfunc ;
+         im3d->vedset.exinfo   = NULL ;
+         (void) AFNI_vedit( fset, im3d->vedset, im3d->vwid->func->clu_mask ) ;
+       }
        if( ISVALID_DSET(fset) && fset->dblk->vedim != NULL && clar != NULL ){
          double tz , tt ; int ss ;
          MRI_IMAGE *vm = fset->dblk->vedim ;
@@ -1673,13 +1868,13 @@ ENTRY("AFNI_clus_action_CB") ;
            MCW_invert_widget(w) ;
            MCW_vol_to_cluster(vm->nx,vm->ny,vm->nz ,
                               vm->kind,mri_data_pointer(vm) , clar->clar[ii] );
-           AFNI_set_viewpoint( im3d , -1,-1,-1 , REDISPLAY_ALL ) ;
+           AFNI_set_viewpoint( im3d , -1,-1,-1 , REDISPLAY_FLASH ) ;
            tt = PLUTO_elapsed_time() ; ss = 66-(int)(tt-tz) ; tz = tt ;
            if( ss > 0 ) NI_sleep(ss) ;
            MCW_invert_widget(w) ;
            MCW_cluster_to_vol(vm->nx,vm->ny,vm->nz ,
                               vm->kind,mri_data_pointer(vm) , clar->clar[ii] );
-           AFNI_set_viewpoint( im3d , -1,-1,-1 , REDISPLAY_ALL ) ;
+           AFNI_set_viewpoint( im3d , -1,-1,-1 , REDISPLAY_FLASH ) ;
            tt = PLUTO_elapsed_time() ; ss = 66-(int)(tt-tz) ; tz = tt ;
            if( ss > 0 ) NI_sleep(ss) ;
          }
@@ -1981,6 +2176,7 @@ void CLU_setup_alpha_tables( Three_D_View *im3d )
    NI_element *nel ;
    CLU_threshtable *ctab ;
    ATR_string *atr ;
+   char *msg=NULL ; int ntab=0,nmask=0 ; static int ntabold=-1 ;
 
 ENTRY("CLU_setup_alpha_tables") ;
 
@@ -2009,6 +2205,7 @@ ENTRY("CLU_setup_alpha_tables") ;
      nel = NI_read_element_fromstring(atr->ch) ;  /* attribute string => NIML */
      ctab = format_cluster_table(nel) ;           /* NIML => C(p,alpha) table */
      im3d->vwid->func->clu_tabNN1 = ctab ;
+     msg = THD_zzprintf(msg," NN=1") ; ntab += 1 ;
 
      /*  search for ASCII mask string */
 
@@ -2027,6 +2224,8 @@ ENTRY("CLU_setup_alpha_tables") ;
        }
      }
      NI_free_element(nel) ;  /* get rid of the C(p,alpha) NIML element */
+     if( im3d->vwid->func->clu_mask != NULL )
+       nmask = THD_countmask( DSET_NVOX(dset) , im3d->vwid->func->clu_mask ) ;
    }
 
    /* NN2 and NN3 C(p,alpha) tables */
@@ -2036,6 +2235,7 @@ ENTRY("CLU_setup_alpha_tables") ;
      nel = NI_read_element_fromstring(atr->ch) ;
      ctab = format_cluster_table(nel) ; NI_free_element(nel) ;
      im3d->vwid->func->clu_tabNN2 = ctab ;
+     msg = THD_zzprintf(msg," NN=2") ; ntab += 2 ;
    }
 
    atr = THD_find_string_atr( dset->dblk , "AFNI_CLUSTSIM_NN3" ) ;
@@ -2043,6 +2243,23 @@ ENTRY("CLU_setup_alpha_tables") ;
      nel = NI_read_element_fromstring(atr->ch) ;
      ctab = format_cluster_table(nel) ; NI_free_element(nel) ;
      im3d->vwid->func->clu_tabNN3 = ctab ;
+     msg = THD_zzprintf(msg," NN=3") ; ntab += 4 ;
+   }
+
+   if( ntab != ntabold ){
+     if( msg != NULL ){
+       INFO_message("%s3dClustSim tables found:%s" ,
+                    AFNI_controller_label(im3d) , msg ) ;
+       if( ntab < 7 )
+         ININFO_message(" [if you require a missing NN table, will use%.5s]",msg);
+       free(msg) ;
+       if( nmask > 0 )
+         ININFO_message(" %d voxels in 3dClustSim mask",nmask) ;
+     } else if( ntabold >= 0 ){
+       INFO_message("%s3dClustSim tables found: none" ,
+                    AFNI_controller_label(im3d) ) ;
+     }
+     ntabold = ntab ;
    }
 
    EXRETURN ;

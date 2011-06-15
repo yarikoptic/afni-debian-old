@@ -7,11 +7,12 @@ AVOVK_SRCS = thd_segtools_fNM.c # thd_segtools.c thd_segtools_fNM.c
 
 AVOVK_OBJS = ${AVOVK_SRCS:.c=.o}
 
-AVOVK_INCLUDE_PATH = ${IFLAGS} -I../nifti/niftilib -I../nifti/nifticdf \
+AVOVK_INCLUDE_PATH = ${IFLAGS} -I/usr/local/include \
+                  -I../nifti/niftilib -I../nifti/nifticdf \
                  -I../nifti/znzlib -I../3DEdge/src -I../rickr \
                  -I../ -I../niml/ -Igts/src  
 
-AVOVK_LINK_PATH = ${LFLAGS} -L/usr/lib -L../ 
+AVOVK_LINK_PATH = ${LFLAGS} -L/usr/lib -L/usr/local/lib -L../ 
 AVOVK_LINK_LIB = ${LLIBS} -lmri
 
 AVOVK_HDRS = thd_segtools_fNM.h # thd_segtools.h thd_segtools_fNM.h
@@ -106,7 +107,8 @@ all_exp: ${AVOVKLIB} progs_exp install
 
 all: ${AVOVKLIB} progs install 
  
-afni_all: clean progs
+afni_all: clean libsegtools.a progs
+	@if [ -f  libsegtools.a ]; then cp -p libsegtools.a ../; fi;	
 	@if [ -f  3dkmeans ]; then mv 3dkmeans ../; fi;	
  
 

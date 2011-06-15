@@ -146,6 +146,164 @@ static MCW_imsize imsize[MAX_MCW_IMSIZE] ;
 
 static int MCW_imsize_good = -1 ;
 
+/*------------------------------------------------------------------------*/
+/* Siemens slice timing info and functions            13 Apr 2011 [rickr] */
+/* note: nalloc is not propagated, nused == nalloc here                   */
+
+int     g_siemens_timing_nused  = 0;
+float * g_siemens_timing_times  = NULL;
+int     g_siemens_timing_units  = UNITS_MSEC_TYPE;     /* not yet varying */
+
+static int cleanup_g_siemens_times()
+{
+    if( ! g_siemens_timing_nused ) return 0;
+
+    if( g_siemens_timing_times ) free(g_siemens_timing_times);
+    g_siemens_timing_nused = 0;
+    g_siemens_timing_times = NULL;
+
+    return 0;
+}
+
+static int alloc_g_siemens_times(int ntimes)
+{
+   if( ntimes <= 0 ) return cleanup_g_siemens_times();
+
+   /* if there is nothing to allocate, we're good */
+   if( ntimes == g_siemens_timing_nused ) return 0;
+
+   /* actually allocate memory */
+   g_siemens_timing_times = (float *)realloc(g_siemens_timing_times,
+                                             ntimes * sizeof(float));
+   if( ! g_siemens_timing_times ) {
+      fprintf(stderr,"** siemens AGST: failed to alloc %d floats\n", ntimes);
+      cleanup_g_siemens_times();
+      return 1;
+   }
+
+   /* and note the new size */
+   g_siemens_timing_nused = ntimes;
+
+   return 0;
+}
+
+int populate_g_siemens_times(int tunits)
+{
+   float * d_times, tfac = 1.0;
+   int     d_nalloc, d_nused;   /* to be copied from mri_dicom_hdr.c */
+   int     index;
+
+ENTRY("populate_g_siemens_times");
+
+   if( mri_siemens_slice_times(&d_nalloc, &d_nused, &d_times) ) {
+      /* odd failure */
+      fprintf(stderr,"** PGST: odd failure getting siemens slice times\n");
+      cleanup_g_siemens_times();
+      RETURN(1);
+   }
+
+   /* allocate any needed memory */
+   if( alloc_g_siemens_times(d_nused) ) RETURN(1);
+
+   /* if no times, we're done */
+   if( d_nused == 0 ) RETURN(0);
+
+   /* siemens units are ms, so if we want seconds, divide by 1000 */
+   if( tunits == UNITS_SEC_TYPE )        tfac = 0.001;
+   else if ( tunits == UNITS_MSEC_TYPE ) tfac = 1.0;
+   else fprintf(stderr,"** PGST: bad time units %d\n", tunits);
+
+   /* copy the data (one by one, to allow for time scalar) */
+   for( index = 0; index < d_nused; index++ )
+      g_siemens_timing_times[index] = d_times[index] * tfac;
+
+   RETURN(0);
+}
+
+/* given the number of slices, the volume TR and the time units:
+ * 1. verify that nz matches the number of times
+ * 2. verify that 0 <= min, max <= TR
+ * 3. maybe output which order the times seem to be in (future?)
+ *
+ * if verb, output any errors
+ * if verb > 1, output time pattern to screen
+ *
+ * return 1 if valid, 0 otherwise
+ */
+int valid_g_siemens_times(int nz, float TR, int verb)
+{
+   float min, max, * times = g_siemens_timing_times;
+   int   ind, decimals=3;
+
+ENTRY("test_g_siemens_times");
+
+   if( nz != g_siemens_timing_nused ) {
+      if(verb) {
+         fprintf(stderr,"** ERROR: have %d siemens times but %d slices\n",
+                 g_siemens_timing_nused, nz);
+         fprintf(stderr,"   Consider 'dicom_hdr -slice_times' for details.\n");
+      }
+      RETURN(0);
+   }
+
+   if( nz < 1 ) RETURN(1);
+
+   /* get min and max */
+   min = max = times[0];
+   for( ind = 1; ind < nz; ind++ ) {
+      if( times[ind] < min ) min = times[ind];
+      if( times[ind] > max ) max = times[ind];
+   }
+
+   if( verb > 1 ) { /* print the times */
+      if( max > 100 ) decimals = 1;
+      else            decimals = 3;
+      printf("-- using Siemens slice timing (%d) :", nz);
+      for( ind = 0; ind < nz; ind++ ) printf(" %.*f", decimals, times[ind]);
+      putchar('\n');
+   }
+
+   /* use stdout to report issues here, to stick with times report */
+   if( min < 0.0 ) {
+      if(verb) printf("** min slice time %.*f outside TR range [0.0, %.*f]\n",
+                      decimals, min, decimals, TR);
+   }
+   else if( max > TR ) {
+      if(verb) printf("** max slice time %.*f outside TR range [0.0, %.*f]\n",
+                      decimals, max, decimals, TR);
+   } else RETURN(1); /* let the good times roll! */ 
+
+   RETURN(0); /* either min or max was bad (or both) */
+}
+
+int get_and_display_siemens_times(void)
+{
+   float * times;
+   int     ind, ntimes;
+
+ENTRY("get_and_display_siemens_times");
+
+   if( populate_g_siemens_times(UNITS_MSEC_TYPE) ) RETURN(1);
+
+   ntimes = g_siemens_timing_nused;
+   times = g_siemens_timing_times;
+
+   if( ntimes <= 0 ) {
+      printf("-- no Siemens timing found\n");
+      RETURN(0);
+   }
+
+   printf("-- Siemens timing (%d entries):", ntimes);
+   for( ind = 0; ind < ntimes; ind++ ) printf(" %.1f", times[ind]);
+   putchar('\n');
+
+   RETURN(0);
+}
+
+/* end siemens slice timing globals and functions                         */
+/*------------------------------------------------------------------------*/
+
+
 /*---------------------------------------------------------------*/
 
 #undef swap_4
@@ -241,19 +399,21 @@ ENTRY("mri_read") ;
 
    /*-- 16 Aug 2006: AFNI dataset? --*/
 
-   if( strstr(fname,".HEAD") != NULL || strstr(fname,".nii") != NULL ){
+   if( strstr(fname,".HEAD") != NULL || strstr(fname,".BRIK") != NULL
+                                     || strstr(fname,".nii")  != NULL ){
      THD_3dim_dataset *dset = THD_open_dataset(fname) ;
      if( dset != NULL ){
-      if( DSET_NVALS(dset) == 1 ){
        DSET_load(dset) ;
-       if( DSET_BRICK(dset,0) != NULL && DSET_ARRAY(dset,0) != NULL )
-         im = mri_copy( DSET_BRICK(dset,0) ) ;
-         im->dx = fabs(DSET_DX(dset)) ;
-         im->dy = fabs(DSET_DY(dset)) ;
-         im->dz = fabs(DSET_DZ(dset)) ;
-      }
-      DSET_delete(dset) ;
-      if( im != NULL ) RETURN(im) ;
+       if( DSET_LOADED(dset) && DSET_datum_constant(dset) ){
+         im = mri_catvol_1D( dset->dblk->brick , 3 ) ;
+         if( im != NULL ){
+           im->dx = fabs(DSET_DX(dset)) ;
+           im->dy = fabs(DSET_DY(dset)) ;
+           im->dz = fabs(DSET_DZ(dset)) ;
+         }
+       }
+       DSET_delete(dset) ;
+       if( im != NULL ) RETURN(im) ;
      }
    }
 
@@ -1261,6 +1421,16 @@ ENTRY("mri_imcount") ;
    new_fname = imsized_fname( tname ) ;
    if( new_fname == NULL ) RETURN( 0 );
 
+   /*** a 3D dataset [06 Jan 2011] ***/
+
+   if( strstr(new_fname,".HEAD") != NULL || strstr(new_fname,".nii") != NULL ){
+     THD_3dim_dataset *dset = THD_open_dataset(new_fname) ;
+     if( dset != NULL ){
+       nz = DSET_NZ(dset) * DSET_NVALS(dset) ; DSET_delete(dset) ;
+       RETURN(nz) ;
+     }
+   }
+
    /*** a 3D filename ***/
 
    if( strlen(new_fname) > 9 && new_fname[0] == '3' && new_fname[1] == 'D' &&
@@ -1653,14 +1823,17 @@ void init_MCW_sizes(void)
 
       /* try to find environment variable with the num-th name */
 
-      sprintf( ename , "AFNI_IMSIZE_%d" , num+1 ) ;
-      str = my_getenv( ename ) ;
-
+        sprintf( ename , "AFNI_IMSIZE_%d", num+1 ) ; str = my_getenv(ename) ;
       if( str == NULL ){
-         sprintf( ename , "MCW_IMSIZE_%d" , num+1 ) ;
-         str = my_getenv( ename ) ;
-         if( str == NULL ) continue ;
+        sprintf( ename , "MCW_IMSIZE_%d" , num+1 ) ; str = my_getenv(ename) ;
       }
+      if( str == NULL ){
+        sprintf( ename, "AFNI_IMSIZE_%02d",num+1 ) ; str = my_getenv(ename) ;
+      }
+      if( str == NULL ){
+        sprintf( ename, "MCW_IMSIZE_%02d" ,num+1 ) ; str = my_getenv(ename) ;
+      }
+      if( str == NULL ) continue ;  /* no luck */
 
       imsize[num].prefix = (char *) malloc( sizeof(char) * strlen(str) ) ;
       if( imsize[num].prefix == NULL ){
@@ -2016,18 +2189,24 @@ static int linebufdied = 0;      /*   ZSS: Oct 19 2009 */
 static int doublelinebufdied = 0;/*   ZSS: Oct 19 2009 */
 /*--------------------------------------------------------------*/
 
+/* Consider an 'i' to be a complex number flag if it is right after a digit
+   ZSS Jan 2011*/
+#define ISCOMPLEXi(b,t) ((b[t] == 'i' && t != 0 && b[t-1]>= '0' && b[t-1]<='9'))
+
 /* return a 1 if c is a not a valid first non-white char of a
    non-comment 1D line */
-byte iznogood_1D (char c)
+byte iznogood_1D (char *cv, int t)
 {
+   char c=cv[t];
    if ( (c < '0' || c > '9')  &&
          c != '+' && c != '-' && c != '.' && c != 'e' &&
-         c != 'i' && c != ',' && /* allow for complex input */
+         !ISCOMPLEXi(cv,t) && c != ',' && /* allow for complex input */
          c != '@' && c != '*'  /* allow for special 1D trickery */
       ) return 1;
    else return 0;
 
 }
+
 /*! Decode a line buffer into an array of floats.               */
 static floatvec * decode_linebuf( char *buf )  /* 20 Jul 2004 */
 {
@@ -2058,7 +2237,7 @@ static floatvec * decode_linebuf( char *buf )  /* 20 Jul 2004 */
 
       /* convert some alphabetic characters to space (:,i)
          if they are not followed by other alphabetics */
-         if((incr<=0) &&( buf[temppos] == ',' || buf[temppos] == 'i') ||
+         if((incr<=0) &&( buf[temppos] == ',' || ISCOMPLEXi(buf, temppos)) ||
             buf[temppos] == ':' )
              buf[temppos] = ' ' ;
          /* turn on "slow mo" reading if non-numeric */
@@ -2081,7 +2260,7 @@ static floatvec * decode_linebuf( char *buf )  /* 20 Jul 2004 */
      val = 0.0 ; count = 1 ;
      if (slowmo) {   /* trickery */
         sscanf( buf+bpos , "%63s" , vbuf ) ;
-        if (!oktext && iznogood_1D(vbuf[0])) {/* Morality Police Oct 16 09 */
+        if (!oktext && iznogood_1D(buf, bpos)) {/* Morality Police Oct 16 09 */
             if (vbuf[0] != '#') { /* not a comment, die */
                linebufdied = 1;
                fv->nar = 0; /* this will cause a clean up on the way out */
@@ -2161,7 +2340,7 @@ static doublevec * decode_double_linebuf( char *buf )  /* 20 Jul 2004 */
 
       /* convert some alphabetic characters to space (:,i)
          if they are not followed by other alphabetics */
-         if((incr<=0) &&( buf[temppos] == ',' || buf[temppos] == 'i') ||
+         if((incr<=0) &&( buf[temppos] == ',' || ISCOMPLEXi(buf, temppos)) ||
             buf[temppos] == ':' )
              buf[temppos] = ' ' ;
          /* turn on "slow mo" reading if non-numeric */
@@ -2184,7 +2363,7 @@ static doublevec * decode_double_linebuf( char *buf )  /* 20 Jul 2004 */
      val = 0.0 ; count = 1 ;
      if (slowmo) {   /* trickery */
         sscanf( buf+bpos , "%63s" , vbuf ) ;
-        if (!oktext && iznogood_1D(vbuf[0])) {/* Morality Police Oct 16 09 */
+        if (!oktext && iznogood_1D(buf, bpos)) {/* Morality Police Oct 16 09 */
             if (vbuf[0] != '#') { /* not a comment, die */
                doublelinebufdied = 1;
                dv->nar = 0; /* for comment, see same section in decode_linebuf */
@@ -2755,7 +2934,7 @@ ENTRY("mri_read_1D") ;
      outim = mri_1D_fromstring( dname+3 ) ;
      /** if( outim == NULL ) ERROR_message("read of '1D:' string fails") ; **/
      if( flip ){ inim=mri_transpose(outim); mri_free(outim); outim=inim; }
-     RETURN(outim) ;
+     mri_add_name("1D:...",outim) ; RETURN(outim) ;
    }
 
    /*-- split filename and subvector list --*/
@@ -3279,8 +3458,9 @@ MRI_IMAGE * mri_read_1D_stdin(void)
 ENTRY("mri_read_1D_stdin") ;
 
    if( im_stdin != NULL ){
-INFO_message("copying im_stdin") ;
- inim = mri_copy(im_stdin); RETURN(inim); }
+     ININFO_message("copying im_stdin") ;
+     inim = mri_copy(im_stdin); RETURN(inim);
+   }
 
 INFO_message("reading 1D_stdin") ;
    lbuf = (char * )malloc(sizeof(char )*SIN_NLBUF) ;
@@ -3328,7 +3508,8 @@ INFO_message("reading 1D_stdin") ;
    } else {           /* only 1 row ==> am OK this way */
      inim = flim ;
    }
-   free((void *)val); free((void *)lbuf); im_stdin = mri_copy(inim); RETURN(inim);
+   free((void *)val); free((void *)lbuf);
+   mri_add_name("stdin",inim); im_stdin = mri_copy(inim); RETURN(inim);
 }
 
 /*-----------------------------------------------------------------------------------*/
@@ -3924,7 +4105,11 @@ ENTRY("mri_read_analyze75") ;
    if( !AFNI_noenv("AFNI_ANALYZE_SCALE") ){
       fac = hdr.dime.funused1 ;
       (void) thd_floatscan( 1 , &fac ) ;
-      if( fac < 0.0 || fac == 1.0 ) fac = 0.0 ;
+           if( fac < 0.0f   || fac == 1.0f   ) fac = 0.0f ;
+      else if( fac < 1.e-6f || fac >  1.e+6f ){
+        WARNING_message("ANALYZE file %s has scale factor (funused1) set to %g",hname,fac) ;
+        ININFO_message ("to ignore this scale factor, setenv AFNI_ANALYZE_SCALE NO") ;
+      }
    }
 
    floatize = (fac != 0.0 || AFNI_yesenv("AFNI_ANALYZE_FLOATIZE")) ; /* 28 Nov 2001 */

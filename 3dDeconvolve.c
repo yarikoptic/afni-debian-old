@@ -305,6 +305,11 @@
 # define IS_GOOD_FLOAT(x) finite(x)
 #endif
 
+/* 01 Feb 2011 -- minor adjustments */
+
+#define myceil(x)   ceil((x)-0.00005)
+#define myfloor(x) floor((x)+0.00005)
+
 /*---------------------------------------------------------------------------*/
 /*--------- Global variables for multiple process execution - RWCox. --------*/
 /*--------- All names start with "proc_", so search for that string. --------*/
@@ -673,6 +678,8 @@ typedef struct DC_options
   int   nodata_NT ;     /* optional values after -nodata [27 Apr 2005] */
   float nodata_TR ;
 
+  int tcat_noblock ;    /* 06 Jan 2011 */
+
   column_metadata *coldat ; /* info about each column [06 Mar 2007] */
 } DC_options;
 
@@ -819,10 +826,10 @@ void display_help_menu()
     "                                                                       \n"
     "**** Input data and control options:                                   \n"
     "-input fname         fname = filename of 3D+time input dataset         \n"
-    "                       (more than  one filename  can be  given)        \n"
-    "                       (here,   and  these  datasets  will  be)        \n"
-    "                       (catenated  in time;   if you do this, )        \n"
-    "                       ('-concat' is not needed and is ignored)        \n"
+    "                       [more than  one filename  can  be  given]       \n"
+    "                       [here,   and  these  datasets  will   be]       \n"
+    "                       [auto-catenated in time; if you do this,]       \n"
+    "                       ['-concat' is not needed and is ignored.]       \n"
     "                  ** You can input a 1D time series file here,         \n"
     "                     but the time axis should run along the            \n"
     "                     ROW direction, not the COLUMN direction as        \n"
@@ -840,6 +847,15 @@ void display_help_menu()
     "                   * You should use '-force_TR' to set the TR of       \n"
     "                     the 1D 'dataset' if you use '-input' rather       \n"
     "                     than '-input1D' [the default is 1.0 sec].         \n"
+    "[-noblock]           Normally, if you input multiple datasets with     \n"
+    "                     '-input', then the separate datasets are taken to \n"
+    "                     be separate image runs that get separate baseline \n"
+    "                     models.  If you want to have the program consider \n"
+    "                     these to be all one big run, use -noblock.        \n"
+    "                   * If any of the input dataset has only 1 sub-brick, \n"
+    "                     then this option is automatically invoked!        \n"
+    "                   * If the auto-catenation feature isn't used, then   \n"
+    "                     this option has no effect, no how, no way.        \n"
     "[-force_TR TR]       Use this value of TR instead of the one in        \n"
     "                     the -input dataset.                               \n"
     "                     (It's better to fix the input using 3drefit.)     \n"
@@ -915,16 +931,21 @@ void display_help_menu()
     "                       deconvolution procedure. [default = last point] \n"
     "[-polort pnum]       pnum = degree of polynomial corresponding to the  \n"
     "                       null hypothesis  [default: pnum = 1]            \n"
+    "                    ** For pnum > 2, this type of baseline detrending  \n"
+    "                       is roughly equivalent to a highpass filter      \n"
+    "                       with a cutoff of (p-2)/TR Hz                    \n"
     "                    ** If you use 'A' for pnum, the program will       \n"
     "                       automatically choose a value based on the       \n"
-    "                       time duration of the longest run.               \n"
-    "                    ** Use '-1' for pnum to specify not to include     \n"
+    "                       time duration D of the longest run:             \n"
+    "                         pnum = 1 + int(D/150)                         \n"
+    "                    ** Use '-1' for pnum to specifically NOT include   \n"
     "                       any polynomials in the baseline model.  Only    \n"
     "                       do this if you know what this means!            \n"
     "[-legendre]          use Legendre polynomials for null hypothesis      \n"
     "                       (baseline model)                                \n"
     "[-nolegendre]        use power polynomials for null hypotheses         \n"
     "                       [default is -legendre]                          \n"
+    "                    ** Don't do this unless you are crazy!             \n"
     "[-nodmbase]          don't de-mean baseline time series                \n"
     "                       (i.e., polort>0 and -stim_base inputs)          \n"
     "[-dmbase]            de-mean baseline time series [default if polort>=0]\n"
@@ -1265,11 +1286,13 @@ void display_help_menu()
     "   The 'tname' file should consist of 'time*amplitude' pairs.          \n"
     "   As in '-stim_times', the '*' character can be used as a placeholder \n"
     "   when an imaging run doesn't have any stimulus of a given class.     \n"
+    "   *N.B.: What I call 'amplitude' modulation is called 'parametric'    \n"
+    "          modulation in Some other PrograM.                            \n"
     " ***N.B.: If NO run at all has a stimulus of a given class, then you   \n"
     "          must have at least 1 time that is not '*' for -stim_times_*  \n"
     "          to work (so that the proper number of regressors can be set  \n"
     "          up).  You can use a negative time for this purpose, which    \n"
-    "          will produce a warning message buth otherwise will be        \n"
+    "          will produce a warning message but otherwise will be         \n"
     "          ignored, as in:                                              \n"
     "             -1*37                                                     \n"
     "             *                                                         \n"
@@ -1296,6 +1319,7 @@ void display_help_menu()
     "   attached (9 and -2 and 3).  In this example, -stim_times_AM2 would  \n"
     "   generate 4 response models: 1 for the constant response case        \n"
     "   and 1 scaled by each of the amplitude sets.                         \n"
+    "   ** Please don't carried away and use too many parameters!! **       \n"
     " For more information on modulated regression, see                     \n"
     "   http://afni.nimh.nih.gov/pub/dist/doc/misc/Decon/AMregression.pdf   \n"
     "                                                                       \n"
@@ -1318,8 +1342,17 @@ void display_help_menu()
     " where p = the desired peak value.  As a special case, if you set      \n"
     " p = 0, then the peak response will vary with the duration, as         \n"
     " the simulated BOLD response accumulates.  Understand what you         \n"
-    " are doing in this case!                                               \n"
+    " are doing in this case, and look at the regression matrix!            \n"
     " *N.B.: The maximum allowed dmBLOCK duration is 999 s.                 \n"
+    " *N.B.: If you are NOT doing amplitude modulation at the same time     \n"
+    "        (and so you only have 1 'married' parameter per time), use     \n"
+    "        '-stim_times_AM1' with dmBLOCK.  If you also want to do        \n"
+    "        amplitude modulation at the same time as duration modulation   \n"
+    "        (and so you have 2 or more parameters with each time), use     \n"
+    "        '-stim_times_AM2' instead.  If you use '-stim_times_AM2' and   \n"
+    "        there is only 1 'married' parameter, the program will print    \n"
+    "        a warning message, then convert to '-stim_times_AM1', and      \n"
+    "        continue -- so nothing bad will happen to your analysis!       \n"
     " *N.B.: You can also use dmBLOCK with -stim_times_IM, in which case    \n"
     "        each time in the 'tname' file should have just ONE extra       \n"
     "        parameter -- the duration -- married to it, as in '30:15',     \n"
@@ -1623,6 +1656,8 @@ void initialize_options
   option_data->force_TR = 0.0;  /* 18 Aug 2008 */
   option_data->coldat   = NULL; /* 06 Mar 2007 */
 
+  option_data->tcat_noblock = 0 ; /* 06 Jan 2011 */
+
   option_data->xjpeg_filename = NULL ;  /* 21 Jul 2004 */
   option_data->x1D_filename   = NULL ;
   option_data->x1D_unc        = NULL ;
@@ -1919,6 +1954,11 @@ void get_options
         if( strstr(option_data->x1D_unc,"1D") == NULL )
           strcat( option_data->x1D_unc , ".xmat.1D" ) ;
         nopt++; continue;
+      }
+
+      /*-----    06 Jan 2011    -----*/
+      if( strcmp(argv[nopt],"-noblock") == 0 ){
+        option_data->tcat_noblock = 1 ; nopt++ ; continue ;
       }
 
       /*-----   -input filename   -----*/
@@ -3219,8 +3259,9 @@ void get_options
     for( ic=0 ; ic < num_CENSOR ; ic++ ) /* count number with run != 0 */
       if( abc_CENSOR[ic].i ) nzr++ ;
     if( nzr > 0 && nzr < num_CENSOR )
-      WARNING_message("%d -CENSORTR commands have run: numbers and %d do not!" ,
-                      nzr , num_CENSOR-nzr ) ;
+      WARNING_message(
+        "%d -CENSORTR commands have 'run:' numbers and %d do not!\n"
+        "   (either all should have 'run:' numbers or none)",nzr,num_CENSOR-nzr);
   }
 
   /*-- check if we can continue! --*/
@@ -3563,23 +3604,37 @@ ENTRY("read_input_data") ;
       }
 
       if( DSET_IS_TCAT(*dset_time) ){  /** 04 Aug 2004: manufacture block list **/
+        int lmin=9999 ;
         if( option_data->concat_filename != NULL ){
           WARNING_message(
              "'-concat %s' ignored: input dataset is auto-catenated\n" ,
              option_data->concat_filename ) ;
           option_data->concat_filename = NULL ;
         }
-        *num_blocks = (*dset_time)->tcat_num ;
-        *block_list = (int *) malloc (sizeof(int) * (*num_blocks));
-        (*block_list)[0] = 0;
-        for( it=0 ; it < (*num_blocks)-1 ; it++ )
-          (*block_list)[it+1] = (*block_list)[it] + (*dset_time)->tcat_len[it] ;
-        if( verb ){
-          char *buf=calloc((*num_blocks),8) ;
-          for( it=0 ; it < (*num_blocks) ; it++ )
-            sprintf(buf+strlen(buf)," %d",(*block_list)[it]) ;
-          INFO_message("Auto-catenated datasets start at: %s", buf) ;
-          free(buf) ;
+        if( !option_data->tcat_noblock ){
+          for( it=0 ; it < (*dset_time)->tcat_num ; it++ )
+            lmin = MIN( lmin , (*dset_time)->tcat_len[it] ) ;
+          option_data->tcat_noblock = (lmin < 2) ;
+        }
+        if( option_data->tcat_noblock ){
+          INFO_message("Auto-catenated input datasets treated as one imaging run") ;
+          *num_blocks = 1;
+          *block_list = (int *) malloc (sizeof(int) * 1);
+          (*block_list)[0] = 0;
+        } else {
+          INFO_message("Auto-catenated input datasets treated as multiple imaging runs") ;
+          *num_blocks = (*dset_time)->tcat_num ;
+          *block_list = (int *) malloc (sizeof(int) * (*num_blocks));
+          (*block_list)[0] = 0;
+          for( it=0 ; it < (*num_blocks)-1 ; it++ )
+            (*block_list)[it+1] = (*block_list)[it] + (*dset_time)->tcat_len[it] ;
+          if( verb ){
+            char *buf=calloc((*num_blocks),8) ;
+            for( it=0 ; it < (*num_blocks) ; it++ )
+              sprintf(buf+strlen(buf)," %d",(*block_list)[it]) ;
+            INFO_message("Auto-catenated datasets start at: %s", buf) ;
+            free(buf) ;
+          }
         }
       }
 
@@ -3706,7 +3761,7 @@ ENTRY("read_input_data") ;
       {
         *block_list = (int *) malloc (sizeof(int) * (*num_blocks));
         for (it = 0;  it < *num_blocks;  it++)
-          (*block_list)[it] = floor (f[it]+0.5);
+          (*block_list)[it] = myfloor (f[it]+0.5);
       }
     }
 
@@ -3725,7 +3780,7 @@ ENTRY("read_input_data") ;
      if( dtloc <= 0.0f ) dtloc = 1.0f ;
      dmax = dtloc * lmax ;                /* duration of longest block */
      /* removed special cases of 150->1, 300->2     3 Oct 2007 [rickr] */
-     ilen = 1+(int)floor(dmax/150.0) ;
+     ilen = 1+(int)myfloor(dmax/150.0) ;
      switch( option_data->polort ){
        default:                           /* user supplied non-negative polort */
          if( option_data->polort < ilen )
@@ -4056,7 +4111,7 @@ STATUS("checking for bad param values") ;
       if( qar != NULL ){
         int imin,imax , ibot,itop ;
         float *bv = MRI_FLOAT_PTR(basis_vect[is]) ;
-        float dbot,dtop , fnt=(float)nt , z1 , z2[BASIS_MAX_VDIM] ;
+        float dbot,dtop , fnt=(float)nt , z1 , z2[BASIS_MAX_VDIM] , eps ;
 
 #if 0
 fprintf(stderr,"%s %d: adjusted time indexes follow:\n",be->option,is+1) ;
@@ -4067,6 +4122,7 @@ fprintf(stderr,"\n") ;
         dbot = be->tbot / basis_TR ; /* range of indexes about each stim time */
         dtop = be->ttop / basis_TR ;
         imin = 0 ; imax = nt-1 ;     /* for the case of nbl=1 */
+        eps  = 0.001f * basis_TR ;
 
         for( kk=0 ; kk < ngood ; kk++ ){   /* for the kk-th stim time */
           tt = qar[kk] ; if( tt < 0.0f || tt >= fnt ) continue ;
@@ -4092,8 +4148,12 @@ fprintf(stderr,"\n") ;
 
           /* range of indexes to load with the response model */
 
-          ibot = (int)ceil ( tt + dbot ) ; if( ibot < imin ) ibot = imin ;
-          itop = (int)floor( tt + dtop ) ; if( itop > imax ) itop = imax ;
+          ibot = (int)myceil ( tt + dbot ) ; if( ibot < imin ) ibot = imin ;
+          itop = (int)myfloor( tt + dtop ) ; if( itop > imax ) itop = imax ;
+
+#if 0
+INFO_message("stim timedex=%g dbot=%g dtop=%g ibot=%d itop=%d",tt,dbot,dtop,ibot,itop) ;
+#endif
 
           if( vfun > 0 ){ /* set vfun params in basis functions [08 Dec 2008] */
             for( jj=0 ; jj < nf ; jj++ ){
@@ -4104,7 +4164,10 @@ fprintf(stderr,"\n") ;
 
           for( ii=ibot ; ii <= itop ; ii++ ){   /* loop over active interval */
             ss = basis_TR*(ii-tt) ;                         /* shifted time */
-            if( ss < be->tbot || ss > be->ttop ) continue ; /* nugatory */
+#if 0
+ININFO_message("ss=%g tbot=%g ttop=%g ss-ttop=%g",ss,be->tbot,be->ttop,ss-be->ttop) ;
+#endif
+            if( ss+eps < be->tbot || ss-eps > be->ttop ) continue ; /* nugatory */
             if( z1 != 0.0f ){
               for( jj=0 ; jj < nf ; jj++ )
                 bv[ii+jj*nt] +=
@@ -9669,9 +9732,14 @@ float basis_evaluation( basis_expansion *be , float *wt , float x )
 
 static float basis_tent( float x, float bot, float mid, float top, void *q )
 {
-   if( x <= bot || x >= top ) return 0.0f ;
-   if( x <= mid )             return (x-bot)/(mid-bot) ;
-                              return (top-x)/(top-mid) ;
+   float val ;
+        if( x <= bot || x >= top ) val = 0.0f ;
+   else if( x <= mid )             val = (x-bot)/(mid-bot) ;
+   else                            val = (top-x)/(top-mid) ;
+#if 0
+ININFO_message("basis_tent(x=%g,bot=%g,mid=%g,top=%g)=%g",x,bot,mid,top,val) ;
+#endif
+   return val ;
 }
 
 /*--------------------------------------------------------------------------*/
@@ -9691,15 +9759,21 @@ static float hh_csplin( float y )   /* for CSPLIN */
 
 static float basis_csplin( float x, float a, float dx, float flag, void *q )
 {
-   float y=(x-a)/dx , bot=-2.0f , top=2.0f ; int gg=(int)flag ;
+   float y=(x-a)/dx , bot=-2.0f , top=2.0f , val ; int gg=(int)flag ;
    switch(gg){
      case -2: bot =  0.0f ; break ;  /* at left edge */
      case -1: bot = -1.0f ; break ;  /* 1 in from left edge */
      case  1: top =  1.0f ; break ;  /* 1 in from right edge */
      case  2: top =  0.0f ; break ;  /* at right edge */
    }
-   if( y < bot || y > top ) return 0.0f ;
-   return hh_csplin(y) ;
+   bot -= 0.0009f ; top += 0.0009f ;
+   if( y < bot || y > top ) val = 0.0f ;
+   else                     val = hh_csplin(y) ;
+#if 0
+ININFO_message("basis_csplin(x=%g,a=%g,dx=%g,flag=%d)=%g  [bot=%g top=%g y=%g]",
+               x,a,dx,gg,val , bot,top,y ) ;
+#endif
+   return val ;
 }
 
 /*--------------------------------------------------------------------------*/
@@ -9708,7 +9782,8 @@ static float basis_csplin( float x, float a, float dx, float flag, void *q )
 
 static float basis_one( float x, float bot, float top, float junk, void *q )
 {
-   if( x < bot || x > top ) return 0.0f ;
+   float eps=0.0009f ;
+   if( x < bot-eps || x > top+eps ) return 0.0f ;
    return 1.0f ;
 }
 
@@ -9720,8 +9795,9 @@ static float basis_one( float x, float bot, float top, float junk, void *q )
 
 static float basis_cos( float x, float bot, float top, float freq, void *q )
 {
-   if( x < bot || x > top ) return 0.0f ;
-   return (float)cos(freq*(x-bot)) ;
+   float eps=0.0009f ;
+   if( x < bot-eps || x > top+eps ) return 0.0f ;
+   return (float)cosf(freq*(x-bot)) ;
 }
 
 /*--------------------------------------------------------------------------*/
@@ -9733,7 +9809,7 @@ static float basis_cos( float x, float bot, float top, float freq, void *q )
 static float basis_sin( float x, float bot, float top, float freq, void *q )
 {
    if( x <= bot || x >= top ) return 0.0f ;
-   return (float)sin(freq*(x-bot)) ;
+   return (float)sinf(freq*(x-bot)) ;
 }
 
 /*--------------------------------------------------------------------------*/
@@ -9949,7 +10025,7 @@ static float basis_legendre( float x, float bot, float top, float n, void *q )
 
    x = 2.0f*(x-bot)/(top-bot) - 1.0f ;  /* now in range -1..1 */
 
-   if( x < -1.0f || x > 1.0f ) return 0.0f ;
+   if( x < -1.000001f || x > 1.000001f ) return 0.0f ;
 
    xq = x*x ; m = (int)n ; if( m < 0 ) return 0.0f ;
 
@@ -10073,9 +10149,9 @@ static float basis_legendre( float x, float bot, float top, float n, void *q )
 static float basis_expr( float x, float bot, float top, float dtinv, void *q )
 {
    PARSER_code *pc = (PARSER_code *)q ;
-   double atoz[26] , val ;
+   double atoz[26] , val ; float eps=0.0009f ;
 
-   if( x < bot || x > top ) return 0.0f ;
+   if( x < bot-eps || x > top+eps ) return 0.0f ;
    memset(atoz,0,sizeof(double)*26) ;         /* set to 0 [24 Mar 2009] */
    atoz[ITT] = x ;                            /* t = true time from stim */
    atoz[IXX] = (x-bot)*dtinv ;                /* x = scaled to [0,1] */
@@ -11002,7 +11078,7 @@ void basis_write_iresp( int argc , char *argv[] ,
    else
      tross_Append_History ( out_dset, label);
 
-   ts_length = 1 + (int)ceil( (be->ttop - be->tbot)/dt ) ; /* 13 Apr 2005: +1 */
+   ts_length = 1 + (int)myceil( (be->ttop - be->tbot)/dt ) ; /* 13 Apr 2005: +1 */
 
    /* modify the output dataset appropriately */
 
@@ -11135,7 +11211,7 @@ void basis_write_iresp_1D( int argc , char *argv[] ,
 
    if( dt <= 0.0f ) dt = 1.0f ;
 
-   ts_length = 1 + (int)ceil( (be->ttop - be->tbot)/dt ) ; /* 13 Apr 2005: +1 */
+   ts_length = 1 + (int)myceil( (be->ttop - be->tbot)/dt ) ; /* 13 Apr 2005: +1 */
 
    /* create output bricks */
 
@@ -11250,7 +11326,7 @@ void basis_write_sresp( int argc , char *argv[] ,
    else
      tross_Append_History ( out_dset, label);
 
-   ts_length = 1 + (int)ceil( (be->ttop - be->tbot)/dt ) ;
+   ts_length = 1 + (int)myceil( (be->ttop - be->tbot)/dt ) ;
 
    /* modify the output dataset appropriately */
 

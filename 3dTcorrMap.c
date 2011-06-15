@@ -79,7 +79,7 @@ static int mybsearch_int( int tt , int nar , int *ar )
 
 int main( int argc , char *argv[] )
 {
-   THD_3dim_dataset *xset=NULL ; int nx,ny,nz,nxy ;
+   THD_3dim_dataset *xset=NULL ; int nx,ny,nz,nxy,nxyz ;
    THD_3dim_dataset *sset=NULL ;
    int nopt=1 , do_automask=0 ;
    int nvox , nvals , ii,jj,kk , polort=1 , ntime ;
@@ -95,9 +95,10 @@ int main( int argc , char *argv[] )
    char *Tprefix=NULL ; THD_3dim_dataset *Tset=NULL ; float *Tar=NULL ;
    char *Pprefix=NULL ; THD_3dim_dataset *Pset=NULL ; float *Par=NULL ;
    char *COprefix=NULL; THD_3dim_dataset *COset=NULL ; short *COar=NULL ;
-      float Thresh=0.0f ;
+   int COmask=0 ;
+   float Thresh=0.0f ;
    char *Tvprefix=NULL ; THD_3dim_dataset *Tvset=NULL ;
-      float **Tvar=NULL ; float  *Threshv=NULL, *Tvcount=NULL ;
+   float **Tvar=NULL ; float *Threshv=NULL, *Tvcount=NULL ;
    char stmp[256];
    int nout=0 ;
    int isodd ;  /* 29 Apr 2009: for unrolling innermost dot product */
@@ -126,6 +127,8 @@ int main( int argc , char *argv[] )
    int PCortn=0 , PCnmask=0 ; byte *PCmask=NULL ; int PCnx=0, PCny=0, PCnz=0 ;
    MRI_IMARR *PCimar=NULL ;
 
+   int need_acc = 0 ;
+
    /*----*/
 
    if( argc < 2 || strcasecmp(argv[1],"-help") == 0 ){
@@ -151,29 +154,30 @@ int main( int argc , char *argv[] )
        "  -input dd = Read 3D+time dataset 'dd' (a mandatory option).\n"
        "               This provides the time series to be correlated\n"
        "               en masse.\n"
+       "            ** This is a non-optional 'option': you MUST supply\n"
+       "               and input dataset!\n"
        "\n"
        "  -seed bb  = Read 3D+time dataset 'bb'.\n"
-       "             * If you use this option, for each voxel in the\n"
+       "            ** If you use this option, for each voxel in the\n"
        "                -seed dataset, its time series is correlated\n"
        "                with every voxel in the -input dataset, and\n"
        "                then that collection of correlations is processed\n"
        "                to produce the output for that voxel.\n"
-       "             * If you don't use -seed, then the -input dataset\n"
-       "                is the -seed dataset.\n"
-       "             * The -seed and -input datasets must have the\n"
+       "            ** If you don't use -seed, then the -input dataset\n"
+       "                is the -seed dataset [i.e., the normal usage].\n"
+       "            ** The -seed and -input datasets must have the\n"
        "                same number of time points and the same number\n"
        "                of voxels!\n"
-       "             * Unlike the -input dataset, the -seed dataset is not\n"
+       "            ** Unlike the -input dataset, the -seed dataset is not\n"
        "                preprocessed (i.e., no detrending/bandpass or blur).\n"
        "                 (The main purpose of this -seed option is to)\n"
        "                 (allow you to preprocess the seed voxel time)\n"
        "                 (series in some personalized and unique way.)\n"
        "\n"
        "  -mask mmm = Read dataset 'mmm' as a voxel mask.\n"
-       "\n"
        "  -automask = Create a mask from the input dataset.\n"
-       "             * -mask and -automask are mutually exclusive!\n"
-       "             * If you don't use one of these masking options, then\n"
+       "            ** -mask and -automask are mutually exclusive!\n"
+       "            ** If you don't use one of these masking options, then\n"
        "               all voxels will be processed, and the program will\n"
        "               probably run for a VERY long time.\n"
        "\n"
@@ -181,10 +185,12 @@ int main( int argc , char *argv[] )
        "Time Series Preprocessing Options: (applied only to -input, not to -seed)\n"
        "----------------------------------\n"
        "TEMPORAL FILTERING:\n"
+       "-------------------\n"
        "  -polort m  = Remove polynomial trend of order 'm', for m=-1..19.\n"
        "                [default is m=1; removal is by least squares].\n"
        "             ** Using m=-1 means no detrending; this is only useful\n"
-       "                for data/information that has been pre-processed.\n"
+       "                for data/information that has been pre-processed\n"
+       "                (e.g., using the 3dBandpass program).\n"
        "\n"
        "  -bpass L H = Bandpass the data between frequencies L and H (in Hz).\n"
        "             ** If the input dataset does not have a time step defined,\n"
@@ -198,7 +204,7 @@ int main( int argc , char *argv[] )
        "             ** -ort can be used with -polort and/or -bandpass.\n"
        "             ** You can use programs like 3dmaskave and 3dmaskSVD\n"
        "                 to create reference files from regions of the\n"
-       "                 input dataset.\n"
+       "                 input dataset (e.g., white matter, CSF).\n"
 #if 0
        "\n"
        "  -PCort n mmm = From the -input dataset, extract the time series\n"
@@ -214,6 +220,7 @@ int main( int argc , char *argv[] )
 #endif
        "\n"
        "SPATIAL FILTERING: (only for volumetric input datasets) \n"
+       "-----------------\n"
        "  -Gblur ff  = Gaussian blur the -input dataset (inside the mask)\n"
        "                using a kernel width of 'ff' mm.\n"
        "            ** Uses the same approach as program 3dBlurInMask.\n"
@@ -249,7 +256,7 @@ int main( int argc , char *argv[] )
        "              (negative correlations don't count in this calculation)\n"
        "  -Thresh tt pp\n"
        "            = Save the COUNT of how many voxels survived thresholding\n"
-       "              at level abs(correlation) >= tt.\n"
+       "              at level abs(correlation) >= tt (for some tt > 0).\n"
        "\n"
        "  -VarThresh t0 t1 dt pp\n"
        "            = Save the COUNT of how many voxels survive thresholding\n"
@@ -266,10 +273,24 @@ int main( int argc , char *argv[] )
        "  -CorrMap pp\n"
        "         Output at each voxel the entire correlation map, into\n"
        "         a dataset with prefix 'pp'.\n"
-       "         Essentially this does what 3dAutoTcorrelate would,\n"
-       "         with some of the additional options offered here.\n"
+       "       **  Essentially this does what 3dAutoTcorrelate would,\n"
+       "           with some of the additional options offered here.\n"
        "       ** N.B.: Output dataset will be HUGE in most cases.\n"
+       "  -CorrMask\n"
+       "         By default, -CorrMap outputs a sub-brick for EACH\n"
+       "         input dataset voxel, even those that are NOT in\n"
+       "         the mask (such sub-bricks will be all zero).\n"
+       "         If you want to eliminate these sub-bricks, use\n"
+       "         this option.\n"
+       "       ** N.B.: The label for the sub-brick that was seeded\n"
+       "                from voxel (i,j,k) will be of the form\n"
+       "                v032.021.003 (when i=32, j=21, k=3).\n"
        "\n"
+       "  --** The following 3 options let you create a customized **--\n"
+       "  --** method of combining the correlations, if the above  **--\n"
+       "  --** techniques do not meet your needs.  (Of course, you **--\n"
+       "  --** could also use '-CorrMap' and then process the big  **--\n"
+       "  --** output dataset yourself later, in some clever way.) **--\n"
        "\n"
        "  -Aexpr expr ppp\n"
        "            = For each correlation 'r', compute the calc-style\n"
@@ -303,10 +324,9 @@ int main( int argc , char *argv[] )
        "            * N=200 is good; then D=0.01, yielding a decent resolution.\n"
        "           ** The output dataset is short format; thus, the maximum\n"
        "              count in any bin will be 32767.\n"
-       "           ** The output from this option will probably require\n"
-       "              further processing before it can be useful -- but it is\n"
-       "              kind of fun to surf through these histograms in AFNI's\n"
-       "              graph viewer.\n"
+       "           ** The output from this option will probably require further\n"
+       "              processing before it can be useful -- but it is fun to\n"
+       "              surf through these histograms in AFNI's graph viewer.\n"
        "\n"
        "----------------\n"
        "Random Thoughts:\n"
@@ -321,6 +341,12 @@ int main( int argc , char *argv[] )
       ) ;
 
       PRINT_AFNI_OMP_USAGE("3dTcorrMap",NULL) ;
+#ifndef USE_OMP
+      printf(" * You REALLY want to use an OpenMP version of this program,\n"
+             "    and run on a fast multi-CPU computer system!  Otherwise,\n"
+             "    you will wait a LONG LONG time for the results.\n"
+            ) ;
+#endif
       PRINT_COMPILE_DATE ; exit(0) ;
    }
 
@@ -386,9 +412,9 @@ int main( int argc , char *argv[] )
          if( !THD_filename_ok(Mprefix) ) ERROR_exit("Illegal string after -prefix!\n") ;
          nopt++ ; continue ;
       }
-      if( strcasecmp(argv[nopt],"-Mean") == 0 ){
+      if( strcasecmp(argv[nopt],"-Mean") == 0 || strcasecmp(argv[nopt],"-Mmean") == 0 ){
          Mprefix = argv[++nopt] ; nout++ ;
-         if( !THD_filename_ok(Mprefix) ) ERROR_exit("Illegal prefix after -Mean!\n") ;
+         if( !THD_filename_ok(Mprefix) ) ERROR_exit("Illegal prefix after %s!\n",argv[nopt-1]) ;
          nopt++ ; continue ;
       }
       if( strcasecmp(argv[nopt],"-Zmean") == 0 ){
@@ -413,7 +439,7 @@ int main( int argc , char *argv[] )
          Tprefix = argv[++nopt] ; nout++ ;
          if( !THD_filename_ok(Tprefix) )
            ERROR_exit("Illegal prefix after -Thresh!\n") ;
-         nopt++ ; continue ;
+         nopt++ ; need_acc = 1 ; continue ;
       }
       if( strcasecmp(argv[nopt],"-VarThresh") == 0 ||
           strcasecmp(argv[nopt],"-VarThreshN") == 0 ){
@@ -451,13 +477,15 @@ int main( int argc , char *argv[] )
          INFO_message("VarThresh mode with %d levels: %.3f .. %.3f\n",
                       N_iv , Threshv[0] , Threshv[N_iv-1] ) ;
 
-         nopt++ ; continue ;
+         nopt++ ; need_acc = 1 ; continue ;
+      }
+      if( strcasecmp(argv[nopt],"-CorrMask") == 0 ){  /* 25 Feb 2011 */
+        COmask++ ; nopt++ ; continue ;
       }
       if( strcasecmp(argv[nopt],"-CorrMap") == 0 ){
 
-         if (nopt+1 >= argc) {
+         if (nopt+1 >= argc)
             ERROR_exit("Need a prefix after -CorrMap");
-         }
 
          COprefix = argv[++nopt] ; nout++ ;
          if( !THD_filename_ok(COprefix) )
@@ -528,8 +556,8 @@ int main( int argc , char *argv[] )
         nopt++ ; continue ;
       }
 
-      if(   (strcasecmp(argv[nopt],"-base") == 0) || 
-            (strcasecmp(argv[nopt],"-seed") == 0)    ){ 
+      if(   (strcasecmp(argv[nopt],"-base") == 0) ||
+            (strcasecmp(argv[nopt],"-seed") == 0)    ){
                      /* Added -seed to fit with -help text. Don't know how -base
                      got in here.      ZSS: Emergency patch. Jan 25 09 */
         if( sset != NULL ) ERROR_exit("Can't use -seed twice!") ;
@@ -609,8 +637,8 @@ int main( int argc , char *argv[] )
    /*-- compute mask array, if desired --*/
 
    nx = DSET_NX(xset) ;
-   ny = DSET_NY(xset) ; nxy = nx*ny ;
-   nz = DSET_NZ(xset) ; nvox = nxy*nz ;
+   ny = DSET_NY(xset) ; nxy  = nx*ny ;
+   nz = DSET_NZ(xset) ; nxyz = nvox = nxy*nz ;
 
    if( do_automask ){
      if (!DSET_IS_VOL(xset)) {
@@ -631,6 +659,12 @@ int main( int argc , char *argv[] )
      memset( mask  , 1 , sizeof(byte)*nmask ) ;
      INFO_message("computing for all %d voxels!",nmask) ;
    }
+
+   /* create indx[jj] = voxel index in dataset whence
+                        jj-th extracted time series comes from */
+
+   indx = (int *)malloc(sizeof(int)*nmask) ;
+   for( ii=jj=0 ; ii < nvox ; ii++ ) if( mask[ii] ) indx[jj++] = ii ;
 
    /*-- check PCort mask (if any) for matchingness --*/
 
@@ -661,22 +695,23 @@ int main( int argc , char *argv[] )
    }
 
    if( COprefix != NULL ){
-     int iii, jjj, kkk, nxy, dig=0;
-     float *lesfac=(float*)calloc(DSET_NVOX(xset), sizeof(float));
-     for (ii=0; ii<DSET_NVOX(xset); ++ii) lesfac[ii]=1/10000.0; 
+     int iii, jjj, kkk, ijk , dig=0 , nv=(COmask) ? nmask : nxyz ;
+     float *lesfac=(float*)calloc(nv,sizeof(float));
+     for (ii=0; ii<nv; ++ii) lesfac[ii]=1/10000.0;
      COset = EDIT_empty_copy( xset ) ;
      EDIT_dset_items( COset ,
-                        ADN_prefix    , COprefix        ,
-                        ADN_nvals     , DSET_NVOX(xset),
-                        ADN_ntt       , 0,
-                        ADN_brick_fac , lesfac           ,
-                        ADN_type      , HEAD_FUNC_TYPE ,
-                        ADN_func_type , FUNC_BUCK_TYPE ,
+                        ADN_prefix    , COprefix      ,
+                        ADN_nvals     , nv            ,
+                        ADN_ntt       , nv            ,
+                        ADN_ttdel     , 1.0           ,
+                        ADN_nsl       , 0             ,
+                        ADN_brick_fac , lesfac        ,
+                        ADN_type      , HEAD_FUNC_TYPE,
+                        ADN_func_type , FUNC_FIM_TYPE ,
                       ADN_none ) ;
      free(lesfac); lesfac = NULL;
-     dig = (int)ceil(log(DSET_NVOX(xset))/log(10));
-     nxy = DSET_NX(COset)*DSET_NY(COset);
-     for (ii=0; ii<DSET_NVOX(xset); ++ii) {
+     dig = (int)ceil(log((double)nv)/log(10.0));
+     for (ii=0; ii<nv; ++ii) {
       EDIT_substitute_brick( COset , ii , MRI_short , NULL ) ;
       EDIT_BRICK_TO_NOSTAT(COset,ii) ;
       if (!DSET_IS_VOL(xset)) {
@@ -700,11 +735,12 @@ int main( int argc , char *argv[] )
                break;
          }
       } else {
-         kkk = ii/nxy;
-         jjj = ii%nxy;
-         iii = jjj % DSET_NX(COset);
-         jjj = jjj / DSET_NX(COset);
-         sprintf(stmp,"v%03d%03d%03d",iii, jjj, kkk) ;
+         ijk = (COmask) ? indx[ii] : ii ;
+         kkk = ijk / nxy ;
+         jjj = ijk % nxy ;
+         iii = jjj % nx  ;
+         jjj = jjj / nx  ;
+         sprintf(stmp,"v%03d.%03d.%03d",iii, jjj, kkk) ;
       }
       EDIT_BRICK_LABEL(COset,ii,stmp) ;
      }
@@ -887,10 +923,10 @@ int main( int argc , char *argv[] )
    dy = fabsf(DSET_DY(xset)) ;
    dz = fabsf(DSET_DZ(xset)) ;
 
-   if ( (Mseedr > 0.0f || Mseedr < 0.0f) && 
+   if ( (Mseedr > 0.0f || Mseedr < 0.0f) &&
         !DSET_IS_VOL(xset)) {
       ERROR_exit("Can't use -Mseed with non-volumetric input datasets");
-   } 
+   }
    if( Mseedr > 0.0f){
      Mseed_nbhd = MCW_spheremask( dx,dy,dz , Mseedr ) ;
      if( Mseed_nbhd == NULL || Mseed_nbhd->num_pt < 2 )
@@ -938,7 +974,7 @@ int main( int argc , char *argv[] )
                           "input datasets");
          }
       }
-   }  
+   }
 
    /* remove trends (-polort and -ort) now (if not bandpassing later) */
 
@@ -954,12 +990,6 @@ int main( int argc , char *argv[] )
      DSET_delete(xset) ; xset = yset ;
      if( rmask != mask ) free(rmask) ;
    }
-
-   /* create indx[jj] = voxel index in dataset whence
-                        jj-th extracted time series came */
-
-   indx = (int *)malloc(sizeof(int)*nmask) ;
-   for( ii=jj=0 ; ii < nvox ; ii++ ) if( mask[ii] ) indx[jj++] = ii ;
 
    /* extract dataset time series into an array of
       time series vectors, for ease and speed of access */
@@ -1059,7 +1089,7 @@ int main( int argc , char *argv[] )
    }
 
    /* normalize -input vectors so sum of squares is 1,
-      for speed in computing correlations (and we like speed) */
+      for speed in computing correlations (and we need speed) */
 
    ININFO_message("normalizing extracted time series") ;
    for( ii=0 ; ii < nmask ; ii++ ){
@@ -1124,6 +1154,8 @@ int main( int argc , char *argv[] )
 #else
  INFO_message("Starting long long loop through all voxels: %s Flops" ,
               approximate_number_string(ctime) ) ;
+ ININFO_message(" [You would be happier if you  used an OpenMP-ized version]") ;
+ ININFO_message(" [of this program, and had a multiple CPU computer system.]") ;
 #endif
 
    for( ii=0 ; ii < nmask ; ii++ ){  /* outer loop over voxels: */
@@ -1132,9 +1164,10 @@ int main( int argc , char *argv[] )
      if( vstep && ii%vstep == vstep-1 ){  /* palliate the user's pain */
        if( ii < vstep ){
          dtt = etime(&tt,1) ;
-         ININFO_message("Single loop duration: %.1f mins\n"
-                     "   Remaining time estim: %.1f mins = %.2f hrs\n",
-                        dtt/60.0, dtt/60.0*49.0 , dtt/3600.0*49.0 ) ;
+         ININFO_message("Single loop (1/50) duration: %.1f secs = %.2f mins\n"
+                     "   Remaining (49/50) time est.: %.0f secs = %.1f mins = %.2f hrs = %.3f days\n",
+                        dtt,dtt/60.0, dtt*49.0 , dtt/60.0*49.0 ,
+                                      dtt/3600.0*49.0 , dtt/86400.0*49.0 ) ;
          fprintf(stderr,"++ Voxel loop: ") ;
        }
        vstep_print() ;
@@ -1195,35 +1228,38 @@ int main( int argc , char *argv[] )
      /** combine results in ccar to give output values **/
 
      Tcount = Mcsum = Zcsum = Qcsum = 0.0f ;
-     for( iv=0 ; iv < N_iv ; ++iv ) Tvcount[iv] = 0.0f ;
      Pcsum = 0.0f ; nPcsum = 0 ;
-     
+     for( iv=0 ; iv < N_iv ; ++iv ) Tvcount[iv] = 0.0f ;
+
      if (COset) {
-         COar = DSET_ARRAY(COset,indx[ii]);
+         int ijk = (COmask) ? ii : indx[ii] ;
+         COar = DSET_ARRAY(COset,ijk);
          for( jj=0 ; jj < nmask ; jj++ ) {
-            cc = ccar[jj] * 10000.0;   /* scale up because output is short */
-            COar[indx[jj]] = cc < 0 ? (short)(cc-0.5):(short)(cc+0.5);
+            cc = ccar[jj] * 10000.0f;   /* scale up because output is short */
+            COar[indx[jj]] = cc < 0.0f ? (short)(cc-0.5f):(short)(cc+0.5f);
          }
      }
 
      for( jj=0 ; jj < nmask ; jj++ ){
-       if( jj == ii ) continue ;
-       cc = ccar[jj] ;
+       if( jj == ii ) continue ;  /* no self dealing [we're not in Congress] */
+       cc     = ccar[jj] ;
        Mcsum += cc ;
-       Zcsum += 0.5f * logf((1.0001f+cc)/(1.0001f-cc));
        Qcsum += cc*cc ;
-       if( cc > 0.0f ){ Pcsum += cc*cc ; nPcsum++ ; }
-       acc = (cc < 0) ? -cc : cc ;
-       if( acc >= Thresh ) Tcount++ ;
-       if( Threshv ){
-          iv = N_iv - 1 ;
-          while( iv > -1 ){
-            if( acc >= Threshv[iv] ){
-              do { Tvcount[iv--]++; } while (iv > -1);
-            }
-            --iv;
-          }
-        }
+       if( Par != NULL && cc > 0.0f ){ Pcsum += cc*cc ; nPcsum++ ; }
+       if( Zar != NULL ) Zcsum += 0.5f * logf((1.0001f+cc)/(1.0001f-cc));
+       if( need_acc ){
+         acc = (cc < 0.0f) ? -cc : cc ;
+         if( acc >= Thresh ) Tcount++ ;
+         if( Threshv ){
+           iv = N_iv - 1 ;
+           while( iv > -1 ){
+             if( acc >= Threshv[iv] ){
+               do { Tvcount[iv--]++; } while (iv > -1);
+             }
+             --iv;
+           }
+         }
+       }
      } /* end of combining */
 
      if( Mar != NULL ) Mar[indx[ii]] = Mcsum / (nmask-1.0f) ;
@@ -1332,6 +1368,11 @@ int main( int argc , char *argv[] )
      DSET_write(HHset) ; WROTE_DSET(HHset) ; DSET_delete(HHset) ;
    }
    if ( COset != NULL ) {
+      THD_set_write_compression(COMPRESS_NONE) ;
+      AFNI_setenv("AFNI_AUTOGZIP NO") ;
+      if( DSET_TOTALBYTES(COset) > 1000000000 )
+        ININFO_message("Writing big [%s bytes] -CorrMap output dataset",
+                       approximate_number_string((double)DSET_TOTALBYTES(COset)) ) ;
       DSET_write(COset) ; WROTE_DSET(COset) ; DSET_delete(COset) ;
    }
    INFO_message("total CPU time = %.2f s",COX_cpu_time()) ; exit(0) ;

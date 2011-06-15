@@ -1,6 +1,6 @@
 #include "afni.h"
 #include "vol2surf.h"
-#include "thd_ttatlas_query.h"
+#include "thd_atlas.h"
 
 /*----------------------------------------------------------------------
  * history:
@@ -44,7 +44,9 @@
 
 /*---------------------------------------*/
 /*! Number of streams on which to listen */
-#define NUM_NIML   2                        /* 09 Mar 2005: increased to 2 */
+#define NUM_NIML   3                        /* 09 Mar 2005: increased to 2
+             ZSS June 2011: Increased to 3
+             Modify init_ports_list() when you add more streams */
 
 /*--------------------------------------*/
 /*! Array of streams on which to listen */
@@ -107,17 +109,23 @@ static int g_show_as_popup = 0 ;     /* 04 Jan 2005 [rickr] */
 
 /*-------------------------*/
 
-#ifndef SUMA_TCP_PORT
-#define SUMA_TCP_PORT 53211
-#endif
+/* This define should now be replaced by appropriate get_port_named() 
+   function call. Delete after dust has settled.      ZSS June 2011
+   
+   #ifndef SUMA_TCP_PORT
+   #define SUMA_TCP_PORT 53211
+   #endif
+*/
 
 /*-----------------------------------------------------*/
 /* Stuff for an extra NIML port for non-SUMA programs. */
 
-#ifndef NIML_TCP_FIRST_PORT
-#define NIML_TCP_FIRST_PORT 53212
-#endif
-
+/* This define should now be replaced by appropriate get_port_named() 
+   function call. Delete after dust has settled.         ZSS June 2011
+      #ifndef NIML_TCP_FIRST_PORT
+      #define NIML_TCP_FIRST_PORT 53212
+      #endif
+*/
 /*-----------------------------------------------------*/
 
 #define EPS 0.01  /* threshold for coordinate changes */
@@ -250,18 +258,25 @@ ENTRY("AFNI_init_niml") ;
      ns_flags[cc]  = 0 ;
    }
 
-   /* 10 Dec 2002: allow user to specify NIML port number */
-
-   cc = GLOBAL_argopt.port_niml ;
-   if( cc < 1024 || cc > 65535 ) cc = SUMA_TCP_PORT ;
-   sprintf( ns_name[0] , "tcp:host:%d" , cc ) ;
-
-   /* 09 Mar 2005: add extra ports */
-
-   cc = AFNI_numenv( "AFNI_NIML_FIRST_PORT" ) ;
-   if( cc < 1024 || cc > 65535 ) cc = NIML_TCP_FIRST_PORT ;
-   for( ii=1 ; ii < NUM_NIML ; ii++ )
-     sprintf( ns_name[ii] , "tcp:host:%d" , (cc+ii-1) ) ;
+   for (ii=0; ii < NUM_NIML; ii++) {
+      switch (ii) {
+         case 0:
+            sprintf( ns_name[ii] , "tcp:host:%d" , 
+                        get_port_named("AFNI_SUMA_NIML") ) ;
+            break;
+         case 1:
+            sprintf( ns_name[ii] , "tcp:host:%d" , 
+                        get_port_named("AFNI_DEFAULT_LISTEN_NIML") ) ;
+            break;
+         case 2:
+            sprintf( ns_name[ii] , "tcp:host:%d" , 
+                        get_port_named("AFNI_GroupInCorr_NIML") ) ;
+            break;
+         default:
+            ERROR_message("Not set to deal with stream %d\n", ii);
+            break;
+      }
+   }
 
    /* initialize all receive keys (cf. afni_receive.c) */
 
@@ -409,8 +424,9 @@ ENTRY("AFNI_niml_workproc") ;
 #ifdef NIML_DEBUG
        STATUS("NI_stream_goodcheck was unhappy") ;
 #endif
-       fprintf(stderr,"++ NIML connection closed from %s\n",
-                NI_stream_name(ns_listen[cc])               ) ;
+       fprintf(stderr,"++ NIML connection closed from %s (%s,%s)\n",
+                NI_stream_name(ns_listen[cc]), ns_listen[cc]->orig_name,
+                get_port_numbered(ns_listen[cc]->port) ) ;
 
        NI_stream_closenow( ns_listen[cc] ) ;
        ns_listen[cc] = NULL ;  /* will be reopened next time */
@@ -438,8 +454,9 @@ ENTRY("AFNI_niml_workproc") ;
      if( ns_flags[cc] & FLAG_WAITING ){
        ns_flags[cc] = FLAG_CONNECTED ;
        NI_stream_setbufsize( ns_listen[cc] , 3*NI_BUFSIZE ) ; /* 02 Jun 2005 */
-       fprintf(stderr,"++ NIML connection opened from %s\n",
-               NI_stream_name(ns_listen[cc])                ) ;
+       fprintf(stderr,"++ NIML connection opened from %s (%s,%s)\n",
+            NI_stream_name(ns_listen[cc]),ns_listen[cc]->orig_name,
+            get_port_numbered(ns_listen[cc]->port) ) ;
      }
 
      /* see if there is any data to be read */
@@ -2374,7 +2391,7 @@ STATUS("redisplay Node_ROI function") ;
 static void process_NIML_AFNI_dataset( NI_group *ngr , int ct_start )
 {
    Three_D_View *im3d = AFNI_find_open_controller() ;
-   THD_3dim_dataset *dset , *old_dset ;
+   THD_3dim_dataset *adset=NULL, *idset=NULL, *old_dset=NULL ;
    THD_slist_find find ;
    THD_session *ss ;
    int ii , vv ;
@@ -2388,8 +2405,8 @@ ENTRY("process_NIML_AFNI_dataset") ;
 
    /* convert the group element contents into a dataset */
 
-   dset = THD_niml_to_dataset( ngr , 1 ) ;  /* 1 ==> don't load sub-bricks */
-   if( dset == NULL ){
+   idset = THD_niml_to_dataset( ngr , 1 ) ;  /* 1 ==> don't load sub-bricks */
+   if( idset == NULL ){
      AFNI_popup_message("\n*** ERROR:\n"
                         " Received bad '<AFNI_dataset ...>'\n"
                         " Discarding data and continuing.\n"  ) ;
@@ -2398,39 +2415,41 @@ ENTRY("process_NIML_AFNI_dataset") ;
 
    /* now see if this dataset idcode is already stored in AFNI somewhere */
 
-   find = PLUTO_dset_finder( dset->idcode.str ) ; old_dset = find.dset ;
+   find = PLUTO_dset_finder( idset->idcode.str ) ; old_dset = find.dset ;
 
    if( old_dset == NULL ){     /********* this is a new dataset *************/
 
      ss = GLOBAL_library.sslist->ssar[im3d->vinfo->sess_num] ;  /* session  */
      ii = ss->num_dsset ;                                       /* row      */
-     vv = dset->view_type ;                                     /* and view */
+     vv = idset->view_type ;                                     /* and view */
 
      if( ii >= THD_MAX_SESSION_SIZE ){                 /* session overflow! */
-       DSET_delete(dset) ;
+       DSET_delete(idset) ;
        AFNI_popup_message("\n*** ERROR:\n"
                           " Received new dataset but am out of space!\n\n" ) ;
        EXRETURN ;
      }
 
-     SET_SESSION_DSET(dset, ss, ii, vv);     /*** insert dataset into session here ***/
-     /*ss->dsset_xform_table[ii][vv] = dset ;*/    
+     SET_SESSION_DSET(idset, ss, ii, vv); /*** insert dataset into session here ***/
+     /*ss->dsset_xform_table[ii][vv] = idset ;*/    
      ss->num_dsset++ ;
      POPDOWN_strlist_chooser ;
-
+     adset = idset; /* The input dataset in AFNI */
    } else {                  /************* have an old dataset *************/
 
-     DSET_delete(dset) ;                             /* delete the new copy */
-     dset = old_dset ;     /* instead, will replace contents of old dataset */
+     /* DSET_delete(idset) ;   ZSS, Jan 2011 do not delete yet */
+     adset = old_dset ;     /* instead, will replace contents of old dataset */
    }
 
-   DSET_superlock(dset) ;  /*-- make sure will not be purged from memory! --*/
+   DSET_superlock(adset) ;  /*-- make sure will not be purged from memory! --*/
 
    /* load any data bricks present in the group element */
 
-   (void)THD_add_bricks( dset , ngr ) ;
-   THD_update_statistics( dset ) ;
-
+   (void)THD_add_bricks( adset , ngr, idset ) ;
+   THD_update_statistics( adset ) ;
+   if (adset != idset) {
+      DSET_delete(idset) ; idset = NULL;
+   }
    /** wrapup **/
 
    if( ct_start >= 0 )                      /* keep track    */
@@ -2438,7 +2457,7 @@ ENTRY("process_NIML_AFNI_dataset") ;
 
    if( old_dset == NULL )
      sprintf(msg,"\n+++ NOTICE: New AFNI dataset received.\n\n") ;
-   else
+   else 
      sprintf(msg,"\n+++ NOTICE: Replacement AFNI dataset received.\n\n") ;
 
    if( ct_tot > 0 ) sprintf(msg+strlen(msg),
@@ -2556,7 +2575,7 @@ ENTRY("process_NIML_AFNI_volumedata") ;
 
    /** actually put this data into the dataset **/
 
-   (void)THD_add_bricks( dset , nini ) ;
+   (void)THD_add_bricks( dset , nini, NULL ) ;
    THD_update_statistics( dset ) ;
 
    /** if anyone is looking at this dataset, need to change stuff **/

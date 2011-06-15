@@ -127,17 +127,23 @@ static void ENV_sesstrail( char * ) ;
 /*-------------------------------------------------------------------------*/
 
 #if 0
-#define NUM_byteorder_list 3
+#define  NUM_byteorder_list 3
 static char *byteorder_list[] = { "This CPU" , "LSB_FIRST" , "MSB_FIRST" } ;
 
 static void ENV_byteorder( char * ) ;
 #endif
 
-#define NUM_yesno_list 2
+#define  NUM_yesno_list 2
 static char *yesno_list[] = { "YES" , "NO" } ;
 
-#define NUM_threshlock_list 3
+#define  NUM_threshlock_list 3
 static char *threshlock_list[] = { "NO" , "VALUE" , "P-VALUE" } ;
+
+#define  NUM_cx2r_list 4
+static char *cx2r_list[] = { "ABS" , "PHASE" , "REAL" , "IMAG" } ;
+
+#define  NUM_boxlab_list 3
+static char *boxlab_list[] = { "ATOP" , "MAX" , "ZERO" } ;
 
 /*--------- variables that can be edited ----------------------------------*/
 
@@ -390,9 +396,17 @@ PLUGIN_interface * ENV_init(void)
                     "Entropy threshold: below this, 2%-98% is off." ,
                     0,10,1,0 , NULL ) ;
 
-   ENV_add_string( "AFNI_THRESH_LOCK" ,                            /* 06 Feb 2004 */
+   ENV_add_string( "AFNI_THRESH_LOCK" ,                           /* 06 Feb 2004 */
                    "Lock Threshold slider values together?" ,
                    NUM_threshlock_list , threshlock_list , NULL  ) ;
+
+   ENV_add_string( "AFNI_GRAPH_CX2R" ,                            /* 18 Apr 2011 */
+                   "Graph display of complex time series" ,
+                   NUM_cx2r_list , cx2r_list , NULL  ) ;
+
+   ENV_add_string( "AFNI_GRAPH_BOXLAB" ,                          /* 18 Apr 2011 */
+                   "Box graph display of brick labels" ,
+                   NUM_boxlab_list , boxlab_list , NULL  ) ;
 
    ENV_add_yesno( "AFNI_PBAR_LOCK" , "Lock Color Pbars together?" ) ; /* 07 Feb 2004 */
    ENV_add_yesno( "AFNI_RANGE_LOCK", "Lock OLay Ranges together?" ) ; /* 23 Feb 2004 */
@@ -481,6 +495,10 @@ PLUGIN_interface * ENV_init(void)
                     "Max clusters sent to 'whereami'" ,
                     1,99,0,20 , NULL ) ;
 
+   /* 28 Feb 2011 [RWCox] */
+   ENV_add_yesno( "AFNI_CLUSTER_EBAR" ,
+                  "Error bars in Clusterize plots?" ) ;
+
    /* 03 Jun 2008 [RWCox] */
    ENV_add_yesno( "AFNI_IMAGE_TICK_DIV_IN_MM" ,
                   "Image tick divisions count is in mm?" ) ;
@@ -506,14 +524,13 @@ PLUGIN_interface * ENV_init(void)
                     "Cropped image panning step size" ,
                     -9,9,0,1 , NULL ) ;
 
-   /* 06 Oct 2010 [RWcox] */
+   /* 06 Oct 2010 [RWCox] */
    ENV_add_string( "AFNI_IDEAL_COLORS" ,
                    "Colors for the FIM Ideal in AFNI Graph viewer" ,
                    0,NULL , NULL ) ;
    ENV_add_string( "AFNI_ORT_COLORS" ,
                    "Colors for the FIM Ort in AFNI Graph viewer" ,
                    0,NULL , NULL ) ;
-
 
    /*--------- Sort list of variables [21 Feb 2007]  -----------*/
 

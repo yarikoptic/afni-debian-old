@@ -5,39 +5,69 @@ int main( int argc , char * argv[] )
    THD_3dim_dataset *dset1,*dset2=NULL, *oset ;
    MRI_IMAGE *dbr1,*dbr2,*dbr3 ;
    char *prefix = "DFT" ;
-   float   *mag, *real;
+   float   *mag, *real=NULL;
    complex *comp_array;
-   int iarg=1 , doabs=0, ii, jj, kk, ll, nvox, nvals=1, isfloat=0;
-   int nx, ny, nz, nfft=0 , detrend=0 ;
+   int iarg=1 , doabs=0, ii, jj, kk, ll, nvox, nvals=1 , isreal=0 ;
+   int nx, ny, nz, nfft=0 , detrend=0 , sgn=-1 ;
    float *xtap=NULL , ftap=0.0f ;  /* 27 Nov 2007 */
 
    if( argc < 2 || strcmp(argv[1],"-help") == 0 ){
-     printf("Usage: 3dDFT [-prefix ppp] [-abs] [-nfft N] [-detrend] dataset\n"
-            "   where dataset is complex or float valued.\n"
+     printf("Usage: 3dDFT [options] dataset\n"
+            "       where 'dataset' is complex- or float-valued.\n"
+            " * Carries out the DFT along the time axis.\n"
+            " * To do the DFT along the spatial axes, use program 3dFFT.\n"
+            " * The input dataset can be complex-valued or float-valued.\n"
+            "   If it is any other data type, it will be converted to floats\n"
+            "   before processing.\n"
             "\n"
+            "OPTIONS:\n"
+            "--------\n"
             " -abs     == output float dataset = abs(DFT)\n"
+            "            * Otherwise, the output file is complex-valued.\n"
+            "              You can then use 3dcalc to extract the real part, the\n"
+            "              imaginary part, the phase, etc.; see its '-cx2r' option:\n"
+            "                3dcalc -a cxset+orig -cx2r REAL -expr a -prefix rset+orig\n"
+            "            * Please note that if you view a complex dataset in AFNI,\n"
+            "              the default operation is that you are looking at the\n"
+            "              absolute value of the dataset.\n"
+            "             ++ You can control the way a complex IMAGE appears via\n"
+            "                the 'Disp' control panel (ABS, PHASE, REAL, IMAGE).\n"
+            "             ++ You can control the way a complex TIME SERIES graph appears\n"
+            "                via environment variable AFNI_GRAPH_CX2R (in 'EditEnv').\n"
+            "\n"
             " -nfft N  == use 'N' for DFT length (must be >= #time points)\n"
+            "\n"
             " -detrend == least-squares remove linear drift before DFT\n"
-            "             [for more complex detrending, use 3dDetrend first]\n"
+            "              [for more intricate detrending, use 3dDetrend first]\n"
+            "\n"
             " -taper f == taper 'f' fraction of data at ends (0 <= f <= 1).\n"
-            "             [Hamming 'raised cosine' taper of f/2 of the ]\n"
-            "             [data length at each end; default is no taper]\n"
-            "             [cf. 3dPeriodogam -help for tapering details!]\n"
+            "              [Hamming 'raised cosine' taper of f/2 of the ]\n"
+            "              [data length at each end; default is no taper]\n"
+            "              [cf. 3dPeriodogam -help for tapering details!]\n"
+            "\n"
+            " -inverse == Do the inverse DFT:\n"
+            "               SUM{ data[j] * exp(+2*PI*i*j/nfft) } * 1/nfft\n"
+            "             instead of the forward transform\n"
+            "               SUM{ data[j] * exp(-2*PI*i*j/nfft) }\n"
            ) ;
      PRINT_COMPILE_DATE ; exit(0) ;
    }
 
    mainENTRY("3dDFT main"); machdep(); AFNI_logger("3dDFT",argc,argv);
-   AUTHOR("Kevin Murphy & Zhark the Glorious") ;
+   AUTHOR("Kevin Murphy & Zhark the Transformer") ;
 #ifdef USING_MCW_MALLOC
    enable_mcw_malloc() ;
 #endif
 
    /*-- options --*/
 
-#define GOOD_TYPE(tt) ((tt)==MRI_complex || (tt)==MRI_float )
+#define GOOD_TYPE(tt) ((tt)==MRI_complex || (tt)==MRI_float || (tt)==MRI_short)
 
    while( iarg < argc && argv[iarg][0] == '-' ){
+
+      if( strcmp(argv[iarg],"-inverse") == 0 ){  /* 15 Apr 2011 */
+        sgn = 1 ; csfft_scale_inverse(1) ; iarg++ ; continue ;
+      }
 
       if( strcmp(argv[iarg],"-taper") == 0 ){  /* 27 Nov 2007 */
         ftap = (float)strtod(argv[++iarg],NULL) ;
@@ -67,7 +97,7 @@ int main( int argc , char * argv[] )
           WARNING_message("Illegal -nfft value on command line") ;
           nfft = 0 ;
         } else {
-          ii = csfft_nextup(nfft) ;
+          ii = csfft_nextup_even(nfft) ;
           if( ii > nfft ){
             WARNING_message("Replacing -nfft=%d with next largest legal value=%d",
                             nfft,ii) ;
@@ -98,7 +128,7 @@ int main( int argc , char * argv[] )
    if( !GOOD_TYPE( DSET_BRICK_TYPE(dset1,0) ) )
      ERROR_exit("ILLEGAL dataset type in %s - must be complex or float\n",argv[iarg]) ;
 
-   if(DSET_BRICK_TYPE(dset1,0) == MRI_float) { isfloat = 1; }
+   isreal = ( DSET_BRICK_TYPE(dset1,0) != MRI_complex ) ;  /* real inputs */
 
    dbr1 = DSET_BRICK(dset1,0) ;
 
@@ -108,18 +138,18 @@ int main( int argc , char * argv[] )
 
    nvox = dbr1->nvox ;
    nvals = DSET_NVALS(dset1);
+   if( nvals < 4 )
+     ERROR_exit("Only %d time points in dataset! Must have at least 4.",nvals);
 
    /* Calculate size for FFT */
-#if 0
-   nfft = csfft_nextup_one35(nvals);
-#endif
 
-   ii = csfft_nextup(nvals);
-   if( nfft <= 2 )
+   ii = csfft_nextup_even(nvals);
+   if( nfft <= 2 ){
      INFO_message("Data length = %d ; FFT length = %d",nvals,ii) ;
-   else if( ii > nfft )
+   } else if( ii > nfft ){
      WARNING_message("Data length = %d ; replacing -nfft=%d with %d",
                      nvals,nfft,ii);
+   }
    nfft = ii ;
 
    if( ftap > 0.0f )
@@ -130,7 +160,7 @@ int main( int argc , char * argv[] )
    oset = EDIT_empty_copy( dset1 ) ;
    EDIT_dset_items( oset ,
                       ADN_prefix , prefix ,
-                      ADN_datum_all, (isfloat) ? MRI_float : MRI_complex  ,
+                      ADN_datum_all, (doabs) ? MRI_float : MRI_complex  ,
                       ADN_nvals  , nfft ,
                       ADN_ntt    , nfft ,
                     ADN_none ) ;
@@ -163,19 +193,19 @@ int main( int argc , char * argv[] )
                             (doabs) ? MRI_float : MRI_complex ,
                             NULL ) ;
 
-   /* Loop through timeseries and do DFT */
+   /* Loop through timeseries and do DFTs */
 
    comp_array = (complex *) calloc( sizeof(complex) , nfft);
    mag        = (float *)   calloc( sizeof(float)   , nfft);
-   if (isfloat) { real = (float *)   calloc( sizeof(float)   , nfft); }
+   if( isreal ) real = (float *)calloc( sizeof(float),nfft) ;
 
    for( ii=0 ; ii < nvox ; ii++ ){  /* loop over voxels */
 
-     if(!isfloat){
+     if( !isreal ){  /* complex inputs */
        (void)THD_extract_array( ii , dset1 , 1 , comp_array ) ;
        if( detrend ) THD_linear_detrend_complex( nvals , comp_array ) ;
-     } else {
-       (void)THD_extract_array( ii , dset1 , 1 , real );
+     } else {        /* real inputs */
+       (void)THD_extract_array( ii , dset1 , 0 , real );
        if( detrend ) THD_linear_detrend( nvals , real , NULL,NULL ) ;
        for( jj=0 ; jj < nvals ; jj++ ) {
          comp_array[jj].r = real[jj]; comp_array[jj].i = 0.0f ;
@@ -191,9 +221,9 @@ int main( int argc , char * argv[] )
      for( jj=nvals ; jj < nfft ; jj++ )
        comp_array[jj].r = comp_array[jj].i = 0.0f ;  /* zero pad */
 
-    /* Perform the DFT at last! */
+    /**** Perform the DFT at last! ****/
 
-     csfft_cox( -1 , nfft, comp_array ) ;
+     csfft_cox( sgn , nfft , comp_array ) ;
 
      if( doabs ){
        for( jj=0 ; jj < nfft ; jj++ ) mag[jj] = CABS(comp_array[jj]) ;
@@ -210,7 +240,8 @@ int main( int argc , char * argv[] )
    tross_Copy_History( oset , dset1 ) ;
    tross_Make_History( "3dDFT", argc,argv, oset ) ;
 
-   INFO_message("output dataset: %s\n",DSET_BRIKNAME(oset)) ;
+   INFO_message("Output %s-valued dataset: %s\n",
+                (doabs) ? "float" : "complex" , DSET_BRIKNAME(oset) ) ;
    DSET_write( oset ) ;
    exit(0) ;
 }

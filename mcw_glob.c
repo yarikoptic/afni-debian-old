@@ -96,6 +96,10 @@ typedef void * ptr_t;
 
 #include "mcw_glob.h"
 
+/* added for direction control on sorting                14 Feb 2005 [rickr] */
+/* (copied from rickr/l_mcw_glob.c)                       4 Jan 2011 [rickr] */
+static int g_sort_dir = 1 ;       /* 1 = small to large, -1 = large to small */
+
 #ifndef S_ISDIR
 #define S_ISDIR(a)	(((a) & S_IFMT) == S_IFDIR)
 #endif
@@ -271,6 +275,17 @@ qprintf(Char *s)
 }
 #endif /* DEBUG */
 
+/*! set the direction of the sort (either small to large, or the reverse)    */
+/*  (copied from rickr/l_mcw_glob.c)                      4 Jan 2011 [rickr] */
+int rglob_set_sort_dir( int dir )                     /* 14 Feb 2005 [rickr] */
+{
+   if ( dir == 1 )       g_sort_dir =  1;
+   else if ( dir == -1 ) g_sort_dir = -1;
+   else                  return 1;          /* else, ignore and signal error */
+
+   return 0;
+}
+
 static int
 compare(const ptr_t p, const ptr_t q)
 {
@@ -280,9 +295,11 @@ compare(const ptr_t p, const ptr_t q)
     errno = 0;  /* strcoll sets errno, another brain-damage */
 #endif
 
-    return (strcoll(*(char **) p, *(char **) q));
+    /* allow reversing the sort direction  4 Jan 2011 [rickr] */
+
+    return (g_sort_dir * strcoll(*(char **) p, *(char **) q));
 #else
-    return (strcmp(*(char **) p, *(char **) q));
+    return (g_sort_dir * strcmp(*(char **) p, *(char **) q));
 #endif /* NLS && !NOSTRCOLL */
 }
 
@@ -803,9 +820,10 @@ void MCW_file_expand( int nin , char **fin , int *nout , char ***fout )
    int    ii , gnum, gold , ilen ;
    char **gout ;
    char *fn , *ehome ;
-   char prefix[4] , fpre[128] , fname[1024] ;
+   char prefix[4] , fpre[128] , fname[2048] ;
    int  b1,b2,b3,b4,b5 , ib,ig , lpre=0 ;
    char *eee ;
+   char sel[2048] ; int save_sel=0,nsel=0 ;  /* 09 Mar 2011 */
 
    if( nin <= 0 ){ *nout = 0 ; return ; }
 
@@ -813,10 +831,13 @@ void MCW_file_expand( int nin , char **fin , int *nout , char ***fout )
    gout  = NULL ;
    ehome = getenv("HOME") ;
 
+   eee = getenv("AFNI_GLOB_SELECTORS") ;
+   save_sel = ( eee != NULL && (*eee == 'Y' || *eee == 'y') ) ;
+
    for( ii=0 ; ii < nin ; ii++ ){
       fn = fin[ii] ; if( fn == NULL || *fn == '\0' ) continue ;
 
-      ig = 0 ; fname[0] = '\0' ;
+      ig = 0 ; fname[0] = '\0' ; sel[0] = '\0' ; nsel = 0 ;
 
       /** look for 3D: prefix **/
 
@@ -868,11 +889,23 @@ void MCW_file_expand( int nin , char **fin , int *nout , char ***fout )
         strcpy(fname,qname);
       }
 
+      /* 09 Mar 2011 [Ash Wednesday]: save selectors for later? */
+
+      if( save_sel ){
+        int jj , nf ;
+        nf = strlen(fname) ;
+        for( jj=0 ; jj < nf ; jj++ )
+          if( fname[jj] == '{' || fname[jj] == '[' || fname[jj] == '<' ) break ;
+        if( jj < nf ){
+          strcpy(sel,fname+jj) ; fname[jj] = '\0' ; nsel = strlen(sel) ;
+        }
+      }
+
       /** 30 Apr 2008: do globbing directly via the shell **/
 
       eee = getenv("AFNI_SHELL_GLOB") ;
       if( eee != NULL && (*eee == 'Y' || *eee == 'y') ){
-        FILE *pf ; char *cmd , buf[6666] ; int nb ;
+        FILE *pf ; char *cmd , buf[9999] ; int nb ;
 
         cmd = malloc(sizeof(char)*(strlen(fname)+32)) ;
         sprintf(cmd,"/bin/ls -d1 %s 2> /dev/null",fname) ;
@@ -881,18 +914,19 @@ void MCW_file_expand( int nin , char **fin , int *nout , char ***fout )
           fprintf(stderr,"** ERROR: popen() fails with AFNI_SHELL_GLOB\n") ;
           free(cmd) ; goto NEXT_STRING ;
         }
-        while( fgets(buf,6666,pf) != NULL ){
+        while( fgets(buf,9999,pf) != NULL ){
           nb = strlen(buf)-1 ;
           if( nb > 0 ){
             if( isspace(buf[nb]) ) buf[nb] = '\0' ;
             gout = (char **)realloc( gout , sizeof(char *)*(gnum+1) ) ;
-            ilen = nb+3 ; if( ig > 0 ) ilen += lpre ;
+            ilen = nb+3+nsel ; if( ig > 0 ) ilen += lpre ;
             gout[gnum] = (char *)malloc( sizeof(char) * ilen ) ;
             if( ig > 0 ){
               strcpy(gout[gnum],fpre) ; strcat(gout[gnum],buf) ;
             } else {
               strcpy(gout[gnum],buf) ;
             }
+            if( sel[0] != '\0' ) strcat(gout[gnum],sel) ; /* 09 Mar 2011 */
             gnum++ ;
           }
         }
@@ -914,8 +948,8 @@ void MCW_file_expand( int nin , char **fin , int *nout , char ***fout )
          else               gout = (char **) realloc(gout, sizeof(char *)*gnum);
 
          for( ib=0 ; ib < gl.gl_pathc ; ib++ ){
-            ilen = strlen( gl.gl_pathv[ib] ) + 1 ;  /* length of this name */
-            if( ig > 0 ) ilen += lpre ;             /* plus 3D: prefix?    */
+            ilen = strlen( gl.gl_pathv[ib] ) + 1 + nsel ;  /* length of this name */
+            if( ig > 0 ) ilen += lpre ;                    /* plus 3D: prefix?    */
 
             gout[ib+gold] = (char *) malloc( sizeof(char) * ilen ) ; /* output! */
 
@@ -926,6 +960,7 @@ void MCW_file_expand( int nin , char **fin , int *nout , char ***fout )
             else {
                strcpy( gout[ib+gold] , gl.gl_pathv[ib] ) ;  /* just name */
             }
+            if( sel[0] != '\0' ) strcat( gout[ib+gold] , sel ) ;  /* 09 Apr 2011 */
          }
 
       } else if( ig == 6 && strcmp(fname,"ALLZERO") == 0 ){ /* 06 Mar 2001 */
@@ -949,6 +984,14 @@ void MCW_file_expand( int nin , char **fin , int *nout , char ***fout )
 
     NEXT_STRING: continue ;
    }
+
+#if 1
+   eee = getenv("AFNI_GLOB_DEBUG") ;
+   if( eee != NULL && (*eee == 'Y' || *eee == 'y') && gnum > 0 ){
+     INFO_message("filename expansion gives:") ;
+     for( ii=0 ; ii < gnum ; ii++ ) ININFO_message(" %s",gout[ii]) ;
+   }
+#endif
 
    *nout = gnum ; *fout = gout ; return ;
 }

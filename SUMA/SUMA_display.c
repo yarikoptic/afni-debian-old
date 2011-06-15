@@ -726,6 +726,8 @@ void SUMA_LoadSegDO (char *s, void *csvp )
    /* what type are we dealing with ? */
    dotp = SUMA_Guess_DO_Type(s);
    if (dotp == no_type) {
+      SUMA_S_Warnv("Could not determine DO type of %s, assuming segments.",
+                     s);
       /* assume segments */
       dotp = LS_type;
    }
@@ -7893,7 +7895,8 @@ void SUMA_ATF_SetValue (SUMA_ARROW_TEXT_FIELD * AF)
          } else {
             SUMA_CLIP_VALUE(AF->value, AF->min, AF->max);
          }
-         /* It is still nice to call SetString because it puts the cursor at the beginning of the field */
+         /* It is still nice to call SetString because it puts the 
+            cursor at the beginning of the field */
          SUMA_ATF_SetString (AF);
          
       }
@@ -7906,7 +7909,8 @@ void SUMA_ATF_SetValue (SUMA_ARROW_TEXT_FIELD * AF)
    \brief Callback for Group button
    -Expects sv in data
 */
-void SUMA_cb_ViewerCont_SwitchGroup (Widget w, XtPointer data, XtPointer call_data)
+void SUMA_cb_ViewerCont_SwitchGroup (  Widget w, XtPointer data, 
+                                       XtPointer call_data)
 {
    static char FuncName[]={"SUMA_cb_ViewerCont_SwitchGroup"};
    SUMA_SurfaceViewer *sv=NULL;
@@ -8180,50 +8184,9 @@ void SUMA_cb_SelectSwitchColPlane(Widget w, XtPointer data, XtPointer call_data)
       SUMA_RETURNe;
    }
 
-   #if 0
-   if (cbs->reason == XmCR_SINGLE_SELECT) {
-      if (LocalHead) 
-         fprintf (SUMA_STDERR,"%s: Single selection, list widget %s... \n", 
-                  FuncName, LW->Label);
-   } else {
-      if (LocalHead) 
-         fprintf (SUMA_STDERR,"%s: Default selection, list widget %s... \n", 
-                  FuncName, LW->Label);
-      /*double click or enter on that one, close shop after selection */
-      CloseShop = YUP;
-   }
 
-   XmStringGetLtoR (cbs->item, XmFONTLIST_DEFAULT_TAG, &choice);
-   
-   if (LocalHead) 
-      fprintf (SUMA_STDERR,"%s: Selected item: %s {%s} (%d)\n", 
-               FuncName, choice, choice, cbs->item_position);
-   LW->lastitempos = cbs->item_position;   /* store for next opening */
-   
-   /* because of sorting, choice cannot be used as an index 
-      into clist and oplist in ALS */
-   Found = NOPE;
-   ichoice = 0;
-   do {
-      if (LocalHead) 
-         fprintf (SUMA_STDERR,"%s: Comparing:\t>%s<\t>%s<", 
-                  FuncName, LW->ALS->clist[ichoice], choice);
-      if (strncmp(LW->ALS->clist[ichoice], choice, 
-                  strlen(LW->ALS->clist[ichoice])) == 0) Found = YUP; 
-      else ++ichoice;
-   } while (ichoice < LW->ALS->N_clist && !Found);
-   
-   if (!Found) {
-      SUMA_SLP_Err("Choice not found.");
-      SUMA_RETURNe;
-   }
-   
-   XtFree (choice);
-   
-   #else
-   /* the new way */
    ichoice = SUMA_GetListIchoice(cbs, LW, &CloseShop);
-   #endif
+
    /* now retrieve that choice from the SUMA_ASSEMBLE_LIST_STRUCT 
       structure and initialize the drawing window */
    if (LW->ALS) {
@@ -8246,7 +8209,8 @@ void SUMA_cb_SelectSwitchColPlane(Widget w, XtPointer data, XtPointer call_data)
    }
 
    if (CloseShop) {
-      SUMA_cb_CloseSwitchColPlane( w,  (XtPointer)SO->SurfCont->SwitchDsetlst,  call_data);
+      SUMA_cb_CloseSwitchColPlane( w,  
+                        (XtPointer)SO->SurfCont->SwitchDsetlst,  call_data);
    }  
    
    
@@ -10918,6 +10882,28 @@ void SUMA_PositionWindowRelative (  Widget New, Widget Ref,
             NewY = root_y - (int)NewH + Dx;
          }
          break;
+         case SWP_POINTER_LEFT_BOTTOM:
+         {
+            Window root, child, wind;
+            int root_x, root_y, win_x, win_y;
+            unsigned int keys_buttons;
+            SUMA_LH("Pointer Query 2");
+            if (!XtIsRealized(New)) {
+               SUMA_LH("Need new wind");
+               if (!XtIsRealized(SUMAg_SVv[0].X->GLXAREA)) {
+                  SUMA_SL_Err("Nothing to work with here!");
+                  SUMA_RETURNe;
+               }
+               wind = XtWindow(SUMAg_SVv[0].X->GLXAREA);
+            } else {
+               wind = XtWindow(New);
+            }
+            XQueryPointer( XtDisplay(New), wind, &root, &child, 
+                           &root_x, &root_y, &win_x, &win_y, &keys_buttons);
+            NewX = root_x - (int)Dx*2;
+            NewY = root_y - (int)NewH + Dx;
+         }
+         break;
             
       default:
          fprintf (SUMA_STDERR, "Error %s: Option not known.\n", FuncName);
@@ -13236,7 +13222,7 @@ void SUMA_Xform_NewAF2 (void *data)
 void SUMA_cb_XformOpts_Apply (Widget w, XtPointer data, 
                              XtPointer client_data)
 {
-   static char FuncName[]={"SUMA_cb_XformOpts_Save"};
+   static char FuncName[]={"SUMA_cb_XformOpts_Apply"};
    SUMA_XFORM *xf=(SUMA_XFORM*)data;
    NI_element *nelpars=NULL;
    SUMA_Boolean LocalHead = NOPE;

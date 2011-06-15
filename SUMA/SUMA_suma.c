@@ -110,8 +110,6 @@ void SUMA_usage (SUMA_GENERIC_ARGV_PARSE *ps)
 "                     You can turn that off by explicitly setting AfniHost\n"
 "                     to 127.0.0.1\n"
 "   [-niml]: Start listening for NIML-formatted elements.\n"     
-"   [-dev]: Allow access to options that are not well polished for\n"
-"           mass consuption.\n"   
 "\n"
 " Mode 2: Using -t_TYPE or -t* options to specify surfaces on command line.\n"
 "         -sv, -ah, -niml and -dev are still applicable here. This mode \n"
@@ -148,6 +146,13 @@ void SUMA_usage (SUMA_GENERIC_ARGV_PARSE *ps)
 "             cp ~/.sumarc ~/.sumarc-bak ; \\\n"
 "             mv ~/sumarc ~/.sumarc\n" 
 "\n"
+"%s"
+"   [-list_ports]  List all port assignments and quit\n"
+"   [-port_number PORT_NAME]: Give port number for PORT_NAME and quit\n"
+"   [-port_number_quiet PORT_NAME]: Same as -port_number but writes out \n"
+"                                    number only\n"
+"   [-dev]: Allow access to options that are not well polished for\n"
+"           mass consuption.\n"   
 "   [-update_env] Performs the set operations detailed under -environment\n"
 "   [-latest_news] Shows the latest news for the current \n"
 "                  version of the entire SUMA package.\n"
@@ -162,7 +167,7 @@ void SUMA_usage (SUMA_GENERIC_ARGV_PARSE *ps)
 "   For more help: http://afni.nimh.nih.gov/ssc/ziad/SUMA/SUMA_doc.htm\n"
 "\n"     
 "   If you can't get help here, please get help somewhere.\n", 
-            sio, sb);
+            sio, sb, get_np_help());
           SUMA_free(sb); SUMA_free(sio);
 			 SUMA_Version(NULL);
 			 printf ("\n" 
@@ -378,6 +383,7 @@ int main (int argc,char *argv[])
    SUMA_mainENTRY;
    
 	SUMAg_CF->isGraphical = YUP;
+   
    ps = SUMA_Parse_IO_Args(argc, argv, "-i;-t;");
    #if 0
    if (argc < 2)
@@ -428,6 +434,26 @@ int main (int argc,char *argv[])
           exit (1);
 		}
 		
+      /* -list_ports list and quit */
+      if( strncmp(argv[kar],"-list_ports", 8) == 0) {
+         show_ports_list(); exit(0);
+      }
+      
+      /* -port_number and quit */
+      if( strncmp(argv[kar],"-port_number", 8) == 0) {
+         int pp = 0;
+         if( ++kar >= argc ) 
+            ERROR_exit("need an argument after -port_number!"); 
+         pp = get_port_named(argv[kar]);
+         if (strcmp(argv[kar-1], "-port_number_quiet")) { 
+            fprintf(stdout, "\nPort %s: %d\n", argv[kar], pp); 
+         } else {
+            fprintf(stdout, "%d\n", pp); 
+         }
+         if (pp < 1) exit(1);
+         else exit(0);
+      }
+      
       if (strcmp(argv[kar], "-visuals") == 0) {
 			 SUMA_ShowAllVisuals ();
           exit (0);
@@ -623,7 +649,7 @@ int main (int argc,char *argv[])
 			brk = YUP;
 		} 
 		
-
+      
 		if (!brk && !ps->arg_checked[kar]) {
 			if (  !strcmp(argv[kar], "-i") ||
                !strncmp(argv[kar], "-i_",3) ) {

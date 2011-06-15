@@ -53,7 +53,7 @@ ENTRY("new_lsqfit") ;
 /*------------------------------------------------------------------*/
 
 #undef  GOOD_METH
-#define GOOD_METH(m) ( (m)==1 || (m)==2 )
+#define GOOD_METH(m) ( (m)==1 || (m)==2 || (m)==-2 || (m)==-1 )
 
 /**--- 05 Mar 2008: stuff to get the fitted model back ---**/
 
@@ -74,8 +74,10 @@ void THD_fitter_set_vthresh( float vvv ){
 
 /*------------------------------------------------------------------*/
 /* Fit the npt-long vector far[] to the nref vectors in ref[].
-    - meth=1 ==> L1 fit
-    - meth=2 ==> L2 fit (any meth besides 1 or 2 is illegal)
+    - meth =  1 ==> L1 fit
+    - meth =  2 ==> L2 fit
+    - meth = -2 ==> L2 fit with LASSO [11 Mar 2011]
+    - meth = -1 ==> L2 fit with SQRT(LASSO) [not yet implemented]
     - ccon != NULL ==> ccon[i] is sign constraint on coef #i
                        ccon[i] = 0 == no constraint
                                > 0 == coef #i must be >= 0
@@ -100,7 +102,8 @@ ENTRY("THD_fitter") ;
    /* check inputs for stupid users */
 
    if( npt  <= 1 || far == NULL ||
-       nref <= 0 || ref == NULL || nref >= npt-1 ) RETURN(NULL) ;
+       nref <= 0 || ref == NULL ||
+       (nref >= npt-1 && meth > 0) ) RETURN(NULL) ;
 
    for( jj=0 ; jj < nref ; jj++ ) if( ref[jj] == NULL ) RETURN(NULL) ;
 
@@ -118,22 +121,23 @@ ENTRY("THD_fitter") ;
    for( nbad=jj=0 ; jj < nref ; jj++ ) if( qmag[jj] <= qmax ) nbad++ ;
 
    if( nbad > 0 ){  /*-- must excise the tiny columns before solving --*/
-     int    ngood = nref-nbad ;
+     int    ngood = nref-nbad , nc ;
      float **qref = (float **)calloc(sizeof(float *),ngood) ;
      floatvec *qv ; float *qcon=NULL ;
      if( ccon != NULL ) qcon = (float *)calloc(sizeof(float),ngood) ;
-     for( ii=jj=0 ; jj < nref ; jj++ ){
+     for( nc=ii=jj=0 ; jj < nref ; jj++ ){
        if( qmag[jj] > qmax ){
-         if( qcon != NULL ) qcon[ii] = ccon[jj] ;
+         if( ccon != NULL && ccon[jj] != 0.0f ){ qcon[ii] = ccon[jj] ; nc++ ; }
          qref[ii++] = ref[jj] ;
        }
      }
-     qv = THD_fitter( npt , far , ngood , qref , meth , qcon ) ;  /* recurse! */
+     if( nc == 0 ){ free(qcon) ; qcon = NULL ; }
+     qv = THD_fitter( npt , far , ngood , qref , meth , qcon ) ; /* recurse! */
      if( qcon != NULL ) free((void *)qcon) ;
      free((void *)qref) ;
      if( qv == NULL ){ free(qmag); RETURN(NULL); } /* bad solve? */
-     MAKE_floatvec(fv,nref) ;                        /* will be all zero */
-     for( ii=jj=0 ; jj < nref ; jj++ ){      /* load results into output */
+     MAKE_floatvec(fv,nref) ;                            /* will be all zero */
+     for( ii=jj=0 ; jj < nref ; jj++ ){          /* load results into output */
        if( qmag[jj] > qmax ) fv->ar[jj] = qv->ar[ii++] ;
      }
      KILL_floatvec(qv) ; free(qmag) ; RETURN(fv) ;
@@ -145,11 +149,29 @@ ENTRY("THD_fitter") ;
 
      default: free(qmag) ; RETURN(NULL) ;  /* stupid user */
 
-     /*-- least squares --*/
+     /*-- least squares with LASSO-ish things [experimental] --*/
+
+     case -1:{           /* not implemented yet */
+       floatvec *lfit ;
+       lfit = THD_sqrtlasso_L2fit( npt , far , nref , ref , NULL , ccon ) ;
+       if( lfit == NULL ){ free(qmag) ; RETURN(NULL) ; }
+       qfit = lfit->ar ; lfit->ar = NULL ; KILL_floatvec(lfit) ;
+     }
+     break ;
+
+     case -2:{
+       floatvec *lfit ;
+       lfit = THD_lasso_L2fit( npt , far , nref , ref , NULL , ccon ) ;
+       if( lfit == NULL ){ free(qmag) ; RETURN(NULL) ; }
+       qfit = lfit->ar ; lfit->ar = NULL ; KILL_floatvec(lfit) ;
+     }
+     break ;
+
+     /*-- straightforward least squares --*/
 
      case 2:
        if( ccon == NULL ){                            /* unconstrained */
-         if( use_rcmat ){
+         if( use_rcmat && nref > 9 ){
            int first=1 ;
            qfit = rcmat_lsqfit( npt, far, nref, ref ) ; /* 30 Dec 2008 */
            if( qfit == NULL && first ){
@@ -263,8 +285,8 @@ floatvec ** THD_deconvolve_multipen( int npt    , float *far   ,
    float val,kernsum, *zar , *zcon=NULL ;
    floatvec **fvv ;
    int nref,nlag,npen,nplu ; float **ref ;
-   int p0,p1,p2 , np0,np1,np2 , rp0,rp1,rp2 , ipf ;
-   float penfac,fmed,fsig , *qfac , p1scl,p2scl,p1fac,p2fac ;
+   int p0,p1,p2,p3 , np0,np1,np2,np3 , rp0,rp1,rp2,rp3 , ipf ;
+   float penfac,fmed,fsig , *qfac , p1scl,p2scl,p3scl,p1fac,p2fac,p3fac ;
 
 ENTRY("THD_deconvolve_multipen") ;
 
@@ -297,20 +319,17 @@ ENTRY("THD_deconvolve_multipen") ;
    p0   = (pencode & 1) ;    /* which penalty functions are enabled */
    p1   = (pencode & 2) ;
    p2   = (pencode & 4) ;
-   if( p0==0 && p1==0 & p2==0 ) p0 = 1 ;  /* must have some penalty */
+   p3   = (pencode & 8) ;
+   if( p0==0 && p1==0 && p2==0 && p3==0 ) p0 = 1 ;  /* some penalty */
    np0  = (p0) ? npt   : 0 ;   /* number of equations for each case */
    np1  = (p1) ? npt-1 : 0 ;
    np2  = (p2) ? npt-2 : 0 ;
+   np3  = (p3) ? npt-3 : 0 ;
    rp0  = npt ;                      /* row offset for p0 functions */
    rp1  = rp0 + np0 ;                /* row offset for p1 functions */
    rp2  = rp1 + np1 ;                /* row offset for p2 functions */
-   npen = np0+np1+np2 ;        /* total number of penalty equations */
-
-#if 0
-   if( AFNI_yesenv("AFNI_TFITTER_VERBOSE") )
-     ININFO_message("penalty: P0=%d@%d equations P1=%d@%d P2=%d@%d",
-                    np0,rp0,np1,rp1,np2,rp2) ;
-#endif
+   rp3  = rp2 + np2 ;                /* row offset for p3 functions */
+   npen = np0+np1+np2+np3 ;    /* total number of penalty equations */
 
    /* set scale level for negative pfac values */
 
@@ -325,7 +344,7 @@ ENTRY("THD_deconvolve_multipen") ;
    fmed = 0.333f * kernsum ;
 #endif
 
-#if 0
+#if 1
    if( AFNI_yesenv("AFNI_TFITTER_VERBOSE") )
      ININFO_message("default penalty scale factor=%g",fmed) ;
 #endif
@@ -342,6 +361,8 @@ ENTRY("THD_deconvolve_multipen") ;
 
    /* deconvolution equations (rows and columns #0..npt-1) */
 
+STATUS("setup deconvolution") ;
+
    for( jj=0 ; jj < npt ; jj++ ){
      ref[jj] = (float *)calloc(sizeof(float),nplu) ;
      for( ii=0 ; ii < npt ; ii++ ){
@@ -350,6 +371,8 @@ ENTRY("THD_deconvolve_multipen") ;
      }
    }
 
+STATUS("setup baseline") ;
+
    /* baseline equations, if any (columns #npt..nref-1, rows #0..npt-1) */
 
    for( jj=0 ; jj < nbase ; jj++ ){
@@ -357,12 +380,16 @@ ENTRY("THD_deconvolve_multipen") ;
      memcpy( ref[jj+npt] , base[jj] , sizeof(float)*npt ) ;
    }
 
+STATUS("copy data") ;
+
    /* copy data (rows #0..npt-1) */
 
    zar = (float *)calloc(sizeof(float),nplu) ;
-   memcpy(zar,far,sizeof(float)*npt) ;
+   memcpy(zar,far,sizeof(float)*npt) ;          /* the rest will be zero */
 
    /* copy constraints? */
+
+STATUS("copy constraints?") ;
 
    if( ccon != NULL || dcon != 0 ){
      zcon = (float *)calloc(sizeof(float),nref) ;
@@ -375,6 +402,7 @@ ENTRY("THD_deconvolve_multipen") ;
    /* make up some penalty factors if not supplied by user */
 
    if( pfac == NULL ){
+STATUS("make up penalty factors") ;
      qfac = (float *)malloc(sizeof(float)*npfac) ;
      if( npfac == 1 ){
        qfac[0] = -1.0f ;
@@ -400,6 +428,9 @@ ENTRY("THD_deconvolve_multipen") ;
 
    p1scl = AFNI_numenv("AFNI_TFITTER_P1SCALE"); if( p1scl <= 0.0f ) p1scl=1.0f ;
    p2scl = AFNI_numenv("AFNI_TFITTER_P2SCALE"); if( p2scl <= 0.0f ) p2scl=1.0f ;
+   p3scl = AFNI_numenv("AFNI_TFITTER_P3SCALE"); if( p3scl <= 0.0f ) p3scl=1.0f ;
+
+STATUS("loop over ipf") ;
 
    for( ipf=0 ; ipf < npfac ; ipf++ ){
 
@@ -409,60 +440,80 @@ ENTRY("THD_deconvolve_multipen") ;
      if( penfac == 0.0f ) penfac = -0.999f ;
      if( penfac <  0.0f ) penfac = -penfac * fmed ;
      p1fac = p1scl * penfac ;
-     p2fac = p2scl * penfac ;
+     p2fac = p2scl * penfac * 2.0f ;
+     p3fac = p3scl * penfac * 3.0f ;
 
      if( p0 ){
+STATUS(" setup p0") ;
        for( jj=0 ; jj < npt   ; jj++ ) ref[jj][rp0+jj]   =  penfac ;
      }
      if( p1 ){
+STATUS(" setup p1") ;
        for( jj=0 ; jj < npt-1 ; jj++ ) ref[jj][rp1+jj]   = -p1fac ;
        for( jj=1 ; jj < npt   ; jj++ ) ref[jj][rp1+jj-1] =  p1fac ;
      }
      if( p2 ){
-       val = -0.5f*p2fac ;
-       for( jj=0 ; jj < npt-2 ; jj++ ) ref[jj][rp2+jj]   = val ;
-       for( jj=1 ; jj < npt-1 ; jj++ ) ref[jj][rp2+jj-1] = p2fac ;
-       for( jj=2 ; jj < npt   ; jj++ ) ref[jj][rp2+jj-2] = val ;
+STATUS(" setup p2") ;
+       val = 0.5f*p2fac ;
+       for( jj=0 ; jj < npt-2 ; jj++ ) ref[jj][rp2+jj]   = -val ;
+       for( jj=1 ; jj < npt-1 ; jj++ ) ref[jj][rp2+jj-1] =  p2fac ;
+       for( jj=2 ; jj < npt   ; jj++ ) ref[jj][rp2+jj-2] = -val ;
+     }
+     if( p3 ){
+STATUS(" setup p3") ;
+       val = 0.3333333f*p3fac ;
+       for( jj=0 ; jj < npt-3 ; jj++ ) ref[jj][rp3+jj]   = -val ;
+       for( jj=1 ; jj < npt-2 ; jj++ ) ref[jj][rp3+jj-1] =  p3fac ;
+       for( jj=2 ; jj < npt-1 ; jj++ ) ref[jj][rp3+jj-2] = -p3fac ;
+       for( jj=3 ; jj < npt   ; jj++ ) ref[jj][rp3+jj-3] =  val ;
      }
 
      /***** actually fit the parameters (deconvolution + baseline) *****/
 
      fvv[ipf] = THD_fitter( nplu , zar , nref , ref , meth , zcon ) ;
 
-     if( do_fitv ) COPY_floatvec( ggfitvv[ipf] , gfitv ) ;
+     if( do_fitv && fvv[ipf] != NULL && gfitv != NULL ){
+STATUS("copy fitvec") ;
+       COPY_floatvec( ggfitvv[ipf] , gfitv ) ;
+STATUS(" end copy fitvec") ;
+     }
 
      if( pres != NULL && psiz != NULL && fvv[ipf] != NULL ){
        floatvec *fitv ; float *rar , *sar , rsum=0.0f,ssum=0.0f ;
+STATUS("computing pres + psiz") ;
        fitv = THD_fitter_fitts( nplu,fvv[ipf] , nref,ref , zar ) ;
        rar = fitv->ar ; sar = fvv[ipf]->ar ;
        switch(meth){
-         case 1:
+         case 1: case -1:
            for( ii=0; ii < npt; ii++ ){
              rsum += fabsf(rar[ii]); ssum += fabsf(sar[ii]);
            }
-           if( p1 || p2 )
+           if( p1 || p2 || p3 )
             for( ii=1 ; ii < npt ; ii++ ) ssum += fabsf(sar[ii]-sar[ii-1]) ;
          break ;
-         case 2:
+         case 2: case -2:
            for( ii=0; ii < npt; ii++ ){
              rsum += rar[ii]*rar[ii] ; ssum += sar[ii]*sar[ii] ;
            }
-           if( p1 || p2 )
+           if( p1 || p2 || p3 )
             for( ii=1 ; ii < npt ; ii++ ) ssum += SQR(sar[ii]-sar[ii-1]) ;
            rsum = sqrtf(rsum) ; ssum = sqrtf(ssum) ;
          break ;
        }
        KILL_floatvec(fitv) ; pres[ipf] = rsum ; psiz[ipf] = ssum ;
-#if 0
+#if 1
        if( AFNI_yesenv("AFNI_TFITTER_VERBOSE") )
          ININFO_message("qfac=%g penfac=%g resid=%g norm=%g",
                         qfac[ipf],penfac,rsum,ssum) ;
 #endif
      }
 
+STATUS("at end of ipf loop") ;
    }
 
    /* free the enslaved memory and return to the user */
+
+STATUS("free-ing") ;
 
    if( qfac != pfac ) free((void *)qfac) ;
    if( zcon != NULL ) free((void *)zcon) ;
@@ -470,6 +521,7 @@ ENTRY("THD_deconvolve_multipen") ;
    for( jj=0 ; jj < nref ; jj++ ) free((void *)ref[jj]) ;
    free((void *)ref) ;
 
+STATUS("done") ;
    RETURN(fvv) ;
 }
 
@@ -596,7 +648,7 @@ ENTRY("THD_deconvolve_autopen") ;
    for( ii=1 ; ii < NPFAC-1 ; ii++ ){
      val = ellish( pres[ii-1],pres[ii],pres[ii+1] ,
                    psiz[ii-1],psiz[ii],psiz[ii+1]  ) ;
-#if 0
+#if 1
      if( AFNI_yesenv("AFNI_TFITTER_VERBOSE") ) ININFO_message("ellish[%d] = %g",ii,val) ;
 #endif
      if( val > ppk && psiz[ii] > 1.e-5 ){ ipk = ii; ppk = val; }
@@ -617,8 +669,10 @@ ENTRY("THD_deconvolve_autopen") ;
    for( ii=0 ; ii < NPFAC ; ii++ ) if( ii != ipk ) KILL_floatvec(fvv[ii]) ;
    free((void *)fvv) ;
    if( penfac_used != NULL ) *penfac_used = pfac[ipk] ;
+#if 1
    if( AFNI_yesenv("AFNI_TFITTER_VERBOSE") )
      ININFO_message("optimal penfac_used#%d = %g",ipk,pfac[ipk]) ;
+#endif
 
    /*--- refinement step in pfac: scan around best one found above ---*/
 
@@ -657,7 +711,7 @@ ENTRY("THD_deconvolve_autopen") ;
    for( ii=1 ; ii < NPFAC-1 ; ii++ ){
      val = ellish( pres[ii-1],pres[ii],pres[ii+1] ,
                    psiz[ii-1],psiz[ii],psiz[ii+1]  ) ;
-#if 0
+#if 1
      if( AFNI_yesenv("AFNI_TFITTER_VERBOSE") ) ININFO_message("ellish[%d] = %g",ii,val) ;
 #endif
      if( val > ppk && psiz[ii] > 1.e-5 ){ ipk = ii; ppk = val; }
@@ -678,7 +732,7 @@ ENTRY("THD_deconvolve_autopen") ;
    for( ii=0 ; ii < NPFAC ; ii++ ) if( ii != ipk ) KILL_floatvec(fvv[ii]) ;
    free((void *)fvv) ;
    if( penfac_used != NULL ) *penfac_used = pfac[ipk] ;
-#if 0
+#if 1
    if( AFNI_yesenv("AFNI_TFITTER_VERBOSE") )
      ININFO_message("Optimal penfac_used#%d = %g",ipk,pfac[ipk]) ;
 #endif

@@ -16,8 +16,8 @@ set idset = 1
 foreach dset ($dsets) 
    set dparse = `@parse_afni_name $dset`
    set vol2o = $dparse[1]/$dparse[2]
-   # A way to add view to dparse[3] even if none exists
-   set dparse = ($dparse[1] $dparse[2] `@GetAfniView $dset`)
+   set dparse = ($dparse[1] $dparse[2] )
+   set viewo = "`@GetAfniView $dset`"
    #mask by base
    switch  ($maskby)
       case 2:
@@ -29,24 +29,28 @@ foreach dset ($dsets)
             set klist = `1dcat -form '%d,' /tmp/${RNS}.unq.1D\' | sed 's/,$//'`
             rm -f /tmp/${RNS}.unq.1D
          endif
-         3dcalc -a $vol1${view} -b $vol2o$view -overwrite \
+         echo $klist
+         3dcalc -a $vol1${view} -b $vol2o$viewo -overwrite \
                   -expr "amongst(a,$klist)*b"   \
                   -prefix $vol2m >& $log  
+         set viewm = $view
          breaksw
       case 1:
          set vol2m = {$RNS}.bma
-         3dcalc -a $vol1${view} -b $vol2o$view -overwrite -expr 'step(a)*b'   \
+         3dcalc -a $vol1${view} -b $vol2o$viewo -overwrite -expr 'step(a)*b'   \
                   -prefix $vol2m >& $log  
+         set viewm = $view
          breaksw
       case 0:
          set vol2m = $vol2o
+         set viewm = $viewo
          breaksw
       default:
          echo "Bad maskby of $maskby"
          goto BEND
          breaksw
    endsw
-   if (`@CheckForAfniDset $vol2m$dparse[3]` < 2) then
+   if (`@CheckForAfniDset $vol2m$viewm` < 2) then
       echo "Failed to create masked set $vol2m"
       goto BEND
    endif
@@ -63,10 +67,10 @@ foreach dset ($dsets)
    # you are multiplying by a, effectively masking.
    # Just keeps the history cleaner...
    3dcalc   -datum short -overwrite \
-            -a $vol1${view} -b $vol2o${view} -expr 'a*equals(a,b)' \
+            -a $vol1${view} -b $vol2o${viewo} -expr 'a*equals(a,b)' \
             -prefix  ${aib}  >& $log 
    3dcalc   -datum short -overwrite \
-            -a $vol1${view} -b $vol2o${view} -expr 'a*(1-equals(a,b))' \
+            -a $vol1${view} -b $vol2o${viewo} -expr 'a*(1-equals(a,b))' \
             -prefix  ${anib} >& $log                      
    
    
@@ -75,7 +79,7 @@ foreach dset ($dsets)
       3dROIstats -1Dformat -mask_f2short -numROI ${numROI} -zerofill 0\
                   -nzvoxels -mask $vol1$view $vol1$view >> {$RNS}.aib.1D
       3dROIstats -1Dformat -mask_f2short -numROI ${numROI} -zerofill 0\
-                  -nzvoxels -mask $vol2m$view $vol2m$view >> {$RNS}.aib.1D
+                  -nzvoxels -mask $vol2m$viewm $vol2m$viewm >> {$RNS}.aib.1D
 
    set nvals = `3dnvals -all {$RNS}.aib.1D`
    set N_cl = `ccalc -i $nvals[4] / 2`
@@ -88,9 +92,22 @@ foreach dset ($dsets)
       set in = `ccalc -i "2*$icl"`
       set cl_num = `1dcat {$RNS}.aib.1D"[$in]" | uniq`
       if ("$#cl_num" != 1 && "$#cl_num" != 0) then
-         echo "#Bad table $cl_num, filling with 0s"
-         set clar = ($clar $cl)
-         set dcar = ($dcar 0)
+         if ($ignore_bad) then
+            if ($#forced_list > 0) then
+               #Check if $cl is mandated
+               set mm = (`1dcat "1D:$forced_list $cl" | sort -n | uniq`)
+               if ($#mm == $#forced_list) then
+                  set clar = ($clar $cl)
+                  set dcar = ($dcar 0)
+               endif
+            else
+               echo "#Bad table $cl_num, ignoring it"
+            endif
+         else
+            echo "#Bad table $cl_num, filling with 0s"
+            set clar = ($clar $cl)
+            set dcar = ($dcar 0)
+         endif
       else      
          if ("$cl_num" != 0) then
             set in = `ccalc -i "2*$icl+1"`
@@ -190,6 +207,7 @@ PARSE_COMMAND:
    set ltfile = ''
    set llist = ()
    set usedsetvals = 0
+   set ignore_bad = 0
    
    if ("$1" == '' || "$1" == '-h' || "$1" == '-help' || "$2" == '') then
 	   goto USAGE
@@ -242,6 +260,11 @@ PARSE_COMMAND:
          set maskby = 0
          set donext = 0	
       endif
+
+      if ($donext && "$argv[$cnt]" == "-ignore_bad") then
+         set ignore_bad = 1
+         set donext = 0	
+      endif
       
       if ($donext && "$argv[$cnt]" == "-mask_by_base") then
          set maskby = 1
@@ -281,6 +304,19 @@ PARSE_COMMAND:
 			else
             @ cnt ++
             set ltfile = "$argv[$cnt]"
+            set donext = 0	
+         endif	
+      endif   
+         
+      if ($donext && "$argv[$cnt]" == "-forceoutput") then
+         set pLoc = $cnt		
+		   if ($pLoc == $Narg) then
+				echo "Need a file after -forceoutput"
+            goto END
+			else
+            @ cnt ++
+            set forced_list = \
+               (`@MakeLabelTable -all_keys -labeltable $argv[$cnt]`)
             set donext = 0	
          endif	
       endif   
@@ -410,15 +446,20 @@ echo "   [-labeltable LTFILE]: If given, the labeltable is used to set the "
 echo "                         default MAX_ROI parameter"
 echo "                         Also, this option forces an output for each"
 echo "                         key in the LTFILE"
+echo "   [-forceoutput LTFILE]: If given force output for each class in LTFILE"
 echo "   [-do_not_mask_by_base]: Do not mask dset by step(base) before computing"
 echo "                           Dice coefficient. This is the default behaviour"
 echo "                           for backward compatibility. "
 echo "   [-mask_by_base]: Mask dset by the step(base) before computing"
 echo "                           Dice coefficient. With this option,"
-echo "                           Voxels that are 0 in the base dataset are not" echo "                           considered in the computations."
+echo "                           Voxels that are 0 in the base dataset are not"
+echo "                           considered in the computations."
 echo ""
 echo "   [-prefix PREFIX]: Use PREFIX for the output table. "
 echo "                     Default is separate results for each dset to stdout"
+echo "   [-ignore_bad]: Warn if encountering bad scenarios, but do not create"
+echo "                  a zero entry. You should check for the cause of the"
+echo "                  warnings to be sure they are OK to ignore"
 echo "   [-keep_tmp]: Keep temporary files for debugging. Note that you should"
 echo "                delete temporary files before rerunning the script."
 echo "   [-echo]    : set echo "         
@@ -435,7 +476,8 @@ BEND:
    
 END:
 if ($cleanup) then
-   rm -f {$RNS}.dice_*.1D {$RNS}.aib.1D {$RNS}.aib+????.* {$RNS}.bma+????.* 
+   rm -f {$RNS}.dice_*.1D {$RNS}.aib.1D {$RNS}.aib+????.* \
+            {$RNS}.anib+????.* {$RNS}.bma+????.* 
 endif
 if ($stat == 0 && -f $log) \rm /tmp/${RNS}.MLT.log
 exit $stat

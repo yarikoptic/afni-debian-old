@@ -878,20 +878,21 @@ STATUS("making imag->rowcol") ;
       imag->pop_sumato_pb = NULL ;
    }
 
-   /*--- Talairach To button in menu ---*/
+   /*--- create button to Move crosshairs to position in atlas,
+           formerly "Talairach to" ---*/
 
    if( im3d->type == AFNI_3DDATA_VIEW ){
       imag->pop_talto_pb =
          XtVaCreateManagedWidget(
             "dialog" , xmPushButtonWidgetClass , imag->popmenu ,
-               LABEL_ARG("-Talairach to") ,
+               LABEL_ARG("-Go to atlas location") ,
                XmNmarginHeight , 0 ,
                XmNtraversalOn , True  ,
                XmNinitialResourcesPersistent , False ,
             NULL ) ;
       XtAddCallback( imag->pop_talto_pb , XmNactivateCallback ,
                      AFNI_imag_pop_CB , im3d ) ;
-      if( TT_load_atlas() > 0 ){
+      if( TT_retrieve_atlas_dset("TT_Daemon",0) ){
          imag->pop_whereami_pb =        /* 10 Jul 2001 */
             XtVaCreateManagedWidget(
                "dialog" , xmPushButtonWidgetClass , imag->popmenu ,
@@ -3267,6 +3268,8 @@ STATUS("making func->rowcol") ;
        if( eee == NULL || strcmp(eee,"NO") != 0 ){
          PBAR_set_bigmode( func->inten_pbar , 1 , pmin,pmax ) ;
          PBAR_set_bigmap( func->inten_pbar , eee ) ;
+         im3d->cont_pbar_index = func->inten_pbar->bigmap_index;
+         im3d->int_pbar_index = PBAR_get_bigmap_index("ROI_i256");
        }
      }
    }
@@ -4500,16 +4503,16 @@ STATUS("making dmode->rowcol") ;
 
    MCW_reghelp_children( dmode->saveas_rowcol ,
                          "The 'SaveAs' buttons let you write out one\n"
-                         "of the current dataset (UnderLay or OverLay)\n"
+                         "of the current datasets (UnderLay or OverLay)\n"
                          "under a new name.  These datasets will be\n"
                          "written at the spatial resolution they are\n"
                          "stored in -- they won't be resampled.\n\n"
-                         "+ Datasets that are 'warp-on-demand' (don't\n"
+                         "* Datasets that are 'warp-on-demand' (don't\n"
                          "   have their own data) cannot be 'SaveAs'-ed!\n"
-                         "+ It is possible to over-write an existing\n"
+                         "* It is possible to over-write an existing\n"
                          "   dataset with 'SaveAs' -- but this is\n"
-                         "   usually not advisable, unless you are\n"
-                         "   going to quit AFNI shortly."
+                         "   usually NOT advisable, unless you are\n"
+                         "   going to quit AFNI almost immediately."
                        ) ;
 
    /*---- 23 Nov 1996: Row of Buttons for Rescan Session ----*/
@@ -4989,7 +4992,7 @@ STATUS("making prog->rowcol") ;
 
 /***
       XtVaSetValues( prog->hidden_menu ,
-                        XmNspacing      , 1 ,
+                        XmNspacing      , 0 ,
                         XmNmarginHeight , 0 ,
                         XmNmarginWidth  , 0 ,
                      NULL ) ;
@@ -5147,12 +5150,38 @@ STATUS("making prog->rowcol") ;
 
       /*----------*/
 
+      prog->hidden_uscon_pb =
+            XtVaCreateManagedWidget(
+               "dialog" , xmPushButtonWidgetClass , prog->hidden_menu ,
+                  LABEL_ARG("US Constitution") ,
+                  XmNmarginHeight , 0 ,
+                  XmNtraversalOn , True  ,
+                  XmNinitialResourcesPersistent , False ,
+               NULL ) ;
+      XtAddCallback( prog->hidden_uscon_pb , XmNactivateCallback ,
+                     AFNI_hidden_CB , im3d ) ;
+
+      /*----------*/
+
+      prog->hidden_usdecl_pb =
+            XtVaCreateManagedWidget(
+               "dialog" , xmPushButtonWidgetClass , prog->hidden_menu ,
+                  LABEL_ARG("Decl of Independence") ,
+                  XmNmarginHeight , 0 ,
+                  XmNtraversalOn , True  ,
+                  XmNinitialResourcesPersistent , False ,
+               NULL ) ;
+      XtAddCallback( prog->hidden_usdecl_pb , XmNactivateCallback ,
+                     AFNI_hidden_CB , im3d ) ;
+
+      /*----------*/
+
 #ifdef USE_SONNETS
       if( ! NO_frivolities ){
          prog->hidden_sonnet_pb =
             XtVaCreateManagedWidget(
                "dialog" , xmPushButtonWidgetClass , prog->hidden_menu ,
-                  LABEL_ARG("Shakespeare") ,
+                  LABEL_ARG("Pick a Sonnet") ,
                   XmNmarginHeight , 0 ,
                   XmNtraversalOn , True  ,
                   XmNinitialResourcesPersistent , False ,
@@ -5174,6 +5203,19 @@ STATUS("making prog->rowcol") ;
                   XmNinitialResourcesPersistent , False ,
                NULL ) ;
       XtAddCallback( prog->hidden_gamberi_pb , XmNactivateCallback ,
+                     AFNI_hidden_CB , im3d ) ;
+
+      /*----------*/
+
+      prog->hidden_melter_pb =
+            XtVaCreateManagedWidget(
+               "dialog" , xmPushButtonWidgetClass , prog->hidden_menu ,
+                  LABEL_ARG("AFNI Meltdown") ,
+                  XmNmarginHeight , 0 ,
+                  XmNtraversalOn , True  ,
+                  XmNinitialResourcesPersistent , False ,
+               NULL ) ;
+      XtAddCallback( prog->hidden_melter_pb , XmNactivateCallback ,
                      AFNI_hidden_CB , im3d ) ;
 
       /*----------*/
@@ -5278,20 +5320,7 @@ STATUS("making prog->rowcol") ;
 
       /*---------- modified 30 Dec 2005 ----------*/
 
-      GLOBAL_browser = getenv("AFNI_WEB_BROWSER") ;
-#ifdef DARWIN
-      if( GLOBAL_browser == NULL )
-        GLOBAL_browser = strdup("open") ;  /* for Mac OS X */
-#endif
-      if( GLOBAL_browser == NULL )
-        GLOBAL_browser = THD_find_executable( "firefox" ) ;
-      if( GLOBAL_browser == NULL )
-        GLOBAL_browser = THD_find_executable( "mozilla" ) ;
-      if( GLOBAL_browser == NULL )
-        GLOBAL_browser = THD_find_executable( "netscape" ) ;
-      if( GLOBAL_browser == NULL )
-        GLOBAL_browser = THD_find_executable( "opera" ) ;
-
+      GLOBAL_browser = GetAfniWebBrowser();
       if( GLOBAL_browser != NULL ){
         prog->hidden_browser_pb =
               XtVaCreateManagedWidget(
@@ -5560,7 +5589,6 @@ ENTRY("new_AFNI_controller") ;
    im3d->cont_autorange = 1;
    im3d->cont_range_fval = 1.0;
    im3d->first_integral = -1;
-
    RETURN(im3d) ;
 }
 
@@ -6703,11 +6731,13 @@ int AFNI_set_func_range_nval(XtPointer *vp_im3d, float rval)
    ENTRY("AFNI_set_func_range_nval") ;
 
    im3d = (Three_D_View *)vp_im3d;
-   if(im3d->first_integral!=0) {
+   if(im3d->first_integral!=0) {  /* must be switching from a continuous color scale */
      im3d->cont_bbox = MCW_val_bbox(im3d->vwid->func->range_bbox);
      im3d->cont_autorange = im3d->vinfo->use_autorange;
      im3d->cont_range_fval = im3d->vwid->func->range_av->fval;
      im3d->cont_pos_only = MCW_val_bbox( im3d->vwid->func->inten_bbox) ;
+     im3d->cont_pbar_index = im3d->vwid->func->inten_pbar->bigmap_index;
+     
      im3d->first_integral = 0;
    }
 
@@ -6739,9 +6769,11 @@ int AFNI_reset_func_range_cont(XtPointer *vp_im3d)
    if(im3d->first_integral<0)
       RETURN(0);
 
-   MCW_set_bbox( im3d->vwid->func->range_bbox , im3d->cont_bbox ) ;   /* autoRange box */
-   im3d->vinfo->use_autorange = im3d->cont_autorange ;
+   /* reset the continuous color scale back to whatever it was */
+   PBAR_set_bigmap_index( im3d->vwid->func->inten_pbar ,
+                          im3d->cont_pbar_index ) ;
 
+   /* reset range */
    AV_SENSITIZE( im3d->vwid->func->range_av , 1 ) ;
    AV_assign_fval( im3d->vwid->func->range_av , im3d->cont_range_fval ) ;
    AFNI_range_av_CB( im3d->vwid->func->range_av , im3d ) ;
@@ -6750,6 +6782,12 @@ int AFNI_reset_func_range_cont(XtPointer *vp_im3d)
    MCW_set_bbox( im3d->vwid->func->inten_bbox , im3d->cont_pos_only ) ;
    AFNI_inten_bbox_CB( im3d->vwid->func->inten_bbox->wbut[PBAR_MODEBUT] ,
                        (XtPointer)im3d , NULL ) ;
+
+   /* reset auto-range - redisplays if auto-ranging */
+   MCW_set_bbox( im3d->vwid->func->range_bbox , im3d->cont_bbox ) ;   /* autoRange box */
+   AFNI_range_bbox_CB( im3d->vwid->func->range_bbox->wbut[RANGE_AUTOBUT],
+                       (XtPointer)im3d , NULL ) ;
+   im3d->vinfo->use_autorange = im3d->cont_autorange ;
 
    im3d->first_integral = 1;
 
@@ -6792,7 +6830,9 @@ int AFNI_set_dset_pbar(XtPointer *vp_im3d)
       if (icmap >=0 ) {
          PBAR_set_bigmap( im3d->vwid->func->inten_pbar ,  pbar_name) ;
       } else {
-         PBAR_set_bigmap( im3d->vwid->func->inten_pbar , "ROI_i256" ) ;
+         PBAR_set_bigmap_index( im3d->vwid->func->inten_pbar ,
+                              im3d->int_pbar_index ) ;
+/*         PBAR_set_bigmap( im3d->vwid->func->inten_pbar , "ROI_i256" ) ; */
       }
       switched = 1;
       /* Problem is that when you switch back to a non  ROI dset,
@@ -6813,10 +6853,11 @@ int AFNI_set_dset_pbar(XtPointer *vp_im3d)
          PBAR_set_bigmap( im3d->vwid->func->inten_pbar , "ROI_i256" ) ;
       }
       else {
+#if 0
        char *eee = getenv("AFNI_COLORSCALE_DEFAULT") ;
        if( eee == NULL ) eee = getenv("AFNI_COLOR_SCALE_DEFAULT") ;
        if( eee == NULL ) eee = "Spectrum:red_to_blue" ;
-       PBAR_set_bigmap( im3d->vwid->func->inten_pbar , eee ) ;
+#endif
        AFNI_reset_func_range_cont((XtPointer *)im3d);
       }
       switched = 1;

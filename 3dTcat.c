@@ -68,6 +68,8 @@ void TCAT_read_opts( int argc , char *argv[] )
    INIT_3DARR(TCAT_dsar) ;  /* array of datasets */
    INIT_XTARR(TCAT_subv) ;  /* array of sub-brick selector arrays */
 
+   PUTENV("AFNI_GLOB_SELECTORS","YES") ;  /* 09 Mar 2011 */
+
    while( nopt < argc ){
 
       /**** -relabel ****/
@@ -204,66 +206,84 @@ void TCAT_read_opts( int argc , char *argv[] )
     /*----- Remove View Type from string to make output prefix -----*/
          MCW_strncpy( TCAT_output_prefix , argv[nopt] , ilen+1) ;
 
-    /*----- Note: no "continue" statement here.  File name will now
-      be processed as an input dataset -----*/
-      }
+    /*----- Note: no "continue" statement here.  File name 
+                  will now be processed as an input dataset -----*/
+
+      } /* end of -glueto prefatory actions */
+
+      /*-- does this look like another option?  that's bad! --*/
 
       if( argv[nopt][0] == '-' ) ERROR_exit("Unknown option: %s",argv[nopt]) ;
 
-      /**** read dataset ****/
+      /*-- 09 Mar 2011: do filename expansion --*/
 
-      cpt = strstr(argv[nopt],"[") ;  /* look for the sub-brick selector */
+      { int nexp,ee,ebad=0 ; char **fexp ;
 
-      subv = NULL;   /* Need to resest this variable ZSS Nov. 24 2010 */
-      if( cpt == NULL ){              /* no selector */
-         strcpy(dname,argv[nopt]) ;
-      } else if( cpt == argv[nopt] ){ /* can't be at start!*/
-         ERROR_exit("Illegal dataset specifier: %s",argv[nopt]) ;
-      } else {                        /* found selector */
-         ii = cpt - argv[nopt] ;
-         memcpy(dname,argv[nopt],ii) ; dname[ii] = '\0' ;
-         subv = cpt;   /* no length limit    17 Jun 2010 [rickr] */
-      }
-      nopt++ ;
+        MCW_file_expand( 1 , argv+nopt , &nexp , &fexp ) ;
 
-      dset = THD_open_one_dataset( dname ) ;
-      if( dset == NULL ) ERROR_exit("Can't open dataset %s",dname) ;
-      THD_force_malloc_type( dset->dblk , DATABLOCK_MEM_MALLOC ) ;
+        if( nexp == 0 ){ ebad = nexp = 1 ; fexp = argv+nopt ; }
+        nopt++ ;
 
-      if( TCAT_type < 0 ) TCAT_type = dset->type ;
+        for( ee=0 ; ee < nexp ; ee++ ){ 
 
-      TCAT_ccode = COMPRESS_filecode(dset->dblk->diskptr->brick_name) ; /* 16 Mar 2010 */
+          /**** read dataset ****/
 
-      /* check if voxel counts match */
+          cpt = strstr(fexp[ee],"[") ;  /* look for the sub-brick selector */
 
-      ii = dset->daxes->nxx * dset->daxes->nyy * dset->daxes->nzz ;
-      if( TCAT_nvox < 0 ){
-        TCAT_nvox = ii ; fset = dset ;
-      } else if( ii != TCAT_nvox ){
-        ERROR_exit("Dataset %s differs in size from first one!",dname);
-      } else if( !EQUIV_GRIDS(dset,fset) ){
-        WARNING_message("Dataset %s grid differs from first one!",dname);
-      }
-      ADDTO_3DARR(TCAT_dsar,dset) ;  /* list of datasets */
+          subv = NULL;   /* Need to resest this variable ZSS Nov. 24 2010 */
+          if( cpt == NULL ){              /* no selector */
+            strcpy(dname,fexp[ee]) ;
+          } else if( cpt == fexp[ee] ){ /* can't be at start!*/
+            ERROR_exit("Illegal dataset specifier: %s",fexp[ee]) ;
+          } else {                        /* found selector */
+            ii = cpt - fexp[ee] ;
+            memcpy(dname,fexp[ee],ii) ; dname[ii] = '\0' ;
+            subv = cpt;   /* no length limit    17 Jun 2010 [rickr] */
+          }
 
-      if (subv == NULL || subv[0] == '\0') { /* lazy way for 3dTcat special */
-         svar = TCAT_get_subv( DSET_NVALS(dset) , subv ) ; /* ZSS March 2010 */
-      } else {
-         svar = MCW_get_thd_intlist (dset, subv);          /* ZSS March 2010 */
-      }
-      if( svar == NULL || svar[0] <= 0 ){
-         ERROR_exit("can't decipher index codes from %s%s\n",dname,subv) ;
-      }
-      ADDTO_XTARR(TCAT_subv,svar) ;  /* list of sub-brick selectors */
+          dset = THD_open_one_dataset( dname ) ;
+          if( dset == NULL ) ERROR_exit("Can't open dataset %s",dname) ;
+          THD_force_malloc_type( dset->dblk , DATABLOCK_MEM_MALLOC ) ;
 
-      max_nsub = MAX( max_nsub , svar[0] ) ;
+          if( TCAT_type < 0 ) TCAT_type = dset->type ;
 
-      if( TCAT_rlt == 3 && svar[0] < 3 )  /* 16 Sep 1999 */
-        WARNING_message(
-                 "-rlt++ option won't work properly with"
-                 " less than 3 sub-bricks per input dataset!") ;
+          TCAT_ccode = COMPRESS_filecode(dset->dblk->diskptr->brick_name) ; /* 16 Mar 2010 */
 
-   }  /* end of loop over command line arguments */
+          /* check if voxel counts match */
+
+          ii = dset->daxes->nxx * dset->daxes->nyy * dset->daxes->nzz ;
+          if( TCAT_nvox < 0 ){
+            TCAT_nvox = ii ; fset = dset ;
+          } else if( ii != TCAT_nvox ){
+            ERROR_exit("Dataset %s differs in size from first one!",dname);
+          } else if( !EQUIV_GRIDS(dset,fset) ){
+            WARNING_message("Dataset %s grid differs from first one!",dname);
+          }
+          ADDTO_3DARR(TCAT_dsar,dset) ;  /* list of datasets */
+
+          if (subv == NULL || subv[0] == '\0') { /* lazy way for 3dTcat special */
+            svar = TCAT_get_subv( DSET_NVALS(dset) , subv ) ; /* ZSS March 2010 */
+          } else {
+            svar = MCW_get_thd_intlist (dset, subv);          /* ZSS March 2010 */
+          }
+          if( svar == NULL || svar[0] <= 0 ){
+            ERROR_exit("can't decipher index codes from %s%s\n",dname,subv) ;
+          }
+          ADDTO_XTARR(TCAT_subv,svar) ;  /* list of sub-brick selectors */
+
+          max_nsub = MAX( max_nsub , svar[0] ) ;
+
+          if( TCAT_rlt == 3 && svar[0] < 3 )  /* 16 Sep 1999 */
+            WARNING_message(
+                     "-rlt++ option won't work properly with"
+                     " less than 3 sub-bricks per input dataset!") ;
+        } /* end of loop over filename expansion*/
+
+        if( !ebad ) MCW_free_expand( nexp , fexp ) ;
+
+      } /* end of filename expansion stuff */
+
+   }  /* end of while loop over command line arguments */
 
    /*--- final sanity checks ---*/
 
@@ -512,6 +532,24 @@ void TCAT_Syntax(void)
     "\n"
     "* You may wish/need to use the 3drefit program on the output\n"
     "  dataset to modify some of the .HEAD file parameters.\n"
+    "\n"
+    "* The program does internal wildcard expansion on the filenames\n"
+    "  provided to define the datasets.  The software first strips the\n"
+    "  sub-brick selector string '[...]' off the end of each filename\n"
+    "  BEFORE wildcard expansion, then re-appends it to the results\n"
+    "  AFTER the expansion; for example, '*+orig.HEAD[4..7]' might\n"
+    "  expand to 'fred+orig.HEAD[4..7]' and 'wilma+orig.HEAD[4..7]'.\n"
+    " ++ However, the '[...]' construct is also a shell wildcard,\n"
+    "    It is not practicable to use this feature for filename\n"
+    "    selection with 3dTcat if you are also using sub-brick\n"
+    "    selectors.\n"
+    " ++ Since wildcard expansion looks for whole filenames, you must\n"
+    "    use wildcard expansion in the form (e.g.) of '*+orig.HEAD',\n"
+    "    NOT '*+orig' -- since the latter form doesn't match filenames.\n"
+    " ++ Don't use '*+orig.*' since that will match both the .BRIK and\n"
+    "    .HEAD files, and each dataset will end up being read in twice!\n"
+    " ++ If you want to see the filename expansion results, run 3dTcat\n"
+    "    with the option '-DAFNI_GLOB_DEBUG=YES'\n"
    ) ;
 
    PRINT_COMPILE_DATE ; exit(0) ;
@@ -588,7 +626,7 @@ int main( int argc , char *argv[] )
                       ADN_directory_name, TCAT_session ,
                       ADN_type          , TCAT_type ,
                       ADN_func_type     , ISANATTYPE(TCAT_type) ? ANAT_EPI_TYPE
-                                                                : FUNC_FIM_TYPE ,
+                                                                : FUNC_BUCK_TYPE ,
                       ADN_ntt           , new_nvals ,  /* both ntt and nvals */
                       ADN_nvals         , new_nvals ,  /* must be altered    */
                     ADN_none ) ;
@@ -686,84 +724,50 @@ int main( int argc , char *argv[] )
            EDIT_substitute_brick( new_dset , ivout ,
                                   DSET_BRICK_TYPE(dset,jv) , DSET_ARRAY(dset,jv) ) ;
 
-       /*----- If this sub-brick is from a bucket dataset,
-                    preserve the label for this sub-brick -----*/
+           /*----- If this sub-brick is from a bucket dataset,
+                        preserve the label for this sub-brick -----*/
 
-         if( !TCAT_relabel && DSET_HAS_LABEL(dset,jv) )
-           sprintf (buf, "%s", DSET_BRICK_LABEL(dset,jv));
-         else
-           sprintf(buf,"%.16s[%d]",DSET_PREFIX(dset),jv) ;
-         EDIT_dset_items( new_dset, ADN_brick_label_one+ivout, buf, ADN_none );
+           if( !TCAT_relabel && DSET_HAS_LABEL(dset,jv) )
+             sprintf (buf, "%s", DSET_BRICK_LABEL(dset,jv));
+           else
+             sprintf(buf,"%.16s[%d]",DSET_PREFIX(dset),jv) ;
+           EDIT_dset_items( new_dset, ADN_brick_label_one+ivout, buf, ADN_none );
 
-#if 0
-            sprintf(buf,"%s[%d]",DSET_FILECODE(dset),jv) ;
-            EDIT_dset_items(
-              new_dset, ADN_brick_keywords_replace_one+ivout, buf, ADN_none ) ;
-#endif
-
-         EDIT_dset_items(
-              new_dset ,
-                ADN_brick_fac_one            +ivout, DSET_BRICK_FACTOR(dset,jv),
-#if 0
-                ADN_brick_keywords_append_one+ivout, DSET_BRICK_KEYWORDS(dset,jv),
-#endif
-              ADN_none ) ;
+           EDIT_dset_items( new_dset ,
+                              ADN_brick_fac_one+ivout, DSET_BRICK_FACTOR(dset,jv),
+                            ADN_none ) ;
 
             /** possibly write statistical parameters for this sub-brick **/
 
-            kv = DSET_BRICK_STATCODE(dset,jv) ;
+           kv = DSET_BRICK_STATCODE(dset,jv) ;
 
-            if( FUNC_IS_STAT(kv) ){ /* input sub-brick has stat params */
+           if( FUNC_IS_STAT(kv) ){ /* input sub-brick has stat params */
+             int npar = FUNC_need_stat_aux[kv] , lv ;
+             float *par = (float *) malloc( sizeof(float) * (npar+2) ) ;
+             float *sax = DSET_BRICK_STATAUX(dset,jv) ;
+             par[0] = kv ;
+             par[1] = npar ;
+             for( lv=0 ; lv < npar ; lv++ )
+                par[lv+2] = (sax != NULL) ? sax[lv] : 0.0 ;
 
-               int npar = FUNC_need_stat_aux[kv] , lv ;
-               float * par = (float *) malloc( sizeof(float) * (npar+2) ) ;
-               float * sax = DSET_BRICK_STATAUX(dset,jv) ;
-               par[0] = kv ;
-               par[1] = npar ;
-               for( lv=0 ; lv < npar ; lv++ )
-                  par[lv+2] = (sax != NULL) ? sax[lv] : 0.0 ;
+             EDIT_dset_items(new_dset ,
+                              ADN_brick_stataux_one+ivout , par ,
+                             ADN_none ) ;
+             free(par) ;
+           }
 
-               EDIT_dset_items(new_dset ,
-                                ADN_brick_stataux_one+ivout , par ,
-                               ADN_none ) ;
-               free(par) ;
-#if 0
-            /* 2: if the input dataset has statistical parameters */
+           /** print a message? **/
 
-            } else if( ISFUNC(dset)                        &&   /* dset has stat */
-                       FUNC_IS_STAT(dset->func_type)       &&   /* params        */
-                       jv == FUNC_ival_thr[dset->func_type]  ){ /* thr sub-brick */
-
-               int npar , lv ;
-               float * par , * sax ;
-               kv  = dset->func_type ;
-               npar = FUNC_need_stat_aux[kv] ;
-               par  = (float *) malloc( sizeof(float) * (npar+2) ) ;
-               sax  = dset->stat_aux ;
-               par[0] = kv ;
-               par[1] = npar ;
-               for( lv=0 ; lv < npar ; lv++ )
-                  par[lv+2] = (sax != NULL) ? sax[lv] : 0.0 ;
-
-               EDIT_dset_items(new_dset ,
-                                ADN_brick_stataux_one+ivout , par ,
-                               ADN_none ) ;
-               free(par) ;
-#endif
-            }
-
-            /** print a message? **/
-
-            if( TCAT_verb > 1 ) printf("-verb: copied %s[%d] into %s[%d]\n" ,
-                                       DSET_FILECODE(dset) , jv ,
-                                       DSET_FILECODE(new_dset) , ivout ) ;
+           if( TCAT_verb > 1 ) printf("-verb: copied %s[%d] into %s[%d]\n" ,
+                                      DSET_FILECODE(dset) , jv ,
+                                      DSET_FILECODE(new_dset) , ivout ) ;
          } else {
             printf("-dry: would copy %s[%d] into %s[%d]\n" ,
                     DSET_FILECODE(dset) , jv ,
                     DSET_FILECODE(new_dset) , ivout ) ;
-         }
+      }
 
-         ivout++ ;
+      ivout++ ;
       }
       ivtop = ivout ;  /* new_dset[ivbot..ivtop-1] are from the current dataset */
 
@@ -778,13 +782,7 @@ int main( int argc , char *argv[] )
                jv = SUBV(ids,iv) ;
                if( jv == kv ) break ;                 /* input matches output */
             }
-            if( iv == nv ){
-               mri_free( DSET_BRICK(dset,kv) ) ;
-#if 0
-               if( TCAT_verb ) printf("-verb: unloaded unused %s[%d]\n" ,
-                                      DSET_FILECODE(dset) , kv ) ;
-#endif
-            }
+            if( iv == nv ) mri_free( DSET_BRICK(dset,kv) ) ;
          }
       }
 

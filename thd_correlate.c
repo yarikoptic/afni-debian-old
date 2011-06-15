@@ -130,6 +130,60 @@ float quadrant_corr( int n , float *x , float rv , float *r )
    return ( ss/sqrtf(rv*xv) ) ;
 }
 
+/*---------------------------------------------------------------------------*/
+
+static float ttt_bot = 0.3333333f ;
+static float ttt_top = 0.6666667f ;
+
+void tictactoe_set_thresh( float bb , float tt )
+{
+   if( bb >= 0.0f && bb < tt && tt <= 1.0f ){ ttt_bot = bb; ttt_top = tt; }
+   else                     { ttt_bot = 0.3333333f; ttt_top = 0.6666667f; }
+}
+
+/*---------------------------------------------------------------------------*/
+/*! Prepare for tictactoe correlation with a[].
+-----------------------------------------------------------------------------*/
+
+float tictactoe_corr_prepare( int n , float *a )
+{
+   register int ii ;
+   register float rb , rs , rt ;
+
+   rank_order_float( n , a ) ;
+
+   rb = ttt_bot * (n-1) ;
+   rt = ttt_top * (n-1) ;
+   rs = 0.0f ;
+   for( ii=0 ; ii < n ; ii++ ){
+          if( a[ii] > rt ){ a[ii] =  1.0f ; rs += 1.0f ; }
+     else if( a[ii] < rb ){ a[ii] = -1.0f ; rs += 1.0f ; }
+     else                 { a[ii] =  0.0f ;              }
+   }
+
+   return rs ;
+}
+
+/*------------------------------------------------------------------------------*/
+/*! To do tictactoe correlation of x[] with r[], first do
+      rv = tictactoe_corr_prepare(n,r) ;
+    then
+      corr = tictactoe_corr(n,x,rv,r) ;
+    Note that these 2 routines are destructive (r and x are modified).
+-------------------------------------------------------------------------------*/
+
+float tictactoe_corr( int n , float *x , float rv , float *r )
+{
+   register int ii ;
+   register float ss ; float xv ;
+
+   xv = tictactoe_corr_prepare( n , x ) ; if( xv <= 0.0f ) return 0.0f ;
+
+   for( ii=0,ss=0.0f ; ii < n ; ii++ ) ss += x[ii] * r[ii] ;
+
+   return ( ss/sqrtf(rv*xv) ) ;
+}
+
 /*=============================================================================
   Compute correlations, destructively (i.e., mangling the input arrays)
 ===============================================================================*/
@@ -213,24 +267,123 @@ float THD_quadrant_corr_nd( int n , float *x , float *y )
 }
 #endif
 
-/*----------------------------------------------------------------*/
+/*--------------------------------------------------------------------------*/
 /*! Pearson correlation of x[] and y[] (x and y are NOT modified. */
 
 float THD_pearson_corr( int n, float *x , float *y )
 {
    float xv=0.0f , yv=0.0f , xy=0.0f , vv,ww ;
    float xm=0.0f , ym=0.0f ;
-   int ii ;
+   register int ii ;
 
    for( ii=0 ; ii < n ; ii++ ){ xm += x[ii] ; ym += y[ii] ; }
    xm /= n ; ym /= n ;
    for( ii=0 ; ii < n ; ii++ ){
-     vv = x[ii]-xm ; ww = y[ii]-ym ;
-     xv += vv*vv ; yv += ww*ww ; xy += vv*ww ;
+     vv = x[ii]-xm; ww = y[ii]-ym; xv += vv*vv; yv += ww*ww; xy += vv*ww;
    }
 
    if( xv <= 0.0f || yv <= 0.0f ) return 0.0f ;
    return xy/sqrtf(xv*yv) ;
+}
+
+/*-------------------------------------------------------------------------*/
+/*! Returns a float_triple with (a,b,r) where
+      y = a*x + b
+    is the L2 regression result and r = Pearson correlation coeff.
+    For bootstrapping, ix[i] is the i-th index in x[] and y[] to use.
+    For non-bootstrapping, pass in ix==NULL.
+*//*-----------------------------------------------------------------------*/
+
+#undef  IX
+#define IX(i) ( ((ix) == NULL) ? (i) : ix[(i)] )
+
+float_triple THD_pearson_indexed( int nix, int *ix, float *x, float *y )
+{
+   float xbar=0,ybar=0, xq=0,yq=0,xyq=0, a=0,b=0,r=0;
+   int jj,ii; float_triple abr;
+
+   for( jj=0 ; jj < nix ; jj++ ){
+     ii = IX(jj); xbar += x[ii]; ybar += y[ii];
+   }
+   xbar /= nix ; ybar /= nix ;
+   for( jj=0 ; jj < nix ; jj++ ){
+     ii   = IX(jj) ;
+     xq  += (x[ii]-xbar)*(x[ii]-xbar) ;
+     yq  += (y[ii]-ybar)*(y[ii]-ybar) ;
+     xyq += (x[ii]-xbar)*(y[ii]-ybar) ;
+   }
+   if( xq > 0.0f && yq > 0.0f ){
+     r = xyq/sqrtf(xq*yq); a = xyq/xq; b = (xq*ybar-xbar*xyq)/xq;
+   }
+   abr.a = a ; abr.b = b ; abr.c = r ; return abr ;
+}
+
+#undef IX
+
+/*---------------------------------------------------------------------------*/
+/* Correlates and also returns 2.5%..97.5% confidence interval, via bootstrap.
+     rrr = correlation coefficient, 2.5% level, 97.5% level  [in that order]
+     aaa = regression 'a' coefficient, in y=ax+b             [as .a .b .c  ]
+     bbb = regression 'b' coefficient                        [components   ]
+*//*-------------------------------------------------------------------------*/
+
+#undef  NBOOT
+#undef  NB5
+
+#define NBOOT 600
+#define NB5    15  /* must be 2.5% of the above */
+
+void THD_pearson_corr_boot( int n , float *x , float *y ,
+                            float_triple *rrr ,
+                            float_triple *aaa ,
+                            float_triple *bbb  )
+{
+   int ii,kk ; float aa,bb,rr ; float_triple abr ;
+   int *ix ; float ax[NBOOT] , bx[NBOOT] , rx[NBOOT] ;
+
+   if( n < 5 || x == NULL || y == NULL ) return ;
+   if( rrr == NULL && aaa == NULL && bbb == NULL ) return ;
+
+   /* compute standard results */
+
+   abr = THD_pearson_indexed( n , NULL , x, y ) ;
+   aa  = abr.a ; bb = abr.b ; rr = abr.c ;  /* non-bootstrapped answers */
+   ix  = (int *)malloc(sizeof(int)*n) ;
+
+   /* compute bootstrap results */
+
+   for( kk=0 ; kk < NBOOT ; kk++ ){
+     for( ii=0 ; ii < n ; ii++ ) ix[ii] = lrand48() % n ;
+     abr = THD_pearson_indexed( n , ix , x, y ) ;
+     ax[kk] = abr.a ; bx[kk] = abr.b ; rx[kk] = abr.c ;
+   }
+   free(ix) ;
+
+   /* sort, then find 2.5% and 97.5% points, save into output structs */
+   /*    [bootstrap confidence intervals are now bias-corrected!]     */
+
+   if( rrr != NULL ){
+     float_triple qqq = THD_bootstrap_confinv( rr , 0.05f , NBOOT , rx ) ;
+     rrr->a = rr ;      /* would use qqq.b for bias-corrected estimate */
+     rrr->b = qqq.a ;   /* lower edge of confidence interval */
+     rrr->c = qqq.c ;   /* upper edge */
+   }
+
+   if( aaa != NULL ){
+     float_triple qqq = THD_bootstrap_confinv( aa , 0.05f , NBOOT , ax ) ;
+     aaa->a = aa ;
+     aaa->b = qqq.a ;
+     aaa->c = qqq.c ;
+   }
+
+   if( bbb != NULL ){
+     float_triple qqq = THD_bootstrap_confinv( bb , 0.05f , NBOOT , bx ) ;
+     bbb->a = bb ;
+     bbb->b = qqq.a ;
+     bbb->c = qqq.c ;
+   }
+
+   return ;
 }
 
 /*----------------------------------------------------------------*/
@@ -1491,4 +1644,202 @@ void rank_order_2floats( int n1 , float *a1 , int n2 , float *a2 )
    aa[0] = a1 ; aa[1] = a2 ;
    rank_order_float_arrays( 2 , nn , aa ) ;
    return ;
+}
+
+/*----------------------------------------------------------------------------*/
+/* Given a set of bootstrap replicates, find the bias-corrected (BC)
+   estimates of the 1-alpha confidence interval and the central value.
+     * estim = actual estimate from the data
+     * alpha = 0.05 is a typical value
+     * nboot = number of replicates in eboot[] -- at least MAX(100,10/alpha)
+     * eboot = array of replicates; will be sorted on output
+   The return value (rval) is a triple:
+     * rval.a = lower edge of confidence interval
+     * rval.b = middle value = bias-corrected estimate
+     * rval.c = upper edge of confidence interval
+   If all values are returned as 0, the inputs were bad bad bad.
+*//*--------------------------------------------------------------------------*/
+
+
+#undef  PHI
+#define PHI(x) (1.0-qg(x))       /* CDF of N(0,1) */
+
+#undef  PHINV
+#define PHINV(x) qginv(1.0-(x))  /* inverse CDF of N(0,1) */
+
+#undef  ZLIM
+#define ZLIM 0.5f
+
+float_triple THD_bootstrap_confinv( float estim , float alpha ,
+                                    int nboot   , float *eboot )
+{
+   float_triple rval = {0.0f,0.0f,0.0f} ;
+   int ii ; float z0 , zal , pp ;
+
+   if( nboot < 100 || eboot == NULL ) return rval ;             /* bad user */
+
+   if( alpha <= 0.001f || alpha >= 0.9f ) alpha = 0.05f ;    /* stupid user */
+   alpha *= 0.5f ;                                          /* 1-sided tail */
+   if( (int)(alpha*nboot) < 5 ) alpha = 5.0f / nboot ;     /* upward adjust */
+   zal = PHINV(alpha) ;                               /* should be negative */
+
+   qsort_float( nboot , eboot ) ;                       /* increasing order */
+
+   for( ii=0 ; ii < nboot && eboot[ii] < estim ; ii++ ) ;             /*nada*/
+   if( ii <= 1 || ii >= nboot-1 ) return rval ;              /* crummy data */
+   z0 = PHINV( (ii+0.5f) / nboot ) ;                /* ii = #values < estim */
+   if( z0 < -ZLIM ) z0 = -ZLIM ; else if( z0 > ZLIM ) z0 = ZLIM ; /* limits */
+
+   pp = PHI( 2.0*z0 + zal ) * nboot ;                         /* lower edge */
+   ii = (int)pp ; pp = pp - ii ; if( ii >= nboot-1 ) ii = nboot-2 ;
+   rval.a = (1.0f-pp)*eboot[ii] + pp*eboot[ii+1] ;
+
+   pp = PHI( 2.0*z0 - zal ) * nboot ;                         /* upper edge */
+   ii = (int)pp ; pp = pp - ii ; if( ii >= nboot-1 ) ii = nboot-2 ;
+   rval.c = (1.0f-pp)*eboot[ii] + pp*eboot[ii+1] ;
+
+   pp = PHI( 2.0*z0 ) * nboot ;          /* bias-corrected central estimate */
+   ii = (int)pp ; pp = pp - ii ; if( ii >= nboot-1 ) ii = nboot-2 ;
+   rval.b = (1.0f-pp)*eboot[ii] + pp*eboot[ii+1] ;
+
+   return rval ;
+}
+
+/*----------------------------------------------------------------------------*/
+
+float THD_bootstrap_biascorr( float estim , int nboot , float *eboot )
+{
+   int ii ; float z0 , pp ;
+
+   if( nboot < 50 || eboot == NULL ) return estim ;             /* bad user */
+
+   qsort_float( nboot , eboot ) ;                       /* increasing order */
+
+   for( ii=0 ; ii < nboot && eboot[ii] < estim ; ii++ ) ;             /*nada*/
+   if( ii <= 1 || ii >= nboot-1 ) return estim ;             /* crummy data */
+   z0 = PHINV( (ii+0.5f) / nboot ) ;                /* ii = #values < estim */
+   if( z0 < -ZLIM ) z0 = -ZLIM ; else if( z0 > ZLIM ) z0 = ZLIM ; /* limits */
+
+   pp = PHI( 2.0*z0 ) * nboot ;
+   ii = (int)pp ; pp = pp - ii ; if( ii >= nboot-1 ) ii = nboot-2 ;
+   pp = (1.0f-pp)*eboot[ii] + pp*eboot[ii+1] ;
+
+   return pp ;
+}
+
+/*----------------------------------------------------------------------------*/
+#undef  DEMEAN
+#define DEMEAN(n,v) do{ register int i ; register float s ;            \
+                        for( s=i=0 ; i < n ; i++ ) s += v[i] ;         \
+                        s /= n ; for( i=0 ; i < n ; i++ ) v[i] -= s ;  \
+                    } while(0)
+
+#undef  XPT
+#define XPT(q) ( (xtyp<=0) ? xx+(q)*nlen : xpt[q] )
+
+#undef  YPT
+#define YPT(q) ( (xtyp<=0) ? yy+(q)*nlen : ypt[q] )
+
+/*----------------------------------------------------------------------------*/
+/* Return bootstrap BC estimate for correlation of a bunch of vectors.
+*//*--------------------------------------------------------------------------*/
+
+float THD_bootstrap_vectcorr( int nlen, int nboot, int use_pv, int xtyp,
+                              int xnum, void *xp , int ynum  , void *yp )
+{
+   float rval, rxy, **xar, **yar, *rboot, *xbar, *ybar, *uvec, *vvec ;
+   int kb,ii,jj , dox,doy ;
+   unsigned short xran[3] ;
+   float *xx=NULL, **xpt=NULL, *yy=NULL, **ypt=NULL ; void *pvw=NULL ;
+
+ENTRY("THD_bootstrap_vectcorr") ;
+
+   if( nlen < 3 || xnum < 1 || ynum < 1 || xp == NULL || yp == NULL )
+     RETURN(0.0f) ;
+
+   if( xtyp <= 0 ){ xx  = (float *) xp ; yy  = (float *) yp ; }
+   else           { xpt = (float **)xp ; ypt = (float **)yp ; }
+
+   /* trivial case */
+
+   if( xnum == 1 && ynum == 1 ){
+     rval = THD_pearson_corr(nlen,XPT(0),YPT(0)) ; RETURN(rval) ;
+   }
+
+   /* compute mean vectors */
+
+#pragma omp critical (MALLOC)
+   { xbar = (float *)malloc(sizeof(float)*nlen) ;
+     ybar = (float *)malloc(sizeof(float)*nlen) ; }
+
+   (void)mean_vector( nlen , xnum , xtyp , xp , xbar ) ;
+   (void)mean_vector( nlen , ynum , xtyp , yp , ybar ) ;
+
+   dox = (xnum > 5) ; doy = (ynum > 5) ;  /* which to bootstrap */
+
+   if( !dox && !doy ){
+     rval = THD_pearson_corr(nlen,xbar,ybar) ;
+#pragma omp critical (MALLOC)
+     { free(ybar) ; free(xbar) ; }
+     RETURN(rval) ;
+   }
+
+   if( nboot < 50 ) nboot = 50 ;
+
+#pragma omp critical (MALLOC)
+   { xar   = (float **)malloc(sizeof(float *)*xnum ) ;
+     yar   = (float **)malloc(sizeof(float *)*ynum ) ;
+     rboot = (float * )malloc(sizeof(float)  *nboot) ;
+     uvec  = (float * )malloc(sizeof(float)  *nlen ) ;
+     vvec  = (float * )malloc(sizeof(float)  *nlen ) ;
+   }
+
+   /* correlation with no resampling at all */
+
+   if( use_pv ){
+     pvw = pv_get_workspace( nlen , MAX(xnum,ynum) ) ;
+     xran[0] = (unsigned short)(xnum+ynum+nlen) ;
+     xran[1] = 42731 ; xran[2] = 23172 ;
+     (void)principal_vector( nlen, xnum, xtyp, xp, uvec, xbar, pvw, xran) ;
+     (void)principal_vector( nlen, ynum, xtyp, yp, vvec, ybar, pvw, xran) ;
+   } else {
+     for( ii=0 ; ii < nlen ; ii++ ){ uvec[ii] = xbar[ii]; vvec[ii] = ybar[ii]; }
+   }
+   rxy = THD_pearson_corr( nlen , uvec , vvec ) ;
+
+   /* bootstrap correlations [selecting subsets from each set of vectors] */
+
+   for( kb=0 ; kb < nboot ; kb++ ){
+     if( dox ){
+       for( ii=0 ; ii < xnum ; ii++ ){  /* resample xx vectors */
+         jj = nrand48(xran) % xnum ; xar[ii] = XPT(jj) ;
+       }
+       if( use_pv )
+         (void)principal_vector( nlen, xnum, 1, xar, uvec, xbar, pvw, xran) ;
+       else
+          mean_vector( nlen , xnum , 1 , xar , uvec ) ;
+     }
+     if( doy ){
+       for( ii=0 ; ii < ynum ; ii++ ){  /* resample yy vectors */
+         jj = nrand48(xran) % ynum ; yar[ii] = YPT(jj) ;
+       }
+       if( use_pv )
+         (void)principal_vector( nlen, ynum, 1, yar, vvec, ybar, pvw, xran) ;
+       else
+         mean_vector( nlen , ynum , 1 , yar , vvec ) ;
+     }
+     rboot[kb] = THD_pearson_corr( nlen , uvec , vvec ) ;
+   }
+
+   /* final answer */
+
+   rval = THD_bootstrap_biascorr( rxy , nboot , rboot ) ;
+
+   /* cleanup the trash */
+
+#pragma omp critical (MALLOC)
+   { free(vvec); free(uvec); free(rboot);
+     free(yar); free(xar); free(ybar); free(xbar); if(use_pv)free(pvw); }
+
+   RETURN(rval) ;
 }

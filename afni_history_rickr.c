@@ -49,6 +49,425 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 8, JUN, 2011, RCR, "make_random_timing.py", MICRO, TYPE_BUG_FIX,
+   "fixed print and added min_rest to durations in test of -tr_locked",
+   NULL
+ } ,
+
+ { 3, JUN, 2011, RCR, "afni_proc.py", MICRO, TYPE_NEW_OPT,
+   "added -volreg_compute_tsnr/-regress_compute_tsnr",
+   "Volreg TSNR is no longer the default, but regress TSNR is."
+ } ,
+
+ { 3, JUN, 2011, RCR, "Makefile", MINOR, TYPE_NEW_OPT,
+   "removed -lpng from Makefile.macosx_10.6_Intel_64",
+   "We added -lpng because we were compiling our own OpenMotif\n"
+   "(configure option?), but fink's version does not need it."
+ } ,
+
+ { 2, JUN, 2011, RCR, "afni_proc.py", MINOR, TYPE_NEW_OPT,
+   "compute TSNR datasets (added -compute_tsnr); added -regress_make_cbucket",
+   NULL
+ } ,
+
+ { 2, JUN, 2011, RCR, "afni_proc.py", MINOR, TYPE_NEW_OPT,
+   "de-meaned motion regressors is now the default",
+   "- added -regress_apply_mot_types to specify motion types for regression\n"
+   "- added -regress_no_motion_demean and -regress_no_motion_deriv\n"
+   "- by default, demean and deriv motion parameters are created\n"
+   "- by default, demean motion parameters are applied in the regression\n"
+   "  (replacing the original 'basic' parameters, which should have no\n"
+   "  change in betas of interest, just the constant polort betas)"
+ } ,
+
+ { 27, MAY, 2011, RCR, "afni_proc.py", MINOR, TYPE_MODIFY,
+   "re-work of motion, as prep for more motion options",
+   "- replaced -volreg_regress_per_run with -regress_motion_per_run\n"
+   "- made uniq_list_as_dsets() a warning, not an error (for J Britton)"
+ } ,
+
+ { 27, MAY, 2011, RCR, "1d_tool.py", MINOR, TYPE_NEW_OPT,
+   "added -split_into_pad_runs (for regress motion per run)",
+   NULL
+ } ,
+
+ { 25, MAY, 2011, RCR, "timing_tool.py", MINOR, TYPE_NEW_OPT,
+   "added -global_to_local and -local_to_global for G Chen",
+   NULL
+ } ,
+
+ { 24, MAY, 2011, RCR, "1dplot", MINOR, TYPE_BUG_FIX,
+   "fixed plotting of varying length time series",
+   NULL
+ } ,
+
+ { 20, MAY, 2011, RCR, "uber_subject.py", MINOR, TYPE_MODIFY,
+   "execute via /usr/bin/env python",
+   "Help now suggests fink as primary Mac source for PyQt4."
+ } ,
+
+ { 20, MAY, 2011, RCR, "uber_align_test.py", MINOR, TYPE_MODIFY,
+   "execute via /usr/bin/env python",
+   NULL
+ } ,
+
+ { 16, MAY, 2011, RCR, "uber_align_test.py", MINOR, TYPE_ENHANCE,
+   "could be used as a release version",
+   " - added 'check center dist' button, to display the current distance\n"
+   " - added menu item to show afni command for viewing results\n"
+   " - added menu items to show python and shell command windows\n"
+   " - added much more help, including main and section buttons\n"
+   " - added browsing of align_epi_anat.py help"
+ } ,
+
+ { 16, MAY, 2011, RCR, "afni_util.py", MICRO, TYPE_ENHANCE,
+   "added exec_tcsh_command function",
+   NULL
+ } ,
+
+ { 16, MAY, 2011, RCR, "@Center_Distance", MICRO, TYPE_ENHANCE,
+   "return something to $status, so we can detect success or failure",
+   NULL
+ } ,
+
+ { 13, MAY, 2011, RCR, "uber_align_test.py", MINOR, TYPE_ENHANCE,
+   "added working GUI (for options, GUI help still needs ... help)",
+   NULL
+ } ,
+
+ { 12, MAY, 2011, RCR, "uber_skel.py", MAJOR, TYPE_NEW_PROG,
+   "A working skeleton for future uber programs.",
+   "This is based on uber_align_test.py, version 0.2."
+ } ,
+
+ { 12, MAY, 2011, RCR, "uber_align_test.py", MINOR, TYPE_ENHANCE,
+   "many small updates",
+   "This set of 3 files was broken off set uber_skel.py, meant to be a\n"
+   "resonable starting point for future uber programs."
+ } ,
+
+ { 11, MAY, 2011, RCR, "uber_align_test.py", MAJOR, TYPE_ENHANCE,
+   "added basic graphical interface, still need to add variable fields",
+   "o  also made single cost_list\n"
+   "o  also added -help_howto_program, which might move to a skeleton program"
+ } ,
+
+ { 11, MAY, 2011, RCR, "uber_subject.py", MICRO, TYPE_ENHANCE,
+   "small help/todo update",
+   NULL
+ } ,
+
+ { 9, MAY, 2011, RCR, "to3d", MICRO, TYPE_ENHANCE,
+   "applied formal parsing for CSA Image Header Info for Siemens slice timing",
+   "Process field (0x0029 1010) as little-endian CSA1 or 2 header, tags\n"
+   "and items.  Get slice times from MosaicRefAcqTimes item.\n"
+   "Thanks to I Souheil for finding NiBabel CSA format description."
+ } ,
+
+ { 4, MAY, 2011, RCR, "to3d", MICRO, TYPE_BUG_FIX,
+   "fixed case of simult tpattern (so time_dep, but ui.tpattern is not set)",
+   "Problem noted by J Ostuni."
+ } ,
+
+ { 2, MAY, 2011, RCR, "Dimon", MINOR, TYPE_BUG_FIX,
+   "added nul-termination and a.b[.d]+ rules for checking Siemens slice times",
+   "Problem noted by D Kravitz and S Lee."
+ } ,
+
+ { 29, APR, 2011, RCR, "afni_proc.py", MICRO, TYPE_MODIFY,
+   "check that processing blocks are unique",
+   NULL
+ } ,
+
+ { 28, APR, 2011, RCR, "uber_align_test.py", MAJOR, TYPE_NEW_PROG,
+   "for testing EPI/anat alignment with various align_epi_anat.py options",
+   "This is a command-line version, with a GUI to come soon."
+ } ,
+
+ { 28, APR, 2011, RCR, "uber_subject.py", MINOR, TYPE_NEW_OPT,
+   "reconcile LUS.py with LS.py in prep for uber_align_test.py",
+   NULL
+ } ,
+
+ { 28, APR, 2011, RCR, "afni_proc.py", MINOR, TYPE_NEW_OPT,
+   "added -align_epi_strip_method",
+   NULL
+ } ,
+
+ { 25, APR, 2011, RCR, "Imon", MINOR, TYPE_MODIFY,
+   "Imon is getting phased out of the distribution (see 'Dimon -use_imon')",
+   "Requires compiling alterations to be put back in (if anyone wants it)."
+ } ,
+
+ { 25, APR, 2011, RCR, "plug_realtime", MINOR, TYPE_ENHANCE,
+   "have Dimon send 'TPATTERN explicit' with slice timing to RT plugin",
+   NULL
+ } ,
+
+ { 24, APR, 2011, RCR, "@Align_Centers", MINOR, TYPE_ENHANCE,
+   "allow -base dset to be in PATH, AFNI_PLUGINPATH, etc.",
+   NULL
+ } ,
+
+ { 22, APR, 2011, RCR, "afni_proc.py", MINOR, TYPE_BUG_FIX,
+   "if manual tlrc and -volreg_tlrc_adwarp, also transform extents mask",
+   "Noted by J Britton.\n"
+   "Also, if -regress_reml_exec, insert 3dClustSim table in stats_REML.\n"
+   "Noted by R Momenan."
+ } ,
+
+ { 15, APR, 2011, RCR, "Dimon", MINOR, TYPE_ENHANCE,
+   "added FROM_IMAGE as default Siemens slice pattern in to3d command",
+   NULL
+ } ,
+
+ { 15, APR, 2011, RCR, "dicom_hdr", MINOR, TYPE_NEW_OPT,
+   "added -slice_times and -slice_times_verb, to show siemens slice timing",
+   NULL
+ } ,
+
+ { 14, APR, 2011, RCR, "thd_atlas.c", MICRO, TYPE_BUG_FIX,
+   "for solaris, apply #def strcasestr strstr",
+   NULL
+ } ,
+
+ { 13, APR, 2011, RCR, "to3d", MINOR, TYPE_NEW_OPT,
+   "added FROM_IMAGE timing pattern (for Siemens mosaic images)",
+   NULL
+ } ,
+
+ { 11, APR, 2011, RCR, "uber_subject.py", MICRO, TYPE_BUG_FIX,
+   "fixed lost warnings for no sid/gid",
+   NULL
+ } ,
+
+ { 8, APR, 2011, RCR, "Makefile", MICRO, TYPE_MODIFY,
+   "removed -lf2c from Makefile.INCLUDE, added to LLIBS in Makefile.*",
+   "Also removed redundant -lmri from many Makefiles and Makefile.INCLUDE."
+ } ,
+
+ { 7, APR, 2011, RCR, "uber_subject.py", MICRO, TYPE_MODIFY,
+   "backports for Ubuntu 9",
+   "requested by J Bodurka"
+ } ,
+
+ { 6, APR, 2011, RCR, "uber_subject.py", MICRO, TYPE_MODIFY,
+   "make table size depend on font",
+   NULL
+ } ,
+
+ { 5, APR, 2011, RCR, "howto", MINOR, TYPE_ENHANCE,
+   "updated the class setup and basic Linux instructions for PyQt4",
+   NULL
+ } ,
+
+ { 5, APR, 2011, RCR, "python_module_test.py", MICRO, TYPE_NEW_OPT,
+   "added PyQt4 to test list",
+   NULL
+ } ,
+
+ { 29, MAR, 2011, RCR, "uber_subject.py", MICRO, TYPE_ENHANCE,
+   "changed subject directory to group.GROUP/subj.SUBJ",
+   NULL
+ } ,
+
+ { 24, MAR, 2011, RCR, "uber_subject.py", MINOR, TYPE_ENHANCE,
+   "added align and tlrc option boxes, adjusted spacing",
+   NULL
+ } ,
+
+ { 23, MAR, 2011, RCR, "uber_subject.py", MINOR, TYPE_ENHANCE,
+   "moved gltsym box to below stim, save AP output, small mac install update",
+   NULL
+ } ,
+
+ { 22, MAR, 2011, RCR, "uber_subject.py", MINOR, TYPE_ENHANCE,
+   "processing status, clear options/fields menu items, etc...",
+   NULL
+ } ,
+
+ { 22, MAR, 2011, RCR, "to3d", MINOR, TYPE_BUG_FIX,
+   "mri_read_dicom: if there is no vrCode, skip explicitVR",
+   NULL
+ } ,
+
+ { 21, MAR, 2011, RCR, "uber_subject.py", MINOR, TYPE_ENHANCE,
+   "many updates, including extra regress options box",
+   NULL
+ } ,
+
+ { 20, MAR, 2011, RCR, "uber_subject.py", MAJOR, TYPE_ENHANCE,
+   "handle symbolic GLTs, etc.",
+   NULL
+ } ,
+
+ { 15, MAR, 2011, RCR, "afni_proc.py", MICRO, TYPE_MODIFY,
+   "changed uncensored Xmat to X.nocensor.1D",
+   NULL
+ } ,
+
+ { 15, MAR, 2011, RCR, "uber_subject.py", MICRO, TYPE_ENHANCE,
+   "added -regress_make_ideal_sum, subject variables, GUI text changes",
+   NULL
+ } ,
+
+ { 14, MAR, 2011, RCR, "afni_proc.py", MICRO, TYPE_MODIFY,
+   "if no mask but extents, apply in scale step",
+   NULL
+ } ,
+
+ { 14, MAR, 2011, RCR, "uber_subject.py", MICRO, TYPE_ENHANCE,
+   "a handful of minor updates",
+   NULL
+ } ,
+
+ {  9, MAR, 2011, RCR, "uber_subject.py", MICRO, TYPE_ENHANCE,
+   "updates to uber_subject.py, how could I possibly remember what they are...",
+   NULL
+ } ,
+
+ {  9, MAR, 2011, RCR, "make_random_timing.py", MICRO, TYPE_BUG_FIX,
+   "fixed bug writing comment text in 3dD script",
+   "Problem noted by Z Saad and P Kaskan."
+ } ,
+
+ {  8, MAR, 2011, RCR, "uber_subject.py", MINOR, TYPE_ENHANCE,
+   "uber_subject.py command menu item, ...",
+   NULL
+ } ,
+
+ {  7, MAR, 2011, RCR, "afni_proc.py", MICRO, TYPE_ENHANCE,
+   "make proc script executable",
+   NULL
+ } ,
+
+ {  7, MAR, 2011, RCR, "uber_subject.py", MINOR, TYPE_ENHANCE,
+   "updates: command and pycommand windows, new Process classes, ...",
+   NULL
+ } ,
+
+ {  3, MAR, 2011, RCR, "uber_subject.py", MINOR, TYPE_ENHANCE,
+   "updates: control vars, subj dir, view actions, result vars, ...",
+   NULL
+ } ,
+
+ {  2, MAR, 2011, RCR, "uber_subject.py", MINOR, TYPE_ENHANCE,
+   "many updates, including write and exec of proc script",
+   "There is still much to do before first release version."
+ } ,
+
+ { 22, FEB, 2011, RCR, "uber_subject.py", MINOR, TYPE_MODIFY,
+   "added interfaces for 'expected' option",
+   NULL
+ } ,
+
+ { 17, FEB, 2011, RCR, "3dDeconvolve", MICRO, TYPE_MODIFY,
+   "make -CENSORTR run: warning more clear",
+   NULL
+ } ,
+
+ { 17, FEB, 2011, RCR, "3dROIstats", MICRO, TYPE_MODIFY,
+   "make unknown option error more clear",
+   NULL
+ } ,
+
+ { 16, FEB, 2011, RCR, "uber_subject.py", MINOR, TYPE_MODIFY,
+   "epi or stim list from command line can init order/labels; file reorg",
+   "Also, initiated regression testing tree."
+ } ,
+
+ { 16, FEB, 2011, RCR, "howto", MINOR, TYPE_MODIFY,
+   "updated the main page and basic Linux instructions",
+   NULL
+ } ,
+
+ { 15, FEB, 2011, RCR, "uber_subject.py", SUPER, TYPE_NEW_PROG,
+   "added CLI (command-line interface), generates basic afni_proc.py script",
+   "Many enhancements yet to come."
+ } ,
+
+ { 14, FEB, 2011, RCR, "uber_proc.py", MINOR, TYPE_GENERAL,
+   "moved uber program into main repository",
+   NULL
+ } ,
+
+ { 12, FEB, 2011, RCR, "afni_util.py", MINOR, TYPE_ENHANCE,
+   "updates for uber_subject.py",
+   NULL
+ } ,
+
+ { 11, FEB, 2011, RCR, "lib_subjects.py", MICRO, TYPE_ENHANCE,
+   "more updates for uber_subject.py",
+   NULL
+ } ,
+
+ { 1, FEB, 2011, RCR, "afni_util.py", MINOR, TYPE_ENHANCE,
+   "updates for parsing a stim file list",
+   NULL
+ } ,
+
+ { 31, JAN, 2011, RCR, "afni_util.py", MICRO, TYPE_ENHANCE,
+   "updates for uber_subj.py",
+   NULL
+ } ,
+
+ { 25, JAN, 2011, RCR, "lib_subjects.py", MICRO, TYPE_ENHANCE,
+   "updates to the VarsObject class",
+   NULL
+ } ,
+
+ { 19, JAN, 2011, RCR, "lib_subjects.py", MINOR, TYPE_ENHANCE,
+   "many updates to the VarsObject class",
+   NULL
+ } ,
+
+ { 13, JAN, 2011, RCR, "afni_proc.py", MICRO, TYPE_MODIFY,
+   "small changes to warnings for missing stimulus files",
+   NULL
+ } ,
+
+ { 13, JAN, 2011, RCR, "Dimon", MINOR, TYPE_NEW_OPT,
+   "added -gert_write_as_nifti and -gert_create_dataset",
+   "requested by V Roopchansingh"
+ } ,
+
+ { 10, JAN, 2011, RCR, "3dttest", MICRO, TYPE_GENERAL,
+   "fail with error message when -set2 is not the final option",
+   "It had already been assumed to be the final option."
+ } ,
+
+ {  7, JAN, 2011, RCR, "rickr/Makefile", MICRO, TYPE_BUG_FIX,
+   "Dimon: forgot to reconcile use of expat (with LGIFTI)",
+   NULL
+ } ,
+
+ {  6, JAN, 2011, RCR, "afni-general", MICRO, TYPE_BUG_FIX,
+   "ComputeObliquity() mosaic shift should be dcK*(nK-1)/2 in each direction",
+   NULL
+ } ,
+
+ {  4, JAN, 2011, RCR, "Dimon", MAJOR, TYPE_ENHANCE,
+   "version 3.0 : handle Siemens Mosaic formatted files",
+   "- depend on libmri, return MRI_IMARR from mri_read_dicom, changes\n"
+   "  for oblique and mosaic processing\n"
+   "- mri_read_dicom.c: g_info (process control), g_image_info (Dimon)\n"
+   "  replaced DEBUG_ON/debugprint with g_info.verb, many small changes\n"
+   "- mri_dicom_elist.h: merged with dimon_afni.h\n"
+   "- mcw_glob.[ch]: control sort direction via rglob_set_sort_dir()"
+ } ,
+
+ {  4, JAN, 2011, RCR, "afni", MICRO, TYPE_GENERAL,
+   "do not open default windows in case of real-time",
+   NULL
+ } ,
+
+ { 23, DEC, 2010, RCR, "to3d", MINOR, TYPE_NEW_OPT,
+   "added -use_old_mosaic_code",
+   "This is phase 1 of dealing with Siemens mosaic format in Dimon.\n"
+   "Siemens mosaic functions we moved to new mri_process_siemens.c,\n"
+   "with the ability to use the old code preserved with this option."
+ } ,
+
  { 16, DEC, 2010, RCR, "@ANATICOR", MICRO, TYPE_GENERAL,
    "HJ change: small updates to the help",
    "changes were submitted for Hang Joon Jo"

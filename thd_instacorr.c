@@ -170,15 +170,18 @@ ENTRY("THD_instacorr") ;
 
    sblur = iset->sblur ;
 
-   if( sblur > 0.0f ){
+   if( sblur != 0.0f ){
      int gblur = AFNI_yesenv("AFNI_INSTACORR_SEEDBLUR") ;
      int grad  = (gblur) ? 1.2345f*sblur : 1.0001f*sblur ;
-
-     MCW_cluster *smask=MCW_spheremask( iset->mv->dx , iset->mv->dy ,
-                                        iset->mv->dz , grad ) ;
+     MCW_cluster *smask ;
      float wtsum=1.0f , fac , *qar ;
      float *sar=(float *)malloc(sizeof(float)*iset->mv->nvals)  ;
      int qi,qj,qk , ii,ij,ik , qjk,qq , nx,ny,nz,nxy ; register int tt ;
+
+     if( grad > 0.0f )
+       smask = MCW_spheremask( iset->mv->dx, iset->mv->dy, iset->mv->dz, grad ) ;
+     else
+       smask = MCW_spheremask( 1.0f, 1.0f, 1.0f, -grad ) ;
 
      nx = iset->mv->nx ; ny = iset->mv->ny ; nz = iset->mv->nz ; nxy = nx*ny ;
      ii = ijk % nx ; ik = ijk / nxy ; ij = (ijk-ik*nxy) / nx ;
@@ -194,8 +197,8 @@ ENTRY("THD_instacorr") ;
        qjk = qi + qj*nx + qk*nxy ;
        qq  = THD_vectim_ifind( qjk , iset->mv ) ;
        if( qq >= 0 ){
-         register float wt=1.0f ;
-         if( gblur ){ float rad=smask->mag[kk]; wt = exp(-fac*rad*rad); }
+         register float wt ;
+         if( gblur ){ float rad=smask->mag[kk]; wt = exp(-fac*rad*rad); } else wt = 1.0f;
           wtsum += wt ; qar = VECTIM_PTR(iset->mv,qq) ;
           for( tt=0 ; tt < iset->mv->nvals  ; tt++ ) sar[tt] += wt * qar[tt] ;
          }
@@ -228,8 +231,17 @@ ENTRY("THD_instacorr") ;
      case NBISTAT_QUADRANT_CORR:
        THD_vectim_quadrant( iset->mv , tsar , dar ) ; break ;
 
+     case NBISTAT_TICTACTOE_CORR:
+       THD_vectim_tictactoe( iset->mv , tsar , dar ) ; break ;
+
      case NBISTAT_KENDALL_TAUB:
        THD_vectim_ktaub( iset->mv , tsar , dar ) ; break ;  /* 29 Apr 2010 */
+
+     case NBISTAT_BC_PEARSON_M:
+       THD_vectim_pearsonBC( iset->mv,sblur,ijk,0,dar ); break; /* 07 Mar 2011 */
+
+     case NBISTAT_BC_PEARSON_V:
+       THD_vectim_pearsonBC( iset->mv,sblur,ijk,1,dar ); break; /* 07 Mar 2011 */
    }
 
    /** put them into the output image **/

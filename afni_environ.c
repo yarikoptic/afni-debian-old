@@ -81,14 +81,15 @@ static int afni_env_done = 0 ;
 
 void AFNI_mark_environ_done(void)   { afni_env_done = 1 ; return ; }
 void AFNI_mark_environ_undone(void) { afni_env_done = 0 ; return ; }
+int  AFNI_check_environ_done(void)  { return afni_env_done ; }
 
 /*---------------------------------------------------------------------------*/
 
-static int blocked=0 ;
+static int bloced=0 ;
 
 char * my_getenv( char *ename )
 {
-   if( !blocked && !afni_env_done ){
+   if( !bloced && !afni_env_done ){
      char *sysenv = getenv("AFNI_SYSTEM_AFNIRC") ;       /* 16 Apr 2000 */
      if( sysenv != NULL ) AFNI_process_environ(sysenv) ; /* 16 Apr 2000 */
      AFNI_process_environ(NULL) ;
@@ -107,7 +108,7 @@ int AFNI_process_environ( char *fname )
    int nenv=0 , senv=0 ; static int first=1 ;  /* 13 Mar 2008 */
 
 ENTRY("AFNI_process_environ") ;
-   blocked = 1 ;
+   bloced = 1 ;
 
    if( fname != NULL ){
      strcpy(str,fname) ;
@@ -125,8 +126,10 @@ ENTRY("AFNI_process_environ") ;
    }
    strcpy(fname_str,str) ; /* ZSS: Nov. 25 08 */
 
-   fbuf = AFNI_suck_file( str ) ; if( fbuf == NULL ){ blocked=0; RETURN(nenv); }
-   nbuf = strlen(fbuf) ;          if( nbuf == 0    ){ blocked=0; RETURN(nenv); }
+   fbuf = AFNI_suck_file( str ) ;
+   if( fbuf == NULL ){ bloced=0; if(fname==NULL)afni_env_done=0; RETURN(nenv); }
+   nbuf = strlen(fbuf) ;
+   if( nbuf == 0    ){ bloced=0; if(fname==NULL)afni_env_done=0; RETURN(nenv); }
 
    fptr = fbuf ; nused = 0 ;
 
@@ -151,8 +154,10 @@ ENTRY("AFNI_process_environ") ;
       /**-- ENVIRONMENT section [04 Jun 1999] --**/
 
       if( strcmp(str,"***ENVIRONMENT") == 0 ){ /* loop: find environment eqns */
-         char *enveqn , *eee=NULL; int nl , nr ;
+         char *enveqn , *eee; int nl , nr , allow_reset ;
          senv = 1 ;
+
+         eee = getenv("AFNI_ENVIRON_RESET") ; allow_reset = YESSISH(eee) ;
 
          while(1){                        /* loop, looking for 'name = value' */
             GETEQN ;
@@ -162,7 +167,7 @@ ENTRY("AFNI_process_environ") ;
             nl = strlen(left) ; nr = strlen(right) ;
             enveqn = (char *) malloc(nl+nr+4) ;
             strcpy(enveqn,left) ; strcat(enveqn,"=") ; strcat(enveqn,right) ;
-            if (!(eee = getenv(left))) {          /* ZSS Nov. 25 08 */
+            if( !(eee = getenv(left)) || allow_reset ){  /* ZSS Nov 25 2008 */
                putenv(enveqn) ;
             } else if( !AFNI_noenv("AFNI_ENVIRON_WARNINGS") &&
                         strcmp(right, eee)){
@@ -186,7 +191,7 @@ ENTRY("AFNI_process_environ") ;
        WARNING_message("didn't find any environment equations in ~/.afnirc") ;
    }
 
-   first = 0 ; free(fbuf) ; blocked = 0 ; RETURN(nenv) ;
+   first = 0 ; free(fbuf) ; bloced = 0 ; RETURN(nenv) ;
 }
 
 /*-----------------------------------------------------------------*/
@@ -351,6 +356,73 @@ int AFNI_prefilter_args( int *argc , char **argv )
        used[ii] = 1;
        continue ;
      }
+     
+     if( strcmp(argv[ii],"-np") == 0 ||
+         strcmp(argv[ii],"-npq") == 0 ){   /* ZSS, June 2011 */
+       if( ttt ) fprintf(stderr,"++ argv[%d] is -np\n",ii) ;
+       if (ii+1 >= narg) {
+         fprintf(stderr,
+               "** -np needs an integer NP such that 1024 <= NP <= 65500\n");
+         exit(1);
+       }
+       used[ii] = 1 ; ii++;
+       if (set_user_np(atoi(argv[ii]))<1) {
+         if (strcmp(argv[ii-1],"-npq")) { /* not quiet mode? */
+            fprintf(stderr,
+               "** -np is not an integer such that 1024 <= NP <= 65500\n"
+               "   -np was ignored\n");
+         }
+       } else {
+         if (strcmp(argv[ii-1],"-npq")) 
+            fprintf(stderr,"++ -np set to %d\n", get_user_np());
+       }
+       used[ii] = 1;
+       continue ;
+     }
+     if( strcmp(argv[ii],"-npb") == 0 ){   /* ZSS, June 2011 */
+       if( ttt ) fprintf(stderr,"++ argv[%d] is -npb\n",ii) ;
+       if (ii+1 >= narg) {
+         fprintf(stderr,
+               "** -npb needs an integer NPB such that 0 <= NPB <= %d\n", 
+               get_max_port_bloc());
+         exit(1);
+       }
+       used[ii] = 1 ; ii++;
+       if (set_user_np_bloc(atoi(argv[ii]))<1) {
+            fprintf(stderr,
+               "** -npb is not an integer such that 0 <= NPB <= %d\n"
+               "   -npb was ignored\n", get_max_port_bloc());
+       } 
+       used[ii] = 1;
+       continue ;
+     }
+
+      /* -max_port_bloc number and quit */
+      if( strncmp(argv[ii],"-max_port_bloc", 8) == 0) {
+         int pp = 0;
+         pp = get_max_port_bloc(); 
+         if (strcmp(argv[ii-1], "-max_port_bloc_quiet")) {
+            fprintf(stdout, "Maximum port bloc number: %d\n", 
+                                pp); 
+         } else {
+            fprintf(stdout, "%d\n", pp); 
+         }
+         exit(0);
+      }
+      
+      /* -num_assigned port number and quit */
+      if( strncmp(argv[ii],"-num_assigned_ports", 8) == 0) {
+         int pp = 0;
+         pp = get_max_port_bloc(); 
+         if (strcmp(argv[ii-1], "-num_assigned_ports_quiet")) {
+            fprintf(stdout, "Number of assigned ports: %d\n", 
+                                pp); 
+         } else {
+            fprintf(stdout, "%d\n", pp); 
+         }
+         exit(0);
+      }
+      
 
      /*** if get to here, argv[ii] is nothing special ***/
 

@@ -448,7 +448,8 @@ typedef enum {  SWP_DONT_CARE,
                 SWP_STEP_DOWN_RIGHT,
                 SWP_TOP_LEFT,
                 SWP_POINTER, /*!< Position centered to the pointer */
-                SWP_POINTER_OFF
+                SWP_POINTER_OFF,
+                SWP_POINTER_LEFT_BOTTOM
              } SUMA_WINDOW_POSITION; /*!< Types of relative window positions */
 
 typedef enum {    SAR_Undefined,
@@ -1290,7 +1291,8 @@ typedef struct {
    Widget ContROImode_tb;
    Widget Penmode_tb;   /*!< widget for toggling draw with Pen mode */
    Widget AfniLink_tb; /*!< widget for toggling link to Afni */
-   Widget ParentLabel_lb; /*!< widget for specifying a label for the parent surface */ 
+   Widget ParentLabel_lb; /*!< widget for specifying a label for 
+                              the parent surface */ 
    Widget Redo_pb;
    Widget Undo_pb;
    Widget Save_pb;
@@ -1299,18 +1301,28 @@ typedef struct {
    Widget Finish_pb;
    Widget Join_pb;
    Widget Delete_pb;
-   SUMA_Boolean Delete_first; /*! Flag indicating putton has been pressed for the first time */
+   SUMA_Boolean Delete_first; /*! Flag indicating putton has been 
+                                 pressed for the first time */
    SUMA_ARROW_TEXT_FIELD *ROIval; /*!< pointer to arrow field */
    SUMA_ARROW_TEXT_FIELD *ROIlbl; /*!< pointer to text field */
-   SUMA_DRAWN_ROI *curDrawnROI; /*!< A pointer to the DrawnROI structure currently in use by window.
-                                    This is a copy of another pointer, NEVER FREE IT*/
-   SUMA_LIST_WIDGET *SwitchROIlst; /*!< a structure containing widgets and options for the switch ROI list */
-   int SaveWhat;  /*!< option for determining what ROI to save, acceptable values are in SUMA_WIDGET_INDEX_DRAWROI_SAVEWHAT */
-   int SaveMode;  /*!< option for determining format of ROI to save, acceptable values are in SUMA_WIDGET_INDEX_DRAWROI_SAVEMODE */ 
-   int WhatDist;  /*!< option for determining format of ROI to save, acceptable values are in SUMA_WIDGET_INDEX_DRAWROI_SAVEMODE */ 
-   Widget SaveModeMenu[SW_N_DrawROI_SaveMode]; /*!< set of widgets for SaveMode menu */
-   Widget SaveWhatMenu[SW_N_DrawROI_SaveWhat]; /*!< set of widgets for SaveWhat menu */
-   Widget WhatDistMenu[SW_N_DrawROI_WhatDist]; /*!< set of widgets for SaveWhat menu */
+   SUMA_DRAWN_ROI *curDrawnROI; /*!< A pointer to the DrawnROI structure
+                                    currently in use by window.
+                                    This is a copy of another pointer, 
+                                    NEVER FREE IT*/
+   SUMA_LIST_WIDGET *SwitchROIlst; /*!< a structure containing widgets and 
+                                    options for the switch ROI list */
+   int SaveWhat;  /*!< option for determining what ROI to save, acceptable values
+                     are in SUMA_WIDGET_INDEX_DRAWROI_SAVEWHAT */
+   int SaveMode;  /*!< option for determining format of ROI to save, acceptable
+                     values are in SUMA_WIDGET_INDEX_DRAWROI_SAVEMODE */ 
+   int WhatDist;  /*!< option for determining format of ROI to save, acceptable  
+                        values are in SUMA_WIDGET_INDEX_DRAWROI_SAVEMODE */ 
+   Widget SaveModeMenu[SW_N_DrawROI_SaveMode]; /*!< set of widgets for SaveMode 
+                                                      menu */
+   Widget SaveWhatMenu[SW_N_DrawROI_SaveWhat]; /*!< set of widgets for SaveWhat 
+                                                      menu */
+   Widget WhatDistMenu[SW_N_DrawROI_WhatDist]; /*!< set of widgets for SaveWhat 
+                                                      menu */
 } SUMA_X_DrawROI;
 
                
@@ -2385,9 +2397,9 @@ typedef struct {
 
 /* structure containing SureFit name*/
 typedef struct {
-   char name_coord[SUMA_MAX_DIR_LENGTH+SUMA_MAX_NAME_LENGTH];
-   char name_topo[SUMA_MAX_DIR_LENGTH+SUMA_MAX_NAME_LENGTH]; 
-   char name_param[SUMA_MAX_DIR_LENGTH+SUMA_MAX_NAME_LENGTH];
+   char name_coord[SUMA_MAX_FILENAME_LENGTH];
+   char name_topo[SUMA_MAX_FILENAME_LENGTH]; 
+   char name_param[SUMA_MAX_FILENAME_LENGTH];
 } SUMA_SFname;
 
 typedef enum {    SMT_Nothing, 
@@ -2411,9 +2423,16 @@ typedef struct {
 
 /* *** Niml defines */
 
+#if 0 /*ZSS June 2011. Delete useless code after dust has settled.*/
 #define SUMA_TCP_PORT 53211      /*!< AFNI listens to SUMA on this port */
 #define SUMA_MATLAB_LISTEN_PORT 53230  /* MATLAB listens to SUMA on this port */
 #define SUMA_TCP_LISTEN_PORT0 53220 /*!< SUMA's 1st listening port */
+   /* Replace                    With
+      SUMA_TCP_PORT              get_port_named("AFNI_SUMA_NIML")
+      SUMA_MATLAB_LISTEN_PORT    get_port_named("SUMA_MATLAB_NIML")
+      SUMA_TCP_LISTEN_PORT0      get_port_named("SUMA_DEFAULT_LISTEN_NIML")
+   */
+#endif
 #define SUMA_FLAG_WAITING    1   /*!< Waiting for connection flag */
 #define SUMA_FLAG_CONNECTED  2   /*!< Connected flag */
 #define SUMA_FLAG_SKIP       4   /*!< Skip flag */
@@ -2437,7 +2456,9 @@ typedef enum { SUMA_AFNI_STREAM_INDEX = 0,
                      /*!<  Using socket SUMA_TCP_LISTEN_PORT0 + 4*/
                SUMA_MAX_STREAMS 
                      /*!< Maximum number of streams, KEEP AT END */
-            } SUMA_STREAM_INDICES;
+            } SUMA_STREAM_INDICES; /* If you add a new stream,
+                  create a new port number for it in afni_ports.c's 
+                  init_ports_list function */
             
 /* *** Niml defines end */
 
@@ -2624,7 +2645,8 @@ typedef struct {
    int afni_istream; /*!< index of stream used to connect to afni */
    char *suma_host_name;
    char *afni_host_name; 
-   int ElInd[SUMA_N_DSET_TYPES]; /* index of elements of a certain type to be sent to SUMA */
+   int ElInd[SUMA_N_DSET_TYPES]; /* index of elements of a certain type 
+                                    to be sent to SUMA */
    int kth;    /* send kth element to SUMA */
    int Feed2Afni;
 } SUMA_COMM_STRUCT;

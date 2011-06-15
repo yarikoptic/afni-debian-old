@@ -12,57 +12,44 @@
 #define ALMOST(a,b) \
    ( fabs(a - b) < EPSILON)
 
-typedef struct {
-  int good ;                       /* data in here is good? */
-  int have_data[3] ;               /* do we have slices 0 and 1 in           *
-				    * each dimension to determine z-spacing? *
-				    * added 25 Feb 2003 KRH                  */
-  int mos_ix, mos_nx, mos_ny; /* mosaic properties */
-  int mosaic_num ;                 /* how many slices in 1 'image' */
-  float slice_xyz[NMOMAX][3] ;     /* Sag, Cor, Tra coordinates */
-  int ImageNumbSag, ImageNumbTra, ImageNumbCor; /* reverse the slices */
-} Siemens_extra_info ;
-
-typedef struct {
-   THD_fvec3 xvec, yvec;            /* Image Orientation fields */
-   THD_fvec3 dfpos1;                /* image origin for first two slices*/
-   THD_fvec3 dfpos2;
-   THD_fvec3 del;                   /* voxel dimensions */
-   int mosaic;                      /* data is mosaic */
-   int mos_ix, mos_nx, mos_ny, mos_nslice; /* mosaic properties */
-   int nx, ny;                      /* overall mosaic dimensions */
-   float Tr_dicom[4][4];            /* transformation matrix */
-   float slice_xyz[2][3];           /* coordinates for 1st and last slices */
-   int mos_sliceinfo;               /* flag for existence of coordinate info */
-   int flip_slices;
-} oblique_info;
-
-oblique_info obl_info;
+/* moved typedef and oblique_info obl_info to mrilib.h  27 Dec 2010 [rickr] */
 
 /* mod -16 May 2007 */
 /* compute Tr transformation matrix for oblique data */
+#if 0
 static int read_mosaic_data( FILE *fp, MRI_IMAGE *im, MRI_IMARR *imar,
           int datum, Siemens_extra_info *mi, int * flip_slices,
           int bpp, int kor, int swap, float dx, float dy, float dz, float dt);
 static int flip_slices_mosaic (Siemens_extra_info *mi, int kor);
+static char * extract_bytes_from_file( FILE *fp, off_t start, size_t len, int strize ) ;
+static void get_siemens_extra_info( char *str , Siemens_extra_info *mi ) ;
+#endif
+
+/*---------------------------------------------------------------------------*/
+
+#include "mri_dicom_elist.h"  /** elist now defined elsewhere [05 May 2008] **/
+#include "mri_process_siemens.h"
 
 static float *ComputeObliquity(oblique_info *obl_info);
 static void Clear_obl_info(oblique_info *obl_info);
 static void Fill_obl_info(oblique_info *obl_info, char **epos, Siemens_extra_info *siem);
 void mri_read_dicom_reset_obliquity();
 void mri_read_dicom_get_obliquity(float *);
+static int init_dicom_globals(dicom_globals_t * info);
 
-static char * extract_bytes_from_file( FILE *fp, off_t start, size_t len, int strize ) ;
-static void get_siemens_extra_info( char *str , Siemens_extra_info *mi ) ;
 static float get_dz(  char **epos);
 
 static int CheckObliquity(float xc1, float xc2, float xc3, float yc1, float yc2, float yc3);
 static int get_posns_from_elist(char *plist[], char *elist[], char *text,
                                 int nume);
 
-static int obl_info_set = 0;
+/* sorry, dicom is a mess... */
+#include "mri_process_siemens.c"
 
-static int debugprint = 0;
+int   obl_info_set = 0;
+int   g_is_oblique = 0;
+int   g_image_ori_ind[3] = {0, 0, 0};                   /* ior, jor, kor  */
+float g_image_posn[3]    = {-666.0, -666.0, -666.0};    /* IMAGE_POSITION */
 
 /*-----------------------------------------------------------------------------------*/
 /* Save the Siemens extra info string in case the caller wants to get it. */
@@ -87,9 +74,6 @@ static void RWC_set_endianosity(void)
    }
 }
 
-/*---------------------------------------------------------------------------*/
-
-#include "mri_dicom_elist.h"  /** elist now defined elsewhere [05 May 2008] **/
 
 /*---------------------------------------------------------------------------*/
 /* global set via 'to3d -assume_dicom_mosaic'            13 Mar 2006 [rickr] */
@@ -111,8 +95,8 @@ MRI_IMARR * mri_read_dicom( char *fname )
    off_t poff ;
    unsigned int plen ;
    char *epos[NUM_ELIST] ;
-   int ii,jj , ee , bpp , datum ;
-   int nx,ny,nz , swap , shift=0 ;
+   int ii,jj , bpp , datum ;
+   int nx,ny,nz , swap ;
    float dx,dy,dz,dt ;
    MRI_IMARR *imar ;
    MRI_IMAGE *im=NULL ;
@@ -120,14 +104,15 @@ MRI_IMARR * mri_read_dicom( char *fname )
    FILE *fp ;
    int have_orients=0 ;
    int ior=0,jor=0,kor=0 ;
-   static int nzoff=0 ;   /* for determining z-axis orientation/offset from multiple calls */
-   int mosaic=0 , mos_nx=0,mos_ny=0 , mos_ix=0,mos_iy=0,mos_nz=0 ;  /* 28 Oct 2002 */
-   Siemens_extra_info sexinfo ;                                     /* 31 Oct 2002 */
-#if DEBUG_ON
+   static int nzoff=0 ; /* set z-axis orientation/offset from multiple calls */
+   int mosaic=0 , mos_nx=0,mos_ny=0;            /* 28 Oct 2002 */
+   int mos_ix=0,mos_iy=0,mos_nz=0 ;
+   Siemens_extra_info sexinfo ;                 /* 31 Oct 2002 */
+/* #if DEBUG_ON */
    short sbot,stop ;
    float xcen,ycen,zcen ;
    int use_xycen=0 ;
-#endif
+/* #endif */
    float dxx,dyy,dzz ;
 
    char *eee ;
@@ -142,7 +127,6 @@ MRI_IMARR * mri_read_dicom( char *fname )
    int un16 = 0 ;      /* 05 Jul 2006 - is it 16 bit unsigned data? */
    int ov16 = 0 ;      /*             - did 16 bit overflow occur? */
 
-   static int obliqueflag = 0;
    float xc1=0.0,xc2=0.0,xc3=0.0 , yc1=0.0,yc2=0.0,yc3=0.0 ;
    float xn,yn ; int qq ;
 
@@ -150,8 +134,11 @@ ENTRY("mri_read_dicom") ;
 
    if( str_sexinfo != NULL ){ free(str_sexinfo); str_sexinfo=NULL; }
 
+   /* clear image-based globals */
+   if( ! g_info.init ) init_dicom_globals(&g_info);
+
    if( !mri_possibly_dicom(fname) ){                /* 07 May 2003 */
-     if( AFNI_yesenv("AFNI_DICOM_VERBOSE") )
+     if( g_info.verb > 1 )
        ERROR_message("file %s is not possibly DICOM",fname) ;
      RETURN(NULL) ;
    }
@@ -164,7 +151,7 @@ ENTRY("mri_read_dicom") ;
    mri_dicom_noname(1) ;             /* don't print names, just tags */
    ppp = mri_dicom_header( fname ) ; /* print header to malloc()-ed string */
    if( ppp == NULL ){                /* didn't work; not a DICOM file? */
-     if( AFNI_yesenv("AFNI_DICOM_VERBOSE") )
+     if( g_info.verb > 1 )
        ERROR_message("file %s is not interpretable as DICOM",fname) ;
      RETURN(NULL) ;
    }
@@ -218,9 +205,11 @@ ENTRY("mri_read_dicom") ;
        if( ts_endian < 0 ){
          static int nwarn=0 ;
          if( nwarn < NWMAX )
-           WARNING_message("DICOM file %s: unsupported Transfer Syntax '%s'",fname,ts) ;
+           WARNING_message("DICOM file %s: unsupported Transfer Syntax '%s'",
+                           fname,ts) ;
          if( nwarn == NWMAX )
-           WARNING_message("DICOM: no more Transfer Syntax messages will be printed") ;
+           WARNING_message("DICOM: no more Transfer Syntax messages "
+                           " will be printed") ;
          nwarn++ ;
        }
      }
@@ -286,7 +275,11 @@ ENTRY("mri_read_dicom") ;
    /* check if we have 8, 16, or 32 bits per pixel */
 
    ddd = strstr(epos[E_BITS_ALLOCATED],"//") ;
-   if( ddd == NULL ){ free(ppp); RETURN(NULL); }
+   if( ddd == NULL ){
+      ERROR_message("DICOM file %s: missing Bits Allocated!",fname) ;
+      free(ppp); RETURN(NULL);
+   }
+
    bpp = SINT(ddd+2) ;
    switch( bpp ){
       default:
@@ -298,6 +291,8 @@ ENTRY("mri_read_dicom") ;
       case 32: datum = MRI_int  ; break ;  /* probably not present in DICOM? */
    }
    bpp /= 8 ; /* now bytes per pixel, instead of bits */
+
+   if( g_info.verb > 2 ) fprintf(stderr,"-d dicom: datum %d\n",datum);
 
    /*** Print some warnings if appropriate ***/
 
@@ -311,10 +306,11 @@ ENTRY("mri_read_dicom") ;
        static int nwarn=0 ;
        if( nwarn < NWMAX )
          fprintf(stderr,
-                 "++ DICOM WARNING: file %s has Bits_Stored=%d and High_Bit=%d\n",
-                 fname,bs,hb) ;
+                 "++ DICOM WARNING: file %s has Bits_Stored=%d and "
+                 "High_Bit=%d\n", fname,bs,hb) ;
        if( nwarn == NWMAX )
-         fprintf(stderr,"++ DICOM WARNING: no more Bits_Stored messages will be printed\n") ;
+         fprintf(stderr,"++ DICOM WARNING: no more Bits_Stored messages "
+                 "will be printed\n") ;
        nwarn++ ;
      }
    }
@@ -322,16 +318,16 @@ ENTRY("mri_read_dicom") ;
    /* check if Rescale is ordered */
    /* 23 Dec 2002: actually get the rescale params, if environment says to */
 
-   eee = getenv("AFNI_DICOM_RESCALE") ;
    if( epos[E_RESCALE_INTERCEPT] != NULL && epos[E_RESCALE_SLOPE] != NULL ){
-     if( eee == NULL || toupper(*eee) != 'Y' ){
+     if( ! g_info.rescale ) {
        static int nwarn=0 ;
        if( nwarn < NWMAX )
          fprintf(stderr,
-                 "++ DICOM WARNING: file %s has Rescale tags; setenv AFNI_DICOM_RESCALE YES to enforce them\n",
-                 fname ) ;
+                 "++ DICOM WARNING: file %s has Rescale tags\n"
+                 "   setenv AFNI_DICOM_RESCALE YES to enforce them\n", fname);
        if( nwarn == NWMAX )
-         fprintf(stderr,"++ DICOM WARNING: no more Rescale tags messages will be printed\n") ;
+         fprintf(stderr,"++ DICOM WARNING: no more Rescale tags messages "
+                 "will be printed\n") ;
        nwarn++ ;
      } else {
        ddd = strstr(epos[E_RESCALE_INTERCEPT],"//"); rescale_inter = SFLT(ddd+2);
@@ -342,17 +338,17 @@ ENTRY("mri_read_dicom") ;
    /* check if Window is ordered */
    /* 23 Dec 2002: actually get the window params, if environment says to */
 
-   eee = getenv("AFNI_DICOM_WINDOW") ;
    if( epos[E_WINDOW_CENTER] != NULL && epos[E_WINDOW_WIDTH] != NULL ){
-     if( eee == NULL || toupper(*eee) != 'Y' ){
+     if( ! g_info.window ) {
        static int nwarn=NWMAX+1 ; /* never show these messages   31 Aug 2007 */
        if( nwarn < NWMAX )
          fprintf(stderr,
                  "++ DICOM WARNING: file %s has Window tags;\n"
-                 " setenv AFNI_DICOM_WINDOW YES to enforce them, but this is rarely necessary or even wanted\n",
-                 fname ) ;
+                 " setenv AFNI_DICOM_WINDOW YES to enforce them, but this "
+                 "is rarely necessary or even wanted\n", fname ) ;
        if( nwarn == NWMAX )
-         fprintf(stderr,"++ DICOM WARNING: no more Window tags messages will be printed\n") ;
+         fprintf(stderr,"++ DICOM WARNING: no more Window tags messages "
+                 "will be printed\n") ;
        nwarn++ ;
      } else {
        ddd = strstr(epos[E_WINDOW_CENTER],"//"); window_center = SFLT(ddd+2);
@@ -380,6 +376,7 @@ ENTRY("mri_read_dicom") ;
    if( epos[E_NUMBER_OF_FRAMES] != NULL ){
      ddd = strstr(epos[E_NUMBER_OF_FRAMES],"//") ;
      if( ddd != NULL ) nz = SINT(ddd+2) ;
+     if( g_info.verb > 2 ) fprintf(stderr,"-- DICOM: num frames = %d\n",nz);
    }
 
    /* if didn't get nz above, make up a value */
@@ -389,6 +386,33 @@ ENTRY("mri_read_dicom") ;
      ERROR_message("DICOM file %s: not enough data for 1 slice!",fname) ;
      free(ppp) ; RETURN(NULL);
    }
+
+ /* use new functions (moved code)           21 Dec 2010 [rickr] */
+ if( use_new_mosaic_code ) {
+    static int nwarn=0 ;
+    int rv = process_siemens_mosaic(&sexinfo, &str_sexinfo, epos, fname,
+                                    assume_dicom_mosaic, nx,ny,nz);
+    if( g_info.verb > 2 || (g_info.verb > 1 && nwarn < NWMAX) )
+        fprintf(stderr,"-- used process_siemens_mosaic...\n");
+    nwarn++;
+    if( rv  < 0 ) { free(ppp); RETURN(NULL); }   /* fatal */
+    if( rv == 1 ) {
+       /* have Siemens Mosaic, set follower variables */
+
+       mosaic = 1;
+       mos_ix = sexinfo.mos_ix;
+       mos_iy = sexinfo.mos_ix;
+       mos_nx = sexinfo.mos_nx;
+       mos_ny = sexinfo.mos_ny;
+       mos_nz = sexinfo.mos_ix * sexinfo.mos_ix ;  /* total slices in mosaic */
+
+       if( g_info.verb > 1 )
+          fprintf(stderr,"   mos_ix, iy, nx ,ny, nz = (%d, %d, %d, %d, %d)\n",
+                  mos_ix, mos_iy, mos_nx, mos_ny, mos_nz);
+    }  /* else not mosaic */
+ } else {       /* eventually delete this else condition */
+
+   if(g_info.verb>1) fprintf(stderr,"-- not using process_siemens_mosaic...\n");
 
    /*-- 28 Oct 2002: Check if this is a Siemens mosaic.        --*/
    /*-- 02 Dec 2002: Don't use Acquisition Matrix anymore;
@@ -405,11 +429,12 @@ ENTRY("mri_read_dicom") ;
      if( len > 0 && loc > 0 ){
        fp = fopen( fname , "rb" ) ;
        if( fp != NULL ){
-         str_sexinfo = extract_bytes_from_file( fp, (off_t)loc, (size_t)len, 1 ) ;
+         str_sexinfo = extract_bytes_from_file(fp, (off_t)loc, (size_t)len, 1);
          fclose(fp) ;
        }
      }
    }
+
 /*********Siemens mosaic section ***********************/
    /*-- process str_sexinfo only if this is marked as a mosaic image --*/
    /*-- preliminary processing of sexinfo EVEN IF NOT MARKED AS MOSAIC, --*/
@@ -427,7 +452,8 @@ ENTRY("mri_read_dicom") ;
        && str_sexinfo                               != NULL   ){
 
      sexi_start = strstr(str_sexinfo, "### ASCCONV BEGIN ###");
-     if(sexi_start != NULL) {  /* search for end after start - drg,fredtam 23 Mar 2007 */
+     if(sexi_start != NULL) {
+        /* search for end after start - drg,fredtam 23 Mar 2007 */
         sexi_start2 = strstr(sexi_start+21, "### ASCCONV BEGIN ###");
         sexi_end = strstr(sexi_start, "### ASCCONV END ###");
         if (sexi_end != NULL) {
@@ -449,12 +475,13 @@ ENTRY("mri_read_dicom") ;
      /* end KRH 25 Jul 2003 change */
 
      sexinfo.good = 0 ;  /* start by marking it as bad */
-     for(ii = 0; ii < 3; ii++) sexinfo.have_data[ii] = 0; /* 25 Feb 03 Initialize new member KRH */
+
+     /* 25 Feb 03 Initialize new member KRH */
+     for(ii = 0; ii < 3; ii++) sexinfo.have_data[ii] = 0;
 
      get_siemens_extra_info( str_sexinfo , &sexinfo ) ;
 
-     if( sexinfo.good ){                                   /* if data is good */
-
+     if( sexinfo.good ){                                 /* if data is good */
        if((        epos[E_ID_IMAGE_TYPE]              != NULL &&
          strstr(epos[E_ID_IMAGE_TYPE],"MOSAIC")    != NULL) ||
          sexinfo.mosaic_num                        > 1   ) {
@@ -462,23 +489,24 @@ ENTRY("mri_read_dicom") ;
          /* compute size of mosaic layout
           as 1st integer whose square is >= # of images in mosaic */
 
-         for( mos_ix=1 ; mos_ix*mos_ix < sexinfo.mosaic_num ; mos_ix++ ) ; /* nada */
-         sexinfo.mos_ix = mos_iy = mos_ix ;
+         for( mos_ix=1 ; mos_ix*mos_ix < sexinfo.mosaic_num ; mos_ix++ )
+            ; /* nada */
 
+         sexinfo.mos_ix = mos_iy = mos_ix ;
          sexinfo.mos_nx = mos_nx = nx / mos_ix ;
          sexinfo.mos_ny = mos_ny = ny / mos_iy ;  /* sub-image dimensions */
 
-         if( mos_ix*mos_nx == nx &&               /* Sub-images must fit nicely */
-           mos_iy*mos_ny == ny    ){            /* into super-image layout.   */
+         if( mos_ix*mos_nx == nx &&         /* Sub-images must fit nicely */
+           mos_iy*mos_ny == ny    ){        /* into super-image layout.   */
 
              static int nwarn=0 ;
 
              /* should be tagged as a 1 slice image thus far */
 
              if( nz > 1 ){
-               fprintf(stderr,
-                     "** DICOM ERROR: %dx%d Mosaic of %dx%d images in file %s, but also have nz=%d\n",
-                     mos_ix,mos_iy,mos_nx,mos_ny,fname,nz) ;
+               fprintf(stderr, "** DICOM ERROR: %dx%d Mosaic of %dx%d images "
+                       " in file %s, but also have nz=%d\n",
+                       mos_ix,mos_iy,mos_nx,mos_ny,fname,nz) ;
                free(ppp) ; RETURN(NULL) ;
              }
 
@@ -487,10 +515,12 @@ ENTRY("mri_read_dicom") ;
              mosaic = 1 ;
              mos_nz = mos_ix * mos_iy ;   /* number of slices in mosaic */
              if( nwarn < NWMAX )
-               fprintf(stderr,"++ DICOM NOTICE: %dx%d Siemens Mosaic of %d %dx%d images in file %s\n",
-                    mos_ix,mos_iy,sexinfo.mosaic_num,mos_nx,mos_ny,fname) ;
+               fprintf(stderr,"++ DICOM NOTICE: %dx%d Siemens Mosaic "
+                       "of %d %dx%d images in file %s\n",
+                       mos_ix,mos_iy,sexinfo.mosaic_num,mos_nx,mos_ny,fname) ;
              if( nwarn == NWMAX )
-               fprintf(stderr,"++ DICOM NOTICE: no more Siemens Mosaic messages will be printed\n") ;
+               fprintf(stderr,"++ DICOM NOTICE: no more Siemens Mosaic "
+                       " messages will be printed\n") ;
              nwarn++ ;
 
          } /* end of if mosaic sizes are reasonable */
@@ -498,13 +528,14 @@ ENTRY("mri_read_dicom") ;
          else {                        /* warn about bad mosaic sizes */
            static int nwarn=0 ;
            if( nwarn < NWMAX ) {
-             fprintf(stderr,
-                   "\n** DICOM WARNING: bad Siemens Mosaic params: nx=%d ny=%d ix=%d iy=%d imx=%d imy=%d\n",
-                   mos_nx,mos_ny , mos_ix,mos_iy , nx,ny ) ;
+             fprintf(stderr, "\n** DICOM WARNING: bad Siemens Mosaic params: "
+                     "nx=%d ny=%d ix=%d iy=%d imx=%d imy=%d\n",
+                     mos_nx,mos_ny , mos_ix,mos_iy , nx,ny ) ;
              fprintf(stderr,"   (consider the option -use_last_elem)\n");
            }
            if( nwarn == NWMAX )
-             fprintf(stderr,"++ DICOM NOTICE: no more Siemens Mosaic param messages will be printed\n");
+             fprintf(stderr,"++ DICOM NOTICE: no more Siemens Mosaic param "
+                     "messages will be printed\n");
            nwarn++ ;
          }
        } /* end of if a Siemens mosaic */
@@ -514,14 +545,18 @@ ENTRY("mri_read_dicom") ;
        else {                  /* warn if sexinfo was bad */
          static int nwarn=0 ;
          if( nwarn < NWMAX )
-           fprintf(stderr,"++ DICOM WARNING: indecipherable Siemens Mosaic info (%s) in file %s\n",
-                 elist[E_SIEMENS_2] , fname ) ;
+           fprintf(stderr,"++ DICOM WARNING: indecipherable Siemens Mosaic "
+                   "info (%s) in file %s\n", elist[E_SIEMENS_2] , fname ) ;
          if( nwarn == NWMAX )
-           fprintf(stderr,"++ DICOM NOTICE: no more Siemens Mosaic info messages will be printed\n");
+           fprintf(stderr,"++ DICOM NOTICE: no more Siemens Mosaic info "
+                   "messages will be printed\n");
          nwarn++ ;
        }
    } /* end of if str_sexinfo exists */
+
 /*********end of Siemens mosaic section ***********************/
+
+ } /* end of if use_new_mosaic_code */
 
    /*-- try to get dx, dy, dz, dt --*/
 
@@ -533,6 +568,7 @@ ENTRY("mri_read_dicom") ;
      ddd = strstr(epos[E_PIXEL_SPACING],"//") ;
      if( ddd != NULL ) sscanf( ddd+2 , "%f\\%f" , &dx , &dy ) ;
      if( dy == 0.0 && dx > 0.0 ) dy = dx ;
+     if(g_info.verb>2) fprintf(stderr,"-- DICOM PSP dx, dy = %f, %f\n", dx, dy);
    }
    if( dx == 0.0 && epos[E_FIELD_OF_VIEW] != NULL ){
      ddd = strstr(epos[E_FIELD_OF_VIEW],"//") ;
@@ -541,17 +577,22 @@ ENTRY("mri_read_dicom") ;
        if( dy == 0.0 ) dy = dx ;
        dx /= nx ; dy /= ny ;
      }
+     if(g_info.verb>2) fprintf(stderr,"-- DICOM FOV dx, dy = %f, %f\n", dx, dy);
    }
 
    /* get dz now*/
    dz = get_dz(epos);
 
+   if(g_info.verb>2) fprintf(stderr,"-- DICOM dxyz = %f, %f, %f\n", dx,dy,dz);
+
    /* get dt */
    if( epos[E_REPETITION_TIME] != NULL ){
      ddd = strstr(epos[E_REPETITION_TIME],"//") ;
-     if( ddd != NULL ) dt = 0.001f * SFLT(ddd+2) ;  /* ms to s conversion */
+     if( ddd != NULL ) {
+        dt = 0.001f * SFLT(ddd+2) ;  /* ms to s conversion */
+        if(g_info.verb>2) fprintf(stderr,"-- DICOM REP TIME dt = %f s\n", dt);
+     }
    }
-
 
    /* check if we might have 16 bit unsigned data that fills all bits */
    if( bpp == 2 ){
@@ -587,17 +628,57 @@ ENTRY("mri_read_dicom") ;
    }
 #endif
 
+   /* ------------------------------------------------------------ */
+   /* fill g_image_info fields for Dimon, not part of MRI_IMAGE    */
+   /* (set oblique flag later)                                     */
+   memset(&g_image_info, '\0', sizeof(dicom_image_globals_t));
+   g_image_info.image_index = -1;       /* might start at 0 */
+
+   if( epos[E_RS_STUDY_NUM] != NULL ){
+     ddd = strstr(epos[E_RS_STUDY_NUM],"//") ;
+     if( ddd != NULL ) sscanf( ddd+2 , "%d" , &g_image_info.study);
+   }
+
+   if( epos[E_RS_SERIES_NUM] != NULL ){
+     ddd = strstr(epos[E_RS_SERIES_NUM],"//") ;
+     if( ddd != NULL ) sscanf( ddd+2 , "%d" , &g_image_info.series);
+   }
+
+   if( epos[E_INSTANCE_NUMBER] != NULL ){
+     ddd = strstr(epos[E_INSTANCE_NUMBER],"//") ;
+     if( ddd != NULL ) sscanf( ddd+2 , "%d" , &g_image_info.image);
+   }
+
+   if( epos[E_RS_IMAGE_INDEX] != NULL ){
+     ddd = strstr(epos[E_RS_IMAGE_INDEX],"//") ;
+     if( ddd != NULL ) sscanf( ddd+2 , "%d" , &g_image_info.image_index);
+   }
+
+   if( epos[E_ID_ACQUISITION_TIME] != NULL ){
+     ddd = strstr(epos[E_ID_ACQUISITION_TIME],"//") ;
+     if( ddd != NULL ) sscanf( ddd+2 , "%f" , &g_image_info.acq_time);
+   }
+
+   /* add mosaic info to g_image_info */
+   if( mosaic ) {
+      g_image_info.is_mosaic  = 1;
+      g_image_info.mos_nslice = sexinfo.mosaic_num;
+      g_image_info.mos_nx     = sexinfo.mos_nx;
+      g_image_info.mos_ny     = sexinfo.mos_ny;
+   }
+
+   /*----------------------------------------------------------*/
    /*-- store some extra information in MRILIB globals, too? --*/
 
    if( dt > 0.0 && MRILIB_tr <= 0.0 ) MRILIB_tr = dt ;  /* TR */
 
    /*-- try to get image orientation fields (also, set ior,jor,kor) --*/
 
-   if( epos[E_IMAGE_ORIENTATION] != NULL ){    /* direction cosines of image plane */
-
+   if( epos[E_IMAGE_ORIENTATION] != NULL ){
+     /* direction cosines of image plane */
      ddd = strstr(epos[E_IMAGE_ORIENTATION],"//") ;
      if( ddd != NULL ){
-       qq = sscanf(ddd+2,"%f\\%f\\%f\\%f\\%f\\%f",&xc1,&xc2,&xc3,&yc1,&yc2,&yc3);
+       qq=sscanf(ddd+2,"%f\\%f\\%f\\%f\\%f\\%f",&xc1,&xc2,&xc3,&yc1,&yc2,&yc3);
        xn = sqrt( xc1*xc1 + xc2*xc2 + xc3*xc3 ) ; /* vector norms */
        yn = sqrt( yc1*yc1 + yc2*yc2 + yc3*yc3 ) ;
        if( qq == 6 && xn > 0.0 && yn > 0.0 ){     /* both vectors OK */
@@ -605,11 +686,9 @@ ENTRY("mri_read_dicom") ;
          xc1 /= xn ; xc2 /= xn ; xc3 /= xn ;      /* normalize vectors */
          yc1 /= yn ; yc2 /= yn ; yc3 /= yn ;
          if(!obl_info_set) {
-            obliqueflag = CheckObliquity(xc1, xc2, xc3, yc1, yc2, yc3);
-             if(obliqueflag) {
-        	INFO_message("Data detected to be oblique");
-             /* can also check obliquity consistency here across dicom files*/
-             }
+             g_is_oblique = CheckObliquity(xc1, xc2, xc3, yc1, yc2, yc3);
+             g_image_info.is_obl = g_is_oblique; /* for image */
+             if(g_is_oblique) INFO_message("Data detected to be oblique");
          }
          if( !use_MRILIB_xcos ){
            MRILIB_xcos[0] = xc1 ; MRILIB_xcos[1] = xc2 ;  /* save direction */
@@ -667,35 +746,35 @@ ENTRY("mri_read_dicom") ;
          kor = 6 - abs(ior)-abs(jor) ;   /* which spatial direction is z-axis */
                                          /* where 1=L-R, 2=P-A, 3=I-S */
          have_orients = 1 ;
-#if DEBUG_ON
-fprintf(stderr,"MRILIB_orients=%s (from IMAGE_ORIENTATION)\n",MRILIB_orients) ;
-#endif
+         if( g_info.verb > 2 )
+            fprintf(stderr,"MRILIB_orients=%s (from IMAGE_ORIENTATION)\n",
+                    MRILIB_orients) ;
        }
      }
 
-   } else if( epos[E_PATIENT_ORIENTATION] != NULL ){  /* symbolic orientation of image */
-                                                      /* [not so useful, or common] */
+   } else if( epos[E_PATIENT_ORIENTATION] != NULL ){
+     /* symbolic orientation of image [not so useful, or common] */
      ddd = strstr(epos[E_PATIENT_ORIENTATION],"//") ;
      if( ddd != NULL ){
        char xc='\0' , yc='\0' ;
        sscanf(ddd+2,"%c\\%c",&xc,&yc) ;   /* e.g., "L\P" */
        switch( toupper(xc) ){
-         case 'L': MRILIB_orients[0] = 'L'; MRILIB_orients[1] = 'R'; ior=-1; break;
-         case 'R': MRILIB_orients[0] = 'R'; MRILIB_orients[1] = 'L'; ior= 1; break;
-         case 'P': MRILIB_orients[0] = 'P'; MRILIB_orients[1] = 'A'; ior=-2; break;
-         case 'A': MRILIB_orients[0] = 'A'; MRILIB_orients[1] = 'P'; ior= 2; break;
-         case 'F': MRILIB_orients[0] = 'I'; MRILIB_orients[1] = 'S'; ior= 3; break;  /* F = foot */
-         case 'H': MRILIB_orients[0] = 'S'; MRILIB_orients[1] = 'I'; ior=-3; break;  /* H = head */
-         default:  MRILIB_orients[0] ='\0'; MRILIB_orients[1] ='\0'; ior= 0; break;
+         case 'L': MRILIB_orients[0]='L'; MRILIB_orients[1]='R'; ior=-1; break;
+         case 'R': MRILIB_orients[0]='R'; MRILIB_orients[1]='L'; ior= 1; break;
+         case 'P': MRILIB_orients[0]='P'; MRILIB_orients[1]='A'; ior=-2; break;
+         case 'A': MRILIB_orients[0]='A'; MRILIB_orients[1]='P'; ior= 2; break;
+         case 'F': MRILIB_orients[0]='I'; MRILIB_orients[1]='S'; ior= 3; break;  /* F = foot */
+         case 'H': MRILIB_orients[0]='S'; MRILIB_orients[1]='I'; ior=-3; break;  /* H = head */
+         default:  MRILIB_orients[0]='\0';MRILIB_orients[1]='\0';ior= 0; break;
        }
        switch( toupper(yc) ){
-         case 'L': MRILIB_orients[2] = 'L'; MRILIB_orients[3] = 'R'; jor=-1; break;
-         case 'R': MRILIB_orients[2] = 'R'; MRILIB_orients[3] = 'L'; jor= 1; break;
-         case 'P': MRILIB_orients[2] = 'P'; MRILIB_orients[3] = 'A'; jor=-2; break;
-         case 'A': MRILIB_orients[2] = 'A'; MRILIB_orients[3] = 'P'; jor= 2; break;
-         case 'F': MRILIB_orients[2] = 'I'; MRILIB_orients[3] = 'S'; jor= 3; break;
-         case 'H': MRILIB_orients[2] = 'S'; MRILIB_orients[3] = 'I'; jor=-3; break;
-         default:  MRILIB_orients[2] ='\0'; MRILIB_orients[3] ='\0'; jor= 0; break;
+         case 'L': MRILIB_orients[2]='L'; MRILIB_orients[3]='R'; jor=-1; break;
+         case 'R': MRILIB_orients[2]='R'; MRILIB_orients[3]='L'; jor= 1; break;
+         case 'P': MRILIB_orients[2]='P'; MRILIB_orients[3]='A'; jor=-2; break;
+         case 'A': MRILIB_orients[2]='A'; MRILIB_orients[3]='P'; jor= 2; break;
+         case 'F': MRILIB_orients[2]='I'; MRILIB_orients[3]='S'; jor= 3; break;
+         case 'H': MRILIB_orients[2]='S'; MRILIB_orients[3]='I'; jor=-3; break;
+         default:  MRILIB_orients[2]='\0';MRILIB_orients[3]='\0';jor= 0; break;
        }
        MRILIB_orients[6] = '\0' ;      /* terminate orientation string */
        kor = 6 - abs(ior)-abs(jor) ;   /* which spatial direction is z-axis */
@@ -706,9 +785,15 @@ fprintf(stderr,"MRILIB_orients=%s (from IMAGE_ORIENTATION)\n",MRILIB_orients) ;
 
    /*-- try to get image offset (position), if have orientation from above --*/
 
-   if( nzoff == 0 && have_orients && mosaic && sexinfo.good ){  /* 01 Nov 2002: use Siemens mosaic info */
-     int qq ;
+ if( nzoff == 0 && have_orients && mosaic && sexinfo.good ){
+     /* 01 Nov 2002: use Siemens mosaic info */
      float z0=0.0, z1=0.0 ;
+
+   /* use new functions (moved code)           21 Dec 2010 [rickr] */
+   if( use_new_mosaic_code ) {
+      int rv = apply_z_orient(&sexinfo, MRILIB_orients, &kor, &MRILIB_zoff);
+      if( ! rv ) use_MRILIB_zoff = 1;
+   } else {     /* eventually delete this else condition */
      /* 25 Feb 2003 changing error checking for mosaics missing one or more *
       * dimension of slice coordinates                                 KRH  */
      if (sexinfo.have_data[kor-1]) {
@@ -717,10 +802,11 @@ fprintf(stderr,"MRILIB_orients=%s (from IMAGE_ORIENTATION)\n",MRILIB_orients) ;
      } else {                  /* warn if sexinfo was bad */
        static int nwarn=0 ;
        if( nwarn < NWMAX )
-         fprintf(stderr,"++ DICOM WARNING: Unusable coord. in Siemens Mosaic info (%s) in file %s\n",
-                 elist[E_SIEMENS_2] , fname ) ;
+         fprintf(stderr,"++ DICOM WARNING: Unusable coord. in Siemens "
+                 "Mosaic info (%s) in file %s\n", elist[E_SIEMENS_2], fname);
        if( nwarn == NWMAX )
-         fprintf(stderr,"++ DICOM NOTICE: no more Siemens Mosaic info messages will be printed\n");
+         fprintf(stderr,"++ DICOM NOTICE: no more Siemens Mosaic info "
+                 "messages will be printed\n");
        nwarn++ ;
      }
 
@@ -748,12 +834,28 @@ fprintf(stderr,"MRILIB_orients=%s (from IMAGE_ORIENTATION)\n",MRILIB_orients) ;
      }
      MRILIB_orients[6] = '\0' ;
 
-#if DEBUG_ON
-fprintf(stderr,"z0=%f z1=%f kor=%d MRILIB_orients=%s\n",z0,z1,kor,MRILIB_orients) ;
-#endif
+     if( g_info.verb > 2 )
+        fprintf(stderr,"z0=%f z1=%f kor=%d MRILIB_orients=%s\n",
+                z0,z1,kor,MRILIB_orients) ;
 
      MRILIB_zoff = z0 ; use_MRILIB_zoff = 1 ;
      if( kor > 0 ) MRILIB_zoff = -MRILIB_zoff ;
+   } /* else (not use_new_mosaic_code) */
+ } /* if have_orients && mosaic ... */
+
+   /* always note offsets from IMAGE position, for Dimon */
+   g_image_posn[0] = g_image_posn[1] = g_image_posn[2] = -666.0; /* defaults */
+   if( epos[E_IMAGE_POSITION] ){
+      ddd = strstr(epos[E_IMAGE_POSITION],"//");
+      if( ddd ) {
+       float xyz[3]; int qq;
+       qq = sscanf(ddd+2,"%f\\%f\\%f",xyz,xyz+1,xyz+2);
+       if( qq == 3 ) {
+          g_image_posn[0] = xyz[abs(ior)-1];
+          g_image_posn[1] = xyz[abs(jor)-1];
+          g_image_posn[2] = xyz[abs(kor)-1];
+       }
+      }
    }
 
    /** use image position vector to set offsets,
@@ -768,9 +870,9 @@ fprintf(stderr,"z0=%f z1=%f kor=%d MRILIB_orients=%s\n",z0,z1,kor,MRILIB_orients
          static float zoff ;      /* saved from nzoff=0 case */
          float zz = xyz[abs(kor)-1] ;  /* kor from orients above */
 
-#if DEBUG_ON
-fprintf(stderr,"IMAGE_POSITION=%f %f %f  kor=%d\n",xyz[0],xyz[1],xyz[2],kor) ;
-#endif
+     if( g_info.verb > 2 )
+        fprintf(stderr,"IMAGE_POSITION=%f %f %f  kor=%d\n",
+                xyz[0],xyz[1],xyz[2],kor) ;
 
          if( nzoff == 0 ){  /* 1st DICOM image */
 
@@ -811,9 +913,8 @@ fprintf(stderr,"IMAGE_POSITION=%f %f %f  kor=%d\n",xyz[0],xyz[1],xyz[2],kor) ;
 
            float qoff = zz - zoff ;    /* vive la difference */
            if( qoff < 0 ) kor = -kor ; /* kor determines z-axis orientation */
-#if DEBUG_ON
-fprintf(stderr,"  nzoff=1 kor=%d qoff=%f\n",kor,qoff) ;
-#endif
+           if( g_info.verb > 2 )
+              fprintf(stderr,"  nzoff=1 kor=%d qoff=%f\n",kor,qoff) ;
            switch( kor ){
              case  1: MRILIB_orients[4] = 'R'; MRILIB_orients[5] = 'L'; break;
              case -1: MRILIB_orients[4] = 'L'; MRILIB_orients[5] = 'R'; break;
@@ -844,7 +945,8 @@ fprintf(stderr,"  nzoff=1 kor=%d qoff=%f\n",kor,qoff) ;
           AND if we don't have a mosaic image (which already did this stuff)
        -- shouldn't be necessary, since slice location is deprecated        **/
 
-   else if( nzoff < 2 && epos[E_SLICE_LOCATION] != NULL && have_orients && !mosaic ){
+   else if( nzoff < 2 && epos[E_SLICE_LOCATION] != NULL
+                      && have_orients && !mosaic ){
      ddd = strstr(epos[E_SLICE_LOCATION],"//") ;
      if( ddd != NULL ){
        float zz ; int qq ;
@@ -852,9 +954,7 @@ fprintf(stderr,"  nzoff=1 kor=%d qoff=%f\n",kor,qoff) ;
        if( qq == 1 ){
          static float zoff ;      /* saved from nzoff=0 case */
 
-#if DEBUG_ON
-fprintf(stderr,"SLICE_LOCATION = %f\n",zz) ;
-#endif
+       if( g_info.verb > 2 ) fprintf(stderr,"SLICE_LOCATION = %f\n",zz) ;
 
          if( nzoff == 0 ){  /* 1st DICOM image */
 
@@ -937,18 +1037,31 @@ fprintf(stderr,"SLICE_LOCATION = %f\n",zz) ;
    if( !mosaic ){   /*-- 28 Oct 2002: old method, not a mosaic --*/
 
     for( ii=0 ; ii < nz ; ii++ ){
-      im = mri_new( nx , ny , datum ) ;    /* new MRI_IMAGE struct */
-      iar = mri_data_pointer( im ) ;       /* data array in struct */
-      fread( iar , bpp , nx*ny , fp ) ;    /* read data directly into it */
+      if( g_info.verb > 2 )
+         fprintf(stderr,"++ making image (read_data=%d)\n", g_info.read_data);
 
-      if( swap ){                          /* swap bytes? */
-        switch( im->pixel_size ){
-          default: break ;
-          case 2:  swap_twobytes (   im->nvox, iar ) ; break ;  /* short */
-          case 4:  swap_fourbytes(   im->nvox, iar ) ; break ;  /* int, float */
-          case 8:  swap_fourbytes( 2*im->nvox, iar ) ; break ;  /* complex */
-        }
-        im->was_swapped = 1 ;
+      /* replace mri_new, since we may not want data  29 Dec 2010 [rickr] */
+      im = mri_new_7D_generic(nx,ny , 1,1,1,1,1, datum , g_info.read_data) ;
+      if( !im ) {
+         fprintf(stderr,"** MRD: failed to allocate %d voxel image\n", nx*ny);
+         free(ppp) ; RETURN(NULL);
+      }
+
+      iar = mri_data_pointer( im ) ;       /* data array in struct */
+
+      /* if we actually want the data, read it in and possibly swap */
+      if( g_info.read_data ) {
+         fread( iar , bpp , nx*ny , fp ) ;    /* read data directly into it */
+
+         if( swap ){                          /* swap bytes? */
+           switch( im->pixel_size ){
+             default: break ;
+             case 2: swap_twobytes (   im->nvox, iar ); break; /* short */
+             case 4: swap_fourbytes(   im->nvox, iar ); break; /* int, float */
+             case 8: swap_fourbytes( 2*im->nvox, iar ); break; /* complex */
+           }
+           im->was_swapped = 1 ;
+         }
       }
 
 #if 0
@@ -977,9 +1090,14 @@ fprintf(stderr,"SLICE_LOCATION = %f\n",zz) ;
     }
 
    }
-   else {         /*copy images from mosaic data into an image array */
-      read_mosaic_data( fp, im, imar, datum, &sexinfo, &obl_info.flip_slices,
-                        bpp, kor, swap,dx,dy,dz, dt);
+   else {
+      /* read images into the image array (fill im, imar, flip_slices) */
+      /* moved to mri_process_siemens.c            22 Dec 2010 [rickr] */
+      if( read_mosaic_data( fp, im, imar, &obl_info.flip_slices, &sexinfo,
+                            datum, bpp, kor, swap,dx,dy,dz, dt) ) {
+          ERROR_message("failed to read file %s as DICOM mosaic", fname);
+          free(ppp) ; RETURN(NULL);
+      }
    }
    fclose(fp) ;     /* 10 Sep 2002: oopsie - forgot to close file */
 
@@ -988,7 +1106,7 @@ fprintf(stderr,"SLICE_LOCATION = %f\n",zz) ;
    /* make sure im wasn't TRUNCATEd   1 Jul 2008 (and 5 Aug 2008) [rickr] */
    im = IMARR_SUBIM(imar,0) ;
 
-   if( un16 ){
+   if( un16 && g_info.read_data ){
      for( ov16=ii=0 ; ii < IMARR_COUNT(imar) ; ii++ ){
        short *sar = MRI_SHORT_PTR( IMARR_SUBIM(imar,ii) ) ;
        for( jj=0 ; jj < im->nvox ; jj++ ) if( sar[jj] < 0 ) ov16++ ;
@@ -1004,7 +1122,7 @@ fprintf(stderr,"SLICE_LOCATION = %f\n",zz) ;
 
    /*-- 23 Dec 2002: implement Rescale, if ordered --*/
 
-   if( rescale_slope > 0.0 ){
+   if( rescale_slope > 0.0 && g_info.read_data ){
      for( ii=0 ; ii < IMARR_COUNT(imar) ; ii++ ){
        im = IMARR_SUBIM(imar,ii) ;
        switch( im->kind ){
@@ -1035,7 +1153,7 @@ fprintf(stderr,"SLICE_LOCATION = %f\n",zz) ;
    /*-- 23 Dec 2002: implement Window, if ordered --*/
    /*                section C.11.2.1.2 (page 503)  */
 
-   if( window_width >= 1.0 ){
+   if( window_width >= 1.0 && g_info.read_data ){
      float wbot,wtop,wfac ;
      int ymax=0 ;
 
@@ -1123,7 +1241,17 @@ fprintf(stderr,"SLICE_LOCATION = %f\n",zz) ;
      }
    } /* end of Window */
 
+   /* store the orientation orders for Dimon */
+   g_image_ori_ind[0] = ior;
+   g_image_ori_ind[1] = jor;
+   g_image_ori_ind[2] = kor;
 
+   if( g_info.verb > 2 )
+      fprintf(stderr,"-- mri_read_dicom return, orients = %s, TR = %.2f\n"
+              "   MRILIB_offsets %f, %f, %f\n   g_image_posn %f, %f, %f\n",
+              MRILIB_orients, MRILIB_tr,
+              MRILIB_xoff, MRILIB_yoff, MRILIB_zoff,
+              g_image_posn[0], g_image_posn[1], g_image_posn[2]); 
 
    free(ppp); RETURN( imar );
 }
@@ -1138,75 +1266,69 @@ static float get_dz(  char **epos)
   char *eee, *ddd ;
 
   eee           = getenv("AFNI_SLICE_SPACING_IS_GAP") ;
-  stupid_ge_fix = (eee != NULL && (*eee=='Y' || *eee=='y') ) ;
-  no_stupidity  = (eee != NULL && (*eee=='N' || *eee=='n') ) ;  /* 03 Mar 2003 */
+  stupid_ge_fix = (eee != NULL && (*eee=='Y' || *eee=='y') );
+  no_stupidity  = (eee != NULL && (*eee=='N' || *eee=='n') ); /* 03 Mar 2003 */
 
-  if( epos[E_SLICE_SPACING] != NULL ){                  /* get reported slice spacing */
+  if( epos[E_SLICE_SPACING] != NULL ){         /* get reported slice spacing */
     ddd = strstr(epos[E_SLICE_SPACING],"//") ;
     if( ddd != NULL ) {
-       if(*(ddd+2)=='\n'){  /* catch carriage returns - Jeff Gunter via DRG 3/14/2007 */
-	  sp = 0.0;   /* probably should write this as function to check on all DICOM fields*/
-       }
-       else {
-          sp = SFLT(ddd+2) ;
-       }
+       /* catch carriage returns - Jeff Gunter via DRG 3/14/2007 */
+       /* probably should write this as function to check on all DICOM fields*/
+       if(*(ddd+2)=='\n') sp = 0.0;
+       else               sp = SFLT(ddd+2) ;
      }
   }
 
-  if( epos[E_SLICE_THICKNESS] != NULL ){                /* get reported slice thickness */
+  if( epos[E_SLICE_THICKNESS] != NULL ){     /* get reported slice thickness */
     ddd = strstr(epos[E_SLICE_THICKNESS],"//") ;
     if( ddd != NULL ) {
-       if(*(ddd+2)=='\n'){
-	  th = 0.0;
-       }
-       else {
-	  th = SFLT(ddd+2) ;
-	  }
+       if(*(ddd+2)=='\n') th = 0.0;
+       else               th = SFLT(ddd+2) ;
     }
   }
 
-  th = fabs(th) ; sp = fabs(sp) ;                       /* we don't use the sign */
+  th = fabs(th) ; sp = fabs(sp) ;          /* we don't use the sign */
 
-  if( stupid_ge_fix ){                                  /* always be stupid */
+  if( stupid_ge_fix ){                     /* always be stupid */
     dz = sp+th ;
   } else {
 
-    if( no_stupidity && sp > 0.0 )                      /* 13 Jan 2004: if 'NO', then */
-      dz = sp ;                                         /* always use spacing if present */
+    if( no_stupidity && sp > 0.0 )         /* 13 Jan 2004: if 'NO', then */
+      dz = sp ;                            /* always use spacing if present */
     else
-      dz = (sp > th) ? sp : th ;                        /* the correct-ish DICOM way */
+      dz = (sp > th) ? sp : th ;           /* the correct-ish DICOM way */
 
 #define GFAC 0.99
 
-    if( !no_stupidity ){                                /* unless stupidity is turned off */
-      if( sp > 0.0 && sp < GFAC*th ) dz = sp+th ;       /* the stupid GE way again */
+    if( !no_stupidity ){                   /* unless stupidity is turned off */
+      if( sp > 0.0 && sp < GFAC*th ) dz = sp+th ; /* the stupid GE way again */
 
       if( sp > 0.0 && sp < GFAC*th && nwarn < NWMAX ){
-        fprintf(stderr,
-                "++ DICOM WARNING: Slice_Spacing=%f smaller than Slice_Thickness=%f\n",
-                 sp , th ) ;
+        fprintf(stderr, "++ DICOM WARNING: Slice_Spacing=%f smaller than "
+                "Slice_Thickness=%f\n", sp , th ) ;
         if( nwarn == 0 )
          fprintf(stderr,
-           "\n"
-           "++  Setting environment variable AFNI_SLICE_SPACING_IS_GAP       ++\n"
-           "++   to YES will make the center-to-center slice distance        ++\n"
-           "++   be set to Slice_Spacing+Slice_Thickness=%6.3f.             ++\n"
-           "++  This is against the DICOM standard [attribute (0018,0088)    ++\n"
-           "++   is defined as the center-to-center spacing between slices,  ++\n"
-           "++   NOT as the edge-to-edge gap between slices], but it seems   ++\n"
-           "++   to be necessary for some GE scanners.                       ++\n"
-           "++                                                               ++\n"
-           "++  This correction has been made on this data: dz=%6.3f.       ++\n"
-           "++                                                               ++\n"
-           "++  Setting AFNI_SLICE_SPACING_IS_GAP to NO means that the       ++\n"
-           "++  DICOM Slice_Spacing variable will be used for dz, replacing  ++\n"
-           "++  the Slice_Thickness variable.  This usage may be required    ++\n"
-           "++  for some pulse sequences on Phillips scanners.               ++\n"
-           "\n\a" ,
+        "\n"
+        "++  Setting environment variable AFNI_SLICE_SPACING_IS_GAP       ++\n"
+        "++   to YES will make the center-to-center slice distance        ++\n"
+        "++   be set to Slice_Spacing+Slice_Thickness=%6.3f.             ++\n"
+        "++  This is against the DICOM standard [attribute (0018,0088)    ++\n"
+        "++   is defined as the center-to-center spacing between slices,  ++\n"
+        "++   NOT as the edge-to-edge gap between slices], but it seems   ++\n"
+        "++   to be necessary for some GE scanners.                       ++\n"
+        "++                                                               ++\n"
+        "++  This correction has been made on this data: dz=%6.3f.       ++\n"
+        "++                                                               ++\n"
+        "++  Setting AFNI_SLICE_SPACING_IS_GAP to NO means that the       ++\n"
+        "++  DICOM Slice_Spacing variable will be used for dz, replacing  ++\n"
+        "++  the Slice_Thickness variable.  This usage may be required    ++\n"
+        "++  for some pulse sequences on Phillips scanners.               ++\n"
+        "\n\a" ,
           sp+th , dz ) ;
       }
       if( sp > 0.0 && sp < th && nwarn == NWMAX )
-        fprintf(stderr,"++ DICOM WARNING: no more Slice_Spacing messages will be printed\n") ;
+        fprintf(stderr,"++ DICOM WARNING: no more Slice_Spacing messages "
+                "will be printed\n") ;
       nwarn++ ;
     }
   }
@@ -1340,9 +1462,9 @@ ENTRY("mri_imcount_dicom") ;
      }
    }
 
-  if(debugprint) {
-    printf("str_sexinfo initially set to %d\n", PTOI(str_sexinfo) );
-    printf("length %d\n", (int) strlen(str_sexinfo));
+  if(g_info.verb > 3) {
+    fprintf(stderr,"str_sexinfo initially set to %d\n", PTOI(str_sexinfo) );
+    if( str_sexinfo ) fprintf(stderr,"length %d\n", (int) strlen(str_sexinfo));
   }
 
 
@@ -1361,8 +1483,8 @@ ENTRY("mri_imcount_dicom") ;
      if(sexi_start != NULL) {  /* search for end after start - drg,fredtam 23 Mar 2007 */
         sexi_start2 = strstr(sexi_start+21, "### ASCCONV BEGIN ###");
         sexi_end = strstr(sexi_start, "### ASCCONV END ###");
-        if(debugprint)
-           printf("sexi_start %d sexi_start2 %d sexi_end %d\n",
+        if(g_info.verb > 3)
+           fprintf(stderr, "sexi_start %d sexi_start2 %d sexi_end %d\n",
                   PTOI(sexi_start), PTOI(sexi_start2),PTOI(sexi_end) );
         if (sexi_end != NULL) {
            char *sexi_tmp;
@@ -1382,10 +1504,10 @@ ENTRY("mri_imcount_dicom") ;
            sexi_tmp[sexi_size] = '\0';
 	   free(str_sexinfo);
 	   str_sexinfo = sexi_tmp;
-	   if(debugprint)  {
-	     printf("str_sexinfo now moved to %d\n", PTOI(str_sexinfo));
-	     printf("sexi_size %d\n", (int) sexi_size);
-	     printf("length %d\n", (int) strlen(str_sexinfo));
+	   if(g_info.verb > 3)  {
+	     fprintf(stderr,"str_sexinfo now moved to %d\n", PTOI(str_sexinfo));
+	     fprintf(stderr,"sexi_size %d\n", (int) sexi_size);
+	     fprintf(stderr,"length %d\n", (int) strlen(str_sexinfo));
 	     }
         }
      }
@@ -1431,10 +1553,10 @@ static int get_posns_from_elist(char *plist[], char *elist[], char *text,
                                 int nume)
 {
    static int check_env = 1;
-   int    ee;
+   int    ee, nset=0;
    char * cp;
 
-   ENTRY("flip_slices_mosaic");
+   ENTRY("get_posns_from_elist");
 
    if( check_env && !use_last_elem ) {
         check_env = 0;
@@ -1447,15 +1569,28 @@ static int get_posns_from_elist(char *plist[], char *elist[], char *text,
 
    for( ee=0 ; ee < nume ; ee++ ) {
       plist[ee] = strstr(text,elist[ee]) ;
+      if( plist[ee] ) nset++;
+
+      if( g_info.verb > 4 ) {
+         if(plist[ee]) fprintf(stderr,"-- DICOM field %s set\n", elist[ee]);
+         else          fprintf(stderr,"-- DICOM field %s not set\n",elist[ee]);
+      }
+
       if( use_last_elem && plist[ee] ) {
-         while( (cp = strstr(plist[ee]+1, elist[ee])) != NULL )
+         while( (cp = strstr(plist[ee]+1, elist[ee])) != NULL ) {
             plist[ee] = cp ;
+            if(g_info.verb>4) fprintf(stderr,".. updating %s...\n",elist[ee]);
+         }
       }
    }
+
+   if( g_info.verb > 2 )
+      fprintf(stderr,"-- get_posns: set %d of %d fields\n", nset, nume);
 
    RETURN(0);
 }
 
+# if 0 /* moved to mri_process_siemens.c */
 /*--------------------------------------------------------------------------------*/
 /*! Read some bytes from an open file at a given offset.  Return them in a
     newly malloc()-ed array.  If return value is NULL, something bad happened.
@@ -1479,6 +1614,10 @@ static char * extract_bytes_from_file( FILE *fp, off_t start, size_t len, int st
    return ar ;
 }
 
+# endif  /* moved to mri_process_siemens.c */
+
+
+#if 0  /* moved to mri_process_siemens.c        22 Dec 2010 [rickr] */
 /*--------------------------------------------------------------------------------*/
 /*! Parse the Siemens extra stuff for mosaic information.
     Ad hoc, based on sample data and no documentation.
@@ -1491,7 +1630,7 @@ static void get_siemens_extra_info( char *str , Siemens_extra_info *mi )
    int have_x[2] = {0,0},
        have_y[2] = {0,0},
        have_z[2] = {0,0};
-   float x,y,z , val ;
+   float val ;
    char name[1024] ;
 
    /*-- check for good inputs --*/
@@ -1585,31 +1724,29 @@ static void get_siemens_extra_info( char *str , Siemens_extra_info *mi )
    ept = str;
    if(cpt = strstr(str,"\nsSliceArray.ucImageNumbSag")){
       sscanf(cpt, "%1022s = %x", name, &mi->ImageNumbSag);
-#if DEBUG_ON
-  printf("ImageNumbSag in header %x\n",mi->ImageNumbSag);
-#endif
+      if( g_info.verb > 2 )
+         fprintf(stderr,"ImageNumbSag in header %x\n",mi->ImageNumbSag);
    }
    else
       mi->ImageNumbSag = 0;
    if(cpt = strstr(str,"\nsSliceArray.ucImageNumbTra")){
       sscanf(cpt, "%1022s = %x", name, &mi->ImageNumbTra);
-#if DEBUG_ON
-  printf("ImageNumbTra in header %x\n",mi->ImageNumbTra);
-#endif
+      if( g_info.verb > 2 )
+         fprintf(stderr,"ImageNumbTra in header %x\n",mi->ImageNumbTra);
    }
    else
       mi->ImageNumbTra = 0;
    if(cpt = strstr(str,"\nsSliceArray.ucImageNumbCor")){
       sscanf(cpt, "%1022s = %x", name, &mi->ImageNumbCor);
-#if DEBUG_ON
-  printf("ImageNumbCor in header %x\n",mi->ImageNumbCor);
-#endif
+      if( g_info.verb > 2 )
+         fprintf(stderr,"ImageNumbCor in header %x\n",mi->ImageNumbCor);
    }
    else
       mi->ImageNumbCor = 0;
 
    return ;
 }
+
 /* determine if slice order is reversed in Siemens mosaic files */
 static int
 flip_slices_mosaic (Siemens_extra_info *mi, int kor)
@@ -1617,10 +1754,11 @@ flip_slices_mosaic (Siemens_extra_info *mi, int kor)
   /*       kor = orientation of slices,  which spatial direction is z-axis */
   /* where 1=L-R, 2=P-A, 3=I-S */
    ENTRY("flip_slices_mosaic");
-#if DEBUG_ON
-  printf("flip_slices_mosaic kor = %d\n", kor);
-  printf("ImageNumbSag,Cor,Tra= %d,%d,%d\n",mi->ImageNumbSag, mi->ImageNumbCor, mi->ImageNumbTra);
-#endif
+   if( g_info.verb > 2 ) {
+      fprintf(stderr,"-- flip_slices_mosaic kor = %d\n", kor);
+      fprintf(stderr,"   ImageNumbSag,Cor,Tra= %d,%d,%d\n",
+              mi->ImageNumbSag, mi->ImageNumbCor, mi->ImageNumbTra);
+   }
    switch(abs(kor)) {
       case 1:
         if(mi->ImageNumbSag==1)
@@ -1639,7 +1777,9 @@ flip_slices_mosaic (Siemens_extra_info *mi, int kor)
          RETURN(0);
   }
 }
+#endif  /* moved to mri_process_siemens.c */
 
+# if 0  /* moved to mri_process_siemens.c       21 Dec 2010 [rickr] */
 /* copy data from mosaic input to image array */
 static int
 read_mosaic_data( FILE *fp, MRI_IMAGE *im, MRI_IMARR *imar, int datum,
@@ -1724,6 +1864,7 @@ MCHECK ;
    RETURN(0);
 }
 
+# endif   /* end moved read_mosaic_data() */
 
 /*--------------------------------------------------------------------------*/
 /*! Test if a file is possibly a DICOM file.  -- RWCox - 07 May 2003
@@ -1803,6 +1944,7 @@ Clear_obl_info(oblique_info *obl_info)
       obl_info->mos_nslice = 1;
    obl_info->nx = obl_info->ny = 1;
    obl_info_set = 0;
+   g_is_oblique = 0;
    /* make all elements zero flagging it hasn't been computed yet */
    /* lower right corner of valid MAT44 matrix is 1.0, so this is invalid */
    for(i=0;i<4;i++) {
@@ -1810,6 +1952,8 @@ Clear_obl_info(oblique_info *obl_info)
             obl_info->Tr_dicom[i][j] = 0.0;
       }
    }
+
+   g_image_info.is_obl = 0;
 /*         memset(&obl_info->Tr_dicom[0][0], 0, 16*sizeof(float)); */
 }
 
@@ -1819,7 +1963,7 @@ Fill_obl_info(oblique_info *obl_info, char **epos, Siemens_extra_info *siem)
 {
     float *xyz ; int qq ;
     char *ddd;
-    float dx, dy, th, sp, dz;
+    float dx, dy, dz;
 /*    float xc1, xc2, xc3, yc1, yc2, yc3, xn, yn;*/
     int nx, ny, mos_ix, mos_iy;
     int ii;
@@ -1937,7 +2081,7 @@ Fill_obl_info(oblique_info *obl_info, char **epos, Siemens_extra_info *siem)
 /* check if data is oblique by using the vectors from the ImageOrientation field */
 static int CheckObliquity(float xc1, float xc2, float xc3, float yc1, float yc2, float yc3)
 {
-   int obliqueflag = 0;
+   int oblique = 0;
    /* any values not 1 or 0 or really close mean the data is oblique */
    if ((!ALMOST(fabs(xc1),1.0) && !ALMOST(xc1,0.0)) ||
        (!ALMOST(fabs(xc2),1.0) && !ALMOST(xc2,0.0)) ||
@@ -1945,8 +2089,9 @@ static int CheckObliquity(float xc1, float xc2, float xc3, float yc1, float yc2,
        (!ALMOST(fabs(yc1),1.0) && !ALMOST(yc1,0.0)) ||
        (!ALMOST(fabs(yc2),1.0) && !ALMOST(yc2,0.0)) ||
        (!ALMOST(fabs(yc3),1.0) && !ALMOST(yc3,0.0)) )
-      obliqueflag = 1;
-   return(obliqueflag);
+      oblique = 1;
+
+   return(oblique);
 }
 
 /* mod -16 May 2007 */
@@ -1959,8 +2104,6 @@ static float *ComputeObliquity(oblique_info *obl_info)
    THD_fvec3 offsetxvec, offsetyvec,offsetzvec, Cm, Orgin, Cx;
 /*   double dotp, angle, aangle;*/
    float fac=1;
-   int altsliceinfo = 0;
-   Siemens_extra_info *siem;
    int ii,jj;
    double Cxx, Cxy, Cxz;
 
@@ -2005,19 +2148,20 @@ static float *ComputeObliquity(oblique_info *obl_info)
     /* switch direction of normal vector by factor */
     dc4 = SCALE_FVEC3(dc3, fac);
 
-#ifdef DEBUG_ON
-DUMP_FVEC3("xvec", obl_info->xvec);
-DUMP_FVEC3("yvec", obl_info->yvec);
-DUMP_FVEC3("vec3", vec3);
-DUMP_FVEC3("dfpos1", obl_info->dfpos1);
-DUMP_FVEC3("dfpos2", obl_info->dfpos2);
-DUMP_FVEC3("vec4", vec4);
-DUMP_FVEC3("del",obl_info->del);
-DUMP_FVEC3("dc1", dc1);
-DUMP_FVEC3("dc2", dc2);
-DUMP_FVEC3("dc3", dc3);
-DUMP_FVEC3("dc4", dc4);
-#endif
+    if( g_info.verb > 3 ) {
+       DUMP_FVEC3("-- COMP_OBL  xvec", obl_info->xvec);
+       DUMP_FVEC3("   COMP_OBL  yvec", obl_info->yvec);
+       DUMP_FVEC3("   COMP_OBL  vec3", vec3);
+       DUMP_FVEC3("   COMP_OBL  dfpos1", obl_info->dfpos1);
+       DUMP_FVEC3("   COMP_OBL  dfpos2", obl_info->dfpos2);
+       DUMP_FVEC3("   COMP_OBL  vec4", vec4);
+       DUMP_FVEC3("   COMP_OBL  del",obl_info->del);
+       DUMP_FVEC3("   COMP_OBL  dc1", dc1);
+       DUMP_FVEC3("   COMP_OBL  dc2", dc2);
+       DUMP_FVEC3("   COMP_OBL  dc3", dc3);
+       DUMP_FVEC3("   COMP_OBL  dc4", dc4);
+    }
+
    /*   Tr = malloc(16 * sizeof(float));*/
    /*   *Tr = dc1.xyz[0]; *(Tr+4) = dc1.xyz[1]; *(Tr+8) = dc1.xyz[2];*/
    obl_info->Tr_dicom[0][0] = dc1.xyz[0];
@@ -2048,20 +2192,25 @@ DUMP_FVEC3("dc4", dc4);
        RETURN(&(obl_info->Tr_dicom[0][0]));
    }
    /* for Siemens mosaic data, seen two cases */
-#ifdef DEBUG_ON
-    printf("mos_ix %d mos_nx %d, mos_ny %d, mos_nslice %d\n" \
-                    "nx %d ny %d\n", \
-    obl_info->mos_ix, obl_info->mos_nx, obl_info->mos_ny, obl_info->mos_nslice, \
-    obl_info->nx, obl_info->ny);
-#endif
+   if( g_info.verb > 2 )
+    fprintf(stderr,"-- mos_ix %d mos_nx %d, mos_ny %d, mos_nslice %d\n"
+            "   nx %d ny %d (g_is_oblique=%d)\n",
+            obl_info->mos_ix, obl_info->mos_nx, obl_info->mos_ny,
+            obl_info->mos_nslice, obl_info->nx, obl_info->ny, g_is_oblique);
 
    /*  Siemens mosaic with full slice information */
 
-/* will rely on ImagePosition method for now*/
+   /* will rely on ImagePosition method for now*/
    /*  Siemens mosaic with limited slice information - rely on ImagePosition*/
    /* compute central mosaic point - in funny way */
-   offsetxvec = SCALE_FVEC3(dc1, ((obl_info->nx)/2.0));
-   offsetyvec = SCALE_FVEC3(dc2, ((obl_info->ny)/2.0));
+   
+   /* get center of mass, starting from center of corner voxel and shift by */
+   /*    (N-1)*vox_dim/2 in each of the 3 directions                        */
+
+   /* shift should be dcK*(nK-1)/2 in each direction, since we start at the
+    * first voxel center, not the edge of the FOV        6 Jan 2011 [rickr]  */
+   offsetxvec = SCALE_FVEC3(dc1, ((obl_info->nx-1)/2.0));
+   offsetyvec = SCALE_FVEC3(dc2, ((obl_info->ny-1)/2.0));
 
    offsetzvec = SCALE_FVEC3(dc3, ((obl_info->mos_nslice - 1.0)*fac/2.0));
    if( obl_info->flip_slices ) 
@@ -2125,17 +2274,17 @@ DUMP_FVEC3("dc4", dc4);
          !ALMOST(Cm.xyz[2], Cx.xyz[2])) {
          WARNING_message("Slice-based center is different from mosaic center");
          WARNING_message("Origin computation of obliquity may be incorrect");
-         DUMP_FVEC3("Mosaic Center", Cm);
+         DUMP_FVEC3("Mosaic Center     ", Cm);
          DUMP_FVEC3("Slice-based Center", Cx);
       }
       else
          INFO_message("Slice based center matches mosaic center - good!\n");
    }
    
-#ifdef DEBUG_ON
-   DUMP_FVEC3("Mosaic Center", Cm);
-   DUMP_FVEC3("Origin Coordinates", Orgin);
-#endif
+   if( g_info.verb > 2 ) {
+      DUMP_FVEC3("Mosaic Center", Cm);
+      DUMP_FVEC3("Origin Coordinates", Orgin);
+   }
 
    /* update 4th column of transformation matrix with computed origin */
    obl_info->Tr_dicom[0][3] = Orgin.xyz[0];
@@ -2153,14 +2302,14 @@ DUMP_FVEC3("dc4", dc4);
       }
    }
 
-#ifdef DEBUG_ON
-DUMP_FVEC3("Image Position", obl_info->dfpos1);
-DUMP_FVEC3("dc1", dc1);
-DUMP_FVEC3("dc2", dc2);
-DUMP_FVEC3("dc3", dc3);
-DUMP_FVEC3("Center of Mosaic", Cm);
-DUMP_FVEC3("Origin", Orgin);
-#endif
+   if( g_info.verb > 2 ) {
+      DUMP_FVEC3("Image Position", obl_info->dfpos1);
+      DUMP_FVEC3("dc1", dc1);
+      DUMP_FVEC3("dc2", dc2);
+      DUMP_FVEC3("dc3", dc3);
+      DUMP_FVEC3("Center of Mosaic", Cm);
+      DUMP_FVEC3("Origin", Orgin);
+   }
 
    RETURN(&(obl_info->Tr_dicom[0][0]));
 
@@ -2260,13 +2409,35 @@ Obliquity_to_coords(THD_3dim_dataset *tdset)
    daxes->yydel =  (ORIENT_sign[orixyz.ijk[1]]=='+') ? dytmp : -dytmp ;
    daxes->zzdel =  (ORIENT_sign[orixyz.ijk[2]]=='+') ? dztmp : -dztmp ;
 
- #if DEBUG_ON
- printf("Orients = %d %d % d\n", daxes->xxorient, daxes->yyorient, \
-       daxes->zzorient);
- printf("daxes origins = %f %f %f\n", daxes->xxorg, daxes->yyorg, \
-       daxes->zzorg);
- #endif
+   if( g_info.verb > 2 ) {
+      fprintf(stderr,"Orients = %d %d %d\n", daxes->xxorient, daxes->yyorient,
+              daxes->zzorient);
+      fprintf(stderr,"daxes origins = %f %f %f\n", daxes->xxorg, daxes->yyorg,
+              daxes->zzorg);
+   }
  /*     daxes->xxdel    =   user_inputs.xsize ;
    daxes->yydel    =   user_inputs.ysize ;*/
 
  }
+
+static int init_dicom_globals(dicom_globals_t * info)
+{
+   memset(info, 0, sizeof(dicom_globals_t));  /* to be sure */
+
+   info->read_data     = 1;
+   if( AFNI_yesenv("AFNI_DICOM_VERBOSE") )      /* allow old Y/N form */
+        info->verb     = 3;
+   else if( my_getenv("AFNI_DICOM_VERBOSE") )
+        info->verb     = AFNI_numenv("AFNI_DICOM_VERBOSE");
+   else info->verb     = 1;
+   info->rescale       = AFNI_yesenv("AFNI_DICOM_RESCALE");
+   info->window        = AFNI_yesenv("AFNI_DICOM_WINDOW");
+   info->use_last_elem = AFNI_yesenv("AFNI_DICOM_USE_LAST_ELEMENT");
+
+   info->init = 1;
+
+   if( info->verb > 1 ) disp_dicom_globals("globals from env :");
+
+   return 0;
+}
+

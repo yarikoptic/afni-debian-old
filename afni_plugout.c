@@ -49,6 +49,7 @@ ENTRY("AFNI_init_plugouts") ;
 
    verbose = (GLOBAL_argopt.plugout_code & 1) != 0 ;
 
+   #if 0   /*  ZSS June 2011. Delete unused code after dust has settled.  */
    /* 14 Dec 2005 by JMS: allow plugout tcp ports to be overrided */
    /*            (put into AFNI distribution 31 Jan 2006 [rickr]) */
    base_port = BASE_TCP_CONTROL;
@@ -63,13 +64,54 @@ ENTRY("AFNI_init_plugouts") ;
          fprintf(stderr,"\nPO: applying AFNI_PLUGOUT_TCP_BASE %d (%d ports)\n",
                  base_port, NUM_TCP_CONTROL);
    }
-
    for( cc=0 ; cc < NUM_TCP_CONTROL ; cc++ ){       /* 21 Nov 2001: */
       ioc_control[cc] = NULL ;                      /* initialize control */
       ioc_conname[cc] = AFMALL(char, 32) ;          /* sockets and names  */
       sprintf(ioc_conname[cc],"tcp:*:%d",base_port+cc) ;
    }
-
+   #else 
+   /* 14 Dec 2005 by JMS: allow plugout tcp ports to be overrided */
+   /*            (put into AFNI distribution 31 Jan 2006 [rickr]) */
+   /*            (Switched to get_port_named(), June 2011 [ZSS] ) */
+   for( cc=0 ; cc < NUM_TCP_CONTROL ; cc++ ){ 
+      switch (cc) {
+         case 0:
+            ioc_control[cc] = NULL ;                /* initialize control */
+            ioc_conname[cc] = AFMALL(char, 32) ;    /* sockets and names  */
+            sprintf(ioc_conname[cc],"tcp:*:%d",
+                     get_port_named("AFNI_PLUGOUT_TCP_0")) ;
+            break;
+         case 1:
+            ioc_control[cc] = NULL ;                /* initialize control */
+            ioc_conname[cc] = AFMALL(char, 32) ;    /* sockets and names  */
+            sprintf(ioc_conname[cc],"tcp:*:%d",
+                     get_port_named("AFNI_PLUGOUT_TCP_1")) ;
+            break;
+         case 2:
+            ioc_control[cc] = NULL ;                /* initialize control */
+            ioc_conname[cc] = AFMALL(char, 32) ;    /* sockets and names  */
+            sprintf(ioc_conname[cc],"tcp:*:%d",
+                     get_port_named("AFNI_PLUGOUT_TCP_2")) ;
+            break;
+         case 3:
+            ioc_control[cc] = NULL ;                /* initialize control */
+            ioc_conname[cc] = AFMALL(char, 32) ;    /* sockets and names  */
+            sprintf(ioc_conname[cc],"tcp:*:%d",
+                     get_port_named("AFNI_PLUGOUT_TCP_3")) ;
+            break;
+         case 4:
+            ioc_control[cc] = NULL ;                /* initialize control */
+            ioc_conname[cc] = AFMALL(char, 32) ;    /* sockets and names  */
+            sprintf(ioc_conname[cc],"tcp:*:%d",
+                     get_port_named("AFNI_PLUGOUT_TCP_4")) ;
+            break;
+         default:
+            ERROR_message("Not ready to deal with stream index %d\n",cc);
+            break;
+      }
+   }
+   #endif
+   
    started = 1 ; EXRETURN ;
 }
 
@@ -158,11 +200,12 @@ Boolean AFNI_plugout_workproc( XtPointer elvis )
         /** check if the connection is trustworthy **/
         if(po_verbose)
            fprintf(stderr, \
-             "PO: plugout connection from host %s\n",ioc_control[cc]->name) ;
+             "PO: plugout connection from host %s (%s)\n",
+               ioc_control[cc]->name, ioc_conname[cc]) ;
 
         if( !TRUST_host(ioc_control[cc]->name) ){
-          fprintf(stderr,"PO: untrusted host: %s -- connection denied\n" ,
-                  ioc_control[cc]->name) ;
+          fprintf(stderr,"PO: untrusted host: %s(%s) -- connection denied\n" ,
+                  ioc_control[cc]->name, ioc_conname[cc]) ;
           iochan_set_cutoff(ioc_control[cc]) ; IOCHAN_CLOSE(ioc_control[cc]) ;
           continue ; /* skip to next control socket */
         }

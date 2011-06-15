@@ -742,7 +742,11 @@ SUMA_DO_Types SUMA_Guess_DO_Type(char *s)
       dotp = SBT_type;
    } else if (strstr(sbuf,"nido_head")) {
       dotp = NIDO_type;
-   } 
+   } else if (strstr(sbuf,"<") || strstr(sbuf,">")) {
+      SUMA_S_Warnv("Bad format likely in niml file %s.\n"
+                   "Could not find element '<nido_head'\n",
+                   s);
+   }
    if (LocalHead) {
       fprintf( SUMA_STDERR,
                "%s: Searched header string:\n>>>%s<<<\ndotp = %d\n", 
@@ -3611,6 +3615,10 @@ SUMA_Boolean SUMA_DrawTextureNIDOnel( NI_element *nel,
    if (sv->PolyMode != SRM_Fill) {
       /* fill it up */
       glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);   
+   } else {
+      /* If you don't turn offset off, FRAME bound texture (afniman.jpg)
+         won't show ...  ZSS April 2011 */
+      glDisable (GL_POLYGON_OFFSET_FILL);
    }
    
    /* does this have its own coordinates ? */
@@ -3688,6 +3696,8 @@ SUMA_Boolean SUMA_DrawTextureNIDOnel( NI_element *nel,
    
    if (sv->PolyMode != SRM_Fill) {/* set fill mode back */
       SUMA_SET_GL_RENDER_MODE(sv->PolyMode);
+   } else {
+      glEnable (GL_POLYGON_OFFSET_FILL); /* April 2011  */
    }
    
    SUMA_RETURN(YUP);   
@@ -8591,7 +8601,7 @@ SUMA_Boolean SUMA_AddDsetVolumeObject( SUMA_VolumeObject *VO,
    static char FuncName[]={"SUMA_AddDsetVolumeObject"};
    THD_3dim_dataset *dset=NULL;
    int n_VE=0;
-   SUMA_Boolean LocalHead=YUP;
+   SUMA_Boolean LocalHead=NOPE;
    
    SUMA_ENTRY;
    

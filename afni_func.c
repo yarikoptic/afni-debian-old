@@ -1717,12 +1717,8 @@ ENTRY("AFNI_ttatlas_overlay") ;
    STATUS("checking if have Atlas dataset") ;
 
    /* 01 Aug 2001: retrieve atlas based on z-axis size of underlay dataset */
-#if 1
-   dseTT = TT_retrieve_atlas_nz( DSET_NZ(im3d->anat_now) ) ;
+   dseTT = TT_retrieve_atlas_dset_nz( DSET_NZ(im3d->anat_now) ) ;
                                  if( dseTT == NULL )      RETURN(NULL) ;
-#else
-   dseTT = TT_retrieve_atlas() ; if( dseTT == NULL )      RETURN(NULL) ;
-#endif
 
    /* make sure Atlas and current dataset match in size */
 
@@ -2092,11 +2088,17 @@ char * AFNI_controller_label( Three_D_View *im3d )
 {
    static char clabel[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ" ;
    static char str[8] ;
-   int ic ;
+   int ic, ib;
 
    ic = AFNI_controller_index( im3d ) ;
    if( ic < 0 || ic > 26 ) strcpy (str,"    ") ;  /* shouldn't happen */
-   else                    sprintf(str,"[%c] ",clabel[ic]) ;
+   else {
+      if ((ib = get_user_np_bloc())>-1) { /* ZSS June 2011 */
+                           sprintf(str,"[%c%d] ",clabel[ic], ib) ;
+      } else {
+                           sprintf(str,"[%c] ",clabel[ic]) ;
+      }
+   }
    return str ;
 }
 
@@ -2116,16 +2118,18 @@ void AFNI_set_window_titles( Three_D_View *im3d )
    char ttl[THD_MAX_NAME] , nam[THD_MAX_NAME] ;
    char *tnam , *clab ; int ilab ;
    char signum ; /* 08 Aug 2007 */
+   int ninit=0;
 
 ENTRY("AFNI_set_window_titles") ;
 
    if( ! IM3D_OPEN(im3d) ) EXRETURN ;
 
    clab = AFNI_controller_label(im3d) ;
+   ninit = strlen(clab)-1;
    switch( im3d->vinfo->thr_sign ){
-     default: ilab = 2 ; break ;
-     case 1:  ilab = 3 ; clab[3] = '+' ; break ;
-     case 2:  ilab = 3 ; clab[3] = '-' ; break ;
+     default: ilab = ninit -1; break ;
+     case 1:  ilab = ninit ; clab[ninit] = '+' ; break ;
+     case 2:  ilab = ninit ; clab[ninit] = '-' ; break ;
    }
    switch( im3d->vinfo->underlay_type ){  /* 08 May 2008 */
      default:               clab[++ilab] = 'u' ; break ;
@@ -3217,6 +3221,8 @@ STATUS("adding new session to list") ;
                GLOBAL_library.sslist->ssar[GLOBAL_library.sslist->num_sess] = new_ss ;
                (GLOBAL_library.sslist->num_sess)++ ;
                THD_reconcile_parents( GLOBAL_library.sslist ) ;
+               AFNI_force_adoption( new_ss , GLOBAL_argopt.warp_4D ) ; /* 28 Jan 2011 */
+               AFNI_make_descendants( GLOBAL_library.sslist ) ;        /* 28 Jan 2011 */
 
                sprintf(str," \n Session #%2d"
                             "\n %s"
@@ -5691,7 +5697,7 @@ STATUS("got func info") ;
 
    else if( w == im3d->vwid->dmode->misc_license_pb ){  /* 03 Dec 2000 */
 #include "license.h"
-      char *inf = NULL ; int ii ;
+      char *inf=NULL ; int ii ;
 
       for( ii=0 ; license[ii] != NULL ; ii++ )
          inf = THD_zzprintf( inf , "%s" , license[ii] ) ;
@@ -5703,8 +5709,7 @@ STATUS("got func info") ;
 
    else if( w == im3d->vwid->dmode->misc_readme_env_pb ){  /* 05 Aug 2004 */
 #include "readme_env.h"
-      char *inf = NULL ; int ii ;
-
+      char *inf=NULL ; int ii ;
       for( ii=0 ; readme_env[ii] != NULL ; ii++ )
         inf = THD_zzprintf( inf , "%s" , readme_env[ii] ) ;
       (void) new_MCW_textwin( im3d->vwid->imag->topper , inf , TEXT_READONLY ) ;
@@ -6185,6 +6190,8 @@ static int    num_poem  = 0 ;    /* 15 Oct 2003 */
 static char **fname_poem=NULL ;
 static void AFNI_find_poem_files(void) ;
 
+#include "uscon.h"
+
 /*---------------------------------------------------------------
   Callback for all actions in the hidden popup
 -----------------------------------------------------------------*/
@@ -6274,6 +6281,26 @@ ENTRY("AFNI_hidden_CB") ;
                                     " stop bugging me with their\n"
                                     " pitiful 'quick questions'.\n " ,
                                  MCW_USER_KILL | MCW_TIMER_KILL ) ;
+   }
+
+   else if( w == im3d->vwid->prog->hidden_uscon_pb ){  /* 30 Dec 2010 */
+     char *inf=NULL ; int ii ;
+     for( ii=0 ; uscon[ii] != NULL ; ii++ )
+       inf = THD_zzprintf( inf , "%s" , uscon[ii] ) ;
+     (void) new_MCW_textwin( im3d->vwid->imag->topper , inf , TEXT_READONLY ) ;
+     free(inf) ;
+   }
+
+   else if( w == im3d->vwid->prog->hidden_usdecl_pb ){  /* 06 Jan 2011 */
+     char *inf=NULL ; int ii ;
+     for( ii=0 ; usdecl[ii] != NULL ; ii++ )
+       inf = THD_zzprintf( inf , "%s" , usdecl[ii] ) ;
+     (void) new_MCW_textwin( im3d->vwid->imag->topper , inf , TEXT_READONLY ) ;
+     free(inf) ;
+   }
+
+   else if( w == im3d->vwid->prog->hidden_melter_pb ){   /* 18 Feb 2011 */
+     MCW_melt_widget( im3d->vwid->top_form ) ;
    }
 
    else if( w == im3d->vwid->prog->hidden_gamberi_pb ){

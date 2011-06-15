@@ -43,6 +43,309 @@
 
 afni_history_struct rwcox_history[] = {
 /*=====BELOW THIS LINE=====*/
+  { 7 , JUN , 2011 , RWC , "3dAllineate" , MICRO , TYPE_GENERAL ,
+   "modify number of points used for optimization" ,
+   "Powell's NEWUOA algorithm requires specifying number of points kept at\n"
+   "each stage for approximating the objective function.  Modification here\n"
+   "is to change this number as the various steps of registration happen,\n"
+   "using fewer points at the start and more at the final steps.  Speeds\n"
+   "things up a little." } ,
+
+ { 6 , JUN , 2011 , RWC , "powell_newuoa.c" , MICRO , TYPE_GENERAL ,
+   "Remove 'static' and initialize all variables to 0." ,
+   "Makes tiny differences in 3dAllineate results.  Hmmm." } ,
+
+ { 31 , MAY , 2011 , RWC , "data loading" , MICRO , TYPE_GENERAL ,
+   "Allow mmap for supra-2GB .BRIK files" ,
+   "Change DBLK_mmapfix macro (3ddata.h) to work for larger files on 64-bit\n"
+   "systems -- with sizeof(size_t) == 8.  Also print an informative message\n"
+   "in thd_loaddblk.c when mmap-ing more than 1GB." } ,
+
+ { 26 , MAY , 2011 , RWC , "All" , MICRO , TYPE_GENERAL ,
+   "new AFNI version as of today" ,
+   "Just because -- it's been 7 months." } ,
+
+ { 26 , MAY , 2011 , RWC , "mri_read" , MICRO , TYPE_MODIFY ,
+   "Add warning message for ANALYZE scale factors too big or too small" ,
+   NULL } ,
+
+ { 26 , MAY , 2011 , RWC , "thd_cliplevel" , MICRO , TYPE_BUG_FIX ,
+   "Problem with overflow when image has tiny float values" ,
+   "This affects a bunch of programs, including any program that has\n"
+   "automasking.  In the computation of the cliplevel of a float dataset,\n"
+   "the dataset is scaled to shorts for histogram-ization, and that scaling\n"
+   "is computed as 10000/maxval -- but if maxval is very tiny (say 1e-35),\n"
+   "then the scale factor is float overflow -- which doesn't work so well\n"
+   "farther on.  The solution is to compute the scale factor in double\n"
+   "precision.  Or to have less silly users." } ,
+
+ { 25 , MAY , 2011 , RWC , "@1dDiffMag" , MICRO , TYPE_NEW_PROG ,
+   "Computes magnitude of 1st differences of 1D file" ,
+   NULL } ,
+
+ { 25 , MAY , 2011 , RWC , "3dTstat" , MICRO , TYPE_NEW_OPT ,
+   "Add -tdiff option == statistics on first differences of data" ,
+   NULL } ,
+
+ { 25 , MAY , 2011 , RWC , "3dDeconvolve" , MINOR , TYPE_BUG_FIX ,
+   "Fix problem with TENT and CSPLIN" ,
+   "For non-integer TR, could miss evaluating the last function in a TENT or\n"
+   "CSPLIN series because of roundoff error pushing the evaluation time\n"
+   "slightly past the 'top' value.  This is bad if the function is 1 at\n"
+   "exactly this value, as the last functions are here.  Solution was to\n"
+   "change the test to allow evaluation at values slightly larger than\n"
+   "'top'." } ,
+
+ { 25 , MAY , 2011 , RWC , "thd_zzprintf" , MICRO , TYPE_BUG_FIX ,
+   "Patched to avoid string overruns for crazy users" ,
+   NULL } ,
+
+ { 24 , MAY , 2011 , RWC , "1dplot" , MICRO , TYPE_NEW_OPT ,
+   "Add -noline and -box options" ,
+   "To plot markers at each point, without or with lines connecting them." } ,
+
+ { 20 , MAY , 2011 , RWC , "1dCorrelate" , MINOR , TYPE_NEW_OPT ,
+   "Add normal theory CI for Pearson; Add -block option" ,
+   "Pearson correlation (the default) now gets the normal theory confidence\n"
+   "interval printed at no extra charge.\n"
+   "To allow for serial correlation, the -block option enables random length\n"
+   "block resampling bootstrap.\n"
+   "Add some more help text to explicate things a little better." } ,
+
+ { 19 , MAY , 2011 , RWC , "1dCorrelate" , MINOR , TYPE_NEW_PROG ,
+   "Compute correlation coefficients of 1D columns" ,
+   "Pearson, Spearman, Quadrant, or Kendall tau_b.\n"
+   "Main goal is to provide the bias-corrected bootstrap estimate of the 95%\n"
+   "confidence interval." } ,
+
+ { 16 , MAY , 2011 , RWC , "afni" , MICRO , TYPE_MODIFY ,
+   "Make 'Points' display in grapher get bigger with thicker lines" ,
+   "Otherwise, thick lines hide the points.  Done via XFillArc function." } ,
+
+ { 27 , APR , 2011 , RWC , "3dClustSim" , MICRO , TYPE_BUG_FIX ,
+   "Fixed nx!=ny error in NN2 and NN3 clusterization" ,
+   NULL } ,
+
+ { 20 , APR , 2011 , RWC , "afni" , MICRO , TYPE_GENERAL ,
+   "Boxed graphs: displace upwards by 9 pixels" ,
+   "So that smallest graph box doesn't have zero height, which looks goofy.\n"
+   "Also, change 'current time point' indicator to be a little bigger." } ,
+
+ { 19 , APR , 2011 , RWC , "afni" , MICRO , TYPE_GENERAL ,
+   "Let user select grid spacing=1 from menu" ,
+   "Helpful for Boxes graphs" } ,
+
+ { 19 , APR , 2011 , RWC , "afni" , MICRO , TYPE_NEW_ENV ,
+   "AFNI_GRAPH_FONT lets user choose font for graph viewer text" ,
+   "9x15bold looks solid on a 100dpi screen, for example." } ,
+
+ { 18 , APR , 2011 , RWC , "afni_graph" , MICRO , TYPE_GENERAL ,
+   "Box graphs get sub-brick labels" ,
+   "If matrix=1 and user sets AFNI_GRAPH_BOXLAB to 'ATOP', 'MAX', or 'ZERO'.\n"
+   "For Shane." } ,
+
+ { 18 , APR , 2011 , RWC , "afni" , MICRO , TYPE_NEW_ENV ,
+   "Add AFNI_GRAPH_CX2R to allow for graphing complex time series" ,
+   NULL } ,
+
+ { 18 , APR , 2011 , RWC , "3dDFT" , MICRO , TYPE_GENERAL ,
+   "Small changes to help; -inverse option" ,
+   NULL } ,
+
+ { 6 , APR , 2011 , RWC , "3dTfitter" , MICRO , TYPE_MODIFY ,
+   "Minor patches to the LASSO stuff, plus expand the help output." ,
+   "LASSO-ing during deconvolution now un-penalizes all baseline (-LHS)\n"
+   "parameters." } ,
+
+ { 29 , MAR , 2011 , RWC , "3dClustSim" , MICRO , TYPE_NEW_OPT ,
+   "Add -OKsmallmask option" ,
+   "To let deranged users take their statistical fortunes into their own\n"
+   "hands." } ,
+
+ { 22 , MAR , 2011 , RWC , "3dTfitter" , MICRO , TYPE_NEW_OPT ,
+   "Add -l2sqrtlasso option" ,
+   "Yet another solution method, this time with SQRT(LASSO) penalty." } ,
+
+ { 22 , MAR , 2011 , RWC , "3dAllineate" , MINOR , TYPE_BUG_FIX ,
+   "nwarp_pass != nwarp_type :-(" ,
+   "Causing bug in application of nonlinear warps from external files." } ,
+
+ { 17 , MAR , 2011 , RWC , "afni" , MICRO , TYPE_MODIFY ,
+   "modify mri_read() to fully read datasets as images (not just #0)" ,
+   NULL } ,
+
+ { 11 , MAR , 2011 , RWC , "3dTfitter" , MICRO , TYPE_NEW_OPT ,
+   "Add L2+LASSO regression option" ,
+   "Mostly for experimentation at this moment in time." } ,
+
+ { 9 , MAR , 2011 , RWC , "3dTcat" , MICRO , TYPE_MODIFY ,
+   "2 small changes" ,
+   "(1) Bug fix -- change output type from FIM to FBUC -- to allow sub-brick\n"
+   "statistics codes to properly used.\n"
+   "(2) Add sub-bricks selector preservation to wildcard expansion\n"
+   "(mcw_glob.c) and then add this internal globbing to 3dTcat.c" } ,
+
+ { 4 , MAR , 2011 , RWC , "afni Clusterize" , MICRO , TYPE_MODIFY ,
+   "Replace S:mean correlation confidence intervals" ,
+   "From simple bootstrap to bias-corrected (BC, not BCa) bootstrap." } ,
+
+ { 4 , MAR , 2011 , RWC , "3dttest++" , MINOR , TYPE_BUG_FIX ,
+   "Fixed bug with 1-sample results in -paired run" ,
+   "Forgot to turn off the 'paired' opcode for the 1-sample (no covariates)\n"
+   "analyses, so results were all zero!" } ,
+
+ { 3 , MAR , 2011 , RWC , "mri_nstats.c" , MICRO , TYPE_BUG_FIX ,
+   "Fix bug in correl_xxx functions" ,
+   "Didn't allow nort == 0, which is a mistake; the real constraint is\n"
+   "nfit+nort >= 1.  Fixed for Yisheng Xu of NIDCD." } ,
+
+ { 2 , MAR , 2011 , RWC , "afni" , MICRO , TYPE_BUG_FIX ,
+   "Clusterize: attempt to fix Flash bug" ,
+   "If 2 controllers are open (and crosshairs are locked together), then\n"
+   "Clusterize Flash doesn't work right.  This problem is rooted in an\n"
+   "interaction of the way the clusterized dataset is stored and the way the\n"
+   "locks are carried out.  This change is an attempt to fix this -- let me\n"
+   "know if it introduces problems -- the code for these things is\n"
+   "complicated and hard to figure out (and I wrote it!).\n"
+   "\n"
+   "I know that there is a clusterize display bug with 2 controllers open to\n"
+   "the same overlay -- that is, the clusterized overlay may suddenly become\n"
+   "un-clusterized and then go back to the clusterized state.  This is also\n"
+   "related to the above interaction, but I don't see how to avoid this\n"
+   "without a major restructuring of the clusterization mechanics in AFNI,\n"
+   "and I just don't think this issue is worth the effort." } ,
+
+ { 1 , MAR , 2011 , RWC , "afni" , MICRO , TYPE_GENERAL ,
+   "Add correlation and its 5%..95%  interval to Clusterize S:mean" ,
+   "Via new bootstrapping THD_pearson_boot() function in thd_correlate.c" } ,
+
+ { 28 , FEB , 2011 , RWC , "afni" , MINOR , TYPE_MODIFY ,
+   "Clusterize: add scatterplot ('S:') options" ,
+   "For Rasmus" } ,
+
+ { 25 , FEB , 2011 , RWC , "3dTcorrMap" , MICRO , TYPE_MODIFY ,
+   "Changes to -CorrMap output" ,
+   "1) Make output dataset 3D+time rather than a bucket\n"
+   "2) Add -CorrMask option to eliminate all-zero sub-bricks from output\n"
+   "Per the request of Jonathan O'Muircheartaigh" } ,
+
+ { 25 , FEB , 2011 , RWC , "afni" , MICRO , TYPE_MODIFY ,
+   "add sub-brick label to graph window subtext" ,
+   NULL } ,
+
+ { 23 , FEB , 2011 , RWC , "afni" , MICRO , TYPE_GENERAL ,
+   "Adjust default grayscale values (ncol and gamma)" ,
+   NULL } ,
+
+ { 18 , FEB , 2011 , RWC , "afni" , MICRO , TYPE_GENERAL ,
+   "Whatever you do, don't press F5 in an image or graph viewer!" ,
+   NULL } ,
+
+ { 16 , FEB , 2011 , RWC , "3dTcorrMap" , MICRO , TYPE_GENERAL ,
+   "Minor change to increase speed by 5% or so, with OpenMP." ,
+   NULL } ,
+
+ { 14 , FEB , 2011 , RWC , "3dUndump" , MICRO , TYPE_BUG_FIX ,
+   "Fix comma -> blank conversion" ,
+   "Also make semicolons and colons into blanks.\n"
+   "Skip any line starting with an alphabetic character." } ,
+
+ { 8 , FEB , 2011 , RWC , "3dGroupInCorr" , MICRO , TYPE_NEW_ENV ,
+   "Add AFNI_INSTACORR_XYZ_LPI environment variable" ,
+   NULL } ,
+
+ { 7 , FEB , 2011 , RWC , "3dGroupInCorr" , MINOR , TYPE_NEW_OPT ,
+   "Added -batch mode of operation" ,
+   "To appease the Lebanese and Italian masses." } ,
+
+ { 1 , FEB , 2011 , RWC , "3dDeconvolve" , MICRO , TYPE_GENERAL ,
+   "Adjust ceil and floor functions slightly" ,
+   "myceil(x)  =  ceil( x - 0.000005 )\n"
+   "myfloor(x) = floor( x + 0.000005 )\n"
+   "\n"
+   "The changes are in order to avoid very close situations from roundoff\n"
+   "error -- that is, don't want 6.0000001 being ceil-inged up to 7, or\n"
+   "5.9999999 being floor-ed down to 5." } ,
+
+{ 28 , JAN , 2011 , RWC , "afni" , MICRO , TYPE_GENERAL ,
+   "Make descendants for read-in sessions" , NULL } ,
+
+ { 28 , JAN , 2011 , RWC , "plug_aslA3D3" , MICRO , TYPE_GENERAL ,
+   "Remove CR (ctrl-M) characters from source code" ,
+   "For reasons known only to Satan, the Sun C compiler doesn't like\n"
+   "multiline macros with a CR character at the end of the line (after the\n"
+   "backslash)." } ,
+
+ { 27 , JAN , 2011 , RWC , "3dGroupInCorr" , MINOR , TYPE_NEW_OPT ,
+   "Add -sendall option, to palliate the Texan hordes." ,
+   NULL } ,
+
+ { 24 , JAN , 2011 , RWC , "afni_setup.c" , MICRO , TYPE_BUG_FIX ,
+   "Re-definition of pre-defined colors" ,
+   "Before this fix, when a user re-defined a pre-defined color in a\n"
+   "***COLORS section, this would go into a new entry for later setup in\n"
+   "MCW_new_DC.  But later, the duplicate labels (e.g., 'yellow') would\n"
+   "cause only 1 entry to actually be created -- which would screw up the\n"
+   "indexing of later new colors that were actually created de novo.  This\n"
+   "was fixed by re-defining the re-used color entries immediately." } ,
+
+ { 21 , JAN , 2011 , RWC , "afni" , MICRO , TYPE_NEW_ENV ,
+   "AFNI_ENVIRON_RESET allows .afnirc to re-set existing variables" ,
+   "Per the suggestion of Alex Waite of MCW." } ,
+
+ { 20 , JAN , 2011 , RWC , "3dClustSim" , MINOR , TYPE_BUG_FIX ,
+   "Small ROI masks could give weird and wrong results" ,
+   "Problem was when a desired alpha level (say 0.10) simply couldn't be\n"
+   "found -- e.g., only 6% of simulations had ANY above-threshold voxels in\n"
+   "the mask.  Bad-ositiness ensued since the program didn't check for this\n"
+   "case.  Now it checks, uses N=1 as the result in such cases, and\n"
+   "stderr-ifies a warning message also.\n"
+   "\n"
+   "The problem with developing software is users.  If we didn't have them,\n"
+   "life would be much easier." } ,
+
+ { 19 , JAN , 2011 , RWC , "3dClustSim" , MICRO , TYPE_MODIFY ,
+   "-niml now implies -NN 123 as well" ,
+   "Plus explain in the help output that afni_proc.py will automatically do\n"
+   "the ClustSim-ization of statistics datasets for you." } ,
+
+ { 18 , JAN , 2011 , RWC , "3dClustSim" , MICRO , TYPE_BUG_FIX ,
+   "Fix NN buglets identified by Nick Oosterhof." ,
+   NULL } ,
+
+ { 6 , JAN , 2011 , RWC , "3dDeconvolve" , MICRO , TYPE_BUG_FIX ,
+   "Fix problem with auto-catenation of datasets with length 1" ,
+   "Bug is that each dataset is a separate run, so you have lots of baseline\n"
+   "models!  Patch is to find shortest length of the component datasets --\n"
+   "if this is 1, then treat them as one big happy run.  Also, the new\n"
+   "-noblock option will do the same regardless of the structure of the\n"
+   "inputs." } ,
+
+ { 6 , JAN , 2011 , RWC , "afni" , MICRO , TYPE_BUG_FIX ,
+   "Fix crash when using '-img' with dataset files (.HEAD or .nii)" ,
+   "Problem was mri_imcount didn't give a correct count, but mri_read_file\n"
+   "did.  Easily patched up in time for tiffin.  And we take tiffin mighty\n"
+   "durn early in these parts, buckaroo." } ,
+
+ { 3 , JAN , 2011 , RWC , "3dNwarpApply" , MICRO , TYPE_GENERAL ,
+   "change name from 3dApplyNwarp" ,
+   "Will be the first in a series of 3dNwarp* programs." } ,
+
+ { 30 , DEC , 2010 , RWC , "3dApplyNwarp" , MINOR , TYPE_NEW_PROG ,
+   "Applies -nwarp_save output from 3dAllineate" ,
+   "Lets you apply a 3D nonlinear deformation to another file.  Works OK,\n"
+   "but changes will come." } ,
+
+ { 27 , DEC , 2010 , RWC , "plugout_drive" , MICRO , TYPE_NEW_OPT ,
+   "-maxwait option limits amount of time waiting for AFNI" ,
+   "Instead of old fixed value of 9 s.\n"
+   "Also, if program can't connect to AFNI at all, exit status will be 1. \n"
+   "This feature can be used in a script to check if AFNI is running with\n"
+   "plugouts enabled, and if not, then start a copy." } ,
+
+ { 23 , DEC , 2010 , RWC , "3dPolyfit" , MINOR , TYPE_NEW_PROG ,
+   "Fits a polynomial (spatially) to a dataset" ,
+   NULL } ,
 
  { 16 , DEC , 2010 , RWC , "mri_read" , MICRO , TYPE_GENERAL ,
    "Modify ragged read to allow for empty vectors" ,

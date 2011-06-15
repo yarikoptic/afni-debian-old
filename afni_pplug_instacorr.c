@@ -166,8 +166,9 @@ PLUGIN_interface * ICOR_init( char *lab )
 {
    PLUGIN_interface *plint ;     /* will be the output of this routine */
    static char *yn[2] = { "No" , "Yes" } ;
-   static char *meth_string[4] = { "Pearson" , "Spearman" ,
-                                   "Quadrant", "Ken Tau_b"  } ;
+   static char *meth_string[7] = { "Pearson" , "Spearman" ,
+                                   "Quadrant", "Ken Tau_b", "TicTacToe" ,
+                                   "BCpearson" , "VCpearson"  } ;
    char sk[32] , sc[32] ;
    int gblur = AFNI_yesenv("AFNI_INSTACORR_SEEDBLUR") ;
 
@@ -213,9 +214,14 @@ PLUGIN_interface * ICOR_init( char *lab )
 #endif
 
    PLUTO_add_option( plint , "Misc Opts" , "MiscOpts" , FALSE ) ;
-   PLUTO_add_number( plint , (gblur) ? "SeedBlur" : "SeedRad" , 0,10,0,0,TRUE ) ;
+   if( gblur ) PLUTO_add_number( plint , "SeedBlur" , 0,10,0,0,TRUE ) ;
+   else        PLUTO_add_number( plint , "SeedRad" , -10,10,0,0,TRUE ) ;
    PLUTO_add_number( plint , "Polort" , -1,2,0,2 , FALSE ) ;
-   PLUTO_add_string( plint , "Method" , 4 , meth_string , 0 ) ;
+   { char *un = tross_username() ;
+     PLUTO_add_string( plint , "Method" ,
+                       (un != NULL && strstr(un,"cox") != NULL) ? 7 : 4 ,
+                       meth_string , 0 ) ;
+   }
 
    return plint ;
 }
@@ -312,6 +318,9 @@ static char * ICOR_main( PLUGIN_interface *plint )
          case 'S': cmeth = NBISTAT_SPEARMAN_CORR ; break ;
          case 'Q': cmeth = NBISTAT_QUADRANT_CORR ; break ;
          case 'K': cmeth = NBISTAT_KENDALL_TAUB  ; break ;
+         case 'B': cmeth = NBISTAT_BC_PEARSON_M  ; break ; /* 07 Mar 2011 */
+         case 'V': cmeth = NBISTAT_BC_PEARSON_V  ; break ; /* 07 Mar 2011 */
+         case 'T': cmeth = NBISTAT_TICTACTOE_CORR; break ; /* 30 Mar 2011 */
        }
        continue ;
      }
@@ -775,13 +784,16 @@ ENTRY("GICOR_setup_func") ;
    if( atr != NULL )
      labar = NI_decode_string_list( atr , ";" ) ;
 
+   /* for each sub-brick in the dataset-to-be */
+
    for( vv=0 ; vv < nvals ; vv++ ){
-     if( labar != NULL && vv < labar->num )
+     EDIT_substitute_brick( dset, vv, MRI_float, NULL ) ; /* calloc sub-brick */
+     if( labar != NULL && vv < labar->num )               /* and label-ize it */
        EDIT_BRICK_LABEL( dset , vv , labar->str[vv] ) ;
      else if( vv < 6 )
        EDIT_BRICK_LABEL( dset , vv , blab[vv] ) ;
-     EDIT_substitute_brick( dset, vv, MRI_float, NULL ) ; /* calloc sub-brick */
-     if( vv%2 == 1 ) EDIT_BRICK_TO_FIZT(dset,vv) ;   /* alternate ones are Z */
+     if( strstr( DSET_BRICK_LAB(dset,vv) , "_Zsc" ) != NULL )
+       EDIT_BRICK_TO_FIZT(dset,vv) ;                     /* mark as a Z score */
    }
    DSET_superlock( dset ) ;
    giset->nvox = DSET_NVOX(dset) ;
@@ -935,9 +947,21 @@ ENTRY("GICOR_process_dataset") ;
 
    /* copy NIML data into dataset */
 
+#if 0
+INFO_message("AFNI received %d vectors, length=%d",nel->vec_num,nvec) ;
+#endif
+
    for( vv=0 ; vv < DSET_NVALS(giset->dset) ; vv++ ){
      nelar = (float *)nel->vec[vv] ;                /* NIML array */
      dsdar = (float *)DSET_ARRAY(giset->dset,vv) ;  /* dataset array */
+
+#if 0
+     { float mm,ss ; int nf ;
+       nf = thd_floatscan( nvec , nelar ) ;
+       meansigma_float( nvec , nelar , &mm,&ss ) ;
+       ININFO_message("  #%02d nf=%d mean=%g sigma=%g",vv,nf,mm,ss) ;
+     }
+#endif
 
      if( giset->ivec == NULL ){               /* all voxels */
        nn = MIN( giset->nvox , nvec ) ;
@@ -1140,9 +1164,11 @@ STATUS("This is my only chance at building a disreputable past.") ;
    kv = THD_3dmm_to_3dind ( im3d->anat_now , jv ) ;
    UNLOAD_IVEC3( kv , im3d->vinfo->i1_icor ,
                       im3d->vinfo->j2_icor , im3d->vinfo->k3_icor ) ;
+#if 0
    INFO_message("Called GICOR from %.2f %.2f %.2f (RAI), "
                 "seed radius %g",
                 xx, yy, zz, giset->seedrad) ;
+#endif
 
 STATUS("mark that we're busy for now") ;
 

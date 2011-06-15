@@ -680,7 +680,7 @@ char *SUMA_DOv_Info (SUMA_DO *dov, int N_dov, int detail)
    SUMA_SurfaceObject *so_op=NULL;   
    SUMA_VolumeObject *vo_op=NULL;   
    SUMA_STRING *SS=NULL;
-   
+   SUMA_Boolean LocalHead = NOPE;
    SUMA_ENTRY;
    
    SS = SUMA_StringAppend(NULL, NULL);
@@ -735,11 +735,14 @@ char *SUMA_DOv_Info (SUMA_DO *dov, int N_dov, int detail)
             case AO_type:
                {
                   SUMA_Axis* ao;
+                  SUMA_LH("HERE\n");
                   ao = (SUMA_Axis*) dov[i].OP;
                   SS = SUMA_StringAppend_va(SS,
                      "DOv ID: %d\n\tAxis Object\n"
                      "\tType: %d (%s), Axis Attachment %d\n", 
-                     i,dov[i].ObjectType, dov[i].CoordType);
+                     i,dov[i].ObjectType, 
+                     SUMA_ObjectTypeCode2ObjectTypeName(dov[i].ObjectType),
+                     dov[i].CoordType);
                   SS = SUMA_StringAppend_va(SS,
                      "\tName: %s\n\tidcode: %s\n", ao->Label, ao->idcode_str);
                }
@@ -2071,12 +2074,24 @@ SUMA_DOMAIN_KINSHIPS SUMA_WhatAreYouToMe (SUMA_SurfaceObject *SO1,
    
    SUMA_ENTRY;
    
-   if (!SO1 || !SO2 || !SO1->idcode_str || !SO2->idcode_str) {
-      fprintf (SUMA_STDERR, "Error %s: NULL SOs or SO->idcode_str.\n", FuncName);
+   if (!SO1 && !SO2) {
+      SUMA_S_Err("Total NULLness");
       SUMA_RETURN (SUMA_DOMAINS_NOT_RELATED);
    }
    
-   if (strcmp (SO1->idcode_str, SO2->idcode_str) == 0) {
+   if (!SO1 || !SO2) {
+      SUMA_LH("One NULL SO"); /* Don't die, it is ok */
+      SUMA_RETURN (SUMA_DOMAINS_NOT_RELATED);
+   }
+   
+   if (!SO1->idcode_str || !SO2->idcode_str) {
+      SUMA_S_Err("NULL SO->idcode_str.");
+      if (LocalHead) SUMA_DUMP_TRACE("Strange init");
+      SUMA_RETURN (SUMA_DOMAINS_NOT_RELATED);
+   }
+   
+   if (SO1 == SO2 ||
+       strcmp (SO1->idcode_str, SO2->idcode_str) == 0) {
       /* SO1 = SO2 */
       SUMA_LH(SUMA_DomainKinships_String (SUMA_SO1_is_SO2));
       SUMA_RETURN (SUMA_SO1_is_SO2);

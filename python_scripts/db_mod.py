@@ -221,6 +221,13 @@ def db_mod_align(block, proc, user_opts):
     bopt = block.opts.find_opt('-align_epi_ext_dset')
     if bopt: proc.align_ebase = bopt.parlist[0]
 
+    # maybe adjust EPI skull stripping method
+    uopt = user_opts.find_opt('-align_epi_strip_method')
+    bopt = block.opts.find_opt('-align_epi_strip_method')
+    if uopt and not bopt: 
+       block.opts.add_opt('-align_epi_strip_method', 1, uopt.parlist, setpar=1)
+    elif uopt and bopt: bopt.parlist = uopt.parlist
+
     block.valid = 1
 
 # align anat to epi -> anat gets _al suffix to its prefix
@@ -248,6 +255,11 @@ def db_cmd_align(proc, block):
             return     # error message is printed
         basevol = proc.prev_prefix_form(rind+1, view=1)
 
+    # check for EPI skull strip method
+    opt = block.opts.find_opt('-align_epi_strip_method')
+    if opt and opt.parlist: essopt = "       -epi_strip %s \\\n"%opt.parlist[0]
+    else:                   essopt = ""
+
     # add any user-specified options
     opt = block.opts.find_opt('-align_opts_aea')
     if opt and opt.parlist: extra_opts = "       %s \\\n" % \
@@ -258,12 +270,12 @@ def db_cmd_align(proc, block):
     cmd =       '# %s\n'                                        \
                 '# align anatomy to EPI registration base\n'    \
                 % block_header('align')
-    cmd = cmd + 'align_epi_anat.py -anat2epi \\\n'                      \
-                '       -anat %s \\\n'                                  \
-                '       -epi %s \\\n'                                   \
+    cmd = cmd + 'align_epi_anat.py -anat2epi -anat %s \\\n'             \
+                '       -epi %s -epi_base %d \\\n'                      \
                 '%s'                                                    \
-                '       -epi_base %d -volreg off -tshift off\n\n'       \
-                % (proc.anat.pv(), basevol, extra_opts, bind)
+                '%s'                                                    \
+                '       -volreg off -tshift off\n\n'                    \
+                % (proc.anat.pv(), basevol, bind, essopt, extra_opts)
 
     # store alignment matrix file for possible later use
     proc.a2e_mat = "%s_al_mat.aff12.1D" % proc.anat.prefix
@@ -760,6 +772,7 @@ def db_cmd_tshift(proc, block):
 def db_mod_volreg(block, proc, user_opts):
     if len(block.opts.olist) == 0:   # init dset/brick indices to defaults
         block.opts.add_opt('-volreg_base_ind', 2, [0, 2], setpar=1)
+        block.opts.add_opt('-volreg_compute_tsnr', 1, ['no'], setpar=1)
         block.opts.add_opt('-volreg_interp', 1, ['-cubic'], setpar=1)
         block.opts.add_opt('-volreg_opts_vr', -1, [])
         block.opts.add_opt('-volreg_zpad', 1, [1], setpar=1)
@@ -769,6 +782,12 @@ def db_mod_volreg(block, proc, user_opts):
     bopt = block.opts.find_opt('-volreg_base_ind')
     aopt = user_opts.find_opt('-volreg_align_to')
     baseopt = user_opts.find_opt('-volreg_base_dset')
+
+    # no longer accepted
+    if user_opts.find_opt('-volreg_regress_per_run'):
+        print '** option -volreg_regress_per_run is no longer valid\n' \
+              '   (please use -regress_motion_per_run, instead)'
+        return 1
 
     # check base_dset (do not allow with selector options)
     if baseopt:
@@ -831,11 +850,6 @@ def db_mod_volreg(block, proc, user_opts):
         bopt = block.opts.find_opt('-volreg_opts_vr')
         bopt.parlist = uopt.parlist
 
-    uopt = user_opts.find_opt('-volreg_regress_per_run')
-    bopt = block.opts.find_opt('-volreg_regress_per_run')
-    if uopt and not bopt:
-        block.opts.add_opt('-volreg_regress_per_run', 0, [])
-
     # check for warp to tlrc space, from either auto or manual xform
     uopt = user_opts.find_opt('-volreg_tlrc_adwarp')
     bopt = block.opts.find_opt('-volreg_tlrc_adwarp')
@@ -868,7 +882,7 @@ def db_mod_volreg(block, proc, user_opts):
            wpieces = UTIL.get_num_warp_pieces(proc.tlrcanat.ppv(),proc.verb)
            if uopt and wpieces == 1:    # warning
               print "** have auto_tlrc anat, consider '-volreg_tlrc_warp'\n" \
-                    "   in place of '-volreg_tlrc_adwarp'"
+                    "   (in place of '-volreg_tlrc_adwarp')"
            elif u2 and wpieces == 12:   # error
               print "** -volreg_tlrc_warp does not work with manual tlrc\n" \
                     "   (consider -volreg_tlrc_adwarp instead)"
@@ -893,6 +907,11 @@ def db_mod_volreg(block, proc, user_opts):
             return 1
         if bopt: bopt.parlist[0] = dxyz
         else: block.opts.add_opt('-volreg_warp_dxyz', 1, [dxyz], setpar=1)
+
+    # check on tsnr
+    uopt = user_opts.find_opt('-volreg_compute_tsnr')
+    bopt = block.opts.find_opt('-volreg_compute_tsnr')
+    if uopt: bopt.parlist = uopt.parlist
 
     block.valid = 1
 
@@ -1087,15 +1106,6 @@ def db_cmd_volreg(proc, block):
                '    3dTstat -min -prefix rm.epi.min.r$run rm.epi.1.r$run%s\n' \
                % proc.view
 
-    # if we want to regress motion files per run, create them and add to list
-    if block.opts.find_opt('-volreg_regress_per_run'):
-        cmd = cmd + '\n' +                                                  \
-            "    # pad motion parameters from each run to span all runs \n" \
-            "    1d_tool.py -infile dfile.r$run.1D "                        \
-            "-pad_into_many_runs $run %d \\\n"                              \
-            "               -write dfile.r$run.pad.1D\n" % proc.runs
-        proc.mot_files = ['dfile.r%02d.pad.1D'%(r+1) for r in range(proc.runs)]
-
     # if there is a base_dset option, check for failure in 3dvolreg
     if basevol:
         cmd = cmd + '\n    # if there was an error, exit so user can see'     \
@@ -1104,6 +1114,7 @@ def db_cmd_volreg(proc, block):
     cmd = cmd + "end\n\n"                                                     \
                 "# make a single file of registration params\n"               \
                 "cat dfile.r??.1D > dfile.rall.1D\n\n"
+    proc.mot_default = 'dfile.rall.1D'
 
     # if not censoring motion, make a generic motion file
     if not proc.user_opts.find_opt('-regress_censor_motion'):
@@ -1113,16 +1124,17 @@ def db_cmd_volreg(proc, block):
 
         if proc.reps_vary :     # use -set_run_lengths aot -set_nruns
            cmd = cmd +                                                      \
-               "1d_tool.py -infile dfile.rall.1D \\\n"                      \
+               "1d_tool.py -infile %s \\\n"                                 \
                "           -set_run_lengths %s \\\n"                        \
                "           -derivative  -collapse_cols euclidean_norm \\\n" \
                "           -write motion_${subj}_enorm.1D\n\n"              \
-               % UTIL.int_list_string(proc.reps_all)
+               % (proc.mot_file, UTIL.int_list_string(proc.reps_all))
         else:                   # stick with -set_nruns
            cmd = cmd +                                                      \
-               "1d_tool.py -infile dfile.rall.1D -set_nruns %d \\\n"        \
+               "1d_tool.py -infile %s -set_nruns %d \\\n"                   \
                "           -derivative  -collapse_cols euclidean_norm \\\n" \
-               "           -write motion_${subj}_enorm.1D\n\n" % proc.runs
+               "           -write motion_${subj}_enorm.1D\n\n"              \
+               % (proc.mot_file, proc.runs)
 
     if do_extents:
         proc.mask_extents = BASE.afni_name('mask_epi_extents' + proc.view)
@@ -1141,7 +1153,8 @@ def db_cmd_volreg(proc, block):
         else:  # just copy the one
           cmd = cmd +                                                        \
             "# (only 1 run, so just use 3dcopy to keep naming straight)\n"   \
-            "3dcopy rm.epi.min.r01 %s\n\n" % (proc.mask_extents.prefix)
+            "3dcopy rm.epi.min.r01%s %s\n\n"                                 \
+            % (proc.view, proc.mask_extents.prefix)
 
         proc.mask_extents.created = 1  # so this mask 'exists' now
 
@@ -1171,6 +1184,25 @@ def db_cmd_volreg(proc, block):
             "end\n\n" % (proc.tlrcanat.pv(), cur_prefix, proc.view, dim)
         proc.view = '+tlrc'  # and set a new current view
 
+        # if extents mask, need to warp it and update to the new proc.view
+        if do_extents:
+           cmd = cmd +                                                      \
+               "# and apply Talairach transformation to the extents mask\n" \
+               "    adwarp -apar %s -dpar %s \\\n"                          \
+               "           -dxyz %g -resam NN\n\n"                          \
+               % (proc.tlrcanat.pv(), proc.mask_extents.pv(), dim)
+           proc.mask_extents.new_view(proc.view)
+
+    if do_extents: emask = proc.mask_extents.prefix
+    else:          emask = ''
+
+    # if requested, make TSNR dataset from run 1 of volreg output
+    opt = block.opts.find_opt('-volreg_compute_tsnr')
+    if opt.parlist[0] == 'yes':
+       tcmd = db_cmd_volreg_tsnr(proc, block, emask)
+       if tcmd == None: return
+       if tcmd != '': cmd += tcmd
+
     # used 3dvolreg, so have these labels
     proc.mot_labs = ['roll', 'pitch', 'yaw', 'dS', 'dL', 'dP']
 
@@ -1178,6 +1210,18 @@ def db_cmd_volreg(proc, block):
     proc.pblabel = block.label  # set 'previous' block label
 
     return cmd
+
+# compute temporal signal to noise before the blur (just run 1?)
+def db_cmd_volreg_tsnr(proc, block, emask=''):
+
+    # signal and error are both first run of previous output
+    signal = proc.prefix_form(block, 1)
+
+    return db_cmd_tsnr(proc,
+           "# --------------------------------------\n" \
+           "# create a TSNR dataset, just from run 1\n",
+           signal, signal, proc.view, mask=emask,
+           name_qual='.vreg.r01',detrend=1)
 
 def db_mod_blur(block, proc, user_opts):
     if len(block.opts.olist) == 0: # init blur option
@@ -1218,7 +1262,6 @@ def db_mod_blur(block, proc, user_opts):
     block.valid = 1
 
 def db_cmd_blur(proc, block):
-    cmd = ''
     opt    = block.opts.find_opt('-blur_filter')
     filter = opt.parlist[0]
     opt    = block.opts.find_opt('-blur_size')
@@ -1269,13 +1312,14 @@ def db_cmd_blur(proc, block):
        cstr = "    3dmerge %s %s -doall -prefix %s" % (filter,str(size),prefix)
        sstr = '            '
 
-    cmd = cmd + "# %s\n"                                \
-                "# blur each volume of each run\n"      \
+    cmd = "# %s\n" % block_header('blur')
+
+    cmd = cmd + "# blur each volume of each run\n"      \
                 "foreach run ( $runs )\n"               \
                 "%s \\\n"                               \
                 "%s"                                    \
                 "%s%s\n"                                \
-                "end\n\n" % (block_header('blur'), cstr, sstr, other_opts, prev)
+                "end\n\n" % (cstr, sstr, other_opts, prev)
 
     proc.bindex += 1            # increment block index
     proc.pblabel = block.label  # set 'previous' block label
@@ -1566,12 +1610,18 @@ def db_cmd_scale(proc, block):
     if max > 100: valstr = 'min(%d, a/b*100)*step(a)*step(b)' % max
     else:         valstr = 'a/b*100*step(a)'
 
-    if proc.mask and proc.regmask:
-        mask_dset = '           -c %s%s \\\n' % (proc.mask.prefix, proc.view)
-        expr      = 'c * %s' % valstr
+    # choose a mask: either passed, extents, or none
+    mset = None
+    if proc.mask and proc.regmask:  mset = proc.mask
+    elif proc.mask_extents != None: mset = proc.mask_extents
+  
+    # if have a mask, apply it, else use any extents mask
+    if mset != None:
+        mask_str = '           -c %s%s \\\n' % (mset.prefix, proc.view)
+        expr     = 'c * %s' % valstr
     else:
-        mask_dset = ''
-        expr      = valstr
+        mask_str = ''
+        expr     = valstr
 
     if max > 100: maxstr = '# (subject to a range of [0,%d])\n' % max
     else        : maxstr = ''
@@ -1590,7 +1640,7 @@ def db_cmd_scale(proc, block):
                 "           -prefix %s\n"                               \
                 "end\n\n" %                                             \
                 (block_header('scale'), maxstr, prev, prev, proc.view,
-                 mask_dset, expr, prefix)
+                 mask_str, expr, prefix)
     proc.have_rm = 1            # rm.* files exist
 
     proc.bindex += 1            # increment block index
@@ -1602,6 +1652,7 @@ def db_mod_regress(block, proc, user_opts):
     if len(block.opts.olist) == 0: # then init
         block.opts.add_opt('-regress_basis', 1, ['GAM'], setpar=1)
         block.opts.add_opt('-regress_censor_prev', 1, ['yes'], setpar=1)
+        block.opts.add_opt('-regress_compute_tsnr', 1, ['yes'], setpar=1)
         block.opts.add_opt('-regress_cormat_warnings', 1, ['yes'], setpar=1)
         block.opts.add_opt('-regress_fout', 1, ['yes'], setpar=1)
         block.opts.add_opt('-regress_polort', 1, [-1], setpar=1)
@@ -1621,6 +1672,7 @@ def db_mod_regress(block, proc, user_opts):
         block.opts.add_opt('-regress_errts_prefix', 1, [])
         block.opts.add_opt('-regress_fitts_prefix', 1, ['fitts.$subj'],
                                                        setpar=1)
+        block.opts.add_opt('-regress_make_cbucket', 1, ['no'], setpar=1)
 
     errs = 0  # allow errors to accumulate
 
@@ -1800,6 +1852,11 @@ def db_mod_regress(block, proc, user_opts):
         for file in proc.stims_orig:
             proc.stims.append('stimuli/%s' % os.path.basename(file))
 
+    # check for per-run regression of motion parameters
+    uopt = user_opts.find_opt('-regress_motion_per_run')
+    if uopt and not block.opts.find_opt('-regress_motion_per_run'):
+        block.opts.add_opt('-regress_motion_per_run', 0,  [], setpar=1)
+
     # check for censoring of large motion
     uopt = user_opts.find_opt('-regress_censor_motion')
     bopt = block.opts.find_opt('-regress_censor_motion')
@@ -1938,16 +1995,34 @@ def db_mod_regress(block, proc, user_opts):
     uopt = user_opts.find_opt('-regress_motion_file')
     if uopt:
         # make sure we have labels
-        proc.mot_files = uopt.parlist
+        proc.mot_file = uopt.parlist[0]
+        proc.mot_extern = uopt.parlist[0]
         proc.mot_labs = ['roll', 'pitch', 'yaw', 'dS', 'dL', 'dP']
-        # do not allow -volreg_regress_per_run with this
-        blk = proc.find_block('volreg')
-        if blk:
-           vopt = blk.opts.find_opt('-volreg_regress_per_run')
-           if vopt:
-              print '** -volreg_regress_per_run is illegal with' \
-                    ' -regress_motion_file'
-              errs += 1
+        # -volreg_regress_per_run should be okay  20 May 2011
+        # (must still assume TR correspondence)
+
+    # maybe the user wants to specify types of motion parameters to use
+    uopt = user_opts.find_opt('-regress_apply_mot_types')
+    if uopt:
+        if user_opts.find_opt('-regress_no_motion_demean') or \
+           user_opts.find_opt('-regress_no_motion_deriv'):
+            print '** cannot use -regress_apply_mot_types with either of\n' \
+                  '   -regress_no_motion_demean or -regress_no_motion_deriv'
+            errs += 1
+        bopt = block.opts.find_opt('-regress_apply_mot_types')
+        if bopt: bopt.parlist = uopt.parlist
+        else: block.opts.add_opt('-regress_apply_mot_types', -1, uopt.parlist,
+                                 setpar=1)
+
+    # no demean or deriv?
+    uopt = user_opts.find_opt('-regress_no_motion_demean')
+    if uopt:
+        if not block.opts.find_opt('-regress_no_motion_demean'):
+           block.opts.add_opt('-regress_no_motion_demean', 0, [])
+    uopt = user_opts.find_opt('-regress_no_motion_deriv')
+    if uopt:
+        if not block.opts.find_opt('-regress_no_motion_deriv'):
+           block.opts.add_opt('-regress_no_motion_deriv', 0, [])
 
     # maybe the user does not want to convert stim_files to stim_times
     uopt = user_opts.find_opt('-regress_use_stim_files')
@@ -1955,7 +2030,7 @@ def db_mod_regress(block, proc, user_opts):
     bopt = block.opts.find_opt('-regress_no_stim_times')
     if uopt and not bopt:
         if proc.verb > 0: print '-- will use -stim_files in 3dDeconvolve'
-        block.opts.add_opt('-regress_no_stim_times',0,[],setpar=1)
+        block.opts.add_opt('-regress_no_stim_times', 0, [])
 
     # if the user wants to compute the fitts, just pass the option along
     uopt = user_opts.find_opt('-regress_compute_fitts')
@@ -1987,6 +2062,19 @@ def db_mod_regress(block, proc, user_opts):
                   '   (consider -regress_est_blur_errts (or _epits))'
             errs += 1
 
+    # check on tsnr
+    uopt = user_opts.find_opt('-regress_compute_tsnr')
+    bopt = block.opts.find_opt('-regress_compute_tsnr')
+    if uopt: bopt.parlist = uopt.parlist
+
+    # possibly update cbucket option
+    uopt = user_opts.find_opt('-regress_make_cbucket')
+    bopt = block.opts.find_opt('-regress_make_cbucket')
+    if uopt:
+        if not bopt: block.opts.add_opt('-regress_make_cbucket', 1,
+                                        ['no'],setpar=1)
+        else: bopt.parlist = uopt.parlist
+
     # prepare to return
     if errs > 0:
         block.valid = 0
@@ -2010,9 +2098,6 @@ def db_cmd_regress(proc, block):
     if opt: normall = '    -basis_normall %s \\\n' % opt.parlist[0]
     else:   normall = ''
 
-    opt = block.opts.find_opt('-regress_no_motion')
-    if opt: proc.mot_labs = []   # then clear any motion labels
-
     opt = block.opts.find_opt('-regress_polort')
     polort = opt.parlist[0]
     if ( polort < 0 ) :
@@ -2027,8 +2112,7 @@ def db_cmd_regress(proc, block):
     #     block.valid = 0
     #    return
 
-    cmd = cmd + "# %s\n" \
-                "# run the regression analysis\n" % block_header('regress')
+    cmd = cmd + "# %s\n" % block_header('regress')
 
     # possibly add a make_stim_times.py command
     # (convert -stim_file to -stim_times)
@@ -2052,18 +2136,22 @@ def db_cmd_regress(proc, block):
                   % (len(basis), len(proc.stims))
             return
 
-    # if the user wants to censor large motion, create a censor.1D file
-    if block.opts.find_opt('-regress_censor_motion'):
-        err, newcmd = db_cmd_regress_censor_motion(proc, block)
+    # ----------------------------------------
+    # deal with motion (demean, deriv, per-run, censor)
+    if block.opts.find_opt('-regress_no_motion'): proc.mot_labs = []
+    else:
+        err, newcmd = db_cmd_regress_motion_stuff(proc, block)
         if err: return
         if newcmd: cmd = cmd + newcmd
 
+    # ----------------------------------------
     # possibly use a mask
     if proc.mask and proc.regmask:
         mask = '    -mask %s%s \\\n' % (proc.mask.prefix, proc.view)
     else:
         mask = ''
 
+    # ----------------------------------------
     # maybe the user has specified global or local times
     # if so, verify the files against exactly that
     if block.opts.find_opt('-regress_global_times'):
@@ -2092,7 +2180,7 @@ def db_cmd_regress(proc, block):
     # and check any extras against 1D only
     if not valid_file_types(proc, proc.extra_stims_orig, 1): return
 
-    nmotion = len(proc.mot_labs) * len(proc.mot_files)
+    nmotion = len(proc.mot_labs) * len(proc.mot_regs)
     total_nstim =  len(proc.stims) + len(proc.extra_stims) + \
                    nmotion + proc.ricor_nreg
     
@@ -2100,7 +2188,8 @@ def db_cmd_regress(proc, block):
     if proc.censor_file: censor_str = '    -censor %s \\\n' % proc.censor_file
     else:                censor_str = ''
 
-    cmd = cmd + '3dDeconvolve -input %s \\\n'           \
+    cmd = cmd + '# run the regression analysis\n'       \
+                '3dDeconvolve -input %s \\\n'           \
                 '%s'                                    \
                 '    -polort %d %s\\\n'                 \
                 '%s%s%s'                                \
@@ -2190,16 +2279,15 @@ def db_cmd_regress(proc, block):
     # write out registration param lines
     if nmotion > 0:
         nlabs = len(proc.mot_labs)
-        nmf = len(proc.mot_files)
-        for findex in range(nmf):
-            mfile = proc.mot_files[findex]
+        nmf = len(proc.mot_regs)
+        for findex, mfile in enumerate(proc.mot_regs):
             for ind in range(nlabs):
                 if nmf > 1: mlab = '%s_%02d' % (proc.mot_labs[ind], findex+1)
                 else:       mlab = '%s'      % (proc.mot_labs[ind])
                 sind = regindex + nlabs*findex + ind
                 cmd = cmd + "    -stim_file %d %s'[%d]' "       \
                         "-stim_base %d -stim_label %d %s \\\n"  \
-                        % (sind, proc.mot_files[findex], ind, sind, sind, mlab)
+                        % (sind, mfile, ind, sind, sind, mlab)
         regindex += nmotion
 
     # write out ricor param lines (put labels afterwards)
@@ -2251,8 +2339,6 @@ def db_cmd_regress(proc, block):
         compute_fitts = 1
         fitts = ''  # so nothing in 3dDeconvolve
 
-    # -- fitts and errts setup --
-
     # see if the user has provided other options (like GLTs)
     opt = block.opts.find_opt('-regress_opts_3dD')
     if not opt or not opt.parlist: other_opts = ''
@@ -2269,14 +2355,19 @@ def db_cmd_regress(proc, block):
     if opt.parlist[0] == 'yes': fout_str = '-fout '
     else:                       fout_str = ''
 
+    # do we want a cbucket dataset?
+    opt = block.opts.find_opt('-regress_make_cbucket')
+    if opt.parlist[0] == 'yes': cbuck_str = "    -cbucket all_betas.$subj \\\n"
+    else:                       cbuck_str = ""
+
     # add misc options
     cmd = cmd + iresp
     cmd = cmd + other_opts
     cmd = cmd + "    %s-tout -x1D %s -xjpeg X.jpg \\\n" % (fout_str, proc.xmat)
     if proc.censor_file:
-        newmat = 'X.uncensored.xmat.1D'
+        newmat = 'X.nocensor.xmat.1D'
         cmd += "    -x1D_uncensored %s \\\n" % newmat
-    cmd = cmd + fitts + errts + stop_opt
+    cmd = cmd + fitts + errts + stop_opt + cbuck_str
     cmd = cmd + "    -bucket stats.$subj\n\n\n"
 
     # if 3dDeconvolve fails, terminate the script
@@ -2311,6 +2402,16 @@ def db_cmd_regress(proc, block):
     cmd = cmd + "# create an all_runs dataset to match the fitts, errts, etc.\n"
     cmd = cmd + "3dTcat -prefix %s %s\n\n" % \
                 (all_runs, proc.prev_dset_form_wild())
+
+    # if errts and scaling, maybe create tsnr volume as mean/stdev(errts)
+    # (if scaling, mean should be 100)
+    opt = block.opts.find_opt('-regress_compute_tsnr')
+    if opt.parlist[0] == 'yes':
+       if errts_pre:
+          tcmd = db_cmd_regress_tsnr(proc, block, all_runs, errts_pre)
+          if tcmd == None: return  # error
+          if tcmd != '': cmd += tcmd
+       else: print '-- no errts, will not compute final TSNR'
 
     # possibly create computed fitts dataset
     if compute_fitts:
@@ -2397,6 +2498,66 @@ def db_cmd_reml_exec(proc, block):
 
     return cmd
 
+# compute temporal signal to noise after the regression
+def db_cmd_regress_tsnr(proc, block, all_runs, errts_pre):
+    if not all_runs or not errts_pre: return ''
+
+    if proc.mask: mask_pre = proc.mask.prefix
+    else:         mask_pre = ''
+
+    return db_cmd_tsnr(proc,
+           "# create a temporal signal to noise ratio dataset \n"   \
+           "#    signal: if 'scale' block, mean should be 100\n"    \
+           "#    noise : compute standard deviation of errts\n",
+           all_runs, errts_pre, proc.view, mask=mask_pre)
+
+# compute temporal signal to noise after the regression
+def db_cmd_tsnr(proc, comment, signal, noise, view,
+                        mask='', name_qual='', detrend=0):
+    """return a string for computing temporal signal to noise
+         comment:   leading comment string
+         signal:    prefix for mean dset
+         noise:     prefix for stdev dset
+         view:      dset view
+         mask:      (optional) prefix for mask dset
+         name_qual: (optional) qualifier for name, such as '.r01'
+         detrend:   (optional) if > 0, 
+    """
+    if not signal or not noise or not view:
+        print '** compute TSNR: missing input'
+        return None
+
+    dname = 'TSNR%s%s$subj' % (name_qual, proc.sep_char)
+
+    if mask:
+       cstr = '\\\n       -c %s%s ' % (mask, view)
+       estr = 'c*a/b'
+    else:
+       cstr = ''
+       estr = 'a/b'
+
+    if detrend:
+        polort = UTIL.get_default_polort(proc.tr, proc.reps)
+        detcmd = "3dDetrend -polort %d -prefix rm.noise.det -overwrite %s%s\n"\
+                 % (polort, noise, view)
+        noise = 'rm.noise.det'
+    else: detcmd = ''
+
+    if name_qual == '': suff = '.all'
+    else:               suff = name_qual
+
+    cmd  = "%s"                                                 \
+           "3dTstat -mean -prefix rm.signal%s %s%s\n"           \
+           "%s"                                                 \
+           "3dTstat -stdev -prefix rm.noise%s %s%s\n"           \
+           % (comment, suff, signal, view, detcmd, suff, noise, view)
+
+    cmd += "3dcalc -a rm.signal%s%s -b rm.noise%s%s %s\\\n"     \
+           "       -expr '%s' -prefix %s \n\n"                  \
+           % (suff, view, suff, view, cstr, estr, dname)
+
+    return cmd
+
 # might estimate blur from either all_runs or errts (3dD or REML)
 # need mask (from mask, or automask from all_runs)
 # requires 'all_runs' dataset, in case a mask is needed
@@ -2457,17 +2618,22 @@ def db_cmd_blur_est(proc, block):
     opt = block.opts.find_opt('-regress_run_clustsim')
     if not opt or OL.opt_is_yes(opt):
         stats_dset = 'stats.$subj%s' % proc.view
+        if block.opts.find_opt('-regress_reml_exec'):
+           reml_dset = 'stats.${subj}_REML%s' % proc.view
+        else: reml_dset = ''
         rv, bstr = make_clustsim_commands(proc, block, blur_file, 
-                                          mask_dset, stats_dset)
+                                          mask_dset, stats_dset, reml_dset)
         if rv: return   # failure (error has been printed)
         cmd = cmd + bstr + '\n'
 
     return cmd
 
-def make_clustsim_commands(proc, block, blur_file, mask_dset, stats_dset):
+def make_clustsim_commands(proc, block, blur_file, mask_dset,
+                           stats_dset, reml_dset):
     if proc.verb > 1:
-        print '-- make_clustsim_commands: blur = %s\n\tmask = %s, stats = %s' \
-              % (blur_file, mask_dset, stats_dset)
+        print '-- make_clustsim_commands: blur = %s\n'  \
+              '   mask = %s, stats = %s, reml = %s'\
+              % (blur_file, mask_dset, stats_dset, reml_dset)
 
     # track which neighbors to go after
     nnvalid = ['1','2','3']
@@ -2509,7 +2675,10 @@ def make_clustsim_commands(proc, block, blur_file, mask_dset, stats_dset):
                 % (nn, cprefix, nn)
 
     # finally, the input
-    cstr += '        %s\n\n' % stats_dset
+    if reml_dset == '': rstr = ''
+    else:               rstr = ' ' + reml_dset
+
+    cstr += '        %s%s\n\n' % (stats_dset, rstr)
 
     return 0, cstr
 
@@ -2596,6 +2765,143 @@ def db_cmd_regress_sfiles2times(proc, block):
 
     return cmd
 
+def db_cmd_regress_motion_stuff(proc, block):
+    """prepare motion parameters for regression
+         - create demean and deriv files
+         - set mot_regs (to mot_file and/or mot_deriv)
+         - maybe regress per run
+         - maybe censor based on mot_file
+       return an error code (0=success) and command string
+    """
+
+    if block.opts.find_opt('-regress_no_motion'): return 0, ''
+
+    cmd = ''
+
+    # fill proc.mot_regs, as well as the proc.mot_* file names
+    err, newcmd = db_cmd_regress_mot_types(proc, block)
+    if err: return 1, ''
+    if newcmd: cmd += newcmd
+
+    # maybe convert the motion files to motion per run
+    # if so, replace mot_regs with the new versions of them
+    if block.opts.find_opt('-regress_motion_per_run'):
+        pcmd = '# convert motion parameters for per-run regression\n'
+        # make an option for the number of runs
+        if proc.reps_vary:
+           runopt = '-set_run_lengths %s' % UTIL.int_list_string(proc.reps_all)
+        else:
+           runopt = '-set_nruns %d' % proc.runs
+        mfiles = proc.mot_regs
+        proc.mot_regs = []
+        for mfile in mfiles:
+            if   mfile == proc.mot_extern: mtype = 'extern'
+            elif mfile == proc.mot_demean: mtype = 'demean'
+            elif mfile == proc.mot_deriv : mtype = 'deriv'
+            else:                          mtype = 'dfile'
+            # note the output prefix and expected output file list
+            mprefix = 'mot_%s' % mtype
+            outfiles = ['%s.r%02d.1D'%(mprefix,r+1) for r in range(proc.runs)]
+            pcmd += '1d_tool.py -infile %s %s \\\n'          \
+                    '           -split_into_pad_runs %s\n\n' \
+                    % (mfile, runopt, mprefix)
+            proc.mot_regs.extend(outfiles)
+
+        cmd += pcmd     # and add to the current command
+
+    # if the user wants to censor large motion, create a censor.1D file
+    if block.opts.find_opt('-regress_censor_motion'):
+        err, newcmd = db_cmd_regress_censor_motion(proc, block)
+        if err: return 1, ''
+        if newcmd: cmd = cmd + newcmd
+
+    if cmd != '': return 0, '\n' + cmd
+    else: return 0, cmd
+
+def db_cmd_regress_mot_types(proc, block):
+    """return an error code (0=success) and a command(?)
+
+       Allow use of (basic or demean) and/or deriv motion parameters.
+       Adjust proc.mot_regs based on -regress_apply_mot_types.
+       Unless -regress_no_motion_demean/-regress_no_motion_deriv, both
+         mean and deriv files should be created, independently of 
+         whether they are used as regressors.
+    """
+
+    cmd = ''
+    proc.mot_regs = []
+
+    # note which types to use in regression (cannot be an empty list)
+    bopt = block.opts.find_opt('-regress_apply_mot_types')
+    if bopt:
+       apply_types = bopt.parlist
+       # then must allow computation of demean and deriv
+       if block.opts.find_opt('-regress_no_motion_demean') or \
+          block.opts.find_opt('-regress_no_motion_deriv'):
+          print "** must allow 'demean' and 'deriv' computation when using\n" \
+                "   option -regress_apply_mot_types"
+          return 1, ''
+       print '-- will apply motion types: %s' % ', '.join(apply_types)
+    elif block.opts.find_opt('-regress_no_motion_demean'):
+          apply_types = ['basic']
+    else: apply_types = ['demean'] # now the default
+
+    # note whether to use run lengths or number of runs for demean and deriv
+    if proc.reps_vary :
+       ropt = '-set_run_lengths %s' % UTIL.int_list_string(proc.reps_all)
+    else: ropt = '-set_nruns %d' % proc.runs
+
+    # handle 3 cases of motion parameters: 'basic', 'demean' and 'deriv'
+
+    # 1. update mot_regs for 'basic' case
+    if 'basic' in apply_types: proc.mot_regs.append(proc.mot_file)
+
+    # 2. possibly compute de-meaned motion params
+    if not block.opts.find_opt('-regress_no_motion_demean'):
+       mtype = 'demean'
+       mopt = 'demean'
+       motfile = 'motion_%s.1D' % mtype
+       # if requested for regression, add this file
+       if mtype in apply_types:
+          if 'basic' in apply_types:
+             print "** cannot apply both 'basic' and 'demean' motion params"
+             print "   (would lead to multi-collinearity)"
+             return 1, ''
+          proc.mot_regs.append(motfile)
+          pcmd = '# compute de-meaned motion parameters %s\n' \
+                 % '(for use in regression)'
+       else:
+          pcmd = '# compute de-meaned motion parameters %s\n' \
+                 % '(just to have)'
+
+       pcmd += '1d_tool.py -infile %s %s \\\n' \
+               '           -%s -write %s\n\n'  \
+               % (proc.mot_file, ropt, mopt, motfile)
+       proc.mot_demean = motfile
+       cmd += pcmd
+
+    # 3. possibly compute motion derivatives
+    if not block.opts.find_opt('-regress_no_motion_deriv'):
+       mtype = 'deriv'
+       mopt = 'derivative'
+       motfile = 'motion_%s.1D' % mtype
+       # if requested for regression, add this file
+       if mtype in apply_types:
+          proc.mot_regs.append(motfile)
+          pcmd = '# compute motion parameter derivatives %s\n' \
+                 % '(for use in regression)'
+       else:
+          pcmd = '# compute motion parameter derivatives %s\n' \
+                 % '(just to have)'
+
+       pcmd += '1d_tool.py -infile %s %s \\\n' \
+               '           -%s -demean -write %s\n\n'  \
+               % (proc.mot_file, ropt, mopt, motfile)
+       proc.mot_deriv = motfile
+       cmd += pcmd
+
+    return 0, cmd
+
 def db_cmd_regress_censor_motion(proc, block):
     """return a command to create a censor.1D file
 
@@ -2617,17 +2923,8 @@ def db_cmd_regress_censor_motion(proc, block):
 
     # run lengths may now vary  16 Nov, 2009
 
-    if len(proc.mot_files) == 0: return 0, ''
-    elif len(proc.mot_files) > 1:       # okay if -volreg_regress_per_run
-        vblk = proc.find_block('volreg')
-        opt = None
-        mot_file = ''
-        if vblk: opt = vblk.opts.find_opt('-volreg_regress_per_run')
-        if opt: mot_file = 'dfile.rall.1D'
-        if not mot_file:
-            print '** bad motion files for -regress_censor_motion'
-            return 1, ''
-    else: mot_file = proc.mot_files[0]  # there is only 1
+    # maybe there is no file to use
+    if proc.mot_file == '': return 0, ''
 
     # check for -regress_censor_first_trs
     val, err = block.opts.get_type_opt(int, '-regress_censor_first_trs')
@@ -2643,12 +2940,12 @@ def db_cmd_regress_censor_motion(proc, block):
     else:                       prev_str = ''
 
     if proc.verb > 1:
-        print '-- creating motion censor command, file = %s' % mot_file
+        print '-- creating motion censor command, file = %s' % proc.mot_file
 
     # save string to apply in 3dDeconvolve
     mot_prefix = 'motion_${subj}'
     censor_file = '%s_censor.1D' % mot_prefix
-    cmd = '\n# create censor file %s, for censoring motion \n' \
+    cmd = '# create censor file %s, for censoring motion \n' \
           % censor_file
 
     # if we are already censoring, make a command to combine the results
@@ -2664,10 +2961,10 @@ def db_cmd_regress_censor_motion(proc, block):
     # make command string to create censor file
     if proc.reps_vary :     # use -set_run_lengths aot -set_nruns
         cmd = cmd + '1d_tool.py -infile %s -set_run_lengths %s \\\n' \
-                    % (mot_file, UTIL.int_list_string(proc.reps_all))
+                    % (proc.mot_file, UTIL.int_list_string(proc.reps_all))
     else:
         cmd = cmd + '1d_tool.py -infile %s -set_nruns %d \\\n'       \
-                    % (mot_file, proc.runs)
+                    % (proc.mot_file, proc.runs)
 
     cmd = cmd + '    -set_tr %g -show_censor_count %s\\\n'      \
                 '%s'                                            \
@@ -2810,8 +3107,13 @@ def valid_file_types(proc, stims, file_type):
     for fname in stims:
         adata = LD.AfniData(fname, verb=proc.verb)
         if adata == None:
-            print "** failed to read data file '%s'" % fname
-            return 0
+            print "** failed to load stim timing file '%s'" % fname
+            ok_all = 0
+            continue
+        if not adata.ready:
+            print "** failed to load stimulus timing file '%s'" % fname
+            ok_all = 0
+            continue
 
         if adata.married and proc.verb > 1:
             print '-- have married file %s' % fname
@@ -3166,7 +3468,7 @@ g_help_string = """
                  54 motion    regressors ( 6 per run * 9 runs)
                 117 RETROICOR regressors (13 per run * 9 runs)
 
-           To example #3, add -do_block, -ricor_* and -volreg_regress_per_run.
+           To example #3, add -do_block, -ricor_* and -regress_motion_per_run.
 
                 afni_proc.py -subj_id sb23.e5a.ricor            \\
                         -dsets sb23/epi_r??+orig.HEAD           \\
@@ -3175,7 +3477,7 @@ g_help_string = """
                         -ricor_regs_nfirst 3                    \\
                         -ricor_regs sb23/RICOR/r*.slibase.1D    \\
                         -ricor_regress_method 'per-run'         \\
-                        -volreg_regress_per_run
+                        -regress_motion_per_run
 
            If tshift, blurring and masking are not desired, consider replacing
            the -do_block option with an explicit list of blocks:
@@ -3268,6 +3570,12 @@ g_help_string = """
            c. Not only censor motion, but censor TRs when more than 10% of the
               automasked brain are outliers.  So add -regress_censor_outliers.
 
+           d. Include both de-meaned and derivatives of motion parameters in
+              the regression.  So add '-regress_apply_mot_types demean deriv'.
+
+           e. Output baseline parameters so we can see the effect of motion.
+              So add -bout under option -regress_opts_3dD.
+
            d. Save on RAM by computing the fitts only after 3dDeconvolve.
               So add -regress_compute_fitts.
 
@@ -3292,10 +3600,12 @@ g_help_string = """
                            'BLOCK(30,1)' 'TENT(0,45,16)' 'BLOCK(30,1)'     \\
                            'BLOCK(30,1)' 'TENT(0,45,16)' 'BLOCK(30,1)'     \\
                            'BLOCK(30,1)' 'TENT(0,45,16)' 'BLOCK(30,1)'     \\
+                        -regress_apply_mot_types demean deriv              \\
                         -regress_censor_motion 1.0                         \\
                         -regress_censor_outliers 0.1                       \\
                         -regress_compute_fitts                             \\
                         -regress_opts_3dD                                  \\
+                            -bout                                          \\
                             -gltsym 'SYM: +eneg -fneg'                     \\
                             -glt_label 1 eneg_vs_fneg                      \\
                             -jobs 4                                        \\
@@ -3958,6 +4268,20 @@ g_help_string = """
             -e option to tcsh (as suggested), but maybe the user does not wish
             to do so.
 
+        -compute_tsnr yes/no    : compute TSNR datasets
+
+                e.g. -compute_tsnr no
+
+            By default, temporal signal to noise (TSNR) datasets are created at
+            end of the volreg and regress blocks.  For the volreg block, the
+            signal and noise datasets are both just the run 01 output.  For the
+            regress block, the signal is all_runs and the noise is errts.
+
+            Note that volreg noise is not currently detrended.  Maybe it should
+            be.
+
+            The formula is average signal / stdev(noise).
+
         -copy_anat ANAT         : copy the ANAT dataset to the results dir
 
                 e.g. -copy_anat Elvis/mprage+orig
@@ -4532,6 +4856,22 @@ g_help_string = """
             Please see "align_epi_anat.py -help" for more information.
             Please see "3dAllineate -help" for more information.
 
+        -align_epi_strip_method METHOD : specify EPI skull strip method in AEA
+
+                e.g. -align_epi_strip_method 3dAutomask
+                default: 3dSkullStrip
+
+            When align_epi_anat.py is used to align the EPI and anatomy, it
+            uses 3dSkullStrip to remove non-brain tissue from the EPI dataset.
+            This option can be used to specify which method to use, one of
+            3dSkullStrip, 3dAutomask or None.
+
+            This option assumes the 'align' processing block is used.
+
+            Please see "align_epi_anat.py -help" for more information.
+            Please see "3dSkullStrip -help" for more information.
+            Please see "3dAutomask -help" for more information.
+
         -volreg_align_e2a       : align EPI to anatomy at volreg step
 
             This option is used to align the EPI data to match the anatomy.
@@ -4618,6 +4958,7 @@ g_help_string = """
 
         -volreg_opts_vr OPTS ... : specify extra options for 3dvolreg
 
+                e.g. -volreg_opts_vr -twopass
                 e.g. -volreg_opts_vr -noclip -nomaxdisp
 
             This option allows the user to add extra options to the 3dvolreg
@@ -4626,22 +4967,39 @@ g_help_string = """
 
             Please see '3dvolreg -help' for more information.
 
+        -volreg_no_extent_mask  : do not create and apply extents mask
+
+                default: apply extents mask
+
+            This option says not to create or apply the extents mask.
+
+            The extents mask:
+
+            When EPI data is transformed to the anatomical grid in either orig
+            or tlrc space (i.e. if -volreg_align_e2a or -volreg_tlrc_warp is
+            applied), then the complete EPI volume will only cover part of the
+            resulting volume space.  Worse than that, the coverage will vary
+            over time, as motion will alter the final transformation (remember
+            that volreg, EPI->anat and ->tlrc transformations are all combined,
+            to prevent multiple resampling steps).  The result is that edge
+            voxels will sometimes have valid data and sometimes not.
+
+            The extents mask is made from an all-1 dataset that is warped with
+            the same per-TR transformations as the EPI data.  The intersection
+            of the result is the extents mask, so that every voxel in the
+            extents mask has data at every time point.  Voxels that are not
+            are missing data from some or all TRs.
+
+            It is called the extents mask because it defines the 'bounding box'
+            of valid EPI data.  It is not quite a tiled box though, as motion
+            changes the location slightly, per TR.
+
+            See also -volreg_align_e2a, -volreg_tlrc_warp.
+            See also the 'extents' mask, in the "MASKING NOTE" section above.
+
         -volreg_regress_per_run : regress motion parameters from each run
 
-                default: regress motion parameters catenated across runs
-
-            By default, motion parameters from the volreg block are catenated
-            across all runs, providing 6 (assuming 3dvolreg) regressors of no
-            interest in the regression block.
-
-            With -volreg_regress_per_run, the motion parameters from each run
-            are used as separate regressors, providing a total of (6 * nruns)
-            regressors.
-
-            This allows for the magnitudes of the regressors to vary over each
-            run, rather than using a single (best) magnitude over all runs.
-            So more motion-correlated variance can be accounted for, at the
-            cost of the extra degrees of freedom (6*(nruns-1)).
+            === This option has been replaced by -regress_motion_per_run. ===
 
         -volreg_tlrc_adwarp     : warp EPI to +tlrc space at end of volreg step
 
@@ -4939,6 +5297,37 @@ g_help_string = """
             See "MASKING NOTE" and "DEFAULTS" for details.
             See also -blocks, -mask_apply.
 
+        -regress_apply_mot_types TYPE1 ... : specify motion regressors
+
+                e.g. -regress_apply_mot_types basic
+                e.g. -regress_apply_mot_types deriv
+                e.g. -regress_apply_mot_types demean deriv
+                default: demean
+
+            By default, the motion parameters from 3dvolreg are applied in the
+            regression, but after first removing the mean, per run.  This is
+            the application of the 'demean' regressors.
+
+            This option gives the ability to choose a combination of:
+
+                basic:  dfile.rall.1D - the parameters straight from 3dvolreg
+                        (or an external motion file, see -regress_motion_file)
+                demean: 'basic' params with the mean removed, per run
+                deriv:  per-run derivative of 'basic' params (de-meaned)
+
+         ** Note that basic and demean cannot both be used, as they would cause
+            multi-collinearity with the constant drift parameters.
+
+         ** Note also that basic and demean will give the same results, except
+            for the betas of the constant drift parameters (and subject to
+            computational precision).
+
+         ** A small side effect of de-meaning motion parameters is that the 
+            constant drift terms should evaluate to the mean baseline.
+
+            See also -regress_motion_file, -regress_no_motion_demean,
+            -regress_no_motion_deriv, -regress_no_motion.
+
         -regress_basis BASIS    : specify the regression basis function
 
                 e.g. -regress_basis 'BLOCK(4,1)'
@@ -5068,6 +5457,28 @@ g_help_string = """
             
             See '3dToutcount -help' for more details.
             See also -regress_skip_first_outliers, -regress_censor_motion.
+
+        -regress_motion_per_run : regress motion parameters from each run
+
+                default: regress motion parameters catenated across runs
+
+            By default, motion parameters from the volreg block are catenated
+            across all runs, providing 6 (assuming 3dvolreg) regressors of no
+            interest in the regression block.
+
+            With -regress_motion_per_run, the motion parameters from each run
+            are used as separate regressors, providing a total of (6 * nruns)
+            regressors.
+
+            This allows for the magnitudes of the regressors to vary over each
+            run, rather than using a single (best) magnitude over all runs.
+            So more motion-correlated variance can be accounted for, at the
+            cost of the extra degrees of freedom (6*(nruns-1)).
+
+            This option will apply to all motion regressors, including
+            derivatives (if requested).
+
+            ** This option was previously called -volreg_regress_per_run. **
 
         -regress_skip_first_outliers NSKIP : ignore the first NSKIP TRs
 
@@ -5267,14 +5678,6 @@ g_help_string = """
             '3dTstat -help'.
             See also -regress_basis, -regress_no_ideal_sum.
 
-        -regress_no_ideal_sum      : do not create sum_ideal.1D from regressors
-
-            By default, afni_proc.py will compute a 'sum_ideal.1D' file that
-            is the sum of non-polort and non-motion regressors from the
-            X-matrix.  This option prevents that step.
-
-            See also -regress_make_ideal_sum.
-
         -regress_motion_file FILE.1D  : use FILE.1D for motion parameters
 
                 e.g. -regress_motion_file motion.1D
@@ -5297,6 +5700,14 @@ g_help_string = """
             the 3dDeconvolve command in the output script.
 
             See also -regress_fitts_prefix.
+
+        -regress_no_ideal_sum      : do not create sum_ideal.1D from regressors
+
+            By default, afni_proc.py will compute a 'sum_ideal.1D' file that
+            is the sum of non-polort and non-motion regressors from the
+            X-matrix.  This option prevents that step.
+
+            See also -regress_make_ideal_sum.
 
         -regress_no_ideals      : do not generate ideal response curves
 
@@ -5343,11 +5754,43 @@ g_help_string = """
             This option prevents the program from adding the registration
             parameters (from volreg) to the 3dDeconvolve command.
 
+        -regress_no_motion_demean : do not compute de-meaned motion parameters
+
+                default: do compute them
+
+            Even if they are not applied in the regression, the default is to
+            compute de-meaned motion parameters.  These may give the user a
+            better idea of motion regressors, since their scale will not be
+            affected by jumps across run breaks or multi-run drift.
+
+            This option prevents the program from even computing such motion
+            parameters.  The only real reason to not do it is if there is some
+            problem with the command.
+
+        -regress_no_motion_deriv  : do not compute motion parameter derivatives
+
+                default: do compute them
+
+            Even if they are not applied in the regression, the default is to
+            compute motion parameter derivatives (and de-mean them).  These can
+            give the user a different idea about motion regressors, since the
+            derivatives are a better indication of per-TR motion.  Note that
+            the 'enorm' file that is created (and optionally used for motion
+            censoring) is basically made by collapsing (via the Euclidean Norm
+            - the square root of the sum of the squares) these 6 derivative
+            columns into one.
+
+            This option prevents the program from even computing such motion
+            parameters.  The only real reason to not do it is if there is some
+            problem with the command.
+
+                See also -regress_censor_motion.
+
         -regress_opts_3dD OPTS ...   : specify extra options for 3dDeconvolve
 
                 e.g. -regress_opts_3dD -gltsym ../contr/contrast1.txt  \\
                                        -glt_label 1 FACEvsDONUT        \\
-                                       -xjpeg Xmat                     \\
+                                       -jobs 6                         \\
                                        -GOFORIT 8
 
             This option allows the user to add extra options to the 3dDeconvolve

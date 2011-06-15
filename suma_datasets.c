@@ -1706,6 +1706,8 @@ int SUMA_AddDsetColAttr (  SUMA_DSET *dset, char *col_label,
             attrstr = SUMA_copy_string( 
                         NI_stat_encode(NI_STAT_CORREL, 
                                        pars[0], pars[1], pars[2]));
+         } else {
+            attrstr = SUMA_copy_string("none");
          }
          break;
       
@@ -7441,12 +7443,64 @@ byte * SUMA_indexlist_2_bytemask(
    }
 
    if (ign) {
-      fprintf(SUMA_STDERR,"%s:   %d values in indexlist ignored because they are >= N_mask of %d\n", FuncName, ign, N_mask);
+      fprintf(SUMA_STDERR,
+   "%s:   %d values in indexlist ignored because they are >= N_mask of %d\n",
+         FuncName, ign, N_mask);
    }
    
    BYE:
    if (N_inmask) *N_inmask = cnt;
    SUMA_RETURN(bmask);
+}
+
+byte * SUMA_Meshbmask_2_IndexListbmask(
+   byte *Mbmask, int N_Mbmask, int *ind_list, int N_ind_list, int *N_ILbmask)
+{
+   static char FuncName[]={"SUMA_Meshbmask_2_IndexListbmask"};
+   int i = 0, cnt, ign = 0; 
+   byte *ILbmask = NULL;
+
+   SUMA_ENTRY; 
+
+   cnt = -1; 
+   if (!ind_list) {
+      SUMA_S_Err("NULL ind_list");
+      goto BYE;
+   }
+   
+   if (!(ILbmask = (byte *)SUMA_calloc(N_ind_list, sizeof(byte)))) { 
+      SUMA_SL_Crit("Failed to allocate (macro)"); 
+      goto BYE;
+   }
+   
+   if (!Mbmask) { /* default, take whole thing */
+      memset(ILbmask, 1, sizeof(byte)*N_ind_list);
+      cnt = N_ind_list; 
+      goto BYE;
+   }
+   
+   for (i=0; i<N_ind_list; ++i) {
+      if (ind_list[i] < N_Mbmask) {
+         if (Mbmask[ind_list[i]]) {
+            ILbmask[i]=1; ++cnt;
+         }
+      } else {
+         if (!ign) {
+            SUMA_S_Warn("Values in ind_list exceed N_mask!\n"); 
+         }
+         ++ign;
+      }
+   }
+   
+   if (ign) {
+      fprintf(SUMA_STDERR,
+   "%s:   %d values in indexlist ignored because they are >= N_mask of %d\n",
+         FuncName, ign, N_Mbmask);
+   }
+   
+   BYE:
+   if (N_ILbmask) *N_ILbmask = cnt;
+   SUMA_RETURN(ILbmask);
 }
 
 /*!
@@ -7907,25 +7961,40 @@ void SUMA_BadOptimizerBadBad(void){ return; }
 
 #define SUMA_COL_FILL(vv, VV, tp){\
    if (!replacemask) {\
-      if (nip)  for (i=0; i<N_read; ++i) vv[i] = (tp)VV[nip[i]]; \
-      else for (i=0; i<N_read; ++i) vv[i] = (tp)VV[i];  \
+      if (nip) { \
+         for (i=0; i<N_read; ++i) { vv[i] = (tp)VV[nip[i]]; } \
+      } else { \
+         for (i=0; i<N_read; ++i) { vv[i] = (tp)VV[i]; } \
+      }\
    } else { \
-     if (nip)  \
-         for (i=0; i<N_read; ++i)   \
+     if (nip) { \
+         for (i=0; i<N_read; ++i)  { \
             if (replacemask[nip[i]]) { \
                vv[i] = (tp)VV[nip[i]]; \
-               SUMA_BadOptimizerBadBad(); /* Dec. 03 07 */ \
+                /* That call was turned off again because 
+                  this macro misbehaved again Jan. 2011.
+                  Putting brackets at all spots seems to have
+                  fixed the problem, and that call below seems
+                  unnecessary for now.    ZSS Jan 04 2011 */   \
+               /* SUMA_BadOptimizerBadBad();  Dec. 03 07 */ \
             }  \
-      else for (i=0; i<N_read; ++i) \
-            if (replacemask[i]) vv[i] = (int)VV[i];   \
+         }  \
+     } else {  \
+         for (i=0; i<N_read; ++i) { \
+            if (replacemask[i]) { \
+               vv[i] = (tp)VV[i];  /* (int) --> (tp) ZSS Jan 04 2011 */ \
+            } \
+         }  \
+     }   \
    }  \
 }
+
 int SUMA_Float2DsetCol (SUMA_DSET *dset, int ind, 
                         float *V, int FilledOnly, 
                         byte *replacemask)
 {
    static char FuncName[]={"SUMA_Float2DsetCol"};
-   int i = -1, N_read = -1, *iv = NULL, *nip=NULL, nnn=-1;
+   int i = -1, N_read = -1, *iv = NULL, *nip=NULL, nnn=-1, NodeDBG=0;
    float *fv = NULL;
    SUMA_COL_TYPE ctp;
    SUMA_VARTYPE vtp;
@@ -7947,6 +8016,19 @@ int SUMA_Float2DsetCol (SUMA_DSET *dset, int ind,
    }
    
    if (LocalHead) SUMA_ShowDset(dset, 0, NULL);
+
+   #if 0
+      /* MACROS below have given me hell with optimizer related troubles
+         Code left here for sanity checks */
+   NodeDBG =  136029;     
+   if (LocalHead) fprintf(stderr,"%s: Pre replacement, node %d=%f\n"
+                     "New value %f, mask = %d\n",
+               FuncName, NodeDBG, 
+               SUMA_GetDsetNodeValInCol2(dset,ind, 
+                                          NodeDBG, -1),
+               V[NodeDBG], replacemask ? replacemask[NodeDBG]:1);
+   #endif
+   
    ctp = SUMA_TypeOfDsetColNumb(dset, ind); 
    vtp = SUMA_ColType2TypeCast (ctp) ;
    nip = SUMA_GetNodeDef(dset);
@@ -7957,7 +8039,34 @@ int SUMA_Float2DsetCol (SUMA_DSET *dset, int ind,
          break;
       case SUMA_float:
          fv = (float *)dset->dnel->vec[ind];
-         SUMA_COL_FILL(fv, V, float);
+         #if 1 /* Assuming MACRO is not causing trouble */
+            SUMA_COL_FILL(fv, V, float);
+         #else /* Try this block to test optimizer bug */
+   if (!replacemask) {
+      if (nip) { for (i=0; i<N_read; ++i) { fv[i] = (float)V[nip[i]]; } }
+      else { for (i=0; i<N_read; ++i) { fv[i] = (float)V[i]; } }
+   } else { 
+     if (nip) { 
+         for (i=0; i<N_read; ++i)  { 
+            if (replacemask[nip[i]]) { 
+               fv[i] = (float)V[nip[i]]; 
+                /* That call was turned off again because 
+                  this macro misbehaved again Jan. 2011.
+                  Putting brackets at all spots seems to have
+                  fixed the problem, and that call below seems
+                  unnecessary for now.    ZSS Jan 04 2011 */   
+               /* SUMA_BadOptimizerBadBad();  Dec. 03 07 */ 
+            }  
+         }  
+     } else {  
+         for (i=0; i<N_read; ++i) { 
+            if (replacemask[i]) { 
+               fv[i] = (float)V[i];  /* (int) --> (float) ZSS Jan 04 2011 */ 
+            } 
+         }  
+     }   
+   }  
+         #endif
          break;
       default:
          SUMA_SL_Err("This type is not supported.\n");
@@ -7965,6 +8074,14 @@ int SUMA_Float2DsetCol (SUMA_DSET *dset, int ind,
          break;
    }
    
+   #if 0
+   if (LocalHead) fprintf(stderr,"%s: Post replacement, node %d=%f\n"
+                     "New value %f, mask = %d\n",
+               FuncName, NodeDBG, 
+               SUMA_GetDsetNodeValInCol2(dset,ind, 
+                                          NodeDBG, -1),
+               V[NodeDBG], replacemask ? replacemask[NodeDBG]:1);
+   #endif
    /* reset generic attributes */
    SUMA_AddGenDsetColAttr (dset, ctp, dset->dnel->vec[ind], 1, ind, 0);
   
@@ -8424,7 +8541,7 @@ SUMA_Boolean SUMA_isSameDsetColTypes(SUMA_DSET *dset1, SUMA_DSET *dset2)
          SUMA_RETURN(YUP); 
       }
    }
-   
+    
    /* try AFNI's */
    SUMA_LH("Fetching Type a la afni");
    cnm1 = NI_get_attribute(dset1->dnel, "ni_type");
@@ -10487,6 +10604,7 @@ int SUMA_is_RetinoAngle_dset(SUMA_DSET *dset)
    if (strstr(lblcp, "Polar Angle")) i = 1;
    else if (strstr(lblcp, "Eccentricity")) i = 1;
    else if (strncmp(lblcp, "Phz@", 4) == 0) i = 1;  
+   else if (strncmp(lblcp, "Phz_Delay", 5) == 0) i = 1;
    
    SUMA_free(lblcp);
    SUMA_RETURN(i);
@@ -11670,6 +11788,7 @@ char *SUMA_help_basics()
    SUMA_RETURN(s);
 }
 
+
 char *SUMA_help_talk()
 {
    SUMA_STRING *SS = NULL;
@@ -11679,24 +11798,26 @@ char *SUMA_help_talk()
    SUMA_ENTRY;
    
    SS = SUMA_StringAppend(NULL, NULL);
-   SS = SUMA_StringAppend(SS,
-                  "  SUMA communication options:\n"
-                  "      -talk_suma: Send progress with each iteration to SUMA.\n"
-                  "      -refresh_rate rps: Maximum number of updates to SUMA per second.\n"
-                  "                         The default is the maximum speed.\n"
-                  "      -send_kth kth: Send the kth element to SUMA (default is 1).\n"
-                  "                     This allows you to cut down on the number of elements\n"
-                  "                     being sent to SUMA.\n" 
-                  "      -sh <SumaHost>: Name (or IP address) of the computer running SUMA.\n"
-                  "                      This parameter is optional, the default is 127.0.0.1 \n"
-                  "      -ni_text: Use NI_TEXT_MODE for data transmission.\n"
-                  "      -ni_binary: Use NI_BINARY_MODE for data transmission.\n"
-                  "                  (default is ni_binary).\n"
-                  "      -feed_afni: Send updates to AFNI via SUMA's talk.\n"
-                  "\n");
+   SS = SUMA_StringAppend_va(SS,
+"  SUMA communication options:\n"
+"      -talk_suma: Send progress with each iteration to SUMA.\n"
+"      -refresh_rate rps: Maximum number of updates to SUMA per second.\n"
+"                         The default is the maximum speed.\n"
+"      -send_kth kth: Send the kth element to SUMA (default is 1).\n"
+"                     This allows you to cut down on the number of elements\n"
+"                     being sent to SUMA.\n" 
+"      -sh <SumaHost>: Name (or IP address) of the computer running SUMA.\n"
+"                      This parameter is optional, the default is 127.0.0.1 \n"
+"      -ni_text: Use NI_TEXT_MODE for data transmission.\n"
+"      -ni_binary: Use NI_BINARY_MODE for data transmission.\n"
+"                  (default is ni_binary).\n"
+"      -feed_afni: Send updates to AFNI via SUMA's talk.\n"
+"%s"
+"\n", get_np_help());
    SUMA_SS2S(SS,s);               
    SUMA_RETURN(s);
 }
+
 char *SUMA_help_dset()
 {
    SUMA_STRING *SS = NULL;
@@ -12088,12 +12209,12 @@ static ENV_SPEC envlist[] = {
    {  "Setup the color mixing mode (ORIG, MOD1) ",
       "SUMA_ColorMixingMode",
       "ORIG" },
-   {  "Port for communicating with AFNI\n"
-      " Listening ports are derived from SUMA_AFNI_TCP_PORT\n"
-      " Listening port i\n"
-      " SUMA_AFNI_TCP_PORT + i (i > 0)",
+   {  "** OBSOLETE: Port for communicating with AFNI\n"
+      "              Listening ports are derived from SUMA_AFNI_TCP_PORT\n"
+      "              Listening port i\n"
+      "              SUMA_AFNI_TCP_PORT + i (i > 0)",
       "SUMA_AFNI_TCP_PORT",
-      "53211" },
+      "0" /* used to be 53211 */},
    {  "Warn before closing with the Escape key (YES/NO)",
       "SUMA_WarnBeforeClose",
       "YES" },
@@ -14053,6 +14174,32 @@ NI_str_array * SUMA_NI_decode_string_list( char *ss , char *sep )
    sar->num = num ; return sar ;
 }
 
+NI_str_array * SUMA_NI_string_vec_to_str_array( char **ss , int nss )
+{
+   static char FuncName[]={"SUMA_NI_string_vec_to_str_array"};
+   NI_str_array *sar ;
+   int num ,id, nn=0 ;
+
+   if( ss == NULL || nss == 0 ) return NULL ; /* bad input */
+
+   sar = NI_malloc(NI_str_array, sizeof(NI_str_array)) ;  /* create output */
+   sar->num = nss ; sar->str=NULL;
+   sar->str = NI_realloc( sar->str , char*, sizeof(char *)*nss ) ;
+
+   /* scan for sub-strings */
+
+   num = 0 ;
+   while( num < nss ){
+      if (ss[num]) nn = strlen(ss[num]);
+      else nn=0;
+      sar->str[num] = NI_malloc(char, (nn+1)*sizeof(char)) ;                 
+      memcpy(sar->str[num],ss[num], nn) ;  
+      sar->str[num++][nn] = '\0' ;                   
+   }
+
+   return sar ;
+}
+
 /*--------------------------------------------------------------------*/
 /*! \brief Returns a copy of the ith string in a string list. 
 \sa SUMA_NI_decode_string_list ( on which this function is based)
@@ -14424,7 +14571,9 @@ int SUMA_AddColAtt_CompString(NI_element *nel, int col,
       cs = (char *)NI_realloc(cs, char,
                   (n0+n1+n2+1)*sizeof(char));
       i = 0; while(sep[i]) { cs[n0++] = sep[i]; ++i; }            
-      i = 0; while(lbl[i]) { cs[n0++] = lbl[i]; ++i; }
+      if (n2) {
+         i = 0; while(lbl[i]) { cs[n0++] = lbl[i]; ++i; }
+      }
       cs[n0] = '\0';
       rc = (char **)(nel->vec[0]);
       rc[0] = cs; 
@@ -14447,11 +14596,14 @@ int SUMA_AddColAtt_CompString(NI_element *nel, int col,
          SUMA_NEL_REPLACE_STRING(nel, 0, 0, ns); 
       }
    } else { /* insert in middle */
+      int n2;
+      if (lbl) n2 = strlen(lbl); else n2 = 0;
       nisa->str = NI_realloc( nisa->str, char*, sizeof(char *)*(nisa->num+1) ) ;
       /* now move all above col to end */
       for (i=nisa->num-1; i >= col; --i) nisa->str[i+1] = nisa->str[i];
-      nisa->str[col] = (char*)NI_malloc(char, (strlen(lbl)+1)*sizeof(char));
-      strcpy( nisa->str[col],  lbl ); 
+      nisa->str[col] = (char*)NI_malloc(char, (n2+1)*sizeof(char));
+      if (lbl) strcpy( nisa->str[col],  lbl ); 
+      else nisa->str[col][0] = '\0';
       ++nisa->num;
       if (LocalHead) 
          fprintf( SUMA_STDERR,

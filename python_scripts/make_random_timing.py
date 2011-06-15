@@ -671,9 +671,12 @@ g_history = """
     1.1  May 01, 2010: added -max_consec for Liat of Cornell
     1.2  Aug 24, 2010: small updates for 3dDeconvolve -nodata script
          - update polort and write -nodata TR using 3 decimal places
+    1.3  Mar 09, 2011: fixed bug writing comment text in 3dD script
+         - noted by Z Saad and P Kaskan
+    1.4  Jun 08, 2011: tr-lock test: fixed print and added min_rest to durs
 """
 
-g_version = "version 1.2, August 24, 2010"
+g_version = "version 1.4, June 8, 2011"
 
 gDEF_VERB       = 1      # default verbose level
 gDEF_T_GRAN     = 0.1    # default time granularity, in seconds
@@ -963,10 +966,13 @@ class RandTiming:
             self.t_gran = self.tr;
             if self.verb > 1:
                 print '++ setting t_gran to TR, %0.1f s' % self.tr
-            if not UTIL.vals_are_multiples(self.tr, self.stim_dur, digits=4):
-                print '** want TR-locked, but stim durations are not' + \
-                      ' multiples of TR %.3f\n' +                       \
-                      '   duration(s): %s' % (self.tr, self.stim_dur)
+            # fixed print and added min_rest to durations   8 Jun, 2011
+            sd = [dur + self.min_rest for dur in self.stim_dur]
+            if not UTIL.vals_are_multiples(self.tr, sd, digits=4):
+                print '** want TR-locked, but stim durations are not'  \
+                      ' multiples of TR %.3f' % self.tr
+                print '   min_rest + duration(s): %s' % sd
+                return 1
 
         # if t_gran is still not set, apply the default
         if not self.t_gran: self.t_gran = gDEF_T_GRAN
@@ -1182,9 +1188,9 @@ class RandTiming:
             c2 += self.make_3dd_contr_str(prefix='    ')
         c2 += '    -x1D X.xmat.1D\n\n'
 
+        first = (polort+1) * len(self.run_time)
         if len(self.run_time) > 1:
             # note first non-poly baseline index
-            first = (polort+1) * len(self.run_time)
             c2 += '# compute the sum of non-baseline regressors\n'           \
                   "3dTstat -sum -prefix sum_ideal.1D X.xmat.1D'[%d..$]'\n\n" \
                   % first

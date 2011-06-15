@@ -379,8 +379,11 @@ DUMP_MAT44("MRILIB_dicom_matrix",MRILIB_dicom_matrix) ;
          user_inputs.TR     = MRILIB_tr ;
          user_inputs.tunits = UNITS_SEC_TYPE ;
          if( user_inputs.tpattern != NULL ){
-           for( ii=0 ; ii < user_inputs.nzz ; ii++ ){
-             user_inputs.tpattern[ii] *= MRILIB_tr ;
+           /* if no g_siemens_times use, scale tpattern by TR   13 Apr 2011 */
+           if( user_inputs.tpattern[0] != -666.0 ) {
+              for( ii=0 ; ii < user_inputs.nzz ; ii++ ){
+                user_inputs.tpattern[ii] *= MRILIB_tr ;
+              }
            }
          }
          printf("++ Setting TR=%gs from image header\n",MRILIB_tr) ;
@@ -393,6 +396,18 @@ DUMP_MAT44("MRILIB_dicom_matrix",MRILIB_dicom_matrix) ;
    if( user_inputs.ntt > 1 && user_inputs.TR <= 0.0 ){
      printf("++ Setting TR=1s by default\n") ;
      user_inputs.TR = 1.0 ; user_inputs.tunits = UNITS_SEC_TYPE ;
+   }
+
+   /* now that MRILIB_tr has been applied, check for use of siemens slice
+    * timing                                          13 Apr 2011 [rickr] */
+   if( user_inputs.ntt && user_inputs.tpattern
+                       && user_inputs.tpattern[0] == -666.0 ) {
+      int ii;
+      /* if Siemens times seem valid, use them */
+      if( valid_g_siemens_times(user_inputs.nzz, user_inputs.TR, 2) ) {
+         for( ii=0; ii < user_inputs.nzz ; ii++ )
+            user_inputs.tpattern[ii] = g_siemens_timing_times[ii];
+      } else all_good = False;
    }
 
    if( all_good && !user_inputs.nosave ){      /* done! */
@@ -2762,6 +2777,14 @@ printf("decoded %s to give zincode=%d bot=%f top=%f\n",Argv[nopt],
                   fscanf( fp , "%f" , user_inputs.tpattern + ii ) ;
                fclose( fp ) ;
             }
+         } else if( nzz > 1 && (strcmp(tpattern,"FROM_IMAGE")==0) ) {
+
+            /*--- expect to get the slice timing from image files ---*/
+            /*--- (for now this is only for Siemens mosaic)       ---*/
+
+            /* must exorcise timing flag later */
+            for( ii=0 ; ii < nzz ; ii++ ) user_inputs.tpattern[ii] = -666.0;
+
          } else if( nzz > 1 &&
                    (strcmp(tpattern,"alt+z")==0 || strcmp(tpattern,"altplus")==0) ){
 
@@ -2969,6 +2992,13 @@ printf("decoded %s to give zincode=%d bot=%f top=%f\n",Argv[nopt],
          nopt++ ; continue ;  /* go to next arg */
       }
 
+      /*----- -use_old_mosaic_code -----*/  /* 23 Dec 2010 [rickr] */
+
+      if( strcmp(Argv[nopt],"-use_old_mosaic_code") == 0 ){
+         use_new_mosaic_code = 0 ;  /* forget mri_process_siemens.c funcs */
+         nopt++ ; continue ;  /* go to next arg */
+      }
+
       /*--- illegal option ---*/
 
       printf("** ILLEGAL OPTION: %s\n\n",Argv[nopt]) ;
@@ -3092,14 +3122,15 @@ void Syntax()
     "    tpattern = Code word that identifies how the slices (z-direction)\n"
     "               were gathered in time.  The values that can be used:\n"
     "\n"
-    "       alt+z = altplus   = alternating in the plus direction\n"
-    "       alt+z2            = alternating, starting at slice #1\n"
-    "       alt-z = altminus  = alternating in the minus direction\n"
-    "       alt-z2            = alternating, starting at slice #nz-2\n"
-    "       seq+z = seqplus   = sequential in the plus direction\n"
-    "       seq-z = seqminus  = sequential in the minus direction\n"
-    "       zero  = simult    = simultaneous acquisition\n"
-    "               @filename = read temporal offsets from 'filename'\n"\
+    "       alt+z = altplus    = alternating in the plus direction\n"
+    "       alt+z2             = alternating, starting at slice #1\n"
+    "       alt-z = altminus   = alternating in the minus direction\n"
+    "       alt-z2             = alternating, starting at slice #nz-2\n"
+    "       seq+z = seqplus    = sequential in the plus direction\n"
+    "       seq-z = seqminus   = sequential in the minus direction\n"
+    "       zero  = simult     = simultaneous acquisition\n"
+    "               FROM_IMAGE = (try to) read offsets from input images\n"\
+    "               @filename  = read temporal offsets from 'filename'\n"\
     "\n"
     "    For example if nz = 5 and TR = 1000, then the inter-slice\n"
     "    time is taken to be dt = TR/nz = 200.  In this case, the\n"
@@ -3266,6 +3297,12 @@ void Syntax()
     "      data from disk, but instead to create nz nx*ny images filled\n"
     "      with zeros.  One application of this is to make it easy to create\n"
     "      a dataset of a specified geometry for use with other programs.\n"
+    "  * ENVIRONMENT VARIABLE: You can set an environment variable\n"
+    "      (e.g., AFNI_IMSIZE_1) to put a '3D:' type of prefix in front\n"
+    "      of any filename whose file has a given size.  For example,\n"
+    "        setenv AFNI_IMSIZE_1 16384=3D:0:0:64:64:1\n"
+    "      means that any input file of size 16384 bytes will be read\n"
+    "      as a 64x64 image of floats.\n"
     "\n"
     "The 'raw pgm' image format is also supported; it reads data into 'byte' images.\n"
     "\n"
@@ -3500,6 +3537,9 @@ void Syntax()
     "  -use_last_elem\n"
     "    If present, search DICOM images for the last occurance of each\n"
     "    element, not the first.\n"
+    "  -use_old_mosaic_code\n"
+    "    If present, do not use the Dec 2010 updates to siemens mosaic code.\n"
+    "    By default, use the new code if this option is not provided.\n"
    ) ;
 
    printf(
@@ -3743,7 +3783,8 @@ ENTRY("T3D_quit_CB") ;
 
      EXRETURN ;
   }
-  AFNI_speak("Done",0) ;
+  if( lrand48()%9 == 0 )
+    MCW_melt_widget( wset.topform ) ;  /* 18 Feb 2011 */
   exit(0) ;
 }
 
@@ -4107,6 +4148,16 @@ printf("T3D_read_images: input file count = %d; expanded = %d\n",nim,gnim) ;
       arr = mri_read_file_delay( gname[0] ) ;
    else
       arr = mri_read_file( gname[0] ) ;
+
+   /* maybe there is siemens slice timing info       13 Apr 2011 [rickr]
+    * Do not fully test or apply times until MRILIB_tr has been applied,
+    * but if user wants to populate FROM_IMAGE, check that times exist.
+    * Also, be sure there is a tpattern to inspect.   4 May 2011 [rickr] */
+   if( time_dep && user_inputs.tpattern && user_inputs.tpattern[0] == -666 ){
+      populate_g_siemens_times(user_inputs.tunits);
+      if( g_siemens_timing_nused <= 0 )
+         ERROR_exit("No timing read for 'FROM_IMAGE' timing pattern\n");
+   }
 
    if( arr == NULL || arr->num == 0 )
      ERROR_exit("Cannot read first file '%s'",gname[0]) ;

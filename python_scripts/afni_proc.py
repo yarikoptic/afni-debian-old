@@ -229,9 +229,41 @@ g_history = """
         - fixed problem with timing file tests on 'empty' files with '*'
         - problem noted by C Deveney and R Momenan
     2.44 Dec 16 2010 : small changes to file type warnings
+    2.45 Jan 13 2011 : small changes to warnings for missing stimulus files
+    2.46 Mar 07 2011 : make proc script executable
+    2.47 Mar 14 2011 : if no mask but have extents, apply in scale
+    2.48 Mar 15 2011 : use X.nocensor.1D (just to save 2 spaces)
+    2.49 Apr 22 2011 :
+        - if manual tlrc and -volreg_tlrc_adwarp, also transform extents mask
+          (noted by J Britton)
+        - if -regress_reml_exec, insert 3dClustSim table in stats_REML
+          (noted by R Momenan)
+    2.50 Apr 29 2011 :
+        - added -align_epi_strip_method for align_epi_anat.py skull strip
+        - added help for -volreg_no_extent_mask
+        - no EPI Automask is not a comment, not a warning
+        - check that process blocks are unique (except for 'empty')
+    2.51 May 31 2011 :
+        - re-worked motion as prep for more motion options
+        - replaced -volreg_regress_per_run with -regress_motion_per_run
+        - made uniq_list_as_dsets() a warning, not an error (for J Britton)
+    2.52 Jun 02 2011 :
+        - by default, demean and deriv motion parameters are simply created
+        - by default, demean motion parameters are applied in the regression
+          (replacing the original 'basic' parameters, which should have no
+          change in betas of interest, just the constant polort betas)
+        - added -regress_apply_mot_types to specify motion types for regression
+        - added -regress_no_motion_demean and -regress_no_motion_deriv
+    2.53 Jun 02 2011 :
+        - added -regress_make_cbucket
+        - include view in 3dcopy for single run extents mask
+          (so there are no missing view warnigns, done for J Jarcho)
+        - make regress TSNR dataset by default (added option -compute_tsnr)
+    2.54 Jun 03 2011: volreg tsnr is not default
+        - added -volreg_compute_tsnr (def no), -regress_compute_tsnr (def yes)
 """
 
-g_version = "version 2.44, Dec 16, 2010"
+g_version = "version 2.54, June 3, 2011"
 
 # version of AFNI required for script execution
 g_requires_afni = "4 Nov 2010"
@@ -283,8 +315,19 @@ class SubjProcSream:
 
         self.vr_ext_base= None          # name of external volreg base 
         self.vr_ext_pre = 'external_volreg_base' # copied volreg base prefix
+
         self.mot_labs   = []            # labels for motion params
-        self.mot_files  = ['dfile.rall.1D'] # motion parameter file list
+        # motion parameter file (across all runs)
+        self.mot_file   = 'dfile.rall.1D' # either mot_default or mot_extern
+        # for regression, maybe just mot_file, maybe per run, external
+        # or might include demean and/or derivatives
+        self.mot_regs   = []            # motion files to use in regression
+        self.mot_per_run= 0             # motion regression per run
+        self.mot_default= ''            # probably 'dfile.rall.1D', if set
+        self.mot_extern = ''            # from -regress_motion_file
+        self.mot_demean = ''            # from demeaned motion file
+        self.mot_deriv  = ''            # motion derivatives
+
         self.opt_src    = 'cmd'         # option source
         self.subj_id    = 'SUBJ'        # hopefully user will replace this
         self.subj_label = '$subj'       # replace this for execution
@@ -484,6 +527,14 @@ class SubjProcSream:
         self.valid_opts.add_opt('-tshift_opts_ts', -1, [],
                         helpstr='additional options directly for 3dTshift')
 
+        self.valid_opts.add_opt('-align_epi_ext_dset', 1, [],
+                        helpstr='external EPI volume for align_epi_anat.py')
+        self.valid_opts.add_opt('-align_opts_aea', -1, [],
+                        helpstr='additional options for align_epi_anat.py')
+        self.valid_opts.add_opt('-align_epi_strip_method', 1, [],
+                        acplist=['3dSkullStrip','3dAutomask','None'],
+                        helpstr="specify method for 'skull stripping' the EPI")
+
         self.valid_opts.add_opt('-tlrc_anat', 0, [],
                         helpstr='run @auto_tlrc on anat from -copy_anat')
         self.valid_opts.add_opt('-tlrc_base', 1, [],
@@ -497,11 +548,6 @@ class SubjProcSream:
         self.valid_opts.add_opt('-tlrc_suffix', 1, [],
                         helpstr='suffix applied in @auto_tlrc (default: NONE)')
 
-        self.valid_opts.add_opt('-align_opts_aea', -1, [],
-                        helpstr='additional options for align_epi_anat.py')
-        self.valid_opts.add_opt('-align_epi_ext_dset', 1, [],
-                        helpstr='external EPI volume for align_epi_anat.py')
-
         self.valid_opts.add_opt('-volreg_align_e2a', 0, [],
                         helpstr="align EPI to anatomy (via align block)")
         self.valid_opts.add_opt('-volreg_align_to', 1, [],
@@ -511,6 +557,9 @@ class SubjProcSream:
                         helpstr='external dataset to use as volreg base')
         self.valid_opts.add_opt('-volreg_base_ind', 2, [],
                         helpstr='run/sub-brick indices for volreg')
+        self.valid_opts.add_opt('-volreg_compute_tsnr', 1, [],
+                        acplist=['yes','no'],
+                        helpstr='compute TSNR datasets (yes/no) of volreg run1')
         self.valid_opts.add_opt('-volreg_interp', 1, [],
                         helpstr='interpolation method used in volreg')
         self.valid_opts.add_opt('-volreg_no_extent_mask', 0, [],
@@ -569,6 +618,12 @@ class SubjProcSream:
                         helpstr="one basis function per stimulus class")
         self.valid_opts.add_opt('-regress_basis_normall', 1, [],
                         helpstr="specify magnitude of basis functions")
+        self.valid_opts.add_opt('-regress_compute_tsnr', 1, [],
+                        acplist=['yes','no'],
+                        helpstr='compute TSNR datasets (yes/no) after regress')
+        self.valid_opts.add_opt('-regress_make_cbucket', 1, [],
+                        acplist=['yes','no'],
+                        helpstr="request cbucket dataset of all betas (yes/no)")
 
         self.valid_opts.add_opt('-regress_censor_motion', 1, [],
                         helpstr="censor TR if motion derivative exceeds limit")
@@ -602,8 +657,19 @@ class SubjProcSream:
                         helpstr="add offset when converting to timing")
         self.valid_opts.add_opt('-regress_use_stim_files', 0, [],
                         helpstr="do not convert stim_files to timing")
-        self.valid_opts.add_opt('-regress_motion_file', -1, [],
-                        helpstr="files to apply as motion regressors")
+
+        self.valid_opts.add_opt('-regress_apply_mot_types', -1, [],
+                        acplist=['basic','demean','deriv'],
+                        helpstr="specify which motion parameters to apply")
+        self.valid_opts.add_opt('-regress_motion_file', 1, [],
+                        helpstr="external file to apply as motion regressors")
+        self.valid_opts.add_opt('-regress_motion_per_run', 0, [],
+                        helpstr="apply all motion parameters per run")
+        self.valid_opts.add_opt('-regress_no_motion_demean', 0, [],
+                        helpstr="do not compute demeaned motion params")
+        self.valid_opts.add_opt('-regress_no_motion_deriv', 0, [],
+                        helpstr="do not compute motion param derivatives")
+
         self.valid_opts.add_opt('-regress_extra_stim_files', -1, [],
                         helpstr="extra -stim_files to apply")
         self.valid_opts.add_opt('-regress_extra_stim_labels', -1, [],
@@ -827,6 +893,12 @@ class SubjProcSream:
         # if user has supplied options for blocks that are not used, fail
         if self.opts_include_unused_blocks(blocks, 1): return 1
 
+        # check for unique blocks (except for 'empty')
+        if not self.blocks_are_unique(blocks):
+            print '** blocks must be unique\n'  \
+                  '   (is there overlap between -blocks and -do_block?)\n'
+            return 1
+
         # call db_mod_functions
         for label in blocks:
             rv = self.add_block(label)
@@ -855,7 +927,8 @@ class SubjProcSream:
             print 'error: dsets have not been specified (consider -dsets)'
             return 1
 
-        if not uniq_list_as_dsets(self.dsets, 1): return 1
+        # no errors, just warn the user (for J Britton)   25 May 2011
+        uniq_list_as_dsets(self.dsets, 1)
         self.check_block_order()
 
     def add_block_to_list(self, blocks, bname, adj=None, dir=0):
@@ -1027,6 +1100,7 @@ class SubjProcSream:
         if rv: errs += 1
 
         if self.fp: self.fp.close()
+        os.chmod(self.script, 0755)     # make executable
 
         if errs > 0:
             # default to removing any created script
@@ -1043,7 +1117,7 @@ class SubjProcSream:
                     print "** masking single subject EPI is not recommended"
                     print "   (see 'MASKING NOTE' from the -help for details)"
                 else:
-                    print "** masking EPI is no longer the default"
+                    print "-- using default: will not apply EPI Automask"
                     print "   (see 'MASKING NOTE' from the -help for details)"
 
             if self.runs == 1:
@@ -1137,6 +1211,25 @@ class SubjProcSream:
         if block: return self.blocks.index(block)
         return None
 
+    def blocks_are_unique(self, blocks, exclude_list=['empty'], whine=1):
+        """return whether the blocs are unique
+                - ignore blocks in exclude_list
+                - if whine, complain on repeats
+           Process one by one, so we know what to complain about.
+        """
+
+        unique = 1
+        checked = []
+        for block in blocks:
+            if block in exclude_list: continue
+            if block in checked:
+                if whine: print "** warning: block '%s' used multiple times" \
+                                % block
+                unique = 0
+            else: checked.append(block)
+
+        return unique
+
     def opts_include_unused_blocks(self, blocks, whine=1):
         """return whether options refer to blocks that are not being used"""
 
@@ -1166,31 +1259,45 @@ class SubjProcSream:
                 - despike < ricor < tshift/volreg
                 - blur < scale
                 - tshift/volreg/blur/scale < regress
+           return the number of errors
         """
+        errs = 0
         if self.find_block('align'):
             if not self.blocks_ordered('align', 'volreg'):
+                errs += 1
                 print "** warning: 'align' should preceed 'volreg'"
             if not self.blocks_ordered('align', 'tlrc'):
+                errs += 1
                 print "** warning: 'align' should preceed 'tlrc'"
         if self.find_block('ricor'):
             if not self.blocks_ordered('despike', 'ricor', must_exist=1):
+                errs += 1
                 print "** warning: 'despike' should preceed 'ricor'"
             if not self.blocks_ordered('ricor', 'tshift'):
+                errs += 1
                 print "** warning: 'tshift' should preceed 'ricor'"
             if not self.blocks_ordered('ricor', 'volreg'):
+                errs += 1
                 print "** warning: 'volreg' should preceed 'ricor'"
         if self.find_block('blur'):
             if not self.blocks_ordered('blur', 'scale'):
+                errs += 1
                 print "** warning: 'blur' should preceed 'scale'"
         if self.find_block('regress'):
             if not self.blocks_ordered('tshift', 'regress'):
+                errs += 1
                 print "** warning: 'tshift' should preceed 'regress'"
             if not self.blocks_ordered('volreg', 'regress'):
+                errs += 1
                 print "** warning: 'volreg' should preceed 'regress'"
             if not self.blocks_ordered('blur', 'regress'):
+                errs += 1
                 print "** warning: 'blur' should preceed 'regress'"
             if not self.blocks_ordered('scale', 'regress'):
+                errs += 1
                 print "** warning: 'scale' should preceed 'regress'"
+
+        return errs
 
     def blocks_ordered(self, name0, name1, must_exist=0):
         """check that the name0 block comes before the name1 block
@@ -1324,6 +1431,14 @@ class SubjProcSream:
             str = "# copy over the external align_epi_anat.py EPI volume\n" \
                   "3dbucket -prefix %s/%s '%s'\n" %         \
                   (self.od_var, self.align_epre, self.align_ebase)
+            self.fp.write(add_line_wrappers(str))
+            self.fp.write("%s\n" % stat_inc)
+
+        opt = self.user_opts.find_opt('-regress_motion_file')
+        if opt and len(opt.parlist) > 0:
+            str = '# copy external motion file into results dir\n' \
+                  'cp %s %s\n' %                                   \
+                      (' '.join(quotize_list(opt.parlist,'')),self.od_var)
             self.fp.write(add_line_wrappers(str))
             self.fp.write("%s\n" % stat_inc)
 

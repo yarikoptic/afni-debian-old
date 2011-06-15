@@ -255,9 +255,17 @@ void hrfdecon_func( int num , double to,double dt , float *vec )
    }
 
    despike9_func( num , to,dt , vec ) ;
+
+   { float *vlam = (float *)malloc(sizeof(float)*(nbase+num)) ;
+     for( ii=0 ; ii < num   ; ii++ ) vlam[ii]     = 9.999f ;
+     for( ii=0 ; ii < nbase ; ii++ ) vlam[ii+num] = 0.0f ;
+     THD_lasso_fixlam(9.999f) ;
+     THD_lasso_setlamvec( nbase+num , vlam ) ; free(vlam) ;
+   }
+
    bfit = THD_deconvolve( num , vec ,
                           0 , nkern-1 , kern ,
-                          nbase , base , 2 , NULL , 0 , 7 , -666.0f ) ;
+                          nbase , base , -1 , NULL , 0 , 7 , -3.333f ) ;
 
    if( bfit != NULL ){
      memcpy(vec,bfit->ar,sizeof(float)*num) ;
@@ -280,7 +288,7 @@ void absfft_func( int num , double to,double dt, float *vec )
    if( num < 2 ) return ;
    if( num != numold ){
      numold = num ;
-     ncx    = csfft_nextup(numold) ;
+     ncx    = csfft_nextup_even(numold) ;
      cx     = (complex *)realloc(cx,sizeof(complex)*ncx) ;
    }
 
@@ -775,8 +783,8 @@ void fft2D_absfunc( int nx , int ny , double dx, double dy, float *ar )
 
    if( nx < 5 || ny < 5 ) return ;
 
-   nxup = csfft_nextup_one35(nx) ;  /* get FFT size */
-   nyup = csfft_nextup_one35(ny) ;
+   nxup = csfft_nextup_even(nx) ;  /* get FFT size */
+   nyup = csfft_nextup_even(ny) ;
 
    cxar = (complex *) malloc(sizeof(complex)*nxup*nyup) ;
 
@@ -826,8 +834,8 @@ void fft2D_phasefunc( int nx , int ny , double dx, double dy, float *ar )
 
    if( nx < 5 || ny < 5 ) return ;
 
-   nxup = csfft_nextup_one35(nx) ;  /* get FFT size */
-   nyup = csfft_nextup_one35(ny) ;
+   nxup = csfft_nextup_even(nx) ;  /* get FFT size */
+   nyup = csfft_nextup_even(ny) ;
 
    cxar = (complex *) malloc(sizeof(complex)*nxup*nyup) ;
 

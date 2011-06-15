@@ -42,6 +42,9 @@ static Widget wtemp ;
      if( sb != NULL ) sb(gr,gr->getaux,&scb) ;                                \
  } while(0)
 
+#undef  BOXOFF
+#define BOXOFF 9  /* BOX vertical offset (pixels) */
+
 /*------------------------------------------------------------*/
 /*! Create a new MCW_grapher window and structure.            */
 
@@ -218,6 +221,7 @@ ENTRY("new_MCW_grapher") ;
                        "L      = turn AFNI logo on/off\n"
                        "v/V    = Video up/down in time\n"
                        "r/R    = Video ricochet up/down in time\n"
+                       "F5     = Meltdown!\n"
                        "\n"
                        "See the 'Opt' menu for other keypress actions\n"
                        "and for other options to control graph display."
@@ -894,10 +898,10 @@ ENTRY("new_MCW_grapher") ;
    /** initialize the internal parameters **/
 
 if(PRINT_TRACING)
-{ char str[128] ;
-  sprintf(str,"STATUS: num_series=%d nx=%d ny=%d",
-          grapher->status->num_series,grapher->status->nx,grapher->status->ny ) ;
-  STATUS(str) ; }
+ { char str[128] ;
+   sprintf(str,"STATUS: num_series=%d nx=%d ny=%d",
+           grapher->status->num_series,grapher->status->nx,grapher->status->ny ) ;
+   STATUS(str) ; }
 
    grapher->fscale      =  0 ;
    grapher->mat         =  0 ;
@@ -979,6 +983,62 @@ STATUS("realizing widgets") ;
         end_fd_graph_CB , (XtPointer) grapher ) ;
 
    RETURN(grapher) ;
+}
+
+/*--------------------------------------------------------------------------*/
+/* Get the label for a time point. [18 Apr 2011]
+*//*------------------------------------------------------------------------*/
+
+char * GRA_getlabel( MCW_grapher *grapher , int index )
+{
+   char *lab = NULL ;
+
+   CALL_getser( grapher , index,graCR_getlabel , char * , lab ) ;
+
+   if( lab == NULL || *lab == '\0' ) return NULL ;
+   if( *lab == '?' || *lab == '#'  ) return NULL ;
+   return lab ;
+}
+
+/*--------------------------------------------------------------------------*/
+/* Get the float-valued time series for graphing.  [18 Apr 2011]
+*//*------------------------------------------------------------------------*/
+
+MRI_IMAGE * GRA_getseries( MCW_grapher *grapher , int index )
+{
+   MRI_IMAGE *tsim ;
+
+   CALL_getser( grapher , index,graCR_getseries , MRI_IMAGE *,tsim ) ;
+
+   if( tsim == NULL ) return NULL;
+   if( tsim->nx < 1 ){ mri_free(tsim); return NULL; }
+
+   if( tsim->kind == MRI_complex ){
+     MRI_IMAGE *qim ;
+     char *eee = my_getenv("AFNI_GRAPH_CX2R") ;
+     if( eee == NULL ) eee = "A" ;
+     switch( *eee ){
+       default:
+       case 'A':
+       case 'a':  qim = mri_complex_abs(tsim)  ; break ;
+
+       case 'P':
+       case 'p':  qim = mri_complex_phase(tsim); break ;
+
+       case 'r':
+       case 'R':  qim = mri_complex_real(tsim) ; break ;
+
+       case 'i':
+       case 'I':  qim = mri_complex_imag(tsim) ; break ;
+     }
+     mri_free(tsim) ; tsim = qim ;
+
+   } else if( tsim->kind != MRI_float ){
+     MRI_IMAGE *qim = mri_to_float(tsim) ;
+     mri_free(tsim) ; tsim = qim ;
+   }
+
+   return tsim ;
 }
 
 /*----------------------------------
@@ -1235,8 +1295,22 @@ void GRA_draw_circle( MCW_grapher *grapher , int xc , int yc , int rad )
    xb = xc-rad ; yb = yc-rad ; ww = 2*rad ;
    XDrawArc( grapher->dc->display , XtWindow(grapher->draw_fd) ,
              grapher->dc->myGC , xb,yb , ww,ww , 0,360*64 ) ;
+   return ;
 }
 
+/*---------------------------------------------------------------------------*/
+
+void GRA_draw_disk( MCW_grapher *grapher , int xc , int yc , int rad )
+{
+   int xb,yb ;
+   unsigned int ww ;
+
+   if( rad < 0 ) rad = 0 ;
+   xb = xc-rad ; yb = yc-rad ; ww = 2*rad ;
+   XFillArc( grapher->dc->display , grapher->fd_pxWind ,
+             grapher->dc->myGC , xb,yb , ww,ww , 0,360*64 ) ;
+   return ;
+}
 
 /*-----------------------------------------------
    redraw stuff that overlays the pixmap
@@ -1244,21 +1318,21 @@ void GRA_draw_circle( MCW_grapher *grapher , int xc , int yc , int rad )
 
 #define SHORT_NAME_WIDTH 384
 
-static char * long_index_name  = "index="  ;
-static char * short_index_name = "#"       ;
-static char * long_value_name  = " value=" ;
-static char * short_value_name = "="       ;
-static char * long_time_name   = " at "    ;
-static char * short_time_name  = "@"       ;
+static char *long_index_name  = "indx=" ;
+static char *short_index_name = "#"     ;
+static char *long_value_name  = " val=" ;
+static char *short_value_name = "="     ;
+static char *long_time_name   = " at "  ;
+static char *short_time_name  = "@"     ;
 
-void GRA_redraw_overlay( MCW_grapher * grapher )
+void GRA_redraw_overlay( MCW_grapher *grapher )
 {
-   Window    win ;
-   Display * dis ;
-   int       ii , xxx , jj ;
-   float     val ;
-   char buf[16] , strp[128] ;
-   char * vbuf , *iname , *vname ;
+   Window   win ;
+   Display *dis ;
+   int      ii , xxx , jj , boff ;
+   float    val ;
+   char buf[16] , strp[256] ;
+   char *vbuf , *iname , *vname ;
 
 ENTRY("GRA_redraw_overlay") ;
 
@@ -1275,6 +1349,8 @@ ENTRY("GRA_redraw_overlay") ;
 
    EXRONE(grapher) ;  /* 22 Sep 2000 */
 
+   boff = DATA_BOXED(grapher) ? BOXOFF : 0 ;
+
    /* draw some circles over ignored data points [23 May 2005] */
 
    if( grapher->init_ignore > 0 && !grapher->textgraph ){
@@ -1284,13 +1360,8 @@ ENTRY("GRA_redraw_overlay") ;
      xxx = MIN (xxx , grapher->init_ignore) ;  /* point */
      xxx = MIN (xxx , jj+grapher->nncen) ;     /* to plot */
      for( ii=jj ; ii < xxx ; ii++ )
-#if 0
-       GRA_overlay_circle( grapher , grapher->cen_line[ii-jj].x ,
-                                     grapher->cen_line[ii-jj].y , 1 ) ;
-#else
        GRA_draw_circle( grapher , grapher->cen_line[ii-jj].x ,
-                                  grapher->cen_line[ii-jj].y , 4 ) ;
-#endif
+                                  grapher->cen_line[ii-jj].y-boff , 4 ) ; 
    }
 
    /* 22 July 1996:
@@ -1299,15 +1370,20 @@ ENTRY("GRA_redraw_overlay") ;
    ii = grapher->time_index ; jj = NBOT(grapher) ;
    if( ii >= jj            &&
        ii <  NTOP(grapher) && ii-jj < grapher->nncen && !grapher->textgraph ){
+      int ww = MAX(4,DATA_THICK(grapher)) ;
 
       DC_fg_color( grapher->dc , IDEAL_COLOR(grapher) ) ;
       GRA_overlay_circle( grapher , grapher->cen_line[ii-jj].x ,
-                                    grapher->cen_line[ii-jj].y , 2 ) ;
+                                    grapher->cen_line[ii-jj].y-boff , 2 ) ;
+      GRA_draw_circle   ( grapher , grapher->cen_line[ii-jj].x ,
+                                    grapher->cen_line[ii-jj].y-boff , ww ) ;
    }
 
    /* draw text showing value at currently displayed time_index */
 
    if( ii >= 0 && grapher->cen_tsim != NULL && ii < grapher->cen_tsim->nx ){
+      char *ilab=NULL ;
+
       val = MRI_FLOAT_PTR(grapher->cen_tsim)[ii] ;
       AV_fval_to_char( val , buf ) ;
       vbuf = (buf[0]==' ') ? buf+1 : buf ;
@@ -1316,22 +1392,25 @@ ENTRY("GRA_redraw_overlay") ;
         iname = short_index_name ; vname = short_value_name ;
       } else {
         iname = long_index_name ; vname = long_value_name ;
+        ilab = GRA_getlabel( grapher , ii ) ;
       }
 
-      sprintf( strp , "%s%d%s%s" , iname,ii , vname,vbuf ) ;
+      if( ilab == NULL || *ilab == '\0' )
+        sprintf( strp , "%s%d%s%s" , iname,ii , vname,vbuf ) ;
+      else
+        sprintf( strp , "%s%d [%.31s]%s%s",iname,ii,ilab , vname,vbuf ) ;
 
       if( grapher->cen_tsim->dx != 0.0 ){
         val = grapher->cen_tsim->xo + ii * grapher->cen_tsim->dx ;
         AV_fval_to_char( val , buf ) ;
         vbuf = (buf[0]==' ') ? buf+1 : buf ;
-        ii = strlen(strp) ;
-        sprintf( strp+ii , "%s%s" ,
+        sprintf( strp+strlen(strp) , "%s%s" ,
                  (grapher->fWIDE < SHORT_NAME_WIDTH) ? short_time_name
                                                      : long_time_name, vbuf ) ;
       }
 
       xxx = MAX( grapher->xx_text_2 ,
-                 grapher->xorigin[grapher->xc][grapher->yc] ) ;
+                 grapher->xorigin[grapher->xc][grapher->yc]-39 ) ;
 
       if( grapher->init_ignore > 0 ) xxx = MAX( xxx , grapher->xx_text_2p ) ;
 
@@ -1563,7 +1642,7 @@ ENTRY("redraw_graph") ;
    relative to lower left corner (!).
 --------------------------------------------------*/
 
-void fd_txt( MCW_grapher * grapher , int x , int y , char * str )
+void fd_txt( MCW_grapher *grapher , int x , int y , char * str )
 {
    XDrawString( grapher->dc->display, grapher->fd_pxWind,
                 grapher->dc->myGC , x , grapher->fHIGH-y ,
@@ -1571,10 +1650,32 @@ void fd_txt( MCW_grapher * grapher , int x , int y , char * str )
    return ;
 }
 
-/*-----------------------------------------------*/
+/*---------------------------------------------------------------------------*/
 
-void overlay_txt( MCW_grapher * grapher , int x , int y , char * str )
+void fd_txt_upwards( MCW_grapher *grapher , int x , int y , char *str )
 {
+   int ii , nn ; int_pair ad ;
+   if( str == NULL || *str == '\0' ) return ;
+   for( nn=strlen(str)-1 ; nn >= 0 && isspace(str[nn]) ; nn-- ) ; /*nada*/
+   for( ii=nn ; ii >= 0 ; ii-- ){
+     if( isgraph(str[ii]) ){
+       ad = DC_char_adscent(grapher->dc,str[ii]) ;
+       y -= ad.j ;
+       XDrawString( grapher->dc->display, grapher->fd_pxWind,
+                    grapher->dc->myGC , x , y , str+ii , 1 ) ;
+       y -= ad.i+2 ;
+     } else {
+       y -= 2 ;
+     }
+   }
+   return ;
+}
+
+/*---------------------------------------------------------------------------*/
+
+void overlay_txt( MCW_grapher *grapher , int x , int y , char *str )
+{
+   if( str == NULL || *str == '\0' ) return ;
    XDrawString( grapher->dc->display, XtWindow(grapher->draw_fd) ,
                 grapher->dc->myGC , x , grapher->fHIGH-y ,
                 str , strlen(str) ) ;
@@ -1592,9 +1693,9 @@ static void fd_line( MCW_grapher *grapher , int x1,int y1, int x2,int y2 )
 
 /*-----------------------------------------------*/
 
-#define GRID_MAX 12
+#define GRID_MAX 13
 static int grid_ar[GRID_MAX] =
-   { 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000 } ;
+   { 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000 } ;
 
 static void auto_grid( MCW_grapher *grapher , int npoints )
 {
@@ -1688,20 +1789,8 @@ ENTRY("text_graphs") ;
 
          index = ztemp + ytemp * grapher->status->nx + xtemp ;
 
-#if 0
-         tsim  = (MRI_IMAGE *) grapher->getser( index , graCR_getseries ,
-                                                        grapher->getaux ) ;
-#else
-         CALL_getser( grapher , index,graCR_getseries , MRI_IMAGE *,tsim ) ;
-#endif
-
+         tsim = GRA_getseries( grapher , index ) ;
          if( tsim == NULL ) break ;
-         if( tsim->nx < 1 ){ mri_free(tsim); break; }  /* shouldn't happen */
-
-         if( tsim->kind != MRI_float ){
-           MRI_IMAGE *qim = mri_to_float(tsim) ;
-           mri_free(tsim) ; tsim = qim ;
-         }
 
          if( ix == grapher->xc && iy == grapher->yc ){
            mri_free( grapher->cen_tsim ) ;             /* copy time series too */
@@ -1871,12 +1960,7 @@ ENTRY("plot_graphs") ;
 
          /** get the desired time series, using the provided routine **/
 
-#if 0
-         tsim  = (MRI_IMAGE *) grapher->getser( index , graCR_getseries ,
-                                                        grapher->getaux ) ;
-#else
-         CALL_getser( grapher , index,graCR_getseries , MRI_IMAGE *,tsim ) ;
-#endif
+         tsim = GRA_getseries( grapher , index ) ;
 
          /* 08 Nov 1996: allow for return of NULL timeseries */
 
@@ -1887,13 +1971,6 @@ ENTRY("plot_graphs") ;
          }
 
          ntmax = MAX( ntmax , tsim->nx ) ;
-
-         /** convert time series to floats, if need be **/
-
-         if( tsim->kind != MRI_float ){
-           MRI_IMAGE *qim = mri_to_float(tsim) ;
-           mri_free(tsim) ; tsim = qim ;
-         }
 
          /* 22 Oct 1996: transform each point, if ordered */
 
@@ -2259,8 +2336,14 @@ STATUS("starting time series graph loop") ;
             DC_fg_color( grapher->dc , ovi[tt%OVI_MAX] ) ;
 
           if( DATA_POINTS(grapher) ){         /* 09 Jan 1998 */
-            for( i=0 ; i < qnum ; i++ )
-              GRA_small_circle( grapher,a_line[i].x,a_line[i].y,DATA_IS_THICK(grapher) );
+            int ww = DATA_THICK(grapher) ;
+            if( ww < 3 ){
+              for( i=0 ; i < qnum ; i++ )
+                GRA_small_circle( grapher,a_line[i].x,a_line[i].y,DATA_IS_THICK(grapher) );
+            } else {
+              for( i=0 ; i < qnum ; i++ )
+                GRA_draw_disk( grapher,a_line[i].x,a_line[i].y,ww+2 );
+            }
           }
           if( DATA_LINES(grapher) ){          /* 01 Aug 1998 */
             XDrawLines( grapher->dc->display ,
@@ -2269,16 +2352,38 @@ STATUS("starting time series graph loop") ;
           }
           if( DATA_BOXED(grapher) ){          /* 26 Jun 2007 */
             XPoint q_line[4] ; short xb,xt ; float delt=ftemp/tsim->ny ;
+            int labx=-1, aybas=0 ;
+            char *eblab=my_getenv("AFNI_GRAPH_BOXLAB"), ecode='\0' ;
+            if( eblab != NULL && grapher->mat == 1 ){
+              ecode = toupper(*eblab) ;
+              if( isgraph(ecode) ){
+                labx = DC_char_width(grapher->dc,ecode) ;
+                if( labx > 0 ) labx = (int)(0.5*(delt-labx)-1.0f) ;
+              }
+              if( ecode == 'M' ){
+                for( aybas=a_line[0].y,i=1 ; i < qnum ; i++ )
+                  if( a_line[i].y < aybas ) aybas = a_line[i].y ;
+              } else if( ecode == 'Z' ){
+                aybas = yoff ;
+              }
+            }
             for( i=0 ; i < qnum ; i++ ){
-              xb = (short)(a_line[i].x + tt*delt + 0.49f) ;
-              xt = (short)(xb + delt-0.99f) ;
+              xb = (short)(a_line[i].x + tt*delt + 0.499f) ;
+              xt = (short)(xb + delt-0.999f) ;
               q_line[0].x = xb ; q_line[0].y = yoff ;
-              q_line[1].x = xb ; q_line[1].y = a_line[i].y ;
-              q_line[2].x = xt ; q_line[2].y = a_line[i].y ;
+              q_line[1].x = xb ; q_line[1].y = a_line[i].y-BOXOFF ;
+              q_line[2].x = xt ; q_line[2].y = a_line[i].y-BOXOFF ;
               q_line[3].x = xt ; q_line[3].y = yoff ;
               XDrawLines( grapher->dc->display ,
                           grapher->fd_pxWind , grapher->dc->myGC ,
                           q_line , 4 ,  CoordModeOrigin ) ;
+              if( labx > 0 ){
+                char *lab = GRA_getlabel(grapher,pbot+i) ;
+                if( ecode == 'M' || ecode == 'Z' )
+                  fd_txt_upwards(grapher,xb+labx,aybas-3,lab) ;
+                else 
+                  fd_txt_upwards(grapher,xb+labx,a_line[i].y-3-BOXOFF,lab) ;
+              }
             }
           }
 
@@ -2604,7 +2709,7 @@ STATUS("plotting extra graphs") ;
    12 Jan 1998: modified to allow for gaps between graphs
 --------------------------------------------------------------------------*/
 
-void draw_grids( MCW_grapher * grapher )
+void draw_grids( MCW_grapher *grapher )
 {
    int i , mat=grapher->mat , gx=grapher->gx , gy=grapher->gy ;
    int j, k, g, xo, yo, npoints , m ;
@@ -2624,7 +2729,8 @@ ENTRY("draw_grids") ;
       npoints = NPTS(grapher) ;  /* number time points in 1 sub-graph window */
 
       if( npoints > 1 ){                /* this if: 22 Sep 2000 */
-        ftemp = gx / (npoints-1.0) ;
+        if( DATA_BOXED(grapher) ) ftemp = gx / (float)npoints ;
+        else                      ftemp = gx / (npoints-1.0f) ;
         for( i=0 ; i < mat ; i++ ){
           for( m=0 ; m < mat ; m++ ){
             xo = grapher->xorigin[i][m] ; yo = grapher->yorigin[i][m] ;
@@ -2923,6 +3029,8 @@ STATUS("KeyPress event") ;
                 case XK_Page_Up:   buf[0] = 'Z' ; break ;
                 case XK_KP_Page_Down:
                 case XK_Page_Down: buf[0] = 'z' ; break ;
+                case XK_F5:
+                  MCW_melt_widget( grapher->draw_fd ) ; break ;
               }
             }
             if( buf[0] != '\0' ) GRA_handle_keypress( grapher , buf , ev ) ;
@@ -3564,13 +3672,7 @@ STATUS(str); }
               grapher->ypoint * grapher->status->nx +
               grapher->zpoint * grapher->status->nx * grapher->status->ny ;
 
-#if 0
-         tsim  = (MRI_IMAGE *) grapher->getser( ll , graCR_getseries ,
-                                                     grapher->getaux ) ;
-#else
-         CALL_getser( grapher , ll,graCR_getseries , MRI_IMAGE *,tsim ) ;
-#endif
-
+         tsim = GRA_getseries( grapher , ll ) ;
          if( tsim != NULL ){
            mri_write_1D( wcfname , tsim ) ;  /* 16 Nov 1999: replaces mri_write_ascii */
            mri_free( tsim ) ;
@@ -3743,7 +3845,7 @@ STATUS("User pressed Done button: starting timeout") ;
 
    if( w == grapher->opt_grid_choose_pb ){
      MCW_choose_integer( grapher->option_rowcol , "Grid" ,
-                         grid_ar[0] , grid_ar[GRID_MAX-1] , grapher->grid_spacing ,
+                         1 , grid_ar[GRID_MAX-1] , grapher->grid_spacing ,
                          GRA_grid_choose_CB , (XtPointer) grapher ) ;
      EXRETURN ;
    }
@@ -4813,12 +4915,7 @@ ENTRY("GRA_fim_CB") ;
            grapher->ypoint * grapher->status->nx +
            grapher->zpoint * grapher->status->nx * grapher->status->ny ;
 
-#if 0
-      tsim  = (MRI_IMAGE *) grapher->getser( ll , graCR_getseries ,
-                                                  grapher->getaux ) ;
-#else
-      CALL_getser( grapher , ll,graCR_getseries , MRI_IMAGE *,tsim ) ;
-#endif
+      tsim = GRA_getseries( grapher , ll ) ;
 
       if( tsim != NULL ){
          { GRA_cbs cbs; cbs.reason=graCR_winaver; CALL_sendback(grapher,cbs); }

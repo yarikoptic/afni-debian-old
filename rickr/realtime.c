@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <math.h>
 
-#include "thd_iochan.h"
+#include "mrilib.h"     /* from thd_iochan.h    25 Apr 2011 */
 #include "Imon.h"
 #include "realtime.h"
 
@@ -57,7 +57,8 @@ int ART_start_io( ART_comm * ac, int debug )
 
    if( ac->mode == AFNI_OPEN_CONTROL_MODE ){
 
-      sprintf( ac->ioc_name , "tcp:%s:%d" , ac->host , AFNI_CONTROL_PORT ) ;
+      sprintf( ac->ioc_name , "tcp:%s:%d" , 
+               ac->host , get_port_named("AFNI_CONTROL_PORT") ) ;
 
       if( debug > 1 )
          fprintf(stderr,"Opening control channel %s to AFNI.\n",ac->ioc_name) ;
@@ -111,7 +112,8 @@ int ART_start_io( ART_comm * ac, int debug )
       /* decide name of data channel: it can be TCP/IP or shared memory */
 
       if ( ac->use_tcp )
-         sprintf(ac->ioc_name,"tcp:%s:%d",ac->host,AFNI_TCP_PORT) ;
+         sprintf(ac->ioc_name,"tcp:%s:%d",
+                 ac->host,get_port_named("AFNI_TCP_PORT")) ;
 
       strcpy(ac->buf, ac->ioc_name) ;     /* tell AFNI where to read data */
 
@@ -184,6 +186,7 @@ int ART_send_end_of_run( ART_comm * ac, int run, int seq, int debug )
     static int   prev_run = -1;
     static int   prev_seq = -1;
     char       * image;
+    int          bytes = ART_COMMAND_MARKER_LEN+1;
 
     if ( ac->state != ART_STATE_IN_USE )
         return 0;
@@ -208,7 +211,8 @@ int ART_send_end_of_run( ART_comm * ac, int run, int seq, int debug )
         strcpy( image, ART_COMMAND_MARKER );
         image[ART_COMMAND_MARKER_LEN] = '\0';
 
-        if ( iochan_sendall( ac->ioc, image, ac->param->im_store.im_size ) < 0 )
+        /* send only the marker */
+        if ( iochan_sendall( ac->ioc, image, bytes ) < 0 )
         {
             fprintf( stderr, "** failed to transmit EOR to afni @ %s\n"
                              "   - closing afni connection\n", ac->host );
@@ -255,12 +259,13 @@ int ART_send_volume( ART_comm * ac, vol_t * v, int debug )
 
     bytes = ac->param->im_store.im_size;
 
+    /* note that v->nim will be 1 for siemens mosaic, no matter... */
     for ( slice = 0; slice < v->nim; slice++ )
     {
         image = (char *)ac->param->im_store.im_ary[v->fl_1 + slice];
 
-        if ( ac->swap )              /* maybe we must swap the bytes first */
-            swap_2( image, bytes/2 );
+        if ( ac->swap )               /* maybe we must swap the bytes first */
+            swap_2( image, bytes/2 ); /* assuming DATUM short here ...      */
 
         if ( iochan_sendall( ac->ioc, image, bytes ) < 0 )
         {
@@ -370,6 +375,7 @@ int ART_send_control_info( ART_comm * ac, vol_t * v, int debug )
 {
     char tbuf[ART_TBUF_LEN];          /* temporary buffer for adding to buf */
     int  rv;
+    int  nim;                         /* siemens comes from mosaic info */
 
     if ( (ac == NULL) || (v == NULL) )
     {
@@ -381,6 +387,14 @@ int ART_send_control_info( ART_comm * ac, vol_t * v, int debug )
     if ( (ac->state != ART_STATE_TO_SEND_CTRL) ||
          (ac->mode  != AFNI_CONTINUE_MODE) )
         return 0;
+
+    /* note whether we have a mosaic (nim comes from v->minfo.nslices) */
+    if( v->minfo.is_mosaic ) {
+        if( debug>0 ) fprintf(stderr, "-- RT COMM: have mosaic of %d slices\n",
+                              v->minfo.nslices);
+        nim = v->minfo.nslices;
+    } else
+        nim = v->nim;
 
     ac->buf[0] = '\0';                      /* init message buffer to empty */
 
@@ -395,9 +409,20 @@ int ART_send_control_info( ART_comm * ac, vol_t * v, int debug )
         strcpy( tbuf, "ZORDER seq" );   /* back to seq for now  [v3.3 rickr] */
     ART_ADD_TO_BUF( ac->buf, tbuf );
 
-    /* timing pattern, this may also come from image files - rcr */
-    if ( ac->param->opts.sp )
+    /* if mosaic with valid timing, apply it                     25 Apr 2011 */
+    /* -> set tpattern = explicit and pass times                             */
+    if ( v->minfo.is_mosaic &&
+         valid_g_siemens_times(v->minfo.nslices, v->geh.tr, 0) )
     {
+        int off, nchar, ind;
+        off = sprintf( tbuf, "TPATTERN explicit" );
+        for( ind = 0; ind < g_siemens_timing_nused; ind++ ) {
+            nchar = sprintf(tbuf+off, " %.3f", g_siemens_timing_times[ind]);
+            if( nchar < 0 ) break;
+            off += nchar;
+        }
+        ART_ADD_TO_BUF( ac->buf, tbuf );
+    } else if ( ac->param->opts.sp ) {
         sprintf( tbuf, "TPATTERN %s", ac->param->opts.sp );
         ART_ADD_TO_BUF( ac->buf, tbuf );
     }
@@ -414,12 +439,12 @@ int ART_send_control_info( ART_comm * ac, vol_t * v, int debug )
        if( ac->is_oblique && v->image_dz > 0.0 ) dz = v->image_dz;
        sprintf( tbuf, "XYFOV %f %f %f", fabs(v->geh.nx * v->geh.dx),
                                         fabs(v->geh.ny * v->geh.dy),
-                                        fabs(v->nim    * dz       ) );
+                                        fabs(nim       * dz       ) );
     }
     ART_ADD_TO_BUF( ac->buf, tbuf );
 
     /* matrix sizes */
-    sprintf( tbuf, "XYMATRIX %d %d %d", v->geh.nx, v->geh.ny, v->nim );
+    sprintf( tbuf, "XYMATRIX %d %d %d", v->geh.nx, v->geh.ny, nim );
     ART_ADD_TO_BUF( ac->buf, tbuf );
 
     /* data type - no mrilib.h, and don't duplicate MRI_TYPE_name list */

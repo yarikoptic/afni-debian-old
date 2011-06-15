@@ -1,20 +1,23 @@
-/* Group InstaCorr == GrpInCorr */
+/*** 3dGroupIncorr == Group InstaCorr == GrpInCorr ***/
 
 /***
   Ideas for making this program more cromulently embiggened:
-   ++ 2-way case: produce 1-way result sub-bricks as well -- DONE!
+   ++ 2-way case: produce 1-way result sub-bricks as well  -- DONE!
    ++ Rank or other robust analog to t-test
-   ++ Send sub-brick data as scaled shorts to reduce transmit time
-   ++ Fix shm: bug in AFNI libray
+   ++ Send sub-brick data as scaled shorts
+   ++ Fix shm: bug in AFNI libray (but how?)
    ++ Have non-server modes:
-    -- To output dataset to disk
+    -- To input a 1D file as the seed vector set           -- DONE!
+    -- To input a mask file to define the seed vector set  -- DONE!
+    -- To output dataset(s) to disk                        -- DONE!
     -- 3dTcorrMap-like scan through whole brain as seed
-   ++ Per-subject covariates -- DONE!
+   ++ Per-subject covariates                               -- DONE!
+   ++ Send per-subject correlations to AFNI (as an option) -- DONE!
 ***/
 
 #include "mrilib.h"
 
-#ifdef USE_OMP
+#ifdef USE_OMP     /* this is important! */
 #include <omp.h>
 #endif
 
@@ -28,6 +31,8 @@ void        GRINCOR_many_ttest( int nvec , int numx , float **xxar ,
 
 static int verb  = 1 ;  /* default verbosity level */
 static int debug = 0 ;  /* default non-debug mode */
+
+static unsigned short xran[3] = { 0x330e , 0x747a , 0x9754 } ;
 
 #undef  UINT32
 #define UINT32 unsigned int  /* 20 May 2010 */
@@ -109,10 +114,12 @@ static int string_search( char *targ , int nstr , char **str )
 
 typedef struct {
 
-  int nvec  ;  /* number of vectors in a dataset */
-  int ndset ;  /* number of datasets */
-  int *nvals ; /* nvals[i] = number of values in a vector in i-th dataset */
-  int datum ;  /* 1 for sbyte, 2 for short */
+  int nvec  ;     /* number of vectors in a dataset */
+  int ndset ;     /* number of datasets */
+  int *nvals ;    /* nvals[i] = number of values in a vector in i-th dataset */
+  int nvals_max ; /* largest nvals[i] value */
+  int nvals_tot ; /* sum of nvals[i] values */
+  int datum ;     /* 1 for sbyte, 2 for short */
 
   int nuse , *use ;  /* 07 Apr 2010: subset of datasets to use */
 
@@ -144,16 +151,26 @@ typedef struct {
   ( ((shd)->ivec == NULL) ? (ijk)  \
                           : mybsearch_int((ijk),(shd)->nvec,(shd)->ivec) )
 
+/*------ for creating output dataset internally (rather than in AFNI) ------*/
+
+typedef struct {               /* Feb 2011 */
+  THD_3dim_dataset *dset ;
+  int nvox , nivec , *ivec ;
+} GRINCOR_setup ;
+
+GRINCOR_setup * GRINCOR_setup_dataset( NI_element * ) ;
+void GRINCOR_output_dataset( GRINCOR_setup *, NI_element *, char * ) ;
+
 /*--------------------------------------------------------------------------*/
 
 #undef  GQUIT
-#define GQUIT(sss)                                                \
- do{ if( tdset != NULL ) DSET_delete(tdset) ;                     \
-     if( dfname != NULL ) free(dfname) ;                          \
-     if( geometry_string != NULL ) free(geometry_string) ;        \
-     NI_free_element(nel) ;                                       \
-     if( sss != NULL ) ERROR_message("file %s: %s",fname,(sss)) ; \
-     return(NULL) ;                                               \
+#define GQUIT(sss)                                                     \
+ do{ if( tdset != NULL ) DSET_delete(tdset) ;                          \
+     if( dfname != NULL ) free(dfname) ;                               \
+     if( geometry_string != NULL ) free(geometry_string) ;             \
+     NI_free_element(nel) ;                                            \
+     if( sss != NULL ) ERROR_message("GIC: file %s: %s",fname,(sss)) ; \
+     return(NULL) ;                                                    \
  } while(0)
 
 /*--------------------------------------------------------------------------*/
@@ -169,7 +186,7 @@ MRI_shindss * GRINCOR_read_input( char *fname )
    NI_float_array *facar ; NI_int_array *nvar, *nnode=NULL, *ninmask=NULL;
    MRI_shindss *shd ;
    long long nbytes_needed , nbytes_dfname ; int fdes ;
-   void *var ; int ids ;
+   void *var ; int ids , nvmax , nvtot ;
    int datum , datum_size ;
 
    char *geometry_string=NULL ;
@@ -215,6 +232,12 @@ MRI_shindss * GRINCOR_read_input( char *fname )
    if( nvar == NULL || nvar->num < ndset )
      GQUIT("nvals attribute doesn't match ndset") ;
    nvals = nvar->ar ; nvar->ar = NULL ; NI_delete_int_array(nvar) ;
+
+   nvmax = nvtot = nvals[0] ;
+   for( ids=1 ; ids < ndset ; ids++ ){             /* Feb 2011 */
+     nvtot += nvals[ids] ;
+     if( nvals[ids] > nvmax ) nvmax = nvals[ids] ;
+   }
 
    /* dataset labels [23 May 2010] */
 
@@ -311,7 +334,7 @@ MRI_shindss * GRINCOR_read_input( char *fname )
 
    shd = (MRI_shindss *)malloc(sizeof(MRI_shindss)) ;
 
-   shd->nvals = nvals ;
+   shd->nvals = nvals ; shd->nvals_max = nvmax ; shd->nvals_tot = nvtot ;
    shd->nvec  = nvec  ;
    shd->ndset = ndset ;
 
@@ -358,7 +381,7 @@ MRI_shindss * GRINCOR_read_input( char *fname )
 
    if( var == (void *)(-1) ){ /* this is bad */
      ERROR_message(
-       "file %s: can't mmap() datafile -- memory space exhausted?" , dfname ) ;
+       "GIC: file %s: can't mmap() datafile -- memory space exhausted?" , dfname ) ;
      free(shd) ; return NULL ;
    }
 
@@ -494,7 +517,7 @@ void GRINCOR_many_dotprod( MRI_shindss *shd , float **vv , float **ddp )
        for( nbad=iv=0 ; iv < nvec ; iv++ ){
          if( !isfinite(ddp[ids][iv]) ){ ddp[ids][iv] = 0.0f; nbad++; }
        }
-       if( nbad > 0 ) WARNING_message("%d bad correlations in dataset #%d",nbad,ids) ;
+       if( nbad > 0 ) WARNING_message("GIC: %d bad correlations in dataset #%d",nbad,ids) ;
      }
    }
 #endif
@@ -503,57 +526,236 @@ void GRINCOR_many_dotprod( MRI_shindss *shd , float **vv , float **ddp )
 }
 
 /*----------------------------------------------------------------------------*/
-/* Load the seed vectors from each dataset */
 
-void GRINCOR_load_seedvec( MRI_shindss *shd , MCW_cluster *nbhd ,
-                           int voxijk       , float **seedvec    )
+int GRINCOR_extract_ijknbhd( MRI_shindss *shd , int dd ,
+                             MCW_cluster *nbhd , int voxijk , float *tsar )
 {
-   int nx,ny,nz,nxy, ndset,nvals, voxind,ii,jj,kk, aa,bb,cc,xx,yy,zz, qijk,qind ;
+   int nvec,nvals, voxind,ii , isbyte=(shd->datum==1) ;
    short *sv=NULL , *svv=NULL ; float *vv ; sbyte *bv=NULL , *bvv=NULL ;
 
-   nx = shd->nx; ny = shd->ny; nz = shd->nz; nxy = nx*ny; ndset = shd->ndset;
-
-   IJK_TO_THREE(voxijk,aa,bb,cc,nx,nxy) ;
    voxind = IJK_TO_INDEX(shd,voxijk) ;
-   for( kk=0 ; kk < ndset ; kk++ ){
-     nvals = shd->nvals[kk] ;
-     if( shd->datum == 1 ){ bv = shd->bv[kk] ; bvv = bv + voxind*nvals ; }
-     else                 { sv = shd->sv[kk] ; svv = sv + voxind*nvals ; }
-     vv = seedvec[kk] ;
-     if( shd->datum == 1 )
-       for( ii=0 ; ii < nvals ; ii++ ) vv[ii] = (float)bvv[ii] ;
-     else
-       for( ii=0 ; ii < nvals ; ii++ ) vv[ii] = (float)svv[ii] ;
-     if( nbhd != NULL ){  /* average in with nbhd */
-       for( jj=1 ; jj < nbhd->num_pt ; jj++ ){
-         xx = aa + nbhd->i[jj] ; if( xx < 0 || xx >= nx ) continue ;
-         yy = bb + nbhd->j[jj] ; if( yy < 0 || yy >= ny ) continue ;
-         zz = cc + nbhd->k[jj] ; if( zz < 0 || zz >= nz ) continue ;
-         qijk = THREE_TO_IJK(xx,yy,zz,nx,nxy) ;
-         qind = IJK_TO_INDEX(shd,qijk) ;
-         if( qind >= 0 ){
-           if( shd->datum == 1 ){
-             bvv = bv + qind*nvals ;
-             for( ii=0 ; ii < nvals ; ii++ ) vv[ii] += (float)bvv[ii] ;
-           } else {
-             svv = sv + qind*nvals ;
-             for( ii=0 ; ii < nvals ; ii++ ) vv[ii] += (float)svv[ii] ;
-           }
+   nvals  = shd->nvals[dd] ;
+   vv     = tsar ;
+
+   if( isbyte ){
+     bv = shd->bv[dd] ; bvv = bv + voxind*nvals ;
+     for( ii=0 ; ii < nvals ; ii++ ) vv[ii] = (float)bvv[ii] ;
+   } else {
+     sv = shd->sv[dd] ; svv = sv + voxind*nvals ;
+     for( ii=0 ; ii < nvals ; ii++ ) vv[ii] = (float)svv[ii] ;
+   }
+
+   nvec = 1 ;
+
+   if( nbhd != NULL ){
+     int aa,bb,cc,xx,yy,zz , qijk,qind , jj , nx,ny,nz,nxy ;
+     nx = shd->nx ; ny = shd->ny ; nz = shd->nz ; nxy = nx*ny ;
+     IJK_TO_THREE(voxijk,aa,bb,cc,nx,nxy) ;
+     for( jj=1 ; jj < nbhd->num_pt ; jj++ ){
+       xx = aa + nbhd->i[jj] ; if( xx < 0 || xx >= nx ) continue ;
+       yy = bb + nbhd->j[jj] ; if( yy < 0 || yy >= ny ) continue ;
+       zz = cc + nbhd->k[jj] ; if( zz < 0 || zz >= nz ) continue ;
+       qijk = THREE_TO_IJK(xx,yy,zz,nx,nxy) ;
+       qind = IJK_TO_INDEX(shd,qijk) ;
+       if( qind >= 0 ){
+         vv = tsar + nvec*nvals ; nvec++ ;
+         if( isbyte ){
+           bvv = bv + qind*nvals ;
+           for( ii=0 ; ii < nvals ; ii++ ) vv[ii] = (float)bvv[ii] ;
+         } else {
+           svv = sv + qind*nvals ;
+           for( ii=0 ; ii < nvals ; ii++ ) vv[ii] = (float)svv[ii] ;
          }
        }
      }
-     (void)THD_normalize( nvals , vv ) ;
+   }
+
+   return nvec ;
+}
+
+/*----------------------------------------------------------------------------*/
+
+void GRINCOR_average_ijknbhd( MRI_shindss *shd , int dd ,
+                              MCW_cluster *nbhd , int voxijk , float *avar )
+{
+   int nvec , nvals , ii,jj ;
+   float *tsar , *vv ;
+
+   nvals = shd->nvals[dd] ;
+   nvec  = (nbhd == NULL) ? 1 : nbhd->num_pt ;
+   tsar  = (float *)malloc(sizeof(float)*nvals*nvec) ;
+   nvec  = GRINCOR_extract_ijknbhd( shd , dd , nbhd , voxijk , tsar ) ;
+
+   for( ii=0 ; ii < nvals ; ii++ ) avar[ii] = 0.0f ;
+
+   for( jj=0 ; jj < nvec ; jj++ ){
+     vv = tsar + jj*nvals ;
+     for( ii=0 ; ii < nvals ; ii++ ) avar[ii] += vv[ii] ;
+   }
+
+   (void)THD_normalize( nvals , avar ) ;
+   free(tsar) ; return ;
+}
+
+/*----------------------------------------------------------------------------*/
+
+void GRINCOR_prinvec_ijknbhd( MRI_shindss *shd , int dd ,
+                              MCW_cluster *nbhd , int voxijk , float *pvar )
+{
+   int nvec , nvals , ii,jj ;
+   float *tsar , *avar , *vv ;
+
+   nvals = shd->nvals[dd] ;
+   nvec  = (nbhd == NULL) ? 1 : nbhd->num_pt ;
+   tsar  = (float *)malloc(sizeof(float)*nvals*nvec) ;
+   nvec  = GRINCOR_extract_ijknbhd( shd , dd , nbhd , voxijk , tsar ) ;
+
+   avar = (float *)malloc(sizeof(float)*nvals) ;
+   for( ii=0 ; ii < nvals ; ii++ ) avar[ii] = 0.0f ;
+   for( jj=0 ; jj < nvec ; jj++ ){
+     vv = tsar + jj*nvals ;
+     for( ii=0 ; ii < nvals ; ii++ ) avar[ii] += vv[ii] ;
+   }
+
+   (void)principal_vector( nvals , nvec , 0 , tsar ,
+                           pvar , avar , NULL , xran ) ;
+   free(avar) ; free(tsar) ; return ;
+}
+
+/*----------------------------------------------------------------------------*/
+/* Load the seed vectors from each dataset:
+   seed 3D voxel index (not node) is voxijk, then average over nbhd.
+*//*--------------------------------------------------------------------------*/
+
+void GRINCOR_seedvec_ijk_aver( MRI_shindss *shd , MCW_cluster *nbhd ,
+                               int voxijk       , float **seedvec    )
+{
+   int kk ;
+   for( kk=0 ; kk < shd->ndset ; kk++ )
+     GRINCOR_average_ijknbhd( shd , kk , nbhd , voxijk , seedvec[kk] ) ;
+   return ;
+}
+/*----------------------------------------------------------------------------*/
+
+void GRINCOR_seedvec_ijk_pvec( MRI_shindss *shd , MCW_cluster *nbhd ,
+                               int voxijk       , float **seedvec    )
+{
+   int kk ;
+   for( kk=0 ; kk < shd->ndset ; kk++ )
+     GRINCOR_prinvec_ijknbhd( shd , kk , nbhd , voxijk , seedvec[kk] ) ;
+   return ;
+}
+
+/*----------------------------------------------------------------------------*/
+/* extract, from the dd-th dataset, the nijk vectors node-indexed in vijk[],
+   into array tsar (pre-malloc-ized, please, to nvals*nijk long).
+*//*--------------------------------------------------------------------------*/
+
+void GRINCOR_extract_ijklist( MRI_shindss *shd , int dd ,
+                              int nijk , int *vijk , float *tsar )
+{
+   int nvals , ii,jj,qq , isbyte=(shd->datum==1) ;
+   short *sv=NULL , *svv=NULL ; float *vv ; sbyte *bv=NULL , *bvv=NULL ;
+
+   nvals = shd->nvals[dd] ;
+   if( isbyte ) bv = shd->bv[dd] ;
+   else         sv = shd->sv[dd] ;
+
+   for( jj=0 ; jj < nijk ; jj++ ){   /* loop over nodes */
+     qq = vijk[jj] ;                 /* node index */
+     vv = tsar + jj*nvals ;          /* jj-th vector in output array */
+     if( isbyte ){
+       bvv = bv + qq*nvals ;
+       for( ii=0 ; ii < nvals ; ii++ ) vv[ii] = (float)bvv[ii] ;
+     } else {
+       svv = sv + qq*nvals ;
+       for( ii=0 ; ii < nvals ; ii++ ) vv[ii] = (float)svv[ii] ;
+     }
    }
 
    return ;
 }
 
+/*----------------------------------------------------------------------------*/
+
+void GRINCOR_average_ijklist( MRI_shindss *shd , int dd ,
+                              int nijk , int *vijk , float *avar )
+{
+   int ii,jj , nvals ; float *vv , *tsar ;
+
+   nvals = shd->nvals[dd] ;
+   tsar  = (float *)malloc(sizeof(float)*nvals*nijk) ;
+   GRINCOR_extract_ijklist( shd , dd , nijk , vijk , tsar ) ;
+
+   for( ii=0 ; ii < nvals ; ii++ ) avar[ii] = 0.0f ;
+
+   for( jj=0 ; jj < nijk ; jj++ ){
+     vv = tsar + jj*nvals ;
+     for( ii=0 ; ii < nvals ; ii++ ) avar[ii] += vv[ii] ;
+   }
+
+   (void)THD_normalize( nvals , avar ) ;
+   free(tsar) ; return ;
+}
+
+/*----------------------------------------------------------------------------*/
+
+void GRINCOR_prinvec_ijklist( MRI_shindss *shd , int dd ,
+                              int nijk , int *vijk , float *pvar )
+{
+   int ii,jj , nvals ; float *vv , *tsar , *avar ;
+
+   nvals = shd->nvals[dd] ;
+   tsar  = (float *)malloc(sizeof(float)*nvals*nijk) ;
+   GRINCOR_extract_ijklist( shd , dd , nijk , vijk , tsar ) ;
+
+   avar = (float *)malloc(sizeof(float)*nvals) ;
+   for( ii=0 ; ii < nvals ; ii++ ) avar[ii] = 0.0f ;
+   for( jj=0 ; jj < nijk ; jj++ ){
+     vv = tsar + jj*nvals ;
+     for( ii=0 ; ii < nvals ; ii++ ) avar[ii] += vv[ii] ;
+   }
+
+   (void)principal_vector( nvals , nijk , 0 , tsar ,
+                           pvar , avar , NULL , xran ) ;
+   free(avar) ; free(tsar) ; return ;
+}
+
+/*----------------------------------------------------------------------------*/
+/* Load the seed vectors from each dataset, given a mask of nodes */
+
+void GRINCOR_seedvec_ijklist_aver( MRI_shindss *shd ,
+                                   int nijk , int *vijk , float **seedvec )
+{
+   int kk ;
+   for( kk=0 ; kk < shd->ndset ; kk++ )
+     GRINCOR_average_ijklist( shd , kk , nijk , vijk , seedvec[kk] ) ;
+   return ;
+}
+
+/*----------------------------------------------------------------------------*/
+
+void GRINCOR_seedvec_ijklist_pvec( MRI_shindss *shd ,
+                                   int nijk , int *vijk , float **seedvec )
+{
+   int kk ;
+   for( kk=0 ; kk < shd->ndset ; kk++ )
+     GRINCOR_prinvec_ijklist( shd , kk , nijk , vijk , seedvec[kk] ) ;
+   return ;
+}
+
 /*-----------------------------------------------------------------------------*/
 
-#define AFNI_NIML_PORT   53212          /* TCP/IP port that AFNI uses */
-#define SUMA_GICORR_PORT 53224          /* TCP/IP port that SUMA uses */
+#if 0    /* ZSS June 2011 */
+  #define AFNI_NIML_PORT   53212          /* TCP/IP port that AFNI uses */
+  #define SUMA_GICORR_PORT 53224          /* TCP/IP port that SUMA uses */
+  /*  Replace               With
+      AFNI_NIML_PORT        get_port_named("AFNI_GroupInCorr_NIML");
+      SUMA_GICORR_PORT      get_port_named("SUMA_GroupInCorr_NIML"); 
+   ZSS. June 2011 */
+#endif
 
-static int nport = -1 ;                 /* 02 Aug 2010 */
+static int nport = 0 ;                  /* 02 Aug 2010 */
 
 NI_stream GI_stream = (NI_stream)NULL ;
 
@@ -565,7 +767,7 @@ void GI_exit(void)                   /* Function to be called to make sure */
 {                                    /* the AFNI data channel gets closed. */
    if( GI_stream != (NI_stream)NULL ){
      fprintf(stderr,"** 3dGroupInCorr exits: closing connection to %s\n",pname) ;
-     NI_stream_close(GI_stream) ;
+     NI_stream_close(GI_stream) ; GI_stream = (NI_stream)NULL ;
    } else if( verb > 2 ){
      fprintf(stderr,"** 3dGroupInCorr atexit() function invoked\n") ;
    }
@@ -610,7 +812,15 @@ static float *bxx , *bxx_psinv , *bxx_xtxinv ;
 #define MAX_LABEL_SIZE 12
 #define NSEND_LIMIT     9
 
-#undef COVTEST  /* this is for Cox ONLY */
+#undef COVTEST  /* this is for Cox ONLY -- for debugging */
+
+#define IJK_MODE     1  /* for -batch */
+#define XYZ_MODE     2
+#define IJKPV_MODE   3
+#define XYZPV_MODE   4
+#define MASKAVE_MODE 5
+#define MASKPV_MODE  6
+#define VECTORS_MODE 7
 
 int main( int argc , char *argv[] )
 {
@@ -626,6 +836,8 @@ int main( int argc , char *argv[] )
    MCW_cluster *nbhd=NULL ;
    int voxijk , voxind , aa,bb,cc , xx,yy,zz , qijk,qind ; char *atr ;
    int nvec , ndset_AAA=0,ndset_BBB=0 , *nvals_AAA=NULL,*nvals_BBB=NULL ;
+   int nvals_AAA_tot=0 , nvals_BBB_tot=0 , nvals_tot=0 , ndset_tot=0 ;
+   int nvals_AAA_max=0 , nvals_BBB_max=0 , nvals_max=0 ;
    float **seedvec_AAA=NULL , **dotprod_AAA=NULL ;
    float **seedvec_BBB=NULL , **dotprod_BBB=NULL ;
    int ctim,btim,atim , do_shm=2 , nsend=0 , shm_active=0 ;
@@ -641,11 +853,21 @@ int main( int argc , char *argv[] )
    float **dtar=NULL ;
    int no_ttest = 0 ;  /* 02 Nov 2010 */
 
+   int do_sendall=0 , nsaar=0 ; /* 22 Jan 2011 */
+   char *bricklabels=NULL ;
+   float **saar=NULL ;
+
+   int   bmode=0 , do_lpi=0 ;    /* 05 Feb 2011 -- stuff for batch mode */
+   char *bname=NULL ;
+   char *bfile=NULL , *bprefix=NULL ;
+   FILE *bfp=NULL ;
+   GRINCOR_setup *giset=NULL ;
+
 #ifdef COVTEST
    float *ctarA=NULL , *ctarB=NULL ; char *ctnam ;
 #endif
 
-   /*-- enlighten the ignorant and brutish sauvages? --*/
+   /*-- enlighten the ignorant and brutish sauvages with our wisdom? --*/
 
    if( argc < 2 || strcmp(argv[1],"-help") == 0 ){
      printf(
@@ -659,6 +881,10 @@ int main( int argc , char *argv[] )
       "  connects to the AFNI or SUMA GUI program (via TCP/IP).  Then it waits\n"
       "  for a command to be sent from AFNI/SUMA before it actually does anything.\n"
       "\n"
+      " (-: However,  the new [Feb 2011] '-batch' option,  described far below, :-)\n"
+      " (-: lets you run 3dGroupInCorr by itself, without AFNI or SUMA, writing :-)\n"
+      " (-: results to disk instead of transmitting them to the client program. :-)\n"
+      "\n"
       "* At the same time as you run 3dGroupInCorr, you also have to run the\n"
       "  AFNI GUI program, with a command like 'afni -niml'.  3dGroupInCorr\n"
       "  by itself will only do something when AFNI sends it a command, which\n"
@@ -671,6 +897,12 @@ int main( int argc , char *argv[] )
       "  series, then will compute the voxel-wise collection of t-tests of\n"
       "  that bunch of correlation maps, and return the resulting 3D volumes\n"
       "  to AFNI for display.\n"
+      " ++ A lot of computing can be required if there are a lot of datasets\n"
+      "    in the input collections.  3dGroupInCorr is carefully written to\n"
+      "    be fast.  For example, on a Mac Pro with 8 3GHz CPUs, running\n"
+      "    with 1.2 GBytes of data (100 datasets each with 69K voxels), each\n"
+      "    group correlation map takes about 0.3 seconds to calculate and\n"
+      "    transmit to AFNI -- this speed is why it's called 'Insta'.\n"
       "\n"
       "* You must start AFNI with the '-niml' option to allow it to accept\n"
       "  incoming TCP/IP socket connections.\n"
@@ -680,27 +912,50 @@ int main( int argc , char *argv[] )
       "    you also have to setup 'host trusting' correctly -- for details,\n"
       "    see the description of the '-ah' option, far below.\n"
       "\n"
+      "* In the AFNI 'A' controller, once 3dGroupInCorr is connected to AFNI,\n"
+      "  you don't have to switch to 'GrpInCorr' on the 'Cluster' menu to\n"
+      "  use the 'InstaCorr Set' controls -- unlike the individual subject\n"
+      "  InstaCorr, which requires setup inside AFNI.  For Group InstaCorr,\n"
+      "  the setup is already done in 3dSetupGroupInCorr.  The only reason\n"
+      "  for using the 'GrpInCorr' setup controls in AFNI is to change the\n"
+      "  value of the '-seedrad' option' radius interactively.\n"
+      "\n"
       "* More detailed outline of processing in 3dGroupInCorr:\n"
       " ++ For each 3D+time dataset in the input dataset collections:\n"
       "   -- Extract the seed voxel time series (averaging locally per 'seedrad')\n"
       "        [you could do this manually with 3dmaskave]\n"
       "   -- Correlate it with all other voxel time series in the same dataset\n"
-      "       [you could do this manually with 3dDeconvolve or 3dfim]\n"
+      "        [you could do this manually with 3dDeconvolve or 3dfim]\n"
       "   -- Result is one 3D correlation map per input dataset\n"
-      " ++ Then carry out the t-test between/among these 3D correlation maps.\n"
-      "   -- Actually, between the arctanh() of these maps;\n"
+      " ++ Then carry out the t-test between/among these 3D correlation maps,\n"
+      "      possibly allowing for dataset-level covariates.\n"
+      "   -- Actually, between the arctanh() of these maps:\n"
       "       cf. RA Fisher: http://en.wikipedia.org/Fisher_transformation\n"
-      "       [you could do the arctanh() conversion manually with 3dcalc]\n"
-      "       [and then do the t-test manually with 3dttest; then convert]\n"
-      "       [the t-statistics to Z-scores with another run of 3dcalc   ]\n"
+      "       [you could do the arctanh() conversion manually via 3dcalc;]\n"
+      "       [then do the t-tests manually with 3dttest++;  then convert]\n"
+      "       [the t-statistics to Z-scores using yet another 3dcalc run.]\n"
+      "   -- To be overly precise, if the correlation is larger than 0.999329,\n"
+      "       then the arctanh is clipped to 4.0, to avoid singularities.\n"
+      "       If you consider this to be a problem, please go away.\n"
       " ++ The dataset returned to AFNI converts the t-statistic maps\n"
       "    to Z-scores, for various reasons of convenience.\n"
+      "   -- Conversion is done via the same mechanism used in program\n"
+      "        cdf -t2z fitt TSTAT DOF\n"
       "   -- The individual correlation maps that were t-test-ed are discarded.\n"
+      "   -- Unless you use the new [Jan 2011] '-sendall' option :-)\n"
       "\n"
       "* When 3dGroupInCorr starts up, it has to 'page fault' all the data\n"
       "  into memory.  This can take several minutes, if it is reading (say)\n"
       "  10 Gbytes of data from a slow disk.  After that, if your computer\n"
       "  has enough RAM, then the program should run pretty quickly.\n"
+      " ++ If your computer DOESN'T have enough RAM to hold all the data,\n"
+      "    then this program will be very slow -- buy more memory!\n"
+      " ++ Note that the .data file(s) are mapped directly into memory (mmap),\n"
+      "    rather than being read with standard input methods.  This operation\n"
+      "    may not work well on network-mounted drives, in which case you\n"
+      "    will have to run 3dGroupInCorr on the same computer with the data\n"
+      "    files.  However, 3dGroupInCorr does NOT need to be run on the same\n"
+      "    computer as AFNI or SUMA: see the '-ah' option (far below).\n"
 #ifdef USE_OMP
       "\n"
       "* One reason this program is a server (rather than being built in\n"
@@ -715,13 +970,18 @@ int main( int argc , char *argv[] )
       " ++ However, this binary version is not compiled with OpenMP :-(\n"
       " ++ OpenMP is supported in gcc 4.2 and above (included on Mac OS X),\n"
       "    and in some commercial C compilers (e.g., Sun's, Intel's).\n"
+      " ++ If at all possible, use a version/compilation of 3dGroupInCorr\n"
+      "    with OpenMP; the speed difference is very appreciable!\n"
 #endif
+      ) ;
+
+      printf(
       "\n"
-      "====================\n"
-      "COMMAND LINE OPTIONS\n"
-      "====================\n"
+      "==================================================================\n"
+      "                       COMMAND LINE OPTIONS\n"
+      "==================================================================\n"
       "\n"
-      "*** Input Files ***\n"
+      "-----------------------*** Input Files ***------------------------\n"
       "\n"
       " -setA AAA.grpincorr.niml\n"
       "   = Give the setup file (from 3dSetupGroupInCorr) that describes\n"
@@ -755,10 +1015,11 @@ int main( int argc , char *argv[] )
       " -labelA aaa = Label to attach (in AFNI) to sub-bricks corresponding to setA.\n"
       "               If you don't give this option, the label used will be the prefix\n"
       "               from the -setA filename.\n"
+      "\n"
       " -labelB bbb = Label to attach (in AFNI) to sub-bricks corresponding to setB.\n"
       "              ++ At most the first 11 characters of each label will be used!\n"
       "\n"
-      "*** Two-Sample Options ***\n"
+      "-----------------------*** Two-Sample Options ***-----------------------\n"
       "\n"
       " -pooled   = For a two-sample un-paired t-test, use a pooled variance estimator\n"
       "            ++ This is the default, but it can be changed from the AFNI GUI.\n"
@@ -772,31 +1033,35 @@ int main( int argc , char *argv[] )
       "               must be the same, and the datasets must have been input to\n"
       "               3dSetupGroupInCorr in the same relative order when each\n"
       "               collection was created. (Duh.)\n"
-#if 0
       " -nosix    = For a 2-sample situation, the program by default computes\n"
       "             not only the t-test for the difference between the samples,\n"
       "             but also the individual (setA and setB) 1-sample t-tests, giving\n"
       "             6 sub-bricks that are sent to AFNI.  If you don't want\n"
       "             these 4 extra 1-sample sub-bricks, use the '-nosix' option.\n"
-#endif
-      "   ++ None of these options means anything for a 1-sample t-test\n"
-      "      (i.e., where you don't use -setB).\n"
+      "            ++ See the Covariates discussion, below, for an example of how\n"
+      "               '-nosix' affects which covariate sub-bricks are computed.\n"
+      "\n"
+      " **++ None of these 'two-sample' options means anything for a 1-sample\n"
+      "      t-test (i.e., where you don't use -setB).\n"
 #if 0
       "\n"
-      "*** Special Option for Ziad Saad (and His Ilk) ***\n"
+      "---------------** Special Option for Ziad Saad (and His Ilk) ***--------------\n"
       "\n"
       " -no_ttest = Don't do any t-tests at all.  Just compute the correlations\n"
       "             at each voxel for each dataset and transmit those to the\n"
       "             master program (AFNI or SUMA).\n"
       "            ++ This really is a special case, and not for the normal user.\n"
 #endif
+      ) ;
+
+      printf(
       "\n"
-      "*** Dataset-Level Covariates [26 May 2010] ***\n"
+      "-----------------*** Dataset-Level Covariates [May 2010] ***-----------------\n"
       "\n"
       " -covariates cf = Read file 'cf' that contains covariates values for each dataset\n"
       "                  input (in both -setA and -setB; there can only at most one\n"
       "                  -covariates option).  Format of the file\n"
-      "     FIRST LINE -->   subject IQ   age\n"
+      "     FIRST LINE  -->  subject IQ   age\n"
       "     LATER LINES -->  Elvis   143   42\n"
       "                      Fred     85   59\n"
       "                      Ethel   109   49\n"
@@ -809,20 +1074,26 @@ int main( int argc , char *argv[] )
       "            -- If you ran 3dSetupGroupInCorr before this update, its output\n"
       "               .grpincorr.niml file will NOT have dataset labels included.\n"
       "               Such a file cannot be used with -covariates -- Sorry.\n"
-      "        ++ The later columns contain numbers.\n"
+      "        ++ The later columns contain numbers: the covariate values for each\n"
+      "            input dataset.\n"
+      "            -- 3dGroupInCorr does not allow voxel-level covariates.  If you\n"
+      "               need these, you will have to use 3dttest++ on the '-sendall'\n"
+      "               output (of individual dataset correlations), which might best\n"
+      "               be done using '-batch' mode (cf. far below).\n"
       "        ++ The first line contains column headers.  The header label for the\n"
       "            first column isn't used for anything.  The later header labels are\n"
       "            used in the sub-brick labels sent to AFNI.\n"
       "        ++ At this time, only the -paired and -pooled options can be used with\n"
       "            covariates.  If you use -unpooled, it will be changed to -pooled.\n"
       "            -unpooled still works with a pure t-test (no -covariates option).\n"
-      "            -- This restriction may be lifted in the future.\n"
+      "            -- This restriction might be lifted in the future.  Or it mightn't.\n"
       "        ++ If you use -paired, then the covariates for -setB will be the same\n"
       "            as those for -setA, even if the dataset labels are different!\n"
-      "            -- This restriction may be lifted in the future.\n"
+      "            -- This restriction may be lifted in the future.  Or maybe not.\n"
       "        ++ Each covariate column in the regression matrix will have its mean\n"
       "            removed (centered). If there are 2 sets of subjects, each set's\n"
       "            matrix will be centered separately.\n"
+      "            -- See the discussion of CENTERING in the help for 3dttest++\n"
       "        ++ For each covariate, 2 sub-bricks are produced:\n"
       "            -- The estimated slope of arctanh(correlation) vs covariate\n"
       "            -- The Z-score of the t-statistic of this slope\n"
@@ -832,15 +1103,48 @@ int main( int argc , char *argv[] )
       "            is treated as a special covariate whose values are all 1).\n"
       "            -- At present, there is no way to tell 3dGroupInCorr not to send\n"
       "               all this information back to AFNI/SUMA.\n"
-      "        ++ A maximum of 31 covariates are allowed.  If you have more, then\n"
-      "            seriously consider the possibility that you are completely deranged.\n"
+      "        ++ EXAMPLE:\n"
+      "           If there are 2 groups of datasets (with setA labeled 'Pat', and setB\n"
+      "           labeled 'Ctr'), and one covariate (labeled IQ), then the following\n"
+      "           sub-bricks will be produced:\n"
+      "       # 0: Pat-Ctr_mean    = mean difference in arctanh(correlation)\n"
+      "       # 1: Pat-Ctr_Zscr    = Z score of t-statistic for above difference\n"
+      "       # 2: Pat-Ctr_IQ      = difference in slope of arctanh(correlation) vs IQ\n"
+      "       # 3: Pat-Ctr_IQ_Zscr = Z score of t-statistic for above difference\n"
+      "       # 4: Pat_mean        = mean of arctanh(correlation) for setA\n"
+      "       # 5: Pat_Zscr        = Z score of t-statistic for above mean\n"
+      "       # 6: Pat_IQ          = slope of arctanh(correlation) vs IQ for setA\n"
+      "       # 7: Pat_IQ_Zscr     = Z score of t-statistic for above slope\n"
+      "       # 8: Ctr_mean        = mean of arctanh(correlation) for setB\n"
+      "       # 9: Ctr_Zscr        = Z score of t-statistic for above mean\n"
+      "       #10: Ctr_IQ          = slope of arctanh(correlation) vs IQ for setB\n"
+      "       #11: Ctr_IQ_Zscr     = Z score of t-statistic for above slope\n"
+      "        ++ However, the single-set results (sub-bricks #4-11) will NOT be\n"
+      "           computed if the '-nosix' option is used.\n"
+      "        ++ If '-sendall' is used, the individual dataset arctanh(correlation)\n"
+      "           maps (labeled with '_zcorr' at the end) will be appended to this\n"
+      "           list.  These setA sub-brick labels will start with 'A_' and these\n"
+      "           setB labels with 'B_'.\n"
+      "    ***+++ A maximum of 31 covariates are allowed.  If you need more, then please\n"
+      "           consider the possibility that you are completely deranged or demented.\n"
       "\n"
-      "*** Other Options ***\n"
+      "---------------------------*** Other Options ***---------------------------\n"
       "\n"
       " -seedrad r = Before performing the correlations, average the seed voxel time\n"
       "              series for a radius of 'r' millimeters.  This is in addition\n"
       "              to any blurring done prior to 3dSetupGroupInCorr.  The default\n"
       "              radius is 0, but the AFNI user can change this interactively.\n"
+      "\n"
+      " -sendall   = Send all individual subject results to AFNI, as well as the\n"
+      "              various group statistics.\n"
+      "             ++ These extra sub-bricks will be labeled like 'xxx_zcorr', where\n"
+      "                'xxx' indicates which dataset the results came from; 'zcorr'\n"
+      "                denotes that the values are the arctanh of the correlations.\n"
+      "             ++ If there are a lot of datasets, then the results will be VERY\n"
+      "                large and take up a lot of memory in AFNI.\n"
+      "           **++ Use this option with some judgment and wisdom, or bad things\n"
+      "                might happen! (e.g., your computer runs out of memory.)\n"
+      "             ++ This option is also known as the 'Tim Ellmore special'.\n"
       "\n"
       " -ah host = Connect to AFNI/SUMA on the computer named 'host', rather than\n"
       "            on the current computer system 'localhost'.\n"
@@ -869,12 +1173,13 @@ int main( int argc , char *argv[] )
       "         and the mechanics of how you can setup your firewall permissions is\n"
       "         not something about which we can give you advice.\n"
       "\n"
-      " -np port = Connect to AFNI/SUMA using the TCP/IP port number given here,\n"
+/*      " -np port = Connect to AFNI/SUMA using the TCP/IP port number given here,\n"
       "            rather than the default port number [53212 for AFNI, 53224 for\n"
       "            SUMA].  You must give the corresponding option to AFNI to\n"
       "            get proper communication going.  Using '-np' properly is the\n"
       "            only way to have multiple copies of 3dGroupInCorr and AFNI\n"
-      "            talking to each other!\n"
+      "            talking to each other!\n"  ZSS June 2011*/
+      "%s"
 #ifndef DONT_USE_SHM
       "\n"
       " -NOshm = Do NOT reconnect to AFNI using shared memory, rather than TCP/IP,\n"
@@ -892,12 +1197,12 @@ int main( int argc , char *argv[] )
       "\n"
       " -quiet = Turn off the 'fun fun fun in the sun sun sun' informational messages.\n"
       " -verb  = Print out extra informational messages for more fun!\n"
-      " -VERB  = Print out even more informational messages for even more fun!!\n"
+      " -VERB  = Print out even more informational messages for even more fun fun!!\n"
 #ifdef isfinite
       " -debug = Do some internal testing (slows things down a little)\n"
 #endif
       "\n"
-      "-------============= Talairach (+trlc) vs. Original (+orig) =============-------\n"
+      "---------------*** Talairach (+trlc) vs. Original (+orig) ***---------------\n"
       "\n"
       "Normally, AFNI assigns the dataset sent by 3dGroupInCorr to the +tlrc view.\n"
       "However, you can tell AFNI to assign it to the +orig view instead.\n"
@@ -909,7 +1214,7 @@ int main( int argc , char *argv[] )
       "This feature might be useful to you if you are doing a longitudinal study on\n"
       "some subject, comparing resting state maps before and after some treatment.\n"
       "\n"
-      "-------========= Group InstaCorr and AFNI's Clusterize function =========-------\n"
+      "-----------*** Group InstaCorr and AFNI's Clusterize function ***-----------\n"
       "\n"
       "At this moment in history, you can't use Clusterize in the AFNI A controller at\n"
       "the same time that 3dGroupInCorr is actively connected.  If you also want to\n"
@@ -923,7 +1228,7 @@ int main( int argc , char *argv[] )
       "      the new result won't be Clusterize-d, until you switch back to\n"
       "      'Clusters' and then press 'Clusterize' again.\n"
       "   -- This is clumsy because you have to keep switching between GrpInCorr\n"
-      "      and Clusterize, which quickly becomes annoying.\n"
+      "      and Clusterize, which quickly becomes very annoying.\n"
       "\n"
       "(2) Alternatively, you can open up the B controller (with the 'New' button),\n"
       "    and then view the A_GRP_ICORR dataset as the Overlay in a separate\n"
@@ -942,7 +1247,95 @@ int main( int argc , char *argv[] )
       "      your GrpInCorr seed in the A image viewers but view the results\n"
       "      you want to see in the B image viewers.  And scrolling around in\n"
       "      the unlocked image viewers can also be annoying.\n"
+     , get_np_help()) ;
+
+     printf(
+     "\n"
+     "--------------------------*** BATCH MODE [Feb 2011] ***-----------------------\n"
+     "\n"
+     "* In batch mode, instead of connecting AFNI or SUMA to get commands on\n"
+     "  what to compute, 3dGroupInCorr computes correlations (etc.) based on\n"
+     "  commands from an input file.\n"
+     "  ++ At this time, batch mode only works to produce 3D (AFNI or NIfTI)\n"
+     "     datasets.  It cannot be used to produce SUMA datasets -- sorry.\n"
+     "\n"
+     "* Each line in the command file specifies the prefix for the output dataset\n"
+     "  to create, and then the set of seed vectors to use.\n"
+     "  ++ Each command line produces a distinct dataset.\n"
+     "  ++ If you want to put results from multiple commands into one big dataset,\n"
+     "     you will have to do that with something like 3dbucket or 3dTcat after\n"
+     "     running this program.\n"
+     "  ++ If an error occurs with one command line (e.g., a bad seed location is\n"
+     "     given), the program will not produce an output dataset, but will try\n"
+     "     to continue with the next line in the command file.\n"
+     "  ++ Note that I say 'seed vectors', since a distinct one is needed for\n"
+     "     each dataset comprising the inputs -setA (and -setB, if used).\n"
+     "\n"
+     "* Batch mode is invoked with the following option:\n"
+     "\n"
+     "   -batch METHOD COMMANDFILENAME\n"
+     "\n"
+     "  where METHOD specifies how the seed vectors are to be computed, and\n"
+     "  where COMMANDFILENAME specifies the file with the commands.\n"
+     "  ++ As a special case, if COMMANDFILENAME contains a space character,\n"
+     "     then instead of being interpreted as a filename, it will be used\n"
+     "     as the contents of a single line command file; for example:\n"
+     "       -batch IJK 'something.nii 33 44 55'\n"
+     "     could be used to produce a single output dataset named 'something.nii'.\n"
+     "  ++ Only one METHOD can be used per batch mode run of 3dGroupInCorr!\n"
+     "     You can't mix up 'IJK' and 'XYZ' modes, for example.\n"
+     "  ++ Note that this program WILL overwrite existing datasets, unlike most\n"
+     "     AFNI programs, so be careful.\n"
+     "\n"
+     "* METHOD must be one of the following strings (not case sensitive):\n"
+     "\n"
+     "  ++ IJK     ==> the 3D voxel grid index triple (i,j,k) is given in FILENAME,\n"
+     " or  IJKAVE      which tells the program to extract the time series from\n"
+     "                 each input dataset at that voxel and use that as the seed\n"
+     "                 vector for that dataset (if '-seedrad' is given, then the\n"
+     "                 seed vector will be averaged as done in interactive mode).\n"
+     "              ** This is the same mode of operation as the interactive seed\n"
+     "                 picking via AFNI's 'InstaCorr Set' menu item.\n"
+     "             -- FILE line format:  prefix i j k\n"
+     "\n"
+     "  ++ XYZ     ==> very similar to 'IJK', but instead of voxel indexes being\n"
+     " or  XYZAVE      given to specify the seed vectors, the RAI (DICOM) (x,y,z)\n"
+     "                 coordinates are given ('-seedrad' also applies).\n"
+     "              ** If you insist on using LPI (neurological) coordinates, as\n"
+     "                 Some other PrograMs (which are Fine Software tooLs) do,\n"
+     "                 set environmentment variable AFNI_INSTACORR_XYZ_LPI to YES,\n"
+     "                 before running this program.\n"
+     "             -- FILE line format:  prefix x y z\n"
+     "\n"
+     "  ++ MASKAVE ==> each line on the command file specifies a mask dataset;\n"
+     "                 the nonzero voxels in that dataset are used to define\n"
+     "                 the list of seed voxels that will be averaged to give\n"
+     "                 the set of seed vectors.\n"
+     "              ** You can use the usual '[..]' and '<..>' sub-brick and value\n"
+     "                 range selectors to modify the dataset on input.  Do not\n"
+     "                 put these selectors inside quotes in the command file!\n"
+     "             -- FILE line format:  prefix maskdatasetname\n"
+     "\n"
+     "  ++ IJKPV   ==> very similar to IJKAVE, XYZAVE, and MASKAVE (in that order),\n"
+     "  ++ XYZPV       but instead of extracting the average over the region\n"
+     "  ++ MASKPV      indicated, extracts the Principal Vector (in the SVD sense;\n"
+     "                 cf. program 3dLocalPV).\n"
+     "              ** Note that IJKPV and XYZPV modes only work if seedrad > 0.\n"
+     "              ** In my limited tests, the differences between the AVE and PV\n"
+     "                 methods are very small.  YMMV.\n"
+     "\n"
+     "  ++ VECTORS ==> each line on the command file specifies an ASCII .1D\n"
+     "                 file which contains the set of seed vectors to use.\n"
+     "                 There must be as many columns in the .1D file as there\n"
+     "                 are input datasets in -setA and -setB combined.  Each\n"
+     "                 column must be as long as the maximum number of time\n"
+     "                 points in the longest dataset in -setA and -setB.\n"
+     "              ** This mode is for those who want to construct their own\n"
+     "                 set of reference vectors in some clever way.\n"
+     "              ** N.B.: This method has not yet been tested!\n"
+     "             -- FILE line format:  prefix 1Dfilename\n"
      ) ;
+
      PRINT_AFNI_OMP_USAGE("3dGroupInCorr",NULL) ;
      printf("++ Authors: Bob Cox and Ziad Saad\n") ;
      PRINT_COMPILE_DATE ; exit(0) ;
@@ -950,7 +1343,7 @@ int main( int argc , char *argv[] )
 
    mainENTRY("3dGroupInCorr"); machdep();
    AFNI_logger("3dGroupInCorr",argc,argv);
-   PRINT_VERSION("3dGroupInCorr"); AUTHOR("The Mad Correlator");
+   PRINT_VERSION("3dGroupInCorr"); AUTHOR("Cox, the Mad Correlator");
 
    /*-- process command line options --*/
 
@@ -962,6 +1355,10 @@ int main( int argc , char *argv[] )
        do_shm = 0 ; nopt++ ; continue ;
      }
 #endif
+
+     if( strcasecmp(argv[nopt],"-sendall") == 0 ){  /* 22 Jan 2011 */
+       do_sendall++ ; nopt++ ; continue ;
+     }
 
      if( strcasecmp(argv[nopt],"-quiet") == 0 ){
        verb = 0 ; nopt++ ; continue ;
@@ -976,38 +1373,63 @@ int main( int argc , char *argv[] )
        debug++ ; nopt++ ; continue ;
      }
 
-     if( strcmp(argv[nopt],"-suma") == 0 ){
+     if( strcasecmp(argv[nopt],"-suma") == 0 ){
        TalkToAfni = 0 ; nopt++ ; continue ;
      }
 
-#if 0
      if( strcasecmp(argv[nopt],"-nosix") == 0 ){
        nosix = 1 ; nopt++ ; continue ;
      }
-#endif
+
+     if( strcasecmp(argv[nopt],"-batch") == 0 ){  /* Feb 2011 */
+       if( bmode )            ERROR_exit("GIC: can't use '%s' twice!",argv[nopt]) ;
+       if( ++nopt >= argc+1 ) ERROR_exit("GIC: need 2 arguments after option '%s'",argv[nopt-1]) ;
+            if( strcasecmp(argv[nopt],"IJK")     == 0 ) bmode = IJK_MODE ;
+       else if( strcasecmp(argv[nopt],"IJKAVE")  == 0 ) bmode = IJK_MODE ;
+       else if( strcasecmp(argv[nopt],"XYZ")     == 0 ) bmode = XYZ_MODE ;
+       else if( strcasecmp(argv[nopt],"XYZAVE")  == 0 ) bmode = XYZ_MODE ;
+       else if( strcasecmp(argv[nopt],"IJKPV")   == 0 ) bmode = IJKPV_MODE ;
+       else if( strcasecmp(argv[nopt],"XYZPV")   == 0 ) bmode = XYZPV_MODE ;
+       else if( strcasecmp(argv[nopt],"MASKAVE") == 0 ) bmode = MASKAVE_MODE ;
+       else if( strcasecmp(argv[nopt],"MASKPV")  == 0 ) bmode = MASKPV_MODE ;
+       else if( strcasecmp(argv[nopt],"VECTORS") == 0 ) bmode = VECTORS_MODE ;
+       else ERROR_exit("GIC: don't understand '-batch' method '%s'",argv[nopt]) ;
+       bname = strdup(argv[nopt]) ;
+       bfile = strdup(argv[++nopt]) ;
+       if( strchr(bfile,' ') == NULL ){   /* if no blank inside filename */
+         bfp = fopen( bfile , "r" ) ;
+         if( bfp == NULL )
+           ERROR_exit("GIC: can't open '-batch' file '%s'",bfile) ;
+       }
+       THD_force_ok_overwrite(1) ;
+       nopt++ ; continue ;
+     }
 
      if( strcasecmp(argv[nopt],"-seedrad") == 0 ){
-       if( ++nopt >= argc ) ERROR_exit("need 1 argument after option '%s'",argv[nopt-1]) ;
+       if( ++nopt >= argc ) ERROR_exit("GIC: need 1 argument after option '%s'",argv[nopt-1]) ;
        seedrad = (float)strtod(argv[nopt],NULL) ;
        if( seedrad < 0.0f ){
-         WARNING_message("Negative -seedrad being set back to zero!?") ;
+         WARNING_message("GIC: Negative -seedrad being set back to zero!?") ;
          seedrad = 0.0f ;
        }
        nopt++ ; continue ;
      }
 
+#if 0 /* This is now handled in AFNI_prefilter_args(). ZSS, June 2011 
+         Delete soon.                                                */ 
      if( strcasecmp(argv[nopt],"-np") == 0 ){
-       if( ++nopt >= argc ) ERROR_exit("need 1 argument after option '%s'",argv[nopt-1]) ;
+       if( ++nopt >= argc ) ERROR_exit("GIC: need 1 argument after option '%s'",argv[nopt-1]) ;
        nport = (int)strtod(argv[nopt],NULL) ;
        if( nport < 1024 || nport > 65535 ){
-         WARNING_message("Illegal port after '-np': should be in range 1024..65535") ;
+         WARNING_message("GIC: Illegal port after '-np': should be in range 1024..65535") ;
          nport = -1 ;
        }
        nopt++ ; continue ;
      }
+#endif
 
      if( strcasecmp(argv[nopt],"-ah") == 0 ){
-       if( ++nopt >= argc ) ERROR_exit("need 1 argument after option '%s'",argv[nopt-1]) ;
+       if( ++nopt >= argc ) ERROR_exit("GIC: need 1 argument after option '%s'",argv[nopt-1]) ;
        afnihost = strdup(argv[nopt]) ;
        nopt++ ; continue ;
      }
@@ -1026,43 +1448,43 @@ int main( int argc , char *argv[] )
 
      if( strcasecmp(argv[nopt],"-covariates") == 0 ){  /* 20 May 2010 */
        char *lab ; float sig ; int nbad ;
-       if( ++nopt >= argc ) ERROR_exit("need 1 argument after option '%s'",argv[nopt-1]);
-       if( covnel != NULL ) ERROR_exit("can't use -covariates twice!") ;
+       if( ++nopt >= argc ) ERROR_exit("GIC: need 1 argument after option '%s'",argv[nopt-1]);
+       if( covnel != NULL ) ERROR_exit("GIC: can't use -covariates twice!") ;
        covnel = THD_simple_table_read( argv[nopt] ) ;
        if( covnel == NULL )
-         ERROR_exit("Can't read table from -covariates file '%s'",argv[nopt]) ;
-       INFO_message("Covariates file: %d columns, each with %d rows",
-                    covnel->vec_num , covnel->vec_len ) ;
+         ERROR_exit("GIC: Can't read table from -covariates file '%s'",argv[nopt]) ;
        mcov = covnel->vec_num - 1 ;
+       INFO_message("GIC: Covariates file: %d columns (%d covariates), each with %d rows",
+                    covnel->vec_num , mcov , covnel->vec_len ) ;
        if( mcov < 1 )
-         ERROR_exit("Need at least 2 columns in -covariates file!") ;
+         ERROR_exit("GIC: Need at least 2 columns in -covariates file!") ;
        else if( mcov > MAXCOV )
-         ERROR_exit("%d covariates in file, more than max allowed (%d)",mcov,MAXCOV) ;
+         ERROR_exit("GIC: %d covariates in file, more than max allowed (%d)",mcov,MAXCOV) ;
        lab = NI_get_attribute( covnel , "Labels" ) ;
        if( lab != NULL ){
-         ININFO_message("Covariate column labels: %s",lab) ;
+         ININFO_message("GIC: Covariate column labels: %s",lab) ;
          covlab = NI_decode_string_list( lab , ";," ) ;
          if( covlab == NULL || covlab->num < mcov+1 )
-           ERROR_exit("can't decode labels properly?!") ;
+           ERROR_exit("GIC: can't decode labels properly?!") ;
        } else {
-         ERROR_exit("Can't get labels from -covariates file '%s'",argv[nopt]) ;
+         ERROR_exit("GIC: Can't get labels from -covariates file '%s'",argv[nopt]) ;
        }
        for( nbad=0,kk=1 ; kk <= mcov ; kk++ ){
          meansigma_float(covnel->vec_len,(float *)covnel->vec[kk],NULL,&sig) ;
          if( sig <= 0.0f ){
-           ERROR_message("Covariate '%s' is constant; how can this be used?!" ,
+           ERROR_message("GIC: Covariate '%s' is constant; how can this be used?!" ,
                          covlab->str[kk] ) ;
            nbad++ ;
          }
          if( strlen(covlab->str[kk]) > MAX_LABEL_SIZE )  /* truncate labels to fit */
            covlab->str[kk][MAX_LABEL_SIZE] = '\0' ;
        }
-       if( nbad > 0 ) ERROR_exit("Cannot continue :-(") ;
+       if( nbad > 0 ) ERROR_exit("GIC: Cannot continue :-(") ;
        nopt++ ; continue ;
      }
 
      if( strcasecmp(argv[nopt],"-labelA") == 0 || strcasecmp(argv[nopt],"-labA") == 0 ){
-       if( ++nopt >= argc ) ERROR_exit("need 1 argument after option '%s'",argv[nopt-1]);
+       if( ++nopt >= argc ) ERROR_exit("GIC: need 1 argument after option '%s'",argv[nopt-1]);
        if( argv[nopt][0] != '\0' ){
          NI_strncpy(label_AAA,argv[nopt],MAX_LABEL_SIZE) ;
          THD_filename_fix(label_AAA) ; lset_AAA = 1 ;
@@ -1071,7 +1493,7 @@ int main( int argc , char *argv[] )
      }
 
      if( strcasecmp(argv[nopt],"-labelB") == 0 || strcasecmp(argv[nopt],"-labB") == 0 ){
-       if( ++nopt >= argc ) ERROR_exit("need 1 argument after option '%s'",argv[nopt-1]);
+       if( ++nopt >= argc ) ERROR_exit("GIC: need 1 argument after option '%s'",argv[nopt-1]);
        if( argv[nopt][0] != '\0' ){
          NI_strncpy(label_BBB,argv[nopt],MAX_LABEL_SIZE) ;
          THD_filename_fix(label_BBB) ; lset_BBB = 1 ;
@@ -1081,43 +1503,43 @@ int main( int argc , char *argv[] )
 
 #if 0
      if( strcasecmp(argv[nopt],"-useA") == 0 ){
-       if( ++nopt >= argc ) ERROR_exit("need 1 argument after option '%s'",argv[nopt-1]) ;
-       if( use_AAA != NULL ) ERROR_exit("you can't use -useA twice!") ;
+       if( ++nopt >= argc ) ERROR_exit("GIC: need 1 argument after option '%s'",argv[nopt-1]) ;
+       if( use_AAA != NULL ) ERROR_exit("GIC: you can't use -useA twice!") ;
        use_AAA = MCW_get_intlist( 999999 , argv[nopt] ) ;
        if( use_AAA == NULL || use_AAA[0] <= 0 )
-         ERROR_exit("can't decode argument after -useA") ;
+         ERROR_exit("GIC: can't decode argument after -useA") ;
      }
 
      if( strcasecmp(argv[nopt],"-useB") == 0 ){
-       if( ++nopt >= argc ) ERROR_exit("need 1 argument after option '%s'",argv[nopt-1]) ;
-       if( use_BBB != NULL ) ERROR_exit("you can't use -useB twice!") ;
+       if( ++nopt >= argc ) ERROR_exit("GIC: need 1 argument after option '%s'",argv[nopt-1]) ;
+       if( use_BBB != NULL ) ERROR_exit("GIC: you can't use -useB twice!") ;
        use_BBB = MCW_get_intlist( 999999 , argv[nopt] ) ;
        if( use_BBB == NULL || use_BBB[0] <= 0 )
-         ERROR_exit("can't decode argument after -useB") ;
+         ERROR_exit("GIC: can't decode argument after -useB") ;
      }
 #endif
 
      if( strcasecmp(argv[nopt],"-setA") == 0 ){
        char *fname , *cpt ;
-       if( shd_AAA != NULL ) ERROR_exit("can only use '-setA' once!") ;
-       if( ++nopt >= argc ) ERROR_exit("need 1 argument after option '%s'",argv[nopt-1]);
+       if( shd_AAA != NULL ) ERROR_exit("GIC: can only use '-setA' once!") ;
+       if( ++nopt >= argc ) ERROR_exit("GIC: need 1 argument after option '%s'",argv[nopt-1]);
        fname = strdup(argv[nopt]) ;
        if( STRING_HAS_SUFFIX(fname,".data") ){
          strcpy(fname+strlen(fname)-5,".niml") ;
-         WARNING_message("Replaced '.data' with '.niml' in -setA filename") ;
+         WARNING_message("GIC: Replaced '.data' with '.niml' in -setA filename") ;
        } else if( STRING_HAS_SUFFIX(fname,".grpincorr") ){
          fname = (char *)realloc(fname,strlen(fname)+16) ;
          strcat(fname,".niml") ;
-         INFO_message("Added '.niml' to end of -setA filename") ;
+         if( verb ) INFO_message("GIC: Added '.niml' to end of -setA filename") ;
        } else if( STRING_HAS_SUFFIX(fname,".grpincorr.") ){
          fname = (char *)realloc(fname,strlen(fname)+16) ;
          strcat(fname,"niml") ;
-         INFO_message("Added 'niml' to end of -setA filename") ;
+         if( verb ) INFO_message("GIC: Added 'niml' to end of -setA filename") ;
        }
        shd_AAA = GRINCOR_read_input( fname ) ;
-       if( shd_AAA == NULL ) ERROR_exit("Cannot continue after -setA input error") ;
-       if( verb ) INFO_message("-setA opened, contains %d datasets, %d time series, %s bytes",
-                                shd_AAA->ndset , shd_AAA->nvec , commaized_integer_string(shd_AAA->nbytes));
+       if( shd_AAA == NULL ) ERROR_exit("GIC: Cannot continue after -setA input error") ;
+       if( verb ) INFO_message("GIC: -setA opened, contains %d datasets, %d time series, %s bytes",
+                               shd_AAA->ndset , shd_AAA->nvec , commaized_integer_string(shd_AAA->nbytes));
        qlab_AAA = fname ;
        cpt = strchr(qlab_AAA,'.') ; if( cpt != NULL && cpt != qlab_AAA ) *cpt = '\0' ;
        nopt++ ; continue ;
@@ -1125,36 +1547,48 @@ int main( int argc , char *argv[] )
 
      if( strcasecmp(argv[nopt],"-setB") == 0 ){
        char *fname , *cpt ;
-       if( shd_BBB != NULL ) ERROR_exit("can only use '-setB' once!") ;
-       if( ++nopt >= argc ) ERROR_exit("need 1 argument after option '%s'",argv[nopt-1]) ;
+       if( shd_BBB != NULL ) ERROR_exit("GIC: can only use '-setB' once!") ;
+       if( ++nopt >= argc ) ERROR_exit("GIC: need 1 argument after option '%s'",argv[nopt-1]) ;
        fname = strdup(argv[nopt]) ;
        if( STRING_HAS_SUFFIX(fname,".data") ){
          strcpy(fname+strlen(fname)-5,".niml") ;
-         WARNING_message("Replaced '.data' with '.niml' in -setA filename") ;
+         if( verb ) WARNING_message("GIC: Replaced '.data' with '.niml' in -setA filename") ;
        } else if( STRING_HAS_SUFFIX(fname,".grpincorr") ){
          fname = (char *)realloc(fname,strlen(fname)+16) ;
          strcat(fname,".niml") ;
-         INFO_message("Added '.niml' to end of -setB filename") ;
+         if( verb ) INFO_message("GIC: Added '.niml' to end of -setB filename") ;
        } else if( STRING_HAS_SUFFIX(fname,".grpincorr.") ){
          fname = (char *)realloc(fname,strlen(fname)+16) ;
          strcat(fname,"niml") ;
-         INFO_message("Added 'niml' to end of -setB filename") ;
+         if( verb ) INFO_message("GIC: Added 'niml' to end of -setB filename") ;
        }
        shd_BBB = GRINCOR_read_input( fname ) ;
-       if( shd_BBB == NULL ) ERROR_exit("Cannot continue after -setB input error") ;
-       if( verb ) INFO_message("-setB opened, contains %d datasets, %d time series, %s bytes",
-                                shd_BBB->ndset , shd_BBB->nvec , commaized_integer_string(shd_BBB->nbytes));
+       if( shd_BBB == NULL ) ERROR_exit("GIC: Cannot continue after -setB input error") ;
+       if( verb ) INFO_message("GIC: -setB opened, contains %d datasets, %d time series, %s bytes",
+                               shd_BBB->ndset , shd_BBB->nvec , commaized_integer_string(shd_BBB->nbytes));
        qlab_BBB = fname ;
        cpt = strchr(qlab_BBB,'.') ; if( cpt != NULL && cpt != qlab_BBB ) *cpt = '\0' ;
        nopt++ ; continue ;
      }
 
-     ERROR_exit("Unknown option: '%s'",argv[nopt]) ;
+     ERROR_exit("GIC: Unknown option: '%s'",argv[nopt]) ;
    }
 
    /*-- check inputs for OK-ness --*/
 
-   if( shd_AAA == NULL ) ERROR_exit(" !! You must use the '-setA' option !!") ;
+   do_lpi = AFNI_yesenv("AFNI_INSTACORR_XYZ_LPI") ;  /* 07 Feb 2011 */
+
+   if( bmode && !TalkToAfni )
+     ERROR_exit("GIC: Alas, -batch and -suma are not compatible :-(") ;
+
+   if( seedrad == 0.0f && (bmode == IJKPV_MODE || bmode == XYZPV_MODE) ){
+     char *bold=bname ;
+     if( bmode == IJKPV_MODE ){ bname = "IJKAVE" ; bmode = IJK_MODE ; }
+     else                     { bname = "XYZAVE" ; bmode = XYZ_MODE ; }
+     WARNING_message("GIC: seedrad=0 means -batch %s is changed to %s",bold,bname) ;
+   }
+
+   if( shd_AAA == NULL ) ERROR_exit("GIC:  !! You must use the '-setA' option !!") ;
 
    /* 18 Mar 2010: if -labelA not used, get it from input filename (mm for B) */
 
@@ -1172,24 +1606,25 @@ int main( int argc , char *argv[] )
    } else {
      ndset_BBB = 0 ; nvals_BBB = NULL ; dosix = 0 ;
    }
+   ndset_tot = ndset_AAA + ndset_BBB ;
 
    if( shd_BBB != NULL && shd_AAA->nvec != shd_BBB->nvec )
-     ERROR_exit("-setA and -setB don't have same number of voxels") ;
+     ERROR_exit("GIC: -setA and -setB don't have same number of voxels") ;
 
    if( shd_BBB != NULL && strcmp(shd_AAA->dfname,shd_BBB->dfname) == 0 )
-     ERROR_exit("-setA and -setB can't use the same datafile!") ;
+     ERROR_exit("GIC: -setA and -setB can't use the same datafile!") ;
 
         if( shd_BBB        == NULL           ) ttest_opcode_max = 0 ;
    else if( shd_BBB->ndset != shd_AAA->ndset ) ttest_opcode_max = 1 ;
 
    if( ttest_opcode < 0 || ttest_opcode > ttest_opcode_max ){
      if( shd_BBB != NULL && verb > 2 )
-       INFO_message("Setting t-test option to default value of 'pooled'") ;
+       INFO_message("GIC: Setting t-test option to default value of 'pooled'") ;
      ttest_opcode = 0 ;
    }
 
    if( ttest_opcode == 1 && mcov > 0 ){
-     INFO_message("-covariates does not support unpooled variance (yet)") ;
+     WARNING_message("GIC: -covariates does not support unpooled variance (yet)") ;
      ttest_opcode = 0 ;
    }
 
@@ -1200,7 +1635,7 @@ int main( int argc , char *argv[] )
      int nuse = use_AAA[0] ;
      for( kk=1 ; kk <= nuse ; kk++ ){
        if( use_AAA[kk] < 0 || use_AAA[kk] >= shd_AAA->ndset )
-         ERROR_exit("Index in -useAAA outside of range 0..%d",shd_AAA->ndset-1) ;
+         ERROR_exit("GIC: Index in -useAAA outside of range 0..%d",shd_AAA->ndset-1) ;
      }
      shd_AAA->nuse = nuse ;
      shd_AAA->use  = use_AAA + 1 ;
@@ -1210,12 +1645,12 @@ int main( int argc , char *argv[] )
      int nuse = use_BBB[0] ;
      for( kk=1 ; kk <= nuse ; kk++ ){
        if( use_BBB[kk] < 0 || use_BBB[kk] >= shd_BBB->ndset )
-         ERROR_exit("Index in -useBBB outside of range 0..%d",shd_BBB->ndset-1) ;
+         ERROR_exit("GIC: Index in -useBBB outside of range 0..%d",shd_BBB->ndset-1) ;
      }
      shd_BBB->nuse = nuse ;
      shd_BBB->use  = use_BBB + 1 ;
    } else if( use_BBB != NULL ){
-     WARNING_message("-useB was given, but -setB wasn't given!") ;
+     WARNING_message("GIC: -useB was given, but -setB wasn't given!") ;
    }
 #endif
 
@@ -1232,23 +1667,29 @@ int main( int argc , char *argv[] )
      /* simple tests for stoopid users [is there any other kind?] */
 
      if( shd_AAA->dslab == NULL ){
-       ERROR_message("Can't use covariates, since setA doesn't have dataset labels!") ;
+       ERROR_message("GIC: Can't use covariates, since setA doesn't have dataset labels!") ;
        nbad++ ;
      if( shd_BBB != NULL && shd_BBB->dslab == NULL )
-       ERROR_message("Can't use covariates, since setB doesn't have dataset labels!") ;
+       ERROR_message("GIC: Can't use covariates, since setB doesn't have dataset labels!") ;
        nbad++ ;
      }
 
      if( ndset_AAA < mcov+3 ){
-       ERROR_message("-setA has %d datasets, but you have %d covariates!") ; nbad++ ;
+       nbad++ ;
+       ERROR_message(
+         "GIC: -setA has %d datasets, but you have %d covariates (max would be %d)",
+         ndset_AAA,mcov,ndset_AAA-3) ;
      }
      if( ndset_BBB > 0 && ndset_BBB < mcov+3 ){
-       ERROR_message("-setB has %d datasets, but you have %d covariates!") ; nbad++ ;
+       nbad++ ;
+       ERROR_message(
+         "GIC: -setB has %d datasets, but you have %d covariates (max would be %d)",
+         ndset_BBB,mcov,ndset_BBB-3) ;
      }
 
-     if( nbad ) ERROR_exit("Can't continue :-(") ;
+     if( nbad ) ERROR_exit("GIC: Can't continue :-(") ;
 
-     if( verb ) INFO_message("Setting up regression matrices for covariates") ;
+     if( verb ) INFO_message("GIC: Setting up regression matrices for covariates") ;
 
      /*--- setup the setA regression matrix ---*/
 
@@ -1259,7 +1700,7 @@ int main( int argc , char *argv[] )
        ii = string_search( shd_AAA->dslab[kk] , /* find which covariate */
                            covnel->vec_len , (char **)covnel->vec[0] ) ;
        if( ii < 0 ){
-         ERROR_message("Can't find dataset label '%s' in covariates file" ,
+         ERROR_message("GIC: Can't find dataset label '%s' in covariates file" ,
                        shd_AAA->dslab[kk] ) ;
          nbad++ ;
        } else {             /* ii-th row of covariates == kk-th dataset */
@@ -1277,16 +1718,16 @@ int main( int argc , char *argv[] )
        }
        /* Compute inv[X'X] and the pseudo-inverse inv[X'X]X' for this matrix */
        impr = mri_matrix_psinv_pair( axxim , 0.0f ) ;
-       if( impr == NULL ) ERROR_exit("Can't process setA covariate matrix?! :-(") ;
+       if( impr == NULL ) ERROR_exit("GIC: Can't process setA covariate matrix?! :-(") ;
        axxim_psinv  = IMARR_SUBIM(impr,0) ; axx_psinv  = MRI_FLOAT_PTR(axxim_psinv ) ;
        axxim_xtxinv = IMARR_SUBIM(impr,1) ; axx_xtxinv = MRI_FLOAT_PTR(axxim_xtxinv) ;
 
 #if defined(COVTEST) && 0
-       ININFO_message("axx matrix: %d X %d",axxim->nx,axxim->ny) ;
+       ININFO_message("GIC: axx matrix: %d X %d",axxim->nx,axxim->ny) ;
         mri_write_1D("stderr:",axxim) ;
-       ININFO_message("axxim_psinv matrix: %d X %d",axxim_psinv->nx,axxim_psinv->ny) ;
+       ININFO_message("GIC: axxim_psinv matrix: %d X %d",axxim_psinv->nx,axxim_psinv->ny) ;
         mri_write_1D("stderr:",axxim_psinv) ;
-       ININFO_message("axxim_xtxinv matrix: %d X %d",axxim_xtxinv->nx,axxim_xtxinv->ny) ;
+       ININFO_message("GIC: axxim_xtxinv matrix: %d X %d",axxim_xtxinv->nx,axxim_xtxinv->ny) ;
         mri_write_1D("stderr:",axxim_xtxinv) ;
 #endif
      }
@@ -1301,7 +1742,7 @@ int main( int argc , char *argv[] )
          ii = string_search( shd_BBB->dslab[kk] , /* find which covariate */
                              covnel->vec_len , (char **)covnel->vec[0] ) ;
          if( ii < 0 ){
-           ERROR_message("Can't find dataset label '%s' in covariates file" ,
+           ERROR_message("GIC: Can't find dataset label '%s' in covariates file" ,
                          shd_BBB->dslab[kk] ) ;
            nbad++ ;
          } else {             /* ii-th row of covariates == kk-th dataset */
@@ -1319,7 +1760,7 @@ int main( int argc , char *argv[] )
          }
          /* Compute inv[X'X] and the pseudo-inverse inv[X'X]X' for this matrix */
          impr = mri_matrix_psinv_pair( bxxim , 0.0f ) ;
-         if( impr == NULL ) ERROR_exit("Can't process setB covariate matrix?! :-(") ;
+         if( impr == NULL ) ERROR_exit("GIC: Can't process setB covariate matrix?! :-(") ;
          bxxim_psinv  = IMARR_SUBIM(impr,0) ; bxx_psinv  = MRI_FLOAT_PTR(bxxim_psinv ) ;
          bxxim_xtxinv = IMARR_SUBIM(impr,1) ; bxx_xtxinv = MRI_FLOAT_PTR(bxxim_xtxinv) ;
        }
@@ -1331,7 +1772,7 @@ int main( int argc , char *argv[] )
      }
 
      if( nbad )
-       ERROR_exit("Can't continue past the above covariates errors :-((") ;
+       ERROR_exit("GIC: Can't continue past the above covariates errors :-((") ;
 
    } /* covariates regression matrices now setup */
 
@@ -1342,7 +1783,7 @@ int main( int argc , char *argv[] )
 #undef  BSTEP
 #define BSTEP 256
    { long long pp , vstep=9 ; char *qv ; float sum=0.0f ;
-     if( verb ) INFO_message("page faulting (reading) data into memory") ;
+     if( verb ) INFO_message("GIC: page faulting (reading) data into memory") ;
      if( shd_AAA->datum == 1 ) qv = (char *)shd_AAA->bv[0] ;
      else                      qv = (char *)shd_AAA->sv[0] ;
      if( verb ){
@@ -1372,24 +1813,25 @@ int main( int argc , char *argv[] )
    if( verb ){
      long long nbtot = shd_AAA->nbytes ;
      if( shd_BBB != NULL ) nbtot += shd_BBB->nbytes ;
-     INFO_message("total bytes input = %s (about %s)" ,
+     INFO_message("GIC: total bytes input = %s (about %s)" ,
                    commaized_integer_string(nbtot) ,
                    approximate_number_string((double)nbtot) ) ;
    }
 
-   /*-- Create VOLUME_DATA NIML element to hold the brick data --*/
+   /*-- Create NIML element to hold the output brick data --*/
 
-   nelset = NI_new_data_element( "3dGroupInCorr_dataset" , shd_AAA->nvec ) ;
+   nelset = NI_new_data_element( "3dGroupInCorr_dataset" , nvec ) ;
 
    /*----- if no covariates, do it the olden style way -----*/
 
-   if( mcov == 0 ){
+   if( mcov == 0 ){ /* create columns in nelset, 1 for each output sub-brick */
+
      NI_add_column( nelset, NI_FLOAT, NULL );
      NI_add_column( nelset, NI_FLOAT, NULL );
-     neldar = (float *)nelset->vec[0];  /* neldar = delta  sub-brick */
-     nelzar = (float *)nelset->vec[1];  /* nelzar = Zscore sub-brick */
+     neldar = (float *)nelset->vec[0];          /* neldar = delta  sub-brick */
+     nelzar = (float *)nelset->vec[1];          /* nelzar = Zscore sub-brick */
      if( neldar == NULL || nelzar == NULL )
-       ERROR_exit("Can't setup output dataset?") ; /* should never happen */
+       ERROR_exit("GIC: Can't setup output dataset?") ; /* should never transpire */
 
      /* for a 2-sample test, create arrays for the 1-sample results as well */
 
@@ -1400,7 +1842,7 @@ int main( int argc , char *argv[] )
        NI_add_column( nelset, NI_FLOAT, NULL ); nelzar_BBB = (float *)nelset->vec[5];
        if( neldar_AAA == NULL || nelzar_AAA == NULL ||
            neldar_BBB == NULL || nelzar_BBB == NULL   )
-        ERROR_exit("Can't setup output dataset?") ; /* should never transpire */
+        ERROR_exit("GIC: Can't setup output dataset?") ; /* should never transpire */
      }
 
      nout = (dosix) ? 6 : 2 ;
@@ -1412,9 +1854,10 @@ int main( int argc , char *argv[] )
      for( kk=0 ; kk < nout ; kk++ ){
        NI_add_column( nelset , NI_FLOAT , NULL ) ;
        dtar[kk] = (float *)nelset->vec[kk] ;
-       if( dtar[kk] == NULL ) ERROR_exit("Can't setup output dataset?!") ;
+       if( dtar[kk] == NULL )
+         ERROR_exit("GIC: Can't setup output dataset [#%d]?!",kk) ;
      }
-     if( shd_BBB != NULL ){
+     if( shd_BBB != NULL ){   /* bit masks for which tests to compute */
        testAB = (UINT32)(-1) ; testA  = testB = (dosix) ? testAB : 0 ;
      } else {
        testAB = testB = 0 ; testA = (UINT32)(-1) ;
@@ -1422,14 +1865,27 @@ int main( int argc , char *argv[] )
 
    }
 
+   /* add columns for the individual dataset arctanh(corr) results */
+
+   if( do_sendall ){
+     int qq = nelset->vec_num ;                  /* # of columns at the start */
+     nsaar = ndset_AAA + ndset_BBB ;      /* number of -sendall arrays to add */
+     saar  = (float **)malloc(sizeof(float *)*nsaar) ;
+     for( kk=0 ; kk < nsaar ; kk++ ){
+       NI_add_column( nelset , NI_FLOAT , NULL ) ;
+       saar[kk] = (float *)nelset->vec[kk+qq] ;
+       if( saar[kk] == NULL )
+         ERROR_exit("GIC: Can't setup output dataset for -sendall [#%d]?!",kk) ;
+     }
+   }
+
    /*========= message for the user =========*/
 
-   if( verb ){
-     INFO_message    ("--- Be sure to start %s with the '-niml' command line option",pname) ;
-     if( TalkToAfni ){
-       ININFO_message("---  [or press the NIML+PO button if you forgot '-niml']") ;
-       ININFO_message("--- Then open Define Overlay and pick GrpInCorr from the Clusters menu") ;
-     }
+   pname = (bmode) ? "Myself" : (TalkToAfni) ? "AFNI" : "SUMA" ;
+   if( verb && !bmode ){
+     INFO_message    ("GIC: --- Be sure to start %s with the '-niml' command line option",pname) ;
+     if( TalkToAfni )
+       ININFO_message("     ---  [or press the NIML+PO button if you forgot '-niml']") ;
    }
 
    /*========= this stuff is one-time-only setup of the I/O to AFNI =========*/
@@ -1443,25 +1899,29 @@ int main( int argc , char *argv[] )
 
    /* name of NIML stream (socket) to open */
 
-                    pname = (TalkToAfni) ? "AFNI"         : "SUMA" ;
-   if( nport <= 0 ) nport = (TalkToAfni) ? AFNI_NIML_PORT : SUMA_GICORR_PORT ;
-   sprintf( nsname , "tcp:%s:%d" , afnihost , nport ) ;
+   if( !bmode ){
+     if( nport <= 0 ) {
+      nport = (TalkToAfni) ?  get_port_named("AFNI_GroupInCorr_NIML") : 
+                              get_port_named("SUMA_GroupInCorr_NIML") ;
+     }
+     sprintf( nsname , "tcp:%s:%d" , afnihost , nport ) ;
 
-   /* open the socket (i.e., dial the telephone call) */
+     /* open the socket (i.e., dial the telephone call) */
 
-   fprintf(stderr,"++ Opening NIML socket '%s' to %s",nsname,pname) ;
-   GI_stream = NI_stream_open( nsname , "w" ) ;
+     fprintf(stderr,"++ Opening NIML socket '%s' to %s",nsname,pname) ;
+     GI_stream = NI_stream_open( nsname , "w" ) ;
 
-   /* loop until AFNI connects (answers the call),
-      printing a '.' every so often to keep the user happy */
+     /* loop until AFNI connects (answers the call),
+        printing '.' every so often to keep the user mollified and distracted */
 
-   for( nn=0 ; nn < 234 ; nn++ ){
-     fprintf(stderr,".") ;
-     kk = NI_stream_writecheck( GI_stream , 999 ) ;
-     if( kk == 1 ){ fprintf(stderr," Connected!\n") ; break ; }
-     if( kk <  0 ){ fprintf(stderr," ** Connection fails :-(\n") ; exit(1) ; }
+     for( nn=0 ; nn < 234 ; nn++ ){  /* don't loop forever, though */
+       fprintf(stderr,".") ;
+       kk = NI_stream_writecheck( GI_stream , 999 ) ; /* check for connection */
+       if( kk == 1 ){ fprintf(stderr," Connected!\n") ; break ; }    /* good! */
+       if( kk <  0 ){ fprintf(stderr," ** Connection fails :-(\n") ; exit(1) ; }
+     }
+     if( kk <= 0 ){ fprintf(stderr," ** Connection times out :-(\n"); exit(1); }
    }
-   if( kk <= 0 ){ fprintf(stderr," ** Connection times out :-(\n") ; exit(1) ; }
 
    /** store some info about the dataset we are constructing **/
 
@@ -1470,12 +1930,12 @@ int main( int argc , char *argv[] )
    nz = DSET_NZ(shd_AAA->tdset) ; dz = fabsf(DSET_DZ(shd_AAA->tdset)) ;
    dmin = MIN(dx,dy) ; dmin = MIN(dmin,dz) ; nxy = nx*ny ;
 
-   /** now send our setup info to AFNI **/
+   /** now create an element to describe our setup info to AFNI **/
 
    if( shd_AAA->nvec == shd_AAA->nvox ){
      nelcmd = NI_new_data_element( "3dGroupInCorr_setup" , 0 ) ;  /* no data */
    } else {
-     nelcmd = NI_new_data_element( "3dGroupInCorr_setup" , shd_AAA->nvec ) ;
+     nelcmd = NI_new_data_element( "3dGroupInCorr_setup" , nvec ) ;
      NI_add_column( nelcmd , NI_INT , shd_AAA->ivec ) ;    /* data = indexes */
    }
 
@@ -1487,7 +1947,7 @@ int main( int argc , char *argv[] )
    sprintf(buf,"%d",(shd_BBB != NULL) ? shd_BBB->ndset : 0 ) ;
    NI_set_attribute( nelcmd , "ndset_B" , buf ) ;
 
-   sprintf(buf,"%d",shd_AAA->nvec) ;
+   sprintf(buf,"%d",nvec) ;
    NI_set_attribute( nelcmd , "nvec" , buf ) ;
 
    sprintf(buf,"%.2f",seedrad) ;
@@ -1505,10 +1965,10 @@ int main( int argc , char *argv[] )
    if( shd_BBB != NULL )
      NI_set_attribute( nelcmd , "label_BBB" , label_BBB ) ;
 
-   NI_set_attribute_int( nelcmd , "target_nvals" , nout ) ;
+   NI_set_attribute_int( nelcmd , "target_nvals" , nout+nsaar ) ;
 
+   bricklabels = (char *)calloc(sizeof(char),(5*MAX_LABEL_SIZE+16)*(nout+nsaar+1)) ;
    if( mcov == 0 ){
-     char bricklabels[32*MAX_LABEL_SIZE+64] ;
 
      if( shd_BBB == NULL ){  /* 1 sample */
        sprintf( bricklabels , "%s_mean ; %s_Zscr" , label_AAA , label_AAA ) ;
@@ -1520,10 +1980,8 @@ int main( int argc , char *argv[] )
                   " ; %s_mean ; %s_Zscr ; %s_mean ; %s_Zscr" ,
                   label_AAA , label_AAA , label_BBB , label_BBB ) ;
      }
-     NI_set_attribute( nelcmd , "target_labels" , bricklabels ) ;
 
    } else {  /* labels for the myriad of covariates results [23 May 2010] */
-     char *bricklabels = (char *)calloc(sizeof(char),(3*MAX_LABEL_SIZE+16)*(nout+1)) ;
 
      if( testAB ){
        sprintf( bricklabels , "%s-%s_mean ; %s-%s_Zscr ;" ,
@@ -1553,12 +2011,35 @@ int main( int argc , char *argv[] )
                   label_BBB , covlab->str[kk]  ) ;
      }
 
-     kk = strlen(bricklabels) ; bricklabels[kk-1] = '\0' ;
-     NI_set_attribute( nelcmd , "target_labels" , bricklabels ) ;
-     free(bricklabels) ;
+     kk = strlen(bricklabels) ; bricklabels[kk-1] = '\0' ;  /* truncate last ';' */
    }
 
-   /* ZSS: set surface attributes */
+   /* add labels for the subject-level bricks, if needed */
+
+   if( do_sendall ){
+     char buf[32] ;
+     strcat(bricklabels,";") ;           /* 01 Feb 2011: oopsie */
+     for( kk=0 ; kk < ndset_AAA ; kk++ ){
+       if( shd_AAA->dslab != NULL ) sprintf(buf,"A_%.10s",shd_AAA->dslab[kk]) ;
+       else                         sprintf(buf,"%.9s#%02d",label_AAA,kk) ;
+       sprintf( bricklabels+strlen(bricklabels) , "%s_zcorr ; " , buf ) ;
+     }
+
+     for( kk=0 ; kk < ndset_BBB ; kk++ ){
+       if( shd_BBB->dslab != NULL ) sprintf(buf,"B_%.10s",shd_BBB->dslab[kk]) ;
+       else                         sprintf(buf,"%.9s#%02d",label_BBB,kk) ;
+       sprintf( bricklabels+strlen(bricklabels) , "%s_zcorr ; " , buf ) ;
+     }
+
+     kk = strlen(bricklabels) ; bricklabels[kk-1] = '\0' ;  /* truncate last ';' */
+   }
+
+   /* set the brick labels into the header being sent to AFNI/SUMA */
+
+   NI_set_attribute( nelcmd , "target_labels" , bricklabels ) ;
+   free(bricklabels) ;
+
+   /* ZSS: set surface attributes [note Ziad's TERRIBLE use of spaces] */
 
    if (shd_AAA->nnode[0] >= 0) {
       sprintf(buf,"%d, %d", shd_AAA->nnode[0], shd_AAA->nnode[1]);
@@ -1569,47 +2050,74 @@ int main( int argc , char *argv[] )
       NI_set_attribute( nelcmd , "LRpair_ninmask", buf);
    }
 
-   /* actually send the setup NIML element now */
+   /*-- either tell AFNI what's going on, or setup stuff ourselves --*/
 
-   if( verb > 1 ) INFO_message("Sending setup information to %s",pname) ;
-   nn = NI_write_element( GI_stream , nelcmd , NI_BINARY_MODE ) ;
-   if( nn < 0 ){
-     ERROR_exit("Can't send setup data to %s!?",pname) ;
+   if( !bmode ){  /* actually send the setup NIML element now */
+
+     if( verb > 1 ) INFO_message("GIC: Sending setup information to %s",pname) ;
+     nn = NI_write_element( GI_stream , nelcmd , NI_BINARY_MODE ) ;
+     if( nn < 0 ){
+       ERROR_exit("GIC: Can't send setup data to %s!?",pname) ;
+     }
+
+   } else {       /* batch mode ==> setup internally */
+
+     giset = GRINCOR_setup_dataset( nelcmd ) ;
+     if( giset == NULL )
+       ERROR_exit("Can't setup batch mode dataset for some reason :-(") ;
+
    }
-   NI_free_element(nelcmd) ;
+
+   NI_free_element(nelcmd) ;  /* setup is done (here or there) */
+   nelcmd = NULL ;
 
    /** make neighborhood struct for seedrad usage **/
 
    if( seedrad >= dmin ){
      nbhd = MCW_spheremask( dx,dy,dz , seedrad ) ;
      if( nbhd != NULL && nbhd->num_pt < 2 ) KILL_CLUSTER(nbhd) ;
+     if( nbhd != NULL && verb > 1 )
+       INFO_message("GIC: seedrad=%g neighborhood contains %d voxels" ,
+                    seedrad , nbhd->num_pt ) ;
    }
 
-   /** make space for seed vectors and correlations **/
+   /** make space for seed vectors and arctanh(correlations) **/
 
    seedvec_AAA = (float **)malloc(sizeof(float *)*ndset_AAA) ;
    dotprod_AAA = (float **)malloc(sizeof(float *)*ndset_AAA) ;
+   nvals_AAA_max = shd_AAA->nvals_max ;
+   nvals_AAA_tot = shd_AAA->nvals_tot ;
    for( kk=0 ; kk < ndset_AAA ; kk++ ){
      seedvec_AAA[kk] = (float *)malloc(sizeof(float)*nvals_AAA[kk]) ;
-     dotprod_AAA[kk] = (float *)malloc(sizeof(float)*nvec) ;
+     if( nsaar == 0 )
+       dotprod_AAA[kk] = (float *)malloc(sizeof(float)*nvec) ;
+     else
+       dotprod_AAA[kk] = saar[kk] ;
    }
 
    if( shd_BBB != NULL ){
      seedvec_BBB = (float **)malloc(sizeof(float *)*ndset_BBB) ;
      dotprod_BBB = (float **)malloc(sizeof(float *)*ndset_BBB) ;
+     nvals_BBB_max = shd_BBB->nvals_max ;
+     nvals_BBB_tot = shd_BBB->nvals_tot ;
      for( kk=0 ; kk < ndset_BBB ; kk++ ){
        seedvec_BBB[kk] = (float *)malloc(sizeof(float)*nvals_BBB[kk]) ;
-       dotprod_BBB[kk] = (float *)malloc(sizeof(float)*nvec) ;
+       if( nsaar == 0 )
+         dotprod_BBB[kk] = (float *)malloc(sizeof(float)*nvec) ;
+       else
+         dotprod_BBB[kk] = saar[kk+ndset_AAA] ;
      }
    }
+   nvals_tot = nvals_AAA_tot + nvals_BBB_tot ;
+   nvals_max = MAX( nvals_AAA_max , nvals_BBB_max ) ;
 
    if( verb ){
-     INFO_message("3dGroupInCorr stands ready to do thy bidding :-) !!") ;
+     INFO_message("3dGroupInCorr stands ready to do thy bidding, O Master :-) !!") ;
 #ifdef USE_OMP
 #pragma omp parallel
  {
   if( omp_get_thread_num() == 0 )
-    ININFO_message("OpenMP thread count = %d",omp_get_num_threads()) ;
+    ININFO_message("GIC: OpenMP thread count = %d",omp_get_num_threads()) ;
  }
 #endif
    }
@@ -1631,33 +2139,184 @@ int main( int argc , char *argv[] )
 
    while(1){  /* loop forever? */
 
-     nelcmd = NI_read_element( GI_stream , 333 ) ;  /* get command? */
+     if( !bmode ){   /* read command from AFNI or SUMA */
+       nelcmd = NI_read_element( GI_stream , 333 ) ;
 
-     /* nada?  check if something is bad */
+       atim = btim = NI_clock_time() ;  /* start timer, for user info */
 
-     if( nelcmd == NULL ){
-       kk = NI_stream_goodcheck( GI_stream , 1 ) ;
-       if( kk < 1 ){
-         NI_stream_close(GI_stream) ; GI_stream = (NI_stream)NULL ;
-         WARNING_message("Connection to %s broken - trying to restart",pname) ;
-         NI_sleep(111) ;                /* give AFNI a moment to do whatever */
-         GI_stream = NI_stream_open( nsname , "w" ) ;
-         kk = NI_stream_goodcheck( GI_stream , 9999 ) ; /* wait a little bit */
-         if( kk == 1 ){
-           ININFO_message("TCP/IP restart is good :-)") ; shm_active = 0 ;
-         } else {
-           ININFO_message("TCP/IP restart failed :-(") ;
+       /* nada?  check if something is bad */
+
+       if( nelcmd == NULL ){
+         kk = NI_stream_goodcheck( GI_stream , 1 ) ;
+         if( kk < 1 ){
            NI_stream_close(GI_stream) ; GI_stream = (NI_stream)NULL ;
-           goto GetOutOfDodge ;  /* failed */
+           WARNING_message("GIC: Connection to %s broken - trying to restart",pname) ;
+           NI_sleep(111) ;                /* give AFNI a moment to do whatever */
+           GI_stream = NI_stream_open( nsname , "w" ) ;
+           kk = NI_stream_goodcheck( GI_stream , 9999 ) ; /* wait a little bit */
+           if( kk == 1 ){
+             ININFO_message("GIC: TCP/IP restart is good :-)") ; shm_active = 0 ;
+           } else {
+             ININFO_message("GIC: TCP/IP restart failed :-(") ;
+             NI_stream_close(GI_stream) ; GI_stream = (NI_stream)NULL ;
+             goto GetOutOfDodge ;  /* failed */
+           }
+         }
+         continue ; /* loop back */
+       }
+
+     } else {   /* create command internally in batch mode [Feb 2011] */
+       char cline[6666], buf[666] , *cpt ; static int nbatch=0 ;
+       static NI_str_array *bsar=NULL ;
+
+       if( bfp == NULL && nbatch > 0 ) goto GetOutOfDodge ;  /* done */
+
+       atim = btim = NI_clock_time() ;  /* start timer, for user info */
+
+       if( bfp == NULL ){   /* extract command from FILENAME itself */
+         strcpy( cline , bfile ) ;
+       } else {             /* read next line in file */
+         cpt = fgets( cline , 6666 , bfp ) ;
+         if( cpt == NULL ){
+           fclose(bfp) ; goto GetOutOfDodge ;  /* end of file (or error) */
          }
        }
-       continue ; /* loop back */
+
+       if( bsar != NULL ) NI_delete_str_array(bsar) ;
+       bsar = NI_decode_string_list( cline , "`" ) ;
+       if( bsar == NULL || bsar->num < 2 ){
+         ERROR_message("GIC: bad batch command line: too short") ;
+         goto LoopBack ;
+       }
+
+       bprefix = bsar->str[0] ;
+       if( !THD_filename_ok(bprefix) ){
+         ERROR_message("GIC: bad batch command line: bad prefix") ;
+         goto LoopBack ;
+       }
+
+       /* process the rest of the command line (broken up into bsar) */
+
+       switch( bmode ){  /* each mode must create the correct nelcmd NI_element */
+         default:
+           ERROR_message("GIC: you should never see this message!"); goto GetOutOfDodge;
+
+         case XYZPV_MODE:   /* x y z */
+         case XYZ_MODE:     /* x y z */
+         case IJKPV_MODE:   /* i j k */
+         case IJK_MODE:{    /* i j k */
+           int i,j,k ; float x=0.0,y=0.0,z=0.0 ; char *cname ;
+           if( bsar->num < 4 ){
+             ERROR_message("GIC: bad batch command line: %s list too short",bname) ;
+             goto LoopBack ;
+           }
+           if( bmode == IJK_MODE || bmode == IJKPV_MODE ){
+             i = (int)strtod(bsar->str[1],NULL) ;
+             j = (int)strtod(bsar->str[2],NULL) ;
+             k = (int)strtod(bsar->str[3],NULL) ;
+           } else {
+             float fi,fj,fk ;
+             x = (float)strtod(bsar->str[1],NULL) ; if( do_lpi ) x = -x ;
+             y = (float)strtod(bsar->str[2],NULL) ; if( do_lpi ) y = -y ;
+             z = (float)strtod(bsar->str[3],NULL) ;
+             MAT44_VEC( giset->dset->daxes->dicom_to_ijk , x,y,z , fi,fj,fk ) ;
+             i = (int)rintf(fi) ; j = (int)rintf(fj) ; k = (int)rintf(fk) ;
+           }
+           if( i < 0 || i >= nx ||
+               j < 0 || j >= ny ||
+               k < 0 || k >= nz   ){
+             if( bmode == IJK_MODE || bmode == IJKPV_MODE )
+               ERROR_message("GIC: bad batch command line: %s (%d,%d,%d) illegal",bname,i,j,k);
+             else {
+               if( do_lpi ){ x = -x ; y = -y ; }
+               ERROR_message("GIC: bad batch command line: %s (%g,%g,%g) illegal",bname,x,y,z);
+             }
+             goto LoopBack ;
+           }
+           qijk = THREE_TO_IJK(i,j,k,nx,nxy) ;
+           if( bmode == XYZPV_MODE || bmode == IJKPV_MODE ) cname = "SETREF_ijk_pv" ;
+           else                                             cname = "SETREF_ijk"    ;
+           nelcmd = NI_new_data_element( cname , 0 ) ;
+           sprintf( buf , "%d" , qijk ) ;
+           NI_set_attribute( nelcmd , "index" , buf ) ;
+         }
+         break ;
+
+         case MASKPV_MODE:   /* maskdataset */
+         case MASKAVE_MODE:{
+           THD_3dim_dataset *mset; int nmask,*ijklist; byte *mask; char *cname;
+           mset = THD_open_dataset( bsar->str[1] ) ;
+           if( mset == NULL ){
+             ERROR_message("GIC: bad batch command line: can't open mask dataset '%s'",bsar->str[1]) ;
+             goto LoopBack ;
+           }
+           if( shd_AAA->nvox != DSET_NVOX(mset) ){
+             ERROR_message("GIC: bad batch command line: mask dataset '%s' is wrong size",bsar->str[1]) ;
+             DSET_delete(mset) ; goto LoopBack ;
+           }
+           DSET_load(mset) ;
+           if( !DSET_LOADED(mset) ){
+             ERROR_message("GIC: bad batch command line: can't load dataset '%s'",bsar->str[1]) ;
+             DSET_delete(mset) ; goto LoopBack ;
+           }
+           mask  = THD_makemask( mset , 0 , 1.0f,-1.0f ) ; DSET_delete(mset) ;
+           nmask = THD_countmask( shd_AAA->nvox , mask ) ;
+           if( nmask == 0 ){
+             ERROR_message("GIC: bad batch command line: dataset '%s' mask is all zero",bsar->str[1]) ;
+             free(mask) ; goto LoopBack ;
+           }
+           if( bmode == MASKPV_MODE && nmask > 1 ) cname = "SETREF_listijk_pv" ;
+           else                                    cname = "SETREF_listijk"    ;
+           nelcmd = NI_new_data_element( cname , nmask ) ;
+           NI_add_column( nelcmd, NI_INT, NULL );
+           ijklist = (int *)nelcmd->vec[0] ;
+           for( kk=ii=0 ; ii < shd_AAA->nvox ; ii++ )
+             if( mask[ii] ) ijklist[kk++] = ii ;
+           free(mask) ;
+         }
+         break ;
+
+         case VECTORS_MODE:{   /* 1Dfilename */
+           MRI_IMAGE *vim ; int ntim,nvec,qq ; float *var,*iar,*jar ;
+
+           vim = mri_read_1D( bsar->str[1] ) ;
+           if( vim == NULL ){
+             ERROR_message("GIC: bad batch command line: can't open 1D file '%s'",bsar->str[1]) ;
+             goto LoopBack ;
+           }
+           ntim = vim->nx ; nvec = vim->ny ; iar = MRI_FLOAT_PTR(vim) ;
+           if( ntim < nvals_max || nvec < ndset_tot ){
+             ERROR_message("GIC: bad batch command line: 1D file '%s' is %d X %d, but should be at least %d X %d",
+                           bsar->str[1] , ntim,nvec , nvals_max , ndset_tot ) ;
+             mri_free(vim) ; goto LoopBack ;
+           }
+           nelcmd = NI_new_data_element( "SETREF_vectors" , nvals_tot ) ;
+           NI_add_column( nelcmd , NI_FLOAT , NULL ) ;
+           var = (float *)nelcmd->vec[0] ;
+           for( qq=kk=0 ; kk < ndset_AAA ; kk++ ){
+             jar = iar + kk*ntim ;
+             for( ii=0 ; ii < shd_AAA->nvals[kk] ; ii++ ) var[qq++] = jar[ii] ;
+           }
+           for( kk=0 ; kk < ndset_BBB ; kk++ ){
+             jar = iar + (kk+ndset_AAA)*ntim ;
+             for( ii=0 ; ii < shd_BBB->nvals[kk] ; ii++ ) var[qq++] = jar[ii] ;
+           }
+           mri_free(vim) ;
+         }
+         break ;
+
+       } /* end of switch over the various batch modes */
+
+       nbatch++ ;  /* keep track of how many we've done */
+
+       if( verb > 2 ) INFO_message("GIC: generated %s command",nelcmd->name) ;
+
      }
 
      /* the following should never happen */
 
      if( NI_element_type(nelcmd) != NI_ELEMENT_TYPE ){
-       WARNING_message("Badly formatted command from %s!",pname) ;
+       WARNING_message("GIC: Badly formatted command from %s!",pname) ;
        NI_free_element(nelcmd) ; continue ;
      }
 
@@ -1666,21 +2325,20 @@ int main( int argc , char *argv[] )
      /** Command = AFNI said 'TaTa for Now' **/
 
      if( strcmp(nelcmd->name,"AuRevoir") == 0 ){
-       INFO_message("Message from %s: ** Au Revoir **",pname) ;
+       INFO_message("GIC: Message from %s: ** Au Revoir **",pname) ;
        NI_free_element(nelcmd) ;
        goto GetOutOfDodge ;  /* failed */
      }
 
-     /** start timer **/
+     /**----- step 1: process command to get seed vectors -----**/
 
      if( verb > 1 || (verb==1 && nsend < NSEND_LIMIT) )
-       INFO_message("Received command %s from %s",nelcmd->name,pname) ;
+       INFO_message("GIC: Received command %s from %s",nelcmd->name,pname) ;
 
-     atim = btim = NI_clock_time() ;
+     /**----- Command = set seed voxel index (and maybe radius) -----**/
 
-     /** Command = set seed voxel index **/
-
-     if( strcmp(nelcmd->name,"SETREF_ijk") == 0 ){
+     if( strncmp(nelcmd->name,"SETREF_ijk",10) == 0 ){
+       int do_pv = (strstr(nelcmd->name,"_pv") != NULL && nbhd != NULL) ;
 
        /* extract location of seed voxel from command */
 
@@ -1688,31 +2346,33 @@ int main( int argc , char *argv[] )
        if( atr == NULL ) atr = NI_get_attribute(nelcmd,"node" ) ;
        if( atr == NULL ) atr = NI_get_attribute(nelcmd,"ijk"  ) ;
        if( atr == NULL ){   /* should never happen */
-         WARNING_message("SETREF_ijk: no index given!?") ;
+         ERROR_message("GIC: %s: no index given!?",nelcmd->name) ;
          NI_free_element(nelcmd) ; goto LoopBack ;
        }
        voxijk = (int)strtod(atr,NULL) ;
        voxind = IJK_TO_INDEX(shd_AAA,voxijk) ;
        if( verb > 2 )
-         ININFO_message(" dataset index=%d  node index=%d",voxijk,voxind) ;
+         ININFO_message("GIC:  dataset index=%d  node index=%d",voxijk,voxind) ;
        if( voxind < 0 ){
-         WARNING_message("SETREF_ijk: %d is not in mask!?",voxijk) ;
+         ERROR_message("GIC: %s: %d is not in mask!?",nelcmd->name,voxijk) ;
          NI_free_element(nelcmd) ; goto LoopBack ;
        }
 
-       /* radius over which to average */
+       /* change radius over which to average? */
 
        atr = NI_get_attribute(nelcmd,"seedrad") ;
        if( atr != NULL ){
          float nsr = (float)strtod(atr,NULL) ;
          if( nsr != seedrad ){
-           seedrad = nsr ; KILL_CLUSTER(nbhd) ;
+           seedrad = MAX(0.0f,nsr) ; KILL_CLUSTER(nbhd) ;
            if( seedrad >= dmin ){
              nbhd = MCW_spheremask( dx,dy,dz , seedrad ) ;
              if( nbhd != NULL && nbhd->num_pt < 2 ) KILL_CLUSTER(nbhd) ;
+           } else {
+             seedrad = 0.0f ;
            }
            if( verb > 2 )
-             ININFO_message(" seedrad set to %.2f mm",seedrad) ;
+             ININFO_message("GIC:  seedrad set to %.2f mm",seedrad) ;
          }
        }
 
@@ -1725,46 +2385,178 @@ int main( int argc , char *argv[] )
          if( nto < 0 || nto > ttest_opcode_max ) ttest_opcode = 0 ;
          else                                    ttest_opcode = nto ;
          if( verb > 2 )
-           ININFO_message(" ttest_opcode set to %d",ttest_opcode) ;
+           ININFO_message("GIC:  ttest_opcode set to %d",ttest_opcode) ;
        }
 #endif
 
-     /** unknown command type **/
+       /* actually get the seed vectors from this voxel */
+
+       if( do_pv ){
+         GRINCOR_seedvec_ijk_pvec( shd_AAA , nbhd , voxijk , seedvec_AAA ) ;
+         if( shd_BBB != NULL )
+           GRINCOR_seedvec_ijk_pvec( shd_BBB , nbhd , voxijk , seedvec_BBB ) ;
+       } else {
+         GRINCOR_seedvec_ijk_aver( shd_AAA , nbhd , voxijk , seedvec_AAA ) ;
+         if( shd_BBB != NULL )
+           GRINCOR_seedvec_ijk_aver( shd_BBB , nbhd , voxijk , seedvec_BBB ) ;
+       }
+
+     /**----- command contains all the seed vectors directly [Feb 2011] -----**/
+
+     } else if( strcmp(nelcmd->name,"SETREF_vectors") == 0 ){
+       float *cv ;
+
+       if( nelcmd->vec_num < 1 ){
+         ERROR_message("GIC: SETREF_vectors: no vectors attached!?") ;
+         NI_free_element(nelcmd) ; goto LoopBack ;
+       }
+       if( nelcmd->vec_typ[0] != NI_FLOAT ){
+         ERROR_message("GIC: SETREF_vectors: not in float format!?") ;
+         NI_free_element(nelcmd) ; goto LoopBack ;
+       }
+
+       /*--- load data from nelcmd to seedvec arrays ---*/
+
+       if( nelcmd->vec_num == 1 ){  /*--- one long vector: split it up ---*/
+
+         if( nelcmd->vec_len < nvals_tot ){
+           ERROR_message("GIC: SETREF_vectors: 1 vector length=%d but should be %d",
+                         nelcmd->vec_len , nvals_tot ) ;
+           NI_free_element(nelcmd) ; goto LoopBack ;
+         }
+
+         cv = (float *)nelcmd->vec[0] ;
+         for( jj=kk=0 ; kk < ndset_AAA ; kk++ ){
+           for( ii=0 ; ii < nvals_AAA[kk] ; ii++,jj++ ) seedvec_AAA[kk][ii] = cv[jj] ;
+         }
+         for( kk=0 ; kk < ndset_BBB ; kk++ ){
+           for( ii=0 ; ii < nvals_BBB[kk] ; ii++,jj++ ) seedvec_BBB[kk][ii] = cv[jj] ;
+         }
+
+       } else if( nelcmd->vec_num >= ndset_tot ){  /*--- multiple vectors ---*/
+
+         if( nelcmd->vec_len < nvals_max ){
+           ERROR_message("GIC: SETREF_vectors: vector length=%d but should be %d",
+                         nelcmd->vec_len , nvals_max ) ;
+           NI_free_element(nelcmd) ; goto LoopBack ;
+         }
+
+         for( kk=0 ; kk < ndset_AAA ; kk++ ){
+           cv = (float *)nelcmd->vec[kk] ;
+           for( ii=0 ; ii < nvals_AAA[kk] ; ii++ ) seedvec_AAA[kk][ii] = cv[ii] ;
+         }
+         for( kk=0 ; kk < ndset_BBB ; kk++ ){
+           cv = (float *)nelcmd->vec[kk+ndset_AAA] ;
+           for( ii=0 ; ii < nvals_BBB[kk] ; ii++ ) seedvec_BBB[kk][ii] = cv[ii] ;
+         }
+
+       } else {        /*--- badly formed data element ---*/
+
+         ERROR_message("GIC: SETREF_vectors: have %d vectors but need at least %d",
+                       nelcmd->vec_num , ndset_tot ) ;
+         NI_free_element(nelcmd) ; goto LoopBack ;
+
+       }
+
+       /*--- normalize vectors for dot productization ---*/
+
+       for( kk=0 ; kk < ndset_AAA ; kk++ )
+         (void)THD_normalize( nvals_AAA[kk] , seedvec_AAA[kk] ) ;
+       for( kk=0 ; kk < ndset_BBB ; kk++ )
+         (void)THD_normalize( nvals_BBB[kk] , seedvec_BBB[kk] ) ;
+
+     /**----- command contains a list of voxels to use [Feb 2011] -----**/
+
+     } else if( strncmp(nelcmd->name,"SETREF_listijk",14) == 0 ){
+       int *vijk , nijk , vv ;
+       int do_pv = (strstr(nelcmd->name,"_pv") != NULL) ;
+
+       if( nelcmd->vec_num < 1 || nelcmd->vec_len < 1 ){
+         ERROR_message("GIC: %s: no list attached!?",nelcmd->name) ;
+         NI_free_element(nelcmd) ; goto LoopBack ;
+       }
+       if( nelcmd->vec_typ[0] != NI_INT ){
+         ERROR_message("GIC: %s: not in int format!?",nelcmd->name) ;
+         NI_free_element(nelcmd) ; goto LoopBack ;
+       }
+
+       /* convert voxel indexes to node indexes (in place) */
+
+       vijk = (int *)nelcmd->vec[0] ;
+       for( nijk=ii=0 ; ii < nelcmd->vec_len ; ii++ ){
+         vv = IJK_TO_INDEX(shd_AAA,vijk[ii]) ;
+         if( vijk[ii] >= 0 ) vijk[nijk++] = vv ;
+       }
+
+       if( nijk == 0 ){
+         ERROR_message("GIC: %s: no good indexes found!",nelcmd->name) ;
+         NI_free_element(nelcmd) ; goto LoopBack ;
+       }
+
+       if( verb > 2 ) ININFO_message("GIC:  %s: %d good vectors in list",bname,nijk) ;
+
+       /* actually get the seed vectors from this list */
+
+       if( do_pv && nijk > 1 ){
+         GRINCOR_seedvec_ijklist_pvec( shd_AAA , nijk , vijk , seedvec_AAA ) ;
+         if( shd_BBB != NULL )
+           GRINCOR_seedvec_ijklist_pvec( shd_BBB , nijk , vijk , seedvec_BBB ) ;
+       } else {
+         GRINCOR_seedvec_ijklist_aver( shd_AAA , nijk , vijk , seedvec_AAA ) ;
+         if( shd_BBB != NULL )
+           GRINCOR_seedvec_ijklist_aver( shd_BBB , nijk , vijk , seedvec_BBB ) ;
+       }
+
+     /**----- unknown command type -----**/
 
      } else {
 
-       WARNING_message("Don't know what to do with command %s",nelcmd->name) ;
+       ERROR_message("GIC: Don't know command %s",nelcmd->name) ;
        NI_free_element(nelcmd) ;
        goto LoopBack ;
 
      }
 
-     /** throw away the message from AFNI **/
+     /**--- throw away the message from AFNI ---**/
 
      NI_free_element( nelcmd ) ;
 
      /***** compute the result *****/
 
-     /* step 1: for each dataset, get the seed voxel time series from voxind */
-
-     GRINCOR_load_seedvec( shd_AAA , nbhd , voxijk , seedvec_AAA ) ;
-     if( shd_BBB != NULL )
-       GRINCOR_load_seedvec( shd_BBB , nbhd , voxijk , seedvec_BBB ) ;
-
      if( verb > 2 || (verb==1 && nsend < NSEND_LIMIT) ){
        ctim = NI_clock_time() ;
-       ININFO_message(" loaded seed vectors: elapsed=%d ms",ctim-btim) ;
+       ININFO_message("GIC:  loaded seed vectors: elapsed=%d ms",ctim-btim) ;
        btim = ctim ;
      }
 
      /* step 2: lots and lots of correlation-ization */
 
-     if( verb > 3 ) ININFO_message(" start correlation-izing for %s",label_AAA) ;
+     if( verb > 3 ) ININFO_message("GIC:  start correlation-izing for %s",label_AAA) ;
      GRINCOR_many_dotprod( shd_AAA , seedvec_AAA , dotprod_AAA ) ;
      if( shd_BBB != NULL ){
-       if( verb > 3 ) ININFO_message(" start correlation-izing for %s",label_BBB) ;
+       if( verb > 3 ) ININFO_message("GIC:  start correlation-izing for %s",label_BBB) ;
        GRINCOR_many_dotprod( shd_BBB , seedvec_BBB , dotprod_BBB ) ;
      }
+
+#if 0
+     if( verb > 4 ){
+       float mm,ss ; int nf ;
+       INFO_message("GIC: dotprod_AAA statistics") ;
+       for( kk=0 ; kk < ndset_AAA ; kk++ ){
+          nf = thd_floatscan( nvec , dotprod_AAA[kk] ) ;
+          meansigma_float( nvec , dotprod_AAA[kk] , &mm,&ss ) ;
+          ININFO_message("GIC:  #%02d nf=%d mean=%g sigma=%g",kk,nf,mm,ss) ;
+       }
+       if( ndset_BBB > 0 ){
+         INFO_message("GIC: dotprod_BBB statistics") ;
+         for( kk=0 ; kk < ndset_BBB ; kk++ ){
+            nf = thd_floatscan( nvec , dotprod_BBB[kk] ) ;
+            meansigma_float( nvec , dotprod_BBB[kk] , &mm,&ss ) ;
+            ININFO_message("GIC:  #%02d nf=%d mean=%g sigma=%g",kk,nf,mm,ss) ;
+         }
+       }
+     }
+#endif
 
 #ifdef COVTEST
      if( ctarA != NULL ){
@@ -1779,7 +2571,7 @@ int main( int argc , char *argv[] )
 
      if( verb > 2 || (verb==1 && nsend < NSEND_LIMIT) ){
        ctim = NI_clock_time() ;
-       ININFO_message(" finished correlation-izing: elapsed=%d ms",ctim-btim) ;
+       ININFO_message("GIC:  finished correlation-izing: elapsed=%d ms",ctim-btim) ;
        btim = ctim ;
      }
 
@@ -1788,57 +2580,59 @@ int main( int argc , char *argv[] )
      if( mcov == 0 ){   /*-- no covariates ==> pure t-tests --*/
 
        if( verb > 3 )
-         ININFO_message(" start %d-sample t-test-izing" , (ndset_BBB > 0) ? 2 : 1 ) ;
+         ININFO_message("GIC:  start %d-sample t-test-izing" , (ndset_BBB > 0) ? 2 : 1 ) ;
        GRINCOR_many_ttest( nvec , ndset_AAA , dotprod_AAA ,
                                   ndset_BBB , dotprod_BBB , neldar,nelzar ) ;
 
        /* 1-sample results for the 2-sample case? */
 
        if( dosix ){
-         if( verb > 3 ) ININFO_message(" start 1-sample t-test-izing for %s",label_AAA) ;
+         if( verb > 3 ) ININFO_message("GIC:  start 1-sample t-test-izing for %s",label_AAA) ;
          GRINCOR_many_ttest( nvec , ndset_AAA , dotprod_AAA ,
                                     0         , NULL        , neldar_AAA,nelzar_AAA ) ;
-         if( verb > 3 ) ININFO_message(" start 1-sample t-test-izing for %s",label_BBB) ;
+         if( verb > 3 ) ININFO_message("GIC:  start 1-sample t-test-izing for %s",label_BBB) ;
          GRINCOR_many_ttest( nvec , ndset_BBB , dotprod_BBB ,
                                     0         , NULL        , neldar_BBB,nelzar_BBB ) ;
        }
 
        if( verb > 2 || (verb==1 && nsend < NSEND_LIMIT) ){
          ctim = NI_clock_time() ;
-         ININFO_message(" finished t-test-izing: elapsed=%d ms",ctim-btim) ;
+         ININFO_message("GIC:  finished t-test-izing: elapsed=%d ms",ctim-btim) ;
          btim = ctim ;
        }
 
      } else {  /*-- covariates ==> regression analyses --*/
 
        if( verb > 3 )
-         ININFO_message(" start %d-sample regression-izing" , (ndset_BBB > 0) ? 2 : 1 ) ;
+         ININFO_message("GIC:  start %d-sample regression-izing" , (ndset_BBB > 0) ? 2 : 1 ) ;
 
        GRINCOR_many_regress( nvec , ndset_AAA , dotprod_AAA ,
                                     ndset_BBB , dotprod_BBB , nout , dtar ) ;
 
        if( verb > 2 || (verb==1 && nsend < NSEND_LIMIT) ){
          ctim = NI_clock_time() ;
-         ININFO_message(" finished regression-izing: elapsed=%d ms",ctim-btim) ;
+         ININFO_message("GIC:  finished regression-izing: elapsed=%d ms",ctim-btim) ;
          btim = ctim ;
        }
 
      }
 
+#ifndef DONT_USE_SHM
      /** re-attach to AFNI using shared memory? **/
 
-#ifndef DONT_USE_SHM
-     if( do_shm > 0 && strcmp(afnihost,"localhost") == 0 && !shm_active ){
+     if( !bmode && do_shm > 0 && strcmp(afnihost,"localhost") == 0 && !shm_active ){
        char nsnew[128] ;
-       kk = nout / 2 ; if( kk < 1 ) kk = 1 ; else if( kk > 3 ) kk = 3 ;
+       kk = (nout+nsaar) / 2 ; if( kk < 1 ) kk = 1 ; else if( kk > 3 ) kk = 3 ;
+             /* using nport in nsnew below is no longer necessary, 
+                but it does not hurt. ZSS June 2011               */
        sprintf( nsnew , "shm:GrpInCorr_%d:%dM+4K" , nport , kk ) ;
-       INFO_message("Reconnecting to %s with shared memory channel %s",pname,nsnew) ;
+       INFO_message("GIC: Reconnecting to %s with shared memory channel %s",pname,nsnew) ;
        kk = NI_stream_reopen( GI_stream , nsnew ) ;
        if( kk == 0 ){
-         ININFO_message(" SHM reconnection *FAILED* :-( ???") ;
+         ININFO_message("GIC:  SHM reconnection *FAILED* :-( ???") ;
        }
        else {
-         ININFO_message(" SHM reconnection *ACTIVE* :-) !!!") ; shm_active = 1 ;
+         ININFO_message("GIC:  SHM reconnection *ACTIVE* :-) !!!") ; shm_active = 1 ;
        }
        do_shm-- ;
      }
@@ -1846,19 +2640,44 @@ int main( int argc , char *argv[] )
 
      /*** send the result to AFNI ***/
 
-     if( verb > 3 ) ININFO_message(" sending results to %s",pname) ;
-     kk = NI_write_element( GI_stream , nelset , NI_BINARY_MODE ) ;
-     if( kk <= 0 ){
-       ERROR_message("3dGroupInCorr: failure when writing to %s",pname) ;
+#if 0
+     if( verb > 4 ){
+       float mm,ss ; int nf ;
+       INFO_message("dotprod_AAA statistics") ;
+       for( kk=0 ; kk < ndset_AAA ; kk++ ){
+          nf = thd_floatscan( nvec , dotprod_AAA[kk] ) ;
+          meansigma_float( nvec , dotprod_AAA[kk] , &mm,&ss ) ;
+          ININFO_message(" #%02d nf=%d mean=%g sigma=%g",kk,nf,mm,ss) ;
+       }
+       if( ndset_BBB > 0 ){
+         INFO_message("dotprod_BBB statistics") ;
+         for( kk=0 ; kk < ndset_BBB ; kk++ ){
+           nf = thd_floatscan( nvec , dotprod_BBB[kk] ) ;
+           meansigma_float( nvec , dotprod_BBB[kk] , &mm,&ss ) ;
+           ININFO_message(" #%02d nf=%d mean=%g sigma=%g",kk,nf,mm,ss) ;
+         }
+       }
+     }
+#endif
+
+     if( !bmode ){
+       if( verb > 3 ) ININFO_message("GIC:  sending results to %s",pname) ;
+       kk = NI_write_element( GI_stream , nelset , NI_BINARY_MODE ) ;
+       if( kk <= 0 ){
+         ERROR_message("3dGroupInCorr: failure when writing to %s",pname) ;
+       }
+     } else {
+       GRINCOR_output_dataset( giset, nelset , bprefix ) ;
+       kk = (int)DSET_TOTALBYTES(giset->dset) ;
      }
 
      ctim = NI_clock_time() ;
      if( verb > 2 || (verb==1 && nsend < NSEND_LIMIT) )
-       ININFO_message(" sent results to %s: elapsed=%d ms  bytes=%s" ,
+       ININFO_message("GIC:  sent results to %s: elapsed=%d ms  bytes=%s" ,
                       pname , ctim-btim , commaized_integer_string(kk) ) ;
 
      if( verb > 1 || (verb==1 && nsend < NSEND_LIMIT) )
-       ININFO_message(" Total elapsed time = %d msec",ctim-atim) ;
+       ININFO_message("GIC:  Total elapsed time = %d msec",ctim-atim) ;
 
      nsend++ ;  /* number of results sent back so far */
 
@@ -2442,5 +3261,103 @@ void GRINCOR_many_regress( int nvec , int numx , float **xxar ,
 
    }
 
+   return ;
+}
+
+/*---------------------------------------------------------------------------*/
+/* Setup for creating AFNI datasets here, instead of in AFNI.     [Feb 2011] */
+
+GRINCOR_setup * GRINCOR_setup_dataset( NI_element *nel )
+{
+   char *atr , *pre ;
+   THD_3dim_dataset *dset ; GRINCOR_setup *giset ;
+   int nvals=2 , vv ;
+   static char *blab[6] = { "GIC_Delta" , "GIC_Zscore" ,
+                            "AAA_Delta" , "AAA_Zscore" ,
+                            "BBB_Delta" , "BBB_Zscore"  } ;
+   NI_str_array *labar=NULL ;
+
+   atr = NI_get_attribute( nel , "geometry_string" ); if( atr  == NULL ) return NULL;
+   pre = NI_get_attribute( nel , "target_name" ) ;
+   if( pre == NULL || *pre == '\0' ) pre = "X_GRP_ICORR" ;
+   dset = EDIT_geometry_constructor( atr , pre ) ;    if( dset == NULL ) return NULL;
+
+   giset = (GRINCOR_setup *)malloc(sizeof(GRINCOR_setup)) ;
+   giset->dset = dset ;
+   giset->nvox = DSET_NVOX(dset) ;
+
+   atr = NI_get_attribute( nel , "target_nvals" ) ;
+   if( atr != NULL ){ nvals = (int)strtod(atr,NULL); nvals = MAX(1,nvals); }
+   vv = AFNI_yesenv("AFNI_GROUPINCORR_ORIG") ;
+   EDIT_dset_items( dset , ADN_nvals     , nvals ,
+                           ADN_view_type , (vv) ? VIEW_ORIGINAL_TYPE
+                                                : VIEW_TALAIRACH_TYPE ,
+                           ADN_brick_fac , NULL ,
+                    ADN_none ) ;
+
+   atr = NI_get_attribute( nel , "target_labels" ) ;
+   if( atr != NULL )
+     labar = NI_decode_string_list( atr , ";" ) ;
+
+   /* for each sub-brick in the dataset-to-be */
+
+   for( vv=0 ; vv < nvals ; vv++ ){
+     EDIT_substitute_brick( dset, vv, MRI_float, NULL ) ; /* calloc sub-brick */
+     if( labar != NULL && vv < labar->num )               /* and label-ize it */
+       EDIT_BRICK_LABEL( dset , vv , labar->str[vv] ) ;
+     else if( vv < 6 )
+       EDIT_BRICK_LABEL( dset , vv , blab[vv] ) ;
+     if( strstr( DSET_BRICK_LAB(dset,vv) , "_Zsc" ) != NULL )
+       EDIT_BRICK_TO_FIZT(dset,vv) ;                     /* mark as a Z score */
+   }
+   NI_delete_str_array(labar) ;
+
+   if( nel->vec_len == 0 || nel->vec_num == 0 || nel->vec == NULL ){  /* all */
+     giset->ivec = NULL ; giset->nivec = 0 ;
+   } else {                                     /* make index list of voxels */
+     int ii , nn=nel->vec_len , *iv=(int *)nel->vec[0] ;
+     atr = NI_get_attribute( nel , "nvec" ) ;
+     if( atr != NULL ){ ii = (int)strtod(atr,NULL) ; nn = MIN(nn,ii) ; }
+     giset->nivec = nn ;
+     giset->ivec  = (int *)calloc(sizeof(int),nn) ;
+     for( ii=0 ; ii < nn ; ii++ ) giset->ivec[ii] = iv[ii] ;
+   }
+
+   return giset ;
+}
+
+/*---------------------------------------------------------------------------*/
+
+void GRINCOR_output_dataset( GRINCOR_setup *giset, NI_element *nel, char *pref )
+{
+   float *nelar , *dsdar ;
+   int nvec,nn,vv , vmul ; float thr ;
+
+   if( nel == NULL || nel->vec_num < 2 ) return ;
+
+   /* copy NIML data into dataset */
+
+   nvec = nel->vec_len ;
+
+   for( vv=0 ; vv < DSET_NVALS(giset->dset) ; vv++ ){
+     nelar = (float *)nel->vec[vv] ;                /* NIML array */
+     dsdar = (float *)DSET_ARRAY(giset->dset,vv) ;  /* dataset array */
+
+     if( giset->ivec == NULL ){               /* all voxels */
+       nn = MIN( giset->nvox , nvec ) ;
+       memcpy(dsdar,nelar,sizeof(float)*nn) ;
+     } else {                                 /* some voxels */
+       int *ivec=giset->ivec , kk ;
+       nn = MIN( giset->nivec , nvec ) ;
+       for( kk=0 ; kk < nn ; kk++ ) dsdar[ivec[kk]] = nelar[kk] ;
+     }
+   }
+
+   if( pref != NULL && *pref != '\0' )
+     EDIT_dset_items( giset->dset , ADN_prefix,pref , ADN_none ) ;
+
+   giset->dset->dblk->diskptr->allow_directwrite = 1 ;
+   DSET_write(giset->dset) ;
+   if( verb ) WROTE_DSET(giset->dset) ;
    return ;
 }

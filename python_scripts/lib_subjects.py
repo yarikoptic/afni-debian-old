@@ -1,11 +1,15 @@
 #!/usr/bin/env python
 
 import sys, os
-import copy
+import copy, glob
 import afni_util as UTIL
 
 g_mema_tests = [None, 'paired', 'unpaired']
 g_ttpp_tests = ['-AminusB', '-BminusA']
+
+# atomic (type within nested list) and simple types for VarsObject
+g_valid_atomic_types = [int, float, str, list]
+g_simple_types = [int, float, str]
 
 class VarsObject(object):
    """a general class for holding variables, essentially treated as a
@@ -14,15 +18,321 @@ class VarsObject(object):
    def __init__(self, name='noname'):
       self.name = name
 
-   def show(self, mesg='', prefix=None, pattern=None):
-      print ("-- %s values in var '%s', prefix = '%s'"%(mesg,self.name,prefix))
-      for key in sorted(self.__dict__.keys()):
+   def set_var(self, name, newval):
+      """if the value has changed (or is not a simple type), update it
+         - use deepcopy (nuke it from orbit, it's the only way to be sure)
+
+         return 1 if an update is performed, else 0
+      """
+
+      # if the attribute exists and has a simple type, check for no change
+      if self.valid(name) and type(newval) in g_simple_types:
+         oldval = getattr(self, name)
+         if oldval == newval: return 0
+
+      setattr(self, name, copy.deepcopy(newval))
+
+      return 1
+
+   def get_atomic_type(self, atr):
+      """return the atomic type of an object
+         return one of int, float, str, list
+
+         - list is returned in the case of an empty list or None
+         - lists are only tested down the [0][0]... path
+      """
+
+      val = getattr(self, atr)
+      while type(val) == list:
+         if val == []: return list
+         try: val = val[0]
+         except: return list
+
+      if val == None: return list  # special: NoneType does not seem defined
+      if type(val) in g_valid_atomic_types: return type(val)
+
+      return None       # not a simple atomic type
+
+   def has_simple_type(self, atr):
+      """attribute must exist and have type int, float or str (no list)
+         else return 0"""
+      val = getattr(self, atr)
+      if type(val) in g_simple_types: return 1
+      else:                           return 0
+
+   def attributes(self, getall=0):
+      """same as dir(), but return only those with:
+            - a name not starting with '_'
+            - a simple type
+         if getall: will be more like dir()
+      """
+      dlist = dir(self)
+      retlist = []
+      for atr in dlist:
+         if atr[0] == '_': continue
+         if not getall:
+            if self.get_atomic_type(atr) == None: continue
+         retlist.append(atr)
+      retlist.sort()
+      return retlist
+
+   def copy(self, name=None, as_strings=0):
+      """return a copy of this class item by creating a new instance
+         and copying all simple attributes
+
+         if as_strings: copy any simple type (int, float) as string
+      """
+
+      dupe = VarsObject()
+      for atr in self.attributes():
+         if as_strings:
+            val = getattr(self, atr)
+            if type(val) == int or type(val) == float:
+               setattr(dupe, atr, '%s'%val)
+               continue
+         # if wasn't converted from int or float, just copy
+         setattr(dupe, atr, self.valcopy(atr))
+      if name: dupe.name = name
+
+      return dupe
+
+   def merge(self, v2, typedef=None, verb=1):
+      """merge in attributes from v2
+         if typedef is a VarsObject, convert any simple type atrs based on it
+      """
+
+      if v2 == None: return
+
+      if type(v2) != VarsObject:
+         print ("** trying to merge %s with VarsObject" % type(v2))
+         return
+
+      if typedef != None:
+         if type(typedef) != VarsObject:
+            print ("** invalid object used for typedef in merge")
+            return
+
+      newatrs = v2.attributes()
+      for atr in newatrs:
+         newval = v2.valcopy(atr)
+         val = newval  # default is no conversion
+         dtype = '<default type>'
+
+         # if we have a type definition, try to convert
+         if typedef != None:
+            dtype = type(typedef.val(atr))
+            if dtype == int:
+               try: val = int(newval)
+               except:
+                  print "** failed to merge %s '%s' as int" % (atr, newval)
+                  val = newval
+            elif dtype == float:
+               try: val = float(newval)
+               except:
+                  print "** failed to merge %s '%s' as float" % (atr, newval)
+                  val = newval
+
+         setattr(self, atr, val)
+
+         if verb > 1:
+            print "== merge: setting %s %s = %s" % (atr, dtype, val)
+
+   def valcopy(self, atr):
+      """use deepcopy to copy any value, since it may be a list"""
+      if self.get_atomic_type(atr) == None:
+         print ("** attribute '%s' is not simple, copy may be bad" % atr)
+
+      return copy.deepcopy(self.val(atr))
+
+   def val(self, atr):
+      """convenience - return the attribute value (None if not found)"""
+      if hasattr(self, atr): return getattr(self, atr)
+      else:                  return None
+
+   def valid(self, atr):
+      """convenience - return whether the atr is in the class instance"""
+      if hasattr(self, atr): return 1
+      else:                  return 0
+
+   def is_empty(self, atr):
+      """true if not set or is '' or []"""
+      val = self.val(atr)
+      if val == None: return True
+      if val == '' or val == []: return True
+      return False
+
+   def is_non_trivial_dir(self, atr):
+      return not self.is_trivial_dir(atr)
+
+   def is_trivial_dir(self, atr):
+      """return true of atr is empty or '.'"""
+      if self.is_empty(atr): return True
+      val = self.val(atr)
+      if val == '.' or val == './': return True
+
+      return False
+
+   def file_under_dir(self, dname, fname):
+      """return fname or self.dname/fname (if dname is set and non-trivial)"""
+
+      if self.is_trivial_dir(dname): return fname
+      else:                          return '%s/%s' % (self.val(dname), fname)
+
+   def vals_are_equal(self, atr, vobj):
+      """direct comparison is okay for any valid atomic type
+      """
+      if type(vobj) != VarsObject:
+         print '** vals_are_equal: no VarsObject'
+         return False
+
+      if self.get_atomic_type(atr) not in g_valid_atomic_types: return False
+      if vobj.get_atomic_type(atr) not in g_valid_atomic_types: return False
+
+      return self.val(atr) == vobj.val(atr)
+
+   def valid_atr_type(self, atr='noname', atype=None, alevel=0, exists=0):
+      """check for the existence and type of the given variable 'atr'
+
+                atr     : attribute name
+                atype   : expected (simple) type of variable (no arrays)
+                          e.g. float, int, str
+                          (list is not a valid atr type)
+                alevel  : array level (N levels of array nesting before atype)
+
+         
+         if alevel > 0:
+            - assume array is consistent in depth and type
+              (so can focus on val[0][0][0]...)
+            - being empty at some depth is valid
+
+         return 1 if valid, else 0"""
+
+      # make sure atr is a string
+      if type(atr) != str:
+         print "** valid_atr_type: 'atr' must be passed as a string"
+         return 0
+
+      # make sure atype is valid as well
+      if not atype in [float, int, str]:
+         print "** valid_atr_type: invalid atype %s" % atype
+         return 0
+
+      # first just check for existence
+      if not hasattr(self, atr): return 0
+
+      if exists: return 1       # since found, exists test is done
+
+      tt = self.get_atomic_type(atr)
+      depth = self.atr_depth(atr)
+
+      if depth != alevel: return 0      # bad level is bad
+      if tt == list: return 1           # else, empty list is valid
+
+      # level is good, so just compare types
+      if tt == atype: return 1
+      else:           return 0
+
+   def atr_depth(self, atr='noname'):
+      """return the array 'depth' of the given atr
+
+         The depth of an empty array is considered 1, though there is no atr
+         type.
+
+         return -1: if the atr does not exist
+                 N: else, the number of array nestings"""
+
+      # first just check for existence
+      if not hasattr(self, atr): return -1
+
+      # get the variable value
+      val = getattr(self, atr)
+
+      # compute its depth
+      depth = 0
+      while type(val) == list:
+         depth += 1
+         try: val = val[0]
+         except: break
+
+      return depth
+
+   def show(self, mesg='', prefix=None, pattern=None, name=1, all=0):
+      print self.make_show_str(mesg, prefix, pattern, name, all=all)
+
+   def make_show_str(self, mesg='', prefix=None, pattern=None, name=1, all=0):
+      """if all, put atomic attributes first and instancemethods last"""
+
+      if prefix: pstr = ", prefix = '%s'" % prefix
+      else:      pstr = ''
+
+      sstr = "-- %s values in var '%s'%s\n" % (mesg, self.name, pstr)
+
+      # start with atomic only, though loop is almost identical
+      for atr in self.attributes():
+         if not name and atr == 'name': continue
          match = (prefix == None and pattern == None)
          if prefix:
-            if key.startswith(prefix): match = 1
+            if atr.startswith(prefix): match = 1
          if pattern:
-            if key.find(pattern) >= 0: match = 1
-         if match: print ("      %-15s : %s" % (key, self.__dict__[key]))
+            if atr.find(pattern) >= 0: match = 1
+         if match: sstr += "      %-20s : %s\n" % (atr, self.val(atr))
+
+      # follow with non-atomic only, if requested (instance methods last)
+      if all:
+         imtype = type(self.make_show_str)
+         # non-instancemethods
+         for atr in self.attributes(getall=all):
+            match = (prefix == None and pattern == None)
+            if prefix:
+               if atr.startswith(prefix): match = 1
+            if pattern:
+               if atr.find(pattern) >= 0: match = 1
+            if match:
+               atype = type(self.val(atr))
+               if self.get_atomic_type(atr) == None and atype != imtype:
+                  sstr += "      %-20s : %s\n" % (atr, atype)
+         # instancemethods
+         for atr in self.attributes(getall=all):
+            match = (prefix == None and pattern == None)
+            if prefix:
+               if atr.startswith(prefix): match = 1
+            if pattern:
+               if atr.find(pattern) >= 0: match = 1
+            if match:
+               atype = type(self.val(atr))
+               if atype == imtype:
+                  sstr += "      %-20s : %s\n" % (atr, atype)
+
+      return sstr
+
+def comment_section_string(comment, length=70, cchar='-'):
+   """return a string of the form:
+      # -------------- some comment --------------
+      where the total length is given
+   """
+   clen = len(comment)
+    
+   ndash = (length - clen - 4) / 2      # one '#' and 3 spaces
+
+   # if no space for multiple dashes, don't use any
+   if ndash < 2: return '# %s' % comment
+
+   dstr = cchar * ndash  # make one ------------- string
+
+   return '# %s %s %s\n' % (dstr, comment, dstr)
+
+def make_message_list_string(mlist, title):
+   if len(mlist) == 0: return ''
+   mesg = ''
+   for ind, mm in enumerate(mlist):
+      if ind == 0: mesg += mm
+      else:        mesg += ('\n' + mm)
+   return mesg
+
+
+# ===========================================================================
+# begin Subject stuff  (class should be rewritten to use VarsObject types)
+# ===========================================================================
 
 def subj_compare(subj0, subj1):
    """compare 2 Subject objects:        used for sorting a list of subjects
@@ -41,7 +351,170 @@ def subj_compare(subj0, subj1):
 
    if cval != 0: return subj0._order*cval
    return subj0._order*cmp(subj0.sid, subj1.sid)
+
+def set_var_str_from_def(obj, name, vlist, vars, defs,
+                         verb=1, csort=1, spec=None):
+   """try to set name = value based on vlist
+        (just set as string)
+      if name is not known by the defaults, return failure
+
+      if spec: update_vars_from_special(csort)
+
+      This function will generally be called via a user interface library
+      or in the user interface itself.  Since we are setting variables as
+      string
+
+      return 1 on change, 0 on unchanged, -1 on error
+   """
+
+   if not defs.valid(name):
+      print '** invalid %s variable: %s' % (obj, name)
+      return -1
+
+   dtype = type(defs.val(name))
+   if dtype not in g_valid_atomic_types:
+      print '** SVSFD: unknown %s variable type for %s' % (obj, name)
+      return -1
+
+   # if simple type but have list, fail
+   if dtype != list and len(vlist) > 1:
+      print "** SVSFD: simple variable '%s' %s\n" \
+            "          but have list value: %s" % (name, dtype, vlist)
+      return -1
+
+   # ----------------------------------------
+   # try to apply the value (list)
+
+   val = None
+
+   # process only simple int, float, str and strlist
+   if defs.has_simple_type(name): val = vlist[0]
+   elif dtype == list:            val = vlist
+   else:
+      print '** SVSFD: invalid type %s for %s'%(dtype,name)
+      return -1
+
+   # check that the value can be properly converted (if simple type)
+   if defs.has_simple_type(name):
+      try: vv = dtype(val)
+      except:
+         print '** SVSFD %s.%s, cannot convert value %s to %s' \
+               (obj, name, val, dtype)
+         return -1
+
+   # actually set the value
+   rv = vars.set_var(name, val)
+   if verb > 1:
+      if rv: print '++ %s: updating %s to %s %s' % (obj, name, val, type(val))
+      else:  print '++ %s: no update for %s to %s' % (obj, name, val)
+
+   # if no update, we're outta here
+   if rv == 0: return rv
+
+   # ----------------------------------------------------------------------
+   # handle some special cases, such as indices and labels, which might
+   # come with file name lists
+
+   # this function must be passed, since it will vary per library
+
+   if spec != None: spec(name, vars, check_sort=csort)
+
+   return rv
+
+def goto_proc_dir(dname):
+   """ go to processing directory, returning return_dir
+        - if proc_dir does not exist, create it
+        - cd
+        - return ret_dir
+   """
+   if UTIL.is_trivial_dir(dname): return '' # nowhere to go
+
+   retdir = os.getcwd()                     # so need return directory
+
+   # if the directory does not yet exist, create it
+   if not os.path.isdir(dname):
+      try: os.makedirs(dname)
+      except:
+         print '** failed makedirs(%s)' % dname
+         return ''
+
+   # now try to go there
+   try: os.chdir(dname)
+   except:
+      print '** failed to go to process dir, %s' % dname
+      return ''
+
+   return retdir   # only returned on success
+
+def ret_from_proc_dir(rname):
+   """if retdir is set, cd to retdir
+      (should be called 'atomically' with goto_proc_dir)
+      return '', to use to clear previous return dir"""
+
+   # if retdir is useless, bail
+   if rname == None or rname == '' or rname == '.': return ''
+
+   try: os.chdir(rname)
+   except:
+      print '** failed to return to %s from process dir' % rname
+
+   return ''
+
+def proc_dir_file_exists(dname, fname):
+   if UTIL.is_trivial_dir(dname): pathname = fname
+   else:                          pathname = '%s/%s' % (dname, fname)
+
+   return os.path.isfile(pathname)
    
+def get_def_tool_path(tool_name, top_dir='tool_results', prefix='tool',
+                                 digits=3):
+   """return something of the form top_dir/prefix.0001.tool_name
+
+      if top_dir exists:
+         look for anything of the form prefix.*, find the lowest index that
+         is not used, and return top_dir/prefix.NEW_INDEX.tname
+      else: return top_dir/prefix.001.tname
+   """
+
+   tname = tool_name            # yeah, shorter, but less descriptive ...
+   tdir = top_dir
+   prefix = 'tool'
+   index = 1                    # default index
+
+   # generate form for name (e.g. tr/t.%03d.t); insert index later
+   form = '%s/%s.%%0%dd.%s' % (tdir, prefix, digits, tname)
+
+   # if tdir does not yet exist, we can start with the default
+   if not os.path.isdir(tdir):
+      return form % index
+
+   # see what is under tdir, and go with default if nothing is found
+   glist = glob.glob('%s/tool.*.*' % tdir)
+   if len(glist) == 0: return form % index
+
+   # if '.' in tdir, nuke tdir from list elements
+   if '.' in tdir: glist = [name.split('/')[1] for name in glist]
+
+   # abuse '.': make a list of integers from field 1 when split over '.'
+   try: ilist = [int(name.split('.')[1]) for name in glist]
+   except:
+      print '** found non-int VAL in %s/%s.VAL.*' % (tdir, prefix)
+      return form % 999
+
+   ilist.sort()
+   nvals = len(ilist)
+
+   # quick check, if ilist[n-1] = n, just go with n+1
+   # (or should we forget this, since non-unique values break logic?)
+   if ilist[-1] <= nvals: return form % (nvals+1)
+
+   # finally!  now find first value > index+1 (else, just use next)
+ 
+   for ind, ival in enumerate(ilist):
+      if ival > ind+1: break
+
+   return form % (ind+1)
+
 class Subject(object):
    """a simple subject object holding an ID, dataset name, and an
       attribute dictionary"""

@@ -41,6 +41,15 @@ extern int MRILIB_DomainMaxNodeIndex ;         /* 32 Dec 2007 */
 
 extern int   assume_dicom_mosaic ;   /* mri_read_dicom.c  13 Mar 2006 [rickr] */
 extern int   use_last_elem;          /* mri_read_dicom.c  10 Apr 2009 [rickr] */
+extern int   use_new_mosaic_code;    /* mri_process_siemens.c 23 Dec 2010 [r] */
+
+/* siemens slice timing info from mri_read.c         13 Apr 2011 [rickr] */
+extern int     g_siemens_timing_nused;  /* number of times used          */
+extern float * g_siemens_timing_times;  /* actual list of times          */
+extern int     g_siemens_timing_units;  /* time units, UNITS_MSEC_TYPE?  */
+extern int     populate_g_siemens_times(int tunits);
+extern int     get_and_display_siemens_times(void);
+extern int     valid_g_siemens_times(int nz, float TR, int verb);
 
 #ifdef  __cplusplus
 }
@@ -98,20 +107,21 @@ extern AFD_dicom_header **MRILIB_dicom_header ;
     "* For implementation and compilation details, please see\n"                   \
     "   http://afni.nimh.nih.gov/pub/dist/doc/misc/OpenMP.html\n"                  \
     "* The number of CPU threads used will default to the maximum number on\n"     \
-    "  your system.  You can control this value by setting environment variable\n" \
-    "  OMP_NUM_THREADS to some smaller value (including 1).\n"                     \
+    "   your system.  You can control this value by setting environment variable\n"\
+    "   OMP_NUM_THREADS to some smaller value (including 1).\n"                    \
     "* Un-setting OMP_NUM_THREADS resets OpenMP back to its default state of\n"    \
-    "  using all CPUs available.\n"                                                \
-    "  ++ However, on some systems (such as the NIH Biowulf), it seems to be\n"    \
-    "     necessary to set OMP_NUM_THREADS explicitly, or you only get one CPU.\n" \
+    "   using all CPUs available.\n"                                               \
+    "   ++ However, on some systems (such as the NIH Biowulf), it seems to be\n"   \
+    "      necessary to set OMP_NUM_THREADS explicitly, or you only get one CPU.\n"\
     "* You must set OMP_NUM_THREADS in the shell BEFORE running the program,\n"    \
-    "  since OpenMP queries this variable before the program actually is started\n"\
-    "  -- you can't usefully set this variable in your ~/.afnirc file or on the\n" \
-    "  command line with the '-D' option.\n"                                       \
+    "   since OpenMP queries this variable BEFORE the program actually starts.\n"  \
+    "   ++ You can't usefully set this variable in your ~/.afnirc file or on the\n"\
+    "      command line with the '-D' option.\n"                                   \
     "* How many threads are useful?  That varies with the program, and how well\n" \
-    "  it was coded.  You'll have to experiment on your own systems!\n"            \
+    "   it was coded.  You'll have to experiment on your own systems!\n"           \
     "* The number of CPUs on this particular computer system is ...... %d.\n"      \
-    "%s\n"                                                                         \
+    "%s"                                                                           \
+    " =========================================================================\n" \
     , (pnam) , omp_get_num_procs() , (extra==NULL) ? "\0" : extra                  \
   )
 #else
@@ -127,8 +137,9 @@ extern AFD_dicom_header **MRILIB_dicom_header ;
     "   Sun Studio.\n"                                                             \
     "* If you wish to compile this program with OpenMP, see the man page for\n"    \
     "   your C compiler, and (if needed) consult the AFNI message board, and\n"    \
-    "    http://afni.nimh.nih.gov/pub/dist/doc/misc/OpenMP.html\n"                 \
-    , (pnam) )
+    "   http://afni.nimh.nih.gov/pub/dist/doc/misc/OpenMP.html\n"                  \
+    , (pnam)                                                                       \
+  )
 #endif
 
 /*----------------------------------------------------------------------------*/
@@ -726,6 +737,7 @@ extern MRI_IMAGE ** mri_stat_seq( MRI_IMAGE * ) ;
 #define NSTAT_RANK        21      /* ZSS Jan 10 */
 #define NSTAT_FRANK       22      /* ZSS Jan 10 */
 #define NSTAT_P2SKEW      23      /* ZSS March 04 10*/
+#define NSTAT_KURT        24      /* ZSS Jan   04 11*/
 
 #define NSTAT_FWHMx      63   /*these should be after all other NSTAT_* values */
 #define NSTAT_FWHMy      64
@@ -746,6 +758,10 @@ extern MRI_IMAGE ** mri_stat_seq( MRI_IMAGE * ) ;
 #define NBISTAT_NUM                66611
 #define NBISTAT_NCD                66612
 #define NBISTAT_KENDALL_TAUB       66613 /* 29 Apr 2010 */
+#define NBISTAT_TICTACTOE_CORR     66614 /* 30 Mar 2011 */
+
+#define NBISTAT_BC_PEARSON_M       66691
+#define NBISTAT_BC_PEARSON_V       66692
 
 extern float mri_nstat  ( int , int , float * , float) ;  /* 19 Aug 2005 */
 extern float mri_nbistat( int , MRI_IMAGE *, MRI_IMAGE * ) ; /* 26 Oct 2006 */
@@ -791,11 +807,18 @@ extern int         mri_imcount_dicom( char * ) ;
 extern char *      mri_dicom_sexinfo( void ) ;   /* 23 Dec 2002 */
 extern char *      mri_dicom_sex1010( void ) ;
 extern int         mri_possibly_dicom( char * ) ;        /* 07 May 2003 */
-
+extern int         mri_siemens_slice_times( int *, int *, float ** ); 
+extern int         mri_sst_get_verb( void );
+extern int         mri_sst_set_verb( int );
 
 /*! Set the data pointer in an MRI_IMAGE to NULL. */
 
 #define mri_clear_data_pointer(iq) mri_fix_data_pointer(NULL,(iq))
+
+/*! Clear the data pointer and free the MRI_IMAGE shell */
+
+#define mri_clear_and_free(iq) \
+ do{ mri_fix_data_pointer(NULL,(iq)); mri_free((iq)); } while(0)
 
 /*! Set all pixels in MRI_IMAGE to zero. */
 
@@ -970,6 +993,9 @@ extern MRI_IMAGE * mri_scalize( MRI_IMAGE *, int, float * ) ; /* 20 Oct 2003 */
 extern MRI_IMAGE *mri_multiply_complex( int , MRI_IMAGE * , MRI_IMAGE * ) ;
 extern MRI_IMAGE *mri_complex_phase( MRI_IMAGE * ) ;
 
+extern MRI_IMAGE *mri_complex_imag( MRI_IMAGE *im ) ;  /* 18 Apr 2011 */
+extern MRI_IMAGE *mri_complex_real( MRI_IMAGE *im ) ;
+
 extern MRI_IMAGE *mri_to_mri( int , MRI_IMAGE * ) ;
 extern MRI_IMAGE *mri_to_mri_scl( int , double , MRI_IMAGE * ) ;
 extern MRI_IMAGE *mri_complex_abs( MRI_IMAGE * ) ;
@@ -1055,6 +1081,9 @@ extern float * mri_delayed_lsqfit( MRI_IMAGE * , MRI_IMARR * , double * ) ;
 extern float * lsqfit( int , float * , float * , int , float *ref[] ) ;
 extern double * startup_lsqfit( int , float * , int , float *ref[] ) ;
 extern float * delayed_lsqfit( int , float * , int , float *ref[] , double * ) ;
+
+extern void mri_polyfit_verb( int ) ;
+MRI_IMAGE * mri_polyfit( MRI_IMAGE *, int, byte *, float, int ) ;
 
 extern MRI_IMAGE * mri_pcvector  ( MRI_IMARR *imar , int,int ) ;
 extern MRI_IMAGE * mri_meanvector( MRI_IMARR *imar , int,int ) ;
@@ -1187,6 +1216,9 @@ extern void mri_drawtext( MRI_IMAGE *im ,
 
 extern void mri_draw_opacity( float ) ;
 
+extern void mri_drawcircle( MRI_IMAGE *im ,
+                            int cx, int cy, int radius, byte r,byte g,byte b, int fill ) ;
+
 /**********************************************************************/
 
 #ifdef  __cplusplus
@@ -1309,6 +1341,12 @@ typedef struct { int nar ; double *ar , dx,x0 ; } doublevec ;
      (ev)->dx = (fv)->dx ; (ev)->x0 = (fv)->x0 ;      \
      memcpy( (ev)->ar, (fv)->ar, sizeof(float)*n ) ;  \
  } while(0)
+
+#define RESIZE_floatvec(fv,m)                                     \
+  do{ if( (fv)->nar != (m) ){                                     \
+        (fv)->nar = (m) ;                                         \
+        (fv)->ar  = (float *)realloc((fv)->ar,sizeof(float)*(m)); \
+  }} while(0)
 
 extern float  interp_floatvec ( floatvec  *fv , float  x ) ;
 extern double interp_doublevec( doublevec *dv , double x ) ;
@@ -1939,7 +1977,10 @@ extern THD_fvec3 mri_nstat_fwhmxyz( int,int,int ,
 extern void mri_blur3D_variable( MRI_IMAGE * , byte * ,
                                  MRI_IMAGE * , MRI_IMAGE * , MRI_IMAGE * ) ;
 extern void mri_blur3D_inmask( MRI_IMAGE *, byte *, float,float,float,int );
+extern void mri_blur3D_inmask_speedy( MRI_IMAGE *, byte *,
+                                      float,float,float,int );
 extern void mri_blur3D_addfwhm( MRI_IMAGE *, byte *, float ) ;
+extern void mri_blur3D_addfwhm_speedy( MRI_IMAGE *, byte *, float ) ;
 extern void mri_blur3D_getfac ( float, float, float, float,
                                 int *, float *, float *, float * ) ;
 

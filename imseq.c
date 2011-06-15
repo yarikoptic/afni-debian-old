@@ -1647,6 +1647,7 @@ if( PRINT_TRACING ){
    newseq->mont_skip_av     = NULL ;
    newseq->mont_gap_av      = NULL ;
    newseq->mont_gapcolor_av = NULL ;
+   newseq->mont_type_av     = NULL ;
 
    newseq->mont_nx       = newseq->mont_nx_old       = 1 ;
    newseq->mont_ny       = newseq->mont_ny_old       = 1 ;
@@ -1654,6 +1655,7 @@ if( PRINT_TRACING ){
    newseq->mont_gap      = newseq->mont_gap_old      = 0 ;
    newseq->mont_gapcolor = newseq->mont_gapcolor_old = 0 ;
    newseq->mont_periodic = 1 ;                             /* default = periodic */
+   newseq->mont_mode     = MONT_SPATIAL ;
 
 STATUS("creation: widgets created") ;
 
@@ -4509,6 +4511,7 @@ ENTRY("ISQ_free_alldata") ;
    FREE_AV( seq->mont_skip_av )       ;
    FREE_AV( seq->mont_gap_av )        ;
    FREE_AV( seq->mont_gapcolor_av )   ;
+   FREE_AV( seq->mont_type_av )       ;
    FREE_AV( seq->transform0D_av )     ; /* 30 Oct 1996 */
    FREE_AV( seq->transform2D_av )     ;
    FREE_AV( seq->rowgraph_av )        ; /* 30 Dec 1998 */
@@ -7140,6 +7143,7 @@ ENTRY("ISQ_but_cnorm_CB") ;
                          montage information back via isqCR_newmontage
 
 *    isqDR_periodicmont (int) tells whether to use periodic montages
+*    isqDR_montmode     (int) sets the montage mode
 
 *    isqDR_button2_enable  (ignored) tells to enable processing of Button2 events
 *    isqDR_button2_disable (ignored) tells to disable such processing
@@ -7892,6 +7896,16 @@ static unsigned char record_bits[] = {
 
         if( per != seq->mont_periodic ){
            seq->mont_periodic = per ;
+           if( ISQ_REALZ(seq) ) ISQ_redisplay( seq , -1 , isqDR_display ) ;
+        }
+        RETURN( True );
+      }
+
+      case isqDR_montmode:{
+        int mmm = (PTOI(drive_data)) != 0 ;
+
+        if( mmm != seq->mont_mode ){
+           seq->mont_mode = mmm ;
            if( ISQ_REALZ(seq) ) ISQ_redisplay( seq , -1 , isqDR_display ) ;
         }
         RETURN( True );
@@ -8718,11 +8732,7 @@ fprintf(stderr,"montage: zoom_fac = %d\n",seq->zoom_fac) ;
             NULL ) ;
 
    seq->mont_across_av = new_MCW_arrowval(
-#if 1
                           wrc , "Across:" ,
-#else
-                          wrc , NULL ,   /* just for testing purposes */
-#endif
                           MCW_AV_optmenu ,
                           1 , MONT_NMAX , seq->mont_nx ,
                           MCW_AV_edittext , 0 ,
@@ -8778,6 +8788,20 @@ fprintf(stderr,"montage: zoom_fac = %d\n",seq->zoom_fac) ;
                                 0 , seq->dc->ovc->ncol_ov - 1 , seq->mont_gapcolor ,
                                 NULL , NULL ) ;
 
+if( AFNI_yesenv("TMONT") ){
+   seq->mont_type_av = new_MCW_arrowval(
+                          wrc , "Type:  " ,
+                          MCW_AV_optmenu ,
+                          0 , MONT_LAST_TYPE , seq->mont_mode,
+                          MCW_AV_edittext , 0 ,
+                          NULL , NULL , MCW_av_substring_CB , mont_types ) ;
+   MCW_reghint_children( seq->mont_across_av->wrowcol ,
+                         "Spatial or Temporal montage?" ) ;
+} else {
+   seq->mont_type_av = NULL ;
+}
+
+#if 0
    seq->mont_across_av->allow_wrap   = 1 ;   /* allow wrap at limits of values */
    seq->mont_down_av->allow_wrap     = 1 ;
    seq->mont_skip_av->allow_wrap     = 1 ;
@@ -8789,12 +8813,14 @@ fprintf(stderr,"montage: zoom_fac = %d\n",seq->zoom_fac) ;
    seq->mont_skip_av->fastdelay      = 250 ;
    seq->mont_gap_av->fastdelay       = 250 ;
    seq->mont_gapcolor_av->fastdelay  = 250 ;
+#endif
 
    seq->mont_nx_old       = seq->mont_nx       ; /* in case something is changed */
    seq->mont_ny_old       = seq->mont_ny       ;
    seq->mont_skip_old     = seq->mont_skip     ;
    seq->mont_gap_old      = seq->mont_gap      ;
    seq->mont_gapcolor_old = seq->mont_gapcolor ;
+   seq->mont_mode_old     = seq->mont_mode     ;
 
    MCW_reghelp_children( seq->mont_across_av->wrowcol ,
       "This controls the number\n"
@@ -8893,6 +8919,11 @@ ENTRY("ISQ_montage_action_CB") ;
                       seq->mont_ny   != seq->mont_ny_old ||
                       seq->mont_skip != seq->mont_skip_old ) ;
 
+         if( seq->mont_type_av != NULL ){
+           seq->mont_mode = seq->mont_type_av->ival ;
+           new_mont = new_mont || (seq->mont_mode != seq->mont_mode_old) ;
+         }
+
          if( ib == MONT_APPLY ) MCW_invert_widget(w) ;
 
          ISQ_redisplay( seq , -1 , isqDR_display ) ;    /* local redraw */
@@ -8955,22 +8986,17 @@ ENTRY("ISQ_montage_action_CB") ;
       XtDestroyWidget( seq->dialog ) ; NI_sleep(1) ;
       seq->dialog = NULL ;
       for( ib=0 ; ib < NBUTTON_BOT-1 ; ib++ )       /* turn buttons back on */
-         if( ISQ_but_bot_dial[ib] == True )         /* that also want to   */
-            SENSITIZE( seq->wbut_bot[ib] , True ) ; /* use seq->dialog    */
+        if( ISQ_but_bot_dial[ib] == True )         /* that also want to    */
+          SENSITIZE( seq->wbut_bot[ib] , True ) ; /* use seq->dialog      */
 
       FREE_AV( seq->mont_across_av ) ;
       FREE_AV( seq->mont_down_av ) ;
       FREE_AV( seq->mont_skip_av ) ;
       FREE_AV( seq->mont_gap_av ) ;
       FREE_AV( seq->mont_gapcolor_av ) ;
+      FREE_AV( seq->mont_type_av ) ;
 
-      seq->mont_across_av   = NULL ;
-      seq->mont_down_av     = NULL ;
-      seq->mont_skip_av     = NULL ;
-      seq->mont_gap_av      = NULL ;
-      seq->mont_gapcolor_av = NULL ;
-
-      seq->dialog_starter = -1 ;
+      seq->dialog_starter    = -1 ;
       seq->dont_place_dialog = 0 ;  /* 23 Jan 2004 */
    }
 
@@ -9040,6 +9066,10 @@ ENTRY("ISQ_manufacture_one") ;
    (version of ISQ_make_image when more than one is needed).
 -----------------------------------------------------------------------------*/
 
+#define ISQ_set_deltival(sss,dv)        \
+  AFNI_CALL_VOID_3ARG( (sss)->getim ,   \
+                       int,(dv), int,isqCR_deltival, XtPointer,(sss)->getaux )
+
 void ISQ_make_montage( MCW_imseq *seq )
 {
    MRI_IMAGE *im , *ovim , *tim ;
@@ -9051,6 +9081,7 @@ void ISQ_make_montage( MCW_imseq *seq )
    void  *gapval ;
    int   isrgb ;
    int   isrgb_ov ;    /* 07 Mar 2001 */
+   int   div=0 ;
 
 ENTRY("ISQ_make_montage");
 
@@ -9094,19 +9125,26 @@ ENTRY("ISQ_make_montage");
                 must be changed in a number of other places,
                 including the AFNI multiple crosshairs code! **/
 
+if( AFNI_yesenv("TMONT") )
+INFO_message("Start Montagizing") ;
       isrgb = 0 ;
       ijcen = (seq->mont_nx)/2 + (seq->mont_ny/2) * seq->mont_nx ;
-      for( ij=0 ; ij < nmont ; ij++ ){
-         nim = seq->im_nr + (seq->mont_skip + 1)* (ij - ijcen) ;
+      for( ij=0 ; ij < nmont ; ij++ ){  /* loop to get all montage underlays */
+         if( seq->mont_mode > 0 ){
+           nim = seq->im_nr ;
+           div = (seq->mont_skip + 1) * (ij - ijcen) ;
+ININFO_message("set deltival=%d  nim=%d",div,nim) ;
+           ISQ_set_deltival( seq , div ) ;
+         } else {
+           nim = seq->im_nr + (seq->mont_skip + 1) * (ij - ijcen) ;
+         }
 
-DPRI(" Getting montage underlay",nim) ;
-
-         seq->set_orim = (seq->need_orim != 0 && nim == seq->im_nr) ;  /* 30 Dec 1998 */
+         seq->set_orim = (seq->need_orim != 0 && nim == seq->im_nr && div == 0) ;
          tim = ISQ_manufacture_one( nim , 0 , seq ) ;
-         seq->set_orim = 0 ;                                           /* 30 Dec 1998 */
+         seq->set_orim = 0 ;
          ADDTO_IMARR(mar,tim) ;
 
-         if( nim == seq->im_nr ){
+         if( nim == seq->im_nr && div == 0 && tim != NULL ){
             new_width_mm  = IM_WIDTH(tim)  ; nxim = tim->nx ;
             new_height_mm = IM_HEIGHT(tim) ; nyim = tim->ny ;
             seq->last_image_type = tim->kind ;
@@ -9121,13 +9159,12 @@ DPRI(" Getting montage underlay",nim) ;
             nxyim++ ;
          }
       }
+      if( seq->mont_mode > 0 ){ div = 0; ISQ_set_deltival(seq,div); }
 
-      if( nxyim == 0 ){                                        /* bad bad bad bad bad */
+      if( nxyim == 0 ){                                /* bad bad bad bad bad */
          fprintf(stderr,"** Montage error: no images found!\n") ;
          DESTROY_IMARR(mar) ; EXRETURN ;
       }
-
-DPRI(" Making underlay cat2D from",nxyim) ;
 
       if( isrgb ){                       /* 11 Feb 1999 */
          if( seq->mont_gapcolor > 0 )
@@ -9222,9 +9259,13 @@ STATUS("Destroying underlay image array") ;
          isrgb_ov = 0 ;  /* 07 Mar 2001 */
 
          for( ij=0 ; ij < nmont ; ij++ ){
-            nim = seq->im_nr + (seq->mont_skip + 1) * (ij - ijcen) ;
-
-DPRI(" Getting montage overlay",nim) ;
+            if( seq->mont_mode > 0 ){
+              nim = seq->im_nr ;
+              div = (seq->mont_skip + 1) * (ij - ijcen) ;
+              ISQ_set_deltival( seq , div ) ;
+            } else {
+              nim = seq->im_nr + (seq->mont_skip + 1) * (ij - ijcen) ;
+            }
 
             tim = ISQ_manufacture_one( nim , 1 , seq ) ;
             ADDTO_IMARR(mar,tim) ;
@@ -9232,8 +9273,7 @@ DPRI(" Getting montage overlay",nim) ;
                nov++ ; isrgb_ov = isrgb_ov || tim->kind == MRI_rgb ;
             }
          }
-
-DPRI(" Making overlay cat2D from",nov) ;
+         if( seq->mont_mode > 0 ){ div = 0; ISQ_set_deltival(seq,div); }
 
          /* 07 Mar 2001: deal with possible RGB overlays */
 
@@ -12055,8 +12095,12 @@ ENTRY("ISQ_handle_keypress") ;
        }
        break ;
 
-       default:
        case XK_F5:
+         MCW_melt_widget( seq->wform ) ;
+       break ;
+
+       default:
+       /* case XK_F5: */
        case XK_F6:
        case XK_F7:
        case XK_F8:

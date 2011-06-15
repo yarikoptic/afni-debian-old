@@ -56,6 +56,8 @@ static int do_niml = 0 ;
 static int do_1D   = 1 ;
 static int do_ball = 0 ;
 
+static int do_lohi = 0 ;  /* 20 Jan 2011 -- for debugging */
+
 static int do_NN[4] = { 0 , 1 , 0 , 0 } ;
 
 static unsigned int gseed = 123456789 ;
@@ -84,6 +86,8 @@ static double *athr = NULL ;
 
 static int verb = 1 ;
 static int nthr = 1 ;
+
+static int minmask = 128 ;   /* 29 Mar 2011 */
 
 static char *prefix = NULL ;
 
@@ -135,9 +139,9 @@ void display_help_menu()
    "-------\n"
    "OPTIONS  [at least 1 option is required, or you'll get this help message!]\n"
    "-------\n"
-   " ** Specify the volume over which the simulation will occur **\n"
+   " ***** Specify the volume over which the simulation will occur *****\n"
    "\n"
-   "    ** Directly give the spatial domain that will be used **\n"
+   "  --** (a) Directly give the spatial domain that will be used **--\n"
    "-nxyz n1 n2 n3 = Size of 3D grid to use for simulation\n"
    "                  [default values = 64 64 32]\n"
    "-dxyz d1 d2 d3 = give all 3 voxel sizes at once\n"
@@ -147,11 +151,20 @@ void display_help_menu()
    "                  this will keep about 1/2 the points in the 3D grid.\n"
    "                  [default = use all voxels in the 3D grid]\n"
    "\n"
-   "    ** OR: Specify the spatial domain using a dataset mask **\n"
+   "  --** OR: (b) Specify the spatial domain using a dataset mask **--\n"
    "\n"
    "-mask mset     = Use the 0 sub-brick of dataset 'mset' as a mask\n"
    "                  to indicate which voxels to analyze (a sub-brick\n"
    "                  selector '[]' is allowed) \n"
+   "\n"
+   "-OKsmallmask   = Allow small masks. Normally, a mask volume must have\n"
+   "                  128 or more nonzero voxels.  However, IF you know what\n"
+   "                  you are doing, and IF you are willing to live life on\n"
+   "                  the edge of statistical catastrophe, then you can use\n"
+   "                  this option to allow smaller masks -- in a sense, this\n"
+   "                  is the 'consent form' for such strange shenanigans.\n"
+   "                 * If you use this option, it must come BEFORE '-mask'.\n"
+   "                 * Also read the 'CAUTION and CAVEAT' section, far below.\n"
    "\n"
    "    ** '-mask' means that '-nxyz' & '-dxyz' & '-BALL' will be ignored. **\n"
    "\n"
@@ -200,9 +213,9 @@ void display_help_menu()
    "                 clustering will be computed (as if you used '-NN 1').\n"
    "\n"
    "              ** The clustering method only makes a difference at higher **\n"
-   "              ** (less significant) values of pthr.  At small values of  **\n"
-   "              ** pthr (more significant), all 3 clustering methods will  **\n"
-   "              ** give about the same results.                            **\n"
+   "              ** (less significant) values of pthr.   At small values of **\n"
+   "              ** pthr (more significant),  all 3 clustering methods will **\n"
+   "              ** give very similar results.                              **\n"
    "\n"
    "-nodec         = normally, the program prints the cluster size threshold to\n"
    "                  1 decimal place (e.g., 27.2).  Of course, clusters only come\n"
@@ -211,14 +224,21 @@ void display_help_menu()
    "                  want no decimal places (so that 27.2 becomes 28), use '-nodec'.\n"
    "\n"
    "-seed S        = random number seed [default seed = 123456789]\n"
-   "                  * if seed=0, then program will randomize it\n"
+   "                  * if seed=0, then program will quasi-randomize it\n"
    "\n"
    "-niml          = Output the table in an XML/NIML format, rather than a .1D format.\n"
-   "                  * This option is for use with other software programs.\n"
+   "                  * This option is for use with other software programs;\n"
+   "                    see the NOTES section below for details.\n"
    "                  * '-niml' also implicitly means '-LOTS'.\n"
+   "                  * '-niml' also implicitly means '-NN 123'.\n"
+   "                    If you DON'T want all 3 NN methods, then use an explicit\n"
+   "                    '-NN' option AFTER the '-niml' option to choose what you want.\n"
+   "\n"
    "-both          = Output the table in XML/NIML format AND in .1D format.\n"
    "                  * You probably want to use '-prefix' with this option!\n"
    "                    Otherwise, everything is mixed together on stdout.\n"
+   "                  * '-both' does NOT imply '-NN 123'; if you want all 3 NN\n"
+   "                    methods with '-both', you have to explicitly use '-NN 123'.\n"
    "\n"
    "-prefix ppp    = Write output for NN method #k to file 'ppp.NNk.1D' for k=1, 2, 3.\n"
    "                  * If '-prefix is not used, results go to standard output.\n"
@@ -243,14 +263,23 @@ void display_help_menu()
    "------\n"
    "* This program is like running AlphaSim once for each '-pthr' value and then\n"
    "  extracting the relevant information from its 'Alpha' output column.\n"
+   " ++ One reason for 3dClustSim to be used in place of AlphaSim is that it will\n"
+   "    be faster than running AlphaSim multiple times.\n"
+   " ++ Another reason is that the resulting table can be stored in an AFNI\n"
+   "    dataset's header, and used in the AFNI Clusterize GUI to see estimated\n"
+   "    cluster significance (alpha) levels.\n"
    "\n"
    "* To be clear, the C(p,alpha) thresholds that are calculated are for\n"
-   "  alpha = probability of a noise-only smooth random field, after thresholding\n"
-   "  at the per-voxel p value, produces a cluster of voxels at least this big.\n"
-   "  So if your cluster is well above the C(p,0.05) threshold in size (say),\n"
-   "  then it is very unlikely that noise BY ITSELF produced this result.  This\n"
-   "  statement does not mean that all the voxels in the cluster are 'truly'\n"
-   "  active -- it means that at least SOME of them are (probably) truly active.\n"
+   "  alpha = probability of a noise-only smooth random field, after masking\n"
+   "  and then thresholding at the given per-voxel p value, producing a cluster\n"
+   "  of voxels at least this big.\n"
+   " ++ So if your cluster is larger than the C(p,0.01) threshold in size (say),\n"
+   "    then it is very unlikely that noise BY ITSELF produced this result.\n"
+   " ++ This statement does not mean that ALL the voxels in the cluster are\n"
+   "    'truly' active -- it means that at least SOME of them are (very probably)\n"
+   "    active.  The statement of low probability (0.01 in this example) of a\n"
+   "    false positive result applies to the cluster as a whole, not to each\n"
+   "    voxel within the cluster.\n"
    "\n"
    "* To add the cluster simulation C(p,alpha) table to the header of an AFNI\n"
    "  dataset, something like the following can be done [tcsh syntax]:\n"
@@ -262,6 +291,10 @@ void display_help_menu()
    "     rm -f CStemp.*\n"
    "  AFNI's Clusterize GUI makes use of these attributes, if stored in a\n"
    "  statistics dataset (e.g., something from 3dDeconvolve, 3dREMLfit, etc.).\n"
+   "\n"
+   "   ** Nota Bene: afni_proc.py will automatically run 3dClustSim,  and **\n"
+   "  *** put the results  into the statistical results  dataset for you. ***\n"
+   " **** Another reason to use afni_proc.py for single-subject analyses! ****\n"
    "\n"
    "* 3dClustSim will print (to stderr) a 3drefit command fragment, similar\n"
    "  to the one above, that you can use to add cluster tables to any\n"
@@ -276,8 +309,52 @@ void display_help_menu()
    "* AFNI will use the NN1, NN2, NN3 tables as needed in its Clusterize\n"
    "  interface if they are all stored in the statistics dataset header,\n"
    "  depending on the NN level chosen in the Clusterize controller.\n"
+   "  ++ If only the NN1 table gets stored in the statistics dataset, then\n"
+   "     that table will be used even if you ask for NN3 clusterizing inside\n"
+   "     AFNI -- the idea being that to get SOME result is better than nothing.\n"
    "\n"
-   "-- RW Cox -- July 2010\n"
+   "-------------------\n"
+   "CAUTION and CAVEAT: [January 2011]\n"
+   "-------------------\n"
+   "* If you use a small ROI mask and also have a large FWHM, then it might happen\n"
+   "  that it is impossible to find a cluster size threshold C that works for a\n"
+   "  given (p,alpha) combination.\n"
+   "\n"
+   "* Generally speaking, C(p,alpha) gets smaller as p gets smaller and C(p,alpha)\n"
+   "  gets smaller as alpha gets larger.  As a result, in a small mask with small p\n"
+   "  and large alpha, C(p,alpha) might shrink below 1.  But clusters of size C\n"
+   "  less than don't make any sense!\n"
+   "\n"
+   "* For example, suppose that for p=0.0005 that only 6%% of the simulations\n"
+   "  have ANY above-threshold voxels inside the ROI mask.  In that case,\n"
+   "  C(p=0.0005,alpha=0.06) = 1.  There is no smaller value of C where 10%%\n"
+   "  of the simulations have a cluster of size C or larger.  Thus, it is\n"
+   "  impossible to find the cluster size threshold for the combination of\n"
+   "  p=0.0005 and alpha=0.10 in this case.\n"
+   "\n"
+   "* 3dClustSim will report a cluster size threshold of C=1 for such cases.\n"
+   "  It will also print (to stderr) a warning message for all the (p,alpha)\n"
+   "  combinations that had this problem.\n"
+   "\n"
+   "* This issue arises because 3dClustSim reports C for a given alpha.\n"
+   "  In contrast, AlphaSim reports alpha for each given C, and leaves\n"
+   "  you to interpret the resulting table; it doesn't try to find C(p,alpha)\n"
+   "  for a given alpha, but finds alpha for various values of C.\n"
+   "\n"
+   "* If you wish to see this effect in action, the following commands\n"
+   "  can be used as a starting point:\n"
+   "\n"
+   "3dClustSim -nxyz 8 8 8 -dxyz 2 2 2 -fwhm 8 -niter 10000\n"
+   "AlphaSim -nxyz 8 8 8 -dxyz 2 2 2 -fwhm 8 -niter 10000 -quiet -fast -pthr 0.0005\n"
+   "\n"
+   "  From the 3dClustSim command above, you should get a warning message\n"
+   "  similar to this, right after the table (only the first 2 lines are shown):\n"
+   "\n"
+   "*+ WARNING: Simulation not effective for these cases:\n"
+   "   NN=1  pthr= 0.001000  alpha= 0.100 [max simulated alpha= 0.087]\n"
+   "\n"
+   "-----------------------------\n"
+   "---- RW Cox -- July 2010 ----\n"
   ) ;
 
   printf(
@@ -314,11 +391,12 @@ void display_help_menu()
    "size threshold would be 9 -- that is, you would keep all NN clusters with\n"
    "9 or more voxels.\n"
    "\n"
-   "The header lines start with the '#' character so that the result is a\n"
-   "correctly formatted AFNI .1D file -- it can be used in 1dplot, etc.\n"
+   "The header lines start with the '#' (commenting) character so that the result\n"
+   "is a correctly formatted AFNI .1D file -- it can be used in 1dplot, etc.\n"
   ) ;
 
   PRINT_AFNI_OMP_USAGE("3dClustSim",NULL) ;
+  PRINT_COMPILE_DATE ;
   exit(0);
 }
 
@@ -359,6 +437,12 @@ void get_options( int argc , char **argv )
       continue ;
     }
 
+    /**** -OKsmallmask ****/
+
+    if( strcmp(argv[nopt],"-OKsmallmask") == 0 ){  /* 29 Mar 2011 */
+      minmask = 2 ; nopt++ ; continue ;
+    }
+
     /**** -mask mset ****/
 
     if( strcmp(argv[nopt],"-mask") == 0 ){
@@ -371,8 +455,21 @@ void get_options( int argc , char **argv )
       mask_nvox = DSET_NVOX(mask_dset) ;
       DSET_unload(mask_dset) ;
       mask_ngood = THD_countmask( mask_nvox , mask_vol ) ;
-      if( mask_ngood < 128 ) ERROR_exit("-mask has only %d nonzero voxels!",mask_ngood) ;
-      if( verb ) INFO_message("%d voxels in mask (%.1f%% of total)",
+      if( mask_ngood < minmask ){
+        if( minmask > 2 && mask_ngood > 2 ){
+          ERROR_message("-mask has only %d nonzero voxels; minimum allowed is %d.",
+                        mask_ngood , minmask ) ;
+          ERROR_message("To run this simulation, please read the CAUTION and CAVEAT in -help,") ;
+          ERROR_message("and then you can use the '-OKsmallmask' option if you so desire.") ;
+          ERROR_exit("Cannot continue -- may we meet under happier circumstances!") ;
+        } else if( mask_ngood == 0 ){
+          ERROR_exit("-mask has no nonzero voxels -- cannot use this at all :-(") ;
+        } else {
+          ERROR_exit("-mask has only %d nonzero voxel%s -- cannot use this :-(",
+                     mask_ngood , (mask_ngood > 1) ? "s" : "\0" ) ;
+        }
+      }
+      if( verb ) INFO_message("%d voxels in mask (%.2f%% of total)",
                               mask_ngood,100.0*mask_ngood/(double)mask_nvox) ;
       nopt++ ; continue ;
     }
@@ -506,6 +603,10 @@ void get_options( int argc , char **argv )
       nodec = 1 ; nopt++ ; continue ;
     }
 
+    if( strcasecmp(argv[nopt],"-alo") == 0 ){   /* 20 Jan 2011: debug stuff */
+      do_lohi = 1 ; nopt++ ; continue ;
+    }
+
     /*----   -niml   ----*/
 
     if( strcasecmp(argv[nopt],"-niml") == 0 ||
@@ -517,7 +618,10 @@ void get_options( int argc , char **argv )
       athr = (double *)realloc(athr,sizeof(double)*nathr) ;
       memcpy( athr , athr_lots , sizeof(double)*nathr ) ;
       do_niml = 1 ;
-      do_1D   = (strcasecmp(argv[nopt],"-both") == 0) ;
+      if( strcasecmp(argv[nopt],"-both") == 0 )
+        do_1D = 1 ;
+      else
+        do_NN[1] = do_NN[2] = do_NN[3] = 1 ;   /* 19 Jan 2011 */
       nopt++ ; continue ;
     }
 
@@ -532,8 +636,8 @@ void get_options( int argc , char **argv )
     if( strcasecmp(argv[nopt],"-NN") == 0 ){
       nopt++; if( nopt >= argc ) ERROR_exit("need argument after %s",argv[nopt-1]);
       do_NN[1] = (strchr(argv[nopt],'1') != NULL) ;
-      do_NN[2] = (strchr(argv[nopt],'1') != NULL) ;
-      do_NN[3] = (strchr(argv[nopt],'1') != NULL) ;
+      do_NN[2] = (strchr(argv[nopt],'2') != NULL) ;
+      do_NN[3] = (strchr(argv[nopt],'3') != NULL) ;
       ii = do_NN[1] + do_NN[2] + do_NN[3] ;
       if( !ii )
         ERROR_exit("argument after %s does not contain digits 1, 2, or 3",argv[nopt-1]) ;
@@ -632,16 +736,26 @@ void get_options( int argc , char **argv )
 void generate_image( float *fim , unsigned short xran[] )
 {
   register int ii ; register float sum ;
+
+  /* random N(0,1) stuff */
+
   for( ii=0 ; ii < nxyz ; ii++ ) fim[ii] = zgaussian_sss(xran) ;
+
+  /* smoothization */
+
   if( do_blur ){
     FIR_blur_volume_3d(nx,ny,nz,dx,dy,dz,fim,sigmax,sigmay,sigmaz) ;
     for( sum=0.0f,ii=0 ; ii < nxyz ; ii++ ) sum += fim[ii]*fim[ii] ;
-    sum = sqrtf( nxyz / sum ) ;
+    sum = sqrtf( nxyz / sum ) ;  /* fix stdev back to 1 */
     for( ii=0 ; ii < nxyz ; ii++ ) fim[ii] *= sum ;
   }
+
+  /* maskizing */
+
   if( mask_vol != NULL ){
     for( ii=0 ; ii < nxyz ; ii++ ) if( !mask_vol[ii] ) fim[ii] = 0.0f ;
   }
+
   return ;
 }
 
@@ -782,13 +896,13 @@ int find_largest_cluster_NN2( byte *mmm , int ithr )
 
        if( im >= 0 ){  CPUT(im,jj,kk) ;
          if( jm >= 0 ) CPUT(im,jm,kk) ;  /* 2NN */
-         if( jp < nx ) CPUT(im,jp,kk) ;  /* 2NN */
+         if( jp < ny ) CPUT(im,jp,kk) ;  /* 2NN */
          if( km >= 0 ) CPUT(im,jj,km) ;  /* 2NN */
          if( kp < nz ) CPUT(im,jj,kp) ;  /* 2NN */
        }
        if( ip < nx ){  CPUT(ip,jj,kk) ;
          if( jm >= 0 ) CPUT(ip,jm,kk) ;  /* 2NN */
-         if( jp < nx ) CPUT(ip,jp,kk) ;  /* 2NN */
+         if( jp < ny ) CPUT(ip,jp,kk) ;  /* 2NN */
          if( km >= 0 ) CPUT(ip,jj,km) ;  /* 2NN */
          if( kp < nz ) CPUT(ip,jj,kp) ;  /* 2NN */
        }
@@ -862,7 +976,7 @@ int find_largest_cluster_NN3( byte *mmm , int ithr )
 
        if( im >= 0 ){  CPUT(im,jj,kk) ;
          if( jm >= 0 ) CPUT(im,jm,kk) ;  /* 2NN */
-         if( jp < nx ) CPUT(im,jp,kk) ;  /* 2NN */
+         if( jp < ny ) CPUT(im,jp,kk) ;  /* 2NN */
          if( km >= 0 ) CPUT(im,jj,km) ;  /* 2NN */
          if( kp < nz ) CPUT(im,jj,kp) ;  /* 2NN */
          if( jm >= 0 && km >= 0 ) CPUT(im,jm,km) ;  /* 3NN */
@@ -872,7 +986,7 @@ int find_largest_cluster_NN3( byte *mmm , int ithr )
        }
        if( ip < nx ){  CPUT(ip,jj,kk) ;
          if( jm >= 0 ) CPUT(ip,jm,kk) ;  /* 2NN */
-         if( jp < nx ) CPUT(ip,jp,kk) ;  /* 2NN */
+         if( jp < ny ) CPUT(ip,jp,kk) ;  /* 2NN */
          if( km >= 0 ) CPUT(ip,jj,km) ;  /* 2NN */
          if( kp < nz ) CPUT(ip,jj,kp) ;  /* 2NN */
          if( jm >= 0 && km >= 0 ) CPUT(ip,jm,km) ;  /* 3NN */
@@ -1110,6 +1224,7 @@ int main( int argc , char **argv )
     int ii , itop , iathr ;
     char *commandline = tross_commandline("3dClustSim",argc,argv) ;
     char fname[THD_MAX_NAME] , pname[THD_MAX_NAME] ;
+    char *amesg = NULL ;  /* 20 Jan 2011 */
 
     alpha        = (double *)malloc(sizeof(double)*(max_cluster_size+1)) ;
     clust_thresh = (float **)malloc(sizeof(float *)*npthr) ;
@@ -1124,41 +1239,63 @@ int main( int argc , char **argv )
           if( alpha[ii] > 0.0 ) itop = ii ;
         }
         for( ii=itop-1 ; ii >= 1 ; ii-- ) alpha[ii] += alpha[ii+1] ;
+#if 0
+INFO_message("pthr[%d]=%g itop=%d",ipthr,pthr[ipthr],itop) ;
+for( ii=1 ; ii <= itop ; ii++ )
+  fprintf(stderr," %d=%g",ii,alpha[ii]) ;
+fprintf(stderr,"\n") ;
+#endif
         for( iathr=0 ; iathr < nathr ; iathr++ ){
           aval = athr[iathr] ;
-          for( ii=1 ; ii < itop ; ii++ )
-            if( alpha[ii] > aval && alpha[ii+1] <= aval ) break ;
+          if( aval > alpha[1] ){  /* unpleasant situation */
+            ii = 1 ;
+            amesg = THD_zzprintf(
+                     amesg ,
+                     "   NN=%d  pthr=%9.6f  alpha=%6.3f [max simulated alpha=%6.3f]\n" ,
+                     nnn , pthr[ipthr] , aval , alpha[1] ) ;
+          } else {
+            for( ii=1 ; ii < itop ; ii++ ){
+              if( alpha[ii] >= aval && alpha[ii+1] <= aval ) break ;
+            }
+          }
 
           alo=alpha[ii] ; ahi=alpha[ii+1] ;
-          if( alo >= 1.0 ) alo = 1.0 - 0.1/niter ;
-          if( ahi <= 0.0 ) ahi = 0.1/niter ;
-          if( ahi >= alo ) ahi = 0.1*alo ;
-          aval = log(-log(1.0-aval)) ;
-          alo  = log(-log(1.0-alo)) ;
-          ahi  = log(-log(1.0-ahi)) ;
-          aval = ii + (aval-alo)/(ahi-alo) ;
-          if( nodec ) aval = (int)(aval+0.951) ;
+          if( do_lohi ){
+            aval = ii ;    /* for debugging */
+          } else {
+            if( alo >= 1.0 ) alo = 1.0 - 0.1/niter ;
+            if( ahi <= 0.0 ) ahi = 0.1/niter ;
+            if( ahi >= alo ) ahi = 0.1*alo ;
+            aval = log(-log(1.0-aval)) ;
+            alo  = log(-log(1.0-alo)) ;
+            ahi  = log(-log(1.0-ahi)) ;
+            aval = ii + (aval-alo)/(ahi-alo) ;
+                 if( aval < 1.0 ) aval = 1.0 ;
+            else if( nodec      ) aval = (int)(aval+0.951) ;
+          }
           clust_thresh[ipthr][iathr] = aval ;
 
           if( clust_thresh[ipthr][iathr] > cmax ) cmax = clust_thresh[ipthr][iathr] ;
         }
       }
 
-      /* edit each column to increase as pthr increases [shouldn't be needed] */
+      if( do_lohi == 0 ){
+        /* edit each column to increase as pthr increases [shouldn't be needed] */
 
-      for( iathr=0 ; iathr < nathr ; iathr++ ){
-        for( ipthr=npthr-2 ; ipthr >= 0 ; ipthr-- ){
-          if( clust_thresh[ipthr][iathr] < clust_thresh[ipthr+1][iathr] )
-            clust_thresh[ipthr][iathr] = clust_thresh[ipthr+1][iathr] ;
+        for( iathr=0 ; iathr < nathr ; iathr++ ){
+          for( ipthr=npthr-2 ; ipthr >= 0 ; ipthr-- ){
+            if( clust_thresh[ipthr][iathr] < clust_thresh[ipthr+1][iathr] )
+              clust_thresh[ipthr][iathr] = clust_thresh[ipthr+1][iathr] ;
+          }
         }
-      }
 
-      /* edit each row to increase as athr decreases [shouldn't be needed] */
+        /* edit each row to increase as athr decreases [shouldn't be needed] */
 
-      for( ipthr=0 ; ipthr < npthr ; ipthr++ ){
-        for( iathr=1 ; iathr < nathr ; iathr++ ){
-          if( clust_thresh[ipthr][iathr] < clust_thresh[ipthr][iathr-1] )
-            clust_thresh[ipthr][iathr] = clust_thresh[ipthr][iathr-1] ;
+        for( ipthr=0 ; ipthr < npthr ; ipthr++ ){
+          for( iathr=1 ; iathr < nathr ; iathr++ ){
+            if( clust_thresh[ipthr][iathr] < clust_thresh[ipthr][iathr-1] )
+              clust_thresh[ipthr][iathr] = clust_thresh[ipthr][iathr-1] ;
+          }
         }
       }
 
@@ -1279,7 +1416,26 @@ MPROBE ;
 
     } /* end of loop over nnn = NN degree */
 
-  } /* end of outputization */
+    if( amesg != NULL ){
+      WARNING_message("Simulation not effective for these cases:\n\n"
+                      "%s\n"
+                      "*+ This means that not enough clusters, of any size, +*\n"
+                      "     of voxels at or below each pthr threshold, were +*\n"
+                      "     found to estimate at each alpha level.          +*\n"
+                      "*+ In other words, the probability that noise-only   +*\n"
+                      "     data (of the given smoothness) will cause       +*\n"
+                      "     above-threshold (at the given pthr) clusters is +*\n"
+                      "     smaller than the desired alpha levels.          +*\n"
+                      "*+ This problem can arise when the masked region     +*\n"
+                      "     being simulated is small and at the same time   +*\n"
+                      "     the smoothness (FWHM) is large.                 +*\n"
+                      "*+ Read the 'CAUTION and CAVEAT' section at the end  +*\n"
+                      "   of the '-help' output for a longer explanation.   +*\n\n"
+                    , amesg ) ;
+      free(amesg) ;
+    }
+
+  } /* end of outputizationing */
 
   /*------- a minor aid for the pitiful helpless user [e.g., me] -------*/
 

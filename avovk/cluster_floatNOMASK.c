@@ -2038,7 +2038,7 @@ centroid.
 ========================================================================
 */
 { int i, j, k;
-  for (j = 0; j < nclusters; j++) errors[j] = DBL_MAX;
+  for (j = 0; j < nclusters; j++) errors[j] = FLT_MAX;
   for (i = 0; i < nelements; i++)
   { float d = 0.0;
     j = clusterid[i];
@@ -2077,10 +2077,10 @@ kmeans(int nclusters, int nrows, int ncolumns, float** data,
   
   if (saved==NULL) return -1;
 
-  *error = DBL_MAX;
+  *error = FLT_MAX;
 
   do
-  { float total = DBL_MAX;
+  { float total = FLT_MAX;
     int counter = 0;
     int period = 10;
 
@@ -2185,10 +2185,10 @@ kmedians(int nclusters, int nrows, int ncolumns, float** data,
   int* saved = malloc(nelements*sizeof(int));
   if (saved==NULL) return -1;
 
-  *error = DBL_MAX;
+  *error = FLT_MAX;
 
   do
-  { float total = DBL_MAX;
+  { float total = FLT_MAX;
     int counter = 0;
     int period = 10;
 
@@ -2366,9 +2366,7 @@ number of clusters is larger than the number of elements being clustered,
   float** cdata;
   
   int* counts;
-  int* counts_bck;
-  int* xclusterid;
-  int verb = 1;
+  int verb = 0;
   
   if (nelements < nclusters)
   { *ifound = 0;
@@ -2381,7 +2379,6 @@ number of clusters is larger than the number of elements being clustered,
   /* This will contain the number of elements in each cluster, which is
    * needed to check for empty clusters. */
   counts = malloc(nclusters*sizeof(int));
-  counts_bck = malloc(nclusters*sizeof(int));
   if(!counts) return;
 
   /* Find out if the user specified an initial clustering */
@@ -2402,8 +2399,6 @@ number of clusters is larger than the number of elements being clustered,
     for (i = 0; i < nelements; i++) clusterid[i] = 0;
   }
 
-  /*avovk*/
-  xclusterid = malloc(nelements*sizeof(int));
 
   /* Allocate space to store the centroid data */
   if (transpose==0) ok = makedatamask(nclusters, ndata, &cdata);
@@ -2433,54 +2428,14 @@ number of clusters is larger than the number of elements being clustered,
                      transpose, npass, dist, cdata, clusterid, error,
                      tclusterid, counts, mapping);
   }  
-  /*avovk; here rearange clusterids depending on counts*/
-  if (verb) fprintf(stderr,"rearranging \n"); 
-  for (i = 0; i < nrows; i++)
-    xclusterid[i] = clusterid[i];
-
-  for (i = 0; i < nclusters; i++)
-    counts_bck[i] = counts[i];
-
-
-  /* first sort counts - number of voxels per cluster */
-  qsort(counts, nclusters, sizeof(int), comp);
   
-  for (i = 0; i < nclusters; i++)
-    printf("%d\t%d\n",counts_bck[i],counts[i]);
-
-  /*IMPORTANT although almoast impossible, should check if equal numbers exists*/
-
-  for (i = 0; i < nclusters; i++)
-    {
-      
-      for (j = 0; j < nclusters; j++)
-	{
-	  if (counts[i] == counts_bck[j]) 
-	    {
-	      if (i!=j)
-		{
-		  printf("changing %d to %d\n",j,i);
-		  /* I guess not good clusterid[tclusterid == j] = i; */
-		  for (ii = 0; ii < nrows; ii++)
-		    {
-		      if (xclusterid[ii] == j) 
-			{
-			  clusterid[ii] = i;
-			}
-		    }
-		}
-	      /* exit*/
-	      /*	  j = nclusters;*/
-	    }
-	}
-    }
-
+  /* remapping is done in calling function now (see thd_segtools_fNM.c)   
+            ZSS Jan 2011*/
 
   /* Deallocate temporarily used space */
   if (npass > 1)
   { free(mapping);
     free(tclusterid);
-    free(xclusterid);
   }
 
   if (transpose==0) freedatamask(nclusters, cdata);
@@ -2605,9 +2560,9 @@ to 0. If kmedoids fails due to a memory allocation error, ifound is set to -1.
     }
   }
 
-  *error = DBL_MAX;
+  *error = FLT_MAX;
   do /* Start the loop */
-  { float total = DBL_MAX;
+  { float total = FLT_MAX;
     int counter = 0;
     int period = 10;
 
@@ -2628,7 +2583,7 @@ to 0. If kmedoids fails due to a memory allocation error, ifound is set to -1.
 
       for (i = 0; i < nelements; i++)
       /* Find the closest cluster */
-      { float distance = DBL_MAX;
+      { float distance = FLT_MAX;
         for (icluster = 0; icluster < nclusters; icluster++)
         { float tdistance;
           j = centroids[icluster];
@@ -3244,7 +3199,7 @@ If a memory error occurs, pslcluster returns NULL.
 
   for (i = 0; i < nnodes; i++)
   { vector[i] = i;
-    result[i].distance = DBL_MAX;
+    result[i].distance = FLT_MAX;
   }
 
   if(distmatrix)
@@ -3932,7 +3887,7 @@ when microarrays are being clustered.
     case 's':
     { int i1, i2, j1, j2;
       const int n = (transpose==0) ? ncolumns : nrows;
-      float mindistance = DBL_MAX;
+      float mindistance = FLT_MAX;
       for (i1 = 0; i1 < n1; i1++)
         for (i2 = 0; i2 < n2; i2++)
         { float distance;

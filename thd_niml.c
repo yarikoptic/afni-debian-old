@@ -223,7 +223,7 @@ ENTRY("THD_load_niml");
                 fprintf(stderr,"** failed to load niml file '%s'\n",fname);
                 RETURN(1);
             }
-            rv = THD_add_bricks(dblk->parent, nel);
+            rv = THD_add_bricks(dblk->parent, nel, NULL);
             NI_free_element(nel);  /* in any case */
             if( rv <= 0 ){
                 fprintf(stderr,"** add bricks returned %d for '%s'\n",rv,fname);
@@ -691,11 +691,12 @@ ENTRY("process_NSD_sparse_data");
     rhs = NI_get_attribute(nel, "data_type");
     if( !rhs || 
          (  strcmp(rhs, "Node_Bucket_data") &&
-            strcmp(rhs, "Node_ROI_data")       ) )
+            strcmp(rhs, "Node_ROI_data")   &&
+            strcmp(rhs, "Node_Label_data")    ) )
     {
         if(gni.debug)
           fprintf(stderr,"** SPARSE_DATA without data_type "
-                         "Node_Bucket_data or Node_ROI_data\n");
+                   "Node_Bucket_data or Node_ROI_data or Node_Label_data\n");
         RETURN(1);
     }
 

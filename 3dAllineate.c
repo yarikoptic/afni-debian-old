@@ -164,7 +164,7 @@ static char *meth_costfunctional[NMETH] =  /* describe cost functional */
                                               (NPBIL+4)*sizeof(GA_param) ) ; \
      for( jj=12 ; jj < NPBIL ; jj++ ){                                       \
        sprintf(str,"blin%02d",jj+1) ;                                        \
-       DEFPAR( jj,str, -0.1999f,0.1999f , 0.0f,0.0f,0.0f ) ;                 \
+       DEFPAR( jj,str, -nwarp_parmax,nwarp_parmax , 0.0f,0.0f,0.0f ) ;       \
        stup.wfunc_param[jj].fixed = 1 ;                                      \
      }                                                                       \
      DEFPAR(NPBIL  ,"xcen" ,-1.0e9,1.0e9 , 0.0f,0.0f,0.0f ) ;                \
@@ -227,16 +227,16 @@ static float BILINEAR_offdiag_norm(GA_setup stup)
      stup.wfunc_param[15+(nnl)].fixed = 2 ;                                  \
  } while(0)
 
-#define SETUP_CUBIC_PARAMS do{ SETUP_POLYNO_PARAMS(48,0.10f,"cubic") ;       \
+#define SETUP_CUBIC_PARAMS do{ SETUP_POLYNO_PARAMS(48,nwarp_parmax,"cubic");  \
                                stup.wfunc = mri_genalign_cubic ; } while(0)
 
-#define SETUP_QUINT_PARAMS do{ SETUP_POLYNO_PARAMS(156,0.10f,"quint") ;      \
+#define SETUP_QUINT_PARAMS do{ SETUP_POLYNO_PARAMS(156,nwarp_parmax,"quint"); \
                                stup.wfunc = mri_genalign_quintic ; } while(0)
 
-#define SETUP_HEPT_PARAMS do{ SETUP_POLYNO_PARAMS(348,0.10f,"heptic") ;      \
+#define SETUP_HEPT_PARAMS do{ SETUP_POLYNO_PARAMS(348,nwarp_parmax,"heptic"); \
                               stup.wfunc = mri_genalign_heptic ; } while(0)
 
-#define SETUP_NONI_PARAMS do{ SETUP_POLYNO_PARAMS(648,0.10f,"nonic") ;       \
+#define SETUP_NONI_PARAMS do{ SETUP_POLYNO_PARAMS(648,nwarp_parmax,"nonic");  \
                               stup.wfunc = mri_genalign_nonic ; } while(0)
 
 /* cc = 1,2,3 for x,y,z directions:
@@ -415,8 +415,8 @@ int main( int argc , char *argv[] )
    char *allcostX1D_outname    = NULL ;
 
    int   nwarp_pass            = 0 ;
-   int   nwarp_type            = WARP_BILINEAR ;
-   float nwarp_order           = 2.9f ;
+   int   nwarp_type            = WARP_CUBIC ;
+   float nwarp_parmax          = 0.10f ;         /* 05 Jan 2011 */
    int   nwarp_flags           = 0 ;             /* 29 Oct 2010 */
    int   nwarp_itemax          = 0 ;
    int   nwarp_fixaff          = 1 ;             /* 26 Nov 2010 */
@@ -479,7 +479,7 @@ int main( int argc , char *argv[] )
 "       as T1-weighted alignment between field strengths using the\n"
 "       '-lpa' cost functional.  Investigate align_epi_anat.py to\n"
 "       see if it will do what you need -- you might make your life\n"
-"       a little easier and nicer and happier and more peaceful.\n"
+"       a little easier and nicer and happier and more tranquil.\n"
 "  -->> Also, if/when you ask for registration help on the AFNI\n"
 "       message board, we'll probably start by recommending that you\n"
 "       try align_epi_anat.py if you haven't already done so.\n"
@@ -491,11 +491,12 @@ int main( int argc , char *argv[] )
 "       the 90 degree flip angle, there is so little internal contrast in\n"
 "       the EPI dataset that the alignment process ends up being just\n"
 "       trying to match brain outlines -- which doesn't always give accurate\n"
-"       results (cf http://dx.doi.org/10.1016/j.neuroimage.2008.09.037 ).\n"
-"       Although the total MRI signal is reduced at a smaller flip angle,\n"
+"       results: see http://dx.doi.org/10.1016/j.neuroimage.2008.09.037\n"
+"  -->> Although the total MRI signal is reduced at a smaller flip angle,\n"
 "       there is little or no loss in FMRI/BOLD information, since the bulk\n"
 "       of the time series 'noise' is from physiological fluctuation signals,\n"
-"       which are also reduced by the lower flip angle.\n"
+"       which are also reduced by the lower flip angle -- for more details,\n"
+"       see http://dx.doi.org/10.1016/j.neuroimage.2010.11.020\n"
 "---------------------------------------------------------------------------\n"
 "\n"
 "COMMAND LINE OPTIONS:\n"
@@ -1163,7 +1164,8 @@ int main( int argc , char *argv[] )
         "                 cost functional is m*N+a, where N is the number\n"
         "                 of parameters being optimized.  The default values\n"
         "                 are m=2 and a=3.  Larger values will probably slow\n"
-        "                 the program down for no good reason.\n"
+        "                 the program down for no good reason.  The smallest\n"
+        "                 values are 1.\n"
         " -target ttt   = Same as '-source ttt'.  In the earliest versions,\n"
         "                 what I now call the 'source' dataset was called the\n"
         "                 'target' dataset:\n"
@@ -1337,6 +1339,7 @@ int main( int argc , char *argv[] )
         "                warps: 'cubic', 'quintic', 'heptic', 'nonic' (using\n"
         "                3rd, 5th, 7th, and 9th order Legendre polynomials); e.g.,\n"
         "                   -nwarp heptic\n"
+        "              * These are the nonlinear warps that I now am supporting.\n"
         "              * Or you can call them 'poly3', 'poly5', 'poly7', and 'poly9',\n"
         "                  for simplicity and non-Hellenistic clarity.\n"
         "              * These names are not case sensitive: 'nonic' == 'Nonic', etc.\n"
@@ -1432,6 +1435,11 @@ int main( int argc , char *argv[] )
         "* -nwarp is slow - reeeaaallll slow - use it with OpenMP!\n"
         "* Check the results to make sure the optimizer didn't run amok!\n"
         "   (You should ALWAYS do this with any registration software.)\n"
+        "* For the nonlinear warps, the largest coefficient allowed is\n"
+        "   set to 0.10 by default.  If you wish to change this, use an\n"
+        "   option like '-nwarp_parmax 0.05' (to make the allowable amount\n"
+        "   of nonlinear deformation half the default).\n"
+        "  ++ N.B.: Increasing the maximum past 0.10 may give very bad results!!\n"
         "* If you use -1Dparam_save, then you can apply the nonlinear\n"
         "   warp to another dataset using -1Dparam_apply in a later\n"
         "   3dAllineate run. To do so, use '-nwarp xxx' in both runs\n"
@@ -1443,6 +1451,15 @@ int main( int argc , char *argv[] )
         "  ++ The final 'extra' 4 values are used to specify\n"
         "      the center of coordinates (vector Xc below), and a\n"
         "      pre-computed scaling factor applied to parameters #13..39.\n"
+        "  ++ For polynomial warps, a similar format is used (mutatis mutandis).\n"
+        "* The option '-nwarp_save sss' lets you save a 3D dataset of the\n"
+        "  the displacement field used to create the output dataset.  This\n"
+        "  dataset can be used in program 3dNwarpApply to warp other datasets.\n"
+        "  ++ If the warp is symbolized by x -> w(x) [here, x is a DICOM 3-vector],\n"
+        "     then the '-nwarp_save' dataset contains w(x)-x; that is, it contains\n"
+        "     the warp displacement of each grid point from its grid location.\n"
+        "  ++ Also see program 3dNwarpCalc for other things you can do with this file.\n"
+        "\n"
         "* Bilinear warp formula:\n"
         "   Xout = inv[ I + {D1 (Xin-Xc) | D2 (Xin-Xc) | D3 (Xin-Xc)} ] [ A Xin ]\n"
         "  where Xin  = input vector  (base dataset coordinates)\n"
@@ -1529,6 +1546,16 @@ int main( int argc , char *argv[] )
          ERROR_exit("badly formed filename: '%s' '%s' :-(",argv[iarg-1],argv[iarg]) ;
        if( strcmp(argv[iarg],"NULL") == 0 ) nwarp_save_prefix = NULL ;
        else                                 nwarp_save_prefix = argv[iarg] ;
+       iarg++ ; continue ;
+     }
+
+     /*-----*/
+
+     if( strcmp(argv[iarg],"-nwarp_parmax") == 0 ){    /* 05 Jan 2011 = SECRET */
+       if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
+       nwarp_parmax = (float)strtod(argv[iarg],NULL) ;
+       if( nwarp_parmax <= 0.0f || nwarp_parmax > 1.0f )
+         ERROR_exit("Illegal value (%g) after '%s' :-(",nwarp_parmax,argv[iarg-1]) ;
        iarg++ ; continue ;
      }
 
@@ -1743,6 +1770,8 @@ int main( int argc , char *argv[] )
        if( ++iarg >= argc-1 ) ERROR_exit("no arguments after '%s' :-(",argv[iarg-1]) ;
        powell_mm = (float)strtod(argv[iarg++],NULL) ;
        powell_aa = (float)strtod(argv[iarg++],NULL) ;
+       if( powell_mm < 1.0f ) powell_mm = 1.0f ;
+       if( powell_aa < 1.0f ) powell_aa = 1.0f ;
        continue ;
      }
 
@@ -2737,8 +2766,8 @@ int main( int argc , char *argv[] )
    if( warp_freeze ) twofirst = 1 ;  /* 10 Oct 2006 */
 
    if( apply_mode > 0 && nwarp_pass ){
-     switch( nwarp_pass ){
-       default: ERROR_exit("Can't apply that nonlinear warp :-(  [%d]",nwarp_pass) ;
+     switch( nwarp_type ){
+       default: ERROR_exit("Can't apply that nonlinear warp :-(  [%d]",nwarp_type) ;
 
        case WARP_BILINEAR:{
          if( apply_nx == NPBIL+4 ){
@@ -2809,7 +2838,7 @@ int main( int argc , char *argv[] )
          }
        }
        break ;
-     } /* end of switch on nwarp_pass */
+     } /* end of switch on nwarp_type */
    }
 
    if( nwarp_pass && meth_check_count > 0 ){  /* 15 Dec 2010 */
@@ -3610,7 +3639,7 @@ STATUS("zeropad weight dataset") ;
        THD_3dim_dataset *qset ;
        qset = r_new_resam_dset( dset_mast , NULL ,
                                 dxyz_mast,dxyz_mast,dxyz_mast ,
-                                NULL , RESAM_NN_TYPE , NULL , 0 ) ;
+                                NULL , RESAM_NN_TYPE , NULL , 0 , 0) ;
        if( qset != NULL ){
          dset_mast = qset ;
          THD_daxes_to_mat44(dset_mast->daxes) ;
@@ -3792,7 +3821,7 @@ STATUS("zeropad weight dataset") ;
          meth_code == GA_MATCH_LPC_MICHO_SCALAR ||
          meth_code == GA_MATCH_PEARSON_LOCALA     ) ) sm_rad = MAX(2.222f,dxyz_top) ;
 
-   for( kk=0 ; kk < DSET_NVALS(dset_targ) ; kk++ ){
+   for( kk=0 ; kk < DSET_NVALS(dset_targ) ; kk++ ){  /** the sub-brick loop **/
 
      stup.match_code = meth_code ;
 
@@ -3983,10 +4012,13 @@ STATUS("zeropad weight dataset") ;
 
          if( verb > 1 ) ctim = COX_cpu_time() ;
 
+         powell_set_mfac( 1.0f , 3.0f ) ;  /* 07 Jun 2011 */
+
          nrand = 17 + 4*tbest ; nrand = MAX(nrand,31) ;
          mri_genalign_scalar_ransetup( &stup , nrand ) ;  /* the initial search! */
 
-         if( verb > 1 ) ININFO_message("- Coarse startup search net CPU time = %.1f s",COX_cpu_time()-ctim);
+         if( verb > 1 )
+           ININFO_message("- Coarse startup search net CPU time = %.1f s",COX_cpu_time()-ctim);
 
          /* unfreeze those that were temporarily frozen above */
 
@@ -4017,6 +4049,8 @@ STATUS("zeropad weight dataset") ;
 
            if( verb > 1 )
              INFO_message("Start refinement #%d on %d coarse parameter sets",rr+1,tfdone);
+
+           powell_set_mfac( 1.0f , 5.0f+2.0f*rr ) ;  /* 07 Jun 2011 */
 
            stup.smooth_radius_base *= 0.7777 ;  /* less smoothing */
            stup.smooth_radius_targ *= 0.7777 ;
@@ -4089,6 +4123,7 @@ STATUS("zeropad weight dataset") ;
 
          if( verb     ) ININFO_message("- Start coarse optimization with -twobest 0") ;
          if( verb > 1 ) ctim = COX_cpu_time() ;
+         powell_set_mfac( 2.0f , 1.0f ) ;  /* 07 Jun 2011 */
          nfunc = mri_genalign_scalar_optim( &stup , 0.05 , 0.005 , 444 ) ;
          if( verb > 2 ) PAROUT("--(a)") ;
          stup.npt_match = ntask / 7 ;
@@ -4171,8 +4206,11 @@ STATUS("zeropad weight dataset") ;
 
      /*-- choose initial parameters, based on interp_code cost functional --*/
 
+     powell_set_mfac( powell_mm , powell_aa ) ;  /* 07 Jun 2011 */
+
      if( tfdone ){                           /* find best in tfparm array */
        int kb=0 , ib ; float cbest=1.e+33 ;
+
 
        if( verb > 1 )
          INFO_message("Picking best parameter set out of %d cases",tfdone) ;
@@ -4239,7 +4277,7 @@ STATUS("zeropad weight dataset") ;
        PARINI("- Initial fine") ;
      }
 
-     if( powell_mm > 0.0f ) powell_set_mfac( powell_mm , powell_aa ) ;
+     powell_set_mfac( powell_mm , powell_aa ) ;  /* 07 Jun 2011 */
      nfunc = 0 ;
 
      /*-- start with some optimization with linear interp, for speed? --*/
@@ -4306,7 +4344,9 @@ STATUS("zeropad weight dataset") ;
          GA_setup_micho( 0.0 , 0.0 , 0.0 , 0.0 , 0.0 ) ;
          if( verb > 1 ) ININFO_message(" - Set lpc+ parameters back to pure lpc before Final") ;
        }
+       if( powell_mm == 0.0f ) powell_set_mfac( 3.0f , 3.0f ) ;  /* 07 Jun 2011 */
        nfunc = mri_genalign_scalar_optim( &stup , 0.666f*rad, conv_rad,6666 );
+       powell_set_mfac( powell_mm , powell_aa ) ;                /* 07 Jun 2011 */
      }
 
      /*** if( powell_mm > 0.0f ) powell_set_mfac( 0.0f , 0.0f ) ; ***/

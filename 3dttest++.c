@@ -57,7 +57,7 @@ static int   zskip_BBB = 0 ;
 static float zskip_fff = 0.0f ;
 static int   do_zskip  = 0 ;
 
-#define ALLOW_RANKS
+#define ALLOW_RANK
 static int   do_ranks  = 0 ;  /* 10 Nov 2010 */
 static int   do_1sam   = 1 ;  /* 10 Nov 2010 */
 
@@ -132,6 +132,10 @@ void display_help_menu(void)
 {
    printf(
       "Gosset (Student) t-test of sets of 3D datasets.\n"
+      "\n"
+      "      [* Also consider program 3dMEMA, which can carry out a  *]\n"
+      "      [* more sophisticated type of 't-test' that also takes  *]\n"
+      "      [* into account the variance map of each input dataset. *]\n"
       "\n"
       "* Usage can be similar (but not identical) to the old 3dttest; for example:\n"
       "\n"
@@ -209,13 +213,22 @@ void display_help_menu(void)
       "         ...    ...       \\\n"
       "         LABL_N BETA_DSET\n"
       "\n"
-      "* Specify the data for one of the test variables.\n"
+      "* In this form of input, you specify an overall name for the set of datasets,\n"
+      "   and a label to be associated with each separate input dataset.  (This label\n"
+      "   is used with the '-covariates' option, described later.)\n"
+      "\n"
       "   SETNAME   is the name assigned to the set (used in the output labels).\n"
       "   LABL_K    is the label for the Kth input dataset name, whose name follows.\n"
       "   BETA_DSET is the name of the dataset of the beta coefficient or GLT.\n"
       "             ++ only 1 sub-brick can be specified here!\n"
       "   Note that the labels 'SETNAME' and 'LABL_K' are limited to 12\n"
       "   characters -- any more will be thrown away without warning.\n"
+      "\n"
+      "     ** The program determines if you are using the short form or long **\n"
+      "     ** form to specify the input datasets based on the first argument **\n"
+      "     ** after the '-setX' option.  If this argument can be opened as a **\n"
+      "     ** dataset, the short form is used. If instead, the next argument **\n"
+      "     ** cannot be opened as a dataset,  then the long form is assumed. **\n"
       "\n"
       " -labelA SETNAME = for the short form of '-setX', this option allows you\n"
       "[-labelB]          to attach a label to the set, which will be used in\n"
@@ -240,12 +253,19 @@ void display_help_menu(void)
       "\n"
       "* COVAR_FILE is the name of a text file with a table for the covariate(s).\n"
       "   Each column in the file is treated as a separate covariate, and each\n"
-      "   row contains the values of these covariates for each sample. Note that\n"
-      "   you can use '-covariates' only once -- the COVAR_FILE should contain\n"
+      "   row contains the values of these covariates for one sample (dataset). Note\n"
+      "   that you can use '-covariates' only once -- the COVAR_FILE should contain\n"
       "   the covariates for ALL input samples from both sets.\n"
-      "  ++ Rows in COVAR_FILE that don't match a dataset label are ignored.\n"
       "\n"
-      "* The format of COVAR_FILE is like that for 3dMEMA and 3dGroupInCorr:\n"
+      "* Rows in COVAR_FILE that don't match a dataset label are ignored (silently).\n"
+      "\n"
+      "* A dataset label that doesn't match a row in COVAR_FILE, on the other hand,\n"
+      "   is a fatal error.\n"
+      "\n"
+      "* There is no provision for missing values -- the entire table must be filled!\n"
+      "\n"
+      "* The format of COVAR_FILE is similar to the format used in 3dMEMA and\n"
+      "   3dGroupInCorr (generalized to allow for voxel-wise covariates):\n"
       "\n"
       "     FIRST LINE -->   subject IQ   age  GMfrac\n"
       "     LATER LINES -->  Elvis   143   42  Elvis_GM+tlrc[8]\n"
@@ -301,10 +321,10 @@ void display_help_menu(void)
       "   what is calculated and stored by 3dttest++.\n"
       "\n"
       "* A maximum of 31 covariates are allowed.  If you have more, then\n"
-      "   seriously consider the likelihood that you are completely demented.\n"
+      "   seriously consider the likelihood that you are completely deranged.\n"
       "\n"
       "* N.B.: The simpler forms of the COVAR_FILE that 3dMEMA allows are\n"
-      "        NOT supported here!\n"
+      "        NOT supported here!  Only the format described above will work.\n"
       "\n"
       "* N.B.: IF you are entering multiple sub-bricks from the same dataset in\n"
       "        one of the '-setX' options, AND you are using covariates, then\n"
@@ -321,7 +341,7 @@ void display_help_menu(void)
       "        ++ Which you give you a LOT of output (to stderr), so redirect:\n"
       "             3dttest++ .... |& tee debug.out\n"
       "\n"
-      "***** CENTERING *******\n"
+      "***** CENTERING (this subject is very important -- read and think!) *******\n"
       "\n"
       " ++ This term refers to how the mean across subjects of a covariate\n"
       "    will be processed.  There are 3 possibilities:\n"
@@ -348,7 +368,7 @@ void display_help_menu(void)
       "    to understand what your model is and what effect the covariates\n"
       "    are likely to have on the data.  You shouldn't just blindly us\n"
       "    covariates 'just in case'.  That way lies statistical madness.\n"
-      "  -- If the two sample don't differ much in the mean values of their\n"
+      "  -- If the two samples don't differ much in the mean values of their\n"
       "      covariates, then the results with '-center SAME' and '-center DIFF'\n"
       "      should be nearly the same.\n"
       "  -- For fixed covariates (not those taken from datasets), the program\n"
@@ -449,7 +469,7 @@ void display_help_menu(void)
       "                 indicates that at least 90%% (e.g.) of the values in each\n"
       "                 set must be nonzero for the t-test to proceed. [08 Nov 2010]\n"
       "                 -- In no case will the number of values tested fall below 2!\n"
-      "                 -- You can use '100%' for 'n', to indicate that all data\n"
+      "                 -- You can use '100%%' for 'n', to indicate that all data\n"
       "                    values must be nonzero for the test to proceed.\n"
 #ifdef ALLOW_RANK
       "\n"
@@ -540,10 +560,11 @@ void display_help_menu(void)
       "\n"
       "* If you are doing a 2-sample run and don't want the 1-sample results,\n"
       "   then the '-no1sam' option can be used to eliminate these sub-bricks\n"
-      "   from the output.\n"
+      "   from the output, saving space and time and mental energy.\n"
       "\n"
       "* The largest Tstat that will be output is 99.\n"
       "* The largest Zscr that will be output is 13.\n"
+      "  ++ FYI: the 1-sided Gaussian tail probability of z=13 is 6.1e-39.\n"
       "\n"
 
       "-------------------\n"
@@ -716,7 +737,7 @@ int main( int argc , char *argv[] )
        do_1sam = 0 ; nopt++ ; continue ;
      }
 
-#ifdef ALLOW_RANKS
+#ifdef ALLOW_RANK
      /*----- rankize -----*/
 
      if( strcasecmp(argv[nopt],"-rankize") == 0 ){  /* 10 Nov 2010 */
@@ -1077,7 +1098,7 @@ int main( int argc , char *argv[] )
      do_1sam = 1 ;
    }
 
-#ifdef ALLOW_RANKS
+#ifdef ALLOW_RANK
    if( do_ranks && !twosam ){
      WARNING_message("-rankize only works with two-sample tests ==> ignoring") ;
      do_ranks = 0 ; do_1sam = 1 ;
@@ -1490,12 +1511,12 @@ int main( int argc , char *argv[] )
 
        if( twosam ){
          if( do_1sam ){
-           tpair = ttest_toz( nAAA,zAAA , 0 ,NULL   , ttest_opcode ) ;
+           tpair = ttest_toz( nAAA,zAAA , 0 ,NULL   , 0 ) ;
            resar[2] = tpair.a ; resar[3] = tpair.b ;
-           tpair = ttest_toz( nBBB,zBBB , 0 ,NULL   , ttest_opcode ) ;
+           tpair = ttest_toz( nBBB,zBBB , 0 ,NULL   , 0 ) ;
            resar[4] = tpair.a ; resar[5] = tpair.b ;
          }
-#ifdef ALLOW_RANKS
+#ifdef ALLOW_RANK
          if( do_ranks ) rank_order_2floats( nAAA,zAAA , nBBB,zBBB ) ;
 #endif
          tpair = ttest_toz( nAAA,zAAA , nBBB,zBBB , ttest_opcode ) ;
@@ -1519,7 +1540,7 @@ int main( int argc , char *argv[] )
 
        if( nws > 0 ) memset(workspace,0,nws) ;
 
-#ifdef ALLOW_RANKS
+#ifdef ALLOW_RANK
        if( do_ranks ) rank_order_2floats( nval_AAA, datAAA, nval_BBB, datBBB ) ;
 #endif
        regress_toz( nval_AAA , datAAA , nval_BBB , datBBB , ttest_opcode ,
@@ -1653,6 +1674,8 @@ void regress_toz( int numA , float *zA ,
    register float val , den ; register int ii,jj,tt ;
 
 ENTRY("regress_toz") ;
+
+   if( numB == 0 ) opcode = 0 ;  /* 03 Mar 2011 */
 
    nws = 0 ;
    if( testA || testAB ){
@@ -1816,9 +1839,11 @@ float_pair ttest_toz( int numx, float *xar, int numy, float *yar, int opcode )
    float_pair result = {0.0f,0.0f} ;
    register int ii ; register float val ;
    float avx,sdx , avy,sdy , dof , tstat=0.0f,delta=0.0f ;
-   int paired=(opcode==2) , pooled=(opcode==0) ;
+   int paired,pooled ;
 
 ENTRY("ttest_toz") ;
+   if( numy == 0 || yar == NULL ) opcode = 0 ;  /* 03 Mar 2011 */
+   paired = (opcode==2) ; pooled = (opcode==0) ;
 
 #if 1
    /* check inputs for stoopidities or other things that need to be changed */
@@ -2148,7 +2173,7 @@ ENTRY("TT_matrix_setup") ;
      }
    }
 
-#ifdef ALLOW_RANKS
+#ifdef ALLOW_RANK
    if( do_ranks ){
      for( jj=1 ; jj <= mcov ; jj++ ){
        if( twosam && ttest_opcode != 2 )

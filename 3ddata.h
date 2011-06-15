@@ -1520,6 +1520,22 @@ extern mat44 THD_mat44_sqrt( mat44 A ) ;  /* matrix square root [30 Jul 2007] */
 #undef  INVALIDATE_MAT44
 #define INVALIDATE_MAT44(AA) ((AA).m[3][3] = 0.0f)
 
+/* check if 2 mat44 matrices are equal-ish */
+
+#undef  FLEQ
+#define FLEQ(a,b) (fabsf((a)-(b)) < 0.0001f)
+
+#undef  MAT44_FLEQ
+#define MAT44_FLEQ(AA,BB)                                        \
+ ( FLEQ(AA.m[0][0],BB.m[0][0]) && FLEQ(AA.m[0][1],BB.m[0][1]) && \
+   FLEQ(AA.m[0][2],BB.m[0][2]) && FLEQ(AA.m[0][3],BB.m[0][3]) && \
+   FLEQ(AA.m[1][0],BB.m[1][0]) && FLEQ(AA.m[1][1],BB.m[1][1]) && \
+   FLEQ(AA.m[1][2],BB.m[1][2]) && FLEQ(AA.m[1][3],BB.m[1][3]) && \
+   FLEQ(AA.m[2][0],BB.m[2][0]) && FLEQ(AA.m[2][1],BB.m[2][1]) && \
+   FLEQ(AA.m[2][2],BB.m[2][2]) && FLEQ(AA.m[2][3],BB.m[2][3]) && \
+   FLEQ(AA.m[3][0],BB.m[3][0]) && FLEQ(AA.m[3][1],BB.m[3][1]) && \
+   FLEQ(AA.m[3][2],BB.m[3][2]) && FLEQ(AA.m[3][3],BB.m[3][3])   )
+
 /* load the top 3 rows of a mat44 matrix,
    and set the 4th row to [ 0 0 0 1], as required */
 
@@ -2450,10 +2466,12 @@ typedef struct THD_3dim_dataset {
       int   tcat_num ;
       int  *tcat_len ;
 
-   /* 26 Feb 2010: Pointer to VALUE_LABEL_DTABLE */
+   /* 26 Feb 2010: Pointer to VALUE_LABEL_DTABLE for ROI drawing labels*/
       void *Label_Dtable;
    /* 13 Mar 2009: atlas space */
       char atlas_space[THD_MAX_NAME] ;
+   /* 18 Nov 2010: Pointer to ATLAS_LABEL_TABLE for atlas segmentation */
+/*      atlas_point_list *atlas_label_table;*/
 
    /* 31 Mar 2009: integer colormap for ROIs and atlases */
       int int_cmap ;
@@ -3049,13 +3067,13 @@ extern int    THD_deconflict_prefix( THD_3dim_dataset * ) ;          /* 23 Mar 2
     Will be zero for non-time-dependent datasets, and may be zero or positive
     for time-dependent datasets
 */
-#define DSET_NUM_TTOFF(ds)       ( ((ds)->taxis == NULL) ? 0 : (ds)->taxis->nsl )
+#define DSET_NUM_TTOFF(ds)    ( ((ds)->taxis == NULL) ? 0 : (ds)->taxis->nsl )
 
 /** 30 Nov 1997 **/
 
-static char tmp_dblab[8] ;
 #define NO_LAB_FLAG "?"
-#define DBLK_BRICK_LAB(db,iv) ( ((db)->brick_lab != NULL) ? ((db)->brick_lab[iv]) : NO_LAB_FLAG )
+#define DBLK_BRICK_LAB(db,iv) ( ((db)->brick_lab != NULL) ? ((db)->brick_lab[iv]) \
+                                                          : NO_LAB_FLAG )
 
 /*! Return the label string for sub-brick iv of dataset ds.
 
@@ -3181,7 +3199,7 @@ extern int THD_count_fdrwork( THD_3dim_dataset *dset ) ; /* 12 Nov 2008 */
 #define DSET_FIX_NAMES(ds)                                       \
   ( strcpy((ds)->self_name,(ds)->dblk->diskptr->directory_name), \
     strcat((ds)->self_name,(ds)->dblk->diskptr->filecode)      , \
-    strcpy((ds)->label1   ,(ds)->dblk->diskptr->filecode)      , \
+    strncpy((ds)->label1   ,(ds)->dblk->diskptr->filecode, THD_MAX_LABEL-1)      , \
     strcpy((ds)->label2   ,THD_DEFAULT_LABEL) )
 
 /*! Macro to load brick statistics of a dataset if it
@@ -3282,6 +3300,12 @@ extern int THD_count_fdrwork( THD_3dim_dataset *dset ) ; /* 12 Nov 2008 */
  do{ THD_force_ok_overwrite(1); \
      DSET_write(ds); THD_force_ok_overwrite(0); } while(0)
 
+#define DSET_quiet_overwrite(ds)      \
+ do{ int m_q = THD_get_quiet_overwrite();  \
+     THD_force_ok_overwrite(1); THD_set_quiet_overwrite(1);\
+     DSET_write(ds); THD_force_ok_overwrite(0); \
+     THD_set_quiet_overwrite(m_q);} while(0)
+
 extern int THD_deathcon(void) ;             /* 06 Jun 2007 */
 extern int THD_ok_overwrite(void) ;         /* Jan 2008 */
 extern void THD_force_ok_overwrite( int ) ; /* 07 Jan 2008 */
@@ -3368,11 +3392,15 @@ extern void THD_force_ok_overwrite( int ) ; /* 07 Jan 2008 */
 
 /*-------------------------------------------------------------------*/
 #undef  TWOGIG
-#define TWOGIG 2147000000   /* 2 gigabytes, aboot */
+#define TWOGIG 2100000000   /* 2 gigabytes, aboot */
 
-#define DBLK_mmapfix(db)                                                      \
-  do{ if( (db)->malloc_type==DATABLOCK_MEM_MMAP && (db)->total_bytes>TWOGIG ) \
-        (db)->malloc_type = DATABLOCK_MEM_MALLOC ; } while(0)
+/* Modified 31 May 2011 to allow mmap() for big files on a 64-bit system */
+
+#define DBLK_mmapfix(db)                                      \
+  do{ if( (db)->malloc_type == DATABLOCK_MEM_MMAP &&          \
+          (db)->total_bytes >  TWOGIG             &&          \
+          sizeof(size_t)    <  8                     )        \
+       (db)->malloc_type = DATABLOCK_MEM_MALLOC ; } while(0)
 
 /*---------------------------------------------------------------------------*/
 
@@ -3543,7 +3571,7 @@ int get_nspaces(void);
         for( vv=0 ; vv < get_nspaces() ; vv++ )                              \
            SET_SESSION_DSET(NULL, ss, id, vv);                                \
   }
- 
+
 /*      for( id=0 ; id < THD_MAX_SESSION_SIZE ; id++ )                          \
         for( vv=0 ; vv <= LAST_VIEW_TYPE ; vv++ )                             \
            SET_SESSION_DSET(NULL, ss, id, vv);                       \*/
@@ -4031,7 +4059,8 @@ extern Boolean THD_write_3dim_dataset( char *,char * ,
 
 extern void THD_use_3D_format   ( int ) ;  /* 21 Mar 2003 */
 extern void THD_use_NIFTI_format( int ) ;  /* 06 Apr 2005 */
-
+extern void THD_set_quiet_overwrite ( int ) ;  /* 31 Jan 2011 */
+extern int THD_get_quiet_overwrite (void );/* 31 Jan 2011 */
 extern Boolean THD_write_datablock( THD_datablock * , Boolean ) ;
 extern Boolean THD_write_atr( THD_datablock * ) ;
 extern Boolean THD_write_nimlatr( THD_datablock * ) ;  /* 01 Jun 2005 */
@@ -4169,6 +4198,7 @@ typedef struct FD_brick {
    THD_3dim_dataset * dset ;    /*!< pointer to parent dataset */
    int resam_code ;             /*!< how to resample normal sub-bricks */
    int thr_resam_code ;         /*!< how to resample statistical sub-bricks */
+   int deltival ;               /*!< how much to shift the sub-brick index */
 
    char namecode[32] ;          /*!< June 1997 */
 
@@ -4252,10 +4282,13 @@ extern void THD_vectim_to_dset( MRI_vectim *mrv , THD_3dim_dataset *dset ) ;
 
 extern void mri_blur3D_vectim( MRI_vectim *vim , float fwhm ) ;
 extern void THD_vectim_normalize( MRI_vectim *mrv ) ;
-extern void THD_vectim_dotprod ( MRI_vectim *mrv, float *vec, float *dp, int ata ) ;
-extern void THD_vectim_spearman( MRI_vectim *mrv, float *vec, float *dp ) ; /* 01 Mar 2010 */
-extern void THD_vectim_quadrant( MRI_vectim *mrv, float *vec, float *dp ) ; /* 01 Mar 2010 */
-extern void THD_vectim_ktaub   ( MRI_vectim *mrv, float *vec, float *dp ) ; /* 29 Apr 2010 */
+extern void THD_vectim_dotprod  ( MRI_vectim *mrv, float *vec, float *dp, int ata ) ;
+extern void THD_vectim_spearman ( MRI_vectim *mrv, float *vec, float *dp ) ; /* 01 Mar 2010 */
+extern void THD_vectim_quadrant ( MRI_vectim *mrv, float *vec, float *dp ) ; /* 01 Mar 2010 */
+extern void THD_vectim_ktaub    ( MRI_vectim *mrv, float *vec, float *dp ) ; /* 29 Apr 2010 */
+extern void THD_vectim_tictactoe( MRI_vectim *mrv, float *vec, float *dp ) ; /* 30 Mar 2011 */
+
+extern void THD_vectim_pearsonBC( MRI_vectim *mrv, float srad, int sijk, int pv, float *par ) ;
 
 extern float kendallNlogN ( float *arr1, float *arr2, int len ) ;  /* in ktaub.c */
 extern float kendallSmallN( float *arr1, float *arr2, int len ) ;
@@ -4330,6 +4363,25 @@ extern floatvec * THD_retrieve_fitts(void) ;
 extern void       THD_fitter_voxid( int i ) ;       /* 10 Sep 2008 */
 extern void       THD_fitter_set_vthresh( float ) ; /* 18 May 2010 */
 
+/* 11 Mar 2011: LASSO regression stuff (thd_lasso.c) */
+
+extern floatvec * THD_lasso_L2fit( int npt    , float *far   ,
+                                   int nref   , float *ref[] ,
+                                   float *lam , float *ccon   ) ;
+extern void THD_lasso_fixlam( float x ) ;
+extern void THD_lasso_setlamvec( int nref , float *lam ) ;
+extern void THD_lasso_dopost( int x ) ;
+extern void THD_lasso_dosigest( int x ) ;
+extern void THD_lasso_setdeps( float x ) ;
+extern floatvec * THD_lasso( int meth   ,
+                             int npt    , float *far   ,
+                             int nref   , float *ref[] ,
+                             float *lam , float *ccon   ) ;
+extern floatvec * THD_sqrtlasso_L2fit( int npt    , float *far   ,
+                                       int nref   , float *ref[] ,
+                                       float *lam , float *ccon   ) ;
+
+
 /*--------------- routines that are in thd_detrend.c ---------------*/
 
 extern void get_linear_trend     ( int, float *, float *, float * ) ;
@@ -4343,7 +4395,8 @@ extern void THD_normL1           ( int, float * ) ;  /* 26 Mar 2008 */
 extern void THD_cubic_detrend    ( int, float * ) ;  /* 15 Nov 1999 */
 
 extern void THD_const_detrend    ( int, float *, float * ); /* 24 Aug 2001 */
-void THD_linear_detrend_complex  ( int, complex * ); /* 05 Mar 2007 */
+extern void THD_linear_detrend_complex  ( int, complex * ); /* 05 Mar 2007 */
+extern int  THD_is_constant      ( int , float * );         /* 11 May 2011 */
 
 extern void THD_generic_detrend_LSQ( int, float *, int, int, float **, float *) ;
 extern void THD_generic_detrend_L1 ( int, float *, int, int, float **, float *) ;
@@ -4426,6 +4479,11 @@ extern byte * THD_makemask( THD_3dim_dataset *, int,float,float) ;
 extern int    THD_makedsetmask( THD_3dim_dataset *, int,float,float, byte* ) ;
 extern int *THD_unique_vals( THD_3dim_dataset *mask_dset, int miv,
                               int *n_unique, byte*cmask );
+extern int *THD_unique_rank( THD_3dim_dataset *mask_dset ,
+                        int miv,
+                        byte *cmask,
+                        char *mapname,
+                        int **unqp, int *N_unq);
 int is_integral_dset ( THD_3dim_dataset *dset, int check_data);
 int is_integral_sub_brick ( THD_3dim_dataset *dset, int isb, int check_data);
 extern int THD_mask_remove_isolas( int nx, int ny, int nz , byte *mmm ) ;
@@ -4887,6 +4945,8 @@ extern char * UNIQ_idcode(void) ;            /* 27 Sep 2001 */
 extern void   UNIQ_idcode_fill(char *) ;
 
 /*------------------------------------------------------------------------*/
+#define ATLAS_CMAX    64   /* If you change this parameter,edit constant in
+                              CA_EZ_Prep.m (MaxLbl* checks) */
 
 typedef enum { UNKNOWN_SPC=0, /*!< Dunno */
                AFNI_TLRC_SPC, /*!< The Classic */
@@ -4897,26 +4957,53 @@ typedef enum { UNKNOWN_SPC=0, /*!< Dunno */
                                     leave for last */
                } AFNI_STD_SPACES;
 
-extern char * TT_whereami( float , float , float, AFNI_STD_SPACES ) ;
-extern char * TT_whereami_old( float , float , float ) ;
-extern int  TT_load_atlas (void);
-extern void TT_purge_atlas(void);
-extern THD_3dim_dataset * TT_retrieve_atlas(void) ;
+typedef struct {
+   /* tdval and tdlev stand for "Talairach Daemon" value and level */
+   /* these are kept for historical purposes  */
+   /* perhaps one day making an unusally boring PBS special */
+   short tdval;         /* Leave this one to be the very first element */
+   char name[ATLAS_CMAX] ;  /* Leave this one to be the second element */
+   float xx,yy,zz;     /* xx,yy,zz - RAI position of region  - now in float */
+   short tdlev,okey ;          /* tdlev = unknown, gyrus or area code */
+                               /* okey = original value in atlas */
+                               /*  this value was converted for TT daemon */
+                               /*  atlas values because left and right */
+                               /*  ROIs shared the same value */
+   char sblabel[ATLAS_CMAX];   /* This is the sub-brick label
+                                  of a dataset related to this point.
+                                  The only time this is used is for
+                                  linking an atlas point to the probability
+                                  map volume. */
+} ATLAS_POINT ;
 
+
+extern int atlas_n_points(char *atname);
+extern ATLAS_POINT *atlas_points(char *atname);
+extern char **atlas_reference_string_list(char *atname, int *N_refs);
+extern char *atlas_version_string(char *atname);
+
+extern char * TT_whereami( float , float , float,
+                           char *, void *) ;
+extern char * TT_whereami_old( float , float , float ) ;
+extern int  TT_load_atlas_old (void);
+extern void TT_purge_atlas(void);
+extern THD_3dim_dataset * TT_retrieve_atlas_old(void) ;
+extern THD_3dim_dataset * TT_retrieve_atlas_dset(char *aname, int szflag);
 extern void TT_setup_popup_func( void (*pf)(char *) ) ; /* 26 May 2006 */
 
-extern THD_3dim_dataset * TT_retrieve_atlas_big(void) ; /* 01 Aug 2001 */
+extern THD_3dim_dataset * TT_retrieve_atlas_big_old(void) ; /* 01 Aug 2001 */
 extern void TT_purge_atlas_big(void);
 
-extern THD_3dim_dataset * TT_retrieve_atlas_either(void); /* 22 Aug 2001 */
+extern THD_3dim_dataset * TT_retrieve_atlas_either_old(void); /* 22 Aug 2001 */
+extern char **atlas_chooser_formatted_labels(char *atname);
 
 #define TT_ATLAS_NZ_SMALL 141 /* 01 Aug 2001 */
 #define TT_ATLAS_NZ_BIG   151
 
-#define TT_retrieve_atlas_nz(nz)                                \
+#define TT_retrieve_atlas_dset_nz(nz)                                \
  ( ((nz)==TT_ATLAS_NZ_SMALL)                                    \
-    ? TT_retrieve_atlas()                                       \
-    : ((nz)==TT_ATLAS_NZ_BIG) ? TT_retrieve_atlas_big() : NULL )
+    ? TT_retrieve_atlas_dset("TT_Daemon",-1)                          \
+    : ((nz)==TT_ATLAS_NZ_BIG) ? TT_retrieve_atlas_dset("TT_Daemon",1) : NULL )
 
 /*------------------------------------------------------------------------*/
 
@@ -4928,6 +5015,18 @@ extern float THD_eta_squared  ( int,float *,float *) ;  /* 25 Jun 2010 */
 
 extern float THD_pearson_corr_wt(int,float *,float *,float *); /* 13 Sep 2006 */
 
+extern void THD_pearson_corr_boot( int n, float *x, float *y,
+                            float_triple *rrr ,
+                            float_triple *aaa ,
+                            float_triple *bbb  ) ;         /* 01 Mar 2011 */
+extern float_triple THD_pearson_indexed( int nix, int *ix, float *x, float *y );
+extern float_triple THD_bootstrap_confinv( float estim , float alpha ,
+                                           int nboot   , float *eboot ) ;
+extern float THD_bootstrap_biascorr( float estim , int nboot , float *eboot ) ;
+
+extern float THD_bootstrap_vectcorr( int nlen, int nboot, int use_pv, int xtyp,
+                                     int xnum, void *xp , int ynum  , void *yp );
+
 extern float THD_spearman_corr_nd( int,float *,float *) ;  /* 23 Aug 2006 */
 extern float THD_quadrant_corr_nd( int,float *,float *) ;
 #define THD_pearson_corr_nd THD_pearson_corr
@@ -4937,6 +5036,10 @@ extern float spearman_rank_prepare( int , float * );
 extern float quadrant_corr_prepare( int , float * );
 extern float spearman_rank_corr   ( int , float * , float , float * );
 extern float quadrant_corr        ( int , float * , float , float * );
+
+extern float tictactoe_corr_prepare( int , float * );
+extern float tictactoe_corr        ( int , float * , float , float * );
+extern void  tictactoe_set_thresh  ( float bb , float tt ) ;
 
 extern void rank_order_float_arrays( int , int * , float ** ); /* 10 Nov 2010 */
 extern void rank_order_2floats( int , float * , int , float * ) ;
@@ -5062,7 +5165,7 @@ extern char     * THD_make_statsym_string(THD_3dim_dataset *, int);
 extern char     * unescape_unix_str(const char *);
 
 extern THD_3dim_dataset * THD_niml_to_dataset( NI_group * , int ) ;
-extern int THD_add_bricks( THD_3dim_dataset * , void * ) ;
+extern int THD_add_bricks( THD_3dim_dataset * , void *, THD_3dim_dataset * ) ;
 extern int THD_add_sparse_data( THD_3dim_dataset * , NI_group * ) ;
 extern int THD_add_sparse_bricks( THD_3dim_dataset *, NI_element *) ;
 

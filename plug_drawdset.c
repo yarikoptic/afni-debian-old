@@ -5,7 +5,7 @@
 ******************************************************************************/
 
 #include "afni.h"
-#include "thd_ttatlas_query.h"
+#include "thd_atlas.h"
 #ifndef ALLOW_PLUGINS
 #  error "Plugins not properly set up -- see machdep.h"
 #endif
@@ -151,11 +151,11 @@ static MCW_action_item TTATLAS_act[] = {
 } ;
 
 typedef struct {
-   int reg_num ;                 /* number of regions               */
-   char *reg_label [TTO_COUNT] ; /* region labels                   */
-   short reg_tto   [TTO_COUNT] ; /* index into afni.h TTO_list      */
-   short reg_ttbrik[TTO_COUNT] ; /* which sub-brick in TTatlas+tlrc */
-   short reg_ttval [TTO_COUNT] ; /* what value in TTatlas+tlrc      */
+   int reg_num ;                 /* number of regions     */
+   char **reg_label  ; /* region labels                   */
+   short *reg_tto    ; /* index into afni.h TTO_list      */
+   short *reg_ttbrik ; /* which sub-brick in TTatlas+tlrc */
+   short *reg_ttval  ; /* what value in TTatlas+tlrc      */
 } ttatlas_compendium ;
 
 static ttatlas_compendium *ttatlas_list=NULL ;
@@ -470,10 +470,29 @@ static MCW_action_item DRAW_actor[NACT] = {
   "Save edits to disk\nand close Editor" , "Save and close",1}
 } ;
 
+ttatlas_compendium * New_ttatlas_compendium(char *atname)
+{
+   ttatlas_compendium *ttatlas_llist = NULL;
+   int i = 0, tto_count = 0;
+
+   if (!atname) return(ttatlas_llist);
+   if ((tto_count = atlas_n_points(atname)) <= 0) return(ttatlas_llist);
+   
+   ttatlas_llist = (ttatlas_compendium *) calloc(1,sizeof(ttatlas_compendium));
+   ttatlas_llist->reg_num = 0;
+   ttatlas_llist->reg_label = (char **)calloc(tto_count,sizeof(char *));
+   ttatlas_llist->reg_tto = (short *)calloc(tto_count,sizeof(short));
+   ttatlas_llist->reg_ttbrik = (short *)calloc(tto_count,sizeof(short));
+   ttatlas_llist->reg_ttval = (short *)calloc(tto_count,sizeof(short));
+
+   return(ttatlas_llist);
+}
+
 void DRAW_make_widgets(void)
 {
    XmString xstr ;
-
+   ATLAS_POINT *tto_list=NULL;
+   
    /*** top level shell for window manager ***/
 
    shell =
@@ -543,7 +562,7 @@ void DRAW_make_widgets(void)
    { Widget rc ;
      static char *cbox_label[1]   = { "Copy Dataset" } ;
      static char *cmode_label[2]  = { "Data"  , "Zero" } ;
-     static char *ctype_label[3]  = { "As Is" , "Func" , "Anat" } ;
+     static char *ctype_label[3]  = { "Show as Olay" , "Show as Ulay" } ;
      static char *cdatum_label[4] = { "As Is" , "Byte" , "Short" , "Float" } ;
 
      /*** rowcol to hold Copy widgets ***/
@@ -581,14 +600,14 @@ void DRAW_make_widgets(void)
                            "Zero => fill dataset with zeros" ) ;
 
      copy_type_av = new_MCW_optmenu( rc , NULL ,
-                                     0 , 2 , 1 , 0 , NULL,NULL ,
+                                     0 , 1 , 0 , 0 , NULL,NULL ,
                                      MCW_av_substring_CB , ctype_label ) ;
 
      MCW_reghint_children( copy_type_av->wrowcol ,
-                           "Copy is Functional overlay or Anatomical underlay" ) ;
+                           "Copy is shown as overlay or underlay" ) ;
      MCW_reghelp_children( copy_type_av->wrowcol ,
-                           "Copy will be Functional overlay\n"
-                           "or will be Anatomical underlay" ) ;
+                           "Copy will be shown as the overlay\n"
+                           "or will be shown as the underlay" ) ;
 
      copy_datum_av= new_MCW_optmenu( rc , NULL ,
                                      0 , 3 , 0 , 0 , NULL,NULL ,
@@ -870,8 +889,7 @@ void DRAW_make_widgets(void)
    } /* end of fillin */
 
    /*** 22 Aug 2001: stuff for TT Atlas Regions ***/
-
-   if( TT_load_atlas() > 0 ){
+   if( Atlas_With_Trimming("TT_Daemon",1, NULL) > 0 ){
       Widget rc ;
       int ii , jj , nr , qq ;
       XmString xstr ;
@@ -912,17 +930,20 @@ void DRAW_make_widgets(void)
 
        /*** make list of TT atlas regions to include ***/
 
-      ttatlas_list = (ttatlas_compendium *) calloc(1,sizeof(ttatlas_compendium));
+      if (!(ttatlas_list = New_ttatlas_compendium("TT_Daemon"))) {
+         ERROR_message("Failed compending. This should not happen");
+      }
+      tto_list = atlas_points("TT_Daemon");
       nr = 0 ;
-      for( ii=0 ; ii < TTO_COUNT ; ii++ ){
+      for( ii=0 ; ii < atlas_n_points("TT_Daemon") ; ii++ ){
 
-         if( strncmp(TTO_list[ii].name,"Left  ",6) != 0 ) continue ; /* skip */
-         if( TTO_list[ii].tdval == 0 )                    continue ; /* skip */
+         if( strncmp(tto_list[ii].name,"Left  ",6) != 0 ) continue ; /* skip */
+         if( tto_list[ii].tdval == 0 )                    continue ; /* skip */
 
-         ttatlas_list->reg_label [nr] = strdup(TTO_list[ii].name+6) ;
+         ttatlas_list->reg_label [nr] = strdup(tto_list[ii].name+6) ;
          ttatlas_list->reg_tto   [nr] = ii ;
-         ttatlas_list->reg_ttbrik[nr] = (TTO_list[ii].tdlev==2) ? 0 : 1 ;
-         ttatlas_list->reg_ttval [nr] = TTO_list[ii].tdval ;
+         ttatlas_list->reg_ttbrik[nr] = (tto_list[ii].tdlev==2) ? 0 : 1 ;
+         ttatlas_list->reg_ttval [nr] = tto_list[ii].tdval ;
 
          /* trim trailing '.'s */
 
@@ -1281,9 +1302,8 @@ void DRAW_help_CB( Widget w, XtPointer client_data, XtPointer call_data )
   "            of this let you control how the input dataset is copied:\n"
   "            (a)  Data => data value are copied\n"
   "                 Zero => copy is full of zeros\n"
-  "            (b) As Is => copy is same dataset type as input dataset\n"
-  "                 Func => copy is a functional overlay (fim) dataset\n"
-  "                 Anat => copy is an anatomical underlay dataset\n"
+  "            (b)  Show as Olay => put copy in Overlay (the usual case)\n"
+  "                 Show as Ulay => put copy in Underlay\n"
   "            (c) As Is => copy is stored as input dataset is stored\n"
   "                 Byte => copy is stored as bytes\n"
   "                Short => copy is stored as shorts\n"
@@ -1698,9 +1718,9 @@ void DRAW_finalize_dset_CB( Widget w, XtPointer fd, MCW_choose_cbs *cbs )
       zfill = (copy_mode_av->ival == 1) ;     /* zero fill? */
 
       switch( copy_type_av->ival ){
-         default: ftype = -1 ; break ;        /* As Is */
-         case 1:  ftype =  1 ; break ;        /* Func  */
-         case 2:  ftype =  2 ; break ;        /* Anat  */
+         default: ftype = -1 ; break ;        /* As Is  - should never get here */
+         case 0:  ftype =  1 ; break ;        /* Func  */
+         case 1:  ftype =  2 ; break ;        /* Anat  */
       }
 
       switch( copy_datum_av->ival ){
@@ -1970,11 +1990,23 @@ static int Check_value(void)
 
 static void dump_vallab(void)
 {
+
 #if 0
-   char *str = Dtable_to_nimlstring( vl_dtable , "VALUE_LABEL_DTABLE" ) ;
-   if( str != NULL ){ printf("%s\n",str); free(str); }
-   return ;
+   char str[256]={""};
+   char *cstr;
+   int i;
+   
+   if( dset == NULL ) return ;
+
+   for(i=1;i<=3;i++){
+      AFNI_get_dset_val_label(dset, i, str);
+      printf("roi %d: %s\n", i,str);
+   }
+
+   cstr = Dtable_to_nimlstring( vl_dtable , "VALUE_LABEL_DTABLE" ) ;
+   if( cstr != NULL ){ printf("%s\n",cstr); free(cstr); }
 #endif
+   return ;
 }
 
 /*---------------------------------------------------------------------*/
@@ -2072,6 +2104,8 @@ void DRAW_label_CB( Widget wtex , XtPointer cld, XtPointer cad )
 
    addto_Dtable( str_val , str_lab , vl_dtable ) ;
    free(str_lab) ;
+   DRAW_attach_dtable( vl_dtable, "VALUE_LABEL_DTABLE",  dset ) ;
+   dset_changed = 1;
 
    dump_vallab() ;
    return ;
@@ -2208,6 +2242,9 @@ void DRAW_attach_dtable( Dtable *dt, char *atname, THD_3dim_dataset *ds )
 {
    char *str ;
    if( dt == NULL || atname == NULL || ds == NULL ) return ;
+   if (ds->Label_Dtable) {
+      destroy_Dtable(ds->Label_Dtable); ds->Label_Dtable=NULL;
+   }
    str = Dtable_to_nimlstring( dt , atname ) ;
    if( str == NULL ) return ;
    THD_set_string_atr( ds->dblk , atname , str ) ;
@@ -3004,8 +3041,10 @@ void DRAW_ttatlas_CB( Widget w, XtPointer client_data, XtPointer call_data )
    if( !CAN_TALTO(im3d) ){ XBell(dc->display,100); return; }
 
    /* get TTatlas+tlrc dataset */
-
-   dseTT = TT_retrieve_atlas_either() ;
+   
+   if (!(dseTT = TT_retrieve_atlas_dset("TT_Daemon", 1))) {
+      return;   
+   }
    DSET_load(dseTT) ;
 
    /* setup other info */
@@ -3246,6 +3285,9 @@ THD_3dim_dataset * DRAW_copy_dset( THD_3dim_dataset *dset ,
        THD_set_char_atr( new_dset->dblk , "VALUE_LABEL_DTABLE" ,
                          atr->nch , atr->ch                     ) ;
    }
+
+   new_dset->int_cmap = 1;
+   THD_set_int_atr(new_dset->dblk, "INT_CMAP", 1, &new_dset->int_cmap);
 
    /*-- done successfully!!! --*/
 

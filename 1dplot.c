@@ -67,6 +67,7 @@ int main( int argc , char *argv[] )
    int do_norm=0 ;   /* 26 Mar 2008 */
    char *ytran=NULL; /* 16 Jun 2009 */
    char autotitle[512]={""}; /* 23 March 2009 */
+   float tsbox=0.0f , boxsiz ; int noline=0 ;
 
    /*-- help? --*/
 
@@ -82,6 +83,14 @@ int main( int argc , char *argv[] )
             " -sepscl    = Plot each column in a separate sub-graph\n"
             "              and allow each sub-graph to have a different\n"
             "              y-scale.  -sepscl is meaningless with -one!\n"
+            " -noline    = Don't plot the connecting lines (also implies '-box').\n"
+            " -box       = Plot a small 'box' at each data point, in addition\n"
+            "              to the lines connecting the points.\n"
+            "             * The box size can be set via the environment variable\n"
+            "               AFNI_1DPLOT_BOXSIZE; the value is a fraction of the\n"
+            "               overall plot size.  The standard box size is 0.006.\n"
+            "               Example with a bigger box:\n"
+            "                 1dplot -DAFNI_1DPLOT_BOXSIZE=0.01 -box A.1D\n"
             "\n"
             "           ** The '-norm' options below can be useful for\n"
             "               plotting data with different value ranges on\n"
@@ -157,7 +166,7 @@ int main( int argc , char *argv[] )
             " -jpgs SIZE fname } = setenv AFNI_1DPLOT_IMSIZE SIZE and \n"
             " -jpegs SIZE fname} = -png (or -jpg) fname\n"
             "\n"
-            "-ytran 'expr'    = Transform the data along the y-axis by\n"
+            " -ytran 'expr'   = Transform the data along the y-axis by\n"
             "                   applying the expression to each input value.\n"
             "                   For example:\n"
             "                     -ytran 'log10(z)'\n"
@@ -213,6 +222,7 @@ int main( int argc , char *argv[] )
             " -thick          = Each time you give this, it makes the line\n"
             "                   thickness used for plotting a little larger.\n"
             "                   [An alternative to using '-DAFNI_1DPLOT_THIK=...']\n"
+            " -THICK          = Twice the power of '-thick' at no extra cost!!\n"
             "\n"
             " -Dname=val      = Set environment variable 'name' to 'val'\n"
             "                   for this run of the program only:\n"
@@ -256,16 +266,21 @@ int main( int argc , char *argv[] )
 
    mainENTRY("1dplot main"); machdep(); PRINT_VERSION("1dplot"); AUTHOR("RWC et al.");
 
+   boxsiz = AFNI_numenv("AFNI_1DPLOT_BOXSIZE") ;
+        if( boxsiz <= 0.0f   ) boxsiz = 0.006f ;
+   else if( boxsiz <  0.001f ) boxsiz = 0.001f ;
+   else if( boxsiz >  0.020f ) boxsiz = 0.020f ;
+
    /* 29 Nov 2002: scan for things that make us skip X11 */
 
    for( ii=1 ; ii < argc ; ii++ ){
      if( strcasecmp(argv[ii],"-ps")   == 0 ){ skip_x11 = 1; break; }
      if( strcasecmp(argv[ii],"-jpg")  == 0 ){ skip_x11 = 1; break; }
-     if( strcasecmp(argv[ii],"-jpgs")  == 0 ){ skip_x11 = 1; break; }
+     if( strcasecmp(argv[ii],"-jpgs") == 0 ){ skip_x11 = 1; break; }
      if( strcasecmp(argv[ii],"-jpeg") == 0 ){ skip_x11 = 1; break; }
-     if( strcasecmp(argv[ii],"-jpegs")  == 0 ){ skip_x11 = 1; break; }
+     if( strcasecmp(argv[ii],"-jpegs")== 0 ){ skip_x11 = 1; break; }
      if( strcasecmp(argv[ii],"-png")  == 0 ){ skip_x11 = 1; break; }
-     if( strcasecmp(argv[ii],"-pngs")  == 0 ){ skip_x11 = 1; break; }
+     if( strcasecmp(argv[ii],"-pngs") == 0 ){ skip_x11 = 1; break; }
    }
 
    if( !skip_x11 ){
@@ -299,7 +314,8 @@ int main( int argc , char *argv[] )
      }
 
      if( strncasecmp(argv[iarg],"-thi",4) == 0 ){  /* 15 Apr 2009: thickness */
-       thik += 0.005f ; iarg++ ; continue ;
+       thik += 0.005f ; if( argv[iarg][1] == 'T' ) thik += 0.005f ;
+       iarg++ ; continue ;
      }
 
      if( strcmp(argv[iarg],"-norm2") == 0 ){  /* 26 Mar 2008 */
@@ -364,12 +380,12 @@ int main( int argc , char *argv[] )
         iarg++ ; continue ;
      }
 
-     if( strcasecmp(argv[iarg],"-jpegs") == 0 || 
+     if( strcasecmp(argv[iarg],"-jpegs") == 0 ||
          strcasecmp(argv[iarg],"-jpgs") == 0 ){
         int isize; char sss[256]={""} ;
         out_ps = 0 ; imsave = JPEG_MODE ;
-        iarg++ ; 
-        if( iarg+1 >= argc ) 
+        iarg++ ;
+        if( iarg+1 >= argc )
          ERROR_exit("need 2 argument after '%s'",argv[iarg-1]) ;
         isize = (int) strtod(argv[iarg], NULL);
         if (isize < 100 || isize > 9999) {
@@ -378,10 +394,10 @@ int main( int argc , char *argv[] )
         }
         sprintf(sss,"AFNI_1DPLOT_IMSIZE=%d", isize);
         putenv(sss) ;
-        iarg++ ;        
-        imfile = (char *)malloc(strlen(argv[iarg])+8) ; 
+        iarg++ ;
+        imfile = (char *)malloc(strlen(argv[iarg])+8) ;
         strcpy(imfile,argv[iarg]) ;
-        if( !STRING_HAS_SUFFIX(imfile,".jpg") && 
+        if( !STRING_HAS_SUFFIX(imfile,".jpg") &&
             !STRING_HAS_SUFFIX(imfile,".JPG") )
           strcat(imfile,".jpg") ;
         iarg++ ; continue ;
@@ -395,12 +411,12 @@ int main( int argc , char *argv[] )
           strcat(imfile,".png") ;
         iarg++ ; continue ;
      }
-     
+
      if( strcasecmp(argv[iarg],"-pngs") == 0 ){
         int isize; char sss[256]={""} ;
         out_ps = 0 ; imsave = PNG_MODE ;
-        iarg++ ; 
-        if( iarg+1 >= argc ) 
+        iarg++ ;
+        if( iarg+1 >= argc )
          ERROR_exit("need 2 arguments after '%s'",argv[iarg-1]) ;
         isize = (int) strtod(argv[iarg], NULL);
         if (isize < 100 || isize > 9999) {
@@ -410,25 +426,23 @@ int main( int argc , char *argv[] )
         sprintf(sss,"AFNI_1DPLOT_IMSIZE=%d", isize);
         putenv(sss) ;
         iarg++ ;
-        imfile = (char *)malloc(strlen(argv[iarg])+8) ; 
+        imfile = (char *)malloc(strlen(argv[iarg])+8) ;
         strcpy(imfile,argv[iarg]) ;
         if( !STRING_HAS_SUFFIX(imfile,".png") && !STRING_HAS_SUFFIX(imfile,".PNG") )
           strcat(imfile,".png") ;
         iarg++ ; continue ;
      }
-     
-     
 
      if( strcmp(argv[iarg],"-install") == 0 ){
-        install++ ; iarg++ ; continue ;
+       install++ ; iarg++ ; continue ;
      }
 
      if( strcmp(argv[iarg],"-stdin") == 0 ){  /* 01 Aug 2001 */
-        use_stdin++ ; iarg++ ; continue ;
+       use_stdin++ ; iarg++ ; continue ;
      }
 
      if( strcmp(argv[iarg],"-") == 0 ){  /* skip */
-        iarg++ ; continue ;
+       iarg++ ; continue ;
      }
 
      if( strcmp(argv[iarg],"-ynames") == 0 ){
@@ -456,7 +470,7 @@ int main( int argc , char *argv[] )
         wintitle = argv[++iarg] ;
         iarg++ ; continue ;
      }
-     
+
      if( strcmp(argv[iarg],"-title") == 0 ){ /* normally eaten by XtVaAppInitialize */
 #if 0
         WARNING_message(                     /* unless  using -ps! So keep it here, */
@@ -515,6 +529,14 @@ int main( int argc , char *argv[] )
         sep = 0 ; iarg++ ; continue ;
      }
 
+     if( strncmp(argv[iarg],"-boxes",4) == 0 ){
+       tsbox = boxsiz ; iarg++ ; continue ;
+     }
+
+     if( strncmp(argv[iarg],"-noline",4) == 0 ){
+       noline = 1 ; tsbox = boxsiz ; iarg++ ; continue ;
+     }
+
 #if 0
      if( strncmp(argv[iarg],"-D",2) == 0 && strchr(argv[iarg],'=') != NULL ){
        (void) AFNI_setenv( argv[iarg]+2 ) ;
@@ -554,7 +576,7 @@ int main( int argc , char *argv[] )
      float *val , fff ;
 
      if (!wintitle) wintitle = "stdin";   /* ZSS Oct 7 09 */
-     
+
      lbuf = (char * )malloc(sizeof(char )*NLBUF) ;
      val  = (float *)malloc(sizeof(float)*NVMAX) ;
 
@@ -614,11 +636,11 @@ int main( int argc , char *argv[] )
      if( iarg >= argc )
        ERROR_exit("No input files on command line?!\n");  /* bad user?! */
 
- 
+
      if( iarg == argc-1 ){                 /* only 1 input file */
-       
+
        if (!wintitle) wintitle = argv[iarg];   /* ZSS Oct 7 09 */
-       
+
        inim = mri_read_1D( argv[iarg] ) ;
        if( inim == NULL )
          ERROR_exit("Can't read input file '%s'\n",argv[iarg]) ;
@@ -626,12 +648,13 @@ int main( int argc , char *argv[] )
      } else {                              /* multiple inputs [05 Mar 2003] */
        MRI_IMARR *imar ;                   /* read them & glue into 1 image */
        int iarg_first=iarg, nysum=0, ii,jj,nx=1 ;
+       int constant = 1;                   /* are nx values constant        */
        float *far,*iar ;
-       
+
        if (!wintitle) {
          snprintf(autotitle,64*sizeof(char),"%s ...", argv[iarg] );
          wintitle = autotitle;
-       } 
+       }
 
        INIT_IMARR(imar) ;
        for( ; iarg < argc ; iarg++ ){
@@ -643,14 +666,23 @@ int main( int argc , char *argv[] )
              flim = mri_transpose(inim); mri_free(inim); inim = flim;
            }
 
+         /* compute nx as the smallest inim->nx, and note consistency */
          if( iarg == iarg_first || inim->nx < nx ) nx = inim->nx ;
+         if( iarg > iarg_first && inim->nx != nx ) constant = 0;
+
          ADDTO_IMARR(imar,inim) ; nysum += inim->ny ;
        }
+
+       /* if nx varied across images, warn the user  24 May 2011 [rickr] */
+       if( ! constant )
+          WARNING_message("plot lengths vary, truncating to %d values", nx);
+
        flim = mri_new( nx,nysum, MRI_float ); far = MRI_FLOAT_PTR(flim);
        for( nysum=ii=0 ; ii < imar->num ; ii++ ){
          inim = IMARR_SUBIM(imar,ii) ; iar = MRI_FLOAT_PTR(inim) ;
          for( jj=0 ; jj < inim->ny ; jj++,nysum++ ){
-           memcpy( far + nx*nysum , iar + jj*inim->nx , sizeof(float)*inim->nx ) ;
+           /* copy only nx floats, not inim->nx    24 May 2011 [rickr] */
+           memcpy( far + nx*nysum , iar + jj*inim->nx , sizeof(float)*nx ) ;
          }
        }
        DESTROY_IMARR(imar) ; inim = flim ;
@@ -727,6 +759,8 @@ int main( int argc , char *argv[] )
       if( xl10 )
         for( ii=0 ; ii < nx ; ii++ ) xar[ii] = log10(fabs(xar[ii])) ;
    }
+
+   plot_ts_dobox(tsbox) ; plot_ts_noline(noline) ; /* 23 May 2011 */
 
    /*--- start X11 ---*/
 

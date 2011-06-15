@@ -193,6 +193,8 @@ plot.1D.setupdevice <- function (P) {
       err.AFNI("Nothing to do");
       return(0)
    }
+   #Note, there are other ways to control graph size, see 
+   #?par for pin and fin
    if (!is.null(P$prefix) && P$nodisp) { #render to device directly
       pp <- parse.name(P$prefix)
       if (tolower(pp$ext) == '.jpg') 
@@ -325,7 +327,8 @@ plot.1D.optlist <- function(...) {
             colorset = seq(1,20),
             xax.lim=NULL, xax.step = NULL, xax.label=NULL, xax.tic.text = NULL, 
             yax.lim=NULL, yax.step = NULL, yax.label=NULL, yax.tic.text = NULL,
-            leg.show=FALSE, leg.ncol = 4, leg.names=NULL, 
+            leg.show=FALSE, leg.ncol = 4, leg.names=NULL, leg.line.type = NULL,
+            leg.line.color = NULL, leg.plot.char = NULL, 
             leg.position="topright", leg.fontsize = 12,
             grid.show=FALSE, 
             col.text.lym = NULL, col.text.lym.at = 'YOFF', 
@@ -361,7 +364,7 @@ plot.1D.optlist <- function(...) {
                      ll$ttl.main<-paste(ll$dmat, collapse='\n')
          for (i in 1:length(dmatv)) { #Won't work for different row numbers...
             if (is.null(dmatc <- read.AFNI.matrix(dmatv[i]))) {
-               err.AFNI("Failed to read test file")
+               err.AFNI(sprintf("Failed to read file %s", dmatv[i]))
                return(0) 
             }
             #str(dmatc)
@@ -387,7 +390,17 @@ plot.1D.optlist <- function(...) {
             }
          }
       }
-
+      
+      #Do we need to load xval ? 
+      if (!is.null(ll$dmat.xval) && 
+           is.character(ll$dmat.xval) && ll$dmat.xval != "ENUM") {
+         ff <- ll$dmat.xval
+         if (is.null(ll$dmat.xval <- read.AFNI.matrix(ff))) {
+            err.AFNI(sprintf("Failed to read X file %s", ff))
+            return(0) 
+         }
+      }
+      
       #Now, based on dmat.type, do some setup without overririding user's whishes
       if (!is.na(ll$dmat.type)) {
          if (ll$dmat.type == 'VOLREG') {
@@ -628,11 +641,13 @@ plot.1D.eng <- function (P) {
             P$col.plot.char <- rep(P$col.plot.char,ncol(P$dmat))
          }
       } else {
-         err.AFNI(
-            paste("P$col.plot.char must either have one or",
+         P$col.plot.char <- rep(P$col.plot.char,ncol(P$dmat))[1:ncol(P$dmat)]
+         
+         warn.AFNI(
+            paste("P$col.plot.char is recycled to fit number of columns. Need ",
                      ncol(P$dmat),"values",
                      "Have ", length(P$col.plot.char)));
-            return(0);
+         #   return(0);
       }
    }
    #Set plot types
@@ -1071,12 +1086,20 @@ plot.1D.eng <- function (P) {
          }
       } else {
          if (is.null(P$leg.names)) P$leg.names <- P$col.name
+         if (is.null(P$leg.line.type)) {
+            P$leg.line.type <- P$col.line.type[P$dmat.colsel]
+            P$leg.line.type[which(P$col.plot.type[P$dmat.colsel]=='p')] = 0;
+         } 
+         if (is.null(P$leg.line.color)) 
+                           P$leg.line.color <- P$col.color[P$dmat.colsel]
+         if (is.null(P$leg.plot.char)) 
+                           P$leg.plot.char <- P$col.plot.char[P$dmat.colsel]
          opar <- par();
          par(ps = P$leg.fontsize)  
          legend(P$leg.position, legend=P$leg.names, 
-                  text.col=P$col.color[P$dmat.colsel],
-                  col=P$col.color[P$dmat.colsel], 
-                  pch=P$col.plot.char[P$dmat.colsel], lwd=2, lty=P$col.line.type,
+                  text.col=P$leg.line.color,
+                  col=P$leg.line.color, 
+                  pch=P$leg.plot.char[P$dmat.colsel], lwd=2, lty=P$leg.line.type,
                   ncol=P$leg.ncol, bty='n')
          par(ps = opar$ps)
       }

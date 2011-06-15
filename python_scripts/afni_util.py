@@ -21,13 +21,14 @@ def change_path_basename(orig, prefix, suffix):
     return "%s/%s%s" % (head, prefix, suffix)
 
 # write text to a file
-def write_text_to_file(fname, text, mode='w', wrap=0, wrapstr='\n'):
+def write_text_to_file(fname, text, mode='w', wrap=0, wrapstr='\n', exe=0):
     """write the given text to the given file
           fname   : file name to write (or append) to
           text    : text to write
           mode    : optional write mode 'w' or 'a' [default='w']
           wrap    : optional wrap flag [default=0]
           wrapstr : optional wrap string: if wrap, apply this string
+          exe     : whether to make file executable
 
        return 0 on success, 1 on error
     """
@@ -38,14 +39,20 @@ def write_text_to_file(fname, text, mode='w', wrap=0, wrapstr='\n'):
 
     if wrap: text = add_line_wrappers(text, warpstr)
     
-    try:
-        fp = open(fname, mode)
-    except:
-        print "** failed to open text file '%s' for writing" % fname
-        return 1
+    if fname == 'stdout':   fp = sys.stdout
+    elif fname == 'stderr': fp = sys.stderr
+    else:
+       try:
+           fp = open(fname, mode)
+       except:
+           print "** failed to open text file '%s' for writing" % fname
+           return 1
 
     fp.write(text)
-    fp.close()
+
+    if fname != 'stdout' and fname != 'stderr':
+       fp.close()
+       if exe: os.chmod(fname, 0755)
 
     return 0
 
@@ -163,6 +170,20 @@ def show_args_as_command(args, note='command:'):
      "\n----------------------------------------------------------------------"
      )
 
+def exec_tcsh_command(cmd):
+    """execute cmd via: tcsh -c "cmd"
+       return status, output
+
+          if status == 0, output is stdout
+          else            output is stderr+stdout
+    """
+
+    cstr = 'tcsh -c "%s"' % cmd
+    status, so, se = BASE.simple_shell_exec(cstr, capture=1)
+
+    if not status: return status, so
+    else:          return status, se+so
+
 def get_unique_sublist(inlist):
     """return a copy of inlist, but where elements are unique"""
 
@@ -173,7 +194,7 @@ def get_unique_sublist(inlist):
 
     return newlist
 
-def uniq_list_as_dsets(dsets, showerr=0):
+def uniq_list_as_dsets(dsets, whine=0):
     """given a list of text elements, create a list of afni_name elements,
        and check for unique prefixes"""
 
@@ -188,10 +209,10 @@ def uniq_list_as_dsets(dsets, showerr=0):
                 break
         if not uniq: break
 
-    if not uniq and showerr:
+    if not uniq and whine:
         print                                                               \
           "-----------------------------------------------------------\n"   \
-          "** error: dataset names are not unique\n\n"                      \
+          "** dataset names are not unique\n\n"                             \
           "   (#%d == #%d, '%s' == '%s')\n\n"                               \
           "   note: if using a wildcard, please specify a suffix,\n"        \
           "         otherwise datasets may be listed twice\n"               \
@@ -1269,6 +1290,10 @@ def first_last_match_strs(slist):
              return 'subj_' and '.txt'
    """
 
+   if type(slist) != list:
+      print '** FL match strings requires a list'
+      return '', ''
+
    if not slist: return '', ''
 
    maxlen = len(slist[0])
@@ -1313,6 +1338,45 @@ def glob_form_from_list(slist):
 
    return globstr
 
+def glob_form_matches_list(slist, ordered=1):
+   """given a list of strings, make a glob form, and then test that against
+      the actual files on disk
+
+      if ordered: files must match exactly (i.e. slist must be sorted)
+      else:       slist does not need to be sorted
+   """
+
+   import glob
+
+   slen = len(slist)
+
+   # check trivial cases of lengths 0 and 1
+   if slen == 0: return 1
+   if slen == 1:
+      if os.path.isfile(slist[0]): return 1
+      else:                        return 0
+
+   globstr = glob_form_from_list(slist)
+   glist = glob.glob(globstr)
+   glist.sort()
+
+   # quick check: lengths must match
+   if len(glist) != slen: return 0
+
+   if ordered:
+      inlist = slist
+   else: 
+      inlist = slist[:]
+      inlist.sort()
+
+   # now files must match exactly (between inlist and glist)
+   for ind in range(slen):
+      if glist[ind] != inlist[ind]: return 0
+
+   # they must match
+   return 1
+   
+
 def list_minus_glob_form(slist, hpad=0, tpad=0):
    """given a list of strings, return the inner part of the list that varies
       (i.e. remove the consistent head and tail elements)
@@ -1349,8 +1413,157 @@ def list_minus_glob_form(slist, hpad=0, tpad=0):
    if tlen == 0: return [ s[hlen:]      for s in slist ]
    else:         return [ s[hlen:-tlen] for s in slist ]
 
+def parse_as_stim_list(flist):
+   """parse filename list as PREFIX.INDEX.LABEL.SUFFIX, where the separators
+        can be '.', '_' or nothing (though ignore PREFIX and SUFFIX, as well
+        as those separators)
+
+        - strip PREFIX and SUFFIX (those are garbage)
+          (if SUFFIX has a '.' after position 0, adjust the SUFFIX)
+        - strip any leading digits as INDEXes
+
+      return Nx2 table where if one column entry is filled, they all are
+             (None on failure for form a complete table)
+             (note: blank INDEX or LABEL is okay, but they must all be)
+   """
+
+   if len(flist) < 1: return []
+
+   # first get PREFIX and SUFFIX
+   prefix, suffix = first_last_match_strs(flist)
+
+   # if suffix contains an extension, make the suffix into the extension
+   dot = suffix.find('.')
+
+   # strip prefix, suffix: might include part of 'suffix' in label
+   inner_list = list_minus_glob_form(flist, tpad=dot)
+
+   # then make table of the form <NUMBER><SEP><LABEL>
+   s_table = [list(_parse_leading_int(name)) for name in inner_list]
+
+   # if any number does not exist, just return inner_list as LABELs
+   for entry in s_table:
+      if entry[0] < 0: return [[-1, label] for label in inner_list]
+
+   # return INDEX and LABEL (no SEP)
+   return [[entry[0], entry[2]] for entry in s_table]
+
+def _parse_leading_int(name, seplist=['.','_','-']):
+   """assuming name is a string starting with digits, parse name into
+      val, sep, suffix
+
+        val    = -1 if name does not start with a digit
+        sep    = one of {'.', '_', '-', ''}
+        suffix = whatever remains after 'sep'
+   """
+
+   nlen = len(name)
+
+   if nlen < 1: return -1, '', ''
+
+   # first strip of any leading (non-negative) integer
+   posn = 0     # count leading digits
+   for char in name:
+      if char.isdigit(): posn += 1
+      else:              break
+
+   if posn == 0: val = -1
+   else:
+      try: val = int(name[0:posn])
+      except:
+         print "** _parse_leading_int: can't parse int from %s" % name
+         return
+
+   # if only a number, we're outta here
+   if posn == nlen: return val, '', ''
+
+   # note any separator
+   if name[posn] in seplist:
+      sep = name[posn]
+      posn += 1
+   else:
+      sep = ''
+
+   # aaaaaand, we're done
+   return val, sep, name[posn:]
+
+def common_dir(flist):
+   """return the directory name that is common to all files"""
+   dir, junk = first_last_match_strs(flist)
+   return os.path.dirname(dir)
+
+def common_parent_dirs(flists):
+   """return parent directories
+
+      flists = lists of file names (each element should be a list)
+
+      return:
+         top_dir    (common to all parents (files), '' if not used)
+         parent_dir (for each flist, common parent)
+         short_dir  (for each flist, common parent under top_dir)
+         short_name (for each flist, file names under parent dirs)
+
+      if top_dir has at least 2 levels, use it
+   """
+   if type(flists) != list:
+      print '** common_parent_dirs: bad flists type'
+      return None
+   for ind, flist in enumerate(flists):
+      if type(flist) != list:
+         print '** common_parent_dirs: bad flist[%d] type' % ind
+         return None, None, None, None
+
+   # get top_dir and parents
+   all_pars    = []
+   par_dirs    = []
+   short_names = []
+   for flist in flists:
+      # track parent dirs
+      parent = common_dir(flist)
+      if parent.count('/') <= 1: parent = ''
+      par_dirs.append(parent)
+
+      # and make short names
+      plen = len(parent)
+      if plen > 0: start = plen+1
+      else:        start = 0
+      short_names.append([fname[start:] for fname in flist])
+
+   # top is common to all parents
+   top_dir = common_dir(par_dirs)
+   if top_dir.count('/') <= 1:
+       top_dir = ''
+
+   # now get all short dir names, under top dir
+   if top_dir == '': short_dirs = par_dirs
+   else: short_dirs = [child_dir_name(top_dir, pdir) for pdir in par_dirs]
+
+   return top_dir, par_dirs, short_dirs, short_names
+
+def child_dir_name(parent, child):
+   """return the child directory name truncated under the parent"""
+   if parent == '' or child == '': return child
+   plen = len(parent)
+   clen = len(child)
+
+   if child[0:plen] != parent: return child     # not a proper child
+
+   # return everything after separator
+   if clen < plen + 2: return '.'               # trivial as child
+   else:               return child[plen+1:]    # remove parent portion
+
+def is_trivial_dir(dname):
+   """input a string
+      return 1 if dname is empty or '.'
+      else return 0
+   """
+   if dname == None: return 1
+   if dname == '' or dname == '.' or dname == './' : return 1
+
+   return 0
+
 # ----------------------------------------------------------------------
-# matematical functions:
+# mathematical functions:
 #    vector routines: sum, sum squares, mean, demean
 # ----------------------------------------------------------------------
 
@@ -1381,6 +1594,16 @@ def dotprod(v1,v2):
       print '** cannot take dotprod() of these elements'
       dsum = 0
    return dsum
+
+def maxabs(vals):
+   """convenience function for the maximum of the absolute values"""
+   return max([abs(v) for v in vals])
+
+def ndigits_lod(num, base=10):
+   """return the number of digits to the left of the decimal"""
+   anum = abs(num)
+   if base == 10: return 1+int(math.log10(anum))
+   else:          return 1+int(math.log10(anum)/math.log10(base))
 
 # almost identical to demean, but just return the mean
 def mean(vec, ibot=-1, itop=-1):

@@ -49,6 +49,50 @@
 
 
 afni_history_struct dglen_history[] = {
+{ 07 , APR, 2011 , DRG , "whereami" , 
+    MAJOR , TYPE_NEW_ENV, 
+    "Framework changes for generic atlases",
+    "Atlases now can have segmentation in a NIML structure attribute\n"
+    "in the atlas dataset header. The environment variable,\n"
+    "AFNI_CUSTOM_ATLAS, can contain a custom atlas prefix. Details on\n"
+    "NIML attributes will be forthcoming. In the meantime, existing\n"
+    "atlases should work as before with the minor exception of mask\n"
+    "datasets are now set to have voxel values of 1 rather than\n"
+    "the values from the atlas dataset." 
+} ,
+
+{ 24 , MAR, 2011 , DRG , "whereami" , 
+    MINOR , TYPE_BUG_FIX, 
+    "Fixed bug for case of MNI_ANAT space as not processed"
+} ,
+
+{ 19 , MAR, 2011 , DRG , "align_epi_anat.py" , 
+    MINOR , TYPE_BUG_FIX, 
+    "Fixed bug for case master_dset2_dxyz was accidentally ignored"
+} ,
+
+{ 15 , MAR, 2011 , DRG , "lpc_align.py" , 
+    MICRO , TYPE_GENERAL, 
+    "lpc_align.py is superceded by align_epi_anat.py",
+    "Program now exits with short message to use align_epi_anat.py"
+} ,
+
+{ 14 , MAR, 2011 , DRG , "Draw Dataset Plugin" , 
+    MINOR , TYPE_MODIFY, 
+    "Update Draw Dataset for clarity and ROI labels",
+    "Draw Dataset is clearer with regards to overlay/underlay drawing\n"
+    "instead of the older func/anat terminology. Also an ROI color scale\n"
+    "is used for drawing and labels are updated in the AFNI Overlay GUI\n"
+    "immediately. Need to set AFNI_INT_CMAP or AFNI_INT_PBAR to use."
+} ,
+
+{ 14 , MAR, 2011 , DRG , "afni GUI" , 
+    MINOR , TYPE_BUG_FIX, 
+    "Fixed bugs when switching between ROI and continuous overlay datasets",
+    "Colorscale (scale, range) is restored with continuous overlay dataset.\n"
+    "Need to set AFNI_INT_CMAP or AFNI_INT_PBAR to use."
+} ,
+
 { 12 , OCT, 2010 , DRG , "3dDTtoDWI" , 
     MINOR , TYPE_NEW_PROG, 
     "Program to compute DWI images from diffusion tensor",

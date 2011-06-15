@@ -190,7 +190,8 @@ int main( int argc , char *argv[] )
        if( verb ) INFO_message("Opened dataset %s\n",old_prefix) ;
        /* make sure prefix is not just a path     ZSS Oct 2010 */
        if (new_prefix[strlen(new_prefix)-1] == '/') {
-          strncat(new_prefix, DSET_PREFIX(qset), THD_MAX_PREFIX);
+          strncat(new_prefix, DSET_PREFIX(qset), 
+                  THD_MAX_PREFIX-strlen(new_prefix)-1);
        }
        cset = EDIT_empty_copy( qset ) ;
        if( new_view < 0 ) new_view = qset->view_type ;
@@ -312,7 +313,8 @@ int main( int argc , char *argv[] )
       }
    }
 
-   if( nfound == 0 ) ERROR_message("no datasets found!");
+   if( nfound == 0 ) 
+      ERROR_exit("no datasets found!"); /* ZSS, changed from ERROR_message */
 
    /*-- get to here means all datasets are ready to be
         written back out to disk under their new names --*/

@@ -37,13 +37,15 @@ int THD_bandpass_OK( int nx , float dt , float fbot , float ftop , int verb )
      bpwrn = 0;
    }
 
-   nfft = (nfft_fixed >= nx) ? nfft_fixed : csfft_nextup_one35(nx) ;
+   nfft = (nfft_fixed >= nx) ? nfft_fixed : csfft_nextup_even(nx) ;
    df   = 1.0f / (nfft * dt) ;  /* freq step */
    jbot = (int)rint(fbot/df) ;  /* band bot index */
    jtop = (int)rint(ftop/df) ;  /* band top index */
    if( jtop >= nfft/2 ) jtop = nfft/2-1 ;
    if( jbot+1 >= jtop ){
-     ERROR_message("bandpass: fbot and ftop too close ==> jbot=%d jtop=%d",jbot,jtop) ;
+     ERROR_message(
+       "bandpass: fbot=%g and ftop=%g too close ==> jbot=%d jtop=%d [nfft=%d dt=%g]",
+       fbot,ftop,jbot,jtop,nfft,dt) ;
      return 0 ;
    }
 
@@ -101,7 +103,7 @@ ENTRY("THD_bandpass_vectors") ;
 
    /** setup for FFT **/
 
-   nfft = (nfft_fixed >= nlen) ? nfft_fixed : csfft_nextup_one35(nlen) ;
+   nfft = (nfft_fixed >= nlen) ? nfft_fixed : csfft_nextup_even(nlen) ;
    nby2 = nfft/2 ;
 
    df   = 1.0f / (nfft * dt) ;           /* frequency resolution */

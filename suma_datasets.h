@@ -60,6 +60,12 @@ typedef struct {
    char *envval;  /* This is the default */
 }ENV_SPEC;
 
+typedef struct {
+   char *name;
+   char *help;
+   char *val;  /* This is the default */
+}HELP_OPT;
+
 
 #define SUMA_MAX_NAME_LENGTH 500   /*!< Maximum number of characters in a filename */
 #define SUMA_MAX_DIR_LENGTH 2000    /*!< Maximum number of characters in a directory name */
@@ -108,7 +114,6 @@ typedef struct {
 #define SUMA_Boolean byte
 #define NOPE 0
 #define YUP 1
-/* typedef enum { NOPE, YUP} SUMA_Boolean;     make sure SUMA_Boolean is byte */ 
 
 typedef enum { SUMA_NO_NUM_UNITS = 0, 
                SUMA_MM_UNITS,
@@ -512,7 +517,24 @@ typedef struct {
 #define SUMA_COUNTER_SUFFIX(ic)  ( ((ic) == 1) ? "st" : ((ic) == 2) ? "nd" : ((ic) == 3) ? "rd" : "th" )
 #define SUMA_COUNTER_PLURAL(ic)  ( ((ic) == 1) ? "" : "s" )
 
+#define SUMA_ECHO_EDU(brk, kar) {   \
+   if (!brk && (strcmp(argv[kar], "-echo_edu") == 0)) {  \
+      int m_jj;  \
+      fprintf(SUMA_STDOUT,"\n+++ Now running:\n   "); \
+      for (m_jj=0; m_jj<argc; ++m_jj) {   \
+         if (m_jj != kar) {   \
+            fprintf(SUMA_STDOUT,"%s ", argv[m_jj]);   \
+         }  \
+      }  \
+      fprintf(SUMA_STDOUT,"\n+++\n");  \
+      brk = YUP;   \
+   }  \
+}
+   
+
+
 #define SUMA_SKIP_COMMON_OPTIONS(m_brk, m_kar) {\
+   SUMA_ECHO_EDU(m_brk, m_kar);  \
    if (!m_brk &&                                     \
        ( (strcmp(argv[m_kar], "-memdbg") == 0) ||    \
          (strcmp(argv[m_kar], "-iodbg") == 0)  ||    \
@@ -1471,6 +1493,8 @@ SUMA_Boolean SUMA_LabelDset(SUMA_DSET *dset, char *lbl);
 SUMA_Boolean SUMA_RenameDset(SUMA_DSET *dset, char *filename);
 byte *SUMA_load_1D_n_mask(char *name, int N_Node, byte *omask, const char *oper, int *N_inmask);
 byte * SUMA_indexlist_2_bytemask(int *ind_list, int N_ind_list, int N_mask, int *N_inmask);  
+byte * SUMA_Meshbmask_2_IndexListbmask(
+   byte *Mbmask, int N_Mbmask, int *ind_list, int N_ind_list, int *N_ILbmask);
 byte *SUMA_load_1D_b_mask(char *name, int N_Node, byte *omask, const char *oper, int *N_inmask);
 byte *SUMA_get_c_mask(char *mask, int N_Node, byte *omask, const char *oper, int *N_inmask);
 byte * SUMA_load_all_command_masks(char *bmaskname, char *nmaskname, char *cmask, int N_Node, int *N_inmask);
@@ -1574,6 +1598,7 @@ int SUMA_AddColAtt_CompString(NI_element *nel, int col, char *lbl,
                               char *sep, int insert_mode);
 int SUMA_Remove_Sub_String(char *cs, char *sep, char *strn);
 NI_str_array * SUMA_NI_decode_string_list( char *ss , char *sep );
+NI_str_array * SUMA_NI_string_vec_to_str_array( char **ss , int nss );
 char  * SUMA_NI_get_ith_string( char *ss , char *sep, int i );
 SUMA_VARTYPE SUMA_CTypeName2VarType (char *vt);
 const char *SUMA_VarType2CTypeName (SUMA_VARTYPE vt);

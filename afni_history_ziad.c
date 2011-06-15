@@ -65,6 +65,179 @@
 
 afni_history_struct ziad_history[] = {
 /*=====BELOW THIS LINE=====*/
+ { 8, JUN , 2011 , ZSS , "@FSlabel2dset" , MINOR , TYPE_NEW_PROG,
+   "Script to change FreeSurfer ascii label file to SUMA dset",
+   NULL
+  } ,
+
+ { 8, JUN , 2011 , ZSS , "afni-general" , MINOR , TYPE_NEW_OPT,
+   "Added -npb and modified title bar to reflect bloc of ports",
+   "See afni's help for -npb option."
+  } ,
+
+ { 7, JUN , 2011 , ZSS , "afni" , MINOR , TYPE_NEW_OPT,
+   "Added 'w' key for writing out colormap to disk.",
+   "See suma's help for the colormap.\n"
+   "(press ctrl+h with cursor over the colormap in the surface controller)"  
+  } ,
+
+ { 7, JUN , 2011 , ZSS , "afni-general" , MAJOR , TYPE_NEW_OPT,
+   "Allow multiple instances of communicating programs per machine.",
+   "This was done by generalizing option -np PORT_OFFSET which \n"
+   "allows users to use a different set of ports for different AFNI/SUMA/etc.\n"
+   "sessions."
+   "Port numbers should no longer be hard coded anywhere. New dedicated\n"
+   "ports should be added to then new init_ports_list() function."  
+  } ,
+
+ { 7, JUN , 2011 , ZSS , "afni" , MICRO , TYPE_NEW_OPT,
+   "-list_ports, -port_number* give port assignment information",
+   "See afni -help for details."  
+  } ,
+
+ { 7, JUN , 2011 , ZSS , "suma" , MICRO , TYPE_NEW_OPT,
+   "-np, -list_ports, -port_number* control and report port assignments",
+   "See suma -help for details."  
+  } ,
+
+ { 19, MAY , 2011 , ZSS , "@RetinoProc" , MINOR , TYPE_NEW_OPT,
+   "Added support for multiple reference time series.",
+   "Search for -var* options in @RetinoProc -help.\n" 
+  } ,
+
+ { 19, MAY , 2011 , ZSS , "3dRetinoPhase" , MINOR , TYPE_NEW_OPT,
+   "Added option to use best of multiple reference time series.",
+   "Search for -multi_ref_ts in 3dRetinoPhase -help\n" 
+ } ,
+
+ { 18, MAY , 2011 , ZSS , "suma" , MICRO , TYPE_BUG_FIX,
+   "Node value now updates when switching dsets while viewing surf patches.\n",
+   NULL,
+  } ,
+
+ { 18, MAY , 2011 , ZSS , "@RetinoProc" , MAJOR , TYPE_NEW_OPT,
+   "Added options for mapping to specific layers, and the use of delay",
+   "The options -wm, -pial, etc. allow for tight control of mapping\n"
+   "onto specific layers in the cortex.\n"
+   "Option -delay improves latency estimation compare to using the phase\n"
+   "of the fundamental frequency.\n" 
+  } ,
+
+  { 18, MAY , 2011 , ZSS , "SurfRetinoMap" , MINOR , TYPE_MODIFY,
+   "Added a correlation coefficient with VFR output. \n",
+   NULL,
+  } ,
+
+ { 18, MAY , 2011 , ZSS , "3dRetinoPhase" , MAJOR , TYPE_NEW_OPT,
+   "Added options to 3dRetinoPhase to estimate latency as in 3ddelay \n",
+   "The two options for computing delays, instead of phase, are \n"
+   "-phase_estimate DELAY, and -ref_ts REF_TS . See program's -help for \n"
+   "details.\n"
+   "Also added -ort_adjust which is needed to account for lost DOF in \n"
+   "external detrending when estimating the significance of correlation \n"
+   "coefficients with delay estimation.\n"
+   "The program now output a correlation coefficient with the visual field\n"
+   "angles datasets. \n"
+   "And speaking of correlation coefficients, the significance levels should\n"
+   "be taken with a grain of salt, especially in derived datasets such as \n"
+   "field angle, and VFR in SurfRetinoMap.\n" 
+  } ,
+
+ { 18, MAY , 2011 , ZSS , "3ddelay" , MINOR , TYPE_NEW_OPT,
+   "Added options to 3ddelay to improve its utility for retinotopy analysis",
+   "The new options are -phzreverse and -phzscale. Though useful, you are\n"
+   "better off using 3dRetinoPhase -phase_estimate DELAY option. It is much\n"
+   "more convenient for retinotopy analysis and fits better in @RetinoProc\n"
+  } ,
+
+ { 25, APR , 2011 , ZSS , "afni-general" , MAJOR , TYPE_MODIFY,
+   "Major reorganization of 'whereami' functionality.",
+   "The code changes affect anything related to atlas datasets and whereami\n"
+   "functionality. The changes were made take advantage of Daniel Glen's new\n"
+   "API to handle atlas, space, and template definitions.\n"
+   "There is now very little reliance on hard coded atlas information in the\n"
+   "source code. Whatever is left is needed to ensure backward compatibility.\n"
+  } ,
+
+ { 8, APR , 2011 , ZSS , "3dLocalstat" , MINOR , TYPE_NEW_OPT,
+   "Added options -reduce* to compute results on reduced grid",
+   "This would help in speeding up the computing of stats over large regions\n"
+   "without paying too high a premium on processor time. \n"
+   "Changes were made in 3dLocalstat.c and mri_nstats.c. \n"
+   "Micro modification in r_new_resam.c's r_new_resam_dset."
+  } ,
+
+ { 29, MAR , 2011 , ZSS , "suma" , MINOR , TYPE_BUG_FIX,
+   "Fixed bug in default view of flat surfaces.",
+   "The problem manifested itself when large rotations were present\n"
+   "in the transform of the sv volume, resulting in flat meshes\n"
+   "being incorrectly labeled as spherical."
+ } ,
+
+ { 29, MAR , 2011 , ZSS , "ConvexHull" , MINOR , TYPE_BUG_FIX,
+   "Fixed error with proj_xy option.",
+   NULL
+ } ,
+
+ { 29, MAR , 2011 , ZSS , "afni-general" , MINOR , TYPE_MODIFY,
+   "Basic support for HTTP/1.1",
+   "See functions read_URL_http11, and page_* in thd_http.c."
+ } ,
+
+ { 22, MAR , 2011 , ZSS , "afni-general" , MICRO , TYPE_NEW_ENV,
+   "AFNI_NIFTI_TYPE_WARN controls frequency of NIFTI type conversion warnings",
+   "Default is to warn once per session. \n"
+   "Search for AFNI_NIFTI_TYPE_WARN in README.environment for details."
+ } ,
+
+ { 22, MAR , 2011 , ZSS , "3dhistog" , MINOR , TYPE_NEW_OPT,
+   "-roi_mask allows creation of separate histogram for each ROI in mask.",
+   NULL
+ } ,
+
+ { 27, JAN , 2011 , ZSS , "afni" , MICRO , TYPE_BUG_FIX,
+   "Fixed problem in THD_add_bricks when dset in AFNI is not malloc-ed.",
+   NULL
+ } ,
+
+ { 26, JAN , 2011 , ZSS , "afni" , MICRO , TYPE_MODIFY,
+   "Made THD_add_bricks add labels to new bricks ",
+   NULL
+ } ,
+
+ { 25, JAN , 2011 , ZSS , "suma" , MICRO , TYPE_MODIFY,
+   "Improved logic for assigning ROI parent.",
+   NULL
+ } ,
+
+ { 4, JAN , 2011 , ZSS , "SurfFWHM" , MINOR , TYPE_BUG_FIX,
+   "Fixed SurfFWHM which had the same masking problem as SurfSmooth.",
+   NULL
+ } ,
+
+ { 4, JAN , 2011 , ZSS , "SurfSmooth" , MINOR , TYPE_BUG_FIX,
+   "Fixed SurfSmooth to work with the combination HEAT07+Sparse Dsets+cmask ",
+   "The problem was caused by a bad masking operation at the detrending\n"
+   "function when sparse datasets with cmask option are used. The detrending\n"
+   "is used to estimate the FWHM in the blurmaster. As a result, SurfSmooth \n"
+   "would not converge under such circumstances.\n"
+   "In addition there was an optimizer related bug in the macro SUMA_COL_FILL\n"
+   "Thanks to Christopher Ackerman from JHMI for reporting the bug."
+ } ,
+
+ { 3, JAN , 2011 , ZSS , "afni-general" , MICRO , TYPE_BUG_FIX,
+   "Modified decode_*linebuf to better treat the 'i' character in 1D files",
+   NULL
+ } ,
+
+ { 3, JAN , 2011 , ZSS , "3dUniformize" , MINOR , TYPE_NEW_OPT,
+   "Changed 3dUniformize to accept byte, short, or float input.",
+   "These changes also avoid data clipping that was necessary\n"
+   "when output data was handled as shorts.\n"
+   "The output format is similar to that of the input.\n"
+   "-auto_clip is now the default.\n"
+ } ,
+
  { 21, DEC , 2010 , ZSS , "@help.AFNI" , MINOR , TYPE_NEW_PROG,
    "A simple script to look at AFNI's all help page",
    NULL

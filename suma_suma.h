@@ -68,14 +68,16 @@
    */
    
    #define SUMA_free mcw_free
-   
+   #define SUMA_ifree(p)  if ((p)) {SUMA_free((p));} (p)=NULL; 
    
    /* memory allocation section (SUMA_COMPILED-specific)*/
-   #ifndef DONT_USE_MCW_MALLOC
+   #ifndef DONT_USE_MCW_MALLOC 
+   /*#if defined(USING_MCW_MALLOC) && !defined(USE_OMP)*/
       #define SUMA_malloc(a) mcw_malloc((a),__FILE__,__LINE__)
       #define SUMA_calloc(a,b) mcw_calloc((a),(b),__FILE__,__LINE__)
       #define SUMA_realloc(a,b) mcw_realloc((a),(b),__FILE__,__LINE__)
       #define SUMA_MEMTRACE_OFF {   /* No such thing */ }
+      #if defined(USING_MCW_MALLOC) && !defined(USE_OMP)
          #define SUMA_MEMTRACE_ON {\
             enable_mcw_malloc() ;   \
          }
@@ -84,6 +86,10 @@
                enable_mcw_malloc() ;   \
             }  \
          }
+      #else
+         #define SUMA_MEMTRACE_ON {}
+         #define SUMA_MEMTRACE_TOGGLE {}
+      #endif
    #else
       #define SUMA_malloc(a) mcw_malloc((a))
       #define SUMA_calloc(a,b) mcw_calloc((a),(b))
@@ -133,9 +139,16 @@
    }
    #define SUMA_LHv SUMA_LH
    
-   #define SUMA_S_Warn(msg) {\
+   #ifdef SUMA_noFunc
+     #define SUMA_S_Warn(msg) {\
+      fprintf (SUMA_STDERR, "Warning: %s\n", msg);  \
+     }
+   #else
+     #define SUMA_S_Warn(msg) {\
       fprintf (SUMA_STDERR, "Warning %s:\n %s\n", FuncName, msg);  \
-   }
+     }
+   #endif
+
    #define SUMA_S_Warnv SUMA_S_Warn 
    
    #define SUMA_S_Note(msg) {\
