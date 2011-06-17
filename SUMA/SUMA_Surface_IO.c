@@ -7301,6 +7301,7 @@ SUMA_FORM_AFNI_DSET_STRUCT *SUMA_New_FormAfniDset_Opt(void)
    Opt->mmask=NULL;
    Opt->full_list = 0;
    Opt->exists = -1;
+   Opt->coorder_xyz = 1; /* 0 if xyz are in dicom, 1 if in dataset order */
    SUMA_RETURN(Opt);
 }
 
@@ -7370,7 +7371,8 @@ SUMA_FORM_AFNI_DSET_STRUCT *SUMA_Free_FormAfniDset_Opt(SUMA_FORM_AFNI_DSET_STRUC
 
    - FUNCTION NOT FULLY TESTED for all options, USE WITH CARE : Feb 08 05
 */
-THD_3dim_dataset *SUMA_FormAfnidset (float *NodeList, float *vals, int N_vals, SUMA_FORM_AFNI_DSET_STRUCT *Opt)
+THD_3dim_dataset *SUMA_FormAfnidset (float *NodeList, float *vals, 
+                           int N_vals, SUMA_FORM_AFNI_DSET_STRUCT *Opt)
 {
    static char FuncName[]={"SUMA_FormAfnidset"};
    THD_coorder cord;
@@ -7389,7 +7391,7 @@ THD_3dim_dataset *SUMA_FormAfnidset (float *NodeList, float *vals, int N_vals, S
    SUMA_ENTRY;
    
    /* check for badiosity */
-   if( Opt->do_ijk == 0 && Opt->master == NULL ) {
+   if( Opt->do_ijk == 0 && (!Opt->master && !Opt->mset) ) {
       SUMA_SL_Err("Can't use mm coords without master.") ;
       SUMA_RETURN(NULL);
    }
@@ -7431,7 +7433,8 @@ THD_3dim_dataset *SUMA_FormAfnidset (float *NodeList, float *vals, int N_vals, S
    }
 
    if (!NodeList && !vals && !Opt->mmask) {
-      SUMA_SL_Warn("Creating a dataset of constants. (!NodeList && !vals && !Opt->mmask)");
+      SUMA_SL_Warn("Creating a dataset of constants. "
+                   "(!NodeList && !vals && !Opt->mmask)");
    }
    
    if (Opt->master) {
@@ -7649,29 +7652,34 @@ THD_3dim_dataset *SUMA_FormAfnidset (float *NodeList, float *vals, int N_vals, S
             THD_fvec3 mv , dv ;                              /* temp vectors */
             THD_ivec3 iv ;
 
-            THD_coorder_to_dicom( &cord , &xx,&yy,&zz ) ;    /* to Dicom order */
+            if (Opt->coorder_xyz) {
+               THD_coorder_to_dicom( &cord , &xx,&yy,&zz ) ; /* to Dicom order */
+            }
             LOAD_FVEC3( dv , xx,yy,zz ) ;
-            mv = THD_dicomm_to_3dmm( dset , dv ) ;           /* to Dataset order */
+            mv = THD_dicomm_to_3dmm( dset , dv ) ;        /* to Dataset order */
 
             /* 24 Nov 2000: check (xx,yy,zz) for being inside the box */
 
             if( mv.xyz[0] < xxdown || mv.xyz[0] > xxup ){
-               fprintf(stderr,"+++ Warning %s: line %d: x coord=%g is outside %g .. %g\n" ,
+               fprintf(stderr,
+                  "+++ Warning %s: line %d: x coord=%g is outside %g .. %g\n" ,
                        FuncName,ll,mv.xyz[0] , xxdown,xxup ) ;
                continue ;
             }
             if( mv.xyz[1] < yydown || mv.xyz[1] > yyup ){
-               fprintf(stderr,"+++ Warning %s: line %d: y coord=%g is outside %g .. %g\n" ,
+               fprintf(stderr,
+                  "+++ Warning %s: line %d: y coord=%g is outside %g .. %g\n" ,
                        FuncName,ll,mv.xyz[1] , yydown , yyup ) ;
                continue ;
             }
             if( mv.xyz[2] < zzdown || mv.xyz[2] > zzup ){
-               fprintf(stderr,"+++ Warning %s: line %d: z coord=%g is outside %g .. %g\n" ,
+               fprintf(stderr,
+                  "+++ Warning %s: line %d: z coord=%g is outside %g .. %g\n" ,
                        FuncName,ll,mv.xyz[2] , zzdown , zzup ) ;
                continue ;
             }
 
-            iv = THD_3dmm_to_3dind( dset , mv ) ;            /* to Dataset index */
+            iv = THD_3dmm_to_3dind( dset , mv ) ;         /* to Dataset index */
             ii = iv.ijk[0]; jj = iv.ijk[1]; kk = iv.ijk[2];  /* save */
          }
 
