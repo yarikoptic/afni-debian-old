@@ -49,44 +49,44 @@ Last-Update: 2009-10-21
             rickr/AFNI.changes.rickr rhammett/AFNI.changes.rhammett \
 @@ -77,7 +77,7 @@
             3dDeconvolve_f 3dAnhist 3dAFNIto3D 3dUniformize 3dWarp nicat         \
-            3dSpatNorm Imon fftest serial_helper 3dDTeig 3dDWItoDT 3dWarpDrive   \
+            3dSpatNorm fftest serial_helper 3dDTeig 3dDWItoDT 3dWarpDrive        \
             nifti_tool 3dAllineate nifti1_test whereami plugout_drive            \
 -           3dMedianFilter 3dretroicor 3dAFNItoNIML 3dAFNItoRaw im2niml 3dedge3  \
 +           3dMedianFilter 3dretroicor 3dAFNItoNIML 3dAFNItoRaw im2niml          \
             DTIStudioFibertoSegments Dimon 3dLocalstat 3danisosmooth 3dmaxima    \
             3dTwotoComplex 3dInvFMRI 3dmatcalc 3dAcost 3dLocalBistat 3dFWHMx     \
             3dBlurToFWHM 1dSEM 3dDFT 3dSynthesize 1dMarry 3dEmpty 3dsvm          \
-@@ -615,9 +615,10 @@
+@@ -619,9 +619,10 @@
  	$(RM) $@
- 	$(CC) -o 3dvolreg 3dvolreg.o $(LFLAGS) -lmri -lf2c $(LLIBS)
+ 	$(CC) -o 3dvolreg 3dvolreg.o $(LFLAGS) $(LLIBS)
  
 -3dedge:3dedge.o
 -	$(RM) $@
--	$(CC) -o 3dedge 3dedge.o $(LFLAGS) -lmri -lf2c $(LLIBS)
+-	$(CC) -o 3dedge 3dedge.o $(LFLAGS) $(LLIBS)
 +# Debian cannot have this due to licensing issues with edges3
 +# 3dedge:3dedge.o
-+# 	$(RM) $@
-+# 	$(CC) -o 3dedge 3dedge.o $(LFLAGS) -lmri -lf2c $(LLIBS)
++#	$(RM) $@
++#	$(CC) -o 3dedge 3dedge.o $(LFLAGS) $(LLIBS)
  
  from3d:from3d.o
  	$(RM) $@
-@@ -716,10 +717,11 @@
+@@ -720,10 +721,11 @@
  	$(RM) $@
- 	$(CC) -o 3dttest++ 3dttest++.o $(LFLAGS) -lmri -lf2c $(LLIBS)
+ 	$(CC) -o 3dttest++ 3dttest++.o $(LFLAGS) $(LLIBS)
  
 -3dedge3:lib3DEdge.a 3dedge3.o
 -	$(RM) $@
 -	$(CC) -o 3dedge3 3dedge3.o -I3DEdge/src            \
--              $(LFLAGS) -l3DEdge -lmri -lf2c $(LLIBS)
+-              $(LFLAGS) -l3DEdge $(LLIBS)
 +# Debian cannot have this due to licensing issues with edges3
 +# 3dedge3:lib3DEdge.a 3dedge3.o
-+# 	$(RM) $@
-+# 	$(CC) -o 3dedge3 3dedge3.o -I3DEdge/src            \
-+#               $(LFLAGS) -l3DEdge -lmri -lf2c $(LLIBS)
++#	$(RM) $@
++#	$(CC) -o 3dedge3 3dedge3.o -I3DEdge/src            \
++#             $(LFLAGS) -l3DEdge $(LLIBS)
  
  ### From Stephen Laconte
  3dsvm:svm/svm_common.c svm/svm_learn.c svm/3dsvm_common.c svm/svm_hideo.c svm/3dsvm.c
-@@ -1521,7 +1523,7 @@
+@@ -1540,7 +1542,7 @@
  	$(CP) -pr coxplot volpack moveup moveAFNI* eispack avovk                 ./afni_src
  	$(CP) -pr $(SCRIPTS) $(PY_DIR) $(R_DIR)                                  ./afni_src
  	$(CP) -pr gifsicledir qhulldir f2cdir mpeg_encodedir                     ./afni_src
@@ -95,7 +95,7 @@ Last-Update: 2009-10-21
  	$(CP) -pr SUMA svm matlab rickr faces poems gifti ni_test_? README.*     ./afni_src
  	chmod -R ugo+rw                                                          ./afni_src
  	$(TAR) cf - afni_src | $(GZIP) -9v > afni_src.tgz
-@@ -2267,8 +2269,9 @@
+@@ -2291,8 +2293,9 @@
  #######
  # 3DEdge library files - make them and move them up here
  
@@ -148,7 +148,7 @@ Last-Update: 2009-10-21
     
     if (Opt->bot_lztclip < 0) {
        if (!Opt->Use_emask) Opt->bot_lztclip = 0.65;
-@@ -1497,6 +1522,13 @@
+@@ -1527,6 +1552,13 @@
        exit(1);
     }
  
@@ -161,8 +161,8 @@ Last-Update: 2009-10-21
 +#else
     /* calculate an edge mask ? */
     if (Opt->Use_emask) {
-       float *emask_sort = NULL, PercRange[2]= { 10, 90 }, PercRangeVal[2] = { 0.0, 0.0 }, PercTh=-1.0;
-@@ -1604,7 +1636,8 @@
+       float *emask_sort = NULL, PercRange[2]= { 10, 90 }, 
+@@ -1653,7 +1685,8 @@
           }
        }
     } 
@@ -171,8 +171,8 @@ Last-Update: 2009-10-21
 +
     if (Opt->blur_fwhm) {
       if (Opt->debug) fprintf (SUMA_STDERR,"%s: Blurring...\n", FuncName);
-      EDIT_blur_volume(  DSET_NX(Opt->in_vol), DSET_NY(Opt->in_vol), DSET_NZ(Opt->in_vol),
-@@ -2009,6 +2042,13 @@
+      EDIT_blur_volume(  DSET_NX(Opt->in_vol), 
+@@ -2068,6 +2101,13 @@
        }
  
        PUSH_TO_EDGE:
@@ -186,7 +186,7 @@ Last-Update: 2009-10-21
        if (Opt->PushToEdge) {
           fprintf (SUMA_STDERR,"%s: Pushing to Edge ...\n", FuncName);
           ps->cs->kth = 1; /*make sure all gets sent at this stage */
-@@ -2061,7 +2101,7 @@
+@@ -2120,7 +2160,7 @@
           if (LocalHead) fprintf (SUMA_STDERR,"%s: Edge push correction  Done.\n", FuncName);
           ps->cs->kth = kth_buf; 
        }
@@ -206,7 +206,7 @@ Last-Update: 2009-10-21
  
  static int InteractiveQuit;
  
-@@ -3962,6 +3964,7 @@
+@@ -3980,6 +3982,7 @@
     \param poutsetp (THD_3dim_dataset **)If not null, it will point to a dataset that contains
                                          the edges.
  */
@@ -214,7 +214,7 @@ Last-Update: 2009-10-21
  SUMA_Boolean SUMA_3dedge3(THD_3dim_dataset *inset, float *emask, THD_3dim_dataset **poutsetp)
  {
     static char FuncName[]={"SUMA_3dedge3"};
-@@ -4182,3 +4185,4 @@
+@@ -4200,3 +4203,4 @@
        
     SUMA_RETURN(YUP);
  }
@@ -250,7 +250,7 @@ Last-Update: 2009-10-21
  
  SUMA_SRCS = SUMA_trackball.c SUMA_SVmanip.c SUMA_input.c \
  		 SUMA_MiscFunc.c SUMA_IV_XYZextract.c	\
-@@ -291,7 +291,7 @@
+@@ -292,7 +292,7 @@
  	$(RM) $@
  	${CC} -DSUMA_COMPILED  ${CCOPT} ${WARNOPT} -o $@ $(AFWARPOBJS) \
  		${AFNI_OBJS} SUMA_3dSkullStrip.c ${SUMA_INPATH} ${SUMA_LINK_PATH} 	\
@@ -258,7 +258,7 @@ Last-Update: 2009-10-21
 +		${AFNI_3dOBJS} MarchingCubes/debug/MarchingCubes.o	\
  		${SUMALIBLIST} ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB}
  
- 3dCRUISEtoAFNI: SUMA_3dCRUISEtoAFNI.c
+ 3dGenPriors: SUMA_3dGenPriors.c libSUMA.a
 --- a/@RetinoProc
 +++ b/@RetinoProc
 @@ -247,6 +247,7 @@
